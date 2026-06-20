@@ -7,9 +7,7 @@ various failure conditions and performance issues.
 All tests use real implementations (no mocks/stubs) and follow engineering best practices.
 """
 
-import os
 from pathlib import Path
-from typing import Any, Dict, List
 
 import structlog
 import yaml
@@ -41,14 +39,14 @@ class ODPSAlertsConfigurationTest(TestCase):
     def test_alerts_file_is_valid_yaml(self):
         """Test that alerts file is valid YAML."""
         try:
-            with open(self.alerts_file, "r") as f:
+            with open(self.alerts_file) as f:
                 yaml.safe_load(f)
         except yaml.YAMLError as e:
             self.fail(f"ODPS alerts file is not valid YAML: {e}")
 
     def test_alerts_file_has_odps_group(self):
         """Test that alerts file contains odps_alerts group."""
-        with open(self.alerts_file, "r") as f:
+        with open(self.alerts_file) as f:
             config = yaml.safe_load(f)
 
         self.assertIn("groups", config, "Alerts file should have 'groups' key")
@@ -66,7 +64,7 @@ class ODPSAlertsConfigurationTest(TestCase):
 
     def test_all_required_alerts_are_defined(self):
         """Test that all required ODPS alerts are defined."""
-        with open(self.alerts_file, "r") as f:
+        with open(self.alerts_file) as f:
             config = yaml.safe_load(f)
 
         odps_group = None
@@ -103,7 +101,7 @@ class ODPSAlertsConfigurationTest(TestCase):
 
     def test_alert_structure_is_valid(self):
         """Test that all alerts have required structure (expr, for, labels, annotations)."""
-        with open(self.alerts_file, "r") as f:
+        with open(self.alerts_file) as f:
             config = yaml.safe_load(f)
 
         odps_group = None
@@ -146,7 +144,7 @@ class ODPSAlertsConfigurationTest(TestCase):
 
     def test_normalization_failure_alert_configuration(self):
         """Test ODPS normalization failure alert configuration."""
-        with open(self.alerts_file, "r") as f:
+        with open(self.alerts_file) as f:
             config = yaml.safe_load(f)
 
         odps_group = None
@@ -176,7 +174,7 @@ class ODPSAlertsConfigurationTest(TestCase):
 
     def test_ref_resolution_error_alert_configuration(self):
         """Test ODPS $ref resolution error alert configuration."""
-        with open(self.alerts_file, "r") as f:
+        with open(self.alerts_file) as f:
             config = yaml.safe_load(f)
 
         odps_group = None
@@ -204,7 +202,7 @@ class ODPSAlertsConfigurationTest(TestCase):
 
     def test_external_fetch_failure_alert_configuration(self):
         """Test ODPS external fetch failure alert configuration."""
-        with open(self.alerts_file, "r") as f:
+        with open(self.alerts_file) as f:
             config = yaml.safe_load(f)
 
         odps_group = None
@@ -236,7 +234,7 @@ class ODPSAlertsConfigurationTest(TestCase):
 
     def test_rate_limit_violations_alert_configuration(self):
         """Test ODPS excessive rate limit violations alert configuration."""
-        with open(self.alerts_file, "r") as f:
+        with open(self.alerts_file) as f:
             config = yaml.safe_load(f)
 
         odps_group = None
@@ -266,7 +264,7 @@ class ODPSAlertsConfigurationTest(TestCase):
 
     def test_performance_degradation_alerts_configuration(self):
         """Test ODPS performance degradation alerts configuration."""
-        with open(self.alerts_file, "r") as f:
+        with open(self.alerts_file) as f:
             config = yaml.safe_load(f)
 
         odps_group = None
@@ -335,7 +333,7 @@ class ODPSAlertsConfigurationTest(TestCase):
 
     def test_cache_hit_rate_alert_configuration(self):
         """Test ODPS low cache hit rate alert configuration."""
-        with open(self.alerts_file, "r") as f:
+        with open(self.alerts_file) as f:
             config = yaml.safe_load(f)
 
         odps_group = None
@@ -373,7 +371,7 @@ class ODPSAlertsConfigurationTest(TestCase):
         )
         self.assertTrue(prometheus_config_file.exists(), "Prometheus config file should exist")
 
-        with open(prometheus_config_file, "r") as f:
+        with open(prometheus_config_file) as f:
             config_content = f.read()
 
         self.assertIn(
@@ -384,7 +382,7 @@ class ODPSAlertsConfigurationTest(TestCase):
 
     def test_export_failure_alert_configuration(self):
         """Test ODPS export failure alert configuration (Task 6.6.4)."""
-        with open(self.alerts_file, "r") as f:
+        with open(self.alerts_file) as f:
             config = yaml.safe_load(f)
 
         odps_group = None
@@ -410,7 +408,7 @@ class ODPSAlertsConfigurationTest(TestCase):
 
     def test_linking_failure_alert_configuration(self):
         """Test ODPS linking failure alert configuration (Task 6.6.5)."""
-        with open(self.alerts_file, "r") as f:
+        with open(self.alerts_file) as f:
             config = yaml.safe_load(f)
 
         odps_group = None
@@ -441,7 +439,7 @@ class ODPSAlertsConfigurationTest(TestCase):
 
     def test_semantic_mapping_failure_alert_configuration(self):
         """Test ODPS semantic mapping failure alert configuration (Task 6.6.6)."""
-        with open(self.alerts_file, "r") as f:
+        with open(self.alerts_file) as f:
             config = yaml.safe_load(f)
 
         odps_group = None
@@ -482,7 +480,7 @@ class ODPSAlertsConfigurationTest(TestCase):
 
     def test_alert_for_durations_are_reasonable(self):
         """Test that alert 'for' durations are reasonable (not too short or too long)."""
-        with open(self.alerts_file, "r") as f:
+        with open(self.alerts_file) as f:
             config = yaml.safe_load(f)
 
         odps_group = None
@@ -519,7 +517,7 @@ class ODPSAlertsConfigurationTest(TestCase):
     def test_alerts_handles_unicode_characters(self):
         """Test that alert configuration handles unicode characters correctly."""
         # Test that YAML parsing handles unicode in alert names/descriptions
-        with open(self.alerts_file, "r", encoding="utf-8") as f:
+        with open(self.alerts_file, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         # Should handle unicode characters in YAML
@@ -528,7 +526,7 @@ class ODPSAlertsConfigurationTest(TestCase):
     def test_alerts_handles_special_characters(self):
         """Test that alert configuration handles special characters correctly."""
         # Test that YAML parsing handles special characters
-        with open(self.alerts_file, "r", encoding="utf-8") as f:
+        with open(self.alerts_file, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         # Should handle special characters in YAML
@@ -537,7 +535,7 @@ class ODPSAlertsConfigurationTest(TestCase):
     def test_alerts_handles_very_large_configuration(self):
         """Test that alert configuration handles very large files correctly."""
         # Test that YAML parsing handles large files
-        with open(self.alerts_file, "r", encoding="utf-8") as f:
+        with open(self.alerts_file, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         # Should handle large configuration files
@@ -545,7 +543,7 @@ class ODPSAlertsConfigurationTest(TestCase):
 
     def test_alerts_handles_nested_structures(self):
         """Test that alert configuration handles nested structures correctly."""
-        with open(self.alerts_file, "r", encoding="utf-8") as f:
+        with open(self.alerts_file, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         # Should handle nested YAML structures

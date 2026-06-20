@@ -22,52 +22,54 @@ def verify_audit_report(report_path: str) -> bool:
         return False
 
     try:
-        with open(report_file, 'r', encoding='utf-8') as f:
+        with open(report_file, encoding="utf-8") as f:
             report = json.load(f)
     except Exception as e:
         print(f"❌ Error reading report: {e}")
         return False
 
     # Verify structure
-    required_keys = ['summary', 'endpoints', 'documentation_mappings']
+    required_keys = ["summary", "endpoints", "documentation_mappings"]
     for key in required_keys:
         if key not in report:
             print(f"❌ Missing required key: {key}")
             return False
 
-    summary = report['summary']
+    summary = report["summary"]
 
     # Verify summary
-    print("="*60)
+    print("=" * 60)
     print("Documentation Audit Verification")
-    print("="*60)
-    print(f"\n📊 Summary:")
+    print("=" * 60)
+    print("\n📊 Summary:")
     print(f"   Total Endpoints: {summary['total_endpoints']}")
     print(f"   Total References: {summary['total_references']}")
     print(f"   Documentation Files: {summary['total_documentation_files']}")
 
     # Verify documentation types
-    print(f"\n📄 Documentation Types:")
-    for doc_type, count in summary['documentation_types'].items():
+    print("\n📄 Documentation Types:")
+    for doc_type, count in summary["documentation_types"].items():
         print(f"   {doc_type}: {count}")
 
     # Verify endpoints
-    endpoints = report['endpoints']
-    print(f"\n🔗 Endpoints:")
+    endpoints = report["endpoints"]
+    print("\n🔗 Endpoints:")
     print(f"   Total: {len(endpoints)}")
 
-    endpoints_with_methods = len([e for e in endpoints if e.get('methods')])
+    endpoints_with_methods = len([e for e in endpoints if e.get("methods")])
     print(f"   With Methods: {endpoints_with_methods}")
 
-    endpoints_with_multiple_docs = len([e for e in endpoints if len(e.get('documentation_files', [])) > 1])
+    endpoints_with_multiple_docs = len(
+        [e for e in endpoints if len(e.get("documentation_files", [])) > 1]
+    )
     print(f"   With Multiple Docs: {endpoints_with_multiple_docs}")
 
     # Verify verification results
-    verification = summary.get('verification', {})
-    doc_found = verification.get('documentation_found', {})
-    mapping_comp = verification.get('mapping_completeness', {})
+    verification = summary.get("verification", {})
+    doc_found = verification.get("documentation_found", {})
+    mapping_comp = verification.get("mapping_completeness", {})
 
-    print(f"\n✅ Verification Results:")
+    print("\n✅ Verification Results:")
     print(f"   Documentation Found Status: {doc_found.get('status')}")
     print(f"   Files Checked: {doc_found.get('files_checked')}")
     print(f"   Files With Endpoints: {doc_found.get('files_with_endpoints')}")
@@ -77,25 +79,25 @@ def verify_audit_report(report_path: str) -> bool:
     # Check for issues
     issues = []
 
-    if doc_found.get('status') != 'success':
+    if doc_found.get("status") != "success":
         issues.append("Documentation found status is not 'success'")
 
-    if mapping_comp.get('status') != 'success':
+    if mapping_comp.get("status") != "success":
         issues.append("Mapping completeness status is not 'success'")
 
     if len(endpoints) == 0:
         issues.append("No endpoints found in report")
 
-    if len(endpoints) != summary['total_endpoints']:
+    if len(endpoints) != summary["total_endpoints"]:
         issues.append(f"Endpoint count mismatch: {len(endpoints)} != {summary['total_endpoints']}")
 
     if issues:
-        print(f"\n⚠️  Issues Found:")
+        print("\n⚠️  Issues Found:")
         for issue in issues:
             print(f"   - {issue}")
         return False
 
-    print(f"\n✅ All verifications passed!")
+    print("\n✅ All verifications passed!")
     return True
 
 
@@ -112,4 +114,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

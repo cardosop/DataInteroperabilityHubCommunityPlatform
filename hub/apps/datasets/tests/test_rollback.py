@@ -5,7 +5,6 @@ Tests for automated rollback functionality.
 """
 
 import pytest
-from django.db import transaction
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
@@ -58,7 +57,7 @@ class VersionRollbackManagerTest(DatasetsTestBase):
             created_by=self.user,
         )
 
-        dq_run = DQRun.objects.create(
+        DQRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             dataset=dataset,
@@ -124,7 +123,7 @@ class VersionRollbackManagerTest(DatasetsTestBase):
             created_by=self.user,
         )
 
-        dq_run = DQRun.objects.create(
+        DQRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             dataset=child,
@@ -228,7 +227,10 @@ class VersionRollbackManagerTest(DatasetsTestBase):
         # Try rollback without approval
         config = RollbackConfig(require_approval=True)
         result = VersionRollbackManager.execute_rollback(
-            child, approved_by=None, reason="Test", config=config  # No approver
+            child,
+            approved_by=None,
+            reason="Test",
+            config=config,  # No approver
         )
 
         self.assertFalse(result["success"])
@@ -283,8 +285,8 @@ class VersionRollbackManagerTest(DatasetsTestBase):
 
     # ========== EDGE CASES ==========
 
-    def test_rollback_to_same_version(self):
-        """Test rollback to same version (edge case)"""
+    def test_rollback_no_parent_version_returns_failure(self):
+        """Rollback fails when the dataset has no parent version."""
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -371,9 +373,7 @@ class VersionRollbackManagerTest(DatasetsTestBase):
         # Should handle errors gracefully
         try:
             config = RollbackConfig(enable_auto_rollback=True)
-            result = VersionRollbackManager.check_rollback_conditions(
-                dataset, config=config
-            )
+            result = VersionRollbackManager.check_rollback_conditions(dataset, config=config)
             self.assertIsNotNone(result)
             self.assertIn("should_rollback", result)
             self.assertIn("triggers", result)
@@ -388,8 +388,7 @@ class VersionRollbackManagerTest(DatasetsTestBase):
             asset_id=str(self.asset.id),
             tenant_id=str(self.tenant.id),
         )
-        self.assertIsInstance(history, list,
-            "get_rollback_history must return a list")
+        self.assertIsInstance(history, list, "get_rollback_history must return a list")
 
     def test_get_rollback_history_with_limit(self):
         """get_rollback_history respects the limit parameter."""
@@ -399,5 +398,6 @@ class VersionRollbackManagerTest(DatasetsTestBase):
             limit=5,
         )
         self.assertIsInstance(history, list)
-        self.assertLessEqual(len(history), 5,
-            "get_rollback_history must not exceed the requested limit")
+        self.assertLessEqual(
+            len(history), 5, "get_rollback_history must not exceed the requested limit"
+        )

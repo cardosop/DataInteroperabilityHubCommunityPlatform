@@ -18,13 +18,13 @@ Coverage:
 * Validation rejects malformed inputs (missing required keys,
   invalid eventType).
 """
+
 from __future__ import annotations
 
 import datetime as _dt
 import uuid
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Outbound translation (Meshant → OpenLineage)
@@ -45,7 +45,7 @@ def _meshant_edge(*, source_contract=None, target_contract=None, edge_type="refe
         "edge_type": edge_type,
         "transformation_ref": "dbt://models/orders_fulfillment.sql",
         "job_ref": "airflow://dag/orders_etl/run/2026-04-30",
-        "valid_from": _dt.datetime(2026, 4, 30, tzinfo=_dt.timezone.utc).isoformat(),
+        "valid_from": _dt.datetime(2026, 4, 30, tzinfo=_dt.UTC).isoformat(),
         "valid_to": None,
     }
 
@@ -61,7 +61,16 @@ def test_outbound_produces_openlineage_run_event_shape():
     event = meshant_edge_to_openlineage(edge, producer="https://meshant.com/")
 
     # Top-level required keys per OpenLineage spec.
-    for key in ("eventType", "eventTime", "producer", "schemaURL", "run", "job", "inputs", "outputs"):
+    for key in (
+        "eventType",
+        "eventTime",
+        "producer",
+        "schemaURL",
+        "run",
+        "job",
+        "inputs",
+        "outputs",
+    ):
         assert key in event, f"OpenLineage event missing required key {key!r}; got {event!r}"
     assert event["eventType"] in {"START", "RUNNING", "COMPLETE", "ABORT", "FAIL", "OTHER"}
     assert event["producer"] == "https://meshant.com/"
@@ -118,10 +127,12 @@ def test_outbound_event_type_maps_from_edge_type():
     )
 
     transformation = meshant_edge_to_openlineage(
-        _meshant_edge(edge_type="transformation"), producer="x",
+        _meshant_edge(edge_type="transformation"),
+        producer="x",
     )
     reference = meshant_edge_to_openlineage(
-        _meshant_edge(edge_type="reference"), producer="x",
+        _meshant_edge(edge_type="reference"),
+        producer="x",
     )
     assert transformation["eventType"] == "COMPLETE"
     assert reference["eventType"] == "OTHER"
@@ -227,8 +238,15 @@ def test_round_trip_preserves_scope_tuple():
     event = meshant_edge_to_openlineage(original, producer="https://meshant.com/")
     round_tripped = openlineage_to_meshant_edge(event)
 
-    for key in ("source_contract", "target_contract", "source_model", "source_field",
-                "target_model", "target_field", "edge_type"):
+    for key in (
+        "source_contract",
+        "target_contract",
+        "source_model",
+        "source_field",
+        "target_model",
+        "target_field",
+        "edge_type",
+    ):
         assert round_tripped[key] == original[key], (
             f"round-trip lost {key!r}: original={original[key]!r}, "
             f"round_tripped={round_tripped[key]!r}"
@@ -241,8 +259,9 @@ def test_round_trip_preserves_scope_tuple():
 
 
 def test_validation_rejects_missing_required_keys():
-    from hub.apps.integrations.openlineage.translator import validate_openlineage_event
     from jsonschema import ValidationError
+
+    from hub.apps.integrations.openlineage.translator import validate_openlineage_event
 
     bad = {"eventType": "COMPLETE"}  # missing eventTime / producer / run / job
     with pytest.raises(ValidationError):
@@ -250,8 +269,9 @@ def test_validation_rejects_missing_required_keys():
 
 
 def test_validation_rejects_invalid_event_type():
-    from hub.apps.integrations.openlineage.translator import validate_openlineage_event
     from jsonschema import ValidationError
+
+    from hub.apps.integrations.openlineage.translator import validate_openlineage_event
 
     bad = {
         "eventType": "BOGUS",  # not in enum
@@ -265,3 +285,65 @@ def test_validation_rejects_invalid_event_type():
     }
     with pytest.raises(ValidationError):
         validate_openlineage_event(bad)
+
+
+# ---------------------------------------------------------------------------
+# Phase 8 — previously uncovered translator paths
+# ---------------------------------------------------------------------------
+
+
+def test_outbound_raises_value_error_when_edge_missing_id():
+    """``meshant_edge_to_openlineage`` requires the edge dict to have
+    a non-empty ``id`` key."""
+    from hub.apps.integrations.openlineage.translator import (
+        meshant_edge_to_openlineage,
+    )
+
+    edge = _meshant_edge()
+    edge["id"] = ""
+    with pytest.raises(ValueError, match="missing required.*id"):
+        meshant_edge_to_openlineage(edge, producer="x")
+
+
+def test_inbound_unknown_event_type_falls_back_to_reference():
+    """An event with an unknown/custom ``eventType`` should map to
+    ``edge_type='reference'`` via the fallback table."""
+    from hub.apps.integrations.openlineage.translator import (
+        openlineage_to_meshant_edge,
+    )
+
+    event = {
+        "eventType": "CUSTOM_PRODUCER_EVENT",
+        "eventTime": "2026-04-30T12:00:00Z",
+        "producer": "x",
+        "schemaURL": "https://openlineage.io/spec/2-0-0/OpenLineage.json",
+        "run": {"runId": str(uuid.uuid4())},
+        "job": {"namespace": "x", "name": "y"},
+        "inputs": [
+            {"namespace": "meshant.contracts", "name": "src-uuid",
+             "facets": {"meshant_contract_ref": {"contract_id": "src-uuid"}}},
+        ],
+        "outputs": [
+            {"namespace": "meshant.contracts", "name": "tgt-uuid",
+             "facets": {"meshant_contract_ref": {"contract_id": "tgt-uuid"}}},
+        ],
+    }
+    tup = openlineage_to_meshant_edge(event)
+    assert tup["edge_type"] == "reference", (
+        f"unknown eventType should fall back to 'reference'; got {tup['edge_type']}"
+    )
+
+
+@pytest.mark.parametrize("edge_type", ["derivation", "upload", "export"])
+def test_outbound_edge_types_map_to_complete(edge_type):
+    """Edge types ``derivation``, ``upload``, and ``export`` all map
+    to ``COMPLETE`` RunEvents (only ``transformation`` was tested)."""
+    from hub.apps.integrations.openlineage.translator import (
+        meshant_edge_to_openlineage,
+    )
+
+    edge = _meshant_edge(edge_type=edge_type)
+    event = meshant_edge_to_openlineage(edge, producer="x")
+    assert event["eventType"] == "COMPLETE", (
+        f"edge_type={edge_type!r} should map to COMPLETE; got {event['eventType']}"
+    )

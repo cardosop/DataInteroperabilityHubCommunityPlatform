@@ -25,9 +25,9 @@ import json
 import subprocess
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
 
 SCHEMA_VERSION = 1
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -49,12 +49,24 @@ TS_METRIC_KEYS = (
 )
 
 ORM_METHODS = {
-    "get", "filter", "all", "create", "update_or_create", "get_or_create",
-    "exists", "count", "first", "last", "bulk_create", "bulk_update", "none",
+    "get",
+    "filter",
+    "all",
+    "create",
+    "update_or_create",
+    "get_or_create",
+    "exists",
+    "count",
+    "first",
+    "last",
+    "bulk_create",
+    "bulk_update",
+    "none",
 }
 
 
 # ------------------------------------------------------------------ Python AST
+
 
 def _is_except_exception_pass(handler: ast.ExceptHandler) -> bool:
     """True when the handler catches bare or `Exception` AND body is a single `pass`."""
@@ -98,9 +110,18 @@ def _references_status_code(expr: ast.AST) -> bool:
 def _is_unittest_assert_method(attr: str) -> bool:
     """True for unittest.TestCase assertion methods that take a value as an arg."""
     return attr in {
-        "assertEqual", "assertNotEqual", "assertIn", "assertNotIn",
-        "assertGreater", "assertGreaterEqual", "assertLess", "assertLessEqual",
-        "assertTrue", "assertFalse", "assertIs", "assertIsNot",
+        "assertEqual",
+        "assertNotEqual",
+        "assertIn",
+        "assertNotIn",
+        "assertGreater",
+        "assertGreaterEqual",
+        "assertLess",
+        "assertLessEqual",
+        "assertTrue",
+        "assertFalse",
+        "assertIs",
+        "assertIsNot",
     }
 
 
@@ -126,8 +147,7 @@ def _is_status_code_assertion(node: ast.AST) -> bool:
         if not (isinstance(left, ast.Attribute) and left.attr == "status_code"):
             return False
         return any(
-            isinstance(c, ast.Constant) and isinstance(c.value, int)
-            for c in test.comparators
+            isinstance(c, ast.Constant) and isinstance(c.value, int) for c in test.comparators
         )
 
     # Form 2: self.assertEqual(resp.status_code, 201)
@@ -151,17 +171,9 @@ def _is_test_skip_call(node: ast.AST) -> bool:
         return False
     func = node.func
     if isinstance(func, ast.Attribute):
-        if (
-            func.attr == "skip"
-            and isinstance(func.value, ast.Name)
-            and func.value.id == "pytest"
-        ):
+        if func.attr == "skip" and isinstance(func.value, ast.Name) and func.value.id == "pytest":
             return True
-        if (
-            func.attr == "skipTest"
-            and isinstance(func.value, ast.Name)
-            and func.value.id == "self"
-        ):
+        if func.attr == "skipTest" and isinstance(func.value, ast.Name) and func.value.id == "self":
             return True
     return False
 
@@ -191,6 +203,7 @@ def count_python_metrics(path: Path) -> dict[str, int]:
 
 # ------------------------------------------------------------- TypeScript (Node helper)
 
+
 def count_typescript_metrics(paths: list[Path]) -> dict[str, dict[str, int]]:
     """Return {abs_path: {metric_key: count}} by invoking the Node helper once.
 
@@ -200,9 +213,7 @@ def count_typescript_metrics(paths: list[Path]) -> dict[str, dict[str, int]]:
     if not paths:
         return {}
     argv = ["node", str(TS_HELPER), *[str(p) for p in paths]]
-    result = subprocess.run(
-        argv, capture_output=True, text=True, timeout=300
-    )
+    result = subprocess.run(argv, check=False, capture_output=True, text=True, timeout=300)
     if result.returncode != 0:
         # Surface the real error to the caller — silent failure here is exactly
         # the anti-pattern this metrics work exists to kill.
@@ -217,6 +228,7 @@ def count_typescript_metrics(paths: list[Path]) -> dict[str, dict[str, int]]:
 
 
 # ------------------------------------------------------------------- Aggregation
+
 
 def _discover(root: Path, suffixes: Iterable[str]) -> list[Path]:
     """Depth-first glob for files under `root` matching any of the suffixes."""
@@ -271,7 +283,7 @@ def aggregate_metrics(
 
     result = {
         "schema_version": SCHEMA_VERSION,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "pytest": {
             "files_scanned": len(python_files),
             "except_exception_pass_count": py_totals["except_exception_pass"],
@@ -280,7 +292,8 @@ def aggregate_metrics(
             "test_skip_call_count": py_totals["test_skip_call"],
             "except_exception_pass_by_file": {
                 f: m["except_exception_pass"]
-                for f, m in py_by_file.items() if m.get("except_exception_pass")
+                for f, m in py_by_file.items()
+                if m.get("except_exception_pass")
             },
         },
         "playwright": {
@@ -290,8 +303,7 @@ def aggregate_metrics(
             "page_request_call_count": ts_totals["page_request_call"],
             "verify_via_api_call_count": ts_totals["verify_via_api_call"],
             "test_skip_true_by_file": {
-                f: c["test_skip_true"]
-                for f, c in ts_by_file.items() if c.get("test_skip_true")
+                f: c["test_skip_true"] for f, c in ts_by_file.items() if c.get("test_skip_true")
             },
         },
     }
@@ -300,24 +312,32 @@ def aggregate_metrics(
 
 # ------------------------------------------------------------------------- CLI
 
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Produce a JSON baseline of E2E hidden-failure metrics."
     )
     parser.add_argument(
-        "--pytest-dir", type=Path, default=REPO_ROOT / "tests" / "e2e",
+        "--pytest-dir",
+        type=Path,
+        default=REPO_ROOT / "tests" / "e2e",
         help="Directory scanned for .py files.",
     )
     parser.add_argument(
-        "--playwright-dir", type=Path, default=REPO_ROOT / "frontend" / "e2e",
+        "--playwright-dir",
+        type=Path,
+        default=REPO_ROOT / "frontend" / "e2e",
         help="Directory scanned for .ts/.tsx files.",
     )
     parser.add_argument(
-        "--output", type=Path, default=None,
+        "--output",
+        type=Path,
+        default=None,
         help="Write JSON to this path (default: stdout).",
     )
     parser.add_argument(
-        "--skip-typescript", action="store_true",
+        "--skip-typescript",
+        action="store_true",
         help="Skip TypeScript counting (useful if node is unavailable).",
     )
     return parser
@@ -326,9 +346,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
     py_files = _discover(args.pytest_dir, (".py",))
-    ts_files = [] if args.skip_typescript else _discover(
-        args.playwright_dir, (".ts", ".tsx")
-    )
+    ts_files = [] if args.skip_typescript else _discover(args.playwright_dir, (".ts", ".tsx"))
 
     result = aggregate_metrics(python_files=py_files, typescript_files=ts_files)
     payload = json.dumps(result, indent=2, sort_keys=True)

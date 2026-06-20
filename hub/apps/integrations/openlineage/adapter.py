@@ -32,6 +32,7 @@ The adapter exposes a synchronous ``deliver`` API; the
 :mod:`.tasks` is the canonical fire-and-forget entry-point that
 wraps ``deliver`` with the worker context.
 """
+
 from __future__ import annotations
 
 import enum
@@ -42,7 +43,6 @@ import uuid
 from typing import Any
 
 import requests
-
 
 logger = logging.getLogger(__name__)
 
@@ -69,13 +69,14 @@ def _record_outbound_metric(*, result: str, tenant_id: str) -> None:
     fail the dispatch path."""
     try:
         from hub.apps.observability.metrics import openlineage_outbound_total
-    except Exception:  # noqa: BLE001 — metrics module optional
+    except ImportError:
         return
     try:
         openlineage_outbound_total.labels(
-            result=result, tenant_id=tenant_id,
+            result=result,
+            tenant_id=tenant_id,
         ).inc()
-    except Exception:  # noqa: BLE001 — best-effort
+    except (ImportError, AttributeError, ValueError, TypeError, OSError):
         logger.debug(
             "openlineage_outbound_metric_emit_failed",
             extra={"result": result, "tenant_id": tenant_id},
@@ -205,8 +206,7 @@ class OpenLineageAdapter:
                 headers=headers,
                 timeout=self.request_timeout_seconds,
             )
-        except (requests.exceptions.ConnectionError,
-                requests.exceptions.Timeout) as exc:
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
             self._last_failure_for_attempt = ("network_error", str(exc))
             return "transient"
         except requests.exceptions.RequestException as exc:
@@ -281,7 +281,7 @@ class OpenLineageAdapter:
 __all__ = [
     "DEFAULT_BACKOFF_SCHEDULE",
     "DEFAULT_MAX_ATTEMPTS",
+    "RETRYABLE_STATUS_CODES",
     "DeliveryOutcome",
     "OpenLineageAdapter",
-    "RETRYABLE_STATUS_CODES",
 ]

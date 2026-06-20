@@ -4,9 +4,11 @@ Tests for the compliance results endpoint detailed field mapping.
 Validates score breakdown math, severity thresholds, remediation generation,
 risk assessment severity counts, and metering risk_score passthrough.
 """
+
 import uuid
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -19,8 +21,6 @@ from hub.apps.jobs.utils import create_job
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
@@ -177,10 +177,10 @@ class ResultsEndpointDetailedTest(TestCase):
     def test_risk_assessment_severity_counts(self):
         """Mix of HIGH/MEDIUM/LOW violations yields correct severity counts."""
         findings = [
-            {"column": "c1", "categories": ["PII_DIRECT_EMAIL"], "match_ratio": 0.9},   # HIGH
-            {"column": "c2", "categories": ["PII_DIRECT_PHONE"], "match_ratio": 0.8},   # HIGH
-            {"column": "c3", "categories": ["PII_DIRECT_SSN"], "match_ratio": 0.5},     # MEDIUM
-            {"column": "c4", "categories": ["LOCATION_PRECISE"], "match_ratio": 0.2},   # LOW
+            {"column": "c1", "categories": ["PII_DIRECT_EMAIL"], "match_ratio": 0.9},  # HIGH
+            {"column": "c2", "categories": ["PII_DIRECT_PHONE"], "match_ratio": 0.8},  # HIGH
+            {"column": "c3", "categories": ["PII_DIRECT_SSN"], "match_ratio": 0.5},  # MEDIUM
+            {"column": "c4", "categories": ["LOCATION_PRECISE"], "match_ratio": 0.2},  # LOW
         ]
         run = self._create_run(column_findings_json=findings)
         data = self._get_results(run)

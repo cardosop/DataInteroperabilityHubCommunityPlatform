@@ -11,17 +11,17 @@ Sandbox lifecycle:
   - Data wiped on expiry
   - Separate API credentials from production tenant
 """
+
 from __future__ import annotations
+
 import hashlib
 import secrets
 import uuid as _uuid
 from datetime import timedelta
-from typing import Optional
-
-from django.db import models, transaction
-from django.utils import timezone as dj_timezone
 
 import structlog
+from django.db import models, transaction
+from django.utils import timezone as dj_timezone
 
 logger = structlog.get_logger(__name__)
 
@@ -35,7 +35,9 @@ class TenantSandbox(models.Model):
     """Per-tenant isolated sandbox environment."""
 
     tenant = models.OneToOneField(
-        "tenants.Tenant", on_delete=models.CASCADE, related_name="sandbox",
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        related_name="sandbox",
     )
     sandbox_tenant_id = models.UUIDField(unique=True, editable=False)
 
@@ -120,7 +122,7 @@ def create_sandbox(tenant) -> TenantSandbox:
     return sandbox
 
 
-def get_sandbox(tenant) -> Optional[TenantSandbox]:
+def get_sandbox(tenant) -> TenantSandbox | None:
     """Return the active sandbox for a tenant, or None."""
     try:
         return tenant.sandbox if tenant.sandbox and tenant.sandbox.is_active else None
@@ -134,10 +136,12 @@ def _hash_secret(secret: str) -> str:
 
 # ── Expiry sweep ───────────────────────────────────────────────────────────
 
+
 def sweep_expired_sandboxes() -> int:
     """Find and wipe all expired sandboxes. Returns count wiped."""
     expired = TenantSandbox.objects.filter(
-        is_active=True, expires_at__lt=dj_timezone.now(),
+        is_active=True,
+        expires_at__lt=dj_timezone.now(),
     )
     count = 0
     for sandbox in expired:

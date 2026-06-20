@@ -1,14 +1,14 @@
 """
 Integration Tests for Version Handling
 """
-import pytest
+
 from hub.apps.contracts.normalization import normalize_contract
 from hub.apps.contracts.versioning import detect_version, get_default_version
 
 
 class TestVersionHandlingIntegration:
     """Integration tests for version handling in normalization"""
-    
+
     def test_normalized_contract_has_version(self):
         """Test that normalized contract has hub_contract_version"""
         odcs_contract = """
@@ -21,15 +21,15 @@ class TestVersionHandlingIntegration:
             - name: field1
               type: string
         """
-        
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            odcs_contract, 'YAML'
+
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            odcs_contract, "YAML"
         )
-        
+
         assert hub_contract is not None
-        assert 'hub_contract_version' in hub_contract
-        assert hub_contract['hub_contract_version'] == get_default_version()
-    
+        assert "hub_contract_version" in hub_contract
+        assert hub_contract["hub_contract_version"] == get_default_version()
+
     def test_version_detection_in_normalized_contract(self):
         """Test detecting version from normalized contract"""
         odcs_contract = """
@@ -42,14 +42,14 @@ class TestVersionHandlingIntegration:
             - name: field1
               type: string
         """
-        
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            odcs_contract, 'YAML'
+
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            odcs_contract, "YAML"
         )
-        
+
         detected_version = detect_version(hub_contract)
         assert detected_version == get_default_version()
-    
+
     def test_all_contracts_use_default_version(self):
         """Test that all contracts use default version during development"""
         contracts = [
@@ -73,11 +73,10 @@ class TestVersionHandlingIntegration:
               fields:
                 - name: field1
                   type: string
-            """
+            """,
         ]
-        
-        for contract in contracts:
-            hub_contract, _, _, _, _, _ = normalize_contract(contract, 'YAML')
-            if hub_contract:
-                assert hub_contract['hub_contract_version'] == get_default_version()
 
+        for contract in contracts:
+            hub_contract, _, _, _, _, _ = normalize_contract(contract, "YAML")
+            if hub_contract:
+                assert hub_contract["hub_contract_version"] == get_default_version()

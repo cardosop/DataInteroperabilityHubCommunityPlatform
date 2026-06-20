@@ -10,5 +10,3 @@ builders, connection-string generators, source health checkers).
 
 class SourceBuilderServiceMixin:
     """Mixin reserved for source-configuration helpers."""
-
-    pass

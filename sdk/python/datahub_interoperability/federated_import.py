@@ -4,7 +4,8 @@
 Provides methods for listing providers, creating import jobs,
 polling status, and cancelling federated marketplace imports.
 """
-from typing import Dict, Any
+
+from typing import Any, Dict
 
 from .client import DataHubClient
 
@@ -57,9 +58,7 @@ class FederatedImportAPI:
         }
         if external_listing_id:
             payload["external_listing_id"] = external_listing_id
-        return await self.client.post(
-            "integrations/federated-import/imports/", data=payload
-        )
+        return await self.client.post("integrations/federated-import/imports/", data=payload)
 
     async def get_import_status(self, job_id: str) -> Dict[str, Any]:
         """Get the status of a federated import job.
@@ -70,9 +69,7 @@ class FederatedImportAPI:
         Returns:
             Job status dict with id, type, status, details, timestamps.
         """
-        return await self.client.get(
-            f"integrations/federated-import/imports/{job_id}/"
-        )
+        return await self.client.get(f"integrations/federated-import/imports/{job_id}/")
 
     async def cancel_import(self, job_id: str) -> Dict[str, Any]:
         """Cancel a pending or running federated import job.
@@ -83,6 +80,4 @@ class FederatedImportAPI:
         Returns:
             Dict with id and new status (cancelled).
         """
-        return await self.client.post(
-            f"integrations/federated-import/imports/{job_id}/cancel/"
-        )
+        return await self.client.post(f"integrations/federated-import/imports/{job_id}/cancel/")

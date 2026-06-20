@@ -9,7 +9,9 @@ Usage:
   python manage.py report_workflow_post_deployment_metrics --window 120
   python manage.py report_workflow_post_deployment_metrics --json
 """
+
 import json
+
 from django.core.management.base import BaseCommand
 
 from hub.apps.orchestration.post_deployment import (
@@ -54,8 +56,7 @@ class Command(BaseCommand):
     def _output_text(self, report: PostDeploymentReport) -> None:
         self.stdout.write("=== Workflow Post-Deployment Metrics (Task 5.3) ===\n")
         self.stdout.write(
-            f"Window: {report.window_start} to {report.window_end} "
-            f"({report.window_minutes} min)\n"
+            f"Window: {report.window_start} to {report.window_end} ({report.window_minutes} min)\n"
         )
 
         # 5.3.1 Validation metrics (from DB: validation-related failures)
@@ -72,9 +73,7 @@ class Command(BaseCommand):
                     f"  {ws.workflow_name}: validation failures "
                     f"{ws.validation_failure_count} of {ws.started_count} ({vf_str})\n"
                 )
-            self.stdout.write(
-                "  Live validation/cache rates: Grafana 'Workflow Orchestration'.\n"
-            )
+            self.stdout.write("  Live validation/cache rates: Grafana 'Workflow Orchestration'.\n")
 
         # 5.3.2 Workflow execution
         self.stdout.write("\n--- Workflow execution (5.3.2) ---\n")
@@ -128,12 +127,8 @@ class Command(BaseCommand):
                 "rolled_back_count": ws.rolled_back_count,
                 "avg_duration_seconds": ws.avg_duration_seconds,
                 "validation_failure_count": ws.validation_failure_count,
-                "success_rate": (
-                    float(ws.success_rate) if ws.success_rate is not None else None
-                ),
-                "failure_rate": (
-                    float(ws.failure_rate) if ws.failure_rate is not None else None
-                ),
+                "success_rate": (float(ws.success_rate) if ws.success_rate is not None else None),
+                "failure_rate": (float(ws.failure_rate) if ws.failure_rate is not None else None),
                 "validation_failure_rate": (
                     float(ws.validation_failure_rate)
                     if ws.validation_failure_rate is not None
@@ -150,12 +145,8 @@ class Command(BaseCommand):
                 "failed_count": ss.failed_count,
                 "avg_duration_seconds": ss.avg_duration_seconds,
                 "validation_failure_count": ss.validation_failure_count,
-                "success_rate": (
-                    float(ss.success_rate) if ss.success_rate is not None else None
-                ),
-                "failure_rate": (
-                    float(ss.failure_rate) if ss.failure_rate is not None else None
-                ),
+                "success_rate": (float(ss.success_rate) if ss.success_rate is not None else None),
+                "failure_rate": (float(ss.failure_rate) if ss.failure_rate is not None else None),
             }
 
         payload = {

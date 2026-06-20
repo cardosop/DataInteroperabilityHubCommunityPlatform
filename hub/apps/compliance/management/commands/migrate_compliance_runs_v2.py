@@ -71,33 +71,39 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 #: Regulations that impose cross-border data transfer restrictions.
-_CROSS_BORDER_REGS: frozenset[str] = frozenset({
-    "GDPR",
-    "GDPR_SCHREMS_II",
-    "UK_GDPR",
-    "PIPL_CN",
-    "LGPD",
-})
+_CROSS_BORDER_REGS: frozenset[str] = frozenset(
+    {
+        "GDPR",
+        "GDPR_SCHREMS_II",
+        "UK_GDPR",
+        "PIPL_CN",
+        "LGPD",
+    }
+)
 
 #: Regulations that impose data-localisation requirements.
-_LOCALISATION_REGS: frozenset[str] = frozenset({
-    "PIPL_CN",
-    "PDPA_SG",
-    "DPDP_IN",
-})
+_LOCALISATION_REGS: frozenset[str] = frozenset(
+    {
+        "PIPL_CN",
+        "PDPA_SG",
+        "DPDP_IN",
+    }
+)
 
 #: Top-level keys in regulation_mapping_json that are NOT regulation names.
 #: These are structural / metering / error metadata keys.
-_NON_REG_KEYS: frozenset[str] = frozenset({
-    "metering",
-    "error",
-    "error_type",
-    "fail_closed",
-    "cancelled",
-    "schema_version",
-    "regulation_summary",
-    "metadata",
-})
+_NON_REG_KEYS: frozenset[str] = frozenset(
+    {
+        "metering",
+        "error",
+        "error_type",
+        "fail_closed",
+        "cancelled",
+        "schema_version",
+        "regulation_summary",
+        "metadata",
+    }
+)
 
 # How many rows to log a progress message after.
 _PROGRESS_INTERVAL = 100
@@ -119,12 +125,8 @@ def _derive_v2_fields(regulation_mapping_json: dict) -> dict[str, Any]:
         if key not in _NON_REG_KEYS and isinstance(value, dict)
     )
 
-    cross_border_applicable = sorted(
-        r for r in applicable_regs if r in _CROSS_BORDER_REGS
-    )
-    localisation_applicable = sorted(
-        r for r in applicable_regs if r in _LOCALISATION_REGS
-    )
+    cross_border_applicable = sorted(r for r in applicable_regs if r in _CROSS_BORDER_REGS)
+    localisation_applicable = sorted(r for r in applicable_regs if r in _LOCALISATION_REGS)
 
     return {
         "cross_border_alert": {
@@ -181,32 +183,33 @@ class Command(BaseCommand):
             raise CommandError("--batch-size must be a positive integer.")
 
         if dry_run:
-            self.stdout.write(
-                self.style.WARNING("DRY RUN — no database changes will be made.")
-            )
+            self.stdout.write(self.style.WARNING("DRY RUN — no database changes will be made."))
 
         from hub.apps.compliance.models import ComplianceRun
 
         # Rows eligible for backfill: have regulation_mapping_json (completed
         # scan) and at least one v2 field is still null.
-        eligible_qs = ComplianceRun.objects.filter(
-            regulation_mapping_json__isnull=False,
-        ).filter(
-            Q(cross_border_alert__isnull=True)
-            | Q(localisation_alert__isnull=True)
-            | Q(legal_basis_violations__isnull=True)
-        ).only(
-            "id",
-            "regulation_mapping_json",
-            "cross_border_alert",
-            "localisation_alert",
-            "legal_basis_violations",
-        ).order_by("created_at")
+        eligible_qs = (
+            ComplianceRun.objects.filter(
+                regulation_mapping_json__isnull=False,
+            )
+            .filter(
+                Q(cross_border_alert__isnull=True)
+                | Q(localisation_alert__isnull=True)
+                | Q(legal_basis_violations__isnull=True)
+            )
+            .only(
+                "id",
+                "regulation_mapping_json",
+                "cross_border_alert",
+                "localisation_alert",
+                "legal_basis_violations",
+            )
+            .order_by("created_at")
+        )
 
         total_eligible = eligible_qs.count()
-        self.stdout.write(
-            f"Found {total_eligible} ComplianceRun row(s) eligible for backfill."
-        )
+        self.stdout.write(f"Found {total_eligible} ComplianceRun row(s) eligible for backfill.")
 
         if total_eligible == 0:
             self.stdout.write(self.style.SUCCESS("Nothing to do. All rows are up-to-date."))
@@ -277,8 +280,7 @@ class Command(BaseCommand):
             # Periodic progress log.
             if processed % _PROGRESS_INTERVAL == 0:
                 self.stdout.write(
-                    f"  Progress: {processed}/{total_eligible} processed, "
-                    f"{updated} updated so far."
+                    f"  Progress: {processed}/{total_eligible} processed, {updated} updated so far."
                 )
 
         # Flush any remaining rows in the last (partial) batch.
@@ -294,8 +296,7 @@ class Command(BaseCommand):
         ]
         if skipped_invalid:
             summary_parts.append(
-                f"Skipped {skipped_invalid} row(s) with unexpected "
-                "regulation_mapping_json shape."
+                f"Skipped {skipped_invalid} row(s) with unexpected regulation_mapping_json shape."
             )
         if dry_run:
             summary_parts.append("(DRY RUN — no changes committed.)")

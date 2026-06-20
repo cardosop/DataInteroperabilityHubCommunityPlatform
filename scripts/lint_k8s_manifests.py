@@ -11,10 +11,10 @@ Usage:
     python scripts/lint_k8s_manifests.py
     python scripts/lint_k8s_manifests.py --k8s-dir deploy/k8s
 """
+
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
 
@@ -45,7 +45,13 @@ def check_manifest(filepath: Path) -> list[str]:
     # Only flag Deployments/StatefulSets/Pods that have containers but no resource limits
     is_workload = any(
         keyword in content
-        for keyword in ("kind: Deployment", "kind: StatefulSet", "kind: Pod", "kind: Job", "kind: CronJob")
+        for keyword in (
+            "kind: Deployment",
+            "kind: StatefulSet",
+            "kind: Pod",
+            "kind: Job",
+            "kind: CronJob",
+        )
     )
     if is_workload and has_container and not has_resources:
         issues.append(f"{filepath.name}: workload with containers but no resource limits")

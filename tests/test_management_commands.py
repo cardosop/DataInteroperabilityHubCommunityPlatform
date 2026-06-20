@@ -3,13 +3,13 @@ Phase J — Management Command Tests (TR.J.1–J.4).
 
 Risk classification and pytest tests for data-mutating management commands.
 """
+
 import uuid
-import pytest
 from io import StringIO
 from unittest.mock import patch
 
+import pytest
 from django.core.management import call_command
-from django.core.management.base import CommandError
 from django.test import TestCase
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -157,6 +157,7 @@ _COMMAND_RISK = {
 
 # ── TR.J.2 — High-risk command tests ────────────────────────────────────
 
+
 class TestSeedDefaultPlans(TestCase):
     """TR.J.2 — seed_default_plans: high-risk, data-mutating."""
 
@@ -177,6 +178,7 @@ class TestSeedDefaultPlans(TestCase):
 
     def _plan_count(self):
         from hub.apps.tenants.models import TenantPlan
+
         return TenantPlan.objects.count()
 
 
@@ -204,12 +206,14 @@ class TestProvisionTenant(TestCase):
             admin_email=f"admin-{uuid.uuid4().hex[:6]}@test.com",
         )
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.get(slug=slug)
         assert tenant.name == "Provisioned Corp"
         assert tenant.status == "ACTIVE"
 
     def _tenant_count(self):
         from hub.apps.tenants.models import Tenant
+
         return Tenant.objects.count()
 
 
@@ -228,8 +232,7 @@ class TestReconcileStripe(TestCase):
         """Command accepts --dry-run, --fix, --batch-size flags."""
         out = StringIO()
         with patch("django.conf.settings.STRIPE_SECRET_KEY", None):
-            call_command("reconcile_stripe", dry_run=True, fix=False,
-                         batch_size=50, stdout=out)
+            call_command("reconcile_stripe", dry_run=True, fix=False, batch_size=50, stdout=out)
         output = out.getvalue()
         assert "reconcile_skip" in output or "reconcile_start" in output, (
             f"Unexpected reconcile output: {output[:200]}"
@@ -237,6 +240,7 @@ class TestReconcileStripe(TestCase):
 
 
 # ── TR.J.3 — Idempotency tests ─────────────────────────────────────────
+
 
 class TestSeedCommandIdempotency(TestCase):
     """TR.J.3 — Running seed commands twice produces the same result."""
@@ -247,17 +251,16 @@ class TestSeedCommandIdempotency(TestCase):
         count1 = self._plan_count()
         call_command("seed_default_plans")
         count2 = self._plan_count()
-        assert count1 == count2, (
-            f"seed_default_plans not idempotent: {count1} → {count2}"
-        )
+        assert count1 == count2, f"seed_default_plans not idempotent: {count1} → {count2}"
 
     def test_seed_default_plans_preserves_existing_limits(self):
         """Existing plan limits should not be overwritten by seed."""
         from hub.apps.tenants.models import TenantPlan
+
         call_command("seed_default_plans")
         pro = TenantPlan.objects.filter(slug="pro").first()
         if pro is None:
-            pytest.skip("PRO plan does not exist — skip limits preservation test")
+            pytest.skip("PRO plan does not exist — skip limits preservation test")  # noqa: skip-in-body — runtime service dependency
         original_limits = pro.limits_json or {}
         call_command("seed_default_plans")
         pro.refresh_from_db()
@@ -267,6 +270,7 @@ class TestSeedCommandIdempotency(TestCase):
 
     def _plan_count(self):
         from hub.apps.tenants.models import TenantPlan
+
         return TenantPlan.objects.count()
 
 
@@ -276,17 +280,17 @@ class TestEnsureE2ECommandsIdempotency(TestCase):
     def test_ensure_e2e_user_roles_idempotent(self):
         """Running twice should not create duplicate role assignments."""
         from hub.apps.users.models import UserRole
+
         call_command("ensure_e2e_user_roles")
         after1 = UserRole.objects.count()
         call_command("ensure_e2e_user_roles")
         after2 = UserRole.objects.count()
-        assert after1 == after2, (
-            f"ensure_e2e_user_roles not idempotent: {after1} → {after2}"
-        )
+        assert after1 == after2, f"ensure_e2e_user_roles not idempotent: {after1} → {after2}"
 
     def test_seed_default_plans_twice_no_duplicates(self):
         """Running seed twice does not create duplicate TierProfiles."""
         from hub.apps.tenants.models import TierProfile
+
         call_command("seed_default_plans")
         tp_before = TierProfile.objects.count()
         call_command("seed_default_plans")
@@ -296,6 +300,7 @@ class TestEnsureE2ECommandsIdempotency(TestCase):
 
 
 # ── TR.J.4 — E2E/seed command verification ─────────────────────────────
+
 
 class TestEnsureE2ECommands(TestCase):
     """TR.J.4 — Verify expected users/roles/plans created by ensure_e2e commands."""
@@ -318,25 +323,25 @@ class TestEnsureE2ECommands(TestCase):
     def test_seed_default_plans_creates_all_expected_plans(self):
         """All 6 BASE + 3 ML plans should exist after seeding."""
         call_command("seed_default_plans")
-        from hub.apps.tenants.models import TenantPlan, PlanCategory
+        from hub.apps.tenants.models import PlanCategory, TenantPlan
 
         base_plans = TenantPlan.objects.filter(category=PlanCategory.BASE, is_active=True)
         ml_plans = TenantPlan.objects.filter(category=PlanCategory.ML_AI, is_active=True)
-        assert base_plans.count() >= 6, (
-            f"Expected ≥6 BASE plans, got {base_plans.count()}"
-        )
-        assert ml_plans.count() >= 3, (
-            f"Expected ≥3 ML_AI plans, got {ml_plans.count()}"
-        )
+        assert base_plans.count() >= 6, f"Expected ≥6 BASE plans, got {base_plans.count()}"
+        assert ml_plans.count() >= 3, f"Expected ≥3 ML_AI plans, got {ml_plans.count()}"
 
     def test_seed_default_plans_creates_tier_profiles(self):
         """Each plan has a TierProfile after seeding."""
         call_command("seed_default_plans")
         from hub.apps.tenants.models import TenantPlan, TierProfile
+
         for plan in TenantPlan.objects.filter(is_active=True)[:9]:
-            assert hasattr(plan, "tier_profile") or TierProfile.objects.filter(
-                plan=plan,
-            ).exists(), f"Plan {plan.slug} missing TierProfile"
+            assert (
+                hasattr(plan, "tier_profile")
+                or TierProfile.objects.filter(
+                    plan=plan,
+                ).exists()
+            ), f"Plan {plan.slug} missing TierProfile"
 
 
 class TestProvisionTenantOutput(TestCase):

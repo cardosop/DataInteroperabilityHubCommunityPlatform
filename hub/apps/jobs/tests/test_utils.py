@@ -39,7 +39,10 @@ class JobUtilsTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
@@ -231,9 +234,7 @@ class JobUtilsTest(TestCase):
 
         self.assertIsInstance(job.id, uuid.UUID)
         self.assertIsInstance(job.details_json, dict)
-        self.assertTrue(
-            job.details_json.get("executed_by_prefect")
-        )
+        self.assertTrue(job.details_json.get("executed_by_prefect"))
         self.assertEqual(job.status, JobStatus.PENDING)
 
     # ========== CREATE_JOB FAILURE TESTS ==========
@@ -288,17 +289,15 @@ class JobUtilsTest(TestCase):
                 resource_id="not-a-uuid",
             )
             # Model accepted the value -- verify it persisted
-            self.assertIsNotNone(
-                job.id, "Job should be saved to the database"
-            )
-            self.assertEqual(
-                str(job.resource_id), "not-a-uuid"
-            )
-        except (ValueError, TypeError, ValidationError) as exc:
+            self.assertIsNotNone(job.id, "Job should be saved to the database")
+            self.assertEqual(str(job.resource_id), "not-a-uuid")
+        except ValueError as exc:
             # UUID validation rejects the invalid format
-            self.assertIn(
-                "uuid" if isinstance(exc, ValueError) else "",
-                str(exc).lower(),
+            self.assertIn("uuid", str(exc).lower())
+        except (TypeError, ValidationError) as exc:
+            self.fail(
+                f"Unexpected exception type {type(exc).__name__} "
+                f"for invalid resource_id: {exc}"
             )
 
     def test_create_job_failure_tenant_limits_exceeded(self):
@@ -371,13 +370,8 @@ class JobUtilsTest(TestCase):
 
         self.assertIsInstance(job.id, uuid.UUID)
         self.assertIsInstance(job.details_json, dict)
-        self.assertTrue(
-            job.details_json.get("executed_by_prefect")
-        )
-        self.assertEqual(
-            queue.count, initial_count,
-            "SCHEDULED_INGESTION must never be enqueued"
-        )
+        self.assertTrue(job.details_json.get("executed_by_prefect"))
+        self.assertEqual(queue.count, initial_count, "SCHEDULED_INGESTION must never be enqueued")
 
     def test_create_job_edge_case_large_details_json(self):
         """Test job creation with large details_json"""
@@ -464,7 +458,10 @@ class JobUtilsTest(TestCase):
             self.assertEqual(job.status, JobStatus.PENDING)
         except (ValueError, TypeError) as exc:
             # Expected: priority validation rejects the invalid value
-            self.assertTrue(str(exc), "Exception should have a descriptive message")
+            self.assertGreater(
+                len(str(exc)), 0,
+                "Exception should have a descriptive message",
+            )
 
     # ========== GET_JOB_PRIORITY TESTS ==========
 

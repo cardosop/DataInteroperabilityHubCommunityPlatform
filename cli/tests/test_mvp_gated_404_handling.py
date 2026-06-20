@@ -10,6 +10,7 @@ other test asserts only the structural fields (``code``, ``feature``,
 
 Phase 215.1 — see openspec/changes/preprod01/specs/cli-sdk-mvp-awareness/spec.md
 """
+
 from __future__ import annotations
 
 import pytest
@@ -121,7 +122,9 @@ def test_full_rendered_message_for_one_representative_feature() -> None:
 
 def test_format_message_includes_suggestion() -> None:
     """The Click rendering path (``format_message``) includes the suggestion line."""
-    err = handle_api_error("", 404, endpoint="baas/auth", request_url=f"{STAGING_BASE}/api/v1/baas/auth")
+    err = handle_api_error(
+        "", 404, endpoint="baas/auth", request_url=f"{STAGING_BASE}/api/v1/baas/auth"
+    )
     assert isinstance(err, ODPSFeatureGatedError)
     rendered = err.format_message()
     assert "Suggestion" in rendered

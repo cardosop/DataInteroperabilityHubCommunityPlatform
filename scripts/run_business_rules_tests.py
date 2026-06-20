@@ -11,11 +11,11 @@ Following best practices:
 - Comprehensive test coverage
 - Follows DRY, SOLID, and clean code principles
 """
-import sys
-import subprocess
+
 import os
+import subprocess
+import sys
 from pathlib import Path
-from typing import List, Tuple, Dict
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -51,47 +51,39 @@ BUSINESS_RULES_TEST_FILES = [
     "hub/apps/notifications/tests/test_business_rules.py",
     "hub/apps/webhooks/tests/test_business_rules.py",
     "hub/apps/webhooks/tests/test_business_rules_payload.py",
-
     # Contracts business rules
     "hub/apps/contracts/tests/test_contracts_business_rules.py",
     "hub/apps/contracts/tests/test_odps_business_rules.py",
     "hub/apps/contracts/tests/test_odps_business_rules_integration.py",
-
     # Assets business rules
     "hub/apps/assets/tests/test_business_rules.py",
     "hub/apps/assets/tests/test_business_rules_dataset_attachment.py",
-
     # Datasets business rules
     "hub/apps/datasets/tests/test_business_rules.py",
     "hub/apps/datasets/tests/test_business_rules_access_validation.py",
-
     # Marketplace business rules
     "hub/apps/marketplace/tests/test_business_rules.py",
     "hub/apps/marketplace/tests/test_business_rules_pricing_validation.py",
-
     # Transformation business rules
     "hub/apps/transformation/tests/test_business_rules.py",
     "hub/apps/transformation/tests/test_business_rules_registry.py",
     # Note: test_execution_business_rules.py excluded - ExecutionBusinessRules class not yet implemented
     # "hub/apps/transformation/tests/test_execution_business_rules.py",
     "hub/apps/transformation/tests/test_cross_service_business_rules.py",
-
     # Data Mesh business rules
     "hub/apps/mesh/tests/test_business_rules.py",
     "hub/apps/mesh/tests/test_data_mesh_business_rules_refactoring.py",
     "hub/apps/mesh/tests/test_policy_topology_business_rules.py",
     "hub/apps/mesh/tests/test_policy_topology_business_rules_refactoring.py",
-
     # Virtualization business rules
     "hub/apps/virtualization/tests/test_business_rules.py",
     "hub/apps/virtualization/tests/test_virtualization_business_rules_refactoring.py",
-
     # Framework completeness tests (pytest-only, excluded from Django test runner)
     # "tests/unit/test_business_rules_framework_completeness.py",  # pytest test, not Django test
 ]
 
 
-def find_test_files() -> List[str]:
+def find_test_files() -> list[str]:
     """Find all business rules test files that exist."""
     found_files = []
     for test_file in BUSINESS_RULES_TEST_FILES:
@@ -103,7 +95,7 @@ def find_test_files() -> List[str]:
     return found_files
 
 
-def run_pytest_tests(test_files: List[str], verbose: bool = True) -> Tuple[int, str]:
+def run_pytest_tests(test_files: list[str], verbose: bool = True) -> tuple[int, str]:
     """
     Run pytest on the given test files.
     Falls back to Django test runner if pytest fails or has import issues.
@@ -118,7 +110,9 @@ def run_pytest_tests(test_files: List[str], verbose: bool = True) -> Tuple[int, 
 
     # Try pytest first
     cmd = [
-        PYTHON_EXECUTABLE, "-m", "pytest",
+        PYTHON_EXECUTABLE,
+        "-m",
+        "pytest",
         "-v" if verbose else "",
         "--tb=short",
         "--no-header",
@@ -128,13 +122,14 @@ def run_pytest_tests(test_files: List[str], verbose: bool = True) -> Tuple[int, 
     # Remove empty strings
     cmd = [c for c in cmd if c]
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Running pytest on {len(test_files)} test file(s)...")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     try:
         result = subprocess.run(
             cmd,
+            check=False,
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             text=True,
@@ -144,10 +139,16 @@ def run_pytest_tests(test_files: List[str], verbose: bool = True) -> Tuple[int, 
         # If pytest fails due to import errors or missing dependencies, fall back to Django
         if result.returncode != 0:
             error_output = result.stderr.lower()
-            if any(phrase in error_output for phrase in [
-                "pytest_django", "no module named 'pytest", "import file mismatch",
-                "import error", "cannot import"
-            ]):
+            if any(
+                phrase in error_output
+                for phrase in [
+                    "pytest_django",
+                    "no module named 'pytest",
+                    "import file mismatch",
+                    "import error",
+                    "cannot import",
+                ]
+            ):
                 print("⚠️  pytest has import/cache issues, falling back to Django test runner...")
                 return run_django_tests(test_files, verbose)
         return result.returncode, result.stdout + result.stderr
@@ -155,11 +156,13 @@ def run_pytest_tests(test_files: List[str], verbose: bool = True) -> Tuple[int, 
         return 1, "Test execution timed out after 10 minutes"
     except Exception as e:
         # Fall back to Django test runner
-        print(f"⚠️  pytest failed ({str(e)}), falling back to Django test runner...")
+        print(f"⚠️  pytest failed ({e!s}), falling back to Django test runner...")
         return run_django_tests(test_files, verbose)
 
 
-def run_django_tests(test_paths: List[str], verbose: bool = True, batch_size: int = 5, timeout_per_batch: int = 1800) -> Tuple[int, str]:
+def run_django_tests(
+    test_paths: list[str], verbose: bool = True, batch_size: int = 5, timeout_per_batch: int = 1800
+) -> tuple[int, str]:
     """
     Run Django test command on the given test paths in batches.
 
@@ -193,16 +196,18 @@ def run_django_tests(test_paths: List[str], verbose: bool = True, batch_size: in
     env["POSTGRES_HOST"] = "localhost"  # Use localhost when running outside Docker
     env["REDIS_HOST"] = "localhost"
 
-    print(f"\n{'='*80}")
-    print(f"Running Django tests on {len(django_paths)} test module(s) in batches of {batch_size}...")
-    print(f"{'='*80}\n")
+    print(f"\n{'=' * 80}")
+    print(
+        f"Running Django tests on {len(django_paths)} test module(s) in batches of {batch_size}..."
+    )
+    print(f"{'=' * 80}\n")
 
     all_output = ""
     overall_exit_code = 0
 
     # Run tests in batches
     for i in range(0, len(django_paths), batch_size):
-        batch = django_paths[i:i + batch_size]
+        batch = django_paths[i : i + batch_size]
         batch_num = (i // batch_size) + 1
         total_batches = (len(django_paths) + batch_size - 1) // batch_size
 
@@ -220,6 +225,7 @@ def run_django_tests(test_paths: List[str], verbose: bool = True, batch_size: in
         try:
             result = subprocess.run(
                 cmd,
+                check=False,
                 cwd=str(PROJECT_ROOT),
                 capture_output=True,
                 text=True,
@@ -227,16 +233,16 @@ def run_django_tests(test_paths: List[str], verbose: bool = True, batch_size: in
                 env=env,
             )
             batch_output = result.stdout + result.stderr
-            all_output += f"\n{'='*80}\n"
+            all_output += f"\n{'=' * 80}\n"
             all_output += f"BATCH {batch_num}/{total_batches} OUTPUT\n"
-            all_output += f"{'='*80}\n{batch_output}\n"
+            all_output += f"{'=' * 80}\n{batch_output}\n"
 
             if result.returncode != 0:
                 overall_exit_code = result.returncode
                 print(f"❌ Batch {batch_num} failed with exit code {result.returncode}")
                 # Show summary of failures
                 if "FAILED" in batch_output or "ERROR" in batch_output:
-                    lines = batch_output.split('\n')
+                    lines = batch_output.split("\n")
                     for line in lines:
                         if "FAILED" in line or "ERROR" in line or "AssertionError" in line:
                             print(f"  {line[:200]}")
@@ -245,19 +251,19 @@ def run_django_tests(test_paths: List[str], verbose: bool = True, batch_size: in
 
         except subprocess.TimeoutExpired:
             overall_exit_code = 1
-            error_msg = f"Batch {batch_num} timed out after {timeout_per_batch//60} minutes"
+            error_msg = f"Batch {batch_num} timed out after {timeout_per_batch // 60} minutes"
             all_output += f"\n❌ {error_msg}\n"
             print(f"❌ {error_msg}")
         except Exception as e:
             overall_exit_code = 1
-            error_msg = f"Error running batch {batch_num}: {str(e)}"
+            error_msg = f"Error running batch {batch_num}: {e!s}"
             all_output += f"\n❌ {error_msg}\n"
             print(f"❌ {error_msg}")
 
     return overall_exit_code, all_output
 
 
-def categorize_tests(test_files: List[str]) -> Dict[str, List[str]]:
+def categorize_tests(test_files: list[str]) -> dict[str, list[str]]:
     """Categorize tests into unit and integration."""
     unit_tests = []
     integration_tests = []
@@ -304,9 +310,9 @@ def check_services() -> bool:
 
 def main():
     """Main execution function."""
-    print("="*80)
+    print("=" * 80)
     print("Business Rules Comprehensive Test Runner")
-    print("="*80)
+    print("=" * 80)
     print("\nFollowing engineering best practices:")
     print("  - No mocks/stubs - uses real implementations")
     print("  - Fixes root causes, not symptoms")
@@ -344,9 +350,9 @@ def main():
     print(f"  Integration tests: {len(integration_tests)}")
 
     # Run unit tests - Use Django test runner to avoid pytest cache issues
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("PHASE 1: Running Unit Tests")
-    print("="*80)
+    print("=" * 80)
 
     unit_exit_code = 0
     unit_output = ""
@@ -359,24 +365,26 @@ def main():
         print("⚠️  No unit tests found")
 
     # Run integration tests - Use Django test runner for consistency
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("PHASE 2: Running Integration Tests")
-    print("="*80)
+    print("=" * 80)
 
     integration_exit_code = 0
     integration_output = ""
 
     if integration_tests:
         # Use Django test runner directly for better compatibility
-        integration_exit_code, integration_output = run_django_tests(integration_tests, verbose=True)
+        integration_exit_code, integration_output = run_django_tests(
+            integration_tests, verbose=True
+        )
         print(integration_output)
     else:
         print("⚠️  No integration tests found")
 
     # Summary
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST EXECUTION SUMMARY")
-    print("="*80)
+    print("=" * 80)
 
     total_tests = len(test_files)
     passed_tests = 0
@@ -404,13 +412,13 @@ def main():
     overall_exit_code = 0 if (unit_exit_code == 0 and integration_exit_code == 0) else 1
 
     if overall_exit_code == 0:
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("✅ ALL BUSINESS RULES TESTS PASSED")
-        print("="*80)
+        print("=" * 80)
     else:
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("❌ SOME BUSINESS RULES TESTS FAILED")
-        print("="*80)
+        print("=" * 80)
         print("\nPlease review the test output above and fix any failures.")
         print("Remember: Fix root causes, not symptoms. No mocks/stubs.")
 
@@ -420,4 +428,3 @@ def main():
 if __name__ == "__main__":
     exit_code = main()
     sys.exit(exit_code)
-

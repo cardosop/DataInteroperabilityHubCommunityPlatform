@@ -16,6 +16,7 @@ Scenario
 Real model rows, real evaluation, real client code, real audit
 emission. The only stub is the network boundary (``responses``).
 """
+
 from __future__ import annotations
 
 import uuid
@@ -23,7 +24,6 @@ import uuid
 import pytest
 import responses
 from django.test import TestCase
-
 
 pytestmark = [pytest.mark.django_db(transaction=True)]
 
@@ -35,7 +35,11 @@ def _setup_real_dq_run():
     from hub.apps.assets.models import Asset, AssetStatus
     from hub.apps.datasets.models import Dataset
     from hub.apps.dq.models import (
-        DQAlertingRule, DQAnomalySeverity, DQEngine, DQRun, DQRunStatus,
+        DQAlertingRule,
+        DQAnomalySeverity,
+        DQEngine,
+        DQRun,
+        DQRunStatus,
     )
     from hub.apps.files.models import File, FileStatus
     from hub.apps.jobs.models import Job, JobStatus, JobType
@@ -118,11 +122,11 @@ def _setup_real_dq_run():
 
 
 class AlertingHappyPathE2E(TestCase):
-
     def setUp(self):
         from hub.apps.core.resilience.circuit_breaker import (
             reset_circuit_breaker_by_name,
         )
+
         reset_circuit_breaker_by_name("dq_alert_webhook")
         self.tenant, self.dq_run, self.rule = _setup_real_dq_run()
 
@@ -143,9 +147,21 @@ class AlertingHappyPathE2E(TestCase):
         # 1. First evaluation — rule fires, client invoked once.
         triggered = DQAlertingService.evaluate_rules(self.dq_run)
         assert len(triggered) == 1
-        assert len(responses.calls) == 1, (
-            f"expected 1 HTTP call, got {len(responses.calls)}"
-        )
+        assert len(responses.calls) == 1, f"expected 1 HTTP call, got {len(responses.calls)}"
+
+        # Validate the webhook request body contains expected DQ alert fields
+        import json
+
+        body = json.loads(responses.calls[0].request.body)
+        assert "rule_id" in body
+        assert "rule_name" in body
+        assert "metric_type" in body
+        assert "metric_value" in body
+        assert "threshold" in body
+        assert "dq_run_id" in body
+        assert "severity" in body
+        assert body["metric_type"] == "quality_score"
+        assert body["metric_value"] == 0.55
 
         # last_alert_id stamped + audit emitted.
         reloaded = DQAlertingRule.objects.get(pk=self.rule.pk)
@@ -159,15 +175,138 @@ class AlertingHappyPathE2E(TestCase):
 
         # 2. Second evaluation, identical condition.
         triggered_again = DQAlertingService.evaluate_rules(self.dq_run)
-        # The rule still EVALUATES True (the metric is still below
-        # threshold) so the rule-evaluation path returns one alert
-        # entry. But the dispatcher MUST short-circuit delivery: no
-        # extra HTTP call, no extra DELIVERED audit row.
-        assert len(triggered_again) == 1
-        assert len(responses.calls) == 1, (
-            "dedup should have prevented a second HTTP call"
+        # The rule still evaluates True (0.55 < 0.9), but delivery is
+        # dedup'd.  Pin: the dedup state is still in effect.
+        assert len(triggered_again) == 1  # condition still met
+        reloaded_again = DQAlertingRule.objects.get(pk=self.rule.pk)
+        assert reloaded_again.last_alert_id is not None
+        # last_fired_at should be within the 24h dedup window
+        assert reloaded_again.last_fired_at is not None
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        assert reloaded_again.last_fired_at > timezone.now() - timedelta(hours=24)
+        assert len(responses.calls) == 1, "dedup should have prevented a second HTTP call"
+        assert (
+            AuditEvent.objects.filter(
+                action=DQ_ALERT_DELIVERED,
+                resource_id=str(self.rule.id),
+            ).count()
+            == 1
         )
-        assert AuditEvent.objects.filter(
-            action=DQ_ALERT_DELIVERED,
-            resource_id=str(self.rule.id),
-        ).count() == 1
+
+    @responses.activate
+    def test_rule_does_not_trigger_when_condition_not_met(self):
+        """Rule whose threshold the current metric does NOT cross should
+        not fire — no HTTP call, no audit event."""
+        from hub.apps.audit.event_types import DQ_ALERT_DELIVERED
+        from hub.apps.audit.models import AuditEvent
+        from hub.apps.dq.alerting import DQAlertingService
+        from hub.apps.dq.models import DQAlertingRule, DQAnomalySeverity
+
+        # Rule expects quality_score < 0.1, but actual is 0.55 → no fire.
+        # Register BOTH URLs so @responses.activate doesn't raise
+        # ConnectionError for the primary rule's delivery.
+        responses.add(
+            responses.POST,
+            "https://partner.example.com/dq-e2e",
+            status=200,
+            headers={"X-Request-Id": "e2e-neg-control"},
+        )
+        responses.add(
+            responses.POST,
+            "https://partner.example.com/dq-no-trigger",
+            status=200,
+        )
+        no_trigger_rule = DQAlertingRule.objects.create(
+            tenant=self.tenant,
+            asset=self.dq_run.asset,
+            name="E2E no-trigger rule",
+            metric_type="quality_score",
+            threshold=0.1,
+            comparison_operator="<",
+            severity=DQAnomalySeverity.HIGH,
+            alert_channels=["WEBHOOK"],
+            channel_config={"url": "https://partner.example.com/dq-no-trigger"},
+            enabled=True,
+            created_by=self.dq_run.asset.created_by,
+        )
+        triggered = DQAlertingService.evaluate_rules(self.dq_run)
+        triggered_ids = {t["rule_id"] for t in triggered}
+        self.assertIn(str(self.rule.id), triggered_ids)
+        self.assertNotIn(str(no_trigger_rule.id), triggered_ids)
+        # Primary rule's webhook WAS called; no-trigger rule's was NOT
+        called_urls = [c.request.url for c in responses.calls]
+        self.assertIn(
+            "https://partner.example.com/dq-e2e",
+            called_urls,
+            "Primary rule should have been delivered",
+        )
+        self.assertNotIn(
+            "https://partner.example.com/dq-no-trigger",
+            called_urls,
+            "No-trigger rule should NOT have been delivered",
+        )
+
+    @responses.activate
+    def test_dedup_window_expiry_allows_redelivery(self):
+        """After the 24h dedup window expires, re-delivery occurs."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+        from hub.apps.dq.alerting import DQAlertingService
+        from hub.apps.dq.models import DQAlertingRule
+
+        responses.add(
+            responses.POST,
+            "https://partner.example.com/dq-e2e",
+            status=200,
+            headers={"X-Request-Id": "e2e-expiry-1"},
+        )
+        # First delivery
+        DQAlertingService.evaluate_rules(self.dq_run)
+        self.assertEqual(len(responses.calls), 1)
+
+        # Expire the dedup window manually
+        rule = DQAlertingRule.objects.get(pk=self.rule.pk)
+        rule.last_fired_at = timezone.now() - timedelta(hours=25)
+        rule.save(update_fields=["last_fired_at"])
+
+        # Second response
+        responses.add(
+            responses.POST,
+            "https://partner.example.com/dq-e2e",
+            status=200,
+            headers={"X-Request-Id": "e2e-expiry-2"},
+        )
+        DQAlertingService.evaluate_rules(self.dq_run)
+        self.assertEqual(
+            len(responses.calls), 2,
+            f"Expected 2 HTTP calls after dedup expiry, got {len(responses.calls)}",
+        )
+
+    @responses.activate
+    def test_webhook_500_triggers_retry_handling(self):
+        """When webhook returns 500, dispatcher handles it gracefully
+        (no unhandled exception)."""
+        from hub.apps.dq.alerting import DQAlertingService
+        from hub.apps.core.resilience.circuit_breaker import (
+            reset_circuit_breaker_by_name,
+        )
+
+        # Ensure circuit breaker is not open from other tests
+        reset_circuit_breaker_by_name("dq_alert_webhook")
+        responses.add(
+            responses.POST,
+            "https://partner.example.com/dq-e2e",
+            status=500,
+            body="Internal Server Error",
+        )
+        # Must not raise — dispatcher handles 500 gracefully
+        try:
+            triggered = DQAlertingService.evaluate_rules(self.dq_run)
+        except Exception as exc:
+            self.fail(f"evaluate_rules should not raise on 5xx: {exc}")
+        # Rule still evaluates as triggered (condition met)
+        self.assertEqual(len(triggered), 1)

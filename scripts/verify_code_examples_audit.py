@@ -19,7 +19,7 @@ def verify_audit_report(report_file: str) -> bool:
         return False
 
     try:
-        with open(report_path, 'r', encoding='utf-8') as f:
+        with open(report_path, encoding="utf-8") as f:
             report = json.load(f)
     except json.JSONDecodeError as e:
         print(f"❌ Invalid JSON in report file: {e}")
@@ -29,21 +29,21 @@ def verify_audit_report(report_file: str) -> bool:
         return False
 
     # Verify structure
-    required_keys = ['summary', 'examples', 'endpoints']
+    required_keys = ["summary", "examples", "endpoints"]
     for key in required_keys:
         if key not in report:
             print(f"❌ Missing required key in report: {key}")
             return False
 
-    summary = report['summary']
+    summary = report["summary"]
     required_summary_keys = [
-        'generated_at',
-        'total_examples',
-        'valid_examples',
-        'invalid_examples',
-        'total_endpoints_found',
-        'valid_endpoints',
-        'invalid_endpoints'
+        "generated_at",
+        "total_examples",
+        "valid_examples",
+        "invalid_examples",
+        "total_endpoints_found",
+        "valid_endpoints",
+        "invalid_endpoints",
     ]
 
     for key in required_summary_keys:
@@ -52,32 +52,38 @@ def verify_audit_report(report_file: str) -> bool:
             return False
 
     # Verify data types
-    if not isinstance(summary['total_examples'], int):
+    if not isinstance(summary["total_examples"], int):
         print("❌ total_examples should be an integer")
         return False
 
-    if not isinstance(report['examples'], list):
+    if not isinstance(report["examples"], list):
         print("❌ examples should be a list")
         return False
 
-    if not isinstance(report['endpoints'], list):
+    if not isinstance(report["endpoints"], list):
         print("❌ endpoints should be a list")
         return False
 
     # Verify counts match
-    if len(report['examples']) != summary['total_examples']:
-        print(f"❌ Example count mismatch: summary says {summary['total_examples']}, but found {len(report['examples'])}")
+    if len(report["examples"]) != summary["total_examples"]:
+        print(
+            f"❌ Example count mismatch: summary says {summary['total_examples']}, but found {len(report['examples'])}"
+        )
         return False
 
     # Verify valid/invalid counts
-    valid_count = sum(1 for e in report['examples'] if e.get('is_valid', False))
-    invalid_count = sum(1 for e in report['examples'] if not e.get('is_valid', True))
+    valid_count = sum(1 for e in report["examples"] if e.get("is_valid", False))
+    invalid_count = sum(1 for e in report["examples"] if not e.get("is_valid", True))
 
-    if valid_count != summary['valid_examples']:
-        print(f"⚠️  Valid example count mismatch: summary says {summary['valid_examples']}, but counted {valid_count}")
+    if valid_count != summary["valid_examples"]:
+        print(
+            f"⚠️  Valid example count mismatch: summary says {summary['valid_examples']}, but counted {valid_count}"
+        )
 
-    if invalid_count != summary['invalid_examples']:
-        print(f"⚠️  Invalid example count mismatch: summary says {summary['invalid_examples']}, but counted {invalid_count}")
+    if invalid_count != summary["invalid_examples"]:
+        print(
+            f"⚠️  Invalid example count mismatch: summary says {summary['invalid_examples']}, but counted {invalid_count}"
+        )
 
     print("✅ Report structure is valid")
     print(f"   Total examples: {summary['total_examples']}")
@@ -109,4 +115,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

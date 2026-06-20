@@ -45,30 +45,32 @@ Exit codes
 * 1 — at least one offence; details printed to stdout.
 * 2 — environment misconfigured (catalogue file missing).
 """
+
 from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
-
 
 _CATALOGUE_PATH = Path("docs/api/error-codes.md")
 
 # Canonical scan roots: production Python code only. Tests + migrations
 # are excluded — tests assert on existing codes; migrations don't emit.
 _DEFAULT_SCAN_ROOTS: tuple[str, ...] = ("hub/apps",)
-_EXCLUDE_DIR_PARTS: frozenset[str] = frozenset({
-    "__pycache__",
-    "tests",
-    "test",
-    "migrations",
-    ".tox",
-    ".venv",
-    "venv",
-    "node_modules",
-})
+_EXCLUDE_DIR_PARTS: frozenset[str] = frozenset(
+    {
+        "__pycache__",
+        "tests",
+        "test",
+        "migrations",
+        ".tox",
+        ".venv",
+        "venv",
+        "node_modules",
+    }
+)
 
 # Code emission patterns. Each yields a single capture group with the code.
 # We deliberately don't try to evaluate Python — we extract candidate
@@ -171,8 +173,7 @@ def main(argv: list[str]) -> int:
 
     if offences:
         print(
-            f"❌ Phase 250.0.13 — found {len(offences)} undocumented "
-            f"error code emission(s):",
+            f"❌ Phase 250.0.13 — found {len(offences)} undocumented error code emission(s):",
             file=sys.stderr,
         )
         # Stable, deterministic ordering for editor / CI annotations.

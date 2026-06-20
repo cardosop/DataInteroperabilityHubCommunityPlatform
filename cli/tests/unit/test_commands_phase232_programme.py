@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 from click.testing import CliRunner
-
 from datahub_cli.commands.phase232_programme import (
     _PHASE232_LIST_ROUTES,
     format_phase232_catalogue_table,

@@ -35,11 +35,12 @@ The graph is rebuilt on every call.  Caching is deferred to a future
 sub-phase — REQ-SEM-SEARCH-EXPAND-001 doesn't list a freshness SLA, so
 the simplest correct implementation is to re-parse the active rows.
 """
+
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ class ExpansionBridge:
 def expand_query_terms(
     query: str,
     tenant_id,
-) -> List[ExpansionBridge]:
+) -> list[ExpansionBridge]:
     """Return the bridge terms that the tenant's ontologies link to
     the query.
 
@@ -107,8 +108,8 @@ def expand_query_terms(
     if graph is None:
         return []
 
-    seen: Set[tuple] = set()
-    out: List[ExpansionBridge] = []
+    seen: set[tuple] = set()
+    out: list[ExpansionBridge] = []
     for token in tokens:
         for bridge in _bridges_for_token(graph, token):
             key = (bridge.label.lower(), bridge.relation)
@@ -163,10 +164,12 @@ def _build_active_graph(tenant_id):
             continue
         try:
             graph.parse(data=content, format=rdflib_fmt)
-        except Exception as exc:  # noqa: BLE001 — fail-soft per row.
+        except Exception as exc:
             logger.warning(
                 "semantic_expansion_parse_failed tenant=%s fmt=%s error=%s",
-                tenant_id, fmt, exc,
+                tenant_id,
+                fmt,
+                exc,
             )
 
     # Best-effort load of the bundled Meshant base ontology (when the
@@ -186,6 +189,7 @@ def _load_base_ontology_into(graph) -> None:
     alone."""
     try:
         from pathlib import Path
+
         candidates = [
             Path(__file__).resolve().parents[1] / "semantic" / "ontology.ttl",
             Path(__file__).resolve().parents[1] / "semantic" / "ontology" / "meshant.ttl",
@@ -194,7 +198,7 @@ def _load_base_ontology_into(graph) -> None:
             if candidate.is_file():
                 graph.parse(source=str(candidate), format="turtle")
                 return
-    except Exception as exc:  # noqa: BLE001 — silent fallthrough.
+    except Exception as exc:
         logger.debug("semantic_expansion_base_ontology_skip: %s", exc)
 
 
@@ -216,9 +220,9 @@ def _bridges_for_token(graph, token: str) -> Iterable[ExpansionBridge]:
     if not seeds:
         return []
 
-    bridges: List[ExpansionBridge] = []
+    bridges: list[ExpansionBridge] = []
 
-    def _add(label: Optional[str], relation: str):
+    def _add(label: str | None, relation: str):
         if not label:
             return
         if label.strip().lower() == token.strip().lower():
@@ -256,7 +260,10 @@ def _bridges_for_token(graph, token: str) -> Iterable[ExpansionBridge]:
         # rdfs:subClassOf — REQ-SEM-SEARCH-EXPAND-001 says "ancestors
         # at depth ≤ 2".  Walk seed → super only.
         for partner in _walk_subclass_ancestors(
-            graph, seed, RDFS, MAX_SUBCLASS_DEPTH,
+            graph,
+            seed,
+            RDFS,
+            MAX_SUBCLASS_DEPTH,
         ):
             _add(_label_for(graph, partner, RDFS), "rdfs:subClassOf")
 
@@ -272,7 +279,7 @@ def _iris_for_token(graph, token: str, *, RDFS, SKOS):
     if not target:
         return
 
-    seen: Set[URIRef] = set()
+    seen: set[URIRef] = set()
 
     # 1. By rdfs:label literal.
     for s, _, o in graph.triples((None, RDFS.label, None)):
@@ -293,7 +300,7 @@ def _iris_for_token(graph, token: str, *, RDFS, SKOS):
     #    explicit label still match by their fragment / trailing
     #    path component.  Restrict to URIRef terms only — Literals
     #    and BNodes don't have a meaningful local name.
-    iri_terms: Set[URIRef] = set()
+    iri_terms: set[URIRef] = set()
     for s in graph.subjects():
         if isinstance(s, URIRef):
             iri_terms.add(s)
@@ -349,7 +356,7 @@ def _walk_subclass_ancestors(graph, seed, RDFS, max_depth: int):
     """
     from rdflib import URIRef
 
-    seen: Set = {seed}
+    seen: set = {seed}
     frontier = [(seed, 0)]
     while frontier:
         node, depth = frontier.pop(0)
@@ -363,7 +370,7 @@ def _walk_subclass_ancestors(graph, seed, RDFS, max_depth: int):
 
 
 __all__ = [
+    "MAX_SUBCLASS_DEPTH",
     "ExpansionBridge",
     "expand_query_terms",
-    "MAX_SUBCLASS_DEPTH",
 ]

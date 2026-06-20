@@ -6,6 +6,7 @@ Every test asserts a deterministic, specific outcome.  No test uses
 patterns create non-tests that can never fail regardless of code
 correctness.
 """
+
 import pytest
 from django.test import TestCase
 
@@ -106,7 +107,9 @@ Jane;25;LA"""
         payload returns a list.  If the library is unavailable the
         test is skipped."""
         try:
-            import pandas as pd, io
+            import io
+
+            import pandas as pd
         except ImportError:
             self.skipTest("pandas not available for Parquet extraction")
 
@@ -115,8 +118,7 @@ Jane;25;LA"""
         df.to_parquet(buf, index=False)
         sample = extract_sample_data(buf.getvalue(), "PARQUET", sample_size=5)
         self.assertIsInstance(sample, list)
-        self.assertGreater(len(sample), 0,
-            "Parquet extraction must return at least one row")
+        self.assertGreater(len(sample), 0, "Parquet extraction must return at least one row")
 
     def test_extract_sample_data_invalid_format_raises(self):
         """An unrecognised format must raise ValueError."""
@@ -132,16 +134,14 @@ Jane;25;LA"""
         # Best-effort: may return partial data (John,30) or empty list.
         # Either outcome is correct for corrupted input.
         if len(sample) > 0:
-            self.assertIsInstance(sample[0], dict,
-                "Partially parsed rows must be dicts")
+            self.assertIsInstance(sample[0], dict, "Partially parsed rows must be dicts")
 
     def test_extract_sample_data_corrupted_json(self):
         """Incomplete JSON must return an empty list."""
         corrupted_json = b'{"name": "John", "age": 30'
         sample = extract_sample_data(corrupted_json, "JSON", sample_size=10)
         self.assertIsInstance(sample, list)
-        self.assertEqual(sample, [],
-            "Corrupted JSON must return empty list")
+        self.assertEqual(sample, [], "Corrupted JSON must return empty list")
 
     # ── Edge cases ────────────────────────────────────────────────────
 

@@ -16,14 +16,12 @@ JSON columns (``details_json``, ``checks_json``, ``metadata``,
 ``channel_config``) are pinned in ``readonly_fields`` so an
 errant click in the admin UI can't clobber the audit trail.
 """
+
 from __future__ import annotations
 
 from django.contrib import admin
-from django.utils import timezone
-from django.utils.html import format_html
 
 from .models import DQAlertingRule, DQAnomaly, DQRun, DQTrend
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -108,7 +106,11 @@ class DQRunAdmin(admin.ModelAdmin):
         default manager would hide soft-deleted rows.
         """
         return DQRun.all_objects.get_queryset().select_related(
-            "tenant", "asset", "dataset", "file", "job",
+            "tenant",
+            "asset",
+            "dataset",
+            "file",
+            "job",
         )
 
     @admin.action(description="Restore selected soft-deleted DQ runs")
@@ -174,7 +176,11 @@ class DQAnomalyAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return DQAnomaly.all_objects.get_queryset().select_related(
-            "tenant", "asset", "dataset", "dq_run", "acknowledged_by",
+            "tenant",
+            "asset",
+            "dataset",
+            "dq_run",
+            "acknowledged_by",
         )
 
     @admin.action(description="Restore selected soft-deleted anomalies")
@@ -229,7 +235,9 @@ class DQTrendAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return DQTrend.all_objects.get_queryset().select_related(
-            "tenant", "asset", "dataset",
+            "tenant",
+            "asset",
+            "dataset",
         )
 
     @admin.action(description="Restore selected soft-deleted trends")

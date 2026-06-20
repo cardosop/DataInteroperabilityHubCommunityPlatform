@@ -23,6 +23,7 @@ The script is destructive — it creates a Tenant + a SemanticResource
 + N versions and DOES NOT clean up; ops should drop the test tenant
 afterwards.  Always run on staging, never production.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,7 +34,7 @@ import statistics
 import sys
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 
 def _setup_django():
@@ -45,8 +46,8 @@ def _setup_django():
 
 
 def _create_tenant_and_resource(tenant_name: str):
-    from hub.apps.tenants.models import Tenant
     from hub.apps.semantic.models import SemanticResource
+    from hub.apps.tenants.models import Tenant
 
     # Audit-fix GAP-C — ``Tenant.objects`` is the ActiveTenantManager
     # which filters out non-ACTIVE tenants. ``get_or_create`` on the
@@ -74,6 +75,7 @@ def _create_tenant_and_resource(tenant_name: str):
 
 def _bulk_insert_versions(*, sr, tenant, count: int, batch_size: int = 5000):
     from django.utils import timezone as dj_tz
+
     from hub.apps.semantic.models import SemanticResourceVersion
 
     print(f"  Inserting {count:,} versions in batches of {batch_size}…")
@@ -112,8 +114,18 @@ def _measure_lookup_latency(*, sr, samples: int = 200):
     """Sample nearest-past lookups across the full snapshot range."""
     from hub.apps.semantic.models import SemanticResourceVersion
 
-    earliest = SemanticResourceVersion.objects.filter(resource=sr).order_by("snapshot_at").only("snapshot_at").first()
-    latest = SemanticResourceVersion.objects.filter(resource=sr).order_by("-snapshot_at").only("snapshot_at").first()
+    earliest = (
+        SemanticResourceVersion.objects.filter(resource=sr)
+        .order_by("snapshot_at")
+        .only("snapshot_at")
+        .first()
+    )
+    latest = (
+        SemanticResourceVersion.objects.filter(resource=sr)
+        .order_by("-snapshot_at")
+        .only("snapshot_at")
+        .first()
+    )
     if not earliest or not latest:
         return {"p50_ms": None}
 
@@ -147,7 +159,7 @@ def main():
     args = parser.parse_args()
 
     _setup_django()
-    print(f"=== Phase 230.4 Memento capacity test ===")
+    print("=== Phase 230.4 Memento capacity test ===")
     print(f"  Tenant: {args.tenant_name}")
     print(f"  Snapshot count: {args.count:,}")
 
@@ -155,15 +167,17 @@ def main():
     print(f"  Resource id: {sr.id}")
 
     insert_seconds = _bulk_insert_versions(sr=sr, tenant=tenant, count=args.count)
-    print(f"  Bulk-insert wall-clock: {insert_seconds:.1f}s "
-          f"({args.count / insert_seconds:,.0f} rows/s)")
+    print(
+        f"  Bulk-insert wall-clock: {insert_seconds:.1f}s "
+        f"({args.count / insert_seconds:,.0f} rows/s)"
+    )
 
     print(f"  Sampling {args.samples} nearest-past lookups…")
     latency = _measure_lookup_latency(sr=sr, samples=args.samples)
     print(f"  Lookup latency: {latency}")
 
     print()
-    print(f"PASS criteria (Phase 230.4.14):")
+    print("PASS criteria (Phase 230.4.14):")
     print(f"  * p95 lookup < 50ms   actual={latency.get('p95_ms')}ms")
     print(f"  * p99 lookup < 100ms  actual={latency.get('p99_ms')}ms")
     print(f"  * insert > 5k rows/s  actual={args.count / insert_seconds:,.0f} rows/s")

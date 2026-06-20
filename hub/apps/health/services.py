@@ -5,7 +5,7 @@ Service layer for health check operations.
 Extracts business logic from views for better testability and separation of concerns.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from django.conf import settings
 from django.db import connection
@@ -27,7 +27,7 @@ class HealthService(BaseService):
 
     service_name = "health_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize HealthService.
 
@@ -38,7 +38,7 @@ class HealthService(BaseService):
         self.tenant_id = tenant_id
         self.user_id = user_id
 
-    def check_database_health(self) -> Dict[str, Any]:
+    def check_database_health(self) -> dict[str, Any]:
         """
         Check database connectivity.
 
@@ -54,12 +54,12 @@ class HealthService(BaseService):
             }
         except Exception as e:
             return {
-                "status": f"error: {str(e)}",
+                "status": f"error: {e!s}",
                 "healthy": False,
                 "error": str(e),
             }
 
-    def check_redis_health(self) -> Dict[str, Any]:
+    def check_redis_health(self) -> dict[str, Any]:
         """
         Check all Redis instances health.
 
@@ -89,7 +89,7 @@ class HealthService(BaseService):
             "unhealthy_instances": unhealthy_instances,
         }
 
-    def check_clamav_health(self) -> Dict[str, Any]:
+    def check_clamav_health(self) -> dict[str, Any]:
         """
         Phase 277.B.079 — health probe for ClamAV daemon.
 
@@ -109,7 +109,6 @@ class HealthService(BaseService):
 
         try:
             import socket
-            import errno
 
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(min(timeout, 5.0))
@@ -138,14 +137,14 @@ class HealthService(BaseService):
                 }
             finally:
                 sock.close()
-        except (socket.timeout, ConnectionRefusedError, OSError) as exc:
+        except (TimeoutError, ConnectionRefusedError, OSError) as exc:
             return {
                 "status": "unhealthy",
                 "healthy": False,
                 "error": str(exc),
             }
 
-    def check_baas_health(self) -> Dict[str, Any]:
+    def check_baas_health(self) -> dict[str, Any]:
         """
         Check BaaS Postgres and Redis when BAAS_DATABASE_URL / BAAS_REDIS_URL are set.
 
@@ -181,7 +180,7 @@ class HealthService(BaseService):
                 result["all_healthy"] = False
         return result
 
-    def get_overall_health_status(self) -> Dict[str, Any]:
+    def get_overall_health_status(self) -> dict[str, Any]:
         """
         Get overall health status including database and Redis.
 
@@ -225,9 +224,7 @@ class HealthService(BaseService):
         # Check BaaS Postgres/Redis when BAAS_*_URL are set
         baas_health = self.check_baas_health()
         if "postgres" in baas_health or "redis" in baas_health:
-            status["baas"] = {
-                k: v for k, v in baas_health.items() if k != "all_healthy"
-            }
+            status["baas"] = {k: v for k, v in baas_health.items() if k != "all_healthy"}
             if not baas_health.get("all_healthy", True):
                 status["status"] = "unhealthy"
 
@@ -236,7 +233,7 @@ class HealthService(BaseService):
 
         return status
 
-    def get_circuit_breaker_status(self, service_name: Optional[str] = None) -> Dict[str, Any]:
+    def get_circuit_breaker_status(self, service_name: str | None = None) -> dict[str, Any]:
         """
         Get circuit breaker status for all breakers or a specific one.
 

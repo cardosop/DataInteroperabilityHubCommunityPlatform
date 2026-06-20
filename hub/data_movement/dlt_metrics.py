@@ -3,8 +3,10 @@
 
 Exports dlt pipeline metrics for Grafana dashboards and Prometheus alerting.
 """
+
 from __future__ import annotations
-from typing import Any, Dict, List
+
+from typing import Any
 
 import dlt
 import structlog
@@ -12,7 +14,7 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 
-def collect_pipeline_metrics(pipeline_name: str) -> Dict[str, Any]:
+def collect_pipeline_metrics(pipeline_name: str) -> dict[str, Any]:
     """
     285.6.3.4 — Collect dlt pipeline metrics for Prometheus export.
 
@@ -21,7 +23,7 @@ def collect_pipeline_metrics(pipeline_name: str) -> Dict[str, Any]:
     """
     pipeline = dlt.pipeline(pipeline_name=pipeline_name)
 
-    metrics: Dict[str, Any] = {
+    metrics: dict[str, Any] = {
         "pipeline_name": pipeline_name,
         "dataset_name": pipeline.dataset_name,
         "destination": pipeline.destination.__name__ if pipeline.destination else "unknown",
@@ -69,7 +71,7 @@ def get_failed_load_count(pipeline_name: str) -> int:
 
 def get_total_rows_loaded(pipeline_name: str) -> int:
     """Return total rows loaded across all successful loads."""
-    pipeline = dlt.pipeline(pipeline_name=pipeline_name)
+    dlt.pipeline(pipeline_name=pipeline_name)
     # dlt doesn't expose a direct row count — estimated from schema tables
     return 0  # populated at runtime by DataMovementPipeline.metrics()
 
@@ -91,30 +93,32 @@ def health_status(pipeline_name: str) -> str:
     return "healthy"
 
 
-def export_prometheus_metrics(pipeline_names: List[str]) -> str:
+def export_prometheus_metrics(pipeline_names: list[str]) -> str:
     """
     285.6.3.4 — Export dlt pipeline metrics in Prometheus text format.
 
     Replaces custom monitoring.py dashboard generation.
     Intended for DataMovementPipeline.metrics() endpoint.
     """
-    lines: List[str] = []
+    lines: list[str] = []
     for name in pipeline_names:
         duration = get_load_duration_seconds(name)
         failed = get_failed_load_count(name)
         health = health_status(name)
         health_value = {"healthy": 0, "degraded": 1, "unhealthy": 2}.get(health, 2)
 
-        lines.append(f'# HELP dlt_pipeline_load_duration_seconds Last load duration')
-        lines.append(f'# TYPE dlt_pipeline_load_duration_seconds gauge')
+        lines.append("# HELP dlt_pipeline_load_duration_seconds Last load duration")
+        lines.append("# TYPE dlt_pipeline_load_duration_seconds gauge")
         lines.append(f'dlt_pipeline_load_duration_seconds{{pipeline="{name}"}} {duration}')
 
-        lines.append(f'# HELP dlt_pipeline_failed_loads_total Failed load count')
-        lines.append(f'# TYPE dlt_pipeline_failed_loads_total counter')
+        lines.append("# HELP dlt_pipeline_failed_loads_total Failed load count")
+        lines.append("# TYPE dlt_pipeline_failed_loads_total counter")
         lines.append(f'dlt_pipeline_failed_loads_total{{pipeline="{name}"}} {failed}')
 
-        lines.append(f'# HELP dlt_pipeline_health_status Pipeline health (0=healthy,1=degraded,2=unhealthy)')
-        lines.append(f'# TYPE dlt_pipeline_health_status gauge')
+        lines.append(
+            "# HELP dlt_pipeline_health_status Pipeline health (0=healthy,1=degraded,2=unhealthy)"
+        )
+        lines.append("# TYPE dlt_pipeline_health_status gauge")
         lines.append(f'dlt_pipeline_health_status{{pipeline="{name}"}} {health_value}')
 
     return "\n".join(lines) + "\n"

@@ -4,13 +4,17 @@ Integration tests for PaymentEventPublisher.
 Tests event publishing using real EventPublisher and EventBus (no mocks/stubs).
 All tests use real services and models following engineering best practices.
 """
+
+import uuid
+from datetime import UTC
+
 from django.test import TestCase, override_settings
 from django.utils import timezone
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import User, UserStatus
-from hub.apps.core.events.service_publishers import PaymentEventPublisher
+
 from hub.apps.core.events.models import Event
-import uuid
+from hub.apps.core.events.service_publishers import PaymentEventPublisher
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.users.models import User, UserStatus
 
 uid = uuid.uuid4().hex[:8]
 
@@ -29,13 +33,13 @@ class PaymentEventPublisherIntegrationTest(TestCase):
             slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
-            region="us-east-1"
+            region="us-east-1",
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create test IDs
@@ -49,10 +53,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
                 self.user_id = user_id
                 super().__init__(tenant_id=tenant_id, user_id=user_id)
 
-        self.service = TestPaymentService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.service = TestPaymentService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_publish_payment_initiated_event(self):
         """Test publishing payment.initiated event with real EventPublisher."""
@@ -62,7 +63,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
             amount=99.99,
             currency="USD",
             gateway="stripe",
-            payment_method="card"
+            payment_method="card",
         )
 
         # Verify event was published
@@ -86,8 +87,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
     def test_publish_payment_initiated_with_minimal_data(self):
         """Test publishing payment.initiated event with only required fields."""
         event_id = self.service.publish_payment_initiated(
-            payment_id=self.payment_id,
-            order_id=self.order_id
+            payment_id=self.payment_id, order_id=self.order_id
         )
 
         # Verify event was published
@@ -117,7 +117,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
             currency="USD",
             gateway="stripe",
             gateway_transaction_id=gateway_transaction_id,
-            processed_at=processed_at
+            processed_at=processed_at,
         )
 
         # Verify event was published
@@ -140,9 +140,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
         """Test publishing payment.completed event with auto-generated timestamp."""
         before_publish = timezone.now()
         event_id = self.service.publish_payment_completed(
-            payment_id=self.payment_id,
-            order_id=self.order_id,
-            status="SUCCEEDED"
+            payment_id=self.payment_id, order_id=self.order_id, status="SUCCEEDED"
         )
         after_publish = timezone.now()
 
@@ -154,17 +152,16 @@ class PaymentEventPublisherIntegrationTest(TestCase):
         self.assertEqual(event.event_type, "payment.completed")
         self.assertIsNotNone(event.data.get("processed_at"))
         # Verify processed_at is a valid ISO format datetime string
-        from datetime import datetime, timezone as dt_timezone
-        processed_at = datetime.fromisoformat(event.data["processed_at"].replace('Z', '+00:00'))
-        self.assertGreaterEqual(processed_at, before_publish.replace(tzinfo=dt_timezone.utc))
-        self.assertLessEqual(processed_at, after_publish.replace(tzinfo=dt_timezone.utc))
+        from datetime import datetime
+
+        processed_at = datetime.fromisoformat(event.data["processed_at"].replace("Z", "+00:00"))
+        self.assertGreaterEqual(processed_at, before_publish.replace(tzinfo=UTC))
+        self.assertLessEqual(processed_at, after_publish.replace(tzinfo=UTC))
 
     def test_publish_payment_completed_with_minimal_data(self):
         """Test publishing payment.completed event with only required fields."""
         event_id = self.service.publish_payment_completed(
-            payment_id=self.payment_id,
-            order_id=self.order_id,
-            status="SUCCEEDED"
+            payment_id=self.payment_id, order_id=self.order_id, status="SUCCEEDED"
         )
 
         # Verify event was published
@@ -196,7 +193,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
             amount=99.99,
             currency="USD",
             gateway="stripe",
-            failed_at=failed_at
+            failed_at=failed_at,
         )
 
         # Verify event was published
@@ -221,7 +218,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
         event_id = self.service.publish_payment_failed(
             payment_id=self.payment_id,
             order_id=self.order_id,
-            error_message="Payment gateway timeout"
+            error_message="Payment gateway timeout",
         )
         after_publish = timezone.now()
 
@@ -233,17 +230,18 @@ class PaymentEventPublisherIntegrationTest(TestCase):
         self.assertEqual(event.event_type, "payment.failed")
         self.assertIsNotNone(event.data.get("failed_at"))
         # Verify failed_at is a valid ISO format datetime string
-        from datetime import datetime, timezone as dt_timezone
-        failed_at = datetime.fromisoformat(event.data["failed_at"].replace('Z', '+00:00'))
-        self.assertGreaterEqual(failed_at, before_publish.replace(tzinfo=dt_timezone.utc))
-        self.assertLessEqual(failed_at, after_publish.replace(tzinfo=dt_timezone.utc))
+        from datetime import datetime
+
+        failed_at = datetime.fromisoformat(event.data["failed_at"].replace("Z", "+00:00"))
+        self.assertGreaterEqual(failed_at, before_publish.replace(tzinfo=UTC))
+        self.assertLessEqual(failed_at, after_publish.replace(tzinfo=UTC))
 
     def test_publish_payment_failed_with_minimal_data(self):
         """Test publishing payment.failed event with only required fields."""
         event_id = self.service.publish_payment_failed(
             payment_id=self.payment_id,
             order_id=self.order_id,
-            error_message="Payment processing failed"
+            error_message="Payment processing failed",
         )
 
         # Verify event was published
@@ -275,7 +273,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
             gateway="stripe",
             gateway_refund_id=gateway_refund_id,
             refund_reason=refund_reason,
-            refunded_at=refunded_at
+            refunded_at=refunded_at,
         )
 
         # Verify event was published
@@ -298,8 +296,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
         """Test publishing payment.refunded event with auto-generated timestamp."""
         before_publish = timezone.now()
         event_id = self.service.publish_payment_refunded(
-            payment_id=self.payment_id,
-            order_id=self.order_id
+            payment_id=self.payment_id, order_id=self.order_id
         )
         after_publish = timezone.now()
 
@@ -311,16 +308,16 @@ class PaymentEventPublisherIntegrationTest(TestCase):
         self.assertEqual(event.event_type, "payment.refunded")
         self.assertIsNotNone(event.data.get("refunded_at"))
         # Verify refunded_at is a valid ISO format datetime string
-        from datetime import datetime, timezone as dt_timezone
-        refunded_at = datetime.fromisoformat(event.data["refunded_at"].replace('Z', '+00:00'))
-        self.assertGreaterEqual(refunded_at, before_publish.replace(tzinfo=dt_timezone.utc))
-        self.assertLessEqual(refunded_at, after_publish.replace(tzinfo=dt_timezone.utc))
+        from datetime import datetime
+
+        refunded_at = datetime.fromisoformat(event.data["refunded_at"].replace("Z", "+00:00"))
+        self.assertGreaterEqual(refunded_at, before_publish.replace(tzinfo=UTC))
+        self.assertLessEqual(refunded_at, after_publish.replace(tzinfo=UTC))
 
     def test_publish_payment_refunded_with_minimal_data(self):
         """Test publishing payment.refunded event with only required fields."""
         event_id = self.service.publish_payment_refunded(
-            payment_id=self.payment_id,
-            order_id=self.order_id
+            payment_id=self.payment_id, order_id=self.order_id
         )
 
         # Verify event was published
@@ -341,8 +338,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
     def test_event_source_includes_tenant_and_user(self):
         """Test that events include tenant_id and user_id in source."""
         event_id = self.service.publish_payment_initiated(
-            payment_id=self.payment_id,
-            order_id=self.order_id
+            payment_id=self.payment_id, order_id=self.order_id
         )
 
         event = Event.objects.get(event_id=event_id)
@@ -355,8 +351,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
         """Test that events have timestamp set."""
         before_publish = timezone.now()
         event_id = self.service.publish_payment_initiated(
-            payment_id=self.payment_id,
-            order_id=self.order_id
+            payment_id=self.payment_id, order_id=self.order_id
         )
         after_publish = timezone.now()
 
@@ -370,8 +365,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
         """Test that events have appropriate tags set."""
         # Test payment.initiated tags
         event_id = self.service.publish_payment_initiated(
-            payment_id=self.payment_id,
-            order_id=self.order_id
+            payment_id=self.payment_id, order_id=self.order_id
         )
         event = Event.objects.get(event_id=event_id)
         self.assertIn("payment", event.metadata.get("tags", []))
@@ -379,9 +373,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
 
         # Test payment.completed tags
         event_id = self.service.publish_payment_completed(
-            payment_id=self.payment_id,
-            order_id=self.order_id,
-            status="SUCCEEDED"
+            payment_id=self.payment_id, order_id=self.order_id, status="SUCCEEDED"
         )
         event = Event.objects.get(event_id=event_id)
         self.assertIn("payment", event.metadata.get("tags", []))
@@ -389,9 +381,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
 
         # Test payment.failed tags
         event_id = self.service.publish_payment_failed(
-            payment_id=self.payment_id,
-            order_id=self.order_id,
-            error_message="Payment failed"
+            payment_id=self.payment_id, order_id=self.order_id, error_message="Payment failed"
         )
         event = Event.objects.get(event_id=event_id)
         self.assertIn("payment", event.metadata.get("tags", []))
@@ -399,8 +389,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
 
         # Test payment.refunded tags
         event_id = self.service.publish_payment_refunded(
-            payment_id=self.payment_id,
-            order_id=self.order_id
+            payment_id=self.payment_id, order_id=self.order_id
         )
         event = Event.objects.get(event_id=event_id)
         self.assertIn("payment", event.metadata.get("tags", []))
@@ -408,6 +397,7 @@ class PaymentEventPublisherIntegrationTest(TestCase):
 
     def test_publisher_initialization_without_tenant_or_user(self):
         """Test that publisher can be initialized without tenant_id or user_id."""
+
         class TestPaymentService(PaymentEventPublisher):
             def __init__(self):
                 super().__init__()
@@ -424,12 +414,10 @@ class PaymentEventPublisherIntegrationTest(TestCase):
 
         # Publish an event without explicitly passing tenant_id/user_id
         event_id = service.publish_payment_initiated(
-            payment_id=self.payment_id,
-            order_id=self.order_id
+            payment_id=self.payment_id, order_id=self.order_id
         )
 
         # Verify event has correct tenant_id and user_id
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(str(event.tenant_id), str(self.tenant.id))
         self.assertEqual(str(event.user_id), str(self.user.id))
-

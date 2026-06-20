@@ -5,21 +5,20 @@ rate-limit helpers.
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import os
 import uuid
 
+import pytest
 
 pytest.importorskip("django_redis")
 
-import redis as redis_py  # noqa: E402
-from django.core.cache import cache  # noqa: E402
-from django.test import SimpleTestCase  # noqa: E402
-from django.test.utils import override_settings  # noqa: E402
+import redis as redis_py
+from django.core.cache import cache
+from django.test import SimpleTestCase
+from django.test.utils import override_settings
 
-from hub.apps.auth.views import (  # noqa: E402
+from hub.apps.auth.views import (
     _redis_sliding_window_zset_key,
     _sliding_window_rate_limit_allow,
 )

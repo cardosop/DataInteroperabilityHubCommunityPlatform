@@ -1,14 +1,12 @@
 """HTTP API for breach incidents, notifications, templates (Phase 232.3)."""
 
 from __future__ import annotations
+
 from typing import Any, cast
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
-
-# 283.3.4.4 — Breach views must carry throttle classes per CI contract
-from hub.apps.breach.throttles import BreachTenantRateThrottle
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -26,6 +24,9 @@ from hub.apps.breach.serializers import (
     BreachTenantTemplateWriteSerializer,
 )
 from hub.apps.breach.template_service import merged_template_for_tenant
+
+# 283.3.4.4 — Breach views must carry throttle classes per CI contract
+from hub.apps.breach.throttles import BreachTenantRateThrottle
 from hub.apps.breach.workflow import (
     create_breach_incident,
     mark_notification_sent,
@@ -67,13 +68,13 @@ class BreachIncidentViewSet(viewsets.ModelViewSet):
             )
         ser = BreachIncidentCreateSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        vd = cast(dict[str, Any], ser.validated_data)
+        vd = cast("dict[str, Any]", ser.validated_data)
         user = request.user
         assert user.is_authenticated
         try:
             inc = create_breach_incident(
                 tenant=tenant,
-                actor=cast(User, user),
+                actor=cast("User", user),
                 title=str(vd["title"]),
                 summary=str(vd.get("summary") or ""),
                 regimes=list(vd["regimes"]),
@@ -91,14 +92,14 @@ class BreachIncidentViewSet(viewsets.ModelViewSet):
         inc = self.get_object()
         ser = BreachIncidentStatusSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        vd = cast(dict[str, Any], ser.validated_data)
+        vd = cast("dict[str, Any]", ser.validated_data)
         user = request.user
         assert user.is_authenticated
         try:
             transition_incident_status(
                 inc,
                 str(vd["status"]),
-                actor=cast(User, user),
+                actor=cast("User", user),
                 notes=str(vd.get("notes") or ""),
             )
         except DjangoValidationError as exc:
@@ -118,7 +119,7 @@ class BreachNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         if not tenant:
             return BreachNotification.objects.none()
         qs = BreachNotification.objects.filter(tenant=tenant).select_related("incident")
-        req = cast(Request, self.request)
+        req = cast("Request", self.request)
         inc = req.query_params.get("incident")
         if inc:
             qs = qs.filter(incident_id=inc)
@@ -132,13 +133,13 @@ class BreachNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         row = self.get_object()
         ser = BreachMarkSentSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        vd = cast(dict[str, Any], ser.validated_data)
+        vd = cast("dict[str, Any]", ser.validated_data)
         user = request.user
         assert user.is_authenticated
         try:
             mark_notification_sent(
                 row,
-                actor=cast(User, user),
+                actor=cast("User", user),
                 outbound_reference=str(vd["outbound_reference"]),
             )
         except DjangoValidationError as exc:
@@ -170,7 +171,7 @@ class BreachTenantTemplateOverrideViewSet(
             return Response({"error": "Tenant required"}, status=status.HTTP_400_BAD_REQUEST)
         ser = BreachTenantTemplateWriteSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        vd = cast(dict[str, Any], ser.validated_data)
+        vd = cast("dict[str, Any]", ser.validated_data)
 
         regime = str(vd["regime"]).upper().strip()
         user = request.user
@@ -180,7 +181,7 @@ class BreachTenantTemplateOverrideViewSet(
             existing.subject_template = str(vd.get("subject_template") or "")
             existing.body_template = str(vd.get("body_template") or "")
             existing.template_version = existing.template_version + 1
-            existing.updated_by = cast(User, user)
+            existing.updated_by = cast("User", user)
             existing.save(
                 update_fields=[
                     "subject_template",
@@ -197,7 +198,7 @@ class BreachTenantTemplateOverrideViewSet(
             subject_template=str(vd.get("subject_template") or ""),
             body_template=str(vd.get("body_template") or ""),
             template_version=1,
-            updated_by=cast(User, user),
+            updated_by=cast("User", user),
         )
         return Response(
             BreachTenantTemplateOverrideSerializer(row).data,

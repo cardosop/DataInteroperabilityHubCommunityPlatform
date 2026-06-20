@@ -4,8 +4,6 @@ Governance Views
 REST API views for access analytics and certification.
 """
 
-from datetime import timedelta
-
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
@@ -16,7 +14,7 @@ from rest_framework.response import Response
 
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
 
-from .access_analytics import AccessAnalyticsService, AccessLog
+from .access_analytics import AccessAnalyticsService
 from .access_certification import AccessCertification, AccessCertificationService
 from .serializers import AccessCertificationSerializer
 
@@ -325,7 +323,9 @@ class AccessCertificationViewSet(viewsets.ModelViewSet):
         if not tenant_id:
             return AccessCertification.objects.none()
 
-        return AccessCertification.objects.select_related("user", "reviewer", "tenant").filter(tenant_id=tenant_id)
+        return AccessCertification.objects.select_related("user", "reviewer", "tenant").filter(
+            tenant_id=tenant_id
+        )
 
     def perform_create(self, serializer):
         """Auto-assign tenant from the authenticated user on creation."""

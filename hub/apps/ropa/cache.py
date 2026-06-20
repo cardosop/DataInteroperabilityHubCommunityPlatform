@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from django.core.cache import cache
 
 PREVIEW_CACHE_TTL_SECONDS = 86400  # 24 hours

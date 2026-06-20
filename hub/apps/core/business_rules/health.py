@@ -5,14 +5,15 @@ Exposes ``BusinessRulesRegistry.degraded_rules`` — a set of rule
 names whose registration failed at import time. SRE alert fires
 when the set is non-empty.
 """
+
 from __future__ import annotations
+
 import logging
-from typing import Set
 
 logger = logging.getLogger(__name__)
 
 # Rules whose @register_rule or module import failed.
-_degraded: Set[str] = set()
+_degraded: set[str] = set()
 
 
 def mark_rule_degraded(rule_name: str, error: str) -> None:
@@ -21,7 +22,7 @@ def mark_rule_degraded(rule_name: str, error: str) -> None:
     logger.error("business_rule_registration_failed rule=%s error=%s", rule_name, error)
 
 
-def get_degraded_rules() -> Set[str]:
+def get_degraded_rules() -> set[str]:
     """Return the current set of degraded rule names."""
     return set(_degraded)
 

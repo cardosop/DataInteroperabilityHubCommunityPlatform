@@ -19,7 +19,7 @@ def verify_audit_report(report_file: str) -> bool:
         return False
 
     try:
-        with open(report_path, 'r', encoding='utf-8') as f:
+        with open(report_path, encoding="utf-8") as f:
             report = json.load(f)
     except json.JSONDecodeError as e:
         print(f"❌ Invalid JSON in report file: {e}")
@@ -29,21 +29,21 @@ def verify_audit_report(report_file: str) -> bool:
         return False
 
     # Verify structure
-    required_keys = ['summary', 'collections', 'endpoints']
+    required_keys = ["summary", "collections", "endpoints"]
     for key in required_keys:
         if key not in report:
             print(f"❌ Missing required key in report: {key}")
             return False
 
-    summary = report['summary']
+    summary = report["summary"]
     required_summary_keys = [
-        'generated_at',
-        'total_collections',
-        'valid_collections',
-        'invalid_collections',
-        'total_requests',
-        'valid_requests',
-        'invalid_requests'
+        "generated_at",
+        "total_collections",
+        "valid_collections",
+        "invalid_collections",
+        "total_requests",
+        "valid_requests",
+        "invalid_requests",
     ]
 
     for key in required_summary_keys:
@@ -52,32 +52,38 @@ def verify_audit_report(report_file: str) -> bool:
             return False
 
     # Verify data types
-    if not isinstance(summary['total_collections'], int):
+    if not isinstance(summary["total_collections"], int):
         print("❌ total_collections should be an integer")
         return False
 
-    if not isinstance(report['collections'], list):
+    if not isinstance(report["collections"], list):
         print("❌ collections should be a list")
         return False
 
-    if not isinstance(report['endpoints'], list):
+    if not isinstance(report["endpoints"], list):
         print("❌ endpoints should be a list")
         return False
 
     # Verify counts match
-    if len(report['collections']) != summary['total_collections']:
-        print(f"❌ Collection count mismatch: summary says {summary['total_collections']}, but found {len(report['collections'])}")
+    if len(report["collections"]) != summary["total_collections"]:
+        print(
+            f"❌ Collection count mismatch: summary says {summary['total_collections']}, but found {len(report['collections'])}"
+        )
         return False
 
     # Verify valid/invalid counts
-    valid_count = sum(1 for c in report['collections'] if c.get('is_valid', False))
-    invalid_count = sum(1 for c in report['collections'] if not c.get('is_valid', True))
+    valid_count = sum(1 for c in report["collections"] if c.get("is_valid", False))
+    invalid_count = sum(1 for c in report["collections"] if not c.get("is_valid", True))
 
-    if valid_count != summary['valid_collections']:
-        print(f"⚠️  Valid collection count mismatch: summary says {summary['valid_collections']}, but counted {valid_count}")
+    if valid_count != summary["valid_collections"]:
+        print(
+            f"⚠️  Valid collection count mismatch: summary says {summary['valid_collections']}, but counted {valid_count}"
+        )
 
-    if invalid_count != summary['invalid_collections']:
-        print(f"⚠️  Invalid collection count mismatch: summary says {summary['invalid_collections']}, but counted {invalid_count}")
+    if invalid_count != summary["invalid_collections"]:
+        print(
+            f"⚠️  Invalid collection count mismatch: summary says {summary['invalid_collections']}, but counted {invalid_count}"
+        )
 
     print("✅ Report structure is valid")
     print(f"   Total collections: {summary['total_collections']}")
@@ -109,4 +115,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -1,8 +1,8 @@
 """Phase 232.4 — RoPA generator walks real Asset / ConsentPurpose rows."""
 
-import pytest
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
@@ -17,8 +17,8 @@ User = get_user_model()
 class RopaGeneratorTests(TestCase):
     def setUp(self):
         cache.clear()
-        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
         from hub.apps.tenants.models import Tenant
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
         from hub.apps.users.models import Role, UserRole, UserStatus
 
         uid_fragment = uuid.uuid4().hex[:8]

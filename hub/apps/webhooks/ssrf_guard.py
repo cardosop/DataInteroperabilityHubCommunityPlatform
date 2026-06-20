@@ -7,6 +7,7 @@ Validates webhook URLs to prevent Server-Side Request Forgery (SSRF) attacks:
 - Providing re-validation at delivery time for DNS rebinding protection
 - DNS resolution timeout (5s) to prevent slow-loris style attacks
 """
+
 import concurrent.futures
 import ipaddress
 import re
@@ -48,6 +49,7 @@ _ALLOWED_SCHEMES = frozenset({"http", "https"})
 # Exception — defined before the functions that raise it
 # ---------------------------------------------------------------------------
 
+
 class SSRFViolationError(Exception):
     """Raised when a URL violates SSRF protection rules."""
 
@@ -55,6 +57,7 @@ class SSRFViolationError(Exception):
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _is_private_ip(ip_str: str) -> bool:
     """Return True if the IP string falls in any blocked network.
@@ -66,7 +69,7 @@ def _is_private_ip(ip_str: str) -> bool:
     tested against an IPv4Network.
     """
     # Strip IPv6 scope ID (%<scope>) before parsing — e.g. "fe80::1%eth0"
-    cleaned = re.sub(r'%[^%]*$', '', ip_str)
+    cleaned = re.sub(r"%[^%]*$", "", ip_str)
     try:
         addr = ipaddress.ip_address(cleaned)
     except ValueError:
@@ -74,10 +77,7 @@ def _is_private_ip(ip_str: str) -> bool:
         return True
     # Unwrap IPv4-mapped IPv6 (::ffff:x.x.x.x) → IPv4Address so that
     # RFC-1918, loopback, and link-local IPv4 rules apply uniformly.
-    if (
-        isinstance(addr, ipaddress.IPv6Address)
-        and addr.ipv4_mapped is not None
-    ):
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
         addr = addr.ipv4_mapped
     return any(addr in net for net in _BLOCKED_NETWORKS)
 
@@ -98,13 +98,9 @@ def _resolve_and_check(hostname: str) -> None:
         try:
             results = future.result(timeout=_DNS_TIMEOUT)
         except concurrent.futures.TimeoutError:
-            raise SSRFViolationError(
-                f"DNS resolution of '{hostname}' timed out"
-            )
+            raise SSRFViolationError(f"DNS resolution of '{hostname}' timed out")
         except socket.gaierror as exc:
-            raise SSRFViolationError(
-                f"Hostname '{hostname}' could not be resolved: {exc}"
-            ) from exc
+            raise SSRFViolationError(f"Hostname '{hostname}' could not be resolved: {exc}") from exc
 
     for _family, _type, _proto, _canonname, sockaddr in results:
         ip = str(sockaddr[0])
@@ -118,9 +114,8 @@ def _resolve_and_check(hostname: str) -> None:
 # Public API
 # ---------------------------------------------------------------------------
 
-def validate_webhook_url(
-    url: str, *, raise_as_validation_error: bool = True
-) -> None:
+
+def validate_webhook_url(url: str, *, raise_as_validation_error: bool = True) -> None:
     """
     Validate *url* for SSRF safety.
 
@@ -138,6 +133,7 @@ def validate_webhook_url(
         serializers.ValidationError: when ``raise_as_validation_error=True``
         SSRFViolationError: when ``raise_as_validation_error=False``
     """
+
     def _fail(msg: str) -> None:
         if raise_as_validation_error:
             raise serializers.ValidationError(msg)
@@ -146,7 +142,7 @@ def validate_webhook_url(
     # 1. Parse the URL
     try:
         parsed = urlparse(url)
-    except Exception as exc:
+    except ValueError as exc:
         _fail(f"Invalid webhook URL: {exc}")
         return  # unreachable but satisfies type checkers
 

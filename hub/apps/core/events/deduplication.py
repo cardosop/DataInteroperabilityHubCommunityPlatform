@@ -44,7 +44,7 @@ def get_redis_client() -> Optional[redis.Redis]:
         client = get_redis_events_client()
         client.ping()
         return client
-    except Exception as e:
+    except redis.exceptions.RedisError as e:
         logger.warning(
             "event_deduplication_redis_unavailable",
             error=str(e),
@@ -163,7 +163,7 @@ def check_event_duplicate(
             return True, existing_event_id
         else:
             return False, None
-    except Exception as e:
+    except redis.exceptions.RedisError as e:
         # Redis error - fail open (allow event to proceed)
         logger.error(
             "event_deduplication_check_error",
@@ -221,7 +221,7 @@ def store_event_id(
             ttl=ttl
         )
         return True
-    except Exception as e:
+    except redis.exceptions.RedisError as e:
         # Redis error - fail open (log error but don't block)
         logger.error(
             "event_deduplication_store_error",
@@ -272,7 +272,7 @@ def check_and_store_event(
             return True, existing
         # Key expired between SET and GET — treat as new
         return False, event_id
-    except Exception as e:
+    except redis.exceptions.RedisError as e:
         logger.warning(
             "deduplication_atomic_check_failed",
             key=deduplication_key,

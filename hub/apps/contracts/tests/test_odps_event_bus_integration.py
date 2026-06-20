@@ -22,7 +22,7 @@ import json
 import uuid
 from datetime import timedelta
 
-from django.test import TestCase, override_settings
+from django.test import override_settings
 from django.utils import timezone
 
 from hub.apps.contracts.services import ODPSService
@@ -82,7 +82,7 @@ class ODPSEventPublishingTest(ODPSEventBusIntegrationTestBase):
                             "name": "Test ODPS for Event Bus",
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -143,7 +143,7 @@ class ODPSEventPublishingTest(ODPSEventBusIntegrationTestBase):
                     "details": {
                         "en": {"productID": "test-odps-normalized", "name": "Test ODPS Normalized"}
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -214,7 +214,7 @@ class ODPSEventPublishingTest(ODPSEventBusIntegrationTestBase):
                     "details": {
                         "en": {"productID": "test-odps-linked", "name": "Test ODPS Linked"}
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -261,9 +261,14 @@ class ODPSEventPublishingTest(ODPSEventBusIntegrationTestBase):
                 self.assertEqual(linked_event.data.get("odps_contract_id"), str(odps_contract.id))
                 self.assertEqual(linked_event.data.get("odcs_contract_id"), str(odcs_contract.id))
         except Exception as e:
-            # Linking might fail if not fully implemented, that's OK for this test
-            # We're testing event publishing, not linking functionality
-            pass
+            # Only specific, expected exceptions are acceptable:
+            # - Contract.DoesNotExist: linking fails if contracts weren't created
+            # - ValidationError: linking requires product.contract which may be absent
+            # Re-raise anything unexpected as a real bug.
+            from hub.apps.contracts.models import Contract
+            from hub.apps.core.services.base import ValidationError as SvcValidationError
+            if not isinstance(e, (Contract.DoesNotExist, SvcValidationError)):
+                raise
 
 
 class ODPSEventSubscriberTest(ODPSEventBusIntegrationTestBase):
@@ -328,9 +333,11 @@ class ODPSEventSubscriberTest(ODPSEventBusIntegrationTestBase):
         try:
             subscriber._handle_odps_event(test_event)
         except Exception as e:
-            # Handler might fail if webhook service is not available, but it should not crash
-            # The important thing is that the subscriber is configured and can receive events
-            pass
+            # Handler might fail if webhook service is not available;
+            # only swallow ImportError/ModuleNotFoundError (missing deps),
+            # re-raise anything else as a real bug
+            if not isinstance(e, (ImportError, ModuleNotFoundError)):
+                raise
 
 
 @override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False)
@@ -351,7 +358,7 @@ class ODPSEventReplayTest(ODPSEventBusIntegrationTestBase):
                                 "name": f"Test ODPS Replay {i}",
                             }
                         },
-                        "dataSchema": {"fields": []},
+                        "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                     },
                 }
             )
@@ -398,7 +405,7 @@ class ODPSEventReplayTest(ODPSEventBusIntegrationTestBase):
                     "details": {
                         "en": {"productID": "test-odps-time-range", "name": "Test ODPS Time Range"}
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -440,12 +447,15 @@ class ODPSEventReplayTest(ODPSEventBusIntegrationTestBase):
         events = Event.objects.filter(
             event_type="odps.created", tenant_id=self.tenant.id, data__contract_id=str(contract.id)
         )
+        contract_event_found = False
         for event in events:
             if str(event.event_id) in contract_event_ids:
+                contract_event_found = True
                 break
-        else:
-            # Event might not be found if timing is off, that's OK
-            pass
+        self.assertTrue(
+            contract_event_found,
+            f"Contract event not found in replay results; event_ids={contract_event_ids}",
+        )
 
 
 @override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False)
@@ -477,12 +487,12 @@ class ODPSDeadLetterQueueTest(ODPSEventBusIntegrationTestBase):
                 "schema": "https://opendataproducts.org/schema/v4.1",
                 "product": {
                     "details": {"en": {"productID": "test-odps-dlq", "name": "Test ODPS DLQ"}},
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
 
-        contract = self.odps_service.create_odps(
+        self.odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
@@ -511,7 +521,7 @@ class ODPSDeadLetterQueueTest(ODPSEventBusIntegrationTestBase):
         # Verify DLQ model exists and can store events
         # We can't easily test the actual DLQ flow without a running worker,
         # but we verify the infrastructure is in place
-        dlq_entries = DeadLetterQueue.objects.filter(subscriber=subscriber_name)
+        DeadLetterQueue.objects.filter(subscriber=subscriber_name)
 
         # DLQ might be empty if event hasn't been processed yet, that's OK
         # The important thing is that DLQ infrastructure exists
@@ -563,7 +573,7 @@ class ODPSEventBusEndToEndTest(ODPSEventBusIntegrationTestBase):
                 "schema": "https://opendataproducts.org/schema/v4.1",
                 "product": {
                     "details": {"en": {"productID": "test-odps-e2e", "name": "Test ODPS E2E"}},
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -649,7 +659,7 @@ class ODPSEventBusEndToEndTest(ODPSEventBusIntegrationTestBase):
                     "details": {
                         "en": {"productID": "test-odps-channels", "name": "Test ODPS Channels"}
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -681,7 +691,7 @@ class ODPSEventBusEndToEndTest(ODPSEventBusIntegrationTestBase):
         # Verify event channel naming
         for event in odps_created_events:
             # Event bus uses channel prefix + event type for channel name
-            expected_channel_prefix = getattr(self.event_bus, "channel_prefix", "events")
+            getattr(self.event_bus, "channel_prefix", "events")
             # Channel should follow pattern: events:odps.created
             # We verify the event was published by checking persistence
             self.assertIsNotNone(event.event_id)
@@ -699,7 +709,7 @@ class ODPSEventBusEndToEndTest(ODPSEventBusIntegrationTestBase):
                             "description": "测试描述",
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -738,7 +748,7 @@ class ODPSEventBusEndToEndTest(ODPSEventBusIntegrationTestBase):
                             "description": "Test <description> & more",
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -780,7 +790,7 @@ class ODPSEventBusEndToEndTest(ODPSEventBusIntegrationTestBase):
                             "description": large_description,
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -823,7 +833,7 @@ class ODPSEventBusEndToEndTest(ODPSEventBusIntegrationTestBase):
                             "description": "",  # ODPS schema requires string
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -862,7 +872,7 @@ class ODPSEventBusEndToEndTest(ODPSEventBusIntegrationTestBase):
                             "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )

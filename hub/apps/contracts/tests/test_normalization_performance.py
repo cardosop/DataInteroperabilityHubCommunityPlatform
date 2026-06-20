@@ -35,10 +35,11 @@ Implementation notes
 * The test self-skips when ``pytest-benchmark`` isn't installed —
   the CI image installs it; local dev runs without it skip cleanly.
 """
+
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 
@@ -58,9 +59,7 @@ del benchmark_module  # imported only for the importorskip side-effect
 
 def _odcs_contract_with_n_fields(n: int) -> str:
     """Build a well-formed ODCS v3.1.0 contract with ``n`` fields."""
-    fields: List[Dict[str, Any]] = [
-        {"name": f"f_{i}", "type": "string"} for i in range(n)
-    ]
+    fields: list[dict[str, Any]] = [{"name": f"f_{i}", "type": "string"} for i in range(n)]
     doc = {
         "kind": "DataContract",
         "apiVersion": "v3.1.0",
@@ -78,23 +77,23 @@ def _odps_contract_with_n_ports(n: int, fields_per_port: int) -> str:
     each carrying ``fields_per_port`` inline ODCS fields."""
     ports = []
     for i in range(n):
-        fields = [
-            {"name": f"f_{j}", "type": "string"} for j in range(fields_per_port)
-        ]
-        ports.append({
-            "name": f"port_{i}",
-            "contract": {
-                "spec": {
-                    "apiVersion": "odcs.io/v3.0.2",
-                    "kind": "DataContract",
-                    "id": f"port-{i}",
-                    "name": f"port-{i}",
-                    "version": "1.0.0",
-                    "status": "active",
-                    "schema": [{"name": f"port_{i}_table", "fields": fields}],
+        fields = [{"name": f"f_{j}", "type": "string"} for j in range(fields_per_port)]
+        ports.append(
+            {
+                "name": f"port_{i}",
+                "contract": {
+                    "spec": {
+                        "apiVersion": "odcs.io/v3.0.2",
+                        "kind": "DataContract",
+                        "id": f"port-{i}",
+                        "name": f"port-{i}",
+                        "version": "1.0.0",
+                        "status": "active",
+                        "schema": [{"name": f"port_{i}_table", "fields": fields}],
+                    },
                 },
-            },
-        })
+            }
+        )
     doc = {
         "schema": "https://opendataproducts.org/schema/v4.1",
         "version": "4.1",
@@ -145,7 +144,9 @@ def _normalize(raw: str, spec_type: str) -> Any:
     from hub.apps.contracts.normalization import normalize_contract
 
     hub, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
-        raw_contract=raw, format="JSON", spec_type=spec_type,
+        raw_contract=raw,
+        format="JSON",
+        spec_type=spec_type,
     )
     return hub
 
@@ -158,9 +159,7 @@ def test_perf_odcs_1000_fields(benchmark):
     assert result is not None
     # Self-test: the engine produced 1000 fields.
     fields = (
-        (result.get("models") or [{}])[0].get("fields") or []
-        if isinstance(result, dict)
-        else []
+        (result.get("models") or [{}])[0].get("fields") or [] if isinstance(result, dict) else []
     )
     assert len(fields) == 1000
 
@@ -184,6 +183,4 @@ def test_perf_odcs_50000_fields(benchmark):
     # tests). ``benchmark`` re-runs the function multiple times for
     # statistical accuracy; we measure once with tracemalloc here.
     peak_mb = _measure_normalize_memory_mb(raw, "ODCS")
-    assert peak_mb < 500, (
-        f"Peak Python-heap delta {peak_mb:.1f} MB exceeds 500 MB budget"
-    )
+    assert peak_mb < 500, f"Peak Python-heap delta {peak_mb:.1f} MB exceeds 500 MB budget"

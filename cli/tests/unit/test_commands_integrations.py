@@ -1,10 +1,10 @@
 """Unit tests for ``datahub integrations`` commands (283.5.11)."""
+
 import json
+from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
-from unittest.mock import Mock
-
 from datahub_cli.main import cli
 
 
@@ -45,18 +45,41 @@ class TestIntegrationsConnectionsList:
 class TestIntegrationsConnectionsCreate:
     @pytest.mark.unit
     def test_create_success(self, runner, mock_api):
-        mock_api.post.return_value = {"id": "conn-new", "source_type": "snowflake", "status": "CONNECTED"}
-        result = runner.invoke(cli, ["integrations", "connections", "create",
-                                     "--source-type", "snowflake",
-                                     "--config", '{"host":"localhost","port":5432}'])
+        mock_api.post.return_value = {
+            "id": "conn-new",
+            "source_type": "snowflake",
+            "status": "CONNECTED",
+        }
+        result = runner.invoke(
+            cli,
+            [
+                "integrations",
+                "connections",
+                "create",
+                "--source-type",
+                "snowflake",
+                "--config",
+                '{"host":"localhost","port":5432}',
+            ],
+        )
         assert result.exit_code == 0
         parsed = json.loads(result.output)
         assert parsed["id"] == "conn-new"
 
     @pytest.mark.unit
     def test_create_invalid_json(self, runner, mock_api):
-        result = runner.invoke(cli, ["integrations", "connections", "create",
-                                     "--source-type", "snowflake", "--config", "bad-json"])
+        result = runner.invoke(
+            cli,
+            [
+                "integrations",
+                "connections",
+                "create",
+                "--source-type",
+                "snowflake",
+                "--config",
+                "bad-json",
+            ],
+        )
         assert result.exit_code != 0
         assert "Invalid JSON" in result.output
 

@@ -4,10 +4,9 @@
 Tests SQL generation, YAML generation, dbt_project.yml stub,
 nested type handling, and constraint mapping.
 """
+
 import pytest
-
 import yaml
-
 
 # ── Sample HubContracts ───────────────────────────────────────────────
 
@@ -142,9 +141,7 @@ class TestGenerateSql:
         from hub.apps.transformation.dbt_scaffolder import DbtModelScaffolder
 
         contract = _make_customers_contract()
-        sql = DbtModelScaffolder._generate_sql(
-            contract, source_name="staging", table_name="cust"
-        )
+        sql = DbtModelScaffolder._generate_sql(contract, source_name="staging", table_name="cust")
         assert "{{ source('staging', 'cust') }}" in sql
 
     @pytest.mark.unit
@@ -207,9 +204,7 @@ class TestGenerateYaml:
         yml_str = DbtModelScaffolder._generate_yaml(contract)
         data = yaml.safe_load(yml_str)
 
-        status = next(
-            c for c in data["models"][0]["columns"] if c["name"] == "status"
-        )
+        status = next(c for c in data["models"][0]["columns"] if c["name"] == "status")
         # Should have an accepted_values test
         tests = status.get("tests", [])
         accepted = [t for t in tests if isinstance(t, dict) and "accepted_values" in t]
@@ -242,9 +237,7 @@ class TestGenerateYaml:
         yml_str = DbtModelScaffolder._generate_yaml(contract)
         data = yaml.safe_load(yml_str)
 
-        email = next(
-            c for c in data["models"][0]["columns"] if c["name"] == "email"
-        )
+        email = next(c for c in data["models"][0]["columns"] if c["name"] == "email")
         assert email["description"] == "Email address"
 
     @pytest.mark.unit
@@ -256,9 +249,7 @@ class TestGenerateYaml:
         yml_str = DbtModelScaffolder._generate_yaml(contract)
         data = yaml.safe_load(yml_str)
 
-        customer_id = next(
-            c for c in data["models"][0]["columns"] if c["name"] == "customer_id"
-        )
+        customer_id = next(c for c in data["models"][0]["columns"] if c["name"] == "customer_id")
         assert "not_null" in customer_id["tests"]
 
 
@@ -288,9 +279,7 @@ class TestGenerateProjectYml:
         """Custom profile name is used."""
         from hub.apps.transformation.dbt_scaffolder import DbtModelScaffolder
 
-        yml_str = DbtModelScaffolder._generate_project_yml(
-            "proj", profile="custom_profile"
-        )
+        yml_str = DbtModelScaffolder._generate_project_yml("proj", profile="custom_profile")
         data = yaml.safe_load(yml_str)
         assert data["profile"] == "custom_profile"
 
@@ -299,9 +288,7 @@ class TestGenerateProjectYml:
         """Custom materialization is used."""
         from hub.apps.transformation.dbt_scaffolder import DbtModelScaffolder
 
-        yml_str = DbtModelScaffolder._generate_project_yml(
-            "proj", materialized="view"
-        )
+        yml_str = DbtModelScaffolder._generate_project_yml("proj", materialized="view")
         data = yaml.safe_load(yml_str)
         assert data["models"]["proj"]["+materialized"] == "view"
 
@@ -375,14 +362,16 @@ class TestConstraintEdgeCases:
 
         contract = {
             "schema": {
-                "fields": [{
-                    "name": "code",
-                    "data_type": "varchar",
-                    "is_primary_key": True,
-                    "is_unique": True,
-                    "nullable": False,
-                    "enum": ["A", "B", "C"],
-                }],
+                "fields": [
+                    {
+                        "name": "code",
+                        "data_type": "varchar",
+                        "is_primary_key": True,
+                        "is_unique": True,
+                        "nullable": False,
+                        "enum": ["A", "B", "C"],
+                    }
+                ],
                 "primary_key": ["code"],
             },
             "info": {"title": "test", "description": ""},
@@ -422,11 +411,13 @@ class TestConstraintEdgeCases:
 
         contract = {
             "schema": {
-                "fields": [{
-                    "name": "required_col",
-                    "type": "varchar",
-                    "is_not_null": True,
-                }],
+                "fields": [
+                    {
+                        "name": "required_col",
+                        "type": "varchar",
+                        "is_not_null": True,
+                    }
+                ],
                 "primary_key": [],
             },
             "info": {"title": "test", "description": ""},

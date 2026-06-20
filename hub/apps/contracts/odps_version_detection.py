@@ -10,16 +10,15 @@ Supports:
 - Pre-Bitol ODPS (Niilahti et al.): 1.x, 2.x, 3.x, 4.0, 4.1, 4.2
 - Bitol/LF ODPS: bitol-0.9.0, bitol-1.0.0
 """
+
 import re
-from typing import Dict, Any
+from typing import Any
 
 # Pattern to extract version from Bitol ODPS schema URL
-_BITOL_VERSION_PATTERN = re.compile(
-    r"bitol-io\.github\.io/open-data-product-standard/v([\d.]+)"
-)
+_BITOL_VERSION_PATTERN = re.compile(r"bitol-io\.github\.io/open-data-product-standard/v([\d.]+)")
 
 
-def detect_odps_version(contract_data: Dict[str, Any]) -> str:
+def detect_odps_version(contract_data: dict[str, Any]) -> str:
     """
     Detect ODPS version from contract data.
 
@@ -73,7 +72,7 @@ def detect_odps_version(contract_data: Dict[str, Any]) -> str:
     return "unknown"
 
 
-def _detect_bitol_odps_version(contract_data: Dict[str, Any]) -> str:
+def _detect_bitol_odps_version(contract_data: dict[str, Any]) -> str:
     """
     Detect Bitol ODPS version from contract data.
 
@@ -131,11 +130,11 @@ def _extract_version_from_schema_url(schema_url: str) -> str:
 
     patterns = [
         # opendataproducts.org/schema/v{version}
-        r'opendataproducts\.org/schema/v([\d.]+)',
+        r"opendataproducts\.org/schema/v([\d.]+)",
         # schemas.opendataproducts.io/spec/v{version}
-        r'schemas\.opendataproducts\.io/spec/v([\d.]+)',
+        r"schemas\.opendataproducts\.io/spec/v([\d.]+)",
         # Generic v{version} pattern as fallback
-        r'/v([\d.]+)',
+        r"/v([\d.]+)",
     ]
 
     for pattern in patterns:
@@ -203,11 +202,11 @@ def _normalize_version_string(version_str: str) -> str:
     version_str = version_str.strip()
 
     # Remove "v" prefix if present
-    if version_str.startswith('v') or version_str.startswith('V'):
+    if version_str.startswith("v") or version_str.startswith("V"):
         version_str = version_str[1:]
 
     # Parse version components
-    parts = version_str.split('.')
+    parts = version_str.split(".")
     if len(parts) < 2:
         # Try to parse as single number (e.g., "4" -> "4.0")
         try:
@@ -221,7 +220,7 @@ def _normalize_version_string(version_str: str) -> str:
         minor_str = parts[1]
 
         # Check if minor is a number or "x"
-        if minor_str.lower() == 'x':
+        if minor_str.lower() == "x":
             return f"{major}.x"
 
         minor = int(minor_str)
@@ -253,4 +252,3 @@ def _normalize_version_string(version_str: str) -> str:
 
     except (ValueError, IndexError):
         return "unknown"
-

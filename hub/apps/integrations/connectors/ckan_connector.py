@@ -10,33 +10,37 @@ Features:
 - Distributed tracing
 - Full CRUD operations for datasets (packages) and resources
 """
-import httpx
+
+import contextlib
 import logging
 import os
 import stat
 import time
-from typing import Dict, Any, List, Optional
-from django.utils import timezone
 from datetime import datetime
-from urllib.parse import urljoin, urlparse
+from typing import Any
+from urllib.parse import urljoin
 
+import httpx
 from django.conf import settings
+from django.utils import timezone
 
-from hub.apps.integrations.base import (
-    DataMarketplaceConnector,
-    MarketplaceType,
-    SyncDirection,
-    SyncStatus,
-    MarketplaceListing,
-    MarketplaceResource,
-    SyncResult,
-    MarketplaceAssetMapping,
-)
 from hub.apps.assets.models import AssetSourceType
-from hub.apps.core.services.base import ConnectionError as HubConnectionError, NotFoundError
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
+    CircuitBreakerError,
     get_redis_client,
+)
+from hub.apps.core.services.base import ConnectionError as HubConnectionError
+from hub.apps.core.services.base import NotFoundError
+from hub.apps.integrations.base import (
+    DataMarketplaceConnector,
+    MarketplaceAssetMapping,
+    MarketplaceListing,
+    MarketplaceResource,
+    MarketplaceType,
+    SyncDirection,
+    SyncResult,
+    SyncStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,7 +67,7 @@ class CKANConnector(DataMarketplaceConnector):
     CKAN API Documentation: https://docs.ckan.org/en/latest/api/
     """
 
-    def __init__(self, base_url: Optional[str] = None, api_key: Optional[str] = None):
+    def __init__(self, base_url: str | None = None, api_key: str | None = None):
         """
         Initialize CKAN connector.
 
@@ -73,17 +77,17 @@ class CKANConnector(DataMarketplaceConnector):
         """
         # Determine base URL
         if base_url:
-            self.base_url = base_url.rstrip('/')
+            self.base_url = base_url.rstrip("/")
         else:
-            self.base_url = getattr(settings, 'CKAN_DEFAULT_BASE_URL', '')
+            self.base_url = getattr(settings, "CKAN_DEFAULT_BASE_URL", "")
             if not self.base_url:
                 raise ValueError("base_url must be provided or CKAN_DEFAULT_BASE_URL must be set")
 
         # Store API key
-        self.api_key = api_key or getattr(settings, 'CKAN_DEFAULT_API_KEY', None)
+        self.api_key = api_key or getattr(settings, "CKAN_DEFAULT_API_KEY", None)
 
         # HTTP client configuration
-        self.timeout = getattr(settings, 'CKAN_CONNECTOR_TIMEOUT', 30)
+        self.timeout = getattr(settings, "CKAN_CONNECTOR_TIMEOUT", 30)
         self.max_retries = 2
         self.backoff_factor = 1
 
@@ -92,7 +96,7 @@ class CKANConnector(DataMarketplaceConnector):
             base_url=self.base_url,
             timeout=self.timeout,
             headers=self._get_default_headers(),
-            follow_redirects=True  # Follow redirects for instances that redirect API calls
+            follow_redirects=True,  # Follow redirects for instances that redirect API calls
         )
 
         # Initialize circuit breaker
@@ -101,30 +105,30 @@ class CKANConnector(DataMarketplaceConnector):
             failure_threshold=5,
             timeout_seconds=60,
             success_threshold=2,
-            redis_client=get_redis_client()
+            redis_client=get_redis_client(),
         )
 
         # Track authentication state
         self._authenticated = False
 
-    def _get_default_headers(self) -> Dict[str, str]:
+    def _get_default_headers(self) -> dict[str, str]:
         """Get default HTTP headers including API key if available."""
         headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
+            "Content-Type": "application/json",
+            "Accept": "application/json",
         }
         if self.api_key:
             # Check if API key looks like a JWT token (starts with eyJ)
             # If so, use Bearer authentication; otherwise use as CKAN API key
-            if self.api_key.startswith('eyJ'):
+            if self.api_key.startswith("eyJ"):
                 # JWT token - use Bearer authentication
-                headers['Authorization'] = f'Bearer {self.api_key}'
+                headers["Authorization"] = f"Bearer {self.api_key}"
             else:
                 # Standard CKAN API key
-                headers['Authorization'] = self.api_key
+                headers["Authorization"] = self.api_key
             # CKAN also supports X-CKAN-API-Key header (for standard API keys)
             # For JWT tokens, we still set it but some instances may ignore it
-            headers['X-CKAN-API-Key'] = self.api_key
+            headers["X-CKAN-API-Key"] = self.api_key
         return headers
 
     def _request_with_retry(self, method: str, endpoint: str, **kwargs) -> httpx.Response:
@@ -140,24 +144,27 @@ class CKANConnector(DataMarketplaceConnector):
             httpx.Response object
 
         Raises:
-            httpx.HTTPStatusError: For HTTP errors
-            httpx.RequestError: For network errors
-            ConnectionError: If unable to connect after retries
+            httpx.HTTPStatusError: For HTTP errors (4xx client errors, 5xx after
+                retries exhausted). Callers should catch this for status-specific
+                handling (e.g. 404 → NotFoundError).
+            HubConnectionError: For network errors after all retries exhausted.
+            CircuitBreakerError: When the circuit breaker is OPEN and no fallback
+                is configured.
         """
         # Add trace headers for distributed tracing
         from hub.apps.api.middleware.trace_propagation import get_trace_headers
 
         trace_headers = get_trace_headers()
         if trace_headers:
-            if 'headers' in kwargs:
-                kwargs['headers'].update(trace_headers)
+            if "headers" in kwargs:
+                kwargs["headers"].update(trace_headers)
             else:
-                kwargs['headers'] = trace_headers
+                kwargs["headers"] = trace_headers
 
         # Ensure headers are set
-        if 'headers' not in kwargs:
-            kwargs['headers'] = {}
-        kwargs['headers'].update(self._get_default_headers())
+        if "headers" not in kwargs:
+            kwargs["headers"] = {}
+        kwargs["headers"].update(self._get_default_headers())
 
         def execute_request() -> httpx.Response:
             """Execute HTTP request."""
@@ -167,35 +174,46 @@ class CKANConnector(DataMarketplaceConnector):
                     response.raise_for_status()
                     return response
                 except httpx.HTTPStatusError as e:
-                    # Retry on 5xx errors
+                    # Retry on 5xx errors (server errors)
                     if e.response.status_code >= 500 and attempt < self.max_retries:
-                        delay = self.backoff_factor * (2 ** attempt)
+                        delay = self.backoff_factor * (2**attempt)
                         logger.warning(
                             f"CKAN API returned {e.response.status_code}. "
                             f"Retrying in {delay}s... (attempt {attempt + 1}/{self.max_retries + 1})"
                         )
                         time.sleep(delay)
                         continue
-                    # Don't retry on 4xx errors (client errors)
+                    # Don't retry on 4xx errors (client errors) or 5xx on last attempt.
+                    # Let HTTPStatusError propagate so callers can handle specific
+                    # status codes (e.g. 404 → NotFoundError).
                     raise
                 except httpx.RequestError as e:
                     # Retry on network errors
                     if attempt < self.max_retries:
-                        delay = self.backoff_factor * (2 ** attempt)
+                        delay = self.backoff_factor * (2**attempt)
                         logger.warning(
                             f"Network error connecting to CKAN: {e}. "
                             f"Retrying in {delay}s... (attempt {attempt + 1}/{self.max_retries + 1})"
                         )
                         time.sleep(delay)
                         continue
-                    raise
-            raise HubConnectionError("Max retries exceeded for CKAN API request.")
+                    # All retries exhausted.
+                    # Previously this raised raw RequestError; now wrap in
+                    # HubConnectionError so callers get a consistent error type
+                    # instead of a low-level httpx exception.
+                    raise HubConnectionError(
+                        f"CKAN API unreachable after {self.max_retries + 1} attempts: {e}"
+                    ) from e
 
-        # Execute with circuit breaker protection
+        # Execute with circuit breaker protection.
+        # execute_request already handles httpx.HTTPStatusError, httpx.RequestError,
+        # and raises HubConnectionError on max retries. The circuit breaker propagates
+        # those exceptions. The only NEW exception type it can raise is CircuitBreakerError
+        # when the circuit is OPEN and no fallback is configured.
         try:
             return self._circuit_breaker.call(execute_request)
-        except Exception as e:
-            logger.warning(f"CKAN connector request failed: {e}")
+        except CircuitBreakerError as e:
+            logger.warning(f"CKAN connector circuit breaker prevented request: {e}")
             raise
 
     @property
@@ -204,7 +222,7 @@ class CKANConnector(DataMarketplaceConnector):
         return MarketplaceType.CKAN_INSTANCE
 
     @property
-    def supported_sync_directions(self) -> List[SyncDirection]:
+    def supported_sync_directions(self) -> list[SyncDirection]:
         """
         Get the list of sync directions supported by this connector.
 
@@ -213,7 +231,7 @@ class CKANConnector(DataMarketplaceConnector):
         """
         return [SyncDirection.PULL]
 
-    def authenticate(self, credentials: Dict[str, Any]) -> bool:
+    def authenticate(self, credentials: dict[str, Any]) -> bool:
         """
         Authenticate with the CKAN instance using provided credentials.
 
@@ -232,7 +250,7 @@ class CKANConnector(DataMarketplaceConnector):
         if not credentials:
             raise ValueError("Credentials dictionary is required")
 
-        api_key = credentials.get('api_key')
+        api_key = credentials.get("api_key")
         if not api_key:
             raise ValueError("api_key is required in credentials")
 
@@ -240,21 +258,19 @@ class CKANConnector(DataMarketplaceConnector):
         self.api_key = api_key
 
         # Update base URL if provided
-        base_url = credentials.get('base_url')
+        base_url = credentials.get("base_url")
         if base_url:
-            self.base_url = base_url.rstrip('/')
+            self.base_url = base_url.rstrip("/")
             # Recreate client with new base URL
             self.client = httpx.Client(
-                base_url=self.base_url,
-                timeout=self.timeout,
-                headers=self._get_default_headers()
+                base_url=self.base_url, timeout=self.timeout, headers=self._get_default_headers()
             )
 
         # Test authentication by calling status_show action
         try:
-            response = self._request_with_retry('GET', '/api/3/action/status_show')
+            response = self._request_with_retry("GET", "/api/3/action/status_show")
             data = response.json()
-            if data.get('success') and 'site_title' in data.get('result', {}):
+            if data.get("success") and "site_title" in data.get("result", {}):
                 self._authenticated = True
                 logger.info(f"Successfully authenticated with CKAN instance at {self.base_url}")
                 return True
@@ -262,7 +278,7 @@ class CKANConnector(DataMarketplaceConnector):
                 self._authenticated = False
                 logger.warning("CKAN authentication failed: Invalid response format")
                 return False
-        except Exception as e:
+        except (HubConnectionError, ValueError, CircuitBreakerError, httpx.HTTPStatusError) as e:
             self._authenticated = False
             logger.warning(f"CKAN authentication failed: {e}")
             raise HubConnectionError(f"Unable to authenticate with CKAN instance: {e}") from e
@@ -284,24 +300,26 @@ class CKANConnector(DataMarketplaceConnector):
         try:
             # Use package_search with rows=0 as it's more reliable across CKAN instances
             # Some instances redirect status_show to signin pages
-            response = self._request_with_retry('GET', '/api/3/action/package_search', params={'rows': 0})
+            response = self._request_with_retry(
+                "GET", "/api/3/action/package_search", params={"rows": 0}
+            )
             data = response.json()
-            if data.get('success') is not None:  # Accept any response with 'success' field
+            if data.get("success") is not None:  # Accept any response with 'success' field
                 logger.info(f"Connection test successful for CKAN instance at {self.base_url}")
                 return True
             else:
                 logger.warning("Connection test failed: Invalid response format")
                 return False
-        except Exception as e:
+        except (HubConnectionError, ValueError, CircuitBreakerError, httpx.HTTPStatusError) as e:
             logger.warning(f"Connection test failed for CKAN instance: {e}")
             raise HubConnectionError(f"Unable to connect to CKAN instance: {e}") from e
 
     def list_listings(
         self,
-        filters: Optional[Dict[str, Any]] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None
-    ) -> List[MarketplaceListing]:
+        filters: dict[str, Any] | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[MarketplaceListing]:
         """
         List available datasets (packages) from the CKAN instance.
 
@@ -327,15 +345,15 @@ class CKANConnector(DataMarketplaceConnector):
 
         # Use package_list for simple listing
         try:
-            response = self._request_with_retry('GET', '/api/3/action/package_list')
+            response = self._request_with_retry("GET", "/api/3/action/package_list")
             data = response.json()
 
-            if not data.get('success'):
+            if not data.get("success"):
                 raise ValueError(f"CKAN API error: {data.get('error', 'Unknown error')}")
 
-            package_ids = data.get('result', [])
+            package_ids = data.get("result", [])
             if isinstance(package_ids, dict):
-                package_ids = package_ids.get('results', []) or []
+                package_ids = package_ids.get("results", []) or []
             if not isinstance(package_ids, list):
                 package_ids = []
             listings = []
@@ -346,7 +364,7 @@ class CKANConnector(DataMarketplaceConnector):
                     try:
                         listing = self._package_to_listing(package_data)
                         listings.append(listing)
-                    except Exception as e:
+                    except (KeyError, ValueError, TypeError, AttributeError) as e:
                         logger.warning(f"Failed to convert package to listing: {e}")
                         continue
                 return listings
@@ -354,12 +372,12 @@ class CKANConnector(DataMarketplaceConnector):
             # List of package id strings: fetch each via package_show
             batch_size = 10
             for i in range(0, len(package_ids), batch_size):
-                batch = package_ids[i:i + batch_size]
+                batch = package_ids[i : i + batch_size]
                 for package_id in batch:
                     try:
                         listing = self.get_listing(package_id)
                         listings.append(listing)
-                    except Exception as e:
+                    except (HubConnectionError, NotFoundError) as e:
                         logger.warning(f"Failed to fetch package {package_id}: {e}")
                         continue
 
@@ -374,42 +392,44 @@ class CKANConnector(DataMarketplaceConnector):
 
     def _list_listings_via_search(
         self,
-        filters: Optional[Dict[str, Any]] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None
-    ) -> List[MarketplaceListing]:
+        filters: dict[str, Any] | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[MarketplaceListing]:
         """List listings using package_search API (supports pagination and filters)."""
         if limit is not None and limit == 0:
             return []
 
-        params: Dict[str, Any] = {
-            'rows': limit or 100,  # Default to 100 if not specified
-            'start': offset or 0,
+        params: dict[str, Any] = {
+            "rows": limit or 100,  # Default to 100 if not specified
+            "start": offset or 0,
         }
 
         if filters:
-            if 'q' in filters:
-                params['q'] = filters['q']
+            if "q" in filters:
+                params["q"] = filters["q"]
 
             # Build fq (filter query) parameter
             fq_parts = []
-            if 'fq' in filters:
-                fq_parts.append(filters['fq'])
-            if 'organization' in filters:
+            if "fq" in filters:
+                fq_parts.append(filters["fq"])
+            if "organization" in filters:
                 fq_parts.append(f"organization:{filters['organization']}")
 
             if fq_parts:
                 # Join multiple filter queries with AND
-                params['fq'] = ' AND '.join(fq_parts)  # type: ignore[assignment]  # str → dict value; mypy narrows dict key type
+                params["fq"] = " AND ".join(fq_parts)  # type: ignore[assignment]  # str → dict value; mypy narrows dict key type
 
         try:
-            response = self._request_with_retry('GET', '/api/3/action/package_search', params=params)
+            response = self._request_with_retry(
+                "GET", "/api/3/action/package_search", params=params
+            )
             data = response.json()
 
-            if not data.get('success'):
+            if not data.get("success"):
                 raise ValueError(f"CKAN API error: {data.get('error', 'Unknown error')}")
 
-            results = data.get('result', {}).get('results', [])
+            results = data.get("result", {}).get("results", [])
             listings = []
 
             for package_data in results:
@@ -450,19 +470,17 @@ class CKANConnector(DataMarketplaceConnector):
             raise ValueError("listing id must be a string")
         try:
             response = self._request_with_retry(
-                'GET',
-                '/api/3/action/package_show',
-                params={'id': listing_id}
+                "GET", "/api/3/action/package_show", params={"id": listing_id}
             )
             data = response.json()
 
-            if not data.get('success'):
-                error_msg = data.get('error', {}).get('message', 'Unknown error')
-                if 'Not found' in error_msg or 'not found' in error_msg.lower():
+            if not data.get("success"):
+                error_msg = data.get("error", {}).get("message", "Unknown error")
+                if "Not found" in error_msg or "not found" in error_msg.lower():
                     raise NotFoundError(f"Package '{listing_id}' not found in CKAN instance")
                 raise ValueError(f"CKAN API error: {error_msg}")
 
-            package_data = data.get('result', {})
+            package_data = data.get("result", {})
             return self._package_to_listing(package_data)
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
@@ -472,41 +490,40 @@ class CKANConnector(DataMarketplaceConnector):
             # Handle connection errors (ConnectError, TimeoutException, etc.)
             raise HubConnectionError(f"Unable to connect to CKAN instance: {e}") from e
 
-    def _package_to_listing(self, package_data: Dict[str, Any]) -> MarketplaceListing:
+    def _package_to_listing(self, package_data: dict[str, Any]) -> MarketplaceListing:
         """Convert CKAN package data to MarketplaceListing."""
         # Prefer 'name' (slug, e.g. annakarenina) over 'id' (UUID) for marketplace_id.
         # The name is the stable, user-facing identifier used in URLs and lookups.
-        package_id = package_data.get('name') or package_data.get('id', '')
-        title = package_data.get('title', package_data.get('name', 'Untitled'))
-        description = package_data.get('notes') or package_data.get('description', '')
+        package_id = package_data.get("name") or package_data.get("id", "")
+        title = package_data.get("title", package_data.get("name", "Untitled"))
+        description = package_data.get("notes") or package_data.get("description", "")
 
         # Extract tags
-        tags = [tag.get('name', tag) if isinstance(tag, dict) else tag for tag in package_data.get('tags', [])]
+        tags = [
+            tag.get("name", tag) if isinstance(tag, dict) else tag
+            for tag in package_data.get("tags", [])
+        ]
 
         # Extract organization
-        organization = package_data.get('organization', {})
-        category = organization.get('name', '') if organization else None
+        organization = package_data.get("organization", {})
+        category = organization.get("name", "") if organization else None
 
         # Extract timestamps (only parse string values)
         created_at = None
         updated_at = None
-        metadata_created = package_data.get('metadata_created')
+        metadata_created = package_data.get("metadata_created")
         if metadata_created and isinstance(metadata_created, str):
-            try:
-                created_at = datetime.fromisoformat(metadata_created.replace('Z', '+00:00'))
-            except (ValueError, AttributeError):
-                pass
-        metadata_modified = package_data.get('metadata_modified')
+            with contextlib.suppress(ValueError, AttributeError):
+                created_at = datetime.fromisoformat(metadata_created.replace("Z", "+00:00"))
+        metadata_modified = package_data.get("metadata_modified")
         if metadata_modified and isinstance(metadata_modified, str):
-            try:
-                updated_at = datetime.fromisoformat(metadata_modified.replace('Z', '+00:00'))
-            except (ValueError, AttributeError):
-                pass
+            with contextlib.suppress(ValueError, AttributeError):
+                updated_at = datetime.fromisoformat(metadata_modified.replace("Z", "+00:00"))
 
         # Build URL
         url = None
         if package_id:
-            url = urljoin(self.base_url, f'/dataset/{package_id}')
+            url = urljoin(self.base_url, f"/dataset/{package_id}")
 
         return MarketplaceListing(
             marketplace_id=package_id,
@@ -516,20 +533,20 @@ class CKANConnector(DataMarketplaceConnector):
             category=category,
             tags=tags,
             metadata={
-                'ckan_package': package_data,
-                'organization': organization,
-                'license_id': package_data.get('license_id'),
-                'license_title': package_data.get('license_title'),
-                'author': package_data.get('author'),
-                'maintainer': package_data.get('maintainer'),
-                'version': package_data.get('version'),
+                "ckan_package": package_data,
+                "organization": organization,
+                "license_id": package_data.get("license_id"),
+                "license_title": package_data.get("license_title"),
+                "author": package_data.get("author"),
+                "maintainer": package_data.get("maintainer"),
+                "version": package_data.get("version"),
             },
             created_at=created_at,
             updated_at=updated_at,
-            url=url
+            url=url,
         )
 
-    def list_resources(self, listing_id: str) -> List[MarketplaceResource]:
+    def list_resources(self, listing_id: str) -> list[MarketplaceResource]:
         """
         List resources associated with a CKAN package.
 
@@ -550,22 +567,20 @@ class CKANConnector(DataMarketplaceConnector):
             raise
 
         # Extract resources from package metadata
-        package_data = package.metadata.get('ckan_package', {})
-        resources_data = package_data.get('resources', [])
+        package_data = package.metadata.get("ckan_package", {})
+        resources_data = package_data.get("resources", [])
 
         # If resources not in package data, fetch them directly via package_show
         if not resources_data:
             try:
                 response = self._request_with_retry(
-                    'GET',
-                    '/api/3/action/package_show',
-                    params={'id': listing_id}
+                    "GET", "/api/3/action/package_show", params={"id": listing_id}
                 )
                 data = response.json()
-                if data.get('success'):
-                    package_data = data.get('result', {})
-                    resources_data = package_data.get('resources', [])
-            except Exception as e:
+                if data.get("success"):
+                    package_data = data.get("result", {})
+                    resources_data = package_data.get("resources", [])
+            except (HubConnectionError, ValueError) as e:
                 logger.warning(f"Failed to fetch resources directly for package {listing_id}: {e}")
 
         resources = []
@@ -573,37 +588,41 @@ class CKANConnector(DataMarketplaceConnector):
             try:
                 resource = self._ckan_resource_to_marketplace_resource(resource_data)
                 resources.append(resource)
-            except Exception as e:
+            except (KeyError, ValueError, TypeError, AttributeError) as e:
                 logger.warning(f"Failed to convert CKAN resource to MarketplaceResource: {e}")
                 continue
 
         return resources
 
-    def _ckan_resource_to_marketplace_resource(self, resource_data: Dict[str, Any]) -> MarketplaceResource:
+    def _ckan_resource_to_marketplace_resource(
+        self, resource_data: dict[str, Any]
+    ) -> MarketplaceResource:
         """Convert CKAN resource data to MarketplaceResource."""
-        resource_id = resource_data.get('id', '')
-        name = resource_data.get('name', resource_data.get('description', 'Unnamed Resource'))
-        description = resource_data.get('description', '')
-        url = resource_data.get('url', '')
-        format_type = resource_data.get('format', '').upper() if resource_data.get('format') else None
-        size_bytes = resource_data.get('size')
+        resource_id = resource_data.get("id", "")
+        name = resource_data.get("name", resource_data.get("description", "Unnamed Resource"))
+        description = resource_data.get("description", "")
+        url = resource_data.get("url", "")
+        format_type = (
+            resource_data.get("format", "").upper() if resource_data.get("format") else None
+        )
+        size_bytes = resource_data.get("size")
 
         return MarketplaceResource(
             resource_id=resource_id,
-            resource_type='FILE' if url else 'API',
+            resource_type="FILE" if url else "API",
             name=name,
             description=description,
             url=url,
             format=format_type,
             size_bytes=size_bytes,
             metadata={
-                'ckan_resource': resource_data,
-                'mimetype': resource_data.get('mimetype'),
-                'mimetype_inner': resource_data.get('mimetype_inner'),
-                'hash': resource_data.get('hash'),
-                'created': resource_data.get('created'),
-                'last_modified': resource_data.get('last_modified'),
-            }
+                "ckan_resource": resource_data,
+                "mimetype": resource_data.get("mimetype"),
+                "mimetype_inner": resource_data.get("mimetype_inner"),
+                "hash": resource_data.get("hash"),
+                "created": resource_data.get("created"),
+                "last_modified": resource_data.get("last_modified"),
+            },
         )
 
     def create_listing(self, listing: MarketplaceListing) -> MarketplaceListing:
@@ -629,11 +648,7 @@ class CKANConnector(DataMarketplaceConnector):
             "Use sync_pull() to harvest data from CKAN instances."
         )
 
-    def update_listing(
-        self,
-        listing_id: str,
-        listing: MarketplaceListing
-    ) -> MarketplaceListing:
+    def update_listing(self, listing_id: str, listing: MarketplaceListing) -> MarketplaceListing:
         """
         Update an existing dataset (package) in the CKAN instance.
 
@@ -657,51 +672,51 @@ class CKANConnector(DataMarketplaceConnector):
             "Use sync_pull() to harvest data from CKAN instances."
         )
 
-    def _listing_to_ckan_package(self, listing: MarketplaceListing, create: bool = False) -> Dict[str, Any]:
+    def _listing_to_ckan_package(
+        self, listing: MarketplaceListing, create: bool = False
+    ) -> dict[str, Any]:
         """Convert MarketplaceListing to CKAN package format."""
-        package_data: Dict[str, Any] = {
-            'name': listing.marketplace_id or self._generate_package_name(listing.title),
-            'title': listing.title,
+        package_data: dict[str, Any] = {
+            "name": listing.marketplace_id or self._generate_package_name(listing.title),
+            "title": listing.title,
         }
 
         if listing.description:
-            package_data['notes'] = listing.description
+            package_data["notes"] = listing.description
 
         if listing.tags:
             # CKAN API expects tags as list of dicts with 'name' key
-            package_data['tags'] = [{'name': str(tag)} for tag in listing.tags]  # type: ignore[assignment]  # list-of-dict → JSON; mypy narrows dict key type
+            package_data["tags"] = [{"name": str(tag)} for tag in listing.tags]  # type: ignore[assignment]  # list-of-dict → JSON; mypy narrows dict key type
 
         if listing.category:
-            package_data['owner_org'] = listing.category
+            package_data["owner_org"] = listing.category
 
         # Add metadata
         if listing.metadata:
-            if 'license_id' in listing.metadata:
-                package_data['license_id'] = listing.metadata['license_id']
-            if 'author' in listing.metadata:
-                package_data['author'] = listing.metadata['author']
-            if 'maintainer' in listing.metadata:
-                package_data['maintainer'] = listing.metadata['maintainer']
-            if 'version' in listing.metadata:
-                package_data['version'] = listing.metadata['version']
+            if "license_id" in listing.metadata:
+                package_data["license_id"] = listing.metadata["license_id"]
+            if "author" in listing.metadata:
+                package_data["author"] = listing.metadata["author"]
+            if "maintainer" in listing.metadata:
+                package_data["maintainer"] = listing.metadata["maintainer"]
+            if "version" in listing.metadata:
+                package_data["version"] = listing.metadata["version"]
 
         return package_data
 
     def _generate_package_name(self, title: str) -> str:
         """Generate a valid CKAN package name from title."""
         import re
+
         # Convert to lowercase, replace spaces with hyphens, remove special chars
-        name = re.sub(r'[^a-z0-9-]', '', title.lower().replace(' ', '-'))
+        name = re.sub(r"[^a-z0-9-]", "", title.lower().replace(" ", "-"))
         # Ensure it starts with a letter
         if name and not name[0].isalpha():
-            name = 'pkg-' + name
+            name = "pkg-" + name
         return name[:100]  # CKAN name limit
 
     def _extract_multilingual_field(
-        self,
-        package_data: Dict[str, Any],
-        field_names: List[str],
-        fallback_value: str
+        self, package_data: dict[str, Any], field_names: list[str], fallback_value: str
     ) -> str:
         """
         Extract multilingual field from CKAN package data.
@@ -737,14 +752,13 @@ class CKANConnector(DataMarketplaceConnector):
             if isinstance(value, dict):
                 # Check if keys look like language codes (2-letter lowercase)
                 is_language_keyed = all(
-                    isinstance(k, str) and len(k) == 2 and k.islower()
-                    for k in value.keys()
+                    isinstance(k, str) and len(k) == 2 and k.islower() for k in value.keys()
                 )
 
                 if is_language_keyed:
                     # Prefer English, fallback to first available
-                    if 'en' in value:
-                        result = value['en']
+                    if "en" in value:
+                        result = value["en"]
                         if isinstance(result, str) and result.strip():
                             return result.strip()
                     # Fallback to first available language
@@ -764,7 +778,7 @@ class CKANConnector(DataMarketplaceConnector):
                 first_item = value[0]
                 if isinstance(first_item, dict):
                     # Look for common language fields
-                    for lang_code in ['en', 'name', 'title', 'value']:
+                    for lang_code in ["en", "name", "title", "value"]:
                         if lang_code in first_item:
                             result = first_item[lang_code]
                             if isinstance(result, str) and result.strip():
@@ -773,10 +787,8 @@ class CKANConnector(DataMarketplaceConnector):
         return fallback_value
 
     def _extract_odps_metadata(
-        self,
-        listing: MarketplaceListing,
-        ckan_package: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, listing: MarketplaceListing, ckan_package: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """
         Extract ODPS contract metadata from CKAN package.
 
@@ -793,52 +805,64 @@ class CKANConnector(DataMarketplaceConnector):
         Returns:
             Dictionary with ODPS metadata or None if no ODPS data available
         """
-        odps_metadata: Dict[str, Any] = {}
+        odps_metadata: dict[str, Any] = {}
 
         # Extract basic product details
-        product_details: Dict[str, Any] = {
-            'product_name': listing.title,
-            'product_description': listing.description or '',
+        product_details: dict[str, Any] = {
+            "product_name": listing.title,
+            "product_description": listing.description or "",
         }
 
         # Extract version if available
-        version = ckan_package.get('version') or listing.metadata.get('version') if listing.metadata else None
+        version = (
+            ckan_package.get("version") or listing.metadata.get("version")
+            if listing.metadata
+            else None
+        )
         if version:
-            product_details['product_version'] = str(version)
+            product_details["product_version"] = str(version)
 
         # Extract categories
         categories = []
         if listing.category:
             categories.append(listing.category)
-        if ckan_package.get('organization'):
-            org = ckan_package['organization']
+        if ckan_package.get("organization"):
+            org = ckan_package["organization"]
             if isinstance(org, dict):
-                org_name = org.get('name') or org.get('title')
+                org_name = org.get("name") or org.get("title")
                 if org_name and org_name not in categories:
                     categories.append(org_name)
         if categories:
-            product_details['categories'] = categories
+            product_details["categories"] = categories
 
         # Extract tags
         tags = listing.tags or []
         if tags:
-            product_details['tags'] = tags
+            product_details["tags"] = tags
 
         # Extract license information
-        license_id = ckan_package.get('license_id') or (listing.metadata.get('license_id') if listing.metadata else None)
-        license_title = ckan_package.get('license_title') or (listing.metadata.get('license_title') if listing.metadata else None)
+        license_id = ckan_package.get("license_id") or (
+            listing.metadata.get("license_id") if listing.metadata else None
+        )
+        license_title = ckan_package.get("license_title") or (
+            listing.metadata.get("license_title") if listing.metadata else None
+        )
         if license_id:
-            product_details['license_id'] = license_id
+            product_details["license_id"] = license_id
         if license_title:
-            product_details['license_title'] = license_title
+            product_details["license_title"] = license_title
 
         # Extract author and maintainer
-        author = ckan_package.get('author') or (listing.metadata.get('author') if listing.metadata else None)
-        maintainer = ckan_package.get('maintainer') or (listing.metadata.get('maintainer') if listing.metadata else None)
+        author = ckan_package.get("author") or (
+            listing.metadata.get("author") if listing.metadata else None
+        )
+        maintainer = ckan_package.get("maintainer") or (
+            listing.metadata.get("maintainer") if listing.metadata else None
+        )
         if author:
-            product_details['author'] = author
+            product_details["author"] = author
         if maintainer:
-            product_details['maintainer'] = maintainer
+            product_details["maintainer"] = maintainer
 
         # Track if we have any ODPS-specific data
         # ODPS-specific fields: pricing_plans, access_methods, payment_gateways,
@@ -850,21 +874,27 @@ class CKANConnector(DataMarketplaceConnector):
         # CKAN doesn't natively support pricing, but it may be stored in custom metadata
         if listing.metadata:
             # Check for ODPS pricing plans in metadata
-            pricing_plans = listing.metadata.get('pricing_plans') or listing.metadata.get('x_odps', {}).get('pricing_plans')
+            pricing_plans = listing.metadata.get("pricing_plans") or listing.metadata.get(
+                "x_odps", {}
+            ).get("pricing_plans")
             if pricing_plans and isinstance(pricing_plans, list):
-                odps_metadata['pricing_plans'] = pricing_plans
+                odps_metadata["pricing_plans"] = pricing_plans
                 has_odps_data = True
 
             # Extract access methods
-            access_methods = listing.metadata.get('access_methods') or listing.metadata.get('x_odps', {}).get('access_methods')
+            access_methods = listing.metadata.get("access_methods") or listing.metadata.get(
+                "x_odps", {}
+            ).get("access_methods")
             if access_methods and isinstance(access_methods, dict):
-                odps_metadata['access_methods'] = access_methods
+                odps_metadata["access_methods"] = access_methods
                 has_odps_data = True
 
             # Extract payment gateways
-            payment_gateways = listing.metadata.get('payment_gateways') or listing.metadata.get('x_odps', {}).get('payment_gateways')
+            payment_gateways = listing.metadata.get("payment_gateways") or listing.metadata.get(
+                "x_odps", {}
+            ).get("payment_gateways")
             if payment_gateways and isinstance(payment_gateways, dict):
-                odps_metadata['payment_gateways'] = payment_gateways
+                odps_metadata["payment_gateways"] = payment_gateways
                 has_odps_data = True
 
         # Check for ODPS-specific product details fields
@@ -874,15 +904,12 @@ class CKANConnector(DataMarketplaceConnector):
         # Only return ODPS metadata if we have meaningful ODPS-specific data
         if has_odps_data:
             # Include product_details with all available fields
-            odps_metadata['product_details'] = product_details
+            odps_metadata["product_details"] = product_details
             return odps_metadata
 
         return None
 
-    def _extract_odcs_metadata(
-        self,
-        ckan_package: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    def _extract_odcs_metadata(self, ckan_package: dict[str, Any]) -> dict[str, Any] | None:
         """
         Extract ODCS contract metadata from CKAN package.
 
@@ -900,63 +927,66 @@ class CKANConnector(DataMarketplaceConnector):
         Returns:
             Dictionary with ODCS metadata or None if no ODCS data available
         """
-        odcs_metadata: Dict[str, Any] = {}
+        odcs_metadata: dict[str, Any] = {}
 
         # Check for ODCS schema in custom fields
         # CKAN packages may have schema information in extras or custom fields
-        extras = ckan_package.get('extras', [])
+        extras = ckan_package.get("extras", [])
         if isinstance(extras, list):
             for extra in extras:
                 if isinstance(extra, dict):
-                    key = extra.get('key', '')
-                    value = extra.get('value', '')
+                    key = extra.get("key", "")
+                    value = extra.get("value", "")
 
                     # Look for schema-related fields
-                    if key in ['schema', 'odcs_schema', 'data_schema']:
+                    if key in ["schema", "odcs_schema", "data_schema"]:
                         try:
                             import json
+
                             if isinstance(value, str):
                                 schema_data = json.loads(value)
                             else:
                                 schema_data = value
                             if isinstance(schema_data, dict):
-                                odcs_metadata['schema'] = schema_data
+                                odcs_metadata["schema"] = schema_data
                         except (json.JSONDecodeError, TypeError):
                             pass
 
                     # Look for quality rules
-                    if key in ['quality', 'odcs_quality', 'quality_rules']:
+                    if key in ["quality", "odcs_quality", "quality_rules"]:
                         try:
                             import json
+
                             if isinstance(value, str):
                                 quality_data = json.loads(value)
                             else:
                                 quality_data = value
                             if isinstance(quality_data, dict):
-                                odcs_metadata['quality'] = quality_data
+                                odcs_metadata["quality"] = quality_data
                         except (json.JSONDecodeError, TypeError):
                             pass
 
                     # Look for SLA information
-                    if key in ['sla', 'odcs_sla', 'service_level']:
+                    if key in ["sla", "odcs_sla", "service_level"]:
                         try:
                             import json
+
                             if isinstance(value, str):
                                 sla_data = json.loads(value)
                             else:
                                 sla_data = value
                             if isinstance(sla_data, dict):
-                                odcs_metadata['sla'] = sla_data
+                                odcs_metadata["sla"] = sla_data
                         except (json.JSONDecodeError, TypeError):
                             pass
 
         # Check for ODCS data in top-level custom fields
-        for key in ['odcs_schema', 'odcs_quality', 'odcs_sla', 'schema', 'quality', 'sla']:
+        for key in ["odcs_schema", "odcs_quality", "odcs_sla", "schema", "quality", "sla"]:
             if key in ckan_package:
                 value = ckan_package[key]
                 if isinstance(value, dict):
-                    if key.startswith('odcs_'):
-                        odcs_key = key.replace('odcs_', '')
+                    if key.startswith("odcs_"):
+                        odcs_key = key.replace("odcs_", "")
                         odcs_metadata[odcs_key] = value
                     else:
                         odcs_metadata[key] = value
@@ -968,9 +998,7 @@ class CKANConnector(DataMarketplaceConnector):
         return None
 
     def publish_resource(
-        self,
-        listing_id: str,
-        resource: MarketplaceResource
+        self, listing_id: str, resource: MarketplaceResource
     ) -> MarketplaceResource:
         """
         Publish a resource to a CKAN package.
@@ -1015,20 +1043,18 @@ class CKANConnector(DataMarketplaceConnector):
         # Get resource details
         try:
             response = self._request_with_retry(
-                'GET',
-                '/api/3/action/resource_show',
-                params={'id': resource_id}
+                "GET", "/api/3/action/resource_show", params={"id": resource_id}
             )
             data = response.json()
 
-            if not data.get('success'):
-                error_msg = data.get('error', {}).get('message', 'Unknown error')
-                if 'not found' in error_msg.lower():
+            if not data.get("success"):
+                error_msg = data.get("error", {}).get("message", "Unknown error")
+                if "not found" in error_msg.lower():
                     raise NotFoundError(f"Resource '{resource_id}' not found")
                 raise ValueError(f"CKAN API error: {error_msg}")
 
-            resource_data = data.get('result', {})
-            resource_url = resource_data.get('url')
+            resource_data = data.get("result", {})
+            resource_url = resource_data.get("url")
 
             if not resource_url:
                 raise ValueError("Resource has no URL")
@@ -1037,7 +1063,9 @@ class CKANConnector(DataMarketplaceConnector):
             if e.response.status_code == 404:
                 raise NotFoundError(f"Resource '{resource_id}' not found") from e
             if e.response.status_code == 403:
-                raise PermissionError(f"Permission denied: Unable to access resource '{resource_id}'") from e
+                raise PermissionError(
+                    f"Permission denied: Unable to access resource '{resource_id}'"
+                ) from e
             raise HubConnectionError(f"CKAN API error: {e}") from e
         except httpx.RequestError as e:
             # Handle connection errors (ConnectError, TimeoutException, etc.)
@@ -1056,7 +1084,7 @@ class CKANConnector(DataMarketplaceConnector):
 
             # Check if destination is a directory (invalid)
             if os.path.exists(destination_path) and os.path.isdir(destination_path):
-                raise IOError(f"Destination path is a directory, not a file: {destination_path}")
+                raise OSError(f"Destination path is a directory, not a file: {destination_path}")
 
             # If destination file exists and has no write bits (e.g. chmod 0o444), fail before
             # downloading. Use mode bits so we detect read-only even when process is root.
@@ -1079,14 +1107,14 @@ class CKANConnector(DataMarketplaceConnector):
                         resource_url,
                         timeout=self.timeout,
                         follow_redirects=True,
-                        headers=self._get_default_headers()  # Include API key if available
+                        headers=self._get_default_headers(),  # Include API key if available
                     )
                     download_response.raise_for_status()
                     break
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code >= 500 and attempt < max_download_retries:
                         # Retry on server errors
-                        delay = self.backoff_factor * (2 ** attempt)
+                        delay = self.backoff_factor * (2**attempt)
                         logger.warning(
                             f"Download failed with {e.response.status_code}. "
                             f"Retrying in {delay}s... (attempt {attempt + 1}/{max_download_retries + 1})"
@@ -1094,13 +1122,17 @@ class CKANConnector(DataMarketplaceConnector):
                         time.sleep(delay)
                         continue
                     elif e.response.status_code == 403:
-                        raise PermissionError(f"Permission denied: Unable to download resource '{resource_id}'") from e
+                        raise PermissionError(
+                            f"Permission denied: Unable to download resource '{resource_id}'"
+                        ) from e
                     elif e.response.status_code == 404:
                         raise NotFoundError(f"Resource URL not found: {resource_url}") from e
-                    raise HubConnectionError(f"Failed to download resource: HTTP {e.response.status_code}") from e
+                    raise HubConnectionError(
+                        f"Failed to download resource: HTTP {e.response.status_code}"
+                    ) from e
                 except httpx.RequestError as e:
                     if attempt < max_download_retries:
-                        delay = self.backoff_factor * (2 ** attempt)
+                        delay = self.backoff_factor * (2**attempt)
                         logger.warning(
                             f"Network error downloading resource. "
                             f"Retrying in {delay}s... (attempt {attempt + 1}/{max_download_retries + 1})"
@@ -1113,10 +1145,10 @@ class CKANConnector(DataMarketplaceConnector):
                 raise HubConnectionError("Failed to download resource after retries")
 
             # Write to file atomically (write to temp file first, then rename)
-            temp_path = destination_path + '.tmp'
+            temp_path = destination_path + ".tmp"
             try:
                 bytes_written = 0
-                with open(temp_path, 'wb') as f:
+                with open(temp_path, "wb") as f:
                     # Write in chunks for large files
                     chunk_size = 8192  # 8KB chunks
                     for chunk in download_response.iter_bytes(chunk_size):
@@ -1131,29 +1163,26 @@ class CKANConnector(DataMarketplaceConnector):
                     f"({bytes_written} bytes)"
                 )
                 return destination_path
-            except IOError as e:
+            except OSError as e:
                 # Clean up temp file on error
                 if os.path.exists(temp_path):
-                    try:
+                    with contextlib.suppress(Exception):
                         os.unlink(temp_path)
-                    except Exception:
-                        pass
-                raise IOError(f"Failed to write to destination path {destination_path}: {e}") from e
+                raise OSError(f"Failed to write to destination path {destination_path}: {e}") from e
         except httpx.RequestError as e:
             raise HubConnectionError(f"Failed to download resource: {e}") from e
-        except IOError:
+        except OSError:
             # Re-raise IOError as-is
             raise
+        except (NotFoundError, PermissionError, HubConnectionError, OSError, ValueError):
+            # Expected error types — propagate as-is
+            raise
         except Exception as e:
-            # Catch any other exceptions and convert appropriately
-            if isinstance(e, (NotFoundError, PermissionError, HubConnectionError, IOError, ValueError)):
-                raise
+            # Unexpected errors — wrap for consistent error handling
             raise HubConnectionError(f"Unexpected error downloading resource: {e}") from e
 
     def map_to_hub_asset(
-        self,
-        listing: MarketplaceListing,
-        sync_job_id: Optional[str] = None
+        self, listing: MarketplaceListing, sync_job_id: str | None = None
     ) -> MarketplaceAssetMapping:
         """
         Map a CKAN package to a Hub asset representation.
@@ -1181,81 +1210,75 @@ class CKANConnector(DataMarketplaceConnector):
             raise ValueError("Listing is required")
 
         # Get CKAN package data from metadata
-        ckan_package = listing.metadata.get('ckan_package', {}) if listing.metadata else {}
+        ckan_package = listing.metadata.get("ckan_package", {}) if listing.metadata else {}
 
         # Extract multilingual title and description
-        title = self._extract_multilingual_field(
-            ckan_package,
-            ['title', 'name'],
-            listing.title
-        )
+        title = self._extract_multilingual_field(ckan_package, ["title", "name"], listing.title)
         description = self._extract_multilingual_field(
-            ckan_package,
-            ['notes', 'description'],
-            listing.description or ''
+            ckan_package, ["notes", "description"], listing.description or ""
         )
 
         # Extract domain from organization/category
         domain = None
         if listing.category:
             domain = listing.category
-        elif ckan_package.get('organization'):
-            org = ckan_package['organization']
+        elif ckan_package.get("organization"):
+            org = ckan_package["organization"]
             if isinstance(org, dict):
-                domain = org.get('name') or org.get('title')
+                domain = org.get("name") or org.get("title")
             elif isinstance(org, str):
                 domain = org
 
         # Determine status and visibility from CKAN package state
         # CKAN packages don't have explicit status/visibility, so we infer from private flag
-        status = 'DRAFT'  # Default to DRAFT for imported assets
-        visibility = 'INTERNAL'  # Default to INTERNAL for imported assets
+        status = "DRAFT"  # Default to DRAFT for imported assets
+        visibility = "INTERNAL"  # Default to INTERNAL for imported assets
 
         # Check if package is private (CKAN has 'private' field)
-        is_private = ckan_package.get('private', False)
+        is_private = ckan_package.get("private", False)
         if not is_private:
             # Public packages can be mapped to PUBLIC visibility
-            visibility = 'PUBLIC'
+            visibility = "PUBLIC"
             # If public and has resources, can be ACTIVE
-            if listing.metadata and listing.metadata.get('ckan_package', {}).get('resources'):
-                status = 'ACTIVE'
+            if listing.metadata and listing.metadata.get("ckan_package", {}).get("resources"):
+                status = "ACTIVE"
 
         # Extract tags
         tags = listing.tags or []
-        if not tags and ckan_package.get('tags'):
+        if not tags and ckan_package.get("tags"):
             tags = [
-                tag.get('name', tag) if isinstance(tag, dict) else tag
-                for tag in ckan_package.get('tags', [])
+                tag.get("name", tag) if isinstance(tag, dict) else tag
+                for tag in ckan_package.get("tags", [])
             ]
 
         # Build comprehensive asset_data
-        asset_data: Dict[str, Any] = {
-            'name': title,
-            'description': description,
-            'key': f"ckan-{listing.marketplace_id}",
-            'tags': tags,
+        asset_data: dict[str, Any] = {
+            "name": title,
+            "description": description,
+            "key": f"ckan-{listing.marketplace_id}",
+            "tags": tags,
         }
 
         # Add optional fields if available
         if domain:
-            asset_data['domain'] = domain
+            asset_data["domain"] = domain
         if status:
-            asset_data['status'] = status
+            asset_data["status"] = status
         if visibility:
-            asset_data['visibility'] = visibility
+            asset_data["visibility"] = visibility
 
         # Extract source metadata
-        source_metadata: Dict[str, Any] = {
-            'marketplace_type': MarketplaceType.CKAN_INSTANCE.value,
-            'marketplace_id': listing.marketplace_id,
-            'listing_id': listing.marketplace_id,
-            'listing_url': listing.url,
-            'synced_at': timezone.now().isoformat(),
+        source_metadata: dict[str, Any] = {
+            "marketplace_type": MarketplaceType.CKAN_INSTANCE.value,
+            "marketplace_id": listing.marketplace_id,
+            "listing_id": listing.marketplace_id,
+            "listing_url": listing.url,
+            "synced_at": timezone.now().isoformat(),
         }
 
         # Add sync_job_id if provided
         if sync_job_id:
-            source_metadata['sync_job_id'] = sync_job_id
+            source_metadata["sync_job_id"] = sync_job_id
 
         # Extract comprehensive ODPS metadata
         odps_metadata = self._extract_odps_metadata(listing, ckan_package)
@@ -1267,7 +1290,7 @@ class CKANConnector(DataMarketplaceConnector):
         resources = []
         try:
             resources = self.list_resources(listing.marketplace_id)
-        except Exception as e:
+        except (HubConnectionError, NotFoundError) as e:
             logger.warning(f"Failed to fetch resources for mapping: {e}")
 
         return MarketplaceAssetMapping(
@@ -1276,14 +1299,14 @@ class CKANConnector(DataMarketplaceConnector):
             source_metadata=source_metadata,
             odps_metadata=odps_metadata,
             odcs_metadata=odcs_metadata,
-            resources=resources
+            resources=resources,
         )
 
     def map_from_hub_asset(
         self,
-        asset_data: Dict[str, Any],
-        odps_metadata: Optional[Dict[str, Any]] = None,
-        odcs_metadata: Optional[Dict[str, Any]] = None
+        asset_data: dict[str, Any],
+        odps_metadata: dict[str, Any] | None = None,
+        odcs_metadata: dict[str, Any] | None = None,
     ) -> MarketplaceListing:
         """
         Map a Hub asset to a CKAN package representation.
@@ -1309,7 +1332,7 @@ class CKANConnector(DataMarketplaceConnector):
             "Use map_to_hub_asset() to map CKAN packages TO Hub assets."
         )
 
-    def sync_push(self, asset_ids: List[str], options: Optional[Dict[str, Any]] = None) -> SyncResult:
+    def sync_push(self, asset_ids: list[str], options: dict[str, Any] | None = None) -> SyncResult:
         """
         Perform bulk push synchronization (Hub → CKAN).
 
@@ -1355,8 +1378,10 @@ class CKANConnector(DataMarketplaceConnector):
             return True
 
         # Compare organization from metadata (CKAN stores organization in metadata)
-        existing_org = existing.metadata.get('organization', {}).get('name', '') if existing.metadata else ''
-        new_org = new.metadata.get('organization', {}).get('name', '') if new.metadata else ''
+        existing_org = (
+            existing.metadata.get("organization", {}).get("name", "") if existing.metadata else ""
+        )
+        new_org = new.metadata.get("organization", {}).get("name", "") if new.metadata else ""
         if existing_org != new_org:
             return True
 
@@ -1370,9 +1395,9 @@ class CKANConnector(DataMarketplaceConnector):
 
     def sync_pull(
         self,
-        listing_ids: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        options: Optional[Dict[str, Any]] = None
+        listing_ids: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
     ) -> SyncResult:
         """
         Perform bulk pull synchronization (CKAN → Hub).
@@ -1400,9 +1425,9 @@ class CKANConnector(DataMarketplaceConnector):
             ConnectionError: If unable to connect to CKAN instance
         """
         options = options or {}
-        dry_run = options.get('dry_run', False)
-        limit = options.get('limit')
-        include_resources = options.get('include_resources', True)
+        dry_run = options.get("dry_run", False)
+        limit = options.get("limit")
+        include_resources = options.get("include_resources", True)
         started_at = timezone.now()
 
         successful_items = 0
@@ -1420,9 +1445,9 @@ class CKANConnector(DataMarketplaceConnector):
                 failed_items=0,
                 skipped_items=0,
                 errors=[],
-                metadata={'dry_run': dry_run, 'reason': 'empty_listing_ids'},
+                metadata={"dry_run": dry_run, "reason": "empty_listing_ids"},
                 started_at=started_at,
-                completed_at=timezone.now()
+                completed_at=timezone.now(),
             )
 
         # Zero limit: sync nothing
@@ -1434,9 +1459,9 @@ class CKANConnector(DataMarketplaceConnector):
                 failed_items=0,
                 skipped_items=0,
                 errors=[],
-                metadata={'dry_run': dry_run, 'reason': 'zero_limit'},
+                metadata={"dry_run": dry_run, "reason": "zero_limit"},
                 started_at=started_at,
-                completed_at=timezone.now()
+                completed_at=timezone.now(),
             )
 
         # Get listings to sync
@@ -1470,9 +1495,9 @@ class CKANConnector(DataMarketplaceConnector):
                 failed_items=0,
                 skipped_items=0,
                 errors=errors,
-                metadata={'dry_run': dry_run},
+                metadata={"dry_run": dry_run},
                 started_at=started_at,
-                completed_at=timezone.now()
+                completed_at=timezone.now(),
             )
 
         # If we have skipped items but no listings, return early
@@ -1485,9 +1510,9 @@ class CKANConnector(DataMarketplaceConnector):
                 failed_items=failed_items,
                 skipped_items=skipped_items,
                 errors=errors,
-                metadata={'dry_run': dry_run, 'reason': 'no_listings_found'},
+                metadata={"dry_run": dry_run, "reason": "no_listings_found"},
                 started_at=started_at,
-                completed_at=timezone.now()
+                completed_at=timezone.now(),
             )
 
         if not listings:
@@ -1499,9 +1524,9 @@ class CKANConnector(DataMarketplaceConnector):
                 failed_items=0,
                 skipped_items=0,
                 errors=[],
-                metadata={'dry_run': dry_run, 'reason': 'no_listings_found'},
+                metadata={"dry_run": dry_run, "reason": "no_listings_found"},
                 started_at=started_at,
-                completed_at=timezone.now()
+                completed_at=timezone.now(),
             )
 
         # Process each listing
@@ -1518,7 +1543,9 @@ class CKANConnector(DataMarketplaceConnector):
                     try:
                         resources = self.list_resources(listing.marketplace_id)
                     except Exception as e:
-                        logger.warning(f"Listing {listing.marketplace_id}: Failed to fetch resources: {e}")
+                        logger.warning(
+                            f"Listing {listing.marketplace_id}: Failed to fetch resources: {e}"
+                        )
                         # Continue without resources
 
                 # Map listing to Hub asset format
@@ -1529,10 +1556,12 @@ class CKANConnector(DataMarketplaceConnector):
                     # Add resources to the mapping if they were fetched
                     if resources:
                         mapping.resources = resources
-                    mappings.append({
-                        'listing_id': listing.marketplace_id,
-                        'mapping': mapping,
-                    })
+                    mappings.append(
+                        {
+                            "listing_id": listing.marketplace_id,
+                            "mapping": mapping,
+                        }
+                    )
                     successful_items += 1
                     logger.info(f"Listing {listing.marketplace_id}: Mapped to Hub asset format")
                 except Exception as e:
@@ -1549,7 +1578,13 @@ class CKANConnector(DataMarketplaceConnector):
                 logger.warning(error_msg, exc_info=True)
 
         completed_at = timezone.now()
-        status = SyncStatus.COMPLETED if failed_items == 0 else SyncStatus.PARTIAL if successful_items > 0 else SyncStatus.FAILED
+        status = (
+            SyncStatus.COMPLETED
+            if failed_items == 0
+            else SyncStatus.PARTIAL
+            if successful_items > 0
+            else SyncStatus.FAILED
+        )
 
         return SyncResult(
             status=status,
@@ -1559,11 +1594,10 @@ class CKANConnector(DataMarketplaceConnector):
             skipped_items=skipped_items,
             errors=errors,
             metadata={
-                'dry_run': dry_run,
-                'mappings': mappings,  # List of mappings for asset creation
-                'include_resources': include_resources,
+                "dry_run": dry_run,
+                "mappings": mappings,  # List of mappings for asset creation
+                "include_resources": include_resources,
             },
             started_at=started_at,
-            completed_at=completed_at
+            completed_at=completed_at,
         )
-

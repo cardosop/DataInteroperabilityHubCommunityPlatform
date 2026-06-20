@@ -24,6 +24,7 @@ from GitHub auth in the CI runner.
 
 Output: structured JSON to stdout. Exit 0 = pass, 2 = fail.
 """
+
 from __future__ import annotations
 
 import datetime as _dt
@@ -33,7 +34,6 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
-
 
 SOAK_DAYS_REQUIRED = 7
 
@@ -71,28 +71,26 @@ class Command(BaseCommand):
                 raise CommandError(f"--soak-start-file does not exist: {p}")
             raw = p.read_text().strip().splitlines()[0]
         if not raw:
-            raise CommandError(
-                "Provide --soak-start=<ISO> or --soak-start-file=<path>"
-            )
+            raise CommandError("Provide --soak-start=<ISO> or --soak-start-file=<path>")
         try:
             parsed = _dt.datetime.fromisoformat(raw)
         except ValueError as exc:
             raise CommandError(f"--soak-start must be ISO-8601: {raw!r}") from exc
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=_dt.timezone.utc)
+            parsed = parsed.replace(tzinfo=_dt.UTC)
         return parsed
 
     def _audit_rows_in_window(self, soak_start: _dt.datetime) -> int:
         try:
             from hub.apps.audit.models import AuditEvent
-        except Exception:  # noqa: BLE001
+        except Exception:
             return 0
         try:
             return AuditEvent.objects.filter(
                 action="LINEAGE_SNAPSHOT_QUERIED",
                 timestamp__gte=soak_start,
             ).count()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return 0
 
     def _p1_list(self, options) -> list:
@@ -123,10 +121,7 @@ class Command(BaseCommand):
         usage_satisfied = audit_rows > 0
 
         p1_list = self._p1_list(options)
-        p1_satisfied = (
-            isinstance(p1_list, list)
-            and len(p1_list) == 0
-        )
+        p1_satisfied = isinstance(p1_list, list) and len(p1_list) == 0
 
         overall_ok = soak_days_satisfied and usage_satisfied and p1_satisfied
 

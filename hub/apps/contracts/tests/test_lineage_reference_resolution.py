@@ -122,7 +122,8 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
             original_spec_version="3.0.0",
             original_format=OriginalFormat.JSON,
             original_raw=(
-                '{"info":{"name":"' + self.contract_name
+                '{"info":{"name":"'
+                + self.contract_name
                 + '","domain":"ns1"},'
                 + '"models":[{"name":"model1","fields":'
                 + '[{"name":"field1","type":"string"},{"name":"field2","type":"integer"}]},'
@@ -138,9 +139,11 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
         ref = LineageReference(namespace="ns1", name=self.contract_name)
         result = ref.resolve_contract()
 
-        self.assertIsNotNone(result,
+        self.assertIsNotNone(
+            result,
             f"Seeded contract with info.domain='ns1' and info.name='{self.contract_name}' "
-            "must be resolvable by namespace='ns1' + name='{name}'")
+            "must be resolvable by namespace='ns1' + name='{name}'",
+        )
         self.assertIsInstance(result, Contract)
         self.assertEqual(str(result.id), str(self.contract.id))
         self.assertFalse(ref.is_broken())
@@ -162,8 +165,7 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
         ref = LineageReference(namespace="ns1", name=self.contract_name, model_name="model1")
         result = ref.resolve_model()
 
-        self.assertIsNotNone(result,
-            "model1 must be resolvable in the seeded contract")
+        self.assertIsNotNone(result, "model1 must be resolvable in the seeded contract")
         self.assertIsInstance(result, dict)
         self.assertEqual(result["name"], "model1")
         self.assertFalse(ref.is_broken())
@@ -179,10 +181,10 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
         )
         result = ref.resolve_model()
 
-        self.assertIsNone(result,
-            "Model 'nonexistent-model' must not be found in the seeded contract")
-        self.assertTrue(ref.is_broken(),
-            "Reference must be marked broken when model is not found")
+        self.assertIsNone(
+            result, "Model 'nonexistent-model' must not be found in the seeded contract"
+        )
+        self.assertTrue(ref.is_broken(), "Reference must be marked broken when model is not found")
 
     def test_resolve_field_success(self):
         """
@@ -193,8 +195,7 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
         )
         result = ref.resolve_field()
 
-        self.assertIsNotNone(result,
-            "field1 must be resolvable in model1 of the seeded contract")
+        self.assertIsNotNone(result, "field1 must be resolvable in model1 of the seeded contract")
         self.assertIsInstance(result, dict)
         self.assertEqual(result["name"], "field1")
         self.assertFalse(ref.is_broken())
@@ -210,10 +211,10 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
         )
         result = ref.resolve_field()
 
-        self.assertIsNone(result,
-            "Field 'nonexistent-field' must not be found in model1 of the seeded contract")
-        self.assertTrue(ref.is_broken(),
-            "Reference must be marked broken when field is not found")
+        self.assertIsNone(
+            result, "Field 'nonexistent-field' must not be found in model1 of the seeded contract"
+        )
+        self.assertTrue(ref.is_broken(), "Reference must be marked broken when field is not found")
 
     # Edge cases and error handling tests
     def test_lineage_reference_str_with_empty_strings(self):
@@ -225,8 +226,9 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
         ref = LineageReference(namespace="", name="", model_name="", field="")
         result = str(ref)
         self.assertIsInstance(result, str)
-        self.assertEqual(result, "unknown",
-            "All-empty-string LineageReference must repr as 'unknown'")
+        self.assertEqual(
+            result, "unknown", "All-empty-string LineageReference must repr as 'unknown'"
+        )
 
     def test_lineage_reference_str_with_none_values(self):
         """Test string representation with None values.
@@ -237,8 +239,7 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
         ref = LineageReference()
         result = str(ref)
         self.assertIsInstance(result, str)
-        self.assertEqual(result, "unknown",
-            "All-None LineageReference must repr as 'unknown'")
+        self.assertEqual(result, "unknown", "All-None LineageReference must repr as 'unknown'")
 
     def test_lineage_reference_to_dict_with_none_values(self):
         """Test conversion to dictionary with None values.
@@ -249,8 +250,9 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
         ref = LineageReference()
         result = ref.to_dict()
         self.assertIsInstance(result, dict)
-        self.assertEqual(len(result), 0,
-            "All-None reference must produce an empty dict (no None-value keys)")
+        self.assertEqual(
+            len(result), 0, "All-None reference must produce an empty dict (no None-value keys)"
+        )
         # Should not include None values
         for value in result.values():
             self.assertIsNotNone(value)
@@ -263,30 +265,57 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
         self.assertTrue(ref.is_broken())
 
     def test_resolve_contract_with_special_characters(self):
-        """Contract resolution with special characters must not crash; assert both branches."""
+        """Contract resolution with special characters must resolve successfully."""
+        # Create contracts with special characters in name/namespace so
+        # the resolver actually finds them — previous version only tested
+        # the "not found" branch, making the else-branch dead code.
+        tenant = Tenant.objects.create(
+            name=f"sc-{uuid.uuid4().hex[:8]}", slug=f"sc-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE", kyc_status="UNVERIFIED",
+        )
+        Contract.objects.create(
+            tenant=tenant,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw="{}",
+            hub_contract_json={
+                "info": {"name": "contract.name-v2", "domain": "ns-1_test"},
+                "schema": {"fields": []},
+            },
+            status=ContractStatus.ACTIVE,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            validation_status="VALID",
+        )
         ref = LineageReference(namespace="ns-1_test", name="contract.name-v2")
         result = ref.resolve_contract()
-        if result is None:
-            self.assertTrue(ref.is_broken(),
-                "Unresolvable special-char reference must be marked broken")
-        else:
-            self.assertIsNotNone(result,
-                "If found, special-char reference must return a contract")
-            self.assertFalse(ref.is_broken(),
-                "Resolved special-char reference must not be marked broken")
+        self.assertIsNotNone(result, "Special-char reference must resolve")
+        self.assertFalse(ref.is_broken(), "Resolved reference must not be marked broken")
 
     def test_resolve_contract_with_unicode_characters(self):
-        """Contract resolution with unicode characters must not crash; assert both branches."""
+        """Contract resolution with unicode characters must resolve successfully."""
+        tenant = Tenant.objects.create(
+            name=f"uc-{uuid.uuid4().hex[:8]}", slug=f"uc-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE", kyc_status="UNVERIFIED",
+        )
+        Contract.objects.create(
+            tenant=tenant,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw="{}",
+            hub_contract_json={
+                "info": {"name": "合同名称", "domain": "命名空间"},
+                "schema": {"fields": []},
+            },
+            status=ContractStatus.ACTIVE,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            validation_status="VALID",
+        )
         ref = LineageReference(namespace="命名空间", name="合同名称")
         result = ref.resolve_contract()
-        if result is None:
-            self.assertTrue(ref.is_broken(),
-                "Unresolvable unicode reference must be marked broken")
-        else:
-            self.assertIsNotNone(result,
-                "If found, unicode reference must return a contract")
-            self.assertFalse(ref.is_broken(),
-                "Resolved unicode reference must not be marked broken")
+        self.assertIsNotNone(result, "Unicode reference must resolve")
+        self.assertFalse(ref.is_broken(), "Resolved reference must not be marked broken")
 
     def test_resolve_contract_cross_tenant_isolation(self):
         """Document tenant isolation behavior in lineage resolution.
@@ -322,9 +351,11 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
 
         # Current behavior: resolve_contract() does NOT filter by tenant,
         # so it WILL find the other_tenant's contract.
-        self.assertIsNotNone(result,
+        self.assertIsNotNone(
+            result,
             "Current behavior: lineage resolver finds contracts across all tenants. "
-            "Tenant isolation hardening is a TODO.")
+            "Tenant isolation hardening is a TODO.",
+        )
         self.assertEqual(str(result.id), str(other_contract.id))
 
     def test_resolve_model_with_missing_contract(self):
@@ -337,7 +368,7 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
 
     def test_resolve_model_with_empty_models_list(self):
         """Test model resolution when contract has no models."""
-        contract_no_models = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             hub_contract_json={
                 "info": {"name": "no-models-contract"},
@@ -353,10 +384,10 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
 
         ref = LineageReference(namespace="ns1", name="no-models-contract", model_name="any-model")
         result = ref.resolve_model()
-        self.assertIsNone(result,
-            "Model must not be found when contract has no models")
-        self.assertTrue(ref.is_broken(),
-            "Reference must be marked broken when contract has no models")
+        self.assertIsNone(result, "Model must not be found when contract has no models")
+        self.assertTrue(
+            ref.is_broken(), "Reference must be marked broken when contract has no models"
+        )
 
     def test_resolve_field_with_missing_model(self):
         """Test field resolution when model is not found."""
@@ -364,14 +395,12 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
             namespace="ns1", name=self.contract_name, model_name="nonexistent-model", field="field1"
         )
         result = ref.resolve_field()
-        self.assertIsNone(result,
-            "Field must not be found when model does not exist")
-        self.assertTrue(ref.is_broken(),
-            "Reference must be marked broken when model is not found")
+        self.assertIsNone(result, "Field must not be found when model does not exist")
+        self.assertTrue(ref.is_broken(), "Reference must be marked broken when model is not found")
 
     def test_resolve_field_with_empty_fields_list(self):
         """Test field resolution when model has no fields."""
-        contract_no_fields = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             hub_contract_json={
                 "info": {"name": "no-fields-contract"},
@@ -389,10 +418,8 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
             namespace="ns1", name="no-fields-contract", model_name="empty-model", field="any-field"
         )
         result = ref.resolve_field()
-        self.assertIsNone(result,
-            "Field must not be found when model has empty fields list")
-        self.assertTrue(ref.is_broken(),
-            "Reference must be marked broken when model has no fields")
+        self.assertIsNone(result, "Field must not be found when model has empty fields list")
+        self.assertTrue(ref.is_broken(), "Reference must be marked broken when model has no fields")
 
     def test_is_broken_with_unresolved_reference(self):
         """Test is_broken() with unresolved reference."""
@@ -408,8 +435,9 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
             namespace="ns1", name=self.contract_name, model_name="model1", field="field1"
         )
         ref.resolve_field()
-        self.assertFalse(ref.is_broken(),
-            "field1 in model1 of the seeded contract must resolve → not broken")
+        self.assertFalse(
+            ref.is_broken(), "field1 in model1 of the seeded contract must resolve → not broken"
+        )
 
     def test_resolve_contract_caching_behavior(self):
         """Contract resolution must use instance-level caching for repeated calls."""
@@ -419,8 +447,11 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
 
         self.assertIsNotNone(result1)
         # Same Python object — cached on instance.
-        self.assertIs(result1, result2,
-            "Second resolve_contract() must return the same cached Contract instance")
+        self.assertIs(
+            result1,
+            result2,
+            "Second resolve_contract() must return the same cached Contract instance",
+        )
 
     def test_resolve_model_caching_behavior(self):
         """Model resolution must use cached contract — instance-level caching."""
@@ -458,9 +489,7 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
             tenant=self.tenant,
             hub_contract_json={
                 "info": {"name": self_ref_name, "domain": "ns1"},
-                "lineage": {
-                    "contracts": [{"namespace": "ns1", "name": self_ref_name}]
-                },
+                "lineage": {"contracts": [{"namespace": "ns1", "name": self_ref_name}]},
             },
             status=ContractStatus.ACTIVE,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
@@ -473,12 +502,13 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
         ref = LineageReference(namespace="ns1", name=self_ref_name)
         result = ref.resolve_contract()
 
-        self.assertIsNotNone(result,
-            "Self-referencing contract must resolve to itself")
-        self.assertEqual(str(result.id), str(contract.id),
-            "Self-reference must return the same contract instance")
-        self.assertFalse(ref.is_broken(),
-            "Self-reference must not be marked broken")
+        self.assertIsNotNone(result, "Self-referencing contract must resolve to itself")
+        self.assertEqual(
+            str(result.id),
+            str(contract.id),
+            "Self-reference must return the same contract instance",
+        )
+        self.assertFalse(ref.is_broken(), "Self-reference must not be marked broken")
 
     def test_resolve_contract_circular_reference(self):
         """Two contracts that reference each other both resolve correctly.
@@ -524,13 +554,11 @@ class TestLineageReferenceResolution(ContractsTransactionTestBase):
         result_a = ref_a.resolve_contract()
         result_b = ref_b.resolve_contract()
 
-        self.assertIsNotNone(result_a,
-            "Contract A must resolve in a circular reference pair")
+        self.assertIsNotNone(result_a, "Contract A must resolve in a circular reference pair")
         self.assertEqual(str(result_a.id), str(contract_a.id))
         self.assertFalse(ref_a.is_broken())
 
-        self.assertIsNotNone(result_b,
-            "Contract B must resolve in a circular reference pair")
+        self.assertIsNotNone(result_b, "Contract B must resolve in a circular reference pair")
         self.assertEqual(str(result_b.id), str(contract_b.id))
         self.assertFalse(ref_b.is_broken())
 

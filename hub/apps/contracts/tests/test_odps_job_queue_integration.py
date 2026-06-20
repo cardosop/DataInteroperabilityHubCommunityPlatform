@@ -18,10 +18,8 @@ All tests use real implementations (no mocks/stubs) and verify:
 
 import json
 import uuid
-from datetime import datetime, timedelta
 
 import pytest
-from django.test import TestCase
 from django.utils import timezone
 from django_rq import get_queue
 
@@ -32,15 +30,8 @@ from hub.apps.contracts.job_utils import (
     enqueue_odps_ref_resolution_job,
     enqueue_odps_semantic_mapping_job,
 )
-from hub.apps.core.services.base import ValidationError
-from hub.apps.contracts.models import (
-    Contract,
-    ContractStatus,
-    NormalizationStatus,
-    OriginalFormat,
-    OriginalSpecType,
-)
 from hub.apps.contracts.tests.test_base import ContractsTestBase
+from hub.apps.core.services.base import ValidationError
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.jobs.utils import (
     get_job_max_retries,
@@ -90,7 +81,7 @@ class ODPSJobEnqueueingTest(ODPSJobQueueIntegrationTestBase):
                             "name": "Test ODPS Normalization Job",
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -146,7 +137,7 @@ class ODPSJobEnqueueingTest(ODPSJobQueueIntegrationTestBase):
                             "name": "Test ODPS Ref Resolution Job",
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -188,7 +179,7 @@ class ODPSJobEnqueueingTest(ODPSJobQueueIntegrationTestBase):
                     "details": {
                         "en": {"productID": "test-odps-export-job", "name": "Test ODPS Export Job"}
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -238,7 +229,7 @@ class ODPSJobEnqueueingTest(ODPSJobQueueIntegrationTestBase):
                             "name": "Test ODPS Semantic Mapping Job",
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -283,8 +274,18 @@ class ODPSJobEnqueueingTest(ODPSJobQueueIntegrationTestBase):
                 "version": "1.0.0",
                 "schema": {
                     "fields": [
-                        {"name": "id", "type": "string", "nullable": False, "description": "Unique identifier"},
-                        {"name": "name", "type": "string", "nullable": True, "description": "Name field"},
+                        {
+                            "name": "id",
+                            "type": "string",
+                            "nullable": False,
+                            "description": "Unique identifier",
+                        },
+                        {
+                            "name": "name",
+                            "type": "string",
+                            "nullable": True,
+                            "description": "Name field",
+                        },
                     ]
                 },
             }
@@ -311,7 +312,9 @@ class ODPSJobEnqueueingTest(ODPSJobQueueIntegrationTestBase):
                             "name": "Test ODPS Linking Job",
                         }
                     },
-                    "dataSchema": {"fields": [{"name": "id", "type": "string", "description": "ID"}]},
+                    "dataSchema": {
+                        "fields": [{"name": "id", "type": "string", "description": "ID"}]
+                    },
                 },
             }
         )
@@ -430,7 +433,7 @@ class ODPSJobMonitoringTest(ODPSJobQueueIntegrationTestBase):
                     "details": {
                         "en": {"productID": "test-odps-monitoring", "name": "Test ODPS Monitoring"}
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -472,7 +475,7 @@ class ODPSJobMonitoringTest(ODPSJobQueueIntegrationTestBase):
                             "name": "Test ODPS Status Tracking",
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -519,7 +522,7 @@ class ODPSJobQueueEndToEndTest(ODPSJobQueueIntegrationTestBase):
                     "details": {
                         "en": {"productID": "test-odps-job-flow", "name": "Test ODPS Job Flow"}
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -572,7 +575,7 @@ class ODPSJobQueueEndToEndTest(ODPSJobQueueIntegrationTestBase):
                             "name": "Test ODPS Multiple Jobs",
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -626,7 +629,7 @@ class ODPSJobQueueEndToEndTest(ODPSJobQueueIntegrationTestBase):
                             "description": "测试描述",
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -665,7 +668,7 @@ class ODPSJobQueueEndToEndTest(ODPSJobQueueIntegrationTestBase):
                             "description": "Test <description> & more",
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -705,7 +708,7 @@ class ODPSJobQueueEndToEndTest(ODPSJobQueueIntegrationTestBase):
                             "description": large_description,
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -720,6 +723,7 @@ class ODPSJobQueueEndToEndTest(ODPSJobQueueIntegrationTestBase):
         except Exception as e:
             # If creation fails due to database limits, skip the test
             from django.db.utils import OperationalError
+
             if isinstance(e, OperationalError):
                 self.skipTest(f"Document too large for database index: {e}")
             raise
@@ -751,7 +755,7 @@ class ODPSJobQueueEndToEndTest(ODPSJobQueueIntegrationTestBase):
                             # description omitted - None is not allowed by schema
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -793,7 +797,7 @@ class ODPSJobQueueEndToEndTest(ODPSJobQueueIntegrationTestBase):
                             "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )

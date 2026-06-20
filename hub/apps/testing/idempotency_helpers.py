@@ -27,15 +27,16 @@ The helper also exposes ``compose_test_idempotency_key`` for tests
 that need to construct the key explicitly (e.g., to test mismatch
 behaviour).
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
 import uuid
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 
-def _canonical_body_bytes(body: Union[Dict[str, Any], list, bytes, str]) -> bytes:
+def _canonical_body_bytes(body: dict[str, Any] | list | bytes | str) -> bytes:
     """Mirror of :func:`hub.apps.core.idempotency.IdempotencyService.canonical_body_bytes`.
 
     Kept inline (no import from production code) so a refactor in
@@ -53,8 +54,8 @@ def _canonical_body_bytes(body: Union[Dict[str, Any], list, bytes, str]) -> byte
 
 
 def compose_test_idempotency_key(
-    tenant_uuid: Union[str, uuid.UUID],
-    body: Union[Dict[str, Any], list, bytes, str],
+    tenant_uuid: str | uuid.UUID,
+    body: dict[str, Any] | list | bytes | str,
 ) -> str:
     """Compose a valid ``Idempotency-Key`` for ``body`` under ``tenant_uuid``."""
     canonical = _canonical_body_bytes(body)
@@ -66,11 +67,11 @@ def compose_test_idempotency_key(
 def post_data_first(
     client,
     url: str,
-    body: Optional[Dict[str, Any]],
+    body: dict[str, Any] | None,
     *,
     tenant=None,
-    tenant_uuid: Union[str, uuid.UUID, None] = None,
-    extra_headers: Optional[Dict[str, str]] = None,
+    tenant_uuid: str | uuid.UUID | None = None,
+    extra_headers: dict[str, str] | None = None,
     **post_kwargs: Any,
 ):
     """POST ``body`` to ``url`` with a valid auto-composed Idempotency-Key.
@@ -105,7 +106,7 @@ def post_data_first(
     ``IDEMPOTENCY_KEY_MISMATCH``.
     """
     if tenant_uuid is not None:
-        effective_tenant_uuid: Union[str, uuid.UUID] = tenant_uuid
+        effective_tenant_uuid: str | uuid.UUID = tenant_uuid
     elif tenant is not None:
         effective_tenant_uuid = tenant.id
     else:
@@ -115,7 +116,7 @@ def post_data_first(
     canonical_bytes = _canonical_body_bytes(canonical_body)
     auto_key = compose_test_idempotency_key(effective_tenant_uuid, canonical_bytes)
 
-    headers: Dict[str, str] = {"HTTP_IDEMPOTENCY_KEY": auto_key}
+    headers: dict[str, str] = {"HTTP_IDEMPOTENCY_KEY": auto_key}
     if extra_headers:
         headers.update(extra_headers)
 

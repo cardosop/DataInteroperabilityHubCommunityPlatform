@@ -19,20 +19,20 @@ Three layers of cleanup are required by the spec:
 
 This module implements layers 1 and 2. Layer 3 lives in the hub app.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Callable, List, Tuple
+from collections.abc import Callable
 
 import pytest
-
 
 logger = logging.getLogger(__name__)
 
 
 # Process-global list of persona teardown callbacks. The
 # ``pytest_sessionfinish`` hook below drains it once per session.
-_PERSONA_TEARDOWN_CALLBACKS: List[Tuple[str, Callable[[], None]]] = []
+_PERSONA_TEARDOWN_CALLBACKS: list[tuple[str, Callable[[], None]]] = []
 
 
 def register_persona_teardown(name: str, callback: Callable[[], None]) -> None:
@@ -45,19 +45,19 @@ def register_persona_teardown(name: str, callback: Callable[[], None]) -> None:
     _PERSONA_TEARDOWN_CALLBACKS.append((name, callback))
 
 
-def drain_persona_teardown_callbacks() -> List[Tuple[str, BaseException]]:
+def drain_persona_teardown_callbacks() -> list[tuple[str, BaseException]]:
     """Run every registered persona teardown and return a list of failures.
 
     Failures are collected (not raised) so a single broken teardown does
     not prevent the rest from running. Pytest's ``sessionfinish`` hook
     logs them and exits non-zero if any failures occurred.
     """
-    failures: List[Tuple[str, BaseException]] = []
+    failures: list[tuple[str, BaseException]] = []
     while _PERSONA_TEARDOWN_CALLBACKS:
         name, cb = _PERSONA_TEARDOWN_CALLBACKS.pop()
         try:
             cb()
-        except BaseException as exc:  # noqa: BLE001 — collect everything
+        except BaseException as exc:
             failures.append((name, exc))
             logger.exception("persona teardown failed for %s", name)
     return failures
@@ -67,7 +67,7 @@ class CleanupRegistry:
     """Per-test cleanup registry. Callbacks run in LIFO order."""
 
     def __init__(self) -> None:
-        self._callbacks: List[Tuple[str, Callable[[], None]]] = []
+        self._callbacks: list[tuple[str, Callable[[], None]]] = []
 
     def add(self, callback: Callable[[], None], *, label: str = "") -> None:
         """Register ``callback`` to run during teardown.
@@ -83,7 +83,7 @@ class CleanupRegistry:
     def __len__(self) -> int:
         return len(self._callbacks)
 
-    def drain(self) -> List[Tuple[str, BaseException]]:
+    def drain(self) -> list[tuple[str, BaseException]]:
         """Run every callback in LIFO order; return collected failures.
 
         A failed callback does NOT abort the drain — every other
@@ -91,19 +91,19 @@ class CleanupRegistry:
         multiple resources MUST not leak the rest just because one
         cleanup failed.
         """
-        failures: List[Tuple[str, BaseException]] = []
+        failures: list[tuple[str, BaseException]] = []
         while self._callbacks:
             label, cb = self._callbacks.pop()
             try:
                 cb()
-            except BaseException as exc:  # noqa: BLE001
+            except BaseException as exc:
                 failures.append((label, exc))
                 logger.exception("cleanup callback failed: %s", label)
         return failures
 
 
 @pytest.fixture(autouse=True)
-def cleanup_registry() -> "CleanupRegistry":
+def cleanup_registry() -> CleanupRegistry:
     """Yield a fresh ``CleanupRegistry`` for each test; drain on teardown."""
     registry = CleanupRegistry()
     yield registry
@@ -111,6 +111,5 @@ def cleanup_registry() -> "CleanupRegistry":
     if failures:
         labels = ", ".join(label for label, _ in failures)
         raise RuntimeError(
-            f"cleanup_registry teardown encountered {len(failures)} failures: "
-            f"{labels}"
+            f"cleanup_registry teardown encountered {len(failures)} failures: {labels}"
         )

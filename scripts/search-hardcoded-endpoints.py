@@ -5,20 +5,21 @@ Search codebase for hardcoded endpoint URLs
 This script searches for hardcoded API endpoint URLs across the codebase
 and generates an impact matrix with categorization by priority.
 """
-import os
-import re
-import json
-import sys
-from pathlib import Path
-from typing import List, Dict, Any, Tuple, Optional
-from dataclasses import dataclass, asdict
-from collections import defaultdict
+
 import argparse
+import json
+import re
+import sys
+from collections import defaultdict
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
 
 
 @dataclass
 class EndpointReference:
     """Represents a found endpoint URL reference"""
+
     file_path: str
     line_number: int
     line_content: str
@@ -41,56 +42,58 @@ class EndpointURLSearcher:
         # Relative paths /api/v1/
         r'/api/v1/[^\s\'"`\)]+',
         # Base URL patterns
-        r'api\.example\.com/api/v1',
-        r'localhost:\d+/api/v1',
-        r'127\.0\.0\.1:\d+/api/v1',
+        r"api\.example\.com/api/v1",
+        r"localhost:\d+/api/v1",
+        r"127\.0\.0\.1:\d+/api/v1",
         # Common endpoint patterns
         r'["\']/api/v1/[^"\']+["\']',
-        r'`/api/v1/[^`]+`',
+        r"`/api/v1/[^`]+`",
     ]
 
     # Patterns that indicate comments
     COMMENT_PATTERNS = {
-        'python': r'^\s*#',
-        'javascript': r'^\s*//',
-        'typescript': r'^\s*//',
-        'markdown': r'^\s*#',
-        'yaml': r'^\s*#',
-        'json': None,  # JSON doesn't have comments
+        "python": r"^\s*#",
+        "javascript": r"^\s*//",
+        "typescript": r"^\s*//",
+        "markdown": r"^\s*#",
+        "yaml": r"^\s*#",
+        "json": None,  # JSON doesn't have comments
     }
 
     # Patterns that indicate deprecated code
     DEPRECATED_PATTERNS = [
-        r'deprecated',
-        r'DEPRECATED',
-        r'TODO.*remove',
-        r'FIXME.*remove',
-        r'legacy',
-        r'LEGACY',
+        r"deprecated",
+        r"DEPRECATED",
+        r"TODO.*remove",
+        r"FIXME.*remove",
+        r"legacy",
+        r"LEGACY",
     ]
 
-    def __init__(self, base_dir: str = '.'):
+    def __init__(self, base_dir: str = "."):
         self.base_dir = Path(base_dir).resolve()
-        self.references: List[EndpointReference] = []
-        self.compiled_patterns = [re.compile(pattern, re.IGNORECASE) for pattern in self.ENDPOINT_PATTERNS]
+        self.references: list[EndpointReference] = []
+        self.compiled_patterns = [
+            re.compile(pattern, re.IGNORECASE) for pattern in self.ENDPOINT_PATTERNS
+        ]
 
     def get_file_type(self, file_path: Path) -> str:
         """Determine file type from extension"""
         ext = file_path.suffix.lower()
         type_map = {
-            '.py': 'python',
-            '.js': 'javascript',
-            '.ts': 'typescript',
-            '.jsx': 'javascript',
-            '.tsx': 'typescript',
-            '.md': 'markdown',
-            '.yaml': 'yaml',
-            '.yml': 'yaml',
-            '.json': 'json',
-            '.sh': 'shell',
-            '.bash': 'shell',
+            ".py": "python",
+            ".js": "javascript",
+            ".ts": "typescript",
+            ".jsx": "javascript",
+            ".tsx": "typescript",
+            ".md": "markdown",
+            ".yaml": "yaml",
+            ".yml": "yaml",
+            ".json": "json",
+            ".sh": "shell",
+            ".bash": "shell",
         }
-        return type_map.get(ext, 'other')
+        return type_map.get(ext, "other")
 
     def is_comment_line(self, line: str, file_type: str) -> bool:
         """Check if line is a comment"""
@@ -99,7 +102,7 @@ class EndpointURLSearcher:
             return False
         return bool(re.match(pattern, line))
 
-    def is_deprecated_context(self, file_path: Path, line_number: int, lines: List[str]) -> bool:
+    def is_deprecated_context(self, file_path: Path, line_number: int, lines: list[str]) -> bool:
         """Check if context suggests deprecated code"""
         # Check current line
         line = lines[line_number - 1]
@@ -109,12 +112,12 @@ class EndpointURLSearcher:
 
         # Check file path
         path_str = str(file_path)
-        if 'deprecated' in path_str.lower() or 'legacy' in path_str.lower():
+        if "deprecated" in path_str.lower() or "legacy" in path_str.lower():
             return True
 
         # Check surrounding lines (5 lines before)
         start = max(0, line_number - 6)
-        context = '\n'.join(lines[start:line_number])
+        context = "\n".join(lines[start:line_number])
         for pattern in self.DEPRECATED_PATTERNS:
             if re.search(pattern, context, re.IGNORECASE):
                 return True
@@ -130,12 +133,12 @@ class EndpointURLSearcher:
         # Count unescaped quotes before match
         single_quotes_before = len(re.findall(r"(?<!\\)'", before))
         double_quotes_before = len(re.findall(r'(?<!\\)"', before))
-        backticks_before = len(re.findall(r'(?<!\\)`', before))
+        backticks_before = len(re.findall(r"(?<!\\)`", before))
 
         # Count unescaped quotes after match
         single_quotes_after = len(re.findall(r"(?<!\\)'", after))
         double_quotes_after = len(re.findall(r'(?<!\\)"', after))
-        backticks_after = len(re.findall(r'(?<!\\)`', after))
+        backticks_after = len(re.findall(r"(?<!\\)`", after))
 
         # If odd number of quotes before and after, likely in string
         in_single = (single_quotes_before % 2 == 1) and (single_quotes_after % 2 == 1)
@@ -148,67 +151,67 @@ class EndpointURLSearcher:
         """Determine category based on file path"""
         path_str = str(file_path)
 
-        if 'test' in path_str.lower() or 'tests/' in path_str:
-            return 'test'
-        elif 'cli/' in path_str or 'cli\\' in path_str:
-            return 'cli'
-        elif 'frontend/' in path_str or 'frontend\\' in path_str:
-            return 'frontend'
-        elif 'docs/' in path_str or 'docs\\' in path_str:
-            return 'docs'
-        elif 'workflow' in path_str.lower():
-            return 'workflow'
-        elif 'client' in path_str.lower() or 'api_client' in path_str.lower():
-            return 'service_client'
+        if "test" in path_str.lower() or "tests/" in path_str:
+            return "test"
+        elif "cli/" in path_str or "cli\\" in path_str:
+            return "cli"
+        elif "frontend/" in path_str or "frontend\\" in path_str:
+            return "frontend"
+        elif "docs/" in path_str or "docs\\" in path_str:
+            return "docs"
+        elif "workflow" in path_str.lower():
+            return "workflow"
+        elif "client" in path_str.lower() or "api_client" in path_str.lower():
+            return "service_client"
         else:
-            return 'other'
+            return "other"
 
     def determine_priority(self, ref: EndpointReference) -> str:
         """Determine priority based on context"""
         # Critical: Production code, core services, not in tests/docs
-        if ref.category == 'service_client' and not ref.is_in_comment:
-            return 'Critical'
-        if ref.category == 'workflow' and not ref.is_in_comment:
-            return 'Critical'
-        if ref.category == 'other' and not ref.is_in_comment and not ref.is_deprecated:
-            return 'Critical'
+        if ref.category == "service_client" and not ref.is_in_comment:
+            return "Critical"
+        if ref.category == "workflow" and not ref.is_in_comment:
+            return "Critical"
+        if ref.category == "other" and not ref.is_in_comment and not ref.is_deprecated:
+            return "Critical"
 
         # High: Test files, CLI code
-        if ref.category == 'test' and not ref.is_in_comment:
-            return 'High'
-        if ref.category == 'cli' and not ref.is_in_comment:
-            return 'High'
+        if ref.category == "test" and not ref.is_in_comment:
+            return "High"
+        if ref.category == "cli" and not ref.is_in_comment:
+            return "High"
 
         # Medium: Documentation, examples
-        if ref.category == 'docs':
-            return 'Medium'
-        if ref.is_in_comment and ref.category != 'test':
-            return 'Medium'
+        if ref.category == "docs":
+            return "Medium"
+        if ref.is_in_comment and ref.category != "test":
+            return "Medium"
 
         # Low: Comments in test files, deprecated code
         if ref.is_deprecated:
-            return 'Low'
-        if ref.is_in_comment and ref.category == 'test':
-            return 'Low'
+            return "Low"
+        if ref.is_in_comment and ref.category == "test":
+            return "Low"
 
-        return 'Medium'
+        return "Medium"
 
     def extract_endpoint_url(self, match_text: str) -> str:
         """Extract clean endpoint URL from match"""
         # Remove quotes
-        cleaned = match_text.strip('\'"`')
+        cleaned = match_text.strip("'\"`")
         # Extract /api/v1/... part
         api_match = re.search(r'/api/v1/[^\s\'"`\)]*', cleaned)
         if api_match:
             return api_match.group(0)
         return cleaned
 
-    def search_file(self, file_path: Path) -> List[EndpointReference]:
+    def search_file(self, file_path: Path) -> list[EndpointReference]:
         """Search a single file for endpoint URLs"""
         references = []
 
         try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(file_path, encoding="utf-8", errors="ignore") as f:
                 lines = f.readlines()
         except Exception as e:
             print(f"Warning: Could not read {file_path}: {e}", file=sys.stderr)
@@ -240,7 +243,7 @@ class EndpointURLSearcher:
                     context_start = max(0, line_num - 4)
                     context_end = min(len(lines), line_num + 3)
                     context_lines = lines[context_start:context_end]
-                    context = ''.join(context_lines)
+                    context = "".join(context_lines)
 
                     ref = EndpointReference(
                         file_path=str(file_path.relative_to(self.base_dir)),
@@ -249,7 +252,7 @@ class EndpointURLSearcher:
                         endpoint_url=endpoint_url,
                         context=context,
                         category=category,
-                        priority='',  # Will be set later
+                        priority="",  # Will be set later
                         is_in_comment=is_comment,
                         is_in_string=is_string,
                         is_deprecated=is_deprecated,
@@ -262,23 +265,38 @@ class EndpointURLSearcher:
 
         return references
 
-    def search_directory(self, directory: Path, include_patterns: Optional[List[str]] = None,
-                        exclude_patterns: Optional[List[str]] = None) -> List[EndpointReference]:
+    def search_directory(
+        self,
+        directory: Path,
+        include_patterns: list[str] | None = None,
+        exclude_patterns: list[str] | None = None,
+    ) -> list[EndpointReference]:
         """Search directory recursively for endpoint URLs"""
         if include_patterns is None:
-            include_patterns = ['*.py', '*.js', '*.ts', '*.jsx', '*.tsx', '*.md', '*.yaml', '*.yml', '*.json', '*.sh']
+            include_patterns = [
+                "*.py",
+                "*.js",
+                "*.ts",
+                "*.jsx",
+                "*.tsx",
+                "*.md",
+                "*.yaml",
+                "*.yml",
+                "*.json",
+                "*.sh",
+            ]
 
         if exclude_patterns is None:
             exclude_patterns = [
-                '**/node_modules/**',
-                '**/venv/**',
-                '**/__pycache__/**',
-                '**/.git/**',
-                '**/htmlcov/**',
-                '**/coverage/**',
-                '**/build/**',
-                '**/dist/**',
-                '**/*.egg-info/**',
+                "**/node_modules/**",
+                "**/venv/**",
+                "**/__pycache__/**",
+                "**/.git/**",
+                "**/htmlcov/**",
+                "**/coverage/**",
+                "**/build/**",
+                "**/dist/**",
+                "**/*.egg-info/**",
             ]
 
         references = []
@@ -288,7 +306,9 @@ class EndpointURLSearcher:
                 # Check if excluded
                 excluded = False
                 for exclude_pattern in exclude_patterns:
-                    if file_path.match(exclude_pattern) or exclude_pattern.replace('**/', '') in str(file_path):
+                    if file_path.match(exclude_pattern) or exclude_pattern.replace(
+                        "**/", ""
+                    ) in str(file_path):
                         excluded = True
                         break
 
@@ -301,7 +321,7 @@ class EndpointURLSearcher:
 
         return references
 
-    def search_specific_directories(self, directories: List[str]) -> List[EndpointReference]:
+    def search_specific_directories(self, directories: list[str]) -> list[EndpointReference]:
         """Search specific directories"""
         all_references = []
 
@@ -322,10 +342,10 @@ class EndpointURLSearcher:
 class ImpactMatrixGenerator:
     """Generates impact matrix from endpoint references"""
 
-    def __init__(self, references: List[EndpointReference]):
+    def __init__(self, references: list[EndpointReference]):
         self.references = references
 
-    def generate_summary(self) -> Dict[str, Any]:
+    def generate_summary(self) -> dict[str, Any]:
         """Generate summary statistics"""
         total = len(self.references)
 
@@ -339,14 +359,14 @@ class ImpactMatrixGenerator:
             by_file[ref.file_path] += 1
 
         return {
-            'total_references': total,
-            'by_priority': dict(by_priority),
-            'by_category': dict(by_category),
-            'unique_files': len(by_file),
-            'unique_endpoints': len(set(ref.endpoint_url for ref in self.references)),
+            "total_references": total,
+            "by_priority": dict(by_priority),
+            "by_category": dict(by_category),
+            "unique_files": len(by_file),
+            "unique_endpoints": len(set(ref.endpoint_url for ref in self.references)),
         }
 
-    def generate_matrix(self) -> List[Dict[str, Any]]:
+    def generate_matrix(self) -> list[dict[str, Any]]:
         """Generate impact matrix"""
         matrix = []
 
@@ -361,23 +381,25 @@ class ImpactMatrixGenerator:
             for ref in refs:
                 priority_counts[ref.priority] += 1
 
-            matrix.append({
-                'file_path': file_path,
-                'total_references': len(refs),
-                'priority_breakdown': dict(priority_counts),
-                'categories': list(set(ref.category for ref in refs)),
-                'references': [
-                    {
-                        'line_number': ref.line_number,
-                        'endpoint_url': ref.endpoint_url,
-                        'priority': ref.priority,
-                        'category': ref.category,
-                        'is_in_comment': ref.is_in_comment,
-                        'is_deprecated': ref.is_deprecated,
-                    }
-                    for ref in sorted(refs, key=lambda x: x.line_number)
-                ],
-            })
+            matrix.append(
+                {
+                    "file_path": file_path,
+                    "total_references": len(refs),
+                    "priority_breakdown": dict(priority_counts),
+                    "categories": list(set(ref.category for ref in refs)),
+                    "references": [
+                        {
+                            "line_number": ref.line_number,
+                            "endpoint_url": ref.endpoint_url,
+                            "priority": ref.priority,
+                            "category": ref.category,
+                            "is_in_comment": ref.is_in_comment,
+                            "is_deprecated": ref.is_deprecated,
+                        }
+                        for ref in sorted(refs, key=lambda x: x.line_number)
+                    ],
+                }
+            )
 
         return matrix
 
@@ -387,72 +409,85 @@ class ImpactMatrixGenerator:
         matrix = self.generate_matrix()
 
         result = {
-            'summary': summary,
-            'impact_matrix': matrix,
-            'all_references': [asdict(ref) for ref in self.references],
+            "summary": summary,
+            "impact_matrix": matrix,
+            "all_references": [asdict(ref) for ref in self.references],
         }
 
         return json.dumps(result, indent=2, default=str)
 
     def output_markdown(self) -> str:
         """Output as Markdown"""
-        lines = ['# Hardcoded Endpoint URL Impact Matrix\n']
+        lines = ["# Hardcoded Endpoint URL Impact Matrix\n"]
 
         summary = self.generate_summary()
 
-        lines.append('## Summary\n')
+        lines.append("## Summary\n")
         lines.append(f"- Total References: {summary['total_references']}")
         lines.append(f"- Unique Files: {summary['unique_files']}")
         lines.append(f"- Unique Endpoints: {summary['unique_endpoints']}\n")
 
-        lines.append('### By Priority\n')
-        for priority in ['Critical', 'High', 'Medium', 'Low']:
-            count = summary['by_priority'].get(priority, 0)
+        lines.append("### By Priority\n")
+        for priority in ["Critical", "High", "Medium", "Low"]:
+            count = summary["by_priority"].get(priority, 0)
             lines.append(f"- **{priority}**: {count}")
-        lines.append('')
+        lines.append("")
 
-        lines.append('### By Category\n')
-        for category, count in sorted(summary['by_category'].items()):
+        lines.append("### By Category\n")
+        for category, count in sorted(summary["by_category"].items()):
             lines.append(f"- **{category}**: {count}")
-        lines.append('')
+        lines.append("")
 
-        lines.append('## Impact Matrix\n')
+        lines.append("## Impact Matrix\n")
 
         matrix = self.generate_matrix()
         for entry in matrix:
             lines.append(f"### {entry['file_path']}\n")
             lines.append(f"- **Total References**: {entry['total_references']}")
             lines.append(f"- **Categories**: {', '.join(entry['categories'])}")
-            lines.append(f"- **Priority Breakdown**:")
-            for priority, count in sorted(entry['priority_breakdown'].items()):
+            lines.append("- **Priority Breakdown**:")
+            for priority, count in sorted(entry["priority_breakdown"].items()):
                 lines.append(f"  - {priority}: {count}")
-            lines.append('')
-            lines.append('#### References\n')
-            for ref in entry['references'][:20]:  # Limit to first 20 per file
-                lines.append(f"- Line {ref['line_number']}: `{ref['endpoint_url']}` ({ref['priority']})")
-                if ref['is_in_comment']:
-                    lines.append('  - ⚠️ In comment')
-                if ref['is_deprecated']:
-                    lines.append('  - ⚠️ Deprecated context')
-            if len(entry['references']) > 20:
+            lines.append("")
+            lines.append("#### References\n")
+            for ref in entry["references"][:20]:  # Limit to first 20 per file
+                lines.append(
+                    f"- Line {ref['line_number']}: `{ref['endpoint_url']}` ({ref['priority']})"
+                )
+                if ref["is_in_comment"]:
+                    lines.append("  - ⚠️ In comment")
+                if ref["is_deprecated"]:
+                    lines.append("  - ⚠️ Deprecated context")
+            if len(entry["references"]) > 20:
                 lines.append(f"- ... and {len(entry['references']) - 20} more references")
-            lines.append('')
+            lines.append("")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Search codebase for hardcoded endpoint URLs')
-    parser.add_argument('--base-dir', default='.', help='Base directory to search')
-    parser.add_argument('--output-format', choices=['json', 'markdown'], default='json',
-                       help='Output format')
-    parser.add_argument('--output-file', help='Output file path')
-    parser.add_argument('--search-dirs', nargs='+',
-                       default=['tests/', 'cli/', 'frontend/', 'docs/',
-                               'hub/apps/orchestration/workflows/', 'sdk/'],
-                       help='Directories to search')
-    parser.add_argument('--all', action='store_true',
-                       help='Search entire codebase (ignores --search-dirs)')
+    parser = argparse.ArgumentParser(description="Search codebase for hardcoded endpoint URLs")
+    parser.add_argument("--base-dir", default=".", help="Base directory to search")
+    parser.add_argument(
+        "--output-format", choices=["json", "markdown"], default="json", help="Output format"
+    )
+    parser.add_argument("--output-file", help="Output file path")
+    parser.add_argument(
+        "--search-dirs",
+        nargs="+",
+        default=[
+            "tests/",
+            "cli/",
+            "frontend/",
+            "docs/",
+            "hub/apps/orchestration/workflows/",
+            "sdk/",
+        ],
+        help="Directories to search",
+    )
+    parser.add_argument(
+        "--all", action="store_true", help="Search entire codebase (ignores --search-dirs)"
+    )
 
     args = parser.parse_args()
 
@@ -468,19 +503,18 @@ def main():
 
     generator = ImpactMatrixGenerator(references)
 
-    if args.output_format == 'json':
+    if args.output_format == "json":
         output = generator.output_json()
     else:
         output = generator.output_markdown()
 
     if args.output_file:
-        with open(args.output_file, 'w') as f:
+        with open(args.output_file, "w") as f:
             f.write(output)
         print(f"Output written to {args.output_file}", file=sys.stderr)
     else:
         print(output)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

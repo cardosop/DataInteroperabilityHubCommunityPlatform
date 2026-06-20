@@ -63,10 +63,13 @@ export interface FileCompleteRequest {
   parts?: Array<{ ETag: string; PartNumber: number }>;
 }
 
+// Phase 260.3 — aligned with backend ``hub.apps.files.models.FileScanStatus``.
+// ``UNKNOWN`` is a defensive fallback for unrecognised wire values (forward compat).
+// ``SCANNING`` was removed — the frontend derives "is scanning" from
+// ``scan_status === PENDING_SCAN`` rather than from a separate enum member.
 export const FileScanStatus = {
   CLEAN: 'CLEAN',
   INFECTED: 'INFECTED',
-  SCANNING: 'SCANNING',
   UNKNOWN: 'UNKNOWN',
   PENDING_SCAN: 'PENDING_SCAN',
   SCAN_ERROR: 'SCAN_ERROR',

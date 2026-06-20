@@ -23,8 +23,6 @@ except ImportError:
 
 import time
 
-import redis
-from django.conf import settings
 from django.test import TestCase, override_settings
 
 from hub.apps.contracts.odps_rate_limiting import (
@@ -265,7 +263,7 @@ class ODPSRateLimitingCheckTest(TestCase):
             is_allowed, error = check_rate_limit(
                 tenant_id=self.tenant_id, user_id=self.user_id, redis_client=self.redis_client
             )
-            self.assertTrue(is_allowed, f"Request {i+1} should be allowed when under limit")
+            self.assertTrue(is_allowed, f"Request {i + 1} should be allowed when under limit")
             self.assertIsNone(error, "No error should be returned when allowed")
 
     def test_check_rate_limit_rejects_when_over_limit(self):
@@ -276,7 +274,7 @@ class ODPSRateLimitingCheckTest(TestCase):
             is_allowed, error = check_rate_limit(
                 tenant_id=self.tenant_id, user_id=self.user_id, redis_client=self.redis_client
             )
-            self.assertTrue(is_allowed, f"Request {i+1} should be allowed")
+            self.assertTrue(is_allowed, f"Request {i + 1} should be allowed")
 
         # Next request should be rejected
         is_allowed, error = check_rate_limit(
@@ -297,7 +295,7 @@ class ODPSRateLimitingCheckTest(TestCase):
             is_allowed, error = check_rate_limit(
                 tenant_id=self.tenant_id, user_id=self.user_id, redis_client=self.redis_client
             )
-            self.assertTrue(is_allowed, f"Request {i+1} should be allowed")
+            self.assertTrue(is_allowed, f"Request {i + 1} should be allowed")
 
         # Next request should be rejected at user level
         is_allowed, error = check_rate_limit(
@@ -414,7 +412,7 @@ class ODPSRateLimitingInfoTest(TestCase):
     def test_get_rate_limit_info_returns_all_levels(self):
         """Test that get_rate_limit_info returns information for all levels using real Redis"""
         # Make some requests to populate rate limit data
-        for i in range(5):
+        for _i in range(5):
             check_rate_limit(
                 tenant_id=self.tenant_id, user_id=self.user_id, redis_client=self.redis_client
             )
@@ -431,7 +429,7 @@ class ODPSRateLimitingInfoTest(TestCase):
         """Test that rate limit info includes count and limit using real Redis"""
         # Make some requests to populate rate limit data
         request_count = 10
-        for i in range(request_count):
+        for _i in range(request_count):
             check_rate_limit(
                 tenant_id=self.tenant_id, user_id=self.user_id, redis_client=self.redis_client
             )
@@ -508,7 +506,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
             is_allowed, error = check_rate_limit(
                 tenant_id=self.tenant_id, user_id=user_ids[user_idx], redis_client=self.redis_client
             )
-            self.assertTrue(is_allowed, f"Request {i+1} should be allowed")
+            self.assertTrue(is_allowed, f"Request {i + 1} should be allowed")
             self.assertIsNone(error, "No error should be returned")
 
         # Next request should be rejected at tenant level
@@ -529,7 +527,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
             is_allowed, error = check_rate_limit(
                 tenant_id=self.tenant_id, user_id=self.user_id, redis_client=self.redis_client
             )
-            self.assertTrue(is_allowed, f"Request {i+1} should be allowed")
+            self.assertTrue(is_allowed, f"Request {i + 1} should be allowed")
             self.assertIsNone(error, "No error should be returned")
 
         # Next request should be rejected at user level
@@ -561,10 +559,9 @@ class ODPSRateLimitingIntegrationTest(TestCase):
             )
             if is_allowed:
                 request_count += 1
-            else:
-                # If we hit a limit, check if it's global
-                if error and "global" in error.message.lower():
-                    break
+            # If we hit a limit, check if it's global
+            elif error and "global" in error.message.lower():
+                break
 
         # Verify we can track global usage
         info = get_rate_limit_info(redis_client=self.redis_client)
@@ -584,7 +581,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
                 user_id=user_ids_tenant1[user_idx],
                 redis_client=self.redis_client,
             )
-            self.assertTrue(is_allowed, f"Tenant 1 request {i+1} should be allowed")
+            self.assertTrue(is_allowed, f"Tenant 1 request {i + 1} should be allowed")
 
         # Tenant 1 should be rate limited at tenant level
         is_allowed, error = check_rate_limit(
@@ -607,7 +604,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
             is_allowed, error = check_rate_limit(
                 tenant_id=self.tenant_id, user_id=self.user_id, redis_client=self.redis_client
             )
-            self.assertTrue(is_allowed, f"User 1 request {i+1} should be allowed")
+            self.assertTrue(is_allowed, f"User 1 request {i + 1} should be allowed")
 
         # User 1 should be rate limited
         is_allowed, error = check_rate_limit(
@@ -626,7 +623,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_rate_limit_error_message_includes_retry_after(self):
         """Integration test: Verify error message includes retry-after suggestion"""
         # Exceed rate limit
-        for i in range(RATE_LIMIT_PER_TENANT + 1):
+        for _i in range(RATE_LIMIT_PER_TENANT + 1):
             is_allowed, error = check_rate_limit(
                 tenant_id=self.tenant_id, user_id=self.user_id, redis_client=self.redis_client
             )
@@ -642,7 +639,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_rate_limit_logging_with_context(self):
         """Integration test: Verify rate limit violations are logged with context"""
         # Exceed user rate limit (which will be hit first)
-        for i in range(RATE_LIMIT_PER_USER + 1):
+        for _i in range(RATE_LIMIT_PER_USER + 1):
             is_allowed, error = check_rate_limit(
                 tenant_id=self.tenant_id, user_id=self.user_id, redis_client=self.redis_client
             )
@@ -660,7 +657,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_rate_limit_info_accuracy(self):
         """Integration test: Verify rate limit info is accurate"""
         # Make some requests
-        for i in range(10):
+        for _i in range(10):
             check_rate_limit(
                 tenant_id=self.tenant_id, user_id=self.user_id, redis_client=self.redis_client
             )
@@ -694,7 +691,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
             is_allowed, error = check_rate_limit(
                 tenant_id=self.tenant_id, user_id=self.user_id, redis_client=self.redis_client
             )
-            self.assertTrue(is_allowed, f"Request {i+1} should be allowed")
+            self.assertTrue(is_allowed, f"Request {i + 1} should be allowed")
 
         # Should be rate limited at user level
         is_allowed, error = check_rate_limit(
@@ -738,7 +735,9 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_check_rate_limit_with_none_tenant_id(self):
         """Test rate limit check with None tenant_id: rejected for security (tenant_id required)."""
         is_allowed, error = check_rate_limit(
-            tenant_id=None, user_id=self.user_id, redis_client=self.redis_client  # type: ignore[misc]  # test: edge-case type exercise
+            tenant_id=None,
+            user_id=self.user_id,
+            redis_client=self.redis_client,  # type: ignore[misc]  # test: edge-case type exercise
         )
         self.assertFalse(is_allowed, "None tenant_id should be rejected")
         self.assertIsNotNone(error)
@@ -760,7 +759,9 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_check_rate_limit_with_none_redis_client(self):
         """Test rate limit check with None Redis client."""
         is_allowed, error = check_rate_limit(
-            tenant_id=self.tenant_id, user_id=self.user_id, redis_client=None  # type: ignore[misc]  # test: edge-case type exercise
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            redis_client=None,  # type: ignore[misc]  # test: edge-case type exercise
         )
         # Should handle None Redis client gracefully (fail-open)
         self.assertTrue(is_allowed)
@@ -769,15 +770,20 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_get_rate_limit_info_with_none_tenant_id(self):
         """get_rate_limit_info with None tenant_id returns empty dict or raises."""
         result = get_rate_limit_info(
-            tenant_id=None, user_id=self.user_id, redis_client=self.redis_client  # type: ignore[misc]  # test: edge-case type exercise
+            tenant_id=None,
+            user_id=self.user_id,
+            redis_client=self.redis_client,  # type: ignore[misc]  # test: edge-case type exercise
         )
-        self.assertIsInstance(result, dict,
-            "get_rate_limit_info must return a dict for None tenant_id")
+        self.assertIsInstance(
+            result, dict, "get_rate_limit_info must return a dict for None tenant_id"
+        )
 
     def test_get_rate_limit_info_with_none_redis_client(self):
         """Test get rate limit info with None Redis client."""
         info = get_rate_limit_info(
-            tenant_id=self.tenant_id, user_id=self.user_id, redis_client=None  # type: ignore[misc]  # test: edge-case type exercise
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            redis_client=None,  # type: ignore[misc]  # test: edge-case type exercise
         )
         # Should handle None Redis client gracefully
         self.assertIsInstance(info, dict)
@@ -785,20 +791,22 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_rate_limit_with_very_long_tenant_id(self):
         """Rate limit check handles very long tenant_id — must not crash, returns bool."""
         long_tenant_id = "a" * 10000
-        is_allowed, error = check_rate_limit(
+        is_allowed, _error = check_rate_limit(
             tenant_id=long_tenant_id, user_id=self.user_id, redis_client=self.redis_client
         )
-        self.assertIsInstance(is_allowed, bool,
-            "check_rate_limit must return a boolean for very long tenant_id")
+        self.assertIsInstance(
+            is_allowed, bool, "check_rate_limit must return a boolean for very long tenant_id"
+        )
 
     def test_rate_limit_with_very_long_user_id(self):
         """Rate limit check handles very long user_id — must not crash, returns bool."""
         long_user_id = "a" * 10000
-        is_allowed, error = check_rate_limit(
+        is_allowed, _error = check_rate_limit(
             tenant_id=self.tenant_id, user_id=long_user_id, redis_client=self.redis_client
         )
-        self.assertIsInstance(is_allowed, bool,
-            "check_rate_limit must return a boolean for very long user_id")
+        self.assertIsInstance(
+            is_allowed, bool, "check_rate_limit must return a boolean for very long user_id"
+        )
 
     def test_rate_limit_key_consistency(self):
         """Test rate limit key consistency across calls."""
@@ -842,9 +850,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_rate_limiting_handles_unicode_characters(self):
         """Rate limiting key generation handles unicode tenant IDs without crashing."""
         tenant_id = "测试租户"
-        key = generate_rate_limit_key(
-            tenant_id=tenant_id, user_id=None, level="tenant"
-        )
+        key = generate_rate_limit_key(tenant_id=tenant_id, user_id=None, level="tenant")
         self.assertIsNotNone(key)
         self.assertIn(REDIS_KEY_PREFIX_TENANT, key)
         self.assertIn(tenant_id, key)
@@ -852,9 +858,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_rate_limiting_handles_special_characters(self):
         """Rate limiting key generation handles special characters without crashing."""
         tenant_id = "Test & Co. (Special)"
-        key = generate_rate_limit_key(
-            tenant_id=tenant_id, user_id=None, level="tenant"
-        )
+        key = generate_rate_limit_key(tenant_id=tenant_id, user_id=None, level="tenant")
         self.assertIsNotNone(key)
         self.assertIn(REDIS_KEY_PREFIX_TENANT, key)
         self.assertIn(tenant_id, key)
@@ -862,9 +866,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_rate_limiting_handles_very_large_ids(self):
         """Rate limiting key generation handles very large tenant IDs without crashing."""
         large_tenant_id = "A" * 1000  # Very long tenant ID
-        key = generate_rate_limit_key(
-            tenant_id=large_tenant_id, user_id=None, level="tenant"
-        )
+        key = generate_rate_limit_key(tenant_id=large_tenant_id, user_id=None, level="tenant")
         self.assertIsNotNone(key)
         self.assertIn(REDIS_KEY_PREFIX_TENANT, key)
 
@@ -877,9 +879,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_rate_limiting_handles_nested_structures(self):
         """Rate limiting key generation handles complex tenant ID strings."""
         complex_tenant_id = "tenant-with-nested-structure"
-        key = generate_rate_limit_key(
-            tenant_id=complex_tenant_id, user_id=None, level="tenant"
-        )
+        key = generate_rate_limit_key(tenant_id=complex_tenant_id, user_id=None, level="tenant")
         self.assertIsNotNone(key)
         self.assertIn(REDIS_KEY_PREFIX_TENANT, key)
         self.assertIn(complex_tenant_id, key)

@@ -4,6 +4,7 @@ Phase 277.B.065 — Password validator unit tests.
 Covers: PasswordComplexityValidator, CommonPasswordDenyListValidator,
 and HaveIBeenPwnedValidator.
 """
+
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -24,11 +25,12 @@ class PasswordComplexityValidatorTests(TestCase):
         self.validator = PasswordComplexityValidator(min_length=10)
 
     def test_accepts_strong_password(self):
-        # Should not raise
-        self.validator.validate("Str0ng!Pass")
+        result = self.validator.validate("Str0ng!Pass")
+        self.assertIsNone(result, f"Expected None, got {result!r}")
 
     def test_accepts_password_with_multiple_specials(self):
-        self.validator.validate("C0mpl3x!!@#Pass")
+        result = self.validator.validate("C0mpl3x!!@#Pass")
+        self.assertIsNone(result, f"Expected None, got {result!r}")
 
     def test_rejects_short_password(self):
         with self.assertRaises(ValidationError) as ctx:
@@ -93,7 +95,8 @@ class CommonPasswordDenyListValidatorTests(TestCase):
 
     def test_accepts_uncommon_password(self):
         # A random strong password should not be in any common list
-        self.validator.validate("XyZ!9kLm2#QwR5p")
+        result = self.validator.validate("XyZ!9kLm2#QwR5p")
+        self.assertIsNone(result, f"Expected None, got {result!r}")
 
     def test_help_text_present(self):
         text = self.validator.get_help_text()
@@ -107,6 +110,7 @@ class HaveIBeenPwnedValidatorTests(TestCase):
     def _mock_urlopen(self, body=""):
         """Return a mock that simulates a urllib response."""
         import io
+
         resp = io.BytesIO(body.encode("utf-8"))
         resp.url = "https://api.pwnedpasswords.com/range/XXXXX"
         resp.status = 200
@@ -128,8 +132,9 @@ class HaveIBeenPwnedValidatorTests(TestCase):
         # Wait — we need to compute the real SHA1 to construct the proper mock
         # Let's just test the reject path with a known match
         import hashlib
+
         sha1 = hashlib.sha1(b"password123").hexdigest().upper()
-        prefix, suffix = sha1[:5], sha1[5:]
+        _prefix, suffix = sha1[:5], sha1[5:]
         # Construct response that includes our suffix
         mock_urlopen.return_value = self._mock_urlopen(
             f"00112233445566778899AABBCCDDEEFF00112233:1\r\n"
@@ -150,22 +155,25 @@ class HaveIBeenPwnedValidatorTests(TestCase):
         )
         # This password's SHA1 prefix will NOT match the mock's response
         # so it should pass
-        self.validator.validate("Un1qu3!P@ssphr4s3-that-is-not-pwned")
+        result = self.validator.validate("Un1qu3!P@ssphr4s3-that-is-not-pwned")
+        self.assertIsNone(result, f"Expected None, got {result!r}")
 
     @patch("urllib.request.urlopen")
     def test_network_failure_does_not_block(self, mock_urlopen):
         """A network error is best-effort — password should still pass."""
         import urllib.error
+
         mock_urlopen.side_effect = urllib.error.URLError("connection refused")
-        # Should not raise
-        self.validator.validate("DoesNotMatter123!")
+        result = self.validator.validate("DoesNotMatter123!")
+        self.assertIsNone(result, f"Expected None on network failure, got {result!r}")
 
     @patch("urllib.request.urlopen")
     def test_timeout_does_not_block(self, mock_urlopen):
         """A timeout should not block password acceptance."""
-        import socket
-        mock_urlopen.side_effect = socket.timeout("timed out")
-        self.validator.validate("DoesNotMatter123!")
+
+        mock_urlopen.side_effect = TimeoutError("timed out")
+        result = self.validator.validate("DoesNotMatter123!")
+        self.assertIsNone(result, f"Expected None on timeout, got {result!r}")
 
     def test_help_text_present(self):
         text = self.validator.get_help_text()

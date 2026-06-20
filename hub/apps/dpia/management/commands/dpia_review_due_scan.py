@@ -1,6 +1,7 @@
 """Periodic DPIA review sweep — approved assessments past ``next_review_due_at`` (CronJob / ops)."""
 
 from __future__ import annotations
+
 import uuid
 
 from django.core.management.base import BaseCommand

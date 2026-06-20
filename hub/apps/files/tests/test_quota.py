@@ -19,11 +19,12 @@ Two layers:
   ``used_bytes`` (the meter is supposed to predict the gate, not
   drift from it).
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework import status
@@ -109,7 +110,7 @@ class GetTenantFileStorageQuotaHelperTest(TestCase):
     def test_empty_tenant_returns_zero_used(self):
         result = get_tenant_file_storage_quota(str(self.tenant.id))
         self.assertEqual(result["used_bytes"], 0)
-        self.assertEqual(result["limit_bytes"], 100 * (1024 ** 3))
+        self.assertEqual(result["limit_bytes"], 100 * (1024**3))
         self.assertEqual(result["percentage"], 0.0)
         self.assertFalse(result["unlimited"])
         self.assertEqual(result["plan_slug"], "quota-pro")
@@ -147,12 +148,12 @@ class GetTenantFileStorageQuotaHelperTest(TestCase):
     @pytest.mark.integration
     def test_percentage_is_used_over_limit(self):
         # Use 25% of the 100 GB plan.
-        quarter = 25 * (1024 ** 3)
+        quarter = 25 * (1024**3)
         _seed_file(tenant=self.tenant, user=self.user, size=quarter, status_=FileStatus.ACTIVE)
 
         result = get_tenant_file_storage_quota(str(self.tenant.id))
         self.assertEqual(result["used_bytes"], quarter)
-        self.assertEqual(result["limit_bytes"], 100 * (1024 ** 3))
+        self.assertEqual(result["limit_bytes"], 100 * (1024**3))
         self.assertAlmostEqual(result["percentage"], 25.0, places=1)
 
     @pytest.mark.integration
@@ -160,7 +161,7 @@ class GetTenantFileStorageQuotaHelperTest(TestCase):
         # 200 GB used on a 100 GB plan: percentage caps at 100 but
         # used_bytes preserves the absolute overage so the FE banner
         # can surface "you are 200 GB over your 100 GB plan".
-        oversize = 200 * (1024 ** 3)
+        oversize = 200 * (1024**3)
         _seed_file(tenant=self.tenant, user=self.user, size=oversize, status_=FileStatus.ACTIVE)
 
         result = get_tenant_file_storage_quota(str(self.tenant.id))
@@ -178,10 +179,10 @@ class GetTenantFileStorageQuotaHelperTest(TestCase):
             tenant=unlimited_tenant,
             status=UserStatus.ACTIVE,
         )
-        _seed_file(tenant=unlimited_tenant, user=unlimited_user, size=5 * (1024 ** 3))
+        _seed_file(tenant=unlimited_tenant, user=unlimited_user, size=5 * (1024**3))
 
         result = get_tenant_file_storage_quota(str(unlimited_tenant.id))
-        self.assertEqual(result["used_bytes"], 5 * (1024 ** 3))
+        self.assertEqual(result["used_bytes"], 5 * (1024**3))
         self.assertIsNone(result["limit_bytes"])
         self.assertIsNone(result["percentage"])
         self.assertTrue(result["unlimited"])
@@ -227,9 +228,10 @@ class GetTenantFileStorageQuotaPlanResolutionTest(TestCase):
 
     @pytest.mark.integration
     def test_helper_raises_when_no_plan_and_no_free_plan(self):
-        # Set up a tenant with NO plan AND ensure the FREE plan
-        # doesn't exist.
-        TenantPlan.objects.filter(slug="free").delete()
+        # Set up a tenant with NO plan AND ensure no ACTIVE FREE plan
+        # exists. Deactivation preserves referential integrity
+        # (ActiveSubscription FK is RESTRICT on delete).
+        TenantPlan.objects.filter(slug="free").update(is_active=False)
         plan_free_remaining = TenantPlan.objects.filter(slug="free", is_active=True).count()
         self.assertEqual(plan_free_remaining, 0, "test setup: FREE plan must not exist")
 
@@ -265,15 +267,22 @@ class FileQuotaEndpointTest(TestCase):
 
     @pytest.mark.integration
     def test_quota_endpoint_returns_envelope(self):
-        _seed_file(tenant=self.tenant, user=self.user, size=1 * (1024 ** 3))
+        _seed_file(tenant=self.tenant, user=self.user, size=1 * (1024**3))
 
         response = self.client.get("/api/v1/files/quota/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Envelope shape — every documented key present.
-        for key in ("used_bytes", "limit_bytes", "percentage", "plan_slug", "plan_tier", "unlimited"):
+        for key in (
+            "used_bytes",
+            "limit_bytes",
+            "percentage",
+            "plan_slug",
+            "plan_tier",
+            "unlimited",
+        ):
             self.assertIn(key, response.data, f"missing key: {key}")
-        self.assertEqual(response.data["used_bytes"], 1 * (1024 ** 3))
-        self.assertEqual(response.data["limit_bytes"], 10 * (1024 ** 3))
+        self.assertEqual(response.data["used_bytes"], 1 * (1024**3))
+        self.assertEqual(response.data["limit_bytes"], 10 * (1024**3))
         self.assertAlmostEqual(response.data["percentage"], 10.0, places=1)
         self.assertFalse(response.data["unlimited"])
 
@@ -294,10 +303,11 @@ class FileQuotaEndpointTest(TestCase):
         unlimited storage.
         """
         # Detach the tenant's plan AND remove the FREE fallback so
-        # ``_resolve_tenant_plan`` returns None.
+        # ``_resolve_tenant_plan`` returns None. Deactivate rather
+        # than delete to preserve referential integrity.
         self.tenant.plan = None
         self.tenant.save(update_fields=["plan"])
-        TenantPlan.objects.filter(slug="free").delete()
+        TenantPlan.objects.filter(slug="free").update(is_active=False)
 
         response = self.client.get("/api/v1/files/quota/")
         self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
@@ -312,10 +322,7 @@ class FileQuotaEndpointTest(TestCase):
         body = response.data
         if isinstance(body, dict):
             nested_error = body.get("error")
-            code = (
-                nested_error.get("code") if isinstance(nested_error, dict)
-                else body.get("code")
-            )
+            code = nested_error.get("code") if isinstance(nested_error, dict) else body.get("code")
         else:
             code = None
         self.assertEqual(code, "QUOTA_PLAN_RESOLUTION_FAILED")

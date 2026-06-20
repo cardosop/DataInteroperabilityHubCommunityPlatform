@@ -47,12 +47,13 @@ contract on the metric — but ONLY to verify the call WAS made
 holds state in memory; we don't mock the metric, we read its
 current value).
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 from datetime import timedelta
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
@@ -163,9 +164,7 @@ def _make_pending_request(tenant, user, asset, *, age_days):
         status=AccessRequestStatus.PENDING,
     )
     backdated = timezone.now() - timedelta(days=age_days)
-    AccessRequest.objects.filter(pk=ar.pk).update(
-        created_at=backdated, updated_at=backdated
-    )
+    AccessRequest.objects.filter(pk=ar.pk).update(created_at=backdated, updated_at=backdated)
     ar.refresh_from_db()
     return ar
 
@@ -201,9 +200,7 @@ class TestPendingSLAExpiry(TestCase):
             action="ACCESS_REQUEST_EXPIRED_BY_SLA",
             resource_id=str(ar.id),
         ).first()
-        assert audit is not None, (
-            "ACCESS_REQUEST_EXPIRED_BY_SLA audit must fire"
-        )
+        assert audit is not None, "ACCESS_REQUEST_EXPIRED_BY_SLA audit must fire"
         details = audit.details_json or {}
         assert details.get("previous_status") == AccessRequestStatus.PENDING
         assert details.get("sla_days") == 14
@@ -222,10 +219,13 @@ class TestPendingSLAExpiry(TestCase):
         ar.refresh_from_db()
 
         assert ar.status == AccessRequestStatus.PENDING
-        assert AuditEvent.all_objects.filter(
-            action="ACCESS_REQUEST_EXPIRED_BY_SLA",
-            resource_id=str(ar.id),
-        ).count() == 0
+        assert (
+            AuditEvent.all_objects.filter(
+                action="ACCESS_REQUEST_EXPIRED_BY_SLA",
+                resource_id=str(ar.id),
+            ).count()
+            == 0
+        )
 
     @pytest.mark.integration
     def test_pending_2d_old_under_1d_sla_expires(self):
@@ -266,11 +266,13 @@ class TestPerTenantSLAIsolation(TestCase):
     def test_two_tenants_different_slas(self):
         # Tenant A — 7-day SLA (tighter than default).
         tenant_a, user_a, asset_a = _seed_tenant_user_asset(
-            prefix="ta", sla_days=7,
+            prefix="ta",
+            sla_days=7,
         )
         # Tenant B — 30-day SLA (looser than default).
         tenant_b, user_b, asset_b = _seed_tenant_user_asset(
-            prefix="tb", sla_days=30,
+            prefix="tb",
+            sla_days=30,
         )
 
         # Both tenants have a 10-day-old PENDING request.
@@ -331,10 +333,13 @@ class TestApprovedExpiredPathPreserved(TestCase):
         ar.refresh_from_db()
 
         assert ar.status == AccessRequestStatus.REVOKED
-        assert AuditEvent.all_objects.filter(
-            action="ACCESS_EXPIRED_REVOKED",
-            resource_id=str(ar.id),
-        ).count() == 1
+        assert (
+            AuditEvent.all_objects.filter(
+                action="ACCESS_EXPIRED_REVOKED",
+                resource_id=str(ar.id),
+            ).count()
+            == 1
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -360,10 +365,13 @@ class TestSweepIdempotency(TestCase):
         ar.refresh_from_db()
 
         assert ar.status == AccessRequestStatus.EXPIRED
-        assert AuditEvent.all_objects.filter(
-            action="ACCESS_REQUEST_EXPIRED_BY_SLA",
-            resource_id=str(ar.id),
-        ).count() == 1, (
+        assert (
+            AuditEvent.all_objects.filter(
+                action="ACCESS_REQUEST_EXPIRED_BY_SLA",
+                resource_id=str(ar.id),
+            ).count()
+            == 1
+        ), (
             "Re-running the sweep must not emit a second "
             "ACCESS_REQUEST_EXPIRED_BY_SLA audit — the filter is "
             "self-narrowing on status=PENDING"

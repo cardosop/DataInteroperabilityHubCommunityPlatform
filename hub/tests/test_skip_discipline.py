@@ -8,12 +8,12 @@ Proves:
         hiding infra issues behind generic skips)
 4. I.2: Backend skips reference service/reason (not bare)
 """
+
 import os
 import re
 
 import pytest
 from django.test import TestCase
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -47,8 +47,7 @@ class SkipRegistryTest(TestCase):
         path = os.path.join(_REPO_ROOT, "docs/SKIP_REGISTRY.md")
         self.assertTrue(
             os.path.exists(path),
-            "docs/SKIP_REGISTRY.md must exist as the "
-            "single source of truth for skipped tests",
+            "docs/SKIP_REGISTRY.md must exist as the single source of truth for skipped tests",
         )
 
     def test_skip_registry_has_e2e_section(self):
@@ -92,16 +91,16 @@ class E2ESkipDisciplineTest(TestCase):
                         continue
                     # Match test.skip() with no args
                     if re.search(
-                        r'test\.skip\(\s*\)\s*;',
+                        r"test\.skip\(\s*\)\s*;",
                         stripped,
                     ):
                         rel = os.path.relpath(filepath, _REPO_ROOT)
                         bare_skips.append(f"{rel}:{i}")
 
         self.assertEqual(
-            bare_skips, [],
-            f"Found {len(bare_skips)} bare test.skip() "
-            f"without reason: {bare_skips}",
+            bare_skips,
+            [],
+            f"Found {len(bare_skips)} bare test.skip() without reason: {bare_skips}",
         )
 
     def test_describe_skips_have_uc_reference(self):
@@ -117,16 +116,16 @@ class E2ESkipDisciplineTest(TestCase):
                 rel = os.path.relpath(filepath, _REPO_ROOT)
                 # Must have JOURNEY- or UC- or DEFERRED in file
                 if not re.search(
-                    r'JOURNEY-|UC-|DEFERRED|deferred|backlog',
+                    r"JOURNEY-|UC-|DEFERRED|deferred|backlog",
                     content,
                     re.IGNORECASE,
                 ):
                     skipped_files.append(rel)
 
         self.assertEqual(
-            skipped_files, [],
-            f"describe.skip without UC/JOURNEY reference: "
-            f"{skipped_files}",
+            skipped_files,
+            [],
+            f"describe.skip without UC/JOURNEY reference: {skipped_files}",
         )
 
 
@@ -151,18 +150,19 @@ class BackendSkipDisciplineTest(TestCase):
                     # Match self.skipTest() or pytest.skip()
                     # with no string argument
                     if re.search(
-                        r'(self\.skipTest|pytest\.skip)\(\s*\)',
+                        r"(self\.skipTest|pytest\.skip)\(\s*\)",
                         stripped,
                     ):
                         rel = os.path.relpath(
-                            filepath, _REPO_ROOT,
+                            filepath,
+                            _REPO_ROOT,
                         )
                         bare_skips.append(f"{rel}:{i}")
 
         self.assertEqual(
-            bare_skips, [],
-            f"Found {len(bare_skips)} bare skip() without "
-            f"reason: {bare_skips}",
+            bare_skips,
+            [],
+            f"Found {len(bare_skips)} bare skip() without reason: {bare_skips}",
         )
 
     def test_no_infra_masked_as_xfail(self):
@@ -178,20 +178,22 @@ class BackendSkipDisciplineTest(TestCase):
                     if "@pytest.mark.xfail" in line:
                         # Check if reason mentions infra
                         if re.search(
-                            r'redis|postgres|docker|'
-                            r'service.*unavailable|'
-                            r'container|minio',
-                            line, re.IGNORECASE,
+                            r"redis|postgres|docker|"
+                            r"service.*unavailable|"
+                            r"container|minio",
+                            line,
+                            re.IGNORECASE,
                         ):
                             rel = os.path.relpath(
-                                filepath, _REPO_ROOT,
+                                filepath,
+                                _REPO_ROOT,
                             )
                             infra_xfails.append(
                                 f"{rel}:{i}",
                             )
 
         self.assertEqual(
-            infra_xfails, [],
-            f"Found xfail masking infra issues (should use "
-            f"skipTest instead): {infra_xfails}",
+            infra_xfails,
+            [],
+            f"Found xfail masking infra issues (should use skipTest instead): {infra_xfails}",
         )

@@ -15,19 +15,19 @@ Metrics are emitted via structlog → Prometheus (OpenTelemetry bridge).
 Alert rules in monitoring/prometheus/alerts/synthetic-probes.yml fire
 when failure rate exceeds 1% for 5 minutes.
 """
+
 from __future__ import annotations
+
+import argparse
 import os
 import sys
 import time
-import argparse
-from typing import Optional
 
 from django.core.management.base import BaseCommand
 
 from hub.apps.health.synthetic_probes import (
     create_probes,
     run_all_probes,
-    CRITICAL_PROBE_NAMES,
 )
 
 
@@ -99,14 +99,11 @@ class Command(BaseCommand):
 
         # Filter probes if requested
         if probe_filter:
-            probes = {
-                name: p for name, p in all_probes.items() if name in probe_filter
-            }
+            probes = {name: p for name, p in all_probes.items() if name in probe_filter}
             invalid = probe_filter - set(probes.keys())
             if invalid:
                 self.stderr.write(
-                    f"Unknown probe names: {sorted(invalid)}. "
-                    f"Valid: {sorted(all_probes.keys())}"
+                    f"Unknown probe names: {sorted(invalid)}. Valid: {sorted(all_probes.keys())}"
                 )
                 sys.exit(1)
         else:
@@ -125,9 +122,7 @@ class Command(BaseCommand):
             cycle += 1
 
             # Obtain auth token via login probe (or reuse from env)
-            auth_token = self._obtain_token(
-                all_probes.get("login"), auth_email, auth_password
-            )
+            auth_token = self._obtain_token(all_probes.get("login"), auth_email, auth_password)
 
             summary = run_all_probes(probes, auth_token=auth_token)
 
@@ -146,11 +141,7 @@ class Command(BaseCommand):
                     f"{'PASS' if result.success else 'FAIL':5s} "
                     f"{result.latency_ms:8.1f}ms"
                     + (f"  status={result.status_code}" if result.status_code else "")
-                    + (
-                        f"  error={result.error_message}"
-                        if result.error_message
-                        else ""
-                    )
+                    + (f"  error={result.error_message}" if result.error_message else "")
                 )
 
             if summary.failure_rate > 0.01:
@@ -165,16 +156,14 @@ class Command(BaseCommand):
                 time.sleep(interval)
 
         # ── Final summary ─────────────────────────────────────────────
-        self.stdout.write(
-            self.style.SUCCESS(f"Probe run complete. {cycle} cycle(s).")
-        )
+        self.stdout.write(self.style.SUCCESS(f"Probe run complete. {cycle} cycle(s)."))
 
     def _obtain_token(
         self,
         login_probe,
-        auth_email: Optional[str],
-        auth_password: Optional[str],
-    ) -> Optional[str]:
+        auth_email: str | None,
+        auth_password: str | None,
+    ) -> str | None:
         """Run the login probe to get a JWT for authenticated probes.
 
         Extracts the token from the ProbeResult.response_body — no second

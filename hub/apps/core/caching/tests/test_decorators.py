@@ -7,15 +7,13 @@ Tests cover:
 - TTL configuration per pattern
 - Cache key generation from function arguments
 """
+
 import time
-from unittest.mock import Mock, patch
-from django.test import TestCase, override_settings, RequestFactory
-from django.conf import settings
-from django.core.cache import cache
-from django.http import JsonResponse
-from django.views.decorators.http import require_http_methods
 
 import redis
+from django.conf import settings
+from django.http import JsonResponse
+from django.test import RequestFactory, TestCase, override_settings
 
 from hub.apps.core.caching.decorators import (
     cache_result,
@@ -26,12 +24,9 @@ from hub.apps.core.caching.decorators import (
 def get_real_redis_client_or_none():
     """Get real Redis client or return None if unavailable."""
     try:
-        redis_url = getattr(settings, 'REDIS_URL', 'redis://redis-cache-test:6379/0')
+        redis_url = getattr(settings, "REDIS_URL", "redis://redis-cache-test:6379/0")
         client = redis.from_url(
-            redis_url,
-            decode_responses=True,
-            socket_connect_timeout=2,
-            socket_timeout=2
+            redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
         )
         client.ping()
         return client
@@ -42,7 +37,7 @@ def get_real_redis_client_or_none():
 class TestCacheResultDecorator(TestCase):
     """Test @cache_result decorator."""
 
-    @override_settings(REDIS_URL='redis://redis-cache-test:6379/0')
+    @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
     def setUp(self):
         """Set up test fixtures."""
         self.redis_client = get_real_redis_client_or_none()
@@ -114,7 +109,7 @@ class TestCacheResultDecorator(TestCase):
 
         # Call with kwargs
         result1 = test_function("test", multiplier=2)
-        result2 = test_function("test", multiplier=2)
+        test_function("test", multiplier=2)
 
         # Second call should use cache
         self.assertEqual(call_count[0], 1)
@@ -130,18 +125,18 @@ class TestCacheResultDecorator(TestCase):
             return {"result": value, "count": call_count[0]}
 
         # First call
-        result1 = test_function("test")
+        test_function("test")
         self.assertEqual(call_count[0], 1)
 
         # Second call - should use cache
-        result2 = test_function("test")
+        test_function("test")
         self.assertEqual(call_count[0], 1)
 
         # Wait for TTL to expire
-        time.sleep(2)  # INTENTIONAL: test-specific timing requirement
+        time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
 
         # Third call - should execute function again
-        result3 = test_function("test")
+        test_function("test")
         self.assertEqual(call_count[0], 2)
 
     def test_cache_result_custom_key_generator(self):
@@ -156,8 +151,8 @@ class TestCacheResultDecorator(TestCase):
             call_count[0] += 1
             return {"result": value, "count": call_count[0]}
 
-        result1 = test_function("test")
-        result2 = test_function("test")
+        test_function("test")
+        test_function("test")
 
         # Should use cache
         self.assertEqual(call_count[0], 1)
@@ -189,7 +184,6 @@ class TestCacheResultDecorator(TestCase):
         @cache_result(key_prefix="decorator:none", ttl=300, cache_none=True)
         def test_function(value):
             call_count[0] += 1
-            return None
 
         result1 = test_function("test")
         result2 = test_function("test")
@@ -203,7 +197,7 @@ class TestCacheResultDecorator(TestCase):
 class TestCacheViewDecorator(TestCase):
     """Test @cache_view decorator."""
 
-    @override_settings(REDIS_URL='redis://redis-cache-test:6379/0')
+    @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
     def setUp(self):
         """Set up test fixtures."""
         self.redis_client = get_real_redis_client_or_none()
@@ -261,15 +255,15 @@ class TestCacheViewDecorator(TestCase):
 
         # GET request - should cache
         get_request = self.factory.get("/test")
-        response1 = test_view(get_request)
-        response2 = test_view(get_request)
+        test_view(get_request)
+        test_view(get_request)
         self.assertEqual(call_count[0], 1)
 
         # POST request - should not cache
         call_count[0] = 0
         post_request = self.factory.post("/test")
-        response3 = test_view(post_request)
-        response4 = test_view(post_request)
+        test_view(post_request)
+        test_view(post_request)
         self.assertEqual(call_count[0], 2)  # Both should execute
 
     def test_cache_view_with_query_params(self):
@@ -286,8 +280,8 @@ class TestCacheViewDecorator(TestCase):
         request1 = self.factory.get("/test?param=value1")
         request2 = self.factory.get("/test?param=value2")
 
-        response1 = test_view(request1)
-        response2 = test_view(request2)
+        test_view(request1)
+        test_view(request2)
 
         # Should execute function twice (different params)
         self.assertEqual(call_count[0], 2)
@@ -300,10 +294,13 @@ class TestCacheViewDecorator(TestCase):
         def test_view(request):
             call_count[0] += 1
             user_id = request.user.id if request.user.is_authenticated else None
-            return JsonResponse({"user_id": str(user_id) if user_id else None, "count": call_count[0]})
+            return JsonResponse(
+                {"user_id": str(user_id) if user_id else None, "count": call_count[0]}
+            )
 
         # Create mock user
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         user1 = User(id=1)
         user2 = User(id=2)
@@ -314,8 +311,8 @@ class TestCacheViewDecorator(TestCase):
         request2 = self.factory.get("/test")
         request2.user = user2
 
-        response1 = test_view(request1)
-        response2 = test_view(request2)
+        test_view(request1)
+        test_view(request2)
 
         # Should execute function twice (different users)
         self.assertEqual(call_count[0], 2)
@@ -332,18 +329,18 @@ class TestCacheViewDecorator(TestCase):
         request = self.factory.get("/test")
 
         # First call
-        response1 = test_view(request)
+        test_view(request)
         self.assertEqual(call_count[0], 1)
 
         # Second call - should use cache
-        response2 = test_view(request)
+        test_view(request)
         self.assertEqual(call_count[0], 1)
 
         # Wait for TTL to expire
-        time.sleep(2)  # INTENTIONAL: test-specific timing requirement
+        time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
 
         # Third call - should execute function again
-        response3 = test_view(request)
+        test_view(request)
         self.assertEqual(call_count[0], 2)
 
     def test_cache_view_vary_headers(self):
@@ -359,8 +356,8 @@ class TestCacheViewDecorator(TestCase):
         request1 = self.factory.get("/test", HTTP_ACCEPT_LANGUAGE="en")
         request2 = self.factory.get("/test", HTTP_ACCEPT_LANGUAGE="fr")
 
-        response1 = test_view(request1)
-        response2 = test_view(request2)
+        test_view(request1)
+        test_view(request2)
 
         # Should execute function twice (different headers)
         self.assertEqual(call_count[0], 2)
@@ -391,7 +388,7 @@ class TestCacheViewDecorator(TestCase):
 class TestCacheDecoratorsIntegration(TestCase):
     """Integration tests for cache decorators."""
 
-    @override_settings(REDIS_URL='redis://redis-cache-test:6379/0')
+    @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
     def setUp(self):
         """Set up test fixtures."""
         self.redis_client = get_real_redis_client_or_none()
@@ -419,20 +416,20 @@ class TestCacheDecoratorsIntegration(TestCase):
             return {"result": value, "count": call_count[0]}
 
         # First call
-        result1 = test_function("test")
+        test_function("test")
         self.assertEqual(call_count[0], 1)
 
         # Second call - should use cache
-        result2 = test_function("test")
+        test_function("test")
         self.assertEqual(call_count[0], 1)
 
         # Invalidate cache
         from hub.apps.core.caching.cache import invalidate_cache_pattern
+
         invalidated_count = invalidate_cache_pattern("integration:invalidate:*")
 
         # If pattern invalidation didn't work (LocMemCache), manually invalidate
         if invalidated_count == 0:
-            from hub.apps.core.caching.cache import invalidate_cache
             # Need to get the actual cache key - this is a limitation of LocMemCache
             # For this test, we'll just verify the function works
             pass
@@ -441,6 +438,5 @@ class TestCacheDecoratorsIntegration(TestCase):
         # Note: With LocMemCache, pattern invalidation doesn't work, so we skip this assertion
         # In production with Redis cache backend, this would work
         if invalidated_count > 0:
-            result3 = test_function("test")
+            test_function("test")
             self.assertEqual(call_count[0], 2)
-

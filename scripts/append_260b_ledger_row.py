@@ -23,12 +23,13 @@ The JSON sidecar is the source of truth for the consecutive-green
 counter; the markdown table is generated from it on every run so the
 two are always in sync.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
 
@@ -38,9 +39,9 @@ GATE_TARGET = 14
 
 @dataclass
 class LedgerRow:
-    run_date: str          # YYYY-MM-DD UTC
+    run_date: str  # YYYY-MM-DD UTC
     run_url: str
-    outcome: str           # green | red | infra-skip
+    outcome: str  # green | red | infra-skip
     cli_result: str
     sdk_result: str
     cookie_result: str
@@ -48,8 +49,7 @@ class LedgerRow:
     def __post_init__(self) -> None:
         if self.outcome not in VALID_OUTCOMES:
             raise ValueError(
-                f"invalid outcome={self.outcome!r}; must be one of "
-                f"{sorted(VALID_OUTCOMES)}"
+                f"invalid outcome={self.outcome!r}; must be one of {sorted(VALID_OUTCOMES)}"
             )
         # Validate the run_date is parseable.
         datetime.strptime(self.run_date, "%Y-%m-%d")
@@ -134,13 +134,9 @@ def _render_markdown(state: dict) -> str:
 
     lines = []
     lines.append("")
-    lines.append(
-        f"<!-- auto-ledger: consecutive_green={consecutive} / target={GATE_TARGET} -->"
-    )
+    lines.append(f"<!-- auto-ledger: consecutive_green={consecutive} / target={GATE_TARGET} -->")
     lines.append("")
-    lines.append(
-        f"**Consecutive green nights:** {consecutive} / {GATE_TARGET}"
-    )
+    lines.append(f"**Consecutive green nights:** {consecutive} / {GATE_TARGET}")
     if consecutive >= GATE_TARGET:
         lines.append("")
         lines.append(
@@ -149,16 +145,10 @@ def _render_markdown(state: dict) -> str:
             "[260-cookie-rollout-production-flip.md](../runbooks/260-cookie-rollout-production-flip.md)."
         )
     lines.append("")
-    lines.append(
-        "| #  | Run date (UTC) | Workflow run | Outcome | CLI | SDK | Cookie | Notes |"
-    )
-    lines.append(
-        "|----|----------------|--------------|---------|-----|-----|--------|-------|"
-    )
+    lines.append("| #  | Run date (UTC) | Workflow run | Outcome | CLI | SDK | Cookie | Notes |")
+    lines.append("|----|----------------|--------------|---------|-----|-----|--------|-------|")
     if not rows:
-        lines.append(
-            "| _no nightly runs recorded yet_ | — | — | — | — | — | — | — |"
-        )
+        lines.append("| _no nightly runs recorded yet_ | — | — | — | — | — | — | — |")
     else:
         for idx, row in enumerate(rows, start=1):
             lines.append(
@@ -185,16 +175,12 @@ _MD_END = "<!-- auto-ledger:end -->"
 
 def _splice_into_markdown(md_path: Path, generated: str) -> None:
     if not md_path.exists():
-        raise FileNotFoundError(
-            f"{md_path} is missing — create the static framing first."
-        )
+        raise FileNotFoundError(f"{md_path} is missing — create the static framing first.")
     body = md_path.read_text(encoding="utf-8")
     if _MD_BEGIN in body and _MD_END in body:
         before, _, rest = body.partition(_MD_BEGIN)
         _, _, after = rest.partition(_MD_END)
-        new_body = (
-            f"{before}{_MD_BEGIN}\n{generated}\n{_MD_END}{after}"
-        )
+        new_body = f"{before}{_MD_BEGIN}\n{generated}\n{_MD_END}{after}"
     else:
         # First time — append a sentinel-delimited section under the
         # `## Run ledger` heading, replacing the placeholder rows.
@@ -211,9 +197,7 @@ def _splice_into_markdown(md_path: Path, generated: str) -> None:
             closure = "## Closure block" + closure
         else:
             closure = ""
-        new_body = (
-            f"{head}## Run ledger\n\n{_MD_BEGIN}\n{generated}\n{_MD_END}\n\n{closure}"
-        )
+        new_body = f"{head}## Run ledger\n\n{_MD_BEGIN}\n{generated}\n{_MD_END}\n\n{closure}"
     md_path.write_text(new_body, encoding="utf-8")
 
 

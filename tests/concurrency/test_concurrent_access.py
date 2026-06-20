@@ -6,7 +6,6 @@ resources, tenant isolation. Real APIClient and DB; no mocks.
 import json
 import threading
 import uuid
-from typing import List, Tuple
 
 from rest_framework.test import APIClient
 
@@ -41,8 +40,8 @@ class ConcurrentAccessTest(ConcurrencyTestBase):
         clients = [APIClient() for _ in range(10)]
         for c in clients:
             c.force_authenticate(user=self.user)
-        results: List[int] = []
-        errors: List[str] = []
+        results: list[int] = []
+        errors: list[str] = []
 
         def get_one(client: APIClient) -> None:
             try:
@@ -80,8 +79,8 @@ class ConcurrentAccessTest(ConcurrencyTestBase):
         clients = [APIClient() for _ in range(6)]
         for c in clients:
             c.force_authenticate(user=self.user)
-        results: List[int] = []
-        errors: List[str] = []
+        results: list[int] = []
+        errors: list[str] = []
 
         def get_one(client: APIClient, contract_id: str) -> None:
             try:
@@ -108,8 +107,8 @@ class ConcurrentAccessTest(ConcurrencyTestBase):
         clients = [APIClient() for _ in range(5)]
         for c in clients:
             c.force_authenticate(user=self.user)
-        results: List[Tuple[int, int]] = []
-        errors: List[str] = []
+        results: list[tuple[int, int]] = []
+        errors: list[str] = []
 
         def list_one(client: APIClient) -> None:
             try:
@@ -163,8 +162,8 @@ class ConcurrentAccessTest(ConcurrencyTestBase):
         client_owner.force_authenticate(user=self.user)
         client_other = APIClient()
         client_other.force_authenticate(user=other_user)
-        codes: List[int] = []
-        errors: List[str] = []
+        codes: list[int] = []
+        errors: list[str] = []
 
         def req(client: APIClient) -> None:
             try:

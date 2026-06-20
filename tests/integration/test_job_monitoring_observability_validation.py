@@ -26,58 +26,47 @@ Tests cover:
 - 10.1.24.5: Job Worker Health Monitoring Testing
 """
 
+import contextlib
 import uuid
 from datetime import timedelta
 
-from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.db.models import Avg, Count, F, Q
+from django.test import TestCase
 from django.utils import timezone
 from django_rq import get_queue
-from django.db.models import Count, Avg, Q, F
 
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
 from hub.apps.jobs.models import (
-    Job, JobType, JobStatus, JobPriority,
+    Job,
+    JobPriority,
+    JobStatus,
+    JobType,
 )
 from hub.apps.jobs.utils import (
     create_job,
-    get_queue_for_priority,
-    get_queue_for_job_type,
-    get_job_priority,
-    get_tenant_job_counter,
-    increment_reserved_slots_usage,
-    decrement_reserved_slots_usage,
-    increment_shared_slots_usage,
-    decrement_shared_slots_usage,
-    get_reserved_slots_usage,
-    get_shared_slots_usage,
 )
 from hub.apps.observability.otel_metrics import (
-    jobs_started_total,
-    jobs_completed_total,
-    jobs_failed_total,
     job_duration_seconds,
-    job_queue_length,
     job_queue_depth,
-    job_processing_rate,
+    job_queue_length,
     job_worker_active,
     job_worker_throughput,
-    job_retry_count,
-    job_timeout_rate,
-    tenant_running_jobs,
-    tenant_queued_jobs,
 )
-from hub.apps.core.redis_pools import get_redis_queue_client
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User, UserStatus
 from services.worker.health import healthz, ready
 
 User = get_user_model()
 
 
 def _create_completed_job(
-    tenant, user, job_type, duration_seconds,
-    status_val=None, error_message=None,
+    tenant,
+    user,
+    job_type,
+    duration_seconds,
+    status_val=None,
+    error_message=None,
 ):
     """Create a job with pre-set timestamps (no sleeping).
 
@@ -103,20 +92,31 @@ def _create_completed_job(
     job.completed_at = completed
     if error_message:
         job.error_message = error_message
-    job.save(update_fields=[
-        "status", "started_at", "completed_at",
-        "error_message", "updated_at",
-    ])
+    job.save(
+        update_fields=[
+            "status",
+            "started_at",
+            "completed_at",
+            "error_message",
+            "updated_at",
+        ]
+    )
     return job
 
 
 def _create_failed_job(
-    tenant, user, job_type, error_message,
+    tenant,
+    user,
+    job_type,
+    error_message,
     duration_seconds=0.5,
 ):
     """Create a failed job with pre-set timestamps."""
     return _create_completed_job(
-        tenant, user, job_type, duration_seconds,
+        tenant,
+        user,
+        job_type,
+        duration_seconds,
         status_val=JobStatus.FAILED.value,
         error_message=error_message,
     )
@@ -134,66 +134,68 @@ class JobMetricsCollectionTest(TestCase):
             kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
-            email=(
-                f"metrics_test-{uuid.uuid4().hex[:8]}@example.com"
-            ),
+            email=(f"metrics_test-{uuid.uuid4().hex[:8]}@example.com"),
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
         for qn in ["job_critical", "job_default", "job_low", "default"]:
-            try:
+            with contextlib.suppress(Exception):
                 get_queue(qn).empty()
-            except Exception:
-                pass
 
     def tearDown(self):
         cache.clear()
         for qn in ["job_critical", "job_default", "job_low", "default"]:
-            try:
+            with contextlib.suppress(Exception):
                 get_queue(qn).empty()
-            except Exception:
-                pass
 
     def test_job_execution_metrics_count(self):
         """Job counts: 3 completed + 2 failed = 5 total."""
         jt = JobType.CONTRACT_VALIDATION.value
         for dur in [0.5, 0.8, 1.2]:
             _create_completed_job(
-                self.tenant, self.user, jt, dur,
+                self.tenant,
+                self.user,
+                jt,
+                dur,
             )
         for msg in ["Test failure A", "Test failure B"]:
             _create_failed_job(
-                self.tenant, self.user, jt, msg,
+                self.tenant,
+                self.user,
+                jt,
+                msg,
             )
 
         total = Job.objects.filter(
-            tenant=self.tenant, type=jt,
+            tenant=self.tenant,
+            type=jt,
         ).count()
         self.assertEqual(total, 5)
 
         completed = Job.objects.filter(
-            tenant=self.tenant, type=jt,
+            tenant=self.tenant,
+            type=jt,
             status=JobStatus.COMPLETED.value,
         ).count()
         self.assertEqual(completed, 3)
 
         failed = Job.objects.filter(
-            tenant=self.tenant, type=jt,
+            tenant=self.tenant,
+            type=jt,
             status=JobStatus.FAILED.value,
         ).count()
         self.assertEqual(failed, 2)
 
         # Verify durations are positive
         for job in Job.objects.filter(
-            tenant=self.tenant, type=jt,
+            tenant=self.tenant,
+            type=jt,
             status=JobStatus.COMPLETED.value,
             started_at__isnull=False,
             completed_at__isnull=False,
         ):
-            dur = (
-                job.completed_at - job.started_at
-            ).total_seconds()
+            dur = (job.completed_at - job.started_at).total_seconds()
             self.assertGreater(dur, 0)
 
     def test_job_queue_metrics(self):
@@ -215,10 +217,12 @@ class JobMetricsCollectionTest(TestCase):
 
         # Verify Prometheus metric operations work
         job_queue_length.labels(
-            job_type=jt, queue_name="job_critical",
+            job_type=jt,
+            queue_name="job_critical",
         ).set(depth)
         job_queue_depth.labels(
-            job_type=jt, queue_name="job_critical",
+            job_type=jt,
+            queue_name="job_critical",
         ).set(depth)
 
     def test_job_performance_metrics_percentiles(self):
@@ -227,13 +231,17 @@ class JobMetricsCollectionTest(TestCase):
         durations = [0.1, 0.2, 0.3, 0.5, 0.8, 1.0, 1.5, 2.0, 3.0, 5.0]
         for dur in durations:
             _create_completed_job(
-                self.tenant, self.user, jt, dur,
+                self.tenant,
+                self.user,
+                jt,
+                dur,
             )
 
         job_durations = sorted(
             (j.completed_at - j.started_at).total_seconds()
             for j in Job.objects.filter(
-                tenant=self.tenant, type=jt,
+                tenant=self.tenant,
+                type=jt,
                 status=JobStatus.COMPLETED.value,
                 started_at__isnull=False,
                 completed_at__isnull=False,
@@ -259,7 +267,8 @@ class JobMetricsCollectionTest(TestCase):
         self.assertGreaterEqual(p99, p95)
 
         job_duration_seconds.labels(
-            job_type=jt, status="COMPLETED",
+            job_type=jt,
+            status="COMPLETED",
         ).observe(p50)
 
     def test_job_error_metrics(self):
@@ -274,19 +283,26 @@ class JobMetricsCollectionTest(TestCase):
         ]
         for code, msg in errors:
             j = _create_failed_job(
-                self.tenant, self.user, jt, msg,
+                self.tenant,
+                self.user,
+                jt,
+                msg,
             )
             j.result_json = {"error_code": code}
             j.save(update_fields=["result_json", "updated_at"])
 
         failed = Job.objects.filter(
-            tenant=self.tenant, type=jt,
+            tenant=self.tenant,
+            type=jt,
             status=JobStatus.FAILED.value,
         )
         self.assertEqual(failed.count(), len(errors))
 
         for keyword in [
-            "timeout", "validation", "connection", "permission",
+            "timeout",
+            "validation",
+            "connection",
+            "permission",
         ]:
             self.assertGreaterEqual(
                 failed.filter(
@@ -297,7 +313,8 @@ class JobMetricsCollectionTest(TestCase):
             )
 
         total = Job.objects.filter(
-            tenant=self.tenant, type=jt,
+            tenant=self.tenant,
+            type=jt,
         ).count()
         rate = failed.count() / total * 100
         self.assertGreater(rate, 0)
@@ -313,17 +330,24 @@ class JobMetricsCollectionTest(TestCase):
         for jt in jts:
             for dur in [0.5, 1.0, 2.0]:
                 _create_completed_job(
-                    self.tenant, self.user, jt, dur,
+                    self.tenant,
+                    self.user,
+                    jt,
+                    dur,
                 )
 
-        agg = Job.objects.filter(
-            tenant=self.tenant,
-        ).values("type").annotate(
-            total_count=Count("id"),
-            completed_count=Count(
-                "id",
-                filter=Q(status=JobStatus.COMPLETED.value),
-            ),
+        agg = (
+            Job.objects.filter(
+                tenant=self.tenant,
+            )
+            .values("type")
+            .annotate(
+                total_count=Count("id"),
+                completed_count=Count(
+                    "id",
+                    filter=Q(status=JobStatus.COMPLETED.value),
+                ),
+            )
         )
         self.assertEqual(agg.count(), 3)
         for row in agg:
@@ -355,9 +379,7 @@ class JobPerformanceMonitoringTest(TestCase):
             kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
-            email=(
-                f"perf_test-{uuid.uuid4().hex[:8]}@example.com"
-            ),
+            email=(f"perf_test-{uuid.uuid4().hex[:8]}@example.com"),
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -372,24 +394,27 @@ class JobPerformanceMonitoringTest(TestCase):
         expected = [0.5, 1.0, 2.0, 5.0]
         for dur in expected:
             _create_completed_job(
-                self.tenant, self.user, jt, dur,
+                self.tenant,
+                self.user,
+                jt,
+                dur,
             )
 
         jobs = Job.objects.filter(
-            tenant=self.tenant, type=jt,
+            tenant=self.tenant,
+            type=jt,
             status=JobStatus.COMPLETED.value,
             started_at__isnull=False,
             completed_at__isnull=False,
         )
         self.assertEqual(jobs.count(), len(expected))
 
-        actual_durs = sorted(
-            (j.completed_at - j.started_at).total_seconds()
-            for j in jobs
-        )
+        actual_durs = sorted((j.completed_at - j.started_at).total_seconds() for j in jobs)
         for actual, exp in zip(actual_durs, sorted(expected)):
             self.assertAlmostEqual(
-                actual, exp, delta=0.1,
+                actual,
+                exp,
+                delta=0.1,
                 msg=f"Expected ~{exp}s, got {actual}s",
             )
 
@@ -412,10 +437,12 @@ class JobPerformanceMonitoringTest(TestCase):
 
         job.refresh_from_db()
         self.assertEqual(
-            job.details_json["cpu_usage_percent"], 45.5,
+            job.details_json["cpu_usage_percent"],
+            45.5,
         )
         self.assertEqual(
-            job.details_json["memory_usage_mb"], 256.0,
+            job.details_json["memory_usage_mb"],
+            256.0,
         )
 
     def test_job_throughput_monitoring(self):
@@ -434,25 +461,26 @@ class JobPerformanceMonitoringTest(TestCase):
             )
             j.status = JobStatus.COMPLETED.value
             j.started_at = base + timedelta(seconds=i)
-            j.completed_at = (
-                base + timedelta(seconds=i + 0.5)
+            j.completed_at = base + timedelta(seconds=i + 0.5)
+            j.save(
+                update_fields=[
+                    "status",
+                    "started_at",
+                    "completed_at",
+                    "updated_at",
+                ]
             )
-            j.save(update_fields=[
-                "status", "started_at", "completed_at",
-                "updated_at",
-            ])
 
         completed = Job.objects.filter(
-            tenant=self.tenant, type=jt,
+            tenant=self.tenant,
+            type=jt,
             status=JobStatus.COMPLETED.value,
         )
         self.assertEqual(completed.count(), num_jobs)
 
         first = completed.order_by("started_at").first()
         last = completed.order_by("-completed_at").first()
-        window = (
-            last.completed_at - first.started_at
-        ).total_seconds()
+        window = (last.completed_at - first.started_at).total_seconds()
         throughput = num_jobs / window if window > 0 else 0
         self.assertGreater(throughput, 0)
 
@@ -462,19 +490,27 @@ class JobPerformanceMonitoringTest(TestCase):
         durations = [0.1, 0.2, 0.3, 0.5, 1.0, 2.0, 5.0, 10.0]
         for dur in durations:
             _create_completed_job(
-                self.tenant, self.user, jt, dur,
+                self.tenant,
+                self.user,
+                jt,
+                dur,
             )
 
         threshold = 2.0
-        bottlenecks = Job.objects.filter(
-            tenant=self.tenant, type=jt,
-            status=JobStatus.COMPLETED.value,
-            started_at__isnull=False,
-            completed_at__isnull=False,
-        ).annotate(
-            dur=F("completed_at") - F("started_at"),
-        ).filter(
-            dur__gt=timedelta(seconds=threshold),
+        bottlenecks = (
+            Job.objects.filter(
+                tenant=self.tenant,
+                type=jt,
+                status=JobStatus.COMPLETED.value,
+                started_at__isnull=False,
+                completed_at__isnull=False,
+            )
+            .annotate(
+                dur=F("completed_at") - F("started_at"),
+            )
+            .filter(
+                dur__gt=timedelta(seconds=threshold),
+            )
         )
         # 5.0 and 10.0 exceed the 2.0s threshold
         self.assertGreaterEqual(bottlenecks.count(), 2)
@@ -488,38 +524,48 @@ class JobPerformanceMonitoringTest(TestCase):
         base_time = timezone.now() - timedelta(hours=2)
         for i, dur in enumerate(baseline_durs):
             j = create_job(
-                tenant=self.tenant, user=self.user,
-                job_type=jt, resource_type="CONTRACT",
+                tenant=self.tenant,
+                user=self.user,
+                job_type=jt,
+                resource_type="CONTRACT",
                 resource_id=str(uuid.uuid4()),
             )
             j.status = JobStatus.COMPLETED.value
             j.started_at = base_time + timedelta(minutes=i)
-            j.completed_at = (
-                j.started_at + timedelta(seconds=dur)
-            )
+            j.completed_at = j.started_at + timedelta(seconds=dur)
             j.result_json = {"baseline": True}
-            j.save(update_fields=[
-                "status", "started_at", "completed_at",
-                "result_json", "updated_at",
-            ])
+            j.save(
+                update_fields=[
+                    "status",
+                    "started_at",
+                    "completed_at",
+                    "result_json",
+                    "updated_at",
+                ]
+            )
 
         cur_time = timezone.now() - timedelta(minutes=30)
         for i, dur in enumerate(current_durs):
             j = create_job(
-                tenant=self.tenant, user=self.user,
-                job_type=jt, resource_type="CONTRACT",
+                tenant=self.tenant,
+                user=self.user,
+                job_type=jt,
+                resource_type="CONTRACT",
                 resource_id=str(uuid.uuid4()),
             )
             j.status = JobStatus.COMPLETED.value
             j.started_at = cur_time + timedelta(minutes=i)
-            j.completed_at = (
-                j.started_at + timedelta(seconds=dur)
-            )
+            j.completed_at = j.started_at + timedelta(seconds=dur)
             j.result_json = {"baseline": False}
-            j.save(update_fields=[
-                "status", "started_at", "completed_at",
-                "result_json", "updated_at",
-            ])
+            j.save(
+                update_fields=[
+                    "status",
+                    "started_at",
+                    "completed_at",
+                    "result_json",
+                    "updated_at",
+                ]
+            )
 
         baseline_avg = sum(baseline_durs) / len(baseline_durs)
         current_avg = sum(current_durs) / len(current_durs)
@@ -530,9 +576,7 @@ class JobPerformanceMonitoringTest(TestCase):
             f"current_avg={current_avg:.2f} should exceed "
             f"baseline={baseline_avg:.2f} * {regression_threshold}",
         )
-        pct = (
-            (current_avg - baseline_avg) / baseline_avg * 100
-        )
+        pct = (current_avg - baseline_avg) / baseline_avg * 100
         self.assertGreater(pct, 50)
 
 
@@ -548,9 +592,7 @@ class JobFailureTrackingTest(TestCase):
             kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
-            email=(
-                f"fail_test-{uuid.uuid4().hex[:8]}@example.com"
-            ),
+            email=(f"fail_test-{uuid.uuid4().hex[:8]}@example.com"),
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -564,15 +606,22 @@ class JobFailureTrackingTest(TestCase):
         jt = JobType.ODPS_EXPORT.value
         for dur in [0.3] * 15:
             _create_completed_job(
-                self.tenant, self.user, jt, dur,
+                self.tenant,
+                self.user,
+                jt,
+                dur,
             )
         for msg in [f"Test failure {i}" for i in range(5)]:
             _create_failed_job(
-                self.tenant, self.user, jt, msg,
+                self.tenant,
+                self.user,
+                jt,
+                msg,
             )
 
         all_jobs = Job.objects.filter(
-            tenant=self.tenant, type=jt,
+            tenant=self.tenant,
+            type=jt,
         )
         failed_ct = all_jobs.filter(
             status=JobStatus.FAILED.value,
@@ -594,17 +643,24 @@ class JobFailureTrackingTest(TestCase):
         ]
         for reason in reasons:
             _create_failed_job(
-                self.tenant, self.user, jt, reason,
+                self.tenant,
+                self.user,
+                jt,
+                reason,
             )
 
         failed = Job.objects.filter(
-            tenant=self.tenant, type=jt,
+            tenant=self.tenant,
+            type=jt,
             status=JobStatus.FAILED.value,
         )
         self.assertEqual(failed.count(), len(reasons))
 
         for keyword in [
-            "timeout", "validation", "connection", "permission",
+            "timeout",
+            "validation",
+            "connection",
+            "permission",
         ]:
             self.assertGreaterEqual(
                 failed.filter(
@@ -621,22 +677,31 @@ class JobFailureTrackingTest(TestCase):
 
         for _ in range(3):
             _create_failed_job(
-                self.tenant, self.user, jt_norm,
+                self.tenant,
+                self.user,
+                jt_norm,
                 "Timeout exceeded",
             )
         for _ in range(2):
             _create_failed_job(
-                self.tenant, self.user, jt_ref,
+                self.tenant,
+                self.user,
+                jt_ref,
                 "Validation error",
             )
 
-        timeout_pattern = Job.objects.filter(
-            tenant=self.tenant,
-            status=JobStatus.FAILED.value,
-            error_message__icontains="timeout",
-        ).values("type").annotate(
-            count=Count("id"),
-        ).order_by("-count")
+        timeout_pattern = (
+            Job.objects.filter(
+                tenant=self.tenant,
+                status=JobStatus.FAILED.value,
+                error_message__icontains="timeout",
+            )
+            .values("type")
+            .annotate(
+                count=Count("id"),
+            )
+            .order_by("-count")
+        )
 
         self.assertGreaterEqual(timeout_pattern.count(), 1)
         top = timeout_pattern.first()
@@ -651,14 +716,17 @@ class JobFailureTrackingTest(TestCase):
 
         for i in range(threshold + 1):
             j = _create_failed_job(
-                self.tenant, self.user, jt,
+                self.tenant,
+                self.user,
+                jt,
                 "Critical failure",
             )
             j.completed_at = now - timedelta(seconds=30 * i)
             j.save(update_fields=["completed_at", "updated_at"])
 
         recent = Job.objects.filter(
-            tenant=self.tenant, type=jt,
+            tenant=self.tenant,
+            type=jt,
             status=JobStatus.FAILED.value,
             completed_at__gte=now - timedelta(minutes=5),
         ).count()
@@ -669,7 +737,9 @@ class JobFailureTrackingTest(TestCase):
         jt = JobType.ODPS_SEMANTIC_MAPPING.value
 
         job = _create_failed_job(
-            self.tenant, self.user, jt,
+            self.tenant,
+            self.user,
+            jt,
             "Transient error",
         )
         job.details_json = {
@@ -686,19 +756,29 @@ class JobFailureTrackingTest(TestCase):
         job.completed_at = now
         job.error_message = None
         job.result_json = {
-            "attempt": 2, "status": "success", "recovered": True,
+            "attempt": 2,
+            "status": "success",
+            "recovered": True,
         }
-        job.save(update_fields=[
-            "status", "started_at", "completed_at",
-            "error_message", "result_json", "updated_at",
-        ])
+        job.save(
+            update_fields=[
+                "status",
+                "started_at",
+                "completed_at",
+                "error_message",
+                "result_json",
+                "updated_at",
+            ]
+        )
 
         job.refresh_from_db()
         self.assertEqual(
-            job.status, JobStatus.COMPLETED.value,
+            job.status,
+            JobStatus.COMPLETED.value,
         )
         self.assertEqual(
-            job.details_json["retry_count"], 1,
+            job.details_json["retry_count"],
+            1,
         )
         self.assertTrue(
             job.result_json.get("recovered"),
@@ -717,26 +797,20 @@ class JobQueueMetricsTest(TestCase):
             kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
-            email=(
-                f"queue_test-{uuid.uuid4().hex[:8]}@example.com"
-            ),
+            email=(f"queue_test-{uuid.uuid4().hex[:8]}@example.com"),
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
         for qn in ["job_critical", "job_default", "job_low"]:
-            try:
+            with contextlib.suppress(Exception):
                 get_queue(qn).empty()
-            except Exception:
-                pass
 
     def tearDown(self):
         cache.clear()
         for qn in ["job_critical", "job_default", "job_low"]:
-            try:
+            with contextlib.suppress(Exception):
                 get_queue(qn).empty()
-            except Exception:
-                pass
 
     def test_queue_depth_monitoring(self):
         """Queue depth is non-negative and recordable."""
@@ -774,16 +848,19 @@ class JobQueueMetricsTest(TestCase):
             )
             j.status = JobStatus.COMPLETED.value
             j.started_at = base + timedelta(seconds=i)
-            j.completed_at = (
-                base + timedelta(seconds=i + 0.3)
+            j.completed_at = base + timedelta(seconds=i + 0.3)
+            j.save(
+                update_fields=[
+                    "status",
+                    "started_at",
+                    "completed_at",
+                    "updated_at",
+                ]
             )
-            j.save(update_fields=[
-                "status", "started_at", "completed_at",
-                "updated_at",
-            ])
 
         completed = Job.objects.filter(
-            tenant=self.tenant, type=jt,
+            tenant=self.tenant,
+            type=jt,
             status=JobStatus.COMPLETED.value,
         )
         self.assertEqual(completed.count(), num_jobs)
@@ -802,7 +879,8 @@ class JobQueueMetricsTest(TestCase):
             )
 
         backlog = Job.objects.filter(
-            tenant=self.tenant, type=jt,
+            tenant=self.tenant,
+            type=jt,
             status=JobStatus.PENDING.value,
         ).count()
         self.assertGreaterEqual(backlog, 0)
@@ -814,11 +892,15 @@ class JobQueueMetricsTest(TestCase):
         num_jobs = 5
         for dur in [0.3] * num_jobs:
             _create_completed_job(
-                self.tenant, self.user, jt, dur,
+                self.tenant,
+                self.user,
+                jt,
+                dur,
             )
 
         completed = Job.objects.filter(
-            tenant=self.tenant, type=jt,
+            tenant=self.tenant,
+            type=jt,
             status=JobStatus.COMPLETED.value,
         ).count()
         utilization = completed / num_jobs * 100
@@ -831,7 +913,8 @@ class JobQueueMetricsTest(TestCase):
             q = get_queue(qn)
             self.assertIsNotNone(q)
             self.assertLess(
-                q.count, max_healthy,
+                q.count,
+                max_healthy,
                 f"Queue '{qn}' depth exceeds {max_healthy}",
             )
 
@@ -848,9 +931,7 @@ class JobWorkerHealthMonitoringTest(TestCase):
             kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
-            email=(
-                f"wh_test-{uuid.uuid4().hex[:8]}@example.com"
-            ),
+            email=(f"wh_test-{uuid.uuid4().hex[:8]}@example.com"),
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -869,7 +950,8 @@ class JobWorkerHealthMonitoringTest(TestCase):
         r_code, r_data = ready()
         self.assertIn(r_code, [200, 503])
         self.assertIn(
-            r_data["status"], ["ready", "not_ready"],
+            r_data["status"],
+            ["ready", "not_ready"],
         )
         self.assertIn("checks", r_data)
 
@@ -883,12 +965,15 @@ class JobWorkerHealthMonitoringTest(TestCase):
         qn = "job_default"
 
         job_worker_active.labels(
-            worker_id=wid, queue_name=qn,
+            worker_id=wid,
+            queue_name=qn,
         ).set(1)
 
         j = _create_completed_job(
-            self.tenant, self.user,
-            JobType.CONTRACT_VALIDATION.value, 0.5,
+            self.tenant,
+            self.user,
+            JobType.CONTRACT_VALIDATION.value,
+            0.5,
         )
         j.result_json = {"worker_id": wid}
         j.save(update_fields=["result_json", "updated_at"])
@@ -901,7 +986,8 @@ class JobWorkerHealthMonitoringTest(TestCase):
         # Verify the job was completed by the worker
         j.refresh_from_db()
         self.assertEqual(
-            j.result_json["worker_id"], wid,
+            j.result_json["worker_id"],
+            wid,
         )
 
     def test_worker_failure_detection(self):
@@ -910,7 +996,8 @@ class JobWorkerHealthMonitoringTest(TestCase):
         qn = "job_default"
 
         job_worker_active.labels(
-            worker_id=wid, queue_name=qn,
+            worker_id=wid,
+            queue_name=qn,
         ).set(1)
 
         job = create_job(
@@ -922,18 +1009,24 @@ class JobWorkerHealthMonitoringTest(TestCase):
         )
         job.status = JobStatus.RUNNING.value
         job.started_at = timezone.now() - timedelta(minutes=5)
-        job.save(update_fields=[
-            "status", "started_at", "updated_at",
-        ])
+        job.save(
+            update_fields=[
+                "status",
+                "started_at",
+                "updated_at",
+            ]
+        )
 
         # Worker goes inactive
         job_worker_active.labels(
-            worker_id=wid, queue_name=qn,
+            worker_id=wid,
+            queue_name=qn,
         ).set(0)
 
         job.refresh_from_db()
         self.assertEqual(
-            job.status, JobStatus.RUNNING.value,
+            job.status,
+            JobStatus.RUNNING.value,
             "Stuck job should remain RUNNING",
         )
         self.assertIsNone(
@@ -955,28 +1048,39 @@ class JobWorkerHealthMonitoringTest(TestCase):
         )
         job.status = JobStatus.RUNNING.value
         job.started_at = timezone.now() - timedelta(minutes=10)
-        job.save(update_fields=[
-            "status", "started_at", "updated_at",
-        ])
+        job.save(
+            update_fields=[
+                "status",
+                "started_at",
+                "updated_at",
+            ]
+        )
 
         # Worker recovers and completes the job
         job_worker_active.labels(
-            worker_id=wid, queue_name=qn,
+            worker_id=wid,
+            queue_name=qn,
         ).set(1)
         now = timezone.now()
         job.status = JobStatus.COMPLETED.value
         job.completed_at = now
         job.result_json = {
-            "recovered": True, "worker_id": wid,
+            "recovered": True,
+            "worker_id": wid,
         }
-        job.save(update_fields=[
-            "status", "completed_at", "result_json",
-            "updated_at",
-        ])
+        job.save(
+            update_fields=[
+                "status",
+                "completed_at",
+                "result_json",
+                "updated_at",
+            ]
+        )
 
         job.refresh_from_db()
         self.assertEqual(
-            job.status, JobStatus.COMPLETED.value,
+            job.status,
+            JobStatus.COMPLETED.value,
         )
         self.assertTrue(job.result_json["recovered"])
 
@@ -986,11 +1090,15 @@ class JobWorkerHealthMonitoringTest(TestCase):
         num_jobs = 5
         for dur in [0.3] * num_jobs:
             _create_completed_job(
-                self.tenant, self.user, jt, dur,
+                self.tenant,
+                self.user,
+                jt,
+                dur,
             )
 
         avg_dur = Job.objects.filter(
-            tenant=self.tenant, type=jt,
+            tenant=self.tenant,
+            type=jt,
             status=JobStatus.COMPLETED.value,
             started_at__isnull=False,
             completed_at__isnull=False,
@@ -999,5 +1107,6 @@ class JobWorkerHealthMonitoringTest(TestCase):
         )["avg"]
         self.assertIsNotNone(avg_dur)
         self.assertGreater(
-            avg_dur.total_seconds(), 0,
+            avg_dur.total_seconds(),
+            0,
         )

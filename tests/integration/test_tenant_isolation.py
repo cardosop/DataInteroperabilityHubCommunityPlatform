@@ -13,7 +13,6 @@ First run: session-scoped DB create+migrate runs during first test's setup
 (~5 min in this project). Test bodies finish in seconds. Per-test timeout 600s
 accommodates that one-time setup; use --reuse-db so reruns complete in under a minute.
 """
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 import uuid
 
@@ -394,7 +393,6 @@ class TenantIsolationTest(TestCase):
 
     def test_compliance_runs_list_follows_request_tenant_id(self):
         """ComplianceRunViewSet.get_queryset follows request.tenant_id when set (Phase 10.1.2)."""
-        import uuid
 
         from hub.apps.assets.models import Asset
         from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
@@ -920,9 +918,7 @@ class PersonalTenantIsolationTest(TestCase):
             format="json",
         )
         self.assertEqual(login.status_code, status.HTTP_200_OK)
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {login.data['access_token']}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['access_token']}")
 
         other_asset = Asset.objects.create(
             tenant=self.other_tenant,

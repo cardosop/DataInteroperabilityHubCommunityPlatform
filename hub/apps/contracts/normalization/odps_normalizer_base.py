@@ -4,16 +4,21 @@ ODPS Normalizer Base Class
 Abstract base class for version-specific ODPS normalizers.
 Provides common normalization logic and defines hooks for version-specific implementations.
 """
-import structlog
+
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List
+from typing import TYPE_CHECKING, Any
+
+import structlog
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
+from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
 from hub.apps.contracts.odps_errors import ODPSNormalizationError
 from hub.apps.contracts.odps_version_detection import detect_odps_version
 
-from hub.apps.contracts.normalization_engine import NormalizationResult, SpecNormalizer
-from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+if TYPE_CHECKING:
+    from hub.apps.contracts.normalization_engine import NormalizationResult
 
 logger = structlog.get_logger(__name__)
 
@@ -57,9 +62,8 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             - ODPS 4.0 normalizer: return spec_version == "4.0"
             - ODPS 3.x normalizer: return spec_version.startswith("3.")
         """
-        pass
 
-    def supports(self, spec_type: str, spec_version: str, contract_data: Dict[str, Any]) -> bool:
+    def supports(self, spec_type: str, spec_version: str, contract_data: dict[str, Any]) -> bool:
         """
         Check if this normalizer supports the given spec type and version.
 
@@ -81,9 +85,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
         return self._supports_version(spec_version)
 
     def normalize(
-        self,
-        contract_data: Dict[str, Any],
-        spec_version: Optional[str] = None
+        self, contract_data: dict[str, Any], spec_version: str | None = None
     ) -> NormalizationResult:
         """
         Normalize ODPS contract data to HubContract format.
@@ -106,9 +108,11 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
         Raises:
             ODPSNormalizationError: For normalization errors with context
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        hub_contract: Optional[Dict[str, Any]] = None
+        from hub.apps.contracts.normalization_engine import NormalizationResult  # noqa: F811
+
+        errors: list[str] = []
+        warnings: list[str] = []
+        hub_contract: dict[str, Any] | None = None
 
         try:
             # Detect ODPS version if not provided
@@ -117,12 +121,8 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                     detected_version = detect_odps_version(contract_data)
                     spec_version = detected_version or "4.1"  # Default to 4.1
                 except Exception as e:
-                    error_msg = f"Failed to detect ODPS version: {str(e)}"
-                    logger.warning(
-                        "odps_version_detection_failed",
-                        error=str(e),
-                        message=error_msg
-                    )
+                    error_msg = f"Failed to detect ODPS version: {e!s}"
+                    logger.warning("odps_version_detection_failed", error=str(e), message=error_msg)
                     warnings.append(error_msg)
                     spec_version = "4.1"  # Default fallback
 
@@ -137,7 +137,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                     "odps_version_not_supported",
                     spec_version=spec_version,
                     normalizer_class=self.__class__.__name__,
-                    message=error_msg
+                    message=error_msg,
                 )
                 return NormalizationResult(
                     hub_contract=None,
@@ -146,7 +146,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                     warnings=warnings,
                     spec_type=self.spec_type,
                     spec_version=spec_version,
-                    coverage=None
+                    coverage=None,
                 )
 
             # Validate contract_data is a dict
@@ -198,7 +198,10 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             if hub_contract:
                 try:
                     from hub.apps.contracts.coverage import calculate_coverage
-                    coverage_result = calculate_coverage(hub_contract, spec_type=OriginalSpecType.ODPS)
+
+                    coverage_result = calculate_coverage(
+                        hub_contract, spec_type=OriginalSpecType.ODPS
+                    )
                     if coverage_result:
                         coverage = {
                             "overall": coverage_result.overall,
@@ -208,7 +211,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                     logger.debug(
                         "odps_coverage_calculation_failed",
                         error=str(e),
-                        message="Coverage calculation failed, continuing without coverage"
+                        message="Coverage calculation failed, continuing without coverage",
                     )
 
             return NormalizationResult(
@@ -218,7 +221,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 warnings=warnings,
                 spec_type=self.spec_type,
                 spec_version=spec_version,
-                coverage=coverage
+                coverage=coverage,
             )
 
         except ODPSNormalizationError as e:
@@ -229,7 +232,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 error_code=e.error_code,
                 field_path=e.context.get("field_path") if e.context else None,
                 message=str(e),
-                context=e.context
+                context=e.context,
             )
             return NormalizationResult(
                 hub_contract=None,
@@ -238,12 +241,12 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 warnings=warnings,
                 spec_type=self.spec_type,
                 spec_version=spec_version or "4.1",
-                coverage=None
+                coverage=None,
             )
         except Exception as e:
             # Catch any unexpected errors and wrap in ODPSNormalizationError
             error = ODPSNormalizationError(
-                message=f"Unexpected error during ODPS normalization: {str(e)}",
+                message=f"Unexpected error during ODPS normalization: {e!s}",
                 error_code=ODPSNormalizationError.ERROR_CODE_NORMALIZATION_FAILED,
                 cause=e,
             )
@@ -252,7 +255,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 "odps_normalization_unexpected_error",
                 error=str(e),
                 error_type=type(e).__name__,
-                message="Unexpected error during normalization"
+                message="Unexpected error during normalization",
             )
             return NormalizationResult(
                 hub_contract=None,
@@ -261,15 +264,15 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 warnings=warnings,
                 spec_type=self.spec_type,
                 spec_version=spec_version or "4.1",
-                coverage=None
+                coverage=None,
             )
 
     def _map_version_specific_fields(
         self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
-        spec_version: str
+        contract_data: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
+        spec_version: str,
     ) -> None:
         """
         Hook for version-specific field mappings.
@@ -292,10 +295,8 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
         self._normalize_product_strategy(contract_data, hub_contract, warnings, spec_version)
 
     def _initialize_hub_contract(
-        self,
-        contract_data: Dict[str, Any],
-        spec_version: str
-    ) -> Dict[str, Any]:
+        self, contract_data: dict[str, Any], spec_version: str
+    ) -> dict[str, Any]:
         """
         Initialize HubContract structure with basic fields.
 
@@ -312,9 +313,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
         try:
             hub_contract = {
                 "info": {},
-                "schema": {
-                    "fields": []
-                },
+                "schema": {"fields": []},
                 "extensions": {},
             }
 
@@ -329,17 +328,14 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
 
         except Exception as e:
             raise ODPSNormalizationError(
-                message=f"Failed to initialize HubContract structure: {str(e)}",
+                message=f"Failed to initialize HubContract structure: {e!s}",
                 error_code=ODPSNormalizationError.ERROR_CODE_NORMALIZATION_FAILED,
                 field_path="/",
                 cause=e,
             ) from e
 
     def _determine_status(
-        self,
-        hub_contract: Optional[Dict[str, Any]],
-        errors: List[str],
-        warnings: List[str]
+        self, hub_contract: dict[str, Any] | None, errors: list[str], warnings: list[str]
     ) -> NormalizationStatus:
         """
         Determine normalization status based on result.
@@ -388,7 +384,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
         value: Any,
         expected_type: type,
         default_value: Any = None,
-        required: bool = False
+        required: bool = False,
     ) -> Any:
         """
         Normalize a field with error context and graceful degradation.
@@ -444,7 +440,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
         value: Any,
         expected_type: type,
         default_value: Any = None,
-        warnings: Optional[List[str]] = None
+        warnings: list[str] | None = None,
     ) -> Any:
         """
         Normalize an optional field with graceful degradation.
@@ -464,12 +460,14 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
         """
         if value is None:
             if warnings is not None:
-                warnings.append(f"Optional field '{field_name}' at path '{field_path}' is missing, using default value")
+                warnings.append(
+                    f"Optional field '{field_name}' at path '{field_path}' is missing, using default value"
+                )
             logger.debug(
                 "odps_optional_field_missing",
                 field_name=field_name,
                 field_path=field_path,
-                message=f"Optional field '{field_name}' missing, using default"
+                message=f"Optional field '{field_name}' missing, using default",
             )
             return default_value
 
@@ -485,7 +483,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 field_path=field_path,
                 expected_type=expected_type.__name__,
                 actual_type=type(value).__name__,
-                message=f"Optional field '{field_name}' has invalid type, using default"
+                message=f"Optional field '{field_name}' has invalid type, using default",
             )
             return default_value
 
@@ -496,10 +494,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
     # by subclasses if version-specific behavior is needed.
 
     def _normalize_info(
-        self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, contract_data: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """
         Normalize ODPS product details and dataHolder to HubContract info section.
@@ -584,7 +579,9 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 hub_contract["id"] = product_id
             else:
                 # productID is required in ODPS, but we'll handle gracefully
-                warnings.append(f"productID missing in product.details.{preferred_lang}, using fallback")
+                warnings.append(
+                    f"productID missing in product.details.{preferred_lang}, using fallback"
+                )
 
             # Map name → HubContract.info.name (required)
             name = lang_details.get("name")
@@ -764,7 +761,9 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 hub_contract["extensions"]["x_odps"]["multilingual_details"] = {}
                 for lang in available_languages:
                     if lang in details and isinstance(details[lang], dict):
-                        hub_contract["extensions"]["x_odps"]["multilingual_details"][lang] = details[lang]
+                        hub_contract["extensions"]["x_odps"]["multilingual_details"][lang] = (
+                            details[lang]
+                        )
 
         except ODPSNormalizationError:
             # Re-raise ODPSNormalizationError as-is
@@ -772,17 +771,14 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
         except Exception as e:
             # Wrap unexpected errors
             raise ODPSNormalizationError(
-                message=f"Unexpected error during info normalization: {str(e)}",
+                message=f"Unexpected error during info normalization: {e!s}",
                 error_code=ODPSNormalizationError.ERROR_CODE_NORMALIZATION_FAILED,
                 field_path="/product/details",
                 cause=e,
             ) from e
 
     def _normalize_quality(
-        self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, contract_data: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """
         Normalize ODPS dataQuality section to HubContract quality format.
@@ -872,18 +868,15 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
         except Exception as e:
             # Wrap unexpected errors in ODPSNormalizationError
             raise ODPSNormalizationError(
-                message=f"Failed to normalize quality section: {str(e)}",
+                message=f"Failed to normalize quality section: {e!s}",
                 error_code=ODPSNormalizationError.ERROR_CODE_NORMALIZATION_FAILED,
                 field_path="/product/dataQuality",
                 cause=e,
             ) from e
 
     def _generate_rule_from_dimension(
-        self,
-        dimension_name: str,
-        dimension_data: Dict[str, Any],
-        warnings: List[str]
-    ) -> Optional[Dict[str, Any]]:
+        self, dimension_name: str, dimension_data: dict[str, Any], warnings: list[str]
+    ) -> dict[str, Any] | None:
         """
         Generate a quality rule from an ODPS declarative dimension.
 
@@ -896,12 +889,14 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             Quality rule dictionary or None if generation fails
         """
         try:
-            rule: Dict[str, Any] = {
+            rule: dict[str, Any] = {
                 "dimension": dimension_name,
             }
 
             # Extract rule ID/name
-            rule_id = dimension_data.get("ruleID") or dimension_data.get("rule_id") or dimension_name
+            rule_id = (
+                dimension_data.get("ruleID") or dimension_data.get("rule_id") or dimension_name
+            )
             rule["rule_id"] = str(rule_id)
             rule["name"] = dimension_data.get("name") or dimension_name
 
@@ -930,7 +925,9 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 rule["severity"] = str(severity)
             else:
                 # Default severity based on dimension type
-                rule["severity"] = "ERROR" if dimension_name in ["completeness", "validity"] else "WARNING"
+                rule["severity"] = (
+                    "ERROR" if dimension_name in ["completeness", "validity"] else "WARNING"
+                )
 
             # Extract target (column, table, dataset)
             target = dimension_data.get("target")
@@ -943,24 +940,26 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 rule["description"] = str(description)
 
             # Extract any additional fields
-            for key in ["operator", "valid_values", "sql_query", "engine", "implementation", "method"]:
+            for key in [
+                "operator",
+                "valid_values",
+                "sql_query",
+                "engine",
+                "implementation",
+                "method",
+            ]:
                 if key in dimension_data:
                     rule[key] = dimension_data[key]
 
             return rule
 
         except Exception as e:
-            warnings.append(
-                f"Failed to generate rule from dimension '{dimension_name}': {str(e)}"
-            )
+            warnings.append(f"Failed to generate rule from dimension '{dimension_name}': {e!s}")
             return None
 
     def _generate_expression_from_objectives(
-        self,
-        objectives: Any,
-        unit: Optional[str],
-        warnings: List[str]
-    ) -> Optional[str]:
+        self, objectives: Any, unit: str | None, warnings: list[str]
+    ) -> str | None:
         """
         Generate a rule expression from objectives and unit.
 
@@ -1018,16 +1017,11 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                 return None
 
         except Exception as e:
-            warnings.append(
-                f"Failed to generate expression from objectives: {str(e)}"
-            )
+            warnings.append(f"Failed to generate expression from objectives: {e!s}")
             return None
 
     def _normalize_lifecycle(
-        self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, contract_data: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """
         Normalize ODPS lifecycle section to HubContract lifecycle format.
@@ -1047,14 +1041,12 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             ODPSNormalizationError: If normalization fails with context
         """
         from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+
         temp_normalizer = ODPSNormalizer()
         temp_normalizer._normalize_lifecycle(contract_data, hub_contract, warnings)
 
     def _normalize_marketplace(
-        self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, contract_data: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """
         Normalize ODPS marketplace and license sections to HubContract marketplace format.
@@ -1076,14 +1068,12 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             ODPSNormalizationError: If normalization fails with context
         """
         from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+
         temp_normalizer = ODPSNormalizer()
         temp_normalizer._normalize_marketplace(contract_data, hub_contract, warnings)
 
     def _extract_contract(
-        self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, contract_data: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """
         Extract and normalize ODPS contract section.
@@ -1102,15 +1092,16 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             ODPSNormalizationError: If extraction fails with context
         """
         from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+
         temp_normalizer = ODPSNormalizer()
         temp_normalizer._extract_contract(contract_data, hub_contract, warnings)
 
     def _normalize_product_strategy(
         self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
-        spec_version: str
+        contract_data: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
+        spec_version: str,
     ) -> None:
         """
         Normalize ODPS product strategy to HubContract info.x_odps.product_strategy.
@@ -1130,14 +1121,14 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             ODPSNormalizationError: If normalization fails with context
         """
         from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+
         temp_normalizer = ODPSNormalizer()
-        temp_normalizer._normalize_product_strategy(contract_data, hub_contract, warnings, spec_version)
+        temp_normalizer._normalize_product_strategy(
+            contract_data, hub_contract, warnings, spec_version
+        )
 
     def _normalize_schema_minimal(
-        self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, contract_data: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """
         Minimal schema normalization - populate schema fields from product.dataSchema or product.contract.spec.schema if available.
@@ -1190,8 +1181,12 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                             from hub.apps.contracts.normalization_engine import (
                                 _map_fields,
                             )
+
                             converted_fields = _map_fields(
-                                contract_schema, [], [], [],
+                                contract_schema,
+                                [],
+                                [],
+                                [],
                             )
                             if converted_fields:
                                 hub_contract["schema"]["fields"] = converted_fields
@@ -1199,7 +1194,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
 
         except Exception as e:
             # Don't fail normalization if schema extraction fails
-            warnings.append(f"Failed to extract schema: {str(e)}")
+            warnings.append(f"Failed to extract schema: {e!s}")
 
     # ------------------------------------------------------------------
     # Phase 227 Wave 1 — outputPorts/inputPorts → models[]/lineage
@@ -1207,9 +1202,9 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
 
     def _normalize_ports_to_models(
         self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
+        contract_data: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
     ) -> None:
         """Bridge to the canonical ports helper.
 
@@ -1241,8 +1236,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             from hub.apps.contracts.normalization import _ports_helper
         except Exception as exc:  # pragma: no cover — defensive
             warnings.append(
-                f"Failed to import ports helper: {exc}. Ports → models "
-                f"mapping skipped."
+                f"Failed to import ports helper: {exc}. Ports → models mapping skipped."
             )
             return
 
@@ -1256,10 +1250,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             # Fail-soft: a port-mapping failure must not break the rest
             # of normalisation. The warning surfaces in the dry-run /
             # live audit trail so ops can locate the offending contract.
-            warnings.append(
-                f"Ports → models mapping failed: "
-                f"{type(exc).__name__}: {exc}"
-            )
+            warnings.append(f"Ports → models mapping failed: {type(exc).__name__}: {exc}")
             logger.warning(
                 "odps_ports_to_models_failed",
                 error=str(exc),
@@ -1268,7 +1259,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
 
     # Helper methods for language extraction (shared across all versions)
 
-    def _extract_available_languages(self, contract_data: Dict[str, Any]) -> List[str]:
+    def _extract_available_languages(self, contract_data: dict[str, Any]) -> list[str]:
         """
         Extract available language codes from product.details.
 
@@ -1279,10 +1270,13 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             List of language codes (ISO 639-1 format, e.g., ["en", "fr", "de"])
         """
         from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+
         temp_normalizer = ODPSNormalizer()
         return temp_normalizer._extract_available_languages(contract_data)
 
-    def _get_preferred_language(self, available_languages: List[str], preferred: str = "en") -> Optional[str]:
+    def _get_preferred_language(
+        self, available_languages: list[str], preferred: str = "en"
+    ) -> str | None:
         """
         Get preferred language from available languages.
 
@@ -1294,6 +1288,6 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             Preferred language code if available, otherwise first available language, or None
         """
         from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+
         temp_normalizer = ODPSNormalizer()
         return temp_normalizer._get_preferred_language(available_languages, preferred)
-

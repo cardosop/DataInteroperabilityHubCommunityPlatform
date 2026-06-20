@@ -3,8 +3,8 @@ Integration tests for Asset Recommendations
 
 Tests for recommendations in the context of asset workflows.
 """
-import uuid
 
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -13,7 +13,6 @@ from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.assets.recommendations import AssetRecommendationService
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
 from hub.apps.search.models import SearchAnalytics
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
@@ -28,7 +27,10 @@ class AssetRecommendationsIntegrationTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -178,4 +180,3 @@ class AssetRecommendationsIntegrationTest(TestCase):
         # The repeatedly-clicked asset should be recommended
         asset_ids = [r["asset_id"] for r in recommendations]
         self.assertIn(str(self.asset.id), asset_ids)
-

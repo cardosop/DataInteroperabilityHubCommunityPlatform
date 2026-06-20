@@ -132,7 +132,7 @@ class TestInfrastructureImpactReporter(TestCase):
         self.reporter.load_review_reports()
 
         # Save to temporary file
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.md') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".md") as f:
             temp_path = Path(f.name)
 
         try:
@@ -159,7 +159,7 @@ class TestInfrastructureImpactReporter(TestCase):
         self.reporter.load_review_reports()
 
         # Save to temporary file
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as f:
             temp_path = Path(f.name)
 
         try:
@@ -169,7 +169,7 @@ class TestInfrastructureImpactReporter(TestCase):
             self.assertTrue(temp_path.exists())
 
             # Verify file is valid JSON
-            with open(temp_path, 'r') as f:
+            with open(temp_path) as f:
                 report = json.load(f)
 
             self.assertIn("summary", report)
@@ -221,7 +221,7 @@ class TestInfrastructureImpactReporter(TestCase):
             "gateway",
             "rate_limiting",
             "cicd",
-            "components_list"
+            "components_list",
         ]
 
         for section in required_sections:
@@ -236,7 +236,7 @@ class TestInfrastructureImpactReporter(TestCase):
             "application_services",
             "monitoring_services",
             "gateway_services",
-            "orchestration_services"
+            "orchestration_services",
         ]
 
         for key in summary_keys:
@@ -300,15 +300,15 @@ class TestInfrastructureImpactReporter(TestCase):
         # Total count should equal sum of individual counts
         total = components["total_count"]
         sum_of_counts = (
-            len(components["services"]) +
-            len(components["deployments"]) +
-            len(components["statefulsets"]) +
-            len(components["configmaps"]) +
-            len(components["secrets"]) +
-            len(components["persistent_volume_claims"]) +
-            len(components["ingresses"]) +
-            len(components["namespaces"]) +
-            len(components["network_policies"])
+            len(components["services"])
+            + len(components["deployments"])
+            + len(components["statefulsets"])
+            + len(components["configmaps"])
+            + len(components["secrets"])
+            + len(components["persistent_volume_claims"])
+            + len(components["ingresses"])
+            + len(components["namespaces"])
+            + len(components["network_policies"])
         )
 
         self.assertEqual(total, sum_of_counts, "Total count should equal sum of individual counts")
@@ -350,7 +350,7 @@ class TestInfrastructureImpactReporter(TestCase):
         self.reporter.load_review_reports()
 
         # Save to temporary file
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.md') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".md") as f:
             temp_path = Path(f.name)
 
         try:
@@ -371,7 +371,7 @@ class TestInfrastructureImpactReporter(TestCase):
                 "## API Gateway",
                 "## Rate Limiting",
                 "## CI/CD Infrastructure",
-                "## Infrastructure Components List"
+                "## Infrastructure Components List",
             ]
 
             for section in required_sections:
@@ -400,7 +400,9 @@ class TestInfrastructureImpactReporter(TestCase):
         # Verify summary values are numeric
         summary = report["summary"]
         for key, value in summary.items():
-            self.assertIsInstance(value, (int, float), f"Summary '{key}' should be numeric, got {type(value)}")
+            self.assertIsInstance(
+                value, (int, float), f"Summary '{key}' should be numeric, got {type(value)}"
+            )
 
     def test_infrastructure_components_list_accuracy(self):
         """Test that infrastructure components list matches extracted data."""
@@ -416,13 +418,13 @@ class TestInfrastructureImpactReporter(TestCase):
         self.assertEqual(
             len(components_list["infrastructure_services"]),
             len(docker_services.get("infrastructure", [])),
-            "Infrastructure services count should match"
+            "Infrastructure services count should match",
         )
 
         self.assertEqual(
             len(components_list["application_services"]),
             len(docker_services.get("application", [])),
-            "Application services count should match"
+            "Application services count should match",
         )
 
         # Verify Kubernetes resources match
@@ -430,7 +432,7 @@ class TestInfrastructureImpactReporter(TestCase):
         self.assertEqual(
             k8s_resources["services"],
             len(k8s_components.get("services", [])),
-            "Kubernetes services count should match"
+            "Kubernetes services count should match",
         )
 
     def test_report_generation_idempotency(self):
@@ -448,10 +450,8 @@ class TestInfrastructureImpactReporter(TestCase):
         self.assertEqual(set(report1.keys()), set(report2.keys()))
         self.assertEqual(
             report1["summary"]["docker_compose_services"],
-            report2["summary"]["docker_compose_services"]
+            report2["summary"]["docker_compose_services"],
         )
         self.assertEqual(
-            report1["summary"]["kubernetes_components"],
-            report2["summary"]["kubernetes_components"]
+            report1["summary"]["kubernetes_components"], report2["summary"]["kubernetes_components"]
         )
-

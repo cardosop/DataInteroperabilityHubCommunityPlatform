@@ -12,12 +12,10 @@ Task: 9.6.1.6.2 - Check monitoring and observability
 """
 
 import json
-import os
 import re
 import sys
-from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Set, Tuple, Any, Optional
+from typing import Any
 
 
 class MonitoringReviewer:
@@ -31,16 +29,16 @@ class MonitoringReviewer:
         self.k8s_dir = project_root / "k8s"
 
         # Results storage
-        self.prometheus_metrics: Dict[str, Any] = {}
-        self.grafana_queries: List[Dict[str, Any]] = []
-        self.jaeger_operations: Dict[str, List[str]] = {}
-        self.log_patterns: Dict[str, List[str]] = {}
-        self.endpoint_mapping: Dict[str, Dict[str, Any]] = {}
+        self.prometheus_metrics: dict[str, Any] = {}
+        self.grafana_queries: list[dict[str, Any]] = []
+        self.jaeger_operations: dict[str, list[str]] = {}
+        self.log_patterns: dict[str, list[str]] = {}
+        self.endpoint_mapping: dict[str, dict[str, Any]] = {}
 
         # Endpoint registry
-        self.endpoints: Set[str] = set()
+        self.endpoints: set[str] = set()
 
-    def extract_endpoints_from_urls(self) -> Set[str]:
+    def extract_endpoints_from_urls(self) -> set[str]:
         """Extract all API endpoints from Django URL configuration."""
         endpoints = set()
 
@@ -50,7 +48,7 @@ class MonitoringReviewer:
             content = api_urls_file.read_text()
             # Extract path patterns
             path_patterns = re.findall(r"path\(['\"]([^'\"]+)['\"]", content)
-            include_patterns = re.findall(r"include\(['\"]([^'\"]+)['\"]", content)
+            re.findall(r"include\(['\"]([^'\"]+)['\"]", content)
 
             for pattern in path_patterns:
                 if pattern.startswith("/"):
@@ -79,7 +77,7 @@ class MonitoringReviewer:
 
         return endpoints
 
-    def review_prometheus_metrics(self) -> Dict[str, Any]:
+    def review_prometheus_metrics(self) -> dict[str, Any]:
         """Review Prometheus metrics configuration for endpoint labels."""
         print("\n=== Reviewing Prometheus Metrics ===")
 
@@ -87,7 +85,7 @@ class MonitoringReviewer:
             "scrape_configs": [],
             "metrics_with_endpoint_labels": [],
             "endpoint_labels_found": set(),
-            "services_monitored": []
+            "services_monitored": [],
         }
 
         # Review prometheus.yml
@@ -102,14 +100,13 @@ class MonitoringReviewer:
 
             # Extract metrics_path
             metrics_path_pattern = r"metrics_path:\s*['\"]([^'\"]+)['\"]"
-            metrics_paths = re.findall(metrics_path_pattern, content)
+            re.findall(metrics_path_pattern, content)
 
             print(f"  Found {len(jobs)} scrape jobs")
             for job in jobs:
-                results["scrape_configs"].append({
-                    "job_name": job,
-                    "metrics_path": "/metrics" if job != "prometheus" else None
-                })
+                results["scrape_configs"].append(
+                    {"job_name": job, "metrics_path": "/metrics" if job != "prometheus" else None}
+                )
 
         # Review metrics definitions in code
         otel_metrics_file = self.hub_dir / "apps" / "observability" / "otel_metrics.py"
@@ -117,10 +114,7 @@ class MonitoringReviewer:
             content = otel_metrics_file.read_text()
 
             # Find metrics with route/endpoint labels
-            route_metrics = re.findall(
-                r"expected_labels=\([^)]*['\"]route['\"][^)]*\)",
-                content
-            )
+            re.findall(r"expected_labels=\([^)]*['\"]route['\"][^)]*\)", content)
 
             # Extract metric names with route labels
             metric_pattern = r"(\w+)\s*=\s*_(?:Counter|Histogram|UpDownCounter)Wrapper\s*\([^)]*expected_labels=\([^)]*['\"]route['\"]"
@@ -135,7 +129,9 @@ class MonitoringReviewer:
             if re.search(method_pattern, content):
                 results["endpoint_labels_found"].add("method")
 
-            print(f"  Found {len(results['metrics_with_endpoint_labels'])} metrics with route labels")
+            print(
+                f"  Found {len(results['metrics_with_endpoint_labels'])} metrics with route labels"
+            )
 
         # Review FastAPI service metrics
         shared_metrics_file = self.services_dir / "shared" / "metrics.py"
@@ -153,7 +149,7 @@ class MonitoringReviewer:
         self.prometheus_metrics = results
         return results
 
-    def review_grafana_dashboards(self) -> List[Dict[str, Any]]:
+    def review_grafana_dashboards(self) -> list[dict[str, Any]]:
         """Review Grafana dashboards for query patterns."""
         print("\n=== Reviewing Grafana Dashboards ===")
 
@@ -169,10 +165,12 @@ class MonitoringReviewer:
 
         for dashboard_file in dashboard_files:
             try:
-                with open(dashboard_file, 'r') as f:
+                with open(dashboard_file) as f:
                     dashboard_data = json.load(f)
 
-                dashboard_name = dashboard_data.get("dashboard", {}).get("title", dashboard_file.stem)
+                dashboard_name = dashboard_data.get("dashboard", {}).get(
+                    "title", dashboard_file.stem
+                )
                 panels = dashboard_data.get("dashboard", {}).get("panels", [])
 
                 for panel in panels:
@@ -188,16 +186,18 @@ class MonitoringReviewer:
                             # Extract metric names
                             metric_names = re.findall(r"(\w+)\s*\{", expr)
 
-                            queries.append({
-                                "dashboard": dashboard_name,
-                                "panel": panel.get("title", "Unknown"),
-                                "query": expr,
-                                "has_route_label": bool(route_labels),
-                                "has_method_label": bool(method_labels),
-                                "has_service_label": bool(service_labels),
-                                "metrics_used": list(set(metric_names)),
-                                "legend_format": target.get("legendFormat", "")
-                            })
+                            queries.append(
+                                {
+                                    "dashboard": dashboard_name,
+                                    "panel": panel.get("title", "Unknown"),
+                                    "query": expr,
+                                    "has_route_label": bool(route_labels),
+                                    "has_method_label": bool(method_labels),
+                                    "has_service_label": bool(service_labels),
+                                    "metrics_used": list(set(metric_names)),
+                                    "legend_format": target.get("legendFormat", ""),
+                                }
+                            )
             except Exception as e:
                 print(f"  Warning: Could not parse dashboard {dashboard_file}: {e}")
 
@@ -205,7 +205,7 @@ class MonitoringReviewer:
         self.grafana_queries = queries
         return queries
 
-    def review_jaeger_traces(self) -> Dict[str, List[str]]:
+    def review_jaeger_traces(self) -> dict[str, list[str]]:
         """Review Jaeger tracing configuration for operation names."""
         print("\n=== Reviewing Jaeger Tracing Configuration ===")
 
@@ -213,19 +213,21 @@ class MonitoringReviewer:
             "django_operations": [],
             "fastapi_operations": [],
             "operation_patterns": [],
-            "span_attributes": []
+            "span_attributes": [],
         }
 
         # Review Django tracing middleware
-        span_middleware_file = self.hub_dir / "apps" / "observability" / "middleware" / "span_middleware.py"
+        span_middleware_file = (
+            self.hub_dir / "apps" / "observability" / "middleware" / "span_middleware.py"
+        )
         if span_middleware_file.exists():
             content = span_middleware_file.read_text()
 
             # Extract span name patterns - look for f-strings with HTTP method and route
             span_name_patterns = [
                 r'f?"HTTP\s+(\w+)\s+([^"]+)"',
-                r'span_name\s*=\s*([^\n]+)',
-                r'start_as_current_span\s*\(\s*f?"([^"]+)"'
+                r"span_name\s*=\s*([^\n]+)",
+                r'start_as_current_span\s*\(\s*f?"([^"]+)"',
             ]
 
             for pattern in span_name_patterns:
@@ -269,7 +271,9 @@ class MonitoringReviewer:
             print(f"  Found {len(operations['fastapi_operations'])} FastAPI service patterns")
 
         # Review span instrumentation
-        span_instrumentation_file = self.hub_dir / "apps" / "observability" / "span_instrumentation.py"
+        span_instrumentation_file = (
+            self.hub_dir / "apps" / "observability" / "span_instrumentation.py"
+        )
         if span_instrumentation_file.exists():
             content = span_instrumentation_file.read_text()
 
@@ -277,7 +281,7 @@ class MonitoringReviewer:
             service_call_patterns = [
                 r'span_name\s*=\s*f?"([^"]+)"',
                 r'f?"([^"]+)"\s*,\s*kind=',
-                r'start_as_current_span\s*\(\s*f?"([^"]+)"'
+                r'start_as_current_span\s*\(\s*f?"([^"]+)"',
             ]
 
             for pattern in service_call_patterns:
@@ -301,20 +305,18 @@ class MonitoringReviewer:
 
             # Check for FastAPI instrumentation
             if "FastAPIInstrumentor" in content:
-                operations["operation_patterns"].append("FastAPIInstrumentor (auto-instrumentation)")
+                operations["operation_patterns"].append(
+                    "FastAPIInstrumentor (auto-instrumentation)"
+                )
 
         self.jaeger_operations = operations
         return operations
 
-    def review_log_aggregation(self) -> Dict[str, List[str]]:
+    def review_log_aggregation(self) -> dict[str, list[str]]:
         """Review log aggregation configuration for URL patterns."""
         print("\n=== Reviewing Log Aggregation Configuration ===")
 
-        patterns = {
-            "promtail_configs": [],
-            "loki_patterns": [],
-            "log_url_patterns": []
-        }
+        patterns = {"promtail_configs": [], "loki_patterns": [], "log_url_patterns": []}
 
         # Review Promtail configuration
         promtail_config = self.k8s_dir / "logging" / "promtail" / "configmap.yaml"
@@ -363,7 +365,7 @@ class MonitoringReviewer:
         # Review middleware that logs URLs
         middleware_files = [
             self.hub_dir / "apps" / "observability" / "middleware" / "span_middleware.py",
-            self.hub_dir / "apps" / "api" / "middleware" / "tracing.py"
+            self.hub_dir / "apps" / "api" / "middleware" / "tracing.py",
         ]
 
         for middleware_file in middleware_files:
@@ -375,7 +377,7 @@ class MonitoringReviewer:
         self.log_patterns = patterns
         return patterns
 
-    def map_monitoring_to_endpoints(self) -> Dict[str, Dict[str, Any]]:
+    def map_monitoring_to_endpoints(self) -> dict[str, dict[str, Any]]:
         """Map all monitoring configurations to endpoints."""
         print("\n=== Mapping Monitoring Configs to Endpoints ===")
 
@@ -395,7 +397,7 @@ class MonitoringReviewer:
                         "prometheus_metrics": [],
                         "grafana_queries": [],
                         "jaeger_operations": [],
-                        "log_patterns": []
+                        "log_patterns": [],
                     }
                 mapping[endpoint]["prometheus_metrics"].append(metric)
 
@@ -410,16 +412,18 @@ class MonitoringReviewer:
                             "prometheus_metrics": [],
                             "grafana_queries": [],
                             "jaeger_operations": [],
-                            "log_patterns": []
+                            "log_patterns": [],
                         }
                     # Check if query mentions this endpoint pattern
                     endpoint_pattern = endpoint.replace("/", "\\/").replace("{id}", ".*")
                     if re.search(endpoint_pattern, query["query"], re.IGNORECASE):
-                        mapping[endpoint]["grafana_queries"].append({
-                            "dashboard": query["dashboard"],
-                            "panel": query["panel"],
-                            "query": query["query"]
-                        })
+                        mapping[endpoint]["grafana_queries"].append(
+                            {
+                                "dashboard": query["dashboard"],
+                                "panel": query["panel"],
+                                "query": query["query"],
+                            }
+                        )
 
         # Map Jaeger operations
         for operation_pattern in self.jaeger_operations.get("operation_patterns", []):
@@ -430,10 +434,13 @@ class MonitoringReviewer:
                         "prometheus_metrics": [],
                         "grafana_queries": [],
                         "jaeger_operations": [],
-                        "log_patterns": []
+                        "log_patterns": [],
                     }
                 # Check if operation pattern matches endpoint
-                if endpoint in operation_pattern or operation_pattern.replace("{id}", ".*") in endpoint:
+                if (
+                    endpoint in operation_pattern
+                    or operation_pattern.replace("{id}", ".*") in endpoint
+                ):
                     mapping[endpoint]["jaeger_operations"].append(operation_pattern)
 
         # Map log patterns
@@ -445,7 +452,7 @@ class MonitoringReviewer:
                         "prometheus_metrics": [],
                         "grafana_queries": [],
                         "jaeger_operations": [],
-                        "log_patterns": []
+                        "log_patterns": [],
                     }
                 mapping[endpoint]["log_patterns"].append(log_pattern)
 
@@ -453,28 +460,38 @@ class MonitoringReviewer:
         print(f"  Mapped monitoring configs to {len(mapping)} endpoints")
         return mapping
 
-    def generate_report(self) -> Dict[str, Any]:
+    def generate_report(self) -> dict[str, Any]:
         """Generate comprehensive monitoring review report."""
         report = {
             "summary": {
                 "endpoints_found": len(self.endpoints),
-                "prometheus_metrics_with_endpoints": len(self.prometheus_metrics.get("metrics_with_endpoint_labels", [])),
+                "prometheus_metrics_with_endpoints": len(
+                    self.prometheus_metrics.get("metrics_with_endpoint_labels", [])
+                ),
                 "grafana_queries_reviewed": len(self.grafana_queries),
-                "jaeger_operation_patterns": len(self.jaeger_operations.get("operation_patterns", [])),
+                "jaeger_operation_patterns": len(
+                    self.jaeger_operations.get("operation_patterns", [])
+                ),
                 "log_patterns_found": len(self.log_patterns.get("log_url_patterns", [])),
-                "endpoints_mapped": len(self.endpoint_mapping)
+                "endpoints_mapped": len(self.endpoint_mapping),
             },
             "prometheus": self.prometheus_metrics,
             "grafana": {
                 "total_queries": len(self.grafana_queries),
-                "queries_with_route_labels": len([q for q in self.grafana_queries if q.get("has_route_label")]),
-                "queries_with_method_labels": len([q for q in self.grafana_queries if q.get("has_method_label")]),
-                "queries_with_service_labels": len([q for q in self.grafana_queries if q.get("has_service_label")]),
-                "sample_queries": self.grafana_queries[:10]
+                "queries_with_route_labels": len(
+                    [q for q in self.grafana_queries if q.get("has_route_label")]
+                ),
+                "queries_with_method_labels": len(
+                    [q for q in self.grafana_queries if q.get("has_method_label")]
+                ),
+                "queries_with_service_labels": len(
+                    [q for q in self.grafana_queries if q.get("has_service_label")]
+                ),
+                "sample_queries": self.grafana_queries[:10],
             },
             "jaeger": self.jaeger_operations,
             "logging": self.log_patterns,
-            "endpoint_mapping": self.endpoint_mapping
+            "endpoint_mapping": self.endpoint_mapping,
         }
 
         return report
@@ -483,27 +500,35 @@ class MonitoringReviewer:
         """Save review report to JSON file."""
         report = self.generate_report()
 
-        with open(output_file, 'w') as f:
+        with open(output_file, "w") as f:
             json.dump(report, f, indent=2, default=str)
 
         print(f"\n=== Report saved to {output_file} ===")
 
     def print_summary(self):
         """Print summary of review findings."""
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("MONITORING AND OBSERVABILITY REVIEW SUMMARY")
-        print("="*80)
+        print("=" * 80)
 
         print(f"\nEndpoints Found: {len(self.endpoints)}")
-        print(f"Prometheus Metrics with Endpoint Labels: {len(self.prometheus_metrics.get('metrics_with_endpoint_labels', []))}")
+        print(
+            f"Prometheus Metrics with Endpoint Labels: {len(self.prometheus_metrics.get('metrics_with_endpoint_labels', []))}"
+        )
         print(f"Grafana Queries Reviewed: {len(self.grafana_queries)}")
-        print(f"  - With route labels: {len([q for q in self.grafana_queries if q.get('has_route_label')])}")
-        print(f"  - With method labels: {len([q for q in self.grafana_queries if q.get('has_method_label')])}")
-        print(f"Jaeger Operation Patterns: {len(self.jaeger_operations.get('operation_patterns', []))}")
+        print(
+            f"  - With route labels: {len([q for q in self.grafana_queries if q.get('has_route_label')])}"
+        )
+        print(
+            f"  - With method labels: {len([q for q in self.grafana_queries if q.get('has_method_label')])}"
+        )
+        print(
+            f"Jaeger Operation Patterns: {len(self.jaeger_operations.get('operation_patterns', []))}"
+        )
         print(f"Log Patterns Found: {len(self.log_patterns.get('log_url_patterns', []))}")
         print(f"Endpoints Mapped: {len(self.endpoint_mapping)}")
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
 
 
 def main():
@@ -537,4 +562,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

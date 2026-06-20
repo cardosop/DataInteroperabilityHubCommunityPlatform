@@ -13,17 +13,16 @@ asserts the callback is delivered within the timeout budget.
 import json
 import threading
 import time
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Optional
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from tests._persona_provisioning import provision_persona
 from tests.fixtures.test_data import fresh_id, unique_port
-from tests.use_cases._api_helpers import api_post, api_delete
-
+from tests.use_cases._api_helpers import api_delete, api_post
 
 # ---------------------------------------------------------------------------
 # Local callback receiver
 # ---------------------------------------------------------------------------
+
 
 class WebhookReceiver:
     """Context manager that runs a local HTTP server on a free port.
@@ -36,8 +35,8 @@ class WebhookReceiver:
         self.port = port
         self._received: list[bytes] = []
         self._lock = threading.Lock()
-        self._server: Optional[HTTPServer] = None
-        self._thread: Optional[threading.Thread] = None
+        self._server: HTTPServer | None = None
+        self._thread: threading.Thread | None = None
 
     def __enter__(self):
         receiver = self  # capture for the handler closure
@@ -84,6 +83,7 @@ class WebhookReceiver:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 def test_webhook_roundtrip():
     """Register webhook → trigger event → verify callback delivered."""
     creds = provision_persona("data_engineer")
@@ -96,27 +96,34 @@ def test_webhook_roundtrip():
         # dev where the backend IS on localhost.
         callback_url = f"http://host.docker.internal:{port}/webhook"
 
-        reg_resp = api_post("/webhooks/", creds, json={
-            "url": callback_url,
-            "events": ["asset.created"],
-            "name": fresh_id("wh-test"),
-        })
+        reg_resp = api_post(
+            "/webhooks/",
+            creds,
+            json={
+                "url": callback_url,
+                "events": ["asset.created"],
+                "name": fresh_id("wh-test"),
+            },
+        )
 
         if reg_resp.status_code == 404:
             pytest.skip("Webhook registration endpoint not available")
         if reg_resp.status_code not in (200, 201):
             pytest.skip(
-                f"Webhook registration failed: {reg_resp.status_code} "
-                f"{reg_resp.text[:200]}"
+                f"Webhook registration failed: {reg_resp.status_code} {reg_resp.text[:200]}"
             )
 
         webhook_id = reg_resp.json().get("id")
 
         # Trigger an event (create an asset)
-        asset_resp = api_post("/assets/", creds, json={
-            "name": fresh_id("wh-trigger"),
-            "key": fresh_id("wh-key"),
-        })
+        asset_resp = api_post(
+            "/assets/",
+            creds,
+            json={
+                "name": fresh_id("wh-trigger"),
+                "key": fresh_id("wh-key"),
+            },
+        )
         if asset_resp.status_code not in (200, 201):
             pytest.skip(f"Asset creation failed: {asset_resp.status_code}")
 

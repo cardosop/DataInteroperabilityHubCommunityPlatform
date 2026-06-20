@@ -4,6 +4,7 @@ Integration tests for Observability API Views
 Tests for observability API endpoints.
 """
 
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -22,7 +23,6 @@ from hub.apps.observability.volume import VolumeMonitor
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -86,7 +86,9 @@ class PipelineMonitoringIntegrationTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data["results"]
         # Verify filter actually returned results (setUp creates SCHEDULED_INGESTION pipelines)
-        self.assertGreater(len(results), 0, "Filter returned no results despite matching pipelines in setUp")
+        self.assertGreater(
+            len(results), 0, "Filter returned no results despite matching pipelines in setUp"
+        )
         # All results should be SCHEDULED_INGESTION
         for result in results:
             self.assertEqual(result["pipeline_type"], "SCHEDULED_INGESTION")

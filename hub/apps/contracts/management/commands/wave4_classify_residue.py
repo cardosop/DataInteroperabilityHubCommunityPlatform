@@ -34,14 +34,14 @@ JSONL (default) — one row per tenant::
 Or ``--output=human`` for a one-line summary suitable for a runbook
 spot-check.
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from django.core.management.base import BaseCommand
-
 
 # ---------------------------------------------------------------------------
 # Pure-function classifier — kept module-level so other commands /
@@ -51,9 +51,9 @@ from django.core.management.base import BaseCommand
 
 def classify_tenants_by_residue(
     *,
-    tenant_id: Optional[str] = None,
+    tenant_id: str | None = None,
     active_only: bool = False,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Return the per-tenant residue classification.
 
     Args
@@ -81,12 +81,13 @@ def classify_tenants_by_residue(
 
     # Build a per-tenant aggregate in one queryset walk. Iterator keeps
     # memory bounded on prod-scale data.
-    by_tenant: Dict[str, Dict[str, Any]] = {}
-    for contract in (
-        qs.only(
-            "id", "tenant_id", "hub_contract_json", "status",
-        ).iterator(chunk_size=200)
-    ):
+    by_tenant: dict[str, dict[str, Any]] = {}
+    for contract in qs.only(
+        "id",
+        "tenant_id",
+        "hub_contract_json",
+        "status",
+    ).iterator(chunk_size=200):
         tid = getattr(contract, "tenant_id", None)
         if tid is None:
             continue
@@ -121,11 +122,9 @@ def classify_tenants_by_residue(
     # Hydrate tenant_name in one query — saves N round-trips on
     # prod-scale data.
     from hub.apps.tenants.models import Tenant
-    name_map = dict(
-        Tenant.objects.filter(id__in=by_tenant.keys())
-        .values_list("id", "name")
-    )
-    rows: List[Dict[str, Any]] = []
+
+    name_map = dict(Tenant.objects.filter(id__in=by_tenant.keys()).values_list("id", "name"))
+    rows: list[dict[str, Any]] = []
     for tid, slot in by_tenant.items():
         slot["tenant_name"] = str(name_map.get(_to_uuid(tid), "")) or ""
         # Stable sort within a tenant so the output is reproducible
@@ -140,6 +139,7 @@ def _to_uuid(value: str) -> Any:
     """Best-effort UUID coercion (the name_map keys come from Django
     as UUID objects on Postgres; matching by string would miss them)."""
     import uuid as _uuid
+
     try:
         return _uuid.UUID(value)
     except (TypeError, ValueError):
@@ -205,7 +205,8 @@ class Command(BaseCommand):
         audit_output = options.get("audit_output")
 
         rows = classify_tenants_by_residue(
-            tenant_id=tenant_id, active_only=active_only,
+            tenant_id=tenant_id,
+            active_only=active_only,
         )
         if only_residue:
             rows = [r for r in rows if r["cohort"] == "residue"]
@@ -233,11 +234,13 @@ class Command(BaseCommand):
         clean = sum(1 for r in rows if r["cohort"] == "clean")
         residue = sum(1 for r in rows if r["cohort"] == "residue")
         residue_total = sum(r["residue_count"] for r in rows)
-        self.stdout.write(self.style.SUCCESS(
-            f"Phase 227 Wave 4 — tenant residue classification: "
-            f"clean={clean}, residue={residue}, "
-            f"residue_contracts_total={residue_total}"
-        ))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Phase 227 Wave 4 — tenant residue classification: "
+                f"clean={clean}, residue={residue}, "
+                f"residue_contracts_total={residue_total}"
+            )
+        )
         for row in rows:
             if row["cohort"] != "residue":
                 continue

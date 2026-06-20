@@ -28,13 +28,14 @@ Verifies the contract for ``POST /datasets/{id}/refresh/``:
 * Drift guard:
     - DATASET_REFRESH_TRIGGERED constant self-describes
 """
+
 from __future__ import annotations
-import pytest
 
 import hashlib
 import json
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, TransactionTestCase
 from rest_framework import status
@@ -65,9 +66,7 @@ def _refresh_url(dataset_id) -> str:
 
 
 def _grant_role(user, tenant, name: str) -> None:
-    role, _ = Role.objects.get_or_create(
-        tenant=tenant, name=name, defaults={"description": name}
-    )
+    role, _ = Role.objects.get_or_create(tenant=tenant, name=name, defaults={"description": name})
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
 
 
@@ -335,9 +334,7 @@ class DatasetManualRefreshEndToEndTest(TransactionTestCase):
         # We seed with an arbitrary placeholder; the action will refresh it
         # to whatever inference produces. ``schema_changed`` is the load-
         # bearing flag we're testing.
-        dataset = self._seed_dataset_with_file(
-            body=body, schema_json={"fields": []}
-        )
+        dataset = self._seed_dataset_with_file(body=body, schema_json={"fields": []})
 
         # First refresh — inference produces the real schema, so
         # ``schema_changed=True`` (placeholder→real).
@@ -378,9 +375,7 @@ class DatasetManualRefreshEndToEndTest(TransactionTestCase):
             },
         )
         body = b"id,amount\n1,10\n2,20\n"
-        dataset = self._seed_dataset_with_file(
-            body=body, schema_json={"fields": []}
-        )
+        dataset = self._seed_dataset_with_file(body=body, schema_json={"fields": []})
 
         response = self.client.post(_refresh_url(dataset.id))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -417,9 +412,7 @@ class DatasetManualRefreshEndToEndTest(TransactionTestCase):
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
         body = b"id\n1\n"
-        dataset = self._seed_dataset_with_file(
-            body=body, schema_json={"fields": []}
-        )
+        dataset = self._seed_dataset_with_file(body=body, schema_json={"fields": []})
         # First refresh seeds the canonical schema.
         first = self.client.post(_refresh_url(dataset.id))
         self.assertEqual(first.status_code, status.HTTP_200_OK)
@@ -443,10 +436,14 @@ class DatasetManualRefreshEndToEndTest(TransactionTestCase):
             before + 1,
             "no-op refresh MUST still emit an audit row (operator visibility)",
         )
-        latest = AuditEvent.objects.filter(
-            action=audit_event_types.DATASET_REFRESH_TRIGGERED,
-            resource_id=dataset.id,
-        ).order_by("-timestamp").first()
+        latest = (
+            AuditEvent.objects.filter(
+                action=audit_event_types.DATASET_REFRESH_TRIGGERED,
+                resource_id=dataset.id,
+            )
+            .order_by("-timestamp")
+            .first()
+        )
         assert latest is not None
         self.assertFalse((latest.details_json or {}).get("schema_changed"))
 

@@ -62,8 +62,11 @@ def _pg_connect(db_config, dbname="postgres"):
             retryable = any(
                 kw in msg
                 for kw in (
-                    "starting up", "refused", "not yet accepting",
-                    "could not translate", "temporary failure",
+                    "starting up",
+                    "refused",
+                    "not yet accepting",
+                    "could not translate",
+                    "temporary failure",
                     "name or service not known",
                 )
             )
@@ -98,9 +101,7 @@ def _tables_count(db_config, dbname):
     conn = _pg_connect(db_config, dbname)
     try:
         cur = conn.cursor()
-        cur.execute(
-            "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"
-        )
+        cur.execute("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'")
         return cur.fetchone()[0]
     finally:
         conn.close()
@@ -119,6 +120,7 @@ def _migrate_database(db_config, dbname):
     os.environ["TESTING"] = "1"
 
     import django
+
     django.setup()
 
     from django.conf import settings
@@ -139,16 +141,22 @@ def _migrate_database(db_config, dbname):
         pass
 
     from django.db import connections
+
     if "_ensure_db" in connections:
         connections["_ensure_db"].close()
 
 
 def main():
     parser = argparse.ArgumentParser(description="Ensure test database exists with migrations")
-    parser.add_argument("--force", action="store_true",
-                        help="Drop and recreate the test DB even if it exists")
-    parser.add_argument("--workers", type=int, default=2,
-                        help="Number of parallel test workers (for pre-creating per-worker DBs)")
+    parser.add_argument(
+        "--force", action="store_true", help="Drop and recreate the test DB even if it exists"
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=2,
+        help="Number of parallel test workers (for pre-creating per-worker DBs)",
+    )
     args = parser.parse_args()
 
     db_config = _db_config()
@@ -172,7 +180,7 @@ def main():
         conn = _pg_connect(db_config, "postgres")
         try:
             cur = conn.cursor()
-            cur.execute("CREATE DATABASE \"%s\" OWNER %s" % (test_db, db_config["user"]))
+            cur.execute('CREATE DATABASE "%s" OWNER %s' % (test_db, db_config["user"]))
         finally:
             conn.close()
         print(f"[ensure_test_db] Test DB {test_db} created, running migrate...")
@@ -189,8 +197,10 @@ def main():
         tables = _tables_count(db_config, test_db)
         print(f"[ensure_test_db] Migrations applied ({tables} tables)")
     else:
-        print(f"[ensure_test_db] Test DB {test_db} exists ({tables} tables), "
-              f"running migrate for pending migrations...")
+        print(
+            f"[ensure_test_db] Test DB {test_db} exists ({tables} tables), "
+            f"running migrate for pending migrations..."
+        )
         _migrate_database(db_config, test_db)
         tables = _tables_count(db_config, test_db)
         print(f"[ensure_test_db] Migrations checked ({tables} tables)")

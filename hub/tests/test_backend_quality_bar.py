@@ -7,13 +7,14 @@ Proves:
 3. F.3: No silent `except Exception: pass` in cache_headers middleware
 4. F.4: pip-audit runs in CI; DQ validation uses serializers (not raw dict)
 """
+
 import os
 import re
 import uuid
 
 import pytest
-from django.test import TestCase, RequestFactory
 from django.contrib.auth import get_user_model
+from django.test import RequestFactory, TestCase
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
@@ -29,6 +30,7 @@ class MetricsEndpointTest(TestCase):
     def test_metrics_url_registered(self):
         """The /metrics/ path must be registered in root urlconf."""
         from django.urls import resolve
+
         match = resolve("/metrics/")
         self.assertIsNotNone(match)
 
@@ -36,7 +38,8 @@ class MetricsEndpointTest(TestCase):
         """/metrics/ must be accessible without authentication."""
         response = self.client.get("/metrics/")
         self.assertNotIn(
-            response.status_code, (401, 403),
+            response.status_code,
+            (401, 403),
             "/metrics/ must not require authentication",
         )
 
@@ -52,7 +55,8 @@ class NplusOneSelectRelatedTest(TestCase):
         """Instantiate a ViewSet and return its queryset SQL."""
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name=f"n1-tenant-{uid}", slug=f"n1-{uid}",
+            name=f"n1-tenant-{uid}",
+            slug=f"n1-{uid}",
         )
         user = User.objects.create_user(
             email=f"n1-{uid}@test.local",
@@ -81,37 +85,44 @@ class NplusOneSelectRelatedTest(TestCase):
         complex middleware state (request.query_params, etc.).
         """
         import importlib
+
         mod = importlib.import_module(module_path)
         with open(mod.__file__) as f:
             source = f.read()
         self.assertIn(
-            "select_related", source,
+            "select_related",
+            source,
             f"{label} must use select_related in get_queryset",
         )
 
     def test_asset_viewset_uses_select_related(self):
         self._verify_select_related_in_source(
-            "hub.apps.assets.views", "AssetViewSet",
+            "hub.apps.assets.views",
+            "AssetViewSet",
         )
 
     def test_contract_viewset_uses_select_related(self):
         self._verify_select_related_in_source(
-            "hub.apps.contracts.views_base", "ContractViewSetBase",
+            "hub.apps.contracts.views_base",
+            "ContractViewSetBase",
         )
 
     def test_job_viewset_uses_select_related(self):
         self._verify_select_related_in_source(
-            "hub.apps.jobs.views", "JobViewSet",
+            "hub.apps.jobs.views",
+            "JobViewSet",
         )
 
     def test_dq_viewset_uses_select_related(self):
         self._verify_select_related_in_source(
-            "hub.apps.dq.views", "DQRunViewSet",
+            "hub.apps.dq.views",
+            "DQRunViewSet",
         )
 
     def test_webhook_viewset_uses_select_related(self):
         self._verify_select_related_in_source(
-            "hub.apps.webhooks.views", "WebhookViewSet",
+            "hub.apps.webhooks.views",
+            "WebhookViewSet",
         )
 
 
@@ -121,24 +132,28 @@ class ExceptionHandlingTest(TestCase):
     def test_cache_headers_no_silent_pass(self):
         """cache_headers.py must NOT have bare except Exception: pass."""
         import hub.apps.api.middleware.cache_headers as mod
+
         with open(mod.__file__) as f:
             source = f.read()
         silent_passes = re.findall(
-            r'except\s+Exception\s*:\s*\n\s*pass', source,
+            r"except\s+Exception\s*:\s*\n\s*pass",
+            source,
         )
         self.assertEqual(
-            len(silent_passes), 0,
-            f"Found {len(silent_passes)} silent "
-            f"'except Exception: pass' in cache_headers.py",
+            len(silent_passes),
+            0,
+            f"Found {len(silent_passes)} silent 'except Exception: pass' in cache_headers.py",
         )
 
     def test_cache_headers_logs_encode_error(self):
         """The ETag content-encode fallback must log the error."""
         import hub.apps.api.middleware.cache_headers as mod
+
         with open(mod.__file__) as f:
             source = f.read()
         self.assertIn(
-            "cache_etag_content_encode_error", source,
+            "cache_etag_content_encode_error",
+            source,
             "Content-encode error must be logged with structured event name",
         )
 
@@ -160,8 +175,10 @@ class DependencyAuditTest(TestCase):
 
     def test_dq_uses_serializer_validation(self):
         """DQ run creation must use DRF serializer for validation."""
-        from hub.apps.dq.serializers import DQRunCreateSerializer
         from rest_framework.serializers import Serializer
+
+        from hub.apps.dq.serializers import DQRunCreateSerializer
+
         self.assertTrue(
             issubclass(DQRunCreateSerializer, Serializer),
             "DQRunCreateSerializer must be a DRF Serializer",
@@ -170,8 +187,9 @@ class DependencyAuditTest(TestCase):
     def test_prod_db_guard_exists(self):
         """test_runner.py must have production DB guard."""
         import hub.test_runner as mod
+
         self.assertTrue(
-            hasattr(mod, '_guard_against_production_db')
-            or callable(getattr(mod, '_guard_against_production_db', None)),
+            hasattr(mod, "_guard_against_production_db")
+            or callable(getattr(mod, "_guard_against_production_db", None)),
             "test_runner must define _guard_against_production_db",
         )

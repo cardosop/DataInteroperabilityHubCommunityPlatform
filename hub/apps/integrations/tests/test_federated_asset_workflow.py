@@ -10,28 +10,23 @@ Tests cover:
 - Error handling tests
 """
 
+import contextlib
 import os
 import tempfile
+import uuid
 
 from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.assets.models import (
-    Asset,
     AssetStatus,
-    AssetVisibility,
-    DataStrategy,
-    ExternalResourceReference,
 )
 from hub.apps.contracts.models import (
-    Contract,
     ContractStatus,
-    NormalizationStatus,
     OriginalSpecType,
     ValidationStatus,
 )
 from hub.apps.datasets.models import Dataset
-from hub.apps.files.models import File, FileStatus
 from hub.apps.integrations.base import (
     AssetSourceType,
     DataMarketplaceConnector,
@@ -50,7 +45,6 @@ from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 
 class FederatedAssetWorkflowTest(TestCase):
@@ -61,6 +55,7 @@ class FederatedAssetWorkflowTest(TestCase):
         # Clear the process-wide workflow cache so AssetCreationWorkflow
         # registration re-creates the DB row inside this test's transaction.
         from hub.apps.orchestration.registry import reset_workflow_definition_cache
+
         reset_workflow_definition_cache()
         # CRITICAL: Disconnect semantic service signals to prevent timeouts
         from django.db.models.signals import post_save
@@ -83,6 +78,7 @@ class FederatedAssetWorkflowTest(TestCase):
             from hub.apps.core.resilience.circuit_breaker import (
                 reset_circuit_breaker_by_name,
             )
+
             reset_circuit_breaker_by_name("semantic-service-write")
         except (ImportError, AttributeError):
             pass
@@ -201,8 +197,9 @@ class FederatedAssetWorkflowTest(TestCase):
         # because it derived the expected value from the very DB state it
         # was testing.)
         self.assertEqual(
-            asset.status, AssetStatus.ACTIVE,
-            f"Asset should be ACTIVE after a COMPLETED workflow; got {asset.status}"
+            asset.status,
+            AssetStatus.ACTIVE,
+            f"Asset should be ACTIVE after a COMPLETED workflow; got {asset.status}",
         )
 
     def test_workflow_with_data_strategy(self):
@@ -290,8 +287,6 @@ class FederatedAssetWorkflowTest(TestCase):
                 )
 
             def sync_push(self, asset_ids, options=None):
-                from django.utils import timezone
-
                 from hub.apps.integrations.base import SyncResult, SyncStatus
 
                 return SyncResult(
@@ -305,8 +300,6 @@ class FederatedAssetWorkflowTest(TestCase):
                 )
 
             def sync_pull(self, listing_ids=None, filters=None, options=None):
-                from django.utils import timezone
-
                 from hub.apps.integrations.base import SyncResult, SyncStatus
 
                 return SyncResult(
@@ -372,10 +365,8 @@ class FederatedAssetWorkflowTest(TestCase):
             # DQ and compliance checks should run if datasets exist
             datasets = Dataset.objects.filter(asset=asset)
             if datasets.exists():
-                dq_steps = workflow_instance.steps.filter(step_name="asset_creation.run_dq_checks")
-                compliance_steps = workflow_instance.steps.filter(
-                    step_name="asset_creation.run_compliance_checks"
-                )
+                workflow_instance.steps.filter(step_name="asset_creation.run_dq_checks")
+                workflow_instance.steps.filter(step_name="asset_creation.run_compliance_checks")
                 # These steps may or may not exist depending on DQ/compliance service availability
                 # But if datasets exist, they should have been attempted
 
@@ -399,13 +390,11 @@ class FederatedAssetWorkflowTest(TestCase):
             ).exists()
 
             # The test registers a valid contract — the asset MUST be ACTIVE.
-            self.assertTrue(
-                has_valid_contract,
-                "Test setup should create a valid contract"
-            )
+            self.assertTrue(has_valid_contract, "Test setup should create a valid contract")
             self.assertEqual(
-                asset.status, AssetStatus.ACTIVE,
-                f"Asset should be ACTIVE with a valid contract; got {asset.status}"
+                asset.status,
+                AssetStatus.ACTIVE,
+                f"Asset should be ACTIVE with a valid contract; got {asset.status}",
             )
 
         finally:
@@ -418,10 +407,8 @@ class FederatedAssetWorkflowTest(TestCase):
                     )
             except ValueError:
                 pass
-            try:
+            with contextlib.suppress(Exception):
                 os.unlink(temp_file.name)
-            except Exception:
-                pass
 
     def test_workflow_with_validation_failure(self):
         """Test workflow with business rules validation failure"""
@@ -718,8 +705,6 @@ class FederatedAssetWorkflowTest(TestCase):
                 )
 
             def sync_push(self, asset_ids, options=None):
-                from django.utils import timezone
-
                 from hub.apps.integrations.base import SyncResult, SyncStatus
 
                 return SyncResult(
@@ -733,8 +718,6 @@ class FederatedAssetWorkflowTest(TestCase):
                 )
 
             def sync_pull(self, listing_ids=None, filters=None, options=None):
-                from django.utils import timezone
-
                 from hub.apps.integrations.base import SyncResult, SyncStatus
 
                 return SyncResult(
@@ -807,7 +790,5 @@ class FederatedAssetWorkflowTest(TestCase):
                     )
             except ValueError:
                 pass
-            try:
+            with contextlib.suppress(Exception):
                 os.unlink(temp_file.name)
-            except Exception:
-                pass

@@ -99,7 +99,6 @@ class APIContractDocumentationTest(ContractsAPITestBase):
             paths = schema.get("paths", {})
 
             # Check if any path has examples
-            has_examples = False
             for path_data in paths.values():
                 for method_data in path_data.values():
                     if isinstance(method_data, dict):
@@ -110,7 +109,6 @@ class APIContractDocumentationTest(ContractsAPITestBase):
                                     "example" in content_type_data
                                     or "examples" in content_type_data
                                 ):
-                                    has_examples = True
                                     break
                         if "responses" in method_data:
                             for response_data in method_data["responses"].values():
@@ -120,7 +118,6 @@ class APIContractDocumentationTest(ContractsAPITestBase):
                                         "example" in content_type_data
                                         or "examples" in content_type_data
                                     ):
-                                        has_examples = True
                                         break
 
             # Examples may or may not be present - this is informational
@@ -135,7 +132,6 @@ class APIContractDocumentationTest(ContractsAPITestBase):
             paths = schema.get("paths", {})
 
             # Check if error responses (4xx, 5xx) are documented
-            has_error_responses = False
             for path_data in paths.values():
                 for method_data in path_data.values():
                     if isinstance(method_data, dict) and "responses" in method_data:
@@ -151,7 +147,6 @@ class APIContractDocumentationTest(ContractsAPITestBase):
                             or (isinstance(code, int) and (400 <= code < 600))
                         ]
                         if error_codes:
-                            has_error_responses = True
                             break
 
             # Error responses may or may not be documented - this is informational

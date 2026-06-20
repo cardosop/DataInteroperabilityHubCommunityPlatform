@@ -24,9 +24,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MVPDOCS_DIR = REPO_ROOT / "docs" / "mvpdocs"
-MVP_MODE_FILE = (
-    REPO_ROOT / "hub" / "apps" / "api" / "mvp_mode.py"
-)
+MVP_MODE_FILE = REPO_ROOT / "hub" / "apps" / "api" / "mvp_mode.py"
 
 # Post-MVP SDK classes (gated via ml/, mesh/, etc.)
 POST_MVP_SDK_CLASSES = frozenset(
@@ -66,16 +64,9 @@ def _extract_gated_prefixes() -> frozenset[str]:
     tree = ast.parse(MVP_MODE_FILE.read_text())
     for node in ast.walk(tree):
         if isinstance(node, (ast.AnnAssign, ast.Assign)):
-            targets = (
-                [node.target]
-                if isinstance(node, ast.AnnAssign)
-                else node.targets
-            )
+            targets = [node.target] if isinstance(node, ast.AnnAssign) else node.targets
             for t in targets:
-                if (
-                    isinstance(t, ast.Name)
-                    and t.id == "MVP_GATED_RELATIVE_PREFIXES"
-                ):
+                if isinstance(t, ast.Name) and t.id == "MVP_GATED_RELATIVE_PREFIXES":
                     val = node.value
                     if (
                         isinstance(val, ast.Call)
@@ -85,9 +76,7 @@ def _extract_gated_prefixes() -> frozenset[str]:
                         elts = val.args[0].elts
                     else:
                         elts = val.elts
-                    return frozenset(
-                        ast.literal_eval(e) for e in elts
-                    )
+                    return frozenset(ast.literal_eval(e) for e in elts)
     msg = "Could not find MVP_GATED_RELATIVE_PREFIXES"
     raise RuntimeError(msg)
 
@@ -97,16 +86,14 @@ def _page_has_badge(content: str) -> bool:
     return "[Post-MVP]" in content
 
 
-_FENCED_PYTHON = re.compile(
-    r"```(?:python|py)\n(.*?)```", re.DOTALL
-)
-_FENCED_BASH = re.compile(
-    r"```(?:bash|shell|sh)\n(.*?)```", re.DOTALL
-)
+_FENCED_PYTHON = re.compile(r"```(?:python|py)\n(.*?)```", re.DOTALL)
+_FENCED_BASH = re.compile(r"```(?:bash|shell|sh)\n(.*?)```", re.DOTALL)
 
 
 def _check_sdk_classes(
-    content: str, rel: str, errors: list[str],
+    content: str,
+    rel: str,
+    errors: list[str],
 ) -> None:
     """Check for post-MVP SDK class references in Python blocks."""
     for block in _FENCED_PYTHON.findall(content):
@@ -120,7 +107,9 @@ def _check_sdk_classes(
 
 
 def _check_cli_commands(
-    content: str, rel: str, errors: list[str],
+    content: str,
+    rel: str,
+    errors: list[str],
 ) -> None:
     """Check for post-MVP CLI group references in bash blocks."""
     for block in _FENCED_BASH.findall(content):
@@ -149,7 +138,9 @@ EXTERNAL_DOC_PATTERNS = [
 
 
 def _check_wrong_sdk_identifiers(
-    content: str, rel: str, errors: list[str],
+    content: str,
+    rel: str,
+    errors: list[str],
 ) -> None:
     """Check for deprecated SDK package/class names."""
     for ident in WRONG_SDK_IDENTIFIERS:
@@ -162,16 +153,16 @@ def _check_wrong_sdk_identifiers(
 
 
 def _check_external_doc_links(
-    content: str, rel: str, errors: list[str],
+    content: str,
+    rel: str,
+    errors: list[str],
 ) -> None:
     """Check for links to docs outside mvpdocs (self-containment)."""
     for pattern in EXTERNAL_DOC_PATTERNS:
         match = pattern.search(content)
         if match:
             errors.append(
-                f"{rel}: links to external doc"
-                f" {match.group()!r} — mvpdocs must be"
-                " self-contained"
+                f"{rel}: links to external doc {match.group()!r} — mvpdocs must be self-contained"
             )
 
 
@@ -186,8 +177,7 @@ def _check_api_paths(
         matches = pattern.findall(content)
         if matches:
             errors.append(
-                f"{rel}: references post-MVP path"
-                f" {matches[0]!r} without [Post-MVP] badge"
+                f"{rel}: references post-MVP path {matches[0]!r} without [Post-MVP] badge"
             )
 
 
@@ -211,15 +201,9 @@ def _drift_test(prefixes: frozenset[str]) -> list[str]:
     extra = prefixes - expected
     missing = expected - prefixes
     if extra:
-        errors.append(
-            f"DRIFT: unexpected prefixes in mvp_mode.py:"
-            f" {sorted(extra)}"
-        )
+        errors.append(f"DRIFT: unexpected prefixes in mvp_mode.py: {sorted(extra)}")
     if missing:
-        errors.append(
-            f"DRIFT: missing prefixes from mvp_mode.py:"
-            f" {sorted(missing)}"
-        )
+        errors.append(f"DRIFT: missing prefixes from mvp_mode.py: {sorted(missing)}")
     return errors
 
 
@@ -242,9 +226,7 @@ def main() -> int:
     api_patterns: list[re.Pattern[str]] = []
     for prefix in prefixes:
         clean = prefix.rstrip("/")
-        api_patterns.append(
-            re.compile(rf"/api/v1/{re.escape(clean)}\b")
-        )
+        api_patterns.append(re.compile(rf"/api/v1/{re.escape(clean)}\b"))
 
     errors: list[str] = []
 
@@ -269,9 +251,7 @@ def main() -> int:
         _check_external_doc_links(content, rel, errors)
 
     if errors:
-        print(
-            f"FAIL: {len(errors)} MVP boundary violation(s):"
-        )
+        print(f"FAIL: {len(errors)} MVP boundary violation(s):")
         for e in errors:
             print(f"  - {e}")
         return 1

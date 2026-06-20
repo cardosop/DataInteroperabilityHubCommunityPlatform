@@ -5,7 +5,7 @@ Validates API requests for consistency and standards compliance.
 """
 
 import json
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import structlog
 from django.http import HttpRequest, HttpResponse, JsonResponse
@@ -36,7 +36,7 @@ class APIValidationMiddleware(MiddlewareMixin):
         super().__init__(get_response)
         self.get_response = get_response
 
-    def process_request(self, request: HttpRequest) -> Optional[HttpResponse]:
+    def process_request(self, request: HttpRequest) -> HttpResponse | None:
         """
         Process and validate request.
 
@@ -77,7 +77,7 @@ class APIValidationMiddleware(MiddlewareMixin):
                 return self._error_response(
                     request,
                     StandardErrorCodes.INVALID_FORMAT,
-                    f"Invalid JSON in request body: {str(e)}",
+                    f"Invalid JSON in request body: {e!s}",
                     status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -88,7 +88,7 @@ class APIValidationMiddleware(MiddlewareMixin):
 
         return None
 
-    def _validate_query_params(self, request: HttpRequest) -> Optional[HttpResponse]:
+    def _validate_query_params(self, request: HttpRequest) -> HttpResponse | None:
         """
         Validate query parameters.
 

@@ -9,20 +9,19 @@ Tests verify:
 All tests use REAL implementations - no mocks/stubs.
 Tests gracefully handle service unavailability (skip when services not running).
 """
+
 import pytest
 
 pytestmark = pytest.mark.slow
-import httpx
-import time
 import logging
-from django.test import TestCase, override_settings
-from django.conf import settings
-from typing import Tuple, Dict, Any, Optional
 
-from hub.apps.dq.service_client import DQServiceClient
+import httpx
+from django.conf import settings
+from django.test import TestCase
+
 from hub.apps.compliance.service_client import ComplianceServiceClient
+from hub.apps.dq.service_client import DQServiceClient
 from hub.apps.semantic.service_client import SemanticServiceClient
-from hub.apps.contracts.cli_client import DataContractCLIClient
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +68,7 @@ class ServiceToServiceCommunicationTest(TestCase):
     def test_dq_service_health_check_success(self):
         """Test successful DQ service health check"""
         if not self.dq_available:
-            pytest.skip("DQ service not available")
+            pytest.skip("DQ service not available")  # noqa: skip-in-body — runtime service dependency
 
         is_healthy, service_name = self.dq_client.health_check()
 
@@ -84,7 +83,7 @@ class ServiceToServiceCommunicationTest(TestCase):
     def test_compliance_service_health_check_success(self):
         """Test successful Compliance service health check"""
         if not self.compliance_available:
-            pytest.skip("Compliance service not available")
+            pytest.skip("Compliance service not available")  # noqa: skip-in-body — runtime service dependency
 
         is_healthy, service_name = self.compliance_client.health_check()
 
@@ -97,7 +96,7 @@ class ServiceToServiceCommunicationTest(TestCase):
     def test_semantic_service_health_check_success(self):
         """Test successful Semantic service health check"""
         if not self.semantic_available:
-            pytest.skip("Semantic service not available")
+            pytest.skip("Semantic service not available")  # noqa: skip-in-body — runtime service dependency
 
         is_healthy, fuseki_status = self.semantic_client.health_check()
 
@@ -112,10 +111,10 @@ class ServiceToServiceCommunicationTest(TestCase):
         # Verify base URL is properly formatted
         self.assertIsNotNone(self.dq_client.base_url)
         self.assertIsInstance(self.dq_client.base_url, str)
-        self.assertFalse(self.dq_client.base_url.endswith('/'))
+        self.assertFalse(self.dq_client.base_url.endswith("/"))
 
         # Verify endpoint should not include Django API paths
-        self.assertNotIn('/api/v1', self.dq_client.base_url)
+        self.assertNotIn("/api/v1", self.dq_client.base_url)
 
         # Verify client is initialized
         self.assertIsNotNone(self.dq_client.client)
@@ -125,8 +124,8 @@ class ServiceToServiceCommunicationTest(TestCase):
         """Test Compliance service endpoint construction"""
         self.assertIsNotNone(self.compliance_client.base_url)
         self.assertIsInstance(self.compliance_client.base_url, str)
-        self.assertFalse(self.compliance_client.base_url.endswith('/'))
-        self.assertNotIn('/api/v1', self.compliance_client.base_url)
+        self.assertFalse(self.compliance_client.base_url.endswith("/"))
+        self.assertNotIn("/api/v1", self.compliance_client.base_url)
         self.assertIsNotNone(self.compliance_client.client)
         self.assertIsInstance(self.compliance_client.client, httpx.Client)
 
@@ -134,8 +133,8 @@ class ServiceToServiceCommunicationTest(TestCase):
         """Test Semantic service endpoint construction"""
         self.assertIsNotNone(self.semantic_client.base_url)
         self.assertIsInstance(self.semantic_client.base_url, str)
-        self.assertFalse(self.semantic_client.base_url.endswith('/'))
-        self.assertNotIn('/api/v1', self.semantic_client.base_url)
+        self.assertFalse(self.semantic_client.base_url.endswith("/"))
+        self.assertNotIn("/api/v1", self.semantic_client.base_url)
         self.assertIsNotNone(self.semantic_client.client)
         self.assertIsInstance(self.semantic_client.client, httpx.Client)
 
@@ -167,13 +166,17 @@ class ServiceToServiceCommunicationTest(TestCase):
     def test_service_clients_timeout_configuration(self):
         """Test timeout configuration for service clients"""
         # DQ service: 30 minutes default (long-running operations)
-        self.assertEqual(self.dq_client.timeout, getattr(settings, 'DQ_SERVICE_TIMEOUT', 1800))
+        self.assertEqual(self.dq_client.timeout, getattr(settings, "DQ_SERVICE_TIMEOUT", 1800))
 
         # Compliance service: 30 minutes default
-        self.assertEqual(self.compliance_client.timeout, getattr(settings, 'COMPLIANCE_SERVICE_TIMEOUT', 1800))
+        self.assertEqual(
+            self.compliance_client.timeout, getattr(settings, "COMPLIANCE_SERVICE_TIMEOUT", 1800)
+        )
 
         # Semantic service: 5 seconds default (reduced for responsiveness)
-        self.assertEqual(self.semantic_client.timeout, getattr(settings, 'SEMANTIC_SERVICE_TIMEOUT', 5))
+        self.assertEqual(
+            self.semantic_client.timeout, getattr(settings, "SEMANTIC_SERVICE_TIMEOUT", 5)
+        )
 
 
 class ServiceToServiceErrorHandlingTest(TestCase):
@@ -209,13 +212,17 @@ class ServiceToServiceErrorHandlingTest(TestCase):
 
         # Restore original client
         self.dq_client.base_url = original_base_url
-        self.dq_client.client = httpx.Client(base_url=self.dq_client.base_url, timeout=self.dq_client.timeout)
+        self.dq_client.client = httpx.Client(
+            base_url=self.dq_client.base_url, timeout=self.dq_client.timeout
+        )
 
     def test_compliance_service_unavailable_handling(self):
         """Test handling when Compliance service is unavailable"""
         original_base_url = self.compliance_client.base_url
         self.compliance_client.base_url = "http://localhost:99999"
-        self.compliance_client.client = httpx.Client(base_url=self.compliance_client.base_url, timeout=1)
+        self.compliance_client.client = httpx.Client(
+            base_url=self.compliance_client.base_url, timeout=1
+        )
 
         is_healthy, service_name = self.compliance_client.health_check()
 
@@ -225,15 +232,16 @@ class ServiceToServiceErrorHandlingTest(TestCase):
         # Restore original client
         self.compliance_client.base_url = original_base_url
         self.compliance_client.client = httpx.Client(
-            base_url=self.compliance_client.base_url,
-            timeout=self.compliance_client.timeout
+            base_url=self.compliance_client.base_url, timeout=self.compliance_client.timeout
         )
 
     def test_semantic_service_unavailable_handling(self):
         """Test handling when Semantic service is unavailable"""
         original_base_url = self.semantic_client.base_url
         self.semantic_client.base_url = "http://localhost:99999"
-        self.semantic_client.client = httpx.Client(base_url=self.semantic_client.base_url, timeout=1)
+        self.semantic_client.client = httpx.Client(
+            base_url=self.semantic_client.base_url, timeout=1
+        )
 
         is_healthy, fuseki_status = self.semantic_client.health_check()
 
@@ -243,8 +251,7 @@ class ServiceToServiceErrorHandlingTest(TestCase):
         # Restore original client
         self.semantic_client.base_url = original_base_url
         self.semantic_client.client = httpx.Client(
-            base_url=self.semantic_client.base_url,
-            timeout=self.semantic_client.timeout
+            base_url=self.semantic_client.base_url, timeout=self.semantic_client.timeout
         )
 
     def test_dq_service_circuit_breaker_fallback(self):
@@ -256,42 +263,42 @@ class ServiceToServiceErrorHandlingTest(TestCase):
         test_data = b"col1,col2\nval1,val2"
 
         # If service is unavailable, circuit breaker should provide fallback
-        result = self.dq_client.run_dq(test_data, 'csv', use_cache=False)
+        result = self.dq_client.run_dq(test_data, "csv", use_cache=False)
 
         # Verify fallback response structure
         self.assertIsInstance(result, dict)
-        self.assertIn('overall_status', result)
+        self.assertIn("overall_status", result)
 
         # If service unavailable, should return fallback with UNKNOWN status
         if not check_service_available(self.dq_client.base_url):
-            self.assertEqual(result['overall_status'], 'UNKNOWN')
-            self.assertIn('error', result.get('metadata', {}))
+            self.assertEqual(result["overall_status"], "UNKNOWN")
+            self.assertIn("error", result.get("metadata", {}))
 
     def test_compliance_service_circuit_breaker_fallback(self):
         """Test Compliance service circuit breaker fallback behavior"""
         test_data = b"col1,col2\nval1,val2"
 
-        result = self.compliance_client.scan_file(test_data, 'csv')
+        result = self.compliance_client.scan_file(test_data, "csv")
 
         self.assertIsInstance(result, dict)
-        self.assertIn('overall_status', result)
+        self.assertIn("overall_status", result)
 
         if not check_service_available(self.compliance_client.base_url):
-            self.assertEqual(result['overall_status'], 'UNKNOWN')
-            self.assertIn('error', result)
+            self.assertEqual(result["overall_status"], "UNKNOWN")
+            self.assertIn("error", result)
 
     def test_semantic_service_circuit_breaker_fallback(self):
         """Test Semantic service circuit breaker fallback behavior"""
-        contract_data = {'id': 'test-contract', 'name': 'Test Contract'}
+        contract_data = {"id": "test-contract", "name": "Test Contract"}
 
-        result = self.semantic_client.map_contract(contract_data, 'contract-uuid')
+        result = self.semantic_client.map_contract(contract_data, "contract-uuid")
 
         self.assertIsInstance(result, dict)
-        self.assertIn('semantic_status', result)
+        self.assertIn("semantic_status", result)
 
         if not check_service_available(self.semantic_client.base_url):
-            self.assertEqual(result['semantic_status'], 'DEGRADED')
-            self.assertIn('error', result)
+            self.assertEqual(result["semantic_status"], "DEGRADED")
+            self.assertIn("error", result)
 
 
 class ServiceToServiceRetryLogicTest(TestCase):
@@ -347,8 +354,8 @@ class ServiceToServiceRetryLogicTest(TestCase):
         # Attempt 1: sleep = 1 * (2^1) = 2 seconds
 
         backoff_factor = self.dq_client.backoff_factor
-        attempt_0_sleep = backoff_factor * (2 ** 0)
-        attempt_1_sleep = backoff_factor * (2 ** 1)
+        attempt_0_sleep = backoff_factor * (2**0)
+        attempt_1_sleep = backoff_factor * (2**1)
 
         self.assertEqual(attempt_0_sleep, 1)
         self.assertEqual(attempt_1_sleep, 2)
@@ -357,7 +364,7 @@ class ServiceToServiceRetryLogicTest(TestCase):
         # Attempt 0: sleep = 0.1 * (2^0) = 0.1 seconds
 
         semantic_backoff = self.semantic_client.backoff_factor
-        semantic_attempt_0 = semantic_backoff * (2 ** 0)
+        semantic_attempt_0 = semantic_backoff * (2**0)
 
         self.assertEqual(semantic_attempt_0, 0.1)
 
@@ -384,7 +391,9 @@ class ServiceToServiceRetryLogicTest(TestCase):
         self.assertGreater(self.compliance_client.max_retries, 0)
         # Semantic may have 0 retries (fail-fast) - at least one client must retry
         self.assertGreaterEqual(
-            self.dq_client.max_retries + self.compliance_client.max_retries + self.semantic_client.max_retries,
+            self.dq_client.max_retries
+            + self.compliance_client.max_retries
+            + self.semantic_client.max_retries,
             1,
         )
 
@@ -465,9 +474,9 @@ class ServiceToServiceIntegrationWorkflowTest(TestCase):
         # but we verify the pattern by checking client initialization)
 
         # All base URLs should not contain Django API paths
-        self.assertNotIn('/api/v1', self.dq_client.base_url)
-        self.assertNotIn('/api/v1', self.compliance_client.base_url)
-        self.assertNotIn('/api/v1', self.semantic_client.base_url)
+        self.assertNotIn("/api/v1", self.dq_client.base_url)
+        self.assertNotIn("/api/v1", self.compliance_client.base_url)
+        self.assertNotIn("/api/v1", self.semantic_client.base_url)
 
     def test_service_client_trace_header_propagation(self):
         """Test that trace headers are propagated in service calls"""
@@ -478,7 +487,6 @@ class ServiceToServiceIntegrationWorkflowTest(TestCase):
         # This is tested implicitly by verifying the method structure
 
         # All service clients should have _request_with_retry method
-        self.assertTrue(hasattr(self.dq_client, '_request_with_retry'))
-        self.assertTrue(hasattr(self.compliance_client, '_request_with_retry'))
-        self.assertTrue(hasattr(self.semantic_client, '_request_with_retry'))
-
+        self.assertTrue(hasattr(self.dq_client, "_request_with_retry"))
+        self.assertTrue(hasattr(self.compliance_client, "_request_with_retry"))
+        self.assertTrue(hasattr(self.semantic_client, "_request_with_retry"))

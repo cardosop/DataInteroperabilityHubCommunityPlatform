@@ -12,15 +12,12 @@ Tests verify:
 All tests use real implementations (no mocks/stubs).
 """
 
-import unittest
 import ast
-import os
 import re
 import sys
+import unittest
 from pathlib import Path
-from typing import Dict, List, Optional, Set
 
-import pytest
 from django.test import TestCase
 
 # Add project root to path for imports
@@ -30,7 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 
-def find_file_path(relative_path: str) -> Optional[Path]:
+def find_file_path(relative_path: str) -> Path | None:
     """
     Helper function to find a file path across multiple possible locations.
 
@@ -61,7 +58,6 @@ class TestConnectorDevelopmentDocumentationExists(TestCase):
         dev_guide_path = find_file_path("docs/connectors/DEVELOPMENT.md")
 
         self.assertIsNotNone(dev_guide_path, "DEVELOPMENT.md should exist")
-        assert dev_guide_path is not None  # Type narrowing for type checker
         self.assertTrue(
             dev_guide_path.is_file(), f"DEVELOPMENT.md should be a file: {dev_guide_path}"
         )
@@ -85,14 +81,12 @@ class TestConnectorDevelopmentDocumentationExists(TestCase):
         runbooks_path = find_file_path("docs/RUNBOOKS.md")
 
         self.assertIsNotNone(runbooks_path, "RUNBOOKS.md should exist")
-
-        if runbooks_path:
-            content = runbooks_path.read_text()
-            self.assertIn(
-                "Marketplace Connector Pattern Violations",
-                content,
-                "RUNBOOKS.md should include 'Marketplace Connector Pattern Violations' section",
-            )
+        content = runbooks_path.read_text()
+        self.assertIn(
+            "Marketplace Connector Pattern Violations",
+            content,
+            "RUNBOOKS.md should include 'Marketplace Connector Pattern Violations' section",
+        )
 
 
 class TestConnectorDevelopmentDocumentationStructure(TestCase):
@@ -105,7 +99,6 @@ class TestConnectorDevelopmentDocumentationStructure(TestCase):
         if not self.dev_guide_path or not self.dev_guide_path.exists():
             raise unittest.SkipTest("DEVELOPMENT.md not found")
 
-        assert self.dev_guide_path is not None  # Type narrowing for type checker
         self.content = self.dev_guide_path.read_text()
 
     def test_has_table_of_contents(self):
@@ -151,10 +144,9 @@ class TestCodeExamplesSyntax(TestCase):
         if not self.dev_guide_path or not self.dev_guide_path.exists():
             raise unittest.SkipTest("DEVELOPMENT.md not found")
 
-        assert self.dev_guide_path is not None  # Type narrowing for type checker
         self.content = self.dev_guide_path.read_text()
 
-    def extract_python_code_blocks(self) -> List[Dict[str, str]]:
+    def extract_python_code_blocks(self) -> list[dict[str, str]]:
         """Extract Python code blocks from markdown"""
         code_blocks = []
         pattern = r"```python\n(.*?)```"
@@ -263,7 +255,7 @@ class TestDiagnosticCommandsExecutable(TestCase):
         assert self.runbooks_path is not None  # Type narrowing for type checker
         self.content = self.runbooks_path.read_text()
 
-    def extract_python_code_blocks(self) -> List[Dict[str, str]]:
+    def extract_python_code_blocks(self) -> list[dict[str, str]]:
         """Extract Python code blocks from markdown"""
         code_blocks = []
         pattern = r"```python\n(.*?)```"
@@ -344,13 +336,17 @@ class TestDiagnosticCommandsExecutable(TestCase):
                             }
                         )
 
-        # Note: We allow some imports that might not be in the list
-        # This is just a basic check
         if invalid_imports:
-            # Don't fail, just warn
-            print(f"\nWarning: Found {len(invalid_imports)} potentially invalid imports:")
-            for imp in invalid_imports[:5]:  # Show first 5
-                print(f"  Block {imp['block']}: {imp['line']}")
+            error_details = "\n".join(
+                f"  Block {imp['block']} (line {imp['block_line']}): {imp['line']}"
+                for imp in invalid_imports[:10]
+            )
+            self.fail(
+                f"Found {len(invalid_imports)} invalid or unexpected imports in "
+                f"diagnostic commands in RUNBOOKS.md.  Either fix the import in "
+                f"the documentation or add the new import path to the "
+                f"``valid_imports`` list in this test:\n{error_details}"
+            )
 
 
 class TestReferencesCorrect(TestCase):
@@ -363,7 +359,6 @@ class TestReferencesCorrect(TestCase):
         if not self.dev_guide_path or not self.dev_guide_path.exists():
             raise unittest.SkipTest("DEVELOPMENT.md not found")
 
-        assert self.dev_guide_path is not None  # Type narrowing for type checker
         self.content = self.dev_guide_path.read_text()
 
     def test_reference_implementations_exist(self):
@@ -400,13 +395,15 @@ class TestReferencesCorrect(TestCase):
         )
 
     def test_workflow_file_exists(self):
-        """Test that workflow file exists"""
-        # This might not exist, so we'll check if it's mentioned
-        if "marketplace_sync.py" in self.content:
-            workflow_path = find_file_path("hub/apps/orchestration/workflows/marketplace_sync.py")
-            self.assertIsNotNone(
-                workflow_path, "Workflow file should exist (referenced in documentation)"
-            )
+        """Test that workflow file referenced in documentation exists."""
+        self.assertIn(
+            "marketplace_sync.py", self.content,
+            "DEVELOPMENT.md should reference marketplace_sync.py workflow file"
+        )
+        workflow_path = find_file_path("hub/apps/orchestration/workflows/marketplace_sync.py")
+        self.assertIsNotNone(
+            workflow_path, "Workflow file should exist (referenced in documentation)"
+        )
 
 
 class TestDocumentationCompleteness(TestCase):
@@ -419,7 +416,6 @@ class TestDocumentationCompleteness(TestCase):
         if not self.dev_guide_path or not self.dev_guide_path.exists():
             raise unittest.SkipTest("DEVELOPMENT.md not found")
 
-        assert self.dev_guide_path is not None  # Type narrowing for type checker
         self.content = self.dev_guide_path.read_text()
 
     def test_has_sync_pull_examples(self):
@@ -444,35 +440,26 @@ class TestDocumentationCompleteness(TestCase):
         self.assertIn("destination_path", self.content)
 
     def test_has_checklist_items(self):
-        """Test that documentation has checklist items"""
-        # Check for checkboxes or checklist markers (case-insensitive, flexible matching)
+        """Test that documentation has all required checklist items."""
+        # Distinct conceptual items (case-insensitive matching handles
+        # variations in capitalisation).
         checklist_markers = [
             "sync_pull()",
             "map_to_hub_asset()",
             "download_resource()",
-            "Push operations",
-            "Push Operations",
-            "Error handling",
-            "Error Handling",
+            "push operations",
             "error handling",
         ]
 
         content_lower = self.content.lower()
-        found_markers = []
-        missing_markers = []
+        missing_markers = [
+            m for m in checklist_markers
+            if m not in self.content and m.lower() not in content_lower
+        ]
 
-        for marker in checklist_markers:
-            # Check both exact and case-insensitive
-            if marker in self.content or marker.lower() in content_lower:
-                found_markers.append(marker)
-            else:
-                missing_markers.append(marker)
-
-        # At least 4 out of 5 should be found (allowing for slight variations)
-        self.assertGreaterEqual(
-            len(found_markers),
-            4,
-            f"Documentation should include most checklist items. Found: {found_markers}, Missing: {missing_markers}",
+        self.assertEqual(
+            len(missing_markers), 0,
+            f"Missing checklist items in documentation: {missing_markers}"
         )
 
     def test_has_test_examples(self):

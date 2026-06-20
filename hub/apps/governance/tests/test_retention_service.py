@@ -4,8 +4,8 @@ Unit tests for Retention Policy Service (Phase 12.1.4)
 Tests for GovernanceService.create_retention_policy and update_retention_policy
 with real DB and real audit events. No mocks.
 """
-import uuid
 
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -32,7 +32,10 @@ class RetentionPolicyServiceTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -74,7 +77,7 @@ class RetentionPolicyServiceTest(TestCase):
 
     def test_create_retention_policy_time_based(self):
         """Test creating time-based retention policy via service (Phase 12.1.4)"""
-        initial_audit_count = AuditEvent.objects.filter(resource_type="RETENTION_POLICY").count()
+        AuditEvent.objects.filter(resource_type="RETENTION_POLICY").count()
 
         policy = self.service.create_retention_policy(
             tenant_id=str(self.tenant.id),
@@ -234,7 +237,7 @@ class RetentionPolicyServiceTest(TestCase):
             enabled=True,
         )
 
-        initial_audit_count = AuditEvent.objects.filter(
+        AuditEvent.objects.filter(
             resource_type="RETENTION_POLICY", action="RETENTION_POLICY_UPDATED"
         ).count()
 
@@ -442,7 +445,7 @@ class RetentionPolicyServiceTest(TestCase):
         """Test that creating a retention policy with invalid action raises error."""
         from django.core.exceptions import ValidationError as DjangoValidationError
 
-        with self.assertRaises((ValidationError, DjangoValidationError, Exception)):
+        with self.assertRaises((ValidationError, DjangoValidationError)):
             self.service.create_retention_policy(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),

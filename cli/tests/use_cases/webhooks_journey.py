@@ -10,13 +10,13 @@ via real API calls against the staging environment.
 """
 
 from tests._persona_provisioning import provision_persona
-from tests.use_cases._api_helpers import api_get, api_post
 from tests.fixtures.test_data import fresh_id
-
+from tests.use_cases._api_helpers import api_get, api_post
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _provision_admin():
     """Webhook management typically requires admin permissions."""
@@ -44,15 +44,11 @@ def test_list_webhooks():
     if resp.status_code == 404:
         pytest.skip("/webhooks/ endpoint not found (404)")
 
-    assert resp.status_code == 200, (
-        f"/webhooks/ returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"/webhooks/ returned {resp.status_code}: {resp.text[:500]}"
 
     body = resp.json()
     webhooks = _extract_webhooks(body)
-    assert isinstance(webhooks, list), (
-        f"Expected a list of webhooks, got {type(webhooks).__name__}"
-    )
+    assert isinstance(webhooks, list), f"Expected a list of webhooks, got {type(webhooks).__name__}"
 
 
 def test_webhook_endpoint_exists():
@@ -93,9 +89,7 @@ def test_create_webhook_registration():
         # Payload schema may differ — check the error for hints
         error_text = resp.text[:500].lower()
         if "event" in error_text or "url" in error_text:
-            pytest.skip(
-                f"Webhook payload schema mismatch (400): {resp.text[:300]}"
-            )
+            pytest.skip(f"Webhook payload schema mismatch (400): {resp.text[:300]}")
 
     assert resp.status_code in (200, 201), (
         f"Webhook creation returned {resp.status_code}: {resp.text[:500]}"
@@ -110,10 +104,6 @@ def test_create_webhook_registration():
     list_resp = api_get("/webhooks/", creds)
     if list_resp.status_code == 200:
         webhooks = _extract_webhooks(list_resp.json())
-        webhook_ids = [
-            w.get("id", w.get("webhook_id")) for w in webhooks
-        ]
+        webhook_ids = [w.get("id", w.get("webhook_id")) for w in webhooks]
         created_id = body.get("id", body.get("webhook_id"))
-        assert created_id in webhook_ids, (
-            f"Created webhook {created_id} not found in webhook list"
-        )
+        assert created_id in webhook_ids, f"Created webhook {created_id} not found in webhook list"

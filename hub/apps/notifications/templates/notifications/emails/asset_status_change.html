@@ -1,0 +1,21 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}Asset {{ asset_status }}{% endblock %}
+
+{% block content %}
+<h2>Asset {{ asset_status }}</h2>
+{% if message %}
+<p>{{ message }}</p>
+{% endif %}
+{% if asset_name %}
+<p><strong>Asset:</strong> {{ asset_name }}</p>
+{% endif %}
+{% if asset_key %}
+<p><strong>Key:</strong> {{ asset_key }}</p>
+{% endif %}
+{% if asset_url %}
+<p style="text-align: center;">
+    <a href="{{ asset_url }}" class="button">View Asset</a>
+</p>
+{% endif %}
+{% endblock %}

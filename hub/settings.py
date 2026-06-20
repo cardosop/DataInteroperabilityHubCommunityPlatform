@@ -31,7 +31,7 @@ ENVIRONMENT = os.environ.get("ENVIRONMENT", "development").strip().lower()
 # ---------------------------------------------------------------------------
 # Sentry Error Tracking
 # ---------------------------------------------------------------------------
-import sentry_sdk  # noqa: E402
+import sentry_sdk
 
 SENTRY_DSN = env("SENTRY_DSN", default="")
 if SENTRY_DSN:
@@ -51,7 +51,7 @@ if SENTRY_DSN:
 # ---------------------------------------------------------------------------
 _AWS_SECRETS_ENABLED = os.environ.get("AWS_SECRETS_ENABLED", "false").strip().lower() == "true"
 if _AWS_SECRETS_ENABLED:
-    from hub.aws_secrets_loader import load_from_aws  # noqa: E402
+    from hub.aws_secrets_loader import load_from_aws
 
     load_from_aws()
 
@@ -68,8 +68,7 @@ DEBUG = env.bool("DEBUG", default=False)
 
 if ENVIRONMENT == "production" and DEBUG:
     raise ImproperlyConfigured(
-        "DEBUG must be False in production. "
-        "Set DEBUG=False in environment variables."
+        "DEBUG must be False in production. Set DEBUG=False in environment variables."
     )
 
 # Add testserver for Django test client (always in dev/test environments)
@@ -164,7 +163,7 @@ INSTALLED_APPS = [
     "hub.apps.transformation",  # Data transformation pipelines (Phase 115A)
     "hub.apps.versioning",  # Versioning API (list/get/compare versions for contracts and datasets)
     "hub.apps.warehouses.apps.WarehousesConfig",  # Phase 275.A — WarehouseConnection
-    "hub.apps.security",   # CSP violation reporting + security metrics
+    "hub.apps.security",  # CSP violation reporting + security metrics
 ]
 
 # Phase 228 X (228.X.9 / REQ-LIN-X-009) — django-migration-linter
@@ -177,6 +176,7 @@ INSTALLED_APPS = [
 # package installed still boots.
 try:
     import django_migration_linter  # noqa: F401
+
     if "django_migration_linter" not in INSTALLED_APPS:
         INSTALLED_APPS.append("django_migration_linter")
     # The library reads MIGRATION_LINTER_OPTIONS for behavior
@@ -189,7 +189,10 @@ try:
         # + "BACKWARD_INCOMPATIBLE_OR_ERRORS" + "RUNTIME_HAZARDS".
         "exclude_apps": [],
         "include_apps": [
-            "contracts", "tenants", "audit", "integrations",
+            "contracts",
+            "tenants",
+            "audit",
+            "integrations",
         ],
     }
 except ImportError:
@@ -321,7 +324,7 @@ ASGI_APPLICATION = "hub.asgi.application"
 # When running in Docker, use 'postgres' (service name)
 # For tests, use PostgreSQL if available, otherwise SQLite
 # PostgreSQL is preferred for tests as it handles threading properly
-import sys
+
 
 # ── Silence drf-spectacular view-introspection stderr noise ──────────
 # drf-spectacular writes "Error [ViewName]: unable to guess serializer"
@@ -347,6 +350,7 @@ class _FilteredStderr:
     def __getattr__(self, name):
         return getattr(self._real, name)
 
+
 sys.stderr = _FilteredStderr(sys.stderr)
 
 # ── Silence drf-spectacular schema-introspection warnings during tests ───
@@ -365,11 +369,7 @@ sys.stderr = _FilteredStderr(sys.stderr)
 # (PYTEST_CURRENT_TEST env var, pytest in sys.modules, manage.py test in
 # argv).  The filter is applied at settings-import time, before Django
 # loads URL confs, so it covers the full test session.
-if (
-    os.environ.get("PYTEST_CURRENT_TEST")
-    or "pytest" in sys.modules
-    or "test" in sys.argv
-):
+if os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules or "test" in sys.argv:
     warnings.filterwarnings("ignore", module="drf_spectacular")
 
 
@@ -397,7 +397,7 @@ def _detect_staging_for_tests():
         # Accept 200 (OK), 301/302 (redirects), 503 (unhealthy but service exists)
         if response.status_code in [200, 301, 302, 503]:
             return True
-    except (ConnectionError, TimeoutError, OSError, Exception) as e:
+    except (ConnectionError, TimeoutError, OSError, Exception):
         # Catch all exceptions including httpx.ConnectError to prevent import failures during tests
         # Also check if staging PostgreSQL port is accessible as fallback
         try:
@@ -710,9 +710,13 @@ if "test" in sys.argv or "pytest" in sys.modules:
             "TEST": {
                 "NAME": test_db_name,
                 "SERIALIZE": False,  # Allow parallel test execution
-                "MIGRATE": not (use_production_db or use_shared_test_db),  # Skip if using existing DB
+                "MIGRATE": not (
+                    use_production_db or use_shared_test_db
+                ),  # Skip if using existing DB
                 "DEPENDENCIES": [],  # No dependencies - migrations handle this
-                "CREATE_DB": not (use_production_db or use_shared_test_db),  # Don't create if using existing
+                "CREATE_DB": not (
+                    use_production_db or use_shared_test_db
+                ),  # Don't create if using existing
             },
             "CONN_MAX_AGE": 0,  # Don't reuse connections in tests
             "CONN_HEALTH_CHECKS": True,  # Detect stale connections
@@ -775,7 +779,9 @@ else:
             # E2E/test: 4 parallel Playwright workers overload the DB — queries that take <5s
             # in isolation can hit 60s under contention.  120s prevents cascading 500s.
             st=120000 if ENVIRONMENT == "test" else 60000,
-            itst=env.int("TEST_IDLE_IN_TRANSACTION_TIMEOUT_MS", default=120000) if ENVIRONMENT == "test" else 300000,
+            itst=env.int("TEST_IDLE_IN_TRANSACTION_TIMEOUT_MS", default=120000)
+            if ENVIRONMENT == "test"
+            else 300000,
         ),
     }
     if ENVIRONMENT == "production":
@@ -804,16 +810,16 @@ else:
 BAAS_DATABASE_URL = env("BAAS_DATABASE_URL", default=None)
 BAAS_REDIS_URL = env("BAAS_REDIS_URL", default=None)
 # postgres | redis; default postgres. See docs/runbooks/BAAS_INFRASTRUCTURE.md.
-BAAS_USAGE_STORAGE_BACKEND = env(
-    "BAAS_USAGE_STORAGE_BACKEND", default="postgres"
-).lower()
+BAAS_USAGE_STORAGE_BACKEND = env("BAAS_USAGE_STORAGE_BACKEND", default="postgres").lower()
 if BAAS_USAGE_STORAGE_BACKEND not in ("postgres", "redis"):
     BAAS_USAGE_STORAGE_BACKEND = "postgres"
 if BAAS_DATABASE_URL:
     _baas_db_config = env.db_url_config(BAAS_DATABASE_URL)
     _baas_db_config.setdefault("OPTIONS", {})
     # PgBouncer transaction mode requires CONN_MAX_AGE=0 (same rule as main DB).
-    _baas_db_config["CONN_MAX_AGE"] = 0 if _pgbouncer_enabled else _baas_db_config.get("CONN_MAX_AGE", 60)
+    _baas_db_config["CONN_MAX_AGE"] = (
+        0 if _pgbouncer_enabled else _baas_db_config.get("CONN_MAX_AGE", 60)
+    )
     # Phase 89: statement_timeout + idle_in_transaction — same policy as main DB.
     _baas_db_config["OPTIONS"]["options"] = _db_options.get("options", "")
     if ENVIRONMENT == "production":
@@ -880,9 +886,7 @@ if DATABASE_REPLICA_URL:
 # Management commands/migrations run with BYPASSRLS credentials via this alias.
 # Uses same host/port/name as default DB.
 _admin_user_default = (
-    DATABASES["default"].get("USER", "hub")
-    if ENVIRONMENT == "test"
-    else "meshant_admin"
+    DATABASES["default"].get("USER", "hub") if ENVIRONMENT == "test" else "meshant_admin"
 )
 _admin_password_default = DATABASES["default"].get("PASSWORD", "hub")
 DATABASES["admin"] = {
@@ -902,9 +906,7 @@ if "TEST" in DATABASES["default"]:
 
 # Marketplace: KYC required for orders/entitlements (feat1 2.4). Optional allowlist of tenant IDs
 # (UUID strings) exempt from KYC for orders/entitlements. Default empty. See RUNBOOKS.md.
-MARKETPLACE_KYC_ALLOWLIST_TENANT_IDS = env.list(
-    "MARKETPLACE_KYC_ALLOWLIST_TENANT_IDS", default=[]
-)
+MARKETPLACE_KYC_ALLOWLIST_TENANT_IDS = env.list("MARKETPLACE_KYC_ALLOWLIST_TENANT_IDS", default=[])
 
 # Redis Configuration
 # Separate Redis instances for cache, queue, events, and channels
@@ -1114,6 +1116,7 @@ if is_test_env:
     # than the 256-bit (32-byte) recommendation for HS256.  The warning is
     # emitted by PyJWT at encode time, not under our control.
     import warnings as _warnings
+
     _warnings.filterwarnings("ignore", message=".*key is.*bytes long.*")
 
     # Use in-memory channel layer for tests (faster, no Redis dependency)
@@ -1510,9 +1513,7 @@ CLAMAV_JOB_TIMEOUT_SECONDS = env.int("CLAMAV_JOB_TIMEOUT_SECONDS", default=300)
 CLAMAV_STARTUP_VERSION_CHECK_ENABLED = env.bool(
     "CLAMAV_STARTUP_VERSION_CHECK_ENABLED", default=True
 )
-CLAMAV_MINIMUM_ENGINE_VERSION = env(
-    "CLAMAV_MINIMUM_ENGINE_VERSION", default="0.103.0"
-)
+CLAMAV_MINIMUM_ENGINE_VERSION = env("CLAMAV_MINIMUM_ENGINE_VERSION", default="0.103.0")
 
 # File Upload Configuration
 MAX_BROWSER_UPLOAD_SIZE = env.int("MAX_BROWSER_UPLOAD_SIZE", default=100 * 1024 * 1024)  # 100MB
@@ -1602,9 +1603,11 @@ EMAIL_PROVIDER = env("EMAIL_PROVIDER", default=env("EMAIL_BACKEND", default="smt
 # attempted.  The env var ``EMAIL_BACKEND`` (set by docker-compose)
 # shadows Django's default for the *provider* selector above but
 # does NOT affect this line — it's Django's built-in setting.
-import sys as _sys
 import os as _os
-if "test" in _sys.argv or _os.environ.get("TEST_DB_SUFFIX"):
+import sys as _sys
+
+_e2e_smtp = _os.environ.get("E2E_ENABLE_SMTP", "").lower() in ("true", "1", "yes")
+if ("test" in _sys.argv or _os.environ.get("TEST_DB_SUFFIX")) and not _e2e_smtp:
     EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 
 # Brand (Phase 28.7.5 Meshant)
@@ -1858,19 +1861,21 @@ SPECTACULAR_SETTINGS = {
 # CORS Configuration
 # In production the list MUST be supplied explicitly via the env var.
 # Localhost origins are never allowed in production.
-_cors_defaults = [] if ENVIRONMENT == "production" else [
-    "http://localhost:3000",   # docker-compose frontend (default port)
-    "http://localhost:3010",   # docker-compose.test.yml frontend
-    "http://localhost:5173",   # Vite dev server
-    "http://localhost:5184",   # Vite dev server (alternate port)
-    "http://localhost:8000",
-]
+_cors_defaults = (
+    []
+    if ENVIRONMENT == "production"
+    else [
+        "http://localhost:3000",  # docker-compose frontend (default port)
+        "http://localhost:3010",  # docker-compose.test.yml frontend
+        "http://localhost:5173",  # Vite dev server
+        "http://localhost:5184",  # Vite dev server (alternate port)
+        "http://localhost:8000",
+    ]
+)
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=_cors_defaults)  # type: ignore[arg-type]  # env.list returns List[str]; django-cors-headers expects Sequence[str]
 
 if ENVIRONMENT == "production" and not CORS_ALLOWED_ORIGINS:
-    raise ImproperlyConfigured(
-        "CORS_ALLOWED_ORIGINS must be set in production."
-    )
+    raise ImproperlyConfigured("CORS_ALLOWED_ORIGINS must be set in production.")
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     "accept",
@@ -1894,7 +1899,7 @@ CORS_ALLOW_HEADERS = [
 JWT_SECRET_KEY = env("JWT_SECRET_KEY", default=_DEV_JWT_SECRET_KEY)
 JWT_ALGORITHM = env("JWT_ALGORITHM", default="RS256")
 JWT_PRIVATE_KEY = env("JWT_PRIVATE_KEY", default="")  # RS256 signing (api-service only)
-JWT_PUBLIC_KEY = env("JWT_PUBLIC_KEY", default="")    # RS256 verification (all services)
+JWT_PUBLIC_KEY = env("JWT_PUBLIC_KEY", default="")  # RS256 verification (all services)
 
 # Encryption key — defined here so the unified production guard below can check it.
 ENCRYPTION_KEY = env("ENCRYPTION_KEY", default=_DEV_ENCRYPTION_KEY)
@@ -1960,9 +1965,7 @@ REFRESH_IP_RATE_PER_MINUTE = env.int("REFRESH_IP_RATE_PER_MINUTE", default=30)
 # In development (DEBUG=True → secure=False), __Secure- cookies are silently
 # dropped by browsers, so the plain name is used instead.
 _refresh_cookie_default = (
-    "__Secure-refresh_token"
-    if ENVIRONMENT in ("production", "staging")
-    else "refresh_token"
+    "__Secure-refresh_token" if ENVIRONMENT in ("production", "staging") else "refresh_token"
 )
 REFRESH_COOKIE_NAME = env("REFRESH_COOKIE_NAME", default=_refresh_cookie_default)
 
@@ -1970,7 +1973,9 @@ REFRESH_COOKIE_NAME = env("REFRESH_COOKIE_NAME", default=_refresh_cookie_default
 LOGIN_IP_RATE_PER_MINUTE = env.int("LOGIN_IP_RATE_PER_MINUTE", default=10)
 LOGIN_MAX_ATTEMPTS = env.int("LOGIN_MAX_ATTEMPTS", default=5)
 LOGIN_LOCKOUT_WINDOW_MINUTES = env.int("LOGIN_LOCKOUT_WINDOW_MINUTES", default=15)
-LOGIN_LOCKOUT_MAX_WINDOW_MINUTES = env.int("LOGIN_LOCKOUT_MAX_WINDOW_MINUTES", default=1440)  # 24h cap
+LOGIN_LOCKOUT_MAX_WINDOW_MINUTES = env.int(
+    "LOGIN_LOCKOUT_MAX_WINDOW_MINUTES", default=1440
+)  # 24h cap
 
 # ── API key rotation reminder (277.B.069) ────────────────────────────────────
 # Comma-separated list of days-before-expiry thresholds at which reminders fire.
@@ -2013,7 +2018,8 @@ FEATURE_TENANT_SWITCH_ENABLED = env.bool("FEATURE_TENANT_SWITCH_ENABLED", defaul
 # in the body are rejected with structured error
 # ``code="FIELD_REMOVED"`` + ``http_status=400`` per C2-2.
 ASSET_VISIBILITY_PHASE_2_REJECT_ENABLED = env.bool(
-    "ASSET_VISIBILITY_PHASE_2_REJECT_ENABLED", default=False,
+    "ASSET_VISIBILITY_PHASE_2_REJECT_ENABLED",
+    default=False,
 )
 
 # Phase 250.7.B.5 — rollout gate for PATCH If-Match enforcement.
@@ -2021,7 +2027,8 @@ ASSET_VISIBILITY_PHASE_2_REJECT_ENABLED = env.bool(
 # continue to work (with deprecation logging) until enforcement is
 # flipped on after the soak period.
 OPTIMISTIC_LOCK_REQUIRE_IF_MATCH = env.bool(
-    "OPTIMISTIC_LOCK_REQUIRE_IF_MATCH", default=False,
+    "OPTIMISTIC_LOCK_REQUIRE_IF_MATCH",
+    default=False,
 )
 
 # Phase 260.B-RLS-1.2 — pilot-table kill switch for assets RLS policy.
@@ -2082,7 +2089,7 @@ BREACH_PROOF_OBJECT_LOCK_RETENTION_DAYS = env.int(
 
 # Phase 232.1 — per-tenant HMAC key ring (JSON). Shape:
 # {"<tenant_uuid>": ["<hexCurrent>", "<hexPrev>", ...] } (max 3 keys).
-import json as _consent_keys_json  # noqa: E402
+import json as _consent_keys_json
 
 _CONSENT_KEYS_RAW = os.environ.get("CONSENT_SIGNING_KEYS_JSON", "").strip()
 try:
@@ -2090,9 +2097,7 @@ try:
         _consent_keys_json.loads(_CONSENT_KEYS_RAW) if _CONSENT_KEYS_RAW else {}
     )
 except _consent_keys_json.JSONDecodeError as exc:
-    raise ImproperlyConfigured(
-        "CONSENT_SIGNING_KEYS_JSON must be valid JSON when set."
-    ) from exc
+    raise ImproperlyConfigured("CONSENT_SIGNING_KEYS_JSON must be valid JSON when set.") from exc
 
 # Phase 234.1 — per-tenant HMAC key ring for audit Merkle-root signing.
 # Same shape as CONSENT_SIGNING_KEYS_JSON (rolling 3-key window, index 0 =
@@ -2119,9 +2124,7 @@ AUDIT_MERKLE_S3_BUCKET = env("AUDIT_MERKLE_S3_BUCKET", default="")
 # retain-until. Default 365 (= +1 year) per D234.6: the proof MUST
 # outlive the audit-event retention so an auditor can still attest the
 # chain after the events themselves have been archived.
-AUDIT_MERKLE_OBJECT_LOCK_EXTRA_DAYS = env.int(
-    "AUDIT_MERKLE_OBJECT_LOCK_EXTRA_DAYS", default=365
-)
+AUDIT_MERKLE_OBJECT_LOCK_EXTRA_DAYS = env.int("AUDIT_MERKLE_OBJECT_LOCK_EXTRA_DAYS", default=365)
 # Storage prefix when the S3 path falls back to ``default_storage``.
 AUDIT_MERKLE_LOCAL_STORAGE_PREFIX = env(
     "AUDIT_MERKLE_LOCAL_STORAGE_PREFIX", default="audit-merkle-roots/"
@@ -2136,14 +2139,14 @@ if "AUDIT_RETENTION_YEARS" not in globals():
 # (e.g. ``2026-08-04T00:00:00Z``). When unset, the middleware falls
 # back to deploy-time + 90 days which lines up with the
 # 3-release-cycle phase-2 schedule.
-import datetime as _dt_for_visibility_dep  # noqa: E402
+import datetime as _dt_for_visibility_dep
+
 _visibility_sunset_raw = env(
-    "ASSET_VISIBILITY_DEPRECATION_SUNSET_DATE", default=None,
+    "ASSET_VISIBILITY_DEPRECATION_SUNSET_DATE",
+    default=None,
 )
 ASSET_VISIBILITY_DEPRECATION_SUNSET_DATE = (
-    _dt_for_visibility_dep.datetime.fromisoformat(
-        _visibility_sunset_raw.replace("Z", "+00:00")
-    )
+    _dt_for_visibility_dep.datetime.fromisoformat(_visibility_sunset_raw.replace("Z", "+00:00"))
     if _visibility_sunset_raw
     else None
 )
@@ -2155,12 +2158,11 @@ ASSET_VISIBILITY_DEPRECATION_SUNSET_DATE = (
 # as already expired). Override via env
 # ``ASSET_VISIBILITY_DEPRECATION_NO_CACHE_UNTIL`` in ISO-8601.
 _visibility_no_cache_raw = env(
-    "ASSET_VISIBILITY_DEPRECATION_NO_CACHE_UNTIL", default=None,
+    "ASSET_VISIBILITY_DEPRECATION_NO_CACHE_UNTIL",
+    default=None,
 )
 ASSET_VISIBILITY_DEPRECATION_NO_CACHE_UNTIL = (
-    _dt_for_visibility_dep.datetime.fromisoformat(
-        _visibility_no_cache_raw.replace("Z", "+00:00")
-    )
+    _dt_for_visibility_dep.datetime.fromisoformat(_visibility_no_cache_raw.replace("Z", "+00:00"))
     if _visibility_no_cache_raw
     else None
 )
@@ -2262,11 +2264,7 @@ LOGGING = {
         # ERROR-level output comes from application code.
         "django.request": {
             "handlers": ["console"],
-            "level": (
-                "CRITICAL"
-                if ENVIRONMENT in ("development", "test")
-                else "ERROR"
-            ),
+            "level": ("CRITICAL" if ENVIRONMENT in ("development", "test") else "ERROR"),
             "propagate": False,
         },
         "hub": {
@@ -2287,9 +2285,7 @@ LOGGING = {
 import logging as _logging
 
 DJANGO_STRUCTLOG_STATUS_5XX_LOG_LEVEL = (
-    _logging.WARNING
-    if ENVIRONMENT in ("development", "test")
-    else _logging.ERROR
+    _logging.WARNING if ENVIRONMENT in ("development", "test") else _logging.ERROR
 )
 
 from hub.apps.observability.logging import configure_structlog
@@ -2408,9 +2404,7 @@ else:
     EVENT_BUS_FORCE_SYNC_PERSISTENCE = env.bool("EVENT_BUS_FORCE_SYNC_PERSISTENCE", default=False)
 
 # Phase 93.6: timeout (seconds) for individual event handlers
-EVENT_HANDLER_TIMEOUT_SECONDS = env.int(
-    "EVENT_HANDLER_TIMEOUT_SECONDS", default=30
-)
+EVENT_HANDLER_TIMEOUT_SECONDS = env.int("EVENT_HANDLER_TIMEOUT_SECONDS", default=30)
 
 if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
     # Use localhost with port from env, or the standard test port as default.
@@ -2451,7 +2445,9 @@ ODH_SERVICE_TIMEOUT = env.int("ODH_SERVICE_TIMEOUT", default=1800)  # 30 minutes
 # ODH Inference Scheduler URL - defaults to odh-inference-scheduler service
 _default_odh_inference_url = "http://odh-inference-scheduler:8080"
 # When running tests inside Docker (api-service-test), use test stack hostname so integration tests reach the scheduler
-if os.path.exists("/.dockerenv") and ("pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING")):
+if os.path.exists("/.dockerenv") and (
+    "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING")
+):
     _default_odh_inference_url = "http://odh-inference-scheduler-test:8080"
 elif "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
     # Test from host: use localhost with external port (8097)
@@ -2490,6 +2486,7 @@ if (
     and SEMANTIC_BASE_IRI == "https://meshant.io"
 ):
     from django.core.exceptions import ImproperlyConfigured
+
     raise ImproperlyConfigured(
         "SEMANTIC_BASE_IRI must be set to your public domain in production. "
         "Current value is the default placeholder 'https://meshant.io'."
@@ -2498,9 +2495,7 @@ if (
 # Phase 24.6 — OWL/RDFS inference toggle.
 # When True the Fuseki TDB2 dataset is configured with an RDFS reasoner.
 # Inference triples are materialised at query time; expect 2-5x latency.
-SEMANTIC_INFERENCE_ENABLED = env.bool(
-    "SEMANTIC_INFERENCE_ENABLED", default=False
-)
+SEMANTIC_INFERENCE_ENABLED = env.bool("SEMANTIC_INFERENCE_ENABLED", default=False)
 
 # Phase 230.4 (REQ-SEM-MEMENTO-001) — Memento (RFC 7089) versioned-
 # retrieval feature flag.  Gated AND with ``Tenant.semantic_memento_enabled``
@@ -2508,22 +2503,23 @@ SEMANTIC_INFERENCE_ENABLED = env.bool(
 # tenants whose per-tenant flag is also True; global=False short-
 # circuits the feature for the entire deployment regardless of
 # per-tenant settings).
-SEMANTIC_MEMENTO_ENABLED = env.bool(
-    "SEMANTIC_MEMENTO_ENABLED", default=False
-)
+SEMANTIC_MEMENTO_ENABLED = env.bool("SEMANTIC_MEMENTO_ENABLED", default=False)
 # Per-tenant cap on ``SemanticResourceVersion`` rows.  Above this an
 # alert fires + new snapshot creates are refused.  Override per
 # environment if a customer needs a higher ceiling (rare).
 SEMANTIC_MEMENTO_MAX_PER_RESOURCE = env.int(
-    "SEMANTIC_MEMENTO_MAX_PER_RESOURCE", default=100,
+    "SEMANTIC_MEMENTO_MAX_PER_RESOURCE",
+    default=100,
 )
 SEMANTIC_MEMENTO_MAX_PER_TENANT = env.int(
-    "SEMANTIC_MEMENTO_MAX_PER_TENANT", default=1_000_000,
+    "SEMANTIC_MEMENTO_MAX_PER_TENANT",
+    default=1_000_000,
 )
 # Debounce window — Redis SETNX TTL.  Two updates inside the same
 # 60s window collapse into a single snapshot.
 SEMANTIC_MEMENTO_DEBOUNCE_SECONDS = env.int(
-    "SEMANTIC_MEMENTO_DEBOUNCE_SECONDS", default=60,
+    "SEMANTIC_MEMENTO_DEBOUNCE_SECONDS",
+    default=60,
 )
 
 # Internal API key shared between hub (Django) and FastAPI microservices.
@@ -2604,8 +2600,14 @@ ODCS_VERSIONS_SUPPORTED = env.list(
 ODPS_VERSIONS_SUPPORTED = env.list(
     "ODPS_VERSIONS_SUPPORTED",
     default=[
-        "1.x", "2.x", "3.x", "4.0", "4.1", "4.2",
-        "bitol-0.9.0", "bitol-1.0.0",
+        "1.x",
+        "2.x",
+        "3.x",
+        "4.0",
+        "4.1",
+        "4.2",
+        "bitol-0.9.0",
+        "bitol-1.0.0",
     ],
 )
 
@@ -2622,7 +2624,8 @@ ODPS_VERSIONS_SUPPORTED = env.list(
 # ``CONTRACTS_MAX_NESTING_DEPTH`` env var on a per-tenant basis if a
 # legitimate deeper schema appears.
 CONTRACTS_MAX_NESTING_DEPTH = env.int(
-    "CONTRACTS_MAX_NESTING_DEPTH", default=20,
+    "CONTRACTS_MAX_NESTING_DEPTH",
+    default=20,
 )
 
 # ============================================================================
@@ -2658,22 +2661,19 @@ if ENVIRONMENT == "production":
     # explicitly set the env vars — exactly what we require.
     if not SESSION_COOKIE_SECURE:
         raise ImproperlyConfigured(
-            "SESSION_COOKIE_SECURE must be True in production. "
-            "Set the env var explicitly."
+            "SESSION_COOKIE_SECURE must be True in production. Set the env var explicitly."
         )
     if not CSRF_COOKIE_SECURE:
         raise ImproperlyConfigured(
-            "CSRF_COOKIE_SECURE must be True in production. "
-            "Set the env var explicitly."
+            "CSRF_COOKIE_SECURE must be True in production. Set the env var explicitly."
         )
     if not SECURE_SSL_REDIRECT:
         raise ImproperlyConfigured(
-            "SECURE_SSL_REDIRECT must be True in production. "
-            "Set the env var explicitly."
+            "SECURE_SSL_REDIRECT must be True in production. Set the env var explicitly."
         )
 
     # HSTS: unconditional production values (not env-var-driven).
-    SECURE_HSTS_SECONDS = 63072000          # 2 years
+    SECURE_HSTS_SECONDS = 63072000  # 2 years
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
 
@@ -2749,9 +2749,7 @@ RATE_LIMIT_PER_USER = env.int("RATE_LIMIT_PER_USER", default=100)
 # Phase 87: Parameterized virtual queries (SQL injection fix)
 # When True (default), all virtual dataset queries use DB-driver native
 # parameterisation.  Set to False only for emergency rollback.
-PARAMETERIZED_VIRTUAL_QUERIES = env.bool(
-    "PARAMETERIZED_VIRTUAL_QUERIES", default=True
-)
+PARAMETERIZED_VIRTUAL_QUERIES = env.bool("PARAMETERIZED_VIRTUAL_QUERIES", default=True)
 
 # Phase 87: Enforce JWT scope mapping via ROLE_SCOPE_MAP
 # When True, JWT users without explicit API key scopes are checked against
@@ -2763,6 +2761,7 @@ ENFORCE_JWT_SCOPES = env.bool("ENFORCE_JWT_SCOPES", default=False)
 # This is a warning (not error) to allow gradual rollout.
 if ENVIRONMENT == "production" and not ENFORCE_JWT_SCOPES:
     import warnings
+
     warnings.warn(
         "ENFORCE_JWT_SCOPES is False in production. "
         "JWT users can bypass role-based scope checks. "
@@ -2968,10 +2967,12 @@ LINEAGE_ARCHIVE_S3_BUCKET = env.str(
 #       CAPABILITY_FLAGS_ROLLOUT_TENANTS: '{"lineage.snapshots": ["uuid1", "uuid2"]}'
 # settings.py reads the env var as a JSON string; default empty.
 _CAPABILITY_FLAGS_ROLLOUT_TENANTS_RAW = env.str(
-    "CAPABILITY_FLAGS_ROLLOUT_TENANTS", default="",
+    "CAPABILITY_FLAGS_ROLLOUT_TENANTS",
+    default="",
 )
 try:
     import json as _json
+
     CAPABILITY_FLAGS_ROLLOUT_TENANTS: dict[str, list[str]] = (
         _json.loads(_CAPABILITY_FLAGS_ROLLOUT_TENANTS_RAW)
         if _CAPABILITY_FLAGS_ROLLOUT_TENANTS_RAW.strip()

@@ -6,6 +6,7 @@ Alerts when any test file exceeds 5% skip rate.
 Usage:
     python scripts/check_skip_usage.py [--threshold 5] [--ci]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,17 +36,18 @@ def count_tests_and_skips(filepath: Path) -> tuple[int, int]:
 
     lines = content.split("\n")
     total = sum(1 for line in lines if line.strip().startswith("def test_"))
-    skips = sum(
-        1 for line in lines
-        if any(pattern in line for pattern in SKIP_PATTERNS)
-    )
+    skips = sum(1 for line in lines if any(pattern in line for pattern in SKIP_PATTERNS))
     return total, skips
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Scan test skip usage")
-    parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD,
-                        help=f"Max skip percentage (default: {DEFAULT_THRESHOLD}%%)")
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=DEFAULT_THRESHOLD,
+        help=f"Max skip percentage (default: {DEFAULT_THRESHOLD}%%)",
+    )
     parser.add_argument("--ci", action="store_true", help="CI mode: exit 1 on violation")
     args = parser.parse_args()
 

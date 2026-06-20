@@ -1,4 +1,5 @@
 """285.6.2 — Data Movement Django app configuration."""
+
 from django.apps import AppConfig
 
 

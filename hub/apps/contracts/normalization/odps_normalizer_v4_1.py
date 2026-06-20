@@ -7,8 +7,10 @@ Implements ODPSNormalizerBase with 4.1-specific mappings, focusing on:
 - Product strategy support
 - ODPS 4.1-specific field mappings
 """
+
+from typing import Any
+
 import structlog
-from typing import Dict, Any, List
 
 from hub.apps.contracts.normalization.odps_normalizer_base import ODPSNormalizerBase
 
@@ -43,10 +45,10 @@ class ODPSNormalizerV4_1(ODPSNormalizerBase):
 
     def _map_version_specific_fields(
         self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
-        spec_version: str
+        contract_data: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
+        spec_version: str,
     ) -> None:
         """
         Map ODPS 4.1-specific fields to HubContract format.
@@ -74,4 +76,3 @@ class ODPSNormalizerV4_1(ODPSNormalizerBase):
         # For now, product strategy and enhanced marketplace (paymentGateways)
         # are the main 4.1-specific features, and they're already handled
         # by the common normalization methods
-

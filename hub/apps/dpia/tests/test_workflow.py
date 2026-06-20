@@ -1,11 +1,10 @@
 """Workflow transitions — real ORM."""
 
 from __future__ import annotations
-import pytest
 
-import pytest
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase

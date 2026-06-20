@@ -33,8 +33,9 @@ class TestPayloadSizeLimit:
             )
             status = response.status_code
             # Should be 413 or 400 (DRF parser limit may vary)
-            assert status in (400, 413, 415), \
+            assert status in (400, 413, 415), (
                 f"Expected 400/413/415 for large payload at {endpoint}, got {status}"
+            )
 
 
 @pytest.mark.integration
@@ -57,8 +58,9 @@ class TestDeeplyNestedPayload:
             content_type="application/json",
         )
         # Should be rejected (400 or 413 or parse error)
-        assert response.status_code in (400, 413, 415), \
+        assert response.status_code in (400, 413, 415), (
             f"Expected 400/413/415 for deeply nested payload, got {response.status_code}"
+        )
 
 
 @pytest.mark.integration
@@ -72,8 +74,9 @@ class TestQueryStringLength:
         long_param = "x" * 9000  # > 8192
         response = client.get(f"/api/v1/assets/?q={long_param}")
         # DRF/WSGI may truncate or return 414
-        assert response.status_code in (200, 400, 414), \
+        assert response.status_code in (200, 400, 414), (
             f"Expected 200/400/414 for long query string, got {response.status_code}"
+        )
 
 
 @pytest.mark.integration
@@ -91,8 +94,9 @@ class TestLargeHeader:
             HTTP_X_LARGE_HEADER=large_value,
         )
         # WSGI servers may reject or truncate
-        assert response.status_code in (200, 400, 431), \
+        assert response.status_code in (200, 400, 431), (
             f"Expected 200/400/431 for large header, got {response.status_code}"
+        )
 
 
 @pytest.mark.integration
@@ -108,8 +112,9 @@ class TestContentTypeValidation:
             data="plain text, not json",
             content_type="text/plain",
         )
-        assert response.status_code in (400, 415), \
+        assert response.status_code in (400, 415), (
             f"Expected 400/415 for text/plain on JSON endpoint, got {response.status_code}"
+        )
 
     @pytest.mark.django_db
     def test_malformed_json_returns_400(self):
@@ -119,8 +124,9 @@ class TestContentTypeValidation:
             data="this is not valid json {{{",
             content_type="application/json",
         )
-        assert response.status_code in (400, 415), \
+        assert response.status_code in (400, 415), (
             f"Expected 400/415 for malformed JSON, got {response.status_code}"
+        )
 
 
 @pytest.mark.integration
@@ -132,7 +138,9 @@ class TestMethodValidation:
     def test_invalid_method_returns_405(self):
         client = APIClient()
         # PATCH on a list endpoint without detail
-        response = client.patch("/api/v1/assets/", data=json.dumps({}),
-                                content_type="application/json")
-        assert response.status_code in (405, 403, 401, 404, 200), \
+        response = client.patch(
+            "/api/v1/assets/", data=json.dumps({}), content_type="application/json"
+        )
+        assert response.status_code in (405, 403, 401, 404, 200), (
             f"Expected proper status for PATCH on list endpoint, got {response.status_code}"
+        )

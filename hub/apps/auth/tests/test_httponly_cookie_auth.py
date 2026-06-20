@@ -12,14 +12,13 @@ Covers:
 import uuid
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
-
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
 

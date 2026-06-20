@@ -15,21 +15,25 @@ To run these tests:
 3. Set API key: export DATAHUB_API_KEY=your-api-key
 4. Run: pytest tests/integration/test_payment_gateways_real_api.py -v
 """
-import pytest
-import requests
+
 import json
 import os
-import uuid
 import subprocess
+import uuid
+
+import pytest
+import requests
 from click.testing import CliRunner
-from datahub_cli.main import cli
 from datahub_cli.config import config
+from datahub_cli.main import cli
 
 
 def _check_api_available():
     """Check if API service is available"""
     try:
-        response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2)
+        response = requests.get(
+            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
+        )
         return response.status_code < 600  # Any HTTP response means API is up
     except Exception:
         return False
@@ -53,10 +57,10 @@ class TestPaymentGatewaysRealAPI:
 
         # Try to get API key from environment, config, or create one
         api_key = (
-            os.environ.get('DATAHUB_API_KEY') or
-            os.environ.get('TEST_API_KEY') or
-            config.get_api_key() or
-            self._create_test_api_key()
+            os.environ.get("DATAHUB_API_KEY")
+            or os.environ.get("TEST_API_KEY")
+            or config.get_api_key()
+            or self._create_test_api_key()
         )
 
         if not api_key:
@@ -112,11 +116,23 @@ print(api_key_obj.key)
 """
         try:
             result = subprocess.run(
-                ['docker', 'compose', 'exec', '-T', 'api-service', 'python', '/app/hub/manage.py', 'shell', '-c', django_shell_script],
+                [
+                    "docker",
+                    "compose",
+                    "exec",
+                    "-T",
+                    "api-service",
+                    "python",
+                    "/app/hub/manage.py",
+                    "shell",
+                    "-c",
+                    django_shell_script,
+                ],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=10,
-                cwd='/home/ph/Desktop/DataInteroperabilityHub'
+                cwd="/home/ph/Desktop/DataInteroperabilityHub",
             )
             if result.returncode == 0:
                 api_key = result.stdout.strip()
@@ -132,60 +148,64 @@ print(api_key_obj.key)
         Returns the contract ID.
         """
         contract_data = {
-            "original_raw": json.dumps({
-                "schema": "https://opendataproducts.org/schema/v4.1",
-                "version": "4.1",
-                "product": {
-                    "details": {
-                        "en": {
-                            "productID": f"test-product-{uuid.uuid4().hex[:8]}",
-                            "name": "Test Product with Payment Gateways"
-                        }
-                    },
-                    "marketplace": {
-                        "paymentGateways": {
-                            "stripe": {
-                                "type": "stripe",
-                                "enabled": True,
-                                "description": "Primary payment gateway"
-                            },
-                            "paypal": {
-                                "type": "paypal",
-                                "enabled": False,
-                                "description": "Alternative payment gateway"
+            "original_raw": json.dumps(
+                {
+                    "schema": "https://opendataproducts.org/schema/v4.1",
+                    "version": "4.1",
+                    "product": {
+                        "details": {
+                            "en": {
+                                "productID": f"test-product-{uuid.uuid4().hex[:8]}",
+                                "name": "Test Product with Payment Gateways",
                             }
-                        }
-                    }
+                        },
+                        "marketplace": {
+                            "paymentGateways": {
+                                "stripe": {
+                                    "type": "stripe",
+                                    "enabled": True,
+                                    "description": "Primary payment gateway",
+                                },
+                                "paypal": {
+                                    "type": "paypal",
+                                    "enabled": False,
+                                    "description": "Alternative payment gateway",
+                                },
+                            }
+                        },
+                    },
                 }
-            }),
+            ),
             "original_format": "JSON",
-            "original_spec_type": "ODPS"
+            "original_spec_type": "ODPS",
         }
 
         try:
             response = requests.post(
                 f"{api_base_url}/contracts/",
                 json=contract_data,
-                headers={
-                    "X-API-Key": api_key,
-                    "Content-Type": "application/json"
-                },
-                timeout=10
+                headers={"X-API-Key": api_key, "Content-Type": "application/json"},
+                timeout=10,
             )
 
             if response.status_code in [200, 201]:
                 result = response.json()
-                contract_id = result.get('id') or result.get('contract_id')
+                contract_id = result.get("id") or result.get("contract_id")
                 return contract_id
         except Exception:
             pass
         return None
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_payment_gateways_real_api_table_format(self, setup_config, api_available):
         """Test getting payment gateways from real API in table format"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         api_base_url = config.get_api_base_url()
         contract_id = self._create_odps_contract_with_payment_gateways(api_base_url, self.api_key)
@@ -194,18 +214,23 @@ print(api_key_obj.key)
             pytest.skip("Failed to create test contract. Check API service and permissions.")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id])
+        result = runner.invoke(cli, ["contracts", "get-payment-gateways", contract_id])
 
         assert result.exit_code == 0
-        assert 'Payment Gateways for Contract' in result.output
-        assert 'stripe' in result.output.lower() or 'paypal' in result.output.lower()
-        assert 'Total:' in result.output
+        assert "Payment Gateways for Contract" in result.output
+        assert "stripe" in result.output.lower() or "paypal" in result.output.lower()
+        assert "Total:" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_payment_gateways_real_api_json_format(self, setup_config, api_available):
         """Test getting payment gateways from real API in JSON format"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         api_base_url = config.get_api_base_url()
         contract_id = self._create_odps_contract_with_payment_gateways(api_base_url, self.api_key)
@@ -214,7 +239,9 @@ print(api_key_obj.key)
             pytest.skip("Failed to create test contract. Check API service and permissions.")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id, '--format', 'json'])
+        result = runner.invoke(
+            cli, ["contracts", "get-payment-gateways", contract_id, "--format", "json"]
+        )
 
         assert result.exit_code == 0
         output_data = json.loads(result.output)
@@ -222,119 +249,142 @@ print(api_key_obj.key)
         # Should have at least one payment gateway
         assert len(output_data) > 0
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_payment_gateways_empty_contract(self, setup_config, api_available):
         """Test getting payment gateways from contract without payment gateways"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         # Create an ODPS contract without payment gateways
         api_base_url = config.get_api_base_url()
         contract_data = {
-            "original_raw": json.dumps({
-                "schema": "https://opendataproducts.org/schema/v4.1",
-                "version": "4.1",
-                "product": {
-                    "details": {
-                        "en": {
-                            "productID": f"test-product-{uuid.uuid4().hex[:8]}",
-                            "name": "Test Product without Payment Gateways"
+            "original_raw": json.dumps(
+                {
+                    "schema": "https://opendataproducts.org/schema/v4.1",
+                    "version": "4.1",
+                    "product": {
+                        "details": {
+                            "en": {
+                                "productID": f"test-product-{uuid.uuid4().hex[:8]}",
+                                "name": "Test Product without Payment Gateways",
+                            }
                         }
-                    }
+                    },
                 }
-            }),
+            ),
             "original_format": "JSON",
-            "original_spec_type": "ODPS"
+            "original_spec_type": "ODPS",
         }
 
         try:
             response = requests.post(
                 f"{api_base_url}/contracts/",
                 json=contract_data,
-                headers={
-                    "X-API-Key": self.api_key,
-                    "Content-Type": "application/json"
-                },
-                timeout=10
+                headers={"X-API-Key": self.api_key, "Content-Type": "application/json"},
+                timeout=10,
             )
 
             if response.status_code not in [200, 201]:
                 pytest.skip("Failed to create test contract. Check API service and permissions.")
 
             result = response.json()
-            contract_id = result.get('id') or result.get('contract_id')
+            contract_id = result.get("id") or result.get("contract_id")
 
             if not contract_id:
                 pytest.skip("Failed to get contract ID from response.")
 
             runner = CliRunner()
-            result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id])
+            result = runner.invoke(cli, ["contracts", "get-payment-gateways", contract_id])
 
             assert result.exit_code == 0
-            assert 'No payment gateways found' in result.output or 'payment gateway' in result.output.lower()
+            assert (
+                "No payment gateways found" in result.output
+                or "payment gateway" in result.output.lower()
+            )
 
         except Exception as e:
-            pytest.skip(f"Failed to create test contract: {str(e)}")
+            pytest.skip(f"Failed to create test contract: {e!s}")
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_payment_gateways_invalid_contract_id(self, setup_config, api_available):
         """Test getting payment gateways with invalid contract ID"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         runner = CliRunner()
-        invalid_id = '00000000-0000-0000-0000-000000000000'
-        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', invalid_id])
+        invalid_id = "00000000-0000-0000-0000-000000000000"
+        result = runner.invoke(cli, ["contracts", "get-payment-gateways", invalid_id])
 
         assert result.exit_code != 0
-        assert 'error' in result.output.lower() or 'not found' in result.output.lower() or '404' in result.output
+        assert (
+            "error" in result.output.lower()
+            or "not found" in result.output.lower()
+            or "404" in result.output
+        )
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_payment_gateways_non_odps_contract(self, setup_config, api_available):
         """Test getting payment gateways from non-ODPS contract (should fail)"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         # Create an ODCS contract (not ODPS)
         api_base_url = config.get_api_base_url()
         contract_data = {
-            "original_raw": json.dumps({
-                "apiVersion": "odcs.io/v3.0.2",
-                "kind": "DataContract",
-                "id": f"test-odcs-{uuid.uuid4().hex[:8]}",
-                "name": "Test ODCS Contract"
-            }),
+            "original_raw": json.dumps(
+                {
+                    "apiVersion": "odcs.io/v3.0.2",
+                    "kind": "DataContract",
+                    "id": f"test-odcs-{uuid.uuid4().hex[:8]}",
+                    "name": "Test ODCS Contract",
+                }
+            ),
             "original_format": "JSON",
-            "original_spec_type": "ODCS"
+            "original_spec_type": "ODCS",
         }
 
         try:
             response = requests.post(
                 f"{api_base_url}/contracts/",
                 json=contract_data,
-                headers={
-                    "X-API-Key": self.api_key,
-                    "Content-Type": "application/json"
-                },
-                timeout=10
+                headers={"X-API-Key": self.api_key, "Content-Type": "application/json"},
+                timeout=10,
             )
 
             if response.status_code not in [200, 201]:
                 pytest.skip("Failed to create test contract. Check API service and permissions.")
 
             result = response.json()
-            contract_id = result.get('id') or result.get('contract_id')
+            contract_id = result.get("id") or result.get("contract_id")
 
             if not contract_id:
                 pytest.skip("Failed to get contract ID from response.")
 
             runner = CliRunner()
-            result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id])
+            result = runner.invoke(cli, ["contracts", "get-payment-gateways", contract_id])
 
             # Should fail because contract is not ODPS
             assert result.exit_code != 0
-            assert 'error' in result.output.lower() or 'odps' in result.output.lower() or 'validation' in result.output.lower()
+            assert (
+                "error" in result.output.lower()
+                or "odps" in result.output.lower()
+                or "validation" in result.output.lower()
+            )
 
         except Exception as e:
-            pytest.skip(f"Failed to create test contract: {str(e)}")
-
+            pytest.skip(f"Failed to create test contract: {e!s}")

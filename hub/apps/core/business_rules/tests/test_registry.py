@@ -8,13 +8,14 @@ Tests cover:
 - Rule dependency resolution
 - Rule metadata management
 """
+
 import types
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from django.test import TestCase
 
 from hub.apps.core.business_rules.base import (
     BusinessRules,
-    RuleExecutionContext,
     ValidationResult,
 )
 from hub.apps.core.business_rules.registry import (
@@ -27,20 +28,23 @@ from hub.apps.core.business_rules.registry import (
 
 class SampleRule1(BusinessRules):
     """Test rule 1."""
+
     def validate(self, context=None, *args, **kwargs):
-        return ValidationResult(is_valid=True, details={'rule': 'rule1'})
+        return ValidationResult(is_valid=True, details={"rule": "rule1"})
 
 
 class SampleRule2(BusinessRules):
     """Test rule 2."""
+
     def validate(self, context=None, *args, **kwargs):
-        return ValidationResult(is_valid=True, details={'rule': 'rule2'})
+        return ValidationResult(is_valid=True, details={"rule": "rule2"})
 
 
 class SampleRule3(BusinessRules):
     """Test rule 3."""
+
     def validate(self, context=None, *args, **kwargs):
-        return ValidationResult(is_valid=False, errors=['Error from rule3'])
+        return ValidationResult(is_valid=False, errors=["Error from rule3"])
 
 
 class TestBusinessRulesRegistry(TestCase):
@@ -58,11 +62,9 @@ class TestBusinessRulesRegistry(TestCase):
 
     def test_register_decorator(self):
         """Test decorator-based registration."""
+
         @self.registry.register(
-            rule_name="test_rule",
-            description="Test rule",
-            tags=["test"],
-            priority=10
+            rule_name="test_rule", description="Test rule", tags=["test"], priority=10
         )
         class TestRule(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
@@ -79,6 +81,7 @@ class TestBusinessRulesRegistry(TestCase):
 
     def test_register_decorator_default_name(self):
         """Test decorator registration with default name."""
+
         @self.registry.register()
         class MyTestRule(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
@@ -91,15 +94,13 @@ class TestBusinessRulesRegistry(TestCase):
 
     def test_register_with_dependencies(self):
         """Test registration with dependencies."""
+
         @self.registry.register(rule_name="rule1")
         class Rule1(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
                 return ValidationResult(is_valid=True)
 
-        @self.registry.register(
-            rule_name="rule2",
-            depends_on=["rule1"]
-        )
+        @self.registry.register(rule_name="rule2", depends_on=["rule1"])
         class Rule2(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
                 return ValidationResult(is_valid=True)
@@ -123,6 +124,7 @@ class TestBusinessRulesRegistry(TestCase):
 
     def test_get_rule(self):
         """Test getting a rule."""
+
         @self.registry.register(rule_name="test_rule")
         class TestRule(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
@@ -137,6 +139,7 @@ class TestBusinessRulesRegistry(TestCase):
 
     def test_get_all_rules(self):
         """Test getting all rules."""
+
         @self.registry.register(rule_name="rule1")
         class Rule1(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
@@ -154,6 +157,7 @@ class TestBusinessRulesRegistry(TestCase):
 
     def test_resolve_execution_order_no_dependencies(self):
         """Test resolving execution order with no dependencies."""
+
         @self.registry.register(rule_name="rule1", priority=10)
         class Rule1(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
@@ -171,16 +175,13 @@ class TestBusinessRulesRegistry(TestCase):
 
     def test_resolve_execution_order_with_dependencies(self):
         """Test resolving execution order with dependencies."""
+
         @self.registry.register(rule_name="rule1", priority=20)
         class Rule1(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
                 return ValidationResult(is_valid=True)
 
-        @self.registry.register(
-            rule_name="rule2",
-            depends_on=["rule1"],
-            priority=10
-        )
+        @self.registry.register(rule_name="rule2", depends_on=["rule1"], priority=10)
         class Rule2(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
                 return ValidationResult(is_valid=True)
@@ -191,18 +192,13 @@ class TestBusinessRulesRegistry(TestCase):
 
     def test_resolve_execution_order_circular_dependency(self):
         """Test resolving execution order with circular dependency."""
-        @self.registry.register(
-            rule_name="rule1",
-            depends_on=["rule2"]
-        )
+
+        @self.registry.register(rule_name="rule1", depends_on=["rule2"])
         class Rule1(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
                 return ValidationResult(is_valid=True)
 
-        @self.registry.register(
-            rule_name="rule2",
-            depends_on=["rule1"]
-        )
+        @self.registry.register(rule_name="rule2", depends_on=["rule1"])
         class Rule2(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
                 return ValidationResult(is_valid=True)
@@ -214,6 +210,7 @@ class TestBusinessRulesRegistry(TestCase):
 
     def test_resolve_execution_order_specific_rules(self):
         """Test resolving execution order for specific rules."""
+
         @self.registry.register(rule_name="rule1")
         class Rule1(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
@@ -290,6 +287,7 @@ class TestBusinessRulesRegistry(TestCase):
 
     def test_clear_registry(self):
         """Test clearing the registry."""
+
         @self.registry.register(rule_name="rule1")
         class Rule1(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
@@ -302,6 +300,7 @@ class TestBusinessRulesRegistry(TestCase):
 
     def test_register_duplicate_name_different_class(self):
         """Test registering duplicate name with different class."""
+
         @self.registry.register(rule_name="test_rule")
         class Rule1(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
@@ -309,14 +308,17 @@ class TestBusinessRulesRegistry(TestCase):
 
         # Try to register different class with same name
         with self.assertRaises(ValueError) as cm:
+
             @self.registry.register(rule_name="test_rule")
             class Rule2(BusinessRules):
                 def validate(self, context=None, *args, **kwargs):
                     return ValidationResult(is_valid=True)
+
         self.assertIn("already registered", str(cm.exception))
 
     def test_register_duplicate_name_same_class(self):
         """Test registering duplicate name with same class (idempotent)."""
+
         # Define the class once
         class TestRule(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
@@ -343,7 +345,8 @@ class TestRuleDiscovery(TestCase):
         """Test discovering rules from a module."""
         # Create a test module with rules
         import types
-        test_module = types.ModuleType('test_module')
+
+        test_module = types.ModuleType("test_module")
 
         class DiscoveredRule1(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
@@ -356,8 +359,8 @@ class TestRuleDiscovery(TestCase):
         # Add rules to module
         test_module.DiscoveredRule1 = DiscoveredRule1
         test_module.DiscoveredRule2 = DiscoveredRule2
-        DiscoveredRule1.__module__ = 'test_module'
-        DiscoveredRule2.__module__ = 'test_module'
+        DiscoveredRule1.__module__ = "test_module"
+        DiscoveredRule2.__module__ = "test_module"
 
         # Discover rules
         discovered = self.registry._discover_rules_from_module(test_module)
@@ -366,33 +369,31 @@ class TestRuleDiscovery(TestCase):
         self.assertIn("DiscoveredRule1", discovered)
         self.assertIn("DiscoveredRule2", discovered)
 
-    @patch('hub.apps.core.business_rules.registry.importlib')
-    @patch('hub.apps.core.business_rules.registry.pkgutil')
+    @patch("hub.apps.core.business_rules.registry.importlib")
+    @patch("hub.apps.core.business_rules.registry.pkgutil")
     def test_discover_rules_from_package(self, mock_pkgutil, mock_importlib):
         """Test discovering rules from a package."""
         # Mock package structure
-        mock_module = types.ModuleType('test_package.module')
-        mock_module.__path__ = ['/test/path']
+        mock_module = types.ModuleType("test_package.module")
+        mock_module.__path__ = ["/test/path"]
 
         class DiscoveredRule(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
                 return ValidationResult(is_valid=True)
 
-        DiscoveredRule.__module__ = 'test_package.module'
+        DiscoveredRule.__module__ = "test_package.module"
         mock_module.DiscoveredRule = DiscoveredRule
 
         # Mock pkgutil.walk_packages
         mock_walker = MagicMock()
-        mock_walker.__iter__ = lambda self: iter([
-            (None, 'test_package.module', False)
-        ])
+        mock_walker.__iter__ = lambda self: iter([(None, "test_package.module", False)])
         mock_pkgutil.walk_packages.return_value = mock_walker
 
         # Mock importlib.import_module
         mock_importlib.import_module.return_value = mock_module
 
         # Discover rules
-        discovered = self.registry.discover_rules('test_package')
+        discovered = self.registry.discover_rules("test_package")
 
         # Should discover the rule
         self.assertGreaterEqual(len(discovered), 0)
@@ -408,11 +409,8 @@ class TestGlobalRegistry(TestCase):
 
     def test_register_rule_decorator(self):
         """Test global register_rule decorator."""
-        @register_rule(
-            rule_name="global_test_rule",
-            description="Global test rule",
-            tags=["test"]
-        )
+
+        @register_rule(rule_name="global_test_rule", description="Global test rule", tags=["test"])
         class GlobalTestRule(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
                 return ValidationResult(is_valid=True)
@@ -435,7 +433,7 @@ class TestRuleMetadata(TestCase):
             tags=["tag1"],
             dependencies=["dep1"],
             priority=10,
-            enabled=True
+            enabled=True,
         )
 
         self.assertEqual(metadata.rule_class, SampleRule1)
@@ -448,22 +446,17 @@ class TestRuleMetadata(TestCase):
 
     def test_rule_metadata_invalid_class(self):
         """Test RuleMetadata with invalid class."""
+
         class NotBusinessRules:
             pass
 
         with self.assertRaises(TypeError):
-            RuleMetadata(
-                rule_class=NotBusinessRules,
-                rule_name="test"
-            )
+            RuleMetadata(rule_class=NotBusinessRules, rule_name="test")
 
     def test_rule_metadata_empty_name(self):
         """Test RuleMetadata with empty name."""
         with self.assertRaises(ValueError):
-            RuleMetadata(
-                rule_class=SampleRule1,
-                rule_name=""
-            )
+            RuleMetadata(rule_class=SampleRule1, rule_name="")
 
     def test_rule_metadata_invalid_tags(self):
         """Test RuleMetadata with invalid tags."""
@@ -471,6 +464,5 @@ class TestRuleMetadata(TestCase):
             RuleMetadata(
                 rule_class=SampleRule1,
                 rule_name="test",
-                tags="not_a_list"  # Should be a list
+                tags="not_a_list",  # Should be a list
             )
-

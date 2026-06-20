@@ -4,6 +4,7 @@ Data Mesh Views
 Django REST Framework views for Data Mesh domain management.
 """
 
+import contextlib
 import uuid
 
 import structlog
@@ -11,7 +12,6 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db import transaction
 from django.db.models import Count, Q
-from django.utils import timezone
 from drf_spectacular.utils import (
     OpenApiResponse,
     extend_schema,
@@ -25,8 +25,7 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 
-from hub.apps.audit.utils import create_audit_event
-from hub.apps.auth.permissions import HasAnyRole, HasAnyScope, HasRole, HasScope
+from hub.apps.auth.permissions import HasAnyRole, HasScope
 from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import ConflictError, NotFoundError, ValidationError
 from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
@@ -104,7 +103,7 @@ class DomainViewSet(viewsets.ModelViewSet):
 
     def initial(self, request, *args, **kwargs):
         from hub.apps.tenants.feature_flag_gates import check_data_mesh_enabled
-        from rest_framework.exceptions import PermissionDenied
+
         result = check_data_mesh_enabled(request)
         if isinstance(result, Response):
             raise PermissionDenied(detail=result.data)
@@ -158,7 +157,9 @@ class DomainViewSet(viewsets.ModelViewSet):
                 tenant_id = uuid.UUID(tenant_id_str)
             except (ValueError, TypeError):
                 return DataMeshDomain.objects.none()
-            queryset = DataMeshDomain.objects.select_related("tenant", "owner").filter(tenant_id=tenant_id)
+            queryset = DataMeshDomain.objects.select_related("tenant", "owner").filter(
+                tenant_id=tenant_id
+            )
 
         # Apply status filter if provided (only for list action, not for get_object)
         # get_object() should work regardless of status filter
@@ -200,9 +201,7 @@ class DomainViewSet(viewsets.ModelViewSet):
             try:
                 uuid.UUID(str(lookup_value))
             except (ValueError, TypeError, AttributeError):
-                raise DRFValidationError(
-                    {"id": [f'"{lookup_value}" is not a valid UUID.']}
-                )
+                raise DRFValidationError({"id": [f'"{lookup_value}" is not a valid UUID.']})
         # Ensure tenant_id is set on request if not already set
         # This is important for custom actions where middleware might not have run
         if not hasattr(self.request, "tenant_id") or not self.request.tenant_id:
@@ -213,10 +212,8 @@ class DomainViewSet(viewsets.ModelViewSet):
                 if not hasattr(self.request, "tenant") or not self.request.tenant:
                     from hub.apps.tenants.models import Tenant
 
-                    try:
+                    with contextlib.suppress(Tenant.DoesNotExist):
                         self.request.tenant = Tenant.objects.get(id=tenant_id)
-                    except Tenant.DoesNotExist:
-                        pass
 
         # Call parent get_object which uses get_queryset()
         return super().get_object()
@@ -286,9 +283,7 @@ class DomainViewSet(viewsets.ModelViewSet):
             try:
                 req_uuid = uuid.UUID(str(requested_tenant_id))
                 if str(req_uuid) != str(tenant_id):
-                    raise DRFValidationError(
-                        "Cannot create domain in another tenant"
-                    )
+                    raise DRFValidationError("Cannot create domain in another tenant")
             except (ValueError, TypeError):
                 raise DRFValidationError("Invalid tenant_id format")
 
@@ -355,8 +350,7 @@ class DomainViewSet(viewsets.ModelViewSet):
         page_number = request.query_params.get("page", 1)
         try:
             page_number = int(page_number)
-            if page_number < 1:
-                page_number = 1
+            page_number = max(page_number, 1)
         except (ValueError, TypeError):
             page_number = 1
 
@@ -555,9 +549,7 @@ class DomainViewSet(viewsets.ModelViewSet):
         if not validation_result.is_valid:
             from hub.apps.core.services.base import ValidationError
 
-            return handle_service_exception(
-                ValidationError("; ".join(validation_result.errors))
-            )
+            return handle_service_exception(ValidationError("; ".join(validation_result.errors)))
 
         # Initialize service
         service = DataMeshService(tenant_id=tenant_id, user_id=user_id)
@@ -641,9 +633,7 @@ class DomainViewSet(viewsets.ModelViewSet):
             return handle_service_exception(e)
 
         headers = get_rate_limit_headers(request, check_rate_limit(request)[1])
-        return Response(
-            DomainSerializer(domain).data, headers=headers, status=status.HTTP_200_OK
-        )
+        return Response(DomainSerializer(domain).data, headers=headers, status=status.HTTP_200_OK)
 
     @extend_schema(
         summary="Assign domain ownership",
@@ -651,9 +641,7 @@ class DomainViewSet(viewsets.ModelViewSet):
         request=inline_serializer(
             name="OwnershipRequest",
             fields={
-                "owner_id": serializers.UUIDField(
-                    required=True, help_text="Owner user ID"
-                ),
+                "owner_id": serializers.UUIDField(required=True, help_text="Owner user ID"),
             },
         ),
         responses={
@@ -689,9 +677,7 @@ class DomainViewSet(viewsets.ModelViewSet):
             new_owner_id=str(owner_id),
         )
         if not validation_result.is_valid:
-            return handle_service_exception(
-                ValidationError("; ".join(validation_result.errors))
-            )
+            return handle_service_exception(ValidationError("; ".join(validation_result.errors)))
 
         service = DataMeshService(tenant_id=tenant_id, user_id=user_id)
         try:
@@ -709,9 +695,7 @@ class DomainViewSet(viewsets.ModelViewSet):
             raise DRFValidationError(str(e))
 
         headers = get_rate_limit_headers(request, check_rate_limit(request)[1])
-        return Response(
-            DomainSerializer(domain).data, headers=headers, status=status.HTTP_200_OK
-        )
+        return Response(DomainSerializer(domain).data, headers=headers, status=status.HTTP_200_OK)
 
     @extend_schema(
         summary="Get domain health",
@@ -741,9 +725,7 @@ class DomainViewSet(viewsets.ModelViewSet):
             include_health_metrics=True,
         )
         nodes = topology.get("nodes", [])
-        domain_node = next(
-            (n for n in nodes if str(n.get("id")) == str(instance.id)), None
-        )
+        domain_node = next((n for n in nodes if str(n.get("id")) == str(instance.id)), None)
         if not domain_node or not domain_node.get("health_metrics"):
             health_data = {
                 "overall_health_score": 0,
@@ -769,8 +751,12 @@ class DomainViewSet(viewsets.ModelViewSet):
                 "overall_health_score": hm.get("health_score", 0),
                 "total_domains": 1,
                 "active_domains": 1 if hm.get("is_active") else 0,
-                "compliant_domains": 1 if hm.get("compliance_status") == MeshComplianceStatus.COMPLIANT else 0,
-                "non_compliant_domains": 1 if hm.get("compliance_status") == MeshComplianceStatus.NON_COMPLIANT else 0,
+                "compliant_domains": 1
+                if hm.get("compliance_status") == MeshComplianceStatus.COMPLIANT
+                else 0,
+                "non_compliant_domains": 1
+                if hm.get("compliance_status") == MeshComplianceStatus.NON_COMPLIANT
+                else 0,
                 "domains_with_violations": 1 if (hm.get("violation_count") or 0) > 0 else 0,
                 "domain_health": [
                     {
@@ -823,9 +809,7 @@ class DomainViewSet(viewsets.ModelViewSet):
         try:
             asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
         except Asset.DoesNotExist:
-            return Response(
-                {"error": "Asset not found"}, status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"error": "Asset not found"}, status=status.HTTP_404_NOT_FOUND)
 
         asset.domain = instance.name
         asset.save(update_fields=["domain", "updated_at"])
@@ -916,10 +900,14 @@ class DomainViewSet(viewsets.ModelViewSet):
             quota.update(request.data or {})
             instance.resource_quota = quota
             instance.save(update_fields=["resource_quota", "updated_at"])
-        return Response({
-            "domain_id": str(instance.id),
-            "resource_quota": instance.resource_quota or {},
-        }, headers=get_rate_limit_headers(request, check_rate_limit(request)[1]), status=200)
+        return Response(
+            {
+                "domain_id": str(instance.id),
+                "resource_quota": instance.resource_quota or {},
+            },
+            headers=get_rate_limit_headers(request, check_rate_limit(request)[1]),
+            status=200,
+        )
 
     @action(detail=True, methods=["get", "post"], url_path="governance")
     def governance(self, request, id=None):
@@ -933,10 +921,14 @@ class DomainViewSet(viewsets.ModelViewSet):
             boundaries.setdefault("governance_rules", [])
             instance.boundaries = boundaries
             instance.save(update_fields=["boundaries", "updated_at"])
-        return Response({
-            "domain_id": str(instance.id),
-            "boundaries": instance.boundaries or {},
-        }, headers=get_rate_limit_headers(request, check_rate_limit(request)[1]), status=200)
+        return Response(
+            {
+                "domain_id": str(instance.id),
+                "boundaries": instance.boundaries or {},
+            },
+            headers=get_rate_limit_headers(request, check_rate_limit(request)[1]),
+            status=200,
+        )
 
     @action(detail=True, methods=["post"], url_path="deploy")
     def deploy(self, request, id=None):
@@ -945,10 +937,14 @@ class DomainViewSet(viewsets.ModelViewSet):
         if not allowed:
             raise Throttled(headers=get_rate_limit_headers(request, rate_limit_results))
         instance = self.get_object()
-        return Response({
-            "domain_id": str(instance.id),
-            "status": "deployed",
-        }, headers=get_rate_limit_headers(request, check_rate_limit(request)[1]), status=200)
+        return Response(
+            {
+                "domain_id": str(instance.id),
+                "status": "deployed",
+            },
+            headers=get_rate_limit_headers(request, check_rate_limit(request)[1]),
+            status=200,
+        )
 
     @action(detail=True, methods=["get"], url_path="monitoring")
     def monitoring(self, request, id=None):
@@ -957,11 +953,15 @@ class DomainViewSet(viewsets.ModelViewSet):
         if not allowed:
             raise Throttled(headers=get_rate_limit_headers(request, rate_limit_results))
         instance = self.get_object()
-        return Response({
-            "domain_id": str(instance.id),
-            "metrics": {},
-            "health": "ok",
-        }, headers=get_rate_limit_headers(request, check_rate_limit(request)[1]), status=200)
+        return Response(
+            {
+                "domain_id": str(instance.id),
+                "metrics": {},
+                "health": "ok",
+            },
+            headers=get_rate_limit_headers(request, check_rate_limit(request)[1]),
+            status=200,
+        )
 
     @extend_schema(
         summary="Get domain analytics",
@@ -991,7 +991,7 @@ class DomainViewSet(viewsets.ModelViewSet):
             raise DRFValidationError("Unable to determine tenant from request")
 
         # Initialize service
-        service = DataMeshService(tenant_id=tenant_id, user_id=user_id)
+        DataMeshService(tenant_id=tenant_id, user_id=user_id)
 
         # Get policy statistics
         policy_stats = PolicyApplication.objects.filter(domain=instance).aggregate(
@@ -1161,8 +1161,7 @@ class DomainViewSet(viewsets.ModelViewSet):
         page_number = request.query_params.get("page", 1)
         try:
             page_number = int(page_number)
-            if page_number < 1:
-                page_number = 1
+            page_number = max(page_number, 1)
         except (ValueError, TypeError):
             page_number = 1
 
@@ -1374,8 +1373,7 @@ class DomainViewSet(viewsets.ModelViewSet):
         page_number = request.query_params.get("page", 1)
         try:
             page_number = int(page_number)
-            if page_number < 1:
-                page_number = 1
+            page_number = max(page_number, 1)
         except (ValueError, TypeError):
             page_number = 1
 
@@ -1816,11 +1814,14 @@ class MeshGovernanceViewSet(viewsets.ViewSet):
             status=PolicyApplicationStatus.APPLIED,
         ).count()
 
-        return Response({
-            "tenant_id": tenant_id,
-            "domain_count": domain_count,
-            "applied_policies_count": policy_count,
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "tenant_id": tenant_id,
+                "domain_count": domain_count,
+                "applied_policies_count": policy_count,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=False, methods=["get"], url_path="policies")
     def policies(self, request):
@@ -1833,9 +1834,13 @@ class MeshGovernanceViewSet(viewsets.ViewSet):
         if not tenant_id:
             raise DRFValidationError("Unable to determine tenant from request")
 
-        applications = PolicyApplication.objects.filter(
-            domain__tenant_id=tenant_id,
-        ).select_related("domain", "policy", "applied_by").order_by("-applied_at")[:100]
+        applications = (
+            PolicyApplication.objects.filter(
+                domain__tenant_id=tenant_id,
+            )
+            .select_related("domain", "policy", "applied_by")
+            .order_by("-applied_at")[:100]
+        )
 
         data = [
             {
@@ -1863,9 +1868,11 @@ class MeshGovernanceViewSet(viewsets.ViewSet):
             raise DRFValidationError("Unable to determine tenant from request")
 
         domains = DataMeshDomain.objects.filter(tenant_id=tenant_id)
-        reports = ComplianceReport.objects.filter(
-            domain__tenant_id=tenant_id, asset=None
-        ).select_related("domain").order_by("-generated_at")[:50]
+        reports = (
+            ComplianceReport.objects.filter(domain__tenant_id=tenant_id, asset=None)
+            .select_related("domain")
+            .order_by("-generated_at")[:50]
+        )
 
         compliant_count = sum(
             1 for r in reports if r.compliance_status == MeshComplianceStatus.COMPLIANT
@@ -1897,9 +1904,11 @@ class MeshGovernanceViewSet(viewsets.ViewSet):
         if not tenant_id:
             raise DRFValidationError("Unable to determine tenant from request")
 
-        reports = ComplianceReport.objects.filter(
-            domain__tenant_id=tenant_id
-        ).select_related("domain").order_by("-generated_at")[:50]
+        reports = (
+            ComplianceReport.objects.filter(domain__tenant_id=tenant_id)
+            .select_related("domain")
+            .order_by("-generated_at")[:50]
+        )
 
         data = {
             "tenant_id": tenant_id,

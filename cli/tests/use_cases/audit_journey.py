@@ -12,10 +12,10 @@ filtering via real API calls against the staging environment.
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_get
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _provision_admin():
     """Audit endpoints typically require elevated permissions."""
@@ -44,15 +44,11 @@ def test_list_audit_events():
     if resp.status_code == 404:
         pytest.skip("Audit endpoint not found (404)")
 
-    assert resp.status_code == 200, (
-        f"Audit events returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"Audit events returned {resp.status_code}: {resp.text[:500]}"
 
     body = resp.json()
     events = _extract_events(body)
-    assert isinstance(events, list), (
-        f"Expected a list of audit events, got {type(events).__name__}"
-    )
+    assert isinstance(events, list), f"Expected a list of audit events, got {type(events).__name__}"
 
 
 def test_audit_event_has_timestamp():
@@ -65,9 +61,7 @@ def test_audit_event_has_timestamp():
     if resp.status_code == 404:
         pytest.skip("Audit endpoint not found (404)")
 
-    assert resp.status_code == 200, (
-        f"Audit events returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"Audit events returned {resp.status_code}: {resp.text[:500]}"
 
     body = resp.json()
     events = _extract_events(body)
@@ -82,9 +76,7 @@ def test_audit_event_has_timestamp():
         or "occurred_at" in event
         or "event_time" in event
     )
-    assert has_timestamp, (
-        f"Audit event missing timestamp field. Keys: {list(event.keys())}"
-    )
+    assert has_timestamp, f"Audit event missing timestamp field. Keys: {list(event.keys())}"
 
 
 def test_audit_filter_by_resource():
@@ -109,9 +101,7 @@ def test_audit_filter_by_resource():
     if resp.status_code == 400:
         pytest.skip("Audit resource_type filter not supported (400)")
 
-    assert resp.status_code == 200, (
-        f"Audit filter returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"Audit filter returned {resp.status_code}: {resp.text[:500]}"
 
     body = resp.json()
     events = _extract_events(body)

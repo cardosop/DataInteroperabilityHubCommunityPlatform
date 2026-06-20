@@ -6,19 +6,21 @@ Provides a unified interface for sending emails via multiple backends:
 - AWS SES
 - Generic SMTP
 """
+
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any
+from typing import Any
+
+import structlog
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives, get_connection
-from django.core.mail.backends.smtp import EmailBackend
-import structlog
 
 from hub.apps.core.services.base import BaseService
 
 # Optional imports for email backends
 try:
     import sendgrid
-    from sendgrid.helpers.mail import Mail, Email, To, Content
+    from sendgrid.helpers.mail import Content, Email, Mail, To
+
     SENDGRID_AVAILABLE = True
 except ImportError:
     SENDGRID_AVAILABLE = False
@@ -27,6 +29,7 @@ except ImportError:
 try:
     import boto3
     from botocore.exceptions import ClientError
+
     BOTO3_AVAILABLE = True
 except ImportError:
     BOTO3_AVAILABLE = False
@@ -49,12 +52,12 @@ class EmailService(ABC):
         to_email: str,
         subject: str,
         html_content: str,
-        text_content: Optional[str] = None,
-        from_email: Optional[str] = None,
-        from_name: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        attachments: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        text_content: str | None = None,
+        from_email: str | None = None,
+        from_name: str | None = None,
+        reply_to: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """
         Send an email.
 
@@ -74,12 +77,10 @@ class EmailService(ABC):
         Raises:
             EmailServiceError: If email sending fails
         """
-        pass
 
 
 class EmailServiceError(Exception):
     """Base exception for email service errors"""
-    pass
 
 
 class SendGridEmailService(BaseService, EmailService):
@@ -91,31 +92,35 @@ class SendGridEmailService(BaseService, EmailService):
 
     service_name = "sendgrid_email_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """Initialize SendGridEmailService with BaseService support."""
         # Set BaseService attributes
         self.tenant_id = tenant_id
         self.user_id = user_id
         if not SENDGRID_AVAILABLE:
-            raise EmailServiceError("sendgrid package not installed. Install with: pip install sendgrid")
-        api_key = getattr(settings, 'SENDGRID_API_KEY', None)
+            raise EmailServiceError(
+                "sendgrid package not installed. Install with: pip install sendgrid"
+            )
+        api_key = getattr(settings, "SENDGRID_API_KEY", None)
         if not api_key:
             raise EmailServiceError("SENDGRID_API_KEY not configured in settings")
         self.client = sendgrid.SendGridAPIClient(api_key=api_key)
-        self.from_email = getattr(settings, 'SENDGRID_FROM_EMAIL', None)
-        self.from_name = getattr(settings, 'SENDGRID_FROM_NAME', getattr(settings, 'APP_NAME', 'Meshant'))
+        self.from_email = getattr(settings, "SENDGRID_FROM_EMAIL", None)
+        self.from_name = getattr(
+            settings, "SENDGRID_FROM_NAME", getattr(settings, "APP_NAME", "Meshant")
+        )
 
     def send_email(
         self,
         to_email: str,
         subject: str,
         html_content: str,
-        text_content: Optional[str] = None,
-        from_email: Optional[str] = None,
-        from_name: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        attachments: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        text_content: str | None = None,
+        from_email: str | None = None,
+        from_name: str | None = None,
+        reply_to: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Send email via SendGrid"""
         try:
             # Use configured from_email or provided one
@@ -132,14 +137,14 @@ class SendGridEmailService(BaseService, EmailService):
                 from_email=from_addr,
                 to_emails=to_addr,  # Pass To object directly
                 subject=subject,
-                html_content=html_content
+                html_content=html_content,
             )
 
             # Add text content if provided
             if text_content:
                 mail.content = [
                     Content("text/plain", text_content),
-                    Content("text/html", html_content)
+                    Content("text/html", html_content),
                 ]
             else:
                 mail.content = Content("text/html", html_content)
@@ -153,13 +158,14 @@ class SendGridEmailService(BaseService, EmailService):
                 if not SENDGRID_AVAILABLE:
                     raise EmailServiceError("sendgrid package not installed")
                 from sendgrid.helpers.mail import Attachment
+
                 for attachment in attachments:
                     mail.add_attachment(
                         Attachment(
-                            file_content=attachment['content'],
-                            file_name=attachment['filename'],
-                            file_type=attachment.get('content_type', 'application/octet-stream'),
-                            disposition='attachment'
+                            file_content=attachment["content"],
+                            file_name=attachment["filename"],
+                            file_type=attachment.get("content_type", "application/octet-stream"),
+                            disposition="attachment",
                         )
                     )
 
@@ -168,22 +174,18 @@ class SendGridEmailService(BaseService, EmailService):
 
             # Extract message ID from response headers
             message_id = None
-            if hasattr(response, 'headers') and 'X-Message-Id' in response.headers:
-                message_id = response.headers['X-Message-Id']
+            if hasattr(response, "headers") and "X-Message-Id" in response.headers:
+                message_id = response.headers["X-Message-Id"]
 
             logger.info(
                 "email_sent_sendgrid",
                 to_email=to_email,
                 subject=subject,
                 status_code=response.status_code,
-                message_id=message_id
+                message_id=message_id,
             )
 
-            return {
-                'success': True,
-                'message_id': message_id,
-                'status_code': response.status_code
-            }
+            return {"success": True, "message_id": message_id, "status_code": response.status_code}
 
         except Exception as e:
             logger.error(
@@ -191,9 +193,9 @@ class SendGridEmailService(BaseService, EmailService):
                 to_email=to_email,
                 subject=subject,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
-            raise EmailServiceError(f"SendGrid email sending failed: {str(e)}") from e
+            raise EmailServiceError(f"SendGrid email sending failed: {e!s}") from e
 
 
 class SESEmailService(BaseService, EmailService):
@@ -205,38 +207,40 @@ class SESEmailService(BaseService, EmailService):
 
     service_name = "ses_email_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """Initialize SESEmailService with BaseService support."""
         # Set BaseService attributes
         self.tenant_id = tenant_id
         self.user_id = user_id
         if not BOTO3_AVAILABLE:
             raise EmailServiceError("boto3 package not installed. Install with: pip install boto3")
-        region = getattr(settings, 'AWS_SES_REGION', None)
+        region = getattr(settings, "AWS_SES_REGION", None)
         if not region:
             raise EmailServiceError("AWS_SES_REGION not configured in settings")
 
         # Use boto3 session with credentials from settings or environment
         self.client = boto3.client(
-            'ses',
+            "ses",
             region_name=region,
-            aws_access_key_id=getattr(settings, 'AWS_ACCESS_KEY_ID', None),
-            aws_secret_access_key=getattr(settings, 'AWS_SECRET_ACCESS_KEY', None)
+            aws_access_key_id=getattr(settings, "AWS_ACCESS_KEY_ID", None),
+            aws_secret_access_key=getattr(settings, "AWS_SECRET_ACCESS_KEY", None),
         )
-        self.from_email = getattr(settings, 'AWS_SES_FROM_EMAIL', None)
-        self.from_name = getattr(settings, 'AWS_SES_FROM_NAME', getattr(settings, 'APP_NAME', 'Meshant'))
+        self.from_email = getattr(settings, "AWS_SES_FROM_EMAIL", None)
+        self.from_name = getattr(
+            settings, "AWS_SES_FROM_NAME", getattr(settings, "APP_NAME", "Meshant")
+        )
 
     def send_email(
         self,
         to_email: str,
         subject: str,
         html_content: str,
-        text_content: Optional[str] = None,
-        from_email: Optional[str] = None,
-        from_name: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        attachments: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        text_content: str | None = None,
+        from_email: str | None = None,
+        from_name: str | None = None,
+        reply_to: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Send email via AWS SES"""
         try:
             # Use configured from_email or provided one
@@ -252,43 +256,23 @@ class SESEmailService(BaseService, EmailService):
                 from_addr = sender_email
 
             # Build message body
-            message_body = {
-                'Html': {
-                    'Data': html_content,
-                    'Charset': 'UTF-8'
-                }
-            }
+            message_body = {"Html": {"Data": html_content, "Charset": "UTF-8"}}
 
             if text_content:
-                message_body['Text'] = {
-                    'Data': text_content,
-                    'Charset': 'UTF-8'
-                }
+                message_body["Text"] = {"Data": text_content, "Charset": "UTF-8"}
 
             # Build destination
-            destination = {
-                'ToAddresses': [to_email]
-            }
+            destination = {"ToAddresses": [to_email]}
 
             # Build message
-            message = {
-                'Subject': {
-                    'Data': subject,
-                    'Charset': 'UTF-8'
-                },
-                'Body': message_body
-            }
+            message = {"Subject": {"Data": subject, "Charset": "UTF-8"}, "Body": message_body}
 
             # Build send email parameters
-            send_params = {
-                'Source': from_addr,
-                'Destination': destination,
-                'Message': message
-            }
+            send_params = {"Source": from_addr, "Destination": destination, "Message": message}
 
             # Add reply-to if provided
             if reply_to:
-                send_params['ReplyToAddresses'] = [reply_to]
+                send_params["ReplyToAddresses"] = [reply_to]
 
             # Note: SES doesn't support attachments in the same way as SendGrid
             # Attachments would need to be handled via SES Raw Email API or S3
@@ -297,47 +281,41 @@ class SESEmailService(BaseService, EmailService):
                     "email_attachments_not_supported_ses",
                     to_email=to_email,
                     subject=subject,
-                    message="SES send_email API doesn't support attachments directly"
+                    message="SES send_email API doesn't support attachments directly",
                 )
 
             # Send email
             response = self.client.send_email(**send_params)
 
-            message_id = response.get('MessageId')
+            message_id = response.get("MessageId")
 
-            logger.info(
-                "email_sent_ses",
-                to_email=to_email,
-                subject=subject,
-                message_id=message_id
-            )
+            logger.info("email_sent_ses", to_email=to_email, subject=subject, message_id=message_id)
 
-            return {
-                'success': True,
-                'message_id': message_id
-            }
+            return {"success": True, "message_id": message_id}
 
         except ClientError as e:
-            error_code = e.response['Error']['Code']
-            error_message = e.response['Error']['Message']
+            error_code = e.response["Error"]["Code"]
+            error_message = e.response["Error"]["Message"]
             logger.error(
                 "email_send_failed_ses",
                 to_email=to_email,
                 subject=subject,
                 error_code=error_code,
                 error_message=error_message,
-                exc_info=True
+                exc_info=True,
             )
-            raise EmailServiceError(f"AWS SES email sending failed: {error_code} - {error_message}") from e
+            raise EmailServiceError(
+                f"AWS SES email sending failed: {error_code} - {error_message}"
+            ) from e
         except Exception as e:
             logger.error(
                 "email_send_failed_ses",
                 to_email=to_email,
                 subject=subject,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
-            raise EmailServiceError(f"AWS SES email sending failed: {str(e)}") from e
+            raise EmailServiceError(f"AWS SES email sending failed: {e!s}") from e
 
 
 class SMTPEmailService(BaseService, EmailService):
@@ -349,40 +327,47 @@ class SMTPEmailService(BaseService, EmailService):
 
     service_name = "smtp_email_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """Initialize SMTPEmailService with BaseService support."""
         # Set BaseService attributes
         self.tenant_id = tenant_id
         self.user_id = user_id
-        self.host = getattr(settings, 'SMTP_HOST', 'localhost')
-        self.port = getattr(settings, 'SMTP_PORT', 587)
-        self.username = getattr(settings, 'SMTP_USERNAME', None)
-        self.password = getattr(settings, 'SMTP_PASSWORD', None)
-        self.use_tls = getattr(settings, 'SMTP_USE_TLS', True)
-        self.use_ssl = getattr(settings, 'SMTP_USE_SSL', False)
-        self.from_email = getattr(settings, 'SMTP_FROM_EMAIL', None)
-        self.from_name = getattr(settings, 'SMTP_FROM_NAME', getattr(settings, 'APP_NAME', 'Meshant'))
+        self.host = getattr(settings, "SMTP_HOST", "localhost")
+        self.port = getattr(settings, "SMTP_PORT", 587)
+        self.username = getattr(settings, "SMTP_USERNAME", None)
+        self.password = getattr(settings, "SMTP_PASSWORD", None)
+        self.use_tls = getattr(settings, "SMTP_USE_TLS", True)
+        self.use_ssl = getattr(settings, "SMTP_USE_SSL", False)
+        self.from_email = getattr(settings, "SMTP_FROM_EMAIL", None)
+        self.from_name = getattr(
+            settings, "SMTP_FROM_NAME", getattr(settings, "APP_NAME", "Meshant")
+        )
 
     def _get_connection(self):
         """Get SMTP connection — uses locmem.EmailBackend in test runs."""
-        import sys as _sys
         import os as _os
+        import sys as _sys
+
         _in_test = (
             "test" in _sys.argv
             or bool(_os.environ.get("TEST_DB_SUFFIX"))
             or "PYTEST_VERSION" in _os.environ
         )
-        if _in_test:
-            return get_connection(backend='django.core.mail.backends.locmem.EmailBackend')
+        # E2E_ENABLE_SMTP allows E2E tests to deliver real emails to MailHog
+        # even when TEST_DB_SUFFIX is set.  Without this escape hatch, the
+        # password reset E2E test always skips because locmem keeps emails
+        # in-memory where MailHog can't see them.
+        if _in_test and not _os.environ.get("E2E_ENABLE_SMTP"):
+            return get_connection(backend="django.core.mail.backends.locmem.EmailBackend")
         return get_connection(
-            backend='django.core.mail.backends.smtp.EmailBackend',
+            backend="django.core.mail.backends.smtp.EmailBackend",
             host=self.host,
             port=self.port,
             username=self.username,
             password=self.password,
             use_tls=self.use_tls,
             use_ssl=self.use_ssl,
-            fail_silently=False
+            fail_silently=False,
         )
 
     def send_email(
@@ -390,12 +375,12 @@ class SMTPEmailService(BaseService, EmailService):
         to_email: str,
         subject: str,
         html_content: str,
-        text_content: Optional[str] = None,
-        from_email: Optional[str] = None,
-        from_name: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        attachments: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        text_content: str | None = None,
+        from_email: str | None = None,
+        from_name: str | None = None,
+        reply_to: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Send email via SMTP"""
         try:
             # Use configured from_email or provided one
@@ -416,11 +401,11 @@ class SMTPEmailService(BaseService, EmailService):
                 body=text_content or html_content,  # Use text as primary, fallback to HTML
                 from_email=from_addr,
                 to=[to_email],
-                connection=self._get_connection()
+                connection=self._get_connection(),
             )
 
             # Attach HTML alternative
-            email.attach_alternative(html_content, 'text/html')
+            email.attach_alternative(html_content, "text/html")
 
             # Add reply-to if provided
             if reply_to:
@@ -430,9 +415,9 @@ class SMTPEmailService(BaseService, EmailService):
             if attachments:
                 for attachment in attachments:
                     email.attach(
-                        filename=attachment['filename'],
-                        content=attachment['content'],
-                        mimetype=attachment.get('content_type', 'application/octet-stream')
+                        filename=attachment["filename"],
+                        content=attachment["content"],
+                        mimetype=attachment.get("content_type", "application/octet-stream"),
                     )
 
             # Send email
@@ -446,12 +431,12 @@ class SMTPEmailService(BaseService, EmailService):
                 to_email=to_email,
                 subject=subject,
                 success=success,
-                result=result
+                result=result,
             )
 
             return {
-                'success': success,
-                'message_id': None  # SMTP doesn't provide message IDs
+                "success": success,
+                "message_id": None,  # SMTP doesn't provide message IDs
             }
 
         except Exception as e:
@@ -460,9 +445,9 @@ class SMTPEmailService(BaseService, EmailService):
                 to_email=to_email,
                 subject=subject,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
-            raise EmailServiceError(f"SMTP email sending failed: {str(e)}") from e
+            raise EmailServiceError(f"SMTP email sending failed: {e!s}") from e
 
 
 def get_email_service() -> EmailService:
@@ -480,37 +465,38 @@ def get_email_service() -> EmailService:
     # ``EMAIL_BACKEND`` setting).  Fall back to EMAIL_BACKEND for older
     # deployments that haven't been updated yet.
     backend = (
-        getattr(settings, 'NOTIFICATION_EMAIL_BACKEND', None)
-        or getattr(settings, 'EMAIL_PROVIDER', None)
-        or getattr(settings, 'EMAIL_BACKEND', None)
+        getattr(settings, "NOTIFICATION_EMAIL_BACKEND", None)
+        or getattr(settings, "EMAIL_PROVIDER", None)
+        or getattr(settings, "EMAIL_BACKEND", None)
     )
 
     if not backend:
         raise EmailServiceError("EMAIL_PROVIDER not configured in settings")
 
     # Handle simple string backends (sendgrid, ses, smtp)
-    if backend == 'sendgrid':
+    if backend == "sendgrid":
         return SendGridEmailService()
-    elif backend == 'ses':
+    elif backend == "ses":
         return SESEmailService()
-    elif backend == 'smtp':
+    elif backend == "smtp":
         return SMTPEmailService()
 
     # Handle Django's standard email backend class paths
     # For test environments using locmem or console backends, use SMTP service
     # which will handle the error gracefully in test environments
     if isinstance(backend, str):
-        if 'locmem' in backend.lower() or 'console' in backend.lower():
+        if "locmem" in backend.lower() or "console" in backend.lower():
             # In test environments, use SMTP service which will fail gracefully
             # Tests verify that delivery records are created even when email sending fails
             logger.warning(
                 "email_backend_test_mode",
                 backend=backend,
-                message="Using SMTP service for test backend (locmem/console)"
+                message="Using SMTP service for test backend (locmem/console)",
             )
             return SMTPEmailService()
-        elif 'smtp' in backend.lower():
+        elif "smtp" in backend.lower():
             return SMTPEmailService()
 
-    raise EmailServiceError(f"Invalid EMAIL_BACKEND: {backend}. Must be 'sendgrid', 'ses', or 'smtp'")
-
+    raise EmailServiceError(
+        f"Invalid EMAIL_BACKEND: {backend}. Must be 'sendgrid', 'ses', or 'smtp'"
+    )

@@ -3,15 +3,14 @@ Impact Notifications
 
 Sends notifications for high-impact changes via email and optional Slack integration.
 """
-from typing import Dict, List, Any, Optional
+
+from typing import Any
+
+import structlog
+from django.conf import settings
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
-from django.conf import settings
 from django.utils import timezone
-import structlog
-
-from .impact_analysis import ImpactAnalyzer, ImpactScorer
-from .impact_visualization import ImpactVisualizer
 
 logger = structlog.get_logger(__name__)
 
@@ -23,16 +22,16 @@ class ImpactNotifier:
 
     # Severity thresholds for notifications
     NOTIFY_CRITICAL = True  # Always notify for CRITICAL
-    NOTIFY_HIGH = True      # Always notify for HIGH
-    NOTIFY_MEDIUM = False   # Optional notification for MEDIUM
-    NOTIFY_LOW = False      # Don't notify for LOW
+    NOTIFY_HIGH = True  # Always notify for HIGH
+    NOTIFY_MEDIUM = False  # Optional notification for MEDIUM
+    NOTIFY_LOW = False  # Don't notify for LOW
 
     @staticmethod
     def send_impact_notification(
-        impact_result: Dict[str, Any],
-        recipients: List[str],
-        change_description: Optional[str] = None,
-        change_type: str = "UPDATE"
+        impact_result: dict[str, Any],
+        recipients: list[str],
+        change_description: str | None = None,
+        change_type: str = "UPDATE",
     ) -> bool:
         """
         Send email notification for high-impact changes.
@@ -54,10 +53,7 @@ class ImpactNotifier:
 
         # Check if notification is needed
         if not ImpactNotifier._should_notify(severity_dist):
-            logger.info(
-                "Impact notification not needed",
-                severity_distribution=severity_dist
-            )
+            logger.info("Impact notification not needed", severity_distribution=severity_dist)
             return False
 
         try:
@@ -77,15 +73,12 @@ class ImpactNotifier:
                 "change_type": change_type,
                 "max_severity": max_severity,
                 "total_affected": impact_result.get("total_affected", 0),
-                "severity_distribution": severity_dist
+                "severity_distribution": severity_dist,
             }
 
             # Try to render HTML template
             try:
-                html_message = render_to_string(
-                    'contracts/impact_notification_email.html',
-                    context
-                )
+                html_message = render_to_string("contracts/impact_notification_email.html", context)
             except Exception:
                 html_message = None
 
@@ -94,21 +87,21 @@ class ImpactNotifier:
 Impact Analysis Alert: {max_severity} Impact Detected
 
 Source Contract: {contract_name}
-Contract ID: {source.get('contract_id')}
-Model: {source.get('model_name', 'N/A')}
-Field: {source.get('field_name', 'N/A')}
+Contract ID: {source.get("contract_id")}
+Model: {source.get("model_name", "N/A")}
+Field: {source.get("field_name", "N/A")}
 
 Change Type: {change_type}
-Change Description: {change_description or 'N/A'}
+Change Description: {change_description or "N/A"}
 
 Impact Summary:
-- Total Affected Resources: {impact_result.get('total_affected', 0)}
-- Critical: {severity_dist.get('CRITICAL', 0)}
-- High: {severity_dist.get('HIGH', 0)}
-- Medium: {severity_dist.get('MEDIUM', 0)}
-- Low: {severity_dist.get('LOW', 0)}
-- Max Impact Score: {summary.get('max_impact_score', 0.0):.2f}
-- Average Impact Score: {summary.get('avg_impact_score', 0.0):.2f}
+- Total Affected Resources: {impact_result.get("total_affected", 0)}
+- Critical: {severity_dist.get("CRITICAL", 0)}
+- High: {severity_dist.get("HIGH", 0)}
+- Medium: {severity_dist.get("MEDIUM", 0)}
+- Low: {severity_dist.get("LOW", 0)}
+- Max Impact Score: {summary.get("max_impact_score", 0.0):.2f}
+- Average Impact Score: {summary.get("avg_impact_score", 0.0):.2f}
 
 Please review the impact analysis to understand affected resources.
 
@@ -122,28 +115,24 @@ Generated at: {timezone.now()}
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=recipients,
                 html_message=html_message,
-                fail_silently=False
+                fail_silently=False,
             )
 
             logger.info(
                 "Impact notification sent",
                 recipients=recipients,
                 max_severity=max_severity,
-                total_affected=impact_result.get("total_affected", 0)
+                total_affected=impact_result.get("total_affected", 0),
             )
 
             return True
 
         except Exception as e:
-            logger.error(
-                "Failed to send impact notification",
-                error=str(e),
-                recipients=recipients
-            )
+            logger.error("Failed to send impact notification", error=str(e), recipients=recipients)
             return False
 
     @staticmethod
-    def _should_notify(severity_distribution: Dict[str, int]) -> bool:
+    def _should_notify(severity_distribution: dict[str, int]) -> bool:
         """Check if notification should be sent based on severity distribution"""
         if ImpactNotifier.NOTIFY_CRITICAL and severity_distribution.get("CRITICAL", 0) > 0:
             return True
@@ -154,7 +143,7 @@ Generated at: {timezone.now()}
         return False
 
     @staticmethod
-    def _get_max_severity(severity_distribution: Dict[str, int]) -> str:
+    def _get_max_severity(severity_distribution: dict[str, int]) -> str:
         """Get maximum severity from distribution"""
         if severity_distribution.get("CRITICAL", 0) > 0:
             return "CRITICAL"
@@ -167,9 +156,7 @@ Generated at: {timezone.now()}
 
     @staticmethod
     def send_slack_notification(
-        impact_result: Dict[str, Any],
-        webhook_url: str,
-        change_description: Optional[str] = None
+        impact_result: dict[str, Any], webhook_url: str, change_description: str | None = None
     ) -> bool:
         """
         Send Slack notification for high-impact changes (optional).
@@ -183,8 +170,6 @@ Generated at: {timezone.now()}
             True if notification sent successfully
         """
         try:
-            import requests
-
             summary = impact_result.get("summary", {})
             severity_dist = summary.get("severity_distribution", {})
 
@@ -199,7 +184,7 @@ Generated at: {timezone.now()}
                 "CRITICAL": "#FF0000",
                 "HIGH": "#FF8800",
                 "MEDIUM": "#FFAA00",
-                "LOW": "#00AA00"
+                "LOW": "#00AA00",
             }
 
             payload = {
@@ -211,27 +196,27 @@ Generated at: {timezone.now()}
                             {
                                 "title": "Source Contract",
                                 "value": source.get("contract_name", "Unknown"),
-                                "short": True
+                                "short": True,
                             },
                             {
                                 "title": "Total Affected",
                                 "value": str(impact_result.get("total_affected", 0)),
-                                "short": True
+                                "short": True,
                             },
                             {
                                 "title": "Critical",
                                 "value": str(severity_dist.get("CRITICAL", 0)),
-                                "short": True
+                                "short": True,
                             },
                             {
                                 "title": "High",
                                 "value": str(severity_dist.get("HIGH", 0)),
-                                "short": True
-                            }
+                                "short": True,
+                            },
                         ],
                         "text": change_description or "High-impact change detected",
                         "footer": getattr(settings, "APP_NAME", "Meshant"),
-                        "ts": int(timezone.now().timestamp())
+                        "ts": int(timezone.now().timestamp()),
                     }
                 ]
             }
@@ -241,8 +226,7 @@ Generated at: {timezone.now()}
 
             webhook_client = WebhookDeliveryClient(timeout=10)
             status_code, response_text = webhook_client.deliver_webhook(
-                url=webhook_url,
-                payload=payload
+                url=webhook_url, payload=payload
             )
 
             # Check if successful (2xx status codes)
@@ -250,21 +234,17 @@ Generated at: {timezone.now()}
                 logger.info(
                     "Slack impact notification sent",
                     max_severity=max_severity,
-                    total_affected=impact_result.get("total_affected", 0)
+                    total_affected=impact_result.get("total_affected", 0),
                 )
                 return True
             else:
                 logger.error(
                     "Failed to send Slack impact notification",
                     status_code=status_code,
-                    response=response_text[:200]
+                    response=response_text[:200],
                 )
                 return False
 
         except Exception as e:
-            logger.error(
-                "Failed to send Slack impact notification",
-                error=str(e)
-            )
+            logger.error("Failed to send Slack impact notification", error=str(e))
             return False
-

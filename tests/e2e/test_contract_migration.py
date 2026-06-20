@@ -12,11 +12,10 @@ Uses REAL services (no mocks).
 """
 
 import pytest
-from django.test import TestCase
 from rest_framework import status
 
 from hub.apps.contracts.migration import MigrationStrategy
-from hub.apps.contracts.models import Contract, ContractStatus, NormalizationStatus
+from hub.apps.contracts.models import Contract, NormalizationStatus
 from hub.apps.jobs.models import Job, JobStatus, JobType
 
 from .conftest import E2ETestBase, get_response_data
@@ -78,7 +77,9 @@ class ContractMigrationE2ETest(E2ETestBase):
         self.prepare_contract_for_activation(contract_id)
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
-        self.assertIsNotNone(contract.hub_contract_json, "Contract should have hub_contract_json after preparation")
+        self.assertIsNotNone(
+            contract.hub_contract_json, "Contract should have hub_contract_json after preparation"
+        )
 
         # Trigger ON_READ migration via migrate endpoint
         response = self.client.post(
@@ -103,7 +104,7 @@ class ContractMigrationE2ETest(E2ETestBase):
             status.HTTP_404_NOT_FOUND,
             status.HTTP_500_INTERNAL_SERVER_ERROR,
         ]:
-            pytest.skip(f"Migrate endpoint not available or service error: {response.status_code}")
+            pytest.skip(f"Migrate endpoint not available or service error: {response.status_code}")  # noqa: skip-in-body — runtime service dependency
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Response should contain contract data
@@ -125,7 +126,9 @@ class ContractMigrationE2ETest(E2ETestBase):
         self.prepare_contract_for_activation(contract_id)
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
-        self.assertIsNotNone(contract.hub_contract_json, "Contract should have hub_contract_json after preparation")
+        self.assertIsNotNone(
+            contract.hub_contract_json, "Contract should have hub_contract_json after preparation"
+        )
 
         # Trigger BACKGROUND migration
         response = self.client.post(
@@ -154,7 +157,7 @@ class ContractMigrationE2ETest(E2ETestBase):
             status.HTTP_404_NOT_FOUND,
             status.HTTP_500_INTERNAL_SERVER_ERROR,
         ]:
-            pytest.skip(f"Migrate endpoint not available or service error: {response.status_code}")
+            pytest.skip(f"Migrate endpoint not available or service error: {response.status_code}")  # noqa: skip-in-body — runtime service dependency
         else:
             self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
             self.assertIn("job", response.data)
@@ -215,14 +218,20 @@ class ContractMigrationE2ETest(E2ETestBase):
             # Migration succeeded despite version
             pass
         else:
-            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST,
-                f"Version conflict should return 400, got {response.status_code}")
+            self.assertEqual(
+                response.status_code,
+                status.HTTP_400_BAD_REQUEST,
+                f"Version conflict should return 400, got {response.status_code}",
+            )
             error_data = get_response_data(response) or {}
             error_msg = str(error_data).lower()
             self.assertTrue(
-                'version' in error_msg or 'conflict' in error_msg
-                or 'migration' in error_msg or 'not supported' in error_msg,
-                f"Error should mention version/conflict/migration issue, got: {error_data}")
+                "version" in error_msg
+                or "conflict" in error_msg
+                or "migration" in error_msg
+                or "not supported" in error_msg,
+                f"Error should mention version/conflict/migration issue, got: {error_data}",
+            )
 
     def test_migration_does_not_corrupt_original_contract(self):
         """Verify that migration preserves the original contract data (original_raw unchanged)"""
@@ -278,12 +287,18 @@ class ContractMigrationE2ETest(E2ETestBase):
         if response.status_code == status.HTTP_200_OK:
             data = get_response_data(response) or {}
             # Contract was normalized despite extra fields — verify it flagged this
-            migration_details = data.get('migration_details', {})
-            self.assertIn('already at target version', str(migration_details).lower() + str(data.get('migration_applied', '')).lower(),
-                f"Migration of 'invalid' contract should indicate no migration needed, got: {migration_details}")
+            migration_details = data.get("migration_details", {})
+            self.assertIn(
+                "already at target version",
+                str(migration_details).lower() + str(data.get("migration_applied", "")).lower(),
+                f"Migration of 'invalid' contract should indicate no migration needed, got: {migration_details}",
+            )
         else:
-            self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY],
-                f"Invalid contract migration should fail with 400/422, got {response.status_code}")
+            self.assertIn(
+                response.status_code,
+                [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY],
+                f"Invalid contract migration should fail with 400/422, got {response.status_code}",
+            )
 
     def test_migration_strategy_default(self):
         """Test default migration strategy (ON_WRITE)"""
@@ -297,7 +312,9 @@ class ContractMigrationE2ETest(E2ETestBase):
         self.prepare_contract_for_activation(contract_id)
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
-        self.assertIsNotNone(contract.hub_contract_json, "Contract should have hub_contract_json after preparation")
+        self.assertIsNotNone(
+            contract.hub_contract_json, "Contract should have hub_contract_json after preparation"
+        )
 
         # Migrate without specifying strategy (should default to ON_WRITE)
         response = self.client.post(f"/api/v1/contracts/{contract_id}/migrate/", {}, format="json")
@@ -318,7 +335,7 @@ class ContractMigrationE2ETest(E2ETestBase):
             status.HTTP_404_NOT_FOUND,
             status.HTTP_500_INTERNAL_SERVER_ERROR,
         ]:
-            pytest.skip(f"Migrate endpoint not available or service error: {response.status_code}")
+            pytest.skip(f"Migrate endpoint not available or service error: {response.status_code}")  # noqa: skip-in-body — runtime service dependency
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should use ON_WRITE strategy by default
@@ -357,7 +374,9 @@ class ContractMigrationE2ETest(E2ETestBase):
         # Ensure contract is normalized
         self.prepare_contract_for_activation(contract_id)
         contract.refresh_from_db()
-        self.assertIsNotNone(contract.hub_contract_json, "Contract should have hub_contract_json after preparation")
+        self.assertIsNotNone(
+            contract.hub_contract_json, "Contract should have hub_contract_json after preparation"
+        )
 
         # Migrate contract
         response = self.client.post(
@@ -381,7 +400,7 @@ class ContractMigrationE2ETest(E2ETestBase):
             status.HTTP_404_NOT_FOUND,
             status.HTTP_500_INTERNAL_SERVER_ERROR,
         ]:
-            pytest.skip(f"Migrate endpoint not available or service error: {response.status_code}")
+            pytest.skip(f"Migrate endpoint not available or service error: {response.status_code}")  # noqa: skip-in-body — runtime service dependency
         else:
             self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -407,7 +426,9 @@ class ContractMigrationE2ETest(E2ETestBase):
         self.prepare_contract_for_activation(contract_id)
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
-        self.assertIsNotNone(contract.hub_contract_json, "Contract should have hub_contract_json after preparation")
+        self.assertIsNotNone(
+            contract.hub_contract_json, "Contract should have hub_contract_json after preparation"
+        )
 
         # Migrate contract
         response = self.client.post(
@@ -431,7 +452,7 @@ class ContractMigrationE2ETest(E2ETestBase):
             status.HTTP_404_NOT_FOUND,
             status.HTTP_500_INTERNAL_SERVER_ERROR,
         ]:
-            pytest.skip(f"Migrate endpoint not available or service error: {response.status_code}")
+            pytest.skip(f"Migrate endpoint not available or service error: {response.status_code}")  # noqa: skip-in-body — runtime service dependency
         else:
             # 200 OK means migration succeeded or wasn't needed (already at target version)
             self.assertEqual(response.status_code, status.HTTP_200_OK)

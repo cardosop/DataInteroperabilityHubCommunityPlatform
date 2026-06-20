@@ -13,30 +13,23 @@ Tests cover main flows, alternate flows, and edge cases.
 """
 
 import json
-import time
 import uuid
 
 import pytest
-from django.test import TestCase
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
+from hub.apps.contracts.models import Contract, OriginalSpecType
 from hub.apps.contracts.services import ContractService, ODPSService
 from hub.apps.datasets.models import Dataset
-from hub.apps.files.models import File, FileStatus
 from hub.apps.marketplace.models import (
-    Entitlement,
     EntitlementStatus,
     Listing,
     ListingStatus,
-    Order,
     OrderStatus,
     PricingModel,
 )
-from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
@@ -142,7 +135,13 @@ class UC_AM_001_Enhanced_DataFirstFlowWithODPSTest(E2ETestBase):
                         "description": "Product created via data-first flow",
                     }
                 },
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}, {"name": "value", "type": "number"}]},
+                "dataSchema": {
+                    "fields": [
+                        {"name": "id", "type": "string"},
+                        {"name": "name", "type": "string"},
+                        {"name": "value", "type": "number"},
+                    ]
+                },
                 "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
                 "marketplace": {
                     "pricingPlans": [
@@ -421,7 +420,9 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
                         "description": "Product created via technical-first flow",
                     }
                 },
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
+                "dataSchema": {
+                    "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+                },
                 "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
                 "marketplace": {
                     "pricingPlans": [
@@ -551,7 +552,9 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
                         "name": "Existing ODPS Product",
                     }
                 },
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
+                "dataSchema": {
+                    "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+                },
                 "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
             },
         }
@@ -565,7 +568,7 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
         )
 
         # Link first time
-        linked_odps = self.odps_service.link_odps_to_odcs(
+        self.odps_service.link_odps_to_odcs(
             odcs_contract_id=str(contract_id),
             odps_contract_id=str(odps_contract.id),
             tenant_id=str(self.tenant.id),
@@ -662,7 +665,9 @@ class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
                         "description": "Product with marketplace configuration",
                     }
                 },
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
+                "dataSchema": {
+                    "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+                },
                 "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
                 "marketplace": {
                     "pricingPlans": [
@@ -898,7 +903,9 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
 
         # Provider tenant (seller)
         self.provider_tenant = Tenant.objects.create(
-            name=f"Provider Tenant {uuid.uuid4().hex[:8]}", slug=f"provider-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         ensure_tenant_has_active_subscription(self.provider_tenant)
         self.provider_user = User.objects.create_user(
@@ -923,7 +930,9 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
 
         # Consumer tenant (buyer)
         self.consumer_tenant = Tenant.objects.create(
-            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}", slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         ensure_tenant_has_active_subscription(self.consumer_tenant)
         self.consumer_user = User.objects.create_user(
@@ -983,7 +992,9 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
                         "description": "Product with ODPS details",
                     }
                 },
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
+                "dataSchema": {
+                    "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+                },
                 "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
                 "marketplace": {
                     "pricingPlans": [
@@ -1303,7 +1314,12 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
                             "description": f"Product {i} for discovery test",
                         }
                     },
-                    "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
+                    "dataSchema": {
+                        "fields": [
+                            {"name": "id", "type": "string"},
+                            {"name": "name", "type": "string"},
+                        ]
+                    },
                     "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
                     "marketplace": {
                         "pricingPlans": [
@@ -1498,7 +1514,9 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
                         "description": "Produkt med flerspråkiga detaljer",
                     },
                 },
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
+                "dataSchema": {
+                    "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+                },
                 "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
             },
         }

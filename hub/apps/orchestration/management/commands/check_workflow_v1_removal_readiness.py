@@ -56,6 +56,7 @@ This command is a READ-ONLY check — it makes no DB writes; safe to run
 on production at any time. SRE runs it daily during the soak; the
 removal PR's CI gate runs it once at merge time.
 """
+
 from __future__ import annotations
 
 import json
@@ -65,7 +66,6 @@ from django.core.management.base import BaseCommand
 
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.versioning import WorkflowVersionManager
-
 
 # Non-terminal statuses — instances in any of these states are "still
 # alive" and would be affected by handler removal. The terminal statuses
@@ -138,21 +138,22 @@ class Command(BaseCommand):
         # capture up to 10 example instance ids for the report.
         per_tenant: dict[str, int] = {}
         examples: list[dict] = []
-        for instance in inflight_qs.values(
-            "id", "tenant_id", "status", "started_at"
-        )[:50]:  # cap query result for performance
+        for instance in inflight_qs.values("id", "tenant_id", "status", "started_at")[
+            :50
+        ]:  # cap query result for performance
             tenant_id = str(instance.get("tenant_id") or "(none)")
             per_tenant[tenant_id] = per_tenant.get(tenant_id, 0) + 1
             if len(examples) < 10:
-                examples.append({
-                    "instance_id": str(instance["id"]),
-                    "tenant_id": tenant_id,
-                    "status": instance["status"],
-                    "started_at": (
-                        instance["started_at"].isoformat()
-                        if instance["started_at"] else None
-                    ),
-                })
+                examples.append(
+                    {
+                        "instance_id": str(instance["id"]),
+                        "tenant_id": tenant_id,
+                        "status": instance["status"],
+                        "started_at": (
+                            instance["started_at"].isoformat() if instance["started_at"] else None
+                        ),
+                    }
+                )
 
         # ── Check 2: soak window elapsed ───────────────────────────
         # `is_version_eligible_for_inflight` returns True when the
@@ -164,7 +165,7 @@ class Command(BaseCommand):
                 version=version,
                 soak_days=soak_days,
             )
-        except Exception as exc:  # noqa: BLE001 — boundary
+        except Exception as exc:
             verdict = {
                 "ready": False,
                 "exit_code": _EXIT_DATA_ERROR,
@@ -218,19 +219,13 @@ class Command(BaseCommand):
         # Human-readable.
         ready = verdict["ready"]
         marker = "✓ READY" if ready else "✗ NOT READY"
-        self.stdout.write(
-            f"\n{marker} — Phase 250.1.C.3 v1 handler removal readiness check\n"
-        )
+        self.stdout.write(f"\n{marker} — Phase 250.1.C.3 v1 handler removal readiness check\n")
         self.stdout.write(f"  workflow:      {verdict['workflow']}\n")
         self.stdout.write(f"  version:       {verdict['version']}\n")
         self.stdout.write(f"  soak_days:     {verdict['soak_days']}\n")
         self.stdout.write(f"  reason:        {verdict['reason']}\n")
-        self.stdout.write(
-            f"  inflight runs: {verdict.get('inflight_count', '?')}\n"
-        )
-        self.stdout.write(
-            f"  soak elapsed:  {verdict.get('soak_elapsed', '?')}\n"
-        )
+        self.stdout.write(f"  inflight runs: {verdict.get('inflight_count', '?')}\n")
+        self.stdout.write(f"  soak elapsed:  {verdict.get('soak_elapsed', '?')}\n")
         if verdict.get("per_tenant_breakdown"):
             self.stdout.write("\n  Per-tenant breakdown:\n")
             for tenant_id, count in sorted(

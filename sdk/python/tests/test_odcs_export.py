@@ -15,25 +15,23 @@ To run these tests:
 2. Set API key: export TEST_API_KEY=your-api-key
 3. Run: pytest tests/test_odcs_export.py -v
 """
+
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
 pytestmark = skip_if_mvp_mode
 
 import os
-import pytest
-import json
 import uuid
-from typing import Optional
+
+import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
-    ODCSValidationError,
-    ODCSExportError,
     NotFoundError,
-    NetworkError,
+    ODCSValidationError,
 )
+from tests.conftest import default_api_base_url, get_api_key, is_api_available
 from tests.helpers.odcs_helpers import create_odcs_contract_via_api
-
-from tests.conftest import is_api_available, get_api_key, default_api_base_url
 
 
 @pytest.fixture
@@ -49,15 +47,9 @@ def real_api_config():
             "or ensure Docker Compose api-service is accessible."
         )
 
-    api_base_url = os.environ.get(
-        "API_BASE_URL",
-        f"{default_api_base_url()}/api/v1"
-    )
+    api_base_url = os.environ.get("API_BASE_URL", f"{default_api_base_url()}/api/v1")
 
-    return DataHubClientConfig(
-        base_url=api_base_url,
-        api_token=api_key
-    )
+    return DataHubClientConfig(base_url=api_base_url, api_token=api_key)
 
 
 @pytest.fixture
@@ -99,16 +91,22 @@ class TestODCSExportSDK:
             assert isinstance(result, dict), f"Result should be a dict for version {version}"
             # Verify version is reflected in the result (if API supports it)
             if "apiVersion" in result:
-                assert version in result["apiVersion"] or "odcs.io" in result["apiVersion"], \
+                assert version in result["apiVersion"] or "odcs.io" in result["apiVersion"], (
                     f"Version {version} should be in apiVersion for version {version}"
+                )
         finally:
             # Cleanup: try to delete the contract
             try:
                 import requests
+
                 requests.delete(
                     f"{api_base_url}/contracts/{contract_id}/",
-                    headers={"Authorization": f"Bearer {api_key}" if "." in api_key else f"ApiKey {api_key}"},
-                    timeout=5
+                    headers={
+                        "Authorization": f"Bearer {api_key}"
+                        if "." in api_key
+                        else f"ApiKey {api_key}"
+                    },
+                    timeout=5,
                 )
             except requests.RequestException:
                 pass  # cleanup best-effort — ignore network errors
@@ -145,10 +143,15 @@ class TestODCSExportSDK:
             # Cleanup: try to delete the contract
             try:
                 import requests
+
                 requests.delete(
                     f"{api_base_url}/contracts/{contract_id}/",
-                    headers={"Authorization": f"Bearer {api_key}" if "." in api_key else f"ApiKey {api_key}"},
-                    timeout=5
+                    headers={
+                        "Authorization": f"Bearer {api_key}"
+                        if "." in api_key
+                        else f"ApiKey {api_key}"
+                    },
+                    timeout=5,
                 )
             except requests.RequestException:
                 pass  # cleanup best-effort — ignore network errors
@@ -179,16 +182,24 @@ class TestODCSExportSDK:
             # Both should contain the same contract data (just different formats)
             # Verify both have contract identifiers
             json_has_id = "id" in json_result or "apiVersion" in json_result
-            yaml_has_id = "id" in yaml_result.get("content", "").lower() or "apiversion" in yaml_result.get("content", "").lower()
+            yaml_has_id = (
+                "id" in yaml_result.get("content", "").lower()
+                or "apiversion" in yaml_result.get("content", "").lower()
+            )
             assert json_has_id or yaml_has_id, "Both formats should contain contract identifiers"
         finally:
             # Cleanup: try to delete the contract
             try:
                 import requests
+
                 requests.delete(
                     f"{api_base_url}/contracts/{contract_id}/",
-                    headers={"Authorization": f"Bearer {api_key}" if "." in api_key else f"ApiKey {api_key}"},
-                    timeout=5
+                    headers={
+                        "Authorization": f"Bearer {api_key}"
+                        if "." in api_key
+                        else f"ApiKey {api_key}"
+                    },
+                    timeout=5,
                 )
             except requests.RequestException:
                 pass  # cleanup best-effort — ignore network errors
@@ -210,15 +221,23 @@ class TestODCSExportSDK:
                 await contracts_api.export_odcs(contract_id, version="99.99.99", format="json")
 
             assert exc_info.value.code in ["INVALID_VALUE", "UNSUPPORTED_VERSION"]
-            assert "version" in exc_info.value.message.lower() or "supported" in exc_info.value.message.lower()
+            assert (
+                "version" in exc_info.value.message.lower()
+                or "supported" in exc_info.value.message.lower()
+            )
         finally:
             # Cleanup: try to delete the contract
             try:
                 import requests
+
                 requests.delete(
                     f"{api_base_url}/contracts/{contract_id}/",
-                    headers={"Authorization": f"Bearer {api_key}" if "." in api_key else f"ApiKey {api_key}"},
-                    timeout=5
+                    headers={
+                        "Authorization": f"Bearer {api_key}"
+                        if "." in api_key
+                        else f"ApiKey {api_key}"
+                    },
+                    timeout=5,
                 )
             except requests.RequestException:
                 pass  # cleanup best-effort — ignore network errors
@@ -245,10 +264,15 @@ class TestODCSExportSDK:
             # Cleanup: try to delete the contract
             try:
                 import requests
+
                 requests.delete(
                     f"{api_base_url}/contracts/{contract_id}/",
-                    headers={"Authorization": f"Bearer {api_key}" if "." in api_key else f"ApiKey {api_key}"},
-                    timeout=5
+                    headers={
+                        "Authorization": f"Bearer {api_key}"
+                        if "." in api_key
+                        else f"ApiKey {api_key}"
+                    },
+                    timeout=5,
                 )
             except requests.RequestException:
                 pass  # cleanup best-effort — ignore network errors
@@ -270,7 +294,10 @@ class TestODCSExportSDK:
             await contracts_api.export_odcs("not-a-uuid", format="json")
 
         assert exc_info.value.code in ["INVALID_VALUE", "REQUIRED_FIELD_MISSING"]
-        assert "uuid" in exc_info.value.message.lower() or "contract_id" in exc_info.value.message.lower()
+        assert (
+            "uuid" in exc_info.value.message.lower()
+            or "contract_id" in exc_info.value.message.lower()
+        )
 
     @pytest.mark.asyncio
     async def test_export_odcs_with_real_api_json(self, contracts_api, real_api_config):
@@ -300,10 +327,15 @@ class TestODCSExportSDK:
             # Cleanup: try to delete the contract
             try:
                 import requests
+
                 requests.delete(
                     f"{api_base_url}/contracts/{contract_id}/",
-                    headers={"Authorization": f"Bearer {api_key}" if "." in api_key else f"ApiKey {api_key}"},
-                    timeout=5
+                    headers={
+                        "Authorization": f"Bearer {api_key}"
+                        if "." in api_key
+                        else f"ApiKey {api_key}"
+                    },
+                    timeout=5,
                 )
             except requests.RequestException:
                 pass  # cleanup best-effort — ignore network errors
@@ -337,11 +369,15 @@ class TestODCSExportSDK:
             # Cleanup: try to delete the contract
             try:
                 import requests
+
                 requests.delete(
                     f"{api_base_url}/contracts/{contract_id}/",
-                    headers={"Authorization": f"Bearer {api_key}" if "." in api_key else f"ApiKey {api_key}"},
-                    timeout=5
+                    headers={
+                        "Authorization": f"Bearer {api_key}"
+                        if "." in api_key
+                        else f"ApiKey {api_key}"
+                    },
+                    timeout=5,
                 )
             except requests.RequestException:
                 pass  # cleanup best-effort — ignore network errors
-

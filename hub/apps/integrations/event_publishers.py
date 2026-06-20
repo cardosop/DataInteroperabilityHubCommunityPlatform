@@ -4,7 +4,9 @@ Marketplace Event Publisher
 Event publisher for marketplace integration events.
 Extends EventPublisher to provide typed methods for marketplace-specific events.
 """
-from typing import Dict, Any, Optional
+
+from typing import Any
+
 from django.utils import timezone
 
 from hub.apps.core.events.publisher import EventPublisher
@@ -32,7 +34,7 @@ class MarketplaceEventPublisher(EventPublisher):
         )
     """
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize MarketplaceEventPublisher.
 
@@ -41,9 +43,7 @@ class MarketplaceEventPublisher(EventPublisher):
             user_id: Optional user ID (can be overridden per event)
         """
         super().__init__(
-            service_name="marketplace_integration_service",
-            tenant_id=tenant_id,
-            user_id=user_id
+            service_name="marketplace_integration_service", tenant_id=tenant_id, user_id=user_id
         )
 
     def publish_connection_created(
@@ -68,19 +68,13 @@ class MarketplaceEventPublisher(EventPublisher):
         Raises:
             ValueError: If connection_id is None or not a non-empty string.
         """
-        if (
-            connection_id is None
-            or not isinstance(connection_id, str)
-            or not connection_id.strip()
-        ):
+        if connection_id is None or not isinstance(connection_id, str) or not connection_id.strip():
             raise ValueError(
                 "connection_id is required and must be a non-empty string "
                 "for marketplace.connection.created"
             )
         if marketplace_type is None:
-            raise ValueError(
-                "marketplace_type is required for marketplace.connection.created"
-            )
+            raise ValueError("marketplace_type is required for marketplace.connection.created")
         # name may be empty string per schema; allow None -> treat as ""
         safe_name = name if name is not None else ""
         return self.publish(
@@ -98,7 +92,7 @@ class MarketplaceEventPublisher(EventPublisher):
     def publish_connection_updated(
         self,
         connection_id: str,
-        changes: Dict[str, Any],
+        changes: dict[str, Any],
         **kwargs,
     ) -> str:
         """
@@ -128,7 +122,7 @@ class MarketplaceEventPublisher(EventPublisher):
         connection_id: str,
         marketplace_type: str,
         name: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
         **kwargs,
     ) -> str:
         """
@@ -234,7 +228,7 @@ class MarketplaceEventPublisher(EventPublisher):
         connection_id: str,
         direction: str,
         error_message: str,
-        error_details: Optional[Dict[str, Any]] = None,
+        error_details: dict[str, Any] | None = None,
         **kwargs,
     ) -> str:
         """
@@ -303,7 +297,7 @@ class MarketplaceEventPublisher(EventPublisher):
         self,
         mapping_id: str,
         connection_id: str,
-        changes: Dict[str, Any],
+        changes: dict[str, Any],
         **kwargs,
     ) -> str:
         """
@@ -336,7 +330,7 @@ class MarketplaceEventPublisher(EventPublisher):
         connection_id: str,
         hub_asset_id: str,
         external_listing_id: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
         **kwargs,
     ) -> str:
         """
@@ -366,4 +360,3 @@ class MarketplaceEventPublisher(EventPublisher):
             tags=["marketplace", "mapping", "deleted"],
             **kwargs,
         )
-

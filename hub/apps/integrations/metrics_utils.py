@@ -4,10 +4,11 @@ Marketplace Integration Metrics Utilities
 Helper functions for tracking marketplace integration metrics including
 API calls, connector operations, and sync jobs.
 """
+
 import time
-import structlog
-from typing import Optional, Dict, Any
 from functools import wraps
+
+import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -16,10 +17,10 @@ def track_marketplace_api_call(
     marketplace_type: str,
     endpoint: str,
     method: str,
-    tenant_id: Optional[str] = None,
+    tenant_id: str | None = None,
     func=None,
     *args,
-    **kwargs
+    **kwargs,
 ):
     """
     Track API calls to marketplaces with metrics.
@@ -54,27 +55,34 @@ def track_marketplace_api_call(
 
     # If used as decorator
     if func is not None:
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             nonlocal status_code, error_type
             try:
                 result = func(*args, **kwargs)
                 # Try to extract status code from result if it's an httpx.Response
-                if hasattr(result, 'status_code'):
+                if hasattr(result, "status_code"):
                     status_code = str(result.status_code)
                 return result
             except Exception as e:
                 status_code = "error"
                 error_type = type(e).__name__
                 # Try to extract status code from exception
-                if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
+                if hasattr(e, "response") and hasattr(e.response, "status_code"):
                     status_code = str(e.response.status_code)
                 raise
             finally:
                 _record_api_metrics(
-                    marketplace_type, endpoint, method, status_code,
-                    start_time, tenant_id, error_type
+                    marketplace_type,
+                    endpoint,
+                    method,
+                    status_code,
+                    start_time,
+                    tenant_id,
+                    error_type,
                 )
+
         return wrapper
 
     # If used as context manager
@@ -88,11 +96,10 @@ def track_marketplace_api_call(
                 status_code = "error"
                 error_type = exc_type.__name__
                 # Try to extract status code from exception
-                if hasattr(exc_val, 'response') and hasattr(exc_val.response, 'status_code'):
+                if hasattr(exc_val, "response") and hasattr(exc_val.response, "status_code"):
                     status_code = str(exc_val.response.status_code)
             _record_api_metrics(
-                marketplace_type, endpoint, method, status_code,
-                start_time, tenant_id, error_type
+                marketplace_type, endpoint, method, status_code, start_time, tenant_id, error_type
             )
             return False  # Don't suppress exceptions
 
@@ -105,18 +112,21 @@ def _record_api_metrics(
     method: str,
     status_code: str,
     start_time: float,
-    tenant_id: Optional[str],
-    error_type: Optional[str]
+    tenant_id: str | None,
+    error_type: str | None,
 ):
     """Record API call metrics and structured logging."""
     try:
         from hub.apps.integrations.logging_utils import get_correlation_context
+
         correlation_context = get_correlation_context()
     except Exception:
         correlation_context = {}
 
     duration = time.time() - start_time
-    is_error = status_code == "error" or (status_code.startswith("4") or status_code.startswith("5"))
+    is_error = status_code == "error" or (
+        status_code.startswith("4") or status_code.startswith("5")
+    )
 
     # Log API call with structured fields
     log_level = "error" if is_error else "info"
@@ -135,9 +145,9 @@ def _record_api_metrics(
 
     try:
         from hub.apps.observability.otel_metrics import (
-            marketplace_api_calls_total,
             marketplace_api_call_duration_seconds,
             marketplace_api_call_errors_total,
+            marketplace_api_calls_total,
         )
 
         # Record API call count
@@ -178,4 +188,3 @@ def _record_api_metrics(
             **correlation_context,
             exc_info=True,
         )
-

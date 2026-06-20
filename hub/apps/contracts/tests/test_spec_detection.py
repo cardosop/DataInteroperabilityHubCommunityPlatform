@@ -30,7 +30,7 @@ class TestDetectSpecType:
         contract = {"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}
         spec_type, spec_version = detect_spec_type(contract)
         assert spec_type == OriginalSpecType.ODCS
-        assert "v" not in spec_version or spec_version.startswith("v")
+        assert spec_version == "3.0.2", f"Expected '3.0.2', got {spec_version!r}"
 
     def test_detect_odps_version_4_1(self):
         """Test: Unit test for ODPS version detection - version 4.1"""
@@ -455,15 +455,10 @@ class TestStoreOriginalSpecMetadata:
         assert spec_version is not None
 
     def test_detect_spec_type_with_none(self):
-        """Test spec type detection with None."""
-        try:
-            spec_type, spec_version = detect_spec_type(None)
-            # If it doesn't raise, verify structure
-            assert spec_type is not None
-            assert spec_version is not None
-        except (TypeError, AttributeError):
-            # If it raises exception, that's acceptable
-            pass
+        """None falls back to ODCS 3.0.2 (defensive isinstance check)."""
+        spec_type, spec_version = detect_spec_type(None)
+        assert spec_type == OriginalSpecType.ODCS
+        assert spec_version == "3.0.2"
 
     def test_detect_spec_type_with_invalid_api_version_format(self):
         """Test spec type detection with invalid apiVersion format."""
@@ -499,14 +494,8 @@ class TestStoreOriginalSpecMetadata:
         assert result is False
 
     def test_is_odps_contract_with_none(self):
-        """Test is_odps_contract() with None."""
-        try:
-            result = is_odps_contract(None)
-            # If it doesn't raise, should return False
-            assert result is False
-        except (TypeError, AttributeError):
-            # If it raises exception, that's acceptable
-            pass
+        """None returns False (defensive isinstance check)."""
+        assert is_odps_contract(None) is False
 
     def test_is_odps_contract_with_partial_indicators(self):
         """Test is_odps_contract() with partial ODPS indicators."""
@@ -531,54 +520,32 @@ class TestStoreOriginalSpecMetadata:
         assert "type" in metadata
 
     def test_extract_original_spec_metadata_with_none(self):
-        """Test extracting metadata with None."""
-        try:
-            metadata = extract_original_spec_metadata(None)
-            # If it doesn't raise, verify structure
-            assert isinstance(metadata, dict)
-        except (TypeError, AttributeError):
-            # If it raises exception, that's acceptable
-            pass
+        """None falls back to ODCS 3.0.2 metadata."""
+        metadata = extract_original_spec_metadata(None)
+        assert isinstance(metadata, dict)
+        assert "type" in metadata
+        assert metadata["type"] == OriginalSpecType.ODCS
 
     def test_extract_conformance_info_with_missing_field(self):
-        """Test extracting conformance info with missing dct:conformsTo."""
-        contract = {}
-        conforms_to = extract_conformance_info(contract, OriginalSpecType.ODCS)
-        # Should return None or empty dict
-        assert conforms_to is None or isinstance(conforms_to, dict)
+        """Empty contract with ODCS spec returns None (no conformsTo, no apiVersion)."""
+        assert extract_conformance_info({}, OriginalSpecType.ODCS) is None
 
     def test_extract_conformance_info_with_invalid_type(self):
-        """Test extracting conformance info with invalid spec type."""
-        contract = {"dct:conformsTo": "https://example.com/spec"}
-        try:
-            conforms_to = extract_conformance_info(contract, None)
-            # May handle gracefully or raise exception
-            assert conforms_to is None or isinstance(conforms_to, dict)
-        except (TypeError, ValueError):
-            # Exception is acceptable
-            pass
+        """None spec_type with conformsTo present still returns a dict."""
+        result = extract_conformance_info({"dct:conformsTo": "https://example.com/spec"}, None)
+        assert isinstance(result, dict)
 
     def test_store_original_spec_metadata_with_none_hub_contract(self):
-        """Test storing metadata with None hub_contract."""
-        original_contract = {"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}
-        try:
-            result = store_original_spec_metadata(None, original_contract)
-            # If it doesn't raise, verify structure
-            assert isinstance(result, dict)
-        except (TypeError, AttributeError):
-            # If it raises exception, that's acceptable
-            pass
+        """None hub_contract is replaced with {} and populated."""
+        result = store_original_spec_metadata(None, {"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"})
+        assert isinstance(result, dict)
+        assert "original_spec" in result
 
     def test_store_original_spec_metadata_with_none_original_contract(self):
-        """Test storing metadata with None original_contract."""
-        hub_contract = {"id": "test"}
-        try:
-            result = store_original_spec_metadata(hub_contract, None)
-            # If it doesn't raise, verify structure
-            assert isinstance(result, dict)
-        except (TypeError, AttributeError):
-            # If it raises exception, that's acceptable
-            pass
+        """None contract_data still produces valid metadata via detect_spec_type fallback."""
+        result = store_original_spec_metadata({"id": "test"}, None)
+        assert isinstance(result, dict)
+        assert "original_spec" in result
 
     def test_detect_odps_version_with_unsupported_version(self):
         """Test ODPS version detection with unsupported version."""

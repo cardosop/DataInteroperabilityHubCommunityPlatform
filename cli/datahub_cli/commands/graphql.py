@@ -17,32 +17,36 @@ from ..api_client import api_client
 @click.group()
 def graphql():
     """GraphQL query commands"""
-    pass
 
 
 @graphql.command("query")
 @click.option(
-    "--query", "query_str",
+    "--query",
+    "query_str",
     help="GraphQL query string",
 )
 @click.option(
-    "--file", "query_file",
+    "--file",
+    "query_file",
     type=click.Path(exists=True),
     help="File containing GraphQL query",
 )
 @click.option(
-    "--variables", "-v",
+    "--variables",
+    "-v",
     default="{}",
     help="JSON-encoded query variables",
 )
 @click.option(
-    "--endpoint", "-e",
+    "--endpoint",
+    "-e",
     type=click.Choice(["strawberry", "graphene", "ld"]),
     default="strawberry",
     help="GraphQL endpoint to target",
 )
 @click.option(
-    "--context", "jsonld_context",
+    "--context",
+    "jsonld_context",
     default=None,
     help="JSON-LD @context for the ld endpoint (inline JSON or hub context URL)",
 )
@@ -56,7 +60,7 @@ def query(query_str, query_file, variables, endpoint, jsonld_context):
       datahub graphql query --endpoint graphene -f query.gql
     """
     if query_file:
-        with open(query_file, "r") as f:
+        with open(query_file) as f:
             query_str = f.read()
 
     if not query_str:

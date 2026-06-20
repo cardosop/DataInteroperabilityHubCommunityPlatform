@@ -8,28 +8,29 @@ Tests all cross-service integrations:
 - External service integration
 - Service-to-service communication
 """
+
 import os
 
 import pytest
 
 pytestmark = pytest.mark.slow
-import requests
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
-from rest_framework import status
+import uuid
 
-from hub.apps.tenants.models import Tenant
+import requests
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from rest_framework import status
+from rest_framework.test import APIClient
+
+from hub.apps.assets.models import Asset
+from hub.apps.compliance.models import ComplianceRun
+from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
+from hub.apps.dq.models import DQRun
+from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
-from hub.apps.assets.models import Asset
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
-from hub.apps.jobs.models import Job, JobType, JobStatus
-from hub.apps.dq.models import DQRun, DQRunStatus
-from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from tests.factories import TenantFactory
-import uuid
 
 User = get_user_model()
 
@@ -62,34 +63,36 @@ class DQServiceIntegrationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
         # Create test asset
         self.asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="dq-test-asset",
-            name="DQ Test Asset",
-            status='DRAFT'
+            tenant=self.tenant, key="dq-test-asset", name="DQ Test Asset", status="DRAFT"
         )
 
     def test_dq_service_integration(self):
         """Test DQ service integration"""
         # Create DQ run via API
         response = self.client.post(
-            '/api/v1/dq/runs/',
-            {
-                'asset_id': str(self.asset.id),
-                'profile': 'intake_basic_gx'
-            },
-            format='json'
+            "/api/v1/dq/runs/",
+            {"asset_id": str(self.asset.id), "profile": "intake_basic_gx"},
+            format="json",
         )
 
         # Should return 201 (created), 400 (bad request), 503 (service unavailable), or 404 (not found)
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST,
-                                             status.HTTP_503_SERVICE_UNAVAILABLE, status.HTTP_404_NOT_FOUND])
+        self.assertIn(  # noqa: broad-status-codes
+
+            response.status_code,
+            [
+                status.HTTP_201_CREATED,
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                status.HTTP_404_NOT_FOUND,
+            ],
+        )
 
     def test_dq_service_health_check(self):
         """Test DQ service health check"""
@@ -98,7 +101,7 @@ class DQServiceIntegrationTest(TestCase):
             response = requests.get(url, timeout=5)
             self.assertIn(response.status_code, [200, 404])
         else:
-            pytest.skip("DQ service not available")
+            pytest.skip("DQ service not available")  # noqa: skip-in-body — runtime service dependency
 
     def test_dq_run_creation_with_job(self):
         """Test DQ run creation with job"""
@@ -108,19 +111,20 @@ class DQServiceIntegrationTest(TestCase):
             created_by=self.user,
             type=JobType.DQ_RUN,
             status=JobStatus.PENDING,
-            resource_type='asset',
-            resource_id=str(self.asset.id)
+            resource_type="asset",
+            resource_id=str(self.asset.id),
         )
 
         # Create DQ run linked to job
         # DQRun requires at least one of asset, dataset, or file (from clean() method)
         from hub.apps.dq.models import DQEngine
+
         dq_run = DQRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,  # Required: at least one of asset, dataset, or file
             job=job,
-            profile_key='intake_basic_gx',
-            engine=DQEngine.SODA  # Use enum value, not string
+            profile_key="intake_basic_gx",
+            engine=DQEngine.SODA,  # Use enum value, not string
         )
 
         # DQ run should be created
@@ -140,7 +144,7 @@ class ComplianceServiceIntegrationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
@@ -150,24 +154,29 @@ class ComplianceServiceIntegrationTest(TestCase):
             tenant=self.tenant,
             key="compliance-test-asset",
             name="Compliance Test Asset",
-            status='DRAFT'
+            status="DRAFT",
         )
 
     def test_compliance_service_integration(self):
         """Test Compliance service integration"""
         # Create compliance run via API
         response = self.client.post(
-            '/api/v1/compliance/runs/',
-            {
-                'asset_id': str(self.asset.id),
-                'regulations': ['GDPR', 'CCPA']
-            },
-            format='json'
+            "/api/v1/compliance/runs/",
+            {"asset_id": str(self.asset.id), "regulations": ["GDPR", "CCPA"]},
+            format="json",
         )
 
         # Should return 201 (created), 400 (bad request), 503 (service unavailable), or 404 (not found)
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST,
-                                             status.HTTP_503_SERVICE_UNAVAILABLE, status.HTTP_404_NOT_FOUND])
+        self.assertIn(  # noqa: broad-status-codes
+
+            response.status_code,
+            [
+                status.HTTP_201_CREATED,
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                status.HTTP_404_NOT_FOUND,
+            ],
+        )
 
     def test_compliance_service_health_check(self):
         """Test Compliance service health check"""
@@ -176,7 +185,7 @@ class ComplianceServiceIntegrationTest(TestCase):
             response = requests.get(url, timeout=5)
             self.assertIn(response.status_code, [200, 404])
         else:
-            pytest.skip("Compliance service not available")
+            pytest.skip("Compliance service not available")  # noqa: skip-in-body — runtime service dependency
 
     def test_compliance_run_creation_with_job(self):
         """Test Compliance run creation with job"""
@@ -186,8 +195,8 @@ class ComplianceServiceIntegrationTest(TestCase):
             created_by=self.user,
             type=JobType.COMPLIANCE_RUN,
             status=JobStatus.PENDING,
-            resource_type='asset',
-            resource_id=str(self.asset.id)
+            resource_type="asset",
+            resource_id=str(self.asset.id),
         )
 
         # Create Compliance run linked to job
@@ -196,7 +205,7 @@ class ComplianceServiceIntegrationTest(TestCase):
             tenant=self.tenant,
             asset=self.asset,  # Required: at least one of asset, dataset, or file
             job=job,
-            regulations=['GDPR', 'CCPA']
+            regulations=["GDPR", "CCPA"],
         )
 
         # Compliance run should be created
@@ -216,7 +225,7 @@ class SemanticServiceIntegrationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
@@ -226,15 +235,14 @@ class SemanticServiceIntegrationTest(TestCase):
             tenant=self.tenant,
             key="semantic-test-asset",
             name="Semantic Test Asset",
-            status='DRAFT'
+            status="DRAFT",
         )
 
     def test_semantic_service_integration(self):
         """Test Semantic service integration"""
         # Test URI resolution
         response = self.client.get(
-            '/api/v1/semantic/resolve-uri/',
-            {'uri': 'http://example.org/resource'}
+            "/api/v1/semantic/resolve-uri/", {"uri": "http://example.org/resource"}
         )
 
         # Should return 200 (success), 404 (not found), 503 (service unavailable), or 404 (endpoint not found)
@@ -247,20 +255,19 @@ class SemanticServiceIntegrationTest(TestCase):
             response = requests.get(url, timeout=5)
             self.assertIn(response.status_code, [200, 404])
         else:
-            pytest.skip("Semantic service not available")
+            pytest.skip("Semantic service not available")  # noqa: skip-in-body — runtime service dependency
 
     def test_semantic_service_sparql_query(self):
         """Test Semantic service SPARQL query"""
         response = self.client.post(
-            '/api/v1/semantic/sparql/',
-            {
-                'query': 'SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10'
-            },
-            format='json'
+            "/api/v1/semantic/sparql/",
+            {"query": "SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10"},
+            format="json",
         )
 
         # Should return 200 (success), 400 (bad request), 503 (service unavailable), or 404 (not found)
-        self.assertIn(response.status_code, [200, 400, 503, 404])
+        self.assertIn(response.status_code, [200, 400, 503, 404])  # noqa: broad-status-codes
+
 
 
 class ExternalServiceIntegrationTest(TestCase):
@@ -275,7 +282,7 @@ class ExternalServiceIntegrationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
@@ -290,16 +297,13 @@ class ExternalServiceIntegrationTest(TestCase):
             tenant=self.tenant,
             key="external-test-asset",
             name="External Test Asset",
-            status='DRAFT'
+            status="DRAFT",
         )
 
         response = self.client.post(
-            '/api/v1/dq/runs/',
-            {
-                'asset_id': str(asset.id),
-                'profile': 'intake_basic_gx'
-            },
-            format='json'
+            "/api/v1/dq/runs/",
+            {"asset_id": str(asset.id), "profile": "intake_basic_gx"},
+            format="json",
         )
 
         # Should handle service unavailability gracefully (503 or 404)
@@ -318,17 +322,14 @@ class ServiceToServiceCommunicationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
         # Create test contract
         asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="service-test-asset",
-            name="Service Test Asset",
-            status='DRAFT'
+            tenant=self.tenant, key="service-test-asset", name="Service Test Asset", status="DRAFT"
         )
 
         self.contract = Contract.objects.create(
@@ -341,7 +342,7 @@ class ServiceToServiceCommunicationTest(TestCase):
             original_format=OriginalFormat.JSON,
             original_raw='{"id": "test-contract"}',
             hub_contract_version="1.0.0",
-            hub_contract_json={"id": "test-contract"}
+            hub_contract_json={"id": "test-contract"},
         )
 
     def test_service_to_service_workflow(self):
@@ -358,8 +359,8 @@ class ServiceToServiceCommunicationTest(TestCase):
             created_by=self.user,
             type=JobType.CONTRACT_VALIDATION,
             status=JobStatus.PENDING,
-            resource_type='contract',
-            resource_id=str(self.contract.id)
+            resource_type="contract",
+            resource_id=str(self.contract.id),
         )
 
         # Job should be created
@@ -378,12 +379,11 @@ class ServiceToServiceCommunicationTest(TestCase):
             created_by=self.user,
             type=JobType.DQ_RUN,
             status=JobStatus.PENDING,
-            resource_type='asset',
-            resource_id=str(self.contract.asset.id)
+            resource_type="asset",
+            resource_id=str(self.contract.asset.id),
         )
 
         # Job should be created even if services are unavailable
         self.assertIsNotNone(job.id)
 
         # Service unavailability should be handled at execution time, not creation time
-

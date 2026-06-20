@@ -6,11 +6,12 @@ Trino-derived SQL. AWS Glue Catalog reflection.
 bytes-scanned cost guard. Async result-set polling pattern
 (canary for ABC fitness).
 """
+
 from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from hub.apps.warehouses.base import (
     QueryResult,
@@ -91,7 +92,7 @@ class AthenaConnector(WarehouseConnector):
     def execute_query(
         self,
         sql: str,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         limit: int = 100,
     ) -> QueryResult:
         self._check_circuit_breaker(self._tenant_id)
@@ -126,9 +127,7 @@ class AthenaConnector(WarehouseConnector):
             elapsed = time.monotonic() - poll_start
             if elapsed > ATHENA_MAX_POLL_S:
                 self._client.stop_query_execution(QueryExecutionId=query_id)
-                raise TimeoutError(
-                    f"Athena query {query_id} timed out after {ATHENA_MAX_POLL_S}s"
-                )
+                raise TimeoutError(f"Athena query {query_id} timed out after {ATHENA_MAX_POLL_S}s")
             time.sleep(ATHENA_POLL_INTERVAL_S)
             status = self._client.get_query_execution(QueryExecutionId=query_id)
             state = status["QueryExecution"]["Status"]["State"]
@@ -138,13 +137,13 @@ class AthenaConnector(WarehouseConnector):
             raise RuntimeError(f"Athena query {query_id} failed ({state}): {reason}")
 
         result = self._client.get_query_results(
-            QueryExecutionId=query_id, MaxResults=limit or 1000,
+            QueryExecutionId=query_id,
+            MaxResults=limit or 1000,
         )
         rows_data = result["ResultSet"]["Rows"]
         cols = [c["VarCharValue"] for c in rows_data[0]["Data"]] if rows_data else []
         data_rows = [
-            [field.get("VarCharValue", "") for field in row["Data"]]
-            for row in rows_data[1:]
+            [field.get("VarCharValue", "") for field in row["Data"]] for row in rows_data[1:]
         ]
         elapsed = (time.monotonic() - started) * 1000
         stats = status["QueryExecution"].get("Statistics", {})
@@ -152,7 +151,9 @@ class AthenaConnector(WarehouseConnector):
         cost = float(bytes_scanned) / 1e9 * 5.0  # ~$5/TB
 
         result_obj = QueryResult(
-            columns=cols, rows=data_rows, row_count=len(data_rows),
+            columns=cols,
+            rows=data_rows,
+            row_count=len(data_rows),
             duration_ms=round(elapsed, 2),
             cost_units=round(cost, 6),
             cost_unit_label="bytes_scanned",
@@ -160,17 +161,23 @@ class AthenaConnector(WarehouseConnector):
         self._record_cost(self._tenant_id, cost, "bytes_scanned")
         return result_obj
 
-    def reflect_schema(self, table_name: str) -> List[SchemaColumn]:
+    def reflect_schema(self, table_name: str) -> list[SchemaColumn]:
         """AWS Glue Catalog reflection."""
-        db, tbl = table_name.split(".", 1) if "." in table_name else (
-            self._config.get("database", "default"), table_name,
+        db, tbl = (
+            table_name.split(".", 1)
+            if "." in table_name
+            else (
+                self._config.get("database", "default"),
+                table_name,
+            )
         )
         response = self._glue_client.get_table(DatabaseName=db, Name=tbl)
         columns = response["Table"].get("StorageDescriptor", {}).get("Columns", [])
         partitions = response["Table"].get("PartitionKeys", [])
         return [
             SchemaColumn(
-                name=c["Name"], data_type=c.get("Type", "string"),
+                name=c["Name"],
+                data_type=c.get("Type", "string"),
                 comment=c.get("Comment", ""),
             )
             for c in columns + partitions

@@ -265,16 +265,14 @@ class TestFieldLevelLineageExtraction(TestCase):
         self.assertIsNone(result)
 
     def test_extract_contract_level_lineage_with_none_input(self):
-        """Test extraction handles None input gracefully."""
-        # Function expects dict, but test that it handles gracefully
-        # In practice, type checking would catch this, but test defensive behavior
-        try:
-            result = extract_contract_level_lineage(None)  # type: ignore[misc]  # test: edge-case type exercise
-            # If it doesn't raise, result should be None or handle gracefully
-            self.assertIsNone(result)
-        except (AttributeError, TypeError):
-            # Expected - None doesn't have .get() method
-            pass
+        """None input raises AttributeError — function expects a dict.
+
+        This pins the *current* behaviour.  If the function is later
+        hardened to return None instead of raising, this test should
+        be updated to assert graceful handling.
+        """
+        with self.assertRaises(AttributeError):
+            extract_contract_level_lineage(None)  # type: ignore[misc]
 
     def test_extract_contract_level_lineage_with_empty_transform_sources(self):
         """Test extraction with empty transformSourceObjects list."""

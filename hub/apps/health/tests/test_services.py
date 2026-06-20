@@ -17,8 +17,6 @@ External dependencies (Redis, circuit breakers) gracefully handle unavailability
 """
 
 import pytest
-from django.core.exceptions import ImproperlyConfigured
-from django.db import connection
 from django.test import TestCase
 
 from hub.apps.health.services import HealthService
@@ -84,13 +82,16 @@ class HealthServiceTest(TestCase):
         # All four Redis instances must be present in the result
         expected_instances = ["cache", "queue", "events", "channels"]
         for instance_name in expected_instances:
-            self.assertIn(instance_name, instances,
-                          f"Redis instance '{instance_name}' should be in health check results")
+            self.assertIn(
+                instance_name,
+                instances,
+                f"Redis instance '{instance_name}' should be in health check results",
+            )
             # Status is either "connected" or "error: <message>"
             status_val = instances[instance_name]
             self.assertTrue(
                 status_val == "connected" or status_val.startswith("error:"),
-                f"Redis instance '{instance_name}' has unexpected status: {status_val}"
+                f"Redis instance '{instance_name}' has unexpected status: {status_val}",
             )
 
     def test_check_redis_health_handles_unavailable_gracefully(self):
@@ -143,12 +144,15 @@ class HealthServiceTest(TestCase):
         # All four Redis instances must be present
         expected_instances = ["cache", "queue", "events", "channels"]
         for instance_name in expected_instances:
-            self.assertIn(instance_name, result["redis"],
-                          f"Redis instance '{instance_name}' should be in overall health")
+            self.assertIn(
+                instance_name,
+                result["redis"],
+                f"Redis instance '{instance_name}' should be in overall health",
+            )
             status_val = result["redis"][instance_name]
             self.assertTrue(
                 status_val == "connected" or status_val.startswith("error:"),
-                f"Redis '{instance_name}' has unexpected status: {status_val}"
+                f"Redis '{instance_name}' has unexpected status: {status_val}",
             )
 
     def test_get_overall_health_status_healthy_when_all_services_healthy(self):
@@ -156,9 +160,7 @@ class HealthServiceTest(TestCase):
         result = self.service.get_overall_health_status()
 
         db_healthy = result["database"] == "connected"
-        all_redis_healthy = all(
-            not str(s).startswith("error:") for s in result["redis"].values()
-        )
+        all_redis_healthy = all(not str(s).startswith("error:") for s in result["redis"].values())
 
         if db_healthy and all_redis_healthy:
             self.assertEqual(result["status"], "healthy")
@@ -180,9 +182,7 @@ class HealthServiceTest(TestCase):
         """Test that unhealthy Redis instances are reflected in overall status"""
         result = self.service.get_overall_health_status()
 
-        has_unhealthy_redis = any(
-            str(s).startswith("error:") for s in result["redis"].values()
-        )
+        has_unhealthy_redis = any(str(s).startswith("error:") for s in result["redis"].values())
 
         if has_unhealthy_redis:
             self.assertEqual(result["status"], "unhealthy")

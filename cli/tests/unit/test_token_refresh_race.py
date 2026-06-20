@@ -1,12 +1,12 @@
 """279.I.1 — Token refresh race condition tests for CLI AuthManager."""
+
 import base64
 import json
 import threading
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-
 from datahub_cli.auth import AuthManager
 from datahub_cli.config import Config
 
@@ -39,7 +39,7 @@ class TestTokenRefreshRace:
         def fake_refresh():
             refresh_count[0] += 1
             # Simulate network delay
-            time.sleep(0.01)
+            time.sleep(0.01)  # noqa: sleep-needed — test timing requirement
             config.get_access_token.return_value = _make_jwt_token(3600)
             return True
 

@@ -5,9 +5,10 @@ This version avoids Django dependencies by running tests directly.
 
 import os
 import sys
-import yaml
-import redis
 from pathlib import Path
+
+import redis
+import yaml
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -31,7 +32,7 @@ def test_docker_compose_configs():
     configs = {}
     for name, file_path in docker_compose_files.items():
         if file_path.exists():
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 configs[name] = yaml.safe_load(f)
 
     redis_services = ["redis-cache", "redis-queue", "redis-events", "redis-channels"]
@@ -98,16 +99,24 @@ def test_docker_compose_configs():
                     service_config = services[service_name]
                     command = str(service_config.get("command", ""))
                     env = service_config.get("environment", {})
-                    if "--maxmemory" not in command and not any("MAX_MEMORY" in str(k).upper() for k in env.keys()):
-                        errors.append(f"{service_name} should have memory limit configured in {name}")
+                    if "--maxmemory" not in command and not any(
+                        "MAX_MEMORY" in str(k).upper() for k in env.keys()
+                    ):
+                        errors.append(
+                            f"{service_name} should have memory limit configured in {name}"
+                        )
         else:
             for service_name in redis_services:
                 if service_name in services:
                     service_config = services[service_name]
                     command = str(service_config.get("command", ""))
                     env = service_config.get("environment", {})
-                    if "--maxmemory" not in command and not any("MAX_MEMORY" in str(k).upper() for k in env.keys()):
-                        errors.append(f"{service_name} should have memory limit configured in {name}")
+                    if "--maxmemory" not in command and not any(
+                        "MAX_MEMORY" in str(k).upper() for k in env.keys()
+                    ):
+                        errors.append(
+                            f"{service_name} should have memory limit configured in {name}"
+                        )
 
     # Test 5: Persistence configuration
     cache_configs = configs.get("main", {}).get("services", {}).get("redis-cache", {})
@@ -132,7 +141,9 @@ def test_docker_compose_configs():
     if queue_configs:
         command = str(queue_configs.get("command", ""))
         env = queue_configs.get("environment", {})
-        if "noeviction" not in command.lower() and not any("noeviction" in str(v).lower() for v in env.values()):
+        if "noeviction" not in command.lower() and not any(
+            "noeviction" in str(v).lower() for v in env.values()
+        ):
             errors.append("redis-queue should have noeviction policy")
 
     return errors
@@ -157,7 +168,7 @@ def test_kubernetes_manifests():
             else:
                 # Validate YAML
                 try:
-                    with open(file_path, "r") as f:
+                    with open(file_path) as f:
                         yaml.safe_load(f)
                 except yaml.YAMLError as e:
                     errors.append(f"Invalid YAML in {file_path}: {e}")
@@ -177,7 +188,9 @@ def test_redis_connectivity():
 
     for port, name in clients_config:
         try:
-            r = redis.Redis(host="localhost", port=port, decode_responses=True, socket_connect_timeout=3)
+            r = redis.Redis(
+                host="localhost", port=port, decode_responses=True, socket_connect_timeout=3
+            )
             result = r.ping()
             if not result:
                 errors.append(f"redis-{name} (port {port}) ping returned False")
@@ -273,4 +286,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

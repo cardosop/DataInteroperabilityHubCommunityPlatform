@@ -4,13 +4,13 @@ Event Type Definitions
 Comprehensive definitions for all system events with JSON schemas.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 # Event schema version
 CURRENT_EVENT_VERSION = "1.0.0"
 
 # Event type-specific schemas (extend BASE_EVENT_SCHEMA)
-EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
+EVENT_TYPE_SCHEMAS: dict[str, dict[str, Any]] = {
     # Contract Events
     "contract.created": {
         "data": {
@@ -284,6 +284,20 @@ EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
             },
         }
     },
+    # Phase 260.7.G — file.purged (hard-delete after grace window or GDPR)
+    "file.purged": {
+        "data": {
+            "type": "object",
+            "required": ["file_id"],
+            "properties": {
+                "file_id": {"type": "string", "format": "uuid"},
+                "purged_at": {"type": "string", "format": "date-time"},
+                "name": {"type": ["string", "null"]},
+                "size": {"type": ["integer", "null"]},
+                "content_sha256": {"type": ["string", "null"]},
+            },
+        }
+    },
     # Lineage Events
     "lineage.updated": {
         "data": {
@@ -307,7 +321,9 @@ EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
                 "contract_id": {"type": "string", "format": "uuid"},
                 "source_reference": {"type": "string"},  # namespace/name/model/field format
                 "target_reference": {"type": "string"},  # namespace/name/model/field format
-                "relationship_type": {"type": ["string", "null"]},  # "depends_on", "derived_from", etc.
+                "relationship_type": {
+                    "type": ["string", "null"]
+                },  # "depends_on", "derived_from", etc.
                 "model_name": {"type": ["string", "null"]},
                 "field_name": {"type": ["string", "null"]},
             },
@@ -321,7 +337,9 @@ EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
                 "contract_id": {"type": "string", "format": "uuid"},
                 "source_reference": {"type": "string"},  # namespace/name/model/field format
                 "target_reference": {"type": "string"},  # namespace/name/model/field format
-                "relationship_type": {"type": ["string", "null"]},  # "depends_on", "derived_from", etc.
+                "relationship_type": {
+                    "type": ["string", "null"]
+                },  # "depends_on", "derived_from", etc.
                 "model_name": {"type": ["string", "null"]},
                 "field_name": {"type": ["string", "null"]},
                 "reason": {"type": ["string", "null"]},
@@ -536,7 +554,13 @@ EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
     "version.promoted": {
         "data": {
             "type": "object",
-            "required": ["version_id", "resource_type", "resource_id", "promoted_from", "promoted_to"],
+            "required": [
+                "version_id",
+                "resource_type",
+                "resource_id",
+                "promoted_from",
+                "promoted_to",
+            ],
             "properties": {
                 "version_id": {"type": "string", "format": "uuid"},
                 "resource_type": {"type": "string"},
@@ -1030,6 +1054,48 @@ EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
                 "workflow_instance_id": {"type": "string", "format": "uuid"},
                 "model_id": {"type": "string"},
                 "training_job_id": {"type": ["string", "null"]},
+                "duration_ms": {"type": ["integer", "null"]},
+            },
+        }
+    },
+    # ML Inference Workflow Events
+    "workflow.model_inference.started": {
+        "data": {
+            "type": "object",
+            "required": ["workflow_instance_id"],
+            "properties": {
+                "workflow_instance_id": {"type": "string", "format": "uuid"},
+                "model_id": {"type": ["string", "null"]},
+                "input_data": {"type": "object"},
+            },
+        }
+    },
+    "workflow.model_inference.step_completed": {
+        "data": {
+            "type": "object",
+            "required": ["workflow_instance_id"],
+            "properties": {
+                "workflow_instance_id": {"type": "string", "format": "uuid"},
+                "model_id": {"type": ["string", "null"]},
+                "inference_id": {"type": ["string", "null"]},
+                "progress_percent": {"type": "number"},
+                "current_step": {"type": "string"},
+                "total_steps": {"type": ["integer", "null"]},
+                "completed_steps": {"type": ["integer", "null"]},
+                "elapsed_time_ms": {"type": ["integer", "null"]},
+                "status": {"type": "string"},
+            },
+        }
+    },
+    "workflow.model_inference.completed": {
+        "data": {
+            "type": "object",
+            "required": ["workflow_instance_id"],
+            "properties": {
+                "workflow_instance_id": {"type": "string", "format": "uuid"},
+                "model_id": {"type": ["string", "null"]},
+                "inference_id": {"type": ["string", "null"]},
+                "inference_result": {"type": "object"},
                 "duration_ms": {"type": ["integer", "null"]},
             },
         }
@@ -1901,7 +1967,9 @@ EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
             "properties": {
                 "metric_name": {"type": "string"},
                 "metric_value": {"type": ["number", "null"]},
-                "metric_type": {"type": ["string", "null"]},  # 'counter', 'gauge', 'histogram', 'summary'
+                "metric_type": {
+                    "type": ["string", "null"]
+                },  # 'counter', 'gauge', 'histogram', 'summary'
                 "labels": {"type": ["object", "null"]},
             },
         }
@@ -1926,7 +1994,9 @@ EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
             "required": ["message"],
             "properties": {
                 "message": {"type": "string"},
-                "log_level": {"type": ["string", "null"]},  # 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
+                "log_level": {
+                    "type": ["string", "null"]
+                },  # 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
                 "logger_name": {"type": ["string", "null"]},
                 "context": {"type": ["object", "null"]},
             },
@@ -2022,7 +2092,14 @@ EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
     "integration.sync_job.completed": {
         "data": {
             "type": "object",
-            "required": ["sync_job_id", "connection_id", "direction", "status", "items_synced", "items_failed"],
+            "required": [
+                "sync_job_id",
+                "connection_id",
+                "direction",
+                "status",
+                "items_synced",
+                "items_failed",
+            ],
             "properties": {
                 "sync_job_id": {"type": "string", "format": "uuid"},
                 "connection_id": {"type": "string", "format": "uuid"},
@@ -2164,7 +2241,14 @@ EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
     "marketplace.sync.completed": {
         "data": {
             "type": "object",
-            "required": ["sync_job_id", "connection_id", "direction", "status", "items_synced", "items_failed"],
+            "required": [
+                "sync_job_id",
+                "connection_id",
+                "direction",
+                "status",
+                "items_synced",
+                "items_failed",
+            ],
             "properties": {
                 "sync_job_id": {"type": "string", "format": "uuid"},
                 "connection_id": {"type": "string", "format": "uuid"},
@@ -2309,7 +2393,6 @@ EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
             },
         }
     },
-
     # ── Social Events ────────────────────────────────────────────────
     # Schemas mirror the data dicts published by social/views.py.
     # user_id is carried as event metadata (Event.user_id column), NOT
@@ -2366,7 +2449,6 @@ EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
             },
         }
     },
-
     # ── ML Model Events ──────────────────────────────────────────────
     "ml.model.linked": {
         "data": {
@@ -2419,7 +2501,7 @@ EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
 }
 
 
-def get_event_schema(event_type: str) -> Optional[Dict[str, Any]]:
+def get_event_schema(event_type: str) -> dict[str, Any] | None:
     """
     Get schema for specific event type.
 
@@ -2442,7 +2524,7 @@ def get_all_event_types() -> list[str]:
     return list(EVENT_TYPE_SCHEMAS.keys())
 
 
-def validate_event_data(event_type: str, data: Dict[str, Any]) -> tuple[bool, Optional[str]]:
+def validate_event_data(event_type: str, data: dict[str, Any]) -> tuple[bool, str | None]:
     """
     Validate event data against event type schema.
 

@@ -5,8 +5,10 @@ Tests verify that all ODPS multilingual test fixtures are valid ODPS documents
 that pass schema validation. This ensures multilingual product details are
 correctly structured and can be used for testing internationalization functionality.
 """
+
 try:
     import pytest
+
     pytestmark = pytest.mark.django_db
 except ImportError:
     # pytest not available, using Django test runner
@@ -15,14 +17,17 @@ except ImportError:
 
 import json
 from pathlib import Path
+
 from django.test import TestCase
 
 try:
     import jsonschema
-    from jsonschema import validate, Draft202012Validator, ValidationError
+    from jsonschema import Draft202012Validator, ValidationError, validate
+
     JSONSCHEMA_AVAILABLE = True
 except ImportError:
     JSONSCHEMA_AVAILABLE = False
+
     # Create mock classes for when jsonschema is not available
     class ValidationError(Exception):
         pass
@@ -48,18 +53,18 @@ class ODPSMultilingualFixturesTest(TestCase):
 
         # Load ODPS 4.1 schema
         self.schema_path = self.schemas_dir / "v4.1" / "odps-schema.json"
-        with open(self.schema_path, 'r', encoding='utf-8') as f:
+        with open(self.schema_path, encoding="utf-8") as f:
             self.schema = json.load(f)
 
     def test_multilingual_fixtures_directory_exists(self):
         """Test that multilingual fixtures directory exists"""
         self.assertTrue(
             self.multilingual_fixtures_dir.exists(),
-            f"Multilingual fixtures directory should exist at: {self.multilingual_fixtures_dir}"
+            f"Multilingual fixtures directory should exist at: {self.multilingual_fixtures_dir}",
         )
         self.assertTrue(
             self.multilingual_fixtures_dir.is_dir(),
-            f"Multilingual fixtures should be a directory: {self.multilingual_fixtures_dir}"
+            f"Multilingual fixtures should be a directory: {self.multilingual_fixtures_dir}",
         )
 
     def test_english_only_sample_is_valid(self):
@@ -70,7 +75,7 @@ class ODPSMultilingualFixturesTest(TestCase):
         fixture_path = self.multilingual_fixtures_dir / "sample-english-only-v4.1.json"
         self.assertTrue(fixture_path.exists(), f"Fixture should exist: {fixture_path}")
 
-        with open(fixture_path, 'r', encoding='utf-8') as f:
+        with open(fixture_path, encoding="utf-8") as f:
             odps_doc = json.load(f)
 
         # Validate against schema
@@ -93,7 +98,7 @@ class ODPSMultilingualFixturesTest(TestCase):
         fixture_path = self.multilingual_fixtures_dir / "sample-french-only-v4.1.json"
         self.assertTrue(fixture_path.exists(), f"Fixture should exist: {fixture_path}")
 
-        with open(fixture_path, 'r', encoding='utf-8') as f:
+        with open(fixture_path, encoding="utf-8") as f:
             odps_doc = json.load(f)
 
         # Validate against schema
@@ -116,7 +121,7 @@ class ODPSMultilingualFixturesTest(TestCase):
         fixture_path = self.multilingual_fixtures_dir / "sample-multiple-languages-v4.1.json"
         self.assertTrue(fixture_path.exists(), f"Fixture should exist: {fixture_path}")
 
-        with open(fixture_path, 'r', encoding='utf-8') as f:
+        with open(fixture_path, encoding="utf-8") as f:
             odps_doc = json.load(f)
 
         # Validate against schema
@@ -144,36 +149,30 @@ class ODPSMultilingualFixturesTest(TestCase):
         self.assertGreater(
             len(multilingual_files),
             0,
-            f"Should have at least one multilingual fixture file in {self.multilingual_fixtures_dir}"
+            f"Should have at least one multilingual fixture file in {self.multilingual_fixtures_dir}",
         )
 
         validation_errors = []
         for fixture_path in multilingual_files:
             with self.subTest(fixture=fixture_path.name):
                 try:
-                    with open(fixture_path, 'r', encoding='utf-8') as f:
+                    with open(fixture_path, encoding="utf-8") as f:
                         odps_doc = json.load(f)
 
                     # Validate against schema
                     try:
                         validate(instance=odps_doc, schema=self.schema)
                     except ValidationError as e:
-                        validation_errors.append(
-                            f"{fixture_path.name}: Validation failed: {e}"
-                        )
+                        validation_errors.append(f"{fixture_path.name}: Validation failed: {e}")
                 except json.JSONDecodeError as e:
-                    validation_errors.append(
-                        f"{fixture_path.name}: Invalid JSON: {e}"
-                    )
+                    validation_errors.append(f"{fixture_path.name}: Invalid JSON: {e}")
                 except Exception as e:
-                    validation_errors.append(
-                        f"{fixture_path.name}: Unexpected error: {e}"
-                    )
+                    validation_errors.append(f"{fixture_path.name}: Unexpected error: {e}")
 
         # All multilingual fixtures should be valid
         if validation_errors:
             self.fail(
-                f"Some multilingual fixtures are not valid ODPS:\n"
+                "Some multilingual fixtures are not valid ODPS:\n"
                 + "\n".join(f"  - {msg}" for msg in validation_errors)
             )
 
@@ -183,7 +182,7 @@ class ODPSMultilingualFixturesTest(TestCase):
 
         for fixture_path in multilingual_files:
             with self.subTest(fixture=fixture_path.name):
-                with open(fixture_path, 'r', encoding='utf-8') as f:
+                with open(fixture_path, encoding="utf-8") as f:
                     odps_doc = json.load(f)
 
                 details = odps_doc["product"]["details"]
@@ -191,17 +190,14 @@ class ODPSMultilingualFixturesTest(TestCase):
                 # Verify all keys are 2-letter lowercase codes
                 for lang_code in details.keys():
                     self.assertEqual(
-                        len(lang_code),
-                        2,
-                        f"Language code '{lang_code}' should be 2 characters"
+                        len(lang_code), 2, f"Language code '{lang_code}' should be 2 characters"
                     )
                     self.assertTrue(
-                        lang_code.islower(),
-                        f"Language code '{lang_code}' should be lowercase"
+                        lang_code.islower(), f"Language code '{lang_code}' should be lowercase"
                     )
                     self.assertTrue(
                         lang_code.isalpha(),
-                        f"Language code '{lang_code}' should contain only letters"
+                        f"Language code '{lang_code}' should contain only letters",
                     )
 
     def test_each_language_has_required_fields(self):
@@ -210,7 +206,7 @@ class ODPSMultilingualFixturesTest(TestCase):
 
         for fixture_path in multilingual_files:
             with self.subTest(fixture=fixture_path.name):
-                with open(fixture_path, 'r', encoding='utf-8') as f:
+                with open(fixture_path, encoding="utf-8") as f:
                     odps_doc = json.load(f)
 
                 details = odps_doc["product"]["details"]
@@ -221,34 +217,30 @@ class ODPSMultilingualFixturesTest(TestCase):
                         self.assertIn(
                             "productID",
                             lang_details,
-                            f"Language '{lang_code}' should have productID"
+                            f"Language '{lang_code}' should have productID",
                         )
                         self.assertIn(
-                            "name",
-                            lang_details,
-                            f"Language '{lang_code}' should have name"
+                            "name", lang_details, f"Language '{lang_code}' should have name"
                         )
                         self.assertIn(
                             "description",
                             lang_details,
-                            f"Language '{lang_code}' should have description"
+                            f"Language '{lang_code}' should have description",
                         )
 
                         # Verify fields are strings
                         self.assertIsInstance(
                             lang_details["productID"],
                             str,
-                            f"productID for '{lang_code}' should be a string"
+                            f"productID for '{lang_code}' should be a string",
                         )
                         self.assertIsInstance(
-                            lang_details["name"],
-                            str,
-                            f"name for '{lang_code}' should be a string"
+                            lang_details["name"], str, f"name for '{lang_code}' should be a string"
                         )
                         self.assertIsInstance(
                             lang_details["description"],
                             str,
-                            f"description for '{lang_code}' should be a string"
+                            f"description for '{lang_code}' should be a string",
                         )
 
     def test_multiple_languages_have_consistent_product_id(self):
@@ -257,7 +249,7 @@ class ODPSMultilingualFixturesTest(TestCase):
         if not fixture_path.exists():
             self.skipTest("Multiple languages fixture not found")
 
-        with open(fixture_path, 'r', encoding='utf-8') as f:
+        with open(fixture_path, encoding="utf-8") as f:
             odps_doc = json.load(f)
 
         details = odps_doc["product"]["details"]
@@ -272,7 +264,7 @@ class ODPSMultilingualFixturesTest(TestCase):
                 self.assertEqual(
                     lang_details["productID"],
                     expected_product_id,
-                    f"Language '{lang_code}' should have same productID as '{first_lang}'"
+                    f"Language '{lang_code}' should have same productID as '{first_lang}'",
                 )
 
     def test_utf8_encoding_handles_special_characters(self):
@@ -282,7 +274,7 @@ class ODPSMultilingualFixturesTest(TestCase):
         for fixture_path in multilingual_files:
             with self.subTest(fixture=fixture_path.name):
                 # Read file with UTF-8 encoding
-                with open(fixture_path, 'r', encoding='utf-8') as f:
+                with open(fixture_path, encoding="utf-8") as f:
                     content = f.read()
                     odps_doc = json.loads(content)
 
@@ -302,4 +294,3 @@ class ODPSMultilingualFixturesTest(TestCase):
                         # German might have umlauts like ä, ö, ü, ß
                         # Just verify it's a valid string
                         self.assertGreater(len(lang_details["name"]), 0)
-

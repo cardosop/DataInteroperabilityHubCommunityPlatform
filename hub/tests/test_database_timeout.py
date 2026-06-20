@@ -5,8 +5,9 @@ hub/conftest.py ``pytest_runtest_setup`` sets the same on each test so
 TransactionTestCase teardown's temporary 10s timeout cannot leak across tests.
 pytest-timeout (300s in pytest.ini) still bounds hung tests overall.
 """
-from django.test import TestCase
+
 from django.db import connection
+from django.test import TestCase
 
 
 def _parse_pg_timeout_seconds(raw: str) -> int:

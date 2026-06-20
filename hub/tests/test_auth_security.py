@@ -30,8 +30,8 @@ from hub.apps.auth.models import LoginAttempt, RefreshToken
 from hub.apps.auth.utils import sha256_hex as _sha256_hex
 from hub.apps.users.models import User
 
-
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
 
 def _make_user(email=None, password="Pass1234!", **kwargs):
     email = email or f"user_{uuid.uuid4().hex[:8]}@test.local"
@@ -47,6 +47,7 @@ def _make_user(email=None, password="Pass1234!", **kwargs):
 
 def _make_tenant():
     from hub.apps.tenants.models import Tenant
+
     return Tenant.objects.create(
         name=f"Tenant-{uuid.uuid4().hex[:8]}",
         slug=f"tenant-{uuid.uuid4().hex[:8]}",
@@ -56,15 +57,14 @@ def _make_tenant():
 
 # ─── 11.1  httpOnly Cookie ───────────────────────────────────────────────────
 
+
 @pytest.mark.django_db
 @override_settings(JWT_ALGORITHM="HS256")
 class TestRefreshTokenCookie(TestCase):
     def setUp(self):
         self.client = APIClient()
         tenant = _make_tenant()
-        self.user, self.password = _make_user(
-            email="cookie@test.local", tenant=tenant
-        )
+        self.user, self.password = _make_user(email="cookie@test.local", tenant=tenant)
 
     def _login(self):
         return self.client.post(
@@ -95,9 +95,7 @@ class TestRefreshTokenCookie(TestCase):
         login_resp = self._login()
         cookie_name = getattr(settings, "REFRESH_COOKIE_NAME", "refresh_token")
         self.client.cookies = login_resp.cookies
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {login_resp.data['access_token']}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {login_resp.data['access_token']}")
         logout_resp = self.client.post("/api/v1/auth/logout/")
         assert logout_resp.status_code == 200
         # The logout response MUST include a Set-Cookie header that clears the
@@ -114,14 +112,13 @@ class TestRefreshTokenCookie(TestCase):
     def test_refresh_reads_token_from_cookie(self):
         login_resp = self._login()
         self.client.cookies = login_resp.cookies
-        refresh_resp = self.client.post(
-            "/api/v1/auth/refresh/", {}, format="json"
-        )
+        refresh_resp = self.client.post("/api/v1/auth/refresh/", {}, format="json")
         assert refresh_resp.status_code == 200
         assert "access_token" in refresh_resp.data
 
 
 # ─── 11.2  Family Rotation + Replay Detection ───────────────────────────────
+
 
 @pytest.mark.django_db
 @override_settings(JWT_ALGORITHM="HS256")
@@ -129,9 +126,7 @@ class TestRefreshTokenFamilyRotation(TestCase):
     def setUp(self):
         self.client = APIClient()
         tenant = _make_tenant()
-        self.user, self.password = _make_user(
-            email="rotation@test.local", tenant=tenant
-        )
+        self.user, self.password = _make_user(email="rotation@test.local", tenant=tenant)
 
     def _login(self):
         resp = self.client.post(
@@ -206,18 +201,12 @@ class TestRefreshTokenFamilyRotation(TestCase):
         old_cookie = SimpleCookie()
         old_cookie[cookie_name] = t0_value
         self.client.cookies = old_cookie
-        replay_resp = self.client.post(
-            "/api/v1/auth/refresh/", {}, format="json"
-        )
+        replay_resp = self.client.post("/api/v1/auth/refresh/", {}, format="json")
         assert replay_resp.status_code == 401
 
         # All tokens in the family must be revoked
-        active = RefreshToken.objects.filter(
-            family_id=family_id, revoked_at__isnull=True
-        )
-        assert not active.exists(), (
-            "Family should be fully revoked after replay"
-        )
+        active = RefreshToken.objects.filter(family_id=family_id, revoked_at__isnull=True)
+        assert not active.exists(), "Family should be fully revoked after replay"
 
     def test_new_family_id_per_login(self):
         login1 = self._login()
@@ -227,16 +216,13 @@ class TestRefreshTokenFamilyRotation(TestCase):
         cookie_name = getattr(settings, "REFRESH_COOKIE_NAME", "refresh_token")
         token1 = login1.cookies[cookie_name].value
         token2 = login2.cookies[cookie_name].value
-        rt1 = RefreshToken.objects.get(
-            token_hash=RefreshToken.hash_token(token1)
-        )
-        rt2 = RefreshToken.objects.get(
-            token_hash=RefreshToken.hash_token(token2)
-        )
+        rt1 = RefreshToken.objects.get(token_hash=RefreshToken.hash_token(token1))
+        rt2 = RefreshToken.objects.get(token_hash=RefreshToken.hash_token(token2))
         assert rt1.family_id != rt2.family_id
 
 
 # ─── 11.3  Token Hashing ─────────────────────────────────────────────────────
+
 
 @pytest.mark.django_db
 class TestTokenHashing(TestCase):
@@ -260,9 +246,7 @@ class TestTokenHashing(TestCase):
         email = f"invited-{uuid.uuid4().hex[:6]}@test.local"
 
         # Suppress the email task so the test doesn't need a worker
-        with patch(
-            "hub.apps.notifications.tasks.send_invitation_email.delay"
-        ):
+        with patch("hub.apps.notifications.tasks.send_invitation_email.delay"):
             service = UserService(
                 tenant_id=str(self.tenant.id),
                 user_id=str(admin.id),
@@ -279,17 +263,13 @@ class TestTokenHashing(TestCase):
         token = user.invitation_token
         if token:
             # Must be a 64-char lowercase hex string (SHA-256)
-            assert len(token) == 64, (
-                f"Expected 64-char hex, got len={len(token)}"
-            )
+            assert len(token) == 64, f"Expected 64-char hex, got len={len(token)}"
             assert all(c in "0123456789abcdef" for c in token), (
                 f"Expected hex digest, got: {token!r}"
             )
 
     def test_password_reset_token_stored_as_sha256_hash(self):
-        user, _ = _make_user(
-            email="reset-hash@test.local", tenant=self.tenant
-        )
+        user, _ = _make_user(email="reset-hash@test.local", tenant=self.tenant)
         self.client.post(
             "/api/v1/auth/password-reset/",
             {"email": user.email},
@@ -303,21 +283,19 @@ class TestTokenHashing(TestCase):
 
     def test_password_reset_confirm_uses_hash_lookup(self):
         """Confirming a reset with the plaintext UUID must work."""
-        user, _ = _make_user(
-            email="reset-confirm@test.local", tenant=self.tenant
-        )
+        user, _ = _make_user(email="reset-confirm@test.local", tenant=self.tenant)
         # Manually set a hashed token
         plaintext = str(uuid.uuid4())
         user.password_reset_token = _sha256_hex(plaintext)
-        user.password_reset_token_expires_at = (
-            timezone.now() + timedelta(hours=1)
-        )
+        user.password_reset_token_expires_at = timezone.now() + timedelta(hours=1)
         user.password_reset_token_used_at = None
-        user.save(update_fields=[
-            "password_reset_token",
-            "password_reset_token_expires_at",
-            "password_reset_token_used_at",
-        ])
+        user.save(
+            update_fields=[
+                "password_reset_token",
+                "password_reset_token_expires_at",
+                "password_reset_token_used_at",
+            ]
+        )
 
         resp = self.client.post(
             "/api/v1/auth/password-reset/confirm/",
@@ -327,9 +305,7 @@ class TestTokenHashing(TestCase):
         assert resp.status_code == 200
 
     def test_invalid_reset_token_rejected(self):
-        user, _ = _make_user(
-            email="reset-bad@test.local", tenant=self.tenant
-        )
+        _user, _ = _make_user(email="reset-bad@test.local", tenant=self.tenant)
         resp = self.client.post(
             "/api/v1/auth/password-reset/confirm/",
             {"token": str(uuid.uuid4()), "new_password": "NewSecure99!"},
@@ -339,6 +315,7 @@ class TestTokenHashing(TestCase):
 
 
 # ─── 11.4  Webhook Secret Encryption ─────────────────────────────────────────
+
 
 @pytest.mark.django_db
 class TestWebhookSecretEncryption(TestCase):
@@ -355,9 +332,7 @@ class TestWebhookSecretEncryption(TestCase):
         wh.save()
 
         wh.refresh_from_db()
-        assert wh.secret.startswith("v1:"), (
-            f"Expected v1: prefix, got: {wh.secret!r}"
-        )
+        assert wh.secret.startswith("v1:"), f"Expected v1: prefix, got: {wh.secret!r}"
 
     def test_decrypted_secret_matches_original(self):
         from hub.apps.webhooks.models import Webhook
@@ -420,15 +395,14 @@ class TestWebhookSecretEncryption(TestCase):
 
 # ─── 11.5  Login Security ────────────────────────────────────────────────────
 
+
 @pytest.mark.django_db
 class TestLoginSecurity(TestCase):
     def setUp(self):
         self.client = APIClient()
         cache.clear()
         tenant = _make_tenant()
-        self.user, self.password = _make_user(
-            email="login-sec@test.local", tenant=tenant
-        )
+        self.user, self.password = _make_user(email="login-sec@test.local", tenant=tenant)
 
     def tearDown(self):
         cache.clear()
@@ -456,9 +430,7 @@ class TestLoginSecurity(TestCase):
             format="json",
             REMOTE_ADDR="10.0.0.1",
         )
-        assert LoginAttempt.objects.filter(
-            email=self.user.email, success=False
-        ).exists()
+        assert LoginAttempt.objects.filter(email=self.user.email, success=False).exists()
 
     def test_login_success_recorded_in_login_attempts(self):
         self.client.post(
@@ -467,9 +439,7 @@ class TestLoginSecurity(TestCase):
             format="json",
             REMOTE_ADDR="10.0.0.2",
         )
-        assert LoginAttempt.objects.filter(
-            email=self.user.email, success=True
-        ).exists()
+        assert LoginAttempt.objects.filter(email=self.user.email, success=True).exists()
 
     @override_settings(LOGIN_IP_RATE_PER_MINUTE=2, RATE_LIMIT_ENABLED=True)
     def test_ip_rate_limit_returns_429(self):
@@ -540,12 +510,13 @@ class TestLoginSecurity(TestCase):
         # 200 ms is generous; the real goal is to confirm both paths run
         # check_password.
         assert diff_ms < 200, (
-            f"Login timing differs too much: known={known_median*1000:.1f}ms "
-            f"unknown={unknown_median*1000:.1f}ms diff={diff_ms:.1f}ms"
+            f"Login timing differs too much: known={known_median * 1000:.1f}ms "
+            f"unknown={unknown_median * 1000:.1f}ms diff={diff_ms:.1f}ms"
         )
 
 
 # ─── 11.6  N+1 Elimination ───────────────────────────────────────────────────
+
 
 @pytest.mark.django_db
 @override_settings(JWT_ALGORITHM="HS256")
@@ -561,9 +532,7 @@ class TestGetUserFromTokenQueryCount(TestCase):
         from hub.apps.auth.jwt_utils import JWTTokenGenerator
 
         tenant = _make_tenant()
-        user, _ = _make_user(
-            email="n1-test@test.local", tenant=tenant
-        )
+        user, _ = _make_user(email="n1-test@test.local", tenant=tenant)
 
         token = JWTTokenGenerator.generate_access_token(user)
         payload = JWTTokenGenerator.decode_access_token(token)
@@ -574,13 +543,11 @@ class TestGetUserFromTokenQueryCount(TestCase):
 
         assert result is not None
         # select_related = 1 query (JOIN); prefetch_related = 1 more
-        assert len(ctx) <= 2, (
-            f"Expected ≤2 queries, got {len(ctx)}: "
-            f"{[q['sql'][:80] for q in ctx]}"
-        )
+        assert len(ctx) <= 2, f"Expected ≤2 queries, got {len(ctx)}: {[q['sql'][:80] for q in ctx]}"
 
 
 # ─── 11.7  Atomic accept_invitation ─────────────────────────────────────────
+
 
 @pytest.mark.django_db(transaction=True)
 class TestAcceptInvitationAtomic:
@@ -599,24 +566,22 @@ class TestAcceptInvitationAtomic:
         """
         tenant = _make_tenant()
         invited_user, _ = _make_user(
-            email=(
-                f"invite-atomic-{uuid.uuid4().hex[:6]}@test.local"
-            ),
+            email=(f"invite-atomic-{uuid.uuid4().hex[:6]}@test.local"),
             tenant=tenant,
         )
         invited_user.status = "INVITED"
         plaintext = str(uuid.uuid4())
         invited_user.invitation_token = _sha256_hex(plaintext)
-        invited_user.invitation_token_expires_at = (
-            timezone.now() + timedelta(days=7)
-        )
+        invited_user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
         invited_user.invitation_token_used_at = None
-        invited_user.save(update_fields=[
-            "status",
-            "invitation_token",
-            "invitation_token_expires_at",
-            "invitation_token_used_at",
-        ])
+        invited_user.save(
+            update_fields=[
+                "status",
+                "invitation_token",
+                "invitation_token_expires_at",
+                "invitation_token_used_at",
+            ]
+        )
 
         results = []
         # Barrier ensures both threads reach the DB interaction simultaneously,
@@ -647,6 +612,7 @@ class TestAcceptInvitationAtomic:
 
 
 # ─── 14.9  Phase 14 Auth Security ────────────────────────────────────────────
+
 
 @pytest.mark.django_db
 @override_settings(JWT_ALGORITHM="HS256")
@@ -759,6 +725,7 @@ class TestPhase14AuthSecurity(TestCase):
         # previously-locked request does not control the outcome for the
         # time-patched second request.
         from hub.apps.auth.views import _account_lockout_cache_key
+
         cache.delete(_account_lockout_cache_key(self.user.email))
 
         # Advance time by 16 minutes (past the lockout window)
@@ -788,8 +755,8 @@ class TestPhase14AuthSecurity(TestCase):
         """
         A JWT access token whose exp claim is in the past must be rejected with 401.
         """
+
         import jwt as pyjwt
-        from datetime import datetime
 
         now = timezone.now()
         past = now - timedelta(hours=1)
@@ -896,8 +863,8 @@ class TestPhase14AuthSecurity(TestCase):
         verification layer rejects such tokens unconditionally.
         """
         import jwt as pyjwt
-        from cryptography.hazmat.primitives.asymmetric import rsa
         from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
 
         # Generate a fresh RSA-2048 key pair (attacker's key)
         attacker_private_key = rsa.generate_private_key(
@@ -942,9 +909,9 @@ class TestPhase14AuthSecurity(TestCase):
         # PyJWT 2.x rejects PEM-encoded bytes as HS256 secrets; strip headers to
         # produce raw DER bytes that pass PyJWT's key-type check.
         import base64 as _base64
+
         _pem_body = (
-            attacker_public_key_pem
-            .replace(b"-----BEGIN PUBLIC KEY-----", b"")
+            attacker_public_key_pem.replace(b"-----BEGIN PUBLIC KEY-----", b"")
             .replace(b"-----END PUBLIC KEY-----", b"")
             .replace(b"\n", b"")
         )
@@ -974,12 +941,12 @@ class TestDebugProductionGuard(TestCase):
 
     def test_debug_guard_raises_in_production(self):
         """Importing settings with ENVIRONMENT=production + DEBUG=True must fail."""
-        from django.core.exceptions import ImproperlyConfigured
 
         # The guard is at module level in settings.py. We verify it exists by
         # checking the source code rather than reloading settings (which would
         # break the running test process).
         import inspect
+
         from hub import settings as hub_settings
 
         source = inspect.getsource(hub_settings)
@@ -1056,6 +1023,7 @@ class TestTenantScopingMiddlewareErrors(TestCase):
     def test_tenant_does_not_exist_returns_403(self):
         """Missing tenant returns 403 TENANT_NOT_FOUND."""
         from django.test import RequestFactory
+
         from hub.apps.auth.middleware import TenantScopingMiddleware
 
         factory = RequestFactory()
@@ -1070,9 +1038,11 @@ class TestTenantScopingMiddlewareErrors(TestCase):
 
     def test_tenant_db_error_returns_503(self):
         """Database error returns 503 SERVICE_UNAVAILABLE."""
-        from unittest.mock import patch, MagicMock
-        from django.test import RequestFactory
+        from unittest.mock import patch
+
         from django.db import OperationalError
+        from django.test import RequestFactory
+
         from hub.apps.auth.middleware import TenantScopingMiddleware
 
         factory = RequestFactory()
@@ -1114,7 +1084,7 @@ class TestAccountLockout(TestCase):
         client = APIClient()
 
         # Make 3 failed attempts
-        for i in range(3):
+        for _i in range(3):
             resp = client.post(
                 "/api/v1/auth/login/",
                 {"email": user.email, "password": "WrongPassword!"},
@@ -1162,13 +1132,12 @@ class TestRefreshTokenFamilyRevocation(TestCase):
             format="json",
         )
         self.assertEqual(
-            resp.status_code, 200,
+            resp.status_code,
+            200,
             f"Login must succeed for replay test, got {resp.status_code}",
         )
         # Extract refresh token from cookie
-        refresh_cookie = resp.cookies.get(
-            getattr(settings, "REFRESH_COOKIE_NAME", "refresh_token")
-        )
+        refresh_cookie = resp.cookies.get(getattr(settings, "REFRESH_COOKIE_NAME", "refresh_token"))
         self.assertIsNotNone(
             refresh_cookie,
             "Login response must include a refresh cookie",
@@ -1187,7 +1156,8 @@ class TestRefreshTokenFamilyRevocation(TestCase):
             HTTP_COOKIE=f"refresh_token={refresh_token_str}",
         )
         self.assertEqual(
-            resp2.status_code, 200,
+            resp2.status_code,
+            200,
             f"First refresh must succeed, got {resp2.status_code}",
         )
 
@@ -1197,7 +1167,8 @@ class TestRefreshTokenFamilyRevocation(TestCase):
             HTTP_COOKIE=f"refresh_token={refresh_token_str}",
         )
         self.assertIn(
-            resp3.status_code, (400, 401),
+            resp3.status_code,
+            (400, 401),
             f"Replaying revoked refresh token should return 400 or 401, got {resp3.status_code}",
         )
 

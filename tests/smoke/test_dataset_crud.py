@@ -15,8 +15,10 @@ Optional env vars:
 The test dataset is created with the minimum required fields and labelled
 `smoke_test=true` for easy identification in the unlikely event cleanup fails.
 """
+
 import os
 import uuid
+
 import pytest
 import requests
 
@@ -38,7 +40,7 @@ def created_dataset(
     payload = {
         "name": f"smoke-test-dataset-{unique_suffix}",
         "description": "Automated smoke test dataset — safe to delete",
-        "type": "structured",            # most common dataset type
+        "type": "structured",  # most common dataset type
         "tags": ["smoke_test", "ci"],
         "is_public": False,
     }
@@ -158,8 +160,7 @@ class TestDatasetCRUD:
             timeout=timeout,
         )
         assert response.status_code == 200, (
-            f"PATCH /datasets/{dataset_id}/ returned {response.status_code}: "
-            f"{response.text[:300]}"
+            f"PATCH /datasets/{dataset_id}/ returned {response.status_code}: {response.text[:300]}"
         )
         data = response.json()
         assert data.get("name") == updated_name, (
@@ -180,8 +181,7 @@ class TestDatasetCRUD:
             timeout=timeout,
         )
         assert response.status_code == 204, (
-            f"DELETE /datasets/{dataset_id}/ returned {response.status_code}: "
-            f"{response.text[:200]}"
+            f"DELETE /datasets/{dataset_id}/ returned {response.status_code}: {response.text[:200]}"
         )
 
     def test_deleted_dataset_returns_404(

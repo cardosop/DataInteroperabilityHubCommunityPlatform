@@ -6,11 +6,11 @@ import sys
 
 import click
 
+from .api_client import api_client
 from .auth import auth_manager
 from .commands import (
     assets,
     audit,
-    auth as auth_cmd,
     baas,
     billing,
     breach,
@@ -29,7 +29,6 @@ from .commands import (
     files,
     gdpr,
     governance,
-    graphql as graphql_cmd,
     health,
     integrations,
     jobs,
@@ -50,8 +49,8 @@ from .commands import (
     scheduled_ingestion,
     search,
     security,
-    social,
     semantic,
+    social,
     tenants,
     transformation,
     users,
@@ -60,9 +59,13 @@ from .commands import (
     warehouses,
     webhooks,
 )
+from .commands import (
+    auth as auth_cmd,
+)
 from .commands import config as config_cmd
-from .api_client import api_client
-from .config import config
+from .commands import (
+    graphql as graphql_cmd,
+)
 
 
 @click.group()

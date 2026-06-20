@@ -27,23 +27,24 @@ The suite uses real DB rows; no mocks. Audit chain immutability guards
 are bypassed exactly the way production code bypasses them (queryset
 .delete() vs. instance .delete()).
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 from datetime import timedelta
 from io import StringIO
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.utils import timezone
 
+from hub.apps.assets.models import Asset
 from hub.apps.audit import event_types as _audit_et
 from hub.apps.audit.chain import verify_chain_segment
 from hub.apps.audit.models import AuditEvent
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.core.pii_registry import registered_model_labels
-from hub.apps.assets.models import Asset
 from hub.apps.dsar.models import DSARRequest, DSARRequestType, DSARStatus
 from hub.apps.governance.models import (
     RetentionAction,
@@ -63,7 +64,9 @@ User = get_user_model()
 
 def _ensure_tenant_has_subscription(tenant: Tenant) -> None:
     from datetime import timedelta
+
     from django.utils import timezone
+
     from hub.apps.billing.models import Subscription, SubscriptionStatus
     from hub.apps.tenants.models import PlanTier, TenantPlan
 
@@ -138,9 +141,7 @@ def _make_archived_event(
         details={"test_fixture": True},
     )
     archived_at = timezone.now() - timedelta(days=archived_days_ago)
-    AuditEvent.all_objects.filter(pk=event.pk).update(
-        is_archived=True, archived_at=archived_at
-    )
+    AuditEvent.all_objects.filter(pk=event.pk).update(is_archived=True, archived_at=archived_at)
     event.refresh_from_db()
     return event
 
@@ -421,12 +422,8 @@ class TestAuditPermanentDeleteSweep:
         ]
         target_ids = [str(t.pk) for t in targets]
 
-        first = run_audit_permanent_delete_sweep(
-            dry_run=False, tenant_id=str(self.tenant.id)
-        )
-        second = run_audit_permanent_delete_sweep(
-            dry_run=False, tenant_id=str(self.tenant.id)
-        )
+        first = run_audit_permanent_delete_sweep(dry_run=False, tenant_id=str(self.tenant.id))
+        second = run_audit_permanent_delete_sweep(dry_run=False, tenant_id=str(self.tenant.id))
 
         assert first["deleted_count"] == 3
         # Second run: targets are gone; meta-audit from first run is

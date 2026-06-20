@@ -5,10 +5,10 @@ Daily per-asset job compares warehouse-side schema against Hub's
 Dataset.schema_json. Emits WAREHOUSE_SCHEMA_DRIFT audit when drift
 is detected. Blocks live queries on the drifted asset until reconciled.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -18,13 +18,12 @@ def check_schema_drift(
     asset,
     warehouse_connection,
     tenant,
-) -> Optional[dict]:
+) -> dict | None:
     """Compare warehouse schema against Dataset.schema_json.
 
     Returns a drift report dict if schemas diverge, None if consistent.
     Emits WAREHOUSE_SCHEMA_DRIFT audit on drift detection.
     """
-    from hub.apps.warehouses.base import WarehouseConnector
 
     dataset = asset.datasets.first()
     if not dataset or not dataset.schema_json:
@@ -51,10 +50,7 @@ def check_schema_drift(
     # Compare.
     added = [c for c in wh_columns if c not in hub_columns]
     removed = [c for c in hub_columns if c not in wh_columns]
-    type_changed = [
-        c for c in wh_columns
-        if c in hub_columns and wh_columns[c] != hub_columns[c]
-    ]
+    type_changed = [c for c in wh_columns if c in hub_columns and wh_columns[c] != hub_columns[c]]
 
     if added or removed or type_changed:
         drift = {
@@ -68,6 +64,7 @@ def check_schema_drift(
         try:
             from hub.apps.audit.event_types import WAREHOUSE_SCHEMA_DRIFT
             from hub.apps.audit.utils import create_audit_event
+
             create_audit_event(
                 resource_type="ASSET",
                 action=WAREHOUSE_SCHEMA_DRIFT,
@@ -88,15 +85,19 @@ def _get_connector(warehouse_type: str, config: dict):
     """Resolve the appropriate connector for the warehouse type."""
     if warehouse_type == "SNOWFLAKE":
         from hub.apps.warehouses.connectors.snowflake import SnowflakeConnector
+
         return SnowflakeConnector(config)
     elif warehouse_type == "BIGQUERY":
         from hub.apps.warehouses.connectors.bigquery import BigQueryConnector
+
         return BigQueryConnector(config)
     elif warehouse_type == "DATABRICKS":
         from hub.apps.warehouses.connectors.databricks import DatabricksConnector
+
         return DatabricksConnector(config)
     elif warehouse_type == "ATHENA":
         from hub.apps.warehouses.connectors.athena import AthenaConnector
+
         return AthenaConnector(config)
     else:
         raise ValueError(f"Unknown warehouse type: {warehouse_type}")

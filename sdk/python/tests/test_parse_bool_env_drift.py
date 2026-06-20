@@ -4,15 +4,13 @@ is byte-equivalent to canonical ``hub/apps/api/mvp_mode.py::_parse_bool_env``.
 
 Same doctrine as Phase 215's drift sync (no regex, no Django import).
 """
+
 from __future__ import annotations
 
 import ast
 from pathlib import Path
 
-
-CANONICAL_PATH = (
-    Path(__file__).resolve().parents[3] / "hub" / "apps" / "api" / "mvp_mode.py"
-)
+CANONICAL_PATH = Path(__file__).resolve().parents[3] / "hub" / "apps" / "api" / "mvp_mode.py"
 LOCAL_PATH = Path(__file__).resolve().parent / "_pytest_helpers.py"
 FUNC_NAME = "_parse_bool_env"
 

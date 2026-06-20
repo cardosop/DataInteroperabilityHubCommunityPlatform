@@ -9,8 +9,7 @@ This script fetches the OpenAPI spec from a running API server and converts it t
 import argparse
 import json
 import sys
-from typing import Any, Dict, List
-from urllib.parse import urljoin, urlparse
+from typing import Any
 
 import requests
 import yaml
@@ -19,7 +18,7 @@ import yaml
 class PostmanCollectionGenerator:
     """Generates Postman collections from OpenAPI specifications."""
 
-    def __init__(self, openapi_spec: Dict[str, Any], base_url: str = "http://localhost:8000"):
+    def __init__(self, openapi_spec: dict[str, Any], base_url: str = "http://localhost:8000"):
         """
         Initialize generator with OpenAPI spec.
 
@@ -43,10 +42,10 @@ class PostmanCollectionGenerator:
             ],
         }
 
-    def generate(self) -> Dict[str, Any]:
+    def generate(self) -> dict[str, Any]:
         """Generate Postman collection from OpenAPI spec."""
         # Group endpoints by tags
-        endpoints_by_tag: Dict[str, List[Dict[str, Any]]] = {}
+        endpoints_by_tag: dict[str, list[dict[str, Any]]] = {}
 
         paths = self.spec.get("paths", {})
         for path, path_item in paths.items():
@@ -85,9 +84,7 @@ class PostmanCollectionGenerator:
 
         return self.collection
 
-    def _create_request(
-        self, path: str, method: str, operation: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _create_request(self, path: str, method: str, operation: dict[str, Any]) -> dict[str, Any]:
         """Create a Postman request from OpenAPI operation."""
         # Build full URL
         full_path = path
@@ -99,15 +96,17 @@ class PostmanCollectionGenerator:
         url = f"{{{{base_url}}}}/api/{{{{api_version}}}}{path_with_vars}"
 
         # Create request
-        request: Dict[str, Any] = {
-            "name": operation.get("summary", operation.get("operationId", f"{method.upper()} {path}")),
+        request: dict[str, Any] = {
+            "name": operation.get(
+                "summary", operation.get("operationId", f"{method.upper()} {path}")
+            ),
             "request": {
                 "method": method.upper(),
                 "header": [],
                 "url": {
                     "raw": url,
                     "host": ["{{base_url}}"],
-                    "path": [f"api", "{{api_version}}"] + full_path.split("/")[1:],
+                    "path": ["api", "{{api_version}}"] + full_path.split("/")[1:],
                 },
                 "description": operation.get("description", ""),
             },
@@ -212,7 +211,7 @@ class PostmanCollectionGenerator:
 
         return request
 
-    def _generate_example_from_schema(self, schema: Dict[str, Any]) -> Any:
+    def _generate_example_from_schema(self, schema: dict[str, Any]) -> Any:
         """Generate example value from JSON schema."""
         schema_type = schema.get("type", "object")
 
@@ -327,7 +326,7 @@ class PostmanCollectionGenerator:
         self.collection["item"].insert(0, auth_folder)
 
 
-def fetch_openapi_spec(url: str) -> Dict[str, Any]:
+def fetch_openapi_spec(url: str) -> dict[str, Any]:
     """Fetch OpenAPI spec from URL."""
     try:
         response = requests.get(url, timeout=10)
@@ -370,7 +369,7 @@ def main():
 
     # Load OpenAPI spec
     if args.spec_file:
-        with open(args.spec_file, "r", encoding="utf-8") as f:
+        with open(args.spec_file, encoding="utf-8") as f:
             if args.spec_file.endswith((".yaml", ".yml")):
                 spec = yaml.safe_load(f)
             else:
@@ -392,4 +391,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

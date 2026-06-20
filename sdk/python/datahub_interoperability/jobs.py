@@ -1,6 +1,7 @@
 """
 Job operations for DataHub SDK.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -20,11 +21,13 @@ class JobsAPI:
     #: class constant so a deployment with non-canonical job
     #: statuses can subclass ``JobsAPI`` and override this set
     #: without re-implementing the poll loop.
-    TERMINAL_STATUSES: FrozenSet[str] = frozenset({
-        "COMPLETED",
-        "FAILED",
-        "CANCELLED",
-    })
+    TERMINAL_STATUSES: FrozenSet[str] = frozenset(
+        {
+            "COMPLETED",
+            "FAILED",
+            "CANCELLED",
+        }
+    )
 
     def __init__(self, client: DataHubClient):
         self.client = client

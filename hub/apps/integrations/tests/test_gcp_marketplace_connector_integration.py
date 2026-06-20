@@ -19,7 +19,7 @@ import json
 import os
 
 import pytest
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
 from hub.apps.core.services.base import NotFoundError, PermissionError
 from hub.apps.integrations.base import (
@@ -42,18 +42,16 @@ def get_test_credentials():
     credentials in environments where they are not configured.
     """
     import unittest
-    import json
+
     env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
     if not env_json:
-        raise unittest.SkipTest(
-            "GCP_SERVICE_ACCOUNT_JSON not set — skipping"
-        )
+        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON not set — skipping")
     try:
         return json.loads(env_json)
     except json.JSONDecodeError:
-        raise unittest.SkipTest(
-            "GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping"
-        )
+        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping")
+
+
 class TestGCPMarketplaceConnectorIntegration(TestCase):
     """Integration tests for GCP Marketplace connector using real credentials"""
 
@@ -81,15 +79,14 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
     def test_connector_initialization_with_empty_project_id(self):
         """Test connector initialization error handling with empty project_id"""
         with self.assertRaises((ValueError, TypeError)):
-            connector = GCPMarketplaceConnector(
-                project_id="", credentials_json=self.credentials_json
-            )
+            GCPMarketplaceConnector(project_id="", credentials_json=self.credentials_json)
 
     def test_connector_initialization_with_none_project_id(self):
         """Test connector initialization error handling with None project_id"""
         with self.assertRaises((ValueError, TypeError)):
-            connector = GCPMarketplaceConnector(
-                project_id=None, credentials_json=self.credentials_json  # type: ignore[arg-type]  # test: edge-case type exercise
+            GCPMarketplaceConnector(
+                project_id=None,
+                credentials_json=self.credentials_json,  # type: ignore[arg-type]  # test: edge-case type exercise
             )
 
     def test_connector_initialization_with_invalid_credentials(self):
@@ -116,9 +113,6 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
             self.assertEqual(len(listings), 0)
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
-        except Exception:
-            # May fail if not authenticated or other errors
-            pass
 
     def test_list_listings_with_none_limit(self):
         """Test list_listings() error handling with None limit"""
@@ -131,9 +125,6 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
             pass
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
-        except Exception:
-            # May fail if not authenticated or other errors
-            pass
 
     def test_get_listing_with_empty_id(self):
         """Test get_listing() error handling with empty ID"""
@@ -142,9 +133,6 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
                 self.connector.get_listing("")
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
-        except Exception:
-            # May fail if not authenticated or other errors
-            pass
 
     def test_get_listing_with_none_id(self):
         """Test get_listing() error handling with None ID"""
@@ -153,9 +141,6 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
                 self.connector.get_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
-        except Exception:
-            # May fail if not authenticated or other errors
-            pass
 
     def test_list_resources_with_empty_listing_id(self):
         """Test list_resources() error handling with empty listing ID"""
@@ -164,9 +149,6 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
                 self.connector.list_resources("")
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
-        except Exception:
-            # May fail if not authenticated or other errors
-            pass
 
     def test_list_resources_with_none_listing_id(self):
         """Test list_resources() error handling with None listing ID"""
@@ -175,9 +157,6 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
                 self.connector.list_resources(None)  # type: ignore[arg-type]  # test: edge-case type exercise
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
-        except Exception:
-            # May fail if not authenticated or other errors
-            pass
 
     def test_marketplace_type_property(self):
         """Test marketplace_type property returns correct value"""
@@ -262,7 +241,7 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
             project_id="invalid-project-id-12345", credentials_json=self.credentials_json
         )
 
-        with self.assertRaises((NotFoundError, PermissionError, Exception)):
+        with self.assertRaises((NotFoundError, PermissionError)):
             # May raise NotFoundError (404) or PermissionError (403) depending on GCP behavior
             invalid_connector.test_connection()
 
@@ -361,7 +340,8 @@ class TestGCPMarketplaceConnectorErrorHandling(TestCase):
     def test_get_credentials_with_invalid_json_type(self):
         """Test _get_credentials() raises ValueError for invalid credentials_json type"""
         connector = GCPMarketplaceConnector(
-            project_id=self.project_id, credentials_json="invalid-string"  # Should be dict
+            project_id=self.project_id,
+            credentials_json="invalid-string",  # Should be dict
         )
 
         with self.assertRaises(ValueError) as cm:

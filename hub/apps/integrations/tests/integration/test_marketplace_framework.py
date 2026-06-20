@@ -11,13 +11,12 @@ Tests the complete marketplace integration framework with real implementations:
 All tests use real services - no mocks or stubs.
 """
 
+import contextlib
 import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from django.utils import timezone
-from django_rq import get_queue
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -42,12 +41,6 @@ from hub.apps.integrations.models import (
     MarketplaceSyncJob,
 )
 from hub.apps.integrations.services import MarketplaceIntegrationService
-from hub.apps.integrations.views import (
-    MarketplaceConnectionViewSet,
-    MarketplaceMappingViewSet,
-    MarketplaceSyncJobViewSet,
-)
-from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import Role, User, UserStatus
 from tests.utils.wait_helpers import wait_for_event_persistence
@@ -78,6 +71,7 @@ class MarketplaceFrameworkIntegrationTest(TestCase):
         """Set up test fixtures"""
         # Ensure DB connection is open (can be closed by previous test in batch)
         from django.db import connection
+
         connection.ensure_connection()
         # CRITICAL: Disconnect semantic service signals to prevent timeouts
         from django.db.models.signals import post_save
@@ -152,9 +146,7 @@ class MarketplaceFrameworkIntegrationTest(TestCase):
         # API client with API key auth (matches MarketplaceIntegrationAPITest pattern)
         self.api_client = APIClient()
         self.api_client.force_authenticate(user=None)
-        self.api_client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.plaintext_api_key}"
-        )
+        self.api_client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.plaintext_api_key}")
 
     def _register_test_connectors(self):
         """Register test connectors for integration tests"""
@@ -274,10 +266,8 @@ class MarketplaceFrameworkIntegrationTest(TestCase):
     def tearDown(self):
         """Clean up non-DB state (connectors, signals) and call super().tearDown()."""
         for mt in self.test_connectors.keys():
-            try:
+            with contextlib.suppress(ValueError):
                 MarketplaceConnectorFactory.unregister_connector(mt)
-            except ValueError:
-                pass
 
         # Reconnect signals after test
         from django.db.models.signals import post_save
@@ -445,9 +435,7 @@ class MarketplaceFrameworkIntegrationTest(TestCase):
             "name": "API Test Connection",
             "config": self.config,
         }
-        response = self.api_client.post(
-            f"{MARKETPLACE_CONNECTIONS}/", create_data, format="json"
-        )
+        response = self.api_client.post(f"{MARKETPLACE_CONNECTIONS}/", create_data, format="json")
         self.assertEqual(
             response.status_code,
             status.HTTP_201_CREATED,
@@ -595,6 +583,46 @@ class MarketplaceFrameworkIntegrationTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["direction"], SyncDirection.PUSH.value)
 
+    # === API Error Case Tests ===
+
+    def test_api_create_connection_invalid_marketplace_type(self):
+        """POST connection with invalid marketplace_type returns 400."""
+        response = self.api_client.post(
+            f"{MARKETPLACE_CONNECTIONS}/",
+            {"marketplace_type": "INVALID_TYPE", "name": "Bad", "config": self.config},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_api_get_nonexistent_connection(self):
+        """GET nonexistent connection returns 404."""
+        response = self.api_client.get(
+            f"{MARKETPLACE_CONNECTIONS}/00000000-0000-0000-0000-000000000000/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_api_delete_nonexistent_connection(self):
+        """DELETE nonexistent connection returns 404."""
+        response = self.api_client.delete(
+            f"{MARKETPLACE_CONNECTIONS}/00000000-0000-0000-0000-000000000000/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_api_create_sync_job_nonexistent_connection(self):
+        """POST sync job with nonexistent connection returns 400 or 404."""
+        response = self.api_client.post(
+            f"{MARKETPLACE_SYNC}/",
+            {
+                "connection_id": "00000000-0000-0000-0000-000000000000",
+                "direction": SyncDirection.PULL.value,
+            },
+            format="json",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND],
+        )
+
     # === Event Publishing Integration Tests ===
 
     def test_event_publishing_integration(self):
@@ -650,7 +678,7 @@ class MarketplaceFrameworkIntegrationTest(TestCase):
         )
 
         # Create sync job
-        sync_job = self.service.sync_assets_to_marketplace(
+        self.service.sync_assets_to_marketplace(
             connection_id=str(connection.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
@@ -697,19 +725,24 @@ class MarketplaceFrameworkIntegrationTest(TestCase):
         self.assertIn("workflow_instance_id", sync_job.metadata)
 
         # Verify sync job was created; workflow may run synchronously so status can
-        # be PENDING (queued), RUNNING (started), or terminal (COMPLETED/FAILED/PARTIAL)
+        # be PENDING (queued), RUNNING (started), or COMPLETED/PARTIAL (terminal).
+        # FAILED is NOT acceptable for a just-created job — it indicates a
+        # workflow or infrastructure error that must be investigated.
         db_sync_job = MarketplaceSyncJob.objects.get(id=sync_job.id)
-        self.assertIsNotNone(db_sync_job)
         self.assertIn(
             db_sync_job.status,
             (
                 SyncStatus.PENDING.value,
                 SyncStatus.RUNNING.value,
                 SyncStatus.COMPLETED.value,
-                SyncStatus.FAILED.value,
                 SyncStatus.PARTIAL.value,
             ),
-            msg="Sync job should be in a valid state after create",
+            msg=f"Sync job should be in a valid non-FAILED state after create, "
+                f"got status={db_sync_job.status}",
+        )
+        self.assertNotEqual(
+            db_sync_job.status, SyncStatus.FAILED.value,
+            msg="Newly created sync job should never be FAILED before any work is done",
         )
 
     def test_audit_logging_integration(self):

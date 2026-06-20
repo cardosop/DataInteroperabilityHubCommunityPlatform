@@ -9,7 +9,8 @@ Extends E2ETestBase with workflow-specific infrastructure:
 
 No mocks/stubs; uses real WorkflowEngine, WorkflowRegistry, and business rules.
 """
-from typing import Any, Dict, List, Optional, Type
+
+from typing import Any
 
 from tests.e2e.conftest import E2ETestBase
 
@@ -20,23 +21,24 @@ from tests.e2e.conftest import E2ETestBase
 def get_workflow_classes_for_e2e():
     """Return workflow classes that support register_workflow + register_tasks (for E2E)."""
     from hub.apps.orchestration.workflows import (
-        ProductCreationWorkflow,
-        ContractCreationWorkflow,
-        AssetCreationWorkflow,
-        DatasetCreationWorkflow,
-        VersionCreationWorkflow,
-        MarketplacePublicationWorkflow,
-        MarketplaceSyncWorkflow,
         AccessRequestWorkflow,
+        APIKeyManagementWorkflow,
+        AssetCreationWorkflow,
+        ComplianceReportingWorkflow,
+        ContractCreationWorkflow,
         DataMeshWorkflow,
         DataQualityCheckWorkflow,
-        ComplianceReportingWorkflow,
-        ScheduledIngestionWorkflow,
-        VirtualizationWorkflow,
-        APIKeyManagementWorkflow,
-        ModelTrainingWorkflow,
+        DatasetCreationWorkflow,
+        MarketplacePublicationWorkflow,
+        MarketplaceSyncWorkflow,
         ModelInferenceWorkflow,
+        ModelTrainingWorkflow,
+        ProductCreationWorkflow,
+        ScheduledIngestionWorkflow,
+        VersionCreationWorkflow,
+        VirtualizationWorkflow,
     )
+
     return [
         ProductCreationWorkflow,
         ContractCreationWorkflow,
@@ -62,8 +64,8 @@ def create_engine_with_all_workflows_and_tasks():
     Create WorkflowEngine and WorkflowRegistry with all workflow definitions
     and tasks registered. Uses real implementations (no mocks).
     """
-    from hub.apps.orchestration.workflow_engine import WorkflowEngine
     from hub.apps.orchestration.registry import WorkflowRegistry
+    from hub.apps.orchestration.workflow_engine import WorkflowEngine
 
     engine = WorkflowEngine()
     registry = WorkflowRegistry()
@@ -96,12 +98,16 @@ class WorkflowE2ETestBase(E2ETestBase):
         super().setUp()
         if not hasattr(self, "tenant") or not hasattr(self, "user"):
             return
-        from hub.apps.orchestration.workflow_engine import WorkflowEngine
         from hub.apps.orchestration.registry import WorkflowRegistry
+        from hub.apps.orchestration.workflow_engine import WorkflowEngine
 
         self._engine = WorkflowEngine()
         self._registry = WorkflowRegistry()
-        classes = self.workflow_classes if self.workflow_classes is not None else get_workflow_classes_for_e2e()
+        classes = (
+            self.workflow_classes
+            if self.workflow_classes is not None
+            else get_workflow_classes_for_e2e()
+        )
         for wf_class in classes:
             if hasattr(wf_class, "register_workflow"):
                 wf_class.register_workflow(self._registry)
@@ -115,10 +121,10 @@ class WorkflowE2ETestBase(E2ETestBase):
     def create_workflow_instance(
         self,
         workflow_name: str,
-        input_data: Dict[str, Any],
-        tenant_id: Optional[str] = None,
-        created_by_id: Optional[str] = None,
-        workflow_version: Optional[str] = None,
+        input_data: dict[str, Any],
+        tenant_id: str | None = None,
+        created_by_id: str | None = None,
+        workflow_version: str | None = None,
     ):
         """
         Create a workflow instance using the test engine.
@@ -150,9 +156,9 @@ class WorkflowE2ETestBase(E2ETestBase):
     def create_start_and_execute(
         self,
         workflow_name: str,
-        input_data: Dict[str, Any],
-        tenant_id: Optional[str] = None,
-        created_by_id: Optional[str] = None,
+        input_data: dict[str, Any],
+        tenant_id: str | None = None,
+        created_by_id: str | None = None,
     ):
         """
         Create, start, and execute a workflow in one call.
@@ -174,9 +180,10 @@ class WorkflowE2ETestBase(E2ETestBase):
 
     # --- Workflow state verification helpers ---
 
-    def assert_workflow_completed(self, instance, msg: Optional[str] = None):
+    def assert_workflow_completed(self, instance, msg: str | None = None):
         """Assert workflow instance status is COMPLETED."""
         from hub.apps.orchestration.models import WorkflowStatus
+
         instance.refresh_from_db()
         self.assertEqual(
             instance.status,
@@ -184,9 +191,10 @@ class WorkflowE2ETestBase(E2ETestBase):
             msg or f"Expected COMPLETED, got {instance.status}",
         )
 
-    def assert_workflow_failed(self, instance, msg: Optional[str] = None):
+    def assert_workflow_failed(self, instance, msg: str | None = None):
         """Assert workflow instance status is FAILED or ROLLED_BACK (both indicate failure)."""
         from hub.apps.orchestration.models import WorkflowStatus
+
         instance.refresh_from_db()
         # Normalize to string for robust comparison (DB may return str, enum, or value)
         status_str = str(instance.status) if instance.status else ""
@@ -234,7 +242,13 @@ class WorkflowE2ETestBase(E2ETestBase):
         )
         vr = state["_validation_results"]
         # At least one validation type should be present (from last executed step)
-        expected_keys = ("workflow_state", "step_input", "step_execution", "step_output", "post_workflow_state")
+        expected_keys = (
+            "workflow_state",
+            "step_input",
+            "step_execution",
+            "step_output",
+            "post_workflow_state",
+        )
         found = [k for k in expected_keys if k in vr]
         self.assertTrue(
             len(found) >= 1,

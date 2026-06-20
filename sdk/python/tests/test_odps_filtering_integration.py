@@ -3,8 +3,11 @@ Integration tests for ODPS filtering functionality.
 
 These tests verify that ODPS-specific filters work correctly with real API contract data.
 """
+
 import os
+
 import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 
 
@@ -18,6 +21,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> str | None:
     # Method 1: Canonical conftest helper (handles env vars, validation, auto-provision, refresh)
     try:
         from tests.conftest import get_api_key
+
         key = get_api_key()
         if key:
             return key
@@ -30,11 +34,12 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> str | None:
 
     try:
         import requests
+
         login_response = requests.post(
             f"{api_base_url}/auth/login/",
             json={"email": email, "password": password},
             headers={"Content-Type": "application/json", "Accept": "application/json"},
-            timeout=5
+            timeout=5,
         )
 
         if login_response.status_code == 200:
@@ -167,11 +172,12 @@ async def test_list_contracts_filter_by_spec_type_odps(real_api_config):
 
         # Verify all returned contracts are ODPS
         for contract in result["results"]:
-            assert contract.get("original_spec_type") == "ODPS", \
+            assert contract.get("original_spec_type") == "ODPS", (
                 f"All contracts should be ODPS, got {contract.get('original_spec_type')}"
+            )
 
         # Verify our created ODPS contract is in the results (if not paginated out)
-        contract_ids = [c["id"] for c in result["results"]]
+        [c["id"] for c in result["results"]]
         # Note: May not be in first page, so we check if it exists in any page
         # For a comprehensive test, we'd need to paginate, but this verifies the filter works
 
@@ -256,10 +262,12 @@ async def test_list_contracts_filter_by_odps_version(real_api_config):
 
         # Verify all returned contracts are ODPS 4.1
         for contract in result["results"]:
-            assert contract.get("original_spec_type") == "ODPS", \
+            assert contract.get("original_spec_type") == "ODPS", (
                 f"All contracts should be ODPS, got {contract.get('original_spec_type')}"
-            assert contract.get("original_spec_version") == "4.1", \
+            )
+            assert contract.get("original_spec_version") == "4.1", (
                 f"All contracts should be version 4.1, got {contract.get('original_spec_version')}"
+            )
 
     except Exception as e:
         error_str = str(e)
@@ -368,11 +376,12 @@ async def test_list_contracts_filter_by_has_odps_link(real_api_config):
 
         # Verify all returned contracts are ODCS with ODPS links
         for contract in result["results"]:
-            assert contract.get("original_spec_type") == "ODCS", \
+            assert contract.get("original_spec_type") == "ODCS", (
                 f"All contracts should be ODCS, got {contract.get('original_spec_type')}"
+            )
 
         # Verify our created ODCS contract is in the results (if not paginated out)
-        contract_ids = [c["id"] for c in result["results"]]
+        [c["id"] for c in result["results"]]
         # Note: May not be in first page, so we check if it exists in any page
 
         # Also test has_odps_link=False
@@ -384,8 +393,9 @@ async def test_list_contracts_filter_by_has_odps_link(real_api_config):
 
         # Verify all returned contracts are ODCS without ODPS links
         for contract in result_no_link["results"]:
-            assert contract.get("original_spec_type") == "ODCS", \
+            assert contract.get("original_spec_type") == "ODCS", (
                 f"All contracts should be ODCS, got {contract.get('original_spec_type')}"
+            )
 
     except Exception as e:
         error_str = str(e)
@@ -471,10 +481,12 @@ async def test_list_contracts_combined_odps_filters(real_api_config):
 
         # Verify all returned contracts match both filters
         for contract in result["results"]:
-            assert contract.get("original_spec_type") == "ODPS", \
+            assert contract.get("original_spec_type") == "ODPS", (
                 f"All contracts should be ODPS, got {contract.get('original_spec_type')}"
-            assert contract.get("original_spec_version") == "4.1", \
+            )
+            assert contract.get("original_spec_version") == "4.1", (
                 f"All contracts should be version 4.1, got {contract.get('original_spec_version')}"
+            )
 
     except Exception as e:
         error_str = str(e)
@@ -485,4 +497,3 @@ async def test_list_contracts_combined_odps_filters(real_api_config):
                 f"Error: {error_str[:200]}"
             )
         raise
-

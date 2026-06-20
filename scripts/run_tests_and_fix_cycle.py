@@ -8,22 +8,21 @@ Follows engineering-grade practices:
 - Fix root causes
 - Follow best practices
 """
-import json
+
 import re
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-def run_django_test(app_path: str, timeout: int = 600) -> Dict:
+def run_django_test(app_path: str, timeout: int = 600) -> dict:
     """Run Django test for an app and return results."""
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Testing: {app_path}")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     cmd = [
         "docker",
@@ -37,7 +36,9 @@ def run_django_test(app_path: str, timeout: int = 600) -> Dict:
     ]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 10)
+        result = subprocess.run(
+            cmd, check=False, capture_output=True, text=True, timeout=timeout + 10
+        )
         output = result.stdout + result.stderr
 
         # Parse results
@@ -72,7 +73,7 @@ def run_django_test(app_path: str, timeout: int = 600) -> Dict:
         }
 
 
-def parse_django_test_output(output: str) -> Dict[str, int]:
+def parse_django_test_output(output: str) -> dict[str, int]:
     """Parse Django test output."""
     stats = {
         "total": 0,
@@ -108,7 +109,7 @@ def parse_django_test_output(output: str) -> Dict[str, int]:
     return stats
 
 
-def get_signal_fix_batches() -> List[str]:
+def get_signal_fix_batches() -> list[str]:
     """Get list of signal fix verification batches."""
     return [
         "hub.apps.developer.tests",

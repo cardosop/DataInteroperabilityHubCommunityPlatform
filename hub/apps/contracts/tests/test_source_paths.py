@@ -139,53 +139,27 @@ class TestQuerySourcePath:
         # Should handle empty strings
 
     def test_resolve_json_pointer_with_missing_path(self):
-        """Test resolving JSON pointer with non-existent path."""
+        """Non-existent path returns None."""
         data = {"info": {"name": "test"}}
-        try:
-            result = resolve_json_pointer(data, "/info/nonexistent")
-            # May return None or raise KeyError
-            assert result is None or isinstance(result, Exception)
-        except (KeyError, IndexError):
-            # Exception is acceptable
-            pass
+        assert resolve_json_pointer(data, "/info/nonexistent") is None
 
     def test_resolve_json_pointer_with_invalid_path(self):
-        """Test resolving JSON pointer with invalid path format."""
+        """Path without leading / returns None."""
         data = {"info": {"name": "test"}}
-        try:
-            result = resolve_json_pointer(data, "invalid-path")
-            # May return None or raise ValueError
-            assert result is None or isinstance(result, Exception)
-        except (ValueError, KeyError):
-            # Exception is acceptable
-            pass
+        assert resolve_json_pointer(data, "invalid-path") is None
 
     def test_resolve_json_pointer_with_none_data(self):
-        """Test resolving JSON pointer with None data."""
-        try:
-            result = resolve_json_pointer(None, "/info/name")
-            # May return None or raise TypeError
-            assert result is None or isinstance(result, Exception)
-        except (TypeError, AttributeError):
-            # Exception is acceptable
-            pass
+        """None data returns None gracefully."""
+        assert resolve_json_pointer(None, "/info/name") is None
 
     def test_resolve_json_pointer_with_empty_dict(self):
-        """Test resolving JSON pointer with empty dictionary."""
-        data = {}
-        result = resolve_json_pointer(data, "/info/name")
-        # Should return None or raise KeyError
-        assert result is None or isinstance(result, Exception)
+        """Empty dict with missing key returns None."""
+        assert resolve_json_pointer({}, "/info/name") is None
 
     def test_source_path_tracker_add_mapping_with_none_values(self):
-        """Test adding mapping with None values."""
+        """None values are accepted silently."""
         tracker = SourcePathTracker()
-        try:
-            tracker.add_mapping(None, None)
-            # May handle gracefully or raise exception
-        except (TypeError, ValueError):
-            # Exception is acceptable
-            pass
+        tracker.add_mapping(None, None)  # must not raise
 
     def test_source_path_tracker_add_mapping_with_empty_strings(self):
         """Test adding mapping with empty strings."""
@@ -221,15 +195,9 @@ class TestQuerySourcePath:
         )
 
     def test_source_path_tracker_from_extensions_format_with_invalid_type(self):
-        """Test loading from extensions format with invalid type."""
+        """Invalid _source_paths type is silently ignored."""
         tracker = SourcePathTracker()
-        extensions = {"_source_paths": "not-a-dict"}  # Invalid type
-        try:
-            tracker.from_extensions_format(extensions)
-            # May handle gracefully or raise exception
-        except (TypeError, AttributeError):
-            # Exception is acceptable
-            pass
+        tracker.from_extensions_format({"_source_paths": "not-a-dict"})  # must not raise
 
     def test_track_field_mapping_with_none_values(self):
         """None values raise AttributeError (str.replace on NoneType)."""
@@ -239,15 +207,9 @@ class TestQuerySourcePath:
             track_field_mapping(tracker, None, None, None, None)
 
     def test_add_source_paths_to_extensions_with_none_tracker(self):
-        """Test adding source paths with None tracker."""
-        hub_contract = {}
-        try:
-            result = add_source_paths_to_extensions(hub_contract, None)
-            # May handle gracefully or raise exception
-            assert isinstance(result, dict)
-        except (TypeError, AttributeError):
-            # Exception is acceptable
-            pass
+        """None tracker raises AttributeError."""
+        with pytest.raises(AttributeError):
+            add_source_paths_to_extensions({}, None)
 
     def test_add_source_paths_to_extensions_with_empty_tracker(self):
         """Test adding source paths with empty tracker."""

@@ -7,6 +7,7 @@ the lock holder clears the key.
 """
 
 from __future__ import annotations
+
 import secrets
 import time
 from collections.abc import Iterator

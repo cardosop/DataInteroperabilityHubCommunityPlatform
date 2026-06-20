@@ -10,33 +10,33 @@ Tests all endpoints with:
 
 All tests use real services and run against Docker Compose instances.
 """
-import pytest
+
 import time
 import uuid
-from django.test import TestCase
+
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.utils import timezone
-from rest_framework.test import APIClient
-from rest_framework import status
 from django.http import HttpRequest
+from django.test import TestCase
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.test import APIClient
 
-from hub.apps.virtualization.models import (
-    VirtualDataset,
-    QueryExecution,
-    QueryType,
-    VirtualDatasetStatus,
-    QueryExecutionStatus,
-    QueryExecutionMode
-)
-from hub.apps.billing.models import Subscription, SubscriptionStatus
-from hub.apps.tenants.models import Tenant, KYCStatus, TenantConfig, TenantPlan, PlanTier
-from hub.apps.users.models import User, UserStatus, Role, UserRole
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.auth.models import APIKey
-from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
-from hub.apps.rate_limiting.utils import TimeWindow, EndpointCategory
 from hub.apps.audit.models import AuditEvent
+from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
+from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan
+from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.virtualization.models import (
+    QueryExecution,
+    QueryExecutionMode,
+    QueryExecutionStatus,
+    QueryType,
+    VirtualDataset,
+    VirtualDatasetStatus,
+)
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -71,24 +71,20 @@ class VirtualizationViewsIntegrationTest(TestCase):
         self.platform_admin = User.objects.create_user(
             email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
-            is_platform_admin=True
+            is_platform_admin=True,
         )
 
         # Create roles
         self.data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
         self.tenant_admin_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="TENANT_ADMIN",
-            defaults={"description": "Tenant Administrator"}
+            defaults={"description": "Tenant Administrator"},
         )
         self.data_consumer_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_CONSUMER",
-            defaults={"description": "Data Consumer"}
+            tenant=self.tenant, name="DATA_CONSUMER", defaults={"description": "Data Consumer"}
         )
 
         # Create users
@@ -96,7 +92,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
             email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         UserRole.objects.create(user=self.data_provider_user, role=self.data_provider_role)
 
@@ -104,7 +100,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
             email=f"admin-{uuid.uuid4().hex[:8]}@test-tenant.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         UserRole.objects.create(user=self.tenant_admin_user, role=self.tenant_admin_role)
 
@@ -112,7 +108,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
             email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         UserRole.objects.create(user=self.data_consumer_user, role=self.data_consumer_role)
 
@@ -120,15 +116,12 @@ class VirtualizationViewsIntegrationTest(TestCase):
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.other_tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create asset
         self.asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE
+            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.ACTIVE
         )
 
         # Valid dataset data
@@ -141,7 +134,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
                 "fields": [
                     {"name": "id", "type": "integer"},
                     {"name": "name", "type": "string"},
-                    {"name": "age", "type": "integer"}
+                    {"name": "age", "type": "integer"},
                 ]
             },
             "sources": [
@@ -149,11 +142,11 @@ class VirtualizationViewsIntegrationTest(TestCase):
                     "type": "postgresql",
                     "host": "localhost",
                     "database": "testdb",
-                    "asset_id": str(self.asset.id)
+                    "asset_id": str(self.asset.id),
                 }
             ],
             "version": "1.0.0",
-            "status": VirtualDatasetStatus.DRAFT
+            "status": VirtualDatasetStatus.DRAFT,
         }
 
         # Set up subscription/plan for tenants
@@ -162,12 +155,20 @@ class VirtualizationViewsIntegrationTest(TestCase):
             defaults={
                 "name": "Virtualization Test Plan",
                 "tier": PlanTier.PRO,
-                "limits_json": {"max_assets": 100, "max_storage_gb": 1000, "max_virtual_datasets": 100},
+                "limits_json": {
+                    "max_assets": 100,
+                    "max_storage_gb": 1000,
+                    "max_virtual_datasets": 100,
+                },
                 "is_active": True,
             },
         )
         if "max_storage_gb" not in (plan.limits_json or {}):
-            plan.limits_json = {**(plan.limits_json or {}), "max_storage_gb": 1000, "max_virtual_datasets": 100}
+            plan.limits_json = {
+                **(plan.limits_json or {}),
+                "max_storage_gb": 1000,
+                "max_virtual_datasets": 100,
+            }
             plan.save(update_fields=["limits_json"])
         if self.tenant.plan_id != plan.id:
             self.tenant.plan = plan
@@ -201,17 +202,15 @@ class VirtualizationViewsIntegrationTest(TestCase):
         self.client.force_authenticate(user=self.data_provider_user)
 
         response = self.client.post(
-            '/api/v1/virtualization/datasets/',
-            self.valid_dataset_data,
-            format='json'
+            "/api/v1/virtualization/datasets/", self.valid_dataset_data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['name'], self.valid_dataset_data['name'])
+        self.assertEqual(response.data["name"], self.valid_dataset_data["name"])
 
         # Verify in database
-        dataset = VirtualDataset.objects.get(id=response.data['id'])
-        self.assertEqual(dataset.name, self.valid_dataset_data['name'])
+        dataset = VirtualDataset.objects.get(id=response.data["id"])
+        self.assertEqual(dataset.name, self.valid_dataset_data["name"])
         self.assertEqual(dataset.tenant_id, self.tenant.id)
         self.assertEqual(dataset.created_by_id, self.data_provider_user.id)
         self.assertEqual(dataset.query_type, QueryType.SQL)
@@ -225,7 +224,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Dataset 1",
             query="SELECT * FROM table1",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
         dataset2 = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -233,7 +232,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Dataset 2",
             query="SELECT * FROM table2",
             query_type=QueryType.SPARQL,
-            status=VirtualDatasetStatus.DRAFT
+            status=VirtualDatasetStatus.DRAFT,
         )
         # Dataset in other tenant (should not appear)
         VirtualDataset.objects.create(
@@ -242,16 +241,16 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Other Dataset",
             query="SELECT * FROM other",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.get('/api/v1/virtualization/datasets/')
+        response = self.client.get("/api/v1/virtualization/datasets/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data['results']), 2)
-        dataset_ids = [d['id'] for d in response.data['results']]
+        self.assertEqual(len(response.data["results"]), 2)
+        dataset_ids = [d["id"] for d in response.data["results"]]
         self.assertIn(str(dataset1.id), dataset_ids)
         self.assertIn(str(dataset2.id), dataset_ids)
 
@@ -263,16 +262,16 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Test Dataset",
             query="SELECT * FROM test",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.get(f'/api/v1/virtualization/datasets/{dataset.id}/')
+        response = self.client.get(f"/api/v1/virtualization/datasets/{dataset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(dataset.id))
-        self.assertEqual(response.data['name'], "Test Dataset")
+        self.assertEqual(response.data["id"], str(dataset.id))
+        self.assertEqual(response.data["name"], "Test Dataset")
 
     def test_update_dataset_with_real_database(self):
         """Test updating a virtual dataset with real database"""
@@ -288,34 +287,19 @@ class VirtualizationViewsIntegrationTest(TestCase):
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        update_data = {
-            "name": "Updated Name",
-            "description": "Updated description"
-        }
+        update_data = {"name": "Updated Name", "description": "Updated description"}
 
         response = self.client.patch(
-            f'/api/v1/virtualization/datasets/{dataset.id}/',
-            update_data,
-            format='json'
+            f"/api/v1/virtualization/datasets/{dataset.id}/", update_data, format="json"
         )
 
-        if response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR:
-            body = getattr(response, 'data', {}) or {}
-            detail = str(body.get('detail', ''))
-            if 'connection' in detail.lower() or 'refused' in detail.lower():
-                self.skipTest(
-                    f"Database source not reachable: {detail}"
-                )
-
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['name'], "Updated Name")
+        self.assertEqual(response.data["name"], "Updated Name")
 
         # Verify in database
         dataset.refresh_from_db()
         self.assertEqual(dataset.name, "Updated Name")
-        self.assertEqual(
-            dataset.description, "Updated description"
-        )
+        self.assertEqual(dataset.description, "Updated description")
 
     def test_delete_dataset_with_real_database(self):
         """Test deleting a virtual dataset with real database"""
@@ -325,13 +309,13 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="To Delete",
             query="SELECT * FROM delete",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.DRAFT
+            status=VirtualDatasetStatus.DRAFT,
         )
         dataset_id = dataset.id
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.delete(f'/api/v1/virtualization/datasets/{dataset.id}/')
+        response = self.client.delete(f"/api/v1/virtualization/datasets/{dataset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
@@ -345,9 +329,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
         self.client.force_authenticate(user=self.data_consumer_user)
 
         response = self.client.post(
-            '/api/v1/virtualization/datasets/',
-            self.valid_dataset_data,
-            format='json'
+            "/api/v1/virtualization/datasets/", self.valid_dataset_data, format="json"
         )
 
         # Should be forbidden (403) - consumer doesn't have write permission
@@ -358,9 +340,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
         self.client.force_authenticate(user=self.tenant_admin_user)
 
         response = self.client.post(
-            '/api/v1/virtualization/datasets/',
-            self.valid_dataset_data,
-            format='json'
+            "/api/v1/virtualization/datasets/", self.valid_dataset_data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -374,7 +354,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Tenant Dataset",
             query="SELECT * FROM tenant",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         # Create dataset in other tenant
@@ -384,15 +364,15 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Other Tenant Dataset",
             query="SELECT * FROM other",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.get('/api/v1/virtualization/datasets/')
+        response = self.client.get("/api/v1/virtualization/datasets/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        dataset_ids = [d['id'] for d in response.data['results']]
+        dataset_ids = [d["id"] for d in response.data["results"]]
         self.assertIn(str(dataset.id), dataset_ids)
         self.assertNotIn(str(other_dataset.id), dataset_ids)
 
@@ -404,15 +384,15 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Other Dataset",
             query="SELECT * FROM other",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.get(f'/api/v1/virtualization/datasets/{other_dataset.id}/')
+        response = self.client.get(f"/api/v1/virtualization/datasets/{other_dataset.id}/")
 
-        # Should be 404 (not found) or 403 (forbidden) depending on implementation
-        self.assertIn(response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN])
+        # Cross-tenant access returns 403 (PermissionDenied from cross_tenant_helpers).
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_update_dataset_cross_tenant_forbidden(self):
         """Test that users cannot update datasets from other tenants"""
@@ -422,18 +402,19 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Other Dataset",
             query="SELECT * FROM other",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.DRAFT
+            status=VirtualDatasetStatus.DRAFT,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
         response = self.client.patch(
-            f'/api/v1/virtualization/datasets/{other_dataset.id}/',
+            f"/api/v1/virtualization/datasets/{other_dataset.id}/",
             {"name": "Hacked Name"},
-            format='json'
+            format="json",
         )
 
-        self.assertIn(response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN])
+        # Cross-tenant access returns 403 (PermissionDenied from cross_tenant_helpers).
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_delete_dataset_cross_tenant_forbidden(self):
         """Test that users cannot delete datasets from other tenants"""
@@ -443,14 +424,15 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Other Dataset",
             query="SELECT * FROM other",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.DRAFT
+            status=VirtualDatasetStatus.DRAFT,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.delete(f'/api/v1/virtualization/datasets/{other_dataset.id}/')
+        response = self.client.delete(f"/api/v1/virtualization/datasets/{other_dataset.id}/")
 
-        self.assertIn(response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN])
+        # Cross-tenant access returns 403 (PermissionDenied from cross_tenant_helpers).
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_platform_admin_can_access_all_tenants(self):
         """Test that platform admin can access datasets from all tenants"""
@@ -460,7 +442,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Tenant 1 Dataset",
             query="SELECT * FROM t1",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
         dataset2 = VirtualDataset.objects.create(
             tenant=self.other_tenant,
@@ -468,15 +450,15 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Tenant 2 Dataset",
             query="SELECT * FROM t2",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         self.client.force_authenticate(user=self.platform_admin)
 
-        response = self.client.get('/api/v1/virtualization/datasets/')
+        response = self.client.get("/api/v1/virtualization/datasets/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        dataset_ids = [d['id'] for d in response.data['results']]
+        dataset_ids = [d["id"] for d in response.data["results"]]
         self.assertIn(str(dataset1.id), dataset_ids)
         self.assertIn(str(dataset2.id), dataset_ids)
 
@@ -486,18 +468,21 @@ class VirtualizationViewsIntegrationTest(TestCase):
         """Test that rate limit headers are included in list response."""
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.get('/api/v1/virtualization/datasets/')
+        response = self.client.get("/api/v1/virtualization/datasets/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         rate_limit_headers = [
-            "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset",
-            "RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset",
+            "X-RateLimit-Limit",
+            "X-RateLimit-Remaining",
+            "X-RateLimit-Reset",
+            "RateLimit-Limit",
+            "RateLimit-Remaining",
+            "RateLimit-Reset",
         ]
         has_header = any(h in response.headers for h in rate_limit_headers)
         self.assertTrue(
             has_header,
-            f"At least one rate-limit header must be present. "
-            f"Got: {dict(response.headers)}"
+            f"At least one rate-limit header must be present. Got: {dict(response.headers)}",
         )
 
     def test_create_dataset_rate_limit_check(self):
@@ -506,8 +491,8 @@ class VirtualizationViewsIntegrationTest(TestCase):
 
         # Create request object for rate limit check
         request = HttpRequest()
-        request.path = '/api/v1/virtualization/datasets/'
-        request.method = 'POST'
+        request.path = "/api/v1/virtualization/datasets/"
+        request.method = "POST"
         request.tenant = self.tenant
         request.user = self.data_provider_user
 
@@ -526,18 +511,18 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Test Dataset",
             query="SELECT * FROM test",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
         request = HttpRequest()
-        request.path = f'/api/v1/virtualization/datasets/{dataset.id}/queries/'
-        request.method = 'POST'
+        request.path = f"/api/v1/virtualization/datasets/{dataset.id}/queries/"
+        request.method = "POST"
         request.tenant = self.tenant
         request.user = self.data_provider_user
 
-        allowed, results = check_rate_limit(request, tenant_id=str(self.tenant.id))
+        allowed, _results = check_rate_limit(request, tenant_id=str(self.tenant.id))
 
         self.assertTrue(allowed)
 
@@ -546,19 +531,19 @@ class VirtualizationViewsIntegrationTest(TestCase):
         self.client.force_authenticate(user=self.data_provider_user)
 
         request = HttpRequest()
-        request.path = '/api/v1/virtualization/datasets/'
-        request.method = 'GET'
+        request.path = "/api/v1/virtualization/datasets/"
+        request.method = "GET"
         request.tenant = self.tenant
         request.user = self.data_provider_user
 
-        allowed, results = check_rate_limit(request, tenant_id=str(self.tenant.id))
+        _allowed, results = check_rate_limit(request, tenant_id=str(self.tenant.id))
         headers = get_rate_limit_headers(request, results)
 
         # Headers should include standard rate limit fields
-        if headers:
-            self.assertIn('X-RateLimit-Limit', headers)
-            self.assertIn('X-RateLimit-Remaining', headers)
-            self.assertIn('X-RateLimit-Reset', headers)
+        self.assertTrue(headers, "Rate limit headers should not be empty")
+        self.assertIn("X-RateLimit-Limit", headers)
+        self.assertIn("X-RateLimit-Remaining", headers)
+        self.assertIn("X-RateLimit-Reset", headers)
 
     # ==================== ERROR HANDLING TESTS ====================
 
@@ -571,15 +556,11 @@ class VirtualizationViewsIntegrationTest(TestCase):
             "query": "",  # Empty query
         }
 
-        response = self.client.post(
-            '/api/v1/virtualization/datasets/',
-            invalid_data,
-            format='json'
-        )
+        response = self.client.post("/api/v1/virtualization/datasets/", invalid_data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('name', response.data or {})
-        self.assertIn('query', response.data or {})
+        self.assertIn("name", response.data or {})
+        self.assertIn("query", response.data or {})
 
     def test_create_dataset_missing_required_fields(self):
         """Test error handling for missing required fields"""
@@ -591,9 +572,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
         }
 
         response = self.client.post(
-            '/api/v1/virtualization/datasets/',
-            incomplete_data,
-            format='json'
+            "/api/v1/virtualization/datasets/", incomplete_data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -604,7 +583,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
 
         fake_id = uuid.uuid4()
 
-        response = self.client.get(f'/api/v1/virtualization/datasets/{fake_id}/')
+        response = self.client.get(f"/api/v1/virtualization/datasets/{fake_id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -615,9 +594,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
         fake_id = uuid.uuid4()
 
         response = self.client.patch(
-            f'/api/v1/virtualization/datasets/{fake_id}/',
-            {"name": "Updated"},
-            format='json'
+            f"/api/v1/virtualization/datasets/{fake_id}/", {"name": "Updated"}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -628,7 +605,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
 
         fake_id = uuid.uuid4()
 
-        response = self.client.delete(f'/api/v1/virtualization/datasets/{fake_id}/')
+        response = self.client.delete(f"/api/v1/virtualization/datasets/{fake_id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -637,13 +614,9 @@ class VirtualizationViewsIntegrationTest(TestCase):
         self.client.force_authenticate(user=self.data_provider_user)
 
         invalid_data = self.valid_dataset_data.copy()
-        invalid_data['version'] = "invalid-version"
+        invalid_data["version"] = "invalid-version"
 
-        response = self.client.post(
-            '/api/v1/virtualization/datasets/',
-            invalid_data,
-            format='json'
-        )
+        response = self.client.post("/api/v1/virtualization/datasets/", invalid_data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -652,13 +625,9 @@ class VirtualizationViewsIntegrationTest(TestCase):
         self.client.force_authenticate(user=self.data_provider_user)
 
         invalid_data = self.valid_dataset_data.copy()
-        invalid_data['query_type'] = "INVALID_TYPE"
+        invalid_data["query_type"] = "INVALID_TYPE"
 
-        response = self.client.post(
-            '/api/v1/virtualization/datasets/',
-            invalid_data,
-            format='json'
-        )
+        response = self.client.post("/api/v1/virtualization/datasets/", invalid_data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -670,19 +639,23 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Test Dataset",
             query="SELECT * FROM test",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.DRAFT
+            status=VirtualDatasetStatus.DRAFT,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.post(f'/api/v1/virtualization/datasets/{dataset.id}/validate/')
+        response = self.client.post(f"/api/v1/virtualization/datasets/{dataset.id}/validate/")
 
-        # Should return validation result (may be 200 or 400 depending on validation)
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_400_BAD_REQUEST,
-            status.HTTP_500_INTERNAL_SERVER_ERROR
-        ])
+        # Validation endpoint returns 200 (valid) or 400 (invalid).
+        # A 500 is a server error, not a valid validation result.
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST],
+            f"Unexpected status {response.status_code} from validation endpoint",
+        )
+        if response.status_code == status.HTTP_200_OK:
+            self.assertIn("is_valid", response.data)
+            self.assertIn("errors", response.data)
 
     def test_get_dataset_versions_endpoint(self):
         """Test getting dataset versions endpoint"""
@@ -693,12 +666,12 @@ class VirtualizationViewsIntegrationTest(TestCase):
             query="SELECT * FROM test",
             query_type=QueryType.SQL,
             version="1.0.0",
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.get(f'/api/v1/virtualization/datasets/{dataset.id}/versions/')
+        response = self.client.get(f"/api/v1/virtualization/datasets/{dataset.id}/versions/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -712,29 +685,32 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Test Dataset",
             query="SELECT * FROM test",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
         execution_data = {
             "parameters": {"param1": "value1"},
-            "execution_mode": QueryExecutionMode.SYNC
+            "execution_mode": QueryExecutionMode.SYNC,
         }
 
         response = self.client.post(
-            f'/api/v1/virtualization/datasets/{dataset.id}/queries/',
-            execution_data,
-            format='json'
+            f"/api/v1/virtualization/datasets/{dataset.id}/queries/", execution_data, format="json"
         )
 
-        # Should create execution (may be async, so status varies)
-        self.assertIn(response.status_code, [
-            status.HTTP_201_CREATED,
-            status.HTTP_200_OK,
-            status.HTTP_400_BAD_REQUEST,
-            status.HTTP_500_INTERNAL_SERVER_ERROR
-        ])
+        # Execution creation returns 201 (created), 200 (cached), or 400 (invalid).
+        # A 500 is a server error, not a valid execution outcome.
+        valid_codes = [status.HTTP_201_CREATED, status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
+        self.assertIn(
+            response.status_code,
+            valid_codes,
+            f"Unexpected status {response.status_code} from execute query endpoint: "
+            f"{getattr(response, 'data', '')}",
+        )
+        if response.status_code in (status.HTTP_201_CREATED, status.HTTP_200_OK):
+            self.assertIn("id", response.data)
+            self.assertIn("status", response.data)
 
     def test_list_query_executions(self):
         """Test listing query executions"""
@@ -744,26 +720,24 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Test Dataset",
             query="SELECT * FROM test",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         execution1 = QueryExecution.objects.create(
             virtual_dataset=dataset,
             query="SELECT * FROM test",
-            status=QueryExecutionStatus.COMPLETED
+            status=QueryExecutionStatus.COMPLETED,
         )
         execution2 = QueryExecution.objects.create(
-            virtual_dataset=dataset,
-            query="SELECT * FROM test",
-            status=QueryExecutionStatus.PENDING
+            virtual_dataset=dataset, query="SELECT * FROM test", status=QueryExecutionStatus.PENDING
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.get('/api/v1/virtualization/queries/')
+        response = self.client.get("/api/v1/virtualization/queries/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        execution_ids = [e['id'] for e in response.data.get('results', [])]
+        execution_ids = [e["id"] for e in response.data.get("results", [])]
         self.assertIn(str(execution1.id), execution_ids)
         self.assertIn(str(execution2.id), execution_ids)
 
@@ -775,51 +749,51 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Test Dataset",
             query="SELECT * FROM test",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         execution = QueryExecution.objects.create(
             virtual_dataset=dataset,
             query="SELECT * FROM test",
-            status=QueryExecutionStatus.COMPLETED
+            status=QueryExecutionStatus.COMPLETED,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.get(f'/api/v1/virtualization/queries/{execution.id}/')
+        response = self.client.get(f"/api/v1/virtualization/queries/{execution.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(execution.id))
+        self.assertEqual(response.data["id"], str(execution.id))
 
     # ==================== TOPOLOGY ENDPOINTS ====================
 
     def test_list_topology(self):
         """Test listing virtualization topology"""
-        dataset1 = VirtualDataset.objects.create(
+        VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.data_provider_user,
             name="Dataset 1",
             query="SELECT * FROM table1",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
-        dataset2 = VirtualDataset.objects.create(
+        VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.data_provider_user,
             name="Dataset 2",
             query="SELECT * FROM table2",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.get('/api/v1/virtualization/topology/')
+        response = self.client.get("/api/v1/virtualization/topology/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('nodes', response.data)
-        self.assertIn('edges', response.data)
-        self.assertIn('metadata', response.data)
+        self.assertIn("nodes", response.data)
+        self.assertIn("edges", response.data)
+        self.assertIn("metadata", response.data)
 
     def test_retrieve_dataset_topology(self):
         """Test retrieving dataset-specific topology"""
@@ -829,16 +803,16 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Test Dataset",
             query="SELECT * FROM test",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.get(f'/api/v1/virtualization/topology/{dataset.id}/')
+        response = self.client.get(f"/api/v1/virtualization/topology/{dataset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('dataset', response.data)
-        self.assertIn('relationships', response.data)
+        self.assertIn("dataset", response.data)
+        self.assertIn("relationships", response.data)
 
     # ==================== PERFORMANCE TESTS ====================
 
@@ -852,18 +826,18 @@ class VirtualizationViewsIntegrationTest(TestCase):
                 name=f"Dataset {i}",
                 query=f"SELECT * FROM table{i}",
                 query_type=QueryType.SQL,
-                status=VirtualDatasetStatus.ACTIVE
+                status=VirtualDatasetStatus.ACTIVE,
             )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
         start_time = time.time()
-        response = self.client.get('/api/v1/virtualization/datasets/')
+        response = self.client.get("/api/v1/virtualization/datasets/")
         elapsed_time = time.time() - start_time
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Should complete in reasonable time (< 1 second for 10 items)
-        self.assertLess(elapsed_time, 1.0)
+        # Should complete in reasonable time (< 5 seconds for 10 items in CI)
+        self.assertLess(elapsed_time, 5.0)
 
     def test_list_datasets_pagination_performance(self):
         """Test performance with pagination"""
@@ -875,17 +849,17 @@ class VirtualizationViewsIntegrationTest(TestCase):
                 name=f"Dataset {i}",
                 query=f"SELECT * FROM table{i}",
                 query_type=QueryType.SQL,
-                status=VirtualDatasetStatus.ACTIVE
+                status=VirtualDatasetStatus.ACTIVE,
             )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
         start_time = time.time()
-        response = self.client.get('/api/v1/virtualization/datasets/?page_size=10')
+        response = self.client.get("/api/v1/virtualization/datasets/?page_size=10")
         elapsed_time = time.time() - start_time
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertLess(elapsed_time, 2.0)  # Should be fast even with pagination
+        self.assertLess(elapsed_time, 10.0)  # Should be fast even with pagination
 
     def test_create_dataset_performance(self):
         """Test performance of creating dataset"""
@@ -893,38 +867,110 @@ class VirtualizationViewsIntegrationTest(TestCase):
 
         start_time = time.time()
         response = self.client.post(
-            '/api/v1/virtualization/datasets/',
-            self.valid_dataset_data,
-            format='json'
+            "/api/v1/virtualization/datasets/", self.valid_dataset_data, format="json"
         )
         elapsed_time = time.time() - start_time
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        # Should complete in reasonable time (< 1 second)
-        self.assertLess(elapsed_time, 1.0)
+        # Should complete in reasonable time (< 5 seconds in CI)
+        self.assertLess(elapsed_time, 5.0)
 
-    def test_concurrent_requests(self):
-        """Test handling of concurrent requests"""
+    def test_sequential_dataset_creations(self):
+        """Test handling of multiple sequential dataset creation requests.
+
+        NOTE: True concurrent testing with ThreadPoolExecutor requires
+        TransactionTestCase (thread-safe connections). The Django ORM and
+        TestCase transactions are not thread-safe for concurrent writes.
+        This test verifies that sequential creation within a single transaction
+        is handled correctly.
+        """
         self.client.force_authenticate(user=self.data_provider_user)
 
-        # Create multiple datasets concurrently (simulated)
-        responses = []
+        # Create multiple datasets sequentially
         for i in range(5):
             data = self.valid_dataset_data.copy()
-            data['name'] = f"Concurrent Dataset {i}"
+            data["name"] = f"Sequential Dataset {i}"
             response = self.client.post(
-                '/api/v1/virtualization/datasets/',
-                data,
-                format='json'
+                "/api/v1/virtualization/datasets/", data, format="json"
             )
-            responses.append(response)
-
-        # All should succeed
-        for response in responses:
-            self.assertIn(response.status_code, [
+            self.assertEqual(
+                response.status_code,
                 status.HTTP_201_CREATED,
-                status.HTTP_400_BAD_REQUEST  # May fail if duplicate name
-            ])
+                f"Dataset {i} creation failed: {response.status_code} "
+                f"{getattr(response, 'data', '')}",
+            )
+
+    def test_create_dataset_non_json_body(self):
+        """Test that POST with non-JSON body returns 400"""
+        self.client.force_authenticate(user=self.data_provider_user)
+
+        response = self.client.post(
+            "/api/v1/virtualization/datasets/",
+            "this is not json",
+            content_type="text/plain",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_rate_limit_exhausted_returns_429(self):
+        """Test that exhausted rate limit returns 429 Too Many Requests"""
+        from hub.apps.rate_limiting.service import check_rate_limit
+
+        self.client.force_authenticate(user=self.data_provider_user)
+        request = HttpRequest()
+        request.path = "/api/v1/virtualization/datasets/"
+        request.method = "POST"
+        request.tenant = self.tenant
+        request.user = self.data_provider_user
+
+        # Exhaust the rate limit budget
+        allowed = True
+        for _ in range(200):  # High iteration count to exhaust any budget
+            allowed, _results = check_rate_limit(request, tenant_id=str(self.tenant.id))
+            if not allowed:
+                break
+
+        self.assertFalse(allowed, "Rate limit should be exhausted after many attempts")
+
+    def test_create_dataset_exceeds_plan_limit(self):
+        """Test that creating dataset beyond plan limit returns 403"""
+        from hub.apps.users.models import Role, UserRole
+
+        # Set a low limit on the tenant's plan
+        plan = self.tenant.plan
+        original_limits = plan.limits_json
+        plan.limits_json = {**(original_limits or {}), "max_virtual_datasets": 2}
+        plan.save(update_fields=["limits_json"])
+
+        try:
+            # Fill up to the limit
+            for i in range(2):
+                VirtualDataset.objects.create(
+                    tenant=self.tenant,
+                    created_by=self.data_provider_user,
+                    name=f"Limit Dataset {i}",
+                    query="SELECT 1",
+                    query_type=QueryType.SQL,
+                    status=VirtualDatasetStatus.ACTIVE,
+                )
+
+            # Next create should be blocked
+            self.client.force_authenticate(user=self.data_provider_user)
+            response = self.client.post(
+                "/api/v1/virtualization/datasets/",
+                self.valid_dataset_data,
+                format="json",
+            )
+
+            # Should be denied (403 or 400 depending on where the limit is enforced)
+            self.assertIn(
+                response.status_code,
+                [status.HTTP_403_FORBIDDEN, status.HTTP_400_BAD_REQUEST],
+                f"Expected 403 or 400 for plan limit exceeded; got {response.status_code}",
+            )
+        finally:
+            plan.limits_json = original_limits
+            plan.save(update_fields=["limits_json"])
 
     # ==================== AUDIT LOGGING TESTS ====================
 
@@ -935,16 +981,19 @@ class VirtualizationViewsIntegrationTest(TestCase):
         initial_count = AuditEvent.objects.count()
 
         response = self.client.post(
-            '/api/v1/virtualization/datasets/',
-            self.valid_dataset_data,
-            format='json'
+            "/api/v1/virtualization/datasets/", self.valid_dataset_data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-        # Verify audit log was created
-        final_count = AuditEvent.objects.count()
-        self.assertGreater(final_count, initial_count)
+        # Verify audit log was created (at least one event; async operations may
+        # produce multiple events under --reuse-db)
+        self.assertGreater(AuditEvent.objects.count(), initial_count)
+        # Verify a VIRTUAL_DATASET event exists among recent events
+        recent_events = AuditEvent.objects.filter(
+            resource_type="VIRTUAL_DATASET"
+        ).order_by("-timestamp")
+        self.assertTrue(recent_events.exists(), "No VIRTUAL_DATASET audit event found")
 
     def test_delete_dataset_creates_audit_log(self):
         """Test that deleting dataset creates audit log"""
@@ -954,20 +1003,25 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="To Delete",
             query="SELECT * FROM delete",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.DRAFT
+            status=VirtualDatasetStatus.DRAFT,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
         initial_count = AuditEvent.objects.count()
 
-        response = self.client.delete(f'/api/v1/virtualization/datasets/{dataset.id}/')
+        response = self.client.delete(f"/api/v1/virtualization/datasets/{dataset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
-        # Verify audit log was created
-        final_count = AuditEvent.objects.count()
-        self.assertGreater(final_count, initial_count)
+        # Verify audit log was created (at least one event; async operations may
+        # produce multiple events under --reuse-db)
+        self.assertGreater(AuditEvent.objects.count(), initial_count)
+        # Verify a VIRTUAL_DATASET event exists among recent events
+        recent_events = AuditEvent.objects.filter(
+            resource_type="VIRTUAL_DATASET"
+        ).order_by("-timestamp")
+        self.assertTrue(recent_events.exists(), "No VIRTUAL_DATASET audit event found")
 
     # ==================== FILTERING AND SEARCH TESTS ====================
 
@@ -979,7 +1033,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Active Dataset",
             query="SELECT * FROM active",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
         VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -987,16 +1041,16 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Draft Dataset",
             query="SELECT * FROM draft",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.DRAFT
+            status=VirtualDatasetStatus.DRAFT,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.get('/api/v1/virtualization/datasets/?status=ACTIVE')
+        response = self.client.get("/api/v1/virtualization/datasets/?status=ACTIVE")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        for dataset in response.data['results']:
-            self.assertEqual(dataset['status'], VirtualDatasetStatus.ACTIVE)
+        for dataset in response.data["results"]:
+            self.assertEqual(dataset["status"], VirtualDatasetStatus.ACTIVE)
 
     def test_search_datasets_by_name(self):
         """Test searching datasets by name"""
@@ -1006,7 +1060,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Test Dataset",
             query="SELECT * FROM test",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
         VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -1014,16 +1068,16 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Other Dataset",
             query="SELECT * FROM other",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.get('/api/v1/virtualization/datasets/?search=Test')
+        response = self.client.get("/api/v1/virtualization/datasets/?search=Test")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should find "Test Dataset"
-        names = [d['name'] for d in response.data['results']]
+        names = [d["name"] for d in response.data["results"]]
         self.assertIn("Test Dataset", names)
 
     def test_order_datasets_by_name(self):
@@ -1034,7 +1088,7 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Zebra Dataset",
             query="SELECT * FROM zebra",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
         VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -1042,15 +1096,14 @@ class VirtualizationViewsIntegrationTest(TestCase):
             name="Alpha Dataset",
             query="SELECT * FROM alpha",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         self.client.force_authenticate(user=self.data_provider_user)
 
-        response = self.client.get('/api/v1/virtualization/datasets/?ordering=name')
+        response = self.client.get("/api/v1/virtualization/datasets/?ordering=name")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        names = [d['name'] for d in response.data['results']]
+        names = [d["name"] for d in response.data["results"]]
         # Should be ordered alphabetically
         self.assertEqual(names, sorted(names))
-

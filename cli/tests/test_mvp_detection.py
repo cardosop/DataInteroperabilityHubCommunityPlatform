@@ -6,6 +6,7 @@ under test are deliberately side-effect-free.
 
 Phase 215.1 — see openspec/changes/preprod01/specs/cli-sdk-mvp-awareness/spec.md
 """
+
 from __future__ import annotations
 
 import pytest
@@ -137,7 +138,10 @@ def test_detect_is_deterministic_under_multiple_matches() -> None:
     [
         ("https://meshant-internal.example.com/api/v1/mesh/", "https://meshant-internal.example.com"),
         ("http://localhost:8000/api/v1/mesh/", "http://localhost:8000"),
-        ("https://meshant-internal.example.com:443/api/v1/ml/jobs", "https://meshant-internal.example.com:443"),
+        (
+            "https://meshant-internal.example.com:443/api/v1/ml/jobs",
+            "https://meshant-internal.example.com:443",
+        ),
         ("https://meshant.com", "https://meshant.com"),
     ],
 )
@@ -149,8 +153,8 @@ def test_extract_environment_url_returns_origin(url: str, expected: str) -> None
     "url",
     [
         "",
-        "/api/v1/mesh/",        # path-only, no scheme/netloc
-        "not a url at all",      # malformed: urlparse does NOT raise
+        "/api/v1/mesh/",  # path-only, no scheme/netloc
+        "not a url at all",  # malformed: urlparse does NOT raise
     ],
 )
 def test_extract_environment_url_falls_back_gracefully(url: str) -> None:

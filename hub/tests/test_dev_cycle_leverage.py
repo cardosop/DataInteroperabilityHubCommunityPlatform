@@ -5,11 +5,11 @@ Proves:
 1. L.1: PR template exists with evidence-linked closure checklist
 2. L.2: Mypy ratchet strategy documented with owner + timeline
 """
+
 import os
 
 import pytest
 from django.test import TestCase
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

@@ -1,6 +1,7 @@
 """
 Shared fixtures for data_movement tests.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -81,9 +82,11 @@ def mock_dlt_pipeline():
     mock_pipeline.last_trace.last_trace = None
     mock_pipeline.state = {}
 
-    with patch("dlt.pipeline", return_value=mock_pipeline), \
-         patch("dlt.destinations.filesystem", MagicMock()), \
-         patch("dlt.destinations.__dict__", {"filesystem": MagicMock(), "snowflake": MagicMock()}):
+    with (
+        patch("dlt.pipeline", return_value=mock_pipeline),
+        patch("dlt.destinations.filesystem", MagicMock()),
+        patch("dlt.destinations.__dict__", {"filesystem": MagicMock(), "snowflake": MagicMock()}),
+    ):
         yield mock_pipeline
 
 

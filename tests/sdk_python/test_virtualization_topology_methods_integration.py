@@ -12,21 +12,21 @@ To run these tests:
 1. Ensure Docker Compose services are running: docker compose ps
 2. Run: pytest tests/sdk_python/test_virtualization_topology_methods_integration.py -v
 """
-import pytest
-import uuid
-from typing import Dict, Any
-from django.db import transaction
-from asgiref.sync import sync_to_async
 
+import uuid
+
+import pytest
+from asgiref.sync import sync_to_async
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
-    ValidationError,
+    ForbiddenError,
+    NetworkError,
     NotFoundError,
     ServerError,
-    NetworkError,
     UnauthorizedError,
-    ForbiddenError,
+    ValidationError,
 )
+from django.db import transaction
 
 # Import test base
 from tests.sdk_python.conftest import SDKTestBase
@@ -47,12 +47,12 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
         super().setUp()
 
         # Import models here to avoid Django app registry issues
+        from hub.apps.auth.models import APIKey
         from hub.apps.virtualization.models import (
+            QueryType,
             VirtualDataset,
             VirtualDatasetStatus,
-            QueryType,
         )
-        from hub.apps.auth.models import APIKey
 
         # Generate API key and hash it
         plaintext_key = APIKey.generate_key()
@@ -64,7 +64,7 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
             user=self.user,
             name="SDK Virtualization Topology Test API Key",
             key_hash=key_hash,
-            scopes=['virtualization:write', 'virtualization:read']
+            scopes=["virtualization:write", "virtualization:read"],
         )
         self.api_key.save()
         transaction.commit()
@@ -90,7 +90,7 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
             query="SELECT * FROM test_table_1",
             query_type=QueryType.SQL,
             status=VirtualDatasetStatus.ACTIVE,
-            description="Test dataset 1 for topology tests"
+            description="Test dataset 1 for topology tests",
         )
 
         self.dataset2 = VirtualDataset.objects.create(
@@ -100,7 +100,7 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
             query="SELECT * FROM test_table_2",
             query_type=QueryType.SQL,
             status=VirtualDatasetStatus.ACTIVE,
-            description="Test dataset 2 for topology tests"
+            description="Test dataset 2 for topology tests",
         )
 
         # Commit to ensure data is visible to API service
@@ -112,21 +112,21 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
 
         # Clean up virtual datasets
         from hub.apps.virtualization.models import VirtualDataset
-        from asgiref.sync import sync_to_async
 
         @sync_to_async
         def cleanup():
             VirtualDataset.objects.filter(id=self.dataset1.id).delete()
             VirtualDataset.objects.filter(id=self.dataset2.id).delete()
-            if hasattr(self, 'api_key'):
+            if hasattr(self, "api_key"):
                 APIKey.objects.filter(id=self.api_key.id).delete()
 
         # Note: tearDown is sync, but we can still clean up
         try:
             VirtualDataset.objects.filter(id=self.dataset1.id).delete()
             VirtualDataset.objects.filter(id=self.dataset2.id).delete()
-            if hasattr(self, 'api_key'):
+            if hasattr(self, "api_key"):
                 from hub.apps.auth.models import APIKey
+
                 APIKey.objects.filter(id=self.api_key.id).delete()
         except Exception:
             pass
@@ -139,26 +139,26 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
 
             # Verify topology structure
             assert isinstance(topology, dict)
-            assert 'nodes' in topology
-            assert 'edges' in topology
-            assert 'metadata' in topology
-            assert 'summary' in topology
+            assert "nodes" in topology
+            assert "edges" in topology
+            assert "metadata" in topology
+            assert "summary" in topology
 
             # Verify nodes is a list
-            assert isinstance(topology['nodes'], list)
+            assert isinstance(topology["nodes"], list)
 
             # Verify edges is a list
-            assert isinstance(topology['edges'], list)
+            assert isinstance(topology["edges"], list)
 
             # Verify metadata structure
-            metadata = topology['metadata']
+            metadata = topology["metadata"]
             assert isinstance(metadata, dict)
-            assert 'dataset_count' in metadata or 'generated_at' in metadata
+            assert "dataset_count" in metadata or "generated_at" in metadata
 
             # Verify summary structure
-            summary = topology['summary']
+            summary = topology["summary"]
             assert isinstance(summary, dict)
-            assert 'total_datasets' in summary or 'active_datasets' in summary
+            assert "total_datasets" in summary or "active_datasets" in summary
 
     @pytest.mark.asyncio
     async def test_get_topology_with_health_metrics(self):
@@ -167,11 +167,11 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
             topology = await client.virtualization.get_topology(include_health_metrics=True)
 
             assert isinstance(topology, dict)
-            assert 'nodes' in topology
+            assert "nodes" in topology
 
             # If nodes exist, check if they have health_metrics
-            if topology['nodes']:
-                first_node = topology['nodes'][0]
+            if topology["nodes"]:
+                topology["nodes"][0]
                 # Health metrics might be present in nodes when include_health_metrics=True
                 # (depending on API implementation)
 
@@ -182,8 +182,8 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
             topology = await client.virtualization.get_topology(include_health_metrics=False)
 
             assert isinstance(topology, dict)
-            assert 'nodes' in topology
-            assert 'edges' in topology
+            assert "nodes" in topology
+            assert "edges" in topology
 
     @pytest.mark.asyncio
     async def test_get_topology_empty_topology(self):
@@ -194,44 +194,48 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
 
             # Should return valid structure even if empty
             assert isinstance(topology, dict)
-            assert 'nodes' in topology
-            assert 'edges' in topology
-            assert isinstance(topology['nodes'], list)
-            assert isinstance(topology['edges'], list)
+            assert "nodes" in topology
+            assert "edges" in topology
+            assert isinstance(topology["nodes"], list)
+            assert isinstance(topology["edges"], list)
 
     @pytest.mark.asyncio
     async def test_get_dataset_topology_success(self):
         """Test successful dataset topology retrieval"""
         async with DataHubClient(self.sdk_config) as client:
-            dataset_topology = await client.virtualization.get_dataset_topology(str(self.dataset1.id))
+            dataset_topology = await client.virtualization.get_dataset_topology(
+                str(self.dataset1.id)
+            )
 
             # Verify topology structure
             assert isinstance(dataset_topology, dict)
-            assert 'dataset' in dataset_topology
-            assert 'relationships' in dataset_topology
+            assert "dataset" in dataset_topology
+            assert "relationships" in dataset_topology
 
             # Verify dataset structure
-            dataset = dataset_topology['dataset']
+            dataset = dataset_topology["dataset"]
             assert isinstance(dataset, dict)
-            assert dataset['id'] == str(self.dataset1.id)
-            assert 'name' in dataset
-            assert 'status' in dataset
+            assert dataset["id"] == str(self.dataset1.id)
+            assert "name" in dataset
+            assert "status" in dataset
 
             # Verify relationships is a list
-            assert isinstance(dataset_topology['relationships'], list)
+            assert isinstance(dataset_topology["relationships"], list)
 
     @pytest.mark.asyncio
     async def test_get_dataset_topology_with_health_metrics(self):
         """Test dataset topology includes health metrics when available"""
         async with DataHubClient(self.sdk_config) as client:
-            dataset_topology = await client.virtualization.get_dataset_topology(str(self.dataset1.id))
+            dataset_topology = await client.virtualization.get_dataset_topology(
+                str(self.dataset1.id)
+            )
 
             assert isinstance(dataset_topology, dict)
-            assert 'dataset' in dataset_topology
+            assert "dataset" in dataset_topology
 
             # Health metrics might be present in the response
-            if 'health_metrics' in dataset_topology:
-                assert isinstance(dataset_topology['health_metrics'], dict)
+            if "health_metrics" in dataset_topology:
+                assert isinstance(dataset_topology["health_metrics"], dict)
 
     @pytest.mark.asyncio
     async def test_get_dataset_topology_not_found(self):
@@ -241,7 +245,9 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
             with pytest.raises(NotFoundError) as exc_info:
                 await client.virtualization.get_dataset_topology(fake_dataset_id)
 
-            assert 'not found' in str(exc_info.value).lower() or fake_dataset_id in str(exc_info.value)
+            assert "not found" in str(exc_info.value).lower() or fake_dataset_id in str(
+                exc_info.value
+            )
 
     @pytest.mark.asyncio
     async def test_get_dataset_topology_validation_error_empty_id(self):
@@ -250,7 +256,9 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
             with pytest.raises(ValidationError) as exc_info:
                 await client.virtualization.get_dataset_topology("")
 
-            assert 'required' in str(exc_info.value).lower() or 'empty' in str(exc_info.value).lower()
+            assert (
+                "required" in str(exc_info.value).lower() or "empty" in str(exc_info.value).lower()
+            )
 
     @pytest.mark.asyncio
     async def test_get_dataset_topology_validation_error_invalid_id(self):
@@ -268,45 +276,47 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
             topology = await client.virtualization.get_topology()
 
             # Verify all required top-level keys
-            required_keys = ['nodes', 'edges', 'metadata', 'summary']
+            required_keys = ["nodes", "edges", "metadata", "summary"]
             for key in required_keys:
                 assert key in topology, f"Missing required key: {key}"
 
             # Verify nodes structure
-            nodes = topology['nodes']
+            nodes = topology["nodes"]
             assert isinstance(nodes, list)
             if nodes:
                 node = nodes[0]
                 assert isinstance(node, dict)
                 # Verify common node fields
-                assert 'id' in node or 'name' in node
+                assert "id" in node or "name" in node
 
             # Verify edges structure
-            edges = topology['edges']
+            edges = topology["edges"]
             assert isinstance(edges, list)
             if edges:
                 edge = edges[0]
                 assert isinstance(edge, dict)
                 # Verify common edge fields
-                assert 'source' in edge or 'target' in edge
+                assert "source" in edge or "target" in edge
 
     @pytest.mark.asyncio
     async def test_get_dataset_topology_structure_validation(self):
         """Test that dataset topology response has correct structure"""
         async with DataHubClient(self.sdk_config) as client:
-            dataset_topology = await client.virtualization.get_dataset_topology(str(self.dataset1.id))
+            dataset_topology = await client.virtualization.get_dataset_topology(
+                str(self.dataset1.id)
+            )
 
             # Verify required keys
-            assert 'dataset' in dataset_topology
-            assert 'relationships' in dataset_topology
+            assert "dataset" in dataset_topology
+            assert "relationships" in dataset_topology
 
             # Verify dataset structure
-            dataset = dataset_topology['dataset']
+            dataset = dataset_topology["dataset"]
             assert isinstance(dataset, dict)
-            assert dataset['id'] == str(self.dataset1.id)
+            assert dataset["id"] == str(self.dataset1.id)
 
             # Verify relationships structure
-            relationships = dataset_topology['relationships']
+            relationships = dataset_topology["relationships"]
             assert isinstance(relationships, list)
 
     @pytest.mark.asyncio
@@ -322,7 +332,9 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
         )
 
         async with DataHubClient(invalid_config) as client:
-            with pytest.raises((UnauthorizedError, ForbiddenError, NotFoundError, ValidationError, ServerError)):
+            with pytest.raises(
+                (UnauthorizedError, ForbiddenError, NotFoundError, ValidationError, ServerError)
+            ):
                 # Depending on API implementation, might return 401, 403, or 404
                 await client.virtualization.get_topology()
 
@@ -339,7 +351,9 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
         )
 
         async with DataHubClient(invalid_config) as client:
-            with pytest.raises((UnauthorizedError, ForbiddenError, NotFoundError, ValidationError, ServerError)):
+            with pytest.raises(
+                (UnauthorizedError, ForbiddenError, NotFoundError, ValidationError, ServerError)
+            ):
                 # Depending on API implementation, might return 401, 403, or 404
                 await client.virtualization.get_dataset_topology(str(self.dataset1.id))
 
@@ -382,7 +396,7 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
         """Test that get_topology method has correct signature"""
         async with DataHubClient(self.sdk_config) as client:
             # Verify method exists and is callable
-            assert hasattr(client.virtualization, 'get_topology')
+            assert hasattr(client.virtualization, "get_topology")
             assert callable(client.virtualization.get_topology)
 
             # Test with default parameter
@@ -401,11 +415,12 @@ class TestVirtualizationTopologyMethodsIntegration(SDKTestBase):
         """Test that get_dataset_topology method has correct signature"""
         async with DataHubClient(self.sdk_config) as client:
             # Verify method exists and is callable
-            assert hasattr(client.virtualization, 'get_dataset_topology')
+            assert hasattr(client.virtualization, "get_dataset_topology")
             assert callable(client.virtualization.get_dataset_topology)
 
             # Test method call
-            dataset_topology = await client.virtualization.get_dataset_topology(str(self.dataset1.id))
+            dataset_topology = await client.virtualization.get_dataset_topology(
+                str(self.dataset1.id)
+            )
             assert isinstance(dataset_topology, dict)
-            assert 'dataset' in dataset_topology
-
+            assert "dataset" in dataset_topology

@@ -11,11 +11,7 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from django.utils import timezone
 
-from tests.utils.polling import wait_until
-
-from hub.apps.contracts.services import ContractService
 from hub.apps.core.events.publisher import EventPublisher
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
@@ -27,9 +23,9 @@ from hub.apps.webhooks.models import (
     WebhookEventType,
     WebhookStatus,
 )
-from hub.apps.webhooks.odps_event_subscriber import ODPSEventSubscriber, get_odps_event_subscriber
-from hub.apps.webhooks.service import WebhookDeliveryService
+from hub.apps.webhooks.odps_event_subscriber import get_odps_event_subscriber
 from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookServer
+from tests.utils.polling import wait_until
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -319,7 +315,9 @@ class ODPSWebhookEventIntegrationTest(TestCase):
             def has_delivery_recorded():
                 return WebhookDelivery.objects.filter(webhook=webhook).count() >= 1
 
-            wait_until(has_delivery_recorded, timeout=5.0, message="webhook error delivery recorded")
+            wait_until(
+                has_delivery_recorded, timeout=5.0, message="webhook error delivery recorded"
+            )
             deliveries = WebhookDelivery.objects.filter(webhook=webhook)
             self.assertEqual(deliveries.count(), 1)
 

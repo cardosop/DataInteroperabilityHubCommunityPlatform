@@ -5,21 +5,18 @@ The aggregator script powers the DoD.6 gate ("strict-count assertion
 green for ≥7 staging cycles"). Tests are pure-Python — no Django
 needed because the aggregator reads JSONL files, not the database.
 """
+
 from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
 
-import pytest
-
-
 # Make the script importable.
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-import lineage_e2e_cycle_report as cyc  # noqa: E402
-
+import lineage_e2e_cycle_report as cyc
 
 # ---------------------------------------------------------------------------
 # compute_consecutive_green_streak
@@ -103,13 +100,15 @@ def test_append_then_report_round_trip(tmp_path: Path):
     history_file = tmp_path / "cycles.jsonl"
 
     for i in range(7):
-        rc = cyc.main([
-            "append",
-            f"--history-file={history_file}",
-            f"--cycle-id=staging-cycle-{i}",
-            "--strict-status=passed",
-            "--empty-status=passed",
-        ])
+        rc = cyc.main(
+            [
+                "append",
+                f"--history-file={history_file}",
+                f"--cycle-id=staging-cycle-{i}",
+                "--strict-status=passed",
+                "--empty-status=passed",
+            ]
+        )
         assert rc == 0
 
     # Report should pass.
@@ -121,13 +120,15 @@ def test_report_below_threshold_returns_one(tmp_path: Path):
     history_file = tmp_path / "cycles.jsonl"
     # Only 3 cycles; threshold=7 → INSUFFICIENT.
     for i in range(3):
-        cyc.main([
-            "append",
-            f"--history-file={history_file}",
-            f"--cycle-id=staging-cycle-{i}",
-            "--strict-status=passed",
-            "--empty-status=passed",
-        ])
+        cyc.main(
+            [
+                "append",
+                f"--history-file={history_file}",
+                f"--cycle-id=staging-cycle-{i}",
+                "--strict-status=passed",
+                "--empty-status=passed",
+            ]
+        )
     rc = cyc.main(["report", f"--history-file={history_file}", "--threshold=7"])
     assert rc == 1
 
@@ -142,20 +143,28 @@ def test_report_malformed_json_returns_two(tmp_path: Path):
 
 def test_report_includes_canonical_keys_in_stdout(tmp_path: Path, capsys):
     history_file = tmp_path / "cycles.jsonl"
-    cyc.main([
-        "append",
-        f"--history-file={history_file}",
-        "--cycle-id=staging-cycle-1",
-        "--strict-status=passed",
-        "--empty-status=passed",
-    ])
+    cyc.main(
+        [
+            "append",
+            f"--history-file={history_file}",
+            "--cycle-id=staging-cycle-1",
+            "--strict-status=passed",
+            "--empty-status=passed",
+        ]
+    )
     cyc.main(["report", f"--history-file={history_file}", "--threshold=1"])
     captured = capsys.readouterr()
     # The last line of stdout is the JSON report.
     json_line = [ln for ln in captured.out.strip().splitlines() if ln.startswith("{")][-1]
     report = json.loads(json_line)
     for key in (
-        "phase", "history_file", "total_cycles", "consecutive_green_streak",
-        "threshold", "status", "last_cycle_id", "checked_at",
+        "phase",
+        "history_file",
+        "total_cycles",
+        "consecutive_green_streak",
+        "threshold",
+        "status",
+        "last_cycle_id",
+        "checked_at",
     ):
         assert key in report, f"missing canonical key {key!r}; got {report!r}"

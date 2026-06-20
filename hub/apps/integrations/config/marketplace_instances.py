@@ -11,11 +11,11 @@ Configuration includes:
 - demo.ckan.org and data.gov as CKAN API test/fallback instances
 - Environment variable-based API key configuration
 """
-import os
+
 import logging
+import os
 import warnings
-from dataclasses import dataclass, field
-from typing import Dict, Optional
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -38,19 +38,20 @@ class MarketplaceInstanceConfig:
         is_production: Whether this is a production instance (default: False)
         is_test_default: Whether this is the default test instance (default: False)
     """
+
     name: str
     base_url: str
-    country: Optional[str] = None
-    language: Optional[str] = None
-    organization: Optional[str] = None
-    swagger_url: Optional[str] = None
-    swagger_spec_url: Optional[str] = None
-    api_key_env_var: Optional[str] = None
+    country: str | None = None
+    language: str | None = None
+    organization: str | None = None
+    swagger_url: str | None = None
+    swagger_spec_url: str | None = None
+    api_key_env_var: str | None = None
     connector_type: str = "ckan"  # "ckan" or "swagger"
     is_production: bool = False
     is_test_default: bool = False
 
-    def get_api_key(self) -> Optional[str]:
+    def get_api_key(self) -> str | None:
         """
         Get API key/JWT token from environment variable if configured.
 
@@ -93,7 +94,7 @@ class MarketplaceInstanceConfig:
 
 # Marketplace Instance Registry
 # Register all known marketplace connector instances with their configuration
-MARKETPLACE_INSTANCES: Dict[str, MarketplaceInstanceConfig] = {
+MARKETPLACE_INSTANCES: dict[str, MarketplaceInstanceConfig] = {
     "dados.gov.br": MarketplaceInstanceConfig(
         name="dados.gov.br",
         base_url="https://dados.gov.br",
@@ -145,7 +146,7 @@ MARKETPLACE_INSTANCES: Dict[str, MarketplaceInstanceConfig] = {
 }
 
 
-def get_marketplace_instance_config(instance_name: Optional[str]) -> Optional[MarketplaceInstanceConfig]:
+def get_marketplace_instance_config(instance_name: str | None) -> MarketplaceInstanceConfig | None:
     """
     Get configuration for a marketplace connector instance by name.
 
@@ -186,7 +187,7 @@ def get_marketplace_instance_config(instance_name: Optional[str]) -> Optional[Ma
     return config
 
 
-def get_default_test_instance() -> Optional[MarketplaceInstanceConfig]:
+def get_default_test_instance() -> MarketplaceInstanceConfig | None:
     """
     Get the default test marketplace connector instance configuration.
 
@@ -234,7 +235,7 @@ def _deprecated_alias(old_name: str, new_name: str, obj):
             f"{old_name} is deprecated, use {new_name} instead. "
             f"This alias will be removed in a future version.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         return obj(*args, **kwargs)
 
@@ -245,8 +246,9 @@ def _deprecated_alias(old_name: str, new_name: str, obj):
 CKANInstanceConfig = MarketplaceInstanceConfig
 CKAN_INSTANCES = MARKETPLACE_INSTANCES
 
+
 # Deprecated function alias with warning
-def get_ckan_instance_config(instance_name: Optional[str]) -> Optional[MarketplaceInstanceConfig]:
+def get_ckan_instance_config(instance_name: str | None) -> MarketplaceInstanceConfig | None:
     """
     Get configuration for a CKAN instance by name.
 
@@ -264,7 +266,6 @@ def get_ckan_instance_config(instance_name: Optional[str]) -> Optional[Marketpla
         "get_ckan_instance_config() is deprecated, use get_marketplace_instance_config() instead. "
         "This function will be removed in a future version.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
     return get_marketplace_instance_config(instance_name)
-

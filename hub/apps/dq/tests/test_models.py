@@ -23,7 +23,6 @@ from hub.apps.dq.models import (
     DQRunStatus,
 )
 from hub.apps.dq.tests.test_base import DQTestBase
-from hub.apps.jobs.models import Job, JobStatus, JobType
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -235,7 +234,7 @@ class DQAnomalyModelTest(DQTestBase):
         super().setUp()
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key=f"test-asset-anomaly",
+            key="test-asset-anomaly",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             created_by=self.user,

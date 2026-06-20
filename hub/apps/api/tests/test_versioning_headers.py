@@ -6,6 +6,7 @@ No mocks - uses real API endpoints.
 """
 
 import uuid
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -29,7 +30,9 @@ class APIVersionHeadersTest(TestCase):
         """Set up test data"""
         # Create tenant
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE")
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE"
+        )
 
         # Create user
         self.user = User.objects.create_user(
@@ -57,19 +60,23 @@ class APIVersionHeadersTest(TestCase):
 
             # Check version headers are present AND have correct values
             self.assertIn(
-                "X-API-Version", response.headers,
+                "X-API-Version",
+                response.headers,
                 f"{endpoint} missing X-API-Version header",
             )
             self.assertIn(
-                "X-API-Supported-Versions", response.headers,
+                "X-API-Supported-Versions",
+                response.headers,
                 f"{endpoint} missing X-API-Supported-Versions header",
             )
             self.assertEqual(
-                response.headers["X-API-Version"], "v1.0.0",
+                response.headers["X-API-Version"],
+                "v1.0.0",
                 f"{endpoint} has wrong X-API-Version",
             )
             self.assertIn(
-                "v1.0.0", response.headers["X-API-Supported-Versions"],
+                "v1.0.0",
+                response.headers["X-API-Supported-Versions"],
                 f"{endpoint} missing v1.0.0 in supported versions",
             )
 
@@ -82,11 +89,13 @@ class APIVersionHeadersTest(TestCase):
         """
         response = self.client.get("/api/v1/tenants/me/")
         self.assertNotIn(
-            "X-API-Deprecated", response.headers,
+            "X-API-Deprecated",
+            response.headers,
             "Active endpoint should not have X-API-Deprecated header",
         )
         self.assertNotIn(
-            "Sunset", response.headers,
+            "Sunset",
+            response.headers,
             "Active endpoint should not have Sunset header",
         )
 
@@ -112,13 +121,16 @@ class APIVersionHeadersTest(TestCase):
             # The endpoint resolves to the api_not_found catch-all (404).
             # The APIVersionMiddleware should still add deprecation headers
             # because the path IS registered in DEPRECATED_ENDPOINTS.
-            self.assertIn("X-API-Deprecated", response.headers,
-                          "Deprecated endpoint must carry X-API-Deprecated")
+            self.assertIn(
+                "X-API-Deprecated",
+                response.headers,
+                "Deprecated endpoint must carry X-API-Deprecated",
+            )
             self.assertEqual(response.headers["X-API-Deprecated"], "true")
-            self.assertIn("Sunset", response.headers,
-                          "Deprecated endpoint must carry Sunset header")
-            self.assertIn("Link", response.headers,
-                          "Deprecated endpoint must carry Link header")
+            self.assertIn(
+                "Sunset", response.headers, "Deprecated endpoint must carry Sunset header"
+            )
+            self.assertIn("Link", response.headers, "Deprecated endpoint must carry Link header")
         finally:
             # Clean up to avoid polluting subsequent tests.
             key = "GET:/api/v1/test-deprecated-hdr/"

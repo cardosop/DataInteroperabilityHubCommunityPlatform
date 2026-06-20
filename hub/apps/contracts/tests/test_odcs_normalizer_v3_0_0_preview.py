@@ -9,12 +9,10 @@ Tests the version-specific normalizer for ODCS 3.0.0-preview including:
 - Integration with normalizer registry
 """
 
-import json
 from unittest import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization import (
-    NormalizationResult,
     _reset_normalizer_registry,
     get_normalizer,
     register_normalizer,
@@ -149,7 +147,7 @@ class ODCSNormalizerV3_0_0_PreviewNormalizeTest(TestCase):
         assert len(result.errors) > 0
         assert (
             "does not support" in result.errors[0].lower()
-            or "not support" in result.errors[0].lower()
+
         )
 
     def test_normalize_validates_contract_data_is_dict(self):

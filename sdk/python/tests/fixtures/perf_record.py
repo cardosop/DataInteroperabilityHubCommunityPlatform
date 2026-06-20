@@ -32,17 +32,17 @@ also deferred) reads the last 7 days from S3, computes p95 of each
 test's ``measurement_ms``, and opens a GitHub issue if today's run is
 > 20% above that p95. The 20% threshold is documented in the spec.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import statistics
 import subprocess
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
-
 
 # The schema field set is locked by ``test_perf_record.py``. Any change
 # to this list must update the test in lockstep so the schema lock is

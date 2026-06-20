@@ -48,15 +48,16 @@ Usage
     python manage.py wave2_send_schema_editor_available_notifications \\
         --all-tenants
 """
+
 from __future__ import annotations
 
 import datetime as _dt
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from django.core.management.base import BaseCommand
-
 
 # How long the idempotency window holds before a re-run is allowed
 # without ``--force``. The W2 announcement is a one-shot rollout email,
@@ -138,7 +139,6 @@ class Command(BaseCommand):
             NoTenantAdminsError,
             send_schema_editor_available_notification,
         )
-        from hub.apps.tenants.models import Tenant
 
         dry_run: bool = options["dry_run"]
         force: bool = options["force"]
@@ -152,9 +152,9 @@ class Command(BaseCommand):
         )
 
         if not tenants:
-            self.stdout.write(self.style.WARNING(
-                "  [no-op] no tenants matched the selection criteria"
-            ))
+            self.stdout.write(
+                self.style.WARNING("  [no-op] no tenants matched the selection criteria")
+            )
             return
 
         sent_count = 0
@@ -163,27 +163,28 @@ class Command(BaseCommand):
         failed = 0
 
         for tenant in tenants:
-            tenant_label = (
-                f"{getattr(tenant, 'name', '?')} ({tenant.id})"
-            )
+            tenant_label = f"{getattr(tenant, 'name', '?')} ({tenant.id})"
 
-            if not force and idempotency_days > 0:
-                if self._already_notified(
-                    tenant=tenant, days=idempotency_days,
-                ):
-                    self.stdout.write(self.style.WARNING(
+            if (
+                not force
+                and idempotency_days > 0
+                and self._already_notified(
+                    tenant=tenant,
+                    days=idempotency_days,
+                )
+            ):
+                self.stdout.write(
+                    self.style.WARNING(
                         f"  [skipped-idempotent] {tenant_label}: "
                         f"already notified within last "
                         f"{idempotency_days} day(s)"
-                    ))
-                    skipped_idem += 1
-                    continue
+                    )
+                )
+                skipped_idem += 1
+                continue
 
             if dry_run:
-                self.stdout.write(
-                    f"  [dry-run] {tenant_label}: would notify "
-                    "TENANT_ADMINs"
-                )
+                self.stdout.write(f"  [dry-run] {tenant_label}: would notify TENANT_ADMINs")
                 continue
 
             try:
@@ -191,25 +192,28 @@ class Command(BaseCommand):
                     tenant=tenant,
                 )
             except NoTenantAdminsError:
-                self.stdout.write(self.style.WARNING(
-                    f"  [skipped-no-admin] {tenant_label}: no "
-                    "TENANT_ADMIN — escalate per runbook §227.W2.3"
-                ))
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"  [skipped-no-admin] {tenant_label}: no "
+                        "TENANT_ADMIN — escalate per runbook §227.W2.3"
+                    )
+                )
                 skipped_no_admin += 1
                 continue
             except Exception as exc:  # pragma: no cover — operator visibility
-                self.stdout.write(self.style.ERROR(
-                    f"  [failed] {tenant_label}: {type(exc).__name__}: {exc}"
-                ))
+                self.stdout.write(
+                    self.style.ERROR(f"  [failed] {tenant_label}: {type(exc).__name__}: {exc}")
+                )
                 failed += 1
                 continue
 
             success_count = sum(1 for d in dispatched if d.get("success"))
             error_count = len(dispatched) - success_count
-            self.stdout.write(self.style.SUCCESS(
-                f"  Notified {tenant_label}: "
-                f"{success_count} succeeded, {error_count} failed"
-            ))
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"  Notified {tenant_label}: {success_count} succeeded, {error_count} failed"
+                )
+            )
 
             # Idempotency record — written ONLY when at least one
             # admin received the email. A 0/N batch (every recipient
@@ -221,34 +225,39 @@ class Command(BaseCommand):
                 sent_count += 1
 
             for d in dispatched:
-                audit_records.append({
-                    "tenant_id": str(tenant.id),
-                    "tenant_name": getattr(tenant, "name", ""),
-                    "to_email": d["to_email"],
-                    "email_type": d["email_type"],
-                    "success": d["success"],
-                    "error": d["error"],
-                    "dispatched_at": _dt.datetime.now(
-                        _dt.timezone.utc
-                    ).isoformat(),
-                })
+                audit_records.append(
+                    {
+                        "tenant_id": str(tenant.id),
+                        "tenant_name": getattr(tenant, "name", ""),
+                        "to_email": d["to_email"],
+                        "email_type": d["email_type"],
+                        "success": d["success"],
+                        "error": d["error"],
+                        "dispatched_at": _dt.datetime.now(_dt.UTC).isoformat(),
+                    }
+                )
 
         if audit_output and audit_records:
             self._write_audit_jsonl(Path(audit_output), audit_records)
 
         # Summary — operator reads this to triage retries.
-        self.stdout.write(self.style.SUCCESS(
-            f"\nWave 2 announcement summary: "
-            f"sent={sent_count}, "
-            f"skipped-idempotent={skipped_idem}, "
-            f"skipped-no-admin={skipped_no_admin}, "
-            f"failed={failed}"
-        ))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"\nWave 2 announcement summary: "
+                f"sent={sent_count}, "
+                f"skipped-idempotent={skipped_idem}, "
+                f"skipped-no-admin={skipped_no_admin}, "
+                f"failed={failed}"
+            )
+        )
 
     # ------------------------------------------------------------------
 
     def _select_tenants(
-        self, *, tenant_id: str | None, all_tenants: bool,
+        self,
+        *,
+        tenant_id: str | None,
+        all_tenants: bool,
     ) -> list[Any]:
         """Return the ordered list of tenants to notify.
 
@@ -264,9 +273,7 @@ class Command(BaseCommand):
             try:
                 return [Tenant.objects.get(id=tenant_id)]
             except Tenant.DoesNotExist:
-                self.stdout.write(self.style.WARNING(
-                    f"  [warn] tenant_id={tenant_id} not in DB"
-                ))
+                self.stdout.write(self.style.WARNING(f"  [warn] tenant_id={tenant_id} not in DB"))
                 return []
 
         if all_tenants:
@@ -277,10 +284,8 @@ class Command(BaseCommand):
         # predicate filter (DB-portable + matches the canonical
         # ``is_structureless`` semantics exactly).
         seen_tenant_ids: set[Any] = set()
-        scoped: list[Any] = []
-        for contract in (
-            Contract.objects.only("id", "tenant_id", "hub_contract_json")
-            .iterator(chunk_size=200)
+        for contract in Contract.objects.only("id", "tenant_id", "hub_contract_json").iterator(
+            chunk_size=200
         ):
             if not is_structureless(contract):
                 continue
@@ -291,9 +296,7 @@ class Command(BaseCommand):
 
         if not seen_tenant_ids:
             return []
-        return list(
-            Tenant.objects.filter(id__in=seen_tenant_ids).order_by("id")
-        )
+        return list(Tenant.objects.filter(id__in=seen_tenant_ids).order_by("id"))
 
     def _already_notified(self, *, tenant: Any, days: int) -> bool:
         """Return True if a SCHEMA_EDITOR_AVAILABLE_NOTIFIED audit row
@@ -321,6 +324,7 @@ class Command(BaseCommand):
         """Write the SCHEMA_EDITOR_AVAILABLE_NOTIFIED audit row that
         guards the next re-run from re-emailing this tenant."""
         from hub.apps.audit.utils import create_audit_event
+
         try:
             create_audit_event(
                 resource_type="TENANT",
@@ -330,14 +334,17 @@ class Command(BaseCommand):
                 details={"phase": "227.W2.3"},
             )
         except Exception as exc:  # pragma: no cover — audit best-effort
-            self.stdout.write(self.style.WARNING(
-                f"  [warn] failed to record audit row for "
-                f"{tenant.id}: {type(exc).__name__}: {exc}"
-            ))
+            self.stdout.write(
+                self.style.WARNING(
+                    f"  [warn] failed to record audit row for "
+                    f"{tenant.id}: {type(exc).__name__}: {exc}"
+                )
+            )
 
     @staticmethod
     def _write_audit_jsonl(
-        path: Path, records: Iterable[dict[str, Any]],
+        path: Path,
+        records: Iterable[dict[str, Any]],
     ) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as fp:

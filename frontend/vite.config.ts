@@ -97,6 +97,17 @@ export default defineConfig({
         // connections blocked Vite from serving index.html, causing navigation timeouts.
         timeout: 30000,
         proxyTimeout: 30000,
+        // Override the browser's Accept header with application/json.  The browser sends
+        // Accept: text/html,application/xhtml+xml,application/xml;q=0.9,... which DRF's
+        // content negotiation rejects with HTTP 406 Not Acceptable when no XML renderer
+        // is configured.  Normalizing to application/json prevents silent console errors.
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            if (proxyReq.getHeader('Accept') !== 'application/json') {
+              proxyReq.setHeader('Accept', 'application/json');
+            }
+          });
+        },
       },
       '/api-docs': {
         target: getProxyTarget(),

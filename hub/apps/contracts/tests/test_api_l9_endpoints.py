@@ -27,6 +27,7 @@ this unit test.
 
 No internal-code mocks. Real DB rows, real DRF ``APIClient``.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -50,6 +51,7 @@ def _make_tenant():
 
 def _make_user(tenant):
     from django.contrib.auth import get_user_model
+
     from hub.apps.users.models import UserStatus
 
     suffix = uuid.uuid4().hex[:8]
@@ -107,6 +109,7 @@ class TestJsonSchemaEndpoint(TestCase):
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
+
         ensure_tenant_has_active_subscription(tenant)
         client = _authenticated_client(user)
 
@@ -126,6 +129,7 @@ class TestJsonSchemaEndpoint(TestCase):
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
+
         ensure_tenant_has_active_subscription(tenant)
         client = _authenticated_client(user)
 
@@ -153,6 +157,7 @@ class TestJsonSchemaEndpoint(TestCase):
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
+
         ensure_tenant_has_active_subscription(tenant)
         client = _authenticated_client(user)
 
@@ -176,6 +181,7 @@ class TestJsonSchemaEndpoint(TestCase):
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
+
         ensure_tenant_has_active_subscription(tenant)
         client = _authenticated_client(user)
 
@@ -190,9 +196,7 @@ class TestJsonSchemaEndpoint(TestCase):
         )
         # Server upgrades the response type to the IANA-preferred
         # form per RFC 7231 §3.1.1.5.
-        assert response["Content-Type"].startswith(
-            "application/schema+json"
-        )
+        assert response["Content-Type"].startswith("application/schema+json")
 
     def test_accept_application_schema_json_explicit(self):
         """Clients that explicitly ask for ``application/schema+json``
@@ -202,6 +206,7 @@ class TestJsonSchemaEndpoint(TestCase):
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
+
         ensure_tenant_has_active_subscription(tenant)
         client = _authenticated_client(user)
 
@@ -210,9 +215,7 @@ class TestJsonSchemaEndpoint(TestCase):
             HTTP_ACCEPT="application/schema+json",
         )
         assert response.status_code == 200
-        assert response["Content-Type"].startswith(
-            "application/schema+json"
-        )
+        assert response["Content-Type"].startswith("application/schema+json")
 
     def test_accept_incompatible_returns_406(self):
         """Defensive: a truly-incompatible Accept header (e.g. ``text/html``,
@@ -224,6 +227,7 @@ class TestJsonSchemaEndpoint(TestCase):
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
+
         ensure_tenant_has_active_subscription(tenant)
         client = _authenticated_client(user)
 
@@ -244,6 +248,7 @@ class TestJsonSchemaEndpoint(TestCase):
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
+
         ensure_tenant_has_active_subscription(tenant)
         client = _authenticated_client(user)
 
@@ -287,6 +292,7 @@ class TestStructurelessFilterRoleGate(TestCase):
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
+
         ensure_tenant_has_active_subscription(tenant)
         _grant_role(user, tenant, "TENANT_ADMIN")
         contract = self._seed_structureless_contract(tenant)
@@ -308,6 +314,7 @@ class TestStructurelessFilterRoleGate(TestCase):
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
+
         ensure_tenant_has_active_subscription(tenant)
         _grant_role(user, tenant, "DATA_PROVIDER")
         self._seed_structureless_contract(tenant)
@@ -331,6 +338,7 @@ class TestStructurelessFilterRoleGate(TestCase):
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
+
         ensure_tenant_has_active_subscription(tenant)
         _grant_role(user, tenant, "DATA_VIEWER")
         self._seed_structureless_contract(tenant)
@@ -348,6 +356,7 @@ class TestStructurelessFilterRoleGate(TestCase):
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
+
         ensure_tenant_has_active_subscription(tenant)
         # No _grant_role call.
         self._seed_structureless_contract(tenant)
@@ -390,6 +399,7 @@ class TestStructurelessFilterRoleGate(TestCase):
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
+
         ensure_tenant_has_active_subscription(tenant)
 
         # Promote to platform admin.
@@ -420,6 +430,7 @@ class TestStructurelessFilterRoleGate(TestCase):
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
+
         ensure_tenant_has_active_subscription(tenant)
         _grant_role(user, tenant, "DATA_VIEWER")
 

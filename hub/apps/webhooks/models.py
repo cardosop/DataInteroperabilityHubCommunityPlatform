@@ -3,21 +3,21 @@ Webhook Models
 
 Models for webhook subscriptions and delivery tracking.
 """
-import hmac
+
 import hashlib
-import json
+import hmac
 import uuid
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.utils import timezone
 
 from .encryption import decrypt_secret, encrypt_secret
 
 
 class WebhookStatus(models.TextChoices):
     """Webhook subscription status"""
+
     ACTIVE = "ACTIVE", "Active"
     PAUSED = "PAUSED", "Paused"
     DISABLED = "DISABLED", "Disabled"
@@ -51,6 +51,7 @@ class WebhookEventType(models.TextChoices):
     DO NOT extend this enum with ``semantic.*`` values without
     revisiting D273.8.
     """
+
     # Contract events
     CONTRACT_CREATED = "contract.created", "Contract Created"
     CONTRACT_UPDATED = "contract.updated", "Contract Updated"
@@ -106,10 +107,22 @@ class WebhookEventType(models.TextChoices):
 
     # Virtualization events
     VIRTUALIZATION_DATASET_CREATED = "virtualization.dataset.created", "Virtual Dataset Created"
-    VIRTUALIZATION_QUERY_EXECUTION_STARTED = "virtualization.query.execution.started", "Query Execution Started"
-    VIRTUALIZATION_QUERY_EXECUTION_PROGRESS = "virtualization.query.execution.progress", "Query Execution Progress"
-    VIRTUALIZATION_QUERY_EXECUTION_COMPLETED = "virtualization.query.execution.completed", "Query Execution Completed"
-    VIRTUALIZATION_QUERY_EXECUTION_FAILED = "virtualization.query.execution.failed", "Query Execution Failed"
+    VIRTUALIZATION_QUERY_EXECUTION_STARTED = (
+        "virtualization.query.execution.started",
+        "Query Execution Started",
+    )
+    VIRTUALIZATION_QUERY_EXECUTION_PROGRESS = (
+        "virtualization.query.execution.progress",
+        "Query Execution Progress",
+    )
+    VIRTUALIZATION_QUERY_EXECUTION_COMPLETED = (
+        "virtualization.query.execution.completed",
+        "Query Execution Completed",
+    )
+    VIRTUALIZATION_QUERY_EXECUTION_FAILED = (
+        "virtualization.query.execution.failed",
+        "Query Execution Failed",
+    )
 
     # File events (Phase 260.7.G — closes pass-3 B3-14)
     # Phase 0 audit (260.7.G.1) confirmed zero ``fire_webhook`` calls in
@@ -189,7 +202,10 @@ class WebhookEventType(models.TextChoices):
     DPIA_STATUS_CHANGED = "dpia.status.changed", "DPIA Status Changed"
     DPIA_REVIEW_DECISION = "dpia.review.decision", "DPIA Review Decision"
     ROPA_GENERATED = "ropa.generated", "RoPA Register Generated"
-    PROCESSOR_AGREEMENT_EXPIRING = "processor_agreement.expiring", "Expiring Processor Agreement Window"
+    PROCESSOR_AGREEMENT_EXPIRING = (
+        "processor_agreement.expiring",
+        "Expiring Processor Agreement Window",
+    )
     PROCESSOR_AGREEMENT_EXPIRED = "processor_agreement.expired", "Processor Agreement Expired"
     # Phase 275.E.3d — warehouse connectivity webhook events.
     WAREHOUSE_CONNECTION_CREATED = "warehouse.connection.created", "Warehouse Connection Created"
@@ -198,8 +214,14 @@ class WebhookEventType(models.TextChoices):
     WAREHOUSE_EXPORT_COMPLETED = "warehouse.export.completed", "Warehouse Export Completed"
     WAREHOUSE_EXPORT_FAILED = "warehouse.export.failed", "Warehouse Export Failed"
     WAREHOUSE_SHARE_ACCESSED = "warehouse.share.accessed", "Warehouse Share Accessed"
-    WAREHOUSE_CONNECTION_TEST_FAILED = "warehouse.connection.test_failed", "Warehouse Connection Test Failed"
-    WAREHOUSE_SCHEMA_DRIFT_DETECTED = "warehouse.schema.drift_detected", "Warehouse Schema Drift Detected"
+    WAREHOUSE_CONNECTION_TEST_FAILED = (
+        "warehouse.connection.test_failed",
+        "Warehouse Connection Test Failed",
+    )
+    WAREHOUSE_SCHEMA_DRIFT_DETECTED = (
+        "warehouse.schema.drift_detected",
+        "Warehouse Schema Drift Detected",
+    )
 
     @classmethod
     def get_phase232_subsystem_event_types(cls) -> list[str]:
@@ -234,7 +256,7 @@ class WebhookEventType(models.TextChoices):
         """Check if an event type is a transformation event."""
         if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
             event_type = event_type[0]
-        elif hasattr(event_type, 'value'):
+        elif hasattr(event_type, "value"):
             event_type = event_type.value
         return event_type in cls.get_transformation_event_types()
 
@@ -252,7 +274,7 @@ class WebhookEventType(models.TextChoices):
         """Check if an event type is a billing event."""
         if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
             event_type = event_type[0]
-        elif hasattr(event_type, 'value'):
+        elif hasattr(event_type, "value"):
             event_type = event_type.value
         return event_type in cls.get_billing_event_types()
 
@@ -293,7 +315,7 @@ class WebhookEventType(models.TextChoices):
         if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
             event_type = event_type[0]
         # Extract string value if event_type is an enum
-        elif hasattr(event_type, 'value'):
+        elif hasattr(event_type, "value"):
             event_type = event_type.value
         return event_type in cls.get_odps_event_types()
 
@@ -329,7 +351,7 @@ class WebhookEventType(models.TextChoices):
         if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
             event_type = event_type[0]
         # Extract string value if event_type is an enum
-        elif hasattr(event_type, 'value'):
+        elif hasattr(event_type, "value"):
             event_type = event_type.value
         return event_type in cls.get_mesh_event_types()
 
@@ -364,7 +386,7 @@ class WebhookEventType(models.TextChoices):
         if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
             event_type = event_type[0]
         # Extract string value if event_type is an enum
-        elif hasattr(event_type, 'value'):
+        elif hasattr(event_type, "value"):
             event_type = event_type.value
         return event_type in cls.get_virtualization_event_types()
 
@@ -378,6 +400,7 @@ class DeliveryStatus(models.TextChoices):
     emissions create fresh delivery rows that are gated independently
     by the rate-limit counter at their own attempt time.
     """
+
     PENDING = "PENDING", "Pending"
     SUCCESS = "SUCCESS", "Success"
     FAILED = "FAILED", "Failed"
@@ -389,42 +412,29 @@ class Webhook(models.Model):
     """
     Webhook subscription model.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="webhooks",
-        help_text="Tenant this webhook belongs to"
+        help_text="Tenant this webhook belongs to",
     )
-    name = models.CharField(
-        max_length=255,
-        help_text="Webhook name/description"
-    )
-    url = models.URLField(
-        max_length=2048,
-        help_text="Webhook delivery URL"
-    )
+    name = models.CharField(max_length=255, help_text="Webhook name/description")
+    url = models.URLField(max_length=2048, help_text="Webhook delivery URL")
     secret = models.CharField(
-        max_length=255,
-        help_text="Webhook secret for HMAC signature (encrypted)"
+        max_length=255, help_text="Webhook secret for HMAC signature (encrypted)"
     )
-    event_types = models.JSONField(
-        default=list,
-        help_text="List of event types to subscribe to"
-    )
+    event_types = models.JSONField(default=list, help_text="List of event types to subscribe to")
     status = models.CharField(
         max_length=20,
         choices=WebhookStatus.choices,
         default=WebhookStatus.ACTIVE,
-        help_text="Webhook status"
+        help_text="Webhook status",
     )
-    max_retries = models.IntegerField(
-        default=5,
-        help_text="Maximum number of delivery retries"
-    )
+    max_retries = models.IntegerField(default=5, help_text="Maximum number of delivery retries")
     retry_intervals = models.JSONField(
-        default=list,
-        help_text="Retry intervals in seconds: [1, 5, 30, 300, 1800]"
+        default=list, help_text="Retry intervals in seconds: [1, 5, 30, 300, 1800]"
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -432,7 +442,7 @@ class Webhook(models.Model):
         related_name="created_webhooks",
         null=True,
         blank=True,
-        help_text="User who created the webhook"
+        help_text="User who created the webhook",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -467,7 +477,7 @@ class Webhook(models.Model):
                 if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
                     event_type_value = event_type[0]
                 elif isinstance(event_type, WebhookEventType):
-                    event_type_value = getattr(event_type, 'value', str(event_type))
+                    event_type_value = getattr(event_type, "value", str(event_type))
                 else:
                     event_type_value = str(event_type)
 
@@ -518,7 +528,7 @@ class Webhook(models.Model):
                 if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
                     event_type_value = event_type[0]
                 elif isinstance(event_type, WebhookEventType):
-                    event_type_value = getattr(event_type, 'value', str(event_type))
+                    event_type_value = getattr(event_type, "value", str(event_type))
                 else:
                     event_type_value = str(event_type)
 
@@ -535,8 +545,8 @@ class Webhook(models.Model):
     def generate_signature(self, payload: str) -> str:
         """Generate HMAC-SHA256 signature using the decrypted secret."""
         return hmac.new(
-            self.decrypted_secret.encode('utf-8'),
-            payload.encode('utf-8'),
+            self.decrypted_secret.encode("utf-8"),
+            payload.encode("utf-8"),
             hashlib.sha256,
         ).hexdigest()
 
@@ -554,7 +564,7 @@ class Webhook(models.Model):
             if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
                 event_type_value = event_type[0]
             elif isinstance(event_type, WebhookEventType):
-                event_type_value = getattr(event_type, 'value', str(event_type))
+                event_type_value = getattr(event_type, "value", str(event_type))
             else:
                 event_type_value = str(event_type)
 
@@ -586,7 +596,7 @@ class Webhook(models.Model):
         if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
             event_type_value = event_type[0]
         elif isinstance(event_type, WebhookEventType):
-            event_type_value = getattr(event_type, 'value', str(event_type))
+            event_type_value = getattr(event_type, "value", str(event_type))
         else:
             event_type_value = str(event_type)
 
@@ -599,7 +609,7 @@ class Webhook(models.Model):
         # Also check if stored values are enums and normalize them
         for stored_type in self.event_types:
             if isinstance(stored_type, WebhookEventType):
-                stored_value = getattr(stored_type, 'value', str(stored_type))
+                stored_value = getattr(stored_type, "value", str(stored_type))
             else:
                 stored_value = str(stored_type)
 
@@ -661,24 +671,19 @@ class WebhookDelivery(models.Model):
     """
     Webhook delivery tracking model.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     webhook = models.ForeignKey(
         Webhook,
         on_delete=models.CASCADE,
         related_name="deliveries",
-        help_text="Webhook subscription"
+        help_text="Webhook subscription",
     )
     event_type = models.CharField(
-        max_length=100,
-        help_text="Event type that triggered the delivery"
+        max_length=100, help_text="Event type that triggered the delivery"
     )
-    payload = models.JSONField(
-        help_text="Webhook payload (event data)"
-    )
-    signature = models.CharField(
-        max_length=64,
-        help_text="HMAC signature of the payload"
-    )
+    payload = models.JSONField(help_text="Webhook payload (event data)")
+    signature = models.CharField(max_length=64, help_text="HMAC signature of the payload")
     #: Phase 233.1 — public key_id of the WebhookSigningKey used to sign this
     #: delivery. Pinned at trigger-time so the X-Meshant-Signature-Key-Id
     #: header survives async dispatch even if rotation happens between
@@ -688,42 +693,27 @@ class WebhookDelivery(models.Model):
     signing_key_uuid = models.UUIDField(
         null=True,
         blank=True,
-        help_text="Public key_id used to sign (X-Meshant-Signature-Key-Id header)."
+        help_text="Public key_id used to sign (X-Meshant-Signature-Key-Id header).",
     )
     status = models.CharField(
         max_length=20,
         choices=DeliveryStatus.choices,
         default=DeliveryStatus.PENDING,
-        help_text="Delivery status"
+        help_text="Delivery status",
     )
-    attempt_number = models.IntegerField(
-        default=0,
-        help_text="Current attempt number (0-indexed)"
-    )
+    attempt_number = models.IntegerField(default=0, help_text="Current attempt number (0-indexed)")
     http_status_code = models.IntegerField(
-        null=True,
-        blank=True,
-        help_text="HTTP status code from delivery attempt"
+        null=True, blank=True, help_text="HTTP status code from delivery attempt"
     )
     response_body = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Response body from delivery attempt"
+        null=True, blank=True, help_text="Response body from delivery attempt"
     )
     error_message = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Error message if delivery failed"
+        null=True, blank=True, help_text="Error message if delivery failed"
     )
-    delivered_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When delivery succeeded"
-    )
+    delivered_at = models.DateTimeField(null=True, blank=True, help_text="When delivery succeeded")
     next_retry_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When to retry delivery (if failed)"
+        null=True, blank=True, help_text="When to retry delivery (if failed)"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -885,4 +875,3 @@ class WebhookSigningKey(models.Model):
             webhook=webhook,
             status=WebhookSigningKeyStatus.ACTIVE,
         ).first()
-

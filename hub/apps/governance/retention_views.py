@@ -7,8 +7,6 @@ REST API views for retention policy management.
 import structlog
 from django.db import transaction
 from rest_framework import permissions, status, viewsets
-from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from hub.apps.audit.utils import create_audit_event
@@ -17,7 +15,7 @@ from hub.apps.core.services.base import NotFoundError
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
 
-from .models import RetentionAction, RetentionPolicy, RetentionPolicyType
+from .models import RetentionPolicy
 from .serializers import RetentionPolicySerializer
 from .services import GovernanceService
 
@@ -94,7 +92,7 @@ class RetentionPolicyViewSet(viewsets.ModelViewSet):
         }
         """
         # Use central helper for tenant resolution (Phase 10.1.11)
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             return Response(
                 {"error": "User must belong to a tenant to create retention policies"},

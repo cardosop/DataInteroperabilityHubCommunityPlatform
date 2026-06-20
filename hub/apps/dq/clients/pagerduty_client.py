@@ -23,13 +23,13 @@ only one that maps to ``info`` because PagerDuty's ``info`` does NOT
 trigger a page — that's the desired behaviour for low-severity DQ
 findings.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from .base import AlertDeliveryError, BaseAlertClient, DeliveryResult
-
 
 logger = logging.getLogger(__name__)
 
@@ -50,17 +50,14 @@ class PagerDutyAlertClient(BaseAlertClient):
 
     channel = "PAGERDUTY"
 
-    def _deliver(self, rule, payload: Dict[str, Any]) -> DeliveryResult:
+    def _deliver(self, rule, payload: dict[str, Any]) -> DeliveryResult:
         import requests  # lazy import
 
         config = rule.get_channel_config() or {}
-        routing_key = config.get("integration_key") or config.get(
-            "routing_key"
-        )
+        routing_key = config.get("integration_key") or config.get("routing_key")
         if not routing_key:
             raise AlertDeliveryError(
-                f"PAGERDUTY channel config has no integration_key "
-                f"(rule {rule.id})"
+                f"PAGERDUTY channel config has no integration_key (rule {rule.id})"
             )
 
         body = _build_event_body(rule, payload, routing_key)
@@ -113,17 +110,14 @@ class PagerDutyAlertClient(BaseAlertClient):
 
         # 401/403 = bad routing_key → unrecoverable.
         if response.status_code in (401, 403):
-            raise AlertDeliveryError(
-                f"pagerduty auth failed (status={response.status_code})"
-            )
+            raise AlertDeliveryError(f"pagerduty auth failed (status={response.status_code})")
 
         # 429 = rate limited; transient — let breaker / dispatcher retry.
         # 5xx = pagerduty outage; transient.
         return DeliveryResult(
             success=False,
             error=(
-                f"pagerduty_unexpected: status={response.status_code} "
-                f"body={response.text[:200]}"
+                f"pagerduty_unexpected: status={response.status_code} body={response.text[:200]}"
             ),
             metadata={
                 "http_status": response.status_code,
@@ -133,8 +127,10 @@ class PagerDutyAlertClient(BaseAlertClient):
 
 
 def _build_event_body(
-    rule, payload: Dict[str, Any], routing_key: str,
-) -> Dict[str, Any]:
+    rule,
+    payload: dict[str, Any],
+    routing_key: str,
+) -> dict[str, Any]:
     """Assemble the PagerDuty Events v2 body.
 
     See https://developer.pagerduty.com/docs/events-api-v2/trigger-events/
@@ -150,8 +146,7 @@ def _build_event_body(
         # single incident with rising note count instead of N pages.
         "dedup_key": payload.get("alert_id", str(rule.id)),
         "payload": {
-            "summary": payload.get("message")
-            or f"DQ alert: {payload.get('rule_name', rule.name)}",
+            "summary": payload.get("message") or f"DQ alert: {payload.get('rule_name', rule.name)}",
             "source": payload.get("source", "meshant-dq"),
             "severity": pd_severity,
             "component": payload.get("metric_type", rule.metric_type),
@@ -161,10 +156,12 @@ def _build_event_body(
                 "rule_id": str(rule.id),
                 "rule_name": payload.get("rule_name") or rule.name,
                 "metric_type": payload.get(
-                    "metric_type", rule.metric_type,
+                    "metric_type",
+                    rule.metric_type,
                 ),
                 "comparison_operator": payload.get(
-                    "comparison_operator", rule.comparison_operator,
+                    "comparison_operator",
+                    rule.comparison_operator,
                 ),
                 "threshold": payload.get("threshold", rule.threshold),
                 "metric_value": payload.get("metric_value"),

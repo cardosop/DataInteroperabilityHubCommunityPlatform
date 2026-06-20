@@ -12,11 +12,14 @@ These tests validate:
 - Structured logging with correlation IDs
 """
 
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 from django.test import TestCase
 
-from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+from hub.apps.core.resilience.circuit_breaker import (
+    CircuitBreakerError,
+    reset_circuit_breaker_by_name,
+)
 from hub.apps.core.services.base import ConnectionError, NotFoundError, PermissionError
 from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
 
@@ -30,6 +33,8 @@ except ImportError:
     google_exceptions = None
     GoogleAPIError = Exception  # Fallback
     GOOGLE_CLOUD_AVAILABLE = False
+
+import contextlib
 
 import pytest
 
@@ -286,25 +291,29 @@ class TestGCPMarketplaceConnectorCircuitBreaker(TestCase):
             mock_cb_call.assert_called_once()
 
     def test_circuit_breaker_protects_against_cascading_failures(self):
-        """Test circuit breaker protects against cascading failures"""
+        """Circuit breaker wraps _execute_with_retry — cascading failures
+        are absorbed without crashing the caller.
+
+        The breaker state is managed internally (Redis-backed in
+        production, in-memory in tests).  Verifying exact state
+        transitions requires Redis availability; this test instead
+        validates that the breaker integration layer does not raise
+        unhandled exceptions across repeated failures.
+        """
 
         def always_failing_operation():
             error = GoogleAPIError("Service unavailable")
             error.code = 503
             raise error
 
-        # Simulate multiple failures to trigger circuit breaker
         with patch("time.sleep"):
             for _ in range(6):  # More than failure_threshold (5)
                 try:
                     self.connector._execute_with_retry(
                         always_failing_operation, "test_operation", "test context"
                     )
-                except Exception:
-                    pass
-
-        # Circuit breaker should be in open state after failures
-        # (This is tested indirectly through the circuit breaker's behavior)
+                except (GoogleAPIError, ConnectionError, CircuitBreakerError):
+                    pass  # Expected — operation fails, then breaker opens
 
 
 class TestGCPMarketplaceConnectorStructuredLogging(TestCase):

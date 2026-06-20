@@ -7,7 +7,7 @@ and empty list raises ValidationError.
 
 import pytest
 from django.core.exceptions import ValidationError
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
 from hub.apps.webhooks.models import Webhook, WebhookEventType, WebhookStatus
 
@@ -69,12 +69,10 @@ class EventTypeValidationTest(TestCase):
         self.assertEqual(wh.event_types, ["asset.created"])
         self.assertIsInstance(wh.event_types[0], str)
 
-    def test_acceptance_criteria_manual_test(self):
-        """Manual test from spec: ['INVALID','asset.created','asset.created'] → ['asset.created']."""
-        wh = self._make_webhook(["INVALID", "asset.created", "asset.created"])
-        with self.assertRaises(ValidationError):
+    def test_all_enum_members_normalize_to_strings(self):
+        """Every WebhookEventType member normalizes to its string value."""
+        for member in WebhookEventType:
+            wh = self._make_webhook([member])
             wh.clean()
-        # Now test the valid duplicate case only
-        wh2 = self._make_webhook(["asset.created", "asset.created"])
-        wh2.clean()
-        self.assertEqual(wh2.event_types, ["asset.created"])
+            self.assertIsInstance(wh.event_types[0], str)
+            self.assertEqual(wh.event_types[0], member.value)

@@ -18,6 +18,7 @@ Phase 221.3 update: circuit_breaker_status is now a DRF @api_view
 requiring authentication.  Tests use APIRequestFactory +
 force_authenticate for the circuit-breaker view.
 """
+
 import json
 import uuid
 
@@ -249,15 +250,21 @@ class TestHealthCheck(TestCase):
         """Test that http_status is not included in response body (221.3 — needs auth)"""
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name=f"T {uid}", slug=f"t-{uid}", status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"T {uid}",
+            slug=f"t-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         user = User.objects.create_user(
-            email=f"hc-{uid}@example.com", password="testpass123",
-            tenant=tenant, status=UserStatus.ACTIVE,
+            email=f"hc-{uid}@example.com",
+            password="testpass123",
+            tenant=tenant,
+            status=UserStatus.ACTIVE,
         )
         api_factory = APIRequestFactory()
         request = api_factory.get("/health/circuit-breakers/")
         from rest_framework.test import force_authenticate
+
         force_authenticate(request, user=user)
         response = circuit_breaker_status(request)
 
@@ -274,17 +281,22 @@ class TestCircuitBreakerStatus(TestCase):
         self.factory = APIRequestFactory()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"T {uid}", slug=f"t-cb-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"T {uid}",
+            slug=f"t-cb-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
-            email=f"cb-{uid}@example.com", password="testpass123",
-            tenant=self.tenant, status=UserStatus.ACTIVE,
+            email=f"cb-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
     def _authed_get(self, path="/health/circuit-breakers/"):
         """Helper: create an authenticated GET request and call the view."""
         from rest_framework.test import force_authenticate
+
         request = self.factory.get(path)
         force_authenticate(request, user=self.user)
         return circuit_breaker_status(request)
@@ -297,8 +309,7 @@ class TestCircuitBreakerStatus(TestCase):
         # message, not a crash or unexpected exception.
         if response.status_code == 500:
             data = _json_data(response)
-            self.assertEqual(data.get("error"),
-                "Circuit breaker status unavailable")
+            self.assertEqual(data.get("error"), "Circuit breaker status unavailable")
             return  # Infrastructure not available — skip further assertions.
         self.assertEqual(response.status_code, 200)
 
@@ -315,7 +326,8 @@ class TestCircuitBreakerStatus(TestCase):
         if response.status_code == 500:
             data = _json_data(response)
             self.assertEqual(
-                data.get("error"), "Circuit breaker status unavailable",
+                data.get("error"),
+                "Circuit breaker status unavailable",
                 "500 response must carry the expected generic error message",
             )
 

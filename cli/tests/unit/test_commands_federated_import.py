@@ -1,10 +1,10 @@
 """Unit tests for ``datahub federated-import`` commands (284.A.4)."""
+
 import json
+from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
-from unittest.mock import Mock
-
 from datahub_cli.main import cli
 
 
@@ -25,8 +25,16 @@ class TestProvidersList:
     def test_list_table(self, runner, mock_api_client):
         mock_api_client.get.return_value = {
             "providers": [
-                {"id": "snowflake_marketplace", "name": "Snowflake Marketplace", "credential_type": "snowflake_warehouse"},
-                {"id": "aws_data_exchange", "name": "AWS Data Exchange", "credential_type": "aws_data_exchange"},
+                {
+                    "id": "snowflake_marketplace",
+                    "name": "Snowflake Marketplace",
+                    "credential_type": "snowflake_warehouse",
+                },
+                {
+                    "id": "aws_data_exchange",
+                    "name": "AWS Data Exchange",
+                    "credential_type": "aws_data_exchange",
+                },
             ],
             "count": 2,
         }
@@ -56,6 +64,7 @@ class TestProvidersList:
     @pytest.mark.unit
     def test_list_api_error(self, runner, mock_api_client):
         from click import ClickException
+
         mock_api_client.get.side_effect = ClickException("down")
         result = runner.invoke(cli, ["federated-import", "providers", "list"])
         assert result.exit_code != 0
@@ -78,9 +87,13 @@ class TestImportCreate:
         result = runner.invoke(
             cli,
             [
-                "federated-import", "import", "create",
-                "--provider-id", "snowflake_marketplace",
-                "--credential-ref", "arn:aws:secretsmanager:us-east-1:123456789:secret:test",
+                "federated-import",
+                "import",
+                "create",
+                "--provider-id",
+                "snowflake_marketplace",
+                "--credential-ref",
+                "arn:aws:secretsmanager:us-east-1:123456789:secret:test",
             ],
         )
         assert result.exit_code == 0
@@ -98,9 +111,13 @@ class TestImportCreate:
         result = runner.invoke(
             cli,
             [
-                "federated-import", "import", "create",
-                "--provider-id", "snowflake_marketplace",
-                "--credential-ref", "arn:aws:secretsmanager:us-east-1:123456789:secret:test",
+                "federated-import",
+                "import",
+                "create",
+                "--provider-id",
+                "snowflake_marketplace",
+                "--credential-ref",
+                "arn:aws:secretsmanager:us-east-1:123456789:secret:test",
                 "--json",
             ],
         )
@@ -113,8 +130,11 @@ class TestImportCreate:
         result = runner.invoke(
             cli,
             [
-                "federated-import", "import", "create",
-                "--credential-ref", "arn:aws:secretsmanager:us-east-1:123456789:secret:test",
+                "federated-import",
+                "import",
+                "create",
+                "--credential-ref",
+                "arn:aws:secretsmanager:us-east-1:123456789:secret:test",
             ],
         )
         assert result.exit_code != 0
@@ -124,8 +144,11 @@ class TestImportCreate:
         result = runner.invoke(
             cli,
             [
-                "federated-import", "import", "create",
-                "--provider-id", "snowflake_marketplace",
+                "federated-import",
+                "import",
+                "create",
+                "--provider-id",
+                "snowflake_marketplace",
             ],
         )
         assert result.exit_code != 0
@@ -136,15 +159,24 @@ class TestImportCreate:
         mock_resp.ok = True
         mock_resp.status_code = 201
         mock_resp.text = "{}"
-        mock_resp.json.return_value = {"id": "job-1", "status": "PENDING", "data_strategy": "DOWNLOAD_ALL"}
+        mock_resp.json.return_value = {
+            "id": "job-1",
+            "status": "PENDING",
+            "data_strategy": "DOWNLOAD_ALL",
+        }
         mock_api_client.request.return_value = mock_resp
         result = runner.invoke(
             cli,
             [
-                "federated-import", "import", "create",
-                "--provider-id", "snowflake_marketplace",
-                "--credential-ref", "arn:aws:secretsmanager:us-east-1:123456789:secret:test",
-                "--data-strategy", "DOWNLOAD_ALL",
+                "federated-import",
+                "import",
+                "create",
+                "--provider-id",
+                "snowflake_marketplace",
+                "--credential-ref",
+                "arn:aws:secretsmanager:us-east-1:123456789:secret:test",
+                "--data-strategy",
+                "DOWNLOAD_ALL",
             ],
         )
         assert result.exit_code == 0
@@ -161,9 +193,13 @@ class TestImportCreate:
         result = runner.invoke(
             cli,
             [
-                "federated-import", "import", "create",
-                "--provider-id", "snowflake_marketplace",
-                "--credential-ref", "arn:aws:secretsmanager:us-east-1:123456789:secret:test",
+                "federated-import",
+                "import",
+                "create",
+                "--provider-id",
+                "snowflake_marketplace",
+                "--credential-ref",
+                "arn:aws:secretsmanager:us-east-1:123456789:secret:test",
             ],
         )
         assert result.exit_code != 0

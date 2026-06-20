@@ -17,7 +17,6 @@ import pytest
 pytestmark = [pytest.mark.slow, pytest.mark.workflow_e2e]
 import uuid
 
-from django.test import TestCase
 from rest_framework import status
 
 from hub.apps.assets.models import Asset
@@ -25,7 +24,7 @@ from hub.apps.assets.tests.factories import AssetFactory
 from hub.apps.contracts.models import Contract, OriginalFormat, OriginalSpecType
 from hub.apps.orchestration.models import WorkflowStatus
 from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
-from hub.apps.users.models import Role, UserRole, UserStatus
+from hub.apps.users.models import UserStatus
 from tests.e2e.conftest import E2ETestBase, get_response_data
 from tests.e2e.workflow_e2e_base import WorkflowE2ETestBase
 from tests.factories import TenantFactory, UserFactory
@@ -57,7 +56,7 @@ class TestWorkflowSecurityTenantIsolationE2E(E2ETestBase):
     def test_workflow_triggered_contract_create_rejects_asset_from_other_tenant_via_api(self):
         """Verify contract create via API with asset_id from another tenant returns 400; business rules enforce isolation."""
         other_tenant = TenantFactory.create_tenant()
-        other_user = UserFactory.create_user(tenant=other_tenant, status=UserStatus.ACTIVE)
+        UserFactory.create_user(tenant=other_tenant, status=UserStatus.ACTIVE)
         asset_other = AssetFactory.create_asset(
             tenant=other_tenant, key=f"other-{uuid.uuid4().hex[:8]}", name="Other Tenant Asset"
         )
@@ -72,7 +71,9 @@ class TestWorkflowSecurityTenantIsolationE2E(E2ETestBase):
         # self.user is in self.tenant; asset_other is in other_tenant
         response = self.client.post("/api/v1/contracts/", data=payload, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, get_response_data(response))
+        self.assertEqual(
+            response.status_code, status.HTTP_400_BAD_REQUEST, get_response_data(response)
+        )
         self.assertEqual(Contract.objects.count(), count_before)
         data = response.json()
         self.assertIn("error", data)
@@ -109,11 +110,7 @@ class TestWorkflowSecurityTenantIsolationE2E(E2ETestBase):
         response = self.client.get("/api/v1/contracts/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = get_response_data(response) or {}
-        ids = [
-            c["id"]
-            for c in data.get("results", data)
-            if isinstance(data.get("results"), list)
-        ]
+        ids = [c["id"] for c in data.get("results", data) if isinstance(data.get("results"), list)]
         if not ids and "results" not in data:
             ids = [c["id"] for c in data] if isinstance(data, list) else []
         self.assertNotIn(

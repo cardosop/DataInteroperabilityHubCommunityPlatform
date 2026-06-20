@@ -12,10 +12,10 @@ via real API calls against the staging environment.
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_get
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _provision_analyst():
     return provision_persona("data_analyst")
@@ -64,8 +64,7 @@ def test_lineage_returns_graph_structure():
         graph_keys = {"nodes", "edges", "vertices", "links", "graph", "results", "items"}
         has_graph = any(k in body for k in graph_keys)
         assert has_graph, (
-            f"Lineage response missing graph structure fields. "
-            f"Keys: {list(body.keys())}"
+            f"Lineage response missing graph structure fields. Keys: {list(body.keys())}"
         )
 
         # If nodes are present, each should have an id

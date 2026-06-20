@@ -7,7 +7,6 @@ All require worker authentication (HUB_WORKER_API_KEY or API key with scope sche
 
 import logging
 
-from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import (
     OpenApiResponse,
@@ -37,8 +36,6 @@ from .internal_serializers import (
 from .models import (
     ScheduledExport,
     ScheduledExportRun,
-    ScheduledExportRunStatus,
-    ScheduledExportStatus,
 )
 from .services import ScheduledExportService
 
@@ -269,14 +266,14 @@ class InternalRunViewSet(ViewSet):
 
         # Prepare completed_at ISO string if provided
         completed_at_iso = None
-        if "completed_at" in data and data["completed_at"]:
+        if data.get("completed_at"):
             if hasattr(data["completed_at"], "isoformat"):
                 completed_at_iso = data["completed_at"].isoformat()
             else:
                 completed_at_iso = str(data["completed_at"])
 
         # Update run via service
-        updated_run = service.update_export_run(
+        service.update_export_run(
             run_id=str(run.id),
             tenant_id=tenant_id,
             user_id=str(request.user.id) if request.user else None,

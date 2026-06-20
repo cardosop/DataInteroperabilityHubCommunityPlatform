@@ -10,7 +10,7 @@ Endpoint contract (from Helm liveness probe configuration):
     200 OK
     { "status": "healthy", ... }
 """
-import pytest
+
 import requests
 
 

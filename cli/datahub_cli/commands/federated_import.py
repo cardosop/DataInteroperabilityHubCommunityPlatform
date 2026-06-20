@@ -4,6 +4,7 @@
 Provides ``datahub federated-import`` commands for listing providers,
 creating import jobs, checking status, and cancelling.
 """
+
 from __future__ import annotations
 
 import json
@@ -16,13 +17,11 @@ from ..api_client import api_client
 @click.group()
 def federated_import():
     """Federated marketplace import management"""
-    pass
 
 
 @federated_import.group("providers")
 def providers():
     """Manage federated import providers"""
-    pass
 
 
 @providers.command("list")
@@ -47,13 +46,14 @@ def list_providers(as_json: bool):
         click.echo("-" * 85)
         for p in items:
             if isinstance(p, dict):
-                click.echo(f"{p.get('id', '?'):<30} {p.get('name', '?'):<30} {p.get('credential_type', '?'):<25}")
+                click.echo(
+                    f"{p.get('id', '?'):<30} {p.get('name', '?'):<30} {p.get('credential_type', '?'):<25}"
+                )
 
 
 @federated_import.group("import")
 def import_group():
     """Manage federated import jobs"""
-    pass
 
 
 @import_group.command("create")
@@ -98,14 +98,12 @@ def create_import(
     )
     if not resp.ok:
         detail = resp.json() if resp.text else {"error": resp.text[:500]}
-        raise click.ClickException(
-            f"Import creation failed (HTTP {resp.status_code}): {detail}"
-        )
+        raise click.ClickException(f"Import creation failed (HTTP {resp.status_code}): {detail}")
     data = resp.json()
     if as_json:
         click.echo(json.dumps(data, indent=2, default=str))
     else:
-        click.echo(f"Import job created.")
+        click.echo("Import job created.")
         click.echo(f"  Job ID:      {data.get('id', '?')}")
         click.echo(f"  Status:      {data.get('status', '?')}")
         click.echo(f"  Provider:    {data.get('provider_id', '?')}")
@@ -159,9 +157,7 @@ def cancel_import(job_id: str, confirm: bool, as_json: bool):
     )
     if not resp.ok:
         detail = resp.json() if resp.text else {"error": resp.text[:500]}
-        raise click.ClickException(
-            f"Cancel failed (HTTP {resp.status_code}): {detail}"
-        )
+        raise click.ClickException(f"Cancel failed (HTTP {resp.status_code}): {detail}")
     data = resp.json()
     if as_json:
         click.echo(json.dumps(data, indent=2, default=str))

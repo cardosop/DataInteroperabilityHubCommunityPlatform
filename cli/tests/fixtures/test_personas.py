@@ -6,15 +6,15 @@ These tests validate the persona fixture machinery WITHOUT hitting a backend:
 - all_mvp_personas_excluding works correctly
 - PersonaRunner/PersonaCredentials dataclasses are constructable
 """
+
 from __future__ import annotations
 
+from tests._persona_provisioning import PersonaCredentials
 from tests.fixtures.personas import (
     MVP_PERSONA_ROLES,
-    PersonaRunner,
     all_mvp_personas,
     all_mvp_personas_excluding,
 )
-from tests._persona_provisioning import PersonaCredentials
 
 
 def test_all_mvp_personas_is_a_copy():
@@ -67,9 +67,18 @@ def test_persona_roles_are_lowercase_underscore():
 def test_expected_personas_present():
     """D145 canonical set must be complete."""
     expected = {
-        "visitor", "auditor", "community_manager", "compliance_officer",
-        "data_analyst", "data_consumer", "data_engineer",
-        "data_mesh_domain_owner", "data_product_owner", "data_scientist",
-        "external_developer", "platform_admin", "tenant_admin",  # noqa: PHASE216-STATIC-ID
+        "visitor",
+        "auditor",
+        "community_manager",
+        "compliance_officer",
+        "data_analyst",
+        "data_consumer",
+        "data_engineer",
+        "data_mesh_domain_owner",
+        "data_product_owner",
+        "data_scientist",
+        "external_developer",
+        "platform_admin",
+        "tenant_admin",  # noqa: PHASE216-STATIC-ID
     }
     assert set(MVP_PERSONA_ROLES) == expected

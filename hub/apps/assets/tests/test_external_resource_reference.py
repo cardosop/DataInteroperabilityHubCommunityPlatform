@@ -2,8 +2,6 @@
 Tests for ExternalResourceReference model
 """
 
-import os
-import tempfile
 import uuid
 
 from django.contrib.auth import get_user_model
@@ -11,7 +9,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.test import TestCase
 
-from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, ExternalResourceReference
+from hub.apps.assets.models import Asset, AssetStatus, ExternalResourceReference
 from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.models import MarketplaceConnection
 from hub.apps.tenants.models import Tenant
@@ -35,13 +33,13 @@ class ExternalResourceReferenceModelTest(TestCase):
             password="testpass123",
             tenant=self.tenant,
         )
+        # visibility derives from status per D250.4 — do NOT pass legacy kwarg.
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key=f"test-asset-{unique_suffix}",
             name="Test Asset",
             description="Test Description",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
             source_type="FEDERATED",
             created_by=self.user,
         )
@@ -353,7 +351,7 @@ class ExternalResourceReferenceModelTest(TestCase):
         """Test Asset.download_external_resource() when connection not found"""
         # Create external resource with invalid connection_id
         invalid_connection_id = "00000000-0000-0000-0000-000000000000"
-        external_resource = ExternalResourceReference.objects.create(
+        ExternalResourceReference.objects.create(
             asset=self.asset,
             resource_id="resource-1",
             name="Test Resource",
@@ -400,7 +398,6 @@ class ExternalResourceReferenceModelTest(TestCase):
             key=f"test-asset-2-{unique_suffix}",
             name="Test Asset 2",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
             source_type="FEDERATED",
             created_by=self.user,
         )

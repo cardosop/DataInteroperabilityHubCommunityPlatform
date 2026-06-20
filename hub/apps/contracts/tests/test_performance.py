@@ -6,6 +6,7 @@ Tests performance targets:
 - RDF mapping: <10s for complete contract, <15s for contract with all sections
 - API response: <500ms for contract retrieval, <1s for contract creation
 """
+
 import json
 import os
 import sys
@@ -16,7 +17,6 @@ import pytest
 pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from rest_framework import status
-from rest_framework.test import APIClient
 
 from hub.apps.contracts.models import (
     Contract,
@@ -27,7 +27,6 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.contracts.normalization import normalize_contract
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase, ContractsTestBase
-from hub.apps.tenants.models import Tenant
 
 User = get_user_model()
 
@@ -92,8 +91,8 @@ class NormalizationPerformanceTest(ContractsTestBase):
 
         # Measure normalization time
         start_time = time.time()
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            contract_raw, "JSON"
+        hub_contract, _spec_type, _spec_version, _norm_status, _errors, _warnings = (
+            normalize_contract(contract_raw, "JSON")
         )
         elapsed_time = time.time() - start_time
 
@@ -151,8 +150,8 @@ class NormalizationPerformanceTest(ContractsTestBase):
 
         # Measure normalization time
         start_time = time.time()
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            contract_raw, "JSON"
+        hub_contract, _spec_type, _spec_version, _norm_status, _errors, _warnings = (
+            normalize_contract(contract_raw, "JSON")
         )
         elapsed_time = time.time() - start_time
 
@@ -197,8 +196,8 @@ class NormalizationPerformanceTest(ContractsTestBase):
 
         # Measure normalization time
         start_time = time.time()
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            contract_raw, "JSON"
+        hub_contract, _spec_type, _spec_version, _norm_status, _errors, _warnings = (
+            normalize_contract(contract_raw, "JSON")
         )
         elapsed_time = time.time() - start_time
 
@@ -227,8 +226,8 @@ class NormalizationPerformanceTest(ContractsTestBase):
 
         # Measure normalization time
         start_time = time.time()
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            contract_raw, "JSON"
+        hub_contract, _spec_type, _spec_version, _norm_status, _errors, _warnings = (
+            normalize_contract(contract_raw, "JSON")
         )
         elapsed_time = time.time() - start_time
 
@@ -518,7 +517,7 @@ class APIPerformanceTest(ContractsAPITestBase):
         start_time = time.time()
         raised = False
         try:
-            hub_contract, spec_type, spec_version, norm_status, errors, warnings = (
+            _hub_contract, _spec_type, _spec_version, norm_status, _errors, _warnings = (
                 normalize_contract(invalid_json, "JSON")
             )
             # If it returns rather than raising, status must indicate failure
@@ -543,8 +542,8 @@ class APIPerformanceTest(ContractsAPITestBase):
         empty_json = "{}"
 
         start_time = time.time()
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            empty_json, "JSON"
+        _hub_contract, _spec_type, _spec_version, norm_status, _errors, _warnings = (
+            normalize_contract(empty_json, "JSON")
         )
         elapsed_time = time.time() - start_time
 
@@ -578,8 +577,8 @@ class APIPerformanceTest(ContractsAPITestBase):
         contract_raw = json.dumps(contract_json)
 
         start_time = time.time()
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            contract_raw, "JSON"
+        hub_contract, _spec_type, _spec_version, _norm_status, _errors, _warnings = (
+            normalize_contract(contract_raw, "JSON")
         )
         elapsed_time = time.time() - start_time
 

@@ -5,7 +5,9 @@ Covers retention policy management, sweep status, and per-event-type overrides.
 Backend endpoints verified against ``hub/apps/audit/urls.py`` (mounted at
 ``/api/v1/audit/`` via ``hub/apps/api/urls.py:40``).
 """
-from typing import Any, Dict, List, Optional
+
+from typing import Any, Dict
+
 from .client import DataHubClient
 
 AUDIT_PREFIX = "audit"
@@ -20,7 +22,9 @@ class RetentionAPI:
     # ── Event retention policies ─────────────────────────────────────
 
     async def list_policies(
-        self, page: int = 1, page_size: int = 25,
+        self,
+        page: int = 1,
+        page_size: int = 25,
     ) -> Dict[str, Any]:
         """List per-event-type retention policy overrides.
 
@@ -33,9 +37,7 @@ class RetentionAPI:
 
     async def get_policy(self, policy_id: str) -> Dict[str, Any]:
         """Get a single retention policy override."""
-        return await self.client.get(
-            f"{AUDIT_PREFIX}/event-retention-policies/{policy_id}/"
-        )
+        return await self.client.get(f"{AUDIT_PREFIX}/event-retention-policies/{policy_id}/")
 
     async def create_policy(
         self,
@@ -60,7 +62,10 @@ class RetentionAPI:
         )
 
     async def update_policy(
-        self, policy_id: str, retention_days: int, description: str = "",
+        self,
+        policy_id: str,
+        retention_days: int,
+        description: str = "",
     ) -> Dict[str, Any]:
         """Update an existing retention policy override."""
         payload: Dict[str, Any] = {"retention_days": retention_days}
@@ -73,9 +78,7 @@ class RetentionAPI:
 
     async def delete_policy(self, policy_id: str) -> None:
         """Delete a retention policy override."""
-        await self.client.delete(
-            f"{AUDIT_PREFIX}/event-retention-policies/{policy_id}/"
-        )
+        await self.client.delete(f"{AUDIT_PREFIX}/event-retention-policies/{policy_id}/")
 
     # ── Sweep status ─────────────────────────────────────────────────
 
@@ -87,8 +90,7 @@ class RetentionAPI:
         management command output (structlog) and the
         ``retention_enforcement_total`` Prometheus counter.
         """
-        return await self.client.get(f"{AUDIT_PREFIX}/audit-events/",
-                                     params={"page_size": 10})
+        return await self.client.get(f"{AUDIT_PREFIX}/audit-events/", params={"page_size": 10})
 
     async def trigger_sweep(self, dry_run: bool = True, category: str = "") -> Dict[str, Any]:
         """Document the retention enforcement sweep interface.
@@ -105,7 +107,7 @@ class RetentionAPI:
         return {
             "message": "Retention sweep is a management command.",
             "command": "python manage.py enforce_retention"
-                       + (" --dry-run" if dry_run else " --execute"),
+            + (" --dry-run" if dry_run else " --execute"),
             "category": category or "all",
             "schedule": "daily at 03:00 UTC (cron)",
             "metrics": "retention_enforcement_total (Prometheus)",

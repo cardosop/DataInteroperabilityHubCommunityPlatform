@@ -7,14 +7,14 @@ enabling recovery from failures or reprocessing of events.
 Usage:
     python manage.py replay_events [--event-type TYPE] [--tenant-id ID] [--start-time TIME] [--end-time TIME] [--limit N] [--dry-run] [--batch-size N]
 """
+
 import uuid
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
+
+import structlog
+from django.core.cache import cache
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django.utils import timezone
-from django.core.cache import cache
-import structlog
 
 from hub.apps.core.events.bus import get_event_bus
 from hub.apps.core.events.models import Event
@@ -23,66 +23,61 @@ logger = structlog.get_logger(__name__)
 
 
 class Command(BaseCommand):
-    help = 'Replay events from the event store'
+    help = "Replay events from the event store"
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--event-type',
+            "--event-type",
             type=str,
             default=None,
-            help='Filter by event type (e.g., "odps.created")'
+            help='Filter by event type (e.g., "odps.created")',
         )
+        parser.add_argument("--tenant-id", type=str, default=None, help="Filter by tenant ID")
         parser.add_argument(
-            '--tenant-id',
+            "--start-time",
             type=str,
             default=None,
-            help='Filter by tenant ID'
+            help='Start time for replay (ISO 8601 format, e.g., "2025-01-01T00:00:00Z")',
         )
         parser.add_argument(
-            '--start-time',
+            "--end-time",
             type=str,
             default=None,
-            help='Start time for replay (ISO 8601 format, e.g., "2025-01-01T00:00:00Z")'
+            help='End time for replay (ISO 8601 format, e.g., "2025-01-02T00:00:00Z")',
         )
         parser.add_argument(
-            '--end-time',
-            type=str,
-            default=None,
-            help='End time for replay (ISO 8601 format, e.g., "2025-01-02T00:00:00Z")'
-        )
-        parser.add_argument(
-            '--limit',
+            "--limit",
             type=int,
             default=1000,
-            help='Maximum number of events to replay (default: 1000, max: 10000)'
+            help="Maximum number of events to replay (default: 1000, max: 10000)",
         )
         parser.add_argument(
-            '--dry-run',
-            action='store_true',
-            help='Show what would be replayed without actually replaying events'
+            "--dry-run",
+            action="store_true",
+            help="Show what would be replayed without actually replaying events",
         )
         parser.add_argument(
-            '--batch-size',
+            "--batch-size",
             type=int,
             default=100,
-            help='Number of events to process per batch (default: 100)'
+            help="Number of events to process per batch (default: 100)",
         )
         parser.add_argument(
-            '--skip-duplicates',
-            action='store_true',
+            "--skip-duplicates",
+            action="store_true",
             default=True,
-            help='Skip events that have already been replayed (idempotency, default: True)'
+            help="Skip events that have already been replayed (idempotency, default: True)",
         )
 
     def handle(self, *args, **options):
-        event_type = options.get('event_type')
-        tenant_id = options.get('tenant_id')
-        start_time_str = options.get('start_time')
-        end_time_str = options.get('end_time')
-        limit = options.get('limit', 1000)
-        dry_run = options.get('dry_run', False)
-        batch_size = options.get('batch_size', 100)
-        skip_duplicates = options.get('skip_duplicates', True)
+        event_type = options.get("event_type")
+        tenant_id = options.get("tenant_id")
+        start_time_str = options.get("start_time")
+        end_time_str = options.get("end_time")
+        limit = options.get("limit", 1000)
+        dry_run = options.get("dry_run", False)
+        batch_size = options.get("batch_size", 100)
+        skip_duplicates = options.get("skip_duplicates", True)
 
         # Validate limit
         if limit > 10000:
@@ -94,13 +89,15 @@ class Command(BaseCommand):
 
         if start_time_str:
             try:
-                start_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+                start_time = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
             except ValueError:
-                raise CommandError(f"Invalid start-time format: {start_time_str}. Use ISO 8601 format.")
+                raise CommandError(
+                    f"Invalid start-time format: {start_time_str}. Use ISO 8601 format."
+                )
 
         if end_time_str:
             try:
-                end_time = datetime.fromisoformat(end_time_str.replace('Z', '+00:00'))
+                end_time = datetime.fromisoformat(end_time_str.replace("Z", "+00:00"))
             except ValueError:
                 raise CommandError(f"Invalid end-time format: {end_time_str}. Use ISO 8601 format.")
 
@@ -130,7 +127,7 @@ class Command(BaseCommand):
             queryset = queryset.filter(timestamp__lte=end_time)
 
         # Order by timestamp (oldest first for replay)
-        queryset = queryset.order_by('timestamp')
+        queryset = queryset.order_by("timestamp")
 
         # Get all events first, then filter out replay results
         all_events = list(queryset[:limit])
@@ -146,29 +143,21 @@ class Command(BaseCommand):
         total_events_found = len(events_to_process)
 
         if total_events_found == 0:
-            self.stdout.write(
-                self.style.WARNING('No events found matching the specified filters.')
-            )
+            self.stdout.write(self.style.WARNING("No events found matching the specified filters."))
             return
 
         self.stdout.write(
-            self.style.SUCCESS(
-                f'Found {total_events_found} event(s) matching filters'
-            )
+            self.style.SUCCESS(f"Found {total_events_found} event(s) matching filters")
         )
 
         if dry_run:
-            self.stdout.write(
-                self.style.WARNING('DRY RUN MODE: No events will be replayed')
-            )
+            self.stdout.write(self.style.WARNING("DRY RUN MODE: No events will be replayed"))
             # Show first few events
             sample_events = events_to_process[:10]
             for event in sample_events:
-                self.stdout.write(
-                    f'  - {event.event_type} ({event.event_id}) at {event.timestamp}'
-                )
+                self.stdout.write(f"  - {event.event_type} ({event.event_id}) at {event.timestamp}")
             if total_events_found > 10:
-                self.stdout.write(f'  ... and {total_events_found - 10} more')
+                self.stdout.write(f"  ... and {total_events_found - 10} more")
             return
 
         # Get event bus instance
@@ -182,26 +171,23 @@ class Command(BaseCommand):
 
         while offset < limit and offset < total_events_found:
             # Get batch
-            batch = events_to_process[offset:offset + batch_size]
+            batch = events_to_process[offset : offset + batch_size]
 
             if not batch:
                 break
 
             self.stdout.write(
-                f'Processing batch: {offset + 1}-{min(offset + batch_size, total_events_found)} of {total_events_found}'
+                f"Processing batch: {offset + 1}-{min(offset + batch_size, total_events_found)} of {total_events_found}"
             )
 
             for event_obj in batch:
                 event_id = str(event_obj.event_id)
 
                 # Check for duplicate (idempotency)
-                if skip_duplicates:
-                    if self._check_event_duplicate(event_id):
-                        events_skipped += 1
-                        self.stdout.write(
-                            self.style.WARNING(f'  Skipped duplicate: {event_id}')
-                        )
-                        continue
+                if skip_duplicates and self._check_event_duplicate(event_id):
+                    events_skipped += 1
+                    self.stdout.write(self.style.WARNING(f"  Skipped duplicate: {event_id}"))
+                    continue
 
                 # Reconstruct event payload
                 event_payload = {
@@ -214,7 +200,7 @@ class Command(BaseCommand):
                         "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
                     },
                     "data": event_obj.data,
-                    "metadata": event_obj.metadata or {}
+                    "metadata": event_obj.metadata or {},
                 }
 
                 if event_obj.user_id:
@@ -240,7 +226,7 @@ class Command(BaseCommand):
                             event_version=event_obj.event_version,
                             correlation_id=event_payload.get("metadata", {}).get("correlation_id"),
                             causation_id=event_payload.get("metadata", {}).get("causation_id"),
-                            tags=replay_tags
+                            tags=replay_tags,
                         )
 
                         # Mark original event as replayed (idempotency)
@@ -251,26 +237,24 @@ class Command(BaseCommand):
 
                         events_replayed += 1
                         self.stdout.write(
-                            self.style.SUCCESS(f'  Replayed: {event_id} ({event_obj.event_type})')
+                            self.style.SUCCESS(f"  Replayed: {event_id} ({event_obj.event_type})")
                         )
 
                         logger.info(
                             "event_replayed_command",
                             event_id=event_id,
                             event_type=event_obj.event_type,
-                            tenant_id=str(event_obj.tenant_id) if event_obj.tenant_id else None
+                            tenant_id=str(event_obj.tenant_id) if event_obj.tenant_id else None,
                         )
                 except Exception as e:
                     events_failed += 1
-                    self.stdout.write(
-                        self.style.ERROR(f'  Failed to replay {event_id}: {e}')
-                    )
+                    self.stdout.write(self.style.ERROR(f"  Failed to replay {event_id}: {e}"))
                     logger.error(
                         "event_replay_failed_command",
                         event_id=event_id,
                         event_type=event_obj.event_type,
                         error=str(e),
-                        exc_info=True
+                        exc_info=True,
                     )
                     # Continue with next event
                     continue
@@ -280,19 +264,19 @@ class Command(BaseCommand):
             # Progress update
             self.stdout.write(
                 self.style.SUCCESS(
-                    f'Progress: {min(offset, total_events_found)}/{total_events_found} events processed '
-                    f'(replayed: {events_replayed}, skipped: {events_skipped}, failed: {events_failed})'
+                    f"Progress: {min(offset, total_events_found)}/{total_events_found} events processed "
+                    f"(replayed: {events_replayed}, skipped: {events_skipped}, failed: {events_failed})"
                 )
             )
 
         # Final summary
         self.stdout.write(
             self.style.SUCCESS(
-                f'\nReplay completed:\n'
-                f'  Total events found: {total_events_found}\n'
-                f'  Events replayed: {events_replayed}\n'
-                f'  Events skipped (duplicates): {events_skipped}\n'
-                f'  Events failed: {events_failed}'
+                f"\nReplay completed:\n"
+                f"  Total events found: {total_events_found}\n"
+                f"  Events replayed: {events_replayed}\n"
+                f"  Events skipped (duplicates): {events_skipped}\n"
+                f"  Events failed: {events_failed}"
             )
         )
 
@@ -323,7 +307,7 @@ class Command(BaseCommand):
                     "event_replay_duplicate_check_redis_error",
                     event_id=event_id,
                     error=str(e),
-                    message="Redis error, falling back to Django cache"
+                    message="Redis error, falling back to Django cache",
                 )
 
         # Fallback to Django cache if Redis is unavailable
@@ -335,7 +319,7 @@ class Command(BaseCommand):
                 "event_replay_duplicate_check_cache_error",
                 event_id=event_id,
                 error=str(e),
-                message="Cache unavailable, cannot check for duplicate replays"
+                message="Cache unavailable, cannot check for duplicate replays",
             )
             return False
 
@@ -364,7 +348,7 @@ class Command(BaseCommand):
                     "event_replay_mark_redis_error",
                     event_id=event_id,
                     error=str(e),
-                    message="Redis error, falling back to Django cache"
+                    message="Redis error, falling back to Django cache",
                 )
 
         # Fallback to Django cache if Redis is unavailable
@@ -375,5 +359,5 @@ class Command(BaseCommand):
                 "event_replay_mark_cache_error",
                 event_id=event_id,
                 error=str(e),
-                message="Cache unavailable, cannot mark event as replayed"
+                message="Cache unavailable, cannot mark event as replayed",
             )

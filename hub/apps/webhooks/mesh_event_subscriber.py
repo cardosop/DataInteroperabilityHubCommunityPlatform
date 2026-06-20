@@ -3,12 +3,14 @@ Mesh Event Subscriber
 
 Subscribes to mesh events from the event bus and triggers webhook deliveries.
 """
-from typing import Dict, Any
+
+from typing import Any
+
 import structlog
 
 from hub.apps.core.events.subscriber import EventSubscriber
-from hub.apps.webhooks.service import WebhookDeliveryService
 from hub.apps.webhooks.models import WebhookEventType
+from hub.apps.webhooks.service import WebhookDeliveryService
 
 logger = structlog.get_logger(__name__)
 
@@ -33,18 +35,16 @@ class MeshEventSubscriber(EventSubscriber):
 
         for event_type in mesh_event_types:
             self.subscribe(
-                event_type_pattern=event_type,
-                handler=self._handle_mesh_event,
-                is_active=True
+                event_type_pattern=event_type, handler=self._handle_mesh_event, is_active=True
             )
 
         logger.info(
             "mesh_event_subscriber_initialized",
             event_types_count=len(mesh_event_types),
-            event_types=mesh_event_types
+            event_types=mesh_event_types,
         )
 
-    def _handle_mesh_event(self, event: Dict[str, Any]) -> None:
+    def _handle_mesh_event(self, event: dict[str, Any]) -> None:
         """
         Handle mesh event and trigger webhook delivery.
 
@@ -54,10 +54,7 @@ class MeshEventSubscriber(EventSubscriber):
         try:
             event_type = event.get("event_type")
             if not event_type:
-                logger.warning(
-                    "mesh_event_missing_event_type",
-                    event_id=event.get("event_id")
-                )
+                logger.warning("mesh_event_missing_event_type", event_id=event.get("event_id"))
                 return
 
             event_data = event.get("data", {})
@@ -68,19 +65,21 @@ class MeshEventSubscriber(EventSubscriber):
                 logger.warning(
                     "mesh_event_missing_tenant_id",
                     event_type=event_type,
-                    event_id=event.get("event_id")
+                    event_id=event.get("event_id"),
                 )
                 return
 
             # Determine resource type and ID based on event type
             resource_type = "DATA_MESH_DOMAIN"
-            resource_id = event_data.get("domain_id") or event_data.get("policy_application_id") or tenant_id
+            resource_id = (
+                event_data.get("domain_id") or event_data.get("policy_application_id") or tenant_id
+            )
 
             if not resource_id:
                 logger.warning(
                     "mesh_event_missing_resource_id",
                     event_type=event_type,
-                    event_id=event.get("event_id")
+                    event_id=event.get("event_id"),
                 )
                 return
 
@@ -91,7 +90,7 @@ class MeshEventSubscriber(EventSubscriber):
                     event_type=event_type,
                     resource_type=resource_type,
                     resource_id=resource_id,
-                    event_data=event_data
+                    event_data=event_data,
                 )
 
                 logger.info(
@@ -100,7 +99,7 @@ class MeshEventSubscriber(EventSubscriber):
                     event_id=event.get("event_id"),
                     resource_id=resource_id,
                     tenant_id=tenant_id,
-                    webhooks_triggered=count
+                    webhooks_triggered=count,
                 )
             except Exception as e:
                 logger.error(
@@ -110,7 +109,7 @@ class MeshEventSubscriber(EventSubscriber):
                     resource_id=resource_id,
                     tenant_id=tenant_id,
                     error=str(e),
-                    exc_info=True
+                    exc_info=True,
                 )
                 # Don't raise - we want to continue processing other events
                 # The error is logged for monitoring
@@ -120,7 +119,7 @@ class MeshEventSubscriber(EventSubscriber):
                 "mesh_event_handler_error",
                 event_id=event.get("event_id"),
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
             # Don't raise - we want to continue processing other events
             # The error is logged for monitoring
@@ -154,9 +153,5 @@ def initialize_mesh_event_subscriber() -> MeshEventSubscriber:
         MeshEventSubscriber instance
     """
     subscriber = get_mesh_event_subscriber()
-    logger.info(
-        "mesh_event_subscriber_initialized",
-        subscriber_name=subscriber.subscriber_name
-    )
+    logger.info("mesh_event_subscriber_initialized", subscriber_name=subscriber.subscriber_name)
     return subscriber
-

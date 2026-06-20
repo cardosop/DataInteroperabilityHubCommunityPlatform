@@ -1,6 +1,9 @@
 """Phase 107: Compliance service unavailable — fail-closed behavior."""
+
 import uuid
+
 from django.test import TestCase
+
 from hub.apps.core.resilience.circuit_breaker import CircuitBreaker, CircuitBreakerState
 
 

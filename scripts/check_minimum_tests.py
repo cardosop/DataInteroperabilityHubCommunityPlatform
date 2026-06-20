@@ -9,6 +9,7 @@ Scans app test directories for minimum required test patterns:
 
 Informational for 30 days, then blocks CI. Exit 0 always (info-only phase).
 """
+
 import os
 import sys
 from collections import defaultdict
@@ -26,7 +27,7 @@ results: dict[str, dict[str, bool]] = defaultdict(dict)
 for app in sorted(APP_DIRS):
     test_dir = f"hub/apps/{app}/tests"
     all_content = ""
-    for root, dirs, files in os.walk(test_dir):
+    for root, _dirs, files in os.walk(test_dir):
         for f in files:
             if f.endswith(".py") and not f.startswith("__"):
                 try:
@@ -40,9 +41,7 @@ for app in sorted(APP_DIRS):
         results[app][category] = found
 
 missing_count = sum(
-    1 for app in results
-    for cat in REQUIRED_PATTERNS
-    if not results[app].get(cat, False)
+    1 for app in results for cat in REQUIRED_PATTERNS if not results[app].get(cat, False)
 )
 
 print(f"Test pattern audit: {len(results)} apps, {missing_count} gaps")

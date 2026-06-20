@@ -7,10 +7,10 @@ and event publishing.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from django.core.cache import cache
-from django.db import connection, transaction
+from django.db import transaction
 from django.http import HttpRequest
 from django.utils import timezone
 
@@ -24,7 +24,6 @@ from hub.apps.tenants.services import get_tenant_job_limits
 from hub.apps.transformation.exceptions import (
     AssetCompatibilityError,
     ResourceQuotaExceededError,
-    TransformationError,
     TransformationExecutionError,
     TransformationValidationError,
 )
@@ -53,7 +52,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
 
     service_name = "transformation_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize TransformationService.
 
@@ -67,7 +66,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         # Initialize event publisher
         TransformationEventPublisher.__init__(self)
 
-    def _validate_pipeline_schema(self, pipeline_definition: Dict[str, Any]) -> None:
+    def _validate_pipeline_schema(self, pipeline_definition: dict[str, Any]) -> None:
         """
         Validate pipeline definition schema.
 
@@ -123,7 +122,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         if errors:
             raise ValidationError("Pipeline schema validation failed", details={"errors": errors})
 
-    def _validate_node_compatibility(self, pipeline_definition: Dict[str, Any]) -> None:
+    def _validate_node_compatibility(self, pipeline_definition: dict[str, Any]) -> None:
         """
         Validate node compatibility in pipeline definition.
 
@@ -150,7 +149,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             if not isinstance(step, dict):
                 continue
 
-            step_type = step.get("type", "")
+            step.get("type", "")
             step_name = step.get("name", f"step_{i}")
 
             # Check if step type is a valid node type
@@ -187,12 +186,11 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 node_config = step.get("node_config", {})
                 if not isinstance(node_config, dict):
                     errors.append(f"Join node '{name}' must have node_config as a dictionary")
-                else:
-                    # Join nodes typically need join keys or join type
-                    if "join_type" not in node_config and "join_keys" not in node_config:
-                        errors.append(
-                            f"Join node '{name}' should specify join_type or join_keys in node_config"
-                        )
+                # Join nodes typically need join keys or join type
+                elif "join_type" not in node_config and "join_keys" not in node_config:
+                    errors.append(
+                        f"Join node '{name}' should specify join_type or join_keys in node_config"
+                    )
 
         if errors:
             raise ValidationError(
@@ -200,7 +198,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             )
 
     def _validate_asset_compatibility(
-        self, tenant_id: str, metadata: Optional[Dict[str, Any]]
+        self, tenant_id: str, metadata: dict[str, Any] | None
     ) -> None:
         """
         Validate asset compatibility if source/target assets are specified.
@@ -238,7 +236,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     f"Source asset {source_asset_id} not found or does not belong to tenant"
                 )
             except Exception as e:
-                errors.append(f"Error validating source asset {source_asset_id}: {str(e)}")
+                errors.append(f"Error validating source asset {source_asset_id}: {e!s}")
 
         # Validate target asset if specified
         if target_asset_id:
@@ -259,7 +257,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     f"Target asset {target_asset_id} not found or does not belong to tenant"
                 )
             except Exception as e:
-                errors.append(f"Error validating target asset {target_asset_id}: {str(e)}")
+                errors.append(f"Error validating target asset {target_asset_id}: {e!s}")
 
         if errors:
             raise ValidationError(
@@ -267,7 +265,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             )
 
     def _check_user_permissions(
-        self, user_id: str, tenant_id: str, request: Optional[HttpRequest] = None
+        self, user_id: str, tenant_id: str, request: HttpRequest | None = None
     ) -> None:
         """
         Check user permissions for pipeline creation.
@@ -332,7 +330,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             f"has_role={has_required_role}, has_scope={has_scope}"
         )
 
-    def _validate_resource_quota(self, tenant_id: str, pipeline_definition: Dict[str, Any]) -> None:
+    def _validate_resource_quota(self, tenant_id: str, pipeline_definition: dict[str, Any]) -> None:
         """
         Validate resource quota (compute, storage) for pipeline creation.
 
@@ -399,7 +397,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         user_id: str,
         tenant_id: str,
         resource_type: str = "TRANSFORMATION_PIPELINE",
-        resource_id: Optional[str] = None,
+        resource_id: str | None = None,
         access_type: str = "WRITE",
     ) -> None:
         """
@@ -432,7 +430,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # ABAC policy denied access
             policy_name = result.policy.name if result.policy else "Unknown"
             raise PermissionError(
-                f"ABAC policy denied access to {resource_type} operation. " f"Policy: {policy_name}"
+                f"ABAC policy denied access to {resource_type} operation. Policy: {policy_name}"
             )
 
         logger.debug(
@@ -446,12 +444,12 @@ class TransformationService(BaseService, TransformationEventPublisher):
         tenant_id: str,
         user_id: str,
         name: str,
-        description: Optional[str] = None,
-        pipeline_definition: Optional[Dict[str, Any]] = None,
+        description: str | None = None,
+        pipeline_definition: dict[str, Any] | None = None,
         version: str = "1.0.0",
         status: PipelineStatus = PipelineStatus.DRAFT,
-        metadata: Optional[Dict[str, Any]] = None,
-        request: Optional[HttpRequest] = None,
+        metadata: dict[str, Any] | None = None,
+        request: HttpRequest | None = None,
     ) -> TransformationPipeline:
         """
         Create a transformation pipeline with comprehensive validation.
@@ -491,8 +489,10 @@ class TransformationService(BaseService, TransformationEventPublisher):
 
             # Check plan limit for transformation pipelines
             from hub.apps.tenants.services import PlanLimitService
+
             plan_limit_service = PlanLimitService(
-                tenant_id=tenant_id, user_id=user_id,
+                tenant_id=tenant_id,
+                user_id=user_id,
             )
             plan_limit_service.check_limit(
                 tenant_id=tenant_id,
@@ -659,22 +659,22 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 exc_info=True,
             )
             raise ValidationError(
-                f"Failed to create transformation pipeline: {str(e)}", details={"error": str(e)}
+                f"Failed to create transformation pipeline: {e!s}", details={"error": str(e)}
             )
 
     @transaction.atomic
     def update_pipeline(
         self,
         pipeline_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        pipeline_definition: Optional[Dict[str, Any]] = None,
-        version: Optional[str] = None,
-        status: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        request: Optional[HttpRequest] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        name: str | None = None,
+        description: str | None = None,
+        pipeline_definition: dict[str, Any] | None = None,
+        version: str | None = None,
+        status: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        request: HttpRequest | None = None,
     ) -> TransformationPipeline:
         """
         Update a transformation pipeline.
@@ -870,16 +870,16 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 exc_info=True,
             )
             raise ValidationError(
-                f"Failed to update transformation pipeline: {str(e)}", details={"error": str(e)}
+                f"Failed to update transformation pipeline: {e!s}", details={"error": str(e)}
             )
 
     @transaction.atomic
     def delete_pipeline(
         self,
         pipeline_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request: Optional[HttpRequest] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request: HttpRequest | None = None,
     ) -> None:
         """
         Delete a transformation pipeline.
@@ -1004,7 +1004,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             raise
 
     def get_pipeline(
-        self, pipeline_id: str, tenant_id: Optional[str] = None
+        self, pipeline_id: str, tenant_id: str | None = None
     ) -> TransformationPipeline:
         """
         Get a transformation pipeline by ID.
@@ -1029,11 +1029,11 @@ class TransformationService(BaseService, TransformationEventPublisher):
         self,
         pipeline_id: str,
         node_type: str,
-        node_config: Optional[Dict[str, Any]] = None,
-        position: Optional[Dict[str, Any]] = None,
+        node_config: dict[str, Any] | None = None,
+        position: dict[str, Any] | None = None,
         order: int = 1,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
     ) -> TransformationNode:
         """
         Create a transformation node.
@@ -1098,7 +1098,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 exc_info=True,
             )
             raise ValidationError(
-                f"Failed to create transformation node: {str(e)}", details={"error": str(e)}
+                f"Failed to create transformation node: {e!s}", details={"error": str(e)}
             )
 
     def _validate_pipeline_for_execution(self, pipeline: TransformationPipeline) -> None:
@@ -1178,13 +1178,14 @@ class TransformationService(BaseService, TransformationEventPublisher):
             )
 
     def _select_execution_mode(
-        self, asset_id: str, tenant_id: str, force_mode: Optional[str] = None
+        self, asset_id: str, tenant_id: str, force_mode: str | None = None
     ) -> str:
         """All transformation execution runs through the async orchestration
         path.  The SYNC mode was removed during the Phase 285.9 dbt-native
         migration (DuckDB/Polars execution has been deprecated).
         """
         from hub.apps.transformation.models import ExecutionMode
+
         if force_mode:
             return force_mode.upper()
         return ExecutionMode.ASYNC
@@ -1192,8 +1193,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
     def validate_pipeline_compatibility(
         self,
         pipeline: TransformationPipeline,
-        input_schema: Optional[Dict[str, Any]] = None,
-        input_asset: Optional[Asset] = None,
+        input_schema: dict[str, Any] | None = None,
+        input_asset: Asset | None = None,
         use_cache: bool = True,
     ) -> ValidationResult:
         """
@@ -1239,8 +1240,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
         asset_id: str,
         execution: "PipelineExecution",
         tenant_id: str,
-        user_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
         """Synchronous in-worker execution (DuckDB/Polars) has been
         deprecated in favour of the dbt-native async orchestration path
         (Phase 285.9).  All pipeline execution now goes through the
@@ -1261,11 +1262,11 @@ class TransformationService(BaseService, TransformationEventPublisher):
         self,
         pipeline_id: str,
         asset_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        execution_mode: Optional[str] = None,
-        request: Optional[HttpRequest] = None,
-        idempotency_key: Optional[str] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        execution_mode: str | None = None,
+        request: HttpRequest | None = None,
+        idempotency_key: str | None = None,
     ) -> "PipelineExecution":
         """
         Execute a transformation pipeline.
@@ -1298,7 +1299,6 @@ class TransformationService(BaseService, TransformationEventPublisher):
             AssetCompatibilityError: If asset is incompatible
             TransformationExecutionError: If execution fails
         """
-        from hub.apps.assets.models import Asset
         from hub.apps.audit.utils import create_audit_event
         from hub.apps.jobs.models import JobType
         from hub.apps.jobs.utils import create_job
@@ -1314,6 +1314,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
 
         # Check plan limit for transformation runs
         from hub.apps.tenants.services import PlanLimitService
+
         plan_limit_service = PlanLimitService(
             tenant_id=effective_tenant_id,
             user_id=effective_user_id,
@@ -1328,8 +1329,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
         try:
             from hub.apps.observability.otel_metrics import (
                 transformation_queue_depth,
-                transformation_runs_total,
             )
+
             transformation_queue_depth.labels(
                 tenant_id=effective_tenant_id,
             ).inc()
@@ -1837,7 +1838,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     )
 
                 except Exception as e:
-                    error_msg = f"Failed to enqueue async execution: {str(e)}"
+                    error_msg = f"Failed to enqueue async execution: {e!s}"
                     execution.add_log_entry(error_msg, "ERROR")
 
                     # Execute compensation logic for async execution failure
@@ -1913,7 +1914,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 exc_info=True,
             )
             raise TransformationExecutionError(
-                f"Failed to execute pipeline: {str(e)}",
+                f"Failed to execute pipeline: {e!s}",
                 error_code=TransformationExecutionError.ERROR_CODE_INTERNAL_ERROR,
                 pipeline_id=pipeline_id,
                 tenant_id=effective_tenant_id,
@@ -1922,7 +1923,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
 
     def _run_quality_check(
         self, asset_id: str, tenant_id: str, execution: "PipelineExecution"
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Run quality check on asset via QualityService.
 
@@ -1988,12 +1989,12 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 extra={"asset_id": asset_id, "execution_id": str(execution.id), "error": str(e)},
                 exc_info=True,
             )
-            execution.add_log_entry(f"Quality check failed: {str(e)}", "WARNING")
+            execution.add_log_entry(f"Quality check failed: {e!s}", "WARNING")
             return None
 
     def _run_compliance_check(
         self, asset_id: str, tenant_id: str, execution: "PipelineExecution"
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Run compliance check on asset via ComplianceService.
 
@@ -2020,15 +2021,12 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # Download file content — use context manager to ensure the
             # underlying boto3 connection pool is closed after the call.
             with S3StorageClient() as storage_client:
-                file_content = storage_client.get_file_content(
-                    latest_dataset.file.storage_path
-                )
+                file_content = storage_client.get_file_content(latest_dataset.file.storage_path)
             file_format = latest_dataset.format or "csv"
 
             # Initialize compliance client — use context manager to ensure
             # the underlying httpx connection pool is closed.
             with ComplianceServiceClient() as compliance_client:
-
                 # Check compliance service health
                 is_healthy, _ = compliance_client.health_check()
                 if not is_healthy:
@@ -2112,12 +2110,12 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 extra={"asset_id": asset_id, "execution_id": str(execution.id), "error": str(e)},
                 exc_info=True,
             )
-            execution.add_log_entry(f"Compliance check failed: {str(e)}", "WARNING")
+            execution.add_log_entry(f"Compliance check failed: {e!s}", "WARNING")
             return None
 
     def _validate_transformation_compliance(
         self,
-        input_compliance_status: Dict[str, Any],
+        input_compliance_status: dict[str, Any],
         pipeline: TransformationPipeline,
         execution: "PipelineExecution",
     ) -> None:
@@ -2137,19 +2135,18 @@ class TransformationService(BaseService, TransformationEventPublisher):
         Raises:
             TransformationValidationError: If transformation violates compliance rules
         """
-        from hub.apps.transformation.exceptions import TransformationValidationError
 
         # Check if input has compliance issues that would be propagated
         if input_compliance_status.get("overall_status") == "WARN":
             # Log warning but allow execution
             execution.add_log_entry(
-                f"Input asset has compliance warnings. Transformation may propagate issues.",
+                "Input asset has compliance warnings. Transformation may propagate issues.",
                 "WARNING",
             )
 
         # Check pipeline definition for compliance-sensitive operations
         pipeline_definition = pipeline.get_pipeline_definition()
-        steps = pipeline_definition.get("steps", [])
+        pipeline_definition.get("steps", [])
 
         # Validate that transformation steps don't introduce new compliance risks
         # This is a simplified check - in a real implementation, we would:
@@ -2181,7 +2178,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
 
     def _check_output_asset_compliance(
         self, result_asset_id: str, tenant_id: str, execution: "PipelineExecution"
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Check compliance status of output asset after transformation.
 
@@ -2211,15 +2208,12 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # Download file content — use context manager to ensure the
             # underlying boto3 connection pool is closed after the call.
             with S3StorageClient() as storage_client:
-                file_content = storage_client.get_file_content(
-                    latest_dataset.file.storage_path
-                )
+                file_content = storage_client.get_file_content(latest_dataset.file.storage_path)
             file_format = latest_dataset.format or "csv"
 
             # Initialize compliance client — use context manager to ensure
             # the underlying httpx connection pool is closed.
             with ComplianceServiceClient() as compliance_client:
-
                 # Check compliance service health
                 is_healthy, _ = compliance_client.health_check()
                 if not is_healthy:
@@ -2301,7 +2295,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 },
                 exc_info=True,
             )
-            execution.add_log_entry(f"Output compliance check failed: {str(e)}", "WARNING")
+            execution.add_log_entry(f"Output compliance check failed: {e!s}", "WARNING")
             return None
 
     def preview_transformation(
@@ -2310,9 +2304,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
         asset_id: str,
         sample_size: int = 100,
         sampling_method: str = "first_n",
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Preview transformation pipeline execution on sample data.
 
@@ -2347,20 +2341,10 @@ class TransformationService(BaseService, TransformationEventPublisher):
         """
         import hashlib
         import json
-        import random
 
         from hub.apps.assets.models import Asset
-        from hub.apps.datasets.schema_evolution import SchemaEvolutionTracker
-        from hub.apps.datasets.schema_inference import (
-            extract_sample_data,
-            infer_schema_from_csv,
-            infer_schema_from_json,
-            infer_schema_from_parquet,
-        )
         from hub.apps.files.storage import S3StorageClient
-        from hub.apps.transformation.models import ExecutionStatus, PipelineExecution
         from hub.apps.transformation.monitoring import record_preview_generation
-        from hub.apps.transformation.quality_integration import TransformationQualityIntegration
 
         effective_tenant_id = tenant_id or self.tenant_id
         effective_user_id = user_id or self.user_id
@@ -2618,7 +2602,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         file_format: str,
         sample_size: int,
         sampling_method: str = "first_n",
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Generate sample data from file content.
 
@@ -2653,8 +2637,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
             )
 
     def _infer_schema_from_data(
-        self, data: List[Dict[str, Any]], file_format: str
-    ) -> Dict[str, Any]:
+        self, data: list[dict[str, Any]], file_format: str
+    ) -> dict[str, Any]:
         """
         Infer schema from sample data.
 
@@ -2694,7 +2678,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
 
         return {"fields": fields, "field_count": len(fields), "row_count": len(data)}
 
-    def _infer_field_type(self, values: List[Any]) -> str:
+    def _infer_field_type(self, values: list[Any]) -> str:
         """
         Infer data type from a list of values.
 
@@ -2771,8 +2755,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return "string"
 
     def _execute_pipeline_on_sample(
-        self, pipeline: TransformationPipeline, input_sample: List[Dict[str, Any]], file_format: str
-    ) -> List[Dict[str, Any]]:
+        self, pipeline: TransformationPipeline, input_sample: list[dict[str, Any]], file_format: str
+    ) -> list[dict[str, Any]]:
         """
         Execute pipeline transformation on sample data.
 
@@ -2807,13 +2791,13 @@ class TransformationService(BaseService, TransformationEventPublisher):
 
     def _analyze_preview_results(
         self,
-        input_sample: List[Dict[str, Any]],
-        output_sample: Optional[List[Dict[str, Any]]],
-        input_schema: Dict[str, Any],
-        output_schema: Optional[Dict[str, Any]],
+        input_sample: list[dict[str, Any]],
+        output_sample: list[dict[str, Any]] | None,
+        input_schema: dict[str, Any],
+        output_schema: dict[str, Any] | None,
         asset_id: str,
         tenant_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Analyze preview results: row count changes, schema changes, quality impact.
 
@@ -2914,9 +2898,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
         self,
         asset_id: str,
         tenant_id: str,
-        input_sample: List[Dict[str, Any]],
-        output_sample: Optional[List[Dict[str, Any]]],
-    ) -> Dict[str, Any]:
+        input_sample: list[dict[str, Any]],
+        output_sample: list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
         """
         Analyze quality impact by running quality checks on input and output samples.
 
@@ -2929,9 +2913,6 @@ class TransformationService(BaseService, TransformationEventPublisher):
         Returns:
             Quality impact dictionary
         """
-        import csv
-        import io
-        import json
 
         from hub.apps.dq.service_client import DQServiceClient
 
@@ -3050,7 +3031,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             }
 
             logger.info(
-                f"Quality impact analysis completed for preview",
+                "Quality impact analysis completed for preview",
                 extra={
                     "asset_id": asset_id,
                     "input_score": input_score,
@@ -3075,8 +3056,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
             }
 
     def _determine_status_change(
-        self, input_status: Optional[str], output_status: Optional[str]
-    ) -> Optional[str]:
+        self, input_status: str | None, output_status: str | None
+    ) -> str | None:
         """
         Determine status change between input and output quality statuses.
 
@@ -3102,7 +3083,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             return "MAINTAINED"
 
     def _convert_sample_to_file_content(
-        self, sample: List[Dict[str, Any]], format: str = "csv"
+        self, sample: list[dict[str, Any]], format: str = "csv"
     ) -> bytes:
         """
         Convert sample data to file content bytes.
@@ -3142,9 +3123,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
         pipeline_id: str,
         asset_id: str,
         preview_id: str,
-        analysis: Dict[str, Any],
+        analysis: dict[str, Any],
         tenant_id: str,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
     ) -> None:
         """
         Publish transformation.preview.generated event.
@@ -3181,12 +3162,12 @@ class TransformationService(BaseService, TransformationEventPublisher):
     def wrangle_data(
         self,
         asset_id: str,
-        operation: Dict[str, Any],
-        session_id: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request: Optional[HttpRequest] = None,
-    ) -> Dict[str, Any]:
+        operation: dict[str, Any],
+        session_id: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request: HttpRequest | None = None,
+    ) -> dict[str, Any]:
         """
         Perform data wrangling operation on an asset.
 
@@ -3224,15 +3205,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
             TransformationExecutionError: If operation execution fails
         """
         from hub.apps.assets.models import Asset
-        from hub.apps.datasets.schema_inference import (
-            extract_sample_data,
-            infer_schema_from_csv,
-            infer_schema_from_json,
-        )
-        from hub.apps.files.storage import S3StorageClient
         from hub.apps.transformation.models import (
             WranglingOperation,
-            WranglingOperationType,
             WranglingSession,
         )
 
@@ -3284,7 +3258,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             record_wrangling_operation(
                 tenant_id=str(session.tenant_id), operation_type=operation_type, status="SUCCESS"
             )
-        except Exception as e:
+        except Exception:
             # Record failed operation
             record_wrangling_operation(
                 tenant_id=str(session.tenant_id), operation_type=operation_type, status="FAILED"
@@ -3292,7 +3266,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             raise
 
         # Add operation to history
-        operation_index = session.add_operation(
+        session.add_operation(
             {
                 "type": operation.get("type"),
                 "parameters": operation.get("parameters", {}),
@@ -3394,7 +3368,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             "wrangling_script": session.wrangling_script,
         }
 
-    def _validate_wrangling_operation(self, operation: Dict[str, Any]) -> None:
+    def _validate_wrangling_operation(self, operation: dict[str, Any]) -> None:
         """
         Validate wrangling operation.
 
@@ -3459,16 +3433,15 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     "RENAME_COLUMN operation requires 'old_name' and 'new_name' parameters",
                     error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
                 )
-        elif operation_type == "DROP_COLUMN":
-            if "columns" not in parameters:
-                raise TransformationValidationError(
-                    "DROP_COLUMN operation requires 'columns' parameter",
-                    error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
-                )
+        elif operation_type == "DROP_COLUMN" and "columns" not in parameters:
+            raise TransformationValidationError(
+                "DROP_COLUMN operation requires 'columns' parameter",
+                error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
+            )
 
     def _get_current_data_state(
         self, session: "WranglingSession", asset: "Asset"
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get current data state for the session.
 
@@ -3525,8 +3498,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
             )
 
     def _execute_wrangling_operation(
-        self, operation: Dict[str, Any], data: List[Dict[str, Any]], asset: "Asset"
-    ) -> Dict[str, Any]:
+        self, operation: dict[str, Any], data: list[dict[str, Any]], asset: "Asset"
+    ) -> dict[str, Any]:
         """
         Execute a wrangling operation on data.
 
@@ -3590,14 +3563,14 @@ class TransformationService(BaseService, TransformationEventPublisher):
         }
 
     def _execute_filter(
-        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, data: list[dict[str, Any]], parameters: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Execute FILTER operation"""
         condition = parameters.get("condition", "")
 
         # Simple condition evaluation (in production, use a proper expression evaluator)
         # For now, support simple comparisons like "column == value" or "column > value"
-        def evaluate_condition(row: Dict[str, Any], condition: str) -> bool:
+        def evaluate_condition(row: dict[str, Any], condition: str) -> bool:
             # Parse simple conditions
             if "==" in condition:
                 col, val = condition.split("==", 1)
@@ -3628,8 +3601,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return [row for row in data if evaluate_condition(row, condition)]
 
     def _execute_sort(
-        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, data: list[dict[str, Any]], parameters: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Execute SORT operation"""
         columns = parameters.get("columns", [])
         ascending = parameters.get("ascending", True)
@@ -3637,7 +3610,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         if not columns:
             return data
 
-        def sort_key(row: Dict[str, Any]):
+        def sort_key(row: dict[str, Any]):
             values = []
             for col in columns:
                 val = row.get(col)
@@ -3651,8 +3624,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return sorted(data, key=sort_key, reverse=not ascending)
 
     def _execute_transform(
-        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, data: list[dict[str, Any]], parameters: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Execute TRANSFORM operation"""
         column = parameters.get("column", "")
         expression = parameters.get("expression", "")
@@ -3688,8 +3661,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return result_data
 
     def _execute_rename_column(
-        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, data: list[dict[str, Any]], parameters: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Execute RENAME_COLUMN operation"""
         old_name = parameters.get("old_name", "")
         new_name = parameters.get("new_name", "")
@@ -3707,8 +3680,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return result_data
 
     def _execute_drop_column(
-        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, data: list[dict[str, Any]], parameters: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Execute DROP_COLUMN operation"""
         columns_to_drop = parameters.get("columns", [])
         if not isinstance(columns_to_drop, list):
@@ -3722,8 +3695,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return result_data
 
     def _execute_deduplicate(
-        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, data: list[dict[str, Any]], parameters: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Execute DEDUPLICATE operation"""
         columns = parameters.get("columns", [])  # If empty, deduplicate on all columns
 
@@ -3743,8 +3716,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return result_data
 
     def _execute_fill_nulls(
-        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, data: list[dict[str, Any]], parameters: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Execute FILL_NULLS operation"""
         column = parameters.get("column", "")
         fill_value = parameters.get("fill_value", "")
@@ -3759,8 +3732,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return result_data
 
     def _execute_remove_nulls(
-        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, data: list[dict[str, Any]], parameters: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Execute REMOVE_NULLS operation"""
         column = parameters.get("column", "")  # If empty, remove rows with any null
 
@@ -3769,10 +3742,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
             if column:
                 if row.get(column) is not None and row.get(column) != "":
                     result_data.append(row)
-            else:
-                # Remove rows with any null/empty value
-                if all(v is not None and v != "" for v in row.values()):
-                    result_data.append(row)
+            # Remove rows with any null/empty value
+            elif all(v is not None and v != "" for v in row.values()):
+                result_data.append(row)
 
         return result_data
 
@@ -3782,9 +3754,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
         operation_id: str,
         asset_id: str,
         operation_type: str,
-        rows_processed: Optional[int] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        rows_processed: int | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish transformation.wrangling.completed event."""

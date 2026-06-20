@@ -6,11 +6,13 @@ and persists the result (or failure) onto the ComplianceRun record.
 Re-enqueues itself until the remote job reaches a terminal state or the
 30-minute absolute timeout is exceeded.
 """
+
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import timedelta
-from typing import Callable, Optional, TypeVar
+from typing import TypeVar
 
 from django.utils import timezone
 
@@ -20,7 +22,7 @@ _T = TypeVar("_T")
 
 
 def _run_with_tenant_context(
-    tenant_id: Optional[str],
+    tenant_id: str | None,
     func: Callable[[], _T],
 ) -> _T:
     """Run *func* inside ``tenant_context(tenant_id)`` when *tenant_id*
@@ -37,6 +39,7 @@ def _run_with_tenant_context(
     with tenant_context(tenant_id):
         return func()
 
+
 # How long to wait between poll attempts
 _POLL_RETRY_SECONDS = 10
 
@@ -44,7 +47,7 @@ _POLL_RETRY_SECONDS = 10
 _TERMINAL_STATUSES = frozenset(("SUCCEEDED", "FAILED"))
 
 
-def poll_compliance_job(run_id) -> None:
+def poll_compliance_job(run_id, tenant_id: str | None = None) -> None:
     """
     RQ task: poll the compliance service for the result of an async job.
 
@@ -58,6 +61,7 @@ def poll_compliance_job(run_id) -> None:
 
     Args:
         run_id: ComplianceRun primary key (UUID)
+        tenant_id: Optional tenant ID for RLS context in worker code.
     """
     from hub.apps.compliance.models import (
         ComplianceRun,
@@ -67,15 +71,18 @@ def poll_compliance_job(run_id) -> None:
     from hub.apps.compliance.services import ComplianceService
 
     # --- Load run with related objects to avoid N+1 in Model.clean() ----
-    try:
-        run = ComplianceRun.objects.select_related(
-            "job", "asset", "dataset", "file"
-        ).get(id=run_id)
-    except ComplianceRun.DoesNotExist:
-        logger.warning(
-            "poll_compliance_job: run not found",
-            extra={"run_id": str(run_id)},
-        )
+    def _load_run():
+        try:
+            return ComplianceRun.objects.select_related("job", "asset", "dataset", "file").get(id=run_id)
+        except ComplianceRun.DoesNotExist:
+            logger.warning(
+                "poll_compliance_job: run not found",
+                extra={"run_id": str(run_id)},
+            )
+            return None
+
+    run = _run_with_tenant_context(tenant_id, _load_run)
+    if run is None:
         return
 
     # --- Guard: already in terminal state --------------------------------
@@ -126,12 +133,17 @@ def poll_compliance_job(run_id) -> None:
         # Phase 78: Prometheus counter for poll timeouts
         try:
             from hub.apps.observability.otel_metrics import poll_timeout_total
+
             poll_timeout_total.labels(service="compliance").inc()
         except Exception:
             pass
         update_fields = [
-            "status", "risk_level", "allowed_to_store",
-            "completed_at", "metadata_json", "updated_at",
+            "status",
+            "risk_level",
+            "allowed_to_store",
+            "completed_at",
+            "metadata_json",
+            "updated_at",
         ]
         run.save(update_fields=update_fields)
         return

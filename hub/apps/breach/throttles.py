@@ -1,9 +1,11 @@
 """283.3.4.4 — Tenant-scoped throttles for breach incident views."""
+
 from rest_framework.throttling import SimpleRateThrottle
 
 
 class BreachTenantRateThrottle(SimpleRateThrottle):
     """Per-tenant rate limit for breach incident operations."""
+
     scope = "breach_tenant"
 
     def get_cache_key(self, request, view):

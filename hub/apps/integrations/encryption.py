@@ -11,19 +11,20 @@ Ciphertext format detection:
 - base64 string    → Fernet
 - plaintext dict   → legacy (pre-encryption migration)
 """
+
 import base64
 import binascii
 import hashlib
 import json
 import os
-from typing import Any, Dict
+from typing import Any
 
 import structlog
-from django.conf import settings
 from cryptography.fernet import Fernet
+from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.backends import default_backend
+from django.conf import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -38,7 +39,6 @@ _kms_client = None
 
 class EncryptionError(Exception):
     """Exception raised when encryption/decryption fails."""
-    pass
 
 
 # ── AWS KMS helpers ───────────────────────────────────────
@@ -77,7 +77,7 @@ def _kms_encrypt(data_bytes: bytes) -> str:
 def _kms_decrypt(ciphertext: str) -> bytes:
     """Decrypt an AWS KMS ciphertext (strip prefix, decode, call KMS)."""
     client = _get_kms_client()
-    ciphertext_blob = base64.b64decode(ciphertext[len(_AWS_KMS_PREFIX):])
+    ciphertext_blob = base64.b64decode(ciphertext[len(_AWS_KMS_PREFIX) :])
     response = client.decrypt(CiphertextBlob=ciphertext_blob)
     return response["Plaintext"]
 
@@ -101,7 +101,7 @@ def _get_encryption_key() -> bytes:
     Raises:
         EncryptionError: If encryption key cannot be derived
     """
-    encryption_key_str = getattr(settings, 'ENCRYPTION_KEY', None)
+    encryption_key_str = getattr(settings, "ENCRYPTION_KEY", None)
 
     if not encryption_key_str:
         raise EncryptionError(
@@ -117,7 +117,8 @@ def _get_encryption_key() -> bytes:
             key_bytes = base64.urlsafe_b64decode(encryption_key_str.encode())
             if len(key_bytes) == 32:
                 return encryption_key_str.encode()
-    except Exception as e:
+    except (binascii.Error, ValueError) as e:
+        # KEY is 44-char but not valid base64 → fall through to PBKDF2.
         logger.debug(
             "encryption_key_not_fernet_base64",
             extra={"error_type": type(e).__name__, "error": str(e)},
@@ -132,7 +133,7 @@ def _get_encryption_key() -> bytes:
         length=32,
         salt=salt,
         iterations=100000,
-        backend=default_backend()
+        backend=default_backend(),
     )
 
     key = base64.urlsafe_b64encode(kdf.derive(encryption_key_str.encode()))
@@ -153,10 +154,10 @@ def _get_fernet() -> Fernet:
         key = _get_encryption_key()
         return Fernet(key)
     except Exception as e:
-        raise EncryptionError(f"Failed to initialize Fernet cipher: {str(e)}") from e
+        raise EncryptionError(f"Failed to initialize Fernet cipher: {e!s}") from e
 
 
-def encrypt_json_field(data: Dict[str, Any]) -> str:
+def encrypt_json_field(data: dict[str, Any]) -> str:
     """
     Encrypt a JSON-serializable dictionary for storage in a JSONField.
 
@@ -177,14 +178,11 @@ def encrypt_json_field(data: Dict[str, Any]) -> str:
         encrypted = encrypt_json_field(config)
     """
     if not isinstance(data, dict):
-        raise EncryptionError(
-            "Data must be a dictionary, "
-            f"got {type(data).__name__}"
-        )
+        raise EncryptionError(f"Data must be a dictionary, got {type(data).__name__}")
 
     try:
         json_str = json.dumps(data, sort_keys=True)
-        json_bytes = json_str.encode('utf-8')
+        json_bytes = json_str.encode("utf-8")
 
         # Try AWS KMS first
         if _is_kms_available():
@@ -205,20 +203,20 @@ def encrypt_json_field(data: Dict[str, Any]) -> str:
         encrypted_bytes = fernet.encrypt(json_bytes)
         return base64.urlsafe_b64encode(
             encrypted_bytes,
-        ).decode('utf-8')
+        ).decode("utf-8")
     except (TypeError, ValueError) as e:
         raise EncryptionError(
-            f"Failed to serialize data to JSON: {str(e)}",
+            f"Failed to serialize data to JSON: {e!s}",
         ) from e
     except EncryptionError:
         raise
     except Exception as e:
         raise EncryptionError(
-            f"Failed to encrypt data: {str(e)}",
+            f"Failed to encrypt data: {e!s}",
         ) from e
 
 
-def decrypt_json_field(encrypted_str: str) -> Dict[str, Any]:
+def decrypt_json_field(encrypted_str: str) -> dict[str, Any]:
     """
     Decrypt an encrypted JSON string back to a dictionary.
 
@@ -243,20 +241,18 @@ def decrypt_json_field(encrypted_str: str) -> Dict[str, Any]:
 
     if not isinstance(encrypted_str, str):
         raise EncryptionError(
-            "Encrypted data must be a string, "
-            f"got {type(encrypted_str).__name__}"
+            f"Encrypted data must be a string, got {type(encrypted_str).__name__}"
         )
 
     try:
         # AWS KMS ciphertext detection
         if encrypted_str.startswith(_AWS_KMS_PREFIX):
             decrypted_bytes = _kms_decrypt(encrypted_str)
-            json_str = decrypted_bytes.decode('utf-8')
+            json_str = decrypted_bytes.decode("utf-8")
             data = json.loads(json_str)
             if not isinstance(data, dict):
                 raise EncryptionError(
-                    f"Decrypted data must be a dict, "
-                    f"got {type(data).__name__}",
+                    f"Decrypted data must be a dict, got {type(data).__name__}",
                 )
             return data
 
@@ -274,27 +270,25 @@ def decrypt_json_field(encrypted_str: str) -> Dict[str, Any]:
 
         # Fernet path (existing + backward compat)
         encrypted_bytes = base64.urlsafe_b64decode(
-            encrypted_str.encode('utf-8'),
+            encrypted_str.encode("utf-8"),
         )
         fernet = _get_fernet()
         decrypted_bytes = fernet.decrypt(encrypted_bytes)
-        json_str = decrypted_bytes.decode('utf-8')
+        json_str = decrypted_bytes.decode("utf-8")
         data = json.loads(json_str)
 
         if not isinstance(data, dict):
             raise EncryptionError(
-                f"Decrypted data must be a dict, "
-                f"got {type(data).__name__}",
+                f"Decrypted data must be a dict, got {type(data).__name__}",
             )
         return data
     except binascii.Error as e:
         raise EncryptionError(
-            f"Failed to decode base64: {str(e)}",
+            f"Failed to decode base64: {e!s}",
         ) from e
     except EncryptionError:
         raise
     except Exception as e:
         raise EncryptionError(
-            f"Failed to decrypt data: {str(e)}",
+            f"Failed to decrypt data: {e!s}",
         ) from e
-

@@ -11,20 +11,25 @@ Usage:
   python scripts/check_doc_links.py --internal-only    # skip external URLs
   python scripts/check_doc_links.py --check           # exit 1 on broken links
 """
+
 import os
 import re
 import sys
 from argparse import ArgumentParser
 from pathlib import Path
-from urllib.parse import urlparse
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DOCS_DIR = PROJECT_ROOT / "docs"
 
 # Files to skip (auto-generated, third-party, etc.)
 SKIP_FILES = {
-    "node_modules", "__pycache__", ".git", ".venv", "venv",
-    "site", "product-site",
+    "node_modules",
+    "__pycache__",
+    ".git",
+    ".venv",
+    "venv",
+    "site",
+    "product-site",
 }
 SKIP_PATTERNS = ["CHANGELOG.md"]  # Changelog links are release artifacts
 
@@ -82,7 +87,7 @@ def check_links(internal_only: bool = False) -> dict:
             continue
 
         # Find markdown links: [text](url)
-        for m in re.finditer(r'\[([^\]]*)\]\(([^)]+)\)', content):
+        for m in re.finditer(r"\[([^\]]*)\]\(([^)]+)\)", content):
             url = m.group(2).strip()
             total += 1
 
@@ -94,12 +99,14 @@ def check_links(internal_only: bool = False) -> dict:
                 continue
 
             if not resolved.exists():
-                broken.append({
-                    "file": rel,
-                    "line": content[:m.start()].count("\n") + 1,
-                    "target": url,
-                    "resolved": str(resolved.relative_to(PROJECT_ROOT)),
-                })
+                broken.append(
+                    {
+                        "file": rel,
+                        "line": content[: m.start()].count("\n") + 1,
+                        "target": url,
+                        "resolved": str(resolved.relative_to(PROJECT_ROOT)),
+                    }
+                )
 
     return {
         "total": total,
@@ -110,7 +117,7 @@ def check_links(internal_only: bool = False) -> dict:
 
 def print_report(results: dict) -> None:
     """Print human-readable link checker report."""
-    print(f"Documentation Link Checker (281.A.10.4)\n")
+    print("Documentation Link Checker (281.A.10.4)\n")
     print(f"  Total links scanned: {results['total']}")
     print(f"  Broken internal links: {results['broken']}")
 
@@ -118,7 +125,7 @@ def print_report(results: dict) -> None:
         print("  ✅ All internal links resolve correctly.")
         return
 
-    print(f"\n  Broken links:")
+    print("\n  Broken links:")
     for b in results["details"]:
         print(f"    {b['file']}:{b['line']} — {b['target']}")
         print(f"      → resolves to {b['resolved']} (MISSING)")
@@ -127,8 +134,7 @@ def print_report(results: dict) -> None:
 def main():
     parser = ArgumentParser(description="Check documentation links")
     parser.add_argument("--internal-only", action="store_true")
-    parser.add_argument("--check", action="store_true",
-                        help="Exit 1 on broken links")
+    parser.add_argument("--check", action="store_true", help="Exit 1 on broken links")
     args = parser.parse_args()
 
     results = check_links(internal_only=args.internal_only)

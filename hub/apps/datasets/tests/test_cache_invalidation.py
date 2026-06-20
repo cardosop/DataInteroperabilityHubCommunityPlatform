@@ -3,6 +3,7 @@ Phase 91.14 — Cache invalidation integration test.
 
 Verifies: create dataset → cache set → update dataset → cache cleared → read returns fresh data.
 """
+
 import pytest
 from django.core.cache import cache
 from django.test import TestCase
@@ -79,10 +80,13 @@ class TestDatasetCacheInvalidation(TestCase):
 
         # Simulate a cached read
         cache_key = get_dataset_detail_cache_key(str(dataset.pk))
-        cache_dataset_detail(str(dataset.pk), {
-            "id": str(dataset.pk),
-            "format": "PARQUET",
-        })
+        cache_dataset_detail(
+            str(dataset.pk),
+            {
+                "id": str(dataset.pk),
+                "format": "PARQUET",
+            },
+        )
         self.assertIsNotNone(cache.get(cache_key))
 
         # Mutate

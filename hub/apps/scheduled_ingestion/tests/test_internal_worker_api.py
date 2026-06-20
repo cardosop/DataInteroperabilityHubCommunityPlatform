@@ -185,6 +185,7 @@ class InternalWorkerAPITest(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
 
     def test_reject_invalid_token(self):
         self.client.credentials(HTTP_AUTHORIZATION="ApiKey invalid-key-12345")
@@ -194,6 +195,7 @@ class InternalWorkerAPITest(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
 
     def test_reject_token_without_scope(self):
         plaintext = APIKey.generate_key()
@@ -211,6 +213,7 @@ class InternalWorkerAPITest(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
 
     def test_reject_run_from_different_tenant(self):
         _uid = uuid.uuid4().hex[:8]
@@ -234,6 +237,7 @@ class InternalWorkerAPITest(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
 
     # --- Config and internal job ---
 
@@ -346,6 +350,7 @@ class InternalWorkerAPITest(TestCase):
             f"/api/v1/scheduled-ingestions/internal/config/{uuid.uuid4()}/",
         )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
 
     def test_patch_run_invalid_status_returns_400(self):
         """PATCH run with invalid status value returns 400."""

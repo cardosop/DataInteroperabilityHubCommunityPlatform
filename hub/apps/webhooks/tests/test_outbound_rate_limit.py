@@ -26,11 +26,12 @@ Coverage map:
 All tests use ``transaction=True`` so Redis state + audit emission
 observe their real behaviour (not SAVEPOINT semantics).
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
@@ -46,7 +47,6 @@ from hub.apps.webhooks.models import (
     WebhookEventType,
     WebhookStatus,
 )
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -66,6 +66,7 @@ def _redis_or_skip():
         from hub.apps.api.middleware.idempotency_utils import (
             get_redis_client,
         )
+
         client = get_redis_client()
         client.ping()
         return client
@@ -128,10 +129,9 @@ class _RateLimitTestBase(TestCase):
             from hub.apps.api.middleware.idempotency_utils import (
                 get_redis_client,
             )
+
             client = get_redis_client()
-            for key in client.scan_iter(
-                match=f"webhook:outbound:{self.tenant.id}:*"
-            ):
+            for key in client.scan_iter(match=f"webhook:outbound:{self.tenant.id}:*"):
                 client.delete(key)
         except Exception:  # pragma: no cover
             pass
@@ -265,9 +265,7 @@ class TestRedisCounterEnforcement(_RateLimitTestBase):
         self._trigger_one()  # count=2, blocked
 
         # Simulate the minute-boundary by deleting all per-tenant keys.
-        for key in client.scan_iter(
-            match=f"webhook:outbound:{self.tenant.id}:*"
-        ):
+        for key in client.scan_iter(match=f"webhook:outbound:{self.tenant.id}:*"):
             client.delete(key)
 
         self._trigger_one()  # count=1 again, allowed
@@ -292,9 +290,7 @@ class TestRedisCounterEnforcement(_RateLimitTestBase):
         self._trigger_one()
 
         # Find the bucket key for this tenant + check its TTL.
-        keys = list(
-            client.scan_iter(match=f"webhook:outbound:{self.tenant.id}:*")
-        )
+        keys = list(client.scan_iter(match=f"webhook:outbound:{self.tenant.id}:*"))
         self.assertEqual(len(keys), 1)
         ttl = client.ttl(keys[0])
         # TTL within (0, 90] window — Redis MAY return 90 OR slightly
@@ -305,7 +301,6 @@ class TestRedisCounterEnforcement(_RateLimitTestBase):
     @pytest.mark.integration
     def test_minute_bucket_key_format(self) -> None:
         """The Redis key format is ``webhook:outbound:{tenant_id}:{YYYY-MM-DDTHH:MM}``."""
-        import re
 
         client = _redis_or_skip()
         self.tenant.webhook_outbound_rate_limit_per_minute = 100
@@ -313,9 +308,7 @@ class TestRedisCounterEnforcement(_RateLimitTestBase):
 
         self._trigger_one()
 
-        keys = list(
-            client.scan_iter(match=f"webhook:outbound:{self.tenant.id}:*")
-        )
+        keys = list(client.scan_iter(match=f"webhook:outbound:{self.tenant.id}:*"))
         self.assertEqual(len(keys), 1)
         key = keys[0].decode() if isinstance(keys[0], bytes) else keys[0]
 
@@ -405,8 +398,11 @@ class TestRateLimitedIsTerminal(_RateLimitTestBase):
         # the picked-up set.
         WebhookDeliveryService.process_pending_deliveries(limit=10)
         rate_limited.refresh_from_db()
-        self.assertEqual(rate_limited.status, DeliveryStatus.RATE_LIMITED,
-                         "RATE_LIMITED delivery must not be picked up by retry scheduler")
+        self.assertEqual(
+            rate_limited.status,
+            DeliveryStatus.RATE_LIMITED,
+            "RATE_LIMITED delivery must not be picked up by retry scheduler",
+        )
 
     @pytest.mark.integration
     def test_manual_retry_rejects_rate_limited_rows(self) -> None:
@@ -472,9 +468,7 @@ class TestRateLimitAudit(_RateLimitTestBase):
         self._trigger_one()  # blocked
 
         audit = (
-            AuditEvent.objects.filter(action="WEBHOOK_RATE_LIMIT_EXCEEDED")
-            .order_by("-id")
-            .first()
+            AuditEvent.objects.filter(action="WEBHOOK_RATE_LIMIT_EXCEEDED").order_by("-id").first()
         )
         self.assertIsNotNone(audit)
         # The canonical AuditEvent metadata attribute is ``details_json``

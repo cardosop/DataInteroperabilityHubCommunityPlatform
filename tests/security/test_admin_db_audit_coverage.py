@@ -4,9 +4,9 @@ Phase 277.B.019 — Cross-tenant admin DB audit-event coverage conformance.
 Verifies every management command using DATABASES["admin"] / .using("admin")
 emits at least one create_audit_event call with proper justification.
 """
+
 from __future__ import annotations
 
-import ast
 import os
 from pathlib import Path
 
@@ -22,7 +22,7 @@ def _find_admin_db_commands() -> list[Path]:
     """Return management commands that use DATABASES['admin'] or .using('admin')."""
     cmds = []
     mgmt_dir = _HUB_APPS
-    for root, dirs, files in os.walk(mgmt_dir):
+    for root, _dirs, files in os.walk(mgmt_dir):
         if root.endswith("/management/commands") or "management/commands" in root:
             for f in files:
                 if f.endswith(".py") and f != "__init__.py":

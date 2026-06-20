@@ -40,6 +40,7 @@ def test_dns_error_message_contains_hostname():
 def test_dns_failure_does_not_hang():
     """DNS failure must resolve within the timeout budget, not hang."""
     import time
+
     start = time.monotonic()
     with pytest.raises(requests.exceptions.ConnectionError):
         requests.get(

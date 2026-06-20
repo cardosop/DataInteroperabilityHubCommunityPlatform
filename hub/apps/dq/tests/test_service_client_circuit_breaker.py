@@ -11,21 +11,23 @@ Uses a unique service_name per test to isolate Redis state when tests run
 in parallel (xdist); otherwise workers share circuit_breaker:dq-service keys
 and interfere with each other.
 """
+
 import uuid
+from datetime import UTC
 from unittest.mock import Mock, patch
-from django.conf import settings
-from django.test import TestCase
 
 import httpx
 import redis
+from django.conf import settings
+from django.test import TestCase
 
-from hub.apps.dq.service_client import DQServiceClient
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
-    CircuitBreakerState,
     CircuitBreakerError,
+    CircuitBreakerState,
     get_redis_client,
 )
+from hub.apps.dq.service_client import DQServiceClient
 
 
 def get_real_redis_client_or_none():
@@ -78,9 +80,10 @@ class TestDQServiceClientCircuitBreaker(TestCase):
 
     def tearDown(self):
         """Clean up test fixtures (no-op if setUp skipped due to missing Redis)."""
-        if getattr(self, "redis_client", None) is None or getattr(
-            self, "service_client", None
-        ) is None:
+        if (
+            getattr(self, "redis_client", None) is None
+            or getattr(self, "service_client", None) is None
+        ):
             return
         try:
             self.service_client._circuit_breaker.reset()
@@ -94,7 +97,7 @@ class TestDQServiceClientCircuitBreaker(TestCase):
     def test_circuit_breaker_initialized(self):
         """Test circuit breaker is initialized for DQ service client."""
         # Verify circuit breaker exists
-        self.assertTrue(hasattr(self.service_client, '_circuit_breaker'))
+        self.assertTrue(hasattr(self.service_client, "_circuit_breaker"))
         self.assertIsInstance(self.service_client._circuit_breaker, CircuitBreaker)
         self.assertEqual(self.service_client._circuit_breaker.service_name, self.service_name)
 
@@ -114,21 +117,21 @@ class TestDQServiceClientCircuitBreaker(TestCase):
         mock_response.json.return_value = {
             "overall_status": "PASS",
             "quality_score": 0.95,
-            "checks": []
+            "checks": [],
         }
         mock_response.raise_for_status = Mock()
 
         # _request_with_retry uses self.client.send(prepared_request),
         # NOT self.client.request(...).  Patch the actual call path.
-        with patch.object(self.service_client.client, 'send', return_value=mock_response):
+        with patch.object(self.service_client.client, "send", return_value=mock_response):
             result = self.service_client.run_dq(
-                file_content=file_content,
-                file_format="csv",
-                use_cache=False
+                file_content=file_content, file_format="csv", use_cache=False
             )
 
             self.assertEqual(result["overall_status"], "PASS")
-            self.assertEqual(self.service_client._circuit_breaker.get_state(), CircuitBreakerState.CLOSED)
+            self.assertEqual(
+                self.service_client._circuit_breaker.get_state(), CircuitBreakerState.CLOSED
+            )
 
     def test_run_dq_fallback_on_circuit_open(self):
         """Test run_dq uses fallback when circuit is open."""
@@ -138,16 +141,19 @@ class TestDQServiceClientCircuitBreaker(TestCase):
         def failing_request(*args, **kwargs):
             raise httpx.RequestError("Service unavailable")
 
-        with patch.object(self.service_client.client, 'send', side_effect=failing_request):
+        with patch.object(self.service_client.client, "send", side_effect=failing_request):
             # Trigger failures to open circuit
-            for i in range(5):
+            for _i in range(5):
                 try:
                     self.service_client.run_dq(
-                        file_content=file_content,
-                        file_format="csv",
-                        use_cache=False
+                        file_content=file_content, file_format="csv", use_cache=False
                     )
-                except (httpx.RequestError, httpx.HTTPStatusError, CircuitBreakerError, ConnectionError):
+                except (
+                    httpx.RequestError,
+                    httpx.HTTPStatusError,
+                    CircuitBreakerError,
+                    ConnectionError,
+                ):
                     pass  # Expected: service is unavailable, triggering circuit breaker
 
         # Circuit should be open now
@@ -155,9 +161,7 @@ class TestDQServiceClientCircuitBreaker(TestCase):
 
         # Next call should use fallback
         result = self.service_client.run_dq(
-            file_content=file_content,
-            file_format="csv",
-            use_cache=False
+            file_content=file_content, file_format="csv", use_cache=False
         )
 
         # Should return error response, not raise exception
@@ -172,34 +176,44 @@ class TestDQServiceClientCircuitBreaker(TestCase):
         def failing_request(*args, **kwargs):
             raise httpx.RequestError("Service unavailable")
 
-        with patch.object(self.service_client.client, 'send', side_effect=failing_request):
+        with patch.object(self.service_client.client, "send", side_effect=failing_request):
             # Trigger 3 failures
-            for i in range(3):
+            for _i in range(3):
                 try:
                     self.service_client.run_dq(
-                        file_content=file_content,
-                        file_format="csv",
-                        use_cache=False
+                        file_content=file_content, file_format="csv", use_cache=False
                     )
-                except (httpx.RequestError, httpx.HTTPStatusError, CircuitBreakerError, ConnectionError):
+                except (
+                    httpx.RequestError,
+                    httpx.HTTPStatusError,
+                    CircuitBreakerError,
+                    ConnectionError,
+                ):
                     pass  # Expected: service is unavailable, triggering circuit breaker
 
             # Circuit should still be closed (threshold is 5)
-            self.assertEqual(self.service_client._circuit_breaker.get_state(), CircuitBreakerState.CLOSED)
+            self.assertEqual(
+                self.service_client._circuit_breaker.get_state(), CircuitBreakerState.CLOSED
+            )
 
             # Trigger 2 more failures
-            for i in range(2):
+            for _i in range(2):
                 try:
                     self.service_client.run_dq(
-                        file_content=file_content,
-                        file_format="csv",
-                        use_cache=False
+                        file_content=file_content, file_format="csv", use_cache=False
                     )
-                except (httpx.RequestError, httpx.HTTPStatusError, CircuitBreakerError, ConnectionError):
+                except (
+                    httpx.RequestError,
+                    httpx.HTTPStatusError,
+                    CircuitBreakerError,
+                    ConnectionError,
+                ):
                     pass  # Expected: service is unavailable, triggering circuit breaker
 
             # Circuit should now be open
-            self.assertEqual(self.service_client._circuit_breaker.get_state(), CircuitBreakerState.OPEN)
+            self.assertEqual(
+                self.service_client._circuit_breaker.get_state(), CircuitBreakerState.OPEN
+            )
 
     def test_run_dq_circuit_recovery(self):
         """Test circuit breaker recovers after timeout."""
@@ -209,15 +223,18 @@ class TestDQServiceClientCircuitBreaker(TestCase):
         def failing_request(*args, **kwargs):
             raise httpx.RequestError("Service unavailable")
 
-        with patch.object(self.service_client.client, 'send', side_effect=failing_request):
-            for i in range(5):
+        with patch.object(self.service_client.client, "send", side_effect=failing_request):
+            for _i in range(5):
                 try:
                     self.service_client.run_dq(
-                        file_content=file_content,
-                        file_format="csv",
-                        use_cache=False
+                        file_content=file_content, file_format="csv", use_cache=False
                     )
-                except (httpx.RequestError, httpx.HTTPStatusError, CircuitBreakerError, ConnectionError):
+                except (
+                    httpx.RequestError,
+                    httpx.HTTPStatusError,
+                    CircuitBreakerError,
+                    ConnectionError,
+                ):
                     pass  # Expected: service is unavailable, triggering circuit breaker
 
         self.assertEqual(self.service_client._circuit_breaker.get_state(), CircuitBreakerState.OPEN)
@@ -227,10 +244,10 @@ class TestDQServiceClientCircuitBreaker(TestCase):
         # breaker uses datetime.now(timezone.utc) internally, not
         # django.utils.timezone.now, so patching the latter would
         # be ineffective.  _set_opened_at is the supported test hook.
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
         self.service_client._circuit_breaker._set_opened_at(
-            datetime.now(timezone.utc) - timedelta(seconds=61)
+            datetime.now(UTC) - timedelta(seconds=61)
         )
 
         # Mock successful response
@@ -276,22 +293,23 @@ class TestDQServiceClientCircuitBreaker(TestCase):
         def failing_request(*args, **kwargs):
             raise httpx.RequestError("Service unavailable")
 
-        with patch.object(self.service_client.client, 'send', side_effect=failing_request):
-            for i in range(5):
+        with patch.object(self.service_client.client, "send", side_effect=failing_request):
+            for _i in range(5):
                 try:
                     self.service_client.run_dq(
-                        file_content=file_content,
-                        file_format="csv",
-                        use_cache=False
+                        file_content=file_content, file_format="csv", use_cache=False
                     )
-                except (httpx.RequestError, httpx.HTTPStatusError, CircuitBreakerError, ConnectionError):
+                except (
+                    httpx.RequestError,
+                    httpx.HTTPStatusError,
+                    CircuitBreakerError,
+                    ConnectionError,
+                ):
                     pass  # Expected: service is unavailable, triggering circuit breaker
 
         # Get fallback response
         result = self.service_client.run_dq(
-            file_content=file_content,
-            file_format="csv",
-            use_cache=False
+            file_content=file_content, file_format="csv", use_cache=False
         )
 
         # Verify structure
@@ -305,4 +323,3 @@ class TestDQServiceClientCircuitBreaker(TestCase):
         self.assertEqual(result["overall_status"], "UNKNOWN")
         self.assertEqual(result["quality_score"], 0.0)
         self.assertEqual(result["checks"], [])
-

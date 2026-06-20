@@ -4,6 +4,7 @@ Performance tests for Health API.
 Measures health endpoint latency. Uses real implementations - no mocks or stubs.
 Health endpoints are public (no auth required).
 """
+
 import statistics
 import time
 
@@ -34,7 +35,7 @@ class HealthAPIPerformanceTest(TestCase):
             if response.status_code == 200:
                 response_times.append(elapsed_ms)
         if not response_times:
-            pytest.skip("Health endpoint returned no 200 responses")
+            pytest.skip("Health endpoint returned no 200 responses")  # noqa: skip-in-body — runtime service dependency
         p95 = calculate_percentile(response_times, 95)
         avg = statistics.mean(response_times)
         self.assertLess(

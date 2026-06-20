@@ -6,11 +6,11 @@ Real APIClient; two tenants/users; assert 403 or 404 for cross-tenant GET.
 """
 
 import json
+
 import pytest
 from rest_framework import status
 
-from hub.apps.contracts.models import Contract
-from hub.apps.contracts.models import OriginalFormat, OriginalSpecType
+from hub.apps.contracts.models import Contract, OriginalFormat, OriginalSpecType
 
 from .base_idor import IDORTestBase
 

@@ -4,7 +4,6 @@ concurrent load. Real cache; no mocks.
 """
 
 import threading
-from typing import List
 
 from django.core.cache import cache
 
@@ -19,7 +18,7 @@ class SharedStateTest(ConcurrencyTestBase):
         key = "concurrency_shared_counter"
         cache.delete(key)
         cache.set(key, 0, timeout=120)
-        errors: List[str] = []
+        errors: list[str] = []
         lock = threading.Lock()
 
         def increment() -> None:
@@ -48,7 +47,7 @@ class SharedStateTest(ConcurrencyTestBase):
         keys = [f"concurrency_shared_{i}" for i in range(8)]
         for k in keys:
             cache.delete(k)
-        errors: List[str] = []
+        errors: list[str] = []
         lock = threading.Lock()
 
         def set_key(idx: int) -> None:
@@ -71,7 +70,7 @@ class SharedStateTest(ConcurrencyTestBase):
 
     def test_concurrent_clear_and_set(self):
         """Concurrent clear and set: no unhandled exceptions."""
-        errors: List[str] = []
+        errors: list[str] = []
         lock = threading.Lock()
 
         def clear_cache() -> None:

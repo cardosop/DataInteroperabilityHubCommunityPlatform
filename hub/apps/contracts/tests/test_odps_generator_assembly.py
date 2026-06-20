@@ -751,6 +751,7 @@ class ODPSGeneratorAssemblyIntegrationTest(SimpleTestCase):
         # Valid data (large content) must succeed — verify parseable JSON
         result = format_odps_as_json(odps_doc)
         import json
+
         parsed = json.loads(result)
         self.assertIn("product", parsed)
 

@@ -25,13 +25,12 @@ This test file pins the recursive walker's behaviour:
   cleanly. Hypothesis is used when available; the test gracefully
   skips when the dev-only dep is missing in the test container.
 """
+
 from __future__ import annotations
 
-import copy
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Builders
@@ -42,38 +41,41 @@ def _odcs_field(
     name: str,
     type_: str = "string",
     **extras: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build an ODCS-shaped field dict (uses ``type``, not ``data_type``)."""
-    out: Dict[str, Any] = {"name": name, "type": type_}
+    out: dict[str, Any] = {"name": name, "type": type_}
     out.update(extras)
     return out
 
 
-def _build_chain_via_properties(depth: int) -> Dict[str, Any]:
+def _build_chain_via_properties(depth: int) -> dict[str, Any]:
     """Return an ODCS schema dict with one chain of nested ``object``s
     of *exactly* the given depth, using JSON-Schema-style ``properties``.
 
     depth=0 → flat scalar field.
     depth=N → root.l1.l2…lN where lN is a string ``leaf``.
     """
-    leaf: Dict[str, Any] = {"name": "leaf", "type": "string"}
+    leaf: dict[str, Any] = {"name": "leaf", "type": "string"}
     current = leaf
     for level in range(depth, 0, -1):
         current = {
             "name": f"l{level}",
             "type": "object",
-            "properties": {current["name"]: {"type": current["type"], **{
-                k: v for k, v in current.items() if k not in ("name", "type")
-            }}},
+            "properties": {
+                current["name"]: {
+                    "type": current["type"],
+                    **{k: v for k, v in current.items() if k not in ("name", "type")},
+                }
+            },
         }
     return {"fields": [current]}
 
 
-def _build_chain_via_fields(depth: int) -> Dict[str, Any]:
+def _build_chain_via_fields(depth: int) -> dict[str, Any]:
     """Same as ``_build_chain_via_properties`` but uses ODCS-style ``fields``
     (list of named entries) for the nested objects — mirrors ≤v3.0.x.
     """
-    leaf: Dict[str, Any] = {"name": "leaf", "type": "string"}
+    leaf: dict[str, Any] = {"name": "leaf", "type": "string"}
     current = leaf
     for level in range(depth, 0, -1):
         current = {
@@ -84,17 +86,15 @@ def _build_chain_via_fields(depth: int) -> Dict[str, Any]:
     return {"fields": [current]}
 
 
-def _walk_first_chain(field_list: List[Dict[str, Any]]) -> List[str]:
+def _walk_first_chain(field_list: list[dict[str, Any]]) -> list[str]:
     """Walk a chain of nested fields (taking the first nested entry at
     each level) and return the list of names from root to leaf."""
-    names: List[str] = []
-    cursor: List[Dict[str, Any]] | None = field_list
+    names: list[str] = []
+    cursor: list[dict[str, Any]] | None = field_list
     while cursor:
         f = cursor[0]
         names.append(f["name"])
-        nested = f.get("fields") or (
-            [f["items"]] if isinstance(f.get("items"), dict) else None
-        )
+        nested = f.get("fields") or ([f["items"]] if isinstance(f.get("items"), dict) else None)
         cursor = nested if isinstance(nested, list) and nested else None
     return names
 
@@ -107,8 +107,9 @@ def _walk_first_chain(field_list: List[Dict[str, Any]]) -> List[str]:
 class TestThreeLevelNestedObject:
     """``customer.address.street`` survives normalisation."""
 
-    def _normalize(self, schema: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _normalize(self, schema: dict[str, Any]) -> list[dict[str, Any]]:
         from hub.apps.contracts.normalization_engine import _map_fields
+
         return _map_fields(schema, [], [], [])
 
     def test_three_level_object_chain_via_properties(self):
@@ -251,8 +252,9 @@ class TestThreeLevelNestedObject:
 class TestArrayOfObjects:
     """``orders[].items[].sku`` survives normalisation via ``items``."""
 
-    def _normalize(self, schema: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _normalize(self, schema: dict[str, Any]) -> list[dict[str, Any]]:
         from hub.apps.contracts.normalization_engine import _map_fields
+
         return _map_fields(schema, [], [], [])
 
     def test_array_of_array_of_objects(self):
@@ -335,8 +337,9 @@ class TestDepthBoundary:
     1000-level recursion limit fire (which would corrupt the request).
     """
 
-    def _normalize(self, schema: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _normalize(self, schema: dict[str, Any]) -> list[dict[str, Any]]:
         from hub.apps.contracts.normalization_engine import _map_fields
+
         return _map_fields(schema, [], [], [])
 
     def test_depth_19_succeeds(self):
@@ -356,6 +359,7 @@ class TestDepthBoundary:
     def test_depth_21_raises_schema_too_deep(self):
         """Beyond MAX_NESTING_DEPTH → ValidationError code='SCHEMA_TOO_DEEP'."""
         from django.core.exceptions import ValidationError
+
         schema = _build_chain_via_properties(depth=21)
         with pytest.raises(ValidationError) as exc:
             self._normalize(schema)
@@ -367,21 +371,21 @@ class TestDepthBoundary:
         """The error message should include the path that overran so ops
         can locate the offending field in a 100-field contract."""
         from django.core.exceptions import ValidationError
+
         schema = _build_chain_via_properties(depth=25)
         with pytest.raises(ValidationError) as exc:
             self._normalize(schema)
         msg = str(exc.value)
         # The chain root is "l1"; somewhere down the chain the walker
         # records the path.
-        assert "l1" in msg, (
-            f"Error message should reference the offending path; got {msg!r}"
-        )
+        assert "l1" in msg, f"Error message should reference the offending path; got {msg!r}"
 
     def test_depth_check_fires_before_python_recursion_limit(self):
         """A schema deep enough to trigger Python's RecursionError (1000+)
         must surface as our typed error, NOT a raw RecursionError. This
         protects API surfaces from 500-ing on malicious inputs."""
         from django.core.exceptions import ValidationError
+
         # Build a depth-200 schema — well beyond 20 but still under
         # Python's limit. Must raise OUR typed error, not RecursionError.
         schema = _build_chain_via_properties(depth=200)
@@ -417,8 +421,7 @@ class TestMaxNestingDepthSettingOverride:
                 _map_fields(schema, [], [], [])
         assert exc.value.code == "SCHEMA_TOO_DEEP"
         assert "limit 2" in str(exc.value), (
-            f"Override-bound message should reference the new limit; "
-            f"got {str(exc.value)!r}"
+            f"Override-bound message should reference the new limit; got {str(exc.value)!r}"
         )
 
     def test_higher_setting_accepts_schema_above_default(self):
@@ -472,15 +475,11 @@ class TestEngineSurfacesSchemaTooDeepCode:
             "status": "active",
             "schema": [{"name": "deepies", "fields": nested["fields"]}],
         }
-        result = ODCSNormalizerV3_1_0().normalize(
-            contract_data, spec_version="3.1.0"
-        )
+        result = ODCSNormalizerV3_1_0().normalize(contract_data, spec_version="3.1.0")
         assert result.hub_contract is None, (
             "Over-deep schema should fail normalisation; got hub_contract"
         )
-        assert any(
-            "SCHEMA_TOO_DEEP" in err for err in result.errors
-        ), (
+        assert any("SCHEMA_TOO_DEEP" in err for err in result.errors), (
             f"Errors must surface SCHEMA_TOO_DEEP code; got {result.errors!r}"
         )
 
@@ -495,12 +494,13 @@ class TestPropertiesFieldsEquivalence:
     objects MUST produce identical normalised output. This protects
     customers who mix ODCS spec generations within the same payload."""
 
-    def _normalize(self, schema: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _normalize(self, schema: dict[str, Any]) -> list[dict[str, Any]]:
         from hub.apps.contracts.normalization_engine import _map_fields
+
         return _map_fields(schema, [], [], [])
 
     @staticmethod
-    def _strip_volatile(field: Dict[str, Any]) -> Dict[str, Any]:
+    def _strip_volatile(field: dict[str, Any]) -> dict[str, Any]:
         """Remove keys that may legitimately differ between paths (e.g.,
         ordering of dict-derived properties); compare the structural skeleton.
         """
@@ -508,9 +508,10 @@ class TestPropertiesFieldsEquivalence:
             "name": field["name"],
             "data_type": field.get("data_type"),
             "fields": [
-                TestPropertiesFieldsEquivalence._strip_volatile(f)
-                for f in field.get("fields", [])
-            ] if field.get("fields") else None,
+                TestPropertiesFieldsEquivalence._strip_volatile(f) for f in field.get("fields", [])
+            ]
+            if field.get("fields")
+            else None,
         }
 
     def test_two_level_object_via_properties_matches_via_fields(self):
@@ -585,6 +586,7 @@ def test_each_odcs_version_walks_nested_properties(
     the full ``normalize()`` pipeline of every supported version.
     """
     import importlib
+
     module = importlib.import_module(version_module)
     normalizer_cls = getattr(module, version_class)
     normalizer = normalizer_cls()
@@ -620,10 +622,11 @@ def test_each_odcs_version_walks_nested_properties(
     assert result.hub_contract is not None, (
         f"{version_class} normalisation failed: errors={result.errors}"
     )
+
     # The engine round-trips the canonical dict through Pydantic with
     # ``by_alias=True``, so the emitted key is ``type`` (the alias),
     # NOT ``data_type``. Helper picks whichever is present.
-    def _type(f: Dict[str, Any]) -> Any:
+    def _type(f: dict[str, Any]) -> Any:
         return f.get("data_type") or f.get("type")
 
     models = result.hub_contract.get("models") or []
@@ -632,21 +635,18 @@ def test_each_odcs_version_walks_nested_properties(
     customer = next((f for f in fields if f["name"] == "customer"), None)
     assert customer is not None, f"{version_class}: customer field missing"
     assert _type(customer) == "object"
-    assert "fields" in customer, (
-        f"{version_class}: nested customer.fields missing"
-    )
+    assert "fields" in customer, f"{version_class}: nested customer.fields missing"
     address = next(
-        (f for f in customer["fields"] if f["name"] == "address"), None,
+        (f for f in customer["fields"] if f["name"] == "address"),
+        None,
     )
-    assert address is not None, (
-        f"{version_class}: customer.address missing — recursion didn't fire"
-    )
+    assert address is not None, f"{version_class}: customer.address missing — recursion didn't fire"
     street = next(
-        (f for f in address["fields"] if f["name"] == "street"), None,
+        (f for f in address["fields"] if f["name"] == "street"),
+        None,
     )
     assert street is not None, (
-        f"{version_class}: customer.address.street missing — "
-        f"3rd-level recursion didn't fire"
+        f"{version_class}: customer.address.street missing — 3rd-level recursion didn't fire"
     )
     assert _type(street) == "string"
 
@@ -664,6 +664,7 @@ class TestHubContractFieldRecursive:
 
     def test_object_with_nested_fields_validates(self):
         from hub.apps.contracts.typed_models import HubContractField
+
         f = HubContractField(
             name="customer",
             data_type="object",
@@ -676,6 +677,7 @@ class TestHubContractFieldRecursive:
 
     def test_array_with_items_validates(self):
         from hub.apps.contracts.typed_models import HubContractField
+
         f = HubContractField(
             name="tags",
             data_type="array",
@@ -688,14 +690,18 @@ class TestHubContractFieldRecursive:
         """An ``object``-typed field with no ``fields[]`` is structurally
         empty — exactly the structureless population Wave 0 detected.
         Pydantic-level rejection makes this fail-fast at the API edge."""
-        from hub.apps.contracts.typed_models import HubContractField
         from pydantic import ValidationError as PydanticValidationError
+
+        from hub.apps.contracts.typed_models import HubContractField
+
         with pytest.raises(PydanticValidationError):
             HubContractField(name="customer", data_type="object")
 
     def test_object_with_empty_fields_list_rejected(self):
-        from hub.apps.contracts.typed_models import HubContractField
         from pydantic import ValidationError as PydanticValidationError
+
+        from hub.apps.contracts.typed_models import HubContractField
+
         with pytest.raises(PydanticValidationError):
             HubContractField(name="customer", data_type="object", fields=[])
 
@@ -712,7 +718,10 @@ class TestHubContractFieldRecursive:
 
 try:
     import hypothesis  # noqa: F401
-    from hypothesis import given, settings as hyp_settings, strategies as st
+    from hypothesis import given
+    from hypothesis import settings as hyp_settings
+    from hypothesis import strategies as st
+
     _HYPOTHESIS_AVAILABLE = True
 except ImportError:
     _HYPOTHESIS_AVAILABLE = False
@@ -745,7 +754,9 @@ def test_random_nested_schema_under_limit_normalizes():
             lambda n, kids: {"name": n, "type": "object", "fields": kids},
             name_st,
             st.lists(
-                children_st, min_size=1, max_size=3,
+                children_st,
+                min_size=1,
+                max_size=3,
                 unique_by=lambda f: f["name"],
             ),
         )

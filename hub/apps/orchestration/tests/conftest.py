@@ -30,6 +30,7 @@ def _clean_stale_workflow_data():
     """
     try:
         from django.db import transaction
+
         from hub.apps.orchestration.models import (
             WorkflowDefinition,
             WorkflowInstance,

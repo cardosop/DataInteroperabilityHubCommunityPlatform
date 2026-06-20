@@ -1,6 +1,37 @@
 """
 CLI command modules
 """
-from . import assets, contracts, files, jobs, config, lineage, dq, compliance, governance, mesh, virtualization, marketplace, baas, ml
 
-__all__ = ['assets', 'contracts', 'files', 'jobs', 'config', 'lineage', 'dq', 'compliance', 'governance', 'mesh', 'virtualization', 'marketplace', 'baas', 'ml']
+from . import (
+    assets,
+    baas,
+    compliance,
+    config,
+    contracts,
+    dq,
+    files,
+    governance,
+    jobs,
+    lineage,
+    marketplace,
+    mesh,
+    ml,
+    virtualization,
+)
+
+__all__ = [
+    "assets",
+    "baas",
+    "compliance",
+    "config",
+    "contracts",
+    "dq",
+    "files",
+    "governance",
+    "jobs",
+    "lineage",
+    "marketplace",
+    "mesh",
+    "ml",
+    "virtualization",
+]

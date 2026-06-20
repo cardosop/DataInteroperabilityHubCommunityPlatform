@@ -4,26 +4,26 @@ Unit and integration tests for VirtualDataset federated asset sources.
 Tests federated asset and external resource source support in virtual datasets.
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
-import pytest
-import uuid
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError as DjangoValidationError
 
-from hub.apps.tenants.models import Tenant, KYCStatus, TenantPlan, PlanTier
-from hub.apps.billing.models import Subscription, SubscriptionStatus
+import uuid
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.test import TestCase
 from django.utils import timezone
-from hub.apps.assets.models import Asset, AssetSourceType, ExternalResourceReference, DataStrategy
+
+from hub.apps.assets.models import Asset, AssetSourceType, DataStrategy, ExternalResourceReference
+from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.core.services.base import ValidationError
 from hub.apps.integrations.models import MarketplaceConnection, MarketplaceType
+from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan
 from hub.apps.users.models import Role, UserRole, UserStatus
+from hub.apps.virtualization.business_rules import VirtualizationBusinessRules
 from hub.apps.virtualization.models import (
-    VirtualDataset,
     QueryType,
     VirtualDatasetStatus,
 )
 from hub.apps.virtualization.services import VirtualizationService
-from hub.apps.virtualization.business_rules import VirtualizationBusinessRules
-from hub.apps.core.services.base import ValidationError, NotFoundError
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -41,7 +41,11 @@ def _setup_subscription(tenant):
         },
     )
     if "max_storage_gb" not in (plan.limits_json or {}):
-        plan.limits_json = {**(plan.limits_json or {}), "max_storage_gb": 1000, "max_virtual_datasets": 100}
+        plan.limits_json = {
+            **(plan.limits_json or {}),
+            "max_storage_gb": 1000,
+            "max_virtual_datasets": 100,
+        }
         plan.save(update_fields=["limits_json"])
     if tenant.plan_id != plan.id:
         tenant.plan = plan
@@ -63,42 +67,38 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.orchestration.registry import reset_workflow_definition_cache
+
         reset_workflow_definition_cache()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         # Create DATA_PROVIDER role
         self.data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
 
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         # Assign DATA_PROVIDER role to user
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=self.data_provider_role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=self.data_provider_role)
 
         _setup_subscription(self.tenant)
-        self.service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.service = VirtualizationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         # Create marketplace connection
         self.marketplace_connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             name="Test Marketplace Connection",
-            config={"api_key": "test-key"}
+            config={"api_key": "test-key"},
         )
 
         # Create federated asset with unique key
@@ -109,7 +109,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
             key=asset_key,
             name="Test Federated Asset",
             source_type=AssetSourceType.FEDERATED,
-            data_strategy=DataStrategy.METADATA_ONLY
+            data_strategy=DataStrategy.METADATA_ONLY,
         )
 
         # Create external resource reference
@@ -121,7 +121,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
             format="CSV",
             size_bytes=1024,
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
-            connection_id=self.marketplace_connection.id
+            connection_id=self.marketplace_connection.id,
         )
 
     def test_create_virtual_dataset_with_federated_asset_source(self):
@@ -130,7 +130,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
             {
                 "type": "federated_asset",
                 "asset_id": str(self.federated_asset.id),
-                "query": "SELECT * FROM resource"
+                "query": "SELECT * FROM resource",
             }
         ]
 
@@ -140,7 +140,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
             name="Test Virtual Dataset",
             query="SELECT * FROM federated_source",
             query_type=QueryType.SQL,
-            sources=sources
+            sources=sources,
         )
 
         self.assertIsNotNone(virtual_dataset)
@@ -158,7 +158,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
             {
                 "type": "external_resource",
                 "asset_id": str(self.federated_asset.id),
-                "resource_id": "res-123"
+                "resource_id": "res-123",
             }
         ]
 
@@ -168,7 +168,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
             name="Test Virtual Dataset",
             query="SELECT * FROM external_resource",
             query_type=QueryType.SQL,
-            sources=sources
+            sources=sources,
         )
 
         self.assertIsNotNone(virtual_dataset)
@@ -179,12 +179,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
 
     def test_validate_federated_asset_source_missing_asset_id(self):
         """Test validation fails when federated asset source is missing asset_id"""
-        sources = [
-            {
-                "type": "federated_asset",
-                "query": "SELECT * FROM resource"
-            }
-        ]
+        sources = [{"type": "federated_asset", "query": "SELECT * FROM resource"}]
 
         with self.assertRaises(ValidationError) as cm:
             self.service.create_virtual_dataset(
@@ -193,7 +188,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
                 name="Test Virtual Dataset",
                 query="SELECT * FROM federated_source",
                 query_type=QueryType.SQL,
-                sources=sources
+                sources=sources,
             )
 
         self.assertIn("asset_id", str(cm.exception).lower())
@@ -204,7 +199,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
             {
                 "type": "federated_asset",
                 "asset_id": "invalid-uuid",
-                "query": "SELECT * FROM resource"
+                "query": "SELECT * FROM resource",
             }
         ]
 
@@ -215,7 +210,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
                 name="Test Virtual Dataset",
                 query="SELECT * FROM federated_source",
                 query_type=QueryType.SQL,
-                sources=sources
+                sources=sources,
             )
 
         self.assertIn("asset_id", str(cm.exception).lower())
@@ -226,7 +221,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
             {
                 "type": "federated_asset",
                 "asset_id": str(uuid.uuid4()),
-                "query": "SELECT * FROM resource"
+                "query": "SELECT * FROM resource",
             }
         ]
 
@@ -237,7 +232,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
                 name="Test Virtual Dataset",
                 query="SELECT * FROM federated_source",
                 query_type=QueryType.SQL,
-                sources=sources
+                sources=sources,
             )
 
         self.assertIn("non-existent", str(cm.exception).lower())
@@ -250,14 +245,14 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
             created_by=self.user,
             key=f"non-federated-asset-{uuid.uuid4()}",
             name="Non-Federated Asset",
-            source_type=AssetSourceType.HUB_NATIVE
+            source_type=AssetSourceType.HUB_NATIVE,
         )
 
         sources = [
             {
                 "type": "federated_asset",
                 "asset_id": str(non_federated_asset.id),
-                "query": "SELECT * FROM resource"
+                "query": "SELECT * FROM resource",
             }
         ]
 
@@ -268,19 +263,14 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
                 name="Test Virtual Dataset",
                 query="SELECT * FROM federated_source",
                 query_type=QueryType.SQL,
-                sources=sources
+                sources=sources,
             )
 
         self.assertIn("not a federated asset", str(cm.exception).lower())
 
     def test_validate_external_resource_source_missing_resource_id(self):
         """Test validation fails when external resource source is missing resource_id"""
-        sources = [
-            {
-                "type": "external_resource",
-                "asset_id": str(self.federated_asset.id)
-            }
-        ]
+        sources = [{"type": "external_resource", "asset_id": str(self.federated_asset.id)}]
 
         with self.assertRaises(ValidationError) as cm:
             self.service.create_virtual_dataset(
@@ -289,7 +279,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
                 name="Test Virtual Dataset",
                 query="SELECT * FROM external_resource",
                 query_type=QueryType.SQL,
-                sources=sources
+                sources=sources,
             )
 
         self.assertIn("resource_id", str(cm.exception).lower())
@@ -300,7 +290,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
             {
                 "type": "external_resource",
                 "asset_id": str(self.federated_asset.id),
-                "resource_id": "nonexistent-resource"
+                "resource_id": "nonexistent-resource",
             }
         ]
 
@@ -311,7 +301,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
                 name="Test Virtual Dataset",
                 query="SELECT * FROM external_resource",
                 query_type=QueryType.SQL,
-                sources=sources
+                sources=sources,
             )
 
         self.assertIn("not found", str(cm.exception).lower())
@@ -323,7 +313,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
             {
                 "type": "external_resource",
                 "asset_id": str(self.federated_asset.id),
-                "resource_id": "res-123"
+                "resource_id": "res-123",
             }
         ]
 
@@ -334,7 +324,7 @@ class VirtualDatasetFederatedAssetSourceTest(TestCase):
                 name="Test Virtual Dataset",
                 query="SELECT * FROM external_resource",
                 query_type=QueryType.SQL,
-                sources=sources
+                sources=sources,
             )
 
         self.assertIn("cannot be downloaded", str(cm.exception).lower())
@@ -346,18 +336,17 @@ class VirtualDatasetFederatedAssetBusinessRulesTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.orchestration.registry import reset_workflow_definition_cache
+
         reset_workflow_definition_cache()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         _setup_subscription(self.tenant)
         self.business_rules = VirtualizationBusinessRules(tenant_id=str(self.tenant.id))
@@ -369,7 +358,7 @@ class VirtualDatasetFederatedAssetBusinessRulesTest(TestCase):
             key=f"federated-asset-{uuid.uuid4()}",
             name="Test Federated Asset",
             source_type=AssetSourceType.FEDERATED,
-            data_strategy=DataStrategy.DOWNLOAD_ALL
+            data_strategy=DataStrategy.DOWNLOAD_ALL,
         )
 
     def test_validate_federated_asset_source_config_valid(self):
@@ -377,7 +366,7 @@ class VirtualDatasetFederatedAssetBusinessRulesTest(TestCase):
         source_config = {
             "type": "federated_asset",
             "asset_id": str(self.federated_asset.id),
-            "query": "SELECT * FROM resource"
+            "query": "SELECT * FROM resource",
         }
 
         errors = self.business_rules._validate_federated_asset_source_config(source_config, 0)
@@ -385,10 +374,7 @@ class VirtualDatasetFederatedAssetBusinessRulesTest(TestCase):
 
     def test_validate_federated_asset_source_config_missing_asset_id(self):
         """Test business rules validation fails when asset_id is missing"""
-        source_config = {
-            "type": "federated_asset",
-            "query": "SELECT * FROM resource"
-        }
+        source_config = {"type": "federated_asset", "query": "SELECT * FROM resource"}
 
         errors = self.business_rules._validate_federated_asset_source_config(source_config, 0)
         self.assertGreater(len(errors), 0)
@@ -401,10 +387,10 @@ class VirtualDatasetFederatedAssetBusinessRulesTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             name="Test Marketplace Connection",
-            config={"api_key": "test-key"}
+            config={"api_key": "test-key"},
         )
 
-        external_resource = ExternalResourceReference.objects.create(
+        ExternalResourceReference.objects.create(
             asset=self.federated_asset,
             resource_id="res-123",
             name="Test Resource",
@@ -412,13 +398,13 @@ class VirtualDatasetFederatedAssetBusinessRulesTest(TestCase):
             format="CSV",
             size_bytes=1024,
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
-            connection_id=marketplace_connection.id
+            connection_id=marketplace_connection.id,
         )
 
         source_config = {
             "type": "external_resource",
             "asset_id": str(self.federated_asset.id),
-            "resource_id": "res-123"
+            "resource_id": "res-123",
         }
 
         errors = self.business_rules._validate_external_resource_source_config(source_config, 0)
@@ -426,10 +412,7 @@ class VirtualDatasetFederatedAssetBusinessRulesTest(TestCase):
 
     def test_validate_external_resource_source_config_missing_resource_id(self):
         """Test business rules validation fails when resource_id is missing"""
-        source_config = {
-            "type": "external_resource",
-            "asset_id": str(self.federated_asset.id)
-        }
+        source_config = {"type": "external_resource", "asset_id": str(self.federated_asset.id)}
 
         errors = self.business_rules._validate_external_resource_source_config(source_config, 0)
         self.assertGreater(len(errors), 0)
@@ -442,42 +425,38 @@ class VirtualDatasetFederatedAssetQueryExecutionTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.orchestration.registry import reset_workflow_definition_cache
+
         reset_workflow_definition_cache()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
 
         # Create DATA_PROVIDER role
         self.data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
 
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         # Assign DATA_PROVIDER role to user
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=self.data_provider_role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=self.data_provider_role)
 
         _setup_subscription(self.tenant)
-        self.service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.service = VirtualizationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         # Create marketplace connection
         self.marketplace_connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             name="Test Marketplace Connection",
-            config={"api_key": "test-key"}
+            config={"api_key": "test-key"},
         )
 
         # Create federated asset with DOWNLOAD_ALL strategy and unique key
@@ -488,7 +467,7 @@ class VirtualDatasetFederatedAssetQueryExecutionTest(TestCase):
             key=asset_key,
             name="Test Federated Asset",
             source_type=AssetSourceType.FEDERATED,
-            data_strategy=DataStrategy.DOWNLOAD_ALL
+            data_strategy=DataStrategy.DOWNLOAD_ALL,
         )
 
         # Create external resource reference
@@ -500,7 +479,7 @@ class VirtualDatasetFederatedAssetQueryExecutionTest(TestCase):
             format="CSV",
             size_bytes=1024,
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
-            connection_id=self.marketplace_connection.id
+            connection_id=self.marketplace_connection.id,
         )
 
     def test_execute_query_against_federated_asset_metadata_only(self):
@@ -509,12 +488,7 @@ class VirtualDatasetFederatedAssetQueryExecutionTest(TestCase):
         self.federated_asset.data_strategy = DataStrategy.METADATA_ONLY
         self.federated_asset.save()
 
-        sources = [
-            {
-                "type": "federated_asset",
-                "asset_id": str(self.federated_asset.id)
-            }
-        ]
+        sources = [{"type": "federated_asset", "asset_id": str(self.federated_asset.id)}]
 
         virtual_dataset = self.service.create_virtual_dataset(
             tenant_id=str(self.tenant.id),
@@ -522,7 +496,7 @@ class VirtualDatasetFederatedAssetQueryExecutionTest(TestCase):
             name="Test Virtual Dataset",
             query="SELECT * FROM federated_source",
             query_type=QueryType.SQL,
-            sources=sources
+            sources=sources,
         )
 
         self.assertIsNotNone(virtual_dataset)
@@ -534,7 +508,8 @@ class VirtualDatasetFederatedAssetQueryExecutionTest(TestCase):
         Uses METADATA_ONLY strategy; no mocks, no stubs.
         """
         from hub.apps.virtualization.models import (
-            QueryExecutionStatus, QueryExecutionMode,
+            QueryExecutionMode,
+            QueryExecutionStatus,
         )
 
         self.federated_asset.data_strategy = DataStrategy.METADATA_ONLY
@@ -575,23 +550,22 @@ class VirtualDatasetFederatedAssetQueryExecutionTest(TestCase):
             raise
 
         self.assertEqual(execution.status, QueryExecutionStatus.COMPLETED)
+        # The _execute_metadata_only_query path in query_service.py returns a
+        # result dict with keys: data, columns, row_count, source_type.
+        # These are the contract keys for METADATA_ONLY federated asset queries;
+        # if the workflow changes them, these assertions need updating.
         metrics = execution.metrics or {}
-        self.assertIn("data", metrics)
-        self.assertIn("columns", metrics)
-        self.assertIn("row_count", metrics)
-        self.assertIn("source_type", metrics)
-        self.assertEqual(
-            metrics.get("source_type"), "federated_asset_metadata"
+        expected_keys = {"data", "columns", "row_count", "source_type"}
+        self.assertTrue(
+            expected_keys.issubset(metrics.keys()),
+            f"Metrics should contain {expected_keys}; got {set(metrics.keys())}",
         )
+        self.assertEqual(metrics.get("source_type"), "federated_asset_metadata")
         self.assertGreaterEqual(metrics.get("row_count", 0), 1)
         data = metrics.get("data", [])
         self.assertGreaterEqual(len(data), 1)
-        self.assertEqual(
-            data[0].get("asset_id"), str(self.federated_asset.id)
-        )
-        self.assertEqual(
-            data[0].get("asset_name"), self.federated_asset.name
-        )
+        self.assertEqual(data[0].get("asset_id"), str(self.federated_asset.id))
+        self.assertEqual(data[0].get("asset_name"), self.federated_asset.name)
 
 
 class VirtualDatasetFederatedAssetInMemoryConnectorTest(TestCase):
@@ -606,29 +580,25 @@ class VirtualDatasetFederatedAssetInMemoryConnectorTest(TestCase):
 
     def setUp(self):
         from hub.apps.orchestration.registry import reset_workflow_definition_cache
+
         reset_workflow_definition_cache()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug="test-tenant-inmem",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug="test-tenant-inmem", kyc_status=KYCStatus.VERIFIED
         )
         self.data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
         self.user = User.objects.create_user(
             email=f"inmem-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         UserRole.objects.get_or_create(user=self.user, role=self.data_provider_role)
         _setup_subscription(self.tenant)
         self.service = VirtualizationService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Connection using IN_MEMORY_FAKE connector with preloaded CSV content

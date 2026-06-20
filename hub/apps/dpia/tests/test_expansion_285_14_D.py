@@ -1,15 +1,15 @@
 """Phase D (TR.D.7) — DPIA test expansion: service + API + feature-flag + audit."""
-import pytest
+
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 from rest_framework.test import APIClient
 
 from hub.apps.audit.models import AuditEvent
 from hub.apps.dpia.models import Dpia, DpiaStatus
-from hub.apps.dpia.workflow import submit_dpia, review_dpia
+from hub.apps.dpia.workflow import review_dpia, submit_dpia
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserRole
@@ -24,17 +24,20 @@ class DpiaServiceTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"dp-svc-{uid}", slug=f"dp-svc-{uid}",
+            name=f"dp-svc-{uid}",
+            slug=f"dp-svc-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_dpia_enabled=True,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email=f"dp-svc-{uid}@test.local", password="Pass1234!",
+            email=f"dp-svc-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         role, _ = Role.objects.get_or_create(
-            name="TENANT_ADMIN", tenant=self.tenant,
+            name="TENANT_ADMIN",
+            tenant=self.tenant,
             defaults={"description": "Tenant Administrator"},
         )
         UserRole.objects.get_or_create(user=self.user, tenant=self.tenant, role=role)
@@ -45,7 +48,7 @@ class DpiaServiceTests(TestCase):
         """Verify Dpia model is importable and field contract is intact."""
         assert self.tenant.id is not None
         fields = {f.name for f in Dpia._meta.get_fields()}
-        for required in ('tenant', 'title', 'status', 'created_by'):
+        for required in ("tenant", "title", "status", "created_by"):
             assert required in fields, f"Dpia must have '{required}' field"
 
     def test_wizard_workflow(self):
@@ -74,12 +77,15 @@ class DpiaServiceTests(TestCase):
         )
         # Grant DPO role for review
         dpo_role, _ = Role.objects.get_or_create(
-            name="DPO", tenant=self.tenant,
+            name="DPO",
+            tenant=self.tenant,
             defaults={"description": "Data Protection Officer"},
         )
         UserRole.objects.get_or_create(user=self.user, tenant=self.tenant, role=dpo_role)
 
-        review_dpia(dpia=dpia, actor=self.user, outcome=DpiaStatus.APPROVED, dpo_summary="Looks good")
+        review_dpia(
+            dpia=dpia, actor=self.user, outcome=DpiaStatus.APPROVED, dpo_summary="Looks good"
+        )
         dpia.refresh_from_db()
         assert dpia.status == DpiaStatus.APPROVED
         assert dpia.reviewed_by == self.user
@@ -91,17 +97,20 @@ class DpiaApiTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"dp-api-{uid}", slug=f"dp-api-{uid}",
+            name=f"dp-api-{uid}",
+            slug=f"dp-api-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_dpia_enabled=True,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email=f"dp-api-{uid}@test.local", password="Pass1234!",
+            email=f"dp-api-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         role, _ = Role.objects.get_or_create(
-            name="TENANT_ADMIN", tenant=self.tenant,
+            name="TENANT_ADMIN",
+            tenant=self.tenant,
             defaults={"description": "Tenant Administrator"},
         )
         UserRole.objects.get_or_create(user=self.user, tenant=self.tenant, role=role)
@@ -138,17 +147,20 @@ class DpiaFeatureFlagTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"dp-ff-{uid}", slug=f"dp-ff-{uid}",
+            name=f"dp-ff-{uid}",
+            slug=f"dp-ff-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_dpia_enabled=False,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email=f"dp-ff-{uid}@test.local", password="Pass1234!",
+            email=f"dp-ff-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         role, _ = Role.objects.get_or_create(
-            name="TENANT_ADMIN", tenant=self.tenant,
+            name="TENANT_ADMIN",
+            tenant=self.tenant,
             defaults={"description": "Tenant Administrator"},
         )
         UserRole.objects.get_or_create(user=self.user, tenant=self.tenant, role=role)
@@ -159,9 +171,13 @@ class DpiaFeatureFlagTests(TestCase):
 
     def test_flag_disabled_gated(self):
         """When compliance_dpia_enabled=False, DPIA create is blocked."""
-        resp = self.client.post("/api/v1/dpia/records/", {
-            "title": "Flag Test DPIA",
-        }, format="json")
+        resp = self.client.post(
+            "/api/v1/dpia/records/",
+            {
+                "title": "Flag Test DPIA",
+            },
+            format="json",
+        )
         # Should be denied (403) when DPIA is disabled
         assert resp.status_code != 201
 
@@ -179,17 +195,20 @@ class DpiaAuditTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"dp-audit-{uid}", slug=f"dp-audit-{uid}",
+            name=f"dp-audit-{uid}",
+            slug=f"dp-audit-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_dpia_enabled=True,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email=f"dp-audit-{uid}@test.local", password="Pass1234!",
+            email=f"dp-audit-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         role, _ = Role.objects.get_or_create(
-            name="TENANT_ADMIN", tenant=self.tenant,
+            name="TENANT_ADMIN",
+            tenant=self.tenant,
             defaults={"description": "Tenant Administrator"},
         )
         UserRole.objects.get_or_create(user=self.user, tenant=self.tenant, role=role)
@@ -218,7 +237,8 @@ class DpiaAuditTests(TestCase):
             created_by=self.user,
         )
         dpo_role, _ = Role.objects.get_or_create(
-            name="DPO", tenant=self.tenant,
+            name="DPO",
+            tenant=self.tenant,
             defaults={"description": "Data Protection Officer"},
         )
         UserRole.objects.get_or_create(user=self.user, tenant=self.tenant, role=dpo_role)

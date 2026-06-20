@@ -16,12 +16,12 @@ Usage::
     # Dry-run (lists pending without firing replays):
     python manage.py replay_openlineage_dlq --dry-run
 """
+
 from __future__ import annotations
 
 import json
 
 from django.core.management.base import BaseCommand
-
 
 DEFAULT_MAX = 100
 
@@ -75,13 +75,18 @@ class Command(BaseCommand):
                 }
                 for r in pending
             ]
-            self.stdout.write(json.dumps({
-                "phase": "228.F4.12",
-                "dry_run": True,
-                "max_rows": max_rows,
-                "pending_count": len(rows),
-                "pending": rows,
-            }, sort_keys=True))
+            self.stdout.write(
+                json.dumps(
+                    {
+                        "phase": "228.F4.12",
+                        "dry_run": True,
+                        "max_rows": max_rows,
+                        "pending_count": len(rows),
+                        "pending": rows,
+                    },
+                    sort_keys=True,
+                )
+            )
             return
 
         # NOT a dry-run: invoke the sweep DIRECTLY (synchronous in
@@ -90,9 +95,14 @@ class Command(BaseCommand):
         # we want for ops because the operator is watching stdout
         # for the result.
         result = openlineage_dlq_replay_sweep(max_rows=max_rows)
-        self.stdout.write(json.dumps({
-            "phase": "228.F4.12",
-            "dry_run": False,
-            "max_rows": max_rows,
-            **result,
-        }, sort_keys=True))
+        self.stdout.write(
+            json.dumps(
+                {
+                    "phase": "228.F4.12",
+                    "dry_run": False,
+                    "max_rows": max_rows,
+                    **result,
+                },
+                sort_keys=True,
+            )
+        )

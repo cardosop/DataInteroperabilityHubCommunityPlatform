@@ -5,15 +5,14 @@ Verifies every tenant-scoped model in each app has a paired
 RLS CREATE POLICY migration. Uses the RLS helpers from
 ``core.tests.test_utils.rls_helpers`` for integration-level checks.
 """
-import pytest
 
 import uuid
 
+import pytest
 from django.test import TestCase
 
 from hub.apps.core.tests.test_utils.rls_helpers import (
     clear_tenant_context,
-    set_tenant_context,
 )
 from hub.apps.tenants.models import Tenant, TenantStatus
 
@@ -22,7 +21,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 def _make_tenant(name_prefix):
     return Tenant.objects.create(
-        name=name_prefix, slug=f"{name_prefix.lower()}-{uuid.uuid4().hex[:8]}",
+        name=name_prefix,
+        slug=f"{name_prefix.lower()}-{uuid.uuid4().hex[:8]}",
         status=TenantStatus.ACTIVE,
     )
 
@@ -40,12 +40,12 @@ class FilesRlsTests(TestCase):
 
     @pytest.mark.integration
     def test_rls_migration_exists(self):
-        from django.db.migrations.loader import MigrationLoader
         from django.db import connection
+        from django.db.migrations.loader import MigrationLoader
+
         loader = MigrationLoader(connection)
         has_rls = any(
-            "enable_rls" in key[1].lower() and key[0] == "files"
-            for key in loader.disk_migrations
+            "enable_rls" in key[1].lower() and key[0] == "files" for key in loader.disk_migrations
         )
         assert has_rls, "files app missing RLS migration"
 
@@ -55,8 +55,9 @@ class VirtualizationRlsTests(TestCase):
 
     @pytest.mark.integration
     def test_rls_migration_exists(self):
-        from django.db.migrations.loader import MigrationLoader
         from django.db import connection
+        from django.db.migrations.loader import MigrationLoader
+
         loader = MigrationLoader(connection)
         has_rls = any(
             "enable_rls" in key[1].lower() and key[0] == "virtualization"
@@ -70,8 +71,9 @@ class WebhooksRlsTests(TestCase):
 
     @pytest.mark.integration
     def test_rls_migration_exists(self):
-        from django.db.migrations.loader import MigrationLoader
         from django.db import connection
+        from django.db.migrations.loader import MigrationLoader
+
         loader = MigrationLoader(connection)
         has_rls = any(
             "enable_rls" in key[1].lower() and key[0] == "webhooks"
@@ -85,8 +87,9 @@ class IntegrationsRlsTests(TestCase):
 
     @pytest.mark.integration
     def test_rls_migration_exists(self):
-        from django.db.migrations.loader import MigrationLoader
         from django.db import connection
+        from django.db.migrations.loader import MigrationLoader
+
         loader = MigrationLoader(connection)
         has_rls = any(
             "enable_rls" in key[1].lower() and key[0] == "integrations"
@@ -100,8 +103,9 @@ class GovernanceRlsTests(TestCase):
 
     @pytest.mark.integration
     def test_rls_migration_exists(self):
-        from django.db.migrations.loader import MigrationLoader
         from django.db import connection
+        from django.db.migrations.loader import MigrationLoader
+
         loader = MigrationLoader(connection)
         has_rls = any(
             "enable_rls" in key[1].lower() and key[0] == "governance"
@@ -115,12 +119,12 @@ class DqRlsTests(TestCase):
 
     @pytest.mark.integration
     def test_rls_migration_exists(self):
-        from django.db.migrations.loader import MigrationLoader
         from django.db import connection
+        from django.db.migrations.loader import MigrationLoader
+
         loader = MigrationLoader(connection)
         has_rls = any(
-            "enable_rls" in key[1].lower() and key[0] == "dq"
-            for key in loader.disk_migrations
+            "enable_rls" in key[1].lower() and key[0] == "dq" for key in loader.disk_migrations
         )
         assert has_rls, "dq app missing RLS migration"
 
@@ -130,8 +134,9 @@ class ObservabilityRlsTests(TestCase):
 
     @pytest.mark.integration
     def test_rls_migration_exists(self):
-        from django.db.migrations.loader import MigrationLoader
         from django.db import connection
+        from django.db.migrations.loader import MigrationLoader
+
         loader = MigrationLoader(connection)
         has_rls = any(
             "enable_rls" in key[1].lower() and key[0] == "observability"
@@ -145,11 +150,11 @@ class GdprRlsTests(TestCase):
 
     @pytest.mark.integration
     def test_rls_migration_exists(self):
-        from django.db.migrations.loader import MigrationLoader
         from django.db import connection
+        from django.db.migrations.loader import MigrationLoader
+
         loader = MigrationLoader(connection)
         has_rls = any(
-            "enable_rls" in key[1].lower() and key[0] == "gdpr"
-            for key in loader.disk_migrations
+            "enable_rls" in key[1].lower() and key[0] == "gdpr" for key in loader.disk_migrations
         )
         assert has_rls, "gdpr app missing RLS migration"

@@ -175,7 +175,7 @@ class TestVersionMigrationFramework:
     def test_migrate_to_latest(self):
         """Test migrating to latest version"""
         contract = {"hub_contract_version": "1.0.0", "id": "test"}
-        result, warnings = VersionMigrationFramework.migrate_to_latest(contract)
+        result, _warnings = VersionMigrationFramework.migrate_to_latest(contract)
         assert result["hub_contract_version"] == CURRENT_HUBCONTRACT_VERSION_STRING
 
     def test_migrate_unsupported(self):
@@ -236,7 +236,7 @@ class TestVersionMigrationFramework:
 
     def test_validate_version_with_whitespace(self):
         """Test validating version strings with whitespace (validator may strip)."""
-        is_valid, error = validate_version(" 1.0.0 ")
+        is_valid, _error = validate_version(" 1.0.0 ")
         # Validator may accept whitespace-trimmed versions
         assert isinstance(is_valid, bool)
 
@@ -350,9 +350,7 @@ class TestVersionMigrationFramework:
         """Test migration with empty contract — None version raises ValueError."""
         contract = {}
         with pytest.raises(ValueError):
-            VersionMigrationFramework.migrate(
-                contract, None, CURRENT_HUBCONTRACT_VERSION_STRING
-            )
+            VersionMigrationFramework.migrate(contract, None, CURRENT_HUBCONTRACT_VERSION_STRING)
 
     def test_migrate_with_contract_missing_id(self):
         """Test migration with contract missing id field."""
@@ -367,7 +365,7 @@ class TestVersionMigrationFramework:
         """Test migrating to latest with invalid current version."""
         contract = {"hub_contract_version": "invalid", "id": "test"}
         try:
-            result, warnings = VersionMigrationFramework.migrate_to_latest(contract)
+            result, _warnings = VersionMigrationFramework.migrate_to_latest(contract)
             # If it succeeds, contract should have version set
             assert "hub_contract_version" in result
         except (ValueError, NotImplementedError):
@@ -382,7 +380,7 @@ class TestVersionMigrationFramework:
             "info": {"name": "Test"},
             "schema": {"fields": []},
         }
-        result, warnings = VersionMigrationFramework.migrate(
+        result, _warnings = VersionMigrationFramework.migrate(
             contract, "1.0.0", CURRENT_HUBCONTRACT_VERSION_STRING
         )
         assert result["id"] == "test"

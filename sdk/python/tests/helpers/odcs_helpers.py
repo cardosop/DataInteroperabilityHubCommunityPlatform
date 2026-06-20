@@ -1,8 +1,8 @@
 """Shared ODCS test helpers — avoids duplication between ODCS test files."""
 
 import json
-import uuid
 import time as _time
+import uuid
 import warnings
 from typing import Optional
 
@@ -25,19 +25,21 @@ def create_odcs_contract_via_api(api_base_url: str, api_key: str) -> Optional[st
     last_exc = None
     for attempt in range(2):
         try:
-            odcs_content = json.dumps({
-                "apiVersion": "odcs.io/v3.0.2",
-                "kind": "DataContract",
-                "id": f"test-odcs-contract-{uuid.uuid4().hex[:8]}",
-                "name": "Test ODCS Contract for SDK Export Tests",
-                "version": "1.0.0",
-                "schema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "nullable": False},
-                        {"name": "name", "type": "string", "nullable": False},
-                    ]
-                },
-            })
+            odcs_content = json.dumps(
+                {
+                    "apiVersion": "odcs.io/v3.0.2",
+                    "kind": "DataContract",
+                    "id": f"test-odcs-contract-{uuid.uuid4().hex[:8]}",
+                    "name": "Test ODCS Contract for SDK Export Tests",
+                    "version": "1.0.0",
+                    "schema": {
+                        "fields": [
+                            {"name": "id", "type": "string", "nullable": False},
+                            {"name": "name", "type": "string", "nullable": False},
+                        ]
+                    },
+                }
+            )
 
             contract_data = {
                 "original_raw": odcs_content,
@@ -60,14 +62,16 @@ def create_odcs_contract_via_api(api_base_url: str, api_key: str) -> Optional[st
 
             if response.status_code in [200, 201]:
                 result = response.json()
-                return result.get('id') or result.get('contract_id')
+                return result.get("id") or result.get("contract_id")
 
             # Non-success status — log and return None (no retry for 4xx/5xx)
             try:
                 error_data = response.json()
                 print(f"Contract creation failed: {error_data}")
             except (ValueError, AttributeError):
-                print(f"Contract creation failed with status {response.status_code}: {response.text}")
+                print(
+                    f"Contract creation failed with status {response.status_code}: {response.text}"
+                )
             return None
 
         except (ConnectionError, TimeoutError, OSError, ValueError) as exc:

@@ -4,6 +4,7 @@
 Follows the DQFeatureFlagMixin pattern.  Gates the marketplace
 integrations ViewSet on ``Tenant.marketplace_integrations_enabled``.
 """
+
 from __future__ import annotations
 
 from rest_framework.response import Response

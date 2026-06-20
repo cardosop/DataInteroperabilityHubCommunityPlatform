@@ -34,13 +34,15 @@ defensive try/except (boto3 may be unavailable in dev / CI) — when it
 fails the snapshot row is still persisted with empty ``s3_*`` fields so
 the chain proof is locally durable; ops can re-shoot the PUT later.
 """
+
 from __future__ import annotations
+
 import hashlib
 import hmac
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from django.conf import settings
@@ -71,9 +73,7 @@ def _decode_hex_key(s: str) -> bytes:
         key = key[4:]
     raw = bytes.fromhex(key)
     if len(raw) < 16:
-        raise ValueError(
-            "audit chain signing key must be at least 16 bytes (32 hex chars)"
-        )
+        raise ValueError("audit chain signing key must be at least 16 bytes (32 hex chars)")
     return raw
 
 
@@ -114,11 +114,7 @@ def get_signing_key_ring_for_tenant(tenant_id: str | None) -> list[bytes]:
     if isinstance(entry, dict) and isinstance(entry.get("keys"), list):
         # Alternate shape: { "<tenant>": { "keys": ["hex1", "hex2", ...] } }.
         # Mirrors the optional dict form the consent signing module accepts.
-        return [
-            _decode_hex_key(k)
-            for k in entry["keys"][:3]
-            if isinstance(k, str)
-        ]
+        return [_decode_hex_key(k) for k in entry["keys"][:3] if isinstance(k, str)]
     return []
 
 
@@ -177,7 +173,7 @@ class _UploadResult:
 def _retention_until() -> datetime:
     years = int(getattr(settings, "AUDIT_RETENTION_YEARS", 3) or 3)
     extra_days = int(getattr(settings, "AUDIT_MERKLE_OBJECT_LOCK_EXTRA_DAYS", 365) or 365)
-    return datetime.now(tz=dt_timezone.utc) + timedelta(days=years * 365 + extra_days)
+    return datetime.now(tz=UTC) + timedelta(days=years * 365 + extra_days)
 
 
 def _build_proof_body(
@@ -196,15 +192,15 @@ def _build_proof_body(
     payload = {
         "schema": "audit.merkle.proof.v1",
         "tenant_id": str(tenant_id) if tenant_id else None,
-        "period_start": period_start.astimezone(dt_timezone.utc).isoformat(),
-        "period_end": period_end.astimezone(dt_timezone.utc).isoformat(),
+        "period_start": period_start.astimezone(UTC).isoformat(),
+        "period_end": period_end.astimezone(UTC).isoformat(),
         "event_count": event_count,
         "first_chain_sequence": first_seq,
         "last_chain_sequence": last_seq,
         "root_hex": root_hex,
         "signature_hex": signature_hex,
         "signing_key_index": signing_key_index,
-        "produced_at": datetime.now(tz=dt_timezone.utc).isoformat(),
+        "produced_at": datetime.now(tz=UTC).isoformat(),
     }
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
@@ -224,7 +220,9 @@ def _upload_with_object_lock(
     """
     try:
         import boto3  # type: ignore[import-not-found]  # optional dependency; ImportError handled below
-        from botocore.exceptions import ClientError  # type: ignore[import-not-found]  # optional dependency; ImportError handled below
+        from botocore.exceptions import (
+            ClientError,  # type: ignore[import-not-found]  # optional dependency; ImportError handled below
+        )
     except ImportError:
         logger.warning(
             "audit_merkle_boto3_unavailable_falling_back_to_default_storage",
@@ -264,7 +262,8 @@ def _upload_with_object_lock(
             resp = client.put_object(Bucket=bucket, Key=key, Body=body)
         except ClientError as exc2:
             logger.error(
-                "audit_merkle_s3_put_failed", extra={"key": key, "error": str(exc2)},
+                "audit_merkle_s3_put_failed",
+                extra={"key": key, "error": str(exc2)},
             )
             raise RuntimeError(f"S3 put_object failed: {exc2}") from exc2
 
@@ -291,7 +290,7 @@ def _upload_proof(
     """
     bucket = (getattr(settings, "AUDIT_MERKLE_S3_BUCKET", "") or "").strip()
     tid = str(tenant_id) if tenant_id else "__platform__"
-    period_end_iso = period_end.astimezone(dt_timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    period_end_iso = period_end.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
     key = f"{tid}/{period_end_iso}/{snapshot_id}.json"
 
     if bucket:
@@ -307,10 +306,9 @@ def _upload_proof(
 
     # Local storage fallback. Use a distinct prefix so it doesn't collide
     # with arbitrary tenant assets in ``default_storage``.
-    local_prefix = (
-        getattr(settings, "AUDIT_MERKLE_LOCAL_STORAGE_PREFIX", "audit-merkle-roots/")
-        .strip("/")
-    )
+    local_prefix = getattr(
+        settings, "AUDIT_MERKLE_LOCAL_STORAGE_PREFIX", "audit-merkle-roots/"
+    ).strip("/")
     local_path = f"{local_prefix}/{key}"
     default_storage.save(local_path, ContentFile(body))
     return _UploadResult(bucket="", key=local_path, version_id="")
@@ -339,15 +337,12 @@ def _collect_chain_hashes(
     """
     from hub.apps.audit.models import AuditEvent
 
-    qs = (
-        AuditEvent.all_objects.filter(
-            tenant_id=tenant_id,
-            timestamp__gte=period_start,
-            timestamp__lt=period_end,
-            chain_hash__isnull=False,
-        )
-        .order_by("chain_sequence")
-    )
+    qs = AuditEvent.all_objects.filter(
+        tenant_id=tenant_id,
+        timestamp__gte=period_start,
+        timestamp__lt=period_end,
+        chain_hash__isnull=False,
+    ).order_by("chain_sequence")
     rows = list(qs.values_list("chain_sequence", "chain_hash"))
     if not rows:
         return [], None, None
@@ -426,7 +421,9 @@ def _snapshot_tenant_window_inner(
     from hub.apps.audit.models import AuditMerkleSnapshot
 
     leaves, first_seq, last_seq = _collect_chain_hashes(
-        tenant_id=tenant_id, period_start=period_start, period_end=period_end,
+        tenant_id=tenant_id,
+        period_start=period_start,
+        period_end=period_end,
     )
     root_hex = merkle_root(leaves)
     signature_hex, key_index = sign_root(tenant_id=tenant_id_str, root_hex=root_hex)
@@ -544,11 +541,7 @@ def snapshot_all_tenants_now(window_hours: int = 1) -> list[Any]:
         except RuntimeError as exc:
             # Missing signing key — operational misconfiguration, not a
             # code bug. Log + record + continue.
-            tid = (
-                str(target_tenant.id)
-                if target_tenant is not None
-                else "__platform__"
-            )
+            tid = str(target_tenant.id) if target_tenant is not None else "__platform__"
             logger.warning(
                 "audit_merkle_snapshot_skipped_no_key",
                 extra={"tenant_id": tid, "error": str(exc)},

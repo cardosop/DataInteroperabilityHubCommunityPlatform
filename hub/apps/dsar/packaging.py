@@ -1,6 +1,7 @@
 """Build KMS-on-S3-backed DSAR responses (ZIP + manifest); erasure invokes gdpr ErasureService."""
 
 from __future__ import annotations
+
 import hashlib
 import io
 import json
@@ -8,9 +9,9 @@ import zipfile
 
 from django.utils import timezone
 
-from hub.apps.dsar.models import DSARRequest, DSARRequestType, BackupAffectedBySubject
-from hub.apps.files.storage import S3StorageClient
+from hub.apps.dsar.models import BackupAffectedBySubject, DSARRequest, DSARRequestType
 from hub.apps.dsar.workflow import transition_status
+from hub.apps.files.storage import S3StorageClient
 
 
 def _manifest_entry(filename: str, data: bytes) -> tuple[str, str]:
@@ -93,9 +94,7 @@ def build_dsar_zip_bytes(dsar: DSARRequest) -> tuple[bytes, str]:
             mk, hv = _manifest_entry(fname, note)
             manifest[mk] = hv
 
-        man_bytes = json.dumps({"files": manifest}, indent=2, sort_keys=True).encode(
-            "utf-8"
-        )
+        man_bytes = json.dumps({"files": manifest}, indent=2, sort_keys=True).encode("utf-8")
         zf.writestr("MANIFEST.json", man_bytes)
 
     binary = buf.getvalue()

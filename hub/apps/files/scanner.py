@@ -3,6 +3,7 @@ ClamAV malware scanning via pyclamd (TCP clamd).
 
 Uses ClamdNetworkSocket against CLAMAV_HOST:CLAMAV_PORT.
 """
+
 from __future__ import annotations
 
 import structlog
@@ -13,9 +14,7 @@ from hub.apps.files.models import FileScanStatus
 logger = structlog.get_logger(__name__)
 
 # Standard EICAR test string (safe test pattern recognized by AV engines).
-EICAR_STANDARD_TEST_BYTES = (
-    b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
-)
+EICAR_STANDARD_TEST_BYTES = b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
 
 
 def _threat_description_from_scan_result(result: object) -> str | None:
@@ -37,14 +36,12 @@ class ClamAVScanner:
         port: int | None = None,
         timeout: float | None = None,
     ) -> None:
-        self.host = (
-            host if host is not None else getattr(settings, "CLAMAV_HOST", "clamav")
-        )
-        self.port = int(
-            port if port is not None else getattr(settings, "CLAMAV_PORT", 3310)
-        )
-        self.timeout = timeout if timeout is not None else float(
-            getattr(settings, "CLAMAV_TIMEOUT_SECONDS", 120)
+        self.host = host if host is not None else getattr(settings, "CLAMAV_HOST", "clamav")
+        self.port = int(port if port is not None else getattr(settings, "CLAMAV_PORT", 3310))
+        self.timeout = (
+            timeout
+            if timeout is not None
+            else float(getattr(settings, "CLAMAV_TIMEOUT_SECONDS", 120))
         )
 
     def classify_bytes_with_detail(self, data: bytes) -> tuple[str, str | None]:
@@ -54,8 +51,7 @@ class ClamAVScanner:
         Transport failures yield ``(SCAN_UNAVAILABLE, None)``.
         """
         try:
-            from pyclamd.pyclamd import BufferTooLongError
-            from pyclamd.pyclamd import ClamdNetworkSocket
+            from pyclamd.pyclamd import BufferTooLongError, ClamdNetworkSocket
             from pyclamd.pyclamd import ConnectionError as ClamdConnectionError
         except ImportError:
             logger.warning("pyclamd_not_installed")

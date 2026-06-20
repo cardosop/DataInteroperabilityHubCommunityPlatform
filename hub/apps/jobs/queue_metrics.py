@@ -10,12 +10,13 @@ Usage:
     from hub.apps.jobs.queue_metrics import emit_rq_queue_depth
     emit_rq_queue_depth()
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from django.conf import settings
-from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ def emit_rq_queue_depth() -> dict[str, int]:
         return counts
 
     try:
-        for queue_name, queue_config in rq_queues.items():
+        for queue_name, _queue_config in rq_queues.items():
             # RQ stores jobs under rq:queue:<name>
             redis_key = f"rq:queue:{queue_name}"
             try:
@@ -81,10 +82,8 @@ def emit_rq_queue_depth() -> dict[str, int]:
     except Exception:
         logger.exception("rq_queue_depth_emit_failed")
     finally:
-        try:
+        with contextlib.suppress(Exception):
             redis_conn.close()
-        except Exception:
-            pass
 
     if counts:
         logger.debug(

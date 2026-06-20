@@ -10,9 +10,8 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.auth import sso_state
 from hub.apps.auth.jwt_utils import JWTTokenGenerator
 from hub.apps.observability.cross_tenant_metrics import cross_tenant_denied_total
-from hub.apps.users.models import User, UserStatus, UserTenantMembership
 from hub.apps.tenants.models import Tenant, TenantConfig
-
+from hub.apps.users.models import User, UserStatus, UserTenantMembership
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -47,7 +46,7 @@ class SSOStateBindingOIDCTest(TestCase):
     def _id_token(self, email: str) -> str:
         return jwt.encode(
             {"sub": f"sub-{email}", "email": email},
-            "local-test-secret",
+            "local-test-secret-with-sufficient-length-for-hs256",
             algorithm="HS256",
         )
 

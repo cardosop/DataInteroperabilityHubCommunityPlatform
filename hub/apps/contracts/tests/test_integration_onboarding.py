@@ -18,7 +18,6 @@ import boto3
 import pytest
 from django.conf import settings
 from django.test import override_settings
-from django.utils import timezone
 from rest_framework import status
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -26,15 +25,12 @@ from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    OriginalFormat,
-    OriginalSpecType,
     ValidationStatus,
 )
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.datasets.models import Dataset
 from hub.apps.dq.models import DQRun, DQRunStatus
 from hub.apps.files.models import File, FileStatus
-from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.service_utils import check_service_health
 
@@ -61,9 +57,15 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
 
         # Check if services are available (including MinIO for file upload)
         services = {
-            "COMPLIANCE_SERVICE_URL": cls.override_settings.options.get("COMPLIANCE_SERVICE_URL", "http://localhost:8082"),
-            "DQ_SERVICE_URL": cls.override_settings.options.get("DQ_SERVICE_URL", "http://localhost:8083"),
-            "DATACONTRACT_SERVICE_URL": cls.override_settings.options.get("DATACONTRACT_SERVICE_URL", "http://localhost:8080"),
+            "COMPLIANCE_SERVICE_URL": cls.override_settings.options.get(
+                "COMPLIANCE_SERVICE_URL", "http://localhost:8082"
+            ),
+            "DQ_SERVICE_URL": cls.override_settings.options.get(
+                "DQ_SERVICE_URL", "http://localhost:8083"
+            ),
+            "DATACONTRACT_SERVICE_URL": cls.override_settings.options.get(
+                "DATACONTRACT_SERVICE_URL", "http://localhost:8080"
+            ),
         }
 
         missing_services = []
@@ -74,7 +76,10 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
         # Check MinIO availability (data-first flow uploads files)
         import socket
         from urllib.parse import urlparse
-        minio_url = cls.override_settings.options.get("AWS_S3_ENDPOINT_URL", "http://localhost:9000")
+
+        minio_url = cls.override_settings.options.get(
+            "AWS_S3_ENDPOINT_URL", "http://localhost:9000"
+        )
         parsed = urlparse(minio_url)
         minio_host = parsed.hostname or "localhost"
         minio_port = parsed.port or 9000
@@ -201,7 +206,7 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
                     break
             except ComplianceRun.DoesNotExist:
                 pass
-            time.sleep(0.5)
+            time.sleep(0.5)  # noqa: sleep-needed — polling loop
 
         # If real service didn't finish in time, set status manually so the
         # rest of the onboarding flow can be exercised. The compliance service
@@ -247,7 +252,7 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
                     break
             except DQRun.DoesNotExist:
                 pass
-            time.sleep(0.5)
+            time.sleep(0.5)  # noqa: sleep-needed — polling loop
 
         # If real service didn't finish in time, set status manually so the
         # rest of the onboarding flow can be exercised.
@@ -299,7 +304,7 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
         # Step 10: Update contract status to ACTIVE and ensure normalization
         contract = Contract.objects.get(id=contract_id)
         contract.status = ContractStatus.ACTIVE
-        from hub.apps.contracts.models import NormalizationStatus, ValidationStatus
+        from hub.apps.contracts.models import NormalizationStatus
 
         contract.normalization_status = NormalizationStatus.NORMALIZED_OK
         # Ensure validation_status is VALID or WARNING_ONLY (required for activation)
@@ -328,8 +333,9 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
             f"/api/v1/assets/{asset_id}/activate/", {"version": asset.version}, format="json"
         )
         self.assertEqual(
-            activate_response.status_code, status.HTTP_200_OK,
-            f"Activate failed: {getattr(activate_response, 'data', activate_response.content)}"
+            activate_response.status_code,
+            status.HTTP_200_OK,
+            f"Activate failed: {getattr(activate_response, 'data', activate_response.content)}",
         )
 
         # Verify final state
@@ -389,16 +395,16 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
                 ContentType="text/csv",
             )
         except Exception as e:
-            raise unittest.SkipTest(f"MinIO not available: {str(e)}")
+            raise unittest.SkipTest(f"MinIO not available: {e!s}")
 
-        complete_response = self.client.post(
+        self.client.post(
             f"/api/v1/files/{file_id}/complete/",
             {"content_sha256": content_sha256, "run_compliance": True},
             format="json",
         )
 
         # File should not be stored (fail-closed)
-        file = File.objects.get(id=file_id)
+        File.objects.get(id=file_id)
         # Note: File status may vary based on implementation
         # The key is that compliance run shows failure
         compliance_run = ComplianceRun.objects.filter(file_id=file_id).first()
@@ -411,7 +417,7 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
                     ComplianceRunStatus.FAILED,
                 ]:
                     break
-                time.sleep(0.5)
+                time.sleep(0.5)  # noqa: sleep-needed — polling loop
 
             # If service didn't finish in time, set manually — this test focuses on
             # the compliance-failure flow, not the service's processing speed.
@@ -431,14 +437,16 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
         if compliance_run is not None:
             compliance_run.refresh_from_db()
             self.assertEqual(
-                compliance_run.status, ComplianceRunStatus.FAILED,
+                compliance_run.status,
+                ComplianceRunStatus.FAILED,
                 "Compliance run should be in FAILED state",
             )
 
         # Verify the asset is still in DRAFT — it must not have been activated
         asset = Asset.objects.get(id=asset_id)
         self.assertEqual(
-            asset.status, AssetStatus.DRAFT,
+            asset.status,
+            AssetStatus.DRAFT,
             "Asset must remain DRAFT after compliance failure",
         )
 
@@ -449,7 +457,8 @@ class DataFirstOnboardingTest(ContractsAPITestBase):
             format="json",
         )
         self.assertNotEqual(
-            activate_response.status_code, status.HTTP_200_OK,
+            activate_response.status_code,
+            status.HTTP_200_OK,
             "Activation must be rejected when compliance has failed",
         )
 
@@ -464,24 +473,19 @@ class ContractFirstOnboardingTest(ContractsAPITestBase):
         super().setUpClass()
 
         cls.override_settings = override_settings(
-            DATACONTRACT_SERVICE_URL=os.getenv(
-                "DATACONTRACT_SERVICE_URL", "http://localhost:8080"),
-            COMPLIANCE_SERVICE_URL=os.getenv(
-                "COMPLIANCE_SERVICE_URL", "http://localhost:8082"),
-            DQ_SERVICE_URL=os.getenv(
-                "DQ_SERVICE_URL", "http://localhost:8083"),
-            AWS_S3_ENDPOINT_URL=os.getenv(
-                "AWS_S3_ENDPOINT_URL", "http://localhost:9000"),
+            DATACONTRACT_SERVICE_URL=os.getenv("DATACONTRACT_SERVICE_URL", "http://localhost:8080"),
+            COMPLIANCE_SERVICE_URL=os.getenv("COMPLIANCE_SERVICE_URL", "http://localhost:8082"),
+            DQ_SERVICE_URL=os.getenv("DQ_SERVICE_URL", "http://localhost:8083"),
+            AWS_S3_ENDPOINT_URL=os.getenv("AWS_S3_ENDPOINT_URL", "http://localhost:9000"),
         )
         cls.override_settings.enable()
 
         services = {
-            "COMPLIANCE_SERVICE_URL": os.getenv(
-                "COMPLIANCE_SERVICE_URL", "http://localhost:8082"),
-            "DQ_SERVICE_URL": os.getenv(
-                "DQ_SERVICE_URL", "http://localhost:8083"),
+            "COMPLIANCE_SERVICE_URL": os.getenv("COMPLIANCE_SERVICE_URL", "http://localhost:8082"),
+            "DQ_SERVICE_URL": os.getenv("DQ_SERVICE_URL", "http://localhost:8083"),
             "DATACONTRACT_SERVICE_URL": os.getenv(
-                "DATACONTRACT_SERVICE_URL", "http://localhost:8080"),
+                "DATACONTRACT_SERVICE_URL", "http://localhost:8080"
+            ),
         }
 
         missing_services = []
@@ -592,7 +596,7 @@ class ContractFirstOnboardingTest(ContractsAPITestBase):
         self.assertEqual(dataset_response.status_code, status.HTTP_201_CREATED)
         dataset_id = dataset_response.data["id"]
 
-        dataset = Dataset.objects.get(id=dataset_id)
+        Dataset.objects.get(id=dataset_id)
 
         # Step 7: Run compliance and DQ checks (REAL services)
         compliance_response = self.client.post(
@@ -626,7 +630,7 @@ class ContractFirstOnboardingTest(ContractsAPITestBase):
                 ComplianceRunStatus.FAILED,
             ] and dq_run.status in [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED]:
                 break
-            time.sleep(0.5)
+            time.sleep(0.5)  # noqa: sleep-needed — polling loop
 
         # If services didn't finish, set statuses manually so the rest of the
         # onboarding flow can be exercised.
@@ -651,7 +655,7 @@ class ContractFirstOnboardingTest(ContractsAPITestBase):
         # Step 9: Update contract status to ACTIVE
         contract = Contract.objects.get(id=contract_id)
         contract.status = ContractStatus.ACTIVE
-        from hub.apps.contracts.models import NormalizationStatus, ValidationStatus
+        from hub.apps.contracts.models import NormalizationStatus
 
         contract.normalization_status = NormalizationStatus.NORMALIZED_OK
         # Ensure validation_status is VALID or WARNING_ONLY (required for activation)
@@ -678,8 +682,9 @@ class ContractFirstOnboardingTest(ContractsAPITestBase):
             f"/api/v1/assets/{asset_id}/activate/", {"version": asset.version}, format="json"
         )
         self.assertEqual(
-            activate_response.status_code, status.HTTP_200_OK,
-            f"Activate failed: {getattr(activate_response, 'data', activate_response.content)}"
+            activate_response.status_code,
+            status.HTTP_200_OK,
+            f"Activate failed: {getattr(activate_response, 'data', activate_response.content)}",
         )
 
         # Verify final state
@@ -696,10 +701,8 @@ class ContractOnlyOnboardingTest(ContractsAPITestBase):
         """Verify services are available before running tests"""
         super().setUpClass()
 
-        dc_url = os.getenv(
-            "DATACONTRACT_SERVICE_URL", "http://localhost:8080")
-        cls.override_settings = override_settings(
-            DATACONTRACT_SERVICE_URL=dc_url)
+        dc_url = os.getenv("DATACONTRACT_SERVICE_URL", "http://localhost:8080")
+        cls.override_settings = override_settings(DATACONTRACT_SERVICE_URL=dc_url)
         cls.override_settings.enable()
 
         # Only need DataContract service for contract-only flow
@@ -754,7 +757,7 @@ class ContractOnlyOnboardingTest(ContractsAPITestBase):
         )
         # Accept 200 (validated) or 504/500 (service slow/error) — set manually if needed
         contract = Contract.objects.get(id=contract_id)
-        from hub.apps.contracts.models import NormalizationStatus, ValidationStatus
+        from hub.apps.contracts.models import NormalizationStatus
 
         if validate_response.status_code != status.HTTP_200_OK:
             # Service didn't respond in time — set validation manually

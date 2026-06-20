@@ -4,16 +4,15 @@ Unit tests for AssetsBusinessRules dataset attachment validation.
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from hub.apps.assets.business_rules import AssetsBusinessRules
-from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.assets.tests.factories import AssetFactory
-from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.tenants.models import KYCStatus, Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -24,6 +23,7 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        super().setUp()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
@@ -47,7 +47,6 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
 
     def test_validate_dataset_attachment_tenant_ownership_valid(self):
         """Test dataset attachment validation with matching tenant"""
-        from hub.apps.datasets.models import Dataset
         from hub.apps.datasets.tests.factories import DatasetFactory
 
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
@@ -63,7 +62,6 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
 
     def test_validate_dataset_attachment_tenant_ownership_mismatch(self):
         """Test dataset attachment validation with tenant mismatch"""
-        from hub.apps.datasets.models import Dataset
         from hub.apps.datasets.tests.factories import DatasetFactory
         from hub.apps.files.models import File, FileStatus
 
@@ -95,15 +93,11 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
     def test_validate_dataset_attachment_schema_compatibility_valid(self):
         """Test schema compatibility validation with matching schemas"""
         from hub.apps.contracts.models import (
-            Contract,
             ContractStatus,
             NormalizationStatus,
-            OriginalFormat,
-            OriginalSpecType,
             ValidationStatus,
         )
         from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
-        from hub.apps.datasets.models import Dataset
         from hub.apps.datasets.tests.factories import DatasetFactory
 
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
@@ -117,7 +111,7 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
             schema_fields=contract_schema_fields
         )
 
-        contract = ContractFactoryEnhanced.create_contract(
+        ContractFactoryEnhanced.create_contract(
             tenant=self.tenant,
             created_by=self.user,
             asset=asset,
@@ -151,15 +145,11 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
     def test_validate_dataset_attachment_schema_compatibility_missing_fields(self):
         """Test schema compatibility validation with missing fields"""
         from hub.apps.contracts.models import (
-            Contract,
             ContractStatus,
             NormalizationStatus,
-            OriginalFormat,
-            OriginalSpecType,
             ValidationStatus,
         )
         from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
-        from hub.apps.datasets.models import Dataset
         from hub.apps.datasets.tests.factories import DatasetFactory
 
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
@@ -174,7 +164,7 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
             schema_fields=contract_schema_fields
         )
 
-        contract = ContractFactoryEnhanced.create_contract(
+        ContractFactoryEnhanced.create_contract(
             tenant=self.tenant,
             created_by=self.user,
             asset=asset,
@@ -211,15 +201,11 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
     def test_validate_dataset_attachment_schema_compatibility_type_mismatch(self):
         """Test schema compatibility validation with type mismatch"""
         from hub.apps.contracts.models import (
-            Contract,
             ContractStatus,
             NormalizationStatus,
-            OriginalFormat,
-            OriginalSpecType,
             ValidationStatus,
         )
         from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
-        from hub.apps.datasets.models import Dataset
         from hub.apps.datasets.tests.factories import DatasetFactory
 
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
@@ -233,7 +219,7 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
             schema_fields=contract_schema_fields
         )
 
-        contract = ContractFactoryEnhanced.create_contract(
+        ContractFactoryEnhanced.create_contract(
             tenant=self.tenant,
             created_by=self.user,
             asset=asset,
@@ -265,7 +251,6 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
 
     def test_validate_dataset_attachment_schema_compatibility_no_contract(self):
         """Test schema compatibility validation when asset has no contract"""
-        from hub.apps.datasets.models import Dataset
         from hub.apps.datasets.tests.factories import DatasetFactory
 
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
@@ -284,15 +269,12 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
 
     def test_validate_dataset_attachment_version_compatibility_valid(self):
         """Test version compatibility validation with valid version"""
-        from hub.apps.datasets.models import Dataset
         from hub.apps.datasets.tests.factories import DatasetFactory
 
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
 
         # Create first dataset version
-        dataset_v1 = DatasetFactory.create_dataset(
-            tenant=self.tenant, file=self.file, asset=asset, version=1
-        )
+        DatasetFactory.create_dataset(tenant=self.tenant, file=self.file, asset=asset, version=1)
 
         # Create second dataset
         dataset_v2 = DatasetFactory.create_dataset(tenant=self.tenant, file=self.file, version=2)
@@ -308,19 +290,18 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
 
     def test_validate_dataset_attachment_version_compatibility_invalid(self):
         """Test version compatibility validation with invalid version"""
-        from hub.apps.datasets.models import Dataset
         from hub.apps.datasets.tests.factories import DatasetFactory
 
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
 
         # Create first dataset version
-        dataset_v1 = DatasetFactory.create_dataset(
-            tenant=self.tenant, file=self.file, asset=asset, version=1
-        )
+        DatasetFactory.create_dataset(tenant=self.tenant, file=self.file, asset=asset, version=1)
 
         # Try to attach with version <= latest
         dataset_v2 = DatasetFactory.create_dataset(
-            tenant=self.tenant, file=self.file, version=1  # Same version
+            tenant=self.tenant,
+            file=self.file,
+            version=1,  # Same version
         )
 
         result = self.rules.validate_dataset_attachment(
@@ -335,7 +316,6 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
 
     def test_validate_dataset_attachment_version_compatibility_auto_increment(self):
         """Test version compatibility validation with auto-increment"""
-        from hub.apps.datasets.models import Dataset
         from hub.apps.datasets.tests.factories import DatasetFactory
 
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
@@ -343,7 +323,10 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
         dataset = DatasetFactory.create_dataset(tenant=self.tenant, file=self.file)
 
         result = self.rules.validate_dataset_attachment(
-            asset=asset, dataset=dataset, user=self.user, proposed_version=None  # Auto-increment
+            asset=asset,
+            dataset=dataset,
+            user=self.user,
+            proposed_version=None,  # Auto-increment
         )
 
         self.assertTrue(result.is_valid)
@@ -353,7 +336,6 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
 
     def test_validate_dataset_attachment_access_same_tenant(self):
         """Test dataset access validation with same tenant"""
-        from hub.apps.datasets.models import Dataset
         from hub.apps.datasets.tests.factories import DatasetFactory
 
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
@@ -370,7 +352,6 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
 
     def test_validate_dataset_attachment_access_no_user(self):
         """Test dataset access validation without user"""
-        from hub.apps.datasets.models import Dataset
         from hub.apps.datasets.tests.factories import DatasetFactory
 
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
@@ -391,9 +372,7 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
 
         # None dataset must raise AttributeError or TypeError
         with self.assertRaises((AttributeError, TypeError)):
-            self.rules.validate_dataset_attachment(
-                asset=asset, dataset=None, user=self.user
-            )
+            self.rules.validate_dataset_attachment(asset=asset, dataset=None, user=self.user)
 
     def test_validate_dataset_attachment_edge_case_none_asset(self):
         """Test dataset attachment validation with None asset raises an error"""
@@ -403,9 +382,7 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
 
         # None asset must raise AttributeError or TypeError
         with self.assertRaises((AttributeError, TypeError)):
-            self.rules.validate_dataset_attachment(
-                asset=None, dataset=dataset, user=self.user
-            )
+            self.rules.validate_dataset_attachment(asset=None, dataset=dataset, user=self.user)
 
     def test_validate_dataset_attachment_edge_case_none_user(self):
         """Test dataset attachment validation with None user succeeds (access check skipped)"""
@@ -420,33 +397,21 @@ class AssetsBusinessRulesDatasetAttachmentTest(TestCase):
         self.assertIsNotNone(result)
         self.assertTrue(result.is_valid)
 
-    def test_validate_dataset_attachment_edge_case_same_asset_and_dataset_tenant(self):
-        """Test dataset attachment with same tenant for asset and dataset (edge case)"""
+    def test_validate_dataset_attachment_same_tenant_valid(self):
+        """Dataset attachment with same tenant is valid and tenants_match."""
         from hub.apps.datasets.tests.factories import DatasetFactory
 
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
-
         dataset = DatasetFactory.create_dataset(tenant=self.tenant, file=self.file)
 
         result = self.rules.validate_dataset_attachment(
             asset=asset, dataset=dataset, user=self.user
         )
 
-        # Should be valid
         self.assertTrue(result.is_valid)
-
-    def test_validate_dataset_attachment_edge_case_same_tenant_tenants_match(self):
-        """Test dataset attachment with same tenant has tenants_match True."""
-        from hub.apps.datasets.tests.factories import DatasetFactory
-
-        asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
-        dataset = DatasetFactory.create_dataset(tenant=self.tenant, file=self.file)
-
-        result = self.rules.validate_dataset_attachment(
-            asset=asset, dataset=dataset, user=self.user
+        self.assertTrue(
+            result.details["validation_checks"]["tenant_ownership"]["tenants_match"]
         )
-
-        self.assertTrue(result.details["validation_checks"]["tenant_ownership"]["tenants_match"])
 
 
 class AssetsBusinessRulesDatasetAttachmentIntegrationTest(TestCase):
@@ -454,6 +419,7 @@ class AssetsBusinessRulesDatasetAttachmentIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        super().setUp()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
@@ -478,15 +444,11 @@ class AssetsBusinessRulesDatasetAttachmentIntegrationTest(TestCase):
     def test_dataset_attachment_integration_with_real_dataset(self):
         """Integration test with real dataset model"""
         from hub.apps.contracts.models import (
-            Contract,
             ContractStatus,
             NormalizationStatus,
-            OriginalFormat,
-            OriginalSpecType,
             ValidationStatus,
         )
         from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
-        from hub.apps.datasets.models import Dataset
         from hub.apps.datasets.tests.factories import DatasetFactory
 
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
@@ -500,7 +462,7 @@ class AssetsBusinessRulesDatasetAttachmentIntegrationTest(TestCase):
             schema_fields=contract_schema_fields
         )
 
-        contract = ContractFactoryEnhanced.create_contract(
+        ContractFactoryEnhanced.create_contract(
             tenant=self.tenant,
             created_by=self.user,
             asset=asset,

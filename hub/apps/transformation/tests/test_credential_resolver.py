@@ -4,11 +4,11 @@
 Tests resolve_warehouse_credentials() and resolve_git_credentials() using
 moto's mock_aws for AWS Secrets Manager (no real AWS calls).
 """
-import pytest
 
 import json
 import uuid
 
+import pytest
 from moto import mock_aws
 
 # ── Constants ─────────────────────────────────────────────────────────
@@ -67,6 +67,7 @@ class TestResolveWarehouseCredentials:
             from hub.apps.transformation.credential_resolver import (
                 resolve_warehouse_credentials,
             )
+
             profile = resolve_warehouse_credentials(arn)
 
         assert _TEST_PROFILE_NAME in profile
@@ -89,7 +90,10 @@ class TestResolveWarehouseCredentials:
             import boto3
 
             client = boto3.client("secretsmanager", region_name=_TEST_REGION)
-            keyfile = {"private_key": "test-key", "client_email": "dbt@project.iam.gserviceaccount.com"}
+            keyfile = {
+                "private_key": "test-key",
+                "client_email": "dbt@project.iam.gserviceaccount.com",
+            }
             secret_value = {
                 "type": "bigquery",
                 "method": "service-account",
@@ -102,6 +106,7 @@ class TestResolveWarehouseCredentials:
             from hub.apps.transformation.credential_resolver import (
                 resolve_warehouse_credentials,
             )
+
             profile = resolve_warehouse_credentials(arn)
 
         out = profile[_TEST_PROFILE_NAME]["outputs"]["prod"]
@@ -135,6 +140,7 @@ class TestResolveWarehouseCredentials:
             from hub.apps.transformation.credential_resolver import (
                 resolve_warehouse_credentials,
             )
+
             profile = resolve_warehouse_credentials(arn)
 
         out = profile[_TEST_PROFILE_NAME]["outputs"]["prod"]
@@ -161,6 +167,7 @@ class TestResolveWarehouseCredentials:
             from hub.apps.transformation.credential_resolver import (
                 resolve_warehouse_credentials,
             )
+
             profile = resolve_warehouse_credentials(arn)
 
         out = profile[_TEST_PROFILE_NAME]["outputs"]["prod"]
@@ -188,6 +195,7 @@ class TestResolveWarehouseCredentials:
             from hub.apps.transformation.credential_resolver import (
                 resolve_warehouse_credentials,
             )
+
             profile = resolve_warehouse_credentials(arn)
 
         out = profile[_TEST_PROFILE_NAME]["outputs"]["prod"]
@@ -217,6 +225,7 @@ class TestResolveWarehouseCredentials:
             from hub.apps.transformation.credential_resolver import (
                 resolve_warehouse_credentials,
             )
+
             profile = resolve_warehouse_credentials(arn)
 
         out = profile[_TEST_PROFILE_NAME]["outputs"]["prod"]
@@ -232,15 +241,20 @@ class TestResolveWarehouseCredentials:
             import boto3
 
             client = boto3.client("secretsmanager", region_name=_TEST_REGION)
-            arn = _create_secret(client, f"wh-bad-{uuid.uuid4().hex[:8]}", {
-                "user": "someone",
-                "password": "secret",
-            })
+            arn = _create_secret(
+                client,
+                f"wh-bad-{uuid.uuid4().hex[:8]}",
+                {
+                    "user": "someone",
+                    "password": "secret",
+                },
+            )
 
             from hub.apps.transformation.credential_resolver import (
-                resolve_warehouse_credentials,
                 CredentialResolverError,
+                resolve_warehouse_credentials,
             )
+
             with pytest.raises(CredentialResolverError, match="type"):
                 resolve_warehouse_credentials(arn)
 
@@ -251,17 +265,22 @@ class TestResolveWarehouseCredentials:
             import boto3
 
             client = boto3.client("secretsmanager", region_name=_TEST_REGION)
-            arn = _create_secret(client, f"wh-no-pass-{uuid.uuid4().hex[:8]}", {
-                "type": "snowflake",
-                "account": "acct",
-                "user": "u",
-                # password missing
-            })
+            arn = _create_secret(
+                client,
+                f"wh-no-pass-{uuid.uuid4().hex[:8]}",
+                {
+                    "type": "snowflake",
+                    "account": "acct",
+                    "user": "u",
+                    # password missing
+                },
+            )
 
             from hub.apps.transformation.credential_resolver import (
-                resolve_warehouse_credentials,
                 CredentialResolverError,
+                resolve_warehouse_credentials,
             )
+
             with pytest.raises(CredentialResolverError, match="Missing required field 'password'"):
                 resolve_warehouse_credentials(arn)
 
@@ -272,16 +291,21 @@ class TestResolveWarehouseCredentials:
             import boto3
 
             client = boto3.client("secretsmanager", region_name=_TEST_REGION)
-            arn = _create_secret(client, f"wh-no-proj-{uuid.uuid4().hex[:8]}", {
-                "type": "bigquery",
-                "dataset": "ds",
-                "keyfile": {"k": "v"},
-            })
+            arn = _create_secret(
+                client,
+                f"wh-no-proj-{uuid.uuid4().hex[:8]}",
+                {
+                    "type": "bigquery",
+                    "dataset": "ds",
+                    "keyfile": {"k": "v"},
+                },
+            )
 
             from hub.apps.transformation.credential_resolver import (
-                resolve_warehouse_credentials,
                 CredentialResolverError,
+                resolve_warehouse_credentials,
             )
+
             with pytest.raises(CredentialResolverError, match="Missing required field 'project'"):
                 resolve_warehouse_credentials(arn)
 
@@ -292,16 +316,21 @@ class TestResolveWarehouseCredentials:
             import boto3
 
             client = boto3.client("secretsmanager", region_name=_TEST_REGION)
-            arn = _create_secret(client, f"wh-no-host-{uuid.uuid4().hex[:8]}", {
-                "type": "databricks",
-                "http_path": "/path",
-                "token": "tok",
-            })
+            arn = _create_secret(
+                client,
+                f"wh-no-host-{uuid.uuid4().hex[:8]}",
+                {
+                    "type": "databricks",
+                    "http_path": "/path",
+                    "token": "tok",
+                },
+            )
 
             from hub.apps.transformation.credential_resolver import (
-                resolve_warehouse_credentials,
                 CredentialResolverError,
+                resolve_warehouse_credentials,
             )
+
             with pytest.raises(CredentialResolverError, match="Missing required field 'host'"):
                 resolve_warehouse_credentials(arn)
 
@@ -312,15 +341,20 @@ class TestResolveWarehouseCredentials:
             import boto3
 
             client = boto3.client("secretsmanager", region_name=_TEST_REGION)
-            arn = _create_secret(client, f"wh-unsup-{uuid.uuid4().hex[:8]}", {
-                "type": "redshift",
-                "host": "localhost",
-            })
+            arn = _create_secret(
+                client,
+                f"wh-unsup-{uuid.uuid4().hex[:8]}",
+                {
+                    "type": "redshift",
+                    "host": "localhost",
+                },
+            )
 
             from hub.apps.transformation.credential_resolver import (
-                resolve_warehouse_credentials,
                 CredentialResolverError,
+                resolve_warehouse_credentials,
             )
+
             with pytest.raises(CredentialResolverError, match="Unsupported warehouse type"):
                 resolve_warehouse_credentials(arn)
 
@@ -342,6 +376,7 @@ class TestResolveWarehouseCredentials:
             from hub.apps.transformation.credential_resolver import (
                 resolve_warehouse_credentials,
             )
+
             custom_name = "meshant_mytenant_pipe123"
             profile = resolve_warehouse_credentials(arn, profile_name=custom_name)
 
@@ -356,9 +391,10 @@ class TestResolveWarehouseCredentials:
         """Non-existent ARN raises CredentialResolverError."""
         with mock_aws():
             from hub.apps.transformation.credential_resolver import (
-                resolve_warehouse_credentials,
                 CredentialResolverError,
+                resolve_warehouse_credentials,
             )
+
             with pytest.raises(CredentialResolverError, match="not found"):
                 resolve_warehouse_credentials(
                     f"arn:aws:secretsmanager:{_TEST_REGION}:{_TEST_AWS_ACCOUNT}:secret:nonexistent-abc"
@@ -420,9 +456,10 @@ class TestResolveWarehouseCredentials:
             arn = response["ARN"]
 
             from hub.apps.transformation.credential_resolver import (
-                resolve_warehouse_credentials,
                 CredentialResolverError,
+                resolve_warehouse_credentials,
             )
+
             with pytest.raises(CredentialResolverError, match="Invalid JSON"):
                 resolve_warehouse_credentials(arn)
 
@@ -451,6 +488,7 @@ class TestResolveGitCredentials:
             from hub.apps.transformation.credential_resolver import (
                 resolve_git_credentials,
             )
+
             creds = resolve_git_credentials(arn)
 
         assert creds["token"] == "ghp_test1234567890"
@@ -472,6 +510,7 @@ class TestResolveGitCredentials:
             from hub.apps.transformation.credential_resolver import (
                 resolve_git_credentials,
             )
+
             creds = resolve_git_credentials(arn)
 
         assert creds["token"] == "glpat-test-token-value"
@@ -485,15 +524,20 @@ class TestResolveGitCredentials:
             import boto3
 
             client = boto3.client("secretsmanager", region_name=_TEST_REGION)
-            arn = _create_secret(client, f"git-notok-{uuid.uuid4().hex[:8]}", {
-                "provider": "github",
-                "username": "someone",
-            })
+            arn = _create_secret(
+                client,
+                f"git-notok-{uuid.uuid4().hex[:8]}",
+                {
+                    "provider": "github",
+                    "username": "someone",
+                },
+            )
 
             from hub.apps.transformation.credential_resolver import (
-                resolve_git_credentials,
                 CredentialResolverError,
+                resolve_git_credentials,
             )
+
             with pytest.raises(CredentialResolverError, match="token"):
                 resolve_git_credentials(arn)
 
@@ -502,9 +546,10 @@ class TestResolveGitCredentials:
         """Non-existent ARN raises CredentialResolverError for git too."""
         with mock_aws():
             from hub.apps.transformation.credential_resolver import (
-                resolve_git_credentials,
                 CredentialResolverError,
+                resolve_git_credentials,
             )
+
             with pytest.raises(CredentialResolverError, match="not found"):
                 resolve_git_credentials(
                     f"arn:aws:secretsmanager:{_TEST_REGION}:{_TEST_AWS_ACCOUNT}:secret:git-nonexistent"
@@ -538,9 +583,10 @@ class TestResolveGitCredentials:
     def test_access_denied_raises_fast(self):
         """AccessDenied from AWS SM raises immediately (fail-fast for rotated creds)."""
         with mock_aws():
+            from unittest.mock import patch
+
             import boto3
             from botocore.exceptions import ClientError
-            from unittest.mock import patch
 
             # We need to simulate an AccessDenied error — moto doesn't
             # simulate permission errors natively, so we patch the client.
@@ -555,9 +601,15 @@ class TestResolveGitCredentials:
 
             with patch.object(client, "get_secret_value", side_effect=_raise_access_denied):
                 from hub.apps.transformation.credential_resolver import (
-                    resolve_git_credentials,
                     CredentialResolverError,
+                    resolve_git_credentials,
                 )
-                with patch("hub.apps.transformation.credential_resolver._build_client", return_value=client):
-                    with pytest.raises(CredentialResolverError, match="Access denied"):
-                        resolve_git_credentials(arn)
+
+                with (
+                    patch(
+                        "hub.apps.transformation.credential_resolver._build_client",
+                        return_value=client,
+                    ),
+                    pytest.raises(CredentialResolverError, match="Access denied"),
+                ):
+                    resolve_git_credentials(arn)

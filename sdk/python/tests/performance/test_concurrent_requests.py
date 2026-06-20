@@ -12,10 +12,12 @@ concurrency, not the SDK client.
 
 import concurrent.futures
 import time
+
 import requests
+
 from tests._persona_provisioning import provision_persona
-from tests.use_cases._api_helpers import api_base_url
 from tests.fixtures.perf_record import build_perf_record, write_perf_record
+from tests.use_cases._api_helpers import api_base_url
 
 BUDGET_MS = 10_000.0
 CONCURRENCY = 50
@@ -44,7 +46,6 @@ def test_concurrent_requests_under_budget():
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
         pytest.skip("Backend not available")
 
-
     start = time.perf_counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
         futures = [pool.submit(_single_request, creds.api_key) for _ in range(CONCURRENCY)]
@@ -70,6 +71,7 @@ def test_concurrent_requests_under_budget():
     write_perf_record(record)
 
     from collections import Counter
+
     assert record.passed, (
         f"50 concurrent requests took {total_ms:.0f}ms (budget: {BUDGET_MS:.0f}ms). "
         f"Statuses: {dict(Counter(statuses))}"

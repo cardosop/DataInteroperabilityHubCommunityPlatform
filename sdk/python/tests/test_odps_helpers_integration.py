@@ -3,8 +3,11 @@ Integration tests for ODPS helper methods.
 
 These tests verify that ODPS helper methods work correctly with real API contract data.
 """
+
 import os
+
 import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 
 
@@ -18,6 +21,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> str | None:
     # Method 1: Canonical conftest helper (handles env vars, validation, auto-provision, refresh)
     try:
         from tests.conftest import get_api_key
+
         key = get_api_key()
         if key:
             return key
@@ -30,11 +34,12 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> str | None:
 
     try:
         import requests
+
         login_response = requests.post(
             f"{api_base_url}/auth/login/",
             json={"email": email, "password": password},
             headers={"Content-Type": "application/json", "Accept": "application/json"},
-            timeout=5
+            timeout=5,
         )
 
         if login_response.status_code == 200:
@@ -194,9 +199,9 @@ async def test_odps_helper_methods_integration(real_api_config):
         except Exception as e:
             # Print full error details for debugging
             error_details = str(e)
-            if hasattr(e, 'details'):
+            if hasattr(e, "details"):
                 error_details += f"\nDetails: {e.details}"
-            if hasattr(e, 'context'):
+            if hasattr(e, "context"):
                 error_details += f"\nContext: {e.context}"
             pytest.fail(f"Failed to create ODPS contract: {error_details}")
 
@@ -213,7 +218,9 @@ async def test_odps_helper_methods_integration(real_api_config):
         contract = await client.contracts.get(odps_id)
 
         # Step 3: Test is_odps_contract
-        assert client.contracts.is_odps_contract(contract) is True, "Contract should be identified as ODPS"
+        assert client.contracts.is_odps_contract(contract) is True, (
+            "Contract should be identified as ODPS"
+        )
 
         # Step 4: Test get_odps_version
         version = client.contracts.get_odps_version(contract)
@@ -226,7 +233,9 @@ async def test_odps_helper_methods_integration(real_api_config):
         assert len(pricing_plans) >= 1, "Should have at least one pricing plan"
         # Verify structure of first plan
         first_plan = pricing_plans[0]
-        assert "planID" in first_plan or "name" in first_plan, "Pricing plan should have planID or name"
+        assert "planID" in first_plan or "name" in first_plan, (
+            "Pricing plan should have planID or name"
+        )
 
         # Step 6: Test get_access_methods
         access_methods = client.contracts.get_access_methods(contract)
@@ -250,18 +259,24 @@ async def test_odps_helper_methods_integration(real_api_config):
         product_details_en = client.contracts.get_product_details(contract, lang="en")
         assert product_details_en is not None, "Product details (en) should not be None"
         assert isinstance(product_details_en, dict), "Product details should be a dictionary"
-        assert "productID" in product_details_en or "name" in product_details_en, "Product details should have productID or name"
+        assert "productID" in product_details_en or "name" in product_details_en, (
+            "Product details should have productID or name"
+        )
 
         # Step 10: Test get_product_details with Finnish
         product_details_fi = client.contracts.get_product_details(contract, lang="fi")
         # Finnish may or may not be available depending on normalization
         if product_details_fi is not None:
-            assert isinstance(product_details_fi, dict), "Product details (fi) should be a dictionary"
+            assert isinstance(product_details_fi, dict), (
+                "Product details (fi) should be a dictionary"
+            )
 
         # Step 11: Test get_product_details with default language (should default to "en")
         product_details_default = client.contracts.get_product_details(contract)
         assert product_details_default is not None, "Product details (default) should not be None"
-        assert isinstance(product_details_default, dict), "Product details (default) should be a dictionary"
+        assert isinstance(product_details_default, dict), (
+            "Product details (default) should be a dictionary"
+        )
 
     except Exception as e:
         error_str = str(e)
@@ -341,14 +356,16 @@ async def test_odps_helper_methods_with_minimal_contract(real_api_config):
         assert client.contracts.get_odps_version(contract) == "4.1"
 
         # These may return None for minimal contract (which is expected)
-        pricing_plans = client.contracts.get_pricing_plans(contract)
-        access_methods = client.contracts.get_access_methods(contract)
-        payment_gateways = client.contracts.get_payment_gateways(contract)
-        product_strategy = client.contracts.get_product_strategy(contract)
+        client.contracts.get_pricing_plans(contract)
+        client.contracts.get_access_methods(contract)
+        client.contracts.get_payment_gateways(contract)
+        client.contracts.get_product_strategy(contract)
 
         # Product details should still work (from original_raw or hub_contract_json)
         product_details = client.contracts.get_product_details(contract, lang="en")
-        assert product_details is not None, "Product details should be available even for minimal contract"
+        assert product_details is not None, (
+            "Product details should be available even for minimal contract"
+        )
         assert "productID" in product_details or "name" in product_details
 
     except Exception as e:
@@ -360,4 +377,3 @@ async def test_odps_helper_methods_with_minimal_contract(real_api_config):
                 f"Error: {error_str[:200]}"
             )
         raise
-

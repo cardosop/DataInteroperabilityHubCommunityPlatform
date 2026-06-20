@@ -23,6 +23,7 @@ Exit codes:
 No dependencies outside the Python standard library; safe to invoke from CI
 runners that only have `python3` available.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,7 +33,7 @@ import os
 import pathlib
 import re
 import sys
-from typing import Iterable
+from collections.abc import Iterable
 
 # How many days from ``today`` count as "due soon"; surfaces entries
 # approaching the window without yet blocking CI.
@@ -173,18 +174,12 @@ def _render_report(
     unknown: list[str] = []
 
     pinned_list = list(pinned)
-    lines.append(
-        f"## requirements.txt — {len(pinned_list)} pinned CVE reference(s)"
-    )
+    lines.append(f"## requirements.txt — {len(pinned_list)} pinned CVE reference(s)")
     if pinned_list:
         lines.append("| Package | Version | CVE | Note |")
         lines.append("|---|---|---|---|")
-        for pin in sorted(
-            pinned_list, key=lambda e: (e.package.lower(), e.cve)
-        ):
-            lines.append(
-                f"| {pin.package} | {pin.version} | {pin.cve} | {pin.note} |"
-            )
+        for pin in sorted(pinned_list, key=lambda e: (e.package.lower(), e.cve)):
+            lines.append(f"| {pin.package} | {pin.version} | {pin.cve} | {pin.note} |")
     else:
         lines.append("_No CVE-tagged pins found._")
     lines.append("")
@@ -199,21 +194,12 @@ def _render_report(
             key=lambda e: (e.review_by or datetime.date.max, e.cve),
         ):
             status = classify_review_status(ign.review_by, today=today)
-            review_str = (
-                ign.review_by.isoformat() if ign.review_by else "—"
-            )
-            lines.append(
-                f"| {ign.cve} | {review_str} | {status.upper()} |"
-            )
+            review_str = ign.review_by.isoformat() if ign.review_by else "—"
+            lines.append(f"| {ign.cve} | {review_str} | {status.upper()} |")
             if status == "overdue":
-                overdue.append(
-                    f"{ign.cve} review overdue (was due {review_str})"
-                )
+                overdue.append(f"{ign.cve} review overdue (was due {review_str})")
             elif status == "unknown":
-                unknown.append(
-                    f"{ign.cve} has no 'Review by:' date — add one before"
-                    " merging"
-                )
+                unknown.append(f"{ign.cve} has no 'Review by:' date — add one before merging")
     else:
         lines.append("_No ignored CVEs._")
     lines.append("")
@@ -279,11 +265,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    today = (
-        datetime.date.fromisoformat(args.today)
-        if args.today
-        else datetime.date.today()
-    )
+    today = datetime.date.fromisoformat(args.today) if args.today else datetime.date.today()
     pinned = parse_requirements_cves(pathlib.Path(args.requirements))
     ignored = parse_trivyignore(pathlib.Path(args.trivyignore))
     report, overdue, unknown = _render_report(pinned, ignored, today=today)

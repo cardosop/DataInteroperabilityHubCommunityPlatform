@@ -3,14 +3,16 @@ Contract Serializers
 
 Enhanced serializers with computed fields and nested serializers for all HubContract sections (GAP-9.2.1).
 """
+
+from typing import Any
+
+from drf_spectacular.utils import OpenApiExample, extend_schema_serializer
 from rest_framework import serializers
-from typing import Dict, Any, List, Optional
-from drf_spectacular.utils import extend_schema_serializer, extend_schema_field, OpenApiExample
-from drf_spectacular.types import OpenApiTypes
-from .models import Contract, ContractStatus, OriginalSpecType, OriginalFormat, SecurityAuditLog
-from .ref_resolver import ExternalRefHandling
+
 # Phase 226 G7a — canonical IRI exposure for SDK + dereferenceability proofs.
 from hub.apps.semantic.iri import canonical_iri_for
+
+from .models import Contract, ContractStatus, OriginalFormat, OriginalSpecType, SecurityAuditLog
 
 
 class OwnerSerializer(serializers.Serializer):
@@ -19,13 +21,10 @@ class OwnerSerializer(serializers.Serializer):
 
     Owners are individuals or teams responsible for the contract.
     """
-    name = serializers.CharField(
-        help_text="Owner name (e.g., 'Data Platform Team', 'John Doe')"
-    )
+
+    name = serializers.CharField(help_text="Owner name (e.g., 'Data Platform Team', 'John Doe')")
     email = serializers.EmailField(
-        required=False,
-        allow_null=True,
-        help_text="Owner email address (optional)"
+        required=False, allow_null=True, help_text="Owner email address (optional)"
     )
 
 
@@ -35,30 +34,31 @@ class QualityRuleSerializer(serializers.Serializer):
 
     Quality rules define data quality checks and expectations.
     """
+
     rule_id = serializers.CharField(
         required=False,
         allow_null=True,
-        help_text="Unique identifier for the rule (e.g., 'not_null_order_id')"
+        help_text="Unique identifier for the rule (e.g., 'not_null_order_id')",
     )
     dimension = serializers.CharField(
         required=False,
         allow_null=True,
-        help_text="Quality dimension (e.g., 'completeness', 'validity', 'consistency', 'accuracy', 'timeliness')"
+        help_text="Quality dimension (e.g., 'completeness', 'validity', 'consistency', 'accuracy', 'timeliness')",
     )
     expression = serializers.CharField(
         required=False,
         allow_null=True,
-        help_text="Quality check expression (e.g., 'order_id IS NOT NULL', 'price > 0')"
+        help_text="Quality check expression (e.g., 'order_id IS NOT NULL', 'price > 0')",
     )
     severity = serializers.CharField(
         required=False,
         allow_null=True,
-        help_text="Rule severity (e.g., 'ERROR', 'WARNING', 'INFO')"
+        help_text="Rule severity (e.g., 'ERROR', 'WARNING', 'INFO')",
     )
     field = serializers.CharField(
         required=False,
         allow_null=True,
-        help_text="Field name this rule applies to (optional, for field-specific rules)"
+        help_text="Field name this rule applies to (optional, for field-specific rules)",
     )
 
 
@@ -68,34 +68,35 @@ class CompliancePolicySerializer(serializers.Serializer):
 
     Compliance policy defines data privacy and regulatory compliance requirements.
     """
+
     contains_personal_data = serializers.BooleanField(
         required=False,
         allow_null=True,
         default=False,
-        help_text="Whether the contract contains personal data (PII)"
+        help_text="Whether the contract contains personal data (PII)",
     )
     personal_data_categories = serializers.ListField(
         child=serializers.CharField(),
         required=False,
         allow_empty=True,
-        help_text="Categories of personal data (e.g., 'EMAIL', 'PHONE', 'ADDRESS', 'HEALTH_DATA')"
+        help_text="Categories of personal data (e.g., 'EMAIL', 'PHONE', 'ADDRESS', 'HEALTH_DATA')",
     )
     jurisdictions = serializers.ListField(
         child=serializers.CharField(),
         required=False,
         allow_empty=True,
-        help_text="Applicable jurisdictions (e.g., 'GDPR', 'LGPD', 'CCPA', 'HIPAA')"
+        help_text="Applicable jurisdictions (e.g., 'GDPR', 'LGPD', 'CCPA', 'HIPAA')",
     )
     legal_bases = serializers.ListField(
         child=serializers.CharField(),
         required=False,
         allow_empty=True,
-        help_text="Legal bases for processing (e.g., 'CONSENT', 'CONTRACT', 'LEGAL_OBLIGATION')"
+        help_text="Legal bases for processing (e.g., 'CONSENT', 'CONTRACT', 'LEGAL_OBLIGATION')",
     )
     retention_policy = serializers.DictField(
         required=False,
         allow_null=True,
-        help_text="Data retention policy (e.g., {'period': 'P5Y', 'notes': '5 years retention'})"
+        help_text="Data retention policy (e.g., {'period': 'P5Y', 'notes': '5 years retention'})",
     )
 
 
@@ -105,20 +106,21 @@ class LifecyclePolicySerializer(serializers.Serializer):
 
     Lifecycle policy defines data refresh cadence and service level agreements.
     """
+
     data_source = serializers.CharField(
         required=False,
         allow_null=True,
-        help_text="Data source identifier (e.g., 'OLTP.orders', 'data-warehouse.customers')"
+        help_text="Data source identifier (e.g., 'OLTP.orders', 'data-warehouse.customers')",
     )
     refresh_cadence = serializers.CharField(
         required=False,
         allow_null=True,
-        help_text="Refresh cadence (e.g., 'DAILY', 'HOURLY', 'REAL_TIME', 'WEEKLY', 'MONTHLY')"
+        help_text="Refresh cadence (e.g., 'DAILY', 'HOURLY', 'REAL_TIME', 'WEEKLY', 'MONTHLY')",
     )
     slas = serializers.DictField(
         required=False,
         allow_null=True,
-        help_text="Service level agreements (e.g., {'availability': '99.0', 'latency_ms_p95': 5000})"
+        help_text="Service level agreements (e.g., {'availability': '99.0', 'latency_ms_p95': 5000})",
     )
 
 
@@ -128,22 +130,23 @@ class MarketplacePolicySerializer(serializers.Serializer):
 
     Marketplace policy defines how the data can be shared and used in the marketplace.
     """
+
     license_summary = serializers.CharField(
         required=False,
         allow_null=True,
-        help_text="License summary (e.g., 'MIT License', 'Commercial Use Allowed')"
+        help_text="License summary (e.g., 'MIT License', 'Commercial Use Allowed')",
     )
     intended_use = serializers.ListField(
         child=serializers.CharField(),
         required=False,
         allow_empty=True,
-        help_text="Intended use cases (e.g., ['analytics', 'machine_learning', 'reporting'])"
+        help_text="Intended use cases (e.g., ['analytics', 'machine_learning', 'reporting'])",
     )
     restricted_use = serializers.ListField(
         child=serializers.CharField(),
         required=False,
         allow_empty=True,
-        help_text="Restricted use cases (e.g., ['resale', 'competitive_analysis'])"
+        help_text="Restricted use cases (e.g., ['resale', 'competitive_analysis'])",
     )
 
 
@@ -151,37 +154,45 @@ class RelationshipSerializer(serializers.Serializer):
     """Serializer for schema/field relationships (Phase 26.13.1)."""
 
     id = serializers.CharField(
-        required=False, allow_null=True,
+        required=False,
+        allow_null=True,
         help_text="Stable cross-link identifier",
     )
     name = serializers.CharField(
-        required=False, allow_null=True,
+        required=False,
+        allow_null=True,
         help_text="Relationship name",
     )
     type = serializers.CharField(
-        required=False, allow_null=True,
+        required=False,
+        allow_null=True,
         help_text="Relationship type (foreignKey, oneToOne, oneToMany)",
     )
     source = serializers.ListField(
         child=serializers.CharField(),
-        required=False, default=list,
+        required=False,
+        default=list,
         help_text="Source property names",
     )
     target_contract = serializers.CharField(
-        required=False, allow_null=True,
+        required=False,
+        allow_null=True,
         help_text="Target contract namespace/name",
     )
     target_model = serializers.CharField(
-        required=False, allow_null=True,
+        required=False,
+        allow_null=True,
         help_text="Target schema object name",
     )
     target_properties = serializers.ListField(
         child=serializers.CharField(),
-        required=False, default=list,
+        required=False,
+        default=list,
         help_text="Target property names",
     )
     description = serializers.CharField(
-        required=False, allow_null=True,
+        required=False,
+        allow_null=True,
         help_text="Relationship description",
     )
 
@@ -192,110 +203,83 @@ class FieldPropertySerializer(serializers.Serializer):
 
     Field properties define the structure, constraints, and semantics of data fields.
     """
-    name = serializers.CharField(
-        help_text="Field name (e.g., 'order_id', 'customer_email')"
-    )
+
+    name = serializers.CharField(help_text="Field name (e.g., 'order_id', 'customer_email')")
     data_type = serializers.CharField(
         help_text="Data type (e.g., 'string', 'integer', 'number', 'boolean', 'date', 'datetime')"
     )
     nullable = serializers.BooleanField(
-        required=False,
-        default=True,
-        help_text="Whether the field can be null"
+        required=False, default=True, help_text="Whether the field can be null"
     )
     description = serializers.CharField(
-        required=False,
-        allow_null=True,
-        help_text="Field description"
+        required=False, allow_null=True, help_text="Field description"
     )
     semantic_type = serializers.CharField(
         required=False,
         allow_null=True,
-        help_text="Semantic type (e.g., 'EMAIL', 'PHONE', 'ORDER_ID', 'CURRENCY', 'DATE')"
+        help_text="Semantic type (e.g., 'EMAIL', 'PHONE', 'ORDER_ID', 'CURRENCY', 'DATE')",
     )
     format = serializers.CharField(
         required=False,
         allow_null=True,
-        help_text="Format specification (e.g., 'email', 'uri', 'date-time', 'uuid')"
+        help_text="Format specification (e.g., 'email', 'uri', 'date-time', 'uuid')",
     )
     pattern = serializers.CharField(
         required=False,
         allow_null=True,
-        help_text="Regex pattern for validation (e.g., '^[A-Z0-9]{8}$')"
+        help_text="Regex pattern for validation (e.g., '^[A-Z0-9]{8}$')",
     )
     enum = serializers.ListField(
         child=serializers.CharField(),
         required=False,
         allow_null=True,
-        help_text="Allowed enum values (e.g., ['ACTIVE', 'INACTIVE', 'PENDING'])"
+        help_text="Allowed enum values (e.g., ['ACTIVE', 'INACTIVE', 'PENDING'])",
     )
-    default = serializers.CharField(
-        required=False,
-        allow_null=True,
-        help_text="Default value"
-    )
+    default = serializers.CharField(required=False, allow_null=True, help_text="Default value")
     min_length = serializers.IntegerField(
-        required=False,
-        allow_null=True,
-        help_text="Minimum string length"
+        required=False, allow_null=True, help_text="Minimum string length"
     )
     max_length = serializers.IntegerField(
-        required=False,
-        allow_null=True,
-        help_text="Maximum string length"
+        required=False, allow_null=True, help_text="Maximum string length"
     )
     minimum = serializers.FloatField(
-        required=False,
-        allow_null=True,
-        help_text="Minimum numeric value"
+        required=False, allow_null=True, help_text="Minimum numeric value"
     )
     maximum = serializers.FloatField(
-        required=False,
-        allow_null=True,
-        help_text="Maximum numeric value"
+        required=False, allow_null=True, help_text="Maximum numeric value"
     )
     metadata = serializers.DictField(
         required=False,
         allow_null=True,
-        help_text="Additional metadata (e.g., {'source_system': 'OLTP', 'business_key': true})"
+        help_text="Additional metadata (e.g., {'source_system': 'OLTP', 'business_key': true})",
     )
     is_primary_key = serializers.BooleanField(
-        required=False,
-        default=False,
-        help_text="Whether this field is part of the primary key"
+        required=False, default=False, help_text="Whether this field is part of the primary key"
     )
     is_unique = serializers.BooleanField(
-        required=False,
-        default=False,
-        help_text="Whether this field has a unique constraint"
+        required=False, default=False, help_text="Whether this field has a unique constraint"
     )
     is_indexed = serializers.BooleanField(
-        required=False,
-        default=False,
-        help_text="Whether this field is indexed"
+        required=False, default=False, help_text="Whether this field is indexed"
     )
     element_id = serializers.CharField(
-        required=False,
-        allow_null=True,
-        help_text="Stable cross-link identifier (ODCS v3.1.0)"
+        required=False, allow_null=True, help_text="Stable cross-link identifier (ODCS v3.1.0)"
     )
     logicalType = serializers.CharField(
-        required=False,
-        allow_null=True,
-        help_text="Logical type (date, timestamp, time)"
+        required=False, allow_null=True, help_text="Logical type (date, timestamp, time)"
     )
     relationships = RelationshipSerializer(
         many=True,
         required=False,
         allow_null=True,
-        help_text="Field-level relationships (ODCS v3.1.0)"
+        help_text="Field-level relationships (ODCS v3.1.0)",
     )
 
 
 @extend_schema_serializer(
     examples=[
         OpenApiExample(
-            'Complete Contract Example',
+            "Complete Contract Example",
             value={
                 "id": "123e4567-e89b-12d3-a456-426614174000",
                 "tenant": "123e4567-e89b-12d3-a456-426614174001",
@@ -308,9 +292,7 @@ class FieldPropertySerializer(serializers.Serializer):
                 "hub_contract_version": "1.0.0",
                 "normalization_status": "NORMALIZED_OK",
                 "validation_status": "VALID",
-                "owners": [
-                    {"name": "Data Platform Team", "email": "dataplatform@example.com"}
-                ],
+                "owners": [{"name": "Data Platform Team", "email": "dataplatform@example.com"}],
                 "tags": ["analytics", "sales", "orders"],
                 "quality_rules": [
                     {
@@ -318,7 +300,7 @@ class FieldPropertySerializer(serializers.Serializer):
                         "dimension": "completeness",
                         "expression": "order_id IS NOT NULL",
                         "severity": "ERROR",
-                        "field": "order_id"
+                        "field": "order_id",
                     }
                 ],
                 "compliance_policy": {
@@ -326,17 +308,17 @@ class FieldPropertySerializer(serializers.Serializer):
                     "personal_data_categories": ["EMAIL", "PHONE"],
                     "jurisdictions": ["GDPR", "LGPD"],
                     "legal_bases": ["CONSENT", "CONTRACT"],
-                    "retention_policy": {"period": "P5Y", "notes": "5 years retention"}
+                    "retention_policy": {"period": "P5Y", "notes": "5 years retention"},
                 },
                 "lifecycle_policy": {
                     "data_source": "OLTP.orders",
                     "refresh_cadence": "DAILY",
-                    "slas": {"availability": "99.0", "latency_ms_p95": 5000}
+                    "slas": {"availability": "99.0", "latency_ms_p95": 5000},
                 },
                 "marketplace_policy": {
                     "license_summary": "MIT License",
                     "intended_use": ["analytics", "machine_learning"],
-                    "restricted_use": ["resale"]
+                    "restricted_use": ["resale"],
                 },
                 "schema_fields": [
                     {
@@ -348,12 +330,12 @@ class FieldPropertySerializer(serializers.Serializer):
                         "pattern": "^ORD-[0-9]{8}$",
                         "is_primary_key": True,
                         "is_unique": True,
-                        "is_indexed": True
+                        "is_indexed": True,
                     }
-                ]
+                ],
             },
             request_only=False,
-            response_only=True
+            response_only=True,
         )
     ]
 )
@@ -376,9 +358,7 @@ class ContractSerializer(serializers.ModelSerializer):
     owners = serializers.SerializerMethodField(
         help_text="Array of contract owners (extracted from info.owners)"
     )
-    tags = serializers.SerializerMethodField(
-        help_text="Array of tags (extracted from info.tags)"
-    )
+    tags = serializers.SerializerMethodField(help_text="Array of tags (extracted from info.tags)")
     quality_rules = serializers.SerializerMethodField(
         help_text="Array of quality rules (extracted from quality.rules)"
     )
@@ -403,30 +383,18 @@ class ContractSerializer(serializers.ModelSerializer):
     contact = serializers.SerializerMethodField(
         help_text="Support/contact channels extracted from contact"
     )
-    support = serializers.SerializerMethodField(
-        help_text="Support channels extracted from support"
-    )
-    servers = serializers.SerializerMethodField(
-        help_text="Server endpoints extracted from servers"
-    )
+    support = serializers.SerializerMethodField(help_text="Support channels extracted from support")
+    servers = serializers.SerializerMethodField(help_text="Server endpoints extracted from servers")
     servicelevels = serializers.SerializerMethodField(
         help_text="Service level objectives extracted from servicelevels"
     )
-    terms = serializers.SerializerMethodField(
-        help_text="Terms of use extracted from terms"
-    )
+    terms = serializers.SerializerMethodField(help_text="Terms of use extracted from terms")
     definitions = serializers.SerializerMethodField(
         help_text="Definitions extracted from definitions"
     )
-    models = serializers.SerializerMethodField(
-        help_text="Models extracted from models"
-    )
-    roles = serializers.SerializerMethodField(
-        help_text="Access roles extracted from roles"
-    )
-    team = serializers.SerializerMethodField(
-        help_text="Team memberships extracted from team"
-    )
+    models = serializers.SerializerMethodField(help_text="Models extracted from models")
+    roles = serializers.SerializerMethodField(help_text="Access roles extracted from roles")
+    team = serializers.SerializerMethodField(help_text="Team memberships extracted from team")
     pricing = serializers.SerializerMethodField(
         help_text="Pricing information extracted from price/pricing"
     )
@@ -467,98 +435,98 @@ class ContractSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contract
         fields = [
-            'id',
-            'tenant',
-            'asset',
-            'asset_id',
-            'version',
-            'status',
-            'original_spec_type',
-            'original_spec_version',
-            'original_format',
-            'original_raw',
-            'hub_contract_version',
-            'hub_contract_json',
-            'normalization_status',
-            'normalization_errors',
-            'normalization_warnings',
-            'validation_status',
-            'validation_errors',
-            'validation_warnings',
-            'cli_version',
-            'last_validated_at',
-            'created_by',
-            'created_at',
-            'updated_at',
+            "id",
+            "tenant",
+            "asset",
+            "asset_id",
+            "version",
+            "status",
+            "original_spec_type",
+            "original_spec_version",
+            "original_format",
+            "original_raw",
+            "hub_contract_version",
+            "hub_contract_json",
+            "normalization_status",
+            "normalization_errors",
+            "normalization_warnings",
+            "validation_status",
+            "validation_errors",
+            "validation_warnings",
+            "cli_version",
+            "last_validated_at",
+            "created_by",
+            "created_at",
+            "updated_at",
             # Computed fields (GAP-9.2.1)
-            'owners',
-            'tags',
-            'quality_rules',
-            'compliance_policy',
-            'lifecycle_policy',
-            'marketplace_policy',
-            'schema_fields',
-            'schema_relationships',
-            'has_relationships',
-            'contact',
-            'support',
-            'servers',
-            'servicelevels',
-            'terms',
-            'definitions',
-            'models',
-            'roles',
-            'team',
-            'pricing',
-            'lineage',
-            'quality_type',
-            'quality_specification',
+            "owners",
+            "tags",
+            "quality_rules",
+            "compliance_policy",
+            "lifecycle_policy",
+            "marketplace_policy",
+            "schema_fields",
+            "schema_relationships",
+            "has_relationships",
+            "contact",
+            "support",
+            "servers",
+            "servicelevels",
+            "terms",
+            "definitions",
+            "models",
+            "roles",
+            "team",
+            "pricing",
+            "lineage",
+            "quality_type",
+            "quality_specification",
             # Phase 226 G7a — canonical Linked Data IRI
-            'canonical_iri',
+            "canonical_iri",
         ]
         read_only_fields = [
-            'id',
-            'tenant',
-            'asset_id',
-            'version',
-            'hub_contract_version',
-            'hub_contract_json',
-            'normalization_status',
-            'normalization_errors',
-            'normalization_warnings',
-            'validation_status',
-            'validation_errors',
-            'validation_warnings',
-            'cli_version',
-            'last_validated_at',
-            'created_by',
-            'created_at',
-            'updated_at',
+            "id",
+            "tenant",
+            "asset_id",
+            "version",
+            "hub_contract_version",
+            "hub_contract_json",
+            "normalization_status",
+            "normalization_errors",
+            "normalization_warnings",
+            "validation_status",
+            "validation_errors",
+            "validation_warnings",
+            "cli_version",
+            "last_validated_at",
+            "created_by",
+            "created_at",
+            "updated_at",
             # Computed fields are read-only
-            'owners',
-            'tags',
-            'quality_rules',
-            'compliance_policy',
-            'lifecycle_policy',
-            'marketplace_policy',
-            'schema_fields',
-            'schema_relationships',
-            'has_relationships',
-            'contact',
-            'support',
-            'servers',
-            'servicelevels',
-            'terms',
-            'definitions',
-            'models',
-            'roles',
-            'team',
-            'pricing',
-            'lineage',
-            'quality_type',
-            'quality_specification',
+            "owners",
+            "tags",
+            "quality_rules",
+            "compliance_policy",
+            "lifecycle_policy",
+            "marketplace_policy",
+            "schema_fields",
+            "schema_relationships",
+            "has_relationships",
+            "contact",
+            "support",
+            "servers",
+            "servicelevels",
+            "terms",
+            "definitions",
+            "models",
+            "roles",
+            "team",
+            "pricing",
+            "lineage",
+            "quality_type",
+            "quality_specification",
             # Phase 226 G7a — canonical Linked Data IRI is computed, not writable
-            'canonical_iri',
+            "canonical_iri",
         ]
 
     @staticmethod
@@ -569,6 +537,7 @@ class ContractSerializer(serializers.ModelSerializer):
         if isinstance(value, str):
             try:
                 import json
+
                 parsed = json.loads(value)
                 if isinstance(parsed, dict):
                     return parsed
@@ -576,90 +545,96 @@ class ContractSerializer(serializers.ModelSerializer):
                 pass
         return {}
 
-    def get_owners(self, obj: Contract) -> List[Dict[str, Any]]:
+    def get_owners(self, obj: Contract) -> list[dict[str, Any]]:
         """Extract owners from hub_contract_json (GAP-9.2.1)"""
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        info = self._safe_dict(hub_contract.get('info', {}))
-        owners = info.get('owners', [])
+        info = self._safe_dict(hub_contract.get("info", {}))
+        owners = info.get("owners", [])
         if not owners:
             return []
         result = []
         for owner in owners:
             try:
                 # OwnerSerializer requires 'name' field, handle missing gracefully
-                if isinstance(owner, dict) and owner.get('name'):
+                if isinstance(owner, dict) and owner.get("name"):
                     result.append(OwnerSerializer(owner).data)
                 elif isinstance(owner, dict):
                     # If owner dict doesn't have name, create minimal representation
-                    result.append({'name': owner.get('name', 'Unknown'), 'email': owner.get('email')})
+                    result.append(
+                        {"name": owner.get("name", "Unknown"), "email": owner.get("email")}
+                    )
                 else:
                     # If owner is not a dict, skip it
                     continue
             except Exception as e:
                 # Log but don't fail serialization if individual owner fails
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Failed to serialize owner {owner}: {e}")
                 # Add minimal representation
                 if isinstance(owner, dict):
-                    result.append({'name': owner.get('name', 'Unknown'), 'email': owner.get('email')})
+                    result.append(
+                        {"name": owner.get("name", "Unknown"), "email": owner.get("email")}
+                    )
         return result
 
-    def get_tags(self, obj: Contract) -> List[str]:
+    def get_tags(self, obj: Contract) -> list[str]:
         """Extract tags from hub_contract_json (GAP-9.2.1)"""
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        info = hub_contract.get('info', {})
-        return info.get('tags', [])
+        info = hub_contract.get("info", {})
+        return info.get("tags", [])
 
-    def get_quality_rules(self, obj: Contract) -> List[Dict[str, Any]]:
+    def get_quality_rules(self, obj: Contract) -> list[dict[str, Any]]:
         """Extract quality rules from hub_contract_json (GAP-9.2.1)"""
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        quality = hub_contract.get('quality', {})
-        rules = quality.get('rules', [])
+        quality = hub_contract.get("quality", {})
+        rules = quality.get("rules", [])
         return [QualityRuleSerializer(rule).data for rule in rules] if rules else []
 
-    def get_compliance_policy(self, obj: Contract) -> Optional[Dict[str, Any]]:
+    def get_compliance_policy(self, obj: Contract) -> dict[str, Any] | None:
         """Extract compliance policy from hub_contract_json (GAP-9.2.1)"""
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        compliance = hub_contract.get('privacy_compliance', {})
+        compliance = hub_contract.get("privacy_compliance", {})
         if not compliance:
             return None
         # Ensure contains_personal_data has a default if missing
-        if 'contains_personal_data' not in compliance:
-            compliance = {**compliance, 'contains_personal_data': False}
+        if "contains_personal_data" not in compliance:
+            compliance = {**compliance, "contains_personal_data": False}
         try:
             return CompliancePolicySerializer(compliance).data
         except Exception as e:
             # If serialization fails, return None to prevent breaking the contract view
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to serialize compliance policy: {e}", exc_info=True)
             return None
 
-    def get_lifecycle_policy(self, obj: Contract) -> Optional[Dict[str, Any]]:
+    def get_lifecycle_policy(self, obj: Contract) -> dict[str, Any] | None:
         """Extract lifecycle policy from hub_contract_json (GAP-9.2.1)"""
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        lifecycle = hub_contract.get('lifecycle', {})
+        lifecycle = hub_contract.get("lifecycle", {})
         if not lifecycle:
             return None
         return LifecyclePolicySerializer(lifecycle).data
 
-    def get_marketplace_policy(self, obj: Contract) -> Optional[Dict[str, Any]]:
+    def get_marketplace_policy(self, obj: Contract) -> dict[str, Any] | None:
         """Extract marketplace policy from hub_contract_json (GAP-9.2.1)"""
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        marketplace = hub_contract.get('marketplace', {})
+        marketplace = hub_contract.get("marketplace", {})
         if not marketplace:
             return None
         return MarketplacePolicySerializer(marketplace).data
 
-    def get_schema_fields(self, obj: Contract) -> List[Dict[str, Any]]:
+    def get_schema_fields(self, obj: Contract) -> list[dict[str, Any]]:
         """Extract schema fields with all properties from hub_contract_json (GAP-9.2.1)"""
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        schema = self._safe_dict(hub_contract.get('schema', {}))
-        fields = schema.get('fields', [])
-        primary_key = schema.get('primary_key', [])
-        unique_constraints = schema.get('unique_constraints', [])
-        indexes = schema.get('indexes', [])
+        schema = self._safe_dict(hub_contract.get("schema", {}))
+        fields = schema.get("fields", [])
+        primary_key = schema.get("primary_key", [])
+        unique_constraints = schema.get("unique_constraints", [])
+        indexes = schema.get("indexes", [])
 
         # Build set of primary key fields
         primary_key_set = set(primary_key)
@@ -669,49 +644,47 @@ class ContractSerializer(serializers.ModelSerializer):
         for constraint in unique_constraints:
             if isinstance(constraint, list):
                 unique_fields_set.update(constraint)
-            elif isinstance(constraint, dict) and 'fields' in constraint:
-                unique_fields_set.update(constraint['fields'])
+            elif isinstance(constraint, dict) and "fields" in constraint:
+                unique_fields_set.update(constraint["fields"])
 
         # Build set of indexed fields
         indexed_fields_set = set()
         for index in indexes:
             if isinstance(index, list):
                 indexed_fields_set.update(index)
-            elif isinstance(index, dict) and 'fields' in index:
-                indexed_fields_set.update(index['fields'])
+            elif isinstance(index, dict) and "fields" in index:
+                indexed_fields_set.update(index["fields"])
 
         # Serialize fields with enhanced properties
         serialized_fields = []
         for field in fields:
             # Normalize field: map 'type' to 'data_type' if needed, ensure 'nullable' exists
             normalized_field = field.copy()
-            if 'type' in normalized_field and 'data_type' not in normalized_field:
-                normalized_field['data_type'] = normalized_field.pop('type')
-            if 'nullable' not in normalized_field:
-                normalized_field['nullable'] = True  # Default to nullable if not specified
+            if "type" in normalized_field and "data_type" not in normalized_field:
+                normalized_field["data_type"] = normalized_field.pop("type")
+            if "nullable" not in normalized_field:
+                normalized_field["nullable"] = True  # Default to nullable if not specified
             field_data = FieldPropertySerializer(normalized_field).data
             # Add constraint flags
-            field_name = field.get('name', '')
-            field_data['is_primary_key'] = field_name in primary_key_set
-            field_data['is_unique'] = field_name in unique_fields_set
-            field_data['is_indexed'] = field_name in indexed_fields_set
+            field_name = field.get("name", "")
+            field_data["is_primary_key"] = field_name in primary_key_set
+            field_data["is_unique"] = field_name in unique_fields_set
+            field_data["is_indexed"] = field_name in indexed_fields_set
             serialized_fields.append(field_data)
 
         return serialized_fields
 
     def get_schema_relationships(
-        self, obj: Contract,
-    ) -> List[Dict[str, Any]]:
+        self,
+        obj: Contract,
+    ) -> list[dict[str, Any]]:
         """Extract schema-level relationships from hub_contract_json."""
         hub_contract = self._safe_dict(obj.hub_contract_json)
         schema = self._safe_dict(hub_contract.get("schema", {}))
         rels = schema.get("relationships", [])
         if not isinstance(rels, list):
             return []
-        return [
-            RelationshipSerializer(r).data
-            for r in rels if isinstance(r, dict)
-        ]
+        return [RelationshipSerializer(r).data for r in rels if isinstance(r, dict)]
 
     def get_has_relationships(self, obj: Contract) -> bool:
         """Whether the contract has any schema relationships."""
@@ -719,73 +692,73 @@ class ContractSerializer(serializers.ModelSerializer):
         rels = hub.get("schema", {}).get("relationships", [])
         return isinstance(rels, list) and len(rels) > 0
 
-    def get_contact(self, obj: Contract) -> List[Dict[str, Any]]:
+    def get_contact(self, obj: Contract) -> list[dict[str, Any]]:
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        contact = hub_contract.get('contact', [])
+        contact = hub_contract.get("contact", [])
         return contact if isinstance(contact, list) else []
 
-    def get_servers(self, obj: Contract) -> List[Dict[str, Any]]:
+    def get_servers(self, obj: Contract) -> list[dict[str, Any]]:
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        servers = hub_contract.get('servers', [])
+        servers = hub_contract.get("servers", [])
         return servers if isinstance(servers, list) else []
 
-    def get_servicelevels(self, obj: Contract) -> List[Dict[str, Any]]:
+    def get_servicelevels(self, obj: Contract) -> list[dict[str, Any]]:
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        servicelevels = hub_contract.get('servicelevels', [])
+        servicelevels = hub_contract.get("servicelevels", [])
         return servicelevels if isinstance(servicelevels, list) else []
 
-    def get_terms(self, obj: Contract) -> Optional[Dict[str, Any]]:
+    def get_terms(self, obj: Contract) -> dict[str, Any] | None:
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        terms = hub_contract.get('terms')
+        terms = hub_contract.get("terms")
         return terms if isinstance(terms, dict) else None
 
-    def get_roles(self, obj: Contract) -> List[Dict[str, Any]]:
+    def get_roles(self, obj: Contract) -> list[dict[str, Any]]:
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        roles = hub_contract.get('roles', [])
+        roles = hub_contract.get("roles", [])
         return roles if isinstance(roles, list) else []
 
-    def get_team(self, obj: Contract) -> List[Dict[str, Any]]:
+    def get_team(self, obj: Contract) -> list[dict[str, Any]]:
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        team = hub_contract.get('team', [])
+        team = hub_contract.get("team", [])
         return team if isinstance(team, list) else []
 
-    def get_pricing(self, obj: Contract) -> Optional[Dict[str, Any]]:
+    def get_pricing(self, obj: Contract) -> dict[str, Any] | None:
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        pricing = hub_contract.get('pricing') or hub_contract.get('price')
+        pricing = hub_contract.get("pricing") or hub_contract.get("price")
         return pricing if isinstance(pricing, dict) else None
 
-    def get_lineage(self, obj: Contract) -> Dict[str, Any]:
+    def get_lineage(self, obj: Contract) -> dict[str, Any]:
         """Extract multi-level lineage from hub_contract_json."""
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        lineage = hub_contract.get('lineage', {})
+        lineage = hub_contract.get("lineage", {})
         return lineage if isinstance(lineage, dict) else {}
 
-    def get_quality_type(self, obj: Contract) -> Optional[str]:
+    def get_quality_type(self, obj: Contract) -> str | None:
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        quality = hub_contract.get('quality', {})
-        return quality.get('type')
+        quality = hub_contract.get("quality", {})
+        return quality.get("type")
 
-    def get_quality_specification(self, obj: Contract) -> Optional[str]:
+    def get_quality_specification(self, obj: Contract) -> str | None:
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        quality = hub_contract.get('quality', {})
-        return quality.get('specification')
+        quality = hub_contract.get("quality", {})
+        return quality.get("specification")
 
-    def get_support(self, obj: Contract) -> List[Dict[str, Any]]:
+    def get_support(self, obj: Contract) -> list[dict[str, Any]]:
         """Extract support channels from hub_contract_json."""
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        support = hub_contract.get('support', [])
+        support = hub_contract.get("support", [])
         return support if isinstance(support, list) else []
 
-    def get_definitions(self, obj: Contract) -> List[Dict[str, Any]]:
+    def get_definitions(self, obj: Contract) -> list[dict[str, Any]]:
         """Extract definitions from hub_contract_json."""
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        definitions = hub_contract.get('definitions', [])
+        definitions = hub_contract.get("definitions", [])
         return definitions if isinstance(definitions, list) else []
 
-    def get_models(self, obj: Contract) -> List[Dict[str, Any]]:
+    def get_models(self, obj: Contract) -> list[dict[str, Any]]:
         """Extract models from hub_contract_json."""
         hub_contract = self._safe_dict(obj.hub_contract_json)
-        models = hub_contract.get('models', [])
+        models = hub_contract.get("models", [])
         return models if isinstance(models, list) else []
 
 
@@ -821,7 +794,7 @@ def payload_size_envelope(
     data: Any,
     *,
     field_name: str = "original_raw",
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Audit the request body's ``original_raw`` field for size.
 
     Returns a ready-to-respond envelope dict when the body exceeds the
@@ -845,10 +818,7 @@ def payload_size_envelope(
     if size_bytes <= PAYLOAD_LIMIT_BYTES:
         return None
     return {
-        "error": (
-            f"Contract content exceeds {PAYLOAD_LIMIT_BYTES} bytes "
-            f"({size_bytes} bytes)."
-        ),
+        "error": (f"Contract content exceeds {PAYLOAD_LIMIT_BYTES} bytes ({size_bytes} bytes)."),
         "code": "PAYLOAD_TOO_LARGE",
         "details": {
             "limit_bytes": PAYLOAD_LIMIT_BYTES,
@@ -866,11 +836,10 @@ class _RawCharField(serializers.CharField):
     is deterministic regardless of DRF's error-shape vagaries.
     """
 
-    pass
-
 
 class ContractCreateSerializer(serializers.Serializer):
     """Serializer for contract creation"""
+
     asset_id = serializers.UUIDField(required=False, allow_null=True)
     original_raw = _RawCharField(
         max_length=PAYLOAD_LIMIT_BYTES,
@@ -880,19 +849,19 @@ class ContractCreateSerializer(serializers.Serializer):
     original_spec_type = serializers.ChoiceField(
         choices=OriginalSpecType.choices,
         required=False,
-        help_text="Optional: will be auto-detected if not provided"
+        help_text="Optional: will be auto-detected if not provided",
     )
     disable_external_refs = serializers.BooleanField(
         required=False,
         default=False,
         help_text="If True, external $ref references will be disabled (raises error if found). "
-                  "If False, external refs will be resolved normally."
+        "If False, external refs will be resolved normally.",
     )
     remove_external_refs = serializers.BooleanField(
         required=False,
         default=False,
         help_text="If True, external $ref references will be removed from the document. "
-                  "If False, external refs will be resolved and replaced with their content."
+        "If False, external refs will be resolved and replaced with their content.",
     )
 
 
@@ -927,6 +896,7 @@ class ContractValidateDraftResponseSerializer(serializers.Serializer):
 
 class ContractUpdateSerializer(serializers.Serializer):
     """Serializer for contract update"""
+
     # Phase 227 Wave 1 (227.L8.1) — same 2 MB cap as create.
     original_raw = _RawCharField(
         required=False,
@@ -949,12 +919,13 @@ class ContractUpdateSerializer(serializers.Serializer):
         required=False,
         default=False,
         help_text="If True, external $ref references will be removed from the document. "
-                  "If False, external refs will be resolved and replaced with their content."
+        "If False, external refs will be resolved and replaced with their content.",
     )
 
 
 class ProductCreateSerializer(serializers.Serializer):
     """Serializer for Product-First creation (ODPS)"""
+
     # Phase 227 Wave 1 (227.L8.1) — same 2 MB cap as ContractCreate.
     # Without this, ODPS bodies could route around the
     # ``ContractCreateSerializer`` cap via ``/contracts/products/``.
@@ -963,68 +934,66 @@ class ProductCreateSerializer(serializers.Serializer):
         help_text="ODPS document content (JSON or YAML). Max 2 MB.",
     )
     original_format = serializers.ChoiceField(
-        choices=OriginalFormat.choices,
-        help_text="ODPS document format: JSON or YAML"
+        choices=OriginalFormat.choices, help_text="ODPS document format: JSON or YAML"
     )
     resolve_external_refs = serializers.BooleanField(
         required=False,
         default=True,
         help_text="If True, external $ref references will be resolved. "
-                  "If False, external refs will be disabled (raises error if found)."
+        "If False, external refs will be disabled (raises error if found).",
     )
     asset_id = serializers.UUIDField(
-        required=False,
-        allow_null=True,
-        help_text="Optional asset ID to link contracts to"
+        required=False, allow_null=True, help_text="Optional asset ID to link contracts to"
     )
 
 
 class SecurityAuditLogSerializer(serializers.ModelSerializer):
     """Serializer for SecurityAuditLog model."""
 
-    tenant_id = serializers.UUIDField(source='tenant.id', read_only=True, allow_null=True)
-    tenant_name = serializers.CharField(source='tenant.name', read_only=True, allow_null=True)
-    user_id = serializers.UUIDField(source='user.id', read_only=True, allow_null=True)
-    user_email = serializers.CharField(source='user.email', read_only=True, allow_null=True)
-    contract_id = serializers.UUIDField(source='contract.id', read_only=True, allow_null=True)
+    tenant_id = serializers.UUIDField(source="tenant.id", read_only=True, allow_null=True)
+    tenant_name = serializers.CharField(source="tenant.name", read_only=True, allow_null=True)
+    user_id = serializers.UUIDField(source="user.id", read_only=True, allow_null=True)
+    user_email = serializers.CharField(source="user.email", read_only=True, allow_null=True)
+    contract_id = serializers.UUIDField(source="contract.id", read_only=True, allow_null=True)
 
     class Meta:
         model = SecurityAuditLog
         fields = [
-            'id',
-            'event_type',
-            'timestamp',
-            'severity',
-            'ref_type',
-            'ref_path',
-            'resolved_path',
-            'rate_limit_level',
-            'cache_operation',
-            'cache_key',
-            'eviction_reason',
-            'violation_type',
-            'attempted_path',
-            'attempted_url',
-            'description',
-            'metadata_json',
-            'request_id',
-            'ip_address',
-            'user_agent',
-            'tenant_id',
-            'tenant_name',
-            'user_id',
-            'user_email',
-            'contract_id',
+            "id",
+            "event_type",
+            "timestamp",
+            "severity",
+            "ref_type",
+            "ref_path",
+            "resolved_path",
+            "rate_limit_level",
+            "cache_operation",
+            "cache_key",
+            "eviction_reason",
+            "violation_type",
+            "attempted_path",
+            "attempted_url",
+            "description",
+            "metadata_json",
+            "request_id",
+            "ip_address",
+            "user_agent",
+            "tenant_id",
+            "tenant_name",
+            "user_id",
+            "user_email",
+            "contract_id",
         ]
         read_only_fields = fields
 
 
 class ODPSLinkSerializer(serializers.Serializer):
     """Serializer for ODPS linking request"""
+
     odps_contract_id = serializers.UUIDField(
         required=False,
         allow_null=True,
-        help_text="Existing ODPS contract ID to link (mutually exclusive with original_raw)"
+        help_text="Existing ODPS contract ID to link (mutually exclusive with original_raw)",
     )
     # Phase 227 Wave 1 (227.L8.1) — same 2 MB cap as ContractCreate.
     # ODPS link path was a 413 bypass route prior to this change.
@@ -1041,14 +1010,14 @@ class ODPSLinkSerializer(serializers.Serializer):
         choices=OriginalFormat.choices,
         required=False,
         allow_null=True,
-        help_text="ODPS document format: JSON or YAML (required if original_raw is provided)"
+        help_text="ODPS document format: JSON or YAML (required if original_raw is provided)",
     )
     resolve_external_refs = serializers.BooleanField(
         required=False,
         default=True,
         help_text="If True, external $ref references will be resolved. "
-                  "If False, external refs will be disabled (raises error if found). "
-                  "Only used if original_raw is provided."
+        "If False, external refs will be disabled (raises error if found). "
+        "Only used if original_raw is provided.",
     )
 
     def validate(self, attrs):
@@ -1078,45 +1047,46 @@ class ODPSLinkSerializer(serializers.Serializer):
 
 class SecurityIncidentSerializer(serializers.ModelSerializer):
     """Serializer for SecurityIncident model"""
-    tenant_name = serializers.CharField(source='tenant.name', read_only=True)
-    user_email = serializers.CharField(source='user.email', read_only=True)
-    resolved_by_email = serializers.CharField(source='resolved_by.email', read_only=True)
+
+    tenant_name = serializers.CharField(source="tenant.name", read_only=True)
+    user_email = serializers.CharField(source="user.email", read_only=True)
+    resolved_by_email = serializers.CharField(source="resolved_by.email", read_only=True)
 
     class Meta:
         from .models import SecurityIncident
+
         model = SecurityIncident
         fields = [
-            'id',
-            'title',
-            'description',
-            'severity',
-            'status',
-            'event_type',
-            'violation_count',
-            'first_detected_at',
-            'last_updated_at',
-            'resolved_at',
-            'resolution_notes',
-            'tenant',
-            'tenant_name',
-            'user',
-            'user_email',
-            'contract',
-            'resolved_by',
-            'resolved_by_email',
-            'metadata_json',
+            "id",
+            "title",
+            "description",
+            "severity",
+            "status",
+            "event_type",
+            "violation_count",
+            "first_detected_at",
+            "last_updated_at",
+            "resolved_at",
+            "resolution_notes",
+            "tenant",
+            "tenant_name",
+            "user",
+            "user_email",
+            "contract",
+            "resolved_by",
+            "resolved_by_email",
+            "metadata_json",
         ]
         read_only_fields = [
-            'id',
-            'first_detected_at',
-            'last_updated_at',
+            "id",
+            "first_detected_at",
+            "last_updated_at",
         ]
 
 
 class SecurityIncidentResolveSerializer(serializers.Serializer):
     """Serializer for resolving security incidents"""
+
     resolution_notes = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        help_text="Notes about how the incident was resolved"
+        required=False, allow_blank=True, help_text="Notes about how the incident was resolved"
     )

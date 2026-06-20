@@ -9,6 +9,7 @@ by ``_deliver_webhook``.
 Uses real database records (TransactionTestCase, no mocks on the
 service layer).
 """
+
 import hashlib
 import hmac
 import json
@@ -19,7 +20,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.testing.billing_support import (
     ensure_tenant_has_active_subscription,
 )
@@ -68,7 +69,8 @@ class WebhookIdempotencyRealPayloadTest(TestCase):
             name="Idempotency Webhook",
             url="http://localhost:19999/idemp",
             secret="test-secret-key",
-            event_types=event_types or [
+            event_types=event_types
+            or [
                 WebhookEventType.ODPS_CREATED,
             ],
             status=WebhookStatus.ACTIVE,
@@ -105,19 +107,23 @@ class WebhookIdempotencyRealPayloadTest(TestCase):
             webhook=webhook,
         ).first()
         self.assertIsNotNone(delivery)
-        assert delivery is not None  # for type checker
 
         payload = delivery.payload
         required_keys = {
-            "event_type", "resource_type",
-            "resource_id", "timestamp", "data",
+            "event_type",
+            "resource_type",
+            "resource_id",
+            "timestamp",
+            "data",
         }
-        self.assertTrue(
-            required_keys.issubset(payload.keys()),
-            f"Missing keys: {required_keys - payload.keys()}",
+        missing = required_keys - payload.keys()
+        self.assertEqual(
+            len(missing), 0,
+            f"Missing required payload keys: {missing}",
         )
         self.assertEqual(
-            payload["event_type"], WebhookEventType.ODPS_CREATED,
+            payload["event_type"],
+            WebhookEventType.ODPS_CREATED,
         )
         self.assertEqual(payload["resource_type"], "ODPS")
         self.assertEqual(payload["resource_id"], resource_id)
@@ -184,9 +190,9 @@ class WebhookIdempotencyRealPayloadTest(TestCase):
         self.assertIsNotNone(delivery)
         assert delivery is not None
         self.assertEqual(
-            delivery.payload.get("event_id"), event_id,
-            "event_id must be promoted from event_data to "
-            "top-level payload",
+            delivery.payload.get("event_id"),
+            event_id,
+            "event_id must be promoted from event_data to top-level payload",
         )
 
     @override_settings(WEBHOOK_ASYNC_DELIVERY=True)
@@ -217,14 +223,15 @@ class WebhookIdempotencyRealPayloadTest(TestCase):
         self.assertIsNotNone(delivery)
         assert delivery is not None
         self.assertEqual(
-            delivery.payload.get("event_id"), fallback_id,
+            delivery.payload.get("event_id"),
+            fallback_id,
             "id must be normalised to event_id in the payload",
         )
         # Original 'id' key must NOT appear at top level
         self.assertNotIn(
-            "id", delivery.payload,
-            "Top-level 'id' key should not be set; use "
-            "'event_id' only",
+            "id",
+            delivery.payload,
+            "Top-level 'id' key should not be set; use 'event_id' only",
         )
 
     # ------------------------------------------------------------------
@@ -278,9 +285,9 @@ class WebhookIdempotencyRealPayloadTest(TestCase):
             webhook=webhook,
         )
         self.assertEqual(
-            deliveries.count(), 1,
-            "Duplicate event_id should not create a second "
-            "delivery record",
+            deliveries.count(),
+            1,
+            "Duplicate event_id should not create a second delivery record",
         )
 
     @override_settings(WEBHOOK_ASYNC_DELIVERY=True)
@@ -377,9 +384,9 @@ class WebhookIdempotencyRealPayloadTest(TestCase):
             webhook=webhook,
         )
         self.assertEqual(
-            deliveries.count(), 2,
-            "FAILED delivery should not block retry — a new "
-            "delivery record should be created",
+            deliveries.count(),
+            2,
+            "FAILED delivery should not block retry — a new delivery record should be created",
         )
 
     @override_settings(WEBHOOK_ASYNC_DELIVERY=True)
@@ -409,9 +416,9 @@ class WebhookIdempotencyRealPayloadTest(TestCase):
             webhook=webhook,
         )
         self.assertEqual(
-            deliveries.count(), 2,
-            "Without event_id, each trigger must create a "
-            "separate delivery",
+            deliveries.count(),
+            2,
+            "Without event_id, each trigger must create a separate delivery",
         )
 
     # ------------------------------------------------------------------
@@ -514,7 +521,8 @@ class WebhookIdempotencyRealPayloadTest(TestCase):
         assert delivery is not None
 
         payload_json = json.dumps(
-            delivery.payload, sort_keys=True,
+            delivery.payload,
+            sort_keys=True,
         )
         expected_sig = hmac.new(
             webhook.decrypted_secret.encode("utf-8"),
@@ -563,8 +571,7 @@ class WebhookIdempotencyRealPayloadTest(TestCase):
         ).exists()
         self.assertTrue(
             exists,
-            "payload__event_id lookup must match top-level "
-            "event_id in the JSON payload",
+            "payload__event_id lookup must match top-level event_id in the JSON payload",
         )
 
         # Different event_id must NOT match

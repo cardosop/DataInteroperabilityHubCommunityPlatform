@@ -11,16 +11,12 @@ import uuid
 
 import pytest
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True)]
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
-from django.utils import timezone
-
-from tests.utils.polling import wait_until
+from django.test import TransactionTestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import (
-    Contract,
     ContractStatus,
     NormalizationStatus,
     OriginalFormat,
@@ -39,8 +35,9 @@ from hub.apps.webhooks.models import (
     WebhookStatus,
 )
 from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookServer
+from tests.utils.polling import wait_until
 
-pytestmark = pytest.mark.django_db(transaction=True)
+
 User = get_user_model()
 
 
@@ -52,7 +49,6 @@ class ODPSWebhookE2ETest(TransactionTestCase):
 
     def _fixture_teardown(self):
         """Skip TRUNCATE CASCADE to avoid timeout."""
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -153,9 +149,12 @@ class ODPSWebhookE2ETest(TransactionTestCase):
                 d = WebhookDelivery.objects.filter(webhook=webhook).first()
                 return d is not None and d.status == DeliveryStatus.SUCCESS
 
-            wait_until(has_success_delivery, timeout=5.0, message="ODPS created delivery not SUCCESS")
+            wait_until(
+                has_success_delivery, timeout=5.0, message="ODPS created delivery not SUCCESS"
+            )
             deliveries = WebhookDelivery.objects.filter(webhook=webhook)
-            self.assertGreaterEqual(deliveries.count(), 1)
+            self.assertEqual(deliveries.count(), 1,
+                             f"Expected exactly 1 delivery, got {deliveries.count()}")
 
             delivery = deliveries.first()
             self.assertEqual(delivery.event_type, "odps.created")
@@ -169,7 +168,8 @@ class ODPSWebhookE2ETest(TransactionTestCase):
             self.assertEqual(payload["data"]["contract_id"], str(odps_contract.id))
 
             requests_received = server.get_received_requests(timeout=2.0)
-            self.assertGreaterEqual(len(requests_received), 1)
+            self.assertEqual(len(requests_received), 1,
+                            f"Expected exactly 1 received request, got {len(requests_received)}")
 
     def test_odps_contract_linking_triggers_webhook_e2e(self):
         """E2E test: Linking ODPS to ODCS triggers webhook delivery (real server)."""
@@ -248,7 +248,8 @@ class ODPSWebhookE2ETest(TransactionTestCase):
 
             wait_until(has_linked_delivery, timeout=5.0, message="ODPS linked delivery not SUCCESS")
             deliveries = WebhookDelivery.objects.filter(webhook=webhook)
-            self.assertGreaterEqual(deliveries.count(), 1)
+            self.assertEqual(deliveries.count(), 1,
+                             f"Expected exactly 1 delivery, got {deliveries.count()}")
 
             delivery = deliveries.first()
             self.assertEqual(delivery.event_type, "odps.linked")
@@ -259,7 +260,8 @@ class ODPSWebhookE2ETest(TransactionTestCase):
             self.assertEqual(payload["data"]["odcs_contract_id"], str(odcs_contract.id))
 
             requests_received = server.get_received_requests(timeout=2.0)
-            self.assertGreaterEqual(len(requests_received), 1)
+            self.assertEqual(len(requests_received), 1,
+                            f"Expected exactly 1 received request, got {len(requests_received)}")
 
     def test_multiple_odps_events_trigger_multiple_webhooks_e2e(self):
         """E2E test: Multiple ODPS events trigger multiple webhook deliveries (real server)."""
@@ -331,9 +333,12 @@ class ODPSWebhookE2ETest(TransactionTestCase):
             def has_created_delivery():
                 return WebhookDelivery.objects.filter(webhook=created_webhook).count() >= 1
 
-            wait_until(has_created_delivery, timeout=5.0, message="Created webhook delivery not recorded")
+            wait_until(
+                has_created_delivery, timeout=5.0, message="Created webhook delivery not recorded"
+            )
             created_deliveries = WebhookDelivery.objects.filter(webhook=created_webhook)
-            self.assertGreaterEqual(created_deliveries.count(), 1)
+            self.assertEqual(created_deliveries.count(), 1,
+                             f"Expected exactly 1 created delivery, got {created_deliveries.count()}")
 
             linked_deliveries = WebhookDelivery.objects.filter(webhook=linked_webhook)
             self.assertEqual(linked_deliveries.count(), 0)
@@ -358,12 +363,15 @@ class ODPSWebhookE2ETest(TransactionTestCase):
             def has_linked_delivery_count():
                 return WebhookDelivery.objects.filter(webhook=linked_webhook).count() >= 1
 
-            wait_until(has_linked_delivery_count, timeout=5.0, message="Linked webhook delivery not recorded")
+            wait_until(
+                has_linked_delivery_count,
+                timeout=5.0,
+                message="Linked webhook delivery not recorded",
+            )
             linked_deliveries = WebhookDelivery.objects.filter(webhook=linked_webhook)
-            self.assertGreaterEqual(linked_deliveries.count(), 1)
-
-            self.assertGreaterEqual(created_deliveries.count(), 1)
-            self.assertGreaterEqual(linked_deliveries.count(), 1)
+            self.assertEqual(linked_deliveries.count(), 1,
+                             f"Expected exactly 1 linked delivery, got {linked_deliveries.count()}")
 
             requests_received = server.get_received_requests(timeout=2.0)
-            self.assertGreaterEqual(len(requests_received), 2)
+            self.assertEqual(len(requests_received), 2,
+                            f"Expected exactly 2 received requests, got {len(requests_received)}")

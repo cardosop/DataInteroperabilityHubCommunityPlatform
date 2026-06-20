@@ -5,9 +5,12 @@ Counts WebhookDelivery rows in DEAD_LETTER status per tenant and
 sets the ``webhook_dlq_size`` gauge so Prometheus can alert when
 undelivered webhooks accumulate silently.
 """
+
 from __future__ import annotations
 
 import logging
+
+from django.db import utils as django_db_utils
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +28,12 @@ def emit_webhook_dlq_metrics() -> dict[str, int]:
 
     try:
         qs = (
-            WebhookDelivery.objects
-            .filter(status=DeliveryStatus.DEAD_LETTER)
+            WebhookDelivery.objects.filter(status=DeliveryStatus.DEAD_LETTER)
             .values("webhook__tenant_id")
             .annotate(dlq_count=Count("id"))
             .order_by("-dlq_count")
         )
-    except Exception:
+    except django_db_utils.DatabaseError:
         logger.exception("webhook_dlq_query_failed")
         return {}
 

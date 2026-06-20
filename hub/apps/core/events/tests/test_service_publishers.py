@@ -1,20 +1,21 @@
 """
 Tests for service event publishers.
 """
+
 import uuid
 from unittest.mock import Mock, patch
+
 from django.test import TestCase
+
 from hub.apps.core.events.service_publishers import (
-    ContractEventPublisher,
     AssetEventPublisher,
+    ContractEventPublisher,
     DatasetEventPublisher,
-    IngestionEventPublisher,
-    MarketplaceEventPublisher,
-    AccessEventPublisher,
-    WorkflowEventPublisher,
     FileEventPublisher,
+    LineageEventPublisher,
+    MarketplaceEventPublisher,
     SearchEventPublisher,
-    LineageEventPublisher
+    WorkflowEventPublisher,
 )
 
 
@@ -37,14 +38,16 @@ class ContractEventPublisherTest(ServicePublisherMixin, TestCase):
 
     def create_service(self):
         """Create ContractService with event publisher."""
+
         class TestService(ContractEventPublisher):
             def __init__(self, tenant_id, user_id):
                 self.tenant_id = tenant_id
                 self.user_id = user_id
                 super().__init__()
+
         return TestService(self.tenant_id, self.user_id)
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_contract_created(self, mock_publisher_class):
         """Test publishing contract.created event."""
         mock_publisher = Mock()
@@ -54,9 +57,7 @@ class ContractEventPublisherTest(ServicePublisherMixin, TestCase):
         service = self.create_service()
         contract_id = str(uuid.uuid4())
         event_id = service.publish_contract_created(
-            contract_id=contract_id,
-            asset_id=str(uuid.uuid4()),
-            status="ACTIVE"
+            contract_id=contract_id, asset_id=str(uuid.uuid4()), status="ACTIVE"
         )
 
         self.assertIsNotNone(event_id)
@@ -65,7 +66,7 @@ class ContractEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["event_type"], "contract.created")
         self.assertEqual(call_args[1]["data"]["contract_id"], contract_id)
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_contract_validated(self, mock_publisher_class):
         """Test publishing contract.validated event."""
         mock_publisher = Mock()
@@ -75,9 +76,7 @@ class ContractEventPublisherTest(ServicePublisherMixin, TestCase):
         service = self.create_service()
         contract_id = str(uuid.uuid4())
         event_id = service.publish_contract_validated(
-            contract_id=contract_id,
-            validation_result=True,
-            validation_errors=[]
+            contract_id=contract_id, validation_result=True, validation_errors=[]
         )
 
         self.assertIsNotNone(event_id)
@@ -91,14 +90,16 @@ class AssetEventPublisherTest(ServicePublisherMixin, TestCase):
 
     def create_service(self):
         """Create AssetService with event publisher."""
+
         class TestService(AssetEventPublisher):
             def __init__(self, tenant_id, user_id):
                 self.tenant_id = tenant_id
                 self.user_id = user_id
                 super().__init__()
+
         return TestService(self.tenant_id, self.user_id)
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_asset_created(self, mock_publisher_class):
         """Test publishing asset.created event."""
         mock_publisher = Mock()
@@ -107,17 +108,14 @@ class AssetEventPublisherTest(ServicePublisherMixin, TestCase):
 
         service = self.create_service()
         asset_id = str(uuid.uuid4())
-        event_id = service.publish_asset_created(
-            asset_id=asset_id,
-            name="Test Asset"
-        )
+        event_id = service.publish_asset_created(asset_id=asset_id, name="Test Asset")
 
         self.assertIsNotNone(event_id)
         call_args = mock_publisher.publish.call_args
         self.assertEqual(call_args[1]["event_type"], "asset.created")
         self.assertEqual(call_args[1]["data"]["asset_id"], asset_id)
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_asset_activated(self, mock_publisher_class):
         """Test publishing asset.activated event."""
         mock_publisher = Mock()
@@ -127,9 +125,7 @@ class AssetEventPublisherTest(ServicePublisherMixin, TestCase):
         service = self.create_service()
         asset_id = str(uuid.uuid4())
         event_id = service.publish_asset_activated(
-            asset_id=asset_id,
-            dq_status="PASSED",
-            compliance_status="COMPLIANT"
+            asset_id=asset_id, dq_status="PASSED", compliance_status="COMPLIANT"
         )
 
         self.assertIsNotNone(event_id)
@@ -142,14 +138,16 @@ class DatasetEventPublisherTest(ServicePublisherMixin, TestCase):
 
     def create_service(self):
         """Create DatasetService with event publisher."""
+
         class TestService(DatasetEventPublisher):
             def __init__(self, tenant_id, user_id):
                 self.tenant_id = tenant_id
                 self.user_id = user_id
                 super().__init__()
+
         return TestService(self.tenant_id, self.user_id)
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_dataset_created(self, mock_publisher_class):
         """Test publishing dataset.created event."""
         mock_publisher = Mock()
@@ -159,9 +157,7 @@ class DatasetEventPublisherTest(ServicePublisherMixin, TestCase):
         service = self.create_service()
         dataset_id = str(uuid.uuid4())
         event_id = service.publish_dataset_created(
-            dataset_id=dataset_id,
-            file_id=str(uuid.uuid4()),
-            format="CSV"
+            dataset_id=dataset_id, file_id=str(uuid.uuid4()), format="CSV"
         )
 
         self.assertIsNotNone(event_id)
@@ -175,14 +171,16 @@ class MarketplaceEventPublisherTest(ServicePublisherMixin, TestCase):
 
     def create_service(self):
         """Create MarketplaceService with event publisher."""
+
         class TestService(MarketplaceEventPublisher):
             def __init__(self, tenant_id, user_id):
                 self.tenant_id = tenant_id
                 self.user_id = user_id
                 super().__init__()
+
         return TestService(self.tenant_id, self.user_id)
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_listing_published(self, mock_publisher_class):
         """Test publishing marketplace.listing.published event."""
         mock_publisher = Mock()
@@ -192,10 +190,7 @@ class MarketplaceEventPublisherTest(ServicePublisherMixin, TestCase):
         service = self.create_service()
         listing_id = str(uuid.uuid4())
         asset_id = str(uuid.uuid4())
-        event_id = service.publish_listing_published(
-            listing_id=listing_id,
-            asset_id=asset_id
-        )
+        event_id = service.publish_listing_published(listing_id=listing_id, asset_id=asset_id)
 
         self.assertIsNotNone(event_id)
         call_args = mock_publisher.publish.call_args
@@ -203,7 +198,7 @@ class MarketplaceEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["data"]["listing_id"], listing_id)
         self.assertEqual(call_args[1]["data"]["asset_id"], asset_id)
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_order_created(self, mock_publisher_class):
         """Test publishing marketplace.order.created event."""
         mock_publisher = Mock()
@@ -215,10 +210,7 @@ class MarketplaceEventPublisherTest(ServicePublisherMixin, TestCase):
         listing_id = str(uuid.uuid4())
         buyer_id = str(uuid.uuid4())
         event_id = service.publish_order_created(
-            order_id=order_id,
-            listing_id=listing_id,
-            buyer_id=buyer_id,
-            order_amount=100.0
+            order_id=order_id, listing_id=listing_id, buyer_id=buyer_id, order_amount=100.0
         )
 
         self.assertIsNotNone(event_id)
@@ -240,9 +232,10 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
                 self.tenant_id = tenant_id
                 self.user_id = user_id
                 super().__init__()
+
         return TestService()
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_workflow_started(self, mock_publisher_class):
         """Test publishing workflow.started event."""
         mock_publisher = Mock()
@@ -252,8 +245,7 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
         service = self.create_service()
         workflow_instance_id = str(uuid.uuid4())
         event_id = service.publish_workflow_started(
-            workflow_instance_id=workflow_instance_id,
-            workflow_name="test_workflow"
+            workflow_instance_id=workflow_instance_id, workflow_name="test_workflow"
         )
 
         self.assertIsNotNone(event_id)
@@ -261,7 +253,7 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["event_type"], "workflow.started")
         self.assertEqual(call_args[1]["data"]["workflow_instance_id"], workflow_instance_id)
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_workflow_completed(self, mock_publisher_class):
         """Test publishing workflow.completed event."""
         mock_publisher = Mock()
@@ -273,7 +265,7 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
         event_id = service.publish_workflow_completed(
             workflow_instance_id=workflow_instance_id,
             workflow_name="test_workflow",
-            duration_ms=1000
+            duration_ms=1000,
         )
 
         self.assertIsNotNone(event_id)
@@ -281,7 +273,7 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["event_type"], "workflow.completed")
         self.assertEqual(call_args[1]["data"]["duration_ms"], 1000)
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_workflow_step_started(self, mock_publisher_class):
         """Test publishing workflow.step.started event."""
         mock_publisher = Mock()
@@ -298,7 +290,7 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
             workflow_instance_id=workflow_instance_id,
             step_index=step_index,
             step_name=step_name,
-            step_type=step_type
+            step_type=step_type,
         )
 
         self.assertIsNotNone(event_id)
@@ -310,7 +302,7 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["data"]["step_name"], step_name)
         self.assertEqual(call_args[1]["data"]["step_type"], step_type)
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_workflow_step_completed(self, mock_publisher_class):
         """Test publishing workflow.step.completed event."""
         mock_publisher = Mock()
@@ -329,7 +321,7 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
             step_index=step_index,
             step_name=step_name,
             output_data=output_data,
-            duration_ms=duration_ms
+            duration_ms=duration_ms,
         )
 
         self.assertIsNotNone(event_id)
@@ -342,7 +334,7 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["data"]["output_data"], output_data)
         self.assertEqual(call_args[1]["data"]["duration_ms"], duration_ms)
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_workflow_step_failed(self, mock_publisher_class):
         """Test publishing workflow.step.failed event."""
         mock_publisher = Mock()
@@ -363,7 +355,7 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
             step_name=step_name,
             error_message=error_message,
             error_details=error_details,
-            retry_count=retry_count
+            retry_count=retry_count,
         )
 
         self.assertIsNotNone(event_id)
@@ -377,7 +369,7 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["data"]["error_details"], error_details)
         self.assertEqual(call_args[1]["data"]["retry_count"], retry_count)
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_workflow_step_started_with_tenant_user(self, mock_publisher_class):
         """Test publishing workflow.step.started event with tenant and user IDs."""
         mock_publisher = Mock()
@@ -394,7 +386,7 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
             step_index=0,
             step_name="test_step",
             tenant_id=tenant_id,
-            user_id=user_id
+            user_id=user_id,
         )
 
         self.assertIsNotNone(event_id)
@@ -402,7 +394,7 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["tenant_id"], tenant_id)
         self.assertEqual(call_args[1]["user_id"], user_id)
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_workflow_step_completed_with_optional_fields(self, mock_publisher_class):
         """Test publishing workflow.step.completed event with optional fields."""
         mock_publisher = Mock()
@@ -418,7 +410,7 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
             step_index=0,
             step_name="test_step",
             output_data=None,
-            duration_ms=None
+            duration_ms=None,
         )
 
         self.assertIsNotNone(event_id)
@@ -426,7 +418,7 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["data"]["output_data"], {})
         self.assertIsNone(call_args[1]["data"]["duration_ms"])
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_workflow_step_failed_with_default_retry_count(self, mock_publisher_class):
         """Test publishing workflow.step.failed event with default retry_count."""
         mock_publisher = Mock()
@@ -443,7 +435,7 @@ class WorkflowEventPublisherTest(ServicePublisherMixin, TestCase):
             step_name="test_step",
             error_message="Test error",
             error_details=None,
-            retry_count=None
+            retry_count=None,
         )
 
         self.assertIsNotNone(event_id)
@@ -459,14 +451,16 @@ class FileEventPublisherTest(ServicePublisherMixin, TestCase):
         """Create FileService with event publisher."""
         tenant_id = self.tenant_id
         user_id = self.user_id
+
         class TestService(FileEventPublisher):
             def __init__(self):
                 self.tenant_id = tenant_id
                 self.user_id = user_id
                 super().__init__()
+
         return TestService()
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_file_created(self, mock_publisher_class):
         """Test publishing file.created event."""
         mock_publisher = Mock()
@@ -481,7 +475,7 @@ class FileEventPublisherTest(ServicePublisherMixin, TestCase):
             content_type="text/csv",
             size=1024,
             status="ACTIVE",
-            content_sha256="abc123"
+            content_sha256="abc123",
         )
 
         self.assertIsNotNone(event_id)
@@ -494,7 +488,7 @@ class FileEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["data"]["status"], "ACTIVE")
         self.assertEqual(call_args[1]["data"]["content_sha256"], "abc123")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_file_updated(self, mock_publisher_class):
         """Test publishing file.updated event."""
         mock_publisher = Mock()
@@ -505,10 +499,7 @@ class FileEventPublisherTest(ServicePublisherMixin, TestCase):
         file_id = str(uuid.uuid4())
         changes = {"status": {"old": "PENDING", "new": "ACTIVE"}}
         event_id = service.publish_file_updated(
-            file_id=file_id,
-            changes=changes,
-            previous_status="PENDING",
-            new_status="ACTIVE"
+            file_id=file_id, changes=changes, previous_status="PENDING", new_status="ACTIVE"
         )
 
         self.assertIsNotNone(event_id)
@@ -519,7 +510,7 @@ class FileEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["data"]["previous_status"], "PENDING")
         self.assertEqual(call_args[1]["data"]["new_status"], "ACTIVE")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_file_deleted(self, mock_publisher_class):
         """Test publishing file.deleted event."""
         mock_publisher = Mock()
@@ -528,10 +519,7 @@ class FileEventPublisherTest(ServicePublisherMixin, TestCase):
 
         service = self.create_service()
         file_id = str(uuid.uuid4())
-        event_id = service.publish_file_deleted(
-            file_id=file_id,
-            reason="User requested deletion"
-        )
+        event_id = service.publish_file_deleted(file_id=file_id, reason="User requested deletion")
 
         self.assertIsNotNone(event_id)
         call_args = mock_publisher.publish.call_args
@@ -540,7 +528,7 @@ class FileEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["data"]["reason"], "User requested deletion")
         self.assertIn("deleted_at", call_args[1]["data"])
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_file_uploaded(self, mock_publisher_class):
         """Test publishing file.uploaded event."""
         mock_publisher = Mock()
@@ -554,7 +542,7 @@ class FileEventPublisherTest(ServicePublisherMixin, TestCase):
             file_size=2048,
             content_type="application/json",
             upload_duration_ms=500,
-            content_sha256="def456"
+            content_sha256="def456",
         )
 
         self.assertIsNotNone(event_id)
@@ -566,7 +554,7 @@ class FileEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["data"]["upload_duration_ms"], 500)
         self.assertEqual(call_args[1]["data"]["content_sha256"], "def456")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_file_downloaded(self, mock_publisher_class):
         """Test publishing file.downloaded event."""
         mock_publisher = Mock()
@@ -576,9 +564,7 @@ class FileEventPublisherTest(ServicePublisherMixin, TestCase):
         service = self.create_service()
         file_id = str(uuid.uuid4())
         event_id = service.publish_file_downloaded(
-            file_id=file_id,
-            download_duration_ms=300,
-            download_size=1024
+            file_id=file_id, download_duration_ms=300, download_size=1024
         )
 
         self.assertIsNotNone(event_id)
@@ -596,14 +582,16 @@ class LineageEventPublisherTest(ServicePublisherMixin, TestCase):
         """Create LineageService with event publisher."""
         tenant_id = self.tenant_id
         user_id = self.user_id
+
         class TestService(LineageEventPublisher):
             def __init__(self):
                 self.tenant_id = tenant_id
                 self.user_id = user_id
                 super().__init__()
+
         return TestService()
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_lineage_updated(self, mock_publisher_class):
         """Test publishing lineage.updated event."""
         mock_publisher = Mock()
@@ -618,7 +606,7 @@ class LineageEventPublisherTest(ServicePublisherMixin, TestCase):
             field_name="email",
             lineage_type="field",
             changes={"relationships_added": 2},
-            relationship_count=5
+            relationship_count=5,
         )
 
         self.assertIsNotNone(event_id)
@@ -630,7 +618,7 @@ class LineageEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["data"]["lineage_type"], "field")
         self.assertEqual(call_args[1]["data"]["relationship_count"], 5)
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_lineage_relationship_added(self, mock_publisher_class):
         """Test publishing lineage.relationship_added event."""
         mock_publisher = Mock()
@@ -647,7 +635,7 @@ class LineageEventPublisherTest(ServicePublisherMixin, TestCase):
             target_reference=target_ref,
             relationship_type="depends_on",
             model_name="UserModel",
-            field_name="email"
+            field_name="email",
         )
 
         self.assertIsNotNone(event_id)
@@ -660,7 +648,7 @@ class LineageEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["data"]["model_name"], "UserModel")
         self.assertEqual(call_args[1]["data"]["field_name"], "email")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_lineage_relationship_removed(self, mock_publisher_class):
         """Test publishing lineage.relationship_removed event."""
         mock_publisher = Mock()
@@ -678,7 +666,7 @@ class LineageEventPublisherTest(ServicePublisherMixin, TestCase):
             relationship_type="depends_on",
             model_name="UserModel",
             field_name="email",
-            reason="Contract deleted"
+            reason="Contract deleted",
         )
 
         self.assertIsNotNone(event_id)
@@ -692,7 +680,7 @@ class LineageEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertEqual(call_args[1]["data"]["field_name"], "email")
         self.assertEqual(call_args[1]["data"]["reason"], "Contract deleted")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_lineage_updated_with_minimal_data(self, mock_publisher_class):
         """Test publishing lineage.updated event with only required fields."""
         mock_publisher = Mock()
@@ -710,7 +698,7 @@ class LineageEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertIsNone(call_args[1]["data"]["model_name"])
         self.assertIsNone(call_args[1]["data"]["field_name"])
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_lineage_relationship_added_with_minimal_data(self, mock_publisher_class):
         """Test publishing lineage.relationship_added event with only required fields."""
         mock_publisher = Mock()
@@ -722,9 +710,7 @@ class LineageEventPublisherTest(ServicePublisherMixin, TestCase):
         source_ref = "namespace1/contract1"
         target_ref = "namespace2/contract2"
         event_id = service.publish_lineage_relationship_added(
-            contract_id=contract_id,
-            source_reference=source_ref,
-            target_reference=target_ref
+            contract_id=contract_id, source_reference=source_ref, target_reference=target_ref
         )
 
         self.assertIsNotNone(event_id)
@@ -742,14 +728,16 @@ class SearchEventPublisherTest(ServicePublisherMixin, TestCase):
         """Create SearchService with event publisher."""
         tenant_id = self.tenant_id
         user_id = self.user_id
+
         class TestService(SearchEventPublisher):
             def __init__(self):
                 self.tenant_id = tenant_id
                 self.user_id = user_id
                 super().__init__()
+
         return TestService()
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_search_query(self, mock_publisher_class):
         """Test publishing search.query event."""
         mock_publisher = Mock()
@@ -764,7 +752,7 @@ class SearchEventPublisherTest(ServicePublisherMixin, TestCase):
             filters={"type": "ASSET", "classification": "PUBLIC"},
             result_count=10,
             no_results=False,
-            execution_time_ms=150
+            execution_time_ms=150,
         )
 
         self.assertIsNotNone(event_id)
@@ -779,7 +767,7 @@ class SearchEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertIn("search", call_args[1]["tags"])
         self.assertIn("query", call_args[1]["tags"])
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_index_updated(self, mock_publisher_class):
         """Test publishing search.index.updated event."""
         mock_publisher = Mock()
@@ -795,7 +783,7 @@ class SearchEventPublisherTest(ServicePublisherMixin, TestCase):
             resource_id=resource_id,
             index_id=index_id,
             title="Test Asset",
-            update_type="updated"
+            update_type="updated",
         )
 
         self.assertIsNotNone(event_id)
@@ -809,7 +797,7 @@ class SearchEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertIn("search", call_args[1]["tags"])
         self.assertIn("index", call_args[1]["tags"])
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_index_rebuilt(self, mock_publisher_class):
         """Test publishing search.index.rebuilt event."""
         mock_publisher = Mock()
@@ -824,7 +812,7 @@ class SearchEventPublisherTest(ServicePublisherMixin, TestCase):
             duration_ms=5000,
             resource_types=["ASSET", "CONTRACT", "DATASET"],
             success=True,
-            errors=[]
+            errors=[],
         )
 
         self.assertIsNotNone(event_id)
@@ -840,4 +828,3 @@ class SearchEventPublisherTest(ServicePublisherMixin, TestCase):
         self.assertIn("search", call_args[1]["tags"])
         self.assertIn("index", call_args[1]["tags"])
         self.assertIn("rebuild", call_args[1]["tags"])
-

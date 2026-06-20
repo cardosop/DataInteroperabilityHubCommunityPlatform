@@ -14,11 +14,11 @@ import threading
 import uuid
 
 import pytest
-from django.db import transaction, connections
+from django.db import connections, transaction
 from django.db.utils import IntegrityError
 from django.utils import timezone
 
-from hub.apps.tenants.models import Tenant, TenantPlan, KYCStatus
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantPlan
 
 
 @pytest.mark.integration
@@ -121,8 +121,9 @@ class TestConcurrentPlanDowngrade:
 
         # Both threads operated, final state is one of the two plans
         tenant.refresh_from_db()
-        assert tenant.plan_id in (plan_pro.id, TenantPlan.objects.get(slug="enterprise").id), \
+        assert tenant.plan_id in (plan_pro.id, TenantPlan.objects.get(slug="enterprise").id), (
             f"Tenant plan should be pro or enterprise, got {tenant.plan_id}"
+        )
         # The tenant should not be left without a plan
         assert tenant.plan_id is not None
 
@@ -135,16 +136,18 @@ class TestConcurrentAccessRequestApproval:
     @pytest.mark.django_db(transaction=True)
     def test_concurrent_approval_does_not_double_transition(self):
         """Concurrent approvals on the same access request don't double-process."""
-        from hub.apps.governance.models import (
-            AccessRequest, AccessRequestStatus, AccessPolicy,
-        )
         from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility
+        from hub.apps.governance.models import (
+            AccessRequest,
+            AccessRequestStatus,
+        )
 
         plan = TenantPlan.objects.get(slug="enterprise")
         tenant = Tenant.objects.create(
             name=f"ar-concurrent-{uuid.uuid4().hex[:8]}",
             slug=f"ar-concurrent-{uuid.uuid4().hex[:8]}",
-            plan=plan, kyc_status=KYCStatus.VERIFIED,
+            plan=plan,
+            kyc_status=KYCStatus.VERIFIED,
         )
         asset = Asset.objects.create(
             name=f"concurrent-ar-asset-{uuid.uuid4().hex[:8]}",
@@ -168,11 +171,7 @@ class TestConcurrentAccessRequestApproval:
             connections.close_all()
             try:
                 with transaction.atomic():
-                    ar_locked = (
-                        AccessRequest.objects
-                        .select_for_update()
-                        .get(id=ar.id)
-                    )
+                    ar_locked = AccessRequest.objects.select_for_update().get(id=ar.id)
                     if ar_locked.status == AccessRequestStatus.PENDING:
                         ar_locked.status = AccessRequestStatus.APPROVED
                         ar_locked.save(update_fields=["status", "updated_at"])
@@ -192,11 +191,11 @@ class TestConcurrentAccessRequestApproval:
 
         # Only one should have transitioned to APPROVED
         ar.refresh_from_db()
-        assert ar.status == AccessRequestStatus.APPROVED, \
-            f"Expected APPROVED, got {ar.status}"
+        assert ar.status == AccessRequestStatus.APPROVED, f"Expected APPROVED, got {ar.status}"
         approved_count = sum(1 for t in transitions if t == "approved")
-        assert approved_count == 1, \
+        assert approved_count == 1, (
             f"Expected exactly 1 approval, got {approved_count}. Transitions: {transitions}"
+        )
 
 
 @pytest.mark.integration
@@ -213,7 +212,8 @@ class TestConcurrentIdempotencyKey:
         tenant = Tenant.objects.create(
             name=f"idem-key-{uuid.uuid4().hex[:8]}",
             slug=f"idem-key-{uuid.uuid4().hex[:8]}",
-            plan=plan, kyc_status=KYCStatus.VERIFIED,
+            plan=plan,
+            kyc_status=KYCStatus.VERIFIED,
         )
 
         idem_key = f"sub_{tenant.id}_{plan.slug}_{uuid.uuid4().hex[:8]}"
@@ -246,7 +246,8 @@ class TestConcurrentIdempotencyKey:
             except IntegrityError:
                 # Other thread created it first — find existing
                 existing = Subscription.objects.filter(
-                    tenant=tenant, stripe_subscription_id=idem_key,
+                    tenant=tenant,
+                    stripe_subscription_id=idem_key,
                 ).first()
                 with lock:
                     results.append("integrity_error_found_existing")
@@ -259,7 +260,8 @@ class TestConcurrentIdempotencyKey:
 
         # Exactly one subscription should exist
         count = Subscription.objects.filter(
-            tenant=tenant, stripe_subscription_id=idem_key,
+            tenant=tenant,
+            stripe_subscription_id=idem_key,
         ).count()
         assert count == 1, f"Expected exactly 1 subscription, found {count}"
         # One should have created, the other reused

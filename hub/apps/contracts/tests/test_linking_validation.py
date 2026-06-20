@@ -105,7 +105,9 @@ class LinkingValidationTest(ContractsTestBase):
     def test_validate_contract_exists_tenant_mismatch(self):
         """Test contract existence validation fails for wrong tenant."""
         _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
 
         with self.assertRaises(LinkingValidationError) as cm:
             validate_contract_exists(str(self.odps_contract.id), tenant_id=str(other_tenant.id))
@@ -164,7 +166,9 @@ class LinkingValidationTest(ContractsTestBase):
     def test_validate_contract_compatibility_tenant_mismatch(self):
         """Test compatibility validation fails for different tenants."""
         _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
         other_odcs = Contract.objects.create(
             tenant=other_tenant,
             version=1,
@@ -442,7 +446,9 @@ class CircularReferencePreventionTest(ContractsTestBase):
     def test_validate_linking_tenant_mismatch_odps(self):
         """Test validate_linking fails when ODPS contract belongs to different tenant"""
         _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
 
         with self.assertRaises(LinkingValidationError) as cm:
             validate_linking(
@@ -456,7 +462,9 @@ class CircularReferencePreventionTest(ContractsTestBase):
     def test_validate_linking_tenant_mismatch_odcs(self):
         """Test validate_linking fails when ODCS contract belongs to different tenant"""
         _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
         other_odcs = Contract.objects.create(
             tenant=other_tenant,
             version=1,
@@ -573,7 +581,8 @@ class CircularReferencePreventionTest(ContractsTestBase):
         """Test validate_no_circular_reference fails when linking contract to itself"""
         with self.assertRaises(LinkingValidationError) as cm:
             validate_no_circular_reference(
-                str(self.odps_contract.id), str(self.odps_contract.id)  # Same contract
+                str(self.odps_contract.id),
+                str(self.odps_contract.id),  # Same contract
             )
 
         # Should detect as circular reference (self-reference)

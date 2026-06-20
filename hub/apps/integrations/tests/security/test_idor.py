@@ -44,6 +44,7 @@ business logic. The download endpoint's connector path is exercised
 against a `MarketplaceConnection` test fixture; downloads themselves
 are blocked at the role gate so no real S3/HTTP work fires.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -62,7 +63,6 @@ from hub.apps.assets.models import (
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -91,10 +91,13 @@ def _seed_user(tenant, *, roles: list[str] | None = None):
     )
     if roles is not None:
         from hub.apps.users.models import Role
+
         for role_name in roles:
             role = Role.objects.filter(tenant=tenant, name=role_name).first()
             if not role:
-                role = Role.objects.create(tenant=tenant, name=role_name, description=f"{role_name} Role")
+                role = Role.objects.create(
+                    tenant=tenant, name=role_name, description=f"{role_name} Role"
+                )
             user.user_roles.create(role=role)
     return user
 
@@ -102,8 +105,8 @@ def _seed_user(tenant, *, roles: list[str] | None = None):
 def _seed_federated_asset_with_resource(tenant):
     """Stand up a FEDERATED Asset + one ExternalResourceReference so
     the IDOR tests have a real row to attempt access against."""
-    from hub.apps.integrations.models import MarketplaceConnection
     from hub.apps.integrations.base import MarketplaceType
+    from hub.apps.integrations.models import MarketplaceConnection
 
     asset = Asset.objects.create(
         tenant=tenant,
@@ -209,7 +212,11 @@ class AuditorMutationDenyTest(TestCase):
         # scoping check passes (auditor IS in the tenant), so 404
         # would be wrong — the row exists, the role just can't act
         # on it.
-        assert resp.status_code in (401, 403), resp.content
+        assert resp.status_code == 403, (
+            f"Expected 403 Forbidden for AUDITOR write operation, "
+            f"got {resp.status_code}. "
+            f"Body: {resp.content.decode('utf-8', errors='replace')[:200]}"
+        )
         # No File / Dataset side-effect — the refusal MUST land at the
         # role gate BEFORE any download / persistence work begins.
         assert File.objects.filter(tenant=tenant).count() == files_before
@@ -233,7 +240,11 @@ class AuditorMutationDenyTest(TestCase):
             data={"resource_ids": [ref.resource_id]},
             format="json",
         )
-        assert resp.status_code in (401, 403), resp.content
+        assert resp.status_code == 403, (
+            f"Expected 403 Forbidden for AUDITOR write operation, "
+            f"got {resp.status_code}. "
+            f"Body: {resp.content.decode('utf-8', errors='replace')[:200]}"
+        )
         assert File.objects.filter(tenant=tenant).count() == files_before
         assert Dataset.objects.filter(asset=asset).count() == datasets_before
 
@@ -243,7 +254,7 @@ class AuditorMutationDenyTest(TestCase):
         own tenant per Phase 250.5.A.4)."""
         tenant = _seed_tenant(slug_prefix="t")
         auditor = _seed_user(tenant, roles=["AUDITOR"])
-        asset, _conn, ref = _seed_federated_asset_with_resource(tenant)
+        asset, _conn, _ref = _seed_federated_asset_with_resource(tenant)
 
         client = APIClient()
         client.force_authenticate(user=auditor)
@@ -265,6 +276,8 @@ class TenantResolutionFailureModesTest(TestCase):
 
     * X-Tenant-Id header present but bearer token missing/invalid → 401
       (the credentials are bad, retry after refresh).
+    * Authenticated user with NO X-Tenant-Id header on a tenant-scoped
+      endpoint → 401 (cannot resolve tenant context).
     * X-Tenant-Id header carries a non-UUID value → 400 (the request
       is structurally invalid; NOT 500 with a stack trace; NOT 403
       which would imply a permission decision).

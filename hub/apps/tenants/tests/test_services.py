@@ -30,6 +30,7 @@ class GetTenantConfigTest(TestCase):
 
     def setUp(self):
         import uuid
+
         uid = str(uuid.uuid4())[:8]
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
@@ -67,6 +68,7 @@ class GetTenantConfigTest(TestCase):
     def test_get_tenant_config_value_no_config_returns_platform_default(self):
         """Success: get_tenant_config_value returns platform default when no config."""
         from hub.apps.tenants.validators import get_platform_defaults
+
         defaults = get_platform_defaults()
         value = get_tenant_config_value(self.tenant, "default_dq_profile")
         self.assertEqual(value, defaults["default_dq_profile"])
@@ -111,7 +113,9 @@ class GetTenantHelpersTest(TestCase):
     """Test get_tenant_dq_profile, get_tenant_compliance_regimes, get_tenant_file_size_limit, get_tenant_job_limits."""
 
     def setUp(self):
-        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
+        )
 
     def test_get_tenant_dq_profile_success(self):
         """Success: returns DQ profile for existing tenant (or platform default)."""
@@ -122,6 +126,7 @@ class GetTenantHelpersTest(TestCase):
     def test_get_tenant_dq_profile_invalid_uuid_returns_platform_default(self):
         """Failure/edge: invalid UUID returns platform default (no exception)."""
         from hub.apps.tenants.services import get_platform_defaults
+
         expected_default = get_platform_defaults()["default_dq_profile"]
         result = get_tenant_dq_profile("not-a-uuid")
         self.assertEqual(result, expected_default)
@@ -129,7 +134,9 @@ class GetTenantHelpersTest(TestCase):
     def test_get_tenant_dq_profile_nonexistent_tenant_returns_platform_default(self):
         """Failure: nonexistent tenant_id returns platform default."""
         import uuid
+
         from hub.apps.tenants.services import get_platform_defaults
+
         expected_default = get_platform_defaults()["default_dq_profile"]
         fake_id = str(uuid.uuid4())
         result = get_tenant_dq_profile(fake_id)
@@ -159,7 +166,9 @@ class TenantServiceTest(TestCase):
     """Test TenantService with real DB. No mocks."""
 
     def setUp(self):
-        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
+        )
         self.service = TenantService(tenant_id=str(self.tenant.id), user_id=None)
 
     def test_get_tenant_success(self):

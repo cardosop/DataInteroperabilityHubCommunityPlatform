@@ -11,13 +11,13 @@ These tests validate:
 - map_to_hub_asset() correctly maps Analytics Hub listings to Hub assets
 """
 
-import unittest
 from unittest.mock import MagicMock, Mock, patch
 
 from django.test import TestCase
 
 from hub.apps.assets.models import AssetSourceType
-from hub.apps.core.services.base import NotFoundError, PermissionError
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.base import (
     MarketplaceAssetMapping,
     MarketplaceListing,
@@ -26,7 +26,6 @@ from hub.apps.integrations.base import (
     SyncResult,
     SyncStatus,
 )
-from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
 
 
@@ -539,7 +538,6 @@ class TestGCPMarketplaceConnectorSubscribeToListing(TestCase):
         mock_get_client.return_value = mock_client
 
         # Mock subscribe response
-        from unittest.mock import Mock
 
         mock_response = Mock()
         mock_dest_dataset = Mock()

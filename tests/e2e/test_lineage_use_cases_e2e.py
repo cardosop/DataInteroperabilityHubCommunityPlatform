@@ -14,21 +14,15 @@ import json
 import pytest
 
 pytestmark = pytest.mark.slow
-from django.test import TestCase
 from rest_framework import status
-from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.impact_analysis import ImpactAnalyzer
 from hub.apps.contracts.lineage_service import LineageService
 from hub.apps.contracts.models import (
     Contract,
-    ContractStatus,
     NormalizationStatus,
     ValidationStatus,
 )
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
 
 from .conftest import E2ETestBase
 
@@ -534,9 +528,7 @@ class ImpactAnalysisE2ETest(E2ETestBase):
                 {
                     "id": "impact-source-contract",
                     "info": {"name": "impact-source-contract", "title": "Impact Source Contract"},
-                    "schema": {
-                        "fields": [{"name": "source_field", "type": "string"}]
-                    },
+                    "schema": {"fields": [{"name": "source_field", "type": "string"}]},
                     "models": [
                         {
                             "name": "SourceModel",
@@ -735,9 +727,7 @@ class LineageAPIE2ETest(E2ETestBase):
                 {
                     "id": "api-test-contract",
                     "info": {"name": "api-test-contract", "title": "API Test Contract"},
-                    "schema": {
-                        "fields": [{"name": "api_field", "type": "string"}]
-                    },
+                    "schema": {"fields": [{"name": "api_field", "type": "string"}]},
                     "models": [
                         {"name": "APIModel", "fields": [{"name": "api_field", "type": "string"}]}
                     ],
@@ -759,9 +749,7 @@ class LineageAPIE2ETest(E2ETestBase):
 
     def test_contract_lineage_api_endpoint(self):
         """Test contract-level lineage API endpoint"""
-        response = self.client.get(
-            f"/api/v1/contracts/{self.contract_id}/lineage/contracts/"
-        )
+        response = self.client.get(f"/api/v1/contracts/{self.contract_id}/lineage/contracts/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("contracts", response.data)
@@ -769,9 +757,7 @@ class LineageAPIE2ETest(E2ETestBase):
 
     def test_model_lineage_api_endpoint(self):
         """Test model-level lineage API endpoint"""
-        response = self.client.get(
-            f"/api/v1/contracts/{self.contract_id}/models/APIModel/lineage/"
-        )
+        response = self.client.get(f"/api/v1/contracts/{self.contract_id}/models/APIModel/lineage/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("model_name", response.data)
@@ -831,9 +817,7 @@ class LineageAPIE2ETest(E2ETestBase):
 
     def test_impact_analysis_api_endpoint(self):
         """Test impact analysis API endpoint"""
-        response = self.client.get(
-            f"/api/v1/contracts/{self.contract_id}/impact-analysis/"
-        )
+        response = self.client.get(f"/api/v1/contracts/{self.contract_id}/impact-analysis/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("source", response.data)

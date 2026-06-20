@@ -26,11 +26,12 @@ Behaviour:
   failure and re-raises the original exception so RQ's retry machinery
   still operates.
 """
+
 from __future__ import annotations
 
 import functools
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from hub.apps.core.resilience.circuit_breaker import CircuitBreakerError
 from hub.apps.core.resilience.service_breakers import get_shared_circuit_breaker as _get_breaker

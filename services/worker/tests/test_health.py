@@ -17,14 +17,15 @@ Design notes
 
 - Django's ``TestCase`` is intentionally NOT used.
 """
+
 import json
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from services.worker.health import healthz, ready
 
-_REDIS = 'services.worker.health.get_redis_queue_client'
-_CACHE = 'services.worker.health.cache'
+_REDIS = "services.worker.health.get_redis_queue_client"
+_CACHE = "services.worker.health.cache"
 
 
 def _mock_cursor_ok():
@@ -62,11 +63,11 @@ class TestHealthzEndpoint:
         status_code, content = healthz()
 
         assert status_code == 200
-        assert content['status'] == 'ok'
-        assert content['service'] == 'worker-service'
+        assert content["status"] == "ok"
+        assert content["service"] == "worker-service"
         # Verify timestamp is valid ISO format
-        assert 'timestamp' in content
-        datetime.fromisoformat(content['timestamp'])
+        assert "timestamp" in content
+        datetime.fromisoformat(content["timestamp"])
 
     def test_healthz_json_response_has_all_fields(self):
         """JsonResponse mode includes all response fields."""
@@ -74,18 +75,18 @@ class TestHealthzEndpoint:
 
         assert response.status_code == 200
         data = json.loads(response.content)
-        assert data['status'] == 'ok'
-        assert data['service'] == 'worker-service'
-        assert 'timestamp' in data
+        assert data["status"] == "ok"
+        assert data["service"] == "worker-service"
+        assert "timestamp" in data
 
     def test_healthz_no_deep_checks(self):
         """healthz doesn't include dependency checks."""
         _, content = healthz()
 
-        assert 'checks' not in content
-        assert 'database' not in content
-        assert 'redis' not in content
-        assert 'cache' not in content
+        assert "checks" not in content
+        assert "database" not in content
+        assert "redis" not in content
+        assert "cache" not in content
 
 
 # -------------------------------------------------------------------
@@ -97,7 +98,9 @@ class TestReadyEndpointLive:
     """Test /ready with real DB/Redis/cache - Phase 2.5.2"""
 
     def test_ready_returns_200_when_all_deps_ready(
-        self, django_db_blocker, runtime_db_connection,
+        self,
+        django_db_blocker,
+        runtime_db_connection,
     ):
         """ready returns 200 with all checks ok."""
         with (
@@ -107,17 +110,19 @@ class TestReadyEndpointLive:
             status_code, content = ready()
 
         assert status_code == 200
-        assert content['status'] == 'ready'
-        assert content['service'] == 'worker-service'
-        assert content['checks']['database'] == 'ok'
-        assert content['checks']['redis_queue'] == 'ok'
-        assert content['checks']['cache'] == 'ok'
-        assert 'timestamp' in content
+        assert content["status"] == "ready"
+        assert content["service"] == "worker-service"
+        assert content["checks"]["database"] == "ok"
+        assert content["checks"]["redis_queue"] == "ok"
+        assert content["checks"]["cache"] == "ok"
+        assert "timestamp" in content
         # Should NOT have error field on success
-        assert 'error' not in content
+        assert "error" not in content
 
     def test_ready_json_response_has_all_fields(
-        self, django_db_blocker, runtime_db_connection,
+        self,
+        django_db_blocker,
+        runtime_db_connection,
     ):
         """JsonResponse mode includes all check details."""
         with (
@@ -128,10 +133,10 @@ class TestReadyEndpointLive:
 
         assert response.status_code == 200
         data = json.loads(response.content)
-        assert data['status'] == 'ready'
-        assert data['checks']['database'] == 'ok'
-        assert data['checks']['redis_queue'] == 'ok'
-        assert data['checks']['cache'] == 'ok'
+        assert data["status"] == "ready"
+        assert data["checks"]["database"] == "ok"
+        assert data["checks"]["redis_queue"] == "ok"
+        assert data["checks"]["cache"] == "ok"
 
 
 # -------------------------------------------------------------------
@@ -147,11 +152,13 @@ class TestReadyEndpointFailure:
         from django.db import connection
 
         db_err = Exception("Connection refused")
-        redis_fn, redis_client = _mock_redis_ok()
+        redis_fn, _redis_client = _mock_redis_ok()
 
         with (
             patch.object(
-                connection, 'cursor', side_effect=db_err,
+                connection,
+                "cursor",
+                side_effect=db_err,
             ),
             patch(_REDIS, redis_fn),
             patch(_CACHE) as mock_cache,
@@ -160,23 +167,23 @@ class TestReadyEndpointFailure:
             status_code, content = ready()
 
         assert status_code == 503
-        assert content['status'] == 'not_ready'
-        assert 'unhealthy' in content['checks']['database']
+        assert content["status"] == "not_ready"
+        assert "unhealthy" in content["checks"]["database"]
         # Redis and cache should still be checked
-        assert content['checks']['redis_queue'] == 'ok'
-        assert content['checks']['cache'] == 'ok'
+        assert content["checks"]["redis_queue"] == "ok"
+        assert content["checks"]["cache"] == "ok"
         # Error field mentions the failing component
-        assert 'database' in content['error']
+        assert "database" in content["error"]
 
     def test_503_when_redis_unavailable(self):
         """Redis failure → 503, other checks still run."""
         from django.db import connection
 
-        cursor_mock, enter_mock = _mock_cursor_ok()
+        cursor_mock, _enter_mock = _mock_cursor_ok()
         redis_err = Exception("Redis connection refused")
 
         with (
-            patch.object(connection, 'cursor', cursor_mock),
+            patch.object(connection, "cursor", cursor_mock),
             patch(_REDIS, side_effect=redis_err),
             patch(_CACHE) as mock_cache,
         ):
@@ -184,11 +191,11 @@ class TestReadyEndpointFailure:
             status_code, content = ready()
 
         assert status_code == 503
-        assert content['status'] == 'not_ready'
-        assert content['checks']['database'] == 'ok'
-        assert 'unhealthy' in content['checks']['redis_queue']
-        assert content['checks']['cache'] == 'ok'
-        assert 'redis_queue' in content['error']
+        assert content["status"] == "not_ready"
+        assert content["checks"]["database"] == "ok"
+        assert "unhealthy" in content["checks"]["redis_queue"]
+        assert content["checks"]["cache"] == "ok"
+        assert "redis_queue" in content["error"]
 
     def test_503_when_cache_unavailable(self):
         """Cache failure → 503, other checks still run."""
@@ -199,7 +206,7 @@ class TestReadyEndpointFailure:
         cache_err = Exception("Cache backend down")
 
         with (
-            patch.object(connection, 'cursor', cursor_mock),
+            patch.object(connection, "cursor", cursor_mock),
             patch(_REDIS, redis_fn),
             patch(_CACHE) as mock_cache,
         ):
@@ -207,11 +214,11 @@ class TestReadyEndpointFailure:
             status_code, content = ready()
 
         assert status_code == 503
-        assert content['status'] == 'not_ready'
-        assert content['checks']['database'] == 'ok'
-        assert content['checks']['redis_queue'] == 'ok'
-        assert 'unhealthy' in content['checks']['cache']
-        assert 'cache' in content['error']
+        assert content["status"] == "not_ready"
+        assert content["checks"]["database"] == "ok"
+        assert content["checks"]["redis_queue"] == "ok"
+        assert "unhealthy" in content["checks"]["cache"]
+        assert "cache" in content["error"]
 
     def test_503_when_all_deps_down(self):
         """All deps down → 503, error lists all failures."""
@@ -219,7 +226,8 @@ class TestReadyEndpointFailure:
 
         with (
             patch.object(
-                connection, 'cursor',
+                connection,
+                "cursor",
                 side_effect=Exception("DB down"),
             ),
             patch(
@@ -234,14 +242,14 @@ class TestReadyEndpointFailure:
             status_code, content = ready()
 
         assert status_code == 503
-        assert content['status'] == 'not_ready'
-        assert 'unhealthy' in content['checks']['database']
-        assert 'unhealthy' in content['checks']['redis_queue']
-        assert 'unhealthy' in content['checks']['cache']
+        assert content["status"] == "not_ready"
+        assert "unhealthy" in content["checks"]["database"]
+        assert "unhealthy" in content["checks"]["redis_queue"]
+        assert "unhealthy" in content["checks"]["cache"]
         # Error field should mention all three
-        assert 'database' in content['error']
-        assert 'redis_queue' in content['error']
-        assert 'cache' in content['error']
+        assert "database" in content["error"]
+        assert "redis_queue" in content["error"]
+        assert "cache" in content["error"]
 
     def test_database_check_executes_select_1(self):
         """ready() runs SELECT 1 to verify DB connectivity."""
@@ -251,7 +259,7 @@ class TestReadyEndpointFailure:
         redis_fn, _ = _mock_redis_ok()
 
         with (
-            patch.object(connection, 'cursor', cursor_mock),
+            patch.object(connection, "cursor", cursor_mock),
             patch(_REDIS, redis_fn),
             patch(_CACHE) as mock_cache,
         ):
@@ -271,7 +279,7 @@ class TestReadyEndpointFailure:
         redis_fn, redis_client = _mock_redis_ok()
 
         with (
-            patch.object(connection, 'cursor', cursor_mock),
+            patch.object(connection, "cursor", cursor_mock),
             patch(_REDIS, redis_fn),
             patch(_CACHE) as mock_cache,
         ):
@@ -289,7 +297,7 @@ class TestReadyEndpointFailure:
         redis_fn, _ = _mock_redis_ok()
 
         with (
-            patch.object(connection, 'cursor', cursor_mock),
+            patch.object(connection, "cursor", cursor_mock),
             patch(_REDIS, redis_fn),
             patch(_CACHE) as mock_cache,
         ):
@@ -297,5 +305,6 @@ class TestReadyEndpointFailure:
             ready()
 
         mock_cache.get.assert_called_once_with(
-            'health_check_test', None,
+            "health_check_test",
+            None,
         )

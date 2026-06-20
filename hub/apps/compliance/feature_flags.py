@@ -9,8 +9,8 @@ Scopes:
   - ``"warehouse"`` — gate on ``compliance_fail_closed_enabled AND
     warehouse_compliance_enabled`` (conjunctive: base kills first).
 """
+
 from __future__ import annotations
-from typing import Optional, Tuple
 
 from rest_framework import status
 from rest_framework.response import Response
@@ -38,7 +38,7 @@ class _ComplianceFlagDeniedException(Exception):
 
 def check_compliance_enabled(
     request,
-) -> Tuple[Optional[Tenant], Optional[Response]]:
+) -> tuple[Tenant | None, Response | None]:
     """Return ``(tenant, None)`` when ``compliance_fail_closed_enabled``
     is on for the tenant.  Returns ``(None, 403)`` when the flag is off
     or no tenant context is available."""
@@ -58,7 +58,7 @@ def check_compliance_enabled(
 
 def check_warehouse_compliance_enabled(
     request,
-) -> Tuple[Optional[Tenant], Optional[Response]]:
+) -> tuple[Tenant | None, Response | None]:
     """285.10.1.0.5 — Return ``(tenant, None)`` when BOTH
     ``compliance_fail_closed_enabled`` AND ``warehouse_compliance_enabled``
     are on.  Conjunctive — the base wins when off."""

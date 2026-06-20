@@ -30,11 +30,12 @@ Verifies the contract for ``POST /datasets/{id}/refresh-from-file/``:
 * Drift guard:
     - audit constant self-describes
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, TransactionTestCase
 from rest_framework import status
@@ -183,8 +184,11 @@ class DatasetRefreshFromFileValidationTest(DatasetsAPITestBase):
         # middleware short-circuits. Accept either.
         nested_error = body.get("error") if isinstance(body, dict) else None
         code = (
-            nested_error.get("code") if isinstance(nested_error, dict)
-            else body.get("code") if isinstance(body, dict) else None
+            nested_error.get("code")
+            if isinstance(nested_error, dict)
+            else body.get("code")
+            if isinstance(body, dict)
+            else None
         )
         self.assertEqual(code, "DATASET_REFRESH_REQUIRES_ASSET")
         # No audit row from a rejected refresh.
@@ -448,9 +452,7 @@ class ComputeDatasetContractDriftTest(TestCase):
             original_raw="{}",
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            hub_contract_json={
-                "schema": {"fields": [{"name": "draft_only", "type": "string"}]}
-            },
+            hub_contract_json={"schema": {"fields": [{"name": "draft_only", "type": "string"}]}},
         )
         dataset = self._make_dataset(
             asset=self.asset,
@@ -794,8 +796,7 @@ class DatasetRefreshFromFileConcurrencyTest(TransactionTestCase):
                 "Concurrent refresh-from-file did not serialise via select_for_update — "
                 "expected two 200s, got %s. Without the lock the second writer's "
                 "Dataset.objects.create() violates unique_dataset_version_per_asset "
-                "and the action returns 500."
-                % sorted(results)
+                "and the action returns 500." % sorted(results)
             ),
         )
 
@@ -809,9 +810,7 @@ class DatasetRefreshFromFileConcurrencyTest(TransactionTestCase):
             ).order_by("timestamp")
         )
         self.assertEqual(len(events), 2)
-        new_versions = sorted(
-            (ev.details_json or {}).get("new_version") for ev in events
-        )
+        new_versions = sorted((ev.details_json or {}).get("new_version") for ev in events)
         self.assertEqual(
             new_versions,
             [2, 3],

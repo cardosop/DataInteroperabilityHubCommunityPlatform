@@ -10,11 +10,12 @@ personas (every D145 role except visitor). Each test is a standalone
 function that hits the live staging API.
 """
 
-import time
 import base64
 import json
+import time
+
 import requests
-from tests._persona_provisioning import provision_persona, PersonaCredentials
+from tests._persona_provisioning import PersonaCredentials, provision_persona
 from tests.fixtures.personas import MVP_PERSONA_ROLES
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import (
@@ -42,6 +43,7 @@ def _persona_email(role: str) -> str:
     and the accounts created by ``manage.py ensure_e2e_user_roles``.
     """
     from tests._persona_provisioning import _ROLE_TO_SEEDED_EMAIL
+
     email = _ROLE_TO_SEEDED_EMAIL.get(role, "")
     if not email:
         raise ValueError(f"No seeded email for role {role!r}")
@@ -58,7 +60,7 @@ def _login_with_retry(email: str, password: str) -> requests.Response:
         if resp.status_code == 429:
             retry_after = int(resp.headers.get("Retry-After", "3"))
             wait = min(retry_after, 10) * (attempt + 1)
-            time.sleep(wait)
+            time.sleep(wait)  # noqa: sleep-needed — retry loop
             continue
         return resp
     return resp
@@ -68,6 +70,7 @@ def _login_with_retry(email: str, password: str) -> requests.Response:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _build_expired_jwt() -> str:
     """Fabricate a structurally valid but expired JWT for negative testing.
 
@@ -76,17 +79,25 @@ def _build_expired_jwt() -> str:
     but that is fine — the API should reject the token on expiry (or
     signature) before any deeper validation.
     """
-    header = base64.urlsafe_b64encode(
-        json.dumps({"alg": "HS256", "typ": "JWT"}).encode()
-    ).rstrip(b"=").decode()
+    header = (
+        base64.urlsafe_b64encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+        .rstrip(b"=")
+        .decode()
+    )
 
-    payload = base64.urlsafe_b64encode(
-        json.dumps({
-            "sub": "expired-test-user",
-            "exp": int(time.time()) - 7200,  # 2 hours ago
-            "iat": int(time.time()) - 14400,
-        }).encode()
-    ).rstrip(b"=").decode()
+    payload = (
+        base64.urlsafe_b64encode(
+            json.dumps(
+                {
+                    "sub": "expired-test-user",
+                    "exp": int(time.time()) - 7200,  # 2 hours ago
+                    "iat": int(time.time()) - 14400,
+                }
+            ).encode()
+        )
+        .rstrip(b"=")
+        .decode()
+    )
 
     signature = base64.urlsafe_b64encode(b"not-a-real-signature").rstrip(b"=").decode()
 
@@ -115,8 +126,7 @@ def test_login_returns_tokens(persona_role: str):
     resp = _login_with_retry(email, PERSONA_PASSWORD)
 
     assert resp.status_code == 200, (
-        f"Login for {persona_role} ({email}) returned {resp.status_code}: "
-        f"{resp.text[:500]}"
+        f"Login for {persona_role} ({email}) returned {resp.status_code}: {resp.text[:500]}"
     )
 
     body = resp.json()
@@ -146,13 +156,10 @@ def test_refresh_extends_session(persona_role: str):
     email = _persona_email(persona_role)
     login_resp = _login_with_retry(email, PERSONA_PASSWORD)
     assert login_resp.status_code == 200, (
-        f"Fresh login for {persona_role} failed: "
-        f"{login_resp.status_code}: {login_resp.text[:300]}"
+        f"Fresh login for {persona_role} failed: {login_resp.status_code}: {login_resp.text[:300]}"
     )
     refresh_token = login_resp.json().get("refresh_token", "")
-    assert refresh_token, (
-        f"Login response for {persona_role} missing refresh_token"
-    )
+    assert refresh_token, f"Login response for {persona_role} missing refresh_token"
 
     refresh_resp = requests.post(
         f"{base}/auth/refresh/",
@@ -161,15 +168,12 @@ def test_refresh_extends_session(persona_role: str):
     )
 
     assert refresh_resp.status_code == 200, (
-        f"Refresh for {persona_role} returned {refresh_resp.status_code}: "
-        f"{refresh_resp.text[:500]}"
+        f"Refresh for {persona_role} returned {refresh_resp.status_code}: {refresh_resp.text[:500]}"
     )
 
     new_body = refresh_resp.json()
     new_access = new_body.get("access_token")
-    assert new_access, (
-        f"Refresh response for {persona_role} missing access_token"
-    )
+    assert new_access, f"Refresh response for {persona_role} missing access_token"
 
     # The new token must actually work — hit /auth/me/
     me_resp = requests.get(
@@ -199,8 +203,7 @@ def test_expired_token_returns_401():
     )
 
     assert resp.status_code == 401, (
-        f"Expired JWT should be rejected with 401, got {resp.status_code}: "
-        f"{resp.text[:300]}"
+        f"Expired JWT should be rejected with 401, got {resp.status_code}: {resp.text[:300]}"
     )
 
 
@@ -262,8 +265,7 @@ def test_logout_invalidates_session(persona_role: str):
         timeout=15,
     )
     assert logout_resp.status_code in (200, 204), (
-        f"Logout for {persona_role} returned {logout_resp.status_code}: "
-        f"{logout_resp.text[:300]}"
+        f"Logout for {persona_role} returned {logout_resp.status_code}: {logout_resp.text[:300]}"
     )
 
     # After logout, the access_token may or may not be immediately
@@ -306,8 +308,7 @@ def test_me_returns_correct_role(persona_role: str):
     )
 
     assert resp.status_code == 200, (
-        f"/auth/me/ for {persona_role} returned {resp.status_code}: "
-        f"{resp.text[:300]}"
+        f"/auth/me/ for {persona_role} returned {resp.status_code}: {resp.text[:300]}"
     )
 
     body = resp.json()
@@ -321,8 +322,7 @@ def test_me_returns_correct_role(persona_role: str):
     assert "roles" in body, f"Profile for {persona_role} missing 'roles': {body}"
     email = _persona_email(persona_role)
     assert body["email"] == email, (
-        f"Profile email mismatch for {persona_role}: "
-        f"expected {email}, got {body['email']}"
+        f"Profile email mismatch for {persona_role}: expected {email}, got {body['email']}"
     )
 
 
@@ -337,8 +337,7 @@ def test_login_wrong_password_returns_401():
     if resp.status_code == 429:
         pytest.skip("Rate-limited — cannot test wrong-password rejection")
     assert resp.status_code in (401, 400), (
-        f"Login with wrong password returned {resp.status_code}, "
-        f"expected 401 or 400"
+        f"Login with wrong password returned {resp.status_code}, expected 401 or 400"
     )
 
 
@@ -350,8 +349,7 @@ def test_login_nonexistent_user_returns_401():
     if resp.status_code == 429:
         pytest.skip("Rate-limited — cannot test nonexistent-user rejection")
     assert resp.status_code in (401, 400, 404), (
-        f"Login for nonexistent user returned {resp.status_code}, "
-        f"expected 401, 400, or 404"
+        f"Login for nonexistent user returned {resp.status_code}, expected 401, 400, or 404"
     )
 
 
@@ -397,6 +395,4 @@ def test_double_logout_is_idempotent():
         timeout=15,
     )
     # Should not be a 5xx — 401 or 200/204 are acceptable
-    assert resp2.status_code < 500, (
-        f"Double logout returned server error {resp2.status_code}"
-    )
+    assert resp2.status_code < 500, f"Double logout returned server error {resp2.status_code}"

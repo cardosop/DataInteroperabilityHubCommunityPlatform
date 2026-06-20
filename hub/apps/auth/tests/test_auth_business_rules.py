@@ -19,6 +19,7 @@ class TestValidateRegistration(TestCase):
     def setUp(self):
         self.rules = AuthBusinessRules(enable_caching=False, enable_metrics=False)
         from hub.apps.tenants.models import Tenant
+
         self.tenant, _ = Tenant.objects.get_or_create(
             name="auth-br-test", defaults={"slug": "auth-br-test"}
         )
@@ -34,6 +35,7 @@ class TestValidateRegistration(TestCase):
 
     def test_duplicate_email_rejected(self):
         from hub.apps.users.models import User
+
         email = f"dup-{uuid.uuid4().hex[:8]}@example.com"
         User.objects.create_user(email=email, password="Test1234!", tenant=self.tenant)
         r = self.rules.validate_registration(email)
@@ -42,6 +44,7 @@ class TestValidateRegistration(TestCase):
 
     def test_suspended_tenant_rejected(self):
         from hub.apps.tenants.models import Tenant
+
         t = Tenant.objects.create(name="suspended-t", slug="suspended-t", status="SUSPENDED")
         r = self.rules.validate_registration("ok@example.com", tenant_id=str(t.id))
         self.assertFalse(r.is_valid)
@@ -53,6 +56,7 @@ class TestValidateLoginAttempt(TestCase):
     def setUp(self):
         self.rules = AuthBusinessRules(enable_caching=False, enable_metrics=False)
         from hub.apps.tenants.models import Tenant
+
         self.tenant, _ = Tenant.objects.get_or_create(
             name="auth-br-login", defaults={"slug": "auth-br-login"}
         )
@@ -68,6 +72,7 @@ class TestValidateLoginAttempt(TestCase):
     @override_settings(LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
     def test_locked_account_rejected(self):
         from hub.apps.auth.models import LoginAttempt
+
         email = f"locked-{uuid.uuid4().hex[:8]}@example.com"
         for _ in range(3):
             LoginAttempt.objects.create(email=email, ip_address="127.0.0.1", success=False)
@@ -77,6 +82,7 @@ class TestValidateLoginAttempt(TestCase):
 
     def test_suspended_tenant_rejected(self):
         from hub.apps.tenants.models import Tenant
+
         t = Tenant.objects.create(name="susp-login", slug="susp-login", status="SUSPENDED")
         r = self.rules.validate_login_attempt("user@example.com", tenant_id=str(t.id))
         self.assertFalse(r.is_valid)
@@ -88,13 +94,15 @@ class TestValidateInvitationAcceptance(TestCase):
     def setUp(self):
         self.rules = AuthBusinessRules(enable_caching=False, enable_metrics=False)
         from hub.apps.tenants.models import Tenant
+
         self.tenant, _ = Tenant.objects.get_or_create(
             name="auth-br-invite", defaults={"slug": "auth-br-invite"}
         )
 
     def test_valid_invitation(self):
-        from hub.apps.users.models import User
         from hub.apps.auth.utils import sha256_hex
+        from hub.apps.users.models import User
+
         email = f"invite-{uuid.uuid4().hex[:8]}@example.com"
         token = uuid.uuid4().hex
         user = User.objects.create_user(email=email, password="Test1234!", tenant=self.tenant)
@@ -114,8 +122,9 @@ class TestValidateInvitationAcceptance(TestCase):
         self.assertIn("Invalid invitation", r.errors[0])
 
     def test_email_mismatch(self):
-        from hub.apps.users.models import User
         from hub.apps.auth.utils import sha256_hex
+        from hub.apps.users.models import User
+
         email = f"invite2-{uuid.uuid4().hex[:8]}@example.com"
         token = uuid.uuid4().hex
         user = User.objects.create_user(email=email, password="Test1234!", tenant=self.tenant)
@@ -132,21 +141,25 @@ class TestValidateTokenRefresh(TestCase):
     def setUp(self):
         self.rules = AuthBusinessRules(enable_caching=False, enable_metrics=False)
         from hub.apps.tenants.models import Tenant
+
         self.tenant, _ = Tenant.objects.get_or_create(
             name="auth-br-refresh", defaults={"slug": "auth-br-refresh"}
         )
 
     def test_valid_refresh_token(self):
-        from hub.apps.users.models import User
         from hub.apps.auth.models import RefreshToken
+        from hub.apps.users.models import User
+
         user = User.objects.create_user(
             email=f"ref-{uuid.uuid4().hex[:8]}@test.com",
-            password="Test1234!", tenant=self.tenant,
+            password="Test1234!",
+            tenant=self.tenant,
         )
         token_str = RefreshToken.generate_token()
         token_hash = RefreshToken.hash_token(token_str)
         RefreshToken.objects.create(
-            user=user, token_hash=token_hash,
+            user=user,
+            token_hash=token_hash,
             expires_at=timezone.now() + timedelta(days=1),
         )
         r = self.rules.validate_token_refresh(token_str)
@@ -162,16 +175,19 @@ class TestValidateTokenRefresh(TestCase):
         self.assertIn("Invalid refresh", r.errors[0])
 
     def test_expired_token(self):
-        from hub.apps.users.models import User
         from hub.apps.auth.models import RefreshToken
+        from hub.apps.users.models import User
+
         user = User.objects.create_user(
             email=f"exp-{uuid.uuid4().hex[:8]}@test.com",
-            password="Test1234!", tenant=self.tenant,
+            password="Test1234!",
+            tenant=self.tenant,
         )
         token_str = RefreshToken.generate_token()
         token_hash = RefreshToken.hash_token(token_str)
         RefreshToken.objects.create(
-            user=user, token_hash=token_hash,
+            user=user,
+            token_hash=token_hash,
             expires_at=timezone.now() - timedelta(days=1),
         )
         r = self.rules.validate_token_refresh(token_str)

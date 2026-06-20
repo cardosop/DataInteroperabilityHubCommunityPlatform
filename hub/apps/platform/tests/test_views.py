@@ -5,6 +5,8 @@ Tests permission enforcement (IsPlatformAdmin) and that platform endpoints
 respond correctly. Uses real User, Tenant, APIClient; no mocks/stubs.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -13,7 +15,6 @@ from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
-import uuid
 
 User = get_user_model()
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -59,17 +60,13 @@ class TestPlatformTenantViewSetPermissions(TestCase):
     def test_platform_tenant_retrieve_requires_platform_admin(self):
         """GET /api/v1/platform/tenants/{id}/ returns 403 for non-platform-admin."""
         self.client.force_authenticate(user=self.regular_user)
-        response = self.client.get(
-            f"/api/v1/platform/tenants/{self.tenant.id}/"
-        )
+        response = self.client.get(f"/api/v1/platform/tenants/{self.tenant.id}/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_platform_tenant_retrieve_200_for_platform_admin(self):
         """GET /api/v1/platform/tenants/{id}/ returns 200 for platform admin."""
         self.client.force_authenticate(user=self.platform_admin)
-        response = self.client.get(
-            f"/api/v1/platform/tenants/{self.tenant.id}/"
-        )
+        response = self.client.get(f"/api/v1/platform/tenants/{self.tenant.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["slug"], "platform-test-tenant")
 
@@ -117,9 +114,11 @@ class TestPlatformTenantViewSetPermissions(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        event = AuditEvent.objects.filter(
-            resource_type="TENANT", action="TENANT_SUSPENDED"
-        ).order_by("-timestamp").first()
+        event = (
+            AuditEvent.objects.filter(resource_type="TENANT", action="TENANT_SUSPENDED")
+            .order_by("-timestamp")
+            .first()
+        )
         self.assertIsNotNone(event)
         assert event is not None
         self.assertEqual(event.actor_user_id, self.platform_admin.id)
@@ -133,9 +132,7 @@ class TestPlatformTenantViewSetPermissions(TestCase):
         self.tenant.status = TenantStatus.SUSPENDED
         self.tenant.save(update_fields=["status"])
         self.client.force_authenticate(user=self.platform_admin)
-        response = self.client.post(
-            f"/api/v1/platform/tenants/{self.tenant.id}/resume/"
-        )
+        response = self.client.post(f"/api/v1/platform/tenants/{self.tenant.id}/resume/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], TenantStatus.ACTIVE)
         self.tenant.refresh_from_db()
@@ -149,14 +146,14 @@ class TestPlatformTenantViewSetPermissions(TestCase):
         self.tenant.status = TenantStatus.SUSPENDED
         self.tenant.save(update_fields=["status"])
         self.client.force_authenticate(user=self.platform_admin)
-        response = self.client.post(
-            f"/api/v1/platform/tenants/{self.tenant.id}/resume/"
-        )
+        response = self.client.post(f"/api/v1/platform/tenants/{self.tenant.id}/resume/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        event = AuditEvent.objects.filter(
-            resource_type="TENANT", action="TENANT_REACTIVATED"
-        ).order_by("-timestamp").first()
+        event = (
+            AuditEvent.objects.filter(resource_type="TENANT", action="TENANT_REACTIVATED")
+            .order_by("-timestamp")
+            .first()
+        )
         self.assertIsNotNone(event)
         assert event is not None
         self.assertEqual(event.actor_user_id, self.platform_admin.id)
@@ -178,9 +175,7 @@ class TestPlatformTenantViewSetPermissions(TestCase):
         self.tenant.refresh_from_db()
         self.assertEqual(self.tenant.status, TenantStatus.SUSPENDED)
         # Resume
-        r2 = self.client.post(
-            f"/api/v1/platform/tenants/{self.tenant.id}/resume/"
-        )
+        r2 = self.client.post(f"/api/v1/platform/tenants/{self.tenant.id}/resume/")
         self.assertEqual(r2.status_code, status.HTTP_200_OK)
         self.tenant.refresh_from_db()
         self.assertEqual(self.tenant.status, TenantStatus.ACTIVE)
@@ -226,17 +221,13 @@ class TestPlatformUserViewSetPermissions(TestCase):
     def test_platform_user_retrieve_requires_platform_admin(self):
         """GET /api/v1/platform/users/{id}/ returns 403 for non-platform-admin."""
         self.client.force_authenticate(user=self.regular_user)
-        response = self.client.get(
-            f"/api/v1/platform/users/{self.regular_user.id}/"
-        )
+        response = self.client.get(f"/api/v1/platform/users/{self.regular_user.id}/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_platform_user_retrieve_200_for_platform_admin(self):
         """GET /api/v1/platform/users/{id}/ returns 200 for platform admin."""
         self.client.force_authenticate(user=self.platform_admin)
-        response = self.client.get(
-            f"/api/v1/platform/users/{self.regular_user.id}/"
-        )
+        response = self.client.get(f"/api/v1/platform/users/{self.regular_user.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("id", response.data)
 
@@ -250,16 +241,16 @@ class TestPlatformUserViewSetPermissions(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-        event = AuditEvent.objects.filter(
-            resource_type="ERASURE_REQUEST", action="ERASURE_REQUESTED"
-        ).order_by("-timestamp").first()
+        event = (
+            AuditEvent.objects.filter(resource_type="ERASURE_REQUEST", action="ERASURE_REQUESTED")
+            .order_by("-timestamp")
+            .first()
+        )
         self.assertIsNotNone(event)
         assert event is not None
         self.assertEqual(event.actor_user_id, self.platform_admin.id)
         self.assertEqual(event.details_json.get("source"), "platform_admin")
-        self.assertEqual(
-            event.details_json.get("initiated_by"), str(self.platform_admin.id)
-        )
+        self.assertEqual(event.details_json.get("initiated_by"), str(self.platform_admin.id))
 
     def test_platform_request_erasure_creates_erasure_completed_audit_event(self):
         """AUDIT_POLICY 1.10.1: Platform request_erasure → execute_erasure emits ERASURE_COMPLETED."""
@@ -271,9 +262,11 @@ class TestPlatformUserViewSetPermissions(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-        event = AuditEvent.objects.filter(
-            resource_type="ERASURE_REQUEST", action="ERASURE_COMPLETED"
-        ).order_by("-timestamp").first()
+        event = (
+            AuditEvent.objects.filter(resource_type="ERASURE_REQUEST", action="ERASURE_COMPLETED")
+            .order_by("-timestamp")
+            .first()
+        )
         self.assertIsNotNone(event)
         assert event is not None
         self.assertIsNone(event.actor_user_id, "ERASURE_COMPLETED is system action")

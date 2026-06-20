@@ -4,10 +4,11 @@ Versioning Service
 Service layer for dataset versioning operations.
 Extracts versioning logic from versioning.py module.
 """
-from typing import Dict, Any, Optional, List
 
-from hub.apps.core.services.base import BaseService, NotFoundError
+from typing import Any
+
 from hub.apps.core.events.service_publishers import VersioningEventPublisher
+from hub.apps.core.services.base import BaseService
 from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.versioning import VersionHistoryManager
 
@@ -25,7 +26,7 @@ class VersioningService(BaseService, VersioningEventPublisher):
 
     service_name = "versioning_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize VersioningService.
 
@@ -43,10 +44,10 @@ class VersioningService(BaseService, VersioningEventPublisher):
         self,
         dataset_id: str,
         tenant_id: str,
-        parent_version_id: Optional[str] = None,
-        semantic_version: Optional[str] = None,
-        version_tags: Optional[List[str]] = None,
-        snapshot_metadata: Optional[Dict[str, Any]] = None,
+        parent_version_id: str | None = None,
+        semantic_version: str | None = None,
+        version_tags: list[str] | None = None,
+        snapshot_metadata: dict[str, Any] | None = None,
         is_current: bool = True,
         is_initial: bool = False,
     ) -> Dataset:
@@ -70,18 +71,12 @@ class VersioningService(BaseService, VersioningEventPublisher):
         Raises:
             NotFoundError: If dataset or parent version not found
         """
-        source_dataset = self.get_resource_or_raise(
-            Dataset,
-            dataset_id,
-            tenant_id=tenant_id
-        )
+        source_dataset = self.get_resource_or_raise(Dataset, dataset_id, tenant_id=tenant_id)
 
         # Determine parent version
         if parent_version_id:
             parent_version = self.get_resource_or_raise(
-                Dataset,
-                parent_version_id,
-                tenant_id=tenant_id
+                Dataset, parent_version_id, tenant_id=tenant_id
             )
         else:
             # Use source dataset as parent
@@ -98,12 +93,15 @@ class VersioningService(BaseService, VersioningEventPublisher):
         if should_create_new:
             # Create new dataset version from parent
             # Calculate new version number
-            latest_version = Dataset.objects.filter(
-                tenant_id=tenant_id,
-                asset=parent_version.asset
-            ).order_by('-version').first()
+            latest_version = (
+                Dataset.objects.filter(tenant_id=tenant_id, asset=parent_version.asset)
+                .order_by("-version")
+                .first()
+            )
 
-            new_version_number = (latest_version.version + 1) if latest_version else (parent_version.version + 1)
+            new_version_number = (
+                (latest_version.version + 1) if latest_version else (parent_version.version + 1)
+            )
 
             # Create new dataset version
             new_dataset = Dataset.objects.create(
@@ -125,18 +123,20 @@ class VersioningService(BaseService, VersioningEventPublisher):
                 semantic_version=semantic_version,
                 version_tags=version_tags,
                 snapshot_metadata=snapshot_metadata,
-                is_current=is_current
+                is_current=is_current,
             )
         else:
             # Source dataset is already a versioned dataset (created by DatasetService)
             # Just update version history fields
             updated_dataset = VersionHistoryManager.create_version(
                 dataset=source_dataset,
-                parent_version=parent_version if parent_version_id else source_dataset.parent_version,
+                parent_version=parent_version
+                if parent_version_id
+                else source_dataset.parent_version,
                 semantic_version=semantic_version,
                 version_tags=version_tags,
                 snapshot_metadata=snapshot_metadata,
-                is_current=is_current
+                is_current=is_current,
             )
 
         # Publish version.created event
@@ -150,7 +150,7 @@ class VersioningService(BaseService, VersioningEventPublisher):
                 semantic_version=updated_dataset.semantic_version,
                 parent_version_id=str(parent_version.id) if parent_version else None,
                 tenant_id=tenant_id,
-                user_id=self.user_id
+                user_id=self.user_id,
             )
         except Exception:
             # Don't fail version creation if event publishing fails
@@ -160,11 +160,8 @@ class VersioningService(BaseService, VersioningEventPublisher):
         return updated_dataset
 
     def compare_versions(
-        self,
-        dataset_id_1: str,
-        dataset_id_2: str,
-        tenant_id: str
-    ) -> Dict[str, Any]:
+        self, dataset_id_1: str, dataset_id_2: str, tenant_id: str
+    ) -> dict[str, Any]:
         """
         Compare two dataset versions.
 
@@ -181,36 +178,19 @@ class VersioningService(BaseService, VersioningEventPublisher):
         """
         from hub.apps.datasets.version_comparison import VersionComparisonService
 
-        dataset1 = self.get_resource_or_raise(
-            Dataset,
-            dataset_id_1,
-            tenant_id=tenant_id
-        )
+        dataset1 = self.get_resource_or_raise(Dataset, dataset_id_1, tenant_id=tenant_id)
 
-        dataset2 = self.get_resource_or_raise(
-            Dataset,
-            dataset_id_2,
-            tenant_id=tenant_id
-        )
+        dataset2 = self.get_resource_or_raise(Dataset, dataset_id_2, tenant_id=tenant_id)
 
         comparison = VersionComparisonService.compare_versions(
-            old_version=dataset1,
-            new_version=dataset2,
-            include_data_diff=True
+            old_version=dataset1, new_version=dataset2, include_data_diff=True
         )
 
         # Convert VersionComparison dataclass to dict for API compatibility
-        return VersionComparisonService.visualize_version_diff(
-            comparison,
-            format="json"
-        )
+        return VersionComparisonService.visualize_version_diff(comparison, format="json")
 
     def update_version(
-        self,
-        version_id: str,
-        tenant_id: str,
-        changes: Dict[str, Any],
-        **kwargs
+        self, version_id: str, tenant_id: str, changes: dict[str, Any], **kwargs
     ) -> Dataset:
         """
         Update a dataset version.
@@ -227,15 +207,10 @@ class VersioningService(BaseService, VersioningEventPublisher):
         Raises:
             NotFoundError: If version not found
         """
-        dataset = self.get_resource_or_raise(
-            Dataset,
-            version_id,
-            tenant_id=tenant_id
-        )
+        dataset = self.get_resource_or_raise(Dataset, version_id, tenant_id=tenant_id)
 
         # Store previous state for event
         previous_semantic_version = dataset.semantic_version
-        previous_is_current = dataset.is_current
 
         # Apply changes
         for key, value in changes.items():
@@ -246,7 +221,6 @@ class VersioningService(BaseService, VersioningEventPublisher):
 
         # Determine new version values
         new_semantic_version = dataset.semantic_version
-        new_is_current = dataset.is_current
 
         # Publish version.updated event
         try:
@@ -259,7 +233,7 @@ class VersioningService(BaseService, VersioningEventPublisher):
                 new_version=new_semantic_version,
                 tenant_id=tenant_id,
                 user_id=self.user_id,
-                **kwargs
+                **kwargs,
             )
         except Exception:
             # Don't fail version update if event publishing fails
@@ -268,11 +242,7 @@ class VersioningService(BaseService, VersioningEventPublisher):
         return dataset
 
     def delete_version(
-        self,
-        version_id: str,
-        tenant_id: str,
-        reason: Optional[str] = None,
-        **kwargs
+        self, version_id: str, tenant_id: str, reason: str | None = None, **kwargs
     ) -> None:
         """
         Delete a dataset version.
@@ -286,11 +256,7 @@ class VersioningService(BaseService, VersioningEventPublisher):
         Raises:
             NotFoundError: If version not found
         """
-        dataset = self.get_resource_or_raise(
-            Dataset,
-            version_id,
-            tenant_id=tenant_id
-        )
+        dataset = self.get_resource_or_raise(Dataset, version_id, tenant_id=tenant_id)
 
         # Store dataset info before deletion
         resource_id = str(dataset.id)
@@ -304,7 +270,7 @@ class VersioningService(BaseService, VersioningEventPublisher):
                 reason=reason,
                 tenant_id=tenant_id,
                 user_id=self.user_id,
-                **kwargs
+                **kwargs,
             )
         except Exception:
             # Don't fail deletion if event publishing fails
@@ -319,8 +285,8 @@ class VersioningService(BaseService, VersioningEventPublisher):
         tenant_id: str,
         promoted_from: str,
         promoted_to: str,
-        promotion_reason: Optional[str] = None,
-        **kwargs
+        promotion_reason: str | None = None,
+        **kwargs,
     ) -> Dataset:
         """
         Promote a dataset version (e.g., from staging to production).
@@ -339,11 +305,7 @@ class VersioningService(BaseService, VersioningEventPublisher):
         Raises:
             NotFoundError: If version not found
         """
-        dataset = self.get_resource_or_raise(
-            Dataset,
-            version_id,
-            tenant_id=tenant_id
-        )
+        dataset = self.get_resource_or_raise(Dataset, version_id, tenant_id=tenant_id)
 
         # Update version tags if promotion involves tag changes
         if promoted_to not in (dataset.version_tags or []):
@@ -367,7 +329,7 @@ class VersioningService(BaseService, VersioningEventPublisher):
                 promotion_reason=promotion_reason,
                 tenant_id=tenant_id,
                 user_id=self.user_id,
-                **kwargs
+                **kwargs,
             )
         except Exception:
             # Don't fail promotion if event publishing fails
@@ -376,11 +338,8 @@ class VersioningService(BaseService, VersioningEventPublisher):
         return dataset
 
     def get_version_history(
-        self,
-        dataset_id: str,
-        tenant_id: str,
-        include_snapshots: bool = False
-    ) -> List[Dict[str, Any]]:
+        self, dataset_id: str, tenant_id: str, include_snapshots: bool = False
+    ) -> list[dict[str, Any]]:
         """
         Get version history for a dataset.
 
@@ -395,11 +354,7 @@ class VersioningService(BaseService, VersioningEventPublisher):
         Raises:
             NotFoundError: If dataset not found
         """
-        dataset = self.get_resource_or_raise(
-            Dataset,
-            dataset_id,
-            tenant_id=tenant_id
-        )
+        dataset = self.get_resource_or_raise(Dataset, dataset_id, tenant_id=tenant_id)
 
         # Get version tree (all versions in the history)
         versions = VersionHistoryManager.get_version_tree(dataset)
@@ -420,4 +375,3 @@ class VersioningService(BaseService, VersioningEventPublisher):
         else:
             # Return list of Dataset objects (which can be serialized as needed)
             return list(versions)
-

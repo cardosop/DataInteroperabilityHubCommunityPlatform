@@ -14,8 +14,8 @@ import pytest
 @pytest.fixture(autouse=True)
 def ensure_security_audit_log_table(db):
     """Ensure security_audit_logs exists; run migrate if missing (non-migrated test DB)."""
-    from django.db import connection
     from django.core.management import call_command
+    from django.db import connection
 
     with connection.cursor() as cursor:
         cursor.execute(

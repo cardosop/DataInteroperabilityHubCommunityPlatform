@@ -3,12 +3,13 @@ Marketplace Integration Signals
 
 Signal handlers for marketplace integration events, including workflow status sync.
 """
+
+import structlog
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-import structlog
 
-from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.integrations.models import MarketplaceSyncJob
+from hub.apps.orchestration.models import WorkflowInstance
 
 logger = structlog.get_logger(__name__)
 
@@ -41,27 +42,27 @@ def sync_workflow_status_to_sync_job(sender, instance, created, **kwargs):
 
     try:
         # Get sync job
-        sync_job = MarketplaceSyncJob.objects.get(id=sync_job_id)
+        MarketplaceSyncJob.objects.get(id=sync_job_id)
 
         # Sync workflow status to sync job via service layer
         from hub.apps.integrations.services import MarketplaceIntegrationService
+
         service = MarketplaceIntegrationService(tenant_id=str(instance.tenant_id))
         service.sync_workflow_status_to_sync_job(
-            sync_job_id=sync_job_id,
-            tenant_id=str(instance.tenant_id)
+            sync_job_id=sync_job_id, tenant_id=str(instance.tenant_id)
         )
 
         logger.debug(
             "Synced workflow status to sync job via signal",
             workflow_instance_id=str(instance.id),
             sync_job_id=sync_job_id,
-            workflow_status=instance.status
+            workflow_status=instance.status,
         )
     except MarketplaceSyncJob.DoesNotExist:
         logger.debug(
             "Sync job not found for workflow status sync",
             workflow_instance_id=str(instance.id),
-            sync_job_id=sync_job_id
+            sync_job_id=sync_job_id,
         )
     except Exception as e:
         logger.warning(
@@ -69,6 +70,5 @@ def sync_workflow_status_to_sync_job(sender, instance, created, **kwargs):
             workflow_instance_id=str(instance.id),
             sync_job_id=sync_job_id,
             error=str(e),
-            exc_info=True
+            exc_info=True,
         )
-

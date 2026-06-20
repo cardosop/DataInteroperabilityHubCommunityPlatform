@@ -1,16 +1,18 @@
 """283.5.16 — SDK unit tests for Security, Drafts, Events, Capabilities,
 Integrations, Developer, OpenLineage, and LineageSubscriptions APIs."""
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock
 
-from datahub_interoperability.security import SecurityAPI
+import pytest
+
+from datahub_interoperability.capabilities import CapabilitiesAPI
+from datahub_interoperability.developer import DeveloperAPI
 from datahub_interoperability.drafts import DraftsAPI
 from datahub_interoperability.events import EventsAPI
-from datahub_interoperability.capabilities import CapabilitiesAPI
 from datahub_interoperability.integrations import IntegrationsAPI
-from datahub_interoperability.developer import DeveloperAPI
-from datahub_interoperability.openlineage import OpenLineageAPI
 from datahub_interoperability.lineage_subscriptions import LineageSubscriptionsAPI
+from datahub_interoperability.openlineage import OpenLineageAPI
+from datahub_interoperability.security import SecurityAPI
 
 
 def _make_client():
@@ -54,7 +56,9 @@ class TestDraftsAPI:
     async def test_get_draft(self, api):
         api.client.get.return_value = {"data": {}}
         await api.get_draft("asset", "default")
-        api.client.get.assert_called_once_with("drafts/", params={"resource_type": "asset", "draft_key": "default"})
+        api.client.get.assert_called_once_with(
+            "drafts/", params={"resource_type": "asset", "draft_key": "default"}
+        )
 
     @pytest.mark.asyncio
     async def test_save_draft(self, api):

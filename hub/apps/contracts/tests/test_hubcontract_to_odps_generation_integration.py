@@ -11,10 +11,11 @@ Tests use real implementations (no mocks/stubs) and follow TDD principles.
 """
 
 import json
+
 from django.test import TestCase
 
-from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
 from hub.apps.contracts.odps_errors import ODPSExportError
+from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
 
 
 class HubContractToODPSGenerationIntegrationTest(TestCase):
@@ -612,4 +613,3 @@ class HubContractToODPSGenerationIntegrationTest(TestCase):
         error = context.exception
         self.assertIn("name", error.message.lower())
         self.assertIn("/info/name", error.context["field_path"])
-

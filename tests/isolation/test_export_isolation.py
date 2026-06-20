@@ -3,6 +3,7 @@
 
 Verifies that exporting contracts returns only the caller's tenant data.
 """
+
 import uuid
 
 import pytest
@@ -78,21 +79,13 @@ class TestExportIsolation:
 
     def test_contract_export_isolation(self, client_b):
         """Tenant B cannot export Tenant A's contract."""
-        resp = client_b.get(
-            f"/api/v1/contracts/{self.contract_a.id}/export/"
-        )
-        assert resp.status_code in (403, 404), (
-            f"Cross-tenant export returned {resp.status_code}"
-        )
+        resp = client_b.get(f"/api/v1/contracts/{self.contract_a.id}/export/")
+        assert resp.status_code in (403, 404), f"Cross-tenant export returned {resp.status_code}"
 
     def test_contract_download_isolation(self, client_b):
         """Tenant B cannot download Tenant A's contract."""
-        resp = client_b.get(
-            f"/api/v1/contracts/{self.contract_a.id}/download/"
-        )
-        assert resp.status_code in (403, 404), (
-            f"Cross-tenant download returned {resp.status_code}"
-        )
+        resp = client_b.get(f"/api/v1/contracts/{self.contract_a.id}/download/")
+        assert resp.status_code in (403, 404), f"Cross-tenant download returned {resp.status_code}"
 
     def test_row_count_matches_tenant(self, client_a, tenant_a):
         """Contract list count matches DB count for the tenant."""
@@ -101,6 +94,4 @@ class TestExportIsolation:
         results = resp.data.get("results", resp.data)
         api_count = len(results) if isinstance(results, list) else 0
         db_count = Contract.objects.filter(tenant=tenant_a).count()
-        assert api_count == db_count, (
-            f"API returned {api_count} but DB has {db_count}"
-        )
+        assert api_count == db_count, f"API returned {api_count} but DB has {db_count}"

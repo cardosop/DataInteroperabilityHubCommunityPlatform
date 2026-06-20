@@ -9,11 +9,9 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.observability.incident_management import IncidentManager
-from hub.apps.observability.models import DataIncident
 from hub.apps.tenants.models import KYCStatus, Tenant
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -284,7 +282,8 @@ class IncidentManagerFailureTest(TestCase):
         """Test updating incident with invalid incident ID"""
         with self.assertRaises(Exception):  # NotFoundError
             IncidentManager.update_incident_status(
-                incident_id=str(uuid.uuid4()), status="TRIAGED"  # Non-existent incident
+                incident_id=str(uuid.uuid4()),
+                status="TRIAGED",  # Non-existent incident
             )
 
     def test_update_incident_status_invalid_status(self):
@@ -312,7 +311,8 @@ class IncidentManagerFailureTest(TestCase):
 
         with self.assertRaises(Exception):  # NotFoundError
             IncidentManager.assign_incident(
-                incident_id=str(incident.id), assigned_to_id=str(uuid.uuid4())  # Non-existent user
+                incident_id=str(incident.id),
+                assigned_to_id=str(uuid.uuid4()),  # Non-existent user
             )
 
 
@@ -457,11 +457,16 @@ class IncidentManagerErrorHandlingTest(TestCase):
         """Test getting incidents dashboard with invalid filters"""
         # Should handle invalid filters gracefully
         dashboard = IncidentManager.get_incidents_dashboard(
-            tenant_id=str(self.tenant.id), status="INVALID_STATUS", limit=10  # Invalid status
+            tenant_id=str(self.tenant.id),
+            status="INVALID_STATUS",
+            limit=10,  # Invalid status
         )
 
         # Should return empty results or handle gracefully
         self.assertIn("results", dashboard)
         self.assertIn("summary", dashboard)
-        self.assertEqual(len(dashboard["results"]), 0,
-            "Invalid status filter should return no matching incidents")
+        self.assertEqual(
+            len(dashboard["results"]),
+            0,
+            "Invalid status filter should return no matching incidents",
+        )

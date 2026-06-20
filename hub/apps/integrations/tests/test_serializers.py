@@ -5,10 +5,10 @@ Comprehensive unit tests for marketplace connection serializers.
 """
 
 import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.models import MarketplaceConnection
@@ -454,11 +454,9 @@ class MarketplaceConnectionTestResponseSerializerTest(TestCase):
             "config": {"key": "value"},
         }
         serializer = MarketplaceConnectionCreateSerializer(data=data)
-        # May be valid or invalid depending on max_length
-        if serializer.is_valid():
-            self.assertEqual(serializer.validated_data["name"], long_name.strip())
-        else:
-            self.assertIn("name", serializer.errors)
+        # max_length=255 is enforced by the serializer
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("name", serializer.errors)
 
     def test_create_serializer_with_large_config(self):
         """Test that create serializer handles large config"""
@@ -469,8 +467,8 @@ class MarketplaceConnectionTestResponseSerializerTest(TestCase):
             "config": large_config,
         }
         serializer = MarketplaceConnectionCreateSerializer(data=data)
-        if serializer.is_valid():
-            self.assertEqual(len(serializer.validated_data["config"]), 100)
+        self.assertTrue(serializer.is_valid(), msg=serializer.errors)
+        self.assertEqual(len(serializer.validated_data["config"]), 100)
 
     def test_serialize_connection_with_special_characters(self):
         """Test that serializer handles special characters in name"""

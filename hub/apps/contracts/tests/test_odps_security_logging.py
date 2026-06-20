@@ -9,7 +9,7 @@ Tests verify that:
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -39,7 +39,7 @@ class ODPSecurityLoggingTest(TestCase):
         violation_log = SecurityViolationLog(
             event_type=SecurityEventType.PATH_TRAVERSAL.value,
             severity=SecuritySeverity.HIGH.value,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             violation_type="Path Traversal Attempt",
             description="Test path traversal",
             attempted_path="../../../etc/passwd",
@@ -57,6 +57,7 @@ class ODPSecurityLoggingTest(TestCase):
         self.assertIn("security_severity", log_dict)
         self.assertEqual(log_dict["security_severity"], SecuritySeverity.HIGH.value)
         self.assertIn("event_type", log_dict)
+        self.assertEqual(log_dict["event_type"], SecurityEventType.PATH_TRAVERSAL.value)
         self.assertIn("severity", log_dict)
         self.assertIn("timestamp", log_dict)
         self.assertIn("violation_type", log_dict)
@@ -67,7 +68,7 @@ class ODPSecurityLoggingTest(TestCase):
         violation_log = SecurityViolationLog(
             event_type=SecurityEventType.PATH_TRAVERSAL.value,
             severity=SecuritySeverity.HIGH.value,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             violation_type="Path Traversal Attempt",
             description="Test path traversal",
             attempted_path="../../../etc/passwd",
@@ -83,6 +84,7 @@ class ODPSecurityLoggingTest(TestCase):
 
         # Non-None values should be present
         self.assertIn("event_type", log_dict)
+        self.assertEqual(log_dict["event_type"], SecurityEventType.PATH_TRAVERSAL.value)
         self.assertIn("attempted_path", log_dict)
 
     def test_log_security_violation_path_traversal(self):
@@ -117,14 +119,16 @@ class ODPSecurityLoggingTest(TestCase):
 
             # Also verify DB persistence happened (not just the mock)
             self.assertTrue(
-                SecurityAuditLog.objects.filter(event_type=SecurityEventType.PATH_TRAVERSAL.value).exists(),
+                SecurityAuditLog.objects.filter(
+                    event_type=SecurityEventType.PATH_TRAVERSAL.value
+                ).exists(),
                 "Expected security event to be persisted to SecurityAuditLog",
             )
 
     def test_log_security_violation_url_denied(self):
         """Test logging a URL denied security violation"""
         with patch.object(self.security_logger.logger, "warning") as mock_warning:
-            violation_log = self.security_logger.log_security_violation(
+            self.security_logger.log_security_violation(
                 event_type=SecurityEventType.URL_DENIED,
                 severity=SecuritySeverity.MEDIUM,
                 violation_type="URL Denied by Denylist",
@@ -142,7 +146,9 @@ class ODPSecurityLoggingTest(TestCase):
 
             # Also verify DB persistence happened (not just the mock)
             self.assertTrue(
-                SecurityAuditLog.objects.filter(event_type=SecurityEventType.URL_DENIED.value).exists(),
+                SecurityAuditLog.objects.filter(
+                    event_type=SecurityEventType.URL_DENIED.value
+                ).exists(),
                 "Expected security event to be persisted to SecurityAuditLog",
             )
 
@@ -161,7 +167,9 @@ class ODPSecurityLoggingTest(TestCase):
 
             # Also verify DB persistence happened (not just the mock)
             self.assertTrue(
-                SecurityAuditLog.objects.filter(event_type=SecurityEventType.PATH_TRAVERSAL.value).exists(),
+                SecurityAuditLog.objects.filter(
+                    event_type=SecurityEventType.PATH_TRAVERSAL.value
+                ).exists(),
                 "Expected security event to be persisted to SecurityAuditLog",
             )
 
@@ -180,7 +188,9 @@ class ODPSecurityLoggingTest(TestCase):
 
             # Also verify DB persistence happened (not just the mock)
             self.assertTrue(
-                SecurityAuditLog.objects.filter(event_type=SecurityEventType.INVALID_URL.value).exists(),
+                SecurityAuditLog.objects.filter(
+                    event_type=SecurityEventType.INVALID_URL.value
+                ).exists(),
                 "Expected security event to be persisted to SecurityAuditLog",
             )
 
@@ -188,7 +198,7 @@ class ODPSecurityLoggingTest(TestCase):
         """Test that audit trail logs have correct structure"""
         audit_log = RefResolutionAuditLog(
             operation_id=str(uuid.uuid4()),
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             duration_ms=125.5,
             ref_type="external",
             ref_path="https://example.com/schema.yaml",
@@ -253,7 +263,7 @@ class ODPSecurityLoggingTest(TestCase):
     def test_log_ref_resolution_audit_failure(self):
         """Test logging a failed ref resolution audit"""
         with patch.object(self.security_logger.logger, "warning") as mock_warning:
-            audit_log = self.security_logger.log_ref_resolution_audit(
+            self.security_logger.log_ref_resolution_audit(
                 operation_id=str(uuid.uuid4()),
                 ref_type="local",
                 ref_path="./schema.yaml",
@@ -279,7 +289,7 @@ class ODPSecurityLoggingTest(TestCase):
     def test_log_ref_resolution_audit_with_security_violations(self):
         """Test logging audit trail with security violations"""
         with patch.object(self.security_logger.logger, "warning") as mock_warning:
-            audit_log = self.security_logger.log_ref_resolution_audit(
+            self.security_logger.log_ref_resolution_audit(
                 operation_id=str(uuid.uuid4()),
                 ref_type="local",
                 ref_path="../../../etc/passwd",
@@ -316,7 +326,7 @@ class ODPSecurityLoggingTest(TestCase):
         matching_event = SecurityViolationLog(
             event_type=SecurityEventType.PATH_TRAVERSAL.value,
             severity=SecuritySeverity.HIGH.value,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             violation_type="Path Traversal",
             description="Test",
         )
@@ -324,7 +334,7 @@ class ODPSecurityLoggingTest(TestCase):
         non_matching_event = SecurityViolationLog(
             event_type=SecurityEventType.URL_DENIED.value,
             severity=SecuritySeverity.HIGH.value,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             violation_type="URL Denied",
             description="Test",
         )
@@ -347,7 +357,7 @@ class ODPSecurityLoggingTest(TestCase):
         matching_event = SecurityViolationLog(
             event_type=SecurityEventType.PATH_TRAVERSAL.value,
             severity=SecuritySeverity.HIGH.value,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             violation_type="Path Traversal",
             description="Test",
             tenant_id=tenant_id,
@@ -356,7 +366,7 @@ class ODPSecurityLoggingTest(TestCase):
         non_matching_event = SecurityViolationLog(
             event_type=SecurityEventType.PATH_TRAVERSAL.value,
             severity=SecuritySeverity.HIGH.value,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             violation_type="Path Traversal",
             description="Test",
             tenant_id=str(uuid.uuid4()),  # Different tenant
@@ -436,7 +446,8 @@ class ODPSecurityLoggingTest(TestCase):
             event_type=SecurityEventType.PATH_TRAVERSAL.value
         ).count()
         self.assertGreaterEqual(
-            after - before, severity_count,
+            after - before,
+            severity_count,
             f"Expected at least {severity_count} new PATH_TRAVERSAL entries",
         )
 
@@ -445,9 +456,7 @@ class ODPSecurityLoggingTest(TestCase):
         ref_types = ["internal", "local", "external"]
 
         # Count entries before test to measure delta (avoid cross-test contamination).
-        before_count = SecurityAuditLog.objects.filter(
-            event_type="REF_RESOLUTION_AUDIT"
-        ).count()
+        before_count = SecurityAuditLog.objects.filter(event_type="REF_RESOLUTION_AUDIT").count()
 
         for ref_type in ref_types:
             with patch.object(self.security_logger.logger, "info"):
@@ -462,9 +471,7 @@ class ODPSecurityLoggingTest(TestCase):
                 self.assertEqual(audit_log.ref_type, ref_type)
 
         # Verify at least the expected number of new entries were persisted
-        after_count = SecurityAuditLog.objects.filter(
-            event_type="REF_RESOLUTION_AUDIT"
-        ).count()
+        after_count = SecurityAuditLog.objects.filter(event_type="REF_RESOLUTION_AUDIT").count()
         self.assertGreaterEqual(
             after_count - before_count,
             len(ref_types),
@@ -475,7 +482,7 @@ class ODPSecurityLoggingTest(TestCase):
         """Test that audit log to_dict() removes None values"""
         audit_log = RefResolutionAuditLog(
             operation_id=str(uuid.uuid4()),
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             duration_ms=100.0,
             ref_type="external",
             ref_path="https://example.com/schema.yaml",
@@ -501,7 +508,7 @@ class ODPSecurityLoggingTest(TestCase):
         violation_log = SecurityViolationLog(
             event_type=SecurityEventType.PATH_TRAVERSAL.value,
             severity=SecuritySeverity.HIGH.value,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             violation_type="Path Traversal",
             description="Test",
             metadata=metadata,
@@ -517,7 +524,7 @@ class ODPSecurityLoggingTest(TestCase):
 
         audit_log = RefResolutionAuditLog(
             operation_id=str(uuid.uuid4()),
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             duration_ms=100.0,
             ref_type="external",
             ref_path="https://example.com/schema.yaml",
@@ -534,7 +541,7 @@ class ODPSecurityLoggingTest(TestCase):
         violation_log = SecurityViolationLog(
             event_type=SecurityEventType.PATH_TRAVERSAL.value,
             severity=SecuritySeverity.HIGH.value,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             violation_type="路径遍历尝试",
             description="测试路径遍历",
             attempted_path="../../../etc/passwd",
@@ -552,7 +559,7 @@ class ODPSecurityLoggingTest(TestCase):
         violation_log = SecurityViolationLog(
             event_type=SecurityEventType.PATH_TRAVERSAL.value,
             severity=SecuritySeverity.HIGH.value,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             violation_type="Test & Co. (Special)",
             description="Test <description> & more",
             attempted_path="../../../etc/passwd",
@@ -571,7 +578,7 @@ class ODPSecurityLoggingTest(TestCase):
         violation_log = SecurityViolationLog(
             event_type=SecurityEventType.PATH_TRAVERSAL.value,
             severity=SecuritySeverity.HIGH.value,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             violation_type="Path Traversal Attempt",
             description=large_description,
             attempted_path="../../../etc/passwd",
@@ -589,7 +596,7 @@ class ODPSecurityLoggingTest(TestCase):
         violation_log = SecurityViolationLog(
             event_type=SecurityEventType.PATH_TRAVERSAL.value,
             severity=SecuritySeverity.HIGH.value,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             violation_type="Path Traversal Attempt",
             description=None,  # None value
             attempted_path="../../../etc/passwd",
@@ -607,7 +614,7 @@ class ODPSecurityLoggingTest(TestCase):
         nested_metadata = {"level1": {"level2": {"level3": {"value": "deep"}}}}
         audit_log = RefResolutionAuditLog(
             operation_id=str(uuid.uuid4()),
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             duration_ms=100.0,
             ref_type="external",
             ref_path="https://example.com/schema.yaml",

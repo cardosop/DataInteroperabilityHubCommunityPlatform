@@ -1,6 +1,7 @@
 """
 Phase 83.8 — migrate_compliance_runs_v2 management command tests.
 """
+
 import uuid
 from io import StringIO
 
@@ -11,30 +12,36 @@ from django.test import TestCase
 
 @pytest.mark.django_db(transaction=True)
 class MigrateComplianceV2CommandTest(TestCase):
-
     def _create_tenant(self):
         from hub.apps.tenants.models import Tenant
+
         return Tenant.objects.get_or_create(
-            name="comp-v2-test", defaults={"slug": "comp-v2-test"},
+            name="comp-v2-test",
+            defaults={"slug": "comp-v2-test"},
         )[0]
 
     def _create_run_with_v1_data(self, tenant, reg_json, **v2_overrides):
         """Create a ComplianceRun with v1 data, optionally pre-filled v2."""
-        import json
         from hub.apps.assets.models import Asset
         from hub.apps.jobs.models import Job, JobStatus, JobType
 
         asset = Asset.objects.create(
-            tenant=tenant, name=f"a-{uuid.uuid4().hex[:6]}",
+            tenant=tenant,
+            name=f"a-{uuid.uuid4().hex[:6]}",
         )
         job = Job.objects.create(
-            tenant=tenant, type=JobType.COMPLIANCE_RUN,
+            tenant=tenant,
+            type=JobType.COMPLIANCE_RUN,
             status=JobStatus.COMPLETED,
-            resource_type="ASSET", resource_id=asset.id,
+            resource_type="ASSET",
+            resource_id=asset.id,
         )
         from hub.apps.compliance.models import ComplianceRun
+
         run = ComplianceRun.objects.create(
-            tenant=tenant, asset=asset, job=job,
+            tenant=tenant,
+            asset=asset,
+            job=job,
             status="SUCCEEDED",
             regulation_mapping_json=reg_json,
         )
@@ -67,10 +74,12 @@ class MigrateComplianceV2CommandTest(TestCase):
             tenant,
             reg_json={"GDPR": {"applicable": True}},
             cross_border_alert={
-                "applicable": True, "backfilled": True,
+                "applicable": True,
+                "backfilled": True,
             },
             localisation_alert={
-                "applicable": False, "backfilled": True,
+                "applicable": False,
+                "backfilled": True,
             },
             legal_basis_violations=[],
         )
@@ -85,8 +94,7 @@ class MigrateComplianceV2CommandTest(TestCase):
         run.refresh_from_db()
         self.assertTrue(run.cross_border_alert["backfilled"])
         output = out.getvalue()
-        self.assertNotIn("error", output.lower(),
-            "Command must complete without error")
+        self.assertNotIn("error", output.lower(), "Command must complete without error")
 
     def test_dry_run_does_not_modify(self):
         tenant = self._create_tenant()
@@ -102,7 +110,8 @@ class MigrateComplianceV2CommandTest(TestCase):
         """Rows with no regulation_mapping_json are not eligible."""
         tenant = self._create_tenant()
         run = self._create_run_with_v1_data(
-            tenant, reg_json=None,
+            tenant,
+            reg_json=None,
         )
         out = StringIO()
         call_command("migrate_compliance_runs_v2", stdout=out)

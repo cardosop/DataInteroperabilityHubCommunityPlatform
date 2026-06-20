@@ -25,8 +25,10 @@ Terminal states recognised (case-insensitive):
 A FAILED/ERROR terminal state causes the test to fail with the job's error
 message, giving actionable signal even when the job infrastructure is up.
 """
+
 import os
 import time
+
 import pytest
 import requests
 
@@ -83,19 +85,18 @@ class TestJobQueue:
             timeout=timeout,
         )
         if enqueue_response.status_code == 404:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
                 f"Job endpoint not found at {JOB_API_PATH} — "
                 "set SMOKE_JOB_API_PATH to the correct path"
             )
         if enqueue_response.status_code == 422:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
                 f"Job creation returned 422 — payload fields may differ: "
                 f"{enqueue_response.text[:300]}"
             )
 
         assert enqueue_response.status_code in (200, 201, 202), (
-            f"Job enqueue failed ({enqueue_response.status_code}): "
-            f"{enqueue_response.text[:500]}"
+            f"Job enqueue failed ({enqueue_response.status_code}): {enqueue_response.text[:500]}"
         )
 
         job_data = enqueue_response.json()
@@ -108,9 +109,7 @@ class TestJobQueue:
         last_status: str = job_data.get("status", "unknown")
 
         while time.monotonic() < deadline:
-            current = _get_job_status(
-                authenticated_session, base_url, str(job_id), timeout
-            )
+            current = _get_job_status(authenticated_session, base_url, str(job_id), timeout)
             last_status = str(current.get("status", "unknown")).lower()
             print(
                 f"  job_id={job_id} status={last_status} "
@@ -119,7 +118,7 @@ class TestJobQueue:
 
             if last_status in TERMINAL_STATES:
                 break
-            time.sleep(POLL_INTERVAL)  # INTENTIONAL: test-specific delay
+            time.sleep(POLL_INTERVAL)  # noqa: sleep-needed  # INTENTIONAL: test-specific delay
         else:
             pytest.fail(
                 f"Job {job_id} did not reach a terminal state within {POLL_TIMEOUT}s. "
@@ -129,9 +128,7 @@ class TestJobQueue:
 
         # --- Step 3: Assert the terminal state is SUCCESS -------------------
         if last_status in FAILURE_STATES:
-            final = _get_job_status(
-                authenticated_session, base_url, str(job_id), timeout
-            )
+            final = _get_job_status(authenticated_session, base_url, str(job_id), timeout)
             error_detail = final.get("error") or final.get("error_message") or final
             pytest.fail(
                 f"Job {job_id} reached terminal FAILURE state '{last_status}'. "

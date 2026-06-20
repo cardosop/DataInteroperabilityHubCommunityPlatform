@@ -3,6 +3,7 @@ Integration tests for Impact Analysis API
 
 Tests for impact analysis API endpoints.
 """
+
 import uuid
 
 import pytest
@@ -120,7 +121,10 @@ class ImpactAPITest(ContractsAPITestBase):
         # Create another tenant
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-api-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-api-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         other_user = User.objects.create_user(

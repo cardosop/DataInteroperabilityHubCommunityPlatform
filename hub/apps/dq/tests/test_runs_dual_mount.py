@@ -21,6 +21,7 @@ Real implementations throughout — same Django test-client +
 real DB rows pattern as the rest of the dq test suite. No
 mocks.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -30,7 +31,6 @@ from rest_framework import status
 
 from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
 from hub.apps.dq.tests.test_base import DQAPITestBase
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -68,7 +68,6 @@ class DQRunsDualMountBase(DQAPITestBase):
 
 
 class DQRunsDualMountReachabilityTest(DQRunsDualMountBase):
-
     def test_list_works_on_deprecated_prefix(self):
         """``GET /api/v1/quality/runs/`` returns 200 + same paginated
         envelope as the canonical mount."""
@@ -82,7 +81,8 @@ class DQRunsDualMountReachabilityTest(DQRunsDualMountBase):
         # next / previous). Comparing the *set* of keys, not the values,
         # because pagination order/timing isn't load-bearing here.
         self.assertEqual(
-            set(canonical.data.keys()), set(deprecated.data.keys()),
+            set(canonical.data.keys()),
+            set(deprecated.data.keys()),
             "Deprecated runs alias must surface the same paginated "
             "envelope as the canonical mount.",
         )
@@ -126,7 +126,8 @@ class DQRunsDualMountReachabilityTest(DQRunsDualMountBase):
         response = self.client.get(url)
 
         self.assertIn(
-            "Sunset", response.headers,
+            "Sunset",
+            response.headers,
             "Routing failure: /api/v1/quality/runs/{id}/results/ "
             "didn't reach DeprecatedDQRunViewSet.finalize_response. "
             f"Got status={response.status_code}, headers="
@@ -150,20 +151,36 @@ class DQRunsDualMountReachabilityTest(DQRunsDualMountBase):
         parity with canonical pins that the alias produces the
         same validation outcome."""
         canonical = self.client.post(
-            f"{CANONICAL_RUNS_PREFIX}/", data={}, format="json",
+            f"{CANONICAL_RUNS_PREFIX}/",
+            data={},
+            format="json",
         )
         deprecated = self.client.post(
-            f"{DEPRECATED_RUNS_PREFIX}/", data={}, format="json",
+            f"{DEPRECATED_RUNS_PREFIX}/",
+            data={},
+            format="json",
         )
 
         self.assertIn(
-            "Sunset", deprecated.headers,
+            "Sunset",
+            deprecated.headers,
             "Routing failure: POST /api/v1/quality/runs/ didn't "
             "reach DeprecatedDQRunViewSet (Sunset header missing). "
             f"Got status={deprecated.status_code}, headers="
             f"{dict(deprecated.headers)}.",
         )
-        self.assertEqual(canonical.status_code, deprecated.status_code)
+        # Both mounts must return 400 for empty POST (validation failure).
+        # A 500 would be a latent bug masked by the old status-code-parity check.
+        self.assertEqual(
+            canonical.status_code, status.HTTP_400_BAD_REQUEST,
+            f"Canonical POST with empty data should return 400, "
+            f"got {canonical.status_code}",
+        )
+        self.assertEqual(
+            deprecated.status_code, status.HTTP_400_BAD_REQUEST,
+            f"Deprecated POST with empty data should return 400, "
+            f"got {deprecated.status_code}",
+        )
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -183,7 +200,8 @@ class DQRunsDualMountSurfaceStabilityTest(DQRunsDualMountBase):
     def test_quality_root_path_returns_404(self):
         response = self.client.get("/api/v1/quality/")
         self.assertEqual(
-            response.status_code, status.HTTP_404_NOT_FOUND,
+            response.status_code,
+            status.HTTP_404_NOT_FOUND,
             "Deprecated /api/v1/quality/ must NOT publish a "
             "route-listing API root view. The DRF "
             "``DefaultRouter`` would surface one at this path; the "
@@ -197,7 +215,6 @@ class DQRunsDualMountSurfaceStabilityTest(DQRunsDualMountBase):
 
 
 class DQRunsDualMountHeadersTest(DQRunsDualMountBase):
-
     def test_canonical_runs_does_not_emit_deprecation_headers(self):
         """The canonical path is the FUTURE path — clients on it
         must NOT see deprecation headers (else every HTTP middleware
@@ -219,15 +236,15 @@ class DQRunsDualMountHeadersTest(DQRunsDualMountBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn(
-            "Sunset", response.headers,
+            "Sunset",
+            response.headers,
             "Deprecated /api/v1/quality/runs/* must carry an "
             "RFC 8594 Sunset header per Phase 227 + D240.10.",
         )
         # IMF-fixdate ends in ``GMT`` per RFC 7231 §7.1.1.1.
         self.assertTrue(
             response.headers["Sunset"].endswith("GMT"),
-            f"Sunset must be an RFC 7231 IMF-fixdate, "
-            f"got: {response.headers['Sunset']!r}",
+            f"Sunset must be an RFC 7231 IMF-fixdate, got: {response.headers['Sunset']!r}",
         )
 
     def test_deprecated_runs_emits_deprecation_header(self):
@@ -236,7 +253,8 @@ class DQRunsDualMountHeadersTest(DQRunsDualMountBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn(
-            "Deprecation", response.headers,
+            "Deprecation",
+            response.headers,
             "Deprecated /api/v1/quality/runs/ must carry the "
             "Deprecation header (HTTP-date of merge).",
         )
@@ -251,10 +269,11 @@ class DQRunsDualMountHeadersTest(DQRunsDualMountBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("Link", response.headers)
         link = response.headers["Link"]
-        self.assertIn("/api/v1/dq/runs", link, (
-            "Link header must reference the canonical /dq/runs/ "
-            f"successor; got: {link!r}"
-        ))
+        self.assertIn(
+            "/api/v1/dq/runs",
+            link,
+            (f"Link header must reference the canonical /dq/runs/ successor; got: {link!r}"),
+        )
         self.assertIn('rel="successor-version"', link)
 
     def test_deprecated_runs_results_action_emits_deprecation_headers(self):
@@ -279,11 +298,11 @@ class DQRunsDualMountHeadersTest(DQRunsDualMountBase):
 
 
 class DQRunsDualMountParityTest(DQRunsDualMountBase):
-
     def test_alias_respects_tenant_isolation(self):
         """Cross-tenant rows must NOT leak through the alias —
         same isolation enforced as the canonical mount."""
         from django.contrib.auth import get_user_model
+
         from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
@@ -312,7 +331,8 @@ class DQRunsDualMountParityTest(DQRunsDualMountBase):
 
         leaked_ids = {row["id"] for row in response.data["results"]}
         self.assertNotIn(
-            str(self.dq_run.id), leaked_ids,
+            str(self.dq_run.id),
+            leaked_ids,
             "Tenant isolation broken on the deprecated alias — "
             "cross-tenant DQRun leaked into the response.",
         )

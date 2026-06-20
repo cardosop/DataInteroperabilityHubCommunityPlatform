@@ -24,9 +24,8 @@ extra config required as long as the platform's Django cache is
 backed by Redis (which it is in staging + production per the helm
 values).
 """
-from __future__ import annotations
 
-from typing import Optional
+from __future__ import annotations
 
 from rest_framework.throttling import SimpleRateThrottle
 
@@ -36,7 +35,7 @@ class AssetDataFirstUserThrottle(SimpleRateThrottle):
 
     scope = "asset_data_first_user"
 
-    def get_cache_key(self, request, view) -> Optional[str]:
+    def get_cache_key(self, request, view) -> str | None:
         # Anonymous users never reach the endpoint (it's gated by
         # ``IsAuthenticated``); but DRF still calls the throttle on
         # every request, so we return None to skip the rate check
@@ -62,7 +61,7 @@ class AssetDataFirstTenantThrottle(SimpleRateThrottle):
 
     scope = "asset_data_first_tenant"
 
-    def get_cache_key(self, request, view) -> Optional[str]:
+    def get_cache_key(self, request, view) -> str | None:
         if not request.user or not request.user.is_authenticated:
             return None
         # Defer the import so the module doesn't pull tenants on

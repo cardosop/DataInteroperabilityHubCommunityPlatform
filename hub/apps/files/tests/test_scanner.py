@@ -1,23 +1,24 @@
 """
 Phase 203 — ClamAV scanner, RQ scan job, and download gates.
 
-Uses real TCP/S3 where possible. Live daemon tests run only when
-``RUN_CLAMAV_LIVE_TESTS=1`` and ``CLAMAV_LIVE_TEST_HOST`` point at a reachable clamd.
+Uses real TCP/S3 where possible. Live daemon tests self-probe ClamAV at
+``setUp`` time via Django settings (``CLAMAV_HOST`` / ``CLAMAV_PORT``) and
+skip cleanly when the daemon is unreachable — no env-var gate required.
 """
 
 from __future__ import annotations
 
-import os
 import unittest
 import uuid
 
 import pytest
+from django.conf import settings
 from django.test import TestCase, override_settings
 from rest_framework import status
 
 from hub.apps.audit.models import AuditEvent
 from hub.apps.files.models import File, FileScanStatus, FileStatus
-from hub.apps.files.scanner import ClamAVScanner, EICAR_STANDARD_TEST_BYTES
+from hub.apps.files.scanner import EICAR_STANDARD_TEST_BYTES, ClamAVScanner
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.files.tasks import scan_file_malware
 from hub.apps.files.tests.test_base import FilesAPITestBase, FilesTestBase
@@ -33,18 +34,46 @@ class ClamAVScannerUnitTest(TestCase):
         self.assertEqual(scanner.classify_bytes(b"hello"), FileScanStatus.SCAN_UNAVAILABLE)
 
 
-@pytest.mark.requires_clamav_live
-@unittest.skipUnless(
-    os.environ.get("RUN_CLAMAV_LIVE_TESTS") == "1"
-    and bool(os.environ.get("CLAMAV_LIVE_TEST_HOST", "").strip()),
-    "Set RUN_CLAMAV_LIVE_TESTS=1 and CLAMAV_LIVE_TEST_HOST (e.g. 127.0.0.1 when port 3310 is published)",
-)
+def _clamav_probe_scanner() -> ClamAVScanner | None:
+    """Return a working ClamAVScanner or None if the daemon is unreachable."""
+    host = getattr(settings, "CLAMAV_HOST", "127.0.0.1")
+    port = int(getattr(settings, "CLAMAV_PORT", 3310))
+    timeout = min(float(getattr(settings, "CLAMAV_TIMEOUT_SECONDS", 120.0)), 30.0)
+    scanner = ClamAVScanner(host=host, port=port, timeout=timeout)
+    try:
+        # Quick smoke test — classify clean bytes.  If this raises,
+        # clamd is unreachable and we skip.
+        outcome, _ = scanner.classify_bytes_with_detail(b"no malware here\n")
+        # Any outcome means connectivity works (even SCAN_UNAVAILABLE means
+        # the daemon answered, just didn't scan properly).
+        return scanner
+    except Exception:
+        return None
+
+
+@pytest.mark.requires_clamav
 class ClamAVScannerLiveTest(TestCase):
-    """Requires a running ClamAV daemon (e.g. docker compose up clamav)."""
+    """Requires a running ClamAV daemon (e.g. ``docker compose up clamav``).
+
+    Self-probes connectivity at ``setUp`` time via Django settings
+    (``CLAMAV_HOST`` / ``CLAMAV_PORT``). Skips cleanly when clamd is
+    unreachable — no env-var gate needed.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        if _clamav_probe_scanner() is None:
+            host = getattr(settings, "CLAMAV_HOST", "127.0.0.1")
+            port = int(getattr(settings, "CLAMAV_PORT", 3310))
+            raise pytest.skip(
+                f"ClamAV daemon unreachable at {host}:{port} — "
+                "start the clamav-test profile or publish port 3310"
+            )
 
     def test_clean_and_eicar(self):
-        host = os.environ["CLAMAV_LIVE_TEST_HOST"].strip()
-        port = int(os.environ.get("CLAMAV_LIVE_TEST_PORT", "3310"))
+        host = getattr(settings, "CLAMAV_HOST", "127.0.0.1")
+        port = int(getattr(settings, "CLAMAV_PORT", 3310))
         scanner = ClamAVScanner(host=host, port=port, timeout=120.0)
         clean, cth = scanner.classify_bytes_with_detail(b"no malware here\n")
         self.assertEqual(clean, FileScanStatus.CLEAN)
@@ -64,7 +93,7 @@ class ScanFileMalwareJobTest(FilesTestBase):
         try:
             S3StorageClient()._ensure_bucket_exists()
             self._storage_ok = True
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover — S3 probe
             self._storage_ok = False
 
     @override_settings(CLAMAV_HOST="127.0.0.1", CLAMAV_PORT=65442, CLAMAV_ENABLED=True)
@@ -97,8 +126,7 @@ class ScanFileMalwareJobTest(FilesTestBase):
             action="FILE_MALWARE_SCAN_UNAVAILABLE",
             resource_id=file_obj.id,
         ).first()
-        self.assertIsNotNone(audit,
-            "FILE_MALWARE_SCAN_UNAVAILABLE audit event must be emitted")
+        self.assertIsNotNone(audit, "FILE_MALWARE_SCAN_UNAVAILABLE audit event must be emitted")
         self.assertEqual(audit.result, "WARNING")
         self.assertEqual(
             audit.details_json.get("reason"),
@@ -133,8 +161,7 @@ class ScanFileMalwareJobTest(FilesTestBase):
             action="FILE_MALWARE_SCAN_STORAGE_ERROR",
             resource_id=file_obj.id,
         ).first()
-        self.assertIsNotNone(audit,
-            "FILE_MALWARE_SCAN_STORAGE_ERROR audit event must be emitted")
+        self.assertIsNotNone(audit, "FILE_MALWARE_SCAN_STORAGE_ERROR audit event must be emitted")
         self.assertEqual(audit.result, "WARNING")
         self.assertEqual(
             audit.details_json.get("error_type"),
@@ -152,7 +179,7 @@ class FileDownloadMalwareGateAPITest(FilesAPITestBase):
         try:
             S3StorageClient()._ensure_bucket_exists()
             self.storage_available = True
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover — S3 probe
             self.storage_available = False
 
     def test_download_blocked_when_pending_scan(self):
@@ -211,7 +238,7 @@ class ScanFileMalwareIdempotencyTest(FilesTestBase):
         try:
             S3StorageClient()._ensure_bucket_exists()
             self._storage_ok = True
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover — S3 probe
             self._storage_ok = False
 
     @override_settings(CLAMAV_HOST="127.0.0.1", CLAMAV_PORT=65443, CLAMAV_ENABLED=True)
@@ -221,6 +248,7 @@ class ScanFileMalwareIdempotencyTest(FilesTestBase):
             self.skipTest("S3/MinIO not available")
 
         import uuid
+
         body = b"idempotency-test-body"
         storage_path = f"{self.tenant.id}/{uuid.uuid4()}/idem.txt"
         storage = S3StorageClient()
@@ -248,8 +276,11 @@ class ScanFileMalwareIdempotencyTest(FilesTestBase):
         scan_file_malware(str(file_obj.id))
         file_obj.refresh_from_db()
         self.assertEqual(file_obj.scan_status, FileScanStatus.SCAN_UNAVAILABLE)
-        self.assertEqual(file_obj.scanned_at, first_scanned_at,
-            "Second scan call must not update scanned_at timestamp")
+        self.assertEqual(
+            file_obj.scanned_at,
+            first_scanned_at,
+            "Second scan call must not update scanned_at timestamp",
+        )
 
     def test_scan_file_malware_gracefully_returns_when_file_deleted(self):
         """scan_file_malware(non_existent_uuid) must not raise or create audit events."""
@@ -262,5 +293,4 @@ class ScanFileMalwareIdempotencyTest(FilesTestBase):
         scan_file_malware(str(non_existent_id))
 
         after = AuditEvent.objects.count()
-        self.assertEqual(after, before,
-            "No audit events must be created for a non-existent file")
+        self.assertEqual(after, before, "No audit events must be created for a non-existent file")

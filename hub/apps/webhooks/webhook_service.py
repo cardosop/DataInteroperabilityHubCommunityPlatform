@@ -5,12 +5,11 @@ Service layer for webhook management operations.
 All create/update paths handle validation, persistence, and audit event emission.
 """
 
-from typing import Any, Dict, List, Optional
-
 from django.db import transaction
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from hub.apps.audit.utils import create_audit_event
-from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
+from hub.apps.core.services.base import BaseService, ValidationError
 from hub.apps.webhooks.models import Webhook, WebhookStatus
 
 
@@ -26,7 +25,7 @@ class WebhookService(BaseService):
 
     service_name = "webhook_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize WebhookService.
 
@@ -45,10 +44,10 @@ class WebhookService(BaseService):
         name: str,
         url: str,
         secret: str,
-        event_types: List[str],
+        event_types: list[str],
         status: str = WebhookStatus.ACTIVE,
         max_retries: int = 5,
-        retry_intervals: Optional[List[int]] = None,
+        retry_intervals: list[int] | None = None,
     ) -> Webhook:
         """
         Create a webhook.
@@ -225,7 +224,7 @@ class WebhookService(BaseService):
         # Validate updated webhook
         try:
             webhook.full_clean()
-        except Exception as e:
+        except DjangoValidationError as e:
             raise ValidationError(
                 str(e), code="VALIDATION_ERROR", details={"validation_errors": str(e)}
             )

@@ -1,6 +1,7 @@
 """
 283.5.8 — Form draft CLI commands.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,7 +14,6 @@ from ..api_client import api_client
 @click.group()
 def drafts():
     """Form draft operations (auto-save / restore)"""
-    pass
 
 
 @drafts.command("get")
@@ -21,7 +21,9 @@ def drafts():
 @click.option("--draft-key", default="default", help="Draft identifier")
 def get_draft(resource_type, draft_key):
     """Retrieve a saved form draft"""
-    data = api_client.get("drafts/", params={"resource_type": resource_type, "draft_key": draft_key})
+    data = api_client.get(
+        "drafts/", params={"resource_type": resource_type, "draft_key": draft_key}
+    )
     click.echo(json.dumps(data, indent=2, default=str))
 
 
@@ -36,9 +38,15 @@ def save_draft(resource_type, draft_key, payload):
     except json.JSONDecodeError as exc:
         raise click.ClickException(f"Invalid JSON payload: {exc}")
     # api_client has no put() — use the generic request() with PUT method.
-    resp = api_client.request("PUT", "drafts/save/", json_data={
-        "resource_type": resource_type, "draft_key": draft_key, "data": parsed,
-    })
+    resp = api_client.request(
+        "PUT",
+        "drafts/save/",
+        json_data={
+            "resource_type": resource_type,
+            "draft_key": draft_key,
+            "data": parsed,
+        },
+    )
     if not resp.ok:
         raise click.ClickException(f"Save draft failed: {resp.status_code} {resp.text}")
     data = resp.json()
@@ -51,9 +59,14 @@ def save_draft(resource_type, draft_key, payload):
 @click.confirmation_option(prompt="Delete this draft?")
 def delete_draft(resource_type, draft_key):
     """Delete a saved draft"""
-    resp = api_client.request("DELETE", "drafts/delete/", params={
-        "resource_type": resource_type, "draft_key": draft_key,
-    })
+    resp = api_client.request(
+        "DELETE",
+        "drafts/delete/",
+        params={
+            "resource_type": resource_type,
+            "draft_key": draft_key,
+        },
+    )
     if not resp.ok:
         raise click.ClickException(f"Delete draft failed: {resp.status_code} {resp.text}")
     click.echo(f"Deleted draft: {resource_type}/{draft_key}")

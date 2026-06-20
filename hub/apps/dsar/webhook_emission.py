@@ -1,7 +1,8 @@
 """Phase 232.2.12 — webhook fan-out for DSAR lifecycle."""
 
 from __future__ import annotations
-from typing import Any, Dict
+
+from typing import Any
 
 import structlog
 
@@ -12,7 +13,7 @@ from hub.apps.webhooks.service import WebhookDeliveryService
 logger = structlog.get_logger(__name__)
 
 
-def _payload(row: DSARRequest) -> Dict[str, Any]:
+def _payload(row: DSARRequest) -> dict[str, Any]:
     return {
         "dsar_id": str(row.id),
         "tenant_id": str(row.tenant_id),

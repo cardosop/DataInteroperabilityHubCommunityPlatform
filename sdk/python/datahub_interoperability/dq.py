@@ -1,6 +1,7 @@
 """
 Data Quality operations for DataHub SDK.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,15 +20,17 @@ class DQAPI:
     #: variant from the worker-service status field. The helper
     #: accepts both so the contract works against any hub version
     #: regardless of which serializer the deployment uses.
-    TERMINAL_STATUSES: FrozenSet[str] = frozenset({
-        "PASS",
-        "FAIL",
-        "WARN",
-        "SUCCEEDED",
-        "completed",
-        "failed",
-        "cancelled",
-    })
+    TERMINAL_STATUSES: FrozenSet[str] = frozenset(
+        {
+            "PASS",
+            "FAIL",
+            "WARN",
+            "SUCCEEDED",
+            "completed",
+            "failed",
+            "cancelled",
+        }
+    )
 
     def __init__(self, client: DataHubClient):
         self.client = client
@@ -133,14 +136,18 @@ class DQAPI:
         elapsed = 0.0
         while elapsed < timeout:
             response = await self.list_runs(
-                asset_id=asset_id, limit=1,
+                asset_id=asset_id,
+                limit=1,
             )
             results = response.get("results") or []
             if results:
                 latest: Dict[str, Any] = results[0]
                 run_asset_id = latest.get("asset_id") or latest.get("asset")
-                if (run_asset_id and str(run_asset_id) == str(asset_id)
-                        and latest.get("status") in self.TERMINAL_STATUSES):
+                if (
+                    run_asset_id
+                    and str(run_asset_id) == str(asset_id)
+                    and latest.get("status") in self.TERMINAL_STATUSES
+                ):
                     return latest
             await asyncio.sleep(interval)
             elapsed += interval

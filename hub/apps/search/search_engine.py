@@ -5,13 +5,13 @@ Full-text search engine with relevance-based ranking and filtering.
 """
 
 from datetime import timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import structlog
-from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector, TrigramSimilarity
+from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.core.cache import cache
 from django.db import models
-from django.db.models import Case, F, FloatField, Q, Value, When
+from django.db.models import Case, F, FloatField, Value, When
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -38,19 +38,19 @@ class SearchEngine:
     def search(
         tenant_id: str,
         query: str,
-        resource_type: Optional[str] = None,
-        classification: Optional[str] = None,
-        owner_id: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        domain: Optional[str] = None,
-        quality_status: Optional[str] = None,
-        compliance_status: Optional[str] = None,
+        resource_type: str | None = None,
+        classification: str | None = None,
+        owner_id: str | None = None,
+        tags: list[str] | None = None,
+        domain: str | None = None,
+        quality_status: str | None = None,
+        compliance_status: str | None = None,
         limit: int = 20,
         offset: int = 0,
         sort_by: str = "relevance",
         sort_order: str = "desc",
-        weights: Optional[Dict[str, float]] = None,
-    ) -> Tuple[List[Dict[str, Any]], int]:
+        weights: dict[str, float] | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
         """
         Perform full-text search with filters and ranking.
 
@@ -214,7 +214,7 @@ class SearchEngine:
         return formatted_results, total_count
 
     @staticmethod
-    def get_suggestions(tenant_id: str, query: str, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_suggestions(tenant_id: str, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """
         Get search suggestions based on partial query.
 
@@ -341,12 +341,12 @@ class SearchEngine:
         tenant_id: str,
         query: str,
         query_type: str = "SEARCH",
-        filters: Optional[Dict[str, Any]] = None,
+        filters: dict[str, Any] | None = None,
         result_count: int = 0,
-        user_id: Optional[str] = None,
-        session_id: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> SearchAnalytics:
         """Track a search query for analytics"""
         # Ensure analytics is created and saved properly

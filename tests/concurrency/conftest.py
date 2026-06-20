@@ -6,6 +6,7 @@ hit the default 30 s statement_timeout on a busy shared DB (other
 services hold connections). This autouse fixture raises the timeout
 so TRUNCATE completes without blocking the test run.
 """
+
 import pytest
 from django.db import connection
 

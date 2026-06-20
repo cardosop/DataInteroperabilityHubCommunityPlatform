@@ -11,15 +11,17 @@ the plan-change path (POST change-plan).
 """
 
 import os
+
 import requests
-from tests._persona_provisioning import provision_persona, PersonaCredentials
+
+from tests._persona_provisioning import PersonaCredentials, provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import api_base_url
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
@@ -53,13 +55,10 @@ def test_get_current_plan():
     )
 
     if resp.status_code == 404:
-        pytest.skip(
-            "Billing subscription endpoint not implemented yet (404)"
-        )
+        pytest.skip("Billing subscription endpoint not implemented yet (404)")
 
     assert resp.status_code == 200, (
-        f"GET /billing/subscription/current/ returned "
-        f"{resp.status_code}: {resp.text[:500]}"
+        f"GET /billing/subscription/current/ returned {resp.status_code}: {resp.text[:500]}"
     )
 
     body = resp.json()
@@ -87,20 +86,20 @@ def test_get_current_plan_contains_limits():
     assert resp.status_code == 200
     body = resp.json()
 
-    results = (
-        body if isinstance(body, list) else body.get("results", [])
-    )
+    results = body if isinstance(body, list) else body.get("results", [])
     assert len(results) > 0, "No billing plans returned"
 
     # At least one plan should contain limit/quota fields
     # Verify at least one plan has a structured limit field (not just
     # a keyword appearing in a description or name).
-    limit_keys = {"max_assets", "max_datasets", "max_storage_gb",
-                  "limits_json", "max_api_calls_per_month"}
-    has_structured_limit = any(
-        any(key in plan for key in limit_keys)
-        for plan in results
-    )
+    limit_keys = {
+        "max_assets",
+        "max_datasets",
+        "max_storage_gb",
+        "limits_json",
+        "max_api_calls_per_month",
+    }
+    has_structured_limit = any(any(key in plan for key in limit_keys) for plan in results)
     assert has_structured_limit, (
         f"No billing plan contains recognised limit keys "
         f"({limit_keys}). Plans: {str(results)[:500]}"
@@ -122,23 +121,18 @@ def test_list_plans_returns_data():
         pytest.skip("Billing plans endpoint not implemented yet (404)")
 
     assert resp.status_code == 200, (
-        f"GET /billing/plans/ returned "
-        f"{resp.status_code}: {resp.text[:500]}"
+        f"GET /billing/plans/ returned {resp.status_code}: {resp.text[:500]}"
     )
 
     body = resp.json()
-    results = (
-        body if isinstance(body, list) else body.get("results", [])
-    )
+    results = body if isinstance(body, list) else body.get("results", [])
     assert len(results) > 0, "Billing plans list is empty"
 
     # Each plan should have at minimum an identifier and name
     first_plan = results[0]
-    assert (
-        "id" in first_plan
-        or "slug" in first_plan
-        or "name" in first_plan
-    ), f"Plan object missing id/slug/name: {first_plan}"
+    assert "id" in first_plan or "slug" in first_plan or "name" in first_plan, (
+        f"Plan object missing id/slug/name: {first_plan}"
+    )
 
 
 def test_list_invoices_returns_data():
@@ -156,26 +150,20 @@ def test_list_invoices_returns_data():
         pytest.skip("Billing invoices endpoint not implemented (404)")
 
     assert resp.status_code == 200, (
-        f"GET /billing/invoices/ returned "
-        f"{resp.status_code}: {resp.text[:500]}"
+        f"GET /billing/invoices/ returned {resp.status_code}: {resp.text[:500]}"
     )
 
     body = resp.json()
     # Invoices may be empty for new tenants — just verify the shape
     if isinstance(body, dict):
-        assert "results" in body, (
-            f"Invoice response missing 'results' key: {list(body.keys())}"
-        )
+        assert "results" in body, f"Invoice response missing 'results' key: {list(body.keys())}"
         assert isinstance(body["results"], list), (
             f"Invoice 'results' is not a list: {type(body['results'])}"
         )
     elif isinstance(body, list):
         pass  # list format is also valid
     else:
-        pytest.fail(
-            f"Unexpected invoice response type {type(body)}: "
-            f"{str(body)[:200]}"
-        )
+        pytest.fail(f"Unexpected invoice response type {type(body)}: {str(body)[:200]}")
 
 
 def test_quota_exceeded_returns_error():
@@ -206,12 +194,9 @@ def test_quota_exceeded_returns_error():
         timeout=15,
     )
     if free_plan_resp.status_code == 404:
-        pytest.skip(
-            "ensure-e2e-free-plan-tenant endpoint not deployed (404)"
-        )
+        pytest.skip("ensure-e2e-free-plan-tenant endpoint not deployed (404)")
     assert free_plan_resp.status_code == 200, (
-        f"Free-plan tenant setup failed: "
-        f"{free_plan_resp.status_code}: {free_plan_resp.text[:300]}"
+        f"Free-plan tenant setup failed: {free_plan_resp.status_code}: {free_plan_resp.text[:300]}"
     )
     free_tenant_id = free_plan_resp.json()["tenant_id"]
 
@@ -239,9 +224,7 @@ def test_quota_exceeded_returns_error():
         if resp.status_code in (400, 402, 403, 413, 422, 429):
             body = (
                 resp.json()
-                if resp.headers.get("content-type", "").startswith(
-                    "application/json"
-                )
+                if resp.headers.get("content-type", "").startswith("application/json")
                 else {}
             )
             body_str = str(body).lower()
@@ -250,7 +233,11 @@ def test_quota_exceeded_returns_error():
             has_limit_marker = any(
                 keyword in body_str
                 for keyword in [
-                    "limit", "quota", "exceeded", "upgrade", "plan",
+                    "limit",
+                    "quota",
+                    "exceeded",
+                    "upgrade",
+                    "plan",
                     "plan_limit",
                 ]
             )
@@ -275,26 +262,24 @@ def test_billing_unauthenticated_returns_401():
     base = api_base_url()
 
     plan_resp = requests.get(
-        f"{base}/billing/plans/", timeout=15,
+        f"{base}/billing/plans/",
+        timeout=15,
     )
     if plan_resp.status_code == 404:
         pytest.skip("Billing endpoint not implemented (404)")
 
     assert plan_resp.status_code == 401, (
-        f"Unauthenticated billing/plans returned "
-        f"{plan_resp.status_code}"
+        f"Unauthenticated billing/plans returned {plan_resp.status_code}"
     )
 
     sub_resp = requests.get(
-        f"{base}/billing/subscription/current/", timeout=15,
+        f"{base}/billing/subscription/current/",
+        timeout=15,
     )
     if sub_resp.status_code == 404:
-        pytest.skip(
-            "Billing subscription endpoint not implemented (404)"
-        )
+        pytest.skip("Billing subscription endpoint not implemented (404)")
     assert sub_resp.status_code == 401, (
-        f"Unauthenticated billing/subscription returned "
-        f"{sub_resp.status_code}"
+        f"Unauthenticated billing/subscription returned {sub_resp.status_code}"
     )
 
 
@@ -312,14 +297,11 @@ def test_non_admin_can_view_subscription():
     )
 
     if resp.status_code == 404:
-        pytest.skip(
-            "Billing subscription endpoint not implemented (404)"
-        )
+        pytest.skip("Billing subscription endpoint not implemented (404)")
 
     # Non-admin users must be able to view their own subscription.
     assert resp.status_code == 200, (
-        f"Auditor billing/subscription returned "
-        f"{resp.status_code}: {resp.text[:300]}"
+        f"Auditor billing/subscription returned {resp.status_code}: {resp.text[:300]}"
     )
 
 
@@ -341,9 +323,7 @@ def test_billing_plan_change_endpoint_exists():
     )
 
     if resp.status_code == 404:
-        pytest.skip(
-            "Billing plan change endpoint not implemented (404)"
-        )
+        pytest.skip("Billing plan change endpoint not implemented (404)")
 
     # The endpoint exists — with an invalid plan slug it must return
     # 400 (validation error) or 404 (endpoint not deployed).  It must

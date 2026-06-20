@@ -1,21 +1,19 @@
 """
 285.12.3.3 — Scheduled export tenant isolation + RLS enforcement tests.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.scheduled_export.models import (
     DestinationType,
     ScheduledExport,
-    ScheduledExportRun,
-    ScheduledExportRunStatus,
     ScheduledExportStatus,
 )
 from hub.apps.tenants.models import Tenant
@@ -24,25 +22,29 @@ User = get_user_model()
 
 
 class ExportTenantIsolationTests(TestCase):
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        cls.tenant_a = Tenant.objects.create(
-            name="Tenant-A", slug=f"ta-{uuid.uuid4().hex[:8]}", status="ACTIVE",
-        )
-        cls.tenant_b = Tenant.objects.create(
-            name="Tenant-B", slug=f"tb-{uuid.uuid4().hex[:8]}", status="ACTIVE",
-        )
-        cls.user_a = User.objects.create_user(
-            email=f"ua_{uuid.uuid4().hex[:8]}@test.local", password="Pass1234!",
-            tenant=cls.tenant_a,
-        )
-        cls.user_b = User.objects.create_user(
-            email=f"ub_{uuid.uuid4().hex[:8]}@test.local", password="Pass1234!",
-            tenant=cls.tenant_b,
-        )
-
     def setUp(self):
+        super().setUp()
+        _suffix = uuid.uuid4().hex[:8]
+        self.tenant_a = Tenant.objects.create(
+            name=f"Tenant-A-{_suffix}",
+            slug=f"ta-{_suffix}",
+            status="ACTIVE",
+        )
+        self.tenant_b = Tenant.objects.create(
+            name=f"Tenant-B-{_suffix}",
+            slug=f"tb-{_suffix}",
+            status="ACTIVE",
+        )
+        self.user_a = User.objects.create_user(
+            email=f"ua_{_suffix}@test.local",
+            password="Pass1234!",
+            tenant=self.tenant_a,
+        )
+        self.user_b = User.objects.create_user(
+            email=f"ub_{_suffix}@test.local",
+            password="Pass1234!",
+            tenant=self.tenant_b,
+        )
         self.client = APIClient()
 
     @pytest.mark.integration

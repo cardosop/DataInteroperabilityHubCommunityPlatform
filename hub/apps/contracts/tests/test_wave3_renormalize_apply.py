@@ -22,6 +22,7 @@ No mocks of internal code paths — real Tenant + Asset + Contract +
 Webhook rows; real ``NormalizationService.normalize_contract``; real
 ``SearchIndexer.index_contract``; real ``WebhookDeliveryService``.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,7 +32,6 @@ from io import StringIO
 import pytest
 from django.core.management import call_command
 from django.test import TestCase
-
 
 # ---------------------------------------------------------------------------
 # Fixtures (mirror test_audit_structureless_command.py for consistency)
@@ -173,6 +173,7 @@ class TestApplyPopulatesNormalizationMetrics(TestCase):
         """The healed contract's models count is observed on the
         ``contract_normalization_models_count`` histogram."""
         from unittest import mock
+
         tenant = _create_tenant("W32")
         _create_structural_odcs_contract(tenant)
         _create_structural_odcs_contract(tenant)
@@ -247,16 +248,12 @@ class TestApplyTriggersSearchReindex(TestCase):
         contract = _create_structureless_odcs_contract(tenant)
 
         # No pre-existing SearchIndex row.
-        before_count = SearchIndex.objects.filter(
-            resource_id=contract.id
-        ).count()
+        before_count = SearchIndex.objects.filter(resource_id=contract.id).count()
 
         _run("--apply", tenant=tenant)
 
         # Residue path skips re-index — no new row is created.
-        after_count = SearchIndex.objects.filter(
-            resource_id=contract.id
-        ).count()
+        after_count = SearchIndex.objects.filter(resource_id=contract.id).count()
         assert after_count == before_count, (
             f"Residue contract should NOT trigger re-index; "
             f"SearchIndex row count went {before_count} → {after_count}"
@@ -310,10 +307,7 @@ class TestBatchRenormalizedWebhook(TestCase):
             "WebhookEventType must register CONTRACT_BATCH_RENORMALIZED "
             "as a TextChoices member so subscribers can subscribe to it"
         )
-        assert (
-            WebhookEventType.CONTRACT_BATCH_RENORMALIZED.value
-            == "contract.batch_renormalized"
-        )
+        assert WebhookEventType.CONTRACT_BATCH_RENORMALIZED.value == "contract.batch_renormalized"
 
     def test_webhook_dispatched_to_subscribed_tenant(self):
         """Tenant with a webhook subscribed to
@@ -321,19 +315,13 @@ class TestBatchRenormalizedWebhook(TestCase):
         from hub.apps.webhooks.models import WebhookDelivery
 
         tenant = _create_tenant("W34D")
-        _create_webhook_subscription(
-            tenant, event_types=["contract.batch_renormalized"]
-        )
+        _create_webhook_subscription(tenant, event_types=["contract.batch_renormalized"])
         _create_structural_odcs_contract(tenant)
         _create_structural_odcs_contract(tenant)
 
-        before = WebhookDelivery.objects.filter(
-            event_type="contract.batch_renormalized"
-        ).count()
+        before = WebhookDelivery.objects.filter(event_type="contract.batch_renormalized").count()
         _run("--apply", "--silent-events", tenant=tenant)
-        after = WebhookDelivery.objects.filter(
-            event_type="contract.batch_renormalized"
-        ).count()
+        after = WebhookDelivery.objects.filter(event_type="contract.batch_renormalized").count()
 
         # Two healed contracts in one batch → ONE summary delivery, not two.
         assert after - before == 1, (
@@ -348,18 +336,20 @@ class TestBatchRenormalizedWebhook(TestCase):
         from hub.apps.webhooks.models import WebhookDelivery
 
         tenant = _create_tenant("W34P")
-        _create_webhook_subscription(
-            tenant, event_types=["contract.batch_renormalized"]
-        )
+        _create_webhook_subscription(tenant, event_types=["contract.batch_renormalized"])
         _create_structural_odcs_contract(tenant)
         _create_structureless_odcs_contract(tenant)
 
         _run("--apply", "--silent-events", tenant=tenant)
 
-        delivery = WebhookDelivery.objects.filter(
-            webhook__tenant=tenant,
-            event_type="contract.batch_renormalized",
-        ).order_by("-created_at").first()
+        delivery = (
+            WebhookDelivery.objects.filter(
+                webhook__tenant=tenant,
+                event_type="contract.batch_renormalized",
+            )
+            .order_by("-created_at")
+            .first()
+        )
         assert delivery is not None, "expected a batch webhook delivery"
         # Payload data carries the canonical summary keys the spec
         # promises subscribers can branch on.
@@ -372,9 +362,7 @@ class TestBatchRenormalizedWebhook(TestCase):
             "residual",
             "failed",
         ):
-            assert key in data, (
-                f"webhook payload data missing {key!r}; got {data!r}"
-            )
+            assert key in data, f"webhook payload data missing {key!r}; got {data!r}"
         # The tenant_id in the payload matches the tenant we processed.
         assert data["tenant_id"] == str(tenant.id)
         # Mixed cohort: 1 heal + 1 residue.
@@ -392,17 +380,19 @@ class TestBatchRenormalizedWebhook(TestCase):
         from hub.apps.webhooks.models import WebhookDelivery
 
         tenant = _create_tenant("W34M")
-        _create_webhook_subscription(
-            tenant, event_types=["contract.batch_renormalized"]
-        )
+        _create_webhook_subscription(tenant, event_types=["contract.batch_renormalized"])
         _create_structural_odcs_contract(tenant)
 
         _run("--apply", "--silent-events", tenant=tenant)
 
-        delivery = WebhookDelivery.objects.filter(
-            webhook__tenant=tenant,
-            event_type="contract.batch_renormalized",
-        ).order_by("-created_at").first()
+        delivery = (
+            WebhookDelivery.objects.filter(
+                webhook__tenant=tenant,
+                event_type="contract.batch_renormalized",
+            )
+            .order_by("-created_at")
+            .first()
+        )
         assert delivery is not None, "expected a delivery"
         payload = delivery.payload
         assert payload.get("resource_type") == "TENANT", (
@@ -424,18 +414,11 @@ class TestBatchRenormalizedWebhook(TestCase):
         # No webhook subscription created.
         _create_structural_odcs_contract(tenant)
 
-        before = WebhookDelivery.objects.filter(
-            event_type="contract.batch_renormalized"
-        ).count()
+        before = WebhookDelivery.objects.filter(event_type="contract.batch_renormalized").count()
         _run("--apply", "--silent-events", tenant=tenant)
-        after = WebhookDelivery.objects.filter(
-            event_type="contract.batch_renormalized"
-        ).count()
+        after = WebhookDelivery.objects.filter(event_type="contract.batch_renormalized").count()
 
-        assert after == before, (
-            "Tenant without a subscribed webhook must not receive a "
-            "delivery"
-        )
+        assert after == before, "Tenant without a subscribed webhook must not receive a delivery"
 
     def test_webhook_dispatch_failure_does_not_break_migration(self):
         """Webhook dispatch is best-effort: a delivery error must not
@@ -445,9 +428,7 @@ class TestBatchRenormalizedWebhook(TestCase):
         from hub.apps.contracts.structureless import is_structureless
 
         tenant = _create_tenant("W34F")
-        _create_webhook_subscription(
-            tenant, event_types=["contract.batch_renormalized"]
-        )
+        _create_webhook_subscription(tenant, event_types=["contract.batch_renormalized"])
         contract = _create_structural_odcs_contract(tenant)
 
         # Force trigger_webhook to raise during the batch summary step.
@@ -497,19 +478,15 @@ class TestPerTenantResidueReport(TestCase):
         )
         summary = json.loads(summary_line)
         assert "per_tenant" in summary, (
-            f"Summary must carry per_tenant breakdown for Wave 4 "
-            f"planning; got keys={list(summary)}"
+            f"Summary must carry per_tenant breakdown for Wave 4 planning; got keys={list(summary)}"
         )
         per_tenant = summary["per_tenant"]
         assert str(tenant.id) in per_tenant, (
-            f"Expected this tenant in per_tenant map; got "
-            f"{list(per_tenant)}"
+            f"Expected this tenant in per_tenant map; got {list(per_tenant)}"
         )
         breakdown = per_tenant[str(tenant.id)]
         for key in ("processed", "healed", "residual", "failed"):
-            assert key in breakdown, (
-                f"per_tenant[{tenant.id}] missing {key!r}; got {breakdown!r}"
-            )
+            assert key in breakdown, f"per_tenant[{tenant.id}] missing {key!r}; got {breakdown!r}"
         assert breakdown["healed"] >= 1
         assert breakdown["residual"] >= 1
 
@@ -546,17 +523,14 @@ class TestPerTenantResidueReport(TestCase):
         assert summary_line is not None
         summary = json.loads(summary_line)
         assert "residue_tenants" in summary, (
-            f"Summary must list residue_tenants for Wave 4; got "
-            f"{list(summary)}"
+            f"Summary must list residue_tenants for Wave 4; got {list(summary)}"
         )
         residue_ids = set(summary["residue_tenants"])
         assert str(tenant_b.id) in residue_ids, (
-            f"Tenant B has residue, must appear in residue_tenants; "
-            f"got {residue_ids}"
+            f"Tenant B has residue, must appear in residue_tenants; got {residue_ids}"
         )
         assert str(tenant_a.id) not in residue_ids, (
-            f"Tenant A is clean, must NOT appear in residue_tenants; "
-            f"got {residue_ids}"
+            f"Tenant A is clean, must NOT appear in residue_tenants; got {residue_ids}"
         )
 
     def test_human_readable_summary_mentions_residue_tenants(self):
@@ -569,6 +543,5 @@ class TestPerTenantResidueReport(TestCase):
         output = _run("--apply", tenant=tenant)
         # Summary references the residue cohort explicitly.
         assert "residue_tenants=" in output or "tenants_with_residue=" in output, (
-            f"Human-readable summary should mention residue_tenants= "
-            f"count; got {output!r}"
+            f"Human-readable summary should mention residue_tenants= count; got {output!r}"
         )

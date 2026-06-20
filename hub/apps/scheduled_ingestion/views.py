@@ -8,11 +8,10 @@ import logging
 
 from django.db import transaction
 from django.utils import timezone
-from django_rq import get_queue
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -20,8 +19,6 @@ from hub.apps.audit.utils import create_audit_event
 from hub.apps.core.responses import api_error_response, handle_service_exception
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.core.utils.prefect_deployment import delete_prefect_deployment
-from hub.apps.jobs.models import Job, JobType
-from hub.apps.jobs.utils import create_job
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
 
 from .models import (
@@ -217,10 +214,11 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
         # Fail-fast: check plan limit BEFORE expensive serializer validation
         # (connection testing). Avoids wasted round-trips to S3/external services
         # when the tenant has already hit their ingestion quota.
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if tenant:
-            from hub.apps.tenants.services import PlanLimitService
             from hub.apps.core.services.base import ValidationError as SvcValidationError
+            from hub.apps.tenants.services import PlanLimitService
+
             try:
                 plan_svc = PlanLimitService(tenant_id=str(tenant.id))
                 with transaction.atomic():
@@ -321,8 +319,10 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
                                 deployment.id if hasattr(deployment, "id") else str(deployment)
                             )
                             scheduled_ingestion.deployment_sync_status = "SYNCED"
-                            scheduled_ingestion.save(update_fields=["prefect_deployment_id", "deployment_sync_status"])
-                    except asyncio.TimeoutError:
+                            scheduled_ingestion.save(
+                                update_fields=["prefect_deployment_id", "deployment_sync_status"]
+                            )
+                    except TimeoutError:
                         logger.warning(
                             "Prefect deployment sync timed out for scheduled ingestion %s. "
                             "Scheduled ingestion created but Prefect deployment sync will need to be retried.",
@@ -449,10 +449,12 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
                             deployment.id if hasattr(deployment, "id") else str(deployment)
                         )
                         updated.deployment_sync_status = "SYNCED"
-                        updated.save(update_fields=["prefect_deployment_id", "deployment_sync_status"])
+                        updated.save(
+                            update_fields=["prefect_deployment_id", "deployment_sync_status"]
+                        )
                 except Exception as e:
                     logger.error(
-                        f"Failed to sync with Prefect for scheduled ingestion {updated.id}: {str(e)}",
+                        f"Failed to sync with Prefect for scheduled ingestion {updated.id}: {e!s}",
                         exc_info=True,
                     )
                     updated.deployment_sync_status = "FAILED"
@@ -460,7 +462,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
 
             # Log audit event
             # Use central helper for tenant resolution (Phase 10.1.5)
-            tenant_id, tenant = get_request_tenant(self.request)
+            _tenant_id, tenant = get_request_tenant(self.request)
             if not tenant:
                 tenant = updated.tenant
             create_audit_event(
@@ -505,7 +507,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
         3. Only hard-delete the DB record after a successful deployment delete.
         """
         instance = self.get_object()
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             tenant = instance.tenant
 
@@ -593,7 +595,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
             )
 
         scheduled_ingestion = self.get_object()
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             tenant = scheduled_ingestion.tenant
 
@@ -653,7 +655,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
         try:
             # Trigger deployment via prefect-integration-service HTTP API
             # This avoids requiring prefect library in api-service
-            tenant_id, tenant = get_request_tenant(request)
+            _tenant_id, tenant = get_request_tenant(request)
             if not tenant:
                 tenant = scheduled_ingestion.tenant
 
@@ -723,6 +725,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
                     from hub.apps.jobs.tasks_prefect_sync import (
                         enqueue_prefect_status_sync,
                     )
+
                     transaction.on_commit(
                         lambda frid=flow_run_id, rid=str(run.id): enqueue_prefect_status_sync(
                             flow_run_id=frid,
@@ -765,12 +768,12 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
 
         except Exception as e:
             logger.error(
-                f"Failed to trigger scheduled ingestion {scheduled_ingestion.id}: {str(e)}",
+                f"Failed to trigger scheduled ingestion {scheduled_ingestion.id}: {e!s}",
                 exc_info=True,
             )
             return Response(
                 {
-                    "error": f"Failed to trigger ingestion: {str(e)}",
+                    "error": f"Failed to trigger ingestion: {e!s}",
                     "code": "INTERNAL_ERROR",
                     "details": {},
                 },
@@ -1038,7 +1041,7 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
             return Response(response_data, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error(
-                f"Failed to retrieve masked credentials for {scheduled_ingestion.id}: {str(e)}",
+                f"Failed to retrieve masked credentials for {scheduled_ingestion.id}: {e!s}",
                 exc_info=True,
             )
             return Response(
@@ -1175,13 +1178,13 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
                 if hasattr(signal, "SIGALRM"):
                     signal.alarm(0)
                 logger.error(
-                    f"Connection test failed for scheduled ingestion {scheduled_ingestion.id}: {str(e)}",
+                    f"Connection test failed for scheduled ingestion {scheduled_ingestion.id}: {e!s}",
                     exc_info=True,
                 )
                 return Response(
                     {
                         "success": False,
-                        "message": f"Connection test failed: {str(e)}",
+                        "message": f"Connection test failed: {e!s}",
                         "tested_at": timezone.now().isoformat(),
                         "connection_details": {
                             "response_time_ms": int((time.time() - start_time) * 1000)
@@ -1192,11 +1195,11 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
 
         except Exception as e:
             logger.error(
-                f"Failed to test credentials for scheduled ingestion {scheduled_ingestion.id}: {str(e)}",
+                f"Failed to test credentials for scheduled ingestion {scheduled_ingestion.id}: {e!s}",
                 exc_info=True,
             )
             return Response(
-                {"success": False, "message": f"Failed to test credentials: {str(e)}"},
+                {"success": False, "message": f"Failed to test credentials: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

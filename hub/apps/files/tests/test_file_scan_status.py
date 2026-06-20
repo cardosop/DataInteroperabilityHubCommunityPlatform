@@ -7,12 +7,11 @@ HTTP throttling path.
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import uuid
 from typing import Any, cast
 
+import pytest
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -22,14 +21,14 @@ from rest_framework.test import APIClient
 from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.models import AuditEvent
 from hub.apps.files.models import File, FileScanStatus, FileStatus
+from hub.apps.files.tests.test_base import FilesAPITestBase
 from hub.apps.files.throttles import (
     FileScanStatusTenantThrottle,
     FileScanStatusUserThrottle,
 )
-from hub.apps.files.tests.test_base import FilesAPITestBase
 from hub.apps.files.views import FileViewSet
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -117,28 +116,29 @@ class FileScanStatusThrottleWiringTest(TestCase):
     def test_default_scan_status_rate_values_match_s23_contract(self):
         user_throttle = FileScanStatusUserThrottle()
         tenant_throttle = FileScanStatusTenantThrottle()
-        assert user_throttle.get_rate() == "30/minute"
-        assert tenant_throttle.get_rate() == "300/minute"
+        self.assertEqual(user_throttle.get_rate(), "30/minute")
+        self.assertEqual(tenant_throttle.get_rate(), "300/minute")
 
     @pytest.mark.integration
     def test_scan_status_action_uses_dedicated_throttles(self):
         view = FileViewSet()
         view.action = "scan_status"
         throttles = view.get_throttles()
-        assert any(isinstance(t, FileScanStatusUserThrottle) for t in throttles)
-        assert any(isinstance(t, FileScanStatusTenantThrottle) for t in throttles)
+        self.assertTrue(any(isinstance(t, FileScanStatusUserThrottle) for t in throttles))
+        self.assertTrue(any(isinstance(t, FileScanStatusTenantThrottle) for t in throttles))
 
     @pytest.mark.integration
     def test_list_action_does_not_use_scan_status_throttles(self):
         view = FileViewSet()
         view.action = "list"
         throttles = view.get_throttles()
-        assert not any(isinstance(t, FileScanStatusUserThrottle) for t in throttles)
-        assert not any(isinstance(t, FileScanStatusTenantThrottle) for t in throttles)
+        self.assertFalse(any(isinstance(t, FileScanStatusUserThrottle) for t in throttles))
+        self.assertFalse(any(isinstance(t, FileScanStatusTenantThrottle) for t in throttles))
 
 
 class FileScanStatusRateLimitQuotaTest(TestCase):
     def setUp(self):
+        super().setUp()
         self._orig_user_rates = dict(
             cast("dict[str, str]", FileScanStatusUserThrottle.THROTTLE_RATES or {})
         )
@@ -202,19 +202,19 @@ class FileScanStatusRateLimitQuotaTest(TestCase):
             "Any",
             client.get(f"/api/v1/files/{fid}/scan-status/"),
         )
-        assert first.status_code != status.HTTP_429_TOO_MANY_REQUESTS, first.content
+        self.assertNotEqual(first.status_code, status.HTTP_429_TOO_MANY_REQUESTS, first.content)
 
         blocked = cast(
             "Any",
             client.get(f"/api/v1/files/{fid}/scan-status/"),
         )
-        assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-        assert blocked.data["error"]["code"] == "RATE_LIMIT_EXCEEDED"
+        self.assertEqual(blocked.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertEqual(blocked.data["error"]["code"], "RATE_LIMIT_EXCEEDED")
         details = blocked.data["error"].get("details") or {}
-        assert "retry_after" in details
-        assert int(details["retry_after"]) >= 1
-        assert "Retry-After" in blocked
-        assert int(blocked["Retry-After"]) >= 1
+        self.assertIn("retry_after", details)
+        self.assertGreaterEqual(int(details["retry_after"]), 1)
+        self.assertIn("Retry-After", blocked)
+        self.assertGreaterEqual(int(blocked["Retry-After"]), 1)
 
     @pytest.mark.integration
     def test_tenant_throttle_applies_across_users_in_same_tenant(self):
@@ -268,8 +268,8 @@ class FileScanStatusRateLimitQuotaTest(TestCase):
         }
 
         first = cast("Any", client1.get(f"/api/v1/files/{fid}/scan-status/"))
-        assert first.status_code != status.HTTP_429_TOO_MANY_REQUESTS, first.content
+        self.assertNotEqual(first.status_code, status.HTTP_429_TOO_MANY_REQUESTS, first.content)
 
         blocked = cast("Any", client2.get(f"/api/v1/files/{fid}/scan-status/"))
-        assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-        assert blocked.data["error"]["code"] == "RATE_LIMIT_EXCEEDED"
+        self.assertEqual(blocked.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertEqual(blocked.data["error"]["code"], "RATE_LIMIT_EXCEEDED")

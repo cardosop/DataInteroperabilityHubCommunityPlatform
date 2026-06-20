@@ -7,14 +7,14 @@ configured in exactly one place. Each recipient receives a separate
 message — a single multi-recipient send would mask per-recipient
 failures behind a single result.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 from ..log_helpers import _redact
 from .base import AlertDeliveryError, BaseAlertClient, DeliveryResult
-
 
 logger = logging.getLogger(__name__)
 
@@ -53,15 +53,13 @@ class EmailAlertClient(BaseAlertClient):
 
     channel = "EMAIL"
 
-    def _deliver(self, rule, payload: Dict[str, Any]) -> DeliveryResult:
+    def _deliver(self, rule, payload: dict[str, Any]) -> DeliveryResult:
         config = rule.get_channel_config() or {}
-        emails: List[str] = list(config.get("emails") or [])
+        emails: list[str] = list(config.get("emails") or [])
         if not emails:
             # Mis-configured rule — recipients were never set. Don't
             # waste retry budget; surface as unrecoverable.
-            raise AlertDeliveryError(
-                f"EMAIL channel config has no recipients (rule {rule.id})"
-            )
+            raise AlertDeliveryError(f"EMAIL channel config has no recipients (rule {rule.id})")
 
         # Lazy import — keeps Django app-config-time imports lean and
         # lets tests patch the factory at the boundary.
@@ -74,9 +72,7 @@ class EmailAlertClient(BaseAlertClient):
             service = get_email_service()
         except EmailServiceError as exc:
             # Mis-configured EMAIL_BACKEND — retry won't help.
-            raise AlertDeliveryError(
-                f"email service unavailable: {exc}"
-            ) from exc
+            raise AlertDeliveryError(f"email service unavailable: {exc}") from exc
 
         subject = _SUBJECT_TEMPLATE.format(
             severity=payload.get("severity", "UNKNOWN"),
@@ -85,7 +81,7 @@ class EmailAlertClient(BaseAlertClient):
         text_body = _TEXT_TEMPLATE.format(**_render_context(payload, rule))
         html_body = _HTML_TEMPLATE.format(**_render_context(payload, rule))
 
-        delivered_to: List[str] = []
+        delivered_to: list[str] = []
         last_message_id = ""
         last_error = None
         for email in emails:
@@ -96,16 +92,18 @@ class EmailAlertClient(BaseAlertClient):
                     html_content=html_body,
                     text_content=text_body,
                 )
-            except Exception as exc:  # noqa: BLE001 — boundary exception
+            except Exception as exc:
                 last_error = str(exc)
                 logger.warning(
                     "dq_alert_email_send_failed",
-                    extra=_redact({
-                        "rule_id": str(rule.id),
-                        "alert_id": payload.get("alert_id"),
-                        "to_email_redacted": _redact_email(email),
-                        "error": last_error,
-                    }),
+                    extra=_redact(
+                        {
+                            "rule_id": str(rule.id),
+                            "alert_id": payload.get("alert_id"),
+                            "to_email_redacted": _redact_email(email),
+                            "error": last_error,
+                        }
+                    ),
                 )
                 continue
 
@@ -113,20 +111,20 @@ class EmailAlertClient(BaseAlertClient):
                 last_error = (result or {}).get("error") or "send_email_returned_falsy"
                 logger.warning(
                     "dq_alert_email_send_failed_result",
-                    extra=_redact({
-                        "rule_id": str(rule.id),
-                        "alert_id": payload.get("alert_id"),
-                        "to_email_redacted": _redact_email(email),
-                        "result": result,
-                    }),
+                    extra=_redact(
+                        {
+                            "rule_id": str(rule.id),
+                            "alert_id": payload.get("alert_id"),
+                            "to_email_redacted": _redact_email(email),
+                            "result": result,
+                        }
+                    ),
                 )
                 continue
 
             delivered_to.append(email)
             last_message_id = (
-                result.get("message_id")
-                or result.get("delivery_id")
-                or last_message_id
+                result.get("message_id") or result.get("delivery_id") or last_message_id
             )
 
         if not delivered_to:
@@ -157,7 +155,7 @@ class EmailAlertClient(BaseAlertClient):
         )
 
 
-def _render_context(payload: Dict[str, Any], rule) -> Dict[str, Any]:
+def _render_context(payload: dict[str, Any], rule) -> dict[str, Any]:
     """Build the template context with safe defaults.
 
     Missing keys from ``payload`` are coerced to empty strings so the
@@ -167,9 +165,7 @@ def _render_context(payload: Dict[str, Any], rule) -> Dict[str, Any]:
         "rule_name": payload.get("rule_name") or str(rule.id),
         "severity": payload.get("severity") or rule.severity,
         "metric_type": payload.get("metric_type") or rule.metric_type,
-        "comparison_operator": (
-            payload.get("comparison_operator") or rule.comparison_operator
-        ),
+        "comparison_operator": (payload.get("comparison_operator") or rule.comparison_operator),
         "threshold": payload.get("threshold") or rule.threshold,
         "metric_value": payload.get("metric_value", ""),
         "dq_run_id": payload.get("dq_run_id", ""),

@@ -57,10 +57,8 @@ class Command(BaseCommand):
         for instance_id in instance_ids:
             try:
                 with transaction.atomic():
-                    instance = (
-                        WorkflowInstance.objects
-                        .select_for_update(skip_locked=True)
-                        .get(id=instance_id)
+                    instance = WorkflowInstance.objects.select_for_update(skip_locked=True).get(
+                        id=instance_id
                     )
                     self._process_instance(instance, dry_run)
 
@@ -71,10 +69,14 @@ class Command(BaseCommand):
             except WorkflowInstance.DoesNotExist:
                 continue
             except Exception as exc:
-                logger.warning("workflow_recovery_error", workflow_id=str(instance_id), error=str(exc))
+                logger.warning(
+                    "workflow_recovery_error", workflow_id=str(instance_id), error=str(exc)
+                )
                 skipped += 1
 
-        self.stdout.write(f"Recovery: {recovered} retried, {comp_retried} compensation, {skipped} skipped")
+        self.stdout.write(
+            f"Recovery: {recovered} retried, {comp_retried} compensation, {skipped} skipped"
+        )
 
     def _process_instance(self, instance, dry_run):
         if instance.status == WorkflowStatus.FAILED:
@@ -85,13 +87,18 @@ class Command(BaseCommand):
             instance.retry_count += 1
             instance.error_message = None
             instance.save(update_fields=["status", "retry_count", "error_message", "updated_at"])
-            logger.info("workflow_recovery_retry", workflow_id=str(instance.id), retry_count=instance.retry_count)
+            logger.info(
+                "workflow_recovery_retry",
+                workflow_id=str(instance.id),
+                retry_count=instance.retry_count,
+            )
 
         elif instance.status == WorkflowStatus.COMPENSATION_INCOMPLETE:
             if dry_run:
                 self.stdout.write(f"[DRY RUN] Would re-compensate {instance.id}")
                 return
             from hub.apps.orchestration.compensation import WorkflowCompensation
+
             handler = WorkflowCompensation()
             failed_step = instance.steps.filter(status="FAILED").order_by("step_index").first()
             if failed_step:

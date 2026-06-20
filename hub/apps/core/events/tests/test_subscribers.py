@@ -1,20 +1,23 @@
 """
 Tests for event subscribers.
 """
+
 import uuid
-from unittest.mock import Mock, call, patch
+from unittest.mock import Mock, patch
+
 from django.test import TestCase
+
 from hub.apps.core.events.subscribers import (
-    WebhookSubscriber,
     NotificationSubscriber,
-    WorkflowTriggerSubscriber
+    WebhookSubscriber,
+    WorkflowTriggerSubscriber,
 )
 
 
 class WebhookSubscriberTest(TestCase):
     """Test WebhookSubscriber."""
 
-    @patch('hub.apps.core.events.subscribers.get_event_bus')
+    @patch("hub.apps.core.events.subscribers.get_event_bus")
     def test_webhook_subscriber_init(self, mock_get_bus):
         """Test WebhookSubscriber initialization."""
         mock_bus = Mock()
@@ -24,7 +27,7 @@ class WebhookSubscriberTest(TestCase):
         self.assertIsNotNone(subscriber.subscriber)
         self.assertEqual(subscriber.subscriber.subscriber_name, "webhook_subscriber")
 
-    @patch('hub.apps.core.events.subscribers.get_event_bus')
+    @patch("hub.apps.core.events.subscribers.get_event_bus")
     def test_webhook_subscriber_start(self, mock_get_bus):
         """Test starting webhook subscriber subscribes with wildcard pattern."""
         mock_bus = Mock()
@@ -41,7 +44,7 @@ class WebhookSubscriberTest(TestCase):
             is_active=True,
         )
 
-    @patch('hub.apps.core.events.subscribers.get_event_bus')
+    @patch("hub.apps.core.events.subscribers.get_event_bus")
     def test_webhook_subscriber_handle_event(self, mock_get_bus):
         """Test webhook subscriber event handling delivers to webhook service."""
         mock_bus = Mock()
@@ -58,7 +61,7 @@ class WebhookSubscriberTest(TestCase):
         subscriber._handle_event(event)
         mock_webhook_service.deliver_webhook.assert_called_once_with(event)
 
-    @patch('hub.apps.core.events.subscribers.get_event_bus')
+    @patch("hub.apps.core.events.subscribers.get_event_bus")
     def test_webhook_subscriber_handle_event_no_service(self, mock_get_bus):
         """Test webhook subscriber does not crash when webhook_service is None."""
         mock_bus = Mock()
@@ -74,7 +77,7 @@ class WebhookSubscriberTest(TestCase):
         # Should not raise
         subscriber._handle_event(event)
 
-    @patch('hub.apps.core.events.subscribers.get_event_bus')
+    @patch("hub.apps.core.events.subscribers.get_event_bus")
     def test_webhook_subscriber_handle_event_delivery_exception(self, mock_get_bus):
         """Test webhook subscriber handles delivery exceptions gracefully."""
         mock_bus = Mock()
@@ -97,7 +100,7 @@ class WebhookSubscriberTest(TestCase):
 class NotificationSubscriberTest(TestCase):
     """Test NotificationSubscriber."""
 
-    @patch('hub.apps.core.events.subscribers.get_event_bus')
+    @patch("hub.apps.core.events.subscribers.get_event_bus")
     def test_notification_subscriber_init(self, mock_get_bus):
         """Test NotificationSubscriber initialization."""
         mock_bus = Mock()
@@ -107,7 +110,7 @@ class NotificationSubscriberTest(TestCase):
         self.assertIsNotNone(subscriber.subscriber)
         self.assertEqual(subscriber.subscriber.subscriber_name, "notification_subscriber")
 
-    @patch('hub.apps.core.events.subscribers.get_event_bus')
+    @patch("hub.apps.core.events.subscribers.get_event_bus")
     def test_notification_subscriber_start(self, mock_get_bus):
         """Test starting notification subscriber subscribes to all notification event patterns."""
         mock_bus = Mock()
@@ -136,7 +139,7 @@ class NotificationSubscriberTest(TestCase):
             len(expected_patterns),
         )
 
-        actual_patterns = [
+        [
             c.kwargs.get("event_type_pattern") or c.args[0]
             for c in subscriber.subscriber.subscribe.call_args_list
         ]
@@ -148,7 +151,7 @@ class NotificationSubscriberTest(TestCase):
                 is_active=True,
             )
 
-    @patch('hub.apps.core.events.subscribers.get_event_bus')
+    @patch("hub.apps.core.events.subscribers.get_event_bus")
     def test_notification_subscriber_handle_event(self, mock_get_bus):
         """Test notification subscriber event handling."""
         mock_bus = Mock()
@@ -165,7 +168,7 @@ class NotificationSubscriberTest(TestCase):
         subscriber._handle_event(event)
         mock_notification_service.send_notification.assert_called_once_with(event)
 
-    @patch('hub.apps.core.events.subscribers.get_event_bus')
+    @patch("hub.apps.core.events.subscribers.get_event_bus")
     def test_notification_subscriber_handle_event_no_service(self, mock_get_bus):
         """Test notification subscriber does not crash when notification_service is None."""
         mock_bus = Mock()
@@ -185,7 +188,7 @@ class NotificationSubscriberTest(TestCase):
 class WorkflowTriggerSubscriberTest(TestCase):
     """Test WorkflowTriggerSubscriber."""
 
-    @patch('hub.apps.core.events.subscribers.get_event_bus')
+    @patch("hub.apps.core.events.subscribers.get_event_bus")
     def test_workflow_trigger_subscriber_init(self, mock_get_bus):
         """Test WorkflowTriggerSubscriber initialization."""
         mock_bus = Mock()
@@ -195,7 +198,7 @@ class WorkflowTriggerSubscriberTest(TestCase):
         self.assertIsNotNone(subscriber.subscriber)
         self.assertEqual(subscriber.subscriber.subscriber_name, "workflow_trigger_subscriber")
 
-    @patch('hub.apps.core.events.subscribers.get_event_bus')
+    @patch("hub.apps.core.events.subscribers.get_event_bus")
     def test_workflow_trigger_subscriber_start(self, mock_get_bus):
         """Test starting workflow trigger subscriber subscribes to trigger event patterns."""
         mock_bus = Mock()
@@ -227,7 +230,7 @@ class WorkflowTriggerSubscriberTest(TestCase):
                 is_active=True,
             )
 
-    @patch('hub.apps.core.events.subscribers.get_event_bus')
+    @patch("hub.apps.core.events.subscribers.get_event_bus")
     def test_workflow_trigger_subscriber_handle_event(self, mock_get_bus):
         """Test workflow trigger subscriber routes asset.created to asset_activation workflow."""
         mock_bus = Mock()
@@ -265,7 +268,7 @@ class WorkflowTriggerSubscriberTest(TestCase):
         mock_workflow_engine.start_instance.assert_called_once_with(str(mock_instance.id))
         mock_workflow_engine.execute_instance.assert_called_once_with(str(mock_instance.id))
 
-    @patch('hub.apps.core.events.subscribers.get_event_bus')
+    @patch("hub.apps.core.events.subscribers.get_event_bus")
     def test_workflow_trigger_subscriber_handle_event_contract(self, mock_get_bus):
         """Test workflow trigger subscriber routes contract.created to contract_validation."""
         mock_bus = Mock()
@@ -292,7 +295,7 @@ class WorkflowTriggerSubscriberTest(TestCase):
             created_by_id="u1",
         )
 
-    @patch('hub.apps.core.events.subscribers.get_event_bus')
+    @patch("hub.apps.core.events.subscribers.get_event_bus")
     def test_workflow_trigger_subscriber_handle_event_no_engine(self, mock_get_bus):
         """Test workflow trigger subscriber does not crash when workflow_engine is None."""
         mock_bus = Mock()
@@ -309,7 +312,7 @@ class WorkflowTriggerSubscriberTest(TestCase):
         # Should not raise
         subscriber._handle_event(event)
 
-    @patch('hub.apps.core.events.subscribers.get_event_bus')
+    @patch("hub.apps.core.events.subscribers.get_event_bus")
     def test_workflow_trigger_subscriber_handle_event_unknown_type(self, mock_get_bus):
         """Test workflow trigger subscriber ignores unmapped event types."""
         mock_bus = Mock()

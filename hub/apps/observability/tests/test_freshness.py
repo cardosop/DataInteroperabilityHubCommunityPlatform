@@ -17,7 +17,7 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.observability.freshness import FreshnessMonitor
-from hub.apps.observability.models import DataObservabilityMetric, FreshnessSLA
+from hub.apps.observability.models import FreshnessSLA
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
 
@@ -188,7 +188,8 @@ class FreshnessMonitorFailureTest(TestCase):
         # Should handle gracefully or raise appropriate error
         try:
             stale_data = FreshnessMonitor.detect_stale_data(
-                tenant_id=str(self.tenant.id), dataset_id=str(uuid.uuid4())  # Non-existent dataset
+                tenant_id=str(self.tenant.id),
+                dataset_id=str(uuid.uuid4()),  # Non-existent dataset
             )
             # May return empty list if handled gracefully
             self.assertIsInstance(stale_data, list)
@@ -241,7 +242,7 @@ class FreshnessMonitorEdgeCasesTest(TestCase):
             created_by=self.user,
         )
 
-        for sla_name, sla_label in FreshnessSLA.choices:
+        for sla_name, _sla_label in FreshnessSLA.choices:
             metric = FreshnessMonitor.record_metric(
                 tenant_id=str(self.tenant.id),
                 asset=asset,
@@ -303,7 +304,8 @@ class FreshnessMonitorErrorHandlingTest(TestCase):
     def test_get_freshness_dashboard_handles_missing_data(self):
         """Test getting freshness dashboard handles missing data"""
         dashboard = FreshnessMonitor.get_freshness_dashboard(
-            tenant_id=str(self.tenant.id), dataset_id=str(uuid.uuid4())  # Non-existent dataset
+            tenant_id=str(self.tenant.id),
+            dataset_id=str(uuid.uuid4()),  # Non-existent dataset
         )
 
         # Should return empty dashboard structure

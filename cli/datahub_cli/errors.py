@@ -9,21 +9,21 @@ from __future__ import annotations
 
 import click
 
-
 # -- Exit code constants (align with sysexits.h conventions) ----------------
 
 EX_OK = 0
-EX_USAGE = 64        # command-line usage error
-EX_DATAERR = 65      # data format error
-EX_NOINPUT = 66      # cannot open input
+EX_USAGE = 64  # command-line usage error
+EX_DATAERR = 65  # data format error
+EX_NOINPUT = 66  # cannot open input
 EX_UNAVAILABLE = 69  # service unavailable
-EX_SOFTWARE = 70     # internal software error
-EX_IOERR = 74        # input/output error
-EX_TEMPFAIL = 75     # temporary failure — may retry
-EX_CONFIG = 78       # configuration error
+EX_SOFTWARE = 70  # internal software error
+EX_IOERR = 74  # input/output error
+EX_TEMPFAIL = 75  # temporary failure — may retry
+EX_CONFIG = 78  # configuration error
 
 
 # -- Base CLI error ---------------------------------------------------------
+
 
 class CLIError(click.ClickException):
     """Base typed CLI exception.
@@ -44,6 +44,7 @@ class CLIError(click.ClickException):
 
 
 # -- Domain error classes ---------------------------------------------------
+
 
 class CLIAuthError(CLIError):
     """Authentication / authorisation failure (exit 77 for permission)."""
@@ -88,6 +89,7 @@ class CLIConfigError(CLIError):
 
 
 # -- Convenience factory ----------------------------------------------------
+
 
 def error_from_http_status(
     status_code: int,

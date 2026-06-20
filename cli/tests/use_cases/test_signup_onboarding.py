@@ -10,25 +10,17 @@ create their first asset. Also verifies that registration automatically
 provisions a default tenant for the new user.
 """
 
-import os
 import requests
-from tests._persona_provisioning import provision_persona, PersonaCredentials
-from tests.fixtures.personas import MVP_PERSONA_ROLES
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import (
     api_base_url,
-    api_get,
-    api_post,
-    api_put,
-    api_delete,
     api_login,
-    api_unauthenticated_get,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _unique_email() -> str:
     """Generate a unique email for registration tests."""
@@ -105,8 +97,7 @@ def test_register_weak_password_rejected():
     resp = _register_user(email, password="123")
 
     assert resp.status_code in (400, 422), (
-        f"Weak password accepted with {resp.status_code}, expected 400/422: "
-        f"{resp.text[:300]}"
+        f"Weak password accepted with {resp.status_code}, expected 400/422: {resp.text[:300]}"
     )
 
 
@@ -141,8 +132,7 @@ def test_create_first_asset_after_signup():
     # Step 2: Login
     login_resp = api_login(email, password)
     assert login_resp.status_code == 200, (
-        f"Post-registration login failed: {login_resp.status_code}: "
-        f"{login_resp.text[:300]}"
+        f"Post-registration login failed: {login_resp.status_code}: {login_resp.text[:300]}"
     )
     tokens = login_resp.json()
     access_token = tokens["access_token"]
@@ -162,13 +152,10 @@ def test_create_first_asset_after_signup():
     )
 
     assert create_resp.status_code in (200, 201), (
-        f"Asset creation after signup returned {create_resp.status_code}: "
-        f"{create_resp.text[:500]}"
+        f"Asset creation after signup returned {create_resp.status_code}: {create_resp.text[:500]}"
     )
     body = create_resp.json()
-    assert "id" in body or "key" in body, (
-        f"Asset creation response missing id/key: {body}"
-    )
+    assert "id" in body or "key" in body, f"Asset creation response missing id/key: {body}"
 
 
 def test_onboarding_creates_default_tenant():
@@ -211,8 +198,7 @@ def test_onboarding_creates_default_tenant():
         or tokens.get("tenant_id")  # noqa: PHASE216-STATIC-ID
     )
     assert tenant_id, (
-        f"New user has no tenant_id. /auth/me/ body: {me_body}, "
-        f"login tokens: {list(tokens.keys())}"
+        f"New user has no tenant_id. /auth/me/ body: {me_body}, login tokens: {list(tokens.keys())}"
     )
 
 
@@ -226,8 +212,7 @@ def test_registered_user_can_login():
 
     login_resp = api_login(email, password)
     assert login_resp.status_code == 200, (
-        f"Login after registration returned {login_resp.status_code}: "
-        f"{login_resp.text[:300]}"
+        f"Login after registration returned {login_resp.status_code}: {login_resp.text[:300]}"
     )
     body = login_resp.json()
     assert "access_token" in body
@@ -253,6 +238,4 @@ def test_registered_user_appears_in_me():
     me_body = me_resp.json()
 
     # The response should contain the registered email
-    assert email.lower() in str(me_body).lower(), (
-        f"/auth/me/ does not contain {email}: {me_body}"
-    )
+    assert email.lower() in str(me_body).lower(), f"/auth/me/ does not contain {email}: {me_body}"

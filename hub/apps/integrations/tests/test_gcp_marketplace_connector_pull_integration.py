@@ -18,7 +18,6 @@ To run these tests:
 import json
 import os
 
-import pytest
 from django.test import TestCase
 
 from hub.apps.assets.models import AssetSourceType
@@ -44,18 +43,16 @@ def get_test_credentials():
     credentials in environments where they are not configured.
     """
     import unittest
-    import json
+
     env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
     if not env_json:
-        raise unittest.SkipTest(
-            "GCP_SERVICE_ACCOUNT_JSON not set — skipping"
-        )
+        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON not set — skipping")
     try:
         return json.loads(env_json)
     except json.JSONDecodeError:
-        raise unittest.SkipTest(
-            "GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping"
-        )
+        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping")
+
+
 class TestGCPMarketplaceConnectorPullIntegration(TestCase):
     """Integration tests for GCP Marketplace connector pull operations"""
 
@@ -76,8 +73,7 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
         try:
             self.connector.authenticate(credentials)
         except Exception:
-            # Authentication may fail if credentials are invalid, but tests will handle it
-            pass
+            self.skipTest("GCP authentication failed — credentials not available")
 
     def test_map_to_hub_asset_integration(self):
         """Test map_to_hub_asset() with real listing"""
@@ -282,7 +278,7 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
             # Should handle empty options gracefully
             self.assertIsInstance(result, SyncResult)
             self.assertIn(
-                result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL, SyncStatus.FAILED]
+                result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL]
             )
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
@@ -297,7 +293,7 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
             # Should handle None filters gracefully
             self.assertIsInstance(result, SyncResult)
             self.assertIn(
-                result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL, SyncStatus.FAILED]
+                result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL]
             )
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
@@ -355,7 +351,7 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
             # Should handle large limit gracefully (may be capped internally)
             self.assertIsInstance(result, SyncResult)
             self.assertIn(
-                result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL, SyncStatus.FAILED]
+                result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL]
             )
             # Total items should not exceed reasonable bounds
             self.assertLessEqual(result.total_items, 1000000)

@@ -29,12 +29,12 @@ All tests use ``transaction=True`` so the partial-unique-index +
 distributed-lock semantics observe their real behaviour rather than
 SAVEPOINT semantics.
 """
-from __future__ import annotations
-import pytest
 
-import json
+from __future__ import annotations
+
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -46,7 +46,6 @@ from hub.apps.testing.billing_support import (
     ensure_tenant_has_active_subscription,
 )
 from hub.apps.webhooks.models import (
-    DeliveryStatus,
     Webhook,
     WebhookDelivery,
     WebhookEventType,
@@ -54,7 +53,6 @@ from hub.apps.webhooks.models import (
     WebhookSigningKeyStatus,
     WebhookStatus,
 )
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -132,9 +130,8 @@ class TestMultiKeyWindow(_SigningRotationTestBase):
         self._rotate_directly(self.webhook)
         # Direct INSERT bypasses the rotation API; the partial-unique
         # index MUST still reject the second ACTIVE row.
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                self._rotate_directly(self.webhook)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            self._rotate_directly(self.webhook)
 
     @pytest.mark.integration
     def test_retiring_rows_can_coexist(self) -> None:
@@ -286,7 +283,8 @@ class TestRotateSecretAPI(_SigningRotationTestBase):
         # Verify legacy webhook.secret was also rotated (Phase 233.1 dual rotation)
         self.webhook.refresh_from_db()
         self.assertNotEqual(
-            self.webhook.secret, original_secret,
+            self.webhook.secret,
+            original_secret,
             "Legacy webhook.secret must be rotated alongside the new WebhookSigningKey",
         )
 
@@ -356,10 +354,14 @@ class TestRotateSecretAPI(_SigningRotationTestBase):
         self.assertEqual(old1.status, WebhookSigningKeyStatus.RETIRED)
         self.assertEqual(old2.status, WebhookSigningKeyStatus.RETIRING)
 
-        non_retired = WebhookSigningKey.objects.filter(
-            webhook=self.webhook,
-        ).exclude(status=WebhookSigningKeyStatus.RETIRED).count()
-        self.assertLessEqual(non_retired, 3)
+        non_retired = (
+            WebhookSigningKey.objects.filter(
+                webhook=self.webhook,
+            )
+            .exclude(status=WebhookSigningKeyStatus.RETIRED)
+            .count()
+        )
+        self.assertEqual(non_retired, 3)
 
     @pytest.mark.integration
     def test_audit_row_commits_with_rotation(self) -> None:
@@ -377,10 +379,14 @@ class TestRotateSecretAPI(_SigningRotationTestBase):
         ).count()
         self.assertEqual(after - before, 1)
 
-        audit = AuditEvent.objects.filter(
-            action="WEBHOOK_KEY_ROTATED",
-            resource_id=str(self.webhook.id),
-        ).order_by("-id").first()
+        audit = (
+            AuditEvent.objects.filter(
+                action="WEBHOOK_KEY_ROTATED",
+                resource_id=str(self.webhook.id),
+            )
+            .order_by("-id")
+            .first()
+        )
         self.assertIsNotNone(audit)
         # 233.3.R1 GAP-B carry-over fix — the canonical attribute is
         # ``details_json`` (per hub/apps/audit/models.py:69); the
@@ -491,6 +497,7 @@ class TestExpireCron(_SigningRotationTestBase):
             from hub.apps.api.middleware.idempotency_utils import (
                 get_redis_client,
             )
+
             client = get_redis_client()
             client.ping()
             return client
@@ -594,8 +601,9 @@ class TestExpireCron(_SigningRotationTestBase):
             distributed_lock_acquire,
             distributed_lock_release,
         )
-        from hub.apps.webhooks.management.commands.\
-            expire_retiring_webhook_keys import _EXPIRE_LOCK_KEY
+        from hub.apps.webhooks.management.commands.expire_retiring_webhook_keys import (
+            _EXPIRE_LOCK_KEY,
+        )
 
         ok, token = distributed_lock_acquire(
             redis_client,
@@ -653,8 +661,12 @@ class TestEndToEndRotationToDelivery(_SigningRotationTestBase):
             event_data={"event_id": str(uuid.uuid4())},
         )
 
-        delivery = WebhookDelivery.objects.filter(
-            webhook=self.webhook,
-        ).order_by("-created_at").first()
+        delivery = (
+            WebhookDelivery.objects.filter(
+                webhook=self.webhook,
+            )
+            .order_by("-created_at")
+            .first()
+        )
         self.assertIsNotNone(delivery)
         self.assertEqual(str(delivery.signing_key_uuid), new_key_id)

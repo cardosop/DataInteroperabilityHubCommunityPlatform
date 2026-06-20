@@ -22,14 +22,14 @@ Three layers:
   writer; service translates the IntegrityError to 409
   ``FILENAME_COLLISION`` (same code as the init-time rule).
 """
+
 from __future__ import annotations
-import pytest
 
 import threading
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
-from django.db import IntegrityError
 from django.test import TestCase, TransactionTestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -119,17 +119,15 @@ class UniqueActiveFilenameConstraintTest(TestCase):
 
     @pytest.mark.integration
     def test_two_active_files_same_name_raise_integrity_error(self):
-        # Migration 0013 removed the unique partial index on
-        # (tenant, name) WHERE status='ACTIVE'. The DB-level constraint
-        # no longer exists; application-level collision detection in
-        # FilesBusinessRules._validate_active_filename_unique() provides
-        # the friendly UX check, but direct ORM inserts bypass it.
+        # Phase 260.5.C — the partial unique index on
+        # (tenant, name) WHERE status='ACTIVE' is load-bearing.
+        # Direct ORM inserts that bypass FilesBusinessRules must
+        # still fail at the DB level with IntegrityError.
+        from django.db import IntegrityError
+
         _make_file(tenant=self.tenant, user=self.user, name="report.csv")
-        _make_file(tenant=self.tenant, user=self.user, name="report.csv")
-        self.assertEqual(
-            File.objects.filter(tenant=self.tenant, name="report.csv").count(),
-            2,
-        )
+        with self.assertRaises(IntegrityError):
+            _make_file(tenant=self.tenant, user=self.user, name="report.csv")
 
     @pytest.mark.integration
     def test_active_and_deleted_same_name_coexist(self):
@@ -162,9 +160,7 @@ class UniqueActiveFilenameConstraintTest(TestCase):
             status_value=FileStatus.PENDING,
         )
         self.assertEqual(
-            File.objects.filter(
-                tenant=self.tenant, name="report.csv"
-            ).count(),
+            File.objects.filter(tenant=self.tenant, name="report.csv").count(),
             2,
         )
 
@@ -445,8 +441,8 @@ class FileCompleteUploadRaceSafetyNetTest(TransactionTestCase):
                 with results_lock:
                     results.append(getattr(exc, "code", "UNKNOWN"))
 
-        t1 = threading.Thread(target=attempt, args=(str(f1.id),))
-        t2 = threading.Thread(target=attempt, args=(str(f2.id),))
+        t1 = threading.Thread(daemon=True, target=attempt, args=(str(f1.id),))
+        t2 = threading.Thread(daemon=True, target=attempt, args=(str(f2.id),))
         t1.start()
         t2.start()
         t1.join(timeout=60)
@@ -586,9 +582,7 @@ class FileRenameFilenameCollisionAPITest(FilesAPITestBase):
         # THEN — 200, our tenant has its own ACTIVE "shared-name.csv".
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
-            File.objects.filter(
-                name="shared-name.csv", status=FileStatus.ACTIVE
-            ).count(),
+            File.objects.filter(name="shared-name.csv", status=FileStatus.ACTIVE).count(),
             2,
             "Each tenant must independently hold an ACTIVE row with the same name",
         )
@@ -653,8 +647,8 @@ class FileRenameConcurrentCollisionRaceTest(TransactionTestCase):
                 results.append(response.status_code)
                 result_codes.append(_extract_error_code(response.data))
 
-        t1 = threading.Thread(target=attempt, args=(str(f1.id),))
-        t2 = threading.Thread(target=attempt, args=(str(f2.id),))
+        t1 = threading.Thread(daemon=True, target=attempt, args=(str(f1.id),))
+        t2 = threading.Thread(daemon=True, target=attempt, args=(str(f2.id),))
         t1.start()
         t2.start()
         t1.join(timeout=60)

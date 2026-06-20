@@ -3,33 +3,41 @@ Event Consumer
 
 WebSocket consumer for real-time event updates.
 """
-import json
+
 import asyncio
-from typing import Set, Optional, Dict
-from datetime import datetime, timedelta, timezone as dt_timezone
-from django.conf import settings
+import json
+from datetime import UTC, datetime, timedelta
 
 import structlog
+from django.conf import settings
+
 try:
     from channels.generic.websocket import AsyncWebsocketConsumer
+
     CHANNELS_AVAILABLE = True
 except ImportError:
     # Django Channels not available - create a proper stub that can be inherited
     class AsyncWebsocketConsumer:
         """Stub for AsyncWebsocketConsumer when channels is not available."""
+
         def __init__(self, *args, **kwargs):
             raise ImportError(
                 "Django Channels is not installed. "
                 "Install it with: pip install channels channels-redis"
             )
+
     CHANNELS_AVAILABLE = False
+import contextlib
+
 from django.contrib.auth.models import AnonymousUser
 
 from hub.apps.core.events.bus import get_event_bus
 from hub.apps.core.events.deduplication import (
-    generate_deduplication_key,
     check_event_duplicate,
+    generate_deduplication_key,
     store_event_id,
+)
+from hub.apps.core.events.deduplication import (
     get_redis_client as get_deduplication_redis_client,
 )
 from hub.apps.websocket.middleware.auth import get_user_from_token
@@ -62,7 +70,7 @@ class EventConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         """Initialize consumer."""
         super().__init__(*args, **kwargs)
-        self.subscribed_event_types: Set[str] = set()
+        self.subscribed_event_types: set[str] = set()
         self.filters = {}
         self.event_bus = None  # Lazy initialization
         self.redis_subscriber = None
@@ -70,26 +78,30 @@ class EventConsumer(AsyncWebsocketConsumer):
 
         # Message-based authentication state
         self._awaiting_auth: bool = False
-        self._auth_timeout_task: Optional[asyncio.Task] = None
+        self._auth_timeout_task: asyncio.Task | None = None
 
         # Connection health tracking
-        self.last_activity: Optional[datetime] = None
-        self.last_pong_received: Optional[datetime] = None
+        self.last_activity: datetime | None = None
+        self.last_pong_received: datetime | None = None
         self.pending_ping: bool = False
-        self.ping_task: Optional[asyncio.Task] = None
-        self.health_check_task: Optional[asyncio.Task] = None
+        self.ping_task: asyncio.Task | None = None
+        self.health_check_task: asyncio.Task | None = None
         self._connection_closed = False
 
         # Event replay tracking - track last event timestamp per event type for replay on reconnection
-        self.last_event_timestamps: Dict[str, datetime] = {}  # event_type -> last timestamp
-        self.replay_enabled = getattr(settings, 'WEBSOCKET_EVENT_REPLAY_ENABLED', True)
-        self.replay_window_seconds = getattr(settings, 'WEBSOCKET_EVENT_REPLAY_WINDOW_SECONDS', 3600)  # 1 hour default
+        self.last_event_timestamps: dict[str, datetime] = {}  # event_type -> last timestamp
+        self.replay_enabled = getattr(settings, "WEBSOCKET_EVENT_REPLAY_ENABLED", True)
+        self.replay_window_seconds = getattr(
+            settings, "WEBSOCKET_EVENT_REPLAY_WINDOW_SECONDS", 3600
+        )  # 1 hour default
 
         # Configuration from settings
-        self.ping_interval = getattr(settings, 'WEBSOCKET_PING_INTERVAL', DEFAULT_PING_INTERVAL)
-        self.pong_timeout = getattr(settings, 'WEBSOCKET_PONG_TIMEOUT', DEFAULT_PONG_TIMEOUT)
-        self.connection_timeout = getattr(settings, 'WEBSOCKET_CONNECTION_TIMEOUT', DEFAULT_CONNECTION_TIMEOUT)
-        self.auth_timeout = getattr(settings, 'WEBSOCKET_AUTH_TIMEOUT', DEFAULT_AUTH_TIMEOUT)
+        self.ping_interval = getattr(settings, "WEBSOCKET_PING_INTERVAL", DEFAULT_PING_INTERVAL)
+        self.pong_timeout = getattr(settings, "WEBSOCKET_PONG_TIMEOUT", DEFAULT_PONG_TIMEOUT)
+        self.connection_timeout = getattr(
+            settings, "WEBSOCKET_CONNECTION_TIMEOUT", DEFAULT_CONNECTION_TIMEOUT
+        )
+        self.auth_timeout = getattr(settings, "WEBSOCKET_AUTH_TIMEOUT", DEFAULT_AUTH_TIMEOUT)
 
     def _get_event_bus(self):
         """Get event bus instance (lazy initialization)."""
@@ -121,12 +133,10 @@ class EventConsumer(AsyncWebsocketConsumer):
             await self.accept()
             self._awaiting_auth = True
             self._connection_closed = False
-            self.last_activity = datetime.now(dt_timezone.utc)
+            self.last_activity = datetime.now(UTC)
 
             # Start auth timeout — disconnect if no authenticate message
-            self._auth_timeout_task = asyncio.create_task(
-                self._auth_timeout_loop()
-            )
+            self._auth_timeout_task = asyncio.create_task(self._auth_timeout_loop())
 
             logger.info(
                 "websocket_awaiting_auth",
@@ -153,7 +163,11 @@ class EventConsumer(AsyncWebsocketConsumer):
         await self._complete_authenticated_setup(user, tenant)
 
     async def _complete_authenticated_setup(
-        self, user, tenant, *, send_confirmation=True,
+        self,
+        user,
+        tenant,
+        *,
+        send_confirmation=True,
     ):
         """Shared setup after authentication (both middleware and message-based).
 
@@ -165,8 +179,8 @@ class EventConsumer(AsyncWebsocketConsumer):
                 where ``auth_confirmed`` was already sent.
         """
         # Initialize connection health tracking
-        self.last_activity = datetime.now(dt_timezone.utc)
-        self.last_pong_received = datetime.now(dt_timezone.utc)
+        self.last_activity = datetime.now(UTC)
+        self.last_pong_received = datetime.now(UTC)
         self._connection_closed = False
 
         if send_confirmation:
@@ -199,25 +213,19 @@ class EventConsumer(AsyncWebsocketConsumer):
         # Cancel auth timeout task
         if self._auth_timeout_task and not self._auth_timeout_task.done():
             self._auth_timeout_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._auth_timeout_task
-            except asyncio.CancelledError:
-                pass
 
         # Cancel background tasks
         if self.ping_task and not self.ping_task.done():
             self.ping_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self.ping_task
-            except asyncio.CancelledError:
-                pass
 
         if self.health_check_task and not self.health_check_task.done():
             self.health_check_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self.health_check_task
-            except asyncio.CancelledError:
-                pass
 
         # Unsubscribe from event bus
         if self.redis_subscriber:
@@ -234,7 +242,7 @@ class EventConsumer(AsyncWebsocketConsumer):
         # Handle both text and binary data
         if bytes_data:
             try:
-                text_data = bytes_data.decode('utf-8')
+                text_data = bytes_data.decode("utf-8")
             except UnicodeDecodeError:
                 await self.send_error("Invalid message encoding")
                 return
@@ -264,7 +272,7 @@ class EventConsumer(AsyncWebsocketConsumer):
             return
 
         # Update last activity timestamp
-        self.last_activity = datetime.now(dt_timezone.utc)
+        self.last_activity = datetime.now(UTC)
 
         # --- Gate: authenticate message when awaiting auth ---
         if message.type == WebSocketMessageType.AUTHENTICATE.value:
@@ -273,9 +281,7 @@ class EventConsumer(AsyncWebsocketConsumer):
 
         # --- Gate: reject all other messages before authentication ---
         if self._awaiting_auth:
-            await self.send_error(
-                "Authentication required. Send an 'authenticate' message first."
-            )
+            await self.send_error("Authentication required. Send an 'authenticate' message first.")
             return
 
         # Handle message based on type
@@ -305,9 +311,7 @@ class EventConsumer(AsyncWebsocketConsumer):
         data = message.data or {}
         token = data.get("token")
         if not token:
-            await self.send_error(
-                "Missing token field in authenticate message"
-            )
+            await self.send_error("Missing token field in authenticate message")
             await self.close(code=4001)
             return
 
@@ -327,10 +331,8 @@ class EventConsumer(AsyncWebsocketConsumer):
         self._awaiting_auth = False
         if self._auth_timeout_task and not self._auth_timeout_task.done():
             self._auth_timeout_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._auth_timeout_task
-            except asyncio.CancelledError:
-                pass
 
         self.scope["user"] = user
         self.scope["tenant"] = tenant
@@ -350,7 +352,9 @@ class EventConsumer(AsyncWebsocketConsumer):
         # Complete the standard authenticated setup (ping/pong, health check).
         # send_confirmation=False because AUTH_CONFIRMED was already sent above.
         await self._complete_authenticated_setup(
-            user, tenant, send_confirmation=False,
+            user,
+            tenant,
+            send_confirmation=False,
         )
 
         logger.info(
@@ -369,9 +373,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                     auth_timeout=self.auth_timeout,
                     path=self.scope.get("path"),
                 )
-                await self.send_error(
-                    "Authentication timeout: no authenticate message received"
-                )
+                await self.send_error("Authentication timeout: no authenticate message received")
                 await self.close(code=4001)
         except asyncio.CancelledError:
             pass
@@ -482,7 +484,7 @@ class EventConsumer(AsyncWebsocketConsumer):
     async def handle_ping(self, message: WebSocketMessage):
         """Handle ping message from client."""
         # Update last activity
-        self.last_activity = datetime.now(dt_timezone.utc)
+        self.last_activity = datetime.now(UTC)
 
         # Send pong response
         await self.send_json_message(
@@ -495,8 +497,8 @@ class EventConsumer(AsyncWebsocketConsumer):
     async def handle_pong(self, message: WebSocketMessage):
         """Handle pong message from client (response to server ping)."""
         # Update last activity and pong received timestamp
-        self.last_activity = datetime.now(dt_timezone.utc)
-        self.last_pong_received = datetime.now(dt_timezone.utc)
+        self.last_activity = datetime.now(UTC)
+        self.last_pong_received = datetime.now(UTC)
         self.pending_ping = False
 
         logger.debug(
@@ -508,7 +510,7 @@ class EventConsumer(AsyncWebsocketConsumer):
         """Subscribe to event bus for subscribed event types."""
         # Lazy initialize event bus to avoid database access during __init__
         try:
-            event_bus = self._get_event_bus()
+            self._get_event_bus()
             # This would integrate with the event bus to receive events
             # For now, we'll set up a basic subscription mechanism
             # In production, this would use Redis Pub/Sub or similar
@@ -537,7 +539,8 @@ class EventConsumer(AsyncWebsocketConsumer):
 
             # Get subscribed ODPS event types
             odps_event_types = [
-                event_type for event_type in self.subscribed_event_types
+                event_type
+                for event_type in self.subscribed_event_types
                 if event_type.startswith("odps.") or event_type == "odps.*"
             ]
 
@@ -549,14 +552,17 @@ class EventConsumer(AsyncWebsocketConsumer):
             if self.last_event_timestamps:
                 # Use the most recent timestamp across all ODPS event types
                 odps_timestamps = [
-                    ts for event_type, ts in self.last_event_timestamps.items()
+                    ts
+                    for event_type, ts in self.last_event_timestamps.items()
                     if event_type.startswith("odps.")
                 ]
                 if odps_timestamps:
                     replay_start_time = max(odps_timestamps)
             else:
                 # No previous events - use replay window
-                replay_start_time = datetime.now(dt_timezone.utc) - timedelta(seconds=self.replay_window_seconds)
+                replay_start_time = datetime.now(UTC) - timedelta(
+                    seconds=self.replay_window_seconds
+                )
 
             # Replay events for each subscribed ODPS event type
             event_bus = self._get_event_bus()
@@ -566,35 +572,36 @@ class EventConsumer(AsyncWebsocketConsumer):
                 # Determine actual event types to query
                 if event_type_pattern == "odps.*":
                     # Query all ODPS events
-                    event_types_to_query = None  # None means all ODPS events
+                    pass  # None means all ODPS events
                 elif event_type_pattern.endswith(".*"):
                     # Pattern like "odps.workflow.*" - query events matching the prefix
                     prefix = event_type_pattern[:-2]  # Remove '.*'
                     # Query events that start with this prefix
-                    event_types_to_query = None  # We'll filter in the query
                 else:
                     # Exact event type
-                    event_types_to_query = [event_type_pattern]
+                    pass
 
                 # Query events from database
                 try:
                     # Use event bus replay_events method
                     # For patterns, we need to query ODPS events and filter
                     # Query events from database based on pattern type
-                    from hub.apps.core.events.models import Event as EventModel
-
                     # Use sync_to_async for database queries in async context
                     from asgiref.sync import sync_to_async
+
+                    from hub.apps.core.events.models import Event as EventModel
 
                     if event_type_pattern == "odps.*":
                         # Query all ODPS events - use a query that gets all ODPS event types
                         # Query all ODPS events from database
                         def _query_odps_events():
-                            return list(EventModel.objects.filter(
-                                event_type__startswith="odps.",
-                                tenant_id=tenant.id,
-                                timestamp__gte=replay_start_time
-                            ).order_by('timestamp')[:1000])
+                            return list(
+                                EventModel.objects.filter(
+                                    event_type__startswith="odps.",
+                                    tenant_id=tenant.id,
+                                    timestamp__gte=replay_start_time,
+                                ).order_by("timestamp")[:1000]
+                            )
 
                         odps_events_list = await sync_to_async(_query_odps_events)()
 
@@ -608,10 +615,12 @@ class EventConsumer(AsyncWebsocketConsumer):
                                 "timestamp": event_obj.timestamp.isoformat() + "Z",
                                 "source": {
                                     "service": event_obj.source_service,
-                                    "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
+                                    "tenant_id": str(event_obj.tenant_id)
+                                    if event_obj.tenant_id
+                                    else None,
                                 },
                                 "data": event_obj.data,
-                                "metadata": event_obj.metadata or {}
+                                "metadata": event_obj.metadata or {},
                             }
                             if event_obj.user_id:
                                 event_dict["source"]["user_id"] = str(event_obj.user_id)
@@ -623,11 +632,13 @@ class EventConsumer(AsyncWebsocketConsumer):
                         prefix = event_type_pattern[:-2]  # Remove '.*'
 
                         def _query_pattern_events():
-                            return list(EventModel.objects.filter(
-                                event_type__startswith=prefix + ".",
-                                tenant_id=tenant.id,
-                                timestamp__gte=replay_start_time
-                            ).order_by('timestamp')[:1000])
+                            return list(
+                                EventModel.objects.filter(
+                                    event_type__startswith=prefix + ".",
+                                    tenant_id=tenant.id,
+                                    timestamp__gte=replay_start_time,
+                                ).order_by("timestamp")[:1000]
+                            )
 
                         pattern_events_list = await sync_to_async(_query_pattern_events)()
 
@@ -641,10 +652,12 @@ class EventConsumer(AsyncWebsocketConsumer):
                                 "timestamp": event_obj.timestamp.isoformat() + "Z",
                                 "source": {
                                     "service": event_obj.source_service,
-                                    "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
+                                    "tenant_id": str(event_obj.tenant_id)
+                                    if event_obj.tenant_id
+                                    else None,
                                 },
                                 "data": event_obj.data,
-                                "metadata": event_obj.metadata or {}
+                                "metadata": event_obj.metadata or {},
                             }
                             if event_obj.user_id:
                                 event_dict["source"]["user_id"] = str(event_obj.user_id)
@@ -657,7 +670,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                             event_type=event_type_pattern,
                             tenant_id=str(tenant.id),
                             start_time=replay_start_time,
-                            limit=1000
+                            limit=1000,
                         )
 
                     # Apply filters and send events
@@ -673,10 +686,11 @@ class EventConsumer(AsyncWebsocketConsumer):
                             if event_id and event_type != "unknown":
                                 redis_client = self._get_deduplication_redis_client()
                                 if redis_client:
-                                    deduplication_key = generate_deduplication_key(event_type, event_data)
+                                    deduplication_key = generate_deduplication_key(
+                                        event_type, event_data
+                                    )
                                     is_duplicate, _ = check_event_duplicate(
-                                        deduplication_key,
-                                        redis_client=redis_client
+                                        deduplication_key, redis_client=redis_client
                                     )
                                     if is_duplicate:
                                         # Skip duplicate events during replay
@@ -691,7 +705,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                         "websocket_odps_event_replay_error",
                         event_type_pattern=event_type_pattern,
                         error=str(replay_error),
-                        exc_info=True
+                        exc_info=True,
                     )
                     # Continue with other event types even if one fails
 
@@ -701,16 +715,12 @@ class EventConsumer(AsyncWebsocketConsumer):
                     count=replayed_count,
                     event_types=list(odps_event_types),
                     tenant_id=str(tenant.id),
-                    replay_start_time=replay_start_time.isoformat() if replay_start_time else None
+                    replay_start_time=replay_start_time.isoformat() if replay_start_time else None,
                 )
 
         except Exception as e:
             # Log error but don't fail subscription if replay fails
-            logger.error(
-                "websocket_odps_event_replay_failed",
-                error=str(e),
-                exc_info=True
-            )
+            logger.error("websocket_odps_event_replay_failed", error=str(e), exc_info=True)
 
     async def _replay_missed_mesh_events(self):
         """
@@ -728,7 +738,8 @@ class EventConsumer(AsyncWebsocketConsumer):
 
             # Get subscribed mesh event types
             mesh_event_types = [
-                event_type for event_type in self.subscribed_event_types
+                event_type
+                for event_type in self.subscribed_event_types
                 if event_type.startswith("mesh.") or event_type == "mesh.*"
             ]
 
@@ -740,14 +751,17 @@ class EventConsumer(AsyncWebsocketConsumer):
             if self.last_event_timestamps:
                 # Use the most recent timestamp across all mesh event types
                 mesh_timestamps = [
-                    ts for event_type, ts in self.last_event_timestamps.items()
+                    ts
+                    for event_type, ts in self.last_event_timestamps.items()
                     if event_type.startswith("mesh.")
                 ]
                 if mesh_timestamps:
                     replay_start_time = max(mesh_timestamps)
             else:
                 # No previous events - use replay window
-                replay_start_time = datetime.now(dt_timezone.utc) - timedelta(seconds=self.replay_window_seconds)
+                replay_start_time = datetime.now(UTC) - timedelta(
+                    seconds=self.replay_window_seconds
+                )
 
             # Replay events for each subscribed mesh event type
             event_bus = self._get_event_bus()
@@ -757,30 +771,32 @@ class EventConsumer(AsyncWebsocketConsumer):
                 # Determine actual event types to query
                 if event_type_pattern == "mesh.*":
                     # Query all mesh events
-                    event_types_to_query = None  # None means all mesh events
+                    pass  # None means all mesh events
                 elif event_type_pattern.endswith(".*"):
                     # Pattern like "mesh.domain.*" - query events matching the prefix
                     prefix = event_type_pattern[:-2]  # Remove '.*'
                     # Query events that start with this prefix
-                    event_types_to_query = None  # We'll filter in the query
                 else:
                     # Exact event type
-                    event_types_to_query = [event_type_pattern]
+                    pass
 
                 # Query events from database
                 try:
                     # Use event bus replay_events method
-                    from hub.apps.core.events.models import Event as EventModel
                     from asgiref.sync import sync_to_async
+
+                    from hub.apps.core.events.models import Event as EventModel
 
                     if event_type_pattern == "mesh.*":
                         # Query all mesh events
                         def _query_mesh_events():
-                            return list(EventModel.objects.filter(
-                                event_type__startswith="mesh.",
-                                tenant_id=tenant.id,
-                                timestamp__gte=replay_start_time
-                            ).order_by('timestamp')[:1000])
+                            return list(
+                                EventModel.objects.filter(
+                                    event_type__startswith="mesh.",
+                                    tenant_id=tenant.id,
+                                    timestamp__gte=replay_start_time,
+                                ).order_by("timestamp")[:1000]
+                            )
 
                         mesh_events_list = await sync_to_async(_query_mesh_events)()
 
@@ -794,10 +810,12 @@ class EventConsumer(AsyncWebsocketConsumer):
                                 "timestamp": event_obj.timestamp.isoformat() + "Z",
                                 "source": {
                                     "service": event_obj.source_service,
-                                    "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
+                                    "tenant_id": str(event_obj.tenant_id)
+                                    if event_obj.tenant_id
+                                    else None,
                                 },
                                 "data": event_obj.data,
-                                "metadata": event_obj.metadata or {}
+                                "metadata": event_obj.metadata or {},
                             }
                             if event_obj.user_id:
                                 event_dict["source"]["user_id"] = str(event_obj.user_id)
@@ -809,11 +827,13 @@ class EventConsumer(AsyncWebsocketConsumer):
                         prefix = event_type_pattern[:-2]  # Remove '.*'
 
                         def _query_pattern_events():
-                            return list(EventModel.objects.filter(
-                                event_type__startswith=prefix + ".",
-                                tenant_id=tenant.id,
-                                timestamp__gte=replay_start_time
-                            ).order_by('timestamp')[:1000])
+                            return list(
+                                EventModel.objects.filter(
+                                    event_type__startswith=prefix + ".",
+                                    tenant_id=tenant.id,
+                                    timestamp__gte=replay_start_time,
+                                ).order_by("timestamp")[:1000]
+                            )
 
                         pattern_events_list = await sync_to_async(_query_pattern_events)()
 
@@ -827,10 +847,12 @@ class EventConsumer(AsyncWebsocketConsumer):
                                 "timestamp": event_obj.timestamp.isoformat() + "Z",
                                 "source": {
                                     "service": event_obj.source_service,
-                                    "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
+                                    "tenant_id": str(event_obj.tenant_id)
+                                    if event_obj.tenant_id
+                                    else None,
                                 },
                                 "data": event_obj.data,
-                                "metadata": event_obj.metadata or {}
+                                "metadata": event_obj.metadata or {},
                             }
                             if event_obj.user_id:
                                 event_dict["source"]["user_id"] = str(event_obj.user_id)
@@ -843,7 +865,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                             event_type=event_type_pattern,
                             tenant_id=str(tenant.id),
                             start_time=replay_start_time,
-                            limit=1000
+                            limit=1000,
                         )
 
                     # Apply filters and send events
@@ -856,13 +878,14 @@ class EventConsumer(AsyncWebsocketConsumer):
                             event_data = event.get("data", {})
 
                             if event_id and event_type:
-                                deduplication_key = generate_deduplication_key(event_type, event_data)
+                                deduplication_key = generate_deduplication_key(
+                                    event_type, event_data
+                                )
                                 redis_client = self._get_deduplication_redis_client()
 
                                 if redis_client:
-                                    is_duplicate, existing_event_id = check_event_duplicate(
-                                        deduplication_key,
-                                        redis_client=redis_client
+                                    is_duplicate, _existing_event_id = check_event_duplicate(
+                                        deduplication_key, redis_client=redis_client
                                     )
                                     if is_duplicate:
                                         # Skip duplicate events during replay
@@ -877,7 +900,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                         "websocket_mesh_event_replay_error",
                         event_type_pattern=event_type_pattern,
                         error=str(replay_error),
-                        exc_info=True
+                        exc_info=True,
                     )
                     # Continue with other event types even if one fails
 
@@ -887,16 +910,12 @@ class EventConsumer(AsyncWebsocketConsumer):
                     count=replayed_count,
                     event_types=list(mesh_event_types),
                     tenant_id=str(tenant.id),
-                    replay_start_time=replay_start_time.isoformat() if replay_start_time else None
+                    replay_start_time=replay_start_time.isoformat() if replay_start_time else None,
                 )
 
         except Exception as e:
             # Log error but don't fail subscription if replay fails
-            logger.error(
-                "websocket_mesh_event_replay_failed",
-                error=str(e),
-                exc_info=True
-            )
+            logger.error("websocket_mesh_event_replay_failed", error=str(e), exc_info=True)
 
     async def _replay_missed_virtualization_events(self):
         """
@@ -914,7 +933,8 @@ class EventConsumer(AsyncWebsocketConsumer):
 
             # Get subscribed virtualization event types
             virtualization_event_types = [
-                event_type for event_type in self.subscribed_event_types
+                event_type
+                for event_type in self.subscribed_event_types
                 if event_type.startswith("virtualization.") or event_type == "virtualization.*"
             ]
 
@@ -926,14 +946,17 @@ class EventConsumer(AsyncWebsocketConsumer):
             if self.last_event_timestamps:
                 # Use the most recent timestamp across all virtualization event types
                 virtualization_timestamps = [
-                    ts for event_type, ts in self.last_event_timestamps.items()
+                    ts
+                    for event_type, ts in self.last_event_timestamps.items()
                     if event_type.startswith("virtualization.")
                 ]
                 if virtualization_timestamps:
                     replay_start_time = max(virtualization_timestamps)
             else:
                 # No previous events - use replay window
-                replay_start_time = datetime.now(dt_timezone.utc) - timedelta(seconds=self.replay_window_seconds)
+                replay_start_time = datetime.now(UTC) - timedelta(
+                    seconds=self.replay_window_seconds
+                )
 
             # Replay events for each subscribed virtualization event type
             event_bus = self._get_event_bus()
@@ -943,32 +966,36 @@ class EventConsumer(AsyncWebsocketConsumer):
                 # Determine actual event types to query
                 if event_type_pattern == "virtualization.*":
                     # Query all virtualization events
-                    event_types_to_query = None  # None means all virtualization events
+                    pass  # None means all virtualization events
                 elif event_type_pattern.endswith(".*"):
                     # Pattern like "virtualization.query.*" - query events matching the prefix
                     prefix = event_type_pattern[:-2]  # Remove '.*'
                     # Query events that start with this prefix
-                    event_types_to_query = None  # We'll filter in the query
                 else:
                     # Exact event type
-                    event_types_to_query = [event_type_pattern]
+                    pass
 
                 # Query events from database
                 try:
                     # Use event bus replay_events method
-                    from hub.apps.core.events.models import Event as EventModel
                     from asgiref.sync import sync_to_async
+
+                    from hub.apps.core.events.models import Event as EventModel
 
                     if event_type_pattern == "virtualization.*":
                         # Query all virtualization events
                         def _query_virtualization_events():
-                            return list(EventModel.objects.filter(
-                                event_type__startswith="virtualization.",
-                                tenant_id=tenant.id,
-                                timestamp__gte=replay_start_time
-                            ).order_by('timestamp')[:1000])
+                            return list(
+                                EventModel.objects.filter(
+                                    event_type__startswith="virtualization.",
+                                    tenant_id=tenant.id,
+                                    timestamp__gte=replay_start_time,
+                                ).order_by("timestamp")[:1000]
+                            )
 
-                        virtualization_events_list = await sync_to_async(_query_virtualization_events)()
+                        virtualization_events_list = await sync_to_async(
+                            _query_virtualization_events
+                        )()
 
                         # Convert to event dictionaries
                         events_to_replay = []
@@ -980,10 +1007,12 @@ class EventConsumer(AsyncWebsocketConsumer):
                                 "timestamp": event_obj.timestamp.isoformat() + "Z",
                                 "source": {
                                     "service": event_obj.source_service,
-                                    "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
+                                    "tenant_id": str(event_obj.tenant_id)
+                                    if event_obj.tenant_id
+                                    else None,
                                 },
                                 "data": event_obj.data,
-                                "metadata": event_obj.metadata or {}
+                                "metadata": event_obj.metadata or {},
                             }
                             if event_obj.user_id:
                                 event_dict["source"]["user_id"] = str(event_obj.user_id)
@@ -995,11 +1024,13 @@ class EventConsumer(AsyncWebsocketConsumer):
                         prefix = event_type_pattern[:-2]  # Remove '.*'
 
                         def _query_pattern_events():
-                            return list(EventModel.objects.filter(
-                                event_type__startswith=prefix + ".",
-                                tenant_id=tenant.id,
-                                timestamp__gte=replay_start_time
-                            ).order_by('timestamp')[:1000])
+                            return list(
+                                EventModel.objects.filter(
+                                    event_type__startswith=prefix + ".",
+                                    tenant_id=tenant.id,
+                                    timestamp__gte=replay_start_time,
+                                ).order_by("timestamp")[:1000]
+                            )
 
                         pattern_events_list = await sync_to_async(_query_pattern_events)()
 
@@ -1013,10 +1044,12 @@ class EventConsumer(AsyncWebsocketConsumer):
                                 "timestamp": event_obj.timestamp.isoformat() + "Z",
                                 "source": {
                                     "service": event_obj.source_service,
-                                    "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
+                                    "tenant_id": str(event_obj.tenant_id)
+                                    if event_obj.tenant_id
+                                    else None,
                                 },
                                 "data": event_obj.data,
-                                "metadata": event_obj.metadata or {}
+                                "metadata": event_obj.metadata or {},
                             }
                             if event_obj.user_id:
                                 event_dict["source"]["user_id"] = str(event_obj.user_id)
@@ -1029,7 +1062,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                             event_type=event_type_pattern,
                             tenant_id=str(tenant.id),
                             start_time=replay_start_time,
-                            limit=1000
+                            limit=1000,
                         )
 
                     # Apply filters and send events
@@ -1042,13 +1075,14 @@ class EventConsumer(AsyncWebsocketConsumer):
                             event_data = event.get("data", {})
 
                             if event_id and event_type:
-                                deduplication_key = generate_deduplication_key(event_type, event_data)
+                                deduplication_key = generate_deduplication_key(
+                                    event_type, event_data
+                                )
                                 redis_client = self._get_deduplication_redis_client()
 
                                 if redis_client:
-                                    is_duplicate, existing_event_id = check_event_duplicate(
-                                        deduplication_key,
-                                        redis_client=redis_client
+                                    is_duplicate, _existing_event_id = check_event_duplicate(
+                                        deduplication_key, redis_client=redis_client
                                     )
                                     if is_duplicate:
                                         # Skip duplicate events during replay
@@ -1063,7 +1097,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                         "websocket_virtualization_event_replay_error",
                         event_type_pattern=event_type_pattern,
                         error=str(replay_error),
-                        exc_info=True
+                        exc_info=True,
                     )
                     # Continue with other event types even if one fails
 
@@ -1073,15 +1107,13 @@ class EventConsumer(AsyncWebsocketConsumer):
                     count=replayed_count,
                     event_types=list(virtualization_event_types),
                     tenant_id=str(tenant.id),
-                    replay_start_time=replay_start_time.isoformat() if replay_start_time else None
+                    replay_start_time=replay_start_time.isoformat() if replay_start_time else None,
                 )
 
         except Exception as e:
             # Log error but don't fail subscription if replay fails
             logger.error(
-                "websocket_virtualization_event_replay_failed",
-                error=str(e),
-                exc_info=True
+                "websocket_virtualization_event_replay_failed", error=str(e), exc_info=True
             )
 
     async def send_event(self, event: dict):
@@ -1120,8 +1152,7 @@ class EventConsumer(AsyncWebsocketConsumer):
 
                 if redis_client:
                     is_duplicate, existing_event_id = check_event_duplicate(
-                        deduplication_key,
-                        redis_client=redis_client
+                        deduplication_key, redis_client=redis_client
                     )
 
                     if is_duplicate:
@@ -1131,7 +1162,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                             event_id=event_id,
                             event_type=event_type,
                             existing_event_id=existing_event_id,
-                            message=f"Event {event_id} already processed, skipping WebSocket delivery"
+                            message=f"Event {event_id} already processed, skipping WebSocket delivery",
                         )
                         return  # Skip sending duplicate event
 
@@ -1149,11 +1180,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                 redis_client = self._get_deduplication_redis_client()
                 if redis_client:
                     deduplication_key = generate_deduplication_key(event_type, event_data)
-                    store_event_id(
-                        deduplication_key,
-                        event_id,
-                        redis_client=redis_client
-                    )
+                    store_event_id(deduplication_key, event_id, redis_client=redis_client)
 
                 # Track last event timestamp for replay (ODPS events, mesh events, virtualization events, and all events)
                 # Update last timestamp for this event type
@@ -1164,22 +1191,25 @@ class EventConsumer(AsyncWebsocketConsumer):
                         # Handles: "...Z", "...+00:00", "...+00:00Z" (double-suffix)
                         ts = event_timestamp_str
                         # Strip trailing Z that follows an existing offset (e.g. +00:00Z)
-                        if ts.endswith('+00:00Z'):
+                        if ts.endswith("+00:00Z"):
                             ts = ts[:-1]  # remove trailing Z
-                        elif ts.endswith('Z'):
-                            ts = ts[:-1] + '+00:00'
+                        elif ts.endswith("Z"):
+                            ts = ts[:-1] + "+00:00"
                         try:
                             event_timestamp = datetime.fromisoformat(ts)
                             # If timezone-naive, assume UTC
                             if event_timestamp.tzinfo is None:
                                 from django.utils import timezone as django_timezone
+
                                 event_timestamp = django_timezone.make_aware(event_timestamp)
                         except (ValueError, AttributeError):
                             # Fallback: use django timezone parsing
                             from django.utils.dateparse import parse_datetime
+
                             event_timestamp = parse_datetime(event_timestamp_str)
                             if event_timestamp:
                                 from django.utils import timezone as django_timezone
+
                                 if django_timezone.is_naive(event_timestamp):
                                     event_timestamp = django_timezone.make_aware(event_timestamp)
 
@@ -1198,18 +1228,24 @@ class EventConsumer(AsyncWebsocketConsumer):
                                 self.last_event_timestamps["virtualization.*"] = event_timestamp
                                 # Track for nested patterns
                                 if event_type.startswith("virtualization.query."):
-                                    self.last_event_timestamps["virtualization.query.*"] = event_timestamp
+                                    self.last_event_timestamps["virtualization.query.*"] = (
+                                        event_timestamp
+                                    )
                                     if event_type.startswith("virtualization.query.execution."):
-                                        self.last_event_timestamps["virtualization.query.execution.*"] = event_timestamp
+                                        self.last_event_timestamps[
+                                            "virtualization.query.execution.*"
+                                        ] = event_timestamp
                                 elif event_type.startswith("virtualization.dataset."):
-                                    self.last_event_timestamps["virtualization.dataset.*"] = event_timestamp
+                                    self.last_event_timestamps["virtualization.dataset.*"] = (
+                                        event_timestamp
+                                    )
                 except Exception as timestamp_error:
                     # Log but don't fail event delivery if timestamp tracking fails
                     logger.warning(
                         "websocket_event_timestamp_tracking_failed",
                         event_id=event_id,
                         event_type=event_type,
-                        error=str(timestamp_error)
+                        error=str(timestamp_error),
                     )
         except Exception as e:
             logger.error("websocket_send_event_error", error=str(e))
@@ -1236,47 +1272,47 @@ class EventConsumer(AsyncWebsocketConsumer):
                 return True
 
             # Wildcard pattern matching (e.g., 'contract.*' matches 'contract.created')
-            if subscribed_type.endswith('.*'):
+            if subscribed_type.endswith(".*"):
                 prefix = subscribed_type[:-2]  # Remove '.*'
-                if event_type.startswith(prefix + '.'):
+                if event_type.startswith(prefix + "."):
                     return True
 
             # ODPS-specific pattern matching
             # Support patterns like 'odps.*' matching all ODPS events
             # Support patterns like 'odps.workflow.*' matching workflow events
-            if subscribed_type.startswith('odps.'):
-                if event_type.startswith('odps.'):
-                    # Check if it's a nested pattern (e.g., 'odps.workflow.*')
-                    if '.' in subscribed_type[5:]:  # After 'odps.'
-                        # Nested pattern: 'odps.workflow.*'
-                        pattern_parts = subscribed_type.split('.')
-                        event_parts = event_type.split('.')
-                        if len(pattern_parts) <= len(event_parts):
-                            # Check if all pattern parts (except the last '*') match
-                            match = True
-                            for i, pattern_part in enumerate(pattern_parts[:-1]):  # Exclude last '*'
-                                if i < len(event_parts) and pattern_part != event_parts[i]:
-                                    match = False
-                                    break
-                            if match:
-                                return True
-                    else:
-                        # Simple 'odps.*' pattern - matches all ODPS events
-                        if subscribed_type == 'odps.*' and event_type.startswith('odps.'):
+            if subscribed_type.startswith("odps.") and event_type.startswith("odps."):
+                # Check if it's a nested pattern (e.g., 'odps.workflow.*')
+                if "." in subscribed_type[5:]:  # After 'odps.'
+                    # Nested pattern: 'odps.workflow.*'
+                    pattern_parts = subscribed_type.split(".")
+                    event_parts = event_type.split(".")
+                    if len(pattern_parts) <= len(event_parts):
+                        # Check if all pattern parts (except the last '*') match
+                        match = True
+                        for i, pattern_part in enumerate(pattern_parts[:-1]):  # Exclude last '*'
+                            if i < len(event_parts) and pattern_part != event_parts[i]:
+                                match = False
+                                break
+                        if match:
                             return True
+                # Simple 'odps.*' pattern - matches all ODPS events
+                elif subscribed_type == "odps.*" and event_type.startswith("odps."):
+                    return True
 
             # Virtualization-specific pattern matching
             # Support patterns like 'virtualization.*' matching all virtualization events
             # Support patterns like 'virtualization.query.*' matching query events
-            if subscribed_type.startswith('virtualization.'):
-                if event_type.startswith('virtualization.'):
+            if subscribed_type.startswith("virtualization."):
+                if event_type.startswith("virtualization."):
                     # Only apply wildcard matching if subscribed_type ends with '.*'
-                    if subscribed_type.endswith('.*'):
+                    if subscribed_type.endswith(".*"):
                         # Check if it's a nested pattern (e.g., 'virtualization.query.*')
-                        if '.' in subscribed_type[16:-2]:  # After 'virtualization.' and before '.*'
+                        if "." in subscribed_type[16:-2]:  # After 'virtualization.' and before '.*'
                             # Nested pattern: 'virtualization.query.*'
-                            pattern_parts = subscribed_type[:-2].split('.')  # Remove '.*' before splitting
-                            event_parts = event_type.split('.')
+                            pattern_parts = subscribed_type[:-2].split(
+                                "."
+                            )  # Remove '.*' before splitting
+                            event_parts = event_type.split(".")
                             if len(pattern_parts) <= len(event_parts):
                                 # Check if all pattern parts match
                                 match = True
@@ -1286,10 +1322,11 @@ class EventConsumer(AsyncWebsocketConsumer):
                                         break
                                 if match:
                                     return True
-                        else:
-                            # Simple 'virtualization.*' pattern - matches all virtualization events
-                            if subscribed_type == 'virtualization.*' and event_type.startswith('virtualization.'):
-                                return True
+                        # Simple 'virtualization.*' pattern - matches all virtualization events
+                        elif subscribed_type == "virtualization.*" and event_type.startswith(
+                            "virtualization."
+                        ):
+                            return True
 
         return False
 
@@ -1357,10 +1394,12 @@ class EventConsumer(AsyncWebsocketConsumer):
                     str(event_data.get("odcs_contract_id", "")),
                     str(event_data.get("contract_id", "")),
                     str(event_data.get("asset_id", "")),
-                    str(event_data.get("id", ""))
+                    str(event_data.get("id", "")),
                 ]
                 # Filter out empty strings
-                possible_resource_ids = [rid for rid in possible_resource_ids if rid and rid != "None"]
+                possible_resource_ids = [
+                    rid for rid in possible_resource_ids if rid and rid != "None"
+                ]
 
                 # Check if filter matches any of the resource IDs
                 if filter_resource_id:
@@ -1372,10 +1411,12 @@ class EventConsumer(AsyncWebsocketConsumer):
                     str(event_data.get("resource_id", "")),
                     str(event_data.get("contract_id", "")),
                     str(event_data.get("asset_id", "")),
-                    str(event_data.get("id", ""))
+                    str(event_data.get("id", "")),
                 ]
                 # Filter out empty strings
-                possible_resource_ids = [rid for rid in possible_resource_ids if rid and rid != "None"]
+                possible_resource_ids = [
+                    rid for rid in possible_resource_ids if rid and rid != "None"
+                ]
 
                 # Check if filter matches any of the resource IDs
                 if filter_resource_id:
@@ -1398,9 +1439,11 @@ class EventConsumer(AsyncWebsocketConsumer):
             event_data = event.get("data", {})
             event_query_execution_id = str(event_data.get("query_execution_id", ""))
 
-            if filter_query_execution_id:
-                if not event_query_execution_id or event_query_execution_id != filter_query_execution_id:
-                    return False
+            if filter_query_execution_id and (
+                not event_query_execution_id
+                or event_query_execution_id != filter_query_execution_id
+            ):
+                return False
 
         # Filter by virtual_dataset_id (for virtualization events)
         if "virtual_dataset_id" in self.filters:
@@ -1408,9 +1451,11 @@ class EventConsumer(AsyncWebsocketConsumer):
             event_data = event.get("data", {})
             event_virtual_dataset_id = str(event_data.get("virtual_dataset_id", ""))
 
-            if filter_virtual_dataset_id:
-                if not event_virtual_dataset_id or event_virtual_dataset_id != filter_virtual_dataset_id:
-                    return False
+            if filter_virtual_dataset_id and (
+                not event_virtual_dataset_id
+                or event_virtual_dataset_id != filter_virtual_dataset_id
+            ):
+                return False
 
         # Filter by user_id
         if "user_id" in self.filters:
@@ -1436,7 +1481,7 @@ class EventConsumer(AsyncWebsocketConsumer):
 
         return True
 
-    async def send_error(self, error_message: str, request_id: Optional[str] = None):
+    async def send_error(self, error_message: str, request_id: str | None = None):
         """Send error message to WebSocket client."""
         await self.send_json_message(
             WebSocketMessage(
@@ -1449,7 +1494,7 @@ class EventConsumer(AsyncWebsocketConsumer):
     async def send_json_message(self, message: WebSocketMessage):
         """Send JSON message to WebSocket client."""
         # Update last activity when sending messages
-        self.last_activity = datetime.now(dt_timezone.utc)
+        self.last_activity = datetime.now(UTC)
         await self.send(text_data=message.to_json())
 
     async def _ping_loop(self):
@@ -1467,11 +1512,17 @@ class EventConsumer(AsyncWebsocketConsumer):
                     break
 
                 # Check if connection is still active
-                if self.last_activity and (datetime.now(dt_timezone.utc) - self.last_activity).total_seconds() > self.connection_timeout:
+                if (
+                    self.last_activity
+                    and (datetime.now(UTC) - self.last_activity).total_seconds()
+                    > self.connection_timeout
+                ):
                     logger.warning(
                         "websocket_connection_timeout",
                         user_id=str(self.scope.get("user").id) if self.scope.get("user") else None,
-                        last_activity=self.last_activity.isoformat() if self.last_activity else None,
+                        last_activity=self.last_activity.isoformat()
+                        if self.last_activity
+                        else None,
                         timeout_seconds=self.connection_timeout,
                     )
                     await self.close(code=4000)  # Normal closure due to timeout
@@ -1482,20 +1533,24 @@ class EventConsumer(AsyncWebsocketConsumer):
                     try:
                         ping_message = WebSocketMessage(
                             type=WebSocketMessageType.PING.value,
-                            data={"timestamp": datetime.now(dt_timezone.utc).isoformat()},
+                            data={"timestamp": datetime.now(UTC).isoformat()},
                         )
                         await self.send_json_message(ping_message)
                         self.pending_ping = True
 
                         logger.debug(
                             "websocket_ping_sent",
-                            user_id=str(self.scope.get("user").id) if self.scope.get("user") else None,
+                            user_id=str(self.scope.get("user").id)
+                            if self.scope.get("user")
+                            else None,
                         )
                     except Exception as e:
                         logger.error(
                             "websocket_ping_error",
                             error=str(e),
-                            user_id=str(self.scope.get("user").id) if self.scope.get("user") else None,
+                            user_id=str(self.scope.get("user").id)
+                            if self.scope.get("user")
+                            else None,
                             exc_info=True,
                         )
                         # Connection likely closed, break loop
@@ -1527,11 +1582,13 @@ class EventConsumer(AsyncWebsocketConsumer):
 
                 # Check for pong timeout
                 if self.pending_ping and self.last_pong_received:
-                    time_since_pong = (datetime.now(dt_timezone.utc) - self.last_pong_received).total_seconds()
+                    time_since_pong = (datetime.now(UTC) - self.last_pong_received).total_seconds()
                     if time_since_pong > self.pong_timeout:
                         logger.warning(
                             "websocket_pong_timeout",
-                            user_id=str(self.scope.get("user").id) if self.scope.get("user") else None,
+                            user_id=str(self.scope.get("user").id)
+                            if self.scope.get("user")
+                            else None,
                             time_since_pong=time_since_pong,
                             pong_timeout=self.pong_timeout,
                         )
@@ -1540,11 +1597,13 @@ class EventConsumer(AsyncWebsocketConsumer):
 
                 # Check overall connection timeout
                 if self.last_activity:
-                    time_since_activity = (datetime.now(dt_timezone.utc) - self.last_activity).total_seconds()
+                    time_since_activity = (datetime.now(UTC) - self.last_activity).total_seconds()
                     if time_since_activity > self.connection_timeout:
                         logger.warning(
                             "websocket_connection_inactive_timeout",
-                            user_id=str(self.scope.get("user").id) if self.scope.get("user") else None,
+                            user_id=str(self.scope.get("user").id)
+                            if self.scope.get("user")
+                            else None,
                             time_since_activity=time_since_activity,
                             connection_timeout=self.connection_timeout,
                         )
@@ -1558,4 +1617,3 @@ class EventConsumer(AsyncWebsocketConsumer):
                 error=str(e),
                 exc_info=True,
             )
-

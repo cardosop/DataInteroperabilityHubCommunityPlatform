@@ -43,7 +43,7 @@ APP_TO_TASK = {
 
 def load_review_report(report_path: str = "test_review_report.json") -> dict:
     """Load the review report"""
-    with open(report_path, "r") as f:
+    with open(report_path) as f:
         return json.load(f)
 
 
@@ -102,11 +102,11 @@ def generate_app_review_section(app_name: str, app_data: dict, task_num: str) ->
         if len(app_data["gaps"]) > 5:
             lines.append(f"      - ... and {len(app_data['gaps']) - 5} more issues")
     else:
-        lines.append(f"    - [x] **No gaps identified**")
+        lines.append("    - [x] **No gaps identified**")
 
     # Update plan
     if app_data["update_plan"]:
-        lines.append(f"    - [ ] **Update Plan**:")
+        lines.append("    - [ ] **Update Plan**:")
         for item in app_data["update_plan"]:
             lines.append(f"      - {item}")
 
@@ -199,7 +199,7 @@ def update_tasks_md(tasks_file: str, report: dict):
                     elif "Best practices violations" in gap:
                         all_best_practices_issues.append((app_name, gap))
 
-            total_tests = sum(
+            sum(
                 app["total_tests"]
                 for app in report["apps"].values()
                 if app["app_name"] in APP_TO_TASK

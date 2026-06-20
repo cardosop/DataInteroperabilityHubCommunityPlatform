@@ -38,18 +38,17 @@ deleted them). In dry-run mode each invocation accumulates one audit
 row per batch — intentional, so audit replay can reconstruct the
 observation timeline.
 """
+
 from __future__ import annotations
 
 import logging
 import os
 import uuid
 from datetime import timedelta
-from typing import List, Optional
 
 from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.db import transaction, DatabaseError
 from django.utils import timezone
-
 
 logger = logging.getLogger(__name__)
 
@@ -91,9 +90,11 @@ def _emit_purged_audit(
     "what happened in last night's 04:00 sweep" without joining on
     timestamp windows.
 
-    Best-effort — wrapped in try/except so an audit-backend hiccup
-    doesn't crash the sweep (we'd rather lose one audit row than
-    skip a batch's deletion).
+    Best-effort — wrapped in try/except DatabaseError so an
+    audit-backend hiccup doesn't crash the sweep (we'd rather lose
+    one audit row than skip a batch's deletion). Programming errors
+    (ImportError, AttributeError, TypeError) are NOT caught — they
+    indicate a code bug and MUST propagate to the test suite / SRE.
     """
     try:
         from hub.apps.audit import event_types as audit_event_types
@@ -116,11 +117,12 @@ def _emit_purged_audit(
                 "correlation_id": correlation_id,
             },
         )
-    except Exception as exc:  # noqa: BLE001 — boundary
+    except DatabaseError as exc:
         logger.warning(
-            "cleanup_orphan_drafts_audit_emit_failed tenant_id=%s "
-            "batch=%s error=%s",
-            tenant.id, batch, exc,
+            "cleanup_orphan_drafts_audit_emit_failed tenant_id=%s batch=%s error=%s",
+            tenant.id,
+            batch,
+            exc,
         )
 
 
@@ -178,24 +180,25 @@ class Command(BaseCommand):
         dry_run = bool(opts.get("dry_run"))
         no_dry_run = bool(opts.get("no_dry_run"))
         batch_size = int(opts.get("batch_size") or DEFAULT_BATCH_SIZE)
-        age_threshold_days = int(
-            opts.get("age_threshold_days") or DEFAULT_AGE_THRESHOLD_DAYS
-        )
+        age_threshold_days = int(opts.get("age_threshold_days") or DEFAULT_AGE_THRESHOLD_DAYS)
         tenant_id_filter = opts.get("tenant_id")
 
         # 7-day safety net per D240.16 / D250.12 — env var forces
         # dry-run unless --no-dry-run was explicitly set.
-        env_dry_run = os.environ.get(
-            "ASSET_ORPHAN_CLEANUP_DRY_RUN", ""
-        ).lower() in ("1", "true", "yes")
+        env_dry_run = os.environ.get("ASSET_ORPHAN_CLEANUP_DRY_RUN", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
         if env_dry_run and not no_dry_run:
             dry_run = True
-            self.stdout.write(self.style.WARNING(
-                "ASSET_ORPHAN_CLEANUP_DRY_RUN env-var set; forcing "
-                "--dry-run (pass --no-dry-run to override)."
-            ))
+            self.stdout.write(
+                self.style.WARNING(
+                    "ASSET_ORPHAN_CLEANUP_DRY_RUN env-var set; forcing "
+                    "--dry-run (pass --no-dry-run to override)."
+                )
+            )
 
-        from hub.apps.assets.models import Asset, AssetStatus
         from hub.apps.tenants.models import Tenant
 
         tenants_qs = Tenant.objects.all()
@@ -229,11 +232,13 @@ class Command(BaseCommand):
             )
 
         action_word = "would delete" if dry_run else "deleted"
-        self.stdout.write(self.style.SUCCESS(
-            f"cleanup_orphan_drafts complete: {action_word} "
-            f"{deleted_total} orphan DRAFT assets across "
-            f"{tenants_qs.count()} tenant(s)."
-        ))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"cleanup_orphan_drafts complete: {action_word} "
+                f"{deleted_total} orphan DRAFT assets across "
+                f"{tenants_qs.count()} tenant(s)."
+            )
+        )
 
     # ------------------------------------------------------------------
     # Per-tenant sweep
@@ -267,9 +272,7 @@ class Command(BaseCommand):
         total = 0
         batch_no = 0
         while True:
-            batch_ids: List[str] = list(
-                candidates.values_list("id", flat=True)[:batch_size]
-            )
+            batch_ids: list[str] = list(candidates.values_list("id", flat=True)[:batch_size])
             if not batch_ids:
                 break
 

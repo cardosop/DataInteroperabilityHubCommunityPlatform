@@ -18,7 +18,7 @@ import pytest
 
 pytestmark = pytest.mark.slow
 from django.core.management import call_command
-from django.db import connection, close_old_connections
+from django.db import close_old_connections, connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from rest_framework import status
@@ -49,7 +49,7 @@ class RegistrationPerformanceTest(TestCase):
         response_times = []
         iterations = 20
 
-        for i in range(iterations):
+        for _i in range(iterations):
             email = f"perf-{uuid.uuid4().hex[:8]}@example.com"
             start = time.perf_counter()
             response = self.client.post(
@@ -62,7 +62,7 @@ class RegistrationPerformanceTest(TestCase):
                 response_times.append(elapsed_ms)
 
         if not response_times:
-            pytest.skip("Register endpoint returned no 201 responses")
+            pytest.skip("Register endpoint returned no 201 responses")  # noqa: skip-in-body — runtime service dependency
         self.assertGreaterEqual(
             len(response_times),
             10,

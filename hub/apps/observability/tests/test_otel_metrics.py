@@ -14,36 +14,26 @@ All tests use real implementations - no mocks/stubs.
 """
 
 import uuid
-import os
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.http import HttpResponse
 from django.test import Client, TestCase, override_settings
 
 from hub.apps.observability.otel_metrics import (
-    cache_hits_total,
-    cache_misses_total,
     compliance_runs_total,
     contract_validations_total,
     db_connections_active,
     dq_runs_total,
-    file_uploads_total,
     get_meter,
     get_status_class,
-    http_errors_total,
     http_request_duration_seconds,
     http_requests_total,
     job_duration_seconds,
     job_queue_length,
-    jobs_completed_total,
-    jobs_failed_total,
     jobs_started_total,
-    metrics_view,
     setup_opentelemetry_metrics,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()

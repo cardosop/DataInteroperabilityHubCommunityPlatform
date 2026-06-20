@@ -4,8 +4,8 @@
 Verifies every tenant-scoped model in each app has a paired
 RLS CREATE POLICY migration using Django's MigrationLoader.
 """
-import pytest
 
+import pytest
 from django.test import TestCase
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -14,10 +14,10 @@ pytestmark = pytest.mark.django_db(transaction=True)
 def _check_rls(app_label):
     from django.db import connection
     from django.db.migrations.loader import MigrationLoader
+
     loader = MigrationLoader(connection)
     return any(
-        ("enable_rls" in key[1].lower() or "rls" in key[1].lower())
-        and key[0] == app_label
+        ("enable_rls" in key[1].lower() or "rls" in key[1].lower()) and key[0] == app_label
         for key in loader.disk_migrations
     )
 
@@ -37,16 +37,14 @@ class AuthRlsTests(TestCase):
     def test_rls_migration_exists(self):
         from django.db import connection
         from django.db.migrations.loader import MigrationLoader
+
         loader = MigrationLoader(connection)
         has_rls = any(
-            "enable_rls" in key[1].lower() and key[0] == "auth"
-            for key in loader.disk_migrations
+            "enable_rls" in key[1].lower() and key[0] == "auth" for key in loader.disk_migrations
         )
         # Auth models (User) are global; RLS may not apply.
         # APIKey and Session have tenant FK and SHOULD have RLS.
-        assert has_rls or True, (
-            "auth: verify APIKey + Session have RLS; User is global"
-        )
+        assert has_rls or True, "auth: verify APIKey + Session have RLS; User is global"
 
 
 class TenantsRlsTests(TestCase):

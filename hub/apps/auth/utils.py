@@ -1,6 +1,7 @@
 """
 Shared authentication utilities.
 """
+
 import hashlib
 
 

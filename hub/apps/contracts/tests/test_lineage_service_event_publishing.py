@@ -29,6 +29,7 @@ class LineageServiceEventPublishingTest(ContractsTestBase):
 
         # Reset event bus singleton so override_settings takes effect
         import hub.apps.core.events.bus as _bus_mod
+
         _bus_mod._event_bus = None
 
         self.service = LineageService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))

@@ -1,4 +1,5 @@
 """Constraint-based order placement tests (replaces threading-based concurrency)."""
+
 import uuid
 
 from django.test import TestCase

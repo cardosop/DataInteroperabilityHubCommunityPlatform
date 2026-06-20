@@ -22,15 +22,11 @@ def parse_log(log_path: Path, include_skipped: bool = True) -> list[str]:
     """Extract test node IDs that ended with FAILED, ERROR, or (optionally) SKIPPED."""
     text = log_path.read_text()
     # Line format: "path/to/file.py::TestClass::test_method FAILED [ 13%]"
-    pattern = re.compile(
-        r"^(tests/[^\s]+)\s+(FAILED|ERROR|SKIPPED)(?:\s+\[.*\])?$", re.MULTILINE
-    )
+    pattern = re.compile(r"^(tests/[^\s]+)\s+(FAILED|ERROR|SKIPPED)(?:\s+\[.*\])?$", re.MULTILINE)
     out = []
     for m in pattern.finditer(text):
         node_id, status = m.group(1), m.group(2)
-        if status in ("FAILED", "ERROR"):
-            out.append(node_id)
-        elif include_skipped and status == "SKIPPED":
+        if status in ("FAILED", "ERROR") or (include_skipped and status == "SKIPPED"):
             out.append(node_id)
     return out
 
@@ -64,7 +60,11 @@ def main() -> int:
         print("No FAILED/ERROR/SKIPPED tests found in log.", file=sys.stderr)
         return 0
 
-    print(f"Found {len(node_ids)} test(s) to run (FAILED/ERROR" + ("" if args.skip else "/SKIPPED") + ").")
+    print(
+        f"Found {len(node_ids)} test(s) to run (FAILED/ERROR"
+        + ("" if args.skip else "/SKIPPED")
+        + ")."
+    )
     for n in node_ids:
         print(f"  {n}")
 
@@ -72,7 +72,7 @@ def main() -> int:
         return 0
 
     cmd = [sys.executable, "-m", "pytest"] + node_ids + args.pytest_args
-    return subprocess.run(cmd, cwd=Path(__file__).resolve().parent.parent).returncode
+    return subprocess.run(cmd, check=False, cwd=Path(__file__).resolve().parent.parent).returncode
 
 
 if __name__ == "__main__":

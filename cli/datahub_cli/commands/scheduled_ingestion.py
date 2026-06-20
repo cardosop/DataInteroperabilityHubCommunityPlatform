@@ -6,7 +6,6 @@ Uses real hub API - no mocks/stubs.
 """
 
 import json
-from typing import Optional
 
 import click
 
@@ -16,7 +15,6 @@ from ..api_client import api_client
 @click.group()
 def scheduled_ingestion():
     """Scheduled ingestion management commands [Post-MVP]"""
-    pass
 
 
 @scheduled_ingestion.command("list")
@@ -32,7 +30,7 @@ def scheduled_ingestion():
     help="Output format",
 )
 def list_ingestions(
-    status: Optional[str], asset_id: Optional[str], limit: int, offset: int, output_format: str
+    status: str | None, asset_id: str | None, limit: int, offset: int, output_format: str
 ):
     """List scheduled ingestions"""
     params = {"limit": limit, "offset": offset}
@@ -169,10 +167,10 @@ def create_ingestion(
     source_type: str,
     source_config: str,
     schedule_type: str,
-    schedule_config: Optional[str],
+    schedule_config: str | None,
     file_pattern: str,
-    asset_id: Optional[str],
-    description: Optional[str],
+    asset_id: str | None,
+    description: str | None,
     auto_create_asset: bool,
     auto_activate: bool,
     output_format: str,
@@ -245,13 +243,13 @@ def create_ingestion(
 )
 def update_ingestion(
     ingestion_id: str,
-    name: Optional[str],
-    source_config: Optional[str],
-    schedule_type: Optional[str],
-    schedule_config: Optional[str],
-    file_pattern: Optional[str],
-    status: Optional[str],
-    description: Optional[str],
+    name: str | None,
+    source_config: str | None,
+    schedule_type: str | None,
+    schedule_config: str | None,
+    file_pattern: str | None,
+    status: str | None,
+    description: str | None,
     output_format: str,
 ):
     """Update scheduled ingestion"""
@@ -336,9 +334,7 @@ def trigger_ingestion(ingestion_id: str, output_format: str):
     default="table",
     help="Output format",
 )
-def list_runs(
-    ingestion_id: str, status: Optional[str], limit: int, offset: int, output_format: str
-):
+def list_runs(ingestion_id: str, status: str | None, limit: int, offset: int, output_format: str):
     """List runs for scheduled ingestion"""
     params = {"limit": limit, "offset": offset}
     if status:

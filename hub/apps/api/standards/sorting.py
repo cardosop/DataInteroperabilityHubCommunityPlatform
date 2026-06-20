@@ -4,8 +4,6 @@ Standardized Sorting
 Provides consistent sorting across all API endpoints.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
-
 import structlog
 from django.db.models import QuerySet
 from rest_framework.exceptions import ValidationError
@@ -61,7 +59,7 @@ class StandardOrderingBackend(OrderingFilter):
         # Get allowed ordering fields from view; guard against Mock/non-list values
         raw_ordering_fields = getattr(view, "ordering_fields", None)
         if isinstance(raw_ordering_fields, (list, set, tuple, frozenset)):
-            ordering_fields: Optional[List[str]] = list(raw_ordering_fields)
+            ordering_fields: list[str] | None = list(raw_ordering_fields)
         else:
             ordering_fields = self.ordering_fields
 
@@ -76,7 +74,7 @@ class StandardOrderingBackend(OrderingFilter):
         return queryset
 
 
-def parse_ordering_params(request) -> List[str]:
+def parse_ordering_params(request) -> list[str]:
     """
     Parse ordering parameters from request.
 
@@ -111,9 +109,9 @@ def parse_ordering_params(request) -> List[str]:
 
 
 def validate_ordering_params(
-    ordering_params: List[str],
-    allowed_fields: Optional[List[str]] = None,
-) -> Tuple[bool, Optional[str]]:
+    ordering_params: list[str],
+    allowed_fields: list[str] | None = None,
+) -> tuple[bool, str | None]:
     """
     Validate ordering parameters.
 
@@ -138,7 +136,7 @@ def validate_ordering_params(
     return True, None
 
 
-def apply_ordering(queryset: QuerySet, ordering_params: List[str]) -> QuerySet:
+def apply_ordering(queryset: QuerySet, ordering_params: list[str]) -> QuerySet:
     """
     Apply ordering to queryset.
 

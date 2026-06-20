@@ -5,8 +5,8 @@ Note: These tests require the DataContract CLI service to be running.
 Start services with: make docker-up-services
 """
 
-import unittest
 import os
+import unittest
 
 import pytest
 from django.test import override_settings
@@ -36,9 +36,13 @@ class DataContractCLIIntegrationTest(ContractsAPITestBase):
         try:
             health = cli_client.health_check()
             if health.get("status") != "healthy":
-                raise unittest.SkipTest(f"DataContract CLI service is not healthy at {self.service_url}")
+                raise unittest.SkipTest(
+                    f"DataContract CLI service is not healthy at {self.service_url}"
+                )
         except Exception as e:
-            raise unittest.SkipTest(f"DataContract CLI service not available at {self.service_url}: {str(e)}")
+            raise unittest.SkipTest(
+                f"DataContract CLI service not available at {self.service_url}: {e!s}"
+            )
 
     @override_settings(DATACONTRACT_SERVICE_URL="http://localhost:8080")
     def test_validate_contract_integration(self):
@@ -70,10 +74,11 @@ class DataContractCLIIntegrationTest(ContractsAPITestBase):
         # Validate contract via API
         response = self.client.post(f"/api/v1/contracts/{contract.id}/validate/", {}, format="json")
 
-        # Should get a response (either success or error from service)
+        # Should get a response (external validation service may be unavailable)
         self.assertIn(
             response.status_code,
-            [status.HTTP_200_OK, status.HTTP_202_ACCEPTED, status.HTTP_500_INTERNAL_SERVER_ERROR],
+            [status.HTTP_200_OK, status.HTTP_202_ACCEPTED,
+             status.HTTP_502_BAD_GATEWAY, status.HTTP_503_SERVICE_UNAVAILABLE],
         )
 
     @override_settings(DATACONTRACT_SERVICE_URL="http://localhost:8080")

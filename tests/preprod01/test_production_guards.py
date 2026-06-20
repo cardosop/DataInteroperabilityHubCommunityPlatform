@@ -8,7 +8,6 @@ Validates startup guards in hub/settings.py:
 - SECRET_KEY / JWT_SECRET_KEY / ENCRYPTION_KEY must not be dev defaults
 """
 
-import os
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 
@@ -44,7 +43,11 @@ def _run_guard_code(env_vars: dict) -> None:
 
         # PGBOUNCER + CHANNELS guard
         pgbouncer = env_vars.get("PGBOUNCER_ENABLED", "").strip().lower() in ("1", "true", "yes")
-        channels_configured = env_vars.get("CHANNEL_LAYERS_CONFIGURED", "").strip().lower() in ("1", "true", "yes")
+        channels_configured = env_vars.get("CHANNEL_LAYERS_CONFIGURED", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
         if pgbouncer and channels_configured:
             raise ImproperlyConfigured(
                 "PGBOUNCER_ENABLED and CHANNEL_LAYERS are incompatible. "
@@ -54,8 +57,11 @@ def _run_guard_code(env_vars: dict) -> None:
 
         # Redis password guard — all 5 core instances must have non-empty passwords
         redis_vars = [
-            "REDIS_URL", "REDIS_CACHE_URL", "REDIS_QUEUE_URL",
-            "REDIS_EVENTS_URL", "REDIS_CHANNELS_URL",
+            "REDIS_URL",
+            "REDIS_CACHE_URL",
+            "REDIS_QUEUE_URL",
+            "REDIS_EVENTS_URL",
+            "REDIS_CHANNELS_URL",
         ]
         for var in redis_vars:
             url = env_vars.get(var, "")
@@ -67,9 +73,7 @@ def _run_guard_code(env_vars: dict) -> None:
                     f"Expected format: redis://:password@host:port/db"
                 )
             if "://:@" in url:
-                raise ImproperlyConfigured(
-                    f"{var} has empty password in production"
-                )
+                raise ImproperlyConfigured(f"{var} has empty password in production")
 
 
 # ── Test classes ──────────────────────────────────────────────────────
@@ -124,40 +128,76 @@ class TestPgBouncerChannelsGuard:
 class TestRedisPasswordGuard:
     """All Redis URLs must have non-empty passwords in production."""
 
-    @pytest.mark.parametrize("redis_var", [
-        "REDIS_URL", "REDIS_CACHE_URL", "REDIS_QUEUE_URL",
-        "REDIS_EVENTS_URL", "REDIS_CHANNELS_URL",
-    ])
+    @pytest.mark.parametrize(
+        "redis_var",
+        [
+            "REDIS_URL",
+            "REDIS_CACHE_URL",
+            "REDIS_QUEUE_URL",
+            "REDIS_EVENTS_URL",
+            "REDIS_CHANNELS_URL",
+        ],
+    )
     def test_unauthenticated_url_raises(self, redis_var):
         env = {"ENVIRONMENT": "production"}
-        env.update({v: "redis://:strong@host:6379/0" for v in [
-            "REDIS_URL", "REDIS_CACHE_URL", "REDIS_QUEUE_URL",
-            "REDIS_EVENTS_URL", "REDIS_CHANNELS_URL",
-        ]})
+        env.update(
+            dict.fromkeys(
+                [
+                    "REDIS_URL",
+                    "REDIS_CACHE_URL",
+                    "REDIS_QUEUE_URL",
+                    "REDIS_EVENTS_URL",
+                    "REDIS_CHANNELS_URL",
+                ],
+                "redis://:strong@host:6379/0",
+            )
+        )
         env[redis_var] = "redis://host:6379/0"
         with pytest.raises(ImproperlyConfigured, match=redis_var):
             _run_guard_code(env)
 
-    @pytest.mark.parametrize("redis_var", [
-        "REDIS_URL", "REDIS_CACHE_URL", "REDIS_QUEUE_URL",
-        "REDIS_EVENTS_URL", "REDIS_CHANNELS_URL",
-    ])
+    @pytest.mark.parametrize(
+        "redis_var",
+        [
+            "REDIS_URL",
+            "REDIS_CACHE_URL",
+            "REDIS_QUEUE_URL",
+            "REDIS_EVENTS_URL",
+            "REDIS_CHANNELS_URL",
+        ],
+    )
     def test_empty_password_url_raises(self, redis_var):
         env = {"ENVIRONMENT": "production"}
-        env.update({v: "redis://:strong@host:6379/0" for v in [
-            "REDIS_URL", "REDIS_CACHE_URL", "REDIS_QUEUE_URL",
-            "REDIS_EVENTS_URL", "REDIS_CHANNELS_URL",
-        ]})
+        env.update(
+            dict.fromkeys(
+                [
+                    "REDIS_URL",
+                    "REDIS_CACHE_URL",
+                    "REDIS_QUEUE_URL",
+                    "REDIS_EVENTS_URL",
+                    "REDIS_CHANNELS_URL",
+                ],
+                "redis://:strong@host:6379/0",
+            )
+        )
         env[redis_var] = "redis://:@host:6379/0"
         with pytest.raises(ImproperlyConfigured, match="empty password"):
             _run_guard_code(env)
 
     def test_all_redis_authenticated_passes(self):
         env = {"ENVIRONMENT": "production"}
-        env.update({v: "redis://:strongpw@host:6379/0" for v in [
-            "REDIS_URL", "REDIS_CACHE_URL", "REDIS_QUEUE_URL",
-            "REDIS_EVENTS_URL", "REDIS_CHANNELS_URL",
-        ]})
+        env.update(
+            dict.fromkeys(
+                [
+                    "REDIS_URL",
+                    "REDIS_CACHE_URL",
+                    "REDIS_QUEUE_URL",
+                    "REDIS_EVENTS_URL",
+                    "REDIS_CHANNELS_URL",
+                ],
+                "redis://:strongpw@host:6379/0",
+            )
+        )
         _run_guard_code(env)
 
 
@@ -170,5 +210,8 @@ class TestSecretKeyGuard:
             _run_guard_code(env)
 
     def test_production_secret_key_passes(self):
-        env = {"ENVIRONMENT": "production", "SECRET_KEY": "prod-real-secret-64-chars-long-xxxxxxxxxx"}
+        env = {
+            "ENVIRONMENT": "production",
+            "SECRET_KEY": "prod-real-secret-64-chars-long-xxxxxxxxxx",
+        }
         _run_guard_code(env)

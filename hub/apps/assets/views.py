@@ -3,20 +3,25 @@ Asset Views
 
 REST API views for asset management.
 """
+
 import logging
-from typing import Optional
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied
-from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 
+from hub.apps.assets import data_first_body_guard as _data_first_body_guard
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.auth.permissions import HasScope
+from hub.apps.core.idempotency import (
+    CachedResponse,
+    IdempotencyError,
+    IdempotencyService,
+)
 from hub.apps.core.responses import api_error_response, handle_service_exception
 from hub.apps.core.services.base import (
     ConflictError as ServiceConflictError,
@@ -42,12 +47,6 @@ from .throttles import (
     AssetDataFirstTenantThrottle,
     AssetDataFirstUserThrottle,
 )
-from hub.apps.assets import data_first_body_guard as _data_first_body_guard
-from hub.apps.core.idempotency import (
-    CachedResponse,
-    IdempotencyError,
-    IdempotencyService,
-)
 
 #: Phase 250.1.D review-pass — every endpoint that opts into the
 #: idempotency contract MUST pass a unique scope so two endpoints
@@ -55,7 +54,9 @@ from hub.apps.core.idempotency import (
 #: bound to the URL path so a future re-mount under a different
 #: prefix does not silently change the cache namespace.
 _DATA_FIRST_IDEMPOTENCY_SCOPE: str = "assets.data-first.v1"
-from .models import Asset, AssetSourceType, AssetStatus, DataStrategy, ExternalResourceReference
+import contextlib
+
+from .models import Asset, AssetSourceType, AssetStatus, DataStrategy
 from .serializers import (
     AssetCreateSerializer,
     AssetSerializer,
@@ -103,7 +104,16 @@ def _check_asset_creation_kill_switch(request):
         from hub.apps.tenants.request_tenant import get_request_tenant
 
         _tid, tenant = get_request_tenant(request)
-    except Exception:  # noqa: BLE001 — gate must NEVER 500 the request
+    except (AttributeError, ValueError, TypeError, KeyError) as e:
+        # Malformed request or missing user attribute — no tenant
+        # context available, so the kill-switch is a no-op.
+        import logging as _logging
+
+        _logging.getLogger(__name__).debug(
+            "asset_creation_kill_switch_no_tenant",
+            error=str(e),
+            exc_info=True,
+        )
         tenant = None
 
     if tenant is None:
@@ -127,7 +137,7 @@ def _check_asset_creation_kill_switch(request):
     )
 
 
-def _parse_if_match_version(raw_if_match: Optional[str]) -> Optional[int]:
+def _parse_if_match_version(raw_if_match: str | None) -> int | None:
     """Parse ``If-Match`` header as an integer asset version."""
     if raw_if_match is None:
         return None
@@ -200,7 +210,7 @@ def _emit_visibility_deprecation_signal(
             },
             request=request,
         )
-    except Exception as exc:  # noqa: BLE001
+    except DatabaseError as exc:
         logging.getLogger(__name__).warning(
             "asset_visibility_deprecation_audit_emit_failed",
             extra={
@@ -216,7 +226,7 @@ def _emit_asset_operation(operation: str, tenant_id: str, status_label: str) -> 
 
     Best-effort: a failed emit must never block the response.
     """
-    try:
+    with contextlib.suppress(ValueError, TypeError):
         asset_operations_total.inc(
             attributes={
                 "operation": operation,
@@ -224,8 +234,6 @@ def _emit_asset_operation(operation: str, tenant_id: str, status_label: str) -> 
                 "status": status_label,
             }
         )
-    except Exception:
-        pass
 
 
 class AssetViewSet(viewsets.ModelViewSet):
@@ -282,9 +290,8 @@ class AssetViewSet(viewsets.ModelViewSet):
         # Eager-load relationships accessed by AssetSerializer to eliminate N+1 queries.
         # select_related covers FKs (single JOIN); prefetch_related covers reverse FKs
         # (separate IN query — one query total regardless of result-set size).
-        _base_qs = (
-            Asset.objects.select_related("tenant", "created_by")
-            .prefetch_related("contracts", "datasets", "compliance_runs")
+        _base_qs = Asset.objects.select_related("tenant", "created_by").prefetch_related(
+            "contracts", "datasets", "compliance_runs"
         )
 
         # Platform admins can see all assets
@@ -408,7 +415,9 @@ class AssetViewSet(viewsets.ModelViewSet):
         )
         is_platform_admin = hasattr(user, "is_platform_admin") and user.is_platform_admin
         if not (has_write_role or is_platform_admin):
-            _emit_asset_operation("create", get_request_tenant_id(request) or "", "permission_denied")
+            _emit_asset_operation(
+                "create", get_request_tenant_id(request) or "", "permission_denied"
+            )
             return Response(
                 {
                     "error": "Permission denied: DATA_PROVIDER or TENANT_ADMIN role required to create assets",
@@ -470,18 +479,24 @@ class AssetViewSet(viewsets.ModelViewSet):
             _emit_asset_operation("create", tenant_id_str, "conflict")
             return handle_service_exception(e)
 
-        # Invalidate cache
+        # Invalidate cache (best-effort — cache entries have a TTL and
+        # will expire naturally even if this invalidation fails).
         try:
             invalidate_asset_list_cache(tenant_id_str)
             invalidate_asset_detail_cache(str(asset.id))
-        except Exception as e:
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to invalidate cache after asset creation: {e}", exc_info=True)
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logging.getLogger(__name__).warning(
+                "asset_create_cache_invalidation_failed",
+                exc_info=True,
+                extra={
+                    "asset_id": str(asset.id),
+                    "tenant_id": tenant_id_str,
+                    "error": str(e),
+                },
+            )
 
         # Log audit event (async in production via job queue)
-        import logging
+        from django.db import DatabaseError as _DatabaseError
 
         logger = logging.getLogger(__name__)
         try:
@@ -494,8 +509,16 @@ class AssetViewSet(viewsets.ModelViewSet):
                 details={"key": key, "name": name, "domain": domain},
                 request=request,
             )
-        except Exception as e:
-            logger.warning(f"Failed to create audit event for asset {asset.id}: {e}", exc_info=True)
+        except _DatabaseError as e:
+            logger.warning(
+                "asset_create_audit_event_failed",
+                exc_info=True,
+                extra={
+                    "asset_id": str(asset.id),
+                    "tenant_id": tenant_id_str,
+                    "error": str(e),
+                },
+            )
 
         _emit_asset_operation("create", tenant_id_str, "success")
         return Response(AssetSerializer(asset).data, status=status.HTTP_201_CREATED)
@@ -570,7 +593,7 @@ class AssetViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             return Response(
                 {"error": "User must belong to a tenant to create assets"},
@@ -610,6 +633,7 @@ class AssetViewSet(viewsets.ModelViewSet):
             # dashboards can count replay-vs-fresh ratios without
             # scraping every successful row in the audit table.
             import logging as _logging
+
             _logging.getLogger(__name__).info(
                 "idempotency_replay_hit",
                 extra={
@@ -692,11 +716,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         def _cache_and_return(response: Response) -> Response:
             """Persist + release-lock + return — cached-status path."""
             if response.status_code in _CACHED_STATUSES:
-                preserved_headers = {
-                    h: response[h]
-                    for h in _CACHED_HEADERS
-                    if h in response
-                }
+                preserved_headers = {h: response[h] for h in _CACHED_HEADERS if h in response}
                 IdempotencyService.store_response(
                     idem_key_header,
                     CachedResponse(
@@ -733,10 +753,15 @@ class AssetViewSet(viewsets.ModelViewSet):
             # are logged and converted to a 500 — this avoids double-
             # logging through Django's process_exception middleware.
             import sys as _sys
+
+            from django.core.exceptions import (
+                BadRequest as _DjangoBadRequest,
+            )
             from django.core.exceptions import (
                 PermissionDenied as _DjangoPermissionDenied,
+            )
+            from django.core.exceptions import (
                 SuspiciousOperation as _DjangoSuspiciousOperation,
-                BadRequest as _DjangoBadRequest,
             )
             from django.http import Http404 as _DjangoHttp404
             from rest_framework.exceptions import APIException as _DRFAPIException
@@ -757,9 +782,7 @@ class AssetViewSet(viewsets.ModelViewSet):
             # this is a handled outcome) and return 500 so the client
             # gets a structured JSON body instead of an HTML traceback.
             _logger = logging.getLogger(__name__)
-            _logger.warning(
-                "Unhandled exception in data-first endpoint", exc_info=True
-            )
+            _logger.warning("Unhandled exception in data-first endpoint", exc_info=True)
             return Response(
                 {"error": "Internal server error", "code": "INTERNAL_ERROR"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -784,9 +807,7 @@ class AssetViewSet(viewsets.ModelViewSet):
             tenant, "allow_intake_on_compliance_degraded", False
         ):
             breaker_status = compliance_breaker.get_status()
-            retry_after_seconds = int(
-                breaker_status.get("timeout_seconds", 60) or 60
-            )
+            retry_after_seconds = int(breaker_status.get("timeout_seconds", 60) or 60)
             response = Response(
                 {
                     "error": (
@@ -835,25 +856,33 @@ class AssetViewSet(viewsets.ModelViewSet):
         try:
             file_obj = File.objects.get(id=file_id, tenant_id=tenant.id)
         except File.DoesNotExist:
-            return _cache_and_return(Response(
-                {"error": "File not found", "code": "NOT_FOUND", "details": {"file_id": str(file_id)}},
-                status=status.HTTP_404_NOT_FOUND,
-            ))
+            return _cache_and_return(
+                Response(
+                    {
+                        "error": "File not found",
+                        "code": "NOT_FOUND",
+                        "details": {"file_id": str(file_id)},
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            )
 
         # Phase 260.6.A — terminal upload state is ACTIVE only
         # (legacy ``COMPLETED`` retired via migration 0009).
         if file_obj.status != FileStatus.ACTIVE:
-            return _cache_and_return(Response(
-                {
-                    "error": "File must be active to create asset",
-                    "code": "INVALID_STATE",
-                    "details": {
-                        "required_status": FileStatus.ACTIVE,
-                        "current_status": file_obj.status,
+            return _cache_and_return(
+                Response(
+                    {
+                        "error": "File must be active to create asset",
+                        "code": "INVALID_STATE",
+                        "details": {
+                            "required_status": FileStatus.ACTIVE,
+                            "current_status": file_obj.status,
+                        },
                     },
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            ))
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            )
 
         file_format = "CSV"
         if file_obj.content_type:
@@ -903,8 +932,7 @@ class AssetViewSet(viewsets.ModelViewSet):
             # exception through the workflow engine) doesn't leak
             # into API responses.
             human_message = (
-                f"Asset intake refused: {fcr.gate} gate returned "
-                f"{fcr.gate_status} ({fcr.reason})"
+                f"Asset intake refused: {fcr.gate} gate returned {fcr.gate_status} ({fcr.reason})"
             )
             if fcr.gate_status == "DEGRADED":
                 # 503 is a transient/retryable status — NOT cached
@@ -923,20 +951,22 @@ class AssetViewSet(viewsets.ModelViewSet):
                 )
                 response["Retry-After"] = "60"
                 return _just_return(response)
-            return _cache_and_return(Response(
-                {
-                    "error": human_message,
-                    "code": "ASSET_FAIL_CLOSED_REJECTED",
-                    "details": {
-                        "gate": fcr.gate,
-                        "gate_status": fcr.gate_status,
-                        "reason": fcr.reason,
-                        "compliance_run_id": fcr.compliance_run_id,
-                        "dq_run_id": fcr.dq_run_id,
+            return _cache_and_return(
+                Response(
+                    {
+                        "error": human_message,
+                        "code": "ASSET_FAIL_CLOSED_REJECTED",
+                        "details": {
+                            "gate": fcr.gate,
+                            "gate_status": fcr.gate_status,
+                            "reason": fcr.reason,
+                            "compliance_run_id": fcr.compliance_run_id,
+                            "dq_run_id": fcr.dq_run_id,
+                        },
                     },
-                },
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            ))
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
+            )
         except ValueError as e:
             # Defence in depth: if a future engine change causes the
             # typed FailClosedRejection to be wrapped before
@@ -944,18 +974,22 @@ class AssetViewSet(viewsets.ModelViewSet):
             # detection so we still emit 422 (not a generic 400).
             err_msg = str(e)
             if "fail-closed" in err_msg.lower():
-                return _cache_and_return(Response(
-                    {
-                        "error": "Asset intake refused (fail-closed)",
-                        "code": "ASSET_FAIL_CLOSED_REJECTED",
-                        "details": {"raw_message": err_msg},
-                    },
-                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                ))
-            return _cache_and_return(Response(
-                {"error": err_msg, "code": "WORKFLOW_FAILED"},
-                status=status.HTTP_400_BAD_REQUEST,
-            ))
+                return _cache_and_return(
+                    Response(
+                        {
+                            "error": "Asset intake refused (fail-closed)",
+                            "code": "ASSET_FAIL_CLOSED_REJECTED",
+                            "details": {"raw_message": err_msg},
+                        },
+                        status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    )
+                )
+            return _cache_and_return(
+                Response(
+                    {"error": err_msg, "code": "WORKFLOW_FAILED"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            )
 
         output = result.get("output_data") or {}
         asset_id = output.get("asset_id")
@@ -990,23 +1024,26 @@ class AssetViewSet(viewsets.ModelViewSet):
                 asset_id = asset_id or wi.state_data.get("asset_id")
                 dataset_id = dataset_id or wi.state_data.get("dataset_id")
                 contract_id = contract_id or wi.state_data.get("contract_id")
-                schema_drift = schema_drift or wi.state_data.get(
-                    "schema_drift"
-                )
+                schema_drift = schema_drift or wi.state_data.get("schema_drift")
             except WorkflowInstance.DoesNotExist:
                 pass
 
         if not asset_id:
             # 5xx is NOT cached — transient state, retry should re-attempt.
-            return _just_return(Response(
-                {"error": "Workflow completed but asset_id not found", "code": "WORKFLOW_INCOMPLETE"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            ))
+            return _just_return(
+                Response(
+                    {
+                        "error": "Workflow completed but asset_id not found",
+                        "code": "WORKFLOW_INCOMPLETE",
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            )
 
         try:
             invalidate_asset_list_cache(str(tenant.id))
             invalidate_asset_detail_cache(str(asset_id))
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             import logging
 
             logging.getLogger(__name__).warning(
@@ -1029,33 +1066,35 @@ class AssetViewSet(viewsets.ModelViewSet):
             request=request,
         )
 
-        return _cache_and_return(Response(
-            {
-                "asset_id": str(asset_id),
-                "dataset_id": str(dataset_id) if dataset_id else None,
-                "contract_id": str(contract_id) if contract_id else None,
-                # Phase 250.6.C audit-pass — surface the workflow
-                # instance id so the frontend can pass it to the
-                # ``<WorkflowProgressWidget>`` on the asset detail
-                # page (via React Router navigation state). Without
-                # this, the widget is dead code — it has nothing to
-                # poll. The id is already computed locally above
-                # (line 954) for the schema_drift fallback; we
-                # surface it eagerly here for the FE wire.
-                "workflow_instance_id": (
-                    str(workflow_instance_id) if workflow_instance_id else None
-                ),
-                # Phase 250.2.B.5 — wire shape consumed by the
-                # frontend's SchemaDriftBanner. Always emitted as a
-                # nested object (or null) under the top-level
-                # ``result_summary`` namespace so future per-step
-                # summaries can join the same envelope.
-                "result_summary": {
-                    "schema_drift": schema_drift,
+        return _cache_and_return(
+            Response(
+                {
+                    "asset_id": str(asset_id),
+                    "dataset_id": str(dataset_id) if dataset_id else None,
+                    "contract_id": str(contract_id) if contract_id else None,
+                    # Phase 250.6.C audit-pass — surface the workflow
+                    # instance id so the frontend can pass it to the
+                    # ``<WorkflowProgressWidget>`` on the asset detail
+                    # page (via React Router navigation state). Without
+                    # this, the widget is dead code — it has nothing to
+                    # poll. The id is already computed locally above
+                    # (line 954) for the schema_drift fallback; we
+                    # surface it eagerly here for the FE wire.
+                    "workflow_instance_id": (
+                        str(workflow_instance_id) if workflow_instance_id else None
+                    ),
+                    # Phase 250.2.B.5 — wire shape consumed by the
+                    # frontend's SchemaDriftBanner. Always emitted as a
+                    # nested object (or null) under the top-level
+                    # ``result_summary`` namespace so future per-step
+                    # summaries can join the same envelope.
+                    "result_summary": {
+                        "schema_drift": schema_drift,
+                    },
                 },
-            },
-            status=status.HTTP_201_CREATED,
-        ))
+                status=status.HTTP_201_CREATED,
+            )
+        )
 
     @transaction.atomic
     def update(self, request, *args, **kwargs):
@@ -1097,6 +1136,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         # triggers the rejection; consumers cannot bypass by
         # bundling the deprecated field with valid fields.
         from django.conf import settings as _settings
+
         if getattr(
             _settings,
             "ASSET_VISIBILITY_PHASE_2_REJECT_ENABLED",
@@ -1120,9 +1160,7 @@ class AssetViewSet(viewsets.ModelViewSet):
                             "D250.4."
                         ),
                         "alternative": "Set Asset.status instead.",
-                        "remediation_url": (
-                            "/docs/api/migrations/visibility-removed.md"
-                        ),
+                        "remediation_url": ("/docs/api/migrations/visibility-removed.md"),
                     },
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -1148,12 +1186,9 @@ class AssetViewSet(viewsets.ModelViewSet):
             )
 
         from django.conf import settings as _settings
-        require_if_match = bool(
-            getattr(_settings, "OPTIMISTIC_LOCK_REQUIRE_IF_MATCH", False)
-        )
-        raw_if_match = (
-            request.headers.get("If-Match") or request.META.get("HTTP_IF_MATCH")
-        )
+
+        require_if_match = bool(getattr(_settings, "OPTIMISTIC_LOCK_REQUIRE_IF_MATCH", False))
+        raw_if_match = request.headers.get("If-Match") or request.META.get("HTTP_IF_MATCH")
         try:
             if_match_version = _parse_if_match_version(raw_if_match)
         except ValueError:
@@ -1219,10 +1254,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         ):
             return Response(
                 {
-                    "error": (
-                        "Version conflict between If-Match header and "
-                        "request body version."
-                    ),
+                    "error": ("Version conflict between If-Match header and request body version."),
                     "code": "VALIDATION_ERROR",
                     "details": {
                         "if_match_version": if_match_version,
@@ -1259,12 +1291,8 @@ class AssetViewSet(viewsets.ModelViewSet):
                         "error": "Asset has been modified by another user.",
                         "code": "PRECONDITION_FAILED",
                         "details": {
-                            "expected_version": details.get(
-                                "current_version", asset.version
-                            ),
-                            "provided_version": details.get(
-                                "expected_version", if_match_version
-                            ),
+                            "expected_version": details.get("current_version", asset.version),
+                            "provided_version": details.get("expected_version", if_match_version),
                             "hint": "Refresh the asset, merge your edits, and retry.",
                         },
                     },
@@ -1281,9 +1309,10 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         def _invalidate_cache_post_update():
             import logging as _logging
+
             try:
                 invalidate_asset_caches(_asset_id_str_upd, _tenant_id_str_upd)
-            except Exception as _e:
+            except (ConnectionError, TimeoutError, OSError) as _e:
                 _logging.getLogger(__name__).warning(
                     f"Failed to invalidate cache after asset update {_asset_id_str_upd}: {_e}",
                     exc_info=True,
@@ -1342,9 +1371,10 @@ class AssetViewSet(viewsets.ModelViewSet):
         # so the DB row is not visible to other workers until the outer transaction commits.
         def _invalidate_cache_post_delete():
             import logging as _logging
+
             try:
                 invalidate_asset_caches(asset_id_str, tenant_id_str)
-            except Exception as _e:
+            except (ConnectionError, TimeoutError, OSError) as _e:
                 _logging.getLogger(__name__).warning(
                     f"Failed to invalidate cache after asset deletion {asset_id_str}: {_e}",
                     exc_info=True,
@@ -1419,9 +1449,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         dataset.asset = asset
 
         # Get previous current dataset for versioning
-        latest_dataset = asset.datasets.filter(
-            is_current=True
-        ).order_by("-version").first()
+        latest_dataset = asset.datasets.filter(is_current=True).order_by("-version").first()
         if latest_dataset is None:
             latest_dataset = asset.datasets.order_by("-version").first()
 
@@ -1429,9 +1457,7 @@ class AssetViewSet(viewsets.ModelViewSet):
             dataset.version = latest_dataset.version + 1
             dataset.parent_version = latest_dataset
             # Mark previous datasets as not current
-            asset.datasets.exclude(pk=dataset.pk).update(
-                is_current=False
-            )
+            asset.datasets.exclude(pk=dataset.pk).update(is_current=False)
         else:
             dataset.version = 1
 
@@ -1449,7 +1475,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         try:
             invalidate_asset_detail_cache(str(asset.id))
             invalidate_asset_list_cache(str(asset.tenant.id))
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             import logging
 
             logger = logging.getLogger(__name__)
@@ -1507,7 +1533,6 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         # Validate contract attachment using business rules
         from hub.apps.assets.business_rules import AssetsBusinessRules
-        from hub.apps.tenants.models import Tenant
 
         tenant_id = str(asset.tenant.id) if asset.tenant else None
         user_id = str(request.user.id) if request.user.is_authenticated else None
@@ -1619,7 +1644,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         try:
             invalidate_asset_detail_cache(str(asset.id))
             invalidate_asset_list_cache(str(asset.tenant.id))
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             import logging
 
             logger = logging.getLogger(__name__)
@@ -1656,14 +1681,20 @@ class AssetViewSet(viewsets.ModelViewSet):
             ValidationStatus,
         )
 
-        is_test_env = getattr(settings, "RATE_LIMIT_E2E_RELAX", False) or getattr(settings, "ENVIRONMENT", "") == "test"
+        is_test_env = (
+            getattr(settings, "RATE_LIMIT_E2E_RELAX", False)
+            or getattr(settings, "ENVIRONMENT", "") == "test"
+        )
         if not is_test_env:
             raise NotFound("Resource not found")
         if not request.user.is_authenticated:
             raise NotFound("Resource not found")
         # In non-test environments (RATE_LIMIT_E2E_RELAX) restrict to known E2E emails.
         # When ENVIRONMENT="test" (unit tests), any authenticated user may call this.
-        if not getattr(settings, "ENVIRONMENT", "") == "test" and request.user.email not in E2E_EMAILS:
+        if (
+            not getattr(settings, "ENVIRONMENT", "") == "test"
+            and request.user.email not in E2E_EMAILS
+        ):
             raise NotFound("Resource not found")
 
         asset = self.get_object()
@@ -1702,6 +1733,9 @@ class AssetViewSet(viewsets.ModelViewSet):
 
             from django.utils import timezone
 
+            from hub.apps.compliance.intake_scan import (
+                latest_compliance_run_for_asset_activation,
+            )
             from hub.apps.compliance.models import (
                 ComplianceRun,
                 ComplianceRunStatus,
@@ -1709,16 +1743,14 @@ class AssetViewSet(viewsets.ModelViewSet):
             )
             from hub.apps.jobs.models import Job, JobStatus, JobType
 
-            from hub.apps.compliance.intake_scan import (
-                latest_compliance_run_for_asset_activation,
-            )
-
             latest = latest_compliance_run_for_asset_activation(a)
             if latest is None:
                 # No run exists — seed a happy-path SUCCEEDED run.
                 # ``risk_level=LOW`` is the threshold-clearing default
                 # (tenant default threshold is HIGH; LOW < HIGH → passes).
                 # Build a real Job to satisfy the FK; no mocks.
+                from django.db import DatabaseError as _DatabaseError
+
                 try:
                     job = Job.objects.create(
                         tenant=a.tenant,
@@ -1740,11 +1772,21 @@ class AssetViewSet(viewsets.ModelViewSet):
                         overall_status="PASS",
                         completed_at=timezone.now(),
                     )
-                except Exception:
-                    # Best-effort: the activation step below will surface a
-                    # clear ``COMPLIANCE_RUN_REQUIRED`` if creation failed,
-                    # which the e2e fixture handles via its retry loop.
-                    pass
+                except _DatabaseError as _exc:
+                    # Best-effort compliance-run seeding — a transient DB
+                    # failure here is non-fatal because the activation step
+                    # below surfaces ``COMPLIANCE_RUN_REQUIRED`` to the
+                    # e2e fixture which retries. Log the failure so SRE
+                    # can distinguish transient DB issues from code bugs.
+                    logging.getLogger(__name__).warning(
+                        "compliance_run_seed_failed",
+                        exc_info=True,
+                        extra={
+                            "asset_id": str(a.id),
+                            "tenant_id": str(a.tenant_id),
+                            "error": str(_exc),
+                        },
+                    )
                 return
 
             need_save = False
@@ -1847,7 +1889,10 @@ class AssetViewSet(viewsets.ModelViewSet):
                 "name": "E2E Activation Contract",
                 "version": "1.0.0",
                 "schema": {
-                    "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}],
+                    "fields": [
+                        {"name": "id", "type": "string"},
+                        {"name": "name", "type": "string"},
+                    ],
                 },
             }
         )
@@ -1869,7 +1914,9 @@ class AssetViewSet(viewsets.ModelViewSet):
             hub_contract_json={
                 "id": f"e2e-activate-{contract_id[:8]}",
                 "name": "E2E Activation Contract",
-                "schema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
+                "schema": {
+                    "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+                },
             },
             created_by=request.user,
         )
@@ -1959,7 +2006,7 @@ class AssetViewSet(viewsets.ModelViewSet):
                     if hasattr(response, "data") and isinstance(response.data, dict):
                         response.data["count"] = total_count
                     return response
-            except NotFound as e:
+            except NotFound:
                 # Page doesn't exist - re-raise to maintain standard pagination behavior
                 raise
 
@@ -1983,7 +2030,7 @@ class AssetViewSet(viewsets.ModelViewSet):
 
                 # Cache the results
                 cache_asset_list(tenant_id, filters_hash, results, total_count)
-            except Exception as e:
+            except (ConnectionError, TimeoutError, OSError) as e:
                 # Log error but don't fail the request
                 import logging
 
@@ -2088,7 +2135,7 @@ class AssetViewSet(viewsets.ModelViewSet):
             try:
                 asset_data = response.data
                 cache_asset_detail(asset_id, asset_data)
-            except Exception as e:
+            except (ConnectionError, TimeoutError, OSError) as e:
                 # Log error but don't fail the request
                 import logging
 
@@ -2115,6 +2162,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         - Contract-only assets (no dataset) are allowed
         """
         import structlog
+
         _act_logger = structlog.get_logger("hub.apps.assets.views.activate")
 
         asset = self.get_object()
@@ -2231,8 +2279,7 @@ class AssetViewSet(viewsets.ModelViewSet):
                 "COMPLIANCE_THRESHOLD_EXCEEDED",
             }
             _has_actionable_blockers = any(
-                not b.startswith(tuple(_rule_only_blockers))
-                for b in blockers
+                not b.startswith(tuple(_rule_only_blockers)) for b in blockers
             )
             if _has_actionable_blockers:
                 blocker_code = "ASSET_ACTIVATION_BLOCKED"
@@ -2262,9 +2309,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         from hub.apps.dq.services import DQService
 
         DQService.apply_degraded_dq_status_if_circuit_open(asset, request=request)
-        ComplianceService.apply_degraded_compliance_status_if_circuit_open(
-            asset, request=request
-        )
+        ComplianceService.apply_degraded_compliance_status_if_circuit_open(asset, request=request)
         asset.refresh_from_db()
 
         # 5.4.3: Block activation when latest compliance run has
@@ -2276,8 +2321,7 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         latest_compliance = latest_compliance_run_for_asset_activation(asset)
         if latest_compliance is not None and (
-            latest_compliance.allowed_to_store is not True
-            or latest_compliance.status == "FAILED"
+            latest_compliance.allowed_to_store is not True or latest_compliance.status == "FAILED"
         ):
             return Response(
                 {
@@ -2322,9 +2366,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         # the test contract requires.
         from django.db.models import F
 
-        updated = Asset.objects.filter(
-            id=asset.id, version=asset.version
-        ).update(
+        updated = Asset.objects.filter(id=asset.id, version=asset.version).update(
             status=AssetStatus.ACTIVE,
             version=F("version") + 1,
         )
@@ -2347,11 +2389,12 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         def _invalidate_cache_post_commit():
             import logging as _logging
+
             try:
                 invalidate_asset_detail_cache(_asset_id_str)
                 if tenant_id_str:
                     invalidate_asset_list_cache(tenant_id_str)
-            except Exception as _e:
+            except (ConnectionError, TimeoutError, OSError) as _e:
                 _logging.getLogger(__name__).warning(
                     f"Failed to invalidate cache after activation {_asset_id_str}: {_e}",
                     exc_info=True,
@@ -2368,7 +2411,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         # explicit-API activations entirely. Deferred via
         # ``transaction.on_commit`` so subscribers that GET the
         # asset on receipt always see the ACTIVE row.
-        from hub.apps.core.events.publisher import EventPublisher as _EventPublisher
+        from hub.apps.core.events.publisher import EventBusError, EventPublisher as _EventPublisher
 
         _activated_publisher = _EventPublisher(
             service_name="asset_service",
@@ -2384,14 +2427,13 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         def _publish_asset_activated_post_commit():
             import logging as _logging_pub
+
             try:
                 _activated_publisher.publish(
                     event_type="asset.activated",
-                    data={
-                        k: v for k, v in _activated_payload.items() if v is not None
-                    },
+                    data={k: v for k, v in _activated_payload.items() if v is not None},
                 )
-            except Exception as _e:
+            except EventBusError as _e:
                 _logging_pub.getLogger(__name__).warning(
                     "asset_webhook_publish_failed",
                     extra={
@@ -2421,7 +2463,7 @@ class AssetViewSet(viewsets.ModelViewSet):
                 # In production, this should be a background job via RQ/Celery
                 # For now, we'll do it synchronously but log it for async processing
                 map_asset_to_semantic(asset, tenant=asset.tenant)
-            except Exception as e:
+            except (ConnectionError, TimeoutError, OSError) as e:
                 import logging
 
                 logger = logging.getLogger(__name__)
@@ -2429,6 +2471,8 @@ class AssetViewSet(viewsets.ModelViewSet):
                 # Don't fail activation if semantic mapping fails
 
         # Log audit event (async in production via job queue)
+        from django.db import DatabaseError as _DatabaseError
+
         try:
             create_audit_event(
                 resource_type="ASSET",
@@ -2446,7 +2490,7 @@ class AssetViewSet(viewsets.ModelViewSet):
                 },
                 request=request,
             )
-        except Exception as e:
+        except _DatabaseError as e:
             import logging
 
             logger = logging.getLogger(__name__)
@@ -2455,6 +2499,8 @@ class AssetViewSet(viewsets.ModelViewSet):
             )
 
         # Notify asset owner that activation succeeded
+        from django.db import DatabaseError as _DatabaseError
+
         try:
             from hub.apps.notifications.utils import create_user_notification
 
@@ -2468,8 +2514,21 @@ class AssetViewSet(viewsets.ModelViewSet):
                 resource_type="ASSET",
                 resource_id=str(asset.id),
             )
-        except Exception:
-            pass  # Notifications must never block business operations
+        except (_DatabaseError, ImportError) as _exc:
+            # Notifications are best-effort and must never block business
+            # operations.  Only catch infrastructure-level failures
+            # (DB issues, missing notification app); programming errors
+            # like AttributeError/TypeError will propagate so they get
+            # caught in CI, not masked in production.
+            logging.getLogger(__name__).warning(
+                "asset_activation_notification_failed",
+                exc_info=True,
+                extra={
+                    "asset_id": str(asset.id),
+                    "tenant_id": str(asset.tenant_id),
+                    "error": str(_exc),
+                },
+            )
 
         _emit_asset_operation("activate", str(asset.tenant_id), "success")
         return Response(AssetSerializer(asset).data, status=status.HTTP_200_OK)
@@ -2503,9 +2562,7 @@ class AssetViewSet(viewsets.ModelViewSet):
             )
 
         # Delegate to the same service logic used by DELETE
-        asset_service = AssetService(
-            tenant_id=str(asset.tenant_id), user_id=str(request.user.id)
-        )
+        asset_service = AssetService(tenant_id=str(asset.tenant_id), user_id=str(request.user.id))
         try:
             asset_service.delete_asset(
                 asset_id=str(asset.id),
@@ -2526,7 +2583,7 @@ class AssetViewSet(viewsets.ModelViewSet):
 
             try:
                 invalidate_asset_caches(asset_id_str, tenant_id_str)
-            except Exception as _e:
+            except (ConnectionError, TimeoutError, OSError) as _e:
                 _logging.getLogger(__name__).warning(
                     f"Failed to invalidate cache after asset retirement {asset_id_str}: {_e}",
                     exc_info=True,
@@ -2590,9 +2647,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         )
 
         tenant = (
-            request.user.tenant
-            if hasattr(request.user, "tenant") and request.user.tenant
-            else None
+            request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
         )
         if not tenant:
             return Response(
@@ -2649,23 +2704,23 @@ class AssetViewSet(viewsets.ModelViewSet):
         elif api_status == "COMPLETED":
             message = "Workflow completed successfully"
         else:  # FAILED
-            message = state_data.get("error_message") or (
-                "Workflow failed"
-            )
+            message = state_data.get("error_message") or ("Workflow failed")
 
-        return Response({
-            "workflow_instance_id": str(workflow_instance.id),
-            "status": api_status,
-            "progress_percentage": state_data.get("progress_percentage", 0),
-            "current_step_name": state_data.get("current_step_name"),
-            "asset_id": str(asset_id) if asset_id else None,
-            "message": message,
-            "started_at": (
-                workflow_instance.created_at.isoformat()
-                if workflow_instance.created_at
-                else None
-            ),
-        })
+        return Response(
+            {
+                "workflow_instance_id": str(workflow_instance.id),
+                "status": api_status,
+                "progress_percentage": state_data.get("progress_percentage", 0),
+                "current_step_name": state_data.get("current_step_name"),
+                "asset_id": str(asset_id) if asset_id else None,
+                "message": message,
+                "started_at": (
+                    workflow_instance.created_at.isoformat()
+                    if workflow_instance.created_at
+                    else None
+                ),
+            }
+        )
 
     @action(detail=False, methods=["get"], url_path="recommendations")
     def recommendations(self, request):
@@ -3029,13 +3084,9 @@ class AssetViewSet(viewsets.ModelViewSet):
         # Dataset.objects.create — the refusal is structurally side-
         # effect-free).
         has_write_role = (
-            user.has_role("DATA_PROVIDER", "TENANT_ADMIN")
-            if hasattr(user, "has_role")
-            else False
+            user.has_role("DATA_PROVIDER", "TENANT_ADMIN") if hasattr(user, "has_role") else False
         )
-        is_platform_admin = (
-            hasattr(user, "is_platform_admin") and user.is_platform_admin
-        )
+        is_platform_admin = hasattr(user, "is_platform_admin") and user.is_platform_admin
         if not (has_write_role or is_platform_admin):
             return Response(
                 {
@@ -3132,7 +3183,7 @@ class AssetViewSet(viewsets.ModelViewSet):
             )
             return Response(
                 {
-                    "error": f"Failed to download resource: {str(e)}",
+                    "error": f"Failed to download resource: {e!s}",
                     "code": "DOWNLOAD_FAILED",
                     "resource_id": resource_id,
                 },
@@ -3141,7 +3192,6 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         # Create File record
         import hashlib
-        import uuid
         from pathlib import Path
 
         from django.core.files.base import ContentFile
@@ -3172,7 +3222,9 @@ class AssetViewSet(viewsets.ModelViewSet):
         # downstream Dataset creation isn't blocked by the
         # ``"File is pending malware scan"`` precondition.
         from django.utils import timezone as _tz
+
         from hub.apps.files.models import FileScanStatus
+
         file_obj = File.objects.create(
             tenant=tenant,
             name=external_resource.name or Path(file_path).name,
@@ -3214,7 +3266,7 @@ class AssetViewSet(viewsets.ModelViewSet):
             file_obj.delete()
             return Response(
                 {
-                    "error": f"Failed to upload file to storage: {str(e)}",
+                    "error": f"Failed to upload file to storage: {e!s}",
                     "code": "STORAGE_UPLOAD_FAILED",
                     "resource_id": resource_id,
                 },
@@ -3252,7 +3304,7 @@ class AssetViewSet(viewsets.ModelViewSet):
                     "status": "partial_success",
                     "file_id": str(file_obj.id),
                     "dataset_id": None,
-                    "message": f"File downloaded but dataset creation failed: {str(e)}",
+                    "message": f"File downloaded but dataset creation failed: {e!s}",
                     "warning": "Dataset creation failed",
                 },
                 status=status.HTTP_207_MULTI_STATUS,
@@ -3350,7 +3402,9 @@ class AssetViewSet(viewsets.ModelViewSet):
         try:
             resource_ids = serializer.validated_data["resource_ids"]
             # Deduplicate resource_ids to handle duplicates gracefully
-            resource_ids = list(dict.fromkeys(resource_ids))  # Preserves order while removing duplicates
+            resource_ids = list(
+                dict.fromkeys(resource_ids)
+            )  # Preserves order while removing duplicates
 
             # Handle empty resource_ids after deduplication
             if not resource_ids:
@@ -3382,9 +3436,7 @@ class AssetViewSet(viewsets.ModelViewSet):
                 if hasattr(user, "has_role")
                 else False
             )
-            is_platform_admin = (
-                hasattr(user, "is_platform_admin") and user.is_platform_admin
-            )
+            is_platform_admin = hasattr(user, "is_platform_admin") and user.is_platform_admin
             if not (has_write_role or is_platform_admin):
                 return Response(
                     {
@@ -3654,6 +3706,7 @@ class AssetViewSet(viewsets.ModelViewSet):
             return Response(response_data, status=http_status)
         except Exception as e:
             import structlog
+
             logger = structlog.get_logger(__name__)
             logger.error(f"Error in batch_download_external_resources: {e}", exc_info=True)
             return Response(

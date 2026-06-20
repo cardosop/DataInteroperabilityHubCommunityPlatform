@@ -3,10 +3,10 @@
 
 Data Subject Access Request (GDPR Art. 15-22) public ingress commands.
 """
+
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 import click
 
@@ -16,15 +16,17 @@ from ..api_client import api_client
 @click.group()
 def dsar():
     """DSAR (Data Subject Access Request) commands"""
-    pass
 
 
 @dsar.command("create")
 @click.option("--email", required=True, help="Subject email address")
 @click.option(
-    "--type", "request_type", required=True,
-    type=click.Choice(["access", "erasure", "rectification", "portability",
-                       "restriction", "objection"]),
+    "--type",
+    "request_type",
+    required=True,
+    type=click.Choice(
+        ["access", "erasure", "rectification", "portability", "restriction", "objection"]
+    ),
     help="Type of request",
 )
 @click.option("--tenant-id", default=None, help="Organisation UUID (optional)")
@@ -32,12 +34,21 @@ def dsar():
 @click.option("--hcaptcha-token", default=None, help="hCaptcha verification token")
 @click.option("--subject-tz", default=None, help="Subject IANA timezone")
 @click.option("--regulator-tz", default=None, help="Regulator IANA timezone")
-@click.option("--format", "output_format", type=click.Choice(["json", "table"]),
-              default="table", help="Output format")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
 def create(
-    email: str, request_type: str, tenant_id: Optional[str],
-    regimes: Optional[str], hcaptcha_token: Optional[str],
-    subject_tz: Optional[str], regulator_tz: Optional[str],
+    email: str,
+    request_type: str,
+    tenant_id: str | None,
+    regimes: str | None,
+    hcaptcha_token: str | None,
+    subject_tz: str | None,
+    regulator_tz: str | None,
     output_format: str,
 ):
     """Submit a new data subject rights request"""
@@ -70,14 +81,23 @@ def create(
 @dsar.command("verify-otp")
 @click.option("--request-id", required=True, help="Request ID from create")
 @click.option("--otp", required=True, help="OTP code from email")
-@click.option("--format", "output_format", type=click.Choice(["json", "table"]),
-              default="table", help="Output format")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
 def verify_otp(request_id: str, otp: str, output_format: str):
     """Verify the OTP code sent by email"""
     try:
-        data = api_client.post("public/dsar/verify-otp/", data={
-            "request_id": request_id, "otp": otp,
-        })
+        data = api_client.post(
+            "public/dsar/verify-otp/",
+            data={
+                "request_id": request_id,
+                "otp": otp,
+            },
+        )
         if output_format == "json":
             click.echo(json.dumps(data, indent=2))
         else:
@@ -91,8 +111,13 @@ def verify_otp(request_id: str, otp: str, output_format: str):
 
 @dsar.command("get")
 @click.option("--request-id", required=True, help="Request ID")
-@click.option("--format", "output_format", type=click.Choice(["json", "table"]),
-              default="table", help="Output format")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
 def get(request_id: str, output_format: str):
     """Get DSAR request status"""
     try:
@@ -112,16 +137,34 @@ def get(request_id: str, output_format: str):
 
 
 @dsar.command("list")
-@click.option("--status", "filter_status", default=None,
-              help="Filter by status (PENDING, VERIFIED, IN_PROGRESS, FULFILLED, REJECTED)")
-@click.option("--type", "filter_type", default=None,
-              help="Filter by type (access, erasure, rectification, portability, restriction, objection)")
+@click.option(
+    "--status",
+    "filter_status",
+    default=None,
+    help="Filter by status (PENDING, VERIFIED, IN_PROGRESS, FULFILLED, REJECTED)",
+)
+@click.option(
+    "--type",
+    "filter_type",
+    default=None,
+    help="Filter by type (access, erasure, rectification, portability, restriction, objection)",
+)
 @click.option("--page", type=int, default=1, help="Page number")
 @click.option("--page-size", type=int, default=20, help="Items per page")
-@click.option("--format", "output_format", type=click.Choice(["json", "table"]),
-              default="table", help="Output format")
-def list_requests(filter_status: Optional[str], filter_type: Optional[str],
-                  page: int, page_size: int, output_format: str):
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
+def list_requests(
+    filter_status: str | None,
+    filter_type: str | None,
+    page: int,
+    page_size: int,
+    output_format: str,
+):
     """List DSAR requests (authenticated/admin only)"""
     params = {"page": page, "page_size": page_size}
     if filter_status:
@@ -135,10 +178,14 @@ def list_requests(filter_status: Optional[str], filter_type: Optional[str],
             click.echo(json.dumps(data, indent=2))
         else:
             results = data.get("results", [])
-            click.echo(f"DSAR requests: {len(results)} (page {page}, total {data.get('count', '?')})")
+            click.echo(
+                f"DSAR requests: {len(results)} (page {page}, total {data.get('count', '?')})"
+            )
             for r in results:
-                click.echo(f"  {r.get('id','?')[:8]}… {r.get('status'):12s} "
-                           f"{r.get('type','?'):15s} {r.get('subject_email','?')}")
+                click.echo(
+                    f"  {r.get('id', '?')[:8]}… {r.get('status'):12s} "
+                    f"{r.get('type', '?'):15s} {r.get('subject_email', '?')}"
+                )
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
@@ -146,8 +193,13 @@ def list_requests(filter_status: Optional[str], filter_type: Optional[str],
 
 @dsar.command("cancel")
 @click.option("--request-id", required=True, help="Request ID to cancel")
-@click.option("--format", "output_format", type=click.Choice(["json", "table"]),
-              default="table", help="Output format")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
 def cancel(request_id: str, output_format: str):
     """Cancel a pending DSAR request"""
     try:

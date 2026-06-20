@@ -3,28 +3,29 @@ Integration tests for DQ Scorecards
 
 Tests for scorecards in the context of DQ workflows.
 """
+
+import uuid
+from datetime import timedelta
+
 import pytest
 from django.test import TestCase
 from django.utils import timezone
-from datetime import timedelta
 
-from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine, DQTrend, DQTrendDirection
+from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.datasets.models import Dataset
+from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus, DQTrend, DQTrendDirection
 from hub.apps.dq.scorecards import DQScorecardService
+from hub.apps.files.models import File, FileStatus
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.datasets.models import Dataset
-from hub.apps.files.models import File, FileStatus
-import uuid
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class DQScorecardsIntegrationTest(TestCase):
     """Integration tests for DQ scorecards"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
@@ -32,24 +33,24 @@ class DQScorecardsIntegrationTest(TestCase):
             name=f"Test Tenant {uid}",
             slug=f"test-tenant-{uid}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
-        
+
         self.user = User.objects.create_user(
             email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        
+
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         self.file = File.objects.create(
             tenant=self.tenant,
             name="test.csv",
@@ -58,9 +59,9 @@ class DQScorecardsIntegrationTest(TestCase):
             status=FileStatus.ACTIVE,
             storage_path="test/test.csv",
             content_sha256="abc123",
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         self.dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -68,9 +69,9 @@ class DQScorecardsIntegrationTest(TestCase):
             schema_json={"fields": [{"name": "col1", "type": "string"}]},
             format="CSV",
             version=1,
-            created_by=self.user
+            created_by=self.user,
         )
-    
+
     def test_scorecard_workflow(self):
         """Test complete scorecard workflow"""
         # Create DQ runs
@@ -81,9 +82,9 @@ class DQScorecardsIntegrationTest(TestCase):
                 status=JobStatus.COMPLETED,
                 resource_type="DQ_RUN",
                 resource_id=self.dataset.id,
-                created_by=self.user
+                created_by=self.user,
             )
-            
+
             DQRun.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
@@ -94,60 +95,52 @@ class DQScorecardsIntegrationTest(TestCase):
                 status=DQRunStatus.SUCCEEDED,
                 overall_status="PASS",
                 quality_score=85.0 + (i * 1.0),
-                completed_at=timezone.now() - timedelta(days=10-i)
+                completed_at=timezone.now() - timedelta(days=10 - i),
             )
-        
+
         # Create trends
         for i in range(5):
             DQTrend.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
                 metric_type="quality_score",
-                period_start=timezone.now() - timedelta(days=5-i),
-                period_end=timezone.now() - timedelta(days=4-i),
+                period_start=timezone.now() - timedelta(days=5 - i),
+                period_end=timezone.now() - timedelta(days=4 - i),
                 period_type="DAILY",
                 current_value=85.0 + (i * 1.0),
                 previous_value=84.0 + (i * 1.0),
                 change_amount=1.0,
                 change_percent=1.2,
-                direction=DQTrendDirection.IMPROVING
+                direction=DQTrendDirection.IMPROVING,
             )
-        
+
         # Get executive dashboard
-        dashboard = DQScorecardService.get_executive_dashboard(
-            str(self.tenant.id),
-            days=30
-        )
-        
+        dashboard = DQScorecardService.get_executive_dashboard(str(self.tenant.id), days=30)
+
         # Verify dashboard structure
         self.assertIn("summary", dashboard)
         self.assertIn("score_distribution", dashboard)
         self.assertIn("trend_summary", dashboard)
         self.assertEqual(dashboard["summary"]["total_runs"], 10)
-        
+
         # Get asset scorecard
         scorecard = DQScorecardService.get_asset_scorecard(
-            str(self.asset.id),
-            str(self.tenant.id),
-            days=30
+            str(self.asset.id), str(self.tenant.id), days=30
         )
-        
+
         # Verify scorecard structure
         self.assertIn("metrics", scorecard)
         self.assertIn("recent_runs", scorecard)
         self.assertIn("trends", scorecard)
         self.assertEqual(scorecard["metrics"]["total_runs"], 10)
-        
+
         # Test drill-down
         drill_down = DQScorecardService.drill_down(
-            str(self.tenant.id),
-            asset_id=str(self.asset.id),
-            days=30
+            str(self.tenant.id), asset_id=str(self.asset.id), days=30
         )
-        
+
         self.assertIn("metrics", drill_down)
         self.assertIn("run_history", drill_down)
         # Validate content, not just key existence.
         self.assertIsInstance(drill_down["run_history"], list)
         self.assertGreaterEqual(len(drill_down["run_history"]), 10)
-

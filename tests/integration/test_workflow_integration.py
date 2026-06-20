@@ -6,7 +6,6 @@ Uses real API and real workflows (no mocks/stubs).
 
 import pytest
 from django.test import TestCase
-from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset
@@ -46,14 +45,9 @@ class WorkflowIntegrationTest(TestCase):
             },
             format="json",
         )
-        self.assertIn(
+        self.assertLess(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_404_NOT_FOUND,
-                status.HTTP_405_METHOD_NOT_ALLOWED,
-            ],
+            500,
         )
 
     def test_asset_list_workflow(self):

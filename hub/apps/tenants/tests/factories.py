@@ -17,6 +17,7 @@ Usage::
     config = TenantConfigFactory.create_config(tenant=tenant)
     sub = SubscriptionFactory.create_subscription(tenant=tenant)
 """
+
 import uuid
 
 from hub.apps.billing.models import Subscription, SubscriptionStatus
@@ -82,12 +83,11 @@ class SubscriptionFactory:
     """
 
     @staticmethod
-    def create_subscription(
-        *, tenant, plan=None, status=SubscriptionStatus.ACTIVE
-    ):
+    def create_subscription(*, tenant, plan=None, status=SubscriptionStatus.ACTIVE):
         if plan is None:
             plan = TenantPlan.objects.filter(
-                slug="free", is_active=True,
+                slug="free",
+                is_active=True,
             ).first()
             if plan is None:
                 plan = TenantPlan.objects.create(

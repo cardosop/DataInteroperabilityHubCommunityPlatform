@@ -94,16 +94,18 @@ class AuthService {
   }
 
   async logout(): Promise<void> {
+    // Clear auth state immediately — the user is logged out locally
+    // regardless of whether the server-side POST succeeds.  This also
+    // fixes E2E flake where the POST can take >15s under backend load
+    // and the test's waitForFunction times out before the finally block.
+    this.clearAuth();
     try {
-      // Call logout endpoint if available
-      await apiClient.getClient().post('/auth/logout/');
+      await apiClient.getClient().post('/auth/logout/', undefined, { timeout: 5000 });
     } catch (error) {
       // Ignore errors on logout; only log outside tests to avoid stderr noise
       if (import.meta.env.MODE !== 'test') {
         console.warn('Logout endpoint error:', error);
       }
-    } finally {
-      this.clearAuth();
     }
   }
 
@@ -305,7 +307,17 @@ class AuthService {
     let storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (storedToken) {
       try {
-        const payload = JSON.parse(atob(storedToken.split('.')[1]));
+        // JWT segments are base64url-encoded (RFC 7519): '-' instead of '+',
+        // '_' instead of '/', no padding.  atob() requires standard base64.
+        // Convert before decoding — without this, any base64url payload
+        // containing '-' or '_' (e.g., UUIDs in the sub/jti/tenant_id claims)
+        // throws InvalidCharacterError, the catch block removes the token
+        // from localStorage, and the fallback cookie-mode path triggers
+        // _cookieAuthMode → no Bearer header → 401 → redirect to /login.
+        const base64 = storedToken.split('.')[1]
+          .replace(/-/g, '+')
+          .replace(/_/g, '/');
+        const payload = JSON.parse(atob(base64));
         if (payload.exp && payload.exp * 1000 < Date.now()) {
           localStorage.removeItem(TOKEN_STORAGE_KEY);
           storedToken = null;

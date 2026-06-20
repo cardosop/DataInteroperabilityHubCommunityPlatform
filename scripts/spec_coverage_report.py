@@ -8,6 +8,7 @@ a coverage report showing which spec requirements have tests.
 Usage:
     python scripts/spec_coverage_report.py
 """
+
 import os
 import re
 import sys
@@ -23,24 +24,18 @@ def find_spec_markers(root_dir: str) -> dict:
             if filename.startswith("test_") and filename.endswith(".py"):
                 filepath = os.path.join(dirpath, filename)
                 try:
-                    with open(filepath, "r") as f:
+                    with open(filepath) as f:
                         content = f.read()
                 except Exception:
                     continue
 
                 # Find @pytest.mark.spec("...") markers
-                for match in re.finditer(
-                    r'@pytest\.mark\.spec\(["\']([^"\']+)["\']\)', content
-                ):
+                for match in re.finditer(r'@pytest\.mark\.spec\(["\']([^"\']+)["\']\)', content):
                     spec_id = match.group(1)
                     # Find the test method name after this marker
                     pos = match.end()
-                    method_match = re.search(
-                        r"def (test_\w+)", content[pos : pos + 200]
-                    )
-                    test_name = (
-                        method_match.group(1) if method_match else "unknown"
-                    )
+                    method_match = re.search(r"def (test_\w+)", content[pos : pos + 200])
+                    test_name = method_match.group(1) if method_match else "unknown"
                     rel_path = os.path.relpath(filepath, root_dir)
                     specs[spec_id].append(f"{rel_path}::{test_name}")
 
@@ -61,9 +56,7 @@ def main():
 
     if not all_specs:
         print("No @pytest.mark.spec markers found.")
-        print(
-            "Add markers like: @pytest.mark.spec('billing:B1:fail-closed')"
-        )
+        print("Add markers like: @pytest.mark.spec('billing:B1:fail-closed')")
         sys.exit(0)
 
     print(f"Spec Coverage Report ({len(all_specs)} specs traced)")

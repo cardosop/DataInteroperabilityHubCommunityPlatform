@@ -21,16 +21,18 @@ async function waitForAppShell(page: import('@playwright/test').Page): Promise<b
     .catch(() => false);
 }
 
-/** Inject API tokens into page and reload so app picks them up. */
+/** Inject API tokens into page and reload so app picks them up.
+ * Phase 11.1: only access_token + user go to localStorage.  refresh_token
+ * is intentionally omitted — writing it to the storageState file leaks a
+ * shared cookie that causes replay detection across downstream tests. */
 async function injectAndReload(
   page: import('@playwright/test').Page,
   apiAuth: { access_token: string; refresh_token: string; user: object },
   base: string
 ): Promise<void> {
   await page.goto(base, { waitUntil: 'domcontentloaded' });
-  await page.evaluate(({ access_token, refresh_token, user: u }) => {
+  await page.evaluate(({ access_token, user: u }) => {
     localStorage.setItem('access_token', access_token);
-    localStorage.setItem('refresh_token', refresh_token);
     localStorage.setItem('user', JSON.stringify(u));
   }, apiAuth);
   await page.goto(base, { waitUntil: 'domcontentloaded' });
@@ -274,37 +276,18 @@ test.describe('Auth storage setup', () => {
     // → 401 → no recovery → ErrorDisplay on every list page.
     try {
       const apiAuth = await loginViaApi(user.email, user.password);
+      // Phase 11.1: inject access_token only — we intentionally do NOT write
+      // refresh_token to localStorage or cookies here.  A shared cookie in the
+      // storageState file causes every downstream test to inherit the same
+      // refresh_token; the first test to refresh rotates it (replay detection)
+      // and every subsequent test gets a revoked token family → apiClient 401
+      // interceptor → hard redirect to /login.
       await page.evaluate(
-        ({ access_token, refresh_token }) => {
+        ({ access_token }) => {
           localStorage.setItem('access_token', access_token);
-          if (refresh_token) {
-            localStorage.setItem('refresh_token', refresh_token);
-          }
         },
         apiAuth
       );
-
-      // CRITICAL: also set the http-only refresh_token cookie to the SAME
-      // value the API login just minted. The backend's _get_refresh_token_str
-      // (hub/apps/auth/views.py:179) takes the cookie BEFORE the request body,
-      // so a stale cookie from the prior UI login would shadow the fresh
-      // body token. Aligning the cookie with the API-issued token closes
-      // that gap and is the missing piece for cross-test session stability.
-      const baseUrl = new URL(base);
-      await page.context().addCookies([
-        {
-          name: 'refresh_token',
-          value: apiAuth.refresh_token,
-          domain: baseUrl.hostname,
-          path: '/',
-          httpOnly: true,
-          secure: baseUrl.protocol === 'https:',
-          sameSite: 'Strict',
-          // 7 days — matches JWT_REFRESH_TOKEN_EXPIRY default; storageState is
-          // re-minted on every Playwright invocation by this same setup spec.
-          expires: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
-        },
-      ]);
     } catch (apiErr) {
       // API login failed — storageState will rely on UI-login cookie only.
       // Tests will exercise the recovery path; this is not a hard failure.
@@ -314,6 +297,14 @@ test.describe('Auth storage setup', () => {
       );
     }
 
+    // Clear the UI login's refresh_token cookie before saving storageState.
+    // If captured in user.json, this cookie is shared by all 200 downstream
+    // tests.  The first test to refresh rotates the token family (Phase 11.1
+    // replay detection); every subsequent test inheriting the stale cookie
+    // gets a revoked family → apiClient 401 interceptor → hard redirect to
+    // /login.  The access_token in localStorage is sufficient — JWT lifetime
+    // is 1 hour, tests run for ≤2 minutes.
+    await page.context().clearCookies().catch(() => {});
     fs.mkdirSync(AUTH_DIR, { recursive: true });
     await page.context().storageState({ path: STORAGE_STATE_PATH });
     const currentUrl = page.url();

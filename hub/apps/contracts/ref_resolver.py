@@ -13,20 +13,22 @@ Security Features:
 - Timeout controls
 - Redis caching for external refs (TTL: 1 hour)
 """
+
+import copy
+import hashlib
 import json
-import os
 import time
 import uuid
-import hashlib
-import copy
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Set, List
-from urllib.parse import urlparse, urljoin
+from typing import Any
+from urllib.parse import urlparse
+
 import structlog
 
 try:
     import yaml
+
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
@@ -34,37 +36,37 @@ except ImportError:
 
 import httpx
 from django.conf import settings
-from django.core.cache import cache as django_cache
 
 from hub.apps.contracts.config.odps_refs_config import (
-    get_odps_refs_config,
     ODPSRefsConfig,
+    get_odps_refs_config,
 )
+from hub.apps.contracts.odps_errors import ODPSRefResolutionError
+from hub.apps.contracts.odps_rate_limiting import check_rate_limit
 from hub.apps.contracts.odps_security_logging import (
     SecurityEventType,
     SecuritySeverity,
     get_security_logger,
 )
-from hub.apps.contracts.odps_rate_limiting import check_rate_limit
-from hub.apps.contracts.odps_errors import ODPSRefResolutionError
-from hub.apps.webhooks.ssrf_guard import is_safe_url
 from hub.apps.contracts.source_paths import resolve_json_pointer
 from hub.apps.observability.otel_metrics import (
-    odps_ref_resolution_total,
-    odps_ref_resolution_failures_total,
     odps_external_fetch_failures_total,
-    odps_ref_resolution_duration_seconds,
-    odps_ref_cache_hits_total,
-    odps_ref_cache_misses_total,
+    odps_ref_cache_eviction_rate,
     odps_ref_cache_hit_rate,
+    odps_ref_cache_hits_total,
     odps_ref_cache_miss_rate,
+    odps_ref_cache_misses_total,
     odps_ref_cache_size,
     odps_ref_cache_size_limit,
-    odps_ref_cache_eviction_rate,
+    odps_ref_resolution_duration_seconds,
+    odps_ref_resolution_failures_total,
+    odps_ref_resolution_total,
 )
+from hub.apps.webhooks.ssrf_guard import is_safe_url
 
 try:
     import redis
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
@@ -96,6 +98,7 @@ MAX_URL_LENGTH = 2048
 
 class RefMode(str, Enum):
     """$ref resolution modes"""
+
     INTERNAL = "internal"  # #/definitions/...
     LOCAL = "local"  # ./path/to/file.json
     EXTERNAL = "external"  # https://example.com/schema.json
@@ -103,6 +106,7 @@ class RefMode(str, Enum):
 
 class ExternalRefHandling(str, Enum):
     """External $ref handling modes"""
+
     RESOLVE = "resolve"  # Resolve external refs (default behavior)
     REMOVE = "remove"  # Remove external refs (delete the $ref key)
     REPLACE = "replace"  # Replace external refs with resolved content
@@ -128,17 +132,17 @@ class RefResolver:
 
     def __init__(
         self,
-        config: Optional[ODPSRefsConfig] = None,
-        base_path: Optional[Path] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        config: ODPSRefsConfig | None = None,
+        base_path: Path | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         timeout_per_ref: int = DEFAULT_TIMEOUT_PER_REF,
         timeout_total: int = DEFAULT_TIMEOUT_TOTAL,
         max_ref_size: int = DEFAULT_MAX_REF_SIZE,
         max_total_size: int = DEFAULT_MAX_TOTAL_SIZE,
         cache_ttl: int = DEFAULT_CACHE_TTL,
         enable_caching: bool = True,
-        httpx_transport: Optional[Any] = None,
+        httpx_transport: Any | None = None,
     ):
         """
         Initialize RefResolver.
@@ -174,7 +178,7 @@ class RefResolver:
         self._start_time = None
 
         # Track refs being resolved (for circular reference detection)
-        self._resolving_refs: Set[str] = set()
+        self._resolving_refs: set[str] = set()
 
         # Get security logger
         self._security_logger = get_security_logger()
@@ -187,18 +191,18 @@ class RefResolver:
         if self.enable_caching and REDIS_AVAILABLE:
             self._redis_client = self._get_redis_client()
 
-    def _get_redis_client(self) -> Optional[Any]:
+    def _get_redis_client(self) -> Any | None:
         """Get Redis client for caching."""
         if not REDIS_AVAILABLE:
             return None
 
-        redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
+        redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
         try:
             client = redis.from_url(
                 redis_url,
                 decode_responses=False,  # Keep binary for JSON storage
                 socket_connect_timeout=5,
-                socket_timeout=5
+                socket_timeout=5,
             )
             # Test connection
             client.ping()
@@ -208,7 +212,7 @@ class RefResolver:
                 "ref_resolver_redis_unavailable",
                 error=str(e),
                 redis_url=redis_url,
-                message="External ref caching will be disabled"
+                message="External ref caching will be disabled",
             )
             return None
 
@@ -222,7 +226,7 @@ class RefResolver:
         tid = (self.tenant_id or "unknown").replace(":", "_")
         return f"{REDIS_CACHE_STATS_PREFIX}{tid}:{kind}"
 
-    def _get_cache_key(self, ref_path: str, content_hash: Optional[str] = None) -> str:
+    def _get_cache_key(self, ref_path: str, content_hash: str | None = None) -> str:
         """
         Generate cache key for a $ref path.
 
@@ -238,7 +242,9 @@ class RefResolver:
             Cache key string
         """
         # Hash the URL for cache key
-        url_hash = hashlib.sha256(ref_path.encode('utf-8')).hexdigest()[:16]  # Use first 16 chars for brevity
+        url_hash = hashlib.sha256(ref_path.encode("utf-8")).hexdigest()[
+            :16
+        ]  # Use first 16 chars for brevity
 
         if content_hash:
             # Content-based cache key (for invalidation when content changes)
@@ -247,7 +253,7 @@ class RefResolver:
             # URL-based cache key (for initial lookup)
             return f"{REDIS_CACHE_PREFIX}{url_hash}:"
 
-    def _get_from_cache(self, ref_path: str) -> Optional[Dict[str, Any]]:
+    def _get_from_cache(self, ref_path: str) -> dict[str, Any] | None:
         """
         Get resolved $ref from Redis cache.
 
@@ -268,7 +274,7 @@ class RefResolver:
 
         try:
             # Calculate URL hash
-            url_hash = hashlib.sha256(ref_path.encode('utf-8')).hexdigest()[:16]
+            url_hash = hashlib.sha256(ref_path.encode("utf-8")).hexdigest()[:16]
 
             # First, get the content hash from the URL hash mapping
             # Format: odps_ref:{url_hash} -> {content_hash}
@@ -277,7 +283,7 @@ class RefResolver:
 
             if content_hash_bytes:
                 # Decode content hash
-                content_hash = content_hash_bytes.decode('utf-8')
+                content_hash = content_hash_bytes.decode("utf-8")
 
                 # Get the actual data using the full cache key
                 # Format: odps_ref:{url_hash}:{content_hash} -> {data}
@@ -286,7 +292,7 @@ class RefResolver:
 
                 if cached_data:
                     # Decode JSON from bytes
-                    data = json.loads(cached_data.decode('utf-8'))
+                    data = json.loads(cached_data.decode("utf-8"))
                     # Update LRU index (mark as recently used)
                     self._update_lru_index(cache_key)
                     # Track cache hit
@@ -304,11 +310,13 @@ class RefResolver:
                 "ref_resolver_cache_get_failed",
                 ref_path=ref_path,
                 error=str(e),
-                message="Cache get failed, will fetch from source"
+                message="Cache get failed, will fetch from source",
             )
         return None
 
-    def _set_cache(self, ref_path: str, data: Dict[str, Any], content_bytes: Optional[bytes] = None) -> None:
+    def _set_cache(
+        self, ref_path: str, data: dict[str, Any], content_bytes: bytes | None = None
+    ) -> None:
         """
         Store resolved $ref in Redis cache with LRU eviction and size limits.
 
@@ -334,14 +342,14 @@ class RefResolver:
             else:
                 # Calculate hash from JSON representation
                 json_str = json.dumps(data, sort_keys=True, ensure_ascii=False)
-                content_hash = hashlib.sha256(json_str.encode('utf-8')).hexdigest()[:16]
+                content_hash = hashlib.sha256(json_str.encode("utf-8")).hexdigest()[:16]
 
             # Generate cache key with content hash (primary storage)
             # Format: odps_ref:{url_hash}:{content_hash}
             cache_key = self._get_cache_key(ref_path, content_hash)
 
             # Calculate URL hash
-            url_hash = hashlib.sha256(ref_path.encode('utf-8')).hexdigest()[:16]
+            url_hash = hashlib.sha256(ref_path.encode("utf-8")).hexdigest()[:16]
 
             # Store URL hash -> content hash mapping for quick lookup
             # Format: odps_ref:{url_hash} -> {content_hash}
@@ -350,7 +358,7 @@ class RefResolver:
             # Check if this URL already has a cached entry with different content hash
             existing_content_hash_bytes = self._redis_client.get(url_key)
             if existing_content_hash_bytes:
-                existing_content_hash = existing_content_hash_bytes.decode('utf-8')
+                existing_content_hash = existing_content_hash_bytes.decode("utf-8")
                 if existing_content_hash != content_hash:
                     # Content changed - invalidate old cache entry
                     old_cache_key = self._get_cache_key(ref_path, existing_content_hash)
@@ -360,11 +368,10 @@ class RefResolver:
 
                     # Track eviction metrics
                     if deleted:
-                        tenant_id = self.tenant_id or 'unknown'
-                        eviction_reason = 'content_changed'
+                        tenant_id = self.tenant_id or "unknown"
+                        eviction_reason = "content_changed"
                         odps_ref_cache_eviction_rate.labels(
-                            eviction_reason=eviction_reason,
-                            tenant_id=tenant_id
+                            eviction_reason=eviction_reason, tenant_id=tenant_id
                         ).inc()
                         # Log cache eviction
                         self._security_logger.log_cache_operation(
@@ -379,26 +386,18 @@ class RefResolver:
 
             # Encode JSON to bytes
             json_data = json.dumps(data, sort_keys=True, ensure_ascii=False)
-            json_bytes = json_data.encode('utf-8')
+            json_bytes = json_data.encode("utf-8")
 
             # Enforce cache size limits with LRU eviction
             self._enforce_cache_size_limits()
 
             # Store data with content-hashed key (primary storage)
             # Format: odps_ref:{url_hash}:{content_hash} -> {data}
-            self._redis_client.setex(
-                cache_key,
-                self.cache_ttl,
-                json_bytes
-            )
+            self._redis_client.setex(cache_key, self.cache_ttl, json_bytes)
 
             # Store URL hash -> content hash mapping for quick lookup
             # Format: odps_ref:{url_hash} -> {content_hash}
-            self._redis_client.setex(
-                url_key,
-                self.cache_ttl,
-                content_hash.encode('utf-8')
-            )
+            self._redis_client.setex(url_key, self.cache_ttl, content_hash.encode("utf-8"))
 
             # Update LRU index (add to front of list)
             self._update_lru_index(cache_key)
@@ -410,7 +409,7 @@ class RefResolver:
                 "ref_resolver_cache_set_failed",
                 ref_path=ref_path,
                 error=str(e),
-                message="Cache set failed, continuing without cache"
+                message="Cache set failed, continuing without cache",
             )
 
     def _update_lru_index(self, cache_key: str) -> None:
@@ -438,7 +437,7 @@ class RefResolver:
                 "ref_resolver_lru_update_failed",
                 cache_key=cache_key,
                 error=str(e),
-                message="LRU index update failed"
+                message="LRU index update failed",
             )
 
     def _remove_from_lru_index(self, cache_key: str) -> None:
@@ -459,7 +458,7 @@ class RefResolver:
                 "ref_resolver_lru_remove_failed",
                 cache_key=cache_key,
                 error=str(e),
-                message="LRU index removal failed"
+                message="LRU index removal failed",
             )
 
     def _enforce_cache_size_limits(self) -> None:
@@ -481,31 +480,26 @@ class RefResolver:
                 evict_count = min(evict_count, current_size - int(self.cache_max_entries * 0.9))
 
                 # Get least recently used keys (from end of list)
-                keys_to_evict = self._redis_client.lrange(
-                    lru_index_key,
-                    -evict_count,
-                    -1
-                )
+                keys_to_evict = self._redis_client.lrange(lru_index_key, -evict_count, -1)
 
                 # Evict keys
                 for key_bytes in keys_to_evict:
-                    key = key_bytes.decode('utf-8') if isinstance(key_bytes, bytes) else key_bytes
+                    key = key_bytes.decode("utf-8") if isinstance(key_bytes, bytes) else key_bytes
                     # Delete cache entry
                     self._redis_client.delete(key)
                     # Remove from LRU index
                     self._redis_client.lrem(lru_index_key, 0, key)
 
                 # Track eviction metrics
-                tenant_id = self.tenant_id or 'unknown'
-                eviction_reason = 'size_limit'
+                tenant_id = self.tenant_id or "unknown"
+                eviction_reason = "size_limit"
                 odps_ref_cache_eviction_rate.labels(
-                    eviction_reason=eviction_reason,
-                    tenant_id=tenant_id
+                    eviction_reason=eviction_reason, tenant_id=tenant_id
                 ).inc(evict_count)
 
                 # Log cache evictions
                 for key_bytes in keys_to_evict:
-                    key = key_bytes.decode('utf-8') if isinstance(key_bytes, bytes) else key_bytes
+                    key = key_bytes.decode("utf-8") if isinstance(key_bytes, bytes) else key_bytes
                     self._security_logger.log_cache_operation(
                         operation="eviction",
                         cache_key=key,
@@ -516,24 +510,21 @@ class RefResolver:
 
                 # Update cache size gauge
                 new_size = current_size - evict_count
-                ref_type = 'external'  # Cache is only for external refs
-                odps_ref_cache_size.labels(
-                    tenant_id=tenant_id,
-                    ref_type=ref_type
-                ).set(new_size)
+                ref_type = "external"  # Cache is only for external refs
+                odps_ref_cache_size.labels(tenant_id=tenant_id, ref_type=ref_type).set(new_size)
 
                 logger.debug(
                     "ref_resolver_cache_eviction",
                     evicted_count=evict_count,
                     cache_size_before=current_size,
                     cache_size_after=new_size,
-                    message=f"Evicted {evict_count} cache entries due to size limit"
+                    message=f"Evicted {evict_count} cache entries due to size limit",
                 )
         except Exception as e:
             logger.debug(
                 "ref_resolver_cache_size_limit_failed",
                 error=str(e),
-                message="Cache size limit enforcement failed"
+                message="Cache size limit enforcement failed",
             )
 
     def _track_cache_write(self) -> None:
@@ -547,7 +538,7 @@ class RefResolver:
             self._redis_client.expire(stats_key, self.cache_ttl * 24)  # Keep stats for 24 hours
 
             # Update cache size gauge
-            tenant_id = self.tenant_id or 'unknown'
+            tenant_id = self.tenant_id or "unknown"
             self._update_cache_size_gauge(tenant_id)
         except Exception:
             pass  # Stats tracking failure should not affect caching
@@ -570,8 +561,8 @@ class RefResolver:
             hits_bytes = self._redis_client.get(hits_key)
             misses_bytes = self._redis_client.get(misses_key)
 
-            hits_count = int(hits_bytes.decode('utf-8')) if hits_bytes else 0
-            misses_count = int(misses_bytes.decode('utf-8')) if misses_bytes else 0
+            hits_count = int(hits_bytes.decode("utf-8")) if hits_bytes else 0
+            misses_count = int(misses_bytes.decode("utf-8")) if misses_bytes else 0
 
             total = hits_count + misses_count
             if total > 0:
@@ -579,15 +570,11 @@ class RefResolver:
                 miss_rate = misses_count / total
 
                 # Update gauges
-                odps_ref_cache_hit_rate.labels(
-                    ref_type=ref_type,
-                    tenant_id=tenant_id
-                ).set(hit_rate)
+                odps_ref_cache_hit_rate.labels(ref_type=ref_type, tenant_id=tenant_id).set(hit_rate)
 
-                odps_ref_cache_miss_rate.labels(
-                    ref_type=ref_type,
-                    tenant_id=tenant_id
-                ).set(miss_rate)
+                odps_ref_cache_miss_rate.labels(ref_type=ref_type, tenant_id=tenant_id).set(
+                    miss_rate
+                )
         except Exception:
             pass  # Metrics failure should not affect caching
 
@@ -609,19 +596,15 @@ class RefResolver:
         try:
             lru_index_key = f"{REDIS_CACHE_INDEX_PREFIX}lru"
             current_size = self._redis_client.llen(lru_index_key)
-            ref_type = 'external'  # Cache is only for external refs
+            ref_type = "external"  # Cache is only for external refs
 
             # Update cache size gauge (current number of entries)
-            odps_ref_cache_size.labels(
-                tenant_id=tenant_id,
-                ref_type=ref_type
-            ).set(current_size)
+            odps_ref_cache_size.labels(tenant_id=tenant_id, ref_type=ref_type).set(current_size)
 
             # Update cache size limit gauge (constant limit)
-            odps_ref_cache_size_limit.labels(
-                tenant_id=tenant_id,
-                ref_type=ref_type
-            ).set(self.cache_max_entries)
+            odps_ref_cache_size_limit.labels(tenant_id=tenant_id, ref_type=ref_type).set(
+                self.cache_max_entries
+            )
         except Exception:
             pass  # Metrics failure should not affect caching
 
@@ -639,21 +622,22 @@ class RefResolver:
 
         try:
             # Only track external refs (cache warming is only for external refs)
-            if not ref_path.startswith(('http://', 'https://')):
+            if not ref_path.startswith(("http://", "https://")):
                 return
 
             # Use URL hash as key for access tracking
-            url_hash = hashlib.sha256(ref_path.encode('utf-8')).hexdigest()[:16]
-            access_key = f"{REDIS_CACHE_ACCESS_PREFIX}{url_hash}"
+            url_hash = hashlib.sha256(ref_path.encode("utf-8")).hexdigest()[:16]
 
             # Increment access count (using sorted set score)
             # Score represents access count, member is the URL hash
             # zincrby(key, increment, member) - increment score by 1
-            self._redis_client.zincrby(REDIS_CACHE_ACCESS_PREFIX + "all", 1, url_hash.encode('utf-8'))
+            self._redis_client.zincrby(
+                REDIS_CACHE_ACCESS_PREFIX + "all", 1, url_hash.encode("utf-8")
+            )
 
             # Store URL mapping (hash -> URL) for later retrieval
             url_mapping_key = f"{REDIS_CACHE_ACCESS_PREFIX}url:{url_hash}"
-            self._redis_client.setex(url_mapping_key, self.cache_ttl * 24, ref_path.encode('utf-8'))
+            self._redis_client.setex(url_mapping_key, self.cache_ttl * 24, ref_path.encode("utf-8"))
 
             # Set expiration on sorted set (24 hours)
             self._redis_client.expire(REDIS_CACHE_ACCESS_PREFIX + "all", self.cache_ttl * 24)
@@ -674,8 +658,8 @@ class RefResolver:
 
         # Track cache hit in Prometheus metrics
         try:
-            tenant_id = self.tenant_id or 'unknown'
-            ref_type = 'external'  # Cache is only for external refs
+            tenant_id = self.tenant_id or "unknown"
+            ref_type = "external"  # Cache is only for external refs
             odps_ref_cache_hits_total.labels(tenant_id=tenant_id).inc()
 
             # Update hit rate gauge (calculate from Redis stats)
@@ -697,8 +681,8 @@ class RefResolver:
 
         # Track cache miss in Prometheus metrics
         try:
-            tenant_id = self.tenant_id or 'unknown'
-            ref_type = 'external'  # Cache is only for external refs
+            tenant_id = self.tenant_id or "unknown"
+            ref_type = "external"  # Cache is only for external refs
             odps_ref_cache_misses_total.labels(tenant_id=tenant_id).inc()
 
             # Update miss rate gauge (calculate from Redis stats)
@@ -706,7 +690,7 @@ class RefResolver:
         except Exception:
             pass  # Metrics failure should not affect caching
 
-    def get_cache_hit_rate(self) -> Optional[float]:
+    def get_cache_hit_rate(self) -> float | None:
         """
         Get cache hit rate (hits / (hits + misses)).
 
@@ -723,8 +707,8 @@ class RefResolver:
             hits = self._redis_client.get(hits_key)
             misses = self._redis_client.get(misses_key)
 
-            hits_count = int(hits.decode('utf-8')) if hits else 0
-            misses_count = int(misses.decode('utf-8')) if misses else 0
+            hits_count = int(hits.decode("utf-8")) if hits else 0
+            misses_count = int(misses.decode("utf-8")) if misses else 0
 
             total = hits_count + misses_count
             if total == 0:
@@ -735,11 +719,11 @@ class RefResolver:
             logger.debug(
                 "ref_resolver_cache_stats_failed",
                 error=str(e),
-                message="Cache hit rate calculation failed"
+                message="Cache hit rate calculation failed",
             )
             return None
 
-    def invalidate_cache(self, ref_path: Optional[str] = None) -> int:
+    def invalidate_cache(self, ref_path: str | None = None) -> int:
         """
         Invalidate cache entries.
 
@@ -755,13 +739,13 @@ class RefResolver:
         try:
             if ref_path:
                 # Invalidate specific URL
-                url_hash = hashlib.sha256(ref_path.encode('utf-8')).hexdigest()[:16]
+                url_hash = hashlib.sha256(ref_path.encode("utf-8")).hexdigest()[:16]
                 url_key = f"{REDIS_CACHE_PREFIX}{url_hash}"
 
                 # Get content hash
                 content_hash_bytes = self._redis_client.get(url_key)
                 if content_hash_bytes:
-                    content_hash = content_hash_bytes.decode('utf-8')
+                    content_hash = content_hash_bytes.decode("utf-8")
                     cache_key = self._get_cache_key(ref_path, content_hash)
 
                     # Delete cache entry and URL mapping
@@ -775,12 +759,11 @@ class RefResolver:
                     self._remove_from_lru_index(cache_key)
 
                     # Track eviction metrics
-                    tenant_id = self.tenant_id or 'unknown'
-                    eviction_reason = 'manual_invalidation'
+                    tenant_id = self.tenant_id or "unknown"
+                    eviction_reason = "manual_invalidation"
                     if deleted > 0:
                         odps_ref_cache_eviction_rate.labels(
-                            eviction_reason=eviction_reason,
-                            tenant_id=tenant_id
+                            eviction_reason=eviction_reason, tenant_id=tenant_id
                         ).inc(deleted)
                         # Update cache size gauge
                         self._update_cache_size_gauge(tenant_id)
@@ -811,12 +794,11 @@ class RefResolver:
                     deleted = self._redis_client.delete(*keys)
 
                     # Track eviction metrics
-                    tenant_id = self.tenant_id or 'unknown'
-                    eviction_reason = 'manual_invalidation_all'
+                    tenant_id = self.tenant_id or "unknown"
+                    eviction_reason = "manual_invalidation_all"
                     if deleted > 0:
                         odps_ref_cache_eviction_rate.labels(
-                            eviction_reason=eviction_reason,
-                            tenant_id=tenant_id
+                            eviction_reason=eviction_reason, tenant_id=tenant_id
                         ).inc(deleted)
                         # Update cache size gauge
                         self._update_cache_size_gauge(tenant_id)
@@ -828,7 +810,7 @@ class RefResolver:
                 "ref_resolver_cache_invalidation_failed",
                 ref_path=ref_path,
                 error=str(e),
-                message="Cache invalidation failed"
+                message="Cache invalidation failed",
             )
             return 0
 
@@ -874,20 +856,20 @@ class RefResolver:
                 event_type=SecurityEventType.INVALID_URL,
                 severity=SecuritySeverity.MEDIUM,
                 violation_type="Invalid URL format",
-                description=f"External $ref URL '{url}' is not a valid URL: {str(e)}",
+                description=f"External $ref URL '{url}' is not a valid URL: {e!s}",
                 attempted_url=url,
                 tenant_id=self.tenant_id,
                 user_id=self.user_id,
             )
             raise ODPSRefResolutionError(
-                message=f"External $ref URL '{url}' is not a valid URL: {str(e)}",
+                message=f"External $ref URL '{url}' is not a valid URL: {e!s}",
                 error_code=ODPSRefResolutionError.ERROR_CODE_INVALID_REF,
                 tenant_id=self.tenant_id,
                 user_id=self.user_id,
             ) from e
 
         # Validate scheme (http/https only)
-        if parsed.scheme not in ('http', 'https'):
+        if parsed.scheme not in ("http", "https"):
             self._security_logger.log_security_violation(
                 event_type=SecurityEventType.INVALID_URL,
                 severity=SecuritySeverity.HIGH,
@@ -979,15 +961,15 @@ class RefResolver:
             raise ValueError("$ref path cannot be empty")
 
         # Internal reference: starts with #
-        if ref_path.startswith('#'):
+        if ref_path.startswith("#"):
             return RefMode.INTERNAL
 
         # External reference: starts with http:// or https://
-        if ref_path.startswith(('http://', 'https://')):
+        if ref_path.startswith(("http://", "https://")):
             return RefMode.EXTERNAL
 
         # Local reference: starts with ./ or ../ or is a relative path
-        if ref_path.startswith(('./', '../')) or not Path(ref_path).is_absolute():
+        if ref_path.startswith(("./", "../")) or not Path(ref_path).is_absolute():
             return RefMode.LOCAL
 
         # Default to local for relative paths
@@ -1060,7 +1042,7 @@ class RefResolver:
 
         self._total_size += size
 
-    def resolve_internal(self, ref_path: str, document: Dict[str, Any]) -> Dict[str, Any]:
+    def resolve_internal(self, ref_path: str, document: dict[str, Any]) -> dict[str, Any]:
         """
         Resolve internal $ref (within the same document) using JSON Pointer syntax.
 
@@ -1083,19 +1065,19 @@ class RefResolver:
         """
         # Track ODPS reference resolution metrics
         start_time = time.time()
-        tenant_id = self.tenant_id or 'unknown'
+        tenant_id = self.tenant_id or "unknown"
         ref_type = RefMode.INTERNAL.value
 
         try:
             # Validate ref_path format
-            if not ref_path.startswith('#'):
+            if not ref_path.startswith("#"):
                 raise ValueError(f"Internal $ref must start with '#': {ref_path}")
 
             # Extract JSON Pointer path (remove leading '#')
             json_pointer = ref_path[1:]
 
             # Handle root reference
-            if not json_pointer or json_pointer == '/':
+            if not json_pointer or json_pointer == "/":
                 # Root reference - return entire document (must be dict)
                 if not isinstance(document, dict):
                     raise ODPSRefResolutionError(
@@ -1117,13 +1099,17 @@ class RefResolver:
                 )
 
                 # Track metrics
-                odps_ref_resolution_total.labels(ref_type=ref_type, status='success', tenant_id=tenant_id).inc()
-                odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
+                odps_ref_resolution_total.labels(
+                    ref_type=ref_type, status="success", tenant_id=tenant_id
+                ).inc()
+                odps_ref_resolution_duration_seconds.labels(
+                    ref_type=ref_type, tenant_id=tenant_id
+                ).observe(duration)
 
                 return document
 
             # Validate JSON Pointer starts with '/'
-            if not json_pointer.startswith('/'):
+            if not json_pointer.startswith("/"):
                 raise ValueError(f"Internal $ref JSON Pointer must start with '/': {ref_path}")
 
             # Use proper JSON Pointer resolution (handles escaping and array indices)
@@ -1134,13 +1120,13 @@ class RefResolver:
                 # Provide detailed error message by attempting to resolve path segments
                 # to identify where resolution failed
                 current = document
-                pointer_path = json_pointer.lstrip('/')
+                pointer_path = json_pointer.lstrip("/")
 
                 if pointer_path:
                     # Unescape segments to show user-friendly path
                     segments = []
-                    for segment in pointer_path.split('/'):
-                        unescaped = segment.replace('~1', '/').replace('~0', '~')
+                    for segment in pointer_path.split("/"):
+                        unescaped = segment.replace("~1", "/").replace("~0", "~")
                         segments.append(unescaped)
 
                     # Try to identify where resolution fails
@@ -1148,7 +1134,7 @@ class RefResolver:
                         if isinstance(current, dict):
                             if segment not in current:
                                 # Missing key
-                                partial_path = '/'.join(segments[:i]) if i > 0 else ''
+                                partial_path = "/".join(segments[:i]) if i > 0 else ""
                                 raise ODPSRefResolutionError(
                                     message=f"Cannot resolve internal $ref '{ref_path}': key '{segment}' not found at path '/{partial_path}'",
                                     error_code=ODPSRefResolutionError.ERROR_CODE_INVALID_REF,
@@ -1177,7 +1163,7 @@ class RefResolver:
                                 )
                         else:
                             # Type mismatch
-                            partial_path = '/'.join(segments[:i]) if i > 0 else ''
+                            partial_path = "/".join(segments[:i]) if i > 0 else ""
                             raise ODPSRefResolutionError(
                                 message=f"Cannot resolve internal $ref '{ref_path}': path '/{partial_path}' is not an object or array (got {type(current).__name__})",
                                 error_code=ODPSRefResolutionError.ERROR_CODE_INVALID_REF,
@@ -1215,20 +1201,30 @@ class RefResolver:
             )
 
             # Track successful reference resolution metrics
-            odps_ref_resolution_total.labels(ref_type=ref_type, status='success', tenant_id=tenant_id).inc()
-            odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
+            odps_ref_resolution_total.labels(
+                ref_type=ref_type, status="success", tenant_id=tenant_id
+            ).inc()
+            odps_ref_resolution_duration_seconds.labels(
+                ref_type=ref_type, tenant_id=tenant_id
+            ).observe(duration)
 
             return resolved_value
         except (ODPSRefResolutionError, ValueError) as e:
             # Track reference resolution failure metrics
             duration = time.time() - start_time
             error_type = type(e).__name__
-            odps_ref_resolution_total.labels(ref_type=ref_type, status='failure', tenant_id=tenant_id).inc()
-            odps_ref_resolution_failures_total.labels(ref_type=ref_type, error_type=error_type, tenant_id=tenant_id).inc()
-            odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
+            odps_ref_resolution_total.labels(
+                ref_type=ref_type, status="failure", tenant_id=tenant_id
+            ).inc()
+            odps_ref_resolution_failures_total.labels(
+                ref_type=ref_type, error_type=error_type, tenant_id=tenant_id
+            ).inc()
+            odps_ref_resolution_duration_seconds.labels(
+                ref_type=ref_type, tenant_id=tenant_id
+            ).observe(duration)
             raise
 
-    def resolve_local(self, ref_path: str) -> Dict[str, Any]:
+    def resolve_local(self, ref_path: str) -> dict[str, Any]:
         """
         Resolve local $ref (file system path).
 
@@ -1250,7 +1246,7 @@ class RefResolver:
         """
         # Track ODPS reference resolution metrics
         start_time = time.time()
-        tenant_id = self.tenant_id or 'unknown'
+        tenant_id = self.tenant_id or "unknown"
         ref_type = RefMode.LOCAL.value
 
         try:
@@ -1276,7 +1272,7 @@ class RefResolver:
             # Parse file path - handle relative paths starting with ./ or ../
             # Normalize by removing leading ./ if present
             normalized_ref_path = ref_path
-            if normalized_ref_path.startswith('./'):
+            if normalized_ref_path.startswith("./"):
                 normalized_ref_path = normalized_ref_path[2:]
 
             # Build the path before resolving (to check for symlinks)
@@ -1347,7 +1343,7 @@ class RefResolver:
 
             # Validate file type (only .yaml, .yml, .json allowed)
             file_extension = resolved_path.suffix.lower()
-            allowed_extensions = {'.json', '.yaml', '.yml'}
+            allowed_extensions = {".json", ".yaml", ".yml"}
             if file_extension not in allowed_extensions:
                 self._security_logger.log_security_violation(
                     event_type=SecurityEventType.INVALID_FILE_TYPE,
@@ -1355,7 +1351,7 @@ class RefResolver:
                     violation_type="Invalid file type",
                     description=f"Local $ref file '{resolved_path}' has invalid extension '{file_extension}'. Allowed: {allowed_extensions}",
                     attempted_path=str(resolved_path),
-                    metadata={'file_extension': file_extension},
+                    metadata={"file_extension": file_extension},
                     tenant_id=self.tenant_id,
                     user_id=self.user_id,
                 )
@@ -1399,7 +1395,7 @@ class RefResolver:
 
             # Read file content
             try:
-                with open(resolved_path, 'r', encoding='utf-8') as f:
+                with open(resolved_path, encoding="utf-8") as f:
                     content = f.read()
             except UnicodeDecodeError as e:
                 raise ODPSRefResolutionError(
@@ -1408,7 +1404,7 @@ class RefResolver:
                     tenant_id=self.tenant_id,
                     user_id=self.user_id,
                 ) from e
-            except IOError as e:
+            except OSError as e:
                 raise ODPSRefResolutionError(
                     message=f"Failed to read local $ref file: {resolved_path}",
                     error_code=ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED,
@@ -1418,13 +1414,13 @@ class RefResolver:
 
             # Parse file content based on file extension
             try:
-                if file_extension == '.json':
+                if file_extension == ".json":
                     data = json.loads(content)
-                elif file_extension in {'.yaml', '.yml'}:
+                elif file_extension in {".yaml", ".yml"}:
                     # Check if YAML support is available
                     if not YAML_AVAILABLE or yaml is None:
                         raise ODPSRefResolutionError(
-                            message=f"YAML support is not available. Install PyYAML to resolve .yaml/.yml files",
+                            message="YAML support is not available. Install PyYAML to resolve .yaml/.yml files",
                             error_code=ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED,
                             tenant_id=self.tenant_id,
                             user_id=self.user_id,
@@ -1434,7 +1430,7 @@ class RefResolver:
                         data = yaml.safe_load(content)
                     except yaml.YAMLError as e:
                         error_msg = str(e)
-                        if hasattr(e, 'problem'):
+                        if hasattr(e, "problem"):
                             error_msg = e.problem
                         raise ODPSRefResolutionError(
                             message=f"Local $ref file '{resolved_path}' is not valid YAML: {error_msg}",
@@ -1455,14 +1451,14 @@ class RefResolver:
                 raise
             except json.JSONDecodeError as e:
                 raise ODPSRefResolutionError(
-                    message=f"Local $ref file '{resolved_path}' is not valid JSON: {str(e)}",
+                    message=f"Local $ref file '{resolved_path}' is not valid JSON: {e!s}",
                     error_code=ODPSRefResolutionError.ERROR_CODE_INVALID_REF,
                     tenant_id=self.tenant_id,
                     user_id=self.user_id,
                 ) from e
             except Exception as e:
                 raise ODPSRefResolutionError(
-                    message=f"Failed to parse local $ref file '{resolved_path}': {str(e)}",
+                    message=f"Failed to parse local $ref file '{resolved_path}': {e!s}",
                     error_code=ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED,
                     tenant_id=self.tenant_id,
                     user_id=self.user_id,
@@ -1489,24 +1485,34 @@ class RefResolver:
                 user_id=self.user_id,
                 resolved_path=str(resolved_path),
                 size_bytes=file_size,
-                metadata={'file_extension': file_extension},
+                metadata={"file_extension": file_extension},
             )
 
             # Track successful reference resolution metrics
-            odps_ref_resolution_total.labels(ref_type=ref_type, status='success', tenant_id=tenant_id).inc()
-            odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
+            odps_ref_resolution_total.labels(
+                ref_type=ref_type, status="success", tenant_id=tenant_id
+            ).inc()
+            odps_ref_resolution_duration_seconds.labels(
+                ref_type=ref_type, tenant_id=tenant_id
+            ).observe(duration)
 
             return data
         except ODPSRefResolutionError as e:
             # Track reference resolution failure metrics
             duration = time.time() - start_time
             error_type = type(e).__name__
-            odps_ref_resolution_total.labels(ref_type=ref_type, status='failure', tenant_id=tenant_id).inc()
-            odps_ref_resolution_failures_total.labels(ref_type=ref_type, error_type=error_type, tenant_id=tenant_id).inc()
-            odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
+            odps_ref_resolution_total.labels(
+                ref_type=ref_type, status="failure", tenant_id=tenant_id
+            ).inc()
+            odps_ref_resolution_failures_total.labels(
+                ref_type=ref_type, error_type=error_type, tenant_id=tenant_id
+            ).inc()
+            odps_ref_resolution_duration_seconds.labels(
+                ref_type=ref_type, tenant_id=tenant_id
+            ).observe(duration)
             raise
 
-    def resolve_external(self, ref_path: str) -> Dict[str, Any]:
+    def resolve_external(self, ref_path: str) -> dict[str, Any]:
         """
         Resolve external $ref (HTTP/HTTPS URL).
 
@@ -1529,7 +1535,7 @@ class RefResolver:
         """
         # Track ODPS reference resolution metrics
         start_time = time.time()
-        tenant_id = self.tenant_id or 'unknown'
+        tenant_id = self.tenant_id or "unknown"
         ref_type = RefMode.EXTERNAL.value
 
         try:
@@ -1544,7 +1550,7 @@ class RefResolver:
             if not is_allowed and error:
                 # Extract rate limit level from error message or metadata
                 rate_limit_level = "unknown"
-                if hasattr(error, 'context') and error.context:
+                if hasattr(error, "context") and error.context:
                     rate_limit_level = error.context.get("level", "unknown")
 
                 # Log rate limit violation explicitly
@@ -1555,9 +1561,11 @@ class RefResolver:
                     ref_path=ref_path,
                     retry_after=error.retry_after,
                     metadata={
-                        "retry_after_seconds": error.context.get("retry_after_seconds") if hasattr(error, 'context') else None,
+                        "retry_after_seconds": error.context.get("retry_after_seconds")
+                        if hasattr(error, "context")
+                        else None,
                         "error_code": error.error_code,
-                    }
+                    },
                 )
                 # Log rate limit violation as security event with full context
                 self._security_logger.log_security_violation(
@@ -1570,10 +1578,12 @@ class RefResolver:
                     user_id=self.user_id,
                     metadata={
                         "retry_after": error.retry_after,
-                        "retry_after_seconds": error.context.get("retry_after_seconds") if hasattr(error, 'context') else None,
+                        "retry_after_seconds": error.context.get("retry_after_seconds")
+                        if hasattr(error, "context")
+                        else None,
                         "error_code": error.error_code,
                         "level": rate_limit_level,
-                    }
+                    },
                 )
                 # Raise error with clear message including retry-after suggestion
                 raise ODPSRefResolutionError(
@@ -1606,7 +1616,7 @@ class RefResolver:
 
             # Check cache first (only for external refs)
             operation_id = str(uuid.uuid4())
-            cache_check_start = time.time()
+            time.time()
 
             cached_data = self._get_from_cache(ref_path)
             if cached_data is None:
@@ -1621,7 +1631,7 @@ class RefResolver:
                 logger.debug(
                     "ref_resolver_cache_hit",
                     ref_path=ref_path,
-                    message="Using cached external $ref"
+                    message="Using cached external $ref",
                 )
                 # Log cache hit
                 self._security_logger.log_cache_operation(
@@ -1655,13 +1665,17 @@ class RefResolver:
                     size_bytes=len(json.dumps(cached_data)),
                 )
                 # Track successful reference resolution metrics
-                odps_ref_resolution_total.labels(ref_type=ref_type, status='success', tenant_id=tenant_id).inc()
-                odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
+                odps_ref_resolution_total.labels(
+                    ref_type=ref_type, status="success", tenant_id=tenant_id
+                ).inc()
+                odps_ref_resolution_duration_seconds.labels(
+                    ref_type=ref_type, tenant_id=tenant_id
+                ).observe(duration)
                 return cached_data
 
             # Fetch from URL
-            fetch_start_time = time.time()
-            client_kwargs: Dict[str, Any] = {"timeout": self.timeout_per_ref}
+            time.time()
+            client_kwargs: dict[str, Any] = {"timeout": self.timeout_per_ref}
             if self._httpx_transport is not None:
                 client_kwargs["transport"] = self._httpx_transport
             with httpx.Client(**client_kwargs) as client:
@@ -1715,8 +1729,12 @@ class RefResolver:
                 )
 
                 # Track successful reference resolution metrics
-                odps_ref_resolution_total.labels(ref_type=ref_type, status='success', tenant_id=tenant_id).inc()
-                odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
+                odps_ref_resolution_total.labels(
+                    ref_type=ref_type, status="success", tenant_id=tenant_id
+                ).inc()
+                odps_ref_resolution_duration_seconds.labels(
+                    ref_type=ref_type, tenant_id=tenant_id
+                ).observe(duration)
 
                 return data
 
@@ -1744,10 +1762,18 @@ class RefResolver:
                 error_message=f"External $ref URL '{ref_path}' timed out after {self.timeout_per_ref}s",
             )
             # Track reference resolution failure metrics
-            odps_ref_resolution_total.labels(ref_type=ref_type, status='failure', tenant_id=tenant_id).inc()
-            odps_ref_resolution_failures_total.labels(ref_type=ref_type, error_type='TimeoutException', tenant_id=tenant_id).inc()
-            odps_external_fetch_failures_total.labels(error_type='TimeoutException', tenant_id=tenant_id).inc()
-            odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
+            odps_ref_resolution_total.labels(
+                ref_type=ref_type, status="failure", tenant_id=tenant_id
+            ).inc()
+            odps_ref_resolution_failures_total.labels(
+                ref_type=ref_type, error_type="TimeoutException", tenant_id=tenant_id
+            ).inc()
+            odps_external_fetch_failures_total.labels(
+                error_type="TimeoutException", tenant_id=tenant_id
+            ).inc()
+            odps_ref_resolution_duration_seconds.labels(
+                ref_type=ref_type, tenant_id=tenant_id
+            ).observe(duration)
             raise ODPSRefResolutionError(
                 message=f"External $ref URL '{ref_path}' timed out after {self.timeout_per_ref}s",
                 error_code=ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED,
@@ -1756,12 +1782,20 @@ class RefResolver:
             ) from e
         except httpx.HTTPStatusError as e:
             duration = time.time() - start_time
-            error_type = f'HTTPStatusError_{e.response.status_code}'
+            error_type = f"HTTPStatusError_{e.response.status_code}"
             # Track reference resolution failure metrics
-            odps_ref_resolution_total.labels(ref_type=ref_type, status='failure', tenant_id=tenant_id).inc()
-            odps_ref_resolution_failures_total.labels(ref_type=ref_type, error_type=error_type, tenant_id=tenant_id).inc()
-            odps_external_fetch_failures_total.labels(error_type=error_type, tenant_id=tenant_id).inc()
-            odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
+            odps_ref_resolution_total.labels(
+                ref_type=ref_type, status="failure", tenant_id=tenant_id
+            ).inc()
+            odps_ref_resolution_failures_total.labels(
+                ref_type=ref_type, error_type=error_type, tenant_id=tenant_id
+            ).inc()
+            odps_external_fetch_failures_total.labels(
+                error_type=error_type, tenant_id=tenant_id
+            ).inc()
+            odps_ref_resolution_duration_seconds.labels(
+                ref_type=ref_type, tenant_id=tenant_id
+            ).observe(duration)
             raise ODPSRefResolutionError(
                 message=f"External $ref URL '{ref_path}' returned status {e.response.status_code}",
                 error_code=ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED,
@@ -1770,26 +1804,42 @@ class RefResolver:
             ) from e
         except httpx.RequestError as e:
             duration = time.time() - start_time
-            error_type = 'RequestError'
+            error_type = "RequestError"
             # Track reference resolution failure metrics
-            odps_ref_resolution_total.labels(ref_type=ref_type, status='failure', tenant_id=tenant_id).inc()
-            odps_ref_resolution_failures_total.labels(ref_type=ref_type, error_type=error_type, tenant_id=tenant_id).inc()
-            odps_external_fetch_failures_total.labels(error_type=error_type, tenant_id=tenant_id).inc()
-            odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
+            odps_ref_resolution_total.labels(
+                ref_type=ref_type, status="failure", tenant_id=tenant_id
+            ).inc()
+            odps_ref_resolution_failures_total.labels(
+                ref_type=ref_type, error_type=error_type, tenant_id=tenant_id
+            ).inc()
+            odps_external_fetch_failures_total.labels(
+                error_type=error_type, tenant_id=tenant_id
+            ).inc()
+            odps_ref_resolution_duration_seconds.labels(
+                ref_type=ref_type, tenant_id=tenant_id
+            ).observe(duration)
             raise ODPSRefResolutionError(
-                message=f"Failed to fetch external $ref URL '{ref_path}': {str(e)}",
+                message=f"Failed to fetch external $ref URL '{ref_path}': {e!s}",
                 error_code=ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED,
                 tenant_id=self.tenant_id,
                 user_id=self.user_id,
             ) from e
         except json.JSONDecodeError as e:
             duration = time.time() - start_time
-            error_type = 'JSONDecodeError'
+            error_type = "JSONDecodeError"
             # Track reference resolution failure metrics
-            odps_ref_resolution_total.labels(ref_type=ref_type, status='failure', tenant_id=tenant_id).inc()
-            odps_ref_resolution_failures_total.labels(ref_type=ref_type, error_type=error_type, tenant_id=tenant_id).inc()
-            odps_external_fetch_failures_total.labels(error_type=error_type, tenant_id=tenant_id).inc()
-            odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
+            odps_ref_resolution_total.labels(
+                ref_type=ref_type, status="failure", tenant_id=tenant_id
+            ).inc()
+            odps_ref_resolution_failures_total.labels(
+                ref_type=ref_type, error_type=error_type, tenant_id=tenant_id
+            ).inc()
+            odps_external_fetch_failures_total.labels(
+                error_type=error_type, tenant_id=tenant_id
+            ).inc()
+            odps_ref_resolution_duration_seconds.labels(
+                ref_type=ref_type, tenant_id=tenant_id
+            ).observe(duration)
             raise ODPSRefResolutionError(
                 message=f"External $ref URL '{ref_path}' returned invalid JSON",
                 error_code=ODPSRefResolutionError.ERROR_CODE_INVALID_REF,
@@ -1800,14 +1850,22 @@ class RefResolver:
             # Re-raise ODPSRefResolutionError but track metrics
             duration = time.time() - start_time
             error_type = type(e).__name__
-            odps_ref_resolution_total.labels(ref_type=ref_type, status='failure', tenant_id=tenant_id).inc()
-            odps_ref_resolution_failures_total.labels(ref_type=ref_type, error_type=error_type, tenant_id=tenant_id).inc()
+            odps_ref_resolution_total.labels(
+                ref_type=ref_type, status="failure", tenant_id=tenant_id
+            ).inc()
+            odps_ref_resolution_failures_total.labels(
+                ref_type=ref_type, error_type=error_type, tenant_id=tenant_id
+            ).inc()
             if ref_type == RefMode.EXTERNAL.value:
-                odps_external_fetch_failures_total.labels(error_type=error_type, tenant_id=tenant_id).inc()
-            odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
+                odps_external_fetch_failures_total.labels(
+                    error_type=error_type, tenant_id=tenant_id
+                ).inc()
+            odps_ref_resolution_duration_seconds.labels(
+                ref_type=ref_type, tenant_id=tenant_id
+            ).observe(duration)
             raise
 
-    def resolve(self, ref_path: str, document: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def resolve(self, ref_path: str, document: dict[str, Any] | None = None) -> dict[str, Any]:
         """
         Resolve $ref reference (auto-detect mode).
 
@@ -1841,10 +1899,10 @@ class RefResolver:
 
     def resolve_all_refs(
         self,
-        document: Dict[str, Any],
+        document: dict[str, Any],
         preserve_original: bool = True,
-        external_ref_handling: ExternalRefHandling = ExternalRefHandling.RESOLVE
-    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        external_ref_handling: ExternalRefHandling = ExternalRefHandling.RESOLVE,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """
         Resolve all $ref references in a document recursively.
 
@@ -1912,7 +1970,7 @@ class RefResolver:
                 path="",
                 external_ref_handling=external_ref_handling,
                 parent=None,
-                parent_key=None
+                parent_key=None,
             )
 
             # Clean up None values from lists (items marked for removal)
@@ -1923,7 +1981,7 @@ class RefResolver:
         except Exception as e:
             # Wrap unexpected errors
             raise ODPSRefResolutionError(
-                message=f"Unexpected error during $ref resolution: {str(e)}",
+                message=f"Unexpected error during $ref resolution: {e!s}",
                 error_code=ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED,
                 tenant_id=self.tenant_id,
                 user_id=self.user_id,
@@ -1934,11 +1992,11 @@ class RefResolver:
     def _resolve_refs_recursive(
         self,
         obj: Any,
-        root_document: Dict[str, Any],
+        root_document: dict[str, Any],
         path: str = "",
         external_ref_handling: ExternalRefHandling = ExternalRefHandling.RESOLVE,
-        parent: Optional[Any] = None,
-        parent_key: Optional[Any] = None
+        parent: Any | None = None,
+        parent_key: Any | None = None,
     ) -> None:
         """
         Recursively resolve all $ref references in an object.
@@ -2032,7 +2090,7 @@ class RefResolver:
                         path=f"{path}/$ref",
                         external_ref_handling=external_ref_handling,
                         parent=None,
-                        parent_key=None
+                        parent_key=None,
                     )
 
                     # Replace $ref with resolved value
@@ -2061,7 +2119,7 @@ class RefResolver:
                             path=f"{path}/{key}",
                             external_ref_handling=external_ref_handling,
                             parent=obj,
-                            parent_key=key
+                            parent_key=key,
                         )
 
         elif isinstance(obj, list):
@@ -2076,7 +2134,7 @@ class RefResolver:
                         path=f"{path}[{i}]",
                         external_ref_handling=external_ref_handling,
                         parent=obj,
-                        parent_key=i
+                        parent_key=i,
                     )
                 else:
                     # Remove None items (marked for removal)
@@ -2110,7 +2168,7 @@ class RefResolver:
             for item in obj:
                 self._cleanup_none_values(item)
 
-    def remove_external_refs(self, document: Dict[str, Any]) -> Dict[str, Any]:
+    def remove_external_refs(self, document: dict[str, Any]) -> dict[str, Any]:
         """
         Remove all external $ref references from a document.
 
@@ -2140,9 +2198,7 @@ class RefResolver:
 
         # Use resolve_all_refs with REMOVE mode for external refs
         _, resolved = self.resolve_all_refs(
-            document,
-            preserve_original=True,
-            external_ref_handling=ExternalRefHandling.REMOVE
+            document, preserve_original=True, external_ref_handling=ExternalRefHandling.REMOVE
         )
         return resolved
 
@@ -2152,8 +2208,8 @@ class RefResolver:
 
     def resolve_relationship_target_refs(
         self,
-        hub_contract: Dict[str, Any],
-    ) -> Tuple[Dict[str, Any], List[str]]:
+        hub_contract: dict[str, Any],
+    ) -> tuple[dict[str, Any], list[str]]:
         """
         Resolve URL-based ``target_contract`` values in v3.1.0
         relationships.
@@ -2174,10 +2230,10 @@ class RefResolver:
             Tuple of (hub_contract, warnings) — warnings list for any
             resolution failures (non-fatal).
         """
-        warnings: List[str] = []
+        warnings: list[str] = []
 
         # Collect all relationship lists: models[].relationships + schema.relationships
-        rel_lists: List[List[Dict[str, Any]]] = []
+        rel_lists: list[list[dict[str, Any]]] = []
         for model in hub_contract.get("models", []):
             if isinstance(model, dict) and isinstance(model.get("relationships"), list):
                 rel_lists.append(model["relationships"])
@@ -2211,21 +2267,20 @@ class RefResolver:
                     )
                 except Exception as exc:
                     warnings.append(
-                        f"Failed to resolve relationship target_contract "
-                        f"URL '{target}': {exc}"
+                        f"Failed to resolve relationship target_contract URL '{target}': {exc}"
                     )
 
         return hub_contract, warnings
 
 
 def resolve_odps_refs(
-    document: Dict[str, Any],
+    document: dict[str, Any],
     disable_external_refs: bool = False,
     remove_external_refs: bool = False,
-    tenant_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    base_path: Optional[Path] = None
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    tenant_id: str | None = None,
+    user_id: str | None = None,
+    base_path: Path | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Helper function to resolve $ref references in ODPS documents.
 
@@ -2255,16 +2310,9 @@ def resolve_odps_refs(
         external_ref_handling = ExternalRefHandling.RESOLVE
 
     # Create resolver
-    resolver = RefResolver(
-        tenant_id=tenant_id,
-        user_id=user_id,
-        base_path=base_path
-    )
+    resolver = RefResolver(tenant_id=tenant_id, user_id=user_id, base_path=base_path)
 
     # Resolve all refs
     return resolver.resolve_all_refs(
-        document,
-        preserve_original=True,
-        external_ref_handling=external_ref_handling
+        document, preserve_original=True, external_ref_handling=external_ref_handling
     )
-

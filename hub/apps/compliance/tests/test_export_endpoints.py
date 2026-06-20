@@ -5,16 +5,14 @@ Covers MIME types, CSV parse-back, JSON round-trip, cross-tenant 404,
 throttle 429, and COMPLIANCE_EXPORT audit rows.
 """
 
-import pytest
-
 import csv
 import io
 import json
 import uuid
 
-from django.conf import settings
+import pytest
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -171,7 +169,8 @@ class ComplianceExportEndpointsTests(TestCase):
     def test_export_csv_audit_details_include_format_and_counts(self):
         self.client.force_authenticate(user=self.user)
         rid = self.compliance_run.id
-        self.client.get(f"/api/v1/compliance/runs/{rid}/export.csv/")
+        resp = self.client.get(f"/api/v1/compliance/runs/{rid}/export.csv/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
         evt = (
             AuditEvent.objects.filter(
                 resource_id=str(rid),
@@ -273,6 +272,7 @@ class ComplianceExportEndpointsTests(TestCase):
         actually tightens the rate the throttle enforces.
         """
         from unittest import mock
+
         from rest_framework.throttling import ScopedRateThrottle
 
         cache.clear()
@@ -297,6 +297,7 @@ class ComplianceExportEndpointsTests(TestCase):
         DRF import.
         """
         from unittest import mock
+
         from rest_framework.throttling import ScopedRateThrottle
 
         cache.clear()

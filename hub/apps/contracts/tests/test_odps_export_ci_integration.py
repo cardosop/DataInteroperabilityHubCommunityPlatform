@@ -16,13 +16,6 @@ import pytest
 import yaml
 from django.test import TestCase
 
-from hub.apps.contracts.models import (
-    Contract,
-    ContractStatus,
-    NormalizationStatus,
-    OriginalFormat,
-    OriginalSpecType,
-)
 from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.contracts.odps_format_converter import (
     convert_json_to_yaml,
@@ -169,9 +162,9 @@ class ODPSExportFormatGenerationTest(ContractsTestBase):
         odps_with_unicode = self.odps_doc.copy()
         if "product" in odps_with_unicode and "details" in odps_with_unicode["product"]:
             if "en" in odps_with_unicode["product"]["details"]:
-                odps_with_unicode["product"]["details"]["en"][
-                    "description"
-                ] = "Test with émojis 🎉 and ñoño"
+                odps_with_unicode["product"]["details"]["en"]["description"] = (
+                    "Test with émojis 🎉 and ñoño"
+                )
 
         # Generate JSON with ensure_ascii=False (default)
         json_output = format_odps_as_json(odps_with_unicode, ensure_ascii=False)
@@ -471,7 +464,7 @@ product:
         """
         # JSON → YAML
         yaml_output = convert_json_to_yaml(self.odps_json)
-        yaml_parsed = yaml.safe_load(yaml_output)
+        yaml.safe_load(yaml_output)
 
         # YAML → JSON
         json_output = convert_yaml_to_json(yaml_output)

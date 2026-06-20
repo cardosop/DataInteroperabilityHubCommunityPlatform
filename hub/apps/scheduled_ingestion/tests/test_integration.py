@@ -5,15 +5,15 @@ No mocks: uses real InMemoryConnector and InMemoryDQClient injected into
 the processor.
 """
 
+import uuid
+
 import pytest
 from django.test import TestCase
 from django.utils import timezone
 
-from hub.apps.datasets.models import Dataset
-from hub.apps.files.models import File, FileStatus
 from hub.apps.scheduled_ingestion.incremental_state import IncrementalStateManager
 from hub.apps.scheduled_ingestion.ingestion import ScheduledIngestionProcessor
-from hub.apps.scheduled_ingestion.models import ScheduledIngestion, ScheduledIngestionRun
+from hub.apps.scheduled_ingestion.models import ScheduledIngestion
 from hub.apps.scheduled_ingestion.templates import (
     IngestionTemplate,
     IngestionTemplateManager,
@@ -25,7 +25,6 @@ from hub.apps.scheduled_ingestion.tests.connector_fakes import (
 from hub.apps.scheduled_ingestion.tests.dq_fakes import InMemoryDQClient
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -37,7 +36,10 @@ class IncrementalIngestionIntegrationTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -63,6 +65,7 @@ class IncrementalIngestionIntegrationTest(TestCase):
         # Use last_modified in the future so file2/file3 are not excluded by timestamp filtering
         # (should_process_file skips files with file_timestamp <= last_processed_timestamp)
         from datetime import timedelta
+
         connector = InMemoryConnector(
             files=["file1.csv", "file2.csv", "file3.csv"],
             metadata={
@@ -97,7 +100,10 @@ class DQValidationIntegrationTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -155,7 +161,10 @@ class TemplateIntegrationTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -198,7 +207,6 @@ class TemplateIntegrationTest(TestCase):
         )
 
         # Verify scheduled ingestion was created
-        self.assertIsNotNone(scheduled_ingestion.id)
         self.assertEqual(scheduled_ingestion.tenant, self.tenant)
 
         # Verify configuration was resolved

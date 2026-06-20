@@ -6,14 +6,13 @@ Uses real HTTP server (TestWebhookServer) for delivery tests; no mocks.
 Uses wait_until for delivery state (no fixed time.sleep) per FIX_PLAN_FLAKY_TESTS_5_6_2.
 """
 
-import json
 import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from django.utils import timezone
 
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
@@ -25,7 +24,6 @@ from hub.apps.webhooks.models import (
     WebhookStatus,
 )
 from hub.apps.webhooks.odps_webhook_errors import ODPSWebhookValidationError
-from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.webhooks.service import WebhookDeliveryService
 from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookServer
 from tests.utils.polling import wait_until

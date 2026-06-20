@@ -1,6 +1,7 @@
 """
 Tests for Error Logging
 """
+
 import structlog
 from django.test import TestCase
 

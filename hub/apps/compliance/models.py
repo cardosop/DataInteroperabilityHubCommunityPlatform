@@ -3,13 +3,16 @@ Compliance Models
 
 Compliance Run model for tracking compliance checks.
 """
+
 import uuid
-from django.db import models
+
 from django.core.exceptions import ValidationError
+from django.db import models
 
 
 class ComplianceRunStatus(models.TextChoices):
     """Compliance Run status enumeration"""
+
     PENDING = "PENDING", "Pending"
     QUEUED = "QUEUED", "Queued"  # async job accepted by compliance service
     RUNNING = "RUNNING", "Running"
@@ -19,6 +22,7 @@ class ComplianceRunStatus(models.TextChoices):
 
 class RiskLevel(models.TextChoices):
     """Risk level enumeration"""
+
     NONE = "NONE", "None"
     LOW = "LOW", "Low"
     MEDIUM = "MEDIUM", "Medium"
@@ -27,26 +31,58 @@ class RiskLevel(models.TextChoices):
     UNKNOWN = "UNKNOWN", "Unknown"  # Service unavailable/indeterminate (fail-closed)
 
     @staticmethod
-    def exceeds(level: str, threshold: str) -> bool:
-        """Return True when *level* exceeds *threshold* in severity.
-        The order dict is defined at call-time to avoid being captured
-        as an enum member by Django's TextChoices metaclass."""
+    def risk_ordinal(value: str | None) -> int:
+        """Map a risk level string to its ordinal for comparison.
+
+        ``None`` and unrecognised strings return a sentinel higher than any
+        real level so that callers who use it for fail-closed gating treat
+        the level as maximally severe.
+        """
         order = {"NONE": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4, "UNKNOWN": 5}
-        return order.get(level, 0) > order.get(threshold, 0)
+        if value is None:
+            return 999
+        return order.get(value, 999)
+
+    @staticmethod
+    def exceeds(level: str | None, threshold: str | None) -> bool:
+        """Return True when *level* exceeds *threshold* in severity.
+
+        Fail-closed guards:
+
+        * **UNKNOWN level** → always exceeds (we don't know the risk, so block).
+        * **Garbage / UNKNOWN threshold** → always exceeded (we can't trust the
+          gate, so block).
+        * **None level / threshold** → always exceeds (fail-closed for nullable
+          DB fields and missing config keys).
+        """
+        order = {"NONE": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4, "UNKNOWN": 5}
+
+        # Fail-closed: if the threshold is UNKNOWN or not a recognised level,
+        # treat it as maximally restrictive — even NONE "exceeds" it.
+        if threshold not in order or threshold == "UNKNOWN":
+            return True
+
+        # Fail-closed: if the level is UNKNOWN or not a recognised level,
+        # treat it as maximally severe — it exceeds any real threshold.
+        if level not in order or level == "UNKNOWN":
+            return True
+
+        return order[level] > order[threshold]
 
 
 class ComplianceRun(models.Model):
     """
     Compliance Run model representing a compliance check execution.
-    
+
     Tracks compliance runs for assets, datasets, or files.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="compliance_runs",
-        help_text="Tenant this compliance run belongs to"
+        help_text="Tenant this compliance run belongs to",
     )
     asset = models.ForeignKey(
         "assets.Asset",
@@ -54,7 +90,7 @@ class ComplianceRun(models.Model):
         related_name="compliance_runs",
         null=True,
         blank=True,
-        help_text="Asset this compliance run is for (nullable)"
+        help_text="Asset this compliance run is for (nullable)",
     )
     dataset = models.ForeignKey(
         "datasets.Dataset",
@@ -62,7 +98,7 @@ class ComplianceRun(models.Model):
         related_name="compliance_runs",
         null=True,
         blank=True,
-        help_text="Dataset this compliance run is for (nullable; SET_NULL preserves audit trail)"
+        help_text="Dataset this compliance run is for (nullable; SET_NULL preserves audit trail)",
     )
     file = models.ForeignKey(
         "files.File",
@@ -70,7 +106,7 @@ class ComplianceRun(models.Model):
         related_name="compliance_runs",
         null=True,
         blank=True,
-        help_text="File this compliance run is for (scan-only, nullable)"
+        help_text="File this compliance run is for (scan-only, nullable)",
     )
     job = models.ForeignKey(
         "jobs.Job",
@@ -78,92 +114,71 @@ class ComplianceRun(models.Model):
         related_name="compliance_runs",
         null=True,
         blank=True,
-        help_text="Job that orchestrates this compliance run"
+        help_text="Job that orchestrates this compliance run",
     )
     regulations = models.JSONField(
-        null=True,
-        blank=True,
-        help_text="List of applicable regulations (e.g., ['GDPR', 'LGPD'])"
+        null=True, blank=True, help_text="List of applicable regulations (e.g., ['GDPR', 'LGPD'])"
     )
     status = models.CharField(
         max_length=20,
         choices=ComplianceRunStatus.choices,
         default=ComplianceRunStatus.PENDING,
-        help_text=(
-            "Compliance run status: "
-            "PENDING, QUEUED, RUNNING, SUCCEEDED, FAILED"
-        )
+        help_text=("Compliance run status: PENDING, QUEUED, RUNNING, SUCCEEDED, FAILED"),
     )
     overall_status = models.CharField(
         max_length=20,
         null=True,
         blank=True,
-        help_text="Overall compliance status: PASS, WARN, FAIL (from result)"
+        help_text="Overall compliance status: PASS, WARN, FAIL (from result)",
     )
     risk_level = models.CharField(
         max_length=20,
         choices=RiskLevel.choices,
         null=True,
         blank=True,
-        help_text="Risk level: NONE, LOW, MEDIUM, HIGH, CRITICAL"
+        help_text="Risk level: NONE, LOW, MEDIUM, HIGH, CRITICAL",
     )
     allowed_to_store = models.BooleanField(
         null=True,
         blank=True,
-        help_text="Whether data is allowed to be stored (NULL if check not completed)"
+        help_text="Whether data is allowed to be stored (NULL if check not completed)",
     )
     detected_categories_json = models.JSONField(
-        null=True,
-        blank=True,
-        help_text="Summary of detected PII categories and counts"
+        null=True, blank=True, help_text="Summary of detected PII categories and counts"
     )
     column_findings_json = models.JSONField(
-        null=True,
-        blank=True,
-        help_text="Per-column PII detection findings"
+        null=True, blank=True, help_text="Per-column PII detection findings"
     )
     regulation_mapping_json = models.JSONField(
-        null=True,
-        blank=True,
-        help_text="Regulatory mapping details (GDPR, LGPD, CCPA, HIPAA, SOX)"
+        null=True, blank=True, help_text="Regulatory mapping details (GDPR, LGPD, CCPA, HIPAA, SOX)"
     )
     # v2 result fields (19.10.1)
     cross_border_alert = models.JSONField(
         null=True,
         blank=True,
-        help_text="Cross-border data transfer alert from compliance service v2"
+        help_text="Cross-border data transfer alert from compliance service v2",
     )
     localisation_alert = models.JSONField(
         null=True,
         blank=True,
-        help_text="Data localisation requirement alert from compliance service v2"
+        help_text="Data localisation requirement alert from compliance service v2",
     )
     legal_basis_violations = models.JSONField(
-        null=True,
-        blank=True,
-        help_text="Legal basis violations reported by compliance service v2"
+        null=True, blank=True, help_text="Legal basis violations reported by compliance service v2"
     )
     metadata_json = models.JSONField(
         null=True,
         blank=True,
-        help_text=(
-            "Async job tracking metadata: "
-            '{"job_id": "...", "poll_url": "..."}'
-        ),
+        help_text=('Async job tracking metadata: {"job_id": "...", "poll_url": "..."}'),
     )
     started_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When compliance run started"
+        null=True, blank=True, help_text="When compliance run started"
     )
     completed_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When compliance run completed"
+        null=True, blank=True, help_text="When compliance run completed"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
 
     scan_mode = models.CharField(
         max_length=50,
@@ -175,8 +190,13 @@ class ComplianceRun(models.Model):
         ],
         help_text="Scan mode for this compliance run",
     )
-    webhook_fired_at = models.DateTimeField(null=True, blank=True, help_text="When the completion webhook was fired")
-    warehouse_config = models.JSONField(default=dict, blank=True, help_text="Warehouse config for DQ warehouse integration")
+    webhook_fired_at = models.DateTimeField(
+        null=True, blank=True, help_text="When the completion webhook was fired"
+    )
+    warehouse_config = models.JSONField(
+        default=dict, blank=True, help_text="Warehouse config for DQ warehouse integration"
+    )
+
     class Meta:
         db_table = "compliance_runs"
         ordering = ["-created_at"]
@@ -188,21 +208,18 @@ class ComplianceRun(models.Model):
             models.Index(fields=["job"]),
             models.Index(fields=["status", "created_at"], name="idx_complrun_st_created"),
         ]
-    
+
     def __str__(self):
         return f"Compliance Run {self.id}"
-    
+
     def clean(self):
         """Validate that at least one of asset_id, dataset_id, or file_id is set"""
         super().clean()
-        
+
         if not self.asset and not self.dataset and not self.file:
-            raise ValidationError(
-                "At least one of asset, dataset, or file must be set"
-            )
-    
+            raise ValidationError("At least one of asset, dataset, or file must be set")
+
     def save(self, *args, **kwargs):
         """Override save to validate before saving"""
         self.full_clean()
         super().save(*args, **kwargs)
-

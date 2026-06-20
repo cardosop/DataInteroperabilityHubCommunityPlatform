@@ -6,7 +6,6 @@ Uses real hub API - no mocks/stubs.
 """
 
 import json
-from typing import Optional
 
 import click
 
@@ -16,7 +15,6 @@ from ..api_client import api_client
 @click.group()
 def audit():
     """Audit event querying commands"""
-    pass
 
 
 @audit.command("query")
@@ -35,11 +33,11 @@ def audit():
     help="Output format",
 )
 def query_events(
-    resource_type: Optional[str],
-    action: Optional[str],
-    actor_user_id: Optional[str],
-    start_date: Optional[str],
-    end_date: Optional[str],
+    resource_type: str | None,
+    action: str | None,
+    actor_user_id: str | None,
+    start_date: str | None,
+    end_date: str | None,
     limit: int,
     offset: int,
     output_format: str,
@@ -157,12 +155,12 @@ def get_event(event_id: str, output_format: str):
 @click.option("--end-date", help="Filter by end date (ISO format)")
 @click.option("--output", help="Output file path (default: stdout)")
 def export_events(
-    resource_type: Optional[str],
-    action: Optional[str],
-    actor_user_id: Optional[str],
-    start_date: Optional[str],
-    end_date: Optional[str],
-    output: Optional[str],
+    resource_type: str | None,
+    action: str | None,
+    actor_user_id: str | None,
+    start_date: str | None,
+    end_date: str | None,
+    output: str | None,
 ):
     """Export audit events as CSV"""
     params = {"format": "csv"}

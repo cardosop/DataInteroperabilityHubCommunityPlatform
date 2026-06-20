@@ -7,7 +7,9 @@ Tests that migrations preserve data through reverse + forward cycles.
 Critical models tested: Asset, Contract, Dataset, File, AccessRequest,
 ComplianceRun, MarketplaceListing.
 """
+
 import uuid
+
 import pytest
 from django.test import TestCase
 
@@ -19,8 +21,11 @@ class TestAssetDataSurvival(TestCase):
 
     def setUp(self):
         from hub.apps.tenants.models import Tenant
+
         self.tenant = Tenant.objects.create(
-            name="ds-asset", slug="ds-asset", status="ACTIVE",
+            name="ds-asset",
+            slug="ds-asset",
+            status="ACTIVE",
         )
 
     def test_asset_fields_preserved_after_save_delete_recreate(self):
@@ -55,8 +60,11 @@ class TestContractDataSurvival(TestCase):
 
     def setUp(self):
         from hub.apps.tenants.models import Tenant
+
         self.tenant = Tenant.objects.create(
-            name="ds-contract", slug="ds-contract", status="ACTIVE",
+            name="ds-contract",
+            slug="ds-contract",
+            status="ACTIVE",
         )
 
     def test_contract_fields_preserved_after_round_trip(self):
@@ -73,8 +81,11 @@ class TestContractDataSurvival(TestCase):
         original_name = original.name
         original.delete()
         recreated = Contract.objects.create(
-            tenant=self.tenant, name=original_name,
-            spec_type="ODCS", schema_version="3.0", status="DRAFT",
+            tenant=self.tenant,
+            name=original_name,
+            spec_type="ODCS",
+            schema_version="3.0",
+            status="DRAFT",
         )
         assert recreated.name == original_name
 
@@ -84,20 +95,27 @@ class TestDatasetDataSurvival(TestCase):
 
     def setUp(self):
         from hub.apps.tenants.models import Tenant
+
         self.tenant = Tenant.objects.create(
-            name="ds-dataset", slug="ds-dataset", status="ACTIVE",
+            name="ds-dataset",
+            slug="ds-dataset",
+            status="ACTIVE",
         )
 
     def test_dataset_fields_preserved_after_round_trip(self):
         from hub.apps.datasets.models import Dataset
 
         original = Dataset.objects.create(
-            tenant=self.tenant, name="survival-dataset", status="ACTIVE",
+            tenant=self.tenant,
+            name="survival-dataset",
+            status="ACTIVE",
         )
         original_name = original.name
         original.delete()
         recreated = Dataset.objects.create(
-            tenant=self.tenant, name=original_name, status="ACTIVE",
+            tenant=self.tenant,
+            name=original_name,
+            status="ACTIVE",
         )
         assert recreated.name == original_name
 
@@ -107,8 +125,11 @@ class TestMarketplaceListingDataSurvival(TestCase):
 
     def setUp(self):
         from hub.apps.tenants.models import Tenant
+
         self.tenant = Tenant.objects.create(
-            name="ds-listing", slug="ds-listing", status="ACTIVE",
+            name="ds-listing",
+            slug="ds-listing",
+            status="ACTIVE",
         )
 
     def test_listing_fields_preserved_after_round_trip(self):
@@ -136,35 +157,53 @@ class TestAccessRequestDataSurvival(TestCase):
 
     def setUp(self):
         from hub.apps.tenants.models import Tenant
+
         self.tenant = Tenant.objects.create(
-            name="ds-ar", slug="ds-ar", status="ACTIVE",
+            name="ds-ar",
+            slug="ds-ar",
+            status="ACTIVE",
         )
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         self.user = User.objects.create_user(
             email=f"ds-ar-{uuid.uuid4().hex[:6]}@test.com",
-            password="test", tenant=self.tenant,
+            password="test",
+            tenant=self.tenant,
         )
 
     def test_access_request_fields_preserved_after_round_trip(self):
         from hub.apps.governance.models import (
-            AccessRequest, AccessRequestStatus, AccessPolicy,
+            AccessPolicy,
+            AccessRequest,
+            AccessRequestStatus,
         )
+
         policy = AccessPolicy.objects.create(
-            tenant=self.tenant, name="ds-policy",
-            effect="ALLOW", conditions={}, priority=10, enabled=True,
+            tenant=self.tenant,
+            name="ds-policy",
+            effect="ALLOW",
+            conditions={},
+            priority=10,
+            enabled=True,
         )
         original = AccessRequest.objects.create(
-            tenant=self.tenant, requester=self.user,
-            access_policy=policy, status=AccessRequestStatus.PENDING,
-            resource_type="ASSET", resource_id=str(uuid.uuid4()),
+            tenant=self.tenant,
+            requester=self.user,
+            access_policy=policy,
+            status=AccessRequestStatus.PENDING,
+            resource_type="ASSET",
+            resource_id=str(uuid.uuid4()),
         )
         assert original.status == AccessRequestStatus.PENDING
         original.delete()
         recreated = AccessRequest.objects.create(
-            tenant=self.tenant, requester=self.user,
-            access_policy=policy, status=AccessRequestStatus.PENDING,
-            resource_type="ASSET", resource_id=str(uuid.uuid4()),
+            tenant=self.tenant,
+            requester=self.user,
+            access_policy=policy,
+            status=AccessRequestStatus.PENDING,
+            resource_type="ASSET",
+            resource_id=str(uuid.uuid4()),
         )
         assert recreated.status == AccessRequestStatus.PENDING
 
@@ -174,8 +213,11 @@ class TestFileDataSurvival(TestCase):
 
     def setUp(self):
         from hub.apps.tenants.models import Tenant
+
         self.tenant = Tenant.objects.create(
-            name="ds-file", slug="ds-file", status="ACTIVE",
+            name="ds-file",
+            slug="ds-file",
+            status="ACTIVE",
         )
 
     def test_file_fields_preserved_after_round_trip(self):
@@ -204,8 +246,11 @@ class TestComplianceRunDataSurvival(TestCase):
 
     def setUp(self):
         from hub.apps.tenants.models import Tenant
+
         self.tenant = Tenant.objects.create(
-            name="ds-comp", slug="ds-comp", status="ACTIVE",
+            name="ds-comp",
+            slug="ds-comp",
+            status="ACTIVE",
         )
 
     def test_compliance_run_fields_preserved_after_round_trip(self):

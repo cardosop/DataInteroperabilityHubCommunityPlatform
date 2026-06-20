@@ -25,9 +25,11 @@ Stripe error class. Network / 5xx failures from Stripe also raise
 the same wrapper class — operators read the cause from the
 ``stripe_error_code`` attribute.
 """
+
 from __future__ import annotations
+
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from django.conf import settings
 
@@ -46,14 +48,14 @@ class TaxIdSubmissionError(Exception):
         self,
         message: str,
         *,
-        stripe_error_code: Optional[str] = None,
+        stripe_error_code: str | None = None,
     ) -> None:
         super().__init__(message)
         self.message = message
         self.stripe_error_code = stripe_error_code
 
 
-def _stripe_customer_id_for_tenant(tenant) -> Optional[str]:
+def _stripe_customer_id_for_tenant(tenant) -> str | None:
     """Resolve the Stripe Customer ID for a tenant.
 
     Uses the existing Subscription→Tenant chain (same as the
@@ -65,8 +67,7 @@ def _stripe_customer_id_for_tenant(tenant) -> Optional[str]:
     from hub.apps.billing.models import Subscription
 
     sub = (
-        Subscription.objects
-        .filter(tenant=tenant)
+        Subscription.objects.filter(tenant=tenant)
         .exclude(stripe_customer_id__isnull=True)
         .exclude(stripe_customer_id="")
         .order_by("-created_at")
@@ -80,7 +81,7 @@ def submit_tax_id_to_stripe(
     tenant,
     tax_id_value: str,
     tax_id_type: str,
-    tax_address: Optional[dict],
+    tax_address: dict | None,
 ) -> dict[str, Any]:
     """Phase 270.D.3 — submit a tax_id to Stripe + persist locally.
 
@@ -128,8 +129,7 @@ def submit_tax_id_to_stripe(
     stripe_customer_id = _stripe_customer_id_for_tenant(tenant)
     if not stripe_customer_id:
         raise TaxIdSubmissionError(
-            "Tenant has no Stripe Customer yet — create a "
-            "subscription first.",
+            "Tenant has no Stripe Customer yet — create a subscription first.",
             stripe_error_code="customer_not_provisioned",
         )
 
@@ -144,10 +144,15 @@ def submit_tax_id_to_stripe(
     tenant.tax_id_verified = False
     if tax_address is not None:
         tenant.tax_address = tax_address
-    tenant.save(update_fields=[
-        "tax_id", "tax_id_type", "tax_id_verified",
-        "tax_address", "updated_at",
-    ])
+    tenant.save(
+        update_fields=[
+            "tax_id",
+            "tax_id_type",
+            "tax_id_verified",
+            "tax_address",
+            "updated_at",
+        ]
+    )
 
     # Stripe call. Wrap in try/except + map to
     # TaxIdSubmissionError so the view layer doesn't import
@@ -167,11 +172,13 @@ def submit_tax_id_to_stripe(
         code = getattr(exc, "code", None) or getattr(exc, "error_code", None)
         logger.warning(
             "stripe_create_tax_id_failed",
-            tenant_id=str(tenant.id),
-            stripe_customer_id=stripe_customer_id,
-            tax_id_type=tax_id_type,
-            stripe_error_code=code,
-            error=str(exc),
+            extra={
+                "tenant_id": str(tenant.id),
+                "stripe_customer_id": stripe_customer_id,
+                "tax_id_type": tax_id_type,
+                "stripe_error_code": code,
+                "error": str(exc),
+            },
         )
         raise TaxIdSubmissionError(
             f"Stripe rejected the tax_id submission: {exc}",

@@ -4,14 +4,16 @@ Observability Service
 Service layer for observability operations.
 Extracts observability logic from views.py and monitoring modules.
 """
-from typing import Dict, Any, Optional
+
+from typing import Any
+
 import structlog
 
-from hub.apps.core.services.base import BaseService, NotFoundError
 from hub.apps.core.events.service_publishers import ObservabilityEventPublisher
+from hub.apps.core.services.base import BaseService, NotFoundError
 from hub.apps.observability.freshness import FreshnessMonitor
-from hub.apps.observability.volume import VolumeMonitor
 from hub.apps.observability.schema_drift import SchemaDriftDetector
+from hub.apps.observability.volume import VolumeMonitor
 
 logger = structlog.get_logger(__name__)
 
@@ -47,7 +49,7 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
 
     service_name = "observability_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize ObservabilityService.
 
@@ -64,16 +66,17 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
     def _validate_tenant_id(self, tenant_id: str) -> None:
         """Ensure tenant exists; raise NotFoundError if not."""
         from hub.apps.tenants.models import Tenant
+
         if not Tenant.objects.filter(id=tenant_id).exists():
             raise NotFoundError(f"Tenant with id {tenant_id} not found")
 
     def get_freshness_dashboard(
         self,
         tenant_id: str,
-        dataset_id: Optional[str] = None,
-        asset_id: Optional[str] = None,
-        limit: int = 100
-    ) -> Dict[str, Any]:
+        dataset_id: str | None = None,
+        asset_id: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
         """
         Get data freshness dashboard.
 
@@ -88,6 +91,7 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
         """
         self._validate_tenant_id(tenant_id)
         import time
+
         from opentelemetry import trace
 
         start_time = time.time()
@@ -95,33 +99,34 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
         span_id = None
 
         # Try to get trace context if OpenTelemetry is enabled
-        if hasattr(trace, 'get_current_span'):
+        if hasattr(trace, "get_current_span"):
             try:
                 span = trace.get_current_span()
                 if span and span.get_span_context().is_valid:
                     span_context = span.get_span_context()
                     # Convert 128-bit trace_id to UUID format (32 hex chars -> UUID)
-                    trace_id_hex = format(span_context.trace_id, '032x')
+                    trace_id_hex = format(span_context.trace_id, "032x")
                     trace_id = _hex_to_uuid(trace_id_hex, length=32)
                     # Convert 64-bit span_id to UUID format (pad to 32 hex chars)
-                    span_id_hex = format(span_context.span_id, '016x')
+                    span_id_hex = format(span_context.span_id, "016x")
                     span_id = _hex_to_uuid(span_id_hex, length=32)
             except Exception as e:
                 logger.debug(
                     "observability_trace_context_failed",
-                    extra={"error_type": type(e).__name__, "error": str(e), "operation": "get_freshness_dashboard"},
+                    extra={
+                        "error_type": type(e).__name__,
+                        "error": str(e),
+                        "operation": "get_freshness_dashboard",
+                    },
                 )
 
         try:
             result = self.execute_with_metrics(
                 operation="get_freshness_dashboard",
                 func=lambda: FreshnessMonitor.get_freshness_dashboard(
-                    tenant_id=tenant_id,
-                    dataset_id=dataset_id,
-                    asset_id=asset_id,
-                    limit=limit
+                    tenant_id=tenant_id, dataset_id=dataset_id, asset_id=asset_id, limit=limit
                 ),
-                tenant_id=tenant_id
+                tenant_id=tenant_id,
             )
 
             # Publish trace event if we have trace context
@@ -139,13 +144,13 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                             "asset_id": asset_id,
                             "limit": limit,
                         },
-                        tenant_id=tenant_id
+                        tenant_id=tenant_id,
                     )
                 except Exception as e:
                     logger.warning(
                         "failed_to_publish_trace_event",
                         error=str(e),
-                        operation="get_freshness_dashboard"
+                        operation="get_freshness_dashboard",
                     )
 
             return result
@@ -164,23 +169,27 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                             "error": str(e),
                             "error_type": type(e).__name__,
                         },
-                        tenant_id=tenant_id
+                        tenant_id=tenant_id,
                     )
                 except Exception as pub_err:
                     logger.warning(
                         "observability_trace_event_publish_failed",
-                        extra={"error_type": type(pub_err).__name__, "error": str(pub_err), "operation": "get_freshness_dashboard"},
+                        extra={
+                            "error_type": type(pub_err).__name__,
+                            "error": str(pub_err),
+                            "operation": "get_freshness_dashboard",
+                        },
                     )
             raise
 
     def get_volume_dashboard(
         self,
         tenant_id: str,
-        dataset_id: Optional[str] = None,
-        asset_id: Optional[str] = None,
+        dataset_id: str | None = None,
+        asset_id: str | None = None,
         limit: int = 100,
-        period_type: str = "DAILY"
-    ) -> Dict[str, Any]:
+        period_type: str = "DAILY",
+    ) -> dict[str, Any]:
         """
         Get volume monitoring dashboard.
 
@@ -196,6 +205,7 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
         """
         self._validate_tenant_id(tenant_id)
         import time
+
         from opentelemetry import trace
 
         start_time = time.time()
@@ -203,21 +213,25 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
         span_id = None
 
         # Try to get trace context if OpenTelemetry is enabled
-        if hasattr(trace, 'get_current_span'):
+        if hasattr(trace, "get_current_span"):
             try:
                 span = trace.get_current_span()
                 if span and span.get_span_context().is_valid:
                     span_context = span.get_span_context()
                     # Convert 128-bit trace_id to UUID format (32 hex chars -> UUID)
-                    trace_id_hex = format(span_context.trace_id, '032x')
+                    trace_id_hex = format(span_context.trace_id, "032x")
                     trace_id = _hex_to_uuid(trace_id_hex, length=32)
                     # Convert 64-bit span_id to UUID format (pad to 32 hex chars)
-                    span_id_hex = format(span_context.span_id, '016x')
+                    span_id_hex = format(span_context.span_id, "016x")
                     span_id = _hex_to_uuid(span_id_hex, length=32)
             except Exception as e:
                 logger.debug(
                     "observability_trace_context_failed",
-                    extra={"error_type": type(e).__name__, "error": str(e), "operation": "get_volume_dashboard"},
+                    extra={
+                        "error_type": type(e).__name__,
+                        "error": str(e),
+                        "operation": "get_volume_dashboard",
+                    },
                 )
 
         try:
@@ -228,9 +242,9 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                     dataset_id=dataset_id,
                     asset_id=asset_id,
                     period_type=period_type,
-                    limit=limit
+                    limit=limit,
                 ),
-                tenant_id=tenant_id
+                tenant_id=tenant_id,
             )
 
             # Publish trace event if we have trace context
@@ -249,13 +263,13 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                             "period_type": period_type,
                             "limit": limit,
                         },
-                        tenant_id=tenant_id
+                        tenant_id=tenant_id,
                     )
                 except Exception as e:
                     logger.warning(
                         "failed_to_publish_trace_event",
                         error=str(e),
-                        operation="get_volume_dashboard"
+                        operation="get_volume_dashboard",
                     )
 
             return result
@@ -274,22 +288,26 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                             "error": str(e),
                             "error_type": type(e).__name__,
                         },
-                        tenant_id=tenant_id
+                        tenant_id=tenant_id,
                     )
                 except Exception as pub_err:
                     logger.warning(
                         "observability_trace_event_publish_failed",
-                        extra={"error_type": type(pub_err).__name__, "error": str(pub_err), "operation": "get_volume_dashboard"},
+                        extra={
+                            "error_type": type(pub_err).__name__,
+                            "error": str(pub_err),
+                            "operation": "get_volume_dashboard",
+                        },
                     )
             raise
 
     def get_schema_drift_dashboard(
         self,
         tenant_id: str,
-        dataset_id: Optional[str] = None,
-        asset_id: Optional[str] = None,
-        limit: int = 100
-    ) -> Dict[str, Any]:
+        dataset_id: str | None = None,
+        asset_id: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
         """
         Get schema drift detection dashboard.
 
@@ -304,6 +322,7 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
         """
         self._validate_tenant_id(tenant_id)
         import time
+
         from opentelemetry import trace
 
         start_time = time.time()
@@ -311,33 +330,34 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
         span_id = None
 
         # Try to get trace context if OpenTelemetry is enabled
-        if hasattr(trace, 'get_current_span'):
+        if hasattr(trace, "get_current_span"):
             try:
                 span = trace.get_current_span()
                 if span and span.get_span_context().is_valid:
                     span_context = span.get_span_context()
                     # Convert 128-bit trace_id to UUID format (32 hex chars -> UUID)
-                    trace_id_hex = format(span_context.trace_id, '032x')
+                    trace_id_hex = format(span_context.trace_id, "032x")
                     trace_id = _hex_to_uuid(trace_id_hex, length=32)
                     # Convert 64-bit span_id to UUID format (pad to 32 hex chars)
-                    span_id_hex = format(span_context.span_id, '016x')
+                    span_id_hex = format(span_context.span_id, "016x")
                     span_id = _hex_to_uuid(span_id_hex, length=32)
             except Exception as e:
                 logger.debug(
                     "observability_trace_context_failed",
-                    extra={"error_type": type(e).__name__, "error": str(e), "operation": "get_schema_drift_dashboard"},
+                    extra={
+                        "error_type": type(e).__name__,
+                        "error": str(e),
+                        "operation": "get_schema_drift_dashboard",
+                    },
                 )
 
         try:
             result = self.execute_with_metrics(
                 operation="get_schema_drift_dashboard",
                 func=lambda: SchemaDriftDetector.get_drift_dashboard(
-                    tenant_id=tenant_id,
-                    dataset_id=dataset_id,
-                    asset_id=asset_id,
-                    limit=limit
+                    tenant_id=tenant_id, dataset_id=dataset_id, asset_id=asset_id, limit=limit
                 ),
-                tenant_id=tenant_id
+                tenant_id=tenant_id,
             )
 
             # Publish trace event if we have trace context
@@ -355,13 +375,13 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                             "asset_id": asset_id,
                             "limit": limit,
                         },
-                        tenant_id=tenant_id
+                        tenant_id=tenant_id,
                     )
                 except Exception as e:
                     logger.warning(
                         "failed_to_publish_trace_event",
                         error=str(e),
-                        operation="get_schema_drift_dashboard"
+                        operation="get_schema_drift_dashboard",
                     )
 
             return result
@@ -380,26 +400,30 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                             "error": str(e),
                             "error_type": type(e).__name__,
                         },
-                        tenant_id=tenant_id
+                        tenant_id=tenant_id,
                     )
                 except Exception as pub_err:
                     logger.warning(
                         "observability_trace_event_publish_failed",
-                        extra={"error_type": type(pub_err).__name__, "error": str(pub_err), "operation": "get_schema_drift_dashboard"},
+                        extra={
+                            "error_type": type(pub_err).__name__,
+                            "error": str(pub_err),
+                            "operation": "get_schema_drift_dashboard",
+                        },
                     )
             raise
 
     def record_metric(
         self,
         tenant_id: str,
-        dataset_id: Optional[str] = None,
-        asset_id: Optional[str] = None,
-        last_update_time: Optional[str] = None,
-        freshness_sla: Optional[str] = None,
-        row_count: Optional[int] = None,
-        size_bytes: Optional[int] = None,
-        schema_json: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        dataset_id: str | None = None,
+        asset_id: str | None = None,
+        last_update_time: str | None = None,
+        freshness_sla: str | None = None,
+        row_count: int | None = None,
+        size_bytes: int | None = None,
+        schema_json: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         Record a data observability metric and publish event.
 
@@ -417,8 +441,9 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
             Dictionary with metric information
         """
         from django.utils.dateparse import parse_datetime
-        from hub.apps.datasets.models import Dataset
+
         from hub.apps.assets.models import Asset
+        from hub.apps.datasets.models import Dataset
         from hub.apps.tenants.models import Tenant
 
         # Get tenant
@@ -457,7 +482,7 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
             freshness_sla=freshness_sla,
             row_count=row_count,
             size_bytes=size_bytes,
-            schema_json=schema_json
+            schema_json=schema_json,
         )
 
         # Publish metric recorded event
@@ -472,14 +497,10 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                     "freshness_sla": freshness_sla,
                     "is_stale": str(metric.is_stale),
                 },
-                tenant_id=tenant_id
+                tenant_id=tenant_id,
             )
         except Exception as e:
-            logger.warning(
-                "failed_to_publish_metric_event",
-                error=str(e),
-                metric_id=str(metric.id)
-            )
+            logger.warning("failed_to_publish_metric_event", error=str(e), metric_id=str(metric.id))
 
         # Check if stale and publish alert if needed
         if metric.is_stale:
@@ -493,13 +514,11 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                     current_value=metric.freshness_age_seconds,
                     dataset_id=str(dataset.id) if dataset else None,
                     asset_id=str(asset.id) if asset else None,
-                    tenant_id=tenant_id
+                    tenant_id=tenant_id,
                 )
             except Exception as e:
                 logger.warning(
-                    "failed_to_publish_stale_alert_event",
-                    error=str(e),
-                    metric_id=str(metric.id)
+                    "failed_to_publish_stale_alert_event", error=str(e), metric_id=str(metric.id)
                 )
 
         # Detect schema drift if schema_json provided
@@ -509,7 +528,7 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                     tenant_id=tenant_id,
                     dataset=dataset,
                     asset=asset,
-                    current_schema_json=schema_json
+                    current_schema_json=schema_json,
                 )
 
                 # Publish alert if drift detected
@@ -523,36 +542,36 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
                             alert_message=f"Schema drift detected for {'dataset' if dataset else 'asset'} {dataset_id or asset_id}",
                             metric_name="schema_drift",
                             threshold_value=0,
-                            current_value=len(drift.new_fields or []) + len(drift.removed_fields or []) + len(drift.type_changes or []) or 1,
+                            current_value=len(drift.new_fields or [])
+                            + len(drift.removed_fields or [])
+                            + len(drift.type_changes or [])
+                            or 1,
                             dataset_id=str(dataset.id) if dataset else None,
                             asset_id=str(asset.id) if asset else None,
-                            tenant_id=tenant_id
+                            tenant_id=tenant_id,
                         )
                     except Exception as e:
                         logger.warning(
                             "failed_to_publish_schema_drift_alert_event",
                             error=str(e),
-                            drift_id=str(drift.id) if drift else None
+                            drift_id=str(drift.id) if drift else None,
                         )
             except Exception as e:
-                logger.warning(
-                    "failed_to_detect_schema_drift",
-                    error=str(e)
-                )
+                logger.warning("failed_to_detect_schema_drift", error=str(e))
 
         return {
-            'id': str(metric.id),
-            'recorded_at': metric.recorded_at.isoformat(),
-            'is_stale': metric.is_stale
+            "id": str(metric.id),
+            "recorded_at": metric.recorded_at.isoformat(),
+            "is_stale": metric.is_stale,
         }
 
     def publish_log_event(
         self,
         message: str,
         log_level: str = "INFO",
-        logger_name: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        tenant_id: Optional[str] = None
+        logger_name: str | None = None,
+        context: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
     ) -> str:
         """
         Publish a log event.
@@ -574,6 +593,5 @@ class ObservabilityService(BaseService, ObservabilityEventPublisher):
             log_level=log_level,
             logger_name=logger_name or self.__class__.__module__,
             context=context,
-            tenant_id=tenant_id or self.tenant_id
+            tenant_id=tenant_id or self.tenant_id,
         )
-

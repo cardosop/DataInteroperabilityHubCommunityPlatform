@@ -8,9 +8,11 @@ Tests to validate Prefect worker infrastructure configuration:
 - Hub API connectivity from Prefect worker context
 """
 
-import unittest
+import contextlib
 import os
 import sys
+import unittest
+import uuid
 from unittest.mock import patch
 
 import pytest
@@ -22,7 +24,6 @@ from hub.apps.scheduled_ingestion.internal_auth import SCOPE_SCHEDULED_INGESTION
 from hub.apps.scheduled_ingestion.models import ScheduledIngestion, ScheduleType, SourceType
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 # Add prefect-integration to path
 _here = os.path.abspath(__file__)
@@ -75,7 +76,9 @@ class TestHubClientInfrastructure(TestCase):
                     HubClient()
                 self.assertIn("HUB_BASE_URL", str(cm.exception))
             except ImportError:
-                raise unittest.SkipTest("hub_client not available (prefect-integration not in path)")
+                raise unittest.SkipTest(
+                    "hub_client not available (prefect-integration not in path)"
+                )
 
     def test_hub_client_requires_hub_worker_api_key(self):
         """Test that HubClient raises ValueError if HUB_WORKER_API_KEY is not set."""
@@ -89,7 +92,9 @@ class TestHubClientInfrastructure(TestCase):
                     HubClient()
                 self.assertIn("HUB_WORKER_API_KEY", str(cm.exception))
             except ImportError:
-                raise unittest.SkipTest("hub_client not available (prefect-integration not in path)")
+                raise unittest.SkipTest(
+                    "hub_client not available (prefect-integration not in path)"
+                )
 
     def test_hub_client_initializes_with_env_vars(self):
         """Test that HubClient initializes successfully with environment variables."""
@@ -108,7 +113,9 @@ class TestHubClientInfrastructure(TestCase):
                 self.assertEqual(client.base_url, "http://api-service:8000")
                 self.assertEqual(client.api_key, self.worker_api_key)
             except ImportError:
-                raise unittest.SkipTest("hub_client not available (prefect-integration not in path)")
+                raise unittest.SkipTest(
+                    "hub_client not available (prefect-integration not in path)"
+                )
 
     def test_hub_client_initializes_with_explicit_params(self):
         """Test that HubClient initializes with explicit parameters (overrides env vars)."""
@@ -130,7 +137,9 @@ class TestHubClientInfrastructure(TestCase):
                 self.assertEqual(client.base_url, "http://api-service:8000")
                 self.assertEqual(client.api_key, self.worker_api_key)
             except ImportError:
-                raise unittest.SkipTest("hub_client not available (prefect-integration not in path)")
+                raise unittest.SkipTest(
+                    "hub_client not available (prefect-integration not in path)"
+                )
 
     def test_hub_client_strips_trailing_slash(self):
         """Test that HubClient strips trailing slash from base_url."""
@@ -148,7 +157,9 @@ class TestHubClientInfrastructure(TestCase):
                 client = HubClient()
                 self.assertEqual(client.base_url, "http://api-service:8000")
             except ImportError:
-                raise unittest.SkipTest("hub_client not available (prefect-integration not in path)")
+                raise unittest.SkipTest(
+                    "hub_client not available (prefect-integration not in path)"
+                )
 
 
 class TestEnvironmentConfiguration(SimpleTestCase):
@@ -186,10 +197,8 @@ class TestHubAPIConnectivity(TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        try:
+        with contextlib.suppress(TransactionManagementError):
             super().tearDownClass()
-        except TransactionManagementError:
-            pass
 
     @classmethod
     def setUpClass(cls):
@@ -198,6 +207,7 @@ class TestHubAPIConnectivity(TestCase):
         # per test-method, but setUpClass runs before it — force-close and
         # reconnect so _enter_atomics() can wrap a fresh connection.
         from django.db import connections
+
         for alias in connections:
             conn = connections[alias]
             conn.closed_in_transaction = False
@@ -207,10 +217,8 @@ class TestHubAPIConnectivity(TestCase):
             conn.atomic_blocks = []
             if conn.connection is not None and conn.connection.closed:
                 conn.connection = None
-            try:
+            with contextlib.suppress(Exception):
                 conn.ensure_connection()
-            except Exception:
-                pass
         super().setUpClass()
 
     def setUp(self):
@@ -252,7 +260,6 @@ class TestHubAPIConnectivity(TestCase):
 
     def test_hub_client_can_get_config(self):
         """Test that HubClient can successfully call get_config endpoint."""
-        from django.test import LiveServerTestCase
 
         # This test requires a live server, so we'll use LiveServerTestCase pattern
         # For now, we'll test the client initialization and header generation
@@ -274,7 +281,9 @@ class TestHubAPIConnectivity(TestCase):
                 self.assertEqual(headers["X-Tenant-ID"], str(self.tenant.id))
                 self.assertEqual(headers["Content-Type"], "application/json")
             except ImportError:
-                raise unittest.SkipTest("hub_client not available (prefect-integration not in path)")
+                raise unittest.SkipTest(
+                    "hub_client not available (prefect-integration not in path)"
+                )
 
     def test_docker_compose_environment_defaults(self):
         """Test that docker-compose defaults match expected values."""

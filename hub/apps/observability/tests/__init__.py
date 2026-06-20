@@ -1,4 +1,3 @@
 """
 Observability Tests
 """
-

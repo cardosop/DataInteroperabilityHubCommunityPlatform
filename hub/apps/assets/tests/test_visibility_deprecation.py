@@ -22,15 +22,16 @@ of business logic. The only mocked surface is ``warnings.warn``
 captured via ``warnings.catch_warnings`` (stdlib), which is
 fault-injection at a Python-runtime boundary, not a business mock.
 """
+
 from __future__ import annotations
 
 import uuid
 import warnings
+from datetime import UTC
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.urls import reverse
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility
@@ -39,7 +40,6 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -77,41 +77,51 @@ class VisibilityDerivedFromStatusTest(TestCase):
     """
 
     def test_draft_asset_derives_internal(self):
-        tenant, user = _seed()
+        tenant, _user = _seed()
         asset = Asset.objects.create(
-            tenant=tenant, key=f"a-{uuid.uuid4().hex[:6]}", name="A",
+            tenant=tenant,
+            key=f"a-{uuid.uuid4().hex[:6]}",
+            name="A",
             status=AssetStatus.DRAFT,
         )
         assert asset.visibility == AssetVisibility.INTERNAL
 
     def test_active_asset_derives_internal(self):
-        tenant, user = _seed()
+        tenant, _user = _seed()
         asset = Asset.objects.create(
-            tenant=tenant, key=f"a-{uuid.uuid4().hex[:6]}", name="A",
+            tenant=tenant,
+            key=f"a-{uuid.uuid4().hex[:6]}",
+            name="A",
             status=AssetStatus.ACTIVE,
         )
         assert asset.visibility == AssetVisibility.INTERNAL
 
     def test_public_asset_derives_public(self):
-        tenant, user = _seed()
+        tenant, _user = _seed()
         asset = Asset.objects.create(
-            tenant=tenant, key=f"a-{uuid.uuid4().hex[:6]}", name="A",
+            tenant=tenant,
+            key=f"a-{uuid.uuid4().hex[:6]}",
+            name="A",
             status=AssetStatus.PUBLIC,
         )
         assert asset.visibility == AssetVisibility.PUBLIC
 
     def test_retired_asset_derives_internal(self):
-        tenant, user = _seed()
+        tenant, _user = _seed()
         asset = Asset.objects.create(
-            tenant=tenant, key=f"a-{uuid.uuid4().hex[:6]}", name="A",
+            tenant=tenant,
+            key=f"a-{uuid.uuid4().hex[:6]}",
+            name="A",
             status=AssetStatus.RETIRED,
         )
         assert asset.visibility == AssetVisibility.INTERNAL
 
     def test_status_change_flips_derived_visibility(self):
-        tenant, user = _seed()
+        tenant, _user = _seed()
         asset = Asset.objects.create(
-            tenant=tenant, key=f"a-{uuid.uuid4().hex[:6]}", name="A",
+            tenant=tenant,
+            key=f"a-{uuid.uuid4().hex[:6]}",
+            name="A",
             status=AssetStatus.ACTIVE,
         )
         assert asset.visibility == AssetVisibility.INTERNAL
@@ -136,9 +146,11 @@ class VisibilityWriteIsDeprecationOnlyTest(TestCase):
     """
 
     def test_write_emits_deprecation_warning_and_audit(self):
-        tenant, user = _seed()
+        tenant, _user = _seed()
         asset = Asset.objects.create(
-            tenant=tenant, key=f"a-{uuid.uuid4().hex[:6]}", name="A",
+            tenant=tenant,
+            key=f"a-{uuid.uuid4().hex[:6]}",
+            name="A",
             status=AssetStatus.ACTIVE,
         )
         before = AuditEvent.objects.filter(
@@ -151,9 +163,7 @@ class VisibilityWriteIsDeprecationOnlyTest(TestCase):
             warnings.simplefilter("always", DeprecationWarning)
             asset.visibility = AssetVisibility.PUBLIC
 
-        deprecation_warnings = [
-            w for w in captured if issubclass(w.category, DeprecationWarning)
-        ]
+        deprecation_warnings = [w for w in captured if issubclass(w.category, DeprecationWarning)]
         assert deprecation_warnings, "expected a DeprecationWarning on visibility write"
         assert "Asset.visibility" in str(deprecation_warnings[0].message)
 
@@ -171,9 +181,11 @@ class VisibilityWriteIsDeprecationOnlyTest(TestCase):
         # be None.
 
     def test_write_is_silently_ignored_for_derived_value(self):
-        tenant, user = _seed()
+        tenant, _user = _seed()
         asset = Asset.objects.create(
-            tenant=tenant, key=f"a-{uuid.uuid4().hex[:6]}", name="A",
+            tenant=tenant,
+            key=f"a-{uuid.uuid4().hex[:6]}",
+            name="A",
             status=AssetStatus.ACTIVE,
         )
         with warnings.catch_warnings():
@@ -188,7 +200,7 @@ class VisibilityWriteIsDeprecationOnlyTest(TestCase):
         backwards compat with pre-phase-1 callers. The kwarg is
         absorbed, the deprecation signals fire, and the asset is
         created with the status-derived visibility."""
-        tenant, user = _seed()
+        tenant, _user = _seed()
         with warnings.catch_warnings(record=True) as captured:
             warnings.simplefilter("always", DeprecationWarning)
             asset = Asset.objects.create(
@@ -203,9 +215,7 @@ class VisibilityWriteIsDeprecationOnlyTest(TestCase):
         # Derived visibility ignored the kwarg.
         assert asset.visibility == AssetVisibility.INTERNAL
         # Deprecation signal fired.
-        deprecation_warnings = [
-            w for w in captured if issubclass(w.category, DeprecationWarning)
-        ]
+        deprecation_warnings = [w for w in captured if issubclass(w.category, DeprecationWarning)]
         assert deprecation_warnings
 
 
@@ -224,8 +234,19 @@ class PatchEndpointIgnoresVisibilityTest(TestCase):
     def setUp(self):
         self.tenant, self.user = _seed()
         # Promote to a role allowed to PATCH assets.
-        from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role, ensure_user_has_data_provider_role
-        from hub.apps.contracts.models import Contract, ContractStatus, NormalizationStatus, OriginalFormat, OriginalSpecType, ValidationStatus
+        from hub.apps.contracts.models import (
+            Contract,
+            ContractStatus,
+            NormalizationStatus,
+            OriginalFormat,
+            OriginalSpecType,
+            ValidationStatus,
+        )
+        from hub.apps.testing.role_support import (
+            ensure_user_has_data_provider_role,
+            ensure_user_has_tenant_admin_role,
+        )
+
         ensure_user_has_tenant_admin_role(self.user)
         ensure_user_has_data_provider_role(self.user)
         self.client = APIClient()
@@ -242,7 +263,8 @@ class PatchEndpointIgnoresVisibilityTest(TestCase):
         # silently ignored — so we plant a minimal contract to satisfy
         # the model invariant.
         Contract.objects.create(
-            tenant=self.tenant, asset=self.asset,
+            tenant=self.tenant,
+            asset=self.asset,
             status=ContractStatus.ACTIVE,
             validation_status=ValidationStatus.VALID,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
@@ -250,7 +272,7 @@ class PatchEndpointIgnoresVisibilityTest(TestCase):
             original_spec_version="3.0.0",
             original_format=OriginalFormat.JSON,
             original_raw='{"id":"test","schema":{"fields":[{"name":"id","type":"string"}]}}',
-            hub_contract_json={"schema":{"fields":[{"name":"id","type":"string"}]}},
+            hub_contract_json={"schema": {"fields": [{"name": "id", "type": "string"}]}},
             created_by=self.user,
         )
 
@@ -308,7 +330,11 @@ class PostEndpointAcceptsVisibilityForBackcompatTest(TestCase):
 
     def setUp(self):
         self.tenant, self.user = _seed()
-        from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role, ensure_user_has_data_provider_role
+        from hub.apps.testing.role_support import (
+            ensure_user_has_data_provider_role,
+            ensure_user_has_tenant_admin_role,
+        )
+
         ensure_user_has_tenant_admin_role(self.user)
         ensure_user_has_data_provider_role(self.user)
         self.client = APIClient()
@@ -354,6 +380,7 @@ class AssetEndpointDeprecationHeadersTest(TestCase):
     def setUp(self):
         self.tenant, self.user = _seed()
         from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
+
         ensure_user_has_tenant_admin_role(self.user)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
@@ -369,16 +396,15 @@ class AssetEndpointDeprecationHeadersTest(TestCase):
         assert "GMT" in resp["Sunset"]
 
     def test_assets_list_carries_no_cache_during_window(self):
+        from datetime import datetime, timedelta
+
         from django.test import override_settings
-        from datetime import datetime, timezone, timedelta
 
         # The window-end is far in the future for this test so the
         # no-cache header is guaranteed active regardless of when
         # the suite runs.
-        future = datetime.now(timezone.utc) + timedelta(days=30)
-        with override_settings(
-            ASSET_VISIBILITY_DEPRECATION_NO_CACHE_UNTIL=future
-        ):
+        future = datetime.now(UTC) + timedelta(days=30)
+        with override_settings(ASSET_VISIBILITY_DEPRECATION_NO_CACHE_UNTIL=future):
             resp = self.client.get("/api/v1/assets/")
         assert "Cache-Control" in resp
         cc = resp["Cache-Control"]

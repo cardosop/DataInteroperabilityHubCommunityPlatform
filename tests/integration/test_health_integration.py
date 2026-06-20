@@ -36,8 +36,10 @@ class HealthIntegrationTest(TestCase):
         self.anon_client = APIClient()
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name=f"T {uid}", slug=f"t-hi-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"T {uid}",
+            slug=f"t-hi-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         user = User.objects.create_user(
             email=f"hi-{uid}@example.com",
@@ -57,7 +59,8 @@ class HealthIntegrationTest(TestCase):
             msg="Health endpoint must return 200 or 503",
         )
         self.assertEqual(
-            response.get("Content-Type", ""), "application/json",
+            response.get("Content-Type", ""),
+            "application/json",
         )
         data = response.json()
         self.assertIn("status", data)

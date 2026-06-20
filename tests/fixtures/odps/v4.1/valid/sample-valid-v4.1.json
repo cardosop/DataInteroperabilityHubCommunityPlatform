@@ -17,6 +17,12 @@
     "contract": {
       "contractURL": "https://example.com/contracts/sample-product-v4.1"
     },
+    "dataSchema": {
+      "fields": [
+        {"name": "id", "type": "string"},
+        {"name": "name", "type": "string"}
+      ]
+    },
     "dataQuality": {
       "qualityScore": 95,
       "completeness": 0.98,

@@ -35,6 +35,7 @@ class InjectionTestBase(TestCase):
             status=UserStatus.ACTIVE,
         )
         UserTenantMembership.objects.get_or_create(
-            user=self.user, tenant=self.tenant,
+            user=self.user,
+            tenant=self.tenant,
         )
         self.client.force_authenticate(user=self.user)

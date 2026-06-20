@@ -11,7 +11,7 @@ import os
 import re
 import sys
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -66,10 +66,8 @@ def _read_stats(database_url: str, limit: int) -> list[QueryStat]:
 def snapshot(database_url: str, output_path: Path, limit: int) -> int:
     stats = _read_stats(database_url, limit=limit)
     payload = {
-        "captured_at_utc": datetime.now(timezone.utc).isoformat(),
-        "database_url_hint": (
-            database_url.split("@")[-1] if "@" in database_url else "local"
-        ),
+        "captured_at_utc": datetime.now(UTC).isoformat(),
+        "database_url_hint": (database_url.split("@")[-1] if "@" in database_url else "local"),
         "top_n": limit,
         "query_count": len(stats),
         "queries": [asdict(item) for item in stats],
@@ -84,16 +82,14 @@ def snapshot(database_url: str, output_path: Path, limit: int) -> int:
 
 
 def _load_snapshot(path: Path) -> dict[str, Any]:
-    return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
+    return cast("dict[str, Any]", json.loads(path.read_text(encoding="utf-8")))
 
 
 def compare(baseline_path: Path, current_path: Path, threshold_pct: float) -> int:
     baseline = _load_snapshot(baseline_path)
     current = _load_snapshot(current_path)
 
-    baseline_by_id = {
-        str(item["queryid"]): item for item in baseline.get("queries", [])
-    }
+    baseline_by_id = {str(item["queryid"]): item for item in baseline.get("queries", [])}
     regressions: list[dict[str, Any]] = []
 
     for row in current.get("queries", []):
@@ -134,18 +130,13 @@ def compare(baseline_path: Path, current_path: Path, threshold_pct: float) -> in
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="assets RLS pg_stat_statements helper"
-    )
+    parser = argparse.ArgumentParser(description="assets RLS pg_stat_statements helper")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     snap = sub.add_parser("snapshot", help="capture top assets query stats")
     snap.add_argument(
         "--database-url",
-        default=(
-            os.getenv("DATABASE_URL_ADMIN")
-            or os.getenv("DATABASE_URL")
-        ),
+        default=(os.getenv("DATABASE_URL_ADMIN") or os.getenv("DATABASE_URL")),
     )
     snap.add_argument("--output", required=True)
     snap.add_argument("--limit", type=int, default=20)
@@ -165,8 +156,7 @@ def main() -> int:
     if args.cmd == "snapshot":
         if not args.database_url:
             parser.error(
-                "snapshot requires --database-url or "
-                "DATABASE_URL_ADMIN/DATABASE_URL env var"
+                "snapshot requires --database-url or DATABASE_URL_ADMIN/DATABASE_URL env var"
             )
         return snapshot(args.database_url, Path(args.output), args.limit)
 

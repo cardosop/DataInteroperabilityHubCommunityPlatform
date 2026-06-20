@@ -5,7 +5,9 @@ Opened via ``report_presigned_url`` embedded in the ``compliance.completed`` web
 """
 
 from __future__ import annotations
-from typing import ClassVar, Sequence, Type
+
+from collections.abc import Sequence
+from typing import ClassVar
 
 from django.core.signing import BadSignature
 from rest_framework.authentication import BaseAuthentication
@@ -34,11 +36,9 @@ class ComplianceWebhookReportSummaryView(APIView):
     Response mirrors the webhook ``data`` envelope (whitelist fields only).
     """
 
-    authentication_classes: ClassVar[Sequence[Type[BaseAuthentication]]] = ()
+    authentication_classes: ClassVar[Sequence[type[BaseAuthentication]]] = ()
     permission_classes: ClassVar[Sequence[type]] = (AllowAny,)
-    throttle_classes: ClassVar[Sequence[type]] = (
-        ComplianceWebhookReportSummaryThrottle,
-    )
+    throttle_classes: ClassVar[Sequence[type]] = (ComplianceWebhookReportSummaryThrottle,)
 
     def get(self, request, *_args, **_kwargs):
         raw = request.query_params.get("token") or ""

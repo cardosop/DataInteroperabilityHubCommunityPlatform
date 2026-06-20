@@ -5,8 +5,9 @@ Service layer for scheduled export operations.
 All create/update paths call ScheduledExportBusinessRules before mutation.
 """
 
+import contextlib
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from django.db import transaction
 
@@ -38,7 +39,7 @@ class ScheduledExportService(BaseService):
 
     service_name = "scheduled_export_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize ScheduledExportService.
 
@@ -53,13 +54,13 @@ class ScheduledExportService(BaseService):
     def process_export_item(
         self,
         run_id: str,
-        dataset_id: Optional[str] = None,
-        file_id: Optional[str] = None,
-        destination_path: Optional[str] = None,
-        destination_options: Optional[Dict[str, Any]] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        dataset_id: str | None = None,
+        file_id: str | None = None,
+        destination_path: str | None = None,
+        destination_options: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Process a single export item (dataset or file) for a scheduled export run.
 
@@ -328,9 +329,9 @@ class ScheduledExportService(BaseService):
         created_by,
         name: str,
         destination_type: str,
-        destination_config: Dict[str, Any],
-        schedule_config: Dict[str, Any],
-        source_scope: Dict[str, Any],
+        destination_config: dict[str, Any],
+        schedule_config: dict[str, Any],
+        source_scope: dict[str, Any],
         **kwargs,
     ) -> ScheduledExport:
         """
@@ -418,14 +419,14 @@ class ScheduledExportService(BaseService):
     def update_scheduled_export(
         self,
         scheduled_export_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        name: Optional[str] = None,
-        destination_type: Optional[str] = None,
-        destination_config: Optional[Dict[str, Any]] = None,
-        schedule_config: Optional[Dict[str, Any]] = None,
-        source_scope: Optional[Dict[str, Any]] = None,
-        status: Optional[str] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        name: str | None = None,
+        destination_type: str | None = None,
+        destination_config: dict[str, Any] | None = None,
+        schedule_config: dict[str, Any] | None = None,
+        source_scope: dict[str, Any] | None = None,
+        status: str | None = None,
         **kwargs,
     ) -> ScheduledExport:
         """
@@ -467,10 +468,8 @@ class ScheduledExportService(BaseService):
         if user_id:
             from hub.apps.users.models import User
 
-            try:
+            with contextlib.suppress(User.DoesNotExist):
                 user = User.objects.get(id=user_id, tenant_id=effective_tenant_id)
-            except User.DoesNotExist:
-                pass
 
         # Get tenant
         from hub.apps.tenants.models import Tenant
@@ -545,8 +544,8 @@ class ScheduledExportService(BaseService):
     def delete_scheduled_export(
         self,
         scheduled_export_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
     ) -> None:
         """
         Delete a scheduled export.
@@ -575,10 +574,8 @@ class ScheduledExportService(BaseService):
         if user_id:
             from hub.apps.users.models import User
 
-            try:
+            with contextlib.suppress(User.DoesNotExist):
                 user = User.objects.get(id=user_id, tenant_id=effective_tenant_id)
-            except User.DoesNotExist:
-                pass
 
         # Get tenant
         from hub.apps.tenants.models import Tenant
@@ -605,10 +602,10 @@ class ScheduledExportService(BaseService):
     def create_export_run(
         self,
         scheduled_export_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        prefect_flow_run_id: Optional[str] = None,
-        idempotency_key: Optional[str] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        prefect_flow_run_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> ScheduledExportRun:
         """
         Create a scheduled export run. Used by internal API.
@@ -683,15 +680,15 @@ class ScheduledExportService(BaseService):
     def update_export_run(
         self,
         run_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        status: Optional[str] = None,
-        items_found: Optional[int] = None,
-        items_exported: Optional[int] = None,
-        items_failed: Optional[int] = None,
-        result_json: Optional[Dict[str, Any]] = None,
-        completed_at: Optional[str] = None,
-        prefect_flow_run_id: Optional[str] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        status: str | None = None,
+        items_found: int | None = None,
+        items_exported: int | None = None,
+        items_failed: int | None = None,
+        result_json: dict[str, Any] | None = None,
+        completed_at: str | None = None,
+        prefect_flow_run_id: str | None = None,
     ) -> ScheduledExportRun:
         """
         Update a scheduled export run. Used by internal API.

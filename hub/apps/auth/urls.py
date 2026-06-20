@@ -1,27 +1,29 @@
 """
 Authentication URL Configuration
 """
-from django.urls import path, include
+
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
+
+from .sso_views import SSOViewSet
 from .views import (
-    login,
-    refresh_token,
-    logout,
-    password_reset_request,
-    password_reset_confirm,
-    verify_email,
-    resend_verification_email,
-    accept_invitation,
-    register,
-    me,
-    me_tenants,
-    switch_tenant,
     APIKeyViewSet,
+    accept_invitation,
     end_all_other_sessions,
     list_active_sessions,
+    login,
+    logout,
+    me,
+    me_tenants,
+    password_reset_confirm,
+    password_reset_request,
+    refresh_token,
+    register,
+    resend_verification_email,
     revoke_session,
+    switch_tenant,
+    verify_email,
 )
-from .sso_views import SSOViewSet
 
 router = DefaultRouter()
 router.register(r"api-keys", APIKeyViewSet, basename="api-key")
@@ -45,4 +47,3 @@ urlpatterns = [
     path("sessions/<uuid:session_id>/revoke/", revoke_session, name="revoke-session"),
     path("", include(router.urls)),
 ]
-

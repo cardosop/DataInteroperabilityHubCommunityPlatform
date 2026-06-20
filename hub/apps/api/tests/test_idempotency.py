@@ -11,44 +11,44 @@ Tests cover:
 
 All tests use real Redis connections - no mocks or stubs.
 """
+
 import json
-import time
 import uuid
-from datetime import datetime, timedelta, timezone
-from unittest.mock import Mock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, Mock, patch
 
 try:
     import pytest
+
     pytestmark = pytest.mark.django_db(transaction=True)
 except ImportError:
     # Fallback if pytest is not available
     pytestmark = None
 
 import redis
-from django.test import TestCase, RequestFactory, override_settings
-from django.http import HttpResponse, JsonResponse
 from django.conf import settings
+from django.http import HttpResponse, JsonResponse
+from django.test import RequestFactory, TestCase, override_settings
 
 from hub.apps.api.middleware.idempotency import IdempotencyMiddleware
 from hub.apps.api.middleware.idempotency_utils import (
-    validate_idempotency_key,
-    normalize_idempotency_key,
-    get_redis_client,
+    IdempotencyKeyFormatError,
+    acquire_lock,
     build_idempotency_key,
     build_lock_key,
-    hash_request_body,
-    serialize_response,
     deserialize_response,
-    store_idempotency_record,
-    get_idempotency_record,
-    check_idempotency_key_expired,
-    acquire_lock,
-    release_lock,
-    get_idempotency_ttl,
-    is_idempotency_enabled,
-    should_process_idempotency,
     get_endpoint_pattern,
-    IdempotencyKeyFormatError,
+    get_idempotency_record,
+    get_idempotency_ttl,
+    get_redis_client,
+    hash_request_body,
+    is_idempotency_enabled,
+    normalize_idempotency_key,
+    release_lock,
+    serialize_response,
+    should_process_idempotency,
+    store_idempotency_record,
+    validate_idempotency_key,
 )
 
 
@@ -58,12 +58,14 @@ def get_real_redis_client_or_skip():
         return get_redis_client()
     except (redis.ConnectionError, Exception) as e:
         import unittest
+
         raise unittest.SkipTest(f"Redis not available: {e}")
 
 
 # ============================================================================
 # Idempotency Key Validation Tests
 # ============================================================================
+
 
 class TestIdempotencyKeyValidation(TestCase):
     """Test idempotency key validation."""
@@ -125,35 +127,23 @@ class TestIdempotencyKeyValidation(TestCase):
 # Redis Key Building Tests
 # ============================================================================
 
+
 class TestRedisKeyBuilding(TestCase):
     """Test Redis key building functions."""
 
     def test_build_idempotency_key_basic(self):
         """Test building basic idempotency key."""
-        key = build_idempotency_key(
-            "test-key",
-            "/api/v1/assets/",
-            "POST"
-        )
+        key = build_idempotency_key("test-key", "/api/v1/assets/", "POST")
         self.assertEqual(key, "idempotency:test-key:POST:/api/v1/assets")
 
     def test_build_idempotency_key_with_tenant(self):
         """Test building idempotency key with tenant."""
-        key = build_idempotency_key(
-            "test-key",
-            "/api/v1/assets/",
-            "POST",
-            tenant_id="tenant-123"
-        )
+        key = build_idempotency_key("test-key", "/api/v1/assets/", "POST", tenant_id="tenant-123")
         self.assertEqual(key, "idempotency:test-key:POST:/api/v1/assets:tenant-123")
 
     def test_build_idempotency_key_normalizes_endpoint(self):
         """Test building key normalizes endpoint."""
-        key = build_idempotency_key(
-            "test-key",
-            "/api/v1/assets///",
-            "POST"
-        )
+        key = build_idempotency_key("test-key", "/api/v1/assets///", "POST")
         self.assertEqual(key, "idempotency:test-key:POST:/api/v1/assets")
 
     def test_build_lock_key(self):
@@ -166,6 +156,7 @@ class TestRedisKeyBuilding(TestCase):
 # ============================================================================
 # Request/Response Serialization Tests
 # ============================================================================
+
 
 class TestRequestResponseSerialization(TestCase):
     """Test request/response serialization."""
@@ -202,39 +193,40 @@ class TestRequestResponseSerialization(TestCase):
         response = JsonResponse({"id": "123", "name": "test"}, status=201)
         serialized = serialize_response(response)
 
-        self.assertEqual(serialized['status_code'], 201)
-        self.assertEqual(serialized['body']['id'], "123")
-        self.assertEqual(serialized['body']['name'], "test")
-        self.assertIn('timestamp', serialized)
+        self.assertEqual(serialized["status_code"], 201)
+        self.assertEqual(serialized["body"]["id"], "123")
+        self.assertEqual(serialized["body"]["name"], "test")
+        self.assertIn("timestamp", serialized)
 
     def test_serialize_response_excludes_sensitive_headers(self):
         """Test serialization excludes sensitive headers."""
         response = HttpResponse()
-        response['Content-Length'] = '100'
-        response['X-Custom-Header'] = 'value'
+        response["Content-Length"] = "100"
+        response["X-Custom-Header"] = "value"
 
         serialized = serialize_response(response)
-        self.assertNotIn('content-length', serialized['headers'])
-        self.assertIn('X-Custom-Header', serialized['headers'])
+        self.assertNotIn("content-length", serialized["headers"])
+        self.assertIn("X-Custom-Header", serialized["headers"])
 
     def test_deserialize_response(self):
         """Test deserializing stored response."""
         data = {
-            'status_code': 201,
-            'body': {'id': '123'},
-            'headers': {'X-Custom': 'value'},
-            'timestamp': datetime.now(timezone.utc).isoformat()
+            "status_code": 201,
+            "body": {"id": "123"},
+            "headers": {"X-Custom": "value"},
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         status_code, body, headers = deserialize_response(data)
 
         self.assertEqual(status_code, 201)
-        self.assertEqual(body['id'], '123')
-        self.assertEqual(headers['X-Custom'], 'value')
+        self.assertEqual(body["id"], "123")
+        self.assertEqual(headers["X-Custom"], "value")
 
 
 # ============================================================================
 # Redis Operations Tests (Real Redis)
 # ============================================================================
+
 
 class TestRedisOperations(TestCase):
     """Test Redis operations for idempotency with real Redis."""
@@ -255,26 +247,20 @@ class TestRedisOperations(TestCase):
         redis_key = f"test:idempotency:{uuid.uuid4()}"
         request_hash = "abc123"
         response_data = {
-            'status_code': 201,
-            'body': {'id': '123'},
-            'headers': {},
-            'timestamp': datetime.now(timezone.utc).isoformat()
+            "status_code": 201,
+            "body": {"id": "123"},
+            "headers": {},
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
         # Store record
-        store_idempotency_record(
-            redis_client,
-            redis_key,
-            request_hash,
-            response_data,
-            ttl=3600
-        )
+        store_idempotency_record(redis_client, redis_key, request_hash, response_data, ttl=3600)
 
         # Retrieve record
         record = get_idempotency_record(redis_client, redis_key)
         self.assertIsNotNone(record)
-        self.assertEqual(record['request_hash'], request_hash)
-        self.assertEqual(record['response'], response_data)
+        self.assertEqual(record["request_hash"], request_hash)
+        self.assertEqual(record["response"], response_data)
 
         # Cleanup
         redis_client.delete(redis_key)
@@ -303,6 +289,7 @@ class TestRedisOperations(TestCase):
 # ============================================================================
 # Lock Operations Tests (Real Redis)
 # ============================================================================
+
 
 class TestLockOperations(TestCase):
     """Test distributed lock operations with real Redis."""
@@ -358,6 +345,7 @@ class TestLockOperations(TestCase):
 # Configuration Tests
 # ============================================================================
 
+
 class TestConfiguration(TestCase):
     """Test configuration functions."""
 
@@ -371,18 +359,18 @@ class TestConfiguration(TestCase):
         """Test getting default TTL."""
         # Test default when setting is not present
         # We need to temporarily remove the setting
-        from django.conf import settings
-        original_value = getattr(settings, 'IDEMPOTENCY_TTL_SECONDS', None)
+
+        original_value = getattr(settings, "IDEMPOTENCY_TTL_SECONDS", None)
         try:
             # Remove the setting temporarily
-            if hasattr(settings, 'IDEMPOTENCY_TTL_SECONDS'):
-                delattr(settings, 'IDEMPOTENCY_TTL_SECONDS')
+            if hasattr(settings, "IDEMPOTENCY_TTL_SECONDS"):
+                delattr(settings, "IDEMPOTENCY_TTL_SECONDS")
             ttl = get_idempotency_ttl()
             self.assertEqual(ttl, 86400)  # 24 hours default
         finally:
             # Restore original setting
             if original_value is not None:
-                setattr(settings, 'IDEMPOTENCY_TTL_SECONDS', original_value)
+                settings.IDEMPOTENCY_TTL_SECONDS = original_value
 
     @override_settings(IDEMPOTENCY_ENABLED=True)
     def test_is_idempotency_enabled_true(self):
@@ -399,6 +387,7 @@ class TestConfiguration(TestCase):
 # Request Processing Tests
 # ============================================================================
 
+
 class TestRequestProcessing(TestCase):
     """Test request processing logic."""
 
@@ -409,27 +398,21 @@ class TestRequestProcessing(TestCase):
     def test_should_process_idempotency_post_with_key(self):
         """Test should process POST request with idempotency key."""
         request = self.factory.post(
-            "/api/v1/assets/",
-            data={"name": "test"},
-            HTTP_IDEMPOTENCY_KEY="test-key"
+            "/api/v1/assets/", data={"name": "test"}, HTTP_IDEMPOTENCY_KEY="test-key"
         )
         self.assertTrue(should_process_idempotency(request))
 
     def test_should_process_idempotency_put_with_key(self):
         """Test should process PUT request with idempotency key."""
         request = self.factory.put(
-            "/api/v1/assets/123/",
-            data={"name": "test"},
-            HTTP_IDEMPOTENCY_KEY="test-key"
+            "/api/v1/assets/123/", data={"name": "test"}, HTTP_IDEMPOTENCY_KEY="test-key"
         )
         self.assertTrue(should_process_idempotency(request))
 
     def test_should_process_idempotency_patch_with_key(self):
         """Test should process PATCH request with idempotency key."""
         request = self.factory.patch(
-            "/api/v1/assets/123/",
-            data={"name": "test"},
-            HTTP_IDEMPOTENCY_KEY="test-key"
+            "/api/v1/assets/123/", data={"name": "test"}, HTTP_IDEMPOTENCY_KEY="test-key"
         )
         self.assertTrue(should_process_idempotency(request))
 
@@ -446,9 +429,7 @@ class TestRequestProcessing(TestCase):
     def test_should_not_process_non_api_endpoint(self):
         """Test should not process non-API endpoint."""
         request = self.factory.post(
-            "/admin/login/",
-            data={"username": "test"},
-            HTTP_IDEMPOTENCY_KEY="test-key"
+            "/admin/login/", data={"username": "test"}, HTTP_IDEMPOTENCY_KEY="test-key"
         )
         self.assertFalse(should_process_idempotency(request))
 
@@ -456,9 +437,7 @@ class TestRequestProcessing(TestCase):
     def test_should_not_process_when_disabled(self):
         """Test should not process when idempotency is disabled."""
         request = self.factory.post(
-            "/api/v1/assets/",
-            data={"name": "test"},
-            HTTP_IDEMPOTENCY_KEY="test-key"
+            "/api/v1/assets/", data={"name": "test"}, HTTP_IDEMPOTENCY_KEY="test-key"
         )
         self.assertFalse(should_process_idempotency(request))
 
@@ -474,6 +453,7 @@ class TestRequestProcessing(TestCase):
 # ============================================================================
 # Middleware Integration Tests (Real Redis)
 # ============================================================================
+
 
 class TestIdempotencyMiddleware(TestCase):
     """Test idempotency middleware integration with real Redis."""
@@ -493,21 +473,17 @@ class TestIdempotencyMiddleware(TestCase):
             "/api/v1/assets/",
             data=json.dumps({"name": "test"}),
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=idempotency_key
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
         )
 
         response = middleware(request)
 
         # Should process request normally
         self.assertEqual(response.status_code, 201)
-        self.assertIn('Idempotency-Key', response)
+        self.assertIn("Idempotency-Key", response)
 
         # Cleanup
-        redis_key = build_idempotency_key(
-            idempotency_key,
-            "/api/v1/assets",
-            "POST"
-        )
+        redis_key = build_idempotency_key(idempotency_key, "/api/v1/assets", "POST")
         redis_client.delete(redis_key)
 
     def test_middleware_returns_cached_response(self):
@@ -519,23 +495,15 @@ class TestIdempotencyMiddleware(TestCase):
         request_hash = hash_request_body(request_body)
 
         # Pre-store cached response
-        redis_key = build_idempotency_key(
-            idempotency_key,
-            "/api/v1/assets",
-            "POST"
-        )
+        redis_key = build_idempotency_key(idempotency_key, "/api/v1/assets", "POST")
         cached_response_data = {
-            'status_code': 201,
-            'body': {'id': 'cached-123'},
-            'headers': {},
-            'timestamp': datetime.now(timezone.utc).isoformat()
+            "status_code": 201,
+            "body": {"id": "cached-123"},
+            "headers": {},
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         store_idempotency_record(
-            redis_client,
-            redis_key,
-            request_hash,
-            cached_response_data,
-            ttl=60
+            redis_client, redis_key, request_hash, cached_response_data, ttl=60
         )
 
         middleware = IdempotencyMiddleware(self.get_response)
@@ -543,7 +511,7 @@ class TestIdempotencyMiddleware(TestCase):
             "/api/v1/assets/",
             data=request_body,
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=idempotency_key
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
         )
 
         response = middleware(request)
@@ -551,9 +519,9 @@ class TestIdempotencyMiddleware(TestCase):
         # Should return cached response
         self.assertEqual(response.status_code, 201)
         response_data = json.loads(response.content)
-        self.assertEqual(response_data['id'], 'cached-123')
-        self.assertIn('Idempotency-Replayed', response)
-        self.assertEqual(response['Idempotency-Replayed'], 'true')
+        self.assertEqual(response_data["id"], "cached-123")
+        self.assertIn("Idempotency-Replayed", response)
+        self.assertEqual(response["Idempotency-Replayed"], "true")
 
         # Cleanup
         redis_client.delete(redis_key)
@@ -562,9 +530,7 @@ class TestIdempotencyMiddleware(TestCase):
         """Test middleware skips non-API endpoints."""
         middleware = IdempotencyMiddleware(self.get_response)
         request = self.factory.post(
-            "/admin/login/",
-            data={"username": "test"},
-            HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4())
+            "/admin/login/", data={"username": "test"}, HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4())
         )
 
         response = middleware(request)
@@ -572,7 +538,7 @@ class TestIdempotencyMiddleware(TestCase):
         # Should process normally (not idempotency processed)
         self.assertEqual(response.status_code, 201)
         # Should not have Idempotency-Replayed header
-        self.assertNotIn('Idempotency-Replayed', response)
+        self.assertNotIn("Idempotency-Replayed", response)
 
     def test_middleware_handles_invalid_key_format(self):
         """Test middleware handles invalid idempotency key format."""
@@ -581,7 +547,7 @@ class TestIdempotencyMiddleware(TestCase):
             "/api/v1/assets/",
             data={"name": "test"},
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY="invalid key format"
+            HTTP_IDEMPOTENCY_KEY="invalid key format",
         )
 
         response = middleware(request)
@@ -589,9 +555,9 @@ class TestIdempotencyMiddleware(TestCase):
         # Should return 400 error
         self.assertEqual(response.status_code, 400)
         response_data = json.loads(response.content)
-        self.assertIn('error', response_data)
+        self.assertIn("error", response_data)
 
-    @override_settings(REDIS_URL='redis://invalid-host:6379/0')
+    @override_settings(REDIS_URL="redis://invalid-host:6379/0")
     def test_middleware_handles_redis_connection_error(self):
         """Test middleware handles Redis connection errors gracefully."""
         middleware = IdempotencyMiddleware(self.get_response)
@@ -599,17 +565,19 @@ class TestIdempotencyMiddleware(TestCase):
             "/api/v1/assets/",
             data={"name": "test"},
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4())
+            HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()),
         )
 
         # Should fail open and process request normally
         response = middleware(request)
         self.assertEqual(response.status_code, 201)
 
-    @patch('hub.apps.api.middleware.idempotency.get_redis_client')
-    @patch('hub.apps.api.middleware.idempotency_utils.acquire_lock')
-    @patch('hub.apps.api.middleware.idempotency_utils.release_lock')
-    def test_middleware_adds_idempotency_key_header_for_new_request(self, mock_release_lock, mock_acquire_lock, mock_get_redis):
+    @patch("hub.apps.api.middleware.idempotency.get_redis_client")
+    @patch("hub.apps.api.middleware.idempotency_utils.acquire_lock")
+    @patch("hub.apps.api.middleware.idempotency_utils.release_lock")
+    def test_middleware_adds_idempotency_key_header_for_new_request(
+        self, mock_release_lock, mock_acquire_lock, mock_get_redis
+    ):
         """Test middleware adds Idempotency-Key header to response for new request."""
         idempotency_key = str(uuid.uuid4())
 
@@ -626,31 +594,31 @@ class TestIdempotencyMiddleware(TestCase):
             "/api/v1/assets/",
             data=json.dumps({"name": "test"}),
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=idempotency_key
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
         )
 
         response = middleware(request)
 
         # Should have Idempotency-Key header
-        self.assertIn('Idempotency-Key', response)
-        self.assertEqual(response['Idempotency-Key'], idempotency_key)
+        self.assertIn("Idempotency-Key", response)
+        self.assertEqual(response["Idempotency-Key"], idempotency_key)
         # Should NOT have Idempotency-Replayed header for new request
-        self.assertNotIn('Idempotency-Replayed', response)
+        self.assertNotIn("Idempotency-Replayed", response)
 
-    @patch('hub.apps.api.middleware.idempotency.get_redis_client')
+    @patch("hub.apps.api.middleware.idempotency.get_redis_client")
     def test_middleware_adds_idempotency_replayed_header_for_cached_response(self, mock_get_redis):
         """Test middleware adds Idempotency-Replayed header when returning cached response."""
         idempotency_key = str(uuid.uuid4())
         request_hash = hash_request_body({"name": "test"})
         cached_response = {
-            'request_hash': request_hash,
-            'response': {
-                'status_code': 201,
-                'body': {'id': 'cached-123'},
-                'headers': {},
-                'timestamp': datetime.now(timezone.utc).isoformat()
+            "request_hash": request_hash,
+            "response": {
+                "status_code": 201,
+                "body": {"id": "cached-123"},
+                "headers": {},
+                "timestamp": datetime.now(UTC).isoformat(),
             },
-            'created_at': datetime.now(timezone.utc).isoformat()
+            "created_at": datetime.now(UTC).isoformat(),
         }
 
         mock_redis = MagicMock()
@@ -663,20 +631,20 @@ class TestIdempotencyMiddleware(TestCase):
             "/api/v1/assets/",
             data=json.dumps({"name": "test"}),
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=idempotency_key
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
         )
 
         response = middleware(request)
 
         # Should have both headers for cached response
-        self.assertIn('Idempotency-Key', response)
-        self.assertEqual(response['Idempotency-Key'], idempotency_key)
-        self.assertIn('Idempotency-Replayed', response)
-        self.assertEqual(response['Idempotency-Replayed'], 'true')
+        self.assertIn("Idempotency-Key", response)
+        self.assertEqual(response["Idempotency-Key"], idempotency_key)
+        self.assertIn("Idempotency-Replayed", response)
+        self.assertEqual(response["Idempotency-Replayed"], "true")
         # Should not call get_response for cached response
         get_response.assert_not_called()
 
-    @patch('hub.apps.api.middleware.idempotency.get_redis_client')
+    @patch("hub.apps.api.middleware.idempotency.get_redis_client")
     def test_middleware_adds_idempotency_key_header_on_conflict_error(self, mock_get_redis):
         """Test middleware adds Idempotency-Key header even on conflict error."""
         idempotency_key = str(uuid.uuid4())
@@ -685,14 +653,14 @@ class TestIdempotencyMiddleware(TestCase):
         original_body = {"name": "original"}
         existing_hash = hash_request_body(original_body)
         cached_response = {
-            'request_hash': existing_hash,
-            'response': {
-                'status_code': 201,
-                'body': {'id': 'existing'},
-                'headers': {},
-                'timestamp': datetime.now(timezone.utc).isoformat()
+            "request_hash": existing_hash,
+            "response": {
+                "status_code": 201,
+                "body": {"id": "existing"},
+                "headers": {},
+                "timestamp": datetime.now(UTC).isoformat(),
             },
-            'created_at': datetime.now(timezone.utc).isoformat()
+            "created_at": datetime.now(UTC).isoformat(),
         }
 
         mock_redis = MagicMock()
@@ -707,7 +675,7 @@ class TestIdempotencyMiddleware(TestCase):
             "/api/v1/assets/",
             data=json.dumps({"name": "different"}),
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=idempotency_key
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
         )
 
         response = middleware(request)
@@ -715,14 +683,14 @@ class TestIdempotencyMiddleware(TestCase):
         # Should return 409 conflict
         self.assertEqual(response.status_code, 409)
         # Should still include Idempotency-Key header
-        self.assertIn('Idempotency-Key', response)
-        self.assertEqual(response['Idempotency-Key'], idempotency_key)
+        self.assertIn("Idempotency-Key", response)
+        self.assertEqual(response["Idempotency-Key"], idempotency_key)
         # Should NOT have Idempotency-Replayed header for conflict
-        self.assertNotIn('Idempotency-Replayed', response)
+        self.assertNotIn("Idempotency-Replayed", response)
         # Should not call get_response for conflict error
         get_response.assert_not_called()
 
-    @patch('hub.apps.api.middleware.idempotency.get_redis_client')
+    @patch("hub.apps.api.middleware.idempotency.get_redis_client")
     def test_middleware_adds_idempotency_key_header_on_invalid_key_error(self, mock_get_redis):
         """Test middleware error response for invalid idempotency key format."""
         middleware = IdempotencyMiddleware(self.get_response)
@@ -731,7 +699,7 @@ class TestIdempotencyMiddleware(TestCase):
             "/api/v1/assets/",
             data=json.dumps({"name": "test"}),
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=invalid_key
+            HTTP_IDEMPOTENCY_KEY=invalid_key,
         )
 
         response = middleware(request)
@@ -739,14 +707,15 @@ class TestIdempotencyMiddleware(TestCase):
         # Should return 400 error
         self.assertEqual(response.status_code, 400)
         response_data = json.loads(response.content)
-        self.assertIn('error', response_data)
+        self.assertIn("error", response_data)
         # Error should reference idempotency
-        self.assertIn('idempotency', response_data['error']['message'].lower())
+        self.assertIn("idempotency", response_data["error"]["message"].lower())
 
 
 # ============================================================================
 # Edge Cases and Error Handling Tests
 # ============================================================================
+
 
 class TestEdgeCases(TestCase):
     """Test edge cases and error handling."""
@@ -763,16 +732,16 @@ class TestEdgeCases(TestCase):
 
     def test_serialize_response_with_binary_content(self):
         """Test serializing response with binary content."""
-        response = HttpResponse(b'\x00\x01\x02')
-        response['Content-Type'] = 'application/octet-stream'
+        response = HttpResponse(b"\x00\x01\x02")
+        response["Content-Type"] = "application/octet-stream"
 
         serialized = serialize_response(response)
-        self.assertEqual(serialized['status_code'], 200)
+        self.assertEqual(serialized["status_code"], 200)
         # Should handle binary content gracefully
 
     def test_deserialize_response_missing_fields(self):
         """Test deserializing response with missing fields."""
-        data = {'status_code': 200}  # Missing body and headers
+        data = {"status_code": 200}  # Missing body and headers
 
         status_code, body, headers = deserialize_response(data)
         self.assertEqual(status_code, 200)
@@ -781,11 +750,7 @@ class TestEdgeCases(TestCase):
 
     def test_build_idempotency_key_with_special_chars(self):
         """Test building key with special characters in endpoint."""
-        key = build_idempotency_key(
-            "test-key",
-            "/api/v1/assets/123/activate/",
-            "POST"
-        )
+        key = build_idempotency_key("test-key", "/api/v1/assets/123/activate/", "POST")
         self.assertIn("test-key", key)
         self.assertIn("POST", key)
 
@@ -794,4 +759,3 @@ class TestEdgeCases(TestCase):
         key = "Test-Key-123"
         normalized = normalize_idempotency_key(key)
         self.assertEqual(normalized, "Test-Key-123")
-

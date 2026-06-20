@@ -12,29 +12,31 @@ Usage:
     python scripts/audit_pii_fields.py --ci --json         # JSON output for CI
     python scripts/audit_pii_fields.py --output report.md  # custom output path
 """
+
 import argparse
 import json
 import os
 import re
-import sys
 from collections import defaultdict
 
 PII_PATTERNS = {
-    "email":       re.compile(r"^email", re.IGNORECASE),
-    "phone":       re.compile(r"phone|mobile|cell|fax", re.IGNORECASE),
-    "ssn":         re.compile(r"ssn|social_security|national_id|tax_id(?!_type|_verified)", re.IGNORECASE),
-    "name":        re.compile(r"^(first_name|last_name|display_name|full_name|given_name|family_name)$", re.IGNORECASE),
-    "address":     re.compile(r"address|street|city|state|postal|zip|country", re.IGNORECASE),
-    "ip_address":  re.compile(r"ip_address|ip_addr|remote_addr|client_ip", re.IGNORECASE),
+    "email": re.compile(r"^email", re.IGNORECASE),
+    "phone": re.compile(r"phone|mobile|cell|fax", re.IGNORECASE),
+    "ssn": re.compile(r"ssn|social_security|national_id|tax_id(?!_type|_verified)", re.IGNORECASE),
+    "name": re.compile(
+        r"^(first_name|last_name|display_name|full_name|given_name|family_name)$", re.IGNORECASE
+    ),
+    "address": re.compile(r"address|street|city|state|postal|zip|country", re.IGNORECASE),
+    "ip_address": re.compile(r"ip_address|ip_addr|remote_addr|client_ip", re.IGNORECASE),
     "credit_card": re.compile(r"credit_card|card_number|cc_number|payment_card", re.IGNORECASE),
 }
 
 EXEMPT_FIELDS = {
-    "tax_id_verified":   "Boolean — verification status only",
-    "tax_id_type":       "Enum — type classifier, not the ID itself",
-    "invitation_token":  "SHA-256 hash, not plaintext",
-    "password":          "Hashed by Django (PBKDF2/bcrypt)",
-    "email_verified":    "Boolean — verification status only",
+    "tax_id_verified": "Boolean — verification status only",
+    "tax_id_type": "Enum — type classifier, not the ID itself",
+    "invitation_token": "SHA-256 hash, not plaintext",
+    "password": "Hashed by Django (PBKDF2/bcrypt)",
+    "email_verified": "Boolean — verification status only",
 }
 
 
@@ -51,27 +53,35 @@ def scan_models(apps_dir: str = "hub/apps") -> dict:
             content = f.read()
         for class_name, block in re.findall(
             r"class\s+(\w+)\([^)]*Model[^)]*\):(.*?)(?=\nclass\s|\n\Z|\Z)",
-            content, re.DOTALL,
+            content,
+            re.DOTALL,
         ):
             for field_name in re.findall(
-                r"^\s*(\w+)\s*=\s*models\.\w+Field\([^)]*\)", block, re.MULTILINE,
+                r"^\s*(\w+)\s*=\s*models\.\w+Field\([^)]*\)",
+                block,
+                re.MULTILINE,
             ):
                 if field_name in EXEMPT_FIELDS:
                     continue
                 for pii_type, pattern in PII_PATTERNS.items():
                     if pattern.search(field_name):
-                        results[app].append({
-                            "model": class_name, "field": field_name,
-                            "pii_type": pii_type,
-                        })
+                        results[app].append(
+                            {
+                                "model": class_name,
+                                "field": field_name,
+                                "pii_type": pii_type,
+                            }
+                        )
     return dict(results)
 
 
 def generate_map(results: dict, output: str = "docs/PII_DATA_MAP.md") -> None:
     total = sum(len(v) for v in results.values())
     lines = [
-        "# PII Data Map", "",
-        f"**Total apps**: {len(results)} | **Total PII fields**: {total}", "",
+        "# PII Data Map",
+        "",
+        f"**Total apps**: {len(results)} | **Total PII fields**: {total}",
+        "",
     ]
     for app in sorted(results):
         lines.append(f"## {app}")
@@ -95,7 +105,7 @@ def _load_previous_results(path: str = "docs/PII_DATA_MAP.md") -> dict:
     with open(path) as f:
         content = f.read()
     for match in re.findall(r"- `(\w+)\.(\w+)` — (\w+)", content):
-        model, field, pii_type = match
+        model, field, _pii_type = match
         previous[model].add(field)
     return dict(previous)
 
@@ -108,27 +118,35 @@ def run_ci_check(results: dict, json_output: bool = False) -> int:
     for app, entries in results.items():
         for e in entries:
             if e["field"] not in previous.get(e["model"], set()):
-                new_fields.append({
-                    "app": app, "model": e["model"],
-                    "field": e["field"], "pii_type": e["pii_type"],
-                })
+                new_fields.append(
+                    {
+                        "app": app,
+                        "model": e["model"],
+                        "field": e["field"],
+                        "pii_type": e["pii_type"],
+                    }
+                )
 
     if json_output:
-        print(json.dumps({
-            "status": "new_pii_detected" if new_fields else "ok",
-            "new_fields": new_fields,
-            "total_pii_fields": sum(len(v) for v in results.values()),
-            "total_apps": len(results),
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "status": "new_pii_detected" if new_fields else "ok",
+                    "new_fields": new_fields,
+                    "total_pii_fields": sum(len(v) for v in results.values()),
+                    "total_apps": len(results),
+                },
+                indent=2,
+            )
+        )
+    elif new_fields:
+        print(f"⚠ {len(new_fields)} new PII field(s) detected:")
+        for nf in new_fields:
+            print(f"  - {nf['app']}.{nf['model']}.{nf['field']} ({nf['pii_type']})")
+        print("\nUpdate docs/PII_DATA_MAP.md: python scripts/audit_pii_fields.py")
+        print("This is informational — CI does not block on PII changes.")
     else:
-        if new_fields:
-            print(f"⚠ {len(new_fields)} new PII field(s) detected:")
-            for nf in new_fields:
-                print(f"  - {nf['app']}.{nf['model']}.{nf['field']} ({nf['pii_type']})")
-            print("\nUpdate docs/PII_DATA_MAP.md: python scripts/audit_pii_fields.py")
-            print("This is informational — CI does not block on PII changes.")
-        else:
-            print("✓ No new PII fields detected.")
+        print("✓ No new PII fields detected.")
 
     # Informational only — always exit 0 in CI
     return 0
@@ -137,15 +155,21 @@ def run_ci_check(results: dict, json_output: bool = False) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="304.1/308.6 — PII field audit")
     parser.add_argument(
-        "--ci", action="store_true", default=False,
+        "--ci",
+        action="store_true",
+        default=False,
         help="CI mode: compare against existing PII map, exit 1 on new fields.",
     )
     parser.add_argument(
-        "--json", action="store_true", default=False,
+        "--json",
+        action="store_true",
+        default=False,
         help="Output results as JSON.",
     )
     parser.add_argument(
-        "--output", type=str, default="docs/PII_DATA_MAP.md",
+        "--output",
+        type=str,
+        default="docs/PII_DATA_MAP.md",
         help="Output path for the PII data map.",
     )
     args = parser.parse_args()

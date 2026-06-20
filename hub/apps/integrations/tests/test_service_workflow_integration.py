@@ -6,16 +6,15 @@ including workflow instance creation, status syncing, and progress tracking.
 """
 
 import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetSourceType, AssetStatus
 from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
 from hub.apps.integrations.models import (
     MarketplaceConnection,
-    MarketplaceMapping,
     MarketplaceSyncJob,
 )
 from hub.apps.integrations.services import MarketplaceIntegrationService
@@ -55,7 +54,10 @@ class MarketplaceServiceWorkflowIntegrationTest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="VERIFIED",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="VERIFIED",
             marketplace_integrations_enabled=True,
             federated_import_enabled=True,
         )
@@ -79,14 +81,15 @@ class MarketplaceServiceWorkflowIntegrationTest(TestCase):
             StubMarketplaceConnector,
         )
 
-        # Save the original connector class before overwriting with the
-        # stub, so tearDownClass can restore it and subsequent test
-        # files don't find a stale stub.
-        self._saved_snowflake_connector = (
-            MarketplaceConnectorFactory._connectors.get(
-                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value
+        # Save the original connector class as a CLASS attribute before
+        # overwriting with the stub, so tearDownClass can restore it.
+        cls = type(self)
+        if not hasattr(cls, "_saved_snowflake_connector"):
+            cls._saved_snowflake_connector = (
+                MarketplaceConnectorFactory._connectors.get(
+                    MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value
+                )
             )
-        )
         MarketplaceConnectorFactory.register_connector(
             MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, StubMarketplaceConnector
         )
@@ -98,6 +101,7 @@ class MarketplaceServiceWorkflowIntegrationTest(TestCase):
         # WorkflowDefinition rolled back by the previous TestCase
         # transaction (avoids FK errors on WorkflowInstance creation).
         from hub.apps.orchestration.registry import reset_workflow_definition_cache
+
         reset_workflow_definition_cache()
         MarketplaceSyncWorkflow.register_workflow(self.registry)
         MarketplaceSyncWorkflow.register_tasks(self.engine)
@@ -317,23 +321,21 @@ class MarketplaceServiceWorkflowIntegrationTest(TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        """Restore the original Snowflake connector (if available) so
-        subsequent test files don't find the stub registered by setUp."""
+        """Restore the Snowflake connector exactly as it was before setUp."""
         from hub.apps.integrations.factory import MarketplaceConnectorFactory
 
-        # Try to restore the real Snowflake connector; if the library
-        # isn't available, just remove the stub so the factory has no
-        # Snowflake entry (same state as before the stub was registered).
-        try:
-            from hub.apps.integrations.connectors.snowflake_connector import \
-                SnowflakeConnector
+        saved = getattr(cls, "_saved_snowflake_connector", None)
+        if saved is not None:
             MarketplaceConnectorFactory.register_connector(
-                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, SnowflakeConnector
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, saved
             )
-        except ImportError:
-            MarketplaceConnectorFactory.unregister_connector(
-                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
-            )
+        else:
+            try:
+                MarketplaceConnectorFactory.unregister_connector(
+                    MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+                )
+            except ValueError:
+                pass  # Already unregistered
         super().tearDownClass()
 
 
@@ -362,7 +364,10 @@ class MarketplaceSyncE2ETest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="VERIFIED",
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="VERIFIED",
             marketplace_integrations_enabled=True,
             federated_import_enabled=True,
         )
@@ -386,6 +391,14 @@ class MarketplaceSyncE2ETest(TestCase):
             StubMarketplaceConnector,
         )
 
+        # Save original so tearDownClass can restore deterministically.
+        _cls = type(self)
+        if not hasattr(_cls, "_saved_snowflake_connector"):
+            _cls._saved_snowflake_connector = (
+                MarketplaceConnectorFactory._connectors.get(
+                    MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value
+                )
+            )
         MarketplaceConnectorFactory.register_connector(
             MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, StubMarketplaceConnector
         )
@@ -394,6 +407,7 @@ class MarketplaceSyncE2ETest(TestCase):
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
         from hub.apps.orchestration.registry import reset_workflow_definition_cache
+
         reset_workflow_definition_cache()
         MarketplaceSyncWorkflow.register_workflow(self.registry)
         MarketplaceSyncWorkflow.register_tasks(self.engine)
@@ -616,18 +630,19 @@ class MarketplaceSyncE2ETest(TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        """Restore the original Snowflake connector so subsequent test files
-        don't find the stub registered by setUp."""
+        """Restore the Snowflake connector exactly as it was before setUp."""
         from hub.apps.integrations.factory import MarketplaceConnectorFactory
 
-        try:
-            from hub.apps.integrations.connectors.snowflake_connector import \
-                SnowflakeConnector
+        saved = getattr(cls, "_saved_snowflake_connector", None)
+        if saved is not None:
             MarketplaceConnectorFactory.register_connector(
-                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, SnowflakeConnector
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, saved
             )
-        except ImportError:
-            MarketplaceConnectorFactory.unregister_connector(
-                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
-            )
+        else:
+            try:
+                MarketplaceConnectorFactory.unregister_connector(
+                    MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+                )
+            except ValueError:
+                pass  # Already unregistered
         super().tearDownClass()

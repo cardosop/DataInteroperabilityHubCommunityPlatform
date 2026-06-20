@@ -1,9 +1,10 @@
 """
 Comprehensive tests for standardized pagination.
 """
-import uuid
+
 import base64
 import json
+import uuid
 from unittest.mock import Mock
 
 from django.contrib.auth import get_user_model
@@ -246,14 +247,10 @@ class TestPaginationHelpers(TestCase):
         """Test cursor pagination without cursor returns correct page size and data."""
         _uid = uuid.uuid4().hex[:8]
         for i in range(10):
-            User.objects.create_user(
-                email=f"user{i}-{_uid}@example.com", password="testpass123"
-            )
+            User.objects.create_user(email=f"user{i}-{_uid}@example.com", password="testpass123")
 
         queryset = User.objects.all()
-        paginated, next_cursor, prev_cursor = paginate_queryset_cursor(
-            queryset, page_size=5
-        )
+        paginated, next_cursor, prev_cursor = paginate_queryset_cursor(queryset, page_size=5)
 
         self.assertEqual(paginated.count(), 5)
         self.assertIsNotNone(next_cursor)
@@ -300,7 +297,9 @@ class TestPaginationHelpers(TestCase):
     def test_paginate_queryset_cursor_invalid_cursor(self):
         """Test cursor pagination with invalid cursor."""
         _uid = uuid.uuid4().hex[:8]
-        User.objects.create_user(email=f"paginate-invalid-cursor-{_uid}@example.com", password="testpass123")
+        User.objects.create_user(
+            email=f"paginate-invalid-cursor-{_uid}@example.com", password="testpass123"
+        )
 
         queryset = User.objects.filter(email__contains=_uid)
         paginated, next_cursor, prev_cursor = paginate_queryset_cursor(

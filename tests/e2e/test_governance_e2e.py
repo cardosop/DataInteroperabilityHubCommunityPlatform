@@ -7,7 +7,6 @@ End-to-end tests for compliance reporting, ABAC, and data masking workflows.
 import pytest
 
 pytestmark = pytest.mark.slow
-from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -16,19 +15,14 @@ from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.governance.abac import ABACEngine
 from hub.apps.governance.classification import DataClassifier
-from hub.apps.governance.compliance_reports import ComplianceReportGenerator
 from hub.apps.governance.data_masking import DataMasker
 from hub.apps.governance.models import (
     AccessPolicy,
     ClassificationCategory,
-    ComplianceReport,
-    DataClassification,
     FieldAccessPolicy,
 )
 from hub.apps.governance.report_scheduler import ReportScheduler
 from hub.apps.jobs.models import Job, JobStatus, JobType
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
 
 from .conftest import E2ETestBase
 
@@ -98,7 +92,7 @@ class GovernanceE2ETest(E2ETestBase):
         self.assertGreater(len(classifications), 0)
 
         # Step 2: Create compliance run
-        compliance_run = ComplianceRun.objects.create(
+        ComplianceRun.objects.create(
             tenant=self.tenant,
             dataset=self.dataset,
             job=self.job,
@@ -121,7 +115,7 @@ class GovernanceE2ETest(E2ETestBase):
         )
 
         # Step 4: Create field-level policies with masking
-        email_policy = FieldAccessPolicy.objects.create(
+        FieldAccessPolicy.objects.create(
             tenant=self.tenant,
             access_policy=access_policy,
             dataset=self.dataset,
@@ -131,7 +125,7 @@ class GovernanceE2ETest(E2ETestBase):
             masking_config={"show_last": 4},
         )
 
-        ssn_policy = FieldAccessPolicy.objects.create(
+        FieldAccessPolicy.objects.create(
             tenant=self.tenant,
             access_policy=access_policy,
             dataset=self.dataset,
@@ -166,17 +160,12 @@ class GovernanceE2ETest(E2ETestBase):
         )
 
         # Verify masking changed the sensitive fields
-        self.assertNotEqual(masked_row["email"], row["email"],
-                            "Email should be masked")
-        self.assertNotEqual(masked_row["ssn"], row["ssn"],
-                            "SSN should be masked")
-        self.assertEqual(masked_row["name"], row["name"],
-                         "Name should NOT be masked (no policy)")
+        self.assertNotEqual(masked_row["email"], row["email"], "Email should be masked")
+        self.assertNotEqual(masked_row["ssn"], row["ssn"], "SSN should be masked")
+        self.assertEqual(masked_row["name"], row["name"], "Name should NOT be masked (no policy)")
         # Verify masked values are not empty — masking should produce redacted output
-        self.assertTrue(len(masked_row["email"]) > 0,
-                        "Masked email should not be empty")
-        self.assertTrue(len(masked_row["ssn"]) > 0,
-                        "Masked SSN should not be empty")
+        self.assertTrue(len(masked_row["email"]) > 0, "Masked email should not be empty")
+        self.assertTrue(len(masked_row["ssn"]) > 0, "Masked SSN should not be empty")
 
         # Step 7: Generate compliance report
         report = ReportScheduler.generate_and_save_report(
@@ -208,5 +197,6 @@ class GovernanceE2ETest(E2ETestBase):
         self.assertIn("generated", results)
         self.assertIn("emailed", results)
         # Verify at least one report was generated (our scheduled report should trigger)
-        self.assertGreaterEqual(results["generated"], 1,
-                                "At least one scheduled report should be generated")
+        self.assertGreaterEqual(
+            results["generated"], 1, "At least one scheduled report should be generated"
+        )

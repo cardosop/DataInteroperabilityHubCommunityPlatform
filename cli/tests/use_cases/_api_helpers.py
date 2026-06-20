@@ -5,14 +5,13 @@ Thin wrapper around requests that uses persona credentials to hit the
 live staging API. Every helper returns the raw response so tests can
 assert on status codes, headers, and bodies.
 """
+
 from __future__ import annotations
 
 import os
 import time
-from typing import Optional
 
 import requests
-
 from tests._persona_provisioning import PersonaCredentials
 
 
@@ -33,7 +32,7 @@ def api_get(
     path: str,
     creds: PersonaCredentials,
     *,
-    params: Optional[dict] = None,
+    params: dict | None = None,
     timeout: int = 15,
 ) -> requests.Response:
     """Authenticated GET against the staging API."""
@@ -50,7 +49,7 @@ def api_post(
     path: str,
     creds: PersonaCredentials,
     *,
-    json: Optional[dict] = None,
+    json: dict | None = None,
     timeout: int = 15,
 ) -> requests.Response:
     """Authenticated POST against the staging API."""
@@ -70,7 +69,7 @@ def api_put(
     path: str,
     creds: PersonaCredentials,
     *,
-    json: Optional[dict] = None,
+    json: dict | None = None,
     timeout: int = 15,
 ) -> requests.Response:
     url = f"{api_base_url()}{path}"
@@ -122,14 +121,14 @@ def api_login(email: str, password: str, timeout: int = 15) -> requests.Response
     payload = {"email": email, "password": password}
 
     max_attempts = 5
-    last_resp: Optional[requests.Response] = None
+    last_resp: requests.Response | None = None
 
     for attempt in range(max_attempts):
         # ---- connection-level errors: DNS, network, timeout ----
         try:
             resp = requests.post(url, json=payload, timeout=timeout)
         except (requests.ConnectionError, requests.Timeout):
-            wait = min(2 ** attempt, 30)
+            wait = min(2**attempt, 30)
             if attempt < max_attempts - 1:
                 time.sleep(wait)
                 continue
@@ -151,7 +150,7 @@ def api_login(email: str, password: str, timeout: int = 15) -> requests.Response
 
         # ---- 5xx infrastructure errors: Redis, DB, etc. ----
         if resp.status_code >= 500:
-            wait = min(2 ** attempt, 30)
+            wait = min(2**attempt, 30)
             if attempt < max_attempts - 1:
                 time.sleep(wait)
                 last_resp = resp

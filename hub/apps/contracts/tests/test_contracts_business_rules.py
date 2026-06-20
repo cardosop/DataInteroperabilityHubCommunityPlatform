@@ -7,14 +7,15 @@ Comprehensive tests for ContractsBusinessRules lifecycle validation, following e
 - Comprehensive test coverage
 - Follow DRY, SOLID, and clean code principles
 """
+
 import uuid
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.business_rules import ContractsBusinessRules
-from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.core.business_rules.registry import get_registry
+from hub.apps.tenants.models import KYCStatus, Tenant
 
 
 class ContractsBusinessRulesInitializationTest(ContractsTestBase):
@@ -382,7 +383,7 @@ class ContractDeletionValidationTest(ContractsTestBase):
         other_asset = Asset.objects.create(
             name="ODPS Asset", key="odps-asset", tenant=self.tenant, status=AssetStatus.ACTIVE
         )
-        odps_contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=other_asset,  # Different asset to avoid version conflict
             original_raw='{"schema": "https://opendataproducts.org/schema/v4.1", "product": {}}',
@@ -697,12 +698,8 @@ class ContractLifecycleIntegrationTest(ContractsTestBase):
         )
 
         # Should handle nonexistent contract gracefully
-        try:
-            result = self.rules.validate_contract_deletion(fake_contract)
-            self.assertIsNotNone(result)
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        result = self.rules.validate_contract_deletion(fake_contract)
+        self.assertIsNotNone(result)
 
     def test_validate_contract_version_with_zero_version(self):
         """Test contract version validation with zero version."""
@@ -769,7 +766,9 @@ class ContractLifecycleIntegrationTest(ContractsTestBase):
         # Rules created for a different tenant should fail tenant match
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-update-{_uid}", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-update-{_uid}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         other_rules = ContractsBusinessRules(
             tenant_id=str(other_tenant.id), user_id=str(self.user.id)
@@ -788,7 +787,7 @@ class ContractLifecycleIntegrationTest(ContractsTestBase):
         other_asset = Asset.objects.create(
             name="ODPS Asset", key="odps-asset-ref", tenant=self.tenant, status=AssetStatus.ACTIVE
         )
-        odps_contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=other_asset,
             original_raw='{"schema": "https://opendataproducts.org/schema/v4.1"}',

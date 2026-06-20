@@ -123,6 +123,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         error: null,
       });
       syncTenantIdGetter(get);
+      apiClient._suppressAuthRedirect = false;
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Login failed';
       set({
@@ -161,17 +162,48 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     );
 
     const fetchUserWithRetry = async (): Promise<void> => {
-      const freshUser = await authService.fetchUser();
+      // Use direct fetch() instead of apiClient.get() to bypass the 401
+      // interceptor.  The apiClient's _handleRefreshAndRetry does a hard
+      // window.location.href = '/login' on refresh failure, which races
+      // ahead of tryFetchUser's graceful clearAuthState() → LandingPage.
+      // This matches the pattern in authService.refreshAccessToken() which
+      // already uses direct fetch for the same reason.
+      const token = apiClient.getAccessToken();
+      const baseURL = apiClient.getClient().defaults.baseURL || '/api/v1';
+      const response = await fetch(`${baseURL}/auth/me/`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        credentials: 'include',
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (!response.ok) {
+        const error = new Error(`/auth/me/ returned ${response.status}`) as Error & { response?: { status: number } };
+        error.response = { status: response.status };
+        throw error;
+      }
+      const freshUser = await response.json() as User;
+      authService.setUser(freshUser);
       set({
         user: freshUser,
         isAuthenticated: true,
         isLoading: false,
       });
       syncTenantIdGetter(get);
+      // Auth succeeded — enable the 401 interceptor's hard redirect.
+      // Authenticated users whose session becomes unrecoverable should
+      // be sent to /login.
+      apiClient._suppressAuthRedirect = false;
     };
 
     const clearAuthState = () => {
       authService.clearAuth();
+      // Auth failed — suppress the 401 interceptor's hard redirect.
+      // The store's isAuthenticated=false will cause RootRoute at / to
+      // show LandingPage; in-flight API 401 responses arriving after this
+      // point must not trigger window.location.href = '/login'.
+      apiClient._suppressAuthRedirect = true;
       apiClient.setTenantIdGetter(null);
       try { localStorage.removeItem(ACTIVE_TENANT_STORAGE_KEY); } catch { /* ignore */ }
       set({
@@ -307,6 +339,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     };
 
+    // Note: _suppressAuthRedirect is NOT scoped here — it is managed by
+    // clearAuthState() (sets true) and successful auth paths (set false).
+    // Tying it to auth state instead of initialize() scope ensures in-flight
+    // API responses arriving after clearAuthState() don't trigger the 401
+    // interceptor's window.location.href = '/login'.
     try {
       await Promise.race([runInit(), safetyTimeout]);
     } catch (error) {

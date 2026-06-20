@@ -3,6 +3,8 @@ Tenant Signals
 
 Handles post-creation tasks like default role creation and KYC status audit (feat1 2.3).
 """
+
+import contextlib
 import logging
 import os
 import sys
@@ -27,6 +29,7 @@ _thread_local = threading.local()
 def invalidate_public_pricing_cache_on_plan_save(sender, instance, **kwargs):
     """Invalidate ``public_pricing:v1`` when a TenantPlan is saved."""
     from django.core.cache import cache
+
     cache.delete("public_pricing:v1")
 
 
@@ -34,6 +37,7 @@ def invalidate_public_pricing_cache_on_plan_save(sender, instance, **kwargs):
 def invalidate_public_pricing_cache_on_tier_profile_save(sender, instance, **kwargs):
     """Invalidate ``public_pricing:v1`` when a TierProfile is saved."""
     from django.core.cache import cache
+
     cache.delete("public_pricing:v1")
 
 
@@ -55,22 +59,23 @@ def create_default_roles(sender, instance, created, **kwargs):
 
     # Skip role creation in test mode to prevent timeouts
     # Check multiple indicators to catch all test scenarios
-    import sys
     import os
+    import sys
 
     # Check if we're in a test environment
     is_test_env = (
-        'pytest' in sys.modules or
-        'unittest' in sys.modules or
-        os.getenv('PYTEST_CURRENT_TEST') or
-        any('test' in arg.lower() or 'pytest' in arg.lower() for arg in sys.argv) or
-        os.getenv('TESTING', '').lower() in ('1', 'true', 'yes')
+        "pytest" in sys.modules
+        or "unittest" in sys.modules
+        or os.getenv("PYTEST_CURRENT_TEST")
+        or any("test" in arg.lower() or "pytest" in arg.lower() for arg in sys.argv)
+        or os.getenv("TESTING", "").lower() in ("1", "true", "yes")
     )
 
     # Also check Django's TESTING setting if available
     try:
         from django.conf import settings
-        if getattr(settings, 'TESTING', False):
+
+        if getattr(settings, "TESTING", False):
             is_test_env = True
     except (ImportError, RuntimeError):
         pass
@@ -85,29 +90,20 @@ def create_default_roles(sender, instance, created, **kwargs):
             from hub.apps.users.models import Role
 
             default_roles = [
-                {
-                    "name": "TENANT_ADMIN",
-                    "description": "Full administrative access within tenant"
-                },
-                {
-                    "name": "DATA_PROVIDER",
-                    "description": "Can create and manage data assets"
-                },
-                {
-                    "name": "DATA_CONSUMER",
-                    "description": "Can request and access data assets"
-                },
+                {"name": "TENANT_ADMIN", "description": "Full administrative access within tenant"},
+                {"name": "DATA_PROVIDER", "description": "Can create and manage data assets"},
+                {"name": "DATA_CONSUMER", "description": "Can request and access data assets"},
                 {
                     "name": "AUDITOR",
-                    "description": "Read-only access to compliance/DQ reports and audit logs"
-                }
+                    "description": "Read-only access to compliance/DQ reports and audit logs",
+                },
             ]
 
             for role_data in default_roles:
                 Role.objects.get_or_create(
                     tenant=instance,
                     name=role_data["name"],
-                    defaults={"description": role_data["description"]}
+                    defaults={"description": role_data["description"]},
                 )
         except Exception:
             logger.exception("default_role_creation_failed")
@@ -153,15 +149,11 @@ def _store_kyc_status_before_save(sender, instance, **kwargs):
                 row = cursor.fetchone()
                 old = row[0] if row else None
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     cursor.execute("ROLLBACK TO SAVEPOINT kyc_presave_snap")
-                except Exception:
-                    pass
-                try:
+                with contextlib.suppress(Exception):
                     cursor.execute("RELEASE SAVEPOINT kyc_presave_snap")
-                except Exception:
-                    pass
-        if not hasattr(_thread_local, 'kyc_before_save'):
+        if not hasattr(_thread_local, "kyc_before_save"):
             _thread_local.kyc_before_save = {}
         _thread_local.kyc_before_save[instance.pk] = old
     except Exception:
@@ -174,7 +166,7 @@ def audit_kyc_status_change(sender, instance, created, **kwargs):
     Emit KYC_STATUS_CHANGED audit event when Tenant.kyc_status changes (feat1 2.3.2).
     Catches all code paths (API, admin, service).
     """
-    if not hasattr(_thread_local, 'kyc_before_save'):
+    if not hasattr(_thread_local, "kyc_before_save"):
         return
     if created:
         # Clean up pre_save entry for newly created tenants (no KYC change to audit)
@@ -203,7 +195,11 @@ def audit_kyc_status_change(sender, instance, created, **kwargs):
             "Failed to create KYC_STATUS_CHANGED audit event for tenant %s: %s",
             instance.pk,
             e,
-            extra={"tenant_id": str(instance.id), "old_kyc": old_kyc, "new_kyc": instance.kyc_status},
+            extra={
+                "tenant_id": str(instance.id),
+                "old_kyc": old_kyc,
+                "new_kyc": instance.kyc_status,
+            },
         )
 
 
@@ -251,14 +247,10 @@ def _store_status_before_save_for_federated_cascade(sender, instance, **kwargs):
                 row = cursor.fetchone()
                 old = row[0] if row else None
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     cursor.execute("ROLLBACK TO SAVEPOINT fed_status_presave_snap")
-                except Exception:
-                    pass
-                try:
+                with contextlib.suppress(Exception):
                     cursor.execute("RELEASE SAVEPOINT fed_status_presave_snap")
-                except Exception:
-                    pass
         if not hasattr(_thread_local, _FEDERATED_STATUS_KEY):
             setattr(_thread_local, _FEDERATED_STATUS_KEY, {})
         getattr(_thread_local, _FEDERATED_STATUS_KEY)[instance.pk] = old
@@ -290,9 +282,14 @@ def tombstone_federated_resources_on_tenant_delete(sender, instance, created, **
     if created:
         return
 
-    snap = getattr(_thread_local, _FEDERATED_STATUS_KEY, {}) if hasattr(
-        _thread_local, _FEDERATED_STATUS_KEY,
-    ) else {}
+    snap = (
+        getattr(_thread_local, _FEDERATED_STATUS_KEY, {})
+        if hasattr(
+            _thread_local,
+            _FEDERATED_STATUS_KEY,
+        )
+        else {}
+    )
     old_status = snap.pop(instance.pk, None) if snap else None
 
     # Only fire on the transition INTO DELETED; subsequent saves on
@@ -321,7 +318,9 @@ def tombstone_federated_resources_on_tenant_delete(sender, instance, created, **
         # Materialise IDs first so audit emission can iterate per row.
         affected = list(
             affected_qs.values_list(
-                "id", "asset_id", "asset__tenant_id",
+                "id",
+                "asset_id",
+                "asset__tenant_id",
             )
         )
         if affected:
@@ -337,12 +336,10 @@ def tombstone_federated_resources_on_tenant_delete(sender, instance, created, **
                 # Resolve consumer tenant for the audit FK; fallback
                 # to None when the consumer tenant lookup misses.
                 consumer_tenant = None
-                try:
+                with contextlib.suppress(Tenant.DoesNotExist):
                     consumer_tenant = Tenant.all_objects.get(
                         id=consumer_tenant_id,
                     )
-                except Tenant.DoesNotExist:
-                    pass
                 create_audit_event(
                     resource_type=_audit_event_types.ASSET_RESOURCE_TYPE,
                     action=_audit_event_types.FEDERATED_SOURCE_TENANT_DELETED,
@@ -359,7 +356,7 @@ def tombstone_federated_resources_on_tenant_delete(sender, instance, created, **
                         "grace_window_expires_at": grace_end.isoformat(),
                     },
                 )
-            except Exception as audit_exc:  # noqa: BLE001
+            except Exception as audit_exc:
                 logger.warning(
                     "federated_source_tenant_deleted_audit_emit_failed",
                     extra={
@@ -427,7 +424,7 @@ def _emit_onboarding_completed_audit(tenant, *, triggered_by: str) -> None:
                 "asset_creation_enabled_after": True,
             },
         )
-    except Exception as audit_exc:  # noqa: BLE001
+    except Exception as audit_exc:
         logger.warning(
             "onboarding_completed_audit_emit_failed",
             extra={
@@ -478,9 +475,7 @@ def _onboarding_check_user_role(sender, instance, created, **kwargs):
     if tenant is None:
         return
     transaction.on_commit(
-        lambda: _check_and_mark_onboarding_complete(
-            tenant, triggered_by="tenant_admin_assigned"
-        )
+        lambda: _check_and_mark_onboarding_complete(tenant, triggered_by="tenant_admin_assigned")
     )
 
 
@@ -517,9 +512,7 @@ def _onboarding_check_kyc_change(sender, instance, created, **kwargs):
         # short-circuit to avoid a guaranteed-False helper call.)
         return
     transaction.on_commit(
-        lambda: _check_and_mark_onboarding_complete(
-            instance, triggered_by="kyc_submitted"
-        )
+        lambda: _check_and_mark_onboarding_complete(instance, triggered_by="kyc_submitted")
     )
 
 
@@ -541,9 +534,7 @@ def _onboarding_check_subscription(sender, instance, created, **kwargs):
     if tenant is None:
         return
     transaction.on_commit(
-        lambda: _check_and_mark_onboarding_complete(
-            tenant, triggered_by="subscription_activated"
-        )
+        lambda: _check_and_mark_onboarding_complete(tenant, triggered_by="subscription_activated")
     )
 
 
@@ -580,15 +571,11 @@ def _register_onboarding_signal_handlers():
             dispatch_uid="onboarding_check_user_role",
         )
     except ImportError:
-        logger.exception(
-            "onboarding_user_role_signal_register_failed"
-        )
+        logger.exception("onboarding_user_role_signal_register_failed")
         if _in_test:
             raise
     except Exception:
-        logger.exception(
-            "onboarding_user_role_signal_register_failed"
-        )
+        logger.exception("onboarding_user_role_signal_register_failed")
         if _in_test:
             raise
 
@@ -601,15 +588,11 @@ def _register_onboarding_signal_handlers():
             dispatch_uid="onboarding_check_subscription",
         )
     except ImportError:
-        logger.exception(
-            "onboarding_subscription_signal_register_failed"
-        )
+        logger.exception("onboarding_subscription_signal_register_failed")
         if _in_test:
             raise
     except Exception:
-        logger.exception(
-            "onboarding_subscription_signal_register_failed"
-        )
+        logger.exception("onboarding_subscription_signal_register_failed")
         if _in_test:
             raise
 
@@ -655,4 +638,3 @@ def _emit_file_purge_audit_on_tenant_delete(sender, instance, **kwargs):
 # the correct moment to wire cross-app post_save connections (after
 # Django's app registry is fully populated).
 _register_onboarding_signal_handlers()
-

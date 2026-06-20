@@ -12,20 +12,21 @@ Contract tests (no live warehouse needed):
 - Cost-guard trigger contract
 - Circuit-breaker open contract
 """
+
 from __future__ import annotations
 
+import contextlib
 import os
 import uuid
-from unittest.mock import patch
 
 import pytest
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
-from hub.apps.warehouses.connectors.snowflake import SnowflakeConnector
-from hub.apps.warehouses.connectors.bigquery import BigQueryConnector
-from hub.apps.warehouses.models import WarehouseConnection, WarehouseType
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
+from hub.apps.warehouses.connectors.bigquery import BigQueryConnector
+from hub.apps.warehouses.connectors.snowflake import SnowflakeConnector
+from hub.apps.warehouses.models import WarehouseConnection, WarehouseType
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -45,15 +46,19 @@ _requires_sandbox = pytest.mark.skipif(
 def _mk_tenant():
     uid = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
-        name=f"WH-{uid}", slug=f"wh-{uid}",
-        status="ACTIVE", kyc_status="VERIFIED",
+        name=f"WH-{uid}",
+        slug=f"wh-{uid}",
+        status="ACTIVE",
+        kyc_status="VERIFIED",
     )
 
 
 def _mk_user(tenant):
     return User.objects.create_user(
         email=f"wh-{uuid.uuid4().hex[:8]}@meshant.test",
-        password="testpass", tenant=tenant, status=UserStatus.ACTIVE,
+        password="testpass",
+        tenant=tenant,
+        status=UserStatus.ACTIVE,
     )
 
 
@@ -85,6 +90,7 @@ class TestSnowflakeConnectorContract(TestCase):
         )
         tag = connector._build_query_tag()
         import json
+
         parsed = json.loads(tag)
         assert parsed["tenant_id"] == "t1"
         assert parsed["asset_id"] == "a1"
@@ -94,7 +100,6 @@ class TestSnowflakeConnectorContract(TestCase):
     def test_parameterised_binding_prevents_injection(self):
         """G-T1: tenant-supplied filter '; DROP TABLE; -- is handled by
         Snowflake's parameter-binding API — never string-concatenated."""
-        malicious_input = "'; DROP TABLE users; --"
         connector = SnowflakeConnector(
             connection_config={"account": "test", "user": "test"},
         )
@@ -103,18 +108,24 @@ class TestSnowflakeConnectorContract(TestCase):
         assert hasattr(connector, "execute_query")
         # The execute_query signature requires sql + optional params dict.
         import inspect
+
         sig = inspect.signature(connector.execute_query)
-        assert "params" in sig.parameters, "execute_query must accept params for parameterised binding"
+        assert "params" in sig.parameters, (
+            "execute_query must accept params for parameterised binding"
+        )
 
     def test_cross_tenant_isolation_contract(self):
         """G-S7: tenant B cannot use tenant A's connection_id."""
         tenant_b = _mk_tenant()
         conn_a = WarehouseConnection.objects.create(
-            tenant=self.tenant, name="a-sf", warehouse_type=WarehouseType.SNOWFLAKE,
+            tenant=self.tenant,
+            name="a-sf",
+            warehouse_type=WarehouseType.SNOWFLAKE,
         )
         # tenant B should not be able to resolve tenant A's connection.
         qs = WarehouseConnection.objects.filter(
-            tenant=tenant_b, id=conn_a.id,
+            tenant=tenant_b,
+            id=conn_a.id,
         )
         assert not qs.exists(), "Tenant B must not access tenant A's connection"
 
@@ -146,8 +157,12 @@ class TestBigQueryConnectorContract(TestCase):
             connection_config={"project": "test"},
         )
         import inspect
+
         sig = inspect.signature(connector.execute_query)
-        assert "params" in sig.parameters, "execute_query must accept params for parameterised binding"
+        assert "params" in sig.parameters, (
+            "execute_query must accept params for parameterised binding"
+        )
+
 
 @_requires_sandbox
 class TestSnowflakeLiveIntegration(TestCase):
@@ -156,14 +171,18 @@ class TestSnowflakeLiveIntegration(TestCase):
 
     @staticmethod
     def _has_creds():
-        return bool(os.environ.get("SNOWFLAKE_SANDBOX_ACCOUNT") or os.environ.get("SNOWFLAKE_ACCOUNT"))
+        return bool(
+            os.environ.get("SNOWFLAKE_SANDBOX_ACCOUNT") or os.environ.get("SNOWFLAKE_ACCOUNT")
+        )
 
     @staticmethod
     def _sandbox_config():
         token = os.environ.get("SNOWFLAKE_TOKEN", "")
         cfg = {
-            "account": os.environ.get("SNOWFLAKE_SANDBOX_ACCOUNT") or os.environ.get("SNOWFLAKE_ACCOUNT", ""),
-            "user": os.environ.get("SNOWFLAKE_SANDBOX_USER") or os.environ.get("SNOWFLAKE_USER", ""),
+            "account": os.environ.get("SNOWFLAKE_SANDBOX_ACCOUNT")
+            or os.environ.get("SNOWFLAKE_ACCOUNT", ""),
+            "user": os.environ.get("SNOWFLAKE_SANDBOX_USER")
+            or os.environ.get("SNOWFLAKE_USER", ""),
             "warehouse": os.environ.get("SNOWFLAKE_WAREHOUSE", ""),
             "database": os.environ.get("SNOWFLAKE_DATABASE", ""),
         }
@@ -184,7 +203,7 @@ class TestSnowflakeLiveIntegration(TestCase):
         assert hasattr(connector, "execute_query")
         assert hasattr(connector, "close")
         if not self._has_creds():
-            pytest.skip("SNOWFLAKE_SANDBOX_ACCOUNT not set — contract assertions passed")
+            pytest.skip("SNOWFLAKE_SANDBOX_ACCOUNT not set — contract assertions passed")  # noqa: skip-in-body — runtime service dependency
         connector.connect()
         try:
             result = connector.execute_query("SELECT 1 AS one")
@@ -199,13 +218,15 @@ class TestSnowflakeLiveIntegration(TestCase):
         connector = SnowflakeConnector(connection_config=config)
         assert hasattr(connector, "reflect_schema")
         if not self._has_creds():
-            pytest.skip("SNOWFLAKE_SANDBOX_ACCOUNT not set — contract assertions passed")
+            pytest.skip("SNOWFLAKE_SANDBOX_ACCOUNT not set — contract assertions passed")  # noqa: skip-in-body — runtime service dependency
         connector.connect()
         try:
             # reflect_schema queries INFORMATION_SCHEMA.COLUMNS by table name.
             # Use TABLES (a system table that always exists) in the current database context.
             schema = connector.reflect_schema("TABLES")
-            assert len(schema) > 0, f"Expected non-empty schema for TABLES, got {len(schema)} columns"
+            assert len(schema) > 0, (
+                f"Expected non-empty schema for TABLES, got {len(schema)} columns"
+            )
         finally:
             connector.close()
 
@@ -224,13 +245,15 @@ class TestBigQueryLiveIntegration(TestCase):
     @staticmethod
     def _sandbox_config():
         import json
-        cfg = {"project": os.environ.get("BIGQUERY_SANDBOX_PROJECT") or os.environ.get("GCP_PROJECT_ID", "")}
+
+        cfg = {
+            "project": os.environ.get("BIGQUERY_SANDBOX_PROJECT")
+            or os.environ.get("GCP_PROJECT_ID", "")
+        }
         creds_json = os.environ.get("GCP_CREDENTIALS_JSON", "")
         if creds_json:
-            try:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
                 cfg["service_account_json"] = json.loads(creds_json)
-            except (json.JSONDecodeError, TypeError):
-                pass
         return cfg
 
     def test_connect_and_query(self):
@@ -241,7 +264,9 @@ class TestBigQueryLiveIntegration(TestCase):
         assert hasattr(connector, "connect")
         assert hasattr(connector, "execute_query")
         if not self._has_creds():
-            pytest.skip("BIGQUERY_SANDBOX_PROJECT / GCP_PROJECT_ID+GCP_CREDENTIALS_JSON not set — contract assertions passed")
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
+                "BIGQUERY_SANDBOX_PROJECT / GCP_PROJECT_ID+GCP_CREDENTIALS_JSON not set — contract assertions passed"
+            )
         connector.connect()
         try:
             result = connector.execute_query("SELECT 1 AS one")
@@ -255,7 +280,9 @@ class TestBigQueryLiveIntegration(TestCase):
         connector = BigQueryConnector(connection_config=config)
         assert hasattr(connector, "estimate_cost"), "BigQuery must have estimate_cost"
         if not self._has_creds():
-            pytest.skip("BIGQUERY_SANDBOX_PROJECT / GCP_PROJECT_ID+GCP_CREDENTIALS_JSON not set — contract assertions passed")
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
+                "BIGQUERY_SANDBOX_PROJECT / GCP_PROJECT_ID+GCP_CREDENTIALS_JSON not set — contract assertions passed"
+            )
         connector.connect()
         try:
             cost = connector.estimate_cost("SELECT 1")

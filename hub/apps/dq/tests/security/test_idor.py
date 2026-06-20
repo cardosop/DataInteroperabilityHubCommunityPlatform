@@ -42,6 +42,7 @@ Real Django ORM rows + real DRF `APIClient`. No mocks. The
 external dq-service is NOT exercised — endpoints under test are
 listing/reading DB-backed resources, not triggering DQ runs.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -65,11 +66,10 @@ from hub.apps.dq.models import (
 )
 from hub.apps.files.models import File, FileStatus
 from hub.apps.jobs.models import Job, JobStatus, JobType
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.testing.billing_support import (
     ensure_tenant_has_active_subscription,
 )
-from hub.apps.users.models import Role, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole
 
 # Two-tenant fixture from the platform-wide IDOR base. Re-using
 # this base keeps the dq IDOR suite consistent with the rest of
@@ -214,12 +214,10 @@ class _DQIDORTestBase(IDORTestBase):
         ``check_auditor_permissions`` walks ``user.user_roles`` to
         detect AUDITOR.
         """
-        auditor_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant_a,
-            name="AUDITOR",
-            defaults={"description": "Auditor role"},
+        auditor_role = Role.objects.create(
+            tenant=self.tenant_a, name="AUDITOR", description="Auditor role"
         )
-        UserRole.objects.get_or_create(user=self.user_a, role=auditor_role)
+        UserRole.objects.create(user=self.user_a, role=auditor_role)
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -228,7 +226,6 @@ class _DQIDORTestBase(IDORTestBase):
 
 
 class DQRunsListIDORTests(_DQIDORTestBase):
-
     URL = "/api/v1/dq/runs/"
 
     def test_no_auth_returns_401(self):
@@ -242,7 +239,8 @@ class DQRunsListIDORTests(_DQIDORTestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         ids = {row["id"] for row in response.data["results"]}
         self.assertNotIn(
-            str(self.dq_run_b.id), ids,
+            str(self.dq_run_b.id),
+            ids,
             "Tenant A list MUST NOT leak tenant B's DQ run IDs.",
         )
 
@@ -250,9 +248,21 @@ class DQRunsListIDORTests(_DQIDORTestBase):
         """AUDITOR write blocked → 403 even with valid payload."""
         self._make_user_a_auditor()
         self.client.force_authenticate(user=self.user_a)
+        # Create a File within tenant A — using tenant B's file would
+        # risk a 404 masking the 403 if the auditor check is ever
+        # reordered after resource resolution.
+        file_a = File.objects.create(
+            tenant=self.tenant_a,
+            name="auditor-test.csv",
+            content_type="text/csv",
+            size=100,
+            status=FileStatus.ACTIVE,
+            storage_path=f"{self.tenant_a.id}/auditor-test.csv",
+            created_by=self.user_a,
+        )
         response = self.client.post(
             self.URL,
-            data={"file_id": str(self.file_b.id)},
+            data={"file_id": str(file_a.id)},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -264,7 +274,6 @@ class DQRunsListIDORTests(_DQIDORTestBase):
 
 
 class DQRunDetailIDORTests(_DQIDORTestBase):
-
     @property
     def url(self):
         return f"/api/v1/dq/runs/{self.dq_run_b.id}/"
@@ -283,7 +292,8 @@ class DQRunDetailIDORTests(_DQIDORTestBase):
         self.client.force_authenticate(user=self.user_a)
         response = self.client.get(self.url)
         self.assertEqual(
-            response.status_code, status.HTTP_404_NOT_FOUND,
+            response.status_code,
+            status.HTTP_404_NOT_FOUND,
             f"Cross-tenant DQRun retrieve must 404 (got "
             f"{response.status_code}). 403 would leak existence.",
         )
@@ -295,15 +305,21 @@ class DQRunDetailIDORTests(_DQIDORTestBase):
         own_run = DQRun.objects.create(
             tenant=self.tenant_a,
             file=File.objects.create(
-                tenant=self.tenant_a, name="d.csv",
-                content_type="text/csv", size=1, status=FileStatus.ACTIVE,
+                tenant=self.tenant_a,
+                name="d.csv",
+                content_type="text/csv",
+                size=1,
+                status=FileStatus.ACTIVE,
                 storage_path=f"{self.tenant_a.id}/d.csv",
                 created_by=self.user_a,
             ),
             job=Job.objects.create(
-                tenant=self.tenant_a, type=JobType.DQ_RUN,
-                status=JobStatus.COMPLETED, resource_type="DQ_RUN",
-                resource_id=uuid.uuid4(), created_by=self.user_a,
+                tenant=self.tenant_a,
+                type=JobType.DQ_RUN,
+                status=JobStatus.COMPLETED,
+                resource_type="DQ_RUN",
+                resource_id=uuid.uuid4(),
+                created_by=self.user_a,
                 timeout_seconds=1800,
             ),
             status=DQRunStatus.SUCCEEDED,
@@ -323,15 +339,21 @@ class DQRunDetailIDORTests(_DQIDORTestBase):
         own_run = DQRun.objects.create(
             tenant=self.tenant_a,
             file=File.objects.create(
-                tenant=self.tenant_a, name="d.csv",
-                content_type="text/csv", size=1, status=FileStatus.ACTIVE,
+                tenant=self.tenant_a,
+                name="d.csv",
+                content_type="text/csv",
+                size=1,
+                status=FileStatus.ACTIVE,
                 storage_path=f"{self.tenant_a.id}/d.csv",
                 created_by=self.user_a,
             ),
             job=Job.objects.create(
-                tenant=self.tenant_a, type=JobType.DQ_RUN,
-                status=JobStatus.COMPLETED, resource_type="DQ_RUN",
-                resource_id=uuid.uuid4(), created_by=self.user_a,
+                tenant=self.tenant_a,
+                type=JobType.DQ_RUN,
+                status=JobStatus.COMPLETED,
+                resource_type="DQ_RUN",
+                resource_id=uuid.uuid4(),
+                created_by=self.user_a,
                 timeout_seconds=1800,
             ),
             status=DQRunStatus.SUCCEEDED,
@@ -362,7 +384,6 @@ class DQRunDetailIDORTests(_DQIDORTestBase):
 
 
 class DQRunResultsIDORTests(_DQIDORTestBase):
-
     @property
     def url(self):
         return f"/api/v1/dq/runs/{self.dq_run_b.id}/results/"
@@ -386,7 +407,6 @@ class DQRunResultsIDORTests(_DQIDORTestBase):
 
 
 class DQAlertingRulesIDORTests(_DQIDORTestBase):
-
     URL = "/api/v1/dq/alerting-rules/"
 
     def test_no_auth_returns_401(self):
@@ -408,6 +428,138 @@ class DQAlertingRulesIDORTests(_DQIDORTestBase):
         )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_auditor_cannot_create_alerting_rule(self):
+        """AUDITOR POST → 403."""
+        self._make_user_a_auditor()
+        self.client.force_authenticate(user=self.user_a)
+        asset_a = Asset.objects.create(
+            tenant=self.tenant_a,
+            key=f"idor-auditor-ar-{uuid.uuid4().hex[:8]}",
+            name="Auditor AR Asset",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user_a,
+        )
+        response = self.client.post(
+            self.URL,
+            data={"asset_id": str(asset_a.id), "threshold": 80.0},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_auditor_cannot_update_alerting_rule(self):
+        """AUDITOR PUT → 403."""
+        # Create a rule in tenant A for the auditor to attempt updating
+        asset_a = Asset.objects.create(
+            tenant=self.tenant_a,
+            key=f"idor-auditor-ar-upd-{uuid.uuid4().hex[:8]}",
+            name="Auditor AR Update Asset",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user_a,
+        )
+        rule_a = DQAlertingRule.objects.create(
+            tenant=self.tenant_a,
+            asset=asset_a,
+            name="Auditor Target Rule",
+            metric_type="quality_score",
+            threshold=80.0,
+            comparison_operator="<",
+            severity=DQAnomalySeverity.HIGH,
+            alert_channels=[DQAlertChannel.EMAIL],
+            channel_config={},
+            created_by=self.user_a,
+        )
+        self._make_user_a_auditor()
+        self.client.force_authenticate(user=self.user_a)
+        response = self.client.put(
+            f"{self.URL}{rule_a.id}/",
+            data={
+                "metric_type": "quality_score",
+                "threshold": 50.0,
+                "name": "Updated",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_auditor_cannot_delete_alerting_rule(self):
+        """AUDITOR DELETE → 403."""
+        asset_a = Asset.objects.create(
+            tenant=self.tenant_a,
+            key=f"idor-auditor-ar-del-{uuid.uuid4().hex[:8]}",
+            name="Auditor AR Delete Asset",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user_a,
+        )
+        rule_a = DQAlertingRule.objects.create(
+            tenant=self.tenant_a,
+            asset=asset_a,
+            name="Auditor Target Rule",
+            metric_type="quality_score",
+            threshold=80.0,
+            comparison_operator="<",
+            severity=DQAnomalySeverity.HIGH,
+            alert_channels=[DQAlertChannel.EMAIL],
+            channel_config={},
+            created_by=self.user_a,
+        )
+        self._make_user_a_auditor()
+        self.client.force_authenticate(user=self.user_a)
+        response = self.client.delete(f"{self.URL}{rule_a.id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+# ──────────────────────────────────────────────────────────────────
+# /api/v1/dq/warehouse-run/  — POST endpoint
+# ──────────────────────────────────────────────────────────────────
+
+
+class DQWarehouseRunIDORTests(_DQIDORTestBase):
+    URL = "/api/v1/dq/runs/warehouse-run/"
+
+    def test_no_auth_returns_401(self):
+        response = self.client.post(self.URL, data={}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_cross_tenant_dataset_id_returns_404(self):
+        """Using tenant B's dataset from tenant A's session must 404."""
+        from hub.apps.datasets.models import Dataset
+
+        dataset_b = Dataset.objects.create(
+            tenant=self.tenant_b,
+            asset=self.asset_b,
+            format="CSV",
+            created_by=self.user_b,
+        )
+        self.client.force_authenticate(user=self.user_a)
+        response = self.client.post(
+            self.URL,
+            data={
+                "warehouse_config": {"type": "postgres"},
+                "dataset_id": str(dataset_b.id),
+            },
+            format="json",
+        )
+        # Dataset lookup is tenant-scoped → 404
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_auditor_cannot_create_warehouse_run(self):
+        """AUDITOR POST must not succeed (403 or 404, not 200/201)."""
+        self._make_user_a_auditor()
+        self.client.force_authenticate(user=self.user_a)
+        response = self.client.post(
+            self.URL,
+            data={
+                "warehouse_config": {"type": "postgres"},
+                "dataset_id": str(uuid.uuid4()),
+            },
+            format="json",
+        )
+        # Must not be 200 or 201; auditor is a write attempt
+        self.assertNotIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_201_CREATED],
+        )
+
 
 # ──────────────────────────────────────────────────────────────────
 # /api/v1/quality/anomalies/  — deprecated alias of /dq/quality/
@@ -415,7 +567,6 @@ class DQAlertingRulesIDORTests(_DQIDORTestBase):
 
 
 class DQQualityAnomaliesIDORTests(_DQIDORTestBase):
-
     URL = "/api/v1/quality/anomalies/"
 
     def test_no_auth_returns_401(self):
@@ -451,7 +602,6 @@ class DQQualityAnomaliesIDORTests(_DQIDORTestBase):
 
 
 class DQQualityTrendsIDORTests(_DQIDORTestBase):
-
     URL = "/api/v1/quality/trends/"
 
     def test_no_auth_returns_401(self):
@@ -469,9 +619,7 @@ class DQQualityTrendsIDORTests(_DQIDORTestBase):
         # visualisation-friendly rows (sparklines), not raw
         # DQTrend records. Either shape MUST not include tenant B
         # trend ids.
-        ids = {
-            row.get("id") for row in results if isinstance(row, dict)
-        }
+        ids = {row.get("id") for row in results if isinstance(row, dict)}
         self.assertNotIn(str(self.trend_b.id), ids)
 
 
@@ -481,7 +629,6 @@ class DQQualityTrendsIDORTests(_DQIDORTestBase):
 
 
 class DQQualityScorecardsIDORTests(_DQIDORTestBase):
-
     URL = "/api/v1/quality/scorecards/"
 
     def test_no_auth_returns_401(self):
@@ -517,7 +664,6 @@ class DQQualityScorecardsIDORTests(_DQIDORTestBase):
 
 
 class DQQualityRootCauseIDORTests(_DQIDORTestBase):
-
     URL = "/api/v1/quality/root_cause_analysis/"
 
     def test_no_auth_returns_401(self):
@@ -538,17 +684,16 @@ class DQQualityRootCauseIDORTests(_DQIDORTestBase):
         self.assertIn(
             response.status_code,
             (status.HTTP_404_NOT_FOUND, status.HTTP_200_OK),
-            f"Unexpected status {response.status_code} for "
-            "cross-tenant RCA probe.",
+            f"Unexpected status {response.status_code} for cross-tenant RCA probe.",
         )
         if response.status_code == status.HTTP_200_OK:
             # If the endpoint chose the empty-200 branch, the body
             # must NOT mention tenant B's run id.
             body_str = str(response.data)
             self.assertNotIn(
-                str(self.dq_run_b.id), body_str,
-                "RCA payload leaks tenant B's dq_run_id in the "
-                "200-response body.",
+                str(self.dq_run_b.id),
+                body_str,
+                "RCA payload leaks tenant B's dq_run_id in the 200-response body.",
             )
 
 
@@ -595,12 +740,9 @@ class DQEndpointsAuthenticationContractTests(_DQIDORTestBase):
         for url in urls:
             response = self.client.get(url)
             if response.status_code != status.HTTP_401_UNAUTHORIZED:
-                failures.append(
-                    f"{url} returned {response.status_code} "
-                    f"(expected 401)"
-                )
+                failures.append(f"{url} returned {response.status_code} (expected 401)")
         self.assertEqual(
-            failures, [],
-            "These DQ endpoints failed to require authentication:\n  - "
-            + "\n  - ".join(failures),
+            failures,
+            [],
+            "These DQ endpoints failed to require authentication:\n  - " + "\n  - ".join(failures),
         )

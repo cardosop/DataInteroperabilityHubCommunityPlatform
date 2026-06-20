@@ -8,6 +8,7 @@ writes to the DLQ, emits audit events, and publishes Prometheus metrics.
 
 Designed to run periodically via Kubernetes CronJob (every 15 minutes).
 """
+
 from datetime import timedelta
 
 import structlog
@@ -16,7 +17,7 @@ from django.db import transaction as db_transaction
 from django.utils import timezone
 
 from hub.apps.audit.utils import create_audit_event
-from hub.apps.jobs.models import FailedJobDLQ, Job, JobStatus, JobType
+from hub.apps.jobs.models import FailedJobDLQ, JobStatus
 from hub.apps.jobs.utils import JOB_TIMEOUTS, get_queue_for_job_type
 from hub.apps.tenants.models import Tenant
 from hub.apps.tenants.request_tenant import tenant_context
@@ -85,8 +86,7 @@ class Command(BaseCommand):
             tenant_ids = [str(target_tenant_id)]
         else:
             tenant_ids = [
-                str(tid)
-                for tid in Tenant.objects.order_by("id").values_list("id", flat=True)
+                str(tid) for tid in Tenant.objects.order_by("id").values_list("id", flat=True)
             ]
 
         total_dq = 0
@@ -97,14 +97,20 @@ class Command(BaseCommand):
             with tenant_context(tenant_id):
                 if direction in ("dq", "both"):
                     total_dq += self._detect_stuck_dq_runs(
-                        tenant_id, multiplier, dry_run,
+                        tenant_id,
+                        multiplier,
+                        dry_run,
                     )
                 if direction in ("compliance", "both"):
                     total_compliance += self._detect_stuck_compliance_runs(
-                        tenant_id, multiplier, dry_run,
+                        tenant_id,
+                        multiplier,
+                        dry_run,
                     )
                     total_queued += self._detect_stale_queued_compliance_runs(
-                        tenant_id, stale_queued_minutes, dry_run,
+                        tenant_id,
+                        stale_queued_minutes,
+                        dry_run,
                     )
 
         # Emit aggregate metrics after all tenants processed.
@@ -208,9 +214,14 @@ class Command(BaseCommand):
             details["error_message"] = error_msg[:MAX_ERROR_MESSAGE_LENGTH]
             run.details_json = details
 
-            run.save(update_fields=[
-                "status", "completed_at", "details_json", "updated_at",
-            ])
+            run.save(
+                update_fields=[
+                    "status",
+                    "completed_at",
+                    "details_json",
+                    "updated_at",
+                ]
+            )
 
             # Also fail the associated Job if still RUNNING.
             job = run.job
@@ -223,10 +234,15 @@ class Command(BaseCommand):
                     "error_code": ERROR_CODE_STUCK_RUN_DETECTED,
                     "stuck_duration_seconds": stuck_duration,
                 }
-                job.save(update_fields=[
-                    "status", "completed_at", "error_message",
-                    "result_json", "updated_at",
-                ])
+                job.save(
+                    update_fields=[
+                        "status",
+                        "completed_at",
+                        "error_message",
+                        "result_json",
+                        "updated_at",
+                    ]
+                )
 
                 # Write to DLQ.
                 try:
@@ -282,7 +298,9 @@ class Command(BaseCommand):
 
     # ── Compliance Runs ──────────────────────────────────────────────────
 
-    def _detect_stuck_compliance_runs(self, tenant_id: str, multiplier: float, dry_run: bool) -> int:
+    def _detect_stuck_compliance_runs(
+        self, tenant_id: str, multiplier: float, dry_run: bool
+    ) -> int:
         from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 
         now = timezone.now()
@@ -361,9 +379,14 @@ class Command(BaseCommand):
             metadata["error_message"] = error_msg[:MAX_ERROR_MESSAGE_LENGTH]
             run.metadata_json = metadata
 
-            run.save(update_fields=[
-                "status", "completed_at", "metadata_json", "updated_at",
-            ])
+            run.save(
+                update_fields=[
+                    "status",
+                    "completed_at",
+                    "metadata_json",
+                    "updated_at",
+                ]
+            )
 
             job = run.job
             if job and job.status == JobStatus.RUNNING:
@@ -375,10 +398,15 @@ class Command(BaseCommand):
                     "error_code": ERROR_CODE_STUCK_RUN_DETECTED,
                     "stuck_duration_seconds": stuck_duration,
                 }
-                job.save(update_fields=[
-                    "status", "completed_at", "error_message",
-                    "result_json", "updated_at",
-                ])
+                job.save(
+                    update_fields=[
+                        "status",
+                        "completed_at",
+                        "error_message",
+                        "result_json",
+                        "updated_at",
+                    ]
+                )
 
                 try:
                     FailedJobDLQ.objects.create(
@@ -436,7 +464,10 @@ class Command(BaseCommand):
     # picks it up on the next cycle.
 
     def _detect_stale_queued_compliance_runs(
-        self, tenant_id: str, stale_minutes: int, dry_run: bool,
+        self,
+        tenant_id: str,
+        stale_minutes: int,
+        dry_run: bool,
     ) -> int:
         from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 
@@ -461,8 +492,7 @@ class Command(BaseCommand):
         if dry_run:
             for run in runs:
                 self.stdout.write(
-                    f"  [DRY-RUN] QUEUED {run.id}"
-                    f"  created={run.created_at.isoformat()}"
+                    f"  [DRY-RUN] QUEUED {run.id}  created={run.created_at.isoformat()}"
                 )
             return 0
 
@@ -508,9 +538,14 @@ class Command(BaseCommand):
             metadata["error_message"] = error_msg
             run.metadata_json = metadata
 
-            run.save(update_fields=[
-                "status", "completed_at", "metadata_json", "updated_at",
-            ])
+            run.save(
+                update_fields=[
+                    "status",
+                    "completed_at",
+                    "metadata_json",
+                    "updated_at",
+                ]
+            )
 
             job = run.job
             if job and job.status == JobStatus.RUNNING:
@@ -523,10 +558,15 @@ class Command(BaseCommand):
                     "stuck_duration_seconds": stuck_duration_seconds,
                     "stale_queued_minutes": stale_minutes,
                 }
-                job.save(update_fields=[
-                    "status", "completed_at", "error_message",
-                    "result_json", "updated_at",
-                ])
+                job.save(
+                    update_fields=[
+                        "status",
+                        "completed_at",
+                        "error_message",
+                        "result_json",
+                        "updated_at",
+                    ]
+                )
 
                 try:
                     FailedJobDLQ.objects.create(
@@ -628,9 +668,8 @@ class Command(BaseCommand):
 
         # Associated Job-level timeout.
         job = getattr(run, "job", None)
-        if job is not None:
-            if getattr(job, "timeout_seconds", None) is not None:
-                return int(job.timeout_seconds)
+        if job is not None and getattr(job, "timeout_seconds", None) is not None:
+            return int(job.timeout_seconds)
 
         # Job-type default from JOB_TIMEOUTS.
         if job is not None:

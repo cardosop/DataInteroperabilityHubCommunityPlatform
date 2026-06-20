@@ -18,18 +18,18 @@ This test suite provides engineering-grade validation for:
 All tests use real services (no mocks/stubs) and follow TDD principles.
 """
 
-import json
 import uuid
 
 import pytest
 
 pytestmark = pytest.mark.slow
+import contextlib
+
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
-from django.utils import timezone
 
-from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility
+from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
@@ -40,10 +40,7 @@ from hub.apps.contracts.models import (
 from hub.apps.core.services.base import ConflictError, NotFoundError, ValidationError
 from hub.apps.governance.models import AccessPolicy
 from hub.apps.mesh.models import (
-    ComplianceReport,
-    DataMeshDomain,
     DomainStatus,
-    MeshComplianceStatus,
     PolicyApplication,
     PolicyApplicationStatus,
 )
@@ -51,7 +48,6 @@ from hub.apps.mesh.services import DataMeshService
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.users.models import Role, UserRole, UserStatus
 from tests.fixtures.test_data_factories import TenantFactory, UserFactory
-from tests.utils.wait_helpers import wait_for_event_persistence
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -82,7 +78,6 @@ class TestDomainManagement(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for comprehensive tests."""
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -103,7 +98,7 @@ class TestDomainManagement(TestCase):
                     connection.close()
                     # Longer wait for "database system is starting up" errors
                     wait_time = retry_delay * (2 ** min(attempt, 4))  # Cap at 16 seconds
-                    time.sleep(wait_time)  # INTENTIONAL: exponential backoff for DB startup retry
+                    time.sleep(wait_time)  # noqa: sleep-needed  # INTENTIONAL: exponential backoff for DB startup retry
 
                 cache.clear()
                 unique_id = uuid.uuid4().hex[:8]
@@ -135,13 +130,13 @@ class TestDomainManagement(TestCase):
                     if attempt == max_retries - 1:
                         raise
                     # Wait longer for database startup
-                    time.sleep(5.0)  # INTENTIONAL: wait for database system startup
+                    time.sleep(5.0)  # noqa: sleep-needed  # INTENTIONAL: wait for database system startup
                     continue
                 # Other operational errors - retry with exponential backoff
                 if attempt == max_retries - 1:
                     raise
                 continue
-            except Exception as e:
+            except Exception:
                 if attempt == max_retries - 1:
                     # Last attempt failed - re-raise the exception
                     raise
@@ -152,10 +147,8 @@ class TestDomainManagement(TestCase):
         """Clean up test data; ensure connection is open for teardown and subsequent tests."""
         from django.db import connection
 
-        try:
+        with contextlib.suppress(Exception):
             connection.ensure_connection()
-        except Exception:
-            pass
 
     def test_domain_creation(self):
         """Test domain creation with all fields"""
@@ -497,7 +490,6 @@ class TestFederatedGovernance(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for comprehensive tests."""
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -515,7 +507,9 @@ class TestFederatedGovernance(TestCase):
                 # Close any stale connections before retry
                 if attempt > 0:
                     connection.close()
-                    time.sleep(retry_delay * (2**attempt))  # INTENTIONAL: exponential backoff for DB retry
+                    time.sleep(  # noqa: sleep-needed — polling loop
+                        retry_delay * (2**attempt)
+                    )  # INTENTIONAL: exponential backoff for DB retry
 
                 cache.clear()
                 unique_id = uuid.uuid4().hex[:8]
@@ -568,7 +562,7 @@ class TestFederatedGovernance(TestCase):
 
                 # Success - break out of retry loop
                 break
-            except Exception as e:
+            except Exception:
                 if attempt == max_retries - 1:
                     # Last attempt failed - re-raise the exception
                     raise
@@ -579,10 +573,8 @@ class TestFederatedGovernance(TestCase):
         """Clean up test data; ensure connection is open for teardown and subsequent tests."""
         from django.db import connection
 
-        try:
+        with contextlib.suppress(Exception):
             connection.ensure_connection()
-        except Exception:
-            pass
 
     def test_policy_application(self):
         """Test policy application to domain"""
@@ -866,7 +858,6 @@ class TestMeshTopology(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for comprehensive tests."""
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -887,7 +878,7 @@ class TestMeshTopology(TestCase):
                     connection.close()
                     # Longer wait for "database system is starting up" errors
                     wait_time = retry_delay * (2 ** min(attempt, 4))  # Cap at 16 seconds
-                    time.sleep(wait_time)  # INTENTIONAL: exponential backoff for DB startup retry
+                    time.sleep(wait_time)  # noqa: sleep-needed  # INTENTIONAL: exponential backoff for DB startup retry
 
                 cache.clear()
                 unique_id = uuid.uuid4().hex[:8]
@@ -919,13 +910,13 @@ class TestMeshTopology(TestCase):
                     if attempt == max_retries - 1:
                         raise
                     # Wait longer for database startup
-                    time.sleep(5.0)  # INTENTIONAL: wait for database system startup
+                    time.sleep(5.0)  # noqa: sleep-needed  # INTENTIONAL: wait for database system startup
                     continue
                 # Other operational errors - retry with exponential backoff
                 if attempt == max_retries - 1:
                     raise
                 continue
-            except Exception as e:
+            except Exception:
                 if attempt == max_retries - 1:
                     # Last attempt failed - re-raise the exception
                     raise
@@ -936,10 +927,8 @@ class TestMeshTopology(TestCase):
         """Clean up test data; ensure connection is open for teardown and subsequent tests."""
         from django.db import connection
 
-        try:
+        with contextlib.suppress(Exception):
             connection.ensure_connection()
-        except Exception:
-            pass
 
     def test_topology_visualization(self):
         """Test topology visualization"""
@@ -1042,7 +1031,7 @@ class TestMeshTopology(TestCase):
     def test_topology_updates(self):
         """Test topology updates"""
         # Create initial domain
-        domain1 = self.service.create_domain(
+        self.service.create_domain(
             tenant_id=str(self.tenant.id),
             name="update-domain-1",
         )
@@ -1054,7 +1043,7 @@ class TestMeshTopology(TestCase):
         initial_count = topology1["summary"]["total_domains"]
 
         # Create another domain
-        domain2 = self.service.create_domain(
+        self.service.create_domain(
             tenant_id=str(self.tenant.id),
             name="update-domain-2",
         )
@@ -1069,11 +1058,11 @@ class TestMeshTopology(TestCase):
     def test_topology_queries(self):
         """Test topology queries"""
         # Create domains
-        domain1 = self.service.create_domain(
+        self.service.create_domain(
             tenant_id=str(self.tenant.id),
             name="query-domain-1",
         )
-        domain2 = self.service.create_domain(
+        self.service.create_domain(
             tenant_id=str(self.tenant.id),
             name="query-domain-2",
         )
@@ -1110,7 +1099,7 @@ class TestMeshTopology(TestCase):
     def test_topology_summary_statistics(self):
         """Test topology summary statistics"""
         # Create domains with different statuses
-        active_domain = self.service.create_domain(
+        self.service.create_domain(
             tenant_id=str(self.tenant.id),
             name="active-summary-domain",
             status=DomainStatus.ACTIVE,
@@ -1162,7 +1151,6 @@ class TestDomainAssetManagement(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for comprehensive tests."""
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -1180,7 +1168,9 @@ class TestDomainAssetManagement(TestCase):
                 # Close any stale connections before retry
                 if attempt > 0:
                     connection.close()
-                    time.sleep(retry_delay * (2**attempt))  # INTENTIONAL: exponential backoff for DB retry
+                    time.sleep(  # noqa: sleep-needed — polling loop
+                        retry_delay * (2**attempt)
+                    )  # INTENTIONAL: exponential backoff for DB retry
 
                 cache.clear()
                 unique_id = uuid.uuid4().hex[:8]
@@ -1212,7 +1202,7 @@ class TestDomainAssetManagement(TestCase):
 
                 # Success - break out of retry loop
                 break
-            except Exception as e:
+            except Exception:
                 if attempt == max_retries - 1:
                     # Last attempt failed - re-raise the exception
                     raise
@@ -1223,10 +1213,8 @@ class TestDomainAssetManagement(TestCase):
         """Clean up test data; ensure connection is open for teardown and subsequent tests."""
         from django.db import connection
 
-        try:
+        with contextlib.suppress(Exception):
             connection.ensure_connection()
-        except Exception:
-            pass
 
     def test_asset_assignment_to_domain(self):
         """Test asset assignment to domain"""
@@ -1457,7 +1445,6 @@ class TestDataMeshODPSIntegration(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for comprehensive tests."""
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -1475,7 +1462,9 @@ class TestDataMeshODPSIntegration(TestCase):
                 # Close any stale connections before retry
                 if attempt > 0:
                     connection.close()
-                    time.sleep(retry_delay * (2**attempt))  # INTENTIONAL: exponential backoff for DB retry
+                    time.sleep(  # noqa: sleep-needed — polling loop
+                        retry_delay * (2**attempt)
+                    )  # INTENTIONAL: exponential backoff for DB retry
 
                 cache.clear()
                 unique_id = uuid.uuid4().hex[:8]
@@ -1503,7 +1492,7 @@ class TestDataMeshODPSIntegration(TestCase):
 
                 # Success - break out of retry loop
                 break
-            except Exception as e:
+            except Exception:
                 if attempt == max_retries - 1:
                     # Last attempt failed - re-raise the exception
                     raise
@@ -1514,10 +1503,8 @@ class TestDataMeshODPSIntegration(TestCase):
         """Clean up test data; ensure connection is open for teardown and subsequent tests."""
         from django.db import connection
 
-        try:
+        with contextlib.suppress(Exception):
             connection.ensure_connection()
-        except Exception:
-            pass
 
     def test_odps_contracts_in_mesh_domains(self):
         """Test ODPS contracts in mesh domains"""
@@ -1570,7 +1557,7 @@ class TestDataMeshODPSIntegration(TestCase):
             created_by=self.user,
         )
 
-        contract1 = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset1,
             original_spec_type=OriginalSpecType.ODPS,
@@ -1585,7 +1572,7 @@ class TestDataMeshODPSIntegration(TestCase):
         )
 
         # Query ODPS contracts in domain (via assets)
-        domain_assets = Asset.objects.filter(
+        Asset.objects.filter(
             tenant=self.tenant,
             domain=self.domain.name,
         )
@@ -1622,7 +1609,7 @@ class TestDataMeshODPSIntegration(TestCase):
         self.assertEqual(policy_app.status, PolicyApplicationStatus.APPLIED)
 
         # Create ODPS contract in domain
-        asset = Asset.objects.create(
+        Asset.objects.create(
             tenant=self.tenant,
             key="governance-odps-asset",
             name="Governance ODPS Asset",
@@ -1684,7 +1671,7 @@ class TestDataMeshODPSIntegration(TestCase):
         )
 
         # Create assets in domains
-        asset1 = Asset.objects.create(
+        Asset.objects.create(
             tenant=self.tenant,
             key="topology-odps-asset-1",
             name="Topology ODPS Asset 1",
@@ -1693,7 +1680,7 @@ class TestDataMeshODPSIntegration(TestCase):
             created_by=self.user,
         )
 
-        asset2 = Asset.objects.create(
+        Asset.objects.create(
             tenant=self.tenant,
             key="topology-odps-asset-2",
             name="Topology ODPS Asset 2",

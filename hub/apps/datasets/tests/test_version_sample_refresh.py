@@ -24,11 +24,12 @@ manual DB mutation), then create v2 via
 ``sample_data_json`` reflects the FILE's truth — NOT the
 corrupted parent field. Skip when MinIO is unavailable.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase
 
@@ -121,9 +122,7 @@ class _VersionSampleRefreshTestMixin:
         return v1
 
 
-class VersionSampleRefreshHelperTest(
-    _VersionSampleRefreshTestMixin, TransactionTestCase
-):
+class VersionSampleRefreshHelperTest(_VersionSampleRefreshTestMixin, TransactionTestCase):
     """The pure helper ``extract_sample_data_from_storage`` is the
     load-bearing primitive. Pin its contract on its own (no
     version-creation indirection)."""
@@ -173,9 +172,7 @@ class VersionSampleRefreshHelperTest(
         self.assertIsNone(extract_sample_data_from_storage(object(), ""))
 
 
-class VersionSampleRefreshIntegrationTest(
-    _VersionSampleRefreshTestMixin, TransactionTestCase
-):
+class VersionSampleRefreshIntegrationTest(_VersionSampleRefreshTestMixin, TransactionTestCase):
     """260.5.I.2 acceptance — create v1 + v2; assert v2's
     sample_data_json is derived from the file, NOT from a stale /
     corrupted parent cache.
@@ -263,8 +260,7 @@ class VersionSampleRefreshIntegrationTest(
         self.assertEqual(
             v2.sample_data_json,
             original_sample,
-            "Fallback path must use parent's sample_data_json when "
-            "the file is unreachable",
+            "Fallback path must use parent's sample_data_json when the file is unreachable",
         )
 
     @pytest.mark.integration
@@ -277,9 +273,7 @@ class VersionSampleRefreshIntegrationTest(
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
         ndjson = (
-            b'{"id": 1, "name": "alice"}\n'
-            b'{"id": 2, "name": "bob"}\n'
-            b'{"id": 3, "name": "charlie"}\n'
+            b'{"id": 1, "name": "alice"}\n{"id": 2, "name": "bob"}\n{"id": 3, "name": "charlie"}\n'
         )
         file_id = uuid.uuid4()
         storage_path = f"{self.tenant.id}/{file_id}/data.ndjson"
@@ -360,8 +354,7 @@ class VersionSampleRefreshIntegrationTest(
         self.assertNotEqual(
             v2.sample_data_json,
             [{"OLD_SCHEMA": True}],
-            "Sample data must be fresh extraction even when schema "
-            "is overridden",
+            "Sample data must be fresh extraction even when schema is overridden",
         )
         self.assertEqual(len(v2.sample_data_json), 3)
         self.assertEqual(v2.sample_data_json[0]["name"], "alice")

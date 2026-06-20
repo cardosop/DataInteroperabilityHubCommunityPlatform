@@ -1,10 +1,10 @@
 """DSAR RESTRICTION cases that defer automated retention destruction (Phase 232.7)."""
 
 from __future__ import annotations
+
 from typing import Any
 
 from hub.apps.dsar.models import DSARRequest, DSARRequestType, DSARStatus
-
 
 _DSAR_TERMINAL: frozenset[str] = frozenset(
     {
@@ -43,12 +43,16 @@ def _scopes_match(scope: Any, *, asset_id, dataset_id, file_id) -> bool:
     if scope is None:
         return False
     if isinstance(scope, list):
-        return any(_scopes_match(x, asset_id=asset_id, dataset_id=dataset_id, file_id=file_id) for x in scope)
+        return any(
+            _scopes_match(x, asset_id=asset_id, dataset_id=dataset_id, file_id=file_id)
+            for x in scope
+        )
     if isinstance(scope, dict):
         nested = scope.get("scopes")
         if isinstance(nested, list):
             return any(
-                isinstance(x, dict) and _scope_matches_cell(
+                isinstance(x, dict)
+                and _scope_matches_cell(
                     x, asset_id=asset_id, dataset_id=dataset_id, file_id=file_id
                 )
                 for x in nested
@@ -104,9 +108,9 @@ def resource_blocked_by_open_dsar_restriction(
     if not any([asset_id, dataset_id, file_id]):
         return False
 
-    qs = DSARRequest.objects.filter(tenant_id=tenant_id, request_type=DSARRequestType.RESTRICTION).exclude(
-        status__in=_DSAR_TERMINAL
-    )
+    qs = DSARRequest.objects.filter(
+        tenant_id=tenant_id, request_type=DSARRequestType.RESTRICTION
+    ).exclude(status__in=_DSAR_TERMINAL)
     for row in qs.iterator():
         payload = row.details_json if isinstance(row.details_json, dict) else {}
         scope = payload.get("retention_block_scope")

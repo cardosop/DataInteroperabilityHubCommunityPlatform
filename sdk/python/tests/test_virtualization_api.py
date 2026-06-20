@@ -22,23 +22,18 @@ To run integration tests:
 import asyncio
 import inspect
 import os
-import warnings
 import uuid
-from typing import Optional
 
 import pytest
 
 from datahub_interoperability import DataHubClient, DataHubClientConfig, VirtualizationAPI
 from datahub_interoperability.errors import (
     ConflictError,
-    ForbiddenError,
     NotFoundError,
     RateLimitError,
-    UnauthorizedError,
     ValidationError,
 )
-
-from tests.conftest import is_api_available, get_api_key, default_api_base_url
+from tests.conftest import default_api_base_url, get_api_key, is_api_available
 
 # Default SQL sources for tests requiring source-backed SQL queries.
 # The API now validates that non-SPARQL query types include at least one source.
@@ -48,14 +43,16 @@ _DEFAULT_SQL_TEST_DB_HOST = os.environ.get("VIRTUALIZATION_TEST_DB_HOST", "local
 _DEFAULT_SQL_TEST_DB_USER = os.environ.get("VIRTUALIZATION_TEST_DB_USER", "hub_test")
 _DEFAULT_SQL_TEST_DB_PASS = os.environ.get("VIRTUALIZATION_TEST_DB_PASS", "hub_test")
 _DEFAULT_SQL_TEST_DB_NAME = os.environ.get("VIRTUALIZATION_TEST_DB_NAME", "hub_test")
-_DEFAULT_SQL_SOURCES = [{
-    "type": "postgresql",
-    "host": _DEFAULT_SQL_TEST_DB_HOST,
-    "port": 5432,
-    "username": _DEFAULT_SQL_TEST_DB_USER,
-    "password": _DEFAULT_SQL_TEST_DB_PASS,
-    "database": _DEFAULT_SQL_TEST_DB_NAME,
-}]
+_DEFAULT_SQL_SOURCES = [
+    {
+        "type": "postgresql",
+        "host": _DEFAULT_SQL_TEST_DB_HOST,
+        "port": 5432,
+        "username": _DEFAULT_SQL_TEST_DB_USER,
+        "password": _DEFAULT_SQL_TEST_DB_PASS,
+        "database": _DEFAULT_SQL_TEST_DB_NAME,
+    }
+]
 
 
 async def retry_on_rate_limit(func, max_retries: int = 3, initial_delay: float = 1.0):
@@ -80,9 +77,9 @@ async def retry_on_rate_limit(func, max_retries: int = 3, initial_delay: float =
         except RateLimitError as e:
             if attempt < max_retries - 1:
                 # Get retry_after from error attribute or details
-                retry_after = getattr(e, 'retry_after', None)
-                if retry_after is None and isinstance(getattr(e, 'details', None), dict):
-                    retry_after = e.details.get('retry_after')
+                retry_after = getattr(e, "retry_after", None)
+                if retry_after is None and isinstance(getattr(e, "details", None), dict):
+                    retry_after = e.details.get("retry_after")
 
                 # Convert retry_after to int if it's a string
                 if retry_after:
@@ -94,9 +91,9 @@ async def retry_on_rate_limit(func, max_retries: int = 3, initial_delay: float =
                             retry_after = int(retry_after)
                         delay = retry_after + 1  # Add 1 second buffer
                     except (ValueError, TypeError):
-                        delay = initial_delay * (2 ** attempt)
+                        delay = initial_delay * (2**attempt)
                 else:
-                    delay = initial_delay * (2 ** attempt)
+                    delay = initial_delay * (2**attempt)
 
                 await asyncio.sleep(min(delay, 30))  # Cap delay at 30 seconds
             else:
@@ -142,10 +139,7 @@ def real_api_config():
             "or ensure Docker Compose api-service is accessible."
         )
 
-    api_base_url = os.environ.get(
-        "API_BASE_URL",
-        f"{default_api_base_url()}/api/v1"
-    )
+    api_base_url = os.environ.get("API_BASE_URL", f"{default_api_base_url()}/api/v1")
 
     return DataHubClientConfig(
         base_url=api_base_url,
@@ -361,7 +355,10 @@ async def test_create_dataset_success(real_virtualization_api):
     dataset_name = f"test-dataset-{uuid.uuid4().hex[:8]}"
 
     result = await real_virtualization_api.create_dataset(
-        name=dataset_name, query="SELECT * FROM test_table WHERE id = :id", query_type="SQL", sources=_DEFAULT_SQL_SOURCES
+        name=dataset_name,
+        query="SELECT * FROM test_table WHERE id = :id",
+        query_type="SQL",
+        sources=_DEFAULT_SQL_SOURCES,
     )
 
     assert result is not None
@@ -391,7 +388,9 @@ async def test_create_dataset_with_all_fields(real_virtualization_api):
         query_type="SQL",
         description="Test Description",
         schema={"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
-        sources=[{"id": "source1", "type": "postgresql", "host": "localhost", "database": "testdb"}],
+        sources=[
+            {"id": "source1", "type": "postgresql", "host": "localhost", "database": "testdb"}
+        ],
         version="2.0.0",
         status="ACTIVE",
     )
@@ -402,7 +401,9 @@ async def test_create_dataset_with_all_fields(real_virtualization_api):
     assert result["schema"] == {
         "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
     }
-    assert result["sources"] == [{"id": "source1", "type": "postgresql", "host": "localhost", "database": "testdb"}]
+    assert result["sources"] == [
+        {"id": "source1", "type": "postgresql", "host": "localhost", "database": "testdb"}
+    ]
     assert result["version"] == "2.0.0"
     assert result["status"] == "ACTIVE"
 
@@ -431,14 +432,20 @@ async def test_create_dataset_conflict_error(real_virtualization_api):
 
     # Create first dataset
     result1 = await real_virtualization_api.create_dataset(
-        name=dataset_name, query="SELECT * FROM table1", query_type="SQL", sources=_DEFAULT_SQL_SOURCES
+        name=dataset_name,
+        query="SELECT * FROM table1",
+        query_type="SQL",
+        sources=_DEFAULT_SQL_SOURCES,
     )
 
     # Try to create another with same name (should fail if name uniqueness is enforced)
     try:
         with pytest.raises((ConflictError, ValidationError)):
             await real_virtualization_api.create_dataset(
-                name=dataset_name, query="SELECT * FROM table2", query_type="SQL", sources=_DEFAULT_SQL_SOURCES
+                name=dataset_name,
+                query="SELECT * FROM table2",
+                query_type="SQL",
+                sources=_DEFAULT_SQL_SOURCES,
             )
     finally:
         # Cleanup
@@ -455,7 +462,10 @@ async def test_list_datasets_success(real_virtualization_api):
     # Create a test dataset first
     dataset_name = f"test-dataset-list-{uuid.uuid4().hex[:8]}"
     created = await real_virtualization_api.create_dataset(
-        name=dataset_name, query="SELECT * FROM test_table", query_type="SQL", sources=_DEFAULT_SQL_SOURCES
+        name=dataset_name,
+        query="SELECT * FROM test_table",
+        query_type="SQL",
+        sources=_DEFAULT_SQL_SOURCES,
     )
 
     try:
@@ -485,7 +495,11 @@ async def test_list_datasets_with_filters(real_virtualization_api):
     dataset_name2 = f"test-dataset-filter-2-{uuid.uuid4().hex[:8]}"
 
     created1 = await real_virtualization_api.create_dataset(
-        name=dataset_name1, query="SELECT * FROM table1", query_type="SQL", status="ACTIVE", sources=_DEFAULT_SQL_SOURCES
+        name=dataset_name1,
+        query="SELECT * FROM table1",
+        query_type="SQL",
+        status="ACTIVE",
+        sources=_DEFAULT_SQL_SOURCES,
     )
     created2 = await real_virtualization_api.create_dataset(
         name=dataset_name2, query="SELECT * FROM table2", query_type="SPARQL", status="DRAFT"
@@ -597,7 +611,10 @@ async def test_update_dataset_success(real_virtualization_api):
     # Create a test dataset
     dataset_name = f"test-dataset-update-{uuid.uuid4().hex[:8]}"
     created = await real_virtualization_api.create_dataset(
-        name=dataset_name, query="SELECT * FROM test_table", query_type="SQL", sources=_DEFAULT_SQL_SOURCES
+        name=dataset_name,
+        query="SELECT * FROM test_table",
+        query_type="SQL",
+        sources=_DEFAULT_SQL_SOURCES,
     )
 
     try:
@@ -652,9 +669,7 @@ async def test_update_dataset_partial_update(real_virtualization_api):
     finally:
         # Cleanup
         try:
-            await retry_on_rate_limit(
-                lambda: real_virtualization_api.delete_dataset(created["id"])
-            )
+            await retry_on_rate_limit(lambda: real_virtualization_api.delete_dataset(created["id"]))
         except (NotFoundError, ConnectionError, TimeoutError, OSError):
             pass  # cleanup best-effort — ignore expected errors
 
@@ -682,7 +697,10 @@ async def test_update_dataset_validation_error(real_virtualization_api):
     dataset_name = f"test-dataset-validation-{uuid.uuid4().hex[:8]}"
     created = await retry_on_rate_limit(
         lambda: real_virtualization_api.create_dataset(
-            name=dataset_name, query="SELECT * FROM test_table", query_type="SQL", sources=_DEFAULT_SQL_SOURCES
+            name=dataset_name,
+            query="SELECT * FROM test_table",
+            query_type="SQL",
+            sources=_DEFAULT_SQL_SOURCES,
         )
     )
 
@@ -694,9 +712,7 @@ async def test_update_dataset_validation_error(real_virtualization_api):
     finally:
         # Cleanup
         try:
-            await retry_on_rate_limit(
-                lambda: real_virtualization_api.delete_dataset(created["id"])
-            )
+            await retry_on_rate_limit(lambda: real_virtualization_api.delete_dataset(created["id"]))
         except (NotFoundError, ConnectionError, TimeoutError, OSError):
             pass  # cleanup best-effort — ignore expected errors
 
@@ -711,7 +727,10 @@ async def test_delete_dataset_success(real_virtualization_api):
     dataset_name = f"test-dataset-delete-{uuid.uuid4().hex[:8]}"
     created = await retry_on_rate_limit(
         lambda: real_virtualization_api.create_dataset(
-            name=dataset_name, query="SELECT * FROM test_table", query_type="SQL", sources=_DEFAULT_SQL_SOURCES
+            name=dataset_name,
+            query="SELECT * FROM test_table",
+            query_type="SQL",
+            sources=_DEFAULT_SQL_SOURCES,
         )
     )
 
@@ -723,9 +742,7 @@ async def test_delete_dataset_success(real_virtualization_api):
 
     # Verify it's deleted
     with pytest.raises(NotFoundError):
-        await retry_on_rate_limit(
-            lambda: real_virtualization_api.get_dataset(created["id"])
-        )
+        await retry_on_rate_limit(lambda: real_virtualization_api.get_dataset(created["id"]))
 
 
 @pytest.mark.asyncio
@@ -736,9 +753,7 @@ async def test_delete_dataset_not_found(real_virtualization_api):
     fake_id = str(uuid.uuid4())
 
     with pytest.raises(NotFoundError):
-        await retry_on_rate_limit(
-            lambda: real_virtualization_api.delete_dataset(fake_id)
-        )
+        await retry_on_rate_limit(lambda: real_virtualization_api.delete_dataset(fake_id))
 
 
 def test_delete_dataset_invalid_id(virtualization_api):
@@ -1651,7 +1666,7 @@ async def test_cancel_query_execution_success_integration(real_virtualization_ap
 
         # Get current execution status
         retrieved = await real_virtualization_api.get_query_execution(execution_id)
-        current_status = retrieved["status"]
+        retrieved["status"]
 
         # Try to cancel (may fail if already completed/failed, which is OK)
         try:
@@ -1967,6 +1982,7 @@ async def test_get_query_result_execution_not_completed_integration(real_virtual
 
 
 # Topology Methods - Integration Tests with Real API
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration

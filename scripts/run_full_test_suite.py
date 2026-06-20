@@ -9,13 +9,12 @@ engineering-grade manner following best practices:
 - Comprehensive test coverage
 - Follows DRY, SOLID, and clean code principles
 """
-import sys
-import subprocess
+
 import os
+import subprocess
+import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
-from datetime import datetime
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -92,7 +91,7 @@ def check_services() -> bool:
     return all_available
 
 
-def find_test_files(category: str) -> List[str]:
+def find_test_files(category: str) -> list[str]:
     """Find test files for a given category."""
     config = TEST_CATEGORIES[category]
     test_files = []
@@ -120,7 +119,7 @@ def find_test_files(category: str) -> List[str]:
     return sorted(set(test_files))
 
 
-def run_tests_by_directory(category: str, verbose: bool = True) -> Tuple[int, str, float]:
+def run_tests_by_directory(category: str, verbose: bool = True) -> tuple[int, str, float]:
     """
     Run tests using pytest by directory (more reliable than passing individual files).
 
@@ -177,7 +176,9 @@ def run_tests_by_directory(category: str, verbose: bool = True) -> Tuple[int, st
     ]
 
     cmd = [
-        PYTHON_EXECUTABLE, "-m", "pytest",
+        PYTHON_EXECUTABLE,
+        "-m",
+        "pytest",
         "-v" if verbose else "",
         "--tb=short",
     ]
@@ -215,15 +216,16 @@ def run_tests_by_directory(category: str, verbose: bool = True) -> Tuple[int, st
     # Remove empty strings
     cmd = [c for c in cmd if c]
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Running {config['description']} with pytest on {len(pytest_paths)} directory/ies...")
     print(f"Paths: {', '.join(pytest_paths)}")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     start_time = time.time()
     try:
         result = subprocess.run(
             cmd,
+            check=False,
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             text=True,
@@ -234,13 +236,15 @@ def run_tests_by_directory(category: str, verbose: bool = True) -> Tuple[int, st
         return result.returncode, result.stdout + result.stderr, duration
     except subprocess.TimeoutExpired:
         duration = time.time() - start_time
-        return 1, f"Test execution timed out after {config['timeout']//60} minutes", duration
+        return 1, f"Test execution timed out after {config['timeout'] // 60} minutes", duration
     except Exception as e:
         duration = time.time() - start_time
-        return 1, f"Error running tests: {str(e)}", duration
+        return 1, f"Error running tests: {e!s}", duration
 
 
-def run_pytest_tests(test_paths: List[str], category: str, verbose: bool = True) -> Tuple[int, str, float]:
+def run_pytest_tests(
+    test_paths: list[str], category: str, verbose: bool = True
+) -> tuple[int, str, float]:
     """
     Run pytest on the given test paths.
 
@@ -255,7 +259,9 @@ def run_pytest_tests(test_paths: List[str], category: str, verbose: bool = True)
     env["REDIS_HOST"] = "localhost"
 
     cmd = [
-        PYTHON_EXECUTABLE, "-m", "pytest",
+        PYTHON_EXECUTABLE,
+        "-m",
+        "pytest",
         "-v" if verbose else "",
         "--tb=short",
         "--no-header",
@@ -264,14 +270,15 @@ def run_pytest_tests(test_paths: List[str], category: str, verbose: bool = True)
     # Remove empty strings
     cmd = [c for c in cmd if c]
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Running {config['description']} with pytest on {len(test_paths)} test file(s)...")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     start_time = time.time()
     try:
         result = subprocess.run(
             cmd,
+            check=False,
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             text=True,
@@ -282,15 +289,16 @@ def run_pytest_tests(test_paths: List[str], category: str, verbose: bool = True)
         return result.returncode, result.stdout + result.stderr, duration
     except subprocess.TimeoutExpired:
         duration = time.time() - start_time
-        return 1, f"Test execution timed out after {config['timeout']//60} minutes", duration
+        return 1, f"Test execution timed out after {config['timeout'] // 60} minutes", duration
     except Exception as e:
         duration = time.time() - start_time
-        return 1, f"Error running tests: {str(e)}", duration
+        return 1, f"Error running tests: {e!s}", duration
 
 
-def extract_test_summary(output: str) -> Dict[str, int]:
+def extract_test_summary(output: str) -> dict[str, int]:
     """Extract test summary from pytest output."""
     import re
+
     summary = {
         "total": 0,
         "passed": 0,
@@ -301,12 +309,6 @@ def extract_test_summary(output: str) -> Dict[str, int]:
 
     # Look for pytest summary line: "123 passed, 4 failed, 2 skipped in 10.23s"
     # or "123 passed, 4 failed, 2 skipped, 5 errors in 10.23s"
-    summary_patterns = [
-        r"(\d+)\s+passed",  # passed count
-        r"(\d+)\s+failed",  # failed count
-        r"(\d+)\s+skipped",  # skipped count
-        r"(\d+)\s+error",  # error count (pytest shows "error" not "errors")
-    ]
 
     # Find the summary line (usually at the end, look for pytest summary format)
     lines = output.split("\n")
@@ -314,7 +316,9 @@ def extract_test_summary(output: str) -> Dict[str, int]:
     # Look for pytest summary: "X passed, Y failed, Z skipped in N.NNs"
     for line in reversed(lines):
         # Match pytest summary format
-        if re.search(r"\d+\s+(passed|failed|skipped|error)", line) and ("in " in line or "seconds" in line.lower() or "warnings" in line.lower()):
+        if re.search(r"\d+\s+(passed|failed|skipped|error)", line) and (
+            "in " in line or "seconds" in line.lower() or "warnings" in line.lower()
+        ):
             summary_line = line
             break
     # If not found, look for any line with test counts
@@ -343,7 +347,9 @@ def extract_test_summary(output: str) -> Dict[str, int]:
             summary["errors"] = int(error_match.group(1))
 
         # Total is sum of all
-        summary["total"] = summary["passed"] + summary["failed"] + summary["skipped"] + summary["errors"]
+        summary["total"] = (
+            summary["passed"] + summary["failed"] + summary["skipped"] + summary["errors"]
+        )
     else:
         # Fallback: Look for Django test output
         for line in lines:
@@ -372,9 +378,9 @@ def extract_test_summary(output: str) -> Dict[str, int]:
 
 def main():
     """Main execution function."""
-    print("="*80)
+    print("=" * 80)
     print("Comprehensive Full Test Suite Runner")
-    print("="*80)
+    print("=" * 80)
     print("\nFollowing engineering best practices:")
     print("  - No mocks/stubs - uses real implementations")
     print("  - Fixes root causes, not symptoms")
@@ -400,9 +406,9 @@ def main():
     # Run tests for each category
     for category in ["unit", "integration", "e2e"]:
         config = TEST_CATEGORIES[category]
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"CATEGORY: {config['description']}")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
 
         # Find test files
         test_files = find_test_files(category)
@@ -443,29 +449,33 @@ def main():
 
         # Print summary
         print(f"\n{status}: {config['description']}")
-        print(f"  Duration: {duration:.2f} seconds ({duration/60:.2f} minutes)")
+        print(f"  Duration: {duration:.2f} seconds ({duration / 60:.2f} minutes)")
         print(f"  Total tests: {summary['total']}")
         print(f"  Passed: {summary['passed']}")
-        if summary['failed'] > 0:
+        if summary["failed"] > 0:
             print(f"  Failed: {summary['failed']}")
-        if summary['errors'] > 0:
+        if summary["errors"] > 0:
             print(f"  Errors: {summary['errors']}")
-        if summary['skipped'] > 0:
+        if summary["skipped"] > 0:
             print(f"  Skipped: {summary['skipped']}")
 
         # Show failures if any
-        if exit_code != 0 and "FAILED" in output or "ERROR" in output:
+        if (exit_code != 0 and "FAILED" in output) or "ERROR" in output:
             print("\n  Failure details:")
-            lines = output.split('\n')
-            failure_lines = [line for line in lines if "FAILED" in line or "ERROR" in line or "AssertionError" in line]
+            lines = output.split("\n")
+            failure_lines = [
+                line
+                for line in lines
+                if "FAILED" in line or "ERROR" in line or "AssertionError" in line
+            ]
             for line in failure_lines[:10]:  # Show first 10 failures
                 print(f"    {line[:200]}")
 
     # Overall summary
     overall_duration = time.time() - overall_start_time
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("TEST EXECUTION SUMMARY")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
 
     total_tests = sum(r["summary"]["total"] for r in results.values())
     total_passed = sum(r["summary"]["passed"] for r in results.values())
@@ -473,32 +483,34 @@ def main():
     total_errors = sum(r["summary"]["errors"] for r in results.values())
     total_skipped = sum(r["summary"]["skipped"] for r in results.values())
 
-    print(f"\nOverall Results:")
-    print(f"  Total duration: {overall_duration:.2f} seconds ({overall_duration/60:.2f} minutes)")
+    print("\nOverall Results:")
+    print(f"  Total duration: {overall_duration:.2f} seconds ({overall_duration / 60:.2f} minutes)")
     print(f"  Total tests: {total_tests}")
     print(f"  Passed: {total_passed}")
     print(f"  Failed: {total_failed}")
     print(f"  Errors: {total_errors}")
     print(f"  Skipped: {total_skipped}")
 
-    print(f"\nCategory Results:")
+    print("\nCategory Results:")
     for category, result in results.items():
         config = TEST_CATEGORIES[category]
         print(f"  {config['description']}: {result['status']}")
-        print(f"    Tests: {result['summary']['total']}, Passed: {result['summary']['passed']}, "
-              f"Failed: {result['summary']['failed']}, Duration: {result['duration']:.2f}s")
+        print(
+            f"    Tests: {result['summary']['total']}, Passed: {result['summary']['passed']}, "
+            f"Failed: {result['summary']['failed']}, Duration: {result['duration']:.2f}s"
+        )
 
     # Final status
     all_passed = all(r["exit_code"] == 0 for r in results.values())
     if all_passed:
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("✅ ALL TESTS PASSED")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         return 0
     else:
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("❌ SOME TESTS FAILED")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         print("\nPlease review the test output above and fix any failures.")
         print("Remember: Fix root causes, not symptoms. No mocks/stubs.")
         return 1
@@ -506,4 +518,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

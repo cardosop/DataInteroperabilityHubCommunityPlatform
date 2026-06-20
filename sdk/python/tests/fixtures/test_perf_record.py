@@ -5,6 +5,7 @@ Locks the JSON schema, percentile arithmetic, file layout, and the
 xdist-worker partitioning. No mocks; uses tmp_path for filesystem
 isolation and explicit overrides for git_sha / timestamp.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,7 +20,6 @@ from tests.fixtures.perf_record import (
     perf_results_dir,
     write_perf_record,
 )
-
 
 # ---------------------------------------------------------------------------
 # Schema lock
@@ -155,9 +155,7 @@ def test_rejects_zero_or_negative_budget() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_perf_results_dir_is_per_worker(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_perf_results_dir_is_per_worker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw3")
     monkeypatch.setenv("PERF_RESULTS_DIR", str(tmp_path / "perf"))
     out = perf_results_dir()

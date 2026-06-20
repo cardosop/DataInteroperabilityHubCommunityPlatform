@@ -24,7 +24,7 @@ SCRIPT = REPO_ROOT / "scripts" / "check_sparql_health.cjs"
 
 def _has_node() -> bool:
     try:
-        res = subprocess.run(["node", "--version"], capture_output=True, timeout=10)
+        res = subprocess.run(["node", "--version"], check=False, capture_output=True, timeout=10)
         return res.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
@@ -44,11 +44,14 @@ def _eval_pure(js: str) -> str:
     surface the regression as a clear node-eval failure.
     """
     src = (
-        f"const m = require({json.dumps(str(SCRIPT))});"
-        f"process.stdout.write(JSON.stringify({js}));"
+        f"const m = require({json.dumps(str(SCRIPT))});process.stdout.write(JSON.stringify({js}));"
     )
     res = subprocess.run(
-        ["node", "-e", src], capture_output=True, text=True, timeout=30,
+        ["node", "-e", src],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     if res.returncode != 0:
         raise AssertionError(f"node eval failed: {res.stderr}")
@@ -82,7 +85,7 @@ def test_validate_ask_response_rejects_select_result_shape() -> None:
 def test_validate_ask_response_rejects_html_body() -> None:
     # E.g. an upstream proxy returning a 200 HTML maintenance page; the
     # JSON parse would have failed earlier, but the helper is still safe.
-    out = _eval_pure('m.validateAskResponse(null)')
+    out = _eval_pure("m.validateAskResponse(null)")
     parsed = json.loads(out)
     assert parsed["ok"] is False
 
@@ -95,7 +98,11 @@ def test_validate_ask_response_rejects_non_boolean_field() -> None:
 
 def test_cli_requires_base_url() -> None:
     res = subprocess.run(
-        ["node", str(SCRIPT)], capture_output=True, text=True, timeout=10,
+        ["node", str(SCRIPT)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     assert res.returncode == 2
     assert "--base-url" in res.stderr
@@ -103,7 +110,11 @@ def test_cli_requires_base_url() -> None:
 
 def test_cli_rejects_unknown_arg() -> None:
     res = subprocess.run(
-        ["node", str(SCRIPT), "--bogus"], capture_output=True, text=True, timeout=10,
+        ["node", str(SCRIPT), "--bogus"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     assert res.returncode == 2
     assert "unknown argument" in res.stderr
@@ -112,6 +123,7 @@ def test_cli_rejects_unknown_arg() -> None:
 def test_cli_rejects_invalid_timeout() -> None:
     res = subprocess.run(
         ["node", str(SCRIPT), "--base-url=http://x", "--timeout-ms=-1"],
+        check=False,
         capture_output=True,
         text=True,
         timeout=10,

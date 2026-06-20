@@ -8,23 +8,23 @@ Validates that contract migrations from ODCS to ODPS are successful and complete
 4. Verifies marketplace metadata preserved
 5. Generates migration report with statistics
 """
+
 import json
-import structlog
-from typing import Dict, Any, List, Optional, Tuple
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
-from collections import defaultdict
+from typing import Any
 
-from django.db.models import Q
+import structlog
 from django.utils import timezone
 
-from hub.apps.contracts.models import Contract, OriginalSpecType
 from hub.apps.contracts.linking_validation import (
-    validate_odps_to_odcs_link,
+    LinkingValidationError,
     validate_odcs_to_odps_link,
+    validate_odps_to_odcs_link,
     validate_referential_integrity,
-    LinkingValidationError
 )
+from hub.apps.contracts.models import Contract, OriginalSpecType
 
 logger = structlog.get_logger(__name__)
 
@@ -32,30 +32,33 @@ logger = structlog.get_logger(__name__)
 @dataclass
 class ValidationIssue:
     """Represents a validation issue found during migration validation."""
+
     severity: str  # 'error', 'warning', 'info'
     contract_id: str
     issue_type: str
     message: str
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class ContractValidationResult:
     """Result of validating a single contract migration."""
+
     odcs_contract_id: str
-    odps_contract_id: Optional[str] = None
+    odps_contract_id: str | None = None
     is_migrated: bool = False
     has_data_loss: bool = False
     has_link_issues: bool = False
     has_marketplace_issues: bool = False
-    issues: List[ValidationIssue] = field(default_factory=list)
-    data_comparison: Dict[str, Any] = field(default_factory=dict)
-    marketplace_comparison: Dict[str, Any] = field(default_factory=dict)
+    issues: list[ValidationIssue] = field(default_factory=list)
+    data_comparison: dict[str, Any] = field(default_factory=dict)
+    marketplace_comparison: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class MigrationValidationReport:
     """Comprehensive migration validation report."""
+
     total_odcs_contracts: int = 0
     migrated_count: int = 0
     not_migrated_count: int = 0
@@ -64,8 +67,8 @@ class MigrationValidationReport:
     errors: int = 0
     warnings: int = 0
     info: int = 0
-    validation_results: List[ContractValidationResult] = field(default_factory=list)
-    statistics: Dict[str, Any] = field(default_factory=dict)
+    validation_results: list[ContractValidationResult] = field(default_factory=list)
+    statistics: dict[str, Any] = field(default_factory=dict)
     generated_at: datetime = field(default_factory=timezone.now)
 
 
@@ -80,7 +83,7 @@ class MigrationValidator:
     - Marketplace metadata preservation
     """
 
-    def __init__(self, tenant_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None):
         """
         Initialize migration validator.
 
@@ -91,9 +94,7 @@ class MigrationValidator:
         self.logger = structlog.get_logger(__name__)
 
     def validate_migration(
-        self,
-        odcs_contract_ids: Optional[List[str]] = None,
-        include_statistics: bool = True
+        self, odcs_contract_ids: list[str] | None = None, include_statistics: bool = True
     ) -> MigrationValidationReport:
         """
         Validate migration for ODCS contracts.
@@ -112,9 +113,7 @@ class MigrationValidator:
         else:
             contracts = self._get_all_odcs_contracts()
 
-        report = MigrationValidationReport(
-            total_odcs_contracts=len(contracts)
-        )
+        report = MigrationValidationReport(total_odcs_contracts=len(contracts))
 
         # Validate each contract
         for contract in contracts:
@@ -130,9 +129,9 @@ class MigrationValidator:
                 report.contracts_with_issues += 1
                 report.total_issues += len(result.issues)
                 for issue in result.issues:
-                    if issue.severity == 'error':
+                    if issue.severity == "error":
                         report.errors += 1
-                    elif issue.severity == 'warning':
+                    elif issue.severity == "warning":
                         report.warnings += 1
                     else:
                         report.info += 1
@@ -143,11 +142,10 @@ class MigrationValidator:
 
         return report
 
-    def _get_contracts_by_ids(self, contract_ids: List[str]) -> List[Contract]:
+    def _get_contracts_by_ids(self, contract_ids: list[str]) -> list[Contract]:
         """Get contracts by IDs."""
         queryset = Contract.objects.filter(
-            id__in=contract_ids,
-            original_spec_type=OriginalSpecType.ODCS
+            id__in=contract_ids, original_spec_type=OriginalSpecType.ODCS
         )
 
         if self.tenant_id:
@@ -155,11 +153,9 @@ class MigrationValidator:
 
         return list(queryset)
 
-    def _get_all_odcs_contracts(self) -> List[Contract]:
+    def _get_all_odcs_contracts(self) -> list[Contract]:
         """Get all ODCS contracts (optionally filtered by tenant)."""
-        queryset = Contract.objects.filter(
-            original_spec_type=OriginalSpecType.ODCS
-        )
+        queryset = Contract.objects.filter(original_spec_type=OriginalSpecType.ODCS)
 
         if self.tenant_id:
             queryset = queryset.filter(tenant_id=self.tenant_id)
@@ -176,20 +172,20 @@ class MigrationValidator:
         Returns:
             ContractValidationResult with validation details
         """
-        result = ContractValidationResult(
-            odcs_contract_id=str(odcs_contract.id)
-        )
+        result = ContractValidationResult(odcs_contract_id=str(odcs_contract.id))
 
         # 1. Check if contract has been migrated (has ODPS link)
         odps_contract = self._get_linked_odps_contract(odcs_contract)
 
         if not odps_contract:
-            result.issues.append(ValidationIssue(
-                severity='error',
-                contract_id=str(odcs_contract.id),
-                issue_type='not_migrated',
-                message='ODCS contract has not been migrated (no ODPS link found)'
-            ))
+            result.issues.append(
+                ValidationIssue(
+                    severity="error",
+                    contract_id=str(odcs_contract.id),
+                    issue_type="not_migrated",
+                    message="ODCS contract has not been migrated (no ODPS link found)",
+                )
+            )
             return result
 
         result.is_migrated = True
@@ -204,40 +200,44 @@ class MigrationValidator:
         # 3. Validate no data loss (compare HubContract before/after)
         data_comparison = self._compare_hubcontract_data(odcs_contract, odps_contract)
         result.data_comparison = data_comparison
-        if data_comparison.get('has_data_loss', False):
+        if data_comparison.get("has_data_loss", False):
             result.has_data_loss = True
-            result.issues.append(ValidationIssue(
-                severity='error',
-                contract_id=str(odcs_contract.id),
-                issue_type='data_loss',
-                message='Data loss detected in HubContract comparison',
-                details=data_comparison
-            ))
+            result.issues.append(
+                ValidationIssue(
+                    severity="error",
+                    contract_id=str(odcs_contract.id),
+                    issue_type="data_loss",
+                    message="Data loss detected in HubContract comparison",
+                    details=data_comparison,
+                )
+            )
 
         # 4. Validate marketplace metadata preservation
         marketplace_comparison = self._compare_marketplace_metadata(odcs_contract, odps_contract)
         result.marketplace_comparison = marketplace_comparison
-        if marketplace_comparison.get('has_issues', False):
+        if marketplace_comparison.get("has_issues", False):
             result.has_marketplace_issues = True
-            for issue_detail in marketplace_comparison.get('issues', []):
-                result.issues.append(ValidationIssue(
-                    severity=issue_detail.get('severity', 'warning'),
-                    contract_id=str(odcs_contract.id),
-                    issue_type='marketplace_metadata',
-                    message=issue_detail.get('message', 'Marketplace metadata issue'),
-                    details=issue_detail.get('details', {})
-                ))
+            for issue_detail in marketplace_comparison.get("issues", []):
+                result.issues.append(
+                    ValidationIssue(
+                        severity=issue_detail.get("severity", "warning"),
+                        contract_id=str(odcs_contract.id),
+                        issue_type="marketplace_metadata",
+                        message=issue_detail.get("message", "Marketplace metadata issue"),
+                        details=issue_detail.get("details", {}),
+                    )
+                )
 
         return result
 
-    def _get_linked_odps_contract(self, odcs_contract: Contract) -> Optional[Contract]:
+    def _get_linked_odps_contract(self, odcs_contract: Contract) -> Contract | None:
         """Get linked ODPS contract for an ODCS contract."""
         if not odcs_contract.hub_contract_json:
             return None
 
-        extensions = odcs_contract.hub_contract_json.get('extensions', {})
-        x_odps = extensions.get('x_odps', {})
-        odps_link = x_odps.get('odps_link')
+        extensions = odcs_contract.hub_contract_json.get("extensions", {})
+        x_odps = extensions.get("x_odps", {})
+        odps_link = x_odps.get("odps_link")
 
         if not odps_link:
             return None
@@ -246,124 +246,134 @@ class MigrationValidator:
             odps_contract = Contract.objects.get(
                 id=odps_link,
                 original_spec_type=OriginalSpecType.ODPS,
-                tenant_id=odcs_contract.tenant_id
+                tenant_id=odcs_contract.tenant_id,
             )
             return odps_contract
         except Contract.DoesNotExist:
             return None
 
     def _validate_links(
-        self,
-        odcs_contract: Contract,
-        odps_contract: Contract
-    ) -> List[ValidationIssue]:
+        self, odcs_contract: Contract, odps_contract: Contract
+    ) -> list[ValidationIssue]:
         """Validate bidirectional links between ODCS and ODPS contracts."""
         issues = []
 
         # Check ODPS → ODCS link directly from HubContract
         odps_hub = odps_contract.hub_contract_json or {}
-        odps_extensions = odps_hub.get('extensions', {})
-        odps_x_odps = odps_extensions.get('x_odps', {})
-        odps_odcs_link = odps_x_odps.get('odcs_link')
+        odps_extensions = odps_hub.get("extensions", {})
+        odps_x_odps = odps_extensions.get("x_odps", {})
+        odps_odcs_link = odps_x_odps.get("odcs_link")
 
         if not odps_odcs_link:
-            issues.append(ValidationIssue(
-                severity='error',
-                contract_id=str(odcs_contract.id),
-                issue_type='missing_link',
-                message=f'ODPS contract {odps_contract.id} is missing ODCS link',
-                details={
-                    'odps_contract_id': str(odps_contract.id),
-                    'expected_odcs_id': str(odcs_contract.id)
-                }
-            ))
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    contract_id=str(odcs_contract.id),
+                    issue_type="missing_link",
+                    message=f"ODPS contract {odps_contract.id} is missing ODCS link",
+                    details={
+                        "odps_contract_id": str(odps_contract.id),
+                        "expected_odcs_id": str(odcs_contract.id),
+                    },
+                )
+            )
         elif str(odps_odcs_link) != str(odcs_contract.id):
-            issues.append(ValidationIssue(
-                severity='error',
-                contract_id=str(odcs_contract.id),
-                issue_type='link_mismatch',
-                message=f'ODPS contract {odps_contract.id} links to wrong ODCS contract',
-                details={
-                    'odps_contract_id': str(odps_contract.id),
-                    'expected_odcs_id': str(odcs_contract.id),
-                    'actual_odcs_id': str(odps_odcs_link)
-                }
-            ))
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    contract_id=str(odcs_contract.id),
+                    issue_type="link_mismatch",
+                    message=f"ODPS contract {odps_contract.id} links to wrong ODCS contract",
+                    details={
+                        "odps_contract_id": str(odps_contract.id),
+                        "expected_odcs_id": str(odcs_contract.id),
+                        "actual_odcs_id": str(odps_odcs_link),
+                    },
+                )
+            )
         else:
             # Link exists and is correct, validate it points to existing contract
             try:
                 validate_odps_to_odcs_link(odps_contract)
             except LinkingValidationError as e:
-                issues.append(ValidationIssue(
-                    severity='error',
-                    contract_id=str(odcs_contract.id),
-                    issue_type='link_validation_error',
-                    message=f'ODPS → ODCS link validation failed: {str(e)}',
-                    details={'error': str(e)}
-                ))
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        contract_id=str(odcs_contract.id),
+                        issue_type="link_validation_error",
+                        message=f"ODPS → ODCS link validation failed: {e!s}",
+                        details={"error": str(e)},
+                    )
+                )
 
         # Check ODCS → ODPS link directly from HubContract
         odcs_hub = odcs_contract.hub_contract_json or {}
-        odcs_extensions = odcs_hub.get('extensions', {})
-        odcs_x_odps = odcs_extensions.get('x_odps', {})
-        odcs_odps_link = odcs_x_odps.get('odps_link')
+        odcs_extensions = odcs_hub.get("extensions", {})
+        odcs_x_odps = odcs_extensions.get("x_odps", {})
+        odcs_odps_link = odcs_x_odps.get("odps_link")
 
         if not odcs_odps_link:
-            issues.append(ValidationIssue(
-                severity='error',
-                contract_id=str(odcs_contract.id),
-                issue_type='missing_link',
-                message=f'ODCS contract {odcs_contract.id} is missing ODPS link',
-                details={
-                    'odcs_contract_id': str(odcs_contract.id),
-                    'expected_odps_id': str(odps_contract.id)
-                }
-            ))
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    contract_id=str(odcs_contract.id),
+                    issue_type="missing_link",
+                    message=f"ODCS contract {odcs_contract.id} is missing ODPS link",
+                    details={
+                        "odcs_contract_id": str(odcs_contract.id),
+                        "expected_odps_id": str(odps_contract.id),
+                    },
+                )
+            )
         elif str(odcs_odps_link) != str(odps_contract.id):
-            issues.append(ValidationIssue(
-                severity='error',
-                contract_id=str(odcs_contract.id),
-                issue_type='link_mismatch',
-                message=f'ODCS contract {odcs_contract.id} links to wrong ODPS contract',
-                details={
-                    'odcs_contract_id': str(odcs_contract.id),
-                    'expected_odps_id': str(odps_contract.id),
-                    'actual_odps_id': str(odcs_odps_link)
-                }
-            ))
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    contract_id=str(odcs_contract.id),
+                    issue_type="link_mismatch",
+                    message=f"ODCS contract {odcs_contract.id} links to wrong ODPS contract",
+                    details={
+                        "odcs_contract_id": str(odcs_contract.id),
+                        "expected_odps_id": str(odps_contract.id),
+                        "actual_odps_id": str(odcs_odps_link),
+                    },
+                )
+            )
         else:
             # Link exists and is correct, validate it points to existing contract
             try:
                 validate_odcs_to_odps_link(odcs_contract)
             except LinkingValidationError as e:
-                issues.append(ValidationIssue(
-                    severity='error',
-                    contract_id=str(odcs_contract.id),
-                    issue_type='link_validation_error',
-                    message=f'ODCS → ODPS link validation failed: {str(e)}',
-                    details={'error': str(e)}
-                ))
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        contract_id=str(odcs_contract.id),
+                        issue_type="link_validation_error",
+                        message=f"ODCS → ODPS link validation failed: {e!s}",
+                        details={"error": str(e)},
+                    )
+                )
 
         # Validate referential integrity
         try:
             validate_referential_integrity(odcs_contract)
             validate_referential_integrity(odps_contract)
         except LinkingValidationError as e:
-            issues.append(ValidationIssue(
-                severity='error',
-                contract_id=str(odcs_contract.id),
-                issue_type='referential_integrity',
-                message=f'Referential integrity validation failed: {str(e)}',
-                details={'error': str(e)}
-            ))
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    contract_id=str(odcs_contract.id),
+                    issue_type="referential_integrity",
+                    message=f"Referential integrity validation failed: {e!s}",
+                    details={"error": str(e)},
+                )
+            )
 
         return issues
 
     def _compare_hubcontract_data(
-        self,
-        odcs_contract: Contract,
-        odps_contract: Contract
-    ) -> Dict[str, Any]:
+        self, odcs_contract: Contract, odps_contract: Contract
+    ) -> dict[str, Any]:
         """
         Compare HubContract data between ODCS and ODPS contracts to detect data loss.
 
@@ -377,16 +387,20 @@ class MigrationValidator:
         odps_hub = odps_contract.hub_contract_json or {}
 
         comparison = {
-            'has_data_loss': False,
-            'missing_sections': [],
-            'differences': {},
-            'preserved_sections': []
+            "has_data_loss": False,
+            "missing_sections": [],
+            "differences": {},
+            "preserved_sections": [],
         }
 
         # Key sections to compare (excluding marketplace which is validated separately)
         key_sections = [
-            'info', 'schema', 'quality', 'privacy_compliance',
-            'lifecycle', 'extensions'
+            "info",
+            "schema",
+            "quality",
+            "privacy_compliance",
+            "lifecycle",
+            "extensions",
         ]
 
         for section in key_sections:
@@ -398,28 +412,22 @@ class MigrationValidator:
 
             if odps_section is None:
                 # Section present in ODCS but missing in ODPS
-                comparison['has_data_loss'] = True
-                comparison['missing_sections'].append(section)
+                comparison["has_data_loss"] = True
+                comparison["missing_sections"].append(section)
+            # Compare section content
+            elif not self._deep_compare(odcs_section, odps_section):
+                comparison["differences"][section] = {"odcs": odcs_section, "odps": odps_section}
+                # Note: Differences don't necessarily mean data loss,
+                # as ODPS may have additional fields or transformed data
+                # We'll mark as warning-level issue, not error
             else:
-                # Compare section content
-                if not self._deep_compare(odcs_section, odps_section):
-                    comparison['differences'][section] = {
-                        'odcs': odcs_section,
-                        'odps': odps_section
-                    }
-                    # Note: Differences don't necessarily mean data loss,
-                    # as ODPS may have additional fields or transformed data
-                    # We'll mark as warning-level issue, not error
-                else:
-                    comparison['preserved_sections'].append(section)
+                comparison["preserved_sections"].append(section)
 
         return comparison
 
     def _compare_marketplace_metadata(
-        self,
-        odcs_contract: Contract,
-        odps_contract: Contract
-    ) -> Dict[str, Any]:
+        self, odcs_contract: Contract, odps_contract: Contract
+    ) -> dict[str, Any]:
         """
         Compare marketplace metadata between ODCS and ODPS contracts.
 
@@ -433,102 +441,104 @@ class MigrationValidator:
         odcs_hub = odcs_contract.hub_contract_json or {}
         odps_hub = odps_contract.hub_contract_json or {}
 
-        odcs_marketplace = odcs_hub.get('marketplace', {}) or {}
-        odps_marketplace = odps_hub.get('marketplace', {}) or {}
+        odcs_marketplace = odcs_hub.get("marketplace", {}) or {}
+        odps_marketplace = odps_hub.get("marketplace", {}) or {}
 
         comparison = {
-            'has_issues': False,
-            'issues': [],
-            'preserved_fields': [],
-            'missing_fields': [],
-            'field_comparisons': {}
+            "has_issues": False,
+            "issues": [],
+            "preserved_fields": [],
+            "missing_fields": [],
+            "field_comparisons": {},
         }
 
         # Key marketplace fields to validate
-        marketplace_fields = [
-            'license_summary',
-            'intended_use',
-            'restricted_use'
-        ]
+        marketplace_fields = ["license_summary", "intended_use", "restricted_use"]
 
         # Validate basic marketplace fields
         for field_name in marketplace_fields:
             odcs_value = odcs_marketplace.get(field_name)
             odps_value = odps_marketplace.get(field_name)
 
-            comparison['field_comparisons'][field_name] = {
-                'odcs_present': odcs_value is not None,
-                'odps_present': odps_value is not None,
-                'values_match': self._deep_compare(odcs_value, odps_value) if (odcs_value is not None and odps_value is not None) else False
+            comparison["field_comparisons"][field_name] = {
+                "odcs_present": odcs_value is not None,
+                "odps_present": odps_value is not None,
+                "values_match": self._deep_compare(odcs_value, odps_value)
+                if (odcs_value is not None and odps_value is not None)
+                else False,
             }
 
             if odcs_value is not None:
                 if odps_value is None:
-                    comparison['has_issues'] = True
-                    comparison['missing_fields'].append(field_name)
-                    comparison['issues'].append({
-                        'severity': 'error',
-                        'message': f'Marketplace field {field_name} is missing in ODPS contract',
-                        'details': {
-                            'field': field_name,
-                            'odcs_value': odcs_value
+                    comparison["has_issues"] = True
+                    comparison["missing_fields"].append(field_name)
+                    comparison["issues"].append(
+                        {
+                            "severity": "error",
+                            "message": f"Marketplace field {field_name} is missing in ODPS contract",
+                            "details": {"field": field_name, "odcs_value": odcs_value},
                         }
-                    })
+                    )
                 elif not self._deep_compare(odcs_value, odps_value):
-                    comparison['has_issues'] = True
-                    comparison['issues'].append({
-                        'severity': 'warning',
-                        'message': f'Marketplace field {field_name} value differs between ODCS and ODPS',
-                        'details': {
-                            'field': field_name,
-                            'odcs_value': odcs_value,
-                            'odps_value': odps_value
+                    comparison["has_issues"] = True
+                    comparison["issues"].append(
+                        {
+                            "severity": "warning",
+                            "message": f"Marketplace field {field_name} value differs between ODCS and ODPS",
+                            "details": {
+                                "field": field_name,
+                                "odcs_value": odcs_value,
+                                "odps_value": odps_value,
+                            },
                         }
-                    })
+                    )
                 else:
-                    comparison['preserved_fields'].append(field_name)
+                    comparison["preserved_fields"].append(field_name)
 
         # Validate x_odps extension fields
-        odcs_x_odps = odcs_marketplace.get('x_odps', {}) or {}
-        odps_x_odps = odps_marketplace.get('x_odps', {}) or {}
+        odcs_x_odps = odcs_marketplace.get("x_odps", {}) or {}
+        odps_x_odps = odps_marketplace.get("x_odps", {}) or {}
 
-        x_odps_fields = ['pricing_plans', 'access_methods', 'payment_gateways']
+        x_odps_fields = ["pricing_plans", "access_methods", "payment_gateways"]
 
         for field_name in x_odps_fields:
             odcs_value = odcs_x_odps.get(field_name)
             odps_value = odps_x_odps.get(field_name)
 
-            comparison['field_comparisons'][f'x_odps.{field_name}'] = {
-                'odcs_present': odcs_value is not None,
-                'odps_present': odps_value is not None,
-                'values_match': self._deep_compare(odcs_value, odps_value) if (odcs_value is not None and odps_value is not None) else False
+            comparison["field_comparisons"][f"x_odps.{field_name}"] = {
+                "odcs_present": odcs_value is not None,
+                "odps_present": odps_value is not None,
+                "values_match": self._deep_compare(odcs_value, odps_value)
+                if (odcs_value is not None and odps_value is not None)
+                else False,
             }
 
             if odcs_value is not None:
                 if odps_value is None:
-                    comparison['has_issues'] = True
-                    comparison['missing_fields'].append(f'x_odps.{field_name}')
-                    comparison['issues'].append({
-                        'severity': 'warning',  # x_odps fields are extensions, less critical
-                        'message': f'Marketplace extension field x_odps.{field_name} is missing in ODPS contract',
-                        'details': {
-                            'field': f'x_odps.{field_name}',
-                            'odcs_value': odcs_value
+                    comparison["has_issues"] = True
+                    comparison["missing_fields"].append(f"x_odps.{field_name}")
+                    comparison["issues"].append(
+                        {
+                            "severity": "warning",  # x_odps fields are extensions, less critical
+                            "message": f"Marketplace extension field x_odps.{field_name} is missing in ODPS contract",
+                            "details": {"field": f"x_odps.{field_name}", "odcs_value": odcs_value},
                         }
-                    })
+                    )
                 elif not self._deep_compare(odcs_value, odps_value):
-                    comparison['has_issues'] = True
-                    comparison['issues'].append({
-                        'severity': 'warning',
-                        'message': f'Marketplace extension field x_odps.{field_name} value differs',
-                        'details': {
-                            'field': f'x_odps.{field_name}',
-                            'odcs_value': odcs_value,
-                            'odps_value': odps_value
+                    comparison["has_issues"] = True
+                    comparison["issues"].append(
+                        {
+                            "severity": "warning",
+                            "message": f"Marketplace extension field x_odps.{field_name} value differs",
+                            "details": {
+                                "field": f"x_odps.{field_name}",
+                                "odcs_value": odcs_value,
+                                "odps_value": odps_value,
+                            },
                         }
-                    })
+                    )
                 else:
-                    comparison['preserved_fields'].append(f'x_odps.{field_name}')
+                    comparison["preserved_fields"].append(f"x_odps.{field_name}")
 
         return comparison
 
@@ -578,45 +588,41 @@ class MigrationValidator:
         # Handle primitive types
         return value1 == value2
 
-    def _generate_statistics(self, report: MigrationValidationReport) -> Dict[str, Any]:
+    def _generate_statistics(self, report: MigrationValidationReport) -> dict[str, Any]:
         """Generate detailed statistics from validation report."""
         stats = {
-            'migration_rate': 0.0,
-            'success_rate': 0.0,
-            'issue_rate': 0.0,
-            'issue_breakdown': {
-                'by_type': defaultdict(int),
-                'by_severity': {
-                    'error': 0,
-                    'warning': 0,
-                    'info': 0
-                }
+            "migration_rate": 0.0,
+            "success_rate": 0.0,
+            "issue_rate": 0.0,
+            "issue_breakdown": {
+                "by_type": defaultdict(int),
+                "by_severity": {"error": 0, "warning": 0, "info": 0},
             },
-            'data_loss_count': 0,
-            'link_issue_count': 0,
-            'marketplace_issue_count': 0
+            "data_loss_count": 0,
+            "link_issue_count": 0,
+            "marketplace_issue_count": 0,
         }
 
         if report.total_odcs_contracts > 0:
-            stats['migration_rate'] = (report.migrated_count / report.total_odcs_contracts) * 100
-            stats['issue_rate'] = (report.contracts_with_issues / report.total_odcs_contracts) * 100
+            stats["migration_rate"] = (report.migrated_count / report.total_odcs_contracts) * 100
+            stats["issue_rate"] = (report.contracts_with_issues / report.total_odcs_contracts) * 100
 
             if report.migrated_count > 0:
                 successful = report.migrated_count - report.contracts_with_issues
-                stats['success_rate'] = (successful / report.migrated_count) * 100
+                stats["success_rate"] = (successful / report.migrated_count) * 100
 
         # Count issues by type and severity
         for result in report.validation_results:
             if result.has_data_loss:
-                stats['data_loss_count'] += 1
+                stats["data_loss_count"] += 1
             if result.has_link_issues:
-                stats['link_issue_count'] += 1
+                stats["link_issue_count"] += 1
             if result.has_marketplace_issues:
-                stats['marketplace_issue_count'] += 1
+                stats["marketplace_issue_count"] += 1
 
             for issue in result.issues:
-                stats['issue_breakdown']['by_type'][issue.issue_type] += 1
-                stats['issue_breakdown']['by_severity'][issue.severity] += 1
+                stats["issue_breakdown"]["by_type"][issue.issue_type] += 1
+                stats["issue_breakdown"]["by_severity"][issue.severity] += 1
 
         return stats
 
@@ -644,7 +650,9 @@ class MigrationValidator:
         lines.append(f"Migrated: {report.migrated_count}")
         lines.append(f"Not migrated: {report.not_migrated_count}")
         lines.append(f"Contracts with issues: {report.contracts_with_issues}")
-        lines.append(f"Total issues: {report.total_issues} (Errors: {report.errors}, Warnings: {report.warnings}, Info: {report.info})")
+        lines.append(
+            f"Total issues: {report.total_issues} (Errors: {report.errors}, Warnings: {report.warnings}, Info: {report.info})"
+        )
         lines.append("")
 
         # Statistics
@@ -674,7 +682,9 @@ class MigrationValidator:
                 if result.issues:
                     lines.append(f"  Issues ({len(result.issues)}):")
                     for issue in result.issues:
-                        lines.append(f"    [{issue.severity.upper()}] {issue.issue_type}: {issue.message}")
+                        lines.append(
+                            f"    [{issue.severity.upper()}] {issue.issue_type}: {issue.message}"
+                        )
                         if issue.details:
                             for key, value in issue.details.items():
                                 lines.append(f"      {key}: {value}")
@@ -698,18 +708,25 @@ class MigrationValidator:
         Returns:
             JSON string representation of report
         """
+
         # Convert dataclasses to dictionaries for JSON serialization
         def serialize_dataclass(obj):
-            if hasattr(obj, '__dict__'):
+            if hasattr(obj, "__dict__"):
                 result = {}
                 for key, value in obj.__dict__.items():
                     if isinstance(value, datetime):
                         result[key] = value.isoformat()
                     elif isinstance(value, list):
-                        result[key] = [serialize_dataclass(item) if hasattr(item, '__dict__') else item for item in value]
+                        result[key] = [
+                            serialize_dataclass(item) if hasattr(item, "__dict__") else item
+                            for item in value
+                        ]
                     elif isinstance(value, dict):
-                        result[key] = {k: serialize_dataclass(v) if hasattr(v, '__dict__') else v for k, v in value.items()}
-                    elif hasattr(value, '__dict__'):
+                        result[key] = {
+                            k: serialize_dataclass(v) if hasattr(v, "__dict__") else v
+                            for k, v in value.items()
+                        }
+                    elif hasattr(value, "__dict__"):
                         result[key] = serialize_dataclass(value)
                     else:
                         result[key] = value
@@ -718,4 +735,3 @@ class MigrationValidator:
 
         report_dict = serialize_dataclass(report)
         return json.dumps(report_dict, indent=2, default=str)
-

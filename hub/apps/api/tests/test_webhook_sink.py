@@ -47,9 +47,7 @@ _E2E_SETTINGS = dict(ENVIRONMENT="test", E2E_TEST_SECRET="e2e-secret")
 
 class TestWebhookSinkRecord:
     @override_settings(**_E2E_SETTINGS)
-    def test_post_records_payload_and_returns_200(
-        self, client: APIClient, sink_id: str
-    ) -> None:
+    def test_post_records_payload_and_returns_200(self, client: APIClient, sink_id: str) -> None:
         body = {"event_type": "asset.created", "data": {"asset_id": "abc"}}
         resp = client.post(
             f"/api/v1/test/webhook-sink/{sink_id}/",
@@ -71,9 +69,7 @@ class TestWebhookSinkRecord:
         assert delivery["status_returned"] == 200
 
     @override_settings(**_E2E_SETTINGS)
-    def test_two_posts_record_two_deliveries(
-        self, client: APIClient, sink_id: str
-    ) -> None:
+    def test_two_posts_record_two_deliveries(self, client: APIClient, sink_id: str) -> None:
         for i in range(2):
             client.post(
                 f"/api/v1/test/webhook-sink/{sink_id}/",
@@ -106,9 +102,7 @@ class TestWebhookSinkRecord:
 
 class TestWebhookSinkForcedFailure:
     @override_settings(**_E2E_SETTINGS)
-    def test_fail_500_returns_500_and_still_records(
-        self, client: APIClient, sink_id: str
-    ) -> None:
+    def test_fail_500_returns_500_and_still_records(self, client: APIClient, sink_id: str) -> None:
         body = {"event_type": "asset.retire"}
         resp = client.post(
             f"/api/v1/test/webhook-sink/{sink_id}/?fail=500",
@@ -144,23 +138,17 @@ class TestWebhookSinkForcedFailure:
 
 class TestWebhookSinkRead:
     @override_settings(**_E2E_SETTINGS)
-    def test_get_without_token_returns_404(
-        self, client: APIClient, sink_id: str
-    ) -> None:
+    def test_get_without_token_returns_404(self, client: APIClient, sink_id: str) -> None:
         resp = client.get(f"/api/v1/test/webhook-sink/{sink_id}/")
         assert resp.status_code == 404
 
     @override_settings(**_E2E_SETTINGS)
-    def test_get_with_wrong_token_returns_404(
-        self, client: APIClient, sink_id: str
-    ) -> None:
+    def test_get_with_wrong_token_returns_404(self, client: APIClient, sink_id: str) -> None:
         resp = client.get(f"/api/v1/test/webhook-sink/{sink_id}/?token=wrong")
         assert resp.status_code == 404
 
     @override_settings(**_E2E_SETTINGS)
-    def test_get_with_correct_token_returns_200(
-        self, client: APIClient, sink_id: str
-    ) -> None:
+    def test_get_with_correct_token_returns_200(self, client: APIClient, sink_id: str) -> None:
         resp = client.get(f"/api/v1/test/webhook-sink/{sink_id}/?token=e2e-secret")
         assert resp.status_code == 200
         assert resp.json()["count"] == 0
@@ -181,9 +169,7 @@ class TestWebhookSinkProductionLockout:
     """Sink must 404 in production AND when E2E_TEST_SECRET is unset."""
 
     @override_settings(ENVIRONMENT="production", DEBUG=False, E2E_TEST_SECRET="")
-    def test_production_post_returns_404(
-        self, client: APIClient, sink_id: str
-    ) -> None:
+    def test_production_post_returns_404(self, client: APIClient, sink_id: str) -> None:
         resp = client.post(
             f"/api/v1/test/webhook-sink/{sink_id}/",
             data="{}",
@@ -192,9 +178,7 @@ class TestWebhookSinkProductionLockout:
         assert resp.status_code == 404
 
     @override_settings(ENVIRONMENT="production", DEBUG=False, E2E_TEST_SECRET="")
-    def test_production_get_returns_404(
-        self, client: APIClient, sink_id: str
-    ) -> None:
+    def test_production_get_returns_404(self, client: APIClient, sink_id: str) -> None:
         resp = client.get(f"/api/v1/test/webhook-sink/{sink_id}/")
         assert resp.status_code == 404
 
@@ -228,9 +212,7 @@ class TestWebhookSinkValidation:
         assert resp.status_code in (404, 400)
 
     @override_settings(**_E2E_SETTINGS)
-    def test_oversized_body_truncated_with_marker(
-        self, client: APIClient, sink_id: str
-    ) -> None:
+    def test_oversized_body_truncated_with_marker(self, client: APIClient, sink_id: str) -> None:
         big_body = {"data": "x" * 20_000}
         client.post(
             f"/api/v1/test/webhook-sink/{sink_id}/",

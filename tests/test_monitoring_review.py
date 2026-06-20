@@ -76,9 +76,9 @@ class TestMonitoringReviewer(TestCase):
 
         # Should have Django or FastAPI operations
         has_operations = (
-            len(operations.get("django_operations", [])) > 0 or
-            len(operations.get("fastapi_operations", [])) > 0 or
-            len(operations.get("operation_patterns", [])) > 0
+            len(operations.get("django_operations", [])) > 0
+            or len(operations.get("fastapi_operations", [])) > 0
+            or len(operations.get("operation_patterns", [])) > 0
         )
         self.assertTrue(has_operations, "Should find at least some operation patterns")
 
@@ -105,7 +105,7 @@ class TestMonitoringReviewer(TestCase):
         self.assertGreater(len(mapping), 0)
 
         # Each mapping should have required fields
-        for endpoint, config in list(mapping.items())[:5]:  # Check first 5
+        for _endpoint, config in list(mapping.items())[:5]:  # Check first 5
             self.assertIn("endpoint", config)
             self.assertIn("prometheus_metrics", config)
             self.assertIn("grafana_queries", config)
@@ -148,7 +148,7 @@ class TestMonitoringReviewer(TestCase):
         self.reviewer.map_monitoring_to_endpoints()
 
         # Save to temporary file
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as f:
             temp_path = Path(f.name)
 
         try:
@@ -158,7 +158,7 @@ class TestMonitoringReviewer(TestCase):
             self.assertTrue(temp_path.exists())
 
             # Verify file is valid JSON
-            with open(temp_path, 'r') as f:
+            with open(temp_path) as f:
                 report = json.load(f)
 
             self.assertIn("summary", report)
@@ -173,8 +173,9 @@ class TestMonitoringReviewer(TestCase):
 
         # Should find metrics with route labels
         metrics_with_routes = results.get("metrics_with_endpoint_labels", [])
-        self.assertGreater(len(metrics_with_routes), 0,
-                          "Should find at least one metric with route label")
+        self.assertGreater(
+            len(metrics_with_routes), 0, "Should find at least one metric with route label"
+        )
 
         # Should include http_requests_total
         self.assertIn("http_requests_total", metrics_with_routes)
@@ -185,8 +186,9 @@ class TestMonitoringReviewer(TestCase):
 
         # Should have some queries with route labels
         queries_with_routes = [q for q in queries if q.get("has_route_label")]
-        self.assertGreater(len(queries_with_routes), 0,
-                          "Should find at least one query with route label")
+        self.assertGreater(
+            len(queries_with_routes), 0, "Should find at least one query with route label"
+        )
 
     def test_jaeger_operations_include_http_patterns(self):
         """Test that Jaeger operations include HTTP patterns."""
@@ -194,16 +196,13 @@ class TestMonitoringReviewer(TestCase):
 
         # Should have span attributes
         span_attrs = operations.get("span_attributes", [])
-        self.assertGreater(len(span_attrs), 0,
-                          "Should find span attributes like http.route")
+        self.assertGreater(len(span_attrs), 0, "Should find span attributes like http.route")
 
         # Should include http.route or http.method
         has_http_attrs = any(
-            attr in ["http.route", "http.method", "http.url"]
-            for attr in span_attrs
+            attr in ["http.route", "http.method", "http.url"] for attr in span_attrs
         )
-        self.assertTrue(has_http_attrs,
-                       "Should find HTTP-related span attributes")
+        self.assertTrue(has_http_attrs, "Should find HTTP-related span attributes")
 
     def test_log_patterns_include_url_info(self):
         """Test that log patterns include URL information."""
@@ -231,8 +230,9 @@ class TestMonitoringReviewer(TestCase):
         mapping = self.reviewer.map_monitoring_to_endpoints()
 
         # Should map all endpoints
-        self.assertEqual(len(mapping), len(endpoints),
-                         "Should map all endpoints to monitoring configs")
+        self.assertEqual(
+            len(mapping), len(endpoints), "Should map all endpoints to monitoring configs"
+        )
 
     def test_comprehensive_review(self):
         """Test comprehensive review end-to-end."""
@@ -286,7 +286,14 @@ class TestMonitoringReviewer(TestCase):
         report = self.reviewer.generate_report()
 
         # Check all required top-level keys
-        required_keys = ["summary", "prometheus", "grafana", "jaeger", "logging", "endpoint_mapping"]
+        required_keys = [
+            "summary",
+            "prometheus",
+            "grafana",
+            "jaeger",
+            "logging",
+            "endpoint_mapping",
+        ]
         for key in required_keys:
             self.assertIn(key, report, f"Report should contain '{key}' key")
 
@@ -298,7 +305,7 @@ class TestMonitoringReviewer(TestCase):
             "grafana_queries_reviewed",
             "jaeger_operation_patterns",
             "log_patterns_found",
-            "endpoints_mapped"
+            "endpoints_mapped",
         ]
         for key in summary_keys:
             self.assertIn(key, summary, f"Summary should contain '{key}' key")
@@ -359,4 +366,3 @@ class TestMonitoringReviewer(TestCase):
         for key in expected_keys:
             self.assertIn(key, patterns, f"Patterns should have '{key}' key")
             self.assertIsInstance(patterns[key], list, f"'{key}' should be a list")
-

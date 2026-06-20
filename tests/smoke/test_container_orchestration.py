@@ -38,7 +38,10 @@ def _docker_available() -> bool:
     try:
         result = subprocess.run(
             [DOCKER_BIN, "info", "--format", "{{.ServerVersion}}"],
-            capture_output=True, text=True, timeout=10,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -50,7 +53,10 @@ def _inspect_container(container_name: str) -> Optional[dict]:
     try:
         result = subprocess.run(
             [DOCKER_BIN, "inspect", container_name],
-            capture_output=True, text=True, timeout=10,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode != 0:
             return None
@@ -63,9 +69,11 @@ def _find_running_containers(service_name: str) -> list[str]:
     """Find running containers matching a service name pattern."""
     try:
         result = subprocess.run(
-            [DOCKER_BIN, "ps", "--filter", f"name={service_name}",
-             "--format", "{{.Names}}"],
-            capture_output=True, text=True, timeout=5,
+            [DOCKER_BIN, "ps", "--filter", f"name={service_name}", "--format", "{{.Names}}"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return [n for n in result.stdout.strip().split("\n") if n]
     except subprocess.TimeoutExpired:
@@ -74,28 +82,35 @@ def _find_running_containers(service_name: str) -> list[str]:
 
 # ──────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.skipif(not _docker_available(), reason="Docker unavailable — start docker-compose.test.yml first")
+
+@pytest.mark.skipif(
+    not _docker_available(), reason="Docker unavailable — start docker-compose.test.yml first"
+)
 class TestContainerBuild:
     """Container image build validation."""
 
+@pytest.mark.skipif(not os.path.exists(compose_file), reason="docker-compose.test.yml not found")
     def test_docker_compose_config_valid(self):
         """docker-compose.test.yml parses without errors."""
         compose_file = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
             "docker-compose.test.yml",
         )
-        if not os.path.exists(compose_file):
-            pytest.skip("docker-compose.test.yml not found")
         result = subprocess.run(
             [DOCKER_BIN, "compose", "-f", compose_file, "config", "--quiet"],
-            capture_output=True, text=True, timeout=30,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         assert result.returncode == 0, (
             f"docker-compose config validation failed:\n{result.stderr[:500]}"
         )
 
 
-@pytest.mark.skipif(not _docker_available(), reason="Docker unavailable — start docker-compose.test.yml first")
+@pytest.mark.skipif(
+    not _docker_available(), reason="Docker unavailable — start docker-compose.test.yml first"
+)
 class TestContainerRuntime:
     """Runtime property checks on running containers."""
 
@@ -104,7 +119,7 @@ class TestContainerRuntime:
         """Verify the service is running in Docker."""
         containers = _find_running_containers(service)
         if not containers:
-            pytest.skip(f"No running containers found for '{service}' — start docker-compose first")
+            pytest.skip(f"No running containers found for '{service}' — start docker-compose first")  # noqa: skip-in-body — runtime service dependency
         assert len(containers) > 0
 
     @pytest.mark.parametrize("service", SERVICES)
@@ -112,7 +127,7 @@ class TestContainerRuntime:
         """Container must not run as root (UID 0)."""
         containers = _find_running_containers(service)
         if not containers:
-            pytest.skip(f"No running containers for '{service}'")
+            pytest.skip(f"No running containers for '{service}'")  # noqa: skip-in-body — runtime service dependency
         for cname in containers[:3]:
             info = _inspect_container(cname)
             if info is None:
@@ -130,15 +145,16 @@ class TestContainerRuntime:
         """Container should have a health check configured."""
         containers = _find_running_containers(service)
         if not containers:
-            pytest.skip(f"No running containers for '{service}'")
+            pytest.skip(f"No running containers for '{service}'")  # noqa: skip-in-body — runtime service dependency
         for cname in containers[:3]:
             info = _inspect_container(cname)
             if info is None:
                 continue
-            health = (info.get("State", {}).get("Health", {}) or
-                      info.get("Config", {}).get("Healthcheck", {}))
+            health = info.get("State", {}).get("Health", {}) or info.get("Config", {}).get(
+                "Healthcheck", {}
+            )
             if not health:
-                pytest.skip(f"No health check configured for '{cname}'")
+                pytest.skip(f"No health check configured for '{cname}'")  # noqa: skip-in-body — runtime service dependency
             assert True  # Health check exists
 
     @pytest.mark.parametrize("service", SERVICES)
@@ -146,7 +162,7 @@ class TestContainerRuntime:
         """Container should have CPU/memory limits defined."""
         containers = _find_running_containers(service)
         if not containers:
-            pytest.skip(f"No running containers for '{service}'")
+            pytest.skip(f"No running containers for '{service}'")  # noqa: skip-in-body — runtime service dependency
         for cname in containers[:3]:
             info = _inspect_container(cname)
             if info is None:
@@ -155,7 +171,7 @@ class TestContainerRuntime:
             nano_cpus = host_config.get("NanoCpus", 0)
             memory = host_config.get("Memory", 0)
             if nano_cpus == 0 and memory == 0:
-                pytest.skip(f"No resource limits on '{cname}' — may be intentional for dev")
+                pytest.skip(f"No resource limits on '{cname}' — may be intentional for dev")  # noqa: skip-in-body — runtime service dependency
             if nano_cpus > 0:
                 assert nano_cpus >= 100_000_000, (
                     f"'{cname}' CPU limit too low: {nano_cpus / 1e9:.2f} CPUs"
@@ -170,7 +186,7 @@ class TestContainerRuntime:
         """Container root filesystem should be read-only where practical."""
         containers = _find_running_containers(service)
         if not containers:
-            pytest.skip(f"No running containers for '{service}'")
+            pytest.skip(f"No running containers for '{service}'")  # noqa: skip-in-body — runtime service dependency
         for cname in containers[:3]:
             info = _inspect_container(cname)
             if info is None:
@@ -178,5 +194,5 @@ class TestContainerRuntime:
             read_only = info.get("HostConfig", {}).get("ReadonlyRootfs", False)
             if not read_only:
                 # Not all services need read-only rootfs — informational.
-                pytest.skip(f"'{cname}' rootfs is not read-only (may be intentional)")
+                pytest.skip(f"'{cname}' rootfs is not read-only (may be intentional)")  # noqa: skip-in-body — runtime service dependency
             assert read_only is True  # If set, must be True

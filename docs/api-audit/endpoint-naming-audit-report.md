@@ -1,0 +1,3743 @@
+# API Endpoint Audit Report
+
+## Summary
+
+- Total Endpoints: 1247
+- Total Services: 55
+
+## Issues
+
+### Duplicate Endpoints
+
+- **duplicate_path**: /api/v1
+  - Count: 2
+- **duplicate_path**: /api/v1/contracts/^(?P<id>[^/.]+)/lineage/visualization/$
+  - Count: 2
+- **duplicate_path**: /api/v1/contracts/^(?P<id>[^/.]+)/export/$
+  - Count: 2
+- **duplicate_path**: /api/v1/contracts/^(?P<id>[^/.]+)/download/$
+  - Count: 2
+- **duplicate_path**: /api/v1/dq
+  - Count: 2
+- **duplicate_path**: /api/v1/dq/<drf_format_suffix:format>
+  - Count: 2
+- **duplicate_path**: /api/v1/marketplace/^listings/(?P<id>[^/.]+)/download/$
+  - Count: 2
+- **duplicate_path**: /api/v1/ml/inference
+  - Count: 2
+- **duplicate_path**: /api/v1/ml/inference/<drf_format_suffix:format>
+  - Count: 2
+- **duplicate_path**: /api/v1/billing
+  - Count: 2
+- **duplicate_path**: /api/v1/billing/<drf_format_suffix:format>
+  - Count: 2
+- **duplicate_name**: api-key-list
+  - Count: 4
+- **duplicate_name**: api-key-detail
+  - Count: 4
+- **duplicate_name**: sso-oidc-callback
+  - Count: 2
+- **duplicate_name**: sso-oidc-login-url
+  - Count: 2
+- **duplicate_name**: sso-saml-callback
+  - Count: 2
+- **duplicate_name**: sso-saml-login-url
+  - Count: 2
+- **duplicate_name**: api-root
+  - Count: 102
+- **duplicate_name**: tenant-config-detail
+  - Count: 3
+- **duplicate_name**: tenant-list
+  - Count: 2
+- **duplicate_name**: tenant-detail
+  - Count: 2
+- **duplicate_name**: tenant-reactivate
+  - Count: 2
+- **duplicate_name**: tenant-suspend
+  - Count: 2
+- **duplicate_name**: tenant-config-me-config
+  - Count: 2
+- **duplicate_name**: tenant-config-me-feature-flag-history
+  - Count: 2
+- **duplicate_name**: tenant-config-me-feature-flags
+  - Count: 2
+- **duplicate_name**: tenant-config-me-tax-id
+  - Count: 2
+- **duplicate_name**: tenant-config-onboarding
+  - Count: 2
+- **duplicate_name**: tenant-config-seed-sample
+  - Count: 2
+- **duplicate_name**: tenant-config-usage
+  - Count: 2
+- **duplicate_name**: role-list
+  - Count: 2
+- **duplicate_name**: role-detail
+  - Count: 2
+- **duplicate_name**: user-list
+  - Count: 2
+- **duplicate_name**: user-invite
+  - Count: 2
+- **duplicate_name**: user-detail
+  - Count: 2
+- **duplicate_name**: user-manage-roles
+  - Count: 2
+- **duplicate_name**: data-export-job-list
+  - Count: 4
+- **duplicate_name**: data-export-job-export-data
+  - Count: 4
+- **duplicate_name**: data-export-job-detail
+  - Count: 4
+- **duplicate_name**: erasure-request-list
+  - Count: 4
+- **duplicate_name**: erasure-request-request-erasure
+  - Count: 4
+- **duplicate_name**: erasure-request-detail
+  - Count: 4
+- **duplicate_name**: audit-event-list
+  - Count: 2
+- **duplicate_name**: audit-event-export
+  - Count: 2
+- **duplicate_name**: audit-event-resource-activity
+  - Count: 2
+- **duplicate_name**: audit-event-detail
+  - Count: 2
+- **duplicate_name**: resource-activity-list
+  - Count: 2
+- **duplicate_name**: audit-event-retention-policy-list
+  - Count: 2
+- **duplicate_name**: audit-event-retention-policy-detail
+  - Count: 2
+- **duplicate_name**: file-list
+  - Count: 2
+- **duplicate_name**: file-init-upload
+  - Count: 2
+- **duplicate_name**: file-detail
+  - Count: 2
+- **duplicate_name**: file-complete-upload
+  - Count: 2
+- **duplicate_name**: file-download
+  - Count: 2
+- **duplicate_name**: file-init-chunk-upload
+  - Count: 2
+- **duplicate_name**: dataset-list
+  - Count: 2
+- **duplicate_name**: dataset-detail
+  - Count: 2
+- **duplicate_name**: dataset-compare-versions
+  - Count: 2
+- **duplicate_name**: dataset-refresh
+  - Count: 2
+- **duplicate_name**: dataset-refresh-from-file
+  - Count: 2
+- **duplicate_name**: dataset-retire
+  - Count: 2
+- **duplicate_name**: dataset-rows
+  - Count: 2
+- **duplicate_name**: dataset-sample
+  - Count: 2
+- **duplicate_name**: dataset-schema-evolution
+  - Count: 2
+- **duplicate_name**: dataset-share
+  - Count: 2
+- **duplicate_name**: dataset-versions
+  - Count: 2
+- **duplicate_name**: dlq-list
+  - Count: 3
+- **duplicate_name**: dlq-purge-resolved
+  - Count: 2
+- **duplicate_name**: dlq-detail
+  - Count: 2
+- **duplicate_name**: dlq-retry
+  - Count: 3
+- **duplicate_name**: job-list
+  - Count: 2
+- **duplicate_name**: job-detail
+  - Count: 2
+- **duplicate_name**: job-cancel
+  - Count: 2
+- **duplicate_name**: contract-list
+  - Count: 2
+- **duplicate_name**: contract-contract-compare
+  - Count: 2
+- **duplicate_name**: contract-create-product
+  - Count: 2
+- **duplicate_name**: contract-product-workflow-status
+  - Count: 2
+- **duplicate_name**: contract-schema-json-schema
+  - Count: 2
+- **duplicate_name**: contract-validate-draft
+  - Count: 2
+- **duplicate_name**: contract-detail
+  - Count: 2
+- **duplicate_name**: contract-convert-contract
+  - Count: 2
+- **duplicate_name**: contract-download-contract
+  - Count: 2
+- **duplicate_name**: contract-export-contract
+  - Count: 2
+- **duplicate_name**: contract-generate-odps
+  - Count: 2
+- **duplicate_name**: contract-get-contract-lineage
+  - Count: 2
+- **duplicate_name**: contract-get-field-lineage
+  - Count: 2
+- **duplicate_name**: contract-get-hierarchical-lineage
+  - Count: 2
+- **duplicate_name**: contract-get-impact-analysis
+  - Count: 2
+- **duplicate_name**: contract-lineage-diff
+  - Count: 2
+- **duplicate_name**: contract-lineage-visualization
+  - Count: 2
+- **duplicate_name**: contract-get-model-lineage
+  - Count: 2
+- **duplicate_name**: contract-contract-lineage-edit
+  - Count: 2
+- **duplicate_name**: contract-link-odps
+  - Count: 2
+- **duplicate_name**: contract-lint-contract
+  - Count: 2
+- **duplicate_name**: contract-list-links
+  - Count: 2
+- **duplicate_name**: contract-migrate-contract
+  - Count: 2
+- **duplicate_name**: contract-payment-gateways
+  - Count: 2
+- **duplicate_name**: contract-product-details
+  - Count: 2
+- **duplicate_name**: contract-product-strategy
+  - Count: 2
+- **duplicate_name**: contract-contract-rollback
+  - Count: 2
+- **duplicate_name**: contract-unlink-odps
+  - Count: 2
+- **duplicate_name**: contract-validate-contract
+  - Count: 2
+- **duplicate_name**: contract-contract-version
+  - Count: 2
+- **duplicate_name**: security-incident-list
+  - Count: 2
+- **duplicate_name**: security-incident-detail
+  - Count: 2
+- **duplicate_name**: security-incident-resolve
+  - Count: 2
+- **duplicate_name**: security-audit-log-list
+  - Count: 2
+- **duplicate_name**: security-audit-log-detail
+  - Count: 2
+- **duplicate_name**: asset-list
+  - Count: 2
+- **duplicate_name**: asset-data-first
+  - Count: 2
+- **duplicate_name**: asset-asset-workflow-status
+  - Count: 2
+- **duplicate_name**: asset-recommendations
+  - Count: 2
+- **duplicate_name**: asset-detail
+  - Count: 2
+- **duplicate_name**: asset-activate
+  - Count: 2
+- **duplicate_name**: asset-attach-contract
+  - Count: 2
+- **duplicate_name**: asset-attach-dataset
+  - Count: 2
+- **duplicate_name**: asset-batch-download-external-resources
+  - Count: 2
+- **duplicate_name**: asset-classification
+  - Count: 2
+- **duplicate_name**: asset-dependencies
+  - Count: 2
+- **duplicate_name**: asset-download-external-resource
+  - Count: 2
+- **duplicate_name**: asset-ensure-e2e-activation-prerequisites
+  - Count: 2
+- **duplicate_name**: asset-health-score
+  - Count: 2
+- **duplicate_name**: asset-list-external-resources
+  - Count: 2
+- **duplicate_name**: asset-retire
+  - Count: 2
+- **duplicate_name**: asset-track-download
+  - Count: 2
+- **duplicate_name**: asset-track-view
+  - Count: 2
+- **duplicate_name**: dq-run-list
+  - Count: 2
+- **duplicate_name**: dq-run-warehouse-run
+  - Count: 2
+- **duplicate_name**: dq-run-detail
+  - Count: 2
+- **duplicate_name**: dq-run-results
+  - Count: 2
+- **duplicate_name**: dq-alerting-rule-list
+  - Count: 2
+- **duplicate_name**: dq-alerting-rule-detail
+  - Count: 2
+- **duplicate_name**: dq-quality-anomalies
+  - Count: 2
+- **duplicate_name**: dq-quality-root-cause-analysis
+  - Count: 2
+- **duplicate_name**: dq-quality-scorecards
+  - Count: 2
+- **duplicate_name**: dq-quality-trends
+  - Count: 2
+- **duplicate_name**: compliance-run-list
+  - Count: 2
+- **duplicate_name**: compliance-run-warehouse-scan
+  - Count: 2
+- **duplicate_name**: compliance-run-detail
+  - Count: 2
+- **duplicate_name**: compliance-run-cancel
+  - Count: 2
+- **duplicate_name**: compliance-run-results
+  - Count: 2
+- **duplicate_name**: ropa-generation-list
+  - Count: 2
+- **duplicate_name**: ropa-generation-generate
+  - Count: 2
+- **duplicate_name**: ropa-generation-preview
+  - Count: 2
+- **duplicate_name**: ropa-generation-detail
+  - Count: 2
+- **duplicate_name**: ropa-generation-download
+  - Count: 2
+- **duplicate_name**: ropa-generation-remove
+  - Count: 2
+- **duplicate_name**: ropa-generation-update-metadata
+  - Count: 2
+- **duplicate_name**: dpia-record-list
+  - Count: 2
+- **duplicate_name**: dpia-record-asset-status
+  - Count: 2
+- **duplicate_name**: dpia-record-detail
+  - Count: 2
+- **duplicate_name**: dpia-record-consultation-complete
+  - Count: 2
+- **duplicate_name**: dpia-record-diff
+  - Count: 2
+- **duplicate_name**: dpia-record-new-version
+  - Count: 2
+- **duplicate_name**: dpia-record-review
+  - Count: 2
+- **duplicate_name**: dpia-record-submit
+  - Count: 2
+- **duplicate_name**: semantic-resource-list
+  - Count: 2
+- **duplicate_name**: semantic-resource-detail
+  - Count: 2
+- **duplicate_name**: tenant-ontology-list
+  - Count: 2
+- **duplicate_name**: tenant-ontology-detail
+  - Count: 2
+- **duplicate_name**: ldn-subscription-list
+  - Count: 2
+- **duplicate_name**: ldn-subscription-detail
+  - Count: 2
+- **duplicate_name**: listing-list
+  - Count: 2
+- **duplicate_name**: listing-search
+  - Count: 2
+- **duplicate_name**: listing-detail
+  - Count: 2
+- **duplicate_name**: listing-download
+  - Count: 2
+- **duplicate_name**: listing-lineage
+  - Count: 2
+- **duplicate_name**: listing-preview
+  - Count: 2
+- **duplicate_name**: marketplace-config-trust-signals-list
+  - Count: 2
+- **duplicate_name**: marketplace-config-trust-signals-detail
+  - Count: 2
+- **duplicate_name**: order-list
+  - Count: 2
+- **duplicate_name**: order-purchase
+  - Count: 2
+- **duplicate_name**: order-detail
+  - Count: 2
+- **duplicate_name**: order-approve
+  - Count: 2
+- **duplicate_name**: order-cancel
+  - Count: 2
+- **duplicate_name**: order-confirm-payment
+  - Count: 2
+- **duplicate_name**: order-refund
+  - Count: 2
+- **duplicate_name**: order-reject
+  - Count: 2
+- **duplicate_name**: entitlement-list
+  - Count: 2
+- **duplicate_name**: entitlement-check-access
+  - Count: 2
+- **duplicate_name**: entitlement-detail
+  - Count: 2
+- **duplicate_name**: entitlement-revoke
+  - Count: 2
+- **duplicate_name**: payment-gateway-get-webhook-url
+  - Count: 2
+- **duplicate_name**: payment-gateway-link-webhook
+  - Count: 2
+- **duplicate_name**: payment-gateway-list-gateways
+  - Count: 2
+- **duplicate_name**: internal-runs-create
+  - Count: 2
+- **duplicate_name**: internal-runs-update
+  - Count: 2
+- **duplicate_name**: internal-config
+  - Count: 2
+- **duplicate_name**: scheduled-ingestion-list
+  - Count: 2
+- **duplicate_name**: scheduled-ingestion-costs
+  - Count: 2
+- **duplicate_name**: scheduled-ingestion-dashboard
+  - Count: 2
+- **duplicate_name**: scheduled-ingestion-dead-letter-queue
+  - Count: 2
+- **duplicate_name**: scheduled-ingestion-detail
+  - Count: 2
+- **duplicate_name**: scheduled-ingestion-credentials
+  - Count: 2
+- **duplicate_name**: scheduled-ingestion-resolve-dlq-item
+  - Count: 2
+- **duplicate_name**: scheduled-ingestion-retry-dlq-item
+  - Count: 2
+- **duplicate_name**: scheduled-ingestion-runs
+  - Count: 2
+- **duplicate_name**: scheduled-ingestion-sync
+  - Count: 2
+- **duplicate_name**: scheduled-ingestion-test-credentials
+  - Count: 2
+- **duplicate_name**: scheduled-ingestion-trigger
+  - Count: 2
+- **duplicate_name**: scheduled-ingestion-run-list
+  - Count: 2
+- **duplicate_name**: scheduled-ingestion-run-detail
+  - Count: 2
+- **duplicate_name**: scheduled-export-list
+  - Count: 2
+- **duplicate_name**: scheduled-export-detail
+  - Count: 2
+- **duplicate_name**: scheduled-export-runs
+  - Count: 2
+- **duplicate_name**: scheduled-export-sync
+  - Count: 2
+- **duplicate_name**: scheduled-export-trigger
+  - Count: 2
+- **duplicate_name**: scheduled-export-run-list
+  - Count: 2
+- **duplicate_name**: scheduled-export-run-detail
+  - Count: 2
+- **duplicate_name**: data-movement-config-list
+  - Count: 2
+- **duplicate_name**: data-movement-config-detail
+  - Count: 2
+- **duplicate_name**: search-analytics
+  - Count: 2
+- **duplicate_name**: search-rebuild-index
+  - Count: 2
+- **duplicate_name**: search-search
+  - Count: 2
+- **duplicate_name**: search-suggestions
+  - Count: 2
+- **duplicate_name**: search-track-click
+  - Count: 2
+- **duplicate_name**: plugin-list
+  - Count: 2
+- **duplicate_name**: plugin-install
+  - Count: 2
+- **duplicate_name**: plugin-marketplace
+  - Count: 2
+- **duplicate_name**: plugin-marketplace-usage
+  - Count: 2
+- **duplicate_name**: plugin-detail
+  - Count: 2
+- **duplicate_name**: plugin-execute
+  - Count: 2
+- **duplicate_name**: sdk-documentation-list
+  - Count: 2
+- **duplicate_name**: sdk-documentation-detail
+  - Count: 2
+- **duplicate_name**: documentation-list
+  - Count: 2
+- **duplicate_name**: portal-list
+  - Count: 2
+- **duplicate_name**: api-keys-list
+  - Count: 2
+- **duplicate_name**: api-usage-list
+  - Count: 4
+- **duplicate_name**: webhook-list
+  - Count: 2
+- **duplicate_name**: webhook-event-types
+  - Count: 2
+- **duplicate_name**: webhook-detail
+  - Count: 2
+- **duplicate_name**: webhook-deliveries
+  - Count: 2
+- **duplicate_name**: webhook-rotate-secret
+  - Count: 2
+- **duplicate_name**: webhook-test-webhook
+  - Count: 2
+- **duplicate_name**: webhook-delivery-list
+  - Count: 2
+- **duplicate_name**: webhook-delivery-detail
+  - Count: 2
+- **duplicate_name**: webhook-delivery-retry-delivery
+  - Count: 2
+- **duplicate_name**: api-analytics-dashboard
+  - Count: 2
+- **duplicate_name**: api-analytics-performance
+  - Count: 2
+- **duplicate_name**: api-analytics-popular-endpoints
+  - Count: 2
+- **duplicate_name**: api-analytics-usage-trends
+  - Count: 2
+- **duplicate_name**: costs-list
+  - Count: 2
+- **duplicate_name**: costs-breakdown
+  - Count: 2
+- **duplicate_name**: costs-by-asset
+  - Count: 2
+- **duplicate_name**: costs-recommendations
+  - Count: 2
+- **duplicate_name**: costs-trends
+  - Count: 2
+- **duplicate_name**: access-analytics-anomalies
+  - Count: 4
+- **duplicate_name**: access-analytics-dashboard
+  - Count: 4
+- **duplicate_name**: access-analytics-patterns
+  - Count: 4
+- **duplicate_name**: access-analytics-security-events
+  - Count: 4
+- **duplicate_name**: access-certification-list
+  - Count: 4
+- **duplicate_name**: access-certification-expiring
+  - Count: 4
+- **duplicate_name**: access-certification-initiate-review
+  - Count: 4
+- **duplicate_name**: access-certification-summary
+  - Count: 4
+- **duplicate_name**: access-certification-detail
+  - Count: 4
+- **duplicate_name**: access-certification-review
+  - Count: 4
+- **duplicate_name**: access-request-list
+  - Count: 4
+- **duplicate_name**: access-request-bulk-approve
+  - Count: 4
+- **duplicate_name**: access-request-bulk-reject
+  - Count: 4
+- **duplicate_name**: access-request-pending-count
+  - Count: 4
+- **duplicate_name**: access-request-detail
+  - Count: 4
+- **duplicate_name**: access-request-approve
+  - Count: 4
+- **duplicate_name**: access-request-comments
+  - Count: 4
+- **duplicate_name**: access-request-reject
+  - Count: 4
+- **duplicate_name**: access-request-revoke
+  - Count: 4
+- **duplicate_name**: retention-policy-list
+  - Count: 4
+- **duplicate_name**: retention-policy-detail
+  - Count: 4
+- **duplicate_name**: compliance-report-list
+  - Count: 4
+- **duplicate_name**: compliance-report-detail
+  - Count: 4
+- **duplicate_name**: user-notification-list
+  - Count: 2
+- **duplicate_name**: user-notification-mark-all-read
+  - Count: 2
+- **duplicate_name**: user-notification-unread-count
+  - Count: 2
+- **duplicate_name**: user-notification-detail
+  - Count: 2
+- **duplicate_name**: user-notification-mark-read
+  - Count: 2
+- **duplicate_name**: observability-aggregate-volume-trends
+  - Count: 2
+- **duplicate_name**: observability-detect-schema-drift
+  - Count: 2
+- **duplicate_name**: observability-get-freshness-dashboard
+  - Count: 2
+- **duplicate_name**: observability-get-lineage
+  - Count: 2
+- **duplicate_name**: observability-get-pipeline-dashboard
+  - Count: 2
+- **duplicate_name**: observability-get-schema-drift-dashboard
+  - Count: 2
+- **duplicate_name**: observability-get-slas-dashboard
+  - Count: 2
+- **duplicate_name**: observability-get-stale-data
+  - Count: 2
+- **duplicate_name**: observability-get-volume-dashboard
+  - Count: 2
+- **duplicate_name**: observability-incidents
+  - Count: 2
+- **duplicate_name**: observability-record-metric
+  - Count: 2
+- **duplicate_name**: observability-update-incident
+  - Count: 2
+- **duplicate_name**: ai-natural-language-search
+  - Count: 2
+- **duplicate_name**: ai-schema-matching
+  - Count: 2
+- **duplicate_name**: classification-list
+  - Count: 2
+- **duplicate_name**: classification-detail
+  - Count: 2
+- **duplicate_name**: classification-report
+  - Count: 2
+- **duplicate_name**: classification-rules
+  - Count: 2
+- **duplicate_name**: classification-validate
+  - Count: 2
+- **duplicate_name**: recommendations-list
+  - Count: 2
+- **duplicate_name**: recommendations-feedback
+  - Count: 2
+- **duplicate_name**: recommendations-model
+  - Count: 2
+- **duplicate_name**: anomaly-detection-config-list
+  - Count: 2
+- **duplicate_name**: anomaly-detection-list
+  - Count: 2
+- **duplicate_name**: anomaly-detection-train
+  - Count: 2
+- **duplicate_name**: rating-list
+  - Count: 2
+- **duplicate_name**: rating-audit
+  - Count: 2
+- **duplicate_name**: review-list
+  - Count: 2
+- **duplicate_name**: review-audit
+  - Count: 2
+- **duplicate_name**: review-pending
+  - Count: 2
+- **duplicate_name**: review-detail
+  - Count: 2
+- **duplicate_name**: review-approve
+  - Count: 2
+- **duplicate_name**: review-reject
+  - Count: 2
+- **duplicate_name**: comment-list
+  - Count: 2
+- **duplicate_name**: comment-detail
+  - Count: 2
+- **duplicate_name**: community-list
+  - Count: 2
+- **duplicate_name**: community-audit
+  - Count: 2
+- **duplicate_name**: community-detail
+  - Count: 2
+- **duplicate_name**: community-assets
+  - Count: 2
+- **duplicate_name**: community-discussions
+  - Count: 2
+- **duplicate_name**: community-join
+  - Count: 2
+- **duplicate_name**: community-knowledge-base
+  - Count: 2
+- **duplicate_name**: community-members
+  - Count: 2
+- **duplicate_name**: activity-feed-list
+  - Count: 2
+- **duplicate_name**: activity-feed-moderate
+  - Count: 2
+- **duplicate_name**: social-audit-reports
+  - Count: 2
+- **duplicate_name**: domain-list
+  - Count: 2
+- **duplicate_name**: domain-detail
+  - Count: 2
+- **duplicate_name**: domain-analytics
+  - Count: 2
+- **duplicate_name**: domain-apply-policy
+  - Count: 2
+- **duplicate_name**: domain-assets
+  - Count: 2
+- **duplicate_name**: domain-boundaries
+  - Count: 2
+- **duplicate_name**: domain-check-compliance
+  - Count: 2
+- **duplicate_name**: domain-deploy
+  - Count: 2
+- **duplicate_name**: domain-get-compliance-report
+  - Count: 2
+- **duplicate_name**: domain-governance
+  - Count: 2
+- **duplicate_name**: domain-health
+  - Count: 2
+- **duplicate_name**: domain-infrastructure
+  - Count: 2
+- **duplicate_name**: domain-list-compliance-reports
+  - Count: 2
+- **duplicate_name**: domain-list-policies
+  - Count: 2
+- **duplicate_name**: domain-monitoring
+  - Count: 2
+- **duplicate_name**: domain-ownership
+  - Count: 2
+- **duplicate_name**: domain-quotas
+  - Count: 2
+- **duplicate_name**: domain-remove-policy
+  - Count: 2
+- **duplicate_name**: domain-self-serve
+  - Count: 2
+- **duplicate_name**: domain-transfer-ownership
+  - Count: 2
+- **duplicate_name**: topology-list
+  - Count: 2
+- **duplicate_name**: topology-health
+  - Count: 2
+- **duplicate_name**: topology-relationships
+  - Count: 2
+- **duplicate_name**: topology-detail
+  - Count: 2
+- **duplicate_name**: mesh-governance-list
+  - Count: 2
+- **duplicate_name**: mesh-governance-compliance
+  - Count: 2
+- **duplicate_name**: mesh-governance-policies
+  - Count: 2
+- **duplicate_name**: mesh-governance-reports
+  - Count: 2
+- **duplicate_name**: virtual-dataset-list
+  - Count: 2
+- **duplicate_name**: virtual-dataset-detail
+  - Count: 2
+- **duplicate_name**: virtual-dataset-execute-query
+  - Count: 2
+- **duplicate_name**: virtual-dataset-validate-dataset
+  - Count: 2
+- **duplicate_name**: virtual-dataset-versions
+  - Count: 2
+- **duplicate_name**: query-execution-list
+  - Count: 2
+- **duplicate_name**: query-execution-detail
+  - Count: 2
+- **duplicate_name**: query-execution-cancel-execution
+  - Count: 2
+- **duplicate_name**: query-execution-get-progress
+  - Count: 2
+- **duplicate_name**: query-execution-get-result
+  - Count: 2
+- **duplicate_name**: query-execution-stream-result
+  - Count: 2
+- **duplicate_name**: virtualization-topology-list
+  - Count: 2
+- **duplicate_name**: virtualization-topology-detail
+  - Count: 2
+- **duplicate_name**: marketplace-connection-list
+  - Count: 2
+- **duplicate_name**: marketplace-connection-detail
+  - Count: 2
+- **duplicate_name**: marketplace-connection-test
+  - Count: 2
+- **duplicate_name**: marketplace-sync-job-list
+  - Count: 2
+- **duplicate_name**: marketplace-sync-job-detail
+  - Count: 2
+- **duplicate_name**: marketplace-sync-job-cancel
+  - Count: 2
+- **duplicate_name**: marketplace-mapping-list
+  - Count: 2
+- **duplicate_name**: marketplace-mapping-detail
+  - Count: 2
+- **duplicate_name**: federated-import-cancel
+  - Count: 2
+- **duplicate_name**: federated-import-create-import
+  - Count: 2
+- **duplicate_name**: federated-import-get-status
+  - Count: 2
+- **duplicate_name**: federated-import-list-providers
+  - Count: 2
+- **duplicate_name**: lineage-subscription-list
+  - Count: 2
+- **duplicate_name**: lineage-subscription-detail
+  - Count: 2
+- **duplicate_name**: api-usage-by-endpoint
+  - Count: 2
+- **duplicate_name**: api-usage-by-tenant
+  - Count: 2
+- **duplicate_name**: api-usage-stats
+  - Count: 2
+- **duplicate_name**: api-usage-detail
+  - Count: 2
+- **duplicate_name**: api-key-quota
+  - Count: 2
+- **duplicate_name**: developer-docs-list
+  - Count: 2
+- **duplicate_name**: developer-docs-generate-sdk
+  - Count: 2
+- **duplicate_name**: developer-docs-openapi-schema
+  - Count: 2
+- **duplicate_name**: developer-docs-sdks
+  - Count: 2
+- **duplicate_name**: billing-report-list
+  - Count: 2
+- **duplicate_name**: billing-report-generate
+  - Count: 2
+- **duplicate_name**: billing-report-detail
+  - Count: 2
+- **duplicate_name**: billing-report-finalize
+  - Count: 2
+- **duplicate_name**: billing-report-send
+  - Count: 2
+- **duplicate_name**: billing-report-void
+  - Count: 2
+- **duplicate_name**: ml-model-list
+  - Count: 2
+- **duplicate_name**: ml-model-detail
+  - Count: 2
+- **duplicate_name**: ml-model-get-datasets
+  - Count: 2
+- **duplicate_name**: ml-model-link-asset
+  - Count: 2
+- **duplicate_name**: ml-model-link-dataset
+  - Count: 2
+- **duplicate_name**: ml-model-sync-from-odh
+  - Count: 2
+- **duplicate_name**: ml-model-versions
+  - Count: 2
+- **duplicate_name**: training-job-list
+  - Count: 2
+- **duplicate_name**: training-job-detail
+  - Count: 2
+- **duplicate_name**: training-job-cancel
+  - Count: 2
+- **duplicate_name**: training-job-logs
+  - Count: 2
+- **duplicate_name**: inference-deployment-list
+  - Count: 2
+- **duplicate_name**: inference-deployment-predict
+  - Count: 2
+- **duplicate_name**: inference-deployment-detail
+  - Count: 2
+- **duplicate_name**: inference-deployment-metrics
+  - Count: 2
+- **duplicate_name**: ab-test-list
+  - Count: 2
+- **duplicate_name**: ab-test-detail
+  - Count: 2
+- **duplicate_name**: plan-list
+  - Count: 2
+- **duplicate_name**: plan-detail
+  - Count: 2
+- **duplicate_name**: subscription-list
+  - Count: 2
+- **duplicate_name**: subscription-change-plan
+  - Count: 2
+- **duplicate_name**: subscription-current
+  - Count: 2
+- **duplicate_name**: subscription-detail
+  - Count: 2
+- **duplicate_name**: invoice-list
+  - Count: 2
+- **duplicate_name**: invoice-detail
+  - Count: 2
+- **duplicate_name**: invoice-download
+  - Count: 2
+- **duplicate_name**: refund-list
+  - Count: 2
+- **duplicate_name**: ml-subscription-change-plan
+  - Count: 2
+- **duplicate_name**: ml-subscription-current
+  - Count: 2
+- **duplicate_name**: admin-plan-list
+  - Count: 2
+- **duplicate_name**: admin-plan-detail
+  - Count: 2
+- **duplicate_name**: admin-plan-tier-profile
+  - Count: 2
+- **duplicate_name**: cost-overview-list
+  - Count: 2
+- **duplicate_name**: platform-tenant-list
+  - Count: 2
+- **duplicate_name**: platform-tenant-usage
+  - Count: 2
+- **duplicate_name**: platform-tenant-detail
+  - Count: 2
+- **duplicate_name**: platform-tenant-resume
+  - Count: 2
+- **duplicate_name**: platform-tenant-suspend
+  - Count: 2
+- **duplicate_name**: platform-user-list
+  - Count: 2
+- **duplicate_name**: platform-user-detail
+  - Count: 2
+- **duplicate_name**: platform-user-erasure-requests
+  - Count: 2
+- **duplicate_name**: platform-user-request-erasure
+  - Count: 2
+- **duplicate_name**: versioning-version-list
+  - Count: 2
+- **duplicate_name**: versioning-version-compare
+  - Count: 2
+- **duplicate_name**: versioning-version-detail
+  - Count: 2
+- **duplicate_name**: transformation-pipeline-list
+  - Count: 2
+- **duplicate_name**: transformation-pipeline-detail
+  - Count: 2
+- **duplicate_name**: transformation-pipeline-contract-drift
+  - Count: 2
+- **duplicate_name**: transformation-pipeline-execute-pipeline
+  - Count: 2
+- **duplicate_name**: transformation-pipeline-impact-preview
+  - Count: 2
+- **duplicate_name**: transformation-pipeline-list-executions
+  - Count: 2
+- **duplicate_name**: transformation-pipeline-preview-pipeline
+  - Count: 2
+- **duplicate_name**: transformation-pipeline-validate-pipeline
+  - Count: 2
+- **duplicate_name**: transformation-execution-list
+  - Count: 2
+- **duplicate_name**: transformation-execution-detail
+  - Count: 2
+- **duplicate_name**: transformation-execution-cancel-execution
+  - Count: 2
+- **duplicate_name**: transformation-execution-get-progress
+  - Count: 2
+- **duplicate_name**: transformation-execution-get-result
+  - Count: 2
+- **duplicate_name**: transformation-preview-list
+  - Count: 2
+- **duplicate_name**: transformation-preview-detail
+  - Count: 2
+- **duplicate_name**: transformation-wrangling-list
+  - Count: 2
+- **duplicate_name**: transformation-wrangling-detail
+  - Count: 2
+- **duplicate_name**: transformation-wrangling-redo-operation
+  - Count: 2
+- **duplicate_name**: transformation-wrangling-undo-operation
+  - Count: 2
+- **duplicate_name**: warehouse-connection-list
+  - Count: 2
+- **duplicate_name**: warehouse-connection-residency-mismatches
+  - Count: 2
+- **duplicate_name**: warehouse-connection-detail
+  - Count: 2
+- **duplicate_name**: warehouse-connection-reflect-schema
+  - Count: 2
+- **duplicate_name**: warehouse-connection-test-connection
+  - Count: 2
+- **duplicate_name**: warehouse-acl-list
+  - Count: 2
+- **duplicate_name**: warehouse-acl-detail
+  - Count: 2
+- **duplicate_name**: breach-incident-list
+  - Count: 2
+- **duplicate_name**: breach-incident-detail
+  - Count: 2
+- **duplicate_name**: breach-incident-transition-status
+  - Count: 2
+- **duplicate_name**: breach-notification-list
+  - Count: 2
+- **duplicate_name**: breach-notification-detail
+  - Count: 2
+- **duplicate_name**: breach-notification-mark-sent
+  - Count: 2
+- **duplicate_name**: breach-template-override-list
+  - Count: 2
+- **duplicate_name**: breach-template-override-upsert
+  - Count: 2
+- **duplicate_name**: breach-template-override-detail
+  - Count: 2
+- **duplicate_name**: dsar-request-list
+  - Count: 2
+- **duplicate_name**: dsar-request-detail
+  - Count: 2
+- **duplicate_name**: dsar-request-issue-download-url
+  - Count: 2
+- **duplicate_name**: dsar-request-legal-hold
+  - Count: 2
+- **duplicate_name**: dsar-request-materialize-package
+  - Count: 2
+- **duplicate_name**: dsar-request-reject
+  - Count: 2
+- **duplicate_name**: consent-purpose-list
+  - Count: 2
+- **duplicate_name**: consent-purpose-detail
+  - Count: 2
+- **duplicate_name**: consent-record-list
+  - Count: 2
+- **duplicate_name**: consent-record-detail
+  - Count: 2
+- **duplicate_name**: consent-record-revoke
+  - Count: 2
+- **duplicate_name**: processor-list
+  - Count: 2
+- **duplicate_name**: processor-detail
+  - Count: 2
+- **duplicate_name**: processor-agreement-list
+  - Count: 2
+- **duplicate_name**: processor-agreement-detail
+  - Count: 2
+- **duplicate_name**: asset-processor-link-list
+  - Count: 2
+- **duplicate_name**: asset-processor-link-detail
+  - Count: 2
+### Naming Inconsistencies
+
+- **inconsistent_name_prefix**: Service 'v1'
+  - Prefixes: api, openapi, observability, ensure, raise, reset, webhook, mailhog
+- **inconsistent_name_prefix**: Service 'auth'
+  - Prefixes: me, switch, refresh, password, verify, resend, accept, list, end, revoke, api, sso
+- **inconsistent_name_prefix**: Service 'admin'
+  - Prefixes: admin, cost, api
+- **inconsistent_name_prefix**: Service 'tenants'
+  - Prefixes: tenant, api
+- **inconsistent_name_prefix**: Service 'users'
+  - Prefixes: role, user, data, erasure, api
+- **inconsistent_name_prefix**: Service 'audit'
+  - Prefixes: audit, resource, api
+- **inconsistent_name_prefix**: Service 'files'
+  - Prefixes: file, api
+- **inconsistent_name_prefix**: Service 'datasets'
+  - Prefixes: dataset, api
+- **inconsistent_name_prefix**: Service 'jobs'
+  - Prefixes: dlq, job, api
+- **inconsistent_name_prefix**: Service 'contracts'
+  - Prefixes: contract, api
+- **inconsistent_name_prefix**: Service 'security'
+  - Prefixes: security, api
+- **inconsistent_name_prefix**: Service 'assets'
+  - Prefixes: asset, api
+- **inconsistent_name_prefix**: Service 'dq'
+  - Prefixes: dq, api
+- **inconsistent_name_prefix**: Service 'compliance'
+  - Prefixes: compliance, api
+- **inconsistent_name_prefix**: Service 'ropa'
+  - Prefixes: ropa, api
+- **inconsistent_name_prefix**: Service 'dpia'
+  - Prefixes: dpia, api
+- **inconsistent_name_prefix**: Service 'semantic'
+  - Prefixes: semantic, tenant, ldn, api, sparql, dereference, resolve, get, rdf, contract
+- **inconsistent_name_prefix**: Service 'marketplace'
+  - Prefixes: marketplace, listing, order, entitlement, payment, api
+- **inconsistent_name_prefix**: Service 'scheduled-ingestions'
+  - Prefixes: scheduled, api
+- **inconsistent_name_prefix**: Service 'scheduled-exports'
+  - Prefixes: scheduled, api
+- **inconsistent_name_prefix**: Service 'data-movement'
+  - Prefixes: data, api
+- **inconsistent_name_prefix**: Service 'search'
+  - Prefixes: search, api
+- **inconsistent_name_prefix**: Service 'developer'
+  - Prefixes: plugin, sdk, documentation, portal, api
+- **inconsistent_name_prefix**: Service 'webhooks'
+  - Prefixes: webhook, api
+- **inconsistent_name_prefix**: Service 'events'
+  - Prefixes: replay, dlq
+- **inconsistent_name_prefix**: Service 'analytics'
+  - Prefixes: api, costs
+- **inconsistent_name_prefix**: Service 'access'
+  - Prefixes: access, retention, compliance, api
+- **inconsistent_name_prefix**: Service 'governance'
+  - Prefixes: access, retention, compliance, api
+- **inconsistent_name_prefix**: Service 'notifications'
+  - Prefixes: user, api, notification, marketing
+- **inconsistent_name_prefix**: Service 'ai'
+  - Prefixes: ai, classification, recommendations, anomaly, api
+- **inconsistent_name_prefix**: Service 'social'
+  - Prefixes: rating, review, comment, community, activity, social, api
+- **inconsistent_name_prefix**: Service 'mesh'
+  - Prefixes: domain, topology, mesh, api
+- **inconsistent_name_prefix**: Service 'virtualization'
+  - Prefixes: virtual, query, virtualization, api
+- **inconsistent_name_prefix**: Service 'integrations'
+  - Prefixes: marketplace, federated, api
+- **inconsistent_name_prefix**: Service 'subscriptions'
+  - Prefixes: lineage, api
+- **inconsistent_name_prefix**: Service 'baas'
+  - Prefixes: api, developer, billing
+- **inconsistent_name_prefix**: Service 'ml'
+  - Prefixes: ml, api
+- **inconsistent_name_prefix**: Service 'training'
+  - Prefixes: training, api
+- **inconsistent_name_prefix**: Service 'inference'
+  - Prefixes: inference, api, ab
+- **inconsistent_name_prefix**: Service 'billing'
+  - Prefixes: plan, subscription, invoice, refund, api, ml, stripe, connect, public
+- **inconsistent_name_prefix**: Service 'platform'
+  - Prefixes: platform, api
+- **inconsistent_name_prefix**: Service 'versioning'
+  - Prefixes: versioning, api
+- **inconsistent_name_prefix**: Service 'transformation'
+  - Prefixes: transformation, api
+- **inconsistent_name_prefix**: Service 'warehouses'
+  - Prefixes: warehouse, api
+- **inconsistent_name_prefix**: Service 'breach'
+  - Prefixes: breach, api
+- **inconsistent_name_prefix**: Service 'gdpr'
+  - Prefixes: data, erasure, api
+- **inconsistent_name_prefix**: Service 'dsar'
+  - Prefixes: dsar, api
+- **inconsistent_name_prefix**: Service 'consent'
+  - Prefixes: consent, api
+- **inconsistent_name_prefix**: Service 'processor-agreements'
+  - Prefixes: processor, asset, api
+
+## Endpoints by Service
+
+### Access
+
+- `get` /api/v1/governance/access/^analytics/anomalies/$
+  - Name: `access-analytics-anomalies`
+- `get` /api/v1/governance/access/^analytics/anomalies\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-analytics-anomalies`
+- `get` /api/v1/governance/access/^analytics/dashboard/$
+  - Name: `access-analytics-dashboard`
+- `get` /api/v1/governance/access/^analytics/dashboard\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-analytics-dashboard`
+- `get` /api/v1/governance/access/^analytics/patterns/$
+  - Name: `access-analytics-patterns`
+- `get` /api/v1/governance/access/^analytics/patterns\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-analytics-patterns`
+- `get` /api/v1/governance/access/^analytics/security-events/$
+  - Name: `access-analytics-security-events`
+- `get` /api/v1/governance/access/^analytics/security-events\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-analytics-security-events`
+- `get, post` /api/v1/governance/access/^certifications/$
+  - Name: `access-certification-list`
+- `get, post` /api/v1/governance/access/^certifications\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-certification-list`
+- `get` /api/v1/governance/access/^certifications/expiring/$
+  - Name: `access-certification-expiring`
+- `get` /api/v1/governance/access/^certifications/expiring\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-certification-expiring`
+- `post` /api/v1/governance/access/^certifications/initiate-review/$
+  - Name: `access-certification-initiate-review`
+- `post` /api/v1/governance/access/^certifications/initiate-review\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-certification-initiate-review`
+- `get` /api/v1/governance/access/^certifications/summary/$
+  - Name: `access-certification-summary`
+- `get` /api/v1/governance/access/^certifications/summary\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-certification-summary`
+- `get, put, patch, delete` /api/v1/governance/access/^certifications/(?P<id>[^/.]+)/$
+  - Name: `access-certification-detail`
+- `get, put, patch, delete` /api/v1/governance/access/^certifications/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-certification-detail`
+- `post` /api/v1/governance/access/^certifications/(?P<id>[^/.]+)/review/$
+  - Name: `access-certification-review`
+- `post` /api/v1/governance/access/^certifications/(?P<id>[^/.]+)/review\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-certification-review`
+- `get, post` /api/v1/governance/access/^access-requests/$
+  - Name: `access-request-list`
+- `get, post` /api/v1/governance/access/^access-requests\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-list`
+- `post` /api/v1/governance/access/^access-requests/bulk-approve/$
+  - Name: `access-request-bulk-approve`
+- `post` /api/v1/governance/access/^access-requests/bulk-approve\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-bulk-approve`
+- `post` /api/v1/governance/access/^access-requests/bulk-reject/$
+  - Name: `access-request-bulk-reject`
+- `post` /api/v1/governance/access/^access-requests/bulk-reject\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-bulk-reject`
+- `get` /api/v1/governance/access/^access-requests/pending-count/$
+  - Name: `access-request-pending-count`
+- `get` /api/v1/governance/access/^access-requests/pending-count\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-pending-count`
+- `get, put, patch, delete` /api/v1/governance/access/^access-requests/(?P<id>[^/.]+)/$
+  - Name: `access-request-detail`
+- `get, put, patch, delete` /api/v1/governance/access/^access-requests/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-detail`
+- `post` /api/v1/governance/access/^access-requests/(?P<id>[^/.]+)/approve/$
+  - Name: `access-request-approve`
+- `post` /api/v1/governance/access/^access-requests/(?P<id>[^/.]+)/approve\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-approve`
+- `get, post` /api/v1/governance/access/^access-requests/(?P<id>[^/.]+)/comments/$
+  - Name: `access-request-comments`
+- `get, post` /api/v1/governance/access/^access-requests/(?P<id>[^/.]+)/comments\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-comments`
+- `post` /api/v1/governance/access/^access-requests/(?P<id>[^/.]+)/reject/$
+  - Name: `access-request-reject`
+- `post` /api/v1/governance/access/^access-requests/(?P<id>[^/.]+)/reject\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-reject`
+- `post` /api/v1/governance/access/^access-requests/(?P<id>[^/.]+)/revoke/$
+  - Name: `access-request-revoke`
+- `post` /api/v1/governance/access/^access-requests/(?P<id>[^/.]+)/revoke\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-revoke`
+- `get, post` /api/v1/governance/access/^retention-policies/$
+  - Name: `retention-policy-list`
+- `get, post` /api/v1/governance/access/^retention-policies\.(?P<format>[a-z0-9]+)/?$
+  - Name: `retention-policy-list`
+- `get, put, patch, delete` /api/v1/governance/access/^retention-policies/(?P<id>[^/.]+)/$
+  - Name: `retention-policy-detail`
+- `get, put, patch, delete` /api/v1/governance/access/^retention-policies/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `retention-policy-detail`
+- `post` /api/v1/governance/access/^compliance-reports/$
+  - Name: `compliance-report-list`
+- `post` /api/v1/governance/access/^compliance-reports\.(?P<format>[a-z0-9]+)/?$
+  - Name: `compliance-report-list`
+- `get` /api/v1/governance/access/^compliance-reports/(?P<pk>[^/.]+)/$
+  - Name: `compliance-report-detail`
+- `get` /api/v1/governance/access/^compliance-reports/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `compliance-report-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/governance/access
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/governance/access/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Admin
+
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/admin/tenants/
+  - Name: `admin-tenant-create`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/admin/tenants/<uuid:tenant_id>/
+  - Name: `admin-tenant-delete`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/admin/tenants/<uuid:tenant_id>/feature-flags/
+  - Name: `admin-tenant-feature-flags`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/admin/tenants/<uuid:tenant_id>/onboarding-state/
+  - Name: `admin-tenant-onboarding-state`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/admin/feature-flag-approvals/<uuid:approval_id>/approve/
+  - Name: `admin-feature-flag-approval-approve`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/admin/impersonate/exit/
+  - Name: `admin-impersonate-exit`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/admin/impersonate/
+  - Name: `admin-impersonate-start`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/admin/dashboard/summary/
+  - Name: `admin-dashboard-summary`
+- `GET` /api/v1/admin/connect/review-queue/
+  - Name: `admin-connect-review-queue`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/admin/health/
+  - Name: `admin-health`
+- `get, post` /api/v1/billing/admin/^plans/$
+  - Name: `admin-plan-list`
+- `get, post` /api/v1/billing/admin/^plans\.(?P<format>[a-z0-9]+)/?$
+  - Name: `admin-plan-list`
+- `get, put, patch, delete` /api/v1/billing/admin/^plans/(?P<pk>[^/.]+)/$
+  - Name: `admin-plan-detail`
+- `get, put, patch, delete` /api/v1/billing/admin/^plans/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `admin-plan-detail`
+- `put` /api/v1/billing/admin/^plans/(?P<pk>[^/.]+)/tier-profile/$
+  - Name: `admin-plan-tier-profile`
+- `put` /api/v1/billing/admin/^plans/(?P<pk>[^/.]+)/tier-profile\.(?P<format>[a-z0-9]+)/?$
+  - Name: `admin-plan-tier-profile`
+- `get` /api/v1/billing/admin/^cost-overview/$
+  - Name: `cost-overview-list`
+- `get` /api/v1/billing/admin/^cost-overview\.(?P<format>[a-z0-9]+)/?$
+  - Name: `cost-overview-list`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/billing/admin
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/billing/admin/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Ai
+
+- `post` /api/v1/ai/^natural-language-search/$
+  - Name: `ai-natural-language-search`
+- `post` /api/v1/ai/^natural-language-search\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ai-natural-language-search`
+- `post` /api/v1/ai/^schema-matching/$
+  - Name: `ai-schema-matching`
+- `post` /api/v1/ai/^schema-matching\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ai-schema-matching`
+- `get` /api/v1/ai/^classification/$
+  - Name: `classification-list`
+- `get` /api/v1/ai/^classification\.(?P<format>[a-z0-9]+)/?$
+  - Name: `classification-list`
+- `get` /api/v1/ai/^classification/(?P<pk>[^/.]+)/$
+  - Name: `classification-detail`
+- `get` /api/v1/ai/^classification/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `classification-detail`
+- `get` /api/v1/ai/^classification/(?P<pk>[^/.]+)/report/$
+  - Name: `classification-report`
+- `get` /api/v1/ai/^classification/(?P<pk>[^/.]+)/report\.(?P<format>[a-z0-9]+)/?$
+  - Name: `classification-report`
+- `patch` /api/v1/ai/^classification/(?P<pk>[^/.]+)/rules/$
+  - Name: `classification-rules`
+- `patch` /api/v1/ai/^classification/(?P<pk>[^/.]+)/rules\.(?P<format>[a-z0-9]+)/?$
+  - Name: `classification-rules`
+- `post` /api/v1/ai/^classification/(?P<pk>[^/.]+)/validate/$
+  - Name: `classification-validate`
+- `post` /api/v1/ai/^classification/(?P<pk>[^/.]+)/validate\.(?P<format>[a-z0-9]+)/?$
+  - Name: `classification-validate`
+- `get` /api/v1/ai/^recommendations/$
+  - Name: `recommendations-list`
+- `get` /api/v1/ai/^recommendations\.(?P<format>[a-z0-9]+)/?$
+  - Name: `recommendations-list`
+- `post` /api/v1/ai/^recommendations/feedback/$
+  - Name: `recommendations-feedback`
+- `post` /api/v1/ai/^recommendations/feedback\.(?P<format>[a-z0-9]+)/?$
+  - Name: `recommendations-feedback`
+- `get` /api/v1/ai/^recommendations/model/$
+  - Name: `recommendations-model`
+- `get` /api/v1/ai/^recommendations/model\.(?P<format>[a-z0-9]+)/?$
+  - Name: `recommendations-model`
+- `get` /api/v1/ai/^anomaly-detection/config/$
+  - Name: `anomaly-detection-config-list`
+- `get` /api/v1/ai/^anomaly-detection/config\.(?P<format>[a-z0-9]+)/?$
+  - Name: `anomaly-detection-config-list`
+- `get` /api/v1/ai/^anomaly-detection/$
+  - Name: `anomaly-detection-list`
+- `get` /api/v1/ai/^anomaly-detection\.(?P<format>[a-z0-9]+)/?$
+  - Name: `anomaly-detection-list`
+- `post` /api/v1/ai/^anomaly-detection/train/$
+  - Name: `anomaly-detection-train`
+- `post` /api/v1/ai/^anomaly-detection/train\.(?P<format>[a-z0-9]+)/?$
+  - Name: `anomaly-detection-train`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/ai
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/ai/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Analytics
+
+- `get` /api/v1/analytics/^api/dashboard/$
+  - Name: `api-analytics-dashboard`
+- `get` /api/v1/analytics/^api/dashboard\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-analytics-dashboard`
+- `get` /api/v1/analytics/^api/performance/$
+  - Name: `api-analytics-performance`
+- `get` /api/v1/analytics/^api/performance\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-analytics-performance`
+- `get` /api/v1/analytics/^api/popular-endpoints/$
+  - Name: `api-analytics-popular-endpoints`
+- `get` /api/v1/analytics/^api/popular-endpoints\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-analytics-popular-endpoints`
+- `get` /api/v1/analytics/^api/usage-trends/$
+  - Name: `api-analytics-usage-trends`
+- `get` /api/v1/analytics/^api/usage-trends\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-analytics-usage-trends`
+- `get` /api/v1/analytics/^costs/$
+  - Name: `costs-list`
+- `get` /api/v1/analytics/^costs\.(?P<format>[a-z0-9]+)/?$
+  - Name: `costs-list`
+- `get` /api/v1/analytics/^costs/breakdown/$
+  - Name: `costs-breakdown`
+- `get` /api/v1/analytics/^costs/breakdown\.(?P<format>[a-z0-9]+)/?$
+  - Name: `costs-breakdown`
+- `get` /api/v1/analytics/^costs/by-asset/$
+  - Name: `costs-by-asset`
+- `get` /api/v1/analytics/^costs/by-asset\.(?P<format>[a-z0-9]+)/?$
+  - Name: `costs-by-asset`
+- `get` /api/v1/analytics/^costs/recommendations/$
+  - Name: `costs-recommendations`
+- `get` /api/v1/analytics/^costs/recommendations\.(?P<format>[a-z0-9]+)/?$
+  - Name: `costs-recommendations`
+- `get` /api/v1/analytics/^costs/trends/$
+  - Name: `costs-trends`
+- `get` /api/v1/analytics/^costs/trends\.(?P<format>[a-z0-9]+)/?$
+  - Name: `costs-trends`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/analytics
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/analytics/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Assets
+
+- `get, post` /api/v1/assets/^$
+  - Name: `asset-list`
+- `get, post` /api/v1/assets/^\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-list`
+- `post` /api/v1/assets/^data-first/$
+  - Name: `asset-data-first`
+- `post` /api/v1/assets/^data-first\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-data-first`
+- `get` /api/v1/assets/^workflows/(?P<workflow_instance_id>[^/.]+)/status/$
+  - Name: `asset-asset-workflow-status`
+- `get` /api/v1/assets/^workflows/(?P<workflow_instance_id>[^/.]+)/status\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-asset-workflow-status`
+- `get` /api/v1/assets/^recommendations/$
+  - Name: `asset-recommendations`
+- `get` /api/v1/assets/^recommendations\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-recommendations`
+- `get, put, patch, delete` /api/v1/assets/^(?P<id>[^/.]+)/$
+  - Name: `asset-detail`
+- `get, put, patch, delete` /api/v1/assets/^(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-detail`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/activate/$
+  - Name: `asset-activate`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/activate\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-activate`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/contracts/$
+  - Name: `asset-attach-contract`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/contracts\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-attach-contract`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/datasets/$
+  - Name: `asset-attach-dataset`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/datasets\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-attach-dataset`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/external-resources/batch-download/$
+  - Name: `asset-batch-download-external-resources`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/external-resources/batch-download\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-batch-download-external-resources`
+- `get` /api/v1/assets/^(?P<id>[^/.]+)/classification/$
+  - Name: `asset-classification`
+- `get` /api/v1/assets/^(?P<id>[^/.]+)/classification\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-classification`
+- `get` /api/v1/assets/^(?P<id>[^/.]+)/dependencies/$
+  - Name: `asset-dependencies`
+- `get` /api/v1/assets/^(?P<id>[^/.]+)/dependencies\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-dependencies`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/external-resources/download/$
+  - Name: `asset-download-external-resource`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/external-resources/download\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-download-external-resource`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/ensure-e2e-activation-prerequisites/$
+  - Name: `asset-ensure-e2e-activation-prerequisites`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/ensure-e2e-activation-prerequisites\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-ensure-e2e-activation-prerequisites`
+- `get` /api/v1/assets/^(?P<id>[^/.]+)/health-score/$
+  - Name: `asset-health-score`
+- `get` /api/v1/assets/^(?P<id>[^/.]+)/health-score\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-health-score`
+- `get` /api/v1/assets/^(?P<id>[^/.]+)/external-resources/$
+  - Name: `asset-list-external-resources`
+- `get` /api/v1/assets/^(?P<id>[^/.]+)/external-resources\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-list-external-resources`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/retire/$
+  - Name: `asset-retire`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/retire\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-retire`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/track-download/$
+  - Name: `asset-track-download`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/track-download\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-track-download`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/track-view/$
+  - Name: `asset-track-view`
+- `post` /api/v1/assets/^(?P<id>[^/.]+)/track-view\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-track-view`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/assets
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/assets/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Audit
+
+- `get` /api/v1/audit/^audit-events/$
+  - Name: `audit-event-list`
+- `get` /api/v1/audit/^audit-events\.(?P<format>[a-z0-9]+)/?$
+  - Name: `audit-event-list`
+- `get` /api/v1/audit/^audit-events/export/$
+  - Name: `audit-event-export`
+- `get` /api/v1/audit/^audit-events/export\.(?P<format>[a-z0-9]+)/?$
+  - Name: `audit-event-export`
+- `get` /api/v1/audit/^audit-events/resource-activity/$
+  - Name: `audit-event-resource-activity`
+- `get` /api/v1/audit/^audit-events/resource-activity\.(?P<format>[a-z0-9]+)/?$
+  - Name: `audit-event-resource-activity`
+- `get` /api/v1/audit/^audit-events/(?P<id>[^/.]+)/$
+  - Name: `audit-event-detail`
+- `get` /api/v1/audit/^audit-events/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `audit-event-detail`
+- `get` /api/v1/audit/^resource-activity/$
+  - Name: `resource-activity-list`
+- `get` /api/v1/audit/^resource-activity\.(?P<format>[a-z0-9]+)/?$
+  - Name: `resource-activity-list`
+- `get, post` /api/v1/audit/^event-retention-policies/$
+  - Name: `audit-event-retention-policy-list`
+- `get, post` /api/v1/audit/^event-retention-policies\.(?P<format>[a-z0-9]+)/?$
+  - Name: `audit-event-retention-policy-list`
+- `get, put, patch, delete` /api/v1/audit/^event-retention-policies/(?P<id>[^/.]+)/$
+  - Name: `audit-event-retention-policy-detail`
+- `get, put, patch, delete` /api/v1/audit/^event-retention-policies/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `audit-event-retention-policy-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/audit
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/audit/<drf_format_suffix:format>
+  - Name: `api-root`
+- `get` /api/v1/audit/integrity/verify/
+  - Name: `audit-integrity-verify`
+
+### Auth
+
+- `POST` /api/v1/auth/login/
+  - Name: `login`
+- `POST` /api/v1/auth/register/
+  - Name: `register`
+- `GET, PATCH` /api/v1/auth/me/
+  - Name: `me`
+- `GET` /api/v1/auth/me/tenants/
+  - Name: `me-tenants`
+- `POST` /api/v1/auth/switch-tenant/
+  - Name: `switch-tenant`
+- `POST` /api/v1/auth/refresh/
+  - Name: `refresh-token`
+- `POST` /api/v1/auth/logout/
+  - Name: `logout`
+- `POST` /api/v1/auth/password-reset/
+  - Name: `password-reset-request`
+- `POST` /api/v1/auth/password-reset/confirm/
+  - Name: `password-reset-confirm`
+- `POST` /api/v1/auth/verify-email/
+  - Name: `verify-email`
+- `POST` /api/v1/auth/resend-verification/
+  - Name: `resend-verification`
+- `POST` /api/v1/auth/accept-invitation/
+  - Name: `accept-invitation`
+- `GET` /api/v1/auth/sessions/
+  - Name: `list-active-sessions`
+- `POST` /api/v1/auth/sessions/end-all-others/
+  - Name: `end-all-other-sessions`
+- `POST` /api/v1/auth/sessions/<uuid:session_id>/revoke/
+  - Name: `revoke-session`
+- `get, post` /api/v1/auth/^api-keys/$
+  - Name: `api-key-list`
+- `get, post` /api/v1/auth/^api-keys\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-key-list`
+- `get, put, patch, delete` /api/v1/auth/^api-keys/(?P<id>[^/.]+)/$
+  - Name: `api-key-detail`
+- `get, put, patch, delete` /api/v1/auth/^api-keys/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-key-detail`
+- `post` /api/v1/auth/^sso/oidc/callback/$
+  - Name: `sso-oidc-callback`
+- `post` /api/v1/auth/^sso/oidc/callback\.(?P<format>[a-z0-9]+)/?$
+  - Name: `sso-oidc-callback`
+- `get` /api/v1/auth/^sso/oidc/login-url/$
+  - Name: `sso-oidc-login-url`
+- `get` /api/v1/auth/^sso/oidc/login-url\.(?P<format>[a-z0-9]+)/?$
+  - Name: `sso-oidc-login-url`
+- `post` /api/v1/auth/^sso/saml/callback/$
+  - Name: `sso-saml-callback`
+- `post` /api/v1/auth/^sso/saml/callback\.(?P<format>[a-z0-9]+)/?$
+  - Name: `sso-saml-callback`
+- `get` /api/v1/auth/^sso/saml/login-url/$
+  - Name: `sso-saml-login-url`
+- `get` /api/v1/auth/^sso/saml/login-url\.(?P<format>[a-z0-9]+)/?$
+  - Name: `sso-saml-login-url`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/auth
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/auth/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Baas
+
+- `get` /api/v1/baas/^usage/$
+  - Name: `api-usage-list`
+- `get` /api/v1/baas/^usage\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-usage-list`
+- `get` /api/v1/baas/^usage/by-endpoint/$
+  - Name: `api-usage-by-endpoint`
+- `get` /api/v1/baas/^usage/by-endpoint\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-usage-by-endpoint`
+- `get` /api/v1/baas/^usage/by-tenant/$
+  - Name: `api-usage-by-tenant`
+- `get` /api/v1/baas/^usage/by-tenant\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-usage-by-tenant`
+- `get` /api/v1/baas/^usage/stats/$
+  - Name: `api-usage-stats`
+- `get` /api/v1/baas/^usage/stats\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-usage-stats`
+- `get` /api/v1/baas/^usage/(?P<id>[^/.]+)/$
+  - Name: `api-usage-detail`
+- `get` /api/v1/baas/^usage/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-usage-detail`
+- `get, post` /api/v1/baas/^api-keys/$
+  - Name: `api-key-list`
+- `get, post` /api/v1/baas/^api-keys\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-key-list`
+- `get, put, patch, delete` /api/v1/baas/^api-keys/(?P<id>[^/.]+)/$
+  - Name: `api-key-detail`
+- `get, put, patch, delete` /api/v1/baas/^api-keys/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-key-detail`
+- `get` /api/v1/baas/^api-keys/(?P<id>[^/.]+)/quota/$
+  - Name: `api-key-quota`
+- `get` /api/v1/baas/^api-keys/(?P<id>[^/.]+)/quota\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-key-quota`
+- `get` /api/v1/baas/^docs/$
+  - Name: `developer-docs-list`
+- `get` /api/v1/baas/^docs\.(?P<format>[a-z0-9]+)/?$
+  - Name: `developer-docs-list`
+- `get` /api/v1/baas/^docs/sdks/(?P<language>[^/]+)/$
+  - Name: `developer-docs-generate-sdk`
+- `get` /api/v1/baas/^docs/sdks/(?P<language>[^/]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `developer-docs-generate-sdk`
+- `get` /api/v1/baas/^docs/openapi.json/$
+  - Name: `developer-docs-openapi-schema`
+- `get` /api/v1/baas/^docs/openapi.json\.(?P<format>[a-z0-9]+)/?$
+  - Name: `developer-docs-openapi-schema`
+- `get` /api/v1/baas/^docs/sdks/$
+  - Name: `developer-docs-sdks`
+- `get` /api/v1/baas/^docs/sdks\.(?P<format>[a-z0-9]+)/?$
+  - Name: `developer-docs-sdks`
+- `get` /api/v1/baas/^billing-reports/$
+  - Name: `billing-report-list`
+- `get` /api/v1/baas/^billing-reports\.(?P<format>[a-z0-9]+)/?$
+  - Name: `billing-report-list`
+- `post` /api/v1/baas/^billing-reports/generate/$
+  - Name: `billing-report-generate`
+- `post` /api/v1/baas/^billing-reports/generate\.(?P<format>[a-z0-9]+)/?$
+  - Name: `billing-report-generate`
+- `get` /api/v1/baas/^billing-reports/(?P<id>[^/.]+)/$
+  - Name: `billing-report-detail`
+- `get` /api/v1/baas/^billing-reports/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `billing-report-detail`
+- `post` /api/v1/baas/^billing-reports/(?P<id>[^/.]+)/finalize/$
+  - Name: `billing-report-finalize`
+- `post` /api/v1/baas/^billing-reports/(?P<id>[^/.]+)/finalize\.(?P<format>[a-z0-9]+)/?$
+  - Name: `billing-report-finalize`
+- `post` /api/v1/baas/^billing-reports/(?P<id>[^/.]+)/send/$
+  - Name: `billing-report-send`
+- `post` /api/v1/baas/^billing-reports/(?P<id>[^/.]+)/send\.(?P<format>[a-z0-9]+)/?$
+  - Name: `billing-report-send`
+- `post` /api/v1/baas/^billing-reports/(?P<id>[^/.]+)/void/$
+  - Name: `billing-report-void`
+- `post` /api/v1/baas/^billing-reports/(?P<id>[^/.]+)/void\.(?P<format>[a-z0-9]+)/?$
+  - Name: `billing-report-void`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/baas
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/baas/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Billing
+
+- `get` /api/v1/billing/^plans/$
+  - Name: `plan-list`
+- `get` /api/v1/billing/^plans\.(?P<format>[a-z0-9]+)/?$
+  - Name: `plan-list`
+- `get` /api/v1/billing/^plans/(?P<pk>[^/.]+)/$
+  - Name: `plan-detail`
+- `get` /api/v1/billing/^plans/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `plan-detail`
+- `get` /api/v1/billing/^subscription/$
+  - Name: `subscription-list`
+- `get` /api/v1/billing/^subscription\.(?P<format>[a-z0-9]+)/?$
+  - Name: `subscription-list`
+- `post` /api/v1/billing/^subscription/current/change-plan/$
+  - Name: `subscription-change-plan`
+- `post` /api/v1/billing/^subscription/current/change-plan\.(?P<format>[a-z0-9]+)/?$
+  - Name: `subscription-change-plan`
+- `get` /api/v1/billing/^subscription/current/$
+  - Name: `subscription-current`
+- `get` /api/v1/billing/^subscription/current\.(?P<format>[a-z0-9]+)/?$
+  - Name: `subscription-current`
+- `get` /api/v1/billing/^subscription/(?P<pk>[^/.]+)/$
+  - Name: `subscription-detail`
+- `get` /api/v1/billing/^subscription/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `subscription-detail`
+- `get` /api/v1/billing/^invoices/$
+  - Name: `invoice-list`
+- `get` /api/v1/billing/^invoices\.(?P<format>[a-z0-9]+)/?$
+  - Name: `invoice-list`
+- `get` /api/v1/billing/^invoices/(?P<pk>[^/.]+)/$
+  - Name: `invoice-detail`
+- `get` /api/v1/billing/^invoices/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `invoice-detail`
+- `get` /api/v1/billing/^invoices/(?P<pk>[^/.]+)/download/$
+  - Name: `invoice-download`
+- `get` /api/v1/billing/^invoices/(?P<pk>[^/.]+)/download\.(?P<format>[a-z0-9]+)/?$
+  - Name: `invoice-download`
+- `post` /api/v1/billing/^refunds/$
+  - Name: `refund-list`
+- `post` /api/v1/billing/^refunds\.(?P<format>[a-z0-9]+)/?$
+  - Name: `refund-list`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/billing
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/billing/<drf_format_suffix:format>
+  - Name: `api-root`
+- `post` /api/v1/billing/^subscription/ml/current/change-plan/$
+  - Name: `ml-subscription-change-plan`
+- `post` /api/v1/billing/^subscription/ml/current/change-plan\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ml-subscription-change-plan`
+- `get` /api/v1/billing/^subscription/ml/current/$
+  - Name: `ml-subscription-current`
+- `get` /api/v1/billing/^subscription/ml/current\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ml-subscription-current`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/billing
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/billing/<drf_format_suffix:format>
+  - Name: `api-root`
+- `GET` /api/v1/billing/webhooks/stripe/
+  - Name: `stripe-webhook`
+- `POST` /api/v1/billing/connect/onboarding-link/
+  - Name: `connect-onboarding-link`
+- `GET` /api/v1/billing/connect/status/
+  - Name: `connect-status`
+- `GET` /api/v1/billing/connect/payouts/
+  - Name: `connect-payouts`
+- `GET` /api/v1/billing/public-pricing/
+  - Name: `public-pricing`
+
+### Breach
+
+- `GET` /api/v1/breach/dashboard/
+  - Name: `breach-dashboard`
+- `GET` /api/v1/breach/templates/catalog/
+  - Name: `breach-template-catalog`
+- `get, post` /api/v1/breach/^incidents/$
+  - Name: `breach-incident-list`
+- `get, post` /api/v1/breach/^incidents\.(?P<format>[a-z0-9]+)/?$
+  - Name: `breach-incident-list`
+- `get, put, patch, delete` /api/v1/breach/^incidents/(?P<id>[^/.]+)/$
+  - Name: `breach-incident-detail`
+- `get, put, patch, delete` /api/v1/breach/^incidents/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `breach-incident-detail`
+- `patch` /api/v1/breach/^incidents/(?P<id>[^/.]+)/status/$
+  - Name: `breach-incident-transition-status`
+- `patch` /api/v1/breach/^incidents/(?P<id>[^/.]+)/status\.(?P<format>[a-z0-9]+)/?$
+  - Name: `breach-incident-transition-status`
+- `get` /api/v1/breach/^notifications/$
+  - Name: `breach-notification-list`
+- `get` /api/v1/breach/^notifications\.(?P<format>[a-z0-9]+)/?$
+  - Name: `breach-notification-list`
+- `get` /api/v1/breach/^notifications/(?P<id>[^/.]+)/$
+  - Name: `breach-notification-detail`
+- `get` /api/v1/breach/^notifications/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `breach-notification-detail`
+- `post` /api/v1/breach/^notifications/(?P<id>[^/.]+)/mark-sent/$
+  - Name: `breach-notification-mark-sent`
+- `post` /api/v1/breach/^notifications/(?P<id>[^/.]+)/mark-sent\.(?P<format>[a-z0-9]+)/?$
+  - Name: `breach-notification-mark-sent`
+- `get` /api/v1/breach/^template-overrides/$
+  - Name: `breach-template-override-list`
+- `get` /api/v1/breach/^template-overrides\.(?P<format>[a-z0-9]+)/?$
+  - Name: `breach-template-override-list`
+- `post` /api/v1/breach/^template-overrides/upsert/$
+  - Name: `breach-template-override-upsert`
+- `post` /api/v1/breach/^template-overrides/upsert\.(?P<format>[a-z0-9]+)/?$
+  - Name: `breach-template-override-upsert`
+- `delete` /api/v1/breach/^template-overrides/(?P<id>[^/.]+)/$
+  - Name: `breach-template-override-detail`
+- `delete` /api/v1/breach/^template-overrides/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `breach-template-override-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/breach
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/breach/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Compliance
+
+- `get, post` /api/v1/compliance/^runs/$
+  - Name: `compliance-run-list`
+- `get, post` /api/v1/compliance/^runs\.(?P<format>[a-z0-9]+)/?$
+  - Name: `compliance-run-list`
+- `post` /api/v1/compliance/^runs/warehouse-scan/$
+  - Name: `compliance-run-warehouse-scan`
+- `post` /api/v1/compliance/^runs/warehouse-scan\.(?P<format>[a-z0-9]+)/?$
+  - Name: `compliance-run-warehouse-scan`
+- `get, put, patch, delete` /api/v1/compliance/^runs/(?P<id>[^/.]+)/$
+  - Name: `compliance-run-detail`
+- `get, put, patch, delete` /api/v1/compliance/^runs/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `compliance-run-detail`
+- `post` /api/v1/compliance/^runs/(?P<id>[^/.]+)/cancel/$
+  - Name: `compliance-run-cancel`
+- `post` /api/v1/compliance/^runs/(?P<id>[^/.]+)/cancel\.(?P<format>[a-z0-9]+)/?$
+  - Name: `compliance-run-cancel`
+- `get` /api/v1/compliance/^runs/(?P<id>[^/.]+)/results/$
+  - Name: `compliance-run-results`
+- `get` /api/v1/compliance/^runs/(?P<id>[^/.]+)/results\.(?P<format>[a-z0-9]+)/?$
+  - Name: `compliance-run-results`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/compliance
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/compliance/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Consent
+
+- `GET` /api/v1/consent/consent-dashboard/
+  - Name: `consent-dashboard`
+- `get, post` /api/v1/consent/^consent-purposes/$
+  - Name: `consent-purpose-list`
+- `get, post` /api/v1/consent/^consent-purposes\.(?P<format>[a-z0-9]+)/?$
+  - Name: `consent-purpose-list`
+- `get, put, patch, delete` /api/v1/consent/^consent-purposes/(?P<id>[^/.]+)/$
+  - Name: `consent-purpose-detail`
+- `get, put, patch, delete` /api/v1/consent/^consent-purposes/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `consent-purpose-detail`
+- `get, post` /api/v1/consent/^consent-records/$
+  - Name: `consent-record-list`
+- `get, post` /api/v1/consent/^consent-records\.(?P<format>[a-z0-9]+)/?$
+  - Name: `consent-record-list`
+- `get, put, patch, delete` /api/v1/consent/^consent-records/(?P<id>[^/.]+)/$
+  - Name: `consent-record-detail`
+- `get, put, patch, delete` /api/v1/consent/^consent-records/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `consent-record-detail`
+- `post` /api/v1/consent/^consent-records/(?P<id>[^/.]+)/revoke/$
+  - Name: `consent-record-revoke`
+- `post` /api/v1/consent/^consent-records/(?P<id>[^/.]+)/revoke\.(?P<format>[a-z0-9]+)/?$
+  - Name: `consent-record-revoke`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/consent
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/consent/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Contracts
+
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/contracts/schema-editor/metrics
+  - Name: `contract-schema-editor-metrics`
+- `GET` /api/v1/contracts/^(?P<id>[^/.]+)/lineage/visualization/$
+  - Name: `contract-lineage-visualization-custom`
+- `GET` /api/v1/contracts/^(?P<id>[^/.]+)/export/$
+  - Name: `contract-export-custom`
+- `GET` /api/v1/contracts/^(?P<id>[^/.]+)/download/$
+  - Name: `contract-download-custom`
+- `get, post` /api/v1/contracts/^$
+  - Name: `contract-list`
+- `get, post` /api/v1/contracts/^\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-list`
+- `get` /api/v1/contracts/^compare/$
+  - Name: `contract-contract-compare`
+- `get` /api/v1/contracts/^compare\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-contract-compare`
+- `post` /api/v1/contracts/^products/$
+  - Name: `contract-create-product`
+- `post` /api/v1/contracts/^products\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-create-product`
+- `get` /api/v1/contracts/^products/workflows/(?P<workflow_instance_id>[^/.]+)/status/$
+  - Name: `contract-product-workflow-status`
+- `get` /api/v1/contracts/^products/workflows/(?P<workflow_instance_id>[^/.]+)/status\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-product-workflow-status`
+- `get` /api/v1/contracts/^schema/json-schema/$
+  - Name: `contract-schema-json-schema`
+- `get` /api/v1/contracts/^schema/json-schema\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-schema-json-schema`
+- `post` /api/v1/contracts/^validate-draft/$
+  - Name: `contract-validate-draft`
+- `post` /api/v1/contracts/^validate-draft\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-validate-draft`
+- `get, put, patch, delete` /api/v1/contracts/^(?P<id>[^/.]+)/$
+  - Name: `contract-detail`
+- `get, put, patch, delete` /api/v1/contracts/^(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-detail`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/convert/$
+  - Name: `contract-convert-contract`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/convert\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-convert-contract`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/download/$
+  - Name: `contract-download-contract`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/download\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-download-contract`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/export/$
+  - Name: `contract-export-contract`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/export\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-export-contract`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/generate-odps/$
+  - Name: `contract-generate-odps`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/generate-odps\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-generate-odps`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/lineage/contracts/$
+  - Name: `contract-get-contract-lineage`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/lineage/contracts\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-get-contract-lineage`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/fields/(?P<field_name>[^/.]+)/lineage/$
+  - Name: `contract-get-field-lineage`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/fields/(?P<field_name>[^/.]+)/lineage\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-get-field-lineage`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/lineage/full/$
+  - Name: `contract-get-hierarchical-lineage`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/lineage/full\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-get-hierarchical-lineage`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/impact-analysis/$
+  - Name: `contract-get-impact-analysis`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/impact-analysis\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-get-impact-analysis`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/lineage/diff/$
+  - Name: `contract-lineage-diff`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/lineage/diff\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-lineage-diff`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/lineage/visualization/$
+  - Name: `contract-lineage-visualization`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/lineage/visualization\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-lineage-visualization`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/models/(?P<model_name>[^/.]+)/lineage/$
+  - Name: `contract-get-model-lineage`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/models/(?P<model_name>[^/.]+)/lineage\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-get-model-lineage`
+- `patch` /api/v1/contracts/^(?P<id>[^/.]+)/lineage/$
+  - Name: `contract-contract-lineage-edit`
+- `patch` /api/v1/contracts/^(?P<id>[^/.]+)/lineage\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-contract-lineage-edit`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/link-odps/$
+  - Name: `contract-link-odps`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/link-odps\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-link-odps`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/lint/$
+  - Name: `contract-lint-contract`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/lint\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-lint-contract`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/links/$
+  - Name: `contract-list-links`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/links\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-list-links`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/migrate/$
+  - Name: `contract-migrate-contract`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/migrate\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-migrate-contract`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/payment-gateways/$
+  - Name: `contract-payment-gateways`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/payment-gateways\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-payment-gateways`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/product-details/$
+  - Name: `contract-product-details`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/product-details\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-product-details`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/product-strategy/$
+  - Name: `contract-product-strategy`
+- `get` /api/v1/contracts/^(?P<id>[^/.]+)/product-strategy\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-product-strategy`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/rollback/$
+  - Name: `contract-contract-rollback`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/rollback\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-contract-rollback`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/unlink-odps/$
+  - Name: `contract-unlink-odps`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/unlink-odps\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-unlink-odps`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/validate/$
+  - Name: `contract-validate-contract`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/validate\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-validate-contract`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/version/$
+  - Name: `contract-contract-version`
+- `post` /api/v1/contracts/^(?P<id>[^/.]+)/version\.(?P<format>[a-z0-9]+)/?$
+  - Name: `contract-contract-version`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/contracts
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/contracts/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Data-Movement
+
+- `get, post` /api/v1/data-movement/^config/$
+  - Name: `data-movement-config-list`
+- `get, post` /api/v1/data-movement/^config\.(?P<format>[a-z0-9]+)/?$
+  - Name: `data-movement-config-list`
+- `get, put, patch, delete` /api/v1/data-movement/^config/(?P<pk>[^/.]+)/$
+  - Name: `data-movement-config-detail`
+- `get, put, patch, delete` /api/v1/data-movement/^config/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `data-movement-config-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/data-movement
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/data-movement/<drf_format_suffix:format>
+  - Name: `api-root`
+- `GET` /api/v1/data-movement/internal/config/<str:direction>/<uuid:resource_id>/
+  - Name: `data-movement-internal-config`
+
+### Datasets
+
+- `get, post` /api/v1/datasets/^$
+  - Name: `dataset-list`
+- `get, post` /api/v1/datasets/^\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dataset-list`
+- `get, put, patch, delete` /api/v1/datasets/^(?P<id>[^/.]+)/$
+  - Name: `dataset-detail`
+- `get, put, patch, delete` /api/v1/datasets/^(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dataset-detail`
+- `get` /api/v1/datasets/^(?P<id>[^/.]+)/versions/compare/$
+  - Name: `dataset-compare-versions`
+- `get` /api/v1/datasets/^(?P<id>[^/.]+)/versions/compare\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dataset-compare-versions`
+- `post` /api/v1/datasets/^(?P<id>[^/.]+)/refresh/$
+  - Name: `dataset-refresh`
+- `post` /api/v1/datasets/^(?P<id>[^/.]+)/refresh\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dataset-refresh`
+- `post` /api/v1/datasets/^(?P<id>[^/.]+)/refresh-from-file/$
+  - Name: `dataset-refresh-from-file`
+- `post` /api/v1/datasets/^(?P<id>[^/.]+)/refresh-from-file\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dataset-refresh-from-file`
+- `post` /api/v1/datasets/^(?P<id>[^/.]+)/retire/$
+  - Name: `dataset-retire`
+- `post` /api/v1/datasets/^(?P<id>[^/.]+)/retire\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dataset-retire`
+- `get` /api/v1/datasets/^(?P<id>[^/.]+)/rows/$
+  - Name: `dataset-rows`
+- `get` /api/v1/datasets/^(?P<id>[^/.]+)/rows\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dataset-rows`
+- `get` /api/v1/datasets/^(?P<id>[^/.]+)/sample/$
+  - Name: `dataset-sample`
+- `get` /api/v1/datasets/^(?P<id>[^/.]+)/sample\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dataset-sample`
+- `get` /api/v1/datasets/^(?P<id>[^/.]+)/schema-evolution/$
+  - Name: `dataset-schema-evolution`
+- `get` /api/v1/datasets/^(?P<id>[^/.]+)/schema-evolution\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dataset-schema-evolution`
+- `get` /api/v1/datasets/^(?P<id>[^/.]+)/share/$
+  - Name: `dataset-share`
+- `get` /api/v1/datasets/^(?P<id>[^/.]+)/share\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dataset-share`
+- `get, post` /api/v1/datasets/^(?P<id>[^/.]+)/versions/$
+  - Name: `dataset-versions`
+- `get, post` /api/v1/datasets/^(?P<id>[^/.]+)/versions\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dataset-versions`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/datasets
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/datasets/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Developer
+
+- `get` /api/v1/developer/^plugins/$
+  - Name: `plugin-list`
+- `get` /api/v1/developer/^plugins\.(?P<format>[a-z0-9]+)/?$
+  - Name: `plugin-list`
+- `post` /api/v1/developer/^plugins/install/$
+  - Name: `plugin-install`
+- `post` /api/v1/developer/^plugins/install\.(?P<format>[a-z0-9]+)/?$
+  - Name: `plugin-install`
+- `get` /api/v1/developer/^plugins/marketplace/$
+  - Name: `plugin-marketplace`
+- `get` /api/v1/developer/^plugins/marketplace\.(?P<format>[a-z0-9]+)/?$
+  - Name: `plugin-marketplace`
+- `get` /api/v1/developer/^plugins/marketplace/usage/$
+  - Name: `plugin-marketplace-usage`
+- `get` /api/v1/developer/^plugins/marketplace/usage\.(?P<format>[a-z0-9]+)/?$
+  - Name: `plugin-marketplace-usage`
+- `get` /api/v1/developer/^plugins/(?P<id>[^/.]+)/$
+  - Name: `plugin-detail`
+- `get` /api/v1/developer/^plugins/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `plugin-detail`
+- `post` /api/v1/developer/^plugins/(?P<id>[^/.]+)/execute/$
+  - Name: `plugin-execute`
+- `post` /api/v1/developer/^plugins/(?P<id>[^/.]+)/execute\.(?P<format>[a-z0-9]+)/?$
+  - Name: `plugin-execute`
+- `get` /api/v1/developer/^sdk/$
+  - Name: `sdk-documentation-list`
+- `get` /api/v1/developer/^sdk\.(?P<format>[a-z0-9]+)/?$
+  - Name: `sdk-documentation-list`
+- `get` /api/v1/developer/^sdk/(?P<id>[^/.]+)/$
+  - Name: `sdk-documentation-detail`
+- `get` /api/v1/developer/^sdk/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `sdk-documentation-detail`
+- `get` /api/v1/developer/^documentation/$
+  - Name: `documentation-list`
+- `get` /api/v1/developer/^documentation\.(?P<format>[a-z0-9]+)/?$
+  - Name: `documentation-list`
+- `get` /api/v1/developer/^portal/$
+  - Name: `portal-list`
+- `get` /api/v1/developer/^portal\.(?P<format>[a-z0-9]+)/?$
+  - Name: `portal-list`
+- `get, post` /api/v1/developer/^api-keys/$
+  - Name: `api-keys-list`
+- `get, post` /api/v1/developer/^api-keys\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-keys-list`
+- `get` /api/v1/developer/^api-usage/$
+  - Name: `api-usage-list`
+- `get` /api/v1/developer/^api-usage\.(?P<format>[a-z0-9]+)/?$
+  - Name: `api-usage-list`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/developer
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/developer/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Dpia
+
+- `get, post` /api/v1/dpia/^records/$
+  - Name: `dpia-record-list`
+- `get, post` /api/v1/dpia/^records\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dpia-record-list`
+- `get` /api/v1/dpia/^records/asset-status/$
+  - Name: `dpia-record-asset-status`
+- `get` /api/v1/dpia/^records/asset-status\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dpia-record-asset-status`
+- `get, put, patch, delete` /api/v1/dpia/^records/(?P<pk>[^/.]+)/$
+  - Name: `dpia-record-detail`
+- `get, put, patch, delete` /api/v1/dpia/^records/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dpia-record-detail`
+- `post` /api/v1/dpia/^records/(?P<pk>[^/.]+)/consultation/complete/$
+  - Name: `dpia-record-consultation-complete`
+- `post` /api/v1/dpia/^records/(?P<pk>[^/.]+)/consultation/complete\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dpia-record-consultation-complete`
+- `get` /api/v1/dpia/^records/(?P<pk>[^/.]+)/diff/$
+  - Name: `dpia-record-diff`
+- `get` /api/v1/dpia/^records/(?P<pk>[^/.]+)/diff\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dpia-record-diff`
+- `post` /api/v1/dpia/^records/(?P<pk>[^/.]+)/new-version/$
+  - Name: `dpia-record-new-version`
+- `post` /api/v1/dpia/^records/(?P<pk>[^/.]+)/new-version\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dpia-record-new-version`
+- `post` /api/v1/dpia/^records/(?P<pk>[^/.]+)/review/$
+  - Name: `dpia-record-review`
+- `post` /api/v1/dpia/^records/(?P<pk>[^/.]+)/review\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dpia-record-review`
+- `post` /api/v1/dpia/^records/(?P<pk>[^/.]+)/submit/$
+  - Name: `dpia-record-submit`
+- `post` /api/v1/dpia/^records/(?P<pk>[^/.]+)/submit\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dpia-record-submit`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/dpia
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/dpia/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Dq
+
+- `get, post` /api/v1/dq/^runs/$
+  - Name: `dq-run-list`
+- `get, post` /api/v1/dq/^runs\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dq-run-list`
+- `post` /api/v1/dq/^runs/warehouse-run/$
+  - Name: `dq-run-warehouse-run`
+- `post` /api/v1/dq/^runs/warehouse-run\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dq-run-warehouse-run`
+- `get, put, patch, delete` /api/v1/dq/^runs/(?P<id>[^/.]+)/$
+  - Name: `dq-run-detail`
+- `get, put, patch, delete` /api/v1/dq/^runs/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dq-run-detail`
+- `get` /api/v1/dq/^runs/(?P<id>[^/.]+)/results/$
+  - Name: `dq-run-results`
+- `get` /api/v1/dq/^runs/(?P<id>[^/.]+)/results\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dq-run-results`
+- `get, post` /api/v1/dq/^alerting-rules/$
+  - Name: `dq-alerting-rule-list`
+- `get, post` /api/v1/dq/^alerting-rules\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dq-alerting-rule-list`
+- `get, put, patch, delete` /api/v1/dq/^alerting-rules/(?P<id>[^/.]+)/$
+  - Name: `dq-alerting-rule-detail`
+- `get, put, patch, delete` /api/v1/dq/^alerting-rules/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dq-alerting-rule-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/dq
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/dq/<drf_format_suffix:format>
+  - Name: `api-root`
+- `get` /api/v1/dq/^quality/anomalies/$
+  - Name: `dq-quality-anomalies`
+- `get` /api/v1/dq/^quality/anomalies\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dq-quality-anomalies`
+- `get` /api/v1/dq/^quality/root_cause_analysis/$
+  - Name: `dq-quality-root-cause-analysis`
+- `get` /api/v1/dq/^quality/root_cause_analysis\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dq-quality-root-cause-analysis`
+- `get` /api/v1/dq/^quality/scorecards/$
+  - Name: `dq-quality-scorecards`
+- `get` /api/v1/dq/^quality/scorecards\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dq-quality-scorecards`
+- `get` /api/v1/dq/^quality/trends/$
+  - Name: `dq-quality-trends`
+- `get` /api/v1/dq/^quality/trends\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dq-quality-trends`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/dq
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/dq/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Drafts
+
+- `GET` /api/v1/drafts
+  - Name: `draft-retrieve`
+- `PUT` /api/v1/drafts/save/
+  - Name: `draft-save`
+- `DELETE` /api/v1/drafts/delete/
+  - Name: `draft-delete`
+
+### Dsar
+
+- `get, post` /api/v1/dsar/^requests/$
+  - Name: `dsar-request-list`
+- `get, post` /api/v1/dsar/^requests\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dsar-request-list`
+- `get, put, patch, delete` /api/v1/dsar/^requests/(?P<pk>[^/.]+)/$
+  - Name: `dsar-request-detail`
+- `get, put, patch, delete` /api/v1/dsar/^requests/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dsar-request-detail`
+- `post` /api/v1/dsar/^requests/(?P<pk>[^/.]+)/issue_download_url/$
+  - Name: `dsar-request-issue-download-url`
+- `post` /api/v1/dsar/^requests/(?P<pk>[^/.]+)/issue_download_url\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dsar-request-issue-download-url`
+- `post` /api/v1/dsar/^requests/(?P<pk>[^/.]+)/legal_hold/$
+  - Name: `dsar-request-legal-hold`
+- `post` /api/v1/dsar/^requests/(?P<pk>[^/.]+)/legal_hold\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dsar-request-legal-hold`
+- `post` /api/v1/dsar/^requests/(?P<pk>[^/.]+)/materialize_package/$
+  - Name: `dsar-request-materialize-package`
+- `post` /api/v1/dsar/^requests/(?P<pk>[^/.]+)/materialize_package\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dsar-request-materialize-package`
+- `post` /api/v1/dsar/^requests/(?P<pk>[^/.]+)/reject/$
+  - Name: `dsar-request-reject`
+- `post` /api/v1/dsar/^requests/(?P<pk>[^/.]+)/reject\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dsar-request-reject`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/dsar
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/dsar/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Events
+
+- `POST` /api/v1/events/replay/
+  - Name: `replay-events`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/events/dlq/
+  - Name: `dlq-list`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/events/dlq/<uuid:dlq_id>/retry/
+  - Name: `dlq-retry`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/events/dlq/<uuid:dlq_id>/resolve/
+  - Name: `dlq-resolve`
+
+### Files
+
+- `get, post` /api/v1/files/^$
+  - Name: `file-list`
+- `get, post` /api/v1/files/^\.(?P<format>[a-z0-9]+)/?$
+  - Name: `file-list`
+- `post` /api/v1/files/^init/$
+  - Name: `file-init-upload`
+- `post` /api/v1/files/^init\.(?P<format>[a-z0-9]+)/?$
+  - Name: `file-init-upload`
+- `get, put, patch, delete` /api/v1/files/^(?P<id>[^/.]+)/$
+  - Name: `file-detail`
+- `get, put, patch, delete` /api/v1/files/^(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `file-detail`
+- `post` /api/v1/files/^(?P<id>[^/.]+)/complete/$
+  - Name: `file-complete-upload`
+- `post` /api/v1/files/^(?P<id>[^/.]+)/complete\.(?P<format>[a-z0-9]+)/?$
+  - Name: `file-complete-upload`
+- `get` /api/v1/files/^(?P<id>[^/.]+)/download/$
+  - Name: `file-download`
+- `get` /api/v1/files/^(?P<id>[^/.]+)/download\.(?P<format>[a-z0-9]+)/?$
+  - Name: `file-download`
+- `post` /api/v1/files/^(?P<id>[^/.]+)/chunks/init/$
+  - Name: `file-init-chunk-upload`
+- `post` /api/v1/files/^(?P<id>[^/.]+)/chunks/init\.(?P<format>[a-z0-9]+)/?$
+  - Name: `file-init-chunk-upload`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/files
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/files/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Gdpr
+
+- `get` /api/v1/gdpr/^export-jobs/$
+  - Name: `data-export-job-list`
+- `get` /api/v1/gdpr/^export-jobs\.(?P<format>[a-z0-9]+)/?$
+  - Name: `data-export-job-list`
+- `post` /api/v1/gdpr/^export-jobs/export-data/$
+  - Name: `data-export-job-export-data`
+- `post` /api/v1/gdpr/^export-jobs/export-data\.(?P<format>[a-z0-9]+)/?$
+  - Name: `data-export-job-export-data`
+- `get` /api/v1/gdpr/^export-jobs/(?P<pk>[^/.]+)/$
+  - Name: `data-export-job-detail`
+- `get` /api/v1/gdpr/^export-jobs/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `data-export-job-detail`
+- `get` /api/v1/gdpr/^erasure-requests/$
+  - Name: `erasure-request-list`
+- `get` /api/v1/gdpr/^erasure-requests\.(?P<format>[a-z0-9]+)/?$
+  - Name: `erasure-request-list`
+- `post` /api/v1/gdpr/^erasure-requests/request-erasure/$
+  - Name: `erasure-request-request-erasure`
+- `post` /api/v1/gdpr/^erasure-requests/request-erasure\.(?P<format>[a-z0-9]+)/?$
+  - Name: `erasure-request-request-erasure`
+- `get` /api/v1/gdpr/^erasure-requests/(?P<pk>[^/.]+)/$
+  - Name: `erasure-request-detail`
+- `get` /api/v1/gdpr/^erasure-requests/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `erasure-request-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/gdpr
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/gdpr/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Governance
+
+- `get` /api/v1/governance/^analytics/anomalies/$
+  - Name: `access-analytics-anomalies`
+- `get` /api/v1/governance/^analytics/anomalies\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-analytics-anomalies`
+- `get` /api/v1/governance/^analytics/dashboard/$
+  - Name: `access-analytics-dashboard`
+- `get` /api/v1/governance/^analytics/dashboard\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-analytics-dashboard`
+- `get` /api/v1/governance/^analytics/patterns/$
+  - Name: `access-analytics-patterns`
+- `get` /api/v1/governance/^analytics/patterns\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-analytics-patterns`
+- `get` /api/v1/governance/^analytics/security-events/$
+  - Name: `access-analytics-security-events`
+- `get` /api/v1/governance/^analytics/security-events\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-analytics-security-events`
+- `get, post` /api/v1/governance/^certifications/$
+  - Name: `access-certification-list`
+- `get, post` /api/v1/governance/^certifications\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-certification-list`
+- `get` /api/v1/governance/^certifications/expiring/$
+  - Name: `access-certification-expiring`
+- `get` /api/v1/governance/^certifications/expiring\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-certification-expiring`
+- `post` /api/v1/governance/^certifications/initiate-review/$
+  - Name: `access-certification-initiate-review`
+- `post` /api/v1/governance/^certifications/initiate-review\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-certification-initiate-review`
+- `get` /api/v1/governance/^certifications/summary/$
+  - Name: `access-certification-summary`
+- `get` /api/v1/governance/^certifications/summary\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-certification-summary`
+- `get, put, patch, delete` /api/v1/governance/^certifications/(?P<id>[^/.]+)/$
+  - Name: `access-certification-detail`
+- `get, put, patch, delete` /api/v1/governance/^certifications/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-certification-detail`
+- `post` /api/v1/governance/^certifications/(?P<id>[^/.]+)/review/$
+  - Name: `access-certification-review`
+- `post` /api/v1/governance/^certifications/(?P<id>[^/.]+)/review\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-certification-review`
+- `get, post` /api/v1/governance/^access-requests/$
+  - Name: `access-request-list`
+- `get, post` /api/v1/governance/^access-requests\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-list`
+- `post` /api/v1/governance/^access-requests/bulk-approve/$
+  - Name: `access-request-bulk-approve`
+- `post` /api/v1/governance/^access-requests/bulk-approve\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-bulk-approve`
+- `post` /api/v1/governance/^access-requests/bulk-reject/$
+  - Name: `access-request-bulk-reject`
+- `post` /api/v1/governance/^access-requests/bulk-reject\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-bulk-reject`
+- `get` /api/v1/governance/^access-requests/pending-count/$
+  - Name: `access-request-pending-count`
+- `get` /api/v1/governance/^access-requests/pending-count\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-pending-count`
+- `get, put, patch, delete` /api/v1/governance/^access-requests/(?P<id>[^/.]+)/$
+  - Name: `access-request-detail`
+- `get, put, patch, delete` /api/v1/governance/^access-requests/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-detail`
+- `post` /api/v1/governance/^access-requests/(?P<id>[^/.]+)/approve/$
+  - Name: `access-request-approve`
+- `post` /api/v1/governance/^access-requests/(?P<id>[^/.]+)/approve\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-approve`
+- `get, post` /api/v1/governance/^access-requests/(?P<id>[^/.]+)/comments/$
+  - Name: `access-request-comments`
+- `get, post` /api/v1/governance/^access-requests/(?P<id>[^/.]+)/comments\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-comments`
+- `post` /api/v1/governance/^access-requests/(?P<id>[^/.]+)/reject/$
+  - Name: `access-request-reject`
+- `post` /api/v1/governance/^access-requests/(?P<id>[^/.]+)/reject\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-reject`
+- `post` /api/v1/governance/^access-requests/(?P<id>[^/.]+)/revoke/$
+  - Name: `access-request-revoke`
+- `post` /api/v1/governance/^access-requests/(?P<id>[^/.]+)/revoke\.(?P<format>[a-z0-9]+)/?$
+  - Name: `access-request-revoke`
+- `get, post` /api/v1/governance/^retention-policies/$
+  - Name: `retention-policy-list`
+- `get, post` /api/v1/governance/^retention-policies\.(?P<format>[a-z0-9]+)/?$
+  - Name: `retention-policy-list`
+- `get, put, patch, delete` /api/v1/governance/^retention-policies/(?P<id>[^/.]+)/$
+  - Name: `retention-policy-detail`
+- `get, put, patch, delete` /api/v1/governance/^retention-policies/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `retention-policy-detail`
+- `post` /api/v1/governance/^compliance-reports/$
+  - Name: `compliance-report-list`
+- `post` /api/v1/governance/^compliance-reports\.(?P<format>[a-z0-9]+)/?$
+  - Name: `compliance-report-list`
+- `get` /api/v1/governance/^compliance-reports/(?P<pk>[^/.]+)/$
+  - Name: `compliance-report-detail`
+- `get` /api/v1/governance/^compliance-reports/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `compliance-report-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/governance
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/governance/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Inference
+
+- `get, post` /api/v1/ml/inference/^deployments/$
+  - Name: `inference-deployment-list`
+- `get, post` /api/v1/ml/inference/^deployments\.(?P<format>[a-z0-9]+)/?$
+  - Name: `inference-deployment-list`
+- `post` /api/v1/ml/inference/^deployments/predict/$
+  - Name: `inference-deployment-predict`
+- `post` /api/v1/ml/inference/^deployments/predict\.(?P<format>[a-z0-9]+)/?$
+  - Name: `inference-deployment-predict`
+- `get, delete` /api/v1/ml/inference/^deployments/(?P<pk>[^/.]+)/$
+  - Name: `inference-deployment-detail`
+- `get, delete` /api/v1/ml/inference/^deployments/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `inference-deployment-detail`
+- `get` /api/v1/ml/inference/^deployments/(?P<pk>[^/.]+)/metrics/$
+  - Name: `inference-deployment-metrics`
+- `get` /api/v1/ml/inference/^deployments/(?P<pk>[^/.]+)/metrics\.(?P<format>[a-z0-9]+)/?$
+  - Name: `inference-deployment-metrics`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/ml/inference
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/ml/inference/<drf_format_suffix:format>
+  - Name: `api-root`
+- `get, post` /api/v1/ml/inference/^ab-tests/$
+  - Name: `ab-test-list`
+- `get, post` /api/v1/ml/inference/^ab-tests\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ab-test-list`
+- `get, put, patch, delete` /api/v1/ml/inference/^ab-tests/(?P<pk>[^/.]+)/$
+  - Name: `ab-test-detail`
+- `get, put, patch, delete` /api/v1/ml/inference/^ab-tests/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ab-test-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/ml/inference
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/ml/inference/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Integrations
+
+- `get, post` /api/v1/integrations/^marketplace/connections/$
+  - Name: `marketplace-connection-list`
+- `get, post` /api/v1/integrations/^marketplace/connections\.(?P<format>[a-z0-9]+)/?$
+  - Name: `marketplace-connection-list`
+- `get, put, patch, delete` /api/v1/integrations/^marketplace/connections/(?P<id>[^/.]+)/$
+  - Name: `marketplace-connection-detail`
+- `get, put, patch, delete` /api/v1/integrations/^marketplace/connections/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `marketplace-connection-detail`
+- `post` /api/v1/integrations/^marketplace/connections/(?P<id>[^/.]+)/test/$
+  - Name: `marketplace-connection-test`
+- `post` /api/v1/integrations/^marketplace/connections/(?P<id>[^/.]+)/test\.(?P<format>[a-z0-9]+)/?$
+  - Name: `marketplace-connection-test`
+- `get, post` /api/v1/integrations/^marketplace/sync/$
+  - Name: `marketplace-sync-job-list`
+- `get, post` /api/v1/integrations/^marketplace/sync\.(?P<format>[a-z0-9]+)/?$
+  - Name: `marketplace-sync-job-list`
+- `get, put, patch, delete` /api/v1/integrations/^marketplace/sync/(?P<id>[^/.]+)/$
+  - Name: `marketplace-sync-job-detail`
+- `get, put, patch, delete` /api/v1/integrations/^marketplace/sync/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `marketplace-sync-job-detail`
+- `post` /api/v1/integrations/^marketplace/sync/(?P<id>[^/.]+)/cancel/$
+  - Name: `marketplace-sync-job-cancel`
+- `post` /api/v1/integrations/^marketplace/sync/(?P<id>[^/.]+)/cancel\.(?P<format>[a-z0-9]+)/?$
+  - Name: `marketplace-sync-job-cancel`
+- `get, post` /api/v1/integrations/^marketplace/mappings/$
+  - Name: `marketplace-mapping-list`
+- `get, post` /api/v1/integrations/^marketplace/mappings\.(?P<format>[a-z0-9]+)/?$
+  - Name: `marketplace-mapping-list`
+- `get, put, patch, delete` /api/v1/integrations/^marketplace/mappings/(?P<id>[^/.]+)/$
+  - Name: `marketplace-mapping-detail`
+- `get, put, patch, delete` /api/v1/integrations/^marketplace/mappings/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `marketplace-mapping-detail`
+- `post` /api/v1/integrations/^federated-import/imports/(?P<job_id>[^/.]+)/cancel/$
+  - Name: `federated-import-cancel`
+- `post` /api/v1/integrations/^federated-import/imports/(?P<job_id>[^/.]+)/cancel\.(?P<format>[a-z0-9]+)/?$
+  - Name: `federated-import-cancel`
+- `post` /api/v1/integrations/^federated-import/imports/$
+  - Name: `federated-import-create-import`
+- `post` /api/v1/integrations/^federated-import/imports\.(?P<format>[a-z0-9]+)/?$
+  - Name: `federated-import-create-import`
+- `get` /api/v1/integrations/^federated-import/imports/(?P<job_id>[^/.]+)/$
+  - Name: `federated-import-get-status`
+- `get` /api/v1/integrations/^federated-import/imports/(?P<job_id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `federated-import-get-status`
+- `get` /api/v1/integrations/^federated-import/providers/$
+  - Name: `federated-import-list-providers`
+- `get` /api/v1/integrations/^federated-import/providers\.(?P<format>[a-z0-9]+)/?$
+  - Name: `federated-import-list-providers`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/integrations
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/integrations/<drf_format_suffix:format>
+  - Name: `api-root`
+- `GET` /api/v1/integrations/marketplace/connectors/
+  - Name: `marketplace-connectors-list`
+- `GET` /api/v1/integrations/marketplace/connectors/<str:connector_type>/
+  - Name: `marketplace-connectors-info`
+
+### Internal
+
+- `post` /api/v1/scheduled-ingestions/internal/runs/
+  - Name: `internal-runs-create`
+- `patch` /api/v1/scheduled-ingestions/internal/runs/<uuid:pk>/
+  - Name: `internal-runs-update`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/scheduled-ingestions/internal/config/<uuid:scheduled_ingestion_id>/
+  - Name: `internal-config`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/scheduled-ingestions/internal/process-file/
+  - Name: `internal-process-file`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/scheduled-ingestions/internal/jobs/
+  - Name: `internal-jobs-create`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/scheduled-ingestions/internal/test-data/<str:filename>
+  - Name: `internal-test-data`
+- `post` /api/v1/scheduled-exports/internal/runs/
+  - Name: `internal-runs-create`
+- `patch` /api/v1/scheduled-exports/internal/runs/<uuid:pk>/
+  - Name: `internal-runs-update`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/scheduled-exports/internal/config/<uuid:scheduled_export_id>/
+  - Name: `internal-config`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/scheduled-exports/internal/process-export/
+  - Name: `internal-process-export`
+
+### Jobs
+
+- `get` /api/v1/jobs/^dlq/$
+  - Name: `dlq-list`
+- `get` /api/v1/jobs/^dlq\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dlq-list`
+- `post` /api/v1/jobs/^dlq/purge_resolved/$
+  - Name: `dlq-purge-resolved`
+- `post` /api/v1/jobs/^dlq/purge_resolved\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dlq-purge-resolved`
+- `get` /api/v1/jobs/^dlq/(?P<id>[^/.]+)/$
+  - Name: `dlq-detail`
+- `get` /api/v1/jobs/^dlq/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dlq-detail`
+- `post` /api/v1/jobs/^dlq/(?P<id>[^/.]+)/retry/$
+  - Name: `dlq-retry`
+- `post` /api/v1/jobs/^dlq/(?P<id>[^/.]+)/retry\.(?P<format>[a-z0-9]+)/?$
+  - Name: `dlq-retry`
+- `get, post` /api/v1/jobs/^$
+  - Name: `job-list`
+- `get, post` /api/v1/jobs/^\.(?P<format>[a-z0-9]+)/?$
+  - Name: `job-list`
+- `get, put, patch, delete` /api/v1/jobs/^(?P<id>[^/.]+)/$
+  - Name: `job-detail`
+- `get, put, patch, delete` /api/v1/jobs/^(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `job-detail`
+- `post` /api/v1/jobs/^(?P<id>[^/.]+)/cancel/$
+  - Name: `job-cancel`
+- `post` /api/v1/jobs/^(?P<id>[^/.]+)/cancel\.(?P<format>[a-z0-9]+)/?$
+  - Name: `job-cancel`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/jobs
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/jobs/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Marketplace
+
+- `GET` /api/v1/marketplace/webhooks/stripe/
+  - Name: `marketplace-stripe-webhook`
+- `GET` /api/v1/marketplace/^listings/(?P<id>[^/.]+)/download/$
+  - Name: `marketplace-listing-download-custom`
+- `get, post` /api/v1/marketplace/^listings/$
+  - Name: `listing-list`
+- `get, post` /api/v1/marketplace/^listings\.(?P<format>[a-z0-9]+)/?$
+  - Name: `listing-list`
+- `get` /api/v1/marketplace/^listings/search/$
+  - Name: `listing-search`
+- `get` /api/v1/marketplace/^listings/search\.(?P<format>[a-z0-9]+)/?$
+  - Name: `listing-search`
+- `get, put, patch, delete` /api/v1/marketplace/^listings/(?P<id>[^/.]+)/$
+  - Name: `listing-detail`
+- `get, put, patch, delete` /api/v1/marketplace/^listings/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `listing-detail`
+- `get` /api/v1/marketplace/^listings/(?P<id>[^/.]+)/download/$
+  - Name: `listing-download`
+- `get` /api/v1/marketplace/^listings/(?P<id>[^/.]+)/download\.(?P<format>[a-z0-9]+)/?$
+  - Name: `listing-download`
+- `get` /api/v1/marketplace/^listings/(?P<id>[^/.]+)/lineage/$
+  - Name: `listing-lineage`
+- `get` /api/v1/marketplace/^listings/(?P<id>[^/.]+)/lineage\.(?P<format>[a-z0-9]+)/?$
+  - Name: `listing-lineage`
+- `get` /api/v1/marketplace/^listings/(?P<id>[^/.]+)/preview/$
+  - Name: `listing-preview`
+- `get` /api/v1/marketplace/^listings/(?P<id>[^/.]+)/preview\.(?P<format>[a-z0-9]+)/?$
+  - Name: `listing-preview`
+- `get, post` /api/v1/marketplace/^config/trust-signals/$
+  - Name: `marketplace-config-trust-signals-list`
+- `get, post` /api/v1/marketplace/^config/trust-signals\.(?P<format>[a-z0-9]+)/?$
+  - Name: `marketplace-config-trust-signals-list`
+- `get, put, patch, delete` /api/v1/marketplace/^config/trust-signals/(?P<id>[^/.]+)/$
+  - Name: `marketplace-config-trust-signals-detail`
+- `get, put, patch, delete` /api/v1/marketplace/^config/trust-signals/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `marketplace-config-trust-signals-detail`
+- `get, post` /api/v1/marketplace/^orders/$
+  - Name: `order-list`
+- `get, post` /api/v1/marketplace/^orders\.(?P<format>[a-z0-9]+)/?$
+  - Name: `order-list`
+- `post` /api/v1/marketplace/^orders/purchase/$
+  - Name: `order-purchase`
+- `post` /api/v1/marketplace/^orders/purchase\.(?P<format>[a-z0-9]+)/?$
+  - Name: `order-purchase`
+- `get, put, patch, delete` /api/v1/marketplace/^orders/(?P<id>[^/.]+)/$
+  - Name: `order-detail`
+- `get, put, patch, delete` /api/v1/marketplace/^orders/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `order-detail`
+- `post` /api/v1/marketplace/^orders/(?P<id>[^/.]+)/approve/$
+  - Name: `order-approve`
+- `post` /api/v1/marketplace/^orders/(?P<id>[^/.]+)/approve\.(?P<format>[a-z0-9]+)/?$
+  - Name: `order-approve`
+- `post` /api/v1/marketplace/^orders/(?P<id>[^/.]+)/cancel/$
+  - Name: `order-cancel`
+- `post` /api/v1/marketplace/^orders/(?P<id>[^/.]+)/cancel\.(?P<format>[a-z0-9]+)/?$
+  - Name: `order-cancel`
+- `post` /api/v1/marketplace/^orders/(?P<id>[^/.]+)/confirm-payment/$
+  - Name: `order-confirm-payment`
+- `post` /api/v1/marketplace/^orders/(?P<id>[^/.]+)/confirm-payment\.(?P<format>[a-z0-9]+)/?$
+  - Name: `order-confirm-payment`
+- `post` /api/v1/marketplace/^orders/(?P<id>[^/.]+)/refund/$
+  - Name: `order-refund`
+- `post` /api/v1/marketplace/^orders/(?P<id>[^/.]+)/refund\.(?P<format>[a-z0-9]+)/?$
+  - Name: `order-refund`
+- `post` /api/v1/marketplace/^orders/(?P<id>[^/.]+)/reject/$
+  - Name: `order-reject`
+- `post` /api/v1/marketplace/^orders/(?P<id>[^/.]+)/reject\.(?P<format>[a-z0-9]+)/?$
+  - Name: `order-reject`
+- `get` /api/v1/marketplace/^entitlements/$
+  - Name: `entitlement-list`
+- `get` /api/v1/marketplace/^entitlements\.(?P<format>[a-z0-9]+)/?$
+  - Name: `entitlement-list`
+- `post` /api/v1/marketplace/^entitlements/check-access/$
+  - Name: `entitlement-check-access`
+- `post` /api/v1/marketplace/^entitlements/check-access\.(?P<format>[a-z0-9]+)/?$
+  - Name: `entitlement-check-access`
+- `get` /api/v1/marketplace/^entitlements/(?P<id>[^/.]+)/$
+  - Name: `entitlement-detail`
+- `get` /api/v1/marketplace/^entitlements/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `entitlement-detail`
+- `post` /api/v1/marketplace/^entitlements/(?P<id>[^/.]+)/revoke/$
+  - Name: `entitlement-revoke`
+- `post` /api/v1/marketplace/^entitlements/(?P<id>[^/.]+)/revoke\.(?P<format>[a-z0-9]+)/?$
+  - Name: `entitlement-revoke`
+- `get` /api/v1/marketplace/^payment-gateways/webhook-url/$
+  - Name: `payment-gateway-get-webhook-url`
+- `get` /api/v1/marketplace/^payment-gateways/webhook-url\.(?P<format>[a-z0-9]+)/?$
+  - Name: `payment-gateway-get-webhook-url`
+- `post` /api/v1/marketplace/^payment-gateways/link-webhook/$
+  - Name: `payment-gateway-link-webhook`
+- `post` /api/v1/marketplace/^payment-gateways/link-webhook\.(?P<format>[a-z0-9]+)/?$
+  - Name: `payment-gateway-link-webhook`
+- `get` /api/v1/marketplace/^payment-gateways/list/$
+  - Name: `payment-gateway-list-gateways`
+- `get` /api/v1/marketplace/^payment-gateways/list\.(?P<format>[a-z0-9]+)/?$
+  - Name: `payment-gateway-list-gateways`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/marketplace
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/marketplace/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Mesh
+
+- `get, post` /api/v1/mesh/^domains/$
+  - Name: `domain-list`
+- `get, post` /api/v1/mesh/^domains\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-list`
+- `get, put, patch, delete` /api/v1/mesh/^domains/(?P<id>[^/.]+)/$
+  - Name: `domain-detail`
+- `get, put, patch, delete` /api/v1/mesh/^domains/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-detail`
+- `get` /api/v1/mesh/^domains/(?P<id>[^/.]+)/analytics/$
+  - Name: `domain-analytics`
+- `get` /api/v1/mesh/^domains/(?P<id>[^/.]+)/analytics\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-analytics`
+- `post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/policies/apply/$
+  - Name: `domain-apply-policy`
+- `post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/policies/apply\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-apply-policy`
+- `post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/assets/$
+  - Name: `domain-assets`
+- `post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/assets\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-assets`
+- `patch` /api/v1/mesh/^domains/(?P<id>[^/.]+)/boundaries/$
+  - Name: `domain-boundaries`
+- `patch` /api/v1/mesh/^domains/(?P<id>[^/.]+)/boundaries\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-boundaries`
+- `post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/compliance/check/$
+  - Name: `domain-check-compliance`
+- `post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/compliance/check\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-check-compliance`
+- `post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/deploy/$
+  - Name: `domain-deploy`
+- `post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/deploy\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-deploy`
+- `get` /api/v1/mesh/^domains/(?P<id>[^/.]+)/compliance/reports/(?P<report_id>[^/.]+)/$
+  - Name: `domain-get-compliance-report`
+- `get` /api/v1/mesh/^domains/(?P<id>[^/.]+)/compliance/reports/(?P<report_id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-get-compliance-report`
+- `get, post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/governance/$
+  - Name: `domain-governance`
+- `get, post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/governance\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-governance`
+- `get` /api/v1/mesh/^domains/(?P<id>[^/.]+)/health/$
+  - Name: `domain-health`
+- `get` /api/v1/mesh/^domains/(?P<id>[^/.]+)/health\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-health`
+- `get, post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/infrastructure/$
+  - Name: `domain-infrastructure`
+- `get, post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/infrastructure\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-infrastructure`
+- `get` /api/v1/mesh/^domains/(?P<id>[^/.]+)/compliance/reports/$
+  - Name: `domain-list-compliance-reports`
+- `get` /api/v1/mesh/^domains/(?P<id>[^/.]+)/compliance/reports\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-list-compliance-reports`
+- `get` /api/v1/mesh/^domains/(?P<id>[^/.]+)/policies/$
+  - Name: `domain-list-policies`
+- `get` /api/v1/mesh/^domains/(?P<id>[^/.]+)/policies\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-list-policies`
+- `get` /api/v1/mesh/^domains/(?P<id>[^/.]+)/monitoring/$
+  - Name: `domain-monitoring`
+- `get` /api/v1/mesh/^domains/(?P<id>[^/.]+)/monitoring\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-monitoring`
+- `patch` /api/v1/mesh/^domains/(?P<id>[^/.]+)/ownership/$
+  - Name: `domain-ownership`
+- `patch` /api/v1/mesh/^domains/(?P<id>[^/.]+)/ownership\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-ownership`
+- `get, post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/quotas/$
+  - Name: `domain-quotas`
+- `get, post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/quotas\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-quotas`
+- `delete` /api/v1/mesh/^domains/(?P<id>[^/.]+)/policies/(?P<policy_id>[^/.]+)/$
+  - Name: `domain-remove-policy`
+- `delete` /api/v1/mesh/^domains/(?P<id>[^/.]+)/policies/(?P<policy_id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-remove-policy`
+- `get, post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/self-serve/$
+  - Name: `domain-self-serve`
+- `get, post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/self-serve\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-self-serve`
+- `post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/transfer-ownership/$
+  - Name: `domain-transfer-ownership`
+- `post` /api/v1/mesh/^domains/(?P<id>[^/.]+)/transfer-ownership\.(?P<format>[a-z0-9]+)/?$
+  - Name: `domain-transfer-ownership`
+- `get` /api/v1/mesh/^topology/$
+  - Name: `topology-list`
+- `get` /api/v1/mesh/^topology\.(?P<format>[a-z0-9]+)/?$
+  - Name: `topology-list`
+- `get` /api/v1/mesh/^topology/health/$
+  - Name: `topology-health`
+- `get` /api/v1/mesh/^topology/health\.(?P<format>[a-z0-9]+)/?$
+  - Name: `topology-health`
+- `get` /api/v1/mesh/^topology/relationships/$
+  - Name: `topology-relationships`
+- `get` /api/v1/mesh/^topology/relationships\.(?P<format>[a-z0-9]+)/?$
+  - Name: `topology-relationships`
+- `get` /api/v1/mesh/^topology/(?P<pk>[^/.]+)/$
+  - Name: `topology-detail`
+- `get` /api/v1/mesh/^topology/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `topology-detail`
+- `get` /api/v1/mesh/^governance/$
+  - Name: `mesh-governance-list`
+- `get` /api/v1/mesh/^governance\.(?P<format>[a-z0-9]+)/?$
+  - Name: `mesh-governance-list`
+- `get` /api/v1/mesh/^governance/compliance/$
+  - Name: `mesh-governance-compliance`
+- `get` /api/v1/mesh/^governance/compliance\.(?P<format>[a-z0-9]+)/?$
+  - Name: `mesh-governance-compliance`
+- `get` /api/v1/mesh/^governance/policies/$
+  - Name: `mesh-governance-policies`
+- `get` /api/v1/mesh/^governance/policies\.(?P<format>[a-z0-9]+)/?$
+  - Name: `mesh-governance-policies`
+- `get` /api/v1/mesh/^governance/reports/$
+  - Name: `mesh-governance-reports`
+- `get` /api/v1/mesh/^governance/reports\.(?P<format>[a-z0-9]+)/?$
+  - Name: `mesh-governance-reports`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/mesh
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/mesh/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Ml
+
+- `get, post` /api/v1/ml/^models/$
+  - Name: `ml-model-list`
+- `get, post` /api/v1/ml/^models\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ml-model-list`
+- `get, put, patch, delete` /api/v1/ml/^models/(?P<id>[^/.]+)/$
+  - Name: `ml-model-detail`
+- `get, put, patch, delete` /api/v1/ml/^models/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ml-model-detail`
+- `get` /api/v1/ml/^models/(?P<id>[^/.]+)/datasets/$
+  - Name: `ml-model-get-datasets`
+- `get` /api/v1/ml/^models/(?P<id>[^/.]+)/datasets\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ml-model-get-datasets`
+- `post` /api/v1/ml/^models/(?P<id>[^/.]+)/link-asset/$
+  - Name: `ml-model-link-asset`
+- `post` /api/v1/ml/^models/(?P<id>[^/.]+)/link-asset\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ml-model-link-asset`
+- `post` /api/v1/ml/^models/(?P<id>[^/.]+)/link-dataset/$
+  - Name: `ml-model-link-dataset`
+- `post` /api/v1/ml/^models/(?P<id>[^/.]+)/link-dataset\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ml-model-link-dataset`
+- `post` /api/v1/ml/^models/(?P<id>[^/.]+)/sync-from-odh/$
+  - Name: `ml-model-sync-from-odh`
+- `post` /api/v1/ml/^models/(?P<id>[^/.]+)/sync-from-odh\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ml-model-sync-from-odh`
+- `get` /api/v1/ml/^models/(?P<id>[^/.]+)/versions/$
+  - Name: `ml-model-versions`
+- `get` /api/v1/ml/^models/(?P<id>[^/.]+)/versions\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ml-model-versions`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/ml
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/ml/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Notifications
+
+- `get` /api/v1/notifications/^user-notifications/$
+  - Name: `user-notification-list`
+- `get` /api/v1/notifications/^user-notifications\.(?P<format>[a-z0-9]+)/?$
+  - Name: `user-notification-list`
+- `post` /api/v1/notifications/^user-notifications/read-all/$
+  - Name: `user-notification-mark-all-read`
+- `post` /api/v1/notifications/^user-notifications/read-all\.(?P<format>[a-z0-9]+)/?$
+  - Name: `user-notification-mark-all-read`
+- `get` /api/v1/notifications/^user-notifications/unread-count/$
+  - Name: `user-notification-unread-count`
+- `get` /api/v1/notifications/^user-notifications/unread-count\.(?P<format>[a-z0-9]+)/?$
+  - Name: `user-notification-unread-count`
+- `get` /api/v1/notifications/^user-notifications/(?P<id>[^/.]+)/$
+  - Name: `user-notification-detail`
+- `get` /api/v1/notifications/^user-notifications/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `user-notification-detail`
+- `post` /api/v1/notifications/^user-notifications/(?P<id>[^/.]+)/read/$
+  - Name: `user-notification-mark-read`
+- `post` /api/v1/notifications/^user-notifications/(?P<id>[^/.]+)/read\.(?P<format>[a-z0-9]+)/?$
+  - Name: `user-notification-mark-read`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/notifications
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/notifications/<drf_format_suffix:format>
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/notifications/stream/
+  - Name: `notification-stream`
+- `GET` /api/v1/notifications/unsubscribe/<str:token>/
+  - Name: `marketing-unsubscribe`
+- `GET` /api/v1/notifications/unsubscribe/
+  - Name: `marketing-unsubscribe-empty-token`
+
+### Openlineage
+
+- `POST` /api/v1/lineage/openlineage/events/
+  - Name: `openlineage-events`
+- `GET, POST` /api/v1/lineage/openlineage/keys/
+  - Name: `openlineage-keys`
+- `DELETE` /api/v1/lineage/openlineage/keys/<uuid:pk>/
+  - Name: `openlineage-keys-detail`
+
+### Platform
+
+- `get` /api/v1/platform/^tenants/$
+  - Name: `platform-tenant-list`
+- `get` /api/v1/platform/^tenants\.(?P<format>[a-z0-9]+)/?$
+  - Name: `platform-tenant-list`
+- `get` /api/v1/platform/^tenants/usage/$
+  - Name: `platform-tenant-usage`
+- `get` /api/v1/platform/^tenants/usage\.(?P<format>[a-z0-9]+)/?$
+  - Name: `platform-tenant-usage`
+- `get` /api/v1/platform/^tenants/(?P<id>[^/.]+)/$
+  - Name: `platform-tenant-detail`
+- `get` /api/v1/platform/^tenants/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `platform-tenant-detail`
+- `post` /api/v1/platform/^tenants/(?P<id>[^/.]+)/resume/$
+  - Name: `platform-tenant-resume`
+- `post` /api/v1/platform/^tenants/(?P<id>[^/.]+)/resume\.(?P<format>[a-z0-9]+)/?$
+  - Name: `platform-tenant-resume`
+- `post` /api/v1/platform/^tenants/(?P<id>[^/.]+)/suspend/$
+  - Name: `platform-tenant-suspend`
+- `post` /api/v1/platform/^tenants/(?P<id>[^/.]+)/suspend\.(?P<format>[a-z0-9]+)/?$
+  - Name: `platform-tenant-suspend`
+- `get` /api/v1/platform/^users/$
+  - Name: `platform-user-list`
+- `get` /api/v1/platform/^users\.(?P<format>[a-z0-9]+)/?$
+  - Name: `platform-user-list`
+- `get` /api/v1/platform/^users/(?P<id>[^/.]+)/$
+  - Name: `platform-user-detail`
+- `get` /api/v1/platform/^users/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `platform-user-detail`
+- `get` /api/v1/platform/^users/(?P<id>[^/.]+)/erasure-requests/$
+  - Name: `platform-user-erasure-requests`
+- `get` /api/v1/platform/^users/(?P<id>[^/.]+)/erasure-requests\.(?P<format>[a-z0-9]+)/?$
+  - Name: `platform-user-erasure-requests`
+- `post` /api/v1/platform/^users/(?P<id>[^/.]+)/request-erasure/$
+  - Name: `platform-user-request-erasure`
+- `post` /api/v1/platform/^users/(?P<id>[^/.]+)/request-erasure\.(?P<format>[a-z0-9]+)/?$
+  - Name: `platform-user-request-erasure`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/platform
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/platform/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Processor-Agreements
+
+- `get, post` /api/v1/processor-agreements/^processors/$
+  - Name: `processor-list`
+- `get, post` /api/v1/processor-agreements/^processors\.(?P<format>[a-z0-9]+)/?$
+  - Name: `processor-list`
+- `get, put, patch, delete` /api/v1/processor-agreements/^processors/(?P<id>[^/.]+)/$
+  - Name: `processor-detail`
+- `get, put, patch, delete` /api/v1/processor-agreements/^processors/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `processor-detail`
+- `get, post` /api/v1/processor-agreements/^processor-agreements/$
+  - Name: `processor-agreement-list`
+- `get, post` /api/v1/processor-agreements/^processor-agreements\.(?P<format>[a-z0-9]+)/?$
+  - Name: `processor-agreement-list`
+- `get, put, patch, delete` /api/v1/processor-agreements/^processor-agreements/(?P<id>[^/.]+)/$
+  - Name: `processor-agreement-detail`
+- `get, put, patch, delete` /api/v1/processor-agreements/^processor-agreements/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `processor-agreement-detail`
+- `get, post` /api/v1/processor-agreements/^asset-processor-links/$
+  - Name: `asset-processor-link-list`
+- `get, post` /api/v1/processor-agreements/^asset-processor-links\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-processor-link-list`
+- `get, put, patch, delete` /api/v1/processor-agreements/^asset-processor-links/(?P<id>[^/.]+)/$
+  - Name: `asset-processor-link-detail`
+- `get, put, patch, delete` /api/v1/processor-agreements/^asset-processor-links/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `asset-processor-link-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/processor-agreements
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/processor-agreements/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Public
+
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/public/dsar-requests/
+  - Name: `public-dsar-submit`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/public/dsar-requests/<uuid:dsar_id>/verify-otp/
+  - Name: `public-dsar-verify-otp`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/public/dsar-requests/status/<uuid:reference_token>/
+  - Name: `public-dsar-status`
+
+### Quality
+
+- `get, post` /api/v1/quality/^runs/$
+  - Name: `dq-run-deprecated-list`
+- `post` /api/v1/quality/^runs/warehouse-run/$
+  - Name: `dq-run-deprecated-warehouse-run`
+- `get, put, patch, delete` /api/v1/quality/^runs/(?P<id>[^/.]+)/$
+  - Name: `dq-run-deprecated-detail`
+- `get` /api/v1/quality/^runs/(?P<id>[^/.]+)/results/$
+  - Name: `dq-run-deprecated-results`
+- `get` /api/v1/quality/anomalies/
+  - Name: `dq-quality-deprecated-anomalies`
+- `get` /api/v1/quality/trends/
+  - Name: `dq-quality-deprecated-trends`
+- `get` /api/v1/quality/scorecards/
+  - Name: `dq-quality-deprecated-scorecards`
+- `get` /api/v1/quality/root_cause_analysis/
+  - Name: `dq-quality-deprecated-root-cause`
+
+### Ropa
+
+- `post` /api/v1/ropa/generate/
+  - Name: `ropa-generate`
+- `get` /api/v1/ropa/^generations/$
+  - Name: `ropa-generation-list`
+- `get` /api/v1/ropa/^generations\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ropa-generation-list`
+- `post` /api/v1/ropa/^generations/generate/$
+  - Name: `ropa-generation-generate`
+- `post` /api/v1/ropa/^generations/generate\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ropa-generation-generate`
+- `get` /api/v1/ropa/^generations/preview/$
+  - Name: `ropa-generation-preview`
+- `get` /api/v1/ropa/^generations/preview\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ropa-generation-preview`
+- `get` /api/v1/ropa/^generations/(?P<pk>[^/.]+)/$
+  - Name: `ropa-generation-detail`
+- `get` /api/v1/ropa/^generations/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ropa-generation-detail`
+- `get` /api/v1/ropa/^generations/(?P<pk>[^/.]+)/download/$
+  - Name: `ropa-generation-download`
+- `get` /api/v1/ropa/^generations/(?P<pk>[^/.]+)/download\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ropa-generation-download`
+- `delete` /api/v1/ropa/^generations/(?P<pk>[^/.]+)/delete/$
+  - Name: `ropa-generation-remove`
+- `delete` /api/v1/ropa/^generations/(?P<pk>[^/.]+)/delete\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ropa-generation-remove`
+- `patch` /api/v1/ropa/^generations/(?P<pk>[^/.]+)/update/$
+  - Name: `ropa-generation-update-metadata`
+- `patch` /api/v1/ropa/^generations/(?P<pk>[^/.]+)/update\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ropa-generation-update-metadata`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/ropa
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/ropa/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Scheduled-Exports
+
+- `get, post` /api/v1/scheduled-exports/^$
+  - Name: `scheduled-export-list`
+- `get, post` /api/v1/scheduled-exports/^\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-export-list`
+- `get, put, patch, delete` /api/v1/scheduled-exports/^(?P<id>[^/.]+)/$
+  - Name: `scheduled-export-detail`
+- `get, put, patch, delete` /api/v1/scheduled-exports/^(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-export-detail`
+- `get` /api/v1/scheduled-exports/^(?P<id>[^/.]+)/runs/$
+  - Name: `scheduled-export-runs`
+- `get` /api/v1/scheduled-exports/^(?P<id>[^/.]+)/runs\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-export-runs`
+- `post` /api/v1/scheduled-exports/^(?P<id>[^/.]+)/sync/$
+  - Name: `scheduled-export-sync`
+- `post` /api/v1/scheduled-exports/^(?P<id>[^/.]+)/sync\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-export-sync`
+- `post` /api/v1/scheduled-exports/^(?P<id>[^/.]+)/trigger/$
+  - Name: `scheduled-export-trigger`
+- `post` /api/v1/scheduled-exports/^(?P<id>[^/.]+)/trigger\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-export-trigger`
+- `get` /api/v1/scheduled-exports/^runs/$
+  - Name: `scheduled-export-run-list`
+- `get` /api/v1/scheduled-exports/^runs\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-export-run-list`
+- `get` /api/v1/scheduled-exports/^runs/(?P<id>[^/.]+)/$
+  - Name: `scheduled-export-run-detail`
+- `get` /api/v1/scheduled-exports/^runs/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-export-run-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/scheduled-exports
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/scheduled-exports/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Scheduled-Ingestions
+
+- `get, post` /api/v1/scheduled-ingestions/^$
+  - Name: `scheduled-ingestion-list`
+- `get, post` /api/v1/scheduled-ingestions/^\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-ingestion-list`
+- `get` /api/v1/scheduled-ingestions/^costs/$
+  - Name: `scheduled-ingestion-costs`
+- `get` /api/v1/scheduled-ingestions/^costs\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-ingestion-costs`
+- `get` /api/v1/scheduled-ingestions/^dashboard/$
+  - Name: `scheduled-ingestion-dashboard`
+- `get` /api/v1/scheduled-ingestions/^dashboard\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-ingestion-dashboard`
+- `get` /api/v1/scheduled-ingestions/^dead-letter-queue/$
+  - Name: `scheduled-ingestion-dead-letter-queue`
+- `get` /api/v1/scheduled-ingestions/^dead-letter-queue\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-ingestion-dead-letter-queue`
+- `get, put, patch, delete` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)/$
+  - Name: `scheduled-ingestion-detail`
+- `get, put, patch, delete` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-ingestion-detail`
+- `get` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)/credentials/$
+  - Name: `scheduled-ingestion-credentials`
+- `get` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)/credentials\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-ingestion-credentials`
+- `post` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)/dlq/(?P<dlq_item_id>[^/.]+)/resolve/$
+  - Name: `scheduled-ingestion-resolve-dlq-item`
+- `post` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)/dlq/(?P<dlq_item_id>[^/.]+)/resolve\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-ingestion-resolve-dlq-item`
+- `post` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)/dlq/(?P<dlq_item_id>[^/.]+)/retry/$
+  - Name: `scheduled-ingestion-retry-dlq-item`
+- `post` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)/dlq/(?P<dlq_item_id>[^/.]+)/retry\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-ingestion-retry-dlq-item`
+- `get` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)/runs/$
+  - Name: `scheduled-ingestion-runs`
+- `get` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)/runs\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-ingestion-runs`
+- `post` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)/sync/$
+  - Name: `scheduled-ingestion-sync`
+- `post` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)/sync\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-ingestion-sync`
+- `post` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)/credentials/test/$
+  - Name: `scheduled-ingestion-test-credentials`
+- `post` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)/credentials/test\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-ingestion-test-credentials`
+- `post` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)/trigger/$
+  - Name: `scheduled-ingestion-trigger`
+- `post` /api/v1/scheduled-ingestions/^(?P<id>[^/.]+)/trigger\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-ingestion-trigger`
+- `get` /api/v1/scheduled-ingestions/^runs/$
+  - Name: `scheduled-ingestion-run-list`
+- `get` /api/v1/scheduled-ingestions/^runs\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-ingestion-run-list`
+- `get` /api/v1/scheduled-ingestions/^runs/(?P<id>[^/.]+)/$
+  - Name: `scheduled-ingestion-run-detail`
+- `get` /api/v1/scheduled-ingestions/^runs/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `scheduled-ingestion-run-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/scheduled-ingestions
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/scheduled-ingestions/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Search
+
+- `get` /api/v1/search/^analytics/$
+  - Name: `search-analytics`
+- `get` /api/v1/search/^analytics\.(?P<format>[a-z0-9]+)/?$
+  - Name: `search-analytics`
+- `post` /api/v1/search/^rebuild_index/$
+  - Name: `search-rebuild-index`
+- `post` /api/v1/search/^rebuild_index\.(?P<format>[a-z0-9]+)/?$
+  - Name: `search-rebuild-index`
+- `get` /api/v1/search/^search/$
+  - Name: `search-search`
+- `get` /api/v1/search/^search\.(?P<format>[a-z0-9]+)/?$
+  - Name: `search-search`
+- `get` /api/v1/search/^suggestions/$
+  - Name: `search-suggestions`
+- `get` /api/v1/search/^suggestions\.(?P<format>[a-z0-9]+)/?$
+  - Name: `search-suggestions`
+- `post` /api/v1/search/^track_click/$
+  - Name: `search-track-click`
+- `post` /api/v1/search/^track_click\.(?P<format>[a-z0-9]+)/?$
+  - Name: `search-track-click`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/search
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/search/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Security
+
+- `get` /api/v1/security/^incidents/$
+  - Name: `security-incident-list`
+- `get` /api/v1/security/^incidents\.(?P<format>[a-z0-9]+)/?$
+  - Name: `security-incident-list`
+- `get` /api/v1/security/^incidents/(?P<id>[^/.]+)/$
+  - Name: `security-incident-detail`
+- `get` /api/v1/security/^incidents/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `security-incident-detail`
+- `post` /api/v1/security/^incidents/(?P<id>[^/.]+)/resolve/$
+  - Name: `security-incident-resolve`
+- `post` /api/v1/security/^incidents/(?P<id>[^/.]+)/resolve\.(?P<format>[a-z0-9]+)/?$
+  - Name: `security-incident-resolve`
+- `get` /api/v1/security/^audit-logs/$
+  - Name: `security-audit-log-list`
+- `get` /api/v1/security/^audit-logs\.(?P<format>[a-z0-9]+)/?$
+  - Name: `security-audit-log-list`
+- `get` /api/v1/security/^audit-logs/(?P<pk>[^/.]+)/$
+  - Name: `security-audit-log-detail`
+- `get` /api/v1/security/^audit-logs/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `security-audit-log-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/security
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/security/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Semantic
+
+- `get` /api/v1/semantic/^semantic-resources/$
+  - Name: `semantic-resource-list`
+- `get` /api/v1/semantic/^semantic-resources\.(?P<format>[a-z0-9]+)/?$
+  - Name: `semantic-resource-list`
+- `get` /api/v1/semantic/^semantic-resources/(?P<id>[^/.]+)/$
+  - Name: `semantic-resource-detail`
+- `get` /api/v1/semantic/^semantic-resources/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `semantic-resource-detail`
+- `get, post` /api/v1/semantic/^ontologies/$
+  - Name: `tenant-ontology-list`
+- `get, post` /api/v1/semantic/^ontologies\.(?P<format>[a-z0-9]+)/?$
+  - Name: `tenant-ontology-list`
+- `get, put, patch, delete` /api/v1/semantic/^ontologies/(?P<id>[^/.]+)/$
+  - Name: `tenant-ontology-detail`
+- `get, put, patch, delete` /api/v1/semantic/^ontologies/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `tenant-ontology-detail`
+- `get, post` /api/v1/semantic/^ldn/subscriptions/$
+  - Name: `ldn-subscription-list`
+- `get, post` /api/v1/semantic/^ldn/subscriptions\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ldn-subscription-list`
+- `get, put, patch, delete` /api/v1/semantic/^ldn/subscriptions/(?P<id>[^/.]+)/$
+  - Name: `ldn-subscription-detail`
+- `get, put, patch, delete` /api/v1/semantic/^ldn/subscriptions/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `ldn-subscription-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/semantic
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/semantic/<drf_format_suffix:format>
+  - Name: `api-root`
+- `GET, POST` /api/v1/semantic/sparql
+  - Name: `sparql-query`
+- `GET` /api/v1/semantic/sparql/description
+  - Name: `sparql-service-description`
+- `GET` /api/v1/semantic/resource/<str:resource_type>/<str:resource_id>/
+  - Name: `dereference-resource`
+- `GET` /api/v1/semantic/id/field/<str:asset_uuid>/<str:field_name>
+  - Name: `resolve-field-uri`
+- `GET` /api/v1/semantic/id/<str:resource_type>/<str:resource_id>
+  - Name: `resolve-uri`
+- `GET` /api/v1/semantic/ontology
+  - Name: `get-ontology`
+- `GET` /api/v1/semantic/context.jsonld
+  - Name: `get-jsonld-context`
+- `GET` /api/v1/semantic/context
+  - Name: `get-jsonld-context-alias`
+- `POST` /api/v1/semantic/rdf/ingest
+  - Name: `rdf-ingest`
+- `POST` /api/v1/semantic/export
+  - Name: `rdf-export`
+- `GET` /api/v1/semantic/relationships/<uuid:contract_id>
+  - Name: `contract-relationships`
+- `GET` /api/v1/semantic/resource/<str:resource_type>/<str:resource_id>/version/<str:snapshot_at>
+  - Name: `dereference-versioned-resource`
+- `GET` /api/v1/semantic/resource/<str:resource_type>/<str:resource_id>/timemap
+  - Name: `semantic-timemap`
+- `GET` /api/v1/semantic/ldn/inbox/<str:tenant_id>/<uuid:inbox_id>
+  - Name: `ldn-inbox-detail`
+- `GET` /api/v1/semantic/ldn/inbox/<str:tenant_id>/
+  - Name: `ldn-inbox-list`
+- `POST` /api/v1/semantic/ldn/inbox/<str:tenant_id>
+  - Name: `ldn-inbox-post`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/semantic/graphql
+  - Name: `semantic-graphql-ld`
+
+### Social
+
+- `get, post` /api/v1/social/^ratings/$
+  - Name: `rating-list`
+- `get, post` /api/v1/social/^ratings\.(?P<format>[a-z0-9]+)/?$
+  - Name: `rating-list`
+- `get` /api/v1/social/^ratings/audit/$
+  - Name: `rating-audit`
+- `get` /api/v1/social/^ratings/audit\.(?P<format>[a-z0-9]+)/?$
+  - Name: `rating-audit`
+- `get, post` /api/v1/social/^reviews/$
+  - Name: `review-list`
+- `get, post` /api/v1/social/^reviews\.(?P<format>[a-z0-9]+)/?$
+  - Name: `review-list`
+- `get` /api/v1/social/^reviews/audit/$
+  - Name: `review-audit`
+- `get` /api/v1/social/^reviews/audit\.(?P<format>[a-z0-9]+)/?$
+  - Name: `review-audit`
+- `get` /api/v1/social/^reviews/pending/$
+  - Name: `review-pending`
+- `get` /api/v1/social/^reviews/pending\.(?P<format>[a-z0-9]+)/?$
+  - Name: `review-pending`
+- `get` /api/v1/social/^reviews/(?P<pk>[^/.]+)/$
+  - Name: `review-detail`
+- `get` /api/v1/social/^reviews/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `review-detail`
+- `post` /api/v1/social/^reviews/(?P<pk>[^/.]+)/approve/$
+  - Name: `review-approve`
+- `post` /api/v1/social/^reviews/(?P<pk>[^/.]+)/approve\.(?P<format>[a-z0-9]+)/?$
+  - Name: `review-approve`
+- `post` /api/v1/social/^reviews/(?P<pk>[^/.]+)/reject/$
+  - Name: `review-reject`
+- `post` /api/v1/social/^reviews/(?P<pk>[^/.]+)/reject\.(?P<format>[a-z0-9]+)/?$
+  - Name: `review-reject`
+- `get, post` /api/v1/social/^comments/$
+  - Name: `comment-list`
+- `get, post` /api/v1/social/^comments\.(?P<format>[a-z0-9]+)/?$
+  - Name: `comment-list`
+- `get` /api/v1/social/^comments/(?P<pk>[^/.]+)/$
+  - Name: `comment-detail`
+- `get` /api/v1/social/^comments/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `comment-detail`
+- `get, post` /api/v1/social/^communities/$
+  - Name: `community-list`
+- `get, post` /api/v1/social/^communities\.(?P<format>[a-z0-9]+)/?$
+  - Name: `community-list`
+- `get` /api/v1/social/^communities/audit/$
+  - Name: `community-audit`
+- `get` /api/v1/social/^communities/audit\.(?P<format>[a-z0-9]+)/?$
+  - Name: `community-audit`
+- `get, patch` /api/v1/social/^communities/(?P<pk>[^/.]+)/$
+  - Name: `community-detail`
+- `get, patch` /api/v1/social/^communities/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `community-detail`
+- `get, post` /api/v1/social/^communities/(?P<pk>[^/.]+)/assets/$
+  - Name: `community-assets`
+- `get, post` /api/v1/social/^communities/(?P<pk>[^/.]+)/assets\.(?P<format>[a-z0-9]+)/?$
+  - Name: `community-assets`
+- `get, post` /api/v1/social/^communities/(?P<pk>[^/.]+)/discussions/$
+  - Name: `community-discussions`
+- `get, post` /api/v1/social/^communities/(?P<pk>[^/.]+)/discussions\.(?P<format>[a-z0-9]+)/?$
+  - Name: `community-discussions`
+- `post` /api/v1/social/^communities/(?P<pk>[^/.]+)/join/$
+  - Name: `community-join`
+- `post` /api/v1/social/^communities/(?P<pk>[^/.]+)/join\.(?P<format>[a-z0-9]+)/?$
+  - Name: `community-join`
+- `get` /api/v1/social/^communities/(?P<pk>[^/.]+)/knowledge-base/$
+  - Name: `community-knowledge-base`
+- `get` /api/v1/social/^communities/(?P<pk>[^/.]+)/knowledge-base\.(?P<format>[a-z0-9]+)/?$
+  - Name: `community-knowledge-base`
+- `get` /api/v1/social/^communities/(?P<pk>[^/.]+)/members/$
+  - Name: `community-members`
+- `get` /api/v1/social/^communities/(?P<pk>[^/.]+)/members\.(?P<format>[a-z0-9]+)/?$
+  - Name: `community-members`
+- `get` /api/v1/social/^activity-feeds/$
+  - Name: `activity-feed-list`
+- `get` /api/v1/social/^activity-feeds\.(?P<format>[a-z0-9]+)/?$
+  - Name: `activity-feed-list`
+- `post` /api/v1/social/^activity-feeds/(?P<pk>[^/.]+)/moderate/$
+  - Name: `activity-feed-moderate`
+- `post` /api/v1/social/^activity-feeds/(?P<pk>[^/.]+)/moderate\.(?P<format>[a-z0-9]+)/?$
+  - Name: `activity-feed-moderate`
+- `get` /api/v1/social/^audit/reports/$
+  - Name: `social-audit-reports`
+- `get` /api/v1/social/^audit/reports\.(?P<format>[a-z0-9]+)/?$
+  - Name: `social-audit-reports`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/social
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/social/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Subscriptions
+
+- `get, post` /api/v1/lineage/subscriptions/^$
+  - Name: `lineage-subscription-list`
+- `get, post` /api/v1/lineage/subscriptions/^\.(?P<format>[a-z0-9]+)/?$
+  - Name: `lineage-subscription-list`
+- `get, put, patch, delete` /api/v1/lineage/subscriptions/^(?P<id>[^/.]+)/$
+  - Name: `lineage-subscription-detail`
+- `get, put, patch, delete` /api/v1/lineage/subscriptions/^(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `lineage-subscription-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/lineage/subscriptions
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/lineage/subscriptions/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Tenants
+
+- `post` /api/v1/tenants/onboarding/
+  - Name: `tenant-onboarding`
+- `get` /api/v1/tenants/me/usage/
+  - Name: `tenant-usage`
+- `get, patch` /api/v1/tenants/me/config/
+  - Name: `tenant-me-config`
+- `get, patch` /api/v1/tenants/me/feature-flags/
+  - Name: `tenant-me-feature-flags`
+- `get` /api/v1/tenants/me/feature-flag-history/
+  - Name: `tenant-me-feature-flag-history`
+- `get, post` /api/v1/tenants/me/tax-id/
+  - Name: `tenant-me-tax-id`
+- `post` /api/v1/tenants/me/seed-sample/
+  - Name: `tenant-me-seed-sample`
+- `get` /api/v1/tenants/me/plan/
+  - Name: `tenant-me-plan`
+- `get` /api/v1/tenants/me/plan/available-upgrades/
+  - Name: `tenant-me-plan-available-upgrades`
+- `post` /api/v1/tenants/me/plan/upgrade/
+  - Name: `tenant-me-plan-upgrade`
+- `post` /api/v1/tenants/me/plan/downgrade/
+  - Name: `tenant-me-plan-downgrade`
+- `get` /api/v1/tenants/me/plan/available-ml-addons/
+  - Name: `tenant-me-plan-available-ml-addons`
+- `POST` /api/v1/tenants/ephemeral/
+  - Name: `tenant-ephemeral`
+- `get, patch` /api/v1/tenants/<uuid:tenant_id>/rate-limits/
+  - Name: `tenant-rate-limits`
+- `get, patch` /api/v1/tenants/<uuid:tenant_id>/config/
+  - Name: `tenant-config-detail`
+- `get, post` /api/v1/tenants/<uuid:tenant_id>/sparql-endpoints/
+  - Name: `tenant-sparql-endpoint-list`
+- `get, patch, put, delete` /api/v1/tenants/<uuid:tenant_id>/sparql-endpoints/<uuid:pk>/
+  - Name: `tenant-sparql-endpoint-detail`
+- `get, post` /api/v1/tenants/^$
+  - Name: `tenant-list`
+- `get, post` /api/v1/tenants/^\.(?P<format>[a-z0-9]+)/?$
+  - Name: `tenant-list`
+- `get, put, patch, delete` /api/v1/tenants/^(?P<id>[^/.]+)/$
+  - Name: `tenant-detail`
+- `get, put, patch, delete` /api/v1/tenants/^(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `tenant-detail`
+- `post` /api/v1/tenants/^(?P<id>[^/.]+)/reactivate/$
+  - Name: `tenant-reactivate`
+- `post` /api/v1/tenants/^(?P<id>[^/.]+)/reactivate\.(?P<format>[a-z0-9]+)/?$
+  - Name: `tenant-reactivate`
+- `post` /api/v1/tenants/^(?P<id>[^/.]+)/suspend/$
+  - Name: `tenant-suspend`
+- `post` /api/v1/tenants/^(?P<id>[^/.]+)/suspend\.(?P<format>[a-z0-9]+)/?$
+  - Name: `tenant-suspend`
+- `get, patch` /api/v1/tenants/^config/me/config/$
+  - Name: `tenant-config-me-config`
+- `get, patch` /api/v1/tenants/^config/me/config\.(?P<format>[a-z0-9]+)/?$
+  - Name: `tenant-config-me-config`
+- `get` /api/v1/tenants/^config/me/feature-flag-history/$
+  - Name: `tenant-config-me-feature-flag-history`
+- `get` /api/v1/tenants/^config/me/feature-flag-history\.(?P<format>[a-z0-9]+)/?$
+  - Name: `tenant-config-me-feature-flag-history`
+- `get, patch` /api/v1/tenants/^config/me/feature-flags/$
+  - Name: `tenant-config-me-feature-flags`
+- `get, patch` /api/v1/tenants/^config/me/feature-flags\.(?P<format>[a-z0-9]+)/?$
+  - Name: `tenant-config-me-feature-flags`
+- `get, post` /api/v1/tenants/^config/me/tax-id/$
+  - Name: `tenant-config-me-tax-id`
+- `get, post` /api/v1/tenants/^config/me/tax-id\.(?P<format>[a-z0-9]+)/?$
+  - Name: `tenant-config-me-tax-id`
+- `post` /api/v1/tenants/^config/onboarding/$
+  - Name: `tenant-config-onboarding`
+- `post` /api/v1/tenants/^config/onboarding\.(?P<format>[a-z0-9]+)/?$
+  - Name: `tenant-config-onboarding`
+- `post` /api/v1/tenants/^config/me/seed-sample/$
+  - Name: `tenant-config-seed-sample`
+- `post` /api/v1/tenants/^config/me/seed-sample\.(?P<format>[a-z0-9]+)/?$
+  - Name: `tenant-config-seed-sample`
+- `get` /api/v1/tenants/^config/me/usage/$
+  - Name: `tenant-config-usage`
+- `get` /api/v1/tenants/^config/me/usage\.(?P<format>[a-z0-9]+)/?$
+  - Name: `tenant-config-usage`
+- `get, patch` /api/v1/tenants/^config/(?P<tenant_id>[^/.]+)/$
+  - Name: `tenant-config-detail`
+- `get, patch` /api/v1/tenants/^config/(?P<tenant_id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `tenant-config-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/tenants
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/tenants/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Training
+
+- `get, post` /api/v1/ml/training/^jobs/$
+  - Name: `training-job-list`
+- `get, post` /api/v1/ml/training/^jobs\.(?P<format>[a-z0-9]+)/?$
+  - Name: `training-job-list`
+- `get` /api/v1/ml/training/^jobs/(?P<pk>[^/.]+)/$
+  - Name: `training-job-detail`
+- `get` /api/v1/ml/training/^jobs/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `training-job-detail`
+- `post` /api/v1/ml/training/^jobs/(?P<pk>[^/.]+)/cancel/$
+  - Name: `training-job-cancel`
+- `post` /api/v1/ml/training/^jobs/(?P<pk>[^/.]+)/cancel\.(?P<format>[a-z0-9]+)/?$
+  - Name: `training-job-cancel`
+- `get` /api/v1/ml/training/^jobs/(?P<pk>[^/.]+)/logs/$
+  - Name: `training-job-logs`
+- `get` /api/v1/ml/training/^jobs/(?P<pk>[^/.]+)/logs\.(?P<format>[a-z0-9]+)/?$
+  - Name: `training-job-logs`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/ml/training
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/ml/training/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Transformation
+
+- `get, post` /api/v1/transformation/^pipelines/$
+  - Name: `transformation-pipeline-list`
+- `get, post` /api/v1/transformation/^pipelines\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-pipeline-list`
+- `get, put, patch, delete` /api/v1/transformation/^pipelines/(?P<id>[^/.]+)/$
+  - Name: `transformation-pipeline-detail`
+- `get, put, patch, delete` /api/v1/transformation/^pipelines/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-pipeline-detail`
+- `get` /api/v1/transformation/^pipelines/(?P<id>[^/.]+)/contract-drift/$
+  - Name: `transformation-pipeline-contract-drift`
+- `get` /api/v1/transformation/^pipelines/(?P<id>[^/.]+)/contract-drift\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-pipeline-contract-drift`
+- `post` /api/v1/transformation/^pipelines/(?P<id>[^/.]+)/execute/$
+  - Name: `transformation-pipeline-execute-pipeline`
+- `post` /api/v1/transformation/^pipelines/(?P<id>[^/.]+)/execute\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-pipeline-execute-pipeline`
+- `get` /api/v1/transformation/^pipelines/(?P<id>[^/.]+)/impact-preview/$
+  - Name: `transformation-pipeline-impact-preview`
+- `get` /api/v1/transformation/^pipelines/(?P<id>[^/.]+)/impact-preview\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-pipeline-impact-preview`
+- `get` /api/v1/transformation/^pipelines/(?P<id>[^/.]+)/executions/$
+  - Name: `transformation-pipeline-list-executions`
+- `get` /api/v1/transformation/^pipelines/(?P<id>[^/.]+)/executions\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-pipeline-list-executions`
+- `post` /api/v1/transformation/^pipelines/(?P<id>[^/.]+)/preview/$
+  - Name: `transformation-pipeline-preview-pipeline`
+- `post` /api/v1/transformation/^pipelines/(?P<id>[^/.]+)/preview\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-pipeline-preview-pipeline`
+- `post` /api/v1/transformation/^pipelines/(?P<id>[^/.]+)/validate/$
+  - Name: `transformation-pipeline-validate-pipeline`
+- `post` /api/v1/transformation/^pipelines/(?P<id>[^/.]+)/validate\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-pipeline-validate-pipeline`
+- `get` /api/v1/transformation/^executions/$
+  - Name: `transformation-execution-list`
+- `get` /api/v1/transformation/^executions\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-execution-list`
+- `get` /api/v1/transformation/^executions/(?P<id>[^/.]+)/$
+  - Name: `transformation-execution-detail`
+- `get` /api/v1/transformation/^executions/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-execution-detail`
+- `post` /api/v1/transformation/^executions/(?P<id>[^/.]+)/cancel/$
+  - Name: `transformation-execution-cancel-execution`
+- `post` /api/v1/transformation/^executions/(?P<id>[^/.]+)/cancel\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-execution-cancel-execution`
+- `get` /api/v1/transformation/^executions/(?P<id>[^/.]+)/progress/$
+  - Name: `transformation-execution-get-progress`
+- `get` /api/v1/transformation/^executions/(?P<id>[^/.]+)/progress\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-execution-get-progress`
+- `get` /api/v1/transformation/^executions/(?P<id>[^/.]+)/result/$
+  - Name: `transformation-execution-get-result`
+- `get` /api/v1/transformation/^executions/(?P<id>[^/.]+)/result\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-execution-get-result`
+- `get` /api/v1/transformation/^previews/$
+  - Name: `transformation-preview-list`
+- `get` /api/v1/transformation/^previews\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-preview-list`
+- `get` /api/v1/transformation/^previews/(?P<preview_id>[^/.]+)/$
+  - Name: `transformation-preview-detail`
+- `get` /api/v1/transformation/^previews/(?P<preview_id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-preview-detail`
+- `get, post` /api/v1/transformation/^wrangling/$
+  - Name: `transformation-wrangling-list`
+- `get, post` /api/v1/transformation/^wrangling\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-wrangling-list`
+- `get, put, patch, delete` /api/v1/transformation/^wrangling/(?P<id>[^/.]+)/$
+  - Name: `transformation-wrangling-detail`
+- `get, put, patch, delete` /api/v1/transformation/^wrangling/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-wrangling-detail`
+- `post` /api/v1/transformation/^wrangling/(?P<id>[^/.]+)/redo/$
+  - Name: `transformation-wrangling-redo-operation`
+- `post` /api/v1/transformation/^wrangling/(?P<id>[^/.]+)/redo\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-wrangling-redo-operation`
+- `post` /api/v1/transformation/^wrangling/(?P<id>[^/.]+)/undo/$
+  - Name: `transformation-wrangling-undo-operation`
+- `post` /api/v1/transformation/^wrangling/(?P<id>[^/.]+)/undo\.(?P<format>[a-z0-9]+)/?$
+  - Name: `transformation-wrangling-undo-operation`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/transformation
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/transformation/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Users
+
+- `get` /api/v1/users/^roles/$
+  - Name: `role-list`
+- `get` /api/v1/users/^roles\.(?P<format>[a-z0-9]+)/?$
+  - Name: `role-list`
+- `get` /api/v1/users/^roles/(?P<id>[^/.]+)/$
+  - Name: `role-detail`
+- `get` /api/v1/users/^roles/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `role-detail`
+- `get, post` /api/v1/users/^$
+  - Name: `user-list`
+- `get, post` /api/v1/users/^\.(?P<format>[a-z0-9]+)/?$
+  - Name: `user-list`
+- `post` /api/v1/users/^invite/$
+  - Name: `user-invite`
+- `post` /api/v1/users/^invite\.(?P<format>[a-z0-9]+)/?$
+  - Name: `user-invite`
+- `get, put, patch, delete` /api/v1/users/^(?P<id>[^/.]+)/$
+  - Name: `user-detail`
+- `get, put, patch, delete` /api/v1/users/^(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `user-detail`
+- `post` /api/v1/users/^(?P<id>[^/.]+)/roles/$
+  - Name: `user-manage-roles`
+- `post` /api/v1/users/^(?P<id>[^/.]+)/roles\.(?P<format>[a-z0-9]+)/?$
+  - Name: `user-manage-roles`
+- `get` /api/v1/users/^me/export-jobs/$
+  - Name: `data-export-job-list`
+- `get` /api/v1/users/^me/export-jobs\.(?P<format>[a-z0-9]+)/?$
+  - Name: `data-export-job-list`
+- `post` /api/v1/users/^me/export-jobs/export-data/$
+  - Name: `data-export-job-export-data`
+- `post` /api/v1/users/^me/export-jobs/export-data\.(?P<format>[a-z0-9]+)/?$
+  - Name: `data-export-job-export-data`
+- `get` /api/v1/users/^me/export-jobs/(?P<pk>[^/.]+)/$
+  - Name: `data-export-job-detail`
+- `get` /api/v1/users/^me/export-jobs/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `data-export-job-detail`
+- `get` /api/v1/users/^me/erasure-requests/$
+  - Name: `erasure-request-list`
+- `get` /api/v1/users/^me/erasure-requests\.(?P<format>[a-z0-9]+)/?$
+  - Name: `erasure-request-list`
+- `post` /api/v1/users/^me/erasure-requests/request-erasure/$
+  - Name: `erasure-request-request-erasure`
+- `post` /api/v1/users/^me/erasure-requests/request-erasure\.(?P<format>[a-z0-9]+)/?$
+  - Name: `erasure-request-request-erasure`
+- `get` /api/v1/users/^me/erasure-requests/(?P<pk>[^/.]+)/$
+  - Name: `erasure-request-detail`
+- `get` /api/v1/users/^me/erasure-requests/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `erasure-request-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/users
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/users/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### V1
+
+- `GET` /api/v1
+  - Name: `api-info`
+- `GET` /api/v1/capabilities/
+  - Name: `capabilities`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/openapi.json
+  - Name: `openapi-schema-v1`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/openapi.yaml
+  - Name: `openapi-schema-yaml`
+- `post` /api/v1/^observability/volume/aggregate/$
+  - Name: `observability-aggregate-volume-trends`
+- `post` /api/v1/^observability/volume/aggregate\.(?P<format>[a-z0-9]+)/?$
+  - Name: `observability-aggregate-volume-trends`
+- `post` /api/v1/^observability/schema-drift/detect/$
+  - Name: `observability-detect-schema-drift`
+- `post` /api/v1/^observability/schema-drift/detect\.(?P<format>[a-z0-9]+)/?$
+  - Name: `observability-detect-schema-drift`
+- `get` /api/v1/^observability/freshness/$
+  - Name: `observability-get-freshness-dashboard`
+- `get` /api/v1/^observability/freshness\.(?P<format>[a-z0-9]+)/?$
+  - Name: `observability-get-freshness-dashboard`
+- `get` /api/v1/^observability/lineage/$
+  - Name: `observability-get-lineage`
+- `get` /api/v1/^observability/lineage\.(?P<format>[a-z0-9]+)/?$
+  - Name: `observability-get-lineage`
+- `get` /api/v1/^observability/pipelines/$
+  - Name: `observability-get-pipeline-dashboard`
+- `get` /api/v1/^observability/pipelines\.(?P<format>[a-z0-9]+)/?$
+  - Name: `observability-get-pipeline-dashboard`
+- `get` /api/v1/^observability/schema-drift/$
+  - Name: `observability-get-schema-drift-dashboard`
+- `get` /api/v1/^observability/schema-drift\.(?P<format>[a-z0-9]+)/?$
+  - Name: `observability-get-schema-drift-dashboard`
+- `get` /api/v1/^observability/slas/$
+  - Name: `observability-get-slas-dashboard`
+- `get` /api/v1/^observability/slas\.(?P<format>[a-z0-9]+)/?$
+  - Name: `observability-get-slas-dashboard`
+- `get` /api/v1/^observability/freshness/stale/$
+  - Name: `observability-get-stale-data`
+- `get` /api/v1/^observability/freshness/stale\.(?P<format>[a-z0-9]+)/?$
+  - Name: `observability-get-stale-data`
+- `get` /api/v1/^observability/volume/$
+  - Name: `observability-get-volume-dashboard`
+- `get` /api/v1/^observability/volume\.(?P<format>[a-z0-9]+)/?$
+  - Name: `observability-get-volume-dashboard`
+- `get, post` /api/v1/^observability/incidents/$
+  - Name: `observability-incidents`
+- `get, post` /api/v1/^observability/incidents\.(?P<format>[a-z0-9]+)/?$
+  - Name: `observability-incidents`
+- `post` /api/v1/^observability/metrics/$
+  - Name: `observability-record-metric`
+- `post` /api/v1/^observability/metrics\.(?P<format>[a-z0-9]+)/?$
+  - Name: `observability-record-metric`
+- `patch` /api/v1/^observability/incidents/update/$
+  - Name: `observability-update-incident`
+- `patch` /api/v1/^observability/incidents/update\.(?P<format>[a-z0-9]+)/?$
+  - Name: `observability-update-incident`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/<drf_format_suffix:format>
+  - Name: `api-root`
+- `POST` /api/v1/test/ensure-e2e-free-plan-tenant/
+  - Name: `ensure-e2e-free-plan-tenant`
+- `POST` /api/v1/test/ensure-e2e-subscription/
+  - Name: `ensure-e2e-subscription`
+- `POST` /api/v1/test/ensure-e2e-invitation-token/
+  - Name: `ensure-e2e-invitation-token`
+- `POST` /api/v1/test/ensure-e2e-tenant-switch-setup/
+  - Name: `ensure-e2e-tenant-switch-setup`
+- `POST` /api/v1/test/ensure-e2e-users/
+  - Name: `ensure-e2e-users`
+- `GET` /api/v1/test/raise-500/
+  - Name: `raise-500`
+- `POST` /api/v1/test/reset-e2e-auth-rate-limits/
+  - Name: `reset-e2e-auth-rate-limits`
+- `POST` /api/v1/test/reset-e2e-job-queue-counters/
+  - Name: `reset-e2e-job-queue-counters`
+- `GET, POST, DELETE` /api/v1/test/webhook-sink/<str:sink_id>/
+  - Name: `webhook-sink`
+- `GET` /api/v1/test/mailhog/api/v1/messages
+  - Name: `mailhog-list`
+- `GET` /api/v1/test/mailhog/api/v1/messages/
+  - Name: `mailhog-list-slash`
+- `GET` /api/v1/test/mailhog/api/v1/messages/<str:message_id>
+  - Name: `mailhog-detail`
+- `GET` /api/v1/test/mailhog/api/v1/messages/<str:message_id>/
+  - Name: `mailhog-detail-slash`
+- `GET, POST, PATCH, DELETE, PUT` /api/v1/^(?!admin/|auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|quality/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|data-movement/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|drafts/|billing/|platform/|versioning/|workflows/|transformation/|warehouses/|notifications/|governance/|public/|test/|lineage/|breach/|gdpr/|dsar/|consent/|processor-agreements/|security/|ai/|ropa/|dpia/).*$
+  - Name: `api-not-found`
+
+### Versioning
+
+- `get` /api/v1/versioning/compare/
+  - Name: `versioning-compare`
+- `get` /api/v1/versioning/^versions/$
+  - Name: `versioning-version-list`
+- `get` /api/v1/versioning/^versions\.(?P<format>[a-z0-9]+)/?$
+  - Name: `versioning-version-list`
+- `get` /api/v1/versioning/^versions/compare/$
+  - Name: `versioning-version-compare`
+- `get` /api/v1/versioning/^versions/compare\.(?P<format>[a-z0-9]+)/?$
+  - Name: `versioning-version-compare`
+- `get` /api/v1/versioning/^versions/(?P<pk>[^/.]+)/$
+  - Name: `versioning-version-detail`
+- `get` /api/v1/versioning/^versions/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `versioning-version-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/versioning
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/versioning/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Virtualization
+
+- `get, post` /api/v1/virtualization/^datasets/$
+  - Name: `virtual-dataset-list`
+- `get, post` /api/v1/virtualization/^datasets\.(?P<format>[a-z0-9]+)/?$
+  - Name: `virtual-dataset-list`
+- `get, put, patch, delete` /api/v1/virtualization/^datasets/(?P<id>[^/.]+)/$
+  - Name: `virtual-dataset-detail`
+- `get, put, patch, delete` /api/v1/virtualization/^datasets/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `virtual-dataset-detail`
+- `post` /api/v1/virtualization/^datasets/(?P<id>[^/.]+)/queries/$
+  - Name: `virtual-dataset-execute-query`
+- `post` /api/v1/virtualization/^datasets/(?P<id>[^/.]+)/queries\.(?P<format>[a-z0-9]+)/?$
+  - Name: `virtual-dataset-execute-query`
+- `post` /api/v1/virtualization/^datasets/(?P<id>[^/.]+)/validate/$
+  - Name: `virtual-dataset-validate-dataset`
+- `post` /api/v1/virtualization/^datasets/(?P<id>[^/.]+)/validate\.(?P<format>[a-z0-9]+)/?$
+  - Name: `virtual-dataset-validate-dataset`
+- `get` /api/v1/virtualization/^datasets/(?P<id>[^/.]+)/versions/$
+  - Name: `virtual-dataset-versions`
+- `get` /api/v1/virtualization/^datasets/(?P<id>[^/.]+)/versions\.(?P<format>[a-z0-9]+)/?$
+  - Name: `virtual-dataset-versions`
+- `get` /api/v1/virtualization/^queries/$
+  - Name: `query-execution-list`
+- `get` /api/v1/virtualization/^queries\.(?P<format>[a-z0-9]+)/?$
+  - Name: `query-execution-list`
+- `get` /api/v1/virtualization/^queries/(?P<id>[^/.]+)/$
+  - Name: `query-execution-detail`
+- `get` /api/v1/virtualization/^queries/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `query-execution-detail`
+- `post` /api/v1/virtualization/^queries/(?P<id>[^/.]+)/cancel/$
+  - Name: `query-execution-cancel-execution`
+- `post` /api/v1/virtualization/^queries/(?P<id>[^/.]+)/cancel\.(?P<format>[a-z0-9]+)/?$
+  - Name: `query-execution-cancel-execution`
+- `get` /api/v1/virtualization/^queries/(?P<id>[^/.]+)/progress/$
+  - Name: `query-execution-get-progress`
+- `get` /api/v1/virtualization/^queries/(?P<id>[^/.]+)/progress\.(?P<format>[a-z0-9]+)/?$
+  - Name: `query-execution-get-progress`
+- `get` /api/v1/virtualization/^queries/(?P<id>[^/.]+)/result/$
+  - Name: `query-execution-get-result`
+- `get` /api/v1/virtualization/^queries/(?P<id>[^/.]+)/result\.(?P<format>[a-z0-9]+)/?$
+  - Name: `query-execution-get-result`
+- `get` /api/v1/virtualization/^queries/(?P<id>[^/.]+)/stream/$
+  - Name: `query-execution-stream-result`
+- `get` /api/v1/virtualization/^queries/(?P<id>[^/.]+)/stream\.(?P<format>[a-z0-9]+)/?$
+  - Name: `query-execution-stream-result`
+- `get` /api/v1/virtualization/^topology/$
+  - Name: `virtualization-topology-list`
+- `get` /api/v1/virtualization/^topology\.(?P<format>[a-z0-9]+)/?$
+  - Name: `virtualization-topology-list`
+- `get` /api/v1/virtualization/^topology/(?P<pk>[^/.]+)/$
+  - Name: `virtualization-topology-detail`
+- `get` /api/v1/virtualization/^topology/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `virtualization-topology-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/virtualization
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/virtualization/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Warehouses
+
+- `get, post` /api/v1/warehouses/^connections/$
+  - Name: `warehouse-connection-list`
+- `get, post` /api/v1/warehouses/^connections\.(?P<format>[a-z0-9]+)/?$
+  - Name: `warehouse-connection-list`
+- `get` /api/v1/warehouses/^connections/residency-mismatches/$
+  - Name: `warehouse-connection-residency-mismatches`
+- `get` /api/v1/warehouses/^connections/residency-mismatches\.(?P<format>[a-z0-9]+)/?$
+  - Name: `warehouse-connection-residency-mismatches`
+- `get, put, patch, delete` /api/v1/warehouses/^connections/(?P<id>[^/.]+)/$
+  - Name: `warehouse-connection-detail`
+- `get, put, patch, delete` /api/v1/warehouses/^connections/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `warehouse-connection-detail`
+- `get` /api/v1/warehouses/^connections/(?P<id>[^/.]+)/schema/$
+  - Name: `warehouse-connection-reflect-schema`
+- `get` /api/v1/warehouses/^connections/(?P<id>[^/.]+)/schema\.(?P<format>[a-z0-9]+)/?$
+  - Name: `warehouse-connection-reflect-schema`
+- `post` /api/v1/warehouses/^connections/(?P<id>[^/.]+)/test/$
+  - Name: `warehouse-connection-test-connection`
+- `post` /api/v1/warehouses/^connections/(?P<id>[^/.]+)/test\.(?P<format>[a-z0-9]+)/?$
+  - Name: `warehouse-connection-test-connection`
+- `get, post` /api/v1/warehouses/^acls/$
+  - Name: `warehouse-acl-list`
+- `get, post` /api/v1/warehouses/^acls\.(?P<format>[a-z0-9]+)/?$
+  - Name: `warehouse-acl-list`
+- `get, put, patch, delete` /api/v1/warehouses/^acls/(?P<id>[^/.]+)/$
+  - Name: `warehouse-acl-detail`
+- `get, put, patch, delete` /api/v1/warehouses/^acls/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `warehouse-acl-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/warehouses
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/warehouses/<drf_format_suffix:format>
+  - Name: `api-root`
+- `get` /api/v1/warehouses/query/
+- `get` /api/v1/warehouses/share/<uuid:asset_id>/
+- `get` /api/v1/warehouses/share/<uuid:asset_id>/query/
+
+### Webhooks
+
+- `get, post` /api/v1/webhooks/^webhooks/$
+  - Name: `webhook-list`
+- `get, post` /api/v1/webhooks/^webhooks\.(?P<format>[a-z0-9]+)/?$
+  - Name: `webhook-list`
+- `get` /api/v1/webhooks/^webhooks/event-types/$
+  - Name: `webhook-event-types`
+- `get` /api/v1/webhooks/^webhooks/event-types\.(?P<format>[a-z0-9]+)/?$
+  - Name: `webhook-event-types`
+- `get, put, patch, delete` /api/v1/webhooks/^webhooks/(?P<id>[^/.]+)/$
+  - Name: `webhook-detail`
+- `get, put, patch, delete` /api/v1/webhooks/^webhooks/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `webhook-detail`
+- `get` /api/v1/webhooks/^webhooks/(?P<id>[^/.]+)/deliveries/$
+  - Name: `webhook-deliveries`
+- `get` /api/v1/webhooks/^webhooks/(?P<id>[^/.]+)/deliveries\.(?P<format>[a-z0-9]+)/?$
+  - Name: `webhook-deliveries`
+- `post` /api/v1/webhooks/^webhooks/(?P<id>[^/.]+)/rotate_secret/$
+  - Name: `webhook-rotate-secret`
+- `post` /api/v1/webhooks/^webhooks/(?P<id>[^/.]+)/rotate_secret\.(?P<format>[a-z0-9]+)/?$
+  - Name: `webhook-rotate-secret`
+- `post` /api/v1/webhooks/^webhooks/(?P<id>[^/.]+)/test/$
+  - Name: `webhook-test-webhook`
+- `post` /api/v1/webhooks/^webhooks/(?P<id>[^/.]+)/test\.(?P<format>[a-z0-9]+)/?$
+  - Name: `webhook-test-webhook`
+- `get` /api/v1/webhooks/^webhook-deliveries/$
+  - Name: `webhook-delivery-list`
+- `get` /api/v1/webhooks/^webhook-deliveries\.(?P<format>[a-z0-9]+)/?$
+  - Name: `webhook-delivery-list`
+- `get` /api/v1/webhooks/^webhook-deliveries/(?P<id>[^/.]+)/$
+  - Name: `webhook-delivery-detail`
+- `get` /api/v1/webhooks/^webhook-deliveries/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$
+  - Name: `webhook-delivery-detail`
+- `post` /api/v1/webhooks/^webhook-deliveries/(?P<id>[^/.]+)/retry/$
+  - Name: `webhook-delivery-retry-delivery`
+- `post` /api/v1/webhooks/^webhook-deliveries/(?P<id>[^/.]+)/retry\.(?P<format>[a-z0-9]+)/?$
+  - Name: `webhook-delivery-retry-delivery`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/webhooks
+  - Name: `api-root`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/webhooks/<drf_format_suffix:format>
+  - Name: `api-root`
+
+### Workflows
+
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/workflows
+  - Name: `workflow-list`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/workflows/<str:name>/
+  - Name: `workflow-detail`
+- `GET, POST, PUT, PATCH, DELETE, HEAD, TRACE` /api/v1/workflows/<str:name>/trigger/
+  - Name: `workflow-trigger`

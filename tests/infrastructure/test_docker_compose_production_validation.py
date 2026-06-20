@@ -11,14 +11,14 @@ Validates:
 
 Does NOT mock — reads and validates the real docker-compose.production.yml.
 """
+
 import os
 import re
+
 import pytest
 import yaml
 
-PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..")
-)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 PRODUCTION_COMPOSE = os.path.join(PROJECT_ROOT, "docker-compose.production.yml")
 
 
@@ -31,6 +31,7 @@ def _load_compose():
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def compose_data():
@@ -50,6 +51,7 @@ def services(compose_data):
 # ---------------------------------------------------------------------------
 # 280.A.6.1.1 — File integrity
 # ---------------------------------------------------------------------------
+
 
 class TestProductionComposeFileIntegrity:
     """Validate the compose file is well-formed and parseable."""
@@ -74,9 +76,7 @@ class TestProductionComposeFileIntegrity:
     def test_production_network_exists(self, compose_data):
         """Must define hub-net-production network."""
         networks = compose_data.get("networks", {})
-        assert "hub-net-production" in networks, (
-            "Missing hub-net-production network"
-        )
+        assert "hub-net-production" in networks, "Missing hub-net-production network"
 
 
 # ---------------------------------------------------------------------------
@@ -131,13 +131,9 @@ class TestProductionHealthChecks:
                 bad.append(f"{name}: unparseable interval/timeout")
                 continue
             if not (10 <= interval_s <= 60):
-                bad.append(
-                    f"{name}: interval {interval_s}s outside 10-60s range"
-                )
+                bad.append(f"{name}: interval {interval_s}s outside 10-60s range")
             if timeout_s >= interval_s:
-                bad.append(
-                    f"{name}: timeout {timeout_s}s >= interval {interval_s}s"
-                )
+                bad.append(f"{name}: timeout {timeout_s}s >= interval {interval_s}s")
         assert not bad, f"Unreasonable health check intervals/timeouts: {bad}"
 
     def test_healthcheck_commands_use_available_tools(self, services):
@@ -187,8 +183,12 @@ class TestProductionHealthChecks:
     def test_healthcheck_start_period_exists_for_slow_services(self, services):
         """Database and heavyweight services must have a start_period."""
         SLOW_SERVICES = {
-            "postgres", "postgres-replica", "api-service",
-            "tempo", "loki", "grafana",
+            "postgres",
+            "postgres-replica",
+            "api-service",
+            "tempo",
+            "loki",
+            "grafana",
         }
         missing = []
         for name in SLOW_SERVICES:
@@ -197,14 +197,13 @@ class TestProductionHealthChecks:
                 continue
             if "start_period" not in svc.get("healthcheck", {}):
                 missing.append(name)
-        assert not missing, (
-            f"Slow-start services missing start_period: {missing}"
-        )
+        assert not missing, f"Slow-start services missing start_period: {missing}"
 
 
 # ---------------------------------------------------------------------------
 # 280.A.6.1.3 — Startup order (depends_on chains)
 # ---------------------------------------------------------------------------
+
 
 class TestProductionStartupOrder:
     """Validate that depends_on chains produce correct startup ordering."""
@@ -230,18 +229,14 @@ class TestProductionStartupOrder:
         for name, svc in services.items():
             deps = svc.get("depends_on", {})
             # depends_on in compose v3.8 can be dict or list
-            if isinstance(deps, dict):
-                for dep_name in deps:
-                    if dep_name in services:
-                        adj[name].add(dep_name)
-            elif isinstance(deps, list):
+            if isinstance(deps, dict) or isinstance(deps, list):
                 for dep_name in deps:
                     if dep_name in services:
                         adj[name].add(dep_name)
 
         # DFS-based cycle detection
         WHITE, GRAY, BLACK = 0, 1, 2
-        color = {n: WHITE for n in adj}
+        color = dict.fromkeys(adj, WHITE)
 
         def dfs(node):
             color[node] = GRAY
@@ -258,20 +253,22 @@ class TestProductionStartupOrder:
         for node in adj:
             if color[node] == WHITE:
                 cycle = dfs(node)
-                assert cycle is None, (
-                    f"Circular dependency detected: {' → '.join(cycle)}"
-                )
+                assert cycle is None, f"Circular dependency detected: {' → '.join(cycle)}"
 
     def test_infrastructure_starts_before_app(self, services):
         """Postgres, Redis, MinIO, Fuseki must start before api-service."""
         api = services.get("api-service", {})
         api_deps = set(api.get("depends_on", {}).keys())
-        infrastructure = {"pgbouncer", "redis-cache", "redis-queue",
-                          "redis-events", "redis-channels", "minio"}
+        infrastructure = {
+            "pgbouncer",
+            "redis-cache",
+            "redis-queue",
+            "redis-events",
+            "redis-channels",
+            "minio",
+        }
         for dep in infrastructure:
-            assert dep in api_deps, (
-                f"api-service must depend_on {dep} for correct startup order"
-            )
+            assert dep in api_deps, f"api-service must depend_on {dep} for correct startup order"
 
     def test_workers_depend_on_api_and_pgbouncer(self, services):
         """Worker services must depend on api-service and pgbouncer."""
@@ -281,9 +278,7 @@ class TestProductionStartupOrder:
             if worker is None:
                 continue
             deps = set(worker.get("depends_on", {}).keys())
-            assert "pgbouncer" in deps, (
-                f"{worker_name} must depend_on pgbouncer"
-            )
+            assert "pgbouncer" in deps, f"{worker_name} must depend_on pgbouncer"
             assert "api-service" in deps, (
                 f"{worker_name} must depend_on api-service (needs DB migrations)"
             )
@@ -303,14 +298,25 @@ class TestProductionStartupOrder:
 # 280.A.6.1.4 — Resource limits
 # ---------------------------------------------------------------------------
 
+
 class TestProductionResourceLimits:
     """Validate resource limits are appropriate for production."""
 
     # Services that MUST have deploy.resources defined
     SERVICES_REQUIRING_LIMITS = {
-        "postgres", "api-service", "worker-heavy", "worker-light",
-        "fuseki", "redis-cache", "redis-queue", "redis-events",
-        "redis-channels", "minio", "tempo", "loki", "prometheus",
+        "postgres",
+        "api-service",
+        "worker-heavy",
+        "worker-light",
+        "fuseki",
+        "redis-cache",
+        "redis-queue",
+        "redis-events",
+        "redis-channels",
+        "minio",
+        "tempo",
+        "loki",
+        "prometheus",
     }
 
     def test_core_services_have_resource_limits(self, services):
@@ -325,9 +331,7 @@ class TestProductionResourceLimits:
             limits = resources.get("limits", {})
             if not limits:
                 missing.append(name)
-        assert not missing, (
-            f"Core services without resource limits: {missing}"
-        )
+        assert not missing, f"Core services without resource limits: {missing}"
 
     def test_all_services_with_deploy_have_both_limits_and_reservations(self, services):
         """When deploy is specified, both limits and reservations must be set."""
@@ -389,9 +393,7 @@ class TestProductionResourceLimits:
                 resv_bytes = _parse_memory(resv_mem)
                 if limit_bytes is not None and resv_bytes is not None:
                     if resv_bytes > limit_bytes:
-                        bad.append(
-                            f"{name}: reservation {resv_mem} > limit {limit_mem}"
-                        )
+                        bad.append(f"{name}: reservation {resv_mem} > limit {limit_mem}")
         assert not bad, f"Memory reservation exceeds limit: {bad}"
 
 
@@ -399,17 +401,18 @@ class TestProductionResourceLimits:
 # 280.A.6.1.5 — Security: ports
 # ---------------------------------------------------------------------------
 
+
 class TestProductionPortSecurity:
     """Validate port exposures follow the principle of least privilege."""
 
     # Services allowed to expose ports to the host
     ALLOWED_HOST_PORTS = {
-        "traefik",        # 80/443 — reverse proxy entrypoint
-        "otel-collector", # 4317/4318 — OTLP ingestion
-        "tempo",          # 3200 — tracing query API
-        "prometheus",     # 9090 — metrics scraping
-        "alertmanager",   # 9093 — alert routing
-        "grafana",        # 3000 — observability dashboards
+        "traefik",  # 80/443 — reverse proxy entrypoint
+        "otel-collector",  # 4317/4318 — OTLP ingestion
+        "tempo",  # 3200 — tracing query API
+        "prometheus",  # 9090 — metrics scraping
+        "alertmanager",  # 9093 — alert routing
+        "grafana",  # 3000 — observability dashboards
     }
 
     def test_only_approved_services_expose_ports(self, services):
@@ -438,20 +441,25 @@ class TestProductionPortSecurity:
 
     def test_database_redis_no_host_ports(self, services):
         """PostgreSQL and Redis must never expose ports to the host."""
-        for name in ("postgres", "pgbouncer", "redis-cache", "redis-queue",
-                      "redis-events", "redis-channels"):
+        for name in (
+            "postgres",
+            "pgbouncer",
+            "redis-cache",
+            "redis-queue",
+            "redis-events",
+            "redis-channels",
+        ):
             svc = services.get(name)
             if svc is None:
                 continue
             ports = svc.get("ports", [])
-            assert not ports, (
-                f"{name} must not expose ports in production"
-            )
+            assert not ports, f"{name} must not expose ports in production"
 
 
 # ---------------------------------------------------------------------------
 # 280.A.6.1.6 — Service restart policies
 # ---------------------------------------------------------------------------
+
 
 class TestProductionRestartPolicies:
     """Validate restart policies for production reliability."""
@@ -473,9 +481,7 @@ class TestProductionRestartPolicies:
         api = services.get("api-service", {})
         deploy = api.get("deploy", {})
         restart_policy = deploy.get("restart_policy", {})
-        assert restart_policy, (
-            "api-service must have deploy.restart_policy configured"
-        )
+        assert restart_policy, "api-service must have deploy.restart_policy configured"
         assert restart_policy.get("condition") == "on-failure", (
             "api-service restart condition should be on-failure"
         )
@@ -485,6 +491,7 @@ class TestProductionRestartPolicies:
 # 280.A.6.1.7 — Environment variables
 # ---------------------------------------------------------------------------
 
+
 class TestProductionEnvironmentVariables:
     """Validate environment variable configuration."""
 
@@ -492,9 +499,7 @@ class TestProductionEnvironmentVariables:
         """api-service must source .env.production."""
         api = services.get("api-service", {})
         env_files = api.get("env_file", [])
-        assert ".env.production" in env_files, (
-            "api-service must use env_file: .env.production"
-        )
+        assert ".env.production" in env_files, "api-service must use env_file: .env.production"
 
     def test_api_service_overrides_debug_and_environment(self, services):
         """api-service must explicitly set DEBUG=False and ENVIRONMENT=production."""
@@ -506,9 +511,7 @@ class TestProductionEnvironmentVariables:
         assert "DEBUG=False" in env_str or "DEBUG=false" in env_str, (
             "api-service must set DEBUG=False"
         )
-        assert "ENVIRONMENT=production" in env_str, (
-            "api-service must set ENVIRONMENT=production"
-        )
+        assert "ENVIRONMENT=production" in env_str, "api-service must set ENVIRONMENT=production"
 
     def test_pgbouncer_enabled_flag_is_set(self, services):
         """Services connecting through pgbouncer must set PGBOUNCER_ENABLED=true."""
@@ -521,14 +524,13 @@ class TestProductionEnvironmentVariables:
             if isinstance(env, dict):
                 env = [f"{k}={v}" for k, v in env.items()]
             env_str = " ".join(str(e) for e in env)
-            assert "PGBOUNCER_ENABLED=true" in env_str, (
-                f"{name} must set PGBOUNCER_ENABLED=true"
-            )
+            assert "PGBOUNCER_ENABLED=true" in env_str, f"{name} must set PGBOUNCER_ENABLED=true"
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _parse_memory(value):
     """Parse a Docker Compose memory string to bytes. Returns None on failure."""

@@ -1,7 +1,8 @@
 """Phase D (TR.D.6) — DSAR test expansion: service + API + feature-flag + audit."""
-import pytest
+
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -24,13 +25,15 @@ class DsarServiceTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"ds-svc-{uid}", slug=f"ds-svc-{uid}",
+            name=f"ds-svc-{uid}",
+            slug=f"ds-svc-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_dsar_enabled=True,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email=f"ds-svc-{uid}@test.local", password="Pass1234!",
+            email=f"ds-svc-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
 
@@ -38,7 +41,7 @@ class DsarServiceTests(TestCase):
         """Verify DSARRequest model is importable and field contract is intact."""
         assert self.tenant.id is not None
         fields = {f.name for f in DSARRequest._meta.get_fields()}
-        for required in ('tenant', 'request_type', 'subject_email', 'status'):
+        for required in ("tenant", "request_type", "subject_email", "status"):
             assert required in fields, f"DSARRequest must have '{required}' field"
 
     def test_service_create(self):
@@ -67,11 +70,15 @@ class DsarServiceTests(TestCase):
         )
         assert dsar.status == DSARStatus.SUBMITTED
 
-        transition_status(dsar, DSARStatus.UNDER_REVIEW, actor_user=self.user, notes="Starting review")
+        transition_status(
+            dsar, DSARStatus.UNDER_REVIEW, actor_user=self.user, notes="Starting review"
+        )
         dsar.refresh_from_db()
         assert dsar.status == DSARStatus.UNDER_REVIEW
 
-        transition_status(dsar, DSARStatus.CLOSED_FULFILLED, actor_user=self.user, notes="Request fulfilled")
+        transition_status(
+            dsar, DSARStatus.CLOSED_FULFILLED, actor_user=self.user, notes="Request fulfilled"
+        )
         dsar.refresh_from_db()
         assert dsar.status == DSARStatus.CLOSED_FULFILLED
 
@@ -82,17 +89,20 @@ class DsarApiTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"ds-api-{uid}", slug=f"ds-api-{uid}",
+            name=f"ds-api-{uid}",
+            slug=f"ds-api-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_dsar_enabled=True,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email=f"ds-api-{uid}@test.local", password="Pass1234!",
+            email=f"ds-api-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         role, _ = Role.objects.get_or_create(
-            name="TENANT_ADMIN", tenant=self.tenant,
+            name="TENANT_ADMIN",
+            tenant=self.tenant,
             defaults={"description": "Tenant Administrator"},
         )
         UserRole.objects.get_or_create(user=self.user, tenant=self.tenant, role=role)
@@ -108,11 +118,15 @@ class DsarApiTests(TestCase):
     def test_public_submission(self):
         """Public DSAR submission endpoint accepts anonymous POST at /api/v1/public/dsar-requests/."""
         public_client = APIClient()
-        resp = public_client.post("/api/v1/public/dsar-requests/", {
-            "request_type": DSARRequestType.ACCESS,
-            "subject_email": "public@example.com",
-            "regimes": ["GDPR"],
-        }, format="json")
+        resp = public_client.post(
+            "/api/v1/public/dsar-requests/",
+            {
+                "request_type": DSARRequestType.ACCESS,
+                "subject_email": "public@example.com",
+                "regimes": ["GDPR"],
+            },
+            format="json",
+        )
         # Public submit returns 201 on success or 400 if captcha/validation fails
         assert resp.status_code in (201, 202, 400)
 
@@ -123,17 +137,20 @@ class DsarFeatureFlagTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"ds-ff-{uid}", slug=f"ds-ff-{uid}",
+            name=f"ds-ff-{uid}",
+            slug=f"ds-ff-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_dsar_enabled=False,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email=f"ds-ff-{uid}@test.local", password="Pass1234!",
+            email=f"ds-ff-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         role, _ = Role.objects.get_or_create(
-            name="TENANT_ADMIN", tenant=self.tenant,
+            name="TENANT_ADMIN",
+            tenant=self.tenant,
             defaults={"description": "Tenant Administrator"},
         )
         UserRole.objects.get_or_create(user=self.user, tenant=self.tenant, role=role)
@@ -143,6 +160,7 @@ class DsarFeatureFlagTests(TestCase):
     def test_flag_disabled_gated(self):
         """When compliance_dsar_enabled=False, create_dsar_public raises ValidationError."""
         from django.core.exceptions import ValidationError
+
         with self.assertRaises(ValidationError):
             create_dsar_public(
                 tenant_id=str(self.tenant.id),
@@ -165,13 +183,15 @@ class DsarAuditTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"ds-audit-{uid}", slug=f"ds-audit-{uid}",
+            name=f"ds-audit-{uid}",
+            slug=f"ds-audit-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_dsar_enabled=True,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email=f"ds-audit-{uid}@test.local", password="Pass1234!",
+            email=f"ds-audit-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
 

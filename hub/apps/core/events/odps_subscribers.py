@@ -9,7 +9,10 @@ Handles subscriptions for:
 - Notification service (odps.*)
 - Audit service (odps.*)
 """
-from typing import Dict, Any, Optional
+
+import contextlib
+from typing import Any
+
 import structlog
 from django.db import transaction
 
@@ -20,7 +23,7 @@ logger = structlog.get_logger(__name__)
 
 # Semantic Service Subscriber
 @event_subscriber("semantic_service", "odps.created")
-def handle_odps_created_for_semantic(event: Dict[str, Any]) -> None:
+def handle_odps_created_for_semantic(event: dict[str, Any]) -> None:
     """
     Handle odps.created event for semantic service.
 
@@ -35,7 +38,7 @@ def handle_odps_created_for_semantic(event: Dict[str, Any]) -> None:
             logger.warning(
                 "odps_created_missing_contract_id",
                 event_id=event.get("event_id"),
-                event_type=event.get("event_type")
+                event_type=event.get("event_type"),
             )
             return
 
@@ -50,7 +53,7 @@ def handle_odps_created_for_semantic(event: Dict[str, Any]) -> None:
             logger.warning(
                 "odps_created_contract_not_found",
                 contract_id=contract_id,
-                event_id=event.get("event_id")
+                event_id=event.get("event_id"),
             )
             return
 
@@ -63,7 +66,7 @@ def handle_odps_created_for_semantic(event: Dict[str, Any]) -> None:
             logger.warning(
                 "odps_created_no_product_in_contract",
                 contract_id=contract_id,
-                event_id=event.get("event_id")
+                event_id=event.get("event_id"),
             )
             return
 
@@ -79,9 +82,7 @@ def handle_odps_created_for_semantic(event: Dict[str, Any]) -> None:
         # Map ODPS to RDF via semantic service
         client = SemanticServiceClient()
         result = client.map_odps(
-            product=product,
-            product_uuid=str(contract_id),
-            odcs_contract_uuid=odcs_contract_id
+            product=product, product_uuid=str(contract_id), odcs_contract_uuid=odcs_contract_id
         )
 
         if result.get("semantic_status") == "OK":
@@ -90,7 +91,7 @@ def handle_odps_created_for_semantic(event: Dict[str, Any]) -> None:
                 contract_id=contract_id,
                 product_uri=result.get("product_uri"),
                 triples_count=result.get("triples_count"),
-                event_id=event.get("event_id")
+                event_id=event.get("event_id"),
             )
         else:
             logger.warning(
@@ -98,22 +99,22 @@ def handle_odps_created_for_semantic(event: Dict[str, Any]) -> None:
                 contract_id=contract_id,
                 semantic_status=result.get("semantic_status"),
                 error=result.get("error"),
-                event_id=event.get("event_id")
+                event_id=event.get("event_id"),
             )
 
     except Exception as e:
         logger.error(
             "odps_created_semantic_handler_error",
-            contract_id=event_data.get("contract_id") if 'event_data' in locals() else None,
+            contract_id=event_data.get("contract_id") if "event_data" in locals() else None,
             event_id=event.get("event_id"),
             error=str(e),
-            exc_info=True
+            exc_info=True,
         )
         # Don't raise - event processing should be resilient
 
 
 @event_subscriber("semantic_service", "odps.updated")
-def handle_odps_updated_for_semantic(event: Dict[str, Any]) -> None:
+def handle_odps_updated_for_semantic(event: dict[str, Any]) -> None:
     """
     Handle odps.updated event for semantic service.
 
@@ -127,7 +128,7 @@ def handle_odps_updated_for_semantic(event: Dict[str, Any]) -> None:
             logger.warning(
                 "odps_updated_missing_contract_id",
                 event_id=event.get("event_id"),
-                event_type=event.get("event_type")
+                event_type=event.get("event_type"),
             )
             return
 
@@ -142,7 +143,7 @@ def handle_odps_updated_for_semantic(event: Dict[str, Any]) -> None:
             logger.warning(
                 "odps_updated_contract_not_found",
                 contract_id=contract_id,
-                event_id=event.get("event_id")
+                event_id=event.get("event_id"),
             )
             return
 
@@ -154,7 +155,7 @@ def handle_odps_updated_for_semantic(event: Dict[str, Any]) -> None:
             logger.warning(
                 "odps_updated_no_product_in_contract",
                 contract_id=contract_id,
-                event_id=event.get("event_id")
+                event_id=event.get("event_id"),
             )
             return
 
@@ -170,9 +171,7 @@ def handle_odps_updated_for_semantic(event: Dict[str, Any]) -> None:
         # Re-map ODPS to RDF via semantic service
         client = SemanticServiceClient()
         result = client.map_odps(
-            product=product,
-            product_uuid=str(contract_id),
-            odcs_contract_uuid=odcs_contract_id
+            product=product, product_uuid=str(contract_id), odcs_contract_uuid=odcs_contract_id
         )
 
         if result.get("semantic_status") == "OK":
@@ -181,7 +180,7 @@ def handle_odps_updated_for_semantic(event: Dict[str, Any]) -> None:
                 contract_id=contract_id,
                 product_uri=result.get("product_uri"),
                 triples_count=result.get("triples_count"),
-                event_id=event.get("event_id")
+                event_id=event.get("event_id"),
             )
         else:
             logger.warning(
@@ -189,23 +188,23 @@ def handle_odps_updated_for_semantic(event: Dict[str, Any]) -> None:
                 contract_id=contract_id,
                 semantic_status=result.get("semantic_status"),
                 error=result.get("error"),
-                event_id=event.get("event_id")
+                event_id=event.get("event_id"),
             )
 
     except Exception as e:
         logger.error(
             "odps_updated_semantic_handler_error",
-            contract_id=event_data.get("contract_id") if 'event_data' in locals() else None,
+            contract_id=event_data.get("contract_id") if "event_data" in locals() else None,
             event_id=event.get("event_id"),
             error=str(e),
-            exc_info=True
+            exc_info=True,
         )
         # Don't raise - event processing should be resilient
 
 
 # Marketplace Service Subscriber
 @event_subscriber("marketplace_service", "odps.linked")
-def handle_odps_linked_for_marketplace(event: Dict[str, Any]) -> None:
+def handle_odps_linked_for_marketplace(event: dict[str, Any]) -> None:
     """
     Handle odps.linked event for marketplace service.
 
@@ -221,14 +220,13 @@ def handle_odps_linked_for_marketplace(event: Dict[str, Any]) -> None:
                 "odps_linked_missing_contract_ids",
                 event_id=event.get("event_id"),
                 odps_contract_id=odps_contract_id,
-                odcs_contract_id=odcs_contract_id
+                odcs_contract_id=odcs_contract_id,
             )
             return
 
         # Import here to avoid circular imports
         from hub.apps.contracts.models import Contract
         from hub.apps.marketplace.models import Listing
-        from hub.apps.marketplace.services import MarketplaceService
 
         # Get ODPS contract to find associated asset
         try:
@@ -237,15 +235,14 @@ def handle_odps_linked_for_marketplace(event: Dict[str, Any]) -> None:
             logger.warning(
                 "odps_linked_odps_contract_not_found",
                 odps_contract_id=odps_contract_id,
-                event_id=event.get("event_id")
+                event_id=event.get("event_id"),
             )
             return
 
         # Find marketplace listings for the asset
         if odps_contract.asset:
             listings = Listing.objects.filter(
-                asset=odps_contract.asset,
-                status__in=["PUBLISHED", "DRAFT"]
+                asset=odps_contract.asset, status__in=["PUBLISHED", "DRAFT"]
             )
 
             # Update listings to reflect ODPS-ODCS linkage
@@ -259,28 +256,30 @@ def handle_odps_linked_for_marketplace(event: Dict[str, Any]) -> None:
                     asset_id=str(odps_contract.asset.id),
                     odps_contract_id=odps_contract_id,
                     odcs_contract_id=odcs_contract_id,
-                    event_id=event.get("event_id")
+                    event_id=event.get("event_id"),
                 )
         else:
             logger.debug(
                 "odps_linked_no_asset",
                 odps_contract_id=odps_contract_id,
-                event_id=event.get("event_id")
+                event_id=event.get("event_id"),
             )
 
     except Exception as e:
         logger.error(
             "odps_linked_marketplace_handler_error",
-            odps_contract_id=event_data.get("odps_contract_id") if 'event_data' in locals() else None,
+            odps_contract_id=event_data.get("odps_contract_id")
+            if "event_data" in locals()
+            else None,
             event_id=event.get("event_id"),
             error=str(e),
-            exc_info=True
+            exc_info=True,
         )
         # Don't raise - event processing should be resilient
 
 
 @event_subscriber("marketplace_service", "odps.updated")
-def handle_odps_updated_for_marketplace(event: Dict[str, Any]) -> None:
+def handle_odps_updated_for_marketplace(event: dict[str, Any]) -> None:
     """
     Handle odps.updated event for marketplace service.
 
@@ -294,7 +293,7 @@ def handle_odps_updated_for_marketplace(event: Dict[str, Any]) -> None:
             logger.warning(
                 "odps_updated_marketplace_missing_contract_id",
                 event_id=event.get("event_id"),
-                event_type=event.get("event_type")
+                event_type=event.get("event_type"),
             )
             return
 
@@ -309,15 +308,14 @@ def handle_odps_updated_for_marketplace(event: Dict[str, Any]) -> None:
             logger.warning(
                 "odps_updated_marketplace_contract_not_found",
                 contract_id=contract_id,
-                event_id=event.get("event_id")
+                event_id=event.get("event_id"),
             )
             return
 
         # Find marketplace listings for the asset
         if contract.asset:
             listings = Listing.objects.filter(
-                asset=contract.asset,
-                status__in=["PUBLISHED", "DRAFT"]
+                asset=contract.asset, status__in=["PUBLISHED", "DRAFT"]
             )
 
             # Update listings to reflect ODPS changes
@@ -328,29 +326,29 @@ def handle_odps_updated_for_marketplace(event: Dict[str, Any]) -> None:
                     asset_id=str(contract.asset.id),
                     contract_id=contract_id,
                     changes=event_data.get("changes", {}),
-                    event_id=event.get("event_id")
+                    event_id=event.get("event_id"),
                 )
         else:
             logger.debug(
                 "odps_updated_marketplace_no_asset",
                 contract_id=contract_id,
-                event_id=event.get("event_id")
+                event_id=event.get("event_id"),
             )
 
     except Exception as e:
         logger.error(
             "odps_updated_marketplace_handler_error",
-            contract_id=event_data.get("contract_id") if 'event_data' in locals() else None,
+            contract_id=event_data.get("contract_id") if "event_data" in locals() else None,
             event_id=event.get("event_id"),
             error=str(e),
-            exc_info=True
+            exc_info=True,
         )
         # Don't raise - event processing should be resilient
 
 
 # Asset Service Subscriber
 @event_subscriber("asset_service", "odps.linked")
-def handle_odps_linked_for_asset(event: Dict[str, Any]) -> None:
+def handle_odps_linked_for_asset(event: dict[str, Any]) -> None:
     """
     Handle odps.linked event for asset service.
 
@@ -366,13 +364,12 @@ def handle_odps_linked_for_asset(event: Dict[str, Any]) -> None:
                 "odps_linked_asset_missing_contract_ids",
                 event_id=event.get("event_id"),
                 odps_contract_id=odps_contract_id,
-                odcs_contract_id=odcs_contract_id
+                odcs_contract_id=odcs_contract_id,
             )
             return
 
         # Import here to avoid circular imports
         from hub.apps.contracts.models import Contract
-        from hub.apps.assets.models import Asset
 
         # Get ODPS contract to find associated asset
         try:
@@ -381,7 +378,7 @@ def handle_odps_linked_for_asset(event: Dict[str, Any]) -> None:
             logger.warning(
                 "odps_linked_asset_odps_contract_not_found",
                 odps_contract_id=odps_contract_id,
-                event_id=event.get("event_id")
+                event_id=event.get("event_id"),
             )
             return
 
@@ -395,7 +392,7 @@ def handle_odps_linked_for_asset(event: Dict[str, Any]) -> None:
                 asset_id=str(asset.id),
                 odps_contract_id=odps_contract_id,
                 odcs_contract_id=odcs_contract_id,
-                event_id=event.get("event_id")
+                event_id=event.get("event_id"),
             )
 
             # Asset service can perform additional updates if needed
@@ -404,23 +401,25 @@ def handle_odps_linked_for_asset(event: Dict[str, Any]) -> None:
             logger.debug(
                 "odps_linked_asset_no_asset",
                 odps_contract_id=odps_contract_id,
-                event_id=event.get("event_id")
+                event_id=event.get("event_id"),
             )
 
     except Exception as e:
         logger.error(
             "odps_linked_asset_handler_error",
-            odps_contract_id=event_data.get("odps_contract_id") if 'event_data' in locals() else None,
+            odps_contract_id=event_data.get("odps_contract_id")
+            if "event_data" in locals()
+            else None,
             event_id=event.get("event_id"),
             error=str(e),
-            exc_info=True
+            exc_info=True,
         )
         # Don't raise - event processing should be resilient
 
 
 # Notification Service Subscriber
 @event_subscriber("notification_service", "odps.*")
-def handle_odps_events_for_notification(event: Dict[str, Any]) -> None:
+def handle_odps_events_for_notification(event: dict[str, Any]) -> None:
     """
     Handle all ODPS events for notification service.
 
@@ -434,8 +433,9 @@ def handle_odps_events_for_notification(event: Dict[str, Any]) -> None:
         user_id = source.get("user_id")
 
         # Import here to avoid circular imports
-        from hub.apps.tenants.models import Tenant
         from django.contrib.auth import get_user_model
+
+        from hub.apps.tenants.models import Tenant
 
         User = get_user_model()
 
@@ -446,19 +446,13 @@ def handle_odps_events_for_notification(event: Dict[str, Any]) -> None:
             message += f" (Contract: {contract_id[:8]}...)"
 
         # Get tenant and user if available
-        tenant = None
-        user = None
         if tenant_id:
-            try:
-                tenant = Tenant.objects.get(id=tenant_id)
-            except Tenant.DoesNotExist:
-                pass
+            with contextlib.suppress(Tenant.DoesNotExist):
+                Tenant.objects.get(id=tenant_id)
 
         if user_id:
-            try:
-                user = User.objects.get(id=user_id)
-            except User.DoesNotExist:
-                pass
+            with contextlib.suppress(User.DoesNotExist):
+                User.objects.get(id=user_id)
 
         # Log notification event
         # In the future, this could integrate with a notification service
@@ -475,8 +469,8 @@ def handle_odps_events_for_notification(event: Dict[str, Any]) -> None:
                 "event_type": event_type,
                 "event_id": event.get("event_id"),
                 "contract_id": contract_id,
-                **event_data
-            }
+                **event_data,
+            },
         )
 
     except Exception as e:
@@ -485,14 +479,14 @@ def handle_odps_events_for_notification(event: Dict[str, Any]) -> None:
             event_type=event.get("event_type"),
             event_id=event.get("event_id"),
             error=str(e),
-            exc_info=True
+            exc_info=True,
         )
         # Don't raise - event processing should be resilient
 
 
 # Audit Service Subscriber
 @event_subscriber("audit_service", "odps.*")
-def handle_odps_events_for_audit(event: Dict[str, Any]) -> None:
+def handle_odps_events_for_audit(event: dict[str, Any]) -> None:
     """
     Handle all ODPS events for audit service.
 
@@ -506,9 +500,10 @@ def handle_odps_events_for_audit(event: Dict[str, Any]) -> None:
         user_id = source.get("user_id")
 
         # Import here to avoid circular imports
+        from django.contrib.auth import get_user_model
+
         from hub.apps.audit.utils import create_audit_event
         from hub.apps.tenants.models import Tenant
-        from django.contrib.auth import get_user_model
 
         User = get_user_model()
 
@@ -530,16 +525,12 @@ def handle_odps_events_for_audit(event: Dict[str, Any]) -> None:
         tenant = None
         user = None
         if tenant_id:
-            try:
+            with contextlib.suppress(Tenant.DoesNotExist):
                 tenant = Tenant.objects.get(id=tenant_id)
-            except Tenant.DoesNotExist:
-                pass
 
         if user_id:
-            try:
+            with contextlib.suppress(User.DoesNotExist):
                 user = User.objects.get(id=user_id)
-            except User.DoesNotExist:
-                pass
 
         # Get resource ID
         resource_id = event_data.get("contract_id") or event_data.get("odps_contract_id") or None
@@ -553,11 +544,7 @@ def handle_odps_events_for_audit(event: Dict[str, Any]) -> None:
                 tenant=tenant,
                 resource_id=resource_id,
                 result="SUCCESS",
-                details={
-                    "event_type": event_type,
-                    "event_id": event.get("event_id"),
-                    **event_data
-                }
+                details={"event_type": event_type, "event_id": event.get("event_id"), **event_data},
             )
 
         logger.info(
@@ -565,7 +552,7 @@ def handle_odps_events_for_audit(event: Dict[str, Any]) -> None:
             event_type=event_type,
             action=action,
             resource_id=resource_id,
-            event_id=event.get("event_id")
+            event_id=event.get("event_id"),
         )
 
     except Exception as e:
@@ -574,7 +561,6 @@ def handle_odps_events_for_audit(event: Dict[str, Any]) -> None:
             event_type=event.get("event_type"),
             event_id=event.get("event_id"),
             error=str(e),
-            exc_info=True
+            exc_info=True,
         )
         # Don't raise - event processing should be resilient
-

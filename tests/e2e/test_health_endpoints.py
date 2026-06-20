@@ -15,7 +15,6 @@ import json
 import pytest
 from django.test import TestCase
 
-
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
 

@@ -37,6 +37,7 @@ def _run_django_with_env(env_overrides, timeout=120):
     ]
     result = subprocess.run(
         cmd,
+        check=False,
         cwd=PROJECT_ROOT,
         env=env,
         capture_output=True,
@@ -52,11 +53,13 @@ class TestProductionSecrets:
 
     def test_production_fails_when_secret_key_is_dev_default(self):
         """When ENVIRONMENT=production and SECRET_KEY is dev default, Django must fail to start."""
-        returncode, err = _run_django_with_env({
-            "ENVIRONMENT": "production",
-            "SECRET_KEY": DEV_SECRET_KEY,
-            "JWT_SECRET_KEY": "any-non-default-jwt-secret-for-test",
-        })
+        returncode, err = _run_django_with_env(
+            {
+                "ENVIRONMENT": "production",
+                "SECRET_KEY": DEV_SECRET_KEY,
+                "JWT_SECRET_KEY": "any-non-default-jwt-secret-for-test",
+            }
+        )
         assert returncode != 0, (
             f"Expected Django to fail when ENVIRONMENT=production and SECRET_KEY is dev default. stderr: {err}"
         )
@@ -64,11 +67,13 @@ class TestProductionSecrets:
 
     def test_production_fails_when_jwt_secret_key_is_dev_default(self):
         """When ENVIRONMENT=production and JWT_SECRET_KEY is dev default, Django must fail to start."""
-        returncode, err = _run_django_with_env({
-            "ENVIRONMENT": "production",
-            "SECRET_KEY": "any-non-default-secret-for-test",
-            "JWT_SECRET_KEY": DEV_JWT_SECRET_KEY,
-        })
+        returncode, err = _run_django_with_env(
+            {
+                "ENVIRONMENT": "production",
+                "SECRET_KEY": "any-non-default-secret-for-test",
+                "JWT_SECRET_KEY": DEV_JWT_SECRET_KEY,
+            }
+        )
         assert returncode != 0, (
             f"Expected Django to fail when ENVIRONMENT=production and JWT_SECRET_KEY is dev default. stderr: {err}"
         )
@@ -76,22 +81,26 @@ class TestProductionSecrets:
 
     def test_production_succeeds_when_both_secrets_are_non_default(self):
         """When ENVIRONMENT=production and both secrets are set to non-default values, Django starts."""
-        returncode, err = _run_django_with_env({
-            "ENVIRONMENT": "production",
-            "SECRET_KEY": "production-secret-key-at-least-50-chars-long-for-test",
-            "JWT_SECRET_KEY": "production-jwt-secret-key-at-least-32-chars",
-        })
+        returncode, err = _run_django_with_env(
+            {
+                "ENVIRONMENT": "production",
+                "SECRET_KEY": "production-secret-key-at-least-50-chars-long-for-test",
+                "JWT_SECRET_KEY": "production-jwt-secret-key-at-least-32-chars",
+            }
+        )
         assert returncode == 0, (
             f"Expected Django to start when ENVIRONMENT=production and both secrets are non-default. stderr: {err}"
         )
 
     def test_development_allows_dev_default_secrets(self):
         """When ENVIRONMENT is not production, dev default secrets are allowed (no failure)."""
-        returncode, err = _run_django_with_env({
-            "ENVIRONMENT": "development",
-            "SECRET_KEY": DEV_SECRET_KEY,
-            "JWT_SECRET_KEY": DEV_JWT_SECRET_KEY,
-        })
+        returncode, err = _run_django_with_env(
+            {
+                "ENVIRONMENT": "development",
+                "SECRET_KEY": DEV_SECRET_KEY,
+                "JWT_SECRET_KEY": DEV_JWT_SECRET_KEY,
+            }
+        )
         assert returncode == 0, (
             f"Expected Django to start in development with dev default secrets. stderr: {err}"
         )

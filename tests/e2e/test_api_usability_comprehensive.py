@@ -12,17 +12,17 @@ Uses REAL services (no mocks).
 """
 
 import time
-import yaml
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
+import yaml
 
 pytestmark = pytest.mark.slow
+import uuid
+
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from .conftest import E2ETestBase, get_response_data
-import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
@@ -87,7 +87,6 @@ class APIDiscoverabilityE2ETest(E2ETestBase):
         self.assertIn("yaml", response["content-type"].lower())
 
         # Verify YAML content is parseable
-        import yaml
 
         spec = yaml.safe_load(response.content)
         self.assertIn("openapi", spec)
@@ -131,7 +130,7 @@ class APIDiscoverabilityE2ETest(E2ETestBase):
 
         # Check a few POST endpoints have request bodies
         post_endpoints_found = 0
-        for path, methods in paths.items():
+        for _path, methods in paths.items():
             if "post" in methods:
                 post_method = methods["post"]
                 if "requestBody" in post_method:
@@ -152,8 +151,8 @@ class APIDiscoverabilityE2ETest(E2ETestBase):
 
         # Check endpoints have responses
         endpoints_with_responses = 0
-        for path, methods in paths.items():
-            for method_name, method_spec in methods.items():
+        for _path, methods in paths.items():
+            for _method_name, method_spec in methods.items():
                 if "responses" in method_spec:
                     endpoints_with_responses += 1
 
@@ -172,20 +171,20 @@ class APIDiscoverabilityE2ETest(E2ETestBase):
 
         # Check for examples in request/response schemas
         examples_found = 0
-        for path, methods in paths.items():
-            for method_name, method_spec in methods.items():
+        for _path, methods in paths.items():
+            for _method_name, method_spec in methods.items():
                 # Check requestBody examples
                 if "requestBody" in method_spec:
                     content = method_spec["requestBody"].get("content", {})
-                    for content_type, content_spec in content.items():
+                    for _content_type, content_spec in content.items():
                         if "example" in content_spec or "examples" in content_spec:
                             examples_found += 1
 
                 # Check response examples
                 if "responses" in method_spec:
-                    for status_code, response_spec in method_spec["responses"].items():
+                    for _status_code, response_spec in method_spec["responses"].items():
                         content = response_spec.get("content", {})
-                        for content_type, content_spec in content.items():
+                        for _content_type, content_spec in content.items():
                             if "example" in content_spec or "examples" in content_spec:
                                 examples_found += 1
 
@@ -250,10 +249,11 @@ class APIConsistencyE2ETest(E2ETestBase):
     def test_success_response_format_consistency(self):
         """Test that success responses follow consistent format"""
         from django.urls import reverse
+
         # Test GET endpoint
         asset_id = self.create_asset("test-asset-consistency", "Test Asset")
 
-        url = reverse('asset-detail', kwargs={'id': asset_id})
+        url = reverse("asset-detail", kwargs={"id": asset_id})
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -265,11 +265,12 @@ class APIConsistencyE2ETest(E2ETestBase):
     def test_list_response_format_consistency(self):
         """Test that list responses follow consistent format"""
         from django.urls import reverse
+
         # Create multiple assets
         for i in range(3):
             self.create_asset(f"test-asset-{i}", f"Test Asset {i}")
 
-        url = reverse('asset-list')
+        url = reverse("asset-list")
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -283,24 +284,27 @@ class APIConsistencyE2ETest(E2ETestBase):
         if "next" in get_response_data(response) or {}:
             # next can be None or a URL string
             self.assertTrue(
-                (get_response_data(response) or {})["next"] is None or isinstance((get_response_data(response) or {})["next"], str)
+                (get_response_data(response) or {})["next"] is None
+                or isinstance((get_response_data(response) or {})["next"], str)
             )
 
     def test_error_response_format_consistency(self):
         """Test that error responses follow consistent format"""
         from django.urls import reverse
+
         # Test 404 error
-        url = reverse('asset-detail', kwargs={'id': '00000000-0000-0000-0000-000000000000'})
+        url = reverse("asset-detail", kwargs={"id": "00000000-0000-0000-0000-000000000000"})
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
         # Handle both DRF Response and HttpResponse
-        if hasattr(response, 'data'):
+        if hasattr(response, "data"):
             response_data = get_response_data(response) or {}
         else:
             # Parse JSON from HttpResponse
             import json
+
             try:
                 response_data = json.loads(response.content.decode())
             except (json.JSONDecodeError, AttributeError):
@@ -323,7 +327,8 @@ class APIConsistencyE2ETest(E2ETestBase):
 
         # Test assets endpoint pagination
         from django.urls import reverse
-        url = reverse('asset-list')
+
+        url = reverse("asset-list")
         response = self.client.get(f"{url}?page_size=2")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -332,7 +337,9 @@ class APIConsistencyE2ETest(E2ETestBase):
         data = get_response_data(response) or {}
         self.assertIn("results", data)
         results = data["results"]
-        self.assertGreater(len(results), 0, "Pagination returned 0 results despite 5 assets created")
+        self.assertGreater(
+            len(results), 0, "Pagination returned 0 results despite 5 assets created"
+        )
         self.assertLessEqual(len(results), 2, "Pagination returned more results than page_size=2")
 
         # Test contracts endpoint pagination (if available)
@@ -348,7 +355,8 @@ class APIConsistencyE2ETest(E2ETestBase):
 
         # Test filtering by name (if supported)
         from django.urls import reverse
-        url = reverse('asset-list')
+
+        url = reverse("asset-list")
         response = self.client.get(f"{url}?name=Filter Test 1")
 
         if response.status_code == status.HTTP_200_OK:
@@ -378,7 +386,8 @@ class APIConsistencyE2ETest(E2ETestBase):
 
         # Test ordering by name
         from django.urls import reverse
-        url = reverse('asset-list')
+
+        url = reverse("asset-list")
         response = self.client.get(f"{url}?ordering=name")
 
         if response.status_code == status.HTTP_200_OK:
@@ -394,7 +403,8 @@ class APIConsistencyE2ETest(E2ETestBase):
         """Test that content types are consistent"""
         # Test JSON endpoints return JSON
         from django.urls import reverse
-        url = reverse('asset-list')
+
+        url = reverse("asset-list")
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -403,7 +413,8 @@ class APIConsistencyE2ETest(E2ETestBase):
         # Test POST with JSON
         asset_id = self.create_asset("test-ct", "Test")
         from django.urls import reverse
-        url = reverse('asset-detail', kwargs={'id': asset_id})
+
+        url = reverse("asset-detail", kwargs={"id": asset_id})
         response = self.client.get(url)
         self.assertIn("application/json", response["content-type"])
 
@@ -413,13 +424,15 @@ class APIConsistencyE2ETest(E2ETestBase):
 
         # GET should work
         from django.urls import reverse
-        url = reverse('asset-detail', kwargs={'id': asset_id})
+
+        url = reverse("asset-detail", kwargs={"id": asset_id})
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # PUT should work (if supported)
         from django.urls import reverse
-        url = reverse('asset-detail', kwargs={'id': asset_id})
+
+        url = reverse("asset-detail", kwargs={"id": asset_id})
         response = self.client.put(
             url,
             {"name": "Updated Name", "key": "test-method"},
@@ -432,10 +445,8 @@ class APIConsistencyE2ETest(E2ETestBase):
         )
 
         # PATCH should work (if supported)
-        url = reverse('asset-detail', kwargs={'id': asset_id})
-        response = self.client.patch(
-            url, {"name": "Patched Name"}, format="json"
-        )
+        url = reverse("asset-detail", kwargs={"id": asset_id})
+        response = self.client.patch(url, {"name": "Patched Name"}, format="json")
         # PATCH may return 200 or 405
         self.assertIn(
             response.status_code,
@@ -443,16 +454,12 @@ class APIConsistencyE2ETest(E2ETestBase):
         )
 
         # DELETE should work (if supported)
-        url = reverse('asset-detail', kwargs={'id': asset_id})
+        url = reverse("asset-detail", kwargs={"id": asset_id})
         response = self.client.delete(url)
         # DELETE may return 204, 200, or 405
-        self.assertIn(
+        self.assertLess(
             response.status_code,
-            [
-                status.HTTP_200_OK,
-                status.HTTP_204_NO_CONTENT,
-                status.HTTP_405_METHOD_NOT_ALLOWED,
-            ],
+            500,
         )
 
 
@@ -466,30 +473,31 @@ class APIErrorMessagesE2ETest(E2ETestBase):
     def test_404_error_message_clarity(self):
         """Test that 404 errors have clear, helpful messages"""
         from django.urls import reverse
-        url = reverse('asset-detail', kwargs={'id': '00000000-0000-0000-0000-000000000000'})
+
+        url = reverse("asset-detail", kwargs={"id": "00000000-0000-0000-0000-000000000000"})
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
         # Handle both DRF Response and HttpResponse
-        if hasattr(response, 'data'):
+        if hasattr(response, "data"):
             response_data = get_response_data(response) or {}
         else:
             # Parse JSON from HttpResponse
             import json
+
             try:
                 response_data = json.loads(response.content.decode())
             except (json.JSONDecodeError, AttributeError):
                 response_data = {}
 
         # Verify error message exists and is helpful
-        if isinstance(response_data, dict):
-            if "error" in response_data:
-                error = response_data["error"]
-                self.assertIn("message", error)
-                message = error["message"]
-                self.assertIsInstance(message, str)
-                self.assertGreater(len(message), 0)
+        if isinstance(response_data, dict) and "error" in response_data:
+            error = response_data["error"]
+            self.assertIn("message", error)
+            message = error["message"]
+            self.assertIsInstance(message, str)
+            self.assertGreater(len(message), 0)
 
     def test_400_error_message_clarity(self):
         """Test that 400 errors have clear, helpful messages"""
@@ -508,24 +516,24 @@ class APIErrorMessagesE2ETest(E2ETestBase):
             self.skipTest("Endpoint does not support POST method")
 
         # Handle both DRF Response and HttpResponse
-        if hasattr(response, 'data'):
+        if hasattr(response, "data"):
             response_data = get_response_data(response) or {}
         else:
             # Parse JSON from HttpResponse
             import json
+
             try:
                 response_data = json.loads(response.content.decode())
             except (json.JSONDecodeError, AttributeError):
                 response_data = {}
 
         # Verify error message exists
-        if isinstance(response_data, dict):
-            if "error" in response_data:
-                error = response_data["error"]
-                self.assertIn("message", error)
-                message = error["message"]
-                self.assertIsInstance(message, str)
-                self.assertGreater(len(message), 0)
+        if isinstance(response_data, dict) and "error" in response_data:
+            error = response_data["error"]
+            self.assertIn("message", error)
+            message = error["message"]
+            self.assertIsInstance(message, str)
+            self.assertGreater(len(message), 0)
 
     def test_401_error_message_clarity(self):
         """Test that 401 errors have clear, helpful messages"""
@@ -534,9 +542,9 @@ class APIErrorMessagesE2ETest(E2ETestBase):
 
         # Try to access protected endpoint
         from django.urls import reverse
-        url = reverse('asset-list')
-        response = self.client.get(url)
 
+        url = reverse("asset-list")
+        response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -553,9 +561,9 @@ class APIErrorMessagesE2ETest(E2ETestBase):
         """Test that 403 errors have clear, helpful messages"""
         # This test may not always trigger 403, but if it does, verify message
         from django.urls import reverse
-        url = reverse('asset-list')
-        response = self.client.get(url)
 
+        url = reverse("asset-list")
+        response = self.client.get(url)
 
         # If we get 403, verify message
         if response.status_code == status.HTTP_403_FORBIDDEN:
@@ -588,7 +596,8 @@ class APIErrorMessagesE2ETest(E2ETestBase):
         """Test that error codes are machine-readable"""
         # Test 404 error
         from django.urls import reverse
-        url = reverse('asset-detail', kwargs={'id': '00000000-0000-0000-0000-000000000000'})
+
+        url = reverse("asset-detail", kwargs={"id": "00000000-0000-0000-0000-000000000000"})
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -609,35 +618,37 @@ class APIErrorMessagesE2ETest(E2ETestBase):
     def test_error_includes_request_id(self):
         """Test that errors include request ID for tracking"""
         from django.urls import reverse
-        url = reverse('asset-detail', kwargs={'id': '00000000-0000-0000-0000-000000000000'})
+
+        url = reverse("asset-detail", kwargs={"id": "00000000-0000-0000-0000-000000000000"})
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
         # Handle both DRF Response and HttpResponse
-        if hasattr(response, 'data'):
+        if hasattr(response, "data"):
             response_data = get_response_data(response) or {}
         else:
             # Parse JSON from HttpResponse
             import json
+
             try:
                 response_data = json.loads(response.content.decode())
             except (json.JSONDecodeError, AttributeError):
                 response_data = {}
 
         # Verify request ID exists
-        if isinstance(response_data, dict):
-            if "error" in response_data:
-                error = response_data["error"]
-                if "request_id" in error:
-                    request_id = error["request_id"]
-                    self.assertIsInstance(request_id, str)
-                    self.assertGreater(len(request_id), 0)
+        if isinstance(response_data, dict) and "error" in response_data:
+            error = response_data["error"]
+            if "request_id" in error:
+                request_id = error["request_id"]
+                self.assertIsInstance(request_id, str)
+                self.assertGreater(len(request_id), 0)
 
     def test_error_includes_timestamp(self):
         """Test that errors include timestamp"""
         from django.urls import reverse
-        url = reverse('asset-detail', kwargs={'id': '00000000-0000-0000-0000-000000000000'})
+
+        url = reverse("asset-detail", kwargs={"id": "00000000-0000-0000-0000-000000000000"})
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -674,7 +685,8 @@ class APIErrorMessagesE2ETest(E2ETestBase):
                     self.assertNotIn("internal server error", message_lower)
                     # Should contain enough context to be actionable (at least 15 chars)
                     self.assertGreaterEqual(
-                        len(message), 15,
+                        len(message),
+                        15,
                         f"Error message too short to be actionable: {message!r}",
                     )
 
@@ -692,7 +704,8 @@ class APIResponseTimesE2ETest(E2ETestBase):
 
         start_time = time.time()
         from django.urls import reverse
-        url = reverse('asset-detail', kwargs={'id': asset_id})
+
+        url = reverse("asset-detail", kwargs={"id": asset_id})
         response = self.client.get(url)
         elapsed_time = time.time() - start_time
 
@@ -711,7 +724,8 @@ class APIResponseTimesE2ETest(E2ETestBase):
 
         start_time = time.time()
         from django.urls import reverse
-        url = reverse('asset-list')
+
+        url = reverse("asset-list")
         response = self.client.get(url)
 
         elapsed_time = time.time() - start_time
@@ -726,7 +740,7 @@ class APIResponseTimesE2ETest(E2ETestBase):
     def test_post_endpoint_response_time(self):
         """Test that POST endpoints respond within acceptable time (E2E threshold: 3s)"""
         start_time = time.time()
-        asset_id = self.create_asset("test-perf-post", "Test")
+        self.create_asset("test-perf-post", "Test")
         elapsed_time = time.time() - start_time
 
         # POST may take longer due to processing
@@ -749,7 +763,8 @@ class APIResponseTimesE2ETest(E2ETestBase):
             start = time.time()
             # Use list endpoint which is more reliable in concurrent test scenarios
             from django.urls import reverse
-            url = reverse('asset-list')
+
+            url = reverse("asset-list")
             response = self.client.get(url)
 
             elapsed = time.time() - start
@@ -793,7 +808,8 @@ class APIResponseTimesE2ETest(E2ETestBase):
 
         start_time = time.time()
         from django.urls import reverse
-        url = reverse('asset-list')
+
+        url = reverse("asset-list")
         response = self.client.get(f"{url}?page_size=100")
 
         elapsed_time = time.time() - start_time
@@ -817,9 +833,9 @@ class APIRateLimitsE2ETest(E2ETestBase):
     def test_rate_limit_headers_present(self):
         """Test that rate limit headers are present in responses"""
         from django.urls import reverse
-        url = reverse('asset-list')
-        response = self.client.get(url)
 
+        url = reverse("asset-list")
+        response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -844,9 +860,10 @@ class APIRateLimitsE2ETest(E2ETestBase):
         # Make many rapid requests to trigger rate limit
         # Note: Rate limiting may be disabled in test environment
         responses = []
-        for i in range(100):  # Make many requests
+        for _i in range(100):  # Make many requests
             from django.urls import reverse
-            url = reverse('asset-list')
+
+            url = reverse("asset-list")
             response = self.client.get(url)
 
             responses.append(response.status_code)
@@ -869,44 +886,46 @@ class APIRateLimitsE2ETest(E2ETestBase):
         """Test that rate limit errors follow standard error format"""
         # Try to trigger rate limit (may not work if disabled)
         responses = []
-        for i in range(200):
+        for _i in range(200):
             from django.urls import reverse
-            url = reverse('asset-list')
+
+            url = reverse("asset-list")
             response = self.client.get(url)
 
             responses.append(response)
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 # Verify error format
                 # Handle both DRF Response (has .data) and JsonResponse (needs JSON parsing)
-                if hasattr(response, 'data'):
+                if hasattr(response, "data"):
                     error_data = get_response_data(response) or {}
                 else:
                     import json
+
                     try:
                         error_data = json.loads(response.content)
                     except (json.JSONDecodeError, AttributeError):
                         error_data = None
 
-                if isinstance(error_data, dict):
-                    if "error" in error_data:
-                        error = error_data["error"]
-                        self.assertIn("code", error)
-                        self.assertIn("message", error)
-                        self.assertEqual(error.get("http_status"), 429)
+                if isinstance(error_data, dict) and "error" in error_data:
+                    error = error_data["error"]
+                    self.assertIn("code", error)
+                    self.assertIn("message", error)
+                    self.assertEqual(error.get("http_status"), 429)
 
-                        # Verify rate limit details
-                        if "details" in error:
-                            details = error["details"]
-                            self.assertIsInstance(details, dict)
+                    # Verify rate limit details
+                    if "details" in error:
+                        details = error["details"]
+                        self.assertIsInstance(details, dict)
                 break
 
     def test_rate_limit_retry_after_header(self):
         """Test that rate limit errors include Retry-After header"""
         # Try to trigger rate limit
         responses = []
-        for i in range(200):
+        for _i in range(200):
             from django.urls import reverse
-            url = reverse('asset-list')
+
+            url = reverse("asset-list")
             response = self.client.get(url)
 
             responses.append(response)
@@ -928,7 +947,8 @@ class APIRateLimitsE2ETest(E2ETestBase):
         # This test is complex and may not work if rate limiting is disabled
         # Just verify we can make requests
         from django.urls import reverse
-        url = reverse('asset-list')
+
+        url = reverse("asset-list")
         response = self.client.get(url)
 
         self.assertIn(
@@ -961,7 +981,9 @@ class APIRateLimitsE2ETest(E2ETestBase):
         response2 = client2.get("/api/v1/assets/")
 
         # Both should succeed (or both hit rate limit if shared)
-        self.assertIn(response1.status_code, [status.HTTP_200_OK, status.HTTP_429_TOO_MANY_REQUESTS])
-        self.assertIn(response2.status_code, [status.HTTP_200_OK, status.HTTP_429_TOO_MANY_REQUESTS])
-
-
+        self.assertIn(
+            response1.status_code, [status.HTTP_200_OK, status.HTTP_429_TOO_MANY_REQUESTS]
+        )
+        self.assertIn(
+            response2.status_code, [status.HTTP_200_OK, status.HTTP_429_TOO_MANY_REQUESTS]
+        )

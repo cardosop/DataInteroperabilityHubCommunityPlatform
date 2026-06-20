@@ -41,7 +41,6 @@ class KYCStatusAuditTest(TestCase):
         self.assertEqual(events.count(), initial_count + 1)
         latest = events.first()
         self.assertIsNotNone(latest)
-        self.assertIsNotNone(latest)
         self.assertEqual(latest.resource_type, "TENANT")
         self.assertEqual(latest.tenant_id, self.tenant.id)
         self.assertEqual(latest.details_json.get("previous_kyc_status"), KYCStatus.UNVERIFIED)
@@ -68,7 +67,6 @@ class KYCStatusAuditTest(TestCase):
         self.assertEqual(events.count(), initial_count + 1)
         latest = events.first()
         self.assertIsNotNone(latest)
-        self.assertIsNotNone(latest)
         self.assertEqual(latest.details_json.get("previous_kyc_status"), KYCStatus.PENDING_REVIEW)
         self.assertEqual(latest.details_json.get("new_kyc_status"), KYCStatus.VERIFIED)
 
@@ -88,7 +86,6 @@ class KYCStatusAuditTest(TestCase):
         ).order_by("-timestamp")
         self.assertEqual(events.count(), initial_count + 1)
         latest = events.first()
-        self.assertIsNotNone(latest)
         self.assertIsNotNone(latest)
         self.assertEqual(latest.details_json.get("previous_kyc_status"), KYCStatus.UNVERIFIED)
         self.assertEqual(latest.details_json.get("new_kyc_status"), KYCStatus.VERIFIED)
@@ -126,10 +123,5 @@ class KYCStatusAuditTest(TestCase):
         self.assertEqual(events.count(), initial_count + 1)
         latest = events.first()
         self.assertIsNotNone(latest)
-        self.assertIsNotNone(latest)
-        self.assertEqual(
-            latest.details_json.get("previous_kyc_status"), KYCStatus.UNVERIFIED
-        )
-        self.assertEqual(
-            latest.details_json.get("new_kyc_status"), KYCStatus.PENDING_REVIEW
-        )
+        self.assertEqual(latest.details_json.get("previous_kyc_status"), KYCStatus.UNVERIFIED)
+        self.assertEqual(latest.details_json.get("new_kyc_status"), KYCStatus.PENDING_REVIEW)

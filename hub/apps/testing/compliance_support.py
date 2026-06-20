@@ -27,9 +27,11 @@ Two helpers are exposed:
 
 Both build real Job + ComplianceRun rows (no mocks/stubs).
 """
+
 from __future__ import annotations
+
+import contextlib
 import uuid
-from typing import Optional
 
 from django.utils import timezone
 
@@ -164,7 +166,10 @@ def _contract_post_save_autoseed(sender, instance, created, raw, **_kwargs):
         return
     if str(getattr(instance, "validation_status", "")) not in ("VALID", "WARNING_ONLY"):
         return
-    if str(getattr(instance, "normalization_status", "")) not in ("NORMALIZED_OK", "NORMALIZED_WITH_WARNINGS"):
+    if str(getattr(instance, "normalization_status", "")) not in (
+        "NORMALIZED_OK",
+        "NORMALIZED_WITH_WARNINGS",
+    ):
         return
     from hub.apps.assets.models import Asset
     from hub.apps.compliance.models import ComplianceRun
@@ -177,15 +182,14 @@ def _contract_post_save_autoseed(sender, instance, created, raw, **_kwargs):
         return
     if getattr(asset, _AUTOSEED_SKIP_ATTR, False):
         return
-    try:
+    with contextlib.suppress(Exception):
         seed_succeeded_compliance_run(asset=asset)
-    except Exception:
-        pass
 
 
 def install_test_mode_asset_compliance_autoseed() -> None:
     """Idempotently connect the auto-seed signals."""
     from django.db.models.signals import post_save
+
     from hub.apps.assets.models import Asset
     from hub.apps.contracts.models import Contract
 

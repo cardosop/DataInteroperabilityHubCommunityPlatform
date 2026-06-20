@@ -12,8 +12,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant, TenantConfig
-from hub.apps.users.models import Role, User, UserRole, UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 # Use transaction=False so TenantSuspensionMiddleware sees subscription created in setUp
 # (with transaction=True the middleware can use a different connection and returns 403 for PATCH)

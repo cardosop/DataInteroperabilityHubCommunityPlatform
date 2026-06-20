@@ -1,14 +1,16 @@
 """
 Search App Configuration
 """
+
 from django.apps import AppConfig
 
 
 class SearchConfig(AppConfig):
     """Search app configuration"""
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'hub.apps.search'
-    verbose_name = 'Search'
+
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "hub.apps.search"
+    verbose_name = "Search"
 
     def ready(self):
         """Import business rules and register deprecated endpoints."""
@@ -22,6 +24,7 @@ class SearchConfig(AppConfig):
                 APIVersionManager,
                 DeprecatedEndpoint,
             )
+
             for action in ("search", "suggestions", "track-click", "analytics", "rebuild-index"):
                 path = f"/api/v1/search/{action}/" if action != "search" else "/api/v1/search/"
                 APIVersionManager.register_deprecated_endpoint(
@@ -36,4 +39,3 @@ class SearchConfig(AppConfig):
                 )
         except Exception:
             pass
-

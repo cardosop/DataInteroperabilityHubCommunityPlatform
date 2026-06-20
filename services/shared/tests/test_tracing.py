@@ -51,6 +51,7 @@ def test_setup_handles_missing_otel_packages(monkeypatch):
     gracefully (ImportError caught)."""
     monkeypatch.setenv("OPENTELEMETRY_ENABLED", "true")
     import sys
+
     import shared.tracing as tracing_mod
 
     # Temporarily block otel imports
@@ -59,7 +60,7 @@ def test_setup_handles_missing_otel_packages(monkeypatch):
         if "opentelemetry" in mod_name:
             blocked[mod_name] = sys.modules.pop(mod_name)
 
-    if hasattr(__builtins__, '__import__'):
+    if hasattr(__builtins__, "__import__"):
         original_import = __builtins__.__import__
     else:
         original_import = __import__
@@ -87,6 +88,7 @@ def test_get_tracer_handles_missing_otel_packages(monkeypatch):
     returns None gracefully."""
     monkeypatch.setenv("OPENTELEMETRY_ENABLED", "true")
     import sys
+
     import shared.tracing as tracing_mod
 
     blocked = {}
@@ -94,7 +96,7 @@ def test_get_tracer_handles_missing_otel_packages(monkeypatch):
         if "opentelemetry" in mod_name:
             blocked[mod_name] = sys.modules.pop(mod_name)
 
-    if hasattr(__builtins__, '__import__'):
+    if hasattr(__builtins__, "__import__"):
         original_import = __builtins__.__import__
     else:
         original_import = __import__

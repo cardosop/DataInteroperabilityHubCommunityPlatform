@@ -21,8 +21,8 @@ from hub.apps.scheduled_export.models import (
     ScheduledExportStatus,
 )
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.users.models import User, UserStatus
 
 pytestmark = [
     pytest.mark.django_db,
@@ -75,7 +75,10 @@ class ScheduledExportViewSetTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -314,9 +317,7 @@ class ScheduledExportViewSetTest(TestCase):
         self.assertEqual(response.data["flow_run_id"], "flow-run-abc-123")
         self.assertIn("run_id", response.data)
         # Verify a run record was created
-        self.assertEqual(
-            ScheduledExportRun.objects.filter(scheduled_export=export).count(), 1
-        )
+        self.assertEqual(ScheduledExportRun.objects.filter(scheduled_export=export).count(), 1)
 
     def test_sync_not_configured_returns_400(self):
         """POST /{id}/sync/ returns 400 when PREFECT_INTEGRATION_SERVICE_URL not set."""
@@ -328,10 +329,9 @@ class ScheduledExportViewSetTest(TestCase):
         # The test container may have PREFECT_INTEGRATION_SERVICE_URL set —
         # simulate an unconfigured environment by clearing it.
         import os
+
         with patch.dict(os.environ, {"PREFECT_INTEGRATION_SERVICE_URL": ""}):
-            response = self.client.post(
-                f"/api/v1/scheduled-exports/{export.id}/sync/"
-            )
+            response = self.client.post(f"/api/v1/scheduled-exports/{export.id}/sync/")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("PREFECT_INTEGRATION_SERVICE_URL", response.data.get("error", ""))
 
@@ -341,16 +341,19 @@ class ScheduledExportViewSetTest(TestCase):
             **_scheduled_export_kwargs(self.tenant, name="Sync Export")
         )
         unauth_client = APIClient()
-        response = unauth_client.post(
-            f"/api/v1/scheduled-exports/{export.id}/sync/"
+        response = unauth_client.post(f"/api/v1/scheduled-exports/{export.id}/sync/")
+        self.assertIn(
+            response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN)
         )
-        self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
 
     def test_tenant_isolation(self):
         """Test that tenants can only see their own scheduled exports"""
         _uid = uuid.uuid4().hex[:8]
         tenant2 = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         export2 = ScheduledExport.objects.create(
@@ -374,7 +377,10 @@ class ScheduledExportViewSetTest(TestCase):
         """Test that tenants cannot retrieve other tenants' scheduled exports"""
         _uid = uuid.uuid4().hex[:8]
         tenant2 = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         export2 = ScheduledExport.objects.create(
@@ -389,7 +395,10 @@ class ScheduledExportViewSetTest(TestCase):
         """Test that tenants can only see runs for their own scheduled exports"""
         _uid = uuid.uuid4().hex[:8]
         tenant2 = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         export2 = ScheduledExport.objects.create(
@@ -440,17 +449,20 @@ class ScheduledExportViewSetTest(TestCase):
             "/api/v1/scheduled-exports/00000000-0000-0000-0000-000000000000/"
         )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
 
     def test_retrieve_malformed_uuid_returns_404(self):
         """Retrieve with malformed ID returns 404."""
         response = self.client.get("/api/v1/scheduled-exports/not-a-uuid/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
 
     def test_list_unauthenticated_returns_401(self):
         """List without authentication returns 401."""
         self.client.force_authenticate(user=None)
         response = self.client.get("/api/v1/scheduled-exports/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
 
     def test_create_unauthenticated_returns_401(self):
         """Create without authentication returns 401."""
@@ -464,6 +476,7 @@ class ScheduledExportViewSetTest(TestCase):
         }
         response = self.client.post("/api/v1/scheduled-exports/", data, format="json")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
 
     def test_update_with_invalid_destination_config_returns_400(self):
         """Update with invalid destination_config (e.g. missing bucket for S3) returns 400."""
@@ -476,10 +489,8 @@ class ScheduledExportViewSetTest(TestCase):
         # Verify error response references the validation issue
         resp_str = str(response.data).lower()
         self.assertTrue(
-            "destination" in resp_str or "bucket" in resp_str
-            or "code" in response.data,
-            f"Error response should reference destination/bucket "
-            f"validation, got: {response.data}",
+            "destination" in resp_str or "bucket" in resp_str or "code" in response.data,
+            f"Error response should reference destination/bucket validation, got: {response.data}",
         )
 
     def test_delete_other_tenant_export_returns_404(self):
@@ -495,6 +506,7 @@ class ScheduledExportViewSetTest(TestCase):
         )
         response = self.client.delete(f"/api/v1/scheduled-exports/{export2.id}/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
 
     def test_trigger_with_malformed_body_returns_400(self):
         """Trigger with invalid JSON body returns 400 (DRF parser rejects it)."""

@@ -6,14 +6,12 @@ DRF serializers for scheduled export API endpoints.
 
 from rest_framework import serializers
 
+from hub.apps.virtualization.source_config_utils import mask_source_config
+
 from .models import (
-    DestinationType,
     ScheduledExport,
     ScheduledExportRun,
-    ScheduledExportRunStatus,
-    ScheduledExportStatus,
 )
-from hub.apps.virtualization.source_config_utils import mask_source_config
 
 
 class ScheduledExportSerializer(serializers.ModelSerializer):
@@ -57,9 +55,7 @@ class ScheduledExportSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         """Decrypt and mask sensitive fields in destination_config."""
         ret = super().to_representation(instance)
-        ret["destination_config"] = mask_source_config(
-            instance.get_destination_config()
-        )
+        ret["destination_config"] = mask_source_config(instance.get_destination_config())
         return ret
 
     def validate_schedule_config(self, value):
@@ -73,7 +69,7 @@ class ScheduledExportSerializer(serializers.ModelSerializer):
 
             croniter(cron_expr)
         except Exception as e:
-            raise serializers.ValidationError(f"Invalid cron expression: {str(e)}")
+            raise serializers.ValidationError(f"Invalid cron expression: {e!s}")
 
         return value
 

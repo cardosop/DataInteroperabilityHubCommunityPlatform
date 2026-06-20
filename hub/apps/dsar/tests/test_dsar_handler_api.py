@@ -1,11 +1,10 @@
 """Phase 232.2 — authenticated DSAR handler queue (real DB, no mocks)."""
 
 from __future__ import annotations
-import pytest
 
-import pytest
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework import status
@@ -38,7 +37,6 @@ def _grant_role(tenant: Tenant, user: User, role_name: str) -> None:
     # invisible to permission checks and every authenticated request
     # 403s.
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
-
 
 
 class DsarHandlerApiTests(TestCase):

@@ -16,17 +16,18 @@ Targets uncovered lines in hub/apps/auth/middleware.py:
   318-319  - unauthenticated user with tenant object
   321-328  - unauthenticated user with tenant_id
 """
+
 import uuid
-from unittest.mock import patch, MagicMock, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-from django.test import TestCase, RequestFactory
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
+from django.test import RequestFactory, TestCase
 from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus, UserTenantMembership
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
@@ -115,9 +116,7 @@ class TenantScopingMiddlewareEdgeCases(TestCase):
     def test_malformed_bearer_token_no_crash(self):
         """Malformed Bearer token should not crash middleware."""
         # No force_authenticate → user is anonymous
-        self.client.credentials(
-            HTTP_AUTHORIZATION="Bearer invalid.token.here"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION="Bearer invalid.token.here")
         response = self.client.get(
             "/api/v1/assets/",
             HTTP_X_TENANT_ID=str(self.tenant.id),
@@ -137,9 +136,7 @@ class TenantScopingMiddlewareEdgeCases(TestCase):
 
     def test_api_key_format_in_authorization_no_crash(self):
         """ApiKey format with invalid key should not crash middleware."""
-        self.client.credentials(
-            HTTP_AUTHORIZATION="ApiKey invalid-key-here"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION="ApiKey invalid-key-here")
         response = self.client.get(
             "/api/v1/assets/",
             HTTP_X_TENANT_ID=str(self.tenant.id),
@@ -184,13 +181,9 @@ class MiddlewareDirectUnitTests(TestCase):
         mw = self._get_middleware()
         request = self.factory.get("/api/v1/assets/")
         request.META["HTTP_AUTHORIZATION"] = "ApiKey some-key"
-        with patch(
-            "hub.apps.auth.models.APIKey.objects.select_related"
-        ) as mock_sr:
+        with patch("hub.apps.auth.models.APIKey.objects.select_related") as mock_sr:
             mock_qs = MagicMock()
-            mock_qs.prefetch_related.return_value.get.side_effect = AttributeError(
-                "test"
-            )
+            mock_qs.prefetch_related.return_value.get.side_effect = AttributeError("test")
             mock_sr.return_value = mock_qs
             result = mw._extract_tenant_id_from_api_key(request)
         self.assertIsNone(result)
@@ -200,13 +193,9 @@ class MiddlewareDirectUnitTests(TestCase):
         mw = self._get_middleware()
         request = self.factory.get("/api/v1/assets/")
         request.META["HTTP_AUTHORIZATION"] = "ApiKey some-key"
-        with patch(
-            "hub.apps.auth.models.APIKey.objects.select_related"
-        ) as mock_sr:
+        with patch("hub.apps.auth.models.APIKey.objects.select_related") as mock_sr:
             mock_qs = MagicMock()
-            mock_qs.prefetch_related.return_value.get.side_effect = ValueError(
-                "bad value"
-            )
+            mock_qs.prefetch_related.return_value.get.side_effect = ValueError("bad value")
             mock_sr.return_value = mock_qs
             result = mw._extract_tenant_id_from_api_key(request)
         self.assertIsNone(result)
@@ -315,9 +304,10 @@ class MiddlewareDirectUnitTests(TestCase):
         request = self.factory.get("/api/v1/assets/")
         request.user = AnonymousUser()
         fake_id = str(uuid.uuid4())
-        with patch.object(
-            mw, "_extract_tenant_id_from_api_key", return_value=None
-        ), patch.object(mw, "_extract_tenant_id_from_jwt", return_value=fake_id):
+        with (
+            patch.object(mw, "_extract_tenant_id_from_api_key", return_value=None),
+            patch.object(mw, "_extract_tenant_id_from_jwt", return_value=fake_id),
+        ):
             result = mw.process_request(request)
         self.assertIsNotNone(result)
         self.assertEqual(result.status_code, 403)
@@ -329,15 +319,17 @@ class MiddlewareDirectUnitTests(TestCase):
         mw = self._get_middleware()
         request = self.factory.get("/api/v1/assets/")
         request.user = AnonymousUser()
-        with patch.object(
-            mw, "_extract_tenant_id_from_api_key", return_value=None
-        ), patch.object(
-            mw,
-            "_extract_tenant_id_from_jwt",
-            return_value=str(self.tenant.id),
-        ), patch(
-            "hub.apps.tenants.models.Tenant.objects.get",
-            side_effect=OperationalError("connection lost"),
+        with (
+            patch.object(mw, "_extract_tenant_id_from_api_key", return_value=None),
+            patch.object(
+                mw,
+                "_extract_tenant_id_from_jwt",
+                return_value=str(self.tenant.id),
+            ),
+            patch(
+                "hub.apps.tenants.models.Tenant.objects.get",
+                side_effect=OperationalError("connection lost"),
+            ),
         ):
             result = mw.process_request(request)
         self.assertIsNotNone(result)
@@ -396,9 +388,7 @@ class MiddlewareDirectUnitTests(TestCase):
         with patch.object(
             User.objects,
             "only",
-            return_value=MagicMock(
-                get=MagicMock(side_effect=OperationalError("conn lost"))
-            ),
+            return_value=MagicMock(get=MagicMock(side_effect=OperationalError("conn lost"))),
         ):
             result = mw.process_request(request)
         self.assertIsNone(result)

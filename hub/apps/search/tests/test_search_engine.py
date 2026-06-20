@@ -5,16 +5,15 @@ Tests for full-text search, ranking, suggestions, and analytics.
 """
 
 import uuid
+
 import pytest
 from django.test import TestCase
-from django.utils import timezone
 
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract
+from hub.apps.assets.models import AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.search.indexing import SearchIndexer
-from hub.apps.search.models import SearchAnalytics, SearchIndex
+from hub.apps.search.models import SearchAnalytics
 from hub.apps.search.search_engine import SearchEngine
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
@@ -42,7 +41,10 @@ class SearchEngineTest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -116,7 +118,7 @@ class SearchEngineTest(TestCase):
 
     def test_search_pagination(self):
         """Test search pagination"""
-        all_results, total = SearchEngine.search(
+        _all_results, total = SearchEngine.search(
             tenant_id=str(self.tenant.id), query="test", limit=100, offset=0
         )
         self.assertGreaterEqual(total, 2, "setUp must create 2+ searchable resources")
@@ -133,17 +135,19 @@ class SearchEngineTest(TestCase):
         # Page 2 should have results if total >= 2
         if total >= 2:
             self.assertGreater(
-                len(results_page2), 0,
+                len(results_page2),
+                0,
                 "Page 2 should have results when total >= 2",
             )
             self.assertNotEqual(
-                results_page1[0]["id"], results_page2[0]["id"],
+                results_page1[0]["id"],
+                results_page2[0]["id"],
                 "Pages should return different results",
             )
 
     def test_search_sorting(self):
         """Test search sorting"""
-        results, total = SearchEngine.search(
+        results, _total = SearchEngine.search(
             tenant_id=str(self.tenant.id), query="test", sort_by="indexed_at", sort_order="desc"
         )
 
@@ -222,8 +226,6 @@ class SearchEngineTest(TestCase):
     def test_track_click_analytics_not_found_raises(self):
         """track_click with non-existent analytics_id raises SearchAnalytics.DoesNotExist."""
         import uuid
-
-        from hub.apps.search.models import SearchAnalytics
 
         fake_id = uuid.uuid4()
         self.assertFalse(SearchAnalytics.objects.filter(id=fake_id).exists())

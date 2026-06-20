@@ -11,7 +11,7 @@ Orchestrates compliance report generation, including:
 """
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
 from django.db import transaction
@@ -23,8 +23,6 @@ from hub.apps.compliance.models import ComplianceRun
 from hub.apps.governance.compliance_reports import ComplianceReportGenerator
 from hub.apps.governance.models import AccessRequest, ComplianceReport, DataClassification
 from hub.apps.governance.report_scheduler import ReportScheduler
-from hub.apps.notifications.models import EmailType
-from hub.apps.notifications.tasks import send_email_async
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
@@ -117,8 +115,8 @@ class ComplianceReportingWorkflow:
 
     @staticmethod
     def _trigger_report_generation_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Trigger report generation (scheduled/manual).
 
@@ -152,15 +150,13 @@ class ComplianceReportingWorkflow:
         # Set default dates if not provided
         if not end_date:
             end_date = timezone.now()
-        else:
-            if isinstance(end_date, str):
-                end_date = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+        elif isinstance(end_date, str):
+            end_date = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
 
         if not start_date:
             start_date = end_date - timedelta(days=30)
-        else:
-            if isinstance(start_date, str):
-                start_date = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+        elif isinstance(start_date, str):
+            start_date = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
 
         logger.info(
             "Report generation triggered",
@@ -198,8 +194,8 @@ class ComplianceReportingWorkflow:
 
     @staticmethod
     def _collect_compliance_data_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Collect compliance data (classifications, access logs, etc.).
 
@@ -280,8 +276,8 @@ class ComplianceReportingWorkflow:
 
     @staticmethod
     def _generate_report_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Generate report (GDPR/HIPAA/SOX/etc.).
 
@@ -363,8 +359,8 @@ class ComplianceReportingWorkflow:
 
     @staticmethod
     def _validate_report_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Validate report completeness.
 
@@ -475,8 +471,8 @@ class ComplianceReportingWorkflow:
 
     @staticmethod
     def _send_report_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Send report (email/API).
 
@@ -568,8 +564,8 @@ class ComplianceReportingWorkflow:
     @staticmethod
     @transaction.atomic
     def _store_report_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Store report for audit.
 
@@ -680,8 +676,8 @@ class ComplianceReportingWorkflow:
 
     @staticmethod
     def _audit_logging_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create audit log entry for compliance report generation.
 
@@ -743,15 +739,15 @@ class ComplianceReportingWorkflow:
         tenant_id: str,
         regulation: str,
         report_type: str = "STANDARD",
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-        triggered_by_id: Optional[str] = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        triggered_by_id: str | None = None,
         is_scheduled: bool = False,
-        schedule_frequency: Optional[str] = None,
-        email_recipients: Optional[List[str]] = None,
-        engine: Optional[WorkflowEngine] = None,
-        registry: Optional[WorkflowRegistry] = None,
-    ) -> Dict[str, Any]:
+        schedule_frequency: str | None = None,
+        email_recipients: list[str] | None = None,
+        engine: WorkflowEngine | None = None,
+        registry: WorkflowRegistry | None = None,
+    ) -> dict[str, Any]:
         """
         Execute compliance reporting workflow.
 

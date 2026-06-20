@@ -27,8 +27,6 @@ from django.core.management import call_command
 from django.db import connection
 from django.test import TestCase
 
-from hub.apps.assets.models import Asset
-from hub.apps.contracts.models import Contract
 from hub.apps.tenants.models import Tenant
 from tests.utils.test_environment_validation import EnvironmentValidator
 
@@ -41,7 +39,7 @@ class TestEnvironmentConfigurationTest(TestCase):
     def test_required_environment_variables_are_set(self):
         """Test that required environment variables are set."""
         validator = EnvironmentValidator(strict=False)
-        is_valid, errors, warnings = validator.validate_all()
+        _is_valid, errors, warnings = validator.validate_all()
 
         # Critical variables should be set
         required_vars = [
@@ -60,12 +58,13 @@ class TestEnvironmentConfigurationTest(TestCase):
             # In Docker Compose, these should be set
             # If not set, validator should report it
             if not value:
-                # Check if validator caught it
+                # Validator should detect missing required variables
                 all_issues = errors + warnings
-                var_mentioned = any(var in issue for issue in all_issues)
+                self.assertTrue(
+                    any(var in issue for issue in all_issues),
+                    f"Validator should flag missing variable {var!r}",
+                )
                 # In test environment, some vars may be auto-detected
-                # So we just verify validator runs without crashing
-                pass
 
     def test_database_configuration_is_valid(self):
         """Test that database configuration is valid."""
@@ -95,15 +94,14 @@ class TestEnvironmentConfigurationTest(TestCase):
 
         # Service URLs should be valid format (if set)
         # In Docker Compose, they may be auto-detected
-        # Validator should handle this gracefully
-        all_issues = errors + warnings
-        # Just verify validator runs without crashing
+        self.assertIsInstance(errors, list)
+        self.assertIsInstance(warnings, list)
         self.assertIsInstance(is_valid, bool, "Validation should return boolean")
 
     def test_environment_variables_have_correct_format(self):
         """Test that environment variables have correct format."""
         validator = EnvironmentValidator(strict=False)
-        is_valid, errors, warnings = validator.validate_all()
+        _is_valid, errors, warnings = validator.validate_all()
 
         # URL format validation should catch invalid formats
         # Just verify validator runs
@@ -235,26 +233,20 @@ class TestServiceVersionsTest(TestCase):
     def test_database_driver_version_is_compatible(self):
         """Test that database driver version is compatible."""
         try:
-            import psycopg2
+            import psycopg2  # noqa: F401
 
-            # psycopg2 should be available
-            self.assertTrue(True, "psycopg2 should be available")
+            self.assertIsNotNone(psycopg2.__version__)
         except ImportError:
-            # In some test environments, psycopg2 may not be available
-            # This is acceptable if database connectivity works through Django
-            pass
+            self.skipTest("psycopg2 not available in this test environment")
 
     def test_redis_driver_version_is_compatible(self):
         """Test that Redis driver version is compatible."""
         try:
-            import redis
+            import redis  # noqa: F401
 
-            # redis should be available
-            self.assertTrue(True, "redis should be available")
+            self.assertIsNotNone(redis.__version__)
         except ImportError:
-            # In some test environments, redis may not be available
-            # This is acceptable if Redis is not required for tests
-            pass
+            self.skipTest("redis not available in this test environment")
 
 
 class TestInfrastructureComponentsTest(TestCase):
@@ -374,7 +366,7 @@ class TestEnvironmentValidationErrorHandlingTest(TestCase):
     def test_validation_handles_missing_variables_gracefully(self):
         """Test that validation handles missing variables gracefully."""
         # Temporarily unset a variable (if possible)
-        original_value = os.getenv("TEST_VAR_NOT_EXISTS")
+        os.getenv("TEST_VAR_NOT_EXISTS")
 
         validator = EnvironmentValidator(strict=False)
         is_valid, errors, warnings = validator.validate_all()
@@ -405,7 +397,7 @@ class TestEnvironmentValidationErrorHandlingTest(TestCase):
             self.assertIsInstance(warnings, list, "Warnings should be a list")
 
             # If invalid URL is detected, it should appear in errors or warnings
-            all_issues = errors + warnings
+            errors + warnings
             # Validator should handle invalid URLs without crashing
         finally:
             # Restore original value
@@ -417,7 +409,7 @@ class TestEnvironmentValidationErrorHandlingTest(TestCase):
     def test_validation_provides_helpful_error_messages(self):
         """Test that validation provides helpful error messages."""
         validator = EnvironmentValidator(strict=True)
-        is_valid, errors, warnings = validator.validate_all()
+        _is_valid, errors, _warnings = validator.validate_all()
 
         # Error messages should be informative
         for error in errors:
@@ -440,11 +432,11 @@ class TestEnvironmentValidationErrorHandlingTest(TestCase):
         """Test that validation supports strict and non-strict modes."""
         # Test strict mode
         validator_strict = EnvironmentValidator(strict=True)
-        is_valid_strict, errors_strict, warnings_strict = validator_strict.validate_all()
+        is_valid_strict, errors_strict, _warnings_strict = validator_strict.validate_all()
 
         # Test non-strict mode
         validator_non_strict = EnvironmentValidator(strict=False)
-        is_valid_non_strict, errors_non_strict, warnings_non_strict = (
+        is_valid_non_strict, _errors_non_strict, warnings_non_strict = (
             validator_non_strict.validate_all()
         )
 

@@ -9,19 +9,16 @@ Tests complete workflows:
 
 Uses REAL services (no mocks).
 """
+
 import json
-import pytest
-from django.test import TestCase
-from rest_framework import status
 
 import graphql_relay
+import pytest
+from rest_framework import status
 
-from hub.apps.assets.models import Asset
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
-from hub.apps.tenants.models import Tenant
+from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
 
 from .conftest import E2ETestBase
-
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
@@ -56,7 +53,12 @@ class GraphQLODPSMutationsE2ETest(E2ETestBase):
                         "description": "Test product description",
                     }
                 },
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "field1", "type": "string"}]},
+                "dataSchema": {
+                    "fields": [
+                        {"name": "id", "type": "string"},
+                        {"name": "field1", "type": "string"},
+                    ]
+                },
                 "contract": {
                     "spec": {
                         "apiVersion": "odcs/v3",
@@ -64,12 +66,10 @@ class GraphQLODPSMutationsE2ETest(E2ETestBase):
                         "id": "test-contract",
                         "name": "Test Contract",
                         "schema": {
-                            "fields": [
-                                {"name": "field1", "type": "string", "required": True}
-                            ]
+                            "fields": [{"name": "field1", "type": "string", "required": True}]
                         },
                     }
-                }
+                },
             },
         }
 
@@ -238,9 +238,7 @@ class GraphQLODPSMutationsE2ETest(E2ETestBase):
                 "name": "Test Contract",
                 "description": "Test contract description",
             },
-            "schema": {
-                "fields": [{"name": "field1", "type": "string", "required": True}]
-            },
+            "schema": {"fields": [{"name": "field1", "type": "string", "required": True}]},
         }
 
         odps_contract = Contract.objects.create(
@@ -298,9 +296,7 @@ class GraphQLODPSMutationsE2ETest(E2ETestBase):
                 "name": "Test Contract",
                 "description": "Test contract description",
             },
-            "schema": {
-                "fields": [{"name": "field1", "type": "string", "required": True}]
-            },
+            "schema": {"fields": [{"name": "field1", "type": "string", "required": True}]},
         }
 
         odps_contract = Contract.objects.create(
@@ -390,6 +386,7 @@ class GraphQLODPSMutationsE2ETest(E2ETestBase):
         # Step 2: Create ODCS contract via service (so it gets
         # normalized -- hub_contract_json is required for linking)
         from hub.apps.contracts.services import ContractService
+
         contract_service = ContractService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
@@ -428,8 +425,12 @@ class GraphQLODPSMutationsE2ETest(E2ETestBase):
         self.assertIsNotNone(link_result, "linkODPS mutation returned no result")
         link_errors = link_result.get("errors") if link_result else []
         self.assertEqual(len(link_errors), 0, f"linkODPS errors: {link_errors}")
-        self.assertIsNotNone(link_result.get("odpsContract"), "linkODPS should return odpsContract with id")
-        self.assertIsNotNone(link_result.get("odcsContract"), "linkODPS should return odcsContract with id")
+        self.assertIsNotNone(
+            link_result.get("odpsContract"), "linkODPS should return odpsContract with id"
+        )
+        self.assertIsNotNone(
+            link_result.get("odcsContract"), "linkODPS should return odcsContract with id"
+        )
 
         # Step 4: Export ODPS
         export_mutation = """
@@ -456,4 +457,3 @@ class GraphQLODPSMutationsE2ETest(E2ETestBase):
         errors = result.get("errors") if result else []
         self.assertEqual(len(errors), 0, f"exportODPS errors: {errors}")
         self.assertIsNotNone(result["content"])
-

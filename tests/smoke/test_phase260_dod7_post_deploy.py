@@ -74,26 +74,22 @@ SMOKE_PHASE260_DOD7_SCAN_TIMEOUT_S
 SMOKE_PHASE260_DOD7_SCAN_POLL_INTERVAL_S
     Seconds between polls (default: 2.0).
 """
+
 from __future__ import annotations
 
 import hashlib
-import io
 import os
 import time
-from typing import Optional
 
 import pytest
 import requests
-
 
 # ---------------------------------------------------------------------------
 # Module-level constants
 # ---------------------------------------------------------------------------
 
 SCAN_TIMEOUT_S = int(os.getenv("SMOKE_PHASE260_DOD7_SCAN_TIMEOUT_S", "60"))
-SCAN_POLL_INTERVAL_S = float(
-    os.getenv("SMOKE_PHASE260_DOD7_SCAN_POLL_INTERVAL_S", "2.0")
-)
+SCAN_POLL_INTERVAL_S = float(os.getenv("SMOKE_PHASE260_DOD7_SCAN_POLL_INTERVAL_S", "2.0"))
 
 # API paths (relative to base_url)
 _FILES_INIT = "/api/v1/files/init/"
@@ -132,17 +128,13 @@ _CLEAN_CSV_LIFECYCLE = (
     b"2,smoke-dod7-lifecycle,production-readiness\n"
 )
 
-_CLEAN_CSV_QUOTA_PROBE = (
-    b"id,counter\n"
-    b"1,1\n"
-    b"2,2\n"
-    b"3,3\n"
-)
+_CLEAN_CSV_QUOTA_PROBE = b"id,counter\n1,1\n2,2\n3,3\n"
 
 
 # ---------------------------------------------------------------------------
 # Helpers (mirror the patterns in test_compliance.py + test_phase260_dod4_post_deploy.py)
 # ---------------------------------------------------------------------------
+
 
 def _sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -178,8 +170,7 @@ def _init_upload(
             "check SMOKE_BASE_URL points at a Phase 260+ deployment."
         )
     assert init_resp.status_code in (200, 201), (
-        f"File init failed ({init_resp.status_code}): "
-        f"{init_resp.text[:400]}"
+        f"File init failed ({init_resp.status_code}): {init_resp.text[:400]}"
     )
     return init_resp.json()
 
@@ -252,7 +243,7 @@ def _poll_scan_status_until(
         last_status = str(resp.json().get("scan_status", "unknown")).upper()
         if last_status in target_states:
             return last_status
-        time.sleep(poll_interval)  # INTENTIONAL: post-deploy poll cadence
+        time.sleep(poll_interval)  # noqa: sleep-needed  # INTENTIONAL: post-deploy poll cadence
     pytest.fail(
         f"scan-status for file {file_id} did not reach any of "
         f"{sorted(target_states)} within {poll_timeout}s. "
@@ -263,7 +254,7 @@ def _poll_scan_status_until(
 
 
 def _delete_file_best_effort(
-    base_url: str, session: requests.Session, timeout: int, file_id: Optional[str]
+    base_url: str, session: requests.Session, timeout: int, file_id: str | None
 ) -> None:
     """DELETE the file, swallowing errors so cleanup never masks the assertion."""
     if not file_id:
@@ -278,7 +269,7 @@ def _delete_file_best_effort(
 
 
 def _delete_dataset_best_effort(
-    base_url: str, session: requests.Session, timeout: int, dataset_id: Optional[str]
+    base_url: str, session: requests.Session, timeout: int, dataset_id: str | None
 ) -> None:
     """DELETE the dataset, swallowing errors so cleanup never masks the assertion."""
     if not dataset_id:
@@ -306,8 +297,8 @@ class TestPhase260DoD7FullLifecycleChain:
         authenticated_session: requests.Session,
         timeout: int,
     ) -> None:
-        file_id: Optional[str] = None
-        dataset_id: Optional[str] = None
+        file_id: str | None = None
+        dataset_id: str | None = None
         try:
             # 1. Init + upload + complete (clean CSV).
             init = _init_upload(
@@ -336,8 +327,7 @@ class TestPhase260DoD7FullLifecycleChain:
                 payload=_CLEAN_CSV_LIFECYCLE,
             )
             assert complete_resp.status_code in (200, 201), (
-                f"complete failed: {complete_resp.status_code} "
-                f"{complete_resp.text[:300]}"
+                f"complete failed: {complete_resp.status_code} {complete_resp.text[:300]}"
             )
 
             # 2. Virus scan must reach a terminal CLEAN state.
@@ -365,12 +355,9 @@ class TestPhase260DoD7FullLifecycleChain:
                 timeout=timeout,
             )
             if ds_resp.status_code == 404:
-                pytest.skip(
-                    f"Dataset create endpoint not found at {_DATASETS_PATH}"
-                )
+                pytest.skip(f"Dataset create endpoint not found at {_DATASETS_PATH}")  # noqa: skip-in-body — runtime service dependency
             assert ds_resp.status_code in (200, 201), (
-                f"dataset create failed: {ds_resp.status_code} "
-                f"{ds_resp.text[:400]}"
+                f"dataset create failed: {ds_resp.status_code} {ds_resp.text[:400]}"
             )
             dataset_id = ds_resp.json().get("id")
             assert dataset_id, f"dataset create missing id: {ds_resp.json()}"
@@ -381,8 +368,7 @@ class TestPhase260DoD7FullLifecycleChain:
                 timeout=timeout,
             )
             assert retire_resp.status_code in (200, 202), (
-                f"dataset retire failed: {retire_resp.status_code} "
-                f"{retire_resp.text[:300]}"
+                f"dataset retire failed: {retire_resp.status_code} {retire_resp.text[:300]}"
             )
 
             # 5. Delete the dataset → triggers the orphan-cleanup contract:
@@ -395,8 +381,7 @@ class TestPhase260DoD7FullLifecycleChain:
                 timeout=timeout,
             )
             assert del_resp.status_code in (200, 202, 204), (
-                f"dataset delete failed: {del_resp.status_code} "
-                f"{del_resp.text[:300]}"
+                f"dataset delete failed: {del_resp.status_code} {del_resp.text[:300]}"
             )
             dataset_id = None  # cleanup no longer needed for the dataset
 
@@ -411,8 +396,7 @@ class TestPhase260DoD7FullLifecycleChain:
                 timeout=timeout,
             )
             assert file_resp.status_code in (200, 404), (
-                f"file detail post-orphan: {file_resp.status_code} "
-                f"{file_resp.text[:300]}"
+                f"file detail post-orphan: {file_resp.status_code} {file_resp.text[:300]}"
             )
             if file_resp.status_code == 200:
                 file_status = file_resp.json().get("status", "").upper()
@@ -426,12 +410,8 @@ class TestPhase260DoD7FullLifecycleChain:
                 file_id = None
 
         finally:
-            _delete_dataset_best_effort(
-                base_url, authenticated_session, timeout, dataset_id
-            )
-            _delete_file_best_effort(
-                base_url, authenticated_session, timeout, file_id
-            )
+            _delete_dataset_best_effort(base_url, authenticated_session, timeout, dataset_id)
+            _delete_file_best_effort(base_url, authenticated_session, timeout, file_id)
 
 
 # ---------------------------------------------------------------------------
@@ -448,7 +428,7 @@ class TestPhase260DoD7EicarUploadBlocksDownload:
         authenticated_session: requests.Session,
         timeout: int,
     ) -> None:
-        file_id: Optional[str] = None
+        file_id: str | None = None
         try:
             # 1. Init + upload + complete the EICAR signature labelled as a
             # binary blob. The upload itself MUST succeed — virus scanners
@@ -479,8 +459,7 @@ class TestPhase260DoD7EicarUploadBlocksDownload:
                 payload=_EICAR_SIGNATURE,
             )
             assert complete_resp.status_code in (200, 201), (
-                f"EICAR complete failed: {complete_resp.status_code} "
-                f"{complete_resp.text[:300]}"
+                f"EICAR complete failed: {complete_resp.status_code} {complete_resp.text[:300]}"
             )
 
             # 2. Poll until scan_status == INFECTED (the contract).
@@ -492,7 +471,7 @@ class TestPhase260DoD7EicarUploadBlocksDownload:
                 target_states=frozenset({"INFECTED", "CLEAN", "SCAN_UNAVAILABLE"}),
             )
             if final == "SCAN_UNAVAILABLE":
-                pytest.skip(
+                pytest.skip(  # noqa: skip-in-body — runtime service dependency
                     "ClamAV daemon unavailable — DoD.7 EICAR test cannot run. "
                     "Investigate ClamAV deploy health and re-run."
                 )
@@ -524,9 +503,7 @@ class TestPhase260DoD7EicarUploadBlocksDownload:
                 f"{error_code!r}. Body: {download_resp.text[:300]}"
             )
         finally:
-            _delete_file_best_effort(
-                base_url, authenticated_session, timeout, file_id
-            )
+            _delete_file_best_effort(base_url, authenticated_session, timeout, file_id)
 
 
 # ---------------------------------------------------------------------------
@@ -543,7 +520,7 @@ class TestPhase260DoD7MagicByteMismatchRejectsPeAsCsv:
         authenticated_session: requests.Session,
         timeout: int,
     ) -> None:
-        file_id: Optional[str] = None
+        file_id: str | None = None
         try:
             init = _init_upload(
                 base_url,
@@ -582,7 +559,7 @@ class TestPhase260DoD7MagicByteMismatchRejectsPeAsCsv:
                 # Skip rather than silently passing — the DoD.7 contract
                 # is "rejection happens", and an environment where it
                 # doesn't is a deploy-config issue, not a test failure.
-                pytest.skip(
+                pytest.skip(  # noqa: skip-in-body — runtime service dependency
                     "PE-as-CSV upload was ACCEPTED — magic-byte validation "
                     "appears disabled on this deploy. Set "
                     "MAGIC_BYTE_VALIDATION_ENABLED=true for DoD.7 to apply."
@@ -606,9 +583,7 @@ class TestPhase260DoD7MagicByteMismatchRejectsPeAsCsv:
                 f"{error_code!r}. Body: {complete_resp.text[:300]}"
             )
         finally:
-            _delete_file_best_effort(
-                base_url, authenticated_session, timeout, file_id
-            )
+            _delete_file_best_effort(base_url, authenticated_session, timeout, file_id)
 
 
 # ---------------------------------------------------------------------------
@@ -626,22 +601,19 @@ class TestPhase260DoD7QuotaMeterReflectsBytes:
         timeout: int,
     ) -> None:
         # 1. Baseline read.
-        baseline_resp = authenticated_session.get(
-            f"{base_url}{_FILES_QUOTA}", timeout=timeout
-        )
+        baseline_resp = authenticated_session.get(f"{base_url}{_FILES_QUOTA}", timeout=timeout)
         if baseline_resp.status_code == 404:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
                 f"quota endpoint not found at {_FILES_QUOTA} — "
                 "check SMOKE_BASE_URL points at a Phase 260.4.G+ deployment."
             )
         assert baseline_resp.status_code == 200, (
-            f"baseline quota read failed: {baseline_resp.status_code} "
-            f"{baseline_resp.text[:300]}"
+            f"baseline quota read failed: {baseline_resp.status_code} {baseline_resp.text[:300]}"
         )
         baseline = baseline_resp.json()
         baseline_used = int(baseline.get("used_bytes", 0))
 
-        file_id: Optional[str] = None
+        file_id: str | None = None
         try:
             # 2. Upload N bytes.
             payload = _CLEAN_CSV_QUOTA_PROBE
@@ -675,9 +647,7 @@ class TestPhase260DoD7QuotaMeterReflectsBytes:
             )
 
             # 3. Re-read the meter.
-            after_resp = authenticated_session.get(
-                f"{base_url}{_FILES_QUOTA}", timeout=timeout
-            )
+            after_resp = authenticated_session.get(f"{base_url}{_FILES_QUOTA}", timeout=timeout)
             assert after_resp.status_code == 200, (
                 f"post-upload quota read failed: {after_resp.status_code}"
             )
@@ -705,6 +675,4 @@ class TestPhase260DoD7QuotaMeterReflectsBytes:
                     "Quota meter percentage drifted from byte counter."
                 )
         finally:
-            _delete_file_best_effort(
-                base_url, authenticated_session, timeout, file_id
-            )
+            _delete_file_best_effort(base_url, authenticated_session, timeout, file_id)

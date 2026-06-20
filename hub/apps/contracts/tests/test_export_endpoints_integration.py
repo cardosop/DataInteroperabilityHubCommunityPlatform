@@ -186,7 +186,7 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
         if output_format == "yaml":
             return yaml.safe_load(response.content)
         else:  # json
-            return response.data
+            return json.loads(response.content)
 
     def _extract_core_data(self, data, format_type):
         """Extract core contract data from different format structures"""
@@ -270,7 +270,7 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
                 self.assertEqual(response.status_code, status.HTTP_200_OK)
                 self.assertEqual(response["Content-Type"], "application/json")
 
-                data = response.data
+                data = json.loads(response.content)
                 core_data = self._extract_core_data(data, format_type)
 
                 # Verify core data is preserved
@@ -330,7 +330,7 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
                 self.assertIn("Content-Disposition", response)
                 self.assertIn("attachment", response["Content-Disposition"])
 
-                data = response.data
+                data = json.loads(response.content)
                 core_data = self._extract_core_data(data, format_type)
 
                 # Verify core data is preserved
@@ -509,7 +509,7 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
             f"/api/v1/contracts/{self.contract.id}/download/",
             {"format": "hubcontract", "output_format": "json"},
         )
-        download_data = download_response.data
+        download_data = json.loads(download_response.content)
 
         # Verify data is identical
         export_core = self._extract_core_data(export_data, "hubcontract")
@@ -563,7 +563,7 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
             f"/api/v1/contracts/{self.contract.id}/download/",
             {"format": "hubcontract", "output_format": "json"},
         )
-        download_data = download_response.data
+        download_data = json.loads(download_response.content)
 
         # Get data from marketplace download (as consumer)
         self.client.force_authenticate(user=self.consumer_user)
@@ -620,7 +620,7 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
                         if output_format == "yaml":
                             data = yaml.safe_load(response.content)
                         else:
-                            data = response.data
+                            data = json.loads(response.content)
 
                         # Verify core data exists
                         core_data = self._extract_core_data(data, format_type)
@@ -649,8 +649,8 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
                     )
 
                     # Verify contract_content exists and is parseable
-                    self.assertIn("contract_content", response.data)
-                    contract_content = response.data["contract_content"]
+                    self.assertIn("contract_content", json.loads(response.content))
+                    contract_content = json.loads(response.content)["contract_content"]
 
                     if output_format == "yaml":
                         data = yaml.safe_load(contract_content)

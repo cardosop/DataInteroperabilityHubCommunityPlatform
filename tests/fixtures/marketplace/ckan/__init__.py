@@ -8,15 +8,15 @@ This module provides test fixtures for CKAN connector tests including:
 - Fixture loading utilities
 """
 
-from pathlib import Path
 import json
-from typing import Dict, Any, Optional
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 # Base directory for CKAN fixtures
 FIXTURES_DIR = Path(__file__).parent
 
 
-def load_fixture(relative_path: str) -> Dict[str, Any]:
+def load_fixture(relative_path: str) -> dict[str, Any]:
     """
     Load a JSON fixture file.
 
@@ -34,11 +34,11 @@ def load_fixture(relative_path: str) -> Dict[str, Any]:
     if not fixture_path.exists():
         raise FileNotFoundError(f"Fixture not found: {fixture_path}")
 
-    with open(fixture_path, 'r', encoding='utf-8') as f:
+    with open(fixture_path, encoding="utf-8") as f:
         return json.load(f)
 
 
-def get_api_response_fixture(action: str) -> Dict[str, Any]:
+def get_api_response_fixture(action: str) -> dict[str, Any]:
     """
     Get a CKAN API response fixture.
 
@@ -48,10 +48,10 @@ def get_api_response_fixture(action: str) -> Dict[str, Any]:
     Returns:
         Dictionary containing API response data
     """
-    return load_fixture(f'api_responses/{action}.json')
+    return load_fixture(f"api_responses/{action}.json")
 
 
-def get_dataset_fixture(name: str) -> Dict[str, Any]:
+def get_dataset_fixture(name: str) -> dict[str, Any]:
     """
     Get a test dataset (package) fixture.
 
@@ -61,10 +61,10 @@ def get_dataset_fixture(name: str) -> Dict[str, Any]:
     Returns:
         Dictionary containing dataset data
     """
-    return load_fixture(f'datasets/{name}.json')
+    return load_fixture(f"datasets/{name}.json")
 
 
-def get_resource_fixture(name: str) -> Dict[str, Any]:
+def get_resource_fixture(name: str) -> dict[str, Any]:
     """
     Get a test resource fixture.
 
@@ -74,5 +74,4 @@ def get_resource_fixture(name: str) -> Dict[str, Any]:
     Returns:
         Dictionary containing resource data
     """
-    return load_fixture(f'resources/{name}.json')
-
+    return load_fixture(f"resources/{name}.json")

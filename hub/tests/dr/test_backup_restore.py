@@ -1,8 +1,7 @@
 """Phase 110: Database backup and restore integrity."""
-import uuid
-from django.test import TestCase
+
 from django.db import connection
-from hub.apps.tenants.models import Tenant
+from django.test import TestCase
 
 
 class BackupRestoreIntegrityTest(TestCase):
@@ -18,8 +17,12 @@ class BackupRestoreIntegrityTest(TestCase):
             tables = [row[0] for row in cursor.fetchall()]
 
         critical_tables = [
-            'tenants', 'users', 'assets', 'contracts',
-            'refresh_tokens', 'api_keys',
+            "tenants",
+            "users",
+            "assets",
+            "contracts",
+            "refresh_tokens",
+            "api_keys",
         ]
         for table in critical_tables:
             self.assertIn(table, tables, f"Critical table '{table}' missing")
@@ -37,16 +40,33 @@ class BackupRestoreIntegrityTest(TestCase):
     def test_pg_dump_produces_output(self):
         """pg_dump of the test database produces non-empty output."""
         import subprocess
+
         db = connection.settings_dict
         env = {
-            'PGPASSWORD': db.get('PASSWORD', ''),
-            'PATH': '/usr/bin:/usr/local/bin',
+            "PGPASSWORD": db.get("PASSWORD", ""),
+            "PATH": "/usr/bin:/usr/local/bin",
         }
         try:
             result = subprocess.run(
-                ['pg_dump', '-h', db['HOST'], '-p', str(db['PORT']),
-                 '-U', db['USER'], '-d', db['NAME'], '--schema-only', '-t', 'tenants'],
-                capture_output=True, text=True, env=env, timeout=30,
+                [
+                    "pg_dump",
+                    "-h",
+                    db["HOST"],
+                    "-p",
+                    str(db["PORT"]),
+                    "-U",
+                    db["USER"],
+                    "-d",
+                    db["NAME"],
+                    "--schema-only",
+                    "-t",
+                    "tenants",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=30,
             )
         except subprocess.TimeoutExpired:
             # pg_dump blocked by locks from concurrent test transactions
@@ -55,7 +75,7 @@ class BackupRestoreIntegrityTest(TestCase):
         except FileNotFoundError:
             self.skipTest("pg_dump binary not found in PATH")
         if result.returncode == 0:
-            self.assertIn('CREATE TABLE', result.stdout)
+            self.assertIn("CREATE TABLE", result.stdout)
         else:
             # pg_dump may not be available in container
             self.skipTest(f"pg_dump not available: {result.stderr[:100]}")

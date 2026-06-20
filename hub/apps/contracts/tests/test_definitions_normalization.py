@@ -1,13 +1,13 @@
 """
 Unit tests for Definition object normalization.
 """
+
 import json
 
-import pytest
 from django.test import TestCase
 
-from hub.apps.contracts.normalization import normalize_contract
 from hub.apps.contracts.models import NormalizationStatus
+from hub.apps.contracts.normalization import normalize_contract
 
 
 class TestDefinitionNormalization(TestCase):
@@ -39,13 +39,14 @@ class TestDefinitionNormalization(TestCase):
             },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
-        assert status == NormalizationStatus.NORMALIZED_OK or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert (
+            status == NormalizationStatus.NORMALIZED_OK
+            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        )
         assert hub_contract is not None
         assert "definitions" in hub_contract
         assert len(hub_contract["definitions"]) == 2
@@ -91,13 +92,14 @@ class TestDefinitionNormalization(TestCase):
             ],
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
-        assert status == NormalizationStatus.NORMALIZED_OK or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert (
+            status == NormalizationStatus.NORMALIZED_OK
+            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        )
         assert hub_contract is not None
         assert "definitions" in hub_contract
         assert len(hub_contract["definitions"]) == 2
@@ -121,13 +123,14 @@ class TestDefinitionNormalization(TestCase):
             },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
-        assert status == NormalizationStatus.NORMALIZED_OK or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert (
+            status == NormalizationStatus.NORMALIZED_OK
+            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        )
         assert hub_contract is not None
         assert "definitions" in hub_contract
         assert len(hub_contract["definitions"]) == 1
@@ -159,16 +162,16 @@ class TestDefinitionNormalization(TestCase):
             },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         assert hub_contract is not None
         assert "definitions" in hub_contract
 
-        phone_def = next((d for d in hub_contract["definitions"] if d["name"] == "PhoneNumber"), None)
+        phone_def = next(
+            (d for d in hub_contract["definitions"] if d["name"] == "PhoneNumber"), None
+        )
         assert phone_def is not None
         assert phone_def["type"] == "string"
         assert phone_def["pattern"] == "^\\+?[1-9]\\d{1,14}$"
@@ -176,7 +179,9 @@ class TestDefinitionNormalization(TestCase):
         assert phone_def["max_length"] == 15
         assert phone_def["nullable"] is False
 
-        currency_def = next((d for d in hub_contract["definitions"] if d["name"] == "Currency"), None)
+        currency_def = next(
+            (d for d in hub_contract["definitions"] if d["name"] == "Currency"), None
+        )
         assert currency_def is not None
         assert currency_def["enum"] == ["USD", "EUR", "GBP"]
         assert currency_def["default"] == "USD"
@@ -199,16 +204,16 @@ class TestDefinitionNormalization(TestCase):
             },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         assert hub_contract is not None
         assert "definitions" in hub_contract
 
-        custom_def = next((d for d in hub_contract["definitions"] if d["name"] == "CustomDefinition"), None)
+        custom_def = next(
+            (d for d in hub_contract["definitions"] if d["name"] == "CustomDefinition"), None
+        )
         assert custom_def is not None
         assert "extensions" in custom_def
         assert custom_def["extensions"]["customProperty"] == "customValue"
@@ -225,13 +230,14 @@ class TestDefinitionNormalization(TestCase):
             "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
-        assert status == NormalizationStatus.NORMALIZED_OK or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert (
+            status == NormalizationStatus.NORMALIZED_OK
+            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        )
         assert hub_contract is not None
         # definitions should not be present if not in source
         assert "definitions" not in hub_contract or hub_contract.get("definitions") is None
@@ -248,17 +254,22 @@ class TestDefinitionNormalization(TestCase):
             "authoritativeDefinitions": "invalid_string",  # Should be dict or list
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         # Should still normalize but skip invalid definitions
-        assert status == NormalizationStatus.NORMALIZED_OK or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert (
+            status == NormalizationStatus.NORMALIZED_OK
+            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        )
         assert hub_contract is not None
         # definitions should not be present if invalid
-        assert "definitions" not in hub_contract or hub_contract.get("definitions") is None or len(hub_contract.get("definitions", [])) == 0
+        assert (
+            "definitions" not in hub_contract
+            or hub_contract.get("definitions") is None
+            or len(hub_contract.get("definitions", [])) == 0
+        )
 
     def test_definitions_with_nested_properties(self):
         """Test definitions with nested properties (object types)."""
@@ -281,10 +292,8 @@ class TestDefinitionNormalization(TestCase):
             },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         assert hub_contract is not None
@@ -295,4 +304,3 @@ class TestDefinitionNormalization(TestCase):
         assert "properties" in person_def
         assert "name" in person_def["properties"]
         assert "age" in person_def["properties"]
-

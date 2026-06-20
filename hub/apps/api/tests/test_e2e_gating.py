@@ -39,7 +39,7 @@ class PermittedEnvironmentsConstantTest(SimpleTestCase):
     def test_permitted_set_is_test_and_staging(self):
         # Production is intentionally excluded. Adding it would re-introduce
         # the failure mode this module was created to close.
-        assert PERMITTED_E2E_ENVIRONMENTS == frozenset({"test", "staging"})
+        assert frozenset({"test", "staging"}) == PERMITTED_E2E_ENVIRONMENTS
 
 
 class IsE2eEnvironmentTest(SimpleTestCase):

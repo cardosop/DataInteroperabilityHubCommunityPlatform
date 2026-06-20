@@ -6,26 +6,24 @@ Uses the marketplace instance configuration system for consistent test setup.
 
 All utilities use real marketplace instances - no mocks or stubs.
 """
-import os
+
 import logging
+import os
 import warnings
-from typing import Optional, Tuple, Union
 from pathlib import Path
 
 # Sentinel to distinguish "caller did not pass instance_name" from "caller passed None"
 _USE_DEFAULT_INSTANCE: object = object()
 
 import httpx
-from django.test import TestCase
 
-from hub.apps.integrations.connectors.ckan_connector import CKANConnector
-from hub.apps.integrations.connectors.dados_gov_br_connector import DadosGovBrConnector
 from hub.apps.integrations.base import DataMarketplaceConnector
 from hub.apps.integrations.config.marketplace_instances import (
     MarketplaceInstanceConfig,
-    get_marketplace_instance_config,
     get_default_test_instance,
+    get_marketplace_instance_config,
 )
+from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 
 logger = logging.getLogger(__name__)
 
@@ -34,24 +32,24 @@ def _load_env_file() -> None:
     """Load environment variables from .env.test.ckan if it exists."""
     # Get project root (3 levels up from this file)
     project_root = Path(__file__).parent.parent.parent.parent.parent
-    env_file = project_root / '.env.test.ckan'
+    env_file = project_root / ".env.test.ckan"
 
     if env_file.exists():
         try:
-            with open(env_file, 'r', encoding='utf-8') as f:
+            with open(env_file, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
-                    if line and not line.startswith('#') and '=' in line:
-                        key, value = line.split('=', 1)
+                    if line and not line.startswith("#") and "=" in line:
+                        key, value = line.split("=", 1)
                         # Remove 'export ' prefix if present
-                        key = key.replace('export ', '').strip()
+                        key = key.replace("export ", "").strip()
                         value = value.strip().strip('"').strip("'")
                         # Support both CKAN_* (for actual CKAN instances) and DADOS_GOV_BR_* (for dados.gov.br Swagger API)
                         # Also support deprecated CKAN_DADOS_GOV_BR_API_KEY for backward compatibility
-                        if key.startswith('CKAN_') or key.startswith('DADOS_GOV_BR_'):
+                        if key.startswith("CKAN_") or key.startswith("DADOS_GOV_BR_"):
                             os.environ[key] = value
                             logger.debug(f"Loaded marketplace env var from .env.test.ckan: {key}")
-        except Exception as e:
+        except (OSError, UnicodeDecodeError, ValueError) as e:
             logger.warning(f"Failed to load .env.test.ckan: {e}")
 
 
@@ -60,9 +58,8 @@ _load_env_file()
 
 
 def get_test_marketplace_config(
-    instance_name: Union[Optional[str], object] = _USE_DEFAULT_INSTANCE,
-    prefer_production: bool = False
-) -> Optional[MarketplaceInstanceConfig]:
+    instance_name: str | None | object = _USE_DEFAULT_INSTANCE, prefer_production: bool = False
+) -> MarketplaceInstanceConfig | None:
     """
     Get marketplace connector test configuration using the centralized config system.
 
@@ -108,33 +105,40 @@ def get_test_marketplace_config(
     if instance_name:
         config = get_marketplace_instance_config(str(instance_name))
         if config:
-            logger.debug(f"Using requested marketplace instance: {instance_name} (connector_type={config.connector_type})")
+            logger.debug(
+                f"Using requested marketplace instance: {instance_name} (connector_type={config.connector_type})"
+            )
             return config
         logger.warning(f"Requested marketplace instance not found: {instance_name}")
         return None
 
     # Check environment variable first
-    test_url = os.getenv('CKAN_TEST_URL', '').strip()
+    test_url = os.getenv("CKAN_TEST_URL", "").strip()
     if test_url:
         # Try to match against registered instances
         # Extract hostname from URL
         try:
             from urllib.parse import urlparse
+
             parsed = urlparse(test_url)
-            hostname = parsed.netloc or parsed.path.split('/')[0]
+            hostname = parsed.netloc or parsed.path.split("/")[0]
 
             # Try exact match first
             config = get_marketplace_instance_config(hostname)
             if config:
-                logger.debug(f"Using marketplace instance from CKAN_TEST_URL: {hostname} (connector_type={config.connector_type})")
+                logger.debug(
+                    f"Using marketplace instance from CKAN_TEST_URL: {hostname} (connector_type={config.connector_type})"
+                )
                 return config
 
             # Try without port
-            if ':' in hostname:
-                hostname_no_port = hostname.split(':')[0]
+            if ":" in hostname:
+                hostname_no_port = hostname.split(":")[0]
                 config = get_marketplace_instance_config(hostname_no_port)
                 if config:
-                    logger.debug(f"Using marketplace instance from CKAN_TEST_URL (no port): {hostname_no_port} (connector_type={config.connector_type})")
+                    logger.debug(
+                        f"Using marketplace instance from CKAN_TEST_URL (no port): {hostname_no_port} (connector_type={config.connector_type})"
+                    )
                     return config
         except Exception as e:
             logger.debug(f"Failed to parse CKAN_TEST_URL: {e}")
@@ -143,14 +147,18 @@ def get_test_marketplace_config(
     if not prefer_production:
         config = get_default_test_instance()
         if config:
-            logger.debug(f"Using default test marketplace instance: {config.name} (connector_type={config.connector_type})")
+            logger.debug(
+                f"Using default test marketplace instance: {config.name} (connector_type={config.connector_type})"
+            )
             return config
 
     # Fallback to production instance if requested
     if prefer_production:
         config = get_marketplace_instance_config("dados.gov.br")
         if config:
-            logger.debug(f"Using production marketplace instance: {config.name} (connector_type={config.connector_type})")
+            logger.debug(
+                f"Using production marketplace instance: {config.name} (connector_type={config.connector_type})"
+            )
             return config
 
     logger.warning("No marketplace test configuration available")
@@ -158,11 +166,11 @@ def get_test_marketplace_config(
 
 
 def create_test_connector(
-    instance_name: Union[Optional[str], object] = _USE_DEFAULT_INSTANCE,
-    api_key: Optional[str] = None,
+    instance_name: str | None | object = _USE_DEFAULT_INSTANCE,
+    api_key: str | None = None,
     prefer_production: bool = False,
-    verify_connection: bool = True
-) -> Optional[DataMarketplaceConnector]:
+    verify_connection: bool = True,
+) -> DataMarketplaceConnector | None:
     """
     Create a marketplace connector instance for testing.
 
@@ -190,7 +198,9 @@ def create_test_connector(
         ...     connector.test_connection()
     """
     # Get configuration
-    config = get_test_marketplace_config(instance_name=instance_name, prefer_production=prefer_production)
+    config = get_test_marketplace_config(
+        instance_name=instance_name, prefer_production=prefer_production
+    )
     if not config:
         logger.warning("Cannot create test connector: no configuration available")
         return None
@@ -202,39 +212,53 @@ def create_test_connector(
 
     # Also check legacy environment variables for backward compatibility
     if not resolved_api_key:
-        legacy_key = os.getenv('CKAN_TEST_API_KEY', '')
+        legacy_key = os.getenv("CKAN_TEST_API_KEY", "")
         if legacy_key:
             resolved_api_key = legacy_key
             logger.debug("Using API key from CKAN_TEST_API_KEY environment variable")
 
     # Create connector based on connector type
     try:
-        if config.connector_type == 'swagger':
+        if config.connector_type == "swagger":
             # Use DadosGovBrConnector for Swagger API instances
             from hub.apps.integrations.connectors.dados_gov_br_connector import DadosGovBrConnector
-            swagger_spec_url = getattr(config, 'swagger_spec_url', None)
+
+            swagger_spec_url = getattr(config, "swagger_spec_url", None)
             connector = DadosGovBrConnector(
                 base_url=config.base_url,
-                jwt_token=resolved_api_key or '',
-                swagger_spec_url=swagger_spec_url
+                jwt_token=resolved_api_key or "",
+                swagger_spec_url=swagger_spec_url,
             )
         else:
             # Use CKANConnector for CKAN API instances
             connector = CKANConnector(
-                base_url=config.base_url,
-                api_key=resolved_api_key if resolved_api_key else None
+                base_url=config.base_url, api_key=resolved_api_key if resolved_api_key else None
             )
 
-        # Verify connection if requested
+        # Verify connection if requested.
+        # Reset any stale circuit breaker state first — ``--reuse-db`` reuses
+        # the Redis cache, and a circuit left OPEN from a previous test run
+        # would cause the connection verification to fail spuriously.
         if verify_connection:
-            if not verify_marketplace_connection(connector):
-                logger.warning(f"Connection verification failed for {config.name}")
-                return None
+            try:
+                from hub.apps.core.resilience.circuit_breaker import (
+                    reset_circuit_breaker_by_name,
+                )
 
-        logger.debug(f"Created test connector for {config.name} (connector_type={config.connector_type})")
+                reset_circuit_breaker_by_name("ckan-connector")
+            except Exception:
+                pass
+
+        if verify_connection and not verify_marketplace_connection(connector):
+            logger.warning(f"Connection verification failed for {config.name}")
+            return None
+
+        logger.debug(
+            f"Created test connector for {config.name} (connector_type={config.connector_type})"
+        )
         return connector
 
-    except Exception as e:
+    except (ImportError, ValueError, httpx.RequestError, HubConnectionError, KeyError) as e:
         logger.error(f"Failed to create test connector: {e}")
         return None
 
@@ -276,11 +300,13 @@ def verify_marketplace_connection(connector: DataMarketplaceConnector) -> bool:
             logger.warning(f"Connection test returned False for {base_url}")
         return result
     except Exception as e:
-        logger.warning(f"Connection verification failed for {getattr(connector, 'base_url', 'unknown')}: {e}")
+        logger.warning(
+            f"Connection verification failed for {getattr(connector, 'base_url', 'unknown')}: {e}"
+        )
         return False
 
 
-def marketplace_available(instance_name: Union[Optional[str], object] = _USE_DEFAULT_INSTANCE) -> bool:
+def marketplace_available(instance_name: str | None | object = _USE_DEFAULT_INSTANCE) -> bool:
     """
     Check if a marketplace connector instance is available for testing.
 
@@ -304,7 +330,7 @@ def marketplace_available(instance_name: Union[Optional[str], object] = _USE_DEF
 
     # Try a quick connectivity check
     try:
-        if config.connector_type == 'swagger':
+        if config.connector_type == "swagger":
             # For Swagger API, try a simple GET request to base URL
             response = httpx.get(config.base_url, timeout=5)
             return response.status_code < 500
@@ -313,7 +339,7 @@ def marketplace_available(instance_name: Union[Optional[str], object] = _USE_DEF
             response = httpx.get(f"{config.base_url}/api/3/action/status_show", timeout=5)
             if response.status_code == 200:
                 data = response.json()
-                return data.get('success', False)
+                return data.get("success", False)
     except Exception:
         pass
 
@@ -323,7 +349,8 @@ def marketplace_available(instance_name: Union[Optional[str], object] = _USE_DEF
 # Backward compatibility functions
 # These maintain compatibility with existing test code
 
-def get_test_ckan_url() -> Optional[str]:
+
+def get_test_ckan_url() -> str | None:
     """
     Get marketplace connector test URL from environment or use default public instance.
 
@@ -338,15 +365,15 @@ def get_test_ckan_url() -> Optional[str]:
         return config.base_url
 
     # Fallback to legacy behavior
-    url = os.getenv('CKAN_TEST_URL', '').strip()
+    url = os.getenv("CKAN_TEST_URL", "").strip()
     if url:
         return url
 
     # Try public marketplace instances (including dados.gov.br Swagger API and CKAN instances)
     public_instances = [
-        'https://demo.ckan.org',
-        'https://dados.gov.br',
-        'https://data.gov',
+        "https://demo.ckan.org",
+        "https://dados.gov.br",
+        "https://data.gov",
     ]
 
     for instance_url in public_instances:
@@ -355,7 +382,7 @@ def get_test_ckan_url() -> Optional[str]:
             response = httpx.get(f"{instance_url}/api/3/action/status_show", timeout=5)
             if response.status_code == 200:
                 data = response.json()
-                if data.get('success'):
+                if data.get("success"):
                     return instance_url
         except Exception:
             # If CKAN endpoint fails, try basic connectivity (for Swagger API)
@@ -369,7 +396,7 @@ def get_test_ckan_url() -> Optional[str]:
     return None
 
 
-def get_test_api_key() -> Optional[str]:
+def get_test_api_key() -> str | None:
     """
     Get marketplace connector API key/JWT token for write operations.
 
@@ -380,17 +407,17 @@ def get_test_api_key() -> Optional[str]:
         API key/JWT token string if available, None otherwise
     """
     # Check environment variable first
-    api_key = os.getenv('CKAN_TEST_API_KEY', '').strip()
+    api_key = os.getenv("CKAN_TEST_API_KEY", "").strip()
     if api_key:
         return api_key
 
     # Check dados.gov.br specific env var (new name)
-    dados_key = os.getenv('DADOS_GOV_BR_API_KEY', '').strip()
+    dados_key = os.getenv("DADOS_GOV_BR_API_KEY", "").strip()
     if dados_key:
         return dados_key
 
     # Backward compatibility: check old env var name
-    dados_key_old = os.getenv('CKAN_DADOS_GOV_BR_API_KEY', '').strip()
+    dados_key_old = os.getenv("CKAN_DADOS_GOV_BR_API_KEY", "").strip()
     if dados_key_old:
         return dados_key_old
 
@@ -406,9 +433,8 @@ def get_test_api_key() -> Optional[str]:
 
 # Deprecated function aliases for backward compatibility
 def get_test_ckan_config(
-    instance_name: Union[Optional[str], object] = _USE_DEFAULT_INSTANCE,
-    prefer_production: bool = False
-) -> Optional[MarketplaceInstanceConfig]:
+    instance_name: str | None | object = _USE_DEFAULT_INSTANCE, prefer_production: bool = False
+) -> MarketplaceInstanceConfig | None:
     """
     Get marketplace connector test configuration using the centralized config system.
 
@@ -426,9 +452,11 @@ def get_test_ckan_config(
         "get_test_ckan_config() is deprecated, use get_test_marketplace_config() instead. "
         "This function will be removed in a future version.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
-    return get_test_marketplace_config(instance_name=instance_name, prefer_production=prefer_production)
+    return get_test_marketplace_config(
+        instance_name=instance_name, prefer_production=prefer_production
+    )
 
 
 def verify_ckan_connection(connector: DataMarketplaceConnector) -> bool:
@@ -448,7 +476,7 @@ def verify_ckan_connection(connector: DataMarketplaceConnector) -> bool:
         "verify_ckan_connection() is deprecated, use verify_marketplace_connection() instead. "
         "This function will be removed in a future version.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
     # Backward compatibility: deprecated API returns False for None instead of raising
     if connector is None:
@@ -456,7 +484,7 @@ def verify_ckan_connection(connector: DataMarketplaceConnector) -> bool:
     return verify_marketplace_connection(connector)
 
 
-def ckan_available(instance_name: Union[Optional[str], object] = _USE_DEFAULT_INSTANCE) -> bool:
+def ckan_available(instance_name: str | None | object = _USE_DEFAULT_INSTANCE) -> bool:
     """
     Check if a marketplace connector instance is available for testing.
 
@@ -473,7 +501,6 @@ def ckan_available(instance_name: Union[Optional[str], object] = _USE_DEFAULT_IN
         "ckan_available() is deprecated, use marketplace_available() instead. "
         "This function will be removed in a future version.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
     return marketplace_available(instance_name=instance_name)
-

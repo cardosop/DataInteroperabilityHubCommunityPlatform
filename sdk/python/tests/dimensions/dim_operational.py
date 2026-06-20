@@ -13,65 +13,66 @@ Validates CLI operational behavior:
   - Output format JSON schema regression
 """
 
+import os
 import subprocess
 import sys
 import tempfile
-import os
-
 
 # ---------------------------------------------------------------------------
 # Exit code contracts
 # ---------------------------------------------------------------------------
 
+
 def test_help_exits_zero():
     """datahub --help must exit 0."""
     result = subprocess.run(
         [sys.executable, "-m", "datahub_cli", "--help"],
-        capture_output=True, timeout=10,
+        capture_output=True,
+        timeout=10,
     )
-    assert result.returncode == 0, (
-        f"--help exited {result.returncode}: {result.stderr[:200]}"
-    )
+    assert result.returncode == 0, f"--help exited {result.returncode}: {result.stderr[:200]}"
 
 
 def test_version_exits_zero():
     """datahub --version must exit 0."""
     result = subprocess.run(
         [sys.executable, "-m", "datahub_cli", "--version"],
-        capture_output=True, timeout=10,
+        capture_output=True,
+        timeout=10,
     )
-    assert result.returncode == 0, (
-        f"--version exited {result.returncode}: {result.stderr[:200]}"
-    )
+    assert result.returncode == 0, f"--version exited {result.returncode}: {result.stderr[:200]}"
 
 
 def test_unknown_command_exits_nonzero():
     """datahub nonexistent-command must exit non-zero (usage error)."""
     result = subprocess.run(
         [sys.executable, "-m", "datahub_cli", "nonexistent-command-xyz"],
-        capture_output=True, timeout=10,
+        capture_output=True,
+        timeout=10,
     )
-    assert result.returncode != 0, (
-        "Unknown command should exit non-zero"
-    )
+    assert result.returncode != 0, "Unknown command should exit non-zero"
 
 
 def test_version_output_format():
     """--version output must contain the program name and a version string."""
     result = subprocess.run(
         [sys.executable, "-m", "datahub_cli", "--version"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     output = result.stdout.strip()
     assert "datahub" in output.lower(), f"Version output missing 'datahub': {output}"
     # Should contain a version-like pattern (digits and dots)
     import re
-    assert re.search(r'\d+\.\d+', output), f"Version output has no version number: {output}"
+
+    assert re.search(r"\d+\.\d+", output), f"Version output has no version number: {output}"
 
 
 # ---------------------------------------------------------------------------
 # Multi-profile config
 # ---------------------------------------------------------------------------
+
 
 def test_config_dir_respected():
     """DATAHUB_CONFIG_DIR env var should control where config is read."""
@@ -84,7 +85,9 @@ def test_config_dir_respected():
 
         result = subprocess.run(
             [sys.executable, "-m", "datahub_cli", "--help"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
             env={**os.environ, "DATAHUB_CONFIG_DIR": config_dir},
         )
         # --help should still work regardless of config content
@@ -94,6 +97,7 @@ def test_config_dir_respected():
 # ---------------------------------------------------------------------------
 # --dry-run support audit
 # ---------------------------------------------------------------------------
+
 
 def test_dry_run_flag_audit():
     """Audit whether --dry-run is supported by the CLI root group.
@@ -105,7 +109,9 @@ def test_dry_run_flag_audit():
     """
     result = subprocess.run(
         [sys.executable, "-m", "datahub_cli", "--help"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     if "--dry-run" in result.stdout:
         pass  # Flag exists
@@ -120,6 +126,7 @@ def test_dry_run_flag_audit():
 # stdin piping
 # ---------------------------------------------------------------------------
 
+
 def test_stdin_piping_does_not_crash():
     """CLI must not crash when stdin is a pipe (non-TTY).
 
@@ -129,11 +136,12 @@ def test_stdin_piping_does_not_crash():
     result = subprocess.run(
         [sys.executable, "-m", "datahub_cli", "--help"],
         input="",  # stdin is a pipe with empty content
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     assert result.returncode == 0, (
-        f"CLI crashed with piped stdin: exit {result.returncode}, "
-        f"stderr={result.stderr[:200]}"
+        f"CLI crashed with piped stdin: exit {result.returncode}, stderr={result.stderr[:200]}"
     )
 
 
@@ -142,22 +150,25 @@ def test_stdin_pipe_with_data_does_not_hang():
     result = subprocess.run(
         [sys.executable, "-m", "datahub_cli", "--version"],
         input="unexpected input data\n",
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
-    assert result.returncode == 0, (
-        f"CLI hung or crashed with piped data: exit {result.returncode}"
-    )
+    assert result.returncode == 0, f"CLI hung or crashed with piped data: exit {result.returncode}"
 
 
 # ---------------------------------------------------------------------------
 # Output format JSON schema regression
 # ---------------------------------------------------------------------------
 
+
 def test_help_output_is_text():
     """--help output must be plain text (not JSON, not HTML)."""
     result = subprocess.run(
         [sys.executable, "-m", "datahub_cli", "--help"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     output = result.stdout
     assert not output.strip().startswith("{"), "Help output looks like JSON"
@@ -171,10 +182,16 @@ def test_error_output_goes_to_stderr():
     """Error messages for unknown commands should go to stderr."""
     result = subprocess.run(
         [sys.executable, "-m", "datahub_cli", "nonexistent-xyz"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     # Click writes error messages to stderr
     combined = result.stdout + result.stderr
-    assert "error" in combined.lower() or "no such command" in combined.lower() or "usage" in combined.lower(), (
+    assert (
+        "error" in combined.lower()
+        or "no such command" in combined.lower()
+        or "usage" in combined.lower()
+    ), (
         f"No error message found in output: stdout={result.stdout[:100]}, stderr={result.stderr[:100]}"
     )

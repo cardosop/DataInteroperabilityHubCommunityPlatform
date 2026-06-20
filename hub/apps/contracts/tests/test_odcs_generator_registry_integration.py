@@ -9,11 +9,8 @@ import pytest
 from django.test import TestCase
 
 from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0 import ODCSNormalizerV3_0_0
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_1 import ODCSNormalizerV3_0_1
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import ODCSNormalizerV3_0_2
 from hub.apps.contracts.odcs_generator import (
     generate_odcs_from_hubcontract,
-    get_odcs_generator,
     get_supported_odcs_versions,
 )
 
@@ -99,7 +96,7 @@ class ODCSGeneratorRegistryIntegrationTest(TestCase):
         # Normalize to HubContract
         normalizer = ODCSNormalizerV3_0_0()
         norm_result = normalizer.normalize(original_odcs, spec_version="3.0.0")
-        self.assertIn(norm_result.status.value, ["NORMALIZED_OK", "NORMALIZED_WITH_WARNINGS"])
+        self.assertEqual(norm_result.status.value, "NORMALIZED_OK")
         self.assertIsNotNone(norm_result.hub_contract)
         hub_contract = norm_result.hub_contract
 
@@ -128,10 +125,7 @@ class ODCSGeneratorRegistryIntegrationTest(TestCase):
         for version in versions:
             odcs = generate_odcs_from_hubcontract(hub_contract, target_version=version)
             # v3.1.0+ uses short "v{ver}" format; older use "odcs.io/v{ver}"
-            expected_api = (
-                f"v{version}" if version >= "3.1"
-                else f"odcs.io/v{version}"
-            )
+            expected_api = f"v{version}" if version >= "3.1" else f"odcs.io/v{version}"
             self.assertEqual(odcs["apiVersion"], expected_api)
             self.assertEqual(odcs["id"], "test-all-versions")
             self.assertEqual(odcs["name"], "All Versions Test")

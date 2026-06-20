@@ -12,7 +12,7 @@ All tests use real implementations (no mocks/stubs).
 MockTransport is used for endpoint verification (acceptable test utility).
 """
 
-from datetime import datetime, timedelta
+import contextlib
 
 import httpx
 import redis
@@ -22,7 +22,6 @@ from django.test import TestCase
 from hub.apps.contracts.cli_client import DataContractCLIClient
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
-    CircuitBreakerError,
     CircuitBreakerState,
 )
 
@@ -36,7 +35,7 @@ def get_real_redis_client_or_none():
         )
         client.ping()
         return client
-    except Exception:
+    except (redis.RedisError, ValueError, OSError):
         return None
 
 
@@ -60,21 +59,18 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
                 self.redis_client.delete(*keys)
             # Explicitly reset circuit breaker to ensure clean state
             self.service_client._circuit_breaker.reset()
-        except Exception:
+        except redis.RedisError:
             pass
 
     def tearDown(self):
         """Clean up test fixtures."""
-        # Clean up circuit breaker state and reset
         try:
-            # Explicitly reset circuit breaker first
             self.service_client._circuit_breaker.reset()
-            # Then clean up Redis keys
             pattern = f"circuit_breaker:{self.service_name}:*"
             keys = self.redis_client.keys(pattern)
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except redis.RedisError:
             pass
 
     def _make_mock_request(self, transport):
@@ -82,6 +78,7 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         Extracted to eliminate ~11 identical inline definitions (Phase E).
         """
+
         def mock_make_request(endpoint, data, timeout=None, max_retries=2):
             url = f"{self.service_client.base_url}{endpoint}"
             with httpx.Client(transport=transport, base_url=self.service_client.base_url) as client:
@@ -90,6 +87,7 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
                 )
                 response.raise_for_status()
                 return response.json()
+
         return mock_make_request
 
     def test_circuit_breaker_initialized(self):
@@ -152,13 +150,11 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         try:
             # Trigger failures to open circuit
-            for i in range(5):
-                try:
+            for _i in range(5):
+                with contextlib.suppress(Exception):
                     self.service_client.validate(
                         raw_contract=raw_contract, format="json", use_cache=False
                     )
-                except Exception:
-                    pass
 
             # Circuit should be open now
             self.assertEqual(
@@ -192,13 +188,11 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         try:
             # Trigger failures to open circuit
-            for i in range(5):
-                try:
+            for _i in range(5):
+                with contextlib.suppress(Exception):
                     self.service_client.validate(
                         raw_contract=raw_contract, format="json", use_cache=False
                     )
-                except Exception:
-                    pass
 
             # Get fallback response
             result = self.service_client.validate(
@@ -234,8 +228,11 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
                 raw_contract=raw_contract, format="json", use_cache=False
             )
             self.assertIsNotNone(result)
-            self.assertEqual(result["validation_status"], "PASS",
-                "Empty contract sent to service must return PASS from mock")
+            self.assertEqual(
+                result["validation_status"],
+                "PASS",
+                "Empty contract sent to service must return PASS from mock",
+            )
         finally:
             self.service_client._make_request = original_make_request
 
@@ -260,8 +257,11 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
             )
             # 400 from service → HTTPStatusError → circuit breaker fallback → ERROR.
             self.assertIsNotNone(result)
-            self.assertEqual(result["validation_status"], "ERROR",
-                "Invalid JSON must trigger circuit breaker fallback with validation_status='ERROR'")
+            self.assertEqual(
+                result["validation_status"],
+                "ERROR",
+                "Invalid JSON must trigger circuit breaker fallback with validation_status='ERROR'",
+            )
         finally:
             self.service_client._make_request = original_make_request
 
@@ -285,8 +285,11 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
                 raw_contract=raw_contract, format="json", use_cache=False
             )
             self.assertIsNotNone(result)
-            self.assertEqual(result["validation_status"], "PASS",
-                "Very large contract sent to service must return PASS from mock")
+            self.assertEqual(
+                result["validation_status"],
+                "PASS",
+                "Very large contract sent to service must return PASS from mock",
+            )
         finally:
             self.service_client._make_request = original_make_request
 
@@ -303,13 +306,11 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         try:
             # Trigger failures to open circuit
-            for i in range(5):
-                try:
+            for _i in range(5):
+                with contextlib.suppress(Exception):
                     self.service_client.validate(
                         raw_contract=raw_contract, format="json", use_cache=False
                     )
-                except Exception:
-                    pass
 
             # Create new client instance - should inherit circuit breaker state
             new_client = DataContractCLIClient()
@@ -340,8 +341,11 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
                 raw_contract=raw_contract, format="json", use_cache=False
             )
             self.assertIsNotNone(result)
-            self.assertEqual(result["validation_status"], "PASS",
-                "Special characters in contract must return PASS from mock")
+            self.assertEqual(
+                result["validation_status"],
+                "PASS",
+                "Special characters in contract must return PASS from mock",
+            )
         finally:
             self.service_client._make_request = original_make_request
 
@@ -365,8 +369,11 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
                 raw_contract=raw_contract, format="json", use_cache=False
             )
             self.assertIsNotNone(result)
-            self.assertEqual(result["validation_status"], "PASS",
-                "Unicode characters in contract must return PASS from mock")
+            self.assertEqual(
+                result["validation_status"],
+                "PASS",
+                "Unicode characters in contract must return PASS from mock",
+            )
         finally:
             self.service_client._make_request = original_make_request
 
@@ -383,13 +390,11 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         try:
             # Trigger timeout failures
-            for i in range(5):
-                try:
+            for _i in range(5):
+                with contextlib.suppress(Exception):
                     self.service_client.validate(
                         raw_contract=raw_contract, format="json", use_cache=False
                     )
-                except Exception:
-                    pass
 
             # Circuit should be open after timeout failures
             self.assertEqual(
@@ -417,11 +422,16 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
         try:
             # The 400 triggers HTTPStatusError → circuit breaker fallback → ERROR dict.
             result = self.service_client.validate(
-                raw_contract=raw_contract, format="json", use_cache=False  # type: ignore[misc]  # test: edge-case type exercise
+                raw_contract=raw_contract,
+                format="json",
+                use_cache=False,  # type: ignore[misc]  # test: edge-case type exercise
             )
             self.assertIsNotNone(result)
             self.assertIsInstance(result, dict)
-            self.assertEqual(result["validation_status"], "ERROR",
-                "None contract must return fallback with validation_status='ERROR'")
+            self.assertEqual(
+                result["validation_status"],
+                "ERROR",
+                "None contract must return fallback with validation_status='ERROR'",
+            )
         finally:
             self.service_client._make_request = original_make_request

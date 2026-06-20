@@ -10,9 +10,9 @@ Comprehensive integration tests for POST /api/v1/contracts/{id}/generate-odps/ e
 
 Tests use real implementations (no mocks/stubs) and follow TDD principles.
 """
-import uuid
 
 import json
+import uuid
 
 from rest_framework import status
 
@@ -25,7 +25,7 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from tests.fixtures.test_data_factories import TenantFactory, UserFactory

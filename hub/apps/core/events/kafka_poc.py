@@ -15,25 +15,26 @@ Usage:
     event_id = bus.publish("contract.created", {"contract_id": "..."})
     bus.subscribe("contract.*", handler_function)
 """
+
 from __future__ import annotations
 
 import json
-import structlog
-import time
-from typing import Dict, Any, Optional, Callable, List
-from django.conf import settings
-from django.utils import timezone
-from datetime import datetime
+from collections.abc import Callable
+from typing import Any
 
+import structlog
+from django.conf import settings
+
+from .event_types import validate_event_data
 from .schema import EventSchema
-from .event_types import validate_event_data, CURRENT_EVENT_VERSION
 
 logger = structlog.get_logger(__name__)
 
 # Try to import kafka-python
 try:
-    from kafka import KafkaProducer, KafkaConsumer
+    from kafka import KafkaConsumer, KafkaProducer
     from kafka.errors import KafkaError
+
     KAFKA_AVAILABLE = True
 except ImportError:
     KAFKA_AVAILABLE = False
@@ -44,7 +45,6 @@ except ImportError:
 
 class KafkaEventBusError(Exception):
     """Base exception for Kafka event bus errors."""
-    pass
 
 
 class KafkaEventBus:
@@ -62,7 +62,7 @@ class KafkaEventBus:
     - Partition-based ordering
     """
 
-    def __init__(self, bootstrap_servers: Optional[List[str]] = None):
+    def __init__(self, bootstrap_servers: list[str] | None = None):
         """
         Initialize Kafka event bus.
 
@@ -76,34 +76,34 @@ class KafkaEventBus:
 
         # Get Kafka configuration from settings
         self.bootstrap_servers = bootstrap_servers or getattr(
-            settings, 'KAFKA_BOOTSTRAP_SERVERS', ['localhost:9092']
+            settings, "KAFKA_BOOTSTRAP_SERVERS", ["localhost:9092"]
         )
-        self.topic_prefix = getattr(settings, 'KAFKA_TOPIC_PREFIX', 'events')
+        self.topic_prefix = getattr(settings, "KAFKA_TOPIC_PREFIX", "events")
         self.default_topic = f"{self.topic_prefix}.all"
 
         # Producer configuration
         self.producer_config = {
-            'bootstrap_servers': self.bootstrap_servers,
-            'value_serializer': lambda v: json.dumps(v).encode('utf-8'),
-            'key_serializer': lambda k: k.encode('utf-8') if k else None,
-            'acks': 'all',  # Wait for all replicas
-            'retries': 3,
-            'max_in_flight_requests_per_connection': 1,  # Ensure ordering
-            'enable_idempotence': True,  # Exactly-once semantics
+            "bootstrap_servers": self.bootstrap_servers,
+            "value_serializer": lambda v: json.dumps(v).encode("utf-8"),
+            "key_serializer": lambda k: k.encode("utf-8") if k else None,
+            "acks": "all",  # Wait for all replicas
+            "retries": 3,
+            "max_in_flight_requests_per_connection": 1,  # Ensure ordering
+            "enable_idempotence": True,  # Exactly-once semantics
         }
 
         # Consumer configuration
         self.consumer_config = {
-            'bootstrap_servers': self.bootstrap_servers,
-            'value_deserializer': lambda m: json.loads(m.decode('utf-8')),
-            'key_deserializer': lambda k: k.decode('utf-8') if k else None,
-            'auto_offset_reset': 'earliest',  # Start from beginning if no offset
-            'enable_auto_commit': False,  # Manual offset management
-            'group_id': None,  # Set per subscription
+            "bootstrap_servers": self.bootstrap_servers,
+            "value_deserializer": lambda m: json.loads(m.decode("utf-8")),
+            "key_deserializer": lambda k: k.decode("utf-8") if k else None,
+            "auto_offset_reset": "earliest",  # Start from beginning if no offset
+            "enable_auto_commit": False,  # Manual offset management
+            "group_id": None,  # Set per subscription
         }
 
-        self.producer: Optional[KafkaProducer] = None
-        self.consumers: Dict[str, KafkaConsumer] = {}
+        self.producer: KafkaProducer | None = None
+        self.consumers: dict[str, KafkaConsumer] = {}
 
     def _get_producer(self) -> KafkaProducer:
         """Get or create Kafka producer."""
@@ -114,13 +114,13 @@ class KafkaEventBus:
     def publish(
         self,
         event_type: str,
-        data: Dict[str, Any],
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request_id: Optional[str] = None,
-        correlation_id: Optional[str] = None,
-        causation_id: Optional[str] = None,
-        tags: Optional[List[str]] = None,
+        data: dict[str, Any],
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
+        causation_id: str | None = None,
+        tags: list[str] | None = None,
     ) -> str:
         """
         Publish an event to Kafka.
@@ -158,11 +158,7 @@ class KafkaEventBus:
         try:
             validate_event_data(event_type, data)
         except Exception as e:
-            logger.error(
-                "kafka_event_validation_failed",
-                event_type=event_type,
-                error=str(e)
-            )
+            logger.error("kafka_event_validation_failed", event_type=event_type, error=str(e))
             raise KafkaEventBusError(f"Event validation failed: {e}")
 
         # Determine topic and partition key
@@ -173,11 +169,7 @@ class KafkaEventBus:
         # Publish to Kafka
         producer = self._get_producer()
         try:
-            future = producer.send(
-                topic=topic,
-                key=partition_key,
-                value=event
-            )
+            future = producer.send(topic=topic, key=partition_key, value=event)
             # Wait for acknowledgment
             record_metadata = future.get(timeout=10)
 
@@ -187,17 +179,14 @@ class KafkaEventBus:
                 event_type=event_type,
                 topic=topic,
                 partition=record_metadata.partition,
-                offset=record_metadata.offset
+                offset=record_metadata.offset,
             )
 
             return event_id
 
         except KafkaError as e:
             logger.error(
-                "kafka_event_publish_failed",
-                event_id=event_id,
-                event_type=event_type,
-                error=str(e)
+                "kafka_event_publish_failed", event_id=event_id, event_type=event_type, error=str(e)
             )
             raise KafkaEventBusError(f"Failed to publish event: {e}")
 
@@ -208,16 +197,16 @@ class KafkaEventBus:
         Strategy: Use domain from event_type (e.g., 'contract.created' -> 'events.contract')
         """
         # Extract domain from event_type (e.g., 'contract.created' -> 'contract')
-        domain = event_type.split('.')[0] if '.' in event_type else 'default'
+        domain = event_type.split(".")[0] if "." in event_type else "default"
         return f"{self.topic_prefix}.{domain}"
 
     def subscribe(
         self,
         subscriber_name: str,
         event_type_pattern: str,
-        handler: Callable[[Dict[str, Any]], None],
+        handler: Callable[[dict[str, Any]], None],
         is_active: bool = True,
-        consumer_group: Optional[str] = None,
+        consumer_group: str | None = None,
         start_from_beginning: bool = False,
     ) -> None:
         """
@@ -235,7 +224,7 @@ class KafkaEventBus:
             logger.debug(
                 "kafka_subscription_inactive",
                 subscriber_name=subscriber_name,
-                event_type_pattern=event_type_pattern
+                event_type_pattern=event_type_pattern,
             )
             return
 
@@ -247,17 +236,14 @@ class KafkaEventBus:
 
         # Create consumer
         consumer_config = self.consumer_config.copy()
-        consumer_config['group_id'] = group_id
+        consumer_config["group_id"] = group_id
 
         if start_from_beginning:
-            consumer_config['auto_offset_reset'] = 'earliest'
+            consumer_config["auto_offset_reset"] = "earliest"
         else:
-            consumer_config['auto_offset_reset'] = 'latest'
+            consumer_config["auto_offset_reset"] = "latest"
 
-        consumer = KafkaConsumer(
-            *topics,
-            **consumer_config
-        )
+        consumer = KafkaConsumer(*topics, **consumer_config)
 
         # Store consumer
         self.consumers[subscriber_name] = consumer
@@ -267,14 +253,14 @@ class KafkaEventBus:
             subscriber_name=subscriber_name,
             event_type_pattern=event_type_pattern,
             topics=topics,
-            consumer_group=group_id
+            consumer_group=group_id,
         )
 
         # Start consuming in background (would need threading/async in production)
         # For POC, we'll just register the subscription
         # In production, this would start a background consumer loop
 
-    def _get_topics_for_pattern(self, pattern: str) -> List[str]:
+    def _get_topics_for_pattern(self, pattern: str) -> list[str]:
         """
         Get Kafka topics for event type pattern.
 
@@ -288,7 +274,7 @@ class KafkaEventBus:
     def start_consuming(
         self,
         subscriber_name: str,
-        handler: Callable[[Dict[str, Any]], None],
+        handler: Callable[[dict[str, Any]], None],
         timeout_ms: int = 1000,
     ) -> None:
         """
@@ -306,10 +292,7 @@ class KafkaEventBus:
 
         consumer = self.consumers[subscriber_name]
 
-        logger.info(
-            "kafka_consumer_started",
-            subscriber_name=subscriber_name
-        )
+        logger.info("kafka_consumer_started", subscriber_name=subscriber_name)
 
         try:
             while True:
@@ -335,16 +318,13 @@ class KafkaEventBus:
                                 topic=topic_partition.topic,
                                 partition=topic_partition.partition,
                                 offset=message.offset,
-                                error=str(e)
+                                error=str(e),
                             )
                             # In production, would send to dead letter queue
                             # For POC, we continue processing
 
         except KeyboardInterrupt:
-            logger.info(
-                "kafka_consumer_stopped",
-                subscriber_name=subscriber_name
-            )
+            logger.info("kafka_consumer_stopped", subscriber_name=subscriber_name)
         finally:
             consumer.close()
 
@@ -364,7 +344,6 @@ class KafkaEventBus:
 
 def get_kafka_event_bus() -> KafkaEventBus:
     """Get global Kafka event bus instance."""
-    if not hasattr(get_kafka_event_bus, '_instance'):
+    if not hasattr(get_kafka_event_bus, "_instance"):
         get_kafka_event_bus._instance = KafkaEventBus()
     return get_kafka_event_bus._instance
-

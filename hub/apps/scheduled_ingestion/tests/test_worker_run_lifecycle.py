@@ -1,20 +1,25 @@
 """Comprehensive tests for worker_run_lifecycle.py — Phase 100.7"""
+
 import uuid
+
 import pytest
-from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.test import TestCase
 from django.utils import timezone
-from hub.apps.tenants.models import Tenant
+
+from hub.apps.jobs.models import SideEffect, SideEffectStatus, SideEffectType
 from hub.apps.scheduled_ingestion.models import (
-    ScheduledIngestion, ScheduledIngestionRun,
-    ScheduledIngestionStatus, ScheduledIngestionRunStatus,
-    SourceType, ScheduleType,
+    ScheduledIngestion,
+    ScheduledIngestionRun,
+    ScheduledIngestionRunStatus,
+    ScheduledIngestionStatus,
+    ScheduleType,
+    SourceType,
 )
-from hub.apps.jobs.models import SideEffect, SideEffectType, SideEffectStatus
 from hub.apps.scheduled_ingestion.worker_run_lifecycle import (
     apply_run_completion_side_effects,
-    execute_side_effect,
 )
+from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -26,20 +31,29 @@ class ApplyRunCompletionSideEffectsTest(TestCase):
 
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(name=f"T {uid}", slug=f"t-{uid}", status="ACTIVE", kyc_status="UNVERIFIED")
+        self.tenant = Tenant.objects.create(
+            name=f"T {uid}", slug=f"t-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+        )
         ensure_tenant_has_active_subscription(self.tenant)
-        self.user = User.objects.create_user(email=f"u-{uid}@test.com", password="pass", tenant=self.tenant, status="ACTIVE")
+        self.user = User.objects.create_user(
+            email=f"u-{uid}@test.com", password="pass", tenant=self.tenant, status="ACTIVE"
+        )
         self.ingestion = ScheduledIngestion.objects.create(
-            tenant=self.tenant, name=f"Ingest {uid}", source_type=SourceType.S3,
+            tenant=self.tenant,
+            name=f"Ingest {uid}",
+            source_type=SourceType.S3,
             source_config={"bucket": "test-bucket", "region": "us-east-1"},
-            schedule_type=ScheduleType.DAILY, schedule_config={"time": "02:00", "timezone": "UTC"},
-            status=ScheduledIngestionStatus.ACTIVE, created_by=self.user,
+            schedule_type=ScheduleType.DAILY,
+            schedule_config={"time": "02:00", "timezone": "UTC"},
+            status=ScheduledIngestionStatus.ACTIVE,
+            created_by=self.user,
             next_run_at=timezone.now(),
         )
 
     def _create_run(self, status=ScheduledIngestionRunStatus.RUNNING):
         return ScheduledIngestionRun.objects.create(
-            scheduled_ingestion=self.ingestion, status=status,
+            scheduled_ingestion=self.ingestion,
+            status=status,
             started_at=timezone.now(),
         )
 
@@ -66,13 +80,19 @@ class ApplyRunCompletionSideEffectsTest(TestCase):
         """COMPLETED run creates COST_TRACKING side effect."""
         run = self._create_run()
         apply_run_completion_side_effects(run, "COMPLETED")
-        self.assertTrue(SideEffect.objects.filter(run_object_id=run.pk, effect_type=SideEffectType.COST_TRACKING).exists())
+        self.assertTrue(
+            SideEffect.objects.filter(
+                run_object_id=run.pk, effect_type=SideEffectType.COST_TRACKING
+            ).exists()
+        )
 
     def test_completed_run_creates_all_side_effects(self):
         """COMPLETED run creates COST_TRACKING, DLQ_SYNC, NOTIFICATION, AUDIT_EVENT."""
         run = self._create_run()
         apply_run_completion_side_effects(run, "COMPLETED")
-        types = set(SideEffect.objects.filter(run_object_id=run.pk).values_list("effect_type", flat=True))
+        types = set(
+            SideEffect.objects.filter(run_object_id=run.pk).values_list("effect_type", flat=True)
+        )
         self.assertIn(SideEffectType.COST_TRACKING, types)
         self.assertIn(SideEffectType.DLQ_SYNC, types)
         self.assertIn(SideEffectType.NOTIFICATION, types)
@@ -93,7 +113,11 @@ class ApplyRunCompletionSideEffectsTest(TestCase):
         """FAILED run does NOT create COST_TRACKING side effect."""
         run = self._create_run()
         apply_run_completion_side_effects(run, "FAILED")
-        self.assertFalse(SideEffect.objects.filter(run_object_id=run.pk, effect_type=SideEffectType.COST_TRACKING).exists())
+        self.assertFalse(
+            SideEffect.objects.filter(
+                run_object_id=run.pk, effect_type=SideEffectType.COST_TRACKING
+            ).exists()
+        )
 
     def test_auto_pause_after_max_consecutive_failures(self):
         """After max consecutive failures, ingestion auto-pauses."""
@@ -137,14 +161,14 @@ class ApplyRunCompletionSideEffectsTest(TestCase):
         self.assertGreater(effects.count(), 0)
         for se in effects:
             self.assertGreaterEqual(
-                se.attempt_count, 1,
+                se.attempt_count,
+                1,
                 f"{se.effect_type} was not attempted",
             )
             self.assertIn(
                 se.status,
                 (SideEffectStatus.COMPLETED, SideEffectStatus.FAILED),
-                f"{se.effect_type} should reach terminal status, "
-                f"got {se.status}",
+                f"{se.effect_type} should reach terminal status, got {se.status}",
             )
 
     def test_failed_side_effect_does_not_propagate(self):

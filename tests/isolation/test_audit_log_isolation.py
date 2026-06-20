@@ -4,6 +4,7 @@
 Verifies that Tenant A's audit events are not visible via Tenant B's
 audit log endpoint.
 """
+
 import uuid
 
 import pytest

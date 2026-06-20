@@ -24,9 +24,8 @@ from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import (
-ensure_tenant_has_active_subscription,
+    ensure_tenant_has_active_subscription,
 )
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     TenantFactory,
@@ -77,7 +76,8 @@ class DevExpTestBase(TestCase, TestDatabaseIsolationMixin):
             email=f"dev-{uid}@example.com",
         )
         UserRole.objects.get_or_create(
-            user=self.dev_user, role=self.data_provider_role,
+            user=self.dev_user,
+            role=self.data_provider_role,
         )
 
 
@@ -89,13 +89,11 @@ class UCDEV001InstallPluginTest(DevExpTestBase):
         self.client.force_authenticate(user=self.dev_user)
         response = self.client.get("/api/v1/developer/plugins/")
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         data = response.json()
-        results = (
-            data.get("results", data)
-            if isinstance(data, dict) else data
-        )
+        results = data.get("results", data) if isinstance(data, dict) else data
         self.assertIsInstance(results, list)
 
     def test_plugin_list_allows_anonymous_access(self):
@@ -103,7 +101,8 @@ class UCDEV001InstallPluginTest(DevExpTestBase):
         self.client.logout()
         response = self.client.get("/api/v1/developer/plugins/")
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
             "Plugin list is a public endpoint (AllowAny)",
         )
 
@@ -138,7 +137,8 @@ class UCDEV003UseCLIToolTest(DevExpTestBase):
         url = reverse("asset-list")
         response = self.client.get(url)
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         data = response.json()
         results = data.get("results", data)
@@ -150,7 +150,8 @@ class UCDEV003UseCLIToolTest(DevExpTestBase):
         url = reverse("contract-list")
         response = self.client.get(url)
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
 
     def test_cli_dq_runs_endpoint(self):
@@ -159,7 +160,8 @@ class UCDEV003UseCLIToolTest(DevExpTestBase):
         url = reverse("dq-run-list")
         response = self.client.get(url)
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
 
 
@@ -171,7 +173,8 @@ class UCDEV004AccessDeveloperPortalTest(DevExpTestBase):
         self.client.force_authenticate(user=self.dev_user)
         response = self.client.get("/api/v1/developer/plugins/")
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
 
     def test_developer_portal_sdk_docs(self):
@@ -179,7 +182,8 @@ class UCDEV004AccessDeveloperPortalTest(DevExpTestBase):
         self.client.force_authenticate(user=self.dev_user)
         response = self.client.get("/api/v1/developer/sdk/")
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         data = response.json()
         self.assertIn("sdks", data)
@@ -190,7 +194,8 @@ class UCDEV004AccessDeveloperPortalTest(DevExpTestBase):
         self.client.force_authenticate(user=self.dev_user)
         response = self.client.get("/api/v1/openapi.json")
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         data = response.json()
         self.assertIn("openapi", data)
@@ -206,13 +211,15 @@ class UCDEV007BuildCustomConnectorTest(DevExpTestBase):
         url = "/api/v1/integrations/marketplace/connectors/"
         response = self.client.get(url)
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         data = response.json()
         self.assertIn("connectors", data)
         self.assertIsInstance(data["connectors"], list)
         self.assertGreaterEqual(
-            len(data["connectors"]), 1,
+            len(data["connectors"]),
+            1,
             "At least one connector type must be registered",
         )
 
@@ -222,7 +229,8 @@ class UCDEV007BuildCustomConnectorTest(DevExpTestBase):
         url = "/api/v1/integrations/marketplace/connectors/"
         list_resp = self.client.get(url)
         self.assertEqual(
-            list_resp.status_code, status.HTTP_200_OK,
+            list_resp.status_code,
+            status.HTTP_200_OK,
         )
         connectors = list_resp.json().get("connectors", [])
         self.assertGreater(len(connectors), 0)
@@ -231,7 +239,8 @@ class UCDEV007BuildCustomConnectorTest(DevExpTestBase):
 
         detail_resp = self.client.get(f"{url}{ctype}/")
         self.assertEqual(
-            detail_resp.status_code, status.HTTP_200_OK,
+            detail_resp.status_code,
+            status.HTTP_200_OK,
         )
         self.assertEqual(detail_resp.json()["type"], ctype)
 
@@ -244,7 +253,8 @@ class UCDEV008UsePluginSystemTest(DevExpTestBase):
         self.client.force_authenticate(user=self.dev_user)
         response = self.client.get("/api/v1/developer/plugins/")
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
 
     def test_plugins_filter_by_category(self):
@@ -254,13 +264,16 @@ class UCDEV008UsePluginSystemTest(DevExpTestBase):
             "/api/v1/developer/plugins/?category=CONNECTOR",
         )
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
 
     def test_plugins_retrieve(self):
         """GET /plugins/{id}/ -> 200 with matching id."""
         from hub.apps.developer.models import (
-            Plugin, PluginCategory, PluginStatus,
+            Plugin,
+            PluginCategory,
+            PluginStatus,
         )
 
         self.client.force_authenticate(user=self.dev_user)
@@ -280,10 +293,12 @@ class UCDEV008UsePluginSystemTest(DevExpTestBase):
             f"/api/v1/developer/plugins/{plugin.id}/",
         )
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         self.assertEqual(
-            response.json().get("id"), str(plugin.id),
+            response.json().get("id"),
+            str(plugin.id),
         )
 
 
@@ -295,7 +310,8 @@ class UCDEV009IntegrateWithDeveloperPortalTest(DevExpTestBase):
         self.client.force_authenticate(user=self.dev_user)
         response = self.client.get("/api/v1/developer/sdk/")
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         data = response.json()
         self.assertIn("sdks", data)
@@ -326,8 +342,10 @@ class UCDEV009IntegrateWithDeveloperPortalTest(DevExpTestBase):
         p_resp = self.client.get("/api/v1/developer/plugins/")
         s_resp = self.client.get("/api/v1/developer/sdk/")
         self.assertEqual(
-            p_resp.status_code, status.HTTP_200_OK,
+            p_resp.status_code,
+            status.HTTP_200_OK,
         )
         self.assertEqual(
-            s_resp.status_code, status.HTTP_200_OK,
+            s_resp.status_code,
+            status.HTTP_200_OK,
         )

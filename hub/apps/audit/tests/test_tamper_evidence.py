@@ -25,30 +25,25 @@ chain logic. ``boto3`` is patched at the import boundary only when the
 test explicitly exercises the S3-upload branch — otherwise the snapshot
 job writes through Django's ``default_storage`` (FileSystemStorage in CI).
 """
+
 from __future__ import annotations
-import pytest
 
 import hashlib
 import json
 import uuid
 from datetime import timedelta
-from io import BytesIO
 from unittest.mock import patch
 
-from django.conf import settings
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.db import connection, transaction
+from django.db import connection
 from django.test import TestCase, override_settings
-from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.audit import chain as chain_mod
 from hub.apps.audit.chain import (
-    ChainMismatch,
-    ChainVerification,
     canonical_form,
     compute_chain_hash,
     merkle_root,
@@ -140,9 +135,7 @@ class CanonicalFormTests(TestCase):
         ev["archived_at"] = "2026-01-01T00:00:00Z"
         # Per 232 retention spec: flipping is_archived MUST NOT invalidate
         # the chain. So canonical must not depend on archival metadata.
-        self.assertEqual(
-            canonical_form(self._make_dict_event()), canonical_form(ev)
-        )
+        self.assertEqual(canonical_form(self._make_dict_event()), canonical_form(ev))
 
     @pytest.mark.integration
     def test_canonical_form_uuid_normalized_to_string(self):
@@ -266,22 +259,27 @@ class AuditEventChainOnSaveTests(TestCase):
         self.assertEqual(ev.chain_sequence, 1)
         self.assertIsNone(ev.prev_chain_hash)
         # chain_hash matches a recompute
-        recomputed = compute_chain_hash(
-            canonical_form(ev), None, ev.timestamp.isoformat()
-        )
+        recomputed = compute_chain_hash(canonical_form(ev), None, ev.timestamp.isoformat())
         self.assertEqual(ev.chain_hash, recomputed)
 
     @pytest.mark.integration
     def test_second_event_links_to_first(self):
         e1 = create_audit_event(
-            resource_type="ASSET", action="CREATED",
-            actor_user=self.user, tenant=self.tenant, details={"n": 1},
+            resource_type="ASSET",
+            action="CREATED",
+            actor_user=self.user,
+            tenant=self.tenant,
+            details={"n": 1},
         )
         e2 = create_audit_event(
-            resource_type="ASSET", action="UPDATED",
-            actor_user=self.user, tenant=self.tenant, details={"n": 2},
+            resource_type="ASSET",
+            action="UPDATED",
+            actor_user=self.user,
+            tenant=self.tenant,
+            details={"n": 2},
         )
-        e1.refresh_from_db(); e2.refresh_from_db()
+        e1.refresh_from_db()
+        e2.refresh_from_db()
         self.assertEqual(e2.chain_sequence, e1.chain_sequence + 1)
         self.assertEqual(e2.prev_chain_hash, e1.chain_hash)
 
@@ -289,14 +287,21 @@ class AuditEventChainOnSaveTests(TestCase):
     def test_chain_sequence_is_per_tenant(self):
         other_tenant, other_user = _make_tenant_user()
         e1_t1 = create_audit_event(
-            resource_type="ASSET", action="CREATED",
-            actor_user=self.user, tenant=self.tenant, details={"x": 1},
+            resource_type="ASSET",
+            action="CREATED",
+            actor_user=self.user,
+            tenant=self.tenant,
+            details={"x": 1},
         )
         e1_t2 = create_audit_event(
-            resource_type="ASSET", action="CREATED",
-            actor_user=other_user, tenant=other_tenant, details={"y": 1},
+            resource_type="ASSET",
+            action="CREATED",
+            actor_user=other_user,
+            tenant=other_tenant,
+            details={"y": 1},
         )
-        e1_t1.refresh_from_db(); e1_t2.refresh_from_db()
+        e1_t1.refresh_from_db()
+        e1_t2.refresh_from_db()
         # Both tenants start at 1 — sequences are scoped, not global.
         self.assertEqual(e1_t1.chain_sequence, 1)
         self.assertEqual(e1_t2.chain_sequence, 1)
@@ -311,14 +316,12 @@ class AuditEventChainOnSaveTests(TestCase):
         # contract under test is "null-tenant writes participate in the
         # chain", not "this run gets sequence 1".
         head_before = (
-            AuditEvent.all_objects.filter(
-                tenant__isnull=True, chain_sequence__isnull=False
-            )
+            AuditEvent.all_objects.filter(tenant__isnull=True, chain_sequence__isnull=False)
             .order_by("-chain_sequence")
             .values_list("chain_sequence", "chain_hash")
             .first()
         )
-        head_seq, head_hash = (head_before or (0, None))
+        head_seq, head_hash = head_before or (0, None)
 
         e = create_audit_event(
             resource_type="PLATFORM",
@@ -333,8 +336,11 @@ class AuditEventChainOnSaveTests(TestCase):
         self.assertEqual(e.prev_chain_hash, head_hash)
         # Second null-tenant event continues the platform chain off ``e``.
         e2 = create_audit_event(
-            resource_type="PLATFORM", action="SHUTDOWN",
-            actor_user=None, tenant=None, details={"v": 2},
+            resource_type="PLATFORM",
+            action="SHUTDOWN",
+            actor_user=None,
+            tenant=None,
+            details={"v": 2},
         )
         e2.refresh_from_db()
         self.assertEqual(e2.chain_sequence, e.chain_sequence + 1)
@@ -355,8 +361,10 @@ class VerifyChainSegmentTests(TestCase):
         for i in range(5):
             self.events.append(
                 create_audit_event(
-                    resource_type="ASSET", action=f"A{i}",
-                    actor_user=self.user, tenant=self.tenant,
+                    resource_type="ASSET",
+                    action=f"A{i}",
+                    actor_user=self.user,
+                    tenant=self.tenant,
                     details={"n": i},
                 )
             )
@@ -382,16 +390,15 @@ class VerifyChainSegmentTests(TestCase):
                 [json.dumps({"forged": True}), str(target.id)],
             )
         # Re-read with all_objects (includes archived; chain rows are not).
-        fresh = list(
-            AuditEvent.all_objects.filter(tenant=self.tenant)
-            .order_by("chain_sequence")
-        )
+        fresh = list(AuditEvent.all_objects.filter(tenant=self.tenant).order_by("chain_sequence"))
         result = verify_chain_segment(fresh)
         self.assertFalse(result.verified)
         # The tampered row's chain_hash should no longer match its content.
         self.assertTrue(
-            any(m.reason == "chain_hash_mismatch" and m.event_id == str(target.id)
-                for m in result.mismatches),
+            any(
+                m.reason == "chain_hash_mismatch" and m.event_id == str(target.id)
+                for m in result.mismatches
+            ),
             f"expected chain_hash_mismatch on {target.id}, got {result.mismatches!r}",
         )
 
@@ -405,19 +412,14 @@ class VerifyChainSegmentTests(TestCase):
                 "UPDATE audit_events SET prev_chain_hash = %s WHERE id = %s",
                 ["0" * 64, str(target.id)],
             )
-        fresh = list(
-            AuditEvent.all_objects.filter(tenant=self.tenant)
-            .order_by("chain_sequence")
-        )
+        fresh = list(AuditEvent.all_objects.filter(tenant=self.tenant).order_by("chain_sequence"))
         result = verify_chain_segment(fresh)
         self.assertFalse(result.verified)
         # Note: the chain_hash check ALSO fails (because canonical uses
         # the same row but prev was changed in storage, recompute uses
         # the new prev and won't match stored). Either is acceptable
         # tamper-evidence; the test pins at least one mismatch was seen.
-        self.assertTrue(
-            any(m.event_id == str(target.id) for m in result.mismatches)
-        )
+        self.assertTrue(any(m.event_id == str(target.id) for m in result.mismatches))
 
     @pytest.mark.integration
     def test_gdpr_erasure_gap_reported_but_not_failed(self):
@@ -433,13 +435,8 @@ class VerifyChainSegmentTests(TestCase):
         # defence for malicious-deletion-masquerading-as-erasure.
         gone = self.events[2]
         with connection.cursor() as cursor:
-            cursor.execute(
-                "DELETE FROM audit_events WHERE id = %s", [str(gone.id)]
-            )
-        fresh = list(
-            AuditEvent.all_objects.filter(tenant=self.tenant)
-            .order_by("chain_sequence")
-        )
+            cursor.execute("DELETE FROM audit_events WHERE id = %s", [str(gone.id)])
+        fresh = list(AuditEvent.all_objects.filter(tenant=self.tenant).order_by("chain_sequence"))
         result = verify_chain_segment(fresh)
         # GAP reported AND verified=True (legitimate erasure does NOT
         # fail the per-row check).
@@ -451,7 +448,8 @@ class VerifyChainSegmentTests(TestCase):
         # No prev_link_mismatch should fire across the gap — the
         # cross-spec contract is "gaps are informational, not tamper".
         self.assertEqual(
-            [m.reason for m in result.mismatches], [],
+            [m.reason for m in result.mismatches],
+            [],
             "no per-row mismatches expected for a legitimate erasure gap",
         )
 
@@ -466,17 +464,12 @@ class VerifyChainSegmentTests(TestCase):
                 "UPDATE audit_events SET prev_chain_hash = %s WHERE id = %s",
                 ["0" * 64, str(target.id)],
             )
-        fresh = list(
-            AuditEvent.all_objects.filter(tenant=self.tenant)
-            .order_by("chain_sequence")
-        )
+        fresh = list(AuditEvent.all_objects.filter(tenant=self.tenant).order_by("chain_sequence"))
         result = verify_chain_segment(fresh)
         self.assertFalse(result.verified)
         # Expect at least one ``prev_link_mismatch`` OR
         # ``chain_hash_mismatch`` on the target row.
-        offending = [
-            m for m in result.mismatches if m.event_id == str(target.id)
-        ]
+        offending = [m for m in result.mismatches if m.event_id == str(target.id)]
         self.assertTrue(offending, f"target row not flagged: {result.mismatches!r}")
 
 
@@ -491,16 +484,15 @@ class VerifyEndpointTests(TestCase):
     def setUp(self):
         self.tenant, self.user = _make_tenant_user()
         # The endpoint requires TENANT_ADMIN / AUDITOR / PLATFORM_ADMIN.
-        admin_role = Role.objects.create(
-            tenant=self.tenant, name="TENANT_ADMIN", description=""
-        )
-        UserRole.objects.create(
-            user=self.user, tenant=self.tenant, role=admin_role
-        )
+        admin_role = Role.objects.create(tenant=self.tenant, name="TENANT_ADMIN", description="")
+        UserRole.objects.create(user=self.user, tenant=self.tenant, role=admin_role)
         for i in range(3):
             create_audit_event(
-                resource_type="ASSET", action=f"A{i}",
-                actor_user=self.user, tenant=self.tenant, details={"n": i},
+                resource_type="ASSET",
+                action=f"A{i}",
+                actor_user=self.user,
+                tenant=self.tenant,
+                details={"n": i},
             )
         self.client = APIClient()
         self.client.force_authenticate(self.user)
@@ -520,9 +512,7 @@ class VerifyEndpointTests(TestCase):
 
     @pytest.mark.integration
     def test_verify_after_forge_returns_verified_false(self):
-        ev = AuditEvent.all_objects.filter(tenant=self.tenant).order_by(
-            "chain_sequence"
-        )[1]
+        ev = AuditEvent.all_objects.filter(tenant=self.tenant).order_by("chain_sequence")[1]
         with connection.cursor() as cursor:
             cursor.execute(
                 "UPDATE audit_events SET action = %s WHERE id = %s",
@@ -558,15 +548,16 @@ class MerkleSnapshotJobTests(TestCase):
         self.tenant, self.user = _make_tenant_user()
         self.events = [
             create_audit_event(
-                resource_type="ASSET", action=f"A{i}",
-                actor_user=self.user, tenant=self.tenant, details={"n": i},
+                resource_type="ASSET",
+                action=f"A{i}",
+                actor_user=self.user,
+                tenant=self.tenant,
+                details={"n": i},
             )
             for i in range(4)
         ]
         self.keys_override = override_settings(
-            AUDIT_CHAIN_SIGNING_KEYS_JSON={
-                str(self.tenant.id): [_hex_key(0xAA)]
-            },
+            AUDIT_CHAIN_SIGNING_KEYS_JSON={str(self.tenant.id): [_hex_key(0xAA)]},
             AUDIT_RETENTION_YEARS=3,
             AUDIT_MERKLE_S3_BUCKET="",  # no-S3 path → default_storage
         )
@@ -580,9 +571,7 @@ class MerkleSnapshotJobTests(TestCase):
 
         start = timezone.now() - timedelta(hours=1)
         end = timezone.now() + timedelta(hours=1)
-        snapshot = snapshot_tenant_window(
-            tenant=self.tenant, period_start=start, period_end=end
-        )
+        snapshot = snapshot_tenant_window(tenant=self.tenant, period_start=start, period_end=end)
         self.assertIsNotNone(snapshot)
         self.assertEqual(snapshot.event_count, 4)
         self.assertEqual(len(snapshot.root_hex), 64)
@@ -597,14 +586,11 @@ class MerkleSnapshotJobTests(TestCase):
 
         start = timezone.now() - timedelta(hours=1)
         end = timezone.now() + timedelta(hours=1)
-        snapshot = snapshot_tenant_window(
-            tenant=self.tenant, period_start=start, period_end=end
-        )
+        snapshot = snapshot_tenant_window(tenant=self.tenant, period_start=start, period_end=end)
         # Manual: leaves = each event.chain_hash in chain_sequence order.
         leaves = [
-            e.chain_hash for e in
-            AuditEvent.all_objects.filter(tenant=self.tenant)
-            .order_by("chain_sequence")
+            e.chain_hash
+            for e in AuditEvent.all_objects.filter(tenant=self.tenant).order_by("chain_sequence")
         ]
         self.assertEqual(snapshot.root_hex, merkle_root(leaves))
 
@@ -615,12 +601,8 @@ class MerkleSnapshotJobTests(TestCase):
 
         start = timezone.now() - timedelta(hours=1)
         end = timezone.now() + timedelta(hours=1)
-        s1 = snapshot_tenant_window(
-            tenant=self.tenant, period_start=start, period_end=end
-        )
-        s2 = snapshot_tenant_window(
-            tenant=self.tenant, period_start=start, period_end=end
-        )
+        s1 = snapshot_tenant_window(tenant=self.tenant, period_start=start, period_end=end)
+        s2 = snapshot_tenant_window(tenant=self.tenant, period_start=start, period_end=end)
         self.assertEqual(s1.pk, s2.pk)
         self.assertEqual(
             AuditMerkleSnapshot.objects.filter(tenant=self.tenant).count(),
@@ -630,14 +612,13 @@ class MerkleSnapshotJobTests(TestCase):
     @pytest.mark.integration
     def test_signature_verifies_with_current_key(self):
         from hub.apps.audit.merkle import (
-            snapshot_tenant_window, verify_root_signature,
+            snapshot_tenant_window,
+            verify_root_signature,
         )
 
         start = timezone.now() - timedelta(hours=1)
         end = timezone.now() + timedelta(hours=1)
-        snap = snapshot_tenant_window(
-            tenant=self.tenant, period_start=start, period_end=end
-        )
+        snap = snapshot_tenant_window(tenant=self.tenant, period_start=start, period_end=end)
         self.assertTrue(
             verify_root_signature(
                 tenant_id=str(self.tenant.id),
@@ -649,6 +630,7 @@ class MerkleSnapshotJobTests(TestCase):
     @pytest.mark.integration
     def test_signature_rejects_forged_root(self):
         from hub.apps.audit.merkle import verify_root_signature
+
         # No signature should validate against a root we never signed.
         self.assertFalse(
             verify_root_signature(
@@ -676,7 +658,9 @@ class MerkleSnapshotJobTests(TestCase):
             side_effect=RuntimeError("simulated S3 outage"),
         ):
             snap = snapshot_tenant_window(
-                tenant=self.tenant, period_start=start, period_end=end,
+                tenant=self.tenant,
+                period_start=start,
+                period_end=end,
             )
         # Row persisted with the cryptographic fields populated; S3
         # fields empty so a follow-up sweep can detect + re-shoot the PUT.
@@ -704,16 +688,10 @@ class SnapshotCrossCheckTests(TestCase):
 
     def setUp(self):
         self.tenant, self.user = _make_tenant_user()
-        admin_role = Role.objects.create(
-            tenant=self.tenant, name="TENANT_ADMIN", description=""
-        )
-        UserRole.objects.create(
-            user=self.user, tenant=self.tenant, role=admin_role
-        )
+        admin_role = Role.objects.create(tenant=self.tenant, name="TENANT_ADMIN", description="")
+        UserRole.objects.create(user=self.user, tenant=self.tenant, role=admin_role)
         self.keys_override = override_settings(
-            AUDIT_CHAIN_SIGNING_KEYS_JSON={
-                str(self.tenant.id): [_hex_key(0xCC)]
-            },
+            AUDIT_CHAIN_SIGNING_KEYS_JSON={str(self.tenant.id): [_hex_key(0xCC)]},
             AUDIT_RETENTION_YEARS=3,
             AUDIT_MERKLE_S3_BUCKET="",
         )
@@ -721,11 +699,15 @@ class SnapshotCrossCheckTests(TestCase):
         self.addCleanup(self.keys_override.disable)
         for i in range(4):
             create_audit_event(
-                resource_type="ASSET", action=f"A{i}",
-                actor_user=self.user, tenant=self.tenant, details={"n": i},
+                resource_type="ASSET",
+                action=f"A{i}",
+                actor_user=self.user,
+                tenant=self.tenant,
+                details={"n": i},
             )
         # Produce a snapshot covering the just-written events.
         from hub.apps.audit.merkle import snapshot_tenant_window
+
         self.period_start = timezone.now() - timedelta(hours=1)
         self.period_end = timezone.now() + timedelta(hours=1)
         self.snapshot = snapshot_tenant_window(
@@ -759,28 +741,25 @@ class SnapshotCrossCheckTests(TestCase):
         # (forged action), then walk the rows in order. The per-row
         # verifier sees nothing wrong (links are self-consistent), but
         # the recomputed Merkle root no longer matches the signed root.
-        rows = list(
-            AuditEvent.all_objects.filter(tenant=self.tenant)
-            .order_by("chain_sequence")
-        )
+        rows = list(AuditEvent.all_objects.filter(tenant=self.tenant).order_by("chain_sequence"))
         prev_hash = None
         for row in rows:
             # Forge content + recompute hash. We bypass save() via raw SQL.
             forged_action = f"FORGED_{row.action}"
-            forged_canonical = canonical_form({
-                "id": row.id,
-                "tenant_id": row.tenant_id,
-                "actor_user_id": row.actor_user_id,
-                "resource_type": row.resource_type,
-                "resource_id": row.resource_id,
-                "action": forged_action,
-                "result": row.result,
-                "details_json": row.details_json,
-                "full_details_json": row.full_details_json,
-            })
-            new_hash = compute_chain_hash(
-                forged_canonical, prev_hash, row.timestamp.isoformat()
+            forged_canonical = canonical_form(
+                {
+                    "id": row.id,
+                    "tenant_id": row.tenant_id,
+                    "actor_user_id": row.actor_user_id,
+                    "resource_type": row.resource_type,
+                    "resource_id": row.resource_id,
+                    "action": forged_action,
+                    "result": row.result,
+                    "details_json": row.details_json,
+                    "full_details_json": row.full_details_json,
+                }
             )
+            new_hash = compute_chain_hash(forged_canonical, prev_hash, row.timestamp.isoformat())
             with connection.cursor() as cursor:
                 cursor.execute(
                     "UPDATE audit_events SET action=%s, prev_chain_hash=%s, "
@@ -852,24 +831,28 @@ class AuditMerkleJobDispatcherTests(TestCase):
     def setUp(self):
         self.tenant, self.user = _make_tenant_user()
         self.keys_override = override_settings(
-            AUDIT_CHAIN_SIGNING_KEYS_JSON={
-                str(self.tenant.id): [_hex_key(0xDE)]
-            },
+            AUDIT_CHAIN_SIGNING_KEYS_JSON={str(self.tenant.id): [_hex_key(0xDE)]},
             AUDIT_MERKLE_S3_BUCKET="",
         )
         self.keys_override.enable()
         self.addCleanup(self.keys_override.disable)
         for i in range(3):
             create_audit_event(
-                resource_type="ASSET", action=f"A{i}",
-                actor_user=self.user, tenant=self.tenant, details={"n": i},
+                resource_type="ASSET",
+                action=f"A{i}",
+                actor_user=self.user,
+                tenant=self.tenant,
+                details={"n": i},
             )
 
     @pytest.mark.integration
     def test_dispatcher_routes_audit_merkle_snapshot_to_handler(self):
         from hub.apps.audit.models import AuditMerkleSnapshot
         from hub.apps.jobs.models import (
-            Job, JobPriority, JobStatus, JobType,
+            Job,
+            JobPriority,
+            JobStatus,
+            JobType,
         )
         from hub.apps.jobs.tasks_base import _execute_job_logic
 
@@ -904,20 +887,14 @@ class AuditMerkleJobDispatcherTests(TestCase):
         before_snaps = AuditMerkleSnapshot.objects.count()
         call_command("audit_merkle_snapshot_sweep", "--tenant-id", str(self.tenant.id))
         # One new Job row, status=COMPLETED.
-        job = (
-            Job.objects.filter(type=JobType.AUDIT_MERKLE_SNAPSHOT)
-            .order_by("-created_at")
-            .first()
-        )
+        job = Job.objects.filter(type=JobType.AUDIT_MERKLE_SNAPSHOT).order_by("-created_at").first()
         assert job is not None
         self.assertEqual(job.status, JobStatus.COMPLETED)
         self.assertGreater(
             Job.objects.filter(type=JobType.AUDIT_MERKLE_SNAPSHOT).count(),
             before_jobs,
         )
-        self.assertGreaterEqual(
-            AuditMerkleSnapshot.objects.count(), before_snaps + 1
-        )
+        self.assertGreaterEqual(AuditMerkleSnapshot.objects.count(), before_snaps + 1)
 
 
 # ---------------------------------------------------------------------------
@@ -959,9 +936,7 @@ class BackfillAuditChainCommandTests(TestCase):
     @pytest.mark.integration
     def test_dry_run_does_not_persist_changes(self):
         call_command("backfill_audit_chain", "--dry-run", "--tenant-id", str(self.tenant.id))
-        rows = list(
-            AuditEvent.all_objects.filter(tenant=self.tenant).order_by("timestamp")
-        )
+        rows = list(AuditEvent.all_objects.filter(tenant=self.tenant).order_by("timestamp"))
         for r in rows:
             self.assertIsNone(r.chain_hash, "dry-run must not write chain_hash")
             self.assertIsNone(r.chain_sequence, "dry-run must not write chain_sequence")
@@ -969,9 +944,7 @@ class BackfillAuditChainCommandTests(TestCase):
     @pytest.mark.integration
     def test_backfill_populates_full_chain(self):
         call_command("backfill_audit_chain", "--tenant-id", str(self.tenant.id))
-        rows = list(
-            AuditEvent.all_objects.filter(tenant=self.tenant).order_by("chain_sequence")
-        )
+        rows = list(AuditEvent.all_objects.filter(tenant=self.tenant).order_by("chain_sequence"))
         self.assertEqual(len(rows), 5)
         # Sequences 1..5, links match, hashes match recompute.
         for idx, row in enumerate(rows):
@@ -1000,14 +973,16 @@ class BackfillAuditChainCommandTests(TestCase):
         target_id = self.event_ids[2]
         with connection.cursor() as cursor:
             cursor.execute(
-                "UPDATE audit_events SET chain_hash = %s, chain_sequence = 999 "
-                "WHERE id = %s",
+                "UPDATE audit_events SET chain_hash = %s, chain_sequence = 999 WHERE id = %s",
                 ["f" * 64, str(target_id)],
             )
         from django.core.management.base import CommandError
+
         with self.assertRaises(CommandError) as cm:
             call_command(
-                "backfill_audit_chain", "--tenant-id", str(self.tenant.id),
+                "backfill_audit_chain",
+                "--tenant-id",
+                str(self.tenant.id),
             )
         self.assertIn("invalid chain", str(cm.exception))
 
@@ -1018,12 +993,13 @@ class BackfillAuditChainCommandTests(TestCase):
         target_id = self.event_ids[2]
         with connection.cursor() as cursor:
             cursor.execute(
-                "UPDATE audit_events SET chain_hash = %s, chain_sequence = 999 "
-                "WHERE id = %s",
+                "UPDATE audit_events SET chain_hash = %s, chain_sequence = 999 WHERE id = %s",
                 ["f" * 64, str(target_id)],
             )
         call_command(
-            "backfill_audit_chain", "--tenant-id", str(self.tenant.id),
+            "backfill_audit_chain",
+            "--tenant-id",
+            str(self.tenant.id),
             "--skip-verify",
         )
 
@@ -1032,8 +1008,7 @@ class BackfillAuditChainCommandTests(TestCase):
         call_command("backfill_audit_chain", "--tenant-id", str(self.tenant.id))
         # Take a snapshot of the chained state.
         before = {
-            str(r.id): r.chain_hash for r in
-            AuditEvent.all_objects.filter(tenant=self.tenant)
+            str(r.id): r.chain_hash for r in AuditEvent.all_objects.filter(tenant=self.tenant)
         }
         # Insert one MORE un-chained row.
         new_id = uuid.uuid4()
@@ -1052,13 +1027,12 @@ class BackfillAuditChainCommandTests(TestCase):
         # Resume from the LATEST sequence — chained rows are not re-hashed.
         call_command(
             "backfill_audit_chain",
-            "--tenant-id", str(self.tenant.id),
-            "--resume-from", "auto",
+            "--tenant-id",
+            str(self.tenant.id),
+            "--resume-from",
+            "auto",
         )
-        after = {
-            str(r.id): r.chain_hash for r in
-            AuditEvent.all_objects.filter(tenant=self.tenant)
-        }
+        after = {str(r.id): r.chain_hash for r in AuditEvent.all_objects.filter(tenant=self.tenant)}
         # Pre-existing rows unchanged.
         for k, v in before.items():
             self.assertEqual(after[k], v, "resume must not mutate already-chained rows")

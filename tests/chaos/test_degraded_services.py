@@ -9,11 +9,12 @@ Simulates Fuseki, Redis, and Compliance service downtime and verifies:
 Uses Django's test client and ``responses`` / ``unittest.mock`` to simulate
 service outages without actually bringing down real infrastructure.
 """
+
 from __future__ import annotations
 
 import pytest
 from django.conf import settings
-from django.test import TestCase, Client, override_settings
+from django.test import Client, TestCase, override_settings
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -38,9 +39,7 @@ class DegradedServicesChaosTests(TestCase):
         )
         if response.status_code == 503:
             data = response.json() if hasattr(response, "json") else {}
-            assert "error" in data or "detail" in data, (
-                "503 response should include error/detail"
-            )
+            assert "error" in data or "detail" in data, "503 response should include error/detail"
 
     @override_settings(FUSEKI_URL="http://unreachable:3030")
     def test_health_endpoint_reports_fuseki_degraded(self):
@@ -111,20 +110,29 @@ class ServiceDegradedBannerTests(TestCase):
     def test_banner_component_exists(self):
         """ServiceDegradedBanner component is importable."""
         import os
+
         banner_path = os.path.join(
-            settings.BASE_DIR, "frontend", "src", "shared", "components",
+            settings.BASE_DIR,
+            "frontend",
+            "src",
+            "shared",
+            "components",
             "ServiceDegradedBanner.tsx",
         )
         assert os.path.exists(banner_path), (
-            "ServiceDegradedBanner.tsx not found — "
-            "frontend missing degraded-service UI"
+            "ServiceDegradedBanner.tsx not found — frontend missing degraded-service UI"
         )
 
     def test_banner_has_test_id(self):
         """The banner has a data-testid for E2E test targeting."""
         import os
+
         banner_path = os.path.join(
-            settings.BASE_DIR, "frontend", "src", "shared", "components",
+            settings.BASE_DIR,
+            "frontend",
+            "src",
+            "shared",
+            "components",
             "ServiceDegradedBanner.tsx",
         )
         if os.path.exists(banner_path):
@@ -137,16 +145,19 @@ class ServiceDegradedBannerTests(TestCase):
     def test_banner_accepts_service_name_prop(self):
         """The banner accepts a serviceName prop for per-service messaging."""
         import os
+
         banner_path = os.path.join(
-            settings.BASE_DIR, "frontend", "src", "shared", "components",
+            settings.BASE_DIR,
+            "frontend",
+            "src",
+            "shared",
+            "components",
             "ServiceDegradedBanner.tsx",
         )
         if os.path.exists(banner_path):
             with open(banner_path) as f:
                 content = f.read()
-            assert "serviceName" in content, (
-                "ServiceDegradedBanner missing serviceName prop"
-            )
+            assert "serviceName" in content, "ServiceDegradedBanner missing serviceName prop"
 
 
 class ChaosErrorCodeTests(TestCase):
@@ -155,8 +166,12 @@ class ChaosErrorCodeTests(TestCase):
     def test_error_codes_doc_exists(self):
         """The error codes documentation is available for ops reference."""
         import os
+
         doc_path = os.path.join(
-            settings.BASE_DIR, "docs", "api", "error-codes.md",
+            settings.BASE_DIR,
+            "docs",
+            "api",
+            "error-codes.md",
         )
         assert os.path.exists(doc_path), (
             "docs/api/error-codes.md not found — error codes need documentation"
@@ -165,12 +180,14 @@ class ChaosErrorCodeTests(TestCase):
     def test_503_error_documented(self):
         """503 Service Unavailable is documented in error codes."""
         import os
+
         doc_path = os.path.join(
-            settings.BASE_DIR, "docs", "api", "error-codes.md",
+            settings.BASE_DIR,
+            "docs",
+            "api",
+            "error-codes.md",
         )
         if os.path.exists(doc_path):
             with open(doc_path) as f:
                 content = f.read()
-            assert "503" in content, (
-                "503 error code not documented in error-codes.md"
-            )
+            assert "503" in content, "503 error code not documented in error-codes.md"

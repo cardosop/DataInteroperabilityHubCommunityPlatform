@@ -1,7 +1,9 @@
 """Phase 111.6 — Redis failure → fail-open behaviour."""
+
 import pytest
-from django.test import TestCase
 from django.core.cache import cache
+from django.test import TestCase
+
 from hub.apps.core.resilience.circuit_breaker import CircuitBreaker, CircuitBreakerState
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -13,8 +15,11 @@ class RedisFailureTest(TestCase):
     def test_circuit_breaker_works_without_redis(self):
         """Circuit breaker falls back to in-memory state."""
         cb = CircuitBreaker(
-            service_name="no-redis-chaos", failure_threshold=3,
-            timeout_seconds=10, success_threshold=1, redis_client=None,
+            service_name="no-redis-chaos",
+            failure_threshold=3,
+            timeout_seconds=10,
+            success_threshold=1,
+            redis_client=None,
         )
         self.assertEqual(cb._get_state(), CircuitBreakerState.CLOSED)
         cb._set_state(CircuitBreakerState.OPEN)

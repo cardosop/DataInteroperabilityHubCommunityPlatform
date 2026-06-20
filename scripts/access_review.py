@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """306.1 — IAM access review: query users, roles, generate evidence JSON."""
-import json, os, sys
-from datetime import datetime, timezone
+
+import json
+import os
+from datetime import UTC, datetime
 
 OUTPUT_DIR = "evidence"
+
 
 def collect_evidence():
     """Simulate IAM access collection. In production, query AWS IAM API."""
     evidence = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "source": "scripts/access_review.py",
         "type": "iam-access-review",
         "users": [],
@@ -16,6 +19,7 @@ def collect_evidence():
         "access_entries": [],
     }
     return evidence
+
 
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -25,12 +29,20 @@ def main():
     evidence = collect_evidence()
 
     # Diff against previous run
-    prev_files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.startswith("ACCESS_REVIEW-") and f != os.path.basename(output)])
+    prev_files = sorted(
+        [
+            f
+            for f in os.listdir(OUTPUT_DIR)
+            if f.startswith("ACCESS_REVIEW-") and f != os.path.basename(output)
+        ]
+    )
     if prev_files:
         prev_path = os.path.join(OUTPUT_DIR, prev_files[-1])
         try:
-            with open(prev_path) as f: prev = json.load(f)
-        except: prev = {}
+            with open(prev_path) as f:
+                prev = json.load(f)
+        except:
+            prev = {}
         evidence["diff_from"] = os.path.basename(prev_path)
         evidence["new_users"] = len(evidence["users"]) - len(prev.get("users", []))
         evidence["changed_roles"] = len(evidence["roles"]) - len(prev.get("roles", []))
@@ -40,6 +52,7 @@ def main():
     with open(output, "w") as f:
         json.dump(evidence, f, indent=2)
     print(f"Access review: {output}")
+
 
 if __name__ == "__main__":
     main()

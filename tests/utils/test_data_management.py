@@ -11,34 +11,31 @@ Features:
 - Database isolation utilities
 - Migration validation
 """
-import os
+
 import logging
 import uuid
-from typing import List, Optional, Dict, Any, Set
-from django.db import transaction, connection
-from django.core.management import call_command
-from django.test import TransactionTestCase
-from django.contrib.auth import get_user_model
+from typing import Any
 
-from hub.apps.tenants.models import Tenant
+from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from django.db import transaction
+
 from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract
 from hub.apps.datasets.models import Dataset
-from hub.apps.jobs.models import Job
 from hub.apps.files.models import File
+from hub.apps.jobs.models import Job
 from hub.apps.marketplace.models import Listing
 from hub.apps.notifications.models import EmailDelivery
-
+from hub.apps.tenants.models import Tenant
 from tests.fixtures.test_data_factories import (
-    UserFactory,
-    TenantFactory,
     AssetFactory,
     ContractFactory,
     DatasetFactory,
     JobFactory,
-    FileFactory,
     ListingFactory,
-    EmailDeliveryFactory,
+    TenantFactory,
+    UserFactory,
 )
 
 User = get_user_model()
@@ -62,7 +59,7 @@ class TestDataManager:
     - Database isolation
     """
 
-    def __init__(self, tenant: Optional[Tenant] = None):
+    def __init__(self, tenant: Tenant | None = None):
         """
         Initialize test data manager.
 
@@ -70,7 +67,7 @@ class TestDataManager:
             tenant: Optional tenant to scope operations to
         """
         self.tenant = tenant
-        self.created_objects: Dict[str, List[Any]] = {
+        self.created_objects: dict[str, list[Any]] = {
             "tenants": [],
             "users": [],
             "assets": [],
@@ -83,10 +80,7 @@ class TestDataManager:
         }
 
     def create_tenant_with_users(
-        self,
-        tenant_name: Optional[str] = None,
-        user_count: int = 3,
-        **tenant_kwargs
+        self, tenant_name: str | None = None, user_count: int = 3, **tenant_kwargs
     ) -> Tenant:
         """
         Create a tenant with multiple users.
@@ -108,10 +102,7 @@ class TestDataManager:
         return tenant
 
     def create_tenant_with_assets(
-        self,
-        tenant_name: Optional[str] = None,
-        asset_count: int = 3,
-        **kwargs
+        self, tenant_name: str | None = None, asset_count: int = 3, **kwargs
     ) -> Tenant:
         """
         Create a tenant with multiple assets.
@@ -140,13 +131,13 @@ class TestDataManager:
 
     def create_complete_tenant_data(
         self,
-        tenant_name: Optional[str] = None,
+        tenant_name: str | None = None,
         asset_count: int = 2,
         contract_count: int = 2,
         dataset_count: int = 2,
         job_count: int = 2,
         listing_count: int = 1,
-        **kwargs
+        **kwargs,
     ) -> Tenant:
         """
         Create a tenant with complete test data (assets, contracts, datasets, jobs, listings).
@@ -163,7 +154,18 @@ class TestDataManager:
         Returns:
             Created Tenant instance
         """
-        tenant = TenantFactory.create_tenant(name=tenant_name)
+        from django.db import IntegrityError
+
+        # Only wrap tenant creation in the reuse-db fallback;
+        # Contract/Dataset/Job/Listing failures must propagate so
+        # factory bugs (e.g. missing required fields) are visible.
+        try:
+            tenant = TenantFactory.create_tenant(name=tenant_name)
+        except IntegrityError:
+            # reuse-db: tenant already exists from a previous run
+            from hub.apps.tenants.models import Tenant
+            tenant = Tenant.objects.get(name=tenant_name)
+
         self.created_objects["tenants"].append(tenant)
 
         user = UserFactory.create_user(tenant=tenant)
@@ -197,20 +199,24 @@ class TestDataManager:
                 resource_type="ASSET" if asset else "CONTRACT",
                 resource_id=resource_id,
                 created_by=user,
-                **kwargs
+                **kwargs,
             )
             self.created_objects["jobs"].append(job)
 
-        # Create listings
+        # Create listings (requires assets to be ACTIVE)
+        from hub.apps.assets.models import AssetStatus
         for i in range(listing_count):
             asset = assets[i % len(assets)] if assets else None
             if asset:
+                if asset.status != AssetStatus.ACTIVE:
+                    asset.status = AssetStatus.ACTIVE
+                    asset.save(update_fields=["status"])
                 listing = ListingFactory.create_listing(tenant=tenant, asset=asset, **kwargs)
                 self.created_objects["listings"].append(listing)
 
         return tenant
 
-    def cleanup(self, tenant: Optional[Tenant] = None):
+    def cleanup(self, tenant: Tenant | None = None):
         """
         Clean up all created test data.
 
@@ -312,15 +318,12 @@ class TestDataManager:
         for key in self.created_objects:
             self.created_objects[key].clear()
 
-    def get_created_objects(self) -> Dict[str, List[Any]]:
+    def get_created_objects(self) -> dict[str, list[Any]]:
         """Get all created objects"""
         return self.created_objects.copy()
 
 
-def cleanup_test_data(
-    tenant: Optional[Tenant] = None,
-    models: Optional[List[str]] = None
-):
+def cleanup_test_data(tenant: Tenant | None = None, models: list[str] | None = None):
     """
     Clean up test data for specified models or tenant.
 
@@ -329,7 +332,16 @@ def cleanup_test_data(
         models: Optional list of model names to clean up
     """
     if models is None:
-        models = ["listings", "jobs", "datasets", "contracts", "assets", "files", "users", "tenants"]
+        models = [
+            "listings",
+            "jobs",
+            "datasets",
+            "contracts",
+            "assets",
+            "files",
+            "users",
+            "tenants",
+        ]
 
     cleanup_order = {
         "listings": Listing,
@@ -348,13 +360,12 @@ def cleanup_test_data(
             model = cleanup_order[model_name]
             if tenant and tenant.pk and hasattr(model, "tenant"):
                 model.objects.filter(tenant=tenant).delete()
+            # Clean up all test data (be careful in production!)
+            elif model_name == "tenants":
+                # Only delete test tenants (those with "test" in name)
+                model.objects.filter(name__icontains="test").delete()
             else:
-                # Clean up all test data (be careful in production!)
-                if model_name == "tenants":
-                    # Only delete test tenants (those with "test" in name)
-                    model.objects.filter(name__icontains="test").delete()
-                else:
-                    model.objects.all().delete()
+                model.objects.all().delete()
 
 
 def seed_test_data(
@@ -365,7 +376,7 @@ def seed_test_data(
     datasets_per_tenant: int = 2,
     jobs_per_tenant: int = 2,
     listings_per_tenant: int = 1,
-) -> List[Tenant]:
+) -> list[Tenant]:
     """
     Seed test database with comprehensive test data.
 
@@ -386,7 +397,7 @@ def seed_test_data(
     for i in range(tenant_count):
         manager = TestDataManager()
         tenant = manager.create_complete_tenant_data(
-            tenant_name=f"Test Tenant {i+1} {uuid.uuid4().hex[:8]}",
+            tenant_name=f"Test Tenant {i + 1} {uuid.uuid4().hex[:8]}",
             asset_count=assets_per_tenant,
             contract_count=contracts_per_tenant,
             dataset_count=datasets_per_tenant,
@@ -403,10 +414,7 @@ def seed_test_data(
     return tenants
 
 
-def create_multi_tenant_test_data(
-    tenant_count: int = 3,
-    **kwargs
-) -> List[Tenant]:
+def create_multi_tenant_test_data(tenant_count: int = 3, **kwargs) -> list[Tenant]:
     """
     Create multi-tenant test data scenario.
 
@@ -422,8 +430,7 @@ def create_multi_tenant_test_data(
     for i in range(tenant_count):
         manager = TestDataManager()
         tenant = manager.create_complete_tenant_data(
-            tenant_name=f"Multi-Tenant Test {i+1}",
-            **kwargs
+            tenant_name=f"Multi-Tenant Test {i + 1}", **kwargs
         )
         tenants.append(tenant)
 
@@ -440,8 +447,9 @@ def validate_migrations() -> bool:
     """
     try:
         # Check for unapplied migrations
-        from django.core.management import call_command
         from io import StringIO
+
+        from django.core.management import call_command
 
         output = StringIO()
         call_command("showmigrations", "--plan", stdout=output)
@@ -460,10 +468,7 @@ def validate_migrations() -> bool:
         return False
 
 
-def reset_test_database(
-    keep_db: bool = False,
-    verbosity: int = 1
-):
+def reset_test_database(keep_db: bool = False, verbosity: int = 1):
     """
     Reset test database (drop and recreate).
 
@@ -517,4 +522,3 @@ class TestDatabaseIsolationMixin:
     def create_test_data(self, **kwargs) -> Tenant:
         """Create complete test data with proper isolation"""
         return self.test_data_manager.create_complete_tenant_data(**kwargs)
-

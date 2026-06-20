@@ -3,7 +3,9 @@ Data Mesh operations for DataHub SDK.
 
 Provides methods for managing data mesh domains, topology, policies, and compliance.
 """
-from typing import Dict, Any, Optional
+
+from typing import Any, Dict, Optional
+
 from .client import DataHubClient
 
 
@@ -414,4 +416,3 @@ class MeshAPI:
             NotFoundError: If domain or compliance report not found
         """
         return await self.client.get(f"mesh/domains/{domain_id}/compliance/reports/{report_id}/")
-

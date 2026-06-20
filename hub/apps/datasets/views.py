@@ -6,6 +6,7 @@ All create/update/destroy/version creation delegate to DatasetService,
 which invokes DatasetsBusinessRules before mutations.
 """
 
+import contextlib
 import uuid
 
 from django.db import transaction
@@ -17,6 +18,7 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 
+from hub.apps.api.standards.pagination import StandardCursorPagination
 from hub.apps.audit.event_types import (
     DATASET_REFRESH_TRIGGERED,
     DATASET_REFRESHED_FROM_FILE,
@@ -24,11 +26,10 @@ from hub.apps.audit.event_types import (
     DATASET_VERSION_COMPARED,
 )
 from hub.apps.audit.utils import create_audit_event
-from hub.apps.api.standards.pagination import StandardCursorPagination
+from hub.apps.auth.serializers import get_user_permissions
 from hub.apps.core.responses import api_error_response, handle_service_exception
 from hub.apps.core.services.base import NotFoundError
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
-from hub.apps.auth.serializers import get_user_permissions
 from hub.apps.tenants.kill_switch_gates import ensure_tenant_datasets_api_allowed
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
 
@@ -43,7 +44,8 @@ from .caching import (
     invalidate_dataset_detail_cache,
     invalidate_dataset_list_cache,
 )
-from .models import Dataset, DatasetStatus, SchemaVersion
+from .models import Dataset, DatasetStatus
+from .sample_pii_redaction import redact_sample_rows
 from .serializers import (
     DatasetCreateSerializer,
     DatasetManualRefreshResponseSerializer,
@@ -55,7 +57,6 @@ from .serializers import (
     SchemaVersionCompareSerializer,
 )
 from .services import DatasetService
-from .sample_pii_redaction import redact_sample_rows
 
 
 def _truthy_query_param(raw: str | None) -> bool:
@@ -131,9 +132,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         # retired rows for the 409-already-retired path to fire and
         # for the detail-page Retired badge to render.
         if self.action == "list":
-            include_retired = _truthy_query_param(
-                self.request.query_params.get("include_retired")
-            )
+            include_retired = _truthy_query_param(self.request.query_params.get("include_retired"))
             if not include_retired:
                 qs = qs.exclude(status=DatasetStatus.RETIRED)
         # Avoid N+1: serializer uses asset.name and file for name/size_bytes;
@@ -149,9 +148,14 @@ class DatasetViewSet(viewsets.ModelViewSet):
         (consumer previously had access).
         """
         try:
-            dataset = Dataset.objects.select_related(
-                "asset", "file",
-            ).prefetch_related("compliance_runs").get(id=dataset_id)
+            dataset = (
+                Dataset.objects.select_related(
+                    "asset",
+                    "file",
+                )
+                .prefetch_related("compliance_runs")
+                .get(id=dataset_id)
+            )
         except Dataset.DoesNotExist:
             return None
 
@@ -163,9 +167,11 @@ class DatasetViewSet(viewsets.ModelViewSet):
             return None
 
         from django.core.exceptions import PermissionDenied
+
         from hub.apps.marketplace.entitlement_check import (
             require_entitlement,
         )
+
         try:
             require_entitlement(
                 consumer_tenant_id=consumer_tenant_id,
@@ -449,6 +455,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
 
         # Validate UUID format early to return 400 instead of 500
         import uuid as _uuid
+
         try:
             _uuid.UUID(dataset_id)
         except (ValueError, AttributeError):
@@ -465,12 +472,14 @@ class DatasetViewSet(viewsets.ModelViewSet):
         # Cache miss - try tenant-scoped queryset first
         from django.http import Http404
         from rest_framework.exceptions import NotFound
+
         try:
             dataset = self.get_object()
         except (Http404, NotFound):
             # 117B.5: Fallback — cross-tenant entitlement
             dataset = self._get_via_entitlement(
-                request, dataset_id,
+                request,
+                dataset_id,
             )
             if dataset is None:
                 raise NotFound("Dataset not found.")
@@ -594,10 +603,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         # Re-read inside the atomic block under row-level lock to
         # close the read-modify-write window.
         try:
-            locked = (
-                Dataset.objects.select_for_update()
-                .get(id=dataset.id)
-            )
+            locked = Dataset.objects.select_for_update().get(id=dataset.id)
         except Dataset.DoesNotExist:  # pragma: no cover — race shouldn't fire after get_object
             raise NotFound("Dataset not found.") from None
 
@@ -614,9 +620,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         locked.retired_at = retired_at
         locked.save(update_fields=["status", "retired_at", "updated_at"])
 
-        retain_days = int(
-            getattr(locked.tenant, "dataset_retain_after_retire_days", 90) or 90
-        )
+        retain_days = int(getattr(locked.tenant, "dataset_retain_after_retire_days", 90) or 90)
         from datetime import timedelta as _timedelta
 
         retain_until = retired_at + _timedelta(days=retain_days)
@@ -643,8 +647,11 @@ class DatasetViewSet(viewsets.ModelViewSet):
         # fatal (the data is durable on the row).
         try:
             invalidate_dataset_caches(str(locked.id), str(locked.tenant_id))
-        except Exception:
-            pass
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Cache invalidation failed during retire: %s", exc
+            )
 
         # Return the canonical serialised representation so the
         # client doesn't have to re-fetch.
@@ -680,10 +687,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
                 )
             ),
             409: OpenApiResponse(
-                description=(
-                    "Source dataset RETIRED "
-                    "(``DATASET_RETIRED_REFRESH_NOT_ALLOWED``)."
-                )
+                description=("Source dataset RETIRED (``DATASET_RETIRED_REFRESH_NOT_ALLOWED``).")
             ),
             413: OpenApiResponse(
                 description=(
@@ -888,8 +892,11 @@ class DatasetViewSet(viewsets.ModelViewSet):
         try:
             invalidate_dataset_caches(str(new_dataset.id), str(new_dataset.tenant_id))
             invalidate_dataset_caches(str(source.id), str(source.tenant_id))
-        except Exception:
-            pass
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Cache invalidation failed during refresh_from_file: %s", exc
+            )
 
         return Response(
             {
@@ -911,9 +918,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
                     "pipeline."
                 )
             ),
-            403: OpenApiResponse(
-                description="TENANT_ADMIN role required."
-            ),
+            403: OpenApiResponse(description="TENANT_ADMIN role required."),
             409: OpenApiResponse(
                 description=(
                     "Pre-conditions: source dataset RETIRED "
@@ -1038,9 +1043,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         previous_hash = canonical_schema_hash(previous_schema)
 
         try:
-            schema_json, sample_data, row_count = reinfer_dataset_schema(
-                locked.file
-            )
+            schema_json, sample_data, row_count = reinfer_dataset_schema(locked.file)
         except ServiceValidationError as exc:
             return handle_service_exception(exc)
 
@@ -1075,8 +1078,11 @@ class DatasetViewSet(viewsets.ModelViewSet):
         # Cache invalidation — best-effort; the row is durable.
         try:
             invalidate_dataset_caches(str(locked.id), str(locked.tenant_id))
-        except Exception:
-            pass
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Cache invalidation failed during refresh: %s", exc
+            )
 
         return Response(
             {
@@ -1591,12 +1597,19 @@ class DatasetViewSet(viewsets.ModelViewSet):
         conn = getattr(asset, "warehouse_connection", None)
         if conn is None:
             return Response(
-                {"error": {"code": "NO_WAREHOUSE_CONNECTION", "message": "No warehouse connection configured"}},
+                {
+                    "error": {
+                        "code": "NO_WAREHOUSE_CONNECTION",
+                        "message": "No warehouse connection configured",
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         config = conn.get_config()
-        connector = self._resolve_connector(conn.warehouse_type, config, str(asset.tenant_id), str(asset.id))
+        connector = self._resolve_connector(
+            conn.warehouse_type, config, str(asset.tenant_id), str(asset.id)
+        )
 
         page_size = limit
         is_old_cursor = False
@@ -1651,9 +1664,14 @@ class DatasetViewSet(viewsets.ModelViewSet):
             )
             if is_old_cursor:
                 import datetime as _dt
-                sunset_date = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(days=90)).strftime("%a, %d %b %Y %H:%M:%S GMT")
+
+                sunset_date = (_dt.datetime.now(_dt.UTC) + _dt.timedelta(days=90)).strftime(
+                    "%a, %d %b %Y %H:%M:%S GMT"
+                )
                 resp.headers["Deprecation"] = "true"
-                resp.headers["Deprecation-Date"] = _dt.datetime.now(_dt.timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+                resp.headers["Deprecation-Date"] = _dt.datetime.now(_dt.UTC).strftime(
+                    "%a, %d %b %Y %H:%M:%S GMT"
+                )
                 resp.headers["Sunset"] = sunset_date
                 resp.headers["Link"] = '</docs/api/error-codes.md>; rel="deprecation"'
             return resp
@@ -1669,6 +1687,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         """
         import base64 as _b64
         import json as _json
+
         try:
             decoded = _b64.b64decode(cursor.encode("utf-8")).decode("utf-8")
             position = _json.loads(decoded)
@@ -1681,15 +1700,24 @@ class DatasetViewSet(viewsets.ModelViewSet):
     def _rows_from_file(self, request, dataset, limit, cursor):
         """Serve rows from file-backed dataset."""
         return Response(
-            {"results": [], "columns": [], "count": 0, "next_cursor": None, "previous_cursor": None, "page_size": limit, "message": "File-backed datasets served via existing endpoints"},
+            {
+                "results": [],
+                "columns": [],
+                "count": 0,
+                "next_cursor": None,
+                "previous_cursor": None,
+                "page_size": limit,
+                "message": "File-backed datasets served via existing endpoints",
+            },
             status=status.HTTP_200_OK,
         )
 
     @staticmethod
     def _arrow_response(result):
         """Convert QueryResult to Arrow IPC stream."""
-        import pyarrow as pa
         import io
+
+        import pyarrow as pa
 
         arrays = {}
         for i, col in enumerate(result.columns):
@@ -1710,15 +1738,19 @@ class DatasetViewSet(viewsets.ModelViewSet):
         """Resolve the appropriate connector for LIVE_QUERY."""
         if warehouse_type == "SNOWFLAKE":
             from hub.apps.warehouses.connectors.snowflake import SnowflakeConnector
+
             return SnowflakeConnector(config, tenant_id=tenant_id, asset_id=asset_id)
         elif warehouse_type == "BIGQUERY":
             from hub.apps.warehouses.connectors.bigquery import BigQueryConnector
+
             return BigQueryConnector(config, tenant_id=tenant_id, asset_id=asset_id)
         elif warehouse_type == "DATABRICKS":
             from hub.apps.warehouses.connectors.databricks import DatabricksConnector
+
             return DatabricksConnector(config, tenant_id=tenant_id, asset_id=asset_id)
         elif warehouse_type == "ATHENA":
             from hub.apps.warehouses.connectors.athena import AthenaConnector
+
             return AthenaConnector(config, tenant_id=tenant_id, asset_id=asset_id)
         raise ValueError(f"Unknown warehouse type: {warehouse_type}")
 
@@ -1740,6 +1772,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         try:
             from hub.apps.audit.event_types import WAREHOUSE_SHARE_ACCESSED
             from hub.apps.audit.utils import create_audit_event
+
             create_audit_event(
                 resource_type="DATASET",
                 action=WAREHOUSE_SHARE_ACCESSED,
@@ -1753,15 +1786,18 @@ class DatasetViewSet(viewsets.ModelViewSet):
             pass
 
         # Delta Sharing protocol response shape.
-        return Response({
-            "share": {
-                "name": getattr(dataset, "name", None) or str(dataset.id),
-                "id": str(dataset.id),
-                "format": "delta",
+        return Response(
+            {
+                "share": {
+                    "name": getattr(dataset, "name", None) or str(dataset.id),
+                    "id": str(dataset.id),
+                    "format": "delta",
+                },
+                "protocol": {"version": 1},
+                "meta": {
+                    "tenant_id": str(tenant.id),
+                    "created_at": str(dataset.created_at),
+                },
             },
-            "protocol": {"version": 1},
-            "meta": {
-                "tenant_id": str(tenant.id),
-                "created_at": str(dataset.created_at),
-            },
-        }, status=status.HTTP_200_OK)
+            status=status.HTTP_200_OK,
+        )

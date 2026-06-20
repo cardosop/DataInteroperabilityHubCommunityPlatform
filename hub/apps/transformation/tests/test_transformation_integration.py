@@ -14,37 +14,31 @@ Tests all service integrations:
 
 All tests use real services (no mocks/stubs) to ensure comprehensive integration.
 """
-import uuid
-from django.test import TestCase
-from django.utils import timezone
-from django.core.cache import cache
 
-from hub.apps.transformation.services import TransformationService
-from hub.apps.transformation.business_rules import TransformationBusinessRules
-from hub.apps.transformation.models import (
-    TransformationPipeline,
-    PipelineExecution,
-    TransformationNode,
-    PipelineStatus,
-    ExecutionStatus,
-    ExecutionMode
-)
-from hub.apps.transformation.exceptions import (
-    TransformationValidationError,
-    TransformationExecutionError,
-    AssetCompatibilityError,
-    ResourceQuotaExceededError
-)
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus, Role, UserRole
+import uuid
+
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+
 from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.audit.models import AuditEvent
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.governance.models import AccessPolicy
-from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
-from hub.apps.jobs.models import Job, JobType, JobStatus
-from hub.apps.audit.models import AuditEvent
-from django.contrib.auth import get_user_model
+from hub.apps.jobs.models import JobStatus, JobType
+from hub.apps.tenants.models import Tenant
+from hub.apps.transformation.business_rules import TransformationBusinessRules
+from hub.apps.transformation.exceptions import (
+    TransformationValidationError,
+)
+from hub.apps.transformation.models import (
+    ExecutionMode,
+    ExecutionStatus,
+    PipelineStatus,
+    TransformationPipeline,
+)
+from hub.apps.transformation.services import TransformationService
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 User = get_user_model()
 
@@ -55,57 +49,45 @@ class TransformationServiceIntegrationTest(TestCase):
     def setUp(self):
         """Set up per-test fixtures."""
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
         # Create user
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create DATA_PROVIDER role
         self.data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
 
         # Assign role to user
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=self.data_provider_role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=self.data_provider_role)
 
         # Create access policy
         AccessPolicy.objects.get_or_create(
             tenant=self.tenant,
             name="Allow Pipeline Operations",
             defaults={
-                "conditions": {
-                    "user": {"tenant_id": str(self.tenant.id)}
-                },
+                "conditions": {"user": {"tenant_id": str(self.tenant.id)}},
                 "effect": "ALLOW",
                 "priority": 100,
                 "enabled": True,
-                "created_by": self.user
-            }
+                "created_by": self.user,
+            },
         )
 
         # Create service
         self.service = TransformationService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create business rules
         self.business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create valid pipeline definition
@@ -115,27 +97,15 @@ class TransformationServiceIntegrationTest(TestCase):
                 {
                     "name": "filter_step",
                     "type": "task",
-                    "node_config": {
-                        "node_type": "filter",
-                        "filter_expression": "age > 18"
-                    }
+                    "node_config": {"node_type": "filter", "filter_expression": "age > 18"},
                 },
                 {
                     "name": "transform_step",
                     "type": "task",
-                    "node_config": {
-                        "node_type": "transform",
-                        "transform_expression": "name"
-                    }
+                    "node_config": {"node_type": "transform", "transform_expression": "name"},
                 },
-                {
-                    "name": "output_step",
-                    "type": "task",
-                    "node_config": {
-                        "node_type": "output"
-                    }
-                }
-            ]
+                {"name": "output_step", "type": "task", "node_config": {"node_type": "output"}},
+            ],
         }
 
         # Create asset with dataset
@@ -144,7 +114,7 @@ class TransformationServiceIntegrationTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create CSV file content
@@ -158,7 +128,7 @@ class TransformationServiceIntegrationTest(TestCase):
             size=len(self.csv_content),
             content_type="text/csv",
             status=FileStatus.PENDING,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Upload file to storage (real service)
@@ -170,7 +140,7 @@ class TransformationServiceIntegrationTest(TestCase):
             storage_path = storage_client.save_file(
                 tenant_id=str(self.tenant.id),
                 file_id=str(self.file.id),
-                file_content=self.csv_content
+                file_content=self.csv_content,
             )
             # Update file with the actual storage path used
             self.file.storage_path = storage_path
@@ -193,10 +163,10 @@ class TransformationServiceIntegrationTest(TestCase):
                 "fields": [
                     {"name": "id", "data_type": "integer"},
                     {"name": "name", "data_type": "string"},
-                    {"name": "age", "data_type": "integer"}
+                    {"name": "age", "data_type": "integer"},
                 ]
             },
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_service_business_rules_integration(self):
@@ -209,13 +179,11 @@ class TransformationServiceIntegrationTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             name="Integration Test Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         # Validate using business rules
-        result = self.business_rules.validate_all(
-            pipeline, self.asset, raise_on_error=False
-        )
+        result = self.business_rules.validate_all(pipeline, self.asset, raise_on_error=False)
 
         # Should pass validation - if not, provide detailed error information
         if not result.is_valid and len(result.errors) > 0:
@@ -233,7 +201,7 @@ class TransformationServiceIntegrationTest(TestCase):
             created_by=self.user,
             name="Workflow Integration Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Execute pipeline (should create workflow instance)
@@ -243,7 +211,7 @@ class TransformationServiceIntegrationTest(TestCase):
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.ASYNC
+                execution_mode=ExecutionMode.ASYNC,
             )
 
             # Verify execution was created
@@ -275,7 +243,7 @@ class TransformationServiceIntegrationTest(TestCase):
             created_by=self.user,
             name="Quality Integration Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Execute pipeline — quality checks run during async workflow execution (Phase 285.9).
@@ -314,7 +282,7 @@ class TransformationServiceIntegrationTest(TestCase):
             created_by=self.user,
             name="Compliance Integration Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Execute pipeline (should trigger compliance checks)
@@ -347,7 +315,7 @@ class TransformationServiceIntegrationTest(TestCase):
             created_by=self.user,
             name="Governance Integration Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Validate permissions using business rules (which uses ABAC)
@@ -369,27 +337,33 @@ class TransformationServiceIntegrationTest(TestCase):
             created_by=self.user,
             name="Job Queue Integration Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Execute pipeline in async mode (should create job)
-        async_mode = ExecutionMode.ASYNC[0] if isinstance(ExecutionMode.ASYNC, tuple) else ExecutionMode.ASYNC
+        async_mode = (
+            ExecutionMode.ASYNC[0]
+            if isinstance(ExecutionMode.ASYNC, tuple)
+            else ExecutionMode.ASYNC
+        )
         execution = self.service.execute_pipeline(
             pipeline_id=str(pipeline.id),
             asset_id=str(self.asset.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            execution_mode=async_mode
+            execution_mode=async_mode,
         )
 
         # Verify job was created
         self.assertIsNotNone(execution.job)
-        job_type_value = (JobType.TRANSFORMATION[0]
-                         if isinstance(JobType.TRANSFORMATION, tuple)
-                         else JobType.TRANSFORMATION)
-        job_status_value = (JobStatus.PENDING[0]
-                           if isinstance(JobStatus.PENDING, tuple)
-                           else JobStatus.PENDING)
+        job_type_value = (
+            JobType.TRANSFORMATION[0]
+            if isinstance(JobType.TRANSFORMATION, tuple)
+            else JobType.TRANSFORMATION
+        )
+        job_status_value = (
+            JobStatus.PENDING[0] if isinstance(JobStatus.PENDING, tuple) else JobStatus.PENDING
+        )
         self.assertEqual(execution.job.type, job_type_value)
         self.assertEqual(execution.job.status, job_status_value)
 
@@ -400,14 +374,12 @@ class TransformationServiceIntegrationTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             name="Audit Integration Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
-            resource_type="TRANSFORMATION_PIPELINE",
-            action="CREATED",
-            resource_id=pipeline.id
+            resource_type="TRANSFORMATION_PIPELINE", action="CREATED", resource_id=pipeline.id
         )
         self.assertGreaterEqual(audit_events.count(), 1)
 
@@ -423,7 +395,7 @@ class TransformationServiceIntegrationTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             name="Event Publishing Integration Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         # NOTE: This test only verifies pipeline creation succeeds.
@@ -443,7 +415,7 @@ class TransformationServiceIntegrationTest(TestCase):
             created_by=self.user,
             name="Monitoring Integration Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Execute pipeline (should generate metrics)
@@ -462,12 +434,15 @@ class TransformationServiceIntegrationTest(TestCase):
             self.assertEqual(execution.execution_mode, ExecutionMode.ASYNC)
             # ASYNC executions start as PENDING; terminal state reached later
             execution.refresh_from_db()
-            self.assertIn(execution.status, [
-                ExecutionStatus.PENDING,
-                ExecutionStatus.RUNNING,
-                ExecutionStatus.COMPLETED,
-                ExecutionStatus.FAILED,
-            ])
+            self.assertIn(
+                execution.status,
+                [
+                    ExecutionStatus.PENDING,
+                    ExecutionStatus.RUNNING,
+                    ExecutionStatus.COMPLETED,
+                    ExecutionStatus.FAILED,
+                ],
+            )
         except Exception as e:
             # If monitoring/metrics service is not available, skip this test
             if "monitoring" in str(e).lower() or "metrics" in str(e).lower():
@@ -486,7 +461,7 @@ class TransformationServiceIntegrationTest(TestCase):
             user_id=str(self.user.id),
             name="Full Integration Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Validate using business rules
@@ -497,19 +472,25 @@ class TransformationServiceIntegrationTest(TestCase):
         # Should pass validation - if not, provide detailed error information
         if not validation_result.is_valid and len(validation_result.errors) > 0:
             error_details = "\n".join(validation_result.errors)
-            self.fail(f"Validation failed with errors: {error_details}\nDetails: {validation_result.details}")
+            self.fail(
+                f"Validation failed with errors: {error_details}\nDetails: {validation_result.details}"
+            )
 
         self.assertTrue(validation_result.is_valid)
 
         # Execute pipeline
         try:
-            async_mode = ExecutionMode.ASYNC[0] if isinstance(ExecutionMode.ASYNC, tuple) else ExecutionMode.ASYNC
+            async_mode = (
+                ExecutionMode.ASYNC[0]
+                if isinstance(ExecutionMode.ASYNC, tuple)
+                else ExecutionMode.ASYNC
+            )
             execution = self.service.execute_pipeline(
                 pipeline_id=str(pipeline.id),
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=async_mode
+                execution_mode=async_mode,
             )
 
             # Verify execution was created
@@ -518,19 +499,28 @@ class TransformationServiceIntegrationTest(TestCase):
             self.assertEqual(execution.asset, self.asset)
 
             # Verify job was created (for async mode)
-            async_mode = ExecutionMode.ASYNC[0] if isinstance(ExecutionMode.ASYNC, tuple) else ExecutionMode.ASYNC
-            if execution.execution_mode == async_mode or execution.execution_mode == ExecutionMode.ASYNC:
+            async_mode = (
+                ExecutionMode.ASYNC[0]
+                if isinstance(ExecutionMode.ASYNC, tuple)
+                else ExecutionMode.ASYNC
+            )
+            if (
+                execution.execution_mode == async_mode
+                or execution.execution_mode == ExecutionMode.ASYNC
+            ):
                 self.assertIsNotNone(execution.job)
 
             # Verify audit events were created
             audit_events = AuditEvent.objects.filter(
-                resource_type="TRANSFORMATION_PIPELINE",
-                resource_id=pipeline.id
+                resource_type="TRANSFORMATION_PIPELINE", resource_id=pipeline.id
             )
             self.assertGreaterEqual(audit_events.count(), 1)
         except Exception as e:
             # If any service is not available, skip this test
-            if any(keyword in str(e).lower() for keyword in ["workflow", "quality", "compliance", "monitoring"]):
+            if any(
+                keyword in str(e).lower()
+                for keyword in ["workflow", "quality", "compliance", "monitoring"]
+            ):
                 self.skipTest(f"Service not available: {e}")
             else:
                 raise
@@ -540,7 +530,7 @@ class TransformationServiceIntegrationTest(TestCase):
         # Create pipeline with invalid definition
         invalid_definition = {
             "version": "1.0.0",
-            "steps": []  # Empty steps will fail validation
+            "steps": [],  # Empty steps will fail validation
         }
 
         # Should raise ValidationError
@@ -549,21 +539,18 @@ class TransformationServiceIntegrationTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 name="Invalid Pipeline",
-                pipeline_definition=invalid_definition
+                pipeline_definition=invalid_definition,
             )
 
         # Verify no pipeline was created
-        self.assertEqual(
-            TransformationPipeline.objects.filter(name="Invalid Pipeline").count(),
-            0
-        )
+        self.assertEqual(TransformationPipeline.objects.filter(name="Invalid Pipeline").count(), 0)
 
     def test_service_transaction_rollback_integration(self):
         """Test transaction rollback across service integrations."""
         # Create pipeline with invalid data that will fail validation
         invalid_definition = {
             "version": "1.0.0",
-            "steps": []  # Empty steps will fail validation
+            "steps": [],  # Empty steps will fail validation
         }
 
         # Should raise exception and rollback transaction
@@ -572,25 +559,20 @@ class TransformationServiceIntegrationTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 name="Rollback Test Pipeline",
-                pipeline_definition=invalid_definition
+                pipeline_definition=invalid_definition,
             )
 
         # Verify no pipeline was created (transaction rolled back)
         self.assertEqual(
-            TransformationPipeline.objects.filter(name="Rollback Test Pipeline").count(),
-            0
+            TransformationPipeline.objects.filter(name="Rollback Test Pipeline").count(), 0
         )
 
         # Verify no audit events were created (transaction rolled back)
         audit_events = AuditEvent.objects.filter(
-            resource_type="TRANSFORMATION_PIPELINE",
-            action="CREATED"
+            resource_type="TRANSFORMATION_PIPELINE", action="CREATED"
         )
         # Count should be 0 or only include events from other tests
-        created_pipelines = TransformationPipeline.objects.filter(
-            tenant=self.tenant
-        ).count()
+        created_pipelines = TransformationPipeline.objects.filter(tenant=self.tenant).count()
         # If no pipelines exist, no audit events should exist either
         if created_pipelines == 0:
             self.assertEqual(audit_events.count(), 0)
-

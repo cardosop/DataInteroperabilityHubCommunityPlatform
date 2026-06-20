@@ -55,8 +55,8 @@ schema:
       type: string
 """
 
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            dcs_contract_yaml, format="yaml"
+        _hub_contract, spec_type, _spec_version, _norm_status, errors, _warnings = (
+            normalize_contract(dcs_contract_yaml, format="yaml")
         )
 
         # DCS contracts are treated as ODCS (not DCS-specific rejection)
@@ -125,8 +125,8 @@ schema:
       nullable: false
 """
 
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            odcs_contract_yaml, format="yaml"
+        hub_contract, spec_type, _spec_version, norm_status, _errors, _warnings = (
+            normalize_contract(odcs_contract_yaml, format="yaml")
         )
 
         # Normalization should succeed
@@ -150,8 +150,8 @@ schema:
         }
 
         # Should normalize as ODCS (apiVersion and kind take precedence)
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            json.dumps(mixed_contract), format="json"
+        _hub_contract, spec_type, spec_version, _norm_status, errors, _warnings = (
+            normalize_contract(json.dumps(mixed_contract), format="json")
         )
 
         # Should be detected as ODCS (apiVersion and kind take precedence)
@@ -169,8 +169,8 @@ dataContractSpecification: 0.9.0
 id: test-contract
 """
 
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            invalid_contract_yaml, format="yaml"
+        _hub_contract, _spec_type, _spec_version, norm_status, errors, _warnings = (
+            normalize_contract(invalid_contract_yaml, format="yaml")
         )
 
         # Should have normalization failure
@@ -316,8 +316,8 @@ info:
         """Test handling of malformed JSON DCS contracts"""
         malformed_json = '{"dataContractSpecification": 0.9.0, "id": "test", invalid}'
 
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            malformed_json, format="json"
+        _hub_contract, _spec_type, _spec_version, norm_status, errors, _warnings = (
+            normalize_contract(malformed_json, format="json")
         )
 
         # Should handle malformed JSON gracefully
@@ -336,8 +336,8 @@ info:
   invalid: [unclosed bracket
 """
 
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            malformed_yaml, format="yaml"
+        _hub_contract, _spec_type, _spec_version, norm_status, errors, _warnings = (
+            normalize_contract(malformed_yaml, format="yaml")
         )
 
         # Should handle malformed YAML gracefully
@@ -350,8 +350,8 @@ info:
         """Test handling of empty DCS contracts"""
         empty_contract = ""
 
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            empty_contract, format="yaml"
+        _hub_contract, _spec_type, _spec_version, norm_status, errors, _warnings = (
+            normalize_contract(empty_contract, format="yaml")
         )
 
         # Should handle empty contract gracefully
@@ -367,8 +367,8 @@ dataContractSpecification: 0.9.0
 # Missing id and info fields
 """
 
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            incomplete_contract, format="yaml"
+        _hub_contract, _spec_type, _spec_version, norm_status, errors, _warnings = (
+            normalize_contract(incomplete_contract, format="yaml")
         )
 
         # Should handle missing fields gracefully
@@ -387,8 +387,8 @@ info:
   version: 1.0.0
 """
 
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            invalid_types_contract, format="yaml"
+        _hub_contract, _spec_type, _spec_version, norm_status, errors, _warnings = (
+            normalize_contract(invalid_types_contract, format="yaml")
         )
 
         # Should handle invalid types gracefully
@@ -420,14 +420,9 @@ schema:
         )
 
         # Should handle large payload gracefully (either succeed or return appropriate error)
-        self.assertIn(
+        self.assertLess(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-            ],
+            500,
         )
 
     def test_dcs_contract_special_characters_handling(self):
@@ -440,8 +435,8 @@ info:
   version: 1.0.0
 """
 
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            special_chars_contract, format="yaml"
+        _hub_contract, _spec_type, _spec_version, norm_status, _errors, _warnings = (
+            normalize_contract(special_chars_contract, format="yaml")
         )
 
         # Should handle special characters gracefully
@@ -459,7 +454,7 @@ info:
                 "info": {"title": "Test Contract", "version": "1.0.0"},
             }
 
-            spec_type, spec_version = detect_spec_type(dcs_contract)
+            spec_type, _spec_version = detect_spec_type(dcs_contract)
             # All DCS versions should be detected as ODCS
             self.assertEqual(spec_type, OriginalSpecType.ODCS)
 

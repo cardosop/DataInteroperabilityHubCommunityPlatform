@@ -17,6 +17,7 @@ Parametrize helpers:
     all_mvp_personas — list of all 13 persona role strings
     all_mvp_personas_excluding(*roles) — subset excluding given roles
 """
+
 from __future__ import annotations
 
 import os
@@ -25,8 +26,7 @@ from typing import Generator
 
 import pytest
 
-from tests._persona_provisioning import provision_persona, PersonaCredentials
-
+from tests._persona_provisioning import PersonaCredentials, provision_persona
 
 # ---------------------------------------------------------------------------
 # D145 persona role strings — canonical list (identical to CLI)
@@ -61,9 +61,11 @@ def all_mvp_personas_excluding(*roles: str) -> list[str]:
 # Internal: build an SDK client with persona credentials
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PersonaClient:
     """An SDK client bound to a specific persona's credentials."""
+
     client: object  # DataHubClient or plain credentials
     credentials: PersonaCredentials
     role: str
@@ -94,6 +96,7 @@ def _make_persona_client(role: str) -> Generator[PersonaClient, None, None]:
     # Try to import the real SDK client; fall back to plain credentials
     try:
         from datahub_sdk import DataHubClient
+
         client = DataHubClient(
             base_url=api_url,
             api_key=creds.api_key,
@@ -108,53 +111,66 @@ def _make_persona_client(role: str) -> Generator[PersonaClient, None, None]:
 # 13 persona fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def visitor_client():
     yield from _make_persona_client("visitor")
+
 
 @pytest.fixture(scope="session")
 def auditor_client():
     yield from _make_persona_client("auditor")
 
+
 @pytest.fixture(scope="session")
 def community_manager_client():
     yield from _make_persona_client("community_manager")
+
 
 @pytest.fixture(scope="session")
 def compliance_officer_client():
     yield from _make_persona_client("compliance_officer")
 
+
 @pytest.fixture(scope="session")
 def data_analyst_client():
     yield from _make_persona_client("data_analyst")
+
 
 @pytest.fixture(scope="session")
 def data_consumer_client():
     yield from _make_persona_client("data_consumer")
 
+
 @pytest.fixture(scope="session")
 def data_engineer_client():
     yield from _make_persona_client("data_engineer")
+
 
 @pytest.fixture(scope="session")
 def data_mesh_domain_owner_client():
     yield from _make_persona_client("data_mesh_domain_owner")
 
+
 @pytest.fixture(scope="session")
 def data_product_owner_client():
     yield from _make_persona_client("data_product_owner")
+
 
 @pytest.fixture(scope="session")
 def data_scientist_client():
     yield from _make_persona_client("data_scientist")
 
+
 @pytest.fixture(scope="session")
 def external_developer_client():
     yield from _make_persona_client("external_developer")
 
+
 @pytest.fixture(scope="session")
 def platform_admin_client():
     yield from _make_persona_client("platform_admin")
+
 
 @pytest.fixture(scope="session")
 def tenant_admin_client():

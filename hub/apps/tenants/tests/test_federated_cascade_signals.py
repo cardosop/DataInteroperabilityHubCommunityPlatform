@@ -4,6 +4,7 @@ Covers ``tombstone_federated_resources_on_tenant_delete`` and the
 ``public_pricing:v1`` cache invalidation handlers — all previously
 untested at the signal level.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -40,7 +41,7 @@ class TombstoneFederatedResourcesTests(TestCase):
             status=TenantStatus.ACTIVE,
         )
         # Consumer tenant (imports a reference from source).
-        consumer_tenant = Tenant.objects.create(
+        Tenant.objects.create(
             name=f"FedConsumer {uid}",
             slug=f"fedconsumer-{uid}",
             status=TenantStatus.ACTIVE,

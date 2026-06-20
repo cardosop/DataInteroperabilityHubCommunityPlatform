@@ -1,6 +1,7 @@
 """
 Unit tests for tenant signals (Phase 93).
 """
+
 import re
 import uuid
 
@@ -26,13 +27,12 @@ class TenantSignalsTest(TestCase):
         from hub.apps.users.models import Role
 
         uid = uuid.uuid4().hex[:8]
-        tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}"
-        )
+        tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
         roles = Role.objects.filter(tenant=tenant)
         self.assertEqual(
-            roles.count(), 0,
+            roles.count(),
+            0,
             "Signal should skip role creation in test mode",
         )
 
@@ -41,14 +41,13 @@ class TenantSignalsTest(TestCase):
         from hub.apps.tenants.signals import _thread_local
 
         uid = uuid.uuid4().hex[:8]
-        tenant = Tenant.objects.create(
-            name=f"KYC Test {uid}", slug=f"kyc-test-{uid}"
-        )
+        tenant = Tenant.objects.create(name=f"KYC Test {uid}", slug=f"kyc-test-{uid}")
 
         # After save, there should be no lingering state in thread-local
         kyc_store = getattr(_thread_local, "kyc_before_save", {})
         self.assertNotIn(
-            tenant.pk, kyc_store,
+            tenant.pk,
+            kyc_store,
             "KYC state should be cleaned up after post_save",
         )
 

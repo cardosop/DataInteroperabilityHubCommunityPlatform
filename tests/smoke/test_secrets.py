@@ -10,6 +10,7 @@ Usage:
 """
 
 import os
+
 import pytest
 import requests
 
@@ -32,12 +33,16 @@ class TestSecretsSmoke:
     def test_api_responds_with_valid_jwt(self):
         """The API is using a real JWT secret (not the dev default).
         If the dev default were used, all JWT signatures would be predictable."""
-        r = _api("/api/v1/auth/login/", method="post", json={
-            "email": "nonexistent-smoke-test-user@meshant.test",
-            "password": "wrong-password-12345",
-        })
+        r = _api(
+            "/api/v1/auth/login/",
+            method="post",
+            json={
+                "email": "nonexistent-smoke-test-user@meshant.test",
+                "password": "wrong-password-12345",
+            },
+        )
         if r.status_code == 404:
-            pytest.skip("Auth endpoint not available")
+            pytest.skip("Auth endpoint not available")  # noqa: skip-in-body — runtime service dependency
         # 401 means the auth system is functioning with real secrets.
         # 400 with a specific message that doesn't leak info is also acceptable.
         assert r.status_code in (400, 401, 403), (
@@ -63,9 +68,7 @@ class TestSecretsSmoke:
         # In DEBUG=False, it returns JSON 404 or the custom 404 page.
         if r.status_code == 200:
             body = r.text.lower()
-            assert "traceback" not in body, (
-                "DEBUG appears to be ON — traceback in 200 response"
-            )
+            assert "traceback" not in body, "DEBUG appears to be ON — traceback in 200 response"
             assert "django debug" not in body, "DEBUG appears to be ON"
 
     def test_aws_secrets_loader_indicator(self):
@@ -73,7 +76,7 @@ class TestSecretsSmoke:
         Does not actually check AWS credentials — validates the integration point."""
         r = _api("/health/")
         if r.status_code not in (200, 503):
-            pytest.skip("Health endpoint not available")
+            pytest.skip("Health endpoint not available")  # noqa: skip-in-body — runtime service dependency
         # The response should be served by a running app, not a 500 crash.
         # If secrets failed to load, the app would typically fail to start.
         body = r.text.lower()
@@ -83,10 +86,14 @@ class TestSecretsSmoke:
 
     def test_env_file_not_leaked_in_error(self):
         """Error responses must not expose environment variable values."""
-        r = _api("/api/v1/auth/login/", method="post", json={
-            "email": "test@example.com",
-            "password": "test",
-        })
+        r = _api(
+            "/api/v1/auth/login/",
+            method="post",
+            json={
+                "email": "test@example.com",
+                "password": "test",
+            },
+        )
         body = r.text.lower()
         # Common leaks to guard against.
         for leak in ("postgres_password", "redis_password", "secret_key", "aws_secret", "dj_"):

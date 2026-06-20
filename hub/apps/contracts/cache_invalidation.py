@@ -31,10 +31,11 @@ in fail-soft logging so a flaky search index or unavailable Redis
 doesn't block the user's PATCH from completing successfully. Errors
 surface in structlog at WARN so SRE can spot drift.
 """
+
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
 from django.core.cache import cache
@@ -67,12 +68,12 @@ def _safe_invoke(label: str, contract_id: str, fn) -> None:
         )
 
 
-def _invalidate_dependents_lineage_caches(contract) -> List[str]:
+def _invalidate_dependents_lineage_caches(contract) -> list[str]:
     """Step 4 — cascade: invalidate the lineage cache of every contract
     that references this one. Returns the list of contract IDs whose
     cache was flushed (used for telemetry; empty when this contract
     has no dependents)."""
-    dependents: List[str] = []
+    dependents: list[str] = []
     try:
         from hub.apps.contracts.lineage import LineageTraverser
     except ImportError:
@@ -130,7 +131,9 @@ def _trigger_search_reindex(contract) -> None:
     callers that bypass signals (rare — bulk operations) we kick it
     here too. Best-effort: the search subsystem owns the queue."""
     try:
-        from hub.apps.search.indexing import enqueue_contract_reindex  # type: ignore[import-not-found]  # search app is optional at import-time
+        from hub.apps.search.indexing import (
+            enqueue_contract_reindex,  # type: ignore[import-not-found]  # search app is optional at import-time
+        )
     except ImportError:
         # Search module may not be installed in this deployment
         # (some test environments). Skip silently.
@@ -138,7 +141,7 @@ def _trigger_search_reindex(contract) -> None:
     enqueue_contract_reindex(contract_id=str(contract.id))
 
 
-def _trigger_semantic_reingest(contract, tenant_id: Optional[str]) -> None:
+def _trigger_semantic_reingest(contract, tenant_id: str | None) -> None:
     """Step 6 — if semantic / AI features are enabled for the tenant,
     enqueue a re-ingest of this contract into the embeddings index.
     Otherwise skip. The tenant feature-toggle lives on
@@ -148,6 +151,7 @@ def _trigger_semantic_reingest(contract, tenant_id: Optional[str]) -> None:
         return
     try:
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.only("id").get(id=tenant_id)
     except Exception:
         return
@@ -155,7 +159,9 @@ def _trigger_semantic_reingest(contract, tenant_id: Optional[str]) -> None:
     if not enabled:
         return
     try:
-        from hub.apps.semantic.tasks import enqueue_contract_reingest  # type: ignore[import-not-found]  # semantic app is optional at import-time
+        from hub.apps.semantic.tasks import (
+            enqueue_contract_reingest,  # type: ignore[import-not-found]  # semantic app is optional at import-time
+        )
     except ImportError:
         return
     enqueue_contract_reingest(contract_id=str(contract.id), tenant_id=tenant_id)
@@ -163,8 +169,8 @@ def _trigger_semantic_reingest(contract, tenant_id: Optional[str]) -> None:
 
 def _emit_contract_normalized_event(
     contract,
-    tenant_id: Optional[str],
-    user_id: Optional[str],
+    tenant_id: str | None,
+    user_id: str | None,
 ) -> None:
     """Step 7 — emit ``contract.normalized`` rate-limited to 1/min/contract.
 
@@ -179,7 +185,9 @@ def _emit_contract_normalized_event(
     # returns False, another emission is in flight within the window.
     try:
         accepted = cache.add(
-            key, time.time(), timeout=_NORMALIZED_EVENT_RATE_LIMIT_SECONDS,
+            key,
+            time.time(),
+            timeout=_NORMALIZED_EVENT_RATE_LIMIT_SECONDS,
         )
     except Exception:
         # Cache backend down — fail open (still publish; event bus has
@@ -196,14 +204,13 @@ def _emit_contract_normalized_event(
         from hub.apps.core.events.service_publishers import (
             ContractEventPublisher,
         )
+
         publisher = ContractEventPublisher()
         publisher.publish_contract_normalized(
             contract_id=contract_id,
             tenant_id=tenant_id,
             user_id=user_id,
             normalization_status=getattr(contract, "normalization_status", None),
-            spec_type=getattr(contract, "original_spec_type", None),
-            spec_version=getattr(contract, "original_spec_version", None),
         )
     except (ImportError, AttributeError):
         # ``publish_contract_normalized`` may not exist in older
@@ -220,9 +227,9 @@ def _emit_contract_normalized_event(
 def run_post_save_cascade(
     contract,
     *,
-    tenant_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    tenant_id: str | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
     """Run the 7-step cascade for ``contract`` after a successful save.
 
     The caller MUST have already committed the row (step 1). This
@@ -233,13 +240,14 @@ def run_post_save_cascade(
     Failures are logged but never raised — see module docstring.
     """
     contract_id = str(contract.id)
-    summary: Dict[str, Any] = {"contract_id": contract_id}
+    summary: dict[str, Any] = {"contract_id": contract_id}
 
     # Step 2 — flush the per-contract detail cache.
     from hub.apps.contracts.caching import (
         invalidate_contract_cache,
         invalidate_lineage_cache,
     )
+
     _safe_invoke(
         "invalidate_contract_cache",
         contract_id,

@@ -33,15 +33,15 @@ Output formats
 * ``--json`` flag emits JSON for the Slack-digest cron job + Prometheus
   exporter.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
-
 
 # Make ``hub.apps.tenants.feature_flag_registry`` importable without a
 # full Django bootstrap. The registry is pure Python.
@@ -55,6 +55,7 @@ def _load_registry():
     Django."""
     # Adjust imports to bypass the normal Django app loader.
     import importlib.util
+
     spec = importlib.util.spec_from_file_location(
         "feature_flag_registry",
         _REPO_ROOT / "hub" / "apps" / "tenants" / "feature_flag_registry.py",
@@ -85,16 +86,18 @@ def _scan(now: datetime) -> list[dict]:
         if flag.retire_by >= now:
             continue
         days_overdue = (now - flag.retire_by).days
-        rows.append({
-            "name": flag.name,
-            "stage": flag.stage,
-            "owner_team": flag.owner_team,
-            "owner_email": flag.owner_email,
-            "retire_by": flag.retire_by.isoformat(),
-            "days_overdue": days_overdue,
-            "severity": _classify(days_overdue),
-            "related_phase": flag.related_phase,
-        })
+        rows.append(
+            {
+                "name": flag.name,
+                "stage": flag.stage,
+                "owner_team": flag.owner_team,
+                "owner_email": flag.owner_email,
+                "retire_by": flag.retire_by.isoformat(),
+                "days_overdue": days_overdue,
+                "severity": _classify(days_overdue),
+                "related_phase": flag.related_phase,
+            }
+        )
     # Sort by severity (CRITICAL > WARNING > INFO), then days_overdue desc.
     severity_rank = {"CRITICAL": 0, "WARNING": 1, "INFO": 2}
     rows.sort(key=lambda r: (severity_rank[r["severity"]], -r["days_overdue"]))
@@ -125,9 +128,7 @@ def _format_human(rows: list[dict]) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Phase 250.0.15 — stale feature-flag detector."
-    )
+    parser = argparse.ArgumentParser(description="Phase 250.0.15 — stale feature-flag detector.")
     parser.add_argument(
         "--json",
         action="store_true",
@@ -143,9 +144,9 @@ def main() -> int:
     if args.now:
         now = datetime.fromisoformat(args.now)
         if now.tzinfo is None:
-            now = now.replace(tzinfo=timezone.utc)
+            now = now.replace(tzinfo=UTC)
     else:
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
 
     rows = _scan(now)
 

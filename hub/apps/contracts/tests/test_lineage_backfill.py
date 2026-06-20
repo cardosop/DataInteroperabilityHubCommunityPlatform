@@ -5,11 +5,11 @@ Pins idempotency, resume-from-checkpoint, dry-run, and the post-run
 verification tolerance check. Real DB rows; no mocks of internal
 code paths.
 """
+
 from __future__ import annotations
 
 import uuid
 from io import StringIO
-from typing import Any
 
 import pytest
 from django.core.management import call_command
@@ -82,7 +82,8 @@ class TestBackfillIdempotent(TransactionTestCase):
         _run(f"--tenant={tenant.id}")
 
         edges = LineageEdge.objects.filter(
-            target_contract=target, valid_to__isnull=True,
+            target_contract=target,
+            valid_to__isnull=True,
         )
         assert edges.count() == 1
 
@@ -105,15 +106,16 @@ class TestBackfillIdempotent(TransactionTestCase):
 
         _run(f"--tenant={tenant.id}")
         before = LineageEdge.objects.filter(
-            target_contract=target, valid_to__isnull=True,
+            target_contract=target,
+            valid_to__isnull=True,
         ).count()
         _run(f"--tenant={tenant.id}")
         after = LineageEdge.objects.filter(
-            target_contract=target, valid_to__isnull=True,
+            target_contract=target,
+            valid_to__isnull=True,
         ).count()
         assert before == after == 1, (
-            f"idempotent rerun must not duplicate edges; "
-            f"before={before} after={after}"
+            f"idempotent rerun must not duplicate edges; before={before} after={after}"
         )
 
 
@@ -140,9 +142,7 @@ class TestBackfillDryRun(TransactionTestCase):
 
         out = _run(f"--tenant={tenant.id}", "--dry-run")
 
-        assert LineageEdge.objects.count() == 0, (
-            "dry-run must not write edges"
-        )
+        assert LineageEdge.objects.count() == 0, "dry-run must not write edges"
         assert "[dry-run]" in out
 
 
@@ -157,13 +157,14 @@ class TestBackfillResumeCheckpoint(TransactionTestCase):
 
     def test_resume_skips_contracts_before_checkpoint(self):
         from django.core.cache import cache
+
         from hub.apps.contracts.models import Contract, LineageEdge
 
         tenant = _create_tenant()
         # Three contracts with ascending UUIDs.
         c1 = _create_contract(tenant)
-        c2 = _create_contract(tenant)
-        c3 = _create_contract(
+        _create_contract(tenant)
+        _create_contract(
             tenant,
             lineage_entries=[
                 {
@@ -178,9 +179,7 @@ class TestBackfillResumeCheckpoint(TransactionTestCase):
         # Plant a resume checkpoint pointing at the LARGEST contract id
         # (sorted by uuid). This means the backfill should skip all
         # three and write zero edges.
-        sorted_ids = sorted(
-            Contract.objects.filter(tenant=tenant).values_list("id", flat=True)
-        )
+        sorted_ids = sorted(Contract.objects.filter(tenant=tenant).values_list("id", flat=True))
         last_uuid = sorted_ids[-1]
         cache.set("backfill_lineage:test-resume", str(last_uuid), timeout=3600)
         try:
@@ -212,6 +211,5 @@ class TestBackfillVerification(TransactionTestCase):
 
         out = _run(f"--tenant={tenant.id}")
         assert "verification=ok" in out, (
-            f"verification line should report 'ok' when counts match; "
-            f"got: {out!r}"
+            f"verification line should report 'ok' when counts match; got: {out!r}"
         )

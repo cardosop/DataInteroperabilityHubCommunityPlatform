@@ -34,7 +34,7 @@ def check_traefik_cors_star(strict: bool) -> bool:
         return True
     content = TRAEFIK_ROUTES.read_text()
     # Check for accessControlAllowOriginList with "*"
-    if "accessControlAllowOriginList:" in content and "\n          - \"*\"" in content:
+    if "accessControlAllowOriginList:" in content and '\n          - "*"' in content:
         if strict:
             print(
                 "[ERROR] Traefik CORS uses accessControlAllowOriginList: ['*']. "
@@ -60,8 +60,10 @@ def check_django_cors_star(strict: bool) -> bool:
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
     try:
         import django
+
         django.setup()
         from django.conf import settings
+
         origins = getattr(settings, "CORS_ALLOWED_ORIGINS", []) or []
         if "*" in origins or origins == ["*"]:
             print(

@@ -2,8 +2,6 @@
 Unit Tests for Context Fields Promotion
 """
 
-import pytest
-
 from hub.apps.contracts.context_fields import (
     extract_context_fields_from_extensions,
     promote_context_fields,

@@ -7,9 +7,11 @@ caller's transaction is already committed), and delegates to the existing
 _attempt_delivery() synchronous path — preserving all retry/circuit-breaker
 logic in one place (13.6).
 """
+
 from __future__ import annotations
 
-from typing import Callable, Optional, TypeVar
+from collections.abc import Callable
+from typing import TypeVar
 
 import structlog
 from django_rq import job
@@ -20,7 +22,7 @@ _T = TypeVar("_T")
 
 
 def _run_with_tenant_context(
-    tenant_id: Optional[str],
+    tenant_id: str | None,
     func: Callable[[], _T],
 ) -> _T:
     """Run *func* inside ``tenant_context(tenant_id)`` when *tenant_id*
@@ -50,9 +52,7 @@ def deliver_webhook(delivery_id: str) -> None:
     from .service import WebhookDeliveryService
 
     try:
-        delivery = WebhookDelivery.objects.select_related("webhook").get(
-            id=delivery_id
-        )
+        delivery = WebhookDelivery.objects.select_related("webhook").get(id=delivery_id)
     except WebhookDelivery.DoesNotExist:
         logger.error("webhook_delivery_not_found", delivery_id=delivery_id)
         return

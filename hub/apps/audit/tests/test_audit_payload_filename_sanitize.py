@@ -6,14 +6,12 @@ audit payloads when callers embed user-controlled filenames or messages.
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import uuid
 
+import pytest
 from django.test import TestCase
 
-from hub.apps.audit.models import AuditEvent
 from hub.apps.audit.utils import _sanitize, _sanitize_audit_payload_values, create_audit_event
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus

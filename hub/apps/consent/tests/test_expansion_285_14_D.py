@@ -1,16 +1,17 @@
 """Phase D (TR.D.8-D.9) — Consent: HMAC proofs + key rotation."""
-import pytest
+
 import uuid
 
+import pytest
 from django.test import TestCase, override_settings
 
-from hub.apps.consent.models import ConsentPurpose, ConsentRecord, ConsentRecordStatus
+from hub.apps.consent.models import ConsentPurpose, ConsentRecordStatus
 from hub.apps.consent.services import ConsentService
 from hub.apps.consent.signing import (
     build_canonical_bytes,
     compute_proof_hmac,
-    verify_proof_hmac,
     get_signing_key_ring_for_tenant,
+    verify_proof_hmac,
 )
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.users.models import User
@@ -20,11 +21,13 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 def _consent_signing_keys() -> dict:
     """3-key ring for rotation tests."""
-    return {"__default__": [
-        "b" * 64,   # key[0] = newest
-        "a" * 64,   # key[1]
-        "c" * 64,   # key[2] = oldest
-    ]}
+    return {
+        "__default__": [
+            "b" * 64,  # key[0] = newest
+            "a" * 64,  # key[1]
+            "c" * 64,  # key[2] = oldest
+        ]
+    }
 
 
 class ConsentHmacTests(TestCase):
@@ -33,12 +36,14 @@ class ConsentHmacTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"cn-hmac-{uid}", slug=f"cn-hmac-{uid}",
+            name=f"cn-hmac-{uid}",
+            slug=f"cn-hmac-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_consent_enabled=True,
         )
         self.user = User.objects.create_user(
-            email=f"cn-hmac-{uid}@test.local", password="Pass1234!",
+            email=f"cn-hmac-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         self.purpose = ConsentPurpose.objects.create(
@@ -53,12 +58,14 @@ class ConsentHmacTests(TestCase):
         """A consent record signed with key[0] verifies correctly."""
         service = ConsentService()
         record = service.grant(
-            tenant=self.tenant, user=self.user,
-            purpose=self.purpose, payload={"source": "test"},
+            tenant=self.tenant,
+            user=self.user,
+            purpose=self.purpose,
+            payload={"source": "test"},
         )
         assert record.status == ConsentRecordStatus.GRANTED
         # Verify the stored proof matches a fresh computation
-        canonical = build_canonical_bytes(
+        build_canonical_bytes(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             purpose_id=str(self.purpose.id),
@@ -80,8 +87,10 @@ class ConsentHmacTests(TestCase):
         """A tampered consent record fails HMAC verification."""
         service = ConsentService()
         record = service.grant(
-            tenant=self.tenant, user=self.user,
-            purpose=self.purpose, payload={"source": "test"},
+            tenant=self.tenant,
+            user=self.user,
+            purpose=self.purpose,
+            payload={"source": "test"},
         )
         # Tamper with the payload but keep the same proof
         tampered_payload = {"source": "tampered"}
@@ -100,12 +109,16 @@ class ConsentHmacTests(TestCase):
         """Granting consent twice with same payload is idempotent."""
         service = ConsentService()
         record1 = service.grant(
-            tenant=self.tenant, user=self.user,
-            purpose=self.purpose, payload={"source": "test"},
+            tenant=self.tenant,
+            user=self.user,
+            purpose=self.purpose,
+            payload={"source": "test"},
         )
         record2 = service.grant(
-            tenant=self.tenant, user=self.user,
-            purpose=self.purpose, payload={"source": "test"},
+            tenant=self.tenant,
+            user=self.user,
+            purpose=self.purpose,
+            payload={"source": "test"},
         )
         # Same record ID, same proof
         assert record1.id == record2.id
@@ -118,12 +131,14 @@ class ConsentKeyRotationTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"cn-rot-{uid}", slug=f"cn-rot-{uid}",
+            name=f"cn-rot-{uid}",
+            slug=f"cn-rot-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_consent_enabled=True,
         )
         self.user = User.objects.create_user(
-            email=f"cn-rot-{uid}@test.local", password="Pass1234!",
+            email=f"cn-rot-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         self.purpose = ConsentPurpose.objects.create(
@@ -136,7 +151,7 @@ class ConsentKeyRotationTests(TestCase):
     @override_settings(CONSENT_SIGNING_KEYS_JSON=_consent_signing_keys())
     def test_v3_key_verifies_after_v5_rotation(self):
         """A record signed with an older key still verifies after rotation."""
-        service = ConsentService()
+        ConsentService()
         key_ring = get_signing_key_ring_for_tenant(str(self.tenant.id))
         # Sign with key[2] (oldest)
         proof = compute_proof_hmac(

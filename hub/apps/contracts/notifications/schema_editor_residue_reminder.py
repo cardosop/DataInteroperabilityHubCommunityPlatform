@@ -26,11 +26,13 @@ Design notes
   Django template doesn't have to do string substitution (which it
   doesn't natively support).
 """
+
 from __future__ import annotations
 
 import datetime as _dt
 import logging
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 from django.conf import settings
 
@@ -47,9 +49,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_SCHEMA_EDITOR_URL = (
     "https://stagingmeshant-internal.example.com/contracts/{contract_id}/edit?tab=schema"
 )
-_DEFAULT_CONTRACT_HEALTH_URL = (
-    "https://stagingmeshant-internal.example.com/admin/contract-health"
-)
+_DEFAULT_CONTRACT_HEALTH_URL = "https://stagingmeshant-internal.example.com/admin/contract-health"
 
 
 def _format_deadline(deadline: _dt.datetime | _dt.date) -> str:
@@ -57,10 +57,7 @@ def _format_deadline(deadline: _dt.datetime | _dt.date) -> str:
         return deadline.date().isoformat()
     if isinstance(deadline, _dt.date):
         return deadline.isoformat()
-    raise TypeError(
-        "deadline must be a datetime or date instance; "
-        f"got {type(deadline).__name__}"
-    )
+    raise TypeError(f"deadline must be a datetime or date instance; got {type(deadline).__name__}")
 
 
 def _summarise_contract(
@@ -76,9 +73,7 @@ def _summarise_contract(
         "id": contract_id,
         "name": str(name),
         "spec_type": str(getattr(contract, "original_spec_type", "")),
-        "schema_editor_url": schema_editor_url_template.replace(
-            "{contract_id}", contract_id
-        ),
+        "schema_editor_url": schema_editor_url_template.replace("{contract_id}", contract_id),
     }
 
 
@@ -127,20 +122,16 @@ def send_schema_editor_residue_reminder(
     )
     contract_summaries = [
         _summarise_contract(
-            c, schema_editor_url_template=schema_editor_url_template,
+            c,
+            schema_editor_url_template=schema_editor_url_template,
         )
         for c in structureless_contracts
     ]
 
     tenant_name = str(getattr(tenant, "name", "")) or "your tenant"
     tenant_id = str(getattr(tenant, "id", "")) or None
-    subject = (
-        f"Action required by {deadline_iso}: residue contracts in "
-        f"{tenant_name}"
-    )
-    template_name = (
-        "notifications/emails/schema_editor_residue_reminder.html"
-    )
+    subject = f"Action required by {deadline_iso}: residue contracts in {tenant_name}"
+    template_name = "notifications/emails/schema_editor_residue_reminder.html"
     email_type_value = EmailType.SCHEMA_EDITOR_RESIDUE_REMINDER.value
 
     dispatched: list[dict[str, Any]] = []
@@ -155,9 +146,7 @@ def send_schema_editor_residue_reminder(
             "contracts": contract_summaries,
             "contract_health_url": contract_health_url,
             "admin_first_name": (
-                getattr(admin, "first_name", None)
-                or getattr(admin, "name", None)
-                or ""
+                getattr(admin, "first_name", None) or getattr(admin, "name", None) or ""
             ),
             "residue_count": len(contract_summaries),
         }

@@ -12,10 +12,10 @@ current plan, fetching usage data, and accessing the invoices endpoint.
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_get
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _admin_creds():
     return provision_persona("tenant_admin")
@@ -46,12 +46,9 @@ def test_get_billing_plan():
     # Should contain plan identification
     keys_lower = {k.lower() for k in body.keys()}
     has_plan = any(
-        k in keys_lower
-        for k in ("plan", "tier", "name", "subscription", "plan_name", "plan_id")
+        k in keys_lower for k in ("plan", "tier", "name", "subscription", "plan_name", "plan_id")
     )
-    assert has_plan, (
-        f"Billing plan response missing plan identifier: {list(body.keys())}"
-    )
+    assert has_plan, f"Billing plan response missing plan identifier: {list(body.keys())}"
 
 
 def test_get_billing_usage():
@@ -97,14 +94,10 @@ def test_billing_invoices_endpoint():
     # Should be a list or paginated dict
     if isinstance(body, dict):
         invoices = (
-            body.get("results")
-            or body.get("items")
-            or body.get("data")
-            or body.get("invoices")
+            body.get("results") or body.get("items") or body.get("data") or body.get("invoices")
         )
         assert invoices is not None, (
-            f"Invoices response missing results/items/data/invoices: "
-            f"{list(body.keys())}"
+            f"Invoices response missing results/items/data/invoices: {list(body.keys())}"
         )
     else:
         assert isinstance(body, list), f"Expected list or dict, got {type(body)}"

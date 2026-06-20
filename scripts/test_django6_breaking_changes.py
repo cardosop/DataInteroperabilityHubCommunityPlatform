@@ -5,6 +5,7 @@ Test script to verify Django 6 breaking changes are handled correctly.
 This script tests for common Django 6 breaking changes and verifies
 that the codebase handles them correctly.
 """
+
 import os
 import sys
 from pathlib import Path
@@ -131,8 +132,6 @@ class Django6BreakingChangesTest(TestCase):
     def test_migration_applies_successfully(self):
         """Test that Django 6 migrations apply successfully."""
         from io import StringIO
-
-        from django.core.management import call_command
 
         # Check migration status
         output = StringIO()

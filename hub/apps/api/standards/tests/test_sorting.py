@@ -1,6 +1,7 @@
 """
 Comprehensive tests for standardized sorting.
 """
+
 from unittest.mock import Mock
 
 from django.contrib.auth import get_user_model

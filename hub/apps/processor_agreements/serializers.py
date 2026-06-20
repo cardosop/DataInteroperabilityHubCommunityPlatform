@@ -1,6 +1,7 @@
 """Serializers for processor registry (Phase 232.6)."""
 
 from __future__ import annotations
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 

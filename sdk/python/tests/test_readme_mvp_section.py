@@ -12,6 +12,7 @@ fails until the new entries are documented.
 
 Phase 215.4 — see openspec/changes/preprod01/specs/cli-sdk-mvp-awareness/spec.md
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,7 +24,6 @@ from datahub_interoperability._mvp_gates import (
     MVP_GATED_FEATURE_NAMES,
     MVP_GATED_PREFIXES,
 )
-
 
 README_PATH = Path(__file__).resolve().parents[1] / "README.md"
 SECTION_HEADING = "## MVP Compatibility"
@@ -58,9 +58,7 @@ def readme_text() -> str:
 @pytest.fixture(scope="module")
 def mvp_section(readme_text: str) -> str:
     section = _extract_section(readme_text, SECTION_HEADING)
-    assert section.strip(), (
-        f"{SECTION_HEADING!r} section is missing or empty in {README_PATH}"
-    )
+    assert section.strip(), f"{SECTION_HEADING!r} section is missing or empty in {README_PATH}"
     return section
 
 
@@ -93,9 +91,7 @@ def test_mvp_section_appears_between_error_handling_and_retry_logic(
 
 
 @pytest.mark.parametrize("prefix", sorted(MVP_GATED_PREFIXES))
-def test_every_gated_prefix_is_documented_in_section(
-    mvp_section: str, prefix: str
-) -> None:
+def test_every_gated_prefix_is_documented_in_section(mvp_section: str, prefix: str) -> None:
     """Each gated prefix MUST appear inside the new section.
 
     The check accepts either the bare prefix (``mesh/``) or the human label
@@ -147,8 +143,7 @@ def test_section_contains_a_markdown_table(mvp_section: str) -> None:
     Tables are recognized by their separator row (``|---``).
     """
     has_table = any(
-        line.strip().startswith("|") and "---" in line
-        for line in mvp_section.splitlines()
+        line.strip().startswith("|") and "---" in line for line in mvp_section.splitlines()
     )
     assert has_table, (
         "Section MUST include a Markdown table (look for a `|---|` separator "

@@ -7,8 +7,8 @@ sign-off block, or P2 exit-criterion language without CI failure.
 
 Mirrors the pattern in ``hub/tests/test_security_docs_phase_250_5_e.py``.
 """
+
 from __future__ import annotations
-import pytest
 
 import pathlib
 
@@ -24,7 +24,7 @@ class TestThreatModelDatasetsFilesStructure:
 
     def test_threat_model_doc_exists(self):
         assert THREAT_MODEL_PATH.exists(), (
-            "Phase 260.2.I.1 deliverable missing: " f"{THREAT_MODEL_PATH}"
+            f"Phase 260.2.I.1 deliverable missing: {THREAT_MODEL_PATH}"
         )
 
     @pytest.mark.parametrize(
@@ -95,7 +95,7 @@ class TestPenTestScope260Structure:
 
     def test_pen_test_scope_doc_exists(self):
         assert PEN_TEST_SCOPE_PATH.exists(), (
-            "Phase 260.2.I.3 deliverable missing: " f"{PEN_TEST_SCOPE_PATH}"
+            f"Phase 260.2.I.3 deliverable missing: {PEN_TEST_SCOPE_PATH}"
         )
 
     @pytest.mark.parametrize(
@@ -111,9 +111,7 @@ class TestPenTestScope260Structure:
     )
     def test_pen_test_scope_covers_surface(self, surface):
         body = PEN_TEST_SCOPE_PATH.read_text(encoding="utf-8")
-        assert surface.lower() in body.lower(), (
-            f"Pen-test scope missing coverage of '{surface}'"
-        )
+        assert surface.lower() in body.lower(), f"Pen-test scope missing coverage of '{surface}'"
 
     def test_pen_test_scope_lists_concrete_test_cases(self):
         body = PEN_TEST_SCOPE_PATH.read_text(encoding="utf-8")
@@ -126,9 +124,7 @@ class TestPenTestScope260Structure:
             "429",
         ]
         present = [t for t in attack_techniques if t.lower() in body.lower()]
-        assert len(present) >= 3, (
-            f"Pen-test scope needs concrete techniques; found only {present}"
-        )
+        assert len(present) >= 3, f"Pen-test scope needs concrete techniques; found only {present}"
 
     def test_pen_test_scope_marks_p2_exit_criterion(self):
         body = PEN_TEST_SCOPE_PATH.read_text(encoding="utf-8")

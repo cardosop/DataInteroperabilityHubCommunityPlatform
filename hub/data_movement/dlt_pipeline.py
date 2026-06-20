@@ -4,9 +4,11 @@
 Single class for both directions. Maps SourceType/DestinationType enum values
 to dlt verified source/destination functions.
 """
+
 from __future__ import annotations
+
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 import structlog
 
@@ -28,9 +30,10 @@ def _get_dlt():
         _dlt.config["enable_runtime_trace"] = False
     return _dlt
 
+
 # ── Source/Destination type mapping ─────────────────────────────────
 
-SOURCE_MAP: Dict[str, str] = {
+SOURCE_MAP: dict[str, str] = {
     "S3": "filesystem",
     "GCS": "filesystem",
     "AZURE_BLOB": "filesystem",
@@ -45,7 +48,7 @@ SOURCE_MAP: Dict[str, str] = {
     "ATHENA_SOURCE": "sql_database",
 }
 
-DESTINATION_MAP: Dict[str, str] = {
+DESTINATION_MAP: dict[str, str] = {
     "S3": "filesystem",
     "GCS": "filesystem",
     "AZURE_BLOB": "filesystem",
@@ -53,8 +56,8 @@ DESTINATION_MAP: Dict[str, str] = {
     "BIGQUERY_TABLE": "bigquery",
     "DATABRICKS_TABLE": "databricks",
     "ATHENA_TABLE": "athena",
-    "HTTP": "filesystem",   # 285.6.4.2 — custom destination
-    "FTP": "filesystem",    # 285.6.4.2 — custom destination
+    "HTTP": "filesystem",  # 285.6.4.2 — custom destination
+    "FTP": "filesystem",  # 285.6.4.2 — custom destination
 }
 
 # dlt schema per direction to isolate state tables
@@ -113,7 +116,7 @@ class DataMovementPipeline:
         # Ingestion uses filesystem staging by default
         return _get_dlt().destinations.filesystem
 
-    def run(self, resources: list[Any], **kwargs) -> Dict[str, Any]:
+    def run(self, resources: list[Any], **kwargs) -> dict[str, Any]:
         """Run the dlt pipeline with the given resources."""
         load_info = self._pipeline.run(resources, **kwargs)
         return {
@@ -130,11 +133,13 @@ class DataMovementPipeline:
             ],
         }
 
-    def metrics(self) -> Dict[str, Any]:
+    def metrics(self) -> dict[str, Any]:
         """Export dlt LoadInfo metrics for Prometheus."""
         return {
             "pipeline_name": self.pipeline_name,
-            "last_trace": self._pipeline.last_trace.last_trace if self._pipeline.last_trace else None,
+            "last_trace": self._pipeline.last_trace.last_trace
+            if self._pipeline.last_trace
+            else None,
             "state": str(self._pipeline.state) if self._pipeline.state else {},
         }
 

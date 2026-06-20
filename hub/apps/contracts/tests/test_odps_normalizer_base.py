@@ -14,9 +14,8 @@ from abc import ABC
 from django.test import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
-from hub.apps.contracts.normalization import NormalizationResult, SpecNormalizer
+from hub.apps.contracts.normalization import SpecNormalizer
 from hub.apps.contracts.normalization.odps_normalizer_base import ODPSNormalizerBase
-from hub.apps.contracts.odps_errors import ODPSNormalizationError
 
 
 class TestODPSNormalizerV4_1(ODPSNormalizerBase):

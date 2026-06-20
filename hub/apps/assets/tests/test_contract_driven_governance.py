@@ -35,6 +35,7 @@ class ContractDrivenGovernanceTest(TestCase):
     """Contract-driven quality rule and compliance policy extraction."""
 
     def setUp(self):
+        super().setUp()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Gov Tenant {uid}",

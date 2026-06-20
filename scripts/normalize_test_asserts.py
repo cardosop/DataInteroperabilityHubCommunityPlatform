@@ -15,10 +15,9 @@ Idempotent — running twice produces the same output.
 """
 
 import ast
-import sys
 import os
 import re
-from typing import Optional
+import sys
 
 # ---------------------------------------------------------------------------
 # Mapping from comparison / containment / identity operators to self.assert*()
@@ -64,11 +63,15 @@ def _is_test_class(node: ast.ClassDef) -> bool:
     """True if the class inherits from a Django TestCase."""
     for base in node.bases:
         if isinstance(base, ast.Name) and base.id in (
-            "TestCase", "TransactionTestCase", "SimpleTestCase",
+            "TestCase",
+            "TransactionTestCase",
+            "SimpleTestCase",
         ):
             return True
         if isinstance(base, ast.Attribute) and base.attr in (
-            "TestCase", "TransactionTestCase", "SimpleTestCase",
+            "TestCase",
+            "TransactionTestCase",
+            "SimpleTestCase",
         ):
             return True
     return False
@@ -100,8 +103,7 @@ class AssertTransformer:
             if isinstance(node, ast.ClassDef) and _is_test_class(node):
                 for item in node.body:
                     if _is_test_method(item) or (
-                        isinstance(item, ast.FunctionDef)
-                        and item.name == "setUp"
+                        isinstance(item, ast.FunctionDef) and item.name == "setUp"
                     ):
                         self._visit_function(item)
 
@@ -125,7 +127,7 @@ class AssertTransformer:
                     else:
                         self.replacements[lineno] += "\n" + call_str
 
-    def _convert_assert(self, node: ast.Assert) -> Optional[str]:
+    def _convert_assert(self, node: ast.Assert) -> str | None:
         """Return a self.assert*(...) source string for *node*, or None."""
         test = node.test
         msg = node.msg  # optional failure message (ast.Constant or None)
@@ -156,7 +158,9 @@ class AssertTransformer:
                 if right_raw == "None":
                     return self._format("assertIsNotNone", left, msg)
                 return self._format(
-                    "assertIsNot", f"{left}, {right_raw}", msg,
+                    "assertIsNot",
+                    f"{left}, {right_raw}",
+                    msg,
                 )
 
             # --- comparison operators (==, !=, >, >=, <, <=) ----------
@@ -171,7 +175,9 @@ class AssertTransformer:
         # --- assert container / assert not container (truthiness) ----
         if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
             return self._format(
-                "assertFalse", ast.unparse(test.operand), msg,
+                "assertFalse",
+                ast.unparse(test.operand),
+                msg,
             )
 
         # --- assert callable(args)  (e.g. assert resp.status_code == 200)
@@ -265,6 +271,7 @@ def _name(id_str: str) -> str:
 
 # ── CLI ────────────────────────────────────────────────────────────────
 
+
 def main():
     if len(sys.argv) < 2:
         print(f"Usage: {sys.argv[0]} <test_file.py>", file=sys.stderr)
@@ -275,7 +282,7 @@ def main():
         print(f"ERROR: not a file: {path}", file=sys.stderr)
         sys.exit(1)
 
-    with open(path, "r") as fh:
+    with open(path) as fh:
         original = fh.read()
 
     transformer = AssertTransformer(original)

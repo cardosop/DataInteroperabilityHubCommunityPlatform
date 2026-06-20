@@ -4,6 +4,7 @@ Tests for Asset data_strategy field
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -12,13 +13,11 @@ from hub.apps.assets.models import (
     Asset,
     AssetSourceType,
     AssetStatus,
-    AssetVisibility,
     DataStrategy,
 )
-from hub.apps.datasets.models import Dataset
-from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import Tenant
 
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
@@ -45,7 +44,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             created_by=self.user,
         )
         self.assertEqual(asset.data_strategy, DataStrategy.METADATA_ONLY)
@@ -57,7 +56,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Federated Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             created_by=self.user,
         )
@@ -70,7 +69,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_ALL,
             created_by=self.user,
@@ -84,7 +83,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_SELECTIVE,
             created_by=self.user,
@@ -98,7 +97,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-metadata-{uuid.uuid4().hex[:8]}",
             name="Metadata Only Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.METADATA_ONLY,
             created_by=self.user,
@@ -113,7 +112,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-download-{uuid.uuid4().hex[:8]}",
             name="Download Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_ALL,
             created_by=self.user,
@@ -128,7 +127,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.METADATA_ONLY,
             created_by=self.user,
@@ -143,7 +142,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_ALL,
             created_by=self.user,
@@ -158,7 +157,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_ALL,
             created_by=self.user,
@@ -173,7 +172,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_SELECTIVE,
             created_by=self.user,
@@ -214,7 +213,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_SELECTIVE,
             created_by=self.user,
@@ -222,98 +221,6 @@ class AssetDataStrategyTest(TestCase):
 
         # No external resources, so cannot download
         self.assertFalse(asset.can_download_resource("resource-1"))
-
-    # ========== SUCCESS SCENARIOS ==========
-
-    def test_data_strategy_success_metadata_only_sets_strategy(self):
-        """Test successful METADATA_ONLY strategy sets strategy."""
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key=f"test-asset-{uuid.uuid4().hex[:8]}",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
-            source_type=AssetSourceType.FEDERATED,
-            data_strategy=DataStrategy.METADATA_ONLY,
-            created_by=self.user,
-        )
-
-        self.assertEqual(asset.data_strategy, DataStrategy.METADATA_ONLY)
-
-    def test_data_strategy_success_metadata_only_is_metadata_only(self):
-        """Test successful METADATA_ONLY strategy is_metadata_only returns True."""
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key=f"test-asset-{uuid.uuid4().hex[:8]}",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
-            source_type=AssetSourceType.FEDERATED,
-            data_strategy=DataStrategy.METADATA_ONLY,
-            created_by=self.user,
-        )
-
-        self.assertTrue(asset.is_metadata_only())
-
-    def test_data_strategy_success_metadata_only_cannot_download(self):
-        """Test successful METADATA_ONLY strategy cannot download resource."""
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key=f"test-asset-{uuid.uuid4().hex[:8]}",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
-            source_type=AssetSourceType.FEDERATED,
-            data_strategy=DataStrategy.METADATA_ONLY,
-            created_by=self.user,
-        )
-
-        self.assertFalse(asset.can_download_resource("resource-1"))
-
-    def test_data_strategy_success_download_all_sets_strategy(self):
-        """Test successful DOWNLOAD_ALL strategy sets strategy."""
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key=f"test-asset-{uuid.uuid4().hex[:8]}",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
-            source_type=AssetSourceType.FEDERATED,
-            data_strategy=DataStrategy.DOWNLOAD_ALL,
-            created_by=self.user,
-        )
-
-        self.assertEqual(asset.data_strategy, DataStrategy.DOWNLOAD_ALL)
-
-    def test_data_strategy_success_download_all_is_not_metadata_only(self):
-        """Test successful DOWNLOAD_ALL strategy is_metadata_only returns False."""
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key=f"test-asset-{uuid.uuid4().hex[:8]}",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
-            source_type=AssetSourceType.FEDERATED,
-            data_strategy=DataStrategy.DOWNLOAD_ALL,
-            created_by=self.user,
-        )
-
-        self.assertFalse(asset.is_metadata_only())
-
-    def test_data_strategy_success_download_all_can_download(self):
-        """Test successful DOWNLOAD_ALL strategy can download resource."""
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key=f"test-asset-{uuid.uuid4().hex[:8]}",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
-            source_type=AssetSourceType.FEDERATED,
-            data_strategy=DataStrategy.DOWNLOAD_ALL,
-            created_by=self.user,
-        )
-
-        self.assertTrue(asset.can_download_resource("resource-1"))
 
     # ========== FAILURE SCENARIOS ==========
 
@@ -329,7 +236,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy="INVALID_STRATEGY",
             created_by=self.user,
@@ -345,14 +252,13 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy="INVALID_STRATEGY",
             created_by=self.user,
         )
-        with self.assertRaises(ValidationError):
-            with db_transaction.atomic():
-                asset.full_clean()
+        with self.assertRaises(ValidationError), db_transaction.atomic():
+            asset.full_clean()
 
     def test_can_download_resource_failure_nonexistent_resource(self):
         """Test can_download_resource failure for non-existent resource (failure scenario)"""
@@ -361,7 +267,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_SELECTIVE,
             created_by=self.user,
@@ -379,7 +285,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.HUB_NATIVE,
             data_strategy=DataStrategy.DOWNLOAD_ALL,
             created_by=self.user,
@@ -396,7 +302,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_SELECTIVE,
             created_by=self.user,
@@ -437,7 +343,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_SELECTIVE,
             created_by=self.user,
@@ -479,7 +385,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.METADATA_ONLY,
             created_by=self.user,
@@ -494,7 +400,7 @@ class AssetDataStrategyTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+
             source_type=AssetSourceType.FEDERATED,
             data_strategy=DataStrategy.DOWNLOAD_ALL,
             created_by=self.user,

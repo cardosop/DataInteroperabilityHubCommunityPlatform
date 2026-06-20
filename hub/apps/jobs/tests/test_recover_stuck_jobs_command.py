@@ -1,6 +1,7 @@
 """
 Phase 83.2 — recover_stuck_jobs management command tests.
 """
+
 import uuid
 from datetime import timedelta
 from io import StringIO
@@ -15,19 +16,23 @@ from hub.apps.jobs.models import Job, JobStatus, JobType
 
 @pytest.mark.django_db(transaction=True)
 class RecoverStuckJobsCommandTest(TestCase):
-
     def _create_tenant(self):
         from hub.apps.tenants.models import Tenant
+
         return Tenant.objects.get_or_create(
-            name="recover-test", defaults={"slug": "recover-test"},
+            name="recover-test",
+            defaults={"slug": "recover-test"},
         )[0]
 
     def _create_job(self, tenant, status, started_at=None, **kwargs):
         return Job.objects.create(
-            tenant=tenant, type=JobType.DQ_RUN,
-            status=status, resource_type="CONTRACT",
+            tenant=tenant,
+            type=JobType.DQ_RUN,
+            status=status,
+            resource_type="CONTRACT",
             resource_id=uuid.uuid4(),
-            started_at=started_at, **kwargs,
+            started_at=started_at,
+            **kwargs,
         )
 
     def test_stuck_running_marked_failed(self):
@@ -59,7 +64,9 @@ class RecoverStuckJobsCommandTest(TestCase):
         tenant = self._create_tenant()
         old = timezone.now() - timedelta(hours=3)
         job = self._create_job(
-            tenant, JobStatus.COMPLETED, started_at=old,
+            tenant,
+            JobStatus.COMPLETED,
+            started_at=old,
             completed_at=timezone.now(),
         )
         call_command("recover_stuck_jobs")
@@ -69,4 +76,4 @@ class RecoverStuckJobsCommandTest(TestCase):
     def test_no_stuck_jobs_clean_exit(self):
         out = StringIO()
         call_command("recover_stuck_jobs", stdout=out)
-        assert "No stuck jobs found" in out.getvalue() or "0" in out.getvalue() or "Recovered" in out.getvalue()
+        self.assertIn("No stuck jobs found", out.getvalue())

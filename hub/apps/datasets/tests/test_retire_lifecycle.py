@@ -14,14 +14,13 @@ the standard test stack with Postgres + tenant fixture from
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import uuid
 from datetime import timedelta
 from io import StringIO
 from typing import cast
 
+import pytest
 from django.core.cache import cache
 from django.core.management import call_command
 from django.test import TestCase, TransactionTestCase
@@ -188,6 +187,7 @@ class DatasetRetireConcurrencyTest(TransactionTestCase):
 
         from django.contrib.auth import get_user_model
         from rest_framework.test import APIClient
+
         from hub.apps.files.models import File, FileScanStatus, FileStatus
         from hub.apps.users.models import UserStatus
 
@@ -207,6 +207,7 @@ class DatasetRetireConcurrencyTest(TransactionTestCase):
             status=UserStatus.ACTIVE,
         )
         from hub.apps.testing.role_support import ensure_user_has_data_provider_role
+
         ensure_user_has_data_provider_role(self.user)
 
         file_id = uuid.uuid4()
@@ -242,6 +243,7 @@ class DatasetRetireConcurrencyTest(TransactionTestCase):
         returns 409 — never two 200s, never a double audit row.
         """
         import threading
+
         from rest_framework.test import APIClient
 
         client_a = APIClient()
@@ -511,9 +513,7 @@ class AuditConstantPresenceTest(TestCase):
             audit_event_types.DATASET_HARD_DELETED_AFTER_RETENTION
             == "DATASET_HARD_DELETED_AFTER_RETENTION"
         )
-        assert (
-            "DATASET_HARD_DELETED_AFTER_RETENTION" in audit_event_types.__all__
-        )
+        assert "DATASET_HARD_DELETED_AFTER_RETENTION" in audit_event_types.__all__
 
 
 # Suppress unused-imports warnings when subset of cases run.

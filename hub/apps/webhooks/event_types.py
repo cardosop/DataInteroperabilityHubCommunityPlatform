@@ -4,7 +4,9 @@
 Every outbound webhook payload MUST reference a type string from this
 module so subscribers can route on stable, documented event type names.
 """
+
 from __future__ import annotations
+
 # ── 285.13.9.5 — Tenant plan lifecycle webhook events ──────────────────
 
 #: Fired when a tenant successfully upgrades their subscription plan.

@@ -1,0 +1,93 @@
+{
+  "consumer": {
+    "name": "MarketplaceUI"
+  },
+  "interactions": [
+    {
+      "description": "list my entitlements",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "user has purchased listings"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/marketplace/entitlements/",
+        "query": {
+          "limit": [
+            "50"
+          ],
+          "offset": [
+            "0"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "results": [
+              {
+                "asset": {
+                  "name": "Sales Data"
+                },
+                "id": "ent-uuid",
+                "status": "ACTIVE"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.results[0].asset.name": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.results[0].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-f-]+$"
+                }
+              ]
+            },
+            "$.results[0].status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pactRust": {
+      "ffi": "0.5.4",
+      "models": "1.3.11"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    }
+  },
+  "provider": {
+    "name": "MeshantAPI"
+  }
+}

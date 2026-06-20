@@ -5,6 +5,7 @@ Tests for dependency graph generation and visualization.
 """
 
 import uuid
+
 import pytest
 from django.test import TestCase
 
@@ -24,7 +25,10 @@ class AssetDependencyServiceTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -54,7 +58,7 @@ class AssetDependencyServiceTest(TestCase):
     def test_generate_dependency_graph(self):
         """Test dependency graph generation"""
         # Create contracts with lineage
-        contract1 = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset1,
             original_spec_type=OriginalSpecType.ODCS,
@@ -68,7 +72,7 @@ class AssetDependencyServiceTest(TestCase):
             created_by=self.user,
         )
 
-        contract2 = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset2,
             original_spec_type=OriginalSpecType.ODCS,
@@ -171,11 +175,8 @@ class AssetDependencyServiceTest(TestCase):
         self.assertEqual(len(graph.nodes), 0)
 
     def test_generate_dependency_graph_invalid_direction(self):
-        """Test dependency graph with invalid direction falls back to 'both'.
-
-        The service treats unknown direction values as 'both' rather than
-        raising, which is the documented contract.
-        """
+        """Invalid direction falls back to 'both' — the root node is
+        included with the correct name."""
         graph = AssetDependencyService.generate_dependency_graph(
             asset_id=str(self.asset1.id),
             tenant_id=str(self.tenant.id),
@@ -184,11 +185,16 @@ class AssetDependencyServiceTest(TestCase):
         )
         self.assertIsNotNone(graph)
         self.assertIsInstance(graph.nodes, dict)
-        # With 'both' direction, the root node is always included
         self.assertGreaterEqual(len(graph.nodes), 1)
+        self.assertIn(str(self.asset1.id), graph.nodes)
+        self.assertEqual(
+            graph.nodes[str(self.asset1.id)]["name"],
+            self.asset1.name,
+        )
 
     def test_generate_dependency_graph_zero_max_depth(self):
-        """Test dependency graph with zero max_depth returns valid graph."""
+        """Zero max_depth returns exactly the root node — no traversal
+        occurs, so only the source asset is in the graph."""
         graph = AssetDependencyService.generate_dependency_graph(
             asset_id=str(self.asset1.id),
             tenant_id=str(self.tenant.id),
@@ -197,9 +203,16 @@ class AssetDependencyServiceTest(TestCase):
         )
         self.assertIsNotNone(graph)
         self.assertIsInstance(graph.nodes, dict)
+        self.assertEqual(
+            len(graph.nodes),
+            1,
+            "max_depth=0 must return exactly 1 node (the root asset "
+            "itself, with no dependencies traversed).",
+        )
 
     def test_generate_dependency_graph_very_large_max_depth(self):
-        """Test dependency graph with very large max_depth returns valid graph."""
+        """Very large max_depth traverses all reachable nodes — the root
+        is included and the graph is non-empty."""
         graph = AssetDependencyService.generate_dependency_graph(
             asset_id=str(self.asset1.id),
             tenant_id=str(self.tenant.id),
@@ -208,6 +221,8 @@ class AssetDependencyServiceTest(TestCase):
         )
         self.assertIsNotNone(graph)
         self.assertIsInstance(graph.nodes, dict)
+        self.assertIn(str(self.asset1.id), graph.nodes)
+        self.assertGreaterEqual(len(graph.nodes), 1)
 
     def test_dependency_graph_empty_graph(self):
         """Test empty dependency graph produces valid empty structure."""

@@ -1,10 +1,10 @@
 """
 285.11.2.6 — Tests for pipeline dependency migrations (forward, reverse, data preserved).
 """
-import pytest
 
 import uuid
 
+import pytest
 from django.test import TestCase
 
 from hub.apps.orchestration.models import (
@@ -20,9 +20,12 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 def _make_tenant():
     from hub.apps.tenants.models import Tenant
+
     slug = f"t-{uuid.uuid4().hex[:8]}"
     return Tenant.objects.create(
-        name=f"Test-{slug}", slug=slug, status="ACTIVE",
+        name=f"Test-{slug}",
+        slug=slug,
+        status="ACTIVE",
         pipeline_dependency_enabled=True,
     )
 
@@ -73,11 +76,17 @@ class TestDependencyMigrations(TestCase):
         self.assertEqual(fetched.upstream_status, "SUCCEEDED")
 
     @pytest.mark.integration
-    def test_unique_constraint_prevents_duplicate(self):
+    def test_duplicate_pipeline_dependency_allowed_after_constraint_removal(self):
+        """Verify that duplicate (pipeline, downstream) pairs are now permitted.
+
+        The ``uq_pipeline_dependency_scope`` unique constraint was removed in
+        migration 0010 to allow flexible dependency graphs.  Both creates
+        should succeed and produce distinct rows.
+        """
         tenant = _make_tenant()
         pid = str(uuid.uuid4())
         did = str(uuid.uuid4())
-        PipelineDependency.objects.create(
+        first = PipelineDependency.objects.create(
             tenant=tenant,
             pipeline_type=PipelineType.DQ,
             pipeline_id=pid,
@@ -85,11 +94,7 @@ class TestDependencyMigrations(TestCase):
             downstream_pipeline_type=PipelineType.TRANSFORMATION,
             downstream_pipeline_id=did,
         )
-        # The ``uq_pipeline_dependency_scope`` unique constraint was removed
-        # in migration 0010 to allow flexible dependency graphs.  Duplicate
-        # (pipeline, downstream) pairs with different metadata are now
-        # permitted.  Verify that a second create succeeds.
-        PipelineDependency.objects.create(
+        second = PipelineDependency.objects.create(
             tenant=tenant,
             pipeline_type=PipelineType.DQ,
             pipeline_id=pid,
@@ -97,3 +102,15 @@ class TestDependencyMigrations(TestCase):
             downstream_pipeline_type=PipelineType.TRANSFORMATION,
             downstream_pipeline_id=did,
         )
+        # Both rows should exist with distinct IDs.
+        self.assertIsNotNone(first.id)
+        self.assertIsNotNone(second.id)
+        self.assertNotEqual(first.id, second.id)
+        count = PipelineDependency.objects.filter(
+            tenant=tenant,
+            pipeline_type=PipelineType.DQ,
+            pipeline_id=pid,
+            downstream_pipeline_type=PipelineType.TRANSFORMATION,
+            downstream_pipeline_id=did,
+        ).count()
+        self.assertEqual(count, 2)

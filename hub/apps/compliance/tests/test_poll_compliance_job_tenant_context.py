@@ -25,13 +25,13 @@ Real Postgres, real ComplianceRun + Tenant rows, real
 ``tenant_context`` context manager. No Stripe / external boundary
 is invoked (the failure modes pinned here are intra-process).
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
-from datetime import datetime, timezone as dt_timezone
 from unittest.mock import patch
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
@@ -54,8 +54,10 @@ User = get_user_model()
 def _seed_run_for_tenant():
     sfx = uuid.uuid4().hex[:8]
     tenant = Tenant.objects.create(
-        name=f"T {sfx}", slug=f"t-{sfx}",
-        status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+        name=f"T {sfx}",
+        slug=f"t-{sfx}",
+        status="ACTIVE",
+        kyc_status=KYCStatus.VERIFIED,
     )
     user = User.objects.create_user(
         email=f"u-{sfx}@example.com",
@@ -71,7 +73,7 @@ def _seed_run_for_tenant():
         status="DRAFT",
         created_by=user,
     )
-    from hub.apps.files.models import File, FileStatus
+
     file_obj = File.objects.create(
         tenant=tenant,
         name="test.csv",
@@ -119,11 +121,7 @@ def _query_run_under_rls_gate(run_id):
     DoesNotExist.
     """
     return ComplianceRun.objects.extra(
-        where=[
-            "tenant_id::text = NULLIF("
-            "current_setting('app.current_tenant_id', true), ''"
-            ")"
-        ],
+        where=["tenant_id::text = NULLIF(current_setting('app.current_tenant_id', true), '')"],
     ).get(id=run_id)
 
 
@@ -157,6 +155,20 @@ class TestPollComplianceJobSafetyNet(TestCase):
             fetched = _query_run_under_rls_gate(run.id)
         assert fetched.id == run.id
 
+    @pytest.mark.integration
+    @patch("hub.apps.compliance.models.ComplianceRun.objects")
+    def test_does_not_exist_without_tenant_id_returns_cleanly(self, mock_qs):
+        """When the run can't be found (e.g., RLS hides it or it was
+        deleted), the function returns without side effects."""
+        from hub.apps.compliance.tasks import poll_compliance_job
+
+        mock_qs.select_related.return_value.get.side_effect = (
+            ComplianceRun.DoesNotExist
+        )
+        # Must not raise — exits via the ``if run is None: return`` guard.
+        poll_compliance_job(str(uuid.uuid4()))
+        # No exception = passes.
+
 
 # ---------------------------------------------------------------------------
 # Tier 2 — poll_compliance_job accepts tenant_id kwarg
@@ -172,18 +184,15 @@ class TestPollComplianceJobAcceptsTenantIdKwarg(TestCase):
     @pytest.mark.integration
     def test_signature_accepts_tenant_id_kwarg(self):
         import inspect
+
         from hub.apps.compliance.tasks import poll_compliance_job
 
         sig = inspect.signature(poll_compliance_job)
         # Either an explicit parameter OR a **kwargs sink.
         params = sig.parameters
         assert "tenant_id" in params or any(
-            p.kind == inspect.Parameter.VAR_KEYWORD
-            for p in params.values()
-        ), (
-            f"poll_compliance_job must accept tenant_id kwarg; "
-            f"got params={list(params)}"
-        )
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+        ), f"poll_compliance_job must accept tenant_id kwarg; got params={list(params)}"
 
     @pytest.mark.integration
     def test_runs_clean_when_tenant_id_passed(self):
@@ -195,11 +204,12 @@ class TestPollComplianceJobAcceptsTenantIdKwarg(TestCase):
 
         from hub.apps.compliance.tasks import poll_compliance_job
 
-        with patch(
-            "hub.apps.compliance.tasks._reenqueue"
-        ) as mock_reenqueue, patch(
-            "hub.apps.compliance.service_client.ComplianceServiceClient",
-        ) as mock_client_cls:
+        with (
+            patch("hub.apps.compliance.tasks._reenqueue") as mock_reenqueue,
+            patch(
+                "hub.apps.compliance.service_client.ComplianceServiceClient",
+            ) as mock_client_cls,
+        ):
             mock_client_cls.return_value.get_scan_result.return_value = {
                 "status": "QUEUED",
                 "job_id": "rem-1",

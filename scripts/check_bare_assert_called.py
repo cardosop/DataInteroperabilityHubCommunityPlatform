@@ -38,8 +38,11 @@ def _find_test_files(search_roots: list[str]) -> list[str]:
         if not p.exists():
             continue
         for dirpath, dirnames, filenames in os.walk(p):
-            dirnames[:] = [d for d in dirnames if d not in ("__pycache__", ".git", "migrations",
-                                                             ".venv", "venv", "node_modules")]
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if d not in ("__pycache__", ".git", "migrations", ".venv", "venv", "node_modules")
+            ]
             for fn in filenames:
                 if not fn.endswith(".py"):
                     continue
@@ -55,11 +58,10 @@ class BareAssertCalledVisitor(ast.NodeVisitor):
         self.violations: list[int] = []
 
     def visit_Call(self, node: ast.Call) -> None:
-        if isinstance(node.func, ast.Attribute):
-            if node.func.attr == "assert_called":
-                # ``.assert_called()`` with zero args is the bare form.
-                if not node.args and not node.keywords:
-                    self.violations.append(node.lineno)
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "assert_called":
+            # ``.assert_called()`` with zero args is the bare form.
+            if not node.args and not node.keywords:
+                self.violations.append(node.lineno)
         self.generic_visit(node)
 
 
@@ -80,10 +82,14 @@ def main() -> None:
     parser.add_argument("--path", nargs="*", default=None)
     args = parser.parse_args()
 
-    roots = args.path if args.path else [
-        str(REPO_ROOT / "hub"),
-        str(REPO_ROOT / "tests"),
-    ]
+    roots = (
+        args.path
+        if args.path
+        else [
+            str(REPO_ROOT / "hub"),
+            str(REPO_ROOT / "tests"),
+        ]
+    )
     test_files = _find_test_files(roots)
 
     violations: list[tuple[str, int]] = []

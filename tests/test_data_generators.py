@@ -9,22 +9,20 @@ Uses REAL factories (no mocks).
 
 import random
 import uuid
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from django.contrib.auth import get_user_model
-from django.utils import timezone
 
-from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, ComplianceStatus, DQStatus
+from hub.apps.assets.models import Asset
 from hub.apps.assets.tests.factories import AssetFactory
-from hub.apps.contracts.models import Contract, ContractStatus
+from hub.apps.contracts.models import Contract
 from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
 from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.tests.factories import DatasetFactory
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import File
 from hub.apps.files.tests.factories import FileFactory
 from hub.apps.jobs.models import Job, JobStatus, JobType
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.tenants.models import KYCStatus, Tenant
 
 # Import factories
 from tests.factories import JobFactory, TenantFactory, UserFactory
@@ -39,9 +37,9 @@ class TestDataGenerator:
 
     @staticmethod
     def generate_tenant(
-        name: Optional[str] = None,
-        slug: Optional[str] = None,
-        kyc_status: Optional[KYCStatus] = None,
+        name: str | None = None,
+        slug: str | None = None,
+        kyc_status: KYCStatus | None = None,
         **kwargs,
     ) -> Tenant:
         """
@@ -75,7 +73,7 @@ class TestDataGenerator:
         return TenantFactory.create_tenant(name=name, slug=slug, kyc_status=kyc_status, **kwargs)
 
     @staticmethod
-    def generate_tenants(count: int = 5, **kwargs) -> List[Tenant]:
+    def generate_tenants(count: int = 5, **kwargs) -> list[Tenant]:
         """
         Generate multiple test tenants.
 
@@ -87,7 +85,7 @@ class TestDataGenerator:
             List of Tenant instances
         """
         tenants = []
-        for i in range(count):
+        for _i in range(count):
             tenant = TestDataGenerator.generate_tenant(**kwargs)
             tenants.append(tenant)
         return tenants
@@ -95,9 +93,7 @@ class TestDataGenerator:
     # ========== User Generators ==========
 
     @staticmethod
-    def generate_user(
-        tenant: Optional[Tenant] = None, email: Optional[str] = None, **kwargs
-    ) -> User:
+    def generate_user(tenant: Tenant | None = None, email: str | None = None, **kwargs) -> User:
         """
         Generate a test user with realistic data.
 
@@ -122,7 +118,7 @@ class TestDataGenerator:
         return UserFactory.create_user(tenant=tenant, email=email, **kwargs)
 
     @staticmethod
-    def generate_users(tenant: Tenant, count: int = 5, **kwargs) -> List[User]:
+    def generate_users(tenant: Tenant, count: int = 5, **kwargs) -> list[User]:
         """
         Generate multiple test users for a tenant.
 
@@ -135,7 +131,7 @@ class TestDataGenerator:
             List of User instances
         """
         users = []
-        for i in range(count):
+        for _i in range(count):
             user = TestDataGenerator.generate_user(tenant=tenant, **kwargs)
             users.append(user)
         return users
@@ -144,10 +140,10 @@ class TestDataGenerator:
 
     @staticmethod
     def generate_asset(
-        tenant: Optional[Tenant] = None,
-        created_by: Optional[User] = None,
-        key: Optional[str] = None,
-        name: Optional[str] = None,
+        tenant: Tenant | None = None,
+        created_by: User | None = None,
+        key: str | None = None,
+        name: str | None = None,
         **kwargs,
     ) -> Asset:
         """
@@ -183,11 +179,11 @@ class TestDataGenerator:
 
     @staticmethod
     def generate_assets(
-        tenant: Optional[Tenant] = None,
-        created_by: Optional[User] = None,
+        tenant: Tenant | None = None,
+        created_by: User | None = None,
         count: int = 10,
         **kwargs,
-    ) -> List[Asset]:
+    ) -> list[Asset]:
         """
         Generate multiple test assets.
 
@@ -207,7 +203,7 @@ class TestDataGenerator:
             created_by = TestDataGenerator.generate_user(tenant=tenant)
 
         assets = []
-        for i in range(count):
+        for _i in range(count):
             asset = TestDataGenerator.generate_asset(tenant=tenant, created_by=created_by, **kwargs)
             assets.append(asset)
         return assets
@@ -216,10 +212,10 @@ class TestDataGenerator:
 
     @staticmethod
     def generate_contract(
-        tenant: Optional[Tenant] = None,
-        created_by: Optional[User] = None,
-        asset: Optional[Asset] = None,
-        name: Optional[str] = None,
+        tenant: Tenant | None = None,
+        created_by: User | None = None,
+        asset: Asset | None = None,
+        name: str | None = None,
         field_count: int = 10,
         **kwargs,
     ) -> Contract:
@@ -262,10 +258,10 @@ class TestDataGenerator:
         for i in range(field_count):
             field_type = random.choice(field_types)
             field = {
-                "name": f"field_{i+1}",
+                "name": f"field_{i + 1}",
                 "data_type": field_type,
                 "nullable": random.choice([True, False]),
-                "description": f"Field {i+1} of type {field_type}",
+                "description": f"Field {i + 1} of type {field_type}",
             }
 
             # Add type-specific properties
@@ -289,8 +285,8 @@ class TestDataGenerator:
 
     @staticmethod
     def generate_contracts(
-        tenant: Optional[Tenant] = None, created_by: Optional[User] = None, count: int = 5, **kwargs
-    ) -> List[Contract]:
+        tenant: Tenant | None = None, created_by: User | None = None, count: int = 5, **kwargs
+    ) -> list[Contract]:
         """
         Generate multiple test contracts.
 
@@ -310,7 +306,7 @@ class TestDataGenerator:
             created_by = TestDataGenerator.generate_user(tenant=tenant)
 
         contracts = []
-        for i in range(count):
+        for _i in range(count):
             contract = TestDataGenerator.generate_contract(
                 tenant=tenant, created_by=created_by, **kwargs
             )
@@ -321,11 +317,11 @@ class TestDataGenerator:
 
     @staticmethod
     def generate_dataset(
-        tenant: Optional[Tenant] = None,
-        created_by: Optional[User] = None,
-        asset: Optional[Asset] = None,
-        file: Optional[File] = None,
-        row_count: Optional[int] = None,
+        tenant: Tenant | None = None,
+        created_by: User | None = None,
+        asset: Asset | None = None,
+        file: File | None = None,
+        row_count: int | None = None,
         **kwargs,
     ) -> Dataset:
         """
@@ -368,8 +364,8 @@ class TestDataGenerator:
 
     @staticmethod
     def generate_datasets(
-        tenant: Optional[Tenant] = None, created_by: Optional[User] = None, count: int = 5, **kwargs
-    ) -> List[Dataset]:
+        tenant: Tenant | None = None, created_by: User | None = None, count: int = 5, **kwargs
+    ) -> list[Dataset]:
         """
         Generate multiple test datasets.
 
@@ -389,7 +385,7 @@ class TestDataGenerator:
             created_by = TestDataGenerator.generate_user(tenant=tenant)
 
         datasets = []
-        for i in range(count):
+        for _i in range(count):
             dataset = TestDataGenerator.generate_dataset(
                 tenant=tenant, created_by=created_by, **kwargs
             )
@@ -400,10 +396,10 @@ class TestDataGenerator:
 
     @staticmethod
     def generate_job(
-        tenant: Optional[Tenant] = None,
-        created_by: Optional[User] = None,
-        job_type: Optional[JobType] = None,
-        status: Optional[JobStatus] = None,
+        tenant: Tenant | None = None,
+        created_by: User | None = None,
+        job_type: JobType | None = None,
+        status: JobStatus | None = None,
         **kwargs,
     ) -> Job:
         """
@@ -437,11 +433,11 @@ class TestDataGenerator:
 
     @staticmethod
     def generate_jobs(
-        tenant: Optional[Tenant] = None,
-        created_by: Optional[User] = None,
+        tenant: Tenant | None = None,
+        created_by: User | None = None,
         count: int = 10,
         **kwargs,
-    ) -> List[Job]:
+    ) -> list[Job]:
         """
         Generate multiple test jobs.
 
@@ -461,7 +457,7 @@ class TestDataGenerator:
             created_by = TestDataGenerator.generate_user(tenant=tenant)
 
         jobs = []
-        for i in range(count):
+        for _i in range(count):
             job = TestDataGenerator.generate_job(tenant=tenant, created_by=created_by, **kwargs)
             jobs.append(job)
         return jobs
@@ -470,13 +466,13 @@ class TestDataGenerator:
 
     @staticmethod
     def generate_complete_test_environment(
-        tenant: Optional[Tenant] = None,
+        tenant: Tenant | None = None,
         num_users: int = 3,
         num_assets: int = 10,
         num_contracts: int = 5,
         num_datasets: int = 5,
         num_jobs: int = 10,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Generate a complete test environment with all types of data.
 
@@ -505,7 +501,7 @@ class TestDataGenerator:
 
         # Generate contracts (linked to assets)
         contracts = []
-        for i, asset in enumerate(assets[:num_contracts]):
+        for _i, asset in enumerate(assets[:num_contracts]):
             contract = TestDataGenerator.generate_contract(
                 tenant=tenant, created_by=primary_user, asset=asset
             )
@@ -513,7 +509,7 @@ class TestDataGenerator:
 
         # Generate datasets (linked to assets)
         datasets = []
-        for i, asset in enumerate(assets[:num_datasets]):
+        for _i, asset in enumerate(assets[:num_datasets]):
             dataset = TestDataGenerator.generate_dataset(
                 tenant=tenant, created_by=primary_user, asset=asset
             )

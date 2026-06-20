@@ -18,12 +18,13 @@ Safety
 Scheduled via Kubernetes CronJob (``helm/templates/cronjob/purge-deleted-files.yaml``)
 at 03:00 UTC — repo standard replaces Celery beat for periodic Django work.
 """
+
 from __future__ import annotations
+
 import logging
 import os
 import sys
 from datetime import timedelta
-from typing import List
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -129,7 +130,9 @@ class Command(BaseCommand):
             )
 
         action = "would purge" if dry_run else "purged"
-        self.stdout.write(self.style.SUCCESS(f"purge_deleted_files complete: {action} {purged} file(s)."))
+        self.stdout.write(
+            self.style.SUCCESS(f"purge_deleted_files complete: {action} {purged} file(s).")
+        )
 
     def _run_purge(
         self,
@@ -177,7 +180,7 @@ class Command(BaseCommand):
                     )
                     if cursor is not None:
                         qs = qs.filter(pk__gt=cursor)
-                    batch: List[File] = list(qs.order_by("pk")[:batch_size])
+                    batch: list[File] = list(qs.order_by("pk")[:batch_size])
                     if not batch:
                         break
 
@@ -289,7 +292,5 @@ class Command(BaseCommand):
                 )
             file_obj.delete()
 
-        with tenant_context(tenant_id_str):
-            with transaction.atomic():
-                _emit_audit_and_delete()
-
+        with tenant_context(tenant_id_str), transaction.atomic():
+            _emit_audit_and_delete()

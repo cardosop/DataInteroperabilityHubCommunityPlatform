@@ -1,4 +1,5 @@
 """Integration tests for credential_ref on ScheduledIngestion/ScheduledExport."""
+
 import pytest
 
 from hub.apps.scheduled_ingestion.models import ScheduledIngestion, SourceType
@@ -62,7 +63,11 @@ class TestWarehouseSourceTypes:
             tenant=tenant,
             name=f"wh-test-{SourceType.SNOWFLAKE_SOURCE.value}",
             source_type=SourceType.SNOWFLAKE_SOURCE.value,
-            source_config={"host": "test.snowflakecomputing.com", "database": "DB", "schema": "PUBLIC"},
+            source_config={
+                "host": "test.snowflakecomputing.com",
+                "database": "DB",
+                "schema": "PUBLIC",
+            },
             schedule_type="DAILY",
             schedule_config={"time": "02:00"},
             file_pattern=".*",

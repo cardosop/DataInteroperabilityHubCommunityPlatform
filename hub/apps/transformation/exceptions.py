@@ -18,8 +18,9 @@ All errors include:
 - details: Additional context information (dict)
 - http_status: HTTP status code for API responses
 """
+
 import time
-from typing import Optional, Dict, Any
+from typing import Any
 
 from hub.apps.core.services.base import ServiceError
 
@@ -51,12 +52,12 @@ class TransformationError(ServiceError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
         http_status: int = 500,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize TransformationError.
@@ -88,7 +89,7 @@ class TransformationError(ServiceError):
             self.details["cause_type"] = type(cause).__name__
             self.details["cause_message"] = str(cause)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert error to dictionary for API responses and logging.
 
@@ -145,14 +146,14 @@ class TransformationValidationError(TransformationError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        field_path: Optional[str] = None,
-        expected: Optional[Any] = None,
-        actual: Optional[Any] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize TransformationValidationError.
@@ -209,15 +210,15 @@ class TransformationExecutionError(TransformationError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        pipeline_id: Optional[str] = None,
-        execution_id: Optional[str] = None,
-        node_id: Optional[str] = None,
-        step_name: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
+        pipeline_id: str | None = None,
+        execution_id: str | None = None,
+        node_id: str | None = None,
+        step_name: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize TransformationExecutionError.
@@ -274,12 +275,12 @@ class PipelineNotFoundError(TransformationError):
     def __init__(
         self,
         message: str,
-        pipeline_id: Optional[str] = None,
-        error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        pipeline_id: str | None = None,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize PipelineNotFoundError.
@@ -330,18 +331,18 @@ class AssetCompatibilityError(TransformationError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        pipeline_id: Optional[str] = None,
-        asset_id: Optional[str] = None,
-        source_asset_id: Optional[str] = None,
-        target_asset_id: Optional[str] = None,
-        field_path: Optional[str] = None,
-        expected_schema: Optional[Dict[str, Any]] = None,
-        actual_schema: Optional[Dict[str, Any]] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
+        pipeline_id: str | None = None,
+        asset_id: str | None = None,
+        source_asset_id: str | None = None,
+        target_asset_id: str | None = None,
+        field_path: str | None = None,
+        expected_schema: dict[str, Any] | None = None,
+        actual_schema: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize AssetCompatibilityError.
@@ -410,15 +411,15 @@ class ResourceQuotaExceededError(TransformationError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        quota_type: Optional[str] = None,
-        limit: Optional[float] = None,
-        current: Optional[float] = None,
-        pipeline_id: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
+        quota_type: str | None = None,
+        limit: float | None = None,
+        current: float | None = None,
+        pipeline_id: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize ResourceQuotaExceededError.
@@ -459,4 +460,3 @@ class ResourceQuotaExceededError(TransformationError):
             user_id=user_id,
             cause=cause,
         )
-

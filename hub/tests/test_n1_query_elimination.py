@@ -19,19 +19,21 @@ from django.db import IntegrityError, connection
 from django.test import RequestFactory, TestCase
 from django.test.utils import CaptureQueriesContext
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _create_tenant(name=None):
     from hub.apps.tenants.models import Tenant
+
     slug = name or f"tenant-{uuid.uuid4().hex[:8]}"
     return Tenant.objects.create(name=slug, slug=slug)
 
 
 def _create_user(tenant, email=None, is_platform_admin=False):
     from hub.apps.users.models import User
+
     email = email or f"user-{uuid.uuid4().hex[:8]}@example.com"
     return User.objects.create_user(
         email=email,
@@ -43,12 +45,14 @@ def _create_user(tenant, email=None, is_platform_admin=False):
 
 def _create_role(tenant, name="DATA_PROVIDER"):
     from hub.apps.users.models import Role
+
     role, _ = Role.objects.get_or_create(tenant=tenant, name=name)
     return role
 
 
 def _assign_role(user, tenant, role):
     from hub.apps.users.models import UserRole
+
     ur, _ = UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
     return ur
 
@@ -56,6 +60,7 @@ def _assign_role(user, tenant, role):
 # ---------------------------------------------------------------------------
 # 12.1 — Asset list endpoint: ≤ 5 queries for 50 assets
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.django_db
 class TestAssetListN1Queries(TestCase):
@@ -75,6 +80,7 @@ class TestAssetListN1Queries(TestCase):
 
     def setUp(self):
         from hub.apps.assets.models import Asset
+
         self.tenant = _create_tenant("asset-test-tenant")
         self.user = _create_user(self.tenant)
         self.user.status = "ACTIVE"
@@ -120,16 +126,17 @@ class TestAssetListN1Queries(TestCase):
 
         self.assertEqual(len(assets), 50, f"Expected 50 assets, got {len(assets)}")
         self.assertLessEqual(
-            len(ctx), 5,
+            len(ctx),
+            5,
             f"Expected ≤ 5 queries for 50-asset list page, "
-            f"got {len(ctx)}:\n"
-            + "\n".join(q["sql"] for q in ctx),
+            f"got {len(ctx)}:\n" + "\n".join(q["sql"] for q in ctx),
         )
 
 
 # ---------------------------------------------------------------------------
 # 12.2 — has_role() cache: 10 calls → exactly 1 DB query
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.django_db
 class TestHasRoleInstanceCache(TestCase):
@@ -160,8 +167,7 @@ class TestHasRoleInstanceCache(TestCase):
         assert all(results), "has_role('DATA_PROVIDER') must be True for all 10 calls"
         assert len(ctx) == 1, (
             f"Expected exactly 1 DB query for 10 has_role() calls, "
-            f"got {len(ctx)}:\n"
-            + "\n".join(q["sql"] for q in ctx)
+            f"got {len(ctx)}:\n" + "\n".join(q["sql"] for q in ctx)
         )
 
     def test_cache_invalidated_after_role_deletion(self):
@@ -185,6 +191,7 @@ class TestHasRoleInstanceCache(TestCase):
 # ---------------------------------------------------------------------------
 # 12.3 — get_request_tenant() must NOT mutate request attributes
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.django_db
 class TestGetRequestTenantNoMutation(TestCase):
@@ -216,12 +223,11 @@ class TestGetRequestTenantNoMutation(TestCase):
         assert not hasattr(request, "tenant_id"), (
             "get_request_tenant() must not set request.tenant_id"
         )
-        assert not hasattr(request, "tenant"), (
-            "get_request_tenant() must not set request.tenant"
-        )
+        assert not hasattr(request, "tenant"), "get_request_tenant() must not set request.tenant"
 
     def test_get_request_tenant_returns_none_for_anonymous(self):
         from django.contrib.auth.models import AnonymousUser
+
         from hub.apps.tenants.request_tenant import get_request_tenant
 
         factory = RequestFactory()
@@ -240,6 +246,7 @@ class TestGetRequestTenantNoMutation(TestCase):
 # ---------------------------------------------------------------------------
 # 12.4 — UserRole (user, tenant, role) unique constraint
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.django_db
 class TestUserRoleUniqueConstraint(TestCase):
@@ -260,9 +267,7 @@ class TestUserRoleUniqueConstraint(TestCase):
         UserRole.objects.create(user=self.user, tenant=self.tenant, role=self.role)
 
         with pytest.raises(IntegrityError):
-            UserRole.objects.create(
-                user=self.user, tenant=self.tenant, role=self.role
-            )
+            UserRole.objects.create(user=self.user, tenant=self.tenant, role=self.role)
 
     def test_get_or_create_is_idempotent(self):
         from hub.apps.users.models import UserRole
@@ -283,6 +288,7 @@ class TestUserRoleUniqueConstraint(TestCase):
 # ---------------------------------------------------------------------------
 # 12.5 — docker-compose.yml: no data-store port bound to 0.0.0.0
 # ---------------------------------------------------------------------------
+
 
 class TestDockerComposePortBinding:
     """
@@ -310,9 +316,7 @@ class TestDockerComposePortBinding:
 
     @pytest.fixture(scope="class")
     def compose(self):
-        repo_root = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         compose_path = os.path.join(repo_root, "docker-compose.yml")
         with open(compose_path) as f:
             return yaml.safe_load(f)
@@ -356,11 +360,7 @@ class TestDockerComposePortBinding:
             env = svc.get("environment") or {}
             # environment can be a list of "KEY=VALUE" or a dict
             if isinstance(env, list):
-                env = dict(
-                    (e.split("=", 1)[0], e.split("=", 1)[1])
-                    for e in env
-                    if "=" in e
-                )
+                env = dict((e.split("=", 1)[0], e.split("=", 1)[1]) for e in env if "=" in e)
             for var in secret_vars:
                 val = env.get(var, "")
                 # Check for silent-fallback pattern: ${VAR:-...}

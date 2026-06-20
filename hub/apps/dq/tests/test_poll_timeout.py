@@ -16,7 +16,7 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
 from hub.apps.dq.tests.test_base import DQTestBase
 from hub.apps.dq.views import execute_dq_run
-from hub.apps.jobs.models import JobStatus, JobType
+from hub.apps.jobs.models import JobType
 from hub.apps.jobs.utils import create_job
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -110,9 +110,7 @@ class DQPollTimeoutTest(DQTestBase):
     @patch("hub.apps.files.storage.S3StorageClient")
     @patch("hub.apps.dq.views.DQServiceClient")
     @patch("time.monotonic")
-    def test_within_deadline_normal_processing(
-        self, mock_monotonic, MockClient, MockStorage
-    ):
+    def test_within_deadline_normal_processing(self, mock_monotonic, MockClient, MockStorage):
         """When the deadline has NOT passed, the result is persisted normally."""
         # First call = 100 (sets deadline to 100+300=400), remaining calls stay
         # below 400 so the deadline check passes.

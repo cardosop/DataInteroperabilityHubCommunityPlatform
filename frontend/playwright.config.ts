@@ -53,11 +53,12 @@ export default defineConfig({
   // higher timeout via test.setTimeout(). 120s was needed when loginUser always navigated to
   // /login first; the fast-path eliminates that overhead.
   timeout: 60000,
-  // 2 workers locally: 4 workers saturate the backend login/capabilities endpoints causing
-  // PostgreSQL statement timeouts and rate-limit cascades.  Batch scripts may override.
-  // 1 worker for external targets: network latency + shared staging DB; avoid rate-limit cascades.
-  // 1 worker when cookie-auth project is selected (Phase 226.F2): cookie-jar state is shared
-  // across Playwright contexts on the same browser, so parallel logins race the refresh cycle.
+  // 1 worker by default: every test in auth-focused batches requires a full login
+  // cycle.  2+ workers saturate the backend login/capabilities endpoints causing
+  // PostgreSQL statement timeouts, rate-limit cascades (429), and Phase 11.1 token
+  // rotation races (parallel refreshes on shared storageState → replay detection →
+  // revoked family → redirect to /login).  Batch scripts may still pass --workers=N
+  // to override, but the safe default is 1.
   workers:
     process.argv.includes('--project=chromium-cookie-auth') ||
     process.env.PLAYWRIGHT_PROJECT === 'chromium-cookie-auth'
@@ -68,7 +69,7 @@ export default defineConfig({
           ? 1
           : isVisibleRun
             ? 1
-            : 2,
+            : 1,
   reporter: isVisibleRun
     ? [['list'], ['html'], ['json', { outputFile: 'test-results/results.json' }]]
     : [['html'], ['json', { outputFile: 'test-results/results.json' }]],
@@ -99,6 +100,11 @@ export default defineConfig({
       testIgnore: [
         '**/setup/auth-storage.spec.ts',
         '**/dimensions/*.spec.ts',
+        // Persona specs aggregate journey specs by persona role.
+        // Excluded from default chromium runs to avoid duplicate journey
+        // execution (each journey spec runs independently).
+        // Run individually: npx playwright test e2e/personas/data-consumer.spec.ts
+        // See: docs/mvpdocs/_meta/persona-journey-mapping.yaml
         '**/personas/*.spec.ts',
       ],
     },

@@ -12,7 +12,7 @@ Tests ensure that $ref resolution works correctly for all modes with comprehensi
 import json
 import tempfile
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from django.test import TestCase
 
@@ -20,7 +20,6 @@ from hub.apps.contracts.config.odps_refs_config import ODPSRefsConfig
 from hub.apps.contracts.odps_errors import ODPSRefResolutionError
 from hub.apps.contracts.ref_resolver import (
     ExternalRefHandling,
-    RefMode,
     RefResolver,
 )
 
@@ -132,7 +131,7 @@ class RefResolverIntegrationTestBase(TestCase):
         )
 
     def _assert_resolved_value(
-        self, resolved: Dict[str, Any], expected_keys: list, description: str = ""
+        self, resolved: dict[str, Any], expected_keys: list, description: str = ""
     ):
         """Assert that resolved value has expected structure."""
         desc_suffix = f": {description}" if description else ""
@@ -279,7 +278,9 @@ class RefResolverExternalRefIntegrationTest(RefResolverIntegrationTestBase):
             "url_denylist": [],
         }
         resolver = RefResolver(
-            config=config, enable_caching=False, tenant_id="system",
+            config=config,
+            enable_caching=False,
+            tenant_id="system",
         )
 
         # Test that URL not in allowlist is rejected
@@ -302,7 +303,9 @@ class RefResolverExternalRefIntegrationTest(RefResolverIntegrationTestBase):
             "url_denylist": ["https://blocked.com"],
         }
         resolver = RefResolver(
-            config=config, enable_caching=False, tenant_id="system",
+            config=config,
+            enable_caching=False,
+            tenant_id="system",
         )
 
         # Test that URL in denylist is rejected
@@ -324,7 +327,9 @@ class RefResolverExternalRefIntegrationTest(RefResolverIntegrationTestBase):
             "url_denylist": [],
         }
         resolver = RefResolver(
-            config=config, enable_caching=False, tenant_id="system",
+            config=config,
+            enable_caching=False,
+            tenant_id="system",
         )
 
         # Test invalid URL format
@@ -352,8 +357,10 @@ class RefResolverExternalRefIntegrationTest(RefResolverIntegrationTestBase):
 
         transport = httpx.MockTransport(handler)
         resolver = RefResolver(
-            config=config, enable_caching=False,
-            httpx_transport=transport, tenant_id="system",
+            config=config,
+            enable_caching=False,
+            httpx_transport=transport,
+            tenant_id="system",
         )
 
         with self.assertRaises(ODPSRefResolutionError):
@@ -402,7 +409,7 @@ class RefResolverRecursiveRefIntegrationTest(RefResolverIntegrationTestBase):
             },
         }
 
-        original, resolved = self.resolver.resolve_all_refs(document)
+        _original, resolved = self.resolver.resolve_all_refs(document)
 
         # All refs should be resolved
         self.assertNotIn("$ref", resolved["product"]["owner"])
@@ -421,7 +428,7 @@ class RefResolverRecursiveRefIntegrationTest(RefResolverIntegrationTestBase):
         # Create a document that references local files
         document = {"product": {"schema": {"$ref": "./schemas/user.json"}}}
 
-        original, resolved = self.resolver.resolve_all_refs(document)
+        _original, resolved = self.resolver.resolve_all_refs(document)
 
         # Local ref should be resolved
         self.assertNotIn("$ref", resolved["product"]["schema"])
@@ -446,7 +453,7 @@ class RefResolverRecursiveRefIntegrationTest(RefResolverIntegrationTestBase):
             },
         }
 
-        original, resolved = self.resolver.resolve_all_refs(document)
+        _original, resolved = self.resolver.resolve_all_refs(document)
 
         # All refs should be resolved
         self.assertNotIn("$ref", resolved["product"]["owner"])
@@ -476,7 +483,7 @@ class RefResolverRecursiveRefIntegrationTest(RefResolverIntegrationTestBase):
 
         document = {"product": {"schema": {"$ref": "./schemas/a.json"}}}
 
-        original, resolved = self.resolver.resolve_all_refs(document)
+        _original, resolved = self.resolver.resolve_all_refs(document)
 
         # All refs in chain should be resolved
         self.assertNotIn("$ref", resolved["product"]["schema"])
@@ -522,7 +529,7 @@ class RefResolverRecursiveRefIntegrationTest(RefResolverIntegrationTestBase):
             },
         }
 
-        original, resolved = self.resolver.resolve_all_refs(document)
+        _original, resolved = self.resolver.resolve_all_refs(document)
 
         # Refs in array should be resolved
         self.assertNotIn("$ref", resolved["product"]["schemas"][0])
@@ -587,7 +594,7 @@ class RefResolverIntegrationScenariosTest(RefResolverIntegrationTestBase):
             },
         }
 
-        original, resolved = self.resolver.resolve_all_refs(document)
+        _original, resolved = self.resolver.resolve_all_refs(document)
 
         # All refs should be resolved
         self.assertNotIn("$ref", resolved["product"]["owner"])
@@ -626,7 +633,7 @@ class RefResolverIntegrationScenariosTest(RefResolverIntegrationTestBase):
         resolver = RefResolver(config=config, enable_caching=False)
 
         # Test REMOVE mode - external refs should be removed, internal refs should work
-        original, resolved = resolver.resolve_all_refs(
+        _original, resolved = resolver.resolve_all_refs(
             document, external_ref_handling=ExternalRefHandling.REMOVE
         )
         # The external $ref key should be removed
@@ -654,7 +661,7 @@ class RefResolverIntegrationScenariosTest(RefResolverIntegrationTestBase):
             },
         }
 
-        original, resolved = self.resolver.resolve_all_refs(document)
+        _original, resolved = self.resolver.resolve_all_refs(document)
 
         # Nested refs should be resolved
         self.assertNotIn("$ref", resolved["product"]["dataQuality"])

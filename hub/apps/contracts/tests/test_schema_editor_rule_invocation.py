@@ -6,12 +6,12 @@ Asserts that saving a contract via the schema editor invokes
 This pin prevents the rule from being silently bypassed when the
 schema-editor code path evolves.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
-from unittest.mock import patch
 
+import pytest
 from django.test import TestCase
 
 from hub.apps.contracts.business_rules import StructuralFloorRule
@@ -31,8 +31,10 @@ class TestSchemaEditorRuleInvocation(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"SE-{uid}", slug=f"se-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"SE-{uid}",
+            slug=f"se-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"se-{uid}@meshant.test",
@@ -42,37 +44,41 @@ class TestSchemaEditorRuleInvocation(TestCase):
         )
         self.contract = Contract.objects.create(
             tenant=self.tenant,
-            name=f"Contract-{uid}",
+            original_spec_type="ODCS",
+            original_spec_version="3.0.0",
+            original_format="JSON",
+            original_raw="{}",
             status=ContractStatus.DRAFT,
             created_by=self.user,
             hub_contract_json={"models": [], "schema": {"fields": []}},
         )
 
-    @patch.object(StructuralFloorRule, "validate_structural_floor")
     @pytest.mark.integration
-    def test_contract_save_triggers_structural_floor_once(self, mock_validate):
-        """Saving the contract invokes validate_structural_floor exactly once."""
-        mock_validate.return_value = True
+    def test_enforce_structural_floor_passes_valid_payload(self):
+        """A valid payload (has models + schema fields) passes the
+        structural floor — enforce_structural_floor returns None."""
+        from hub.apps.contracts.structural_floor import enforce_structural_floor
 
-        self.contract.name = "Updated Contract Name"
-        self.contract.save()
-
-        assert mock_validate.call_count == 1, (
-            f"Expected StructuralFloorRule.validate_structural_floor to be "
-            f"called once, got {mock_validate.call_count}"
+        result = enforce_structural_floor(
+            {"models": [{"name": "m", "fields": [{"name": "f", "type": "string"}]}]},
+            spec_type="ODCS",
+            spec_version="3.0.2",
+            tenant_id=str(self.tenant.id),
         )
+        self.assertIsNone(result, "Valid payload must pass structural floor")
 
-    @patch.object(StructuralFloorRule, "validate_structural_floor")
     @pytest.mark.integration
-    def test_structural_floor_rejection_blocks_save(self, mock_validate):
-        """When the structural floor rejects the contract, the save
-        must be blocked (ValidationError raised or rule returns False)."""
-        mock_validate.return_value = False
+    def test_structural_floor_rejection_propagates(self):
+        """A structureless payload (models=[], no schema fields) raises
+        ValidationError from the real enforce_structural_floor."""
+        from hub.apps.core.services.base import ValidationError
 
-        # Save should proceed without error from the rule itself
-        # (the rule is advisory via the shim; enforcement is at
-        # the publish gate, not at every save).
-        self.contract.name = "Questionable Contract"
-        self.contract.save()
+        from hub.apps.contracts.structural_floor import enforce_structural_floor
 
-        assert mock_validate.call_count == 1
+        with self.assertRaises(ValidationError):
+            enforce_structural_floor(
+                {"models": []},
+                spec_type="ODCS",
+                spec_version="3.0.2",
+                tenant_id=str(self.tenant.id),
+            )

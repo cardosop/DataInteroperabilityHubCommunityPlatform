@@ -4,13 +4,14 @@ Transformation Pipeline Compensation
 Implements compensation logic for transformation pipeline execution rollback.
 Handles cleanup of resources created during pipeline execution when failures occur.
 """
+
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Any
+
 from django.db import transaction
 from django.utils import timezone
 
-from .models import PipelineExecution, ExecutionStatus
-from .exceptions import TransformationExecutionError
+from .models import PipelineExecution
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +36,10 @@ class TransformationPipelineCompensation:
             execution: PipelineExecution instance to compensate
         """
         self.execution = execution
-        self.compensation_log: List[Dict[str, Any]] = []
+        self.compensation_log: list[dict[str, Any]] = []
 
     def log_compensation_operation(
-        self,
-        operation: str,
-        status: str,
-        details: Optional[Dict[str, Any]] = None
+        self, operation: str, status: str, details: dict[str, Any] | None = None
     ) -> None:
         """
         Log a compensation operation.
@@ -55,7 +53,7 @@ class TransformationPipelineCompensation:
             "timestamp": timezone.now().isoformat(),
             "operation": operation,
             "status": status,
-            "details": details or {}
+            "details": details or {},
         }
         self.compensation_log.append(log_entry)
         logger.info(
@@ -64,8 +62,8 @@ class TransformationPipelineCompensation:
                 "execution_id": str(self.execution.id),
                 "operation": operation,
                 "status": status,
-                "details": details
-            }
+                "details": details,
+            },
         )
 
     @transaction.atomic
@@ -74,8 +72,8 @@ class TransformationPipelineCompensation:
         rollback_execution: bool = True,
         cleanup_job: bool = True,
         cleanup_result_asset: bool = True,
-        publish_compensation_events: bool = True
-    ) -> Dict[str, Any]:
+        publish_compensation_events: bool = True,
+    ) -> dict[str, Any]:
         """
         Execute compensation logic for pipeline execution failure.
 
@@ -92,7 +90,7 @@ class TransformationPipelineCompensation:
             "status": "success",
             "execution_id": str(self.execution.id),
             "timestamp": timezone.now().isoformat(),
-            "operations": {}
+            "operations": {},
         }
 
         try:
@@ -104,34 +102,30 @@ class TransformationPipelineCompensation:
                             error_message="Execution failed and compensation triggered"
                         )
                         self.log_compensation_operation(
-                            "rollback_execution",
-                            "success",
-                            {"status": self.execution.status}
+                            "rollback_execution", "success", {"status": self.execution.status}
                         )
                     else:
                         self.log_compensation_operation(
                             "rollback_execution",
                             "skipped",
-                            {"reason": "Execution already in terminal state"}
+                            {"reason": "Execution already in terminal state"},
                         )
                     compensation_result["operations"]["rollback_execution"] = {
                         "status": "success",
-                        "execution_status": self.execution.status
+                        "execution_status": self.execution.status,
                     }
                 except Exception as e:
                     logger.exception(
-                        f"Failed to rollback execution during compensation: {str(e)}",
-                        extra={"execution_id": str(self.execution.id)}
+                        f"Failed to rollback execution during compensation: {e!s}",
+                        extra={"execution_id": str(self.execution.id)},
                     )
                     self.log_compensation_operation(
-                        "rollback_execution",
-                        "failed",
-                        {"error": str(e)}
+                        "rollback_execution", "failed", {"error": str(e)}
                     )
                     compensation_result["status"] = "partial_failure"
                     compensation_result["operations"]["rollback_execution"] = {
                         "status": "failed",
-                        "error": str(e)
+                        "error": str(e),
                     }
 
             # Cancel associated job if exists
@@ -142,43 +136,35 @@ class TransformationPipelineCompensation:
                     if self.execution.job.status not in [
                         JobStatus.COMPLETED,
                         JobStatus.FAILED,
-                        JobStatus.CANCELLED
+                        JobStatus.CANCELLED,
                     ]:
                         # Cancel the job
                         self.execution.job.status = JobStatus.CANCELLED
-                        self.execution.job.save(update_fields=['status', 'updated_at'])
+                        self.execution.job.save(update_fields=["status", "updated_at"])
                         self.log_compensation_operation(
-                            "cleanup_job",
-                            "success",
-                            {"job_id": str(self.execution.job.id)}
+                            "cleanup_job", "success", {"job_id": str(self.execution.job.id)}
                         )
                     else:
                         self.log_compensation_operation(
-                            "cleanup_job",
-                            "skipped",
-                            {"reason": "Job already in terminal state"}
+                            "cleanup_job", "skipped", {"reason": "Job already in terminal state"}
                         )
                     compensation_result["operations"]["cleanup_job"] = {
                         "status": "success",
-                        "job_id": str(self.execution.job.id)
+                        "job_id": str(self.execution.job.id),
                     }
                 except Exception as e:
                     logger.exception(
-                        f"Failed to cleanup job during compensation: {str(e)}",
+                        f"Failed to cleanup job during compensation: {e!s}",
                         extra={
                             "execution_id": str(self.execution.id),
-                            "job_id": str(self.execution.job.id) if self.execution.job else None
-                        }
+                            "job_id": str(self.execution.job.id) if self.execution.job else None,
+                        },
                     )
-                    self.log_compensation_operation(
-                        "cleanup_job",
-                        "failed",
-                        {"error": str(e)}
-                    )
+                    self.log_compensation_operation("cleanup_job", "failed", {"error": str(e)})
                     compensation_result["status"] = "partial_failure"
                     compensation_result["operations"]["cleanup_job"] = {
                         "status": "failed",
-                        "error": str(e)
+                        "error": str(e),
                     }
 
             # Cleanup result asset if exists
@@ -192,51 +178,53 @@ class TransformationPipelineCompensation:
                         "success",
                         {
                             "result_asset_id": str(self.execution.result_asset.id),
-                            "note": "Asset reference removed, asset itself not deleted"
-                        }
+                            "note": "Asset reference removed, asset itself not deleted",
+                        },
                     )
                     compensation_result["operations"]["cleanup_result_asset"] = {
                         "status": "success",
                         "result_asset_id": str(self.execution.result_asset.id),
-                        "note": "Asset reference removed"
+                        "note": "Asset reference removed",
                     }
                 except Exception as e:
                     logger.exception(
-                        f"Failed to cleanup result asset during compensation: {str(e)}",
+                        f"Failed to cleanup result asset during compensation: {e!s}",
                         extra={
                             "execution_id": str(self.execution.id),
-                            "result_asset_id": str(self.execution.result_asset.id) if self.execution.result_asset else None
-                        }
+                            "result_asset_id": str(self.execution.result_asset.id)
+                            if self.execution.result_asset
+                            else None,
+                        },
                     )
                     self.log_compensation_operation(
-                        "cleanup_result_asset",
-                        "failed",
-                        {"error": str(e)}
+                        "cleanup_result_asset", "failed", {"error": str(e)}
                     )
                     compensation_result["status"] = "partial_failure"
                     compensation_result["operations"]["cleanup_result_asset"] = {
                         "status": "failed",
-                        "error": str(e)
+                        "error": str(e),
                     }
 
             # Store compensation log in execution
-            if self.compensation_log:
-                if isinstance(self.execution.execution_log, list):
-                    self.execution.execution_log.append({
+            if self.compensation_log and isinstance(self.execution.execution_log, list):
+                self.execution.execution_log.append(
+                    {
                         "timestamp": timezone.now().isoformat(),
                         "level": "INFO",
                         "message": "Compensation operations completed",
                         "data": {
                             "compensation_log": self.compensation_log,
-                            "compensation_result": compensation_result
-                        }
-                    })
-                    self.execution.save(update_fields=['execution_log', 'updated_at'])
+                            "compensation_result": compensation_result,
+                        },
+                    }
+                )
+                self.execution.save(update_fields=["execution_log", "updated_at"])
 
             # Publish compensation events (non-critical)
             if publish_compensation_events:
                 try:
                     from hub.apps.core.events.service_publishers import TransformationEventPublisher
+
                     publisher = TransformationEventPublisher()
                     publisher.publish_pipeline_execution_failed(
                         pipeline_id=str(self.execution.pipeline.id),
@@ -245,22 +233,19 @@ class TransformationPipelineCompensation:
                         error_code="COMPENSATION_COMPLETED",
                         error_details=compensation_result,
                         tenant_id=str(self.execution.pipeline.tenant_id),
-                        user_id=None  # User ID not available in compensation context
+                        user_id=None,  # User ID not available in compensation context
                     )
-                    self.log_compensation_operation(
-                        "publish_compensation_events",
-                        "success"
-                    )
+                    self.log_compensation_operation("publish_compensation_events", "success")
                 except Exception as e:
                     # Non-critical, just log
                     logger.warning(
-                        f"Failed to publish compensation events (non-critical): {str(e)}",
-                        extra={"execution_id": str(self.execution.id)}
+                        f"Failed to publish compensation events (non-critical): {e!s}",
+                        extra={"execution_id": str(self.execution.id)},
                     )
                     self.log_compensation_operation(
                         "publish_compensation_events",
                         "failed",
-                        {"error": str(e), "note": "Non-critical operation"}
+                        {"error": str(e), "note": "Non-critical operation"},
                     )
 
             compensation_result["compensation_log"] = self.compensation_log
@@ -268,11 +253,10 @@ class TransformationPipelineCompensation:
 
         except Exception as e:
             logger.exception(
-                f"Compensation failed with unexpected error: {str(e)}",
-                extra={"execution_id": str(self.execution.id)}
+                f"Compensation failed with unexpected error: {e!s}",
+                extra={"execution_id": str(self.execution.id)},
             )
             compensation_result["status"] = "failed"
             compensation_result["error"] = str(e)
             compensation_result["compensation_log"] = self.compensation_log
             return compensation_result
-

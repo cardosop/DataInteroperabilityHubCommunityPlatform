@@ -12,10 +12,10 @@ filtering by resource type, and chronological ordering.
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_get
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _admin_creds():
     return provision_persona("platform_admin")
@@ -57,8 +57,10 @@ def test_audit_event_has_required_fields():
 
     assert resp.status_code == 200
     body = resp.json()
-    events = body if isinstance(body, list) else (
-        body.get("results") or body.get("items") or body.get("data") or []
+    events = (
+        body
+        if isinstance(body, list)
+        else (body.get("results") or body.get("items") or body.get("data") or [])
     )
 
     if not events:
@@ -69,7 +71,9 @@ def test_audit_event_has_required_fields():
     keys_lower = {k.lower() for k in event.keys()}
     has_action = any(k in keys_lower for k in ("action", "event_type", "event", "type"))
     has_timestamp = any(k in keys_lower for k in ("timestamp", "created_at", "occurred_at", "time"))
-    has_actor = any(k in keys_lower for k in ("actor", "user", "user_id", "actor_id", "performed_by"))
+    has_actor = any(
+        k in keys_lower for k in ("actor", "user", "user_id", "actor_id", "performed_by")
+    )
 
     assert has_action, f"Audit event missing action field: {list(event.keys())}"
     assert has_timestamp, f"Audit event missing timestamp field: {list(event.keys())}"
@@ -86,15 +90,15 @@ def test_audit_events_filtered_by_resource_type():
         f"Filtered audit query returned {resp.status_code}: {resp.text[:500]}"
     )
     body = resp.json()
-    events = body if isinstance(body, list) else (
-        body.get("results") or body.get("items") or body.get("data") or []
+    events = (
+        body
+        if isinstance(body, list)
+        else (body.get("results") or body.get("items") or body.get("data") or [])
     )
     # If there are results, verify they relate to the requested resource type
     for ev in events[:10]:
         rt = (
-            ev.get("resource_type", "")
-            or ev.get("entity_type", "")
-            or ev.get("object_type", "")
+            ev.get("resource_type", "") or ev.get("entity_type", "") or ev.get("object_type", "")
         ).lower()
         if rt:
             assert "asset" in rt, (
@@ -110,8 +114,10 @@ def test_audit_events_ordered_by_timestamp():
 
     assert resp.status_code == 200
     body = resp.json()
-    events = body if isinstance(body, list) else (
-        body.get("results") or body.get("items") or body.get("data") or []
+    events = (
+        body
+        if isinstance(body, list)
+        else (body.get("results") or body.get("items") or body.get("data") or [])
     )
 
     if len(events) < 2:
@@ -120,12 +126,7 @@ def test_audit_events_ordered_by_timestamp():
     # Extract timestamps
     timestamps = []
     for ev in events:
-        ts = (
-            ev.get("timestamp")
-            or ev.get("created_at")
-            or ev.get("occurred_at")
-            or ev.get("time")
-        )
+        ts = ev.get("timestamp") or ev.get("created_at") or ev.get("occurred_at") or ev.get("time")
         if ts:
             timestamps.append(str(ts))
 

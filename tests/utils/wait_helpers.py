@@ -25,8 +25,10 @@ Usage::
         expected="COMPLETED",
     )
 """
+
 import time
-from typing import Any, Callable, Optional, Sequence, Union
+from collections.abc import Callable, Sequence
+from typing import Any
 
 from tests.utils.polling import wait_until
 
@@ -37,7 +39,7 @@ def wait_for_count(
     *,
     timeout: float = 5.0,
     interval: float = 0.1,
-    message: Optional[str] = None,
+    message: str | None = None,
 ) -> int:
     """Poll until ``count_fn()`` returns ``expected``.
 
@@ -56,9 +58,7 @@ def wait_for_count(
         AssertionError: If the count doesn't reach ``expected``
         within ``timeout``.
     """
-    msg = message or (
-        f"Count did not reach {expected} within {timeout}s"
-    )
+    msg = message or (f"Count did not reach {expected} within {timeout}s")
     wait_until(
         lambda: count_fn() == expected,
         timeout=timeout,
@@ -74,7 +74,7 @@ def wait_for_min_count(
     *,
     timeout: float = 5.0,
     interval: float = 0.1,
-    message: Optional[str] = None,
+    message: str | None = None,
 ) -> int:
     """Poll until ``count_fn() >= minimum``.
 
@@ -84,9 +84,7 @@ def wait_for_min_count(
     Returns:
         The final count (>= ``minimum``).
     """
-    msg = message or (
-        f"Count did not reach >= {minimum} within {timeout}s"
-    )
+    msg = message or (f"Count did not reach >= {minimum} within {timeout}s")
     wait_until(
         lambda: count_fn() >= minimum,
         timeout=timeout,
@@ -98,11 +96,11 @@ def wait_for_min_count(
 
 def wait_for_status(
     status_fn: Callable[[], Any],
-    expected: Union[Any, Sequence],
+    expected: Any | Sequence,
     *,
     timeout: float = 5.0,
     interval: float = 0.1,
-    message: Optional[str] = None,
+    message: str | None = None,
 ) -> Any:
     """Poll until ``status_fn()`` returns one of ``expected``.
 
@@ -125,9 +123,7 @@ def wait_for_status(
     else:
         acceptable = {expected}
 
-    msg = message or (
-        f"Status did not reach {acceptable} within {timeout}s"
-    )
+    msg = message or (f"Status did not reach {acceptable} within {timeout}s")
     wait_until(
         lambda: status_fn() in acceptable,
         timeout=timeout,

@@ -6,24 +6,23 @@ mapped onto ComplianceRun fields, including fail-closed defaults,
 American-to-British spelling normalisation, metering population, and
 asset compliance_status propagation.
 """
+
 import uuid
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
-from rest_framework import status
-from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus as AssetComplianceStatus
+from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.assets.models import ComplianceStatus as AssetComplianceStatus
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.compliance.services import ComplianceService
-from hub.apps.jobs.models import Job, JobType
-from hub.apps.jobs.utils import create_job, get_job_timeout
+from hub.apps.jobs.models import JobType
+from hub.apps.jobs.utils import create_job
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
@@ -131,9 +130,7 @@ class PersistResultTest(TestCase):
     def test_fail_closed_unknown_status(self):
         """UNKNOWN overall_status forces allowed_to_store=False (fail-closed)."""
         run = self._create_run()
-        result = self._full_result_data(
-            overall_status="UNKNOWN", allowed_to_store=True
-        )
+        result = self._full_result_data(overall_status="UNKNOWN", allowed_to_store=True)
         ComplianceService._persist_result(run, result)
         run.refresh_from_db()
 
@@ -160,9 +157,7 @@ class PersistResultTest(TestCase):
     def test_localisation_spelling(self):
         """localization_alert (American) maps to localisation_alert (British)."""
         run = self._create_run()
-        result = self._full_result_data(
-            localization_alert={"applicable": True}
-        )
+        result = self._full_result_data(localization_alert={"applicable": True})
         ComplianceService._persist_result(run, result)
         run.refresh_from_db()
 
@@ -179,9 +174,7 @@ class PersistResultTest(TestCase):
         ComplianceService._persist_result(run, result)
         run.refresh_from_db()
 
-        self.assertEqual(
-            run.regulation_mapping_json["schema_version"], "2.0"
-        )
+        self.assertEqual(run.regulation_mapping_json["schema_version"], "2.0")
 
     # ----------------------------------------------------------------
     # 6. Metering block populated correctly
@@ -238,20 +231,14 @@ class PersistResultTest(TestCase):
             run.regulation_mapping_json["error"],
             "scan worker raised RuntimeError('boom')",
         )
-        self.assertEqual(
-            run.regulation_mapping_json["error_type"], "EXECUTION_ERROR"
-        )
+        self.assertEqual(run.regulation_mapping_json["error_type"], "EXECUTION_ERROR")
 
     def test_error_payload_status_aliased_to_failed(self):
         run = self._create_run()
-        ComplianceService._persist_result(
-            run, {"status": "ERROR", "detail": "kaboom"}
-        )
+        ComplianceService._persist_result(run, {"status": "ERROR", "detail": "kaboom"})
         run.refresh_from_db()
         self.assertEqual(run.status, ComplianceRunStatus.FAILED)
-        self.assertEqual(
-            run.regulation_mapping_json["error_type"], "EXECUTION_ERROR"
-        )
+        self.assertEqual(run.regulation_mapping_json["error_type"], "EXECUTION_ERROR")
         self.assertEqual(run.regulation_mapping_json["error"], "kaboom")
 
     # ----------------------------------------------------------------
@@ -261,9 +248,7 @@ class PersistResultTest(TestCase):
     def test_asset_compliance_status_pass(self):
         """overall_status=PASS updates asset.compliance_status to PASS."""
         run = self._create_run()
-        ComplianceService._persist_result(
-            run, self._full_result_data(overall_status="PASS")
-        )
+        ComplianceService._persist_result(run, self._full_result_data(overall_status="PASS"))
         self.asset.refresh_from_db()
 
         self.assertEqual(self.asset.compliance_status, AssetComplianceStatus.PASS)
@@ -275,9 +260,7 @@ class PersistResultTest(TestCase):
     def test_asset_compliance_status_fail(self):
         """overall_status=FAIL updates asset.compliance_status to FAIL."""
         run = self._create_run()
-        ComplianceService._persist_result(
-            run, self._full_result_data(overall_status="FAIL")
-        )
+        ComplianceService._persist_result(run, self._full_result_data(overall_status="FAIL"))
         self.asset.refresh_from_db()
 
         self.assertEqual(self.asset.compliance_status, AssetComplianceStatus.FAIL)

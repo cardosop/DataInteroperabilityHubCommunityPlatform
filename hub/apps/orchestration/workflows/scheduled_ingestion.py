@@ -5,18 +5,17 @@ Orchestrates the scheduled ingestion process with proper error handling,
 retry logic, parallel file processing, and compensation.
 """
 
+import contextlib
 import hashlib
 import os
 import sys
 import tempfile
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.audit.utils import create_audit_event
@@ -35,10 +34,7 @@ from hub.apps.scheduled_ingestion.business_rules import ScheduledIngestionBusine
 from hub.apps.scheduled_ingestion.dead_letter_queue import DeadLetterQueueManager
 from hub.apps.scheduled_ingestion.incremental_state import IncrementalStateManager
 from hub.apps.scheduled_ingestion.models import (
-    DeadLetterQueueItem,
     ScheduledIngestion,
-    ScheduledIngestionRun,
-    ScheduledIngestionRunStatus,
 )
 from hub.apps.search.indexing import SearchIndexer
 
@@ -278,8 +274,8 @@ class ScheduledIngestionWorkflow:
 
     @staticmethod
     def _validate_ingestion_config_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Validate ingestion configuration.
 
@@ -316,7 +312,7 @@ class ScheduledIngestionWorkflow:
         try:
             re.compile(file_pattern)
         except re.error as e:
-            raise ValueError(f"Invalid file pattern regex: {str(e)}")
+            raise ValueError(f"Invalid file pattern regex: {e!s}")
 
         # Validate ingestion configuration using ScheduledIngestionBusinessRules
         ingestion_rules = ScheduledIngestionBusinessRules(
@@ -372,8 +368,8 @@ class ScheduledIngestionWorkflow:
 
     @staticmethod
     def _connect_to_source_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Connect to source and validate connection.
 
@@ -399,7 +395,9 @@ class ScheduledIngestionWorkflow:
             if isinstance(test_result, bool):
                 # test_connection returned bool (True/False)
                 if not test_result:
-                    raise WorkflowStepValueError("Connection test failed: Unable to connect to source")
+                    raise WorkflowStepValueError(
+                        "Connection test failed: Unable to connect to source"
+                    )
                 connection_details = {}
             elif isinstance(test_result, dict):
                 # test_connection returned dict (legacy or extended format)
@@ -433,12 +431,12 @@ class ScheduledIngestionWorkflow:
                 error=str(e),
                 exc_info=True,
             )
-            raise WorkflowStepValueError(f"Failed to connect to source: {str(e)}") from e
+            raise WorkflowStepValueError(f"Failed to connect to source: {e!s}") from e
 
     @staticmethod
     def _discover_files_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Discover files from source.
 
@@ -479,12 +477,12 @@ class ScheduledIngestionWorkflow:
                 error=str(e),
                 exc_info=True,
             )
-            raise WorkflowStepValueError(f"Failed to discover files: {str(e)}") from e
+            raise WorkflowStepValueError(f"Failed to discover files: {e!s}") from e
 
     @staticmethod
     def _filter_files_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Filter files based on incremental state and configuration.
 
@@ -570,8 +568,8 @@ class ScheduledIngestionWorkflow:
     # defeating the audit contract (260.7.F).
     @staticmethod
     def _download_file_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Download file from source to temporary location.
 
@@ -674,10 +672,8 @@ class ScheduledIngestionWorkflow:
         except Exception as e:
             # Clean up temp file on error
             if temp_path and os.path.exists(temp_path):
-                try:
+                with contextlib.suppress(Exception):
                     os.unlink(temp_path)
-                except Exception:
-                    pass
 
             # Record failure in state_data so _update_ingestion_state_task can persist it.
             # Loop compensation (rollback_file_download) also persists, but in TestCase the
@@ -701,10 +697,7 @@ class ScheduledIngestionWorkflow:
             create_audit_event(
                 resource_type="scheduled_ingestion",
                 action="SCHEDULED_INGESTION_SOURCE_UNREACHABLE",
-                actor_user=(
-                    scheduled_ingestion.created_by
-                    if scheduled_ingestion else None
-                ),
+                actor_user=(scheduled_ingestion.created_by if scheduled_ingestion else None),
                 tenant=tenant,
                 resource_id=str(scheduled_ingestion_id),
                 result="FAILURE",
@@ -722,8 +715,8 @@ class ScheduledIngestionWorkflow:
 
     @staticmethod
     def _validate_file_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Validate file format and content.
 
@@ -801,8 +794,8 @@ class ScheduledIngestionWorkflow:
 
     @staticmethod
     def _run_dq_check_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Run data quality check on file content.
 
@@ -920,14 +913,14 @@ class ScheduledIngestionWorkflow:
                 exc_info=True,
             )
             if dq_strict_mode:
-                raise ValueError(f"DQ check failed: {str(e)}") from e
+                raise ValueError(f"DQ check failed: {e!s}") from e
             return {"dq_check_failed": True, "error": str(e)}
 
     @staticmethod
     @transaction.atomic
     def _create_dataset_version_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create dataset version from file.
 
@@ -1117,8 +1110,8 @@ class ScheduledIngestionWorkflow:
     @staticmethod
     @transaction.atomic
     def _index_dataset_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Index dataset for search.
 
@@ -1158,8 +1151,8 @@ class ScheduledIngestionWorkflow:
     @staticmethod
     @transaction.atomic
     def _mark_file_processed_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Mark file as processed in ingestion state.
 
@@ -1214,8 +1207,8 @@ class ScheduledIngestionWorkflow:
     @staticmethod
     @transaction.atomic
     def _update_ingestion_state_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Update ingestion state summary.
 
@@ -1270,8 +1263,8 @@ class ScheduledIngestionWorkflow:
     @staticmethod
     @transaction.atomic
     def _handle_failures_dlq_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Handle failures and sync to Dead Letter Queue.
 
@@ -1310,8 +1303,8 @@ class ScheduledIngestionWorkflow:
 
     @staticmethod
     def _send_completion_notification_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Send completion notification.
 
@@ -1348,10 +1341,10 @@ class ScheduledIngestionWorkflow:
 Scheduled ingestion '{scheduled_ingestion.name}' has completed.
 
 Summary:
-- Files processed: {state_summary.get('total_processed', 0)}
-- Files failed: {state_summary.get('total_failed', 0)}
-- Permanent failures: {state_summary.get('permanent_failures', 0)}
-- Retryable failures: {state_summary.get('retryable_failures', 0)}
+- Files processed: {state_summary.get("total_processed", 0)}
+- Files failed: {state_summary.get("total_failed", 0)}
+- Permanent failures: {state_summary.get("permanent_failures", 0)}
+- Retryable failures: {state_summary.get("retryable_failures", 0)}
 
 Workflow Instance: {instance.id}
             """
@@ -1395,8 +1388,8 @@ Workflow Instance: {instance.id}
     @staticmethod
     @transaction.atomic
     def _audit_logging_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create audit log entry for ingestion completion.
 
@@ -1452,23 +1445,21 @@ Workflow Instance: {instance.id}
     # Compensation tasks
     @staticmethod
     def _rollback_connection_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback connection (no-op, connection is stateless)"""
         return {"rolled_back": True}
 
     @staticmethod
     @transaction.atomic
     def _rollback_file_download_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback file download: clean up temp file and mark file as failed for counting."""
         temp_path = input_data.get("temp_path")
         if temp_path and os.path.exists(temp_path):
-            try:
+            with contextlib.suppress(Exception):
                 os.unlink(temp_path)
-            except Exception:
-                pass
         # Mark current file as failed so state_summary total_failed is correct
         file_path = input_data.get("file_path")
         if not file_path:
@@ -1506,8 +1497,8 @@ Workflow Instance: {instance.id}
     @staticmethod
     @transaction.atomic
     def _rollback_dataset_creation_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback dataset creation by deleting dataset and file"""
         dataset_id = input_data.get("dataset_id")
         file_id = input_data.get("file_id")
@@ -1524,10 +1515,8 @@ Workflow Instance: {instance.id}
                 file_obj = File.objects.get(id=file_id)
                 # Delete from storage
                 storage = S3StorageClient()
-                try:
+                with contextlib.suppress(Exception):
                     storage.delete_file(file_obj.storage_path)
-                except Exception:
-                    pass
                 file_obj.delete()
             except File.DoesNotExist:
                 pass
@@ -1537,20 +1526,18 @@ Workflow Instance: {instance.id}
     @staticmethod
     @transaction.atomic
     def _rollback_indexing_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback indexing by deleting search index"""
         dataset_id = input_data.get("dataset_id")
 
         if dataset_id:
-            try:
+            with contextlib.suppress(Exception):
                 SearchIndexer.delete_index(
                     tenant_id=input_data.get("tenant_id"),
                     resource_type="dataset",
                     resource_id=dataset_id,
                 )
-            except Exception:
-                pass
 
         return {"rolled_back": True}
 
@@ -1559,9 +1546,9 @@ Workflow Instance: {instance.id}
     def execute(
         cls,
         scheduled_ingestion_id: str,
-        engine: Optional[WorkflowEngine] = None,
-        registry: Optional[WorkflowRegistry] = None,
-    ) -> Dict[str, Any]:
+        engine: WorkflowEngine | None = None,
+        registry: WorkflowRegistry | None = None,
+    ) -> dict[str, Any]:
         """
         Execute scheduled ingestion workflow.
 

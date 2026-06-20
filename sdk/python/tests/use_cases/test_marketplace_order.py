@@ -10,15 +10,14 @@ a data_consumer subscribes to it, and the subscriber can then access the
 underlying asset.
 """
 
-import requests
-from tests._persona_provisioning import provision_persona, PersonaCredentials
+from tests._persona_provisioning import PersonaCredentials, provision_persona
 from tests.fixtures.test_data import fresh_id
-from tests.use_cases._api_helpers import api_base_url, api_post, api_get
-
+from tests.use_cases._api_helpers import api_base_url, api_get, api_post
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _publish_listing(listing_id: str, creds: PersonaCredentials) -> dict:
     """Publish a draft listing so it becomes orderable.
@@ -27,6 +26,7 @@ def _publish_listing(listing_id: str, creds: PersonaCredentials) -> dict:
     Returns the updated listing body.
     """
     import requests as _r
+
     base = api_base_url()
     resp = _r.patch(
         f"{base}/marketplace/listings/{listing_id}/",
@@ -37,13 +37,9 @@ def _publish_listing(listing_id: str, creds: PersonaCredentials) -> dict:
         json={"status": "PUBLISHED"},
         timeout=15,
     )
-    assert resp.status_code == 200, (
-        f"Listing publish failed: {resp.status_code}: {resp.text[:300]}"
-    )
+    assert resp.status_code == 200, f"Listing publish failed: {resp.status_code}: {resp.text[:300]}"
     body = resp.json()
-    assert body.get("status") == "PUBLISHED", (
-        f"Listing status not PUBLISHED after publish: {body}"
-    )
+    assert body.get("status") == "PUBLISHED", f"Listing status not PUBLISHED after publish: {body}"
     return body
 
 
@@ -110,7 +106,11 @@ def _create_and_activate_asset(creds: PersonaCredentials) -> dict:
             json={},
             timeout=30,
         )
-        if prereq_resp.status_code == 401 and "TOKEN_INVALIDATED" in prereq_resp.text and attempt == 0:
+        if (
+            prereq_resp.status_code == 401
+            and "TOKEN_INVALIDATED" in prereq_resp.text
+            and attempt == 0
+        ):
             # The endpoint bumped token_version — re-provision and retry
             current_creds = provision_persona(current_creds.role)
             continue
@@ -127,13 +127,16 @@ def _create_and_activate_asset(creds: PersonaCredentials) -> dict:
             json={"version": version},
             timeout=15,
         )
-        if activate_resp.status_code == 401 and "TOKEN_INVALIDATED" in activate_resp.text and attempt == 0:
+        if (
+            activate_resp.status_code == 401
+            and "TOKEN_INVALIDATED" in activate_resp.text
+            and attempt == 0
+        ):
             current_creds = provision_persona(current_creds.role)
             continue
 
         assert activate_resp.status_code == 200, (
-            f"Asset activation failed: {activate_resp.status_code}: "
-            f"{activate_resp.text[:500]}"
+            f"Asset activation failed: {activate_resp.status_code}: {activate_resp.text[:500]}"
         )
         activated = activate_resp.json()
         assert activated.get("status") == "ACTIVE", (
@@ -141,9 +144,7 @@ def _create_and_activate_asset(creds: PersonaCredentials) -> dict:
         )
         return activated
 
-    raise RuntimeError(
-        "Asset activation failed after retry with fresh persona credentials"
-    )
+    raise RuntimeError("Asset activation failed after retry with fresh persona credentials")
 
 
 # ===========================================================================
@@ -156,18 +157,23 @@ def test_publish_listing():
     publish it as a marketplace listing. Expect 201.
     """
     dpo = _dpo_creds()
-    base = api_base_url()
+    api_base_url()
 
     asset = _create_and_activate_asset(dpo)
     asset_id = asset.get("id") or asset.get("key")
 
     listing_name = fresh_id("listing")
-    resp = api_post("/marketplace/listings/", dpo, json={
+    resp = api_post(
+        "/marketplace/listings/",
+        dpo,
+        json={
             "title": listing_name,
             "short_description": "Automated test marketplace listing",
             "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
             "pricing_model": "FREE",
-        }, timeout=15)
+        },
+        timeout=15,
+    )
 
     if resp.status_code == 404:
         pytest.skip("Marketplace listings endpoint not implemented (404)")
@@ -176,9 +182,7 @@ def test_publish_listing():
         f"Listing creation returned {resp.status_code}: {resp.text[:500]}"
     )
     body = resp.json()
-    assert "id" in body or "listing_id" in body, (
-        f"Listing response missing id: {body}"
-    )
+    assert "id" in body or "listing_id" in body, f"Listing response missing id: {body}"
 
     # Actually publish it — the test name says "publish_listing"
     listing_id = body.get("id") or body.get("listing_id")
@@ -190,18 +194,23 @@ def test_listing_appears_in_catalog():
     catalog (GET /marketplace/listings/).
     """
     dpo = _dpo_creds()
-    base = api_base_url()
+    api_base_url()
 
     asset = _create_and_activate_asset(dpo)
     asset_id = asset.get("id") or asset.get("key")
 
     listing_name = fresh_id("catalog-test")
-    create_resp = api_post("/marketplace/listings/", dpo, json={
+    create_resp = api_post(
+        "/marketplace/listings/",
+        dpo,
+        json={
             "title": listing_name,
             "short_description": "Test listing for catalog verification",
             "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
             "pricing_model": "FREE",
-        }, timeout=15)
+        },
+        timeout=15,
+    )
 
     if create_resp.status_code == 404:
         pytest.skip("Marketplace listings endpoint not implemented (404)")
@@ -215,9 +224,7 @@ def test_listing_appears_in_catalog():
 
     # List all marketplace listings
     list_resp = api_get("/marketplace/listings/", dpo, timeout=15)
-    assert list_resp.status_code == 200, (
-        f"Marketplace listing returned {list_resp.status_code}"
-    )
+    assert list_resp.status_code == 200, f"Marketplace listing returned {list_resp.status_code}"
 
     list_body = list_resp.json()
     results = list_body if isinstance(list_body, list) else list_body.get("results", [])
@@ -233,19 +240,24 @@ def test_subscribe_to_listing():
     """
     dpo = _dpo_creds()
     dc = _dc_creds()
-    base = api_base_url()
+    api_base_url()
 
     # Publisher creates activated asset + listing
     asset = _create_and_activate_asset(dpo)
     asset_id = asset.get("id") or asset.get("key")
 
     listing_name = fresh_id("sub-listing")
-    listing_resp = api_post("/marketplace/listings/", dpo, json={
+    listing_resp = api_post(
+        "/marketplace/listings/",
+        dpo,
+        json={
             "title": listing_name,
             "short_description": "Test listing for catalog verification",
             "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
             "pricing_model": "FREE",
-        }, timeout=15)
+        },
+        timeout=15,
+    )
 
     if listing_resp.status_code == 404:
         pytest.skip("Marketplace listings endpoint not implemented (404)")
@@ -259,16 +271,20 @@ def test_subscribe_to_listing():
     _publish_listing(listing_id, dpo)
 
     # Consumer creates an order
-    sub_resp = api_post("/marketplace/orders/", dc, json={
+    sub_resp = api_post(
+        "/marketplace/orders/",
+        dc,
+        json={
             "listing_id": listing_id,
-        }, timeout=15)
+        },
+        timeout=15,
+    )
 
     if sub_resp.status_code == 404:
         pytest.skip("Marketplace subscriptions endpoint not implemented (404)")
 
     assert sub_resp.status_code in (200, 201), (
-        f"Subscription creation returned {sub_resp.status_code}: "
-        f"{sub_resp.text[:500]}"
+        f"Subscription creation returned {sub_resp.status_code}: {sub_resp.text[:500]}"
     )
     sub_body = sub_resp.json()
     assert "id" in sub_body or "subscription_id" in sub_body, (
@@ -293,12 +309,17 @@ def test_subscriber_can_access_asset():
     asset = _create_and_activate_asset(dpo)
     asset_id = asset.get("id") or asset.get("key")
 
-    listing_resp = api_post("/marketplace/listings/", dpo, json={
+    listing_resp = api_post(
+        "/marketplace/listings/",
+        dpo,
+        json={
             "title": fresh_id("access-listing"),
             "short_description": "Test listing for access verification",
             "asset_id": asset_id,
             "pricing_model": "FREE",
-        }, timeout=15)
+        },
+        timeout=15,
+    )
 
     if listing_resp.status_code == 404:
         pytest.skip("Marketplace listings endpoint not implemented (404)")
@@ -367,12 +388,17 @@ def test_unsubscribed_user_cannot_access_private_asset():
     # Step 2: Provider publishes a marketplace listing for the asset
     # (this makes it "behind a marketplace listing").
     listing_name = fresh_id("access-ctl-listing")
-    listing_resp = api_post("/marketplace/listings/", dpo, json={
+    listing_resp = api_post(
+        "/marketplace/listings/",
+        dpo,
+        json={
             "title": listing_name,
             "short_description": "Access-control test listing",
             "asset_id": asset_id,
             "pricing_model": "FREE",
-        }, timeout=15)
+        },
+        timeout=15,
+    )
 
     if listing_resp.status_code == 404:
         pytest.skip("Marketplace listings endpoint not implemented (404)")
@@ -402,17 +428,22 @@ def test_duplicate_subscription_returns_conflict():
     """Subscribing to the same listing twice should return 409 or 400."""
     dpo = _dpo_creds()
     dc = _dc_creds()
-    base = api_base_url()
+    api_base_url()
 
     asset = _create_and_activate_asset(dpo)
     asset_id = asset.get("id") or asset.get("key")
 
-    listing_resp = api_post("/marketplace/listings/", dpo, json={
+    listing_resp = api_post(
+        "/marketplace/listings/",
+        dpo,
+        json={
             "title": fresh_id("dup-listing"),
             "short_description": "Test listing for duplicate subscription",
             "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
             "pricing_model": "FREE",
-        }, timeout=15)
+        },
+        timeout=15,
+    )
 
     if listing_resp.status_code == 404:
         pytest.skip("Marketplace listings endpoint not implemented (404)")

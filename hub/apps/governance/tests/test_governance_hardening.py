@@ -4,9 +4,9 @@ Phase 117C — Governance Hardening (GF-20) Tests
 Tests ABAC cache invalidation, field masking audit, access expiration,
 KYC expiration, and classification propagation.
 """
+
 import uuid
 from datetime import timedelta
-from unittest.mock import patch
 
 import pytest
 from django.core.cache import cache
@@ -94,9 +94,7 @@ class TestABACCacheInvalidation(TestCase):
         )
 
         # Prime the cache
-        cache_key = ABACEngine._get_cache_key(
-            str(self.tenant.id), "ASSET", "fake-asset-id"
-        )
+        cache_key = ABACEngine._get_cache_key(str(self.tenant.id), "ASSET", "fake-asset-id")
         cache.set(cache_key, ["some-old-policy-id"])
 
         # Update policy — should increment version, making old cache key stale
@@ -104,9 +102,7 @@ class TestABACCacheInvalidation(TestCase):
         policy.save()
 
         # Old cache key should miss (version changed)
-        new_cache_key = ABACEngine._get_cache_key(
-            str(self.tenant.id), "ASSET", "fake-asset-id"
-        )
+        new_cache_key = ABACEngine._get_cache_key(str(self.tenant.id), "ASSET", "fake-asset-id")
         assert new_cache_key != cache_key, "Cache key should change after version bump"
         assert cache.get(new_cache_key) is None, "New cache key should be a miss"
 
@@ -209,6 +205,7 @@ class TestAccessExpiration(TestCase):
     def test_approval_sets_expires_at_default_90_days(self):
         """Approving an access request sets expires_at to ~90 days from now."""
         from hub.apps.assets.models import Asset
+
         asset = Asset.objects.create(
             name="exp-asset",
             key=f"exp-asset-{uuid.uuid4().hex[:8]}",
@@ -241,6 +238,7 @@ class TestAccessExpiration(TestCase):
     def test_revoke_expired_access_command(self):
         """Management command revokes expired APPROVED access requests."""
         from hub.apps.assets.models import Asset
+
         asset = Asset.objects.create(
             name="revoke-asset",
             key=f"revoke-asset-{uuid.uuid4().hex[:8]}",
@@ -307,8 +305,8 @@ class TestKYCExpiration(TestCase):
 
     def test_can_publish_blocks_expired_kyc(self):
         """can_publish() returns False when KYC is expired."""
-        from hub.apps.marketplace.models import Listing
         from hub.apps.assets.models import Asset
+        from hub.apps.marketplace.models import Listing
         from hub.apps.users.models import User
 
         user = User.objects.create(
@@ -340,8 +338,8 @@ class TestKYCExpiration(TestCase):
 
     def test_can_publish_allows_valid_kyc(self):
         """can_publish() returns True when KYC is verified and not expired."""
-        from hub.apps.marketplace.models import Listing
         from hub.apps.assets.models import Asset
+        from hub.apps.marketplace.models import Listing
         from hub.apps.users.models import User
 
         user = User.objects.create(
@@ -420,8 +418,8 @@ class TestClassificationPropagation(TestCase):
 
     def test_propagate_classification_creates_target_classification(self):
         """propagate_classification copies highest source classification to target."""
-        from hub.apps.datasets.models import Dataset
         from hub.apps.assets.models import Asset
+        from hub.apps.datasets.models import Dataset
         from hub.apps.governance.classification import propagate_classification
 
         dataset = Dataset.objects.create(
@@ -464,8 +462,8 @@ class TestClassificationPropagation(TestCase):
 
     def test_link_model_to_dataset_propagates_classification(self):
         """link_model_to_dataset calls propagate_classification for PII datasets."""
-        from hub.apps.datasets.models import Dataset
         from hub.apps.assets.models import Asset
+        from hub.apps.datasets.models import Dataset
         from hub.apps.ml.models import MLModel, ModelDatasetLink
         from hub.apps.ml.services import ModelRegistryBridgeService
 
@@ -519,9 +517,7 @@ class TestClassificationPropagation(TestCase):
             dataset=dataset,
             role="TRAINING",
         )
-        assert link.exists(), (
-            "Expected ModelDatasetLink row to be created with role=TRAINING"
-        )
+        assert link.exists(), "Expected ModelDatasetLink row to be created with role=TRAINING"
         assert link.first().model == model
         assert link.first().dataset == dataset
 

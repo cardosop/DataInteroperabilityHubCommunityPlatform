@@ -1,16 +1,15 @@
 """
 Unit tests for validation and enrichment functions.
 """
-import pytest
 
 from hub.apps.contracts.validation import (
-    validate_and_enrich_contacts,
-    validate_and_enrich_servicelevels,
-    validate_and_enrich_roles,
-    validate_and_enrich_team,
-    validate_and_enrich_pricing,
-    validate_and_enrich_lineage,
     validate_and_enrich_advanced_schema_attributes,
+    validate_and_enrich_contacts,
+    validate_and_enrich_lineage,
+    validate_and_enrich_pricing,
+    validate_and_enrich_roles,
+    validate_and_enrich_servicelevels,
+    validate_and_enrich_team,
     validate_email,
     validate_url,
 )
@@ -69,7 +68,11 @@ class TestContactValidationEnrichment:
 
     def test_validate_valid_contacts(self):
         contacts = [
-            {"name": "Support", "email": "support@example.com", "url": "https://example.com/support"},
+            {
+                "name": "Support",
+                "email": "support@example.com",
+                "url": "https://example.com/support",
+            },
             {"name": "Sales", "email": "sales@example.com"},
         ]
         enriched, errors = validate_and_enrich_contacts(contacts)
@@ -86,7 +89,7 @@ class TestContactValidationEnrichment:
 
     def test_validate_invalid_url(self):
         contacts = [{"name": "Support", "url": "not-a-url"}]
-        enriched, errors = validate_and_enrich_contacts(contacts)
+        _enriched, errors = validate_and_enrich_contacts(contacts)
         assert len(errors) > 0
         assert any("url" in e.lower() for e in errors)
 
@@ -135,7 +138,7 @@ class TestServiceLevelValidationEnrichment:
 
     def test_validate_invalid_target(self):
         servicelevels = [{"name": "availability", "target": "not-a-number"}]
-        enriched, errors = validate_and_enrich_servicelevels(servicelevels)
+        _enriched, errors = validate_and_enrich_servicelevels(servicelevels)
         assert len(errors) > 0
         assert any("target" in e.lower() for e in errors)
 
@@ -174,7 +177,7 @@ class TestRoleValidationEnrichment:
 
     def test_validate_missing_rolename(self):
         roles = [{"accessType": "READ"}]
-        enriched, errors = validate_and_enrich_roles(roles)
+        _enriched, errors = validate_and_enrich_roles(roles)
         assert len(errors) > 0
         assert any("rolename" in e.lower() for e in errors)
 
@@ -185,7 +188,12 @@ class TestTeamValidationEnrichment:
     def test_validate_valid_team(self):
         team = [
             {"member": "John Doe", "role": "Engineer", "dateIn": "2024-01-01"},
-            {"member": "Jane Smith", "role": "Manager", "dateIn": "2024-01-01", "dateOut": "2024-12-31"},
+            {
+                "member": "Jane Smith",
+                "role": "Manager",
+                "dateIn": "2024-01-01",
+                "dateOut": "2024-12-31",
+            },
         ]
         enriched, errors = validate_and_enrich_team(team)
         assert len(errors) == 0
@@ -200,13 +208,13 @@ class TestTeamValidationEnrichment:
 
     def test_validate_invalid_date_format(self):
         team = [{"member": "John Doe", "dateIn": "01-01-2024"}]
-        enriched, errors = validate_and_enrich_team(team)
+        _enriched, errors = validate_and_enrich_team(team)
         assert len(errors) > 0
         assert any("date" in e.lower() for e in errors)
 
     def test_validate_valid_iso_date(self):
         team = [{"member": "John Doe", "dateIn": "2024-01-01T00:00:00Z"}]
-        enriched, errors = validate_and_enrich_team(team)
+        _enriched, errors = validate_and_enrich_team(team)
         assert len(errors) == 0
 
 
@@ -241,7 +249,7 @@ class TestPricingValidationEnrichment:
 
     def test_validate_invalid_amount(self):
         pricing = {"priceAmount": "not-a-number", "priceCurrency": "USD"}
-        enriched, errors = validate_and_enrich_pricing(pricing)
+        _enriched, errors = validate_and_enrich_pricing(pricing)
         assert len(errors) > 0
         assert any("amount" in e.lower() for e in errors)
 
@@ -324,4 +332,3 @@ class TestAdvancedSchemaAttributesValidationEnrichment:
         enriched, errors = validate_and_enrich_advanced_schema_attributes(model)
         assert len(errors) == 0
         assert enriched["physical_type"] == "postgresql"
-

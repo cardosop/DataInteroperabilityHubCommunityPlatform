@@ -12,12 +12,10 @@ Tests comprehensive metrics collection for:
 All tests use real implementations (no mocks/stubs) and verify metrics are collected correctly.
 """
 
-import json
+import uuid
 
 import pytest
-from django.test import TestCase
 from rest_framework import status
-from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import (
@@ -35,7 +33,6 @@ from hub.apps.observability.otel_metrics import (
 )
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -646,10 +643,10 @@ class ODPSExportFailureAlertTest(ODPSExportMetricsTestBase):
 
         # Simulate export attempts: 10 total, 2 failures (20% failure rate)
         # This exceeds the 5% threshold for alerting
-        for i in range(8):
+        for _i in range(8):
             odps_export_total.labels(status="success", format="json", tenant_id=tenant_id).inc()
 
-        for i in range(2):
+        for _i in range(2):
             odps_export_total.labels(status="failure", format="json", tenant_id=tenant_id).inc()
 
         # The Prometheus alert query would be:
@@ -682,11 +679,11 @@ class ODPSExportFailureAlertTest(ODPSExportMetricsTestBase):
         formats = ["json", "yaml"]
         for fmt in formats:
             # Record some successes
-            for i in range(5):
+            for _i in range(5):
                 odps_export_total.labels(status="success", format=fmt, tenant_id=tenant_id).inc()
 
             # Record some failures
-            for i in range(1):
+            for _i in range(1):
                 odps_export_total.labels(status="failure", format=fmt, tenant_id=tenant_id).inc()
 
         # Verify metrics are tracked separately per format
@@ -720,7 +717,7 @@ class ODPSExportFailureAlertTest(ODPSExportMetricsTestBase):
         # Record metrics for different tenants
         for tenant in [tenant_id, other_tenant_id]:
             # Record some successes
-            for i in range(10):
+            for _i in range(10):
                 odps_export_total.labels(status="success", format="json", tenant_id=tenant).inc()
 
             # Record different failure rates per tenant
@@ -748,17 +745,13 @@ class ODPSExportFailureAlertTest(ODPSExportMetricsTestBase):
         """Export metrics must accept unicode tenant IDs — Prometheus label
         values support UTF-8; rejecting valid unicode would be a bug."""
         tenant = "测试租户"
-        success_metric = odps_export_total.labels(
-            status="success", format="json", tenant_id=tenant
-        )
+        success_metric = odps_export_total.labels(status="success", format="json", tenant_id=tenant)
         self.assertIsNotNone(success_metric)
 
     def test_export_metrics_handles_special_characters(self):
         """Export metrics must accept special characters in tenant IDs."""
         tenant = "Test & Co. (Special)"
-        success_metric = odps_export_total.labels(
-            status="success", format="json", tenant_id=tenant
-        )
+        success_metric = odps_export_total.labels(status="success", format="json", tenant_id=tenant)
         self.assertIsNotNone(success_metric)
 
     def test_export_metrics_handles_very_large_labels(self):
@@ -772,9 +765,7 @@ class ODPSExportFailureAlertTest(ODPSExportMetricsTestBase):
     def test_export_metrics_handles_none_values(self):
         """Export metrics must handle None tenant_id gracefully by
         converting it to a string label."""
-        success_metric = odps_export_total.labels(
-            status="success", format="json", tenant_id=None
-        )
+        success_metric = odps_export_total.labels(status="success", format="json", tenant_id=None)
         self.assertIsNotNone(success_metric)
 
     def test_export_metrics_handles_nested_structures(self):

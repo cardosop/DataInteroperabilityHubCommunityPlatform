@@ -12,20 +12,19 @@ Coverage:
 - FREE subscription creation
 - Tenant isolation verification
 """
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 import pytest
 
 pytestmark = pytest.mark.slow
+import uuid
+
 from django.test import TestCase
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.billing.models import Subscription, SubscriptionStatus
-from hub.apps.tenants.models import Tenant, TenantConfig, TenantPlan, TenantStatus
+from hub.apps.tenants.models import Tenant, TenantPlan, TenantStatus
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -219,7 +218,7 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
         response = self.client.post("/api/v1/tenants/onboarding/", data, format="json")
 
         if response.status_code == status.HTTP_201_CREATED:
-            tenant_id = response.data.get("tenant", {}).get("id")
+            response.data.get("tenant", {}).get("id")
             user_id = response.data.get("user", {}).get("id")
 
             user = User.objects.get(id=user_id)
@@ -232,6 +231,6 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
 
             self.assertEqual(assets_response.status_code, status.HTTP_200_OK)
             # All assets should belong to user's tenant
-            for asset in assets_response.data.get("results", []):
+            for _asset in assets_response.data.get("results", []):
                 # Verify tenant isolation (if tenant_id is in response)
                 pass  # Tenant isolation verified by backend

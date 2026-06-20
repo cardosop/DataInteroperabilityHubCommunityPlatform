@@ -29,7 +29,6 @@ from hub.apps.integrations.models import (
     MarketplaceSyncJob,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
-from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -564,7 +563,7 @@ class SyncValidationRulesTest(TestCase):
     def test_validate_sync_eligibility_conflicting_jobs(self):
         """Test sync eligibility validation with conflicting sync jobs"""
         # Create a running sync job
-        running_job = MarketplaceSyncJob.objects.create(
+        MarketplaceSyncJob.objects.create(
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
@@ -572,7 +571,7 @@ class SyncValidationRulesTest(TestCase):
         )
 
         # Create a pending sync job
-        pending_job = MarketplaceSyncJob.objects.create(
+        MarketplaceSyncJob.objects.create(
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PULL.value,
@@ -611,7 +610,7 @@ class SyncValidationRulesTest(TestCase):
         # Validate eligibility for the same job (should not conflict with itself)
         result = self.rules.validate_sync_eligibility(connection=self.connection, sync_job=sync_job)
 
-        # Should not have conflicts with itself
+        self.assertTrue(result.is_valid, msg=result.errors)
         self.assertIn("has_conflicts", result.details)
         self.assertFalse(result.details["has_conflicts"])
 
@@ -734,7 +733,7 @@ class SyncValidationRulesTest(TestCase):
         """Test sync mapping validation with asset conflict"""
         asset = Asset.objects.create(tenant=self.tenant, name="Test Asset", key="test-asset-key")
         # Create first mapping
-        mapping1 = MarketplaceMapping.objects.create(
+        MarketplaceMapping.objects.create(
             tenant=self.tenant,
             connection=self.connection,
             hub_asset=asset,
@@ -761,7 +760,7 @@ class SyncValidationRulesTest(TestCase):
         asset1 = Asset.objects.create(tenant=self.tenant, name="Test Asset 1", key="test-asset-1")
         asset2 = Asset.objects.create(tenant=self.tenant, name="Test Asset 2", key="test-asset-2")
         # Create first mapping
-        mapping1 = MarketplaceMapping.objects.create(
+        MarketplaceMapping.objects.create(
             tenant=self.tenant,
             connection=self.connection,
             hub_asset=asset1,

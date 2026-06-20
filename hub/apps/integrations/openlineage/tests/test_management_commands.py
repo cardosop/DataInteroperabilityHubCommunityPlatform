@@ -21,6 +21,7 @@ The tests use real ``OpenLineageIngestApiKey`` / ``OpenLineageDeadLetter``
 rows + real ``call_command`` invocations so the assertions cover the
 full Django plumbing (argparse, URL routing, JSON output shape).
 """
+
 from __future__ import annotations
 
 import json
@@ -74,11 +75,15 @@ class TestRotateOpenLineageKeysCommand(TransactionTestCase):
 
     def setUp(self):
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         connection.close()
         connection.savepoint_ids = []
@@ -127,9 +132,7 @@ class TestRotateOpenLineageKeysCommand(TransactionTestCase):
         # print would let a subsequent stdout flush leak it).
         # We accept the JSON envelope's prefix + the plaintext line (= 1 occurrence each).
         plaintext_lines = [l for l in text.splitlines() if l.startswith("msh_ol_")]
-        assert len(plaintext_lines) == 1, (
-            f"expected one plaintext line; got {len(plaintext_lines)}"
-        )
+        assert len(plaintext_lines) == 1, f"expected one plaintext line; got {len(plaintext_lines)}"
 
     def test_rotate_dry_run_does_not_mutate(self):
         from hub.apps.integrations.openlineage.models import (
@@ -184,9 +187,9 @@ class TestRotateOpenLineageKeysCommand(TransactionTestCase):
         )
         # Most-recent key for the tenant is the new one — its label
         # should be the override, not the auto-generated date.
-        new_key = OpenLineageIngestApiKey.objects.filter(
-            tenant=tenant
-        ).order_by("-created_at").first()
+        new_key = (
+            OpenLineageIngestApiKey.objects.filter(tenant=tenant).order_by("-created_at").first()
+        )
         assert new_key is not None
         assert new_key.label == "marquez-prod-2026Q2"
 
@@ -211,15 +214,79 @@ class TestRotateOpenLineageKeysCommand(TransactionTestCase):
             "rotation must not extend a key already in its grace tail"
         )
 
+    def test_rotate_grace_days_override(self):
+        """``--grace-days=14`` produces ~14-day expiry window
+        instead of the default 7-day window."""
+        from hub.apps.integrations.openlineage.models import (
+            OpenLineageIngestApiKey,
+        )
+
+        tenant = _create_tenant()
+        _create_ingest_key(tenant, label="pre-rotate")
+        out = StringIO()
+        call_command(
+            "rotate_openlineage_keys",
+            f"--tenant={tenant.id}",
+            "--grace-days=14",
+            stdout=out,
+        )
+        # Find the outgoing key (the one that just got graced)
+        outgoing = (
+            OpenLineageIngestApiKey.objects.filter(
+                tenant=tenant, revoked_at__isnull=True, expires_at__isnull=False
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        assert outgoing is not None, "rotation should grace at least one outgoing key"
+        delta = outgoing.expires_at - timezone.now()
+        assert timedelta(days=13, hours=23) <= delta <= timedelta(days=14, hours=1), (
+            f"grace window must be ~14 days with --grace-days=14; got {delta}"
+        )
+
+    def test_rotate_default_label_uses_today_date(self):
+        """When no ``--label`` is provided, the default label format
+        is ``rotated-YYYY-MM-DD``."""
+        from hub.apps.integrations.openlineage.models import (
+            OpenLineageIngestApiKey,
+        )
+
+        tenant = _create_tenant()
+        out = StringIO()
+        call_command(
+            "rotate_openlineage_keys",
+            f"--tenant={tenant.id}",
+            stdout=out,
+        )
+        today = timezone.now().strftime("%Y-%m-%d")
+        new_key = (
+            OpenLineageIngestApiKey.objects.filter(
+                tenant=tenant, revoked_at__isnull=True
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        assert new_key is not None
+        assert today in new_key.label, (
+            f"default label should include today's date {today!r}; "
+            f"got {new_key.label!r}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # replay_openlineage_dlq + openlineage_dlq_replay_sweep
 # ---------------------------------------------------------------------------
 
 
-def _create_dlq_row(tenant, *, event_id=None, replay_attempts=0,
-                    permanently_failed=False, delivered_at=None,
-                    target_url="http://marquez.example/api/v1/lineage"):
+def _create_dlq_row(
+    tenant,
+    *,
+    event_id=None,
+    replay_attempts=0,
+    permanently_failed=False,
+    delivered_at=None,
+    target_url="http://marquez.example/api/v1/lineage",
+):
     from hub.apps.integrations.openlineage.models import OpenLineageDeadLetter
 
     row = OpenLineageDeadLetter(
@@ -253,8 +320,10 @@ class TestReplayOpenLineageDlqCommand(TransactionTestCase):
     delegation."""
 
     def setUp(self):
-        from hub.apps.integrations.openlineage.models import OpenLineageDeadLetter
         from django.db import connection
+
+        from hub.apps.integrations.openlineage.models import OpenLineageDeadLetter
+
         connection.ensure_connection()
         OpenLineageDeadLetter.objects.all().delete()
 
@@ -263,12 +332,8 @@ class TestReplayOpenLineageDlqCommand(TransactionTestCase):
 
         tenant = _create_tenant()
         pending_row = _create_dlq_row(tenant)
-        already_delivered = _create_dlq_row(
-            tenant, delivered_at=timezone.now()
-        )
-        already_permafail = _create_dlq_row(
-            tenant, permanently_failed=True, replay_attempts=10
-        )
+        already_delivered = _create_dlq_row(tenant, delivered_at=timezone.now())
+        already_permafail = _create_dlq_row(tenant, permanently_failed=True, replay_attempts=10)
 
         out = StringIO()
         # Patch the sweep's adapter so a non-dry-run wouldn't actually
@@ -325,6 +390,33 @@ class TestReplayOpenLineageDlqCommand(TransactionTestCase):
         assert envelope["processed"] == 2
         assert envelope["replayed_ok"] == 2
 
+    def test_replay_non_dry_run_deletes_successful_row(self):
+        """Non-dry-run replay with a successful adapter delivery
+        deletes the DLQ row (per spec REQ-LIN-F4-004)."""
+        from hub.apps.integrations.openlineage.adapter import DeliveryOutcome
+        from hub.apps.integrations.openlineage.models import (
+            OpenLineageDeadLetter,
+        )
+
+        tenant = _create_tenant()
+        row = _create_dlq_row(tenant)
+        row_id = row.id
+
+        # Mock only the adapter — the command + sweep use it.
+        with mock.patch(
+            "hub.apps.integrations.openlineage.adapter.OpenLineageAdapter"
+        ) as adapter_cls:
+            adapter_cls.return_value.deliver.return_value = DeliveryOutcome.DELIVERED
+            call_command(
+                "replay_openlineage_dlq",
+                "--max=10",
+                stdout=StringIO(),
+            )
+        # Successful replay deletes the row per spec
+        assert not OpenLineageDeadLetter.objects.filter(pk=row_id).exists(), (
+            "successful replay must delete the DLQ row per REQ-LIN-F4-004"
+        )
+
 
 # ---------------------------------------------------------------------------
 # openlineage_dlq_replay_sweep — directly exercise the RQ task body
@@ -337,8 +429,10 @@ class TestOpenLineageDlqReplaySweep(TransactionTestCase):
     permafail, fail-soft on poisoned rows."""
 
     def setUp(self):
-        from hub.apps.integrations.openlineage.models import OpenLineageDeadLetter
         from django.db import connection
+
+        from hub.apps.integrations.openlineage.models import OpenLineageDeadLetter
+
         connection.ensure_connection()
         OpenLineageDeadLetter.objects.all().delete()
 
@@ -383,9 +477,7 @@ class TestOpenLineageDlqReplaySweep(TransactionTestCase):
 
         tenant = _create_tenant()
         _create_dlq_row(tenant, delivered_at=timezone.now())
-        _create_dlq_row(
-            tenant, permanently_failed=True, replay_attempts=10
-        )
+        _create_dlq_row(tenant, permanently_failed=True, replay_attempts=10)
 
         with mock.patch(
             "hub.apps.integrations.openlineage.adapter.OpenLineageAdapter"
@@ -471,6 +563,7 @@ class TestOpenLineageDlqReplaySweep(TransactionTestCase):
         from hub.apps.integrations.openlineage.models import (
             OpenLineageDeadLetter,
         )
+
         OpenLineageDeadLetter.objects.filter(pk=poisoned.pk).update(
             event_payload_encrypted="garbage-not-valid-base64-or-cipher",
         )

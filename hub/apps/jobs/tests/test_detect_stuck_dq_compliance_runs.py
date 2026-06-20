@@ -13,12 +13,12 @@ Covers:
 - --direction filter works
 - warehouse_config.query_timeout_seconds is respected
 """
-import pytest
 
 import uuid
 from datetime import timedelta
 from io import StringIO
 
+import pytest
 from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
@@ -38,8 +38,10 @@ User = get_user_model()
 
 # ── Helpers ────────────────────────────────────────────────────────────
 
+
 def _make_tenant(slug_prefix: str = "t") -> Tenant:
     from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
     slug = f"{slug_prefix}-{uuid.uuid4().hex[:8]}"
     tenant = Tenant.objects.create(
         name=f"Tenant-{slug}",
@@ -61,6 +63,7 @@ def _make_user(tenant: Tenant) -> tuple:
 def _make_dataset(tenant: Tenant) -> "Dataset":
     """Create a minimal Dataset for FK validation in ComplianceRun/DQRun tests."""
     from hub.apps.datasets.models import Dataset
+
     return Dataset.objects.create(
         tenant=tenant,
         format="CSV",
@@ -81,6 +84,7 @@ def _make_job(tenant: Tenant, job_type: str = JobType.DQ_RUN) -> Job:
 
 
 # ── DQ Stuck Run Detection ────────────────────────────────────────────
+
 
 @pytest.mark.integration
 class TestDetectStuckDQComplianceRuns(TestCase):
@@ -147,7 +151,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
     def test_dq_stuck_run_fails_associated_job(self):
         """When a DQ run is stuck, its RUNNING Job is also marked FAILED."""
         job = _make_job(self.tenant, JobType.DQ_RUN)
-        run = DQRun.objects.create(
+        DQRun.objects.create(
             tenant=self.tenant,
             job=job,
             dataset_id=job.resource_id,
@@ -170,7 +174,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
     def test_dq_stuck_run_writes_dlq_entry(self):
         """A stuck DQ run writes a DLQ entry for the associated Job."""
         job = _make_job(self.tenant, JobType.DQ_RUN)
-        run = DQRun.objects.create(
+        DQRun.objects.create(
             tenant=self.tenant,
             job=job,
             dataset_id=job.resource_id,
@@ -237,7 +241,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
     def test_compliance_stuck_run_fails_associated_job(self):
         """When a Compliance run is stuck, its RUNNING Job is also FAILED."""
         job = _make_job(self.tenant, JobType.COMPLIANCE_RUN)
-        run = ComplianceRun.objects.create(
+        ComplianceRun.objects.create(
             tenant=self.tenant,
             job=job,
             dataset_id=job.resource_id,
@@ -277,7 +281,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
     def test_compliance_stuck_run_writes_dlq_entry(self):
         """A stuck Compliance run writes a DLQ entry."""
         job = _make_job(self.tenant, JobType.COMPLIANCE_RUN)
-        run = ComplianceRun.objects.create(
+        ComplianceRun.objects.create(
             tenant=self.tenant,
             job=job,
             dataset_id=job.resource_id,
@@ -403,7 +407,9 @@ class TestDetectStuckDQComplianceRuns(TestCase):
         dq_run.refresh_from_db()
         comp_run.refresh_from_db()
         self.assertEqual(dq_run.status, DQRunStatus.FAILED, "DQ run should be failed")
-        self.assertEqual(comp_run.status, ComplianceRunStatus.RUNNING, "Compliance run should be untouched")
+        self.assertEqual(
+            comp_run.status, ComplianceRunStatus.RUNNING, "Compliance run should be untouched"
+        )
 
     @pytest.mark.integration
     def test_direction_compliance_only_skips_dq(self):
@@ -440,7 +446,9 @@ class TestDetectStuckDQComplianceRuns(TestCase):
         dq_run.refresh_from_db()
         comp_run.refresh_from_db()
         self.assertEqual(dq_run.status, DQRunStatus.RUNNING, "DQ run should be untouched")
-        self.assertEqual(comp_run.status, ComplianceRunStatus.FAILED, "Compliance run should be failed")
+        self.assertEqual(
+            comp_run.status, ComplianceRunStatus.FAILED, "Compliance run should be failed"
+        )
 
     # ── --threshold-multiplier ──────────────────────────────────────
 
@@ -539,7 +547,9 @@ class TestDetectStuckDQComplianceRuns(TestCase):
         call_command("detect_stuck_dq_compliance_runs", stdout=StringIO())
 
         run.refresh_from_db()
-        self.assertEqual(run.status, DQRunStatus.RUNNING, "run without started_at should be skipped")
+        self.assertEqual(
+            run.status, DQRunStatus.RUNNING, "run without started_at should be skipped"
+        )
 
     # ── QUEUED ComplianceRun detection ───────────────────────────────
 

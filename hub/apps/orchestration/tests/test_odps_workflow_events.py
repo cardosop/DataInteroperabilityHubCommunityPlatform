@@ -24,9 +24,9 @@ from django.test import TestCase, override_settings
 
 from hub.apps.core.events.event_types import get_event_schema, validate_event_data
 from hub.apps.core.events.models import Event
-from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
+from hub.apps.orchestration.models import WorkflowStatus
 from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflow_engine import WorkflowEngine, WorkflowExecutionError
 from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import UserStatus
@@ -46,6 +46,7 @@ class WorkflowEngineODPSEventPublishingTest(TestCase):
         """Set up test fixtures"""
         # Reset event bus so next get_event_bus() uses EVENT_BUS_FORCE_SYNC_PERSISTENCE
         import hub.apps.core.events.bus as bus_module
+
         bus_module._event_bus = None
 
         unique_id = str(uuid.uuid4())[:8]
@@ -294,34 +295,45 @@ class WorkflowEngineODPSEventPublishingTest(TestCase):
             data__workflow_instance_id=str(instance.id),
         ).count()
 
-        # Execute workflow - should fail
+        # Execute workflow - should fail with validation error.
+        # The engine may raise WorkflowExecutionError, or may return the instance
+        # with FAILED status.  Both are valid outcomes for an invalid input.
         try:
             instance = self.engine.execute_instance(str(instance.id))
-        except Exception:
-            pass  # Expected to fail
+        except (WorkflowExecutionError, Exception) as exc:
+            # Only accept controlled workflow exceptions; re-raise programming errors.
+            if not isinstance(exc, WorkflowExecutionError):
+                exc_msg = str(exc).lower()
+                if "validation" not in exc_msg and "required" not in exc_msg and "missing" not in exc_msg:
+                    raise
 
         instance.refresh_from_db()
+        self.assertIn(instance.status, [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK],
+                      "Workflow with invalid ODPS document must reach a terminal failure state")
 
-        # Verify odps.workflow.failed event was published if workflow failed
-        if instance.status == WorkflowStatus.FAILED:
-            odps_failed_events = Event.objects.filter(
-                event_type="odps.workflow.failed",
-                data__workflow_instance_id=str(instance.id),
-            )
-            # Note: Failed event might not be published if exception is raised before event publishing
-            # This is acceptable behavior - the important thing is that the workflow status is FAILED
-            if odps_failed_events.count() > initial_count:
-                failed_event = odps_failed_events.order_by("-timestamp").first()
-                self.assertEqual(failed_event.data["workflow_instance_id"], str(instance.id))
-                self.assertEqual(
-                    failed_event.data["workflow_name"], ProductCreationWorkflow.WORKFLOW_NAME
-                )
-                self.assertIn("error_message", failed_event.data)
-                self.assertEqual(failed_event.tenant_id, self.tenant.id)
-                self.assertEqual(failed_event.user_id, self.user.id)
-                # Verify error_message is not empty
-                self.assertIsNotNone(failed_event.data["error_message"])
-                self.assertNotEqual(failed_event.data["error_message"], "")
+        # Verify at least one ODPS failure event was published.
+        # Note: if compensation runs, the status may be ROLLED_BACK instead of FAILED,
+        # and the engine may emit odps.workflow.step.failed rather than odps.workflow.failed.
+        odps_failure_events = Event.objects.filter(
+            event_type__in=["odps.workflow.failed", "odps.workflow.step.failed"],
+            data__workflow_instance_id=str(instance.id),
+        )
+        self.assertGreater(
+            odps_failure_events.count(), initial_count,
+            "Expected at least one ODPS workflow or step failure event",
+        )
+        failure_event = odps_failure_events.order_by("-timestamp").first()
+        self.assertIsNotNone(failure_event)
+        self.assertEqual(failure_event.data["workflow_instance_id"], str(instance.id))
+        self.assertEqual(
+            failure_event.data.get("workflow_name") or instance.workflow_name,
+            ProductCreationWorkflow.WORKFLOW_NAME,
+        )
+        self.assertEqual(failure_event.tenant_id, self.tenant.id)
+        # Verify error information is present on the failure event.
+        error_msg = failure_event.data.get("error_message") or failure_event.data.get("error", "")
+        self.assertIsNotNone(error_msg)
+        self.assertNotEqual(error_msg, "")
 
     def test_odps_workflow_progress_event_published(self):
         """Test that odps.workflow.progress events are published during workflow execution"""
@@ -673,7 +685,6 @@ class ODPSWorkflowProgressTrackingTest(TestCase):
 
     def test_odps_workflow_progress_stored_in_database(self):
         """Test that ODPS workflow progress events are stored in database"""
-        from django.db import transaction
         from django.test import override_settings
 
         # Ensure synchronous persistence for tests
@@ -702,7 +713,7 @@ class ODPSWorkflowProgressTrackingTest(TestCase):
             # Wait a moment for events to be persisted (synchronous persistence should be immediate, but allow for transaction commit)
             import time
 
-            time.sleep(0.1)  # INTENTIONAL: test-specific timing requirement
+            time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
 
             # Verify ODPS workflow events are stored in database
             # Check for any ODPS workflow events (started, completed, progress, step.*)
@@ -736,15 +747,13 @@ class ODPSWorkflowProgressTrackingTest(TestCase):
             if instance.status == WorkflowStatus.COMPLETED:
                 progress_events = Event.objects.filter(event_type="odps.workflow.progress")
                 progress_events = [e for e in progress_events if str(instance.id) in str(e.data)]
-                # Progress events may not always be published, so this is optional
-                if len(progress_events) > 0:
-                    self.assertGreater(
-                        len(progress_events), 0, "ODPS workflow progress events should be stored"
-                    )
+                self.assertGreater(
+                    len(progress_events), 0,
+                    "ODPS workflow progress events should be stored for completed workflow",
+                )
 
     def test_odps_workflow_events_error_handling_event_publish_failure(self):
         """Test error handling when event publishing fails (edge case)"""
-        from hub.apps.core.events.models import Event
 
         input_data = {
             "original_raw": self.valid_odps_raw,
@@ -760,21 +769,21 @@ class ODPSWorkflowProgressTrackingTest(TestCase):
             created_by_id=str(self.user.id),
         )
 
-        # Even if event publishing fails, workflow should continue
-        # This is tested by verifying workflow completes successfully
+        # Execute workflow — the engine should complete or fail in a controlled
+        # manner even when event publishing encounters errors.
         instance = self.engine.start_instance(str(instance.id))
         try:
             instance = self.engine.execute_instance(str(instance.id))
-        except Exception:
-            # If execution fails, that's okay - we're testing error handling
+        except WorkflowExecutionError:
+            # Controlled failure is acceptable — the workflow hit a business
+            # rule or validation error, not a crash.
             pass
 
-        # Verify workflow state is valid regardless of event publishing success
+        # Verify the workflow reached a terminal (non-running) state
         instance.refresh_from_db()
-        self.assertIsNotNone(instance.status)
-        self.assertIn(
-            instance.status,
-            [WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK],
+        self.assertTrue(
+            instance.is_terminal(),
+            f"Workflow should reach a terminal state, got {instance.status}",
         )
 
     def test_odps_workflow_events_edge_case_multiple_workflows_same_tenant(self):

@@ -6,20 +6,21 @@ Background tasks for async event persistence to PostgreSQL.
 Uses django-rq for async job processing to avoid blocking event publishing.
 Includes retry logic, consistency validation, and write-behind pattern support.
 """
-import json
+
 import time
+from datetime import datetime
+from typing import Any
+
 import structlog
-from django_rq import job
 from django.db import transaction
 from django.utils import timezone
-from datetime import datetime
-from typing import Dict, Any, List, Optional
+from django_rq import job
 
-from .models import Event
 from .metrics import (
     event_persistence_duration_seconds,
     get_tenant_id,
 )
+from .models import Event
 
 logger = structlog.get_logger(__name__)
 
@@ -29,12 +30,12 @@ DEFAULT_RETRY_DELAY_SECONDS = 1.0
 DEFAULT_RETRY_BACKOFF_FACTOR = 2.0
 
 
-@job('job_default', timeout=30)
+@job("job_default", timeout=30)
 def persist_event_async(
-    event_data: Dict[str, Any],
+    event_data: dict[str, Any],
     max_retries: int = DEFAULT_MAX_RETRIES,
     retry_delay_seconds: float = DEFAULT_RETRY_DELAY_SECONDS,
-    retry_backoff_factor: float = DEFAULT_RETRY_BACKOFF_FACTOR
+    retry_backoff_factor: float = DEFAULT_RETRY_BACKOFF_FACTOR,
 ) -> str:
     """
     Persist event to PostgreSQL asynchronously with retry logic.
@@ -62,19 +63,19 @@ def persist_event_async(
     while retry_count <= max_retries:
         try:
             with transaction.atomic():
-                event_obj = Event.objects.create(
+                Event.objects.create(
                     event_id=event_id,
                     event_type=event_type,
                     event_version=event_data.get("event_version", "1.0.0"),
                     timestamp=datetime.fromisoformat(
-                        event_data.get("timestamp", "").replace('Z', '+00:00')
+                        event_data.get("timestamp", "").replace("Z", "+00:00")
                     ),
                     source_service=event_data.get("source", {}).get("service", "hub"),
                     tenant_id=tenant_id,
                     user_id=event_data.get("source", {}).get("user_id"),
                     request_id=event_data.get("source", {}).get("request_id"),
                     data=event_data.get("data", {}),
-                    metadata=event_data.get("metadata", {})
+                    metadata=event_data.get("metadata", {}),
                 )
 
                 # Validate consistency
@@ -83,9 +84,7 @@ def persist_event_async(
 
                 duration = timezone.now().timestamp() - start_time
                 event_persistence_duration_seconds.labels(
-                    event_type=event_type,
-                    status=status,
-                    tenant_id=tenant_label
+                    event_type=event_type, status=status, tenant_id=tenant_label
                 ).observe(duration)
 
                 logger.info(
@@ -94,7 +93,7 @@ def persist_event_async(
                     event_type=event_type,
                     tenant_id=tenant_id,
                     duration=duration,
-                    retry_count=retry_count
+                    retry_count=retry_count,
                 )
 
                 return str(event_id)
@@ -113,15 +112,13 @@ def persist_event_async(
                     retry_count=retry_count,
                     max_retries=max_retries,
                     delay=delay,
-                    duration=duration
+                    duration=duration,
                 )
                 time.sleep(delay)
             else:
                 status = "failed"
                 event_persistence_duration_seconds.labels(
-                    event_type=event_type,
-                    status=status,
-                    tenant_id=tenant_label
+                    event_type=event_type, status=status, tenant_id=tenant_label
                 ).observe(duration)
 
                 logger.error(
@@ -131,17 +128,17 @@ def persist_event_async(
                     error=str(e),
                     retry_count=retry_count,
                     duration=duration,
-                    exc_info=True
+                    exc_info=True,
                 )
                 raise
 
 
-@job('job_default', timeout=60)
+@job("job_default", timeout=60)
 def persist_events_batch_async(
-    events_data: List[Dict[str, Any]],
+    events_data: list[dict[str, Any]],
     max_retries: int = DEFAULT_MAX_RETRIES,
     retry_delay_seconds: float = DEFAULT_RETRY_DELAY_SECONDS,
-    retry_backoff_factor: float = DEFAULT_RETRY_BACKOFF_FACTOR
+    retry_backoff_factor: float = DEFAULT_RETRY_BACKOFF_FACTOR,
 ) -> int:
     """
     Persist multiple events to PostgreSQL asynchronously in batch with retry logic.
@@ -173,9 +170,7 @@ def persist_events_batch_async(
                     try:
                         timestamp_str = event_data.get("timestamp", "")
                         if isinstance(timestamp_str, str):
-                            timestamp = datetime.fromisoformat(
-                                timestamp_str.replace('Z', '+00:00')
-                            )
+                            timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
                         else:
                             timestamp = timezone.now()
                     except Exception:
@@ -191,7 +186,7 @@ def persist_events_batch_async(
                         user_id=event_data.get("source", {}).get("user_id"),
                         request_id=event_data.get("source", {}).get("request_id"),
                         data=event_data.get("data", {}),
-                        metadata=event_data.get("metadata", {})
+                        metadata=event_data.get("metadata", {}),
                     )
                     events_to_create.append(event_obj)
 
@@ -208,7 +203,7 @@ def persist_events_batch_async(
                     count=persisted_count,
                     total=len(events_data),
                     duration=duration,
-                    retry_count=retry_count
+                    retry_count=retry_count,
                 )
 
                 return persisted_count
@@ -226,7 +221,7 @@ def persist_events_batch_async(
                     max_retries=max_retries,
                     delay=delay,
                     count=len(events_data),
-                    duration=duration
+                    duration=duration,
                 )
                 time.sleep(delay)
             else:
@@ -237,12 +232,12 @@ def persist_events_batch_async(
                     error=str(e),
                     retry_count=retry_count,
                     duration=duration,
-                    exc_info=True
+                    exc_info=True,
                 )
                 raise
 
 
-def _validate_event_persistence(event_id: str, event_data: Dict[str, Any]):
+def _validate_event_persistence(event_id: str, event_data: dict[str, Any]):
     """
     Validate that an event was persisted correctly.
 
@@ -268,28 +263,23 @@ def _validate_event_persistence(event_id: str, event_data: Dict[str, Any]):
                 "event_persistence_validation_tenant_mismatch",
                 event_id=event_id,
                 expected=event_data.get("source", {}).get("tenant_id"),
-                got=str(persisted_event.tenant_id)
+                got=str(persisted_event.tenant_id),
             )
 
         logger.debug(
-            "event_persistence_validated",
-            event_id=event_id,
-            event_type=persisted_event.event_type
+            "event_persistence_validated", event_id=event_id, event_type=persisted_event.event_type
         )
 
     except Event.DoesNotExist:
         raise ValueError(f"Event {event_id} was not persisted")
     except Exception as e:
         logger.error(
-            "event_persistence_validation_error",
-            event_id=event_id,
-            error=str(e),
-            exc_info=True
+            "event_persistence_validation_error", event_id=event_id, error=str(e), exc_info=True
         )
         raise
 
 
-def _validate_batch_persistence(events_data: List[Dict[str, Any]], persisted_count: int):
+def _validate_batch_persistence(events_data: list[dict[str, Any]], persisted_count: int):
     """
     Validate that batch events were persisted correctly.
 
@@ -302,7 +292,7 @@ def _validate_batch_persistence(events_data: List[Dict[str, Any]], persisted_cou
             "event_persistence_batch_validation_warning",
             expected=len(events_data),
             persisted=persisted_count,
-            difference=len(events_data) - persisted_count
+            difference=len(events_data) - persisted_count,
         )
 
     # Sample validation: check a few events exist
@@ -320,13 +310,12 @@ def _validate_batch_persistence(events_data: List[Dict[str, Any]], persisted_cou
                 logger.warning(
                     "event_persistence_batch_validation_failed",
                     event_id=event_id,
-                    event_type=event_data.get("event_type")
+                    event_type=event_data.get("event_type"),
                 )
 
     logger.debug(
         "event_persistence_batch_validated",
         sample_size=sample_size,
         validated=validated_count,
-        persisted=persisted_count
+        persisted=persisted_count,
     )
-

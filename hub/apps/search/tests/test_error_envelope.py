@@ -4,6 +4,7 @@ Phase 273.5.2 — error envelope shape tests for search/semantic views.
 Every 4xx/5xx response from UnifiedSearchView must conform to the
 canonical ``{error: {code, message, http_status, request_id}}`` shape.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -22,15 +23,19 @@ pytestmark = pytest.mark.django_db(transaction=True)
 def _mk_tenant():
     uid = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
-        name=f"EE-{uid}", slug=f"ee-{uid}",
-        status="ACTIVE", kyc_status="UNVERIFIED",
+        name=f"EE-{uid}",
+        slug=f"ee-{uid}",
+        status="ACTIVE",
+        kyc_status="UNVERIFIED",
     )
 
 
 def _mk_user(tenant):
     return User.objects.create_user(
         email=f"ee-{uuid.uuid4().hex[:8]}@meshant.test",
-        password="testpass", tenant=tenant, status=UserStatus.ACTIVE,
+        password="testpass",
+        tenant=tenant,
+        status=UserStatus.ACTIVE,
     )
 
 

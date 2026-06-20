@@ -1,6 +1,6 @@
-import pytest
 import uuid
 
+import pytest
 from django.test import TestCase
 
 from hub.apps.contracts.tasks import _run_with_tenant_context
@@ -18,9 +18,7 @@ class ContractsTaskTenantContextTest(TestCase):
 
     def _tenant_lookup_requires_context(self):
         return Tenant.objects.extra(
-            where=[
-                "id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid"
-            ]
+            where=["id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid"]
         ).get(id=self.tenant.id)
 
     @pytest.mark.integration

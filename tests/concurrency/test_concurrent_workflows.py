@@ -2,7 +2,6 @@
 Concurrent workflow execution tests. Real WorkflowEngine and DB; no mocks.
 """
 
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from django.db import connection

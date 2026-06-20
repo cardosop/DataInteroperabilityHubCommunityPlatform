@@ -12,34 +12,38 @@ Tests security aspects:
 
 All tests use real services (no mocks/stubs) to ensure comprehensive security coverage.
 """
-import uuid
-from django.test import TestCase
-from django.core.cache import cache
 
-from hub.apps.transformation.services import TransformationService
-from hub.apps.transformation.business_rules import TransformationBusinessRules
-from hub.apps.transformation.models import (
-    TransformationPipeline,
-    PipelineExecution,
-    PipelineStatus,
-    ExecutionStatus,
-    ExecutionMode
-)
-from hub.apps.transformation.exceptions import (
-    TransformationValidationError,
-    TransformationExecutionError,
-    ResourceQuotaExceededError,
-    AssetCompatibilityError
-)
-from hub.apps.core.services.base import PermissionError, NotFoundError, ValidationError, ValidationError
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus, Role, UserRole
+import uuid
+
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.test import TestCase
+
 from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.audit.models import AuditEvent
+from hub.apps.core.services.base import (
+    NotFoundError,
+    PermissionError,
+    ValidationError,
+)
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.governance.models import AccessPolicy
-from hub.apps.audit.models import AuditEvent
-from django.contrib.auth import get_user_model
+from hub.apps.tenants.models import Tenant
+from hub.apps.transformation.business_rules import TransformationBusinessRules
+from hub.apps.transformation.exceptions import (
+    AssetCompatibilityError,
+    ResourceQuotaExceededError,
+    TransformationExecutionError,
+    TransformationValidationError,
+)
+from hub.apps.transformation.models import (
+    ExecutionMode,
+    PipelineStatus,
+    TransformationPipeline,
+)
+from hub.apps.transformation.services import TransformationService
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 User = get_user_model()
 
@@ -50,104 +54,80 @@ class TransformationSecurityTest(TestCase):
     def setUp(self):
         """Set up per-test fixtures."""
         uid = uuid.uuid4().hex[:8]
-        self.tenant1 = Tenant.objects.create(
-            name=f"Tenant 1 {uid}",
-            slug=f"tenant-1-{uid}"
-        )
+        self.tenant1 = Tenant.objects.create(name=f"Tenant 1 {uid}", slug=f"tenant-1-{uid}")
 
-        self.tenant2 = Tenant.objects.create(
-            name=f"Tenant 2 {uid}",
-            slug=f"tenant-2-{uid}"
-        )
+        self.tenant2 = Tenant.objects.create(name=f"Tenant 2 {uid}", slug=f"tenant-2-{uid}")
 
         # Create users for each tenant
         self.user1 = User.objects.create_user(
             email=f"u1-{uid}@test.com",
             password="testpass123",
             tenant=self.tenant1,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         self.user2 = User.objects.create_user(
             email=f"u2-{uid}@test.com",
             password="testpass123",
             tenant=self.tenant2,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create DATA_PROVIDER role for each tenant
         self.role1, _ = Role.objects.get_or_create(
-            tenant=self.tenant1,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant1, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
 
         self.role2, _ = Role.objects.get_or_create(
-            tenant=self.tenant2,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant2, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
 
         # Assign roles
-        UserRole.objects.get_or_create(
-            user=self.user1,
-            role=self.role1
-        )
+        UserRole.objects.get_or_create(user=self.user1, role=self.role1)
 
-        UserRole.objects.get_or_create(
-            user=self.user2,
-            role=self.role2
-        )
+        UserRole.objects.get_or_create(user=self.user2, role=self.role2)
 
         # Create access policies for each tenant
         AccessPolicy.objects.get_or_create(
             tenant=self.tenant1,
             name="Allow Pipeline Operations",
             defaults={
-                "conditions": {
-                    "user": {"tenant_id": str(self.tenant1.id)}
-                },
+                "conditions": {"user": {"tenant_id": str(self.tenant1.id)}},
                 "effect": "ALLOW",
                 "priority": 100,
                 "enabled": True,
-                "created_by": self.user1
-            }
+                "created_by": self.user1,
+            },
         )
 
         AccessPolicy.objects.get_or_create(
             tenant=self.tenant2,
             name="Allow Pipeline Operations",
             defaults={
-                "conditions": {
-                    "user": {"tenant_id": str(self.tenant2.id)}
-                },
+                "conditions": {"user": {"tenant_id": str(self.tenant2.id)}},
                 "effect": "ALLOW",
                 "priority": 100,
                 "enabled": True,
-                "created_by": self.user2
-            }
+                "created_by": self.user2,
+            },
         )
 
         # Create services for each tenant
         self.service1 = TransformationService(
-            tenant_id=str(self.tenant1.id),
-            user_id=str(self.user1.id)
+            tenant_id=str(self.tenant1.id), user_id=str(self.user1.id)
         )
 
         self.service2 = TransformationService(
-            tenant_id=str(self.tenant2.id),
-            user_id=str(self.user2.id)
+            tenant_id=str(self.tenant2.id), user_id=str(self.user2.id)
         )
 
         # Create business rules
         self.business_rules1 = TransformationBusinessRules(
-            tenant_id=str(self.tenant1.id),
-            user_id=str(self.user1.id)
+            tenant_id=str(self.tenant1.id), user_id=str(self.user1.id)
         )
 
         self.business_rules2 = TransformationBusinessRules(
-            tenant_id=str(self.tenant2.id),
-            user_id=str(self.user2.id)
+            tenant_id=str(self.tenant2.id), user_id=str(self.user2.id)
         )
 
         # Create valid pipeline definition
@@ -157,19 +137,10 @@ class TransformationSecurityTest(TestCase):
                 {
                     "name": "filter_step",
                     "type": "task",
-                    "node_config": {
-                        "node_type": "filter",
-                        "filter_expression": "age > 18"
-                    }
+                    "node_config": {"node_type": "filter", "filter_expression": "age > 18"},
                 },
-                {
-                    "name": "output_step",
-                    "type": "task",
-                    "node_config": {
-                        "node_type": "output"
-                    }
-                }
-            ]
+                {"name": "output_step", "type": "task", "node_config": {"node_type": "output"}},
+            ],
         }
 
         # Create assets for each tenant
@@ -178,7 +149,7 @@ class TransformationSecurityTest(TestCase):
             key="tenant1-asset",
             name="Tenant 1 Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user1
+            created_by=self.user1,
         )
 
         self.asset2 = Asset.objects.create(
@@ -186,7 +157,7 @@ class TransformationSecurityTest(TestCase):
             key="tenant2-asset",
             name="Tenant 2 Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user2
+            created_by=self.user2,
         )
 
         # Create CSV file content
@@ -200,7 +171,7 @@ class TransformationSecurityTest(TestCase):
             size=len(self.csv_content),
             content_type="text/csv",
             status=FileStatus.PENDING,
-            created_by=self.user1
+            created_by=self.user1,
         )
 
         self.file2 = File.objects.create(
@@ -210,7 +181,7 @@ class TransformationSecurityTest(TestCase):
             size=len(self.csv_content),
             content_type="text/csv",
             status=FileStatus.PENDING,
-            created_by=self.user2
+            created_by=self.user2,
         )
 
         # Upload files to storage (real service)
@@ -222,7 +193,7 @@ class TransformationSecurityTest(TestCase):
             storage_path1 = storage_client.save_file(
                 tenant_id=str(self.tenant1.id),
                 file_id=str(self.file1.id),
-                file_content=self.csv_content
+                file_content=self.csv_content,
             )
             self.file1.storage_path = storage_path1
             self.file1.status = FileStatus.ACTIVE
@@ -232,7 +203,7 @@ class TransformationSecurityTest(TestCase):
             storage_path2 = storage_client.save_file(
                 tenant_id=str(self.tenant2.id),
                 file_id=str(self.file2.id),
-                file_content=self.csv_content
+                file_content=self.csv_content,
             )
             self.file2.storage_path = storage_path2
             self.file2.status = FileStatus.ACTIVE
@@ -256,10 +227,10 @@ class TransformationSecurityTest(TestCase):
                 "fields": [
                     {"name": "id", "data_type": "integer"},
                     {"name": "name", "data_type": "string"},
-                    {"name": "age", "data_type": "integer"}
+                    {"name": "age", "data_type": "integer"},
                 ]
             },
-            created_by=self.user1
+            created_by=self.user1,
         )
 
         self.dataset2 = Dataset.objects.create(
@@ -273,10 +244,10 @@ class TransformationSecurityTest(TestCase):
                 "fields": [
                     {"name": "id", "data_type": "integer"},
                     {"name": "name", "data_type": "string"},
-                    {"name": "age", "data_type": "integer"}
+                    {"name": "age", "data_type": "integer"},
                 ]
             },
-            created_by=self.user2
+            created_by=self.user2,
         )
 
     def test_tenant_isolation_pipeline_access(self):
@@ -286,20 +257,16 @@ class TransformationSecurityTest(TestCase):
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
             name="Tenant 1 Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         # User1 should be able to access pipeline1
-        retrieved_pipeline = self.service1.get_pipeline(
-            pipeline_id=str(pipeline1.id)
-        )
+        retrieved_pipeline = self.service1.get_pipeline(pipeline_id=str(pipeline1.id))
         self.assertEqual(retrieved_pipeline.id, pipeline1.id)
 
         # User2 should NOT be able to access pipeline1 (different tenant)
         with self.assertRaises((NotFoundError, PermissionError)):
-            self.service2.get_pipeline(
-                pipeline_id=str(pipeline1.id)
-            )
+            self.service2.get_pipeline(pipeline_id=str(pipeline1.id))
 
     def test_tenant_isolation_pipeline_creation(self):
         """Test tenant isolation: users can only create pipelines in their tenant."""
@@ -308,7 +275,7 @@ class TransformationSecurityTest(TestCase):
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
             name="Tenant 1 Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
         self.assertEqual(pipeline1.tenant_id, self.tenant1.id)
 
@@ -320,7 +287,7 @@ class TransformationSecurityTest(TestCase):
                 tenant_id=str(self.tenant2.id),  # Wrong tenant
                 user_id=str(self.user1.id),
                 name="Tenant 2 Pipeline",
-                pipeline_definition=self.valid_pipeline_definition
+                pipeline_definition=self.valid_pipeline_definition,
             )
             # If creation succeeds, verify it belongs to tenant2 (not tenant1)
             # This is still a security issue - user1 shouldn't create resources in tenant2
@@ -331,7 +298,17 @@ class TransformationSecurityTest(TestCase):
             # Just verify it's a permission/validation error
             error_str = str(e).lower()
             self.assertTrue(
-                any(keyword in error_str for keyword in ["permission", "validation", "tenant", "access", "denied", "belong"])
+                any(
+                    keyword in error_str
+                    for keyword in [
+                        "permission",
+                        "validation",
+                        "tenant",
+                        "access",
+                        "denied",
+                        "belong",
+                    ]
+                )
             )
 
     def test_tenant_isolation_asset_access(self):
@@ -345,36 +322,49 @@ class TransformationSecurityTest(TestCase):
             created_by=self.user1,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # User1 executing with asset1 should work
         try:
-            async_mode = ExecutionMode.ASYNC[0] if isinstance(ExecutionMode.ASYNC, tuple) else ExecutionMode.ASYNC
+            async_mode = (
+                ExecutionMode.ASYNC[0]
+                if isinstance(ExecutionMode.ASYNC, tuple)
+                else ExecutionMode.ASYNC
+            )
             execution1 = self.service1.execute_pipeline(
                 pipeline_id=str(pipeline1.id),
                 asset_id=str(self.asset1.id),
                 tenant_id=str(self.tenant1.id),
                 user_id=str(self.user1.id),
-                execution_mode=async_mode
+                execution_mode=async_mode,
             )
             self.assertIsNotNone(execution1.id)
         except Exception as e:
             # If services are not available, skip
-            if any(keyword in str(e).lower() for keyword in ["workflow", "quality", "compliance", "quota"]):
+            if any(
+                keyword in str(e).lower()
+                for keyword in ["workflow", "quality", "compliance", "quota"]
+            ):
                 self.skipTest(f"Service not available or quota exceeded: {e}")
             else:
                 raise
 
         # User1 trying to execute with asset2 (different tenant) should fail
-        async_mode = ExecutionMode.ASYNC[0] if isinstance(ExecutionMode.ASYNC, tuple) else ExecutionMode.ASYNC
-        with self.assertRaises((NotFoundError, PermissionError, AssetCompatibilityError, TransformationValidationError)):
+        async_mode = (
+            ExecutionMode.ASYNC[0]
+            if isinstance(ExecutionMode.ASYNC, tuple)
+            else ExecutionMode.ASYNC
+        )
+        with self.assertRaises(
+            (NotFoundError, PermissionError, AssetCompatibilityError, TransformationValidationError)
+        ):
             self.service1.execute_pipeline(
                 pipeline_id=str(pipeline1.id),
                 asset_id=str(self.asset2.id),  # Wrong tenant
                 tenant_id=str(self.tenant1.id),
                 user_id=str(self.user1.id),
-                execution_mode=async_mode
+                execution_mode=async_mode,
             )
 
     def test_permission_validation_abac_policies(self):
@@ -385,7 +375,7 @@ class TransformationSecurityTest(TestCase):
             created_by=self.user1,
             name="Permission Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Create DENY policy for pipeline execution.
@@ -395,14 +385,12 @@ class TransformationSecurityTest(TestCase):
         deny_policy = AccessPolicy.objects.create(
             tenant=self.tenant1,
             name="Deny Pipeline Execution",
-            conditions={
-                "user": {"tenant_id": str(self.tenant1.id)}
-            },
+            conditions={"user": {"tenant_id": str(self.tenant1.id)}},
             effect="DENY",
             # Evaluated before ALLOW at priority 100
             priority=50,
             enabled=True,
-            created_by=self.user1
+            created_by=self.user1,
         )
 
         # Clear ABAC cache so the new policy is seen
@@ -418,13 +406,8 @@ class TransformationSecurityTest(TestCase):
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
         self.assertTrue(
-            any(
-                "permission" in e.lower()
-                or "denied" in e.lower()
-                for e in result.errors
-            ),
-            f"Expected permission/denied error, "
-            f"got: {result.errors}",
+            any("permission" in e.lower() or "denied" in e.lower() for e in result.errors),
+            f"Expected permission/denied error, got: {result.errors}",
         )
 
         # Cleanup
@@ -441,11 +424,12 @@ class TransformationSecurityTest(TestCase):
             created_by=self.user1,
             name="Quota Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Set running jobs to exceed limit
         from hub.apps.tenants.services import get_tenant_job_limits
+
         limits = get_tenant_job_limits(str(self.tenant1.id))
         max_concurrency = limits["max_job_concurrency"]
 
@@ -454,14 +438,18 @@ class TransformationSecurityTest(TestCase):
 
         # Try to execute pipeline (should fail due to quota)
         try:
-            async_mode = ExecutionMode.ASYNC[0] if isinstance(ExecutionMode.ASYNC, tuple) else ExecutionMode.ASYNC
+            async_mode = (
+                ExecutionMode.ASYNC[0]
+                if isinstance(ExecutionMode.ASYNC, tuple)
+                else ExecutionMode.ASYNC
+            )
             with self.assertRaises((ResourceQuotaExceededError, TransformationExecutionError)):
                 self.service1.execute_pipeline(
                     pipeline_id=str(pipeline.id),
                     asset_id=str(self.asset1.id),
                     tenant_id=str(self.tenant1.id),
                     user_id=str(self.user1.id),
-                    execution_mode=async_mode
+                    execution_mode=async_mode,
                 )
         finally:
             # Cleanup
@@ -484,12 +472,9 @@ class TransformationSecurityTest(TestCase):
                 {
                     "name": "malicious_step",
                     "type": "task",
-                    "node_config": {
-                        "node_type": "filter",
-                        "filter_expression": injection_string
-                    }
+                    "node_config": {"node_type": "filter", "filter_expression": injection_string},
                 }
-            ]
+            ],
         }
 
         # Pipeline creation should succeed -- the injection string is just
@@ -498,7 +483,7 @@ class TransformationSecurityTest(TestCase):
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
             name="Injection Test Pipeline",
-            pipeline_definition=malicious_definition
+            pipeline_definition=malicious_definition,
         )
 
         self.assertIsNotNone(pipeline.id)
@@ -519,7 +504,7 @@ class TransformationSecurityTest(TestCase):
         )
         self.assertTrue(
             validation_result.is_valid,
-            f"Expected valid structure, got errors: {validation_result.errors}"
+            f"Expected valid structure, got errors: {validation_result.errors}",
         )
 
     def test_cross_tenant_access_control_entitlements(self):
@@ -530,7 +515,7 @@ class TransformationSecurityTest(TestCase):
             created_by=self.user1,
             name="Cross-Tenant Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Validate cross-tenant access (should be denied -- user1 has no
@@ -545,7 +530,7 @@ class TransformationSecurityTest(TestCase):
         self.assertGreater(len(result.errors), 0)
         self.assertTrue(
             any("access denied" in err.lower() for err in result.errors),
-            f"Expected 'access denied' error, got: {result.errors}"
+            f"Expected 'access denied' error, got: {result.errors}",
         )
 
     def test_audit_logging_security_events(self):
@@ -558,7 +543,7 @@ class TransformationSecurityTest(TestCase):
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
             name="Audit Security Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         # Verify audit event was created
@@ -567,7 +552,7 @@ class TransformationSecurityTest(TestCase):
             action="CREATED",
             resource_id=pipeline.id,
             tenant_id=self.tenant1.id,
-            actor_user_id=self.user1.id
+            actor_user_id=self.user1.id,
         )
         self.assertGreaterEqual(audit_events.count(), 1)
 
@@ -584,7 +569,7 @@ class TransformationSecurityTest(TestCase):
             created_by=self.user1,
             name="Asset Permission Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Create DENY policy for asset access.
@@ -594,29 +579,22 @@ class TransformationSecurityTest(TestCase):
         deny_policy = AccessPolicy.objects.create(
             tenant=self.tenant1,
             name="Deny Asset Access",
-            conditions={
-                "user": {
-                    "tenant_id": str(self.tenant1.id)
-                }
-            },
+            conditions={"user": {"tenant_id": str(self.tenant1.id)}},
             effect="DENY",
             priority=50,  # Evaluated before ALLOW at 100
             enabled=True,
             asset=self.asset1,
-            created_by=self.user1
+            created_by=self.user1,
         )
 
         # Clear ABAC cache so the new DENY policy is picked up
         cache.clear()
 
         # Validate asset access permissions (should fail)
-        result = (
-            self.business_rules1
-            .validate_pipeline_execution_permission(
-                pipeline,
-                source_asset=self.asset1,
-                raise_on_error=False,
-            )
+        result = self.business_rules1.validate_pipeline_execution_permission(
+            pipeline,
+            source_asset=self.asset1,
+            raise_on_error=False,
         )
 
         # DENY at priority 50 is evaluated before ALLOW at 100,
@@ -624,13 +602,8 @@ class TransformationSecurityTest(TestCase):
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
         self.assertTrue(
-            any(
-                "permission" in e.lower()
-                or "denied" in e.lower()
-                for e in result.errors
-            ),
-            f"Expected permission/denied error, "
-            f"got: {result.errors}",
+            any("permission" in e.lower() or "denied" in e.lower() for e in result.errors),
+            f"Expected permission/denied error, got: {result.errors}",
         )
 
         # Cleanup
@@ -640,6 +613,7 @@ class TransformationSecurityTest(TestCase):
         """Test resource quota is isolated per tenant."""
         # Set quota for tenant1
         from hub.apps.tenants.services import get_tenant_job_limits
+
         limits1 = get_tenant_job_limits(str(self.tenant1.id))
         max_concurrency1 = limits1["max_job_concurrency"]
 
@@ -670,35 +644,45 @@ class TransformationSecurityTest(TestCase):
             created_by=self.user1,
             name="Authorization Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # User1 should be able to execute (has permission)
         try:
-            async_mode = ExecutionMode.ASYNC[0] if isinstance(ExecutionMode.ASYNC, tuple) else ExecutionMode.ASYNC
+            async_mode = (
+                ExecutionMode.ASYNC[0]
+                if isinstance(ExecutionMode.ASYNC, tuple)
+                else ExecutionMode.ASYNC
+            )
             execution1 = self.service1.execute_pipeline(
                 pipeline_id=str(pipeline.id),
                 asset_id=str(self.asset1.id),
                 tenant_id=str(self.tenant1.id),
                 user_id=str(self.user1.id),
-                execution_mode=async_mode
+                execution_mode=async_mode,
             )
             self.assertIsNotNone(execution1.id)
         except Exception as e:
             # If services are not available or quota exceeded, skip
-            if any(keyword in str(e).lower() for keyword in ["workflow", "quality", "compliance", "quota"]):
+            if any(
+                keyword in str(e).lower()
+                for keyword in ["workflow", "quality", "compliance", "quota"]
+            ):
                 self.skipTest(f"Service not available or quota exceeded: {e}")
             else:
                 raise
 
         # User2 (different tenant) should NOT be able to execute
-        async_mode = ExecutionMode.ASYNC[0] if isinstance(ExecutionMode.ASYNC, tuple) else ExecutionMode.ASYNC
+        async_mode = (
+            ExecutionMode.ASYNC[0]
+            if isinstance(ExecutionMode.ASYNC, tuple)
+            else ExecutionMode.ASYNC
+        )
         with self.assertRaises((NotFoundError, PermissionError, TransformationValidationError)):
             self.service2.execute_pipeline(
                 pipeline_id=str(pipeline.id),
                 asset_id=str(self.asset1.id),
                 tenant_id=str(self.tenant2.id),
                 user_id=str(self.user2.id),
-                execution_mode=async_mode
+                execution_mode=async_mode,
             )
-

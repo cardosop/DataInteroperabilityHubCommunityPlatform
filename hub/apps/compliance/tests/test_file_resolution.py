@@ -5,12 +5,13 @@ Validates the file-lookup priority: direct file > dataset.file >
 asset's latest dataset's file, plus error handling for missing files
 and S3 failures. All tests use real infrastructure (no mocks).
 """
+
 import time
 import uuid
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
@@ -23,8 +24,6 @@ from hub.apps.jobs.utils import create_job
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
@@ -86,7 +85,7 @@ class FileResolutionTest(TestCase):
                 return
             except (ConnectionError, OSError):
                 if attempt < max_attempts - 1:
-                    time.sleep(delay_seconds)
+                    time.sleep(delay_seconds)  # noqa: sleep-needed — polling loop
                     continue
 
     def _create_job(self, **overrides):
@@ -127,6 +126,7 @@ class FileResolutionTest(TestCase):
         time to process the job before the next poll.
         """
         import time as _time
+
         from hub.apps.compliance.tasks import poll_compliance_job
 
         for _ in range(max_attempts):
@@ -141,7 +141,7 @@ class FileResolutionTest(TestCase):
                 ComplianceRunStatus.SUCCEEDED,
                 ComplianceRunStatus.FAILED,
             ):
-                _time.sleep(1)
+                _time.sleep(1)  # noqa: sleep-needed — polling loop
 
     # ----------------------------------------------------------------
     # 1. File resolved from direct file FK
@@ -158,7 +158,8 @@ class FileResolutionTest(TestCase):
         self._poll_to_terminal(run)
         run.refresh_from_db()
         self.assertEqual(
-            run.status, ComplianceRunStatus.SUCCEEDED,
+            run.status,
+            ComplianceRunStatus.SUCCEEDED,
             f"Expected SUCCEEDED; regulation_mapping_json error: "
             f"{(run.regulation_mapping_json or {}).get('error', 'none')}",
         )

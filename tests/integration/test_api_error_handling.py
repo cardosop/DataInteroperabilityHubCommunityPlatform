@@ -3,13 +3,13 @@ Integration tests for API error handling.
 
 Verifies 400, 401, 403, 404, and validation error responses with real client (no mocks/stubs).
 """
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 import pytest
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
 from tests.factories import TenantFactory, UserFactory
 

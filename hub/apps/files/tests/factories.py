@@ -3,9 +3,11 @@ Test Factories for Files
 
 Real factories (not mocks) for creating test data for File models.
 """
-import uuid
+
 import hashlib
-from typing import Optional, Dict, Any
+import uuid
+from typing import Any
+
 from django.contrib.auth import get_user_model
 
 from hub.apps.files.models import File, FileScanStatus, FileStatus
@@ -16,23 +18,23 @@ User = get_user_model()
 
 class FileFactory:
     """Factory for creating File instances"""
-    
+
     @staticmethod
     def create_file(
         tenant: Tenant,
-        name: Optional[str] = None,
-        content_type: Optional[str] = None,
-        size: Optional[int] = None,
-        content_sha256: Optional[str] = None,
-        storage_path: Optional[str] = None,
+        name: str | None = None,
+        content_type: str | None = None,
+        size: int | None = None,
+        content_sha256: str | None = None,
+        storage_path: str | None = None,
         status: FileStatus = FileStatus.ACTIVE,
-        metadata_json: Optional[Dict[str, Any]] = None,
-        created_by: Optional[User] = None,
-        **kwargs
+        metadata_json: dict[str, Any] | None = None,
+        created_by: User | None = None,
+        **kwargs,
     ) -> File:
         """
         Create a File instance.
-        
+
         Args:
             tenant: Tenant instance (required)
             name: Original filename (default: auto-generated)
@@ -44,32 +46,29 @@ class FileFactory:
             metadata_json: Additional metadata
             created_by: User who uploaded the file
             **kwargs: Additional fields
-            
+
         Returns:
             File instance
         """
         if name is None:
             name = f"test-file-{uuid.uuid4().hex[:8]}.csv"
-        
+
         if content_type is None:
             content_type = "text/csv"
-        
+
         if size is None:
             size = 1024
-        
+
         if content_sha256 is None:
             # Generate a fake SHA-256 hash for testing
             fake_content = f"test-content-{uuid.uuid4().hex}"
             content_sha256 = hashlib.sha256(fake_content.encode()).hexdigest()
-        
+
         if storage_path is None:
             storage_path = f"test/{tenant.slug}/{name}"
-        
+
         if metadata_json is None:
-            metadata_json = {
-                "upload_method": "browser",
-                "chunk_count": 1
-            }
+            metadata_json = {"upload_method": "browser", "chunk_count": 1}
 
         scan_status = kwargs.pop("scan_status", None)
         if scan_status is None:
@@ -89,48 +88,41 @@ class FileFactory:
             scan_status=scan_status,
             metadata_json=metadata_json,
             created_by=created_by,
-            **kwargs
+            **kwargs,
         )
-    
+
     @staticmethod
-    def create_file_with_all_statuses(tenant: Tenant, created_by: Optional[User] = None) -> list[File]:
+    def create_file_with_all_statuses(tenant: Tenant, created_by: User | None = None) -> list[File]:
         """
         Create File instances with all possible statuses.
-        
+
         Args:
             tenant: Tenant instance
             created_by: User who uploaded the files
-            
+
         Returns:
             List of File instances
         """
         files = []
         for status in FileStatus:
             files.append(
-                FileFactory.create_file(
-                    tenant=tenant,
-                    status=status,
-                    created_by=created_by
-                )
+                FileFactory.create_file(tenant=tenant, status=status, created_by=created_by)
             )
         return files
-    
+
     @staticmethod
     def create_large_file(
-        tenant: Tenant,
-        size_mb: int = 100,
-        created_by: Optional[User] = None,
-        **kwargs
+        tenant: Tenant, size_mb: int = 100, created_by: User | None = None, **kwargs
     ) -> File:
         """
         Create a large file for testing.
-        
+
         Args:
             tenant: Tenant instance
             size_mb: File size in megabytes (default: 100)
             created_by: User who uploaded the file
             **kwargs: Additional fields
-            
+
         Returns:
             File instance
         """
@@ -138,12 +130,7 @@ class FileFactory:
         return FileFactory.create_file(
             tenant=tenant,
             size=size_bytes,
-            metadata_json={
-                "upload_method": "multipart",
-                "chunk_count": 10,
-                "size_mb": size_mb
-            },
+            metadata_json={"upload_method": "multipart", "chunk_count": 10, "size_mb": size_mb},
             created_by=created_by,
-            **kwargs
+            **kwargs,
         )
-

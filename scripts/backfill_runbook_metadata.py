@@ -6,9 +6,9 @@ Adds a ``## Maintenance`` footer with ``Owner`` and ``Last reviewed``
 fields to every runbook under ``docs/runbooks/`` that doesn't already
 have them.  Existing metadata is preserved.
 """
+
 from __future__ import annotations
 
-import os
 import re
 from datetime import date
 from pathlib import Path
@@ -116,6 +116,7 @@ def _has_metadata(content: str) -> bool:
 def _next_review_date() -> str:
     """Quarterly review: 3 months from today."""
     from datetime import timedelta
+
     return (date.today() + timedelta(days=90)).isoformat()
 
 

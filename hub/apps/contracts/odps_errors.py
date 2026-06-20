@@ -19,10 +19,13 @@ All errors include:
 - recoverable: Whether the error can be recovered from
 - recovery_strategy: Suggested recovery strategy
 """
+
 import time
-from typing import Optional, Dict, Any, Callable
-from enum import Enum
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from enum import Enum
+from typing import Any
+
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -30,6 +33,7 @@ logger = structlog.get_logger(__name__)
 
 class RecoveryStrategy(str, Enum):
     """Error recovery strategies"""
+
     RETRY = "retry"
     FALLBACK = "fallback"
     COMPENSATION = "compensation"
@@ -65,14 +69,14 @@ class ODPSError(Exception):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        user_message: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
+        error_code: str | None = None,
+        user_message: str | None = None,
+        context: dict[str, Any] | None = None,
         recoverable: bool = False,
-        recovery_strategy: Optional[RecoveryStrategy] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        recovery_strategy: RecoveryStrategy | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize ODPS error.
@@ -107,7 +111,7 @@ class ODPSError(Exception):
             self.context["cause_type"] = type(cause).__name__
             self.context["cause_message"] = str(cause)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert error to dictionary for API responses and logging.
 
@@ -170,14 +174,14 @@ class ODPSValidationError(ODPSError):
         self,
         message: str,
         error_code: str = None,
-        user_message: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        field_path: Optional[str] = None,
-        expected: Optional[Any] = None,
-        actual: Optional[Any] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        user_message: str | None = None,
+        context: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize ODPS validation error.
@@ -237,15 +241,15 @@ class ODPSRefResolutionError(ODPSError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        user_message: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        retry_after: Optional[int] = None,
-        ref_path: Optional[str] = None,
-        ref_type: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        user_message: str | None = None,
+        context: dict[str, Any] | None = None,
+        retry_after: int | None = None,
+        ref_path: str | None = None,
+        ref_type: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize ODPS ref resolution error.
@@ -287,15 +291,17 @@ class ODPSRefResolutionError(ODPSError):
             self.ERROR_CODE_RESOLUTION_FAILED,
         }
         recovery_strategy = None
-        if error_code == self.ERROR_CODE_RATE_LIMIT_EXCEEDED:
-            recovery_strategy = RecoveryStrategy.RETRY
-        elif error_code == self.ERROR_CODE_TIMEOUT:
+        if (
+            error_code == self.ERROR_CODE_RATE_LIMIT_EXCEEDED
+            or error_code == self.ERROR_CODE_TIMEOUT
+        ):
             recovery_strategy = RecoveryStrategy.RETRY
         elif error_code == self.ERROR_CODE_RESOLUTION_FAILED:
             recovery_strategy = RecoveryStrategy.FALLBACK
-        elif error_code == self.ERROR_CODE_SECURITY_VIOLATION:
-            recovery_strategy = RecoveryStrategy.FAIL
-        elif error_code == self.ERROR_CODE_INVALID_REF:
+        elif (
+            error_code == self.ERROR_CODE_SECURITY_VIOLATION
+            or error_code == self.ERROR_CODE_INVALID_REF
+        ):
             recovery_strategy = RecoveryStrategy.FAIL
 
         super().__init__(
@@ -312,7 +318,7 @@ class ODPSRefResolutionError(ODPSError):
 
         self.retry_after = retry_after
 
-    def get_retry_after_header(self) -> Optional[str]:
+    def get_retry_after_header(self) -> str | None:
         """
         Get Retry-After header value (seconds until retry).
 
@@ -326,7 +332,7 @@ class ODPSRefResolutionError(ODPSError):
         retry_seconds = max(0, self.retry_after - current_time)
         return str(retry_seconds)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert error to dictionary, including retry_after information"""
         result = super().to_dict()
 
@@ -353,15 +359,15 @@ class ODPSNormalizationError(ODPSError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        user_message: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        field_path: Optional[str] = None,
-        source_path: Optional[str] = None,
-        target_path: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        user_message: str | None = None,
+        context: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        source_path: str | None = None,
+        target_path: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize ODPS normalization error.
@@ -419,14 +425,14 @@ class ODPSExportError(ODPSError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        user_message: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        export_format: Optional[str] = None,
-        file_path: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        user_message: str | None = None,
+        context: dict[str, Any] | None = None,
+        export_format: str | None = None,
+        file_path: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize ODPS export error.
@@ -482,16 +488,16 @@ class ODPSLinkingError(ODPSError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        user_message: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        link_path: Optional[str] = None,
-        link_type: Optional[str] = None,
-        source_id: Optional[str] = None,
-        target_id: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        user_message: str | None = None,
+        context: dict[str, Any] | None = None,
+        link_path: str | None = None,
+        link_type: str | None = None,
+        source_id: str | None = None,
+        target_id: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize ODPS linking error.
@@ -558,10 +564,9 @@ class ErrorRecoveryHandler(ABC):
         Returns:
             True if this handler can handle the error
         """
-        pass
 
     @abstractmethod
-    def recover(self, error: ODPSError, context: Dict[str, Any]) -> Any:
+    def recover(self, error: ODPSError, context: dict[str, Any]) -> Any:
         """
         Attempt to recover from the error.
 
@@ -575,7 +580,6 @@ class ErrorRecoveryHandler(ABC):
         Raises:
             ODPSError: If recovery fails
         """
-        pass
 
 
 class RetryRecoveryHandler(ErrorRecoveryHandler):
@@ -608,16 +612,13 @@ class RetryRecoveryHandler(ErrorRecoveryHandler):
 
     def can_handle(self, error: ODPSError) -> bool:
         """Check if error is recoverable with retry"""
-        return (
-            error.recoverable
-            and error.recovery_strategy == RecoveryStrategy.RETRY
-        )
+        return error.recoverable and error.recovery_strategy == RecoveryStrategy.RETRY
 
     def recover(
         self,
         error: ODPSError,
-        context: Dict[str, Any],
-        operation: Optional[Callable] = None,
+        context: dict[str, Any],
+        operation: Callable | None = None,
     ) -> Any:
         """
         Retry the operation with exponential backoff.
@@ -665,7 +666,7 @@ class RetryRecoveryHandler(ErrorRecoveryHandler):
             except Exception as e:
                 # Non-ODPS error, wrap and raise
                 raise ODPSError(
-                    message=f"Retry recovery failed: {str(e)}",
+                    message=f"Retry recovery failed: {e!s}",
                     error_code=ODPSError.ERROR_CODE_PROCESSING_FAILED,
                     cause=e,
                 ) from e
@@ -680,16 +681,13 @@ class FallbackRecoveryHandler(ErrorRecoveryHandler):
 
     def can_handle(self, error: ODPSError) -> bool:
         """Check if error is recoverable with fallback"""
-        return (
-            error.recoverable
-            and error.recovery_strategy == RecoveryStrategy.FALLBACK
-        )
+        return error.recoverable and error.recovery_strategy == RecoveryStrategy.FALLBACK
 
     def recover(
         self,
         error: ODPSError,
-        context: Dict[str, Any],
-        fallback_operation: Optional[Callable] = None,
+        context: dict[str, Any],
+        fallback_operation: Callable | None = None,
     ) -> Any:
         """
         Use fallback operation to recover.
@@ -719,7 +717,7 @@ class FallbackRecoveryHandler(ErrorRecoveryHandler):
             return fallback_operation()
         except Exception as e:
             raise ODPSError(
-                message=f"Fallback recovery failed: {str(e)}",
+                message=f"Fallback recovery failed: {e!s}",
                 error_code=ODPSError.ERROR_CODE_PROCESSING_FAILED,
                 cause=e,
             ) from e
@@ -734,16 +732,13 @@ class CompensationRecoveryHandler(ErrorRecoveryHandler):
 
     def can_handle(self, error: ODPSError) -> bool:
         """Check if error can be compensated"""
-        return (
-            error.recoverable
-            and error.recovery_strategy == RecoveryStrategy.COMPENSATION
-        )
+        return error.recoverable and error.recovery_strategy == RecoveryStrategy.COMPENSATION
 
     def recover(
         self,
         error: ODPSError,
-        context: Dict[str, Any],
-        compensation_operation: Optional[Callable] = None,
+        context: dict[str, Any],
+        compensation_operation: Callable | None = None,
     ) -> Any:
         """
         Execute compensation operation.
@@ -773,7 +768,7 @@ class CompensationRecoveryHandler(ErrorRecoveryHandler):
             return compensation_operation()
         except Exception as e:
             raise ODPSError(
-                message=f"Compensation recovery failed: {str(e)}",
+                message=f"Compensation recovery failed: {e!s}",
                 error_code=ODPSError.ERROR_CODE_PROCESSING_FAILED,
                 cause=e,
             ) from e
@@ -781,8 +776,8 @@ class CompensationRecoveryHandler(ErrorRecoveryHandler):
 
 def recover_from_error(
     error: ODPSError,
-    context: Dict[str, Any],
-    handlers: Optional[list[ErrorRecoveryHandler]] = None,
+    context: dict[str, Any],
+    handlers: list[ErrorRecoveryHandler] | None = None,
 ) -> Any:
     """
     Attempt to recover from an ODPS error using available recovery handlers.
@@ -818,11 +813,10 @@ def recover_from_error(
             except Exception as e:
                 # Non-ODPS error, wrap and raise
                 raise ODPSError(
-                    message=f"Recovery failed: {str(e)}",
+                    message=f"Recovery failed: {e!s}",
                     error_code=ODPSError.ERROR_CODE_PROCESSING_FAILED,
                     cause=e,
                 ) from e
 
     # No handler could recover
     raise error
-

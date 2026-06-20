@@ -18,14 +18,13 @@ Usage:
     python scripts/lint_migrations.py --all                # scan all migrations
     python scripts/lint_migrations.py --json               # JSON output for CI
 """
+
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,10 +36,18 @@ DANGEROUS_PATTERNS: list[tuple[str, str, str]] = [
     (r"\.\s*DeleteModel\s*\(", "warning", "DeleteModel — verify table is deprecated first"),
     (r"DROP\s+COLUMN\b", "error", "DROP COLUMN — irreversible data loss"),
     (r"DROP\s+TABLE\b", "error", "DROP TABLE — irreversible data loss"),
-    (r"ALTER\s+COLUMN\b.*\bTYPE\b", "warning", "ALTER COLUMN TYPE — may cause data loss or casting errors"),
+    (
+        r"ALTER\s+COLUMN\b.*\bTYPE\b",
+        "warning",
+        "ALTER COLUMN TYPE — may cause data loss or casting errors",
+    ),
     (r"\.\s*RunSQL\s*\(.*DROP\b(?!.*IF\s+EXISTS)", "warning", "RunSQL with DROP without IF EXISTS"),
     (r"\.\s*RemoveIndex\s*\(", "info", "RemoveIndex — verify index is unused"),
-    (r"\.\s*AlterUniqueTogether\s*\(\s*\)", "warning", "AlterUniqueTogether with empty constraints — drops constraint"),
+    (
+        r"\.\s*AlterUniqueTogether\s*\(\s*\)",
+        "warning",
+        "AlterUniqueTogether with empty constraints — drops constraint",
+    ),
 ]
 
 
@@ -56,7 +63,9 @@ class Finding:
 def _run_git(repo_root: Path, args: list[str]) -> str:
     result = subprocess.run(
         ["git", "-C", str(repo_root), *args],
-        text=True, capture_output=True,
+        check=False,
+        text=True,
+        capture_output=True,
     )
     return result.stdout.strip()
 
@@ -64,7 +73,9 @@ def _run_git(repo_root: Path, args: list[str]) -> str:
 def _resolve_merge_base(repo_root: Path, base_ref: str) -> str:
     result = subprocess.run(
         ["git", "-C", str(repo_root), "merge-base", base_ref, "HEAD"],
-        text=True, capture_output=True,
+        check=False,
+        text=True,
+        capture_output=True,
     )
     if result.returncode != 0:
         raise RuntimeError(f"Could not resolve merge-base for '{base_ref}'")
@@ -76,8 +87,11 @@ def _changed_migrations(repo_root: Path, base_ref: str) -> list[str]:
     merge_base = _resolve_merge_base(repo_root, base_ref)
     output = _run_git(repo_root, ["diff", "--name-only", f"{merge_base}..HEAD"])
     return [
-        line.strip() for line in output.splitlines()
-        if line.strip() and "/migrations/" in line and line.endswith(".py")
+        line.strip()
+        for line in output.splitlines()
+        if line.strip()
+        and "/migrations/" in line
+        and line.endswith(".py")
         and not line.endswith("__init__.py")
     ]
 
@@ -85,14 +99,20 @@ def _changed_migrations(repo_root: Path, base_ref: str) -> list[str]:
 def _all_migrations(repo_root: Path) -> list[str]:
     """Return all migration files in the repo."""
     result = subprocess.run(
-        ["find", str(repo_root / "hub" / "apps"), "-path", "*/migrations/*.py",
-         "-not", "-name", "__init__.py"],
-        text=True, capture_output=True,
+        [
+            "find",
+            str(repo_root / "hub" / "apps"),
+            "-path",
+            "*/migrations/*.py",
+            "-not",
+            "-name",
+            "__init__.py",
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
     )
-    return [
-        line.strip() for line in result.stdout.splitlines()
-        if line.strip()
-    ]
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 def scan_file(filepath: str) -> list[Finding]:
@@ -107,13 +127,15 @@ def scan_file(filepath: str) -> list[Finding]:
     for i, line in enumerate(lines, 1):
         for pattern, severity, description in DANGEROUS_PATTERNS:
             if re.search(pattern, line):
-                findings.append(Finding(
-                    file=filepath,
-                    line=i,
-                    severity=severity,
-                    description=description,
-                    snippet=line.strip()[:120],
-                ))
+                findings.append(
+                    Finding(
+                        file=filepath,
+                        line=i,
+                        severity=severity,
+                        description=description,
+                        snippet=line.strip()[:120],
+                    )
+                )
     return findings
 
 
@@ -147,21 +169,28 @@ def run_lint(
     infos = [f for f in all_findings if f.severity == "info"]
 
     if json_output:
-        print(json.dumps({
-            "status": "fail" if errors else ("warn" if warnings else "ok"),
-            "files_checked": len(files),
-            "errors": len(errors),
-            "warnings": len(warnings),
-            "infos": len(infos),
-            "findings": [
+        print(
+            json.dumps(
                 {
-                    "file": f.file, "line": f.line,
-                    "severity": f.severity, "description": f.description,
-                    "snippet": f.snippet,
-                }
-                for f in all_findings
-            ],
-        }, indent=2))
+                    "status": "fail" if errors else ("warn" if warnings else "ok"),
+                    "files_checked": len(files),
+                    "errors": len(errors),
+                    "warnings": len(warnings),
+                    "infos": len(infos),
+                    "findings": [
+                        {
+                            "file": f.file,
+                            "line": f.line,
+                            "severity": f.severity,
+                            "description": f.description,
+                            "snippet": f.snippet,
+                        }
+                        for f in all_findings
+                    ],
+                },
+                indent=2,
+            )
+        )
     else:
         print(f"Checked {len(files)} migration file(s).")
         for f in all_findings:
@@ -181,19 +210,27 @@ def run_lint(
 def main() -> int:
     parser = argparse.ArgumentParser(description="308.4 — Migration safety lint")
     parser.add_argument(
-        "--repo-root", type=Path, default=Path.cwd(),
+        "--repo-root",
+        type=Path,
+        default=Path.cwd(),
         help="Repository root path.",
     )
     parser.add_argument(
-        "--base-ref", type=str, default=None,
+        "--base-ref",
+        type=str,
+        default=None,
         help="Git base ref for PR diff (default: origin/main).",
     )
     parser.add_argument(
-        "--all", action="store_true", default=False,
+        "--all",
+        action="store_true",
+        default=False,
         help="Scan all migrations in the repo.",
     )
     parser.add_argument(
-        "--json", action="store_true", default=False,
+        "--json",
+        action="store_true",
+        default=False,
         help="Output results as JSON.",
     )
     args = parser.parse_args()

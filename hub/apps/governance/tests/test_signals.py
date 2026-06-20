@@ -4,11 +4,12 @@ Phase 80.3 — Governance signal tests.
 Tests ABAC policy cache invalidation on AccessPolicy and FieldAccessPolicy
 save/delete operations. Uses real cache state verification (no mocks).
 """
+
 import uuid
 
 import pytest
 from django.core.cache import cache
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_delete, post_save
 from django.test import TestCase
 
 
@@ -22,13 +23,16 @@ class GovernanceSignalTest(TestCase):
 
     def _create_tenant(self):
         from hub.apps.tenants.models import Tenant
+
         tenant, _ = Tenant.objects.get_or_create(
-            name="gov-sig-test", defaults={"slug": "gov-sig-test"},
+            name="gov-sig-test",
+            defaults={"slug": "gov-sig-test"},
         )
         return tenant
 
     def _create_asset(self, tenant):
         from hub.apps.assets.models import Asset
+
         return Asset.objects.create(
             tenant=tenant,
             name=f"gov-asset-{uuid.uuid4().hex[:6]}",
@@ -52,8 +56,8 @@ class GovernanceSignalTest(TestCase):
     def test_signal_connected_to_post_save_and_post_delete(self):
         """All 3 signal handlers are connected."""
         from hub.apps.governance.signals import (
-            invalidate_policy_cache_on_delete,
             invalidate_field_policy_cache,
+            invalidate_policy_cache_on_delete,
             invalidate_policy_cache_on_save,
         )
 
@@ -87,6 +91,7 @@ class GovernanceSignalTest(TestCase):
     def test_policy_save_invalidates_tenant_cache(self):
         """Saving an AccessPolicy invalidates tenant cache (real cache verification)."""
         from hub.apps.governance.models import AccessPolicy
+
         tenant = self._create_tenant()
 
         # Set baseline cache version
@@ -96,23 +101,26 @@ class GovernanceSignalTest(TestCase):
         # Create policy → post_save signal → invalidate_policy_cache(tenant_id)
         # → increments version from 5 to 6
         AccessPolicy.objects.create(
-            tenant=tenant, name="test-policy",
-            conditions={"role": "admin"}, effect="ALLOW",
+            tenant=tenant,
+            name="test-policy",
+            conditions={"role": "admin"},
+            effect="ALLOW",
         )
 
         # Verify version was incremented
         new_version = cache.get(version_key)
-        assert new_version == 6, (
-            f"Expected cache version 6 after policy save, got {new_version}"
-        )
+        assert new_version == 6, f"Expected cache version 6 after policy save, got {new_version}"
 
     def test_policy_delete_invalidates_tenant_cache(self):
         """Deleting an AccessPolicy invalidates tenant cache (real cache verification)."""
         from hub.apps.governance.models import AccessPolicy
+
         tenant = self._create_tenant()
         policy = AccessPolicy.objects.create(
-            tenant=tenant, name="del-policy",
-            conditions={"role": "admin"}, effect="DENY",
+            tenant=tenant,
+            name="del-policy",
+            conditions={"role": "admin"},
+            effect="DENY",
         )
 
         # Set baseline cache version AFTER creation (which itself increments version)
@@ -131,7 +139,6 @@ class GovernanceSignalTest(TestCase):
     def test_asset_scoped_policy_invalidates_scoped_cache(self):
         """AccessPolicy with asset invalidates asset-scoped cache."""
         from hub.apps.governance.models import AccessPolicy
-        from hub.apps.governance.abac import ABACEngine
 
         tenant = self._create_tenant()
         asset = self._create_asset(tenant)
@@ -142,8 +149,10 @@ class GovernanceSignalTest(TestCase):
 
         # Create asset-scoped policy → signal fires: version increment + scoped delete
         AccessPolicy.objects.create(
-            tenant=tenant, name="asset-policy",
-            conditions={"role": "viewer"}, effect="ALLOW",
+            tenant=tenant,
+            name="asset-policy",
+            conditions={"role": "viewer"},
+            effect="ALLOW",
             asset=asset,
         )
 
@@ -165,8 +174,10 @@ class GovernanceSignalTest(TestCase):
 
         # Create dataset-scoped policy
         AccessPolicy.objects.create(
-            tenant=tenant, name="ds-policy",
-            conditions={"role": "analyst"}, effect="ALLOW",
+            tenant=tenant,
+            name="ds-policy",
+            conditions={"role": "analyst"},
+            effect="ALLOW",
             dataset=dataset,
         )
 
@@ -177,22 +188,22 @@ class GovernanceSignalTest(TestCase):
 
     def test_field_policy_save_invalidates_dataset_cache(self):
         """FieldAccessPolicy save invalidates dataset-scoped cache."""
-        from hub.apps.governance.models import AccessPolicy, FieldAccessPolicy
         from hub.apps.governance.abac import ABACEngine
+        from hub.apps.governance.models import AccessPolicy, FieldAccessPolicy
 
         tenant = self._create_tenant()
         dataset = self._create_dataset(tenant)
         policy = AccessPolicy.objects.create(
-            tenant=tenant, name="parent-policy",
-            conditions={"role": "admin"}, effect="ALLOW",
+            tenant=tenant,
+            name="parent-policy",
+            conditions={"role": "admin"},
+            effect="ALLOW",
         )
 
         # Set a known version and populate the scoped cache key
         version_key = self._get_version_key(tenant.id)
         cache.set(version_key, 10)
-        scoped_key = ABACEngine._get_cache_key(
-            str(tenant.id), "DATASET", str(dataset.id)
-        )
+        scoped_key = ABACEngine._get_cache_key(str(tenant.id), "DATASET", str(dataset.id))
         cache.set(scoped_key, ["cached-policy-id"])
         # Verify key was set
         assert cache.get(scoped_key) == ["cached-policy-id"], "Key should be populated before save"
@@ -201,8 +212,10 @@ class GovernanceSignalTest(TestCase):
         # invalidate_field_policy_cache calls invalidate_policy_cache(tenant_id, "DATASET", dataset_id)
         # which deletes the specific cache key
         FieldAccessPolicy.objects.create(
-            tenant=tenant, access_policy=policy,
-            dataset=dataset, field_name="ssn",
+            tenant=tenant,
+            access_policy=policy,
+            dataset=dataset,
+            field_name="ssn",
             access_type="DENY",
         )
 
@@ -214,27 +227,29 @@ class GovernanceSignalTest(TestCase):
 
     def test_field_policy_delete_invalidates_dataset_cache(self):
         """FieldAccessPolicy delete invalidates dataset-scoped cache."""
-        from hub.apps.governance.models import AccessPolicy, FieldAccessPolicy
         from hub.apps.governance.abac import ABACEngine
+        from hub.apps.governance.models import AccessPolicy, FieldAccessPolicy
 
         tenant = self._create_tenant()
         dataset = self._create_dataset(tenant)
         policy = AccessPolicy.objects.create(
-            tenant=tenant, name="parent-del",
-            conditions={"role": "admin"}, effect="ALLOW",
+            tenant=tenant,
+            name="parent-del",
+            conditions={"role": "admin"},
+            effect="ALLOW",
         )
         fp = FieldAccessPolicy.objects.create(
-            tenant=tenant, access_policy=policy,
-            dataset=dataset, field_name="email",
+            tenant=tenant,
+            access_policy=policy,
+            dataset=dataset,
+            field_name="email",
             access_type="MASK",
         )
 
         # Set a known version and populate the scoped cache key
         version_key = self._get_version_key(tenant.id)
         cache.set(version_key, 15)
-        scoped_key = ABACEngine._get_cache_key(
-            str(tenant.id), "DATASET", str(dataset.id)
-        )
+        scoped_key = ABACEngine._get_cache_key(str(tenant.id), "DATASET", str(dataset.id))
         cache.set(scoped_key, ["cached-id"])
         # Verify key was set
         assert cache.get(scoped_key) == ["cached-id"], "Key should be populated before delete"
@@ -251,10 +266,13 @@ class GovernanceSignalTest(TestCase):
     def test_policy_update_invalidates_cache(self):
         """Updating an existing policy also triggers invalidation."""
         from hub.apps.governance.models import AccessPolicy
+
         tenant = self._create_tenant()
         policy = AccessPolicy.objects.create(
-            tenant=tenant, name="upd-policy",
-            conditions={"role": "admin"}, effect="ALLOW",
+            tenant=tenant,
+            name="upd-policy",
+            conditions={"role": "admin"},
+            effect="ALLOW",
         )
 
         # Set baseline version AFTER creation

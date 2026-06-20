@@ -10,17 +10,19 @@ Tests cover:
 
 All tests use real implementations (no mocks/stubs) per requirements.
 """
-import uuid
-import time
-import redis
-from unittest.mock import patch, MagicMock
-from django.test import TestCase, override_settings
-from django.contrib.auth import get_user_model
 
-from hub.apps.core.events.service_publishers import ODPSEventPublisher
-from hub.apps.core.events.bus import EventBus, EventBusError, EventPublishError, get_event_bus
+import time
+import uuid
+from unittest.mock import patch
+
+import redis
+from django.contrib.auth import get_user_model
+from django.test import TestCase, override_settings
+
+from hub.apps.core.events.bus import get_event_bus
 from hub.apps.core.events.models import Event
 from hub.apps.core.events.publisher import EventPublisher
+from hub.apps.core.events.service_publishers import ODPSEventPublisher
 
 User = get_user_model()
 
@@ -52,9 +54,7 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
 
         # Initialize event publisher with tenant/user context
         self.publisher._event_publisher = EventPublisher(
-            service_name="odps_service",
-            tenant_id=self.tenant_id,
-            user_id=self.user_id
+            service_name="odps_service", tenant_id=self.tenant_id, user_id=self.user_id
         )
 
         # Get event bus instance
@@ -78,13 +78,12 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
             asset_id=asset_id,
             status="ACTIVE",
             odps_version="4.1",
-            original_format="JSON"
+            original_format="JSON",
         )
 
         # Verify event ID is returned
         self.assertIsNotNone(event_id)
         self.assertIsInstance(event_id, str)
-
 
         # Verify event was persisted to PostgreSQL
         event = Event.objects.get(event_id=event_id)
@@ -109,11 +108,10 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
         event_id = self.publisher.publish_odps_linked(
             odps_contract_id=odps_contract_id,
             odcs_contract_id=odcs_contract_id,
-            link_type="bidirectional"
+            link_type="bidirectional",
         )
 
         self.assertIsNotNone(event_id)
-
 
         # Verify event was persisted
         event = Event.objects.get(event_id=event_id)
@@ -132,17 +130,19 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
 
         # Publish multiple event types
         event_ids.append(self.publisher.publish_odps_created(contract_id=contract_id))
-        event_ids.append(self.publisher.publish_odps_updated(
-            contract_id=contract_id,
-            changes={"status": "UPDATED"},
-            previous_status="DRAFT",  # Provide required field to avoid validation error
-            new_status="ACTIVE"
-        ))
-        event_ids.append(self.publisher.publish_odps_normalized(
-            contract_id=contract_id,
-            normalization_status="SUCCESS"
-        ))
-
+        event_ids.append(
+            self.publisher.publish_odps_updated(
+                contract_id=contract_id,
+                changes={"status": "UPDATED"},
+                previous_status="DRAFT",  # Provide required field to avoid validation error
+                new_status="ACTIVE",
+            )
+        )
+        event_ids.append(
+            self.publisher.publish_odps_normalized(
+                contract_id=contract_id, normalization_status="SUCCESS"
+            )
+        )
 
         # Filter out None values (events that failed gracefully)
         event_ids = [eid for eid in event_ids if eid is not None]
@@ -186,7 +186,6 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
         # by checking the event was persisted (which happens in EventBus.publish())
         self.assertIsNotNone(event_id)
 
-
         # Verify event was persisted (which confirms EventBus.publish() was called)
         event = Event.objects.get(event_id=event_id)
         self.assertIsNotNone(event)
@@ -206,18 +205,20 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
         contract_id = str(uuid.uuid4())
 
         # Simulate Redis connection failure
-        with patch.object(self.event_bus, 'redis_client') as mock_redis:
+        with patch.object(self.event_bus, "redis_client") as mock_redis:
             mock_redis.publish.side_effect = redis.ConnectionError("Redis connection failed")
 
             # Publish should handle error gracefully
             # Note: With graceful degradation enabled, it should return None
             # However, if persistence succeeds but Redis fails, event may still be persisted
             try:
-                event_id = self.publisher.publish_odps_created(contract_id=contract_id)
+                self.publisher.publish_odps_created(contract_id=contract_id)
                 # With graceful degradation, may return None or event_id if persistence succeeded
                 # The key is that it doesn't raise an exception
             except Exception as e:
-                self.fail(f"Event publishing should not raise exception with graceful degradation: {e}")
+                self.fail(
+                    f"Event publishing should not raise exception with graceful degradation: {e}"
+                )
 
     def test_retry_logic_transient_failures(self):
         """
@@ -240,11 +241,11 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
             return str(uuid.uuid4())
 
         # Patch EventBus.publish() directly (the retry logic wraps EventPublisher.publish() which calls EventBus.publish())
-        with patch.object(self.event_bus, 'publish', side_effect=mock_event_bus_publish):
+        with patch.object(self.event_bus, "publish", side_effect=mock_event_bus_publish):
             # The retry logic should handle transient failures
             # Note: With graceful degradation, it may return None after max retries
             try:
-                event_id = self.publisher.publish_odps_created(contract_id=contract_id)
+                self.publisher.publish_odps_created(contract_id=contract_id)
                 # Should have retried (call_count > 1)
                 # With graceful degradation, may return None or event_id
             except Exception as e:
@@ -269,13 +270,17 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
             raise ConnectionError("Persistent connection error")
 
         # Patch EventBus.publish() directly
-        with patch.object(self.event_bus, 'publish', side_effect=mock_event_bus_publish_always_fail):
+        with patch.object(
+            self.event_bus, "publish", side_effect=mock_event_bus_publish_always_fail
+        ):
             # Should attempt max retries then gracefully degrade
-            event_id = self.publisher.publish_odps_created(contract_id=contract_id)
+            self.publisher.publish_odps_created(contract_id=contract_id)
 
             # Should have attempted max retries + initial attempt = 4 total
             self.assertGreaterEqual(call_count[0], 3, "Should have attempted at least 3 retries")
-            self.assertLessEqual(call_count[0], 4, "Should not exceed max retries + initial attempt")
+            self.assertLessEqual(
+                call_count[0], 4, "Should not exceed max retries + initial attempt"
+            )
 
             # With graceful degradation, should return None
             # (or may raise if graceful degradation is disabled, but we have it enabled)
@@ -291,6 +296,7 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
         delays = []
 
         original_sleep = time.sleep
+
         def mock_sleep(delay):
             delays.append(delay)
             original_sleep(0.01)  # Short delay for testing
@@ -298,20 +304,22 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
         def mock_event_bus_publish_always_fail(*args, **kwargs):
             raise ConnectionError("Transient error")
 
-        with patch('time.sleep', side_effect=mock_sleep):
-            with patch.object(self.event_bus, 'publish', side_effect=mock_event_bus_publish_always_fail):
-                try:
-                    self.publisher.publish_odps_created(contract_id=contract_id)
-                except Exception:
-                    pass  # Expected to fail after retries
+        with (
+            patch("time.sleep", side_effect=mock_sleep),
+            patch.object(self.event_bus, "publish", side_effect=mock_event_bus_publish_always_fail),
+        ):
+            try:
+                self.publisher.publish_odps_created(contract_id=contract_id)
+            except Exception:
+                pass  # Expected to fail after retries
 
-                # Verify exponential backoff was used
-                if len(delays) >= 2:
-                    # Check that delays increase exponentially (approximately)
-                    # Base delay is 1.0, so delays should be ~1.0, ~2.0, ~4.0
-                    self.assertGreater(delays[1], delays[0], "Backoff should increase")
-                    if len(delays) >= 3:
-                        self.assertGreater(delays[2], delays[1], "Backoff should continue increasing")
+            # Verify exponential backoff was used
+            if len(delays) >= 2:
+                # Check that delays increase exponentially (approximately)
+                # Base delay is 1.0, so delays should be ~1.0, ~2.0, ~4.0
+                self.assertGreater(delays[1], delays[0], "Backoff should increase")
+                if len(delays) >= 3:
+                    self.assertGreater(delays[2], delays[1], "Backoff should continue increasing")
 
     def test_non_transient_errors_no_retry(self):
         """
@@ -328,9 +336,11 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
             raise ValueError("Invalid event data")
 
         # Patch EventBus.publish() directly
-        with patch.object(self.event_bus, 'publish', side_effect=mock_event_bus_publish_validation_error):
+        with patch.object(
+            self.event_bus, "publish", side_effect=mock_event_bus_publish_validation_error
+        ):
             try:
-                event_id = self.publisher.publish_odps_created(contract_id=contract_id)
+                self.publisher.publish_odps_created(contract_id=contract_id)
             except Exception:
                 pass  # Expected
 
@@ -353,8 +363,8 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
             publish_calls.append((args, kwargs))
             return original_publish(*args, **kwargs)
 
-        with patch.object(self.event_bus, 'publish', side_effect=track_publish):
-            event_id = self.publisher.publish_odps_created(contract_id=contract_id)
+        with patch.object(self.event_bus, "publish", side_effect=track_publish):
+            self.publisher.publish_odps_created(contract_id=contract_id)
 
             # Verify EventBus.publish() was called
             self.assertGreater(len(publish_calls), 0, "EventBus.publish() should have been called")
@@ -362,9 +372,8 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
             # Verify correct event type
             if publish_calls:
                 _, kwargs = publish_calls[0]
-                self.assertEqual(kwargs.get('event_type'), 'odps.created')
-                self.assertEqual(kwargs.get('data', {}).get('contract_id'), contract_id)
-
+                self.assertEqual(kwargs.get("event_type"), "odps.created")
+                self.assertEqual(kwargs.get("data", {}).get("contract_id"), contract_id)
 
     def test_multiple_event_types_integration(self):
         """
@@ -378,18 +387,16 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
 
         # Test various event types
         events = {
-            'created': self.publisher.publish_odps_created(contract_id=contract_id),
-            'linked': self.publisher.publish_odps_linked(
+            "created": self.publisher.publish_odps_created(contract_id=contract_id),
+            "linked": self.publisher.publish_odps_linked(
                 odps_contract_id=odps_contract_id,
                 odcs_contract_id=odcs_contract_id,
-                link_type="bidirectional"  # Provide required field
+                link_type="bidirectional",  # Provide required field
             ),
-            'normalized': self.publisher.publish_odps_normalized(
-                contract_id=contract_id,
-                normalization_status="SUCCESS"
+            "normalized": self.publisher.publish_odps_normalized(
+                contract_id=contract_id, normalization_status="SUCCESS"
             ),
         }
-
 
         # Filter out None values (events that failed gracefully)
         events = {k: v for k, v in events.items() if v is not None}
@@ -404,4 +411,3 @@ class ODPSEventPublisherEventBusIntegrationTest(TestCase):
             self.assertIsNotNone(event_id, f"{event_type} event should have been published")
             event = Event.objects.get(event_id=event_id)
             self.assertIsNotNone(event, f"{event_type} event should have been persisted")
-

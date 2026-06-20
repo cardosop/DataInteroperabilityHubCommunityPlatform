@@ -21,13 +21,15 @@ Two design choices worth noting:
    contracts are intentionally excluded — drift against a draft is
    an early-warning signal that doesn't belong in the audit log.
 """
+
 from __future__ import annotations
-from typing import Any, Dict, Optional
+
+from typing import Any
 
 from hub.apps.datasets.models import Dataset
 
 
-def compute_dataset_contract_drift(dataset: Dataset) -> Dict[str, Any]:
+def compute_dataset_contract_drift(dataset: Dataset) -> dict[str, Any]:
     """Compute schema drift between *dataset* and its asset's active contract.
 
     Returns a JSON-serialisable drift dict with the following keys:
@@ -52,7 +54,7 @@ def compute_dataset_contract_drift(dataset: Dataset) -> Dict[str, Any]:
     if not dataset.asset_id:
         return _no_contract_drift(reason="dataset has no asset link")
 
-    contract: Optional[Contract] = (
+    contract: Contract | None = (
         Contract.objects.filter(
             tenant_id=dataset.tenant_id,
             asset_id=dataset.asset_id,
@@ -76,7 +78,7 @@ def compute_dataset_contract_drift(dataset: Dataset) -> Dict[str, Any]:
     }
 
 
-def _no_contract_drift(*, reason: str) -> Dict[str, Any]:
+def _no_contract_drift(*, reason: str) -> dict[str, Any]:
     return {
         "has_contract": False,
         "contract_id": None,

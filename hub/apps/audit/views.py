@@ -7,13 +7,14 @@ REST API views for querying and exporting audit events.
 import csv
 import json
 import uuid
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import UTC, datetime
 
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import permissions, serializers as drf_serializers, status, viewsets
+from rest_framework import permissions, status, viewsets
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
@@ -163,8 +164,10 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
         path = getattr(request, "path", "") or request.META.get("PATH_INFO", "")
         if path.rstrip("/").endswith("/export"):
             format_param = (
-                request.GET.get("format", "") or request.query_params.get("format", "")
-            ).lower().strip()
+                (request.GET.get("format", "") or request.query_params.get("format", ""))
+                .lower()
+                .strip()
+            )
             if format_param and format_param not in ("csv", "json"):
                 return (JSONRenderer(), "application/json")
         return super().perform_content_negotiation(request, force=force)
@@ -215,7 +218,6 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(trace_id=trace_id)
 
         # Time range filters
-        from datetime import timezone as dt_timezone
 
         start_date = self.request.query_params.get("start_date")
         if start_date:
@@ -232,10 +234,10 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
                 start_dt = datetime.fromisoformat(date_str)
                 # Ensure timezone-aware datetime in UTC
                 if start_dt.tzinfo is None:
-                    start_dt = timezone.make_aware(start_dt, dt_timezone.utc)
+                    start_dt = timezone.make_aware(start_dt, UTC)
                 else:
                     # Convert to UTC if not already
-                    start_dt = start_dt.astimezone(dt_timezone.utc)
+                    start_dt = start_dt.astimezone(UTC)
                 # Django ORM handles timezone-aware datetimes correctly
                 # Filter for events on or after start_date
                 queryset = queryset.filter(timestamp__gte=start_dt)
@@ -245,7 +247,6 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
 
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Invalid start_date format: {start_date}, error: {e}")
-                pass
 
         end_date = self.request.query_params.get("end_date")
         if end_date:
@@ -262,10 +263,10 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
                 end_dt = datetime.fromisoformat(date_str)
                 # Ensure timezone-aware datetime in UTC
                 if end_dt.tzinfo is None:
-                    end_dt = timezone.make_aware(end_dt, dt_timezone.utc)
+                    end_dt = timezone.make_aware(end_dt, UTC)
                 else:
                     # Convert to UTC if not already
-                    end_dt = end_dt.astimezone(dt_timezone.utc)
+                    end_dt = end_dt.astimezone(UTC)
                 queryset = queryset.filter(timestamp__lte=end_dt)
             except (ValueError, AttributeError, TypeError) as e:
                 # Invalid date format, ignore
@@ -273,7 +274,6 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
 
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Invalid end_date format: {end_date}, error: {e}")
-                pass
 
         # Phase 234.6 — Postgres FTS over the GENERATED tsvector column.
         # The ``q`` filter is the LAST clause appended so it ALWAYS runs
@@ -388,6 +388,7 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
         """
         # Handle Http404 from content negotiation for invalid formats
         from django.http import Http404
+
         try:
             # Get format from query params - prioritize query param over format suffix
             # DRF's DefaultRouter creates format suffix patterns that can interfere with query params
@@ -449,7 +450,6 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
 
     def _export_csv(self, events):
         """Export events as CSV"""
-        from django.http import HttpResponse
 
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="audit_events.csv"'
@@ -614,7 +614,7 @@ def _parse_iso(value: str | None):
         # contract pins ALL chain timestamps to UTC so any other policy
         # would create an attack surface where mismatched timezones flip
         # the verifier outcome.
-        dt = dt.replace(tzinfo=dt_timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -751,11 +751,9 @@ class AuditIntegrityVerifyView(viewsets.ViewSet):
         # are forged to be internally consistent. The signed Merkle
         # snapshots are the cryptographic anchor for that case: re-hashing
         # the current rows must reproduce the signed root.
-        include_snapshots = (
-            str(request.query_params.get("include_snapshots") or "")
-            .strip().lower()
-            in ("1", "true", "yes")
-        )
+        include_snapshots = str(
+            request.query_params.get("include_snapshots") or ""
+        ).strip().lower() in ("1", "true", "yes")
         if include_snapshots:
             snap_qs = AuditMerkleSnapshot.objects.filter(tenant_id=tenant_filter)
             if since is not None:
@@ -792,18 +790,16 @@ class AuditIntegrityVerifyView(viewsets.ViewSet):
         # reconstructing a regulatory-period timeline from the audit log
         # alone can see when the chain was last machine-verified — not
         # just rely on Grafana history.
+        from hub.apps.audit import event_types as _audit_et
         from hub.apps.audit.metrics import observe_chain_break
         from hub.apps.audit.utils import create_audit_event
-        from hub.apps.audit import event_types as _audit_et
 
         tenant_label = str(tenant_filter) if tenant_filter else "__platform__"
         for m in result.mismatches:
             observe_chain_break(tenant_id=tenant_label, reason=m.reason)
         snapshot_mismatch_count = len(getattr(result, "snapshot_mismatches", []) or [])
         for _snap_m in getattr(result, "snapshot_mismatches", []) or []:
-            observe_chain_break(
-                tenant_id=tenant_label, reason="snapshot_root_mismatch"
-            )
+            observe_chain_break(tenant_id=tenant_label, reason="snapshot_root_mismatch")
 
         # Resolve the tenant ORM row for the meta-audit FK (None for the
         # platform chain — when ``tenant_filter`` is the literal string
@@ -909,9 +905,7 @@ class AuditEventRetentionPolicyViewSet(viewsets.ModelViewSet):
         tenant_id = get_request_tenant_id(self.request)
         if not tenant_id:
             return AuditEventRetentionPolicy.objects.none()
-        return AuditEventRetentionPolicy.objects.filter(
-            tenant_id=tenant_id
-        ).order_by("event_type")
+        return AuditEventRetentionPolicy.objects.filter(tenant_id=tenant_id).order_by("event_type")
 
     def _resolve_tenant(self):
         """Return the tenant ORM row for the request, or 400-equivalent None."""
@@ -989,4 +983,3 @@ class AuditEventRetentionPolicyViewSet(viewsets.ModelViewSet):
             details=snapshot,
             request=self.request,
         )
-

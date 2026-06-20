@@ -10,13 +10,14 @@ Tests:
 The middleware reads ``settings.MVP_MODE`` (not ``os.environ``), so we use
 ``@override_settings(MVP_MODE=True/False)`` throughout.
 """
+
 import pytest
 from django.test import TestCase, override_settings
-from django.urls import resolve, Resolver404
+from django.urls import Resolver404, resolve
 
 from hub.apps.api.mvp_mode import (
-    MVP_GATED_RELATIVE_PREFIXES,
     API_V1_PREFIX,
+    MVP_GATED_RELATIVE_PREFIXES,
     is_mvp_gated_api_v1_path,
 )
 

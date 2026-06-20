@@ -35,6 +35,7 @@ real worker processes.  The only synthetic surface is the test fixture's
 deterministic 1 MB CSV payload — generated in-process to avoid checking
 a binary fixture into git.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -49,7 +50,6 @@ import pytest
 
 from datahub_interoperability.client import DataHubClient
 from datahub_interoperability.config import DataHubClientConfig
-
 
 _STAGING_BASE_URL = os.environ.get("DATAHUB_SDK_STAGING_BASE_URL")
 _STAGING_API_TOKEN = os.environ.get("DATAHUB_SDK_STAGING_API_TOKEN")
@@ -95,45 +95,45 @@ def _minimal_odps_content(unique: str) -> str:
     Uses the same format as the working ODPS integration tests
     (schema v4.1 with product/details/contract structure).
     """
-    return json.dumps({
-        "schema": "https://opendataproducts.org/schema/v4.1",
-        "version": "4.1",
-        "product": {
-            "details": {
-                "en": {
-                    "productID": f"de1-it-{unique}",
-                    "name": f"DE-1 Integration Test {unique}",
-                    "description": "Test product for DE-1 full-flow test",
-                }
+    return json.dumps(
+        {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": f"de1-it-{unique}",
+                        "name": f"DE-1 Integration Test {unique}",
+                        "description": "Test product for DE-1 full-flow test",
+                    }
+                },
+                "contract": {
+                    "spec": {
+                        "apiVersion": "odcs/v3",
+                        "kind": "DataContract",
+                        "id": f"de1-contract-{unique}",
+                        "name": f"DE-1 Test Contract {unique}",
+                        "version": "1.0.0",
+                        "schema": {
+                            "fields": [
+                                {"name": "id", "type": "integer", "nullable": False},
+                                {"name": "value", "type": "number", "nullable": False},
+                                {"name": "category", "type": "string", "nullable": True},
+                            ]
+                        },
+                    }
+                },
             },
-            "contract": {
-                "spec": {
-                    "apiVersion": "odcs/v3",
-                    "kind": "DataContract",
-                    "id": f"de1-contract-{unique}",
-                    "name": f"DE-1 Test Contract {unique}",
-                    "version": "1.0.0",
-                    "schema": {
-                        "fields": [
-                            {"name": "id", "type": "integer", "nullable": False},
-                            {"name": "value", "type": "number", "nullable": False},
-                            {"name": "category", "type": "string", "nullable": True},
-                        ]
-                    },
-                }
-            },
-        },
-    })
+        }
+    )
 
 
 def _resolve_tenant_uuid(api_base_url: str, api_token: str) -> str | None:
     """Resolve tenant UUID from ``/auth/me/`` for local provisioning."""
     import requests as _r
+
     try:
-        auth_prefix = (
-            "ApiKey" if "." not in api_token or len(api_token) < 50
-            else "Bearer"
-        )
+        auth_prefix = "ApiKey" if "." not in api_token or len(api_token) < 50 else "Bearer"
         resp = _r.get(
             f"{api_base_url}/auth/me/",
             headers={"Authorization": f"{auth_prefix} {api_token}"},
@@ -191,7 +191,9 @@ def de1_config():
         tenant_name="DE1 Local Test Tenant",
         api_key_name="de1-local-test-key",
         scopes=[
-            "contracts:write", "files:write", "assets:write",
+            "contracts:write",
+            "files:write",
+            "assets:write",
             "contracts:read",
         ],
         extra_tenant_setup=(
@@ -232,14 +234,11 @@ async def test_de1_full_flow_completes_within_slo(de1_config):
     """
     tenant_uuid = _STAGING_TENANT_UUID
     if not tenant_uuid:
-        tenant_uuid = _resolve_tenant_uuid(
-            de1_config.base_url, de1_config.api_token
-        )
+        tenant_uuid = _resolve_tenant_uuid(de1_config.base_url, de1_config.api_token)
         if not tenant_uuid:
             pytest.skip("Could not resolve tenant UUID for DE-1 flow")
 
     async with DataHubClient(de1_config) as client:
-
         timings: dict[str, float] = {}
         overall_start = time.monotonic()
         unique = uuid.uuid4().hex[:8]
@@ -280,7 +279,8 @@ async def test_de1_full_flow_completes_within_slo(de1_config):
         step_start = time.monotonic()
         async with httpx.AsyncClient(timeout=30.0) as http:
             put_response = await http.put(
-                upload_url, content=payload,
+                upload_url,
+                content=payload,
                 headers={"Content-Type": "text/csv"},
             )
             put_response.raise_for_status()
@@ -344,6 +344,4 @@ async def test_de1_full_flow_completes_within_slo(de1_config):
         )
 
         # Surface timings for CI dashboard
-        print(
-            f"DE-1 full-flow timings: {json.dumps(timings, indent=2)}"
-        )
+        print(f"DE-1 full-flow timings: {json.dumps(timings, indent=2)}")

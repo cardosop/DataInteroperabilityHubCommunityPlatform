@@ -4,13 +4,16 @@ Integration tests for ObservabilityEventPublisher.
 Tests event publishing using real EventPublisher and EventBus (no mocks/stubs).
 All tests use real services and models following engineering best practices.
 """
+
+import uuid
+
 from django.test import TestCase, override_settings
 from django.utils import timezone
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import User, UserStatus
-from hub.apps.core.events.service_publishers import ObservabilityEventPublisher
+
 from hub.apps.core.events.models import Event
-import uuid
+from hub.apps.core.events.service_publishers import ObservabilityEventPublisher
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.users.models import User, UserStatus
 
 uid = uuid.uuid4().hex[:8]
 
@@ -29,13 +32,13 @@ class ObservabilityEventPublisherIntegrationTest(TestCase):
             slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
-            region="us-east-1"
+            region="us-east-1",
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create a test service with ObservabilityEventPublisher
@@ -46,8 +49,7 @@ class ObservabilityEventPublisherIntegrationTest(TestCase):
                 super().__init__(tenant_id=tenant_id, user_id=user_id)
 
         self.service = TestObservabilityService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
     def test_publish_metric_recorded_event(self):
@@ -62,7 +64,7 @@ class ObservabilityEventPublisherIntegrationTest(TestCase):
             metric_name=metric_name,
             metric_value=metric_value,
             metric_type=metric_type,
-            labels=labels
+            labels=labels,
         )
 
         # Verify event was published
@@ -84,9 +86,7 @@ class ObservabilityEventPublisherIntegrationTest(TestCase):
         """Test publishing observability.metric.recorded event with only required fields."""
         run_id = uuid.uuid4().hex[:8]
         metric_name = f"test_metric_minimal_{run_id}"
-        event_id = self.service.publish_metric_recorded(
-            metric_name=metric_name
-        )
+        event_id = self.service.publish_metric_recorded(metric_name=metric_name)
 
         # Verify event was published
         self.assertIsNotNone(event_id)
@@ -115,7 +115,7 @@ class ObservabilityEventPublisherIntegrationTest(TestCase):
             operation_name=operation_name,
             duration_ms=duration_ms,
             status=status,
-            attributes=attributes
+            attributes=attributes,
         )
 
         # Verify event was published
@@ -137,10 +137,7 @@ class ObservabilityEventPublisherIntegrationTest(TestCase):
         trace_id = str(uuid.uuid4())
         span_id = str(uuid.uuid4())
 
-        event_id = self.service.publish_trace_created(
-            trace_id=trace_id,
-            span_id=span_id
-        )
+        event_id = self.service.publish_trace_created(trace_id=trace_id, span_id=span_id)
 
         # Verify event was published
         self.assertIsNotNone(event_id)
@@ -164,10 +161,7 @@ class ObservabilityEventPublisherIntegrationTest(TestCase):
         context = {"user_id": str(uuid.uuid4()), "ip_address": "192.168.1.1"}
 
         event_id = self.service.publish_log_created(
-            log_level=log_level,
-            message=message,
-            logger_name=logger_name,
-            context=context
+            log_level=log_level, message=message, logger_name=logger_name, context=context
         )
 
         # Verify event was published
@@ -186,9 +180,7 @@ class ObservabilityEventPublisherIntegrationTest(TestCase):
         """Test publishing observability.log.created event with only required fields."""
         run_id = uuid.uuid4().hex[:8]
         message = f"Test log message {run_id}"
-        event_id = self.service.publish_log_created(
-            message=message
-        )
+        event_id = self.service.publish_log_created(message=message)
 
         # Verify event was published
         self.assertIsNotNone(event_id)
@@ -218,7 +210,7 @@ class ObservabilityEventPublisherIntegrationTest(TestCase):
             metric_name=metric_name,
             threshold_value=threshold_value,
             current_value=current_value,
-            triggered_at=triggered_at
+            triggered_at=triggered_at,
         )
 
         # Verify event was published
@@ -240,9 +232,7 @@ class ObservabilityEventPublisherIntegrationTest(TestCase):
         """Test publishing observability.alert.triggered event with auto-generated timestamp."""
         before_publish = timezone.now()
         event_id = self.service.publish_alert_triggered(
-            alert_name="test_alert",
-            alert_severity="warning",
-            alert_message="Test alert message"
+            alert_name="test_alert", alert_severity="warning", alert_message="Test alert message"
         )
         after_publish = timezone.now()
 
@@ -255,7 +245,7 @@ class ObservabilityEventPublisherIntegrationTest(TestCase):
         self.assertIsNotNone(event.data.get("triggered_at"))
         # Verify timestamp is within reasonable range
         triggered_at = timezone.datetime.fromisoformat(
-            event.data["triggered_at"].replace('Z', '+00:00')
+            event.data["triggered_at"].replace("Z", "+00:00")
         )
         self.assertGreaterEqual(triggered_at, before_publish)
         self.assertLessEqual(triggered_at, after_publish)
@@ -263,8 +253,7 @@ class ObservabilityEventPublisherIntegrationTest(TestCase):
     def test_publish_alert_triggered_with_minimal_data(self):
         """Test publishing observability.alert.triggered event with only required fields."""
         event_id = self.service.publish_alert_triggered(
-            alert_name="test_alert",
-            alert_severity="info"
+            alert_name="test_alert", alert_severity="info"
         )
 
         # Verify event was published
@@ -283,9 +272,7 @@ class ObservabilityEventPublisherIntegrationTest(TestCase):
     def test_event_publisher_uses_service_tenant_user(self):
         """Test that event publisher uses service tenant_id and user_id by default."""
         run_id = uuid.uuid4().hex[:8]
-        event_id = self.service.publish_metric_recorded(
-            metric_name=f"test_metric_svc_{run_id}"
-        )
+        event_id = self.service.publish_metric_recorded(metric_name=f"test_metric_svc_{run_id}")
 
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(str(event.tenant_id), str(self.tenant.id))
@@ -299,22 +286,21 @@ class ObservabilityEventPublisherIntegrationTest(TestCase):
             slug=f"other-tenant-{run_id}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
-            region="us-west-2"
+            region="us-west-2",
         )
         other_user = User.objects.create_user(
             email=f"other-{run_id}@example.com",
             password="testpass123",
             tenant=other_tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         event_id = self.service.publish_metric_recorded(
             metric_name=f"test_metric_override_{run_id}",
             tenant_id=str(other_tenant.id),
-            user_id=str(other_user.id)
+            user_id=str(other_user.id),
         )
 
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(str(event.tenant_id), str(other_tenant.id))
         self.assertEqual(str(event.user_id), str(other_user.id))
-

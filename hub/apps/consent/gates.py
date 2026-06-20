@@ -1,6 +1,7 @@
 """Integration gates for Phase 232.1 (signup, marketplace orders, webhooks)."""
 
 from __future__ import annotations
+
 from hub.apps.consent.models import ConsentPurpose, ConsentRecord, ConsentRecordStatus
 from hub.apps.core.services.base import ValidationError
 from hub.apps.tenants.models import Tenant

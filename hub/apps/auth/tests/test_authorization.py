@@ -2,6 +2,8 @@
 Unit tests for authorization enforcement (roles, scopes).
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -10,10 +12,9 @@ from rest_framework.response import Response
 from rest_framework.test import APIClient
 from rest_framework.views import APIView
 
-from hub.apps.auth.permissions import HasAnyRole, HasAnyScope, HasRole, HasScope
+from hub.apps.auth.permissions import HasAnyRole, HasRole
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import Role, User, UserRole, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -39,6 +40,7 @@ class _StubView(APIView):
 
     def get_permissions(self):
         from rest_framework.permissions import IsAuthenticated
+
         return [IsAuthenticated(), HasRole("TENANT_ADMIN")]
 
     def get(self, request):
@@ -55,7 +57,10 @@ class AuthorizationTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Get or create roles (default roles are created by tenant signal)

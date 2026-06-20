@@ -12,22 +12,27 @@ These tests require:
 To run:
     pytest cli/tests/integration/test_cli_marketplace_odps.py -v
 """
-import pytest
+
 import json
 import os
-import uuid
-import tempfile
 import subprocess
+import tempfile
+import uuid
+
+import pytest
 from click.testing import CliRunner
-from datahub_cli.main import cli
 from datahub_cli.config import config
+from datahub_cli.main import cli
 
 
 def _check_api_available():
     """Check if API service is available"""
     try:
         import requests
-        response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2)
+
+        response = requests.get(
+            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
+        )
         return response.status_code < 600
     except Exception:
         return False
@@ -68,26 +73,32 @@ print(api_key_value)
 """
     try:
         result = subprocess.run(
-            ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'hub/manage.py', 'shell'],
+            ["docker", "compose", "exec", "-T", "api-service", "python", "hub/manage.py", "shell"],
+            check=False,
             input=django_shell_script,
             text=True,
             capture_output=True,
             timeout=30,
-            cwd='/home/ph/Desktop/DataInteroperabilityHub'
+            cwd="/home/ph/Desktop/DataInteroperabilityHub",
         )
         if result.returncode == 0:
-            output_lines = result.stdout.strip().split('\n')
+            output_lines = result.stdout.strip().split("\n")
             for line in reversed(output_lines):
                 line = line.strip()
-                if (line and len(line) > 30 and
-                    not line.startswith('{') and
-                    not line.startswith('"') and
-                    not 'timestamp' in line.lower() and
-                    not 'logger' in line.lower() and
-                    not 'level' in line.lower() and
-                    not 'message' in line.lower() and
-                    ' ' not in line and ':' not in line and '/' not in line):
-                    cleaned = line.replace('-', '').replace('_', '')
+                if (
+                    line
+                    and len(line) > 30
+                    and not line.startswith("{")
+                    and not line.startswith('"')
+                    and "timestamp" not in line.lower()
+                    and "logger" not in line.lower()
+                    and "level" not in line.lower()
+                    and "message" not in line.lower()
+                    and " " not in line
+                    and ":" not in line
+                    and "/" not in line
+                ):
+                    cleaned = line.replace("-", "").replace("_", "")
                     if cleaned.isalnum():
                         return line
     except Exception:
@@ -102,10 +113,10 @@ def setup_config():
     config.set_api_base_url(api_base_url)
 
     api_key = (
-        os.environ.get('DATAHUB_API_KEY') or
-        os.environ.get('TEST_API_KEY') or
-        config.get_api_key() or
-        _create_test_api_key()
+        os.environ.get("DATAHUB_API_KEY")
+        or os.environ.get("TEST_API_KEY")
+        or config.get_api_key()
+        or _create_test_api_key()
     )
 
     if api_key:
@@ -127,7 +138,7 @@ def odps_contract_with_pricing():
                 "en": {
                     "productID": f"marketplace-product-{uuid.uuid4().hex[:8]}",
                     "name": "Marketplace Product",
-                    "description": "Product with pricing for marketplace"
+                    "description": "Product with pricing for marketplace",
                 }
             },
             "contract": {
@@ -137,11 +148,7 @@ def odps_contract_with_pricing():
                     "id": "test-contract",
                     "name": "test-contract",
                     "version": "1.0.0",
-                    "schema": {
-                        "fields": [
-                            {"name": "id", "type": "string", "nullable": False}
-                        ]
-                    }
+                    "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                 }
             },
             "pricing": {
@@ -151,38 +158,40 @@ def odps_contract_with_pricing():
                         "name": "Basic Plan",
                         "price": 99.99,
                         "currency": "USD",
-                        "billingPeriod": "monthly"
+                        "billingPeriod": "monthly",
                     },
                     {
                         "planID": "premium",
                         "name": "Premium Plan",
                         "price": 199.99,
                         "currency": "USD",
-                        "billingPeriod": "monthly"
-                    }
+                        "billingPeriod": "monthly",
+                    },
                 ]
             },
             "accessMethods": [
-                {
-                    "type": "API",
-                    "endpoint": "https://api.example.com/data",
-                    "protocol": "REST"
-                }
-            ]
-        }
+                {"type": "API", "endpoint": "https://api.example.com/data", "protocol": "REST"}
+            ],
+        },
     }
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(odps_data, f)
         temp_path = f.name
 
     runner = CliRunner()
-    result = runner.invoke(cli, [
-        'contracts', 'create-odps',
-        '--file', temp_path,
-        '--extract-odcs',
-        '--output-format', 'json'
-    ])
+    result = runner.invoke(
+        cli,
+        [
+            "contracts",
+            "create-odps",
+            "--file",
+            temp_path,
+            "--extract-odcs",
+            "--output-format",
+            "json",
+        ],
+    )
 
     if os.path.exists(temp_path):
         os.unlink(temp_path)
@@ -192,11 +201,12 @@ def odps_contract_with_pricing():
 
     try:
         contract_data = json.loads(result.output)
-        contract_id = contract_data.get('odps_contract', {}).get('id') or contract_data.get('id')
+        contract_id = contract_data.get("odps_contract", {}).get("id") or contract_data.get("id")
         yield contract_id
     except json.JSONDecodeError:
         import re
-        match = re.search(r'ODPS Contract ID:\s*([a-f0-9-]+)', result.output)
+
+        match = re.search(r"ODPS Contract ID:\s*([a-f0-9-]+)", result.output)
         if match:
             yield match.group(1)
         else:
@@ -207,15 +217,14 @@ class TestCLIMarketplaceODPS:
     """Tests for marketplace commands with ODPS integration"""
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_marketplace_list_with_odps_pricing_filter(self, odps_contract_with_pricing, setup_config):
+    def test_marketplace_list_with_odps_pricing_filter(
+        self, odps_contract_with_pricing, setup_config
+    ):
         """Test `marketplace list` with ODPS pricing/access filters"""
         runner = CliRunner()
 
         # List marketplace connections
-        result = runner.invoke(cli, [
-            'marketplace', 'connections', 'list',
-            '--format', 'json'
-        ])
+        result = runner.invoke(cli, ["marketplace", "connections", "list", "--format", "json"])
 
         # May return empty list if no connections configured - that's OK
         assert result.exit_code == 0
@@ -229,7 +238,9 @@ class TestCLIMarketplaceODPS:
             pass
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_marketplace_create_listing_with_odps_config(self, odps_contract_with_pricing, setup_config):
+    def test_marketplace_create_listing_with_odps_config(
+        self, odps_contract_with_pricing, setup_config
+    ):
         """Test `marketplace create-listing` with ODPS configuration"""
         runner = CliRunner()
 
@@ -238,11 +249,9 @@ class TestCLIMarketplaceODPS:
         # This test verifies the command structure works with ODPS contracts
 
         # Get contract pricing to use in listing
-        pricing_result = runner.invoke(cli, [
-            'contracts', 'get-pricing',
-            odps_contract_with_pricing,
-            '--format', 'json'
-        ])
+        pricing_result = runner.invoke(
+            cli, ["contracts", "get-pricing", odps_contract_with_pricing, "--format", "json"]
+        )
 
         assert pricing_result.exit_code == 0
 
@@ -251,58 +260,54 @@ class TestCLIMarketplaceODPS:
         # This test verifies ODPS data is accessible for marketplace operations
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_marketplace_purchase_with_odps_access_methods(self, odps_contract_with_pricing, setup_config):
+    def test_marketplace_purchase_with_odps_access_methods(
+        self, odps_contract_with_pricing, setup_config
+    ):
         """Test `marketplace purchase` with ODPS access methods"""
         runner = CliRunner()
 
         # Get access methods from ODPS contract
-        access_result = runner.invoke(cli, [
-            'contracts', 'get-access-methods',
-            odps_contract_with_pricing,
-            '--format', 'json'
-        ])
+        access_result = runner.invoke(
+            cli, ["contracts", "get-access-methods", odps_contract_with_pricing, "--format", "json"]
+        )
 
         assert access_result.exit_code == 0
 
         try:
             access_data = json.loads(access_result.output)
-            assert 'contract_id' in access_data
+            assert "contract_id" in access_data
             # Access methods may be empty or populated depending on contract
         except json.JSONDecodeError:
             # Table format is acceptable
             pass
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_all_marketplace_commands_with_odps_integration(self, odps_contract_with_pricing, setup_config):
+    def test_all_marketplace_commands_with_odps_integration(
+        self, odps_contract_with_pricing, setup_config
+    ):
         """Test all marketplace commands with ODPS integration"""
         runner = CliRunner()
 
         # Test connections list
-        result_connections = runner.invoke(cli, [
-            'marketplace', 'connections', 'list',
-            '--format', 'json'
-        ])
+        result_connections = runner.invoke(
+            cli, ["marketplace", "connections", "list", "--format", "json"]
+        )
         assert result_connections.exit_code == 0
 
         # Test connectors list
-        result_connectors = runner.invoke(cli, [
-            'marketplace', 'connectors', 'list',
-            '--format', 'json'
-        ])
+        result_connectors = runner.invoke(
+            cli, ["marketplace", "connectors", "list", "--format", "json"]
+        )
         assert result_connectors.exit_code == 0
 
         # Test mappings list (may filter by asset_id which could have ODPS contracts)
-        result_mappings = runner.invoke(cli, [
-            'marketplace', 'mappings', 'list',
-            '--format', 'json'
-        ])
+        result_mappings = runner.invoke(
+            cli, ["marketplace", "mappings", "list", "--format", "json"]
+        )
         assert result_mappings.exit_code == 0
 
         # Test sync list
-        result_sync = runner.invoke(cli, [
-            'marketplace', 'sync', 'list',
-            '--format', 'json'
-        ])
+        result_sync = runner.invoke(cli, ["marketplace", "sync", "list", "--format", "json"])
         assert result_sync.exit_code == 0
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
@@ -311,52 +316,47 @@ class TestCLIMarketplaceODPS:
         runner = CliRunner()
 
         # Get pricing from ODPS contract
-        result = runner.invoke(cli, [
-            'contracts', 'get-pricing',
-            odps_contract_with_pricing,
-            '--format', 'json'
-        ])
+        result = runner.invoke(
+            cli, ["contracts", "get-pricing", odps_contract_with_pricing, "--format", "json"]
+        )
 
         assert result.exit_code == 0
         pricing_data = json.loads(result.output)
 
         # Verify pricing structure
-        assert 'contract_id' in pricing_data
+        assert "contract_id" in pricing_data
         # Pricing plans may be empty or populated
 
         # Test table format
-        result_table = runner.invoke(cli, [
-            'contracts', 'get-pricing',
-            odps_contract_with_pricing,
-            '--format', 'table'
-        ])
+        result_table = runner.invoke(
+            cli, ["contracts", "get-pricing", odps_contract_with_pricing, "--format", "table"]
+        )
 
         assert result_table.exit_code == 0
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_marketplace_odps_access_methods_integration(self, odps_contract_with_pricing, setup_config):
+    def test_marketplace_odps_access_methods_integration(
+        self, odps_contract_with_pricing, setup_config
+    ):
         """Test marketplace integration with ODPS access methods"""
         runner = CliRunner()
 
         # Get access methods from ODPS contract
-        result = runner.invoke(cli, [
-            'contracts', 'get-access-methods',
-            odps_contract_with_pricing,
-            '--format', 'json'
-        ])
+        result = runner.invoke(
+            cli, ["contracts", "get-access-methods", odps_contract_with_pricing, "--format", "json"]
+        )
 
         assert result.exit_code == 0
         access_data = json.loads(result.output)
 
         # Verify access methods structure
-        assert 'contract_id' in access_data
+        assert "contract_id" in access_data
 
         # Test table format
-        result_table = runner.invoke(cli, [
-            'contracts', 'get-access-methods',
-            odps_contract_with_pricing,
-            '--format', 'table'
-        ])
+        result_table = runner.invoke(
+            cli,
+            ["contracts", "get-access-methods", odps_contract_with_pricing, "--format", "table"],
+        )
 
         assert result_table.exit_code == 0
 
@@ -366,19 +366,16 @@ class TestCLIMarketplaceODPS:
         runner = CliRunner()
 
         # Get contract with ODPS info
-        result = runner.invoke(cli, [
-            'contracts', 'get',
-            odps_contract_with_pricing,
-            '--show-odps',
-            '--format', 'json'
-        ])
+        result = runner.invoke(
+            cli, ["contracts", "get", odps_contract_with_pricing, "--show-odps", "--format", "json"]
+        )
 
         assert result.exit_code == 0
         contract_data = json.loads(result.output)
 
         # Verify contract structure
-        assert 'id' in contract_data
-        assert contract_data['id'] == odps_contract_with_pricing
+        assert "id" in contract_data
+        assert contract_data["id"] == odps_contract_with_pricing
 
         # ODPS-specific fields should be accessible
         # Structure may vary, but command should succeed

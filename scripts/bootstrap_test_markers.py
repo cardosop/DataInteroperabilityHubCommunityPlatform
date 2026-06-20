@@ -4,21 +4,43 @@ AST-based marker bootstrap for Meshant's 37K+ test functions.
 Classifies every test function/class into exactly one Tier-1 marker.
 Modes: --check (dry-run) | --apply (modify files) | --path <dir>
 """
-import argparse, ast, os, re, sys
+
+import argparse
+import ast
+import os
+import re
 from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TEST_DIRS = [ROOT / "hub/apps", ROOT / "tests", ROOT / "cli/tests",
-             ROOT / "sdk/python/tests", ROOT / "services"]
+TEST_DIRS = [
+    ROOT / "hub/apps",
+    ROOT / "tests",
+    ROOT / "cli/tests",
+    ROOT / "sdk/python/tests",
+    ROOT / "services",
+]
 
 # DB-dependent patterns → integration (unless e2e path)
-DB_PATTERNS = [r'\bTestCase\b', r'\bTransactionTestCase\b', r'\bLiveServerTestCase\b',
-               r'\bAPITestCase\b', r'\bAPILiveServerTestCase\b', r'django_db']
+DB_PATTERNS = [
+    r"\bTestCase\b",
+    r"\bTransactionTestCase\b",
+    r"\bLiveServerTestCase\b",
+    r"\bAPITestCase\b",
+    r"\bAPILiveServerTestCase\b",
+    r"django_db",
+]
 E2E_PATHS = ["tests/e2e/", "tests/chaos/"]
 UNIT_PATHS = ["cli/tests/unit/", "sdk/python/tests/unit/"]
-INTEGRATION_PATHS = ["tests/resilience/", "tests/security/", "tests/isolation/",
-    "tests/regression/", "tests/concurrency/", "tests/pact/", "services/"]
+INTEGRATION_PATHS = [
+    "tests/resilience/",
+    "tests/security/",
+    "tests/isolation/",
+    "tests/regression/",
+    "tests/concurrency/",
+    "tests/pact/",
+    "services/",
+]
 
 
 def find_test_files(root: Path) -> list[Path]:
@@ -66,8 +88,17 @@ def classify_file(file_path: Path) -> str | None:
     if "hub/apps/" in rel and "/tests/" in rel:
         return "unit"
     if "cli/tests/" in rel:
-        if any(kw in src for kw in ("APIClient", "requests.post", "requests.get",
-                                      "TestClient", "api_client", "real_api")):
+        if any(
+            kw in src
+            for kw in (
+                "APIClient",
+                "requests.post",
+                "requests.get",
+                "TestClient",
+                "api_client",
+                "real_api",
+            )
+        ):
             return "integration"
         return "unit"
     if "sdk/python/tests/" in rel:
@@ -84,9 +115,15 @@ def count_test_nodes(file_path: Path) -> int:
         tree = ast.parse(file_path.read_text(encoding="utf-8"))
     except Exception:
         return 0
-    return sum(1 for n in ast.walk(tree)
-               if isinstance(n, (ast.FunctionDef, ast.ClassDef))
-               and (n.name.startswith("test_") or (isinstance(n, ast.ClassDef) and n.name.startswith("Test"))))
+    return sum(
+        1
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.FunctionDef, ast.ClassDef))
+        and (
+            n.name.startswith("test_")
+            or (isinstance(n, ast.ClassDef) and n.name.startswith("Test"))
+        )
+    )
 
 
 def apply_marker_to_file(file_path: Path, marker: str) -> int:
@@ -103,9 +140,9 @@ def apply_marker_to_file(file_path: Path, marker: str) -> int:
 
     test_nodes = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
-            test_nodes.append(node)
-        elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
+        if (isinstance(node, ast.FunctionDef) and node.name.startswith("test_")) or (
+            isinstance(node, ast.ClassDef) and node.name.startswith("Test")
+        ):
             test_nodes.append(node)
 
     # Filter: skip already-classified
@@ -113,7 +150,7 @@ def apply_marker_to_file(file_path: Path, marker: str) -> int:
     for node in test_nodes:
         already = False
         for d in node.decorator_list:
-            if isinstance(d, ast.Call) and hasattr(d.func, 'attr'):
+            if isinstance(d, ast.Call) and hasattr(d.func, "attr"):
                 a = d.func
                 parts = []
                 while isinstance(a, ast.Attribute):
@@ -122,7 +159,11 @@ def apply_marker_to_file(file_path: Path, marker: str) -> int:
                 if isinstance(a, ast.Name):
                     parts.append(a.id)
                     parts.reverse()
-                    if len(parts) >= 3 and parts[:2] == ["pytest", "mark"] and parts[2] in ("unit","integration","e2e"):
+                    if (
+                        len(parts) >= 3
+                        and parts[:2] == ["pytest", "mark"]
+                        and parts[2] in ("unit", "integration", "e2e")
+                    ):
                         already = True
                         break
         if not already:
@@ -136,7 +177,7 @@ def apply_marker_to_file(file_path: Path, marker: str) -> int:
     lines = src.splitlines(keepends=True)
     for node in to_decorate:
         idx = node.lineno - 1
-        indent = lines[idx][:len(lines[idx]) - len(lines[idx].lstrip())]
+        indent = lines[idx][: len(lines[idx]) - len(lines[idx].lstrip())]
         lines.insert(idx, f"{indent}@pytest.mark.{marker}\n")
 
     file_path.write_text("".join(lines), encoding="utf-8")
@@ -175,7 +216,9 @@ def main():
         if existing:
             if existing != classification:
                 stats["mismatch"] += 1
-                results.append(f"MISMATCH {fp.relative_to(ROOT)}: is {classification} but marked {existing}")
+                results.append(
+                    f"MISMATCH {fp.relative_to(ROOT)}: is {classification} but marked {existing}"
+                )
             else:
                 stats["already_ok"] += 1
             continue
@@ -190,23 +233,26 @@ def main():
 
     if args.json:
         import json
+
         print(json.dumps(dict(stats)))
         return
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Marker Bootstrap — {'DRY-RUN' if args.check else 'APPLIED'}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"Files scanned:     {stats['scanned']:>6}")
     print(f"Already correct:   {stats['already_ok']:>6}")
     print(f"Needs marker:      {stats['needs_marker']:>6}  ({total_nodes} test functions)")
     print(f"  → unit:          {stats['to_unit']:>6}")
     print(f"  → integration:   {stats['to_integration']:>6}")
     print(f"  → e2e:           {stats['to_e2e']:>6}")
-    if stats['mismatch']:
+    if stats["mismatch"]:
         print(f"Mismatches:        {stats['mismatch']:>6}")
-    if stats['unclassified']:
+    if stats["unclassified"]:
         print(f"Unclassified:      {stats['unclassified']:>6}")
     if args.apply:
-        print(f"\nMarkers applied:   {stats['applied_files']} files, {stats['applied_nodes']} nodes")
+        print(
+            f"\nMarkers applied:   {stats['applied_files']} files, {stats['applied_nodes']} nodes"
+        )
 
     return 0

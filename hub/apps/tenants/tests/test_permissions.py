@@ -4,6 +4,8 @@ Unit tests for tenant permissions.
 Uses real User model (no mocks/stubs).
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
@@ -11,7 +13,6 @@ from django.test import RequestFactory, TestCase
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.tenants.permissions import CanPublishToMarketplace, IsPlatformAdmin
 from hub.apps.users.models import UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -26,7 +27,9 @@ class TenantPermissionsTest(TestCase):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         _uid = uuid.uuid4().hex[:8]
-        self.other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+        self.other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
         self.admin_user = User.objects.create_user(
             email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="test",

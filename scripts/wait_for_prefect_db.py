@@ -4,6 +4,7 @@ Wait for Prefect DB to accept authenticated connections (not just TCP).
 Used by prefect-server-test so the server starts only when the DB is ready.
 Exits 0 when connected, 1 after timeout, 2 if asyncpg not installed.
 """
+
 import asyncio
 import sys
 

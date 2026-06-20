@@ -7,19 +7,17 @@ These tests verify:
 - Event filtering by tenant/resource
 - Pattern matching for event types
 """
+
 import uuid
-from datetime import datetime, timezone as dt_timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
-from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
 
 from hub.apps.websocket.consumers.event_consumer import EventConsumer
 from hub.apps.websocket.protocol import (
     WebSocketMessage,
     WebSocketMessageType,
-    SubscribeMessage,
 )
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
 
 
 class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
@@ -28,7 +26,9 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.tenant = self.create_unique_tenant()
-        self.tenant2 = self.create_unique_tenant(name_prefix="Test Tenant 2", slug_prefix="test-tenant-2")
+        self.tenant2 = self.create_unique_tenant(
+            name_prefix="Test Tenant 2", slug_prefix="test-tenant-2"
+        )
         self.user = self.create_unique_user(
             tenant=self.tenant,
             password="testpass123",
@@ -41,19 +41,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
 
     def _create_consumer(self, user=None, tenant=None):
         """Create EventConsumer instance for testing."""
-        consumer = EventConsumer()
-        consumer.scope = {
-            "user": user or self.user,
-            "tenant": tenant or self.tenant
-        }
-        consumer.channel_name = "test_channel"
-        consumer.channel_layer = None
-        consumer.send_json_message = AsyncMock()
-        consumer.send = AsyncMock()
-        consumer.close = AsyncMock()
-        consumer.last_activity = datetime.now(dt_timezone.utc)
-        consumer._connection_closed = False
-        return consumer
+        return self.create_test_consumer(user=user, tenant=tenant)
 
     async def test_subscribe_to_event_types(self):
         """Test subscribing to specific event types."""
@@ -61,10 +49,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
 
         message = WebSocketMessage(
             type=WebSocketMessageType.SUBSCRIBE.value,
-            data={
-                "event_types": ["contract.created", "asset.activated"],
-                "filters": {}
-            }
+            data={"event_types": ["contract.created", "asset.activated"], "filters": {}},
         )
 
         await consumer.handle_subscribe(message)
@@ -85,11 +70,14 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
     async def test_unsubscribe_from_event_types(self):
         """Test unsubscribing from specific event types."""
         consumer = self._create_consumer()
-        consumer.subscribed_event_types = {"contract.created", "asset.activated", "contract.updated"}
+        consumer.subscribed_event_types = {
+            "contract.created",
+            "asset.activated",
+            "contract.updated",
+        }
 
         message = WebSocketMessage(
-            type=WebSocketMessageType.UNSUBSCRIBE.value,
-            data={"event_types": ["contract.created"]}
+            type=WebSocketMessageType.UNSUBSCRIBE.value, data={"event_types": ["contract.created"]}
         )
 
         await consumer.handle_unsubscribe(message)
@@ -107,10 +95,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
         consumer = self._create_consumer()
         consumer.subscribed_event_types = {"contract.created", "asset.activated"}
 
-        message = WebSocketMessage(
-            type=WebSocketMessageType.UNSUBSCRIBE.value,
-            data={}
-        )
+        message = WebSocketMessage(type=WebSocketMessageType.UNSUBSCRIBE.value, data={})
 
         await consumer.handle_unsubscribe(message)
 
@@ -127,8 +112,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
         consumer.filters = {"tenant_id": str(self.tenant.id)}
 
         message = WebSocketMessage(
-            type=WebSocketMessageType.LIST_SUBSCRIPTIONS.value,
-            request_id="test-request-123"
+            type=WebSocketMessageType.LIST_SUBSCRIPTIONS.value, request_id="test-request-123"
         )
 
         await consumer.handle_list_subscriptions(message)
@@ -153,9 +137,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
         consumer.subscribed_event_types = set()
         consumer.filters = {}
 
-        message = WebSocketMessage(
-            type=WebSocketMessageType.LIST_SUBSCRIPTIONS.value
-        )
+        message = WebSocketMessage(type=WebSocketMessageType.LIST_SUBSCRIPTIONS.value)
 
         await consumer.handle_list_subscriptions(message)
 
@@ -195,7 +177,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "source": {"tenant_id": str(self.tenant.id), "user_id": str(self.user.id)},
-            "data": {"contract_id": str(uuid.uuid4())}
+            "data": {"contract_id": str(uuid.uuid4())},
         }
         # Should pass because tenant matches filter
         result1 = consumer._should_send_event(event1, event1["source"])
@@ -206,7 +188,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "source": {"tenant_id": str(self.tenant2.id), "user_id": str(self.user2.id)},
-            "data": {"contract_id": str(uuid.uuid4())}
+            "data": {"contract_id": str(uuid.uuid4())},
         }
         # Should be filtered out because tenant doesn't match
         result2 = consumer._should_send_event(event2, event2["source"])
@@ -223,7 +205,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "source": {"tenant_id": str(self.tenant.id)},
-            "data": {"contract_id": str(uuid.uuid4()), "resource_type": "CONTRACT"}
+            "data": {"contract_id": str(uuid.uuid4()), "resource_type": "CONTRACT"},
         }
         self.assertTrue(consumer._should_send_event(event1, event1["source"]))
 
@@ -232,7 +214,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "source": {"tenant_id": str(self.tenant.id)},
-            "data": {"contract_id": str(uuid.uuid4()), "resource_type": "ASSET"}
+            "data": {"contract_id": str(uuid.uuid4()), "resource_type": "ASSET"},
         }
         self.assertFalse(consumer._should_send_event(event2, event2["source"]))
 
@@ -248,7 +230,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "source": {"tenant_id": str(self.tenant.id)},
-            "data": {"contract_id": resource_id}
+            "data": {"contract_id": resource_id},
         }
         result1 = consumer._should_send_event(event1, event1["source"])
         self.assertTrue(result1, "Event with matching resource_id should pass")
@@ -258,7 +240,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "source": {"tenant_id": str(self.tenant.id)},
-            "data": {"contract_id": str(uuid.uuid4())}
+            "data": {"contract_id": str(uuid.uuid4())},
         }
         result2 = consumer._should_send_event(event2, event2["source"])
         self.assertFalse(result2, "Event with different resource_id should be filtered out")
@@ -274,7 +256,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "source": {"tenant_id": str(self.tenant.id), "user_id": str(self.user.id)},
-            "data": {"contract_id": str(uuid.uuid4())}
+            "data": {"contract_id": str(uuid.uuid4())},
         }
         result1 = consumer._should_send_event(event1, event1["source"])
         self.assertTrue(result1, "Event from same user should pass")
@@ -284,7 +266,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "source": {"tenant_id": str(self.tenant.id), "user_id": str(self.user2.id)},
-            "data": {"contract_id": str(uuid.uuid4())}
+            "data": {"contract_id": str(uuid.uuid4())},
         }
         result2 = consumer._should_send_event(event2, event2["source"])
         self.assertFalse(result2, "Event from different user should be filtered out")
@@ -299,7 +281,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "source": {"tenant_id": str(self.tenant.id)},
-            "data": {"contract_id": str(uuid.uuid4())}
+            "data": {"contract_id": str(uuid.uuid4())},
         }
 
         # Should pass when no filters
@@ -313,7 +295,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
         consumer.filters = {
             "tenant_id": str(self.tenant.id),
             "resource_id": resource_id,
-            "resource_type": "CONTRACT"
+            "resource_type": "CONTRACT",
         }
 
         # Event matching all filters - should pass
@@ -321,7 +303,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "source": {"tenant_id": str(self.tenant.id), "user_id": str(self.user.id)},
-            "data": {"contract_id": resource_id, "resource_type": "CONTRACT"}
+            "data": {"contract_id": resource_id, "resource_type": "CONTRACT"},
         }
         result1 = consumer._should_send_event(event1, event1["source"])
         self.assertTrue(result1, "Event matching all filters should pass")
@@ -331,7 +313,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "source": {"tenant_id": str(self.tenant.id), "user_id": str(self.user.id)},
-            "data": {"contract_id": str(uuid.uuid4()), "resource_type": "CONTRACT"}
+            "data": {"contract_id": str(uuid.uuid4()), "resource_type": "CONTRACT"},
         }
         result2 = consumer._should_send_event(event2, event2["source"])
         self.assertFalse(result2, "Event not matching resource_id should be filtered out")
@@ -341,16 +323,18 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
         consumer = self._create_consumer()
         consumer.subscribed_event_types = {"contract.created"}
         consumer.send_json_message = AsyncMock()
-        consumer._get_deduplication_redis_client = MagicMock(return_value=None)  # Disable deduplication for test
+        consumer._get_deduplication_redis_client = MagicMock(
+            return_value=None
+        )  # Disable deduplication for test
 
         # Event type is subscribed - should be sent
         event1 = {
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "source": {"tenant_id": str(self.tenant.id), "service": "hub"},
-            "data": {"contract_id": str(uuid.uuid4())}
+            "data": {"contract_id": str(uuid.uuid4())},
         }
 
         await consumer.send_event(event1)
@@ -366,9 +350,9 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "asset.activated",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "source": {"tenant_id": str(self.tenant.id), "service": "hub"},
-            "data": {"asset_id": str(uuid.uuid4())}
+            "data": {"asset_id": str(uuid.uuid4())},
         }
 
         await consumer.send_event(event2)
@@ -382,16 +366,22 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
         consumer.subscribed_event_types = {"contract.created"}
         consumer.filters = {"tenant_id": str(self.tenant.id)}
         consumer.send_json_message = AsyncMock()
-        consumer._get_deduplication_redis_client = MagicMock(return_value=None)  # Disable deduplication for test
+        consumer._get_deduplication_redis_client = MagicMock(
+            return_value=None
+        )  # Disable deduplication for test
 
         # Event from same tenant - should be sent
         event1 = {
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat(),
-            "source": {"tenant_id": str(self.tenant.id), "user_id": str(self.user.id), "service": "hub"},
-            "data": {"contract_id": str(uuid.uuid4())}
+            "timestamp": datetime.now(UTC).isoformat(),
+            "source": {
+                "tenant_id": str(self.tenant.id),
+                "user_id": str(self.user.id),
+                "service": "hub",
+            },
+            "data": {"contract_id": str(uuid.uuid4())},
         }
 
         await consumer.send_event(event1)
@@ -407,9 +397,13 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat(),
-            "source": {"tenant_id": str(self.tenant2.id), "user_id": str(self.user2.id), "service": "hub"},
-            "data": {"contract_id": str(uuid.uuid4())}
+            "timestamp": datetime.now(UTC).isoformat(),
+            "source": {
+                "tenant_id": str(self.tenant2.id),
+                "user_id": str(self.user2.id),
+                "service": "hub",
+            },
+            "data": {"contract_id": str(uuid.uuid4())},
         }
 
         await consumer.send_event(event2)
@@ -425,11 +419,8 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             type=WebSocketMessageType.SUBSCRIBE.value,
             data={
                 "event_types": ["contract.created"],
-                "filters": {
-                    "tenant_id": str(self.tenant.id),
-                    "resource_type": "CONTRACT"
-                }
-            }
+                "filters": {"tenant_id": str(self.tenant.id), "resource_type": "CONTRACT"},
+            },
         )
 
         await consumer.handle_subscribe(message)
@@ -446,10 +437,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
 
         message = WebSocketMessage(
             type=WebSocketMessageType.SUBSCRIBE.value,
-            data={
-                "event_types": ["asset.activated"],
-                "filters": {}
-            }
+            data={"event_types": ["asset.activated"], "filters": {}},
         )
 
         await consumer.handle_subscribe(message)
@@ -466,8 +454,7 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
         consumer.filters = {"tenant_id": str(self.tenant.id)}
 
         message = WebSocketMessage(
-            type=WebSocketMessageType.UNSUBSCRIBE.value,
-            data={"event_types": ["contract.created"]}
+            type=WebSocketMessageType.UNSUBSCRIBE.value, data={"event_types": ["contract.created"]}
         )
 
         await consumer.handle_unsubscribe(message)
@@ -507,10 +494,9 @@ class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "contract.created",
             "source": {"tenant_id": str(self.tenant.id)},
-            "data": {"contract_id": str(uuid.uuid4())}  # No resource_type
+            "data": {"contract_id": str(uuid.uuid4())},  # No resource_type
         }
 
         # Should be filtered out because resource_type doesn't match filter
         result = consumer._should_send_event(event, event["source"])
         self.assertFalse(result, "Event without matching resource_type should be filtered out")
-

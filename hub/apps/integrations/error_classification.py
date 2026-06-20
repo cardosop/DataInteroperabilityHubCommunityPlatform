@@ -9,9 +9,9 @@ strategy:
 - PERMANENT  → fail immediately (no retry)
 - UNKNOWN    → retry once, then fail
 """
+
 import logging
 from enum import Enum
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class ConnectorErrorType(str, Enum):
     UNKNOWN = "unknown"
 
 
-def _extract_status_code(exc: Exception) -> Optional[int]:
+def _extract_status_code(exc: Exception) -> int | None:
     """Extract an HTTP status code from common exception types.
 
     Supports:
@@ -91,7 +91,7 @@ def classify_connector_error(exc: Exception) -> ConnectorErrorType:
 
     # httpx-specific transient types (without hard import)
     try:
-        import httpx  # noqa: F811
+        import httpx
 
         if isinstance(
             exc,
@@ -147,7 +147,7 @@ def classify_connector_error(exc: Exception) -> ConnectorErrorType:
     # connector returned no result) — it's a deliberate permanent
     # failure signal, not an external connector exception.
     try:
-        from hub.apps.core.services.base import ServiceError  # noqa: F811
+        from hub.apps.core.services.base import ServiceError
 
         if isinstance(exc, ServiceError):
             logger.debug(

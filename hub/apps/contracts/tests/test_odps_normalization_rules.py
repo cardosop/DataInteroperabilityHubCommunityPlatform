@@ -27,7 +27,6 @@ from hub.apps.contracts.models import (
     OriginalSpecType,
 )
 from hub.apps.contracts.tests.test_base import ContractsTestBase
-from hub.apps.core.business_rules.base import ValidationResult
 
 
 class ODPSNormalizationRulesTestBase(ContractsTestBase):

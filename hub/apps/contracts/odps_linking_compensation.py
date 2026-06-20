@@ -4,14 +4,15 @@ ODPS Linking Compensation
 Implements compensation logic for ODPS linking operations.
 Handles rollback, cleanup, and state restoration when ODPS linking fails.
 """
+
 import logging
-from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
+from typing import Any
+
 from django.db import transaction
 from django.utils import timezone
 
-from hub.apps.contracts.models import Contract, OriginalSpecType
-from hub.apps.core.services.base import ValidationError
+from hub.apps.contracts.models import Contract
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +20,13 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ODPSLinkingState:
     """State snapshot for ODPS linking compensation."""
-    odps_contract_id: Optional[str] = None
-    odcs_contract_id: Optional[str] = None
+
+    odps_contract_id: str | None = None
+    odcs_contract_id: str | None = None
     odps_contract_created: bool = False  # True if ODPS contract was created during linking
-    previous_odps_link: Optional[str] = None  # Previous ODPS link in ODCS contract (if existed)
-    previous_odcs_link: Optional[str] = None  # Previous ODCS link in ODPS contract (if existed)
-    events_published: Optional[List[str]] = None  # List of event IDs published
+    previous_odps_link: str | None = None  # Previous ODPS link in ODCS contract (if existed)
+    previous_odcs_link: str | None = None  # Previous ODCS link in ODPS contract (if existed)
+    events_published: list[str] | None = None  # List of event IDs published
 
     def __post_init__(self):
         if self.events_published is None:
@@ -40,7 +42,7 @@ class ODPSLinkingCompensation:
     is restored to its previous condition.
     """
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize ODPS linking compensation handler.
 
@@ -52,10 +54,7 @@ class ODPSLinkingCompensation:
         self.user_id = user_id
 
     @transaction.atomic
-    def remove_established_links(
-        self,
-        state: ODPSLinkingState
-    ) -> Dict[str, Any]:
+    def remove_established_links(self, state: ODPSLinkingState) -> dict[str, Any]:
         """
         Remove established links between ODPS and ODCS contracts.
 
@@ -77,17 +76,13 @@ class ODPSLinkingCompensation:
             f"odcs_contract_id={state.odcs_contract_id}"
         )
 
-        removal_results = {
-            "status": "success",
-            "links_removed": []
-        }
+        removal_results = {"status": "success", "links_removed": []}
 
         # Remove ODPS → ODCS link
         if state.odps_contract_id:
             try:
                 odps_contract = Contract.objects.get(
-                    id=state.odps_contract_id,
-                    tenant_id=self.tenant_id
+                    id=state.odps_contract_id, tenant_id=self.tenant_id
                 )
 
                 if odps_contract.hub_contract_json:
@@ -119,18 +114,17 @@ class ODPSLinkingCompensation:
                 )
             except Exception as e:
                 logger.exception(
-                    f"Failed to remove ODPS → ODCS link: odps_contract_id={state.odps_contract_id}, error={str(e)}"
+                    f"Failed to remove ODPS → ODCS link: odps_contract_id={state.odps_contract_id}, error={e!s}"
                 )
                 removal_results["status"] = "partial_failure"
                 removal_results["errors"] = removal_results.get("errors", [])
-                removal_results["errors"].append(f"ODPS link removal failed: {str(e)}")
+                removal_results["errors"].append(f"ODPS link removal failed: {e!s}")
 
         # Remove ODCS → ODPS link
         if state.odcs_contract_id:
             try:
                 odcs_contract = Contract.objects.get(
-                    id=state.odcs_contract_id,
-                    tenant_id=self.tenant_id
+                    id=state.odcs_contract_id, tenant_id=self.tenant_id
                 )
 
                 if odcs_contract.hub_contract_json:
@@ -157,11 +151,11 @@ class ODPSLinkingCompensation:
                 )
             except Exception as e:
                 logger.exception(
-                    f"Failed to remove ODCS → ODPS link: odcs_contract_id={state.odcs_contract_id}, error={str(e)}"
+                    f"Failed to remove ODCS → ODPS link: odcs_contract_id={state.odcs_contract_id}, error={e!s}"
                 )
                 removal_results["status"] = "partial_failure"
                 removal_results["errors"] = removal_results.get("errors", [])
-                removal_results["errors"].append(f"ODCS link removal failed: {str(e)}")
+                removal_results["errors"].append(f"ODCS link removal failed: {e!s}")
 
         logger.info(
             f"Link removal completed: status={removal_results['status']}, "
@@ -171,10 +165,7 @@ class ODPSLinkingCompensation:
         return removal_results
 
     @transaction.atomic
-    def restore_previous_state(
-        self,
-        state: ODPSLinkingState
-    ) -> Dict[str, Any]:
+    def restore_previous_state(self, state: ODPSLinkingState) -> dict[str, Any]:
         """
         Restore previous state before ODPS linking.
 
@@ -194,17 +185,13 @@ class ODPSLinkingCompensation:
             f"odcs_contract_id={state.odcs_contract_id}, odps_created={state.odps_contract_created}"
         )
 
-        restoration_results = {
-            "status": "success",
-            "restored_items": []
-        }
+        restoration_results = {"status": "success", "restored_items": []}
 
         # Delete ODPS contract if it was created during linking
         if state.odps_contract_created and state.odps_contract_id:
             try:
                 odps_contract = Contract.objects.get(
-                    id=state.odps_contract_id,
-                    tenant_id=self.tenant_id
+                    id=state.odps_contract_id, tenant_id=self.tenant_id
                 )
                 odps_contract.delete()
                 restoration_results["restored_items"].append("odps_contract_deleted")
@@ -217,7 +204,7 @@ class ODPSLinkingCompensation:
                 )
             except Exception as e:
                 logger.warning(
-                    f"Failed to delete ODPS contract (non-critical): contract_id={state.odps_contract_id}, error={str(e)}"
+                    f"Failed to delete ODPS contract (non-critical): contract_id={state.odps_contract_id}, error={e!s}"
                 )
                 restoration_results["status"] = "partial_failure"
 
@@ -226,14 +213,10 @@ class ODPSLinkingCompensation:
         if state.previous_odps_link and state.odcs_contract_id and not state.odps_contract_created:
             try:
                 # Verify the previous ODPS contract still exists before restoring
-                previous_odps_contract = Contract.objects.get(
-                    id=state.previous_odps_link,
-                    tenant_id=self.tenant_id
-                )
+                Contract.objects.get(id=state.previous_odps_link, tenant_id=self.tenant_id)
 
                 odcs_contract = Contract.objects.get(
-                    id=state.odcs_contract_id,
-                    tenant_id=self.tenant_id
+                    id=state.odcs_contract_id, tenant_id=self.tenant_id
                 )
 
                 if odcs_contract.hub_contract_json:
@@ -242,7 +225,9 @@ class ODPSLinkingCompensation:
                     if "x_odps" not in odcs_contract.hub_contract_json["extensions"]:
                         odcs_contract.hub_contract_json["extensions"]["x_odps"] = {}
 
-                    odcs_contract.hub_contract_json["extensions"]["x_odps"]["odps_link"] = state.previous_odps_link
+                    odcs_contract.hub_contract_json["extensions"]["x_odps"]["odps_link"] = (
+                        state.previous_odps_link
+                    )
                     odcs_contract.save(update_fields=["hub_contract_json"])
                     restoration_results["restored_items"].append("odcs_previous_odps_link")
                     logger.info(
@@ -257,7 +242,7 @@ class ODPSLinkingCompensation:
                 )
             except Exception as e:
                 logger.warning(
-                    f"Failed to restore previous ODPS link (non-critical): odcs_contract_id={state.odcs_contract_id}, error={str(e)}"
+                    f"Failed to restore previous ODPS link (non-critical): odcs_contract_id={state.odcs_contract_id}, error={e!s}"
                 )
 
         # Restore previous ODCS link in ODPS contract (if existed and contract still exists)
@@ -265,8 +250,7 @@ class ODPSLinkingCompensation:
         if state.previous_odcs_link and state.odps_contract_id and not state.odps_contract_created:
             try:
                 odps_contract = Contract.objects.get(
-                    id=state.odps_contract_id,
-                    tenant_id=self.tenant_id
+                    id=state.odps_contract_id, tenant_id=self.tenant_id
                 )
 
                 if odps_contract.hub_contract_json:
@@ -275,7 +259,9 @@ class ODPSLinkingCompensation:
                     if "x_odps" not in odps_contract.hub_contract_json["extensions"]:
                         odps_contract.hub_contract_json["extensions"]["x_odps"] = {}
 
-                    odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"] = state.previous_odcs_link
+                    odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"] = (
+                        state.previous_odcs_link
+                    )
                     odps_contract.save(update_fields=["hub_contract_json"])
                     restoration_results["restored_items"].append("odps_previous_odcs_link")
                     logger.info(
@@ -290,7 +276,7 @@ class ODPSLinkingCompensation:
                 )
             except Exception as e:
                 logger.warning(
-                    f"Failed to restore previous ODCS link (non-critical): odps_contract_id={state.odps_contract_id}, error={str(e)}"
+                    f"Failed to restore previous ODCS link (non-critical): odps_contract_id={state.odps_contract_id}, error={e!s}"
                 )
 
         logger.info(
@@ -302,10 +288,8 @@ class ODPSLinkingCompensation:
 
     @transaction.atomic
     def cleanup_resources(
-        self,
-        state: ODPSLinkingState,
-        publish_compensation_events: bool = True
-    ) -> Dict[str, Any]:
+        self, state: ODPSLinkingState, publish_compensation_events: bool = True
+    ) -> dict[str, Any]:
         """
         Cleanup resources created during ODPS linking.
 
@@ -326,22 +310,16 @@ class ODPSLinkingCompensation:
             f"odcs_contract_id={state.odcs_contract_id}, events_count={len(state.events_published) if state.events_published else 0}"
         )
 
-        cleanup_results = {
-            "status": "success",
-            "resources_cleaned": [],
-            "events_published": []
-        }
+        cleanup_results = {"status": "success", "resources_cleaned": [], "events_published": []}
 
         # Publish compensation events if enabled
         if publish_compensation_events and (state.odps_contract_id or state.odcs_contract_id):
             try:
-                from hub.apps.core.events.service_publishers import ODPSEventPublisher
                 from hub.apps.core.events.publisher import EventPublisher
+                from hub.apps.core.events.service_publishers import ODPSEventPublisher
 
                 event_publisher = EventPublisher(
-                    service_name="odps_service",
-                    tenant_id=self.tenant_id,
-                    user_id=self.user_id
+                    service_name="odps_service", tenant_id=self.tenant_id, user_id=self.user_id
                 )
 
                 odps_event_publisher = ODPSEventPublisher()
@@ -356,9 +334,7 @@ class ODPSLinkingCompensation:
                 cleanup_results["events_published"].append("compensation_logged")
 
             except Exception as e:
-                logger.warning(
-                    f"Failed to publish compensation event (non-critical): error={str(e)}"
-                )
+                logger.warning(f"Failed to publish compensation event (non-critical): error={e!s}")
                 # Non-critical, continue cleanup
 
         cleanup_results["resources_cleaned"].append("events")
@@ -376,8 +352,8 @@ class ODPSLinkingCompensation:
         remove_links: bool = True,
         restore_state: bool = True,
         cleanup_resources: bool = True,
-        publish_compensation_events: bool = True
-    ) -> Dict[str, Any]:
+        publish_compensation_events: bool = True,
+    ) -> dict[str, Any]:
         """
         Comprehensive compensation for ODPS linking failure.
 
@@ -407,9 +383,9 @@ class ODPSLinkingCompensation:
             "state": {
                 "odps_contract_id": state.odps_contract_id,
                 "odcs_contract_id": state.odcs_contract_id,
-                "odps_contract_created": state.odps_contract_created
+                "odps_contract_created": state.odps_contract_created,
             },
-            "operations": {}
+            "operations": {},
         }
 
         # Remove established links
@@ -420,13 +396,11 @@ class ODPSLinkingCompensation:
                 if removal_result.get("status") == "partial_failure":
                     compensation_result["status"] = "partial_failure"
             except Exception as e:
-                logger.exception(
-                    f"Link removal failed during compensation: error={str(e)}"
-                )
+                logger.exception(f"Link removal failed during compensation: error={e!s}")
                 compensation_result["status"] = "partial_failure"
                 compensation_result["operations"]["remove_links"] = {
                     "status": "failed",
-                    "error": str(e)
+                    "error": str(e),
                 }
 
         # Restore previous state
@@ -437,32 +411,21 @@ class ODPSLinkingCompensation:
                 if restore_result.get("status") == "partial_failure":
                     compensation_result["status"] = "partial_failure"
             except Exception as e:
-                logger.exception(
-                    f"State restoration failed during compensation: error={str(e)}"
-                )
+                logger.exception(f"State restoration failed during compensation: error={e!s}")
                 compensation_result["status"] = "partial_failure"
-                compensation_result["operations"]["restore"] = {
-                    "status": "failed",
-                    "error": str(e)
-                }
+                compensation_result["operations"]["restore"] = {"status": "failed", "error": str(e)}
 
         # Cleanup resources
         if cleanup_resources:
             try:
                 cleanup_result = self.cleanup_resources(
-                    state=state,
-                    publish_compensation_events=publish_compensation_events
+                    state=state, publish_compensation_events=publish_compensation_events
                 )
                 compensation_result["operations"]["cleanup"] = cleanup_result
             except Exception as e:
-                logger.exception(
-                    f"Cleanup failed during compensation: error={str(e)}"
-                )
+                logger.exception(f"Cleanup failed during compensation: error={e!s}")
                 compensation_result["status"] = "partial_failure"
-                compensation_result["operations"]["cleanup"] = {
-                    "status": "failed",
-                    "error": str(e)
-                }
+                compensation_result["operations"]["cleanup"] = {"status": "failed", "error": str(e)}
 
         if compensation_result["status"] == "success":
             logger.info(
@@ -474,4 +437,3 @@ class ODPSLinkingCompensation:
             )
 
         return compensation_result
-

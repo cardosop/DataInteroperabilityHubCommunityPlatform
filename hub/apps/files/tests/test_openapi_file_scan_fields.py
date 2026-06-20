@@ -7,7 +7,6 @@ with the UI and ``docs/api/openapi-baseline.json``.
 """
 
 import pytest
-
 from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory, SimpleTestCase
 from drf_spectacular.generators import SchemaGenerator
@@ -21,7 +20,7 @@ class FileOpenAPIScanFieldsTest(SimpleTestCase):
         factory = RequestFactory()
         request = factory.get("/api/v1/")
         request.user = AnonymousUser()
-        setattr(request, "auth", None)
+        request.auth = None
 
         generator = SchemaGenerator(urlconf="hub.urls")
         schema = generator.get_schema(request=request, public=True)
@@ -49,7 +48,7 @@ class FileOpenAPIScanFieldsTest(SimpleTestCase):
         factory = RequestFactory()
         request = factory.get("/api/v1/")
         request.user = AnonymousUser()
-        setattr(request, "auth", None)
+        request.auth = None
         generator = SchemaGenerator(urlconf="hub.urls")
         schema = generator.get_schema(request=request, public=True)
         props = schema["components"]["schemas"]["PatchedFile"]["properties"]

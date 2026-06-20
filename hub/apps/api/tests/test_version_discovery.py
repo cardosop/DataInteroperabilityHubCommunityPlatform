@@ -2,7 +2,7 @@
 
 import pytest
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -10,7 +10,6 @@ from hub.apps.api.versioning import (
     APIVersionManager,
     DeprecatedEndpoint,
 )
-
 
 pytestmark = pytest.mark.django_db
 
@@ -59,7 +58,8 @@ class VersionDiscoveryResponseShapeTest(TestCase):
         # app startup — if the list is empty the field is not being
         # populated and the test would pass vacuously.
         self.assertGreater(
-            len(deps), 0,
+            len(deps),
+            0,
             "Expected at least one deprecated endpoint from search/apps.py registration",
         )
         for dep in deps:
@@ -97,8 +97,17 @@ class VersionDiscoveryResponseShapeTest(TestCase):
         self.assertIn("endpoints", resp.data)
         eps = resp.data["endpoints"]
         # Core endpoints must be present
-        for key in ("auth", "assets", "contracts", "compliance", "webhooks",
-                     "governance", "billing", "notifications", "capabilities"):
+        for key in (
+            "auth",
+            "assets",
+            "contracts",
+            "compliance",
+            "webhooks",
+            "governance",
+            "billing",
+            "notifications",
+            "capabilities",
+        ):
             self.assertIn(key, eps, f"Missing endpoint: {key}")
 
     @pytest.mark.integration
@@ -127,7 +136,7 @@ class VersionDiscoveryDeprecatedEndpointsTest(TestCase):
 
     def tearDown(self):
         # Clean up the registered endpoint to avoid polluting other tests
-        key = f"GET:/api/v1/test-deprecated/"
+        key = "GET:/api/v1/test-deprecated/"
         APIVersionManager.DEPRECATED_ENDPOINTS.pop(key, None)
 
     @pytest.mark.integration
@@ -172,6 +181,7 @@ class VersionDiscoveryRateLimitTest(TestCase):
         # (VersionDiscoveryResponseShapeTest, MvpModeMiddlewareIntegrationTest)
         # don't consume the rate-limit budget for 127.0.0.1.
         from django.core.cache import caches
+
         for cache_name in caches:
             caches[cache_name].clear()
 
@@ -179,11 +189,13 @@ class VersionDiscoveryRateLimitTest(TestCase):
         # snapshotted at import time.  @override_settings cannot reach it,
         # so we patch it directly for deterministic test assertions.
         from rest_framework.throttling import SimpleRateThrottle
+
         self._saved_throttle_rates = dict(SimpleRateThrottle.THROTTLE_RATES)
         SimpleRateThrottle.THROTTLE_RATES["version_discovery"] = "3/minute"
 
     def tearDown(self):
         from rest_framework.throttling import SimpleRateThrottle
+
         SimpleRateThrottle.THROTTLE_RATES.clear()
         SimpleRateThrottle.THROTTLE_RATES.update(self._saved_throttle_rates)
 

@@ -7,37 +7,35 @@ Covers:
 - 26.3.3: ODPSBitolNormalizerV1_0_0 normalizer (team, ports, registration)
 - 26.3.4: ODCS v3.1.0 accepted as ODPS→ODCS link target
 """
+
 from unittest import TestCase
 
+from hub.apps.contracts.business_rules import (
+    SUPPORTED_ODCS_VERSIONS,
+    SUPPORTED_ODPS_VERSIONS,
+)
 from hub.apps.contracts.models import OriginalSpecType
+from hub.apps.contracts.normalization.odps_normalizer_bitol_v1 import (
+    ODPSBitolNormalizerV1_0_0,
+)
 from hub.apps.contracts.odps_version_detection import (
-    detect_odps_version,
     _detect_bitol_odps_version,
+    detect_odps_version,
 )
 from hub.apps.contracts.spec_detection import (
     detect_spec_type,
     is_odps_contract,
 )
-from hub.apps.contracts.business_rules import (
-    SUPPORTED_ODPS_VERSIONS,
-    SUPPORTED_ODCS_VERSIONS,
-)
-from hub.apps.contracts.normalization.odps_normalizer_bitol_v1 import (
-    ODPSBitolNormalizerV1_0_0,
-)
-
 
 # ======================================================================
 # Fixtures
 # ======================================================================
 
+
 def _bitol_v1_contract(**overrides):
     """Minimal valid Bitol ODPS v1.0.0 contract."""
     c = {
-        "schema": (
-            "https://bitol-io.github.io/"
-            "open-data-product-standard/v1.0.0/schema.json"
-        ),
+        "schema": ("https://bitol-io.github.io/open-data-product-standard/v1.0.0/schema.json"),
         "kind": "DataProduct",
         "apiVersion": "v1.0.0",
         "product": {
@@ -56,10 +54,7 @@ def _bitol_v1_contract(**overrides):
 def _bitol_v09_contract(**overrides):
     """Minimal valid Bitol ODPS v0.9.0 contract."""
     c = {
-        "schema": (
-            "https://bitol-io.github.io/"
-            "open-data-product-standard/v0.9.0/schema.json"
-        ),
+        "schema": ("https://bitol-io.github.io/open-data-product-standard/v0.9.0/schema.json"),
         "kind": "DataProduct",
         "apiVersion": "v0.9.0",
         "product": {
@@ -93,6 +88,7 @@ def _pre_bitol_v41_contract():
 # ======================================================================
 # 26.3.1 — Bitol detection
 # ======================================================================
+
 
 class BitolVersionDetectionTest(TestCase):
     """Test _detect_bitol_odps_version and detect_odps_version."""
@@ -139,23 +135,17 @@ class BitolSpecDetectionTest(TestCase):
         assert is_odps_contract(_bitol_v1_contract()) is True
 
     def test_detect_spec_type_bitol_v1(self):
-        spec_type, spec_version = detect_spec_type(
-            _bitol_v1_contract()
-        )
+        spec_type, spec_version = detect_spec_type(_bitol_v1_contract())
         assert spec_type == OriginalSpecType.ODPS
         assert spec_version == "bitol-1.0.0"
 
     def test_detect_spec_type_bitol_v09(self):
-        spec_type, spec_version = detect_spec_type(
-            _bitol_v09_contract()
-        )
+        spec_type, spec_version = detect_spec_type(_bitol_v09_contract())
         assert spec_type == OriginalSpecType.ODPS
         assert spec_version == "bitol-0.9.0"
 
     def test_detect_spec_type_pre_bitol(self):
-        spec_type, spec_version = detect_spec_type(
-            _pre_bitol_v41_contract()
-        )
+        spec_type, spec_version = detect_spec_type(_pre_bitol_v41_contract())
         assert spec_type == OriginalSpecType.ODPS
         assert spec_version == "4.1"
 
@@ -177,6 +167,7 @@ class BitolSpecDetectionTest(TestCase):
 # ======================================================================
 # 26.3.2 — Version constants
 # ======================================================================
+
 
 class VersionConstantsTest(TestCase):
     """Test updated version constants."""
@@ -202,6 +193,7 @@ class VersionConstantsTest(TestCase):
 # 26.3.3 — Bitol normalizer
 # ======================================================================
 
+
 class BitolNormalizerStructureTest(TestCase):
     """Basic structure tests."""
 
@@ -221,29 +213,19 @@ class BitolNormalizerSupportsTest(TestCase):
         self.n = ODPSBitolNormalizerV1_0_0()
 
     def test_supports_bitol_1_0_0(self):
-        assert self.n.supports(
-            OriginalSpecType.ODPS, "bitol-1.0.0", {}
-        ) is True
+        assert self.n.supports(OriginalSpecType.ODPS, "bitol-1.0.0", {}) is True
 
     def test_supports_bitol_0_9_0(self):
-        assert self.n.supports(
-            OriginalSpecType.ODPS, "bitol-0.9.0", {}
-        ) is True
+        assert self.n.supports(OriginalSpecType.ODPS, "bitol-0.9.0", {}) is True
 
     def test_supports_bitol_1_0_1(self):
-        assert self.n.supports(
-            OriginalSpecType.ODPS, "bitol-1.0.1", {}
-        ) is True
+        assert self.n.supports(OriginalSpecType.ODPS, "bitol-1.0.1", {}) is True
 
     def test_does_not_support_pre_bitol(self):
-        assert self.n.supports(
-            OriginalSpecType.ODPS, "4.1", {}
-        ) is False
+        assert self.n.supports(OriginalSpecType.ODPS, "4.1", {}) is False
 
     def test_does_not_support_none(self):
-        assert self.n.supports(
-            OriginalSpecType.ODPS, None, {}
-        ) is False
+        assert self.n.supports(OriginalSpecType.ODPS, None, {}) is False
 
 
 class BitolNormalizerTeamTest(TestCase):
@@ -253,16 +235,18 @@ class BitolNormalizerTeamTest(TestCase):
         self.n = ODPSBitolNormalizerV1_0_0()
 
     def test_team_object_mapped_to_owners(self):
-        contract = _bitol_v1_contract(team={
-            "members": [
-                {
-                    "name": "Alice",
-                    "email": "alice@example.com",
-                    "role": "owner",
-                    "id": "u-001",
-                },
-            ]
-        })
+        contract = _bitol_v1_contract(
+            team={
+                "members": [
+                    {
+                        "name": "Alice",
+                        "email": "alice@example.com",
+                        "role": "owner",
+                        "id": "u-001",
+                    },
+                ]
+            }
+        )
         result = self.n.normalize(contract, spec_version="bitol-1.0.0")
         hc = result.hub_contract
         assert hc is not None
@@ -296,19 +280,17 @@ class BitolNormalizerPortsTest(TestCase):
         self.n = ODPSBitolNormalizerV1_0_0()
 
     def test_output_ports_mapped(self):
-        contract = _bitol_v1_contract(outputPorts=[
-            {
-                "name": "api-out",
-                "contractId": "c-uuid-001",
-                "customProperties": [
-                    {"key": "region", "value": "eu-west-1"}
-                ],
-                "tags": ["production", "api"],
-                "authoritativeDefinitions": [
-                    {"url": "https://example.com/def"}
-                ],
-            }
-        ])
+        contract = _bitol_v1_contract(
+            outputPorts=[
+                {
+                    "name": "api-out",
+                    "contractId": "c-uuid-001",
+                    "customProperties": [{"key": "region", "value": "eu-west-1"}],
+                    "tags": ["production", "api"],
+                    "authoritativeDefinitions": [{"url": "https://example.com/def"}],
+                }
+            ]
+        )
         result = self.n.normalize(contract, spec_version="bitol-1.0.0")
         hc = result.hub_contract
         assert hc is not None
@@ -323,13 +305,15 @@ class BitolNormalizerPortsTest(TestCase):
         assert len(out_ports[0]["authoritative_definitions"]) == 1
 
     def test_input_ports_mapped(self):
-        contract = _bitol_v1_contract(inputPorts=[
-            {
-                "name": "kafka-in",
-                "description": "Kafka consumer",
-                "tags": ["streaming"],
-            }
-        ])
+        contract = _bitol_v1_contract(
+            inputPorts=[
+                {
+                    "name": "kafka-in",
+                    "description": "Kafka consumer",
+                    "tags": ["streaming"],
+                }
+            ]
+        )
         result = self.n.normalize(contract, spec_version="bitol-1.0.0")
         hc = result.hub_contract
         assert hc is not None
@@ -343,9 +327,7 @@ class BitolNormalizerPortsTest(TestCase):
     def test_ports_under_product(self):
         """Ports nested under product should also be found."""
         contract = _bitol_v1_contract()
-        contract["product"]["outputPorts"] = [
-            {"name": "nested-out", "contractId": "c-002"}
-        ]
+        contract["product"]["outputPorts"] = [{"name": "nested-out", "contractId": "c-002"}]
         result = self.n.normalize(contract, spec_version="bitol-1.0.0")
         hc = result.hub_contract
         assert hc is not None
@@ -367,12 +349,14 @@ class BitolNormalizerRegistryTest(TestCase):
 
     def test_get_normalizer_bitol_v1(self):
         from hub.apps.contracts.normalization import get_normalizer
+
         n = get_normalizer(OriginalSpecType.ODPS, "bitol-1.0.0", {})
         assert n is not None
         assert isinstance(n, ODPSBitolNormalizerV1_0_0)
 
     def test_get_normalizer_bitol_v09(self):
         from hub.apps.contracts.normalization import get_normalizer
+
         n = get_normalizer(OriginalSpecType.ODPS, "bitol-0.9.0", {})
         assert n is not None
         assert isinstance(n, ODPSBitolNormalizerV1_0_0)
@@ -381,6 +365,7 @@ class BitolNormalizerRegistryTest(TestCase):
 # ======================================================================
 # 26.3.4 — ODCS v3.1.0 as valid ODPS→ODCS link target
 # ======================================================================
+
 
 class ODCSv31LinkTargetTest(TestCase):
     """
@@ -397,6 +382,7 @@ class ODCSv31LinkTargetTest(TestCase):
         from hub.apps.contracts.normalization.odcs_normalizer_v3_1_0 import (
             ODCSNormalizerV3_1_0,
         )
+
         n = ODCSNormalizerV3_1_0()
         assert n.spec_type == OriginalSpecType.ODCS
 
@@ -408,10 +394,12 @@ class ODCSv31LinkTargetTest(TestCase):
         ``odcs_contract.original_spec_type != OriginalSpecType.ODCS``
         with no version filter.
         """
+        import inspect
+
         from hub.apps.contracts.linking_validation import (
             validate_odps_to_odcs_link,
         )
-        import inspect
+
         source = inspect.getsource(validate_odps_to_odcs_link)
         # Confirm no version filtering
         assert "original_spec_version" not in source, (
@@ -423,6 +411,7 @@ class ODCSv31LinkTargetTest(TestCase):
 # Review fixes — edge-case regression tests
 # ======================================================================
 
+
 class BitolVersionValidationEdgeCasesTest(TestCase):
     """
     Verify validate_odps_version handles Bitol versions correctly,
@@ -432,6 +421,7 @@ class BitolVersionValidationEdgeCasesTest(TestCase):
     def test_bitol_1_0_0_exact_supported(self):
         """Exact bitol-1.0.0 is in SUPPORTED_ODPS_VERSIONS."""
         from hub.apps.contracts.business_rules import ODPSBusinessRules
+
         rules = ODPSBusinessRules()
         doc = _bitol_v1_contract()
         result = rules.validate_odps_version(doc)
@@ -440,25 +430,22 @@ class BitolVersionValidationEdgeCasesTest(TestCase):
     def test_bitol_patch_version_supported_via_prefix(self):
         """bitol-1.0.1 should be accepted via prefix matching."""
         from hub.apps.contracts.business_rules import ODPSBusinessRules
+
         rules = ODPSBusinessRules()
         # Simulate a patch version detected by the version detector
         # by passing a doc that would detect as bitol-1.0.1
         doc = {
-            "schema": (
-                "https://bitol-io.github.io/"
-                "open-data-product-standard/v1.0.1/schema.json"
-            ),
+            "schema": ("https://bitol-io.github.io/open-data-product-standard/v1.0.1/schema.json"),
             "kind": "DataProduct",
             "product": {"details": {"en": {"productID": "x", "name": "x"}}},
         }
         result = rules.validate_odps_version(doc)
-        assert result.is_valid, (
-            f"bitol-1.0.1 should be accepted: {result.errors}"
-        )
+        assert result.is_valid, f"bitol-1.0.1 should be accepted: {result.errors}"
 
     def test_bitol_0_9_0_supported(self):
         """bitol-0.9.0 should be supported."""
         from hub.apps.contracts.business_rules import ODPSBusinessRules
+
         rules = ODPSBusinessRules()
         result = rules.validate_odps_version(_bitol_v09_contract())
         assert result.is_valid, f"Expected valid: {result.errors}"
@@ -469,12 +456,14 @@ class BitolPortDictCustomPropertiesTest(TestCase):
 
     def test_custom_properties_dict_coerced_to_list(self):
         n = ODPSBitolNormalizerV1_0_0()
-        contract = _bitol_v1_contract(outputPorts=[
-            {
-                "name": "api-out",
-                "customProperties": {"key": "region", "value": "us"},
-            }
-        ])
+        contract = _bitol_v1_contract(
+            outputPorts=[
+                {
+                    "name": "api-out",
+                    "customProperties": {"key": "region", "value": "us"},
+                }
+            ]
+        )
         result = n.normalize(contract, spec_version="bitol-1.0.0")
         hc = result.hub_contract
         assert hc is not None
@@ -516,6 +505,4 @@ class BitolDetectionApiVersionOnlyTest(TestCase):
             "apiVersion": "v2.0",
         }
         result = _detect_bitol_odps_version(data)
-        assert result == "", (
-            f"Two-part version should not match Bitol: {result}"
-        )
+        assert result == "", f"Two-part version should not match Bitol: {result}"

@@ -17,6 +17,7 @@ No mocks of internal code paths — the helper calls the real
 ``send_email_async`` pipeline; the test container's email backend is a
 no-op so dispatches succeed without actually sending.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -25,19 +26,23 @@ from django.test import TestCase
 
 def _create_tenant(name: str = "Wave 2 Co"):
     from hub.apps.tenants.models import Tenant
+
     return Tenant.objects.create(
-        name=name, slug=name.lower().replace(" ", "-"),
+        name=name,
+        slug=name.lower().replace(" ", "-"),
     )
 
 
 def _create_user(email: str, tenant):
     from django.contrib.auth import get_user_model
+
     User = get_user_model()
     return User.objects.create(email=email, tenant=tenant)
 
 
 def _grant_tenant_admin_role(user, tenant):
     from hub.apps.users.models import Role, UserRole
+
     role, _ = Role.objects.get_or_create(tenant=tenant, name="TENANT_ADMIN")
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
 
@@ -45,6 +50,7 @@ def _grant_tenant_admin_role(user, tenant):
 # ---------------------------------------------------------------------------
 # EmailType registration
 # ---------------------------------------------------------------------------
+
 
 def test_email_type_enum_includes_schema_editor_available():
     from hub.apps.notifications.models import EmailType
@@ -59,9 +65,9 @@ def test_email_type_enum_includes_schema_editor_available():
 # Notification helper
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.django_db(transaction=True)
 class SchemaEditorAvailableNotifyTests(TestCase):
-
     def test_dispatches_one_email_per_tenant_admin(self):
         from hub.apps.contracts.notifications.schema_editor_available import (
             send_schema_editor_available_notification,
@@ -109,7 +115,8 @@ class SchemaEditorAvailableNotifyTests(TestCase):
         self.assertTrue(results)
         for r in results:
             self.assertEqual(
-                r["email_type"], EmailType.SCHEMA_EDITOR_AVAILABLE.value,
+                r["email_type"],
+                EmailType.SCHEMA_EDITOR_AVAILABLE.value,
             )
 
     def test_per_recipient_failure_does_not_block_remaining_admins(self):
@@ -124,6 +131,7 @@ class SchemaEditorAvailableNotifyTests(TestCase):
         dropped every admin after the first failure.
         """
         from unittest.mock import patch
+
         from hub.apps.contracts.notifications import (
             schema_editor_available as mod,
         )
@@ -157,7 +165,8 @@ class SchemaEditorAvailableNotifyTests(TestCase):
         by_email = {r["to_email"]: r for r in results}
         self.assertFalse(by_email["bad@example.com"]["success"])
         self.assertIn(
-            "RuntimeError", by_email["bad@example.com"]["error"],
+            "RuntimeError",
+            by_email["bad@example.com"]["error"],
         )
         self.assertTrue(by_email["good@example.com"]["success"])
         self.assertIsNone(by_email["good@example.com"]["error"])
@@ -166,6 +175,7 @@ class SchemaEditorAvailableNotifyTests(TestCase):
 # ---------------------------------------------------------------------------
 # Template rendering
 # ---------------------------------------------------------------------------
+
 
 def test_template_renders_with_required_substrings():
     from hub.apps.notifications.templates import render_email_template

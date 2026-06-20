@@ -8,8 +8,9 @@ Security tests for AI endpoints (Task 8.6.1).
 Uses real API client and backend; no mocks or stubs.
 """
 
-import pytest
 import uuid
+
+import pytest
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -44,6 +45,7 @@ class AISecurityTestBase(TestCase):
 
     def _create_user(self, email, tenant):
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         return User.objects.create_user(
             email=email,

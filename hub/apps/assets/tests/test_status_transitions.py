@@ -15,7 +15,6 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
-from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus, DQStatus
 from hub.apps.contracts.models import (
@@ -179,6 +178,30 @@ class AssetStatusTransitionTest(TestCase):
         """DRAFT -> PUBLIC raises ValidationError."""
         asset = self._make_asset()
         asset.status = AssetStatus.PUBLIC
+        with self.assertRaises(ValidationError) as ctx:
+            asset.full_clean()
+        self.assertIn("Invalid status transition", str(ctx.exception))
+
+    def test_public_to_active_forbidden(self):
+        """PUBLIC -> ACTIVE raises ValidationError."""
+        asset = self._make_asset(
+            dq_status=DQStatus.PASS, compliance_status=ComplianceStatus.PASS
+        )
+        self._make_valid_contract(asset)
+        self._force_status(asset, AssetStatus.PUBLIC)
+        asset.status = AssetStatus.ACTIVE
+        with self.assertRaises(ValidationError) as ctx:
+            asset.full_clean()
+        self.assertIn("Invalid status transition", str(ctx.exception))
+
+    def test_public_to_draft_forbidden(self):
+        """PUBLIC -> DRAFT raises ValidationError."""
+        asset = self._make_asset(
+            dq_status=DQStatus.PASS, compliance_status=ComplianceStatus.PASS
+        )
+        self._make_valid_contract(asset)
+        self._force_status(asset, AssetStatus.PUBLIC)
+        asset.status = AssetStatus.DRAFT
         with self.assertRaises(ValidationError) as ctx:
             asset.full_clean()
         self.assertIn("Invalid status transition", str(ctx.exception))

@@ -4,16 +4,18 @@ Journey Testing Framework
 Provides comprehensive journey tracking, completion rate monitoring,
 error handling validation, and performance metrics.
 """
-import time
+
 import json
-from dataclasses import dataclass, field, asdict
-from typing import Dict, List, Optional, Any, Callable
-from enum import Enum
+import time
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from enum import Enum
+from typing import Any
 
 
 class JourneyStatus(Enum):
     """Journey execution status."""
+
     NOT_STARTED = "not_started"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -24,6 +26,7 @@ class JourneyStatus(Enum):
 
 class StepStatus(Enum):
     """Step execution status."""
+
     NOT_STARTED = "not_started"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -35,22 +38,23 @@ class StepStatus(Enum):
 @dataclass
 class StepMetrics:
     """Metrics for a single journey step."""
+
     step_name: str
     status: StepStatus
-    start_time: Optional[float] = None
-    end_time: Optional[float] = None
-    duration: Optional[float] = None
-    error_message: Optional[str] = None
-    error_type: Optional[str] = None
+    start_time: float | None = None
+    end_time: float | None = None
+    duration: float | None = None
+    error_message: str | None = None
+    error_type: str | None = None
     retry_count: int = 0
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    
+    metadata: dict[str, Any] = field(default_factory=dict)
+
     def start(self):
         """Mark step as started."""
         self.start_time = time.time()
         self.status = StepStatus.IN_PROGRESS
-    
-    def complete(self, metadata: Optional[Dict[str, Any]] = None):
+
+    def complete(self, metadata: dict[str, Any] | None = None):
         """Mark step as completed."""
         self.end_time = time.time()
         self.status = StepStatus.COMPLETED
@@ -58,8 +62,8 @@ class StepMetrics:
             self.duration = self.end_time - self.start_time
         if metadata:
             self.metadata.update(metadata)
-    
-    def fail(self, error: Exception, metadata: Optional[Dict[str, Any]] = None):
+
+    def fail(self, error: Exception, metadata: dict[str, Any] | None = None):
         """Mark step as failed."""
         self.end_time = time.time()
         self.status = StepStatus.FAILED
@@ -69,8 +73,8 @@ class StepMetrics:
         self.error_type = type(error).__name__
         if metadata:
             self.metadata.update(metadata)
-    
-    def skip(self, reason: Optional[str] = None):
+
+    def skip(self, reason: str | None = None):
         """Mark step as skipped."""
         self.status = StepStatus.SKIPPED
         if reason:
@@ -80,26 +84,27 @@ class StepMetrics:
 @dataclass
 class JourneyMetrics:
     """Metrics for a complete user journey."""
+
     journey_id: str
     journey_name: str
     persona: str
     status: JourneyStatus
-    start_time: Optional[float] = None
-    end_time: Optional[float] = None
-    duration: Optional[float] = None
-    steps: List[StepMetrics] = field(default_factory=list)
-    error_message: Optional[str] = None
-    error_type: Optional[str] = None
+    start_time: float | None = None
+    end_time: float | None = None
+    duration: float | None = None
+    steps: list[StepMetrics] = field(default_factory=list)
+    error_message: str | None = None
+    error_type: str | None = None
     completion_rate: float = 0.0
     success_rate: float = 0.0
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    
+    metadata: dict[str, Any] = field(default_factory=dict)
+
     def start(self):
         """Mark journey as started."""
         self.start_time = time.time()
         self.status = JourneyStatus.IN_PROGRESS
-    
-    def complete(self, metadata: Optional[Dict[str, Any]] = None):
+
+    def complete(self, metadata: dict[str, Any] | None = None):
         """Mark journey as completed."""
         self.end_time = time.time()
         self.status = JourneyStatus.COMPLETED
@@ -108,8 +113,8 @@ class JourneyMetrics:
         self._calculate_metrics()
         if metadata:
             self.metadata.update(metadata)
-    
-    def fail(self, error: Exception, metadata: Optional[Dict[str, Any]] = None):
+
+    def fail(self, error: Exception, metadata: dict[str, Any] | None = None):
         """Mark journey as failed."""
         self.end_time = time.time()
         self.status = JourneyStatus.FAILED
@@ -120,34 +125,34 @@ class JourneyMetrics:
         self._calculate_metrics()
         if metadata:
             self.metadata.update(metadata)
-    
+
     def _calculate_metrics(self):
         """Calculate completion and success rates."""
         if not self.steps:
             self.completion_rate = 0.0
             self.success_rate = 0.0
             return
-        
+
         total_steps = len(self.steps)
         completed_steps = sum(1 for s in self.steps if s.status == StepStatus.COMPLETED)
         successful_steps = sum(1 for s in self.steps if s.status == StepStatus.COMPLETED)
-        
+
         self.completion_rate = (completed_steps / total_steps) * 100.0
         self.success_rate = (successful_steps / total_steps) * 100.0
-    
+
     def add_step(self, step: StepMetrics):
         """Add a step to the journey."""
         self.steps.append(step)
         self._calculate_metrics()
-    
-    def get_step(self, step_name: str) -> Optional[StepMetrics]:
+
+    def get_step(self, step_name: str) -> StepMetrics | None:
         """Get a step by name."""
         for step in self.steps:
             if step.step_name == step_name:
                 return step
         return None
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "journey_id": self.journey_id,
@@ -170,29 +175,29 @@ class JourneyTracker:
     """
     Tracks user journey execution with metrics, error handling, and performance monitoring.
     """
-    
+
     def __init__(self):
         """Initialize journey tracker."""
-        self.journeys: Dict[str, JourneyMetrics] = {}
-        self.current_journey: Optional[JourneyMetrics] = None
-        self.current_step: Optional[StepMetrics] = None
-    
+        self.journeys: dict[str, JourneyMetrics] = {}
+        self.current_journey: JourneyMetrics | None = None
+        self.current_step: StepMetrics | None = None
+
     def start_journey(
         self,
         journey_id: str,
         journey_name: str,
         persona: str,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: dict[str, Any] | None = None,
     ) -> JourneyMetrics:
         """
         Start tracking a new journey.
-        
+
         Args:
             journey_id: Unique journey identifier
             journey_name: Human-readable journey name
             persona: Persona name
             metadata: Optional metadata
-            
+
         Returns:
             JourneyMetrics instance
         """
@@ -201,49 +206,39 @@ class JourneyTracker:
             journey_name=journey_name,
             persona=persona,
             status=JourneyStatus.NOT_STARTED,
-            metadata=metadata or {}
+            metadata=metadata or {},
         )
         journey.start()
         self.journeys[journey_id] = journey
         self.current_journey = journey
         return journey
-    
-    def start_step(
-        self,
-        step_name: str,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> StepMetrics:
+
+    def start_step(self, step_name: str, metadata: dict[str, Any] | None = None) -> StepMetrics:
         """
         Start tracking a journey step.
-        
+
         Args:
             step_name: Step name
             metadata: Optional metadata
-            
+
         Returns:
             StepMetrics instance
         """
         if not self.current_journey:
             raise RuntimeError("No active journey. Call start_journey() first.")
-        
+
         step = StepMetrics(
-            step_name=step_name,
-            status=StepStatus.NOT_STARTED,
-            metadata=metadata or {}
+            step_name=step_name, status=StepStatus.NOT_STARTED, metadata=metadata or {}
         )
         step.start()
         self.current_journey.add_step(step)
         self.current_step = step
         return step
-    
-    def complete_step(
-        self,
-        step_name: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
-    ):
+
+    def complete_step(self, step_name: str | None = None, metadata: dict[str, Any] | None = None):
         """
         Mark a step as completed.
-        
+
         Args:
             step_name: Step name (uses current step if not provided)
             metadata: Optional metadata
@@ -251,16 +246,13 @@ class JourneyTracker:
         step = self._get_step(step_name)
         step.complete(metadata=metadata)
         self.current_step = None
-    
+
     def fail_step(
-        self,
-        error: Exception,
-        step_name: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        self, error: Exception, step_name: str | None = None, metadata: dict[str, Any] | None = None
     ):
         """
         Mark a step as failed.
-        
+
         Args:
             error: Exception that caused the failure
             step_name: Step name (uses current step if not provided)
@@ -269,15 +261,11 @@ class JourneyTracker:
         step = self._get_step(step_name)
         step.fail(error, metadata=metadata)
         self.current_step = None
-    
-    def skip_step(
-        self,
-        step_name: Optional[str] = None,
-        reason: Optional[str] = None
-    ):
+
+    def skip_step(self, step_name: str | None = None, reason: str | None = None):
         """
         Mark a step as skipped.
-        
+
         Args:
             step_name: Step name (uses current step if not provided)
             reason: Skip reason
@@ -285,15 +273,13 @@ class JourneyTracker:
         step = self._get_step(step_name)
         step.skip(reason=reason)
         self.current_step = None
-    
+
     def complete_journey(
-        self,
-        journey_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        self, journey_id: str | None = None, metadata: dict[str, Any] | None = None
     ):
         """
         Mark a journey as completed.
-        
+
         Args:
             journey_id: Journey ID (uses current journey if not provided)
             metadata: Optional metadata
@@ -301,16 +287,16 @@ class JourneyTracker:
         journey = self._get_journey(journey_id)
         journey.complete(metadata=metadata)
         self.current_journey = None
-    
+
     def fail_journey(
         self,
         error: Exception,
-        journey_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        journey_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ):
         """
         Mark a journey as failed.
-        
+
         Args:
             error: Exception that caused the failure
             journey_id: Journey ID (uses current journey if not provided)
@@ -319,20 +305,22 @@ class JourneyTracker:
         journey = self._get_journey(journey_id)
         journey.fail(error, metadata=metadata)
         self.current_journey = None
-    
-    def _get_step(self, step_name: Optional[str] = None) -> StepMetrics:
+
+    def _get_step(self, step_name: str | None = None) -> StepMetrics:
         """Get step by name or current step."""
         if step_name:
             step = self.current_journey.get_step(step_name)
             if not step:
-                raise ValueError(f"Step '{step_name}' not found in journey '{self.current_journey.journey_id}'")
+                raise ValueError(
+                    f"Step '{step_name}' not found in journey '{self.current_journey.journey_id}'"
+                )
             return step
         elif self.current_step:
             return self.current_step
         else:
             raise RuntimeError("No active step. Call start_step() first.")
-    
-    def _get_journey(self, journey_id: Optional[str] = None) -> JourneyMetrics:
+
+    def _get_journey(self, journey_id: str | None = None) -> JourneyMetrics:
         """Get journey by ID or current journey."""
         if journey_id:
             journey = self.journeys.get(journey_id)
@@ -343,19 +331,19 @@ class JourneyTracker:
             return self.current_journey
         else:
             raise RuntimeError("No active journey. Call start_journey() first.")
-    
-    def get_journey(self, journey_id: str) -> Optional[JourneyMetrics]:
+
+    def get_journey(self, journey_id: str) -> JourneyMetrics | None:
         """Get journey by ID."""
         return self.journeys.get(journey_id)
-    
-    def get_all_journeys(self) -> List[JourneyMetrics]:
+
+    def get_all_journeys(self) -> list[JourneyMetrics]:
         """Get all tracked journeys."""
         return list(self.journeys.values())
-    
-    def get_journey_summary(self) -> Dict[str, Any]:
+
+    def get_journey_summary(self) -> dict[str, Any]:
         """
         Get summary statistics for all journeys.
-        
+
         Returns:
             Dictionary with summary statistics
         """
@@ -369,17 +357,34 @@ class JourneyTracker:
                 "average_success_rate": 0.0,
                 "average_duration": 0.0,
             }
-        
+
         total = len(self.journeys)
         completed = sum(1 for j in self.journeys.values() if j.status == JourneyStatus.COMPLETED)
         failed = sum(1 for j in self.journeys.values() if j.status == JourneyStatus.FAILED)
-        in_progress = sum(1 for j in self.journeys.values() if j.status == JourneyStatus.IN_PROGRESS)
-        
-        completed_journeys = [j for j in self.journeys.values() if j.status == JourneyStatus.COMPLETED]
-        avg_completion_rate = sum(j.completion_rate for j in completed_journeys) / len(completed_journeys) if completed_journeys else 0.0
-        avg_success_rate = sum(j.success_rate for j in completed_journeys) / len(completed_journeys) if completed_journeys else 0.0
-        avg_duration = sum(j.duration for j in completed_journeys if j.duration) / len([j for j in completed_journeys if j.duration]) if completed_journeys else 0.0
-        
+        in_progress = sum(
+            1 for j in self.journeys.values() if j.status == JourneyStatus.IN_PROGRESS
+        )
+
+        completed_journeys = [
+            j for j in self.journeys.values() if j.status == JourneyStatus.COMPLETED
+        ]
+        avg_completion_rate = (
+            sum(j.completion_rate for j in completed_journeys) / len(completed_journeys)
+            if completed_journeys
+            else 0.0
+        )
+        avg_success_rate = (
+            sum(j.success_rate for j in completed_journeys) / len(completed_journeys)
+            if completed_journeys
+            else 0.0
+        )
+        avg_duration = (
+            sum(j.duration for j in completed_journeys if j.duration)
+            / len([j for j in completed_journeys if j.duration])
+            if completed_journeys
+            else 0.0
+        )
+
         return {
             "total_journeys": total,
             "completed": completed,
@@ -389,11 +394,11 @@ class JourneyTracker:
             "average_success_rate": avg_success_rate,
             "average_duration": avg_duration,
         }
-    
+
     def export_results(self, filepath: str):
         """
         Export journey results to JSON file.
-        
+
         Args:
             filepath: Path to output file
         """
@@ -402,10 +407,10 @@ class JourneyTracker:
             "journeys": [journey.to_dict() for journey in self.journeys.values()],
             "exported_at": datetime.now().isoformat(),
         }
-        
-        with open(filepath, 'w') as f:
+
+        with open(filepath, "w") as f:
             json.dump(results, f, indent=2, default=str)
-    
+
     def clear(self):
         """Clear all tracked journeys."""
         self.journeys.clear()
@@ -420,4 +425,3 @@ _global_tracker = JourneyTracker()
 def get_journey_tracker() -> JourneyTracker:
     """Get global journey tracker instance."""
     return _global_tracker
-

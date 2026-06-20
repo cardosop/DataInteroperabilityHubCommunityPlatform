@@ -165,6 +165,7 @@ export function OntologyManager() {
               setForm({ ...form, format: e.target.value as UploadFormState['format'] })
             }
             data-testid="ontology-format-select"
+            aria-label="Select ontology format"
           >
             <option value="turtle">Turtle</option>
             <option value="rdf_xml">RDF/XML</option>

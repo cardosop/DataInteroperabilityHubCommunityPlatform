@@ -6,12 +6,13 @@ instead of blocking a gunicorn worker.  The task wraps execution in
 ``tenant_context(tenant_id)`` per CLAUDE.md RLS contract and emits
 a Job row so the SPA can poll `/jobs/{id}/` for completion.
 """
+
 from __future__ import annotations
+
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
-from django.db import transaction
 from django.utils import timezone
 
 from hub.apps.jobs.models import Job, JobStatus, JobType
@@ -32,7 +33,7 @@ def enqueue_warehouse_query(
     tenant_id: str,
     user_id: str,
     sql: str,
-    params: Optional[Dict[str, Any]] = None,
+    params: dict[str, Any] | None = None,
     resource_id: str = "",
     resource_type: str = "WAREHOUSE_QUERY",
     force_async: bool = False,
@@ -91,7 +92,7 @@ def enqueue_warehouse_query(
     return job
 
 
-def _execute_warehouse_query_async(job_id: str) -> Dict[str, Any]:
+def _execute_warehouse_query_async(job_id: str) -> dict[str, Any]:
     """
     RQ task entry point.  Wraps execution in ``tenant_context()``
     per CLAUDE.md RLS contract so the warehouse connector sees the

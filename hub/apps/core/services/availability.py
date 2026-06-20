@@ -4,9 +4,10 @@ Service Availability Checker
 Provides utilities to check service availability, log service status,
 and handle service unavailability gracefully in tests and production.
 """
+
 import logging
 import time
-from typing import Dict, Optional, Tuple, List
+
 from django.conf import settings
 from django.core.cache import cache
 
@@ -28,15 +29,11 @@ class ServiceAvailabilityChecker:
             cache_ttl: Cache TTL in seconds for availability checks
         """
         self.cache_ttl = cache_ttl
-        self._availability_cache: Dict[str, Tuple[bool, float]] = {}
+        self._availability_cache: dict[str, tuple[bool, float]] = {}
 
     def check_service_availability(
-        self,
-        service_name: str,
-        service_url: str,
-        health_path: str = '/health',
-        timeout: int = 5
-    ) -> Tuple[bool, Optional[str]]:
+        self, service_name: str, service_url: str, health_path: str = "/health", timeout: int = 5
+    ) -> tuple[bool, str | None]:
         """
         Check if a service is available and healthy.
 
@@ -59,11 +56,11 @@ class ServiceAvailabilityChecker:
                 logger.debug(
                     f"Service {service_name} availability (cached): {is_available}",
                     extra={
-                        'service_name': service_name,
-                        'service_url': service_url,
-                        'is_available': is_available,
-                        'cached': True
-                    }
+                        "service_name": service_name,
+                        "service_url": service_url,
+                        "is_available": is_available,
+                        "cached": True,
+                    },
                 )
                 return is_available, None if is_available else "Service unavailable (cached)"
 
@@ -71,9 +68,7 @@ class ServiceAvailabilityChecker:
         health_client = ServiceHealthClient(timeout=timeout)
         try:
             is_healthy, status_message = health_client.check_health(
-                service_url=service_url,
-                health_path=health_path,
-                timeout=timeout
+                service_url=service_url, health_path=health_path, timeout=timeout
             )
 
             if is_healthy:
@@ -82,12 +77,12 @@ class ServiceAvailabilityChecker:
                 logger.info(
                     f"Service {service_name} is available and healthy",
                     extra={
-                        'service_name': service_name,
-                        'service_url': service_url,
-                        'health_path': health_path,
-                        'status_message': status_message,
-                        'is_available': True
-                    }
+                        "service_name": service_name,
+                        "service_url": service_url,
+                        "health_path": health_path,
+                        "status_message": status_message,
+                        "is_available": True,
+                    },
                 )
                 return True, None
             else:
@@ -96,12 +91,12 @@ class ServiceAvailabilityChecker:
                 logger.warning(
                     error_msg,
                     extra={
-                        'service_name': service_name,
-                        'service_url': service_url,
-                        'health_path': health_path,
-                        'status_message': status_message,
-                        'is_available': False
-                    }
+                        "service_name": service_name,
+                        "service_url": service_url,
+                        "health_path": health_path,
+                        "status_message": status_message,
+                        "is_available": False,
+                    },
                 )
                 return False, error_msg
 
@@ -111,17 +106,19 @@ class ServiceAvailabilityChecker:
             logger.warning(
                 error_msg,
                 extra={
-                    'service_name': service_name,
-                    'service_url': service_url,
-                    'error': str(e),
-                    'error_type': type(e).__name__,
-                    'is_available': False
+                    "service_name": service_name,
+                    "service_url": service_url,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "is_available": False,
                 },
-                exc_info=True
+                exc_info=True,
             )
             return False, error_msg
 
-    def check_all_services(self, service_configs: Dict[str, Dict[str, str]]) -> Dict[str, Tuple[bool, Optional[str]]]:
+    def check_all_services(
+        self, service_configs: dict[str, dict[str, str]]
+    ) -> dict[str, tuple[bool, str | None]]:
         """
         Check availability of multiple services.
 
@@ -134,14 +131,14 @@ class ServiceAvailabilityChecker:
         """
         results = {}
         for service_name, config in service_configs.items():
-            service_url = config.get('url')
-            health_path = config.get('health_path', '/health')
-            timeout = config.get('timeout', 5)
+            service_url = config.get("url")
+            health_path = config.get("health_path", "/health")
+            timeout = config.get("timeout", 5)
 
             if not service_url:
                 logger.warning(
                     f"Service {service_name} has no URL configured",
-                    extra={'service_name': service_name}
+                    extra={"service_name": service_name},
                 )
                 results[service_name] = (False, "No URL configured")
                 continue
@@ -150,13 +147,13 @@ class ServiceAvailabilityChecker:
                 service_name=service_name,
                 service_url=service_url,
                 health_path=health_path,
-                timeout=timeout
+                timeout=timeout,
             )
             results[service_name] = (is_available, error_msg)
 
         return results
 
-    def log_service_status_summary(self, results: Dict[str, Tuple[bool, Optional[str]]]) -> None:
+    def log_service_status_summary(self, results: dict[str, tuple[bool, str | None]]) -> None:
         """
         Log a summary of service availability status.
 
@@ -169,31 +166,23 @@ class ServiceAvailabilityChecker:
         logger.info(
             f"Service availability summary: {available_count}/{total_count} services available",
             extra={
-                'available_count': available_count,
-                'total_count': total_count,
-                'services': {
-                    name: {
-                        'available': is_avail,
-                        'error': error_msg
-                    }
+                "available_count": available_count,
+                "total_count": total_count,
+                "services": {
+                    name: {"available": is_avail, "error": error_msg}
                     for name, (is_avail, error_msg) in results.items()
-                }
-            }
+                },
+            },
         )
 
         # Log unavailable services
         unavailable = {
-            name: error_msg
-            for name, (is_avail, error_msg) in results.items()
-            if not is_avail
+            name: error_msg for name, (is_avail, error_msg) in results.items() if not is_avail
         }
         if unavailable:
             logger.warning(
                 f"Unavailable services: {', '.join(unavailable.keys())}",
-                extra={
-                    'unavailable_services': unavailable,
-                    'unavailable_count': len(unavailable)
-                }
+                extra={"unavailable_services": unavailable, "unavailable_count": len(unavailable)},
             )
 
 
@@ -202,11 +191,8 @@ _service_checker = ServiceAvailabilityChecker()
 
 
 def check_service_availability(
-    service_name: str,
-    service_url: str,
-    health_path: str = '/health',
-    timeout: int = 5
-) -> Tuple[bool, Optional[str]]:
+    service_name: str, service_url: str, health_path: str = "/health", timeout: int = 5
+) -> tuple[bool, str | None]:
     """
     Convenience function to check service availability.
 
@@ -220,14 +206,11 @@ def check_service_availability(
         Tuple of (is_available: bool, error_message: Optional[str])
     """
     return _service_checker.check_service_availability(
-        service_name=service_name,
-        service_url=service_url,
-        health_path=health_path,
-        timeout=timeout
+        service_name=service_name, service_url=service_url, health_path=health_path, timeout=timeout
     )
 
 
-def get_all_service_configs() -> Dict[str, Dict[str, str]]:
+def get_all_service_configs() -> dict[str, dict[str, str]]:
     """
     Get configuration for all services from settings.
 
@@ -235,30 +218,32 @@ def get_all_service_configs() -> Dict[str, Dict[str, str]]:
         Dictionary mapping service names to config dicts
     """
     return {
-        'dq-service': {
-            'url': getattr(settings, 'DQ_SERVICE_URL', 'http://dq-service:8083'),
-            'health_path': '/health',
-            'timeout': getattr(settings, 'DQ_SERVICE_TIMEOUT', 1800)
+        "dq-service": {
+            "url": getattr(settings, "DQ_SERVICE_URL", "http://dq-service:8083"),
+            "health_path": "/health",
+            "timeout": getattr(settings, "DQ_SERVICE_TIMEOUT", 1800),
         },
-        'compliance-service': {
-            'url': getattr(settings, 'COMPLIANCE_SERVICE_URL', 'http://compliance-service:8082'),
-            'health_path': '/health',
-            'timeout': getattr(settings, 'COMPLIANCE_SERVICE_TIMEOUT', 1800)
+        "compliance-service": {
+            "url": getattr(settings, "COMPLIANCE_SERVICE_URL", "http://compliance-service:8082"),
+            "health_path": "/health",
+            "timeout": getattr(settings, "COMPLIANCE_SERVICE_TIMEOUT", 1800),
         },
-        'datacontract-service': {
-            'url': getattr(settings, 'DATACONTRACT_CLI_SERVICE_URL', 'http://datacontract-service:8080'),
-            'health_path': '/health',
-            'timeout': getattr(settings, 'DATACONTRACT_CLI_TIMEOUT', 60)
+        "datacontract-service": {
+            "url": getattr(
+                settings, "DATACONTRACT_CLI_SERVICE_URL", "http://datacontract-service:8080"
+            ),
+            "health_path": "/health",
+            "timeout": getattr(settings, "DATACONTRACT_CLI_TIMEOUT", 60),
         },
-        'semantic-service': {
-            'url': getattr(settings, 'SEMANTIC_SERVICE_URL', 'http://semantic-service:8081'),
-            'health_path': '/health',
-            'timeout': getattr(settings, 'SEMANTIC_SERVICE_TIMEOUT', 60)
+        "semantic-service": {
+            "url": getattr(settings, "SEMANTIC_SERVICE_URL", "http://semantic-service:8081"),
+            "health_path": "/health",
+            "timeout": getattr(settings, "SEMANTIC_SERVICE_TIMEOUT", 60),
         },
     }
 
 
-def check_all_services() -> Dict[str, Tuple[bool, Optional[str]]]:
+def check_all_services() -> dict[str, tuple[bool, str | None]]:
     """
     Check availability of all configured services.
 
@@ -267,4 +252,3 @@ def check_all_services() -> Dict[str, Tuple[bool, Optional[str]]]:
     """
     configs = get_all_service_configs()
     return _service_checker.check_all_services(configs)
-

@@ -12,10 +12,10 @@ checking the semantic health/readiness probe.
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_get
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _admin_creds():
     return provision_persona("platform_admin")
@@ -67,8 +67,7 @@ def test_semantic_health():
             body_text = resp.text.lower()
             # Sanity: the response should not be an error message
             assert "error" not in body_text or "no error" in body_text, (
-                f"Semantic health returned 200 but body contains error: "
-                f"{resp.text[:300]}"
+                f"Semantic health returned 200 but body contains error: {resp.text[:300]}"
             )
             return
 

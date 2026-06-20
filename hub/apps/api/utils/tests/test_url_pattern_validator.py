@@ -4,16 +4,15 @@ Tests for URL Pattern Validator
 Task: 9.6.3.1.4 - Add URL pattern validation utility
 """
 
-from django.test import TestCase, override_settings
-from django.urls import path, include, re_path
-from django.conf import settings
 import sys
 
+from django.test import TestCase
+
 from hub.apps.api.utils.url_pattern_validator import (
-    URLPatternValidator,
     URLPatternValidationError,
     URLPatternValidationResult,
-    validate_url_patterns
+    URLPatternValidator,
+    validate_url_patterns,
 )
 
 
@@ -40,11 +39,11 @@ class URLPatternValidatorTest(TestCase):
     def test_validate_no_duplication_catches_duplicate(self):
         """Test that duplicate service name detection works"""
         pattern_info = {
-            'pattern': r"^contracts/(?P<id>[^/.]+)/lineage/visualization/$",
-            'normalized_pattern': '/api/v1/contracts/contracts/{id}/lineage/visualization/',
-            'url_name': 'test-url',
-            'file_path': 'test/urls.py',
-            'line_number': None
+            "pattern": r"^contracts/(?P<id>[^/.]+)/lineage/visualization/$",
+            "normalized_pattern": "/api/v1/contracts/contracts/{id}/lineage/visualization/",
+            "url_name": "test-url",
+            "file_path": "test/urls.py",
+            "line_number": None,
         }
 
         errors = self.validator.validate_no_duplication(pattern_info)
@@ -56,11 +55,11 @@ class URLPatternValidatorTest(TestCase):
     def test_validate_no_duplication_passes_valid_pattern(self):
         """Test that valid patterns pass duplication check"""
         pattern_info = {
-            'pattern': r"^(?P<id>[^/.]+)/lineage/visualization/$",
-            'normalized_pattern': '/api/v1/contracts/{id}/lineage/visualization/',
-            'url_name': 'test-url',
-            'file_path': 'test/urls.py',
-            'line_number': None
+            "pattern": r"^(?P<id>[^/.]+)/lineage/visualization/$",
+            "normalized_pattern": "/api/v1/contracts/{id}/lineage/visualization/",
+            "url_name": "test-url",
+            "file_path": "test/urls.py",
+            "line_number": None,
         }
 
         errors = self.validator.validate_no_duplication(pattern_info)
@@ -69,11 +68,11 @@ class URLPatternValidatorTest(TestCase):
     def test_validate_plural_resources_catches_singular(self):
         """Test that singular resource names are caught"""
         pattern_info = {
-            'pattern': r"^asset/$",
-            'normalized_pattern': '/api/v1/asset/',
-            'url_name': 'asset-list',
-            'file_path': 'test/urls.py',
-            'line_number': None
+            "pattern": r"^asset/$",
+            "normalized_pattern": "/api/v1/asset/",
+            "url_name": "asset-list",
+            "file_path": "test/urls.py",
+            "line_number": None,
         }
 
         errors = self.validator.validate_plural_resources(pattern_info)
@@ -84,11 +83,11 @@ class URLPatternValidatorTest(TestCase):
     def test_validate_plural_resources_passes_plural(self):
         """Test that plural resource names pass"""
         pattern_info = {
-            'pattern': r"^assets/$",
-            'normalized_pattern': '/api/v1/assets/',
-            'url_name': 'asset-list',
-            'file_path': 'test/urls.py',
-            'line_number': None
+            "pattern": r"^assets/$",
+            "normalized_pattern": "/api/v1/assets/",
+            "url_name": "asset-list",
+            "file_path": "test/urls.py",
+            "line_number": None,
         }
 
         errors = self.validator.validate_plural_resources(pattern_info)
@@ -97,11 +96,11 @@ class URLPatternValidatorTest(TestCase):
     def test_validate_kebab_case_catches_snake_case(self):
         """Test that snake_case is caught"""
         pattern_info = {
-            'pattern': r"^test_resource/$",
-            'normalized_pattern': '/api/v1/test_resource/',
-            'url_name': 'test-resource',
-            'file_path': 'test/urls.py',
-            'line_number': None
+            "pattern": r"^test_resource/$",
+            "normalized_pattern": "/api/v1/test_resource/",
+            "url_name": "test-resource",
+            "file_path": "test/urls.py",
+            "line_number": None,
         }
 
         errors = self.validator.validate_kebab_case(pattern_info)
@@ -112,11 +111,11 @@ class URLPatternValidatorTest(TestCase):
     def test_validate_kebab_case_catches_camel_case(self):
         """Test that camelCase is caught"""
         pattern_info = {
-            'pattern': r"^testResource/$",
-            'normalized_pattern': '/api/v1/testResource/',
-            'url_name': 'test-resource',
-            'file_path': 'test/urls.py',
-            'line_number': None
+            "pattern": r"^testResource/$",
+            "normalized_pattern": "/api/v1/testResource/",
+            "url_name": "test-resource",
+            "file_path": "test/urls.py",
+            "line_number": None,
         }
 
         errors = self.validator.validate_kebab_case(pattern_info)
@@ -127,11 +126,11 @@ class URLPatternValidatorTest(TestCase):
     def test_validate_kebab_case_passes_valid(self):
         """Test that valid kebab-case passes"""
         pattern_info = {
-            'pattern': r"^test-resource/$",
-            'normalized_pattern': '/api/v1/test-resource/',
-            'url_name': 'test-resource',
-            'file_path': 'test/urls.py',
-            'line_number': None
+            "pattern": r"^test-resource/$",
+            "normalized_pattern": "/api/v1/test-resource/",
+            "url_name": "test-resource",
+            "file_path": "test/urls.py",
+            "line_number": None,
         }
 
         errors = self.validator.validate_kebab_case(pattern_info)
@@ -140,11 +139,11 @@ class URLPatternValidatorTest(TestCase):
     def test_validate_explicit_naming_warns_abbreviation(self):
         """Test that unclear abbreviations generate warnings"""
         pattern_info = {
-            'pattern': r"^dc/$",
-            'normalized_pattern': '/api/v1/dc/',
-            'url_name': 'dc-list',
-            'file_path': 'test/urls.py',
-            'line_number': None
+            "pattern": r"^dc/$",
+            "normalized_pattern": "/api/v1/dc/",
+            "url_name": "dc-list",
+            "file_path": "test/urls.py",
+            "line_number": None,
         }
 
         warnings = self.validator.validate_explicit_naming(pattern_info)
@@ -156,11 +155,11 @@ class URLPatternValidatorTest(TestCase):
     def test_validate_explicit_naming_passes_explicit(self):
         """Test that explicit names pass"""
         pattern_info = {
-            'pattern': r"^data-contracts/$",
-            'normalized_pattern': '/api/v1/data-contracts/',
-            'url_name': 'data-contracts-list',
-            'file_path': 'test/urls.py',
-            'line_number': None
+            "pattern": r"^data-contracts/$",
+            "normalized_pattern": "/api/v1/data-contracts/",
+            "url_name": "data-contracts-list",
+            "file_path": "test/urls.py",
+            "line_number": None,
         }
 
         warnings = self.validator.validate_explicit_naming(pattern_info)
@@ -176,8 +175,8 @@ class URLPatternValidatorTest(TestCase):
         # Check that patterns have required fields
         if patterns:
             pattern = patterns[0]
-            self.assertIn('pattern', pattern)
-            self.assertIn('normalized_pattern', pattern)
+            self.assertIn("pattern", pattern)
+            self.assertIn("normalized_pattern", pattern)
 
     def test_validate_all_integration(self):
         """Integration test for validate_all method"""
@@ -203,14 +202,11 @@ class URLPatternValidatorTest(TestCase):
             line_number=None,
             message="Duplicate segment 'contracts' appears twice",
             severity="error",
-            suggestion="Remove duplicate segment"
+            suggestion="Remove duplicate segment",
         )
 
         result = URLPatternValidationResult(
-            total_patterns=10,
-            errors=[error],
-            warnings=[],
-            passed=False
+            total_patterns=10, errors=[error], warnings=[], passed=False
         )
 
         formatted = self.validator.format_errors(result)
@@ -238,10 +234,11 @@ class URLPatternValidatorStartupTest(TestCase):
 
         try:
             from django.apps import apps
+
             from hub.apps.api.apps import ApiConfig
 
             # Get the actual app config from Django's registry
-            app_config = apps.get_app_config('api')
+            app_config = apps.get_app_config("api")
 
             # Verify it's our config
             self.assertIsInstance(app_config, ApiConfig)
@@ -254,17 +251,18 @@ class URLPatternValidatorStartupTest(TestCase):
 
     def test_startup_validation_skips_migrations(self):
         """Test that validation is skipped during migrations"""
-        from hub.apps.api.apps import ApiConfig
         from django.apps import apps
 
+        from hub.apps.api.apps import ApiConfig
+
         # Get app config
-        app_config = apps.get_app_config('api')
+        app_config = apps.get_app_config("api")
         self.assertIsInstance(app_config, ApiConfig)
 
         # Simulate migration command
         original_argv = sys.argv[:]
         try:
-            sys.argv = ['manage.py', 'migrate']
+            sys.argv = ["manage.py", "migrate"]
             should_validate = app_config._should_validate()
             self.assertFalse(should_validate, "Validation should be skipped during migrations")
         finally:
@@ -272,17 +270,19 @@ class URLPatternValidatorStartupTest(TestCase):
 
     def test_startup_validation_runs_in_normal_mode(self):
         """Test that validation runs in normal Django mode"""
-        from hub.apps.api.apps import ApiConfig
-        from django.apps import apps
         from unittest.mock import patch
 
+        from django.apps import apps
+
+        from hub.apps.api.apps import ApiConfig
+
         # Get app config
-        app_config = apps.get_app_config('api')
+        app_config = apps.get_app_config("api")
         self.assertIsInstance(app_config, ApiConfig)
 
         # Mock should_skip_initialization to return False (simulating normal mode)
         # Since we're in a test, unittest is loaded, so we need to mock the check
-        with patch('hub.apps.core.utils.test_mode.should_skip_initialization', return_value=False):
+        with patch("hub.apps.core.utils.test_mode.should_skip_initialization", return_value=False):
             should_validate = app_config._should_validate()
             self.assertTrue(should_validate, "Validation should run in normal mode")
 
@@ -301,9 +301,10 @@ class URLPatternValidatorRealPatternsTest(TestCase):
         # Check that we can identify the contracts lineage visualization pattern
         # (which we fixed in task 9.6.3.1.1)
         contracts_patterns = [
-            p for p in validator.patterns
-            if 'lineage' in p.get('normalized_pattern', '').lower()
-            and 'visualization' in p.get('normalized_pattern', '').lower()
+            p
+            for p in validator.patterns
+            if "lineage" in p.get("normalized_pattern", "").lower()
+            and "visualization" in p.get("normalized_pattern", "").lower()
         ]
 
         if contracts_patterns:
@@ -313,8 +314,9 @@ class URLPatternValidatorRealPatternsTest(TestCase):
                 # Should not have duplication errors for the fixed pattern
                 duplication_errors = [e for e in errors if e.rule == "no_duplication"]
                 self.assertEqual(
-                    len(duplication_errors), 0,
-                    f"Fixed pattern should not have duplication: {pattern_info['normalized_pattern']}"
+                    len(duplication_errors),
+                    0,
+                    f"Fixed pattern should not have duplication: {pattern_info['normalized_pattern']}",
                 )
 
     def test_validation_catches_known_issues(self):
@@ -330,4 +332,3 @@ class URLPatternValidatorRealPatternsTest(TestCase):
 
         # Test passes regardless - we're just verifying the validator works
         self.assertIsNotNone(result)
-

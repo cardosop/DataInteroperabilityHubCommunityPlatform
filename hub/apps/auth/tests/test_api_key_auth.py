@@ -3,6 +3,7 @@ Unit tests for API key authentication.
 """
 
 import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -27,7 +28,10 @@ class APIKeyAuthenticationTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -81,7 +85,7 @@ class APIKeyAuthenticationTest(TestCase):
         # Create expired API key
         plaintext_key = APIKey.generate_key()
         key_hash = APIKey.hash_key(plaintext_key)
-        expired_key = APIKey.objects.create(
+        APIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
             key_hash=key_hash,
@@ -360,14 +364,7 @@ class APIKeyAuthenticationTest(TestCase):
             )
 
         response = self.client.get("/api/v1/auth/api-keys/?page=2&page_size=10")
-
-        # Handle both DRF Response and JsonResponse
-        if hasattr(response, 'data'):
-            data = response.data
-        else:
-            import json
-            data = response.data
-
+        data = response.data
         self.assertEqual(data["page"], 2)
 
     def test_list_api_keys_pagination_page_2_limits_results(self):
@@ -409,14 +406,7 @@ class APIKeyAuthenticationTest(TestCase):
         # This test expects capped page_size, but middleware rejects it first
         # Using 100 to verify the max is respected
         response = self.client.get("/api/v1/auth/api-keys/?page_size=100")
-
-        # Handle both DRF Response and JsonResponse
-        if hasattr(response, 'data'):
-            data = response.data
-        else:
-            import json
-            data = response.data
-
+        data = response.data
         self.assertLessEqual(data["page_size"], 100)
 
     # ========== ERROR HANDLING ==========

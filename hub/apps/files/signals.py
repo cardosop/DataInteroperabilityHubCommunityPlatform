@@ -6,6 +6,7 @@ is hard-deleted, so orphaned Dataset rows carry a ``RETIRED`` status +
 ``retired_at`` timestamp rather than remaining ``ACTIVE`` with a NULL
 file FK.
 """
+
 import logging
 
 from django.db.models.signals import pre_delete

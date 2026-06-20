@@ -13,6 +13,7 @@ Usage:
 
 Also available as: ``python manage.py benchmark_views``
 """
+
 import os
 import sys
 
@@ -20,6 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 
 import django
+
 django.setup()
 
 from hub.apps.observability.management.commands.benchmark_views import (
@@ -35,8 +37,10 @@ if __name__ == "__main__":
     parser.add_argument("--json", action="store_true", default=False)
     args = parser.parse_args()
 
-    raise SystemExit(run_benchmarks(
-        views=args.views,
-        save_as_baseline=args.baseline,
-        json_output=args.json,
-    ))
+    raise SystemExit(
+        run_benchmarks(
+            views=args.views,
+            save_as_baseline=args.baseline,
+            json_output=args.json,
+        )
+    )

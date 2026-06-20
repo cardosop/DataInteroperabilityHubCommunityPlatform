@@ -22,9 +22,7 @@ class MvpModeApiGateMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        if getattr(settings, "MVP_MODE", False) and is_mvp_gated_api_v1_path(
-            request.path
-        ):
+        if getattr(settings, "MVP_MODE", False) and is_mvp_gated_api_v1_path(request.path):
             # Track A observability: surface every gate-blocked request so
             # staging scanner probes and real-user bookmark drift become
             # visible via structured logs. No request body, no auth info —

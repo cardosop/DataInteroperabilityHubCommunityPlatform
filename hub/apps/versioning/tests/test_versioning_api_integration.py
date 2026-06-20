@@ -9,6 +9,8 @@ Tests use real DB (Contract, Dataset, Asset, File, Tenant, User); no mocks/stubs
 Covers: list versions, get version, compare, tenant isolation, auth, params validation.
 """
 
+import uuid
+
 import pytest
 from django.test import TestCase
 from rest_framework import status
@@ -20,7 +22,6 @@ from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

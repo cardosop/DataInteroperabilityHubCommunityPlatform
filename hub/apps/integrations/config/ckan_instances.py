@@ -9,18 +9,19 @@ dados.gov.br uses Swagger APIs (NOT CKAN), while demo.ckan.org and data.gov use 
 
 This module will be removed in a future version.
 """
+
 import warnings
 
 # Import everything from the new module
 from hub.apps.integrations.config.marketplace_instances import (
-    MarketplaceInstanceConfig,
-    get_marketplace_instance_config,
-    get_default_test_instance,
+    CKAN_INSTANCES,
     MARKETPLACE_INSTANCES,
     # Backward compatibility aliases (deprecated)
     CKANInstanceConfig,
+    MarketplaceInstanceConfig,
     get_ckan_instance_config,
-    CKAN_INSTANCES,
+    get_default_test_instance,
+    get_marketplace_instance_config,
 )
 
 # Warn on import
@@ -29,7 +30,7 @@ warnings.warn(
     "Use hub.apps.integrations.config.marketplace_instances instead. "
     "This module will be removed in a future version.",
     DeprecationWarning,
-    stacklevel=2
+    stacklevel=2,
 )
 
 __all__ = [

@@ -11,12 +11,12 @@ Idempotently verifies that every ``@register_rule``-decorated class in
 
 Exit 0 when all rules conform; exit 1 with a report otherwise.
 """
+
 from __future__ import annotations
 
 import ast
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 HUB_APPS = Path(__file__).resolve().parent.parent / "hub" / "apps"
 
@@ -28,7 +28,7 @@ class RuleMetadataChecker(ast.NodeVisitor):
 
     def __init__(self, filepath: Path) -> None:
         self.filepath = filepath
-        self.violations: List[str] = []
+        self.violations: list[str] = []
         self._current_class: str | None = None
         self._decorator_node: ast.Call | None = None
 
@@ -83,8 +83,8 @@ def _ast_value(node: ast.expr) -> str | tuple | None:
     return None
 
 
-def collect_business_rules_files() -> List[Path]:
-    files: List[Path] = []
+def collect_business_rules_files() -> list[Path]:
+    files: list[Path] = []
     for app_dir in sorted(HUB_APPS.iterdir()):
         if not app_dir.is_dir():
             continue
@@ -100,7 +100,7 @@ def main() -> int:
         print("No business_rules.py files found — nothing to check.")
         return 0
 
-    all_violations: List[str] = []
+    all_violations: list[str] = []
     total_rules = 0
 
     for fpath in files:

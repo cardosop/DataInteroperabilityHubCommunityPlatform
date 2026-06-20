@@ -12,6 +12,7 @@ hub_contract_json shapes that mirror what the normalizers produce on
 staging, including the ODPS-outputports gap and the ODCS-no-schema gap
 that motivate Phase 227.
 """
+
 from hub.apps.contracts.structureless import (
     StructurelessClassification,
     classify_structureless_contract,
@@ -39,6 +40,7 @@ class _StubContract:
 # is_structureless
 # ---------------------------------------------------------------------------
 
+
 def test_null_hub_contract_json_is_structureless():
     contract = _StubContract(hub_contract_json=None)
     assert is_structureless(contract) is True
@@ -50,9 +52,7 @@ def test_empty_hub_contract_json_is_structureless():
 
 
 def test_explicit_empty_models_and_schema_is_structureless():
-    contract = _StubContract(
-        hub_contract_json={"models": [], "schema": {"fields": []}}
-    )
+    contract = _StubContract(hub_contract_json={"models": [], "schema": {"fields": []}})
     assert is_structureless(contract) is True
 
 
@@ -84,16 +84,12 @@ def test_missing_schema_key_with_empty_models_is_structureless():
 
 def test_models_with_empty_fields_array_is_still_structureless():
     """A model entry with no fields contributes no structure."""
-    contract = _StubContract(
-        hub_contract_json={"models": [{"name": "orders", "fields": []}]}
-    )
+    contract = _StubContract(hub_contract_json={"models": [{"name": "orders", "fields": []}]})
     assert is_structureless(contract) is True
 
 
 def test_schema_present_but_fields_null_is_structureless():
-    contract = _StubContract(
-        hub_contract_json={"models": [], "schema": {"fields": None}}
-    )
+    contract = _StubContract(hub_contract_json={"models": [], "schema": {"fields": None}})
     assert is_structureless(contract) is True
 
 
@@ -106,6 +102,7 @@ def test_non_dict_hub_contract_json_is_structureless():
 # ---------------------------------------------------------------------------
 # structureless_filter_q
 # ---------------------------------------------------------------------------
+
 
 def test_structureless_filter_q_returns_q_object():
     """The filter helper must return a Django Q so it composes with
@@ -120,6 +117,7 @@ def test_structureless_filter_q_returns_q_object():
 # ---------------------------------------------------------------------------
 # classify_structureless_contract
 # ---------------------------------------------------------------------------
+
 
 def test_odps_with_outputports_classifies_as_pure_odps_with_outputports():
     contract = _StubContract(
@@ -161,11 +159,7 @@ def test_odcs_with_schema_block_but_empty_classifies_as_odcs_no_schema_block():
     """Schema header present but block is empty/lacks fields — same triage path."""
     contract = _StubContract(
         original_spec_type="ODCS",
-        original_raw=(
-            "apiVersion: 3.0.0\n"
-            "kind: DataContract\n"
-            "schema: {}\n"
-        ),
+        original_raw=("apiVersion: 3.0.0\nkind: DataContract\nschema: {}\n"),
         hub_contract_json={"models": []},
     )
     classification = classify_structureless_contract(contract)
@@ -198,6 +192,8 @@ def test_odps_without_outputports_classifies_as_other():
 def test_classification_is_serializable_by_value():
     """JSONL emission depends on `.value` being a stable string."""
     assert isinstance(StructurelessClassification.PURE_ODPS_WITH_OUTPUTPORTS.value, str)
-    assert StructurelessClassification.PURE_ODPS_WITH_OUTPUTPORTS.value == "pure_odps_with_outputports"
+    assert (
+        StructurelessClassification.PURE_ODPS_WITH_OUTPUTPORTS.value == "pure_odps_with_outputports"
+    )
     assert StructurelessClassification.ODCS_NO_SCHEMA_BLOCK.value == "odcs_no_schema_block"
     assert StructurelessClassification.OTHER.value == "other"

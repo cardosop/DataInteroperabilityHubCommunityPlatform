@@ -23,6 +23,7 @@ Plus the admin key-management endpoints (REQ-LIN-F4-003):
 No internal mocks; only the network boundary (the underlying
 adapter's HTTP call would be a separate adapter test).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -34,7 +35,6 @@ from datetime import timedelta
 import pytest
 from django.test import TransactionTestCase, override_settings
 from rest_framework.test import APIClient
-
 
 HMAC_KEY = "test-hmac-signing-key-32-bytes-long-XYZ"
 INBOUND_URL = "/api/v1/lineage/openlineage/events/"
@@ -52,14 +52,18 @@ def _create_tenant():
     helper is the canonical reuse-safe plan factory the rest of the
     suite leans on."""
     from django.utils import timezone
+
     from hub.apps.billing.models import Subscription, SubscriptionStatus
     from hub.apps.billing.tests.plan_fixtures import (
-        create_unique_tenant, get_pro_plan,
+        create_unique_tenant,
+        get_pro_plan,
     )
 
     plan = get_pro_plan()
     tenant = create_unique_tenant(
-        name_prefix="OL Co", slug_prefix="ol-co", plan=plan,
+        name_prefix="OL Co",
+        slug_prefix="ol-co",
+        plan=plan,
     )
     Subscription.objects.create(
         tenant=tenant,
@@ -74,7 +78,9 @@ def _create_tenant():
 
 def _create_admin(tenant):
     from django.contrib.auth import get_user_model
+
     from hub.apps.users.models import Role, UserRole
+
     User = get_user_model()
     u = User.objects.create(email=f"admin-{uuid.uuid4().hex[:6]}@x", tenant=tenant)
     role, _ = Role.objects.get_or_create(tenant=tenant, name="TENANT_ADMIN")
@@ -88,6 +94,7 @@ def _create_active_key(tenant):
         generate_ingest_key_plaintext,
         hash_ingest_key,
     )
+
     plaintext = generate_ingest_key_plaintext()
     row = OpenLineageIngestApiKey.objects.create(
         tenant=tenant,
@@ -112,9 +119,14 @@ def _build_valid_event(*, source_id=None, target_id=None) -> dict:
 
 
 def _hmac_sign(body: bytes, key: str = HMAC_KEY) -> str:
-    return "sha256=" + hmac.new(
-        key.encode("utf-8"), body, hashlib.sha256,
-    ).hexdigest()
+    return (
+        "sha256="
+        + hmac.new(
+            key.encode("utf-8"),
+            body,
+            hashlib.sha256,
+        ).hexdigest()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -124,14 +136,17 @@ def _hmac_sign(body: bytes, key: str = HMAC_KEY) -> str:
 
 @pytest.mark.django_db(transaction=True)
 class TestCapabilityGate(TransactionTestCase):
-
     def setUp(self):
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         connection.close()
         connection.savepoint_ids = []
@@ -168,14 +183,17 @@ class TestCapabilityGate(TransactionTestCase):
 @override_settings(OPENLINEAGE_HMAC_SIGNING_KEY=HMAC_KEY)
 @pytest.mark.django_db(transaction=True)
 class TestInboundAuthAndHmac(TransactionTestCase):
-
     def setUp(self):
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         connection.close()
         connection.savepoint_ids = []
@@ -209,6 +227,7 @@ class TestInboundAuthAndHmac(TransactionTestCase):
 
     def test_revoked_key_returns_401(self):
         from django.utils import timezone
+
         tenant = _create_tenant()
         plaintext, row = _create_active_key(tenant)
         row.revoked_at = timezone.now()
@@ -228,6 +247,7 @@ class TestInboundAuthAndHmac(TransactionTestCase):
 
     def test_expired_key_returns_401(self):
         from django.utils import timezone
+
         tenant = _create_tenant()
         plaintext, row = _create_active_key(tenant)
         row.expires_at = timezone.now() - timedelta(seconds=1)
@@ -276,8 +296,7 @@ class TestInboundAuthAndHmac(TransactionTestCase):
             HTTP_X_MESHANT_OPENLINEAGE_KEY=plaintext,
         )
         assert resp.status_code == 202, (
-            f"valid request expected 202; got {resp.status_code} "
-            f"body={resp.content!r}"
+            f"valid request expected 202; got {resp.status_code} body={resp.content!r}"
         )
 
     def test_malformed_event_returns_400(self):
@@ -304,14 +323,17 @@ class TestInboundAuthAndHmac(TransactionTestCase):
 
 @pytest.mark.django_db(transaction=True)
 class TestKeyAdminEndpoints(TransactionTestCase):
-
     def setUp(self):
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         connection.close()
         connection.savepoint_ids = []
@@ -347,7 +369,9 @@ class TestKeyAdminEndpoints(TransactionTestCase):
         client = APIClient()
         client.force_authenticate(user=admin)
         resp = client.post(
-            KEYS_URL, data={"label": "marquez-prod"}, format="json",
+            KEYS_URL,
+            data={"label": "marquez-prod"},
+            format="json",
         )
         assert resp.status_code == 201, resp.content
         data = resp.json()
@@ -361,10 +385,6 @@ class TestKeyAdminEndpoints(TransactionTestCase):
             assert "plaintext" not in k
 
     def test_revoke_key_returns_204(self):
-        from hub.apps.integrations.openlineage.models import (
-            OpenLineageIngestApiKey,
-        )
-
         tenant = _create_tenant()
         admin = _create_admin(tenant)
         _, row = _create_active_key(tenant)

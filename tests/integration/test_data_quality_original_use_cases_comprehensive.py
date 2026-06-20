@@ -25,29 +25,25 @@ Total: 120+ test cases
 import json
 import time
 import uuid
-from typing import Any, Dict, List
 
 import pytest
 
 pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
-from django.utils import timezone
+from django.db.models.signals import post_save
+from django.test import TransactionTestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.dq.models import DQRun, DQRunStatus
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.datasets.models import Dataset, DatasetKind
-from hub.apps.files.models import File, FileStatus
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
-from hub.apps.users.models import Role, UserRole
-from hub.apps.semantic.signals import contract_saved, asset_saved
 from hub.apps.contracts.models import Contract
-from hub.apps.assets.models import Asset
-from django.db.models.signals import post_save
+from hub.apps.datasets.models import DatasetKind
+from hub.apps.dq.models import DQRunStatus
+from hub.apps.files.models import FileStatus
+from hub.apps.semantic.signals import asset_saved, contract_saved
+from hub.apps.tenants.models import KYCStatus, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     AssetFactory,
     DatasetFactory,
@@ -77,7 +73,6 @@ class DataQualityOriginalUseCasesTestBase(TransactionTestCase, TestDatabaseIsola
         which provides isolation without flushing.
         """
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -90,7 +85,6 @@ class DataQualityOriginalUseCasesTestBase(TransactionTestCase, TestDatabaseIsola
 
         # Create tenant
         # Create tenant (use unique name/slug to avoid conflicts between tests)
-        import uuid
         unique_id = str(uuid.uuid4())[:8]
         self.tenant = TenantFactory.create_tenant(
             name=f"Test Tenant {unique_id}",
@@ -164,7 +158,7 @@ class UCDQ001RunDataQualityCheckTest(DataQualityOriginalUseCasesTestBase):
         dq_url = reverse("dq-run-list")
         dq_response = self.client.post(dq_url, dq_data, format="json")
         self.assertEqual(dq_response.status_code, status.HTTP_201_CREATED)
-        dq_run_id = dq_response.data["id"]
+        dq_response.data["id"]
 
         # Verify DQ run was created
         self.assertIn("id", dq_response.data)
@@ -214,7 +208,9 @@ class UCDQ001RunDataQualityCheckTest(DataQualityOriginalUseCasesTestBase):
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(dq_response.status_code, status.HTTP_201_CREATED)
-        self.assertLess(elapsed_time, 10000, f"DQ run creation took {elapsed_time}ms, exceeds 10000ms threshold")
+        self.assertLess(
+            elapsed_time, 10000, f"DQ run creation took {elapsed_time}ms, exceeds 10000ms threshold"
+        )
 
 
 class UCDQ002ViewQualityResultsTest(DataQualityOriginalUseCasesTestBase):
@@ -278,7 +274,6 @@ class UCDQ003ConfigureQualityProfileTest(DataQualityOriginalUseCasesTestBase):
     def test_configure_quality_profile_via_contract(self):
         """Test configuring quality profile via contract"""
         from django.urls import reverse
-        import json
 
         self.client.force_authenticate(user=self.de_user)
 
@@ -317,7 +312,7 @@ class UCDQ004MonitorQualityTrendsTest(DataQualityOriginalUseCasesTestBase):
         self.client.force_authenticate(user=self.dpo_user)
 
         # Create multiple DQ runs for trend analysis
-        for i in range(3):
+        for _i in range(3):
             dq_data = {"asset_id": str(self.asset.id)}
             dq_url = reverse("dq-run-list")
             self.client.post(dq_url, dq_data, format="json")
@@ -335,7 +330,6 @@ class UCDQ005SetQualityAlertsTest(DataQualityOriginalUseCasesTestBase):
     def test_set_quality_alerts_via_contract(self):
         """Test setting quality alerts via contract configuration"""
         from django.urls import reverse
-        import json
 
         self.client.force_authenticate(user=self.de_user)
 
@@ -391,7 +385,7 @@ class UCDQ006RemediateQualityIssuesTest(DataQualityOriginalUseCasesTestBase):
         if results_response.status_code == status.HTTP_200_OK:
             results_data = results_response.data
             checks = results_data.get("checks", [])
-            failed_checks = [c for c in checks if c.get("status") == "FAIL"]
+            [c for c in checks if c.get("status") == "FAIL"]
             # Remediation would involve fixing data or updating contract
             # This is tested via the workflow that triggers remediation
 
@@ -434,7 +428,7 @@ class UCDQ008CompareQualityAcrossVersionsTest(DataQualityOriginalUseCasesTestBas
 
         # Create multiple DQ runs (simulating different versions)
         dq_runs = []
-        for i in range(3):
+        for _i in range(3):
             dq_data = {"asset_id": str(self.asset.id)}
             dq_url = reverse("dq-run-list")
             dq_response = self.client.post(dq_url, dq_data, format="json")

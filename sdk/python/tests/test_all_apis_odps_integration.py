@@ -22,15 +22,20 @@ To run these tests:
 2. Set API key: export TEST_API_KEY=your-api-key
 3. Run: pytest tests/test_all_apis_odps_integration.py -v
 """
-import os
-import pytest
+
 import json
+import os
 import uuid
-from typing import Dict, Any, Optional
+from typing import Optional
+
+import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 
 
-async def check_endpoint_exists(client: DataHubClient, endpoint_path: str, method: str = "GET") -> bool:
+async def check_endpoint_exists(
+    client: DataHubClient, endpoint_path: str, method: str = "GET"
+) -> bool:
     """
     Check if an API endpoint exists by making a HEAD or GET request.
 
@@ -46,7 +51,11 @@ async def check_endpoint_exists(client: DataHubClient, endpoint_path: str, metho
         # Use a dummy ID for the check - we just want to see if the endpoint pattern exists
         # Replace {id} or {contract_id} with a test UUID
         test_uuid = "00000000-0000-0000-0000-000000000000"
-        test_path = endpoint_path.replace("{id}", test_uuid).replace("{contract_id}", test_uuid).replace("{dataset_id}", test_uuid)
+        test_path = (
+            endpoint_path.replace("{id}", test_uuid)
+            .replace("{contract_id}", test_uuid)
+            .replace("{dataset_id}", test_uuid)
+        )
 
         if method == "GET":
             response = await client.request("GET", test_path)
@@ -70,6 +79,7 @@ async def check_endpoint_exists(client: DataHubClient, endpoint_path: str, metho
         # Other errors might mean endpoint exists but has validation issues
         # Check the actual exception type
         from datahub_interoperability.errors import NotFoundError
+
         if isinstance(e, NotFoundError):
             return False
         return True
@@ -84,23 +94,26 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     always receive a working credential.
     """
     from tests.conftest import get_api_key
+
     return get_api_key()
 
 
 @pytest.fixture
 def real_api_config():
     """Fixture for real API configuration"""
-    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8001/api/v1')
+    api_base_url = os.environ.get("API_BASE_URL", "http://localhost:8001/api/v1")
     api_key = setup_authentication_for_sdk_tests(api_base_url)
 
     if not api_key:
-        pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+        pytest.skip(
+            "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+        )
 
     # Use longer timeout for comprehensive tests (60 seconds) to handle slow operations
     return DataHubClientConfig(
         base_url=api_base_url,
         api_token=api_key,
-        timeout=60.0  # 60 seconds for comprehensive tests
+        timeout=60.0,  # 60 seconds for comprehensive tests
     )
 
 
@@ -109,56 +122,52 @@ async def odps_contract(real_api_config):
     """Fixture to create an ODPS contract for testing"""
     client = DataHubClient(real_api_config)
 
-    odps_content = json.dumps({
-        "schema": "https://opendataproducts.org/schema/v4.1",
-        "version": "4.1",
-        "product": {
-            "details": {
-                "en": {
-                    "productID": f"test-odps-{uuid.uuid4().hex[:8]}",
-                    "name": f"Test ODPS Product {uuid.uuid4().hex[:8]}",
-                    "description": "Test ODPS product for API integration tests"
-                }
-            },
-            "contract": {
-                "spec": {
-                    "apiVersion": "odcs/v3",
-                    "kind": "DataContract",
-                    "id": f"test-contract-{uuid.uuid4().hex[:8]}",
-                    "name": "Test Contract",
-                    "version": "1.0.0",
-                    "schema": {
-                        "fields": [
-                            {
-                                "name": "id",
-                                "type": "string",
-                                "nullable": False
-                            },
-                            {
-                                "name": "name",
-                                "type": "string",
-                                "nullable": False
-                            }
-                        ]
+    odps_content = json.dumps(
+        {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": f"test-odps-{uuid.uuid4().hex[:8]}",
+                        "name": f"Test ODPS Product {uuid.uuid4().hex[:8]}",
+                        "description": "Test ODPS product for API integration tests",
                     }
-                }
-            },
-            "marketplace": {
-                "pricingPlans": [
-                    {
-                        "planID": "basic",
-                        "name": "Basic Plan",
-                        "price": 9.99,
-                        "currency": "USD",
-                        "billingPeriod": "monthly"
+                },
+                "contract": {
+                    "spec": {
+                        "apiVersion": "odcs/v3",
+                        "kind": "DataContract",
+                        "id": f"test-contract-{uuid.uuid4().hex[:8]}",
+                        "name": "Test Contract",
+                        "version": "1.0.0",
+                        "schema": {
+                            "fields": [
+                                {"name": "id", "type": "string", "nullable": False},
+                                {"name": "name", "type": "string", "nullable": False},
+                            ]
+                        },
                     }
-                ]
-            }
-        }
-    }, indent=2)
+                },
+                "marketplace": {
+                    "pricingPlans": [
+                        {
+                            "planID": "basic",
+                            "name": "Basic Plan",
+                            "price": 9.99,
+                            "currency": "USD",
+                            "billingPeriod": "monthly",
+                        }
+                    ]
+                },
+            },
+        },
+        indent=2,
+    )
 
     # Retry logic for network errors
     import asyncio
+
     from datahub_interoperability.errors import NetworkError
 
     max_retries = 3
@@ -167,13 +176,12 @@ async def odps_contract(real_api_config):
     for attempt in range(max_retries):
         try:
             result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             # Handle async workflow if needed - import helper from comprehensive tests
             from tests.test_contracts_api_odps_comprehensive import handle_async_workflow_response
+
             result = await handle_async_workflow_response(client, result, timeout=300)
 
             if isinstance(result, dict) and "error" in result:
@@ -195,11 +203,9 @@ async def odps_contract(real_api_config):
 
             # Network error after all retries — fail, don't skip.
             # Connectivity problems are real failures that need investigation.
-            pytest.fail(
-                f"Network error after {max_retries} attempts: {error_str}"
-            )
+            pytest.fail(f"Network error after {max_retries} attempts: {error_str}")
 
-        except Exception as e:
+        except Exception:
             # Re-raise unexpected errors immediately — they are real bugs.
             raise
 
@@ -236,7 +242,7 @@ class TestLineageAPIWithODPS:
                 contract_id=odps_contract,
                 max_contract_depth=5,
                 max_model_depth=5,
-                max_field_depth=5
+                max_field_depth=5,
             )
             assert lineage is not None
             assert isinstance(lineage, dict)
@@ -251,7 +257,9 @@ class TestScheduledIngestionAPIWithODPS:
     """Tests for ScheduledIngestionAPI with ODPS contracts"""
 
     @pytest.mark.asyncio
-    async def test_list_scheduled_ingestions_with_odps_contract(self, real_api_config, odps_contract):
+    async def test_list_scheduled_ingestions_with_odps_contract(
+        self, real_api_config, odps_contract
+    ):
         """Test list() scheduled ingestions - verify ODPS contracts can be referenced"""
         client = DataHubClient(real_api_config)
 
@@ -274,7 +282,9 @@ class TestScheduledIngestionAPIWithODPS:
             raise
 
     @pytest.mark.asyncio
-    async def test_create_scheduled_ingestion_with_odps_contract(self, real_api_config, odps_contract):
+    async def test_create_scheduled_ingestion_with_odps_contract(
+        self, real_api_config, odps_contract
+    ):
         """Test create() scheduled ingestion referencing ODPS contract"""
         client = DataHubClient(real_api_config)
 
@@ -290,7 +300,7 @@ class TestScheduledIngestionAPIWithODPS:
                     source_type="http",
                     source_config={"url": "https://example.com/data"},
                     schedule="0 0 * * *",  # Daily at midnight
-                    asset_id=asset_id
+                    asset_id=asset_id,
                 )
                 assert ingestion is not None
                 assert isinstance(ingestion, dict)
@@ -411,8 +421,7 @@ class TestGovernanceAPIWithODPS:
 
             # First, generate a compliance report
             report = await client.governance.generate_compliance_report(
-                regime="GDPR",
-                asset_ids=[asset_id]
+                regime="GDPR", asset_ids=[asset_id]
             )
 
             if not report or "report_id" not in report and "id" not in report:
@@ -448,20 +457,14 @@ class TestSearchAPIWithODPS:
             if product_name:
                 # Search for the product by name
                 search_results = await client.search.search(
-                    query=product_name,
-                    type="contract",
-                    limit=10
+                    query=product_name, type="contract", limit=10
                 )
                 assert search_results is not None
                 assert isinstance(search_results, dict)
                 # Results may or may not contain our contract depending on indexing
             else:
                 # Search for ODPS contracts in general
-                search_results = await client.search.search(
-                    query="ODPS",
-                    type="contract",
-                    limit=10
-                )
+                search_results = await client.search.search(query="ODPS", type="contract", limit=10)
                 assert search_results is not None
                 assert isinstance(search_results, dict)
         except Exception as e:
@@ -483,8 +486,7 @@ class TestSearchAPIWithODPS:
 
             # Get search suggestions
             suggestions = await client.search.get_suggestions(
-                query=product_name[:5] if product_name else "ODPS",
-                limit=10
+                query=product_name[:5] if product_name else "ODPS", limit=10
             )
             assert suggestions is not None
             assert isinstance(suggestions, dict)
@@ -499,7 +501,9 @@ class TestObservabilityAPIWithODPS:
     """Tests for ObservabilityAPI with ODPS contracts"""
 
     @pytest.mark.asyncio
-    async def test_get_freshness_monitoring_with_odps_contract(self, real_api_config, odps_contract):
+    async def test_get_freshness_monitoring_with_odps_contract(
+        self, real_api_config, odps_contract
+    ):
         """Test get_freshness() with ODPS contract"""
         client = DataHubClient(real_api_config)
 
@@ -592,7 +596,7 @@ class TestWebhooksAPIWithODPS:
                 event_types=["contract.created", "contract.updated", "odps.created"],
                 name=f"test-odps-webhook-{uuid.uuid4().hex[:8]}",
                 secret="test-secret-key-for-webhook-validation",
-                active=True
+                active=True,
             )
             assert webhook is not None
             assert isinstance(webhook, dict)
@@ -623,14 +627,14 @@ class TestWebhooksAPIWithODPS:
                 event_types=["contract.created", "contract.updated"],
                 name=f"test-odps-trigger-{uuid.uuid4().hex[:8]}",
                 secret="test-secret-key-for-webhook-validation",
-                active=True
+                active=True,
             )
 
             if webhook and "id" in webhook:
                 webhook_id = webhook.get("id")
 
                 # Update ODPS contract to trigger webhook
-                contract = await client.contracts.get(odps_contract)
+                await client.contracts.get(odps_contract)
                 # Note: Actual webhook triggering depends on backend implementation
 
                 # Cleanup

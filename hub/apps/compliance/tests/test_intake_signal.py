@@ -5,12 +5,11 @@ Uses real ORM, cache, jobs, and audit rows (no mocks).
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import uuid
 from datetime import timedelta
 
+import pytest
 from django.core.cache import cache
 from django.test import TestCase
 from rest_framework import status
@@ -80,7 +79,6 @@ class ComplianceIntakeSignalTest(TestCase):
         self.assertEqual(runs.count(), 1)
 
         run = runs.first()
-        assert run is not None
         self.assertEqual(run.status, ComplianceRunStatus.PENDING)
         self.assertIsNotNone(run.job)
         self.assertEqual(run.job.type, JobType.COMPLIANCE_RUN)
@@ -90,7 +88,6 @@ class ComplianceIntakeSignalTest(TestCase):
             tenant_id=self.tenant.id,
         ).first()
         self.assertIsNotNone(ev)
-        assert ev is not None
         self.assertEqual(ev.details_json.get("asset_id"), str(asset.id))
         self.assertEqual(ev.details_json.get("compliance_run_id"), str(run.id))
 
@@ -179,11 +176,9 @@ class ComplianceIntakeSignalTest(TestCase):
             validation_status=ValidationStatus.VALID,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             hub_contract_version="1.0.0",
-            # Phase 227 structural-floor invariant: an info-only
-            # ``hub_contract_json`` (no models / schema fields) trips
-            # ``STRUCTURELESS_ODCS_NO_SCHEMA`` and blocks activation
-            # before the compliance check this test is exercising
-            # ever runs.
+            # Seed a fully-populated contract (not structureless) so the
+            # compliance-gate check, not the structural-floor check,
+            # controls whether activation is blocked.
             hub_contract_json={
                 "info": {"name": "X", "version": "1.0.0"},
                 "models": [
@@ -338,5 +333,4 @@ class ComplianceIntakeSignalTest(TestCase):
             tenant_id=self.tenant.id,
         ).first()
         self.assertIsNotNone(blocked)
-        assert blocked is not None
         self.assertEqual(blocked.actor_user_id, self.user.id)

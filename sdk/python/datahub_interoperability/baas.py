@@ -3,19 +3,17 @@ BaaS (Backend as a Service) operations for DataHub SDK.
 
 Provides high-level methods for managing API keys, usage tracking, and developer portal.
 """
-import re
+
 import uuid
-from typing import Dict, Any, List, Optional
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from .client import DataHubClient
 from .errors import (
-    BaaSValidationError,
     BaaSError,
-    NotFoundError,
-    ValidationError,
+    BaaSValidationError,
     ForbiddenError,
-    parse_error,
+    NotFoundError,
 )
 
 
@@ -109,7 +107,7 @@ class BaaSAPI:
 
         # Try to parse ISO format - must include time component
         # Check for basic ISO format with time (must have 'T' separator)
-        if 'T' not in date_str:
+        if "T" not in date_str:
             raise BaaSValidationError(
                 f"{param_name} must be in ISO format with time component (e.g., '2024-01-01T00:00:00Z')",
                 error_code="INVALID_VALUE",
@@ -120,7 +118,7 @@ class BaaSAPI:
 
         try:
             # Handle both Z and +00:00 timezone formats
-            date_str_normalized = date_str.replace('Z', '+00:00')
+            date_str_normalized = date_str.replace("Z", "+00:00")
             datetime.fromisoformat(date_str_normalized)
         except (ValueError, TypeError):
             raise BaaSValidationError(
@@ -180,7 +178,11 @@ class BaaSAPI:
         if isinstance(error, DataHubError):
             error_dict = error.to_dict() if hasattr(error, "to_dict") else {}
             if error_dict:
-                code = error_dict.get("error", {}).get("code", "") if isinstance(error_dict.get("error"), dict) else ""
+                code = (
+                    error_dict.get("error", {}).get("code", "")
+                    if isinstance(error_dict.get("error"), dict)
+                    else ""
+                )
                 if "BAAS" in code.upper() or "VALIDATION" in code.upper():
                     return BaaSValidationError(
                         f"BaaS {operation} failed: {error.message}",
@@ -314,25 +316,23 @@ class BaaSAPI:
                 tier = tier.upper()
                 self._validate_tier(tier)
 
-            if limit is not None:
-                if not isinstance(limit, int) or limit < 1:
-                    raise BaaSValidationError(
-                        "limit must be a positive integer",
-                        error_code="INVALID_VALUE",
-                        field_path="/limit",
-                        expected="positive integer",
-                        actual=limit,
-                    )
+            if limit is not None and (not isinstance(limit, int) or limit < 1):
+                raise BaaSValidationError(
+                    "limit must be a positive integer",
+                    error_code="INVALID_VALUE",
+                    field_path="/limit",
+                    expected="positive integer",
+                    actual=limit,
+                )
 
-            if offset is not None:
-                if not isinstance(offset, int) or offset < 0:
-                    raise BaaSValidationError(
-                        "offset must be a non-negative integer",
-                        error_code="INVALID_VALUE",
-                        field_path="/offset",
-                        expected="non-negative integer",
-                        actual=offset,
-                    )
+            if offset is not None and (not isinstance(offset, int) or offset < 0):
+                raise BaaSValidationError(
+                    "offset must be a non-negative integer",
+                    error_code="INVALID_VALUE",
+                    field_path="/offset",
+                    expected="non-negative integer",
+                    actual=offset,
+                )
         except BaaSValidationError:
             raise
         except Exception as e:
@@ -632,7 +632,9 @@ class BaaSAPI:
             raise BaaSValidationError(
                 f"Parameter validation failed: {str(e)}",
                 error_code="VALIDATION_ERROR",
-                details={"context": {"operation": "get_usage_by_endpoint", "original_error": str(e)}},
+                details={
+                    "context": {"operation": "get_usage_by_endpoint", "original_error": str(e)}
+                },
             ) from e
 
         # Build query parameters
@@ -814,6 +816,7 @@ class BaaSAPI:
             # If format is json, return JSON string
             if format == "json":
                 import json
+
                 return json.dumps(response, indent=2)
             # Otherwise return formatted string representation
             return str(response)
@@ -862,6 +865,7 @@ class BaaSAPI:
             if format == "yaml":
                 try:
                     import yaml
+
                     return yaml.dump(response, default_flow_style=False)
                 except ImportError:
                     raise BaaSValidationError(
@@ -941,10 +945,14 @@ class BaaSAPI:
         return await self.client.post(f"baas/billing-reports/{report_id}/finalize/")
 
     async def export_billing_report_pdf(self, report_id: str) -> dict:
-        return await self.client.post(f"baas/billing-reports/{report_id}/export/", data={"format": "pdf"})
+        return await self.client.post(
+            f"baas/billing-reports/{report_id}/export/", data={"format": "pdf"}
+        )
 
     async def send_billing_report(self, report_id: str, email: str) -> dict:
-        return await self.client.post(f"baas/billing-reports/{report_id}/send/", data={"email": email})
+        return await self.client.post(
+            f"baas/billing-reports/{report_id}/send/", data={"email": email}
+        )
 
     async def rotate_api_key(self, api_key_id: str, grace_period_hours: int = 24) -> dict:
         return await self.client.post(

@@ -1,6 +1,7 @@
 """Send DSAR OTP email (production uses tenant-branded templates in a later phase)."""
 
 from __future__ import annotations
+
 from django.conf import settings
 from django.core.mail import send_mail
 

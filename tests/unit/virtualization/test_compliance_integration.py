@@ -9,23 +9,24 @@ Tests compliance checks before query execution:
 
 Uses REAL ComplianceService (no mocks).
 """
+
+import uuid
+
 import pytest
 from django.test import TestCase
-from django.utils import timezone
 
-from hub.apps.virtualization.services import VirtualizationService
-from hub.apps.virtualization.models import (
-    VirtualDataset,
-    QueryExecution,
-    QueryType,
-    VirtualDatasetStatus,
-    QueryExecutionStatus,
-)
-from hub.apps.tenants.models import Tenant
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.users.models import User, UserStatus
 from hub.apps.core.services.base import ValidationError
-import uuid
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User, UserStatus
+from hub.apps.virtualization.models import (
+    QueryExecution,
+    QueryExecutionStatus,
+    QueryType,
+    VirtualDataset,
+    VirtualDatasetStatus,
+)
+from hub.apps.virtualization.services import VirtualizationService
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -37,8 +38,7 @@ class VirtualizationComplianceIntegrationTest(TestCase):
         """Set up test fixtures"""
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
-            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
 
         # Create user
@@ -46,21 +46,17 @@ class VirtualizationComplianceIntegrationTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create service instance
         self.service = VirtualizationService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create test asset with dataset
         self.asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE
+            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.ACTIVE
         )
 
         # Create virtual dataset
@@ -76,10 +72,10 @@ class VirtualizationComplianceIntegrationTest(TestCase):
                     "asset_id": str(self.asset.id),
                     "host": "localhost",
                     "port": 5432,
-                    "database": "testdb"
+                    "database": "testdb",
                 }
             ],
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
     def test_compliance_check_before_query_with_compliant_source(self):
@@ -89,15 +85,13 @@ class VirtualizationComplianceIntegrationTest(TestCase):
             virtual_dataset=self.virtual_dataset,
             query=self.virtual_dataset.query,
             status=QueryExecutionStatus.PENDING,
-            parameters={}
+            parameters={},
         )
 
         # Run compliance check (should not raise)
         try:
             self.service._run_compliance_check_before_query(
-                self.virtual_dataset,
-                execution,
-                str(self.tenant.id)
+                self.virtual_dataset, execution, str(self.tenant.id)
             )
         except ValidationError:
             # Compliance check may fail if service unavailable or asset has no dataset
@@ -118,21 +112,19 @@ class VirtualizationComplianceIntegrationTest(TestCase):
             query="SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10",
             query_type=QueryType.SPARQL,
             sources=None,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         execution = QueryExecution.objects.create(
             virtual_dataset=sparql_dataset,
             query=sparql_dataset.query,
             status=QueryExecutionStatus.PENDING,
-            parameters={}
+            parameters={},
         )
 
         # Should not raise - SPARQL queries without sources are allowed
         self.service._run_compliance_check_before_query(
-            sparql_dataset,
-            execution,
-            str(self.tenant.id)
+            sparql_dataset, execution, str(self.tenant.id)
         )
 
     def test_compliance_check_before_query_without_tenant_id(self):
@@ -141,30 +133,22 @@ class VirtualizationComplianceIntegrationTest(TestCase):
             virtual_dataset=self.virtual_dataset,
             query=self.virtual_dataset.query,
             status=QueryExecutionStatus.PENDING,
-            parameters={}
+            parameters={},
         )
 
         # Should not raise - missing tenant_id is handled gracefully
-        self.service._run_compliance_check_before_query(
-            self.virtual_dataset,
-            execution,
-            None
-        )
+        self.service._run_compliance_check_before_query(self.virtual_dataset, execution, None)
 
     def test_compliance_check_validates_cross_tenant_access(self):
         """Test compliance check validates cross-tenant source access"""
         # Create another tenant
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
-            slug=f"other-tenant-{uuid.uuid4().hex[:8]}"
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}", slug=f"other-tenant-{uuid.uuid4().hex[:8]}"
         )
 
         # Create asset in other tenant
         other_asset = Asset.objects.create(
-            tenant=other_tenant,
-            key="other-asset",
-            name="Other Asset",
-            status=AssetStatus.ACTIVE
+            tenant=other_tenant, key="other-asset", name="Other Asset", status=AssetStatus.ACTIVE
         )
 
         # Create virtual dataset with cross-tenant source
@@ -180,25 +164,23 @@ class VirtualizationComplianceIntegrationTest(TestCase):
                     "asset_id": str(other_asset.id),
                     "host": "localhost",
                     "port": 5432,
-                    "database": "testdb"
+                    "database": "testdb",
                 }
             ],
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         execution = QueryExecution.objects.create(
             virtual_dataset=cross_tenant_dataset,
             query=cross_tenant_dataset.query,
             status=QueryExecutionStatus.PENDING,
-            parameters={}
+            parameters={},
         )
 
         # Should raise ValidationError for cross-tenant access without entitlement
         with self.assertRaises(ValidationError) as cm:
             self.service._run_compliance_check_before_query(
-                cross_tenant_dataset,
-                execution,
-                str(self.tenant.id)
+                cross_tenant_dataset, execution, str(self.tenant.id)
             )
 
         # Verify error code
@@ -219,25 +201,23 @@ class VirtualizationComplianceIntegrationTest(TestCase):
                     "asset_id": str(self.asset.id),
                     "host": "localhost",
                     "port": 5432,
-                    "database": "testdb"
+                    "database": "testdb",
                 }
             ],
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         execution = QueryExecution.objects.create(
             virtual_dataset=problematic_dataset,
             query=problematic_dataset.query,
             status=QueryExecutionStatus.PENDING,
-            parameters={}
+            parameters={},
         )
 
         # Should log warning but not block execution
         try:
             self.service._run_compliance_check_before_query(
-                problematic_dataset,
-                execution,
-                str(self.tenant.id)
+                problematic_dataset, execution, str(self.tenant.id)
             )
         except ValidationError:
             # May fail for other reasons (service unavailable, etc.)
@@ -246,10 +226,13 @@ class VirtualizationComplianceIntegrationTest(TestCase):
         # Verify warning was logged
         execution.refresh_from_db()
         if execution.execution_log:
-            log_messages = [entry.get("message", "") for entry in execution.execution_log if isinstance(entry, dict)]
+            [
+                entry.get("message", "")
+                for entry in execution.execution_log
+                if isinstance(entry, dict)
+            ]
             # Check if warning about SELECT * was logged (if compliance check ran)
             # This is a soft check - the warning may not be present if service unavailable
-            pass
 
     def test_compliance_check_handles_service_unavailable(self):
         """Test compliance check handles ComplianceService unavailable gracefully"""
@@ -257,16 +240,14 @@ class VirtualizationComplianceIntegrationTest(TestCase):
             virtual_dataset=self.virtual_dataset,
             query=self.virtual_dataset.query,
             status=QueryExecutionStatus.PENDING,
-            parameters={}
+            parameters={},
         )
 
         # Should not raise - service unavailable is handled gracefully
         # (logs warning and continues)
         try:
             self.service._run_compliance_check_before_query(
-                self.virtual_dataset,
-                execution,
-                str(self.tenant.id)
+                self.virtual_dataset, execution, str(self.tenant.id)
             )
         except Exception as e:
             # Only ValidationError should be raised (compliance violations)
@@ -286,17 +267,12 @@ class VirtualizationComplianceIntegrationTest(TestCase):
             virtual_dataset=self.virtual_dataset,
             query=self.virtual_dataset.query,
             status=QueryExecutionStatus.PENDING,
-            parameters={}
+            parameters={},
         )
 
         # Try to execute query (will fail at execution but compliance check should run first)
         try:
-            self.service._execute_query_sync(
-                execution,
-                self.virtual_dataset,
-                {},
-                30
-            )
+            self.service._execute_query_sync(execution, self.virtual_dataset, {}, 30)
         except Exception:
             # Execution may fail for various reasons (no actual database, etc.)
             # But compliance check should have run first
@@ -305,4 +281,3 @@ class VirtualizationComplianceIntegrationTest(TestCase):
         # Verify execution log contains compliance check entries
         execution.refresh_from_db()
         self.assertIsNotNone(execution.execution_log)
-

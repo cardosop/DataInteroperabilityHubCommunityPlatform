@@ -6,7 +6,7 @@ Request/response serializers for scheduled ingestion internal endpoints.
 
 from rest_framework import serializers
 
-from .models import ScheduledIngestionRun, ScheduledIngestionRunStatus
+from .models import ScheduledIngestionRunStatus
 
 
 class InternalCreateIngestionRunSerializer(serializers.Serializer):

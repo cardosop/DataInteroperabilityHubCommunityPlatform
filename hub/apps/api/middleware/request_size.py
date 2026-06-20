@@ -4,7 +4,9 @@
 Rejects requests exceeding DATA_UPLOAD_MAX_MEMORY_SIZE before body parse.
 Returns HTTP 413 with Retry-After header.
 """
+
 from __future__ import annotations
+
 from django.conf import settings
 from rest_framework.response import Response
 
@@ -25,7 +27,7 @@ class RequestSizeLimitMiddleware:
                 if size > _MAX_SIZE:
                     return Response(
                         {
-                            "detail": f"Request body exceeds maximum size of {_MAX_SIZE // (1024*1024)} MB",
+                            "detail": f"Request body exceeds maximum size of {_MAX_SIZE // (1024 * 1024)} MB",
                             "code": "REQUEST_TOO_LARGE",
                         },
                         status=413,

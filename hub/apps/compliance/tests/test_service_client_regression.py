@@ -5,8 +5,8 @@ Validates fix for Bug 5: sync scan_file() missing legal_basis parameter.
 Uses real ComplianceServiceClient with mocked HTTP transport to verify
 the POST data sent to the compliance microservice.
 """
-import uuid
-from unittest.mock import patch, MagicMock
+
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.test import TestCase, override_settings
@@ -86,3 +86,24 @@ class ScanFileLegalBasisTest(TestCase):
             call_args = mock_req.call_args
             post_data = call_args.kwargs.get("data") or call_args[1].get("data", {})
             self.assertNotIn("legal_basis", post_data)
+
+    @override_settings(COMPLIANCE_SERVICE_URL="http://localhost:19999")
+    def test_circuit_breaker_call_is_invoked(self):
+        """scan_file routes through the circuit breaker, not raw HTTP."""
+        client = ComplianceServiceClient()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"overall_status": "PASS"}
+
+        with patch.object(
+            client, "_request_with_retry", return_value=mock_response,
+        ):
+            with patch.object(
+                client._circuit_breaker, "call",
+                side_effect=lambda fn, fallback=None: fn(),
+            ) as mock_cb_call:
+                client.scan_file(
+                    file_content=b"x", file_format="csv",
+                )
+                mock_cb_call.assert_called_once()

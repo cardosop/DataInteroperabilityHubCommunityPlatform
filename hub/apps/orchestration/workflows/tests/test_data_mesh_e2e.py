@@ -1,17 +1,22 @@
 """
 End-to-end tests for Data Mesh Domain Creation Workflow
 """
-import unittest
+
 import uuid
-from unittest.mock import patch, MagicMock
+
 from django.test import TestCase
 
+from hub.apps.governance.models import AccessPolicy
+from hub.apps.mesh.models import (
+    DataMeshDomain,
+    DomainStatus,
+    PolicyApplication,
+    PolicyApplicationStatus,
+)
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.workflows.data_mesh import DataMeshWorkflow
-from hub.apps.mesh.models import DataMeshDomain, DomainStatus, PolicyApplication, PolicyApplicationStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User
-from hub.apps.governance.models import AccessPolicy
 
 
 class DataMeshWorkflowE2ETest(TestCase):
@@ -24,13 +29,13 @@ class DataMeshWorkflowE2ETest(TestCase):
             name=f"Test Tenant E2E {unique_id}",
             slug=f"test-tenant-e2e-{unique_id}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"test-e2e-{unique_id}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            display_name="Test User"
+            display_name="Test User",
         )
 
     def test_complete_domain_creation_workflow(self):
@@ -43,7 +48,7 @@ class DataMeshWorkflowE2ETest(TestCase):
         and analytics initialization.
         """
         # Create default policies (tenant-wide policies that should be applied to all domains)
-        policy1 = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Data Access Policy",
             conditions={"effect": "ALLOW"},
@@ -51,9 +56,9 @@ class DataMeshWorkflowE2ETest(TestCase):
             enabled=True,
             priority=10,
             asset=None,  # Tenant-wide policy
-            dataset=None  # Tenant-wide policy
+            dataset=None,  # Tenant-wide policy
         )
-        policy2 = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Data Retention Policy",
             conditions={"effect": "ALLOW"},
@@ -61,7 +66,7 @@ class DataMeshWorkflowE2ETest(TestCase):
             enabled=True,
             priority=20,
             asset=None,  # Tenant-wide policy
-            dataset=None  # Tenant-wide policy
+            dataset=None,  # Tenant-wide policy
         )
 
         # Execute complete workflow
@@ -73,18 +78,11 @@ class DataMeshWorkflowE2ETest(TestCase):
             boundaries={
                 "data_products": ["product1", "product2"],
                 "schemas": ["schema1"],
-                "access_patterns": ["api", "batch"]
+                "access_patterns": ["api", "batch"],
             },
-            capabilities={
-                "apis": ["rest", "graphql"],
-                "services": ["ingestion", "transformation"]
-            },
-            resource_quota={
-                "storage_gb": 1000,
-                "compute_hours": 500,
-                "api_calls_per_day": 100000
-            },
-            created_by_id=str(self.user.id)
+            capabilities={"apis": ["rest", "graphql"], "services": ["ingestion", "transformation"]},
+            resource_quota={"storage_gb": 1000, "compute_hours": 500, "api_calls_per_day": 100000},
+            created_by_id=str(self.user.id),
         )
 
         # Verify complete workflow execution
@@ -145,10 +143,8 @@ class DataMeshWorkflowE2ETest(TestCase):
         """
 
         # Create a domain with the same name to cause validation failure
-        existing_domain = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Existing Domain",
-            status=DomainStatus.ACTIVE
+        DataMeshDomain.objects.create(
+            tenant=self.tenant, name="Existing Domain", status=DomainStatus.ACTIVE
         )
 
         # Execute workflow with duplicate name (will fail at validation)
@@ -156,7 +152,7 @@ class DataMeshWorkflowE2ETest(TestCase):
             DataMeshWorkflow.execute(
                 tenant_id=str(self.tenant.id),
                 name="Existing Domain",  # Duplicate name
-                created_by_id=str(self.user.id)
+                created_by_id=str(self.user.id),
             )
 
         self.assertIn("already exists", str(context.exception))
@@ -174,9 +170,7 @@ class DataMeshWorkflowE2ETest(TestCase):
 
         # Execute workflow with minimal input
         result = DataMeshWorkflow.execute(
-            tenant_id=str(self.tenant.id),
-            name="Minimal Domain",
-            created_by_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), name="Minimal Domain", created_by_id=str(self.user.id)
         )
 
         # Verify workflow completed successfully
@@ -195,4 +189,3 @@ class DataMeshWorkflowE2ETest(TestCase):
         workflow_instance = WorkflowInstance.objects.get(id=result["workflow_instance_id"])
         self.assertEqual(workflow_instance.status, WorkflowStatus.COMPLETED)
         self.assertEqual(workflow_instance.state_data["progress_percentage"], 100)
-

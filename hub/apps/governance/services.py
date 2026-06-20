@@ -6,9 +6,10 @@ Extracts governance logic from access_requests.py and views.
 All create/update/approve paths call GovernanceBusinessRules before mutation.
 """
 
+import contextlib
 import logging
 from datetime import timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from django.db import models, transaction
 from django.utils import timezone
@@ -42,7 +43,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
 
     service_name = "governance_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize GovernanceService.
 
@@ -60,12 +61,12 @@ class GovernanceService(BaseService, AccessEventPublisher):
         self,
         tenant_id: str,
         requested_by_id: str,
-        asset_id: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        file_id: Optional[str] = None,
-        reason: Optional[str] = None,
+        asset_id: str | None = None,
+        dataset_id: str | None = None,
+        file_id: str | None = None,
+        reason: str | None = None,
         requested_access_type: str = "READ",
-        expires_at: Optional[str] = None,
+        expires_at: str | None = None,
     ) -> AccessRequest:
         """
         Create an access request using workflow orchestration.
@@ -105,16 +106,17 @@ class GovernanceService(BaseService, AccessEventPublisher):
         self,
         tenant_id: str,
         requested_by_id: str,
-        asset_id: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        file_id: Optional[str] = None,
-        reason: Optional[str] = None,
+        asset_id: str | None = None,
+        dataset_id: str | None = None,
+        file_id: str | None = None,
+        reason: str | None = None,
         requested_access_type: str = "READ",
-        expires_at: Optional[str] = None,
+        expires_at: str | None = None,
     ) -> AccessRequest:
         """Internal implementation of access request creation."""
         # Plan limit enforcement (monthly)
         from hub.apps.tenants.services import PlanLimitService
+
         plan_limit_service = PlanLimitService(tenant_id=tenant_id)
         plan_limit_service.check_limit(
             tenant_id=tenant_id,
@@ -221,7 +223,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
         access_request_id: str,
         tenant_id: str,
         approver_id: str,
-        comments: Optional[str] = None,
+        comments: str | None = None,
         force_approve: bool = False,
     ) -> AccessRequest:
         """
@@ -247,7 +249,14 @@ class GovernanceService(BaseService, AccessEventPublisher):
         from hub.apps.tenants.models import Tenant
         from hub.apps.users.models import User
 
-        approver_user = User.objects.get(id=approver_id)
+        try:
+            approver_user = User.objects.get(id=approver_id)
+        except User.DoesNotExist:
+            raise ValidationError(
+                f"Approver with id {approver_id} not found.",
+                code="USER_NOT_FOUND",
+                details={"approver_id": approver_id},
+            )
         tenant_obj = Tenant.objects.get(id=tenant_id)
 
         # Phase 220.5: wrap the entire approve → entitlement → fulfill chain
@@ -255,9 +264,8 @@ class GovernanceService(BaseService, AccessEventPublisher):
         with transaction.atomic():
             # Lock the access request row to prevent double-approve.
             try:
-                access_request = (
-                    AccessRequest.objects.select_for_update()
-                    .get(id=access_request_id, tenant_id=tenant_id)
+                access_request = AccessRequest.objects.select_for_update().get(
+                    id=access_request_id, tenant_id=tenant_id
                 )
             except AccessRequest.DoesNotExist:
                 raise NotFoundError(
@@ -339,6 +347,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
             if is_final_step and access_request.order_id:
                 from hub.apps.marketplace.entitlement_utils import create_entitlement_for_order
                 from hub.apps.marketplace.models import Order, OrderStatus
+
                 order = Order.objects.select_for_update().get(
                     id=access_request.order_id,
                 )
@@ -352,6 +361,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
         # can never roll back the approval.
         try:
             from hub.apps.notifications.utils import create_user_notification
+
             create_user_notification(
                 user=access_request.requested_by,
                 tenant=tenant_obj,
@@ -407,13 +417,11 @@ class GovernanceService(BaseService, AccessEventPublisher):
             access_type="approve_access_request",
         )
 
-        try:
+        with contextlib.suppress(Exception):
             governance_abac_decisions_total.labels(
                 decision="PERMIT" if result.allowed else "DENY",
                 policy_id=str(result.policy.id) if result.policy else "none",
             ).inc()
-        except Exception:
-            pass
 
         create_audit_event(
             resource_type="ACCESS_REQUEST",
@@ -464,19 +472,38 @@ class GovernanceService(BaseService, AccessEventPublisher):
         if not workflow:
             resource_q = models.Q()
             if access_request.asset_id:
-                resource_q &= models.Q(asset_id=access_request.asset_id)
+                resource_q |= models.Q(asset_id=access_request.asset_id)
             if access_request.dataset_id:
-                resource_q &= models.Q(dataset_id=access_request.dataset_id)
+                resource_q |= models.Q(dataset_id=access_request.dataset_id)
             if access_request.file_id:
-                resource_q &= models.Q(file_id=access_request.file_id)  # no such field, skip
+                resource_q |= models.Q(file_id=access_request.file_id)
 
+            # Prefer the ALLOW policy that defines an approval chain.
+            # A DENY→ALLOW change leaves a policy with priority 0 but
+            # no chain — that policy should NOT control the workflow.
             policy = (
-                AccessPolicy.objects
-                .filter(tenant=tenant, enabled=True)
+                AccessPolicy.objects.filter(
+                    tenant=tenant, enabled=True, effect="ALLOW"
+                )
                 .filter(resource_q if resource_q else models.Q())
+                .exclude(
+                    models.Q(required_approval_chain=[])
+                    | models.Q(required_approval_chain__isnull=True)
+                )
                 .order_by("priority")
                 .first()
             )
+            # Fallback: any ALLOW policy (even without a chain) so the
+            # approval can still complete as single-step.
+            if policy is None:
+                policy = (
+                    AccessPolicy.objects.filter(
+                        tenant=tenant, enabled=True, effect="ALLOW"
+                    )
+                    .filter(resource_q if resource_q else models.Q())
+                    .order_by("priority")
+                    .first()
+                )
 
             chain = getattr(policy, "required_approval_chain", None) if policy else None
             if chain and isinstance(chain, list) and len(chain) > 0:
@@ -548,8 +575,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
             return
 
         latest_run = (
-            ComplianceRun.objects
-            .filter(
+            ComplianceRun.objects.filter(
                 tenant=tenant,
                 status__in=("SUCCEEDED", "PASS"),
             )
@@ -591,6 +617,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
                 },
             )
             from hub.apps.governance.metrics import record_compliance_blocked
+
             record_compliance_blocked(str(tenant.id), "compliance_run_required")
             raise ValidationError(
                 "A compliance scan is required before this access request can be approved.",
@@ -614,6 +641,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
                 },
             )
             from hub.apps.governance.metrics import record_compliance_blocked
+
             record_compliance_blocked(str(tenant.id), "compliance_not_allowed_to_store")
             raise ValidationError(
                 "The latest compliance scan determined this data is not allowed to be stored.",
@@ -631,7 +659,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
         tenant_id: str,
         approver_id: str,
         reason: str,
-        comments: Optional[str] = None,
+        comments: str | None = None,
     ) -> AccessRequest:
         """
         Reject an access request.
@@ -658,7 +686,14 @@ class GovernanceService(BaseService, AccessEventPublisher):
         from hub.apps.tenants.models import Tenant
         from hub.apps.users.models import User
 
-        rejector_user = User.objects.get(id=approver_id)
+        try:
+            rejector_user = User.objects.get(id=approver_id)
+        except User.DoesNotExist:
+            raise ValidationError(
+                f"Rejector with id {approver_id} not found.",
+                code="USER_NOT_FOUND",
+                details={"approver_id": approver_id},
+            )
         tenant = Tenant.objects.get(id=tenant_id)
 
         # Validate approval path (same as approve: must be pending, rejector authorized)
@@ -698,6 +733,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
         # Cascade to marketplace: reject the linked order
         if access_request.order:
             from hub.apps.marketplace.models import OrderStatus
+
             order = access_request.order
             if order.status == OrderStatus.REQUESTED:
                 order.reject(rejected_by_user=rejector_user, reason=reason)
@@ -705,6 +741,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
         # Phase 223.1 — inbox notification for the requester.
         try:
             from hub.apps.notifications.utils import create_user_notification
+
             create_user_notification(
                 user=access_request.requested_by,
                 tenant=tenant,
@@ -754,7 +791,9 @@ class GovernanceService(BaseService, AccessEventPublisher):
             )
 
         access_request = self.get_resource_or_raise(
-            AccessRequest, access_request_id, tenant_id=tenant_id,
+            AccessRequest,
+            access_request_id,
+            tenant_id=tenant_id,
         )
 
         if access_request.status != AccessRequestStatus.APPROVED:
@@ -764,7 +803,14 @@ class GovernanceService(BaseService, AccessEventPublisher):
                 details={"status": access_request.status},
             )
 
-        revoker = User.objects.get(id=revoker_id)
+        try:
+            User.objects.get(id=revoker_id)
+        except User.DoesNotExist:
+            raise ValidationError(
+                f"Revoker with id {revoker_id} not found.",
+                code="USER_NOT_FOUND",
+                details={"revoker_id": revoker_id},
+            )
 
         access_request.status = AccessRequestStatus.REVOKED
         access_request.revocation_reason = reason.strip()
@@ -773,13 +819,16 @@ class GovernanceService(BaseService, AccessEventPublisher):
         # Cascade to marketplace entitlement.
         if access_request.order:
             from hub.apps.marketplace.entitlement_utils import revoke_entitlement_for_order
+
             revoke_entitlement_for_order(
-                access_request.order, reason=f"Governance access revoked: {reason.strip()}",
+                access_request.order,
+                reason=f"Governance access revoked: {reason.strip()}",
             )
 
         # Notify requester.
         try:
             from hub.apps.notifications.utils import create_user_notification
+
             create_user_notification(
                 user=access_request.requested_by,
                 tenant=access_request.tenant,
@@ -796,7 +845,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
         return access_request
 
     def get_access_request(
-        self, access_request_id: str, tenant_id: Optional[str] = None
+        self, access_request_id: str, tenant_id: str | None = None
     ) -> AccessRequest:
         """
         Get access request by ID.
@@ -817,11 +866,11 @@ class GovernanceService(BaseService, AccessEventPublisher):
 
     def list_access_requests(
         self,
-        tenant_id: Optional[str] = None,
-        status: Optional[str] = None,
-        requested_by_id: Optional[str] = None,
-        asset_id: Optional[str] = None,
-    ) -> List[AccessRequest]:
+        tenant_id: str | None = None,
+        status: str | None = None,
+        requested_by_id: str | None = None,
+        asset_id: str | None = None,
+    ) -> list[AccessRequest]:
         """
         List access requests with filters.
 
@@ -886,8 +935,8 @@ class GovernanceService(BaseService, AccessEventPublisher):
             )
 
     def validate_resource_quota_allocation(
-        self, tenant_id: str, requested_quota: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, tenant_id: str, requested_quota: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Validate resource quota allocation via GovernanceService.
 
@@ -928,7 +977,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
         # Return validated quota (may be adjusted in future)
         return requested_quota.copy()
 
-    def check_tenant_resource_limits(self, tenant_id: str, requested_quota: Dict[str, Any]) -> None:
+    def check_tenant_resource_limits(self, tenant_id: str, requested_quota: dict[str, Any]) -> None:
         """
         Enforce tenant-level resource limits.
 
@@ -991,19 +1040,19 @@ class GovernanceService(BaseService, AccessEventPublisher):
         user_id: str,
         name: str,
         policy_type: str,
-        asset_id: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        file_id: Optional[str] = None,
-        description: Optional[str] = None,
-        retention_period_days: Optional[int] = None,
-        event_trigger: Optional[str] = None,
+        asset_id: str | None = None,
+        dataset_id: str | None = None,
+        file_id: str | None = None,
+        description: str | None = None,
+        retention_period_days: int | None = None,
+        event_trigger: str | None = None,
         action: str = "SOFT_DELETE",
         grace_period_days: int = 30,
         legal_hold: bool = False,
-        legal_hold_reason: Optional[str] = None,
-        legal_hold_expires_at: Optional[Any] = None,
+        legal_hold_reason: str | None = None,
+        legal_hold_expires_at: Any | None = None,
         enabled: bool = True,
-        regulation_keys: Optional[list[str]] = None,
+        regulation_keys: list[str] | None = None,
     ) -> RetentionPolicy:
         """
         Create a retention policy.
@@ -1126,13 +1175,12 @@ class GovernanceService(BaseService, AccessEventPublisher):
                 code="VALIDATION_ERROR",
                 details={"grace_period_days": grace_period_days},
             )
-        if policy_type == RetentionPolicyType.EVENT_BASED.value:
-            if not event_trigger:
-                raise ValidationError(
-                    "event_trigger is required for event-based policies",
-                    code="VALIDATION_ERROR",
-                    details={"policy_type": policy_type},
-                )
+        if policy_type == RetentionPolicyType.EVENT_BASED.value and not event_trigger:
+            raise ValidationError(
+                "event_trigger is required for event-based policies",
+                code="VALIDATION_ERROR",
+                details={"policy_type": policy_type},
+            )
 
         # Apply GovernanceBusinessRules validation
         # Create a temporary policy instance for validation
@@ -1308,8 +1356,8 @@ class GovernanceService(BaseService, AccessEventPublisher):
         tenant_id: str,
         user_id: str,
         legal_hold: bool,
-        legal_hold_reason: Optional[str],
-        legal_hold_expires_at: Optional[Any],
+        legal_hold_reason: str | None,
+        legal_hold_expires_at: Any | None,
     ) -> RetentionPolicy:
         """
         Privileged setter (TENANT_ADMIN / LEGAL_ADMIN / platform admins at the view).

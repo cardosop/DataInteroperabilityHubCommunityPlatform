@@ -15,10 +15,10 @@ from ..api_client import api_client
 @click.group()
 def auth():
     """Authentication, sessions, API keys, and SSO."""
-    pass
 
 
 # ── Login / Logout / Register ──────────────────────────────────────────
+
 
 @auth.command("login")
 @click.option("--email", prompt=True)
@@ -58,6 +58,7 @@ def auth_register(email, password, tenant_name, display_name):
 
 
 # ── Profile ────────────────────────────────────────────────────────────
+
 
 @auth.command("me")
 @click.option("--format", "output_format", type=click.Choice(["json", "table"]), default="table")
@@ -108,7 +109,7 @@ def auth_switch_tenant(tenant_id):
 def auth_refresh():
     """Refresh the JWT token."""
     try:
-        resp = api_client.post("auth/refresh/", json={})
+        api_client.post("auth/refresh/", json={})
         click.echo("Token refreshed.")
     except Exception as e:
         raise click.ClickException(f"Token refresh failed: {e}")
@@ -116,10 +117,10 @@ def auth_refresh():
 
 # ── Password Reset ─────────────────────────────────────────────────────
 
+
 @auth.group("password-reset")
 def auth_password_reset():
     """Password reset operations."""
-    pass
 
 
 @auth_password_reset.command("request")
@@ -143,6 +144,7 @@ def auth_password_reset_confirm(token, new_password):
 
 
 # ── Email Verification ──────────────────────────────────────────────────
+
 
 @auth.command("verify-email")
 @click.option("--token", required=True)
@@ -170,10 +172,10 @@ def auth_accept_invitation(token):
 
 # ── Sessions ────────────────────────────────────────────────────────────
 
+
 @auth.group("sessions")
 def auth_sessions():
     """Active session management."""
-    pass
 
 
 @auth_sessions.command("list")
@@ -192,10 +194,10 @@ def auth_sessions_end_all_others():
 
 # ── API Keys ────────────────────────────────────────────────────────────
 
+
 @auth.group("api-keys")
 def auth_api_keys():
     """API key management."""
-    pass
 
 
 @auth_api_keys.command("list")
@@ -218,7 +220,9 @@ def auth_api_keys_create(name, scopes):
     key_value = resp.get("key") or resp.get("plain_text_key")
     if key_value:
         click.echo(f"API Key (save this — it won't be shown again): {key_value}")
-    click.echo(json.dumps({k: v for k, v in resp.items() if k not in ("key", "plain_text_key")}, indent=2))
+    click.echo(
+        json.dumps({k: v for k, v in resp.items() if k not in ("key", "plain_text_key")}, indent=2)
+    )
 
 
 @auth_api_keys.command("revoke")
@@ -231,10 +235,10 @@ def auth_api_keys_revoke(key_id):
 
 # ── SSO ─────────────────────────────────────────────────────────────────
 
+
 @auth.group("sso")
 def auth_sso():
     """SSO provider configuration."""
-    pass
 
 
 @auth_sso.command("list")
@@ -251,12 +255,15 @@ def auth_sso_list():
 @click.option("--domain", required=True)
 def auth_sso_create(provider, client_id, client_secret, domain):
     """Create an SSO provider configuration."""
-    resp = api_client.post("auth/sso/", json={
-        "provider": provider,
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "domain": domain,
-    })
+    resp = api_client.post(
+        "auth/sso/",
+        json={
+            "provider": provider,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "domain": domain,
+        },
+    )
     click.echo(json.dumps(resp, indent=2))
 
 

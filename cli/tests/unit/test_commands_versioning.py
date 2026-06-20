@@ -1,10 +1,10 @@
 """Unit tests for ``datahub versioning`` commands (283.6.2)."""
+
 import json
+from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
-from unittest.mock import Mock
-
 from datahub_cli.main import cli
 
 
@@ -25,8 +25,18 @@ class TestVersioningList:
     def test_list_table(self, runner, mock_api_client):
         mock_api_client.get.return_value = {
             "results": [
-                {"id": "v1-uuid", "version_number": 1, "created_at": "2026-01-01", "status": "current"},
-                {"id": "v2-uuid", "version_number": 2, "created_at": "2026-02-01", "status": "archived"},
+                {
+                    "id": "v1-uuid",
+                    "version_number": 1,
+                    "created_at": "2026-01-01",
+                    "status": "current",
+                },
+                {
+                    "id": "v2-uuid",
+                    "version_number": 2,
+                    "created_at": "2026-02-01",
+                    "status": "archived",
+                },
             ]
         }
         result = runner.invoke(cli, ["versioning", "list", "datasets", "abc-123"])
@@ -53,11 +63,18 @@ class TestVersioningList:
     @pytest.mark.unit
     def test_list_with_pagination(self, runner, mock_api_client):
         mock_api_client.get.return_value = {"results": []}
-        result = runner.invoke(cli, ["versioning", "list", "contracts", "def-456", "--page", "2", "--page-size", "20"])
+        result = runner.invoke(
+            cli, ["versioning", "list", "contracts", "def-456", "--page", "2", "--page-size", "20"]
+        )
         assert result.exit_code == 0
         mock_api_client.get.assert_called_once_with(
             "versioning/versions/",
-            params={"resource_type": "contract", "resource_id": "def-456", "page": 2, "page_size": 20},
+            params={
+                "resource_type": "contract",
+                "resource_id": "def-456",
+                "page": 2,
+                "page_size": 20,
+            },
         )
 
     @pytest.mark.unit
@@ -151,7 +168,16 @@ class TestVersioningRollback:
 
         result = runner.invoke(
             cli,
-            ["versioning", "rollback", "datasets", "abc-123", "v1", "--reason", "Bad schema", "--confirm"],
+            [
+                "versioning",
+                "rollback",
+                "datasets",
+                "abc-123",
+                "v1",
+                "--reason",
+                "Bad schema",
+                "--confirm",
+            ],
         )
         assert result.exit_code == 0
         assert "Rollback complete" in result.output
@@ -177,8 +203,15 @@ class TestVersioningRollback:
         result = runner.invoke(
             cli,
             [
-                "versioning", "rollback", "datasets", "abc", "v1",
-                "--reason", "Test", "--confirm", "--json",
+                "versioning",
+                "rollback",
+                "datasets",
+                "abc",
+                "v1",
+                "--reason",
+                "Test",
+                "--confirm",
+                "--json",
             ],
         )
         assert result.exit_code == 0

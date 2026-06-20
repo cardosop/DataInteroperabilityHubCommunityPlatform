@@ -4,6 +4,8 @@ Unit tests for DQ validation during ingestion.
 No mocks: DQ behavior uses real InMemoryDQClient injected into the processor.
 """
 
+import uuid
+
 import pytest
 from django.test import TestCase
 
@@ -12,7 +14,6 @@ from hub.apps.scheduled_ingestion.models import ScheduledIngestion
 from hub.apps.scheduled_ingestion.tests.dq_fakes import InMemoryDQClient
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -24,7 +25,10 @@ class DQValidationTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(

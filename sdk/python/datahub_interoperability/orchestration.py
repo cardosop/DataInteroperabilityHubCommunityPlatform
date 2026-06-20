@@ -1,9 +1,10 @@
 """
 285.11.4.7 — Pipeline dependency operations for DataHub SDK.
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from .client import DataHubClient
 
@@ -83,6 +84,4 @@ class OrchestrationAPI:
 
         Run-to-run traceability.
         """
-        return await self.client.get(
-            f"workflows/runs/{run_type}/{run_id}/lineage/"
-        )
+        return await self.client.get(f"workflows/runs/{run_type}/{run_id}/lineage/")

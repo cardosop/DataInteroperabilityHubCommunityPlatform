@@ -20,9 +20,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant, TenantConfig, TenantStatus
-from hub.apps.users.models import User, UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
+from hub.apps.users.models import User, UserStatus
 
 pytestmark = [
     pytest.mark.django_db,
@@ -43,7 +42,6 @@ class TrustSignalsConfigAPIsComprehensiveTest(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Skip database flush for integration tests (avoid FK locks; use transaction rollback)."""
-        pass
 
     def setUp(self):
         self.client = APIClient()
@@ -228,7 +226,11 @@ class TrustSignalsConfigAPIsComprehensiveTest(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.data
-        items = data.get("results", data) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+        items = (
+            data.get("results", data)
+            if isinstance(data, dict)
+            else (data if isinstance(data, list) else [])
+        )
         names = [item["name"] for item in items] if items else []
         self.assertNotIn("tenant2_secret", names)
 
@@ -391,7 +393,11 @@ class TrustSignalsConfigAPIsComprehensiveTest(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.data
-        items = data.get("results", data) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+        items = (
+            data.get("results", data)
+            if isinstance(data, dict)
+            else (data if isinstance(data, list) else [])
+        )
         self.assertEqual(len(items), 0)
 
     def test_trust_signals_disabled_create_returns_403(self):

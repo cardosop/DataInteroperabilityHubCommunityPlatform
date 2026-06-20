@@ -1,4 +1,5 @@
 """285.14.3.6 — Verify scheduled_export throttle coverage on all views."""
+
 import pytest
 from django.test import TestCase
 
@@ -8,9 +9,10 @@ pytestmark = pytest.mark.django_db(transaction=True)
 class ScheduledExportThrottleCoverageTests(TestCase):
     def setUp(self):
         from hub.apps.scheduled_export.views import (
-            ScheduledExportViewSet,
             ScheduledExportRunViewSet,
+            ScheduledExportViewSet,
         )
+
         self.views = [
             ScheduledExportViewSet,
             ScheduledExportRunViewSet,
@@ -20,18 +22,15 @@ class ScheduledExportThrottleCoverageTests(TestCase):
     def test_all_views_have_throttle_classes(self):
         for view_cls in self.views:
             classes = getattr(view_cls, "throttle_classes", None)
-            assert classes is not None, (
-                f"{view_cls.__name__} missing throttle_classes"
-            )
-            assert len(classes) >= 1, (
-                f"{view_cls.__name__} has empty throttle_classes"
-            )
+            assert classes is not None, f"{view_cls.__name__} missing throttle_classes"
+            assert len(classes) >= 1, f"{view_cls.__name__} has empty throttle_classes"
 
     @pytest.mark.integration
     def test_throttle_has_scope(self):
         from hub.apps.scheduled_export.throttles import (
             ScheduledExportTenantThrottle,
         )
+
         assert hasattr(ScheduledExportTenantThrottle, "scope")
         assert ScheduledExportTenantThrottle.scope == "scheduled_export"
 

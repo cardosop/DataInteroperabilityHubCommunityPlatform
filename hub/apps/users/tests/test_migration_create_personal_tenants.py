@@ -5,7 +5,9 @@ Verifies that users with tenant_id=None and is_platform_admin=False get a person
 tenant; platform admins remain unchanged. Uses real DB; calls migration function
 directly (no mocks/stubs).
 """
+
 import importlib.util
+import uuid
 
 import pytest
 from django.apps import apps
@@ -15,7 +17,6 @@ from django.test import TestCase
 from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.tenants.models import TenantConfig
 from hub.apps.users.models import Role, User, UserRole
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

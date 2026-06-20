@@ -3,8 +3,8 @@ Unit tests for Asset Health Score
 
 Tests for health score calculation combining DQ, compliance, freshness, and usage.
 """
-import uuid
 
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -28,9 +28,13 @@ class AssetHealthScoreServiceTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        super().setUp()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -74,9 +78,14 @@ class AssetHealthScoreServiceTest(TestCase):
         )
 
     def test_calculate_health_score_returns_score(self):
-        """Test calculate_health_score returns a score."""
+        """Test calculate_health_score returns the exact expected value.
+
+        setUp: DQ=PASS(100), Compl=PASS(100), dataset → freshness=100,
+        view=100+dl=50 / pop=None → usage=100.
+        Expected: 100*0.35 + 100*0.25 + 100*0.20 + 100*0.20 = 100.0.
+        """
         score = AssetHealthScoreService.calculate_health_score(self.asset)
-        self.assertIsInstance(score, float)
+        self.assertEqual(score, 100.0)
 
     def test_calculate_health_score_returns_score_in_range(self):
         """Test calculate_health_score returns score between 0 and 100."""
@@ -85,29 +94,36 @@ class AssetHealthScoreServiceTest(TestCase):
         self.assertLessEqual(score, 100.0)
 
     def test_calculate_health_score_saves_score_to_asset(self):
-        """Test calculate_health_score saves score to asset."""
+        """Test calculate_health_score saves exact score to asset."""
         score = AssetHealthScoreService.calculate_health_score(self.asset)
         self.asset.refresh_from_db()
         self.assertEqual(self.asset.health_score, score)
+        self.assertEqual(score, 100.0)
 
     def test_calculate_health_score_dq_component_pass_status(self):
-        """Test DQ component with PASS status."""
+        """Test DQ component with PASS=100 status yields expected weighted score."""
         self.asset.dq_status = DQStatus.PASS
         self.asset.save()
 
         score = AssetHealthScoreService.calculate_health_score(self.asset)
-        self.assertGreater(score, 50.0)
+        self.assertEqual(score, 100.0)
 
     def test_calculate_health_score_dq_component_fail_status(self):
-        """Test DQ component with FAIL status."""
+        """Test DQ component with FAIL=30 status yields expected weighted score.
+
+        FAIL(30)*0.35 + PASS(100)*0.25 + 100*0.20 + 100*0.20 = 75.5.
+        """
         self.asset.dq_status = DQStatus.FAIL
         self.asset.save()
 
         score = AssetHealthScoreService.calculate_health_score(self.asset)
-        self.assertLess(score, 80.0)
+        self.assertEqual(score, 75.5)
 
     def test_calculate_health_score_dq_pass_higher_than_fail(self):
-        """Test DQ PASS status produces a higher score than FAIL status."""
+        """Test DQ PASS status produces a higher score than FAIL status.
+
+        PASS: 100.0, FAIL: 75.5.
+        """
         self.asset.dq_status = DQStatus.PASS
         self.asset.save()
         pass_score = AssetHealthScoreService.calculate_health_score(self.asset)
@@ -116,27 +132,34 @@ class AssetHealthScoreServiceTest(TestCase):
         self.asset.save()
         fail_score = AssetHealthScoreService.calculate_health_score(self.asset)
 
+        self.assertEqual(pass_score, 100.0)
+        self.assertEqual(fail_score, 75.5)
         self.assertGreater(pass_score, fail_score)
 
     def test_calculate_health_score_compliance_component_pass_status(self):
-        """Test compliance component with PASS status."""
+        """Test compliance component with PASS=100 status yields expected weighted score."""
         self.asset.compliance_status = ComplianceStatus.PASS
         self.asset.save()
 
         score = AssetHealthScoreService.calculate_health_score(self.asset)
-        self.assertGreater(score, 50.0)
+        self.assertEqual(score, 100.0)
 
     def test_calculate_health_score_compliance_component_fail_status(self):
-        """Test compliance component with FAIL status."""
+        """Test compliance component with FAIL=30 status yields expected weighted score.
+
+        PASS(100)*0.35 + FAIL(30)*0.25 + 100*0.20 + 100*0.20 = 82.5.
+        """
         self.asset.compliance_status = ComplianceStatus.FAIL
         self.asset.save()
 
         score = AssetHealthScoreService.calculate_health_score(self.asset)
-        # FAIL gives 30.0 compliance; weighted combo can be ~82 when others are high
-        self.assertLess(score, 90.0)
+        self.assertEqual(score, 82.5)
 
     def test_calculate_health_score_compliance_pass_higher_than_fail(self):
-        """Test compliance PASS status produces a higher score than FAIL status."""
+        """Test compliance PASS status produces a higher score than FAIL status.
+
+        PASS: 100.0, FAIL: 82.5.
+        """
         self.asset.compliance_status = ComplianceStatus.PASS
         self.asset.save()
         pass_score = AssetHealthScoreService.calculate_health_score(self.asset)
@@ -145,13 +168,16 @@ class AssetHealthScoreServiceTest(TestCase):
         self.asset.save()
         fail_score = AssetHealthScoreService.calculate_health_score(self.asset)
 
+        self.assertEqual(pass_score, 100.0)
+        self.assertEqual(fail_score, 82.5)
         self.assertGreater(pass_score, fail_score)
 
     def test_calculate_health_score_with_dq_run(self):
-        """Test health score with DQ run is higher than without."""
-        # Compute score WITHOUT DQ run
-        score_without = AssetHealthScoreService.calculate_health_score(self.asset)
+        """Test health score with DQ run blends quality_score into DQ component.
 
+        dq_blended = 100*0.6 + 95*0.4 = 98.
+        Expected: 98*0.35 + 100*0.25 + 100*0.20 + 100*0.20 = 99.3.
+        """
         # Create DQ run with quality score
         job = Job.objects.create(
             tenant=self.tenant,
@@ -175,45 +201,42 @@ class AssetHealthScoreServiceTest(TestCase):
             completed_at=timezone.now(),
         )
 
-        # Compute score WITH DQ run
         score_with = AssetHealthScoreService.calculate_health_score(self.asset)
-
-        # Both scores must be valid; the DQ run incorporates quality_score
-        # into the DQ component (may slightly differ from status-only score)
-        self.assertIsInstance(score_with, float)
-        self.assertGreater(score_with, 50.0)
+        self.assertEqual(score_with, 99.3)
 
     def test_calculate_health_score_freshness_component(self):
-        """Test freshness component of health score"""
-        # Create recent dataset
-        recent_dataset = Dataset.objects.create(
+        """Test freshness component with a recent dataset yields expected score.
+
+        The setUp dataset (auto_now_add) is the newest, so freshness=100.
+        Expected: 100.0 (same as setUp fixture).
+        """
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,
             schema_json={"fields": [{"name": "col1", "type": "string"}]},
             format="CSV",
             version=2,
-            created_at=timezone.now() - timedelta(hours=12),  # Recent
+            created_at=timezone.now() - timedelta(hours=12),
             created_by=self.user,
         )
 
         score = AssetHealthScoreService.calculate_health_score(self.asset)
-
-        # Should have good freshness score
-        self.assertGreater(score, 50.0)
+        self.assertEqual(score, 100.0)
 
     def test_calculate_health_score_usage_component(self):
-        """Test usage component of health score"""
-        # Set high usage
+        """Test usage component with popularity_score=90 yields expected score.
+
+        usage_score = popularity_score = 90.0 (not None).
+        Expected: 100*0.35 + 100*0.25 + 100*0.20 + 90*0.20 = 98.0.
+        """
         self.asset.view_count = 200
         self.asset.download_count = 100
         self.asset.popularity_score = 90.0
         self.asset.save()
 
         score = AssetHealthScoreService.calculate_health_score(self.asset)
-
-        # Should incorporate usage score
-        self.assertGreater(score, 50.0)
+        self.assertEqual(score, 98.0)
 
     def test_get_health_score_breakdown_returns_total_score(self):
         """Test get_health_score_breakdown returns total_score."""
@@ -259,7 +282,12 @@ class AssetHealthScoreServiceTest(TestCase):
         self.assertEqual(count, 6)
 
     def test_recalculate_all_health_scores_calculates_scores(self):
-        """Test recalculating all health scores calculates scores for all assets."""
+        """Test recalculating all health scores calculates expected scores.
+
+        Each created asset: DQ=PASS(100), Compl=PASS(100), no dataset (freshness=50),
+        no popularity_score → usage=0.0.
+        Expected: 100*0.35 + 100*0.25 + 50*0.20 + 0*0.20 = 70.0.
+        """
         for i in range(5):
             Asset.objects.create(
                 tenant=self.tenant,
@@ -276,11 +304,22 @@ class AssetHealthScoreServiceTest(TestCase):
         assets = Asset.objects.filter(tenant=self.tenant)
         for asset in assets:
             self.assertIsNotNone(asset.health_score)
+            # setUp asset: dataset → fresh=100, view/dl=100/50 → usage=100 → 100.0
+            # created extras: no dataset → fresh=50, view/dl=0/0 pop=None → usage=50 → 80.0
+            if asset.key == "test-asset":
+                self.assertEqual(asset.health_score, 100.0)
+            else:
+                self.assertEqual(asset.health_score, 80.0)
 
     # ========== SUCCESS SCENARIOS ==========
 
     def test_calculate_health_score_perfect_asset_returns_high_score_in_range(self):
-        """Test health score calculation for perfect asset is between 80 and 100."""
+        """Perfect conditions yield the maximum score (100.0).
+
+        DQ=PASS(100), Compliance=PASS(100), freshness=100 (1h-old dataset),
+        popularity=100.0 → usage=100.0.
+        Expected: 100*0.35 + 100*0.25 + 100*0.20 + 100*0.20 = 100.0.
+        """
         perfect_asset = Asset.objects.create(
             tenant=self.tenant,
             key="perfect-asset",
@@ -306,13 +345,17 @@ class AssetHealthScoreServiceTest(TestCase):
         )
 
         score = AssetHealthScoreService.calculate_health_score(perfect_asset)
-        self.assertGreaterEqual(score, 80.0)
-        self.assertLessEqual(score, 100.0)
+        self.assertEqual(score, 100.0)
 
     # ========== EDGE CASES ==========
 
     def test_calculate_health_score_zero_usage(self):
-        """Test health score with zero usage (edge case)"""
+        """Zero usage yields the exact expected score.
+
+        DQ=UNKNOWN(50), Compl=UNKNOWN(50), no dataset → freshness=50,
+        popularity=0.0 → usage=0.0.
+        Expected: 50*0.35 + 50*0.25 + 50*0.20 + 0*0.20 = 40.0.
+        """
         asset = Asset.objects.create(
             tenant=self.tenant,
             key="zero-usage-asset",
@@ -325,14 +368,15 @@ class AssetHealthScoreServiceTest(TestCase):
         )
 
         score = AssetHealthScoreService.calculate_health_score(asset)
-
-        # Should still calculate score (may be lower due to zero usage)
-        self.assertIsNotNone(score)
-        self.assertGreaterEqual(score, 0.0)
-        self.assertLessEqual(score, 100.0)
+        self.assertEqual(score, 40.0)
 
     def test_calculate_health_score_no_datasets(self):
-        """Test health score for asset with no datasets (edge case)"""
+        """No datasets yield the exact expected score.
+
+        DQ=PASS(100), Compl=PASS(100), no dataset → freshness=50,
+        no popularity_score → usage=0.0.
+        Expected: 100*0.35 + 100*0.25 + 50*0.20 + 0*0.20 = 70.0.
+        """
         asset_no_datasets = Asset.objects.create(
             tenant=self.tenant,
             key="no-datasets-asset",
@@ -344,35 +388,37 @@ class AssetHealthScoreServiceTest(TestCase):
         )
 
         score = AssetHealthScoreService.calculate_health_score(asset_no_datasets)
-
-        # Should still calculate score
-        self.assertIsNotNone(score)
-        self.assertGreaterEqual(score, 0.0)
-        self.assertLessEqual(score, 100.0)
+        # DQ=PASS(100), Compl=PASS(100), no dataset → fresh=50,
+        # view/dl=0/0 pop=None → usage=50. 100*.35+100*.25+50*.20+50*.20=80.0
+        self.assertEqual(score, 80.0)
 
     def test_calculate_health_score_very_old_dataset(self):
-        """Test health score with very old dataset (edge case)"""
-        # Use version=2; setUp already created self.dataset with version=1 for self.asset
-        old_dataset = Dataset.objects.create(
+        """Very old dataset does not change score when a newer dataset exists.
+
+        The setUp dataset (auto_now_add) remains the newest, so freshness stays
+        at 100 and the expected score is still 100.0.
+        """
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,
             schema_json={"fields": []},
             format="CSV",
             version=2,
-            created_at=timezone.now() - timedelta(days=365),  # Very old
+            created_at=timezone.now() - timedelta(days=365),
             created_by=self.user,
         )
 
         score = AssetHealthScoreService.calculate_health_score(self.asset)
-
-        # Should calculate score (may be lower due to old dataset)
-        self.assertIsNotNone(score)
-        self.assertGreaterEqual(score, 0.0)
-        self.assertLessEqual(score, 100.0)
+        self.assertEqual(score, 100.0)
 
     def test_calculate_health_score_unknown_statuses(self):
-        """Test health score with UNKNOWN statuses (edge case)"""
+        """UNKNOWN statuses yield the exact expected score.
+
+        DQ=UNKNOWN(50), Compl=UNKNOWN(50), no dataset → fresh=50,
+        view/dl=0/0 pop=None → usage=50.
+        Expected: 50*0.35 + 50*0.25 + 50*0.20 + 50*0.20 = 50.0.
+        """
         asset_unknown = Asset.objects.create(
             tenant=self.tenant,
             key="unknown-status-asset",
@@ -384,11 +430,7 @@ class AssetHealthScoreServiceTest(TestCase):
         )
 
         score = AssetHealthScoreService.calculate_health_score(asset_unknown)
-
-        # Should handle UNKNOWN statuses gracefully
-        self.assertIsNotNone(score)
-        self.assertGreaterEqual(score, 0.0)
-        self.assertLessEqual(score, 100.0)
+        self.assertEqual(score, 50.0)
 
     def test_get_health_score_breakdown_empty_components_returns_structure(self):
         """Test health score breakdown with empty components returns structure."""
@@ -430,9 +472,7 @@ class AssetHealthScoreServiceTest(TestCase):
         """Test recalculating health scores with invalid tenant returns 0."""
         fake_tenant_id = str(uuid.uuid4())
 
-        count = AssetHealthScoreService.recalculate_all_health_scores(
-            fake_tenant_id
-        )
+        count = AssetHealthScoreService.recalculate_all_health_scores(fake_tenant_id)
         self.assertEqual(count, 0)
 
     def test_get_health_score_breakdown_returns_valid_structure(self):

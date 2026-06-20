@@ -44,7 +44,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
             # No contact field
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
@@ -68,7 +68,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
             # No servers field
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
@@ -91,7 +91,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
             # No slaProperties field
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
@@ -105,7 +105,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
     def test_broken_lineage_link_handling(self):
         """Test handling of broken lineage links."""
         # Create source contract
-        source_contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             original_spec_type=OriginalSpecType.ODCS,
@@ -147,7 +147,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
             },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
@@ -162,7 +162,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
         ref = LineageReference(
             namespace="ns1", name="nonexistent-contract", model_name="model1", field="field1"
         )
-        result = resolve_lineage_reference(ref)
+        resolve_lineage_reference(ref)
 
         # Should detect broken link
         self.assertTrue(ref.is_broken())
@@ -194,7 +194,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
             status=ContractStatus.ACTIVE,
         )
 
-        contract2 = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset2,
             original_spec_type=OriginalSpecType.ODCS,
@@ -228,7 +228,10 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
         contracts = []
         for i in range(5):
             chain_asset = Asset.objects.create(
-                tenant=self.tenant, key=f"chain-asset-{i}", name=f"Chain Asset {i}", status=AssetStatus.ACTIVE
+                tenant=self.tenant,
+                key=f"chain-asset-{i}",
+                name=f"Chain Asset {i}",
+                status=AssetStatus.ACTIVE,
             )
             contract = Contract.objects.create(
                 tenant=self.tenant,
@@ -247,7 +250,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
                             [
                                 {
                                     "namespace": "ns1",
-                                    "name": f"contract{i+1}" if i < 4 else None,
+                                    "name": f"contract{i + 1}" if i < 4 else None,
                                     "model_name": "model1",
                                 }
                             ]
@@ -284,7 +287,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
             ],
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
@@ -313,7 +316,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
             ],
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
@@ -340,7 +343,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
             "support": [],  # Empty array
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
@@ -367,7 +370,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
             "support": None,  # Null value
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
@@ -441,7 +444,10 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
         contracts = []
         for i in range(10):
             depth_asset = Asset.objects.create(
-                tenant=self.tenant, key=f"depth-asset-{i}", name=f"Depth {i}", status=AssetStatus.ACTIVE
+                tenant=self.tenant,
+                key=f"depth-asset-{i}",
+                name=f"Depth {i}",
+                status=AssetStatus.ACTIVE,
             )
             contract = Contract.objects.create(
                 tenant=self.tenant,
@@ -460,7 +466,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
                             [
                                 {
                                     "namespace": "ns1",
-                                    "name": f"contract{i+1}" if i < 9 else None,
+                                    "name": f"contract{i + 1}" if i < 9 else None,
                                     "model_name": "model1",
                                 }
                             ]
@@ -477,7 +483,8 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
         # Test traversal with very small depth limit
         traverser = LineageTraverser(contract=contracts[0])
         result = traverser.traverse_top_down(
-            contract_id=str(contracts[0].id), contract_depth=3  # Much smaller than chain length
+            contract_id=str(contracts[0].id),
+            contract_depth=3,  # Much smaller than chain length
         )
 
         # Should respect depth limit and stop at max_depth
@@ -517,7 +524,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
             status=ContractStatus.ACTIVE,
         )
 
-        contract2 = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset2,
             original_spec_type=OriginalSpecType.ODCS,
@@ -537,7 +544,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
             status=ContractStatus.ACTIVE,
         )
 
-        contract3 = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset3,
             original_spec_type=OriginalSpecType.ODCS,
@@ -591,7 +598,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
             },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
@@ -626,7 +633,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
             },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
@@ -638,15 +645,17 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
     def test_lineage_traversal_with_none_contract_id(self):
         """Test lineage traversal with None contract_id (edge case)."""
         dummy = Contract.objects.create(
-            tenant=self.tenant, asset=self.asset,
-            original_raw='{"id":"dummy"}', original_format="JSON",
+            tenant=self.tenant,
+            asset=self.asset,
+            original_raw='{"id":"dummy"}',
+            original_format="JSON",
             original_spec_type=OriginalSpecType.ODCS,
         )
         traverser = LineageTraverser(contract=dummy)
 
         # Should handle None contract_id gracefully
         try:
-            result = traverser.traverse_top_down(contract_id=None, contract_depth=10)
+            traverser.traverse_top_down(contract_id=None, contract_depth=10)
             # No exception raised -- graceful handling confirmed
         except (ValueError, TypeError, AttributeError):
             # Raising exception is also acceptable for invalid input
@@ -655,15 +664,18 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
     def test_lineage_traversal_with_invalid_contract_id(self):
         """Test lineage traversal with invalid contract_id format."""
         dummy = Contract.objects.create(
-            tenant=self.tenant, asset=self.asset,
-            original_raw='{"id":"dummy2"}', original_format="JSON",
-            original_spec_type=OriginalSpecType.ODCS, version=2,
+            tenant=self.tenant,
+            asset=self.asset,
+            original_raw='{"id":"dummy2"}',
+            original_format="JSON",
+            original_spec_type=OriginalSpecType.ODCS,
+            version=2,
         )
         traverser = LineageTraverser(contract=dummy)
 
         # Should handle invalid contract_id gracefully
         try:
-            result = traverser.traverse_top_down(contract_id="invalid-uuid-format", contract_depth=10)
+            traverser.traverse_top_down(contract_id="invalid-uuid-format", contract_depth=10)
             # No exception raised -- graceful handling confirmed
         except (ValueError, TypeError, AttributeError, Exception):
             # Raising exception is also acceptable for invalid input
@@ -675,7 +687,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
 
         # Should handle None values gracefully
         try:
-            result = resolve_lineage_reference(ref)
+            resolve_lineage_reference(ref)
             # No exception raised -- graceful handling confirmed
         except (ValueError, TypeError, AttributeError):
             # Raising exception is also acceptable for invalid input
@@ -703,7 +715,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
             ],
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
@@ -725,7 +737,10 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
         contracts = []
         for i in range(50):
             perf_asset = Asset.objects.create(
-                tenant=self.tenant, key=f"perf-asset-{i}", name=f"Perf {i}", status=AssetStatus.ACTIVE
+                tenant=self.tenant,
+                key=f"perf-asset-{i}",
+                name=f"Perf {i}",
+                status=AssetStatus.ACTIVE,
             )
             contract = Contract.objects.create(
                 tenant=self.tenant,
@@ -744,7 +759,7 @@ class EdgeCasesPhase15TestCase(ContractsTestBase):
                             [
                                 {
                                     "namespace": "ns1",
-                                    "name": f"contract{i+1}" if i < 49 else None,
+                                    "name": f"contract{i + 1}" if i < 49 else None,
                                     "model_name": "model1",
                                 }
                             ]

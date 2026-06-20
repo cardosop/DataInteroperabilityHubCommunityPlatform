@@ -17,9 +17,9 @@ exposed without a shared-secret header. When the secret is unset, the
 decorator 404s unconditionally — but this check fires during pre-flight
 to surface the misconfiguration before users discover it.
 """
+
 from __future__ import annotations
 
-import pytest
 from django.test import TestCase, override_settings
 
 from hub.apps.api.checks import (

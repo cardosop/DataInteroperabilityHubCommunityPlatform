@@ -1,6 +1,9 @@
 """Phase 103: Tenant update consistency."""
+
 import uuid
+
 from django.test import TestCase
+
 from hub.apps.tenants.models import Tenant
 
 
@@ -10,7 +13,8 @@ class TenantSettingsConsistencyTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"TS {uid}", slug=f"ts-{uid}",
+            name=f"TS {uid}",
+            slug=f"ts-{uid}",
         )
 
     def test_update_name_persists(self):

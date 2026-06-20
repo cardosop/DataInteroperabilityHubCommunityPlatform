@@ -1,12 +1,17 @@
 /**
  * Polls lightweight scan status while the file is pending malware scan (Phase 260.3.D).
+ *
+ * Phase 260.3 improvement: adaptive polling — fast (2s) for the first 30s,
+ * medium (5s) up to SLA estimate, slow (10s) for overdue files. Reduces
+ * endpoint load while maintaining responsiveness for quick scans.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fileService } from '../services/fileService';
 import type { FileScanStatus } from '../../../shared/types/files';
 import {
-  FILE_SCAN_STATUS_POLL_INTERVAL_MS,
+  adaptivePollIntervalMs,
+  FILE_SCAN_POLL_FAST_WINDOW_MS,
   shouldContinuePollingFileScanStatus,
 } from '../utils/fileScanStatusPoll';
 
@@ -20,9 +25,10 @@ export interface UseFileScanStatusResult {
 
 export function useFileScanStatus(
   fileId: string | null,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; slaEstimateMs?: number }
 ): UseFileScanStatusResult {
   const enabled = options?.enabled !== false;
+  const slaEstimateMs = options?.slaEstimateMs ?? FILE_SCAN_POLL_FAST_WINDOW_MS;
   const [scanStatus, setScanStatus] = useState<FileScanStatus | string | null>(null);
   const [scannedAt, setScannedAt] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -38,10 +44,18 @@ export function useFileScanStatus(
     }
 
     let cancelled = false;
-    let intervalId: ReturnType<typeof setInterval> | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let firstPending = true;
+    const startTime = Date.now();
     setIsLoading(true);
     setError(null);
+
+    const scheduleNext = (delayMs: number) => {
+      if (cancelled) return;
+      timeoutId = setTimeout(() => {
+        void tick();
+      }, delayMs);
+    };
 
     const tick = async () => {
       try {
@@ -55,11 +69,11 @@ export function useFileScanStatus(
           setIsLoading(false);
         }
         if (!shouldContinuePollingFileScanStatus(data.scan_status)) {
-          if (intervalId !== undefined) {
-            clearInterval(intervalId);
-            intervalId = undefined;
-          }
+          return; // stop polling — terminal status reached
         }
+        // Schedule next poll with adaptive interval
+        const elapsed = Date.now() - startTime;
+        scheduleNext(adaptivePollIntervalMs(elapsed, slaEstimateMs));
       } catch (e) {
         if (!cancelled) {
           setError(e);
@@ -67,22 +81,21 @@ export function useFileScanStatus(
             firstPending = false;
             setIsLoading(false);
           }
+          // Retry on error with fast interval
+          scheduleNext(adaptivePollIntervalMs(Date.now() - startTime, slaEstimateMs));
         }
       }
     };
 
     void tick();
-    intervalId = setInterval(() => {
-      void tick();
-    }, FILE_SCAN_STATUS_POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
-      if (intervalId !== undefined) {
-        clearInterval(intervalId);
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
       }
     };
-  }, [fileId, enabled]);
+  }, [fileId, enabled, slaEstimateMs]);
 
   return { scanStatus, scannedAt, error, isLoading };
 }

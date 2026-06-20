@@ -6,6 +6,7 @@ marketplace views.py and asserts every View / ViewSet has a
 Exit code 0 when all views are covered; non-zero when a view lacks
 coverage. Designed for CI (piggybacks on the django tests job).
 """
+
 import ast
 import os
 import sys
@@ -45,7 +46,7 @@ def _check_module(filepath: str) -> list[str]:
     if not os.path.isfile(filepath):
         return []
 
-    with open(filepath, "r", encoding="utf-8") as fh:
+    with open(filepath, encoding="utf-8") as fh:
         try:
             tree = ast.parse(fh.read(), filename=filepath)
         except SyntaxError:
@@ -66,7 +67,7 @@ class Command(BaseCommand):
         base = Path(__file__).resolve().parents[5]  # hub/apps/../.. = repo root
         all_uncovered: list[str] = []
 
-        for module_name, relative_path in _MODULES.items():
+        for _module_name, relative_path in _MODULES.items():
             full_path = base / relative_path
             uncovered = _check_module(str(full_path))
             if uncovered:
@@ -82,7 +83,5 @@ class Command(BaseCommand):
             sys.exit(1)
 
         self.stdout.write(
-            self.style.SUCCESS(
-                "Throttle coverage check PASSED — all views have throttle_classes."
-            )
+            self.style.SUCCESS("Throttle coverage check PASSED — all views have throttle_classes.")
         )

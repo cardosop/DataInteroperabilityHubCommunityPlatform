@@ -14,7 +14,6 @@ Tests follow TDD approach and fix root causes.
 import time
 import uuid
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
 
 import structlog
 from django.contrib.auth import get_user_model
@@ -39,7 +38,6 @@ from hub.apps.observability.otel_metrics import (
     cache_hits_total,
     db_connections_active,
     dq_runs_total,
-    http_errors_total,
     http_request_duration_seconds,
     http_requests_total,
     jobs_completed_total,
@@ -77,7 +75,6 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
-        pass
 
     def setUp(self):
         """Set up test data"""
@@ -119,11 +116,10 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
     def test_metrics_collection_accuracy_http_requests(self):
         """Test metrics collection accuracy for HTTP requests"""
         # Record initial state
-        initial_count = 0
 
         # Make HTTP requests
         # Root cause fix: Health endpoint should return 200 since services are running in docker compose
-        for i in range(5):
+        for _i in range(5):
             response = self.client.get("/health/")
             self.assertEqual(
                 response.status_code,
@@ -316,7 +312,7 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
 
     def test_metrics_collection_performance_high_volume(self):
         """Test metrics collection performance - high volume"""
-        tenant_id = str(self.tenant1.id)
+        str(self.tenant1.id)
 
         # Record many metrics
         start_time = time.time()
@@ -339,7 +335,7 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
 
     def test_metrics_collection_reliability_after_errors(self):
         """Test metrics collection reliability - continues after errors"""
-        tenant_id = str(self.tenant1.id)
+        str(self.tenant1.id)
 
         # Record metrics normally
         http_requests_total.labels(method="GET", route="/test/", status_class="2xx").inc()
@@ -421,7 +417,7 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
     def test_metrics_collection_tenant_isolation_no_cross_tenant_leakage(self):
         """Test metrics collection tenant isolation - no cross-tenant leakage"""
         tenant1_id = str(self.tenant1.id)
-        tenant2_id = str(self.tenant2.id)
+        str(self.tenant2.id)
 
         # Record metrics for tenant1 only
         dq_runs_total.labels(
@@ -467,7 +463,6 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
-        pass
 
     def setUp(self):
         """Set up test data"""
@@ -630,7 +625,7 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
     def test_alert_triggering_accuracy_no_false_positives(self):
         """Test alert triggering accuracy - no false positives"""
         # Create alerting rule
-        rule = DQAlertingRule.objects.create(
+        DQAlertingRule.objects.create(
             name="Low Quality Alert",
             tenant=self.tenant,
             asset=self.asset,
@@ -672,7 +667,7 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
     def test_alert_triggering_timeliness_immediate_trigger(self):
         """Test alert triggering timeliness - immediate trigger"""
         # Create alerting rule
-        rule = DQAlertingRule.objects.create(
+        DQAlertingRule.objects.create(
             name="Low Quality Alert",
             tenant=self.tenant,
             asset=self.asset,
@@ -717,7 +712,7 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
     def test_alert_triggering_deduplication_same_rule_same_run(self):
         """Test alert triggering deduplication - same rule, same run"""
         # Create alerting rule
-        rule = DQAlertingRule.objects.create(
+        DQAlertingRule.objects.create(
             name="Low Quality Alert",
             tenant=self.tenant,
             asset=self.asset,
@@ -763,7 +758,7 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
     def test_alert_triggering_notification_delivery_email_channel(self):
         """Test alert triggering notification delivery - email channel"""
         # Create alerting rule with email channel
-        rule = DQAlertingRule.objects.create(
+        DQAlertingRule.objects.create(
             name="Low Quality Alert",
             tenant=self.tenant,
             asset=self.asset,
@@ -807,7 +802,7 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
     def test_alert_triggering_notification_delivery_multiple_channels(self):
         """Test alert triggering notification delivery - multiple channels"""
         # Create alerting rule with multiple channels
-        rule = DQAlertingRule.objects.create(
+        DQAlertingRule.objects.create(
             name="Low Quality Alert",
             tenant=self.tenant,
             asset=self.asset,
@@ -870,7 +865,6 @@ class DashboardDataAccuracyTest(TransactionTestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
-        pass
 
     def setUp(self):
         """Set up test data"""
@@ -892,7 +886,7 @@ class DashboardDataAccuracyTest(TransactionTestCase):
         tenant_id = str(self.tenant1.id)
 
         # Create pipeline executions
-        execution1 = PipelineMonitor.record_execution(
+        PipelineMonitor.record_execution(
             tenant_id=tenant_id,
             pipeline_type="DQ_RUN",
             pipeline_id=str(uuid.uuid4()),
@@ -902,7 +896,7 @@ class DashboardDataAccuracyTest(TransactionTestCase):
             items_failed=0,
         )
 
-        execution2 = PipelineMonitor.record_execution(
+        PipelineMonitor.record_execution(
             tenant_id=tenant_id,
             pipeline_type="DQ_RUN",
             pipeline_id=str(uuid.uuid4()),
@@ -1085,7 +1079,7 @@ class DashboardDataAccuracyTest(TransactionTestCase):
         tenant_id = str(self.tenant1.id)
 
         # Create multiple pipeline executions
-        for i in range(100):
+        for _i in range(100):
             PipelineMonitor.record_execution(
                 tenant_id=tenant_id,
                 pipeline_type="DQ_RUN",
@@ -1110,7 +1104,7 @@ class DashboardDataAccuracyTest(TransactionTestCase):
         tenant_id = str(self.tenant1.id)
 
         # Create many pipeline executions
-        for i in range(1000):
+        for _i in range(1000):
             PipelineMonitor.record_execution(
                 tenant_id=tenant_id,
                 pipeline_type="DQ_RUN",
@@ -1122,7 +1116,9 @@ class DashboardDataAccuracyTest(TransactionTestCase):
         # Measure query time with limit
         start_time = time.time()
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id, pipeline_type="DQ_RUN", limit=100  # Limit results
+            tenant_id=tenant_id,
+            pipeline_type="DQ_RUN",
+            limit=100,  # Limit results
         )
         duration = time.time() - start_time
 
@@ -1211,7 +1207,6 @@ class PerformanceMonitoringTest(TransactionTestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
-        pass
 
     def setUp(self):
         """Set up test data"""
@@ -1533,7 +1528,7 @@ class PerformanceMonitoringTest(TransactionTestCase):
         tenant_id = str(self.tenant.id)
 
         # Create normal executions
-        for i in range(5):
+        for _i in range(5):
             PipelineMonitor.record_execution(
                 tenant_id=tenant_id,
                 pipeline_type="DQ_RUN",

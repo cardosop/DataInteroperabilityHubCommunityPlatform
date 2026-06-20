@@ -60,6 +60,7 @@ The embedded subset focuses on the structural keys we care about
 (eventType, eventTime, producer, schemaURL, run, job, inputs,
 outputs) — Marquez does its own deep validation downstream.
 """
+
 from __future__ import annotations
 
 import datetime as _dt
@@ -107,8 +108,14 @@ _OPENLINEAGE_RUN_EVENT_SCHEMA: dict[str, Any] = {
     "title": "OpenLineage RunEvent (Meshant subset)",
     "type": "object",
     "required": [
-        "eventType", "eventTime", "producer", "schemaURL",
-        "run", "job", "inputs", "outputs",
+        "eventType",
+        "eventTime",
+        "producer",
+        "schemaURL",
+        "run",
+        "job",
+        "inputs",
+        "outputs",
     ],
     "properties": {
         "eventType": {
@@ -181,7 +188,8 @@ def meshant_edge_to_openlineage(
             consumers can filter Meshant-emitted runs by namespace.
     """
     event_type = _EDGE_TYPE_TO_EVENT_TYPE.get(
-        str(edge.get("edge_type") or "reference"), "OTHER",
+        str(edge.get("edge_type") or "reference"),
+        "OTHER",
     )
     run_id = str(edge.get("id") or "")
     if not run_id:
@@ -193,16 +201,9 @@ def meshant_edge_to_openlineage(
             "field; cannot emit OpenLineage event without a stable runId"
         )
 
-    job_name = (
-        edge.get("transformation_ref")
-        or edge.get("job_ref")
-        or f"edge:{event_type.lower()}"
-    )
+    job_name = edge.get("transformation_ref") or edge.get("job_ref") or f"edge:{event_type.lower()}"
 
-    event_time = (
-        edge.get("valid_from")
-        or _dt.datetime.now(_dt.timezone.utc).isoformat()
-    )
+    event_time = edge.get("valid_from") or _dt.datetime.now(_dt.UTC).isoformat()
 
     return {
         "eventType": event_type,
@@ -284,9 +285,7 @@ def openlineage_to_meshant_edge(event: dict[str, Any]) -> dict[str, Any]:
         "target_field": tgt.get("field", ""),
         "edge_type": edge_type,
         "transformation_ref": (
-            src.get("transformation_ref")
-            or tgt.get("transformation_ref")
-            or ""
+            src.get("transformation_ref") or tgt.get("transformation_ref") or ""
         ),
         "job_ref": job_ref,
         "openlineage_run_id": (event.get("run") or {}).get("runId"),
@@ -296,7 +295,7 @@ def openlineage_to_meshant_edge(event: dict[str, Any]) -> dict[str, Any]:
 def _meshant_facet(dataset: dict[str, Any]) -> dict[str, Any]:
     """Read the Meshant custom facet from a Dataset; fall back to
     ``namespace + name`` convention when absent (external producer)."""
-    facets = (dataset.get("facets") or {})
+    facets = dataset.get("facets") or {}
     facet = facets.get(MESHANT_CONTRACT_REF_FACET)
     if isinstance(facet, dict):
         # Round-trip case — every field present.

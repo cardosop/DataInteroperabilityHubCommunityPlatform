@@ -7,26 +7,23 @@ error handling, progress tracking, and event publishing.
 These tests use REAL implementations (no mocks/stubs) to validate the
 complete job execution path.
 """
+
 import json
-from django.test import TestCase
-from django.utils import timezone
-from django.db import transaction
 import uuid
 
-from hub.apps.jobs.models import Job, JobType, JobStatus
-from hub.apps.jobs.tasks import (
-    _execute_odps_normalization_job,
-    process_job
-)
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
+from django.test import TestCase
+
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    OriginalSpecType,
+    NormalizationStatus,
     OriginalFormat,
-    NormalizationStatus
+    OriginalSpecType,
 )
+from hub.apps.jobs.models import Job, JobStatus, JobType
+from hub.apps.jobs.tasks import _execute_odps_normalization_job, process_job
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User, UserStatus
 
 
 class ODPSNormalizationJobTest(TestCase):
@@ -36,6 +33,7 @@ class ODPSNormalizationJobTest(TestCase):
         """Set up test fixtures"""
         # Clear cache to ensure clean state
         from django.core.cache import cache
+
         cache.clear()
 
         # Create tenant
@@ -43,7 +41,7 @@ class ODPSNormalizationJobTest(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -51,7 +49,7 @@ class ODPSNormalizationJobTest(TestCase):
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create ODPS contract
@@ -63,7 +61,7 @@ class ODPSNormalizationJobTest(TestCase):
                     "en": {
                         "productID": "test-product",
                         "name": "Test Product",
-                        "description": "Test product description"
+                        "description": "Test product description",
                     }
                 },
                 "contract": {
@@ -72,13 +70,11 @@ class ODPSNormalizationJobTest(TestCase):
                         "kind": "DataContract",
                         "id": "test-contract",
                         "schema": {
-                            "fields": [
-                                {"name": "field1", "type": "string", "required": True}
-                            ]
-                        }
+                            "fields": [{"name": "field1", "type": "string", "required": True}]
+                        },
                     }
-                }
-            }
+                },
+            },
         }
 
         self.contract = Contract.objects.create(
@@ -88,7 +84,7 @@ class ODPSNormalizationJobTest(TestCase):
             original_format=OriginalFormat.JSON,
             original_raw=json.dumps(self.odps_contract_data),
             status=ContractStatus.DRAFT,
-            normalization_status=NormalizationStatus.NOT_NORMALIZED
+            normalization_status=NormalizationStatus.NOT_NORMALIZED,
         )
 
         # Create job
@@ -99,12 +95,13 @@ class ODPSNormalizationJobTest(TestCase):
             resource_type="CONTRACT",
             resource_id=self.contract.id,
             created_by=self.user,
-            details_json={}
+            details_json={},
         )
 
     def tearDown(self):
         """Clean up after tests"""
         from django.core.cache import cache
+
         cache.clear()
 
     def test_execute_odps_normalization_job_success(self):
@@ -113,16 +110,19 @@ class ODPSNormalizationJobTest(TestCase):
         result = _execute_odps_normalization_job(self.job)
 
         # Verify result
-        self.assertEqual(result['status'], 'completed')
-        self.assertIn(result['normalization_status'], [
-            NormalizationStatus.NORMALIZED_OK.value,
-            NormalizationStatus.NORMALIZED_WITH_WARNINGS.value
-        ])
-        self.assertEqual(result['detected_spec_type'], 'ODPS')
-        self.assertIn(result['detected_spec_version'], ['4.1', '4.0'])  # May detect 4.0 or 4.1
-        self.assertEqual(result['contract_id'], str(self.contract.id))
-        self.assertIsInstance(result['warnings_count'], int)
-        self.assertIsInstance(result['errors_count'], int)
+        self.assertEqual(result["status"], "completed")
+        self.assertIn(
+            result["normalization_status"],
+            [
+                NormalizationStatus.NORMALIZED_OK.value,
+                NormalizationStatus.NORMALIZED_WITH_WARNINGS.value,
+            ],
+        )
+        self.assertEqual(result["detected_spec_type"], "ODPS")
+        self.assertIn(result["detected_spec_version"], ["4.1", "4.0"])  # May detect 4.0 or 4.1
+        self.assertEqual(result["contract_id"], str(self.contract.id))
+        self.assertIsInstance(result["warnings_count"], int)
+        self.assertIsInstance(result["errors_count"], int)
 
         # Verify contract was updated
         self.contract.refresh_from_db()
@@ -130,12 +130,12 @@ class ODPSNormalizationJobTest(TestCase):
         self.assertIsNotNone(self.contract.hub_contract_json)
         self.assertIsInstance(self.contract.hub_contract_json, dict)
         # Verify hub_contract has expected structure
-        self.assertIn('info', self.contract.hub_contract_json)
+        self.assertIn("info", self.contract.hub_contract_json)
 
         # Verify progress tracking
         self.job.refresh_from_db()
-        self.assertEqual(self.job.details_json['progress_percentage'], 100.0)
-        self.assertEqual(self.job.details_json['current_phase'], 'completed')
+        self.assertEqual(self.job.details_json["progress_percentage"], 100.0)
+        self.assertEqual(self.job.details_json["current_phase"], "completed")
 
     def test_execute_odps_normalization_job_with_warnings(self):
         """Test ODPS normalization job - warnings may occur with real normalization"""
@@ -143,13 +143,16 @@ class ODPSNormalizationJobTest(TestCase):
         result = _execute_odps_normalization_job(self.job)
 
         # Verify result
-        self.assertEqual(result['status'], 'completed')
-        self.assertIn(result['normalization_status'], [
-            NormalizationStatus.NORMALIZED_OK.value,
-            NormalizationStatus.NORMALIZED_WITH_WARNINGS.value
-        ])
-        self.assertIsInstance(result['warnings_count'], int)
-        self.assertIsInstance(result['normalization_warnings'], list)
+        self.assertEqual(result["status"], "completed")
+        self.assertIn(
+            result["normalization_status"],
+            [
+                NormalizationStatus.NORMALIZED_OK.value,
+                NormalizationStatus.NORMALIZED_WITH_WARNINGS.value,
+            ],
+        )
+        self.assertIsInstance(result["warnings_count"], int)
+        self.assertIsInstance(result["normalization_warnings"], list)
 
         # Verify contract was updated
         self.contract.refresh_from_db()
@@ -165,7 +168,7 @@ class ODPSNormalizationJobTest(TestCase):
             original_format=OriginalFormat.JSON,
             original_raw='{"invalid": "odps data"}',
             status=ContractStatus.DRAFT,
-            normalization_status=NormalizationStatus.NOT_NORMALIZED
+            normalization_status=NormalizationStatus.NOT_NORMALIZED,
         )
 
         # Create job for invalid contract
@@ -176,27 +179,25 @@ class ODPSNormalizationJobTest(TestCase):
             resource_type="CONTRACT",
             resource_id=invalid_contract.id,
             created_by=self.user,
-            details_json={}
+            details_json={},
         )
 
         # Execute job - may fail or succeed with warnings depending on normalization logic
+        # Invalid ODPS should either raise ValueError or complete with failure status.
+        # Both paths indicate proper error handling; neither should succeed silently.
         try:
             result = _execute_odps_normalization_job(job)
-            # If it succeeds, it should have warnings or errors
-            self.assertEqual(result['status'], 'completed')
-            # Normalization may succeed with warnings for invalid data
-            self.assertIn(result['normalization_status'], [
-                NormalizationStatus.NORMALIZED_OK.value,
-                NormalizationStatus.NORMALIZED_WITH_WARNINGS.value,
-                NormalizationStatus.NORMALIZATION_FAILED.value
-            ])
+            self.assertEqual(result["status"], "completed")
+            self.assertEqual(
+                result["normalization_status"],
+                NormalizationStatus.NORMALIZATION_FAILED.value,
+                "Invalid ODPS document must not normalize successfully",
+            )
         except ValueError as e:
-            # If it fails, verify the error message
             self.assertIn("ODPS normalization failed", str(e))
-            # Verify progress tracking shows failure
             job.refresh_from_db()
-            self.assertEqual(job.details_json['progress_percentage'], 100.0)
-            self.assertEqual(job.details_json['current_phase'], 'failed')
+            self.assertEqual(job.details_json["progress_percentage"], 100.0)
+            self.assertEqual(job.details_json["current_phase"], "failed")
 
     def test_execute_odps_normalization_job_missing_contract_id(self):
         """Test ODPS normalization job with missing contract ID"""
@@ -210,7 +211,7 @@ class ODPSNormalizationJobTest(TestCase):
             status=JobStatus.PENDING,
             resource_type="CONTRACT",
             resource_id=non_existent_id,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Execute job - should raise ValueError because contract doesn't exist
@@ -228,7 +229,7 @@ class ODPSNormalizationJobTest(TestCase):
             status=JobStatus.PENDING,
             resource_type="CONTRACT",
             resource_id=uuid.uuid4(),
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Execute job - should raise ValueError
@@ -246,7 +247,7 @@ class ODPSNormalizationJobTest(TestCase):
             original_spec_version="3.0.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"apiVersion": "odcs/v3", "kind": "DataContract"}',
-            status=ContractStatus.DRAFT
+            status=ContractStatus.DRAFT,
         )
 
         # Create job for ODCS contract
@@ -256,7 +257,7 @@ class ODPSNormalizationJobTest(TestCase):
             status=JobStatus.PENDING,
             resource_type="CONTRACT",
             resource_id=odcs_contract.id,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Execute job - should raise ValueError
@@ -274,7 +275,7 @@ class ODPSNormalizationJobTest(TestCase):
             original_spec_version="4.1",
             original_format=OriginalFormat.JSON,
             original_raw="",
-            status=ContractStatus.DRAFT
+            status=ContractStatus.DRAFT,
         )
 
         # Create job
@@ -284,7 +285,7 @@ class ODPSNormalizationJobTest(TestCase):
             status=JobStatus.PENDING,
             resource_type="CONTRACT",
             resource_id=contract.id,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Execute job - should raise ValueError
@@ -301,23 +302,23 @@ class ODPSNormalizationJobTest(TestCase):
         # Verify progress was tracked
         self.job.refresh_from_db()
         self.assertIsNotNone(self.job.details_json)
-        self.assertEqual(self.job.details_json['progress_percentage'], 100.0)
-        self.assertEqual(self.job.details_json['current_phase'], 'completed')
+        self.assertEqual(self.job.details_json["progress_percentage"], 100.0)
+        self.assertEqual(self.job.details_json["current_phase"], "completed")
 
         # Verify progress phases were tracked (check that details_json has expected keys)
-        self.assertIn('progress_percentage', self.job.details_json)
-        self.assertIn('current_phase', self.job.details_json)
-        self.assertIn('status_message', self.job.details_json)
+        self.assertIn("progress_percentage", self.job.details_json)
+        self.assertIn("current_phase", self.job.details_json)
+        self.assertIn("status_message", self.job.details_json)
 
-    def test_execute_odps_normalization_job_event_publishing_resilience(self):
-        """Test that job completes even if event publishing has issues"""
+    def test_execute_odps_normalization_job_completes_successfully(self):
+        """Test that job completes successfully (events are async)."""
         # Execute job with real implementation
         # Event publishing may fail if event system isn't fully configured,
         # but job should still complete
         result = _execute_odps_normalization_job(self.job)
 
         # Verify job completed successfully regardless of event publishing status
-        self.assertEqual(result['status'], 'completed')
+        self.assertEqual(result["status"], "completed")
 
         # Verify contract was updated
         self.contract.refresh_from_db()
@@ -331,6 +332,7 @@ class ODPSNormalizationJobIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from django.core.cache import cache
+
         cache.clear()
 
         # Create tenant
@@ -338,7 +340,7 @@ class ODPSNormalizationJobIntegrationTest(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -346,7 +348,7 @@ class ODPSNormalizationJobIntegrationTest(TestCase):
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create ODPS contract
@@ -358,7 +360,7 @@ class ODPSNormalizationJobIntegrationTest(TestCase):
                     "en": {
                         "productID": "test-product",
                         "name": "Test Product",
-                        "description": "Test product description"
+                        "description": "Test product description",
                     }
                 },
                 "contract": {
@@ -367,13 +369,11 @@ class ODPSNormalizationJobIntegrationTest(TestCase):
                         "kind": "DataContract",
                         "id": "test-contract",
                         "schema": {
-                            "fields": [
-                                {"name": "field1", "type": "string", "required": True}
-                            ]
-                        }
+                            "fields": [{"name": "field1", "type": "string", "required": True}]
+                        },
                     }
-                }
-            }
+                },
+            },
         }
 
         self.contract = Contract.objects.create(
@@ -383,12 +383,13 @@ class ODPSNormalizationJobIntegrationTest(TestCase):
             original_format=OriginalFormat.JSON,
             original_raw=json.dumps(self.odps_contract_data),
             status=ContractStatus.DRAFT,
-            normalization_status=NormalizationStatus.NOT_NORMALIZED
+            normalization_status=NormalizationStatus.NOT_NORMALIZED,
         )
 
     def tearDown(self):
         """Clean up after tests"""
         from django.core.cache import cache
+
         cache.clear()
 
     def test_odps_normalization_job_full_execution(self):
@@ -401,7 +402,7 @@ class ODPSNormalizationJobIntegrationTest(TestCase):
             resource_type="CONTRACT",
             resource_id=self.contract.id,
             created_by=self.user,
-            timeout_seconds=600
+            timeout_seconds=600,
         )
 
         # Verify initial state
@@ -418,7 +419,7 @@ class ODPSNormalizationJobIntegrationTest(TestCase):
         self.assertIsNotNone(job.started_at)
         self.assertIsNotNone(job.completed_at)
         self.assertIsNotNone(job.result_json)
-        self.assertEqual(job.result_json.get('status'), 'completed')
+        self.assertEqual(job.result_json.get("status"), "completed")
 
         # Verify contract was normalized
         self.contract.refresh_from_db()
@@ -428,6 +429,5 @@ class ODPSNormalizationJobIntegrationTest(TestCase):
 
         # Verify progress was tracked
         self.assertIsNotNone(job.details_json)
-        self.assertEqual(job.details_json.get('progress_percentage'), 100.0)
-        self.assertEqual(job.details_json.get('current_phase'), 'completed')
-
+        self.assertEqual(job.details_json.get("progress_percentage"), 100.0)
+        self.assertEqual(job.details_json.get("current_phase"), "completed")

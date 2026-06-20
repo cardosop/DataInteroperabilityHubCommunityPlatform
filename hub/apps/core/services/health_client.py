@@ -8,11 +8,11 @@ Client for checking service health with circuit breaker and retry logic.
 - Used for health checks of external services
 - Provides retry logic, circuit breaker, and distributed tracing
 """
-import httpx
+
 import logging
 import time
-from typing import Dict, Any, Optional, Tuple
-from django.conf import settings
+
+import httpx
 
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
@@ -48,7 +48,7 @@ class ServiceHealthClient:
             failure_threshold=5,
             timeout_seconds=60,
             success_threshold=2,
-            redis_client=get_redis_client()
+            redis_client=get_redis_client(),
         )
 
     def _request_with_retry(self, method: str, url: str, **kwargs) -> httpx.Response:
@@ -73,10 +73,10 @@ class ServiceHealthClient:
         trace_headers = get_trace_headers()
         if trace_headers:
             # Merge trace headers into existing headers
-            if 'headers' in kwargs:
-                kwargs['headers'].update(trace_headers)
+            if "headers" in kwargs:
+                kwargs["headers"].update(trace_headers)
             else:
-                kwargs['headers'] = trace_headers
+                kwargs["headers"] = trace_headers
 
         # Retry logic with exponential backoff
         for attempt in range(self.max_retries + 1):
@@ -90,7 +90,7 @@ class ServiceHealthClient:
             except httpx.HTTPStatusError as e:
                 # Retry on 5xx errors
                 if e.response.status_code >= 500 and attempt < self.max_retries:
-                    delay = self.backoff_factor * (2 ** attempt)
+                    delay = self.backoff_factor * (2**attempt)
                     logger.warning(
                         f"Health check returned {e.response.status_code}. "
                         f"Retrying in {delay}s... (attempt {attempt + 1}/{self.max_retries + 1})"
@@ -102,7 +102,7 @@ class ServiceHealthClient:
             except httpx.RequestError as e:
                 # Retry on network errors
                 if attempt < self.max_retries:
-                    delay = self.backoff_factor * (2 ** attempt)
+                    delay = self.backoff_factor * (2**attempt)
                     logger.warning(
                         f"Network error during health check: {e}. "
                         f"Retrying in {delay}s... (attempt {attempt + 1}/{self.max_retries + 1})"
@@ -113,11 +113,8 @@ class ServiceHealthClient:
         raise Exception("Max retries exceeded for health check.")
 
     def check_health(
-        self,
-        service_url: str,
-        health_path: str = "/health",
-        timeout: Optional[int] = None
-    ) -> Tuple[bool, Optional[str]]:
+        self, service_url: str, health_path: str = "/health", timeout: int | None = None
+    ) -> tuple[bool, str | None]:
         """
         Check service health.
 
@@ -144,8 +141,8 @@ class ServiceHealthClient:
             if response.status_code == 200:
                 try:
                     data = response.json()
-                    is_healthy = data.get('status') in ['healthy', 'ok', 'up']
-                    status_message = data.get('service', 'unknown')
+                    is_healthy = data.get("status") in ["healthy", "ok", "up"]
+                    status_message = data.get("service", "unknown")
                     return is_healthy, status_message
                 except (ValueError, KeyError):
                     # If response is not JSON or doesn't have status, consider 200 as healthy
@@ -173,7 +170,7 @@ class ServiceHealthClient:
         Should be called when the client is no longer needed to properly
         close underlying socket connections.
         """
-        if hasattr(self, 'client') and self.client is not None:
+        if hasattr(self, "client") and self.client is not None:
             try:
                 self.client.close()
             except Exception as e:
@@ -195,5 +192,3 @@ class ServiceHealthClient:
         """Context manager exit - ensures client is closed."""
         self.close()
         return False
-
-

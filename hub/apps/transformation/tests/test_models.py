@@ -1,14 +1,16 @@
 """
 Unit tests for TransformationPipeline model.
 """
+
 import uuid
-from django.test import TestCase
+
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
-from django.contrib.auth import get_user_model
+from django.test import TestCase
 
-from hub.apps.transformation.models import TransformationPipeline, PipelineStatus
 from hub.apps.tenants.models import Tenant
+from hub.apps.transformation.models import PipelineStatus, TransformationPipeline
 
 User = get_user_model()
 
@@ -19,32 +21,17 @@ class TransformationPipelineModelTest(TestCase):
     def setUp(self):
         """Set up per-test fixtures."""
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email=f"test-{uid}@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
         self.valid_pipeline_definition = {
             "version": "1.0.0",
             "steps": [
-                {
-                    "name": "step1",
-                    "type": "task",
-                    "task": "extract_data",
-                    "input": {}
-                },
-                {
-                    "name": "step2",
-                    "type": "task",
-                    "task": "transform_data",
-                    "input": {}
-                }
-            ]
+                {"name": "step1", "type": "task", "task": "extract_data", "input": {}},
+                {"name": "step2", "type": "task", "task": "transform_data", "input": {}},
+            ],
         }
 
     def test_create_pipeline(self):
@@ -56,7 +43,7 @@ class TransformationPipelineModelTest(TestCase):
             description="Test pipeline description",
             pipeline_definition=self.valid_pipeline_definition,
             version="1.0.0",
-            status=PipelineStatus.DRAFT
+            status=PipelineStatus.DRAFT,
         )
 
         self.assertIsNotNone(pipeline.id)
@@ -75,7 +62,7 @@ class TransformationPipelineModelTest(TestCase):
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
             version="1.0.0",
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         expected_str = f"Test Pipeline v1.0.0 ({PipelineStatus.ACTIVE})"
@@ -86,7 +73,7 @@ class TransformationPipelineModelTest(TestCase):
         pipeline = TransformationPipeline.objects.create(
             tenant=self.tenant,
             name="Test Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         self.assertEqual(pipeline.status, PipelineStatus.DRAFT)
@@ -96,7 +83,7 @@ class TransformationPipelineModelTest(TestCase):
         pipeline = TransformationPipeline.objects.create(
             tenant=self.tenant,
             name="Test Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         self.assertEqual(pipeline.metadata, {})
@@ -104,9 +91,7 @@ class TransformationPipelineModelTest(TestCase):
     def test_pipeline_validation_empty_name(self):
         """Test pipeline validation fails with empty name."""
         pipeline = TransformationPipeline(
-            tenant=self.tenant,
-            name="",
-            pipeline_definition=self.valid_pipeline_definition
+            tenant=self.tenant, name="", pipeline_definition=self.valid_pipeline_definition
         )
 
         with self.assertRaises(ValidationError):
@@ -115,9 +100,7 @@ class TransformationPipelineModelTest(TestCase):
     def test_pipeline_validation_whitespace_name(self):
         """Test pipeline validation fails with whitespace-only name."""
         pipeline = TransformationPipeline(
-            tenant=self.tenant,
-            name="   ",
-            pipeline_definition=self.valid_pipeline_definition
+            tenant=self.tenant, name="   ", pipeline_definition=self.valid_pipeline_definition
         )
 
         with self.assertRaises(ValidationError):
@@ -126,9 +109,7 @@ class TransformationPipelineModelTest(TestCase):
     def test_pipeline_validation_invalid_definition_not_dict(self):
         """Test pipeline validation fails when definition is not a dict."""
         pipeline = TransformationPipeline(
-            tenant=self.tenant,
-            name="Test Pipeline",
-            pipeline_definition="not a dict"
+            tenant=self.tenant, name="Test Pipeline", pipeline_definition="not a dict"
         )
 
         with self.assertRaises(ValidationError):
@@ -136,20 +117,10 @@ class TransformationPipelineModelTest(TestCase):
 
     def test_pipeline_validation_missing_version(self):
         """Test pipeline validation fails when definition missing version."""
-        invalid_definition = {
-            "steps": [
-                {
-                    "name": "step1",
-                    "type": "task",
-                    "task": "extract_data"
-                }
-            ]
-        }
+        invalid_definition = {"steps": [{"name": "step1", "type": "task", "task": "extract_data"}]}
 
         pipeline = TransformationPipeline(
-            tenant=self.tenant,
-            name="Test Pipeline",
-            pipeline_definition=invalid_definition
+            tenant=self.tenant, name="Test Pipeline", pipeline_definition=invalid_definition
         )
 
         with self.assertRaises(ValidationError):
@@ -157,14 +128,10 @@ class TransformationPipelineModelTest(TestCase):
 
     def test_pipeline_validation_missing_steps(self):
         """Test pipeline validation fails when definition missing steps."""
-        invalid_definition = {
-            "version": "1.0.0"
-        }
+        invalid_definition = {"version": "1.0.0"}
 
         pipeline = TransformationPipeline(
-            tenant=self.tenant,
-            name="Test Pipeline",
-            pipeline_definition=invalid_definition
+            tenant=self.tenant, name="Test Pipeline", pipeline_definition=invalid_definition
         )
 
         with self.assertRaises(ValidationError):
@@ -172,15 +139,10 @@ class TransformationPipelineModelTest(TestCase):
 
     def test_pipeline_validation_empty_steps(self):
         """Test pipeline validation fails when steps list is empty."""
-        invalid_definition = {
-            "version": "1.0.0",
-            "steps": []
-        }
+        invalid_definition = {"version": "1.0.0", "steps": []}
 
         pipeline = TransformationPipeline(
-            tenant=self.tenant,
-            name="Test Pipeline",
-            pipeline_definition=invalid_definition
+            tenant=self.tenant, name="Test Pipeline", pipeline_definition=invalid_definition
         )
 
         with self.assertRaises(ValidationError):
@@ -188,15 +150,10 @@ class TransformationPipelineModelTest(TestCase):
 
     def test_pipeline_validation_invalid_step_not_dict(self):
         """Test pipeline validation fails when step is not a dict."""
-        invalid_definition = {
-            "version": "1.0.0",
-            "steps": ["not a dict"]
-        }
+        invalid_definition = {"version": "1.0.0", "steps": ["not a dict"]}
 
         pipeline = TransformationPipeline(
-            tenant=self.tenant,
-            name="Test Pipeline",
-            pipeline_definition=invalid_definition
+            tenant=self.tenant, name="Test Pipeline", pipeline_definition=invalid_definition
         )
 
         with self.assertRaises(ValidationError):
@@ -206,18 +163,11 @@ class TransformationPipelineModelTest(TestCase):
         """Test pipeline validation fails when step missing name."""
         invalid_definition = {
             "version": "1.0.0",
-            "steps": [
-                {
-                    "type": "task",
-                    "task": "extract_data"
-                }
-            ]
+            "steps": [{"type": "task", "task": "extract_data"}],
         }
 
         pipeline = TransformationPipeline(
-            tenant=self.tenant,
-            name="Test Pipeline",
-            pipeline_definition=invalid_definition
+            tenant=self.tenant, name="Test Pipeline", pipeline_definition=invalid_definition
         )
 
         with self.assertRaises(ValidationError):
@@ -227,18 +177,11 @@ class TransformationPipelineModelTest(TestCase):
         """Test pipeline validation fails when step missing type."""
         invalid_definition = {
             "version": "1.0.0",
-            "steps": [
-                {
-                    "name": "step1",
-                    "task": "extract_data"
-                }
-            ]
+            "steps": [{"name": "step1", "task": "extract_data"}],
         }
 
         pipeline = TransformationPipeline(
-            tenant=self.tenant,
-            name="Test Pipeline",
-            pipeline_definition=invalid_definition
+            tenant=self.tenant, name="Test Pipeline", pipeline_definition=invalid_definition
         )
 
         with self.assertRaises(ValidationError):
@@ -250,7 +193,7 @@ class TransformationPipelineModelTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         self.assertTrue(pipeline.is_active())
@@ -264,7 +207,7 @@ class TransformationPipelineModelTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.DRAFT
+            status=PipelineStatus.DRAFT,
         )
 
         self.assertTrue(pipeline.is_draft())
@@ -278,7 +221,7 @@ class TransformationPipelineModelTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         self.assertTrue(pipeline.can_execute())
@@ -295,7 +238,7 @@ class TransformationPipelineModelTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.DRAFT
+            status=PipelineStatus.DRAFT,
         )
 
         pipeline.activate()
@@ -310,7 +253,7 @@ class TransformationPipelineModelTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         pipeline.deactivate()
@@ -325,7 +268,7 @@ class TransformationPipelineModelTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         pipeline.archive()
@@ -339,7 +282,7 @@ class TransformationPipelineModelTest(TestCase):
         pipeline = TransformationPipeline.objects.create(
             tenant=self.tenant,
             name="Test Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         self.assertEqual(pipeline.get_step_count(), 2)
@@ -348,9 +291,7 @@ class TransformationPipelineModelTest(TestCase):
         new_def = pipeline.get_pipeline_definition()
         new_def = {
             "version": "1.0.0",
-            "steps": [
-                {"name": "step1", "type": "task", "task": "extract"}
-            ]
+            "steps": [{"name": "step1", "type": "task", "task": "extract"}],
         }
         pipeline.pipeline_definition = new_def
         self.assertEqual(pipeline.get_step_count(), 1)
@@ -360,7 +301,7 @@ class TransformationPipelineModelTest(TestCase):
         pipeline = TransformationPipeline.objects.create(
             tenant=self.tenant,
             name="Test Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         self.assertEqual(pipeline.get_pipeline_version(), "1.0.0")
@@ -368,7 +309,7 @@ class TransformationPipelineModelTest(TestCase):
         # Test with different version
         pipeline.pipeline_definition = {
             "version": "2.1.0",
-            "steps": [{"name": "step1", "type": "task", "task": "extract"}]
+            "steps": [{"name": "step1", "type": "task", "task": "extract"}],
         }
         self.assertEqual(pipeline.get_pipeline_version(), "2.1.0")
 
@@ -378,7 +319,7 @@ class TransformationPipelineModelTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            version="1.0.0"
+            version="1.0.0",
         )
 
         # Try to create duplicate
@@ -387,7 +328,7 @@ class TransformationPipelineModelTest(TestCase):
                 tenant=self.tenant,
                 name="Test Pipeline",
                 pipeline_definition=self.valid_pipeline_definition,
-                version="1.0.0"
+                version="1.0.0",
             )
 
     def test_pipeline_different_versions_allowed(self):
@@ -396,7 +337,7 @@ class TransformationPipelineModelTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            version="1.0.0"
+            version="1.0.0",
         )
 
         # Different version should be allowed
@@ -404,7 +345,7 @@ class TransformationPipelineModelTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            version="2.0.0"
+            version="2.0.0",
         )
 
         self.assertIsNotNone(pipeline2.id)
@@ -416,11 +357,12 @@ class TransformationPipelineModelTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            version="1.0.0"
+            version="1.0.0",
         )
 
         # Different tenant should be allowed
         import uuid as _uuid
+
         _uid = _uuid.uuid4().hex[:8]
         tenant2 = Tenant.objects.create(
             name=f"Test Tenant 2 {_uid}",
@@ -430,7 +372,7 @@ class TransformationPipelineModelTest(TestCase):
             tenant=tenant2,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            version="1.0.0"
+            version="1.0.0",
         )
 
         self.assertIsNotNone(pipeline2.id)
@@ -441,7 +383,7 @@ class TransformationPipelineModelTest(TestCase):
         pipeline = TransformationPipeline.objects.create(
             tenant=self.tenant,
             name="Test Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         self.assertIsNotNone(pipeline.created_at)
@@ -451,7 +393,7 @@ class TransformationPipelineModelTest(TestCase):
         pipeline = TransformationPipeline.objects.create(
             tenant=self.tenant,
             name="Test Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         original_updated_at = pipeline.updated_at
@@ -469,16 +411,15 @@ class TransformationPipelineModelTest(TestCase):
             "tags": ["etl", "customer-data"],
             "source_asset_id": str(uuid.uuid4()),
             "target_asset_id": str(uuid.uuid4()),
-            "category": "data-enrichment"
+            "category": "data-enrichment",
         }
 
         pipeline = TransformationPipeline.objects.create(
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            metadata=metadata
+            metadata=metadata,
         )
 
         self.assertEqual(pipeline.metadata, metadata)
         self.assertEqual(pipeline.metadata["tags"], ["etl", "customer-data"])
-

@@ -10,18 +10,16 @@ Usage:
     python manage.py migrate_legacy_transformation_pipelines
     python manage.py migrate_legacy_transformation_pipelines --pipeline-id=<uuid>
 """
+
 from __future__ import annotations
 
-from io import StringIO
+import contextlib
 
 from django.core.management.base import BaseCommand
 
 
 class Command(BaseCommand):
-    help = (
-        "List or migrate legacy transformation pipelines "
-        "(DuckDB/Polars → dbt-native)."
-    )
+    help = "List or migrate legacy transformation pipelines (DuckDB/Polars → dbt-native)."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -66,14 +64,10 @@ class Command(BaseCommand):
                 legacy_pipelines.append(pipeline)
 
         if not legacy_pipelines:
-            self.stdout.write(
-                self.style.SUCCESS("No legacy pipelines found.")
-            )
+            self.stdout.write(self.style.SUCCESS("No legacy pipelines found."))
             return
 
-        self.stdout.write(
-            f"Found {len(legacy_pipelines)} legacy pipeline(s):"
-        )
+        self.stdout.write(f"Found {len(legacy_pipelines)} legacy pipeline(s):")
         for pipeline in legacy_pipelines:
             self.stdout.write(
                 f"  {pipeline.id}  {pipeline.name}  "
@@ -83,8 +77,7 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(
                 self.style.NOTICE(
-                    "\nDRY RUN — no pipelines were modified. "
-                    "Remove --dry-run to migrate."
+                    "\nDRY RUN — no pipelines were modified. Remove --dry-run to migrate."
                 )
             )
             return
@@ -110,7 +103,7 @@ class Command(BaseCommand):
                     update_fields=["pipeline_definition", "metadata", "updated_at"],
                 )
 
-                try:
+                with contextlib.suppress(Exception):
                     create_audit_event(
                         resource_type="TRANSFORMATION_PIPELINE",
                         action="TRANSFORMATION_PIPELINE_MIGRATED_TO_DBT",
@@ -122,24 +115,14 @@ class Command(BaseCommand):
                             "tenant_id": str(pipeline.tenant_id),
                         },
                     )
-                except Exception:
-                    pass
 
                 migrated += 1
                 self.stdout.write(
-                    self.style.SUCCESS(
-                        f"  Migrated: {pipeline.id} ({pipeline.name})"
-                    )
+                    self.style.SUCCESS(f"  Migrated: {pipeline.id} ({pipeline.name})")
                 )
             except Exception as exc:
-                self.stderr.write(
-                    self.style.ERROR(
-                        f"  Failed: {pipeline.id} — {exc}"
-                    )
-                )
+                self.stderr.write(self.style.ERROR(f"  Failed: {pipeline.id} — {exc}"))
 
         self.stdout.write(
-            self.style.SUCCESS(
-                f"\nMigrated {migrated} of {len(legacy_pipelines)} pipeline(s)."
-            )
+            self.style.SUCCESS(f"\nMigrated {migrated} of {len(legacy_pipelines)} pipeline(s).")
         )

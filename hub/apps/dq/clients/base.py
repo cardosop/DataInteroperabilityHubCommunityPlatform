@@ -15,15 +15,15 @@ forever. The breaker emits ``DQ_ALERT_CHANNEL_DEGRADED`` audit events
 on state transitions; clients only need to focus on the wire-protocol
 shape.
 """
+
 from __future__ import annotations
 
 import abc
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Type
+from typing import Any
 
 from ..log_helpers import _redact
-
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +57,8 @@ class DeliveryResult:
 
     success: bool
     delivery_id: str = ""
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class AlertDeliveryError(Exception):
@@ -116,16 +116,14 @@ class BaseAlertClient(abc.ABC):
 
     def __init__(self) -> None:
         if not self.channel:
-            raise NotImplementedError(
-                f"{type(self).__name__} must set channel"
-            )
+            raise NotImplementedError(f"{type(self).__name__} must set channel")
         # Default the breaker name from the channel if not overridden.
         if not self.circuit_breaker_name:
             self.circuit_breaker_name = f"dq_alert_{self.channel.lower()}"
 
     # ---- public surface ---------------------------------------------------
 
-    def deliver(self, rule, payload: Dict[str, Any]) -> DeliveryResult:
+    def deliver(self, rule, payload: dict[str, Any]) -> DeliveryResult:
         """Deliver ``payload`` for ``rule`` through this client's channel.
 
         Wraps ``_deliver`` with a per-channel circuit breaker so a
@@ -163,7 +161,9 @@ class BaseAlertClient(abc.ABC):
         try:
             try:
                 result = breaker.call(
-                    self._attempt_with_transient_raise, rule, payload,
+                    self._attempt_with_transient_raise,
+                    rule,
+                    payload,
                 )
                 return result
             except _TransientDeliveryError as exc:
@@ -175,12 +175,14 @@ class BaseAlertClient(abc.ABC):
             except CircuitBreakerError as exc:
                 logger.warning(
                     "dq_alert_channel_degraded_short_circuit",
-                    extra=_redact({
-                        "channel": self.channel,
-                        "rule_id": str(rule.id),
-                        "alert_id": payload.get("alert_id"),
-                        "circuit_breaker": self.circuit_breaker_name,
-                    }),
+                    extra=_redact(
+                        {
+                            "channel": self.channel,
+                            "rule_id": str(rule.id),
+                            "alert_id": payload.get("alert_id"),
+                            "circuit_breaker": self.circuit_breaker_name,
+                        }
+                    ),
                 )
                 return DeliveryResult(
                     success=False,
@@ -203,16 +205,17 @@ class BaseAlertClient(abc.ABC):
             # degradation signal (recovery probe failed), so any
             # transition INTO ``OPEN`` triggers the audit row.
             state_after = breaker.get_state()
-            if (
-                state_after == CircuitBreakerState.OPEN
-                and state_before != CircuitBreakerState.OPEN
-            ):
+            if state_after == CircuitBreakerState.OPEN and state_before != CircuitBreakerState.OPEN:
                 self._emit_channel_degraded_audit(
-                    rule=rule, payload=payload, breaker=breaker,
+                    rule=rule,
+                    payload=payload,
+                    breaker=breaker,
                 )
 
     def _attempt_with_transient_raise(
-        self, rule, payload: Dict[str, Any],
+        self,
+        rule,
+        payload: dict[str, Any],
     ) -> DeliveryResult:
         """Wrapper that raises ``_TransientDeliveryError`` when
         ``_deliver`` returns a transient failure result.
@@ -230,7 +233,11 @@ class BaseAlertClient(abc.ABC):
         return result
 
     def _emit_channel_degraded_audit(
-        self, *, rule, payload: Dict[str, Any], breaker,
+        self,
+        *,
+        rule,
+        payload: dict[str, Any],
+        breaker,
     ) -> None:
         """Emit the ``DQ_ALERT_CHANNEL_DEGRADED`` audit row.
 
@@ -262,14 +269,16 @@ class BaseAlertClient(abc.ABC):
                     "rule_id": str(rule.id),
                 },
             )
-        except Exception as exc:  # noqa: BLE001 — boundary
+        except Exception as exc:
             logger.error(
                 "dq_alert_channel_degraded_audit_failed",
-                extra=_redact({
-                    "channel": self.channel,
-                    "rule_id": str(rule.id),
-                    "error": str(exc),
-                }),
+                extra=_redact(
+                    {
+                        "channel": self.channel,
+                        "rule_id": str(rule.id),
+                        "error": str(exc),
+                    }
+                ),
                 exc_info=True,
             )
 
@@ -295,7 +304,7 @@ class BaseAlertClient(abc.ABC):
     # ---- subclass surface -------------------------------------------------
 
     @abc.abstractmethod
-    def _deliver(self, rule, payload: Dict[str, Any]) -> DeliveryResult:
+    def _deliver(self, rule, payload: dict[str, Any]) -> DeliveryResult:
         """Channel-specific delivery. Subclasses implement.
 
         MUST return a ``DeliveryResult`` for both success and recoverable
@@ -310,7 +319,7 @@ class BaseAlertClient(abc.ABC):
 # ---------------------------------------------------------------------------
 
 
-def _channel_registry() -> Dict[str, Type[BaseAlertClient]]:
+def _channel_registry() -> dict[str, type[BaseAlertClient]]:
     """Build the channel→client map.
 
     Done lazily inside the function so importing ``base.py`` doesn't
@@ -346,8 +355,5 @@ def get_client_for_channel(channel: str) -> BaseAlertClient:
     registry = _channel_registry()
     cls = registry.get(channel)
     if cls is None:
-        raise ValueError(
-            f"unknown DQ alert channel: {channel!r}. "
-            f"valid: {sorted(registry)}"
-        )
+        raise ValueError(f"unknown DQ alert channel: {channel!r}. valid: {sorted(registry)}")
     return cls()

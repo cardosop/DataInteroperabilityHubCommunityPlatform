@@ -5,8 +5,10 @@ Version-specific normalizer for ODPS (Open Data Product Standard) version 3.x.
 Implements ODPSNormalizerBase with 3.x-specific mappings and graceful degradation
 for missing ODPS 4.0+ features (productStrategy, paymentGateways, enhanced marketplace).
 """
+
+from typing import Any
+
 import structlog
-from typing import Dict, Any, List
 
 from hub.apps.contracts.normalization.odps_normalizer_base import ODPSNormalizerBase
 
@@ -43,19 +45,19 @@ class ODPSNormalizerV3_X(ODPSNormalizerBase):
         # Support versions 3.0 through 3.9
         if spec_version.startswith("3."):
             return True
-        
+
         # Also support "3.x" as a generic version identifier
         if spec_version == "3.x":
             return True
-        
+
         return False
 
     def _map_version_specific_fields(
         self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
-        spec_version: str
+        contract_data: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
+        spec_version: str,
     ) -> None:
         """
         Map ODPS 3.x-specific fields to HubContract format.
@@ -83,54 +85,26 @@ class ODPSNormalizerV3_X(ODPSNormalizerBase):
                 "odps_v3_x_unexpected_version",
                 expected_version="3.x",
                 actual_version=spec_version,
-                message="ODPSNormalizerV3_X received unexpected version"
+                message="ODPSNormalizerV3_X received unexpected version",
             )
 
         # ODPS 3.x does not support:
         # - productStrategy (introduced in 4.1)
         # - paymentGateways (introduced in 4.1)
         # - Some enhanced marketplace features
-        
+
         # The base class _normalize_product_strategy already checks version
         # and skips processing for versions < 4.1, but we're being explicit here
-        
+
         # All other normalization is handled by the base class
         # Marketplace normalization gracefully handles missing paymentGateways
         # (it's optional, so no special handling needed)
-        
+
         # ODPS 3.x may have different field structures, but the base class
         # normalization methods handle missing fields gracefully
-        
+
         logger.debug(
             "odps_v3_x_version_specific_mapping_complete",
             spec_version=spec_version,
-            message="ODPS 3.x version-specific mapping complete (no 4.0+ features to process)"
+            message="ODPS 3.x version-specific mapping complete (no 4.0+ features to process)",
         )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

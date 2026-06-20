@@ -10,7 +10,6 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
-from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
 from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob
@@ -98,52 +97,48 @@ class MarketplaceSyncJobSerializerTest(TestCase):
         self.assertEqual(10, data["items_synced"])
         self.assertIsNotNone(data["completed_at"])
 
-    def test_serialize_sync_job_with_deleted_connection(self):
-        """Test that serializer handles deleted connection gracefully"""
+    def test_cascade_delete_removes_sync_job_when_connection_deleted(self):
+        """Test that deleting a connection cascade-deletes its sync jobs.
+
+        MarketplaceConnection has on_delete=models.CASCADE on the sync_jobs
+        reverse relation, so deleting the connection must remove all related
+        sync jobs.
+        """
         sync_job = MarketplaceSyncJob.objects.create(
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
             status=SyncStatus.PENDING.value,
         )
+        sync_job_id = sync_job.id
 
-        # Delete connection (cascade should handle this, but test the edge case)
         self.connection.delete()
 
-        # Try to serialize - should handle gracefully
-        try:
-            sync_job.refresh_from_db()
-            serializer = MarketplaceSyncJobSerializer(sync_job)
-            # If sync job still exists, serializer should handle missing connection
-            data = serializer.data
-            # Connection fields may be None or missing
-            self.assertIn("connection_id", data or {})
-        except MarketplaceSyncJob.DoesNotExist:
-            # If cascade delete removed sync job, that's also acceptable
-            pass
+        self.assertFalse(
+            MarketplaceSyncJob.objects.filter(id=sync_job_id).exists(),
+            "Cascade delete should remove sync jobs when their connection is deleted",
+        )
 
-    def test_serialize_sync_job_with_deleted_tenant(self):
-        """Test that serializer handles deleted tenant gracefully"""
+    def test_cascade_delete_removes_sync_job_when_tenant_deleted(self):
+        """Test that deleting a tenant cascade-deletes its sync jobs.
+
+        Tenant has on_delete=models.CASCADE on the sync_jobs reverse relation,
+        so deleting the tenant must remove all related sync jobs.
+        """
         sync_job = MarketplaceSyncJob.objects.create(
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
             status=SyncStatus.PENDING.value,
         )
+        sync_job_id = sync_job.id
 
         self.tenant.delete()
 
-        # Try to serialize - should handle gracefully
-        try:
-            sync_job.refresh_from_db()
-            serializer = MarketplaceSyncJobSerializer(sync_job)
-            # If sync job still exists, serializer should handle missing tenant
-            data = serializer.data
-            # Tenant fields may be None or missing
-            self.assertIn("tenant", data or {})
-        except MarketplaceSyncJob.DoesNotExist:
-            # If cascade delete removed sync job, that's also acceptable
-            pass
+        self.assertFalse(
+            MarketplaceSyncJob.objects.filter(id=sync_job_id).exists(),
+            "Cascade delete should remove sync jobs when their tenant is deleted",
+        )
 
     def test_serialize_sync_job_with_invalid_metadata(self):
         """Test that serializer handles invalid metadata structure"""
@@ -164,8 +159,7 @@ class MarketplaceSyncJobSerializerTest(TestCase):
     def test_serialize_sync_job_with_large_errors_list(self):
         """Test that serializer handles large errors list"""
         large_errors = [
-            {"message": f"Error {i}", "timestamp": timezone.now().isoformat()}
-            for i in range(100)
+            {"message": f"Error {i}", "timestamp": timezone.now().isoformat()} for i in range(100)
         ]
         sync_job = MarketplaceSyncJob.objects.create(
             tenant=self.tenant,

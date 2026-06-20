@@ -14,8 +14,8 @@ from rest_framework.test import APIClient
 from hub.apps.datasets.services import DatasetService
 from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-from hub.apps.users.models import UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.users.models import UserStatus
 
 User = get_user_model()
 
@@ -69,6 +69,7 @@ class DatasetsTestBase(TestCase):
         try:
             import boto3
             from django.conf import settings
+
             s3 = boto3.client(
                 "s3",
                 endpoint_url=getattr(settings, "AWS_S3_ENDPOINT_URL", None),
@@ -82,7 +83,8 @@ class DatasetsTestBase(TestCase):
                 ContentType="text/csv",
             )
             self.storage_available = True
-        except Exception:
+        except (OSError, ConnectionError, TimeoutError):
+            # MinIO / S3 unreachable — test will conditionally skip.
             pass
 
 
@@ -131,6 +133,7 @@ class DatasetsTransactionTestBase(TestCase):
         try:
             import boto3
             from django.conf import settings
+
             s3 = boto3.client(
                 "s3",
                 endpoint_url=getattr(settings, "AWS_S3_ENDPOINT_URL", None),
@@ -144,7 +147,8 @@ class DatasetsTransactionTestBase(TestCase):
                 ContentType="text/csv",
             )
             self.storage_available = True
-        except Exception:
+        except (OSError, ConnectionError, TimeoutError):
+            # MinIO / S3 unreachable — test will conditionally skip.
             pass
 
 

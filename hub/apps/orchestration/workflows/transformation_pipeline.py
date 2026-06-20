@@ -5,11 +5,11 @@ Orchestrates transformation pipeline execution via the workflow engine.
 Steps: validate → create_execution → run_pipeline → store_results → audit
 """
 
+import contextlib
 import logging
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
-from django.db import transaction
 from django.utils import timezone
 
 from hub.apps.orchestration.models import (
@@ -102,12 +102,12 @@ class TransformationPipelineWorkflow:
         pipeline_id: str,
         asset_id: str,
         tenant_id: str,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
         execution_mode: str = "SYNC",
-        engine: Optional[WorkflowEngine] = None,
-        registry: Optional[WorkflowRegistry] = None,
+        engine: WorkflowEngine | None = None,
+        registry: WorkflowRegistry | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Execute the transformation pipeline workflow.
 
@@ -125,7 +125,8 @@ class TransformationPipelineWorkflow:
         )
 
         pipeline = TransformationPipeline.objects.get(
-            id=pipeline_id, tenant_id=tenant_id,
+            id=pipeline_id,
+            tenant_id=tenant_id,
         )
         asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
 
@@ -151,11 +152,10 @@ class TransformationPipelineWorkflow:
         user_obj = None
         if user_id:
             from django.contrib.auth import get_user_model
+
             User = get_user_model()
-            try:
+            with contextlib.suppress(User.DoesNotExist):
                 user_obj = User.objects.get(id=user_id)
-            except User.DoesNotExist:
-                pass
 
         job = create_job(
             tenant=tenant,
@@ -182,7 +182,9 @@ class TransformationPipelineWorkflow:
 
         logger.info(
             "transformation_execution_created pipeline_id=%s execution_id=%s prefect_flow_run_id=%s",
-            pipeline_id, str(execution.id), str(execution.prefect_flow_run_id),
+            pipeline_id,
+            str(execution.id),
+            str(execution.prefect_flow_run_id),
         )
 
         # Create WorkflowInstance for execution tracking
@@ -194,10 +196,16 @@ class TransformationPipelineWorkflow:
                 "dsl_json": {
                     "version": "1.0.0",
                     "steps": [
-                        {"name": "validate_pipeline", "type": "task",
-                         "task": "transformation.validate_pipeline"},
-                        {"name": "run_pipeline", "type": "task",
-                         "task": "transformation.run_pipeline"},
+                        {
+                            "name": "validate_pipeline",
+                            "type": "task",
+                            "task": "transformation.validate_pipeline",
+                        },
+                        {
+                            "name": "run_pipeline",
+                            "type": "task",
+                            "task": "transformation.run_pipeline",
+                        },
                     ],
                 },
                 "is_active": True,
@@ -227,13 +235,13 @@ class TransformationPipelineWorkflow:
         else:
             # SYNC: complete immediately with result asset
             from hub.apps.assets.models import AssetStatus
+
             result_asset = Asset.objects.create(
                 tenant_id=tenant_id,
                 key=f"transform-result-{execution.id}",
                 name=f"Result: {pipeline.name}",
                 description=(
-                    f"Transformation output from pipeline "
-                    f"'{pipeline.name}' v{pipeline.version}"
+                    f"Transformation output from pipeline '{pipeline.name}' v{pipeline.version}"
                 ),
                 domain=getattr(asset, "domain", "transform"),
                 status=AssetStatus.DRAFT,
@@ -245,16 +253,23 @@ class TransformationPipelineWorkflow:
                 "duration_seconds": 0.0,
                 "rows_processed": 0,
             }
-            execution.save(update_fields=[
-                "result_asset", "status", "completed_at",
-                "metrics", "updated_at",
-            ])
+            execution.save(
+                update_fields=[
+                    "result_asset",
+                    "status",
+                    "completed_at",
+                    "metrics",
+                    "updated_at",
+                ]
+            )
             # Mark workflow instance completed for sync mode
             workflow_instance.status = WorkflowStatus.COMPLETED
             workflow_instance.completed_at = timezone.now()
             workflow_instance.save(
                 update_fields=[
-                    "status", "completed_at", "updated_at",
+                    "status",
+                    "completed_at",
+                    "updated_at",
                 ],
             )
 
@@ -271,22 +286,22 @@ class TransformationPipelineWorkflow:
     # ── Task implementations ─────────────────────────────────────
 
     @staticmethod
-    def _validate_pipeline_task(context: Dict[str, Any]) -> Dict:
+    def _validate_pipeline_task(context: dict[str, Any]) -> dict:
         return {"valid": True}
 
     @staticmethod
-    def _create_execution_task(context: Dict[str, Any]) -> Dict:
+    def _create_execution_task(context: dict[str, Any]) -> dict:
         return {"execution_created": True}
 
     @staticmethod
-    def _run_pipeline_task(context: Dict[str, Any]) -> Dict:
+    def _run_pipeline_task(context: dict[str, Any]) -> dict:
         return {"pipeline_executed": True}
 
     @staticmethod
-    def _store_results_task(context: Dict[str, Any]) -> Dict:
+    def _store_results_task(context: dict[str, Any]) -> dict:
         return {"results_stored": True}
 
     @staticmethod
-    def _audit_logging_task(context: Dict[str, Any]) -> Dict:
+    def _audit_logging_task(context: dict[str, Any]) -> dict:
         logger.info("transformation_audit_logged")
         return {"audit_logged": True}

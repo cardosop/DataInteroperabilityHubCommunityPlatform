@@ -12,15 +12,14 @@ Tests cover:
 - Integration with sync workflow
 """
 
-import uuid
-import json
+import contextlib
 import os
 import tempfile
+import uuid
 
 import pytest
-from django.core.files.base import ContentFile
-from django.db import connection, close_old_connections
-from django.test import TestCase, override_settings
+from django.db import connection
+from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.assets.models import (
@@ -32,7 +31,7 @@ from hub.apps.assets.models import (
 )
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
 from hub.apps.datasets.models import Dataset
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import File
 from hub.apps.integrations.base import (
     AssetSourceType,
     MarketplaceAssetMapping,
@@ -48,10 +47,8 @@ from hub.apps.integrations.models import (
     MarketplaceSyncJob,
 )
 from hub.apps.integrations.services import MarketplaceIntegrationService
-from hub.apps.semantic.models import SemanticResource
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -476,10 +473,8 @@ class TestFederatedAssetCreation(TestCase):
             # Restore original method
             MarketplaceConnectorFactory.create_connector = original_create
             # Cleanup temp file
-            try:
+            with contextlib.suppress(Exception):
                 os.unlink(temp_file.name)
-            except Exception:
-                pass
 
     def test_create_federated_asset_semantic_mapping(self):
         """Test semantic mapping is called for asset and contracts"""
@@ -507,11 +502,9 @@ class TestFederatedAssetCreation(TestCase):
 
         def mock_map_asset(asset, tenant=None, use_cache=True):
             semantic_calls.append(("asset", str(asset.id)))
-            return None
 
         def mock_map_contract(contract, tenant=None, use_cache=True):
             semantic_calls.append(("contract", str(contract.id), contract.original_spec_type))
-            return None
 
         from hub.apps.semantic import utils
 
@@ -566,7 +559,6 @@ class TestFederatedAssetCreation(TestCase):
         )
 
         # Mock a failure during contract creation
-        from hub.apps.contracts.models import Contract
 
         original_create = Contract.objects.create
 
@@ -591,10 +583,10 @@ class TestFederatedAssetCreation(TestCase):
             assets = Asset.objects.filter(name="Error Asset")
             self.assertEqual(assets.count(), 0)
 
-            # Verify no contracts were created
+            # Verify no contracts were created after rollback
             contracts = Contract.objects.filter(tenant=self.tenant)
-            initial_count = contracts.count()
-            # Should be 0 if transaction rolled back properly
+            self.assertEqual(contracts.count(), 0,
+                "No contracts should exist after transaction rollback")
 
         finally:
             Contract.objects.create = original_create

@@ -13,10 +13,11 @@ All validation methods follow engineering best practices:
 - Comprehensive error messages with context
 - Follow DRY, SOLID, and clean code principles
 """
+
 import logging
 import re
-from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from dataclasses import dataclass
+from typing import Any
 
 from django.conf import settings
 from django.contrib.postgres.search import SearchQuery
@@ -29,9 +30,6 @@ from hub.apps.core.business_rules.base import (
 from hub.apps.core.business_rules.registry import register_rule
 from hub.apps.search.models import SearchIndex
 from hub.apps.users.models import User
-
-if TYPE_CHECKING:
-    from hub.apps.tenants.models import Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -48,29 +46,32 @@ class SearchRuleExecutionContext(RuleExecutionContext):
     - tenant: Optional tenant instance for validation
     - user: Optional user instance for permission validation
     """
-    query: Optional[str] = None
-    index: Optional[SearchIndex] = None
-    filters: Optional[Dict[str, Any]] = None
-    tenant: Optional[Any] = None  # Using Any to avoid circular import
-    user: Optional[User] = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    query: str | None = None
+    index: SearchIndex | None = None
+    filters: dict[str, Any] | None = None
+    tenant: Any | None = None  # Using Any to avoid circular import
+    user: User | None = None
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert context to dictionary for caching/logging."""
         base_dict = super().to_dict()
-        base_dict.update({
-            'query_length': len(self.query) if self.query else None,
-            'query_preview': self.query[:100] if self.query else None,
-            'index_id': str(self.index.id) if self.index else None,
-            'index_resource_type': self.index.resource_type if self.index else None,
-            'index_resource_id': str(self.index.resource_id) if self.index else None,
-            'filters': self.filters,
-            'filter_count': len(self.filters) if self.filters else 0,
-        })
+        base_dict.update(
+            {
+                "query_length": len(self.query) if self.query else None,
+                "query_preview": self.query[:100] if self.query else None,
+                "index_id": str(self.index.id) if self.index else None,
+                "index_resource_type": self.index.resource_type if self.index else None,
+                "index_resource_id": str(self.index.resource_id) if self.index else None,
+                "filters": self.filters,
+                "filter_count": len(self.filters) if self.filters else 0,
+            }
+        )
         # Add tenant and user IDs from objects if provided
         if self.tenant:
-            base_dict['tenant_id_from_object'] = str(self.tenant.id)
+            base_dict["tenant_id_from_object"] = str(self.tenant.id)
         if self.user:
-            base_dict['user_id_from_object'] = str(self.user.id)
+            base_dict["user_id_from_object"] = str(self.user.id)
         return base_dict
 
 
@@ -94,10 +95,7 @@ class SearchBusinessRules(BusinessRules):
     """
 
     def validate(
-        self,
-        context: Optional[SearchRuleExecutionContext] = None,
-        *args,
-        **kwargs
+        self, context: SearchRuleExecutionContext | None = None, *args, **kwargs
     ) -> ValidationResult:
         """
         Validate search business rules.
@@ -135,13 +133,13 @@ class SearchBusinessRules(BusinessRules):
 
     def create_search_context(
         self,
-        query: Optional[str] = None,
-        index: Optional[SearchIndex] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        tenant: Optional[Any] = None,
-        user: Optional[User] = None,
-        resource: Optional[Any] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        query: str | None = None,
+        index: SearchIndex | None = None,
+        filters: dict[str, Any] | None = None,
+        tenant: Any | None = None,
+        user: User | None = None,
+        resource: Any | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SearchRuleExecutionContext:
         """
         Create search rule execution context.
@@ -167,13 +165,11 @@ class SearchBusinessRules(BusinessRules):
             index=index,
             filters=filters,
             tenant=tenant,
-            user=user
+            user=user,
         )
 
     def _validate_query(
-        self,
-        query: str,
-        context: Optional[SearchRuleExecutionContext] = None
+        self, query: str, context: SearchRuleExecutionContext | None = None
     ) -> ValidationResult:
         """
         Validate search query comprehensively.
@@ -233,50 +229,50 @@ class SearchBusinessRules(BusinessRules):
         result = ValidationResult(is_valid=True)
 
         # Check for balanced parentheses
-        open_parens = query.count('(')
-        close_parens = query.count(')')
+        open_parens = query.count("(")
+        close_parens = query.count(")")
         if open_parens != close_parens:
             result.is_valid = False
             result.errors.append(
                 f"Search query has unbalanced parentheses. "
                 f"Open: {open_parens}, Close: {close_parens}"
             )
-            result.details['open_parens'] = open_parens
-            result.details['close_parens'] = close_parens
+            result.details["open_parens"] = open_parens
+            result.details["close_parens"] = close_parens
 
         # Check for invalid operator sequences
         # PostgreSQL tsquery operators: & (AND), | (OR), ! (NOT), <-> (FOLLOWED BY)
         # Operators cannot be at start/end or consecutive
         query_clean = query.strip()
-        if query_clean.startswith(('&', '|', '!', '<->')):
+        if query_clean.startswith(("&", "|", "!", "<->")):
             result.is_valid = False
             result.errors.append("Search query cannot start with an operator")
-            result.details['invalid_start'] = True
+            result.details["invalid_start"] = True
 
-        if query_clean.endswith(('&', '|', '!', '<->')):
+        if query_clean.endswith(("&", "|", "!", "<->")):
             result.is_valid = False
             result.errors.append("Search query cannot end with an operator")
-            result.details['invalid_end'] = True
+            result.details["invalid_end"] = True
 
         # Check for consecutive operators (except <-> which is valid)
-        operator_pattern = r'[&|!]\s*[&|!]'
+        operator_pattern = r"[&|!]\s*[&|!]"
         if re.search(operator_pattern, query_clean):
             result.is_valid = False
             result.errors.append("Search query contains consecutive operators")
-            result.details['consecutive_operators'] = True
+            result.details["consecutive_operators"] = True
 
         # Try to parse as PostgreSQL SearchQuery to validate syntax
         try:
             # PostgreSQL SearchQuery will raise an exception for invalid syntax
-            SearchQuery(query, config='english')
+            SearchQuery(query, config="english")
         except Exception as e:
             # If syntax validation fails, add error but don't fail completely
             # (some queries might be valid but not parseable by SearchQuery)
             error_msg = str(e)
-            if 'syntax error' in error_msg.lower() or 'invalid' in error_msg.lower():
+            if "syntax error" in error_msg.lower() or "invalid" in error_msg.lower():
                 result.is_valid = False
                 result.errors.append(f"Invalid search query syntax: {error_msg}")
-                result.details['syntax_error'] = error_msg
+                result.details["syntax_error"] = error_msg
             else:
                 # Log but don't fail for other errors (might be configuration issues)
                 logger.debug(f"SearchQuery parsing warning for query '{query[:50]}...': {e}")
@@ -300,8 +296,8 @@ class SearchBusinessRules(BusinessRules):
         result = ValidationResult(is_valid=True)
 
         query_length = len(query)
-        min_length = getattr(settings, 'SEARCH_QUERY_MIN_LENGTH', 1)
-        max_length = getattr(settings, 'SEARCH_QUERY_MAX_LENGTH', 1000)
+        min_length = getattr(settings, "SEARCH_QUERY_MIN_LENGTH", 1)
+        max_length = getattr(settings, "SEARCH_QUERY_MAX_LENGTH", 1000)
 
         if query_length < min_length:
             result.is_valid = False
@@ -309,8 +305,8 @@ class SearchBusinessRules(BusinessRules):
                 f"Search query must be at least {min_length} character(s). "
                 f"Current length: {query_length}"
             )
-            result.details['query_length'] = query_length
-            result.details['min_length'] = min_length
+            result.details["query_length"] = query_length
+            result.details["min_length"] = min_length
 
         if query_length > max_length:
             result.is_valid = False
@@ -318,15 +314,13 @@ class SearchBusinessRules(BusinessRules):
                 f"Search query exceeds maximum length of {max_length} characters. "
                 f"Current length: {query_length}"
             )
-            result.details['query_length'] = query_length
-            result.details['max_length'] = max_length
+            result.details["query_length"] = query_length
+            result.details["max_length"] = max_length
 
         return result
 
     def _validate_query_security(
-        self,
-        query: str,
-        context: Optional[SearchRuleExecutionContext] = None
+        self, query: str, context: SearchRuleExecutionContext | None = None
     ) -> ValidationResult:
         """
         Validate query security (query doesn't access unauthorized data).
@@ -349,20 +343,20 @@ class SearchBusinessRules(BusinessRules):
         # Note: PostgreSQL full-text search is generally safe, but we check for obvious issues
         # Patterns that need literal matching (special characters)
         literal_patterns = [
-            (';', 'Semicolons are not allowed in search queries'),
-            ('--', 'SQL comments are not allowed in search queries'),
-            ('/*', 'SQL block comments are not allowed in search queries'),
-            ('*/', 'SQL block comment endings are not allowed in search queries'),
+            (";", "Semicolons are not allowed in search queries"),
+            ("--", "SQL comments are not allowed in search queries"),
+            ("/*", "SQL block comments are not allowed in search queries"),
+            ("*/", "SQL block comment endings are not allowed in search queries"),
         ]
 
         # Patterns that need word boundary matching (SQL keywords)
         keyword_patterns = [
-            ('DROP', 'DROP statements are not allowed in search queries'),
-            ('DELETE', 'DELETE statements are not allowed in search queries'),
-            ('UPDATE', 'UPDATE statements are not allowed in search queries'),
-            ('INSERT', 'INSERT statements are not allowed in search queries'),
-            ('ALTER', 'ALTER statements are not allowed in search queries'),
-            ('CREATE', 'CREATE statements are not allowed in search queries'),
+            ("DROP", "DROP statements are not allowed in search queries"),
+            ("DELETE", "DELETE statements are not allowed in search queries"),
+            ("UPDATE", "UPDATE statements are not allowed in search queries"),
+            ("INSERT", "INSERT statements are not allowed in search queries"),
+            ("ALTER", "ALTER statements are not allowed in search queries"),
+            ("CREATE", "CREATE statements are not allowed in search queries"),
         ]
 
         # Check literal patterns (special characters)
@@ -370,31 +364,31 @@ class SearchBusinessRules(BusinessRules):
             if pattern in query:
                 result.is_valid = False
                 result.errors.append(message)
-                result.details['dangerous_pattern'] = pattern
+                result.details["dangerous_pattern"] = pattern
                 return result  # Return immediately on first dangerous pattern
 
         # Check keyword patterns (with word boundaries)
         query_upper = query.upper()
         for pattern, message in keyword_patterns:
-            if re.search(rf'\b{pattern}\b', query_upper):
+            if re.search(rf"\b{pattern}\b", query_upper):
                 result.is_valid = False
                 result.errors.append(message)
-                result.details['dangerous_pattern'] = pattern
+                result.details["dangerous_pattern"] = pattern
                 return result  # Return immediately on first dangerous pattern
 
         # Check for attempts to access tenant-specific data through query manipulation
         # This is more of a defensive check since tenant isolation is enforced at the service layer
         if context and context.tenant_id:
             # Check for UUID patterns that might be tenant IDs
-            uuid_pattern = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+            uuid_pattern = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
             uuids_in_query = re.findall(uuid_pattern, query, re.IGNORECASE)
             if uuids_in_query:
                 # Log warning but don't fail - UUIDs might be legitimate search terms
                 result.warnings.append(
-                    f"Search query contains UUID-like patterns. "
-                    f"Ensure tenant isolation is properly enforced."
+                    "Search query contains UUID-like patterns. "
+                    "Ensure tenant isolation is properly enforced."
                 )
-                result.details['uuids_found'] = len(uuids_in_query)
+                result.details["uuids_found"] = len(uuids_in_query)
 
         return result
 
@@ -415,16 +409,16 @@ class SearchBusinessRules(BusinessRules):
         """
         result = ValidationResult(is_valid=True)
 
-        complexity_limit = getattr(settings, 'SEARCH_QUERY_COMPLEXITY_LIMIT', 50)
+        complexity_limit = getattr(settings, "SEARCH_QUERY_COMPLEXITY_LIMIT", 50)
 
         # Calculate complexity score
         complexity_score = 0
 
         # Count operators (each operator adds to complexity)
-        and_count = query.count('&')
-        or_count = query.count('|')
-        not_count = query.count('!')
-        followed_by_count = query.count('<->')
+        and_count = query.count("&")
+        or_count = query.count("|")
+        not_count = query.count("!")
+        followed_by_count = query.count("<->")
 
         complexity_score += and_count * 1
         complexity_score += or_count * 1
@@ -435,10 +429,10 @@ class SearchBusinessRules(BusinessRules):
         max_depth = 0
         current_depth = 0
         for char in query:
-            if char == '(':
+            if char == "(":
                 current_depth += 1
                 max_depth = max(max_depth, current_depth)
-            elif char == ')':
+            elif char == ")":
                 current_depth -= 1
                 if current_depth < 0:
                     # Unbalanced parentheses (should be caught by syntax validation)
@@ -449,7 +443,7 @@ class SearchBusinessRules(BusinessRules):
 
         # Count terms (approximate - words separated by operators/whitespace)
         # Remove operators and parentheses, then count words
-        terms_text = re.sub(r'[&|!()<>-]', ' ', query)
+        terms_text = re.sub(r"[&|!()<>-]", " ", query)
         terms = [t.strip() for t in terms_text.split() if t.strip()]
         term_count = len(terms)
 
@@ -457,10 +451,10 @@ class SearchBusinessRules(BusinessRules):
         if term_count > 10:
             complexity_score += (term_count - 10) * 0.5
 
-        result.details['complexity_score'] = complexity_score
-        result.details['operator_count'] = and_count + or_count + not_count + followed_by_count
-        result.details['max_depth'] = max_depth
-        result.details['term_count'] = term_count
+        result.details["complexity_score"] = complexity_score
+        result.details["operator_count"] = and_count + or_count + not_count + followed_by_count
+        result.details["max_depth"] = max_depth
+        result.details["term_count"] = term_count
 
         # Check if complexity exceeds limit
         if complexity_score > complexity_limit:
@@ -479,9 +473,7 @@ class SearchBusinessRules(BusinessRules):
         return result
 
     def _validate_index(
-        self,
-        index: SearchIndex,
-        context: SearchRuleExecutionContext
+        self, index: SearchIndex, context: SearchRuleExecutionContext
     ) -> ValidationResult:
         """
         Validate search index comprehensively.
@@ -514,9 +506,7 @@ class SearchBusinessRules(BusinessRules):
         return result
 
     def _validate_index_structure(
-        self,
-        index: SearchIndex,
-        context: SearchRuleExecutionContext
+        self, index: SearchIndex, context: SearchRuleExecutionContext
     ) -> ValidationResult:
         """
         Validate index structure (valid index structure).
@@ -547,8 +537,8 @@ class SearchBusinessRules(BusinessRules):
                     f"Search index belongs to a different tenant. "
                     f"Index tenant: {index_tenant_id}, Context tenant: {context_tenant_id}"
                 )
-                result.details['index_tenant_id'] = index_tenant_id
-                result.details['context_tenant_id'] = context_tenant_id
+                result.details["index_tenant_id"] = index_tenant_id
+                result.details["context_tenant_id"] = context_tenant_id
 
         # Check required fields
         if not index.tenant_id:
@@ -560,14 +550,14 @@ class SearchBusinessRules(BusinessRules):
             result.errors.append("Search index must have a resource_type")
         else:
             # Validate resource_type is one of the allowed values
-            valid_resource_types = ['CONTRACT', 'ASSET', 'DATASET', 'VIRTUAL_DATASET']
+            valid_resource_types = ["CONTRACT", "ASSET", "DATASET", "VIRTUAL_DATASET"]
             if index.resource_type not in valid_resource_types:
                 result.is_valid = False
                 result.errors.append(
                     f"Search index has invalid resource_type '{index.resource_type}'. "
                     f"Valid types: {', '.join(valid_resource_types)}"
                 )
-                result.details['invalid_resource_type'] = index.resource_type
+                result.details["invalid_resource_type"] = index.resource_type
 
         if not index.resource_id:
             result.is_valid = False
@@ -582,9 +572,7 @@ class SearchBusinessRules(BusinessRules):
                 # Validate schema_fields items
                 for i, field in enumerate(index.schema_fields):
                     if not isinstance(field, dict):
-                        result.warnings.append(
-                            f"Schema field at index {i} is not a dictionary"
-                        )
+                        result.warnings.append(f"Schema field at index {i} is not a dictionary")
 
         if index.lineage_metadata is not None:
             if not isinstance(index.lineage_metadata, dict):
@@ -599,19 +587,20 @@ class SearchBusinessRules(BusinessRules):
                 # Validate tags are strings
                 for i, tag in enumerate(index.tags):
                     if not isinstance(tag, str):
-                        result.warnings.append(
-                            f"Tag at index {i} is not a string"
-                        )
+                        result.warnings.append(f"Tag at index {i} is not a string")
 
         # Validate email format if owner_email is provided
         if index.owner_email:
-            from django.core.validators import validate_email
             from django.core.exceptions import ValidationError as DjangoValidationError
+            from django.core.validators import validate_email
+
             try:
                 validate_email(index.owner_email)
             except DjangoValidationError:
                 result.is_valid = False
-                result.errors.append(f"Search index has invalid owner_email format: {index.owner_email}")
+                result.errors.append(
+                    f"Search index has invalid owner_email format: {index.owner_email}"
+                )
 
         return result
 
@@ -636,6 +625,7 @@ class SearchBusinessRules(BusinessRules):
         if index.created_at and index.indexed_at:
             # Allow for small timing differences (up to 5 seconds) due to auto_now/auto_now_add timing
             from datetime import timedelta
+
             time_diff = index.created_at - index.indexed_at
             if time_diff > timedelta(seconds=5):
                 # Only fail if indexed_at is significantly before created_at (more than 5 seconds)
@@ -644,7 +634,7 @@ class SearchBusinessRules(BusinessRules):
                     f"Search index indexed_at ({index.indexed_at}) is significantly before created_at ({index.created_at}). "
                     f"Difference: {time_diff.total_seconds()} seconds"
                 )
-                result.details['timestamp_inconsistency'] = True
+                result.details["timestamp_inconsistency"] = True
 
         # Check if search_vector is present (it's nullable but should be present for indexed items)
         # Note: We don't fail if it's None, but warn as it might indicate incomplete indexing
@@ -652,11 +642,10 @@ class SearchBusinessRules(BusinessRules):
             result.warnings.append(
                 "Search index search_vector is None. This may indicate incomplete indexing."
             )
-            result.details['missing_search_vector'] = True
+            result.details["missing_search_vector"] = True
 
         # Check if index appears stale (indexed_at is very old compared to created_at)
         if index.created_at and index.indexed_at:
-            from django.utils import timezone
             from datetime import timedelta
 
             # If indexed_at is more than 1 year older than created_at, it might be stale
@@ -666,14 +655,12 @@ class SearchBusinessRules(BusinessRules):
                     f"Search index appears stale. Indexed {time_diff.days} days after creation. "
                     f"Consider re-indexing."
                 )
-                result.details['potentially_stale'] = True
+                result.details["potentially_stale"] = True
 
         return result
 
     def _validate_index_consistency(
-        self,
-        index: SearchIndex,
-        context: SearchRuleExecutionContext
+        self, index: SearchIndex, context: SearchRuleExecutionContext
     ) -> ValidationResult:
         """
         Validate index consistency (index consistent with data).
@@ -699,11 +686,10 @@ class SearchBusinessRules(BusinessRules):
         try:
             # Try to retrieve the actual resource
             resource = None
-            resource_model = None
 
-            if index.resource_type == 'CONTRACT':
+            if index.resource_type == "CONTRACT":
                 from hub.apps.contracts.models import Contract
-                resource_model = Contract
+
                 try:
                     resource = Contract.objects.get(id=index.resource_id)
                 except Contract.DoesNotExist:
@@ -711,12 +697,12 @@ class SearchBusinessRules(BusinessRules):
                     result.errors.append(
                         f"Search index references non-existent Contract: {index.resource_id}"
                     )
-                    result.details['resource_not_found'] = True
+                    result.details["resource_not_found"] = True
                     return result
 
-            elif index.resource_type == 'ASSET':
+            elif index.resource_type == "ASSET":
                 from hub.apps.assets.models import Asset
-                resource_model = Asset
+
                 try:
                     resource = Asset.objects.get(id=index.resource_id)
                 except Asset.DoesNotExist:
@@ -724,12 +710,12 @@ class SearchBusinessRules(BusinessRules):
                     result.errors.append(
                         f"Search index references non-existent Asset: {index.resource_id}"
                     )
-                    result.details['resource_not_found'] = True
+                    result.details["resource_not_found"] = True
                     return result
 
-            elif index.resource_type == 'DATASET':
+            elif index.resource_type == "DATASET":
                 from hub.apps.datasets.models import Dataset
-                resource_model = Dataset
+
                 try:
                     resource = Dataset.objects.get(id=index.resource_id)
                 except Dataset.DoesNotExist:
@@ -737,12 +723,12 @@ class SearchBusinessRules(BusinessRules):
                     result.errors.append(
                         f"Search index references non-existent Dataset: {index.resource_id}"
                     )
-                    result.details['resource_not_found'] = True
+                    result.details["resource_not_found"] = True
                     return result
 
-            elif index.resource_type == 'VIRTUAL_DATASET':
+            elif index.resource_type == "VIRTUAL_DATASET":
                 from hub.apps.virtualization.models import VirtualDataset
-                resource_model = VirtualDataset
+
                 try:
                     resource = VirtualDataset.objects.get(id=index.resource_id)
                 except VirtualDataset.DoesNotExist:
@@ -750,12 +736,16 @@ class SearchBusinessRules(BusinessRules):
                     result.errors.append(
                         f"Search index references non-existent VirtualDataset: {index.resource_id}"
                     )
-                    result.details['resource_not_found'] = True
+                    result.details["resource_not_found"] = True
                     return result
 
             if resource:
                 # Check tenant consistency
-                resource_tenant_id = str(resource.tenant_id) if hasattr(resource, 'tenant_id') and resource.tenant_id else None
+                resource_tenant_id = (
+                    str(resource.tenant_id)
+                    if hasattr(resource, "tenant_id") and resource.tenant_id
+                    else None
+                )
                 index_tenant_id = str(index.tenant_id) if index.tenant_id else None
 
                 if resource_tenant_id and index_tenant_id and resource_tenant_id != index_tenant_id:
@@ -763,38 +753,34 @@ class SearchBusinessRules(BusinessRules):
                     result.errors.append(
                         f"Search index tenant ({index_tenant_id}) does not match resource tenant ({resource_tenant_id})"
                     )
-                    result.details['tenant_mismatch'] = True
-                    result.details['resource_tenant_id'] = resource_tenant_id
-                    result.details['index_tenant_id'] = index_tenant_id
+                    result.details["tenant_mismatch"] = True
+                    result.details["resource_tenant_id"] = resource_tenant_id
+                    result.details["index_tenant_id"] = index_tenant_id
 
                 # Check if resource was updated after index was last updated
-                if hasattr(resource, 'updated_at') and resource.updated_at:
+                if hasattr(resource, "updated_at") and resource.updated_at:
                     if index.indexed_at and resource.updated_at > index.indexed_at:
                         result.warnings.append(
                             f"Resource was updated ({resource.updated_at}) after index was last updated ({index.indexed_at}). "
                             f"Index may be stale and should be re-indexed."
                         )
-                        result.details['stale_index'] = True
-                        result.details['resource_updated_at'] = resource.updated_at.isoformat()
-                        result.details['index_updated_at'] = index.indexed_at.isoformat()
+                        result.details["stale_index"] = True
+                        result.details["resource_updated_at"] = resource.updated_at.isoformat()
+                        result.details["index_updated_at"] = index.indexed_at.isoformat()
 
         except Exception as e:
             # Log error but don't fail validation - might be a transient issue
             logger.warning(
                 f"Error checking index consistency for {index.resource_type} {index.resource_id}: {e}",
-                exc_info=True
+                exc_info=True,
             )
-            result.warnings.append(
-                f"Could not verify index consistency due to error: {str(e)}"
-            )
-            result.details['consistency_check_error'] = str(e)
+            result.warnings.append(f"Could not verify index consistency due to error: {e!s}")
+            result.details["consistency_check_error"] = str(e)
 
         return result
 
     def _validate_filters(
-        self,
-        filters: Dict[str, Any],
-        context: Optional[SearchRuleExecutionContext] = None
+        self, filters: dict[str, Any], context: SearchRuleExecutionContext | None = None
     ) -> ValidationResult:
         """
         Validate search filters comprehensively.
@@ -831,7 +817,7 @@ class SearchBusinessRules(BusinessRules):
 
         return result
 
-    def _validate_filter_expressions(self, filters: Dict[str, Any]) -> ValidationResult:
+    def _validate_filter_expressions(self, filters: dict[str, Any]) -> ValidationResult:
         """
         Validate filter expressions (valid filter expressions).
 
@@ -850,34 +836,34 @@ class SearchBusinessRules(BusinessRules):
 
         # Valid filter keys
         valid_filter_keys = {
-            'resource_type',
-            'classification',
-            'owner_id',
-            'tags',
-            'domain',
-            'quality_status',
-            'compliance_status',
+            "resource_type",
+            "classification",
+            "owner_id",
+            "tags",
+            "domain",
+            "quality_status",
+            "compliance_status",
         }
 
         # Valid resource types (from SearchIndex model)
-        valid_resource_types = {'CONTRACT', 'ASSET', 'DATASET', 'VIRTUAL_DATASET'}
+        valid_resource_types = {"CONTRACT", "ASSET", "DATASET", "VIRTUAL_DATASET"}
 
         # Valid quality statuses (from SearchIndex model)
-        valid_quality_statuses = {'PASS', 'WARN', 'FAIL', 'UNKNOWN'}
+        valid_quality_statuses = {"PASS", "WARN", "FAIL", "UNKNOWN"}
 
         # Valid compliance statuses (from SearchIndex model)
-        valid_compliance_statuses = {'PASS', 'WARN', 'FAIL', 'UNKNOWN'}
+        valid_compliance_statuses = {"PASS", "WARN", "FAIL", "UNKNOWN"}
 
         # Check filter keys
-        for key in filters.keys():
+        for key in filters:
             if key not in valid_filter_keys:
                 result.warnings.append(
                     f"Unknown filter key '{key}'. Valid keys: {', '.join(sorted(valid_filter_keys))}"
                 )
 
         # Validate resource_type
-        if 'resource_type' in filters:
-            resource_type = filters['resource_type']
+        if "resource_type" in filters:
+            resource_type = filters["resource_type"]
             if not isinstance(resource_type, str):
                 result.is_valid = False
                 result.errors.append("Filter 'resource_type' must be a string")
@@ -889,8 +875,8 @@ class SearchBusinessRules(BusinessRules):
                 )
 
         # Validate classification (should be a string, no specific enum values)
-        if 'classification' in filters:
-            classification = filters['classification']
+        if "classification" in filters:
+            classification = filters["classification"]
             if not isinstance(classification, str):
                 result.is_valid = False
                 result.errors.append("Filter 'classification' must be a string")
@@ -899,8 +885,8 @@ class SearchBusinessRules(BusinessRules):
                 result.errors.append("Filter 'classification' cannot be empty")
 
         # Validate tags
-        if 'tags' in filters:
-            tags = filters['tags']
+        if "tags" in filters:
+            tags = filters["tags"]
             if not isinstance(tags, list):
                 result.is_valid = False
                 result.errors.append("Filter 'tags' must be a list")
@@ -915,14 +901,14 @@ class SearchBusinessRules(BusinessRules):
                         result.errors.append(f"Filter 'tags[{i}]' cannot be empty")
 
         # Validate owner_id
-        if 'owner_id' in filters:
-            owner_id = filters['owner_id']
+        if "owner_id" in filters:
+            owner_id = filters["owner_id"]
             if not isinstance(owner_id, str):
                 result.is_valid = False
                 result.errors.append("Filter 'owner_id' must be a string (UUID)")
             else:
                 # Validate UUID format
-                uuid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                uuid_pattern = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
                 if not re.match(uuid_pattern, owner_id, re.IGNORECASE):
                     result.is_valid = False
                     result.errors.append(
@@ -930,8 +916,8 @@ class SearchBusinessRules(BusinessRules):
                     )
 
         # Validate domain (should be a string)
-        if 'domain' in filters:
-            domain = filters['domain']
+        if "domain" in filters:
+            domain = filters["domain"]
             if not isinstance(domain, str):
                 result.is_valid = False
                 result.errors.append("Filter 'domain' must be a string")
@@ -940,8 +926,8 @@ class SearchBusinessRules(BusinessRules):
                 result.errors.append("Filter 'domain' cannot be empty")
 
         # Validate quality_status
-        if 'quality_status' in filters:
-            quality_status = filters['quality_status']
+        if "quality_status" in filters:
+            quality_status = filters["quality_status"]
             if not isinstance(quality_status, str):
                 result.is_valid = False
                 result.errors.append("Filter 'quality_status' must be a string")
@@ -953,8 +939,8 @@ class SearchBusinessRules(BusinessRules):
                 )
 
         # Validate compliance_status
-        if 'compliance_status' in filters:
-            compliance_status = filters['compliance_status']
+        if "compliance_status" in filters:
+            compliance_status = filters["compliance_status"]
             if not isinstance(compliance_status, str):
                 result.is_valid = False
                 result.errors.append("Filter 'compliance_status' must be a string")
@@ -968,9 +954,7 @@ class SearchBusinessRules(BusinessRules):
         return result
 
     def _validate_filter_security(
-        self,
-        filters: Dict[str, Any],
-        context: Optional[SearchRuleExecutionContext] = None
+        self, filters: dict[str, Any], context: SearchRuleExecutionContext | None = None
     ) -> ValidationResult:
         """
         Validate filter security (filters don't bypass access control).
@@ -990,23 +974,23 @@ class SearchBusinessRules(BusinessRules):
         result = ValidationResult(is_valid=True)
 
         # Check for tenant_id in filters (should not be allowed - tenant isolation is enforced at service layer)
-        if 'tenant_id' in filters:
+        if "tenant_id" in filters:
             result.is_valid = False
             result.errors.append(
                 "Filter 'tenant_id' is not allowed. Tenant isolation is enforced automatically. "
                 "Do not include tenant_id in filters."
             )
-            result.details['security_violation'] = 'tenant_id_in_filter'
+            result.details["security_violation"] = "tenant_id_in_filter"
 
         # Validate owner_id belongs to tenant if context provides tenant
-        if 'owner_id' in filters and context and context.tenant_id:
-            owner_id = filters['owner_id']
+        if "owner_id" in filters and context and context.tenant_id:
+            owner_id = filters["owner_id"]
             if isinstance(owner_id, str):
                 try:
                     # Check if owner exists and belongs to tenant
-                    owner = User.objects.get(id=owner_id, tenant_id=context.tenant_id)
+                    User.objects.get(id=owner_id, tenant_id=context.tenant_id)
                     # Owner exists and belongs to tenant - OK
-                    result.details['owner_validated'] = True
+                    result.details["owner_validated"] = True
                 except User.DoesNotExist:
                     # Owner doesn't exist or doesn't belong to tenant
                     result.is_valid = False
@@ -1014,39 +998,37 @@ class SearchBusinessRules(BusinessRules):
                         f"Filter 'owner_id' ({owner_id}) does not exist or does not belong to tenant. "
                         f"Users can only filter by owners within their own tenant."
                     )
-                    result.details['security_violation'] = 'invalid_owner_id'
-                    result.details['owner_id'] = owner_id
-                    result.details['tenant_id'] = context.tenant_id
+                    result.details["security_violation"] = "invalid_owner_id"
+                    result.details["owner_id"] = owner_id
+                    result.details["tenant_id"] = context.tenant_id
                 except Exception as e:
                     # Log unexpected errors but don't fail validation
                     logger.warning(
                         f"Error validating owner_id filter: {e}",
                         owner_id=owner_id,
-                        tenant_id=context.tenant_id
+                        tenant_id=context.tenant_id,
                     )
-                    result.warnings.append(
-                        f"Could not validate owner_id filter: {str(e)}"
-                    )
+                    result.warnings.append(f"Could not validate owner_id filter: {e!s}")
 
         # Check for attempts to filter by other tenant's resources
         # This is a defensive check - tenant isolation should be enforced at service layer
         if context and context.tenant_id:
             # Check if any filter values contain UUIDs that might be tenant IDs
-            uuid_pattern = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+            uuid_pattern = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
             for key, value in filters.items():
                 if isinstance(value, str):
                     uuids_in_value = re.findall(uuid_pattern, value, re.IGNORECASE)
-                    if uuids_in_value and key != 'owner_id':  # owner_id is validated separately
+                    if uuids_in_value and key != "owner_id":  # owner_id is validated separately
                         # Log warning but don't fail - these might be legitimate resource IDs
                         result.warnings.append(
                             f"Filter '{key}' contains UUID-like patterns. "
                             f"Ensure tenant isolation is properly enforced."
                         )
-                        result.details['uuid_patterns_found'] = len(uuids_in_value)
+                        result.details["uuid_patterns_found"] = len(uuids_in_value)
 
         return result
 
-    def _validate_filter_performance(self, filters: Dict[str, Any]) -> ValidationResult:
+    def _validate_filter_performance(self, filters: dict[str, Any]) -> ValidationResult:
         """
         Validate filter performance (filters don't cause performance issues).
 
@@ -1064,12 +1046,12 @@ class SearchBusinessRules(BusinessRules):
         result = ValidationResult(is_valid=True)
 
         # Get performance limits from settings
-        max_filter_count = getattr(settings, 'SEARCH_MAX_FILTER_COUNT', 10)
-        max_tag_count = getattr(settings, 'SEARCH_MAX_TAG_COUNT', 20)
+        max_filter_count = getattr(settings, "SEARCH_MAX_FILTER_COUNT", 10)
+        max_tag_count = getattr(settings, "SEARCH_MAX_TAG_COUNT", 20)
 
         # Check filter count
         filter_count = len(filters)
-        result.details['filter_count'] = filter_count
+        result.details["filter_count"] = filter_count
 
         if filter_count > max_filter_count:
             result.is_valid = False
@@ -1085,11 +1067,11 @@ class SearchBusinessRules(BusinessRules):
             )
 
         # Check tag count
-        if 'tags' in filters:
-            tags = filters['tags']
+        if "tags" in filters:
+            tags = filters["tags"]
             if isinstance(tags, list):
                 tag_count = len(tags)
-                result.details['tag_count'] = tag_count
+                result.details["tag_count"] = tag_count
 
                 if tag_count > max_tag_count:
                     result.is_valid = False
@@ -1107,16 +1089,14 @@ class SearchBusinessRules(BusinessRules):
         # Check for performance-impacting filter combinations
         # Multiple filters on non-indexed fields can cause performance issues
         # Note: Most filters are indexed, but we warn about combinations that might be slow
-        performance_impacting_filters = {'domain', 'classification'}
-        impacting_count = sum(1 for key in filters.keys() if key in performance_impacting_filters)
+        performance_impacting_filters = {"domain", "classification"}
+        impacting_count = sum(1 for key in filters if key in performance_impacting_filters)
 
         if impacting_count > 2:
             result.warnings.append(
                 f"Multiple filters on potentially non-indexed fields ({impacting_count}). "
                 f"This may impact search performance. Consider using fewer filters."
             )
-            result.details['performance_impacting_filters'] = impacting_count
+            result.details["performance_impacting_filters"] = impacting_count
 
         return result
-
-

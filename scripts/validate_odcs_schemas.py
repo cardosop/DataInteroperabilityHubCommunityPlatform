@@ -13,15 +13,17 @@ Exit codes:
     1: One or more contracts are invalid
     2: jsonschema library not available (non-strict mode only)
 """
+
 import argparse
 import json
 import sys
 from pathlib import Path
-from typing import List, Tuple, Dict, Any, Optional
+from typing import Any
 
 try:
     import jsonschema
     from jsonschema import Draft202012Validator, SchemaError, ValidationError
+
     JSONSCHEMA_AVAILABLE = True
 except ImportError:
     JSONSCHEMA_AVAILABLE = False
@@ -34,7 +36,7 @@ except ImportError:
 ODCS_VERSIONS = ["3.0.2", "3.0.1", "3.0.0", "3.0.0-preview", "2.2.2"]
 
 
-def detect_odcs_version(contract_data: Dict[str, Any]) -> str:
+def detect_odcs_version(contract_data: dict[str, Any]) -> str:
     """
     Detect ODCS version from contract data.
 
@@ -75,7 +77,7 @@ def detect_odcs_version(contract_data: Dict[str, Any]) -> str:
     return "3.0.2"
 
 
-def validate_odcs_structure(contract_data: Dict[str, Any], version: str) -> Tuple[bool, List[str]]:
+def validate_odcs_structure(contract_data: dict[str, Any], version: str) -> tuple[bool, list[str]]:
     """
     Validate ODCS contract structure (basic validation without schema).
 
@@ -101,7 +103,9 @@ def validate_odcs_structure(contract_data: Dict[str, Any], version: str) -> Tupl
         if "kind" not in contract_data:
             errors.append("Missing required field: kind (required for ODCS v3.x)")
         elif contract_data.get("kind") != "DataContract":
-            errors.append(f"Invalid kind: expected 'DataContract', got '{contract_data.get('kind')}'")
+            errors.append(
+                f"Invalid kind: expected 'DataContract', got '{contract_data.get('kind')}'"
+            )
 
     # Validate schema structure
     if "schema" in contract_data:
@@ -143,12 +147,18 @@ def validate_odcs_structure(contract_data: Dict[str, Any], version: str) -> Tupl
                         else:
                             for j, field in enumerate(fields):
                                 if not isinstance(field, dict):
-                                    errors.append(f"Schema model[{i}] field[{j}] must be a dictionary")
+                                    errors.append(
+                                        f"Schema model[{i}] field[{j}] must be a dictionary"
+                                    )
                                 else:
                                     if "name" not in field:
-                                        errors.append(f"Schema model[{i}] field[{j}] missing required 'name'")
+                                        errors.append(
+                                            f"Schema model[{i}] field[{j}] missing required 'name'"
+                                        )
                                     if "type" not in field:
-                                        errors.append(f"Schema model[{i}] field[{j}] missing required 'type'")
+                                        errors.append(
+                                            f"Schema model[{i}] field[{j}] missing required 'type'"
+                                        )
         else:
             errors.append("Schema must be either a dictionary or an array")
 
@@ -156,10 +166,8 @@ def validate_odcs_structure(contract_data: Dict[str, Any], version: str) -> Tupl
 
 
 def validate_odcs_with_schema(
-    contract_data: Dict[str, Any],
-    version: str,
-    schema_validator: Any = None
-) -> Tuple[bool, List[str]]:
+    contract_data: dict[str, Any], version: str, schema_validator: Any = None
+) -> tuple[bool, list[str]]:
     """
     Validate ODCS contract against JSON Schema (if available).
 
@@ -181,22 +189,20 @@ def validate_odcs_with_schema(
         # Validate against schema
         schema_validator.validate(contract_data)
     except ValidationError as e:
-        error_msg = getattr(e, 'message', str(e))
+        error_msg = getattr(e, "message", str(e))
         errors.append(f"Schema validation error: {error_msg}")
-        error_path = getattr(e, 'path', None)
+        error_path = getattr(e, "path", None)
         if error_path:
             errors.append(f"  Path: {'/'.join(str(p) for p in error_path)}")
     except Exception as e:
-        errors.append(f"Validation error: {str(e)}")
+        errors.append(f"Validation error: {e!s}")
 
     return len(errors) == 0, errors
 
 
 def validate_odcs_file(
-    file_path: Path,
-    strict: bool = False,
-    schema_validators: Optional[Dict[str, Any]] = None
-) -> Tuple[bool, List[str], str]:
+    file_path: Path, strict: bool = False, schema_validators: dict[str, Any] | None = None
+) -> tuple[bool, list[str], str]:
     """
     Validate an ODCS contract file.
 
@@ -212,7 +218,7 @@ def validate_odcs_file(
 
     # Read and parse JSON
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             contract_data = json.load(f)
     except json.JSONDecodeError as e:
         return False, [f"Invalid JSON: {e}"], "unknown"
@@ -231,9 +237,7 @@ def validate_odcs_file(
     if schema_validators and detected_version in schema_validators:
         validator = schema_validators[detected_version]
         is_valid_schema, schema_errors = validate_odcs_with_schema(
-            contract_data,
-            detected_version,
-            validator
+            contract_data, detected_version, validator
         )
         if not is_valid_schema:
             errors.extend(schema_errors)
@@ -243,7 +247,7 @@ def validate_odcs_file(
     return len(errors) == 0, errors, detected_version
 
 
-def find_odcs_contracts(contracts_dir: Path) -> List[Path]:
+def find_odcs_contracts(contracts_dir: Path) -> list[Path]:
     """
     Find all ODCS contract files in directory.
 
@@ -262,11 +266,12 @@ def find_odcs_contracts(contracts_dir: Path) -> List[Path]:
     for json_file in contracts_dir.rglob("*.json"):
         # Try to detect if it's an ODCS contract
         try:
-            with open(json_file, 'r', encoding='utf-8') as f:
+            with open(json_file, encoding="utf-8") as f:
                 data = json.load(f)
                 # Check if it looks like an ODCS contract
-                if ("apiVersion" in data and "odcs" in str(data.get("apiVersion", "")).lower()) or \
-                   ("kind" in data and data.get("kind") == "DataContract"):
+                if ("apiVersion" in data and "odcs" in str(data.get("apiVersion", "")).lower()) or (
+                    "kind" in data and data.get("kind") == "DataContract"
+                ):
                     contracts.append(json_file)
         except Exception:
             # Skip files that can't be parsed
@@ -276,10 +281,8 @@ def find_odcs_contracts(contracts_dir: Path) -> List[Path]:
 
 
 def validate_all_odcs_contracts(
-    contracts_dir: Path,
-    strict: bool = False,
-    version_filter: Optional[str] = None
-) -> Tuple[bool, List[str]]:
+    contracts_dir: Path, strict: bool = False, version_filter: str | None = None
+) -> tuple[bool, list[str]]:
     """
     Validate all ODCS contracts in directory.
 
@@ -301,7 +304,7 @@ def validate_all_odcs_contracts(
         return True, []  # No contracts to validate
 
     # Schema validators (if available)
-    schema_validators: Dict[str, Any] = {}
+    schema_validators: dict[str, Any] = {}
     if JSONSCHEMA_AVAILABLE:
         # For now, we'll do basic validation
         # In the future, we could load actual ODCS schema files
@@ -314,9 +317,7 @@ def validate_all_odcs_contracts(
 
     for contract_path in contracts:
         is_valid, contract_errors, detected_version = validate_odcs_file(
-            contract_path,
-            strict=strict,
-            schema_validators=schema_validators
+            contract_path, strict=strict, schema_validators=schema_validators
         )
 
         # Filter by version if specified
@@ -361,23 +362,21 @@ Examples:
 
   # Validate specific version
   python scripts/validate_odcs_schemas.py --strict --version 3.0.2
-        """
+        """,
     )
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="Require jsonschema library for JSON Schema validation"
+        help="Require jsonschema library for JSON Schema validation",
     )
     parser.add_argument(
         "--contracts-dir",
         type=Path,
         default=None,
-        help="Directory containing ODCS contracts (default: examples/contracts)"
+        help="Directory containing ODCS contracts (default: examples/contracts)",
     )
     parser.add_argument(
-        "--version",
-        choices=ODCS_VERSIONS,
-        help="Validate only specific ODCS version"
+        "--version", choices=ODCS_VERSIONS, help="Validate only specific ODCS version"
     )
 
     args = parser.parse_args()
@@ -419,4 +418,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-

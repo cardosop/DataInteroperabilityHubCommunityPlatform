@@ -6,10 +6,12 @@ Unified credential resolution from three sources:
 2. Prefect Block → Secret.load()
 3. Local dev → .dlt/secrets.toml
 """
+
 from __future__ import annotations
+
 import json
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 import structlog
 
@@ -19,7 +21,7 @@ logger = structlog.get_logger(__name__)
 DLT_SECRETS_PATH = os.path.join(os.path.expanduser("~"), ".dlt", "secrets.toml")
 
 
-def resolve_credentials(credential_ref: str | None = None) -> Dict[str, Any]:
+def resolve_credentials(credential_ref: str | None = None) -> dict[str, Any]:
     """
     Resolve credentials for dlt pipeline execution.
 
@@ -40,7 +42,7 @@ def resolve_credentials(credential_ref: str | None = None) -> Dict[str, Any]:
     return _resolve_from_toml(None)
 
 
-def _resolve_from_aws_sm(arn: str) -> Dict[str, Any]:
+def _resolve_from_aws_sm(arn: str) -> dict[str, Any]:
     """Resolve credentials from AWS Secrets Manager ARN."""
     try:
         import boto3
@@ -62,10 +64,11 @@ def _resolve_from_aws_sm(arn: str) -> Dict[str, Any]:
     return {}
 
 
-def _resolve_from_prefect(block_name: str) -> Dict[str, Any]:
+def _resolve_from_prefect(block_name: str) -> dict[str, Any]:
     """Resolve credentials from a Prefect Secret block."""
     try:
         from prefect.blocks.system import Secret
+
         secret = Secret.load(block_name.replace("prefect://", ""))
         value = secret.get()
         if isinstance(value, str):
@@ -81,7 +84,7 @@ def _resolve_from_prefect(block_name: str) -> Dict[str, Any]:
     return {}
 
 
-def _resolve_from_toml(key_path: str | None = None) -> Dict[str, Any]:
+def _resolve_from_toml(key_path: str | None = None) -> dict[str, Any]:
     """Resolve credentials from .dlt/secrets.toml."""
     try:
         if os.path.exists(DLT_SECRETS_PATH):

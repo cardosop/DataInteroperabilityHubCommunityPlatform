@@ -35,7 +35,9 @@ Options
 * ``--tenant-id <uuid>`` — restrict to a single tenant (debug / re-snap). Pass
   ``__platform__`` for the no-tenant chain. Omit to fan out across all tenants.
 """
+
 from __future__ import annotations
+
 import uuid
 
 from django.core.management.base import BaseCommand, CommandError
@@ -120,9 +122,7 @@ class Command(BaseCommand):
                     try:
                         target = Tenant.objects.get(id=normalized)
                     except (Tenant.DoesNotExist, ValueError) as exc:
-                        raise CommandError(
-                            f"--tenant-id={tenant_arg!r}: tenant not found"
-                        ) from exc
+                        raise CommandError(f"--tenant-id={tenant_arg!r}: tenant not found") from exc
 
                 now = timezone.now()
                 period_end = now.replace(minute=0, second=0, microsecond=0)
@@ -140,9 +140,7 @@ class Command(BaseCommand):
                 "snapshots_produced": len(rows),
                 "window_hours": window_hours,
             }
-            self.stdout.write(self.style.SUCCESS(
-                f"Audit Merkle sweep: {summary}"
-            ))
+            self.stdout.write(self.style.SUCCESS(f"Audit Merkle sweep: {summary}"))
             if job_row is not None:
                 job_row.mark_completed(result_json={"summary": summary})
         except Exception as exc:

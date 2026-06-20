@@ -1,6 +1,7 @@
 """
 Phase 205: Contract invalidation warnings on linked assets (no mocks).
 """
+
 import uuid
 
 import pytest
@@ -13,7 +14,6 @@ from hub.apps.contracts.invalidation_cascade import (
     apply_linked_contract_invalidation_warnings,
     persist_contract_validation_job_result,
 )
-from hub.apps.jobs.models import Job, JobPriority, JobStatus, JobType
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
@@ -22,6 +22,7 @@ from hub.apps.contracts.models import (
     OriginalSpecType,
     ValidationStatus,
 )
+from hub.apps.jobs.models import Job, JobPriority, JobStatus, JobType
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 
@@ -66,9 +67,7 @@ class ContractInvalidationCascadeTests(TestCase):
             created_by=self.user,
         )
 
-        affected = apply_linked_contract_invalidation_warnings(
-            contract, actor_user=self.user
-        )
+        affected = apply_linked_contract_invalidation_warnings(contract, actor_user=self.user)
         self.assertEqual(affected, [str(asset.id)])
 
         asset.refresh_from_db()

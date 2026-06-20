@@ -9,11 +9,11 @@ Usage:
     python scripts/lint_test_dir_markdown.py
     python scripts/lint_test_dir_markdown.py --json
 """
+
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 TEST_DIRS = ["tests/integration", "tests/e2e"]
@@ -31,18 +31,22 @@ def run_lint(repo_root: Path, json_output: bool = False) -> int:
             violations.append(str(md_file.relative_to(repo_root)))
 
     if json_output:
-        print(json.dumps({
-            "status": "fail" if violations else "ok",
-            "violations": violations,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "status": "fail" if violations else "ok",
+                    "violations": violations,
+                },
+                indent=2,
+            )
+        )
+    elif violations:
+        print(f"Markdown files in test directories: {len(violations)}")
+        for v in violations:
+            print(f"  - {v}")
+        print("\nMove report files to docs/audits/test-reports/ instead.")
     else:
-        if violations:
-            print(f"Markdown files in test directories: {len(violations)}")
-            for v in violations:
-                print(f"  - {v}")
-            print("\nMove report files to docs/audits/test-reports/ instead.")
-        else:
-            print("OK: No markdown report files in test directories.")
+        print("OK: No markdown report files in test directories.")
 
     return 1 if violations else 0
 

@@ -2,11 +2,12 @@
 Unit tests for workflow models.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.orchestration.models import (
     StepStatus,
@@ -16,7 +17,6 @@ from hub.apps.orchestration.models import (
     WorkflowStep,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -29,7 +29,10 @@ class WorkflowDefinitionTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
@@ -38,39 +41,42 @@ class WorkflowDefinitionTest(TestCase):
             "version": "1.0.0",
             "steps": [{"name": "step1", "type": "task", "task": "test_task"}],
         }
+        # Unique workflow name to avoid UniqueConstraint collisions
+        # across test classes and stale --reuse-db data.
+        self.workflow_name = f"test_workflow_{uid}"
 
     def test_create_workflow_definition(self):
         """Test creating workflow definition"""
         workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow", version="1.0.0", dsl_json=self.valid_dsl, created_by=self.user
+            name=self.workflow_name, version="1.0.0", dsl_json=self.valid_dsl, created_by=self.user
         )
 
-        self.assertEqual(workflow_def.name, "test_workflow")
+        self.assertEqual(workflow_def.name, self.workflow_name)
         self.assertEqual(workflow_def.version, "1.0.0")
         self.assertEqual(workflow_def.dsl_json, self.valid_dsl)
 
     def test_workflow_definition_unique_name_version(self):
         """Test unique constraint on name+version"""
         WorkflowDefinition.objects.create(
-            name="test_workflow", version="1.0.0", dsl_json=self.valid_dsl
+            name=self.workflow_name, version="1.0.0", dsl_json=self.valid_dsl
         )
 
         with self.assertRaises(Exception):  # IntegrityError or ValidationError
             WorkflowDefinition.objects.create(
-                name="test_workflow", version="1.0.0", dsl_json=self.valid_dsl
+                name=self.workflow_name, version="1.0.0", dsl_json=self.valid_dsl
             )
 
     def test_workflow_definition_clean_valid(self):
         """Test clean() with valid DSL"""
         workflow_def = WorkflowDefinition(
-            name="test_workflow", version="1.0.0", dsl_json=self.valid_dsl
+            name=self.workflow_name, version="1.0.0", dsl_json=self.valid_dsl
         )
         workflow_def.clean()  # Should not raise
 
     def test_workflow_definition_clean_invalid_dsl(self):
         """Test clean() with invalid DSL"""
         workflow_def = WorkflowDefinition(
-            name="test_workflow", version="1.0.0", dsl_json={"invalid": "dsl"}
+            name=self.workflow_name, version="1.0.0", dsl_json={"invalid": "dsl"}
         )
 
         with self.assertRaises(ValidationError):
@@ -79,10 +85,10 @@ class WorkflowDefinitionTest(TestCase):
     def test_workflow_definition_str(self):
         """Test __str__ method"""
         workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow", version="1.0.0", dsl_json=self.valid_dsl
+            name=self.workflow_name, version="1.0.0", dsl_json=self.valid_dsl
         )
 
-        self.assertEqual(str(workflow_def), "test_workflow v1.0.0")
+        self.assertEqual(str(workflow_def), f"{self.workflow_name} v1.0.0")
 
 
 class WorkflowInstanceTest(TestCase):
@@ -91,13 +97,19 @@ class WorkflowInstanceTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
+        # Unique workflow name to avoid UniqueConstraint collisions
+        # across test classes and stale --reuse-db data.
+        self.workflow_name = f"test_workflow_{uid}"
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=self.workflow_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -109,14 +121,14 @@ class WorkflowInstanceTest(TestCase):
         """Test creating workflow instance"""
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             input_data={"key": "value"},
             created_by=self.user,
         )
 
-        self.assertEqual(instance.workflow_name, "test_workflow")
+        self.assertEqual(instance.workflow_name, self.workflow_name)
         self.assertEqual(instance.status, WorkflowStatus.DRAFT)
         self.assertEqual(instance.input_data, {"key": "value"})
 
@@ -124,7 +136,7 @@ class WorkflowInstanceTest(TestCase):
         """Test is_terminal() method"""
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
         )
 
@@ -140,7 +152,7 @@ class WorkflowInstanceTest(TestCase):
         """Test is_running() method"""
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
         )
 
@@ -153,7 +165,7 @@ class WorkflowInstanceTest(TestCase):
         """Test can_retry() method"""
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             status=WorkflowStatus.FAILED,
             retry_count=0,
@@ -172,7 +184,7 @@ class WorkflowInstanceTest(TestCase):
         """Test mark_started() method"""
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
         )
 
@@ -185,7 +197,7 @@ class WorkflowInstanceTest(TestCase):
         """Test mark_completed() method"""
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             status=WorkflowStatus.RUNNING,
         )
@@ -201,7 +213,7 @@ class WorkflowInstanceTest(TestCase):
         """Test mark_failed() method"""
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             status=WorkflowStatus.RUNNING,
         )
@@ -219,11 +231,11 @@ class WorkflowInstanceTest(TestCase):
         """Test __str__ method"""
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
         )
 
-        self.assertIn("test_workflow", str(instance))
+        self.assertIn(self.workflow_name, str(instance))
         self.assertIn("DRAFT", str(instance))
 
 
@@ -233,13 +245,19 @@ class WorkflowStepTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
+        # Unique workflow name to avoid UniqueConstraint collisions
+        # across test classes and stale --reuse-db data.
+        self.workflow_name = f"test_workflow_{uid}"
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=self.workflow_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -248,7 +266,7 @@ class WorkflowStepTest(TestCase):
         )
         self.instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
         )
 
@@ -359,7 +377,10 @@ class WorkflowDefinitionFailureTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
@@ -377,7 +398,9 @@ class WorkflowDefinitionFailureTest(TestCase):
     def test_workflow_definition_clean_with_missing_required_fields(self):
         """Test clean() raises ValidationError when required DSL fields are missing"""
         workflow_def = WorkflowDefinition(
-            name="test_workflow", version="1.0.0", dsl_json={"steps": []}  # Missing version in DSL
+            name="test_workflow",
+            version="1.0.0",
+            dsl_json={"steps": []},  # Missing version in DSL
         )
 
         with self.assertRaises(ValidationError):
@@ -390,14 +413,18 @@ class WorkflowDefinitionEdgeCasesTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
 
     def test_workflow_definition_with_empty_name(self):
-        """Test workflow definition with empty name"""
+        """Test workflow definition with empty name — should raise ValidationError
+        because CharField defaults to blank=False, making the name required."""
         workflow_def = WorkflowDefinition(
             name="",
             version="1.0.0",
@@ -406,11 +433,12 @@ class WorkflowDefinitionEdgeCasesTest(TestCase):
                 "steps": [{"name": "step1", "type": "task", "task": "test_task"}],
             },
         )
-        # Empty name should be allowed (may be validated elsewhere)
-        workflow_def.clean()
+        with self.assertRaises(ValidationError):
+            workflow_def.full_clean()
 
     def test_workflow_definition_with_very_long_name(self):
-        """Test workflow definition with very long name"""
+        """Test workflow definition with very long name — should raise
+        ValidationError because max_length=255 on the name field."""
         long_name = "a" * 500
         workflow_def = WorkflowDefinition(
             name=long_name,
@@ -420,8 +448,8 @@ class WorkflowDefinitionEdgeCasesTest(TestCase):
                 "steps": [{"name": "step1", "type": "task", "task": "test_task"}],
             },
         )
-        # Very long name should be handled (may be truncated or validated elsewhere)
-        workflow_def.clean()
+        with self.assertRaises(ValidationError):
+            workflow_def.full_clean()
 
 
 class WorkflowInstanceFailureTest(TestCase):
@@ -430,13 +458,19 @@ class WorkflowInstanceFailureTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
+        # Unique workflow name to avoid UniqueConstraint collisions
+        # across test classes and stale --reuse-db data.
+        self.workflow_name = f"test_workflow_{uid}"
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=self.workflow_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -448,7 +482,7 @@ class WorkflowInstanceFailureTest(TestCase):
         """Test mark_completed() from non-running status"""
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             status=WorkflowStatus.DRAFT,
         )
@@ -461,7 +495,7 @@ class WorkflowInstanceFailureTest(TestCase):
         """Test mark_failed() with empty error message"""
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             status=WorkflowStatus.RUNNING,
         )
@@ -477,13 +511,19 @@ class WorkflowInstanceEdgeCasesTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
+        # Unique workflow name to avoid UniqueConstraint collisions
+        # across test classes and stale --reuse-db data.
+        self.workflow_name = f"test_workflow_{uid}"
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=self.workflow_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -495,7 +535,7 @@ class WorkflowInstanceEdgeCasesTest(TestCase):
         """Test workflow instance with empty input_data"""
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             input_data={},
         )
@@ -507,7 +547,7 @@ class WorkflowInstanceEdgeCasesTest(TestCase):
         large_data = {"key" + str(i): "value" * 1000 for i in range(100)}
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             input_data=large_data,
         )
@@ -521,13 +561,19 @@ class WorkflowStepFailureTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
+        # Unique workflow name to avoid UniqueConstraint collisions
+        # across test classes and stale --reuse-db data.
+        self.workflow_name = f"test_workflow_{uid}"
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=self.workflow_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -536,7 +582,7 @@ class WorkflowStepFailureTest(TestCase):
         )
         self.instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
         )
 
@@ -575,13 +621,19 @@ class WorkflowStepEdgeCasesTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
+        # Unique workflow name to avoid UniqueConstraint collisions
+        # across test classes and stale --reuse-db data.
+        self.workflow_name = f"test_workflow_{uid}"
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=self.workflow_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -590,7 +642,7 @@ class WorkflowStepEdgeCasesTest(TestCase):
         )
         self.instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
         )
 

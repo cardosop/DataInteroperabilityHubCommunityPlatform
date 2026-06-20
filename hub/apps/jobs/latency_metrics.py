@@ -13,12 +13,12 @@ Provides:
 All functions are best-effort — a metric emission failure is silently
 swallowed (the job must never fail because of telemetry).
 """
+
 from __future__ import annotations
 
 import logging
 import time
 from contextlib import contextmanager
-from typing import Callable
 
 logger = logging.getLogger(__name__)
 

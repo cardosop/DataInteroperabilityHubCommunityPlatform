@@ -11,44 +11,41 @@ Covers:
 
 Uses REAL services (no mocks).
 """
-import pytest
-import json
+
 import hashlib
+import json
 import uuid
-from django.test import TestCase
+
+import pytest
 from rest_framework import status
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.jobs.models import Job, JobType, JobStatus
-from hub.apps.datasets.models import Dataset
+from hub.apps.jobs.models import JobType
 from hub.apps.tenants.models import Tenant
 
 from .conftest import E2ETestBase
-
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 
 
 class GraphQLAPIE2ETest(E2ETestBase):
     """Test GraphQL API operations"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-    
+
     def _graphql_query(self, query, variables=None):
         """Helper to execute GraphQL query"""
-        data = {'query': query}
+        data = {"query": query}
         if variables:
-            data['variables'] = variables
-        
+            data["variables"] = variables
+
         response = self.client.post(
-            '/graphql/',
-            data=json.dumps(data),
-            content_type='application/json'
+            "/graphql/", data=json.dumps(data), content_type="application/json"
         )
         return response
-    
+
     def test_me_query_success(self):
         """Test GraphQL me query"""
         query = """
@@ -60,22 +57,22 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }
         }
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
-        self.assertNotIn('errors', data)
-        self.assertIn('data', data)
-        self.assertIn('me', data['data'])
-        me = data['data']['me']
-        self.assertEqual(me['email'], self.user.email)
-        self.assertEqual(me['id'], str(self.user.id))
-    
+        self.assertNotIn("errors", data)
+        self.assertIn("data", data)
+        self.assertIn("me", data["data"])
+        me = data["data"]["me"]
+        self.assertEqual(me["email"], self.user.email)
+        self.assertEqual(me["id"], str(self.user.id))
+
     def test_me_query_unauthenticated_fails(self):
         """Test GraphQL me query without authentication fails"""
         self.client.force_authenticate(user=None)
-        
+
         query = """
         query {
             me {
@@ -84,20 +81,20 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }
         }
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
         # GraphQL returns 200 even on errors, errors are in response
-        self.assertIn('errors', data)
-    
+        self.assertIn("errors", data)
+
     def test_assets_query_success(self):
         """Test GraphQL assets query"""
         # Create some assets
-        asset_id1 = self.create_asset(key='graphql-asset-1', name='GraphQL Asset 1')
-        asset_id2 = self.create_asset(key='graphql-asset-2', name='GraphQL Asset 2')
-        
+        self.create_asset(key="graphql-asset-1", name="GraphQL Asset 1")
+        self.create_asset(key="graphql-asset-2", name="GraphQL Asset 2")
+
         query = """
         query {
             assets {
@@ -110,30 +107,29 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }
         }
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
-        self.assertNotIn('errors', data)
-        self.assertIn('data', data)
-        self.assertIn('assets', data['data'])
-        self.assertGreaterEqual(data['data']['assets']['totalCount'], 2)
-    
+        self.assertNotIn("errors", data)
+        self.assertIn("data", data)
+        self.assertIn("assets", data["data"])
+        self.assertGreaterEqual(data["data"]["assets"]["totalCount"], 2)
+
     def test_assets_query_with_filters(self):
         """Test GraphQL assets query with filters"""
-        asset_id1 = self.create_asset(key='filter-asset-1', name='Filter Asset 1')
-        asset_id2 = self.create_asset(key='filter-asset-2', name='Filter Asset 2')
-        
+        asset_id1 = self.create_asset(key="filter-asset-1", name="Filter Asset 1")
+        asset_id2 = self.create_asset(key="filter-asset-2", name="Filter Asset 2")
+
         # Set asset statuses
-        from hub.apps.assets.models import Asset
         asset1 = Asset.objects.get(id=asset_id1)
         asset1.status = AssetStatus.DRAFT
-        asset1.save(update_fields=['status'])
+        asset1.save(update_fields=["status"])
         asset2 = Asset.objects.get(id=asset_id2)
         asset2.status = AssetStatus.ACTIVE
-        asset2.save(update_fields=['status'])
-        
+        asset2.save(update_fields=["status"])
+
         query = """
         query {
             assets(status: ACTIVE) {
@@ -146,22 +142,22 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }
         }
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
-        self.assertNotIn('errors', data)
-        assets = data['data']['assets']['items']
+        self.assertNotIn("errors", data)
+        assets = data["data"]["assets"]["items"]
         # Should only return ACTIVE assets
         for asset in assets:
-            self.assertEqual(asset['status'], 'ACTIVE')
-    
+            self.assertEqual(asset["status"], "ACTIVE")
+
     def test_assets_query_with_search(self):
         """Test GraphQL assets query with search"""
-        asset_id1 = self.create_asset(key='search-asset-1', name='Searchable Asset')
-        asset_id2 = self.create_asset(key='other-asset', name='Other Asset')
-        
+        self.create_asset(key="search-asset-1", name="Searchable Asset")
+        self.create_asset(key="other-asset", name="Other Asset")
+
         query = """
         query {
             assets(search: "Searchable") {
@@ -173,22 +169,22 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }
         }
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
-        self.assertNotIn('errors', data)
-        assets = data['data']['assets']['items']
+        self.assertNotIn("errors", data)
+        assets = data["data"]["assets"]["items"]
         # Should only return assets matching search
-        asset_names = [a['name'] for a in assets]
-        self.assertIn('Searchable Asset', asset_names)
-        self.assertNotIn('Other Asset', asset_names, "Search should exclude non-matching assets")
-    
+        asset_names = [a["name"] for a in assets]
+        self.assertIn("Searchable Asset", asset_names)
+        self.assertNotIn("Other Asset", asset_names, "Search should exclude non-matching assets")
+
     def test_asset_query_success(self):
         """Test GraphQL single asset query"""
-        asset_id = self.create_asset(key='graphql-single-asset', name='GraphQL Single Asset')
-        
+        asset_id = self.create_asset(key="graphql-single-asset", name="GraphQL Single Asset")
+
         query = f"""
         query {{
             asset(id: "{asset_id}") {{
@@ -198,22 +194,23 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }}
         }}
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
-        self.assertNotIn('errors', data)
-        self.assertIn('data', data)
-        self.assertIn('asset', data['data'])
-        self.assertEqual(data['data']['asset']['id'], str(asset_id))
-        self.assertEqual(data['data']['asset']['name'], 'GraphQL Single Asset')
-    
+        self.assertNotIn("errors", data)
+        self.assertIn("data", data)
+        self.assertIn("asset", data["data"])
+        self.assertEqual(data["data"]["asset"]["id"], str(asset_id))
+        self.assertEqual(data["data"]["asset"]["name"], "GraphQL Single Asset")
+
     def test_asset_query_not_found(self):
         """Test GraphQL asset query for non-existent asset"""
         import uuid
+
         fake_id = uuid.uuid4()
-        
+
         query = f"""
         query {{
             asset(id: "{fake_id}") {{
@@ -222,33 +219,39 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }}
         }}
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
         # Should return null for non-existent asset without GraphQL errors
-        if 'errors' in data:
-            self.fail(f"Non-existent asset query should not produce GraphQL errors: {data['errors']}")
-        self.assertIsNone(data['data']['asset'])
-    
+        if "errors" in data:
+            self.fail(
+                f"Non-existent asset query should not produce GraphQL errors: {data['errors']}"
+            )
+        self.assertIsNone(data["data"]["asset"])
+
     def test_asset_query_cross_tenant_isolation(self):
         """Test GraphQL asset query respects tenant isolation"""
         # Create asset in current tenant
-        asset_id = self.create_asset(key='tenant-isolation-asset', name='Tenant Isolation Asset')
-        
+        asset_id = self.create_asset(key="tenant-isolation-asset", name="Tenant Isolation Asset")
+
         # Create other tenant (subscription needed for GraphQL POST requests)
         _suffix = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f'Other Tenant {_suffix}', slug=f'other-tenant-{_suffix}')
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_suffix}", slug=f"other-tenant-{_suffix}"
+        )
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
         from hub.apps.users.models import User
 
         ensure_tenant_has_active_subscription(other_tenant)
-        other_user = User.objects.create_user(email=f'other-{_suffix}@example.com', password='testpass123', tenant=other_tenant)
-        
+        other_user = User.objects.create_user(
+            email=f"other-{_suffix}@example.com", password="testpass123", tenant=other_tenant
+        )
+
         # Switch to other user
         self.client.force_authenticate(user=other_user)
-        
+
         # Try to query asset from other tenant
         query = f"""
         query {{
@@ -258,25 +261,27 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }}
         }}
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
         # Should return null (not found) due to tenant isolation
-        self.assertIsNone(data['data']['asset'])
-    
+        self.assertIsNone(data["data"]["asset"])
+
     def test_asset_datasets_query_success(self):
         """Test GraphQL asset_datasets query"""
-        asset_id = self.create_asset(key='datasets-asset', name='Datasets Asset')
-        
+        asset_id = self.create_asset(key="datasets-asset", name="Datasets Asset")
+
         # Create datasets
-        test_content = b'col1,col2\nval1,val2'
+        test_content = b"col1,col2\nval1,val2"
         content_hash = hashlib.sha256(test_content).hexdigest()
-        file_id1 = self.init_file_upload(name='dataset1.csv', content_type='text/csv', size=len(test_content))
+        file_id1 = self.init_file_upload(
+            name="dataset1.csv", content_type="text/csv", size=len(test_content)
+        )
         self.complete_file_upload(file_id1, content_sha256=content_hash, test_content=test_content)
-        dataset_id1 = self.create_dataset(file_id1, asset_id)
-        
+        self.create_dataset(file_id1, asset_id)
+
         query = f"""
         query {{
             assetDatasets(assetId: "{asset_id}") {{
@@ -289,39 +294,39 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }}
         }}
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
-        self.assertNotIn('errors', data)
-        self.assertIn('data', data)
-        self.assertIn('assetDatasets', data['data'])
-        self.assertGreaterEqual(data['data']['assetDatasets']['totalCount'], 1)
-    
+        self.assertNotIn("errors", data)
+        self.assertIn("data", data)
+        self.assertIn("assetDatasets", data["data"])
+        self.assertGreaterEqual(data["data"]["assetDatasets"]["totalCount"], 1)
+
     def test_jobs_query_success(self):
         """Test GraphQL jobs query"""
         from hub.apps.jobs.utils import create_job
-        
+
         # Create some jobs
-        asset_id1 = self.create_asset(key='job-asset-1', name='Job Asset 1')
-        asset_id2 = self.create_asset(key='job-asset-2', name='Job Asset 2')
-        
-        job1 = create_job(
+        asset_id1 = self.create_asset(key="job-asset-1", name="Job Asset 1")
+        asset_id2 = self.create_asset(key="job-asset-2", name="Job Asset 2")
+
+        create_job(
             type=JobType.DQ_RUN,
-            resource_type='ASSET',
+            resource_type="ASSET",
             resource_id=asset_id1,
             tenant=self.tenant,
-            user=self.user
+            user=self.user,
         )
-        job2 = create_job(
+        create_job(
             type=JobType.COMPLIANCE_RUN,
-            resource_type='ASSET',
+            resource_type="ASSET",
             resource_id=asset_id2,
             tenant=self.tenant,
-            user=self.user
+            user=self.user,
         )
-        
+
         query = """
         query {
             jobs {
@@ -334,30 +339,30 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }
         }
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
-        self.assertNotIn('errors', data)
-        self.assertIn('data', data)
-        self.assertIn('jobs', data['data'])
-        self.assertGreaterEqual(data['data']['jobs']['totalCount'], 2)
-    
+        self.assertNotIn("errors", data)
+        self.assertIn("data", data)
+        self.assertIn("jobs", data["data"])
+        self.assertGreaterEqual(data["data"]["jobs"]["totalCount"], 2)
+
     def test_jobs_query_with_filters(self):
         """Test GraphQL jobs query with filters"""
         from hub.apps.jobs.utils import create_job
-        
-        asset_id = self.create_asset(key='filter-job-asset', name='Filter Job Asset')
-        
-        job1 = create_job(
+
+        asset_id = self.create_asset(key="filter-job-asset", name="Filter Job Asset")
+
+        create_job(
             type=JobType.DQ_RUN,
-            resource_type='ASSET',
+            resource_type="ASSET",
             resource_id=asset_id,
             tenant=self.tenant,
-            user=self.user
+            user=self.user,
         )
-        
+
         query = """
         query {
             jobs(type: DQ_RUN) {
@@ -370,30 +375,30 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }
         }
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
-        self.assertNotIn('errors', data)
-        jobs = data['data']['jobs']['items']
+        self.assertNotIn("errors", data)
+        jobs = data["data"]["jobs"]["items"]
         # Should only return DQ_RUN jobs
         for job in jobs:
-            self.assertEqual(job['type'], 'DQ_RUN')
-    
+            self.assertEqual(job["type"], "DQ_RUN")
+
     def test_job_query_success(self):
         """Test GraphQL single job query"""
         from hub.apps.jobs.utils import create_job
-        
-        asset_id = self.create_asset(key='single-job-asset', name='Single Job Asset')
+
+        asset_id = self.create_asset(key="single-job-asset", name="Single Job Asset")
         job = create_job(
             type=JobType.DQ_RUN,
-            resource_type='ASSET',
+            resource_type="ASSET",
             resource_id=asset_id,
             tenant=self.tenant,
-            user=self.user
+            user=self.user,
         )
-        
+
         query = f"""
         query {{
             job(id: "{job.id}") {{
@@ -403,17 +408,17 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }}
         }}
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
-        self.assertNotIn('errors', data)
-        self.assertIn('data', data)
-        self.assertIn('job', data['data'])
-        self.assertEqual(data['data']['job']['id'], str(job.id))
-        self.assertEqual(data['data']['job']['type'], 'DQ_RUN')
-    
+        self.assertNotIn("errors", data)
+        self.assertIn("data", data)
+        self.assertIn("job", data["data"])
+        self.assertEqual(data["data"]["job"]["id"], str(job.id))
+        self.assertEqual(data["data"]["job"]["type"], "DQ_RUN")
+
     def test_graphql_query_complexity_limit(self):
         """Test GraphQL query complexity limit enforcement"""
         # Create a very complex query (nested deeply)
@@ -430,23 +435,26 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }
         }
         """
-        
+
         response = self._graphql_query(query)
-        
+
         # May succeed or fail depending on complexity calculation
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
-        
+
         # Query should succeed or fail with complexity error - verify either way
-        if 'errors' in data:
-            error_message = data['errors'][0].get('message', '').lower()
-            self.assertIn('complexity', error_message,
-                          f"GraphQL error should be complexity-related, got: {error_message}")
+        if "errors" in data:
+            error_message = data["errors"][0].get("message", "").lower()
+            self.assertIn(
+                "complexity",
+                error_message,
+                f"GraphQL error should be complexity-related, got: {error_message}",
+            )
         else:
             # Query succeeded without hitting complexity limit - verify valid response
-            self.assertIn('data', data)
-            self.assertIn('assets', data['data'])
-    
+            self.assertIn("data", data)
+            self.assertIn("assets", data["data"])
+
     def test_graphql_schema_introspection(self):
         """Test GraphQL schema introspection"""
         query = """
@@ -459,20 +467,20 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }
         }
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
-        self.assertNotIn('errors', data)
-        self.assertIn('data', data)
-        self.assertIn('__schema', data['data'])
-        self.assertIn('types', data['data']['__schema'])
-    
+        self.assertNotIn("errors", data)
+        self.assertIn("data", data)
+        self.assertIn("__schema", data["data"])
+        self.assertIn("types", data["data"]["__schema"])
+
     def test_graphql_query_with_nested_fields(self):
         """Test GraphQL query with nested fields"""
-        asset_id = self.create_asset(key='nested-asset', name='Nested Asset')
-        
+        asset_id = self.create_asset(key="nested-asset", name="Nested Asset")
+
         query = f"""
         query {{
             asset(id: "{asset_id}") {{
@@ -483,24 +491,24 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }}
         }}
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
-        self.assertNotIn('errors', data)
-        self.assertIn('data', data)
-        asset = data['data']['asset']
-        self.assertIn('id', asset)
-        self.assertIn('name', asset)
-        self.assertIn('status', asset)
-    
+        self.assertNotIn("errors", data)
+        self.assertIn("data", data)
+        asset = data["data"]["asset"]
+        self.assertIn("id", asset)
+        self.assertIn("name", asset)
+        self.assertIn("status", asset)
+
     def test_graphql_query_with_pagination(self):
         """Test GraphQL query with pagination"""
         # Create multiple assets
         for i in range(5):
-            self.create_asset(key=f'pagination-asset-{i}', name=f'Pagination Asset {i}')
-        
+            self.create_asset(key=f"pagination-asset-{i}", name=f"Pagination Asset {i}")
+
         query = """
         query {
             assets(page: {offset: 0, limit: 2}) {
@@ -512,17 +520,17 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }
         }
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
-        self.assertNotIn('errors', data)
-        assets = data['data']['assets']
+        self.assertNotIn("errors", data)
+        assets = data["data"]["assets"]
         # Should return exactly 2 items due to pagination (5 created, page size 2)
-        self.assertEqual(len(assets['items']), 2, "Pagination should return exactly 2 items")
-        self.assertGreaterEqual(assets['totalCount'], 5)
-    
+        self.assertEqual(len(assets["items"]), 2, "Pagination should return exactly 2 items")
+        self.assertGreaterEqual(assets["totalCount"], 5)
+
     def test_graphql_query_error_handling(self):
         """Test GraphQL query error handling"""
         # Invalid query (syntax error)
@@ -533,41 +541,50 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }
         }
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
         # Should have errors for invalid field
-        self.assertIn('errors', data)
-    
+        self.assertIn("errors", data)
+
     def test_graphql_query_tenant_scoping(self):
         """Test GraphQL queries are tenant-scoped"""
         # Create assets in current tenant
-        asset_id1 = self.create_asset(key='tenant-scope-1', name='Tenant Scope 1')
-        asset_id2 = self.create_asset(key='tenant-scope-2', name='Tenant Scope 2')
-        
+        asset_id1 = self.create_asset(key="tenant-scope-1", name="Tenant Scope 1")
+        asset_id2 = self.create_asset(key="tenant-scope-2", name="Tenant Scope 2")
+
         # Create other tenant
         _suffix = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f'Other Tenant {_suffix}', slug=f'other-tenant-{_suffix}')
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_suffix}", slug=f"other-tenant-{_suffix}"
+        )
         from hub.apps.users.models import User
-        other_user = User.objects.create_user(email=f'other-{_suffix}@example.com', password='testpass123', tenant=other_tenant)
-        
+
+        other_user = User.objects.create_user(
+            email=f"other-{_suffix}@example.com", password="testpass123", tenant=other_tenant
+        )
+
         # Create asset in other tenant (switch to other user)
         self.client.force_authenticate(user=other_user)
         other_asset_response = self.client.post(
-            '/api/v1/assets/',
+            "/api/v1/assets/",
             {
-                'key': 'other-tenant-asset',
-                'name': 'Other Tenant Asset',
+                "key": "other-tenant-asset",
+                "name": "Other Tenant Asset",
             },
-            format='json'
+            format="json",
         )
-        other_asset_id = other_asset_response.data['id'] if other_asset_response.status_code == status.HTTP_201_CREATED else None
-        
+        other_asset_id = (
+            other_asset_response.data["id"]
+            if other_asset_response.status_code == status.HTTP_201_CREATED
+            else None
+        )
+
         # Switch back to original user
         self.client.force_authenticate(user=self.user)
-        
+
         # Query assets (should only see current tenant's assets)
         query = """
         query {
@@ -580,17 +597,16 @@ class GraphQLAPIE2ETest(E2ETestBase):
             }
         }
         """
-        
+
         response = self._graphql_query(query)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
-        self.assertNotIn('errors', data)
-        assets = data['data']['assets']['items']
-        asset_ids = {a['id'] for a in assets}
-        
+        self.assertNotIn("errors", data)
+        assets = data["data"]["assets"]["items"]
+        asset_ids = {a["id"] for a in assets}
+
         # Should only see current tenant's assets
         self.assertIn(str(asset_id1), asset_ids)
         self.assertIn(str(asset_id2), asset_ids)
         self.assertNotIn(str(other_asset_id), asset_ids)
-

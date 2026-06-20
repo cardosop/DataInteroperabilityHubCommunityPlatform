@@ -1,6 +1,7 @@
 """
 283.5.6 — Platform admin CLI commands (PLATFORM_ADMIN gated).
 """
+
 from __future__ import annotations
 
 import json
@@ -13,15 +14,14 @@ from ..api_client import api_client
 @click.group()
 def platform():
     """Platform admin commands (PLATFORM_ADMIN only)"""
-    pass
 
 
 # ── Tenant management ───────────────────────────────────────────────────────
 
+
 @platform.group("tenants")
 def tenants():
     """Manage tenants"""
-    pass
 
 
 @tenants.command("list")
@@ -39,7 +39,9 @@ def list_tenants(page, page_size, output_format):
         click.echo("No tenants found.")
         return
     for r in results:
-        click.echo(f"{r.get('id','')}  {r.get('slug','')}  {r.get('display_name','')}  {r.get('status','')}")
+        click.echo(
+            f"{r.get('id', '')}  {r.get('slug', '')}  {r.get('display_name', '')}  {r.get('status', '')}"
+        )
 
 
 @tenants.command("create")
@@ -49,9 +51,14 @@ def list_tenants(page, page_size, output_format):
 @click.option("--format", "output_format", type=click.Choice(["json", "table"]), default="table")
 def create_tenant(slug, display_name, admin_email, output_format):
     """Create a new tenant"""
-    data = api_client.post("admin/tenants/", json_data={
-        "slug": slug, "display_name": display_name, "admin_email": admin_email,
-    })
+    data = api_client.post(
+        "admin/tenants/",
+        json_data={
+            "slug": slug,
+            "display_name": display_name,
+            "admin_email": admin_email,
+        },
+    )
     if output_format == "json":
         click.echo(json.dumps(data, indent=2, default=str))
     else:
@@ -77,10 +84,10 @@ def delete_tenant(tenant_id):
 
 # ── User management ─────────────────────────────────────────────────────────
 
+
 @platform.group("users")
 def users():
     """Manage users (PLATFORM_ADMIN)"""
-    pass
 
 
 @users.command("list")
@@ -98,7 +105,7 @@ def list_users(page, page_size, output_format):
         click.echo("No users found.")
         return
     for r in results:
-        click.echo(f"{r.get('id','')}  {r.get('email','')}  {r.get('status','')}")
+        click.echo(f"{r.get('id', '')}  {r.get('email', '')}  {r.get('status', '')}")
 
 
 @users.command("create")
@@ -108,9 +115,14 @@ def list_users(page, page_size, output_format):
 @click.option("--format", "output_format", type=click.Choice(["json", "table"]), default="table")
 def create_user(email, tenant_id, display_name, output_format):
     """Create a new user"""
-    data = api_client.post("admin/users/", json_data={
-        "email": email, "tenant_id": tenant_id, "display_name": display_name,
-    })
+    data = api_client.post(
+        "admin/users/",
+        json_data={
+            "email": email,
+            "tenant_id": tenant_id,
+            "display_name": display_name,
+        },
+    )
     if output_format == "json":
         click.echo(json.dumps(data, indent=2, default=str))
     else:
@@ -127,15 +139,21 @@ def get_user(user_id):
 
 # ── Impersonation ───────────────────────────────────────────────────────────
 
+
 @platform.command("impersonate")
 @click.option("--user-id", required=True)
 @click.option("--tenant-id", required=True)
 @click.option("--reason", required=True, help="Justification for audit trail")
 def impersonate(user_id, tenant_id, reason):
     """Start impersonation session"""
-    data = api_client.post("admin/impersonate/", json_data={
-        "user_id": user_id, "tenant_id": tenant_id, "reason": reason,
-    })
+    data = api_client.post(
+        "admin/impersonate/",
+        json_data={
+            "user_id": user_id,
+            "tenant_id": tenant_id,
+            "reason": reason,
+        },
+    )
     click.echo(json.dumps(data, indent=2, default=str))
 
 

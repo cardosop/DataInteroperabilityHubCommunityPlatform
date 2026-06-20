@@ -6,7 +6,6 @@ and file refresh. Uses real hub API — no mocks/stubs.
 """
 
 import json
-from typing import Optional
 
 import click
 
@@ -16,7 +15,6 @@ from ..api_client import api_client
 @click.group()
 def datasets():
     """Dataset management commands"""
-    pass
 
 
 @datasets.command("list")
@@ -31,7 +29,7 @@ def datasets():
     help="Output format",
 )
 def list_datasets(
-    status: Optional[str],
+    status: str | None,
     limit: int,
     offset: int,
     output_format: str,
@@ -46,7 +44,8 @@ def list_datasets(
         results = (
             data.get("results", [])
             if isinstance(data, dict)
-            else data if isinstance(data, list)
+            else data
+            if isinstance(data, list)
             else []
         )
 
@@ -56,9 +55,7 @@ def list_datasets(
             if not results:
                 click.echo("No datasets found.")
                 return
-            click.echo(
-                f"{'ID':<38} {'Name':<30} {'Format':<10} {'Status':<12} {'Rows':>8}"
-            )
+            click.echo(f"{'ID':<38} {'Name':<30} {'Format':<10} {'Status':<12} {'Rows':>8}")
             click.echo("-" * 100)
             for ds in results:
                 if not isinstance(ds, dict):
@@ -140,9 +137,7 @@ def list_versions(dataset_id: str, limit: int, output_format: str):
             if not versions:
                 click.echo("No version history found for this dataset.")
                 return
-            click.echo(
-                f"{'Version':>8} {'Created':<22} {'Rows':>8} {'Size':>10}"
-            )
+            click.echo(f"{'Version':>8} {'Created':<22} {'Rows':>8} {'Size':>10}")
             click.echo("-" * 52)
             for v in versions:
                 if not isinstance(v, dict):
@@ -152,7 +147,7 @@ def list_versions(dataset_id: str, limit: int, output_format: str):
                 rows = str(v.get("row_count") or v.get("rows") or "")
                 size = str(v.get("size_bytes") or "")
                 if size and size.isdigit():
-                    size = f"{int(size) / (1024*1024):.1f} MB"
+                    size = f"{int(size) / (1024 * 1024):.1f} MB"
                 click.echo(f"{ver:>8} {created:<22} {rows:>8} {size:>10}")
     except click.ClickException:
         raise

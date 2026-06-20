@@ -1,6 +1,7 @@
 """Aggregated breach response dashboard (Phase 232.3.14)."""
 
 from __future__ import annotations
+
 from typing import Any
 
 from django.utils import timezone

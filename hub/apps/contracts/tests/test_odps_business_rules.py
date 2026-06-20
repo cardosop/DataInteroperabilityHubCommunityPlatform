@@ -16,11 +16,11 @@ All tests use real implementations (no mocks/stubs) and verify:
 """
 
 import json
+import uuid
 
 from hub.apps.contracts.business_rules import (
     SUPPORTED_ODPS_VERSIONS,
     ODPSBusinessRules,
-    ODPSRuleExecutionContext,
 )
 from hub.apps.contracts.models import (
     Contract,
@@ -29,10 +29,7 @@ from hub.apps.contracts.models import (
     OriginalSpecType,
 )
 from hub.apps.contracts.tests.test_base import ContractsTestBase
-from hub.apps.core.business_rules.base import ValidationResult
-from hub.apps.core.services.base import ValidationError
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-import uuid
 
 
 class ODPSBusinessRulesTestBase(ContractsTestBase):
@@ -456,7 +453,7 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
                 schema_url = f"https://opendataproducts.org/schema/v{test_version}"
             elif version.startswith("bitol-"):
                 # Bitol versions use a different schema URL pattern
-                bitol_ver = version[len("bitol-"):]
+                bitol_ver = version[len("bitol-") :]
                 schema_url = (
                     f"https://bitol-io.github.io/open-data-product-standard/"
                     f"v{bitol_ver}/schema.json"
@@ -476,9 +473,7 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
 
             result = self.rules.validate_odps_version(odps_doc)
 
-            self.assertTrue(
-                result.is_valid, f"Version {test_version} should be valid"
-            )
+            self.assertTrue(result.is_valid, f"Version {test_version} should be valid")
 
 
 class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):

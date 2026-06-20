@@ -24,7 +24,7 @@ def prometheus_config(prometheus_config_path):
     """Loaded Prometheus config YAML."""
     if not prometheus_config_path.exists():
         return None
-    with open(prometheus_config_path, "r", encoding="utf-8") as f:
+    with open(prometheus_config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -40,9 +40,9 @@ class TestPrometheusMetrics:
 
     def test_prometheus_config_file_exists(self, prometheus_config_path):
         """Prometheus config file must exist."""
-        assert (
-            prometheus_config_path.exists()
-        ), f"Prometheus config not found at {prometheus_config_path}"
+        assert prometheus_config_path.exists(), (
+            f"Prometheus config not found at {prometheus_config_path}"
+        )
 
     def test_prometheus_config_valid_yaml(self, prometheus_config):
         """Prometheus config must be valid YAML with required top-level keys."""
@@ -53,7 +53,7 @@ class TestPrometheusMetrics:
     def test_prometheus_global_config(self, prometheus_config):
         """Global scrape_interval should be set."""
         if not prometheus_config:
-            pytest.skip("Prometheus config not loaded")
+            pytest.skip("Prometheus config not loaded")  # noqa: skip-in-body — runtime service dependency
         global_ = prometheus_config.get("global", {})
         assert isinstance(global_, dict)
         assert "scrape_interval" in global_ or "evaluation_interval" in global_
@@ -61,7 +61,7 @@ class TestPrometheusMetrics:
     def test_prometheus_scrape_configs_exist(self, prometheus_config):
         """Scrape configs must be present and non-empty."""
         if not prometheus_config:
-            pytest.skip("Prometheus config not loaded")
+            pytest.skip("Prometheus config not loaded")  # noqa: skip-in-body — runtime service dependency
         scrape_configs = prometheus_config.get("scrape_configs", [])
         assert isinstance(scrape_configs, list)
         assert len(scrape_configs) >= 1
@@ -69,7 +69,7 @@ class TestPrometheusMetrics:
     def test_prometheus_scrape_configs_core_services(self, prometheus_config):
         """Scrape configs must include core application services."""
         if not prometheus_config:
-            pytest.skip("Prometheus config not loaded")
+            pytest.skip("Prometheus config not loaded")  # noqa: skip-in-body — runtime service dependency
         scrape_configs = prometheus_config.get("scrape_configs", [])
         job_names = [c.get("job_name") for c in scrape_configs if isinstance(c, dict)]
         required_jobs = [
@@ -86,7 +86,7 @@ class TestPrometheusMetrics:
     def test_prometheus_scrape_targets_format(self, prometheus_config):
         """Each scrape config should have static_configs with targets."""
         if not prometheus_config:
-            pytest.skip("Prometheus config not loaded")
+            pytest.skip("Prometheus config not loaded")  # noqa: skip-in-body — runtime service dependency
         scrape_configs = prometheus_config.get("scrape_configs", [])
         for cfg in scrape_configs:
             if not isinstance(cfg, dict):
@@ -102,7 +102,7 @@ class TestPrometheusMetrics:
     def test_prometheus_alerting_config(self, prometheus_config):
         """Alerting block should point to Alertmanager."""
         if not prometheus_config:
-            pytest.skip("Prometheus config not loaded")
+            pytest.skip("Prometheus config not loaded")  # noqa: skip-in-body — runtime service dependency
         alerting = prometheus_config.get("alerting", {})
         if not alerting:
             return
@@ -112,7 +112,7 @@ class TestPrometheusMetrics:
     def test_prometheus_rule_files_exist(self, prometheus_config, prometheus_config_path):
         """All rule_files in config must exist relative to config dir."""
         if not prometheus_config:
-            pytest.skip("Prometheus config not loaded")
+            pytest.skip("Prometheus config not loaded")  # noqa: skip-in-body — runtime service dependency
         rule_files = prometheus_config.get("rule_files", [])
         if not rule_files:
             return
@@ -131,8 +131,8 @@ class TestPrometheusMetrics:
         """alerts.yml must be valid YAML with groups."""
         alerts_path = project_root / "monitoring" / "prometheus" / "alerts.yml"
         if not alerts_path.exists():
-            pytest.skip("alerts.yml not found")
-        with open(alerts_path, "r", encoding="utf-8") as f:
+            pytest.skip("alerts.yml not found")  # noqa: skip-in-body — runtime service dependency
+        with open(alerts_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         assert data is not None
         assert "groups" in data

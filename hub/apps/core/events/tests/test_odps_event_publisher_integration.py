@@ -4,12 +4,13 @@ Integration tests for ODPSEventPublisher.
 Tests ODPS event publishing with actual event bus integration.
 Uses real event bus (no mocks) to verify end-to-end event publishing.
 """
+
 import uuid
-from django.test import TestCase, override_settings
+
 from django.contrib.auth import get_user_model
+from django.test import TestCase, override_settings
 
 from hub.apps.core.events.service_publishers import ODPSEventPublisher
-
 
 User = get_user_model()
 
@@ -24,8 +25,8 @@ class ODPSEventPublisherIntegrationTest(TestCase):
         self.user_id = str(uuid.uuid4())
         # Create publisher and set attributes dynamically
         self.publisher = ODPSEventPublisher()
-        setattr(self.publisher, 'tenant_id', self.tenant_id)
-        setattr(self.publisher, 'user_id', self.user_id)
+        self.publisher.tenant_id = self.tenant_id
+        self.publisher.user_id = self.user_id
         # Update event publisher with tenant/user context
         self.publisher._event_publisher.tenant_id = self.tenant_id
         self.publisher._event_publisher.user_id = self.user_id
@@ -47,6 +48,7 @@ class ODPSEventPublisherIntegrationTest(TestCase):
         self.assertIsInstance(event_id, str)
         # Verify event was published by checking it exists in the database
         from hub.apps.core.events.models import Event
+
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(event.event_type, "odps.created")
         self.assertEqual(event.data["contract_id"], contract_id)
@@ -67,6 +69,7 @@ class ODPSEventPublisherIntegrationTest(TestCase):
         self.assertIsNotNone(event_id)
         # Verify event was published
         from hub.apps.core.events.models import Event
+
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(event.event_type, "odps.linked")
         self.assertEqual(event.data["odps_contract_id"], odps_contract_id)
@@ -91,6 +94,7 @@ class ODPSEventPublisherIntegrationTest(TestCase):
         self.assertIsNotNone(event_id)
         # Verify event was published
         from hub.apps.core.events.models import Event
+
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(event.event_type, "odps.ref.resolved")
         self.assertEqual(event.data["contract_id"], contract_id)
@@ -114,6 +118,7 @@ class ODPSEventPublisherIntegrationTest(TestCase):
         self.assertIsNotNone(event_id)
         # Verify event was published
         from hub.apps.core.events.models import Event
+
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(event.event_type, "odps.export.completed")
         self.assertEqual(event.data["contract_id"], contract_id)
@@ -127,6 +132,7 @@ class ODPSEventPublisherIntegrationTest(TestCase):
 
         # Verify event was published and check context
         from hub.apps.core.events.models import Event
+
         event = Event.objects.get(event_id=event_id)
         # The EventPublisher should include tenant_id and user_id in the event metadata
         # This is handled by the EventPublisher class, not the ODPSEventPublisher
@@ -138,7 +144,7 @@ class ODPSEventPublisherIntegrationTest(TestCase):
 
     def test_all_event_types_are_valid(self):
         """Test that all ODPS event types have valid schemas."""
-        from hub.apps.core.events.event_types import get_event_schema, get_all_event_types
+        from hub.apps.core.events.event_types import get_all_event_types, get_event_schema
 
         odps_event_types = [
             "odps.created",
@@ -157,10 +163,13 @@ class ODPSEventPublisherIntegrationTest(TestCase):
         all_event_types = get_all_event_types()
 
         for event_type in odps_event_types:
-            self.assertIn(event_type, all_event_types, f"Event type {event_type} not found in event types")
+            self.assertIn(
+                event_type, all_event_types, f"Event type {event_type} not found in event types"
+            )
             schema = get_event_schema(event_type)
             self.assertIsNotNone(schema, f"Schema not found for event type {event_type}")
             self.assertIn("data", schema, f"Schema for {event_type} missing 'data' key")
             self.assertIn("type", schema["data"], f"Schema for {event_type} missing 'type' in data")
-            self.assertIn("required", schema["data"], f"Schema for {event_type} missing 'required' in data")
-
+            self.assertIn(
+                "required", schema["data"], f"Schema for {event_type} missing 'required' in data"
+            )

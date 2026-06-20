@@ -6,7 +6,9 @@ per ``(file_owner_tenant_id, file_id, actor_user_id)`` tuple. Tenants under
 investigation set :attr:`~hub.apps.tenants.models.Tenant.compliance_audit_full_sampling`
 for 100% metadata-view auditing.
 """
+
 from __future__ import annotations
+
 import hashlib
 import uuid
 

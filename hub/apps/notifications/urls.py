@@ -1,4 +1,5 @@
 """Notification inbox URL routing (Phase 223.1)."""
+
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 

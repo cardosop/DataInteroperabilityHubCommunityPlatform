@@ -23,7 +23,10 @@ logger = logging.getLogger(__name__)
 
 @receiver(post_save, sender="datasets.Dataset")
 def trigger_transformation_on_dataset_version(
-    sender, instance, created, **kwargs,
+    sender,
+    instance,
+    created,
+    **kwargs,
 ):
     """
     Trigger event-based transformation pipelines when a new
@@ -66,8 +69,7 @@ def trigger_transformation_on_dataset_version(
             return
 
         logger.info(
-            "transformation_trigger_dataset_version "
-            "dataset_id=%s asset_id=%s pipeline_count=%d",
+            "transformation_trigger_dataset_version dataset_id=%s asset_id=%s pipeline_count=%d",
             dataset_id,
             asset_id_str,
             pipelines.count(),
@@ -83,8 +85,7 @@ def trigger_transformation_on_dataset_version(
 
     except Exception as exc:
         logger.warning(
-            "transformation_trigger_failed "
-            "dataset_id=%s error=%s",
+            "transformation_trigger_failed dataset_id=%s error=%s",
             instance.pk,
             exc,
         )
@@ -122,22 +123,22 @@ def _enqueue_pipeline_execution(
                         "trigger": "dataset_version_created",
                     },
                     tags=[
-                        "transformation", "pipeline",
-                        "triggered", "dataset_version",
+                        "transformation",
+                        "pipeline",
+                        "triggered",
+                        "dataset_version",
                     ],
                     tenant_id=tenant_id,
                 )
                 logger.info(
-                    "transformation_pipeline_triggered "
-                    "pipeline_id=%s asset_id=%s dataset_id=%s",
+                    "transformation_pipeline_triggered pipeline_id=%s asset_id=%s dataset_id=%s",
                     pipeline_id,
                     asset_id,
                     dataset_id,
                 )
             except Exception as exc:
                 logger.warning(
-                    "transformation_trigger_publish_failed "
-                    "pipeline_id=%s error=%s",
+                    "transformation_trigger_publish_failed pipeline_id=%s error=%s",
                     pipeline_id,
                     exc,
                 )
@@ -146,8 +147,7 @@ def _enqueue_pipeline_execution(
 
     except Exception as exc:
         logger.warning(
-            "transformation_enqueue_failed "
-            "pipeline_id=%s error=%s",
+            "transformation_enqueue_failed pipeline_id=%s error=%s",
             pipeline_id,
             exc,
         )

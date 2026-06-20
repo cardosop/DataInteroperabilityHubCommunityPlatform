@@ -4,6 +4,7 @@ Session-scoped test fixtures for hub/tests.
 Patches that previously lived in hub/settings.py have been moved here so that
 settings.py stays free of test-only monkey-patches.
 """
+
 import pytest
 
 

@@ -4,15 +4,18 @@ E2E tests for Tenant views event publishing.
 Tests event publishing through the full API request/response cycle.
 All tests use real HTTP requests and verify events are published correctly.
 """
+
+import uuid
+
 from django.test import TestCase, override_settings
 from django.urls import reverse
-from rest_framework.test import APIClient
 from rest_framework import status
+from rest_framework.test import APIClient
+
 from hub.apps.billing.models import Subscription, SubscriptionStatus
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus, TenantConfig, TenantPlan
-from hub.apps.users.models import User, UserStatus, Role, UserRole
 from hub.apps.core.events.models import Event
-import uuid
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantConfig, TenantPlan, TenantStatus
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 
 @override_settings(
@@ -32,7 +35,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
             password="testpass123",
             tenant=None,  # Platform admin has no tenant
             status=UserStatus.ACTIVE,
-            is_platform_admin=True
+            is_platform_admin=True,
         )
 
         # Authenticate as platform admin
@@ -41,11 +44,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
     def test_create_tenant_via_api_publishes_created_event(self):
         """Test that creating tenant via POST /api/v1/tenants/ publishes tenant.created event."""
         url = reverse("tenant-list")
-        data = {
-            "name": "New Tenant via API",
-            "slug": "new-tenant-api",
-            "region": "us-east-1"
-        }
+        data = {"name": "New Tenant via API", "slug": "new-tenant-api", "region": "us-east-1"}
 
         response = self.client.post(url, data, format="json")
 
@@ -57,10 +56,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         self.assertEqual(tenant.slug, "new-tenant-api")
 
         # Verify event was published
-        events = Event.objects.filter(
-            event_type="tenant.created",
-            data__tenant_id=tenant_id
-        )
+        events = Event.objects.filter(event_type="tenant.created", data__tenant_id=tenant_id)
         self.assertEqual(events.count(), 1)
 
         event = events.first()
@@ -82,14 +78,14 @@ class TenantViewsEventPublishingE2ETest(TestCase):
             name=original_name,
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.UNVERIFIED
+            kyc_status=KYCStatus.UNVERIFIED,
         )
 
         url = reverse("tenant-detail", kwargs={"id": str(tenant.id)})
         data = {
             "name": "Updated Tenant via API",
             "slug": "updated-tenant-api",
-            "kyc_status": KYCStatus.VERIFIED
+            "kyc_status": KYCStatus.VERIFIED,
         }
 
         response = self.client.put(url, data, format="json")
@@ -101,10 +97,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         self.assertEqual(tenant.kyc_status, KYCStatus.VERIFIED)
 
         # Verify event was published
-        events = Event.objects.filter(
-            event_type="tenant.updated",
-            data__tenant_id=str(tenant.id)
-        )
+        events = Event.objects.filter(event_type="tenant.updated", data__tenant_id=str(tenant.id))
         self.assertEqual(events.count(), 1)
 
         event = events.first()
@@ -122,13 +115,11 @@ class TenantViewsEventPublishingE2ETest(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.UNVERIFIED
+            kyc_status=KYCStatus.UNVERIFIED,
         )
 
         url = reverse("tenant-detail", kwargs={"id": str(tenant.id)})
-        data = {
-            "kyc_status": KYCStatus.VERIFIED
-        }
+        data = {"kyc_status": KYCStatus.VERIFIED}
 
         response = self.client.patch(url, data, format="json")
 
@@ -138,10 +129,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         self.assertEqual(tenant.kyc_status, KYCStatus.VERIFIED)
 
         # Verify event was published
-        events = Event.objects.filter(
-            event_type="tenant.updated",
-            data__tenant_id=str(tenant.id)
-        )
+        events = Event.objects.filter(event_type="tenant.updated", data__tenant_id=str(tenant.id))
         self.assertEqual(events.count(), 1)
 
         event = events.first()
@@ -154,7 +142,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE
+            status=TenantStatus.ACTIVE,
         )
 
         url = reverse("tenant-detail", kwargs={"id": str(tenant.id)})
@@ -168,10 +156,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         self.assertIsNotNone(tenant.deleted_at)
 
         # Verify event was published
-        events = Event.objects.filter(
-            event_type="tenant.deleted",
-            data__tenant_id=str(tenant.id)
-        )
+        events = Event.objects.filter(event_type="tenant.deleted", data__tenant_id=str(tenant.id))
         self.assertEqual(events.count(), 1)
 
         event = events.first()
@@ -185,7 +170,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE
+            status=TenantStatus.ACTIVE,
         )
 
         # Create tenant admin user
@@ -193,18 +178,14 @@ class TenantViewsEventPublishingE2ETest(TestCase):
             email=f"admin-{uuid.uuid4().hex[:8]}@tenant.com",
             password="testpass123",
             tenant=tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create and assign TENANT_ADMIN role
         tenant_admin_role, _ = Role.objects.get_or_create(
-            tenant=tenant,
-            name="TENANT_ADMIN",
-            defaults={"description": "Tenant Administrator"}
+            tenant=tenant, name="TENANT_ADMIN", defaults={"description": "Tenant Administrator"}
         )
-        UserRole.objects.create(
-            user=tenant_admin, role=tenant_admin_role, tenant=tenant
-        )
+        UserRole.objects.create(user=tenant_admin, role=tenant_admin_role, tenant=tenant)
 
         # Create subscription so middleware doesn't block write ops
         free_plan = TenantPlan.objects.filter(slug="free").first()
@@ -215,7 +196,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
                     "plan": free_plan,
                     "status": SubscriptionStatus.ACTIVE,
                     "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
-                }
+                },
             )
 
         # Authenticate as tenant admin
@@ -224,7 +205,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         url = reverse("tenant-config-detail", kwargs={"tenant_id": str(tenant.id)})
         data = {
             "max_file_size_bytes": 10485760,  # 10MB
-            "max_job_concurrency": 10
+            "max_job_concurrency": 10,
         }
 
         response = self.client.patch(url, data, format="json")
@@ -237,24 +218,19 @@ class TenantViewsEventPublishingE2ETest(TestCase):
 
         # Verify quota changed events were published
         events = Event.objects.filter(
-            event_type="tenant.quota.changed",
-            data__tenant_id=str(tenant.id)
+            event_type="tenant.quota.changed", data__tenant_id=str(tenant.id)
         ).order_by("timestamp")
 
         self.assertEqual(events.count(), 2)
 
         # Check file size quota event
-        file_size_event = events.filter(
-            data__quota_field="max_file_size_bytes"
-        ).first()
+        file_size_event = events.filter(data__quota_field="max_file_size_bytes").first()
         self.assertIsNotNone(file_size_event)
         self.assertEqual(file_size_event.data["quota_type"], "file_size")
         self.assertEqual(file_size_event.data["new_value"], 10485760)
 
         # Check job concurrency quota event
-        job_concurrency_event = events.filter(
-            data__quota_field="max_job_concurrency"
-        ).first()
+        job_concurrency_event = events.filter(data__quota_field="max_job_concurrency").first()
         self.assertIsNotNone(job_concurrency_event)
         self.assertEqual(job_concurrency_event.data["quota_type"], "job_concurrency")
         self.assertEqual(job_concurrency_event.data["new_value"], 10)
@@ -265,32 +241,25 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE
+            status=TenantStatus.ACTIVE,
         )
 
         # Create tenant config
-        config = TenantConfig.objects.create(
-            tenant=tenant,
-            allowed_compliance_regimes=["GDPR"]
-        )
+        config = TenantConfig.objects.create(tenant=tenant, allowed_compliance_regimes=["GDPR"])
 
         # Create tenant admin user
         tenant_admin = User.objects.create_user(
             email=f"admin-{uuid.uuid4().hex[:8]}@tenant.com",
             password="testpass123",
             tenant=tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create and assign TENANT_ADMIN role
         tenant_admin_role, _ = Role.objects.get_or_create(
-            tenant=tenant,
-            name="TENANT_ADMIN",
-            defaults={"description": "Tenant Administrator"}
+            tenant=tenant, name="TENANT_ADMIN", defaults={"description": "Tenant Administrator"}
         )
-        UserRole.objects.create(
-            user=tenant_admin, role=tenant_admin_role, tenant=tenant
-        )
+        UserRole.objects.create(user=tenant_admin, role=tenant_admin_role, tenant=tenant)
 
         # Create subscription so middleware doesn't block write ops
         free_plan = TenantPlan.objects.filter(slug="free").first()
@@ -301,16 +270,14 @@ class TenantViewsEventPublishingE2ETest(TestCase):
                     "plan": free_plan,
                     "status": SubscriptionStatus.ACTIVE,
                     "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
-                }
+                },
             )
 
         # Authenticate as tenant admin
         self.client.force_authenticate(user=tenant_admin)
 
         url = reverse("tenant-config-detail", kwargs={"tenant_id": str(tenant.id)})
-        data = {
-            "allowed_compliance_regimes": ["GDPR", "LGPD", "CCPA"]
-        }
+        data = {"allowed_compliance_regimes": ["GDPR", "LGPD", "CCPA"]}
 
         response = self.client.patch(url, data, format="json")
 
@@ -323,7 +290,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         events = Event.objects.filter(
             event_type="tenant.quota.changed",
             data__tenant_id=str(tenant.id),
-            data__quota_field="allowed_compliance_regimes"
+            data__quota_field="allowed_compliance_regimes",
         )
         self.assertEqual(events.count(), 1)
 
@@ -338,13 +305,12 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE
+            status=TenantStatus.ACTIVE,
         )
 
         # Create tenant config
         config = TenantConfig.objects.create(
-            tenant=tenant,
-            rate_limits={"file_uploads": {"burst_per_10s": 10}}
+            tenant=tenant, rate_limits={"file_uploads": {"burst_per_10s": 10}}
         )
 
         # Create tenant admin user
@@ -352,18 +318,14 @@ class TenantViewsEventPublishingE2ETest(TestCase):
             email=f"admin-{uuid.uuid4().hex[:8]}@tenant.com",
             password="testpass123",
             tenant=tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create and assign TENANT_ADMIN role
         tenant_admin_role, _ = Role.objects.get_or_create(
-            tenant=tenant,
-            name="TENANT_ADMIN",
-            defaults={"description": "Tenant Administrator"}
+            tenant=tenant, name="TENANT_ADMIN", defaults={"description": "Tenant Administrator"}
         )
-        UserRole.objects.create(
-            user=tenant_admin, role=tenant_admin_role, tenant=tenant
-        )
+        UserRole.objects.create(user=tenant_admin, role=tenant_admin_role, tenant=tenant)
 
         # Create subscription so middleware doesn't block write ops
         free_plan = TenantPlan.objects.filter(slug="free").first()
@@ -374,7 +336,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
                     "plan": free_plan,
                     "status": SubscriptionStatus.ACTIVE,
                     "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
-                }
+                },
             )
 
         # Authenticate as tenant admin
@@ -383,11 +345,9 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         url = reverse("tenant-config-detail", kwargs={"tenant_id": str(tenant.id)})
         new_rate_limits = {
             "file_uploads": {"burst_per_10s": 20, "sustained_per_min": 100},
-            "catalog_reads": {"burst_per_10s": 5}
+            "catalog_reads": {"burst_per_10s": 5},
         }
-        data = {
-            "rate_limits": new_rate_limits
-        }
+        data = {"rate_limits": new_rate_limits}
 
         response = self.client.patch(url, data, format="json")
 
@@ -400,7 +360,7 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         events = Event.objects.filter(
             event_type="tenant.quota.changed",
             data__tenant_id=str(tenant.id),
-            data__quota_field="rate_limits"
+            data__quota_field="rate_limits",
         )
         self.assertEqual(events.count(), 1)
 
@@ -415,13 +375,13 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE
+            status=TenantStatus.ACTIVE,
         )
 
         url = reverse("tenant-detail", kwargs={"id": str(tenant.id)})
         data = {
             "name": tenant.name,  # Same value
-            "slug": tenant.slug  # Same value
+            "slug": tenant.slug,  # Same value
         }
 
         response = self.client.patch(url, data, format="json")
@@ -430,19 +390,13 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Verify no event was published
-        events = Event.objects.filter(
-            event_type="tenant.updated",
-            data__tenant_id=str(tenant.id)
-        )
+        events = Event.objects.filter(event_type="tenant.updated", data__tenant_id=str(tenant.id))
         self.assertEqual(events.count(), 0)
 
     def test_create_tenant_with_minimal_data_publishes_event(self):
         """Test that creating tenant with minimal data publishes event correctly."""
         url = reverse("tenant-list")
-        data = {
-            "name": "Minimal Tenant",
-            "slug": "minimal-tenant"
-        }
+        data = {"name": "Minimal Tenant", "slug": "minimal-tenant"}
 
         response = self.client.post(url, data, format="json")
 
@@ -451,14 +405,10 @@ class TenantViewsEventPublishingE2ETest(TestCase):
         tenant_id = response.data["id"]
 
         # Verify event was published
-        events = Event.objects.filter(
-            event_type="tenant.created",
-            data__tenant_id=tenant_id
-        )
+        events = Event.objects.filter(event_type="tenant.created", data__tenant_id=tenant_id)
         self.assertEqual(events.count(), 1)
 
         event = events.first()
         self.assertEqual(event.data["name"], "Minimal Tenant")
         self.assertEqual(event.data["slug"], "minimal-tenant")
         self.assertIsNone(event.data.get("region"))
-

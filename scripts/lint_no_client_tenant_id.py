@@ -30,20 +30,19 @@ Files matching `**/test_*.py` are skipped (tests legitimately exercise
 the rejected-pattern path); generated migrations are skipped; backup
 files (`*.backup`) are skipped.
 """
+
 from __future__ import annotations
 
 import argparse
 import re
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 try:
     import yaml
 except ImportError as exc:  # pragma: no cover - resolved by `pip install pyyaml`
-    raise SystemExit(
-        "lint_no_client_tenant_id.py requires PyYAML — `pip install pyyaml`"
-    ) from exc
+    raise SystemExit("lint_no_client_tenant_id.py requires PyYAML — `pip install pyyaml`") from exc
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

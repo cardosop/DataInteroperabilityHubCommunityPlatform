@@ -9,6 +9,7 @@ Usage:
 Breaking: removed endpoints, removed/renamed required fields, type changes.
 Allowed: new endpoints, new optional fields.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,14 +28,15 @@ sys.path.insert(0, str(PROJECT_ROOT))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 
 import django
+
 django.setup()
 
 
 def _generate_current_schema() -> dict:
     """Generate current OpenAPI schema (same pipeline as runtime and regenerate-openapi-spec)."""
     from django.test import RequestFactory
-
     from drf_spectacular.generators import SchemaGenerator
+
     from hub.apps.api.openapi_enhancement import OpenAPISpecEnhancer
     from hub.apps.api.openapi_validation import OpenAPISpecValidator
 
@@ -65,7 +67,11 @@ def _get_schema_for_media(spec: dict, content: dict) -> dict | None:
     if not content:
         return None
     # Prefer application/json
-    media = content.get("application/json") or content.get("application/yaml") or next(iter(content.values()), None)
+    media = (
+        content.get("application/json")
+        or content.get("application/yaml")
+        or next(iter(content.values()), None)
+    )
     if not media or not isinstance(media, dict):
         return None
     schema = media.get("schema")
@@ -159,9 +165,7 @@ def _breaking_removed_endpoints(baseline: dict, current: dict) -> list[str]:
     return [f"{p} {m.upper()}" for p, m in removed]
 
 
-def _breaking_required_and_types(
-    baseline: dict, current: dict
-) -> list[str]:
+def _breaking_required_and_types(baseline: dict, current: dict) -> list[str]:
     """Check required fields and types for operations present in both. Returns list of violation messages."""
     violations = []
     b_paths = baseline.get("paths") or {}
@@ -170,12 +174,22 @@ def _breaking_required_and_types(
         if not isinstance(b_path_item, dict):
             continue
         p = _normalize_path(path)
-        c_path_item = c_paths.get(path) or c_paths.get(path + "/") or c_paths.get(p) or c_paths.get(p + "/")
+        c_path_item = (
+            c_paths.get(path) or c_paths.get(path + "/") or c_paths.get(p) or c_paths.get(p + "/")
+        )
         if not c_path_item or not isinstance(c_path_item, dict):
             continue
         for method in ("get", "post", "put", "patch", "delete"):
-            b_op = (b_path_item.get(method) or {}) if isinstance(b_path_item.get(method), dict) else None
-            c_op = (c_path_item.get(method) or {}) if isinstance(c_path_item.get(method), dict) else None
+            b_op = (
+                (b_path_item.get(method) or {})
+                if isinstance(b_path_item.get(method), dict)
+                else None
+            )
+            c_op = (
+                (c_path_item.get(method) or {})
+                if isinstance(c_path_item.get(method), dict)
+                else None
+            )
             if not b_op:
                 continue
             if not c_op:
@@ -184,19 +198,31 @@ def _breaking_required_and_types(
                 if role == "request":
                     c_content = (c_op.get("requestBody") or {}).get("content") or {}
                 else:
-                    r = (c_op.get("responses") or {}).get("200") or (c_op.get("responses") or {}).get("201") or {}
+                    r = (
+                        (c_op.get("responses") or {}).get("200")
+                        or (c_op.get("responses") or {}).get("201")
+                        or {}
+                    )
                     c_content = (r.get("content") or {}) if isinstance(r, dict) else {}
                 c_schema = _get_schema_for_media(current, c_content)
                 b_req, b_props = _get_required_and_properties(baseline, b_schema)
                 c_req, c_props = _get_required_and_properties(current, c_schema)
                 for r in b_req:
                     if r not in c_req and r not in c_props:
-                        violations.append(f"{p} {method.upper()} {role}: required field removed or renamed: {r!r}")
+                        violations.append(
+                            f"{p} {method.upper()} {role}: required field removed or renamed: {r!r}"
+                        )
                     elif r in c_props and r in b_props:
-                        b_type = _schema_type(b_props[r]) if isinstance(b_props.get(r), dict) else None
-                        c_type = _schema_type(c_props[r]) if isinstance(c_props.get(r), dict) else None
+                        b_type = (
+                            _schema_type(b_props[r]) if isinstance(b_props.get(r), dict) else None
+                        )
+                        c_type = (
+                            _schema_type(c_props[r]) if isinstance(c_props.get(r), dict) else None
+                        )
                         if b_type and c_type and b_type != c_type:
-                            violations.append(f"{p} {method.upper()} {role}: type change for {r!r}: {b_type!r} -> {c_type!r}")
+                            violations.append(
+                                f"{p} {method.upper()} {role}: type change for {r!r}: {b_type!r} -> {c_type!r}"
+                            )
     return violations
 
 
@@ -224,10 +250,14 @@ def run_contract_test(baseline_path: Path) -> tuple[bool, list[str], dict | None
 
     resolved_path = baseline_path.resolve() if not baseline_path.is_absolute() else baseline_path
     if not resolved_path.is_file():
-        return False, [f"Baseline not found: {resolved_path}. Run with --update-baseline to create it."], None
+        return (
+            False,
+            [f"Baseline not found: {resolved_path}. Run with --update-baseline to create it."],
+            None,
+        )
 
     try:
-        with open(resolved_path, "r") as f:
+        with open(resolved_path) as f:
             baseline = json.load(f)
     except Exception as e:
         return False, [f"Failed to load baseline: {e}"], None

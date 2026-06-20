@@ -6,7 +6,6 @@ marketplace publishes ``COMPLIANCE_FORCE_PUBLISH_DENIED`` plus listing context.
 """
 
 import pytest
-
 from django.test import SimpleTestCase
 from rest_framework import status
 
@@ -24,10 +23,7 @@ from hub.apps.core.services.base import (
 class HandleServiceExceptionPermissionMapTest(SimpleTestCase):
     @pytest.mark.unit
     def test_permission_error_preserves_custom_code_and_details(self):
-        msg = (
-            "Only platform administrators may bypass "
-            "the compliance gate (force_publish)."
-        )
+        msg = "Only platform administrators may bypass the compliance gate (force_publish)."
         exc = PermissionError(
             msg,
             code="COMPLIANCE_FORCE_PUBLISH_DENIED",
@@ -55,8 +51,7 @@ class HandleServiceExceptionPermissionMapTest(SimpleTestCase):
 
     @pytest.mark.unit
     def test_not_found_error_maps_to_404(self):
-        exc = NotFoundError("Asset not found", code="NOT_FOUND",
-                            details={"resource_id": "123"})
+        exc = NotFoundError("Asset not found", code="NOT_FOUND", details={"resource_id": "123"})
         resp = handle_service_exception(exc)
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
         payload = getattr(resp, "data", None)

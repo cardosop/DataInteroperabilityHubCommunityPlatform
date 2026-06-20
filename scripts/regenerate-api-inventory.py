@@ -12,40 +12,40 @@ Usage:
     python scripts/regenerate-api-inventory.py
 """
 
-import os
-import sys
-import re
 import ast
-from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
-from dataclasses import dataclass, field
+import os
+import re
+import sys
 from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
 # Setup Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hub.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 import django
+
 django.setup()
 
-from django.urls import get_resolver, URLPattern, URLResolver
-from django.conf import settings
+from django.urls import URLPattern, URLResolver, get_resolver
 
 
 @dataclass
 class APIEndpoint:
     """Represents an API endpoint"""
+
     method: str
     path: str
-    view_class: Optional[str] = None
-    view_method: Optional[str] = None
+    view_class: str | None = None
+    view_method: str | None = None
     action_type: str = "Standard"  # Standard, Custom, Function-based
     app_name: str = ""
     description: str = ""
-    parameters: List[str] = field(default_factory=list)
+    parameters: list[str] = field(default_factory=list)
     is_deprecated: bool = False
 
 
@@ -53,10 +53,10 @@ class EndpointExtractor:
     """Extract endpoints from Django URL configuration"""
 
     def __init__(self):
-        self.endpoints: List[APIEndpoint] = []
-        self.viewset_actions: Dict[str, List[Dict]] = {}
+        self.endpoints: list[APIEndpoint] = []
+        self.viewset_actions: dict[str, list[dict]] = {}
 
-    def extract_all(self) -> List[APIEndpoint]:
+    def extract_all(self) -> list[APIEndpoint]:
         """Extract all endpoints from Django URL resolver"""
         resolver = get_resolver()
 
@@ -65,10 +65,10 @@ class EndpointExtractor:
         api_resolver = None
 
         for pattern in resolver.url_patterns:
-            if hasattr(pattern, 'pattern'):
+            if hasattr(pattern, "pattern"):
                 pattern_str = str(pattern.pattern)
-                if 'api/v1' in pattern_str or pattern_str == 'api/v1/':
-                    if hasattr(pattern, 'url_patterns'):
+                if "api/v1" in pattern_str or pattern_str == "api/v1/":
+                    if hasattr(pattern, "url_patterns"):
                         api_resolver = pattern
                         break
 
@@ -85,21 +85,25 @@ class EndpointExtractor:
 
     def _parse_resolver(self, resolver: URLResolver, prefix: str):
         """Recursively parse URL resolver"""
-        if not hasattr(resolver, 'url_patterns'):
+        if not hasattr(resolver, "url_patterns"):
             return
 
         for pattern in resolver.url_patterns:
-            if hasattr(pattern, 'urlconf_name'):
+            if hasattr(pattern, "urlconf_name"):
                 # This is a URLResolver (include pattern)
                 pattern_prefix = ""
-                if hasattr(pattern, 'pattern'):
+                if hasattr(pattern, "pattern"):
                     pattern_prefix = str(pattern.pattern)
-                    pattern_prefix = pattern_prefix.replace('^', '').replace('$', '')
+                    pattern_prefix = pattern_prefix.replace("^", "").replace("$", "")
 
-                new_prefix = prefix.rstrip('/') + '/' + pattern_prefix.lstrip('/') if prefix else pattern_prefix
-                new_prefix = re.sub(r'/+', '/', new_prefix)
-                if not new_prefix.endswith('/'):
-                    new_prefix += '/'
+                new_prefix = (
+                    prefix.rstrip("/") + "/" + pattern_prefix.lstrip("/")
+                    if prefix
+                    else pattern_prefix
+                )
+                new_prefix = re.sub(r"/+", "/", new_prefix)
+                if not new_prefix.endswith("/"):
+                    new_prefix += "/"
 
                 # Get the included resolver
                 try:
@@ -113,19 +117,19 @@ class EndpointExtractor:
 
     def _parse_pattern(self, pattern: URLPattern, prefix: str):
         """Parse a URLPattern to extract endpoint information"""
-        if not hasattr(pattern, 'pattern'):
+        if not hasattr(pattern, "pattern"):
             return
 
         pattern_str = str(pattern.pattern)
         # Clean up pattern string
-        pattern_str = pattern_str.replace('^', '').replace('$', '')
+        pattern_str = pattern_str.replace("^", "").replace("$", "")
 
         # Build full path
-        full_path = prefix.rstrip('/') + '/' + pattern_str.lstrip('/')
-        full_path = re.sub(r'/+', '/', full_path)
+        full_path = prefix.rstrip("/") + "/" + pattern_str.lstrip("/")
+        full_path = re.sub(r"/+", "/", full_path)
 
         # Extract view information
-        callback = getattr(pattern, 'callback', None)
+        callback = getattr(pattern, "callback", None)
         if callback is None:
             return
 
@@ -150,63 +154,65 @@ class EndpointExtractor:
                 view_method=view_method,
                 action_type="Function-based" if not view_class else "Standard",
                 app_name=app_name,
-                parameters=parameters
+                parameters=parameters,
             )
             self.endpoints.append(endpoint)
 
-    def _get_methods_from_callback(self, callback) -> List[str]:
+    def _get_methods_from_callback(self, callback) -> list[str]:
         """Determine HTTP methods from callback"""
-        methods = ['GET']  # Default
+        methods = ["GET"]  # Default
 
-        if hasattr(callback, 'actions'):
+        if hasattr(callback, "actions"):
             # ViewSet with actions
             actions = callback.actions
-            if 'list' in actions or 'retrieve' in actions:
-                methods = ['GET']
-            elif 'create' in actions:
-                methods = ['POST']
-            elif 'update' in actions:
-                methods = ['PUT']
-            elif 'partial_update' in actions:
-                methods = ['PATCH']
-            elif 'destroy' in actions:
-                methods = ['DELETE']
+            if "list" in actions or "retrieve" in actions:
+                methods = ["GET"]
+            elif "create" in actions:
+                methods = ["POST"]
+            elif "update" in actions:
+                methods = ["PUT"]
+            elif "partial_update" in actions:
+                methods = ["PATCH"]
+            elif "destroy" in actions:
+                methods = ["DELETE"]
             else:
                 # Check all actions
                 method_map = {
-                    'list': 'GET',
-                    'create': 'POST',
-                    'retrieve': 'GET',
-                    'update': 'PUT',
-                    'partial_update': 'PATCH',
-                    'destroy': 'DELETE'
+                    "list": "GET",
+                    "create": "POST",
+                    "retrieve": "GET",
+                    "update": "PUT",
+                    "partial_update": "PATCH",
+                    "destroy": "DELETE",
                 }
-                methods = [method_map.get(action, 'GET') for action in actions if action in method_map]
-        elif hasattr(callback, 'http_method_names'):
+                methods = [
+                    method_map.get(action, "GET") for action in actions if action in method_map
+                ]
+        elif hasattr(callback, "http_method_names"):
             # APIView
-            methods = [m.upper() for m in callback.http_method_names if m.upper() != 'OPTIONS']
+            methods = [m.upper() for m in callback.http_method_names if m.upper() != "OPTIONS"]
         elif callable(callback):
             # Function-based view - check if it's a ViewSet method
-            if hasattr(callback, '__self__'):
+            if hasattr(callback, "__self__"):
                 # Bound method
-                methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']  # Default for ViewSet methods
+                methods = ["GET", "POST", "PUT", "PATCH", "DELETE"]  # Default for ViewSet methods
             else:
                 # Function - default to GET and POST
-                methods = ['GET', 'POST']
+                methods = ["GET", "POST"]
 
-        return methods if methods else ['GET']
+        return methods if methods else ["GET"]
 
-    def _extract_view_info(self, callback) -> Tuple[Optional[str], Optional[str]]:
+    def _extract_view_info(self, callback) -> tuple[str | None, str | None]:
         """Extract view class and method name from callback"""
-        if hasattr(callback, '__self__'):
+        if hasattr(callback, "__self__"):
             # Bound method
             view_class = callback.__self__.__class__.__name__
             view_method = callback.__name__
             return view_class, view_method
-        elif hasattr(callback, '__name__'):
+        elif hasattr(callback, "__name__"):
             # Function or unbound method
-            if hasattr(callback, '__qualname__') and '.' in callback.__qualname__:
-                parts = callback.__qualname__.split('.')
+            if hasattr(callback, "__qualname__") and "." in callback.__qualname__:
+                parts = callback.__qualname__.split(".")
                 if len(parts) >= 2:
                     view_class = parts[-2]
                     view_method = parts[-1]
@@ -216,33 +222,33 @@ class EndpointExtractor:
 
     def _extract_app_name(self, prefix: str) -> str:
         """Extract app name from URL prefix"""
-        parts = prefix.strip('/').split('/')
-        if len(parts) >= 3 and parts[0] == 'api' and parts[1] == 'v1':
+        parts = prefix.strip("/").split("/")
+        if len(parts) >= 3 and parts[0] == "api" and parts[1] == "v1":
             return parts[2] if len(parts) > 2 else ""
         return ""
 
-    def _extract_parameters(self, pattern_str: str) -> List[str]:
+    def _extract_parameters(self, pattern_str: str) -> list[str]:
         """Extract URL parameters from pattern string"""
         parameters = []
         # Match named groups: (?P<name>...)
-        param_pattern = r'\?P<(\w+)>'
+        param_pattern = r"\?P<(\w+)>"
         matches = re.findall(param_pattern, pattern_str)
         parameters.extend(matches)
         return parameters
 
     def _extract_viewset_actions(self):
         """Extract custom @action decorators from ViewSets"""
-        hub_dir = project_root / 'hub'
-        views_files = list(hub_dir.rglob('**/views.py'))
+        hub_dir = project_root / "hub"
+        views_files = list(hub_dir.rglob("**/views.py"))
 
         for views_file in views_files:
             try:
-                content = views_file.read_text(encoding='utf-8')
+                content = views_file.read_text(encoding="utf-8")
                 tree = ast.parse(content)
 
                 for node in ast.walk(tree):
                     if isinstance(node, ast.ClassDef):
-                        if 'ViewSet' in node.name:
+                        if "ViewSet" in node.name:
                             self._extract_actions_from_class(node, views_file, content)
             except Exception as e:
                 print(f"Warning: Failed to parse {views_file}: {e}", file=sys.stderr)
@@ -262,29 +268,33 @@ class EndpointExtractor:
                 # Check for @action decorator
                 for decorator in node.decorator_list:
                     if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Name):
-                        if decorator.func.id == 'action':
+                        if decorator.func.id == "action":
                             # Extract action details
                             detail = True  # Default
-                            methods = ['GET']  # Default
+                            methods = ["GET"]  # Default
                             url_path = node.name  # Default
 
                             # Parse decorator arguments
                             for keyword in decorator.keywords:
-                                if keyword.arg == 'detail':
+                                if keyword.arg == "detail":
                                     if isinstance(keyword.value, ast.Constant):
                                         detail = keyword.value.value
-                                elif keyword.arg == 'methods':
+                                elif keyword.arg == "methods":
                                     if isinstance(keyword.value, ast.List):
-                                        methods = [m.value.upper() if isinstance(m, ast.Constant) else str(m).upper()
-                                                  for m in keyword.value.elts]
-                                elif keyword.arg == 'url_path':
+                                        methods = [
+                                            m.value.upper()
+                                            if isinstance(m, ast.Constant)
+                                            else str(m).upper()
+                                            for m in keyword.value.elts
+                                        ]
+                                elif keyword.arg == "url_path":
                                     if isinstance(keyword.value, ast.Constant):
                                         url_path = keyword.value.value
 
                             # Build endpoint path
                             if detail:
                                 action_path = f"{base_path}/{{id}}/{url_path}/"
-                                parameters = ['id']
+                                parameters = ["id"]
                             else:
                                 action_path = f"{base_path}/{url_path}/"
                                 parameters = []
@@ -299,54 +309,57 @@ class EndpointExtractor:
                                     action_type="Custom",
                                     app_name=self._extract_app_name(base_path),
                                     parameters=parameters,
-                                    description=f"Custom action: {node.name}"
+                                    description=f"Custom action: {node.name}",
                                 )
                                 # Check if endpoint already exists
-                                if not any(e.path == endpoint.path and e.method == endpoint.method
-                                          for e in self.endpoints):
+                                if not any(
+                                    e.path == endpoint.path and e.method == endpoint.method
+                                    for e in self.endpoints
+                                ):
                                     self.endpoints.append(endpoint)
 
-    def _find_viewset_base_path(self, viewset_name: str, views_file: Path) -> Optional[str]:
+    def _find_viewset_base_path(self, viewset_name: str, views_file: Path) -> str | None:
         """Find the base URL path for a ViewSet by checking router registrations"""
-        urls_file = views_file.parent / 'urls.py'
+        urls_file = views_file.parent / "urls.py"
         if not urls_file.exists():
             return None
 
         try:
-            content = urls_file.read_text(encoding='utf-8')
+            content = urls_file.read_text(encoding="utf-8")
             tree = ast.parse(content)
 
             # Find router.register calls
             for node in ast.walk(tree):
-                if isinstance(node, ast.Call):
-                    if (isinstance(node.func, ast.Attribute) and
-                        isinstance(node.func.value, ast.Name) and
-                        node.func.attr == 'register'):
-                        # Check if this registers our ViewSet
-                        if len(node.args) >= 2:
-                            prefix_arg = node.args[0]
-                            viewset_arg = node.args[1]
+                if isinstance(node, ast.Call) and (
+                    isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.attr == "register"
+                ):
+                    # Check if this registers our ViewSet
+                    if len(node.args) >= 2:
+                        prefix_arg = node.args[0]
+                        viewset_arg = node.args[1]
 
-                            # Check if viewset matches
-                            viewset_match = False
-                            if isinstance(viewset_arg, ast.Name):
-                                viewset_match = viewset_arg.id == viewset_name
-                            elif isinstance(viewset_arg, ast.Attribute):
-                                viewset_match = viewset_arg.attr == viewset_name
+                        # Check if viewset matches
+                        viewset_match = False
+                        if isinstance(viewset_arg, ast.Name):
+                            viewset_match = viewset_arg.id == viewset_name
+                        elif isinstance(viewset_arg, ast.Attribute):
+                            viewset_match = viewset_arg.attr == viewset_name
 
-                            if viewset_match:
-                                # Extract prefix
-                                if isinstance(prefix_arg, ast.Constant):
-                                    prefix = prefix_arg.value
-                                elif isinstance(prefix_arg, ast.Str):  # Python < 3.8
-                                    prefix = prefix_arg.s
-                                else:
-                                    continue
+                        if viewset_match:
+                            # Extract prefix
+                            if isinstance(prefix_arg, ast.Constant):
+                                prefix = prefix_arg.value
+                            elif isinstance(prefix_arg, ast.Str):  # Python < 3.8
+                                prefix = prefix_arg.s
+                            else:
+                                continue
 
-                                # Build full path
-                                app_name = views_file.parent.name
-                                base_path = f"/api/v1/{app_name}/{prefix}"
-                                return base_path.rstrip('/')
+                            # Build full path
+                            app_name = views_file.parent.name
+                            base_path = f"/api/v1/{app_name}/{prefix}"
+                            return base_path.rstrip("/")
         except Exception as e:
             print(f"Warning: Failed to parse {urls_file}: {e}", file=sys.stderr)
 
@@ -356,7 +369,7 @@ class EndpointExtractor:
 class InventoryGenerator:
     """Generate inventory markdown document"""
 
-    def __init__(self, endpoints: List[APIEndpoint]):
+    def __init__(self, endpoints: list[APIEndpoint]):
         self.endpoints = endpoints
 
     def generate(self) -> str:
@@ -366,10 +379,10 @@ class InventoryGenerator:
         # Header
         lines.append("# Current API Inventory from Codebase")
         lines.append("")
-        lines.append(f"**Document Version**: 2.0.0")
+        lines.append("**Document Version**: 2.0.0")
         lines.append(f"**Last Updated**: {datetime.now().strftime('%Y-%m-%d')}")
-        lines.append(f"**Source**: Django URL resolver and ViewSet analysis")
-        lines.append(f"**Task**: 9.6.3.3.2 - Update API inventory files")
+        lines.append("**Source**: Django URL resolver and ViewSet analysis")
+        lines.append("**Task**: 9.6.3.3.2 - Update API inventory files")
         lines.append("")
         lines.append("---")
         lines.append("")
@@ -377,7 +390,9 @@ class InventoryGenerator:
         # Overview
         lines.append("## Overview")
         lines.append("")
-        lines.append("This document inventories all API endpoints extracted from the Django codebase by:")
+        lines.append(
+            "This document inventories all API endpoints extracted from the Django codebase by:"
+        )
         lines.append("1. Using Django's URL resolver to extract actual registered endpoints")
         lines.append("2. Parsing ViewSet classes to identify custom @action decorators")
         lines.append("3. Extracting function-based views")
@@ -408,9 +423,9 @@ class InventoryGenerator:
             app_endpoints.sort(key=lambda e: (e.path, e.method))
 
             # Count by type
-            standard_count = sum(1 for e in app_endpoints if e.action_type == "Standard")
-            custom_count = sum(1 for e in app_endpoints if e.action_type == "Custom")
-            func_count = sum(1 for e in app_endpoints if e.action_type == "Function-based")
+            sum(1 for e in app_endpoints if e.action_type == "Standard")
+            sum(1 for e in app_endpoints if e.action_type == "Custom")
+            sum(1 for e in app_endpoints if e.action_type == "Function-based")
 
             lines.append(f"### {app_name.capitalize()} ({len(app_endpoints)} endpoints)")
             lines.append("")
@@ -429,7 +444,9 @@ class InventoryGenerator:
                 action_str = endpoint.view_method or "-"
                 type_str = endpoint.action_type
 
-                lines.append(f"| {endpoint.method} | `{endpoint.path}` | `{view_str}` | {action_str} | {type_str} |")
+                lines.append(
+                    f"| {endpoint.method} | `{endpoint.path}` | `{view_str}` | {action_str} | {type_str} |"
+                )
 
             lines.append("")
 
@@ -465,9 +482,15 @@ class InventoryGenerator:
         lines.append("")
         lines.append("### Extraction Methodology")
         lines.append("")
-        lines.append("1. **URL Resolver Extraction**: Uses Django's `get_resolver()` to get actual registered endpoints")
-        lines.append("2. **ViewSet Analysis**: Parses ViewSet classes to find custom @action decorators")
-        lines.append("3. **Pattern Verification**: Verifies endpoints match standardized URL patterns")
+        lines.append(
+            "1. **URL Resolver Extraction**: Uses Django's `get_resolver()` to get actual registered endpoints"
+        )
+        lines.append(
+            "2. **ViewSet Analysis**: Parses ViewSet classes to find custom @action decorators"
+        )
+        lines.append(
+            "3. **Pattern Verification**: Verifies endpoints match standardized URL patterns"
+        )
         lines.append("")
         lines.append("---")
         lines.append("")
@@ -492,9 +515,9 @@ def main():
     inventory_md = generator.generate()
 
     # Write to file
-    output_path = project_root / 'docs' / 'api-audit' / 'current-api-inventory.md'
+    output_path = project_root / "docs" / "api-audit" / "current-api-inventory.md"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(inventory_md, encoding='utf-8')
+    output_path.write_text(inventory_md, encoding="utf-8")
 
     print(f"\n✅ Inventory generated: {output_path}")
     print(f"📊 Total endpoints: {len(endpoints)}")
@@ -503,13 +526,13 @@ def main():
     print("\n🔍 Verifying inventory completeness...")
 
     # Check for compliance endpoints
-    compliance_endpoints = [e for e in endpoints if e.app_name == 'compliance']
+    compliance_endpoints = [e for e in endpoints if e.app_name == "compliance"]
     print(f"  - Compliance endpoints: {len(compliance_endpoints)}")
     for ep in compliance_endpoints:
         print(f"    - {ep.method} {ep.path}")
 
     # Check for old patterns
-    old_patterns = [e for e in endpoints if '/compliance-runs/' in e.path or '/dq-runs/' in e.path]
+    old_patterns = [e for e in endpoints if "/compliance-runs/" in e.path or "/dq-runs/" in e.path]
     if old_patterns:
         print(f"\n⚠️  Warning: Found {len(old_patterns)} endpoints with old patterns:")
         for ep in old_patterns:
@@ -520,6 +543,5 @@ def main():
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
-

@@ -6,6 +6,7 @@ single-sourced (Phase 231.8).
 """
 
 from __future__ import annotations
+
 from typing import Any
 
 from hub.apps.compliance.models import ComplianceRun
@@ -78,7 +79,9 @@ def build_compliance_run_results_payload(compliance_run: ComplianceRun) -> dict[
                 )
 
     total_columns = len(column_findings) if column_findings else 1
-    columns_with_pii = len([f for f in column_findings if f.get("categories") or f.get("pii_types")])
+    columns_with_pii = len(
+        [f for f in column_findings if f.get("categories") or f.get("pii_types")]
+    )
     columns_without_pii = total_columns - columns_with_pii
 
     compliance_score = 100.0
@@ -163,6 +166,8 @@ def build_compliance_run_results_payload(compliance_run: ComplianceRun) -> dict[
         ),
         "cross_border_alert": alert_dict_wire(compliance_run.cross_border_alert),
         "localisation_alert": alert_dict_wire(compliance_run.localisation_alert),
-        "legal_basis_violations": legal_basis_violations_wire(compliance_run.legal_basis_violations),
+        "legal_basis_violations": legal_basis_violations_wire(
+            compliance_run.legal_basis_violations
+        ),
         "regulation_summaries": regulation_summaries_wire(regulation_mapping),
     }

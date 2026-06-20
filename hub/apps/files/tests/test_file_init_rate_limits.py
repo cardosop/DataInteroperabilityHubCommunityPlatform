@@ -8,12 +8,11 @@ HTTP boundary.
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import uuid
 from typing import Any, cast
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
@@ -67,28 +66,29 @@ class FileInitRateLimitWiringTest(TestCase):
     def test_default_file_init_rate_values_match_s9_contract(self):
         user_throttle = FileInitUserThrottle()
         tenant_throttle = FileInitTenantThrottle()
-        assert user_throttle.get_rate() == "60/minute"
-        assert tenant_throttle.get_rate() == "600/minute"
+        self.assertEqual(user_throttle.get_rate(), "60/minute")
+        self.assertEqual(tenant_throttle.get_rate(), "600/minute")
 
     @pytest.mark.integration
     def test_init_upload_action_uses_file_init_throttles(self):
         view = FileViewSet()
         view.action = "init_upload"
         throttles = view.get_throttles()
-        assert any(isinstance(t, FileInitUserThrottle) for t in throttles)
-        assert any(isinstance(t, FileInitTenantThrottle) for t in throttles)
+        self.assertTrue(any(isinstance(t, FileInitUserThrottle) for t in throttles))
+        self.assertTrue(any(isinstance(t, FileInitTenantThrottle) for t in throttles))
 
     @pytest.mark.integration
     def test_list_action_does_not_use_file_init_throttles(self):
         view = FileViewSet()
         view.action = "list"
         throttles = view.get_throttles()
-        assert not any(isinstance(t, FileInitUserThrottle) for t in throttles)
-        assert not any(isinstance(t, FileInitTenantThrottle) for t in throttles)
+        self.assertFalse(any(isinstance(t, FileInitUserThrottle) for t in throttles))
+        self.assertFalse(any(isinstance(t, FileInitTenantThrottle) for t in throttles))
 
 
 class FileInitRateLimitQuotaTest(TestCase):
     def setUp(self):
+        super().setUp()
         self._orig_user_rates = dict(
             cast("dict[str, str]", FileInitUserThrottle.THROTTLE_RATES or {})
         )
@@ -124,7 +124,7 @@ class FileInitRateLimitQuotaTest(TestCase):
                 format="json",
             ),
         )
-        assert first.status_code != status.HTTP_429_TOO_MANY_REQUESTS, first.content
+        self.assertNotEqual(first.status_code, status.HTTP_429_TOO_MANY_REQUESTS, first.content)
 
         blocked = cast(
             "Any",
@@ -134,7 +134,7 @@ class FileInitRateLimitQuotaTest(TestCase):
                 format="json",
             ),
         )
-        assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+        self.assertEqual(blocked.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
         self.assertEqual(blocked.data["error"]["code"], "RATE_LIMIT_EXCEEDED")
         details = blocked.data["error"].get("details") or {}
         self.assertIn("retry_after", details)
@@ -163,7 +163,7 @@ class FileInitRateLimitQuotaTest(TestCase):
                 format="json",
             ),
         )
-        assert first.status_code != status.HTTP_429_TOO_MANY_REQUESTS, first.content
+        self.assertNotEqual(first.status_code, status.HTTP_429_TOO_MANY_REQUESTS, first.content)
 
         blocked = cast(
             "Any",
@@ -173,7 +173,7 @@ class FileInitRateLimitQuotaTest(TestCase):
                 format="json",
             ),
         )
-        assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+        self.assertEqual(blocked.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
         self.assertEqual(blocked.data["error"]["code"], "RATE_LIMIT_EXCEEDED")
         details = blocked.data["error"].get("details") or {}
         self.assertIn("retry_after", details)

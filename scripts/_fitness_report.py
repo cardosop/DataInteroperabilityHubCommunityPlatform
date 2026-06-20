@@ -5,6 +5,7 @@ Usage:
   python scripts/_fitness_report.py <json-file> <check-name> --count # count only
   python scripts/_fitness_report.py <json-file> <check-name> 5      # top 5
 """
+
 import json
 import sys
 
@@ -28,11 +29,12 @@ def report(json_path: str, check_name: str, top_n: int = 10) -> None:
         if check_name == "file_size":
             print(f"    {v['file']}: {v['lines']} lines (limit={v['threshold']})")
         elif check_name == "complexity":
-            print(f"    {v['file']}:{v['line']} {v['function']}() "
-                  f"— complexity {v['complexity']} (limit={v['threshold']})")
+            print(
+                f"    {v['file']}:{v['line']} {v['function']}() "
+                f"— complexity {v['complexity']} (limit={v['threshold']})"
+            )
         elif check_name == "app_boundaries":
-            print(f"    {v['file']}:{v['line']} — "
-                  f"{v['source_group']} → {v['target_group']}")
+            print(f"    {v['file']}:{v['line']} — {v['source_group']} → {v['target_group']}")
         else:
             print(f"    {v}")
 

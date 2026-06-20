@@ -13,7 +13,6 @@ without forcing a naming convention on the shared code.
 
 from __future__ import annotations
 
-from typing import Dict, FrozenSet, Optional, Tuple
 from urllib.parse import urlparse
 
 _API_V1_PREFIX = "/api/v1/"
@@ -33,9 +32,9 @@ def _normalize_relative(path: str) -> str:
 def detect_mvp_gated_feature(
     path: str,
     *,
-    gated_prefixes: FrozenSet[str],
-    feature_names: Dict[str, str],
-) -> Optional[Tuple[str, str]]:
+    gated_prefixes: frozenset[str],
+    feature_names: dict[str, str],
+) -> tuple[str, str] | None:
     """Return ``(prefix, feature)`` if ``path`` matches a gated prefix, else None.
 
     Longest-prefix-wins tiebreak guards against future overlapping prefixes.
@@ -55,9 +54,7 @@ def detect_mvp_gated_feature(
     if not matches:
         return None
     prefix = max(matches, key=lambda p: (len(p), p))
-    feature = feature_names.get(
-        prefix, prefix.rstrip("/").replace("-", " ").title()
-    )
+    feature = feature_names.get(prefix, prefix.rstrip("/").replace("-", " ").title())
     return (prefix, feature)
 
 

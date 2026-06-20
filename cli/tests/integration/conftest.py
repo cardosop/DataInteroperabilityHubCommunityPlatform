@@ -7,11 +7,13 @@ reachable. CLI integration tests SHOULD never fail because a dev box has no
 local API service running — they should skip cleanly. The actual integration
 runs happen in CI where docker compose is up.
 """
+
 import os
-import pytest
-import requests
 import subprocess
 import time
+
+import pytest
+import requests
 
 _api_test_port = os.environ.get("API_TEST_PORT", "8000")
 _DEFAULT_API_BASE = f"http://localhost:{_api_test_port}"
@@ -65,7 +67,9 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_marker)
 
 
-def check_service_health(service_name: str, port: int, health_path: str = "/health", max_wait: int = 30) -> bool:
+def check_service_health(
+    service_name: str, port: int, health_path: str = "/health", max_wait: int = 30
+) -> bool:
     """
     Check if a service is healthy.
 
@@ -88,7 +92,7 @@ def check_service_health(service_name: str, port: int, health_path: str = "/heal
             # isn't up yet.  Let the retry loop keep trying.
             pass
         if attempt < max_wait - 1:
-            time.sleep(1)
+            time.sleep(1)  # noqa: sleep-needed — polling loop
     return False
 
 
@@ -110,12 +114,13 @@ def start_service_if_needed(service_name: str, port: int, health_path: str = "/h
 
     # Try to start the service
     try:
-        project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
+        project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
         result = subprocess.run(
-            ['docker', 'compose', 'up', '-d', service_name],
+            ["docker", "compose", "up", "-d", service_name],
+            check=False,
             capture_output=True,
             timeout=60,
-            cwd=project_dir
+            cwd=project_dir,
         )
         if result.returncode == 0:
             # Wait for service to be healthy

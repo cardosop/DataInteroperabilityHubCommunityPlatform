@@ -3,6 +3,7 @@ Management command to downgrade expired KYC verifications.
 
 Transitions VERIFIED tenants past their kyc_expires_at to PENDING_REVIEW.
 """
+
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -28,6 +29,4 @@ class Command(BaseCommand):
 
         updated = expired_tenants.update(kyc_status=KYCStatus.PENDING_REVIEW)
 
-        self.stdout.write(
-            self.style.SUCCESS(f"Downgraded {updated} tenant(s) to PENDING_REVIEW.")
-        )
+        self.stdout.write(self.style.SUCCESS(f"Downgraded {updated} tenant(s) to PENDING_REVIEW."))

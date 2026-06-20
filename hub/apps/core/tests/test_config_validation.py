@@ -4,6 +4,7 @@ Tests for hub.apps.core.config_validation (Phase 10).
 No mocks: validation uses real django.conf.settings; tests override settings
 via @override_settings to exercise success and failure paths.
 """
+
 from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase, override_settings
 
@@ -228,8 +229,10 @@ class ValidateConfigCommandTests(SimpleTestCase):
         ALLOWED_HOSTS=["localhost"],
     )
     def test_command_exits_zero_when_config_valid(self):
-        from django.core.management import call_command
         from io import StringIO
+
+        from django.core.management import call_command
+
         out = StringIO()
         err = StringIO()
         call_command("validate_config", stdout=out, stderr=err)
@@ -241,8 +244,10 @@ class ValidateConfigCommandTests(SimpleTestCase):
         ENVIRONMENT="development",
     )
     def test_command_exits_non_zero_when_config_invalid(self):
-        from django.core.management import call_command
         from io import StringIO
+
+        from django.core.management import call_command
+
         out = StringIO()
         err = StringIO()
         with self.assertRaises(SystemExit) as ctx:

@@ -10,11 +10,9 @@ import uuid
 
 import pytest
 
-pytestmark = pytest.mark.slow
-from django.test import TestCase, TransactionTestCase
+pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True)]
+from django.test import TransactionTestCase
 from django.utils import timezone
-
-from tests.utils.polling import wait_until
 
 from hub.apps.core.events.models import Event
 from hub.apps.core.events.publisher import EventPublisher
@@ -30,8 +28,9 @@ from hub.apps.webhooks.models import (
     WebhookStatus,
 )
 from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookServer
+from tests.utils.polling import wait_until
 
-pytestmark = pytest.mark.django_db(transaction=True)
+
 
 
 class MeshWebhookE2ETest(TransactionTestCase):
@@ -42,7 +41,6 @@ class MeshWebhookE2ETest(TransactionTestCase):
 
     def _fixture_teardown(self):
         """Skip TRUNCATE CASCADE to avoid timeout."""
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -128,7 +126,9 @@ class MeshWebhookE2ETest(TransactionTestCase):
                     >= 1
                 )
 
-            wait_until(has_domain_created_delivery, timeout=5.0, message="mesh.domain.created delivery")
+            wait_until(
+                has_domain_created_delivery, timeout=5.0, message="mesh.domain.created delivery"
+            )
             deliveries = WebhookDelivery.objects.filter(
                 webhook=webhook, event_type="mesh.domain.created"
             )
@@ -207,7 +207,9 @@ class MeshWebhookE2ETest(TransactionTestCase):
                     >= 1
                 )
 
-            wait_until(has_policy_applied_delivery, timeout=5.0, message="mesh.policy.applied delivery")
+            wait_until(
+                has_policy_applied_delivery, timeout=5.0, message="mesh.policy.applied delivery"
+            )
             deliveries = WebhookDelivery.objects.filter(
                 webhook=webhook, event_type="mesh.policy.applied"
             )
@@ -284,7 +286,11 @@ class MeshWebhookE2ETest(TransactionTestCase):
                     >= 1
                 )
 
-            wait_until(has_compliance_checked_delivery, timeout=5.0, message="mesh.compliance.checked delivery")
+            wait_until(
+                has_compliance_checked_delivery,
+                timeout=5.0,
+                message="mesh.compliance.checked delivery",
+            )
             deliveries = WebhookDelivery.objects.filter(
                 webhook=webhook, event_type="mesh.compliance.checked"
             )

@@ -5,6 +5,7 @@ Counters are best-effort: failures must never block business logic.
 """
 
 from __future__ import annotations
+
 # Stable label values for ``compliance_intake_gate_events_total{event=...}``.
 EVENT_SCAN_ENQUEUED = "SCAN_ENQUEUED"
 EVENT_ACTIVATION_GATE_BLOCK = "ACTIVATION_GATE_BLOCK"

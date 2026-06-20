@@ -5,14 +5,16 @@ PLATFORM_PLANS (7 tiers, incl. SANDBOX) + ML_PLANS (3 tiers).  Every plan includ
 all required fields with non-None limits_json and tier_profile dict.
 Imported by ``seed_default_plans.py`` and ``PersonalTenantService``.
 """
+
 from __future__ import annotations
-from typing import Any, Dict, List
+
+from typing import Any
 
 from .models import PlanCategory, PlanTier
 
 # ── Platform Plans (6 tiers) ──────────────────────────────────────────
 
-PLATFORM_PLANS: List[Dict[str, Any]] = [
+PLATFORM_PLANS: list[dict[str, Any]] = [
     # ── 303.1: Developer sandbox (lowest tier, minimal limits) ──────────
     {
         "slug": "sandbox",
@@ -295,7 +297,13 @@ PLATFORM_PLANS: List[Dict[str, Any]] = [
         "markup_bps": None,
         "marketplace_take_rate_bps": 300,
         "includes_regulations": [
-            "GDPR", "CCPA", "UK_GDPR", "PIPL_CN", "LGPD_BR", "POPIA_ZA", "PDPA_SG",
+            "GDPR",
+            "CCPA",
+            "UK_GDPR",
+            "PIPL_CN",
+            "LGPD_BR",
+            "POPIA_ZA",
+            "PDPA_SG",
         ],
         "compliance_pro_pack": True,
         "limits_json": {},  # unlimited — all keys omitted = no cap
@@ -314,7 +322,7 @@ PLATFORM_PLANS: List[Dict[str, Any]] = [
 
 # ── ML Plans (3 tiers) ────────────────────────────────────────────────
 
-ML_PLANS: List[Dict[str, Any]] = [
+ML_PLANS: list[dict[str, Any]] = [
     {
         "slug": "ml-starter",
         "name": "ML Starter",

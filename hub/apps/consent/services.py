@@ -1,7 +1,9 @@
 """Consent grant/revoke orchestration (audit + webhook fan-out)."""
 
 from __future__ import annotations
-from typing import Any, Dict, Mapping, Optional
+
+from collections.abc import Mapping
+from typing import Any
 
 import structlog
 from django.db import transaction
@@ -46,7 +48,7 @@ class ConsentService:
         user: User,
         purpose: ConsentPurpose,
         payload: Mapping[str, Any],
-        actor_user: Optional[User] = None,
+        actor_user: User | None = None,
         request=None,
     ) -> ConsentRecord:
         if str(purpose.tenant_id) != str(tenant.id):
@@ -140,12 +142,11 @@ class ConsentService:
         subject = record.user
         if str(record.tenant_id) != str(tenant.id):
             raise ValidationError("Record not in tenant.", code="TENANT_MISMATCH")
-        if str(actor_user.id) != str(subject.id):
-            if not (
-                getattr(actor_user, "is_platform_admin", False)
-                or _user_has_any_role(actor_user, tenant, ("TENANT_ADMIN", "DPO"))
-            ):
-                raise ValidationError("Cannot revoke another user's consent.", code="FORBIDDEN")
+        if str(actor_user.id) != str(subject.id) and not (
+            getattr(actor_user, "is_platform_admin", False)
+            or _user_has_any_role(actor_user, tenant, ("TENANT_ADMIN", "DPO"))
+        ):
+            raise ValidationError("Cannot revoke another user's consent.", code="FORBIDDEN")
 
         key_ring = get_signing_key_ring_for_tenant(str(tenant.id))
         if record.proof_hmac:
@@ -222,14 +223,16 @@ class ConsentService:
 
             result: list[dict[str, Any]] = []
             for rec in stale_records:
-                result.append({
-                    "purpose_id": str(rec.purpose_id),
-                    "purpose_key": rec.purpose.key,
-                    "purpose_name": rec.purpose.name,
-                    "granted_version": rec.purpose_version_at_grant,
-                    "current_version": rec.purpose.version,
-                    "record_id": str(rec.id),
-                })
+                result.append(
+                    {
+                        "purpose_id": str(rec.purpose_id),
+                        "purpose_key": rec.purpose.key,
+                        "purpose_name": rec.purpose.name,
+                        "granted_version": rec.purpose_version_at_grant,
+                        "current_version": rec.purpose.version,
+                        "record_id": str(rec.id),
+                    }
+                )
             return result
 
 
@@ -279,7 +282,7 @@ def _publish_revoked_webhook(*, record_id: str, tenant_id: str) -> None:
         )
 
 
-def dashboard_summary(*, tenant: Tenant) -> Dict[str, Any]:
+def dashboard_summary(*, tenant: Tenant) -> dict[str, Any]:
     """Aggregate counts for DPO / tenant-admin dashboard (RLS-safe read path)."""
     from django.db.models import Count, Q
 

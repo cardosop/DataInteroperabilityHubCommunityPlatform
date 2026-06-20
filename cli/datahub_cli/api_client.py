@@ -3,13 +3,15 @@ API client for DataHub CLI.
 
 Handles HTTP requests to the DataHub API.
 """
-import requests
+
+from typing import Any
+
 import click
-from typing import Optional, Dict, Any, List
+import requests
+
 from .auth import auth_manager
 from .config import config
 from .odps_errors import handle_api_error
-
 
 _WRITE_METHODS = frozenset({"POST", "PATCH", "PUT", "DELETE"})
 
@@ -30,11 +32,11 @@ class APIClient:
         self,
         method: str,
         endpoint: str,
-        params: Optional[Dict[str, Any]] = None,
-        json_data: Optional[Dict[str, Any]] = None,
-        files: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
+        json_data: dict[str, Any] | None = None,
+        files: dict[str, Any] | None = None,
         stream: bool = False,
-        timeout: Optional[int] = None
+        timeout: int | None = None,
     ) -> requests.Response:
         """
         Make an API request.
@@ -52,6 +54,7 @@ class APIClient:
             click.echo(f"[dry-run] {method.upper()} {url}")
             if json_data:
                 import json as _json
+
                 click.echo(f"[dry-run] payload: {_json.dumps(json_data, indent=2)}")
             if files:
                 click.echo(f"[dry-run] files: {list(files.keys())}")
@@ -79,7 +82,12 @@ class APIClient:
         # Determine timeout: use provided timeout, or detect workflow endpoints for longer timeout
         if timeout is None:
             # Workflow endpoints that may take longer
-            workflow_endpoints = ['contracts/products/', 'contracts/', '/link-odps', 'transformation/']
+            workflow_endpoints = [
+                "contracts/products/",
+                "contracts/",
+                "/link-odps",
+                "transformation/",
+            ]
             is_workflow = any(we in endpoint for we in workflow_endpoints)
             timeout = 120 if is_workflow else 30
 
@@ -98,18 +106,26 @@ class APIClient:
                     files=files,
                     headers=headers,
                     timeout=timeout,
-                    stream=stream
+                    stream=stream,
                 )
                 # Success - break out of retry loop
                 break
-            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, ConnectionResetError, OSError) as e:
+            except (
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+                ConnectionResetError,
+                OSError,
+            ) as e:
                 if attempt < max_retries - 1:
                     import time
+
                     time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
                     continue
                 else:
                     # Last attempt failed - raise exception
-                    raise click.ClickException(f"API request failed after {max_retries} attempts: {e}")
+                    raise click.ClickException(
+                        f"API request failed after {max_retries} attempts: {e}"
+                    )
 
         if response is None:
             raise click.ClickException("API request failed: No response received")
@@ -135,7 +151,7 @@ class APIClient:
                     files=files,
                     headers=headers,
                     timeout=timeout,
-                    stream=stream
+                    stream=stream,
                 )
             else:
                 raise click.ClickException(
@@ -144,40 +160,55 @@ class APIClient:
 
         return response
 
-    def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def get(self, endpoint: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """GET request"""
-        response = self._request('GET', endpoint, params=params)
+        response = self._request("GET", endpoint, params=params)
         return self._handle_response(response)
 
-    def post(self, endpoint: str, json_data: Optional[Dict[str, Any]] = None, files: Optional[Dict[str, Any]] = None, timeout: Optional[int] = None) -> Dict[str, Any]:
+    def post(
+        self,
+        endpoint: str,
+        json_data: dict[str, Any] | None = None,
+        files: dict[str, Any] | None = None,
+        timeout: int | None = None,
+    ) -> dict[str, Any]:
         """POST request
 
         Args:
             timeout: Request timeout in seconds. Defaults to 30 for regular requests,
                     120 for workflow operations
         """
-        response = self._request('POST', endpoint, json_data=json_data, files=files, timeout=timeout)
+        response = self._request(
+            "POST", endpoint, json_data=json_data, files=files, timeout=timeout
+        )
         return self._handle_response(response)
 
-    def patch(self, endpoint: str, json_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def patch(self, endpoint: str, json_data: dict[str, Any] | None = None) -> dict[str, Any]:
         """PATCH request"""
-        response = self._request('PATCH', endpoint, json_data=json_data)
+        response = self._request("PATCH", endpoint, json_data=json_data)
         return self._handle_response(response)
 
-    def delete(self, endpoint: str, json_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def delete(self, endpoint: str, json_data: dict[str, Any] | None = None) -> dict[str, Any]:
         """DELETE request"""
-        response = self._request('DELETE', endpoint, json_data=json_data)
+        response = self._request("DELETE", endpoint, json_data=json_data)
         return self._handle_response(response)
 
-    def get_stream(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> requests.Response:
+    def get_stream(self, endpoint: str, params: dict[str, Any] | None = None) -> requests.Response:
         """GET request with streaming"""
-        return self._request('GET', endpoint, params=params, stream=True)
+        return self._request("GET", endpoint, params=params, stream=True)
 
-    def request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None, json_data: Optional[Dict[str, Any]] = None, timeout: Optional[int] = None) -> requests.Response:
+    def request(
+        self,
+        method: str,
+        endpoint: str,
+        params: dict[str, Any] | None = None,
+        json_data: dict[str, Any] | None = None,
+        timeout: int | None = None,
+    ) -> requests.Response:
         """Make a raw request and return Response object"""
         return self._request(method, endpoint, params=params, json_data=json_data, timeout=timeout)
 
-    def _handle_response(self, response: requests.Response) -> Dict[str, Any]:
+    def _handle_response(self, response: requests.Response) -> dict[str, Any]:
         """Handle API response"""
         if response.status_code >= 400:
             url = response.url if response.url is not None else ""
@@ -207,4 +238,3 @@ class APIClient:
 
 # Global API client instance
 api_client = APIClient()
-

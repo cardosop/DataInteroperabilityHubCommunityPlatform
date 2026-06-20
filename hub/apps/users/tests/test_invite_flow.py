@@ -68,9 +68,7 @@ class InviteFlowServiceTest(TestCase):
         self.assertEqual(user.tenant_id, self.tenant.id)
 
         self.assertTrue(
-            UserTenantMembership.objects.filter(
-                user=user, tenant=self.tenant
-            ).exists(),
+            UserTenantMembership.objects.filter(user=user, tenant=self.tenant).exists(),
             "Invite new user must create UserTenantMembership",
         )
 
@@ -107,9 +105,7 @@ class InviteFlowServiceTest(TestCase):
         self.assertEqual(user.tenant_id, other_tenant.id, "Primary tenant unchanged")
 
         self.assertTrue(
-            UserTenantMembership.objects.filter(
-                user=existing_user, tenant=self.tenant
-            ).exists(),
+            UserTenantMembership.objects.filter(user=existing_user, tenant=self.tenant).exists(),
             "Invite existing user must add UserTenantMembership",
         )
 
@@ -141,9 +137,7 @@ class InviteFlowServiceTest(TestCase):
         self.assertEqual(user.id, existing_user.id)
         # Still exactly one membership (idempotent)
         self.assertEqual(
-            UserTenantMembership.objects.filter(
-                user=existing_user, tenant=self.tenant
-            ).count(),
+            UserTenantMembership.objects.filter(user=existing_user, tenant=self.tenant).count(),
             1,
         )
 

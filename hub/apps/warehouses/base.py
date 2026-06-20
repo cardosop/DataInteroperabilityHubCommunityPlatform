@@ -8,19 +8,20 @@ Defines the contract every warehouse connector must implement:
 - Per-tenant cost guard
 - Circuit-breaker integration
 """
+
 from __future__ import annotations
 
-import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
 class QueryResult:
     """Return shape for ``WarehouseConnector.execute_query()``."""
-    columns: List[str] = field(default_factory=list)
-    rows: List[List[Any]] = field(default_factory=list)
+
+    columns: list[str] = field(default_factory=list)
+    rows: list[list[Any]] = field(default_factory=list)
     row_count: int = 0
     duration_ms: float = 0.0
     cost_units: float = 0.0
@@ -30,6 +31,7 @@ class QueryResult:
 @dataclass
 class SchemaColumn:
     """Single column from warehouse schema reflection."""
+
     name: str
     data_type: str
     nullable: bool = True
@@ -60,7 +62,7 @@ class WarehouseConnector(ABC):
     def execute_query(
         self,
         sql: str,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         limit: int = 100,
     ) -> QueryResult:
         """Execute a parameterised SELECT query.
@@ -74,7 +76,7 @@ class WarehouseConnector(ABC):
         """
 
     @abstractmethod
-    def reflect_schema(self, table_name: str) -> List[SchemaColumn]:
+    def reflect_schema(self, table_name: str) -> list[SchemaColumn]:
         """Return the column schema for a warehouse table."""
 
     @abstractmethod
@@ -92,6 +94,7 @@ class WarehouseConnector(ABC):
         """Raise if the circuit breaker is open for this tenant+warehouse."""
         try:
             from hub.apps.core.resilience.service_breakers import is_circuit_open
+
             channel = f"warehouse_{self.warehouse_type}_{tenant_id}"
             if is_circuit_open(channel):
                 raise ConnectionError(
@@ -104,6 +107,7 @@ class WarehouseConnector(ABC):
         """Emit a cost metric for observability."""
         try:
             from hub.apps.observability.otel_metrics import warehouse_cost_units_total
+
             warehouse_cost_units_total.labels(
                 warehouse=self.warehouse_type,
                 tenant=tenant_id,
@@ -142,7 +146,6 @@ def get_connector_for_connection(warehouse_type: str):
     cls = _map.get(warehouse_type.upper())
     if cls is None:
         raise ValueError(
-            f"Unsupported warehouse type: '{warehouse_type}'. "
-            f"Valid: {list(_map.keys())}"
+            f"Unsupported warehouse type: '{warehouse_type}'. Valid: {list(_map.keys())}"
         )
     return cls

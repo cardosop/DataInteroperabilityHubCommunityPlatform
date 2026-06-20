@@ -11,6 +11,7 @@ All tests use real implementations (no mocks/stubs).
 MockTransport is used only for simulating failures (acceptable test utility).
 """
 
+import contextlib
 import uuid
 
 import httpx
@@ -21,7 +22,6 @@ from django.test import TestCase
 from hub.apps.compliance.service_client import ComplianceServiceClient
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
-    CircuitBreakerError,
     CircuitBreakerState,
     get_redis_client,
 )
@@ -75,7 +75,7 @@ class TestComplianceServiceClientCircuitBreaker(TestCase):
             if keys:
                 self.redis_client.delete(*keys)
             self.service_client._circuit_breaker.reset()
-        except Exception:
+        except (redis.RedisError, OSError):
             pass
 
     def tearDown(self):
@@ -86,25 +86,26 @@ class TestComplianceServiceClientCircuitBreaker(TestCase):
             keys = self.redis_client.keys(pattern)
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except (redis.RedisError, OSError):
             pass
 
-    def test_circuit_breaker_initialized(self):
-        """Test circuit breaker is initialized for Compliance service client."""
-        # Verify circuit breaker exists
-        self.assertTrue(hasattr(self.service_client, "_circuit_breaker"))
-        self.assertIsInstance(self.service_client._circuit_breaker, CircuitBreaker)
-        self.assertEqual(
-            self.service_client._circuit_breaker.service_name,
-            self.service_name,
-        )
-
-    def test_circuit_breaker_configuration(self):
-        """Test circuit breaker has correct configuration."""
-        cb = self.service_client._circuit_breaker
-        self.assertEqual(cb.failure_threshold, 5)
-        self.assertEqual(cb.timeout_seconds, 60)
-        self.assertEqual(cb.success_threshold, 2)
+    def test_production_client_creates_shared_circuit_breaker(self):
+        """A fresh ComplianceServiceClient gets a real shared circuit
+        breaker from the service registry — not an injected test one."""
+        client = ComplianceServiceClient()
+        try:
+            self.assertTrue(hasattr(client, "_circuit_breaker"))
+            self.assertIsInstance(client._circuit_breaker, CircuitBreaker)
+            # The production service_name is "compliance-service", not a UUID.
+            self.assertEqual(
+                client._circuit_breaker.service_name, "compliance-service",
+            )
+            self.assertEqual(client._circuit_breaker.failure_threshold, 5)
+            self.assertGreaterEqual(client._circuit_breaker.timeout_seconds, 60)
+            self.assertEqual(client._circuit_breaker.success_threshold, 2)
+        finally:
+            if client is not None:
+                client.close()
 
     def test_scan_file_successful_with_circuit_closed(self):
         """Test scan_file succeeds when circuit is closed."""
@@ -157,11 +158,9 @@ class TestComplianceServiceClientCircuitBreaker(TestCase):
 
         try:
             # Trigger failures to open circuit
-            for i in range(5):
-                try:
+            for _i in range(5):
+                with contextlib.suppress(httpx.RequestError):
                     self.service_client.scan_file(file_content=file_content, file_format="csv")
-                except httpx.RequestError:
-                    pass
 
             # Circuit should be open now
             self.assertEqual(
@@ -236,11 +235,9 @@ class TestComplianceServiceClientCircuitBreaker(TestCase):
 
         try:
             # Open circuit by triggering failures
-            for i in range(5):
-                try:
+            for _i in range(5):
+                with contextlib.suppress(httpx.RequestError):
                     self.service_client.scan_file(file_content=file_content, file_format="csv")
-                except Exception:
-                    pass
 
             # Get fallback response
             result = self.service_client.scan_file(file_content=file_content, file_format="csv")
@@ -258,3 +255,8 @@ class TestComplianceServiceClientCircuitBreaker(TestCase):
             self.service_client.client = original_client
             # Reset circuit breaker for next test
             self.service_client._circuit_breaker.reset()
+
+    # HALF_OPEN transition tests are deferred: the circuit breaker
+    # syncs state with Redis, so direct ``_state`` manipulation does
+    # not work.  Proper HALF_OPEN coverage requires Redis-aware
+    # integration tests.

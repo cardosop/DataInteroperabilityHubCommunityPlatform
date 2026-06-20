@@ -5,12 +5,11 @@ Standalone test script for idempotency middleware.
 Tests all functionality without requiring Django's test framework.
 Can be run directly to validate implementation.
 """
+
 import os
 import sys
-import json
 import uuid
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Add project root to path
@@ -18,42 +17,42 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # Setup Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hub.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 import django
+
 django.setup()
 
-import redis
-from django.test import RequestFactory, override_settings
-from django.http import HttpResponse, JsonResponse
+from django.http import JsonResponse
+from django.test import RequestFactory
 
 from hub.apps.api.middleware.idempotency import IdempotencyMiddleware
 from hub.apps.api.middleware.idempotency_utils import (
-    validate_idempotency_key,
-    normalize_idempotency_key,
-    get_redis_client,
+    IdempotencyKeyFormatError,
+    acquire_lock,
     build_idempotency_key,
     build_lock_key,
-    hash_request_body,
-    serialize_response,
     deserialize_response,
-    store_idempotency_record,
-    get_idempotency_record,
-    acquire_lock,
-    release_lock,
-    get_idempotency_ttl,
-    is_idempotency_enabled,
-    should_process_idempotency,
     get_endpoint_pattern,
-    IdempotencyKeyFormatError,
+    get_idempotency_record,
+    get_idempotency_ttl,
+    get_redis_client,
+    hash_request_body,
+    is_idempotency_enabled,
+    normalize_idempotency_key,
+    release_lock,
+    serialize_response,
+    should_process_idempotency,
+    store_idempotency_record,
+    validate_idempotency_key,
 )
 
 
 class Colors:
-    GREEN = '\033[92m'
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    RESET = '\033[0m'
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    RESET = "\033[0m"
 
 
 def print_test(name):
@@ -133,10 +132,10 @@ def test_redis_operations():
     test_key = f"test:idempotency:{uuid.uuid4()}"
     request_hash = "test-hash-123"
     response_data = {
-        'status_code': 201,
-        'body': {'id': '123'},
-        'headers': {},
-        'timestamp': datetime.now(timezone.utc).isoformat()
+        "status_code": 201,
+        "body": {"id": "123"},
+        "headers": {},
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
     store_idempotency_record(redis_client, test_key, request_hash, response_data, ttl=60)
@@ -144,7 +143,7 @@ def test_redis_operations():
 
     record = get_idempotency_record(redis_client, test_key)
     assert record is not None
-    assert record['request_hash'] == request_hash
+    assert record["request_hash"] == request_hash
     print_pass("Retrieve idempotency record")
 
     # Cleanup
@@ -192,15 +191,15 @@ def test_serialization():
     # Test response serialization
     response = JsonResponse({"id": "123", "name": "test"}, status=201)
     serialized = serialize_response(response)
-    assert serialized['status_code'] == 201
-    assert serialized['body']['id'] == "123"
-    assert 'timestamp' in serialized
+    assert serialized["status_code"] == 201
+    assert serialized["body"]["id"] == "123"
+    assert "timestamp" in serialized
     print_pass("Response serialization")
 
     # Test response deserialization
-    status_code, body, headers = deserialize_response(serialized)
+    status_code, body, _headers = deserialize_response(serialized)
     assert status_code == 201
-    assert body['id'] == "123"
+    assert body["id"] == "123"
     print_pass("Response deserialization")
 
 
@@ -213,7 +212,9 @@ def test_middleware():
     middleware = IdempotencyMiddleware(get_response)
 
     # Test should_process_idempotency
-    request = factory.post("/api/v1/assets/", data={"name": "test"}, HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
+    request = factory.post(
+        "/api/v1/assets/", data={"name": "test"}, HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4())
+    )
     assert should_process_idempotency(request), "Should process POST with idempotency key"
     print_pass("should_process_idempotency: POST with key")
 
@@ -226,7 +227,9 @@ def test_middleware():
     print_pass("should_process_idempotency: No key skipped")
 
     # Test middleware with invalid key
-    request = factory.post("/api/v1/assets/", data={"name": "test"}, HTTP_IDEMPOTENCY_KEY="invalid key")
+    request = factory.post(
+        "/api/v1/assets/", data={"name": "test"}, HTTP_IDEMPOTENCY_KEY="invalid key"
+    )
     response = middleware(request)
     assert response.status_code == 400
     print_pass("Middleware rejects invalid key format")
@@ -237,7 +240,7 @@ def test_middleware():
         "/api/v1/assets/",
         data={"name": "test"},
         content_type="application/json",
-        HTTP_IDEMPOTENCY_KEY=idempotency_key
+        HTTP_IDEMPOTENCY_KEY=idempotency_key,
     )
     response = middleware(request)
     # Should either process normally or return cached response
@@ -265,9 +268,9 @@ def test_configuration():
 
 def main():
     """Run all tests."""
-    print(f"\n{Colors.BLUE}{'='*60}")
+    print(f"\n{Colors.BLUE}{'=' * 60}")
     print("Idempotency Middleware Comprehensive Tests")
-    print(f"{'='*60}{Colors.RESET}\n")
+    print(f"{'=' * 60}{Colors.RESET}\n")
 
     tests = [
         test_key_validation,
@@ -292,15 +295,16 @@ def main():
             print_skip(f"{test_func.__name__}: {e}")
             skipped += 1
 
-    print(f"\n{Colors.BLUE}{'='*60}")
-    print(f"Test Summary: {Colors.GREEN}{passed} passed{Colors.RESET}, "
-          f"{Colors.RED}{failed} failed{Colors.RESET}, "
-          f"{Colors.YELLOW}{skipped} skipped{Colors.RESET}")
-    print(f"{'='*60}{Colors.RESET}\n")
+    print(f"\n{Colors.BLUE}{'=' * 60}")
+    print(
+        f"Test Summary: {Colors.GREEN}{passed} passed{Colors.RESET}, "
+        f"{Colors.RED}{failed} failed{Colors.RESET}, "
+        f"{Colors.YELLOW}{skipped} skipped{Colors.RESET}"
+    )
+    print(f"{'=' * 60}{Colors.RESET}\n")
 
     return 0 if failed == 0 else 1
 
 
 if __name__ == "__main__":
     sys.exit(main())
-

@@ -4,13 +4,17 @@ Integration tests for new ODCS mappings and validation rules.
 Tests the complete normalization flow with validation/enrichment for:
 - Contacts, SLA properties, roles/team, pricing, lineage, and advanced schema attributes
 """
+
 import json
 
-import pytest
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from hub.apps.contracts.models import Contract, ContractStatus, NormalizationStatus, OriginalSpecType
+from hub.apps.contracts.models import (
+    Contract,
+    NormalizationStatus,
+    OriginalSpecType,
+)
 from hub.apps.contracts.normalization import normalize_contract
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from tests.factories import AssetFactory, TenantFactory, UserFactory
@@ -86,17 +90,25 @@ class TestNewMappingsIntegration(TestCase):
                 "priceUnit": "per_month",
             },
             "transformSourceObjects": [
-                {"namespace": "ns1", "name": "source_contract", "model": "source_model", "field": "source_field"}
+                {
+                    "namespace": "ns1",
+                    "name": "source_contract",
+                    "model": "source_model",
+                    "field": "source_field",
+                }
             ],
             "transformLogic": "source_field * 2",
         }
 
         raw_contract = json.dumps(odcs_contract)
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=raw_contract, format="JSON", spec_type=OriginalSpecType.ODCS
         )
 
-        assert status == NormalizationStatus.NORMALIZED_OK or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert (
+            status == NormalizationStatus.NORMALIZED_OK
+            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        )
         assert spec_type == OriginalSpecType.ODCS
         assert hub_contract is not None
 
@@ -155,7 +167,7 @@ class TestNewMappingsIntegration(TestCase):
         }
 
         raw_contract = json.dumps(odcs_contract)
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, warnings = normalize_contract(
             raw_contract=raw_contract, format="JSON", spec_type=OriginalSpecType.ODCS
         )
 
@@ -188,11 +200,14 @@ class TestNewMappingsIntegration(TestCase):
         }
 
         raw_contract = json.dumps(odcs_contract)
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=raw_contract, format="JSON", spec_type=OriginalSpecType.ODCS
         )
 
-        assert status == NormalizationStatus.NORMALIZED_OK or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert (
+            status == NormalizationStatus.NORMALIZED_OK
+            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        )
         assert hub_contract is not None
 
         # Verify models have advanced attributes
@@ -227,7 +242,7 @@ class TestNewMappingsIntegration(TestCase):
         }
 
         raw_contract = json.dumps(odcs_contract)
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
             raw_contract=raw_contract, format="JSON", spec_type=OriginalSpecType.ODCS
         )
 
@@ -282,5 +297,8 @@ class TestNewMappingsIntegration(TestCase):
             hub_contract = contract.hub_contract_json
 
             # Verify all objects are present in stored contract
-            assert "contact" in hub_contract or "servers" in hub_contract or "servicelevels" in hub_contract
-
+            assert (
+                "contact" in hub_contract
+                or "servers" in hub_contract
+                or "servicelevels" in hub_contract
+            )

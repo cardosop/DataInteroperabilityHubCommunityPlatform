@@ -7,10 +7,12 @@ changes as BREAKING or WARNING, finds downstream pipeline dependencies
 via the resolver, and emits CONTRACT_DRIFT_DETECTED audit events +
 batched webhook alerts.
 """
+
 from __future__ import annotations
+
 import json
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 from django.db.models import Q
 
@@ -29,22 +31,29 @@ class DriftSeverity:
 
 
 # Field-level change types that constitute breaking changes.
-_BREAKING_CHANGE_TYPES: frozenset[str] = frozenset({
-    "field_removed",
-    "type_changed_incompatible",
-    "not_null_added",
-})
+_BREAKING_CHANGE_TYPES: frozenset[str] = frozenset(
+    {
+        "field_removed",
+        "type_changed_incompatible",
+        "not_null_added",
+    }
+)
 
-_WARNING_CHANGE_TYPES: frozenset[str] = frozenset({
-    "field_added",
-    "constraint_removed",
-    "type_widened",
-})
+_WARNING_CHANGE_TYPES: frozenset[str] = frozenset(
+    {
+        "field_added",
+        "constraint_removed",
+        "type_widened",
+    }
+)
 
 # Compatible type widening — old_type → new_type is safe.
 _COMPATIBLE_WIDENING: set[Tuple[str, str]] = {
-    ("int", "bigint"), ("int", "float"), ("float", "double"),
-    ("varchar", "text"), ("string", "text"),
+    ("int", "bigint"),
+    ("int", "float"),
+    ("float", "double"),
+    ("varchar", "text"),
+    ("string", "text"),
 }
 
 
@@ -58,8 +67,8 @@ class ContractDriftDetector:
     def detect(
         self,
         contract,
-        new_schema: List[Dict[str, Any]] | None = None,
-    ) -> Dict[str, Any]:
+        new_schema: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Compare the contract's current schema against the previous version.
 
         If *new_schema* is omitted, extracts it from
@@ -83,8 +92,7 @@ class ContractDriftDetector:
         old_version = contract.version
         # Find the previous version for this asset.
         previous = (
-            Contract.objects
-            .filter(
+            Contract.objects.filter(
                 tenant_id=self.tenant_id,
                 asset_id=contract.asset_id,
                 version__lt=old_version,
@@ -114,7 +122,7 @@ class ContractDriftDetector:
     def alert_downstream(
         self,
         contract,
-        drift_report: Dict[str, Any],
+        drift_report: dict[str, Any],
     ) -> int:
         """Find downstream pipelines of this contract's asset and
         emit CONTRACT_DRIFT_DETECTED audit events + webhook alerts.
@@ -172,7 +180,7 @@ class ContractDriftDetector:
     # ── Internal helpers ────────────────────────────────────────────
 
     @staticmethod
-    def _extract_schema(contract) -> List[Dict[str, Any]]:
+    def _extract_schema(contract) -> list[dict[str, Any]]:
         """Extract field definitions from hub_contract_json."""
         hc = contract.hub_contract_json or {}
         models = hc.get("models", [])
@@ -180,31 +188,37 @@ class ContractDriftDetector:
             return []
         fields = []
         for model in models:
-            for field in (model.get("fields") or []):
-                fields.append({
-                    "name": field.get("name", ""),
-                    "type": field.get("type", field.get("data_type", "")),
-                    "nullable": field.get("nullable", True),
-                })
+            for field in model.get("fields") or []:
+                fields.append(
+                    {
+                        "name": field.get("name", ""),
+                        "type": field.get("type", field.get("data_type", "")),
+                        "nullable": field.get("nullable", True),
+                    }
+                )
         return fields
 
     @staticmethod
     def _diff_schemas(
-        old: List[Dict], new: List[Dict],
-    ) -> List[Dict[str, Any]]:
+        old: list[dict],
+        new: list[dict],
+    ) -> list[dict[str, Any]]:
         """Diff two field lists and classify changes."""
         old_by_name = {f["name"]: f for f in old}
         new_by_name = {f["name"]: f for f in new}
-        changes: List[Dict[str, Any]] = []
+        changes: list[dict[str, Any]] = []
 
         # Detect removals and type changes.
         for name, old_field in old_by_name.items():
             if name not in new_by_name:
-                changes.append({
-                    "field": name, "change": "field_removed",
-                    "severity": DriftSeverity.BREAKING,
-                    "detail": f"Field '{name}' was removed",
-                })
+                changes.append(
+                    {
+                        "field": name,
+                        "change": "field_removed",
+                        "severity": DriftSeverity.BREAKING,
+                        "detail": f"Field '{name}' was removed",
+                    }
+                )
                 continue
 
             new_field = new_by_name[name]
@@ -213,41 +227,56 @@ class ContractDriftDetector:
 
             if old_type != new_type:
                 if (old_type, new_type) in _COMPATIBLE_WIDENING:
-                    changes.append({
-                        "field": name, "change": "type_widened",
-                        "severity": DriftSeverity.WARNING,
-                        "detail": f"Type widened: {old_type} → {new_type}",
-                    })
+                    changes.append(
+                        {
+                            "field": name,
+                            "change": "type_widened",
+                            "severity": DriftSeverity.WARNING,
+                            "detail": f"Type widened: {old_type} → {new_type}",
+                        }
+                    )
                 else:
-                    changes.append({
-                        "field": name, "change": "type_changed_incompatible",
-                        "severity": DriftSeverity.BREAKING,
-                        "detail": f"Incompatible type change: {old_type} → {new_type}",
-                    })
+                    changes.append(
+                        {
+                            "field": name,
+                            "change": "type_changed_incompatible",
+                            "severity": DriftSeverity.BREAKING,
+                            "detail": f"Incompatible type change: {old_type} → {new_type}",
+                        }
+                    )
 
             # Detect not_null_added.
             if not old_field.get("nullable", True) and new_field.get("nullable", True) is False:
                 pass  # already not-null
             elif old_field.get("nullable", True) and not new_field.get("nullable", True):
-                changes.append({
-                    "field": name, "change": "not_null_added",
-                    "severity": DriftSeverity.BREAKING,
-                    "detail": f"NOT NULL constraint added to '{name}'",
-                })
+                changes.append(
+                    {
+                        "field": name,
+                        "change": "not_null_added",
+                        "severity": DriftSeverity.BREAKING,
+                        "detail": f"NOT NULL constraint added to '{name}'",
+                    }
+                )
 
         # Detect additions.
         for name in new_by_name:
             if name not in old_by_name:
-                changes.append({
-                    "field": name, "change": "field_added",
-                    "severity": DriftSeverity.WARNING,
-                    "detail": f"Field '{name}' was added",
-                })
+                changes.append(
+                    {
+                        "field": name,
+                        "change": "field_added",
+                        "severity": DriftSeverity.WARNING,
+                        "detail": f"Field '{name}' was added",
+                    }
+                )
 
         return changes
 
     def _emit_drift_alert(
-        self, dep, contract, drift_report: Dict[str, Any],
+        self,
+        dep,
+        contract,
+        drift_report: dict[str, Any],
     ) -> None:
         """Emit an alert for a single downstream dependency."""
         # Audit event per downstream.
@@ -272,23 +301,25 @@ class ContractDriftDetector:
             self._post_webhook_alert(dep, drift_report)
 
     @staticmethod
-    def _post_webhook_alert(dep, drift_report: Dict[str, Any]) -> None:
+    def _post_webhook_alert(dep, drift_report: dict[str, Any]) -> None:
         """POST a drift alert to the configured webhook URL (best-effort)."""
         try:
-            import hmac
             import hashlib
+            import hmac
             import time
 
             import httpx
 
-            body = json.dumps({
-                "event": "CONTRACT_DRIFT_DETECTED",
-                "dependency_id": str(dep.id),
-                "downstream_type": dep.downstream_pipeline_type,
-                "downstream_id": str(dep.downstream_pipeline_id),
-                "breaking_count": drift_report["breaking_count"],
-                "changes": drift_report["changes"][:10],
-            }).encode("utf-8")
+            body = json.dumps(
+                {
+                    "event": "CONTRACT_DRIFT_DETECTED",
+                    "dependency_id": str(dep.id),
+                    "downstream_type": dep.downstream_pipeline_type,
+                    "downstream_id": str(dep.downstream_pipeline_id),
+                    "breaking_count": drift_report["breaking_count"],
+                    "changes": drift_report["changes"][:10],
+                }
+            ).encode("utf-8")
             timestamp = str(int(time.time()))
             # HMAC signature using INTERNAL_PAYLOAD_SECRET.
             secret = _get_internal_secret()
@@ -320,6 +351,7 @@ class ContractDriftDetector:
 def _get_internal_secret() -> str:
     """Return the internal payload signing secret."""
     import os
+
     return os.environ.get(
         "INTERNAL_PAYLOAD_SECRET",
         "meshant-internal-default",

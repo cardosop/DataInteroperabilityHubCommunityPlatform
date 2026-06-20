@@ -3,12 +3,11 @@ Unit tests for Asset Popularity Metrics
 
 Tests for view/download tracking and popularity score calculation.
 """
-import uuid
 
+import uuid
 from datetime import timedelta
 
 import pytest
-from django.db.models import F
 from django.test import TestCase
 from django.utils import timezone
 
@@ -28,7 +27,10 @@ class AssetPopularityServiceTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -100,24 +102,15 @@ class AssetPopularityServiceTest(TestCase):
         self.asset.refresh_from_db()
         self.assertEqual(self.asset.view_count, initial_view_count + 1)
 
-    def test_calculate_popularity_score_returns_score(self):
-        """Test calculate_popularity_score returns a score."""
-        self.asset.view_count = 100
-        self.asset.download_count = 50
-        self.asset.status = AssetStatus.PUBLIC
-        self.asset.save()
-
-        score = AssetPopularityService.calculate_popularity_score(self.asset)
-        self.assertIsNotNone(score)
-
     def test_calculate_popularity_score_returns_score_in_range(self):
-        """Test calculate_popularity_score returns score between 0 and 100."""
+        """calculate_popularity_score returns a numeric score in [0, 100]."""
         self.asset.view_count = 100
         self.asset.download_count = 50
         self.asset.status = AssetStatus.PUBLIC
         self.asset.save()
 
         score = AssetPopularityService.calculate_popularity_score(self.asset)
+        self.assertIsInstance(score, float)
         self.assertGreaterEqual(score, 0.0)
         self.assertLessEqual(score, 100.0)
 
@@ -133,8 +126,11 @@ class AssetPopularityServiceTest(TestCase):
         self.assertEqual(self.asset.popularity_score, score)
 
     def test_calculate_popularity_score_with_recency(self):
-        """Test popularity score with recency bonus"""
-        # Create recent search clicks
+        """Recency bonus: an asset with recent SearchAnalytics clicks
+        scores strictly higher than an otherwise-identical asset
+        with no recent clicks. Both assets share the same status so
+        status bonuses don't confound the comparison."""
+        # Create recent search clicks for self.asset.
         SearchAnalytics.objects.create(
             tenant=self.tenant,
             user=self.user,
@@ -144,14 +140,35 @@ class AssetPopularityServiceTest(TestCase):
             clicked_at=timezone.now() - timedelta(days=1),
         )
 
+        self.asset.status = AssetStatus.PUBLIC
         self.asset.view_count = 50
         self.asset.download_count = 25
         self.asset.save()
+        score_with_recency = AssetPopularityService.calculate_popularity_score(
+            self.asset
+        )
 
-        score = AssetPopularityService.calculate_popularity_score(self.asset)
+        # Control asset: same counts + status, no SearchAnalytics clicks.
+        control = Asset.objects.create(
+            tenant=self.tenant,
+            key=f"control-{uuid.uuid4().hex[:8]}",
+            name="Control Asset",
+            status=AssetStatus.PUBLIC,
+            view_count=50,
+            download_count=25,
+            created_by=self.user,
+        )
+        score_without_recency = AssetPopularityService.calculate_popularity_score(
+            control
+        )
 
-        # Should have recency bonus
-        self.assertGreater(score, 0.0)
+        self.assertGreater(
+            score_with_recency,
+            score_without_recency,
+            "Asset with recent clicks must score higher than an "
+            "otherwise-identical asset with no recent clicks — the "
+            "recency bonus is not being applied.",
+        )
 
     def test_recalculate_all_popularity_scores_returns_correct_count(self):
         """Test recalculating all popularity scores returns correct count."""
@@ -187,6 +204,8 @@ class AssetPopularityServiceTest(TestCase):
         assets = Asset.objects.filter(tenant=self.tenant)
         for asset in assets:
             self.assertIsNotNone(asset.popularity_score)
+            self.assertGreaterEqual(asset.popularity_score, 0.0)
+            self.assertLessEqual(asset.popularity_score, 100.0)
 
     # ========== FAILURE SCENARIOS ==========
 
@@ -206,33 +225,38 @@ class AssetPopularityServiceTest(TestCase):
 
         score = AssetPopularityService.calculate_popularity_score(self.asset)
 
-        # Should return score (may be 0 or minimum)
-        self.assertIsNotNone(score)
-        self.assertGreaterEqual(score, 0.0)
+        self.assertGreaterEqual(score, 0.0, "Zero-counts score must be >= 0")
 
     # ========== EDGE CASES ==========
 
     def test_calculate_popularity_score_very_high_counts(self):
-        """Test popularity score with very high counts (edge case)"""
+        """Popularity score with very high counts caps at 100
+        and stays within the valid range."""
         self.asset.view_count = 999999
         self.asset.download_count = 999999
         self.asset.status = AssetStatus.PUBLIC
         self.asset.save()
 
         score = AssetPopularityService.calculate_popularity_score(self.asset)
-
-        # Should handle very high counts gracefully
-        self.assertIsNotNone(score)
-        self.assertLessEqual(score, 100.0)  # Should cap at 100
+        self.assertGreaterEqual(score, 0.0)
+        self.assertLessEqual(score, 100.0)  # Must cap at 100
 
     def test_calculate_popularity_score_negative_counts(self):
-        """Negative counts produce a numeric score (not clamped by service)."""
+        """Negative counts produce a numeric score that is not NaN or Inf.
+        The service does NOT currently clamp negative inputs, so the
+        score may be negative — this test documents the current behaviour
+        and guards against NaN/Inf (which would break downstream)."""
+        import math
+
         self.asset.view_count = -1
         self.asset.download_count = -1
         self.asset.save()
 
         score = AssetPopularityService.calculate_popularity_score(self.asset)
         self.assertIsInstance(score, float)
+        self.assertFalse(math.isnan(score), "Score must not be NaN")
+        self.assertFalse(math.isinf(score), "Score must not be infinite")
+        self.assertLessEqual(score, 100.0, "Score must not exceed the cap")
 
     def test_recalculate_all_popularity_scores_empty_tenant(self):
         """Test recalculating scores for tenant with no assets (edge case)"""
@@ -256,10 +280,11 @@ class AssetPopularityServiceTest(TestCase):
         self.assertGreaterEqual(self.asset.view_count, 1)
 
     def test_calculate_popularity_score_succeeds_with_valid_asset(self):
-        """Test that calculate_popularity_score succeeds with a valid asset."""
+        """calculate_popularity_score succeeds with a valid asset,
+        returning a score in [0, 100]."""
         score = AssetPopularityService.calculate_popularity_score(self.asset)
-        self.assertIsNotNone(score)
         self.assertGreaterEqual(score, 0.0)
+        self.assertLessEqual(score, 100.0)
 
     def test_recalculate_all_popularity_scores_succeeds_with_valid_tenant(self):
         """Test that recalculate_all_popularity_scores succeeds with a valid tenant."""

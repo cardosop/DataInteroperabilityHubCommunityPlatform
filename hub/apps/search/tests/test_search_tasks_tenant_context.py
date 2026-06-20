@@ -25,11 +25,12 @@ The fail-loud expectation is identical to the other nine worker-module
 tests so a regression in any module produces a uniform, recognisable
 failure mode.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.test import TestCase
 
 from hub.apps.search.tasks import _run_with_tenant_context
@@ -51,9 +52,7 @@ class SearchTasksTenantContextTest(TestCase):
         # set. ``NULLIF(..., '')::uuid`` turns an unset/empty GUC into
         # NULL, which the equality test then refuses to match.
         return Tenant.objects.extra(
-            where=[
-                "id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid"
-            ]
+            where=["id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid"]
         ).get(id=self.tenant.id)
 
     @pytest.mark.integration

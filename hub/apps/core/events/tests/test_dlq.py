@@ -11,31 +11,33 @@ Tests cover:
 
 All tests use real implementations (no mocks/stubs) per requirements.
 """
+
 import uuid
 from datetime import timedelta
-from django.test import TestCase, override_settings
-from django.contrib.auth import get_user_model
-from django.db import connection
-from django.core.cache import cache
-from django.urls import reverse
-from django.core.management import call_command
-from django.utils import timezone
 from io import StringIO
-from rest_framework.test import APIClient
-from rest_framework import status
 
-from hub.apps.core.events.bus import get_event_bus
-from hub.apps.core.events.models import Event, DeadLetterQueue
-from hub.apps.core.events.dlq_processor import (
-    retry_dlq_entry,
-    resolve_dlq_entry,
-    process_dlq_entries,
-    should_retry_dlq_entry,
-    calculate_retry_delay,
-    DEFAULT_MAX_RETRIES,
-)
-from hub.apps.core.events.service_publishers import ODPSEventPublisher
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.core.management import call_command
+from django.db import connection
+from django.test import TestCase, override_settings
+from django.urls import reverse
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.test import APIClient
+
 from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.core.events.bus import get_event_bus
+from hub.apps.core.events.dlq_processor import (
+    DEFAULT_MAX_RETRIES,
+    calculate_retry_delay,
+    process_dlq_entries,
+    resolve_dlq_entry,
+    retry_dlq_entry,
+    should_retry_dlq_entry,
+)
+from hub.apps.core.events.models import DeadLetterQueue, Event
+from hub.apps.core.events.service_publishers import ODPSEventPublisher
 from hub.apps.tenants.models import Tenant, TenantPlan
 from hub.apps.users.models import Role, UserStatus
 
@@ -69,7 +71,7 @@ class DLQProcessorTest(TestCase):
         self.tenant = Tenant.objects.create(
             id=self.tenant_id,
             name=f"Test Tenant {uuid.uuid4()}",
-            slug=f"test-tenant-{uuid.uuid4()}"
+            slug=f"test-tenant-{uuid.uuid4()}",
         )
 
         # Create user
@@ -77,7 +79,7 @@ class DLQProcessorTest(TestCase):
             id=self.user_id,
             email=f"test-{uuid.uuid4()}@example.com",
             password="testpass123",
-            tenant=self.tenant
+            tenant=self.tenant,
         )
 
         # Create subscription so middleware doesn't block write ops
@@ -89,7 +91,7 @@ class DLQProcessorTest(TestCase):
                     "plan": free_plan,
                     "status": SubscriptionStatus.ACTIVE,
                     "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
-                }
+                },
             )
 
         # Create event bus
@@ -108,16 +110,12 @@ class DLQProcessorTest(TestCase):
         publisher.user_id = self.user_id
 
         from hub.apps.core.events.publisher import EventPublisher
+
         publisher._event_publisher = EventPublisher(
-            service_name="test_service",
-            tenant_id=self.tenant_id,
-            user_id=self.user_id
+            service_name="test_service", tenant_id=self.tenant_id, user_id=self.user_id
         )
 
-        event_id = publisher.publish_odps_created(
-            contract_id=str(uuid.uuid4()),
-            status="DRAFT"
-        )
+        event_id = publisher.publish_odps_created(contract_id=str(uuid.uuid4()), status="DRAFT")
         return event_id
 
     def test_create_dlq_entry(self):
@@ -132,7 +130,7 @@ class DLQProcessorTest(TestCase):
                 "tenant_id": self.tenant_id,
             },
             "data": {"contract_id": str(uuid.uuid4())},
-            "metadata": {}
+            "metadata": {},
         }
 
         dlq_entry = DeadLetterQueue.objects.create(
@@ -141,7 +139,7 @@ class DLQProcessorTest(TestCase):
             subscriber="test_subscriber",
             error_message="Test error",
             error_details={"traceback": "test traceback"},
-            retry_count=0
+            retry_count=0,
         )
 
         self.assertIsNotNone(dlq_entry.id)
@@ -171,12 +169,12 @@ class DLQProcessorTest(TestCase):
                     "tenant_id": str(event_data.tenant_id),
                 },
                 "data": event_data.data,
-                "metadata": event_data.metadata or {}
+                "metadata": event_data.metadata or {},
             },
             event_type=event_data.event_type,
             subscriber="test_subscriber",
             error_message="Test error",
-            retry_count=0
+            retry_count=0,
         )
         # Set last_attempt_at far enough back to pass the backoff check
         # (base delay for retry_count=0 is 60s, so 300s ensures we pass easily)
@@ -206,7 +204,7 @@ class DLQProcessorTest(TestCase):
             event_type="odps.created",
             subscriber="test_subscriber",
             error_message="Test error",
-            retry_count=DEFAULT_MAX_RETRIES
+            retry_count=DEFAULT_MAX_RETRIES,
         )
 
         success, error_msg = retry_dlq_entry(str(dlq_entry.id))
@@ -221,7 +219,7 @@ class DLQProcessorTest(TestCase):
             event_type="odps.created",
             subscriber="test_subscriber",
             error_message="Test error",
-            resolved_at=timezone.now()
+            resolved_at=timezone.now(),
         )
 
         success, error_msg = retry_dlq_entry(str(dlq_entry.id))
@@ -235,13 +233,11 @@ class DLQProcessorTest(TestCase):
             event={"event_id": str(uuid.uuid4()), "event_type": "odps.created", "data": {}},
             event_type="odps.created",
             subscriber="test_subscriber",
-            error_message="Test error"
+            error_message="Test error",
         )
 
         success, error_msg = resolve_dlq_entry(
-            str(dlq_entry.id),
-            user_id=str(self.user_id),
-            resolution_notes="Manually resolved"
+            str(dlq_entry.id), user_id=str(self.user_id), resolution_notes="Manually resolved"
         )
 
         self.assertTrue(success)
@@ -251,7 +247,7 @@ class DLQProcessorTest(TestCase):
         dlq_entry.refresh_from_db()
         self.assertIsNotNone(dlq_entry.resolved_at)
         self.assertEqual(str(dlq_entry.resolved_by), str(self.user_id))
-        self.assertEqual(dlq_entry.error_details.get('resolution_notes'), "Manually resolved")
+        self.assertEqual(dlq_entry.error_details.get("resolution_notes"), "Manually resolved")
 
     def test_should_retry_dlq_entry(self):
         """Test should_retry_dlq_entry logic."""
@@ -261,7 +257,7 @@ class DLQProcessorTest(TestCase):
             event_type="odps.created",
             subscriber="test_subscriber",
             error_message="Test error",
-            retry_count=0
+            retry_count=0,
         )
         # Set last_attempt_at far enough back (base delay for retry_count=0 is 60s)
         old_time = timezone.now() - timedelta(seconds=300)
@@ -275,7 +271,7 @@ class DLQProcessorTest(TestCase):
             event_type="odps.created",
             subscriber="test_subscriber",
             error_message="Test error",
-            retry_count=DEFAULT_MAX_RETRIES
+            retry_count=DEFAULT_MAX_RETRIES,
         )
         self.assertFalse(should_retry_dlq_entry(entry2))
 
@@ -285,7 +281,7 @@ class DLQProcessorTest(TestCase):
             event_type="odps.created",
             subscriber="test_subscriber",
             error_message="Test error",
-            resolved_at=timezone.now()
+            resolved_at=timezone.now(),
         )
         self.assertFalse(should_retry_dlq_entry(entry3))
 
@@ -317,20 +313,22 @@ class DLQProcessorTest(TestCase):
                 event_type="odps.created",
                 subscriber="test_subscriber",
                 error_message=f"Test error {i}",
-                retry_count=0
+                retry_count=0,
             )
             entries.append(entry)
         # Set last_attempt_at far enough back to pass the backoff check for all entries
         # (base delay for retry_count=0 is 60s, so 300s ensures we pass easily)
         old_time = timezone.now() - timedelta(seconds=300)
-        DeadLetterQueue.objects.filter(id__in=[e.id for e in entries]).update(last_attempt_at=old_time)
+        DeadLetterQueue.objects.filter(id__in=[e.id for e in entries]).update(
+            last_attempt_at=old_time
+        )
 
         # Process entries (dry run)
         results = process_dlq_entries(max_entries=10, dry_run=True)
 
-        self.assertEqual(results['total_found'], 5)
-        self.assertEqual(results['processed'], 5)
-        self.assertEqual(results['succeeded'], 0)  # Dry run doesn't actually retry
+        self.assertEqual(results["total_found"], 5)
+        self.assertEqual(results["processed"], 5)
+        self.assertEqual(results["succeeded"], 0)  # Dry run doesn't actually retry
 
 
 @override_settings(
@@ -350,7 +348,7 @@ class DLQCommandTest(TestCase):
         self.tenant = Tenant.objects.create(
             id=self.tenant_id,
             name=f"Test Tenant {uuid.uuid4()}",
-            slug=f"test-tenant-{uuid.uuid4()}"
+            slug=f"test-tenant-{uuid.uuid4()}",
         )
 
         cache.clear()
@@ -368,16 +366,16 @@ class DLQCommandTest(TestCase):
                 event_type="odps.created",
                 subscriber="test_subscriber",
                 error_message=f"Test error {i}",
-                retry_count=0
+                retry_count=0,
             )
 
         # Run command in dry-run mode
         out = StringIO()
-        call_command('process_dlq', '--dry-run', stdout=out)
+        call_command("process_dlq", "--dry-run", stdout=out)
 
         output = out.getvalue()
-        self.assertIn('DRY RUN MODE', output)
-        self.assertIn('Found 3', output)
+        self.assertIn("DRY RUN MODE", output)
+        self.assertIn("Found 3", output)
 
     def test_process_dlq_command_with_filters(self):
         """Test DLQ command with filters."""
@@ -387,22 +385,22 @@ class DLQCommandTest(TestCase):
             event_type="odps.created",
             subscriber="test_subscriber",
             error_message="Test error",
-            retry_count=0
+            retry_count=0,
         )
         DeadLetterQueue.objects.create(
             event={"event_id": str(uuid.uuid4()), "event_type": "odps.updated", "data": {}},
             event_type="odps.updated",
             subscriber="test_subscriber",
             error_message="Test error",
-            retry_count=0
+            retry_count=0,
         )
 
         # Run command with event_type filter
         out = StringIO()
-        call_command('process_dlq', '--event-type', 'odps.created', '--dry-run', stdout=out)
+        call_command("process_dlq", "--event-type", "odps.created", "--dry-run", stdout=out)
 
         output = out.getvalue()
-        self.assertIn('Found 1', output)
+        self.assertIn("Found 1", output)
 
     def test_process_dlq_command_resolve(self):
         """Test DLQ command resolve option."""
@@ -410,12 +408,12 @@ class DLQCommandTest(TestCase):
             event={"event_id": str(uuid.uuid4()), "event_type": "odps.created", "data": {}},
             event_type="odps.created",
             subscriber="test_subscriber",
-            error_message="Test error"
+            error_message="Test error",
         )
 
         # Resolve entry
         out = StringIO()
-        call_command('process_dlq', '--resolve', str(dlq_entry.id), stdout=out)
+        call_command("process_dlq", "--resolve", str(dlq_entry.id), stdout=out)
 
         # Verify entry was resolved
         dlq_entry.refresh_from_db()
@@ -445,7 +443,7 @@ class DLQAPITest(TestCase):
         self.tenant = Tenant.objects.create(
             id=self.tenant_id,
             name=f"Test Tenant {unique_suffix}",
-            slug=f"test-tenant-{unique_suffix}"
+            slug=f"test-tenant-{unique_suffix}",
         )
 
         # Create regular user
@@ -470,11 +468,9 @@ class DLQAPITest(TestCase):
         tenant_admin_role, _ = Role.objects.get_or_create(
             name="TENANT_ADMIN",
             tenant=self.tenant,
-            defaults={"description": "Tenant Administrator"}
+            defaults={"description": "Tenant Administrator"},
         )
-        self.admin_user.user_roles.create(
-            role=tenant_admin_role
-        )
+        self.admin_user.user_roles.create(role=tenant_admin_role)
 
         # Create subscription so middleware doesn't block write ops
         free_plan = TenantPlan.objects.filter(slug="free").first()
@@ -485,7 +481,7 @@ class DLQAPITest(TestCase):
                     "plan": free_plan,
                     "status": SubscriptionStatus.ACTIVE,
                     "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
-                }
+                },
             )
 
         # Create API client
@@ -504,21 +500,17 @@ class DLQAPITest(TestCase):
         publisher.user_id = self.user_id
 
         from hub.apps.core.events.publisher import EventPublisher
+
         publisher._event_publisher = EventPublisher(
-            service_name="test_service",
-            tenant_id=self.tenant_id,
-            user_id=self.user_id
+            service_name="test_service", tenant_id=self.tenant_id, user_id=self.user_id
         )
 
-        event_id = publisher.publish_odps_created(
-            contract_id=str(uuid.uuid4()),
-            status="DRAFT"
-        )
+        event_id = publisher.publish_odps_created(contract_id=str(uuid.uuid4()), status="DRAFT")
         return event_id
 
     def test_list_dlq_entries_unauthorized(self):
         """Test listing DLQ entries without authentication."""
-        url = reverse('events:dlq-list')
+        url = reverse("events:dlq-list")
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -526,7 +518,7 @@ class DLQAPITest(TestCase):
     def test_list_dlq_entries_forbidden(self):
         """Test listing DLQ entries without admin role."""
         self.client.force_authenticate(user=self.user)
-        url = reverse('events:dlq-list')
+        url = reverse("events:dlq-list")
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -540,18 +532,18 @@ class DLQAPITest(TestCase):
                 event_type="odps.created",
                 subscriber="test_subscriber",
                 error_message=f"Test error {i}",
-                retry_count=0
+                retry_count=0,
             )
 
         # Authenticate as admin
         self.client.force_authenticate(user=self.admin_user)
-        url = reverse('events:dlq-list')
+        url = reverse("events:dlq-list")
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('results', response.data)
-        self.assertIn('count', response.data)
-        self.assertEqual(len(response.data['results']), 5)
+        self.assertIn("results", response.data)
+        self.assertIn("count", response.data)
+        self.assertEqual(len(response.data["results"]), 5)
 
     def test_list_dlq_entries_with_filters(self):
         """Test listing DLQ entries with filters."""
@@ -561,31 +553,31 @@ class DLQAPITest(TestCase):
             event_type="odps.created",
             subscriber="subscriber1",
             error_message="Test error",
-            retry_count=0
+            retry_count=0,
         )
         DeadLetterQueue.objects.create(
             event={"event_id": str(uuid.uuid4()), "event_type": "odps.updated", "data": {}},
             event_type="odps.updated",
             subscriber="subscriber2",
             error_message="Test error",
-            retry_count=0
+            retry_count=0,
         )
 
         # Authenticate as admin
         self.client.force_authenticate(user=self.admin_user)
-        url = reverse('events:dlq-list')
+        url = reverse("events:dlq-list")
 
         # Filter by event_type
-        response = self.client.get(url, {'event_type': 'odps.created'})
+        response = self.client.get(url, {"event_type": "odps.created"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data['results']), 1)
-        self.assertEqual(response.data['results'][0]['event_type'], 'odps.created')
+        self.assertEqual(len(response.data["results"]), 1)
+        self.assertEqual(response.data["results"][0]["event_type"], "odps.created")
 
         # Filter by subscriber
-        response = self.client.get(url, {'subscriber': 'subscriber1'})
+        response = self.client.get(url, {"subscriber": "subscriber1"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data['results']), 1)
-        self.assertEqual(response.data['results'][0]['subscriber'], 'subscriber1')
+        self.assertEqual(len(response.data["results"]), 1)
+        self.assertEqual(response.data["results"][0]["subscriber"], "subscriber1")
 
     def test_retry_dlq_entry_success(self):
         """Test successfully retrying a DLQ entry via API."""
@@ -607,12 +599,12 @@ class DLQAPITest(TestCase):
                     "tenant_id": str(event_data.tenant_id),
                 },
                 "data": event_data.data,
-                "metadata": event_data.metadata or {}
+                "metadata": event_data.metadata or {},
             },
             event_type=event_data.event_type,
             subscriber="test_subscriber",
             error_message="Test error",
-            retry_count=0
+            retry_count=0,
         )
         # Set last_attempt_at far enough back to pass the backoff check
         old_time = timezone.now() - timedelta(seconds=300)
@@ -620,11 +612,11 @@ class DLQAPITest(TestCase):
 
         # Authenticate as admin
         self.client.force_authenticate(user=self.admin_user)
-        url = reverse('events:dlq-retry', kwargs={'dlq_id': dlq_entry.id})
+        url = reverse("events:dlq-retry", kwargs={"dlq_id": dlq_entry.id})
         response = self.client.post(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(response.data['success'])
+        self.assertTrue(response.data["success"])
 
         # Verify entry was updated
         dlq_entry.refresh_from_db()
@@ -634,11 +626,13 @@ class DLQAPITest(TestCase):
         """Test retrying a non-existent DLQ entry."""
         self.client.force_authenticate(user=self.admin_user)
         fake_id = uuid.uuid4()
-        url = reverse('events:dlq-retry', kwargs={'dlq_id': fake_id})
+        url = reverse("events:dlq-retry", kwargs={"dlq_id": fake_id})
         response = self.client.post(url)
 
         # Should return 400 (bad request) or 404 (not found) depending on when the error is detected
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND])
+        self.assertIn(
+            response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND]
+        )
 
     def test_resolve_dlq_entry_success(self):
         """Test successfully resolving a DLQ entry via API."""
@@ -647,31 +641,29 @@ class DLQAPITest(TestCase):
             event={"event_id": str(uuid.uuid4()), "event_type": "odps.created", "data": {}},
             event_type="odps.created",
             subscriber="test_subscriber",
-            error_message="Test error"
+            error_message="Test error",
         )
 
         # Authenticate as admin
         self.client.force_authenticate(user=self.admin_user)
-        url = reverse('events:dlq-resolve', kwargs={'dlq_id': dlq_entry.id})
-        response = self.client.post(url, {'notes': 'Manually resolved'}, format='json')
+        url = reverse("events:dlq-resolve", kwargs={"dlq_id": dlq_entry.id})
+        response = self.client.post(url, {"notes": "Manually resolved"}, format="json")
 
         if response.status_code != status.HTTP_200_OK:
             # Access response content safely - DRF Response has .data,
             # but if the view returns an error, log it for debugging
-            resp_data = getattr(response, 'data', None)
+            resp_data = getattr(response, "data", None)
             if resp_data is None:
-                import json
                 resp_data = response.data
             print(f"Response status: {response.status_code}")
             print(f"Response data: {resp_data}")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Access response data - DRF Response always provides .data
-        resp_data = getattr(response, 'data', None)
+        resp_data = getattr(response, "data", None)
         if resp_data is None:
-            import json
             resp_data = response.data
-        self.assertTrue(resp_data['success'])
+        self.assertTrue(resp_data["success"])
 
         # Verify entry was resolved
         dlq_entry.refresh_from_db()
@@ -681,8 +673,7 @@ class DLQAPITest(TestCase):
         """Test resolving a non-existent DLQ entry."""
         self.client.force_authenticate(user=self.admin_user)
         fake_id = uuid.uuid4()
-        url = reverse('events:dlq-resolve', kwargs={'dlq_id': fake_id})
+        url = reverse("events:dlq-resolve", kwargs={"dlq_id": fake_id})
         response = self.client.post(url)
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-

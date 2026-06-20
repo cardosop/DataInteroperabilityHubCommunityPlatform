@@ -1,13 +1,13 @@
 """Tests for the CI Merkle integrity verification command (277.B.077)."""
 
-import pytest
 import json
 import uuid
 from io import StringIO
 
+import pytest
 from django.core.cache import cache
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.audit.chain import verify_chain_segment
@@ -18,7 +18,7 @@ from hub.apps.audit.management.commands.verify_audit_integrity import (
     _sign_root,
     run_integrity_verification,
 )
-from hub.apps.audit.models import AuditEvent, AuditMerkleSnapshot
+from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -78,7 +78,9 @@ class VerifyIntegrityCommandTest(TestCase):
         )
 
         # Tamper: flip one byte in the first event's chain_hash
-        event = AuditEvent.objects.filter(tenant_id=self.tenant_id).order_by("chain_sequence").first()
+        event = (
+            AuditEvent.objects.filter(tenant_id=self.tenant_id).order_by("chain_sequence").first()
+        )
         original_hash = event.chain_hash
         tampered = original_hash[:60] + ("F" if original_hash[60] != "F" else "0") * 4
         AuditEvent.objects.filter(pk=event.pk).update(chain_hash=tampered)
@@ -152,7 +154,8 @@ class VerifyIntegrityCommandTest(TestCase):
         # But the snapshot root recomputation must catch the divergence
         self.assertFalse(result["verified"])
         self.assertGreater(
-            len(result["snapshot_mismatches"]), 0,
+            len(result["snapshot_mismatches"]),
+            0,
             "Snapshot cross-check must detect full-chain rewrite",
         )
 
@@ -163,7 +166,8 @@ class VerifyIntegrityCommandTest(TestCase):
         call_command(
             "verify_audit_integrity",
             "--create-test-data",
-            "--tenant-id", self.tenant_id,
+            "--tenant-id",
+            self.tenant_id,
             "--no-snapshots",
             "--json",
             stdout=buf,
@@ -182,7 +186,8 @@ class VerifyIntegrityCommandTest(TestCase):
         call_command(
             "verify_audit_integrity",
             "--create-test-data",
-            "--tenant-id", self.tenant_id,
+            "--tenant-id",
+            self.tenant_id,
             "--no-snapshots",
             stdout=buf,
         )
@@ -197,13 +202,16 @@ class VerifyIntegrityCommandTest(TestCase):
             create_test_data=True,
         )
         # Tamper
-        event = AuditEvent.objects.filter(tenant_id=self.tenant_id).order_by("chain_sequence").first()
+        event = (
+            AuditEvent.objects.filter(tenant_id=self.tenant_id).order_by("chain_sequence").first()
+        )
         AuditEvent.objects.filter(pk=event.pk).update(chain_hash="0" * 64)
 
         with self.assertRaises(SystemExit) as ctx:
             call_command(
                 "verify_audit_integrity",
-                "--tenant-id", self.tenant_id,
+                "--tenant-id",
+                self.tenant_id,
                 "--no-snapshots",
             )
         self.assertEqual(ctx.exception.code, 1)
@@ -263,9 +271,7 @@ class SmokeTestEventCreationTest(TestCase):
         tenant_id = str(self.tenant.id)
         _create_ci_smoke_test_events(tenant_id, 5, timezone.now())
 
-        events = list(
-            AuditEvent.objects.filter(tenant_id=tenant_id).order_by("chain_sequence")
-        )
+        events = list(AuditEvent.objects.filter(tenant_id=tenant_id).order_by("chain_sequence"))
         self.assertEqual(len(events), 5)
         for ev in events:
             self.assertIsNotNone(ev.chain_hash)
@@ -276,9 +282,7 @@ class SmokeTestEventCreationTest(TestCase):
         tenant_id = str(self.tenant.id)
         _create_ci_smoke_test_events(tenant_id, 5, timezone.now())
 
-        events = list(
-            AuditEvent.objects.filter(tenant_id=tenant_id).order_by("chain_sequence")
-        )
+        events = list(AuditEvent.objects.filter(tenant_id=tenant_id).order_by("chain_sequence"))
         seqs = [ev.chain_sequence for ev in events]
         self.assertEqual(seqs, sorted(seqs))
         self.assertEqual(len(set(seqs)), len(seqs))

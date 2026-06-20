@@ -16,21 +16,15 @@ import urllib.request
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
-from django.test import TestCase
 from rest_framework import status
-from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus, DQStatus
+from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
-from hub.apps.compliance.service_client import ComplianceServiceClient
 from hub.apps.datasets.models import Dataset
 from hub.apps.dq.models import DQRun, DQRunStatus
-from hub.apps.dq.service_client import DQServiceClient
 from hub.apps.dq.tests.test_base import DQAPITestBase
-from hub.apps.files.models import File, FileStatus
 from hub.apps.files.storage import S3StorageClient
-from hub.apps.jobs.models import Job, JobStatus, JobType
-from hub.apps.tenants.models import Tenant
+from hub.apps.jobs.models import Job, JobType
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -50,7 +44,7 @@ def _check_health_stdlib(health_url: str, timeout_seconds: int = 20, interval: f
                     return True
         except Exception:
             pass
-        time.sleep(interval)  # INTENTIONAL: test-specific timing requirement
+        time.sleep(interval)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
     return False
 
 
@@ -70,7 +64,10 @@ class DQComplianceExecutionTest(DQAPITestBase):
         # Leave dq-service-test / compliance-service-test unchanged when running in Docker.
         if "dq-service-test" not in dq_url and "dq-service" in dq_url:
             dq_url = dq_url.replace("dq-service", "localhost")
-        if "compliance-service-test" not in compliance_url and "compliance-service" in compliance_url:
+        if (
+            "compliance-service-test" not in compliance_url
+            and "compliance-service" in compliance_url
+        ):
             compliance_url = compliance_url.replace("compliance-service", "localhost")
 
         dq_health = (dq_url.rstrip("/") + "/health") if dq_url else ""
@@ -103,13 +100,12 @@ class DQComplianceExecutionTest(DQAPITestBase):
             except Exception as e:
                 self._storage_check_error = e
                 if attempt < 3:
-                    time.sleep(3)  # INTENTIONAL: test-specific timing requirement
+                    time.sleep(3)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
                 else:
                     import sys
 
                     sys.stderr.write(
-                        "[DQ integration] Storage check failed after 4 attempts: %s\n"
-                        % (e,)
+                        "[DQ integration] Storage check failed after 4 attempts: %s\n" % (e,)
                     )
                     sys.stderr.flush()
 
@@ -142,6 +138,7 @@ class DQComplianceExecutionTest(DQAPITestBase):
     def _skip_if_unavailable(self, reason: str) -> None:
         """Skip test and ensure reason is visible in batch logs (no -rs required)."""
         import sys
+
         sys.stderr.write("[DQ integration] SKIP: %s\n" % reason)
         sys.stderr.flush()
         self.skipTest(reason)
@@ -186,7 +183,7 @@ class DQComplianceExecutionTest(DQAPITestBase):
 
         try:
             execute_dq_run(str(dq_run.id))
-        except Exception as e:
+        except Exception:
             # If execution fails due to service issues, verify fail-closed behavior
             dq_run.refresh_from_db()
             if dq_run.status == DQRunStatus.FAILED:
@@ -247,7 +244,7 @@ class DQComplianceExecutionTest(DQAPITestBase):
 
         try:
             execute_compliance_run(str(compliance_run.id))
-        except Exception as e:
+        except Exception:
             # If execution fails due to service issues, verify fail-closed behavior
             compliance_run.refresh_from_db()
             if compliance_run.status == ComplianceRunStatus.FAILED:

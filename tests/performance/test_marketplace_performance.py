@@ -14,41 +14,38 @@ Tests all performance aspects of marketplace integration:
 All tests use real implementations - no mocks or stubs.
 Performance targets based on API performance requirements.
 """
+
+import logging
 import os
 import time
-import logging
+
 import pytest
 
 pytestmark = pytest.mark.slow
 import statistics
-import psutil
-import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from django.test import TestCase, TransactionTestCase
+
+import psutil
 from django.contrib.auth import get_user_model
 from django.db import connection as db_connection
-from django.db.models import Count
+from django.test import TestCase, TransactionTestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
 logger = logging.getLogger(__name__)
 
-from hub.apps.integrations.services import MarketplaceIntegrationService
+from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.models import (
     MarketplaceConnection,
-    MarketplaceSyncJob,
-    MarketplaceMapping,
 )
-from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
-from hub.apps.integrations.factory import MarketplaceConnectorFactory
+from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
     create_test_connector,
     marketplace_available,
 )
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus, Role, UserRole
-from hub.apps.assets.models import Asset, AssetStatus
-from tests.factories import TenantFactory
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 User = get_user_model()
 
@@ -80,47 +77,45 @@ class MarketplaceConnectorPerformanceTest(TestCase):
         self.tenant = Tenant.objects.create(
             name=f"Performance Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"performance-test-tenant-{uuid.uuid4().hex[:8]}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"perf-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         # Create and assign DATA_PROVIDER role
         data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
         UserRole.objects.get_or_create(user=self.user, role=data_provider_role)
         self.client.force_authenticate(user=self.user)
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id=f"perf-test-{time.time()}"
+            request_id=f"perf-test-{time.time()}",
         )
 
     def test_ckan_connector_list_listings_response_time(self):
         """Test CKAN connector list_listings response time"""
         # Check if marketplace is available
         if not marketplace_available():
-            pytest.skip("No CKAN instance available for testing")
+            pytest.skip("No CKAN instance available for testing")  # noqa: skip-in-body — runtime service dependency
 
         # Create connector using test helpers
         connector = create_test_connector(verify_connection=False)
         if not connector:
-            pytest.skip("Cannot create CKAN connector for testing")
+            pytest.skip("Cannot create CKAN connector for testing")  # noqa: skip-in-body — runtime service dependency
 
         # Measure response time for list_listings
         response_times = []
         iterations = 10
 
-        for i in range(iterations):
+        for _i in range(iterations):
             start_time = time.perf_counter()
             try:
-                listings = connector.list_listings(limit=10, offset=0)
+                connector.list_listings(limit=10, offset=0)
                 end_time = time.perf_counter()
                 response_times.append((end_time - start_time) * 1000)  # Convert to ms
             except Exception:
@@ -128,27 +123,29 @@ class MarketplaceConnectorPerformanceTest(TestCase):
                 continue
 
         if not response_times:
-            pytest.skip("No successful responses from marketplace")
+            pytest.skip("No successful responses from marketplace")  # noqa: skip-in-body — runtime service dependency
 
-        p50 = calculate_percentile(response_times, 50)
+        calculate_percentile(response_times, 50)
         p95 = calculate_percentile(response_times, 95)
-        p99 = calculate_percentile(response_times, 99)
+        calculate_percentile(response_times, 99)
         avg = statistics.mean(response_times)
 
         # Target: P95 < 2000ms for external API calls
         # (More lenient than internal APIs due to network latency)
-        self.assertLess(p95, 2000.0, f"P95 response time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <2000ms")
+        self.assertLess(
+            p95, 2000.0, f"P95 response time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <2000ms"
+        )
 
     def test_ckan_connector_throughput(self):
         """Test CKAN connector throughput (requests per second)"""
         # Check if marketplace is available
         if not marketplace_available():
-            pytest.skip("No CKAN instance available for testing")
+            pytest.skip("No CKAN instance available for testing")  # noqa: skip-in-body — runtime service dependency
 
         # Create connector using test helpers
         connector = create_test_connector(verify_connection=False)
         if not connector:
-            pytest.skip("Cannot create CKAN connector for testing")
+            pytest.skip("Cannot create CKAN connector for testing")  # noqa: skip-in-body — runtime service dependency
 
         # Measure throughput over 5 seconds
         start_time = time.time()
@@ -168,46 +165,45 @@ class MarketplaceConnectorPerformanceTest(TestCase):
             throughput = request_count / elapsed
 
             # Target: At least 1 request per second (conservative for external APIs)
-            self.assertGreaterEqual(throughput, 1.0, f"Throughput is {throughput:.2f} req/s, target: >=1 req/s")
+            self.assertGreaterEqual(
+                throughput, 1.0, f"Throughput is {throughput:.2f} req/s, target: >=1 req/s"
+            )
         else:
-            pytest.skip("No successful requests to marketplace")
+            pytest.skip("No successful requests to marketplace")  # noqa: skip-in-body — runtime service dependency
 
     def test_connector_authentication_performance(self):
         """Test connector authentication performance"""
         # Check if marketplace is available
         if not marketplace_available():
-            pytest.skip("No CKAN instance available for testing")
+            pytest.skip("No CKAN instance available for testing")  # noqa: skip-in-body — runtime service dependency
 
         # Create connector using test helpers
         connector = create_test_connector(verify_connection=False)
         if not connector:
-            pytest.skip("Cannot create CKAN connector for testing")
+            pytest.skip("Cannot create CKAN connector for testing")  # noqa: skip-in-body — runtime service dependency
 
         # Get base_url from connector
-        base_url = getattr(connector, 'base_url', None)
+        base_url = getattr(connector, "base_url", None)
         if not base_url:
-            pytest.skip("Cannot get base_url from connector")
+            pytest.skip("Cannot get base_url from connector")  # noqa: skip-in-body — runtime service dependency
 
         # For public CKAN instances, authentication may not be required
         # Test with a dummy API key to measure authentication method performance
         # (even if authentication fails, we can measure the time it takes)
-        config = {
-            'base_url': base_url,
-            'api_key': 'test-api-key-for-performance-testing'
-        }
+        config = {"base_url": base_url, "api_key": "test-api-key-for-performance-testing"}
 
         # Measure authentication time (including failures)
         response_times = []
         iterations = 5
 
-        for i in range(iterations):
+        for _i in range(iterations):
             start_time = time.perf_counter()
             try:
                 # Authentication may fail for public instances, but we measure the time
                 connector.authenticate(config)
                 end_time = time.perf_counter()
                 response_times.append((end_time - start_time) * 1000)  # Convert to ms
-            except (ValueError, ConnectionError) as e:
+            except (ValueError, ConnectionError):
                 # Authentication failures are expected for public instances
                 # Still measure the time to handle the error
                 end_time = time.perf_counter()
@@ -217,13 +213,17 @@ class MarketplaceConnectorPerformanceTest(TestCase):
                 continue
 
         if not response_times:
-            pytest.skip("No authentication attempts completed")
+            pytest.skip("No authentication attempts completed")  # noqa: skip-in-body — runtime service dependency
 
         p95 = calculate_percentile(response_times, 95)
         avg = statistics.mean(response_times)
 
         # Target: P95 < 2000ms for authentication (including error handling)
-        self.assertLess(p95, 2000.0, f"P95 authentication time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <2000ms")
+        self.assertLess(
+            p95,
+            2000.0,
+            f"P95 authentication time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <2000ms",
+        )
 
 
 class MarketplaceSyncJobPerformanceTest(TransactionTestCase):
@@ -232,31 +232,30 @@ class MarketplaceSyncJobPerformanceTest(TransactionTestCase):
     def setUp(self):
         """Set up test fixtures"""
         import uuid
+
         unique_id = str(uuid.uuid4())[:8]
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
             name=f"Sync Job Perf Tenant {unique_id}",
             slug=f"sync-job-perf-{unique_id}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"perf-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         # Create and assign DATA_PROVIDER role
         data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
         UserRole.objects.get_or_create(user=self.user, role=data_provider_role)
         self.client.force_authenticate(user=self.user)
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id=f"perf-test-{time.time()}"
+            request_id=f"perf-test-{time.time()}",
         )
 
         # Use IN_MEMORY_FAKE for PUSH sync tests (CKAN is harvest-only, no PUSH)
@@ -266,7 +265,7 @@ class MarketplaceSyncJobPerformanceTest(TransactionTestCase):
             marketplace_type=MarketplaceType.IN_MEMORY_FAKE.value,
             name="Performance Test Connection",
             config={},
-            is_active=True
+            is_active=True,
         )
 
     def test_sync_job_creation_performance(self):
@@ -280,7 +279,7 @@ class MarketplaceSyncJobPerformanceTest(TransactionTestCase):
                 name=f"Performance Asset {i}",
                 status=AssetStatus.ACTIVE,
                 source_type="HUB_NATIVE",
-                created_by=self.user
+                created_by=self.user,
             )
             assets.append(asset)
 
@@ -291,12 +290,12 @@ class MarketplaceSyncJobPerformanceTest(TransactionTestCase):
         for i in range(iterations):
             start_time = time.perf_counter()
             try:
-                sync_job = self.service.sync_assets_to_marketplace(
+                self.service.sync_assets_to_marketplace(
                     connection_id=str(self.connection.id),
                     tenant_id=str(self.tenant.id),
                     user_id=str(self.user.id),
                     asset_ids=[str(asset.id) for asset in assets[:5]],  # Sync 5 assets
-                    options={}
+                    options={},
                 )
                 end_time = time.perf_counter()
                 response_times.append((end_time - start_time) * 1000)  # Convert to ms
@@ -312,13 +311,17 @@ class MarketplaceSyncJobPerformanceTest(TransactionTestCase):
                 continue
 
         if response_times:
-            p50 = calculate_percentile(response_times, 50)
+            calculate_percentile(response_times, 50)
             p95 = calculate_percentile(response_times, 95)
-            p99 = calculate_percentile(response_times, 99)
+            calculate_percentile(response_times, 99)
             avg = statistics.mean(response_times)
 
             # Target: P95 < 45000ms (IN_MEMORY_FAKE workflow; CI variance under load)
-            self.assertLess(p95, 45000.0, f"P95 sync job creation time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <45000ms")
+            self.assertLess(
+                p95,
+                45000.0,
+                f"P95 sync job creation time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <45000ms",
+            )
 
     def test_large_dataset_sync_performance(self):
         """Test sync job performance with large dataset."""
@@ -333,25 +336,29 @@ class MarketplaceSyncJobPerformanceTest(TransactionTestCase):
                 name=f"Large Dataset Asset {i}",
                 status=AssetStatus.ACTIVE,
                 source_type="HUB_NATIVE",
-                created_by=self.user
+                created_by=self.user,
             )
             assets.append(asset)
 
         # Measure sync job creation time for large dataset
         start_time = time.perf_counter()
         try:
-            sync_job = self.service.sync_assets_to_marketplace(
+            self.service.sync_assets_to_marketplace(
                 connection_id=str(self.connection.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 asset_ids=[str(asset.id) for asset in assets],
-                options={}
+                options={},
             )
             end_time = time.perf_counter()
             elapsed_ms = (end_time - start_time) * 1000
 
             # Target: Large dataset sync job creation < 60000ms (CI variance, workflow steps)
-            self.assertLess(elapsed_ms, 60000.0, f"Large dataset sync job creation took {elapsed_ms:.2f}ms, target: <60000ms")
+            self.assertLess(
+                elapsed_ms,
+                60000.0,
+                f"Large dataset sync job creation took {elapsed_ms:.2f}ms, target: <60000ms",
+            )
         except Exception as e:
             self.fail(f"Sync job creation failed: {e}")
 
@@ -366,7 +373,7 @@ class MarketplaceSyncJobPerformanceTest(TransactionTestCase):
                 name=f"List Performance Asset {i}",
                 status=AssetStatus.ACTIVE,
                 source_type="HUB_NATIVE",
-                created_by=self.user
+                created_by=self.user,
             )
             assets.append(asset)
 
@@ -378,7 +385,7 @@ class MarketplaceSyncJobPerformanceTest(TransactionTestCase):
                     tenant_id=str(self.tenant.id),
                     user_id=str(self.user.id),
                     asset_ids=[str(assets[i % len(assets)].id)],
-                    options={}
+                    options={},
                 )
             except Exception:
                 continue
@@ -389,20 +396,24 @@ class MarketplaceSyncJobPerformanceTest(TransactionTestCase):
 
         for i in range(iterations):
             start_time = time.perf_counter()
-            response = self.client.get('/api/v1/integrations/marketplace/sync/')
+            response = self.client.get("/api/v1/integrations/marketplace/sync/")
             end_time = time.perf_counter()
 
             if response.status_code == status.HTTP_200_OK:
                 response_times.append((end_time - start_time) * 1000)  # Convert to ms
 
         if response_times:
-            p50 = calculate_percentile(response_times, 50)
+            calculate_percentile(response_times, 50)
             p95 = calculate_percentile(response_times, 95)
-            p99 = calculate_percentile(response_times, 99)
+            calculate_percentile(response_times, 99)
             avg = statistics.mean(response_times)
 
             # Target: P95 < 3000ms for list endpoint (CI variance, DB load from sync jobs)
-            self.assertLess(p95, 3000.0, f"P95 list endpoint time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <3000ms")
+            self.assertLess(
+                p95,
+                3000.0,
+                f"P95 list endpoint time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <3000ms",
+            )
 
 
 class MarketplaceAPIPerformanceTest(TestCase):
@@ -411,31 +422,30 @@ class MarketplaceAPIPerformanceTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         import uuid
+
         unique_id = str(uuid.uuid4())[:8]
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
             name=f"Marketplace API Perf Tenant {unique_id}",
             slug=f"marketplace-api-perf-{unique_id}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"perf-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         # Create and assign DATA_PROVIDER role
         data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
         UserRole.objects.get_or_create(user=self.user, role=data_provider_role)
         self.client.force_authenticate(user=self.user)
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id=f"perf-test-{time.time()}"
+            request_id=f"perf-test-{time.time()}",
         )
 
         # Create connection for API tests
@@ -445,7 +455,7 @@ class MarketplaceAPIPerformanceTest(TestCase):
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             name="API Performance Test Connection",
             config={"base_url": "https://demo.ckan.org"},
-            is_active=True
+            is_active=True,
         )
 
     def test_connection_list_endpoint_performance(self):
@@ -458,7 +468,7 @@ class MarketplaceAPIPerformanceTest(TestCase):
                 marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
                 name=f"API Perf Connection {i}",
                 config={"base_url": "https://demo.ckan.org"},
-                is_active=True
+                is_active=True,
             )
 
         # Measure list endpoint performance
@@ -467,20 +477,24 @@ class MarketplaceAPIPerformanceTest(TestCase):
 
         for i in range(iterations):
             start_time = time.perf_counter()
-            response = self.client.get('/api/v1/integrations/marketplace/connections/')
+            response = self.client.get("/api/v1/integrations/marketplace/connections/")
             end_time = time.perf_counter()
 
             if response.status_code == status.HTTP_200_OK:
                 response_times.append((end_time - start_time) * 1000)  # Convert to ms
 
         if response_times:
-            p50 = calculate_percentile(response_times, 50)
+            calculate_percentile(response_times, 50)
             p95 = calculate_percentile(response_times, 95)
-            p99 = calculate_percentile(response_times, 99)
+            calculate_percentile(response_times, 99)
             avg = statistics.mean(response_times)
 
             # Target: P95 < 2000ms for list endpoint (allows CI variance)
-            self.assertLess(p95, 2000.0, f"P95 list endpoint time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <2000ms")
+            self.assertLess(
+                p95,
+                2000.0,
+                f"P95 list endpoint time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <2000ms",
+            )
 
     def test_connection_retrieve_endpoint_performance(self):
         """Test connection retrieve endpoint performance"""
@@ -488,22 +502,28 @@ class MarketplaceAPIPerformanceTest(TestCase):
         response_times = []
         iterations = 50
 
-        for i in range(iterations):
+        for _i in range(iterations):
             start_time = time.perf_counter()
-            response = self.client.get(f'/api/v1/integrations/marketplace/connections/{self.connection.id}/')
+            response = self.client.get(
+                f"/api/v1/integrations/marketplace/connections/{self.connection.id}/"
+            )
             end_time = time.perf_counter()
 
             if response.status_code == status.HTTP_200_OK:
                 response_times.append((end_time - start_time) * 1000)  # Convert to ms
 
         if response_times:
-            p50 = calculate_percentile(response_times, 50)
+            calculate_percentile(response_times, 50)
             p95 = calculate_percentile(response_times, 95)
-            p99 = calculate_percentile(response_times, 99)
+            calculate_percentile(response_times, 99)
             avg = statistics.mean(response_times)
 
             # Target: P95 < 300ms for retrieve endpoint
-            self.assertLess(p95, 300.0, f"P95 retrieve endpoint time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <300ms")
+            self.assertLess(
+                p95,
+                300.0,
+                f"P95 retrieve endpoint time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <300ms",
+            )
 
     def test_connection_create_endpoint_performance(self):
         """Test connection create endpoint performance"""
@@ -514,13 +534,13 @@ class MarketplaceAPIPerformanceTest(TestCase):
         for i in range(iterations):
             start_time = time.perf_counter()
             response = self.client.post(
-                '/api/v1/integrations/marketplace/connections/',
+                "/api/v1/integrations/marketplace/connections/",
                 {
-                    'marketplace_type': MarketplaceType.CKAN_INSTANCE.value,
-                    'name': f'API Perf Create {i}',
-                    'config': {'base_url': 'https://demo.ckan.org'}
+                    "marketplace_type": MarketplaceType.CKAN_INSTANCE.value,
+                    "name": f"API Perf Create {i}",
+                    "config": {"base_url": "https://demo.ckan.org"},
                 },
-                format='json'
+                format="json",
             )
             end_time = time.perf_counter()
 
@@ -528,13 +548,17 @@ class MarketplaceAPIPerformanceTest(TestCase):
                 response_times.append((end_time - start_time) * 1000)  # Convert to ms
 
         if response_times:
-            p50 = calculate_percentile(response_times, 50)
+            calculate_percentile(response_times, 50)
             p95 = calculate_percentile(response_times, 95)
-            p99 = calculate_percentile(response_times, 99)
+            calculate_percentile(response_times, 99)
             avg = statistics.mean(response_times)
 
             # Target: P95 < 1000ms for create endpoint
-            self.assertLess(p95, 1000.0, f"P95 create endpoint time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <1000ms")
+            self.assertLess(
+                p95,
+                1000.0,
+                f"P95 create endpoint time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <1000ms",
+            )
 
     def test_api_endpoint_throughput(self):
         """Test API endpoint throughput (requests per second)"""
@@ -546,12 +570,12 @@ class MarketplaceAPIPerformanceTest(TestCase):
         duration = 5.0  # 5 seconds
 
         while time.time() - start_time < duration:
-            response = self.client.get('/api/v1/integrations/marketplace/connections/')
+            response = self.client.get("/api/v1/integrations/marketplace/connections/")
             request_count += 1
             if response.status_code == status.HTTP_200_OK:
                 successful_count += 1
             # Small delay to avoid rate limiting (0.1s = 10 req/s max)
-            time.sleep(0.1)  # INTENTIONAL: test-specific delay
+            time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: test-specific delay
 
         elapsed = time.time() - start_time
         if elapsed > 0:
@@ -559,7 +583,11 @@ class MarketplaceAPIPerformanceTest(TestCase):
 
             # Target: At least 5 requests per second (accounting for rate limiting)
             # Rate limiting is working correctly, so we adjust target accordingly
-            self.assertGreaterEqual(throughput, 5.0, f"Throughput is {throughput:.2f} req/s (successful: {successful_count}/{request_count}), target: >=5 req/s")
+            self.assertGreaterEqual(
+                throughput,
+                5.0,
+                f"Throughput is {throughput:.2f} req/s (successful: {successful_count}/{request_count}), target: >=5 req/s",
+            )
 
 
 class MarketplaceConcurrentSyncJobsTest(TransactionTestCase):
@@ -571,26 +599,24 @@ class MarketplaceConcurrentSyncJobsTest(TransactionTestCase):
         self.tenant = Tenant.objects.create(
             name=f"Performance Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"performance-test-tenant-{uuid.uuid4().hex[:8]}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"perf-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         # Create and assign DATA_PROVIDER role
         data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
         UserRole.objects.get_or_create(user=self.user, role=data_provider_role)
         self.client.force_authenticate(user=self.user)
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id=f"perf-test-{time.time()}"
+            request_id=f"perf-test-{time.time()}",
         )
 
         # Create connection
@@ -600,7 +626,7 @@ class MarketplaceConcurrentSyncJobsTest(TransactionTestCase):
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             name="Concurrent Test Connection",
             config={"base_url": "https://demo.ckan.org"},
-            is_active=True
+            is_active=True,
         )
 
         # Create assets for concurrent sync
@@ -612,12 +638,13 @@ class MarketplaceConcurrentSyncJobsTest(TransactionTestCase):
                 name=f"Concurrent Asset {i}",
                 status=AssetStatus.ACTIVE,
                 source_type="HUB_NATIVE",
-                created_by=self.user
+                created_by=self.user,
             )
             self.assets.append(asset)
 
     def test_concurrent_sync_job_creation(self):
         """Test concurrent sync job creation performance"""
+
         def create_sync_job(asset_ids):
             """Create a sync job for given asset IDs"""
             try:
@@ -626,7 +653,7 @@ class MarketplaceConcurrentSyncJobsTest(TransactionTestCase):
                     tenant_id=str(self.tenant.id),
                     user_id=str(self.user.id),
                     asset_ids=asset_ids,
-                    options={}
+                    options={},
                 )
             except Exception:
                 return None
@@ -656,17 +683,22 @@ class MarketplaceConcurrentSyncJobsTest(TransactionTestCase):
         elapsed_ms = (end_time - start_time) * 1000
 
         # Target: 10 concurrent sync jobs created in < 10000ms
-        self.assertLess(elapsed_ms, 10000.0, f"10 concurrent sync jobs took {elapsed_ms:.2f}ms, target: <10000ms")
+        self.assertLess(
+            elapsed_ms,
+            10000.0,
+            f"10 concurrent sync jobs took {elapsed_ms:.2f}ms, target: <10000ms",
+        )
         # Verify at least some jobs were created
         self.assertGreater(len(results), 0, "At least one concurrent sync job should be created")
 
     def test_concurrent_api_requests(self):
         """Test concurrent API requests performance"""
+
         def make_request():
             """Make API request"""
             client = APIClient()
             client.force_authenticate(user=self.user)
-            response = client.get('/api/v1/integrations/marketplace/connections/')
+            response = client.get("/api/v1/integrations/marketplace/connections/")
             return response.status_code == status.HTTP_200_OK
 
         # Make concurrent API requests
@@ -681,7 +713,9 @@ class MarketplaceConcurrentSyncJobsTest(TransactionTestCase):
         elapsed_ms = (end_time - start_time) * 1000
 
         # Target: 20 concurrent requests complete in < 2000ms
-        self.assertLess(elapsed_ms, 2000.0, f"20 concurrent requests took {elapsed_ms:.2f}ms, target: <2000ms")
+        self.assertLess(
+            elapsed_ms, 2000.0, f"20 concurrent requests took {elapsed_ms:.2f}ms, target: <2000ms"
+        )
         # Verify all requests succeeded
         success_count = sum(1 for r in results if r)
         self.assertGreater(success_count, 0, "At least some concurrent requests should succeed")
@@ -696,26 +730,24 @@ class MarketplaceMemoryUsageTest(TestCase):
         self.tenant = Tenant.objects.create(
             name=f"Performance Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"performance-test-tenant-{uuid.uuid4().hex[:8]}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"perf-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         # Create and assign DATA_PROVIDER role
         data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
         UserRole.objects.get_or_create(user=self.user, role=data_provider_role)
         self.client.force_authenticate(user=self.user)
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id=f"perf-test-{time.time()}"
+            request_id=f"perf-test-{time.time()}",
         )
 
     def test_connection_creation_memory_usage(self):
@@ -731,7 +763,7 @@ class MarketplaceMemoryUsageTest(TestCase):
                 marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
                 name=f"Memory Test Connection {i}",
                 config={"base_url": "https://demo.ckan.org"},
-                is_active=True
+                is_active=True,
             )
             connections.append(connection)
 
@@ -739,7 +771,11 @@ class MarketplaceMemoryUsageTest(TestCase):
         memory_increase = final_memory - initial_memory
 
         # Target: Memory increase < 100MB for 50 connections
-        self.assertLess(memory_increase, 100.0, f"Memory increased by {memory_increase:.2f}MB for 50 connections, target: <100MB")
+        self.assertLess(
+            memory_increase,
+            100.0,
+            f"Memory increased by {memory_increase:.2f}MB for 50 connections, target: <100MB",
+        )
 
     def test_sync_job_memory_usage(self):
         """Test memory usage during sync job operations"""
@@ -750,7 +786,7 @@ class MarketplaceMemoryUsageTest(TestCase):
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             name="Memory Test Connection",
             config={"base_url": "https://demo.ckan.org"},
-            is_active=True
+            is_active=True,
         )
 
         # Create assets
@@ -762,7 +798,7 @@ class MarketplaceMemoryUsageTest(TestCase):
                 name=f"Memory Asset {i}",
                 status=AssetStatus.ACTIVE,
                 source_type="HUB_NATIVE",
-                created_by=self.user
+                created_by=self.user,
             )
             assets.append(asset)
 
@@ -777,7 +813,7 @@ class MarketplaceMemoryUsageTest(TestCase):
                     tenant_id=str(self.tenant.id),
                     user_id=str(self.user.id),
                     asset_ids=[str(assets[i % len(assets)].id)],
-                    options={}
+                    options={},
                 )
                 sync_jobs.append(sync_job)
             except Exception:
@@ -787,7 +823,11 @@ class MarketplaceMemoryUsageTest(TestCase):
         memory_increase = final_memory - initial_memory
 
         # Target: Memory increase < 50MB for 10 sync jobs
-        self.assertLess(memory_increase, 50.0, f"Memory increased by {memory_increase:.2f}MB for 10 sync jobs, target: <50MB")
+        self.assertLess(
+            memory_increase,
+            50.0,
+            f"Memory increased by {memory_increase:.2f}MB for 10 sync jobs, target: <50MB",
+        )
 
 
 class MarketplaceDatabaseQueryPerformanceTest(TestCase):
@@ -799,26 +839,24 @@ class MarketplaceDatabaseQueryPerformanceTest(TestCase):
         self.tenant = Tenant.objects.create(
             name=f"Performance Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"performance-test-tenant-{uuid.uuid4().hex[:8]}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"perf-test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         # Create and assign DATA_PROVIDER role
         data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
         UserRole.objects.get_or_create(user=self.user, role=data_provider_role)
         self.client.force_authenticate(user=self.user)
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id=f"perf-test-{time.time()}"
+            request_id=f"perf-test-{time.time()}",
         )
 
         # Create test data
@@ -830,7 +868,7 @@ class MarketplaceDatabaseQueryPerformanceTest(TestCase):
                 marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
                 name=f"DB Perf Connection {i}",
                 config={"base_url": "https://demo.ckan.org"},
-                is_active=True
+                is_active=True,
             )
             self.connections.append(connection)
 
@@ -840,25 +878,27 @@ class MarketplaceDatabaseQueryPerformanceTest(TestCase):
         query_times = []
         iterations = 50
 
-        for i in range(iterations):
+        for _i in range(iterations):
             start_time = time.perf_counter()
             with db_connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT COUNT(*) FROM marketplace_connections WHERE tenant_id = %s",
-                    [self.tenant.id]
+                    [self.tenant.id],
                 )
                 cursor.fetchone()
             end_time = time.perf_counter()
             query_times.append((end_time - start_time) * 1000)  # Convert to ms
 
         if query_times:
-            p50 = calculate_percentile(query_times, 50)
+            calculate_percentile(query_times, 50)
             p95 = calculate_percentile(query_times, 95)
-            p99 = calculate_percentile(query_times, 99)
+            calculate_percentile(query_times, 99)
             avg = statistics.mean(query_times)
 
             # Target: P95 < 200ms for database queries
-            self.assertLess(p95, 200.0, f"P95 query time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <200ms")
+            self.assertLess(
+                p95, 200.0, f"P95 query time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <200ms"
+            )
 
     def test_connection_filter_query_performance(self):
         """Test connection filter query performance"""
@@ -866,25 +906,29 @@ class MarketplaceDatabaseQueryPerformanceTest(TestCase):
         query_times = []
         iterations = 50
 
-        for i in range(iterations):
+        for _i in range(iterations):
             start_time = time.perf_counter()
             with db_connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT * FROM marketplace_connections WHERE tenant_id = %s AND marketplace_type = %s LIMIT 10",
-                    [self.tenant.id, MarketplaceType.CKAN_INSTANCE.value]
+                    [self.tenant.id, MarketplaceType.CKAN_INSTANCE.value],
                 )
                 cursor.fetchall()
             end_time = time.perf_counter()
             query_times.append((end_time - start_time) * 1000)  # Convert to ms
 
         if query_times:
-            p50 = calculate_percentile(query_times, 50)
+            calculate_percentile(query_times, 50)
             p95 = calculate_percentile(query_times, 95)
-            p99 = calculate_percentile(query_times, 99)
+            calculate_percentile(query_times, 99)
             avg = statistics.mean(query_times)
 
             # Target: P95 < 200ms for filtered queries
-            self.assertLess(p95, 200.0, f"P95 filtered query time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <200ms")
+            self.assertLess(
+                p95,
+                200.0,
+                f"P95 filtered query time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <200ms",
+            )
 
     def test_connection_join_query_performance(self):
         """Test connection join query performance"""
@@ -893,21 +937,27 @@ class MarketplaceDatabaseQueryPerformanceTest(TestCase):
         query_times = []
         iterations = 50
 
-        for i in range(iterations):
+        for _i in range(iterations):
             start_time = time.perf_counter()
             # Use ORM with select_related for join query
-            list(MarketplaceConnection.objects.filter(tenant=self.tenant).select_related('tenant')[:10])
+            list(
+                MarketplaceConnection.objects.filter(tenant=self.tenant).select_related("tenant")[
+                    :10
+                ]
+            )
             end_time = time.perf_counter()
             query_times.append((end_time - start_time) * 1000)  # Convert to ms
 
         if query_times:
-            p50 = calculate_percentile(query_times, 50)
+            calculate_percentile(query_times, 50)
             p95 = calculate_percentile(query_times, 95)
-            p99 = calculate_percentile(query_times, 99)
+            calculate_percentile(query_times, 99)
             avg = statistics.mean(query_times)
 
             # Target: P95 < 200ms for join queries
-            self.assertLess(p95, 200.0, f"P95 join query time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <200ms")
+            self.assertLess(
+                p95, 200.0, f"P95 join query time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <200ms"
+            )
 
     def test_orm_query_performance(self):
         """Test ORM query performance"""
@@ -915,17 +965,19 @@ class MarketplaceDatabaseQueryPerformanceTest(TestCase):
         query_times = []
         iterations = 50
 
-        for i in range(iterations):
+        for _i in range(iterations):
             start_time = time.perf_counter()
             list(MarketplaceConnection.objects.filter(tenant=self.tenant)[:10])
             end_time = time.perf_counter()
             query_times.append((end_time - start_time) * 1000)  # Convert to ms
 
         if query_times:
-            p50 = calculate_percentile(query_times, 50)
+            calculate_percentile(query_times, 50)
             p95 = calculate_percentile(query_times, 95)
-            p99 = calculate_percentile(query_times, 99)
+            calculate_percentile(query_times, 99)
             avg = statistics.mean(query_times)
 
             # Target: P95 < 200ms for ORM queries
-            self.assertLess(p95, 200.0, f"P95 ORM query time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <200ms")
+            self.assertLess(
+                p95, 200.0, f"P95 ORM query time is {p95:.2f}ms (avg: {avg:.2f}ms), target: <200ms"
+            )

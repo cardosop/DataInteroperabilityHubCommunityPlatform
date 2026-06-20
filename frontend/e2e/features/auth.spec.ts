@@ -228,7 +228,7 @@ test.describe('Feature: Auth', () => {
       await page.locator('input#name').waitFor({ state: 'visible' });
       await page.locator('input#name').fill('Test User');
       await page.locator('input#email').fill('not-an-email');
-      await page.locator('input#password').fill('SecurePass123');
+      await page.locator('input#password').fill('SecurePass123!');
       await page.click('button[type="submit"]');
       // Wait for validation response — HTML5 may block submission immediately
       await page
@@ -260,7 +260,7 @@ test.describe('Feature: Auth', () => {
       // Use a known existing E2E user email (created by ensure_e2e_user_roles)
       await page.locator('input#name').fill('Duplicate User');
       await page.locator('input#email').fill('e2e_test@example.com');
-      await page.locator('input#password').fill('SecurePass123');
+      await page.locator('input#password').fill('SecurePass123!');
       // Wait for API response — registration with duplicate email must return 4xx
       const [response] = await Promise.all([
         // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.

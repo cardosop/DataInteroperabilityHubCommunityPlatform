@@ -8,6 +8,7 @@ Usage:
 """
 
 import os
+
 import pytest
 import requests
 
@@ -31,7 +32,7 @@ class TestSemanticSmoke:
         """Semantic service health endpoint is reachable."""
         r = _api("/api/v1/semantic/health/")
         if r.status_code == 404:
-            pytest.skip("Semantic health endpoint not available")
+            pytest.skip("Semantic health endpoint not available")  # noqa: skip-in-body — runtime service dependency
         assert r.status_code in (200, 503)
 
     def test_sparql_query_basic(self):
@@ -43,7 +44,7 @@ class TestSemanticSmoke:
             json={"query": query},
         )
         if r.status_code == 404:
-            pytest.skip("SPARQL endpoint not available (semantic feature gated?)")
+            pytest.skip("SPARQL endpoint not available (semantic feature gated?)")  # noqa: skip-in-body — runtime service dependency
         assert r.status_code == 200, f"SPARQL query failed: {r.status_code} body={r.text[:200]}"
         data = r.json()
         assert "results" in data or "bindings" in data or "head" in data, (
@@ -59,16 +60,16 @@ class TestSemanticSmoke:
             json={"query": query},
         )
         if r.status_code == 404:
-            pytest.skip("SPARQL endpoint not available")
+            pytest.skip("SPARQL endpoint not available")  # noqa: skip-in-body — runtime service dependency
         if r.status_code != 200:
-            pytest.skip(f"SPARQL returned {r.status_code} — may need data seeding")
+            pytest.skip(f"SPARQL returned {r.status_code} — may need data seeding")  # noqa: skip-in-body — runtime service dependency
 
     def test_sparql_endpoint_accepts_get(self):
         """SPARQL endpoint supports GET with query parameter."""
         query = "SELECT ?s WHERE { ?s ?p ?o } LIMIT 1"
         r = _api(f"/api/v1/semantic/sparql/?query={requests.utils.quote(query)}")
         if r.status_code == 404:
-            pytest.skip("SPARQL endpoint not available")
+            pytest.skip("SPARQL endpoint not available")  # noqa: skip-in-body — runtime service dependency
         assert r.status_code in (200, 400, 405), f"Unexpected: {r.status_code}"
 
     def test_sparql_rejects_invalid_query(self):
@@ -79,7 +80,7 @@ class TestSemanticSmoke:
             json={"query": "THIS IS NOT SPARQL"},
         )
         if r.status_code == 404:
-            pytest.skip("SPARQL endpoint not available")
+            pytest.skip("SPARQL endpoint not available")  # noqa: skip-in-body — runtime service dependency
         assert r.status_code in (400, 422), (
             f"Expected 400/422 for invalid SPARQL, got {r.status_code}"
         )

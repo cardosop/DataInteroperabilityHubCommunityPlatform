@@ -7,12 +7,12 @@ All tests use real implementations (no mocks of hub services).
 DataContractCLIClient uses real client with graceful handling when CLI service unavailable.
 """
 
+import uuid
+
 import pytest
 from django.test import override_settings
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.cli_client import DataContractCLIClient
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
@@ -21,11 +21,9 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.contracts.services import ContractService
 from hub.apps.contracts.tests.test_base import ContractsTestBase
-from hub.apps.core.services.base import ConflictError, NotFoundError, ServiceError, ValidationError
+from hub.apps.core.services.base import NotFoundError, ServiceError, ValidationError
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import Role, UserRole
-import json
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -323,7 +321,9 @@ class ContractServiceTest(ContractsTestBase):
         """Test creating contract with asset from different tenant raises ValidationError (business rules)."""
         # Create another tenant and asset
         _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
         other_asset = Asset.objects.create(
             tenant=other_tenant, key="other-asset", name="Other Asset", status=AssetStatus.DRAFT
         )
@@ -368,7 +368,9 @@ class ContractServiceTest(ContractsTestBase):
         """Test updating contract from different tenant raises NotFoundError"""
         # Create contract in other tenant
         _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
         other_contract = Contract.objects.create(
             tenant=other_tenant,
             original_raw='{"info": {"name": "other-contract"}}',
@@ -388,7 +390,9 @@ class ContractServiceTest(ContractsTestBase):
         """Test deleting contract from different tenant raises NotFoundError"""
         # Create contract in other tenant
         _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
         other_contract = Contract.objects.create(
             tenant=other_tenant,
             original_raw='{"info": {"name": "other-contract"}}',
@@ -407,7 +411,9 @@ class ContractServiceTest(ContractsTestBase):
         """Test getting contract from different tenant raises NotFoundError"""
         # Create contract in other tenant
         _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
         other_contract = Contract.objects.create(
             tenant=other_tenant,
             original_raw='{"info": {"name": "other-contract"}}',
@@ -474,7 +480,9 @@ class ContractServiceTest(ContractsTestBase):
         """Test contract listing respects tenant isolation"""
         # Create contracts in different tenants
         _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
         Contract.objects.create(
             tenant=self.tenant,
             original_raw='{"info": {"name": "tenant1-contract"}}',
@@ -500,7 +508,7 @@ class ContractServiceTest(ContractsTestBase):
         )
 
         # Create ODPS contract
-        odps_contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             original_raw='{"id": "odps"}',
@@ -605,15 +613,16 @@ class ContractServiceTest(ContractsTestBase):
 
         self.assertIsInstance(result, dict)
         self.assertIn("validation_status", result, "Response must include validation_status")
-        self.assertEqual(result["validation_status"], "ERROR",
-            "Unreachable CLI service must return validation_status='ERROR'")
+        self.assertEqual(
+            result["validation_status"],
+            "ERROR",
+            "Unreachable CLI service must return validation_status='ERROR'",
+        )
         self.assertIn("errors", result, "Response must include 'errors' key")
 
     def test_create_contract_with_disable_external_refs(self):
         """Test creating contract with disable_external_refs flag"""
-        original_raw = (
-            '{"id": "test-contract", "info": {"name": "test-contract"}, "schema": {"fields": [{"name": "id", "type": "string"}]}, "$ref": "https://example.com/schema.json"}'
-        )
+        original_raw = '{"id": "test-contract", "info": {"name": "test-contract"}, "schema": {"fields": [{"name": "id", "type": "string"}]}, "$ref": "https://example.com/schema.json"}'
         original_format = "JSON"
 
         contract = self.service.create_contract(
@@ -627,8 +636,10 @@ class ContractServiceTest(ContractsTestBase):
         self.assertIsNotNone(contract)
         contract.refresh_from_db()
         # Normalization must complete even with external refs disabled.
-        self.assertIsNotNone(contract.hub_contract_json,
-            "hub_contract_json must be set when disable_external_refs=True")
+        self.assertIsNotNone(
+            contract.hub_contract_json,
+            "hub_contract_json must be set when disable_external_refs=True",
+        )
         self.assertIn(
             contract.normalization_status,
             [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
@@ -637,9 +648,7 @@ class ContractServiceTest(ContractsTestBase):
 
     def test_create_contract_with_remove_external_refs(self):
         """Test creating contract with remove_external_refs flag"""
-        original_raw = (
-            '{"id": "test-contract", "info": {"name": "test-contract"}, "schema": {"fields": [{"name": "id", "type": "string"}]}, "$ref": "https://example.com/schema.json"}'
-        )
+        original_raw = '{"id": "test-contract", "info": {"name": "test-contract"}, "schema": {"fields": [{"name": "id", "type": "string"}]}, "$ref": "https://example.com/schema.json"}'
         original_format = "JSON"
 
         contract = self.service.create_contract(
@@ -653,8 +662,10 @@ class ContractServiceTest(ContractsTestBase):
         self.assertIsNotNone(contract)
         contract.refresh_from_db()
         # Normalization must complete and produce hub_contract_json.
-        self.assertIsNotNone(contract.hub_contract_json,
-            "hub_contract_json must be set when remove_external_refs=True")
+        self.assertIsNotNone(
+            contract.hub_contract_json,
+            "hub_contract_json must be set when remove_external_refs=True",
+        )
         self.assertIn(
             contract.normalization_status,
             [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
@@ -848,16 +859,12 @@ class ContractServiceTest(ContractsTestBase):
         # page_size=0 raises ZeroDivisionError (Paginator.num_pages → ceil/0),
         # wrapped in ServiceError by execute_with_metrics.
         with self.assertRaises(ServiceError):
-            self.service.list_contracts(
-                tenant_id=str(self.tenant.id), page=1, page_size=0
-            )
+            self.service.list_contracts(tenant_id=str(self.tenant.id), page=1, page_size=0)
 
         # page_size=-1 raises ValueError (Paginator validates per_page ≥ 1),
         # wrapped in ServiceError by execute_with_metrics.
         with self.assertRaises(ServiceError):
-            self.service.list_contracts(
-                tenant_id=str(self.tenant.id), page=1, page_size=-1
-            )
+            self.service.list_contracts(tenant_id=str(self.tenant.id), page=1, page_size=-1)
 
         # Test with very large page_size (should work but may be inefficient)
         contracts, meta = self.service.list_contracts(
@@ -954,7 +961,7 @@ class ContractServiceTest(ContractsTestBase):
         )
 
         # Create multiple ODPS contracts with different versions (Contract.version is int)
-        odps_v1 = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             original_raw='{"id": "odps-v1", "version": "1.0.0"}',

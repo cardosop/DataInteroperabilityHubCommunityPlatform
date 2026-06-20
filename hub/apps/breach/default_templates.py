@@ -5,6 +5,7 @@ Placeholders use ``string.Template`` syntax: ``$incident_title``,
 """
 
 from __future__ import annotations
+
 # regime -> {version, subject_template, body_template}
 PLATFORM_BREACH_TEMPLATES: dict[str, dict[str, str | int]] = {
     "GDPR": {

@@ -7,21 +7,20 @@ Tests for Mesh Topology API methods.
 
 Tests topology operations with comprehensive error handling.
 """
-import os
-import pytest
-import uuid
 import asyncio
-from typing import Optional
-from unittest.mock import AsyncMock, MagicMock
+import uuid
+from unittest.mock import AsyncMock
+
+import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig, MeshAPI
 from datahub_interoperability.errors import (
-    ValidationError,
     NotFoundError,
 )
 from tests._sdk_test_helpers import (
-    check_api_available,
     create_real_api_config,
 )
+import contextlib
 
 # File-specific tenant parameters
 _TOPOLOGY_TENANT_SLUG = "mesh-topology-sdk-test-tenant"
@@ -32,6 +31,7 @@ _TOPOLOGY_EXTRA_TENANT_SETUP = "tenant.data_mesh_enabled = True; tenant.save()"
 
 
 # ── Unit-test fixtures (no API calls) ───────────────────────────────
+
 
 @pytest.fixture
 def config():
@@ -60,6 +60,7 @@ def mesh_api(client):
 
 # ── Integration-test fixtures (real API) ────────────────────────────
 
+
 @pytest.fixture(scope="module")
 def real_api_config():
     """Fixture for real API configuration (module-scoped)."""
@@ -75,7 +76,6 @@ def real_api_config():
 @pytest.fixture
 async def real_client(real_api_config):
     """Create SDK client with real API configuration."""
-    import asyncio
     async with DataHubClient(real_api_config) as client:
         yield client
         # Longer delay for topology tests — the get_topology polling
@@ -84,6 +84,7 @@ async def real_client(real_api_config):
 
 
 # Unit Tests - Method Structure and Parameters
+
 
 @pytest.mark.asyncio
 async def test_get_topology_method_structure(mesh_api, client):
@@ -160,6 +161,7 @@ async def test_get_domain_topology_method_structure(mesh_api, client):
 
 # Integration Tests - Real API
 
+
 @pytest.mark.asyncio
 async def test_get_topology_integration(real_client):
     """Test getting topology with real API"""
@@ -219,8 +221,7 @@ async def test_get_domain_topology_integration(real_client):
     # First create a test domain
     domain_name = f"test-topology-{uuid.uuid4().hex[:8]}"
     created_domain = await real_client.mesh.create_domain(
-        name=domain_name,
-        description="Test domain for topology"
+        name=domain_name, description="Test domain for topology"
     )
 
     try:
@@ -235,10 +236,8 @@ async def test_get_domain_topology_integration(real_client):
         assert isinstance(topology["relationships"], list)
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await real_client.mesh.delete_domain(created_domain["id"])
-        except Exception:
-            pass
 
 
 @pytest.mark.asyncio
@@ -264,6 +263,7 @@ async def test_get_topology_with_domains_integration(real_client):
         # Poll until both domains appear in topology (up to 15s)
         import asyncio
         import time as _time
+
         topology = None
         deadline = _time.monotonic() + 15
         while _time.monotonic() < deadline:
@@ -308,7 +308,6 @@ async def test_get_topology_structure_integration(real_client):
     Creates test domains first to guarantee non-empty topology for
     node/edge structure validation.
     """
-    import asyncio
     import time as _time
 
     # Create test domains to guarantee non-empty topology
@@ -363,10 +362,8 @@ async def test_get_topology_structure_integration(real_client):
         assert "total_relationships" in summary
     finally:
         for d_id in [domain1["id"], domain2["id"]]:
-            try:
+            with contextlib.suppress(Exception):
                 await real_client.mesh.delete_domain(d_id)
-            except Exception:
-                pass
 
 
 @pytest.mark.asyncio
@@ -375,8 +372,7 @@ async def test_get_domain_topology_structure_integration(real_client):
     # Create a test domain
     domain_name = f"topology-structure-{uuid.uuid4().hex[:8]}"
     created_domain = await real_client.mesh.create_domain(
-        name=domain_name,
-        description="Test domain for structure validation"
+        name=domain_name, description="Test domain for structure validation"
     )
 
     try:
@@ -397,8 +393,5 @@ async def test_get_domain_topology_structure_integration(real_client):
         assert "health_metrics" in topology
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await real_client.mesh.delete_domain(created_domain["id"])
-        except Exception:
-            pass
-

@@ -6,6 +6,7 @@ parametrized in unit tests without any HTTP, mock, or fixture machinery.
 
 Phase 215.1 — see openspec/changes/preprod01/specs/cli-sdk-mvp-awareness/spec.md
 """
+
 from __future__ import annotations
 
 from urllib.parse import urlparse

@@ -15,34 +15,27 @@ skip when Prometheus is not reachable (e.g. not started in test stack). To run t
 ensure Prometheus is available at http://localhost:9090 or http://prometheus:9090.
 """
 
-import unittest
 import time
+import unittest
+import uuid
 
 import pytest
 import requests
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils import timezone
-from django_rq import get_queue
 
 from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
 from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob
 from hub.apps.integrations.services import MarketplaceIntegrationService
-from hub.apps.integrations.tasks import execute_marketplace_sync
 from hub.apps.notifications.models import EmailDelivery, EmailDeliveryStatus, EmailType
 from hub.apps.notifications.tasks import (
     send_marketplace_connection_test_failure_email,
     send_marketplace_sync_completion_email,
     send_marketplace_sync_failure_email,
 )
-from hub.apps.observability.otel_metrics import (
-    marketplace_connection_test_failures_total,
-    marketplace_connection_tests_total,
-    marketplace_sync_jobs_total,
-)
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 User = get_user_model()
 pytestmark = [
@@ -60,7 +53,9 @@ class MarketplaceAlertingIntegrationTest(TestCase):
             name="Alerting Test Tenant", slug="alerting-test-tenant", status="ACTIVE"
         )
         self.user = User.objects.create_user(
-            email=f"alerting-test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"alerting-test-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
     def test_marketplace_alerts_loaded_in_prometheus(self):
@@ -87,7 +82,7 @@ class MarketplaceAlertingIntegrationTest(TestCase):
 
         try:
             # Wait for Prometheus to load rules
-            time.sleep(2)  # INTENTIONAL: test-specific timing requirement
+            time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
 
             response = requests.get(f"{prometheus_url}/api/v1/rules", timeout=10)
             self.assertEqual(response.status_code, 200, "Prometheus should be accessible")
@@ -101,8 +96,7 @@ class MarketplaceAlertingIntegrationTest(TestCase):
             # If alerts not loaded yet, that's OK - they'll be loaded on next reload
             if len(marketplace_groups) == 0:
                 raise unittest.SkipTest(
-                    "Marketplace alerts not yet loaded in Prometheus "
-                    "(may need reload or restart)"
+                    "Marketplace alerts not yet loaded in Prometheus (may need reload or restart)"
                 )
 
             # Verify marketplace alert group exists
@@ -422,7 +416,6 @@ class MarketplaceNotificationIntegrationTest(TestCase):
 
     def test_notification_templates_exist(self):
         """Test that notification templates exist"""
-        import os
 
         from django.template.loader import get_template
 
@@ -468,7 +461,7 @@ class MarketplaceNotificationIntegrationTest(TestCase):
             # the code path doesn't crash
             self.assertIn("success", result, "Result should contain success field")
 
-        except Exception as e:
+        except Exception:
             # Connection test may fail, but metrics recording should not crash
             # This is acceptable - the test verifies the integration doesn't break
             pass
@@ -485,7 +478,7 @@ class MarketplaceNotificationIntegrationTest(TestCase):
         )
 
         # Create a sync job
-        sync_job = MarketplaceSyncJob.objects.create(
+        MarketplaceSyncJob.objects.create(
             tenant=self.tenant,
             connection=connection,
             direction=SyncDirection.PULL.value,
@@ -503,7 +496,6 @@ class MarketplaceNotificationIntegrationTest(TestCase):
         self.assertTrue(callable(send_marketplace_sync_completion_email))
 
         # Verify it's a job
-        from django_rq import job
 
         # Check that it's decorated as a job
         self.assertTrue(hasattr(send_marketplace_sync_completion_email, "delay"))

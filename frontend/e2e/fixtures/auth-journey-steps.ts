@@ -84,7 +84,17 @@ export function uniqueEmail(prefix = 'e2e_visitor'): string {
 }
 
 export function strongPassword(): string {
-  return `TestPass${Math.floor(1000 + Math.random() * 9000)}`;
+  // Backend password policy requires: ≥8 chars, uppercase, lowercase, digit,
+  // AND special character.  Also must NOT appear in breach databases
+  // (TestPass123! is flagged by HaveIBeenPwned).  Generate a 16-char
+  // random password that's guaranteed unique per invocation.
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const specials = '!@#$%^&*';
+  let pw = '';
+  for (let i = 0; i < 12; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+  pw += specials[Math.floor(Math.random() * specials.length)];
+  pw += chars[Math.floor(Math.random() * chars.length)];
+  return pw;
 }
 
 function isRetryableRegisterError(err: unknown): boolean {
@@ -170,13 +180,25 @@ interface MailHogMessage {
 const RESET_LINK_REGEX =
   /https?:\/\/[^\s"']*auth\/password[\s\r\n-]*reset\/confirm[?#]token=[0-9a-fA-F-]{36}/;
 
+/** Decode quoted-printable encoding used in email bodies.
+ *  =3D → =, soft line breaks (=\n) → removed. */
+function decodeQuotedPrintable(body: string): string {
+  return body
+    .replace(/=\r?\n/g, '')        // soft line breaks
+    .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
 function extractResetLinkFromMessage(item: MailHogMessage): string | null {
-  const body =
+  const rawBody =
     item?.Content?.Body ??
     item?.MIME?.Parts?.map((p) => p?.Body)
       .filter(Boolean)
       .join('\n') ??
     '';
+  // Decode quoted-printable: the email template uses =3D for = in URLs
+  // and soft line breaks around UUIDs, making the raw body unreadable
+  // by the regex.  Decoding before matching restores the plain URL.
+  const body = decodeQuotedPrintable(rawBody);
   const candidate = `${JSON.stringify(item?.Content ?? item?.MIME ?? {})}\n${body}`;
   const match = candidate.match(RESET_LINK_REGEX);
   if (!match?.[0]) return null;
@@ -230,10 +252,11 @@ function messageToMatches(item: MailHogMessage, toEmail: string): boolean {
  */
 export async function waitForPasswordResetEmail(
   toEmail: string,
-  timeoutMs = 60_000
+  timeoutMs = 120_000  // 120s: API restart + gunicorn warmup + Django init + RQ sync processing
 ): Promise<string> {
   const started = Date.now();
   const headers = buildMailhogRequestHeaders(MAILHOG_BASE_URL, process.env.E2E_TEST_SECRET);
+  let pollCount = 0;
   while (Date.now() - started < timeoutMs) {
     try {
       const v1Resp = await fetch(`${MAILHOG_BASE_URL}/api/v1/messages`, { headers });
@@ -268,9 +291,21 @@ export async function waitForPasswordResetEmail(
           }
         }
       }
+      // After 6 poll attempts (~12s), if no message in MailHog matches the
+      // target recipient, the SMTP delivery path is likely broken or the
+      // worker isn't processing the task.  Fail fast instead of waiting 60s.
+      if (pollCount === 6 && !list.some(m => messageToMatches(m, toEmail))) {
+        throw new Error(
+          `MailHog is reachable at ${MAILHOG_BASE_URL} but no message for ` +
+          `${toEmail} found after ${pollCount} polls (~${pollCount * 2}s). ` +
+          `MailHog has ${list.length} total message(s). ` +
+          `The worker-service may not be processing tasks or SMTP delivery is failing.`
+        );
+      }
     } catch (e) {
       throw new Error(`MailHog is not reachable at ${MAILHOG_BASE_URL}. Root error: ${String(e)}`);
     }
+    pollCount++;
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
   throw new Error(

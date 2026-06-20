@@ -1,10 +1,10 @@
 """Unit tests for ``datahub events`` commands (283.5.9)."""
+
 import json
+from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
-from unittest.mock import Mock
-
 from datahub_cli.main import cli
 
 

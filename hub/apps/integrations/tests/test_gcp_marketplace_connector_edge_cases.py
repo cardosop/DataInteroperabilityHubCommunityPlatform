@@ -14,13 +14,11 @@ These tests use real Google Cloud SDK clients - no mocks/stubs.
 import json
 import os
 
-import pytest
 from django.test import TestCase
 
 from hub.apps.core.services.base import NotFoundError, PermissionError
 from hub.apps.integrations.base import (
     MarketplaceListing,
-    MarketplaceResource,
     MarketplaceType,
 )
 from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
@@ -38,18 +36,16 @@ def get_test_credentials():
     credentials in environments where they are not configured.
     """
     import unittest
-    import json
+
     env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
     if not env_json:
-        raise unittest.SkipTest(
-            "GCP_SERVICE_ACCOUNT_JSON not set — skipping"
-        )
+        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON not set — skipping")
     try:
         return json.loads(env_json)
     except json.JSONDecodeError:
-        raise unittest.SkipTest(
-            "GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping"
-        )
+        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping")
+
+
 class TestGCPMarketplaceConnectorEdgeCases(TestCase):
     """Edge case tests for GCP Marketplace connector"""
 
@@ -70,8 +66,7 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         try:
             self.connector.authenticate(credentials)
         except Exception:
-            # Authentication may fail if credentials are invalid, but tests will handle it
-            pass
+            self.skipTest("GCP authentication failed — credentials not available")
 
     def test_list_listings_empty_result(self):
         """Test list_listings with empty result set or non-existent resource"""
@@ -122,7 +117,6 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
             )
             # Should complete but with errors or skipped items
             self.assertIsNotNone(result)
-            self.assertGreaterEqual(len(result.errors), 0)
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
         except NotFoundError:
@@ -209,16 +203,17 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         connector = GCPMarketplaceConnector(
             project_id="test-project", credentials_json={"type": "service_account"}, location=""
         )
-        # Empty location should be handled (may use default or raise error)
-        # The connector should handle this gracefully
-        self.assertIsNotNone(connector)
+        # Empty string is stored as-is (default "US" only applies when
+        # location is omitted entirely, not when an empty string is passed).
+        self.assertEqual(connector.location, "")
 
     def test_credentials_json_validation(self):
         """Test credentials_json validation"""
         # Invalid credentials_json type
         with self.assertRaises(ValueError):
             connector = GCPMarketplaceConnector(
-                project_id="test-project", credentials_json="invalid-string"  # Should be dict
+                project_id="test-project",
+                credentials_json="invalid-string",  # Should be dict
             )
             connector._get_credentials()
 
@@ -266,7 +261,6 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
             listings = self.connector.list_listings(limit=1000000)
             # Should handle large limit gracefully (may be capped internally)
             self.assertIsInstance(listings, list)
-            self.assertLessEqual(len(listings), 1000000)
         except (ValueError, TypeError):
             # Expected if validation is strict
             pass

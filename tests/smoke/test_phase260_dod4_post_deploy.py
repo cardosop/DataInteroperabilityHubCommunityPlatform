@@ -45,15 +45,13 @@ SMOKE_PHASE260_LOGOUT_ALL_SLO_MS
     and the second /auth/me/ probe returning 401 (default: 1000 — the
     DoD.4 contract).
 """
+
 from __future__ import annotations
 
 import os
 import time
-from typing import Optional
 
-import pytest
 import requests
-
 
 AUTH_LOGIN_PATH = "/api/v1/auth/login/"
 AUTH_LOGOUT_PATH = "/api/v1/auth/logout/"
@@ -88,14 +86,14 @@ def _login(
     )
 
     body = response.json()
-    token: Optional[str] = (
-        body.get("access_token") or body.get("access") or body.get("token")
-    )
+    token: str | None = body.get("access_token") or body.get("access") or body.get("token")
     if not token:
         # Cookie-mode: the access token is in a cookie set by the server.
-        cookie = response.cookies.get("access_token") or response.cookies.get(
-            "__Host-access_token"
-        ) or response.cookies.get("__Secure-access_token")
+        cookie = (
+            response.cookies.get("access_token")
+            or response.cookies.get("__Host-access_token")
+            or response.cookies.get("__Secure-access_token")
+        )
         if cookie:
             token = str(cookie)
     assert token, (
@@ -121,8 +119,7 @@ def _me_probe(
         timeout=timeout,
     )
     assert response.status_code == expect_status, (
-        f"GET /auth/me/ expected {expect_status}, got "
-        f"{response.status_code}: {response.text[:300]}"
+        f"GET /auth/me/ expected {expect_status}, got {response.status_code}: {response.text[:300]}"
     )
     return response
 
@@ -137,9 +134,7 @@ class TestPhase260DoD4LegitimateTenantRequestsSucceed:
         timeout: int,
     ) -> None:
         access_token, _ = _login(base_url, admin_credentials, timeout)
-        response = _me_probe(
-            base_url, access_token, timeout, expect_status=200
-        )
+        response = _me_probe(base_url, access_token, timeout, expect_status=200)
         body = response.json()
         tenant_id = (
             body.get("tenant")
@@ -147,8 +142,7 @@ class TestPhase260DoD4LegitimateTenantRequestsSucceed:
             or (body.get("tenant_membership") or {}).get("tenant_id")
         )
         assert tenant_id, (
-            f"Legitimate /auth/me/ response missing tenant identifier — "
-            f"keys: {list(body.keys())}"
+            f"Legitimate /auth/me/ response missing tenant identifier — keys: {list(body.keys())}"
         )
 
 
@@ -203,6 +197,5 @@ class TestPhase260DoD4LogoutAllInvalidatesAccessJWT:
             f"return 401; got {probe.status_code}: {probe.text[:300]}"
         )
         assert elapsed_ms <= LOGOUT_ALL_SLO_MS, (
-            f"logout-all → 401 SLO miss: {elapsed_ms:.0f} ms > "
-            f"{LOGOUT_ALL_SLO_MS} ms (DoD.4)"
+            f"logout-all → 401 SLO miss: {elapsed_ms:.0f} ms > {LOGOUT_ALL_SLO_MS} ms (DoD.4)"
         )

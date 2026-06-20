@@ -5,12 +5,12 @@ Uses real ORM + ``captureOnCommitCallbacks(execute=True)`` (no mocked signals).
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import uuid
 
+import pytest
 from django.db import transaction
+
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.models import AuditEvent
@@ -144,8 +144,12 @@ class DatasetOrphanFileCascadeTests(DatasetsTestBase):
             )
             ds_ids.append(d.id)
 
+        # Only count events for THIS file so pre-existing
+        # FILE_ORPHAN_DETECTED rows from other tests don't
+        # pollute the before/after delta.
         before = AuditEvent.objects.filter(
             action=audit_event_types.FILE_ORPHAN_DETECTED,
+            resource_id=str(self.file.id),
         ).count()
 
         with self.captureOnCommitCallbacks(execute=True):
@@ -189,9 +193,8 @@ class DatasetOrphanFileCascadeTests(DatasetsTestBase):
         self.assertTrue(Dataset.objects.filter(pk=ds_id).exists())
         ds = Dataset.objects.get(pk=ds_id)
 
-        with self.captureOnCommitCallbacks(execute=True):
-            with transaction.atomic():
-                ds.delete()
+        with self.captureOnCommitCallbacks(execute=True), transaction.atomic():
+            ds.delete()
 
         self.file.refresh_from_db()
         self.assertEqual(self.file.status, FileStatus.DELETED)
@@ -223,9 +226,8 @@ class DatasetOrphanFileCascadeTests(DatasetsTestBase):
             self.assertTrue(Dataset.objects.filter(pk=ds_id).exists())
 
         ds = Dataset.objects.get(pk=ds_id)
-        with self.captureOnCommitCallbacks(execute=True):
-            with transaction.atomic():
-                ds.delete()
+        with self.captureOnCommitCallbacks(execute=True), transaction.atomic():
+            ds.delete()
 
         self.file.refresh_from_db()
         self.assertEqual(self.file.status, FileStatus.DELETED)

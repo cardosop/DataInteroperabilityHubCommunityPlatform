@@ -8,25 +8,28 @@ Tests verify:
 4. Error handling
 5. Compensation logic
 """
+
 try:
     import pytest
+
     pytestmark = pytest.mark.django_db
 except ImportError:
     pytest = None
     pytestmark = None
 
-from django.test import TestCase
-from django.contrib.auth import get_user_model
+import uuid
 
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+
+from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.ml.models import MLModel, ModelStatus, ModelType
+from hub.apps.orchestration.models import WorkflowDefinition, WorkflowStatus
 from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.models import WorkflowDefinition, WorkflowInstance, WorkflowStatus
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.workflows.model_inference import ModelInferenceWorkflow
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.ml.models import MLModel, ModelStatus, ModelType
-import uuid
 
 User = get_user_model()
 
@@ -45,17 +48,14 @@ class ModelInferenceWorkflowDefinitionTest(TestCase):
 
     def test_register_workflow_creates_definition(self):
         """Test that register_workflow creates workflow definition"""
-        # Count existing definitions
-        initial_count = WorkflowDefinition.objects.filter(
-            name=ModelInferenceWorkflow.WORKFLOW_NAME
-        ).count()
-
         ModelInferenceWorkflow.register_workflow(self.registry)
 
         # Verify workflow definition exists (may already exist from previous test)
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=ModelInferenceWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=ModelInferenceWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         self.assertIsNotNone(workflow_def, "Workflow definition should be created")
         self.assertEqual(workflow_def.name, ModelInferenceWorkflow.WORKFLOW_NAME)
@@ -66,9 +66,11 @@ class ModelInferenceWorkflowDefinitionTest(TestCase):
         """Test that workflow DSL has all required steps"""
         ModelInferenceWorkflow.register_workflow(self.registry)
 
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=ModelInferenceWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=ModelInferenceWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         self.assertIsNotNone(workflow_def, "Workflow definition should exist")
         dsl = workflow_def.dsl_json
@@ -88,11 +90,13 @@ class ModelInferenceWorkflowDefinitionTest(TestCase):
             "validate_output",
             "store_result",
             "update_usage_tracking",
-            "complete"
+            "complete",
         ]
 
         for required_step in required_steps:
-            self.assertIn(required_step, step_names, f"Step '{required_step}' should be in workflow")
+            self.assertIn(
+                required_step, step_names, f"Step '{required_step}' should be in workflow"
+            )
 
     def test_register_tasks_registers_all_tasks(self):
         """Test that register_tasks registers all workflow tasks"""
@@ -106,23 +110,27 @@ class ModelInferenceWorkflowDefinitionTest(TestCase):
             "model_inference.validate_output",
             "model_inference.store_result",
             "model_inference.update_usage_tracking",
-            "model_inference.complete"
+            "model_inference.complete",
         ]
 
         for task_name in required_tasks:
-            self.assertIn(task_name, self.engine.task_registry, f"Task '{task_name}' should be registered")
+            self.assertIn(
+                task_name, self.engine.task_registry, f"Task '{task_name}' should be registered"
+            )
 
     def test_register_tasks_registers_compensation_tasks(self):
         """Test that register_tasks registers compensation tasks"""
         ModelInferenceWorkflow.register_tasks(self.engine)
 
         # Verify compensation tasks are registered
-        compensation_tasks = [
-            "model_inference.rollback_inference"
-        ]
+        compensation_tasks = ["model_inference.rollback_inference"]
 
         for task_name in compensation_tasks:
-            self.assertIn(task_name, self.engine.task_registry, f"Compensation task '{task_name}' should be registered")
+            self.assertIn(
+                task_name,
+                self.engine.task_registry,
+                f"Compensation task '{task_name}' should be registered",
+            )
 
 
 class ModelInferenceWorkflowStepExecutionTest(TestCase):
@@ -131,15 +139,12 @@ class ModelInferenceWorkflowStepExecutionTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
@@ -154,7 +159,7 @@ class ModelInferenceWorkflowStepExecutionTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create test model (deployed)
@@ -165,14 +170,11 @@ class ModelInferenceWorkflowStepExecutionTest(TestCase):
             odh_model_version="1.0.0",
             asset=self.asset,
             model_type=ModelType.CLASSIFICATION,
-            status=ModelStatus.DEPLOYED  # Model must be deployed for inference
+            status=ModelStatus.DEPLOYED,  # Model must be deployed for inference
         )
 
         # Input data for inference
-        self.input_data = {
-            "feature1": 0.5,
-            "feature2": 0.3
-        }
+        self.input_data = {"feature1": 0.5, "feature2": 0.3}
 
     def test_workflow_execution_creates_instance(self):
         """Test that workflow execution creates instance"""
@@ -180,14 +182,14 @@ class ModelInferenceWorkflowStepExecutionTest(TestCase):
             "model_id": str(self.model.id),
             "input_data": self.input_data,
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
 
         instance = self.engine.create_instance(
             workflow_name=ModelInferenceWorkflow.WORKFLOW_NAME,
             input_data=workflow_input,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         self.assertIsNotNone(instance)
@@ -205,14 +207,16 @@ class ModelInferenceWorkflowStepExecutionTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 engine=self.engine,
-                registry=self.registry
+                registry=self.registry,
             )
 
             self.assertTrue(result.get("success"))
             self.assertIn("workflow_instance_id", result)
             self.assertIn("inference_id", result)
         except ValueError as e:
-            # If workflow fails due to ODH unavailability, model not deployed, or step failure, accept it in test env
+            # If the workflow fails because ODH or deployment services are
+            # unavailable in this test environment, skip cleanly rather than
+            # passing vacuously (which hides regressions).
             msg = str(e).lower()
             if (
                 "odh" in msg
@@ -222,8 +226,7 @@ class ModelInferenceWorkflowStepExecutionTest(TestCase):
                 or "run_inference" in msg
                 or "rolled back" in msg
             ):
-                # Expected when no real deployment/ODH in test environment
-                pass
+                self.skipTest(f"ODH/deployment service unavailable: {e}")
             else:
                 raise
 
@@ -236,7 +239,7 @@ class ModelInferenceWorkflowStepExecutionTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 engine=self.engine,
-                registry=self.registry
+                registry=self.registry,
             )
 
     def test_workflow_handles_missing_input_data(self):
@@ -248,7 +251,7 @@ class ModelInferenceWorkflowStepExecutionTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 engine=self.engine,
-                registry=self.registry
+                registry=self.registry,
             )
 
 
@@ -258,15 +261,12 @@ class ModelInferenceWorkflowIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create test asset
@@ -275,7 +275,7 @@ class ModelInferenceWorkflowIntegrationTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create test model (deployed)
@@ -286,22 +286,18 @@ class ModelInferenceWorkflowIntegrationTest(TestCase):
             odh_model_version="1.0.0",
             asset=self.asset,
             model_type=ModelType.CLASSIFICATION,
-            status=ModelStatus.DEPLOYED  # Model must be deployed for inference
+            status=ModelStatus.DEPLOYED,  # Model must be deployed for inference
         )
 
         # Input data for inference
-        self.input_data = {
-            "feature1": 0.5,
-            "feature2": 0.3
-        }
+        self.input_data = {"feature1": 0.5, "feature2": 0.3}
 
     def test_service_integration_with_workflow(self):
         """Test that ModelRegistryBridgeService integrates with workflow"""
         from hub.apps.ml.services import ModelRegistryBridgeService
 
         service = ModelRegistryBridgeService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Test inference with workflow
@@ -310,14 +306,17 @@ class ModelInferenceWorkflowIntegrationTest(TestCase):
                 model_id=str(self.model.id),
                 input_data=self.input_data,
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
             self.assertIn("success", result)
             self.assertIn("workflow_instance_id", result)
             self.assertIn("inference_id", result)
         except Exception as e:
-            # If ODH services are unavailable or model not deployed, that's acceptable in test env
+            # If ODH services are unavailable or model not deployed, skip cleanly
+            # rather than passing vacuously.  (Keep Exception-wide catch so we
+            # don't let unexpected error types crash the suite, but always
+            # report the skip so CI can track how often these are hit.)
             msg = str(e).lower()
             if (
                 "odh" in msg
@@ -327,6 +326,6 @@ class ModelInferenceWorkflowIntegrationTest(TestCase):
                 or "run_inference" in msg
                 or "rolled back" in msg
             ):
-                pass
+                self.skipTest(f"ODH/deployment service unavailable: {e}")
             else:
                 raise

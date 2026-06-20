@@ -433,13 +433,8 @@ class ODPSVersionDetectionTest(TestCase):
 
     def test_version_detection_handles_none_values(self):
         """Test that version detection handles None values correctly."""
-        try:
-            version = detect_odps_version(None)  # type: ignore[misc]  # test: edge-case type exercise
-            # Should handle None values gracefully
-            self.assertIsNotNone(version)
-        except (TypeError, ValueError):
-            # If it raises exception, that's acceptable
-            pass
+        version = detect_odps_version(None)  # type: ignore[misc]  # test: edge-case type exercise
+        self.assertEqual(version, "unknown")
 
     def test_version_detection_handles_nested_structures(self):
         """Test that version detection handles nested structures correctly."""

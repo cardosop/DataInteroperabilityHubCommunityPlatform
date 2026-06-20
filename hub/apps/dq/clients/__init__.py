@@ -12,6 +12,7 @@ modules (see ``slack_client.py`` for the Block Kit shape, etc.). The
 base class lives in ``base.py``; this package's ``__init__`` re-exports
 the public surface.
 """
+
 from __future__ import annotations
 
 from .base import (
@@ -24,7 +25,6 @@ from .email_client import EmailAlertClient
 from .pagerduty_client import PagerDutyAlertClient
 from .slack_client import SlackAlertClient
 from .webhook_client import WebhookAlertClient
-
 
 __all__ = [
     "AlertDeliveryError",

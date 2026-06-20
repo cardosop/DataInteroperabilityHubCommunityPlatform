@@ -8,11 +8,11 @@ Proves:
         APIVersionManager with correct sunset date
 4. J.2: SearchViewSet responses include deprecation headers
 """
+
 import os
 
 import pytest
 from django.test import TestCase
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -33,7 +33,8 @@ class SecurityFindingsTrackerTest(TestCase):
     def test_security_findings_file_exists(self):
         """docs/SECURITY_FINDINGS.md must exist."""
         path = os.path.join(
-            _REPO_ROOT, "docs/SECURITY_FINDINGS.md",
+            _REPO_ROOT,
+            "docs/SECURITY_FINDINGS.md",
         )
         self.assertTrue(
             os.path.exists(path),
@@ -95,12 +96,12 @@ class SearchViewSetDeprecationTest(TestCase):
         from hub.apps.api.versioning import APIVersionManager
 
         endpoint = APIVersionManager.get_deprecated_endpoint(
-            "/api/v1/search/", "GET",
+            "/api/v1/search/",
+            "GET",
         )
         self.assertIsNotNone(
             endpoint,
-            "SearchViewSet /api/v1/search/ must be "
-            "registered as deprecated",
+            "SearchViewSet /api/v1/search/ must be registered as deprecated",
         )
 
     def test_sunset_date_is_2026_04_18(self):
@@ -108,7 +109,8 @@ class SearchViewSetDeprecationTest(TestCase):
         from hub.apps.api.versioning import APIVersionManager
 
         endpoint = APIVersionManager.get_deprecated_endpoint(
-            "/api/v1/search/", "GET",
+            "/api/v1/search/",
+            "GET",
         )
         self.assertIsNotNone(endpoint)
         self.assertEqual(endpoint.sunset_date, "2026-04-18")
@@ -118,7 +120,8 @@ class SearchViewSetDeprecationTest(TestCase):
         from hub.apps.api.versioning import APIVersionManager
 
         endpoint = APIVersionManager.get_deprecated_endpoint(
-            "/api/v1/search/", "GET",
+            "/api/v1/search/",
+            "GET",
         )
         self.assertIsNotNone(endpoint)
         self.assertEqual(endpoint.replacement, "/api/search/")
@@ -130,8 +133,9 @@ class SearchViewSetDeprecationTest(TestCase):
         that references the header name — stronger than source-code
         grep because it resolves MRO correctly.
         """
-        from hub.apps.search.views import SearchViewSet
         import inspect
+
+        from hub.apps.search.views import SearchViewSet
 
         self.assertTrue(
             "finalize_response" in SearchViewSet.__dict__,
@@ -158,10 +162,10 @@ class SearchViewSetDeprecationTest(TestCase):
         ]
         for path, method in expected_paths:
             endpoint = APIVersionManager.get_deprecated_endpoint(
-                path, method,
+                path,
+                method,
             )
             self.assertIsNotNone(
                 endpoint,
-                f"{method} {path} must be registered as "
-                f"deprecated",
+                f"{method} {path} must be registered as deprecated",
             )

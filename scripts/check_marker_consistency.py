@@ -13,7 +13,6 @@ Exit 0 on clean, 1 on violations.  Wired into CI as a lint gate.
 
 import argparse
 import configparser
-import os
 import re
 import sys
 from collections import defaultdict
@@ -25,67 +24,153 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 TIER_1_MARKERS = frozenset({"unit", "integration", "e2e"})
 
-TIER_2_MARKERS = frozenset({
-    "requires_db", "requires_redis", "requires_minio", "requires_fuseki",
-    "requires_prefect", "requires_mailhog", "requires_aws", "requires_gcp",
-    "requires_snowflake", "requires_stripe", "requires_clamav", "requires_ckan",
-})
+TIER_2_MARKERS = frozenset(
+    {
+        "requires_db",
+        "requires_redis",
+        "requires_minio",
+        "requires_fuseki",
+        "requires_prefect",
+        "requires_mailhog",
+        "requires_aws",
+        "requires_gcp",
+        "requires_snowflake",
+        "requires_stripe",
+        "requires_clamav",
+        "requires_ckan",
+    }
+)
 
-TIER_3_MARKERS = frozenset({
-    "marketplace", "compliance", "semantic", "contracts", "auth",
-    "governance", "billing", "datasets", "files", "webhooks",
-    "workflows", "virtualization", "baas", "ml", "cli", "sdk",
-    "search", "assets", "security", "isolation", "resilience",
-})
+TIER_3_MARKERS = frozenset(
+    {
+        "marketplace",
+        "compliance",
+        "semantic",
+        "contracts",
+        "auth",
+        "governance",
+        "billing",
+        "datasets",
+        "files",
+        "webhooks",
+        "workflows",
+        "virtualization",
+        "baas",
+        "ml",
+        "cli",
+        "sdk",
+        "search",
+        "assets",
+        "security",
+        "isolation",
+        "resilience",
+    }
+)
 
-SPECIAL_MARKERS = frozenset({
-    "django_db", "asyncio", "spec", "uc", "journey", "persona",
-    "rls", "uses_admin_role", "openspec_gate", "slow", "performance",
-    "regression", "tabletop_rehearsal", "odh_inference",
-    "benchmark", "stripe_connect", "allow_server_errors",
-})
+SPECIAL_MARKERS = frozenset(
+    {
+        "django_db",
+        "asyncio",
+        "spec",
+        "uc",
+        "journey",
+        "persona",
+        "rls",
+        "uses_admin_role",
+        "openspec_gate",
+        "slow",
+        "performance",
+        "regression",
+        "tabletop_rehearsal",
+        "odh_inference",
+        "benchmark",
+        "stripe_connect",
+        "allow_server_errors",
+        "cache",
+        "concurrency",
+        "idempotency",
+        "observability",
+        "schema",
+        "transaction",
+        "requires_file_virus_scan_e2e",
+        "requires_fuseki",
+    }
+)
 
 ALL_VALID_MARKERS = TIER_1_MARKERS | TIER_2_MARKERS | TIER_3_MARKERS | SPECIAL_MARKERS
 
 # Deprecated markers: registered in pytest.ini as @deprecated so
 # --strict-markers passes, but check_marker_consistency.py flags them
 # as warnings.  Tests should migrate to the replacement.
-DEPRECATED_MARKERS = frozenset({
-    "requires_database", "e2e_batch1", "e2e_batch2", "e2e_batch3",
-    "e2e_batch4", "e2e_batch5", "e2e1", "e2e2", "e2e3", "e2e4", "e2e5",
-    "docker_compose_runtime", "real_scheduled_e2e", "real_virtualization_e2e",
-    "scheduled_ingestion_integration",
-    "requires_aws_role_arn", "requires_aws_session_token", "requires_aws_test_dataset",
-    "requires_gcp_service_account",
-    "snowflake_e2e", "snowflake_integration", "aws_integration", "gcp_integration",
-    "requires_clamav_live", "requires_file_virus_scan_e2e",
-    "smoke_mvp_mode", "mvp", "serial", "workflow_e2e",
-    "saas_platform", "cli_sdk", "scheduled_export",
-    "requires_services", "requires_services_connectivity", "requires_test_env",
-    "uc_journey_persona",
-})
+DEPRECATED_MARKERS = frozenset(
+    {
+        "requires_database",
+        "e2e_batch1",
+        "e2e_batch2",
+        "e2e_batch3",
+        "e2e_batch4",
+        "e2e_batch5",
+        "e2e1",
+        "e2e2",
+        "e2e3",
+        "e2e4",
+        "e2e5",
+        "docker_compose_runtime",
+        "real_scheduled_e2e",
+        "real_virtualization_e2e",
+        "scheduled_ingestion_integration",
+        "requires_aws_role_arn",
+        "requires_aws_session_token",
+        "requires_aws_test_dataset",
+        "requires_gcp_service_account",
+        "snowflake_e2e",
+        "snowflake_integration",
+        "aws_integration",
+        "gcp_integration",
+        "requires_clamav_live",
+        "requires_file_virus_scan_e2e",
+        "smoke_mvp_mode",
+        "mvp",
+        "serial",
+        "workflow_e2e",
+        "saas_platform",
+        "cli_sdk",
+        "scheduled_export",
+        "requires_services",
+        "requires_services_connectivity",
+        "requires_test_env",
+        "uc_journey_persona",
+    }
+)
 
 # Markers that were renamed (old → new mapping for helpful error messages).
 RENAMED_MARKERS = {
-    "requires_database":         "requires_db",
-    "requires_aws_role_arn":     "requires_aws",
+    "requires_database": "requires_db",
+    "requires_aws_role_arn": "requires_aws",
     "requires_aws_session_token": "requires_aws",
-    "requires_aws_test_dataset":  "requires_aws",
-    "requires_clamav_live":      "requires_clamav",
+    "requires_aws_test_dataset": "requires_aws",
+    "requires_clamav_live": "requires_clamav",
     "requires_file_virus_scan_e2e": "requires_clamav",
     "requires_gcp_service_account": "requires_gcp",
-    "snowflake_e2e":             "requires_snowflake",
-    "snowflake_integration":     "requires_snowflake",
-    "aws_integration":           "requires_aws",
-    "gcp_integration":           "requires_gcp",
-    "real_scheduled_e2e":        "requires_prefect",
-    "real_virtualization_e2e":   "virtualization",
+    "snowflake_e2e": "requires_snowflake",
+    "snowflake_integration": "requires_snowflake",
+    "aws_integration": "requires_aws",
+    "gcp_integration": "requires_gcp",
+    "real_scheduled_e2e": "requires_prefect",
+    "real_virtualization_e2e": "virtualization",
     "scheduled_ingestion_integration": "requires_prefect",
-    "requires_services":         "unit",  # needs Tier 1 replacement
-    "docker_compose_runtime":    "requires_db",
-    "e2e_batch1": "e2e", "e2e_batch2": "e2e", "e2e_batch3": "e2e",
-    "e2e_batch4": "e2e", "e2e_batch5": "e2e",
-    "e2e1": "e2e", "e2e2": "e2e", "e2e3": "e2e", "e2e4": "e2e", "e2e5": "e2e",
+    "requires_services": "unit",  # needs Tier 1 replacement
+    "docker_compose_runtime": "requires_db",
+    "e2e_batch1": "e2e",
+    "e2e_batch2": "e2e",
+    "e2e_batch3": "e2e",
+    "e2e_batch4": "e2e",
+    "e2e_batch5": "e2e",
+    "e2e1": "e2e",
+    "e2e2": "e2e",
+    "e2e3": "e2e",
+    "e2e4": "e2e",
+    "e2e5": "e2e",
     "smoke_mvp_mode": "e2e",
     "workflow_e2e": "e2e",
     "saas_platform": "integration",
@@ -101,9 +186,7 @@ RENAMED_MARKERS = {
 
 # ── Parsing helpers ──────────────────────────────────────────────────────
 
-_MARKER_DECORATOR_RE = re.compile(
-    r'@pytest\.mark\.(\w+)(?:\(([^)]*)\))?'
-)
+_MARKER_DECORATOR_RE = re.compile(r"@pytest\.mark\.(\w+)(?:\(([^)]*)\))?")
 
 
 def parse_registered_markers(pytest_ini_path: Path) -> set:
@@ -160,7 +243,7 @@ def extract_markers_from_file(filepath: Path) -> list:
     current_function = None
     for i, line in enumerate(lines, 1):
         # Track current function name for context (handles def + async def)
-        fn_match = re.match(r'^\s*(?:async\s+)?def\s+(test_\w+)\s*\(', line)
+        fn_match = re.match(r"^\s*(?:async\s+)?def\s+(test_\w+)\s*\(", line)
         if fn_match:
             current_function = fn_match.group(1)
         for m in _MARKER_DECORATOR_RE.finditer(line):
@@ -172,6 +255,7 @@ def extract_markers_from_file(filepath: Path) -> list:
 # ═══════════════════════════════════════════════════════════════════════════
 # Validation
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def validate(test_paths: list = None, verbose: bool = False) -> int:
     """Run all marker consistency checks.  Returns exit code (0 = clean)."""
@@ -191,7 +275,7 @@ def validate(test_paths: list = None, verbose: bool = False) -> int:
         print(f"Scanning {len(test_files)} test files...", file=sys.stderr)
 
     # Stats
-    file_tier1_counts = defaultdict(lambda: defaultdict(int))  # file → {unit: N, integration: N, ...}
+    defaultdict(lambda: defaultdict(int))  # file → {unit: N, integration: N, ...}
     used_markers = set()
     legacy_used = []
 
@@ -250,6 +334,9 @@ def validate(test_paths: list = None, verbose: bool = False) -> int:
     unregistered.discard("timeout")
     # Allow flaky (pytest-rerunfailures)
     unregistered.discard("flaky")
+    # Allow pytest-django built-ins (registered automatically by the plugin)
+    unregistered.discard("django_db")
+    unregistered.discard("transaction")
 
     if unregistered:
         for m in sorted(unregistered):

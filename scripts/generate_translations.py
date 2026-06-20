@@ -12,17 +12,19 @@ Usage:
   python scripts/generate_translations.py
   python scripts/generate_translations.py --check  (validate coverage)
 """
-import re
-import os
-import sys
+
 import json
+import re
+import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 EN_LOCALE = PROJECT_ROOT / "frontend" / "src" / "shared" / "i18n" / "locales" / "en.ts"
 ES_OUT = PROJECT_ROOT / "frontend" / "src" / "shared" / "i18n" / "locales" / "es.ts"
 FR_OUT = PROJECT_ROOT / "frontend" / "src" / "shared" / "i18n" / "locales" / "fr.ts"
-COVERAGE_REPORT = PROJECT_ROOT / "frontend" / "src" / "shared" / "i18n" / "locales" / "coverage.json"
+COVERAGE_REPORT = (
+    PROJECT_ROOT / "frontend" / "src" / "shared" / "i18n" / "locales" / "coverage.json"
+)
 
 
 # ── Term-mapping dictionaries ─────────────────────────────────────────────
@@ -32,42 +34,87 @@ COVERAGE_REPORT = PROJECT_ROOT / "frontend" / "src" / "shared" / "i18n" / "local
 
 ES_TERMS = {
     # UI chrome
-    "Apply": "Aplicar", "Reset": "Restablecer", "Save": "Guardar",
-    "Cancel": "Cancelar", "Delete": "Eliminar", "Edit": "Editar",
-    "Create": "Crear", "Upload": "Subir", "Download": "Descargar",
-    "Submit": "Enviar", "Close": "Cerrar", "Open": "Abrir",
-    "View": "Ver", "Search": "Buscar", "Filter": "Filtrar",
-    "Select": "Seleccionar", "Remove": "Quitar", "Add": "Añadir",
-    "Loading": "Cargando", "Error": "Error", "Success": "Éxito",
-    "Copy": "Copiar", "Paste": "Pegar", "Back": "Volver",
-    "Next": "Siguiente", "Previous": "Anterior", "Skip": "Omitir",
-    "Confirm": "Confirmar", "Reject": "Rechazar", "Approve": "Aprobar",
-    "Publish": "Publicar", "Draft": "Borrador",
+    "Apply": "Aplicar",
+    "Reset": "Restablecer",
+    "Save": "Guardar",
+    "Cancel": "Cancelar",
+    "Delete": "Eliminar",
+    "Edit": "Editar",
+    "Create": "Crear",
+    "Upload": "Subir",
+    "Download": "Descargar",
+    "Submit": "Enviar",
+    "Close": "Cerrar",
+    "Open": "Abrir",
+    "View": "Ver",
+    "Search": "Buscar",
+    "Filter": "Filtrar",
+    "Select": "Seleccionar",
+    "Remove": "Quitar",
+    "Add": "Añadir",
+    "Loading": "Cargando",
+    "Error": "Error",
+    "Success": "Éxito",
+    "Copy": "Copiar",
+    "Paste": "Pegar",
+    "Back": "Volver",
+    "Next": "Siguiente",
+    "Previous": "Anterior",
+    "Skip": "Omitir",
+    "Confirm": "Confirmar",
+    "Reject": "Rechazar",
+    "Approve": "Aprobar",
+    "Publish": "Publicar",
+    "Draft": "Borrador",
     # General
-    "Yes": "Sí", "No": "No", "none": "ninguno", "optional": "opcional",
-    "Title": "Título", "Summary": "Resumen", "Details": "Detalles",
-    "Status": "Estado", "Action": "Acción", "Description": "Descripción",
-    "Version": "Versión", "Heading": "Encabezado", "Body": "Cuerpo",
-    "Field": "Campo", "Type": "Tipo", "Name": "Nombre",
-    "Email": "Correo electrónico", "Password": "Contraseña",
-    "Date": "Fecha", "Time": "Hora", "Price": "Precio",
-    "Help": "Ayuda", "Settings": "Configuración", "Preview": "Vista previa",
-    "Compare": "Comparar", "Recommendations": "Recomendaciones",
+    "Yes": "Sí",
+    "No": "No",
+    "none": "ninguno",
+    "optional": "opcional",
+    "Title": "Título",
+    "Summary": "Resumen",
+    "Details": "Detalles",
+    "Status": "Estado",
+    "Action": "Acción",
+    "Description": "Descripción",
+    "Version": "Versión",
+    "Heading": "Encabezado",
+    "Body": "Cuerpo",
+    "Field": "Campo",
+    "Type": "Tipo",
+    "Name": "Nombre",
+    "Email": "Correo electrónico",
+    "Password": "Contraseña",
+    "Date": "Fecha",
+    "Time": "Hora",
+    "Price": "Precio",
+    "Help": "Ayuda",
+    "Settings": "Configuración",
+    "Preview": "Vista previa",
+    "Compare": "Comparar",
+    "Recommendations": "Recomendaciones",
     # Lineage / time-travel
-    "lineage": "linaje", "time-travel": "viaje en el tiempo",
-    "As of": "A fecha de", "diff": "diferencias",
-    "Added": "Añadido", "Removed": "Eliminado",
-    "Unchanged": "Sin cambios", "Modified": "Modificado",
-    "from": "desde", "to": "hasta",
+    "lineage": "linaje",
+    "time-travel": "viaje en el tiempo",
+    "As of": "A fecha de",
+    "diff": "diferencias",
+    "Added": "Añadido",
+    "Removed": "Eliminado",
+    "Unchanged": "Sin cambios",
+    "Modified": "Modificado",
+    "from": "desde",
+    "to": "hasta",
     "Pick two anchors": "Seleccione dos puntos de anclaje",
     # Assets / contracts
     "Schema drift detected": "Deriva de esquema detectada",
     "Schema does not match the contract": "El esquema no coincide con el contrato",
-    "Missing fields": "Campos faltantes", "Extra fields": "Campos sobrantes",
+    "Missing fields": "Campos faltantes",
+    "Extra fields": "Campos sobrantes",
     "Type mismatches": "Discrepancias de tipo",
     "Contract type": "Tipo de contrato",
     "Dataset type": "Tipo de dataset",
-    "Compatible": "Compatible", "Safe widening": "Ampliación segura",
+    "Compatible": "Compatible",
+    "Safe widening": "Ampliación segura",
     # Marketplace / KYC / KYB
     "KYC verification required": "Verificación KYC requerida",
     "Verify KYC now": "Verificar KYC ahora",
@@ -83,7 +130,8 @@ ES_TERMS = {
     # Governance / DSAR
     "Data subject requests": "Solicitudes de derechos del titular",
     "Waiting on me": "Pendientes de mi aprobación",
-    "Access": "Acceso", "Legal hold": "Retención legal",
+    "Access": "Acceso",
+    "Legal hold": "Retención legal",
     # Legal
     "Legal & transparency": "Legal y transparencia",
     "Privacy notice": "Aviso de privacidad",
@@ -93,42 +141,87 @@ ES_TERMS = {
 
 FR_TERMS = {
     # UI chrome
-    "Apply": "Appliquer", "Reset": "Réinitialiser", "Save": "Enregistrer",
-    "Cancel": "Annuler", "Delete": "Supprimer", "Edit": "Modifier",
-    "Create": "Créer", "Upload": "Téléverser", "Download": "Télécharger",
-    "Submit": "Soumettre", "Close": "Fermer", "Open": "Ouvrir",
-    "View": "Voir", "Search": "Rechercher", "Filter": "Filtrer",
-    "Select": "Sélectionner", "Remove": "Retirer", "Add": "Ajouter",
-    "Loading": "Chargement", "Error": "Erreur", "Success": "Succès",
-    "Copy": "Copier", "Paste": "Coller", "Back": "Retour",
-    "Next": "Suivant", "Previous": "Précédent", "Skip": "Passer",
-    "Confirm": "Confirmer", "Reject": "Rejeter", "Approve": "Approuver",
-    "Publish": "Publier", "Draft": "Brouillon",
+    "Apply": "Appliquer",
+    "Reset": "Réinitialiser",
+    "Save": "Enregistrer",
+    "Cancel": "Annuler",
+    "Delete": "Supprimer",
+    "Edit": "Modifier",
+    "Create": "Créer",
+    "Upload": "Téléverser",
+    "Download": "Télécharger",
+    "Submit": "Soumettre",
+    "Close": "Fermer",
+    "Open": "Ouvrir",
+    "View": "Voir",
+    "Search": "Rechercher",
+    "Filter": "Filtrer",
+    "Select": "Sélectionner",
+    "Remove": "Retirer",
+    "Add": "Ajouter",
+    "Loading": "Chargement",
+    "Error": "Erreur",
+    "Success": "Succès",
+    "Copy": "Copier",
+    "Paste": "Coller",
+    "Back": "Retour",
+    "Next": "Suivant",
+    "Previous": "Précédent",
+    "Skip": "Passer",
+    "Confirm": "Confirmer",
+    "Reject": "Rejeter",
+    "Approve": "Approuver",
+    "Publish": "Publier",
+    "Draft": "Brouillon",
     # General
-    "Yes": "Oui", "No": "Non", "none": "aucun", "optional": "facultatif",
-    "Title": "Titre", "Summary": "Résumé", "Details": "Détails",
-    "Status": "Statut", "Action": "Action", "Description": "Description",
-    "Version": "Version", "Heading": "En-tête", "Body": "Corps",
-    "Field": "Champ", "Type": "Type", "Name": "Nom",
-    "Email": "E-mail", "Password": "Mot de passe",
-    "Date": "Date", "Time": "Heure", "Price": "Prix",
-    "Help": "Aide", "Settings": "Paramètres", "Preview": "Aperçu",
-    "Compare": "Comparer", "Recommendations": "Recommandations",
+    "Yes": "Oui",
+    "No": "Non",
+    "none": "aucun",
+    "optional": "facultatif",
+    "Title": "Titre",
+    "Summary": "Résumé",
+    "Details": "Détails",
+    "Status": "Statut",
+    "Action": "Action",
+    "Description": "Description",
+    "Version": "Version",
+    "Heading": "En-tête",
+    "Body": "Corps",
+    "Field": "Champ",
+    "Type": "Type",
+    "Name": "Nom",
+    "Email": "E-mail",
+    "Password": "Mot de passe",
+    "Date": "Date",
+    "Time": "Heure",
+    "Price": "Prix",
+    "Help": "Aide",
+    "Settings": "Paramètres",
+    "Preview": "Aperçu",
+    "Compare": "Comparer",
+    "Recommendations": "Recommandations",
     # Lineage / time-travel
-    "lineage": "lignage", "time-travel": "voyage dans le temps",
-    "As of": "À la date du", "diff": "différences",
-    "Added": "Ajouté", "Removed": "Supprimé",
-    "Unchanged": "Inchangé", "Modified": "Modifié",
-    "from": "de", "to": "à",
+    "lineage": "lignage",
+    "time-travel": "voyage dans le temps",
+    "As of": "À la date du",
+    "diff": "différences",
+    "Added": "Ajouté",
+    "Removed": "Supprimé",
+    "Unchanged": "Inchangé",
+    "Modified": "Modifié",
+    "from": "de",
+    "to": "à",
     "Pick two anchors": "Sélectionnez deux points d'ancrage",
     # Assets / contracts
     "Schema drift detected": "Dérive de schéma détectée",
     "Schema does not match the contract": "Le schéma ne correspond pas au contrat",
-    "Missing fields": "Champs manquants", "Extra fields": "Champs supplémentaires",
+    "Missing fields": "Champs manquants",
+    "Extra fields": "Champs supplémentaires",
     "Type mismatches": "Incompatibilités de type",
     "Contract type": "Type de contrat",
     "Dataset type": "Type de jeu de données",
-    "Compatible": "Compatible", "Safe widening": "Élargissement sûr",
+    "Compatible": "Compatible",
+    "Safe widening": "Élargissement sûr",
     # Marketplace / KYC / KYB
     "KYC verification required": "Vérification KYC requise",
     "Verify KYC now": "Vérifier KYC maintenant",
@@ -144,7 +237,8 @@ FR_TERMS = {
     # Governance / DSAR
     "Data subject requests": "Demandes des personnes concernées",
     "Waiting on me": "En attente de mon approbation",
-    "Access": "Accès", "Legal hold": "Conservation légale",
+    "Access": "Accès",
+    "Legal hold": "Conservation légale",
     # Legal
     "Legal & transparency": "Légal et transparence",
     "Privacy notice": "Avis de confidentialité",
@@ -211,16 +305,16 @@ def generate_locale_file(keys: dict, term_map: dict, locale: str) -> str:
         translated = translate_value(en_val, term_map)
         # Escape single quotes in output
         escaped = translated.replace("'", "\\'")
-        en_escaped = en_val.replace("'", "\\'")
+        en_val.replace("'", "\\'")
 
         if translated == en_val:
             untranslated += 1
             # Mark untranslated strings explicitly
-            lines.append(f"  // REVIEW: untranslated — same as English")
+            lines.append("  // REVIEW: untranslated — same as English")
             lines.append(f"  '{key}': '{escaped}',")
         elif len(translated) < len(en_val) * 0.3 and len(en_val) > 40:
             # Short translation for long English = likely incomplete
-            lines.append(f"  // REVIEW: short translation — may need expansion")
+            lines.append("  // REVIEW: short translation — may need expansion")
             lines.append(f"  '{key}': '{escaped}',")
         else:
             lines.append(f"  '{key}': '{escaped}',")
@@ -230,7 +324,9 @@ def generate_locale_file(keys: dict, term_map: dict, locale: str) -> str:
 
     lines.append("};")
     lines.append("")
-    lines.append(f"// Coverage: {total - untranslated}/{total} keys translated ({coverage_pct:.1f}%)")
+    lines.append(
+        f"// Coverage: {total - untranslated}/{total} keys translated ({coverage_pct:.1f}%)"
+    )
     lines.append(f"// Untranslated: {untranslated} keys (requires human translation)")
 
     return "\n".join(lines)
@@ -287,9 +383,13 @@ def main():
     if not check_mode:
         COVERAGE_REPORT.write_text(json.dumps(coverage_data, indent=2) + "\n", encoding="utf-8")
 
-    print(f"\nCoverage summary:")
-    print(f"  ES: {coverage_data['locales']['es']['coverage_pct']}% ({coverage_data['locales']['es']['translated']}/{total})")
-    print(f"  FR: {coverage_data['locales']['fr']['coverage_pct']}% ({coverage_data['locales']['fr']['translated']}/{total})")
+    print("\nCoverage summary:")
+    print(
+        f"  ES: {coverage_data['locales']['es']['coverage_pct']}% ({coverage_data['locales']['es']['translated']}/{total})"
+    )
+    print(
+        f"  FR: {coverage_data['locales']['fr']['coverage_pct']}% ({coverage_data['locales']['fr']['translated']}/{total})"
+    )
     print(f"  >90% threshold met: {coverage_data['threshold_90pct']}")
 
     if check_mode and not coverage_data["threshold_90pct"]:

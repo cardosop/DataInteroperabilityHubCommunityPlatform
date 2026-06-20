@@ -15,30 +15,28 @@ Tests verify comprehensive business rules for:
 
 All tests use real implementations (no mocks/stubs) to ensure integration.
 """
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from django.utils import timezone
-from datetime import timedelta
 
-from hub.apps.core.business_rules.base import ValidationResult
+import uuid
+
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+
+from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus
+from hub.apps.governance.models import AccessPolicy
 from hub.apps.mesh.business_rules import (
     PolicyBusinessRules,
     TopologyBusinessRules,
 )
 from hub.apps.mesh.models import (
+    ComplianceReport,
     DataMeshDomain,
     DomainStatus,
+    MeshComplianceStatus,
     PolicyApplication,
     PolicyApplicationStatus,
-    ComplianceReport,
-    MeshComplianceStatus,
 )
-from hub.apps.governance.models import AccessPolicy
-from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus, Role, UserRole
-from hub.apps.core.services.base import ValidationError
-import uuid
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 UserModel = get_user_model()
 
@@ -49,16 +47,13 @@ class PolicyBusinessRulesTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
-            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.tenant_id = str(self.tenant.id)
 
         # Get or create roles
         self.tenant_admin_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="TENANT_ADMIN",
-            defaults={"description": "Tenant admin role"}
+            tenant=self.tenant, name="TENANT_ADMIN", defaults={"description": "Tenant admin role"}
         )
 
         # Create tenant admin user
@@ -66,19 +61,16 @@ class PolicyBusinessRulesTest(TestCase):
             email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        UserRole.objects.create(
-            user=self.tenant_admin_user,
-            role=self.tenant_admin_role
-        )
+        UserRole.objects.create(user=self.tenant_admin_user, role=self.tenant_admin_role)
 
         # Create domain
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant,
             name="Test Domain",
             description="Test domain",
-            status=DomainStatus.ACTIVE
+            status=DomainStatus.ACTIVE,
         )
 
         # Create policy
@@ -88,20 +80,18 @@ class PolicyBusinessRulesTest(TestCase):
             description="Test policy",
             enabled=True,
             conditions={},
-            effect="ALLOW"
+            effect="ALLOW",
         )
 
         # Create business rules
         self.business_rules = PolicyBusinessRules(
-            tenant_id=self.tenant_id,
-            user_id=str(self.tenant_admin_user.id)
+            tenant_id=self.tenant_id, user_id=str(self.tenant_admin_user.id)
         )
 
     def test_validate_policy_application_success(self):
         """Test successful policy application validation"""
         result = self.business_rules.validate_policy_application(
-            domain=self.domain,
-            policy=self.policy
+            domain=self.domain, policy=self.policy
         )
 
         self.assertTrue(result.is_valid)
@@ -113,8 +103,7 @@ class PolicyBusinessRulesTest(TestCase):
         self.domain.save()
 
         result = self.business_rules.validate_policy_application(
-            domain=self.domain,
-            policy=self.policy
+            domain=self.domain, policy=self.policy
         )
 
         self.assertFalse(result.is_valid)
@@ -127,8 +116,7 @@ class PolicyBusinessRulesTest(TestCase):
         self.policy.save()
 
         result = self.business_rules.validate_policy_application(
-            domain=self.domain,
-            policy=self.policy
+            domain=self.domain, policy=self.policy
         )
 
         self.assertFalse(result.is_valid)
@@ -139,20 +127,14 @@ class PolicyBusinessRulesTest(TestCase):
         """Test policy application validation fails for tenant mismatch"""
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}",
-            slug=f"other-tenant-{_uid}"
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
         )
         other_policy = AccessPolicy.objects.create(
-            tenant=other_tenant,
-            name="Other Policy",
-            enabled=True,
-            conditions={},
-            effect="ALLOW"
+            tenant=other_tenant, name="Other Policy", enabled=True, conditions={}, effect="ALLOW"
         )
 
         result = self.business_rules.validate_policy_application(
-            domain=self.domain,
-            policy=other_policy
+            domain=self.domain, policy=other_policy
         )
 
         self.assertFalse(result.is_valid)
@@ -164,7 +146,7 @@ class PolicyBusinessRulesTest(TestCase):
         result = self.business_rules.validate_policy_application(
             domain=self.domain,
             policy=self.policy,
-            overrides="not a dict"  # Invalid type
+            overrides="not a dict",  # Invalid type
         )
 
         self.assertFalse(result.is_valid)
@@ -177,12 +159,11 @@ class PolicyBusinessRulesTest(TestCase):
             domain=self.domain,
             policy=self.policy,
             applied_by=self.tenant_admin_user,
-            status=PolicyApplicationStatus.APPLIED
+            status=PolicyApplicationStatus.APPLIED,
         )
 
         result = self.business_rules.validate_policy_application(
-            domain=self.domain,
-            policy=self.policy
+            domain=self.domain, policy=self.policy
         )
 
         self.assertTrue(result.is_valid)  # Still valid, just a warning
@@ -215,7 +196,7 @@ class PolicyBusinessRulesTest(TestCase):
             domain=self.domain,
             policy=self.policy,
             applied_by=self.tenant_admin_user,
-            status=PolicyApplicationStatus.APPLIED
+            status=PolicyApplicationStatus.APPLIED,
         )
 
         # Disable policy
@@ -236,7 +217,7 @@ class PolicyBusinessRulesTest(TestCase):
             name="Test Asset",
             domain=self.domain.name,
             status=AssetStatus.ACTIVE,
-            compliance_status=ComplianceStatus.PASS
+            compliance_status=ComplianceStatus.PASS,
         )
 
         result = self.business_rules.check_compliance(domain=self.domain, asset=asset)
@@ -251,7 +232,7 @@ class PolicyBusinessRulesTest(TestCase):
             name="Failed Asset",
             domain=self.domain.name,
             status=AssetStatus.ACTIVE,
-            compliance_status=ComplianceStatus.FAIL
+            compliance_status=ComplianceStatus.FAIL,
         )
 
         result = self.business_rules.check_compliance(domain=self.domain, asset=asset)
@@ -284,7 +265,7 @@ class PolicyBusinessRulesTest(TestCase):
             domain=self.domain,
             policy=self.policy,
             applied_by=self.tenant_admin_user,
-            status=PolicyApplicationStatus.APPLIED
+            status=PolicyApplicationStatus.APPLIED,
         )
 
         # Disable policy
@@ -305,7 +286,7 @@ class PolicyBusinessRulesTest(TestCase):
             name="Test Asset",
             domain=self.domain.name,
             status=AssetStatus.ACTIVE,
-            compliance_status=ComplianceStatus.FAIL
+            compliance_status=ComplianceStatus.FAIL,
         )
 
         violations = self.business_rules.detect_violations(domain=self.domain, asset=asset)
@@ -321,26 +302,19 @@ class TopologyBusinessRulesTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
-            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.tenant_id = str(self.tenant.id)
 
         # Create domains
         self.domain1 = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Domain 1",
-            status=DomainStatus.ACTIVE
+            tenant=self.tenant, name="Domain 1", status=DomainStatus.ACTIVE
         )
         self.domain2 = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Domain 2",
-            status=DomainStatus.ACTIVE
+            tenant=self.tenant, name="Domain 2", status=DomainStatus.ACTIVE
         )
         self.domain3 = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Domain 3",
-            status=DomainStatus.INACTIVE
+            tenant=self.tenant, name="Domain 3", status=DomainStatus.INACTIVE
         )
 
         # Create business rules
@@ -357,23 +331,15 @@ class TopologyBusinessRulesTest(TestCase):
         """Test relationship calculation with shared policy"""
         # Create a shared policy
         policy = AccessPolicy.objects.create(
-            tenant=self.tenant,
-            name="Shared Policy",
-            enabled=True,
-            conditions={},
-            effect="ALLOW"
+            tenant=self.tenant, name="Shared Policy", enabled=True, conditions={}, effect="ALLOW"
         )
 
         # Apply policy to both domains
         PolicyApplication.objects.create(
-            domain=self.domain1,
-            policy=policy,
-            status=PolicyApplicationStatus.APPLIED
+            domain=self.domain1, policy=policy, status=PolicyApplicationStatus.APPLIED
         )
         PolicyApplication.objects.create(
-            domain=self.domain2,
-            policy=policy,
-            status=PolicyApplicationStatus.APPLIED
+            domain=self.domain2, policy=policy, status=PolicyApplicationStatus.APPLIED
         )
 
         domains = [self.domain1, self.domain2]
@@ -390,40 +356,24 @@ class TopologyBusinessRulesTest(TestCase):
         """Test relationship calculation with multiple shared policies"""
         # Create multiple policies
         policy1 = AccessPolicy.objects.create(
-            tenant=self.tenant,
-            name="Policy 1",
-            enabled=True,
-            conditions={},
-            effect="ALLOW"
+            tenant=self.tenant, name="Policy 1", enabled=True, conditions={}, effect="ALLOW"
         )
         policy2 = AccessPolicy.objects.create(
-            tenant=self.tenant,
-            name="Policy 2",
-            enabled=True,
-            conditions={},
-            effect="ALLOW"
+            tenant=self.tenant, name="Policy 2", enabled=True, conditions={}, effect="ALLOW"
         )
 
         # Apply both policies to both domains
         PolicyApplication.objects.create(
-            domain=self.domain1,
-            policy=policy1,
-            status=PolicyApplicationStatus.APPLIED
+            domain=self.domain1, policy=policy1, status=PolicyApplicationStatus.APPLIED
         )
         PolicyApplication.objects.create(
-            domain=self.domain1,
-            policy=policy2,
-            status=PolicyApplicationStatus.APPLIED
+            domain=self.domain1, policy=policy2, status=PolicyApplicationStatus.APPLIED
         )
         PolicyApplication.objects.create(
-            domain=self.domain2,
-            policy=policy1,
-            status=PolicyApplicationStatus.APPLIED
+            domain=self.domain2, policy=policy1, status=PolicyApplicationStatus.APPLIED
         )
         PolicyApplication.objects.create(
-            domain=self.domain2,
-            policy=policy2,
-            status=PolicyApplicationStatus.APPLIED
+            domain=self.domain2, policy=policy2, status=PolicyApplicationStatus.APPLIED
         )
 
         domains = [self.domain1, self.domain2]
@@ -443,7 +393,9 @@ class TopologyBusinessRulesTest(TestCase):
         self.assertIn("violation_count", metrics)
         self.assertIn("is_active", metrics)
         self.assertTrue(metrics["is_active"])
-        self.assertEqual(metrics["health_score"], 100)  # Perfect health for active domain with no issues
+        self.assertEqual(
+            metrics["health_score"], 100
+        )  # Perfect health for active domain with no issues
 
     def test_calculate_health_metrics_inactive_domain(self):
         """Test health metrics calculation for inactive domain"""
@@ -458,9 +410,9 @@ class TopologyBusinessRulesTest(TestCase):
         ComplianceReport.objects.create(
             domain=self.domain1,
             compliance_status=MeshComplianceStatus.NON_COMPLIANT,
-            violations={"items": [
-                {"type": "TEST_VIOLATION", "severity": "HIGH", "description": "Test"}
-            ]}
+            violations={
+                "items": [{"type": "TEST_VIOLATION", "severity": "HIGH", "description": "Test"}]
+            },
         )
 
         metrics = self.business_rules.calculate_health_metrics(self.domain1)
@@ -472,17 +424,11 @@ class TopologyBusinessRulesTest(TestCase):
     def test_calculate_health_metrics_with_policies(self):
         """Test health metrics calculation with applied policies"""
         policy = AccessPolicy.objects.create(
-            tenant=self.tenant,
-            name="Test Policy",
-            enabled=True,
-            conditions={},
-            effect="ALLOW"
+            tenant=self.tenant, name="Test Policy", enabled=True, conditions={}, effect="ALLOW"
         )
 
         PolicyApplication.objects.create(
-            domain=self.domain1,
-            policy=policy,
-            status=PolicyApplicationStatus.APPLIED
+            domain=self.domain1, policy=policy, status=PolicyApplicationStatus.APPLIED
         )
 
         metrics = self.business_rules.calculate_health_metrics(self.domain1)
@@ -494,7 +440,7 @@ class TopologyBusinessRulesTest(TestCase):
         ComplianceReport.objects.create(
             domain=self.domain1,
             compliance_status=MeshComplianceStatus.PARTIAL,
-            violations={"items": []}
+            violations={"items": []},
         )
 
         metrics = self.business_rules.calculate_health_metrics(self.domain1)
@@ -509,4 +455,3 @@ class TopologyBusinessRulesTest(TestCase):
 
         self.assertEqual(metrics["compliance_status"], MeshComplianceStatus.UNKNOWN)
         self.assertEqual(metrics["violation_count"], 0)
-

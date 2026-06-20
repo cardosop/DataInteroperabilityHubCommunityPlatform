@@ -1,6 +1,7 @@
 """REST API for DPIA register — Phase 232.5."""
 
 from __future__ import annotations
+
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -17,6 +18,9 @@ from hub.apps.dpia.serializers import (
     DpiaReviewSerializer,
     DpiaSerializer,
 )
+
+# 283.3.5.4 — DPIA views must carry throttle classes per CI contract
+from hub.apps.dpia.throttles import DpiaTenantRateThrottle
 from hub.apps.dpia.triggers import asset_requires_dpia
 from hub.apps.dpia.workflow import (
     complete_consultation,
@@ -25,8 +29,6 @@ from hub.apps.dpia.workflow import (
     review_dpia,
     submit_dpia,
 )
-# 283.3.5.4 — DPIA views must carry throttle classes per CI contract
-from hub.apps.dpia.throttles import DpiaTenantRateThrottle
 from hub.apps.tenants.models import Tenant
 from hub.apps.tenants.request_tenant import get_request_tenant_id
 
@@ -66,9 +68,7 @@ class DpiaViewSet(viewsets.ModelViewSet):
             from rest_framework.exceptions import PermissionDenied
 
             raise PermissionDenied("DPIA is disabled for this tenant.")
-        dpia = serializer.save(
-            tenant=tenant, created_by=self.request.user, status=DpiaStatus.DRAFT
-        )
+        dpia = serializer.save(tenant=tenant, created_by=self.request.user, status=DpiaStatus.DRAFT)
 
         # 285.12.8.6 8F — Pre-populate wizard_payload from asset compliance context
         if dpia.asset_id:
@@ -79,7 +79,10 @@ class DpiaViewSet(viewsets.ModelViewSet):
             actor_user=self.request.user,
             tenant=tenant,
             resource_id=dpia.id,
-            details={"title": dpia.title, "asset_id": str(dpia.asset_id) if dpia.asset_id else None},
+            details={
+                "title": dpia.title,
+                "asset_id": str(dpia.asset_id) if dpia.asset_id else None,
+            },
         )
 
     def perform_update(self, serializer):
@@ -123,6 +126,7 @@ class DpiaViewSet(viewsets.ModelViewSet):
             from hub.apps.compliance.services import (
                 get_tenant_compliance_regimes,
             )
+
             regimes = get_tenant_compliance_regimes(str(dpia.tenant_id))
             for r in regimes:
                 if r not in jurisdictions:
@@ -133,9 +137,9 @@ class DpiaViewSet(viewsets.ModelViewSet):
         # Extract risk_level from latest compliance run
         try:
             from hub.apps.compliance.models import ComplianceRun
+
             latest = (
-                ComplianceRun.objects
-                .filter(tenant_id=dpia.tenant_id, asset_id=dpia.asset_id)
+                ComplianceRun.objects.filter(tenant_id=dpia.tenant_id, asset_id=dpia.asset_id)
                 .exclude(risk_level__isnull=True)
                 .order_by("-completed_at")
                 .only("risk_level")
@@ -146,13 +150,15 @@ class DpiaViewSet(viewsets.ModelViewSet):
         except Exception:
             pass
 
-        payload.update({
-            "data_subject_categories": categories,
-            "processing_purpose": purpose,
-            "jurisdictions": jurisdictions,
-            "risk_level": risk_level,
-            "_prepopulated": True,
-        })
+        payload.update(
+            {
+                "data_subject_categories": categories,
+                "processing_purpose": purpose,
+                "jurisdictions": jurisdictions,
+                "risk_level": risk_level,
+                "_prepopulated": True,
+            }
+        )
         dpia.wizard_payload = payload
         dpia.save(update_fields=["wizard_payload"])
 
@@ -200,9 +206,7 @@ class DpiaViewSet(viewsets.ModelViewSet):
         dpia = self.get_object()
         ser = DpiaConsultSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        complete_consultation(
-            dpia=dpia, actor=request.user, approve=ser.validated_data["approve"]
-        )
+        complete_consultation(dpia=dpia, actor=request.user, approve=ser.validated_data["approve"])
         dpia.refresh_from_db()
         return Response(DpiaSerializer(dpia).data)
 

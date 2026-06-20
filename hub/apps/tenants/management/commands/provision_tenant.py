@@ -6,6 +6,7 @@ Usage:
         --admin-email "admin@acme.com" --plan "starter" \
         --regulations "GDPR,UK_GDPR"
 """
+
 from django.core.management.base import BaseCommand
 
 
@@ -13,31 +14,29 @@ class Command(BaseCommand):
     help = "Provision a new tenant with plan, admin user, and default configuration."
 
     def add_arguments(self, parser):
+        parser.add_argument("--name", type=str, required=True, help="Tenant display name.")
+        parser.add_argument("--slug", type=str, required=True, help="URL-safe tenant identifier.")
         parser.add_argument(
-            "--name", type=str, required=True, help="Tenant display name."
+            "--admin-email", type=str, required=True, help="Email for the initial admin user."
+        )
+        parser.add_argument("--plan", type=str, default="free", help="Plan slug (default: free).")
+        parser.add_argument(
+            "--regulations",
+            type=str,
+            default="",
+            help="Comma-separated regulation keys (e.g., 'GDPR,UK_GDPR').",
         )
         parser.add_argument(
-            "--slug", type=str, required=True, help="URL-safe tenant identifier."
-        )
-        parser.add_argument(
-            "--admin-email", type=str, required=True,
-            help="Email for the initial admin user."
-        )
-        parser.add_argument(
-            "--plan", type=str, default="free", help="Plan slug (default: free)."
-        )
-        parser.add_argument(
-            "--regulations", type=str, default="",
-            help="Comma-separated regulation keys (e.g., 'GDPR,UK_GDPR')."
-        )
-        parser.add_argument(
-            "--dry-run", action="store_true", default=False,
-            help="Validate inputs without creating the tenant."
+            "--dry-run",
+            action="store_true",
+            default=False,
+            help="Validate inputs without creating the tenant.",
         )
 
     def handle(self, *args, **options):
-        from hub.apps.tenants.models import Tenant, TenantPlan, TenantStatus
         from django.contrib.auth import get_user_model
+
+        from hub.apps.tenants.models import Tenant, TenantPlan, TenantStatus
 
         User = get_user_model()
 
@@ -60,9 +59,7 @@ class Command(BaseCommand):
             self.stderr.write(f"Tenant slug '{slug}' is already taken.")
             return
 
-        regulation_keys = [
-            r.strip().upper() for r in regulations_str.split(",") if r.strip()
-        ]
+        regulation_keys = [r.strip().upper() for r in regulations_str.split(",") if r.strip()]
 
         if dry_run:
             self.stdout.write(
@@ -88,10 +85,6 @@ class Command(BaseCommand):
         )
 
         self.stdout.write(
-            self.style.SUCCESS(
-                f"Tenant '{slug}' provisioned (id={tenant.id}, admin={user.email})."
-            )
+            self.style.SUCCESS(f"Tenant '{slug}' provisioned (id={tenant.id}, admin={user.email}).")
         )
-        self.stdout.write(
-            "Next: set the admin password and configure feature flags."
-        )
+        self.stdout.write("Next: set the admin password and configure feature flags.")

@@ -15,6 +15,7 @@ No mocks of internal code paths; the email pipeline is intercepted
 at the helper-module's ``send_email_async`` symbol — the canonical
 patch target the other helpers' tests already use.
 """
+
 from __future__ import annotations
 
 import datetime as _dt
@@ -26,6 +27,7 @@ from django.test import TestCase
 
 def _create_tenant(name: str = "Wave 4 Co"):
     from hub.apps.tenants.models import Tenant
+
     return Tenant.objects.create(
         name=name,
         slug=name.lower().replace(" ", "-") + "-" + uuid.uuid4().hex[:6],
@@ -34,12 +36,14 @@ def _create_tenant(name: str = "Wave 4 Co"):
 
 def _create_user(email: str, tenant):
     from django.contrib.auth import get_user_model
+
     User = get_user_model()
     return User.objects.create(email=email, tenant=tenant)
 
 
 def _grant_tenant_admin(user, tenant):
     from hub.apps.users.models import Role, UserRole
+
     role, _ = Role.objects.get_or_create(tenant=tenant, name="TENANT_ADMIN")
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
 
@@ -51,6 +55,7 @@ def _create_contract(tenant, *, name: str = "orders"):
         OriginalFormat,
         OriginalSpecType,
     )
+
     return Contract.objects.create(
         tenant=tenant,
         version=1,
@@ -69,22 +74,21 @@ def _create_contract(tenant, *, name: str = "orders"):
 # EmailType registration
 # ---------------------------------------------------------------------------
 
+
 def test_email_type_enum_includes_schema_editor_residue_reminder():
     from hub.apps.notifications.models import EmailType
 
     assert hasattr(EmailType, "SCHEMA_EDITOR_RESIDUE_REMINDER")
-    assert EmailType.SCHEMA_EDITOR_RESIDUE_REMINDER.value == (
-        "SCHEMA_EDITOR_RESIDUE_REMINDER"
-    )
+    assert EmailType.SCHEMA_EDITOR_RESIDUE_REMINDER.value == ("SCHEMA_EDITOR_RESIDUE_REMINDER")
 
 
 # ---------------------------------------------------------------------------
 # Helper behaviour
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.django_db(transaction=True)
 class SchemaEditorResidueReminderTests(TestCase):
-
     def test_dispatches_one_email_per_tenant_admin(self):
         from hub.apps.contracts.notifications.schema_editor_residue_reminder import (
             send_schema_editor_residue_reminder,
@@ -191,6 +195,7 @@ class SchemaEditorResidueReminderTests(TestCase):
 # Template rendering
 # ---------------------------------------------------------------------------
 
+
 def test_template_renders_with_required_substrings():
     from hub.apps.notifications.templates import render_email_template
 
@@ -209,9 +214,7 @@ def test_template_renders_with_required_substrings():
                     ),
                 },
             ],
-            "contract_health_url": (
-                "https://stagingmeshant-internal.example.com/admin/contract-health"
-            ),
+            "contract_health_url": ("https://stagingmeshant-internal.example.com/admin/contract-health"),
             "admin_first_name": "Alex",
             "residue_count": 1,
         },
@@ -223,7 +226,4 @@ def test_template_renders_with_required_substrings():
     assert "Open Schema editor" in html
     assert "STRUCTURELESS_CONTRACT" in html
     assert "Alex" in html
-    assert (
-        "https://stagingmeshant-internal.example.com/contracts/c-1/edit?tab=schema"
-        in html
-    )
+    assert "https://stagingmeshant-internal.example.com/contracts/c-1/edit?tab=schema" in html

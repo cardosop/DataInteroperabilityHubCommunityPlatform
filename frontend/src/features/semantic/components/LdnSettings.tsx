@@ -113,6 +113,7 @@ export function LdnSettings() {
           value={subscribeType}
           onChange={(e) => setSubscribeType(e.target.value)}
           data-testid="ldn-subscribe-type-select"
+          aria-label="Filter by resource type"
         >
           <option value="">All resource types</option>
           <option value="asset">Asset</option>

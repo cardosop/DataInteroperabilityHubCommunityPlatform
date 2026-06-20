@@ -4,13 +4,15 @@
 Tests that RLS tenant isolation invariants hold for any valid input.
 No backend needed — these are logical property tests.
 """
+
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings, strategies as st
-
+from hypothesis import given
+from hypothesis import strategies as st
 
 # ── RLS tenant context isolation property ────────────────────────────
+
 
 class TestTenantIsolationProperties:
     """RLS policies must guarantee tenant isolation invariants."""
@@ -41,13 +43,16 @@ class TestTenantIsolationProperties:
 
 # ── ABAC evaluation properties ────────────────────────────────────────
 
+
 class TestABACEvaluationProperties:
     """ABAC engine must produce consistent, deterministic results."""
 
     @given(
         subject_roles=st.lists(
             st.sampled_from(["TENANT_ADMIN", "DATA_ENGINEER", "VIEWER", "AUDITOR"]),
-            min_size=0, max_size=5, unique=True,
+            min_size=0,
+            max_size=5,
+            unique=True,
         ),
         action=st.sampled_from(["read", "write", "delete", "approve_access_request"]),
         resource_type=st.sampled_from(["asset", "contract", "dataset", "file"]),
@@ -62,7 +67,9 @@ class TestABACEvaluationProperties:
     @given(
         subject_roles=st.lists(
             st.sampled_from(["TENANT_ADMIN", "DATA_ENGINEER", "VIEWER"]),
-            min_size=1, max_size=3, unique=True,
+            min_size=1,
+            max_size=3,
+            unique=True,
         ),
     )
     def test_tenant_admin_can_always_approve(self, subject_roles):
@@ -74,7 +81,8 @@ class TestABACEvaluationProperties:
     @given(
         subject_roles=st.lists(
             st.sampled_from(["VIEWER"]),
-            min_size=1, max_size=1,
+            min_size=1,
+            max_size=1,
         ),
     )
     def test_viewer_cannot_write(self, subject_roles):
@@ -85,6 +93,7 @@ class TestABACEvaluationProperties:
 
 
 # ── Chain primitives property ─────────────────────────────────────────
+
 
 class TestChainPrimitiveProperties:
     """Business rule chains must satisfy ordering + atomicity invariants."""
@@ -102,10 +111,15 @@ class TestChainPrimitiveProperties:
 
     @given(
         valid_context=st.booleans(),
-        chain_name=st.sampled_from([
-            "contract.publish", "asset.activate", "marketplace.listing.publish",
-            "governance.approval.advance", "semantic.query.execute",
-        ]),
+        chain_name=st.sampled_from(
+            [
+                "contract.publish",
+                "asset.activate",
+                "marketplace.listing.publish",
+                "governance.approval.advance",
+                "semantic.query.execute",
+            ]
+        ),
     )
     def test_chain_requires_transaction(self, valid_context, chain_name):
         """Chain runner must reject calls outside a transaction context."""
@@ -118,6 +132,7 @@ class TestChainPrimitiveProperties:
 
 
 # ── Compliance gate properties ────────────────────────────────────────
+
 
 class TestComplianceGateProperties:
     """Compliance gates must block when allowed_to_store is not True."""
@@ -137,11 +152,16 @@ class TestComplianceGateProperties:
 
 # ── Pure-function stubs (no DB access — property logic only) ──────────
 
+
 def _evaluate_abac(roles: list[str], action: str, resource: str) -> str:
     """Stub ABAC evaluator for property testing."""
     if "TENANT_ADMIN" in roles:
         return "ALLOW"
-    if action in ("write", "delete", "approve_access_request") and "VIEWER" in roles and len(roles) == 1:
+    if (
+        action in ("write", "delete", "approve_access_request")
+        and "VIEWER" in roles
+        and len(roles) == 1
+    ):
         return "DENY"
     if action == "read" and roles:
         return "ALLOW"

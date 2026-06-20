@@ -16,12 +16,11 @@ from __future__ import annotations
 
 import os
 import subprocess
-from typing import Any, Callable, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import pytest
 
 from datahub_interoperability import DataHubClient, DataHubClientConfig
-
 
 # ── Canonical helpers ────────────────────────────────────────────────
 
@@ -35,6 +34,7 @@ def check_api_available(api_base_url: str) -> bool:
     """Return True if the API at *api_base_url* responds (any status < 600)."""
     try:
         import requests
+
         response = requests.get(f"{api_base_url}/", timeout=2)
         return response.status_code < 600
     except Exception:
@@ -178,13 +178,20 @@ print(api_key_value)
     _COMPOSE_ATTEMPTS = [
         # (compose_args, manage_py_path)
         (
-            ["docker", "compose", "-f", "docker-compose.test.yml",
-             "exec", "-T", "api-service-test"],
-            "hub/manage.py",   # WORKDIR=/app, manage.py in hub/
+            [
+                "docker",
+                "compose",
+                "-f",
+                "docker-compose.test.yml",
+                "exec",
+                "-T",
+                "api-service-test",
+            ],
+            "hub/manage.py",  # WORKDIR=/app, manage.py in hub/
         ),
         (
             ["docker", "compose", "exec", "-T", "api-service"],
-            "manage.py",       # WORKDIR=/app/hub
+            "manage.py",  # WORKDIR=/app/hub
         ),
     ]
 
@@ -220,17 +227,15 @@ print(api_key_value)
     # Method 4: Fall back to direct API login with pre-seeded test
     # credentials.  This works when the API is running but not via
     # docker-compose (e.g. standalone runserver on the test port).
-    test_email = os.environ.get(
-        "TEST_USER_EMAIL", f"{tenant_slug}@example.com"
-    )
+    test_email = os.environ.get("TEST_USER_EMAIL", f"{tenant_slug}@example.com")
     test_password = os.environ.get("TEST_USER_PASSWORD", "TestPass123!")
     try:
         import requests as _requests
+
         login_resp = _requests.post(
             f"{api_base_url}/auth/login/",
             json={"email": test_email, "password": test_password},
-            headers={"Content-Type": "application/json",
-                      "Accept": "application/json"},
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
             timeout=10,
         )
         if login_resp.status_code == 200:
@@ -265,6 +270,7 @@ print(api_key_value)
 
 # ── Shared config factory (not a fixture — wire in file-local fixtures) ─
 
+
 def create_real_api_config(
     api_base_url: str | None = None,
     *,
@@ -281,15 +287,10 @@ def create_real_api_config(
     specific tenant parameters.
     """
     if api_base_url is None:
-        api_base_url = os.environ.get(
-            "API_BASE_URL", "http://localhost:8000/api/v1"
-        )
+        api_base_url = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
 
     if not check_api_available(api_base_url):
-        pytest.skip(
-            "API service is not available. "
-            "Ensure Docker Compose services are running."
-        )
+        pytest.skip("API service is not available. Ensure Docker Compose services are running.")
 
     api_key = setup_authentication_for_sdk_tests(
         api_base_url,
@@ -319,6 +320,7 @@ def create_real_api_config(
 async def create_real_client(config: DataHubClientConfig):
     """Async context manager yielding a :class:`DataHubClient`."""
     import asyncio
+
     async with DataHubClient(config) as client:
         yield client
         # Small delay to avoid rate limiting between tests

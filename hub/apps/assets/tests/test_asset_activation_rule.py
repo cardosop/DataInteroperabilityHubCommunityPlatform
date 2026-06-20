@@ -8,6 +8,7 @@ Covers the three-state taxonomy from validate_activation():
 - COMPLIANCE_THRESHOLD_EXCEEDED (risk above threshold)
 - No blockers (allowed)
 """
+
 from __future__ import annotations
 
 import uuid
@@ -27,10 +28,13 @@ pytestmark = pytest.mark.django_db(transaction=True)
 def _mk_tenant(**kwargs):
     uid = uuid.uuid4().hex[:8]
     tenant = Tenant.objects.create(
-        name=f"AAR-{uid}", slug=f"aar-{uid}",
-        status="ACTIVE", kyc_status="VERIFIED",
+        name=f"AAR-{uid}",
+        slug=f"aar-{uid}",
+        status="ACTIVE",
+        kyc_status="VERIFIED",
     )
     from hub.apps.tenants.models import TenantConfig
+
     threshold = kwargs.get("threshold", RiskLevel.MEDIUM.value)
     TenantConfig.objects.update_or_create(
         tenant=tenant,
@@ -42,7 +46,9 @@ def _mk_tenant(**kwargs):
 def _mk_user(tenant):
     return User.objects.create_user(
         email=f"aar-{uuid.uuid4().hex[:8]}@meshant.test",
-        password="testpass", tenant=tenant, status=UserStatus.ACTIVE,
+        password="testpass",
+        tenant=tenant,
+        status=UserStatus.ACTIVE,
     )
 
 
@@ -72,8 +78,10 @@ class TestAssetActivationRule(TestCase):
 
     def test_failed_when_compliance_run_failed(self):
         ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset,
-            status="FAILED", allowed_to_store=None,
+            tenant=self.tenant,
+            asset=self.asset,
+            status="FAILED",
+            allowed_to_store=None,
             risk_level=RiskLevel.UNKNOWN.value,
         )
         result = AssetActivationRule.validate_activation(self.asset)
@@ -82,8 +90,10 @@ class TestAssetActivationRule(TestCase):
 
     def test_blocked_when_allowed_to_store_false(self):
         ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset,
-            status="SUCCEEDED", allowed_to_store=False,
+            tenant=self.tenant,
+            asset=self.asset,
+            status="SUCCEEDED",
+            allowed_to_store=False,
             risk_level=RiskLevel.LOW.value,
         )
         result = AssetActivationRule.validate_activation(self.asset)
@@ -92,8 +102,10 @@ class TestAssetActivationRule(TestCase):
 
     def test_blocked_when_risk_exceeds_threshold(self):
         ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset,
-            status="SUCCEEDED", allowed_to_store=True,
+            tenant=self.tenant,
+            asset=self.asset,
+            status="SUCCEEDED",
+            allowed_to_store=True,
             risk_level=RiskLevel.HIGH.value,  # exceeds MEDIUM threshold
         )
         result = AssetActivationRule.validate_activation(self.asset)
@@ -102,8 +114,10 @@ class TestAssetActivationRule(TestCase):
 
     def test_allows_when_risk_below_threshold(self):
         ComplianceRun.objects.create(
-            tenant=self.tenant, asset=self.asset,
-            status="SUCCEEDED", allowed_to_store=True,
+            tenant=self.tenant,
+            asset=self.asset,
+            status="SUCCEEDED",
+            allowed_to_store=True,
             risk_level=RiskLevel.LOW.value,
         )
         result = AssetActivationRule.validate_activation(self.asset)

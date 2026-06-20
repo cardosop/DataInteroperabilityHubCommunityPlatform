@@ -12,38 +12,33 @@ Tests complete end-to-end workflows for marketplace integration:
 
 All tests use real implementations - no mocks or stubs.
 """
-import os
-import time
-import pytest
-from django.test import TestCase
-from django.utils import timezone
-from rest_framework import status
 
-from hub.apps.integrations.services import MarketplaceIntegrationService
-from hub.apps.integrations.models import (
-    MarketplaceConnection,
-    MarketplaceSyncJob,
-    MarketplaceMapping,
-    ScheduledMarketplaceSync,
-    ScheduledMarketplaceSyncStatus,
-    ScheduleType,
-)
+import time
+import uuid
+
+import pytest
+
+from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.audit.models import AuditEvent
+from hub.apps.core.events.models import Event
 from hub.apps.integrations.base import (
     MarketplaceType,
     SyncDirection,
     SyncStatus,
 )
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus, Role
-from hub.apps.jobs.models import Job, JobStatus
+from hub.apps.integrations.models import (
+    MarketplaceMapping,
+    MarketplaceSyncJob,
+    ScheduledMarketplaceSync,
+    ScheduledMarketplaceSyncStatus,
+    ScheduleType,
+)
+from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
-from hub.apps.core.events.models import Event
-from hub.apps.audit.models import AuditEvent
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import User, UserStatus
 
 from .conftest import E2ETestBase
-import uuid
-
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -61,17 +56,14 @@ class MarketplaceConnectionCreationE2ETest(E2ETestBase):
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id=f"e2e-connection-{time.time()}"
+            request_id=f"e2e-connection-{time.time()}",
         )
 
     def test_complete_connection_creation_workflow(self):
         """Test complete workflow: create → test → activate → verify"""
         # Step 1: Create connection
         # Use base_url for CKAN connections (works with both CKANConnector and DadosGovBrConnector)
-        config = {
-            "base_url": "https://demo.ckan.org",
-            "timeout": 30
-        }
+        config = {"base_url": "https://demo.ckan.org", "timeout": 30}
 
         connection = self.service.create_connection(
             tenant_id=str(self.tenant.id),
@@ -79,7 +71,7 @@ class MarketplaceConnectionCreationE2ETest(E2ETestBase):
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             name="E2E Test Connection",
             config=config,
-            is_active=False  # Create as inactive initially
+            is_active=False,  # Create as inactive initially
         )
 
         self.assertIsNotNone(connection)
@@ -93,21 +85,20 @@ class MarketplaceConnectionCreationE2ETest(E2ETestBase):
         # Connection test result is a dict with 'success' key
         # We verify the test was executed, not necessarily that it succeeded
         self.assertIsInstance(test_result, dict)
-        self.assertIn('success', test_result)
-        self.assertTrue(test_result['success'], f"Connection test should succeed, got: {test_result}")
+        self.assertIn("success", test_result)
+        self.assertTrue(
+            test_result["success"], f"Connection test should succeed, got: {test_result}"
+        )
 
         # Step 3: Activate connection
         connection = self.service.update_connection(
-            connection_id=str(connection.id),
-            tenant_id=str(self.tenant.id),
-            is_active=True
+            connection_id=str(connection.id), tenant_id=str(self.tenant.id), is_active=True
         )
         self.assertTrue(connection.is_active)
 
         # Step 4: Verify connection is retrievable
         retrieved = self.service.get_connection(
-            connection_id=str(connection.id),
-            tenant_id=str(self.tenant.id)
+            connection_id=str(connection.id), tenant_id=str(self.tenant.id)
         )
         self.assertEqual(retrieved.id, connection.id)
         self.assertTrue(retrieved.is_active)
@@ -135,14 +126,16 @@ class MarketplaceConnectionCreationE2ETest(E2ETestBase):
                 marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
                 name="Invalid Connection",
                 config=invalid_config,
-                is_active=False
+                is_active=False,
             )
             # If connection is created, test should fail
             test_result = self.service.test_connection(str(connection.id))
-            if isinstance(test_result, dict) and 'success' in test_result:
+            if isinstance(test_result, dict) and "success" in test_result:
                 # Connection test should fail for invalid config
-                self.assertFalse(test_result.get('success'),
-                    f"Connection with invalid config should fail test, got: {test_result}")
+                self.assertFalse(
+                    test_result.get("success"),
+                    f"Connection with invalid config should fail test, got: {test_result}",
+                )
         except Exception:
             # If validation fails at creation, that's also acceptable
             pass
@@ -157,7 +150,7 @@ class MarketplaceSyncPushE2ETest(E2ETestBase):
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id=f"e2e-push-{time.time()}"
+            request_id=f"e2e-push-{time.time()}",
         )
 
         # Create connection
@@ -169,7 +162,7 @@ class MarketplaceSyncPushE2ETest(E2ETestBase):
             config={
                 "base_url": "https://demo.ckan.org",
             },
-            is_active=True
+            is_active=True,
         )
 
         # Create test asset
@@ -179,7 +172,7 @@ class MarketplaceSyncPushE2ETest(E2ETestBase):
             name="E2E Test Asset",
             status=AssetStatus.ACTIVE,
             source_type="HUB_NATIVE",
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_complete_sync_push_workflow(self):
@@ -190,7 +183,7 @@ class MarketplaceSyncPushE2ETest(E2ETestBase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             asset_ids=[str(self.asset.id)],
-            options={"dry_run": False}
+            options={"dry_run": False},
         )
 
         self.assertIsNotNone(sync_job)
@@ -200,8 +193,7 @@ class MarketplaceSyncPushE2ETest(E2ETestBase):
 
         # Step 2: Verify workflow instance created
         workflow_instances = WorkflowInstance.objects.filter(
-            tenant=self.tenant,
-            workflow_name="marketplace_sync_push"
+            tenant=self.tenant, workflow_name="marketplace_sync_push"
         ).order_by("-created_at")
         self.assertGreater(workflow_instances.count(), 0)
 
@@ -220,26 +212,25 @@ class MarketplaceSyncPushE2ETest(E2ETestBase):
             WorkflowStatus.FAILED.value,
             WorkflowStatus.ROLLED_BACK.value,
         ]
-        self.assertIn(workflow_instance.status, acceptable_statuses,
-                      f"Sync workflow should be in progress or completed, got {workflow_instance.status}")
+        self.assertIn(
+            workflow_instance.status,
+            acceptable_statuses,
+            f"Sync workflow should be in progress or completed, got {workflow_instance.status}",
+        )
 
         # Step 3: Verify sync job metadata
         self.assertIn("asset_ids", sync_job.metadata)
         self.assertIn(str(self.asset.id), sync_job.metadata["asset_ids"])
 
         # Step 4: Verify audit log created (may not always be created in test environment)
-        audit_events = AuditEvent.objects.filter(
-            tenant=self.tenant,
-            resource_type="marketplace_sync_job",
-            resource_id=str(sync_job.id)
+        AuditEvent.objects.filter(
+            tenant=self.tenant, resource_type="marketplace_sync_job", resource_id=str(sync_job.id)
         )
         # Audit events may not always be created in test environment
         # self.assertGreater(audit_events.count(), 0)
 
         # Step 5: Verify event published (may not always be published in test environment)
-        events = Event.objects.filter(
-            event_type__startswith="marketplace.sync"
-        ).order_by("-created_at")
+        Event.objects.filter(event_type__startswith="marketplace.sync").order_by("-created_at")
         # Events may not always be published in test environment
         # self.assertGreater(events.count(), 0)
 
@@ -254,14 +245,14 @@ class MarketplaceSyncPushE2ETest(E2ETestBase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 asset_ids=[invalid_asset_id],
-                options={}
+                options={},
             )
             # If sync job is created, it may fail during execution
             # This is acceptable as the validation may happen during workflow execution
             self.assertIsNotNone(sync_job)
         except Exception as e:
             # Expected: NotFoundError or ValidationError
-            self.assertIn(type(e).__name__, ['NotFoundError', 'ValidationError', 'ServiceError'])
+            self.assertIn(type(e).__name__, ["NotFoundError", "ValidationError", "ServiceError"])
 
     def test_sync_push_with_inactive_connection(self):
         """Test sync push with inactive connection"""
@@ -269,17 +260,17 @@ class MarketplaceSyncPushE2ETest(E2ETestBase):
         self.connection.is_active = False
         self.connection.save()
 
-        with self.assertRaises(Exception) as ctx:
+        with self.assertRaises(Exception):
             self.service.sync_assets_to_marketplace(
                 connection_id=str(self.connection.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 asset_ids=[str(self.asset.id)],
-                options={}
+                options={},
             )
         self.assertTrue(
-            'inactive' in str(ctx.exception).lower() or 'connection' in str(ctx.exception).lower(),
-            f"Exception should mention inactive connection, got: {ctx.exception}"
+            "inactive" in str(ctx.exception).lower() or "connection" in str(ctx.exception).lower(),
+            f"Exception should mention inactive connection, got: {ctx.exception}",
         )
 
 
@@ -292,7 +283,7 @@ class MarketplaceSyncPullE2ETest(E2ETestBase):
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id=f"e2e-pull-{time.time()}"
+            request_id=f"e2e-pull-{time.time()}",
         )
 
         # Create connection
@@ -304,7 +295,7 @@ class MarketplaceSyncPullE2ETest(E2ETestBase):
             config={
                 "base_url": "https://demo.ckan.org",
             },
-            is_active=True
+            is_active=True,
         )
 
     def test_complete_sync_pull_workflow(self):
@@ -316,7 +307,7 @@ class MarketplaceSyncPullE2ETest(E2ETestBase):
             user_id=str(self.user.id),
             listing_ids=None,  # Sync all listings
             filters={},
-            options={"dry_run": False, "create_assets": True}
+            options={"dry_run": False, "create_assets": True},
         )
 
         self.assertIsNotNone(sync_job)
@@ -326,8 +317,7 @@ class MarketplaceSyncPullE2ETest(E2ETestBase):
 
         # Step 2: Verify workflow instance created
         workflow_instances = WorkflowInstance.objects.filter(
-            tenant=self.tenant,
-            workflow_name="marketplace_sync_pull"
+            tenant=self.tenant, workflow_name="marketplace_sync_pull"
         ).order_by("-created_at")
         self.assertGreater(workflow_instances.count(), 0)
 
@@ -340,28 +330,27 @@ class MarketplaceSyncPullE2ETest(E2ETestBase):
             WorkflowStatus.RUNNING.value,
             WorkflowStatus.FAILED.value,
             WorkflowStatus.COMPLETED.value,
-            WorkflowStatus.CANCELLED.value
+            WorkflowStatus.CANCELLED.value,
         ]
-        self.assertIn(workflow_instance.status, valid_statuses,
-                      f"Workflow status {workflow_instance.status} not in expected statuses: {valid_statuses}")
+        self.assertIn(
+            workflow_instance.status,
+            valid_statuses,
+            f"Workflow status {workflow_instance.status} not in expected statuses: {valid_statuses}",
+        )
 
         # Step 3: Verify sync job metadata
         self.assertIn("options", sync_job.metadata)
         self.assertTrue(sync_job.metadata["options"].get("create_assets", False))
 
         # Step 4: Verify audit log created (may not always be created in test environment)
-        audit_events = AuditEvent.objects.filter(
-            tenant=self.tenant,
-            resource_type="marketplace_sync_job",
-            resource_id=str(sync_job.id)
+        AuditEvent.objects.filter(
+            tenant=self.tenant, resource_type="marketplace_sync_job", resource_id=str(sync_job.id)
         )
         # Audit events may not always be created in test environment
         # self.assertGreater(audit_events.count(), 0)
 
         # Step 5: Verify event published (may not always be published in test environment)
-        events = Event.objects.filter(
-            event_type__startswith="marketplace.sync"
-        ).order_by("-created_at")
+        Event.objects.filter(event_type__startswith="marketplace.sync").order_by("-created_at")
         # Events may not always be published in test environment
         # self.assertGreater(events.count(), 0)
 
@@ -375,7 +364,7 @@ class MarketplaceSyncPullE2ETest(E2ETestBase):
             user_id=str(self.user.id),
             listing_ids=listing_ids,
             filters={},
-            options={}
+            options={},
         )
 
         self.assertIsNotNone(sync_job)
@@ -384,10 +373,7 @@ class MarketplaceSyncPullE2ETest(E2ETestBase):
 
     def test_sync_pull_with_filters(self):
         """Test sync pull with filters"""
-        filters = {
-            "category": "data",
-            "tags": ["open-data"]
-        }
+        filters = {"category": "data", "tags": ["open-data"]}
 
         sync_job = self.service.sync_from_marketplace(
             connection_id=str(self.connection.id),
@@ -395,7 +381,7 @@ class MarketplaceSyncPullE2ETest(E2ETestBase):
             user_id=str(self.user.id),
             listing_ids=None,
             filters=filters,
-            options={}
+            options={},
         )
 
         self.assertIsNotNone(sync_job)
@@ -412,7 +398,7 @@ class MarketplaceBidirectionalSyncE2ETest(E2ETestBase):
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id=f"e2e-bidirectional-{time.time()}"
+            request_id=f"e2e-bidirectional-{time.time()}",
         )
 
         # Create connection
@@ -424,7 +410,7 @@ class MarketplaceBidirectionalSyncE2ETest(E2ETestBase):
             config={
                 "base_url": "https://demo.ckan.org",
             },
-            is_active=True
+            is_active=True,
         )
 
         # Create test asset
@@ -434,7 +420,7 @@ class MarketplaceBidirectionalSyncE2ETest(E2ETestBase):
             name="E2E Bidirectional Asset",
             status=AssetStatus.ACTIVE,
             source_type="HUB_NATIVE",
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_complete_bidirectional_sync_workflow(self):
@@ -445,7 +431,7 @@ class MarketplaceBidirectionalSyncE2ETest(E2ETestBase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             asset_ids=[str(self.asset.id)],
-            options={}
+            options={},
         )
 
         self.assertIsNotNone(push_job)
@@ -458,7 +444,7 @@ class MarketplaceBidirectionalSyncE2ETest(E2ETestBase):
             user_id=str(self.user.id),
             listing_ids=None,
             filters={},
-            options={"create_assets": True}
+            options={"create_assets": True},
         )
 
         self.assertIsNotNone(pull_job)
@@ -466,16 +452,12 @@ class MarketplaceBidirectionalSyncE2ETest(E2ETestBase):
 
         # Step 3: Verify both jobs exist
         sync_jobs = MarketplaceSyncJob.objects.filter(
-            tenant=self.tenant,
-            connection=self.connection
+            tenant=self.tenant, connection=self.connection
         )
         self.assertGreaterEqual(sync_jobs.count(), 2)
 
         # Step 4: Verify mappings created
-        mappings = MarketplaceMapping.objects.filter(
-            tenant=self.tenant,
-            connection=self.connection
-        )
+        mappings = MarketplaceMapping.objects.filter(tenant=self.tenant, connection=self.connection)
         # Mappings may be created during sync execution
         self.assertGreaterEqual(mappings.count(), 0)
 
@@ -489,7 +471,7 @@ class MarketplaceErrorRecoveryE2ETest(E2ETestBase):
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id=f"e2e-error-{time.time()}"
+            request_id=f"e2e-error-{time.time()}",
         )
 
     def test_connection_test_failure_recovery(self):
@@ -503,15 +485,15 @@ class MarketplaceErrorRecoveryE2ETest(E2ETestBase):
             config={
                 "base_url": "https://invalid-url.example.com",
             },
-            is_active=False
+            is_active=False,
         )
 
         # Test connection (should fail with invalid URL)
         test_result = self.service.test_connection(str(connection.id))
         self.assertIsInstance(test_result, dict)
-        self.assertIn('success', test_result)
+        self.assertIn("success", test_result)
         # Connection test should fail with invalid URL
-        initial_success = test_result.get('success', True)
+        test_result.get("success", True)
         # In test environment, even invalid URLs may not always fail immediately
         # So we proceed with the update regardless
 
@@ -521,13 +503,13 @@ class MarketplaceErrorRecoveryE2ETest(E2ETestBase):
             tenant_id=str(self.tenant.id),
             config={
                 "base_url": "https://demo.ckan.org",
-            }
+            },
         )
 
         # Test connection again (may still fail if marketplace is unavailable, which is OK for E2E tests)
         test_result = self.service.test_connection(str(updated_connection.id))
         self.assertIsInstance(test_result, dict)
-        self.assertIn('success', test_result)
+        self.assertIn("success", test_result)
         # We verify the test was executed - success depends on marketplace availability
         # In E2E tests, marketplace may be unavailable, so we don't assert success
 
@@ -543,7 +525,7 @@ class MarketplaceErrorRecoveryE2ETest(E2ETestBase):
                 "api_key": "test-key",
                 "endpoint": "https://demo.ckan.org",
             },
-            is_active=True
+            is_active=True,
         )
 
         # Create asset
@@ -553,7 +535,7 @@ class MarketplaceErrorRecoveryE2ETest(E2ETestBase):
             name="Retry Test Asset",
             status=AssetStatus.ACTIVE,
             source_type="HUB_NATIVE",
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create sync job
@@ -562,7 +544,7 @@ class MarketplaceErrorRecoveryE2ETest(E2ETestBase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             asset_ids=[str(asset.id)],
-            options={}
+            options={},
         )
 
         # Simulate failure by updating status
@@ -586,7 +568,7 @@ class MarketplaceScheduledSyncE2ETest(E2ETestBase):
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id=f"e2e-scheduled-{time.time()}"
+            request_id=f"e2e-scheduled-{time.time()}",
         )
 
         # Create connection
@@ -598,7 +580,7 @@ class MarketplaceScheduledSyncE2ETest(E2ETestBase):
             config={
                 "base_url": "https://demo.ckan.org",
             },
-            is_active=True
+            is_active=True,
         )
 
     def test_create_scheduled_sync_workflow(self):
@@ -611,7 +593,7 @@ class MarketplaceScheduledSyncE2ETest(E2ETestBase):
             direction=SyncDirection.PULL.value,
             schedule_type=ScheduleType.DAILY.value,
             schedule_config={"hour": 2, "minute": 0},
-            status=ScheduledMarketplaceSyncStatus.ACTIVE.value
+            status=ScheduledMarketplaceSyncStatus.ACTIVE.value,
         )
 
         self.assertIsNotNone(scheduled_sync)
@@ -634,7 +616,7 @@ class MarketplaceScheduledSyncE2ETest(E2ETestBase):
             direction=SyncDirection.PULL.value,
             schedule_type=ScheduleType.DAILY.value,
             schedule_config={"hour": 2, "minute": 0},
-            status=ScheduledMarketplaceSyncStatus.ACTIVE.value
+            status=ScheduledMarketplaceSyncStatus.ACTIVE.value,
         )
 
         # Deactivate
@@ -655,14 +637,14 @@ class MarketplaceMultiTenantIsolationE2ETest(E2ETestBase):
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id=f"e2e-isolation-{time.time()}"
+            request_id=f"e2e-isolation-{time.time()}",
         )
 
         # Create second tenant
         self.tenant2 = Tenant.objects.create(
             name="E2E Test Tenant 2",
             slug=f"e2e-test-tenant-2-{uuid.uuid4().hex[:8]}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
 
         # Create user for second tenant
@@ -670,26 +652,26 @@ class MarketplaceMultiTenantIsolationE2ETest(E2ETestBase):
             email=f"e2e-test-2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant2,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create service for second tenant
         self.service2 = MarketplaceIntegrationService(
             tenant_id=str(self.tenant2.id),
             user_id=str(self.user2.id),
-            request_id=f"e2e-isolation-2-{time.time()}"
+            request_id=f"e2e-isolation-2-{time.time()}",
         )
 
     def test_tenant_isolation_for_connections(self):
         """Test that tenants cannot access each other's connections"""
         # Create connection for tenant 1
-        connection1 = self.service.create_connection(
+        self.service.create_connection(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             name="Tenant 1 Connection",
             config={"base_url": "https://demo.ckan.org"},
-            is_active=True
+            is_active=True,
         )
 
         # Create connection for tenant 2
@@ -699,13 +681,18 @@ class MarketplaceMultiTenantIsolationE2ETest(E2ETestBase):
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             name="Tenant 2 Connection",
             config={"base_url": "https://demo.ckan.org"},
-            is_active=True
+            is_active=True,
         )
 
         # Filter to only connections from this test to avoid cross-test interference
-        connections1 = [c for c in self.service.list_connections(tenant_id=str(self.tenant.id))
-                        if str(c.tenant_id) == str(self.tenant.id)]
-        self.assertGreaterEqual(len(connections1), 1, "Should have at least one connection for tenant 1")
+        connections1 = [
+            c
+            for c in self.service.list_connections(tenant_id=str(self.tenant.id))
+            if str(c.tenant_id) == str(self.tenant.id)
+        ]
+        self.assertGreaterEqual(
+            len(connections1), 1, "Should have at least one connection for tenant 1"
+        )
 
         # Verify tenant 2 can only see its own connection
         connections2 = self.service2.list_connections(tenant_id=str(self.tenant2.id))
@@ -715,8 +702,7 @@ class MarketplaceMultiTenantIsolationE2ETest(E2ETestBase):
         # Verify tenant 1 cannot access tenant 2's connection
         with self.assertRaises(Exception):  # Should raise NotFoundError
             self.service.get_connection(
-                connection_id=str(connection2.id),
-                tenant_id=str(self.tenant.id)
+                connection_id=str(connection2.id), tenant_id=str(self.tenant.id)
             )
 
     def test_tenant_isolation_for_sync_jobs(self):
@@ -728,7 +714,7 @@ class MarketplaceMultiTenantIsolationE2ETest(E2ETestBase):
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             name="Tenant 1 Connection",
             config={"base_url": "https://demo.ckan.org"},
-            is_active=True
+            is_active=True,
         )
 
         # Create asset for tenant 1
@@ -738,7 +724,7 @@ class MarketplaceMultiTenantIsolationE2ETest(E2ETestBase):
             name="Tenant 1 Asset",
             status=AssetStatus.ACTIVE,
             source_type="HUB_NATIVE",
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create sync job for tenant 1
@@ -747,20 +733,16 @@ class MarketplaceMultiTenantIsolationE2ETest(E2ETestBase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             asset_ids=[str(asset1.id)],
-            options={}
+            options={},
         )
 
         # Verify tenant 1 can see its sync job
-        sync_jobs1 = MarketplaceSyncJob.objects.filter(
-            tenant=self.tenant
-        )
+        sync_jobs1 = MarketplaceSyncJob.objects.filter(tenant=self.tenant)
         self.assertGreaterEqual(sync_jobs1.count(), 1)
         self.assertIn(sync_job1.id, [job.id for job in sync_jobs1])
 
         # Verify tenant 2 cannot see tenant 1's sync job
-        sync_jobs2 = MarketplaceSyncJob.objects.filter(
-            tenant=self.tenant2
-        )
+        sync_jobs2 = MarketplaceSyncJob.objects.filter(tenant=self.tenant2)
         self.assertNotIn(sync_job1.id, [job.id for job in sync_jobs2])
 
     def test_tenant_isolation_for_mappings(self):
@@ -772,7 +754,7 @@ class MarketplaceMultiTenantIsolationE2ETest(E2ETestBase):
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             name="Tenant 1 Connection",
             config={"base_url": "https://demo.ckan.org"},
-            is_active=True
+            is_active=True,
         )
 
         # Create asset for tenant 1
@@ -782,7 +764,7 @@ class MarketplaceMultiTenantIsolationE2ETest(E2ETestBase):
             name="Tenant 1 Asset",
             status=AssetStatus.ACTIVE,
             source_type="HUB_NATIVE",
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create mapping for tenant 1
@@ -792,18 +774,14 @@ class MarketplaceMultiTenantIsolationE2ETest(E2ETestBase):
             hub_asset=asset1,
             external_listing_id="listing-1",
             external_resource_ids=["resource-1"],
-            sync_metadata={"test": "data"}
+            sync_metadata={"test": "data"},
         )
 
         # Verify tenant 1 can see its mapping
-        mappings1 = MarketplaceMapping.objects.filter(
-            tenant=self.tenant
-        )
+        mappings1 = MarketplaceMapping.objects.filter(tenant=self.tenant)
         self.assertGreaterEqual(mappings1.count(), 1)
         self.assertIn(mapping1.id, [m.id for m in mappings1])
 
         # Verify tenant 2 cannot see tenant 1's mapping
-        mappings2 = MarketplaceMapping.objects.filter(
-            tenant=self.tenant2
-        )
+        mappings2 = MarketplaceMapping.objects.filter(tenant=self.tenant2)
         self.assertNotIn(mapping1.id, [m.id for m in mappings2])

@@ -27,20 +27,32 @@ class ProcessorAgreementsAPI:
         return await self.client.get(f"{BASE}/processors/{processor_id}/")
 
     async def create_processor(
-        self, name: str, legal_name: str = "", country_code: str = "",
-        website: str = "", notes: str = "",
+        self,
+        name: str,
+        legal_name: str = "",
+        country_code: str = "",
+        website: str = "",
+        notes: str = "",
     ) -> Dict[str, Any]:
         return await self.client.post(
             f"{BASE}/processors/",
-            data={"name": name, "legal_name": legal_name, "country_code": country_code,
-                  "website": website, "notes": notes},
+            data={
+                "name": name,
+                "legal_name": legal_name,
+                "country_code": country_code,
+                "website": website,
+                "notes": notes,
+            },
         )
 
     async def update_processor(
-        self, processor_id: str, **fields: Any,
+        self,
+        processor_id: str,
+        **fields: Any,
     ) -> Dict[str, Any]:
         return await self.client.patch(
-            f"{BASE}/processors/{processor_id}/", data=fields,
+            f"{BASE}/processors/{processor_id}/",
+            data=fields,
         )
 
     async def delete_processor(self, processor_id: str) -> Optional[Dict[str, Any]]:
@@ -89,10 +101,13 @@ class ProcessorAgreementsAPI:
         return await self.client.post(f"{BASE}/processor-agreements/", data=data)
 
     async def update_agreement(
-        self, agreement_id: str, **fields: Any,
+        self,
+        agreement_id: str,
+        **fields: Any,
     ) -> Dict[str, Any]:
         return await self.client.patch(
-            f"{BASE}/processor-agreements/{agreement_id}/", data=fields,
+            f"{BASE}/processor-agreements/{agreement_id}/",
+            data=fields,
         )
 
     async def delete_agreement(self, agreement_id: str) -> Optional[Dict[str, Any]]:

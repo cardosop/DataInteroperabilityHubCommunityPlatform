@@ -5,7 +5,7 @@ Enhances the auto-generated OpenAPI spec with comprehensive documentation,
 examples, and metadata for all endpoints.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 import structlog
 from django.conf import settings
@@ -19,7 +19,7 @@ class OpenAPISpecEnhancer:
     """
 
     @staticmethod
-    def enhance_spec(spec: Dict[str, Any]) -> Dict[str, Any]:
+    def enhance_spec(spec: dict[str, Any]) -> dict[str, Any]:
         """
         Enhance OpenAPI specification with comprehensive documentation.
 
@@ -44,7 +44,7 @@ class OpenAPISpecEnhancer:
         return spec
 
     @staticmethod
-    def _enhance_info(spec: Dict[str, Any]) -> Dict[str, Any]:
+    def _enhance_info(spec: dict[str, Any]) -> dict[str, Any]:
         """Enhance info section with comprehensive metadata."""
         if "info" not in spec:
             spec["info"] = {}
@@ -54,9 +54,7 @@ class OpenAPISpecEnhancer:
         # Set comprehensive title and description
         app_name = getattr(settings, "APP_NAME", "Meshant")
         info["title"] = info.get("title", f"{app_name} API")
-        info[
-            "description"
-        ] = f"""
+        info["description"] = f"""
 # {app_name} API
 
 Complete REST API for managing data contracts, assets, datasets, compliance, data quality, and marketplace operations.
@@ -106,7 +104,7 @@ For API support, contact: support@datahub.example.com
         return spec
 
     @staticmethod
-    def _enhance_paths(spec: Dict[str, Any]) -> Dict[str, Any]:
+    def _enhance_paths(spec: dict[str, Any]) -> dict[str, Any]:
         """Enhance paths with examples and better descriptions."""
         if "paths" not in spec:
             return spec
@@ -114,10 +112,6 @@ For API support, contact: support@datahub.example.com
         paths = spec["paths"]
 
         # Enhance contract endpoints
-        contract_paths = [
-            "/api/v1/contracts/",
-            "/api/v1/contracts/{id}/",
-        ]
 
         for path_key, path_item in paths.items():
             if not isinstance(path_item, dict):
@@ -160,7 +154,7 @@ For API support, contact: support@datahub.example.com
         return spec
 
     @staticmethod
-    def _add_request_examples(operation: Dict[str, Any], path: str, method: str) -> Dict[str, Any]:
+    def _add_request_examples(operation: dict[str, Any], path: str, method: str) -> dict[str, Any]:
         """Add comprehensive request body examples for all endpoints."""
         if "requestBody" not in operation:
             return operation
@@ -294,7 +288,7 @@ For API support, contact: support@datahub.example.com
         return operation
 
     @staticmethod
-    def _add_response_examples(operation: Dict[str, Any], path: str, method: str) -> Dict[str, Any]:
+    def _add_response_examples(operation: dict[str, Any], path: str, method: str) -> dict[str, Any]:
         """Add comprehensive response examples for all endpoints."""
         if "responses" not in operation:
             return operation
@@ -403,22 +397,21 @@ For API support, contact: support@datahub.example.com
                             "created_at": "2025-01-15T10:30:00Z",
                         }
                 # Job responses
-                elif "/jobs/" in path:
-                    if method == "get" and "{id}" in path:
-                        json_content["example"] = {
-                            "id": "550e8400-e29b-41d4-a716-446655440000",
-                            "job_type": "DQ_RUN",
-                            "status": "COMPLETED",
-                            "target_resource_type": "DATASET",
-                            "target_resource_id": "660e8400-e29b-41d4-a716-446655440001",
-                            "created_at": "2025-01-15T10:30:00Z",
-                            "completed_at": "2025-01-15T10:35:00Z",
-                        }
+                elif "/jobs/" in path and method == "get" and "{id}" in path:
+                    json_content["example"] = {
+                        "id": "550e8400-e29b-41d4-a716-446655440000",
+                        "job_type": "DQ_RUN",
+                        "status": "COMPLETED",
+                        "target_resource_type": "DATASET",
+                        "target_resource_id": "660e8400-e29b-41d4-a716-446655440001",
+                        "created_at": "2025-01-15T10:30:00Z",
+                        "completed_at": "2025-01-15T10:35:00Z",
+                    }
 
         return operation
 
     @staticmethod
-    def _add_error_responses(operation: Dict[str, Any]) -> Dict[str, Any]:
+    def _add_error_responses(operation: dict[str, Any]) -> dict[str, Any]:
         """Add standard error responses to operation if not already present."""
         if "responses" not in operation:
             operation["responses"] = {}
@@ -683,15 +676,15 @@ For API support, contact: support@datahub.example.com
 
     @staticmethod
     def _enhance_operation_description(
-        operation: Dict[str, Any], path: str, method: str
-    ) -> Dict[str, Any]:
+        operation: dict[str, Any], path: str, method: str
+    ) -> dict[str, Any]:
         """Enhance operation descriptions."""
         # Descriptions are already set via extend_schema decorators
         # This method can add additional context if needed
         return operation
 
     @staticmethod
-    def _add_idempotency_headers(operation: Dict[str, Any]) -> Dict[str, Any]:
+    def _add_idempotency_headers(operation: dict[str, Any]) -> dict[str, Any]:
         """
         Add idempotency response headers to operation.
 
@@ -716,10 +709,7 @@ For API support, contact: support@datahub.example.com
                     "Echoes back the idempotency key provided in the request header. "
                     "Present when an Idempotency-Key header was included in the request."
                 ),
-                "schema": {
-                    "type": "string",
-                    "example": "550e8400-e29b-41d4-a716-446655440000"
-                }
+                "schema": {"type": "string", "example": "550e8400-e29b-41d4-a716-446655440000"},
             },
             "Idempotency-Replayed": {
                 "description": (
@@ -727,12 +717,8 @@ For API support, contact: support@datahub.example.com
                     "Set to 'true' when a cached response is returned for a duplicate request. "
                     "Not present for new requests."
                 ),
-                "schema": {
-                    "type": "string",
-                    "enum": ["true"],
-                    "example": "true"
-                }
-            }
+                "schema": {"type": "string", "enum": ["true"], "example": "true"},
+            },
         }
 
         # Add headers to all success responses (2xx)
@@ -762,33 +748,34 @@ For API support, contact: support@datahub.example.com
 
         # Check if Idempotency-Key parameter already exists
         has_idempotency_param = any(
-            param.get("name") == "Idempotency-Key"
-            for param in operation["parameters"]
+            param.get("name") == "Idempotency-Key" for param in operation["parameters"]
         )
 
         if not has_idempotency_param:
-            operation["parameters"].append({
-                "name": "Idempotency-Key",
-                "in": "header",
-                "description": (
-                    "Idempotency key for ensuring request idempotency. "
-                    "Provide a unique key (UUID or 8-256 alphanumeric characters) "
-                    "to prevent duplicate processing of the same request. "
-                    "The same key with the same request body will return the cached response. "
-                    "Required for POST, PUT, and PATCH operations."
-                ),
-                "required": False,  # Optional but recommended
-                "schema": {
-                    "type": "string",
-                    "pattern": "^[a-zA-Z0-9\\-_/]{8,256}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-                    "example": "550e8400-e29b-41d4-a716-446655440000"
+            operation["parameters"].append(
+                {
+                    "name": "Idempotency-Key",
+                    "in": "header",
+                    "description": (
+                        "Idempotency key for ensuring request idempotency. "
+                        "Provide a unique key (UUID or 8-256 alphanumeric characters) "
+                        "to prevent duplicate processing of the same request. "
+                        "The same key with the same request body will return the cached response. "
+                        "Required for POST, PUT, and PATCH operations."
+                    ),
+                    "required": False,  # Optional but recommended
+                    "schema": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9\\-_/]{8,256}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                        "example": "550e8400-e29b-41d4-a716-446655440000",
+                    },
                 }
-            })
+            )
 
         return operation
 
     @staticmethod
-    def _enhance_components(spec: Dict[str, Any]) -> Dict[str, Any]:
+    def _enhance_components(spec: dict[str, Any]) -> dict[str, Any]:
         """Enhance components section."""
         if "components" not in spec:
             spec["components"] = {}
@@ -822,7 +809,7 @@ For API support, contact: support@datahub.example.com
         return spec
 
     @staticmethod
-    def _enhance_tags(spec: Dict[str, Any]) -> Dict[str, Any]:
+    def _enhance_tags(spec: dict[str, Any]) -> dict[str, Any]:
         """Enhance tags with descriptions."""
         if "tags" not in spec:
             spec["tags"] = []

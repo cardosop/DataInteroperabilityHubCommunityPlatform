@@ -7,12 +7,11 @@ Verifies:
   - Cross-tenant isolation
   - UniqueConstraint per-user-per-tenant-per-resource_type-per-draft_key
 """
-import pytest
 
 import uuid
 
+import pytest
 from django.db import IntegrityError
-from django.db.models import UniqueConstraint
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -96,12 +95,18 @@ class TestFormDraftUniqueConstraint:
         """A user in two tenants should be able to save drafts in each."""
         # For test purposes, create drafts as the same user but in different tenants
         create_form_draft(
-            user=user_a, tenant=tenant_a,
-            resource_type="dpia", draft_key="create", data={"step": 1},
+            user=user_a,
+            tenant=tenant_a,
+            resource_type="dpia",
+            draft_key="create",
+            data={"step": 1},
         )
         create_form_draft(
-            user=user_a, tenant=tenant_b,
-            resource_type="dpia", draft_key="create", data={"step": 2},
+            user=user_a,
+            tenant=tenant_b,
+            resource_type="dpia",
+            draft_key="create",
+            data={"step": 2},
         )
         assert FormDraft.objects.filter(user=user_a).count() == 2
 
@@ -109,13 +114,17 @@ class TestFormDraftUniqueConstraint:
     def test_same_user_same_tenant_duplicate_key_raises(self, user_a, tenant_a):
         """Duplicate (user, tenant, resource_type, draft_key) must fail."""
         create_form_draft(
-            user=user_a, tenant=tenant_a,
-            resource_type="dpia", draft_key="create",
+            user=user_a,
+            tenant=tenant_a,
+            resource_type="dpia",
+            draft_key="create",
         )
         with pytest.raises(IntegrityError):
             create_form_draft(
-                user=user_a, tenant=tenant_a,
-                resource_type="dpia", draft_key="create",
+                user=user_a,
+                tenant=tenant_a,
+                resource_type="dpia",
+                draft_key="create",
             )
 
 
@@ -127,39 +136,45 @@ class TestFormDraftCrossUserIsolation:
     @pytest.mark.unit
     def test_retrieve_own_draft(self, api_client_a, user_a, tenant_a):
         create_form_draft(
-            user=user_a, tenant=tenant_a,
-            resource_type="dpia", draft_key="create", data={"step": 1},
+            user=user_a,
+            tenant=tenant_a,
+            resource_type="dpia",
+            draft_key="create",
+            data={"step": 1},
         )
-        response = api_client_a.get(
-            "/api/v1/drafts/?resource_type=dpia&draft_key=create"
-        )
+        response = api_client_a.get("/api/v1/drafts/?resource_type=dpia&draft_key=create")
         assert response.status_code == status.HTTP_200_OK
         assert response.json()["data"] == {"step": 1}
 
     @pytest.mark.unit
-    def test_cannot_retrieve_other_user_draft(self, api_client_a, api_client_b, user_a, user_b, tenant_a, tenant_b):
+    def test_cannot_retrieve_other_user_draft(
+        self, api_client_a, api_client_b, user_a, user_b, tenant_a, tenant_b
+    ):
         create_form_draft(
-            user=user_b, tenant=tenant_b,
-            resource_type="dpia", draft_key="create", data={"step": 99},
+            user=user_b,
+            tenant=tenant_b,
+            resource_type="dpia",
+            draft_key="create",
+            data={"step": 99},
         )
         # User A tries to read user B's draft (wrong user + wrong tenant)
-        response = api_client_a.get(
-            "/api/v1/drafts/?resource_type=dpia&draft_key=create"
-        )
+        response = api_client_a.get("/api/v1/drafts/?resource_type=dpia&draft_key=create")
         # Should return "not found" (not leak the other user's draft)
         assert response.status_code == status.HTTP_200_OK
         assert response.json()["data"] == {}
 
     @pytest.mark.unit
-    def test_cannot_delete_other_user_draft(self, api_client_a, api_client_b, user_a, user_b, tenant_a, tenant_b):
+    def test_cannot_delete_other_user_draft(
+        self, api_client_a, api_client_b, user_a, user_b, tenant_a, tenant_b
+    ):
         draft = create_form_draft(
-            user=user_b, tenant=tenant_b,
-            resource_type="dpia", draft_key="create",
+            user=user_b,
+            tenant=tenant_b,
+            resource_type="dpia",
+            draft_key="create",
         )
         # User A tries to delete user B's draft
-        response = api_client_a.delete(
-            "/api/v1/drafts/delete/?resource_type=dpia&draft_key=create"
-        )
+        response = api_client_a.delete("/api/v1/drafts/delete/?resource_type=dpia&draft_key=create")
         # Returns 204 but should NOT have deleted user B's draft
         assert response.status_code == status.HTTP_204_NO_CONTENT
         assert FormDraft.objects.filter(id=draft.id).exists()
@@ -187,12 +202,13 @@ class TestFormDraftCrossTenantIsolation:
     def test_draft_retrieve_includes_tenant_filter(self, api_client_a, user_a, tenant_a):
         """GET /drafts/ must only return drafts in the request's tenant."""
         create_form_draft(
-            user=user_a, tenant=tenant_a,
-            resource_type="dpia", draft_key="t1", data={"v": "a"},
+            user=user_a,
+            tenant=tenant_a,
+            resource_type="dpia",
+            draft_key="t1",
+            data={"v": "a"},
         )
-        response = api_client_a.get(
-            "/api/v1/drafts/?resource_type=dpia&draft_key=t1"
-        )
+        response = api_client_a.get("/api/v1/drafts/?resource_type=dpia&draft_key=t1")
         assert response.status_code == status.HTTP_200_OK
         assert response.json()["data"] == {"v": "a"}
 
@@ -214,8 +230,10 @@ class TestFormDraftCrossTenantIsolation:
         assert response.status_code == status.HTTP_200_OK
         # Should be exactly one draft for this tenant
         count = FormDraft.objects.filter(
-            user=user_a, tenant=tenant_a,
-            resource_type="dpia", draft_key="upsert",
+            user=user_a,
+            tenant=tenant_a,
+            resource_type="dpia",
+            draft_key="upsert",
         ).count()
         assert count == 1
 
@@ -253,9 +271,7 @@ class TestFormDraftCRUD:
 
     @pytest.mark.unit
     def test_retrieve_returns_404_body_for_missing(self, api_client_a):
-        response = api_client_a.get(
-            "/api/v1/drafts/?resource_type=nonexistent&draft_key=missing"
-        )
+        response = api_client_a.get("/api/v1/drafts/?resource_type=nonexistent&draft_key=missing")
         assert response.status_code == status.HTTP_200_OK
         assert response.json()["data"] == {}
 

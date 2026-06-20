@@ -4,7 +4,8 @@ Additional unit tests to achieve 90%+ coverage for ODPS normalizer.
 This test file focuses on covering edge cases, error paths, and exception handlers
 that are currently not covered by existing tests.
 
-All tests use real implementations (no mocks/stubs) where possible.
+Uses real implementations where possible. MockTransport is used for HTTP
+endpoint verification at the network boundary (acceptable test utility).
 Metrics exception handling is already covered by try/except blocks in the code.
 """
 
@@ -12,7 +13,6 @@ from django.test import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus
 from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
-from hub.apps.contracts.odps_errors import ODPSNormalizationError
 
 
 class ODPSNormalizerCoverageGapsTest(TestCase):

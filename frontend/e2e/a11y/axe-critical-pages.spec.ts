@@ -27,7 +27,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import { clearAuthStorage, getTenantAdminUser, getTestUser, loginUser } from '../fixtures/auth';
+import { clearAuthStorage, getComplianceOfficerUser, getTenantAdminUser, getTestUser, loginUser } from '../fixtures/auth';
 import {
   runAxeAudit,
   expectNoSeriousViolations,
@@ -104,7 +104,7 @@ test.describe('A11y axe coverage @a11y @critical', () => {
   });
 
   test('compliance page audits clean', async ({ page }) => {
-    const user = await getTestUser();
+    const user = await getComplianceOfficerUser();
     await loginUser(page, user);
     await page.goto('/compliance', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });

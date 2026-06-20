@@ -10,20 +10,18 @@ Verifies:
 
 No mocks — real Postgres, real ORM, real IdempotencyService (Redis).
 """
-from __future__ import annotations
-import pytest
 
-import hashlib
-import json
+from __future__ import annotations
+
 import uuid
 
+import pytest
 from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.jobs.models import FailedJobDLQ, Job, JobStatus, JobType
-from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
 
@@ -36,6 +34,7 @@ def _uid():
 # 277.B.020(a) — Worker → DLQ flow
 # ============================================================================
 
+
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.integration
 class TestWorkerRoutesToDLQ(TestCase):
@@ -44,12 +43,15 @@ class TestWorkerRoutesToDLQ(TestCase):
     def setUp(self):
         uid = _uid()
         self.tenant = Tenant.objects.create(
-            name=f"DLQ-W-{uid}", slug=f"dlq-w-{uid}",
-            status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+            name=f"DLQ-W-{uid}",
+            slug=f"dlq-w-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"dlq-w-{uid}@example.com",
-            password="testpass123", tenant=self.tenant,
+            password="testpass123",
+            tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
         self.user.is_platform_admin = True
@@ -95,6 +97,7 @@ class TestWorkerRoutesToDLQ(TestCase):
 # 277.B.020(b) — DLQ retry idempotency
 # ============================================================================
 
+
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.integration
 class TestDLQRetryIdempotency(TestCase):
@@ -103,13 +106,16 @@ class TestDLQRetryIdempotency(TestCase):
     def setUp(self):
         uid = _uid()
         self.tenant = Tenant.objects.create(
-            name=f"DLQ-R-{uid}", slug=f"dlq-r-{uid}",
-            status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+            name=f"DLQ-R-{uid}",
+            slug=f"dlq-r-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"dlq-r-{uid}@example.com",
-            password="testpass123", tenant=self.tenant,
+            password="testpass123",
+            tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
         self.user.is_platform_admin = True
@@ -173,18 +179,25 @@ class TestDLQRetryIdempotency(TestCase):
         assertion to ``assertIn(resp.status_code, [403, 404])``."""
         regular = User.objects.create_user(
             email=f"dlq-regular-{_uid()}@example.com",
-            password="testpass", tenant=self.tenant,
+            password="testpass",
+            tenant=self.tenant,
         )
         client2 = APIClient()
         client2.force_authenticate(user=regular)
         resp = client2.post(f"/api/v1/jobs/dlq/{self.dlq_entry.id}/retry/")
-        # Gap: currently allows retry (200); should be restricted to platform admins
-        self.assertIn(resp.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
+        # Documented gap: non-admin retry should be blocked (403).
+        # Until RBAC is enforced, accept 200 or 403 — never 500.
+        self.assertIn(
+            resp.status_code,
+            [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN],
+            f"Non-admin DLQ retry should be 200 (gap) or 403 (fixed); got {resp.status_code}"
+        )
 
 
 # ============================================================================
 # 277.B.020(c) — Asset activation (data-first) idempotency
 # ============================================================================
+
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.integration
@@ -194,13 +207,16 @@ class TestDataFirstIdempotency(TestCase):
     def setUp(self):
         uid = _uid()
         self.tenant = Tenant.objects.create(
-            name=f"IDEM-{uid}", slug=f"idem-{uid}",
-            status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+            name=f"IDEM-{uid}",
+            slug=f"idem-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"idem-{uid}@example.com",
-            password="testpass123", tenant=self.tenant,
+            password="testpass123",
+            tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
         self.client = APIClient()
@@ -233,8 +249,9 @@ class TestDataFirstIdempotency(TestCase):
         )
         # Both responses should have the same status code and body
         # (the cached replay contract).
-        self.assertEqual(resp1.status_code, resp2.status_code,
-                         "Same idempotency key MUST return same status")
+        self.assertEqual(
+            resp1.status_code, resp2.status_code, "Same idempotency key MUST return same status"
+        )
 
     @pytest.mark.integration
     def test_02_missing_idempotency_key_is_rejected(self):
@@ -244,10 +261,12 @@ class TestDataFirstIdempotency(TestCase):
             {"file_id": str(uuid.uuid4()), "key": "no-key", "name": "N"},
             format="json",
         )
-        # Must be 400 (missing header) — not 500 or 422
-        self.assertGreaterEqual(resp.status_code, 400)
-
-    @pytest.mark.integration
+        # 400 (missing header) or 403 (billing middleware blocks). Never 500.
+        self.assertIn(
+            resp.status_code,
+            [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN],
+            f"Expected 400 or 403; got {resp.status_code}"
+        )
     def test_03_malformed_idempotency_key_is_rejected(self):
         """A key without the tenant prefix is rejected."""
         resp = self.client.post(
@@ -256,13 +275,18 @@ class TestDataFirstIdempotency(TestCase):
             format="json",
             HTTP_IDEMPOTENCY_KEY="not-a-valid-key-format",
         )
-        # Malformed key → 400
-        self.assertGreaterEqual(resp.status_code, 400)
+        # 400 (malformed key) or 403 (billing middleware blocks). Never 500.
+        self.assertIn(
+            resp.status_code,
+            [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN],
+            f"Expected 400 or 403 for malformed key; got {resp.status_code}"
+        )
 
 
 # ============================================================================
 # 277.B.020(d) — Marketplace sync state-based idempotency
 # ============================================================================
+
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.integration
@@ -272,8 +296,10 @@ class TestMarketplaceSyncIdempotency(TestCase):
     def setUp(self):
         uid = _uid()
         self.tenant = Tenant.objects.create(
-            name=f"MKT-SYNC-{uid}", slug=f"mkt-sync-{uid}",
-            status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+            name=f"MKT-SYNC-{uid}",
+            slug=f"mkt-sync-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
 
     @pytest.mark.integration
@@ -290,13 +316,17 @@ class TestMarketplaceSyncIdempotency(TestCase):
         #   UPDATE WHERE id=... AND status='PENDING'
         # A COMPLETED job won't match the WHERE clause.
         from django.db import transaction
+
         with transaction.atomic():
-            claimed = Job.objects.filter(
-                id=job.id,
-                status=JobStatus.PENDING,
-            ).select_for_update(skip_locked=True).first()
-        self.assertIsNone(claimed,
-                          "A COMPLETED job must not match PENDING claim")
+            claimed = (
+                Job.objects.filter(
+                    id=job.id,
+                    status=JobStatus.PENDING,
+                )
+                .select_for_update(skip_locked=True)
+                .first()
+            )
+        self.assertIsNone(claimed, "A COMPLETED job must not match PENDING claim")
 
     @pytest.mark.integration
     def test_02_pending_job_claimed_exactly_once(self):
@@ -309,28 +339,37 @@ class TestMarketplaceSyncIdempotency(TestCase):
             status=JobStatus.PENDING,
         )
         from django.db import transaction
+
         # Simulate worker claiming
         with transaction.atomic():
-            claimed = Job.objects.filter(
-                id=job.id,
-                status=JobStatus.PENDING,
-            ).select_for_update(skip_locked=True).first()
+            claimed = (
+                Job.objects.filter(
+                    id=job.id,
+                    status=JobStatus.PENDING,
+                )
+                .select_for_update(skip_locked=True)
+                .first()
+            )
             if claimed:
                 Job.objects.filter(id=job.id).update(status=JobStatus.RUNNING)
         self.assertIsNotNone(claimed, "First claim must succeed")
         # Second claim attempt must find nothing
         with transaction.atomic():
-            second = Job.objects.filter(
-                id=job.id,
-                status=JobStatus.PENDING,
-            ).select_for_update(skip_locked=True).first()
-        self.assertIsNone(second,
-                          "Second claim must not find the job (already RUNNING)")
+            second = (
+                Job.objects.filter(
+                    id=job.id,
+                    status=JobStatus.PENDING,
+                )
+                .select_for_update(skip_locked=True)
+                .first()
+            )
+        self.assertIsNone(second, "Second claim must not find the job (already RUNNING)")
 
 
 # ============================================================================
 # 277.B.020(e) — Compliance run trigger REST gap (documented)
 # ============================================================================
+
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.integration
@@ -340,13 +379,16 @@ class TestComplianceRunIdempotencyGap(TestCase):
     def setUp(self):
         uid = _uid()
         self.tenant = Tenant.objects.create(
-            name=f"CMP-GAP-{uid}", slug=f"cmp-gap-{uid}",
-            status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+            name=f"CMP-GAP-{uid}",
+            slug=f"cmp-gap-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"cmp-gap-{uid}@example.com",
-            password="testpass123", tenant=self.tenant,
+            password="testpass123",
+            tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
         self.client = APIClient()
@@ -376,9 +418,11 @@ class TestComplianceRunIdempotencyGap(TestCase):
         # Both may succeed or fail (non-existent asset), but both
         # should return the same status — the gap is that they are
         # handled independently, not idempotently.
-        self.assertEqual(resp1.status_code, resp2.status_code,
-                         "Duplicate POSTs should return same status "
-                         "(gap: NOT enforced by Idempotency-Key)")
+        self.assertEqual(
+            resp1.status_code,
+            resp2.status_code,
+            "Duplicate POSTs should return same status (gap: NOT enforced by Idempotency-Key)",
+        )
 
         # Gap assertion: if both succeeded (201), count increased by
         # more than 1, confirming the gap.
@@ -387,7 +431,8 @@ class TestComplianceRunIdempotencyGap(TestCase):
         ).count()
         if resp1.status_code == status.HTTP_201_CREATED:
             self.assertGreater(
-                count_after - count_before, 0,
+                count_after - count_before,
+                0,
                 "Compliance runs may have been created — gap is "
-                "that no idempotency guard prevents duplicates"
+                "that no idempotency guard prevents duplicates",
             )

@@ -12,22 +12,27 @@ These tests require:
 To run:
     pytest cli/tests/integration/test_cli_assets_odps.py -v
 """
-import pytest
+
 import json
 import os
-import uuid
-import tempfile
 import subprocess
+import tempfile
+import uuid
+
+import pytest
 from click.testing import CliRunner
-from datahub_cli.main import cli
 from datahub_cli.config import config
+from datahub_cli.main import cli
 
 
 def _check_api_available():
     """Check if API service is available"""
     try:
         import requests
-        response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2)
+
+        response = requests.get(
+            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
+        )
         return response.status_code < 600
     except Exception:
         return False
@@ -68,26 +73,32 @@ print(api_key_value)
 """
     try:
         result = subprocess.run(
-            ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'hub/manage.py', 'shell'],
+            ["docker", "compose", "exec", "-T", "api-service", "python", "hub/manage.py", "shell"],
+            check=False,
             input=django_shell_script,
             text=True,
             capture_output=True,
             timeout=30,
-            cwd='/home/ph/Desktop/DataInteroperabilityHub'
+            cwd="/home/ph/Desktop/DataInteroperabilityHub",
         )
         if result.returncode == 0:
-            output_lines = result.stdout.strip().split('\n')
+            output_lines = result.stdout.strip().split("\n")
             for line in reversed(output_lines):
                 line = line.strip()
-                if (line and len(line) > 30 and
-                    not line.startswith('{') and
-                    not line.startswith('"') and
-                    not 'timestamp' in line.lower() and
-                    not 'logger' in line.lower() and
-                    not 'level' in line.lower() and
-                    not 'message' in line.lower() and
-                    ' ' not in line and ':' not in line and '/' not in line):
-                    cleaned = line.replace('-', '').replace('_', '')
+                if (
+                    line
+                    and len(line) > 30
+                    and not line.startswith("{")
+                    and not line.startswith('"')
+                    and "timestamp" not in line.lower()
+                    and "logger" not in line.lower()
+                    and "level" not in line.lower()
+                    and "message" not in line.lower()
+                    and " " not in line
+                    and ":" not in line
+                    and "/" not in line
+                ):
+                    cleaned = line.replace("-", "").replace("_", "")
                     if cleaned.isalnum():
                         return line
     except Exception:
@@ -102,10 +113,10 @@ def setup_config():
     config.set_api_base_url(api_base_url)
 
     api_key = (
-        os.environ.get('DATAHUB_API_KEY') or
-        os.environ.get('TEST_API_KEY') or
-        config.get_api_key() or
-        _create_test_api_key()
+        os.environ.get("DATAHUB_API_KEY")
+        or os.environ.get("TEST_API_KEY")
+        or config.get_api_key()
+        or _create_test_api_key()
     )
 
     if api_key:
@@ -122,25 +133,35 @@ def sample_asset():
     runner = CliRunner()
     asset_key = f"test-asset-{uuid.uuid4().hex[:8]}"
 
-    result = runner.invoke(cli, [
-        'assets', 'create',
-        '--name', 'Test Asset',
-        '--key', asset_key,
-        '--description', 'Test asset for ODPS integration',
-        '--domain', 'test',
-        '--output-format', 'json'
-    ])
+    result = runner.invoke(
+        cli,
+        [
+            "assets",
+            "create",
+            "--name",
+            "Test Asset",
+            "--key",
+            asset_key,
+            "--description",
+            "Test asset for ODPS integration",
+            "--domain",
+            "test",
+            "--output-format",
+            "json",
+        ],
+    )
 
     if result.exit_code != 0:
         pytest.skip(f"Failed to create test asset: {result.output}")
 
     try:
         asset_data = json.loads(result.output)
-        asset_id = asset_data.get('id')
+        asset_id = asset_data.get("id")
         yield asset_id
     except json.JSONDecodeError:
         import re
-        match = re.search(r'ID:\s*([a-f0-9-]+)', result.output)
+
+        match = re.search(r"ID:\s*([a-f0-9-]+)", result.output)
         if match:
             yield match.group(1)
         else:
@@ -158,7 +179,7 @@ def sample_odps_file():
                 "en": {
                     "productID": f"asset-product-{uuid.uuid4().hex[:8]}",
                     "name": "Asset Product",
-                    "description": "Product linked to asset"
+                    "description": "Product linked to asset",
                 }
             },
             "contract": {
@@ -168,17 +189,13 @@ def sample_odps_file():
                     "id": "test-contract",
                     "name": "test-contract",
                     "version": "1.0.0",
-                    "schema": {
-                        "fields": [
-                            {"name": "id", "type": "string", "nullable": False}
-                        ]
-                    }
+                    "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                 }
-            }
-        }
+            },
+        },
     }
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(odps_data, f)
         temp_path = f.name
 
@@ -193,24 +210,32 @@ def odps_contract_with_asset(sample_asset, sample_odps_file, setup_config):
     """Create an ODPS contract linked to an asset"""
     runner = CliRunner()
 
-    result = runner.invoke(cli, [
-        'contracts', 'create-odps',
-        '--file', sample_odps_file,
-        '--extract-odcs',
-        '--asset-id', sample_asset,
-        '--output-format', 'json'
-    ])
+    result = runner.invoke(
+        cli,
+        [
+            "contracts",
+            "create-odps",
+            "--file",
+            sample_odps_file,
+            "--extract-odcs",
+            "--asset-id",
+            sample_asset,
+            "--output-format",
+            "json",
+        ],
+    )
 
     if result.exit_code != 0:
         pytest.skip(f"Failed to create ODPS contract: {result.output}")
 
     try:
         contract_data = json.loads(result.output)
-        odps_id = contract_data.get('odps_contract', {}).get('id') or contract_data.get('id')
+        odps_id = contract_data.get("odps_contract", {}).get("id") or contract_data.get("id")
         yield odps_id, sample_asset
     except json.JSONDecodeError:
         import re
-        match = re.search(r'ODPS Contract ID:\s*([a-f0-9-]+)', result.output)
+
+        match = re.search(r"ODPS Contract ID:\s*([a-f0-9-]+)", result.output)
         if match:
             yield match.group(1), sample_asset
         else:
@@ -227,29 +252,43 @@ class TestCLIAssetsODPS:
 
         # First create an asset
         asset_key = f"odps-asset-{uuid.uuid4().hex[:8]}"
-        create_result = runner.invoke(cli, [
-            'assets', 'create',
-            '--name', 'ODPS Asset',
-            '--key', asset_key,
-            '--output-format', 'json'
-        ])
+        create_result = runner.invoke(
+            cli,
+            [
+                "assets",
+                "create",
+                "--name",
+                "ODPS Asset",
+                "--key",
+                asset_key,
+                "--output-format",
+                "json",
+            ],
+        )
 
         assert create_result.exit_code == 0
         asset_data = json.loads(create_result.output)
-        asset_id = asset_data.get('id')
+        asset_id = asset_data.get("id")
 
         # Then create ODPS contract linked to asset
-        odps_result = runner.invoke(cli, [
-            'contracts', 'create-odps',
-            '--file', sample_odps_file,
-            '--extract-odcs',
-            '--asset-id', asset_id,
-            '--output-format', 'json'
-        ])
+        odps_result = runner.invoke(
+            cli,
+            [
+                "contracts",
+                "create-odps",
+                "--file",
+                sample_odps_file,
+                "--extract-odcs",
+                "--asset-id",
+                asset_id,
+                "--output-format",
+                "json",
+            ],
+        )
 
         assert odps_result.exit_code == 0
         odps_data = json.loads(odps_result.output)
-        assert 'odps_contract' in odps_data or 'id' in odps_data
+        assert "odps_contract" in odps_data or "id" in odps_data
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
     def test_assets_list_with_odps_filter(self, odps_contract_with_asset, setup_config):
@@ -258,33 +297,27 @@ class TestCLIAssetsODPS:
         _, asset_id = odps_contract_with_asset
 
         # List assets in JSON format
-        result = runner.invoke(cli, [
-            'assets', 'list',
-            '--format', 'json'
-        ])
+        result = runner.invoke(cli, ["assets", "list", "--format", "json"])
 
         assert result.exit_code == 0
         assets_list = json.loads(result.output)
 
         # Find our asset in the list
         if isinstance(assets_list, list):
-            asset_found = any(a.get('id') == asset_id for a in assets_list)
+            asset_found = any(a.get("id") == asset_id for a in assets_list)
         elif isinstance(assets_list, dict):
-            items = assets_list.get('results', assets_list.get('items', []))
-            asset_found = any(a.get('id') == asset_id for a in items)
+            items = assets_list.get("results", assets_list.get("items", []))
+            asset_found = any(a.get("id") == asset_id for a in items)
         else:
             asset_found = False
 
         assert asset_found, "Asset not found in list"
 
         # Test table format
-        result_table = runner.invoke(cli, [
-            'assets', 'list',
-            '--format', 'table'
-        ])
+        result_table = runner.invoke(cli, ["assets", "list", "--format", "table"])
 
         assert result_table.exit_code == 0
-        assert asset_id[:8] in result_table.output or 'Test Asset' in result_table.output
+        assert asset_id[:8] in result_table.output or "Test Asset" in result_table.output
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
     def test_assets_get_with_odps_details(self, odps_contract_with_asset, setup_config):
@@ -293,115 +326,113 @@ class TestCLIAssetsODPS:
         _, asset_id = odps_contract_with_asset
 
         # Get asset with contract included
-        result = runner.invoke(cli, [
-            'assets', 'get',
-            asset_id,
-            '--include', 'contract',
-            '--format', 'json'
-        ])
+        result = runner.invoke(
+            cli, ["assets", "get", asset_id, "--include", "contract", "--format", "json"]
+        )
 
         assert result.exit_code == 0
         asset_data = json.loads(result.output)
-        assert asset_data.get('id') == asset_id
+        assert asset_data.get("id") == asset_id
 
         # Check if contract information is included
         # The contract may be in different places depending on API structure
-        has_contract = (
-            'contract' in asset_data or
-            'contracts' in asset_data or
-            'related_contracts' in asset_data
-        )
 
         # Test table format
-        result_table = runner.invoke(cli, [
-            'assets', 'get',
-            asset_id,
-            '--format', 'table'
-        ])
+        result_table = runner.invoke(cli, ["assets", "get", asset_id, "--format", "table"])
 
         assert result_table.exit_code == 0
-        assert asset_id in result_table.output or 'Test Asset' in result_table.output
+        assert asset_id in result_table.output or "Test Asset" in result_table.output
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_all_asset_commands_with_odps_integration(self, sample_asset, sample_odps_file, setup_config):
+    def test_all_asset_commands_with_odps_integration(
+        self, sample_asset, sample_odps_file, setup_config
+    ):
         """Test all asset commands with ODPS integration"""
         runner = CliRunner()
 
         # Create ODPS contract linked to asset
-        odps_result = runner.invoke(cli, [
-            'contracts', 'create-odps',
-            '--file', sample_odps_file,
-            '--extract-odcs',
-            '--asset-id', sample_asset,
-            '--output-format', 'json'
-        ])
+        odps_result = runner.invoke(
+            cli,
+            [
+                "contracts",
+                "create-odps",
+                "--file",
+                sample_odps_file,
+                "--extract-odcs",
+                "--asset-id",
+                sample_asset,
+                "--output-format",
+                "json",
+            ],
+        )
 
         assert odps_result.exit_code == 0
 
         # Test assets list
-        list_result = runner.invoke(cli, [
-            'assets', 'list',
-            '--format', 'json'
-        ])
+        list_result = runner.invoke(cli, ["assets", "list", "--format", "json"])
         assert list_result.exit_code == 0
 
         # Test assets get
-        get_result = runner.invoke(cli, [
-            'assets', 'get',
-            sample_asset,
-            '--format', 'json'
-        ])
+        get_result = runner.invoke(cli, ["assets", "get", sample_asset, "--format", "json"])
         assert get_result.exit_code == 0
 
         # Test assets update
-        update_result = runner.invoke(cli, [
-            'assets', 'update',
-            sample_asset,
-            '--description', 'Updated description with ODPS',
-            '--format', 'json'
-        ])
+        update_result = runner.invoke(
+            cli,
+            [
+                "assets",
+                "update",
+                sample_asset,
+                "--description",
+                "Updated description with ODPS",
+                "--format",
+                "json",
+            ],
+        )
         assert update_result.exit_code == 0
 
         # Test assets activate
-        activate_result = runner.invoke(cli, [
-            'assets', 'activate',
-            sample_asset
-        ])
+        activate_result = runner.invoke(cli, ["assets", "activate", sample_asset])
         # May succeed or fail depending on contract validation status
         assert activate_result.exit_code == 0
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_assets_list_filter_by_domain_with_odps(self, sample_asset, sample_odps_file, setup_config):
+    def test_assets_list_filter_by_domain_with_odps(
+        self, sample_asset, sample_odps_file, setup_config
+    ):
         """Test `assets list --domain` filter with ODPS contracts"""
         runner = CliRunner()
 
         # Create ODPS contract linked to asset
-        odps_result = runner.invoke(cli, [
-            'contracts', 'create-odps',
-            '--file', sample_odps_file,
-            '--extract-odcs',
-            '--asset-id', sample_asset,
-            '--output-format', 'json'
-        ])
+        odps_result = runner.invoke(
+            cli,
+            [
+                "contracts",
+                "create-odps",
+                "--file",
+                sample_odps_file,
+                "--extract-odcs",
+                "--asset-id",
+                sample_asset,
+                "--output-format",
+                "json",
+            ],
+        )
 
         assert odps_result.exit_code == 0
 
         # List assets filtered by domain
-        result = runner.invoke(cli, [
-            'assets', 'list',
-            '--domain', 'test',
-            '--format', 'json'
-        ])
+        result = runner.invoke(cli, ["assets", "list", "--domain", "test", "--format", "json"])
 
         assert result.exit_code == 0
         assets_list = json.loads(result.output)
 
         # Verify filtering works
         if isinstance(assets_list, list):
-            assert all(a.get('domain') == 'test' for a in assets_list if a.get('domain'))
+            assert all(a.get("domain") == "test" for a in assets_list if a.get("domain"))
         elif isinstance(assets_list, dict):
-            items = assets_list.get('results', assets_list.get('items', []))
-            assert all(a.get('domain') == 'test' for a in items if a.get('domain'))
+            items = assets_list.get("results", assets_list.get("items", []))
+            assert all(a.get("domain") == "test" for a in items if a.get("domain"))
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
     def test_assets_get_includes_odps_contract_info(self, odps_contract_with_asset, setup_config):
@@ -410,19 +441,16 @@ class TestCLIAssetsODPS:
         _, asset_id = odps_contract_with_asset
 
         # Get asset with contract included
-        result = runner.invoke(cli, [
-            'assets', 'get',
-            asset_id,
-            '--include', 'contract',
-            '--format', 'json'
-        ])
+        result = runner.invoke(
+            cli, ["assets", "get", asset_id, "--include", "contract", "--format", "json"]
+        )
 
         assert result.exit_code == 0
         asset_data = json.loads(result.output)
 
         # Verify asset data structure
-        assert 'id' in asset_data
-        assert asset_data['id'] == asset_id
+        assert "id" in asset_data
+        assert asset_data["id"] == asset_id
 
         # Contract information should be available (structure may vary)
         # The important thing is the command succeeds and returns asset data

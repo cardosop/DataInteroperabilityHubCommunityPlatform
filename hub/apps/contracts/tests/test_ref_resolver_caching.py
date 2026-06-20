@@ -13,23 +13,21 @@ Redis uses real Redis client with graceful handling when unavailable.
 """
 
 import json
-import time
 
 import redis
 from django.conf import settings
 from django.test import TestCase
 
 from hub.apps.contracts.config.odps_refs_config import ODPSRefsConfig
-from hub.apps.contracts.tests.test_odps_ref_resolution_ci import TestHTTPServer
 from hub.apps.contracts.odps_errors import ODPSRefResolutionError
 from hub.apps.contracts.ref_resolver import (
-    DEFAULT_CACHE_MAX_ENTRIES,
     DEFAULT_CACHE_TTL,
     REDIS_CACHE_INDEX_PREFIX,
     REDIS_CACHE_PREFIX,
     REDIS_CACHE_STATS_PREFIX,
     RefResolver,
 )
+from hub.apps.contracts.tests.test_odps_ref_resolution_ci import TestHTTPServer
 
 
 def get_real_redis_client_or_none():
@@ -95,7 +93,7 @@ class RefResolverCacheKeyTest(TestCase):
             self.assertEqual(result2, test_data)
 
             # Verify cache hit rate indicates caching occurred
-            hit_rate = self.resolver.get_cache_hit_rate()
+            self.resolver.get_cache_hit_rate()
             # hit_rate may be None if Redis unavailable, but if available, should show cache usage
         finally:
             self.resolver.resolve_external = original_resolve
@@ -167,7 +165,6 @@ class RefResolverCacheStorageTest(TestCase):
 
     def _fixture_teardown(self):
         """Skip database flush — these tests only use Redis, not DB."""
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -248,7 +245,7 @@ class RefResolverCacheStorageTest(TestCase):
             # First resolution - should fetch and cache
             result1 = self.resolver.resolve_external(url)
             self.assertEqual(result1, data)
-            first_call_count = call_count[0]
+            call_count[0]
 
             # Second resolution - should use cache (no HTTP call)
             result2 = self.resolver.resolve_external(url)
@@ -637,7 +634,7 @@ class RefResolverCacheHitRateTest(TestCase):
             self.assertEqual(result, data)
 
             # Verify cache hit rate can be retrieved (public API)
-            hit_rate = self.resolver.get_cache_hit_rate()
+            self.resolver.get_cache_hit_rate()
             # hit_rate may be None if no hits yet, or a value if stats are tracked
         finally:
             self.resolver.resolve_external = original_resolve
@@ -888,7 +885,7 @@ class RefResolverCacheIntegrationTest(TestCase):
         """
         url = "https://example.com/schema.json"
         data = {"type": "string", "format": "email"}
-        content_bytes = json.dumps(data).encode("utf-8")
+        json.dumps(data).encode("utf-8")
 
         import httpx
 
@@ -1143,8 +1140,9 @@ class RefResolverCacheIntegrationTest(TestCase):
     def test_cache_invalidation_with_none_url(self):
         """None URL is handled gracefully: invalidate_cache returns 0 (nothing deleted)."""
         deleted = self.resolver.invalidate_cache(None)  # type: ignore[misc]
-        self.assertEqual(deleted, 0,
-            "invalidate_cache(None) must return 0 — no cache entries to delete")
+        self.assertEqual(
+            deleted, 0, "invalidate_cache(None) must return 0 — no cache entries to delete"
+        )
 
     def test_cache_invalidation_with_empty_url(self):
         """Test cache invalidation with empty URL."""
@@ -1197,7 +1195,7 @@ class RefResolverCacheIntegrationTest(TestCase):
             # with truncated data.
             result = self.resolver.resolve_external(url)
             self.assertIsNotNone(result)
-            hit_rate = self.resolver.get_cache_hit_rate()
+            self.resolver.get_cache_hit_rate()
             # hit_rate may be None if Redis unavailable
         except (redis.RedisError, MemoryError, OSError):
             # Data too large for cache — acceptable degradation
@@ -1209,7 +1207,7 @@ class RefResolverCacheIntegrationTest(TestCase):
         """Test cache TTL expiration handling."""
         url = "https://example.com/schema.json"
         data = {"type": "string"}
-        content_bytes = json.dumps(data).encode("utf-8")
+        json.dumps(data).encode("utf-8")
 
         # Store with very short TTL through public API
         import httpx
@@ -1250,7 +1248,7 @@ class RefResolverCacheIntegrationTest(TestCase):
             # Wait for TTL to expire (cache_ttl=1; 1.5s buffer per FIX_PLAN_FLAKY_TESTS_5_6_2)
             import time
 
-            time.sleep(1.5)  # INTENTIONAL: test-specific timing requirement
+            time.sleep(1.5)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
 
             # Second resolution after TTL expiration - should fetch again (cache expired)
             # resolve_external() internally uses _get_from_cache() which should return None if expired

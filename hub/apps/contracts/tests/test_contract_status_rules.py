@@ -1,9 +1,11 @@
 """
 Unit tests for contract status lifecycle rules.
 """
+
 import uuid
 
 import pytest
+from django.contrib.auth import get_user_model
 from rest_framework import status
 
 from hub.apps.contracts.models import (
@@ -14,7 +16,6 @@ from hub.apps.contracts.models import (
     OriginalSpecType,
     ValidationStatus,
 )
-from django.contrib.auth import get_user_model
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
@@ -63,7 +64,7 @@ class ContractStatusRulesTest(ContractsAPITestBase):
             created_by=self.user,
         )
 
-        can_activate, reason = contract.can_activate()
+        can_activate, _reason = contract.can_activate()
         self.assertTrue(can_activate)
 
     def test_contract_cannot_activate_with_invalid_validation(self):
@@ -232,7 +233,7 @@ class ContractStatusRulesTest(ContractsAPITestBase):
             created_by=self.user,
         )
 
-        can_activate, reason = contract.can_activate()
+        can_activate, _reason = contract.can_activate()
         # Already active contract should be able to activate (idempotent)
         self.assertTrue(can_activate)
 
@@ -295,6 +296,7 @@ class ContractStatusRulesTest(ContractsAPITestBase):
         """Test activating contract via API from different tenant."""
         # Create another tenant and user
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
             name=f"Other Tenant {_uid}",
@@ -392,7 +394,7 @@ class ContractStatusRulesTest(ContractsAPITestBase):
                 created_by=self.user,
             )
 
-            can_activate, reason = contract.can_activate()
+            can_activate, _reason = contract.can_activate()
             self.assertTrue(
                 can_activate, f"Should activate with {validation_status}, {normalization_status}"
             )
@@ -418,7 +420,7 @@ class ContractStatusRulesTest(ContractsAPITestBase):
                 created_by=self.user,
             )
 
-            can_activate, reason = contract.can_activate()
+            can_activate, _reason = contract.can_activate()
             self.assertFalse(
                 can_activate,
                 f"Should not activate with {validation_status}, {normalization_status}",

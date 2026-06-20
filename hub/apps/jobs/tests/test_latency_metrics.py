@@ -1,19 +1,19 @@
 """
 Phase 277.B.075 — worker latency + uptime metric tests.
 """
+
 import time
-from unittest.mock import patch
 
 import pytest
 
-from hub.apps.observability.otel_metrics import (
-    job_queue_latency_seconds,
-    worker_uptime_seconds,
-)
 from hub.apps.jobs.latency_metrics import (
     record_job_latency,
     record_worker_uptime,
     task_latency_tracker,
+)
+from hub.apps.observability.otel_metrics import (
+    job_queue_latency_seconds,
+    worker_uptime_seconds,
 )
 
 
@@ -23,7 +23,9 @@ class TestJobQueueLatencyMetric:
     def test_metric_exists_with_expected_labels(self):
         assert job_queue_latency_seconds.name == "job_queue_latency_seconds"
         assert set(job_queue_latency_seconds._expected_labels) == {
-            "queue_name", "job_type", "status",
+            "queue_name",
+            "job_type",
+            "status",
         }
 
     def test_observe_records_latency(self):
@@ -76,7 +78,9 @@ class TestRecordJobLatency:
 class TestRecordWorkerUptime:
     def test_metric_exists_with_expected_labels(self):
         assert worker_uptime_seconds.name == "worker_uptime_seconds"
-        assert set(worker_uptime_seconds._expected_labels) == {"queue_name",}
+        assert set(worker_uptime_seconds._expected_labels) == {
+            "queue_name",
+        }
 
     def test_set_uptime(self):
         record_worker_uptime("job_default", 3600.0)
@@ -99,7 +103,7 @@ class TestRecordWorkerUptime:
 class TestTaskLatencyTracker:
     def test_records_latency_on_success(self):
         with task_latency_tracker("job_default", "TRACKER_TEST"):
-            time.sleep(0.01)
+            time.sleep(0.01)  # noqa: sleep-needed — test timing requirement
 
         labeled = job_queue_latency_seconds.labels(
             queue_name="job_default", job_type="TRACKER_TEST", status="COMPLETED"

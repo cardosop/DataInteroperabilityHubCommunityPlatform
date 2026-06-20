@@ -18,9 +18,10 @@ audit-replay queries reach the same enumeration:
   consent (I2-3 / D250.16-companion).
 * ``"COMPLIANCE_FAILED"`` — pre-import compliance gate FAIL.
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class FederatedImportRejected(Exception):
@@ -39,7 +40,7 @@ class FederatedImportRejected(Exception):
         *,
         code: str,
         http_status: int = 403,
-        details: Optional[Dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.message = message

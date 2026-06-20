@@ -1,71 +1,75 @@
 """
 DQ Serializers
 """
+
 from rest_framework import serializers
-from .models import DQAlertingRule, DQRun, DQRunStatus, DQEngine
+
+from .models import DQAlertingRule, DQRun
 
 
 class DQRunSerializer(serializers.ModelSerializer):
     """Serializer for DQRun model"""
-    
+
     class Meta:
         model = DQRun
         fields = [
-            'id',
-            'tenant',
-            'asset',
-            'dataset',
-            'file',
-            'job',
-            'profile_key',
-            'engine',
-            'status',
-            'overall_status',
-            'quality_score',
-            'checks_json',
-            'details_json',
-            'started_at',
-            'completed_at',
-            'created_at',
-            'updated_at'
+            "id",
+            "tenant",
+            "asset",
+            "dataset",
+            "file",
+            "job",
+            "profile_key",
+            "engine",
+            "status",
+            "overall_status",
+            "quality_score",
+            "checks_json",
+            "details_json",
+            "started_at",
+            "completed_at",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = [
-            'id',
-            'tenant',
-            'job',
-            'status',
-            'overall_status',
-            'quality_score',
-            'checks_json',
-            'details_json',
-            'started_at',
-            'completed_at',
-            'created_at',
-            'updated_at'
+            "id",
+            "tenant",
+            "job",
+            "status",
+            "overall_status",
+            "quality_score",
+            "checks_json",
+            "details_json",
+            "started_at",
+            "completed_at",
+            "created_at",
+            "updated_at",
         ]
 
 
 class DQRunCreateSerializer(serializers.Serializer):
     """Serializer for creating a DQ run"""
+
     asset_id = serializers.UUIDField(required=False, help_text="Asset ID (optional)")
     dataset_id = serializers.UUIDField(required=False, help_text="Dataset ID (optional)")
     file_id = serializers.UUIDField(required=False, help_text="File ID (optional, scan-only)")
     profile_key = serializers.CharField(
         max_length=100,
         required=False,
-        help_text="DQ profile key (e.g., intake_basic_gx, intake_basic_soda). Defaults to tenant default or platform default."
+        help_text="DQ profile key (e.g., intake_basic_gx, intake_basic_soda). Defaults to tenant default or platform default.",
     )
-    
+
     def validate_profile_key(self, value):
         """Validate that profile_key is a valid DQ profile if provided"""
         if value:
             from hub.apps.tenants.validators import VALID_DQ_PROFILES
+
             if value not in VALID_DQ_PROFILES:
                 raise serializers.ValidationError(
                     f"Invalid DQ profile key: {value}. Valid profiles are: {', '.join(VALID_DQ_PROFILES)}"
                 )
         return value
-    
+
     def validate(self, data):
         """At least one of asset_id, dataset_id, file_id is validated by DQBusinessRules in service."""
         return data
@@ -126,4 +130,3 @@ class DQAlertingRuleCreateSerializer(serializers.Serializer):
     )
     channel_config = serializers.DictField(required=False, default=dict)
     enabled = serializers.BooleanField(required=False, default=True)
-

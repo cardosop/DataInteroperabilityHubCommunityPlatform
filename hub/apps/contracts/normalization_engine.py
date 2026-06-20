@@ -6,7 +6,7 @@ Normalizes contracts from ODCS and ODPS to HubContract format.
 
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol, Tuple, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 try:
     import yaml
@@ -15,24 +15,15 @@ try:
 except ImportError:
     YAML_AVAILABLE = False
 
-from .context_fields import promote_context_fields
 from .coverage import calculate_coverage
 from .models import NormalizationStatus, OriginalSpecType
-from .source_paths import SourcePathTracker, add_source_paths_to_extensions, track_field_mapping
 from .spec_detection import detect_spec_type as detect_spec_type_new
 from .spec_detection import store_original_spec_metadata
 from .typed_models import validate_hub_contract_dict
 from .validation import (
     validate_and_enrich_advanced_schema_attributes,
-    validate_and_enrich_contacts,
-    validate_and_enrich_lineage,
-    validate_and_enrich_pricing,
-    validate_and_enrich_roles,
-    validate_and_enrich_servicelevels,
-    validate_and_enrich_team,
 )
 from .versioning import ensure_version, get_default_version
-
 
 # Phase 227 L10 audit-3 — surface YAML parse errors with the documented
 # ``INVALID_YAML`` wire code instead of bucketing them under
@@ -60,13 +51,13 @@ class InvalidYAMLError(ValueError):
 class NormalizationResult:
     """Normalized HubContract output."""
 
-    hub_contract: Optional[Dict[str, Any]]
+    hub_contract: dict[str, Any] | None
     status: NormalizationStatus
-    errors: List[str]
-    warnings: List[str]
+    errors: list[str]
+    warnings: list[str]
     spec_type: str
     spec_version: str
-    coverage: Optional[Dict[str, Any]] = None
+    coverage: dict[str, Any] | None = None
 
 
 @runtime_checkable
@@ -75,18 +66,18 @@ class SpecNormalizer(Protocol):
 
     spec_type: str
 
-    def supports(self, spec_type: str, spec_version: str, contract_data: Dict[str, Any]) -> bool:
+    def supports(self, spec_type: str, spec_version: str, contract_data: dict[str, Any]) -> bool:
         """Return True if this normalizer supports the given spec/version."""
         ...
 
     def normalize(
-        self, contract_data: Dict[str, Any], spec_version: Optional[str] = None
+        self, contract_data: dict[str, Any], spec_version: str | None = None
     ) -> NormalizationResult:
         """Normalize raw contract data to HubContract."""
         ...
 
 
-_NORMALIZER_REGISTRY: Dict[str, List[SpecNormalizer]] = {}
+_NORMALIZER_REGISTRY: dict[str, list[SpecNormalizer]] = {}
 
 
 def register_normalizer(normalizer: SpecNormalizer) -> None:
@@ -95,8 +86,8 @@ def register_normalizer(normalizer: SpecNormalizer) -> None:
 
 
 def get_normalizer(
-    spec_type: str, spec_version: str, contract_data: Dict[str, Any]
-) -> Optional[SpecNormalizer]:
+    spec_type: str, spec_version: str, contract_data: dict[str, Any]
+) -> SpecNormalizer | None:
     """
     Retrieve a normalizer that supports the given spec type/version.
 
@@ -128,7 +119,6 @@ def get_normalizer(
     # for version-specific normalizers
     from hub.apps.contracts.normalization.odcs_normalizer_default import ODCSNormalizerDefault
 
-    version_specific_normalizer = None
     default_normalizer = None
 
     for normalizer in reversed(normalizers):
@@ -190,7 +180,7 @@ def get_normalizer(
     return None
 
 
-def _reset_normalizer_registry(registry: Optional[Dict[str, List[SpecNormalizer]]] = None) -> None:
+def _reset_normalizer_registry(registry: dict[str, list[SpecNormalizer]] | None = None) -> None:
     """
     Test helper: reset the normalizer registry to a provided snapshot.
     """
@@ -200,7 +190,7 @@ def _reset_normalizer_registry(registry: Optional[Dict[str, List[SpecNormalizer]
 
 
 def _determine_normalization_status(
-    hub_contract: Optional[Dict[str, Any]], errors: list, warnings: list
+    hub_contract: dict[str, Any] | None, errors: list, warnings: list
 ) -> NormalizationStatus:
     """
     Determine normalization status based on completeness and errors.
@@ -239,7 +229,7 @@ def _determine_normalization_status(
     return NormalizationStatus.NORMALIZED_OK
 
 
-def _calculate_normalization_coverage(hub_contract: Dict[str, Any]) -> float:
+def _calculate_normalization_coverage(hub_contract: dict[str, Any]) -> float:
     """
     Calculate normalization coverage as percentage of sections mapped.
 
@@ -253,7 +243,7 @@ def _calculate_normalization_coverage(hub_contract: Dict[str, Any]) -> float:
     return coverage.overall
 
 
-def _map_quality_rules(quality_data: Dict[str, Any]) -> Optional[list]:
+def _map_quality_rules(quality_data: dict[str, Any]) -> list | None:
     """Map ODCS quality rules into canonical structure."""
     if not isinstance(quality_data, dict):
         return None
@@ -299,11 +289,11 @@ def _map_quality_rules(quality_data: Dict[str, Any]) -> Optional[list]:
     return mapped_rules or None
 
 
-def _map_quality_contract_level(quality_data: Dict[str, Any]) -> Dict[str, Any]:
+def _map_quality_contract_level(quality_data: dict[str, Any]) -> dict[str, Any]:
     """Extract contract-level quality attributes (type/specification)."""
     if not isinstance(quality_data, dict):
         return {}
-    mapped: Dict[str, Any] = {}
+    mapped: dict[str, Any] = {}
     if quality_data.get("type"):
         mapped["type"] = quality_data["type"]
     if quality_data.get("specification"):
@@ -311,7 +301,7 @@ def _map_quality_contract_level(quality_data: Dict[str, Any]) -> Dict[str, Any]:
     return mapped
 
 
-def _map_service_levels(contract_data: Dict[str, Any]) -> Optional[list]:
+def _map_service_levels(contract_data: dict[str, Any]) -> list | None:
     """Map ODCS slaProperties into canonical servicelevels[] structure."""
     if not isinstance(contract_data, dict):
         return None
@@ -362,7 +352,7 @@ def _map_service_levels(contract_data: Dict[str, Any]) -> Optional[list]:
     return servicelevels or None
 
 
-def _map_contacts(contract_data: Dict[str, Any]) -> Optional[list]:
+def _map_contacts(contract_data: dict[str, Any]) -> list | None:
     """
     Map ODCS support[] channels into canonical contact list.
 
@@ -402,7 +392,7 @@ def _map_contacts(contract_data: Dict[str, Any]) -> Optional[list]:
     return contacts or None
 
 
-def _map_support_channels(contract_data: Dict[str, Any]) -> Optional[list]:
+def _map_support_channels(contract_data: dict[str, Any]) -> list | None:
     """
     Map ODCS support[] channels into canonical support channel list.
 
@@ -452,7 +442,7 @@ def _map_support_channels(contract_data: Dict[str, Any]) -> Optional[list]:
     return channels or None
 
 
-def _map_servers(contract_data: Dict[str, Any]) -> Optional[list]:
+def _map_servers(contract_data: dict[str, Any]) -> list | None:
     """Map ODCS servers[] into canonical structure."""
     servers = contract_data.get("servers")
     mapped_servers = []
@@ -530,7 +520,7 @@ def _map_servers(contract_data: Dict[str, Any]) -> Optional[list]:
     return mapped_servers or None
 
 
-def _map_definitions(contract_data: Dict[str, Any]) -> Optional[list]:
+def _map_definitions(contract_data: dict[str, Any]) -> list | None:
     """
     Map ODCS authoritativeDefinitions into canonical definitions array.
 
@@ -653,7 +643,7 @@ def _map_definitions(contract_data: Dict[str, Any]) -> Optional[list]:
     return definitions if definitions else None
 
 
-def _map_terms(contract_data: Dict[str, Any]) -> Optional[dict]:
+def _map_terms(contract_data: dict[str, Any]) -> dict | None:
     """Map ODCS description usage/limitations into canonical terms."""
     description = contract_data.get("description")
     if not isinstance(description, dict):
@@ -693,21 +683,22 @@ def _get_max_nesting_depth() -> int:
     """
     try:
         from django.conf import settings as _dj_settings
+
         return int(getattr(_dj_settings, "CONTRACTS_MAX_NESTING_DEPTH", 20))
     except Exception:
         return 20
 
 
 def _map_field(
-    field: Dict[str, Any],
+    field: dict[str, Any],
     *,
     parent_path: str = "",
     depth: int = 0,
-    max_depth: Optional[int] = None,
-    primary_key_fields: Optional[list] = None,
-    unique_constraint_fields: Optional[list] = None,
-    indexed_fields: Optional[list] = None,
-) -> Dict[str, Any]:
+    max_depth: int | None = None,
+    primary_key_fields: list | None = None,
+    unique_constraint_fields: list | None = None,
+    indexed_fields: list | None = None,
+) -> dict[str, Any]:
     """Phase 227 Wave 1 (227.L2.1) — recursive field walker.
 
     Maps ONE ODCS-shaped field dict to its canonical HubContract shape,
@@ -744,12 +735,14 @@ def _map_field(
 
     field_name = field.get("name", "") or ""
     current_path = (
-        f"{parent_path}.{field_name}" if parent_path and field_name else
-        field_name or parent_path or "<unnamed>"
+        f"{parent_path}.{field_name}"
+        if parent_path and field_name
+        else field_name or parent_path or "<unnamed>"
     )
 
     if depth > max_depth:
         from django.core.exceptions import ValidationError
+
         raise ValidationError(
             f"Schema nesting depth {depth} at path '{current_path}' "
             f"exceeds limit {max_depth} "
@@ -762,7 +755,7 @@ def _map_field(
     unique_constraint_fields = unique_constraint_fields or []
     indexed_fields = indexed_fields or []
 
-    hub_field: Dict[str, Any] = {
+    hub_field: dict[str, Any] = {
         "name": field_name,
         "data_type": field.get("type", "string"),
         "nullable": field.get("nullable", True),
@@ -802,9 +795,8 @@ def _map_field(
     if "exclusiveMaximum" in field:
         hub_field["exclusiveMaximum"] = field["exclusiveMaximum"]
     if "logicalTypeOptions" in field or "logical_type_options" in field:
-        hub_field["logicalTypeOptions"] = (
-            field.get("logicalTypeOptions")
-            or field.get("logical_type_options")
+        hub_field["logicalTypeOptions"] = field.get("logicalTypeOptions") or field.get(
+            "logical_type_options"
         )
     if "metadata" in field:
         hub_field["metadata"] = field["metadata"]
@@ -861,8 +853,8 @@ def _map_field(
 
 
 def _extract_nested_object_children(
-    field: Dict[str, Any],
-) -> List[Dict[str, Any]]:
+    field: dict[str, Any],
+) -> list[dict[str, Any]]:
     """Phase 227 Wave 1 (227.L2.5) — `properties` ↔ `fields` equivalence.
 
     Returns the child-field dicts of an ``object``-typed parent in the
@@ -883,7 +875,7 @@ def _extract_nested_object_children(
     surfaces upstream if both keys appear (we don't add it here to keep
     the walker pure).
     """
-    children: List[Dict[str, Any]] = []
+    children: list[dict[str, Any]] = []
     properties = field.get("properties")
     if isinstance(properties, dict) and properties:
         for sub_name, sub_field in properties.items():
@@ -905,7 +897,7 @@ def _extract_nested_object_children(
 
 
 def _map_fields(
-    odcs_schema: Dict[str, Any],
+    odcs_schema: dict[str, Any],
     primary_key_fields: list,
     unique_constraint_fields: list,
     indexed_fields: list,
@@ -936,8 +928,8 @@ def _map_fields(
 
 
 def _build_model_from_schema(
-    schema_data: Dict[str, Any], fallback_name: str = "default"
-) -> Dict[str, Any]:
+    schema_data: dict[str, Any], fallback_name: str = "default"
+) -> dict[str, Any]:
     """Build canonical model entry from ODCS schema object."""
     if not isinstance(schema_data, dict):
         return {}
@@ -1002,7 +994,7 @@ def _build_model_from_schema(
 
     fields = _map_fields(schema_data, primary_key_fields, unique_constraint_fields, indexed_fields)
     model_name = schema_data.get("name") or fallback_name
-    model_entry: Dict[str, Any] = {"name": model_name, "fields": fields}
+    model_entry: dict[str, Any] = {"name": model_name, "fields": fields}
     if schema_data.get("description"):
         model_entry["description"] = schema_data.get("description")
     if primary_key_fields:
@@ -1069,7 +1061,7 @@ def _build_model_from_schema(
     return enriched_model
 
 
-def _derive_schema_from_model(model_entry: Dict[str, Any]) -> Dict[str, Any]:
+def _derive_schema_from_model(model_entry: dict[str, Any]) -> dict[str, Any]:
     """Create schema derived view from a canonical model."""
     schema = {"fields": model_entry.get("fields", [])}
     if model_entry.get("primary_key"):
@@ -1083,7 +1075,7 @@ def _derive_schema_from_model(model_entry: Dict[str, Any]) -> Dict[str, Any]:
     return schema
 
 
-def detect_spec_type(contract_data: Dict[str, Any]) -> Tuple[str, str]:
+def detect_spec_type(contract_data: dict[str, Any]) -> tuple[str, str]:
     """
     Detect contract specification type and version from contract data.
 
@@ -1098,7 +1090,7 @@ def detect_spec_type(contract_data: Dict[str, Any]) -> Tuple[str, str]:
     return detect_spec_type_new(contract_data)
 
 
-def parse_contract(raw_contract: str, format: str) -> Dict[str, Any]:
+def parse_contract(raw_contract: str, format: str) -> dict[str, Any]:
     """
     Parse contract from raw string.
 
@@ -1136,6 +1128,7 @@ def parse_contract(raw_contract: str, format: str) -> Dict[str, Any]:
         # column 0, the common prefix is empty and dedent is a no-op
         # — preserving the structure.
         import textwrap
+
         cleaned_contract = textwrap.dedent(raw_contract).strip()
 
         try:
@@ -1176,12 +1169,12 @@ class ODCSNormalizer:
             self._normalizer = ODCSNormalizerDefault()
         return self._normalizer
 
-    def supports(self, spec_type: str, spec_version: str, contract_data: Dict[str, Any]) -> bool:
+    def supports(self, spec_type: str, spec_version: str, contract_data: dict[str, Any]) -> bool:
         """Check if this normalizer supports the given spec type and version."""
         return self._get_normalizer().supports(spec_type, spec_version, contract_data)
 
     def normalize(
-        self, contract_data: Dict[str, Any], spec_version: Optional[str] = None
+        self, contract_data: dict[str, Any], spec_version: str | None = None
     ) -> NormalizationResult:
         """Normalize ODCS contract data to HubContract format."""
         return self._get_normalizer().normalize(contract_data, spec_version)
@@ -1303,8 +1296,8 @@ except ImportError:
 
 
 def normalize_contract(
-    raw_contract: str, format: str, spec_type: Optional[str] = None
-) -> Tuple[Optional[Dict[str, Any]], str, str, NormalizationStatus, list, list]:
+    raw_contract: str, format: str, spec_type: str | None = None
+) -> tuple[dict[str, Any] | None, str, str, NormalizationStatus, list, list]:
     """
     Normalize contract to HubContract format.
 
@@ -1327,16 +1320,16 @@ def normalize_contract(
         # Detect spec type if not provided
         if not spec_type:
             spec_type, spec_version = detect_spec_type(contract_data)
+        # Use spec-specific version detection when type is known
+        elif spec_type == OriginalSpecType.ODCS or spec_type == "ODCS":
+            from hub.apps.contracts.odcs_version_detection import detect_odcs_version
+
+            spec_version = detect_odcs_version(contract_data)
+            if spec_version == "unknown":
+                # Default to 3.0.2 for ODCS contracts without version info
+                spec_version = "3.0.2"
         else:
-            # Use spec-specific version detection when type is known
-            if spec_type == OriginalSpecType.ODCS or spec_type == "ODCS":
-                from hub.apps.contracts.odcs_version_detection import detect_odcs_version
-                spec_version = detect_odcs_version(contract_data)
-                if spec_version == "unknown":
-                    # Default to 3.0.2 for ODCS contracts without version info
-                    spec_version = "3.0.2"
-            else:
-                spec_version = contract_data.get("version", "1.0")
+            spec_version = contract_data.get("version", "1.0")
 
         normalizer = get_normalizer(spec_type, spec_version, contract_data)
         if not normalizer:
@@ -1411,7 +1404,7 @@ def normalize_contract(
             [],
         )
     except Exception as e:
-        errors = [f"Failed to normalize contract: {str(e)}"]
+        errors = [f"Failed to normalize contract: {e!s}"]
         # Return ODCS as default spec type
         return (
             None,
@@ -1423,7 +1416,7 @@ def normalize_contract(
         )
 
 
-def validate_hubcontract_schema(hub_contract: Dict[str, Any]) -> Tuple[bool, list]:
+def validate_hubcontract_schema(hub_contract: dict[str, Any]) -> tuple[bool, list]:
     """
     Validate HubContract JSON against schema.
 

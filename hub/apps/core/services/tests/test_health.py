@@ -1,17 +1,18 @@
 """
 Tests for service health check utilities.
 """
-import time
-from unittest.mock import patch, MagicMock
-from django.test import TestCase
+
+from unittest.mock import MagicMock, patch
+
 from django.core.cache import cache
+from django.test import TestCase
 
 from hub.apps.core.services.health import (
     ServiceHealthCheck,
     ServiceHealthMonitor,
+    check_all_services_health,
     check_service_health,
     is_service_healthy,
-    check_all_services_health,
 )
 
 
@@ -40,7 +41,7 @@ class ServiceHealthCheckTest(TestCase):
         """Set up test fixtures."""
         cache.clear()
 
-    @patch('httpx.Client')
+    @patch("httpx.Client")
     def test_check_health_healthy(self, mock_client_class):
         """Test health check for healthy service."""
         mock_response = MagicMock()
@@ -60,7 +61,7 @@ class ServiceHealthCheckTest(TestCase):
         self.assertIsNotNone(result["latency_ms"])
         self.assertIsNone(result["error"])
 
-    @patch('httpx.Client')
+    @patch("httpx.Client")
     def test_check_health_unhealthy(self, mock_client_class):
         """Test health check for unhealthy service."""
         mock_response = MagicMock()
@@ -78,7 +79,7 @@ class ServiceHealthCheckTest(TestCase):
         self.assertEqual(result["status"], "unhealthy")
         self.assertIsNotNone(result["error"])
 
-    @patch('httpx.Client')
+    @patch("httpx.Client")
     def test_check_health_timeout(self, mock_client_class):
         """Test health check timeout handling."""
         import httpx
@@ -95,7 +96,7 @@ class ServiceHealthCheckTest(TestCase):
         self.assertEqual(result["status"], "unhealthy")
         self.assertEqual(result["error"], "Timeout")
 
-    @patch('httpx.Client')
+    @patch("httpx.Client")
     def test_check_health_cache(self, mock_client_class):
         """Test health check caching."""
         mock_response = MagicMock()
@@ -119,7 +120,7 @@ class ServiceHealthCheckTest(TestCase):
         self.assertEqual(mock_client.get.call_count, 1)  # Still 1, not 2
         self.assertEqual(result1["status"], result2["status"])
 
-    @patch('httpx.Client')
+    @patch("httpx.Client")
     def test_is_healthy(self, mock_client_class):
         """Test is_healthy convenience method."""
         mock_response = MagicMock()
@@ -144,11 +145,10 @@ class ServiceHealthMonitorTest(TestCase):
         """Set up test fixtures."""
         cache.clear()
 
-    @patch('httpx.Client')
+    @patch("httpx.Client")
     def test_check_all_services(self, mock_client_class):
         """Test checking health of all services — real monitor with HTTP mocked."""
-        _make_httpx_client_mock(mock_client_class, status_code=200,
-                                json_data={"status": "healthy"})
+        _make_httpx_client_mock(mock_client_class, status_code=200, json_data={"status": "healthy"})
 
         monitor = ServiceHealthMonitor()
         results = monitor.check_all_services(service_names=["api-service"], use_cache=False)
@@ -157,7 +157,7 @@ class ServiceHealthMonitorTest(TestCase):
         self.assertEqual(results["api-service"]["status"], "healthy")
         self.assertIsNotNone(results["api-service"]["latency_ms"])
 
-    @patch('httpx.Client')
+    @patch("httpx.Client")
     def test_get_healthy_services(self, mock_client_class):
         """Test getting list of healthy services — real monitor with HTTP mocked."""
         call_count = {"n": 0}
@@ -182,8 +182,7 @@ class ServiceHealthMonitorTest(TestCase):
 
         monitor = ServiceHealthMonitor()
         healthy_services = monitor.get_healthy_services(
-            service_names=["api-service", "unhealthy-service"],
-            use_cache=False
+            service_names=["api-service", "unhealthy-service"], use_cache=False
         )
 
         self.assertIn("api-service", healthy_services)
@@ -191,7 +190,7 @@ class ServiceHealthMonitorTest(TestCase):
         # Verify actual HTTP calls were made (not just mock plumbing)
         self.assertEqual(call_count["n"], 2)
 
-    @patch('httpx.Client')
+    @patch("httpx.Client")
     def test_get_unhealthy_services(self, mock_client_class):
         """Test getting list of unhealthy services — real monitor with HTTP mocked."""
         healthy_response = MagicMock()
@@ -214,8 +213,7 @@ class ServiceHealthMonitorTest(TestCase):
 
         monitor = ServiceHealthMonitor()
         unhealthy_services = monitor.get_unhealthy_services(
-            service_names=["api-service", "unhealthy-service"],
-            use_cache=False
+            service_names=["api-service", "unhealthy-service"], use_cache=False
         )
 
         self.assertNotIn("api-service", unhealthy_services)
@@ -229,11 +227,10 @@ class ServiceHealthConvenienceFunctionsTest(TestCase):
         """Set up test fixtures."""
         cache.clear()
 
-    @patch('httpx.Client')
+    @patch("httpx.Client")
     def test_check_service_health(self, mock_client_class):
         """Test check_service_health convenience function exercises real ServiceHealthCheck."""
-        _make_httpx_client_mock(mock_client_class, status_code=200,
-                                json_data={"status": "healthy"})
+        _make_httpx_client_mock(mock_client_class, status_code=200, json_data={"status": "healthy"})
 
         result = check_service_health("api-service", use_cache=False)
 
@@ -242,7 +239,7 @@ class ServiceHealthConvenienceFunctionsTest(TestCase):
         self.assertIsNotNone(result["latency_ms"])
         self.assertIsNone(result["error"])
 
-    @patch('httpx.Client')
+    @patch("httpx.Client")
     def test_check_service_health_unhealthy(self, mock_client_class):
         """Test check_service_health reports unhealthy on HTTP 503."""
         _make_httpx_client_mock(mock_client_class, status_code=503)
@@ -252,7 +249,7 @@ class ServiceHealthConvenienceFunctionsTest(TestCase):
         self.assertEqual(result["status"], "unhealthy")
         self.assertIn("503", result["error"])
 
-    @patch('httpx.Client')
+    @patch("httpx.Client")
     def test_is_service_healthy(self, mock_client_class):
         """Test is_service_healthy exercises real ServiceHealthCheck and returns True on 200."""
         _make_httpx_client_mock(mock_client_class, status_code=200)
@@ -261,7 +258,7 @@ class ServiceHealthConvenienceFunctionsTest(TestCase):
 
         self.assertTrue(is_healthy)
 
-    @patch('httpx.Client')
+    @patch("httpx.Client")
     def test_is_service_healthy_false(self, mock_client_class):
         """Test is_service_healthy returns False on non-200 response."""
         _make_httpx_client_mock(mock_client_class, status_code=500)
@@ -270,11 +267,10 @@ class ServiceHealthConvenienceFunctionsTest(TestCase):
 
         self.assertFalse(is_healthy)
 
-    @patch('httpx.Client')
+    @patch("httpx.Client")
     def test_check_all_services_health(self, mock_client_class):
         """Test check_all_services_health exercises real ServiceHealthMonitor."""
-        _make_httpx_client_mock(mock_client_class, status_code=200,
-                                json_data={"status": "healthy"})
+        _make_httpx_client_mock(mock_client_class, status_code=200, json_data={"status": "healthy"})
 
         results = check_all_services_health(service_names=["api-service"], use_cache=False)
 

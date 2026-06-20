@@ -109,9 +109,9 @@ def _scan_file_ast(path: pathlib.Path) -> list[tuple[int, str]]:
             continue
         func = node.func
         # Match connection.cursor(…) or cursor(…)
-        is_cursor_call = (
-            isinstance(func, ast.Attribute) and func.attr == "cursor"
-        ) or (isinstance(func, ast.Name) and func.id == "cursor")
+        is_cursor_call = (isinstance(func, ast.Attribute) and func.attr == "cursor") or (
+            isinstance(func, ast.Name) and func.id == "cursor"
+        )
         if not is_cursor_call:
             continue
         # Check for 'name' keyword argument

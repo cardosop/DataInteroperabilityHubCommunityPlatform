@@ -10,26 +10,17 @@ a data_consumer subscribes to it, and the subscriber can then access the
 underlying asset.
 """
 
-import os
-import time
 import requests
-from tests._persona_provisioning import provision_persona, PersonaCredentials
-from tests.fixtures.personas import MVP_PERSONA_ROLES
+from tests._persona_provisioning import PersonaCredentials, provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import (
     api_base_url,
-    api_get,
-    api_post,
-    api_put,
-    api_delete,
-    api_login,
-    api_unauthenticated_get,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
@@ -135,6 +126,7 @@ def _create_asset(creds: PersonaCredentials) -> dict:
         # 3a-poll: Wait for validation + normalization to complete
         # (may be async on first validate call)
         import time as _time
+
         for _ in range(15):
             check = requests.get(
                 f"{base}/contracts/{contract_id}/",
@@ -146,17 +138,17 @@ def _create_asset(creds: PersonaCredentials) -> dict:
                 vs = cdata.get("validation_status")
                 ns = cdata.get("normalization_status")
                 if vs in ("VALID", "WARNING_ONLY") and ns in (
-                    "NORMALIZED_OK", "NORMALIZED_WITH_WARNINGS"
+                    "NORMALIZED_OK",
+                    "NORMALIZED_WITH_WARNINGS",
                 ):
                     # Update version for optimistic locking
                     contract_data = cdata
                     break
                 if vs == "ERROR":
                     pytest.skip(
-                        f"Contract validation returned ERROR: "
-                        f"{cdata.get('validation_errors', [])}"
+                        f"Contract validation returned ERROR: {cdata.get('validation_errors', [])}"
                     )
-            _time.sleep(2)
+            _time.sleep(2)  # noqa: sleep-needed — retry loop
 
         # 3b: Activate the contract (use latest version from poll)
         contract_version = contract_data.get("version", 1)
@@ -179,9 +171,7 @@ def _create_asset(creds: PersonaCredentials) -> dict:
         headers=headers,
         timeout=15,
     )
-    assert get_resp.status_code == 200, (
-        f"Failed to fetch asset: {get_resp.status_code}"
-    )
+    assert get_resp.status_code == 200, f"Failed to fetch asset: {get_resp.status_code}"
     version = get_resp.json().get("version")
 
     activate_resp = requests.post(
@@ -244,9 +234,7 @@ def test_publish_listing():
         f"Listing creation returned {resp.status_code}: {resp.text[:500]}"
     )
     body = resp.json()
-    assert "id" in body or "listing_id" in body, (
-        f"Listing response missing id: {body}"
-    )
+    assert "id" in body or "listing_id" in body, f"Listing response missing id: {body}"
 
 
 def test_listing_appears_in_catalog():
@@ -283,9 +271,7 @@ def test_listing_appears_in_catalog():
         headers=_auth_headers(dpo.api_key),
         timeout=15,
     )
-    assert list_resp.status_code == 200, (
-        f"Marketplace listing returned {list_resp.status_code}"
-    )
+    assert list_resp.status_code == 200, f"Marketplace listing returned {list_resp.status_code}"
 
     list_body = list_resp.json()
     results = list_body if isinstance(list_body, list) else list_body.get("results", [])
@@ -342,8 +328,7 @@ def test_subscribe_to_listing():
         pytest.skip("Marketplace subscriptions endpoint not implemented (404)")
 
     assert sub_resp.status_code in (200, 201), (
-        f"Subscription creation returned {sub_resp.status_code}: "
-        f"{sub_resp.text[:500]}"
+        f"Subscription creation returned {sub_resp.status_code}: {sub_resp.text[:500]}"
     )
     sub_body = sub_resp.json()
     assert "id" in sub_body or "subscription_id" in sub_body, (

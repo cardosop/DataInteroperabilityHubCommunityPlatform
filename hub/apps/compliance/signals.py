@@ -5,6 +5,7 @@ Phase 231.4 — tenant ``compliance.completed`` webhooks on terminal ``Complianc
 """
 
 from __future__ import annotations
+
 import logging
 
 from django.db import transaction
@@ -25,13 +26,13 @@ def compliance_run_cache_prior_status(
 ) -> None:
     """Capture previous status for Phase 231.4 terminal-transition detection."""
     if not instance.pk:
-        setattr(instance, "_compliance_prior_status", None)
+        instance._compliance_prior_status = None
         return
     try:
         prior = ComplianceRun.objects.only("status").get(pk=instance.pk)
-        setattr(instance, "_compliance_prior_status", prior.status)
+        instance._compliance_prior_status = prior.status
     except ComplianceRun.DoesNotExist:
-        setattr(instance, "_compliance_prior_status", None)
+        instance._compliance_prior_status = None
 
 
 @receiver(post_save, sender=ComplianceRun)
@@ -122,10 +123,15 @@ def invalidate_marketplace_cache_when_listed_asset_compliance_updates(
     asset_pk = instance.asset_id
 
     def _invalidate() -> None:
-        from hub.apps.marketplace.caching import invalidate_marketplace_caches_for_asset
+        from hub.apps.marketplace.caching import invalidate_marketplace_caches
+        from hub.apps.marketplace.models import Listing
 
         try:
-            invalidate_marketplace_caches_for_asset(asset_pk)
+            listing_ids = Listing.objects.filter(asset_id=asset_pk).values_list(
+                "pk", flat=True,
+            )
+            for listing_pk in listing_ids:
+                invalidate_marketplace_caches(str(listing_pk))
         except Exception:
             logger.exception(
                 "marketplace_cache_invalidation_compliance_signal_failed",
@@ -157,9 +163,23 @@ def enqueue_compliance_intake_scan_on_asset_created(
     try:
         from hub.apps.tenants.models import Tenant
 
-        tenant = Tenant.objects.only("compliance_intake_gate_enabled").get(
-            pk=instance.tenant_id,
-        )
+        try:
+            tenant = Tenant.objects.only("compliance_intake_gate_enabled").get(
+                pk=instance.tenant_id,
+            )
+        except Tenant.DoesNotExist:
+            # Tenant was deleted or is not visible in the current
+            # transaction (e.g. test rollback).  This is a normal
+            # edge case — log at WARNING and bail out.
+            logger.warning(
+                "compliance_intake_signal_skipped_tenant_missing",
+                extra={
+                    "asset_id": str(instance.id),
+                    "tenant_id": str(instance.tenant_id),
+                },
+            )
+            return
+
         if not tenant.compliance_intake_gate_enabled:
             return
         if not instance.created_by_id:
@@ -180,6 +200,9 @@ def enqueue_compliance_intake_scan_on_asset_created(
             str(instance.tenant_id),
         )
     except Exception:
+        # Unexpected failure (import error, AttributeError, DB
+        # outage, …).  Log at ERROR so SRE can alert on it, but
+        # still never raise from a signal (fail-soft contract).
         logger.exception(
             "compliance_intake_asset_signal_failed",
             extra={

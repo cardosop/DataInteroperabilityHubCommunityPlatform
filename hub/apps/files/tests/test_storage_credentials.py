@@ -12,10 +12,20 @@ Validates the four layers of the IRSA credential fix:
    __init__ must raise RuntimeError. With a successful STS call, it must
    log INFO.
 """
-from unittest.mock import patch, MagicMock
+
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.test import TestCase, override_settings
+
+# Guard: verify that the @patch target path is valid at import time.
+# If storage.py's ``import boto3`` is restructured (e.g. renamed or
+# moved into a function body), the ``@patch`` decorators below
+# silently become no-ops.  This import forces a fast-fail at
+# collection time so we never ship a test whose mock is stale.
+import hub.apps.files.storage  # noqa: E402
+assert hub.apps.files.storage.boto3 is not None, \
+    "boto3 is not importable from hub.apps.files.storage; patch targets must be updated"
 
 
 class EmptyCredentialsBypassTest(TestCase):
@@ -32,6 +42,7 @@ class EmptyCredentialsBypassTest(TestCase):
     def test_empty_creds_not_passed_to_boto3(self, mock_boto3_client):
         mock_boto3_client.return_value = MagicMock()
         from hub.apps.files.storage import S3StorageClient
+
         S3StorageClient()
 
         call_kwargs = mock_boto3_client.call_args_list[0]
@@ -53,6 +64,7 @@ class EmptyCredentialsBypassTest(TestCase):
     def test_whitespace_only_creds_not_passed(self, mock_boto3_client):
         mock_boto3_client.return_value = MagicMock()
         from hub.apps.files.storage import S3StorageClient
+
         S3StorageClient()
 
         kw = mock_boto3_client.call_args_list[0].kwargs or mock_boto3_client.call_args_list[0][1]
@@ -74,6 +86,7 @@ class NonEmptyCredentialsPassThroughTest(TestCase):
     def test_real_creds_passed_through(self, mock_boto3_client):
         mock_boto3_client.return_value = MagicMock()
         from hub.apps.files.storage import S3StorageClient
+
         S3StorageClient()
 
         kw = mock_boto3_client.call_args_list[0].kwargs or mock_boto3_client.call_args_list[0][1]
@@ -104,12 +117,11 @@ class PresignedUrlAKIDValidationTest(TestCase):
         mock_boto3_client.return_value = mock_s3
 
         from hub.apps.files.storage import S3StorageClient
+
         client = S3StorageClient()
 
         with pytest.raises(RuntimeError, match="invalid AKID"):
-            client.generate_presigned_upload_url(
-                "test/key.txt", "text/plain", expires_in=60
-            )
+            client.generate_presigned_upload_url("test/key.txt", "text/plain", expires_in=60)
 
     @override_settings(
         AWS_ACCESS_KEY_ID="AKIAIOSFODNN7EXAMPLE",
@@ -130,12 +142,11 @@ class PresignedUrlAKIDValidationTest(TestCase):
         mock_boto3_client.return_value = mock_s3
 
         from hub.apps.files.storage import S3StorageClient
+
         client = S3StorageClient()
 
         # Should not raise
-        result = client.generate_presigned_upload_url(
-            "test/key.txt", "text/plain", expires_in=60
-        )
+        result = client.generate_presigned_upload_url("test/key.txt", "text/plain", expires_in=60)
         assert result["upload_url"]
         assert result["key"] == "test/key.txt"
 
@@ -153,6 +164,7 @@ class STSProbeTest(TestCase):
     @patch("hub.apps.files.storage.boto3.client")
     def test_sts_failure_raises_runtime_error(self, mock_boto3_client):
         from botocore.exceptions import NoCredentialsError
+
         from hub.apps.files.storage import S3StorageClient
 
         mock_sts = MagicMock()

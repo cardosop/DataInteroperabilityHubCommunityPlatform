@@ -52,7 +52,7 @@ from __future__ import annotations
 import logging
 import os
 import warnings
-from typing import Iterable
+from collections.abc import Iterable
 
 import pytest
 
@@ -116,9 +116,7 @@ def detect_offending_records(
     return [
         r
         for r in records
-        if r.levelno >= logging.ERROR
-        and _is_watched_logger(r.name)
-        and not _is_allowlisted(r)
+        if r.levelno >= logging.ERROR and _is_watched_logger(r.name) and not _is_allowlisted(r)
     ]
 
 
@@ -130,10 +128,7 @@ def format_diagnostic(
     """Render a human-readable summary of the first N offending records."""
     preview = offending[:max_records]
     extra = len(offending) - len(preview)
-    lines = [
-        f"{r.name}[{logging.getLevelName(r.levelno)}]: {r.getMessage()}"
-        for r in preview
-    ]
+    lines = [f"{r.name}[{logging.getLevelName(r.levelno)}]: {r.getMessage()}" for r in preview]
     tail = f"\n... and {extra} more" if extra > 0 else ""
     body = "\n".join(lines) if lines else "(no records)"
     return f"Watched Django/DRF loggers emitted {len(offending)} ERROR record(s):\n{body}{tail}"

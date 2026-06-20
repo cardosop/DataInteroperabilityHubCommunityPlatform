@@ -6,7 +6,6 @@ Centralizes auth validation logic that was previously inline in views.py.
 
 import re
 from datetime import timedelta
-from typing import Optional
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -32,9 +31,7 @@ class AuthBusinessRules(BusinessRules):
     # Registration
     # ------------------------------------------------------------------
 
-    def validate_registration(
-        self, email: str, tenant_id: Optional[str] = None
-    ) -> ValidationResult:
+    def validate_registration(self, email: str, tenant_id: str | None = None) -> ValidationResult:
         result = ValidationResult(is_valid=True)
 
         if not email or not _EMAIL_RE.match(email):
@@ -49,6 +46,7 @@ class AuthBusinessRules(BusinessRules):
 
         if tenant_id:
             from hub.apps.tenants.models import Tenant
+
             try:
                 tenant = Tenant.objects.get(id=tenant_id)
                 if hasattr(tenant, "status") and tenant.status == "SUSPENDED":
@@ -66,9 +64,7 @@ class AuthBusinessRules(BusinessRules):
     # Login
     # ------------------------------------------------------------------
 
-    def validate_login_attempt(
-        self, email: str, tenant_id: Optional[str] = None
-    ) -> ValidationResult:
+    def validate_login_attempt(self, email: str, tenant_id: str | None = None) -> ValidationResult:
         result = ValidationResult(is_valid=True)
 
         if not email or not _EMAIL_RE.match(email):
@@ -81,6 +77,7 @@ class AuthBusinessRules(BusinessRules):
         window_minutes = getattr(settings, "LOGIN_LOCKOUT_WINDOW_MINUTES", 15)
         since = timezone.now() - timedelta(minutes=window_minutes)
         from hub.apps.auth.models import LoginAttempt
+
         failures = LoginAttempt.objects.filter(
             email=email, success=False, created_at__gte=since
         ).count()
@@ -91,6 +88,7 @@ class AuthBusinessRules(BusinessRules):
 
         if tenant_id:
             from hub.apps.tenants.models import Tenant
+
             try:
                 tenant = Tenant.objects.get(id=tenant_id)
                 if hasattr(tenant, "status") and tenant.status == "SUSPENDED":
@@ -106,9 +104,7 @@ class AuthBusinessRules(BusinessRules):
     # Invitation acceptance
     # ------------------------------------------------------------------
 
-    def validate_invitation_acceptance(
-        self, token: str, email: str
-    ) -> ValidationResult:
+    def validate_invitation_acceptance(self, token: str, email: str) -> ValidationResult:
         result = ValidationResult(is_valid=True)
 
         if not token:
@@ -117,6 +113,7 @@ class AuthBusinessRules(BusinessRules):
             return result
 
         from hub.apps.auth.utils import sha256_hex
+
         token_hash = sha256_hex(token)
         try:
             user = User.objects.get(invitation_token=token_hash)
@@ -149,11 +146,10 @@ class AuthBusinessRules(BusinessRules):
             return result
 
         from hub.apps.auth.models import RefreshToken
+
         token_hash = RefreshToken.hash_token(refresh_token_str)
         try:
-            token_obj = RefreshToken.objects.select_related("user").get(
-                token_hash=token_hash
-            )
+            token_obj = RefreshToken.objects.select_related("user").get(token_hash=token_hash)
         except RefreshToken.DoesNotExist:
             result.is_valid = False
             result.errors.append("Invalid refresh token")

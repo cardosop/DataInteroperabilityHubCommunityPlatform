@@ -5,10 +5,10 @@ Tests for API naming standards validation script
 Tests the validation rules and error reporting for API naming standards.
 """
 
+import json
 import sys
 import tempfile
 import unittest
-import json
 from pathlib import Path
 
 # Add scripts directory to path
@@ -17,9 +17,9 @@ sys.path.insert(0, str(project_root / "scripts"))
 
 # Import with proper handling
 import importlib.util
+
 spec = importlib.util.spec_from_file_location(
-    "validate_api_naming_standards",
-    project_root / "scripts" / "validate_api_naming_standards.py"
+    "validate_api_naming_standards", project_root / "scripts" / "validate_api_naming_standards.py"
 )
 if spec and spec.loader:
     module = importlib.util.module_from_spec(spec)
@@ -44,7 +44,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         endpoint = {
             "path": "/api/v1/assets/assets/",
             "method": "GET",
-            "file_path": "hub/apps/assets/urls.py"
+            "file_path": "hub/apps/assets/urls.py",
         }
         errors = self.validator.validate_no_duplication(endpoint)
 
@@ -57,7 +57,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         endpoint_correct = {
             "path": "/api/v1/assets/",
             "method": "GET",
-            "file_path": "hub/apps/assets/urls.py"
+            "file_path": "hub/apps/assets/urls.py",
         }
         errors_correct = self.validator.validate_no_duplication(endpoint_correct)
         self.assertEqual(len(errors_correct), 0, "Should not flag correct endpoint")
@@ -68,7 +68,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         endpoint = {
             "path": "/api/v1/asset/",
             "method": "GET",
-            "file_path": "hub/apps/assets/urls.py"
+            "file_path": "hub/apps/assets/urls.py",
         }
         errors = self.validator.validate_plural_resources(endpoint)
 
@@ -81,7 +81,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         endpoint_correct = {
             "path": "/api/v1/assets/",
             "method": "GET",
-            "file_path": "hub/apps/assets/urls.py"
+            "file_path": "hub/apps/assets/urls.py",
         }
         errors_correct = self.validator.validate_plural_resources(endpoint_correct)
         self.assertEqual(len(errors_correct), 0, "Should not flag correct endpoint")
@@ -90,7 +90,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         endpoint_detail = {
             "path": "/api/v1/assets/{id}/",
             "method": "GET",
-            "file_path": "hub/apps/assets/urls.py"
+            "file_path": "hub/apps/assets/urls.py",
         }
         errors_detail = self.validator.validate_plural_resources(endpoint_detail)
         self.assertEqual(len(errors_detail), 0, "Should not check detail endpoints")
@@ -101,7 +101,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         endpoint = {
             "path": "/api/v1/dataContracts/",
             "method": "GET",
-            "file_path": "hub/apps/api/urls.py"
+            "file_path": "hub/apps/api/urls.py",
         }
         errors = self.validator.validate_kebab_case(endpoint)
 
@@ -114,7 +114,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         endpoint_snake = {
             "path": "/api/v1/data_contracts/",
             "method": "GET",
-            "file_path": "hub/apps/api/urls.py"
+            "file_path": "hub/apps/api/urls.py",
         }
         errors_snake = self.validator.validate_kebab_case(endpoint_snake)
         self.assertGreater(len(errors_snake), 0, "Should detect snake_case")
@@ -123,7 +123,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         endpoint_correct = {
             "path": "/api/v1/data-contracts/",
             "method": "GET",
-            "file_path": "hub/apps/api/urls.py"
+            "file_path": "hub/apps/api/urls.py",
         }
         errors_correct = self.validator.validate_kebab_case(endpoint_correct)
         self.assertEqual(len(errors_correct), 0, "Should not flag correct endpoint")
@@ -134,7 +134,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         endpoint = {
             "path": "/api/v1/assets/list/",
             "method": "GET",
-            "file_path": "hub/apps/assets/urls.py"
+            "file_path": "hub/apps/assets/urls.py",
         }
         errors = self.validator.validate_pattern_consistency(endpoint)
 
@@ -142,7 +142,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         endpoint_invalid = {
             "path": "/api/v1/assets/list/all/items/",
             "method": "GET",
-            "file_path": "hub/apps/assets/urls.py"
+            "file_path": "hub/apps/assets/urls.py",
         }
         errors_invalid = self.validator.validate_pattern_consistency(endpoint_invalid)
 
@@ -153,7 +153,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
             endpoint_definitely_invalid = {
                 "path": "/api/v1/assets/123/invalid/nested/path/",
                 "method": "GET",
-                "file_path": "hub/apps/assets/urls.py"
+                "file_path": "hub/apps/assets/urls.py",
             }
             errors_def = self.validator.validate_pattern_consistency(endpoint_definitely_invalid)
             # This should either match or be flagged - both are acceptable
@@ -164,7 +164,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         endpoint_collection = {
             "path": "/api/v1/assets/",
             "method": "GET",
-            "file_path": "hub/apps/assets/urls.py"
+            "file_path": "hub/apps/assets/urls.py",
         }
         errors_collection = self.validator.validate_pattern_consistency(endpoint_collection)
         self.assertEqual(len(errors_collection), 0, "Should accept collection pattern")
@@ -173,7 +173,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         endpoint_detail = {
             "path": "/api/v1/assets/{id}/",
             "method": "GET",
-            "file_path": "hub/apps/assets/urls.py"
+            "file_path": "hub/apps/assets/urls.py",
         }
         errors_detail = self.validator.validate_pattern_consistency(endpoint_detail)
         self.assertEqual(len(errors_detail), 0, "Should accept detail pattern")
@@ -182,7 +182,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         endpoint_action = {
             "path": "/api/v1/assets/{id}/activate/",
             "method": "POST",
-            "file_path": "hub/apps/assets/urls.py"
+            "file_path": "hub/apps/assets/urls.py",
         }
         errors_action = self.validator.validate_pattern_consistency(endpoint_action)
         self.assertEqual(len(errors_action), 0, "Should accept action pattern")
@@ -190,11 +190,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
     def test_validate_explicit_naming(self):
         """Test explicit naming validation"""
         # Test unclear abbreviation
-        endpoint = {
-            "path": "/api/v1/dc/",
-            "method": "GET",
-            "file_path": "hub/apps/api/urls.py"
-        }
+        endpoint = {"path": "/api/v1/dc/", "method": "GET", "file_path": "hub/apps/api/urls.py"}
         warnings = self.validator.validate_explicit_naming(endpoint)
 
         self.assertGreater(len(warnings), 0, "Should detect unclear abbreviation")
@@ -206,7 +202,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         endpoint_correct = {
             "path": "/api/v1/data-contracts/",
             "method": "GET",
-            "file_path": "hub/apps/api/urls.py"
+            "file_path": "hub/apps/api/urls.py",
         }
         warnings_correct = self.validator.validate_explicit_naming(endpoint_correct)
         self.assertEqual(len(warnings_correct), 0, "Should not flag explicit names")
@@ -235,9 +231,9 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         result = self.validator.validate_all(strict=False)
 
         # Generate report
-        temp_file = Path(tempfile.mktemp(suffix='.json'))
+        temp_file = Path(tempfile.mktemp(suffix=".json"))
         try:
-            report = self.validator.generate_report(result, temp_file)
+            self.validator.generate_report(result, temp_file)
 
             self.assertTrue(temp_file.exists(), "Report file should exist")
 
@@ -267,7 +263,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         endpoint = {
             "path": "/api/v1/assets/assets/",
             "method": "GET",
-            "file_path": "hub/apps/assets/urls.py"
+            "file_path": "hub/apps/assets/urls.py",
         }
         errors = self.validator.validate_no_duplication(endpoint)
 
@@ -285,11 +281,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
 
     def test_warning_messages_are_clear(self):
         """Test that warning messages are clear"""
-        endpoint = {
-            "path": "/api/v1/dc/",
-            "method": "GET",
-            "file_path": "hub/apps/api/urls.py"
-        }
+        endpoint = {"path": "/api/v1/dc/", "method": "GET", "file_path": "hub/apps/api/urls.py"}
         warnings = self.validator.validate_explicit_naming(endpoint)
 
         self.assertGreater(len(warnings), 0)
@@ -319,9 +311,9 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
         self.assertEqual(result.total_endpoints, len(endpoints))
 
         # Generate report
-        temp_file = Path(tempfile.mktemp(suffix='.json'))
+        temp_file = Path(tempfile.mktemp(suffix=".json"))
         try:
-            report = validator.generate_report(result, temp_file)
+            validator.generate_report(result, temp_file)
             self.assertTrue(temp_file.exists())
 
             # Verify report is valid JSON
@@ -345,7 +337,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
             line_number=10,
             message="Test message",
             severity="error",
-            suggestion="Test suggestion"
+            suggestion="Test suggestion",
         )
 
         self.assertEqual(error.rule, "test_rule")
@@ -359,12 +351,7 @@ class TestAPINamingStandardsValidator(unittest.TestCase):
 
     def test_validation_result_structure(self):
         """Test that ValidationResult has all required fields"""
-        result = ValidationResult(
-            total_endpoints=10,
-            errors=[],
-            warnings=[],
-            passed=True
-        )
+        result = ValidationResult(total_endpoints=10, errors=[], warnings=[], passed=True)
 
         self.assertEqual(result.total_endpoints, 10)
         self.assertEqual(len(result.errors), 0)
@@ -384,4 +371,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

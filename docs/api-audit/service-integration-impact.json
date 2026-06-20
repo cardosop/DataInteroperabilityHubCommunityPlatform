@@ -1,0 +1,1484 @@
+{
+  "generated_at": "2026-06-13T21:03:51.404101",
+  "summary": {
+    "total_services": 21,
+    "total_integrations": 10,
+    "total_service_calls": 2880,
+    "services": [
+      "api-gateway",
+      "api-service",
+      "compliance-service",
+      "datacontract",
+      "datacontract-service",
+      "dq",
+      "dq-service",
+      "frontend",
+      "grafana",
+      "jaeger",
+      "observability-service",
+      "prefect-integration",
+      "prefect-server",
+      "prometheus",
+      "sdk",
+      "search-service",
+      "semantic-service",
+      "unknown",
+      "webhook-delivery",
+      "webhook-service",
+      "worker-service"
+    ]
+  },
+  "service_integrations": {
+    "sdk": {
+      "outbound": {
+        "api-service": {
+          "call_count": 369,
+          "endpoints": [
+            "unknown",
+            "https://meshant-internal.example.com/api/v1/mesh/",
+            "http://localhost:8000/api/v1/mesh/",
+            "http://localhost:8000/api/v1",
+            "/api/v1",
+            "/home/ph/Desktop/DataInteroperabilityHub",
+            "/app/hub/manage.py",
+            "http://invalid-host:8000/api/v1",
+            "http://localhost:8000/api/v1/",
+            "http://localhost:8000/health/",
+            "http://localhost:8000/api/v1/assets/",
+            "http://localhost:8000/api/v1/assets/{asset_id}/",
+            "http://localhost:8000/api/v1/ml/models/",
+            "http://localhost:8000/api/v1/ml/models/{model_id}/",
+            "http://localhost:8000/api/v1/files/init/",
+            "http://localhost:8000/api/v1/files/{file_id}/complete/",
+            "http://localhost:8000/api/v1/files/{file_id}/",
+            "http://localhost:8000/api/v1/datasets/",
+            "http://localhost:8000/api/v1/datasets/{dataset_id}/",
+            "http://test.example.com/api/v1"
+          ],
+          "client_types": []
+        }
+      },
+      "inbound": {},
+      "gateway_routes": [],
+      "service_clients": [],
+      "call_count": 369,
+      "endpoint_count": 20,
+      "endpoints": [
+        "/api/v1",
+        "/app/hub/manage.py",
+        "/home/ph/Desktop/DataInteroperabilityHub",
+        "http://invalid-host:8000/api/v1",
+        "http://localhost:8000/api/v1",
+        "http://localhost:8000/api/v1/",
+        "http://localhost:8000/api/v1/assets/",
+        "http://localhost:8000/api/v1/assets/{asset_id}/",
+        "http://localhost:8000/api/v1/datasets/",
+        "http://localhost:8000/api/v1/datasets/{dataset_id}/",
+        "http://localhost:8000/api/v1/files/init/",
+        "http://localhost:8000/api/v1/files/{file_id}/",
+        "http://localhost:8000/api/v1/files/{file_id}/complete/",
+        "http://localhost:8000/api/v1/mesh/",
+        "http://localhost:8000/api/v1/ml/models/",
+        "http://localhost:8000/api/v1/ml/models/{model_id}/",
+        "http://localhost:8000/health/",
+        "http://test.example.com/api/v1",
+        "https://meshant-internal.example.com/api/v1/mesh/",
+        "unknown"
+      ]
+    },
+    "api-service": {
+      "outbound": {
+        "dq-service": {
+          "call_count": 216,
+          "endpoints": [
+            "unknown",
+            "/health",
+            "/api/v1/dq/runs/",
+            "http://localhost:8083"
+          ],
+          "client_types": []
+        },
+        "compliance-service": {
+          "call_count": 185,
+          "endpoints": [
+            "unknown",
+            "/scan-file-async",
+            "/health",
+            "/api/v1/compliance/runs/",
+            "http://127.0.0.1:65535",
+            "http://localhost:8082"
+          ],
+          "client_types": []
+        },
+        "datacontract-service": {
+          "call_count": 91,
+          "endpoints": [
+            "unknown",
+            "http://datacontract-service:8080",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080/sparql",
+            "/health",
+            "http://test-odh:8080",
+            "/api/v1/contracts/{contract.id}/validate/",
+            "/api/v1/contracts/{self.contract.id}/validate/",
+            "/api/v1/contracts/{invalid_contract.id}/validate/",
+            "http://localhost:8080/webhooks/payment",
+            "http://127.0.0.1:8080/webhooks/payment"
+          ],
+          "client_types": []
+        },
+        "semantic-service": {
+          "call_count": 197,
+          "endpoints": [
+            "unknown",
+            "http://localhost:8081",
+            "http://semantic-service:8081",
+            "/api/v1/semantic/ontologies/{ont.id}/",
+            "http://semantic-service-test:8081/health",
+            "/health",
+            "/api/v1/assets/{asset.id}/contracts/"
+          ],
+          "client_types": []
+        },
+        "worker-service": {
+          "call_count": 21,
+          "endpoints": [
+            "http://datacontract-service:8080",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080/sparql",
+            "/health",
+            "http://test-odh:8080",
+            "unknown",
+            "http://localhost:8080/webhooks/payment",
+            "http://127.0.0.1:8080/webhooks/payment"
+          ],
+          "client_types": []
+        }
+      },
+      "inbound": {
+        "sdk": {
+          "call_count": 369,
+          "endpoints": [
+            "unknown",
+            "https://meshant-internal.example.com/api/v1/mesh/",
+            "http://localhost:8000/api/v1/mesh/",
+            "http://localhost:8000/api/v1",
+            "/api/v1",
+            "/home/ph/Desktop/DataInteroperabilityHub",
+            "/app/hub/manage.py",
+            "http://invalid-host:8000/api/v1",
+            "http://localhost:8000/api/v1/",
+            "http://localhost:8000/health/",
+            "http://localhost:8000/api/v1/assets/",
+            "http://localhost:8000/api/v1/assets/{asset_id}/",
+            "http://localhost:8000/api/v1/ml/models/",
+            "http://localhost:8000/api/v1/ml/models/{model_id}/",
+            "http://localhost:8000/api/v1/files/init/",
+            "http://localhost:8000/api/v1/files/{file_id}/complete/",
+            "http://localhost:8000/api/v1/files/{file_id}/",
+            "http://localhost:8000/api/v1/datasets/",
+            "http://localhost:8000/api/v1/datasets/{dataset_id}/",
+            "http://test.example.com/api/v1"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [
+        {
+          "ingress_name": "api-service-ingress",
+          "host": "api.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 1079,
+      "endpoint_count": 41,
+      "endpoints": [
+        "/api/v1",
+        "/api/v1/assets/{asset.id}/contracts/",
+        "/api/v1/compliance/runs/",
+        "/api/v1/contracts/{contract.id}/validate/",
+        "/api/v1/contracts/{invalid_contract.id}/validate/",
+        "/api/v1/contracts/{self.contract.id}/validate/",
+        "/api/v1/dq/runs/",
+        "/api/v1/semantic/ontologies/{ont.id}/",
+        "/app/hub/manage.py",
+        "/health",
+        "/home/ph/Desktop/DataInteroperabilityHub",
+        "/scan-file-async",
+        "http://127.0.0.1:65535",
+        "http://127.0.0.1:8080/sparql",
+        "http://127.0.0.1:8080/webhooks/payment",
+        "http://datacontract-service:8080",
+        "http://invalid-host:8000/api/v1",
+        "http://localhost:8000/api/v1",
+        "http://localhost:8000/api/v1/",
+        "http://localhost:8000/api/v1/assets/",
+        "http://localhost:8000/api/v1/assets/{asset_id}/",
+        "http://localhost:8000/api/v1/datasets/",
+        "http://localhost:8000/api/v1/datasets/{dataset_id}/",
+        "http://localhost:8000/api/v1/files/init/",
+        "http://localhost:8000/api/v1/files/{file_id}/",
+        "http://localhost:8000/api/v1/files/{file_id}/complete/",
+        "http://localhost:8000/api/v1/mesh/",
+        "http://localhost:8000/api/v1/ml/models/",
+        "http://localhost:8000/api/v1/ml/models/{model_id}/",
+        "http://localhost:8000/health/",
+        "http://localhost:8080",
+        "http://localhost:8080/webhooks/payment",
+        "http://localhost:8081",
+        "http://localhost:8082",
+        "http://localhost:8083",
+        "http://semantic-service-test:8081/health",
+        "http://semantic-service:8081",
+        "http://test-odh:8080",
+        "http://test.example.com/api/v1",
+        "https://meshant-internal.example.com/api/v1/mesh/",
+        "unknown"
+      ]
+    },
+    "dq-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 216,
+          "endpoints": [
+            "unknown",
+            "/health",
+            "/api/v1/dq/runs/",
+            "http://localhost:8083"
+          ],
+          "client_types": []
+        },
+        "unknown": {
+          "call_count": 107,
+          "endpoints": [
+            "unknown",
+            "/api/v1/dq/runs/"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [],
+      "service_clients": [],
+      "call_count": 323,
+      "endpoint_count": 4,
+      "endpoints": [
+        "/api/v1/dq/runs/",
+        "/health",
+        "http://localhost:8083",
+        "unknown"
+      ]
+    },
+    "compliance-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 185,
+          "endpoints": [
+            "unknown",
+            "/scan-file-async",
+            "/health",
+            "/api/v1/compliance/runs/",
+            "http://127.0.0.1:65535",
+            "http://localhost:8082"
+          ],
+          "client_types": []
+        },
+        "unknown": {
+          "call_count": 85,
+          "endpoints": [
+            "unknown",
+            "/api/v1/compliance/runs/",
+            "http://127.0.0.1:65535"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [
+        {
+          "ingress_name": "compliance-service-ingress",
+          "host": "compliance.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [
+        {
+          "class_name": "ComplianceServiceClient",
+          "base_url": "http://compliance-service:8082",
+          "file_path": "hub/apps/compliance/service_client.py",
+          "methods": [
+            {
+              "method_name": "health_check",
+              "endpoints": [
+                "/health"
+              ],
+              "http_methods": [
+                "GET"
+              ]
+            },
+            {
+              "method_name": "scan_file",
+              "endpoints": [
+                "/scan-file"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "scan_file_async",
+              "endpoints": [
+                "/scan-file-async"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "get_scan_result",
+              "endpoints": [
+                "/scan-result/"
+              ],
+              "http_methods": [
+                "GET"
+              ]
+            }
+          ]
+        }
+      ],
+      "call_count": 270,
+      "endpoint_count": 8,
+      "endpoints": [
+        "/api/v1/compliance/runs/",
+        "/health",
+        "/scan-file",
+        "/scan-file-async",
+        "/scan-result/",
+        "http://127.0.0.1:65535",
+        "http://localhost:8082",
+        "unknown"
+      ]
+    },
+    "datacontract-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 91,
+          "endpoints": [
+            "unknown",
+            "http://datacontract-service:8080",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080/sparql",
+            "/health",
+            "http://test-odh:8080",
+            "/api/v1/contracts/{contract.id}/validate/",
+            "/api/v1/contracts/{self.contract.id}/validate/",
+            "/api/v1/contracts/{invalid_contract.id}/validate/",
+            "http://localhost:8080/webhooks/payment",
+            "http://127.0.0.1:8080/webhooks/payment"
+          ],
+          "client_types": []
+        },
+        "unknown": {
+          "call_count": 22,
+          "endpoints": [
+            "unknown"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [
+        {
+          "ingress_name": "datacontract-service-ingress",
+          "host": "datacontract.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 113,
+      "endpoint_count": 11,
+      "endpoints": [
+        "/api/v1/contracts/{contract.id}/validate/",
+        "/api/v1/contracts/{invalid_contract.id}/validate/",
+        "/api/v1/contracts/{self.contract.id}/validate/",
+        "/health",
+        "http://127.0.0.1:8080/sparql",
+        "http://127.0.0.1:8080/webhooks/payment",
+        "http://datacontract-service:8080",
+        "http://localhost:8080",
+        "http://localhost:8080/webhooks/payment",
+        "http://test-odh:8080",
+        "unknown"
+      ]
+    },
+    "semantic-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 197,
+          "endpoints": [
+            "unknown",
+            "http://localhost:8081",
+            "http://semantic-service:8081",
+            "/api/v1/semantic/ontologies/{ont.id}/",
+            "http://semantic-service-test:8081/health",
+            "/health",
+            "/api/v1/assets/{asset.id}/contracts/"
+          ],
+          "client_types": []
+        },
+        "unknown": {
+          "call_count": 147,
+          "endpoints": [
+            "unknown",
+            "http://localhost:9999",
+            "/api/v1/assets/{asset.id}/contracts/"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [
+        {
+          "ingress_name": "semantic-service-ingress",
+          "host": "semantic.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [
+        {
+          "class_name": "SemanticServiceClient",
+          "base_url": "http://semantic-service:8081",
+          "file_path": "hub/apps/semantic/service_client.py",
+          "methods": [
+            {
+              "method_name": "health_check",
+              "endpoints": [
+                "/health"
+              ],
+              "http_methods": [
+                "GET"
+              ]
+            },
+            {
+              "method_name": "map_contract",
+              "endpoints": [
+                "/map/contract"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "get_contract_relationships",
+              "endpoints": [
+                "/semantic/relationships/"
+              ],
+              "http_methods": [
+                "GET"
+              ]
+            },
+            {
+              "method_name": "map_asset",
+              "endpoints": [
+                "/map/asset"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "map_dataset",
+              "endpoints": [
+                "/map/dataset"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "map_odps",
+              "endpoints": [
+                "/map/odps"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "query_sparql",
+              "endpoints": [
+                "/sparql"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "query_sparql_tenant",
+              "endpoints": [
+                "/query"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "ingest_rdf",
+              "endpoints": [
+                "/ingest"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "resolve_uri",
+              "endpoints": [
+                "/id/"
+              ],
+              "http_methods": [
+                "GET"
+              ]
+            },
+            {
+              "method_name": "get_sparql_service_description",
+              "endpoints": [
+                "/sparql"
+              ],
+              "http_methods": [
+                "GET"
+              ]
+            },
+            {
+              "method_name": "get_ontology",
+              "endpoints": [
+                "/ontology"
+              ],
+              "http_methods": [
+                "GET"
+              ]
+            },
+            {
+              "method_name": "get_jsonld_context",
+              "endpoints": [
+                "/context.jsonld"
+              ],
+              "http_methods": [
+                "GET"
+              ]
+            },
+            {
+              "method_name": "close",
+              "endpoints": [],
+              "http_methods": []
+            }
+          ]
+        }
+      ],
+      "call_count": 344,
+      "endpoint_count": 19,
+      "endpoints": [
+        "/api/v1/assets/{asset.id}/contracts/",
+        "/api/v1/semantic/ontologies/{ont.id}/",
+        "/context.jsonld",
+        "/health",
+        "/id/",
+        "/ingest",
+        "/map/asset",
+        "/map/contract",
+        "/map/dataset",
+        "/map/odps",
+        "/ontology",
+        "/query",
+        "/semantic/relationships/",
+        "/sparql",
+        "http://localhost:8081",
+        "http://localhost:9999",
+        "http://semantic-service-test:8081/health",
+        "http://semantic-service:8081",
+        "unknown"
+      ]
+    },
+    "worker-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 21,
+          "endpoints": [
+            "http://datacontract-service:8080",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080/sparql",
+            "/health",
+            "http://test-odh:8080",
+            "unknown",
+            "http://localhost:8080/webhooks/payment",
+            "http://127.0.0.1:8080/webhooks/payment"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [],
+      "service_clients": [],
+      "call_count": 21,
+      "endpoint_count": 8,
+      "endpoints": [
+        "/health",
+        "http://127.0.0.1:8080/sparql",
+        "http://127.0.0.1:8080/webhooks/payment",
+        "http://datacontract-service:8080",
+        "http://localhost:8080",
+        "http://localhost:8080/webhooks/payment",
+        "http://test-odh:8080",
+        "unknown"
+      ]
+    },
+    "unknown": {
+      "outbound": {
+        "compliance-service": {
+          "call_count": 85,
+          "endpoints": [
+            "unknown",
+            "/api/v1/compliance/runs/",
+            "http://127.0.0.1:65535"
+          ],
+          "client_types": []
+        },
+        "dq-service": {
+          "call_count": 107,
+          "endpoints": [
+            "unknown",
+            "/api/v1/dq/runs/"
+          ],
+          "client_types": []
+        },
+        "datacontract-service": {
+          "call_count": 22,
+          "endpoints": [
+            "unknown"
+          ],
+          "client_types": []
+        },
+        "semantic-service": {
+          "call_count": 147,
+          "endpoints": [
+            "unknown",
+            "http://localhost:9999",
+            "/api/v1/assets/{asset.id}/contracts/"
+          ],
+          "client_types": []
+        }
+      },
+      "inbound": {},
+      "gateway_routes": [],
+      "service_clients": [],
+      "call_count": 361,
+      "endpoint_count": 6,
+      "endpoints": [
+        "/api/v1/assets/{asset.id}/contracts/",
+        "/api/v1/compliance/runs/",
+        "/api/v1/dq/runs/",
+        "http://127.0.0.1:65535",
+        "http://localhost:9999",
+        "unknown"
+      ]
+    },
+    "webhook-delivery": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [],
+      "service_clients": [
+        {
+          "class_name": "WebhookDeliveryClient",
+          "base_url": "unknown",
+          "file_path": "hub/apps/webhooks/service_client.py",
+          "methods": [
+            {
+              "method_name": "deliver_webhook",
+              "endpoints": [],
+              "http_methods": []
+            },
+            {
+              "method_name": "health_check",
+              "endpoints": [],
+              "http_methods": []
+            },
+            {
+              "method_name": "close",
+              "endpoints": [],
+              "http_methods": []
+            }
+          ]
+        }
+      ],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    },
+    "dq": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [],
+      "service_clients": [
+        {
+          "class_name": "DQServiceClient",
+          "base_url": "http://localhost:8084",
+          "file_path": "hub/apps/dq/service_client.py",
+          "methods": [
+            {
+              "method_name": "health_check",
+              "endpoints": [
+                "/health"
+              ],
+              "http_methods": [
+                "GET"
+              ]
+            },
+            {
+              "method_name": "run_dq",
+              "endpoints": [
+                "/run"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            }
+          ]
+        }
+      ],
+      "call_count": 0,
+      "endpoint_count": 2,
+      "endpoints": [
+        "/health",
+        "/run"
+      ]
+    },
+    "datacontract": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [],
+      "service_clients": [
+        {
+          "class_name": "DataContractCLIClient",
+          "base_url": "http://localhost:8080",
+          "file_path": "hub/apps/contracts/cli_client.py",
+          "methods": [
+            {
+              "method_name": "validate",
+              "endpoints": [],
+              "http_methods": []
+            },
+            {
+              "method_name": "lint",
+              "endpoints": [],
+              "http_methods": []
+            },
+            {
+              "method_name": "convert",
+              "endpoints": [],
+              "http_methods": []
+            },
+            {
+              "method_name": "health_check",
+              "endpoints": [],
+              "http_methods": []
+            }
+          ]
+        }
+      ],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    },
+    "api-gateway": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "router_name": "api-gateway",
+          "path_prefix": "/api/v1",
+          "host_pattern": null,
+          "middlewares": [
+            "cors-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        },
+        {
+          "router_name": "api-gateway-host",
+          "path_prefix": null,
+          "host_pattern": "api.hub.local",
+          "middlewares": [
+            "cors-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 1,
+      "endpoints": [
+        "/api/v1"
+      ]
+    },
+    "frontend": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "router_name": "frontend",
+          "path_prefix": "/",
+          "host_pattern": null,
+          "middlewares": [
+            "cors-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 1,
+      "endpoints": [
+        "/"
+      ]
+    },
+    "observability-service": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "ingress_name": "observability-service-ingress",
+          "host": "observability.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    },
+    "prefect-integration": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "ingress_name": "prefect-integration-ingress",
+          "host": "prefect-integration.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    },
+    "grafana": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "ingress_name": "grafana-ingress",
+          "host": "grafana.example.com",
+          "path": "/",
+          "namespace": "monitoring",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    },
+    "prefect-server": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "ingress_name": "prefect-server-ingress",
+          "host": "prefect-api.example.com",
+          "path": "/",
+          "namespace": "prefect",
+          "type": "kubernetes-ingress"
+        },
+        {
+          "ingress_name": "prefect-server-ingress",
+          "host": "prefect-ui.example.com",
+          "path": "/",
+          "namespace": "prefect",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    },
+    "jaeger": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "ingress_name": "jaeger-ingress",
+          "host": "jaeger.example.com",
+          "path": "/",
+          "namespace": "monitoring",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    },
+    "prometheus": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "ingress_name": "prometheus-ingress",
+          "host": "prometheus.example.com",
+          "path": "/",
+          "namespace": "monitoring",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    },
+    "webhook-service": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "ingress_name": "webhook-service-ingress",
+          "host": "webhook.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    },
+    "search-service": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "ingress_name": "search-service-ingress",
+          "host": "search.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    }
+  },
+  "integration_matrix": {
+    "api-gateway": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "api-service": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 185,
+      "datacontract": 0,
+      "datacontract-service": 91,
+      "dq": 0,
+      "dq-service": 216,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 197,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 21
+    },
+    "compliance-service": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "datacontract": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "datacontract-service": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "dq": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "dq-service": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "frontend": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "grafana": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "jaeger": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "observability-service": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "prefect-integration": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "prefect-server": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "prometheus": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "sdk": {
+      "api-gateway": 0,
+      "api-service": 369,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "search-service": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "semantic-service": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "unknown": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 85,
+      "datacontract": 0,
+      "datacontract-service": 22,
+      "dq": 0,
+      "dq-service": 107,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 147,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "webhook-delivery": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "webhook-service": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    },
+    "worker-service": {
+      "api-gateway": 0,
+      "api-service": 0,
+      "compliance-service": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "frontend": 0,
+      "grafana": 0,
+      "jaeger": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "webhook-delivery": 0,
+      "webhook-service": 0,
+      "worker-service": 0
+    }
+  }
+}

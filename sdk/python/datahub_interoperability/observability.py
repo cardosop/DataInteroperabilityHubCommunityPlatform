@@ -219,6 +219,4 @@ class ObservabilityAPI:
         """
         data = {"incident_id": incident_id}
         data.update(kwargs)
-        return await self.client.patch(
-            "observability/incidents/update/", data=data
-        )
+        return await self.client.patch("observability/incidents/update/", data=data)

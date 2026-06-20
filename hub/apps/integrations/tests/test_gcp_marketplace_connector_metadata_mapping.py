@@ -17,6 +17,7 @@ from unittest.mock import Mock, patch
 from django.test import TestCase
 
 from hub.apps.assets.models import AssetSourceType
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.base import (
     MarketplaceAssetMapping,
@@ -24,7 +25,6 @@ from hub.apps.integrations.base import (
     MarketplaceResource,
     MarketplaceType,
 )
-from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
 
 
@@ -384,7 +384,6 @@ class TestGCPMarketplaceConnectorMetadataMapping(TestCase):
         )
 
         # Simulate list_resources raising an error
-        from hub.apps.core.services.base import NotFoundError
 
         mock_list_resources.side_effect = NotFoundError("Resources not found")
 

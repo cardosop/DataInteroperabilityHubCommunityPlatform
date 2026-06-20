@@ -3,21 +3,22 @@ Unit tests for PolicyApplication and ComplianceReport models.
 
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
-import pytest
-from django.test import TestCase
-from django.core.exceptions import ValidationError
-from django.contrib.auth import get_user_model
 
 import uuid
 
-from hub.apps.tenants.models import Tenant, KYCStatus
+import pytest
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.test import TestCase
+
 from hub.apps.mesh.models import (
+    ComplianceReport,
     DataMeshDomain,
+    MeshComplianceStatus,
     PolicyApplication,
     PolicyApplicationStatus,
-    ComplianceReport,
-    MeshComplianceStatus
 )
+from hub.apps.tenants.models import KYCStatus, Tenant
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -30,37 +31,30 @@ class PolicyApplicationModelTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email=f"test-{uid}@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.domain = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Test Domain",
-            owner=self.user
+            tenant=self.tenant, name="Test Domain", owner=self.user
         )
         # Create an AccessPolicy for testing
         from hub.apps.governance.models import AccessPolicy
+
         self.policy = AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Test Policy",
             description="Test policy description",
             conditions={"user_role": "admin"},
             effect="ALLOW",
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_create_policy_application(self):
         """Test policy application creation with minimal required fields"""
         application = PolicyApplication.objects.create(
-            domain=self.domain,
-            policy=self.policy,
-            applied_by=self.user
+            domain=self.domain, policy=self.policy, applied_by=self.user
         )
 
         self.assertEqual(application.domain, self.domain)
@@ -78,7 +72,7 @@ class PolicyApplicationModelTest(TestCase):
         overrides = {
             "conditions": {"user_role": "admin", "additional_condition": "value"},
             "effect": "DENY",
-            "priority": 50
+            "priority": 50,
         }
 
         application = PolicyApplication.objects.create(
@@ -86,7 +80,7 @@ class PolicyApplicationModelTest(TestCase):
             policy=self.policy,
             applied_by=self.user,
             overrides=overrides,
-            status=PolicyApplicationStatus.APPLIED
+            status=PolicyApplicationStatus.APPLIED,
         )
 
         self.assertEqual(application.domain, self.domain)
@@ -98,10 +92,7 @@ class PolicyApplicationModelTest(TestCase):
 
     def test_policy_application_status_choices(self):
         """Test policy application status enum"""
-        application = PolicyApplication.objects.create(
-            domain=self.domain,
-            policy=self.policy
-        )
+        application = PolicyApplication.objects.create(domain=self.domain, policy=self.policy)
 
         # Test PENDING status
         application.status = PolicyApplicationStatus.PENDING
@@ -143,9 +134,7 @@ class PolicyApplicationModelTest(TestCase):
     def test_policy_application_clean_validation_overrides_not_dict(self):
         """Test policy application clean() validation for overrides not being a dict"""
         application = PolicyApplication(
-            domain=self.domain,
-            policy=self.policy,
-            overrides=["not", "a", "dict"]
+            domain=self.domain, policy=self.policy, overrides=["not", "a", "dict"]
         )
 
         with self.assertRaises(ValidationError) as cm:
@@ -156,22 +145,15 @@ class PolicyApplicationModelTest(TestCase):
         """Test policy application clean() validation for policy from different tenant"""
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}",
-            slug=f"other-tenant-{_uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         from hub.apps.governance.models import AccessPolicy
+
         other_policy = AccessPolicy.objects.create(
-            tenant=other_tenant,
-            name="Other Policy",
-            conditions={},
-            effect="ALLOW"
+            tenant=other_tenant, name="Other Policy", conditions={}, effect="ALLOW"
         )
 
-        application = PolicyApplication(
-            domain=self.domain,
-            policy=other_policy
-        )
+        application = PolicyApplication(domain=self.domain, policy=other_policy)
 
         with self.assertRaises(ValidationError) as cm:
             application.clean()
@@ -182,20 +164,16 @@ class PolicyApplicationModelTest(TestCase):
         """Test policy application clean() validation for applied_by from different tenant"""
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}",
-            slug=f"other-tenant-{_uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
-            tenant=other_tenant
+            tenant=other_tenant,
         )
 
         application = PolicyApplication(
-            domain=self.domain,
-            policy=self.policy,
-            applied_by=other_user
+            domain=self.domain, policy=self.policy, applied_by=other_user
         )
 
         with self.assertRaises(ValidationError) as cm:
@@ -206,9 +184,7 @@ class PolicyApplicationModelTest(TestCase):
     def test_policy_application_save_sets_applied_at(self):
         """Test that save() sets applied_at when status changes to APPLIED"""
         application = PolicyApplication.objects.create(
-            domain=self.domain,
-            policy=self.policy,
-            status=PolicyApplicationStatus.PENDING
+            domain=self.domain, policy=self.policy, status=PolicyApplicationStatus.PENDING
         )
 
         self.assertIsNone(application.applied_at)
@@ -222,20 +198,17 @@ class PolicyApplicationModelTest(TestCase):
     def test_policy_application_str_representation(self):
         """Test policy application string representation"""
         application = PolicyApplication.objects.create(
-            domain=self.domain,
-            policy=self.policy,
-            status=PolicyApplicationStatus.APPLIED
+            domain=self.domain, policy=self.policy, status=PolicyApplicationStatus.APPLIED
         )
 
-        expected_str = f"{self.policy.name} on {self.domain.name} ({PolicyApplicationStatus.APPLIED})"
+        expected_str = (
+            f"{self.policy.name} on {self.domain.name} ({PolicyApplicationStatus.APPLIED})"
+        )
         self.assertEqual(str(application), expected_str)
 
     def test_policy_application_domain_cascade_delete(self):
         """Test that policy application is deleted when domain is deleted"""
-        application = PolicyApplication.objects.create(
-            domain=self.domain,
-            policy=self.policy
-        )
+        application = PolicyApplication.objects.create(domain=self.domain, policy=self.policy)
         application_id = application.id
 
         # Delete user first (User has RESTRICT foreign key to Tenant)
@@ -249,10 +222,7 @@ class PolicyApplicationModelTest(TestCase):
 
     def test_policy_application_policy_set_null_on_delete(self):
         """Test that policy application policy is set to NULL when policy is deleted"""
-        application = PolicyApplication.objects.create(
-            domain=self.domain,
-            policy=self.policy
-        )
+        application = PolicyApplication.objects.create(domain=self.domain, policy=self.policy)
 
         # Delete policy
         self.policy.delete()
@@ -264,9 +234,7 @@ class PolicyApplicationModelTest(TestCase):
     def test_policy_application_applied_by_set_null_on_delete(self):
         """Test that policy application applied_by is set to NULL when user is deleted"""
         application = PolicyApplication.objects.create(
-            domain=self.domain,
-            policy=self.policy,
-            applied_by=self.user
+            domain=self.domain, policy=self.policy, applied_by=self.user
         )
 
         # Delete user
@@ -284,35 +252,28 @@ class ComplianceReportModelTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email=f"test-{uid}@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
         self.domain = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Test Domain",
-            owner=self.user
+            tenant=self.tenant, name="Test Domain", owner=self.user
         )
         from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility
+
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             visibility=AssetVisibility.INTERNAL,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_create_compliance_report(self):
         """Test compliance report creation with minimal required fields"""
-        report = ComplianceReport.objects.create(
-            domain=self.domain
-        )
+        report = ComplianceReport.objects.create(domain=self.domain)
 
         self.assertEqual(report.domain, self.domain)
         self.assertIsNone(report.asset)
@@ -331,22 +292,22 @@ class ComplianceReportModelTest(TestCase):
                     "type": "DATA_QUALITY",
                     "severity": "HIGH",
                     "description": "Data quality check failed",
-                    "field": "email"
+                    "field": "email",
                 },
                 {
                     "type": "SCHEMA_COMPLIANCE",
                     "severity": "MEDIUM",
-                    "description": "Schema validation failed"
-                }
+                    "description": "Schema validation failed",
+                },
             ],
-            "count": 2
+            "count": 2,
         }
 
         report = ComplianceReport.objects.create(
             domain=self.domain,
             asset=self.asset,
             compliance_status=MeshComplianceStatus.NON_COMPLIANT,
-            violations=violations
+            violations=violations,
         )
 
         self.assertEqual(report.domain, self.domain)
@@ -357,9 +318,7 @@ class ComplianceReportModelTest(TestCase):
 
     def test_compliance_report_status_choices(self):
         """Test compliance report status enum"""
-        report = ComplianceReport.objects.create(
-            domain=self.domain
-        )
+        report = ComplianceReport.objects.create(domain=self.domain)
 
         # Test COMPLIANT status
         report.compliance_status = MeshComplianceStatus.COMPLIANT
@@ -395,10 +354,7 @@ class ComplianceReportModelTest(TestCase):
 
     def test_compliance_report_clean_validation_violations_not_dict(self):
         """Test compliance report clean() validation for violations not being a dict"""
-        report = ComplianceReport(
-            domain=self.domain,
-            violations=["not", "a", "dict"]
-        )
+        report = ComplianceReport(domain=self.domain, violations=["not", "a", "dict"])
 
         with self.assertRaises(ValidationError) as cm:
             report.clean()
@@ -408,23 +364,19 @@ class ComplianceReportModelTest(TestCase):
         """Test compliance report clean() validation for asset from different tenant"""
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}",
-            slug=f"other-tenant-{_uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility
+
         other_asset = Asset.objects.create(
             tenant=other_tenant,
             key="other-asset",
             name="Other Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.INTERNAL
+            visibility=AssetVisibility.INTERNAL,
         )
 
-        report = ComplianceReport(
-            domain=self.domain,
-            asset=other_asset
-        )
+        report = ComplianceReport(domain=self.domain, asset=other_asset)
 
         with self.assertRaises(ValidationError) as cm:
             report.clean()
@@ -437,63 +389,48 @@ class ComplianceReportModelTest(TestCase):
         violations1 = {
             "violations": [
                 {"type": "DATA_QUALITY", "severity": "HIGH"},
-                {"type": "SCHEMA_COMPLIANCE", "severity": "MEDIUM"}
+                {"type": "SCHEMA_COMPLIANCE", "severity": "MEDIUM"},
             ]
         }
-        report1 = ComplianceReport.objects.create(
-            domain=self.domain,
-            violations=violations1
-        )
+        report1 = ComplianceReport.objects.create(domain=self.domain, violations=violations1)
         self.assertEqual(report1.get_violation_count(), 2)
 
         # Test with count in dict
-        violations2 = {
-            "count": 5,
-            "summary": "Multiple violations detected"
-        }
-        report2 = ComplianceReport.objects.create(
-            domain=self.domain,
-            violations=violations2
-        )
+        violations2 = {"count": 5, "summary": "Multiple violations detected"}
+        report2 = ComplianceReport.objects.create(domain=self.domain, violations=violations2)
         self.assertEqual(report2.get_violation_count(), 5)
 
         # Test with empty violations
-        report3 = ComplianceReport.objects.create(
-            domain=self.domain,
-            violations={}
-        )
+        report3 = ComplianceReport.objects.create(domain=self.domain, violations={})
         self.assertEqual(report3.get_violation_count(), 0)
 
         # Test with None violations
-        report4 = ComplianceReport.objects.create(
-            domain=self.domain
-        )
+        report4 = ComplianceReport.objects.create(domain=self.domain)
         self.assertEqual(report4.get_violation_count(), 0)
 
     def test_compliance_report_str_representation(self):
         """Test compliance report string representation"""
         # Without asset
         report1 = ComplianceReport.objects.create(
-            domain=self.domain,
-            compliance_status=MeshComplianceStatus.COMPLIANT
+            domain=self.domain, compliance_status=MeshComplianceStatus.COMPLIANT
         )
-        expected_str1 = f"Compliance Report for {self.domain.name} ({MeshComplianceStatus.COMPLIANT})"
+        expected_str1 = (
+            f"Compliance Report for {self.domain.name} ({MeshComplianceStatus.COMPLIANT})"
+        )
         self.assertEqual(str(report1), expected_str1)
 
         # With asset
         report2 = ComplianceReport.objects.create(
             domain=self.domain,
             asset=self.asset,
-            compliance_status=MeshComplianceStatus.NON_COMPLIANT
+            compliance_status=MeshComplianceStatus.NON_COMPLIANT,
         )
         expected_str2 = f"Compliance Report for {self.domain.name} - {self.asset.name} ({MeshComplianceStatus.NON_COMPLIANT})"
         self.assertEqual(str(report2), expected_str2)
 
     def test_compliance_report_domain_cascade_delete(self):
         """Test that compliance report is deleted when domain is deleted"""
-        report = ComplianceReport.objects.create(
-            domain=self.domain
-        )
+        report = ComplianceReport.objects.create(domain=self.domain)
         report_id = report.id
 
         # Delete user first (User has RESTRICT foreign key to Tenant)
@@ -507,10 +444,7 @@ class ComplianceReportModelTest(TestCase):
 
     def test_compliance_report_asset_set_null_on_delete(self):
         """Test that compliance report asset is set to NULL when asset is deleted"""
-        report = ComplianceReport.objects.create(
-            domain=self.domain,
-            asset=self.asset
-        )
+        report = ComplianceReport.objects.create(domain=self.domain, asset=self.asset)
 
         # Delete asset
         self.asset.delete()
@@ -518,5 +452,3 @@ class ComplianceReportModelTest(TestCase):
         # Compliance report should still exist but asset should be None
         report.refresh_from_db()
         self.assertIsNone(report.asset)
-
-

@@ -3,11 +3,11 @@ Phase 79.4 — RequestSizeLimitMiddleware tests.
 
 Tests run against a real FastAPI app with real middleware (no mocks).
 """
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from shared.tests.conftest import _build_app
-
 
 # Use a tiny limit (100 bytes) so tests are fast and deterministic.
 _TINY_LIMIT = 100
@@ -19,7 +19,8 @@ async def tiny_client(auth_headers):
     app = _build_app(max_bytes=_TINY_LIMIT)
     transport = ASGITransport(app=app)
     async with AsyncClient(
-        transport=transport, base_url="http://testserver",
+        transport=transport,
+        base_url="http://testserver",
     ) as ac:
         yield ac, auth_headers
 
@@ -31,7 +32,9 @@ async def test_small_body_passes(tiny_client):
     """Body under the limit is accepted."""
     ac, hdrs = tiny_client
     r = await ac.post(
-        "/echo", json={"x": 1}, headers=hdrs,
+        "/echo",
+        json={"x": 1},
+        headers=hdrs,
     )
     assert r.status_code == 200
 
@@ -66,7 +69,8 @@ async def test_exact_limit_passes(auth_headers):
 
     transport = ASGITransport(app=app)
     async with AsyncClient(
-        transport=transport, base_url="http://testserver",
+        transport=transport,
+        base_url="http://testserver",
     ) as ac:
         body = b"x" * limit
         r = await ac.post(
@@ -91,7 +95,8 @@ async def test_one_over_rejected(auth_headers):
     app = _build_app(max_bytes=limit)
     transport = ASGITransport(app=app)
     async with AsyncClient(
-        transport=transport, base_url="http://testserver",
+        transport=transport,
+        base_url="http://testserver",
     ) as ac:
         body = b"x" * (limit + 1)
         r = await ac.post(
@@ -114,7 +119,8 @@ async def test_custom_max_bytes(auth_headers):
     app = _build_app(max_bytes=200)
     transport = ASGITransport(app=app)
     async with AsyncClient(
-        transport=transport, base_url="http://testserver",
+        transport=transport,
+        base_url="http://testserver",
     ) as ac:
         r_ok = await ac.post(
             "/echo",
@@ -172,10 +178,11 @@ async def test_get_no_body_check(tiny_client):
 
 def test_default_limit_is_50_mib():
     """The default max_bytes is 50 MiB."""
+    from fastapi import FastAPI
+
     from shared.middleware import (
         RequestSizeLimitMiddleware,
     )
-    from fastapi import FastAPI
 
     app = FastAPI()
     mw = RequestSizeLimitMiddleware(app)
@@ -197,7 +204,8 @@ async def test_stream_path_small_body_passes(auth_headers):
 
     transport = ASGITransport(app=app)
     async with AsyncClient(
-        transport=transport, base_url="http://testserver",
+        transport=transport,
+        base_url="http://testserver",
     ) as ac:
         small_json = b'{"msg": "hello"}'
         r = await ac.post(
@@ -221,7 +229,8 @@ async def test_stream_path_oversized_rejected(auth_headers):
     app = _build_app(max_bytes=limit)
     transport = ASGITransport(app=app)
     async with AsyncClient(
-        transport=transport, base_url="http://testserver",
+        transport=transport,
+        base_url="http://testserver",
     ) as ac:
         big = b"x" * (limit + 10)
         r = await ac.post(

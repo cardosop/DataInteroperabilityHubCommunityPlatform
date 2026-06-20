@@ -13,15 +13,16 @@ Usage:
 """
 
 import argparse
+import contextlib
 import json
 import platform
 import re
 import subprocess
 import sys
-import xml.etree.ElementTree as ElementTree
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+from xml.etree import ElementTree
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -86,7 +87,7 @@ TEST_CATEGORIES = [
 class TestSummaryReportGenerator:
     """Generates comprehensive test summary reports from collected evidence."""
 
-    def __init__(self, date: Optional[str] = None, output_file: Optional[Path] = None):
+    def __init__(self, date: str | None = None, output_file: Path | None = None):
         """Initialize report generator.
 
         Args:
@@ -97,12 +98,12 @@ class TestSummaryReportGenerator:
         self.report_dir = REPORT_DIR / self.date
         self.output_file = output_file or self._get_output_file()
         self.template = self._load_template()
-        self.data: Dict[str, Any] = {}
-        self.use_cases: List[str] = []
-        self.journeys: List[str] = []
-        self.test_to_feature_map: Dict[str, str] = {}
-        self.test_to_use_case_map: Dict[str, str] = {}
-        self.test_to_journey_map: Dict[str, str] = {}
+        self.data: dict[str, Any] = {}
+        self.use_cases: list[str] = []
+        self.journeys: list[str] = []
+        self.test_to_feature_map: dict[str, str] = {}
+        self.test_to_use_case_map: dict[str, str] = {}
+        self.test_to_journey_map: dict[str, str] = {}
 
     def _get_latest_date(self) -> str:
         """Get the latest date directory."""
@@ -131,23 +132,23 @@ class TestSummaryReportGenerator:
 
         return TEMPLATE_FILE.read_text()
 
-    def _load_json_file(self, file_path: Path) -> Optional[Dict[str, Any]]:
+    def _load_json_file(self, file_path: Path) -> dict[str, Any] | None:
         """Load JSON file safely."""
         if not file_path.exists():
             return None
 
         try:
             return json.loads(file_path.read_text())
-        except (json.JSONDecodeError, IOError) as e:
+        except (OSError, json.JSONDecodeError) as e:
             print(f"⚠️  Warning: Could not load {file_path}: {e}")
             return None
 
-    def _load_summary(self) -> Optional[Dict[str, Any]]:
+    def _load_summary(self) -> dict[str, Any] | None:
         """Load summary.json from report directory."""
         summary_file = self.report_dir / "summary.json"
         return self._load_json_file(summary_file)
 
-    def _parse_junit_xml(self, path: Path) -> Optional[Dict[str, Any]]:
+    def _parse_junit_xml(self, path: Path) -> dict[str, Any] | None:
         """Parse JUnit XML to get total, passed, failed, skipped, errors, duration.
         Used when evidence comes from Phase 12A scripts (junit.xml per category).
         """
@@ -171,10 +172,8 @@ class TestSummaryReportGenerator:
                     skipped += int(elem.get("skipped", 0))
                     t = elem.get("time")
                     if t is not None:
-                        try:
+                        with contextlib.suppress(ValueError):
                             duration += float(t)
-                        except ValueError:
-                            pass
             passed = max(0, total - failed - errors - skipped)
             return {
                 "summary": {
@@ -272,7 +271,12 @@ class TestSummaryReportGenerator:
                 duration_all += s["duration"]
             elif p12a_3.exists():
                 raw = self._load_json_file(p12a_3)
-                if raw and not raw.get("skipped") and category in raw and isinstance(raw[category], dict):
+                if (
+                    raw
+                    and not raw.get("skipped")
+                    and category in raw
+                    and isinstance(raw[category], dict)
+                ):
                     exit_code = raw[category].get("exit_code", -1)
                     # No duration in phase_12a_3_summary by default; use 0
                     self.data["test_results"][category] = {
@@ -327,7 +331,7 @@ class TestSummaryReportGenerator:
         }
         return True
 
-    def _load_test_results(self, test_type: str) -> Optional[Dict[str, Any]]:
+    def _load_test_results(self, test_type: str) -> dict[str, Any] | None:
         """Load test results for a specific test type.
 
         Tries results.json first; if not found, tries junit.xml (e.g. from
@@ -340,12 +344,12 @@ class TestSummaryReportGenerator:
         junit_path = self.report_dir / test_type / "junit.xml"
         return self._parse_junit_xml(junit_path)
 
-    def _load_coverage_data(self) -> Optional[Dict[str, Any]]:
+    def _load_coverage_data(self) -> dict[str, Any] | None:
         """Load coverage data from coverage.json."""
         coverage_file = self.report_dir / "coverage.json"
         return self._load_json_file(coverage_file)
 
-    def _load_performance_metrics(self) -> Optional[Dict[str, Any]]:
+    def _load_performance_metrics(self) -> dict[str, Any] | None:
         """Load performance metrics from CSV or JSON."""
         perf_dir = self.report_dir / "performance"
         metrics_file = perf_dir / "metrics.csv"
@@ -356,9 +360,9 @@ class TestSummaryReportGenerator:
         metrics_json = perf_dir / "metrics.json"
         return self._load_json_file(metrics_json)
 
-    def _parse_performance_csv(self, csv_file: Path) -> Dict[str, Any]:
+    def _parse_performance_csv(self, csv_file: Path) -> dict[str, Any]:
         """Parse performance metrics CSV file."""
-        metrics: Dict[str, Any] = {}
+        metrics: dict[str, Any] = {}
         try:
             lines = csv_file.read_text().strip().split("\n")
             if len(lines) < 2:
@@ -378,7 +382,7 @@ class TestSummaryReportGenerator:
 
         return metrics
 
-    def _load_security_results(self) -> Optional[Dict[str, Any]]:
+    def _load_security_results(self) -> dict[str, Any] | None:
         """Load security scan results."""
         security_dir = self.report_dir / "security"
         results_file = security_dir / "results.json"
@@ -400,7 +404,7 @@ class TestSummaryReportGenerator:
             return "❌ FAIL"
         return "⚠️ PARTIAL"
 
-    def _get_version_info(self) -> Dict[str, str]:
+    def _get_version_info(self) -> dict[str, str]:
         """Get version information."""
         versions = {
             "python_version": platform.python_version(),
@@ -412,6 +416,7 @@ class TestSummaryReportGenerator:
         try:
             result = subprocess.run(
                 ["pytest", "--version"],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -433,7 +438,7 @@ class TestSummaryReportGenerator:
 
         return versions
 
-    def _parse_use_cases(self) -> List[str]:
+    def _parse_use_cases(self) -> list[str]:
         """Parse use case IDs from USE_CASES.md."""
         use_cases = []
         if not USE_CASES_FILE.exists():
@@ -460,7 +465,7 @@ class TestSummaryReportGenerator:
 
         return sorted(use_cases)
 
-    def _parse_journeys(self) -> List[str]:
+    def _parse_journeys(self) -> list[str]:
         """Parse journey IDs from USER_JOURNEYS.md."""
         journeys = []
         if not USER_JOURNEYS_FILE.exists():
@@ -490,7 +495,7 @@ class TestSummaryReportGenerator:
     def _build_test_mappings(self):
         """Build mappings from test IDs to features, use cases, and journeys."""
         # Map tests to features by parsing test file paths
-        for category, results in self.data["test_results"].items():
+        for _category, results in self.data["test_results"].items():
             if isinstance(results, dict):
                 tests = results.get("tests", [])
                 if not tests:
@@ -519,7 +524,7 @@ class TestSummaryReportGenerator:
                             if journey != "Unknown":
                                 self.test_to_journey_map[test_id] = journey
 
-    def _extract_journey_from_test(self, test: Dict[str, Any]) -> str:
+    def _extract_journey_from_test(self, test: dict[str, Any]) -> str:
         """Extract journey ID from test."""
         test_id = test.get("nodeid", test.get("test_id", ""))
         # Look for journey patterns like JOURNEY-AUTH-001
@@ -576,7 +581,7 @@ class TestSummaryReportGenerator:
 
         print("✅ Data collection complete")
 
-    def _calculate_category_stats(self, category: str) -> Dict[str, Any]:
+    def _calculate_category_stats(self, category: str) -> dict[str, Any]:
         """Calculate statistics for a test category."""
         results = self.data["test_results"].get(category, {})
         if isinstance(results, dict) and "summary" in results:
@@ -607,7 +612,7 @@ class TestSummaryReportGenerator:
             "status": self._get_status(passed, failed, errors, total),
         }
 
-    def _calculate_feature_stats(self, feature: str) -> Dict[str, Any]:
+    def _calculate_feature_stats(self, feature: str) -> dict[str, Any]:
         """Calculate statistics for a feature."""
         stats = {
             "unit": 0,
@@ -687,7 +692,7 @@ class TestSummaryReportGenerator:
 
         return stats
 
-    def _calculate_use_case_stats(self, use_case_id: str) -> Dict[str, Any]:
+    def _calculate_use_case_stats(self, use_case_id: str) -> dict[str, Any]:
         """Calculate statistics for a use case."""
         stats = {
             "unit": 0,
@@ -747,7 +752,7 @@ class TestSummaryReportGenerator:
 
         return stats
 
-    def _calculate_journey_stats(self, journey_id: str) -> Dict[str, Any]:
+    def _calculate_journey_stats(self, journey_id: str) -> dict[str, Any]:
         """Calculate statistics for a user journey."""
         stats = {
             "backend": 0,
@@ -804,7 +809,7 @@ class TestSummaryReportGenerator:
 
         return stats
 
-    def _get_failed_tests(self) -> List[Dict[str, Any]]:
+    def _get_failed_tests(self) -> list[dict[str, Any]]:
         """Extract failed tests from results."""
         failed_tests = []
 
@@ -837,8 +842,8 @@ class TestSummaryReportGenerator:
                         for i in range(failed_count + error_count):
                             failed_tests.append(
                                 {
-                                    "id": f"{category}_failed_{i+1}",
-                                    "name": f"Failed test {i+1} in {category}",
+                                    "id": f"{category}_failed_{i + 1}",
+                                    "name": f"Failed test {i + 1} in {category}",
                                     "category": category,
                                     "feature": "Unknown",
                                     "use_case": "Unknown",
@@ -900,7 +905,7 @@ class TestSummaryReportGenerator:
 
         return failed_tests
 
-    def _determine_priority(self, test: Dict[str, Any], category: str) -> str:
+    def _determine_priority(self, test: dict[str, Any], category: str) -> str:
         """Determine priority based on test characteristics."""
         test_id = test.get("nodeid", test.get("test_id", ""))
 
@@ -923,7 +928,7 @@ class TestSummaryReportGenerator:
         # Low for unit tests
         return "LOW"
 
-    def _extract_feature_from_test(self, test: Dict[str, Any]) -> str:
+    def _extract_feature_from_test(self, test: dict[str, Any]) -> str:
         """Extract feature name from test."""
         test_id = test.get("nodeid", test.get("test_id", ""))
         # Simple heuristic: extract feature from test path
@@ -934,7 +939,7 @@ class TestSummaryReportGenerator:
                 return feature
         return "Unknown"
 
-    def _extract_use_case_from_test(self, test: Dict[str, Any]) -> str:
+    def _extract_use_case_from_test(self, test: dict[str, Any]) -> str:
         """Extract use case ID from test."""
         test_id = test.get("nodeid", test.get("test_id", ""))
         # Look for use case patterns like UC-AUTH-001
@@ -943,7 +948,7 @@ class TestSummaryReportGenerator:
             return match.group(0)
         return "Unknown"
 
-    def _get_performance_metrics(self) -> List[Dict[str, Any]]:
+    def _get_performance_metrics(self) -> list[dict[str, Any]]:
         """Extract performance metrics."""
         metrics = []
         perf_data = self.data.get("performance", {})
@@ -1022,7 +1027,7 @@ class TestSummaryReportGenerator:
 
         return "0.0"
 
-    def _get_security_vulnerabilities(self) -> List[Dict[str, Any]]:
+    def _get_security_vulnerabilities(self) -> list[dict[str, Any]]:
         """Extract security vulnerabilities."""
         vulnerabilities = []
         security_data = self.data.get("security", {})
@@ -1047,9 +1052,9 @@ class TestSummaryReportGenerator:
 
         return vulnerabilities
 
-    def _generate_recommendations(self) -> Dict[str, List[str]]:
+    def _generate_recommendations(self) -> dict[str, list[str]]:
         """Generate recommendations based on test results."""
-        recommendations: Dict[str, List[str]] = {
+        recommendations: dict[str, list[str]] = {
             "coverage": [],
             "performance": [],
             "security": [],
@@ -1063,7 +1068,7 @@ class TestSummaryReportGenerator:
         )
         if total_tests < 1000:
             recommendations["coverage"].append(
-                "Increase test coverage to meet minimum threshold " "of 1000 tests"
+                "Increase test coverage to meet minimum threshold of 1000 tests"
             )
 
         # Performance recommendations
@@ -1071,7 +1076,7 @@ class TestSummaryReportGenerator:
         failed_perf = [m for m in perf_metrics if "FAIL" in m.get("status", "")]
         if failed_perf:
             recommendations["performance"].append(
-                f"Address {len(failed_perf)} performance metrics " "that are not meeting targets"
+                f"Address {len(failed_perf)} performance metrics that are not meeting targets"
             )
 
         # Security recommendations
@@ -1079,7 +1084,7 @@ class TestSummaryReportGenerator:
         critical_vulns = [v for v in vulnerabilities if v.get("severity") == "CRITICAL"]
         if critical_vulns:
             recommendations["security"].append(
-                f"Address {len(critical_vulns)} critical security " "vulnerabilities immediately"
+                f"Address {len(critical_vulns)} critical security vulnerabilities immediately"
             )
 
         return recommendations
@@ -1207,7 +1212,9 @@ class TestSummaryReportGenerator:
         for category in TEST_CATEGORIES:
             rel_path = f"test_reports_comprehensive/{self.date}/{category}/"
             evidence_lines.append(f"- **{category}**: `{rel_path}`")
-        replacements["{evidence_links}"] = "\n".join(evidence_lines) if evidence_lines else "(no categories)"
+        replacements["{evidence_links}"] = (
+            "\n".join(evidence_lines) if evidence_lines else "(no categories)"
+        )
 
         # Feature stats (actual calculation)
         for feature in FEATURES:
@@ -1376,7 +1383,7 @@ class TestSummaryReportGenerator:
         use_case_tables = []
 
         # Group use cases by prefix (UC-AUTH, UC-AM, etc.)
-        use_case_groups: Dict[str, List[str]] = {}
+        use_case_groups: dict[str, list[str]] = {}
         for uc_id in self.use_cases:
             prefix = uc_id.split("-")[1] if "-" in uc_id else "OTHER"
             if prefix not in use_case_groups:
@@ -1428,7 +1435,7 @@ class TestSummaryReportGenerator:
         journey_tables = []
 
         # Group journeys by prefix (JOURNEY-AUTH, JOURNEY-DPO, etc.)
-        journey_groups: Dict[str, List[str]] = {}
+        journey_groups: dict[str, list[str]] = {}
         for journey_id in self.journeys:
             parts = journey_id.split("-")
             if len(parts) >= 2:
@@ -1520,7 +1527,7 @@ class TestSummaryReportGenerator:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description=("Generate comprehensive test summary report " "from collected evidence")
+        description=("Generate comprehensive test summary report from collected evidence")
     )
     parser.add_argument(
         "--date",

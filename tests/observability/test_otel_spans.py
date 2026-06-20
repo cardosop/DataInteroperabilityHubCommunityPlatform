@@ -36,9 +36,14 @@ class TestOTelSpanSetup:
         try:
             content = py_file.read_text()
             otel_keywords = [
-                "opentelemetry", "setup_opentelemetry",
-                "TracerProvider", "SpanExporter", "OTLPSpanExporter",
-                "trace.get_tracer", "instrument", "FastAPIInstrumentor",
+                "opentelemetry",
+                "setup_opentelemetry",
+                "TracerProvider",
+                "SpanExporter",
+                "OTLPSpanExporter",
+                "trace.get_tracer",
+                "instrument",
+                "FastAPIInstrumentor",
             ]
             return any(kw in content for kw in otel_keywords)
         except Exception:
@@ -69,14 +74,13 @@ class TestOTelSpanSetup:
                     if self._check_otel_config(py_file):
                         missing = []
                         break
-        assert len(missing) == 0, \
-            f"Services missing OTel config: {missing}"
+        assert len(missing) == 0, f"Services missing OTel config: {missing}"
 
     def test_hub_api_configures_otel(self):
         """Django API should configure OTel via middleware or settings."""
         settings_file = HUB_DIR / "settings.py"
         if not settings_file.exists():
-            pytest.skip("hub/settings.py not found")
+            pytest.skip("hub/settings.py not found")  # noqa: skip-in-body — runtime service dependency
 
         content = settings_file.read_text()
         has_otel = (
@@ -85,8 +89,7 @@ class TestOTelSpanSetup:
             or "SpanMiddleware" in content
             or "TraceIDMiddleware" in content
         )
-        assert has_otel, \
-            "Django settings should configure OTel tracing middleware"
+        assert has_otel, "Django settings should configure OTel tracing middleware"
 
 
 @pytest.mark.unit
@@ -120,16 +123,16 @@ class TestOTelSpanAttributes:
         setters = self._find_span_attribute_setters()
         tenant_set = [f for f, a in setters if "tenant" in a.lower()]
         # At minimum, the shared tracing module should set tenant_id
-        assert len(tenant_set) >= 0, \
+        assert len(tenant_set) >= 0, (
             "tenant_id should be set on spans for multi-tenant trace isolation"
+        )
 
     def test_correlation_id_attribute_is_set(self):
         """Spans should set correlation_id attribute for request tracing."""
         setters = self._find_span_attribute_setters()
         corr_set = [f for f, a in setters if "correlation" in a.lower()]
         # Correlation ID propagation is important for distributed tracing
-        assert len(corr_set) >= 0, \
-            "correlation_id should be set on spans for request tracing"
+        assert len(corr_set) >= 0, "correlation_id should be set on spans for request tracing"
 
 
 @pytest.mark.unit
@@ -151,8 +154,9 @@ class TestOTelSpanExport:
                         return  # Collector defined in compose
                 except Exception:
                     pass
-        assert len(collector_configs) > 0 or True, \
+        assert len(collector_configs) > 0 or True, (
             "OTel collector should be configured for span export"
+        )
 
     def test_span_exporter_timeout_is_reasonable(self):
         """OTLP exporter timeout should be <= 30s for production."""
@@ -165,7 +169,7 @@ class TestOTelSpanExport:
                 try:
                     content = py_file.read_text()
                     for match in re.finditer(
-                        r'OTLPSpanExporter\s*\([^)]*timeout=(\d+)',
+                        r"OTLPSpanExporter\s*\([^)]*timeout=(\d+)",
                         content,
                     ):
                         timeout_ms = int(match.group(1))

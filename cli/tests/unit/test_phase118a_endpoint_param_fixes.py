@@ -7,12 +7,11 @@ and filter parameter names to match the backend ViewSet implementations.
 These tests mock the api_client to assert the exact API call parameters,
 ensuring CLI-backend contract alignment without requiring a running server.
 """
-import json
+
+from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
-from unittest.mock import Mock
-
 from datahub_cli.main import cli
 
 
@@ -39,16 +38,26 @@ class TestComplianceFilterParam:
         """compliance list --asset-id should send param key 'asset'."""
         mock_api_client.get.return_value = {"results": []}
 
-        result = runner.invoke(cli, [
-            "compliance", "list",
-            "--asset-id", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-            "--format", "json",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "compliance",
+                "list",
+                "--asset-id",
+                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "--format",
+                "json",
+            ],
+        )
 
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         mock_api_client.get.assert_called_once()
         call_args = mock_api_client.get.call_args
-        params = call_args[1].get("params") or call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("params", {})
+        params = (
+            call_args[1].get("params") or call_args[0][1]
+            if len(call_args[0]) > 1
+            else call_args[1].get("params", {})
+        )
         # The key MUST be 'asset', NOT 'asset_id'
         assert "asset" in params, f"Expected 'asset' in params, got: {params}"
         assert "asset_id" not in params, f"'asset_id' should NOT be in params: {params}"
@@ -59,23 +68,43 @@ class TestComplianceFilterParam:
         # The report command first fetches asset, then fetches compliance runs
         mock_api_client.get.side_effect = [
             {"name": "Test Asset"},  # GET assets/{id}/
-            {"results": [{"id": "run-1", "overall_status": "COMPLIANT",
-                          "risk_level": "LOW", "allowed_to_store": True,
-                          "detected_categories_json": {}, "regulation_mapping_json": {},
-                          "completed_at": "2026-01-01"}]},  # GET compliance/runs/
+            {
+                "results": [
+                    {
+                        "id": "run-1",
+                        "overall_status": "COMPLIANT",
+                        "risk_level": "LOW",
+                        "allowed_to_store": True,
+                        "detected_categories_json": {},
+                        "regulation_mapping_json": {},
+                        "completed_at": "2026-01-01",
+                    }
+                ]
+            },  # GET compliance/runs/
         ]
 
-        result = runner.invoke(cli, [
-            "compliance", "report",
-            "--asset-id", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-            "--regulation", "GDPR",
-            "--format", "json",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "compliance",
+                "report",
+                "--asset-id",
+                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "--regulation",
+                "GDPR",
+                "--format",
+                "json",
+            ],
+        )
 
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         # Second call is to compliance/runs/ with filter params
         compliance_call = mock_api_client.get.call_args_list[1]
-        params = compliance_call[1].get("params") or compliance_call[0][1] if len(compliance_call[0]) > 1 else compliance_call[1].get("params", {})
+        params = (
+            compliance_call[1].get("params") or compliance_call[0][1]
+            if len(compliance_call[0]) > 1
+            else compliance_call[1].get("params", {})
+        )
         assert "asset" in params, f"Expected 'asset' in params, got: {params}"
         assert "asset_id" not in params, f"'asset_id' should NOT be in params: {params}"
 
@@ -87,7 +116,11 @@ class TestComplianceFilterParam:
 
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
-        params = call_args[1].get("params") or call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("params", {})
+        params = (
+            call_args[1].get("params") or call_args[0][1]
+            if len(call_args[0]) > 1
+            else call_args[1].get("params", {})
+        )
         assert "asset" not in params
         assert "asset_id" not in params
 
@@ -108,13 +141,18 @@ class TestLineageFieldEndpoint:
 
     def test_field_lineage_url_has_no_model_name_segment(self, runner, mock_api_client):
         """Field lineage URL must be contracts/{id}/fields/{field}/lineage/."""
-        mock_api_client.get.return_value = {
-            "lineage": {"input_fields": []}
-        }
+        mock_api_client.get.return_value = {"lineage": {"input_fields": []}}
 
-        result = runner.invoke(cli, [
-            "lineage", "field", "contract-1", "model1", "field1",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "lineage",
+                "field",
+                "contract-1",
+                "model1",
+                "field1",
+            ],
+        )
 
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         mock_api_client.get.assert_called_once()
@@ -129,13 +167,18 @@ class TestLineageFieldEndpoint:
 
     def test_field_lineage_passes_model_name_as_query_param(self, runner, mock_api_client):
         """model_name must be passed as query parameter, not path segment."""
-        mock_api_client.get.return_value = {
-            "lineage": {"input_fields": []}
-        }
+        mock_api_client.get.return_value = {"lineage": {"input_fields": []}}
 
-        result = runner.invoke(cli, [
-            "lineage", "field", "contract-1", "model1", "field1",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "lineage",
+                "field",
+                "contract-1",
+                "model1",
+                "field1",
+            ],
+        )
 
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
@@ -154,9 +197,16 @@ class TestLineageFieldEndpoint:
             }
         }
 
-        result = runner.invoke(cli, [
-            "lineage", "field", "contract-1", "model1", "field1",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "lineage",
+                "field",
+                "contract-1",
+                "model1",
+                "field1",
+            ],
+        )
 
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         assert "Field Lineage: model1.field1" in result.output
@@ -185,11 +235,17 @@ class TestDQEndpointPath:
             "job": {"id": "job-1"},
         }
 
-        result = runner.invoke(cli, [
-            "dq", "run",
-            "--asset-id", "asset-1",
-            "--format", "json",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "dq",
+                "run",
+                "--asset-id",
+                "asset-1",
+                "--format",
+                "json",
+            ],
+        )
 
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.post.call_args
@@ -199,8 +255,10 @@ class TestDQEndpointPath:
     def test_dq_get_uses_correct_endpoint(self, runner, mock_api_client):
         """dq get must hit dq/runs/{id}/, not dq-runs/{id}/."""
         mock_api_client.get.return_value = {
-            "id": "run-1", "status": "SUCCEEDED",
-            "overall_status": "PASS", "quality_score": 95,
+            "id": "run-1",
+            "status": "SUCCEEDED",
+            "overall_status": "PASS",
+            "quality_score": 95,
         }
 
         result = runner.invoke(cli, ["dq", "get", "run-1", "--format", "json"])
@@ -224,16 +282,26 @@ class TestDQEndpointPath:
     def test_dq_watch_uses_correct_endpoint(self, runner, mock_api_client):
         """dq watch must hit dq/runs/{id}/, not dq-runs/{id}/."""
         mock_api_client.get.return_value = {
-            "id": "run-1", "status": "SUCCEEDED",
-            "overall_status": "PASS", "quality_score": 95,
+            "id": "run-1",
+            "status": "SUCCEEDED",
+            "overall_status": "PASS",
+            "quality_score": 95,
         }
 
-        result = runner.invoke(cli, [
-            "dq", "watch", "run-1",
-            "--interval", "0",
-            "--timeout", "1",
-            "--format", "json",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "dq",
+                "watch",
+                "run-1",
+                "--interval",
+                "0",
+                "--timeout",
+                "1",
+                "--format",
+                "json",
+            ],
+        )
 
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
@@ -244,11 +312,17 @@ class TestDQEndpointPath:
         """dq list --dataset-id should send 'dataset_id' param (matches backend)."""
         mock_api_client.get.return_value = {"results": []}
 
-        result = runner.invoke(cli, [
-            "dq", "list",
-            "--dataset-id", "ds-1",
-            "--format", "json",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "dq",
+                "list",
+                "--dataset-id",
+                "ds-1",
+                "--format",
+                "json",
+            ],
+        )
 
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
@@ -271,8 +345,11 @@ class TestBillingEndpointCorrect:
     def test_subscription_uses_correct_endpoint(self, runner, mock_api_client):
         """billing subscription must hit billing/subscription/current/."""
         mock_api_client.get.return_value = {
-            "id": "sub-1", "plan_name": "Pro", "plan_slug": "pro",
-            "plan_tier": "PROFESSIONAL", "status": "ACTIVE",
+            "id": "sub-1",
+            "plan_name": "Pro",
+            "plan_slug": "pro",
+            "plan_tier": "PROFESSIONAL",
+            "status": "ACTIVE",
         }
 
         result = runner.invoke(cli, ["billing", "subscription", "--format", "json"])
@@ -295,16 +372,25 @@ class TestGovernanceFieldsCorrect:
     def test_create_sends_correct_field_names(self, runner, mock_api_client):
         """access-request create sends asset_id, reason, requested_access_type."""
         mock_api_client.post.return_value = {
-            "id": "req-1", "status": "PENDING",
+            "id": "req-1",
+            "status": "PENDING",
             "requested_access_type": "READ",
         }
 
-        result = runner.invoke(cli, [
-            "governance", "access-request", "create",
-            "--asset-id", "asset-1",
-            "--reason", "Need access for analysis",
-            "--format", "json",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "governance",
+                "access-request",
+                "create",
+                "--asset-id",
+                "asset-1",
+                "--reason",
+                "Need access for analysis",
+                "--format",
+                "json",
+            ],
+        )
 
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.post.call_args
@@ -317,11 +403,18 @@ class TestGovernanceFieldsCorrect:
         """access-request list --asset-id sends 'asset_id' param (matches backend)."""
         mock_api_client.get.return_value = {"results": []}
 
-        result = runner.invoke(cli, [
-            "governance", "access-request", "list",
-            "--asset-id", "asset-1",
-            "--format", "json",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "governance",
+                "access-request",
+                "list",
+                "--asset-id",
+                "asset-1",
+                "--format",
+                "json",
+            ],
+        )
 
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
@@ -360,14 +453,22 @@ class TestFilesEndpointCorrect:
             {"id": "file-1", "name": "test.csv", "size": 14, "status": "ACTIVE"},
         ]
 
-        import requests
         from unittest.mock import patch
+
+        import requests
+
         with patch.object(requests, "put") as mock_put:
             mock_put.return_value = Mock(status_code=200, raise_for_status=Mock())
-            result = runner.invoke(cli, [
-                "files", "upload", str(test_file),
-                "--format", "json",
-            ])
+            runner.invoke(
+                cli,
+                [
+                    "files",
+                    "upload",
+                    str(test_file),
+                    "--format",
+                    "json",
+                ],
+            )
 
         # Check the init call uses correct path
         init_call = mock_api_client.post.call_args_list[0]
@@ -390,17 +491,25 @@ class TestFilesEndpointCorrect:
         mock_api_client.get.return_value = {"id": "f1", "name": "test.csv", "size": 10}
         mock_api_client.post.return_value = {"download_url": "https://s3.example.com/dl"}
 
-        import requests
         from unittest.mock import patch
+
+        import requests
+
         with patch.object(requests, "get") as mock_get:
             mock_resp = Mock()
             mock_resp.raise_for_status = Mock()
             mock_resp.iter_content.return_value = [b"data"]
             mock_get.return_value = mock_resp
-            result = runner.invoke(cli, [
-                "files", "download", "f1",
-                "--output", "/dev/null",
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "files",
+                    "download",
+                    "f1",
+                    "--output",
+                    "/dev/null",
+                ],
+            )
 
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         get_url = mock_api_client.get.call_args[0][0]
@@ -453,15 +562,25 @@ class TestAuditFilterParamsCorrect:
         """audit query sends actor_user_id, resource_type, action, start_date, end_date."""
         mock_api_client.get.return_value = {"results": []}
 
-        result = runner.invoke(cli, [
-            "audit", "query",
-            "--resource-type", "CONTRACT",
-            "--action", "CREATE",
-            "--actor-user-id", "user-1",
-            "--start-date", "2026-01-01T00:00:00Z",
-            "--end-date", "2026-12-31T23:59:59Z",
-            "--format", "json",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "audit",
+                "query",
+                "--resource-type",
+                "CONTRACT",
+                "--action",
+                "CREATE",
+                "--actor-user-id",
+                "user-1",
+                "--start-date",
+                "2026-01-01T00:00:00Z",
+                "--end-date",
+                "2026-12-31T23:59:59Z",
+                "--format",
+                "json",
+            ],
+        )
 
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args

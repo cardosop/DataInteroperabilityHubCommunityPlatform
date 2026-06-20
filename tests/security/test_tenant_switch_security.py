@@ -15,8 +15,7 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import Asset
 from hub.apps.auth.jwt_utils import JWTTokenGenerator
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
-from hub.apps.users.models import UserTenantMembership
+from hub.apps.users.models import User, UserStatus, UserTenantMembership
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

@@ -4,6 +4,8 @@ Unit tests for Schema Drift Detection
 Tests for schema comparison, drift detection, and tolerance configuration.
 """
 
+import uuid
+
 import pytest
 from django.test import TestCase
 
@@ -11,11 +13,9 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.observability.freshness import FreshnessMonitor
-from hub.apps.observability.models import SchemaDrift
 from hub.apps.observability.schema_drift import SchemaDriftDetector
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

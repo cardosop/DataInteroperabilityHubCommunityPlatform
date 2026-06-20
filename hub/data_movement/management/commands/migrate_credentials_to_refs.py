@@ -11,23 +11,31 @@ Usage:
     python manage.py migrate_credentials_to_refs --execute --tenant-id <uuid>
     python manage.py migrate_credentials_to_refs --rollback --tenant-id <uuid>
 """
+
 from __future__ import annotations
 
 import json
 import logging
-import uuid
-from io import StringIO
 
 from django.core.management.base import BaseCommand
 
 logger = logging.getLogger(__name__)
 
 # Keys recognised as credentials that should be extracted from inline configs.
-_CREDENTIAL_KEYS = frozenset({
-    "access_key_id", "secret_access_key", "session_token",
-    "password", "private_key", "key_file", "credentials_json",
-    "access_token", "api_key", "api_secret",
-})
+_CREDENTIAL_KEYS = frozenset(
+    {
+        "access_key_id",
+        "secret_access_key",
+        "session_token",
+        "password",
+        "private_key",
+        "key_file",
+        "credentials_json",
+        "access_token",
+        "api_key",
+        "api_secret",
+    }
+)
 
 
 def _extract_credentials(config: dict) -> tuple[dict, dict]:
@@ -140,8 +148,7 @@ class Command(BaseCommand):
 
             if dry_run:
                 self.stdout.write(
-                    f"[DRY-RUN] ingestion {obj.id}: would extract "
-                    f"{sorted(secrets.keys())}"
+                    f"[DRY-RUN] ingestion {obj.id}: would extract {sorted(secrets.keys())}"
                 )
                 continue
 
@@ -155,9 +162,7 @@ class Command(BaseCommand):
                 source_config=rest,
                 credential_ref=arn,
             )
-            self.stdout.write(
-                f"[MIGRATED] ingestion {obj.id} → credential_ref={arn}"
-            )
+            self.stdout.write(f"[MIGRATED] ingestion {obj.id} → credential_ref={arn}")
 
     def _migrate_exports(self, tenant_id, execute, dry_run):
         from hub.apps.scheduled_export.models import ScheduledExport
@@ -174,8 +179,7 @@ class Command(BaseCommand):
 
             if dry_run:
                 self.stdout.write(
-                    f"[DRY-RUN] export {obj.id}: would extract "
-                    f"{sorted(secrets.keys())}"
+                    f"[DRY-RUN] export {obj.id}: would extract {sorted(secrets.keys())}"
                 )
                 continue
 
@@ -189,9 +193,7 @@ class Command(BaseCommand):
                 destination_config=rest,
                 credential_ref=arn,
             )
-            self.stdout.write(
-                f"[MIGRATED] export {obj.id} → credential_ref={arn}"
-            )
+            self.stdout.write(f"[MIGRATED] export {obj.id} → credential_ref={arn}")
 
     # ------------------------------------------------------------------
     # Rollback path

@@ -14,11 +14,12 @@ SAMPLE / MAX thresholds to KB-scale — exercising the real
 pipeline with real MinIO without needing multi-GB fixtures.
 Skip when MinIO is unavailable (matches the established pattern).
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase, override_settings
 from rest_framework import status
@@ -32,16 +33,9 @@ from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 
+from hub.apps.datasets.tests.conftest import extract_error_code
+
 User = get_user_model()
-
-
-def _extract_error_code(body):
-    if not isinstance(body, dict):
-        return None
-    nested = body.get("error")
-    if isinstance(nested, dict) and nested.get("code"):
-        return nested.get("code")
-    return body.get("code")
 
 
 class _LimitsTestMixin:
@@ -82,7 +76,10 @@ class _LimitsTestMixin:
         )
 
     def _make_active_file(
-        self, *, body: bytes, name: str = "data.csv",
+        self,
+        *,
+        body: bytes,
+        name: str = "data.csv",
         content_type: str = "text/csv",
     ) -> File:
         if not self.storage_available:
@@ -161,7 +158,7 @@ class DatasetCreateOversizeRejectionTest(_LimitsTestMixin, TransactionTestCase):
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             f"Expected 413; got body={response.data!r}",
         )
-        code = _extract_error_code(response.data)
+        code = extract_error_code(response.data)
         self.assertEqual(
             code,
             "FILE_TOO_LARGE_FOR_INFERENCE",
@@ -196,9 +193,7 @@ class DatasetCreateSampleModeTest(_LimitsTestMixin, TransactionTestCase):
         # SAMPLE mode. The sample is 64 bytes (truncated to last
         # newline); inference runs on the partial payload but
         # produces a schema with the sampled flag set.
-        body = b"id,name\n" + b"\n".join(
-            f"{i},user_{i}".encode() for i in range(40)
-        ) + b"\n"
+        body = b"id,name\n" + b"\n".join(f"{i},user_{i}".encode() for i in range(40)) + b"\n"
         f = self._make_active_file(body=body)
         self.assertGreater(f.size, 64)
 
@@ -220,12 +215,12 @@ class DatasetCreateSampleModeTest(_LimitsTestMixin, TransactionTestCase):
         self.assertEqual(
             meta.get("sample_bytes"),
             64,
-            f"sample_bytes should equal the configured override",
+            "sample_bytes should equal the configured override",
         )
         self.assertEqual(
             meta.get("total_bytes"),
             f.size,
-            f"total_bytes should equal File.size",
+            "total_bytes should equal File.size",
         )
         self.assertTrue(meta.get("row_count_estimated_from_sample"))
 
@@ -239,9 +234,7 @@ class DatasetCreateSampleModeTest(_LimitsTestMixin, TransactionTestCase):
         # Default thresholds — 1 KB CSV admits FULL_READ; the
         # schema's metadata must carry sampled=False so consumers
         # don't see false-positive partial-read warnings.
-        body = b"id,name\n" + b"\n".join(
-            f"{i},user_{i}".encode() for i in range(20)
-        ) + b"\n"
+        body = b"id,name\n" + b"\n".join(f"{i},user_{i}".encode() for i in range(20)) + b"\n"
         f = self._make_active_file(body=body)
 
         ds = self.service.create_dataset(
@@ -271,8 +264,7 @@ class DatasetCreateSampleModeTest(_LimitsTestMixin, TransactionTestCase):
         body = (
             b"id,name,description\n"
             + b"\n".join(
-                f"{i},user_{i},a_long_description_that_pads_the_row".encode()
-                for i in range(50)
+                f"{i},user_{i},a_long_description_that_pads_the_row".encode() for i in range(50)
             )
             + b"\n"
         )
@@ -288,7 +280,5 @@ class DatasetCreateSampleModeTest(_LimitsTestMixin, TransactionTestCase):
         # Schema fields are inferred from the sample; column
         # NAMES must still be the full set (header is in the
         # first row, well within the first 64 bytes).
-        field_names = [
-            fld["name"] for fld in (ds.schema_json or {}).get("fields", [])
-        ]
+        field_names = [fld["name"] for fld in (ds.schema_json or {}).get("fields", [])]
         self.assertEqual(field_names, ["id", "name", "description"])

@@ -9,7 +9,7 @@ import structlog
 from django.db import transaction
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from hub.apps.audit.utils import create_audit_event
@@ -43,12 +43,11 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
         # Platform admins can see all access requests
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
             queryset = AccessRequest.objects.all()
+        # Regular users can only see access requests in their tenant
+        elif hasattr(user, "tenant") and user.tenant:
+            queryset = AccessRequest.objects.filter(tenant=user.tenant)
         else:
-            # Regular users can only see access requests in their tenant
-            if hasattr(user, "tenant") and user.tenant:
-                queryset = AccessRequest.objects.filter(tenant=user.tenant)
-            else:
-                queryset = AccessRequest.objects.none()
+            queryset = AccessRequest.objects.none()
 
         # Apply filters
         status_filter = self.request.query_params.get("status")
@@ -159,7 +158,7 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
             from hub.apps.core.responses import api_error_response
 
             return api_error_response(
-                message=f"Failed to create access request: {str(e)}",
+                message=f"Failed to create access request: {e!s}",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 code="INTERNAL_ERROR",
             )
@@ -188,9 +187,8 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
             )
 
         # Phase 272.2 — PLATFORM_ADMIN force_approve bypass.
-        force_approve = (
-            request.query_params.get("force_approve", "").lower() == "true"
-            and getattr(request.user, "is_platform_admin", False)
+        force_approve = request.query_params.get("force_approve", "").lower() == "true" and getattr(
+            request.user, "is_platform_admin", False
         )
 
         # Approve using service
@@ -225,7 +223,7 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
             from hub.apps.core.responses import api_error_response
 
             return api_error_response(
-                message=f"Failed to approve access request: {str(e)}",
+                message=f"Failed to approve access request: {e!s}",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 code="INTERNAL_ERROR",
             )
@@ -244,7 +242,6 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
         access_request = self.get_object()
 
         # Also update the approve guard:
-        pass
 
         reason = request.data.get("reason")
         if not reason:
@@ -288,7 +285,7 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
             from hub.apps.core.responses import api_error_response
 
             return api_error_response(
-                message=f"Failed to reject access request: {str(e)}",
+                message=f"Failed to reject access request: {e!s}",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 code="INTERNAL_ERROR",
             )
@@ -305,6 +302,7 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
         reason = (request.data.get("reason") or "").strip()
         if not reason:
             from hub.apps.core.responses import api_error_response
+
             return api_error_response(
                 message="reason is required for revocation",
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -363,6 +361,7 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
         body = (request.data.get("body") or "").strip()
         if not body:
             from hub.apps.core.responses import api_error_response
+
             return api_error_response(
                 message="body is required and must be non-empty",
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -475,20 +474,24 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
             try:
                 access_request = queryset.get(id=request_id)
             except AccessRequest.DoesNotExist:
-                failed.append({
-                    "id": request_id,
-                    "error": "not found or not permitted",
-                })
+                failed.append(
+                    {
+                        "id": request_id,
+                        "error": "not found or not permitted",
+                    }
+                )
                 continue
 
             if access_request.status not in (
                 AccessRequestStatus.PENDING,
                 AccessRequestStatus.PENDING_NEXT_APPROVER,
             ):
-                failed.append({
-                    "id": request_id,
-                    "error": f"access request is not pending (status: {access_request.status})",
-                })
+                failed.append(
+                    {
+                        "id": request_id,
+                        "error": f"access request is not pending (status: {access_request.status})",
+                    }
+                )
                 continue
 
             service = GovernanceService(
@@ -531,7 +534,7 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
                 succeeded.append(request_id)
             except (ServiceValidationError, NotFoundError) as exc:
                 failed.append({"id": request_id, "error": str(exc)})
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.error(
                     "bulk_%s_failed",
                     action_name,

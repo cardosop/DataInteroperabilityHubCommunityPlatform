@@ -12,8 +12,9 @@ Coverage:
 - User can log in and access tenant-scoped data
 """
 
-import pytest
 import uuid
+
+import pytest
 
 pytestmark = pytest.mark.slow
 from django.test import TestCase
@@ -72,7 +73,8 @@ class Phase25TenantOnboardingE2ETest(TestCase):
             defaults={"description": "Platform Administrator"},
         )
         UserRole.objects.get_or_create(
-            user=self.platform_admin, role=pa_role,
+            user=self.platform_admin,
+            role=pa_role,
         )
         self.client.force_authenticate(user=self.platform_admin)
 

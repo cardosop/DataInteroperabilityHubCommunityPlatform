@@ -19,7 +19,9 @@ def _tenant_scoped_table_names():
         opts = model._meta
         if not opts.managed or opts.proxy:
             continue
-        tenant_field = opts.get_field("tenant") if "tenant" in [f.name for f in opts.fields] else None
+        tenant_field = (
+            opts.get_field("tenant") if "tenant" in [f.name for f in opts.fields] else None
+        )
         if tenant_field is None:
             continue
         related_model = getattr(tenant_field.remote_field, "model", None)
@@ -81,12 +83,8 @@ def _select_count_as_role(table_name: str, role_name: str) -> int:
             # (without missing_ok=true) do not raise UndefinedObject.  The
             # test expects meshant_app to see zero rows when the GUC is
             # unset because tenant_id = NULL::uuid evaluates to NULL.
-            cursor.execute(
-                sql.SQL("SET LOCAL app.current_tenant_id = ''")
-            )
-            cursor.execute(
-                sql.SQL("SELECT count(*) FROM {}").format(sql.Identifier(table_name))
-            )
+            cursor.execute(sql.SQL("SET LOCAL app.current_tenant_id = ''"))
+            cursor.execute(sql.SQL("SELECT count(*) FROM {}").format(sql.Identifier(table_name)))
             row = cursor.fetchone()
             if row is None:
                 raise AssertionError(f"COUNT(*) returned no row for table {table_name}")
@@ -124,10 +122,12 @@ def seeded_tenant_jobs():
     return tenant_a, tenant_b
 
 
-def test_meshant_app_sees_zero_rows_without_tenant_guc(table_name, seeded_tenant_jobs, pytestconfig):
+def test_meshant_app_sees_zero_rows_without_tenant_guc(
+    table_name, seeded_tenant_jobs, pytestconfig
+):
     selected_role = pytestconfig.getoption("database")
     if selected_role not in {"default", "meshant_app"}:
-        pytest.skip(f"RLS baseline expects --database=meshant_app or default, got {selected_role}")
+        pytest.skip(f"RLS baseline expects --database=meshant_app or default, got {selected_role}")  # noqa: skip-in-body — runtime service dependency
     assert _select_count_as_role(table_name, "meshant_app") == 0
 
 
@@ -159,8 +159,7 @@ def test_rls_baseline_parameterization_includes_phase_2_rollout_tables():
     }
     missing = expected_tables - tables
     assert not missing, (
-        "RLS baseline parameterization missing required rollout tables: "
-        f"{sorted(missing)}"
+        f"RLS baseline parameterization missing required rollout tables: {sorted(missing)}"
     )
 
 

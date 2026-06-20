@@ -15,6 +15,7 @@ Three suites:
 The validator is a pure-function module so the tests don't need
 django setup — they run as plain pytest.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -24,7 +25,6 @@ from hub.apps.contracts.lineage_validator import (
     validate_field_exists,
     validate_type_compatibility,
 )
-
 
 # ---------------------------------------------------------------------------
 # detect_cycle — unit
@@ -132,7 +132,6 @@ class TestDetectCycle:
 
 
 class TestValidateFieldExists:
-
     def test_top_level_schema_field(self):
         payload = {
             "schema": {"fields": [{"name": "id", "data_type": "string"}]},
@@ -142,9 +141,7 @@ class TestValidateFieldExists:
 
     def test_model_level_field(self):
         payload = {
-            "models": [
-                {"name": "orders", "fields": [{"name": "order_id"}]}
-            ],
+            "models": [{"name": "orders", "fields": [{"name": "order_id"}]}],
         }
         assert validate_field_exists(payload, "orders", "order_id") is True
         assert validate_field_exists(payload, "orders", "missing") is False
@@ -168,12 +165,22 @@ class TestValidateFieldExists:
             ],
         }
         # Dot-separated qname walks nested shape.
-        assert validate_field_exists(
-            payload, "customers", "address.street",
-        ) is True
-        assert validate_field_exists(
-            payload, "customers", "address.missing",
-        ) is False
+        assert (
+            validate_field_exists(
+                payload,
+                "customers",
+                "address.street",
+            )
+            is True
+        )
+        assert (
+            validate_field_exists(
+                payload,
+                "customers",
+                "address.missing",
+            )
+            is False
+        )
 
     def test_array_items_field(self):
         payload = {
@@ -207,7 +214,6 @@ class TestValidateFieldExists:
 
 
 class TestValidateTypeCompatibility:
-
     @pytest.mark.parametrize(
         "src,tgt,expected",
         [
@@ -231,9 +237,14 @@ class TestValidateTypeCompatibility:
 
     def test_transformation_ref_bypasses_matrix(self):
         # An explicit transformation_ref means "lossy cast acknowledged".
-        assert validate_type_compatibility(
-            "string", "integer", transformation_ref="CAST(x AS INTEGER)",
-        ) is True
+        assert (
+            validate_type_compatibility(
+                "string",
+                "integer",
+                transformation_ref="CAST(x AS INTEGER)",
+            )
+            is True
+        )
 
     def test_case_and_whitespace_normalised(self):
         assert validate_type_compatibility(" String ", "STRING") is True
@@ -249,8 +260,10 @@ class TestValidateTypeCompatibility:
 # test, not the deterministic unit tests.
 # ---------------------------------------------------------------------------
 
-try:  # noqa: SIM105 — explicit ImportError handling intentional
-    from hypothesis import given, strategies as st
+try:
+    from hypothesis import given
+    from hypothesis import strategies as st
+
     _HYPOTHESIS_AVAILABLE = True
 except ImportError:  # pragma: no cover — hypothesis is a CI extra
     _HYPOTHESIS_AVAILABLE = False
@@ -335,4 +348,5 @@ else:
         the file's deterministic unit tests still run.
         """
         import pytest as _pytest
+
         _pytest.skip("hypothesis not installed; property test skipped")

@@ -17,10 +17,10 @@ Usage::
 The ``_parse_bool_env`` import is kept local to avoid coupling the marker
 module to Django (the CLI is shipped standalone).
 """
+
 from __future__ import annotations
 
 import pytest
-
 from tests._pytest_helpers import _parse_bool_env
 
 _MVP_MODE = _parse_bool_env("MVP_MODE")

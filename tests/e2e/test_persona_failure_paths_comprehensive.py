@@ -7,6 +7,7 @@ Covers:
 
 All tests use REAL services (no mocks/stubs). Uses E2ETestBase.
 """
+
 import uuid
 
 import pytest
@@ -38,8 +39,6 @@ pytestmark = [
 class FailurePathTestBase(E2ETestBase):
     """Base for failure-path tests; provides shared setup."""
 
-    pass
-
 
 # --- 401 Unauthenticated (all personas) ---
 
@@ -55,7 +54,6 @@ class PersonaDPOFailurePaths(FailurePathTestBase):
 
     def test_403_forbidden_consumer_cannot_create_asset(self):
         """DATA_CONSUMER cannot create asset (requires DATA_PROVIDER/TENANT_ADMIN)."""
-        from hub.apps.users.models import Role, UserRole
 
         consumer_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
@@ -73,7 +71,9 @@ class PersonaDPOFailurePaths(FailurePathTestBase):
             format="json",
         )
         # 403 = forbidden (no permission); 400 = validation (e.g. tenant/scope). See TEST_ASSERTION_CONVENTIONS 2.4.
-        self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_400_BAD_REQUEST])
+        self.assertIn(
+            response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_400_BAD_REQUEST]
+        )
 
     def test_404_asset_not_found(self):
         """GET non-existent asset returns 404."""
@@ -221,9 +221,7 @@ class PersonaDEVFailurePaths(FailurePathTestBase):
 
     def test_404_integrations_connector_invalid_type(self):
         """GET connector info for invalid type returns 404."""
-        response = self.client.get(
-            "/api/v1/integrations/marketplace/connectors/INVALID_TYPE_XYZ/"
-        )
+        response = self.client.get("/api/v1/integrations/marketplace/connectors/INVALID_TYPE_XYZ/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_400_bad_request_create_webhook_missing_required(self):
@@ -251,7 +249,9 @@ class PersonaAUDFailurePaths(FailurePathTestBase):
         """GET audit export with invalid format returns 400."""
         response = self.client.get("/api/v1/audit/audit-events/export/?format=invalid")
         # 400 = validation (invalid format); 404 = export endpoint not implemented. See TEST_ASSERTION_CONVENTIONS.
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND])
+        self.assertIn(
+            response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND]
+        )
 
 
 # --- 6.5.2: Service-unavailable and cross-tenant isolation ---
@@ -290,9 +290,14 @@ class ServiceUnavailableTests(FailurePathTestBase):
             response = self.client.post("/api/v1/compliance/runs/", payload, format="json")
         # 201 = run created (compliance runs asynchronously, so creation may succeed even with service down)
         # 400 = validation; 503 = service unavailable. Must NOT be 500.
-        self.assertIn(
+        self.assertIn(  # noqa: broad-status-codes
+
             response.status_code,
-            [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST, status.HTTP_503_SERVICE_UNAVAILABLE],
+            [
+                status.HTTP_201_CREATED,
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+            ],
             f"Expected 201/400/503, not {response.status_code}: {getattr(response, 'data', '')}",
         )
 
@@ -319,9 +324,14 @@ class ServiceUnavailableTests(FailurePathTestBase):
             response = self.client.post("/api/v1/dq/runs/", payload, format="json")
         # 201 = run created (DQ runs asynchronously, so creation may succeed even with service down)
         # 400 = validation; 503 = service unavailable. Must NOT be 500.
-        self.assertIn(
+        self.assertIn(  # noqa: broad-status-codes
+
             response.status_code,
-            [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST, status.HTTP_503_SERVICE_UNAVAILABLE],
+            [
+                status.HTTP_201_CREATED,
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+            ],
             f"Expected 201/400/503, not {response.status_code}: {getattr(response, 'data', '')}",
         )
 

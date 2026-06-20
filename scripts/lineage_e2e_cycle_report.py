@@ -50,15 +50,15 @@ Exit codes
 * 1 — streak < threshold.
 * 2 — malformed history file / missing required arg.
 """
+
 from __future__ import annotations
 
 import argparse
 import datetime as _dt
 import json
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
-
 
 DEFAULT_HISTORY_FILE = "audit-reports/lineage-e2e-cycles.jsonl"
 DEFAULT_THRESHOLD = 7
@@ -84,9 +84,7 @@ def _load_history(path: Path) -> list[dict]:
         try:
             out.append(json.loads(raw))
         except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"Malformed JSONL at {path}: {raw!r} — {exc}"
-            ) from exc
+            raise ValueError(f"Malformed JSONL at {path}: {raw!r} — {exc}") from exc
     return out
 
 
@@ -123,7 +121,7 @@ def cmd_append(args: argparse.Namespace) -> int:
     """Append a cycle record to the history file."""
     record = {
         "cycle_id": args.cycle_id,
-        "timestamp": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "timestamp": _dt.datetime.now(_dt.UTC).isoformat(),
         "lineage_strict_content_status": args.strict_status,
         "lineage_empty_state_status": args.empty_status,
         "commit_sha": args.commit_sha or "",
@@ -159,7 +157,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         "status": "ok" if streak >= args.threshold else "INSUFFICIENT",
         "last_cycle_id": (last or {}).get("cycle_id") if last else None,
         "last_cycle_timestamp": (last or {}).get("timestamp") if last else None,
-        "checked_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "checked_at": _dt.datetime.now(_dt.UTC).isoformat(),
     }
     print(json.dumps(report, sort_keys=True))
     if streak < args.threshold:
@@ -175,11 +173,13 @@ def build_parser() -> argparse.ArgumentParser:
     append.add_argument("--history-file", default=DEFAULT_HISTORY_FILE)
     append.add_argument("--cycle-id", required=True)
     append.add_argument(
-        "--strict-status", required=True,
+        "--strict-status",
+        required=True,
         choices=("passed", "failed", "skipped"),
     )
     append.add_argument(
-        "--empty-status", required=True,
+        "--empty-status",
+        required=True,
         choices=("passed", "failed", "skipped"),
     )
     append.add_argument("--commit-sha", default=None)
@@ -188,7 +188,9 @@ def build_parser() -> argparse.ArgumentParser:
     report = sub.add_parser("report", help="Report the streak status.")
     report.add_argument("--history-file", default=DEFAULT_HISTORY_FILE)
     report.add_argument(
-        "--threshold", type=int, default=DEFAULT_THRESHOLD,
+        "--threshold",
+        type=int,
+        default=DEFAULT_THRESHOLD,
         help=f"Required consecutive-green streak (default {DEFAULT_THRESHOLD}).",
     )
 

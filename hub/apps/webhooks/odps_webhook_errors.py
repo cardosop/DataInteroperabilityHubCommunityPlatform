@@ -10,7 +10,9 @@ Error Hierarchy:
   - ODPSWebhookValidationError
   - ODPSWebhookPayloadError
 """
-from typing import Optional, Dict, Any
+
+from typing import Any
+
 from hub.apps.contracts.odps_errors import (
     ODPSError,
     RecoveryStrategy,
@@ -32,17 +34,17 @@ class ODPSWebhookError(ODPSError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        user_message: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
+        error_code: str | None = None,
+        user_message: str | None = None,
+        context: dict[str, Any] | None = None,
         recoverable: bool = False,
-        recovery_strategy: Optional[RecoveryStrategy] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        webhook_id: Optional[str] = None,
-        delivery_id: Optional[str] = None,
-        event_type: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        recovery_strategy: RecoveryStrategy | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        webhook_id: str | None = None,
+        delivery_id: str | None = None,
+        event_type: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize ODPS webhook error.
@@ -112,19 +114,19 @@ class ODPSWebhookDeliveryError(ODPSWebhookError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        user_message: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        http_status_code: Optional[int] = None,
-        response_body: Optional[str] = None,
-        url: Optional[str] = None,
-        retry_after: Optional[int] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        webhook_id: Optional[str] = None,
-        delivery_id: Optional[str] = None,
-        event_type: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        user_message: str | None = None,
+        context: dict[str, Any] | None = None,
+        http_status_code: int | None = None,
+        response_body: str | None = None,
+        url: str | None = None,
+        retry_after: int | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        webhook_id: str | None = None,
+        delivery_id: str | None = None,
+        event_type: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize ODPS webhook delivery error.
@@ -152,7 +154,9 @@ class ODPSWebhookDeliveryError(ODPSWebhookError):
             context["http_status_code"] = http_status_code
         if response_body:
             # Limit response body size in context
-            context["response_body"] = response_body[:500] if len(response_body) > 500 else response_body
+            context["response_body"] = (
+                response_body[:500] if len(response_body) > 500 else response_body
+            )
         if url:
             context["url"] = url
         if retry_after:
@@ -172,9 +176,11 @@ class ODPSWebhookDeliveryError(ODPSWebhookError):
 
         # Determine recovery strategy
         recovery_strategy = None
-        if error_code == self.ERROR_CODE_RATE_LIMITED:
-            recovery_strategy = RecoveryStrategy.RETRY
-        elif error_code in {self.ERROR_CODE_NETWORK_ERROR, self.ERROR_CODE_TIMEOUT, self.ERROR_CODE_CONNECTION_ERROR}:
+        if error_code == self.ERROR_CODE_RATE_LIMITED or error_code in {
+            self.ERROR_CODE_NETWORK_ERROR,
+            self.ERROR_CODE_TIMEOUT,
+            self.ERROR_CODE_CONNECTION_ERROR,
+        }:
             recovery_strategy = RecoveryStrategy.RETRY
         elif error_code == self.ERROR_CODE_HTTP_ERROR:
             # 5xx errors are retryable, 4xx are not
@@ -183,10 +189,10 @@ class ODPSWebhookDeliveryError(ODPSWebhookError):
             else:
                 recovery_strategy = RecoveryStrategy.FAIL
                 recoverable = False
-        elif error_code == self.ERROR_CODE_SSL_ERROR:
-            recovery_strategy = RecoveryStrategy.FAIL
-            recoverable = False
-        elif error_code == self.ERROR_CODE_AUTHENTICATION_FAILED:
+        elif (
+            error_code == self.ERROR_CODE_SSL_ERROR
+            or error_code == self.ERROR_CODE_AUTHENTICATION_FAILED
+        ):
             recovery_strategy = RecoveryStrategy.FAIL
             recoverable = False
 
@@ -228,18 +234,18 @@ class ODPSWebhookValidationError(ODPSWebhookError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        user_message: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        field_path: Optional[str] = None,
-        expected: Optional[Any] = None,
-        actual: Optional[Any] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        webhook_id: Optional[str] = None,
-        delivery_id: Optional[str] = None,
-        event_type: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        user_message: str | None = None,
+        context: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        webhook_id: str | None = None,
+        delivery_id: str | None = None,
+        event_type: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize ODPS webhook validation error.
@@ -310,20 +316,20 @@ class ODPSWebhookPayloadError(ODPSWebhookError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        user_message: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        field_path: Optional[str] = None,
-        expected: Optional[Any] = None,
-        actual: Optional[Any] = None,
-        payload_size: Optional[int] = None,
-        max_payload_size: Optional[int] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        webhook_id: Optional[str] = None,
-        delivery_id: Optional[str] = None,
-        event_type: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        user_message: str | None = None,
+        context: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
+        payload_size: int | None = None,
+        max_payload_size: int | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        webhook_id: str | None = None,
+        delivery_id: str | None = None,
+        event_type: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize ODPS webhook payload error.
@@ -382,4 +388,3 @@ class ODPSWebhookPayloadError(ODPSWebhookError):
         self.actual = actual
         self.payload_size = payload_size
         self.max_payload_size = max_payload_size
-

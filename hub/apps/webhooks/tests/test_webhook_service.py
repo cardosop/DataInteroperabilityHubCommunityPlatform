@@ -15,7 +15,7 @@ from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
-from hub.apps.webhooks.models import Webhook, WebhookEventType, WebhookStatus
+from hub.apps.webhooks.models import WebhookEventType, WebhookStatus
 from hub.apps.webhooks.webhook_service import WebhookService
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -29,13 +29,15 @@ class WebhookServiceTest(TestCase):
 
     def _fixture_teardown(self):
         """Skip TRUNCATE CASCADE to avoid timeout."""
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         ensure_tenant_has_active_subscription(self.tenant)
 

@@ -8,7 +8,6 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.db import transaction
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -16,9 +15,9 @@ from rest_framework.test import APIClient
 
 from hub.apps.auth.models import APIKey
 from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob
 from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserStatus
 
 User = get_user_model()
@@ -79,11 +78,53 @@ class MarketplaceSyncJobViewSetTest(TestCase):
             is_active=True,
         )
 
+        # Register a stub Snowflake connector so factory.is_supported() returns
+        # True deterministically.  Without this, the test depends on whether a
+        # SnowflakeConnector was registered by a previous test file, making
+        # status-code assertions non-deterministic (201 vs 400 vs 500).
+        from hub.apps.integrations.base import DataMarketplaceConnector
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
+
+        self._saved_snowflake = MarketplaceConnectorFactory._connectors.get(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value
+        )
+
+        class _TestSyncJobViewConnector(DataMarketplaceConnector):
+            """Deterministic stub for sync-job view tests."""
+
+            @property
+            def marketplace_type(self) -> MarketplaceType:
+                return MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+
+            @property
+            def supported_sync_directions(self):
+                return [SyncDirection.PUSH, SyncDirection.PULL]
+
+            def authenticate(self, credentials):
+                return True
+
+            def test_connection(self):
+                return True
+
+            def list_listings(self, filters=None, limit=None, offset=None):
+                return []
+
+            def get_listing(self, listing_id):
+                from hub.apps.integrations.base import MarketplaceListing
+
+                return MarketplaceListing(
+                    marketplace_id=listing_id,
+                    marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+                    title="Test Listing",
+                )
+
+        MarketplaceConnectorFactory.register_connector(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, _TestSyncJobViewConnector
+        )
+
         # Authenticate via API key (ensures HasScope and HasAnyRole see correct context)
         self.client.force_authenticate(user=None)
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.plaintext_api_key}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.plaintext_api_key}")
 
         # Sample sync request data
         self.valid_push_sync_data = {
@@ -101,27 +142,34 @@ class MarketplaceSyncJobViewSetTest(TestCase):
             "options": {"create_assets": True},
         }
 
+    def tearDown(self):
+        """Restore connector factory state so other test files are unaffected."""
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
+
+        if self._saved_snowflake is not None:
+            MarketplaceConnectorFactory.register_connector(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, self._saved_snowflake
+            )
+        else:
+            try:
+                MarketplaceConnectorFactory.unregister_connector(
+                    MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+                )
+            except ValueError:
+                pass  # Already unregistered
+        super().tearDown()
+
     def test_create_push_sync_job_success(self):
         """Test successful PUSH sync job creation"""
         response = self.client.post(
             "/api/v1/integrations/marketplace/sync/", self.valid_push_sync_data, format="json"
         )
 
-        # Should create sync job (may return 201 or 400/500 if connector not available)
-        self.assertIn(
-            response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-            ],
-        )
-
-        if response.status_code == status.HTTP_201_CREATED:
-            self.assertIn("id", response.data)
-            self.assertEqual(response.data["direction"], SyncDirection.PUSH.value)
-            self.assertEqual(response.data["status"], SyncStatus.PENDING.value)
-            self.assertIn("connection_id", response.data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("id", response.data)
+        self.assertEqual(response.data["direction"], SyncDirection.PUSH.value)
+        self.assertEqual(response.data["status"], SyncStatus.PENDING.value)
+        self.assertIn("connection_id", response.data)
 
     def test_create_pull_sync_job_success(self):
         """Test successful PULL sync job creation"""
@@ -129,20 +177,10 @@ class MarketplaceSyncJobViewSetTest(TestCase):
             "/api/v1/integrations/marketplace/sync/", self.valid_pull_sync_data, format="json"
         )
 
-        # Should create sync job (may return 201 or 400/500 if connector not available)
-        self.assertIn(
-            response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-            ],
-        )
-
-        if response.status_code == status.HTTP_201_CREATED:
-            self.assertIn("id", response.data)
-            self.assertEqual(response.data["direction"], SyncDirection.PULL.value)
-            self.assertEqual(response.data["status"], SyncStatus.PENDING.value)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("id", response.data)
+        self.assertEqual(response.data["direction"], SyncDirection.PULL.value)
+        self.assertEqual(response.data["status"], SyncStatus.PENDING.value)
 
     def test_create_sync_job_missing_required_fields(self):
         """Test sync job creation with missing required fields"""
@@ -180,7 +218,7 @@ class MarketplaceSyncJobViewSetTest(TestCase):
     def test_list_sync_jobs_success(self):
         """Test successful sync job listing"""
         # Create test sync jobs
-        sync_job1 = MarketplaceSyncJob.objects.create(
+        MarketplaceSyncJob.objects.create(
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
@@ -188,7 +226,7 @@ class MarketplaceSyncJobViewSetTest(TestCase):
             items_synced=0,
             items_failed=0,
         )
-        sync_job2 = MarketplaceSyncJob.objects.create(
+        MarketplaceSyncJob.objects.create(
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PULL.value,
@@ -310,6 +348,7 @@ class MarketplaceSyncJobViewSetTest(TestCase):
         response = self.client.get(f"/api/v1/integrations/marketplace/sync/{fake_id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("error", response.data or {})
 
     def test_cancel_sync_job_success(self):
         """Test successful sync job cancellation"""
@@ -330,12 +369,8 @@ class MarketplaceSyncJobViewSetTest(TestCase):
             format="json",
         )
 
-        # Should succeed (200) or fail if job cannot be cancelled (400)
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
-
-        if response.status_code == status.HTTP_200_OK:
-            # Verify job was cancelled (status might be CANCELLED or still PENDING depending on implementation)
-            self.assertIn("id", response.data)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("id", response.data)
 
     def test_cancel_completed_sync_job(self):
         """Test cancelling a completed sync job (should fail)"""
@@ -359,6 +394,7 @@ class MarketplaceSyncJobViewSetTest(TestCase):
 
         # Should fail because job is already completed
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", response.data or {})
 
     def test_cancel_sync_job_not_found(self):
         """Test cancelling non-existent sync job"""
@@ -370,6 +406,7 @@ class MarketplaceSyncJobViewSetTest(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("error", response.data or {})
 
     def test_unauthenticated_access(self):
         """Test unauthenticated users cannot access endpoints"""
@@ -378,11 +415,13 @@ class MarketplaceSyncJobViewSetTest(TestCase):
 
         response = self.client.get("/api/v1/integrations/marketplace/sync/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertIn("error", response.data or {})
 
         response = self.client.post(
             "/api/v1/integrations/marketplace/sync/", self.valid_push_sync_data, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertIn("error", response.data or {})
 
     def test_tenant_isolation(self):
         """Test tenant isolation - users can only see their tenant's sync jobs"""
@@ -391,7 +430,7 @@ class MarketplaceSyncJobViewSetTest(TestCase):
         other_tenant = Tenant.objects.create(
             name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
-        other_user = User.objects.create_user(
+        User.objects.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
@@ -466,7 +505,7 @@ class MarketplaceSyncJobViewSetTest(TestCase):
     def test_pagination(self):
         """Test pagination works correctly"""
         # Create multiple sync jobs
-        for i in range(25):
+        for _i in range(25):
             MarketplaceSyncJob.objects.create(
                 tenant=self.tenant,
                 connection=self.connection,
@@ -515,6 +554,15 @@ class MarketplaceSyncJobViewSetTest(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # Malformed request body is rejected by DRF's parser and may return
+        # a plain JsonResponse or a DRF Response depending on version.
+        # Verify some error content is returned (use getattr for both types).
+        resp_data = getattr(response, "data", None) or getattr(response, "content", b"")
+        if isinstance(resp_data, bytes):
+            import json
+
+            resp_data = json.loads(resp_data)
+        self.assertTrue(resp_data, "Error response should contain body content")
 
     def test_get_sync_job_not_found_error(self):
         """Test that getting nonexistent sync job returns 404"""
@@ -522,6 +570,7 @@ class MarketplaceSyncJobViewSetTest(TestCase):
         response = self.client.get(f"/api/v1/integrations/marketplace/sync/{fake_id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("error", response.data or {})
 
     def test_cancel_sync_job_not_found_error(self):
         """Test that canceling nonexistent sync job returns 404"""
@@ -533,6 +582,7 @@ class MarketplaceSyncJobViewSetTest(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("error", response.data or {})
 
     def test_list_sync_jobs_error_handling(self):
         """Test that list errors are handled gracefully"""

@@ -13,6 +13,7 @@ Drives the pinned-CVE tracker via TDD:
 
 No mocks: all tests hit real files created in ``tmp_path``.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -64,9 +65,7 @@ def test_parse_requirements_extracts_single_cve(tmp_path, mod):
 
 def test_parse_requirements_extracts_multiple_cves_from_one_line(tmp_path, mod):
     req = tmp_path / "requirements.txt"
-    req.write_text(
-        "cryptography==46.0.5  # CVE-2026-26007, CVE-2026-26008: subgroup attack\n"
-    )
+    req.write_text("cryptography==46.0.5  # CVE-2026-26007, CVE-2026-26008: subgroup attack\n")
     entries = mod.parse_requirements_cves(req)
     assert {e.cve for e in entries} == {"CVE-2026-26007", "CVE-2026-26008"}
 
@@ -170,6 +169,7 @@ def _run(tmp_path: pathlib.Path, *args: str, env: dict | None = None):
     cmd = [sys.executable, str(SCRIPT_PATH), *args]
     return subprocess.run(
         cmd,
+        check=False,
         cwd=tmp_path,
         capture_output=True,
         text=True,
@@ -178,12 +178,8 @@ def _run(tmp_path: pathlib.Path, *args: str, env: dict | None = None):
 
 
 def _write_fixtures(tmp_path, *, review_by: str = "2026-05-03"):
-    (tmp_path / "requirements.txt").write_text(
-        "PyJWT==2.12.0  # CVE-2026-32597: pinned fix\n"
-    )
-    (tmp_path / ".trivyignore").write_text(
-        f"# Review by: {review_by}\nCVE-2026-24882\n"
-    )
+    (tmp_path / "requirements.txt").write_text("PyJWT==2.12.0  # CVE-2026-32597: pinned fix\n")
+    (tmp_path / ".trivyignore").write_text(f"# Review by: {review_by}\nCVE-2026-24882\n")
 
 
 def test_cli_non_blocking_exits_zero_even_when_overdue(tmp_path):

@@ -4,10 +4,10 @@ Audit Logging Utilities
 Helper functions for creating audit events with PII redaction.
 """
 
-import os
 import hashlib
+import os
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.db import connection
@@ -18,7 +18,7 @@ from .models import AuditEvent
 User = get_user_model()
 
 
-def redact_pii(data: Dict[str, Any], visited: Optional[set] = None) -> Dict[str, Any]:
+def redact_pii(data: dict[str, Any], visited: set | None = None) -> dict[str, Any]:
     """
     Redact PII from a dictionary recursively.
 
@@ -53,10 +53,10 @@ def redact_pii(data: Dict[str, Any], visited: Optional[set] = None) -> Dict[str,
         redacted = {}
 
         # Patterns for PII detection
-        email_pattern = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
-        phone_pattern = re.compile(r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b|\b\+?\d{10,15}\b")
-        card_pattern = re.compile(r"\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b")
-        ssn_pattern = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
+        re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
+        re.compile(r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b|\b\+?\d{10,15}\b")
+        re.compile(r"\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b")
+        re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
 
         # Fields that should always be redacted
         pii_fields = [
@@ -197,7 +197,7 @@ def _redact_fail_closed_payload(value: Any) -> Any:
     return value
 
 
-def redact_fail_closed_audit_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+def redact_fail_closed_audit_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Return a fail-closed payload with sensitive keys/column names redacted."""
     redacted = _redact_fail_closed_payload(payload)
     return redacted if isinstance(redacted, dict) else {}
@@ -242,7 +242,7 @@ def _sanitize_audit_payload_values(payload: Any) -> Any:
     with embedded newlines (Phase 260.2.G closure).
     """
     if isinstance(payload, dict):
-        out: Dict[Any, Any] = {}
+        out: dict[Any, Any] = {}
         for k, v in payload.items():
             nk = _sanitize(k) if isinstance(k, str) else k
             out[nk] = _sanitize_audit_payload_values(v)
@@ -259,13 +259,13 @@ def _sanitize_audit_payload_values(payload: Any) -> Any:
 def create_audit_event(
     resource_type: str,
     action: str,
-    actor_user: Optional[User] = None,
+    actor_user: User | None = None,
     tenant=None,
-    resource_id: Optional[str] = None,
+    resource_id: str | None = None,
     result: str = "SUCCESS",
-    details: Optional[Dict[str, Any]] = None,
-    full_details: Optional[Dict[str, Any]] = None,
-    request: Optional[HttpRequest] = None,
+    details: dict[str, Any] | None = None,
+    full_details: dict[str, Any] | None = None,
+    request: HttpRequest | None = None,
     *,
     infer_tenant_from_actor: bool = True,
 ) -> AuditEvent:
@@ -340,6 +340,7 @@ def create_audit_event(
     if resource_id:
         try:
             import uuid
+
             # Try to parse as UUID to validate format
             uuid.UUID(str(resource_id))
         except (ValueError, TypeError):
@@ -352,6 +353,7 @@ def create_audit_event(
         trace_id = None
         try:
             from opentelemetry import trace as otel_trace
+
             span = otel_trace.get_current_span()
             if span is not None:
                 ctx = span.get_span_context()
@@ -427,6 +429,7 @@ def create_audit_event(
         # is not tracked by the test runner.  Always route through
         # ``default`` with ``row_security=off`` in test mode.
         from django.db import IntegrityError as _IE
+
         _use_admin = not os.environ.get("SKIP_TEST_MIGRATIONS")
         if _use_admin:
             try:
@@ -447,6 +450,7 @@ def create_audit_event(
                 # for the INSERT — same RLS-bypass effect, but on a
                 # connection whose snapshot can see the actor_user row.
                 from django.db import transaction as _txn
+
                 with _txn.atomic():
                     with connection.cursor() as _c:
                         _c.execute("SET LOCAL row_security = off")
@@ -465,6 +469,7 @@ def create_audit_event(
             # row_security=off — the admin alias creates a
             # separate connection not tracked by TransactionTestCase.
             from django.db import transaction as _txn
+
             with _txn.atomic():
                 with connection.cursor() as _c:
                     _c.execute("SET LOCAL row_security = off")
@@ -505,10 +510,10 @@ def log_tenant_operation(
     action: str,
     tenant,
     actor_user: User,
-    resource_id: Optional[str] = None,
+    resource_id: str | None = None,
     result: str = "SUCCESS",
-    details: Optional[Dict[str, Any]] = None,
-    request: Optional[HttpRequest] = None,
+    details: dict[str, Any] | None = None,
+    request: HttpRequest | None = None,
 ) -> AuditEvent:
     """Convenience function for logging tenant operations"""
     return create_audit_event(
@@ -528,8 +533,8 @@ def log_user_operation(
     user: User,
     actor_user: User,
     result: str = "SUCCESS",
-    details: Optional[Dict[str, Any]] = None,
-    request: Optional[HttpRequest] = None,
+    details: dict[str, Any] | None = None,
+    request: HttpRequest | None = None,
 ) -> AuditEvent:
     """Convenience function for logging user operations"""
     return create_audit_event(
@@ -548,8 +553,8 @@ def log_auth_operation(
     action: str,
     user: User,
     result: str = "SUCCESS",
-    details: Optional[Dict[str, Any]] = None,
-    request: Optional[HttpRequest] = None,
+    details: dict[str, Any] | None = None,
+    request: HttpRequest | None = None,
 ) -> AuditEvent:
     """Convenience function for logging authentication operations"""
     return create_audit_event(

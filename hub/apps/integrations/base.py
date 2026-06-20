@@ -5,11 +5,12 @@ Provides abstract base classes and data structures for implementing
 data marketplace connectors that support bidirectional synchronization
 between the Hub and external data marketplaces.
 """
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Dict, Any, List, Optional
 from datetime import datetime
+from enum import Enum
+from typing import Any
 
 from hub.apps.assets.models import AssetSourceType
 
@@ -21,6 +22,7 @@ class MarketplaceType(str, Enum):
     Represents 15 major data marketplace platforms that can be integrated
     with the Hub for bidirectional asset synchronization.
     """
+
     SNOWFLAKE_DATA_MARKETPLACE = "SNOWFLAKE_DATA_MARKETPLACE"
     AWS_DATA_EXCHANGE = "AWS_DATA_EXCHANGE"
     DATABRICKS_MARKETPLACE = "DATABRICKS_MARKETPLACE"
@@ -46,6 +48,7 @@ class SyncDirection(str, Enum):
 
     Defines the direction of data flow between the Hub and external marketplaces.
     """
+
     PUSH = "PUSH"
     PULL = "PULL"
     BIDIRECTIONAL = "BIDIRECTIONAL"
@@ -57,6 +60,7 @@ class SyncStatus(str, Enum):
 
     Represents the current state of a synchronization operation.
     """
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
@@ -89,21 +93,22 @@ class MarketplaceListing:
         updated_at: Listing last update timestamp
         url: URL to the listing in the marketplace
     """
+
     marketplace_id: str
     marketplace_type: MarketplaceType
     title: str
-    description: Optional[str] = None
-    product_id: Optional[str] = None
-    category: Optional[str] = None
-    tags: List[str] = field(default_factory=list)
-    pricing_plans: List[Dict[str, Any]] = field(default_factory=list)
-    access_methods: Dict[str, Any] = field(default_factory=dict)
-    payment_gateways: Dict[str, Any] = field(default_factory=dict)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    resources: List['MarketplaceResource'] = field(default_factory=list)
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    url: Optional[str] = None
+    description: str | None = None
+    product_id: str | None = None
+    category: str | None = None
+    tags: list[str] = field(default_factory=list)
+    pricing_plans: list[dict[str, Any]] = field(default_factory=list)
+    access_methods: dict[str, Any] = field(default_factory=dict)
+    payment_gateways: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    resources: list["MarketplaceResource"] = field(default_factory=list)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    url: str | None = None
 
 
 @dataclass
@@ -124,14 +129,15 @@ class MarketplaceResource:
         size_bytes: Resource size in bytes (if applicable)
         metadata: Additional resource-specific metadata
     """
+
     resource_id: str
     resource_type: str
     name: str
-    description: Optional[str] = None
-    url: Optional[str] = None
-    format: Optional[str] = None
-    size_bytes: Optional[int] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    description: str | None = None
+    url: str | None = None
+    format: str | None = None
+    size_bytes: int | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -153,15 +159,16 @@ class SyncResult:
         started_at: Operation start timestamp
         completed_at: Operation completion timestamp
     """
+
     status: SyncStatus
     total_items: int = 0
     successful_items: int = 0
     failed_items: int = 0
     skipped_items: int = 0
-    errors: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    errors: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
 
 @dataclass
@@ -193,12 +200,13 @@ class MarketplaceAssetMapping:
         resources: List of MarketplaceResource objects representing resources
             to download from the marketplace
     """
-    asset_data: Dict[str, Any]
+
+    asset_data: dict[str, Any]
     source_type: AssetSourceType
-    source_metadata: Dict[str, Any]
-    odps_metadata: Optional[Dict[str, Any]] = None
-    odcs_metadata: Optional[Dict[str, Any]] = None
-    resources: List[MarketplaceResource] = field(default_factory=list)
+    source_metadata: dict[str, Any]
+    odps_metadata: dict[str, Any] | None = None
+    odcs_metadata: dict[str, Any] | None = None
+    resources: list[MarketplaceResource] = field(default_factory=list)
 
 
 class DataMarketplaceConnector(ABC):
@@ -272,11 +280,10 @@ class DataMarketplaceConnector(ABC):
         Returns:
             MarketplaceType enum value representing the marketplace platform
         """
-        pass
 
     @property
     @abstractmethod
-    def supported_sync_directions(self) -> List[SyncDirection]:
+    def supported_sync_directions(self) -> list[SyncDirection]:
         """
         Get the list of sync directions supported by this connector.
 
@@ -284,10 +291,9 @@ class DataMarketplaceConnector(ABC):
             List of SyncDirection enum values that this connector supports.
             Must contain at least one direction.
         """
-        pass
 
     @abstractmethod
-    def authenticate(self, credentials: Dict[str, Any]) -> bool:
+    def authenticate(self, credentials: dict[str, Any]) -> bool:
         """
         Authenticate with the marketplace using provided credentials.
 
@@ -302,7 +308,6 @@ class DataMarketplaceConnector(ABC):
             ValueError: If credentials are invalid or missing required fields
             ConnectionError: If unable to connect to marketplace
         """
-        pass
 
     @abstractmethod
     def test_connection(self) -> bool:
@@ -318,15 +323,14 @@ class DataMarketplaceConnector(ABC):
         Raises:
             ConnectionError: If unable to connect to marketplace
         """
-        pass
 
     @abstractmethod
     def list_listings(
         self,
-        filters: Optional[Dict[str, Any]] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None
-    ) -> List[MarketplaceListing]:
+        filters: dict[str, Any] | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[MarketplaceListing]:
         """
         List available listings from the marketplace.
 
@@ -342,7 +346,6 @@ class DataMarketplaceConnector(ABC):
             ConnectionError: If unable to connect to marketplace
             ValueError: If filters or pagination parameters are invalid
         """
-        pass
 
     @abstractmethod
     def get_listing(self, listing_id: str) -> MarketplaceListing:
@@ -359,10 +362,9 @@ class DataMarketplaceConnector(ABC):
             NotFoundError: If listing not found
             ConnectionError: If unable to connect to marketplace
         """
-        pass
 
     @abstractmethod
-    def list_resources(self, listing_id: str) -> List[MarketplaceResource]:
+    def list_resources(self, listing_id: str) -> list[MarketplaceResource]:
         """
         List resources associated with a marketplace listing.
 
@@ -376,13 +378,9 @@ class DataMarketplaceConnector(ABC):
             NotFoundError: If listing not found
             ConnectionError: If unable to connect to marketplace
         """
-        pass
 
     @abstractmethod
-    def create_listing(
-        self,
-        listing: MarketplaceListing
-    ) -> MarketplaceListing:
+    def create_listing(self, listing: MarketplaceListing) -> MarketplaceListing:
         """
         Create a new listing in the marketplace (PUSH operation).
 
@@ -397,14 +395,9 @@ class DataMarketplaceConnector(ABC):
             ConnectionError: If unable to connect to marketplace
             PermissionError: If user lacks permission to create listings
         """
-        pass
 
     @abstractmethod
-    def update_listing(
-        self,
-        listing_id: str,
-        listing: MarketplaceListing
-    ) -> MarketplaceListing:
+    def update_listing(self, listing_id: str, listing: MarketplaceListing) -> MarketplaceListing:
         """
         Update an existing listing in the marketplace (PUSH operation).
 
@@ -421,13 +414,10 @@ class DataMarketplaceConnector(ABC):
             ConnectionError: If unable to connect to marketplace
             PermissionError: If user lacks permission to update listing
         """
-        pass
 
     @abstractmethod
     def publish_resource(
-        self,
-        listing_id: str,
-        resource: MarketplaceResource
+        self, listing_id: str, resource: MarketplaceResource
     ) -> MarketplaceResource:
         """
         Publish a resource to a marketplace listing (PUSH operation).
@@ -445,14 +435,9 @@ class DataMarketplaceConnector(ABC):
             ConnectionError: If unable to connect to marketplace
             PermissionError: If user lacks permission to publish resources
         """
-        pass
 
     @abstractmethod
-    def download_resource(
-        self,
-        resource_id: str,
-        destination_path: str
-    ) -> str:
+    def download_resource(self, resource_id: str, destination_path: str) -> str:
         """
         Download a resource from the marketplace on-demand (PULL operation).
 
@@ -528,13 +513,10 @@ class DataMarketplaceConnector(ABC):
         `sync_pull()`. The metadata-first pattern ensures these operations happen only when data
         is explicitly requested, not during initial harvesting.
         """
-        pass
 
     @abstractmethod
     def map_to_hub_asset(
-        self,
-        listing: MarketplaceListing,
-        sync_job_id: Optional[str] = None
+        self, listing: MarketplaceListing, sync_job_id: str | None = None
     ) -> MarketplaceAssetMapping:
         """
         Map a marketplace listing to a Hub asset representation following metadata-first pattern.
@@ -618,14 +600,13 @@ class DataMarketplaceConnector(ABC):
             schema = extract_schema_from_database(listing)  # download_resource() handles this
         ```
         """
-        pass
 
     @abstractmethod
     def map_from_hub_asset(
         self,
-        asset_data: Dict[str, Any],
-        odps_metadata: Optional[Dict[str, Any]] = None,
-        odcs_metadata: Optional[Dict[str, Any]] = None
+        asset_data: dict[str, Any],
+        odps_metadata: dict[str, Any] | None = None,
+        odcs_metadata: dict[str, Any] | None = None,
     ) -> MarketplaceListing:
         """
         Map a Hub asset to a marketplace listing representation.
@@ -644,14 +625,9 @@ class DataMarketplaceConnector(ABC):
         Raises:
             ValueError: If asset data cannot be mapped
         """
-        pass
 
     @abstractmethod
-    def sync_push(
-        self,
-        asset_ids: List[str],
-        options: Optional[Dict[str, Any]] = None
-    ) -> SyncResult:
+    def sync_push(self, asset_ids: list[str], options: dict[str, Any] | None = None) -> SyncResult:
         """
         Perform bulk push synchronization (Hub → Marketplace).
 
@@ -669,14 +645,13 @@ class DataMarketplaceConnector(ABC):
             ValueError: If asset IDs are invalid
             ConnectionError: If unable to connect to marketplace
         """
-        pass
 
     @abstractmethod
     def sync_pull(
         self,
-        listing_ids: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        options: Optional[Dict[str, Any]] = None
+        listing_ids: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
     ) -> SyncResult:
         """
         Perform bulk pull synchronization (Marketplace → Hub) following metadata-first pattern.
@@ -751,15 +726,9 @@ class DataMarketplaceConnector(ABC):
             download_data(listing)  # download_resource() handles this
         ```
         """
-        pass
 
     def _track_connector_operation(
-        self,
-        operation_type: str,
-        func,
-        *args,
-        tenant_id: Optional[str] = None,
-        **kwargs
+        self, operation_type: str, func, *args, tenant_id: str | None = None, **kwargs
     ):
         """
         Helper method to track connector operations with metrics.
@@ -783,6 +752,7 @@ class DataMarketplaceConnector(ABC):
             Any exception raised by the function
         """
         import time
+
         import structlog
 
         logger = structlog.get_logger(__name__)
@@ -794,12 +764,17 @@ class DataMarketplaceConnector(ABC):
         # Get correlation context
         try:
             from hub.apps.integrations.logging_utils import get_correlation_context
+
             correlation_context = get_correlation_context()
         except Exception:
             correlation_context = {}
 
         # Log operation start
-        marketplace_type_str = self.marketplace_type.value if hasattr(self.marketplace_type, 'value') else str(self.marketplace_type)
+        marketplace_type_str = (
+            self.marketplace_type.value
+            if hasattr(self.marketplace_type, "value")
+            else str(self.marketplace_type)
+        )
         logger.info(
             "connector_operation_started",
             operation_type=operation_type,
@@ -821,9 +796,9 @@ class DataMarketplaceConnector(ABC):
 
             try:
                 from hub.apps.observability.otel_metrics import (
-                    marketplace_connector_operations_total,
                     marketplace_connector_operation_duration_seconds,
                     marketplace_connector_operation_errors_total,
+                    marketplace_connector_operations_total,
                 )
 
                 # Record operation count
@@ -875,4 +850,3 @@ class DataMarketplaceConnector(ABC):
                 error_message=error_message,
                 **correlation_context,
             )
-

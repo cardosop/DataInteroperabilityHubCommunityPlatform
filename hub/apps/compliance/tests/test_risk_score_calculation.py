@@ -30,7 +30,10 @@ class RiskScoreCalculationTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -52,8 +55,8 @@ class RiskScoreCalculationTest(TestCase):
             created_by=self.user,
         )
 
-    def test_risk_level_mapping(self):
-        """Test risk level mapping (NONE, LOW, MEDIUM, HIGH, CRITICAL)"""
+    def test_risk_level_field_round_trip(self):
+        """ORM round-trip: risk_level values (NONE, LOW, MEDIUM, HIGH, CRITICAL)"""
         job = Job.objects.create(
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
@@ -129,8 +132,8 @@ class RiskScoreCalculationTest(TestCase):
         self.assertEqual(compliance_run_high.risk_level, RiskLevel.HIGH)
         self.assertEqual(compliance_run_critical.risk_level, RiskLevel.CRITICAL)
 
-    def test_allowed_to_store_threshold_logic(self):
-        """Test allowed_to_store threshold logic"""
+    def test_allowed_to_store_field_persistence(self):
+        """ORM round-trip: allowed_to_store boolean field persistence"""
         job = Job.objects.create(
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
@@ -173,7 +176,7 @@ class RiskScoreCalculationTest(TestCase):
         self.assertTrue(compliance_run_allowed.allowed_to_store)
         self.assertFalse(compliance_run_blocked.allowed_to_store)
 
-    def test_compliance_result_structure(self):
+    def test_compliance_run_api_response_structure(self):
         """Test compliance result structure"""
         job = Job.objects.create(
             tenant=self.tenant,
@@ -233,38 +236,17 @@ class RiskScoreCalculationTest(TestCase):
         """Test that all expected RiskLevel choices exist."""
         expected = {"NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL", "UNKNOWN"}
         actual = {choice[0] for choice in RiskLevel.choices}
-        self.assertTrue(expected.issubset(actual),
-            f"Missing RiskLevel choices: {expected - actual}")
+        self.assertTrue(
+            expected.issubset(actual), f"Missing RiskLevel choices: {expected - actual}"
+        )
 
     def test_risk_level_exceeds_method(self):
-        """Test RiskLevel.exceeds() static method for severity comparison."""
-        # Same level does not exceed
-        self.assertFalse(RiskLevel.exceeds("LOW", "LOW"))
-        self.assertFalse(RiskLevel.exceeds("HIGH", "HIGH"))
-
-        # Lower does not exceed higher
-        self.assertFalse(RiskLevel.exceeds("LOW", "MEDIUM"))
-        self.assertFalse(RiskLevel.exceeds("MEDIUM", "HIGH"))
-
-        # Higher exceeds lower
-        self.assertTrue(RiskLevel.exceeds("MEDIUM", "LOW"))
+        """RiskLevel.exceeds() is tested exhaustively in
+        ``hub/apps/compliance/tests/test_risk_level_exceeds.py``
+        — this test only checks the integration contract that the
+        method exists and returns a boolean for basic valid inputs."""
+        self.assertFalse(RiskLevel.exceeds("LOW", "HIGH"))
         self.assertTrue(RiskLevel.exceeds("HIGH", "LOW"))
-        self.assertTrue(RiskLevel.exceeds("CRITICAL", "LOW"))
-
-        # UNKNOWN exceeds all concrete levels (fail-closed posture)
-        for level in ("NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"):
-            self.assertTrue(RiskLevel.exceeds("UNKNOWN", level),
-                f"UNKNOWN must exceed {level} (fail-closed)")
-
-        # Nothing exceeds UNKNOWN (ceiling)
-        for level in ("NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"):
-            self.assertFalse(RiskLevel.exceeds(level, "UNKNOWN"),
-                f"{level} must NOT exceed UNKNOWN")
-
-        # Unknown level defaults to 0 (lowest)
-        self.assertFalse(RiskLevel.exceeds("UNKNOWN", "UNKNOWN"))
-        self.assertTrue(RiskLevel.exceeds("HIGH", "BOGUS_LEVEL"),
-            "Bogus level must default to 0, so HIGH exceeds it")
 
     def test_allowed_to_store_null_when_not_completed(self):
         """Test allowed_to_store is None when run has not completed."""

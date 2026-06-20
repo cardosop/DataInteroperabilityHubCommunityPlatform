@@ -32,12 +32,13 @@ Pins the contracts the Grafana dashboard + Prometheus alerts depend on:
 The suite uses real DB rows, real metric wrappers, and real API
 calls. No mocks.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 from datetime import timedelta
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import status
@@ -180,9 +181,7 @@ class TestPhase2347VerifierEndpointEmission:
         evt = _mk(self.tenant, action="WILL_BE_TAMPERED", details={"k": "v"})
         # Bypass save() guard with a raw UPDATE — the same vector an
         # attacker with DB-write access would use.
-        AuditEvent.all_objects.filter(pk=evt.pk).update(
-            details_json={"k": "tampered_value"}
-        )
+        AuditEvent.all_objects.filter(pk=evt.pk).update(details_json={"k": "tampered_value"})
         before_breaks = audit_metrics.chain_break_observation_count()
 
         self.client.force_authenticate(self.admin)
@@ -271,9 +270,7 @@ class TestPhase2347RetentionPurgeEmission:
         # Scope to THIS tenant only — a fresh tenant with no archived events.
         # Without scoping, --reuse-db accumulated data from other tenants
         # would trigger deletions and increment the counter.
-        run_audit_permanent_delete_sweep(
-            dry_run=False, tenant_id=str(self.tenant.id)
-        )
+        run_audit_permanent_delete_sweep(dry_run=False, tenant_id=str(self.tenant.id))
         assert audit_metrics.retention_purged_observation_count() == before_obs
 
 
@@ -320,9 +317,7 @@ class TestPhase2347MerkleSnapshotEmission:
         period_start = period_end - timedelta(hours=1)
 
         before_obs = audit_metrics.merkle_snapshot_observation_count()
-        snapshot_tenant_window(
-            tenant=self.tenant, period_start=period_start, period_end=period_end
-        )
+        snapshot_tenant_window(tenant=self.tenant, period_start=period_start, period_end=period_end)
         after_obs = audit_metrics.merkle_snapshot_observation_count()
 
         assert after_obs - before_obs == 1
@@ -344,15 +339,11 @@ class TestPhase2347MerkleSnapshotEmission:
         period_start = period_end - timedelta(hours=1)
 
         # First call — observes once.
-        snapshot_tenant_window(
-            tenant=self.tenant, period_start=period_start, period_end=period_end
-        )
+        snapshot_tenant_window(tenant=self.tenant, period_start=period_start, period_end=period_end)
         between_obs = audit_metrics.merkle_snapshot_observation_count()
 
         # Second call for the SAME window — must NOT re-time.
-        snapshot_tenant_window(
-            tenant=self.tenant, period_start=period_start, period_end=period_end
-        )
+        snapshot_tenant_window(tenant=self.tenant, period_start=period_start, period_end=period_end)
         after_obs = audit_metrics.merkle_snapshot_observation_count()
         assert after_obs == between_obs, (
             "idempotent re-snap must not double-emit the duration histogram"

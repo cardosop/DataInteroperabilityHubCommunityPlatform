@@ -11,7 +11,6 @@ import pytest
 from django.test import Client, override_settings
 from rest_framework import status
 
-
 pytestmark = pytest.mark.mvp
 
 
@@ -58,9 +57,7 @@ class TestMvpModeMiddlewareAndOpenAPI:
             ), f"{path} returned {r.status_code} (expected routable non-error)"
 
     @override_settings(MVP_MODE=True)
-    def test_openapi_json_omits_gated_prefixes(
-        self, api_client: Client
-    ) -> None:
+    def test_openapi_json_omits_gated_prefixes(self, api_client: Client) -> None:
         r = api_client.get("/api/v1/openapi.json")
         assert r.status_code == status.HTTP_200_OK
         data = r.json()

@@ -14,18 +14,19 @@ Coverage:
 import pytest
 
 pytestmark = pytest.mark.slow
+import uuid
+
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.assets.models import AssetStatus
 from hub.apps.billing.models import Invoice, Subscription, SubscriptionStatus
 from hub.apps.tenants.models import Tenant, TenantPlan, TenantStatus
-from hub.apps.users.models import User, UserStatus, Role, UserRole
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 from .conftest import get_response_data
-import uuid
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),

@@ -4,20 +4,22 @@ Compliance Service Integration with Contract Compliance Policy (GAP-8.2.2).
 Reads compliance policy from HubContract and integrates it with compliance service execution.
 Validates contract terms schema before use (5.4.2); invalid payloads are rejected with 400 at API boundary.
 """
-from typing import Dict, Any, List, Optional
+
+from typing import Any
 
 from hub.apps.contracts.models import Contract
 
 
 class ContractComplianceSchemaError(Exception):
     """Raised when contract compliance payload does not match expected schema (5.4.2)."""
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
         self.message = message
         self.details = details or {}
         super().__init__(message)
 
 
-def validate_contract_compliance_payload(hub_contract: Dict[str, Any]) -> None:
+def validate_contract_compliance_payload(hub_contract: dict[str, Any]) -> None:
     """
     Validate hub_contract (or its privacy_compliance section) for compliance use (5.4.2).
     Raises ContractComplianceSchemaError if invalid; use at API boundary and return 400.
@@ -35,7 +37,9 @@ def validate_contract_compliance_payload(hub_contract: Dict[str, Any]) -> None:
             "privacy_compliance must be a JSON object",
             details={"privacy_compliance_type": type(section).__name__},
         )
-    if "contains_personal_data" in section and not isinstance(section["contains_personal_data"], bool):
+    if "contains_personal_data" in section and not isinstance(
+        section["contains_personal_data"], bool
+    ):
         raise ContractComplianceSchemaError(
             "privacy_compliance.contains_personal_data must be a boolean",
             details={"value": section["contains_personal_data"]},
@@ -60,6 +64,7 @@ def validate_contract_compliance_payload(hub_contract: Dict[str, Any]) -> None:
                 details={"retention_policy_type": type(section["retention_policy"]).__name__},
             )
 
+
 # ---------------------------------------------------------------------------
 # Regulation key aliases (19.10.7) — mirrored from
 # services/compliance-service/regulations/__init__.py
@@ -80,22 +85,24 @@ REGULATION_KEY_ALIASES: dict = {
 
 # ---------------------------------------------------------------------------
 # Import vocabulary mappings - handle import path with hyphen
-import sys
 import os
-semantic_service_path = os.path.join(os.path.dirname(__file__), '../../../services/semantic-service')
+import sys
+
+semantic_service_path = os.path.join(
+    os.path.dirname(__file__), "../../../services/semantic-service"
+)
 if semantic_service_path not in sys.path:
     sys.path.insert(0, semantic_service_path)
 try:
-    from vocabulary_mappings import (
-        get_dpv_category,
-        get_dpv_jurisdiction,
-        get_dpv_legal_basis
-    )
+    from vocabulary_mappings import get_dpv_category, get_dpv_jurisdiction, get_dpv_legal_basis
 except ImportError:
+
     def get_dpv_category(category):
         return None
+
     def get_dpv_jurisdiction(jurisdiction):
         return None
+
     def get_dpv_legal_basis(basis):
         return None
 
@@ -104,16 +111,16 @@ class ContractCompliancePolicyExtractor:
     """
     Extracts compliance policy from HubContract and converts it to compliance service parameters.
     """
-    
+
     @staticmethod
-    def extract_compliance_policy(contract: Contract) -> Dict[str, Any]:
+    def extract_compliance_policy(contract: Contract) -> dict[str, Any]:
         """
         Extract compliance policy from contract's HubContract JSON.
         Validates schema before use (5.4.2); raises ContractComplianceSchemaError if invalid.
-        
+
         Args:
             contract: Contract instance
-            
+
         Returns:
             Dictionary with:
             - contains_personal_data: Boolean
@@ -124,32 +131,32 @@ class ContractCompliancePolicyExtractor:
         """
         hub_contract = contract.hub_contract_json or {}
         validate_contract_compliance_payload(hub_contract)
-        compliance_section = hub_contract.get('privacy_compliance', {})
-        
+        compliance_section = hub_contract.get("privacy_compliance", {})
+
         return {
-            'contains_personal_data': compliance_section.get('contains_personal_data', False),
-            'personal_data_categories': compliance_section.get('personal_data_categories', []),
-            'jurisdictions': compliance_section.get('jurisdictions', []),
-            'legal_bases': compliance_section.get('legal_bases', []),
-            'retention_policy': compliance_section.get('retention_policy')
+            "contains_personal_data": compliance_section.get("contains_personal_data", False),
+            "personal_data_categories": compliance_section.get("personal_data_categories", []),
+            "jurisdictions": compliance_section.get("jurisdictions", []),
+            "legal_bases": compliance_section.get("legal_bases", []),
+            "retention_policy": compliance_section.get("retention_policy"),
         }
-    
+
     @staticmethod
-    def get_targeted_pii_categories(contract: Contract) -> List[str]:
+    def get_targeted_pii_categories(contract: Contract) -> list[str]:
         """
         Get targeted PII categories from contract for focused detection (GAP-8.2.2).
-        
+
         Args:
             contract: Contract instance
-            
+
         Returns:
             List of PII category strings for targeted detection
         """
         policy = ContractCompliancePolicyExtractor.extract_compliance_policy(contract)
-        return policy.get('personal_data_categories', [])
-    
+        return policy.get("personal_data_categories", [])
+
     @staticmethod
-    def get_regulatory_mapping(contract: Contract) -> List[str]:
+    def get_regulatory_mapping(contract: Contract) -> list[str]:
         """
         Get jurisdictions from contract for regulatory mapping (GAP-8.2.2).
 
@@ -163,48 +170,46 @@ class ContractCompliancePolicyExtractor:
         Returns:
             List of canonical jurisdiction strings (GDPR, LGPD, CCPA…)
         """
-        policy = ContractCompliancePolicyExtractor.extract_compliance_policy(
-            contract
-        )
-        raw: List[str] = policy.get('jurisdictions', [])
+        policy = ContractCompliancePolicyExtractor.extract_compliance_policy(contract)
+        raw: list[str] = policy.get("jurisdictions", [])
         return [REGULATION_KEY_ALIASES.get(j, j) for j in raw]
-    
+
     @staticmethod
-    def get_legal_bases(contract: Contract) -> List[str]:
+    def get_legal_bases(contract: Contract) -> list[str]:
         """
         Get legal bases from contract for compliance reporting (GAP-8.2.2).
-        
+
         Args:
             contract: Contract instance
-            
+
         Returns:
             List of legal basis strings (CONSENT, CONTRACT, etc.)
         """
         policy = ContractCompliancePolicyExtractor.extract_compliance_policy(contract)
-        return policy.get('legal_bases', [])
-    
+        return policy.get("legal_bases", [])
+
     @staticmethod
-    def get_retention_policy(contract: Contract) -> Optional[Dict[str, Any]]:
+    def get_retention_policy(contract: Contract) -> dict[str, Any] | None:
         """
         Get retention policy from contract for data retention enforcement (GAP-8.2.2).
-        
+
         Args:
             contract: Contract instance
-            
+
         Returns:
             Retention policy dictionary with period and notes, or None
         """
         policy = ContractCompliancePolicyExtractor.extract_compliance_policy(contract)
-        return policy.get('retention_policy')
-    
+        return policy.get("retention_policy")
+
     @staticmethod
-    def map_categories_to_dpv(categories: List[str]) -> List[str]:
+    def map_categories_to_dpv(categories: list[str]) -> list[str]:
         """
         Map personal data categories to DPV vocabulary terms (GAP-8.2.2).
-        
+
         Args:
             categories: List of category strings
-            
+
         Returns:
             List of DPV category identifiers
         """
@@ -213,20 +218,22 @@ class ContractCompliancePolicyExtractor:
             dpv_term = get_dpv_category(category)
             if dpv_term:
                 # Extract the local name from the URIRef
-                dpv_categories.append(str(dpv_term).split('#')[-1] if '#' in str(dpv_term) else category)
+                dpv_categories.append(
+                    str(dpv_term).split("#")[-1] if "#" in str(dpv_term) else category
+                )
             else:
                 # Keep original if no mapping found
                 dpv_categories.append(category)
         return dpv_categories
-    
+
     @staticmethod
-    def map_jurisdictions_to_dpv(jurisdictions: List[str]) -> List[str]:
+    def map_jurisdictions_to_dpv(jurisdictions: list[str]) -> list[str]:
         """
         Map jurisdictions to DPV vocabulary terms (GAP-8.2.2).
-        
+
         Args:
             jurisdictions: List of jurisdiction strings
-            
+
         Returns:
             List of DPV jurisdiction identifiers
         """
@@ -235,9 +242,10 @@ class ContractCompliancePolicyExtractor:
             dpv_term = get_dpv_jurisdiction(jurisdiction)
             if dpv_term:
                 # Extract the local name from the URIRef
-                dpv_jurisdictions.append(str(dpv_term).split('#')[-1] if '#' in str(dpv_term) else jurisdiction)
+                dpv_jurisdictions.append(
+                    str(dpv_term).split("#")[-1] if "#" in str(dpv_term) else jurisdiction
+                )
             else:
                 # Keep original if no mapping found
                 dpv_jurisdictions.append(jurisdiction)
         return dpv_jurisdictions
-

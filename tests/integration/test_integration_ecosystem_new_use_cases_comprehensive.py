@@ -21,9 +21,8 @@ from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import (
-ensure_tenant_has_active_subscription,
+    ensure_tenant_has_active_subscription,
 )
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     TenantFactory,
@@ -46,16 +45,13 @@ pytestmark = [
 
 
 class IntegrationEcosystemTestBase(
-    TestCase, TestDatabaseIsolationMixin,
+    TestCase,
+    TestDatabaseIsolationMixin,
 ):
     """Base test class for Integration Ecosystem use cases."""
 
-    CONNECTORS_URL = (
-        "/api/v1/integrations/marketplace/connectors/"
-    )
-    CONNECTIONS_URL = (
-        "/api/v1/integrations/marketplace/connections/"
-    )
+    CONNECTORS_URL = "/api/v1/integrations/marketplace/connectors/"
+    CONNECTIONS_URL = "/api/v1/integrations/marketplace/connections/"
     SYNC_URL = "/api/v1/integrations/marketplace/sync/"
     API_KEYS_URL = "/api/v1/developer/api-keys/"
 
@@ -88,7 +84,8 @@ class IntegrationEcosystemTestBase(
             email=f"dpo-{uid}@example.com",
         )
         UserRole.objects.get_or_create(
-            user=self.dpo_user, role=self.data_provider_role,
+            user=self.dpo_user,
+            role=self.data_provider_role,
         )
 
         self.admin_user = UserFactory.create_user(
@@ -96,7 +93,8 @@ class IntegrationEcosystemTestBase(
             email=f"admin-{uid}@example.com",
         )
         UserRole.objects.get_or_create(
-            user=self.admin_user, role=self.tenant_admin_role,
+            user=self.admin_user,
+            role=self.tenant_admin_role,
         )
 
 
@@ -110,7 +108,8 @@ class UCINT001InstallPrebuiltConnectorTest(
         self.client.force_authenticate(user=self.dpo_user)
         response = self.client.get(self.CONNECTORS_URL)
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         body = response.json()
         self.assertIn("connectors", body)
@@ -121,7 +120,8 @@ class UCINT001InstallPrebuiltConnectorTest(
         self.client.force_authenticate(user=self.dpo_user)
         list_resp = self.client.get(self.CONNECTORS_URL)
         self.assertEqual(
-            list_resp.status_code, status.HTTP_200_OK,
+            list_resp.status_code,
+            status.HTTP_200_OK,
         )
         connectors = list_resp.json().get("connectors", [])
         if connectors:
@@ -130,10 +130,12 @@ class UCINT001InstallPrebuiltConnectorTest(
                 f"{self.CONNECTORS_URL}{ctype}/",
             )
             self.assertEqual(
-                detail_resp.status_code, status.HTTP_200_OK,
+                detail_resp.status_code,
+                status.HTTP_200_OK,
             )
             self.assertEqual(
-                detail_resp.json()["type"], ctype,
+                detail_resp.json()["type"],
+                ctype,
             )
 
     def test_connectors_unauthorized(self):
@@ -159,7 +161,8 @@ class UCINT002CreateCustomConnectorTest(
         self.client.force_authenticate(user=self.dpo_user)
         response = self.client.get(self.CONNECTIONS_URL)
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         body = response.json()
         results = body.get("results", body)
@@ -177,7 +180,9 @@ class UCINT002CreateCustomConnectorTest(
             },
         }
         response = self.client.post(
-            self.CONNECTIONS_URL, data, format="json",
+            self.CONNECTIONS_URL,
+            data,
+            format="json",
         )
         self.assertIn(
             response.status_code,
@@ -226,7 +231,8 @@ class UCINT003IntegrateBIToolTest(
         self.client.force_authenticate(user=self.admin_user)
         response = self.client.get(self.CONNECTIONS_URL)
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         body = response.json()
         results = body.get("results", body)
@@ -258,7 +264,8 @@ class UCINT004SetUpReverseETLTest(
         self.client.force_authenticate(user=self.dpo_user)
         response = self.client.get(self.SYNC_URL)
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         body = response.json()
         results = body.get("results", body)
@@ -290,7 +297,8 @@ class UCINT005IntegrateCICDPipelineTest(
         self.client.force_authenticate(user=self.dpo_user)
         response = self.client.get(self.API_KEYS_URL)
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         body = response.json()
         results = body.get("results", body)

@@ -137,27 +137,26 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         )
 
         # Should return 400
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            if "error" in response.data:
-                error = response.data["error"]
+        if response.status_code == status.HTTP_400_BAD_REQUEST and "error" in response.data:
+            error = response.data["error"]
 
-                # May have details
-                if "details" in error:
-                    details = error["details"]
-                    self.assertIsInstance(details, dict)
+            # May have details
+            if "details" in error:
+                details = error["details"]
+                self.assertIsInstance(details, dict)
 
-                    # May contain field_errors array
-                    if "field_errors" in details:
-                        field_errors = details["field_errors"]
-                        self.assertIsInstance(field_errors, list)
+                # May contain field_errors array
+                if "field_errors" in details:
+                    field_errors = details["field_errors"]
+                    self.assertIsInstance(field_errors, list)
 
-                        # Each field error should have structure
-                        for field_error in field_errors:
-                            self.assertIsInstance(field_error, dict)
-                            if "field" in field_error:
-                                self.assertIsInstance(field_error["field"], str)
-                            if "message" in field_error:
-                                self.assertIsInstance(field_error["message"], str)
+                    # Each field error should have structure
+                    for field_error in field_errors:
+                        self.assertIsInstance(field_error, dict)
+                        if "field" in field_error:
+                            self.assertIsInstance(field_error["field"], str)
+                        if "message" in field_error:
+                            self.assertIsInstance(field_error["message"], str)
 
     def test_error_response_request_id(self):
         """Test error response includes request ID"""
@@ -177,8 +176,9 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
 
         # Must be a valid UUID -- unconditional assertion, no try/except swallowing
         parsed = uuid.UUID(request_id)  # raises ValueError on invalid UUID
-        self.assertEqual(str(parsed), request_id.lower().strip(),
-                         "request_id must be a canonical UUID string")
+        self.assertEqual(
+            str(parsed), request_id.lower().strip(), "request_id must be a canonical UUID string"
+        )
 
     def test_error_response_timestamp(self):
         """Test error response includes timestamp"""
@@ -288,7 +288,9 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         """Test forbidden error format"""
         # Create another tenant and user
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {uuid.uuid4().hex[:8]}", slug=f"other-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         other_user = User.objects.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
@@ -309,23 +311,14 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         # Should return 404 (tenant isolation) or 403
         self.assertIn(response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN])
 
-        if response.status_code == status.HTTP_403_FORBIDDEN:
-            if "error" in response.data:
-                error = response.data["error"]
-                self.assertIn("code", error)
-                code = error["code"].upper()
-                self.assertIn("FORBIDDEN", code)
+        if response.status_code == status.HTTP_403_FORBIDDEN and "error" in response.data:
+            error = response.data["error"]
+            self.assertIn("code", error)
+            code = error["code"].upper()
+            self.assertIn("FORBIDDEN", code)
 
     def test_error_http_status_mapping(self):
         """Test HTTP status code mapping to error codes"""
-        test_cases = [
-            (status.HTTP_400_BAD_REQUEST, "VALIDATION_ERROR"),
-            (status.HTTP_401_UNAUTHORIZED, "AUTH_UNAUTHORIZED"),
-            (status.HTTP_403_FORBIDDEN, "AUTH_FORBIDDEN"),
-            (status.HTTP_404_NOT_FOUND, "NOT_FOUND"),
-            (status.HTTP_409_CONFLICT, "CONFLICT_ERROR"),
-            (status.HTTP_429_TOO_MANY_REQUESTS, "RATE_LIMIT_EXCEEDED"),
-        ]
 
         # Test unauthenticated for 401
         self.client.force_authenticate(user=None)
@@ -340,11 +333,10 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         self.client.force_authenticate(user=self.user)
         fake_id = uuid.uuid4()
         response = self.client.get(f"/api/v1/assets/{fake_id}/")
-        if response.status_code == status.HTTP_404_NOT_FOUND:
-            if "error" in response.data:
-                error = response.data["error"]
-                self.assertEqual(error["http_status"], status.HTTP_404_NOT_FOUND)
-                self.assertIn("NOT_FOUND", error["code"].upper())
+        if response.status_code == status.HTTP_404_NOT_FOUND and "error" in response.data:
+            error = response.data["error"]
+            self.assertEqual(error["http_status"], status.HTTP_404_NOT_FOUND)
+            self.assertIn("NOT_FOUND", error["code"].upper())
 
 
 class ErrorRecoveryE2ETest(E2ETestBase):
@@ -395,7 +387,7 @@ class ErrorRecoveryE2ETest(E2ETestBase):
         from hub.apps.jobs.utils import is_transient_failure
 
         # Create a job
-        job = Job.objects.create(
+        Job.objects.create(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
             status=JobStatus.PENDING,
@@ -432,8 +424,9 @@ class ErrorRecoveryE2ETest(E2ETestBase):
         # Each delay must be >= 2x the previous (exponential growth)
         for i in range(1, len(delays)):
             self.assertGreaterEqual(
-                delays[i], delays[i - 1] * 2,
-                f"Delay at retry {i} ({delays[i]}s) should be >= 2x retry {i-1} ({delays[i-1]}s)",
+                delays[i],
+                delays[i - 1] * 2,
+                f"Delay at retry {i} ({delays[i]}s) should be >= 2x retry {i - 1} ({delays[i - 1]}s)",
             )
 
         # Verify formula: base_delay * (2 ^ retry_count) for default (no job_type)
@@ -493,8 +486,11 @@ class ErrorRecoveryE2ETest(E2ETestBase):
         self.assertLessEqual(client.retry_delay, 300, "Retry delay should be reasonable (<=300s)")
 
         # Verify retry_strategy is a valid RetryStrategy enum member
-        self.assertIsInstance(client.retry_strategy, RetryStrategy,
-                              f"retry_strategy should be RetryStrategy enum, got {type(client.retry_strategy)}")
+        self.assertIsInstance(
+            client.retry_strategy,
+            RetryStrategy,
+            f"retry_strategy should be RetryStrategy enum, got {type(client.retry_strategy)}",
+        )
 
         # Verify max delay cap exists and is sensible
         self.assertIsInstance(client.retry_max_delay, (int, float))
@@ -509,10 +505,12 @@ class ErrorRecoveryE2ETest(E2ETestBase):
         # max_retries must be a positive integer
         self.assertIsNotNone(event_bus.max_retries)
         self.assertIsInstance(event_bus.max_retries, int)
-        self.assertGreater(event_bus.max_retries, 0,
-                           "Event bus should have at least 1 retry configured")
-        self.assertLessEqual(event_bus.max_retries, 20,
-                             "Event bus max_retries should be reasonable (<=20)")
+        self.assertGreater(
+            event_bus.max_retries, 0, "Event bus should have at least 1 retry configured"
+        )
+        self.assertLessEqual(
+            event_bus.max_retries, 20, "Event bus max_retries should be reasonable (<=20)"
+        )
 
         # Persistence should be enabled so failed events are not lost
         self.assertTrue(
@@ -568,7 +566,8 @@ class ErrorRecoveryE2ETest(E2ETestBase):
             tenant=self.tenant,
         )
         self.assertGreater(
-            audit_events.count(), 0,
+            audit_events.count(),
+            0,
             "A JOB_FAILED audit event should exist for the failed job",
         )
         event = audit_events.first()
@@ -609,12 +608,16 @@ class ErrorRecoveryE2ETest(E2ETestBase):
 
         # Verify the audit event has all fields needed for a notification
         event = AuditEvent.objects.filter(
-            resource_type="JOB", action="JOB_FAILED", resource_id=job.id,
+            resource_type="JOB",
+            action="JOB_FAILED",
+            resource_id=job.id,
         ).first()
         self.assertIsNotNone(event, "Audit event should exist for failed job")
 
         # Required notification fields
-        self.assertIsNotNone(event.actor_user, "Audit event must have actor for notification recipient")
+        self.assertIsNotNone(
+            event.actor_user, "Audit event must have actor for notification recipient"
+        )
         self.assertEqual(event.actor_user.id, self.user.id)
         self.assertIsNotNone(event.tenant)
         self.assertEqual(event.result, "FAILURE")
@@ -654,8 +657,9 @@ class ErrorLoggingE2ETest(E2ETestBase):
 
         # request_id must be a valid UUID
         parsed = uuid.UUID(request_id)
-        self.assertEqual(str(parsed), request_id.lower().strip(),
-                         "request_id must be a canonical UUID")
+        self.assertEqual(
+            str(parsed), request_id.lower().strip(), "request_id must be a canonical UUID"
+        )
 
         # Must have structured error fields
         self.assertIn("code", error)
@@ -680,14 +684,11 @@ class ErrorLoggingE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
         # 400 error (validation)
-        response = self.client.post(
-            "/api/v1/assets/", {"key": "", "name": ""}, format="json"
-        )
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            if "error" in response.data:
-                error = response.data["error"]
-                # Should have proper error code
-                self.assertIn("code", error)
+        response = self.client.post("/api/v1/assets/", {"key": "", "name": ""}, format="json")
+        if response.status_code == status.HTTP_400_BAD_REQUEST and "error" in response.data:
+            error = response.data["error"]
+            # Should have proper error code
+            self.assertIn("code", error)
 
     def test_error_logging_aggregation(self):
         """Test error logging supports aggregation"""
@@ -720,7 +721,7 @@ class ErrorLoggingE2ETest(E2ETestBase):
             ("123-45-6789", "[SSN_REDACTED]"),
         ]
 
-        for original, expected in test_cases:
+        for original, _expected in test_cases:
             redacted = redact_pii(original)
             # Should be redacted (exact match or contains redaction marker)
             self.assertIn("REDACTED", redacted.upper())

@@ -5,14 +5,15 @@ Tests use real dados.gov.br API endpoints - no mocks or stubs.
 Uses JWT Bearer token authentication.
 """
 
-import unittest
 import os
+import unittest
 
 import httpx
 import pytest
 from django.test import TestCase
 
-from hub.apps.core.services.base import ConnectionError as HubConnectionError, NotFoundError
+from hub.apps.core.services.base import ConnectionError as HubConnectionError
+from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.base import MarketplaceType, SyncDirection
 from hub.apps.integrations.config.marketplace_instances import get_marketplace_instance_config
 from hub.apps.integrations.connectors.dados_gov_br_client import DadosGovBrAPIClient
@@ -69,7 +70,9 @@ class TestDadosGovBrConnectorIntegration(TestCase):
         # connection is not left in a stale transaction for the next class.
         cls.jwt_token = os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY")
         if not cls.jwt_token:
-            raise unittest.SkipTest("CKAN_DADOS_GOV_BR_API_KEY not set - skipping integration tests")
+            raise unittest.SkipTest(
+                "CKAN_DADOS_GOV_BR_API_KEY not set - skipping integration tests"
+            )
 
         cls.instance_config = get_marketplace_instance_config("dados.gov.br")
         if not cls.instance_config:
@@ -137,7 +140,15 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             pytest.fail(f"list_listings failed: {e}")
 
     def test_list_listings_with_filters(self):
-        """Test listing datasets with filters."""
+        """Test listing datasets with query filter.
+
+        The ``q`` filter is passed through to the API as the query
+        parameter.  E2E validation of filter semantics (whether returned
+        datasets actually match the query) cannot be done without
+        inspecting HTTP requests, which this integration test does not
+        do.  This test validates that the filtered call completes without
+        errors and respects the result limit.
+        """
         try:
             listings = self.connector.list_listings(filters={"q": "dados"}, limit=3)
             assert isinstance(listings, list)
@@ -207,9 +218,12 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             with pytest.raises(NotFoundError):
                 self.connector.get_listing("non-existent-dataset-id-12345")
         except (ValueError, ConnectionError, HubConnectionError, httpx.HTTPStatusError) as e:
-            # If authentication fails, skip this test
+            # If authentication fails, skip this test.  handle_auth_failure
+            # raises SkipTest when it matches an auth/network pattern;
+            # if it returns without raising, the error is unrelated and
+            # should be re-raised as a test failure.
             handle_auth_failure(e)
-            raise unittest.SkipTest(f"Cannot test NotFoundError due to authentication failure: {e}")
+            raise  # non-auth error — fail the test
 
     def test_list_resources(self):
         """Test listing resources for a dataset."""
@@ -227,7 +241,12 @@ class TestDadosGovBrConnectorIntegration(TestCase):
                     if resources:
                         listing_with_resources = listing
                         break
-                except Exception:
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to list resources for listing %r: %s",
+                        listing.marketplace_id,
+                        exc,
+                    )
                     continue
 
             if not listing_with_resources:
@@ -287,7 +306,12 @@ class TestDadosGovBrConnectorIntegration(TestCase):
                     if resources:
                         listing_with_resources = listing
                         break
-                except Exception:
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to list resources for listing %r: %s",
+                        listing.marketplace_id,
+                        exc,
+                    )
                     continue
 
             if not listing_with_resources:
@@ -385,14 +409,15 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
         """Test loading Swagger specification."""
         try:
             spec = self.api_client.load_swagger_spec("https://dados.gov.br/v3/api-docs")
-            # Spec may be None if endpoint returns HTML instead of JSON
-            # This is acceptable - we have fallback endpoints
-            if spec:
-                assert isinstance(spec, dict)
-                assert "paths" in spec or "openapi" in spec or "swagger" in spec
-        except Exception as e:
-            # Swagger spec loading may fail - that's OK, we have fallbacks
-            raise unittest.SkipTest(f"Swagger spec loading failed (acceptable): {e}")
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            # Network/API errors are expected when the external service is
+            # unavailable — skip gracefully.
+            raise unittest.SkipTest(f"Swagger spec endpoint unavailable: {e}")
+        # Spec may be None if endpoint returns HTML instead of JSON.
+        # This is acceptable — we have fallback endpoints.
+        if spec is not None:
+            assert isinstance(spec, dict)
+            assert "paths" in spec or "openapi" in spec or "swagger" in spec
 
     def test_get_endpoint_path(self):
         """Test endpoint path resolution."""
@@ -466,10 +491,10 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
             handle_auth_failure(e)
             pytest.fail(f"get_dataset failed: {e}")
 
-    def test_bearer_token_in_headers(self):
-        """Test that Bearer token is included in request headers."""
-        # This is tested implicitly by successful API calls
-        # If token wasn't included, we'd get 401 Unauthorized
+    def test_search_datasets_with_token_auth(self):
+        """Test that search_datasets succeeds with the configured JWT token."""
+        # Token presence is validated implicitly: if the token were missing
+        # or invalid, the API would return 401 Unauthorized.
         try:
             # API requires pagina parameter (page number)
             response = self.api_client.search_datasets(page=1)
@@ -535,8 +560,10 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
                 "demo.ckan.org"
             )
             assert isinstance(connector, CKANConnector)
-        except Exception as e:
-            raise unittest.SkipTest(f"CKANConnector not registered or demo.ckan.org unavailable: {e}")
+        except (ValueError, ConnectionError, httpx.RequestError, httpx.HTTPStatusError) as e:
+            raise unittest.SkipTest(
+                f"CKANConnector not registered or demo.ckan.org unavailable: {e}"
+            )
 
     def test_data_gov_uses_ckan_connector(self):
         """Test that data.gov uses standard CKANConnector."""
@@ -578,7 +605,9 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
     def test_list_listings_with_zero_limit(self):
         """Test list_listings() edge case with zero limit"""
         if self.connector is None:
-            raise unittest.SkipTest("dados.gov.br connector not available (config or API key missing)")
+            raise unittest.SkipTest(
+                "dados.gov.br connector not available (config or API key missing)"
+            )
         try:
             listings = self.connector.list_listings(limit=0)
             self.assertIsInstance(listings, list)
@@ -588,16 +617,14 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
             raise
 
     def test_list_listings_with_none_limit(self):
-        """Test list_listings() error handling with None limit"""
+        """Test list_listings() treats None limit as unbounded (no limit)."""
         if self.connector is None:
-            raise unittest.SkipTest("dados.gov.br connector not available (config or API key missing)")
+            raise unittest.SkipTest(
+                "dados.gov.br connector not available (config or API key missing)"
+            )
         try:
             listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]  # test: None limit for unbounded list exercise
-            # Should handle None limit gracefully (may use default)
             self.assertIsInstance(listings, list)
-        except (ValueError, TypeError):
-            # Expected if validation is strict
-            pass
         except Exception as e:
             handle_auth_failure(e)
             raise
@@ -605,7 +632,9 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
     def test_get_listing_with_empty_id(self):
         """Test get_listing() error handling with empty ID"""
         if self.connector is None:
-            raise unittest.SkipTest("dados.gov.br connector not available (config or API key missing)")
+            raise unittest.SkipTest(
+                "dados.gov.br connector not available (config or API key missing)"
+            )
         try:
             with self.assertRaises((ValueError, NotFoundError)):
                 self.connector.get_listing("")
@@ -616,7 +645,9 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
     def test_get_listing_with_none_id(self):
         """Test get_listing() error handling with None ID"""
         if self.connector is None:
-            raise unittest.SkipTest("dados.gov.br connector not available (config or API key missing)")
+            raise unittest.SkipTest(
+                "dados.gov.br connector not available (config or API key missing)"
+            )
         try:
             with self.assertRaises((ValueError, TypeError, NotFoundError)):
                 self.connector.get_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
@@ -627,7 +658,9 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
     def test_list_resources_with_empty_package_id(self):
         """Test list_resources() error handling with empty package ID"""
         if self.connector is None:
-            raise unittest.SkipTest("dados.gov.br connector not available (config or API key missing)")
+            raise unittest.SkipTest(
+                "dados.gov.br connector not available (config or API key missing)"
+            )
         try:
             with self.assertRaises((ValueError, NotFoundError)):
                 self.connector.list_resources("")
@@ -638,7 +671,9 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
     def test_list_resources_with_none_package_id(self):
         """Test list_resources() error handling with None package ID"""
         if self.connector is None:
-            raise unittest.SkipTest("dados.gov.br connector not available (config or API key missing)")
+            raise unittest.SkipTest(
+                "dados.gov.br connector not available (config or API key missing)"
+            )
         try:
             with self.assertRaises((ValueError, TypeError, NotFoundError)):
                 self.connector.list_resources(None)  # type: ignore[arg-type]  # test: edge-case type exercise
@@ -658,5 +693,6 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
             raise unittest.SkipTest("dados.gov.br instance configuration not found")
         with self.assertRaises((ValueError, TypeError)):
             DadosGovBrConnector(
-                base_url=self.instance_config.base_url, jwt_token=None  # type: ignore[arg-type]  # test: edge-case type exercise
+                base_url=self.instance_config.base_url,
+                jwt_token=None,  # type: ignore[arg-type]  # test: edge-case type exercise
             )

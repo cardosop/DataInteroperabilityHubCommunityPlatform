@@ -7,9 +7,8 @@ Tracks storage, compute, and network costs for scheduled export runs.
 import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Any, Dict, Optional
+from typing import Any
 
-from django.db.models import Avg, Count, Sum
 from django.utils import timezone
 
 from .models import ExportRunCost, ScheduledExport, ScheduledExportRun
@@ -30,9 +29,9 @@ class CostTrackingManager:
     @staticmethod
     def calculate_run_costs(
         run_id: str,
-        storage_cost_per_gb_month: Optional[Decimal] = None,
-        compute_cost_per_hour: Optional[Decimal] = None,
-        network_cost_per_gb: Optional[Decimal] = None,
+        storage_cost_per_gb_month: Decimal | None = None,
+        compute_cost_per_hour: Decimal | None = None,
+        network_cost_per_gb: Decimal | None = None,
     ) -> ExportRunCost:
         """
         Calculate costs for a specific export run.
@@ -137,10 +136,10 @@ class CostTrackingManager:
     @staticmethod
     def get_cost_report(
         tenant_id: str,
-        scheduled_export_id: Optional[str] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-    ) -> Dict[str, Any]:
+        scheduled_export_id: str | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> dict[str, Any]:
         """
         Get cost report for exports.
 

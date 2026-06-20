@@ -11,6 +11,7 @@ Usage:
     python manage.py purge_test_data --older-than=24h --dry-run
     python manage.py purge_test_data --older-than=24h  # production sweep
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,8 +32,8 @@ _TEST_NAME_PATTERNS = (
     "cli-test-",
     "sdk-test-",
     "dim-",
-    "xtn-",       # cross-tenant leak tests
-    "fresh-",     # persona provisioning
+    "xtn-",  # cross-tenant leak tests
+    "fresh-",  # persona provisioning
 )
 
 
@@ -44,7 +45,7 @@ class Command(BaseCommand):
             "--older-than",
             default="24h",
             help="Purge test data older than this duration (default: 24h). "
-                 "Accepts Django duration strings: 24h, 7d, 1h30m.",
+            "Accepts Django duration strings: 24h, 7d, 1h30m.",
         )
         parser.add_argument(
             "--dry-run",
@@ -59,13 +60,12 @@ class Command(BaseCommand):
     def handle(self, **options):
         older_than = self._parse_duration(options["older_than"])
         dry_run = options["dry_run"]
-        tenant_slug = options["tenant"]
+        options["tenant"]
 
         cutoff = timezone.now() - older_than
 
         self.stdout.write(
-            f"Purge test data older than {options['older_than']} "
-            f"(cutoff: {cutoff.isoformat()})"
+            f"Purge test data older than {options['older_than']} (cutoff: {cutoff.isoformat()})"
         )
         if dry_run:
             self.stdout.write(self.style.WARNING("DRY RUN — no deletions"))
@@ -74,6 +74,7 @@ class Command(BaseCommand):
 
         try:
             from hub.apps.assets.models import Asset
+
             purged += self._purge_queryset(
                 Asset.objects.filter(
                     created_at__lt=cutoff,
@@ -87,6 +88,7 @@ class Command(BaseCommand):
 
         try:
             from hub.apps.contracts.models import Contract
+
             purged += self._purge_queryset(
                 Contract.objects.filter(created_at__lt=cutoff),
                 "contracts",
@@ -97,6 +99,7 @@ class Command(BaseCommand):
 
         try:
             from hub.apps.files.models import File
+
             purged += self._purge_queryset(
                 File.objects.filter(
                     created_at__lt=cutoff,
@@ -110,6 +113,7 @@ class Command(BaseCommand):
 
         try:
             from hub.apps.datasets.models import Dataset
+
             purged += self._purge_queryset(
                 Dataset.objects.filter(
                     created_at__lt=cutoff,
@@ -123,6 +127,7 @@ class Command(BaseCommand):
 
         try:
             from django.db.models import Q
+
             from hub.apps.users.models import User
 
             # Match users whose email starts with any test-name pattern
@@ -155,10 +160,7 @@ class Command(BaseCommand):
             self.stderr.write(f"User purge skipped: {e}")
 
         self.stdout.write(
-            self.style.SUCCESS(
-                f"Purged {purged} test resource(s) "
-                f"{'(dry run)' if dry_run else ''}"
-            )
+            self.style.SUCCESS(f"Purged {purged} test resource(s) {'(dry run)' if dry_run else ''}")
         )
 
     def _purge_queryset(self, qs, label, dry_run):
@@ -175,6 +177,7 @@ class Command(BaseCommand):
     def _parse_duration(duration_str: str) -> timedelta:
         """Parse Django-style duration strings like '24h', '7d', '1h30m'."""
         import re
+
         total = timedelta()
         pattern = re.compile(r"(\d+)\s*(d|h|m|s)")
         for match in pattern.finditer(duration_str):

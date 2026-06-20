@@ -10,25 +10,17 @@ X-Tenant-Id header, and that switching to an unauthorized tenant is
 correctly rejected with 403.
 """
 
-import os
 import requests
-from tests._persona_provisioning import provision_persona, PersonaCredentials
-from tests.fixtures.personas import MVP_PERSONA_ROLES
+from tests._persona_provisioning import provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import (
     api_base_url,
-    api_get,
-    api_post,
-    api_put,
-    api_delete,
-    api_login,
-    api_unauthenticated_get,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _auth_headers(token: str, tenant_id: str | None = None) -> dict:
     headers = {"Authorization": f"Bearer {token}"}
@@ -59,15 +51,11 @@ def test_switch_tenant_header_changes_context():
     try:
         creds_b = provision_persona("data_analyst", tenant_slug="tenant-b")  # noqa: PHASE216-STATIC-ID
     except Exception:
-        pytest.skip(
-            "Multi-tenant provisioning not available — cannot test tenant switching"
-        )
+        pytest.skip("Multi-tenant provisioning not available — cannot test tenant switching")
 
     # If both provisions returned the same tenant, we cannot test switching
     if creds_a.tenant_id == creds_b.tenant_id:
-        pytest.skip(
-            "Both provisions returned the same tenant_id — multi-tenant not configured"
-        )
+        pytest.skip("Both provisions returned the same tenant_id — multi-tenant not configured")
 
     # Use creds_a (which should have access to both tenants if the admin
     # added them) — or use platform_admin who typically has cross-tenant access
@@ -141,8 +129,7 @@ def test_no_tenant_header_uses_default():
     )
 
     assert resp.status_code == 200, (
-        f"/auth/me/ without X-Tenant-Id returned {resp.status_code}: "
-        f"{resp.text[:300]}"
+        f"/auth/me/ without X-Tenant-Id returned {resp.status_code}: {resp.text[:300]}"
     )
 
     body = resp.json()
@@ -152,9 +139,7 @@ def test_no_tenant_header_uses_default():
         or body.get("tenant")
         or body.get("tenants")
     )
-    assert tenant_info, (
-        f"/auth/me/ response has no tenant information: {body}"
-    )
+    assert tenant_info, f"/auth/me/ response has no tenant information: {body}"
 
 
 def test_tenant_header_with_empty_value_returns_error():
@@ -176,6 +161,5 @@ def test_tenant_header_with_empty_value_returns_error():
     # An empty tenant header should either be ignored (200 with default)
     # or rejected (400). It should NOT cause a 500.
     assert resp.status_code < 500, (
-        f"Empty X-Tenant-Id caused server error {resp.status_code}: "
-        f"{resp.text[:300]}"
+        f"Empty X-Tenant-Id caused server error {resp.status_code}: {resp.text[:300]}"
     )

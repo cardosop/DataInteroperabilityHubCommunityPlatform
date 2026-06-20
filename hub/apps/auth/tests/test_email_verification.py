@@ -8,6 +8,7 @@ import uuid
 from datetime import timedelta
 
 from django.core.cache import cache
+from django.db import IntegrityError, OperationalError
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework import status
@@ -43,7 +44,9 @@ def _ensure_default_plans():
                         "is_active": True,
                     },
                 )
-        except Exception:
+        except (IntegrityError, OperationalError):
+            # Plan already exists (race between parallel tests) or
+            # transient DB error — both are harmless.
             pass
 
 
@@ -266,9 +269,7 @@ class EmailVerificationFlowTests(TestCase):
         user.is_platform_admin = True
         user.email_verified = False
         user.save(update_fields=["is_platform_admin", "email_verified", "updated_at"])
-        User.objects.filter(pk=user.pk).update(
-            created_at=timezone.now() - timedelta(hours=48)
-        )
+        User.objects.filter(pk=user.pk).update(created_at=timezone.now() - timedelta(hours=48))
         resp = self.client.post(
             "/api/v1/auth/login/",
             {"email": user.email, "password": "SecurePass123"},

@@ -28,10 +28,10 @@ from hub.apps.testing.billing_support import ensure_tenant_has_active_subscripti
 from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
 from hub.apps.users.models import User, UserStatus
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_tenant(name_suffix: str = "") -> Tenant:
     suffix = name_suffix or uuid.uuid4().hex[:8]
@@ -90,6 +90,7 @@ def _make_contract(tenant: Tenant, asset: Asset, created_by: User) -> Contract:
 # ---------------------------------------------------------------------------
 # 14.8  Tenant isolation tests with real JWT auth
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.django_db
 @override_settings(JWT_ALGORITHM="HS256")
@@ -204,9 +205,7 @@ class TestPlatformAdminCrossTenantAccess(TestCase):
 
         # Platform admin (no specific tenant required)
         admin_tenant = _make_tenant("admin")
-        self.platform_admin = _make_user(
-            admin_tenant, "admin@test.local", is_platform_admin=True
-        )
+        self.platform_admin = _make_user(admin_tenant, "admin@test.local", is_platform_admin=True)
         self.admin_client = _bearer_client(self.platform_admin)
 
     def test_platform_admin_can_read_any_tenant_asset(self):
@@ -226,6 +225,7 @@ class TestPlatformAdminCrossTenantAccess(TestCase):
 # enumerate a resource id from a public listing or a leaked URL must not be
 # able to PATCH, PUT, or DELETE a resource owned by another tenant.
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.django_db
 @override_settings(JWT_ALGORITHM="HS256")

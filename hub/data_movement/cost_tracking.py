@@ -3,9 +3,10 @@
 
 Tracks bytes processed, rows loaded, and estimated cost per run.
 """
+
 from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Dict, Optional
 
 
 @dataclass
@@ -24,7 +25,7 @@ class TenantCostTracker:
     """Per-tenant cost tracking across pipeline runs."""
 
     tenant_id: str
-    runs: Dict[str, PipelineRunCost] = field(default_factory=dict)
+    runs: dict[str, PipelineRunCost] = field(default_factory=dict)
     total_bytes_processed: int = 0
     total_cost_usd_cents: int = 0
 
@@ -42,7 +43,7 @@ class TenantCostTracker:
 
 
 # In-memory tracker — replaced by DB model in Phase 4
-_tracker: Dict[str, TenantCostTracker] = {}
+_tracker: dict[str, TenantCostTracker] = {}
 
 
 def get_tenant_tracker(tenant_id: str) -> TenantCostTracker:

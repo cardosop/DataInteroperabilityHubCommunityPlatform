@@ -11,6 +11,7 @@ the user-facing help text rather than only existing in source comments.
 
 Phase 215.3 — see openspec/changes/preprod01/specs/cli-sdk-mvp-awareness/spec.md
 """
+
 from __future__ import annotations
 
 import importlib
@@ -121,11 +122,7 @@ def test_marketplace_integration_subgroup_carries_marker(subgroup_name: str) -> 
 # ---------------------------------------------------------------------------
 
 
-COMMANDS_DIR = (
-    Path(__file__).resolve().parents[1]
-    / "datahub_cli"
-    / "commands"
-)
+COMMANDS_DIR = Path(__file__).resolve().parents[1] / "datahub_cli" / "commands"
 
 
 # ---------------------------------------------------------------------------
@@ -136,8 +133,8 @@ COMMANDS_DIR = (
 # ---------------------------------------------------------------------------
 
 
-import subprocess  # noqa: E402  — placed after the rest of the test surface
-import sys  # noqa: E402
+import subprocess
+import sys
 
 
 def _extract_group_description(help_stdout: str) -> str:
@@ -214,9 +211,7 @@ def _extract_group_description(help_stdout: str) -> str:
         (["marketplace", "mappings"], True),
     ],
 )
-def test_rendered_help_output_contains_marker(
-    argv: list[str], must_contain_marker: bool
-) -> None:
+def test_rendered_help_output_contains_marker(argv: list[str], must_contain_marker: bool) -> None:
     """Run the real CLI with ``--help`` and assert the marker is/isn't in the
     GROUP'S OWN description (not the subcommand list).
 
@@ -240,8 +235,7 @@ def test_rendered_help_output_contains_marker(
     )
     description = _extract_group_description(result.stdout)
     assert description, (
-        f"Could not extract group description from {' '.join(argv)} --help "
-        f"output:\n{result.stdout}"
+        f"Could not extract group description from {' '.join(argv)} --help output:\n{result.stdout}"
     )
     if must_contain_marker:
         assert POST_MVP_MARKER in description, (

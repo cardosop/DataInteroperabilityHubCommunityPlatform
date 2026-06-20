@@ -15,6 +15,7 @@ CI integration:
     The ``lint-openapi-completeness`` job in ci.yml runs this script.
     Exit 0 = all endpoints documented.  Exit 1 = gaps found.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,6 +33,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 
 def _setup_django():
     import django
+
     django.setup()
 
 
@@ -44,7 +46,7 @@ def _generate_openapi_paths() -> set[str]:
     factory = RequestFactory()
     request = factory.get("/api/v1/")
     request.user = AnonymousUser()
-    setattr(request, "auth", None)
+    request.auth = None
 
     generator = SchemaGenerator(urlconf="hub.urls")
     schema = generator.get_schema(request=request, public=True)
@@ -81,8 +83,9 @@ def _walk_resolver(resolver, prefix: str, acc: set[str]):
             route = route.replace("(?P<", "{").replace(">", "}")
             # Remove regex quantifiers and lookaheads
             import re as _re
-            route = _re.sub(r'\[.*?\]', '{param}', route)
-            route = _re.sub(r'\{[^}]*\}[+?]', '{param}', route)
+
+            route = _re.sub(r"\[.*?\]", "{param}", route)
+            route = _re.sub(r"\{[^}]*\}[+?]", "{param}", route)
             # Only report API paths
             if "/api/" in route or "/auth/" in route:
                 # Ensure leading slash
@@ -156,8 +159,13 @@ def main() -> int:
         if classification == "undocumented":
             # Exclude known non-API paths
             exclude_prefixes = (
-                "/admin/", "/__debug__/", "/static/", "/media/",
-                "/api/v1/docs/", "/api/v1/openapi", "/api/v1/redoc/",
+                "/admin/",
+                "/__debug__/",
+                "/static/",
+                "/media/",
+                "/api/v1/docs/",
+                "/api/v1/openapi",
+                "/api/v1/redoc/",
             )
             if any(path.startswith(p) for p in exclude_prefixes):
                 continue
@@ -167,12 +175,17 @@ def main() -> int:
             undocumented.append(path)
 
     if args.json:
-        print(json.dumps({
-            "total_registered": len(registered),
-            "total_documented": len(documented_normalised),
-            "undocumented_count": len(undocumented),
-            "undocumented": undocumented,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "total_registered": len(registered),
+                    "total_documented": len(documented_normalised),
+                    "undocumented_count": len(undocumented),
+                    "undocumented": undocumented,
+                },
+                indent=2,
+            )
+        )
     else:
         print(f"Registered endpoints: {len(registered)}")
         print(f"OpenAPI documented paths: {len(documented_normalised)}")

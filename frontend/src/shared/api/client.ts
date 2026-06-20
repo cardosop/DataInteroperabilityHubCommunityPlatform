@@ -198,11 +198,35 @@ export function isAnonymousEndpoint(url: string): boolean {
   );
 }
 
+/**
+ * Endpoints that must NOT receive an X-Tenant-ID header — they are
+ * tenant-agnostic by definition.  /auth/me/ returns the authenticated
+ * user's own profile (including tenant_id); /auth/me/tenants/ returns
+ * all tenants the user belongs to.  Sending X-Tenant-ID to these
+ * creates a circular dependency: a stale stored tenant_id can cause
+ * the TenantScopingMiddleware to 401 before DRF auth runs, even when
+ * the JWT is valid.
+ */
+export const TENANT_AGNOSTIC_ENDPOINTS: readonly string[] = [
+  '/auth/me/',
+  '/auth/me/tenants/',
+] as const;
+
+export function isTenantAgnosticEndpoint(url: string): boolean {
+  return TENANT_AGNOSTIC_ENDPOINTS.some(
+    (ep) => url === ep || url.endsWith(ep) || url.includes(`${ep}?`),
+  );
+}
+
 export class ApiClient {
   _accessToken: string | null = null;
   _refreshToken: string | null = null;
   _refreshPromise: Promise<string> | null = null;
   _getTenantId: (() => string | null | undefined) | null = null;
+  /** When true, _handleRefreshAndRetry throws instead of redirecting to /login.
+   *  Default true: redirects are suppressed until auth is confirmed stable.
+   *  Set false only after explicit login or successful initialize() → /auth/me/. */
+  _suppressAuthRedirect = true;
   /**
    * When true, auth tokens are delivered via httpOnly cookies — the client
    * must NOT send ``Authorization: Bearer`` and must NOT store tokens in
@@ -272,11 +296,18 @@ export class ApiClient {
       headers['Authorization'] = `Bearer ${this._accessToken}`;
     }
 
-    // Tenant ID
+    // Tenant ID — skip for tenant-agnostic endpoints (/auth/me/,
+    // /auth/me/tenants/) that return the user's own profile/tenants.
+    // Sending X-Tenant-ID to these creates a circular dependency where
+    // a stale stored tenant_id can cause the TenantScopingMiddleware
+    // to 401 before DRF auth runs, even with a valid JWT.
     if (this._getTenantId) {
-      const tenantId = this._getTenantId();
-      if (tenantId) {
-        headers['X-Tenant-ID'] = tenantId;
+      const skipTenantForAgnostic = url !== undefined && isTenantAgnosticEndpoint(url);
+      if (!skipTenantForAgnostic) {
+        const tenantId = this._getTenantId();
+        if (tenantId) {
+          headers['X-Tenant-ID'] = tenantId;
+        }
       }
     }
 
@@ -322,7 +353,15 @@ export class ApiClient {
       // Refresh failed (400/401/network error) — session is unrecoverable.
       // Force re-login instead of leaving user stuck with UNKNOWN_ERROR.
       this.clearTokens();
+      // During auth-store initialization (suppressAuthRedirect=true), throw
+      // instead of redirecting.  The auth store's tryFetchUser handles 401
+      // gracefully via clearAuthState() → LandingPage.  A hard redirect here
+      // would race ahead and destroy the page context before the store can
+      // recover, causing opaque "element not found" E2E failures.
       if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+        if (this._suppressAuthRedirect) {
+          throw new Error('Auth redirect suppressed during initialization');
+        }
         window.location.href = '/login';
       }
       return null;

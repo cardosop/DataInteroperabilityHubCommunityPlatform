@@ -11,15 +11,16 @@ Tests cover:
 - Rule execution logging (structured logging)
 - Rule execution tracing (OpenTelemetry)
 """
-import time
-from unittest.mock import Mock, patch, MagicMock
-from django.test import TestCase, override_settings
+
+from unittest.mock import MagicMock, Mock, patch
+
 from django.core.cache import cache
+from django.test import TestCase, override_settings
 
 from hub.apps.core.business_rules.base import (
-    ValidationResult,
-    RuleExecutionContext,
     BusinessRules,
+    RuleExecutionContext,
+    ValidationResult,
 )
 
 
@@ -38,14 +39,14 @@ class TestValidationResult(TestCase):
         """Test ValidationResult initialization with values."""
         result = ValidationResult(
             is_valid=False,
-            errors=['Error 1', 'Error 2'],
-            warnings=['Warning 1'],
-            details={'key': 'value'}
+            errors=["Error 1", "Error 2"],
+            warnings=["Warning 1"],
+            details={"key": "value"},
         )
         self.assertFalse(result.is_valid)
-        self.assertEqual(result.errors, ['Error 1', 'Error 2'])
-        self.assertEqual(result.warnings, ['Warning 1'])
-        self.assertEqual(result.details, {'key': 'value'})
+        self.assertEqual(result.errors, ["Error 1", "Error 2"])
+        self.assertEqual(result.warnings, ["Warning 1"])
+        self.assertEqual(result.details, {"key": "value"})
 
     def test_validation_result_bool(self):
         """Test ValidationResult boolean conversion."""
@@ -57,35 +58,25 @@ class TestValidationResult(TestCase):
 
     def test_validation_result_str(self):
         """Test ValidationResult string representation."""
-        result = ValidationResult(
-            is_valid=True,
-            errors=[],
-            warnings=['Warning']
-        )
+        result = ValidationResult(is_valid=True, errors=[], warnings=["Warning"])
         str_repr = str(result)
-        self.assertIn('VALID', str_repr)
-        self.assertIn('warnings=1', str_repr)
+        self.assertIn("VALID", str_repr)
+        self.assertIn("warnings=1", str_repr)
 
     def test_validation_result_combine(self):
         """Test combining ValidationResult instances."""
         result1 = ValidationResult(
-            is_valid=True,
-            errors=['Error 1'],
-            warnings=['Warning 1'],
-            details={'key1': 'value1'}
+            is_valid=True, errors=["Error 1"], warnings=["Warning 1"], details={"key1": "value1"}
         )
         result2 = ValidationResult(
-            is_valid=False,
-            errors=['Error 2'],
-            warnings=['Warning 2'],
-            details={'key2': 'value2'}
+            is_valid=False, errors=["Error 2"], warnings=["Warning 2"], details={"key2": "value2"}
         )
 
         combined = result1.combine(result2)
         self.assertFalse(combined.is_valid)  # False AND False = False
-        self.assertEqual(combined.errors, ['Error 1', 'Error 2'])
-        self.assertEqual(combined.warnings, ['Warning 1', 'Warning 2'])
-        self.assertEqual(combined.details, {'key1': 'value1', 'key2': 'value2'})
+        self.assertEqual(combined.errors, ["Error 1", "Error 2"])
+        self.assertEqual(combined.warnings, ["Warning 1", "Warning 2"])
+        self.assertEqual(combined.details, {"key1": "value1", "key2": "value2"})
 
     def test_validation_result_combine_both_valid(self):
         """Test combining two valid results."""
@@ -108,54 +99,39 @@ class TestRuleExecutionContext(TestCase):
 
     def test_context_initialization(self):
         """Test RuleExecutionContext initialization with values."""
-        resource = Mock(id='resource-123')
+        resource = Mock(id="resource-123")
         context = RuleExecutionContext(
-            tenant_id='tenant-123',
-            user_id='user-123',
-            resource=resource,
-            metadata={'key': 'value'}
+            tenant_id="tenant-123", user_id="user-123", resource=resource, metadata={"key": "value"}
         )
-        self.assertEqual(context.tenant_id, 'tenant-123')
-        self.assertEqual(context.user_id, 'user-123')
+        self.assertEqual(context.tenant_id, "tenant-123")
+        self.assertEqual(context.user_id, "user-123")
         self.assertEqual(context.resource, resource)
-        self.assertEqual(context.metadata, {'key': 'value'})
+        self.assertEqual(context.metadata, {"key": "value"})
 
     def test_context_to_dict(self):
         """Test converting RuleExecutionContext to dictionary."""
-        resource = Mock(id='resource-123')
+        resource = Mock(id="resource-123")
         context = RuleExecutionContext(
-            tenant_id='tenant-123',
-            user_id='user-123',
-            resource=resource,
-            metadata={'key': 'value'}
+            tenant_id="tenant-123", user_id="user-123", resource=resource, metadata={"key": "value"}
         )
         context_dict = context.to_dict()
-        self.assertEqual(context_dict['tenant_id'], 'tenant-123')
-        self.assertEqual(context_dict['user_id'], 'user-123')
-        self.assertEqual(context_dict['resource_id'], 'resource-123')
-        self.assertEqual(context_dict['resource_type'], 'Mock')
-        self.assertEqual(context_dict['metadata'], {'key': 'value'})
+        self.assertEqual(context_dict["tenant_id"], "tenant-123")
+        self.assertEqual(context_dict["user_id"], "user-123")
+        self.assertEqual(context_dict["resource_id"], "resource-123")
+        self.assertEqual(context_dict["resource_type"], "Mock")
+        self.assertEqual(context_dict["metadata"], {"key": "value"})
 
     def test_context_to_dict_no_resource(self):
         """Test converting context without resource to dictionary."""
-        context = RuleExecutionContext(
-            tenant_id='tenant-123',
-            user_id='user-123'
-        )
+        context = RuleExecutionContext(tenant_id="tenant-123", user_id="user-123")
         context_dict = context.to_dict()
-        self.assertIsNone(context_dict['resource_id'])
-        self.assertIsNone(context_dict['resource_type'])
+        self.assertIsNone(context_dict["resource_id"])
+        self.assertIsNone(context_dict["resource_type"])
 
     def test_context_get_cache_key_suffix(self):
         """Test generating cache key suffix from context."""
-        context1 = RuleExecutionContext(
-            tenant_id='tenant-123',
-            user_id='user-123'
-        )
-        context2 = RuleExecutionContext(
-            tenant_id='tenant-123',
-            user_id='user-123'
-        )
+        context1 = RuleExecutionContext(tenant_id="tenant-123", user_id="user-123")
+        context2 = RuleExecutionContext(tenant_id="tenant-123", user_id="user-123")
         # Same context should produce same suffix
         suffix1 = context1.get_cache_key_suffix()
         suffix2 = context2.get_cache_key_suffix()
@@ -164,8 +140,8 @@ class TestRuleExecutionContext(TestCase):
 
     def test_context_get_cache_key_suffix_different(self):
         """Test different contexts produce different cache key suffixes."""
-        context1 = RuleExecutionContext(tenant_id='tenant-123')
-        context2 = RuleExecutionContext(tenant_id='tenant-456')
+        context1 = RuleExecutionContext(tenant_id="tenant-123")
+        context2 = RuleExecutionContext(tenant_id="tenant-456")
         suffix1 = context1.get_cache_key_suffix()
         suffix2 = context2.get_cache_key_suffix()
         self.assertNotEqual(suffix1, suffix2)
@@ -181,12 +157,7 @@ class ConcreteBusinessRules(BusinessRules):
         self.validation_args = None
         self.validation_kwargs = None
 
-    def validate(
-        self,
-        context: RuleExecutionContext = None,
-        *args,
-        **kwargs
-    ) -> ValidationResult:
+    def validate(self, context: RuleExecutionContext = None, *args, **kwargs) -> ValidationResult:
         """Test implementation of validate."""
         self.validation_called = True
         self.validation_context = context
@@ -194,15 +165,12 @@ class ConcreteBusinessRules(BusinessRules):
         self.validation_kwargs = kwargs
 
         # Return result based on kwargs
-        is_valid = kwargs.get('should_be_valid', True)
-        errors = kwargs.get('errors', [])
-        warnings = kwargs.get('warnings', [])
+        is_valid = kwargs.get("should_be_valid", True)
+        errors = kwargs.get("errors", [])
+        warnings = kwargs.get("warnings", [])
 
         return ValidationResult(
-            is_valid=is_valid,
-            errors=errors,
-            warnings=warnings,
-            details={'test': True}
+            is_valid=is_valid, errors=errors, warnings=warnings, details={"test": True}
         )
 
 
@@ -215,12 +183,9 @@ class TestBusinessRulesBase(TestCase):
 
     def test_business_rules_initialization(self):
         """Test BusinessRules initialization."""
-        rules = ConcreteBusinessRules(
-            tenant_id='tenant-123',
-            user_id='user-123'
-        )
-        self.assertEqual(rules.tenant_id, 'tenant-123')
-        self.assertEqual(rules.user_id, 'user-123')
+        rules = ConcreteBusinessRules(tenant_id="tenant-123", user_id="user-123")
+        self.assertEqual(rules.tenant_id, "tenant-123")
+        self.assertEqual(rules.user_id, "user-123")
         self.assertTrue(rules.enable_caching)
         self.assertTrue(rules.enable_metrics)
         self.assertTrue(rules.enable_tracing)
@@ -229,10 +194,7 @@ class TestBusinessRulesBase(TestCase):
     def test_business_rules_initialization_disabled_features(self):
         """Test BusinessRules initialization with disabled features."""
         rules = ConcreteBusinessRules(
-            enable_caching=False,
-            enable_metrics=False,
-            enable_tracing=False,
-            enable_logging=False
+            enable_caching=False, enable_metrics=False, enable_tracing=False, enable_logging=False
         )
         self.assertFalse(rules.enable_caching)
         self.assertFalse(rules.enable_metrics)
@@ -242,7 +204,7 @@ class TestBusinessRulesBase(TestCase):
     def test_get_rule_name(self):
         """Test getting rule name."""
         rules = ConcreteBusinessRules()
-        self.assertEqual(rules.get_rule_name(), 'ConcreteBusinessRules')
+        self.assertEqual(rules.get_rule_name(), "ConcreteBusinessRules")
 
     def test_get_cache_ttl(self):
         """Test getting cache TTL."""
@@ -260,19 +222,13 @@ class TestBusinessRulesBase(TestCase):
 
     def test_create_context(self):
         """Test creating rule execution context."""
-        rules = ConcreteBusinessRules(
-            tenant_id='tenant-123',
-            user_id='user-123'
-        )
-        resource = Mock(id='resource-123')
-        context = rules.create_context(
-            resource=resource,
-            metadata={'key': 'value'}
-        )
-        self.assertEqual(context.tenant_id, 'tenant-123')
-        self.assertEqual(context.user_id, 'user-123')
+        rules = ConcreteBusinessRules(tenant_id="tenant-123", user_id="user-123")
+        resource = Mock(id="resource-123")
+        context = rules.create_context(resource=resource, metadata={"key": "value"})
+        self.assertEqual(context.tenant_id, "tenant-123")
+        self.assertEqual(context.user_id, "user-123")
         self.assertEqual(context.resource, resource)
-        self.assertEqual(context.metadata, {'key': 'value'})
+        self.assertEqual(context.metadata, {"key": "value"})
 
     def test_create_context_defaults(self):
         """Test creating context with defaults."""
@@ -293,7 +249,7 @@ class TestBusinessRulesBase(TestCase):
         self.assertTrue(rules.validation_called)
         self.assertEqual(rules.validation_context, context)
         self.assertTrue(result.is_valid)
-        self.assertEqual(result.details, {'test': True})
+        self.assertEqual(result.details, {"test": True})
 
     def test_execute_with_args_kwargs(self):
         """Test rule execution with args and kwargs."""
@@ -302,30 +258,30 @@ class TestBusinessRulesBase(TestCase):
 
         result = rules.execute(
             context,
-            'arg1',
-            'arg2',
+            "arg1",
+            "arg2",
             use_cache=False,  # Explicitly pass use_cache to avoid it being interpreted as an arg
             should_be_valid=False,
-            errors=['Error 1']
+            errors=["Error 1"],
         )
 
         self.assertTrue(rules.validation_called)
-        self.assertEqual(rules.validation_args, ('arg1', 'arg2'))
-        self.assertIn('should_be_valid', rules.validation_kwargs)
+        self.assertEqual(rules.validation_args, ("arg1", "arg2"))
+        self.assertIn("should_be_valid", rules.validation_kwargs)
         self.assertFalse(result.is_valid)
-        self.assertEqual(result.errors, ['Error 1'])
+        self.assertEqual(result.errors, ["Error 1"])
 
     def test_execute_creates_context(self):
         """Test execute creates context if not provided."""
         rules = ConcreteBusinessRules()
-        resource = Mock(id='resource-123')
+        resource = Mock(id="resource-123")
 
-        result = rules.execute(resource=resource, metadata={'key': 'value'})
+        rules.execute(resource=resource, metadata={"key": "value"})
 
         self.assertTrue(rules.validation_called)
         self.assertIsNotNone(rules.validation_context)
         self.assertEqual(rules.validation_context.resource, resource)
-        self.assertEqual(rules.validation_context.metadata, {'key': 'value'})
+        self.assertEqual(rules.validation_context.metadata, {"key": "value"})
 
     def test_execute_caching(self):
         """Test rule execution with caching."""
@@ -350,14 +306,14 @@ class TestBusinessRulesBase(TestCase):
         context = rules.create_context()
 
         # First execution
-        result1 = rules.execute(context, should_be_valid=True)
+        rules.execute(context, should_be_valid=True)
         self.assertTrue(rules.validation_called)
 
         # Reset flag
         rules.validation_called = False
 
         # Second execution - should call validate again
-        result2 = rules.execute(context, should_be_valid=True)
+        rules.execute(context, should_be_valid=True)
         self.assertTrue(rules.validation_called)  # Should call validate
 
     def test_execute_caching_only_valid_results(self):
@@ -366,14 +322,14 @@ class TestBusinessRulesBase(TestCase):
         context = rules.create_context()
 
         # Execute with invalid result
-        result1 = rules.execute(context, should_be_valid=False, errors=['Error'])
+        result1 = rules.execute(context, should_be_valid=False, errors=["Error"])
         self.assertFalse(result1.is_valid)
 
         # Reset flag
         rules.validation_called = False
 
         # Second execution - should call validate again (invalid not cached)
-        result2 = rules.execute(context, should_be_valid=False, errors=['Error'])
+        rules.execute(context, should_be_valid=False, errors=["Error"])
         self.assertTrue(rules.validation_called)  # Should call validate
 
     def test_execute_caching_override(self):
@@ -382,18 +338,19 @@ class TestBusinessRulesBase(TestCase):
         context = rules.create_context()
 
         # First execution with caching
-        result1 = rules.execute(context, should_be_valid=True)
+        rules.execute(context, should_be_valid=True)
         self.assertTrue(rules.validation_called)
 
         # Reset flag
         rules.validation_called = False
 
         # Second execution with caching disabled
-        result2 = rules.execute(context, use_cache=False, should_be_valid=True)
+        rules.execute(context, use_cache=False, should_be_valid=True)
         self.assertTrue(rules.validation_called)  # Should call validate
 
     def test_execute_exception_handling(self):
         """Test exception handling during execution."""
+
         class FailingBusinessRules(BusinessRules):
             def validate(self, context=None, *args, **kwargs):
                 raise ValueError("Test error")
@@ -405,9 +362,9 @@ class TestBusinessRulesBase(TestCase):
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
-        self.assertIn('Test error', result.errors[0])
+        self.assertIn("Test error", result.errors[0])
 
-    @patch('hub.apps.core.business_rules.base.get_meter')
+    @patch("hub.apps.core.business_rules.base.get_meter")
     def test_metrics_initialization(self, mock_get_meter):
         """Test metrics initialization."""
         mock_meter = MagicMock()
@@ -417,9 +374,9 @@ class TestBusinessRulesBase(TestCase):
 
         # Check that metrics were initialized
         self.assertTrue(rules._metrics_initialized)
-        mock_get_meter.assert_called()
+        mock_get_meter.assert_called_once()
 
-    @patch('hub.apps.core.business_rules.base.get_meter')
+    @patch("hub.apps.core.business_rules.base.get_meter")
     def test_metrics_recording(self, mock_get_meter):
         """Test metrics recording during execution."""
         mock_meter = MagicMock()
@@ -433,25 +390,25 @@ class TestBusinessRulesBase(TestCase):
         rules = ConcreteBusinessRules(enable_metrics=True)
         context = rules.create_context()
 
-        result = rules.execute(context, should_be_valid=True, errors=['Error'])
+        rules.execute(context, should_be_valid=True, errors=["Error"])
 
         # Check that metrics were recorded
         self.assertTrue(mock_counter.add.called)
         self.assertTrue(mock_histogram.record.called)
 
-    @patch('hub.apps.core.business_rules.base.logger')
+    @patch("hub.apps.core.business_rules.base.logger")
     def test_logging(self, mock_logger):
         """Test structured logging during execution."""
         rules = ConcreteBusinessRules(enable_logging=True)
         context = rules.create_context()
 
-        result = rules.execute(context, should_be_valid=True, errors=['Error'])
+        rules.execute(context, should_be_valid=True, errors=["Error"])
 
         # Check that logging was called (info or warning depending on result)
         # Since result has errors, it should log as warning
         self.assertTrue(mock_logger.warning.called or mock_logger.info.called)
 
-    @patch('hub.apps.core.business_rules.base.get_tracer')
+    @patch("hub.apps.core.business_rules.base.get_tracer")
     def test_tracing(self, mock_get_tracer):
         """Test OpenTelemetry tracing during execution."""
         from contextlib import contextmanager
@@ -470,7 +427,7 @@ class TestBusinessRulesBase(TestCase):
         rules = ConcreteBusinessRules(enable_tracing=True)
         context = rules.create_context()
 
-        result = rules.execute(context, should_be_valid=True)
+        rules.execute(context, should_be_valid=True)
 
         # Check that tracing was called
         self.assertTrue(mock_tracer.start_as_current_span.called)
@@ -487,8 +444,9 @@ class TestRuleComposition(TestCase):
 
     def test_compose_single_rule(self):
         """Test composing a single rule."""
+
         def rule1(context):
-            return ValidationResult(is_valid=True, warnings=['Warning 1'])
+            return ValidationResult(is_valid=True, warnings=["Warning 1"])
 
         context = self.rules.create_context()
         result = self.rules.compose(rule1, context=context)
@@ -498,11 +456,12 @@ class TestRuleComposition(TestCase):
 
     def test_compose_multiple_rules(self):
         """Test composing multiple rules."""
+
         def rule1(context):
-            return ValidationResult(is_valid=True, warnings=['Warning 1'])
+            return ValidationResult(is_valid=True, warnings=["Warning 1"])
 
         def rule2(context):
-            return ValidationResult(is_valid=True, warnings=['Warning 2'])
+            return ValidationResult(is_valid=True, warnings=["Warning 2"])
 
         context = self.rules.create_context()
         result = self.rules.compose(rule1, rule2, context=context)
@@ -512,11 +471,12 @@ class TestRuleComposition(TestCase):
 
     def test_compose_with_errors(self):
         """Test composing rules with errors."""
+
         def rule1(context):
             return ValidationResult(is_valid=True)
 
         def rule2(context):
-            return ValidationResult(is_valid=False, errors=['Error 1'])
+            return ValidationResult(is_valid=False, errors=["Error 1"])
 
         def rule3(context):
             return ValidationResult(is_valid=True)
@@ -530,11 +490,12 @@ class TestRuleComposition(TestCase):
 
     def test_compose_no_short_circuit(self):
         """Test composing rules without short-circuit."""
+
         def rule1(context):
-            return ValidationResult(is_valid=False, errors=['Error 1'])
+            return ValidationResult(is_valid=False, errors=["Error 1"])
 
         def rule2(context):
-            return ValidationResult(is_valid=False, errors=['Error 2'])
+            return ValidationResult(is_valid=False, errors=["Error 2"])
 
         context = self.rules.create_context()
         result = self.rules.compose(rule1, rule2, context=context, short_circuit=False)
@@ -544,6 +505,7 @@ class TestRuleComposition(TestCase):
 
     def test_compose_with_exception(self):
         """Test composing rules when one raises exception."""
+
         def rule1(context):
             return ValidationResult(is_valid=True)
 
@@ -562,10 +524,11 @@ class TestRuleComposition(TestCase):
 
     def test_create_rule_function(self):
         """Test creating a rule function."""
+
         def my_rule(context):
             return ValidationResult(is_valid=True)
 
-        rule_func = BusinessRules.create_rule_function(my_rule, rule_name='test_rule')
+        rule_func = BusinessRules.create_rule_function(my_rule, rule_name="test_rule")
         context = self.rules.create_context()
 
         result = rule_func(context)
@@ -573,6 +536,7 @@ class TestRuleComposition(TestCase):
 
     def test_create_rule_function_with_exception(self):
         """Test creating a rule function that raises exception."""
+
         def failing_rule(context):
             raise ValueError("Test error")
 
@@ -597,15 +561,15 @@ class TestRuleCaching(TestCase):
         context1 = rules.create_context()
         context2 = rules.create_context()
 
-        key1 = rules._get_cache_key('test_rule', context1)
-        key2 = rules._get_cache_key('test_rule', context2)
+        key1 = rules._get_cache_key("test_rule", context1)
+        key2 = rules._get_cache_key("test_rule", context2)
 
         # Same context should produce same key
         self.assertEqual(key1, key2)
 
         # Different contexts should produce different keys
-        context3 = rules.create_context(metadata={'different': 'value'})
-        key3 = rules._get_cache_key('test_rule', context3)
+        context3 = rules.create_context(metadata={"different": "value"})
+        key3 = rules._get_cache_key("test_rule", context3)
         self.assertNotEqual(key1, key3)
 
     def test_cache_key_with_args_kwargs(self):
@@ -613,9 +577,9 @@ class TestRuleCaching(TestCase):
         rules = ConcreteBusinessRules()
         context = rules.create_context()
 
-        key1 = rules._get_cache_key('test_rule', context, 'arg1', key='value')
-        key2 = rules._get_cache_key('test_rule', context, 'arg1', key='value')
-        key3 = rules._get_cache_key('test_rule', context, 'arg2', key='value')
+        key1 = rules._get_cache_key("test_rule", context, "arg1", key="value")
+        key2 = rules._get_cache_key("test_rule", context, "arg1", key="value")
+        key3 = rules._get_cache_key("test_rule", context, "arg2", key="value")
 
         # Same args/kwargs should produce same key
         self.assertEqual(key1, key2)
@@ -629,14 +593,14 @@ class TestRuleCaching(TestCase):
         context = rules.create_context()
 
         # Execute and cache result
-        result1 = rules.execute(context, should_be_valid=True)
+        rules.execute(context, should_be_valid=True)
         self.assertTrue(rules.validation_called)
 
         # Reset flag
         rules.validation_called = False
 
         # Immediately execute again - should use cache
-        result2 = rules.execute(context, should_be_valid=True)
+        rules.execute(context, should_be_valid=True)
         self.assertFalse(rules.validation_called)
 
         # Wait for cache to expire (if TTL is very short)
@@ -649,8 +613,9 @@ class TestRuleCaching(TestCase):
         context = rules.create_context()
 
         # Execute with error in cache operation
-        with patch('hub.apps.core.business_rules.base.cache.get', side_effect=Exception("Cache error")):
-            result = rules.execute(context, should_be_valid=True)
+        with patch(
+            "hub.apps.core.business_rules.base.cache.get", side_effect=Exception("Cache error")
+        ):
+            rules.execute(context, should_be_valid=True)
             # Should still execute validation despite cache error
             self.assertTrue(rules.validation_called)
-

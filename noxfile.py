@@ -10,6 +10,7 @@ current platform. Invoke with:
 
 Requires nox: pip install nox
 """
+
 import nox
 
 # Python versions to test SDK against
@@ -26,11 +27,15 @@ def sdk_compat(session):
     session.install("-e", "sdk/python/")
     session.install("pytest", "pytest-timeout", "requests", "filelock")
     session.run(
-        "python", "-m", "pytest",
+        "python",
+        "-m",
+        "pytest",
         "sdk/python/tests/",
-        "-m", "mvp",
+        "-m",
+        "mvp",
         "--strict-markers",
-        "-v", "--tb=short",
+        "-v",
+        "--tb=short",
         "--timeout=60",
         "-x",  # stop on first failure for compat matrix (fast feedback)
         env={"MVP_MODE": "true"},
@@ -43,11 +48,15 @@ def cli_compat(session):
     session.install("-e", "cli/")
     session.install("pytest", "pytest-timeout", "requests", "filelock")
     session.run(
-        "python", "-m", "pytest",
+        "python",
+        "-m",
+        "pytest",
         "cli/tests/",
-        "-m", "mvp",
+        "-m",
+        "mvp",
         "--strict-markers",
-        "-v", "--tb=short",
+        "-v",
+        "--tb=short",
         "--timeout=60",
         "-x",
         env={"MVP_MODE": "true"},

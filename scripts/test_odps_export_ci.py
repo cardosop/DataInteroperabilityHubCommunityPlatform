@@ -15,6 +15,7 @@ Exit codes:
     0: All tests passed
     1: One or more tests failed
 """
+
 import json
 import sys
 from pathlib import Path
@@ -25,17 +26,18 @@ sys.path.insert(0, str(project_root))
 
 try:
     import yaml
+
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
     yaml = None
 
+from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.contracts.odps_generator import (
-    generate_odps_from_hubcontract,
     format_odps_as_json,
     format_odps_as_yaml,
+    generate_odps_from_hubcontract,
 )
-from hub.apps.contracts.odps_errors import ODPSExportError
 
 
 def test_odps_generation_from_hubcontract():
@@ -99,7 +101,9 @@ def test_odps_generation_from_hubcontract():
         # Verify product details
         assert "details" in odps_doc["product"], "ODPS product should have details"
         assert "en" in odps_doc["product"]["details"], "ODPS product should have English details"
-        assert odps_doc["product"]["details"]["en"]["name"] == "CI Test Product", "Product name should match"
+        assert odps_doc["product"]["details"]["en"]["name"] == "CI Test Product", (
+            "Product name should match"
+        )
 
         print("   ✅ ODPS generation from HubContract works correctly")
         return True, odps_doc
@@ -126,7 +130,10 @@ def test_json_export(odps_doc):
         # Verify structure is preserved
         assert parsed["schema"] == odps_doc["schema"], "Schema should match"
         assert parsed["version"] == odps_doc["version"], "Version should match"
-        assert parsed["product"]["details"]["en"]["name"] == odps_doc["product"]["details"]["en"]["name"], "Product name should match"
+        assert (
+            parsed["product"]["details"]["en"]["name"]
+            == odps_doc["product"]["details"]["en"]["name"]
+        ), "Product name should match"
 
         # Verify JSON formatting
         assert json_output.strip().startswith("{"), "JSON should start with {"
@@ -161,10 +168,15 @@ def test_yaml_export(odps_doc):
         # Verify structure is preserved
         assert parsed["schema"] == odps_doc["schema"], "Schema should match"
         assert parsed["version"] == odps_doc["version"], "Version should match"
-        assert parsed["product"]["details"]["en"]["name"] == odps_doc["product"]["details"]["en"]["name"], "Product name should match"
+        assert (
+            parsed["product"]["details"]["en"]["name"]
+            == odps_doc["product"]["details"]["en"]["name"]
+        ), "Product name should match"
 
         # Verify YAML formatting (should be block style, not flow style)
-        assert "{" not in yaml_output[:200] or yaml_output[:200].count("{") < 3, "YAML should use block style"
+        assert "{" not in yaml_output[:200] or yaml_output[:200].count("{") < 3, (
+            "YAML should use block style"
+        )
 
         print("   ✅ YAML export works correctly")
         return True, yaml_output
@@ -202,7 +214,9 @@ def test_round_trip_consistency(odps_doc):
 
         # Verify core fields match
         assert json_parsed["schema"] == yaml_parsed["schema"], "Schema should match between formats"
-        assert json_parsed["version"] == yaml_parsed["version"], "Version should match between formats"
+        assert json_parsed["version"] == yaml_parsed["version"], (
+            "Version should match between formats"
+        )
 
         # Verify product details match
         if "product" in json_parsed and "product" in yaml_parsed:
@@ -214,7 +228,9 @@ def test_round_trip_consistency(odps_doc):
                 yaml_details = yaml_product["details"]
 
                 if "en" in json_details and "en" in yaml_details:
-                    assert json_details["en"].get("name") == yaml_details["en"].get("name"), "Product name should match between formats"
+                    assert json_details["en"].get("name") == yaml_details["en"].get("name"), (
+                        "Product name should match between formats"
+                    )
 
         print("   ✅ Round-trip consistency verified")
         return True
@@ -261,7 +277,7 @@ def test_error_handling():
         errors.append(f"ODPS generation raised unexpected error: {e}")
 
     if errors:
-        print(f"   ❌ Error handling test failed:")
+        print("   ❌ Error handling test failed:")
         for error in errors:
             print(f"      - {error}")
         return False
@@ -285,12 +301,12 @@ def main():
         all_passed = False
 
     # Test 2: JSON export
-    passed, json_output = test_json_export(odps_doc)
+    passed, _json_output = test_json_export(odps_doc)
     if not passed:
         all_passed = False
 
     # Test 3: YAML export
-    passed, yaml_output = test_yaml_export(odps_doc)
+    passed, _yaml_output = test_yaml_export(odps_doc)
     if not passed and YAML_AVAILABLE:
         all_passed = False
 
@@ -316,4 +332,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -4,6 +4,7 @@ Phase 273.4.5 — metrics emission tests for search hot path.
 Patches the search.metrics module-boundary wrappers and asserts
 they are called with correct labels. Does NOT mock internal code.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -22,15 +23,19 @@ pytestmark = pytest.mark.django_db(transaction=True)
 def _mk_tenant():
     uid = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
-        name=f"ME-{uid}", slug=f"me-{uid}",
-        status="ACTIVE", kyc_status="UNVERIFIED",
+        name=f"ME-{uid}",
+        slug=f"me-{uid}",
+        status="ACTIVE",
+        kyc_status="UNVERIFIED",
     )
 
 
 def _mk_user(tenant):
     return User.objects.create_user(
         email=f"me-{uuid.uuid4().hex[:8]}@meshant.test",
-        password="testpass", tenant=tenant, status=UserStatus.ACTIVE,
+        password="testpass",
+        tenant=tenant,
+        status=UserStatus.ACTIVE,
     )
 
 

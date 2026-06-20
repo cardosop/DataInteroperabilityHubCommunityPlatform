@@ -8,7 +8,7 @@ Covers:
 
 Uses real Django test client + DRF APIClient; no mocks/stubs.
 """
-import json
+
 import uuid
 
 import pytest
@@ -104,9 +104,7 @@ class CircuitBreakerResponseSanitizationTest(TestCase):
     def test_service_name_param_ignored(self):
         """?service_name= must have no effect (removed in 221.3.2)."""
         response_all = self.client.get("/health/circuit-breakers/")
-        response_named = self.client.get(
-            "/health/circuit-breakers/?service_name=anything"
-        )
+        response_named = self.client.get("/health/circuit-breakers/?service_name=anything")
         # Both should return the same top-level keys
         if response_all.status_code == 200 and response_named.status_code == 200:
             data_all = response_all.data

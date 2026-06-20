@@ -67,7 +67,7 @@ hub/apps/contracts/caching.py:18).
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
@@ -98,7 +98,7 @@ DEFAULT_TENANT_SLUG = "default"
 DEFAULT_OWNER_EMAIL = "e2e_admin@example.com"
 
 
-def _build_source_hub_contract_json(namespace: str) -> Dict[str, Any]:
+def _build_source_hub_contract_json(namespace: str) -> dict[str, Any]:
     """Construct a fully-formed hub_contract_json for the upstream contract.
 
     The shape satisfies `validate_hub_contract_dict` (typed_models.py:515) —
@@ -142,7 +142,7 @@ def _build_source_hub_contract_json(namespace: str) -> Dict[str, Any]:
     }
 
 
-def _build_derived_hub_contract_json(namespace: str) -> Dict[str, Any]:
+def _build_derived_hub_contract_json(namespace: str) -> dict[str, Any]:
     """Derived contract — declares lineage dependency on the Source.
 
     The `lineage.contracts[]` shape (NOT bare `lineage[]`) is the canonical
@@ -192,7 +192,7 @@ def _build_derived_hub_contract_json(namespace: str) -> Dict[str, Any]:
     }
 
 
-def _find_existing(tenant: Tenant, contract_name: str) -> Optional[Contract]:
+def _find_existing(tenant: Tenant, contract_name: str) -> Contract | None:
     """Idempotency lookup: tenant + hub_contract_json.info.name.
 
     Contract has no `name` column; the canonical contract identifier in this
@@ -354,9 +354,7 @@ class Command(BaseCommand):
                 hub_contract_json=source_payload,
             )
             if existing_source is None:
-                self.stdout.write(
-                    self.style.SUCCESS(f"Created source contract id={source.id}")
-                )
+                self.stdout.write(self.style.SUCCESS(f"Created source contract id={source.id}"))
 
             derived = existing_derived or self._create_contract(
                 tenant=tenant,
@@ -364,9 +362,7 @@ class Command(BaseCommand):
                 hub_contract_json=derived_payload,
             )
             if existing_derived is None:
-                self.stdout.write(
-                    self.style.SUCCESS(f"Created derived contract id={derived.id}")
-                )
+                self.stdout.write(self.style.SUCCESS(f"Created derived contract id={derived.id}"))
 
         # Cache invalidation runs OUTSIDE the transaction so a Redis hiccup
         # doesn't roll back the DB writes — the worst case is a 10-minute
@@ -396,7 +392,7 @@ class Command(BaseCommand):
         *,
         tenant: Tenant,
         owner,
-        hub_contract_json: Dict[str, Any],
+        hub_contract_json: dict[str, Any],
     ) -> Contract:
         """Direct ORM create.
 
@@ -431,9 +427,7 @@ class Command(BaseCommand):
 
         if not targets:
             self.stdout.write(
-                self.style.NOTICE(
-                    f"Cleanup: no seeded contracts found in tenant={tenant.slug!r}."
-                )
+                self.style.NOTICE(f"Cleanup: no seeded contracts found in tenant={tenant.slug!r}.")
             )
             return
 

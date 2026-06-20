@@ -16,14 +16,12 @@ import pytest
 
 pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
-from django.core.management import call_command
 from django.db import connection, transaction
-from django.db.models import Count, F, Q, Sum
+from django.db.models import Count, Q
 from django.test import TestCase
 
 from hub.apps.assets.models import Asset
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
-from hub.apps.jobs.models import Job, JobStatus, JobType
+from hub.apps.contracts.models import Contract, OriginalFormat, OriginalSpecType
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from tests.factories import TenantFactory
@@ -96,7 +94,6 @@ class DatabaseTransactionsTest(TestCase):
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -167,7 +164,6 @@ class DatabaseMigrationsTest(TestCase):
 
     def test_migrations_applied(self):
         """Test that all migrations are applied"""
-        from django.db import connection
         from django.db.migrations.executor import MigrationExecutor
 
         executor = MigrationExecutor(connection)
@@ -182,7 +178,6 @@ class DatabaseMigrationsTest(TestCase):
         """Test migration rollback (dry run)"""
         # This test verifies migrations can be rolled back
         # In practice, we don't rollback in tests, but we verify the capability
-        from django.db import connection
         from django.db.migrations.executor import MigrationExecutor
 
         executor = MigrationExecutor(connection)
@@ -235,7 +230,7 @@ class JSONFieldOperationsTest(TestCase):
             tenant=self.tenant, key="json-query-asset", name="JSON Query Asset", status="DRAFT"
         )
 
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             version=1,
@@ -283,7 +278,7 @@ class JSONFieldOperationsTest(TestCase):
             tenant=self.tenant, key="json-nested-asset", name="JSON Nested Asset", status="DRAFT"
         )
 
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             version=1,
@@ -309,7 +304,6 @@ class DatabaseIndexesTest(TestCase):
 
     def test_indexes_exist(self):
         """Test that indexes exist on key fields"""
-        from django.db import connection
 
         with connection.cursor() as cursor:
             # Check indexes on tenants table
@@ -327,11 +321,17 @@ class DatabaseIndexesTest(TestCase):
     def test_unique_constraints(self):
         """Test unique constraints work"""
         # Create tenant with unique slug
-        tenant1 = Tenant.objects.create(name=f"Unique Test Tenant {uuid.uuid4().hex[:8]}", slug=f"unique-test-tenant-{uuid.uuid4().hex[:8]}")
+        Tenant.objects.create(
+            name=f"Unique Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"unique-test-tenant-{uuid.uuid4().hex[:8]}",
+        )
 
         # Try to create another with same slug (should fail)
         with self.assertRaises(Exception):  # IntegrityError or ValidationError
-            Tenant.objects.create(name=f"Duplicate Tenant {uuid.uuid4().hex[:8]}", slug=f"unique-test-tenant-{uuid.uuid4().hex[:8]}")  # Same slug
+            Tenant.objects.create(
+                name=f"Duplicate Tenant {uuid.uuid4().hex[:8]}",
+                slug=f"unique-test-tenant-{uuid.uuid4().hex[:8]}",
+            )  # Same slug
 
 
 class DatabaseConnectionPoolingTest(TestCase):

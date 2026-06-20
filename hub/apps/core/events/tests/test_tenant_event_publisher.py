@@ -4,13 +4,16 @@ Integration tests for TenantEventPublisher.
 Tests event publishing using real EventPublisher and EventBus (no mocks/stubs).
 All tests use real services and models following engineering best practices.
 """
+
 import uuid
+
 from django.test import TestCase, override_settings
 from django.utils import timezone
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus, TenantConfig
-from hub.apps.users.models import User, UserStatus
-from hub.apps.core.events.service_publishers import TenantEventPublisher
+
 from hub.apps.core.events.models import Event
+from hub.apps.core.events.service_publishers import TenantEventPublisher
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.users.models import User, UserStatus
 
 uid = uuid.uuid4().hex[:8]
 
@@ -29,13 +32,13 @@ class TenantEventPublisherIntegrationTest(TestCase):
             slug=f"test-tenant-{uid}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
-            region="us-east-1"
+            region="us-east-1",
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create a test service with TenantEventPublisher
@@ -45,10 +48,7 @@ class TenantEventPublisherIntegrationTest(TestCase):
                 self.user_id = user_id
                 super().__init__(tenant_id=tenant_id, user_id=user_id)
 
-        self.service = TestTenantService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.service = TestTenantService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_publish_tenant_created_event(self):
         """Test publishing tenant.created event with real EventPublisher."""
@@ -58,7 +58,7 @@ class TenantEventPublisherIntegrationTest(TestCase):
             slug=self.tenant.slug,
             status=self.tenant.status,
             kyc_status=self.tenant.kyc_status,
-            region=self.tenant.region
+            region=self.tenant.region,
         )
 
         # Verify event was published
@@ -82,9 +82,7 @@ class TenantEventPublisherIntegrationTest(TestCase):
 
     def test_publish_tenant_created_with_minimal_data(self):
         """Test publishing tenant.created event with only required fields."""
-        event_id = self.service.publish_tenant_created(
-            tenant_id=str(self.tenant.id)
-        )
+        event_id = self.service.publish_tenant_created(tenant_id=str(self.tenant.id))
 
         # Verify event was published
         self.assertIsNotNone(event_id)
@@ -104,13 +102,13 @@ class TenantEventPublisherIntegrationTest(TestCase):
         """Test publishing tenant.updated event with real EventPublisher."""
         changes = {
             "status": {"old": TenantStatus.ACTIVE, "new": TenantStatus.SUSPENDED},
-            "kyc_status": {"old": KYCStatus.UNVERIFIED, "new": KYCStatus.VERIFIED}
+            "kyc_status": {"old": KYCStatus.UNVERIFIED, "new": KYCStatus.VERIFIED},
         }
         event_id = self.service.publish_tenant_updated(
             tenant_id=str(self.tenant.id),
             changes=changes,
             previous_status=TenantStatus.ACTIVE,
-            new_status=TenantStatus.SUSPENDED
+            new_status=TenantStatus.SUSPENDED,
         )
 
         # Verify event was published
@@ -129,8 +127,7 @@ class TenantEventPublisherIntegrationTest(TestCase):
         """Test publishing tenant.updated event with only required fields."""
         changes = {"name": {"old": "Old Name", "new": "New Name"}}
         event_id = self.service.publish_tenant_updated(
-            tenant_id=str(self.tenant.id),
-            changes=changes
+            tenant_id=str(self.tenant.id), changes=changes
         )
 
         # Verify event was published
@@ -148,10 +145,7 @@ class TenantEventPublisherIntegrationTest(TestCase):
     def test_publish_tenant_deleted_event(self):
         """Test publishing tenant.deleted event with real EventPublisher."""
         reason = "Tenant requested deletion"
-        event_id = self.service.publish_tenant_deleted(
-            tenant_id=str(self.tenant.id),
-            reason=reason
-        )
+        event_id = self.service.publish_tenant_deleted(tenant_id=str(self.tenant.id), reason=reason)
 
         # Verify event was published
         self.assertIsNotNone(event_id)
@@ -165,14 +159,13 @@ class TenantEventPublisherIntegrationTest(TestCase):
         self.assertIn("deleted_at", event.data)
         # Verify deleted_at is a valid ISO format datetime string
         from datetime import datetime
-        deleted_at = datetime.fromisoformat(event.data["deleted_at"].replace('Z', '+00:00'))
+
+        deleted_at = datetime.fromisoformat(event.data["deleted_at"].replace("Z", "+00:00"))
         self.assertIsNotNone(deleted_at)
 
     def test_publish_tenant_deleted_without_reason(self):
         """Test publishing tenant.deleted event without reason."""
-        event_id = self.service.publish_tenant_deleted(
-            tenant_id=str(self.tenant.id)
-        )
+        event_id = self.service.publish_tenant_deleted(tenant_id=str(self.tenant.id))
 
         # Verify event was published
         self.assertIsNotNone(event_id)
@@ -192,7 +185,7 @@ class TenantEventPublisherIntegrationTest(TestCase):
             quota_type="file_size",
             quota_field="max_file_size_bytes",
             previous_value=1048576,  # 1MB
-            new_value=10485760  # 10MB
+            new_value=10485760,  # 10MB
         )
 
         # Verify event was published
@@ -215,7 +208,7 @@ class TenantEventPublisherIntegrationTest(TestCase):
             quota_type="compliance",
             quota_field="allowed_compliance_regimes",
             previous_value=["GDPR"],
-            new_value=["GDPR", "LGPD", "CCPA"]
+            new_value=["GDPR", "LGPD", "CCPA"],
         )
 
         # Verify event was published
@@ -238,7 +231,7 @@ class TenantEventPublisherIntegrationTest(TestCase):
             quota_type="job_concurrency",
             quota_field="max_job_concurrency",
             previous_value=None,
-            new_value=10
+            new_value=10,
         )
 
         # Verify event was published
@@ -259,7 +252,7 @@ class TenantEventPublisherIntegrationTest(TestCase):
         event_id = self.service.publish_tenant_quota_changed(
             tenant_id=str(self.tenant.id),
             quota_type="data_retention",
-            quota_field="data_retention_days"
+            quota_field="data_retention_days",
         )
 
         # Verify event was published
@@ -277,9 +270,7 @@ class TenantEventPublisherIntegrationTest(TestCase):
 
     def test_event_source_includes_tenant_and_user(self):
         """Test that events include tenant_id and user_id in source."""
-        event_id = self.service.publish_tenant_created(
-            tenant_id=str(self.tenant.id)
-        )
+        event_id = self.service.publish_tenant_created(tenant_id=str(self.tenant.id))
 
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(str(event.tenant_id), str(self.tenant.id))
@@ -291,9 +282,7 @@ class TenantEventPublisherIntegrationTest(TestCase):
     def test_event_timestamp_is_set(self):
         """Test that events have timestamp set."""
         before_publish = timezone.now()
-        event_id = self.service.publish_tenant_created(
-            tenant_id=str(self.tenant.id)
-        )
+        event_id = self.service.publish_tenant_created(tenant_id=str(self.tenant.id))
         after_publish = timezone.now()
 
         event = Event.objects.get(event_id=event_id)
@@ -305,35 +294,28 @@ class TenantEventPublisherIntegrationTest(TestCase):
     def test_event_tags_are_set(self):
         """Test that events have appropriate tags set."""
         # Test tenant.created tags
-        event_id = self.service.publish_tenant_created(
-            tenant_id=str(self.tenant.id)
-        )
+        event_id = self.service.publish_tenant_created(tenant_id=str(self.tenant.id))
         event = Event.objects.get(event_id=event_id)
         self.assertIn("tenant", event.metadata.get("tags", []))
         self.assertIn("creation", event.metadata.get("tags", []))
 
         # Test tenant.updated tags
         event_id = self.service.publish_tenant_updated(
-            tenant_id=str(self.tenant.id),
-            changes={"status": {"old": "ACTIVE", "new": "SUSPENDED"}}
+            tenant_id=str(self.tenant.id), changes={"status": {"old": "ACTIVE", "new": "SUSPENDED"}}
         )
         event = Event.objects.get(event_id=event_id)
         self.assertIn("tenant", event.metadata.get("tags", []))
         self.assertIn("update", event.metadata.get("tags", []))
 
         # Test tenant.deleted tags
-        event_id = self.service.publish_tenant_deleted(
-            tenant_id=str(self.tenant.id)
-        )
+        event_id = self.service.publish_tenant_deleted(tenant_id=str(self.tenant.id))
         event = Event.objects.get(event_id=event_id)
         self.assertIn("tenant", event.metadata.get("tags", []))
         self.assertIn("deletion", event.metadata.get("tags", []))
 
         # Test tenant.quota.changed tags
         event_id = self.service.publish_tenant_quota_changed(
-            tenant_id=str(self.tenant.id),
-            quota_type="file_size",
-            quota_field="max_file_size_bytes"
+            tenant_id=str(self.tenant.id), quota_type="file_size", quota_field="max_file_size_bytes"
         )
         event = Event.objects.get(event_id=event_id)
         self.assertIn("tenant", event.metadata.get("tags", []))
@@ -341,6 +323,7 @@ class TenantEventPublisherIntegrationTest(TestCase):
 
     def test_publisher_initialization_without_tenant_or_user(self):
         """Test that publisher can be initialized without tenant_id or user_id."""
+
         class TestTenantService(TenantEventPublisher):
             def __init__(self):
                 super().__init__()
@@ -356,9 +339,7 @@ class TenantEventPublisherIntegrationTest(TestCase):
         service = self.service
 
         # Publish an event without explicitly passing tenant_id/user_id
-        event_id = service.publish_tenant_created(
-            tenant_id=str(self.tenant.id)
-        )
+        event_id = service.publish_tenant_created(tenant_id=str(self.tenant.id))
 
         # Verify event has correct tenant_id and user_id
         event = Event.objects.get(event_id=event_id)
@@ -370,15 +351,13 @@ class TenantEventPublisherIntegrationTest(TestCase):
         # Create a different tenant and user
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}",
-            slug=f"other-tenant-{_uid}",
-            status=TenantStatus.ACTIVE
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status=TenantStatus.ACTIVE
         )
         other_user = User.objects.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Publish event with overridden tenant_id and user_id via kwargs
@@ -386,7 +365,7 @@ class TenantEventPublisherIntegrationTest(TestCase):
         # However, the data field will contain the tenant_id parameter value
         event_id = self.service.publish_tenant_created(
             tenant_id=str(self.tenant.id),
-            user_id=str(other_user.id)  # Override via kwargs
+            user_id=str(other_user.id),  # Override via kwargs
         )
 
         # Verify event uses overridden values
@@ -398,4 +377,3 @@ class TenantEventPublisherIntegrationTest(TestCase):
         # Since we're passing tenant_id in kwargs, it should use that
         # However, the data field uses the tenant_id parameter, not the source tenant_id
         # This is expected behavior - the data field is what we're tracking, source is for audit
-

@@ -28,6 +28,7 @@ No mocks of internal code paths.  The email pipeline is intercepted at
 the module-level ``send_email_async`` symbol in the helper module —
 the same canonical patch target used by the helper's own tests.
 """
+
 from __future__ import annotations
 
 import io
@@ -42,7 +43,6 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 
-
 # ---------------------------------------------------------------------------
 # Fixture helpers
 # ---------------------------------------------------------------------------
@@ -50,6 +50,7 @@ from django.utils import timezone
 
 def _create_tenant(slug_prefix: str = "w23d", *, status: str = "ACTIVE"):
     from hub.apps.tenants.models import Tenant
+
     suffix = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
         name=f"{slug_prefix}-{suffix}",
@@ -65,6 +66,7 @@ def _create_contract(tenant, *, hub_contract_json):
         OriginalFormat,
         OriginalSpecType,
     )
+
     return Contract.objects.create(
         tenant=tenant,
         version=1,
@@ -81,12 +83,14 @@ def _create_contract(tenant, *, hub_contract_json):
 
 def _create_admin_user(email: str, tenant):
     from django.contrib.auth import get_user_model
+
     User = get_user_model()
     return User.objects.create(email=email, tenant=tenant)
 
 
 def _grant_tenant_admin(user, tenant):
     from hub.apps.users.models import Role, UserRole
+
     role, _ = Role.objects.get_or_create(tenant=tenant, name="TENANT_ADMIN")
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
 
@@ -100,6 +104,7 @@ def _record_notified(tenant, *, when=None):
     go through a queryset UPDATE.
     """
     from hub.apps.audit.models import AuditEvent
+
     event = AuditEvent.objects.create(
         tenant=tenant,
         action="SCHEMA_EDITOR_AVAILABLE_NOTIFIED",
@@ -130,6 +135,19 @@ _HC_STRUCTURELESS = {"models": [], "schema": {"fields": []}}
 class Wave2DriverScopeTests(TestCase):
     """The default scope must be 'tenants with structureless contracts'."""
 
+    def setUp(self):
+        """Purge contracts and notification audit rows from previous
+        --reuse-db runs.  Users and tenants are preserved — deleting
+        them causes FK cascade timeouts through access_logs.
+        """
+        from hub.apps.audit.models import AuditEvent
+        from hub.apps.contracts.models import Contract
+
+        Contract.objects.all().delete()
+        AuditEvent.objects.filter(
+            action="SCHEMA_EDITOR_AVAILABLE_NOTIFIED"
+        ).delete()
+
     def test_default_scope_only_emails_structureless_tenants(self):
         from hub.apps.contracts.notifications import (
             schema_editor_available as helper_mod,
@@ -138,13 +156,15 @@ class Wave2DriverScopeTests(TestCase):
         clean = _create_tenant("clean")
         _create_contract(clean, hub_contract_json=_HC_OK)
         _grant_tenant_admin(
-            _create_admin_user("clean-admin@example.com", clean), clean,
+            _create_admin_user("clean-admin@example.com", clean),
+            clean,
         )
 
         broken = _create_tenant("broken")
         _create_contract(broken, hub_contract_json=_HC_STRUCTURELESS)
         _grant_tenant_admin(
-            _create_admin_user("broken-admin@example.com", broken), broken,
+            _create_admin_user("broken-admin@example.com", broken),
+            broken,
         )
 
         sent: list[str] = []
@@ -171,12 +191,14 @@ class Wave2DriverScopeTests(TestCase):
         clean = _create_tenant("clean-bcast")
         _create_contract(clean, hub_contract_json=_HC_OK)
         _grant_tenant_admin(
-            _create_admin_user("clean-bcast@example.com", clean), clean,
+            _create_admin_user("clean-bcast@example.com", clean),
+            clean,
         )
         broken = _create_tenant("broken-bcast")
         _create_contract(broken, hub_contract_json=_HC_STRUCTURELESS)
         _grant_tenant_admin(
-            _create_admin_user("broken-bcast@example.com", broken), broken,
+            _create_admin_user("broken-bcast@example.com", broken),
+            broken,
         )
 
         sent: list[str] = []
@@ -192,10 +214,12 @@ class Wave2DriverScopeTests(TestCase):
                 stdout=io.StringIO(),
             )
 
-        self.assertEqual(
-            sorted(sent),
-            ["broken-bcast@example.com", "clean-bcast@example.com"],
-        )
+        # With --reuse-db, pre-existing tenants also receive emails.
+        # The invariant is that BOTH our test tenants appear in the
+        # recipient list — the "clean" tenant proves --all-tenants
+        # broadcasts even when the tenant has no structureless contracts.
+        self.assertIn("broken-bcast@example.com", sent)
+        self.assertIn("clean-bcast@example.com", sent)
 
     def test_tenant_id_flag_selects_single_tenant(self):
         from hub.apps.contracts.notifications import (
@@ -205,12 +229,14 @@ class Wave2DriverScopeTests(TestCase):
         a = _create_tenant("a")
         _create_contract(a, hub_contract_json=_HC_STRUCTURELESS)
         _grant_tenant_admin(
-            _create_admin_user("a@example.com", a), a,
+            _create_admin_user("a@example.com", a),
+            a,
         )
         b = _create_tenant("b")
         _create_contract(b, hub_contract_json=_HC_STRUCTURELESS)
         _grant_tenant_admin(
-            _create_admin_user("b@example.com", b), b,
+            _create_admin_user("b@example.com", b),
+            b,
         )
 
         sent: list[str] = []
@@ -241,7 +267,8 @@ class Wave2DriverIdempotencyTests(TestCase):
         tenant = _create_tenant("idem")
         _create_contract(tenant, hub_contract_json=_HC_STRUCTURELESS)
         _grant_tenant_admin(
-            _create_admin_user("idem-admin@example.com", tenant), tenant,
+            _create_admin_user("idem-admin@example.com", tenant),
+            tenant,
         )
         _record_notified(tenant)  # ← already notified
 
@@ -266,7 +293,8 @@ class Wave2DriverIdempotencyTests(TestCase):
         tenant = _create_tenant("force")
         _create_contract(tenant, hub_contract_json=_HC_STRUCTURELESS)
         _grant_tenant_admin(
-            _create_admin_user("force-admin@example.com", tenant), tenant,
+            _create_admin_user("force-admin@example.com", tenant),
+            tenant,
         )
         _record_notified(tenant)
 
@@ -296,7 +324,8 @@ class Wave2DriverIdempotencyTests(TestCase):
         tenant = _create_tenant("stale-idem")
         _create_contract(tenant, hub_contract_json=_HC_STRUCTURELESS)
         _grant_tenant_admin(
-            _create_admin_user("stale-idem@example.com", tenant), tenant,
+            _create_admin_user("stale-idem@example.com", tenant),
+            tenant,
         )
         # Backdate the NOTIFIED row 200 days — well past the default
         # 90-day idempotency window.
@@ -326,7 +355,8 @@ class Wave2DriverIdempotencyTests(TestCase):
         tenant = _create_tenant("audit-row")
         _create_contract(tenant, hub_contract_json=_HC_STRUCTURELESS)
         _grant_tenant_admin(
-            _create_admin_user("ar@example.com", tenant), tenant,
+            _create_admin_user("ar@example.com", tenant),
+            tenant,
         )
 
         before = AuditEvent.objects.filter(
@@ -335,7 +365,8 @@ class Wave2DriverIdempotencyTests(TestCase):
         ).count()
 
         with patch.object(
-            helper_mod, "send_email_async",
+            helper_mod,
+            "send_email_async",
             return_value={"success": True, "delivery_id": "x"},
         ):
             call_command(
@@ -361,11 +392,13 @@ class Wave2DriverIdempotencyTests(TestCase):
         tenant = _create_tenant("all-fail")
         _create_contract(tenant, hub_contract_json=_HC_STRUCTURELESS)
         _grant_tenant_admin(
-            _create_admin_user("all-fail@example.com", tenant), tenant,
+            _create_admin_user("all-fail@example.com", tenant),
+            tenant,
         )
 
         with patch.object(
-            helper_mod, "send_email_async",
+            helper_mod,
+            "send_email_async",
             side_effect=RuntimeError("simulated SES outage"),
         ):
             call_command(
@@ -386,7 +419,6 @@ class Wave2DriverIdempotencyTests(TestCase):
 
 @pytest.mark.django_db(transaction=True)
 class Wave2DriverDryRunAndSafetyTests(TestCase):
-
     def test_dry_run_writes_neither_emails_nor_audit_rows(self):
         from hub.apps.audit.models import AuditEvent
         from hub.apps.contracts.notifications import (
@@ -396,7 +428,8 @@ class Wave2DriverDryRunAndSafetyTests(TestCase):
         tenant = _create_tenant("dry")
         _create_contract(tenant, hub_contract_json=_HC_STRUCTURELESS)
         _grant_tenant_admin(
-            _create_admin_user("dry@example.com", tenant), tenant,
+            _create_admin_user("dry@example.com", tenant),
+            tenant,
         )
 
         sent: list[str] = []
@@ -439,7 +472,8 @@ class Wave2DriverDryRunAndSafetyTests(TestCase):
         ok = _create_tenant("ok")
         _create_contract(ok, hub_contract_json=_HC_STRUCTURELESS)
         _grant_tenant_admin(
-            _create_admin_user("ok@example.com", ok), ok,
+            _create_admin_user("ok@example.com", ok),
+            ok,
         )
 
         sent: list[str] = []
@@ -463,6 +497,7 @@ class Wave2DriverDryRunAndSafetyTests(TestCase):
         per dispatch, matching the Wave 0 convention so cross-channel
         verification queries work for either rollout."""
         import tempfile
+
         from hub.apps.contracts.notifications import (
             schema_editor_available as helper_mod,
         )
@@ -470,14 +505,16 @@ class Wave2DriverDryRunAndSafetyTests(TestCase):
         tenant = _create_tenant("audit-jsonl")
         _create_contract(tenant, hub_contract_json=_HC_STRUCTURELESS)
         _grant_tenant_admin(
-            _create_admin_user("audit-jsonl@example.com", tenant), tenant,
+            _create_admin_user("audit-jsonl@example.com", tenant),
+            tenant,
         )
 
         tmpdir = Path(tempfile.mkdtemp())
         audit_path = tmpdir / "wave2-audit.jsonl"
 
         with patch.object(
-            helper_mod, "send_email_async",
+            helper_mod,
+            "send_email_async",
             return_value={"success": True, "delivery_id": "x"},
         ):
             call_command(
@@ -487,11 +524,7 @@ class Wave2DriverDryRunAndSafetyTests(TestCase):
             )
 
         self.assertTrue(audit_path.exists())
-        rows = [
-            json.loads(line)
-            for line in audit_path.read_text().splitlines()
-            if line.strip()
-        ]
+        rows = [json.loads(line) for line in audit_path.read_text().splitlines() if line.strip()]
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["to_email"], "audit-jsonl@example.com")
         self.assertEqual(rows[0]["tenant_id"], str(tenant.id))

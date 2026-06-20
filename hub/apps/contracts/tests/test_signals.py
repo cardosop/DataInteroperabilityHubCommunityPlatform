@@ -4,14 +4,15 @@ Phase 80.2 — Contract signal tests.
 Tests cache-invalidation publish to Redis, search vector enqueue, and
 error handling for both signal handlers on Contract post_save.
 """
+
 import hashlib
 import json
 import uuid
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.db.models.signals import post_save
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
 
 def _make_contract_instance(tenant, raw="spec: v1"):
@@ -30,8 +31,10 @@ class ContractCacheInvalidationSignalTest(TestCase):
 
     def _create_tenant(self):
         from hub.apps.tenants.models import Tenant
+
         tenant, _ = Tenant.objects.get_or_create(
-            name="contract-sig", defaults={"slug": "contract-sig"},
+            name="contract-sig",
+            defaults={"slug": "contract-sig"},
         )
         return tenant
 
@@ -92,7 +95,8 @@ class ContractCacheInvalidationSignalTest(TestCase):
         expected_hash = hashlib.sha256(raw.encode()).hexdigest()
         expected_payload = json.dumps({"spec_hash": expected_hash})
         mock_client.publish.assert_called_with(
-            "datacontract:invalidate", expected_payload,
+            "datacontract:invalidate",
+            expected_payload,
         )
 
     def test_hash_is_sha256_of_original_raw(self):
@@ -175,8 +179,10 @@ class ContractSearchVectorSignalTest(TestCase):
 
     def _create_tenant(self):
         from hub.apps.tenants.models import Tenant
+
         tenant, _ = Tenant.objects.get_or_create(
-            name="contract-sv-sig", defaults={"slug": "contract-sv-sig"},
+            name="contract-sv-sig",
+            defaults={"slug": "contract-sv-sig"},
         )
         return tenant
 

@@ -8,21 +8,22 @@ for the precedent). The function under test is pure-Python
 business logic ABOVE the Stripe boundary; we test it against
 real Tenant + Subscription rows.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
 from hub.apps.billing.models import Subscription
 from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan
 from hub.apps.tenants.tax_id_service import (
-    submit_tax_id_to_stripe,
     TaxIdSubmissionError,
+    submit_tax_id_to_stripe,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -30,7 +31,8 @@ User = get_user_model()
 
 
 def _seed_tenant_with_customer(
-    *, stripe_customer_id: str = "cus_test_default",
+    *,
+    stripe_customer_id: str = "cus_test_default",
 ) -> Tenant:
     sfx = uuid.uuid4().hex[:8]
     tenant = Tenant.objects.create(
@@ -42,8 +44,10 @@ def _seed_tenant_with_customer(
     plan, _plan_created = TenantPlan.objects.get_or_create(
         slug=f"test-plan-{sfx}",
         defaults={
-            "name": f"Test Plan {sfx}", "tier": PlanTier.FREE,
-            "limits_json": {"max_assets": 100}, "is_active": True,
+            "name": f"Test Plan {sfx}",
+            "tier": PlanTier.FREE,
+            "limits_json": {"max_assets": 100},
+            "is_active": True,
         },
     )
     Subscription.objects.create(
@@ -52,8 +56,8 @@ def _seed_tenant_with_customer(
         stripe_customer_id=stripe_customer_id,
         stripe_subscription_id=f"sub_{sfx}",
         status="active",
-        current_period_start=datetime.now(tz=timezone.utc),
-        current_period_end=datetime.now(tz=timezone.utc),
+        current_period_start=datetime.now(tz=UTC),
+        current_period_end=datetime.now(tz=UTC),
     )
     return tenant
 
@@ -89,7 +93,9 @@ class TestSubmitTaxIdToStripe(TestCase):
             api_key="sk_test_seed",
         )
         # Result carries the Stripe TaxID id.
-        assert result["stripe_tax_id_id"] == "txi_test_happy"  # Local state persisted; tax_id_verified resets to False)
+        assert (
+            result["stripe_tax_id_id"] == "txi_test_happy"
+        )  # Local state persisted; tax_id_verified resets to False)
         # pending the verification webhook.
         tenant.refresh_from_db()
         assert tenant.tax_id == "GB123456789"
@@ -97,7 +103,8 @@ class TestSubmitTaxIdToStripe(TestCase):
         assert not tenant.tax_id_verified
         # tax_address encrypted on save — decrypt via accessor.
         assert tenant.get_tax_address() == {
-            "country": "GB", "postal_code": "SW1A 1AA",
+            "country": "GB",
+            "postal_code": "SW1A 1AA",
         }
 
     @pytest.mark.integration
@@ -162,17 +169,19 @@ class TestSubmitTaxIdToStripe(TestCase):
         class _StripeError(Exception):
             code = "tax_id_invalid"
 
-        with patch(
-            "stripe.Customer.create_tax_id",
-            side_effect=_StripeError("Invalid VAT format"),
+        with (
+            patch(
+                "stripe.Customer.create_tax_id",
+                side_effect=_StripeError("Invalid VAT format"),
+            ),
+            pytest.raises(TaxIdSubmissionError) as exc_info,
         ):
-            with pytest.raises(TaxIdSubmissionError) as exc_info:
-                submit_tax_id_to_stripe(
-                    tenant=tenant,
-                    tax_id_value="GBBADBAD",
-                    tax_id_type="gb_vat",
-                    tax_address=None,
-                )
+            submit_tax_id_to_stripe(
+                tenant=tenant,
+                tax_id_value="GBBADBAD",
+                tax_id_type="gb_vat",
+                tax_address=None,
+            )
         assert exc_info.value.stripe_error_code == "tax_id_invalid"
 
     @override_settings(STRIPE_SECRET_KEY=None)

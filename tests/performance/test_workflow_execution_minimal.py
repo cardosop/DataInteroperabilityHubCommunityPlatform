@@ -2,16 +2,16 @@
 Minimal test to verify workflow execution_start returns quickly
 This test isolates the issue to see if execute_start itself is hanging
 """
+
 import json
 import time
+import uuid
+
 from django.test import TestCase
 
-from hub.apps.contracts.models import Contract
-from hub.apps.orchestration.models import WorkflowInstance
 from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 
 def create_valid_odps_document(product_id: str = None) -> dict:
@@ -89,7 +89,6 @@ class MinimalWorkflowExecutionTest(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush"""
-        pass
 
     def test_execute_start_returns_quickly(self):
         """Test that execute_start returns quickly (< 2 seconds)"""
@@ -119,4 +118,6 @@ class MinimalWorkflowExecutionTest(TestCase):
         self.assertIn("workflow_instance_id", result)
         self.assertIsNotNone(result["workflow_instance_id"])
 
-        print(f"✅ execute_start returned in {duration:.2f}s with workflow_instance_id: {result['workflow_instance_id']}")
+        print(
+            f"✅ execute_start returned in {duration:.2f}s with workflow_instance_id: {result['workflow_instance_id']}"
+        )

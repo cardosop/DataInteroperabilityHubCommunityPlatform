@@ -1,40 +1,41 @@
 """
 Search API Views
 """
+
+import contextlib
 from typing import Any, cast
 
-from django.http import HttpRequest
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.request import Request
-from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
 from django.contrib.postgres.search import SearchQuery, SearchRank
-from django.db import models as db_models, transaction
+from django.db import models as db_models
+from django.http import HttpRequest
 from django.utils import timezone
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from hub.apps.api.standards.pagination import StandardPageNumberPagination
-
-from .models import SearchIndex, SearchAnalytics
-from .search_engine import SearchEngine
-from .services import SearchService
-from .serializers import (
-    SearchResponseSerializer,
-    SearchSuggestionSerializer,
-    SearchAnalyticsSerializer,
-    SearchAnalyticsDashboardSerializer
-)
-from .indexing import SearchIndexer
 from hub.apps.auth.permissions import HasRole
 from hub.apps.observability.cross_tenant_metrics import cross_tenant_denied
-from hub.apps.search.throttles import SearchUserThrottle, SuggestionsUserThrottle
+from hub.apps.search.throttles import SearchUserThrottle
 from hub.apps.tenants.request_tenant import get_request_tenant_id
+
+from .models import SearchAnalytics
+from .search_engine import SearchEngine
+from .serializers import (
+    SearchAnalyticsDashboardSerializer,
+    SearchResponseSerializer,
+    SearchSuggestionSerializer,
+)
+from .services import SearchService
+
 
 # Auditor permission - users with AUDITOR role
 class IsAuditor(HasRole):
     def __init__(self):
-        super().__init__('AUDITOR')
+        super().__init__("AUDITOR")
 
 
 class SearchViewSet(viewsets.ViewSet):
@@ -44,6 +45,7 @@ class SearchViewSet(viewsets.ViewSet):
     Use /api/search/ (UnifiedSearchView) instead.
     This viewset returns Deprecation headers and will be removed after 30 days.
     """
+
     # Phase 273.2 — rate-limit search/suggestions per tenant.
     throttle_classes = [SearchUserThrottle]
     permission_classes = [IsAuthenticated]
@@ -62,7 +64,7 @@ class SearchViewSet(viewsets.ViewSet):
         response["Deprecation-Date"] = "Mon, 12 May 2026 00:00:00 GMT"
         return response
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=["get"])
     def search(self, request: Request) -> Response:
         """
         Perform full-text search.
@@ -85,39 +87,36 @@ class SearchViewSet(viewsets.ViewSet):
         """
         # Get tenant from user (with caching)
         from django.core.cache import cache
+
         tenant = None
 
-        if hasattr(request.user, 'tenant_id'):
+        if hasattr(request.user, "tenant_id"):
             tenant_id = request.user.tenant_id
             cache_key = f"tenant:{tenant_id}"
             tenant = cache.get(cache_key)
             if tenant is None:
                 from hub.apps.tenants.models import Tenant
+
                 try:
                     tenant = Tenant.objects.get(id=tenant_id)
                     cache.set(cache_key, tenant, 300)  # Cache for 5 minutes
                 except Tenant.DoesNotExist:
                     pass
 
-        if not tenant and hasattr(request.user, 'tenant') and request.user.tenant:
+        if not tenant and hasattr(request.user, "tenant") and request.user.tenant:
             tenant = request.user.tenant
 
         if not tenant:
             return Response(
-                {'error': 'User must belong to a tenant to perform searches'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        query = request.query_params.get('q', '').strip()
-
-        if not query:
-            return Response(
-                {"error": "q parameter is required"},
+                {"error": "User must belong to a tenant to perform searches"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        query = request.query_params.get("q", "").strip()
+
         # Phase 53: guard against arbitrarily long queries
         from django.conf import settings as _settings
+
         max_len = getattr(_settings, "MAX_SEARCH_QUERY_LENGTH", 512)
         if query and len(query) > max_len:
             return Response(
@@ -126,45 +125,45 @@ class SearchViewSet(viewsets.ViewSet):
             )
 
         # Get filters
-        resource_type = request.query_params.get('type')
-        classification = request.query_params.get('classification')
-        owner_id = request.query_params.get('owner')
-        tags_str = request.query_params.get('tags')
+        resource_type = request.query_params.get("type")
+        classification = request.query_params.get("classification")
+        owner_id = request.query_params.get("owner")
+        tags_str = request.query_params.get("tags")
         max_tags = getattr(_settings, "MAX_SEARCH_TAGS", 50)
-        tags = tags_str.split(',')[:max_tags] if tags_str else None
-        domain = request.query_params.get('domain')
-        quality_status = request.query_params.get('quality_status')
-        compliance_status = request.query_params.get('compliance_status')
+        tags = tags_str.split(",")[:max_tags] if tags_str else None
+        domain = request.query_params.get("domain")
+        quality_status = request.query_params.get("quality_status")
+        compliance_status = request.query_params.get("compliance_status")
 
         # Get pagination
-        limit = int(request.query_params.get('limit', 20))
-        offset = int(request.query_params.get('offset', 0))
+        limit = int(request.query_params.get("limit", 20))
+        offset = int(request.query_params.get("offset", 0))
 
         # Validate pagination parameters
         if limit < 1:
             return Response(
-                {'error': 'limit must be greater than 0'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "limit must be greater than 0"}, status=status.HTTP_400_BAD_REQUEST
             )
-        if limit > 100:
-            limit = 100  # Cap at maximum
-        if offset < 0:
-            offset = 0  # Clamp negative offset to 0
+        limit = min(limit, 100)  # Cap at maximum
+        offset = max(offset, 0)  # Clamp negative offset to 0
 
         # Get sorting
-        sort_by = request.query_params.get('sort_by', 'relevance')
-        sort_order = request.query_params.get('sort_order', 'desc')
+        sort_by = request.query_params.get("sort_by", "relevance")
+        sort_order = request.query_params.get("sort_order", "desc")
 
         # Check cache for search results (hash-based key to avoid
         # memcached-unsafe characters like spaces and colons).
         import hashlib
+
         from django.core.cache import cache
+
         # Phase 230.11 — read the semantic flag here so it can
         # contribute to the cache key (different responses for
         # ?semantic=true vs the legacy path).
-        _semantic_for_cache = (
-            request.query_params.get("semantic", "").strip().lower()
-            in ("1", "true", "yes")
+        _semantic_for_cache = request.query_params.get("semantic", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
         )
         cache_key_parts = [
             str(tenant.id),
@@ -193,7 +192,7 @@ class SearchViewSet(viewsets.ViewSet):
             # Perform search using SearchService (which publishes events)
             search_service = SearchService(
                 tenant_id=str(tenant.id),
-                user_id=str(request.user.id) if request.user.is_authenticated else None
+                user_id=str(request.user.id) if request.user.is_authenticated else None,
             )
             results, total = search_service.search(
                 tenant_id=str(tenant.id),
@@ -209,7 +208,7 @@ class SearchViewSet(viewsets.ViewSet):
                 offset=offset,
                 sort_by=sort_by,
                 sort_order=sort_order,
-                user_id=str(request.user.id) if request.user.is_authenticated else None
+                user_id=str(request.user.id) if request.user.is_authenticated else None,
             )
 
             # Phase 230.11 (REQ-SEM-SEARCH-EXPAND-001) — when the
@@ -220,9 +219,10 @@ class SearchViewSet(viewsets.ViewSet):
             # with matched_via=ontology + bridge_term.  Both flags
             # required → defence-in-depth (a tenant cannot opt itself
             # in via the URL alone).
-            semantic_param = (
-                request.query_params.get("semantic", "").strip().lower()
-                in ("1", "true", "yes")
+            semantic_param = request.query_params.get("semantic", "").strip().lower() in (
+                "1",
+                "true",
+                "yes",
             )
             tenant_semantic_enabled = bool(
                 getattr(tenant, "semantic_search_enabled", False),
@@ -230,14 +230,18 @@ class SearchViewSet(viewsets.ViewSet):
             if semantic_param and tenant_semantic_enabled:
                 try:
                     from .semantic_query_expansion import expand_query_terms
+
                     bridges = expand_query_terms(
-                        query=query, tenant_id=str(tenant.id),
+                        query=query,
+                        tenant_id=str(tenant.id),
                     )
-                except Exception as _e:  # noqa: BLE001 — fail-soft
+                except Exception as _e:
                     import logging as _l
+
                     _l.getLogger(__name__).warning(
                         "search_semantic_expansion_failed tenant=%s error=%s",
-                        tenant.id, _e,
+                        tenant.id,
+                        _e,
                     )
                     bridges = []
 
@@ -259,13 +263,17 @@ class SearchViewSet(viewsets.ViewSet):
                                 offset=offset,
                                 sort_by=sort_by,
                                 sort_order=sort_order,
-                                user_id=str(request.user.id) if request.user.is_authenticated else None,
+                                user_id=str(request.user.id)
+                                if request.user.is_authenticated
+                                else None,
                             )
-                        except Exception as _e:  # noqa: BLE001
+                        except Exception as _e:
                             import logging as _l
+
                             _l.getLogger(__name__).warning(
                                 "search_semantic_bridge_query_failed bridge=%r error=%s",
-                                bridge.label, _e,
+                                bridge.label,
+                                _e,
                             )
                             continue
                         for row in bridge_results:
@@ -274,9 +282,7 @@ class SearchViewSet(viewsets.ViewSet):
                                 # Exact match wins — keep the higher
                                 # original rank, never relabel.
                                 continue
-                            row["relevance_score"] = (
-                                float(row.get("relevance_score", 0.0)) * 0.5
-                            )
+                            row["relevance_score"] = float(row.get("relevance_score", 0.0)) * 0.5
                             row["matched_via"] = "ontology"
                             row["bridge_term"] = bridge.label
                             row["bridge_relation"] = bridge.relation
@@ -312,12 +318,13 @@ class SearchViewSet(viewsets.ViewSet):
                 },
                 result_count=total,
                 user_id=str(request.user.id) if request.user.is_authenticated else None,
-                session_id=request.session.session_key if hasattr(request, 'session') else None,
-                ip_address=request.META.get('REMOTE_ADDR'),
-                user_agent=request.META.get('HTTP_USER_AGENT')
+                session_id=request.session.session_key if hasattr(request, "session") else None,
+                ip_address=request.META.get("REMOTE_ADDR"),
+                user_agent=request.META.get("HTTP_USER_AGENT"),
             )
         except Exception as e:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to track search: {e}", exc_info=True)
             analytics = None
@@ -338,7 +345,7 @@ class SearchViewSet(viewsets.ViewSet):
         serializer = SearchResponseSerializer(response_data)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=["get"])
     def suggestions(self, request: Request) -> Response:
         """
         Get search suggestions (autocomplete).
@@ -350,30 +357,29 @@ class SearchViewSet(viewsets.ViewSet):
         - limit: Maximum number of suggestions (default: 10)
         """
         # Get tenant from user
-        tenant = request.user.tenant if hasattr(request.user, 'tenant') and request.user.tenant else None
+        tenant = (
+            request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
+        )
         if not tenant:
             return Response(
-                {'error': 'User must belong to a tenant to get suggestions'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "User must belong to a tenant to get suggestions"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Get query
-        query = request.query_params.get('q', '').strip()
+        query = request.query_params.get("q", "").strip()
 
         if len(query) < 2:
             return Response(
-                {'error': 'Query must be at least 2 characters'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Query must be at least 2 characters"}, status=status.HTTP_400_BAD_REQUEST
             )
 
         # Get limit
-        limit = int(request.query_params.get('limit', 10))
+        limit = int(request.query_params.get("limit", 10))
 
         # Get suggestions
         suggestions = SearchEngine.get_suggestions(
-            tenant_id=str(tenant.id),
-            query=query,
-            limit=limit
+            tenant_id=str(tenant.id), query=query, limit=limit
         )
 
         # Track suggestion query (handle session gracefully for tests)
@@ -384,20 +390,23 @@ class SearchViewSet(viewsets.ViewSet):
                 query_type="SUGGESTION",
                 result_count=len(suggestions),
                 user_id=str(request.user.id) if request.user.is_authenticated else None,
-                session_id=request.session.session_key if hasattr(request, 'session') and hasattr(request.session, 'session_key') else None,
-                ip_address=request.META.get('REMOTE_ADDR'),
-                user_agent=request.META.get('HTTP_USER_AGENT')
+                session_id=request.session.session_key
+                if hasattr(request, "session") and hasattr(request.session, "session_key")
+                else None,
+                ip_address=request.META.get("REMOTE_ADDR"),
+                user_agent=request.META.get("HTTP_USER_AGENT"),
             )
         except Exception as e:
             # Log error but don't fail the request if tracking fails
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to track suggestion query: {e}", exc_info=True)
 
         serializer = SearchSuggestionSerializer(suggestions, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=["post"])
     def track_click(self, request: Request) -> Response:
         """
         Track a click on a search result.
@@ -411,15 +420,15 @@ class SearchViewSet(viewsets.ViewSet):
             "result_type": "CONTRACT|ASSET|DATASET"
         }
         """
-        request_data = cast(dict[str, Any], request.data)
+        request_data = cast("dict[str, Any]", request.data)
         analytics_id_raw = request_data.get("analytics_id")
         result_id_raw = request_data.get("result_id")
         result_type_raw = request_data.get("result_type")
 
         if not all([analytics_id_raw, result_id_raw, result_type_raw]):
             return Response(
-                {'error': 'analytics_id, result_id, and result_type are required'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "analytics_id, result_id, and result_type are required"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         analytics_id = str(analytics_id_raw)
         result_id = str(result_id_raw)
@@ -427,27 +436,28 @@ class SearchViewSet(viewsets.ViewSet):
 
         try:
             SearchEngine.track_click(analytics_id, result_id, result_type)
-            return Response({'status': 'click tracked'})
+            return Response({"status": "click tracked"})
         except Exception as e:
             # Return 400 if analytics not found, 500 for other errors
             from hub.apps.search.models import SearchAnalytics
+
             try:
                 SearchAnalytics.objects.get(id=analytics_id)
                 # Analytics exists but track_click failed for another reason
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.error(f"Failed to track click: {e}", exc_info=True)
                 return Response(
-                    {'error': 'Failed to track click'},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    {"error": "Failed to track click"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
             except SearchAnalytics.DoesNotExist:
                 return Response(
-                    {'error': f'Analytics not found: {analytics_id}'},
-                    status=status.HTTP_400_BAD_REQUEST
+                    {"error": f"Analytics not found: {analytics_id}"},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
-    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated, IsAuditor])
+    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated, IsAuditor])
     def analytics(self, request: Request) -> Response:
         """
         Get search analytics dashboard.
@@ -460,63 +470,68 @@ class SearchViewSet(viewsets.ViewSet):
         - limit: Number of results per category (default: 10)
         """
         # Get tenant from user
-        tenant = request.user.tenant if hasattr(request.user, 'tenant') and request.user.tenant else None
+        tenant = (
+            request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
+        )
         if not tenant:
             return Response(
-                {'error': 'User must belong to a tenant to view analytics'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "User must belong to a tenant to view analytics"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Get date range
-        from datetime import datetime, timedelta
+        from datetime import timedelta
+
         from django.utils.dateparse import parse_datetime
 
         end_date = timezone.now()
         start_date = end_date - timedelta(days=30)
 
-        start_date_str = request.query_params.get('start_date')
+        start_date_str = request.query_params.get("start_date")
         if start_date_str:
             parsed = parse_datetime(start_date_str)
             if parsed:
                 start_date = parsed
 
-        end_date_str = request.query_params.get('end_date')
+        end_date_str = request.query_params.get("end_date")
         if end_date_str:
             parsed = parse_datetime(end_date_str)
             if parsed:
                 end_date = parsed
 
         # Get limit
-        limit = int(request.query_params.get('limit', 10))
+        limit = int(request.query_params.get("limit", 10))
 
         # Get analytics
         analytics_queryset = SearchAnalytics.objects.filter(
-            tenant=tenant,
-            created_at__gte=start_date,
-            created_at__lte=end_date
+            tenant=tenant, created_at__gte=start_date, created_at__lte=end_date
         )
 
         # Popular searches
         from django.db.models import Count
-        popular_searches = analytics_queryset.filter(
-            no_results=False
-        ).values('query').annotate(
-            count=Count('id')
-        ).order_by('-count')[:limit]
+
+        popular_searches = (
+            analytics_queryset.filter(no_results=False)
+            .values("query")
+            .annotate(count=Count("id"))
+            .order_by("-count")[:limit]
+        )
 
         # Search trends (by day)
-        search_trends = analytics_queryset.extra(
-            select={'day': "DATE(created_at)"}
-        ).values('day').annotate(
-            count=Count('id')
-        ).order_by('day')
+        search_trends = (
+            analytics_queryset.extra(select={"day": "DATE(created_at)"})
+            .values("day")
+            .annotate(count=Count("id"))
+            .order_by("day")
+        )
 
         # No-result queries
-        no_result_queries = analytics_queryset.filter(
-            no_results=True
-        ).values('query').annotate(
-            count=Count('id')
-        ).order_by('-count')[:limit]
+        no_result_queries = (
+            analytics_queryset.filter(no_results=True)
+            .values("query")
+            .annotate(count=Count("id"))
+            .order_by("-count")[:limit]
+        )
 
         # Click-through rate
         total_searches = analytics_queryset.count()
@@ -530,13 +545,13 @@ class SearchViewSet(viewsets.ViewSet):
             "no_result_queries": list(no_result_queries),
             "click_through_rate": round(click_through_rate, 2),
             "total_searches": total_searches,
-            "total_clicks": total_clicks
+            "total_clicks": total_clicks,
         }
 
         serializer = SearchAnalyticsDashboardSerializer(response_data)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAuditor])
+    @action(detail=False, methods=["post"], permission_classes=[IsAuthenticated, IsAuditor])
     def rebuild_index(self, request: Request) -> Response:
         """
         Rebuild search index.
@@ -548,15 +563,15 @@ class SearchViewSet(viewsets.ViewSet):
             "tenant_id": "uuid"  # Deprecated: server derives tenant from request context
         }
         """
-        request_data = cast(dict[str, Any], request.data)
-        tenant_id = get_request_tenant_id(cast(HttpRequest, request))
+        request_data = cast("dict[str, Any]", request.data)
+        tenant_id = get_request_tenant_id(cast("HttpRequest", request))
         body_tenant_id = request_data.get("tenant_id")
         if body_tenant_id is not None and str(body_tenant_id).strip():
             if str(body_tenant_id) != str(tenant_id):
                 cross_tenant_denied(
                     endpoint="search.rebuild_index",
                     reason="body_tenant_mismatch",
-                    request=cast(HttpRequest, request),
+                    request=cast("HttpRequest", request),
                     requested_tenant_id=body_tenant_id,
                     actual_tenant_id=tenant_id,
                 )
@@ -577,25 +592,28 @@ class SearchViewSet(viewsets.ViewSet):
         # Rebuild index using SearchService (which publishes events)
         search_service = SearchService(
             tenant_id=tenant_id,
-            user_id=str(request.user.id) if request.user.is_authenticated else None
+            user_id=str(request.user.id) if request.user.is_authenticated else None,
         )
         result = search_service.rebuild_index(
             tenant_id=tenant_id,
-            user_id=str(request.user.id) if request.user.is_authenticated else None
+            user_id=str(request.user.id) if request.user.is_authenticated else None,
         )
 
-        return Response({
-            'status': 'index rebuild started',
-            'resource_count': result.get('resource_count', 0),
-            'duration_ms': result.get('duration_ms', 0),
-            'success': result.get('success', True),
-            'resource_types': result.get('resource_types', [])
-        })
+        return Response(
+            {
+                "status": "index rebuild started",
+                "resource_count": result.get("resource_count", 0),
+                "duration_ms": result.get("duration_ms", 0),
+                "success": result.get("success", True),
+                "resource_types": result.get("resource_types", []),
+            }
+        )
 
 
 # ---------------------------------------------------------------------------
 # Phase 18.3 — /api/search/ unified full-text search
 # ---------------------------------------------------------------------------
+
 
 class UnifiedSearchView(APIView):
     """
@@ -637,10 +655,8 @@ class UnifiedSearchView(APIView):
         for throttle in self.get_throttles():
             throttled_method = getattr(throttle, "throttled", None)
             if throttled_method is not None:
-                try:
+                with contextlib.suppress(Exception):
                     throttled_method(request, wait)
-                except Exception:
-                    pass
         super().throttled(request, wait)
 
     @staticmethod
@@ -716,8 +732,6 @@ class UnifiedSearchView(APIView):
         return out
 
     def get(self, request: Request) -> Response:
-        from hub.apps.assets.models import Asset
-        from hub.apps.contracts.models import Contract
         from hub.apps.tenants.models import Tenant
 
         # ── resolve tenant ──────────────────────────────────────────────
@@ -725,12 +739,11 @@ class UnifiedSearchView(APIView):
         if tenant is None:
             tenant_id = getattr(request.user, "tenant_id", None)
             if tenant_id:
-                try:
+                with contextlib.suppress(Tenant.DoesNotExist):
                     tenant = Tenant.objects.get(id=tenant_id)
-                except Tenant.DoesNotExist:
-                    pass
         if tenant is None:
             from hub.apps.api.standards.response_formats import format_error_response
+
             return format_error_response(
                 error_code="TENANT_REQUIRED",
                 message="User must belong to a tenant to perform searches.",
@@ -745,6 +758,7 @@ class UnifiedSearchView(APIView):
         # test_null_byte_rejected expects.
         if "\x00" in q:
             from hub.apps.api.standards.response_formats import format_error_response
+
             return format_error_response(
                 error_code="INVALID_INPUT",
                 message="Query contains invalid characters.",
@@ -752,18 +766,12 @@ class UnifiedSearchView(APIView):
             )
 
         # Phase 53: guard against arbitrarily long queries.
-        # Phase 54.5: reject empty q with 400 (both search views must reject empty q).
-        if not q:
-            from hub.apps.api.standards.response_formats import format_error_response
-            return format_error_response(
-                error_code="QUERY_REQUIRED",
-                message="q parameter is required.",
-                http_status=status.HTTP_400_BAD_REQUEST,
-            )
         from django.conf import settings as _settings
+
         max_len = getattr(_settings, "MAX_SEARCH_QUERY_LENGTH", 512)
         if q and len(q) > max_len:
             from hub.apps.api.standards.response_formats import format_error_response
+
             return format_error_response(
                 error_code="QUERY_TOO_LONG",
                 message=f"Query exceeds maximum length of {max_len} characters.",
@@ -772,18 +780,17 @@ class UnifiedSearchView(APIView):
             )
 
         types_raw = request.query_params.get("types", "assets,contracts")
-        requested_types = {
-            t.strip().lower() for t in types_raw.split(",") if t.strip()
-        }
+        requested_types = {t.strip().lower() for t in types_raw.split(",") if t.strip()}
 
         # Phase 230.11 (REQ-SEM-SEARCH-EXPAND-001) — ontology-aware
         # query expansion is gated by BOTH the request-side
         # ?semantic=true flag AND the per-tenant
         # ``semantic_search_enabled`` flag.  Either off → expansion is
         # skipped entirely (legacy search semantics preserved).
-        semantic_param = (
-            request.query_params.get("semantic", "").strip().lower()
-            in ("1", "true", "yes")
+        semantic_param = request.query_params.get("semantic", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
         )
         tenant_semantic_enabled = bool(
             getattr(tenant, "semantic_search_enabled", False),
@@ -796,15 +803,19 @@ class UnifiedSearchView(APIView):
                 from hub.apps.search.semantic_query_expansion import (
                     expand_query_terms,
                 )
+
                 bridges = expand_query_terms(
-                    query=q, tenant_id=str(tenant.id),
+                    query=q,
+                    tenant_id=str(tenant.id),
                 )
-            except Exception as exc:  # noqa: BLE001 — fail-soft; expansion
+            except Exception as exc:
                 # is an enhancement, never a blocker.
                 import logging
+
                 logging.getLogger(__name__).warning(
                     "semantic_expansion_failed tenant=%s error=%s",
-                    tenant.id, exc,
+                    tenant.id,
+                    exc,
                 )
                 bridges = []
 
@@ -904,4 +915,3 @@ class UnifiedSearchView(APIView):
         if page is not None:
             return paginator.get_paginated_response(page)
         return Response(results)
-

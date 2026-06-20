@@ -3,16 +3,13 @@ Authentication management for DataHub CLI.
 
 Handles API key and JWT token authentication.
 """
-import json
+
 import base64
+import json
 import time
 
-import requests
 import click
-from typing import Optional, Dict, Any
-from datetime import datetime, timedelta
-
-from .config import config
+import requests
 
 
 class AuthManager:
@@ -72,6 +69,7 @@ class AuthManager:
         """
         if config_instance is None:
             from .config import config as global_config
+
             self.config = global_config
         else:
             self.config = config_instance
@@ -81,18 +79,15 @@ class AuthManager:
         """Get API base URL dynamically from config"""
         return self.config.get_api_base_url()
 
-    def get_auth_headers(self) -> Dict[str, str]:
+    def get_auth_headers(self) -> dict[str, str]:
         """Get authentication headers for API requests"""
-        headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
 
         # Prioritize access token over API key (access tokens are user-specific and more secure)
         # This ensures that when a user is logged in, their token is used even if API key exists
         access_token = self.config.get_access_token()
         if access_token:
-            headers['Authorization'] = f'Bearer {access_token}'
+            headers["Authorization"] = f"Bearer {access_token}"
             return headers
 
         # Fall back to API key / JWT token from env vars (for automation/CI).
@@ -116,12 +111,9 @@ class AuthManager:
         """
         try:
             response = requests.post(
-                f'{self._get_api_base_url()}/auth/login/',
-                json={
-                    'email': email,
-                    'password': password
-                },
-                timeout=10
+                f"{self._get_api_base_url()}/auth/login/",
+                json={"email": email, "password": password},
+                timeout=10,
             )
 
             if response.status_code == 200:
@@ -132,12 +124,12 @@ class AuthManager:
                     return False
 
                 # Validate response contains required tokens
-                if 'access_token' not in data or 'refresh_token' not in data:
+                if "access_token" not in data or "refresh_token" not in data:
                     click.echo("Login failed: Server response missing required tokens", err=True)
                     return False
 
-                self.config.set_access_token(data['access_token'])
-                self.config.set_refresh_token(data['refresh_token'])
+                self.config.set_access_token(data["access_token"])
+                self.config.set_refresh_token(data["refresh_token"])
                 click.echo("Login successful!")
                 return True
             else:
@@ -145,7 +137,7 @@ class AuthManager:
                     error_data = response.json() if response.content else {}
                 except ValueError:
                     error_data = {}
-                error_msg = error_data.get('error', {}).get('message', 'Login failed')
+                error_msg = error_data.get("error", {}).get("message", "Login failed")
                 click.echo(f"Login failed: {error_msg}", err=True)
                 return False
         except requests.exceptions.RequestException as e:
@@ -164,14 +156,14 @@ class AuthManager:
 
         try:
             response = requests.post(
-                f'{self._get_api_base_url()}/auth/refresh/',
-                json={'refresh_token': refresh_token},
-                timeout=10
+                f"{self._get_api_base_url()}/auth/refresh/",
+                json={"refresh_token": refresh_token},
+                timeout=10,
             )
 
             if response.status_code == 200:
                 data = response.json()
-                self.config.set_access_token(data['access_token'])
+                self.config.set_access_token(data["access_token"])
                 return True
             else:
                 # Refresh token expired, clear auth
@@ -191,10 +183,10 @@ class AuthManager:
             try:
                 headers = self.get_auth_headers()
                 requests.post(
-                    f'{self._get_api_base_url()}/auth/logout/',
-                    json={'refresh_token': refresh_token},
+                    f"{self._get_api_base_url()}/auth/logout/",
+                    json={"refresh_token": refresh_token},
                     headers=headers,
-                    timeout=10
+                    timeout=10,
                 )
             except requests.exceptions.RequestException:
                 pass  # Continue to clear local tokens even if API call fails
@@ -238,4 +230,3 @@ class AuthManager:
 
 # Global auth manager instance
 auth_manager = AuthManager()
-

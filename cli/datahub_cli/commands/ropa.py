@@ -8,12 +8,10 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Optional
 
 import click
 
 from ..api_client import api_client
-
 
 REGULATION_MAP = {
     "GDPR": "General Data Protection Regulation (EU) 2016/679",
@@ -30,22 +28,25 @@ ROPA_BASE = "ropa/generations"
 @click.group()
 def ropa():
     """RoPA (Record of Processing Activities) commands"""
-    pass
 
 
 # ── list ────────────────────────────────────────────────────────────────────
 
+
 @ropa.command("list")
 @click.option("--page", default=1, help="Page number")
 @click.option("--page-size", default=25, help="Results per page")
-@click.option("--format", "output_format", type=click.Choice(["json", "table"]),
-              default="table", help="Output format")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
 def list_records(page: int, page_size: int, output_format: str):
     """List RoPA generations for the active tenant."""
     try:
-        data = api_client.get(
-            f"{ROPA_BASE}/", params={"page": page, "page_size": page_size}
-        )
+        data = api_client.get(f"{ROPA_BASE}/", params={"page": page, "page_size": page_size})
     except Exception as exc:
         raise click.ClickException(str(exc))
 
@@ -71,10 +72,16 @@ def list_records(page: int, page_size: int, output_format: str):
 
 # ── get ─────────────────────────────────────────────────────────────────────
 
+
 @ropa.command("get")
 @click.argument("record_id")
-@click.option("--format", "output_format", type=click.Choice(["json", "table"]),
-              default="table", help="Output format")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
 def get_record(record_id: str, output_format: str):
     """Retrieve a single RoPA generation by ID."""
     try:
@@ -105,18 +112,25 @@ def get_record(record_id: str, output_format: str):
 
 # ── preview ─────────────────────────────────────────────────────────────────
 
+
 @ropa.command("preview")
-@click.option("--regulation", default="GDPR",
-              type=click.Choice(list(REGULATION_MAP.keys())),
-              help="Regulation to preview")
-@click.option("--format", "output_format", type=click.Choice(["json", "table"]),
-              default="table", help="Output format")
+@click.option(
+    "--regulation",
+    default="GDPR",
+    type=click.Choice(list(REGULATION_MAP.keys())),
+    help="Regulation to preview",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
 def preview(regulation: str, output_format: str):
     """Preview a RoPA payload without generating an artefact."""
     try:
-        data = api_client.get(
-            f"{ROPA_BASE}/preview/", params={"regulation": regulation}
-        )
+        data = api_client.get(f"{ROPA_BASE}/preview/", params={"regulation": regulation})
     except Exception as exc:
         raise click.ClickException(str(exc))
 
@@ -140,17 +154,23 @@ def preview(regulation: str, output_format: str):
 
 # ── generate ────────────────────────────────────────────────────────────────
 
+
 @ropa.command("generate")
-@click.option("--regulation", default="GDPR",
-              type=click.Choice(list(REGULATION_MAP.keys())),
-              help="Regulation to generate for")
-@click.option("--format", "output_format",
-              type=click.Choice(["json", "csv", "pdf", "docx"]),
-              default="json", help="Output format")
-@click.option("--wait/--no-wait", default=False,
-              help="Poll until generation completes")
-@click.option("--timeout", default=120,
-              help="Max wait time in seconds (with --wait)")
+@click.option(
+    "--regulation",
+    default="GDPR",
+    type=click.Choice(list(REGULATION_MAP.keys())),
+    help="Regulation to generate for",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "csv", "pdf", "docx"]),
+    default="json",
+    help="Output format",
+)
+@click.option("--wait/--no-wait", default=False, help="Poll until generation completes")
+@click.option("--timeout", default=120, help="Max wait time in seconds (with --wait)")
 def generate(regulation: str, output_format: str, wait: bool, timeout: int):
     """Generate a new RoPA artefact."""
     try:
@@ -193,6 +213,7 @@ def generate(regulation: str, output_format: str, wait: bool, timeout: int):
 
 # ── download ────────────────────────────────────────────────────────────────
 
+
 @ropa.command("download")
 @click.argument("record_id")
 def download_ropa(record_id: str):
@@ -212,6 +233,7 @@ def download_ropa(record_id: str):
 
 # ── delete ──────────────────────────────────────────────────────────────────
 
+
 @ropa.command("delete")
 @click.argument("record_id")
 @click.confirmation_option(prompt="Are you sure you want to delete this RoPA generation?")
@@ -226,9 +248,15 @@ def delete_record(record_id: str):
 
 # ── regulation-map ──────────────────────────────────────────────────────────
 
+
 @ropa.command("regulation-map")
-@click.option("--format", "output_format", type=click.Choice(["json", "table"]),
-              default="table", help="Output format")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
 def regulation_map(output_format: str):
     """Print the map of supported regulation keys to human-readable names."""
     if output_format == "json":

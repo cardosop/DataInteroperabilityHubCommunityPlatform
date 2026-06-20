@@ -5,17 +5,16 @@ Tests for schema diff, compatibility calculation, and change log generation.
 """
 
 import pytest
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.datasets.models import Dataset, SchemaVersion
-from hub.apps.files.models import File, FileStatus
+from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.schema_evolution import (
     ChangeType,
     CompatibilityLevel,
     SchemaEvolutionTracker,
 )
 from hub.apps.datasets.tests.test_base import DatasetsTestBase
+from hub.apps.files.models import File, FileStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -260,15 +259,12 @@ class SchemaEvolutionTrackerTest(DatasetsTestBase):
     # ========== FAILURE SCENARIOS ==========
 
     def test_schema_evolution_failure_invalid_schema(self):
-        """Test schema evolution with invalid schema (failure scenario)"""
-        # Should handle invalid schema gracefully
-        try:
-            diff = SchemaEvolutionTracker.calculate_schema_diff(None, {})
-            # If succeeds, should return diff or handle gracefully
-            self.assertIsNotNone(diff)
-        except (AttributeError, TypeError):
-            # If fails, that's acceptable for invalid schema
-            pass
+        """calculate_schema_diff with None old_schema returns diff gracefully."""
+        diff = SchemaEvolutionTracker.calculate_schema_diff(None, {})
+        self.assertIsNotNone(diff)
+        # None old_schema is treated as empty — the diff should report
+        # the entire new schema as added fields.
+        self.assertGreaterEqual(len(diff.changes), 0)
 
     def test_schema_evolution_failure_empty_schemas(self):
         """Test schema evolution with empty schemas (failure scenario)"""
@@ -280,7 +276,7 @@ class SchemaEvolutionTrackerTest(DatasetsTestBase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_schema_evolution_error_handling(self):
+    def test_schema_evolution_no_changes(self):
         """Test error handling in schema evolution"""
         old_schema = {"fields": [{"name": "col1", "data_type": "string"}]}
         new_schema = {"fields": [{"name": "col1", "data_type": "string"}]}
@@ -294,7 +290,7 @@ class SchemaEvolutionTrackerTest(DatasetsTestBase):
             # If raises exception, that's a problem
             self.fail("calculate_schema_diff should handle errors gracefully")
 
-    def test_track_schema_version_error_handling(self):
+    def test_track_schema_version_with_parent(self):
         """Test error handling when tracking schema version fails"""
         parent = Dataset.objects.create(
             tenant=self.tenant,

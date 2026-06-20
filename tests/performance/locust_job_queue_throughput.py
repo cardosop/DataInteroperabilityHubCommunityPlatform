@@ -8,28 +8,28 @@ Targets from Testing_Strategy.md §8.1.5:
 - P50 end-to-end duration ≤ 15 minutes
 - P95 end-to-end duration ≤ 30 minutes
 """
+
 import pytest
 
 # Skip if locust is not installed
 try:
-    from locust import HttpUser, task, between, events
+    from locust import HttpUser, between, events, task
     from locust.contrib.fasthttp import FastHttpUser
+
     LOCUST_AVAILABLE = True
 except ImportError:
     LOCUST_AVAILABLE = False
     pytestmark = pytest.mark.skip(reason="locust not installed")
 
     # Skip entire module if locust not available
-    pass
     pytestmark = pytest.mark.skip(reason="locust not installed")
 
 if LOCUST_AVAILABLE:
-    import time
     import random
-    from typing import List, Dict
-
     import sys
+    import time
     from pathlib import Path
+
     project_root = Path(__file__).resolve().parent.parent.parent
     sys.path.insert(0, str(project_root))
     from tests.performance.helpers import PerformanceTestHelper
@@ -45,27 +45,27 @@ if LOCUST_AVAILABLE:
             self.helper = PerformanceTestHelper(base_url=self.host)
             self.test_data = self.helper.create_test_tenant_and_user(
                 tenant_name=f"perf-tenant-{random.randint(1000, 9999)}",
-                user_email=f"perf-user-{random.randint(1000, 9999)}@example.com"
+                user_email=f"perf-user-{random.randint(1000, 9999)}@example.com",
             )
-            self.headers = self.test_data['headers']
-            self.access_token = self.test_data['access_token']
-            self.created_jobs: List[Dict] = []
-            self.job_start_times: Dict[str, float] = {}
+            self.headers = self.test_data["headers"]
+            self.access_token = self.test_data["access_token"]
+            self.created_jobs: list[dict] = []
+            self.job_start_times: dict[str, float] = {}
 
         @task(5)
         def test_create_dq_job(self):
             """Create a DQ run job"""
-            self._create_job('DQ_RUN')
+            self._create_job("DQ_RUN")
 
         @task(5)
         def test_create_compliance_job(self):
             """Create a compliance run job"""
-            self._create_job('COMPLIANCE_RUN')
+            self._create_job("COMPLIANCE_RUN")
 
         @task(3)
         def test_create_semantic_mapping_job(self):
             """Create a semantic mapping job"""
-            self._create_job('SEMANTIC_MAPPING')
+            self._create_job("SEMANTIC_MAPPING")
 
         @task(10)
         def test_poll_job_status(self):
@@ -74,20 +74,20 @@ if LOCUST_AVAILABLE:
                 return
 
             job = random.choice(self.created_jobs)
-            job_id = job['id']
+            job_id = job["id"]
 
             with self.client.get(
                 f"/api/v1/jobs/{job_id}",
                 headers=self.headers,
                 name="/api/v1/jobs/{id}",
-                catch_response=True
+                catch_response=True,
             ) as response:
                 if response.status_code == 200:
                     data = response.json()
-                    status = data.get('status')
+                    status = data.get("status")
 
                     # Track job completion
-                    if status in ['COMPLETED', 'FAILED', 'CANCELLED']:
+                    if status in ["COMPLETED", "FAILED", "CANCELLED"]:
                         if job_id in self.job_start_times:
                             end_time = time.time()
                             duration = (end_time - self.job_start_times[job_id]) / 60  # minutes
@@ -98,7 +98,7 @@ if LOCUST_AVAILABLE:
                                 name=f"job_{status.lower()}_duration",
                                 response_time=duration * 60 * 1000,  # Convert to ms
                                 response_length=0,
-                                exception=None
+                                exception=None,
                             )
 
                             # Remove completed job
@@ -120,9 +120,9 @@ if LOCUST_AVAILABLE:
         def test_list_jobs(self):
             """List jobs with filtering"""
             params = {
-                'status': random.choice(['PENDING', 'RUNNING', 'COMPLETED', 'FAILED']),
-                'type': random.choice(['DQ_RUN', 'COMPLIANCE_RUN', 'SEMANTIC_MAPPING']),
-                'limit': 20
+                "status": random.choice(["PENDING", "RUNNING", "COMPLETED", "FAILED"]),
+                "type": random.choice(["DQ_RUN", "COMPLIANCE_RUN", "SEMANTIC_MAPPING"]),
+                "limit": 20,
             }
 
             with self.client.get(
@@ -130,7 +130,7 @@ if LOCUST_AVAILABLE:
                 headers=self.headers,
                 params=params,
                 name="/api/v1/jobs",
-                catch_response=True
+                catch_response=True,
             ) as response:
                 if response.status_code == 200:
                     response.success()
@@ -144,14 +144,14 @@ if LOCUST_AVAILABLE:
             # For semantic mapping, we need an asset
 
             # Create a minimal DQ run or compliance run
-            if job_type in ['DQ_RUN', 'COMPLIANCE_RUN']:
+            if job_type in ["DQ_RUN", "COMPLIANCE_RUN"]:
                 self._create_dq_or_compliance_run(job_type)
-            elif job_type == 'SEMANTIC_MAPPING':
+            elif job_type == "SEMANTIC_MAPPING":
                 self._create_semantic_mapping_job()
 
         def _create_dq_or_compliance_run(self, run_type: str):
             """Create a DQ or compliance run (which creates a job)"""
-            endpoint = '/dq/runs' if run_type == 'DQ_RUN' else '/compliance/runs'
+            endpoint = "/dq/runs" if run_type == "DQ_RUN" else "/compliance/runs"
 
             # Create a minimal file first if needed
             file_id = self._ensure_test_file()
@@ -159,8 +159,8 @@ if LOCUST_AVAILABLE:
                 return
 
             run_data = {
-                'file_id': file_id,
-                'profile_key': 'intake_basic' if run_type == 'DQ_RUN' else None
+                "file_id": file_id,
+                "profile_key": "intake_basic" if run_type == "DQ_RUN" else None,
             }
 
             start_time = time.time()
@@ -170,14 +170,14 @@ if LOCUST_AVAILABLE:
                 json=run_data,
                 headers=self.headers,
                 name=f"/api/v1{endpoint}",
-                catch_response=True
+                catch_response=True,
             ) as response:
                 if response.status_code == 201:
                     data = response.json()
-                    job_id = data.get('job', {}).get('id') or data.get('job_id')
+                    job_id = data.get("job", {}).get("id") or data.get("job_id")
 
                     if job_id:
-                        self.created_jobs.append({'id': job_id, 'type': run_type})
+                        self.created_jobs.append({"id": job_id, "type": run_type})
                         self.job_start_times[job_id] = start_time
 
                         # Track queue latency (time from creation to RUNNING)
@@ -186,7 +186,7 @@ if LOCUST_AVAILABLE:
                             name=f"{run_type.lower()}_created",
                             response_time=(time.time() - start_time) * 1000,
                             response_length=0,
-                            exception=None
+                            exception=None,
                         )
 
                     response.success()
@@ -198,23 +198,23 @@ if LOCUST_AVAILABLE:
             # This would typically be created when an asset is created
             # For now, we'll create a minimal asset which triggers semantic mapping
             asset_data = {
-                'name': f'perf-test-asset-{int(time.time())}',
-                'description': 'Performance test asset',
-                'status': 'DRAFT'
+                "name": f"perf-test-asset-{int(time.time())}",
+                "description": "Performance test asset",
+                "status": "DRAFT",
             }
 
-            start_time = time.time()
+            time.time()
 
             with self.client.post(
                 "/api/v1/assets",
                 json=asset_data,
                 headers=self.headers,
                 name="/api/v1/assets (for semantic mapping)",
-                catch_response=True
+                catch_response=True,
             ) as response:
                 if response.status_code == 201:
                     data = response.json()
-                    asset_id = data.get('id')
+                    data.get("id")
 
                     # Semantic mapping job is created automatically
                     # We can check for it by listing jobs
@@ -233,4 +233,3 @@ if LOCUST_AVAILABLE:
             # Return a placeholder file ID - in real implementation,
             # you'd create an actual file
             return "00000000-0000-0000-0000-000000000000"  # Placeholder
-

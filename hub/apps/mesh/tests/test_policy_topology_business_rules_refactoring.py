@@ -14,21 +14,18 @@ Following TDD approach and engineering best practices:
 - Follow DRY, SOLID, and clean code principles
 """
 
-import time
 import uuid
-from typing import Any, Dict
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase, override_settings
-from django.utils import timezone
 
 from hub.apps.core.business_rules.base import (
     BusinessRules,
     RuleExecutionContext,
     ValidationResult,
 )
-from hub.apps.core.business_rules.registry import get_registry
+from hub.apps.governance.models import AccessPolicy
 from hub.apps.mesh.business_rules import (
     PolicyBusinessRules,
     TopologyBusinessRules,
@@ -36,15 +33,9 @@ from hub.apps.mesh.business_rules import (
 from hub.apps.mesh.models import (
     DataMeshDomain,
     DomainStatus,
-    PolicyApplication,
-    PolicyApplicationStatus,
-    ComplianceReport,
-    MeshComplianceStatus,
 )
-from hub.apps.governance.models import AccessPolicy
-from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus, Role, UserRole
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 UserModel = get_user_model()
 
@@ -55,26 +46,23 @@ class PolicyBusinessRulesFrameworkFeaturesTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
 
         # Get or create roles
         self.tenant_admin_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="TENANT_ADMIN",
-            defaults={"description": "Tenant admin role"}
+            tenant=self.tenant, name="TENANT_ADMIN", defaults={"description": "Tenant admin role"}
         )
 
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        UserRole.objects.create(
-            user=self.user,
-            role=self.tenant_admin_role
-        )
+        UserRole.objects.create(user=self.user, role=self.tenant_admin_role)
 
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant,
@@ -82,11 +70,7 @@ class PolicyBusinessRulesFrameworkFeaturesTest(TestCase):
             status=DomainStatus.ACTIVE,
         )
         self.policy = AccessPolicy.objects.create(
-            tenant=self.tenant,
-            name="Test Policy",
-            enabled=True,
-            conditions={},
-            effect="ALLOW"
+            tenant=self.tenant, name="Test Policy", enabled=True, conditions={}, effect="ALLOW"
         )
         self.rules = PolicyBusinessRules(
             tenant_id=str(self.tenant.id),
@@ -186,20 +170,19 @@ class PolicyBusinessRulesFrameworkFeaturesTest(TestCase):
         self.assertFalse(rules.enable_tracing)
         self.assertFalse(rules.enable_logging)
 
-    @override_settings(CACHES={
-        'default': {
-            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+    @override_settings(
+        CACHES={
+            "default": {
+                "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            }
         }
-    })
+    )
     def test_caching_enabled(self):
         """Test that caching works when enabled"""
         cache.clear()
 
         # First call - should compute and cache
-        result1 = self.rules.validate_policy_application(
-            domain=self.domain,
-            policy=self.policy
-        )
+        result1 = self.rules.validate_policy_application(domain=self.domain, policy=self.policy)
 
         # Verify result is valid
         self.assertTrue(result1.is_valid)
@@ -207,19 +190,13 @@ class PolicyBusinessRulesFrameworkFeaturesTest(TestCase):
         # Second call with same parameters - should use cache
         # Note: The execute() method handles caching, but validate_policy_application
         # is called directly, so caching may not apply unless using execute()
-        result2 = self.rules.validate_policy_application(
-            domain=self.domain,
-            policy=self.policy
-        )
+        result2 = self.rules.validate_policy_application(domain=self.domain, policy=self.policy)
 
         self.assertTrue(result2.is_valid)
 
     def test_validate_method_with_domain_and_policy(self):
         """Test validate() method with domain and policy"""
-        result = self.rules.validate(
-            domain=self.domain,
-            policy=self.policy
-        )
+        result = self.rules.validate(domain=self.domain, policy=self.policy)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(result.details["validation_type"], "policy")
@@ -236,10 +213,7 @@ class PolicyBusinessRulesFrameworkFeaturesTest(TestCase):
 
     def test_validate_method_with_context(self):
         """Test validate() method with RuleExecutionContext"""
-        context = RuleExecutionContext(
-            resource=self.domain,
-            metadata={"policy": self.policy}
-        )
+        context = RuleExecutionContext(resource=self.domain, metadata={"policy": self.policy})
 
         result = self.rules.validate(context=context)
 
@@ -255,10 +229,7 @@ class PolicyBusinessRulesFrameworkFeaturesTest(TestCase):
 
     def test_execute_method_from_base_class(self):
         """Test execute() method from base class"""
-        result = self.rules.execute(
-            domain=self.domain,
-            policy=self.policy
-        )
+        result = self.rules.execute(domain=self.domain, policy=self.policy)
 
         self.assertTrue(result.is_valid)
         self.assertIsInstance(result, ValidationResult)
@@ -266,10 +237,7 @@ class PolicyBusinessRulesFrameworkFeaturesTest(TestCase):
     def test_all_existing_methods_still_work(self):
         """Test that all existing methods still work correctly"""
         # Test validate_policy_application
-        result = self.rules.validate_policy_application(
-            domain=self.domain,
-            policy=self.policy
-        )
+        result = self.rules.validate_policy_application(domain=self.domain, policy=self.policy)
         self.assertTrue(result.is_valid)
         self.assertIsInstance(result, ValidationResult)
 
@@ -289,14 +257,16 @@ class TopologyBusinessRulesFrameworkFeaturesTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
 
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         self.domain1 = DataMeshDomain.objects.create(
@@ -379,9 +349,7 @@ class TopologyBusinessRulesFrameworkFeaturesTest(TestCase):
 
     def test_validate_method_with_context(self):
         """Test validate() method with RuleExecutionContext"""
-        context = RuleExecutionContext(
-            resource=self.domain1
-        )
+        context = RuleExecutionContext(resource=self.domain1)
 
         result = self.rules.validate(context=context)
 
@@ -390,9 +358,7 @@ class TopologyBusinessRulesFrameworkFeaturesTest(TestCase):
 
     def test_validate_method_with_context_list(self):
         """Test validate() method with RuleExecutionContext containing list"""
-        context = RuleExecutionContext(
-            resource=[self.domain1, self.domain2]
-        )
+        context = RuleExecutionContext(resource=[self.domain1, self.domain2])
 
         result = self.rules.validate(context=context)
 
@@ -452,26 +418,23 @@ class PolicyBusinessRulesIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
 
         # Get or create roles
         self.tenant_admin_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="TENANT_ADMIN",
-            defaults={"description": "Tenant admin role"}
+            tenant=self.tenant, name="TENANT_ADMIN", defaults={"description": "Tenant admin role"}
         )
 
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        UserRole.objects.create(
-            user=self.user,
-            role=self.tenant_admin_role
-        )
+        UserRole.objects.create(user=self.user, role=self.tenant_admin_role)
 
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant,
@@ -479,11 +442,7 @@ class PolicyBusinessRulesIntegrationTest(TestCase):
             status=DomainStatus.ACTIVE,
         )
         self.policy = AccessPolicy.objects.create(
-            tenant=self.tenant,
-            name="Test Policy",
-            enabled=True,
-            conditions={},
-            effect="ALLOW"
+            tenant=self.tenant, name="Test Policy", enabled=True, conditions={}, effect="ALLOW"
         )
         self.rules = PolicyBusinessRules(
             tenant_id=str(self.tenant.id),
@@ -492,6 +451,7 @@ class PolicyBusinessRulesIntegrationTest(TestCase):
 
     def test_compose_method_from_base_class(self):
         """Test compose() method from base class"""
+
         def rule1(context: RuleExecutionContext) -> ValidationResult:
             return ValidationResult(is_valid=True, details={"rule1": "executed"})
 
@@ -507,15 +467,12 @@ class PolicyBusinessRulesIntegrationTest(TestCase):
 
     def test_create_rule_function_from_base_class(self):
         """Test create_rule_function() from base class"""
+
         def custom_rule(context: RuleExecutionContext) -> ValidationResult:
-            return ValidationResult(
-                is_valid=True,
-                details={"custom": "rule"}
-            )
+            return ValidationResult(is_valid=True, details={"custom": "rule"})
 
         rule_func = PolicyBusinessRules.create_rule_function(
-            custom_rule,
-            rule_name="custom_policy_rule"
+            custom_rule, rule_name="custom_policy_rule"
         )
 
         context = RuleExecutionContext(resource=self.domain)
@@ -531,14 +488,16 @@ class TopologyBusinessRulesIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
 
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         self.domain = DataMeshDomain.objects.create(
@@ -553,6 +512,7 @@ class TopologyBusinessRulesIntegrationTest(TestCase):
 
     def test_compose_method_from_base_class(self):
         """Test compose() method from base class"""
+
         def rule1(context: RuleExecutionContext) -> ValidationResult:
             return ValidationResult(is_valid=True, details={"rule1": "executed"})
 
@@ -568,15 +528,12 @@ class TopologyBusinessRulesIntegrationTest(TestCase):
 
     def test_create_rule_function_from_base_class(self):
         """Test create_rule_function() from base class"""
+
         def custom_rule(context: RuleExecutionContext) -> ValidationResult:
-            return ValidationResult(
-                is_valid=True,
-                details={"custom": "rule"}
-            )
+            return ValidationResult(is_valid=True, details={"custom": "rule"})
 
         rule_func = TopologyBusinessRules.create_rule_function(
-            custom_rule,
-            rule_name="custom_topology_rule"
+            custom_rule, rule_name="custom_topology_rule"
         )
 
         context = RuleExecutionContext(resource=self.domain)
@@ -592,26 +549,23 @@ class PolicyBusinessRulesAllMethodsTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
 
         # Get or create roles
         self.tenant_admin_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="TENANT_ADMIN",
-            defaults={"description": "Tenant admin role"}
+            tenant=self.tenant, name="TENANT_ADMIN", defaults={"description": "Tenant admin role"}
         )
 
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        UserRole.objects.create(
-            user=self.user,
-            role=self.tenant_admin_role
-        )
+        UserRole.objects.create(user=self.user, role=self.tenant_admin_role)
 
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant,
@@ -619,11 +573,7 @@ class PolicyBusinessRulesAllMethodsTest(TestCase):
             status=DomainStatus.ACTIVE,
         )
         self.policy = AccessPolicy.objects.create(
-            tenant=self.tenant,
-            name="Test Policy",
-            enabled=True,
-            conditions={},
-            effect="ALLOW"
+            tenant=self.tenant, name="Test Policy", enabled=True, conditions={}, effect="ALLOW"
         )
         self.rules = PolicyBusinessRules(
             tenant_id=str(self.tenant.id),
@@ -632,10 +582,7 @@ class PolicyBusinessRulesAllMethodsTest(TestCase):
 
     def test_validate_policy_application_comprehensive(self):
         """Test validate_policy_application comprehensively"""
-        result = self.rules.validate_policy_application(
-            domain=self.domain,
-            policy=self.policy
-        )
+        result = self.rules.validate_policy_application(domain=self.domain, policy=self.policy)
 
         self.assertTrue(result.is_valid)
         self.assertIsInstance(result, ValidationResult)
@@ -668,7 +615,9 @@ class TopologyBusinessRulesAllMethodsTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
 
         self.domain1 = DataMeshDomain.objects.create(
@@ -709,4 +658,3 @@ class TopologyBusinessRulesAllMethodsTest(TestCase):
         # Verify health_score is in valid range
         self.assertGreaterEqual(metrics["health_score"], 0)
         self.assertLessEqual(metrics["health_score"], 100)
-

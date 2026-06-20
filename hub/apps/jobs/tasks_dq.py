@@ -7,6 +7,7 @@ SAVING CHECKPOINT: This module contains DQ job handlers (< 700 lines per project
 """
 
 from .models import Job
+from .tasks_base import JobExecutionError
 
 
 def _execute_dq_run_job(job_obj: Job) -> dict:
@@ -72,14 +73,14 @@ def _execute_dq_run_job(job_obj: Job) -> dict:
                 if dq_run.details_json
                 else "DQ run failed"
             )
-            raise Exception(f"DQ run failed: {error_msg}")
+            raise JobExecutionError(f"DQ run failed: {error_msg}")
 
         return {
             "status": dq_run.status.lower(),
             "overall_status": dq_run.overall_status,
             "quality_score": dq_run.quality_score,
             "dq_run_id": str(dq_run.id),
-            "engine": dq_run.engine if hasattr(dq_run, "engine") else None,
+            "engine": getattr(dq_run, "engine", None) or "",
         }
 
     except ConnectionError:
@@ -88,4 +89,4 @@ def _execute_dq_run_job(job_obj: Job) -> dict:
         raise  # Re-raise validation errors
     except Exception as e:
         # Wrap other exceptions
-        raise Exception(f"DQ run execution failed: {str(e)}") from e
+        raise JobExecutionError(f"DQ run execution failed: {e!s}") from e

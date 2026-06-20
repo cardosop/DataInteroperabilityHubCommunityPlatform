@@ -73,11 +73,17 @@ def main() -> int:
 
     if args.json:
         import json
-        print(json.dumps({
-            "threshold": args.threshold,
-            "apps": results,
-            "violations": violations,
-        }, indent=2))
+
+        print(
+            json.dumps(
+                {
+                    "threshold": args.threshold,
+                    "apps": results,
+                    "violations": violations,
+                },
+                indent=2,
+            )
+        )
         return 1 if violations else 0
 
     print(f"Migration count audit (threshold: {args.threshold})")

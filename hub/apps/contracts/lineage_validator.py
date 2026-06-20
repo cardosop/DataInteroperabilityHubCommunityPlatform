@@ -24,11 +24,12 @@ These are PURE functions — no DB access — so they're cheap to
 property-test with hypothesis (F2.12) and the same call-site
 binds the endpoint AND the integration test surface.
 """
+
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
-
+from collections.abc import Iterable
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Cycle detection
@@ -38,7 +39,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 # An edge-tuple-key for the in-memory graph.  Dictionaries / model
 # instances would each have their own id semantics; reducing to a
 # string-tuple keeps the cycle test deterministic.
-EdgeKey = Tuple[str, str, str, str]
+EdgeKey = tuple[str, str, str, str]
 """(source_contract_id, source_field_qname, target_contract_id, target_field_qname)"""
 
 
@@ -47,7 +48,7 @@ def _qname(model: str, field: str) -> str:
     return f"{model}.{field}" if model else field
 
 
-def _edge_key(edge: Dict[str, Any]) -> EdgeKey:
+def _edge_key(edge: dict[str, Any]) -> EdgeKey:
     """Project an edge dict to its cycle-relevant key tuple."""
     return (
         str(edge.get("source_contract") or ""),
@@ -64,9 +65,9 @@ def _edge_key(edge: Dict[str, Any]) -> EdgeKey:
 
 
 def detect_cycle(
-    edges: Iterable[Dict[str, Any]],
-    new_edge: Dict[str, Any],
-) -> Optional[List[str]]:
+    edges: Iterable[dict[str, Any]],
+    new_edge: dict[str, Any],
+) -> list[str] | None:
     """Return the cycle path if adding ``new_edge`` to ``edges`` closes one.
 
     Args
@@ -112,7 +113,7 @@ def detect_cycle(
         ),
     )
 
-    def _format(node: Tuple[str, str]) -> str:
+    def _format(node: tuple[str, str]) -> str:
         cid, qname = node
         return f"{cid}:{qname}" if cid else qname
 
@@ -121,7 +122,7 @@ def detect_cycle(
         return [_format(new_src_node), _format(new_src_node)]
 
     # Build adjacency.
-    adj: Dict[Tuple[str, str], List[Tuple[str, str]]] = defaultdict(list)
+    adj: dict[tuple[str, str], list[tuple[str, str]]] = defaultdict(list)
     for edge in edges:
         key = _edge_key(edge)
         src = (key[0], key[1])
@@ -132,9 +133,9 @@ def detect_cycle(
     # reachable, the new edge (src → tgt) would close the loop
     # tgt → ... → src → tgt; the path is reconstructed from the
     # parent map.
-    visited: Set[Tuple[str, str]] = set()
-    parent: Dict[Tuple[str, str], Tuple[str, str]] = {}
-    stack: List[Tuple[str, str]] = [new_tgt_node]
+    visited: set[tuple[str, str]] = set()
+    parent: dict[tuple[str, str], tuple[str, str]] = {}
+    stack: list[tuple[str, str]] = [new_tgt_node]
     while stack:
         node = stack.pop()
         if node in visited:
@@ -145,7 +146,7 @@ def detect_cycle(
             # Walk parent map from new_src_node back to new_tgt_node,
             # then prepend the new edge (new_src → new_tgt) to close
             # the cycle.
-            path: List[Tuple[str, str]] = [new_src_node]
+            path: list[tuple[str, str]] = [new_src_node]
             cursor = new_src_node
             while cursor in parent and parent[cursor] != new_tgt_node:
                 cursor = parent[cursor]
@@ -166,7 +167,7 @@ def detect_cycle(
 
 
 def validate_field_exists(
-    contract_payload: Dict[str, Any],
+    contract_payload: dict[str, Any],
     model_name: str,
     field_name: str,
 ) -> bool:
@@ -201,7 +202,7 @@ def validate_field_exists(
     return False
 
 
-def _field_present(fields: List[Dict[str, Any]], qname: str) -> bool:
+def _field_present(fields: list[dict[str, Any]], qname: str) -> bool:
     """Recursive search for ``qname`` (dot-separated) in a fields tree."""
     if not isinstance(fields, list) or not qname:
         return False
@@ -239,7 +240,7 @@ def _field_present(fields: List[Dict[str, Any]], qname: str) -> bool:
 # mapping editor, not a transformation-language designer; we don't
 # want to encode every possible JDBC widening rule.  A future v2 can
 # extend the matrix without API churn since it lives in code.
-TYPE_COMPAT_MATRIX: Dict[str, Set[str]] = {
+TYPE_COMPAT_MATRIX: dict[str, set[str]] = {
     "string": {"string"},
     "integer": {"integer", "long", "decimal", "number"},
     "long": {"long", "decimal", "number"},
@@ -256,8 +257,8 @@ TYPE_COMPAT_MATRIX: Dict[str, Set[str]] = {
 
 
 def validate_type_compatibility(
-    source_type: Optional[str],
-    target_type: Optional[str],
+    source_type: str | None,
+    target_type: str | None,
     *,
     transformation_ref: str = "",
 ) -> bool:
@@ -295,10 +296,10 @@ def validate_type_compatibility(
 
 
 __all__ = [
+    "TYPE_COMPAT_MATRIX",
+    "_edge_key",
+    "_qname",
     "detect_cycle",
     "validate_field_exists",
     "validate_type_compatibility",
-    "TYPE_COMPAT_MATRIX",
-    "_qname",
-    "_edge_key",
 ]

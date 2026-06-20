@@ -1,11 +1,10 @@
 """RoPA REST API — preview cache, RBAC gate, sync/async generate (real middleware + DB)."""
 
 from __future__ import annotations
-import pytest
 
-import pytest
 import uuid
 
+import pytest
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from rest_framework import status
@@ -115,7 +114,11 @@ class RopaApiTests(TestCase):
         self.assertTrue(res.data.get("async"))
         self.assertEqual(res.data["status"], RopaGenerationStatus.PENDING)
 
-        job = Job.objects.filter(tenant=self.tenant, type=JobType.ROPA_GENERATE).order_by("-created_at").first()
+        job = (
+            Job.objects.filter(tenant=self.tenant, type=JobType.ROPA_GENERATE)
+            .order_by("-created_at")
+            .first()
+        )
         self.assertIsNotNone(job)
         self.assertEqual(job.status, JobStatus.PENDING)
         gen = RopaGeneration.objects.get(id=res.data["ropa_generation_id"])

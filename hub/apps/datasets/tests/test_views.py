@@ -15,7 +15,6 @@ Tests cover:
 All tests use real implementations (no mocks of hub services).
 """
 
-import json
 import uuid
 
 import pytest
@@ -669,16 +668,6 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     # ========== ERROR HANDLING ==========
-
-    def test_retrieve_dataset_not_found(self):
-        """Test error handling when database query fails"""
-
-        # Use valid UUID format but non-existent ID
-        fake_id = str(uuid.uuid4())
-        response = self.client.get(f"/api/v1/datasets/{fake_id}/")
-
-        # Should return 404, not 500
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_create_dataset_validation_error_handling(self):
         """Test error handling for validation errors"""

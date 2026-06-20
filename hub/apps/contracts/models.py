@@ -3,12 +3,14 @@ Contract Models
 
 Contract model for managing data contracts with HubContract normalization.
 """
+
 import uuid
-from django.db import models
+
 from django.conf import settings
-from django.core.exceptions import ValidationError
-from django.contrib.postgres.search import SearchVectorField
 from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField
+from django.core.exceptions import ValidationError
+from django.db import models
 
 from .typed_models import validate_hub_contract_dict
 from .versioning import get_default_version
@@ -16,6 +18,7 @@ from .versioning import get_default_version
 
 class ContractStatus(models.TextChoices):
     """Contract lifecycle status enumeration"""
+
     DRAFT = "DRAFT", "Draft"
     ACTIVE = "ACTIVE", "Active"
     RETIRED = "RETIRED", "Retired"
@@ -23,6 +26,7 @@ class ContractStatus(models.TextChoices):
 
 class ValidationStatus(models.TextChoices):
     """Contract validation status enumeration (from DataContract CLI)"""
+
     VALID = "VALID", "Valid"
     INVALID = "INVALID", "Invalid"
     WARNING_ONLY = "WARNING_ONLY", "Warning Only"
@@ -32,6 +36,7 @@ class ValidationStatus(models.TextChoices):
 
 class NormalizationStatus(models.TextChoices):
     """Contract normalization status enumeration"""
+
     NOT_NORMALIZED = "NOT_NORMALIZED", "Not Normalized"
     NORMALIZED_OK = "NORMALIZED_OK", "Normalized OK"
     NORMALIZED_WITH_WARNINGS = "NORMALIZED_WITH_WARNINGS", "Normalized With Warnings"
@@ -45,12 +50,14 @@ class OriginalSpecType(models.TextChoices):
     - ODCS: Open Data Contract Standard (technical specification)
     - ODPS: Open Data Product Standard (marketplace specification)
     """
+
     ODCS = "ODCS", "ODCS"
     ODPS = "ODPS", "ODPS"
 
 
 class OriginalFormat(models.TextChoices):
     """Original contract format enumeration"""
+
     JSON = "JSON", "JSON"
     YAML = "YAML", "YAML"
 
@@ -61,12 +68,13 @@ class Contract(models.Model):
 
     Stores original contract (ODCS) and normalized HubContract.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="contracts",
-        help_text="Tenant this contract belongs to"
+        help_text="Tenant this contract belongs to",
     )
     asset = models.ForeignKey(
         "assets.Asset",
@@ -74,55 +82,44 @@ class Contract(models.Model):
         related_name="contracts",
         null=True,
         blank=True,
-        help_text="Asset this contract belongs to (nullable for contract-only assets)"
+        help_text="Asset this contract belongs to (nullable for contract-only assets)",
     )
-    version = models.IntegerField(
-        default=1,
-        help_text="Per-asset contract version counter"
-    )
+    version = models.IntegerField(default=1, help_text="Per-asset contract version counter")
     status = models.CharField(
         max_length=20,
         choices=ContractStatus.choices,
         default=ContractStatus.DRAFT,
-        help_text="Contract lifecycle status: DRAFT, ACTIVE, RETIRED"
+        help_text="Contract lifecycle status: DRAFT, ACTIVE, RETIRED",
     )
 
     # Original specification metadata
     original_spec_type = models.CharField(
         max_length=50,
         choices=OriginalSpecType.choices,
-        help_text="Original spec type: ODCS (Open Data Contract Standard) or ODPS (Open Data Product Standard)"
+        help_text="Original spec type: ODCS (Open Data Contract Standard) or ODPS (Open Data Product Standard)",
     )
     original_spec_version = models.CharField(
-        max_length=20,
-        help_text="Original spec version (e.g., 3.0.2, 2.2.2)"
+        max_length=20, help_text="Original spec version (e.g., 3.0.2, 2.2.2)"
     )
     original_format = models.CharField(
-        max_length=10,
-        choices=OriginalFormat.choices,
-        help_text="Original format: JSON or YAML"
+        max_length=10, choices=OriginalFormat.choices, help_text="Original format: JSON or YAML"
     )
-    original_raw = models.TextField(
-        help_text="Original contract file content (verbatim)"
-    )
+    original_raw = models.TextField(help_text="Original contract file content (verbatim)")
     original_raw_resolved = models.TextField(
         null=True,
         blank=True,
-        help_text="Original contract content with all $ref references resolved (cached for performance)"
+        help_text="Original contract content with all $ref references resolved (cached for performance)",
     )
 
     # HubContract normalization
     hub_contract_version = models.CharField(
-        max_length=20,
-        null=True,
-        blank=True,
-        help_text="HubContract version (e.g., 1.0.0)"
+        max_length=20, null=True, blank=True, help_text="HubContract version (e.g., 1.0.0)"
     )
     hub_contract_json = models.JSONField(
         db_index=False,  # No full-column index: large JSON (>8KB) exceeds PostgreSQL index key limit.
         null=True,
         blank=True,
-        help_text="Normalized HubContract JSON"
+        help_text="Normalized HubContract JSON",
     )
     normalization_status = models.CharField(
         max_length=30,
@@ -130,19 +127,13 @@ class Contract(models.Model):
         null=True,
         blank=True,
         default=NormalizationStatus.NOT_NORMALIZED,
-        help_text="Normalization status"
+        help_text="Normalization status",
     )
     normalization_errors = models.JSONField(
-        null=True,
-        blank=True,
-        default=list,
-        help_text="Normalization errors (JSON array)"
+        null=True, blank=True, default=list, help_text="Normalization errors (JSON array)"
     )
     normalization_warnings = models.JSONField(
-        null=True,
-        blank=True,
-        default=list,
-        help_text="Normalization warnings (JSON array)"
+        null=True, blank=True, default=list, help_text="Normalization warnings (JSON array)"
     )
 
     # CLI validation result
@@ -151,30 +142,19 @@ class Contract(models.Model):
         choices=ValidationStatus.choices,
         null=True,
         blank=True,
-        help_text="CLI validation status: VALID, INVALID, WARNING_ONLY, ERROR"
+        help_text="CLI validation status: VALID, INVALID, WARNING_ONLY, ERROR",
     )
     validation_errors = models.JSONField(
-        null=True,
-        blank=True,
-        default=list,
-        help_text="Validation errors (JSON array)"
+        null=True, blank=True, default=list, help_text="Validation errors (JSON array)"
     )
     validation_warnings = models.JSONField(
-        null=True,
-        blank=True,
-        default=list,
-        help_text="Validation warnings (JSON array)"
+        null=True, blank=True, default=list, help_text="Validation warnings (JSON array)"
     )
     cli_version = models.CharField(
-        max_length=20,
-        null=True,
-        blank=True,
-        help_text="DataContract CLI version used"
+        max_length=20, null=True, blank=True, help_text="DataContract CLI version used"
     )
     last_validated_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Last validation timestamp"
+        null=True, blank=True, help_text="Last validation timestamp"
     )
 
     created_by = models.ForeignKey(
@@ -183,7 +163,7 @@ class Contract(models.Model):
         related_name="created_contracts",
         null=True,
         blank=True,
-        help_text="User who created the contract"
+        help_text="User who created the contract",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -194,8 +174,7 @@ class Contract(models.Model):
         null=True,
         blank=True,
         help_text=(
-            "PostgreSQL tsvector for full-text search "
-            "(auto-maintained via post_save signal)"
+            "PostgreSQL tsvector for full-text search (auto-maintained via post_save signal)"
         ),
     )
     # Phase 230.8.9 (REQ-SEM-FED-002) — per-resource federation
@@ -225,7 +204,7 @@ class Contract(models.Model):
             models.UniqueConstraint(
                 fields=["tenant", "asset", "version"],
                 condition=models.Q(asset__isnull=False),
-                name="unique_contract_version_per_asset"
+                name="unique_contract_version_per_asset",
             ),
             models.CheckConstraint(
                 condition=models.Q(status__in=["DRAFT", "ACTIVE", "RETIRED"]),
@@ -238,14 +217,16 @@ class Contract(models.Model):
         return f"{asset_name} - {self.original_spec_type} v{self.original_spec_version} ({self.status})"
 
     # Fields that cannot be changed once contract is ACTIVE
-    _IMMUTABLE_WHEN_ACTIVE = frozenset({
-        "hub_contract_json",
-        "original_raw",
-        "original_spec_type",
-        "original_format",
-        "validation_status",
-        "normalization_status",
-    })
+    _IMMUTABLE_WHEN_ACTIVE = frozenset(
+        {
+            "hub_contract_json",
+            "original_raw",
+            "original_spec_type",
+            "original_format",
+            "validation_status",
+            "normalization_status",
+        }
+    )
 
     def clean(self):
         """Validate contract status rules and immutability."""
@@ -254,9 +235,9 @@ class Contract(models.Model):
         # Reject changes to critical fields on ACTIVE contracts
         if self.pk:
             try:
-                prev = type(self).objects.only(
-                    "status", *self._IMMUTABLE_WHEN_ACTIVE
-                ).get(pk=self.pk)
+                prev = (
+                    type(self).objects.only("status", *self._IMMUTABLE_WHEN_ACTIVE).get(pk=self.pk)
+                )
                 if prev.status == ContractStatus.ACTIVE:
                     changed = [
                         f
@@ -273,17 +254,27 @@ class Contract(models.Model):
                 pass
 
         if self.hub_contract_json:
-            validated_contract, validation_errors = validate_hub_contract_dict(self.hub_contract_json)
+            validated_contract, validation_errors = validate_hub_contract_dict(
+                self.hub_contract_json
+            )
             if validation_errors:
                 raise ValidationError({"hub_contract_json": validation_errors})
             expected_version = get_default_version()
-            if validated_contract and str(validated_contract.hub_contract_version) != expected_version:
-                raise ValidationError({"hub_contract_json": [f"hub_contract_version must be {expected_version}"]})
+            if (
+                validated_contract
+                and str(validated_contract.hub_contract_version) != expected_version
+            ):
+                raise ValidationError(
+                    {"hub_contract_json": [f"hub_contract_version must be {expected_version}"]}
+                )
 
         # Enforce ACTIVE status requirements
         if self.status == ContractStatus.ACTIVE:
             # Must have valid validation status
-            if self.validation_status not in [ValidationStatus.VALID, ValidationStatus.WARNING_ONLY]:
+            if self.validation_status not in [
+                ValidationStatus.VALID,
+                ValidationStatus.WARNING_ONLY,
+            ]:
                 raise ValidationError(
                     f"Contract cannot be ACTIVE with validation_status={self.validation_status}. "
                     f"Required: VALID or WARNING_ONLY"
@@ -292,7 +283,7 @@ class Contract(models.Model):
             # Must have successful normalization
             if self.normalization_status not in [
                 NormalizationStatus.NORMALIZED_OK,
-                NormalizationStatus.NORMALIZED_WITH_WARNINGS
+                NormalizationStatus.NORMALIZED_WITH_WARNINGS,
             ]:
                 raise ValidationError(
                     f"Contract cannot be ACTIVE with normalization_status={self.normalization_status}. "
@@ -307,13 +298,19 @@ class Contract(models.Model):
             Tuple of (can_activate: bool, reason: str)
         """
         if self.validation_status not in [ValidationStatus.VALID, ValidationStatus.WARNING_ONLY]:
-            return False, f"validation_status must be VALID or WARNING_ONLY (current: {self.validation_status})"
+            return (
+                False,
+                f"validation_status must be VALID or WARNING_ONLY (current: {self.validation_status})",
+            )
 
         if self.normalization_status not in [
             NormalizationStatus.NORMALIZED_OK,
-            NormalizationStatus.NORMALIZED_WITH_WARNINGS
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         ]:
-            return False, f"normalization_status must be NORMALIZED_OK or NORMALIZED_WITH_WARNINGS (current: {self.normalization_status})"
+            return (
+                False,
+                f"normalization_status must be NORMALIZED_OK or NORMALIZED_WITH_WARNINGS (current: {self.normalization_status})",
+            )
 
         return True, ""
 
@@ -356,9 +353,7 @@ class MigrationCheckpoint(models.Model):
         (STATUS_IN_PROGRESS, "In Progress"),
     ]
 
-    id = models.UUIDField(
-        primary_key=True, default=uuid.uuid4, editable=False
-    )
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     migration_name = models.CharField(
         max_length=255,
         db_index=True,
@@ -390,8 +385,7 @@ class MigrationCheckpoint(models.Model):
         null=True,
         blank=True,
         help_text=(
-            "Truncated exception message when ``status='failed'``. "
-            "``None`` for ``done`` rows."
+            "Truncated exception message when ``status='failed'``. ``None`` for ``done`` rows."
         ),
     )
     completed_at = models.DateTimeField(
@@ -417,9 +411,7 @@ class MigrationCheckpoint(models.Model):
         ]
 
     def __str__(self) -> str:
-        return (
-            f"{self.migration_name}/{self.contract_id} → {self.status}"
-        )
+        return f"{self.migration_name}/{self.contract_id} → {self.status}"
 
 
 class SecurityAuditLog(models.Model):
@@ -434,17 +426,16 @@ class SecurityAuditLog(models.Model):
 
     Events are append-only and cannot be modified or deleted for compliance.
     """
+
     # Event identification
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     event_type = models.CharField(
         max_length=50,
         db_index=True,
-        help_text="Type of security event (e.g., EXTERNAL_REF_FETCH, RATE_LIMIT_EXCEEDED, CACHE_HIT, CACHE_MISS, CACHE_EVICTION, SECURITY_VIOLATION)"
+        help_text="Type of security event (e.g., EXTERNAL_REF_FETCH, RATE_LIMIT_EXCEEDED, CACHE_HIT, CACHE_MISS, CACHE_EVICTION, SECURITY_VIOLATION)",
     )
     timestamp = models.DateTimeField(
-        auto_now_add=True,
-        db_index=True,
-        help_text="When the event occurred (UTC)"
+        auto_now_add=True, db_index=True, help_text="When the event occurred (UTC)"
     )
 
     # Context
@@ -454,7 +445,7 @@ class SecurityAuditLog(models.Model):
         related_name="security_audit_logs",
         null=True,
         blank=True,
-        help_text="Tenant this event belongs to (null for platform-level events)"
+        help_text="Tenant this event belongs to (null for platform-level events)",
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -462,7 +453,7 @@ class SecurityAuditLog(models.Model):
         related_name="security_audit_logs",
         null=True,
         blank=True,
-        help_text="User who triggered the event (null for system events)"
+        help_text="User who triggered the event (null for system events)",
     )
     contract = models.ForeignKey(
         "contracts.Contract",
@@ -470,7 +461,7 @@ class SecurityAuditLog(models.Model):
         related_name="security_audit_logs",
         null=True,
         blank=True,
-        help_text="Contract associated with the event (if applicable)"
+        help_text="Contract associated with the event (if applicable)",
     )
 
     # Event details
@@ -484,105 +475,62 @@ class SecurityAuditLog(models.Model):
         ],
         null=True,
         blank=True,
-        help_text="Severity level (for security violations)"
+        help_text="Severity level (for security violations)",
     )
     ref_type = models.CharField(
-        max_length=20,
-        null=True,
-        blank=True,
-        help_text="Reference type (internal, local, external)"
+        max_length=20, null=True, blank=True, help_text="Reference type (internal, local, external)"
     )
     ref_path = models.CharField(
-        max_length=2048,
-        null=True,
-        blank=True,
-        help_text="The $ref path/URL"
+        max_length=2048, null=True, blank=True, help_text="The $ref path/URL"
     )
     resolved_path = models.CharField(
-        max_length=2048,
-        null=True,
-        blank=True,
-        help_text="Resolved path/URL"
+        max_length=2048, null=True, blank=True, help_text="Resolved path/URL"
     )
 
     # Rate limit details
     rate_limit_level = models.CharField(
-        max_length=20,
-        null=True,
-        blank=True,
-        help_text="Rate limit level (global, tenant, user)"
+        max_length=20, null=True, blank=True, help_text="Rate limit level (global, tenant, user)"
     )
 
     # Cache operation details
     cache_operation = models.CharField(
-        max_length=20,
-        null=True,
-        blank=True,
-        help_text="Cache operation type (hit, miss, eviction)"
+        max_length=20, null=True, blank=True, help_text="Cache operation type (hit, miss, eviction)"
     )
     cache_key = models.CharField(
-        max_length=512,
-        null=True,
-        blank=True,
-        help_text="Cache key (for cache operations)"
+        max_length=512, null=True, blank=True, help_text="Cache key (for cache operations)"
     )
     eviction_reason = models.CharField(
-        max_length=50,
-        null=True,
-        blank=True,
-        help_text="Eviction reason (for cache evictions)"
+        max_length=50, null=True, blank=True, help_text="Eviction reason (for cache evictions)"
     )
 
     # Security violation details
     violation_type = models.CharField(
-        max_length=100,
-        null=True,
-        blank=True,
-        help_text="Human-readable violation type"
+        max_length=100, null=True, blank=True, help_text="Human-readable violation type"
     )
     attempted_path = models.CharField(
-        max_length=2048,
-        null=True,
-        blank=True,
-        help_text="Attempted path (for path traversal)"
+        max_length=2048, null=True, blank=True, help_text="Attempted path (for path traversal)"
     )
     attempted_url = models.CharField(
-        max_length=2048,
-        null=True,
-        blank=True,
-        help_text="Attempted URL (for URL violations)"
+        max_length=2048, null=True, blank=True, help_text="Attempted URL (for URL violations)"
     )
 
     # Additional metadata
     description = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Detailed description of the event"
+        null=True, blank=True, help_text="Detailed description of the event"
     )
     metadata_json = models.JSONField(
-        null=True,
-        blank=True,
-        default=dict,
-        help_text="Additional metadata as JSON"
+        null=True, blank=True, default=dict, help_text="Additional metadata as JSON"
     )
 
     # Request context
     request_id = models.CharField(
-        max_length=100,
-        null=True,
-        blank=True,
-        help_text="Request ID for tracing"
+        max_length=100, null=True, blank=True, help_text="Request ID for tracing"
     )
     ip_address = models.GenericIPAddressField(
-        null=True,
-        blank=True,
-        help_text="IP address of the request"
+        null=True, blank=True, help_text="IP address of the request"
     )
     user_agent = models.CharField(
-        max_length=500,
-        null=True,
-        blank=True,
-        help_text="User agent string"
+        max_length=500, null=True, blank=True, help_text="User agent string"
     )
 
     class Meta:
@@ -622,15 +570,11 @@ class SecurityIncident(models.Model):
     Tracks security incidents detected from security violations and suspicious patterns.
     Incidents can be OPEN, INVESTIGATING, or RESOLVED.
     """
+
     # Incident identification
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    title = models.CharField(
-        max_length=255,
-        help_text="Incident title"
-    )
-    description = models.TextField(
-        help_text="Incident description"
-    )
+    title = models.CharField(max_length=255, help_text="Incident title")
+    description = models.TextField(help_text="Incident description")
 
     # Severity and status
     severity = models.CharField(
@@ -642,7 +586,7 @@ class SecurityIncident(models.Model):
             ("CRITICAL", "Critical"),
         ],
         db_index=True,
-        help_text="Incident severity level"
+        help_text="Incident severity level",
     )
     status = models.CharField(
         max_length=20,
@@ -653,7 +597,7 @@ class SecurityIncident(models.Model):
         ],
         default="OPEN",
         db_index=True,
-        help_text="Incident status"
+        help_text="Incident status",
     )
 
     # Context
@@ -663,7 +607,7 @@ class SecurityIncident(models.Model):
         related_name="security_incidents",
         null=True,
         blank=True,
-        help_text="Tenant this incident belongs to (null for platform-level incidents)"
+        help_text="Tenant this incident belongs to (null for platform-level incidents)",
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -671,7 +615,7 @@ class SecurityIncident(models.Model):
         related_name="security_incidents",
         null=True,
         blank=True,
-        help_text="User associated with the incident (if applicable)"
+        help_text="User associated with the incident (if applicable)",
     )
     contract = models.ForeignKey(
         "contracts.Contract",
@@ -679,34 +623,24 @@ class SecurityIncident(models.Model):
         related_name="security_incidents",
         null=True,
         blank=True,
-        help_text="Contract associated with the incident (if applicable)"
+        help_text="Contract associated with the incident (if applicable)",
     )
 
     # Incident details
     event_type = models.CharField(
-        max_length=50,
-        db_index=True,
-        help_text="Type of security event that triggered the incident"
+        max_length=50, db_index=True, help_text="Type of security event that triggered the incident"
     )
     violation_count = models.IntegerField(
-        default=1,
-        help_text="Number of violations that contributed to this incident"
+        default=1, help_text="Number of violations that contributed to this incident"
     )
     first_detected_at = models.DateTimeField(
-        auto_now_add=True,
-        db_index=True,
-        help_text="When the incident was first detected"
+        auto_now_add=True, db_index=True, help_text="When the incident was first detected"
     )
     last_updated_at = models.DateTimeField(
-        auto_now=True,
-        db_index=True,
-        help_text="When the incident was last updated"
+        auto_now=True, db_index=True, help_text="When the incident was last updated"
     )
     resolved_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        db_index=True,
-        help_text="When the incident was resolved"
+        null=True, blank=True, db_index=True, help_text="When the incident was resolved"
     )
     resolved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -714,12 +648,10 @@ class SecurityIncident(models.Model):
         related_name="resolved_security_incidents",
         null=True,
         blank=True,
-        help_text="User who resolved the incident"
+        help_text="User who resolved the incident",
     )
     resolution_notes = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Notes about how the incident was resolved"
+        null=True, blank=True, help_text="Notes about how the incident was resolved"
     )
 
     # Related security audit logs
@@ -727,15 +659,12 @@ class SecurityIncident(models.Model):
         "contracts.SecurityAuditLog",
         related_name="security_incidents",
         blank=True,
-        help_text="Security audit logs related to this incident"
+        help_text="Security audit logs related to this incident",
     )
 
     # Additional metadata
     metadata_json = models.JSONField(
-        null=True,
-        blank=True,
-        default=dict,
-        help_text="Additional metadata as JSON"
+        null=True, blank=True, default=dict, help_text="Additional metadata as JSON"
     )
 
     class Meta:
@@ -755,6 +684,7 @@ class SecurityIncident(models.Model):
     def resolve(self, resolved_by_user=None, resolution_notes=None):
         """Mark incident as resolved."""
         from django.utils import timezone
+
         self.status = "RESOLVED"
         self.resolved_at = timezone.now()
         if resolved_by_user:
@@ -840,19 +770,27 @@ class LineageEdge(models.Model):
         help_text="Downstream contract; NULL for cross-tenant or external targets.",
     )
     source_model = models.CharField(
-        max_length=255, blank=True, default="",
+        max_length=255,
+        blank=True,
+        default="",
         help_text="Source model name (HubContract.models[*].name).",
     )
     source_field = models.CharField(
-        max_length=255, blank=True, default="",
+        max_length=255,
+        blank=True,
+        default="",
         help_text="Source field name (HubContract.models[*].fields[*].name).",
     )
     target_model = models.CharField(
-        max_length=255, blank=True, default="",
+        max_length=255,
+        blank=True,
+        default="",
         help_text="Target model name.",
     )
     target_field = models.CharField(
-        max_length=255, blank=True, default="",
+        max_length=255,
+        blank=True,
+        default="",
         help_text="Target field name.",
     )
     edge_type = models.CharField(
@@ -862,11 +800,15 @@ class LineageEdge(models.Model):
         help_text="Edge classification (upload / transformation / derivation / export / reference).",
     )
     transformation_ref = models.CharField(
-        max_length=512, blank=True, default="",
+        max_length=512,
+        blank=True,
+        default="",
         help_text="Reference to the transformation that produced the edge (e.g. dbt model id, SQL expression).",
     )
     job_ref = models.CharField(
-        max_length=512, blank=True, default="",
+        max_length=512,
+        blank=True,
+        default="",
         help_text="Reference to the job/pipeline that ran the transformation (e.g. Airflow run id).",
     )
     valid_from = models.DateTimeField(
@@ -888,7 +830,9 @@ class LineageEdge(models.Model):
         help_text="Row insert timestamp (audit-only; NOT the validity start — see ``valid_from``).",
     )
     created_by_run = models.CharField(
-        max_length=255, blank=True, default="",
+        max_length=255,
+        blank=True,
+        default="",
         help_text=(
             "Identifier for the run that created this edge — typically the "
             "lineage-sync handler's run-id, or the backfill command's "
@@ -939,16 +883,8 @@ class LineageEdge(models.Model):
         ]
 
     def __str__(self) -> str:
-        src = (
-            str(self.source_contract_id)[:8]
-            if self.source_contract_id
-            else "(ext)"
-        )
-        tgt = (
-            str(self.target_contract_id)[:8]
-            if self.target_contract_id
-            else "(ext)"
-        )
+        src = str(self.source_contract_id)[:8] if self.source_contract_id else "(ext)"
+        tgt = str(self.target_contract_id)[:8] if self.target_contract_id else "(ext)"
         return f"LineageEdge[{self.edge_type}] {src} → {tgt}"
 
 
@@ -995,13 +931,17 @@ class LineageEdgeArchive(models.Model):
         "contracts.Contract",
         on_delete=models.SET_NULL,
         related_name="+",
-        null=True, blank=True, db_index=True,
+        null=True,
+        blank=True,
+        db_index=True,
     )
     target_contract = models.ForeignKey(
         "contracts.Contract",
         on_delete=models.SET_NULL,
         related_name="+",
-        null=True, blank=True, db_index=True,
+        null=True,
+        blank=True,
+        db_index=True,
     )
     source_model = models.CharField(max_length=255, blank=True, default="")
     source_field = models.CharField(max_length=255, blank=True, default="")
@@ -1052,6 +992,7 @@ class LineageSubscriptionSeverity(models.TextChoices):
     Mirrors :class:`hub.apps.contracts.lineage_severity.Severity` so the
     DB column and the classifier share a single canonical vocabulary.
     """
+
     LOW = "LOW", "Low"
     MEDIUM = "MEDIUM", "Medium"
     HIGH = "HIGH", "High"
@@ -1090,13 +1031,17 @@ class LineageSubscription(models.Model):
         "contracts.Contract",
         on_delete=models.CASCADE,
         related_name="lineage_subscriptions",
-        null=True, blank=True, db_index=True,
+        null=True,
+        blank=True,
+        db_index=True,
     )
     source_asset = models.ForeignKey(
         "assets.Asset",
         on_delete=models.CASCADE,
         related_name="lineage_subscriptions",
-        null=True, blank=True, db_index=True,
+        null=True,
+        blank=True,
+        db_index=True,
     )
     severity_threshold = models.CharField(
         max_length=16,

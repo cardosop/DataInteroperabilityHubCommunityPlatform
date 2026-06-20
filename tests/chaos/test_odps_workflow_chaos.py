@@ -16,12 +16,10 @@ All tests use real services (no mocks/stubs).
 import json
 import random
 import time
-from typing import Any, Dict, Optional
 
-import pytest
 from django.core.cache import cache
-from django.db import connections, transaction
-from django.test import TestCase, TransactionTestCase
+from django.db import connections
+from django.test import TransactionTestCase
 
 from hub.apps.contracts.models import Contract
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
@@ -92,11 +90,7 @@ class ODPSWorkflowChaosTestBase(TransactionTestCase):
         # Try to get existing tenant or create new one
         self.tenant, created = Tenant.objects.get_or_create(
             slug=tenant_slug,
-            defaults={
-                "name": tenant_name,
-                "status": "ACTIVE",
-                "kyc_status": "VERIFIED"
-            }
+            defaults={"name": tenant_name, "status": "ACTIVE", "kyc_status": "VERIFIED"},
         )
 
         # If tenant already exists, update name to be unique
@@ -112,16 +106,17 @@ class ODPSWorkflowChaosTestBase(TransactionTestCase):
                 "password": "test-password-123",
                 "tenant": self.tenant,
                 "status": UserStatus.ACTIVE,
-            }
+            },
         )
 
     def tearDown(self):
         """Clean up test data"""
-        from django.db import OperationalError
         import time
 
+        from django.db import OperationalError
+
         # Clean up workflows with retry for deadlock handling
-        if hasattr(self, 'tenant'):
+        if hasattr(self, "tenant"):
             max_retries = 3
             for attempt in range(max_retries):
                 try:
@@ -129,26 +124,28 @@ class ODPSWorkflowChaosTestBase(TransactionTestCase):
                     break
                 except OperationalError as e:
                     if "deadlock" in str(e).lower() and attempt < max_retries - 1:
-                        time.sleep(0.1 * (attempt + 1))  # INTENTIONAL: test-specific delay  # Exponential backoff
+                        time.sleep(  # noqa: sleep-needed — polling loop
+                            0.1 * (attempt + 1)
+                        )  # INTENTIONAL: test-specific delay  # Exponential backoff
                         continue
                     raise
 
         # Clean up contracts
-        if hasattr(self, 'tenant'):
+        if hasattr(self, "tenant"):
             try:
                 Contract.objects.filter(tenant=self.tenant).delete()
             except Exception:
                 pass  # Ignore cleanup errors
 
         # Clean up user
-        if hasattr(self, 'user'):
+        if hasattr(self, "user"):
             try:
                 self.user.delete()
             except Exception:
                 pass  # Ignore cleanup errors
 
         # Clean up tenant (must be last due to foreign key constraints)
-        if hasattr(self, 'tenant'):
+        if hasattr(self, "tenant"):
             try:
                 self.tenant.delete()
             except Exception:
@@ -158,7 +155,6 @@ class ODPSWorkflowChaosTestBase(TransactionTestCase):
     def _fixture_teardown(cls):
         """Override to skip database flush for chaos tests."""
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
 
 class TestODPSWorkflowServiceFailures(ODPSWorkflowChaosTestBase):
@@ -168,7 +164,7 @@ class TestODPSWorkflowServiceFailures(ODPSWorkflowChaosTestBase):
         """Test workflow resilience when database times out"""
         odps_doc = create_valid_odps_document()
 
-        scenario = ChaosScenario(
+        ChaosScenario(
             name="database_timeout",
             failure_type=FailureType.NETWORK_TIMEOUT,
             duration=5.0,
@@ -369,8 +365,7 @@ class TestODPSWorkflowDataIntegrity(ODPSWorkflowChaosTestBase):
         self.assertEqual(workflows.count(), 5)
 
         # Verify each workflow has unique product ID
-        product_ids = set()
-        for workflow in workflows:
+        for _workflow in workflows:
             # Extract product ID from workflow input data if available
             # This would require access to workflow input_data field
             pass  # Placeholder - would need workflow internals
@@ -397,7 +392,7 @@ class TestODPSWorkflowDataIntegrity(ODPSWorkflowChaosTestBase):
         # If workflow fails, verify no partial data remains
         if workflow.status == WorkflowStatus.FAILED:
             # Check that no orphaned contracts exist
-            contracts = Contract.objects.filter(tenant=self.tenant, original_spec_type="ODPS")
+            Contract.objects.filter(tenant=self.tenant, original_spec_type="ODPS")
             # This is a simplified check - in reality, would need to verify
             # that contracts are properly linked or cleaned up
-            pass  # Placeholder
+            # Placeholder

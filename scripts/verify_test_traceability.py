@@ -183,10 +183,10 @@ def main() -> int:
     warnings: list[str] = []
 
     # Load docs
-    features_md = (docs / "FEATURES.md").read_text(encoding="utf-8")
+    (docs / "FEATURES.md").read_text(encoding="utf-8")
     use_cases_md = (docs / "USE_CASES.md").read_text(encoding="utf-8")
     user_journeys_md = (docs / "USER_JOURNEYS.md").read_text(encoding="utf-8")
-    user_personas_md = (docs / "USER_PERSONAS.md").read_text(encoding="utf-8")
+    (docs / "USER_PERSONAS.md").read_text(encoding="utf-8")
     traceability_md = (docs / "TEST_TRACEABILITY.md").read_text(encoding="utf-8")
 
     use_case_ids = extract_use_case_ids(use_cases_md)
@@ -244,7 +244,7 @@ def main() -> int:
 
     # 10.2.5: Test names/IDs reference doc IDs — verify some tests reference UC-* or JOURNEY-*
     test_dirs = ["tests/e2e", "tests/integration", "hub/apps", "frontend/e2e"]
-    files_with_refs, ref_paths = scan_tests_for_doc_id_refs(repo, test_dirs)
+    files_with_refs, _ref_paths = scan_tests_for_doc_id_refs(repo, test_dirs)
     if files_with_refs == 0:
         warnings.append("10.2.5 No test files found containing UC-* or JOURNEY-* doc ID references")
     else:

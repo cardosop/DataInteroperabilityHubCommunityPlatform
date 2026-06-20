@@ -5,8 +5,10 @@ Version-specific normalizer for ODPS (Open Data Product Standard) version 4.0.
 Implements ODPSNormalizerBase with 4.0-specific mappings and graceful degradation
 for missing ODPS 4.1 features (productStrategy, paymentGateways).
 """
+
+from typing import Any
+
 import structlog
-from typing import Dict, Any, List
 
 from hub.apps.contracts.normalization.odps_normalizer_base import ODPSNormalizerBase
 
@@ -43,10 +45,10 @@ class ODPSNormalizerV4_0(ODPSNormalizerBase):
 
     def _map_version_specific_fields(
         self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
-        spec_version: str
+        contract_data: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
+        spec_version: str,
     ) -> None:
         """
         Map ODPS 4.0-specific fields to HubContract format.
@@ -77,7 +79,7 @@ class ODPSNormalizerV4_0(ODPSNormalizerBase):
                 "odps_v4_0_unexpected_version",
                 expected_version="4.0",
                 actual_version=spec_version,
-                message="ODPSNormalizerV4_0 received unexpected version"
+                message="ODPSNormalizerV4_0 received unexpected version",
             )
 
         # Do not process productStrategy for ODPS 4.0
@@ -91,6 +93,5 @@ class ODPSNormalizerV4_0(ODPSNormalizerBase):
         logger.debug(
             "odps_v4_0_version_specific_mapping_complete",
             spec_version=spec_version,
-            message="ODPS 4.0 version-specific mapping complete (no 4.1 features to process)"
+            message="ODPS 4.0 version-specific mapping complete (no 4.1 features to process)",
         )
-

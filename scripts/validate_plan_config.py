@@ -10,6 +10,7 @@ Exit 0 on pass, 1 on any violation. Delegates to the Django management
 command ``validate_plan_config`` so it benefits from Django's ORM setup
 and the CI workflow can invoke it identically.
 """
+
 import os
 import sys
 
@@ -17,10 +18,12 @@ if __name__ == "__main__":
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 
     import django
+
     django.setup()
 
-    from django.core.management import call_command
     from io import StringIO
+
+    from django.core.management import call_command
 
     strict = "--strict" in sys.argv
     out = StringIO()

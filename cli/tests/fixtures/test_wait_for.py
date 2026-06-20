@@ -5,12 +5,12 @@ No mocks; uses real ``time.monotonic`` and a counter closure to drive
 the predicate. Tests must remain deterministic so they use very small
 intervals (1ms) and short timeouts.
 """
+
 from __future__ import annotations
 
 import time
 
 import pytest
-
 from tests.fixtures.wait_for import wait_for
 
 
@@ -42,6 +42,7 @@ def test_raises_TimeoutError_when_predicate_never_succeeds() -> None:
 
 def test_propagates_exceptions_from_predicate_immediately() -> None:
     """Predicate exceptions are real bugs, not eventual-consistency signals."""
+
     class _Boom(RuntimeError):
         pass
 

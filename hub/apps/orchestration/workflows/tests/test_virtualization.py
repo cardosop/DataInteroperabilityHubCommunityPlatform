@@ -3,27 +3,29 @@ Unit tests for Virtualization Query Execution Workflow
 
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
+
 import uuid
+
 import pytest
+from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
-from django.core.cache import cache
 
-from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus, StepStatus
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.models import StepStatus
 from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.workflows.virtualization import VirtualizationWorkflow
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import User, UserStatus
 from hub.apps.virtualization.models import (
+    QueryExecution,
+    QueryExecutionMode,
+    QueryExecutionStatus,
+    QueryType,
     VirtualDataset,
     VirtualDatasetStatus,
-    QueryExecution,
-    QueryExecutionStatus,
-    QueryExecutionMode,
-    QueryType
 )
 from hub.apps.virtualization.services import VirtualizationService
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -35,15 +37,13 @@ class VirtualizationWorkflowUnitTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -51,14 +51,8 @@ class VirtualizationWorkflowUnitTest(TestCase):
             name="Test Virtual Dataset",
             query="SELECT id, name FROM users WHERE age > 18",
             query_type=QueryType.SQL,
-            sources=[
-                {
-                    "type": "postgresql",
-                    "host": "localhost",
-                    "database": "testdb"
-                }
-            ],
-            status=VirtualDatasetStatus.ACTIVE
+            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
+            status=VirtualDatasetStatus.ACTIVE,
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
@@ -70,27 +64,26 @@ class VirtualizationWorkflowUnitTest(TestCase):
         input_data = {
             "virtual_dataset_id": str(self.virtual_dataset.id),
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
         instance = self.engine.create_instance(
             workflow_name=VirtualizationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=0,
             step_name="validate_query",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = VirtualizationWorkflow._validate_query_task(
-            input_data, instance, step
-        )
+        result = VirtualizationWorkflow._validate_query_task(input_data, instance, step)
 
         self.assertIn("validation_status", result)
         self.assertEqual(result["validation_status"], "VALID")
@@ -101,73 +94,73 @@ class VirtualizationWorkflowUnitTest(TestCase):
     def test_validate_query_task_invalid_query(self):
         """Test query validation with invalid query"""
         # Create virtual dataset with invalid query using bulk_create to bypass validation
-        invalid_datasets = VirtualDataset.objects.bulk_create([
-            VirtualDataset(
-                tenant=self.tenant,
-                created_by=self.user,
-                name="Invalid Dataset",
-                query="",  # Empty query
-                query_type=QueryType.SQL,
-                status=VirtualDatasetStatus.ACTIVE
-            )
-        ])
+        invalid_datasets = VirtualDataset.objects.bulk_create(
+            [
+                VirtualDataset(
+                    tenant=self.tenant,
+                    created_by=self.user,
+                    name="Invalid Dataset",
+                    query="",  # Empty query
+                    query_type=QueryType.SQL,
+                    status=VirtualDatasetStatus.ACTIVE,
+                )
+            ]
+        )
         invalid_dataset = invalid_datasets[0]
 
         input_data = {
             "virtual_dataset_id": str(invalid_dataset.id),
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
         instance = self.engine.create_instance(
             workflow_name=VirtualizationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=0,
             step_name="validate_query",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
         # Validation should fail
         with self.assertRaises(Exception):
-            VirtualizationWorkflow._validate_query_task(
-                input_data, instance, step
-            )
+            VirtualizationWorkflow._validate_query_task(input_data, instance, step)
 
     def test_validate_sources_task(self):
         """Test source compatibility validation task"""
         input_data = {
             "virtual_dataset_id": str(self.virtual_dataset.id),
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
         instance = self.engine.create_instance(
             workflow_name=VirtualizationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["virtual_dataset_id"] = str(self.virtual_dataset.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=1,
             step_name="validate_sources",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = VirtualizationWorkflow._validate_sources_task(
-            input_data, instance, step
-        )
+        result = VirtualizationWorkflow._validate_sources_task(input_data, instance, step)
 
         self.assertIn("compatibility_status", result)
         self.assertIn("virtual_dataset_id", instance.state_data)
@@ -178,29 +171,28 @@ class VirtualizationWorkflowUnitTest(TestCase):
         input_data = {
             "virtual_dataset_id": str(self.virtual_dataset.id),
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
         instance = self.engine.create_instance(
             workflow_name=VirtualizationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["virtual_dataset_id"] = str(self.virtual_dataset.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=2,
             step_name="optimize_query",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = VirtualizationWorkflow._optimize_query_task(
-            input_data, instance, step
-        )
+        result = VirtualizationWorkflow._optimize_query_task(input_data, instance, step)
 
         self.assertIn("optimized_query", result)
         self.assertIn("optimizations_applied", result)
@@ -212,33 +204,32 @@ class VirtualizationWorkflowUnitTest(TestCase):
         input_data = {
             "virtual_dataset_id": str(self.virtual_dataset.id),
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
         instance = self.engine.create_instance(
             workflow_name=VirtualizationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["execution_results"] = {
             "data": [{"id": 1, "name": "Test"}],
             "row_count": 1,
-            "columns": ["id", "name"]
+            "columns": ["id", "name"],
         }
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=4,
             step_name="aggregate_results",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = VirtualizationWorkflow._aggregate_results_task(
-            input_data, instance, step
-        )
+        result = VirtualizationWorkflow._aggregate_results_task(input_data, instance, step)
 
         self.assertIn("aggregated_results", result)
         self.assertIn("row_count", result)
@@ -252,42 +243,41 @@ class VirtualizationWorkflowUnitTest(TestCase):
             query=self.virtual_dataset.query,
             parameters={},
             execution_mode=QueryExecutionMode.ASYNC,
-            status=QueryExecutionStatus.RUNNING
+            status=QueryExecutionStatus.RUNNING,
         )
 
         input_data = {
             "virtual_dataset_id": str(self.virtual_dataset.id),
             "tenant_id": str(self.tenant.id),
             "user_id": str(self.user.id),
-            "parameters": {}
+            "parameters": {},
         }
         instance = self.engine.create_instance(
             workflow_name=VirtualizationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["execution_id"] = str(execution.id)
         instance.state_data["virtual_dataset_id"] = str(self.virtual_dataset.id)
         instance.state_data["aggregated_results"] = {
             "data": [{"id": 1, "name": "Test"}],
             "row_count": 1,
-            "columns": ["id", "name"]
+            "columns": ["id", "name"],
         }
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=5,
             step_name="cache_results",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = VirtualizationWorkflow._cache_results_task(
-            input_data, instance, step
-        )
+        result = VirtualizationWorkflow._cache_results_task(input_data, instance, step)
 
         self.assertIn("cache_status", result)
         self.assertIn("cache_key", instance.state_data)
@@ -306,40 +296,39 @@ class VirtualizationWorkflowUnitTest(TestCase):
             query=self.virtual_dataset.query,
             parameters={},
             execution_mode=QueryExecutionMode.ASYNC,
-            status=QueryExecutionStatus.RUNNING
+            status=QueryExecutionStatus.RUNNING,
         )
 
         input_data = {
             "virtual_dataset_id": str(self.virtual_dataset.id),
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
         instance = self.engine.create_instance(
             workflow_name=VirtualizationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["execution_id"] = str(execution.id)
         instance.state_data["aggregated_results"] = {
             "data": [{"id": 1, "name": "Test"}],
             "row_count": 1,
-            "columns": ["id", "name"]
+            "columns": ["id", "name"],
         }
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=6,
             step_name="store_results",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = VirtualizationWorkflow._store_results_task(
-            input_data, instance, step
-        )
+        result = VirtualizationWorkflow._store_results_task(input_data, instance, step)
 
         self.assertIn("storage_status", result)
         self.assertEqual(instance.state_data["progress_percentage"], 95)
@@ -352,40 +341,39 @@ class VirtualizationWorkflowUnitTest(TestCase):
             parameters={},
             execution_mode=QueryExecutionMode.ASYNC,
             status=QueryExecutionStatus.RUNNING,
-            started_at=timezone.now()
+            started_at=timezone.now(),
         )
 
         input_data = {
             "virtual_dataset_id": str(self.virtual_dataset.id),
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
         instance = self.engine.create_instance(
             workflow_name=VirtualizationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["execution_id"] = str(execution.id)
         instance.state_data["execution_results"] = {
             "data": [{"id": 1, "name": "Test"}],
             "row_count": 1,
-            "columns": ["id", "name"]
+            "columns": ["id", "name"],
         }
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=7,
             step_name="complete",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = VirtualizationWorkflow._complete_task(
-            input_data, instance, step
-        )
+        result = VirtualizationWorkflow._complete_task(input_data, instance, step)
 
         self.assertIn("completed", result)
         self.assertTrue(result["completed"])
@@ -403,33 +391,30 @@ class VirtualizationWorkflowUnitTest(TestCase):
             query=self.virtual_dataset.query,
             parameters={},
             execution_mode=QueryExecutionMode.ASYNC,
-            status=QueryExecutionStatus.RUNNING
+            status=QueryExecutionStatus.RUNNING,
         )
 
-        input_data = {
-            "tenant_id": str(self.tenant.id)
-        }
+        input_data = {"tenant_id": str(self.tenant.id)}
         instance = self.engine.create_instance(
             workflow_name=VirtualizationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["execution_id"] = str(execution.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=0,
             step_name="rollback_execution",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = VirtualizationWorkflow._rollback_execution_task(
-            input_data, instance, step
-        )
+        result = VirtualizationWorkflow._rollback_execution_task(input_data, instance, step)
 
         self.assertIn("rolled_back", result)
         self.assertTrue(result["rolled_back"])
@@ -440,14 +425,12 @@ class VirtualizationWorkflowUnitTest(TestCase):
 
     def test_rollback_cache_task(self):
         """Test cache rollback compensation task"""
-        input_data = {
-            "tenant_id": str(self.tenant.id)
-        }
+        input_data = {"tenant_id": str(self.tenant.id)}
         instance = self.engine.create_instance(
             workflow_name=VirtualizationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         # Create a cache entry
@@ -457,17 +440,16 @@ class VirtualizationWorkflowUnitTest(TestCase):
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=0,
             step_name="rollback_cache",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = VirtualizationWorkflow._rollback_cache_task(
-            input_data, instance, step
-        )
+        result = VirtualizationWorkflow._rollback_cache_task(input_data, instance, step)
 
         self.assertIn("rolled_back", result)
         self.assertTrue(result["rolled_back"])
@@ -482,7 +464,7 @@ class VirtualizationWorkflowUnitTest(TestCase):
             workflow_name=VirtualizationWorkflow.WORKFLOW_NAME,
             input_data={"virtual_dataset_id": str(self.virtual_dataset.id)},
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         VirtualizationWorkflow._update_progress(instance, 50, "test_step")
@@ -501,9 +483,10 @@ class VirtualizationWorkflowUnitTest(TestCase):
             if existing:
                 # Delete existing workflow definition
                 from hub.apps.orchestration.models import WorkflowDefinition
+
                 WorkflowDefinition.objects.filter(
                     name=VirtualizationWorkflow.WORKFLOW_NAME,
-                    version=VirtualizationWorkflow.WORKFLOW_VERSION
+                    version=VirtualizationWorkflow.WORKFLOW_VERSION,
                 ).delete()
         except Exception:
             pass  # Workflow doesn't exist, which is fine
@@ -515,10 +498,12 @@ class VirtualizationWorkflowUnitTest(TestCase):
         self.assertIsNotNone(workflow_def)
         if workflow_def:
             # get_workflow returns a WorkflowDefinition model instance, not a dict
-            if hasattr(workflow_def, 'version'):
+            if hasattr(workflow_def, "version"):
                 self.assertEqual(workflow_def.version, VirtualizationWorkflow.WORKFLOW_VERSION)
             elif isinstance(workflow_def, dict):
-                self.assertEqual(workflow_def.get("version"), VirtualizationWorkflow.WORKFLOW_VERSION)
+                self.assertEqual(
+                    workflow_def.get("version"), VirtualizationWorkflow.WORKFLOW_VERSION
+                )
 
     def test_task_registration(self):
         """Test task registration"""
@@ -549,29 +534,30 @@ class VirtualizationWorkflowUnitTest(TestCase):
                 {"type": "postgresql", "host": "host1", "database": "db1"},
                 {"type": "postgresql", "host": "host2", "database": "db2"},
             ],
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
         input_data = {
             "virtual_dataset_id": str(multi_source_dataset.id),
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
         instance = self.engine.create_instance(
             workflow_name=VirtualizationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["virtual_dataset_id"] = str(multi_source_dataset.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=1,
             step_name="validate_sources",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
         result = VirtualizationWorkflow._validate_sources_task(input_data, instance, step)
@@ -588,9 +574,9 @@ class VirtualizationWorkflowUnitTest(TestCase):
         Workflow and view use the same execution path (VirtualizationService._execute_query_against_source).
         This test asserts the result shape for multi-source without requiring live DBs.
         """
-        from hub.apps.assets.models import Asset, AssetSourceType
-        from hub.apps.assets.models import DataStrategy
         import uuid as uuid_mod
+
+        from hub.apps.assets.models import Asset, AssetSourceType, DataStrategy
 
         asset1 = Asset.objects.create(
             tenant=self.tenant,
@@ -598,7 +584,7 @@ class VirtualizationWorkflowUnitTest(TestCase):
             key=f"fed-multi-1-{uuid_mod.uuid4()}",
             name="Federated Asset 1",
             source_type=AssetSourceType.FEDERATED,
-            data_strategy=DataStrategy.METADATA_ONLY
+            data_strategy=DataStrategy.METADATA_ONLY,
         )
         asset2 = Asset.objects.create(
             tenant=self.tenant,
@@ -606,7 +592,7 @@ class VirtualizationWorkflowUnitTest(TestCase):
             key=f"fed-multi-2-{uuid_mod.uuid4()}",
             name="Federated Asset 2",
             source_type=AssetSourceType.FEDERATED,
-            data_strategy=DataStrategy.METADATA_ONLY
+            data_strategy=DataStrategy.METADATA_ONLY,
         )
         multi_source_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -618,18 +604,15 @@ class VirtualizationWorkflowUnitTest(TestCase):
                 {"type": "federated_asset", "asset_id": str(asset1.id)},
                 {"type": "federated_asset", "asset_id": str(asset2.id)},
             ],
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
-        service = VirtualizationService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         result_data = VirtualizationWorkflow._execute_federated_query(
             service=service,
             virtual_dataset=multi_source_dataset,
             query=multi_source_dataset.query,
             parameters={},
-            timeout_seconds=300
+            timeout_seconds=300,
         )
         self.assertIn("data", result_data)
         self.assertIn("columns", result_data)
@@ -645,8 +628,9 @@ class VirtualizationWorkflowUnitTest(TestCase):
         The workflow's _execute_query_task delegates to VirtualizationService for
         standard and federated queries (same entrypoint as REST view).
         """
-        from hub.apps.assets.models import Asset, AssetSourceType, DataStrategy
         import uuid as uuid_mod
+
+        from hub.apps.assets.models import Asset, AssetSourceType, DataStrategy
 
         asset = Asset.objects.create(
             tenant=self.tenant,
@@ -654,7 +638,7 @@ class VirtualizationWorkflowUnitTest(TestCase):
             key=f"fed-parity-{uuid_mod.uuid4()}",
             name="Federated Parity Asset",
             source_type=AssetSourceType.FEDERATED,
-            data_strategy=DataStrategy.METADATA_ONLY
+            data_strategy=DataStrategy.METADATA_ONLY,
         )
         vd = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -663,19 +647,16 @@ class VirtualizationWorkflowUnitTest(TestCase):
             query="SELECT * FROM single",
             query_type=QueryType.SQL,
             sources=[{"type": "federated_asset", "asset_id": str(asset.id)}],
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
-        service = VirtualizationService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         # View path: service._execute_query_against_sources
         view_results = service._execute_query_against_sources(
             query=vd.query,
             query_type=vd.query_type,
             sources=vd.get_sources(),
             parameters={},
-            timeout_seconds=300
+            timeout_seconds=300,
         )
         self.assertEqual(len(view_results), 1)
         view_result = view_results[0]
@@ -688,4 +669,3 @@ class VirtualizationWorkflowUnitTest(TestCase):
         self.assertIn("data", workflow_single)
         self.assertIn("row_count", workflow_single)
         self.assertEqual(view_result["row_count"], workflow_single["row_count"])
-

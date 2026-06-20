@@ -22,10 +22,10 @@ which subclasses both deprecated ViewSets — keeping the original
 ``DQQualityViewSet`` / ``DQRunViewSet`` free of any per-prefix
 branching.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Tuple
+from datetime import UTC, datetime, timedelta
 
 from django.urls import include, path
 from rest_framework.routers import SimpleRouter
@@ -36,7 +36,7 @@ from .views import DQQualityViewSet, DQRunViewSet
 # Anchor date: 2026-05-01 (Phase 240 merge target). When the merge
 # slips, bump this constant — its sole purpose is to give external
 # integrators a stable RFC 8594 date in the response headers.
-_DEPRECATION_DATE = datetime(2026, 5, 1, 0, 0, 0, tzinfo=timezone.utc)
+_DEPRECATION_DATE = datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC)
 _SUNSET_DATE = _DEPRECATION_DATE + timedelta(days=180)
 
 
@@ -64,7 +64,7 @@ class DeprecationHeadersMixin:
     response" guidance.
     """
 
-    deprecated_to_canonical_prefix: Tuple[str, str] = (
+    deprecated_to_canonical_prefix: tuple[str, str] = (
         "/api/v1/quality/",
         "/api/v1/dq/quality/",
     )
@@ -89,8 +89,10 @@ class DeprecationHeadersMixin:
 
 class DeprecatedDQQualityViewSet(DeprecationHeadersMixin, DQQualityViewSet):
     """``DQQualityViewSet`` mounted under the deprecated alias."""
+
     deprecated_to_canonical_prefix = (
-        "/api/v1/quality/", "/api/v1/dq/quality/",
+        "/api/v1/quality/",
+        "/api/v1/dq/quality/",
     )
 
 
@@ -109,8 +111,10 @@ class DeprecatedDQRunViewSet(DeprecationHeadersMixin, DQRunViewSet):
     identical to the canonical mount — the alias is purely a URL
     surface, not a permissions side-channel.
     """
+
     deprecated_to_canonical_prefix = (
-        "/api/v1/quality/", "/api/v1/dq/",
+        "/api/v1/quality/",
+        "/api/v1/dq/",
     )
 
 
@@ -141,7 +145,6 @@ _runs_router.register(r"runs", DeprecatedDQRunViewSet, basename="dq-run-deprecat
 urlpatterns = [
     # 240.3.E.1 — runs CRUD + results @action.
     path("", include(_runs_router.urls)),
-
     # 240.3.B.3 — advanced quality endpoints.
     path(
         "anomalies/",

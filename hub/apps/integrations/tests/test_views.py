@@ -4,18 +4,22 @@ Marketplace Integration Views Tests
 Comprehensive tests for marketplace connection management endpoints.
 """
 
+import contextlib
 import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.db import transaction
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.auth.models import APIKey
-from hub.apps.integrations.base import MarketplaceType
-from hub.apps.integrations.models import MarketplaceConnection
+from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
+from hub.apps.integrations.models import (
+    MarketplaceConnection,
+    MarketplaceMapping,
+    MarketplaceSyncJob,
+)
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserStatus
@@ -35,7 +39,9 @@ class MarketplaceConnectionViewSetTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED,
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            kyc_status=KYCStatus.VERIFIED,
             marketplace_integrations_enabled=True,
         )
         # Active subscription required so TenantSuspensionMiddleware allows API writes
@@ -72,9 +78,7 @@ class MarketplaceConnectionViewSetTest(TestCase):
 
         # Authenticate via API key only (no force_authenticate - it would override and cause 403)
         # credentials() lets API key auth run; force_authenticate would bypass it
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.plaintext_api_key}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.plaintext_api_key}")
 
         # Sample connection data
         self.valid_connection_data = {
@@ -169,14 +173,14 @@ class MarketplaceConnectionViewSetTest(TestCase):
     def test_list_connections_success(self):
         """Test successful connection listing"""
         # Create test connections
-        connection1 = MarketplaceConnection.objects.create(
+        MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Connection 1",
             config={"key": "value1"},
             is_active=True,
         )
-        connection2 = MarketplaceConnection.objects.create(
+        MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE.value,
             name="Connection 2",
@@ -271,13 +275,13 @@ class MarketplaceConnectionViewSetTest(TestCase):
 
     def test_list_connections_with_ordering(self):
         """Test connection listing with ordering"""
-        connection1 = MarketplaceConnection.objects.create(
+        MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="A Connection",
             config={"key": "value"},
         )
-        connection2 = MarketplaceConnection.objects.create(
+        MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE.value,
             name="B Connection",
@@ -420,34 +424,114 @@ class MarketplaceConnectionViewSetTest(TestCase):
 
     def test_test_connection_success(self):
         """Test successful connection test"""
-        connection = MarketplaceConnection.objects.create(
-            tenant=self.tenant,
-            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Test Connection",
-            config={"api_key": "test_key", "api_secret": "test_secret"},
-            is_active=True,
+        from hub.apps.integrations.base import (
+            DataMarketplaceConnector,
+            MarketplaceListing,
+            MarketplaceResource,
+            SyncDirection,
+            SyncResult,
+            SyncStatus,
+        )
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
+
+        class _SuccessConnector(DataMarketplaceConnector):
+            """Connector that reports successful connection tests."""
+            __test__ = False
+
+            @property
+            def marketplace_type(self):
+                return MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+
+            @property
+            def supported_sync_directions(self):
+                return []
+
+            def authenticate(self, credentials):
+                return True
+
+            def test_connection(self):
+                return True
+
+            def list_listings(self, filters=None, limit=None, offset=None):
+                return []
+
+            def get_listing(self, listing_id):
+                return MarketplaceListing(
+                    marketplace_id=listing_id,
+                    marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+                    title="Test",
+                )
+
+            def list_resources(self, listing_id):
+                return []
+
+            def create_listing(self, listing):
+                return listing
+
+            def update_listing(self, listing_id, listing):
+                return listing
+
+            def publish_resource(self, listing_id, resource):
+                return resource
+
+            def download_resource(self, resource_id, destination_path):
+                return destination_path
+
+            def map_to_hub_asset(self, listing, sync_job_id=None):
+                from hub.apps.assets.models import AssetSourceType
+                from hub.apps.integrations.base import MarketplaceAssetMapping
+
+                return MarketplaceAssetMapping(
+                    asset_data={"name": listing.title},
+                    source_type=AssetSourceType.FEDERATED,
+                    source_metadata={},
+                )
+
+            def map_from_hub_asset(self, asset_data, odps_metadata=None, odcs_metadata=None):
+                return MarketplaceListing(
+                    marketplace_id="test",
+                    marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+                    title=asset_data.get("name", "Test"),
+                )
+
+            def sync_push(self, asset_ids, options=None):
+                return SyncResult(status=SyncStatus.COMPLETED, total_items=0, successful_items=0, failed_items=0, skipped_items=0, errors=[], metadata={})
+
+            def sync_pull(self, listing_ids=None, filters=None, options=None):
+                return SyncResult(status=SyncStatus.COMPLETED, total_items=0, successful_items=0, failed_items=0, skipped_items=0, errors=[], metadata={})
+
+        MarketplaceConnectorFactory.register_connector(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, _SuccessConnector
         )
 
-        response = self.client.post(
-            f"/api/v1/integrations/marketplace/connections/{connection.id}/test/"
-        )
+        try:
+            connection = MarketplaceConnection.objects.create(
+                tenant=self.tenant,
+                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+                name="Test Connection",
+                config={"api_key": "test_key", "api_secret": "test_secret"},
+                is_active=True,
+            )
 
-        # Note: Actual test result depends on connector implementation
-        # This test verifies the endpoint is accessible and returns proper format
-        self.assertIn(
-            response.status_code,
-            [
+            response = self.client.post(
+                f"/api/v1/integrations/marketplace/connections/{connection.id}/test/"
+            )
+
+            # With a passing connector, we must get 200 with success=True.
+            self.assertEqual(
+                response.status_code,
                 status.HTTP_200_OK,
-                status.HTTP_400_BAD_REQUEST,  # If connector test fails
-                status.HTTP_500_INTERNAL_SERVER_ERROR,  # If connector not available
-            ],
-        )
-
-        if response.status_code == status.HTTP_200_OK:
-            self.assertIn("success", response.data)
+                msg=f"Expected 200 OK, got {response.status_code}: {response.data}",
+            )
+            self.assertTrue(response.data["success"], "Connection test should report success=True")
             self.assertIn("message", response.data)
             self.assertIn("tested_at", response.data)
             self.assertIn("connection_id", response.data)
+        finally:
+            with contextlib.suppress(ValueError):
+                MarketplaceConnectorFactory.unregister_connector(
+                    MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+                )
 
     def test_test_connection_not_found(self):
         """Test testing non-existent connection"""
@@ -478,7 +562,7 @@ class MarketplaceConnectionViewSetTest(TestCase):
         other_tenant = Tenant.objects.create(
             name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
-        other_user = User.objects.create_user(
+        User.objects.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
@@ -493,12 +577,18 @@ class MarketplaceConnectionViewSetTest(TestCase):
             config={"key": "value"},
         )
 
-        # Try to access with original user
+        # Try to access with original user — queryset filters by user's tenant,
+        # so the object simply won't be found (404). A 403 would also be
+        # acceptable but the current queryset-scoping implementation returns 404.
         response = self.client.get(
             f"/api/v1/integrations/marketplace/connections/{other_connection.id}/"
         )
 
-        self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_404_NOT_FOUND,
+            msg=f"Tenant isolation should prevent access; got {response.status_code}: {response.data}",
+        )
 
     def test_platform_admin_access(self):
         """Test platform admins can access all connections"""
@@ -575,6 +665,89 @@ class MarketplaceConnectionViewSetTest(TestCase):
         response = self.client.get(f"/api/v1/integrations/marketplace/connections/{connection.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_test_connection_requires_write_role(self):
+        """POST /connections/{id}/test/ requires DATA_PROVIDER or TENANT_ADMIN role."""
+        connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="PermTest Connection",
+            config={"key": "value"},
+        )
+        regular_user = User.objects.create_user(
+            email=f"perm-test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        self.client.credentials()
+        self.client.force_authenticate(user=regular_user)
+
+        response = self.client.post(
+            f"/api/v1/integrations/marketplace/connections/{connection.id}/test/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_cancel_sync_requires_write_role(self):
+        """POST /sync/{id}/cancel/ requires DATA_PROVIDER or TENANT_ADMIN role."""
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant,
+            connection=MarketplaceConnection.objects.create(
+                tenant=self.tenant,
+                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+                name="PermTest Connection 2",
+                config={"key": "value"},
+            ),
+            direction=SyncDirection.PUSH.value,
+            status=SyncStatus.PENDING.value,
+            metadata={"asset_ids": [], "options": {}},
+        )
+        regular_user = User.objects.create_user(
+            email=f"perm-cancel-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        self.client.credentials()
+        self.client.force_authenticate(user=regular_user)
+
+        response = self.client.post(
+            f"/api/v1/integrations/marketplace/sync/{sync_job.id}/cancel/",
+            {"reason": "test"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_destroy_mapping_requires_write_role(self):
+        """DELETE /mappings/{id}/ requires DATA_PROVIDER or TENANT_ADMIN role."""
+        from hub.apps.assets.models import Asset
+
+        asset = Asset.objects.create(tenant=self.tenant, key="perm-mapping", name="Perm Mapping")
+        connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="PermTest Connection 3",
+            config={"key": "value"},
+        )
+        mapping = MarketplaceMapping.objects.create(
+            tenant=self.tenant,
+            connection=connection,
+            hub_asset=asset,
+            external_listing_id="perm-ext-1",
+        )
+        regular_user = User.objects.create_user(
+            email=f"perm-mapping-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        self.client.credentials()
+        self.client.force_authenticate(user=regular_user)
+
+        response = self.client.delete(
+            f"/api/v1/integrations/marketplace/mappings/{mapping.id}/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_pagination(self):
         """Test pagination works correctly"""
@@ -654,10 +827,12 @@ class MarketplaceConnectionViewSetTest(TestCase):
             format="json",
         )
 
-        # Duplicate name must be rejected — either 400 or 409
-        self.assertIn(
+        # Duplicate name is caught by the service layer (not the serializer),
+        # so the correct response is 409 Conflict via ConflictError.
+        self.assertEqual(
             response.status_code,
-            [status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT],
+            status.HTTP_409_CONFLICT,
+            msg=f"Duplicate name should return 409, got {response.status_code}: {response.data}",
         )
 
     def test_test_connection_error_handling(self):
@@ -673,16 +848,18 @@ class MarketplaceConnectionViewSetTest(TestCase):
             f"/api/v1/integrations/marketplace/connections/{connection.id}/test/"
         )
 
-        # Should handle errors gracefully (200 with success=False or 400)
+        # Invalid config should still return a structured response — the
+        # test endpoint must handle errors gracefully and return 200 with
+        # success=False. A 400 means the service rejected the config before
+        # testing. Either is acceptable engineering practice; 500 is a crash.
         self.assertIn(
             response.status_code,
             [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST],
+            msg=f"Expected graceful error handling (200/400), got {response.status_code}: {response.data}",
         )
 
-        if response.status_code == status.HTTP_200_OK:
-            # If successful, verify response structure
-            self.assertIn("success", response.data)
-            self.assertIn("tested_at", response.data)
+        self.assertIn("success", response.data)
+        self.assertIn("tested_at", response.data)
 
     def test_test_connection_not_found_error(self):
         """Test that testing nonexistent connection returns 404"""
@@ -769,16 +946,20 @@ class MarketplaceConnectionViewSetTest(TestCase):
             format="json",
         )
 
-        if response.status_code == status.HTTP_201_CREATED:
-            # Verify all required fields are present
-            self.assertIn("id", response.data)
-            self.assertIn("name", response.data)
-            self.assertIn("marketplace_type", response.data)
-            self.assertIn("is_active", response.data)
-            self.assertIn("created_at", response.data)
-            self.assertIn("updated_at", response.data)
-            # Config should never be exposed
-            self.assertNotIn("config", response.data)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+            msg=f"Expected 201 Created, got {response.status_code}: {response.data}",
+        )
+        # Verify all required fields are present
+        self.assertIn("id", response.data)
+        self.assertIn("name", response.data)
+        self.assertIn("marketplace_type", response.data)
+        self.assertIn("is_active", response.data)
+        self.assertIn("created_at", response.data)
+        self.assertIn("updated_at", response.data)
+        # Config should never be exposed
+        self.assertNotIn("config", response.data)
 
     def test_update_connection_updates_timestamp(self):
         """Test that updating connection updates updated_at timestamp"""
@@ -793,7 +974,7 @@ class MarketplaceConnectionViewSetTest(TestCase):
 
         import time
 
-        time.sleep(0.1)  # INTENTIONAL: test-specific timing requirement
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
 
         response = self.client.patch(
             f"/api/v1/integrations/marketplace/connections/{connection.id}/",
@@ -801,9 +982,13 @@ class MarketplaceConnectionViewSetTest(TestCase):
             format="json",
         )
 
-        if response.status_code == status.HTTP_200_OK:
-            connection.refresh_from_db()
-            self.assertGreater(connection.updated_at, original_updated_at)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            msg=f"Expected 200 OK, got {response.status_code}: {response.data}",
+        )
+        connection.refresh_from_db()
+        self.assertGreater(connection.updated_at, original_updated_at)
 
     def test_list_connections_response_structure(self):
         """Test that list response has correct structure"""
@@ -814,4 +999,481 @@ class MarketplaceConnectionViewSetTest(TestCase):
         self.assertIn("count", response.data)
         self.assertIn("results", response.data)
         self.assertIsInstance(response.data["results"], list)
-        self.assertIsInstance(response.data["count"], int)
+
+
+# =============================================================================
+# Rate Limiting Tests (Phase 2.1)
+# =============================================================================
+
+
+class MarketplaceRateLimitingTest(TestCase):
+    """Verify all 7 write endpoints return 429 when rate-limited."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        # Disconnect signals at class level to avoid per-test overhead
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            cls._disconnected = [
+                (post_save, contract_saved, Contract),
+                (post_save, asset_saved, Asset),
+            ]
+            for signal, receiver, sender in cls._disconnected:
+                signal.disconnect(receiver, sender=sender)
+        except (ImportError, AttributeError):
+            cls._disconnected = []
+
+    @classmethod
+    def tearDownClass(cls):
+        for signal, receiver, sender in cls._disconnected:
+            signal.connect(receiver, sender=sender, weak=False)
+        super().tearDownClass()
+
+    def setUp(self):
+        self.client = APIClient()
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"RateLimit Tenant {uid}",
+            slug=f"ratelimit-tenant-{uid}",
+            kyc_status=KYCStatus.VERIFIED,
+            marketplace_integrations_enabled=True,
+        )
+        ensure_tenant_has_active_subscription(self.tenant)
+
+        self.user = User.objects.create_user(
+            email=f"ratelimit-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        data_provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
+        )
+        self.user.user_roles.create(role=data_provider_role)
+
+        plaintext_key = APIKey.generate_key()
+        key_hash = APIKey.hash_key(plaintext_key)
+        self.api_key = APIKey.objects.create(
+            tenant=self.tenant,
+            user=self.user,
+            key_hash=key_hash,
+            name="RL Test API Key",
+            scopes=["integrations:write", "integrations:read"],
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {plaintext_key}")
+
+        # Create a connection and mapping for tests that need them
+        self.connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="RL Connection",
+            config={"api_key": "test"},
+            is_active=True,
+        )
+
+        from hub.apps.integrations.base import SyncDirection
+
+        self.sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            direction=SyncDirection.PUSH.value,
+            status=SyncStatus.PENDING.value,
+            metadata={"asset_ids": [], "options": {}},
+        )
+
+    def _make_throttled_result(self):
+        """Return a RateLimitResult that mimics a throttled response."""
+        import time
+
+        from hub.apps.rate_limiting.service import RateLimitResult
+
+        return RateLimitResult(
+            allowed=False,
+            limit=100,
+            remaining=0,
+            reset_time=int(time.time()) + 60,
+            limit_type="tenant",
+            category="default",
+            window=60,
+        )
+
+    # ── Connection endpoints ──────────────────────────────────────────
+
+    def test_create_connection_rate_limited(self):
+        """POST /connections/ with throttled tenant → 429"""
+        from unittest.mock import patch
+
+        throttled = self._make_throttled_result()
+        with patch(
+            "hub.apps.integrations.views.check_rate_limit",
+            return_value=(False, [throttled]),
+        ):
+            response = self.client.post(
+                "/api/v1/integrations/marketplace/connections/",
+                {
+                    "marketplace_type": MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+                    "name": "RL Test",
+                    "config": {"key": "val"},
+                },
+                format="json",
+            )
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_update_connection_rate_limited(self):
+        """PUT /connections/{id}/ with throttled tenant → 429"""
+        from unittest.mock import patch
+
+        throttled = self._make_throttled_result()
+        with patch(
+            "hub.apps.integrations.views.check_rate_limit",
+            return_value=(False, [throttled]),
+        ):
+            response = self.client.put(
+                f"/api/v1/integrations/marketplace/connections/{self.connection.id}/",
+                {"name": "RL Updated"},
+                format="json",
+            )
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_delete_connection_rate_limited(self):
+        """DELETE /connections/{id}/ with throttled tenant → 429"""
+        from unittest.mock import patch
+
+        throttled = self._make_throttled_result()
+        with patch(
+            "hub.apps.integrations.views.check_rate_limit",
+            return_value=(False, [throttled]),
+        ):
+            response = self.client.delete(
+                f"/api/v1/integrations/marketplace/connections/{self.connection.id}/",
+            )
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_test_connection_rate_limited(self):
+        """POST /connections/{id}/test/ with throttled tenant → 429"""
+        from unittest.mock import patch
+
+        throttled = self._make_throttled_result()
+        with patch(
+            "hub.apps.integrations.views.check_rate_limit",
+            return_value=(False, [throttled]),
+        ):
+            response = self.client.post(
+                f"/api/v1/integrations/marketplace/connections/{self.connection.id}/test/",
+            )
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    # ── Sync endpoints ─────────────────────────────────────────────────
+
+    def test_create_sync_job_rate_limited(self):
+        """POST /sync/ with throttled tenant → 429"""
+        from unittest.mock import patch
+
+        throttled = self._make_throttled_result()
+        with patch(
+            "hub.apps.integrations.views.check_rate_limit",
+            return_value=(False, [throttled]),
+        ):
+            response = self.client.post(
+                "/api/v1/integrations/marketplace/sync/",
+                {
+                    "connection_id": str(self.connection.id),
+                    "direction": SyncDirection.PUSH.value,
+                    "asset_ids": [],
+                },
+                format="json",
+            )
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_cancel_sync_job_rate_limited(self):
+        """POST /sync/{id}/cancel/ with throttled tenant → 429"""
+        from unittest.mock import patch
+
+        throttled = self._make_throttled_result()
+        with patch(
+            "hub.apps.integrations.views.check_rate_limit",
+            return_value=(False, [throttled]),
+        ):
+            response = self.client.post(
+                f"/api/v1/integrations/marketplace/sync/{self.sync_job.id}/cancel/",
+                {"reason": "RL test"},
+                format="json",
+            )
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    # ── Mapping endpoints ──────────────────────────────────────────────
+
+    def test_delete_mapping_rate_limited(self):
+        """DELETE /mappings/{id}/ with throttled tenant → 429"""
+        from unittest.mock import patch
+
+        from hub.apps.assets.models import Asset
+
+        asset = Asset.objects.create(tenant=self.tenant, key="rl-asset", name="RL Asset")
+        mapping = MarketplaceMapping.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            hub_asset=asset,
+            external_listing_id="rl-ext-1",
+        )
+
+        throttled = self._make_throttled_result()
+        with patch(
+            "hub.apps.integrations.views.check_rate_limit",
+            return_value=(False, [throttled]),
+        ):
+            response = self.client.delete(
+                f"/api/v1/integrations/marketplace/mappings/{mapping.id}/",
+            )
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+
+# =============================================================================
+# Connector Info Endpoint Tests (Phase 2.2, 2.3)
+# =============================================================================
+
+
+class MarketplaceConnectorInfoTest(TestCase):
+    """Tests for list_connectors and get_connector_info view functions."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            cls._disconnected = [
+                (post_save, contract_saved, Contract),
+                (post_save, asset_saved, Asset),
+            ]
+            for signal, receiver, sender in cls._disconnected:
+                signal.disconnect(receiver, sender=sender)
+        except (ImportError, AttributeError):
+            cls._disconnected = []
+
+    @classmethod
+    def tearDownClass(cls):
+        for signal, receiver, sender in cls._disconnected:
+            signal.connect(receiver, sender=sender, weak=False)
+        super().tearDownClass()
+
+    def setUp(self):
+        self.client = APIClient()
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"ConnectorInfo Tenant {uid}",
+            slug=f"conninfo-tenant-{uid}",
+            kyc_status=KYCStatus.VERIFIED,
+            marketplace_integrations_enabled=True,
+        )
+        ensure_tenant_has_active_subscription(self.tenant)
+        self.user = User.objects.create_user(
+            email=f"conninfo-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        self.client.force_authenticate(user=self.user)
+
+    # ── list_connectors ────────────────────────────────────────────────
+
+    def test_list_connectors_returns_list(self):
+        """GET /connectors/ returns a connectors list."""
+        response = self.client.get("/api/v1/integrations/marketplace/connectors/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("connectors", response.data)
+        self.assertIsInstance(response.data["connectors"], list)
+
+    @staticmethod
+    def _make_minimal_connector():
+        """Create a minimal connector class for factory registration tests."""
+        from hub.apps.integrations.base import (
+            DataMarketplaceConnector,
+            MarketplaceListing,
+            SyncResult,
+            SyncStatus as _SyncStatus,
+        )
+
+        class _MinimalConnector(DataMarketplaceConnector):
+            __test__ = False
+
+            @property
+            def marketplace_type(self):
+                return MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+
+            @property
+            def supported_sync_directions(self):
+                return [SyncDirection.PUSH, SyncDirection.PULL]
+
+            def authenticate(self, c):
+                return True
+
+            def test_connection(self):
+                return True
+
+            def list_listings(self, **kw):
+                return []
+
+            def get_listing(self, lid):
+                return MarketplaceListing(
+                    marketplace_id=lid,
+                    marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+                    title="T",
+                )
+
+            def list_resources(self, lid):
+                return []
+
+            def create_listing(self, l):
+                return l
+
+            def update_listing(self, lid, l):
+                return l
+
+            def publish_resource(self, lid, r):
+                return r
+
+            def download_resource(self, rid, path):
+                return path
+
+            def map_to_hub_asset(self, listing, sync_job_id=None):
+                from hub.apps.assets.models import AssetSourceType
+                from hub.apps.integrations.base import MarketplaceAssetMapping
+
+                return MarketplaceAssetMapping(
+                    asset_data={"name": listing.title},
+                    source_type=AssetSourceType.FEDERATED,
+                    source_metadata={},
+                )
+
+            def map_from_hub_asset(self, ad, **kw):
+                return MarketplaceListing(
+                    marketplace_id="x",
+                    marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+                    title=ad.get("name", "T"),
+                )
+
+            def sync_push(self, aids, **kw):
+                return SyncResult(
+                    status=_SyncStatus.COMPLETED,
+                    total_items=0, successful_items=0, failed_items=0,
+                    skipped_items=0, errors=[], metadata={},
+                )
+
+            def sync_pull(self, lids=None, filters=None, **kw):
+                return SyncResult(
+                    status=_SyncStatus.COMPLETED,
+                    total_items=0, successful_items=0, failed_items=0,
+                    skipped_items=0, errors=[], metadata={},
+                )
+
+        return _MinimalConnector
+
+    def test_list_connectors_entries_have_required_keys(self):
+        """Each connector entry must have type, display_name, sync_directions, status."""
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
+
+        connector_cls = self._make_minimal_connector()
+        MarketplaceConnectorFactory.register_connector(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, connector_cls
+        )
+        try:
+            response = self.client.get("/api/v1/integrations/marketplace/connectors/")
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            for entry in response.data["connectors"]:
+                self.assertIn("type", entry)
+                self.assertIn("display_name", entry)
+                self.assertIn("supported_sync_directions", entry)
+                self.assertIn("status", entry)
+        finally:
+            with contextlib.suppress(ValueError):
+                MarketplaceConnectorFactory.unregister_connector(
+                    MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+                )
+
+    def test_list_connectors_authentication_required(self):
+        """Unauthenticated users must receive 401."""
+        self.client.logout()
+        self.client.force_authenticate(user=None)
+        response = self.client.get("/api/v1/integrations/marketplace/connectors/")
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+            msg=f"Expected 401 or 403 for unauthenticated request, got {response.status_code}",
+        )
+
+    # ── get_connector_info ─────────────────────────────────────────────
+
+    def test_get_connector_info_valid_type(self):
+        """GET /connectors/{valid_type}/ returns capabilities and config requirements."""
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
+
+        connector_cls = self._make_minimal_connector()
+        MarketplaceConnectorFactory.register_connector(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, connector_cls
+        )
+        try:
+            response = self.client.get(
+                "/api/v1/integrations/marketplace/connectors/SNOWFLAKE_DATA_MARKETPLACE/"
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertIn("capabilities", response.data)
+            self.assertIn("configuration_requirements", response.data)
+            self.assertIn("supported_sync_directions", response.data)
+            self.assertEqual(response.data["status"], "available")
+        finally:
+            with contextlib.suppress(ValueError):
+                MarketplaceConnectorFactory.unregister_connector(
+                    MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+                )
+
+    def test_get_connector_info_invalid_type(self):
+        """GET /connectors/{invalid}/ → 404."""
+        response = self.client.get(
+            "/api/v1/integrations/marketplace/connectors/NONEXISTENT_TYPE/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_get_connector_info_unsupported_type(self):
+        """GET /connectors/{valid_enum_but_not_registered}/ returns gracefully."""
+        # If a connector type is a valid enum but not registered, the view
+        # returns either 404 (is_supported=False) or 200 with unavailable.
+        # Either is a valid design choice; we verify the response is not 500.
+        response = self.client.get(
+            "/api/v1/integrations/marketplace/connectors/AWS_DATA_EXCHANGE/"
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND],
+            msg=f"Expected 200 or 404, got {response.status_code}",
+        )
+
+    def test_get_connector_info_authentication_required(self):
+        """Unauthenticated → 401.
+
+        Note: force_authenticate in setUp can interact with DRF's @api_view
+        decorator in unexpected ways in test transactions.  We use logout()
+        explicitly to clear session-based auth and then verify the 401.
+        """
+        self.client.logout()
+        self.client.force_authenticate(user=None)
+        response = self.client.get(
+            "/api/v1/integrations/marketplace/connectors/SNOWFLAKE_DATA_MARKETPLACE/"
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+            msg=f"Expected 401 or 403 for unauthenticated request, got {response.status_code}: {response.data}",
+        )

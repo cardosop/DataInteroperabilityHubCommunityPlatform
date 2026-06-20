@@ -4,13 +4,14 @@ Phase 216.X.9 — unit tests for ``cli/tests/fixtures/cleanup_registry.py``.
 Verifies LIFO order, exception isolation, the autouse drain hook, and
 the per-session persona teardown plumbing. No mocks.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from tests.fixtures.cleanup_registry import (
-    CleanupRegistry,
     _PERSONA_TEARDOWN_CALLBACKS,
+    CleanupRegistry,
     drain_persona_teardown_callbacks,
     register_persona_teardown,
 )

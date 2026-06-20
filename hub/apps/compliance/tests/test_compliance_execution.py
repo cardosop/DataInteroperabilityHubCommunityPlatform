@@ -19,11 +19,9 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.assets.models import ComplianceStatus as AssetComplianceStatus
-from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus, RiskLevel
+from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.compliance.service_client import ComplianceServiceClient
 from hub.apps.compliance.views import execute_compliance_run
 from hub.apps.datasets.models import Dataset
@@ -45,12 +43,16 @@ class ComplianceExecutionTest(TestCase):
         from hub.apps.core.resilience.service_breakers import (
             reset_shared_circuit_breakers_for_service,
         )
+
         reset_shared_circuit_breakers_for_service("compliance-service")
 
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -103,6 +105,7 @@ class ComplianceExecutionTest(TestCase):
         rather than failed since the failure is an infrastructure gap.
         """
         import logging
+
         _logger = logging.getLogger(__name__)
 
         from hub.apps.compliance.models import ComplianceRunStatus
@@ -134,10 +137,13 @@ class ComplianceExecutionTest(TestCase):
                 delay = 5  # 5s steady state
             _logger.debug(
                 "poll attempt %d/%d (elapsed~%ds, status=%s, delay=%ds)",
-                attempt + 1, max_attempts, elapsed,
-                compliance_run.status, delay,
+                attempt + 1,
+                max_attempts,
+                elapsed,
+                compliance_run.status,
+                delay,
             )
-            time.sleep(delay)
+            time.sleep(delay)  # noqa: sleep-needed — polling loop
             elapsed += delay
         else:
             self.skipTest(
@@ -164,9 +170,9 @@ class ComplianceExecutionTest(TestCase):
                 )
                 self.storage_available = True
                 return
-            except (ConnectionError, OSError) as e:
+            except (ConnectionError, OSError):
                 if attempt < max_attempts - 1:
-                    time.sleep(delay_seconds)  # INTENTIONAL: test-specific timing requirement
+                    time.sleep(delay_seconds)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
                     continue
                 # Storage not available after retries - tests will skip
                 self.storage_available = False
@@ -183,9 +189,7 @@ class ComplianceExecutionTest(TestCase):
             if not is_healthy:
                 self.skipTest("Compliance service not available - skipping test")
         except (ConnectionError, OSError) as exc:
-            self.skipTest(
-                f"Compliance service health check failed: {exc}"
-            )
+            self.skipTest(f"Compliance service health check failed: {exc}")
 
         # Create compliance run
         compliance_run = ComplianceRun.objects.create(
@@ -237,9 +241,7 @@ class ComplianceExecutionTest(TestCase):
             if not is_healthy:
                 self.skipTest("Compliance service not available - skipping test")
         except (ConnectionError, OSError) as exc:
-            self.skipTest(
-                f"Compliance service health check failed: {exc}"
-            )
+            self.skipTest(f"Compliance service health check failed: {exc}")
 
         # Create asset
         asset = Asset.objects.create(
@@ -264,7 +266,7 @@ class ComplianceExecutionTest(TestCase):
         # Execute compliance run with real services
         try:
             execute_compliance_run(str(compliance_run.id))
-        except (ConnectionError, OSError, ValueError) as exc:
+        except (ConnectionError, OSError, ValueError):
             # If execution fails due to external service connectivity or
             # data issues, verify fail-closed behavior.
             compliance_run.refresh_from_db()
@@ -320,7 +322,7 @@ class ComplianceExecutionTest(TestCase):
         # Execute compliance run - should handle storage error gracefully
         try:
             execute_compliance_run(str(compliance_run.id))
-        except (ConnectionError, OSError, ValueError) as exc:
+        except (ConnectionError, OSError, ValueError):
             # Expected if storage is unavailable — the compliance run
             # handler itself should persist FAILED in this case.
             pass
@@ -342,9 +344,7 @@ class ComplianceExecutionTest(TestCase):
             if not is_healthy:
                 self.skipTest("Compliance service not available - skipping test")
         except (ConnectionError, OSError) as exc:
-            self.skipTest(
-                f"Compliance service health check failed: {exc}"
-            )
+            self.skipTest(f"Compliance service health check failed: {exc}")
 
         # Create asset and dataset
         asset = Asset.objects.create(
@@ -368,7 +368,7 @@ class ComplianceExecutionTest(TestCase):
         # Execute compliance run with real services
         try:
             execute_compliance_run(str(compliance_run.id))
-        except (ConnectionError, OSError, ValueError) as exc:
+        except (ConnectionError, OSError, ValueError):
             # If execution fails due to external service connectivity or
             # data issues, verify fail-closed behavior.
             compliance_run.refresh_from_db()
@@ -396,9 +396,7 @@ class ComplianceExecutionTest(TestCase):
             if not is_healthy:
                 self.skipTest("Compliance service not available - skipping test")
         except (ConnectionError, OSError) as exc:
-            self.skipTest(
-                f"Compliance service health check failed: {exc}"
-            )
+            self.skipTest(f"Compliance service health check failed: {exc}")
 
         # Create asset
         asset = Asset.objects.create(
@@ -406,7 +404,7 @@ class ComplianceExecutionTest(TestCase):
         )
 
         # Create dataset for asset
-        dataset = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant, asset=asset, file=self.file, format="CSV", created_by=self.user
         )
 
@@ -423,7 +421,7 @@ class ComplianceExecutionTest(TestCase):
         # Execute compliance run with real services
         try:
             execute_compliance_run(str(compliance_run.id))
-        except (ConnectionError, OSError, ValueError) as exc:
+        except (ConnectionError, OSError, ValueError):
             # If execution fails due to external service connectivity or
             # data issues, verify fail-closed behavior.
             compliance_run.refresh_from_db()
@@ -453,9 +451,7 @@ class ComplianceExecutionTest(TestCase):
             if not is_healthy:
                 self.skipTest("Compliance service not available - skipping test")
         except (ConnectionError, OSError) as exc:
-            self.skipTest(
-                f"Compliance service health check failed: {exc}"
-            )
+            self.skipTest(f"Compliance service health check failed: {exc}")
 
         # Create compliance run
         compliance_run = ComplianceRun.objects.create(
@@ -465,7 +461,7 @@ class ComplianceExecutionTest(TestCase):
         # Execute compliance run with real services
         try:
             execute_compliance_run(str(compliance_run.id))
-        except (ConnectionError, OSError, ValueError) as exc:
+        except (ConnectionError, OSError, ValueError):
             # If execution fails due to external service connectivity,
             # verify started_at was still set (timestamp is persisted
             # before the external call).
@@ -510,14 +506,12 @@ class ComplianceExecutionTest(TestCase):
             if not is_healthy:
                 self.skipTest("Compliance service not available - skipping test")
         except (ConnectionError, OSError) as exc:
-            self.skipTest(
-                f"Compliance service health check failed: {exc}"
-            )
+            self.skipTest(f"Compliance service health check failed: {exc}")
 
         # Execute compliance run - should handle missing regulations
         try:
             execute_compliance_run(str(compliance_run.id))
-        except (ConnectionError, OSError, ValueError) as exc:
+        except (ConnectionError, OSError, ValueError):
             # If execution fails due to external service connectivity or
             # data issues, verify fail-closed behavior.
             compliance_run.refresh_from_db()
@@ -556,7 +550,7 @@ class ComplianceExecutionTest(TestCase):
         # Execute compliance run - should handle invalid format
         try:
             execute_compliance_run(str(compliance_run.id))
-        except (ConnectionError, OSError, ValueError) as exc:
+        except (ConnectionError, OSError, ValueError):
             # Expected if format is not supported — the compliance run
             # handler should persist FAILED in this case.
             pass
@@ -566,8 +560,6 @@ class ComplianceExecutionTest(TestCase):
         self.assertIn(
             compliance_run.status, [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED]
         )
-
-
 
 
 class EmptyBytesGuardTest(TestCase):
@@ -640,7 +632,7 @@ class EmptyBytesGuardTest(TestCase):
                 return
             except (ConnectionError, OSError):
                 if attempt < max_attempts - 1:
-                    time.sleep(delay_seconds)
+                    time.sleep(delay_seconds)  # noqa: sleep-needed — polling loop
                     continue
 
     def test_empty_bytes_persists_storage_missing_error_type(self):

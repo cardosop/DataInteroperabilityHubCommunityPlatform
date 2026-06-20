@@ -27,10 +27,7 @@ from django.test import TestCase, override_settings
 
 from hub.apps.core.events.models import Event
 from hub.apps.orchestration.models import (
-    StepStatus,
     WorkflowDefinition,
-    WorkflowInstance,
-    WorkflowStatus,
 )
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.tenants.models import KYCStatus, Tenant
@@ -50,12 +47,16 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         import hub.apps.core.events.bus as bus_module
+
         bus_module._event_bus = None
 
         self.engine = WorkflowEngine()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
@@ -97,7 +98,7 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
     def test_progress_in_step_started_event(self):
         """Test that progress_percentage is included in workflow.step.started events (Task 0.3.3)"""
         # Create workflow with 3 steps
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_progress_started_no_mocks",
             version="1.0.0",
             dsl_json={
@@ -148,7 +149,7 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
     def test_progress_in_step_completed_event(self):
         """Test that progress_percentage is included in workflow.step.completed events (Task 0.3.3)"""
         # Create workflow with 3 steps
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_progress_completed_no_mocks",
             version="1.0.0",
             dsl_json={
@@ -207,7 +208,7 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
         self.engine.register_task("failing_task", failing_task)
 
         # Create workflow with 3 steps, second step fails
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_progress_failed_no_mocks",
             version="1.0.0",
             dsl_json={
@@ -229,12 +230,12 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
         )
         instance = self.engine.start_instance(str(instance.id))
 
-        # Execute workflow (will fail at step2)
+        # Execute workflow (will fail at step2 due to invalid state transition).
+        # Exception is expected; the test verifies resulting state/events below.
         try:
             self.engine.execute_instance(str(instance.id))
         except Exception:
-            # Expected to fail
-            pass
+            pass  # Expected failure on invalid state transition
 
         # Get step.failed events from outbox
         step_failed_events = self._get_step_events_from_events(
@@ -264,7 +265,7 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
     def test_progress_progression_in_events(self):
         """Test that progress_percentage increases correctly across step events (Task 0.3.3)"""
         # Create workflow with 5 steps
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_progress_progression_no_mocks",
             version="1.0.0",
             dsl_json={
@@ -311,7 +312,7 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
             self.assertGreaterEqual(
                 progresses[i],
                 progresses[i - 1],
-                f"Progress should increase or stay the same: {progresses[i-1]}% -> {progresses[i]}%",
+                f"Progress should increase or stay the same: {progresses[i - 1]}% -> {progresses[i]}%",
             )
 
         # Verify final progress is 100%
@@ -329,7 +330,7 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
     def test_progress_in_all_event_types(self):
         """Test that progress_percentage is included in all step event types (Task 0.3.3)"""
         # Create workflow with 2 steps
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_progress_all_events_no_mocks",
             version="1.0.0",
             dsl_json={
@@ -387,12 +388,16 @@ class WorkflowProgressWebSocketEventsTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         import hub.apps.core.events.bus as bus_module
+
         bus_module._event_bus = None
 
         self.engine = WorkflowEngine()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
@@ -431,7 +436,7 @@ class WorkflowProgressWebSocketEventsTest(TestCase):
     def test_websocket_event_format(self):
         """E2E test: Verify events are in correct format for WebSocket transmission (Task 0.3.3)"""
         # Create workflow with 3 steps
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_websocket_format_no_mocks",
             version="1.0.0",
             dsl_json={
@@ -494,7 +499,7 @@ class WorkflowProgressWebSocketEventsTest(TestCase):
     def test_progress_progression_in_websocket_events(self):
         """E2E test: Verify progress_percentage increases correctly in WebSocket events (Task 0.3.3)"""
         # Create workflow with 5 steps
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_websocket_progression_no_mocks",
             version="1.0.0",
             dsl_json={
@@ -541,7 +546,7 @@ class WorkflowProgressWebSocketEventsTest(TestCase):
             self.assertGreaterEqual(
                 progresses[i],
                 progresses[i - 1],
-                f"Progress should increase: {progresses[i-1]}% -> {progresses[i]}%",
+                f"Progress should increase: {progresses[i - 1]}% -> {progresses[i]}%",
             )
 
         # Verify final progress is 100%

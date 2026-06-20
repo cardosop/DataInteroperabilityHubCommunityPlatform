@@ -1,0 +1,79 @@
+{
+  "consumer": {
+    "name": "ScheduledExport"
+  },
+  "interactions": [
+    {
+      "description": "trigger scheduled export",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "export is active"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/scheduled-exports/export-uuid/trigger/"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "id": "run-uuid",
+            "status": "QUEUED",
+            "triggered_at": "2026-05-15T00:00:00Z"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.triggered_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "format": "yyyy-MM-dd'T'HH:mm:ssZ",
+                  "match": "datetime"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pactRust": {
+      "ffi": "0.5.4",
+      "models": "1.3.11"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    }
+  },
+  "provider": {
+    "name": "MeshantAPI"
+  }
+}

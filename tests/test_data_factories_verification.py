@@ -3,41 +3,35 @@ Verification tests for test data factories and management utilities.
 
 Tests that factories work correctly and can create test data.
 """
-import pytest
+
 import uuid
-from django.test import TestCase, TransactionTestCase
+
+import pytest
 from django.db import transaction
+from django.test import TestCase
 
-from tests.fixtures.test_data_factories import (
-    UserFactory,
-    TenantFactory,
-    AssetFactory,
-    ContractFactory,
-    DatasetFactory,
-    JobFactory,
-    FileFactory,
-    ListingFactory,
-    EmailDeliveryFactory,
-)
-
-from tests.utils.test_data_management import (
-    TestDataManager,
-    cleanup_test_data,
-    seed_test_data,
-    create_multi_tenant_test_data,
-    validate_migrations,
-    TestDatabaseIsolationMixin,
-)
-
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User
 from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract
 from hub.apps.datasets.models import Dataset
 from hub.apps.jobs.models import Job
-from hub.apps.files.models import File
-from hub.apps.marketplace.models import Listing
-
+from hub.apps.tenants.models import Tenant
+from tests.fixtures.test_data_factories import (
+    AssetFactory,
+    ContractFactory,
+    DatasetFactory,
+    FileFactory,
+    JobFactory,
+    ListingFactory,
+    TenantFactory,
+    UserFactory,
+)
+from tests.utils.test_data_management import (
+    TestDatabaseIsolationMixin,
+    TestDataManager,
+    cleanup_test_data,
+    create_multi_tenant_test_data,
+    validate_migrations,
+)
 
 pytestmark = [pytest.mark.django_db(transaction=True)]
 
@@ -146,6 +140,7 @@ class TestDataManagementVerificationTest(TestCase):
 
     def test_database_isolation_mixin(self):
         """Test TestDatabaseIsolationMixin provides isolation"""
+
         class IsolatedTest(TestDatabaseIsolationMixin, TestCase):
             def test_isolation(self):
                 tenant = self.create_test_tenant()
@@ -181,4 +176,3 @@ class TestDatabaseConfigurationTest(TestCase):
         # This should not raise an error
         result = validate_migrations()
         self.assertIsInstance(result, bool)
-

@@ -3,19 +3,18 @@ Unit tests for WebSocket mesh event publishing and replay.
 
 Tests WebSocket event consumer handling of mesh events.
 """
-import pytest
-from django.test import TestCase
-from django.utils import timezone
-from datetime import timedelta
-from unittest.mock import patch, AsyncMock, MagicMock
 
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User
-from hub.apps.core.events.models import Event
-from hub.apps.core.events.bus import EventBus
-from hub.apps.websocket.consumers.event_consumer import EventConsumer
 import uuid
 
+import pytest
+from django.test import TestCase, override_settings
+from django.utils import timezone
+
+from hub.apps.core.events.models import Event
+from hub.apps.core.events.event_types import get_event_schema
+from hub.apps.core.events.publisher import publish_event
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -27,22 +26,15 @@ class MeshEventWebSocketTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email=f"test-{uid}@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_mesh_domain_created_event_published(self):
         """Test that mesh.domain.created event can be published and persisted"""
-        from hub.apps.core.events.publisher import publish_event
-        from django.test import override_settings
-
-        # Use sync persistence for tests to ensure immediate persistence
+# Use sync persistence for tests to ensure immediate persistence
         with override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False):
             event_id = publish_event(
                 event_type="mesh.domain.created",
@@ -54,7 +46,7 @@ class MeshEventWebSocketTest(TestCase):
                     "tenant_id": str(self.tenant.id),
                 },
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
             self.assertIsNotNone(event_id)
@@ -67,23 +59,20 @@ class MeshEventWebSocketTest(TestCase):
 
     def test_mesh_domain_updated_event_published(self):
         """Test that mesh.domain.updated event can be published and persisted"""
-        from hub.apps.core.events.publisher import publish_event
-        from django.test import override_settings
-
-        # Use sync persistence for tests to ensure immediate persistence
+# Use sync persistence for tests to ensure immediate persistence
         with override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False):
             event_id = publish_event(
                 event_type="mesh.domain.updated",
                 data={
-                "domain_id": "123e4567-e89b-12d3-a456-426614174000",
-                "changes": {"name": {"old": "Old Name", "new": "New Name"}},
-                "previous_status": "ACTIVE",
-                "new_status": "INACTIVE",
-                "tenant_id": str(self.tenant.id),
-            },
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+                    "domain_id": "123e4567-e89b-12d3-a456-426614174000",
+                    "changes": {"name": {"old": "Old Name", "new": "New Name"}},
+                    "previous_status": "ACTIVE",
+                    "new_status": "INACTIVE",
+                    "tenant_id": str(self.tenant.id),
+                },
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+            )
 
             self.assertIsNotNone(event_id)
 
@@ -94,10 +83,7 @@ class MeshEventWebSocketTest(TestCase):
 
     def test_mesh_policy_applied_event_published(self):
         """Test that mesh.policy.applied event can be published and persisted"""
-        from hub.apps.core.events.publisher import publish_event
-        from django.test import override_settings
-
-        # Use sync persistence for tests to ensure immediate persistence
+# Use sync persistence for tests to ensure immediate persistence
         with override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False):
             event_id = publish_event(
                 event_type="mesh.policy.applied",
@@ -109,7 +95,7 @@ class MeshEventWebSocketTest(TestCase):
                     "tenant_id": str(self.tenant.id),
                 },
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
             self.assertIsNotNone(event_id)
@@ -117,14 +103,13 @@ class MeshEventWebSocketTest(TestCase):
             # Verify event was persisted (sync persistence ensures immediate persistence)
             event = Event.objects.get(event_id=event_id)
             self.assertEqual(event.event_type, "mesh.policy.applied")
-            self.assertEqual(event.data["policy_application_id"], "123e4567-e89b-12d3-a456-426614174001")
+            self.assertEqual(
+                event.data["policy_application_id"], "123e4567-e89b-12d3-a456-426614174001"
+            )
 
     def test_mesh_compliance_checked_event_published(self):
         """Test that mesh.compliance.checked event can be published and persisted"""
-        from hub.apps.core.events.publisher import publish_event
-        from django.test import override_settings
-
-        # Use sync persistence for tests to ensure immediate persistence
+# Use sync persistence for tests to ensure immediate persistence
         with override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False):
             event_id = publish_event(
                 event_type="mesh.compliance.checked",
@@ -136,7 +121,7 @@ class MeshEventWebSocketTest(TestCase):
                     "tenant_id": str(self.tenant.id),
                 },
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
             self.assertIsNotNone(event_id)
@@ -148,10 +133,7 @@ class MeshEventWebSocketTest(TestCase):
 
     def test_mesh_topology_updated_event_published(self):
         """Test that mesh.topology.updated event can be published and persisted"""
-        from hub.apps.core.events.publisher import publish_event
-        from django.test import override_settings
-
-        # Use sync persistence for tests to ensure immediate persistence
+# Use sync persistence for tests to ensure immediate persistence
         with override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False):
             event_id = publish_event(
                 event_type="mesh.topology.updated",
@@ -163,7 +145,7 @@ class MeshEventWebSocketTest(TestCase):
                     "user_id": str(self.user.id),
                 },
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
             self.assertIsNotNone(event_id)
@@ -175,10 +157,7 @@ class MeshEventWebSocketTest(TestCase):
 
     def test_mesh_health_status_changed_event_published(self):
         """Test that mesh.health.status_changed event can be published and persisted"""
-        from hub.apps.core.events.publisher import publish_event
-        from django.test import override_settings
-
-        # Use sync persistence for tests to ensure immediate persistence
+# Use sync persistence for tests to ensure immediate persistence
         with override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False):
             event_id = publish_event(
                 event_type="mesh.health.status_changed",
@@ -191,7 +170,7 @@ class MeshEventWebSocketTest(TestCase):
                     "tenant_id": str(self.tenant.id),
                 },
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
             self.assertIsNotNone(event_id)
@@ -204,8 +183,6 @@ class MeshEventWebSocketTest(TestCase):
 
     def test_all_mesh_event_types_have_schemas(self):
         """Test that all mesh event types have defined schemas"""
-        from hub.apps.core.events.event_types import get_event_schema
-
         mesh_event_types = [
             "mesh.domain.created",
             "mesh.domain.updated",
@@ -219,4 +196,3 @@ class MeshEventWebSocketTest(TestCase):
             schema = get_event_schema(event_type)
             self.assertIsNotNone(schema, f"Schema missing for {event_type}")
             self.assertIn("data", schema)
-

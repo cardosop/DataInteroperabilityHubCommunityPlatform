@@ -65,10 +65,7 @@ class Command(BaseCommand):
             "--dry-run",
             action="store_true",
             default=False,
-            help=(
-                "Validate and execute the service path but rollback "
-                "persistence."
-            ),
+            help=("Validate and execute the service path but rollback persistence."),
         )
 
     def handle(self, *args, **options):
@@ -91,9 +88,7 @@ class Command(BaseCommand):
             raise CommandError(f"Actor user '{actor_email}' not found") from exc
 
         if actor.tenant is None or str(actor.tenant.id) != str(tenant.id):
-            raise CommandError(
-                f"Actor '{actor_email}' does not belong to tenant '{tenant.id}'"
-            )
+            raise CommandError(f"Actor '{actor_email}' does not belong to tenant '{tenant.id}'")
 
         asset_service = AssetService(tenant_id=str(tenant.id), user_id=str(actor.id))
 
@@ -112,17 +107,16 @@ class Command(BaseCommand):
                 if dry_run:
                     transaction.set_rollback(True)
                     self.stdout.write(
-                    self.style.WARNING(  # keep runbook logs concise
-                        "DRY RUN: asset validated and would be created "
-                        f"with id={asset.id}, tenant={tenant.id}, key={key}"
-                    )
+                        self.style.WARNING(  # keep runbook logs concise
+                            "DRY RUN: asset validated and would be created "
+                            f"with id={asset.id}, tenant={tenant.id}, key={key}"
+                        )
                     )
                     return
 
                 self.stdout.write(
                     self.style.SUCCESS(
-                        "Created asset "
-                        f"id={asset.id} tenant={tenant.id} key={asset.key}"
+                        f"Created asset id={asset.id} tenant={tenant.id} key={asset.key}"
                     )
                 )
         except ValidationError as exc:

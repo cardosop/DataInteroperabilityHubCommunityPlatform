@@ -3,13 +3,12 @@ Unit tests for VirtualizationBusinessRules.
 
 Tests all validation methods using real services and models (no mocks/stubs).
 """
+
 import uuid
 
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.core.business_rules.registry import get_registry
 from hub.apps.core.services.base import ValidationError
 from hub.apps.tenants.models import Tenant
@@ -681,10 +680,7 @@ class SourceCompatibilityValidationTest(TestCase):
 
         self.assertFalse(result.is_valid)
         self.assertTrue(
-            any(
-                "connection_string" in e or "host" in e or "database" in e
-                for e in result.errors
-            )
+            any("connection_string" in e or "host" in e or "database" in e for e in result.errors)
         )
 
     def test_validate_source_compatibility_missing_required_fields(self):
@@ -1001,7 +997,7 @@ class CrossSourceCompatibilityValidationTest(TestCase):
         file3 = File.objects.create(
             tenant=self.tenant, name="test3.csv", size=1000, content_type="text/csv"
         )
-        dataset3 = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=asset3,
             file=file3,
@@ -1044,8 +1040,9 @@ class CrossSourceCompatibilityValidationTest(TestCase):
             virtual_dataset, raise_on_error=False
         )
 
-        # Should have warnings about schema misalignment
-        self.assertTrue(result.is_valid or len(result.warnings) > 0)
+        # Misaligned schemas should produce warnings (treated as warnings, not errors)
+        self.assertGreater(len(result.warnings), 0, "Should have warnings about misalignment")
+        self.assertIn("cross_source_checks", result.details)
         self.assertIn("cross_source_checks", result.details)
 
     def test_validate_cross_source_compatibility_incompatible_types(self):
@@ -1060,7 +1057,7 @@ class CrossSourceCompatibilityValidationTest(TestCase):
         file4 = File.objects.create(
             tenant=self.tenant, name="test4.csv", size=1000, content_type="text/csv"
         )
-        dataset4 = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=asset4,
             file=file4,
@@ -1106,14 +1103,17 @@ class CrossSourceCompatibilityValidationTest(TestCase):
         # Should have warnings about type incompatibility
         self.assertIn("cross_source_checks", result.details)
         checks = result.details["cross_source_checks"]
-        if "type_compatibility_issues" in checks:
-            self.assertGreater(len(checks["type_compatibility_issues"]), 0)
+        self.assertIn("type_compatibility_issues", checks,
+                      "Type compatibility issues key must be present in checks")
+        self.assertGreater(len(checks["type_compatibility_issues"]), 0)
 
     def test_validate_cross_source_compatibility_cross_tenant_access(self):
         """Test validate_cross_source_compatibility with cross-tenant sources."""
         # Create another tenant
         _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
 
         # Create asset in other tenant
         other_asset = Asset.objects.create(
@@ -1188,7 +1188,7 @@ class CrossSourceCompatibilityValidationTest(TestCase):
             pricing_model=PricingModel.FREE,
             metadata_json={"title": "Test Listing"},
         )
-        entitlement = Entitlement.objects.create(
+        Entitlement.objects.create(
             tenant=self.tenant, listing=listing, asset=other_asset, status=EntitlementStatus.ACTIVE
         )
 
@@ -1229,7 +1229,9 @@ class CrossSourceCompatibilityValidationTest(TestCase):
         """Test validate_cross_source_compatibility raises exception when raise_on_error=True."""
         # Create another tenant
         _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
 
         # Create asset in other tenant
         other_asset = Asset.objects.create(
@@ -1598,7 +1600,9 @@ class ResultBusinessRulesTest(TestCase):
     def test_validate_result_caching_below_minimum(self):
         """Test result caching validation with TTL below minimum"""
         result = self.business_rules.validate_result_caching(
-            cache_enabled=True, cache_ttl=30, raise_on_error=False  # Below MIN_CACHE_TTL
+            cache_enabled=True,
+            cache_ttl=30,
+            raise_on_error=False,  # Below MIN_CACHE_TTL
         )
 
         self.assertFalse(result.is_valid)
@@ -1609,7 +1613,9 @@ class ResultBusinessRulesTest(TestCase):
     def test_validate_result_caching_above_maximum(self):
         """Test result caching validation with TTL above maximum"""
         result = self.business_rules.validate_result_caching(
-            cache_enabled=True, cache_ttl=100000, raise_on_error=False  # Above MAX_CACHE_TTL
+            cache_enabled=True,
+            cache_ttl=100000,
+            raise_on_error=False,  # Above MAX_CACHE_TTL
         )
 
         self.assertFalse(result.is_valid)
@@ -1632,7 +1638,9 @@ class ResultBusinessRulesTest(TestCase):
         """Test that validate_result_caching raises exception when raise_on_error=True"""
         with self.assertRaises(ValidationError):
             self.business_rules.validate_result_caching(
-                cache_enabled=True, cache_ttl=30, raise_on_error=True  # Below minimum
+                cache_enabled=True,
+                cache_ttl=30,
+                raise_on_error=True,  # Below minimum
             )
 
     def test_validate_pagination_page_based_success(self):
@@ -1682,7 +1690,9 @@ class ResultBusinessRulesTest(TestCase):
     def test_validate_pagination_page_below_minimum(self):
         """Test pagination validation with page below minimum"""
         result = self.business_rules.validate_pagination(
-            page=0, page_size=50, raise_on_error=False  # Below MIN_PAGE_NUMBER
+            page=0,
+            page_size=50,
+            raise_on_error=False,  # Below MIN_PAGE_NUMBER
         )
 
         self.assertFalse(result.is_valid)
@@ -1693,7 +1703,9 @@ class ResultBusinessRulesTest(TestCase):
     def test_validate_pagination_page_size_below_minimum(self):
         """Test pagination validation with page_size below minimum"""
         result = self.business_rules.validate_pagination(
-            page=1, page_size=0, raise_on_error=False  # Below MIN_PAGE_SIZE
+            page=1,
+            page_size=0,
+            raise_on_error=False,  # Below MIN_PAGE_SIZE
         )
 
         self.assertFalse(result.is_valid)
@@ -1704,7 +1716,9 @@ class ResultBusinessRulesTest(TestCase):
     def test_validate_pagination_page_size_above_maximum(self):
         """Test pagination validation with page_size above maximum"""
         result = self.business_rules.validate_pagination(
-            page=1, page_size=2000, raise_on_error=False  # Above MAX_PAGE_SIZE
+            page=1,
+            page_size=2000,
+            raise_on_error=False,  # Above MAX_PAGE_SIZE
         )
 
         self.assertFalse(result.is_valid)
@@ -1715,7 +1729,9 @@ class ResultBusinessRulesTest(TestCase):
     def test_validate_pagination_offset_below_minimum(self):
         """Test pagination validation with offset below minimum"""
         result = self.business_rules.validate_pagination(
-            offset=-1, limit=50, raise_on_error=False  # Below MIN_OFFSET
+            offset=-1,
+            limit=50,
+            raise_on_error=False,  # Below MIN_OFFSET
         )
 
         self.assertFalse(result.is_valid)
@@ -1726,7 +1742,9 @@ class ResultBusinessRulesTest(TestCase):
     def test_validate_pagination_limit_below_minimum(self):
         """Test pagination validation with limit below minimum"""
         result = self.business_rules.validate_pagination(
-            offset=0, limit=0, raise_on_error=False  # Below MIN_LIMIT
+            offset=0,
+            limit=0,
+            raise_on_error=False,  # Below MIN_LIMIT
         )
 
         self.assertFalse(result.is_valid)
@@ -1737,7 +1755,9 @@ class ResultBusinessRulesTest(TestCase):
     def test_validate_pagination_limit_above_maximum(self):
         """Test pagination validation with limit above maximum"""
         result = self.business_rules.validate_pagination(
-            offset=0, limit=2000, raise_on_error=False  # Above MAX_LIMIT
+            offset=0,
+            limit=2000,
+            raise_on_error=False,  # Above MAX_LIMIT
         )
 
         self.assertFalse(result.is_valid)
@@ -1758,7 +1778,9 @@ class ResultBusinessRulesTest(TestCase):
         """Test that validate_pagination raises exception when raise_on_error=True"""
         with self.assertRaises(ValidationError):
             self.business_rules.validate_pagination(
-                page=1, offset=0, raise_on_error=True  # Mutually exclusive
+                page=1,
+                offset=0,
+                raise_on_error=True,  # Mutually exclusive
             )
 
 
@@ -1771,7 +1793,9 @@ class CrossTenantAccessValidationTest(TestCase):
         self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
         _uid = uuid.uuid4().hex[:8]
-        self.other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+        self.other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
 
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
@@ -1797,9 +1821,7 @@ class CrossTenantAccessValidationTest(TestCase):
             key="same-tenant-asset",
             name="Same Tenant Asset",
             status=(
-                AssetStatus.ACTIVE
-                if isinstance(AssetStatus.ACTIVE, tuple)
-                else AssetStatus.ACTIVE
+                AssetStatus.ACTIVE if isinstance(AssetStatus.ACTIVE, tuple) else AssetStatus.ACTIVE
             ),
         )
 
@@ -1808,9 +1830,7 @@ class CrossTenantAccessValidationTest(TestCase):
             key="other-tenant-asset",
             name="Other Tenant Asset",
             status=(
-                AssetStatus.ACTIVE
-                if isinstance(AssetStatus.ACTIVE, tuple)
-                else AssetStatus.ACTIVE
+                AssetStatus.ACTIVE if isinstance(AssetStatus.ACTIVE, tuple) else AssetStatus.ACTIVE
             ),
         )
 
@@ -1909,9 +1929,11 @@ class CrossTenantAccessValidationTest(TestCase):
         )
 
         # Should fail - cross-tenant source without permission
-        # Note: This may pass if ABAC allows it, but typically should fail
-        # The actual result depends on ABAC policy configuration
         self.assertIn("cross_tenant_access_checks", result.details)
+        self.assertFalse(
+            result.is_valid,
+            "Cross-tenant source without permission should fail validation"
+        )
 
     def test_validate_cross_tenant_access_query_execution_authorization(self):
         """Test query execution authorization check"""
@@ -1920,9 +1942,9 @@ class CrossTenantAccessValidationTest(TestCase):
         )
 
         self.assertIn("query_execution_authorized", result.details["cross_tenant_access_checks"])
-        # User should have authorization (or errors if not)
         auth_status = result.details["cross_tenant_access_checks"]["query_execution_authorized"]
-        self.assertIn(auth_status, [True, False, None])
+        self.assertIsNotNone(auth_status, "Authorization status should not be None")
+        self.assertIn(auth_status, [True, False])
 
     def test_validate_cross_tenant_access_result_filtering_same_tenant(self):
         """Test result data filtering validation with same-tenant sources"""
@@ -1965,7 +1987,7 @@ class CrossTenantAccessValidationTest(TestCase):
             pricing_model=PricingModel.FREE,
             metadata_json={"title": "Test Listing"},
         )
-        entitlement = Entitlement.objects.create(
+        Entitlement.objects.create(
             tenant=self.tenant,
             listing=listing,
             asset=self.asset_other_tenant,
@@ -2747,9 +2769,7 @@ class SourceConnectionValidationTest(TestCase):
         self.assertEqual(
             self.business_rules._map_source_type_to_connector_type("mysql"), "DATABASE"
         )
-        self.assertEqual(
-            self.business_rules._map_source_type_to_connector_type("odbc"), "DATABASE"
-        )
+        self.assertEqual(self.business_rules._map_source_type_to_connector_type("odbc"), "DATABASE")
         self.assertEqual(self.business_rules._map_source_type_to_connector_type("rest"), "HTTP")
         self.assertEqual(self.business_rules._map_source_type_to_connector_type("s3"), "S3")
         self.assertIsNone(self.business_rules._map_source_type_to_connector_type("sparql"))

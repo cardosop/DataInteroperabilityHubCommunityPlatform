@@ -5,7 +5,7 @@ Provides secure credential masking for destination configurations.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class CredentialManager:
     ]
 
     @staticmethod
-    def get_masked_credentials(scheduled_export) -> Dict[str, Any]:
+    def get_masked_credentials(scheduled_export) -> dict[str, Any]:
         """
         Get masked credentials for a scheduled export.
 

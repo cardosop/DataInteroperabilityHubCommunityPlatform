@@ -16,7 +16,7 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
-from hub.apps.webhooks.models import Webhook, WebhookEventType, WebhookStatus
+from hub.apps.webhooks.models import Webhook, WebhookDelivery, WebhookEventType, WebhookStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -29,7 +29,6 @@ class WebhookAPIIntegrationTest(TestCase):
 
     def _fixture_teardown(self):
         """Skip TRUNCATE CASCADE to avoid timeout."""
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -37,7 +36,10 @@ class WebhookAPIIntegrationTest(TestCase):
         self.client = APIClient()
 
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
@@ -98,12 +100,13 @@ class WebhookAPIIntegrationTest(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        response_str = str(response.data).lower()
-        response_keys = (response.data or {}).keys() if isinstance(response.data, dict) else []
-        self.assertTrue(
-            "name" in response_keys or "name" in response_str or "required" in response_str,
-            f"Expected error detail mentioning name or required, got: {response.data}",
-        )
+        data = response.data or {}
+        if isinstance(data, dict):
+            self.assertIn("name", data,
+                          f"Expected 'name' in error response keys, got: {list(data.keys())}")
+        else:
+            self.assertIn("name", str(data).lower(),
+                          f"Expected 'name' in error response body, got: {data}")
         self.assertEqual(Webhook.objects.filter(tenant=self.tenant).count(), 0)
 
     def test_update_webhook_via_api_failure_not_found(self):
@@ -149,7 +152,13 @@ class WebhookAPIIntegrationTest(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertTrue("url" in (response.data or {}) or "url" in str(response.data).lower())
+        data = response.data or {}
+        if isinstance(data, dict):
+            self.assertIn("url", data,
+                          f"Expected 'url' in error response, got keys: {list(data.keys())}")
+        else:
+            self.assertIn("url", str(data).lower(),
+                          f"Expected 'url' in error response body, got: {data}")
 
     def test_update_webhook_via_api(self):
         """Test updating webhook via API endpoint (Phase 12.2.2)"""
@@ -207,10 +216,8 @@ class WebhookAPIIntegrationTest(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = response.data or {}
-        self.assertTrue(
-            "name" in data or "event_types" in data,
-            f"Expected field errors in response: {data}",
-        )
+        self.assertIn("name", data,
+                      f"Expected 'name' field error in response, got: {data}")
 
     def test_create_webhook_invalid_url_returns_400(self):
         """Error handling: invalid URL returns 400."""
@@ -226,7 +233,12 @@ class WebhookAPIIntegrationTest(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = response.data or {}
-        self.assertTrue("url" in data or any("url" in str(k).lower() for k in data))
+        if isinstance(data, dict):
+            self.assertIn("url", data,
+                          f"Expected 'url' in error response, got keys: {list(data.keys())}")
+        else:
+            self.assertIn("url", str(data).lower(),
+                          f"Expected 'url' in error response body, got: {data}")
 
     def test_retrieve_webhook_not_found_returns_404(self):
         """Error handling: retrieve non-existent webhook returns 404."""
@@ -235,12 +247,9 @@ class WebhookAPIIntegrationTest(TestCase):
         fake_id = uuid.uuid4()
         response = self.client.get(f"/api/v1/webhooks/webhooks/{fake_id}/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        # API uses custom error format: {"error": {"code": "NOT_FOUND", "message": ...}}
         data = response.data or {}
-        self.assertTrue(
-            "detail" in data or ("error" in data and "message" in data.get("error", {})),
-            f"Expected error details in response: {data}",
-        )
+        self.assertIn("error", data,
+                      f"Expected 'error' key in 404 response, got: {data}")
 
     def test_create_webhook_response_structure_tdd(self):
         """TDD: create response contains required keys."""
@@ -258,3 +267,57 @@ class WebhookAPIIntegrationTest(TestCase):
         for key in ("id", "name", "url", "status", "event_types"):
             self.assertIn(key, response.data, f"Missing key in create response: {key}")
         self.assertEqual(response.data["name"], "TDD Webhook")
+
+    def test_webhook_deliveries_list(self):
+        """GET /webhooks/{id}/deliveries/ returns delivery list for a webhook."""
+        webhook = Webhook.objects.create(
+            tenant=self.tenant,
+            name="Deliveries Webhook",
+            url="https://example.com/webhook",
+            secret="test-secret",
+            event_types=[WebhookEventType.ASSET_CREATED],
+            created_by=self.user,
+        )
+        # Create a delivery for this webhook
+        WebhookDelivery.objects.create(
+            webhook=webhook,
+            event_type=WebhookEventType.ASSET_CREATED,
+            payload={"event_type": "asset.created", "data": {}},
+            signature="test",
+        )
+        response = self.client.get(
+            f"/api/v1/webhooks/webhooks/{webhook.id}/deliveries/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Response should be a paginated list
+        self.assertIn("results", response.data)
+        self.assertGreaterEqual(len(response.data["results"]), 1)
+
+    def test_webhook_retry_delivery(self):
+        """POST /webhooks/{id}/retry/ triggers delivery retry."""
+        webhook = Webhook.objects.create(
+            tenant=self.tenant,
+            name="Retry Webhook",
+            url="https://example.com/webhook",
+            secret="test-secret",
+            event_types=[WebhookEventType.ASSET_CREATED],
+            created_by=self.user,
+        )
+        response = self.client.post(
+            f"/api/v1/webhooks/webhooks/{webhook.id}/retry/"
+        )
+        # 200 means retry was queued or webhook has no failed deliveries
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND],
+        )
+
+    def test_webhook_retry_delivery_nonexistent_webhook(self):
+        """POST /webhooks/{id}/retry/ with nonexistent webhook returns 404."""
+        import uuid
+
+        fake_id = uuid.uuid4()
+        response = self.client.post(
+            f"/api/v1/webhooks/webhooks/{fake_id}/retry/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

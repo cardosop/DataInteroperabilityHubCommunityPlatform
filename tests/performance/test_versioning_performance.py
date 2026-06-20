@@ -4,6 +4,7 @@ Performance tests for Versioning API.
 Measures list endpoint latency. Uses real implementations - no mocks or stubs.
 Versioning list requires resource_type and resource_id (asset UUID).
 """
+
 import pytest
 
 pytestmark = pytest.mark.slow
@@ -39,8 +40,5 @@ class VersioningAPIPerformanceTest(APIPerformanceTestBase):
 
     def test_versions_list_p95_latency(self):
         """List versions endpoint P95 < 500ms."""
-        url = (
-            f"/api/v1/versioning/versions/"
-            f"?resource_type=contract&resource_id={self.asset.id}"
-        )
+        url = f"/api/v1/versioning/versions/?resource_type=contract&resource_id={self.asset.id}"
         self.assert_list_endpoint_p95(url)

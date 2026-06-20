@@ -1,7 +1,6 @@
 """Phase 232.8.5 — PII registry rows must have explicit erasure coverage decisions."""
 
 from __future__ import annotations
-import pytest
 
 import pytest
 from django.test import SimpleTestCase

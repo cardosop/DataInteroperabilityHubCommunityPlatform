@@ -4,17 +4,18 @@ ODPS Schema Loading Utilities
 Provides functions for loading and managing ODPS JSON Schema files.
 Includes in-memory caching for performance optimization.
 """
+
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 # In-memory cache for loaded schemas (per-version)
 # Key: normalized version string (e.g., "4.1", "3.x")
 # Value: loaded schema dictionary
-_schema_cache: Dict[str, Dict[str, Any]] = {}
+_schema_cache: dict[str, dict[str, Any]] = {}
 
 
-def load_odps_schema(version: str, use_cache: bool = True) -> Dict[str, Any]:
+def load_odps_schema(version: str, use_cache: bool = True) -> dict[str, Any]:
     """
     Load ODPS JSON Schema for given version.
 
@@ -49,7 +50,7 @@ def load_odps_schema(version: str, use_cache: bool = True) -> Dict[str, Any]:
 
     # Normalize version: remove "v" prefix if present and strip whitespace
     normalized_version = version.strip()
-    if normalized_version.startswith('v'):
+    if normalized_version.startswith("v"):
         normalized_version = normalized_version[1:]
 
     # Check cache first (if caching is enabled)
@@ -77,18 +78,15 @@ def load_odps_schema(version: str, use_cache: bool = True) -> Dict[str, Any]:
         )
 
     try:
-        with open(schema_path, 'r', encoding='utf-8') as f:
+        with open(schema_path, encoding="utf-8") as f:
             schema_data = json.load(f)
     except json.JSONDecodeError as e:
         raise json.JSONDecodeError(
-            f"Invalid JSON in ODPS schema file for version '{version}': {schema_path}",
-            e.doc,
-            e.pos
+            f"Invalid JSON in ODPS schema file for version '{version}': {schema_path}", e.doc, e.pos
         ) from e
     except Exception as e:
-        raise IOError(
-            f"Error reading ODPS schema file for version '{version}': {schema_path}. "
-            f"Error: {e}"
+        raise OSError(
+            f"Error reading ODPS schema file for version '{version}': {schema_path}. Error: {e}"
         ) from e
 
     # Validate that loaded data is a dictionary (JSON Schema should be an object)
@@ -138,7 +136,7 @@ def get_available_odps_versions() -> list[str]:
         # Normalize version directory name back to version string
         # All directories have "v" prefix, so remove it
         version_name = version_dir.name
-        if version_name.startswith('v'):
+        if version_name.startswith("v"):
             version = version_name[1:]
         else:
             # If somehow no "v" prefix, use as-is
@@ -148,13 +146,13 @@ def get_available_odps_versions() -> list[str]:
 
     # Sort versions: numeric versions first (descending), then .x versions (descending)
     def version_sort_key(v: str) -> tuple:
-        if v.endswith('.x'):
+        if v.endswith(".x"):
             # .x versions go last, sorted by major version (descending)
-            major = int(v.split('.')[0]) if v.split('.')[0].isdigit() else 0
+            major = int(v.split(".")[0]) if v.split(".")[0].isdigit() else 0
             return (1, -major)  # 1 means .x version, negative for descending
         else:
             # Numeric versions, sorted descending
-            parts = v.split('.')
+            parts = v.split(".")
             major = int(parts[0]) if parts[0].isdigit() else 0
             minor = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
             return (0, -major, -minor)  # 0 means numeric version, negative for descending
@@ -197,4 +195,3 @@ def get_cached_schema_versions() -> list[str]:
         ['4.1', '3.x']
     """
     return list(_schema_cache.keys())
-

@@ -10,6 +10,7 @@ config drift; the actual logic — including the 90-day churn
 simulation + 3-year RDS budget projection — lives in the spec-named
 module under ``tests/load/``.
 """
+
 from __future__ import annotations
 
 import sys
@@ -17,7 +18,7 @@ import sys
 # Re-export the canonical entry-points so anyone importing
 # ``scripts.lineage_history_growth.measure`` keeps working.
 sys.path.insert(0, __file__.replace("scripts/lineage_history_growth.py", ""))
-from tests.load.lineage_history_growth import (  # noqa: E402
+from tests.load.lineage_history_growth import (
     GROWTH_THRESHOLD,
     main,
     measure_current_state,
@@ -34,14 +35,14 @@ from tests.load.lineage_history_growth import (  # noqa: E402
 def measure() -> dict:
     open_count, total = measure_current_state()
     proj = project_90_day_growth(
-        starting_open=open_count, starting_total=total,
+        starting_open=open_count,
+        starting_total=total,
     )
     budget_3y = storage_within_rds_budget(
         projected_rows=proj["projected_total_3y"],
     )
     growth_factor = (
-        round(total / open_count, 4) if open_count > 0
-        else (1.0 if total == 0 else float("inf"))
+        round(total / open_count, 4) if open_count > 0 else (1.0 if total == 0 else float("inf"))
     )
     return {
         "phase": "228.F5.8",

@@ -1,10 +1,11 @@
 """
 Shared FastAPI middleware for all internal microservices.
 """
+
+from fastapi import status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-from fastapi import status
 
 
 class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
@@ -39,8 +40,7 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                 if int(content_length) > self.max_bytes:
                     return Response(
                         content=(
-                            f'{{"detail": "Request body exceeds'
-                            f' {self._limit_mib} MiB limit"}}'
+                            f'{{"detail": "Request body exceeds {self._limit_mib} MiB limit"}}'
                         ),
                         status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                         media_type="application/json",
@@ -58,10 +58,7 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
             total += len(chunk)
             if total > self.max_bytes:
                 return Response(
-                    content=(
-                        f'{{"detail": "Request body exceeds'
-                        f' {self._limit_mib} MiB limit"}}'
-                    ),
+                    content=(f'{{"detail": "Request body exceeds {self._limit_mib} MiB limit"}}'),
                     status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                     media_type="application/json",
                 )
@@ -73,5 +70,5 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
         async def _receive():
             return {"type": "http.request", "body": body, "more_body": False}
 
-        request._receive = _receive  # noqa: SLF001
+        request._receive = _receive
         return await call_next(request)

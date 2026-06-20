@@ -52,11 +52,12 @@ pointing at unique URLs across rotations). The ``webhook_id`` label
 is sufficient — operators can join with the webhook table to recover
 URLs when needed.
 """
+
 from __future__ import annotations
+
 from typing import Protocol
 
 import structlog
-
 
 logger = structlog.get_logger(__name__)
 
@@ -64,7 +65,7 @@ logger = structlog.get_logger(__name__)
 class _OutboundCounter(Protocol):
     """Structural type covering both prometheus_client.Counter and the stub."""
 
-    def labels(self, **kwargs: str) -> "_OutboundCounter": ...
+    def labels(self, **kwargs: str) -> _OutboundCounter: ...
 
     def inc(self) -> None: ...
 
@@ -72,7 +73,7 @@ class _OutboundCounter(Protocol):
 class _SignatureHistogram(Protocol):
     """Structural type covering both prometheus_client.Histogram and the stub."""
 
-    def labels(self, **kwargs: str) -> "_SignatureHistogram": ...
+    def labels(self, **kwargs: str) -> _SignatureHistogram: ...
 
     def observe(self, amount: float) -> None: ...
 
@@ -82,15 +83,15 @@ class _SignatureHistogram(Protocol):
 # below capture the typical sub-ms work AND the long tail when
 # ``decrypt_secret`` round-trips KMS or Fernet.
 _SIGNATURE_DURATION_BUCKETS = (
-    0.0001,   # 100 µs — typical sub-ms HMAC
-    0.0005,   # 500 µs
-    0.001,    # 1 ms — boundary where work becomes user-perceptible
-    0.005,    # 5 ms — reasonable upper bound for HMAC + decrypt
-    0.01,     # 10 ms — slow path, KMS round-trip
-    0.05,     # 50 ms — very slow, investigation threshold
-    0.1,      # 100 ms — alert threshold
-    0.5,      # 500 ms — pathological
-    1.0,      # 1 s — should never happen
+    0.0001,  # 100 µs — typical sub-ms HMAC
+    0.0005,  # 500 µs
+    0.001,  # 1 ms — boundary where work becomes user-perceptible
+    0.005,  # 5 ms — reasonable upper bound for HMAC + decrypt
+    0.01,  # 10 ms — slow path, KMS round-trip
+    0.05,  # 50 ms — very slow, investigation threshold
+    0.1,  # 100 ms — alert threshold
+    0.5,  # 500 ms — pathological
+    1.0,  # 1 s — should never happen
 )
 
 
@@ -124,18 +125,19 @@ try:
     )
 
 except Exception:  # pragma: no cover — defensive fallback
+
     class _CounterStub:
-        def labels(self, **_: object) -> "_CounterStub":  # noqa: ARG002
+        def labels(self, **_: object) -> _CounterStub:
             return self
 
         def inc(self) -> None:
             return None
 
     class _HistogramStub:
-        def labels(self, **_: object) -> "_HistogramStub":  # noqa: ARG002
+        def labels(self, **_: object) -> _HistogramStub:
             return self
 
-        def observe(self, _amount: float) -> None:  # noqa: ARG002
+        def observe(self, _amount: float) -> None:
             return None
 
     webhook_outbound_total = _CounterStub()

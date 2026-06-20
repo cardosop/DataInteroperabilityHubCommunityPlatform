@@ -224,8 +224,10 @@ class FileServiceEventPublishingTest(FilesTestBase):
     def test_get_file_survives_event_publisher_failure(self):
         """File retrieval MUST succeed even when the event publisher raises."""
         from unittest.mock import patch
+
         with patch.object(
-            self.service._event_publisher, "publish",
+            self.service._event_publisher,
+            "publish",
             side_effect=RuntimeError("simulated bus failure"),
         ):
             file_obj = self.service.get_file(file_id=str(self.test_file.id))
@@ -234,7 +236,7 @@ class FileServiceEventPublishingTest(FilesTestBase):
 
     def test_event_source_includes_tenant_and_user(self):
         """Test that events include tenant_id and user_id in source."""
-        file_obj = self.service.get_file(file_id=str(self.test_file.id))
+        self.service.get_file(file_id=str(self.test_file.id))
 
         # Get the most recent file.downloaded event
         event = Event.objects.filter(event_type="file.downloaded").order_by("-timestamp").first()

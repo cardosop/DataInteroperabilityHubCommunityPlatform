@@ -19,8 +19,6 @@ import json
 import tempfile
 from pathlib import Path
 
-import redis
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase, TransactionTestCase
 
@@ -54,6 +52,8 @@ from hub.apps.observability.otel_metrics import (
 
 User = get_user_model()
 
+
+import contextlib
 
 from hub.apps.contracts.tests.test_base import get_real_redis_client_or_none
 
@@ -266,7 +266,7 @@ class ODPSCacheMetricsTest(ODPSMetricsTestBase):
 
             # Cache operations are tracked internally when using public API
             # Verify cache hit rate can be retrieved (public API)
-            hit_rate = resolver.get_cache_hit_rate()
+            resolver.get_cache_hit_rate()
             # hit_rate may be None if no operations occurred or Redis unavailable
         except Exception:
             # Redis may not be available, which is acceptable
@@ -279,27 +279,21 @@ class ODPSCacheMetricsTest(ODPSMetricsTestBase):
     def test_cache_hit_rate_metric_available(self):
         """Test that cache hit rate gauge metric is available and accepts labels."""
         self.assertIsNotNone(odps_ref_cache_hit_rate)
-        labeled = odps_ref_cache_hit_rate.labels(
-            ref_type="external", tenant_id=self.tenant_id
-        )
+        labeled = odps_ref_cache_hit_rate.labels(ref_type="external", tenant_id=self.tenant_id)
         self.assertIsNotNone(labeled)
         labeled.set(0.75)
 
     def test_cache_miss_rate_metric_available(self):
         """Test that cache miss rate gauge metric is available and accepts labels."""
         self.assertIsNotNone(odps_ref_cache_miss_rate)
-        labeled = odps_ref_cache_miss_rate.labels(
-            ref_type="external", tenant_id=self.tenant_id
-        )
+        labeled = odps_ref_cache_miss_rate.labels(ref_type="external", tenant_id=self.tenant_id)
         self.assertIsNotNone(labeled)
         labeled.set(0.25)
 
     def test_cache_size_metric_available(self):
         """Test that cache size gauge metric is available and accepts labels."""
         self.assertIsNotNone(odps_ref_cache_size)
-        labeled = odps_ref_cache_size.labels(
-            tenant_id=self.tenant_id, ref_type="external"
-        )
+        labeled = odps_ref_cache_size.labels(tenant_id=self.tenant_id, ref_type="external")
         self.assertIsNotNone(labeled)
         labeled.set(100)
 
@@ -396,7 +390,7 @@ class ODPSCacheMetricsTestWithRedis(ODPSMetricsTestBaseWithRedis):
                 resolver.resolve_external("https://example.com/test-schema.json")
             except Exception:
                 pass  # Expected - triggers cache miss tracking
-            hit_rate = resolver.get_cache_hit_rate()
+            resolver.get_cache_hit_rate()
         except Exception:
             pass  # Redis/network may fail; metrics already asserted above
 
@@ -419,10 +413,8 @@ class ODPSCacheMetricsTestWithRedis(ODPSMetricsTestBaseWithRedis):
             timeout_total=ODPS_METRICS_TEST_TIMEOUT_TOTAL,
         )
         try:
-            try:
+            with contextlib.suppress(Exception):
                 resolver.resolve_external("https://example.com/test-schema.json")
-            except Exception:
-                pass
         except Exception:
             pass
 
@@ -459,10 +451,8 @@ class ODPSCacheMetricsTestWithRedis(ODPSMetricsTestBaseWithRedis):
         resolver.cache_max_entries = 1000
         # Few URLs with short timeout to avoid long run or exit 137
         for i in range(3):
-            try:
+            with contextlib.suppress(Exception):
                 resolver.resolve_external(f"https://example.com/schema{i}.json")
-            except Exception:
-                pass
 
 
 class ODPSRateLimitMetricsTest(ODPSMetricsTestBase):
@@ -472,7 +462,7 @@ class ODPSRateLimitMetricsTest(ODPSMetricsTestBase):
         """Test that rate limit checking works and metrics are available."""
         # Check rate limit with valid tenant/user
         # This should succeed (unless rate limit is actually exceeded)
-        is_allowed, error = check_rate_limit(tenant_id=self.tenant_id, user_id=self.user_id)
+        is_allowed, _error = check_rate_limit(tenant_id=self.tenant_id, user_id=self.user_id)
 
         # Verify rate limit check completed
         # (Result depends on actual rate limit state, but check should complete)
@@ -497,9 +487,7 @@ class ODPSIngestionMetricsTest(ODPSMetricsTestBase):
     def test_ingestion_metrics_available(self):
         """Test that ingestion metrics are available."""
         self.assertIsNotNone(odps_ingestion_total)
-        labeled = odps_ingestion_total.labels(
-            source="marketplace", tenant_id=self.tenant_id
-        )
+        labeled = odps_ingestion_total.labels(source="marketplace", tenant_id=self.tenant_id)
         self.assertIsNotNone(labeled)
         labeled.inc()
 
@@ -573,9 +561,7 @@ class ODPSMetricsIntegrationTest(ODPSMetricsTestBase):
         )
         self.assertIsNotNone(labeled)
         labeled.inc()
-        labeled = odps_ref_resolution_duration_seconds.labels(
-            ref_type="internal", tenant_id="test"
-        )
+        labeled = odps_ref_resolution_duration_seconds.labels(ref_type="internal", tenant_id="test")
         self.assertIsNotNone(labeled)
         labeled.observe(0.1)
 
@@ -666,12 +652,18 @@ class ODPSMetricsIntegrationTest(ODPSMetricsTestBase):
         # (OpenTelemetry metrics are process-global; delta comparison is
         # unreliable across label combinations — we verify operations
         # completed and metrics are accessible)
-        self.assertIsNotNone(odps_normalization_total,
-            "odps_normalization_total must be accessible after normalization")
-        self.assertIsNotNone(odps_ref_resolution_total,
-            "odps_ref_resolution_total must be accessible after ref resolution")
-        self.assertIsNotNone(odps_version_distribution_total,
-            "odps_version_distribution_total must be accessible after normalization")
+        self.assertIsNotNone(
+            odps_normalization_total,
+            "odps_normalization_total must be accessible after normalization",
+        )
+        self.assertIsNotNone(
+            odps_ref_resolution_total,
+            "odps_ref_resolution_total must be accessible after ref resolution",
+        )
+        self.assertIsNotNone(
+            odps_version_distribution_total,
+            "odps_version_distribution_total must be accessible after normalization",
+        )
         # Verify metric _value interface works (counters have non-negative values)
         for metric, name in [
             (odps_normalization_total, "odps_normalization_total"),
@@ -679,14 +671,13 @@ class ODPSMetricsIntegrationTest(ODPSMetricsTestBase):
             (odps_version_distribution_total, "odps_version_distribution_total"),
         ]:
             val = self._get_metric_value(metric)
-            self.assertGreaterEqual(val, 0,
-                f"{name} value must be >= 0, got {val}")
+            self.assertGreaterEqual(val, 0, f"{name} value must be >= 0, got {val}")
 
     @staticmethod
     def _get_metric_value(metric):
         """Extract the current counter value from a labeled metric."""
         try:
-            if hasattr(metric, '_value'):
+            if hasattr(metric, "_value"):
                 val = metric._value.get()
                 return int(val) if val is not None else 0
         except Exception:

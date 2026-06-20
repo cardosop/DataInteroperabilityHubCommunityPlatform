@@ -3,36 +3,35 @@ Event Replay and Dead Letter Queue API Views
 
 REST API endpoints for event replay and dead letter queue functionality.
 """
+
 import uuid
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List
-from django.utils import timezone
+
+import structlog
 from django.core.cache import cache
 from django.db import transaction
-from rest_framework import status
+from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from drf_spectacular.utils import extend_schema, inline_serializer, OpenApiParameter, OpenApiTypes
-from rest_framework import serializers
-from rest_framework.generics import ListAPIView
-import structlog
 
+from hub.apps.api.standards.pagination import StandardPageNumberPagination
 from hub.apps.auth.permissions import HasAnyRole
 from hub.apps.core.events.bus import get_event_bus
-from hub.apps.core.events.models import Event, DeadLetterQueue
-from hub.apps.core.events.dlq_processor import retry_dlq_entry, resolve_dlq_entry
-from hub.apps.api.standards.pagination import StandardPageNumberPagination
-from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
+from hub.apps.core.events.dlq_processor import resolve_dlq_entry, retry_dlq_entry
+from hub.apps.core.events.models import DeadLetterQueue, Event
 
 logger = structlog.get_logger(__name__)
 
 
 class IsAdmin(HasAnyRole):
     """Permission class for admin-only endpoints (PLATFORM_ADMIN or TENANT_ADMIN)."""
+
     def __init__(self):
-        super().__init__(['PLATFORM_ADMIN', 'TENANT_ADMIN'])
+        super().__init__(["PLATFORM_ADMIN", "TENANT_ADMIN"])
+
 
 # Rate limit: 10 replays per hour per tenant
 REPLAY_RATE_LIMIT_PER_HOUR = 10
@@ -44,30 +43,46 @@ MAX_EVENTS_PER_REPLAY = 1000
 
 class EventReplayRequestSerializer(serializers.Serializer):
     """Serializer for event replay request."""
-    event_type = serializers.CharField(required=False, allow_null=True, help_text="Filter by event type (e.g., 'odps.created')")
-    tenant_id = serializers.UUIDField(required=False, allow_null=True, help_text="Filter by tenant ID")
-    start_time = serializers.DateTimeField(required=False, allow_null=True, help_text="Start time for replay (ISO 8601 format)")
-    end_time = serializers.DateTimeField(required=False, allow_null=True, help_text="End time for replay (ISO 8601 format)")
-    limit = serializers.IntegerField(required=False, default=100, min_value=1, max_value=MAX_EVENTS_PER_REPLAY, help_text=f"Maximum number of events to replay (default: 100, max: {MAX_EVENTS_PER_REPLAY})")
+
+    event_type = serializers.CharField(
+        required=False, allow_null=True, help_text="Filter by event type (e.g., 'odps.created')"
+    )
+    tenant_id = serializers.UUIDField(
+        required=False, allow_null=True, help_text="Filter by tenant ID"
+    )
+    start_time = serializers.DateTimeField(
+        required=False, allow_null=True, help_text="Start time for replay (ISO 8601 format)"
+    )
+    end_time = serializers.DateTimeField(
+        required=False, allow_null=True, help_text="End time for replay (ISO 8601 format)"
+    )
+    limit = serializers.IntegerField(
+        required=False,
+        default=100,
+        min_value=1,
+        max_value=MAX_EVENTS_PER_REPLAY,
+        help_text=f"Maximum number of events to replay (default: 100, max: {MAX_EVENTS_PER_REPLAY})",
+    )
 
 
 class EventReplayResponseSerializer(serializers.Serializer):
     """Serializer for event replay response."""
+
     success = serializers.BooleanField(help_text="Whether replay was successful")
     events_replayed = serializers.IntegerField(help_text="Number of events replayed")
     events_skipped = serializers.IntegerField(help_text="Number of events skipped (duplicates)")
-    total_events_found = serializers.IntegerField(help_text="Total number of events found matching filters")
+    total_events_found = serializers.IntegerField(
+        help_text="Total number of events found matching filters"
+    )
     event_ids = serializers.ListField(
-        child=serializers.UUIDField(),
-        help_text="List of event IDs that were replayed"
+        child=serializers.UUIDField(), help_text="List of event IDs that were replayed"
     )
     skipped_event_ids = serializers.ListField(
-        child=serializers.UUIDField(),
-        help_text="List of event IDs that were skipped (duplicates)"
+        child=serializers.UUIDField(), help_text="List of event IDs that were skipped (duplicates)"
     )
 
 
-def _check_replay_rate_limit(request, tenant_id: Optional[str]):
+def _check_replay_rate_limit(request, tenant_id: str | None):
     """
     Check rate limit for event replay.
 
@@ -94,7 +109,7 @@ def _check_replay_rate_limit(request, tenant_id: Optional[str]):
         # Try to get TTL, but handle gracefully if cache backend doesn't support it
         ttl = REPLAY_RATE_LIMIT_WINDOW  # Default to full window
         try:
-            if hasattr(cache, 'ttl'):
+            if hasattr(cache, "ttl"):
                 ttl = cache.ttl(rate_limit_key)
                 if ttl is None or ttl < 0:
                     ttl = REPLAY_RATE_LIMIT_WINDOW
@@ -107,7 +122,7 @@ def _check_replay_rate_limit(request, tenant_id: Optional[str]):
             tenant_id=tenant_id,
             count=count,
             limit=REPLAY_RATE_LIMIT_PER_HOUR,
-            retry_after=ttl
+            retry_after=ttl,
         )
 
         return False, Response(
@@ -117,11 +132,11 @@ def _check_replay_rate_limit(request, tenant_id: Optional[str]):
                     "message": f"Event replay rate limit exceeded. Maximum {REPLAY_RATE_LIMIT_PER_HOUR} replays per hour per tenant. Please retry after {ttl} seconds.",
                     "retry_after": ttl,
                     "limit": REPLAY_RATE_LIMIT_PER_HOUR,
-                    "window_seconds": REPLAY_RATE_LIMIT_WINDOW
+                    "window_seconds": REPLAY_RATE_LIMIT_WINDOW,
                 }
             },
             status=status.HTTP_429_TOO_MANY_REQUESTS,
-            headers={"Retry-After": str(ttl)}
+            headers={"Retry-After": str(ttl)},
         )
 
     # Increment counter
@@ -158,7 +173,7 @@ def _check_event_duplicate(event_id: str) -> bool:
                 "event_replay_duplicate_check_redis_error",
                 event_id=event_id,
                 error=str(e),
-                message="Redis error, falling back to Django cache"
+                message="Redis error, falling back to Django cache",
             )
 
     # Fallback to Django cache if Redis is unavailable
@@ -170,7 +185,7 @@ def _check_event_duplicate(event_id: str) -> bool:
             "event_replay_duplicate_check_cache_error",
             event_id=event_id,
             error=str(e),
-            message="Cache unavailable, cannot check for duplicate replays"
+            message="Cache unavailable, cannot check for duplicate replays",
         )
         return False
 
@@ -200,7 +215,7 @@ def _mark_event_replayed(event_id: str):
                 "event_replay_mark_redis_error",
                 event_id=event_id,
                 error=str(e),
-                message="Redis error, falling back to Django cache"
+                message="Redis error, falling back to Django cache",
             )
 
     # Fallback to Django cache if Redis is unavailable
@@ -211,7 +226,7 @@ def _mark_event_replayed(event_id: str):
             "event_replay_mark_cache_error",
             event_id=event_id,
             error=str(e),
-            message="Cache unavailable, cannot mark event as replayed"
+            message="Cache unavailable, cannot mark event as replayed",
         )
 
 
@@ -219,74 +234,56 @@ def _mark_event_replayed(event_id: str):
     request=EventReplayRequestSerializer,
     responses={
         200: EventReplayResponseSerializer,
-        400: inline_serializer(
-            name='ErrorResponse',
-            fields={
-                'error': serializers.DictField()
-            }
-        ),
+        400: inline_serializer(name="ErrorResponse", fields={"error": serializers.DictField()}),
         401: inline_serializer(
-            name='UnauthorizedResponse',
-            fields={
-                'error': serializers.DictField()
-            }
+            name="UnauthorizedResponse", fields={"error": serializers.DictField()}
         ),
-        403: inline_serializer(
-            name='ForbiddenResponse',
-            fields={
-                'error': serializers.DictField()
-            }
-        ),
-        429: inline_serializer(
-            name='RateLimitResponse',
-            fields={
-                'error': serializers.DictField()
-            }
-        ),
+        403: inline_serializer(name="ForbiddenResponse", fields={"error": serializers.DictField()}),
+        429: inline_serializer(name="RateLimitResponse", fields={"error": serializers.DictField()}),
     },
     summary="Replay events",
     description="Replay events from the event store. Supports filtering by event_type, tenant_id, and time range. "
-                "Rate limited to 10 replays per hour per tenant. Events are idempotent (duplicate events are skipped).",
+    "Rate limited to 10 replays per hour per tenant. Events are idempotent (duplicate events are skipped).",
     tags=["Events"],
     parameters=[
         OpenApiParameter(
-            name='event_type',
+            name="event_type",
             type=str,
             location=OpenApiParameter.QUERY,
             description='Filter by event type (e.g., "odps.created")',
-            required=False
+            required=False,
         ),
         OpenApiParameter(
-            name='tenant_id',
+            name="tenant_id",
             type=uuid.UUID,
             location=OpenApiParameter.QUERY,
-            description='Filter by tenant ID',
-            required=False
+            description="Filter by tenant ID",
+            required=False,
         ),
         OpenApiParameter(
-            name='start_time',
+            name="start_time",
             type=str,
             location=OpenApiParameter.QUERY,
-            description='Start time for replay (ISO 8601 format)',
-            required=False
+            description="Start time for replay (ISO 8601 format)",
+            required=False,
         ),
         OpenApiParameter(
-            name='end_time',
+            name="end_time",
             type=str,
             location=OpenApiParameter.QUERY,
-            description='End time for replay (ISO 8601 format)',
-            required=False
+            description="End time for replay (ISO 8601 format)",
+            required=False,
         ),
         OpenApiParameter(
-            name='limit',
+            name="limit",
             type=int,
             location=OpenApiParameter.QUERY,
-            description=f'Maximum number of events to replay (default: 100, max: {MAX_EVENTS_PER_REPLAY})',
-            required=False
+            description=f"Maximum number of events to replay (default: 100, max: {MAX_EVENTS_PER_REPLAY})",
+            required=False,
         ),
     ],
 )
-@api_view(['POST'])
+@api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def replay_events(request):
     """
@@ -312,25 +309,25 @@ def replay_events(request):
                 "error": {
                     "code": "VALIDATION_ERROR",
                     "message": "Invalid request data",
-                    "details": serializer.errors
+                    "details": serializer.errors,
                 }
             },
-            status=status.HTTP_400_BAD_REQUEST
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
     # Get request parameters
-    event_type = serializer.validated_data.get('event_type')
-    tenant_id = serializer.validated_data.get('tenant_id')
-    start_time = serializer.validated_data.get('start_time')
-    end_time = serializer.validated_data.get('end_time')
-    limit = serializer.validated_data.get('limit', 100)
+    event_type = serializer.validated_data.get("event_type")
+    tenant_id = serializer.validated_data.get("tenant_id")
+    start_time = serializer.validated_data.get("start_time")
+    end_time = serializer.validated_data.get("end_time")
+    limit = serializer.validated_data.get("limit", 100)
 
     # Get tenant_id from request if not provided
     if not tenant_id:
-        tenant = getattr(request, 'tenant', None)
+        tenant = getattr(request, "tenant", None)
         if tenant:
             tenant_id = str(tenant.id)
-        elif hasattr(request.user, 'tenant'):
+        elif hasattr(request.user, "tenant"):
             tenant_id = str(request.user.tenant.id)
 
     # Check rate limit
@@ -361,7 +358,7 @@ def replay_events(request):
             queryset = queryset.filter(timestamp__lte=end_time)
 
         # Order by timestamp (oldest first for replay)
-        queryset = queryset.order_by('timestamp')
+        queryset = queryset.order_by("timestamp")
 
         # Get total count BEFORE filtering replay results and applying limit
         # This represents all events matching the filters
@@ -394,7 +391,7 @@ def replay_events(request):
                 logger.debug(
                     "event_replay_skipped_duplicate",
                     event_id=event_id,
-                    event_type=event_obj.event_type
+                    event_type=event_obj.event_type,
                 )
                 continue
 
@@ -409,7 +406,7 @@ def replay_events(request):
                     "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
                 },
                 "data": event_obj.data,
-                "metadata": event_obj.metadata or {}
+                "metadata": event_obj.metadata or {},
             }
 
             if event_obj.user_id:
@@ -436,7 +433,7 @@ def replay_events(request):
                         event_version=event_obj.event_version,
                         correlation_id=event_payload.get("metadata", {}).get("correlation_id"),
                         causation_id=event_payload.get("metadata", {}).get("causation_id"),
-                        tags=replay_tags
+                        tags=replay_tags,
                     )
 
                     # Mark original event as replayed (idempotency)
@@ -452,7 +449,7 @@ def replay_events(request):
                         "event_replayed",
                         event_id=event_id,
                         event_type=event_obj.event_type,
-                        tenant_id=str(event_obj.tenant_id) if event_obj.tenant_id else None
+                        tenant_id=str(event_obj.tenant_id) if event_obj.tenant_id else None,
                     )
             except Exception as e:
                 logger.error(
@@ -460,7 +457,7 @@ def replay_events(request):
                     event_id=event_id,
                     event_type=event_obj.event_type,
                     error=str(e),
-                    exc_info=True
+                    exc_info=True,
                 )
                 # Continue with next event (don't fail entire replay)
                 continue
@@ -471,7 +468,7 @@ def replay_events(request):
             events_skipped=events_skipped,
             total_events_found=total_events_found,
             event_type=event_type,
-            tenant_id=tenant_id
+            tenant_id=tenant_id,
         )
 
         # Return response
@@ -481,7 +478,7 @@ def replay_events(request):
             "events_skipped": events_skipped,
             "total_events_found": total_events_found,
             "event_ids": replayed_event_ids,
-            "skipped_event_ids": skipped_event_ids
+            "skipped_event_ids": skipped_event_ids,
         }
 
         return Response(response_data, status=status.HTTP_200_OK)
@@ -492,16 +489,11 @@ def replay_events(request):
             error=str(e),
             exc_info=True,
             event_type=event_type,
-            tenant_id=tenant_id
+            tenant_id=tenant_id,
         )
         return Response(
-            {
-                "error": {
-                    "code": "REPLAY_ERROR",
-                    "message": f"Failed to replay events: {str(e)}"
-                }
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            {"error": {"code": "REPLAY_ERROR", "message": f"Failed to replay events: {e!s}"}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
 
@@ -509,21 +501,23 @@ def replay_events(request):
 # Dead Letter Queue API Views
 # ============================================================================
 
+
 class DLQEntrySerializer(serializers.ModelSerializer):
     """Serializer for Dead Letter Queue entry."""
+
     class Meta:
         model = DeadLetterQueue
         fields = [
-            'id',
-            'event_type',
-            'subscriber',
-            'error_message',
-            'error_details',
-            'retry_count',
-            'last_attempt_at',
-            'created_at',
-            'resolved_at',
-            'resolved_by'
+            "id",
+            "event_type",
+            "subscriber",
+            "error_message",
+            "error_details",
+            "retry_count",
+            "last_attempt_at",
+            "created_at",
+            "resolved_at",
+            "resolved_by",
         ]
         read_only_fields = fields
 
@@ -534,6 +528,7 @@ class DLQListView(ListAPIView):
 
     GET /api/v1/events/dlq/
     """
+
     permission_classes = [IsAuthenticated, IsAdmin]
     serializer_class = DLQEntrySerializer
     pagination_class = StandardPageNumberPagination
@@ -543,54 +538,54 @@ class DLQListView(ListAPIView):
         queryset = DeadLetterQueue.objects.all()
 
         # Filter by event_type
-        event_type = self.request.query_params.get('event_type')
+        event_type = self.request.query_params.get("event_type")
         if event_type:
             queryset = queryset.filter(event_type=event_type)
 
         # Filter by subscriber
-        subscriber = self.request.query_params.get('subscriber')
+        subscriber = self.request.query_params.get("subscriber")
         if subscriber:
             queryset = queryset.filter(subscriber=subscriber)
 
         # Filter by resolved status
-        resolved = self.request.query_params.get('resolved')
+        resolved = self.request.query_params.get("resolved")
         if resolved is not None:
-            resolved_bool = resolved.lower() == 'true'
+            resolved_bool = resolved.lower() == "true"
             if resolved_bool:
                 queryset = queryset.exclude(resolved_at__isnull=True)
             else:
                 queryset = queryset.filter(resolved_at__isnull=True)
 
         # Order by created_at (newest first)
-        queryset = queryset.order_by('-created_at')
+        queryset = queryset.order_by("-created_at")
 
         return queryset
 
     @extend_schema(
         summary="List dead letter queue entries",
         description="List dead letter queue entries with optional filtering. "
-                    "Requires PLATFORM_ADMIN or TENANT_ADMIN role.",
+        "Requires PLATFORM_ADMIN or TENANT_ADMIN role.",
         parameters=[
             OpenApiParameter(
-                name='event_type',
+                name="event_type",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Filter by event type',
-                required=False
+                description="Filter by event type",
+                required=False,
             ),
             OpenApiParameter(
-                name='subscriber',
+                name="subscriber",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Filter by subscriber name',
-                required=False
+                description="Filter by subscriber name",
+                required=False,
             ),
             OpenApiParameter(
-                name='resolved',
+                name="resolved",
                 type=OpenApiTypes.BOOL,
                 location=OpenApiParameter.QUERY,
-                description='Filter by resolved status (true/false)',
-                required=False
+                description="Filter by resolved status (true/false)",
+                required=False,
             ),
         ],
         responses={
@@ -598,7 +593,7 @@ class DLQListView(ListAPIView):
             401: {"description": "Unauthorized"},
             403: {"description": "Forbidden"},
         },
-        tags=["Events"]
+        tags=["Events"],
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
@@ -610,27 +605,28 @@ class DLQRetryView(APIView):
 
     POST /api/v1/events/dlq/{id}/retry/
     """
+
     permission_classes = [IsAuthenticated, IsAdmin]
 
     @extend_schema(
         summary="Retry dead letter queue entry",
         description="Retry processing a dead letter queue entry by republishing the event. "
-                    "Requires PLATFORM_ADMIN or TENANT_ADMIN role.",
+        "Requires PLATFORM_ADMIN or TENANT_ADMIN role.",
         responses={
             200: inline_serializer(
-                name='DLQRetryResponse',
+                name="DLQRetryResponse",
                 fields={
-                    'success': serializers.BooleanField(),
-                    'message': serializers.CharField(),
-                    'retry_count': serializers.IntegerField(),
-                }
+                    "success": serializers.BooleanField(),
+                    "message": serializers.CharField(),
+                    "retry_count": serializers.IntegerField(),
+                },
             ),
             400: {"description": "Bad Request"},
             401: {"description": "Unauthorized"},
             403: {"description": "Forbidden"},
             404: {"description": "Not Found"},
         },
-        tags=["Events"]
+        tags=["Events"],
     )
     def post(self, request, dlq_id):
         """Retry a DLQ entry."""
@@ -651,29 +647,24 @@ class DLQRetryView(APIView):
                     {
                         "success": True,
                         "message": "DLQ entry retried successfully",
-                        "retry_count": entry.retry_count
+                        "retry_count": entry.retry_count,
                     },
-                    status=status.HTTP_200_OK
+                    status=status.HTTP_200_OK,
                 )
             except DeadLetterQueue.DoesNotExist:
                 return Response(
-                    {
-                        "error": {
-                            "code": "NOT_FOUND",
-                            "message": "DLQ entry not found"
-                        }
-                    },
-                    status=status.HTTP_404_NOT_FOUND
+                    {"error": {"code": "NOT_FOUND", "message": "DLQ entry not found"}},
+                    status=status.HTTP_404_NOT_FOUND,
                 )
         else:
             return Response(
                 {
                     "error": {
                         "code": "RETRY_FAILED",
-                        "message": error_msg or "Failed to retry DLQ entry"
+                        "message": error_msg or "Failed to retry DLQ entry",
                     }
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
 
@@ -683,32 +674,35 @@ class DLQResolveView(APIView):
 
     POST /api/v1/events/dlq/{id}/resolve/
     """
+
     permission_classes = [IsAuthenticated, IsAdmin]
 
     @extend_schema(
         summary="Resolve dead letter queue entry",
         description="Mark a dead letter queue entry as resolved without retrying. "
-                    "Requires PLATFORM_ADMIN or TENANT_ADMIN role.",
+        "Requires PLATFORM_ADMIN or TENANT_ADMIN role.",
         request=inline_serializer(
-            name='DLQResolveRequest',
+            name="DLQResolveRequest",
             fields={
-                'notes': serializers.CharField(required=False, allow_blank=True, help_text="Optional resolution notes")
-            }
+                "notes": serializers.CharField(
+                    required=False, allow_blank=True, help_text="Optional resolution notes"
+                )
+            },
         ),
         responses={
             200: inline_serializer(
-                name='DLQResolveResponse',
+                name="DLQResolveResponse",
                 fields={
-                    'success': serializers.BooleanField(),
-                    'message': serializers.CharField(),
-                }
+                    "success": serializers.BooleanField(),
+                    "message": serializers.CharField(),
+                },
             ),
             400: {"description": "Bad Request"},
             401: {"description": "Unauthorized"},
             403: {"description": "Forbidden"},
             404: {"description": "Not Found"},
         },
-        tags=["Events"]
+        tags=["Events"],
     )
     def post(self, request, dlq_id):
         """Resolve a DLQ entry."""
@@ -717,39 +711,34 @@ class DLQResolveView(APIView):
             dlq_id_str = str(dlq_id)
         except ValueError:
             return Response(
-                {
-                    "error": {
-                        "code": "INVALID_ID",
-                        "message": f"Invalid DLQ entry ID: {dlq_id}"
-                    }
-                },
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": {"code": "INVALID_ID", "message": f"Invalid DLQ entry ID: {dlq_id}"}},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Get user ID and notes
         user_id = str(request.user.id) if request.user and request.user.is_authenticated else None
-        notes = request.data.get('notes', '') if hasattr(request, 'data') and request.data else None
+        notes = request.data.get("notes", "") if hasattr(request, "data") and request.data else None
 
         # Resolve entry
         success, error_msg = resolve_dlq_entry(dlq_id_str, user_id=user_id, resolution_notes=notes)
 
         if success:
             return Response(
-                {
-                    "success": True,
-                    "message": "DLQ entry resolved successfully"
-                },
-                status=status.HTTP_200_OK
+                {"success": True, "message": "DLQ entry resolved successfully"},
+                status=status.HTTP_200_OK,
             )
         else:
-            status_code = status.HTTP_404_NOT_FOUND if error_msg and "not found" in error_msg.lower() else status.HTTP_400_BAD_REQUEST
+            status_code = (
+                status.HTTP_404_NOT_FOUND
+                if error_msg and "not found" in error_msg.lower()
+                else status.HTTP_400_BAD_REQUEST
+            )
             return Response(
                 {
                     "error": {
                         "code": "RESOLVE_FAILED",
-                        "message": error_msg or "Failed to resolve DLQ entry"
+                        "message": error_msg or "Failed to resolve DLQ entry",
                     }
                 },
-                status=status_code
+                status=status_code,
             )
-

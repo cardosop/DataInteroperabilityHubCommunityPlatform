@@ -7,7 +7,6 @@ breaker, and attribute initialization exercised.  This follows the
 pattern established in test_service_client_circuit_breaker.py.
 """
 
-import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -17,7 +16,6 @@ from django.core.cache import cache
 from django.test import TestCase
 
 from hub.apps.dq.service_client import DQServiceClient
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -127,13 +125,19 @@ class TestServiceClientCache(TestCase):
         # Build two mock contracts
         import hub.apps.dq.contract_integration as ci_module
 
-        with patch.object(
-            ci_module.ContractQualityRulesExtractor, "get_contract_quality_checks"
-        ) as mock_checks, patch.object(
-            ci_module.ContractQualityRulesExtractor, "get_contract_profile_key"
-        ) as mock_profile, patch.object(
-            client.client, "send", return_value=mock_resp,
-        ) as mock_send:
+        with (
+            patch.object(
+                ci_module.ContractQualityRulesExtractor, "get_contract_quality_checks"
+            ) as mock_checks,
+            patch.object(
+                ci_module.ContractQualityRulesExtractor, "get_contract_profile_key"
+            ) as mock_profile,
+            patch.object(
+                client.client,
+                "send",
+                return_value=mock_resp,
+            ) as mock_send,
+        ):
             mock_profile.return_value = _PROFILE_KEY
 
             mock_checks.return_value = [_serializable_check("a", "rule_a")]

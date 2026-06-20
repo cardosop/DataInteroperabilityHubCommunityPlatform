@@ -9,8 +9,9 @@ field level) and adds mappings for:
 - productStrategy.kpi[].target / .unit    → strategy.kpis[]
 """
 
+from typing import Any
+
 import structlog
-from typing import Dict, Any, List
 
 from hub.apps.contracts.normalization.odps_normalizer_v4_1 import ODPSNormalizerV4_1
 
@@ -34,9 +35,9 @@ class ODPSNormalizerV4_2(ODPSNormalizerV4_1):
 
     def _map_version_specific_fields(
         self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
+        contract_data: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
         spec_version: str,
     ) -> None:
         """
@@ -48,7 +49,10 @@ class ODPSNormalizerV4_2(ODPSNormalizerV4_1):
         """
         # Run inherited 4.1 logic first (product strategy, marketplace)
         super()._map_version_specific_fields(
-            contract_data, hub_contract, warnings, spec_version,
+            contract_data,
+            hub_contract,
+            warnings,
+            spec_version,
         )
 
         product = contract_data.get("product", {})
@@ -63,12 +67,15 @@ class ODPSNormalizerV4_2(ODPSNormalizerV4_1):
                 gw_list = []
                 for gw in gateways_raw:
                     if isinstance(gw, dict):
-                        gw_list.append({
-                            "currency": gw.get("currency"),
-                            "provider": gw.get("provider"),
-                            **{k: v for k, v in gw.items()
-                               if k not in ("currency", "provider")},
-                        })
+                        gw_list.append(
+                            {
+                                "currency": gw.get("currency"),
+                                "provider": gw.get("provider"),
+                                **{
+                                    k: v for k, v in gw.items() if k not in ("currency", "provider")
+                                },
+                            }
+                        )
                 hub_contract.setdefault("pricing", {})
                 hub_contract["pricing"]["payment_gateways"] = gw_list
 
@@ -80,11 +87,12 @@ class ODPSNormalizerV4_2(ODPSNormalizerV4_1):
                 kpi_list = []
                 for kpi in kpis_raw:
                     if isinstance(kpi, dict):
-                        kpi_list.append({
-                            "target": kpi.get("target"),
-                            "unit": kpi.get("unit"),
-                            **{k: v for k, v in kpi.items()
-                               if k not in ("target", "unit")},
-                        })
+                        kpi_list.append(
+                            {
+                                "target": kpi.get("target"),
+                                "unit": kpi.get("unit"),
+                                **{k: v for k, v in kpi.items() if k not in ("target", "unit")},
+                            }
+                        )
                 hub_contract.setdefault("strategy", {})
                 hub_contract["strategy"]["kpis"] = kpi_list

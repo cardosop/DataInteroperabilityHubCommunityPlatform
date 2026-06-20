@@ -4,7 +4,9 @@ Integration tests for BUSINESS_LOGIC_INTEGRATION.md documentation.
 These tests validate that the documentation is complete, accurate, and up-to-date
 with the current implementation.
 """
+
 import os
+
 from django.test import TestCase
 
 
@@ -15,20 +17,19 @@ class BusinessLogicIntegrationDocumentationTest(TestCase):
         """Set up test fixtures."""
         self.doc_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            'docs',
-            'BUSINESS_LOGIC_INTEGRATION.md'
+            "docs",
+            "BUSINESS_LOGIC_INTEGRATION.md",
         )
 
     def _read_doc_content(self):
         """Read the documentation file content."""
-        with open(self.doc_path, 'r', encoding='utf-8') as f:
+        with open(self.doc_path, encoding="utf-8") as f:
             return f.read()
 
     def test_documentation_file_exists(self):
         """Test that the documentation file exists."""
         self.assertTrue(
-            os.path.exists(self.doc_path),
-            f"Documentation file not found: {self.doc_path}"
+            os.path.exists(self.doc_path), f"Documentation file not found: {self.doc_path}"
         )
 
     def test_documentation_has_version(self):
@@ -42,7 +43,10 @@ class BusinessLogicIntegrationDocumentationTest(TestCase):
         content = self._read_doc_content()
         self.assertIn("## Service Layer Coordination", content)
         self.assertIn("### Service Layer Pattern", content)
-        self.assertIn("All business logic is coordinated through service layer classes that extend `BaseService`", content)
+        self.assertIn(
+            "All business logic is coordinated through service layer classes that extend `BaseService`",
+            content,
+        )
 
     def test_transformation_service_documented(self):
         """Test that TransformationService is documented with implementation status."""
@@ -130,8 +134,14 @@ class BusinessLogicIntegrationDocumentationTest(TestCase):
         content = self._read_doc_content()
         self.assertIn("#### Data Mesh Business Rules ✅ (Implemented - Phase 9.5.2)", content)
         self.assertIn("**Location**: `hub/apps/mesh/business_rules.py`", content)
-        self.assertIn("**Classes**: `DataMeshBusinessRules`, `PolicyBusinessRules`, `TopologyBusinessRules`", content)
-        self.assertIn("**Registry Names**: `data_mesh_domain_validation`, `policy_validation`, `topology_calculation`", content)
+        self.assertIn(
+            "**Classes**: `DataMeshBusinessRules`, `PolicyBusinessRules`, `TopologyBusinessRules`",
+            content,
+        )
+        self.assertIn(
+            "**Registry Names**: `data_mesh_domain_validation`, `policy_validation`, `topology_calculation`",
+            content,
+        )
         self.assertIn("**Phase**: 9.5.2", content)
         self.assertIn("**Overview**:", content)
         self.assertIn("##### DataMeshBusinessRules", content)
@@ -147,7 +157,10 @@ class BusinessLogicIntegrationDocumentationTest(TestCase):
         content = self._read_doc_content()
         self.assertIn("#### Virtualization Business Rules ✅ (Implemented - Phase 9.5.3)", content)
         self.assertIn("**Location**: `hub/apps/virtualization/business_rules.py`", content)
-        self.assertIn("**Classes**: `VirtualizationBusinessRules`, `QueryExecutionBusinessRules`, `ResultBusinessRules`", content)
+        self.assertIn(
+            "**Classes**: `VirtualizationBusinessRules`, `QueryExecutionBusinessRules`, `ResultBusinessRules`",
+            content,
+        )
         self.assertIn("**Registry Name**: `virtualization_dataset_validation`", content)
         self.assertIn("**Phase**: 9.5.3", content)
         self.assertIn("**Overview**:", content)
@@ -252,8 +265,13 @@ class BusinessLogicIntegrationDocumentationTest(TestCase):
         self.assertIn("## Table of Contents", content)
         self.assertIn("[Architecture](#architecture)", content)
         self.assertIn("[Service Layer Coordination](#service-layer-coordination)", content)
-        self.assertIn("[Business Rules Framework](#business-rules-framework-implemented---phase-972)", content)
-        self.assertIn("[Service Integration Patterns](#service-integration-patterns-implemented---phase-973)", content)
+        self.assertIn(
+            "[Business Rules Framework](#business-rules-framework-implemented---phase-972)", content
+        )
+        self.assertIn(
+            "[Service Integration Patterns](#service-integration-patterns-implemented---phase-973)",
+            content,
+        )
 
     def test_documentation_cross_references(self):
         """Test that documentation has proper cross-references."""
@@ -272,4 +290,3 @@ class BusinessLogicIntegrationDocumentationTest(TestCase):
         self.assertIn("```json", content)
         # Check for TypeScript code blocks
         self.assertIn("```typescript", content)
-

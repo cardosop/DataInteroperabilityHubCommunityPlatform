@@ -5,16 +5,15 @@ Tests for indexing contracts, assets, datasets, schemas, descriptions, and linea
 """
 
 import uuid
+
 import pytest
-from django.contrib.postgres.search import SearchVector
 from django.test import TestCase
 
-from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.assets.models import AssetStatus
 from hub.apps.contracts.models import Contract
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.governance.models import ClassificationCategory, DataClassification
-from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.search.indexing import SearchIndexer
 from hub.apps.search.models import SearchIndex
 from hub.apps.tenants.models import Tenant
@@ -43,7 +42,10 @@ class SearchIndexerTest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -158,7 +160,7 @@ class SearchIndexerTest(TestCase):
         # Create classification with APPROVED status so it's picked up by indexing
         from hub.apps.governance.models import ClassificationStatus
 
-        classification = DataClassification.objects.create(
+        DataClassification.objects.create(
             tenant=self.tenant,
             dataset=self.dataset,
             field_name="email",

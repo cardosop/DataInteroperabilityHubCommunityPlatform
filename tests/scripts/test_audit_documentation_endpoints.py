@@ -6,11 +6,10 @@ Tests the comprehensive audit of documentation files for endpoint URLs.
 """
 
 import json
-import pytest
-import tempfile
-from pathlib import Path
-from typing import Dict, List
 import sys
+from pathlib import Path
+
+import pytest
 
 # Add scripts directory to path
 project_root = Path(__file__).parent.parent.parent
@@ -18,8 +17,6 @@ sys.path.insert(0, str(project_root / "scripts"))
 
 from audit_documentation_endpoints import (
     DocumentationEndpointAuditor,
-    EndpointReference,
-    DocumentationMapping,
 )
 
 
@@ -106,14 +103,12 @@ curl -X POST http://localhost:8000/api/v1/assets/
         docs_dir, runbooks_dir = temp_docs_dir
         base_path = docs_dir.parent
         return DocumentationEndpointAuditor(
-            base_path=str(base_path),
-            docs_dir=str(docs_dir),
-            runbooks_dir=str(runbooks_dir)
+            base_path=str(base_path), docs_dir=str(docs_dir), runbooks_dir=str(runbooks_dir)
         )
 
     def test_extract_endpoints_from_api_files(self, auditor, temp_docs_dir):
         """Test extraction from API_*.md files"""
-        docs_dir, _ = temp_docs_dir
+        _docs_dir, _ = temp_docs_dir
         references = auditor._extract_from_api_files()
 
         assert len(references) > 0
@@ -126,7 +121,7 @@ curl -X POST http://localhost:8000/api/v1/assets/
 
     def test_extract_endpoints_from_api_audit(self, auditor, temp_docs_dir):
         """Test extraction from api-audit/*.md files"""
-        docs_dir, _ = temp_docs_dir
+        _docs_dir, _ = temp_docs_dir
         references = auditor._extract_from_api_audit()
 
         assert len(references) > 0
@@ -182,8 +177,14 @@ paths:
         # Test various formats
         assert auditor._normalize_endpoint_path("/api/v1/contracts/") == "/api/v1/contracts/"
         assert auditor._normalize_endpoint_path("`/api/v1/contracts/`") == "/api/v1/contracts/"
-        assert auditor._normalize_endpoint_path("http://localhost:8000/api/v1/contracts/") == "/api/v1/contracts/"
-        assert auditor._normalize_endpoint_path("https://api.example.com/api/v1/contracts/") == "/api/v1/contracts/"
+        assert (
+            auditor._normalize_endpoint_path("http://localhost:8000/api/v1/contracts/")
+            == "/api/v1/contracts/"
+        )
+        assert (
+            auditor._normalize_endpoint_path("https://api.example.com/api/v1/contracts/")
+            == "/api/v1/contracts/"
+        )
 
     def test_map_documentation_to_endpoints(self, auditor, temp_docs_dir):
         """Test mapping documentation to endpoints"""
@@ -194,8 +195,8 @@ paths:
 
         # Check that mappings contain expected structure
         for mapping in mappings:
-            assert hasattr(mapping, 'endpoint_path')
-            assert hasattr(mapping, 'documentation_files')
+            assert hasattr(mapping, "endpoint_path")
+            assert hasattr(mapping, "documentation_files")
             assert len(mapping.documentation_files) > 0
 
     def test_generate_report(self, auditor, temp_docs_dir, tmp_path):
@@ -247,7 +248,7 @@ paths:
 
         for input_text, expected in test_cases:
             # Extract endpoint from text
-            pattern = auditor.endpoint_patterns['rest']
+            pattern = auditor.endpoint_patterns["rest"]
             match = pattern.search(input_text)
             if match:
                 normalized = auditor._normalize_endpoint_path(match.group(1))
@@ -258,7 +259,7 @@ paths:
         auditor = DocumentationEndpointAuditor(
             base_path="/nonexistent",
             docs_dir="/nonexistent/docs",
-            runbooks_dir="/nonexistent/runbooks"
+            runbooks_dir="/nonexistent/runbooks",
         )
 
         # Should not raise exception, just return empty results
@@ -274,7 +275,7 @@ paths:
         endpoint_paths = [m.endpoint_path for m in mappings]
 
         # Should have unique endpoints
-        unique_paths = set(endpoint_paths)
+        set(endpoint_paths)
 
         # Verify that endpoints with multiple docs are properly aggregated
         for mapping in mappings:
@@ -285,4 +286,3 @@ paths:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

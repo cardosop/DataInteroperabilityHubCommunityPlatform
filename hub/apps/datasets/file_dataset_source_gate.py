@@ -6,6 +6,7 @@ and ``PENDING_SCAN`` only (``SCAN_UNAVAILABLE`` / ``SCAN_ERROR`` / ``CLEAN`` may
 """
 
 from __future__ import annotations
+
 from hub.apps.core.services.base import ValidationError
 from hub.apps.files.models import File, FileScanStatus
 

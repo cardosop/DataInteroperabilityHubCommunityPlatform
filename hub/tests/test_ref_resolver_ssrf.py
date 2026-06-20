@@ -7,11 +7,12 @@ These tests use Django's TestCase so the ORM is available (RefResolver
 touches SecurityAuditLog).  We mock the *outbound* HTTP call and the
 socket-level resolution so no real network traffic is needed.
 """
+
 import socket
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
 from hub.apps.contracts.odps_errors import ODPSRefResolutionError
 from hub.apps.contracts.ref_resolver import RefResolver
@@ -24,6 +25,7 @@ def _make_resolver(tenant_id="test-tenant", user_id="test-user"):
 # ---------------------------------------------------------------------------
 # Helper: mock getaddrinfo inside ref_resolver to return a specific IP
 # ---------------------------------------------------------------------------
+
 
 def _mock_dns_in_resolver(ip: str):
     result = [(socket.AF_INET, socket.SOCK_STREAM, 0, "", (ip, 0))]
@@ -46,15 +48,16 @@ def _mock_dns_ipv6_in_resolver(ip: str):
 # Tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.django_db
 class TestRefResolverSSRF(TestCase):
-
     def _validate_url(self, url: str):
         """Call the private _validate_external_url helper with SSRF enabled."""
         # Use a context-manager override instead of class-level so the override
         # is guaranteed to take effect regardless of setUpClass / test-runner
         # lifecycle details.
         from django.test import override_settings as _override_settings
+
         with _override_settings(WEBHOOK_SSRF_ENABLED=True):
             resolver = _make_resolver()
             resolver._validate_external_url(url)
@@ -192,6 +195,7 @@ class TestRefResolverSSRF(TestCase):
     def test_private_url_passes_when_ssrf_disabled(self):
         """When WEBHOOK_SSRF_ENABLED=False, private IPs must NOT be blocked."""
         from django.test import override_settings as _override_settings
+
         with _override_settings(WEBHOOK_SSRF_ENABLED=False):
             resolver = _make_resolver()
             # Must not raise — the SSRF guard is disabled.

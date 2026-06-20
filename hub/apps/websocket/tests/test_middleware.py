@@ -1,6 +1,7 @@
 """
 Comprehensive tests for WebSocket authentication middleware.
 """
+
 import uuid
 from datetime import timedelta
 
@@ -9,9 +10,11 @@ import pytest
 # Optional channels import
 try:
     from channels.db import database_sync_to_async
+
     CHANNELS_AVAILABLE = True
 except ImportError:
     from asgiref.sync import sync_to_async
+
     database_sync_to_async = sync_to_async
     CHANNELS_AVAILABLE = False
 
@@ -19,9 +22,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 # Skip tests if channels not available
-pytestmark = pytest.mark.skipif(
-    not CHANNELS_AVAILABLE, reason="Django Channels not installed"
-)
+pytestmark = pytest.mark.skipif(not CHANNELS_AVAILABLE, reason="Django Channels not installed")
 
 from hub.apps.auth.models import APIKey
 from hub.apps.tenants.models import Tenant

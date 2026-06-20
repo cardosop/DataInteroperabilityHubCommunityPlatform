@@ -28,13 +28,11 @@ Test classes:
   import the Hub Django package); this test ensures the duplicates
   never drift apart.  See script docstring at line ~69.
 """
+
 from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
-
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # Core ``_redact`` semantics — mirror of dq-service test inventory.
@@ -229,6 +227,7 @@ class TestRedactedKeysParity:
 
     def test_hub_redaction_set_is_a_frozenset_for_immutability(self):
         from hub.apps.dq.log_helpers import _REDACTED_KEYS
+
         assert isinstance(_REDACTED_KEYS, frozenset), (
             "_REDACTED_KEYS must be frozen to prevent accidental "
             "runtime mutation that could silently widen redaction."
@@ -241,17 +240,18 @@ class TestRedactedKeysParity:
 
 
 class TestModuleSurface:
-
     def test_redact_is_publicly_importable(self):
         # The spec wording calls it ``_redact`` (private-by-convention
         # leading underscore — matches dq-service / compliance Phase 19),
         # but it MUST be importable from the package surface for the
         # call-sites to use it.
         from hub.apps.dq.log_helpers import _redact
+
         assert callable(_redact)
 
     def test_module_exposes_redacted_keys_constant(self):
         from hub.apps.dq import log_helpers
+
         assert hasattr(log_helpers, "_REDACTED_KEYS")
 
 
@@ -276,11 +276,7 @@ def _load_lint_script_module():
     """
     import sys
 
-    script_path = (
-        Path(__file__).resolve().parents[4]
-        / "scripts"
-        / "check_dq_log_extras.py"
-    )
+    script_path = Path(__file__).resolve().parents[4] / "scripts" / "check_dq_log_extras.py"
     assert script_path.exists(), (
         f"Lint script not found at {script_path}; the parity test "
         "expects it at the canonical location declared in 240.5.F.4."

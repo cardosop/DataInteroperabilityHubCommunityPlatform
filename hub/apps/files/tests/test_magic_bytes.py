@@ -4,9 +4,10 @@ Phase 260.2.B — magic-byte validation (pure logic; no I/O).
 Table-driven tests double as mutation-test surrogates: each binary disguise prefix
 must reject ``text/csv`` independently.
 """
-from __future__ import annotations
-import pytest
 
+from __future__ import annotations
+
+import pytest
 
 from hub.apps.core.services.base import ValidationError
 from hub.apps.files.magic_bytes import (
@@ -95,4 +96,3 @@ def test_each_binary_prefix_rejected_for_text_csv(prefix: bytes, _label: str):
         validate_magic_bytes_for_content_type(content_type="text/csv", head=head)
     assert ei.value.code == "FILE_FORMAT_MISMATCH"
     assert ei.value.details.get("detected_signature") == _label
-

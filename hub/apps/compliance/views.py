@@ -4,36 +4,57 @@ Compliance Views
 REST API views for compliance run management.
 """
 
-from datetime import datetime
-
+import json
 import structlog
 from django.db import transaction
+from django.http import StreamingHttpResponse
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import permissions, serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, ValidationError as DRFValidationError
+from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.filters import OrderingFilter
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.throttling import ScopedRateThrottle, SimpleRateThrottle
 
 from hub.apps.assets.models import Asset
-from hub.apps.assets.models import ComplianceStatus as AssetComplianceStatus
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.core.responses import api_error_response, handle_service_exception
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
-from hub.apps.jobs.models import Job, JobStatus, JobType
-from hub.apps.jobs.utils import create_job, get_job_timeout
+from hub.apps.jobs.models import JobStatus
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
 from hub.apps.tenants.services import get_tenant_compliance_regimes, get_tenant_config
 from hub.apps.tenants.validators import VALID_COMPLIANCE_REGIMES
 
-from .models import ComplianceRun, ComplianceRunStatus, RiskLevel
+from .models import ComplianceRun, ComplianceRunStatus
+from .results_payload import build_compliance_run_results_payload
 from .serializers import ComplianceRunCreateSerializer, ComplianceRunSerializer
-from .service_client import ComplianceServiceClient
 from .services import ComplianceService
+from .violations_csv import iter_violation_csv_bytes
 
 logger = structlog.get_logger(__name__)
+
+
+class ComplianceExportThrottle(ScopedRateThrottle):
+    """Throttle scope shared by export.csv and export.json (Phase 231.8).
+
+    The project DRF version calls ``getattr(view, 'throttle_scope', None)``
+    in-line inside ``allow_request`` — there is no ``get_scope`` method to
+    override.  Calling ``super().allow_request()`` would re-read the view
+    attribute (getting ``None``) and short-circuit.  We replicate the
+    scope→rate→parse sequence and then delegate directly to
+    ``SimpleRateThrottle.allow_request`` for the cache check.
+    """
+    scope = "compliance_export"
+
+    def allow_request(self, request, view):
+        self.scope = getattr(view, self.scope_attr, None) or self.scope
+        if not self.scope:
+            return True
+        self.rate = self.get_rate()
+        self.num_requests, self.duration = self.parse_rate(self.rate)
+        return SimpleRateThrottle.allow_request(self, request, view)
 
 
 class ComplianceRunViewSet(viewsets.ModelViewSet):
@@ -85,13 +106,17 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
 
         # Platform admins can see all compliance runs
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            queryset = ComplianceRun.objects.select_related("tenant", "asset", "dataset", "file", "job").all()
+            queryset = ComplianceRun.objects.select_related(
+                "tenant", "asset", "dataset", "file", "job"
+            ).all()
         else:
             # Regular users can only see compliance runs in their tenant
             # Use central helper for tenant resolution (Phase 10.1.2)
             tenant_id = get_request_tenant_id(self.request)
             if tenant_id:
-                queryset = ComplianceRun.objects.select_related("tenant", "asset", "dataset", "file", "job").filter(tenant_id=tenant_id)
+                queryset = ComplianceRun.objects.select_related(
+                    "tenant", "asset", "dataset", "file", "job"
+                ).filter(tenant_id=tenant_id)
             else:
                 return ComplianceRun.objects.none()
 
@@ -139,7 +164,7 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
 
         # Get tenant from user
         # Get tenant using central helper (Phase 10.1.2)
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             return Response(
                 {"error": "User must belong to a tenant to create compliance runs"},
@@ -151,13 +176,9 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         dataset_id = serializer.validated_data.get("dataset_id")
         file_id = serializer.validated_data.get("file_id")
         scan_mode = serializer.validated_data.get("scan_mode", "internal")
-        applicable_regulations = serializer.validated_data.get(
-            "applicable_regulations"
-        )
+        applicable_regulations = serializer.validated_data.get("applicable_regulations")
         legal_basis = serializer.validated_data.get("legal_basis")
-        destination_jurisdiction = serializer.validated_data.get(
-            "destination_jurisdiction"
-        )
+        destination_jurisdiction = serializer.validated_data.get("destination_jurisdiction")
 
         # Determine applicable regulations (explicit request > tenant default > platform default)
         regimes_source = None
@@ -252,16 +273,19 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
 
         # Validate contract compliance schema when run will use contract terms (5.4.2)
         if asset or dataset:
-            from hub.apps.contracts.models import Contract, ContractStatus
             from hub.apps.compliance.contract_integration import (
-                validate_contract_compliance_payload,
                 ContractComplianceSchemaError,
+                validate_contract_compliance_payload,
             )
+            from hub.apps.contracts.models import ContractStatus
+
             contract_to_validate = None
             if asset:
                 contract_to_validate = asset.contracts.filter(status=ContractStatus.ACTIVE).first()
             if not contract_to_validate and dataset and getattr(dataset, "asset", None):
-                contract_to_validate = dataset.asset.contracts.filter(status=ContractStatus.ACTIVE).first()
+                contract_to_validate = dataset.asset.contracts.filter(
+                    status=ContractStatus.ACTIVE
+                ).first()
             if contract_to_validate and contract_to_validate.hub_contract_json:
                 try:
                     validate_contract_compliance_payload(contract_to_validate.hub_contract_json)
@@ -342,8 +366,12 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         self.check_auditor_permissions(request, "destroy")
         return super().destroy(request, *args, **kwargs)
 
-    @action(detail=False, methods=["post"], url_path="warehouse-scan",
-            throttle_classes=[ScopedRateThrottle])
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="warehouse-scan",
+        throttle_classes=[ScopedRateThrottle],
+    )
     def warehouse_scan(self, request):
         """Run compliance PII/retention checks in the customer's warehouse.
 
@@ -351,9 +379,8 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         """
         from hub.apps.compliance.services import ComplianceService
         from hub.apps.datasets.models import Dataset
-        from hub.apps.tenants.models import Tenant
 
-        tenant = self._resolve_tenant(request)
+        tenant = self._resolve_tenant()
         warehouse_config = request.data.get("warehouse_config", {})
         dataset_id = request.data.get("dataset_id")
         regulations = request.data.get("regulations")
@@ -370,8 +397,10 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
 
         if not getattr(tenant, "warehouse_compliance_enabled", False):
             return Response(
-                {"error": "WAREHOUSE_COMPLIANCE_DISABLED",
-                 "message": "Warehouse-native compliance is not enabled."},
+                {
+                    "error": "WAREHOUSE_COMPLIANCE_DISABLED",
+                    "message": "Warehouse-native compliance is not enabled.",
+                },
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -382,12 +411,89 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
             regulations=regulations,
             user=request.user,
         )
-        return Response({
-            "id": str(run.id),
-            "status": run.status,
-            "overall_status": run.overall_status,
-            "risk_level": run.risk_level,
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "id": str(run.id),
+                "status": run.status,
+                "overall_status": run.overall_status,
+                "risk_level": run.risk_level,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="scan-warehouse",
+    )
+    def scan_warehouse(self, request, id=None):
+        """Trigger a warehouse scan for an existing compliance run.
+
+        POST /api/v1/compliance/runs/{id}/scan-warehouse/
+
+        Validates that the run has a warehouse scan_mode and
+        warehouse_config, then triggers the scan.
+        """
+        compliance_run = self.get_object()
+
+        # Validate scan_mode is warehouse-appropriate
+        if compliance_run.scan_mode != "WAREHOUSE_SQL":
+            return Response(
+                {
+                    "error": "SCAN_MODE_NOT_WAREHOUSE",
+                    "message": (
+                        "This endpoint requires a compliance run with "
+                        "scan_mode=WAREHOUSE_SQL."
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate warehouse_config is present
+        warehouse_config = compliance_run.warehouse_config
+        if not warehouse_config or not isinstance(warehouse_config, dict):
+            return Response(
+                {
+                    "error": "MISSING_WAREHOUSE_CONFIG",
+                    "message": "Compliance run has no warehouse_config.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        tenant = self._resolve_tenant()
+        if not getattr(tenant, "warehouse_compliance_enabled", False):
+            return Response(
+                {
+                    "error": "WAREHOUSE_COMPLIANCE_DISABLED",
+                    "message": "Warehouse-native compliance is not enabled.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Trigger the scan via the service layer
+        from hub.apps.compliance.services import ComplianceService
+
+        asset = compliance_run.asset
+        dataset = compliance_run.dataset
+        if dataset is None and asset is not None:
+            dataset = asset.datasets.order_by("-version").first()
+
+        run = ComplianceService.scan_inmemory_warehouse(
+            dataset=dataset,
+            tenant=tenant,
+            warehouse_config=warehouse_config,
+            regulations=compliance_run.regulations or None,
+            user=request.user,
+        )
+        return Response(
+            {
+                "id": str(run.id),
+                "status": run.status,
+                "overall_status": run.overall_status,
+                "risk_level": run.risk_level,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=True, methods=["post"], url_path="cancel")
     def cancel(self, request, id=None):
@@ -403,13 +509,12 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
 
         cancellable = (
             ComplianceRunStatus.PENDING,
-            ComplianceRunStatus.QUEUED,   # async job queued at service
+            ComplianceRunStatus.QUEUED,  # async job queued at service
             ComplianceRunStatus.RUNNING,
         )
         if compliance_run.status not in cancellable:
             return api_error_response(
-                f"Cannot cancel compliance run "
-                f"(current status: {compliance_run.status})",
+                f"Cannot cancel compliance run (current status: {compliance_run.status})",
                 code="INVALID_STATUS",
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
@@ -426,6 +531,7 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         job.mark_cancelled()
         if previous_job_status == JobStatus.RUNNING and job.tenant:
             from hub.apps.jobs.utils import decrement_tenant_job_counter
+
             decrement_tenant_job_counter(str(job.tenant.id), "running")
 
         compliance_run.status = ComplianceRunStatus.FAILED
@@ -496,8 +602,6 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         - Risk assessment
         - Timeline of violations
         """
-        from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
-        from rest_framework import serializers
 
         compliance_run = self.get_object()
 
@@ -566,9 +670,7 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
                     "pii_type": pii_type,
                     "risk_score": risk_score,
                     "severity": violation["severity"],
-                    "regulations_affected": sorted(
-                        regulations_by_pii_type.get(pii_type, [])
-                    ),
+                    "regulations_affected": sorted(regulations_by_pii_type.get(pii_type, [])),
                     "detection_confidence": finding.get("confidence"),
                     "sample_values": finding.get("sample_values", [])[:3],  # Limit to 3 samples
                 }
@@ -592,10 +694,9 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
 
         # Calculate compliance score breakdown
         total_columns = len(column_findings) if column_findings else 1
-        columns_with_pii = len([
-            f for f in column_findings
-            if f.get("categories") or f.get("pii_types")
-        ])
+        columns_with_pii = len(
+            [f for f in column_findings if f.get("categories") or f.get("pii_types")]
+        )
         columns_without_pii = total_columns - columns_with_pii
 
         compliance_score = 100.0
@@ -632,18 +733,15 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         if has_violations:
             if compliance_run.risk_level == "CRITICAL":
                 risk_assessment["recommendations"].append(
-                    "Immediate action required: Data contains "
-                    "high-risk PII"
+                    "Immediate action required: Data contains high-risk PII"
                 )
             elif compliance_run.risk_level == "HIGH":
                 risk_assessment["recommendations"].append(
-                    "Review and remediate high-risk PII "
-                    "detections"
+                    "Review and remediate high-risk PII detections"
                 )
             elif compliance_run.risk_level == "MEDIUM":
                 risk_assessment["recommendations"].append(
-                    "Consider implementing data masking for "
-                    "detected PII"
+                    "Consider implementing data masking for detected PII"
                 )
         elif compliance_run.overall_status == "FAIL":
             risk_assessment["recommendations"].append(
@@ -701,6 +799,122 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    # ── Export CSV ─────────────────────────────────────────────────────
+    @extend_schema(
+        operation_id="export_compliance_run_csv",
+        responses={
+            200: OpenApiResponse(description="CSV export of violations"),
+            404: OpenApiResponse(description="Compliance run not found"),
+        },
+        tags=["Compliance"],
+    )
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="export.csv",
+        throttle_classes=[ComplianceExportThrottle],
+    )
+    def export_csv(self, request, id=None):
+        """Export compliance run violations as CSV.
+
+        GET /api/v1/compliance/runs/{id}/export.csv/
+
+        Returns a StreamingHttpResponse with Content-Type text/csv.
+        """
+        compliance_run = self.get_object()
+
+        payload = build_compliance_run_results_payload(compliance_run)
+        violations = payload.get("violations") or []
+        csv_stream = iter_violation_csv_bytes(violations)
+
+        response = StreamingHttpResponse(
+            csv_stream,
+            content_type="text/csv",
+        )
+        response["Content-Disposition"] = (
+            f'attachment; filename="compliance_run_{compliance_run.id}_export.csv"'
+        )
+
+        create_audit_event(
+            resource_type="COMPLIANCE_RUN",
+            action="COMPLIANCE_EXPORT",
+            actor_user=request.user,
+            tenant=compliance_run.tenant,
+            resource_id=str(compliance_run.id),
+            details={
+                "format": "csv",
+                "violation_count": len(violations),
+            },
+            request=request,
+        )
+
+        return response
+
+    # ── Export JSON ─────────────────────────────────────────────────────
+    @extend_schema(
+        operation_id="export_compliance_run_json",
+        responses={
+            200: OpenApiResponse(description="JSON export of compliance run results"),
+            404: OpenApiResponse(description="Compliance run not found"),
+        },
+        tags=["Compliance"],
+    )
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="export.json",
+        throttle_classes=[ComplianceExportThrottle],
+    )
+    def export_json(self, request, id=None):
+        """Export compliance run results as JSON.
+
+        GET /api/v1/compliance/runs/{id}/export.json/
+
+        Returns a StreamingHttpResponse with Content-Type application/json.
+        """
+        compliance_run = self.get_object()
+
+        payload = build_compliance_run_results_payload(compliance_run)
+        # Build findings list for the inner "run" envelope
+        column_findings = compliance_run.column_findings_json or []
+        findings = []
+        for finding in column_findings:
+            column_name = finding.get("column") or finding.get("column_name", "Unknown")
+            pii_types = finding.get("categories") or finding.get("pii_types", [])
+            risk_score = finding.get("match_ratio") or finding.get("risk_score", 0.0)
+            findings.append({
+                "column": column_name,
+                "pii_types": pii_types,
+                "risk_score": risk_score,
+                "confidence": finding.get("confidence"),
+            })
+
+        envelope = {
+            "run": {
+                **payload,
+                "findings": findings,
+            }
+        }
+        body = json.dumps(envelope, default=str).encode("utf-8")
+        response = StreamingHttpResponse(
+            [body],
+            content_type="application/json",
+        )
+
+        create_audit_event(
+            resource_type="COMPLIANCE_RUN",
+            action="COMPLIANCE_EXPORT",
+            actor_user=request.user,
+            tenant=compliance_run.tenant,
+            resource_id=str(compliance_run.id),
+            details={
+                "format": "json",
+            },
+            request=request,
+        )
+
+        return response
+
 
 def execute_compliance_run(compliance_run_id: str) -> None:
     """
@@ -738,27 +952,17 @@ def execute_compliance_run(compliance_run_id: str) -> None:
 
         if compliance_run.file:
             file_obj = compliance_run.file
-            file_format = (
-                file_obj.name.split(".")[-1].lower()
-                if "." in file_obj.name
-                else "csv"
-            )
+            file_format = file_obj.name.split(".")[-1].lower() if "." in file_obj.name else "csv"
         elif compliance_run.dataset and compliance_run.dataset.file:
             file_obj = compliance_run.dataset.file
             file_format = (
-                compliance_run.dataset.format.lower()
-                if compliance_run.dataset.format
-                else "csv"
+                compliance_run.dataset.format.lower() if compliance_run.dataset.format else "csv"
             )
         elif compliance_run.asset:
-            dataset = (
-                compliance_run.asset.datasets.order_by("-version").first()
-            )
+            dataset = compliance_run.asset.datasets.order_by("-version").first()
             if dataset and dataset.file:
                 file_obj = dataset.file
-                file_format = (
-                    dataset.format.lower() if dataset.format else "csv"
-                )
+                file_format = dataset.format.lower() if dataset.format else "csv"
 
         if not file_obj:
             # Phase 213.G — raise FileNotFoundError so the except handler
@@ -773,9 +977,7 @@ def execute_compliance_run(compliance_run_id: str) -> None:
             )
 
         storage_client = S3StorageClient()
-        file_content = storage_client.get_file_content(
-            file_obj.storage_path
-        )
+        file_content = storage_client.get_file_content(file_obj.storage_path)
 
         # Phase 213.G.3 — empty-bytes guard. Catches both the
         # NoSuchKey-returns-empty case and the legitimately-empty file
@@ -788,11 +990,7 @@ def execute_compliance_run(compliance_run_id: str) -> None:
                 f"silently failed)"
             )
 
-        tenant_id = (
-            str(compliance_run.tenant_id)
-            if compliance_run.tenant_id
-            else "unknown"
-        )
+        tenant_id = str(compliance_run.tenant_id) if compliance_run.tenant_id else "unknown"
 
         # Dispatch through service layer (handles 202 async + 200 sync)
         ComplianceService._call_compliance_service(
@@ -800,9 +998,7 @@ def execute_compliance_run(compliance_run_id: str) -> None:
             file_content=file_content,
             file_format=file_format or "csv",
             scan_mode=scan_mode,
-            applicable_regulations=(
-                applicable_regulations or None
-            ),
+            applicable_regulations=(applicable_regulations or None),
             legal_basis=legal_basis,
             destination_jurisdiction=destination_jurisdiction,
             tenant_id=tenant_id,
@@ -814,11 +1010,7 @@ def execute_compliance_run(compliance_run_id: str) -> None:
             compliance_run.allowed_to_store is False
             and compliance_run.status == ComplianceRunStatus.SUCCEEDED
         ):
-            asset_id = (
-                str(compliance_run.asset.id)
-                if compliance_run.asset
-                else "N/A"
-            )
+            asset_id = str(compliance_run.asset.id) if compliance_run.asset else "N/A"
             _logger.warning(
                 "Compliance run %s: allowed_to_store=False. "
                 "Storage should be blocked for asset %s.",

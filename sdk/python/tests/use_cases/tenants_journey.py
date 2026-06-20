@@ -12,10 +12,10 @@ tenants, and verifying required fields on tenant objects.
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_get
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _admin_creds():
     return provision_persona("platform_admin")
@@ -55,9 +55,7 @@ def test_get_current_tenant():
     if resp is None:
         pytest.skip("No current-tenant endpoint responded (all 404)")
 
-    assert resp.status_code == 200, (
-        f"Current tenant returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"Current tenant returned {resp.status_code}: {resp.text[:500]}"
     body = resp.json()
     assert isinstance(body, dict), f"Expected dict, got {type(body)}"
     # Should have an id

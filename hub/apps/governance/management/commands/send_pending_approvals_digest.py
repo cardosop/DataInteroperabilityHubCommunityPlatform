@@ -5,8 +5,8 @@ Daily cron: enumerates active tenants, finds access requests in
 PENDING or PENDING_NEXT_APPROVER state, builds a per-next-approver
 digest, and sends email notifications via the existing email service.
 """
+
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
 from hub.apps.governance.models import AccessRequest, AccessRequestStatus
 from hub.apps.tenants.models import Tenant, TenantStatus
@@ -38,7 +38,8 @@ class Command(BaseCommand):
             # Find users with TENANT_ADMIN role in this tenant
             # (simplified: notify all tenant admins of pending queue).
             admin_role = UserRole.objects.filter(
-                name="TENANT_ADMIN", tenant=tenant,
+                name="TENANT_ADMIN",
+                tenant=tenant,
             ).first()
             if not admin_role:
                 continue
@@ -52,7 +53,9 @@ class Command(BaseCommand):
                 self._send_digest(tenant, user, pending)
                 sent += 1
 
-        self.stdout.write(f"Digest sent to {sent} approvers across {active_tenants.count()} tenants.")
+        self.stdout.write(
+            f"Digest sent to {sent} approvers across {active_tenants.count()} tenants."
+        )
 
     def _send_digest(self, tenant, user, pending_qs):
         """Send a single-approver digest email."""

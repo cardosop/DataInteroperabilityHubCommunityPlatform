@@ -21,6 +21,7 @@ Files that pre-date Phase 216.X.2 are recorded in ``ALLOWLIST`` so the
 guard can be enabled incrementally — every entry there represents a
 backlog item, not an exemption from the rule.
 """
+
 from __future__ import annotations
 
 import ast
@@ -28,7 +29,6 @@ import re
 from pathlib import Path
 
 import pytest
-
 
 CLI_TESTS_DIR = Path(__file__).resolve().parent
 FORBIDDEN_RE = re.compile(
@@ -41,41 +41,43 @@ FORBIDDEN_RE = re.compile(
 # proceeds. Each entry is a backlog item to be cleared in a follow-up.
 # A test file MUST NOT be added to this list as part of new work — only
 # legacy files written before Phase 216 are eligible.
-ALLOWLIST: frozenset[str] = frozenset({
-    # Pre-Phase-216 backlog. Each entry is a file written before the
-    # static-id rule existed; clearing one entry = one PR that migrates
-    # that file's static literals to ``fresh_id``. New tests MUST NOT
-    # be added here.
-    "e2e/test_ml_training_workflows.py",
-    "integration/test_cli_assets_odps.py",
-    "integration/test_cli_marketplace_odps.py",
-    "integration/test_cli_odps_comprehensive.py",
-    "integration/test_commands_real_api.py",
-    "integration/test_installation_config_auth.py",
-    "integration/test_ml_serving_cli_comprehensive.py",
-    "integration/test_ml_training_commands_real_api.py",
-    "integration/test_odh_cli_comprehensive_validation.py",
-    "integration/test_odps_cli_workflows.py",
-    "integration/test_odps_error_scenarios.py",
-    "integration/test_payment_gateways_real_api.py",
-    "integration/test_phase26_cli_integration.py",
-    "integration/test_product_strategy_real_api.py",
-    "unit/test_commands_assets.py",
-    "unit/test_commands_baas.py",
-    "unit/test_commands_compliance.py",
-    "unit/test_commands_contracts.py",
-    "unit/test_commands_lineage.py",
-    "unit/test_commands_marketplace_sync.py",
-    "unit/test_commands_mesh_domains.py",
-    "unit/test_commands_mesh_policies.py",
-    "unit/test_commands_mesh_topology.py",
-    "unit/test_config.py",
-    "unit/test_configuration.py",
-    "unit/test_error_handling.py",
-    "unit/test_odps_errors.py",
-    "unit/test_output_formatting.py",
-    "unit/test_phase118a_endpoint_param_fixes.py",
-})
+ALLOWLIST: frozenset[str] = frozenset(
+    {
+        # Pre-Phase-216 backlog. Each entry is a file written before the
+        # static-id rule existed; clearing one entry = one PR that migrates
+        # that file's static literals to ``fresh_id``. New tests MUST NOT
+        # be added here.
+        "e2e/test_ml_training_workflows.py",
+        "integration/test_cli_assets_odps.py",
+        "integration/test_cli_marketplace_odps.py",
+        "integration/test_cli_odps_comprehensive.py",
+        "integration/test_commands_real_api.py",
+        "integration/test_installation_config_auth.py",
+        "integration/test_ml_serving_cli_comprehensive.py",
+        "integration/test_ml_training_commands_real_api.py",
+        "integration/test_odh_cli_comprehensive_validation.py",
+        "integration/test_odps_cli_workflows.py",
+        "integration/test_odps_error_scenarios.py",
+        "integration/test_payment_gateways_real_api.py",
+        "integration/test_phase26_cli_integration.py",
+        "integration/test_product_strategy_real_api.py",
+        "unit/test_commands_assets.py",
+        "unit/test_commands_baas.py",
+        "unit/test_commands_compliance.py",
+        "unit/test_commands_contracts.py",
+        "unit/test_commands_lineage.py",
+        "unit/test_commands_marketplace_sync.py",
+        "unit/test_commands_mesh_domains.py",
+        "unit/test_commands_mesh_policies.py",
+        "unit/test_commands_mesh_topology.py",
+        "unit/test_config.py",
+        "unit/test_configuration.py",
+        "unit/test_error_handling.py",
+        "unit/test_odps_errors.py",
+        "unit/test_output_formatting.py",
+        "unit/test_phase118a_endpoint_param_fixes.py",
+    }
+)
 
 
 def _string_literals(tree: ast.Module) -> list[tuple[int, str]]:
@@ -146,7 +148,9 @@ def test_allowlist_has_no_stale_entries() -> None:
         pytest.fail(message)
 
 
-@pytest.mark.parametrize("path", _python_test_files(), ids=lambda p: str(p.relative_to(CLI_TESTS_DIR)))
+@pytest.mark.parametrize(
+    "path", _python_test_files(), ids=lambda p: str(p.relative_to(CLI_TESTS_DIR))
+)
 def test_no_forbidden_static_id_literal(path: Path) -> None:
     """Each test file MUST NOT contain a forbidden static-id literal."""
     rel = str(path.relative_to(CLI_TESTS_DIR))

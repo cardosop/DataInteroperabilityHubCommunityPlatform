@@ -13,15 +13,15 @@ hooks registered at that savepoint level.  Commit (positive-control)
 tests use ``captureOnCommitCallbacks(execute=True)`` to flush
 deferred callbacks.
 """
+
 import uuid
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.db import IntegrityError, transaction
 from django.test import TestCase, override_settings
 
 from hub.apps.jobs.models import Job, JobStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -34,9 +34,7 @@ class NotificationSignalRollbackTest(TestCase):
     """
 
     @override_settings(EMAIL_JOB_NOTIFICATIONS_ENABLED=True)
-    @patch(
-        "hub.apps.notifications.signals.send_job_completion_email"
-    )
+    @patch("hub.apps.notifications.signals.send_job_completion_email")
     def test_completion_email_not_sent_on_rollback(self, mock_task):
         """
         Force a rollback after a Job status change to COMPLETED.
@@ -52,7 +50,9 @@ class NotificationSignalRollbackTest(TestCase):
         try:
             with transaction.atomic():
                 job_status_changed(
-                    sender=Job, instance=instance, created=False,
+                    sender=Job,
+                    instance=instance,
+                    created=False,
                 )
                 raise IntegrityError("simulated rollback")
         except IntegrityError:
@@ -61,9 +61,7 @@ class NotificationSignalRollbackTest(TestCase):
         mock_task.delay.assert_not_called()
 
     @override_settings(EMAIL_JOB_NOTIFICATIONS_ENABLED=True)
-    @patch(
-        "hub.apps.notifications.signals.send_job_failure_email"
-    )
+    @patch("hub.apps.notifications.signals.send_job_failure_email")
     def test_failure_email_not_sent_on_rollback(self, mock_task):
         """
         Force a rollback after a Job status change to FAILED.
@@ -79,7 +77,9 @@ class NotificationSignalRollbackTest(TestCase):
         try:
             with transaction.atomic():
                 job_status_changed(
-                    sender=Job, instance=instance, created=False,
+                    sender=Job,
+                    instance=instance,
+                    created=False,
                 )
                 raise IntegrityError("simulated rollback")
         except IntegrityError:
@@ -88,9 +88,7 @@ class NotificationSignalRollbackTest(TestCase):
         mock_task.delay.assert_not_called()
 
     @override_settings(EMAIL_JOB_NOTIFICATIONS_ENABLED=True)
-    @patch(
-        "hub.apps.notifications.signals.send_job_completion_email"
-    )
+    @patch("hub.apps.notifications.signals.send_job_completion_email")
     def test_completion_email_sent_on_commit(self, mock_task):
         """
         Positive control: when the savepoint commits the
@@ -103,11 +101,12 @@ class NotificationSignalRollbackTest(TestCase):
         instance.created_by = MagicMock()
         instance.id = uuid.uuid4()
 
-        with self.captureOnCommitCallbacks(execute=True):
-            with transaction.atomic():
-                job_status_changed(
-                    sender=Job, instance=instance, created=False,
-                )
+        with self.captureOnCommitCallbacks(execute=True), transaction.atomic():
+            job_status_changed(
+                sender=Job,
+                instance=instance,
+                created=False,
+            )
 
         mock_task.delay.assert_called_once_with(str(instance.id))
 
@@ -129,9 +128,7 @@ class WebhookDeliveryRollbackTest(TestCase):
         try:
             with transaction.atomic():
                 _did = "fake-delivery-id"
-                transaction.on_commit(
-                    lambda: mock_deliver.delay(_did)
-                )
+                transaction.on_commit(lambda: mock_deliver.delay(_did))
                 raise IntegrityError("simulated rollback")
         except IntegrityError:
             pass
@@ -147,11 +144,8 @@ class WebhookDeliveryRollbackTest(TestCase):
         mock_deliver = MagicMock()
         _did = "test-delivery-id"
 
-        with self.captureOnCommitCallbacks(execute=True):
-            with transaction.atomic():
-                transaction.on_commit(
-                    lambda: mock_deliver.delay(_did)
-                )
+        with self.captureOnCommitCallbacks(execute=True), transaction.atomic():
+            transaction.on_commit(lambda: mock_deliver.delay(_did))
 
         mock_deliver.delay.assert_called_once_with(_did)
 
@@ -193,18 +187,19 @@ class ComplianceEnqueueRollbackTest(TestCase):
         mock_task_fn = MagicMock()
         run_id = uuid.uuid4()
 
-        with self.captureOnCommitCallbacks(execute=True):
-            with transaction.atomic():
-                transaction.on_commit(
-                    lambda: mock_queue.enqueue(
-                        mock_task_fn,
-                        run_id,
-                        job_timeout=1800,
-                    )
+        with self.captureOnCommitCallbacks(execute=True), transaction.atomic():
+            transaction.on_commit(
+                lambda: mock_queue.enqueue(
+                    mock_task_fn,
+                    run_id,
+                    job_timeout=1800,
                 )
+            )
 
         mock_queue.enqueue.assert_called_once_with(
-            mock_task_fn, run_id, job_timeout=1800,
+            mock_task_fn,
+            run_id,
+            job_timeout=1800,
         )
 
 
@@ -214,12 +209,10 @@ class ContractNotificationRollbackTest(TestCase):
     NOT dispatched when the enclosing transaction rolls back.
     """
 
-    @patch(
-        "hub.apps.notifications.tasks"
-        ".send_odps_normalization_failure_email"
-    )
+    @patch("hub.apps.notifications.tasks.send_odps_normalization_failure_email")
     def test_normalization_failure_email_not_sent_on_rollback(
-        self, mock_task,
+        self,
+        mock_task,
     ):
         """
         Simulates the on_commit pattern used in
@@ -247,12 +240,10 @@ class ContractNotificationRollbackTest(TestCase):
 
         mock_task.delay.assert_not_called()
 
-    @patch(
-        "hub.apps.notifications.tasks"
-        ".send_odps_creation_completion_email"
-    )
+    @patch("hub.apps.notifications.tasks.send_odps_creation_completion_email")
     def test_creation_completion_email_not_sent_on_rollback(
-        self, mock_task,
+        self,
+        mock_task,
     ):
         """
         Simulates the on_commit pattern used in
@@ -263,39 +254,30 @@ class ContractNotificationRollbackTest(TestCase):
 
         try:
             with transaction.atomic():
-                transaction.on_commit(
-                    lambda: mock_task.delay(_cid)
-                )
+                transaction.on_commit(lambda: mock_task.delay(_cid))
                 raise IntegrityError("simulated rollback")
         except IntegrityError:
             pass
 
         mock_task.delay.assert_not_called()
 
-    @patch(
-        "hub.apps.notifications.tasks"
-        ".send_odps_creation_completion_email"
-    )
+    @patch("hub.apps.notifications.tasks.send_odps_creation_completion_email")
     def test_creation_completion_email_sent_on_commit(
-        self, mock_task,
+        self,
+        mock_task,
     ):
         """Positive control: task fires on successful commit."""
         _cid = str(uuid.uuid4())
 
-        with self.captureOnCommitCallbacks(execute=True):
-            with transaction.atomic():
-                transaction.on_commit(
-                    lambda: mock_task.delay(_cid)
-                )
+        with self.captureOnCommitCallbacks(execute=True), transaction.atomic():
+            transaction.on_commit(lambda: mock_task.delay(_cid))
 
         mock_task.delay.assert_called_once_with(_cid)
 
-    @patch(
-        "hub.apps.notifications.tasks"
-        ".send_odps_linking_status_email"
-    )
+    @patch("hub.apps.notifications.tasks.send_odps_linking_status_email")
     def test_linking_status_email_not_sent_on_rollback(
-        self, mock_task,
+        self,
+        mock_task,
     ):
         """
         Simulates the on_commit pattern used in
@@ -334,11 +316,10 @@ class InvitationEmailRollbackTest(TestCase):
     when the enclosing @transaction.atomic block rolls back.
     """
 
-    @patch(
-        "hub.apps.notifications.tasks.send_invitation_email"
-    )
+    @patch("hub.apps.notifications.tasks.send_invitation_email")
     def test_invitation_email_not_sent_on_rollback(
-        self, mock_task,
+        self,
+        mock_task,
     ):
         """
         Simulate a rollback after _send_invitation_email
@@ -354,7 +335,8 @@ class InvitationEmailRollbackTest(TestCase):
         try:
             with transaction.atomic():
                 viewset._send_invitation_email(
-                    fake_user, plaintext_token="tok-123",
+                    fake_user,
+                    plaintext_token="tok-123",
                 )
                 raise IntegrityError("simulated rollback")
         except IntegrityError:
@@ -362,9 +344,7 @@ class InvitationEmailRollbackTest(TestCase):
 
         mock_task.delay.assert_not_called()
 
-    @patch(
-        "hub.apps.notifications.tasks.send_invitation_email"
-    )
+    @patch("hub.apps.notifications.tasks.send_invitation_email")
     def test_invitation_email_sent_on_commit(self, mock_task):
         """
         Positive control: on_commit callback fires when the
@@ -376,12 +356,13 @@ class InvitationEmailRollbackTest(TestCase):
         fake_user = MagicMock()
         fake_user.id = uuid.uuid4()
 
-        with self.captureOnCommitCallbacks(execute=True):
-            with transaction.atomic():
-                viewset._send_invitation_email(
-                    fake_user, plaintext_token="tok-456",
-                )
+        with self.captureOnCommitCallbacks(execute=True), transaction.atomic():
+            viewset._send_invitation_email(
+                fake_user,
+                plaintext_token="tok-456",
+            )
 
         mock_task.delay.assert_called_once_with(
-            str(fake_user.id), plaintext_token="tok-456",
+            str(fake_user.id),
+            plaintext_token="tok-456",
         )

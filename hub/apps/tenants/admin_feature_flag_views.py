@@ -32,7 +32,9 @@ Rate limit: 60 flips per PLATFORM_ADMIN per hour
 The rate-limit check runs BEFORE any flag-state mutation so a 429
 returns without leaving partial state.
 """
+
 from __future__ import annotations
+
 import logging
 from typing import Any
 
@@ -95,10 +97,7 @@ def _validate_reason(reason: Any) -> str | None:
         return "reason is required"
     stripped = reason.strip()
     if len(stripped) < _REASON_MIN_LENGTH:
-        return (
-            f"reason must be at least {_REASON_MIN_LENGTH} characters "
-            f"(got {len(stripped)})"
-        )
+        return f"reason must be at least {_REASON_MIN_LENGTH} characters (got {len(stripped)})"
     return None
 
 
@@ -182,9 +181,7 @@ class AdminTenantFeatureFlagView(APIView):
         ),
         responses={
             200: OpenApiResponse(
-                description=(
-                    "Returns ``{tenant_id, flags[], pending_approvals[]}``."
-                ),
+                description=("Returns ``{tenant_id, flags[], pending_approvals[]}``."),
             ),
             401: OpenApiResponse(description="Unauthorized."),
             403: OpenApiResponse(description="Forbidden — not a PLATFORM_ADMIN."),
@@ -195,9 +192,7 @@ class AdminTenantFeatureFlagView(APIView):
     def get(self, request, tenant_id):
         tenant = get_object_or_404(Tenant.all_objects.using("admin"), pk=tenant_id)
         flags = [
-            _serialize_flag_row(
-                f, current_value=bool(getattr(tenant, f.name, False))
-            )
+            _serialize_flag_row(f, current_value=bool(getattr(tenant, f.name, False)))
             for f in REGISTRY
         ]
         # Surface pending approvals so the SPA can render "Awaiting
@@ -285,8 +280,7 @@ class AdminTenantFeatureFlagView(APIView):
             ),
             400: OpenApiResponse(
                 description=(
-                    "Validation error — missing/short ``reason``, "
-                    "unknown flag name, etc."
+                    "Validation error — missing/short ``reason``, unknown flag name, etc."
                 ),
             ),
             401: OpenApiResponse(description="Unauthorized."),
@@ -365,9 +359,7 @@ class AdminTenantFeatureFlagView(APIView):
             )
 
         # Rate-limit check BEFORE any side effect.
-        allowed, observed, retry_after, bucket = check_flag_flip_rate_limit(
-            actor=request.user
-        )
+        allowed, observed, retry_after, bucket = check_flag_flip_rate_limit(actor=request.user)
         if not allowed:
             resp = Response(
                 {
@@ -413,10 +405,7 @@ class AdminTenantFeatureFlagView(APIView):
                 # (line 208 of models.py, ``auto_now=True``). Passing
                 # it explicitly in ``update_fields`` is required for
                 # auto_now to fire on partial saves.
-                tenant.save(
-                    update_fields=[name for name, _, _ in immediate_flips]
-                    + ["updated_at"]
-                )
+                tenant.save(update_fields=[name for name, _, _ in immediate_flips] + ["updated_at"])
                 for name, old, new in immediate_flips:
                     _emit_changed_event(
                         tenant=tenant,

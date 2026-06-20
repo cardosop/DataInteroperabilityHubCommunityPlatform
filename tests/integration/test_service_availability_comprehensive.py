@@ -10,14 +10,13 @@ Tests that all required services are running and healthy with:
 - Object storage connectivity checks
 - Service-to-service communication tests
 """
+
+import logging
 import os
 import time
-import logging
-import subprocess
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Any
 from enum import Enum
-from unittest import TestCase
+from typing import Any
 
 import pytest
 
@@ -29,6 +28,7 @@ from django.test import TestCase as DjangoTestCase
 
 try:
     import redis
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
@@ -37,6 +37,7 @@ try:
     import boto3
     from botocore.config import Config as BotocoreConfig
     from botocore.exceptions import ClientError, EndpointConnectionError
+
     BOTO3_AVAILABLE = True
 except ImportError:
     BOTO3_AVAILABLE = False
@@ -46,6 +47,7 @@ logger = logging.getLogger(__name__)
 
 class ServiceStatus(Enum):
     """Service health status"""
+
     HEALTHY = "healthy"
     UNHEALTHY = "unhealthy"
     UNKNOWN = "unknown"
@@ -56,11 +58,12 @@ class ServiceStatus(Enum):
 @dataclass
 class ServiceCheckResult:
     """Result of a service health check"""
+
     service_name: str
     status: ServiceStatus
-    response_time_ms: Optional[float] = None
-    error_message: Optional[str] = None
-    details: Dict[str, Any] = field(default_factory=dict)
+    response_time_ms: float | None = None
+    error_message: str | None = None
+    details: dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
 
     def is_healthy(self) -> bool:
@@ -71,6 +74,7 @@ class ServiceCheckResult:
 @dataclass
 class ServiceConfig:
     """Configuration for a service health check"""
+
     name: str
     host: str
     port: int
@@ -93,10 +97,7 @@ class ServiceAvailabilityChecker:
     """
 
     def __init__(
-        self,
-        default_timeout: int = 5,
-        default_retries: int = 3,
-        default_retry_delay: float = 1.0
+        self, default_timeout: int = 5, default_retries: int = 3, default_retry_delay: float = 1.0
     ):
         """
         Initialize service availability checker.
@@ -129,10 +130,7 @@ class ServiceAvailabilityChecker:
             return "localhost"
 
     def check_http_service(
-        self,
-        config: ServiceConfig,
-        retries: Optional[int] = None,
-        retry_delay: Optional[float] = None
+        self, config: ServiceConfig, retries: int | None = None, retry_delay: float | None = None
     ) -> ServiceCheckResult:
         """
         Check HTTP service availability with retry logic.
@@ -158,7 +156,7 @@ class ServiceAvailabilityChecker:
                 response = requests.get(
                     url,
                     timeout=timeout,
-                    verify=False  # Allow self-signed certificates in dev
+                    verify=False,  # Allow self-signed certificates in dev
                 )
                 response_time_ms = (time.time() - start_time) * 1000
 
@@ -174,7 +172,7 @@ class ServiceAvailabilityChecker:
                         service_name=config.name,
                         status=ServiceStatus.HEALTHY,
                         response_time_ms=response_time_ms,
-                        details=details
+                        details=details,
                     )
                 else:
                     last_error = f"HTTP {response.status_code}: {response.text[:200]}"
@@ -182,26 +180,23 @@ class ServiceAvailabilityChecker:
             except requests.exceptions.Timeout:
                 last_error = f"Timeout after {timeout}s"
             except requests.exceptions.ConnectionError as e:
-                last_error = f"Connection error: {str(e)}"
+                last_error = f"Connection error: {e!s}"
             except Exception as e:
-                last_error = f"Unexpected error: {str(e)}"
+                last_error = f"Unexpected error: {e!s}"
 
             # Wait before retry (except on last attempt)
             if attempt < retries - 1:
-                time.sleep(retry_delay)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(retry_delay)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
         return ServiceCheckResult(
             service_name=config.name,
             status=ServiceStatus.UNHEALTHY,
             error_message=last_error,
-            details={"retries": retries, "timeout": timeout}
+            details={"retries": retries, "timeout": timeout},
         )
 
     def check_database_connectivity(
-        self,
-        config: ServiceConfig,
-        retries: Optional[int] = None,
-        retry_delay: Optional[float] = None
+        self, config: ServiceConfig, retries: int | None = None, retry_delay: float | None = None
     ) -> ServiceCheckResult:
         """
         Check PostgreSQL database connectivity.
@@ -236,31 +231,28 @@ class ServiceAvailabilityChecker:
                             details={
                                 "database": connection.settings_dict.get("NAME"),
                                 "host": connection.settings_dict.get("HOST"),
-                                "port": connection.settings_dict.get("PORT")
-                            }
+                                "port": connection.settings_dict.get("PORT"),
+                            },
                         )
                     else:
                         last_error = "Database query returned unexpected result"
 
             except Exception as e:
-                last_error = f"Database connection error: {str(e)}"
+                last_error = f"Database connection error: {e!s}"
 
             # Wait before retry (except on last attempt)
             if attempt < retries - 1:
-                time.sleep(retry_delay)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(retry_delay)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
         return ServiceCheckResult(
             service_name=config.name,
             status=ServiceStatus.UNHEALTHY,
             error_message=last_error,
-            details={"retries": retries}
+            details={"retries": retries},
         )
 
     def check_redis_connectivity(
-        self,
-        config: ServiceConfig,
-        retries: Optional[int] = None,
-        retry_delay: Optional[float] = None
+        self, config: ServiceConfig, retries: int | None = None, retry_delay: float | None = None
     ) -> ServiceCheckResult:
         """
         Check Redis connectivity.
@@ -277,7 +269,7 @@ class ServiceAvailabilityChecker:
             return ServiceCheckResult(
                 service_name=config.name,
                 status=ServiceStatus.ERROR,
-                error_message="Redis library not available"
+                error_message="Redis library not available",
             )
 
         retries = retries or config.retries or self.default_retries
@@ -304,33 +296,30 @@ class ServiceAvailabilityChecker:
                     details={
                         "redis_version": info.get("redis_version"),
                         "used_memory_human": info.get("used_memory_human"),
-                        "connected_clients": info.get("connected_clients")
-                    }
+                        "connected_clients": info.get("connected_clients"),
+                    },
                 )
 
             except redis.ConnectionError as e:
-                last_error = f"Redis connection error: {str(e)}"
+                last_error = f"Redis connection error: {e!s}"
             except redis.TimeoutError:
                 last_error = f"Redis timeout after {config.timeout}s"
             except Exception as e:
-                last_error = f"Redis error: {str(e)}"
+                last_error = f"Redis error: {e!s}"
 
             # Wait before retry (except on last attempt)
             if attempt < retries - 1:
-                time.sleep(retry_delay)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(retry_delay)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
         return ServiceCheckResult(
             service_name=config.name,
             status=ServiceStatus.UNHEALTHY,
             error_message=last_error,
-            details={"retries": retries, "redis_url": redis_url}
+            details={"retries": retries, "redis_url": redis_url},
         )
 
     def check_minio_connectivity(
-        self,
-        config: ServiceConfig,
-        retries: Optional[int] = None,
-        retry_delay: Optional[float] = None
+        self, config: ServiceConfig, retries: int | None = None, retry_delay: float | None = None
     ) -> ServiceCheckResult:
         """
         Check MinIO (S3-compatible) object storage connectivity.
@@ -347,15 +336,23 @@ class ServiceAvailabilityChecker:
             return ServiceCheckResult(
                 service_name=config.name,
                 status=ServiceStatus.ERROR,
-                error_message="boto3 not available for S3/MinIO connectivity check"
+                error_message="boto3 not available for S3/MinIO connectivity check",
             )
 
         retries = retries or config.retries or self.default_retries
         retry_delay = retry_delay or config.retry_delay or self.default_retry_delay
 
         # Get MinIO credentials from settings or environment
-        access_key = os.getenv("MINIO_ROOT_USER", os.getenv("AWS_ACCESS_KEY_ID", getattr(settings, "MINIO_ROOT_USER", "minio")))
-        secret_key = os.getenv("MINIO_ROOT_PASSWORD", os.getenv("AWS_SECRET_ACCESS_KEY", getattr(settings, "MINIO_ROOT_PASSWORD", "minio123")))
+        access_key = os.getenv(
+            "MINIO_ROOT_USER",
+            os.getenv("AWS_ACCESS_KEY_ID", getattr(settings, "MINIO_ROOT_USER", "minio")),
+        )
+        secret_key = os.getenv(
+            "MINIO_ROOT_PASSWORD",
+            os.getenv(
+                "AWS_SECRET_ACCESS_KEY", getattr(settings, "MINIO_ROOT_PASSWORD", "minio123")
+            ),
+        )
         endpoint_url = f"http{'s' if config.use_https else ''}://{config.host}:{config.port}"
 
         last_error = None
@@ -369,7 +366,7 @@ class ServiceAvailabilityChecker:
                     aws_access_key_id=access_key,
                     aws_secret_access_key=secret_key,
                     region_name=os.getenv("AWS_REGION", "us-east-1"),
-                    config=BotocoreConfig(signature_version="s3v4", connect_timeout=config.timeout)
+                    config=BotocoreConfig(signature_version="s3v4", connect_timeout=config.timeout),
                 )
 
                 # Try to list buckets (lightweight operation)
@@ -383,31 +380,28 @@ class ServiceAvailabilityChecker:
                     response_time_ms=response_time_ms,
                     details={
                         "bucket_count": bucket_count,
-                        "endpoint": f"{config.host}:{config.port}"
-                    }
+                        "endpoint": f"{config.host}:{config.port}",
+                    },
                 )
 
             except (ClientError, EndpointConnectionError) as e:
-                last_error = f"MinIO S3 error: {str(e)}"
+                last_error = f"MinIO S3 error: {e!s}"
             except Exception as e:
-                last_error = f"MinIO error: {str(e)}"
+                last_error = f"MinIO error: {e!s}"
 
             # Wait before retry (except on last attempt)
             if attempt < retries - 1:
-                time.sleep(retry_delay)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(retry_delay)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
         return ServiceCheckResult(
             service_name=config.name,
             status=ServiceStatus.UNHEALTHY,
             error_message=last_error,
-            details={"retries": retries}
+            details={"retries": retries},
         )
 
     def check_websocket_service(
-        self,
-        config: ServiceConfig,
-        retries: Optional[int] = None,
-        retry_delay: Optional[float] = None
+        self, config: ServiceConfig, retries: int | None = None, retry_delay: float | None = None
     ) -> ServiceCheckResult:
         """
         Check WebSocket service availability.
@@ -433,7 +427,7 @@ class ServiceAvailabilityChecker:
             retries=config.retries,
             retry_delay=config.retry_delay,
             use_https=config.use_https,
-            check_type="http"
+            check_type="http",
         )
 
         result = self.check_http_service(ws_config, retries, retry_delay)
@@ -442,10 +436,7 @@ class ServiceAvailabilityChecker:
         return result
 
     def check_graphql_service(
-        self,
-        config: ServiceConfig,
-        retries: Optional[int] = None,
-        retry_delay: Optional[float] = None
+        self, config: ServiceConfig, retries: int | None = None, retry_delay: float | None = None
     ) -> ServiceCheckResult:
         """
         Check GraphQL service availability.
@@ -476,7 +467,7 @@ class ServiceAvailabilityChecker:
                     json=query,
                     timeout=timeout,
                     headers={"Content-Type": "application/json"},
-                    verify=False
+                    verify=False,
                 )
                 response_time_ms = (time.time() - start_time) * 1000
 
@@ -489,7 +480,7 @@ class ServiceAvailabilityChecker:
                                 service_name=config.name,
                                 status=ServiceStatus.HEALTHY,
                                 response_time_ms=response_time_ms,
-                                details={"graphql_response": data}
+                                details={"graphql_response": data},
                             )
                     except ValueError:
                         pass
@@ -498,7 +489,7 @@ class ServiceAvailabilityChecker:
                         service_name=config.name,
                         status=ServiceStatus.HEALTHY,
                         response_time_ms=response_time_ms,
-                        details={"response_text": response.text[:200]}
+                        details={"response_text": response.text[:200]},
                     )
                 else:
                     last_error = f"HTTP {response.status_code}: {response.text[:200]}"
@@ -506,26 +497,23 @@ class ServiceAvailabilityChecker:
             except requests.exceptions.Timeout:
                 last_error = f"Timeout after {timeout}s"
             except requests.exceptions.ConnectionError as e:
-                last_error = f"Connection error: {str(e)}"
+                last_error = f"Connection error: {e!s}"
             except Exception as e:
-                last_error = f"Unexpected error: {str(e)}"
+                last_error = f"Unexpected error: {e!s}"
 
             # Wait before retry (except on last attempt)
             if attempt < retries - 1:
-                time.sleep(retry_delay)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(retry_delay)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
         return ServiceCheckResult(
             service_name=config.name,
             status=ServiceStatus.UNHEALTHY,
             error_message=last_error,
-            details={"retries": retries, "timeout": timeout}
+            details={"retries": retries, "timeout": timeout},
         )
 
     def check_service(
-        self,
-        config: ServiceConfig,
-        retries: Optional[int] = None,
-        retry_delay: Optional[float] = None
+        self, config: ServiceConfig, retries: int | None = None, retry_delay: float | None = None
     ) -> ServiceCheckResult:
         """
         Check service availability based on check type.
@@ -555,10 +543,10 @@ class ServiceAvailabilityChecker:
 
     def check_all_services(
         self,
-        service_configs: List[ServiceConfig],
-        retries: Optional[int] = None,
-        retry_delay: Optional[float] = None
-    ) -> Dict[str, ServiceCheckResult]:
+        service_configs: list[ServiceConfig],
+        retries: int | None = None,
+        retry_delay: float | None = None,
+    ) -> dict[str, ServiceCheckResult]:
         """
         Check all services and return results.
 
@@ -578,16 +566,15 @@ class ServiceAvailabilityChecker:
             results[config.name] = result
 
             if result.is_healthy():
-                logger.info(f"✓ {config.name} is healthy (response time: {result.response_time_ms:.2f}ms)")
+                logger.info(
+                    f"✓ {config.name} is healthy (response time: {result.response_time_ms:.2f}ms)"
+                )
             else:
                 logger.warning(f"✗ {config.name} is unhealthy: {result.error_message}")
 
         return results
 
-    def generate_report(
-        self,
-        results: Dict[str, ServiceCheckResult]
-    ) -> Dict[str, Any]:
+    def generate_report(self, results: dict[str, ServiceCheckResult]) -> dict[str, Any]:
         """
         Generate detailed report from check results.
 
@@ -605,7 +592,9 @@ class ServiceAvailabilityChecker:
         unhealthy_services = [name for name, result in results.items() if not result.is_healthy()]
 
         avg_response_time = None
-        response_times = [r.response_time_ms for r in results.values() if r.response_time_ms is not None]
+        response_times = [
+            r.response_time_ms for r in results.values() if r.response_time_ms is not None
+        ]
         if response_times:
             avg_response_time = sum(response_times) / len(response_times)
 
@@ -615,7 +604,7 @@ class ServiceAvailabilityChecker:
                 "healthy": healthy,
                 "unhealthy": unhealthy,
                 "health_percentage": (healthy / total * 100) if total > 0 else 0,
-                "average_response_time_ms": avg_response_time
+                "average_response_time_ms": avg_response_time,
             },
             "healthy_services": healthy_services,
             "unhealthy_services": unhealthy_services,
@@ -625,14 +614,14 @@ class ServiceAvailabilityChecker:
                     "response_time_ms": result.response_time_ms,
                     "error_message": result.error_message,
                     "details": result.details,
-                    "timestamp": result.timestamp
+                    "timestamp": result.timestamp,
                 }
                 for name, result in results.items()
-            }
+            },
         }
 
 
-def get_all_service_configs(base_host: str = "localhost") -> List[ServiceConfig]:
+def get_all_service_configs(base_host: str = "localhost") -> list[ServiceConfig]:
     """
     Get all service configurations for health checks.
 
@@ -651,9 +640,8 @@ def get_all_service_configs(base_host: str = "localhost") -> List[ServiceConfig]
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         ),
-
         # PostgreSQL Database
         ServiceConfig(
             name="postgresql",
@@ -662,9 +650,8 @@ def get_all_service_configs(base_host: str = "localhost") -> List[ServiceConfig]
             health_path="",
             timeout=5,
             retries=3,
-            check_type="database"
+            check_type="database",
         ),
-
         # Redis
         ServiceConfig(
             name="redis",
@@ -673,9 +660,8 @@ def get_all_service_configs(base_host: str = "localhost") -> List[ServiceConfig]
             health_path="",
             timeout=5,
             retries=3,
-            check_type="redis"
+            check_type="redis",
         ),
-
         # MinIO (Object Storage)
         ServiceConfig(
             name="minio",
@@ -684,9 +670,8 @@ def get_all_service_configs(base_host: str = "localhost") -> List[ServiceConfig]
             health_path="/minio/health/live",
             timeout=10,
             retries=3,
-            check_type="minio"
+            check_type="minio",
         ),
-
         # DataContract Service
         ServiceConfig(
             name="datacontract-service",
@@ -695,9 +680,8 @@ def get_all_service_configs(base_host: str = "localhost") -> List[ServiceConfig]
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         ),
-
         # DQ Service
         ServiceConfig(
             name="dq-service",
@@ -706,9 +690,8 @@ def get_all_service_configs(base_host: str = "localhost") -> List[ServiceConfig]
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         ),
-
         # Compliance Service
         ServiceConfig(
             name="compliance-service",
@@ -717,9 +700,8 @@ def get_all_service_configs(base_host: str = "localhost") -> List[ServiceConfig]
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         ),
-
         # Semantic Service
         ServiceConfig(
             name="semantic-service",
@@ -728,9 +710,8 @@ def get_all_service_configs(base_host: str = "localhost") -> List[ServiceConfig]
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         ),
-
         # Search Service
         ServiceConfig(
             name="search-service",
@@ -739,9 +720,8 @@ def get_all_service_configs(base_host: str = "localhost") -> List[ServiceConfig]
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         ),
-
         # Observability Service
         ServiceConfig(
             name="observability-service",
@@ -750,9 +730,8 @@ def get_all_service_configs(base_host: str = "localhost") -> List[ServiceConfig]
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         ),
-
         # Prefect Server
         ServiceConfig(
             name="prefect-server",
@@ -761,9 +740,8 @@ def get_all_service_configs(base_host: str = "localhost") -> List[ServiceConfig]
             health_path="/health",
             timeout=10,
             retries=3,
-            check_type="http"
+            check_type="http",
         ),
-
         # Prefect Integration Service
         ServiceConfig(
             name="prefect-integration-service",
@@ -772,9 +750,8 @@ def get_all_service_configs(base_host: str = "localhost") -> List[ServiceConfig]
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         ),
-
         # WebSocket Service (via API service)
         ServiceConfig(
             name="websocket-service",
@@ -783,9 +760,8 @@ def get_all_service_configs(base_host: str = "localhost") -> List[ServiceConfig]
             health_path="/ws/events",
             timeout=5,
             retries=3,
-            check_type="websocket"
+            check_type="websocket",
         ),
-
         # GraphQL Service (via API service)
         ServiceConfig(
             name="graphql-service",
@@ -794,7 +770,7 @@ def get_all_service_configs(base_host: str = "localhost") -> List[ServiceConfig]
             health_path="/graphql",
             timeout=5,
             retries=3,
-            check_type="graphql"
+            check_type="graphql",
         ),
     ]
 
@@ -812,9 +788,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.checker = ServiceAvailabilityChecker(
-            default_timeout=5,
-            default_retries=3,
-            default_retry_delay=1.0
+            default_timeout=5, default_retries=3, default_retry_delay=1.0
         )
 
         # Determine host based on environment
@@ -831,7 +805,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         )
 
         result = self.checker.check_service(config)
@@ -856,14 +830,13 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="",
             timeout=5,
             retries=3,
-            check_type="database"
+            check_type="database",
         )
 
         result = self.checker.check_service(config)
 
         self.assertTrue(
-            result.is_healthy(),
-            f"PostgreSQL should be accessible. Error: {result.error_message}"
+            result.is_healthy(), f"PostgreSQL should be accessible. Error: {result.error_message}"
         )
         self.assertIsNotNone(result.response_time_ms)
 
@@ -879,14 +852,13 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="",
             timeout=5,
             retries=3,
-            check_type="redis"
+            check_type="redis",
         )
 
         result = self.checker.check_service(config)
 
         self.assertTrue(
-            result.is_healthy(),
-            f"Redis should be accessible. Error: {result.error_message}"
+            result.is_healthy(), f"Redis should be accessible. Error: {result.error_message}"
         )
         self.assertIsNotNone(result.response_time_ms)
 
@@ -905,7 +877,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="/minio/health/live",
             timeout=10,
             retries=3,
-            check_type="minio"
+            check_type="minio",
         )
 
         result = self.checker.check_service(config)
@@ -929,7 +901,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         )
 
         result = self.checker.check_service(config)
@@ -949,7 +921,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         )
 
         result = self.checker.check_service(config)
@@ -967,7 +939,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         )
 
         result = self.checker.check_service(config)
@@ -985,7 +957,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         )
 
         result = self.checker.check_service(config)
@@ -1003,7 +975,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         )
 
         result = self.checker.check_service(config)
@@ -1021,7 +993,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         )
 
         result = self.checker.check_service(config)
@@ -1039,7 +1011,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="/health",
             timeout=10,
             retries=3,
-            check_type="http"
+            check_type="http",
         )
 
         result = self.checker.check_service(config)
@@ -1057,7 +1029,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         )
 
         result = self.checker.check_service(config)
@@ -1075,7 +1047,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="/ws/events",
             timeout=5,
             retries=3,
-            check_type="websocket"
+            check_type="websocket",
         )
 
         result = self.checker.check_service(config)
@@ -1094,7 +1066,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="/graphql",
             timeout=5,
             retries=3,
-            check_type="graphql"
+            check_type="graphql",
         )
 
         result = self.checker.check_service(config)
@@ -1122,13 +1094,10 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
         self.assertGreaterEqual(summary["total_services"], 0)
         self.assertGreaterEqual(summary["healthy"], 0)
         self.assertGreaterEqual(summary["unhealthy"], 0)
-        self.assertEqual(
-            summary["total_services"],
-            summary["healthy"] + summary["unhealthy"]
-        )
+        self.assertEqual(summary["total_services"], summary["healthy"] + summary["unhealthy"])
 
         # Log report for visibility
-        logger.info(f"Service Availability Report:")
+        logger.info("Service Availability Report:")
         logger.info(f"  Total services: {summary['total_services']}")
         logger.info(f"  Healthy: {summary['healthy']}")
         logger.info(f"  Unhealthy: {summary['unhealthy']}")
@@ -1149,7 +1118,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="/health",
             timeout=2,
             retries=2,
-            check_type="http"
+            check_type="http",
         )
 
         result = self.checker.check_service(config, retries=2)
@@ -1169,7 +1138,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="/health",
             timeout=1,
             retries=1,
-            check_type="http"
+            check_type="http",
         )
 
         result = self.checker.check_service(config)
@@ -1178,8 +1147,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
         self.assertFalse(result.is_healthy())
         self.assertIsNotNone(result.error_message)
         self.assertIn(
-            result.status,
-            [ServiceStatus.UNHEALTHY, ServiceStatus.TIMEOUT, ServiceStatus.ERROR]
+            result.status, [ServiceStatus.UNHEALTHY, ServiceStatus.TIMEOUT, ServiceStatus.ERROR]
         )
 
     def test_service_to_service_communication(self):
@@ -1194,7 +1162,7 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
             health_path="/health",
             timeout=5,
             retries=3,
-            check_type="http"
+            check_type="http",
         )
 
         result = self.checker.check_service(config)
@@ -1217,9 +1185,8 @@ class ComprehensiveServiceAvailabilityTest(DjangoTestCase):
         self.assertIn("details", report)
 
         # Verify each service has details
-        for service_name, service_details in report["details"].items():
+        for _service_name, service_details in report["details"].items():
             self.assertIn("status", service_details)
             self.assertIn("timestamp", service_details)
             self.assertIsInstance(service_details["status"], str)
             self.assertIsInstance(service_details["timestamp"], (int, float))
-

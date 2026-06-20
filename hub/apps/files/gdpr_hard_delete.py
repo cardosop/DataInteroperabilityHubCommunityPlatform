@@ -5,9 +5,11 @@ Mirrors ``purge_deleted_files`` destructive path: best-effort S3 removal,
 ``FILE_PURGED`` audit (with extra ``details``), then ORM ``delete()`` on the
 File row — under ``tenant_context`` and ``transaction.atomic``.
 """
+
 from __future__ import annotations
+
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from django.db import transaction
 from django.utils import timezone
@@ -21,7 +23,7 @@ def hard_purge_file_for_erasure(
     tenant_id_str: str,
     storage: Any,
     reason: str,
-    subject_user_id: Optional[str] = None,
+    subject_user_id: str | None = None,
 ) -> None:
     """
     Delete blob + row; emit ``FILE_PURGED`` with ``reason`` in details.
@@ -112,6 +114,5 @@ def hard_purge_file_for_erasure(
             )
         file_obj.delete()
 
-    with tenant_context(tenant_id_str):
-        with transaction.atomic():
-            _emit_and_delete()
+    with tenant_context(tenant_id_str), transaction.atomic():
+        _emit_and_delete()

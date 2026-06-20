@@ -10,6 +10,7 @@ Static validation tests (no Django, no running services required):
 Run:
     pytest tests/integration/test_prefect_observability.py -v --noconftest
 """
+
 from __future__ import annotations
 
 import re
@@ -28,6 +29,7 @@ _DS_PY = _ROOT / "services" / "prefect-integration" / "deployment_sync.py"
 # -------------------------------------------------------------------
 # Fixtures
 # -------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def alerts_yaml() -> dict:
@@ -63,8 +65,8 @@ def ds_py_source() -> str:
 # 25.21.1 — Metric definitions in main.py
 # -------------------------------------------------------------------
 
-class TestMetricDefinitions:
 
+class TestMetricDefinitions:
     def test_operations_total_counter_defined(self, main_py_source):
         assert '"prefect_deployment_operations_total"' in main_py_source
 
@@ -72,7 +74,8 @@ class TestMetricDefinitions:
         # Find the Counter definition and verify tenant_id is a label
         match = re.search(
             r'Counter\(\s*"prefect_deployment_operations_total".*?\)',
-            main_py_source, re.DOTALL,
+            main_py_source,
+            re.DOTALL,
         )
         assert match, "Counter definition not found"
         assert "tenant_id" in match.group()
@@ -83,7 +86,8 @@ class TestMetricDefinitions:
     def test_duration_histogram_has_buckets(self, main_py_source):
         match = re.search(
             r'Histogram\(\s*"prefect_deployment_duration_seconds".*?\)',
-            main_py_source, re.DOTALL,
+            main_py_source,
+            re.DOTALL,
         )
         assert match, "Histogram definition not found"
         assert "buckets" in match.group()
@@ -100,7 +104,8 @@ class TestMetricDefinitions:
         assert "from prometheus_client import" in main_py_source
 
     def test_circuit_breaker_gauge_initialized_at_startup(
-        self, main_py_source,
+        self,
+        main_py_source,
     ):
         """Both sync and delete circuits must be set to closed
         at module level so Prometheus has data from first scrape."""
@@ -112,8 +117,8 @@ class TestMetricDefinitions:
 # 25.21.1 — Metrics instrumentation
 # -------------------------------------------------------------------
 
-class TestMetricsInstrumentation:
 
+class TestMetricsInstrumentation:
     def test_sync_endpoint_records_success(self, main_py_source):
         assert 'operation="sync", status="success"' in main_py_source
 
@@ -129,13 +134,15 @@ class TestMetricsInstrumentation:
     def test_trigger_endpoint_records_success(self, main_py_source):
         assert re.search(
             r'operation="trigger".*status="success"',
-            main_py_source, re.DOTALL,
+            main_py_source,
+            re.DOTALL,
         )
 
     def test_trigger_endpoint_records_failure(self, main_py_source):
         assert re.search(
             r'operation="trigger".*status="failure"',
-            main_py_source, re.DOTALL,
+            main_py_source,
+            re.DOTALL,
         )
 
     def test_delete_duration_tracked(self, main_py_source):
@@ -157,8 +164,8 @@ class TestMetricsInstrumentation:
 # 25.21.1 — Retry counter in deployment_sync.py
 # -------------------------------------------------------------------
 
-class TestRetryInstrumentation:
 
+class TestRetryInstrumentation:
     def test_retry_counter_incremented(self, ds_py_source):
         assert "prefect_deployment_retries_total" in ds_py_source
 
@@ -170,15 +177,15 @@ class TestRetryInstrumentation:
         assert idx != -1
         # Walk backward to find 'try:'
         before = ds_py_source[:idx]
-        assert "try:" in before[before.rfind("\n\n"):]
+        assert "try:" in before[before.rfind("\n\n") :]
 
 
 # -------------------------------------------------------------------
 # 25.21.1 — Circuit breaker gauge emission
 # -------------------------------------------------------------------
 
-class TestCircuitBreakerGauge:
 
+class TestCircuitBreakerGauge:
     def test_emit_cb_gauge_function_exists(self, cb_py_source):
         assert "def _emit_cb_gauge(" in cb_py_source
 
@@ -189,17 +196,15 @@ class TestCircuitBreakerGauge:
     def test_gauge_emitted_on_half_open(self, cb_py_source):
         assert "_STATE_HALF_OPEN" in cb_py_source
         # Verify _emit_cb_gauge is called near half_open transition
-        assert "_emit_cb_gauge(self.operation, _STATE_HALF_OPEN)" \
-            in cb_py_source
+        assert "_emit_cb_gauge(self.operation, _STATE_HALF_OPEN)" in cb_py_source
 
     def test_gauge_emitted_on_close(self, cb_py_source):
-        assert "_emit_cb_gauge(self.operation, _STATE_CLOSED)" \
-            in cb_py_source
+        assert "_emit_cb_gauge(self.operation, _STATE_CLOSED)" in cb_py_source
 
     def test_gauge_wrapped_in_try_except(self, cb_py_source):
         """Gauge emission must not break circuit breaker."""
         fn_start = cb_py_source.find("def _emit_cb_gauge(")
-        fn_body = cb_py_source[fn_start:fn_start + 500]
+        fn_body = cb_py_source[fn_start : fn_start + 500]
         assert "try:" in fn_body
         assert "except Exception" in fn_body
 
@@ -208,8 +213,8 @@ class TestCircuitBreakerGauge:
 # 25.21.2 — Alert rules in alerts.yml
 # -------------------------------------------------------------------
 
-class TestAlertRules:
 
+class TestAlertRules:
     def test_alerts_yaml_valid(self, alerts_yaml):
         assert isinstance(alerts_yaml, dict)
         assert "groups" in alerts_yaml
@@ -218,16 +223,14 @@ class TestAlertRules:
         assert len(prefect_alert_rules) >= 3
 
     def test_integration_service_down_alert(self, prefect_alert_rules):
-        rule = _find_rule(prefect_alert_rules,
-                          "PrefectIntegrationServiceDown")
+        rule = _find_rule(prefect_alert_rules, "PrefectIntegrationServiceDown")
         assert rule is not None, "Alert not found"
         assert rule["labels"]["severity"] == "critical"
         assert "2m" in rule["for"]
         assert 'up{job="prefect-integration-service"}' in rule["expr"]
 
     def test_high_failure_rate_alert(self, prefect_alert_rules):
-        rule = _find_rule(prefect_alert_rules,
-                          "PrefectDeploymentSyncHighFailureRate")
+        rule = _find_rule(prefect_alert_rules, "PrefectDeploymentSyncHighFailureRate")
         assert rule is not None, "Alert not found"
         assert rule["labels"]["severity"] == "warning"
         assert "5m" in rule["for"]
@@ -247,24 +250,23 @@ class TestAlertRules:
             assert "expr" in rule, f"{name}: missing expr"
             assert "for" in rule, f"{name}: missing for"
             assert "labels" in rule, f"{name}: missing labels"
-            assert "severity" in rule["labels"], \
-                f"{name}: missing severity"
+            assert "severity" in rule["labels"], f"{name}: missing severity"
             assert "annotations" in rule, f"{name}: missing annotations"
-            assert "summary" in rule["annotations"], \
-                f"{name}: missing summary annotation"
-            assert "description" in rule["annotations"], \
-                f"{name}: missing description annotation"
+            assert "summary" in rule["annotations"], f"{name}: missing summary annotation"
+            assert "description" in rule["annotations"], f"{name}: missing description annotation"
 
     def test_all_alerts_have_runbook_url(self, prefect_alert_rules):
         for rule in prefect_alert_rules:
             name = rule.get("alert", "<unnamed>")
-            assert "runbook_url" in rule.get("annotations", {}), \
+            assert "runbook_url" in rule.get("annotations", {}), (
                 f"{name}: missing runbook_url annotation"
+            )
 
 
 # -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
+
 
 def _find_rule(rules: list[dict], alert_name: str):
     for r in rules:

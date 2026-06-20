@@ -5,17 +5,16 @@ Uses pyotp for RFC 6238 TOTP generation/verification. Recovery codes
 are SHA-256 hashed and stored per-user. MFA is enforced at login
 when the tenant has `mfa_required=True`.
 """
+
 from __future__ import annotations
+
 import hashlib
 import secrets
 from datetime import datetime, timedelta
-from typing import List, Tuple
-
-from django.conf import settings
-from django.utils import timezone
 
 import pyotp
-
+from django.conf import settings
+from django.utils import timezone
 
 # ── TOTP configuration ──────────────────────────────────────────────
 
@@ -43,12 +42,9 @@ def verify_totp(secret: str, token: str) -> bool:
     return totp.verify(token, valid_window=1)
 
 
-def generate_recovery_codes() -> List[str]:
+def generate_recovery_codes() -> list[str]:
     """Generate a set of recovery codes. Return plaintext codes (store hashed)."""
-    return [
-        secrets.token_hex(RECOVERY_CODE_LENGTH // 2)
-        for _ in range(RECOVERY_CODE_COUNT)
-    ]
+    return [secrets.token_hex(RECOVERY_CODE_LENGTH // 2) for _ in range(RECOVERY_CODE_COUNT)]
 
 
 def hash_recovery_code(code: str) -> str:
@@ -56,7 +52,7 @@ def hash_recovery_code(code: str) -> str:
     return hashlib.sha256(code.encode()).hexdigest()
 
 
-def verify_recovery_code(stored_hashes: List[str], code: str) -> Tuple[bool, List[str]]:
+def verify_recovery_code(stored_hashes: list[str], code: str) -> tuple[bool, list[str]]:
     """
     Verify a recovery code against stored hashes.
     Returns (valid, remaining_hashes) — consumed code is removed.

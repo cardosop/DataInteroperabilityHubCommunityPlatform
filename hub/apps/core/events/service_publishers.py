@@ -5,11 +5,13 @@ Event publisher mixins for each service to enable event publishing.
 """
 
 import time
-from typing import Any, Dict, Optional, Callable, List
+from collections.abc import Callable
+from typing import Any
+
 import structlog
 
+from .bus import EventPublishError
 from .publisher import EventPublisher
-from .bus import EventBusError, EventPublishError
 
 logger = structlog.get_logger(__name__)
 
@@ -38,10 +40,10 @@ class ContractEventPublisher:
     def publish_contract_created(
         self,
         contract_id: str,
-        asset_id: Optional[str] = None,
-        status: Optional[str] = None,
-        original_format: Optional[str] = None,
-        original_spec_version: Optional[str] = None,
+        asset_id: str | None = None,
+        status: str | None = None,
+        original_format: str | None = None,
+        original_spec_version: str | None = None,
         **kwargs,
     ) -> str:
         """Publish contract.created event."""
@@ -60,9 +62,9 @@ class ContractEventPublisher:
     def publish_contract_updated(
         self,
         contract_id: str,
-        changes: Dict[str, Any],
-        previous_status: Optional[str] = None,
-        new_status: Optional[str] = None,
+        changes: dict[str, Any],
+        previous_status: str | None = None,
+        new_status: str | None = None,
         **kwargs,
     ) -> str:
         """Publish contract.updated event."""
@@ -78,7 +80,7 @@ class ContractEventPublisher:
         )
 
     def publish_contract_deleted(
-        self, contract_id: str, reason: Optional[str] = None, **kwargs
+        self, contract_id: str, reason: str | None = None, **kwargs
     ) -> str:
         """Publish contract.deleted event."""
         from django.utils import timezone
@@ -97,8 +99,8 @@ class ContractEventPublisher:
         self,
         contract_id: str,
         validation_result: bool,
-        validation_errors: Optional[list] = None,
-        validation_warnings: Optional[list] = None,
+        validation_errors: list | None = None,
+        validation_warnings: list | None = None,
         **kwargs,
     ) -> str:
         """Publish contract.validated event."""
@@ -117,7 +119,7 @@ class ContractEventPublisher:
         self,
         contract_id: str,
         normalization_status: str,
-        normalization_errors: Optional[list] = None,
+        normalization_errors: list | None = None,
         **kwargs,
     ) -> str:
         """Publish contract.normalized event."""
@@ -146,10 +148,10 @@ class AssetEventPublisher:
     def publish_asset_created(
         self,
         asset_id: str,
-        name: Optional[str] = None,
-        domain: Optional[str] = None,
-        status: Optional[str] = None,
-        contract_id: Optional[str] = None,
+        name: str | None = None,
+        domain: str | None = None,
+        status: str | None = None,
+        contract_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish asset.created event."""
@@ -168,9 +170,9 @@ class AssetEventPublisher:
     def publish_asset_updated(
         self,
         asset_id: str,
-        changes: Dict[str, Any],
-        previous_status: Optional[str] = None,
-        new_status: Optional[str] = None,
+        changes: dict[str, Any],
+        previous_status: str | None = None,
+        new_status: str | None = None,
         **kwargs,
     ) -> str:
         """Publish asset.updated event."""
@@ -188,9 +190,9 @@ class AssetEventPublisher:
     def publish_asset_activated(
         self,
         asset_id: str,
-        activation_reason: Optional[str] = None,
-        dq_status: Optional[str] = None,
-        compliance_status: Optional[str] = None,
+        activation_reason: str | None = None,
+        dq_status: str | None = None,
+        compliance_status: str | None = None,
         **kwargs,
     ) -> str:
         """Publish asset.activated event."""
@@ -209,12 +211,11 @@ class AssetEventPublisher:
         self,
         asset_id: str,
         marketplace_listing_id: str,
-        pricing_model: Optional[str] = None,
-        license_type: Optional[str] = None,
+        pricing_model: str | None = None,
+        license_type: str | None = None,
         **kwargs,
     ) -> str:
         """Publish asset.published event."""
-        from django.utils import timezone
 
         return self._event_publisher.publish(
             event_type="asset.published",
@@ -228,7 +229,7 @@ class AssetEventPublisher:
         )
 
     def publish_asset_retired(
-        self, asset_id: str, retirement_reason: Optional[str] = None, **kwargs
+        self, asset_id: str, retirement_reason: str | None = None, **kwargs
     ) -> str:
         """Publish asset.retired event."""
         from django.utils import timezone
@@ -260,10 +261,10 @@ class DatasetEventPublisher:
             # Parent doesn't support __init__ with arguments, skip
             pass
         # Set tenant_id and user_id from kwargs if provided
-        if 'tenant_id' in kwargs:
-            self.tenant_id = kwargs['tenant_id']
-        if 'user_id' in kwargs:
-            self.user_id = kwargs['user_id']
+        if "tenant_id" in kwargs:
+            self.tenant_id = kwargs["tenant_id"]
+        if "user_id" in kwargs:
+            self.user_id = kwargs["user_id"]
         self._event_publisher = EventPublisher(
             service_name="dataset_service",
             tenant_id=getattr(self, "tenant_id", None),
@@ -273,10 +274,10 @@ class DatasetEventPublisher:
     def publish_dataset_created(
         self,
         dataset_id: str,
-        asset_id: Optional[str] = None,
-        file_id: Optional[str] = None,
-        format: Optional[str] = None,
-        schema_inferred: Optional[bool] = None,
+        asset_id: str | None = None,
+        file_id: str | None = None,
+        format: str | None = None,
+        schema_inferred: bool | None = None,
         **kwargs,
     ) -> str:
         """Publish dataset.created event."""
@@ -293,7 +294,7 @@ class DatasetEventPublisher:
         )
 
     def publish_dataset_updated(
-        self, dataset_id: str, changes: Dict[str, Any], file_id: Optional[str] = None, **kwargs
+        self, dataset_id: str, changes: dict[str, Any], file_id: str | None = None, **kwargs
     ) -> str:
         """Publish dataset.updated event."""
         return self._event_publisher.publish(
@@ -302,9 +303,7 @@ class DatasetEventPublisher:
             **kwargs,
         )
 
-    def publish_dataset_deleted(
-        self, dataset_id: str, reason: Optional[str] = None, **kwargs
-    ) -> str:
+    def publish_dataset_deleted(self, dataset_id: str, reason: str | None = None, **kwargs) -> str:
         """Publish dataset.deleted event."""
         from django.utils import timezone
 
@@ -322,9 +321,9 @@ class DatasetEventPublisher:
         self,
         dataset_id: str,
         file_id: str,
-        file_size: Optional[int] = None,
-        file_format: Optional[str] = None,
-        upload_duration_ms: Optional[int] = None,
+        file_size: int | None = None,
+        file_format: str | None = None,
+        upload_duration_ms: int | None = None,
         **kwargs,
     ) -> str:
         """Publish dataset.uploaded event."""
@@ -356,8 +355,8 @@ class IngestionEventPublisher:
         self,
         ingestion_id: str,
         source_type: str,
-        source_config: Optional[Dict[str, Any]] = None,
-        scheduled_ingestion_id: Optional[str] = None,
+        source_config: dict[str, Any] | None = None,
+        scheduled_ingestion_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish ingestion.started event."""
@@ -378,8 +377,8 @@ class IngestionEventPublisher:
         files_processed: int,
         files_succeeded: int = 0,
         files_failed: int = 0,
-        duration_ms: Optional[int] = None,
-        datasets_created: Optional[int] = None,
+        duration_ms: int | None = None,
+        datasets_created: int | None = None,
         **kwargs,
     ) -> str:
         """Publish ingestion.completed event."""
@@ -400,8 +399,8 @@ class IngestionEventPublisher:
         self,
         ingestion_id: str,
         error_message: str,
-        error_details: Optional[Dict[str, Any]] = None,
-        retry_count: Optional[int] = None,
+        error_details: dict[str, Any] | None = None,
+        retry_count: int | None = None,
         **kwargs,
     ) -> str:
         """Publish ingestion.failed event."""
@@ -421,8 +420,8 @@ class IngestionEventPublisher:
         ingestion_id: str,
         file_id: str,
         status: str,
-        dataset_id: Optional[str] = None,
-        error_message: Optional[str] = None,
+        dataset_id: str | None = None,
+        error_message: str | None = None,
         **kwargs,
     ) -> str:
         """Publish ingestion.file_processed event."""
@@ -455,7 +454,7 @@ class QualityEventPublisher:
         quality_check_id: str,
         target_type: str,
         target_id: str,
-        rules_count: Optional[int] = None,
+        rules_count: int | None = None,
         **kwargs,
     ) -> str:
         """Publish quality.check.started event."""
@@ -474,9 +473,9 @@ class QualityEventPublisher:
         self,
         quality_check_id: str,
         overall_score: float,
-        rules_passed: Optional[int] = None,
-        rules_failed: Optional[int] = None,
-        duration_ms: Optional[int] = None,
+        rules_passed: int | None = None,
+        rules_failed: int | None = None,
+        duration_ms: int | None = None,
         **kwargs,
     ) -> str:
         """Publish quality.check.completed event."""
@@ -496,7 +495,7 @@ class QualityEventPublisher:
         self,
         quality_check_id: str,
         error_message: str,
-        error_details: Optional[Dict[str, Any]] = None,
+        error_details: dict[str, Any] | None = None,
         **kwargs,
     ) -> str:
         """Publish quality.check.failed event."""
@@ -514,8 +513,8 @@ class QualityEventPublisher:
         self,
         quality_check_id: str,
         anomaly_type: str,
-        anomaly_details: Optional[Dict[str, Any]] = None,
-        severity: Optional[str] = None,
+        anomaly_details: dict[str, Any] | None = None,
+        severity: str | None = None,
         **kwargs,
     ) -> str:
         """Publish quality.anomaly.detected event."""
@@ -547,7 +546,7 @@ class ComplianceEventPublisher:
         compliance_check_id: str,
         target_type: str,
         target_id: str,
-        compliance_frameworks: Optional[list] = None,
+        compliance_frameworks: list | None = None,
         **kwargs,
     ) -> str:
         """Publish compliance.check.started event."""
@@ -566,9 +565,9 @@ class ComplianceEventPublisher:
         self,
         compliance_check_id: str,
         compliance_status: str,
-        frameworks_passed: Optional[list] = None,
-        frameworks_failed: Optional[list] = None,
-        duration_ms: Optional[int] = None,
+        frameworks_passed: list | None = None,
+        frameworks_failed: list | None = None,
+        duration_ms: int | None = None,
         **kwargs,
     ) -> str:
         """Publish compliance.check.completed event."""
@@ -588,7 +587,7 @@ class ComplianceEventPublisher:
         self,
         compliance_check_id: str,
         error_message: str,
-        error_details: Optional[Dict[str, Any]] = None,
+        error_details: dict[str, Any] | None = None,
         **kwargs,
     ) -> str:
         """Publish compliance.check.failed event."""
@@ -606,8 +605,8 @@ class ComplianceEventPublisher:
         self,
         report_id: str,
         report_type: str,
-        compliance_framework: Optional[str] = None,
-        report_format: Optional[str] = None,
+        compliance_framework: str | None = None,
+        report_format: str | None = None,
         **kwargs,
     ) -> str:
         """Publish compliance.report.generated event."""
@@ -642,8 +641,8 @@ class VersionEventPublisher:
         version_id: str,
         resource_type: str,
         resource_id: str,
-        version_number: Optional[str] = None,
-        version_type: Optional[str] = None,
+        version_number: str | None = None,
+        version_type: str | None = None,
         **kwargs,
     ) -> str:
         """Publish version.created event."""
@@ -662,9 +661,9 @@ class VersionEventPublisher:
     def publish_version_updated(
         self,
         version_id: str,
-        changes: Dict[str, Any],
-        previous_version: Optional[str] = None,
-        new_version: Optional[str] = None,
+        changes: dict[str, Any],
+        previous_version: str | None = None,
+        new_version: str | None = None,
         **kwargs,
     ) -> str:
         """Publish version.updated event."""
@@ -680,7 +679,7 @@ class VersionEventPublisher:
         )
 
     def publish_version_rolled_back(
-        self, version_id: str, target_version: str, rollback_reason: Optional[str] = None, **kwargs
+        self, version_id: str, target_version: str, rollback_reason: str | None = None, **kwargs
     ) -> str:
         """Publish version.rolled_back event."""
         return self._event_publisher.publish(
@@ -720,10 +719,10 @@ class VersioningEventPublisher:
         version_id: str,
         resource_type: str,
         resource_id: str,
-        version_number: Optional[str] = None,
-        version_type: Optional[str] = None,
-        semantic_version: Optional[str] = None,
-        parent_version_id: Optional[str] = None,
+        version_number: str | None = None,
+        version_type: str | None = None,
+        semantic_version: str | None = None,
+        parent_version_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish version.created event."""
@@ -746,7 +745,11 @@ class VersioningEventPublisher:
         default_tags = ["versioning", "version"]
         custom_tags = kwargs.pop("tags", [])
         if custom_tags:
-            tags = list(set(default_tags + (custom_tags if isinstance(custom_tags, list) else [custom_tags])))
+            tags = list(
+                set(
+                    default_tags + (custom_tags if isinstance(custom_tags, list) else [custom_tags])
+                )
+            )
         else:
             tags = default_tags
 
@@ -760,11 +763,11 @@ class VersioningEventPublisher:
     def publish_version_updated(
         self,
         version_id: str,
-        changes: Dict[str, Any],
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        previous_version: Optional[str] = None,
-        new_version: Optional[str] = None,
+        changes: dict[str, Any],
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        previous_version: str | None = None,
+        new_version: str | None = None,
         **kwargs,
     ) -> str:
         """Publish version.updated event."""
@@ -785,7 +788,11 @@ class VersioningEventPublisher:
         default_tags = ["versioning", "version"]
         custom_tags = kwargs.pop("tags", [])
         if custom_tags:
-            tags = list(set(default_tags + (custom_tags if isinstance(custom_tags, list) else [custom_tags])))
+            tags = list(
+                set(
+                    default_tags + (custom_tags if isinstance(custom_tags, list) else [custom_tags])
+                )
+            )
         else:
             tags = default_tags
 
@@ -801,7 +808,7 @@ class VersioningEventPublisher:
         version_id: str,
         resource_type: str,
         resource_id: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish version.deleted event."""
@@ -820,7 +827,11 @@ class VersioningEventPublisher:
         default_tags = ["versioning", "version"]
         custom_tags = kwargs.pop("tags", [])
         if custom_tags:
-            tags = list(set(default_tags + (custom_tags if isinstance(custom_tags, list) else [custom_tags])))
+            tags = list(
+                set(
+                    default_tags + (custom_tags if isinstance(custom_tags, list) else [custom_tags])
+                )
+            )
         else:
             tags = default_tags
 
@@ -838,7 +849,7 @@ class VersioningEventPublisher:
         resource_id: str,
         promoted_from: str,
         promoted_to: str,
-        promotion_reason: Optional[str] = None,
+        promotion_reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish version.promoted event."""
@@ -856,7 +867,11 @@ class VersioningEventPublisher:
         default_tags = ["versioning", "version"]
         custom_tags = kwargs.pop("tags", [])
         if custom_tags:
-            tags = list(set(default_tags + (custom_tags if isinstance(custom_tags, list) else [custom_tags])))
+            tags = list(
+                set(
+                    default_tags + (custom_tags if isinstance(custom_tags, list) else [custom_tags])
+                )
+            )
         else:
             tags = default_tags
 
@@ -894,8 +909,8 @@ class AccessEventPublisher:
         access_request_id: str,
         resource_type: str,
         resource_id: str,
-        requester_id: Optional[str] = None,
-        request_reason: Optional[str] = None,
+        requester_id: str | None = None,
+        request_reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish access.requested event."""
@@ -916,7 +931,7 @@ class AccessEventPublisher:
         access_request_id: str,
         resource_type: str,
         resource_id: str,
-        granted_by: Optional[str] = None,
+        granted_by: str | None = None,
         **kwargs,
     ) -> str:
         """Publish access.granted event."""
@@ -939,8 +954,8 @@ class AccessEventPublisher:
         access_request_id: str,
         resource_type: str,
         resource_id: str,
-        revoked_by: Optional[str] = None,
-        revocation_reason: Optional[str] = None,
+        revoked_by: str | None = None,
+        revocation_reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish access.revoked event."""
@@ -963,7 +978,7 @@ class AccessEventPublisher:
         self,
         access_request_id: str,
         certification_type: str,
-        certified_by: Optional[str] = None,
+        certified_by: str | None = None,
         **kwargs,
     ) -> str:
         """Publish access.certified event."""
@@ -993,7 +1008,7 @@ class MarketplaceEventPublisher:
         )
 
     def publish_listing_published(
-        self, listing_id: str, asset_id: str, pricing_model: Optional[str] = None, **kwargs
+        self, listing_id: str, asset_id: str, pricing_model: str | None = None, **kwargs
     ) -> str:
         """Publish marketplace.listing.published event."""
         from django.utils import timezone
@@ -1010,7 +1025,7 @@ class MarketplaceEventPublisher:
         )
 
     def publish_listing_unpublished(
-        self, listing_id: str, reason: Optional[str] = None, **kwargs
+        self, listing_id: str, reason: str | None = None, **kwargs
     ) -> str:
         """Publish marketplace.listing.unpublished event."""
         from django.utils import timezone
@@ -1030,8 +1045,8 @@ class MarketplaceEventPublisher:
         order_id: str,
         listing_id: str,
         buyer_id: str,
-        order_amount: Optional[float] = None,
-        currency: Optional[str] = None,
+        order_amount: float | None = None,
+        currency: str | None = None,
         **kwargs,
     ) -> str:
         """Publish marketplace.order.created event."""
@@ -1048,7 +1063,7 @@ class MarketplaceEventPublisher:
         )
 
     def publish_order_approved(
-        self, order_id: str, approved_by: Optional[str] = None, **kwargs
+        self, order_id: str, approved_by: str | None = None, **kwargs
     ) -> str:
         """Publish marketplace.order.approved event."""
         from django.utils import timezone
@@ -1066,8 +1081,8 @@ class MarketplaceEventPublisher:
     def publish_order_rejected(
         self,
         order_id: str,
-        rejected_by: Optional[str] = None,
-        rejection_reason: Optional[str] = None,
+        rejected_by: str | None = None,
+        rejection_reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish marketplace.order.rejected event."""
@@ -1085,7 +1100,7 @@ class MarketplaceEventPublisher:
         )
 
     def publish_order_fulfilled(
-        self, order_id: str, entitlement_id: Optional[str] = None, **kwargs
+        self, order_id: str, entitlement_id: str | None = None, **kwargs
     ) -> str:
         """Publish marketplace.order.fulfilled event."""
         from django.utils import timezone
@@ -1105,7 +1120,7 @@ class MarketplaceEventPublisher:
         entitlement_id: str,
         order_id: str,
         user_id: str,
-        expires_at: Optional[str] = None,
+        expires_at: str | None = None,
         **kwargs,
     ) -> str:
         """Publish marketplace.entitlement.granted event."""
@@ -1126,8 +1141,8 @@ class MarketplaceEventPublisher:
     def publish_entitlement_revoked(
         self,
         entitlement_id: str,
-        revoked_by: Optional[str] = None,
-        revocation_reason: Optional[str] = None,
+        revoked_by: str | None = None,
+        revocation_reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish marketplace.entitlement.revoked event."""
@@ -1160,10 +1175,10 @@ class WorkflowEventPublisher:
         self,
         workflow_instance_id: str,
         workflow_name: str,
-        workflow_version: Optional[str] = None,
-        input_data: Optional[Dict[str, Any]] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        workflow_version: str | None = None,
+        input_data: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish workflow.created event."""
@@ -1184,10 +1199,10 @@ class WorkflowEventPublisher:
         self,
         workflow_instance_id: str,
         workflow_name: str,
-        workflow_version: Optional[str] = None,
-        input_data: Optional[Dict[str, Any]] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        workflow_version: str | None = None,
+        input_data: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish workflow.started event."""
@@ -1208,10 +1223,10 @@ class WorkflowEventPublisher:
         self,
         workflow_instance_id: str,
         workflow_name: str,
-        output_data: Optional[Dict[str, Any]] = None,
-        duration_ms: Optional[int] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        output_data: dict[str, Any] | None = None,
+        duration_ms: int | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish workflow.completed event."""
@@ -1233,10 +1248,10 @@ class WorkflowEventPublisher:
         workflow_instance_id: str,
         workflow_name: str,
         error_message: str,
-        error_details: Optional[Dict[str, Any]] = None,
-        failed_step_index: Optional[int] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        error_details: dict[str, Any] | None = None,
+        failed_step_index: int | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish workflow.failed event."""
@@ -1258,10 +1273,10 @@ class WorkflowEventPublisher:
         self,
         workflow_instance_id: str,
         workflow_name: str,
-        cancelled_by: Optional[str] = None,
-        cancellation_reason: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        cancelled_by: str | None = None,
+        cancellation_reason: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish workflow.cancelled event."""
@@ -1283,12 +1298,12 @@ class WorkflowEventPublisher:
         workflow_instance_id: str,
         step_index: int,
         step_name: str,
-        step_type: Optional[str] = None,
-        progress_percentage: Optional[float] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        validation_status: Optional[str] = None,
-        validation_context: Optional[Dict[str, Any]] = None,
+        step_type: str | None = None,
+        progress_percentage: float | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        validation_status: str | None = None,
+        validation_context: dict[str, Any] | None = None,
         **kwargs,
     ) -> str:
         """Publish workflow.step.started event."""
@@ -1299,13 +1314,13 @@ class WorkflowEventPublisher:
             "step_type": step_type,
             "progress_percentage": progress_percentage,
         }
-        
+
         # Add validation context if provided
         if validation_status is not None:
             data["validation_status"] = validation_status
         if validation_context is not None:
             data["validation_context"] = validation_context
-        
+
         return self._event_publisher.publish(
             event_type="workflow.step.started",
             data=data,
@@ -1319,13 +1334,13 @@ class WorkflowEventPublisher:
         workflow_instance_id: str,
         step_index: int,
         step_name: str,
-        output_data: Optional[Dict[str, Any]] = None,
-        duration_ms: Optional[int] = None,
-        progress_percentage: Optional[float] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        validation_status: Optional[str] = None,
-        validation_context: Optional[Dict[str, Any]] = None,
+        output_data: dict[str, Any] | None = None,
+        duration_ms: int | None = None,
+        progress_percentage: float | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        validation_status: str | None = None,
+        validation_context: dict[str, Any] | None = None,
         **kwargs,
     ) -> str:
         """Publish workflow.step.completed event."""
@@ -1337,13 +1352,13 @@ class WorkflowEventPublisher:
             "duration_ms": duration_ms,
             "progress_percentage": progress_percentage,
         }
-        
+
         # Add validation context if provided
         if validation_status is not None:
             data["validation_status"] = validation_status
         if validation_context is not None:
             data["validation_context"] = validation_context
-        
+
         return self._event_publisher.publish(
             event_type="workflow.step.completed",
             data=data,
@@ -1358,14 +1373,14 @@ class WorkflowEventPublisher:
         step_index: int,
         step_name: str,
         error_message: str,
-        error_details: Optional[Dict[str, Any]] = None,
-        retry_count: Optional[int] = None,
-        duration_ms: Optional[int] = None,
-        progress_percentage: Optional[float] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        validation_status: Optional[str] = None,
-        validation_context: Optional[Dict[str, Any]] = None,
+        error_details: dict[str, Any] | None = None,
+        retry_count: int | None = None,
+        duration_ms: int | None = None,
+        progress_percentage: float | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        validation_status: str | None = None,
+        validation_context: dict[str, Any] | None = None,
         **kwargs,
     ) -> str:
         """Publish workflow.step.failed event."""
@@ -1379,13 +1394,13 @@ class WorkflowEventPublisher:
             "duration_ms": duration_ms,
             "progress_percentage": progress_percentage,
         }
-        
+
         # Add validation context if provided
         if validation_status is not None:
             data["validation_status"] = validation_status
         if validation_context is not None:
             data["validation_context"] = validation_context
-        
+
         return self._event_publisher.publish(
             event_type="workflow.step.failed",
             data=data,
@@ -1447,21 +1462,35 @@ class ODPSEventPublisher:
 
         # Transient error indicators
         transient_keywords = [
-            'timeout', 'timed out', 'connection', 'unavailable', 'network',
-            'temporary', 'retry', 'service unavailable', '503', '502', '504',
-            'redis', 'connection refused', 'connection reset', 'broken pipe',
-            'connection pool', 'socket', 'errno'
+            "timeout",
+            "timed out",
+            "connection",
+            "unavailable",
+            "network",
+            "temporary",
+            "retry",
+            "service unavailable",
+            "503",
+            "502",
+            "504",
+            "redis",
+            "connection refused",
+            "connection reset",
+            "broken pipe",
+            "connection pool",
+            "socket",
+            "errno",
         ]
 
         # Non-retryable error types
         non_retryable_errors = [
-            'ValidationError',
-            'PermissionDenied',
-            'AuthenticationFailed',
-            'NotFound',
-            'ValueError',
-            'TypeError',
-            'AttributeError',
+            "ValidationError",
+            "PermissionDenied",
+            "AuthenticationFailed",
+            "NotFound",
+            "ValueError",
+            "TypeError",
+            "AttributeError",
         ]
 
         # Don't retry on non-retryable error types
@@ -1477,8 +1506,8 @@ class ODPSEventPublisher:
         publish_func: Callable[[], str],
         max_retries: int = 3,
         base_delay: float = 1.0,
-        enable_graceful_degradation: bool = True
-    ) -> Optional[str]:
+        enable_graceful_degradation: bool = True,
+    ) -> str | None:
         """
         Publish event with retry logic and graceful error handling.
 
@@ -1510,7 +1539,7 @@ class ODPSEventPublisher:
                         event_type=event_type,
                         retry_count=retry_count,
                         event_id=event_id,
-                        message=f"Successfully published {event_type} after {retry_count} retries"
+                        message=f"Successfully published {event_type} after {retry_count} retries",
                     )
 
                 return event_id
@@ -1528,7 +1557,7 @@ class ODPSEventPublisher:
                         event_type=event_type,
                         error=str(e),
                         error_type=type(e).__name__,
-                        message=f"Non-transient error publishing {event_type}, not retrying"
+                        message=f"Non-transient error publishing {event_type}, not retrying",
                     )
 
                     if enable_graceful_degradation:
@@ -1537,7 +1566,7 @@ class ODPSEventPublisher:
                             "odps_event_publish_graceful_degradation",
                             event_type=event_type,
                             error=str(e),
-                            message=f"Event publishing failed for {event_type} but continuing (graceful degradation)"
+                            message=f"Event publishing failed for {event_type} but continuing (graceful degradation)",
                         )
                         return None
                     else:
@@ -1553,7 +1582,7 @@ class ODPSEventPublisher:
                         max_retries=max_retries,
                         error=str(e),
                         error_type=type(e).__name__,
-                        message=f"Failed to publish {event_type} after {max_retries} retries"
+                        message=f"Failed to publish {event_type} after {max_retries} retries",
                     )
 
                     if enable_graceful_degradation:
@@ -1563,7 +1592,7 @@ class ODPSEventPublisher:
                             event_type=event_type,
                             retry_count=retry_count,
                             error=str(e),
-                            message=f"Event publishing failed for {event_type} after {max_retries} retries but continuing (graceful degradation)"
+                            message=f"Event publishing failed for {event_type} after {max_retries} retries but continuing (graceful degradation)",
                         )
                         return None
                     else:
@@ -1572,7 +1601,7 @@ class ODPSEventPublisher:
                         ) from e
 
                 # Calculate exponential backoff delay
-                delay = base_delay * (2 ** retry_count)
+                delay = base_delay * (2**retry_count)
 
                 # Log retry attempt
                 logger.warning(
@@ -1583,7 +1612,7 @@ class ODPSEventPublisher:
                     delay=delay,
                     error=str(e),
                     error_type=type(e).__name__,
-                    message=f"Retrying {event_type} publish (attempt {retry_count + 1}/{max_retries + 1}) after {delay}s"
+                    message=f"Retrying {event_type} publish (attempt {retry_count + 1}/{max_retries + 1}) after {delay}s",
                 )
 
                 # Wait before retry
@@ -1600,7 +1629,7 @@ class ODPSEventPublisher:
                     error=str(e),
                     error_type=type(e).__name__,
                     exc_info=True,
-                    message=f"Unexpected error publishing {event_type}"
+                    message=f"Unexpected error publishing {event_type}",
                 )
 
                 if enable_graceful_degradation:
@@ -1609,13 +1638,11 @@ class ODPSEventPublisher:
                         "odps_event_publish_graceful_degradation",
                         event_type=event_type,
                         error=str(e),
-                        message=f"Event publishing failed for {event_type} but continuing (graceful degradation)"
+                        message=f"Event publishing failed for {event_type} but continuing (graceful degradation)",
                     )
                     return None
                 else:
-                    raise EventPublishError(
-                        f"Unexpected error publishing {event_type}: {e}"
-                    ) from e
+                    raise EventPublishError(f"Unexpected error publishing {event_type}: {e}") from e
 
         # Should not reach here, but handle just in case
         if enable_graceful_degradation:
@@ -1623,23 +1650,21 @@ class ODPSEventPublisher:
                 "odps_event_publish_graceful_degradation",
                 event_type=event_type,
                 error=str(last_error) if last_error else "Unknown error",
-                message=f"Event publishing failed for {event_type} but continuing (graceful degradation)"
+                message=f"Event publishing failed for {event_type} but continuing (graceful degradation)",
             )
             return None
         else:
-            raise EventPublishError(
-                f"Failed to publish {event_type}: {last_error}"
-            ) from last_error
+            raise EventPublishError(f"Failed to publish {event_type}: {last_error}") from last_error
 
     def publish_odps_created(
         self,
         contract_id: str,
-        asset_id: Optional[str] = None,
-        status: Optional[str] = None,
-        odps_version: Optional[str] = None,
-        original_format: Optional[str] = None,
+        asset_id: str | None = None,
+        status: str | None = None,
+        odps_version: str | None = None,
+        original_format: str | None = None,
         **kwargs,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Publish odps.created event with retry logic and graceful error handling.
 
@@ -1650,6 +1675,7 @@ class ODPSEventPublisher:
         Returns:
             Event ID if successful, None if graceful degradation occurred
         """
+
         def _publish():
             return self._event_publisher.publish(
                 event_type="odps.created",
@@ -1667,23 +1693,24 @@ class ODPSEventPublisher:
             event_type="odps.created",
             publish_func=_publish,
             max_retries=3,
-            enable_graceful_degradation=True
+            enable_graceful_degradation=True,
         )
 
     def publish_odps_updated(
         self,
         contract_id: str,
-        changes: Dict[str, Any],
-        previous_status: Optional[str] = None,
-        new_status: Optional[str] = None,
+        changes: dict[str, Any],
+        previous_status: str | None = None,
+        new_status: str | None = None,
         **kwargs,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Publish odps.updated event with retry logic and graceful error handling.
 
         Returns:
             Event ID if successful, None if graceful degradation occurred
         """
+
         def _publish():
             return self._event_publisher.publish(
                 event_type="odps.updated",
@@ -1700,12 +1727,12 @@ class ODPSEventPublisher:
             event_type="odps.updated",
             publish_func=_publish,
             max_retries=3,
-            enable_graceful_degradation=True
+            enable_graceful_degradation=True,
         )
 
     def publish_odps_deleted(
-        self, contract_id: str, reason: Optional[str] = None, **kwargs
-    ) -> Optional[str]:
+        self, contract_id: str, reason: str | None = None, **kwargs
+    ) -> str | None:
         """
         Publish odps.deleted event with retry logic and graceful error handling.
 
@@ -1729,23 +1756,24 @@ class ODPSEventPublisher:
             event_type="odps.deleted",
             publish_func=_publish,
             max_retries=3,
-            enable_graceful_degradation=True
+            enable_graceful_degradation=True,
         )
 
     def publish_odps_normalized(
         self,
         contract_id: str,
         normalization_status: str,
-        normalization_errors: Optional[list] = None,
-        odps_version: Optional[str] = None,
+        normalization_errors: list | None = None,
+        odps_version: str | None = None,
         **kwargs,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Publish odps.normalized event with retry logic and graceful error handling.
 
         Returns:
             Event ID if successful, None if graceful degradation occurred
         """
+
         def _publish():
             return self._event_publisher.publish(
                 event_type="odps.normalized",
@@ -1762,22 +1790,23 @@ class ODPSEventPublisher:
             event_type="odps.normalized",
             publish_func=_publish,
             max_retries=3,
-            enable_graceful_degradation=True
+            enable_graceful_degradation=True,
         )
 
     def publish_odps_linked(
         self,
         odps_contract_id: str,
         odcs_contract_id: str,
-        link_type: Optional[str] = None,
+        link_type: str | None = None,
         **kwargs,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Publish odps.linked event with retry logic and graceful error handling.
 
         Returns:
             Event ID if successful, None if graceful degradation occurred
         """
+
         def _publish():
             return self._event_publisher.publish(
                 event_type="odps.linked",
@@ -1793,22 +1822,23 @@ class ODPSEventPublisher:
             event_type="odps.linked",
             publish_func=_publish,
             max_retries=3,
-            enable_graceful_degradation=True
+            enable_graceful_degradation=True,
         )
 
     def publish_odps_unlinked(
         self,
         odps_contract_id: str,
         odcs_contract_id: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
         **kwargs,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Publish odps.unlinked event with retry logic and graceful error handling.
 
         Returns:
             Event ID if successful, None if graceful degradation occurred
         """
+
         def _publish():
             return self._event_publisher.publish(
                 event_type="odps.unlinked",
@@ -1824,7 +1854,7 @@ class ODPSEventPublisher:
             event_type="odps.unlinked",
             publish_func=_publish,
             max_retries=3,
-            enable_graceful_degradation=True
+            enable_graceful_degradation=True,
         )
 
     def publish_odps_ref_resolved(
@@ -1833,16 +1863,17 @@ class ODPSEventPublisher:
         ref_path: str,
         ref_type: str,
         resolution_status: str,
-        ref_count: Optional[int] = None,
-        duration_ms: Optional[int] = None,
+        ref_count: int | None = None,
+        duration_ms: int | None = None,
         **kwargs,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Publish odps.ref.resolved event with retry logic and graceful error handling.
 
         Returns:
             Event ID if successful, None if graceful degradation occurred
         """
+
         def _publish():
             return self._event_publisher.publish(
                 event_type="odps.ref.resolved",
@@ -1861,7 +1892,7 @@ class ODPSEventPublisher:
             event_type="odps.ref.resolved",
             publish_func=_publish,
             max_retries=3,
-            enable_graceful_degradation=True
+            enable_graceful_degradation=True,
         )
 
     def publish_odps_ref_failed(
@@ -1870,16 +1901,17 @@ class ODPSEventPublisher:
         ref_path: str,
         ref_type: str,
         error_message: str,
-        error_code: Optional[str] = None,
-        error_details: Optional[Dict[str, Any]] = None,
+        error_code: str | None = None,
+        error_details: dict[str, Any] | None = None,
         **kwargs,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Publish odps.ref.failed event with retry logic and graceful error handling.
 
         Returns:
             Event ID if successful, None if graceful degradation occurred
         """
+
         def _publish():
             return self._event_publisher.publish(
                 event_type="odps.ref.failed",
@@ -1898,23 +1930,24 @@ class ODPSEventPublisher:
             event_type="odps.ref.failed",
             publish_func=_publish,
             max_retries=3,
-            enable_graceful_degradation=True
+            enable_graceful_degradation=True,
         )
 
     def publish_odps_export_started(
         self,
         contract_id: str,
         export_format: str,
-        output_format: Optional[str] = None,
-        odps_version: Optional[str] = None,
+        output_format: str | None = None,
+        odps_version: str | None = None,
         **kwargs,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Publish odps.export.started event with retry logic and graceful error handling.
 
         Returns:
             Event ID if successful, None if graceful degradation occurred
         """
+
         def _publish():
             return self._event_publisher.publish(
                 event_type="odps.export.started",
@@ -1931,24 +1964,25 @@ class ODPSEventPublisher:
             event_type="odps.export.started",
             publish_func=_publish,
             max_retries=3,
-            enable_graceful_degradation=True
+            enable_graceful_degradation=True,
         )
 
     def publish_odps_export_completed(
         self,
         contract_id: str,
         export_format: str,
-        output_format: Optional[str] = None,
-        file_size: Optional[int] = None,
-        duration_ms: Optional[int] = None,
+        output_format: str | None = None,
+        file_size: int | None = None,
+        duration_ms: int | None = None,
         **kwargs,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Publish odps.export.completed event with retry logic and graceful error handling.
 
         Returns:
             Event ID if successful, None if graceful degradation occurred
         """
+
         def _publish():
             return self._event_publisher.publish(
                 event_type="odps.export.completed",
@@ -1966,7 +2000,7 @@ class ODPSEventPublisher:
             event_type="odps.export.completed",
             publish_func=_publish,
             max_retries=3,
-            enable_graceful_degradation=True
+            enable_graceful_degradation=True,
         )
 
     def publish_odps_export_failed(
@@ -1974,15 +2008,16 @@ class ODPSEventPublisher:
         contract_id: str,
         export_format: str,
         error_message: str,
-        error_details: Optional[Dict[str, Any]] = None,
+        error_details: dict[str, Any] | None = None,
         **kwargs,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Publish odps.export.failed event with retry logic and graceful error handling.
 
         Returns:
             Event ID if successful, None if graceful degradation occurred
         """
+
         def _publish():
             return self._event_publisher.publish(
                 event_type="odps.export.failed",
@@ -1999,7 +2034,7 @@ class ODPSEventPublisher:
             event_type="odps.export.failed",
             publish_func=_publish,
             max_retries=3,
-            enable_graceful_degradation=True
+            enable_graceful_degradation=True,
         )
 
     # ODPS Workflow Event Publishing Methods (Task 7.1.4)
@@ -2007,20 +2042,21 @@ class ODPSEventPublisher:
         self,
         workflow_instance_id: str,
         workflow_name: str,
-        workflow_version: Optional[str] = None,
-        input_data: Optional[Dict[str, Any]] = None,
-        odps_version: Optional[str] = None,
-        progress_percentage: Optional[float] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        workflow_version: str | None = None,
+        input_data: dict[str, Any] | None = None,
+        odps_version: str | None = None,
+        progress_percentage: float | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Publish odps.workflow.started event with retry logic and graceful error handling.
 
         Returns:
             Event ID if successful, None if graceful degradation occurred
         """
+
         def _publish():
             return self._event_publisher.publish(
                 event_type="odps.workflow.started",
@@ -2041,29 +2077,30 @@ class ODPSEventPublisher:
             event_type="odps.workflow.started",
             publish_func=_publish,
             max_retries=3,
-            enable_graceful_degradation=True
+            enable_graceful_degradation=True,
         )
 
     def publish_odps_workflow_completed(
         self,
         workflow_instance_id: str,
         workflow_name: str,
-        workflow_version: Optional[str] = None,
-        output_data: Optional[Dict[str, Any]] = None,
-        duration_ms: Optional[int] = None,
-        odps_contract_id: Optional[str] = None,
-        odcs_contract_id: Optional[str] = None,
-        progress_percentage: Optional[float] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        workflow_version: str | None = None,
+        output_data: dict[str, Any] | None = None,
+        duration_ms: int | None = None,
+        odps_contract_id: str | None = None,
+        odcs_contract_id: str | None = None,
+        progress_percentage: float | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Publish odps.workflow.completed event with retry logic and graceful error handling.
 
         Returns:
             Event ID if successful, None if graceful degradation occurred
         """
+
         def _publish():
             return self._event_publisher.publish(
                 event_type="odps.workflow.completed",
@@ -2086,7 +2123,7 @@ class ODPSEventPublisher:
             event_type="odps.workflow.completed",
             publish_func=_publish,
             max_retries=3,
-            enable_graceful_degradation=True
+            enable_graceful_degradation=True,
         )
 
     def publish_odps_workflow_failed(
@@ -2094,13 +2131,13 @@ class ODPSEventPublisher:
         workflow_instance_id: str,
         workflow_name: str,
         error_message: str,
-        workflow_version: Optional[str] = None,
-        error_details: Optional[Dict[str, Any]] = None,
-        failed_step_index: Optional[int] = None,
-        failed_step_name: Optional[str] = None,
-        progress_percentage: Optional[float] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        workflow_version: str | None = None,
+        error_details: dict[str, Any] | None = None,
+        failed_step_index: int | None = None,
+        failed_step_name: str | None = None,
+        progress_percentage: float | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish odps.workflow.failed event."""
@@ -2126,13 +2163,13 @@ class ODPSEventPublisher:
         workflow_instance_id: str,
         step_index: int,
         step_name: str,
-        step_type: Optional[str] = None,
-        output_data: Optional[Dict[str, Any]] = None,
-        duration_ms: Optional[int] = None,
-        progress_percentage: Optional[float] = None,
-        odps_version: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        step_type: str | None = None,
+        output_data: dict[str, Any] | None = None,
+        duration_ms: int | None = None,
+        progress_percentage: float | None = None,
+        odps_version: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish odps.workflow.step.completed event."""
@@ -2159,12 +2196,12 @@ class ODPSEventPublisher:
         step_index: int,
         step_name: str,
         error_message: str,
-        error_details: Optional[Dict[str, Any]] = None,
-        retry_count: Optional[int] = None,
-        duration_ms: Optional[int] = None,
-        progress_percentage: Optional[float] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        error_details: dict[str, Any] | None = None,
+        retry_count: int | None = None,
+        duration_ms: int | None = None,
+        progress_percentage: float | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish odps.workflow.step.failed event."""
@@ -2190,12 +2227,12 @@ class ODPSEventPublisher:
         workflow_instance_id: str,
         workflow_name: str,
         progress_percentage: float,
-        workflow_version: Optional[str] = None,
-        current_step_index: Optional[int] = None,
-        current_step_name: Optional[str] = None,
-        total_steps: Optional[int] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        workflow_version: str | None = None,
+        current_step_index: int | None = None,
+        current_step_name: str | None = None,
+        total_steps: int | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish odps.workflow.progress event."""
@@ -2217,15 +2254,15 @@ class ODPSEventPublisher:
 
     def publish_odps_creation_progress(
         self,
-        contract_id: Optional[str] = None,
-        workflow_instance_id: Optional[str] = None,
+        contract_id: str | None = None,
+        workflow_instance_id: str | None = None,
         progress_percentage: float = 0.0,
-        current_step: Optional[str] = None,
-        total_steps: Optional[int] = None,
-        step_index: Optional[int] = None,
-        status_message: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        current_step: str | None = None,
+        total_steps: int | None = None,
+        step_index: int | None = None,
+        status_message: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish odps.creation.progress event."""
@@ -2247,17 +2284,17 @@ class ODPSEventPublisher:
 
     def publish_odps_normalization_progress(
         self,
-        contract_id: Optional[str] = None,
+        contract_id: str | None = None,
         progress_percentage: float = 0.0,
-        current_phase: Optional[str] = None,
-        total_phases: Optional[int] = None,
-        phase_index: Optional[int] = None,
-        items_processed: Optional[int] = None,
-        items_total: Optional[int] = None,
-        status_message: Optional[str] = None,
-        odps_version: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        current_phase: str | None = None,
+        total_phases: int | None = None,
+        phase_index: int | None = None,
+        items_processed: int | None = None,
+        items_total: int | None = None,
+        status_message: str | None = None,
+        odps_version: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish odps.normalization.progress event."""
@@ -2281,15 +2318,15 @@ class ODPSEventPublisher:
 
     def publish_odps_ref_progress(
         self,
-        contract_id: Optional[str] = None,
+        contract_id: str | None = None,
         progress_percentage: float = 0.0,
-        refs_processed: Optional[int] = None,
-        refs_total: Optional[int] = None,
-        current_ref_path: Optional[str] = None,
-        ref_type: Optional[str] = None,
-        status_message: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        refs_processed: int | None = None,
+        refs_total: int | None = None,
+        current_ref_path: str | None = None,
+        ref_type: str | None = None,
+        status_message: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish odps.ref.progress event."""
@@ -2314,14 +2351,14 @@ class ODPSEventPublisher:
         odps_contract_id: str,
         odcs_contract_id: str,
         status: str,
-        progress_percentage: Optional[float] = None,
-        current_phase: Optional[str] = None,
-        validation_passed: Optional[bool] = None,
-        validation_errors: Optional[list] = None,
-        link_type: Optional[str] = None,
-        status_message: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        progress_percentage: float | None = None,
+        current_phase: str | None = None,
+        validation_passed: bool | None = None,
+        validation_errors: list | None = None,
+        link_type: str | None = None,
+        status_message: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish odps.linking.status event."""
@@ -2348,13 +2385,13 @@ class ODPSEventPublisher:
         contract_id: str,
         export_format: str,
         progress_percentage: float = 0.0,
-        current_phase: Optional[str] = None,
-        bytes_processed: Optional[int] = None,
-        bytes_total: Optional[int] = None,
-        status_message: Optional[str] = None,
-        odps_version: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        current_phase: str | None = None,
+        bytes_processed: int | None = None,
+        bytes_total: int | None = None,
+        status_message: str | None = None,
+        odps_version: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish odps.export.progress event."""
@@ -2377,15 +2414,15 @@ class ODPSEventPublisher:
 
     def publish_odps_semantic_mapping_progress(
         self,
-        contract_id: Optional[str] = None,
+        contract_id: str | None = None,
         progress_percentage: float = 0.0,
-        current_phase: Optional[str] = None,
-        phase_index: Optional[int] = None,
-        total_phases: Optional[int] = None,
-        status_message: Optional[str] = None,
-        odps_version: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        current_phase: str | None = None,
+        phase_index: int | None = None,
+        total_phases: int | None = None,
+        status_message: str | None = None,
+        odps_version: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish odps.semantic.mapping.progress event."""
@@ -2408,14 +2445,14 @@ class ODPSEventPublisher:
     def publish_odps_semantic_mapped(
         self,
         contract_id: str,
-        semantic_resource_id: Optional[str] = None,
-        semantic_uri: Optional[str] = None,
-        triples_count: Optional[int] = None,
-        semantic_status: Optional[str] = None,
-        duration_ms: Optional[int] = None,
-        odps_version: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        semantic_resource_id: str | None = None,
+        semantic_uri: str | None = None,
+        triples_count: int | None = None,
+        semantic_status: str | None = None,
+        duration_ms: int | None = None,
+        odps_version: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish odps.semantic.mapped event."""
@@ -2434,6 +2471,8 @@ class ODPSEventPublisher:
             user_id=user_id,
             **kwargs,
         )
+
+
 class DataMeshEventPublisher:
     """Event publisher mixin for DataMeshService."""
 
@@ -2460,8 +2499,8 @@ class DataMeshEventPublisher:
         internal_event_type: str,
         resource_type: str,
         resource_id: str,
-        event_data: Dict[str, Any],
-        tenant_id: Optional[str] = None,
+        event_data: dict[str, Any],
+        tenant_id: str | None = None,
     ) -> None:
         """
         Trigger webhook for mesh event.
@@ -2486,11 +2525,12 @@ class DataMeshEventPublisher:
                 event_type=internal_event_type,
                 resource_type=resource_type,
                 resource_id=resource_id,
-                event_data=event_data
+                event_data=event_data,
             )
         except Exception as e:
             # Log but don't fail event publishing if webhook fails
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(
                 f"Failed to trigger webhook for mesh event {internal_event_type}: {e}",
@@ -2499,17 +2539,17 @@ class DataMeshEventPublisher:
                     "resource_type": resource_type,
                     "resource_id": resource_id,
                     "tenant_id": tenant_id,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
 
     def publish_domain_created(
         self,
         domain_id: str,
-        name: Optional[str] = None,
-        status: Optional[str] = None,
-        owner_id: Optional[str] = None,
+        name: str | None = None,
+        status: str | None = None,
+        owner_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish domain.created event."""
@@ -2527,9 +2567,9 @@ class DataMeshEventPublisher:
     def publish_domain_updated(
         self,
         domain_id: str,
-        changes: Dict[str, Any],
-        previous_status: Optional[str] = None,
-        new_status: Optional[str] = None,
+        changes: dict[str, Any],
+        previous_status: str | None = None,
+        new_status: str | None = None,
         **kwargs,
     ) -> str:
         """Publish domain.updated event."""
@@ -2547,7 +2587,7 @@ class DataMeshEventPublisher:
     def publish_domain_deleted(
         self,
         domain_id: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish domain.deleted event."""
@@ -2567,8 +2607,8 @@ class DataMeshEventPublisher:
         self,
         policy_application_id: str,
         domain_id: str,
-        policy_id: Optional[str] = None,
-        status: Optional[str] = None,
+        policy_id: str | None = None,
+        status: str | None = None,
         **kwargs,
     ) -> str:
         """Publish policy.applied event."""
@@ -2587,8 +2627,8 @@ class DataMeshEventPublisher:
         self,
         policy_application_id: str,
         domain_id: str,
-        policy_id: Optional[str] = None,
-        reason: Optional[str] = None,
+        policy_id: str | None = None,
+        reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish policy.revoked event."""
@@ -2607,9 +2647,9 @@ class DataMeshEventPublisher:
         self,
         compliance_report_id: str,
         domain_id: str,
-        compliance_status: Optional[str] = None,
-        asset_id: Optional[str] = None,
-        violation_count: Optional[int] = None,
+        compliance_status: str | None = None,
+        asset_id: str | None = None,
+        violation_count: int | None = None,
         **kwargs,
     ) -> str:
         """Publish compliance.report.generated event."""
@@ -2628,9 +2668,9 @@ class DataMeshEventPublisher:
     def publish_compliance_checked(
         self,
         domain_id: str,
-        compliance_status: Optional[str] = None,
-        violation_count: Optional[int] = None,
-        checked_at: Optional[str] = None,
+        compliance_status: str | None = None,
+        violation_count: int | None = None,
+        checked_at: str | None = None,
         **kwargs,
     ) -> str:
         """Publish mesh.compliance.checked event."""
@@ -2647,10 +2687,10 @@ class DataMeshEventPublisher:
 
     def publish_topology_updated(
         self,
-        tenant_id: Optional[str] = None,
-        domain_count: Optional[int] = None,
-        relationship_count: Optional[int] = None,
-        updated_at: Optional[str] = None,
+        tenant_id: str | None = None,
+        domain_count: int | None = None,
+        relationship_count: int | None = None,
+        updated_at: str | None = None,
         **kwargs,
     ) -> str:
         """Publish mesh.topology.updated event."""
@@ -2684,10 +2724,10 @@ class DataMeshEventPublisher:
     def publish_mesh_domain_created(
         self,
         domain_id: str,
-        name: Optional[str] = None,
-        status: Optional[str] = None,
-        owner_id: Optional[str] = None,
-        tenant_id: Optional[str] = None,
+        name: str | None = None,
+        status: str | None = None,
+        owner_id: str | None = None,
+        tenant_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish mesh.domain.created event."""
@@ -2723,10 +2763,10 @@ class DataMeshEventPublisher:
     def publish_mesh_domain_updated(
         self,
         domain_id: str,
-        changes: Dict[str, Any],
-        previous_status: Optional[str] = None,
-        new_status: Optional[str] = None,
-        tenant_id: Optional[str] = None,
+        changes: dict[str, Any],
+        previous_status: str | None = None,
+        new_status: str | None = None,
+        tenant_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish mesh.domain.updated event."""
@@ -2763,9 +2803,9 @@ class DataMeshEventPublisher:
         self,
         policy_application_id: str,
         domain_id: str,
-        policy_id: Optional[str] = None,
-        status: Optional[str] = None,
-        tenant_id: Optional[str] = None,
+        policy_id: str | None = None,
+        status: str | None = None,
+        tenant_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish mesh.policy.applied event."""
@@ -2801,10 +2841,10 @@ class DataMeshEventPublisher:
     def publish_mesh_compliance_checked(
         self,
         domain_id: str,
-        compliance_status: Optional[str] = None,
-        violation_count: Optional[int] = None,
-        checked_at: Optional[str] = None,
-        tenant_id: Optional[str] = None,
+        compliance_status: str | None = None,
+        violation_count: int | None = None,
+        checked_at: str | None = None,
+        tenant_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish mesh.compliance.checked event."""
@@ -2840,11 +2880,11 @@ class DataMeshEventPublisher:
     def publish_mesh_health_status_changed(
         self,
         domain_id: str,
-        previous_status: Optional[str] = None,
+        previous_status: str | None = None,
         new_status: str = None,
-        health_metrics: Optional[Dict[str, Any]] = None,
-        changed_at: Optional[str] = None,
-        tenant_id: Optional[str] = None,
+        health_metrics: dict[str, Any] | None = None,
+        changed_at: str | None = None,
+        tenant_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish mesh.health.status_changed event."""
@@ -2911,8 +2951,8 @@ class VirtualizationEventPublisher:
         internal_event_type: str,
         resource_type: str,
         resource_id: str,
-        event_data: Dict[str, Any],
-        tenant_id: Optional[str] = None,
+        event_data: dict[str, Any],
+        tenant_id: str | None = None,
     ) -> None:
         """
         Trigger webhook for virtualization event.
@@ -2937,11 +2977,12 @@ class VirtualizationEventPublisher:
                 event_type=internal_event_type,
                 resource_type=resource_type,
                 resource_id=resource_id,
-                event_data=event_data
+                event_data=event_data,
             )
         except Exception as e:
             # Log but don't fail event publishing if webhook fails
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(
                 f"Failed to trigger webhook for virtualization event {internal_event_type}: {e}",
@@ -2950,19 +2991,19 @@ class VirtualizationEventPublisher:
                     "resource_type": resource_type,
                     "resource_id": resource_id,
                     "tenant_id": tenant_id,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
 
     def publish_virtual_dataset_created(
         self,
         virtual_dataset_id: str,
-        name: Optional[str] = None,
-        query_type: Optional[str] = None,
-        status: Optional[str] = None,
-        version: Optional[str] = None,
-        tenant_id: Optional[str] = None,
+        name: str | None = None,
+        query_type: str | None = None,
+        status: str | None = None,
+        version: str | None = None,
+        tenant_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish virtualization.dataset.created event."""
@@ -2998,9 +3039,9 @@ class VirtualizationEventPublisher:
     def publish_virtual_dataset_updated(
         self,
         virtual_dataset_id: str,
-        changes: Dict[str, Any],
-        previous_status: Optional[str] = None,
-        new_status: Optional[str] = None,
+        changes: dict[str, Any],
+        previous_status: str | None = None,
+        new_status: str | None = None,
         **kwargs,
     ) -> str:
         """Publish virtualization.dataset.updated event."""
@@ -3018,7 +3059,7 @@ class VirtualizationEventPublisher:
     def publish_virtual_dataset_deleted(
         self,
         virtual_dataset_id: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish virtualization.dataset.deleted event."""
@@ -3038,8 +3079,8 @@ class VirtualizationEventPublisher:
         self,
         query_execution_id: str,
         virtual_dataset_id: str,
-        execution_mode: Optional[str] = None,
-        tenant_id: Optional[str] = None,
+        execution_mode: str | None = None,
+        tenant_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish virtualization.query.execution.started event."""
@@ -3077,11 +3118,11 @@ class VirtualizationEventPublisher:
         query_execution_id: str,
         virtual_dataset_id: str,
         progress_percent: float,
-        current_step: Optional[str] = None,
-        elapsed_time_ms: Optional[int] = None,
-        completed_steps: Optional[int] = None,
-        total_steps: Optional[int] = None,
-        tenant_id: Optional[str] = None,
+        current_step: str | None = None,
+        elapsed_time_ms: int | None = None,
+        completed_steps: int | None = None,
+        total_steps: int | None = None,
+        tenant_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish virtualization.query.execution.progress event."""
@@ -3127,9 +3168,9 @@ class VirtualizationEventPublisher:
         query_execution_id: str,
         virtual_dataset_id: str,
         status: str,
-        duration_ms: Optional[int] = None,
-        rows_processed: Optional[int] = None,
-        tenant_id: Optional[str] = None,
+        duration_ms: int | None = None,
+        rows_processed: int | None = None,
+        tenant_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish virtualization.query.execution.completed event."""
@@ -3171,8 +3212,8 @@ class VirtualizationEventPublisher:
         query_execution_id: str,
         virtual_dataset_id: str,
         error_message: str,
-        duration_ms: Optional[int] = None,
-        tenant_id: Optional[str] = None,
+        duration_ms: int | None = None,
+        tenant_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish virtualization.query.execution.failed event."""
@@ -3211,7 +3252,7 @@ class VirtualizationEventPublisher:
         self,
         query_execution_id: str,
         virtual_dataset_id: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish virtualization.query.execution.cancelled event."""
@@ -3245,10 +3286,10 @@ class FileEventPublisher:
             # Parent doesn't support __init__ with arguments, skip
             pass
         # Set tenant_id and user_id from kwargs if provided
-        if 'tenant_id' in kwargs:
-            self.tenant_id = kwargs['tenant_id']
-        if 'user_id' in kwargs:
-            self.user_id = kwargs['user_id']
+        if "tenant_id" in kwargs:
+            self.tenant_id = kwargs["tenant_id"]
+        if "user_id" in kwargs:
+            self.user_id = kwargs["user_id"]
         self._event_publisher = EventPublisher(
             service_name="file_service",
             tenant_id=getattr(self, "tenant_id", None),
@@ -3258,11 +3299,11 @@ class FileEventPublisher:
     def publish_file_created(
         self,
         file_id: str,
-        name: Optional[str] = None,
-        content_type: Optional[str] = None,
-        size: Optional[int] = None,
-        status: Optional[str] = None,
-        content_sha256: Optional[str] = None,
+        name: str | None = None,
+        content_type: str | None = None,
+        size: int | None = None,
+        status: str | None = None,
+        content_sha256: str | None = None,
         **kwargs,
     ) -> str:
         """Publish file.created event."""
@@ -3282,9 +3323,9 @@ class FileEventPublisher:
     def publish_file_updated(
         self,
         file_id: str,
-        changes: Dict[str, Any],
-        previous_status: Optional[str] = None,
-        new_status: Optional[str] = None,
+        changes: dict[str, Any],
+        previous_status: str | None = None,
+        new_status: str | None = None,
         **kwargs,
     ) -> str:
         """Publish file.updated event."""
@@ -3302,7 +3343,7 @@ class FileEventPublisher:
     def publish_file_deleted(
         self,
         file_id: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish file.deleted event."""
@@ -3318,13 +3359,62 @@ class FileEventPublisher:
             **kwargs,
         )
 
+    def publish_file_purged(
+        self,
+        file_id: str,
+        name: str | None = None,
+        size: int | None = None,
+        content_sha256: str | None = None,
+        tenant_id: str | None = None,
+        **kwargs,
+    ) -> str:
+        """Publish file.purged event and trigger webhook delivery.
+
+        Phase 260.7.G: Two emission paths from one call:
+          * Internal event bus (file.purged event)
+          * External webhook (via WebhookDeliveryService.trigger_webhook)
+        """
+        from django.utils import timezone
+
+        event_data: dict[str, Any] = {
+            "file_id": file_id,
+            "purged_at": timezone.now().isoformat(),
+        }
+        if name is not None:
+            event_data["name"] = name
+        if size is not None:
+            event_data["size"] = size
+        if content_sha256 is not None:
+            event_data["content_sha256"] = content_sha256
+
+        event_id = self._event_publisher.publish(
+            event_type="file.purged",
+            data=event_data,
+            **kwargs,
+        )
+
+        # Fan-out to external webhook subscribers.
+        scoped_tenant = tenant_id or getattr(self, "tenant_id", None)
+        if scoped_tenant:
+            from hub.apps.webhooks.service import WebhookDeliveryService
+
+            WebhookDeliveryService.trigger_webhook(
+                tenant_id=scoped_tenant,
+                event_type="file.purged",
+                resource_type="FILE",
+                resource_id=file_id,
+                event_data=event_data,
+            )
+
+        return event_id
+
     def publish_file_uploaded(
         self,
         file_id: str,
-        file_size: Optional[int] = None,
-        content_type: Optional[str] = None,
-        upload_duration_ms: Optional[int] = None,
-        content_sha256: Optional[str] = None,
+        file_size: int | None = None,
+        content_type: str | None = None,
+        upload_duration_ms: int | None = None,
+        content_sha256: str | None = None,
         **kwargs,
     ) -> str:
         """Publish file.uploaded event."""
@@ -3343,8 +3433,8 @@ class FileEventPublisher:
     def publish_file_downloaded(
         self,
         file_id: str,
-        download_duration_ms: Optional[int] = None,
-        download_size: Optional[int] = None,
+        download_duration_ms: int | None = None,
+        download_size: int | None = None,
         **kwargs,
     ) -> str:
         """Publish file.downloaded event."""
@@ -3375,10 +3465,10 @@ class LineageEventPublisher:
             # Parent doesn't support __init__ with arguments, skip
             pass
         # Set tenant_id and user_id from kwargs if provided
-        if 'tenant_id' in kwargs:
-            self.tenant_id = kwargs['tenant_id']
-        if 'user_id' in kwargs:
-            self.user_id = kwargs['user_id']
+        if "tenant_id" in kwargs:
+            self.tenant_id = kwargs["tenant_id"]
+        if "user_id" in kwargs:
+            self.user_id = kwargs["user_id"]
         self._event_publisher = EventPublisher(
             service_name="lineage_service",
             tenant_id=getattr(self, "tenant_id", None),
@@ -3388,11 +3478,11 @@ class LineageEventPublisher:
     def publish_lineage_updated(
         self,
         contract_id: str,
-        model_name: Optional[str] = None,
-        field_name: Optional[str] = None,
-        lineage_type: Optional[str] = None,
-        changes: Optional[Dict[str, Any]] = None,
-        relationship_count: Optional[int] = None,
+        model_name: str | None = None,
+        field_name: str | None = None,
+        lineage_type: str | None = None,
+        changes: dict[str, Any] | None = None,
+        relationship_count: int | None = None,
         **kwargs,
     ) -> str:
         """Publish lineage.updated event."""
@@ -3414,9 +3504,9 @@ class LineageEventPublisher:
         contract_id: str,
         source_reference: str,
         target_reference: str,
-        relationship_type: Optional[str] = None,
-        model_name: Optional[str] = None,
-        field_name: Optional[str] = None,
+        relationship_type: str | None = None,
+        model_name: str | None = None,
+        field_name: str | None = None,
         **kwargs,
     ) -> str:
         """Publish lineage.relationship_added event."""
@@ -3438,10 +3528,10 @@ class LineageEventPublisher:
         contract_id: str,
         source_reference: str,
         target_reference: str,
-        relationship_type: Optional[str] = None,
-        model_name: Optional[str] = None,
-        field_name: Optional[str] = None,
-        reason: Optional[str] = None,
+        relationship_type: str | None = None,
+        model_name: str | None = None,
+        field_name: str | None = None,
+        reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish lineage.relationship_removed event."""
@@ -3476,10 +3566,10 @@ class SearchEventPublisher:
             # Parent doesn't support __init__ with arguments, skip
             pass
         # Set tenant_id and user_id from kwargs if provided
-        if 'tenant_id' in kwargs:
-            self.tenant_id = kwargs['tenant_id']
-        if 'user_id' in kwargs:
-            self.user_id = kwargs['user_id']
+        if "tenant_id" in kwargs:
+            self.tenant_id = kwargs["tenant_id"]
+        if "user_id" in kwargs:
+            self.user_id = kwargs["user_id"]
         self._event_publisher = EventPublisher(
             service_name="search_service",
             tenant_id=getattr(self, "tenant_id", None),
@@ -3489,11 +3579,11 @@ class SearchEventPublisher:
     def publish_search_query(
         self,
         query: str,
-        query_type: Optional[str] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        result_count: Optional[int] = None,
-        no_results: Optional[bool] = None,
-        execution_time_ms: Optional[int] = None,
+        query_type: str | None = None,
+        filters: dict[str, Any] | None = None,
+        result_count: int | None = None,
+        no_results: bool | None = None,
+        execution_time_ms: int | None = None,
         **kwargs,
     ) -> str:
         """Publish search.query event."""
@@ -3515,9 +3605,9 @@ class SearchEventPublisher:
         self,
         resource_type: str,
         resource_id: str,
-        index_id: Optional[str] = None,
-        title: Optional[str] = None,
-        update_type: Optional[str] = None,
+        index_id: str | None = None,
+        title: str | None = None,
+        update_type: str | None = None,
         **kwargs,
     ) -> str:
         """Publish search.index.updated event."""
@@ -3536,12 +3626,12 @@ class SearchEventPublisher:
 
     def publish_index_rebuilt(
         self,
-        tenant_id: Optional[str] = None,
-        resource_count: Optional[int] = None,
-        duration_ms: Optional[int] = None,
-        resource_types: Optional[List[str]] = None,
-        success: Optional[bool] = None,
-        errors: Optional[List[str]] = None,
+        tenant_id: str | None = None,
+        resource_count: int | None = None,
+        duration_ms: int | None = None,
+        resource_types: list[str] | None = None,
+        success: bool | None = None,
+        errors: list[str] | None = None,
         **kwargs,
     ) -> str:
         """Publish search.index.rebuilt event."""
@@ -3577,10 +3667,10 @@ class PaymentGatewayEventPublisher:
             # Parent doesn't support __init__ with arguments, skip
             pass
         # Set tenant_id and user_id from kwargs if provided
-        if 'tenant_id' in kwargs:
-            self.tenant_id = kwargs['tenant_id']
-        if 'user_id' in kwargs:
-            self.user_id = kwargs['user_id']
+        if "tenant_id" in kwargs:
+            self.tenant_id = kwargs["tenant_id"]
+        if "user_id" in kwargs:
+            self.user_id = kwargs["user_id"]
         self._event_publisher = EventPublisher(
             service_name="payment_gateway_service",
             tenant_id=getattr(self, "tenant_id", None),
@@ -3591,9 +3681,9 @@ class PaymentGatewayEventPublisher:
         self,
         contract_id: str,
         gateway_id: str,
-        webhook_url: Optional[str] = None,
-        gateway_type: Optional[str] = None,
-        gateway_name: Optional[str] = None,
+        webhook_url: str | None = None,
+        gateway_type: str | None = None,
+        gateway_name: str | None = None,
         **kwargs,
     ) -> str:
         """Publish payment.gateway.linked event."""
@@ -3614,9 +3704,9 @@ class PaymentGatewayEventPublisher:
         self,
         contract_id: str,
         gateway_id: str,
-        reason: Optional[str] = None,
-        gateway_type: Optional[str] = None,
-        gateway_name: Optional[str] = None,
+        reason: str | None = None,
+        gateway_type: str | None = None,
+        gateway_name: str | None = None,
         **kwargs,
     ) -> str:
         """Publish payment.gateway.unlinked event."""
@@ -3637,12 +3727,12 @@ class PaymentGatewayEventPublisher:
         self,
         contract_id: str,
         gateway_id: str,
-        webhook_type: Optional[str] = None,
-        webhook_data: Optional[Dict[str, Any]] = None,
-        webhook_headers: Optional[Dict[str, str]] = None,
-        webhook_signature: Optional[str] = None,
-        processing_status: Optional[str] = None,
-        processing_error: Optional[str] = None,
+        webhook_type: str | None = None,
+        webhook_data: dict[str, Any] | None = None,
+        webhook_headers: dict[str, str] | None = None,
+        webhook_signature: str | None = None,
+        processing_status: str | None = None,
+        processing_error: str | None = None,
         **kwargs,
     ) -> str:
         """Publish payment.gateway.webhook.received event."""
@@ -3679,10 +3769,10 @@ class TenantEventPublisher:
             # Parent doesn't support __init__ with arguments, skip
             pass
         # Set tenant_id and user_id from kwargs if provided
-        if 'tenant_id' in kwargs:
-            self.tenant_id = kwargs['tenant_id']
-        if 'user_id' in kwargs:
-            self.user_id = kwargs['user_id']
+        if "tenant_id" in kwargs:
+            self.tenant_id = kwargs["tenant_id"]
+        if "user_id" in kwargs:
+            self.user_id = kwargs["user_id"]
         self._event_publisher = EventPublisher(
             service_name="hub",
             tenant_id=getattr(self, "tenant_id", None),
@@ -3692,11 +3782,11 @@ class TenantEventPublisher:
     def publish_tenant_created(
         self,
         tenant_id: str,
-        name: Optional[str] = None,
-        slug: Optional[str] = None,
-        status: Optional[str] = None,
-        kyc_status: Optional[str] = None,
-        region: Optional[str] = None,
+        name: str | None = None,
+        slug: str | None = None,
+        status: str | None = None,
+        kyc_status: str | None = None,
+        region: str | None = None,
         **kwargs,
     ) -> str:
         """Publish tenant.created event."""
@@ -3717,9 +3807,9 @@ class TenantEventPublisher:
     def publish_tenant_updated(
         self,
         tenant_id: str,
-        changes: Dict[str, Any],
-        previous_status: Optional[str] = None,
-        new_status: Optional[str] = None,
+        changes: dict[str, Any],
+        previous_status: str | None = None,
+        new_status: str | None = None,
         **kwargs,
     ) -> str:
         """Publish tenant.updated event."""
@@ -3738,7 +3828,7 @@ class TenantEventPublisher:
     def publish_tenant_deleted(
         self,
         tenant_id: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish tenant.deleted event."""
@@ -3760,8 +3850,8 @@ class TenantEventPublisher:
         tenant_id: str,
         quota_type: str,
         quota_field: str,
-        previous_value: Optional[Any] = None,
-        new_value: Optional[Any] = None,
+        previous_value: Any | None = None,
+        new_value: Any | None = None,
         **kwargs,
     ) -> str:
         """Publish tenant.quota.changed event."""
@@ -3799,8 +3889,8 @@ class NormalizationEventPublisher:
         self,
         contract_id: str,
         normalization_type: str,
-        spec_version: Optional[str] = None,
-        source_format: Optional[str] = None,
+        spec_version: str | None = None,
+        source_format: str | None = None,
         **kwargs,
     ) -> str:
         """Publish normalization.started event."""
@@ -3820,10 +3910,10 @@ class NormalizationEventPublisher:
         self,
         contract_id: str,
         normalization_status: str,
-        normalization_errors: Optional[List[str]] = None,
-        normalization_warnings: Optional[List[str]] = None,
-        duration_ms: Optional[int] = None,
-        spec_version: Optional[str] = None,
+        normalization_errors: list[str] | None = None,
+        normalization_warnings: list[str] | None = None,
+        duration_ms: int | None = None,
+        spec_version: str | None = None,
         **kwargs,
     ) -> str:
         """Publish normalization.completed event."""
@@ -3845,10 +3935,10 @@ class NormalizationEventPublisher:
         self,
         contract_id: str,
         error_message: str,
-        error_details: Optional[Dict[str, Any]] = None,
-        normalization_errors: Optional[List[str]] = None,
-        retry_count: Optional[int] = None,
-        spec_version: Optional[str] = None,
+        error_details: dict[str, Any] | None = None,
+        normalization_errors: list[str] | None = None,
+        retry_count: int | None = None,
+        spec_version: str | None = None,
         **kwargs,
     ) -> str:
         """Publish normalization.failed event."""
@@ -3887,10 +3977,10 @@ class PaymentEventPublisher:
         self,
         payment_id: str,
         order_id: str,
-        amount: Optional[float] = None,
-        currency: Optional[str] = None,
-        gateway: Optional[str] = None,
-        payment_method: Optional[str] = None,
+        amount: float | None = None,
+        currency: str | None = None,
+        gateway: str | None = None,
+        payment_method: str | None = None,
         **kwargs,
     ) -> str:
         """Publish payment.initiated event."""
@@ -3913,11 +4003,11 @@ class PaymentEventPublisher:
         payment_id: str,
         order_id: str,
         status: str,
-        amount: Optional[float] = None,
-        currency: Optional[str] = None,
-        gateway: Optional[str] = None,
-        gateway_transaction_id: Optional[str] = None,
-        processed_at: Optional[str] = None,
+        amount: float | None = None,
+        currency: str | None = None,
+        gateway: str | None = None,
+        gateway_transaction_id: str | None = None,
+        processed_at: str | None = None,
         **kwargs,
     ) -> str:
         """Publish payment.completed event."""
@@ -3947,11 +4037,11 @@ class PaymentEventPublisher:
         payment_id: str,
         order_id: str,
         error_message: str,
-        error_details: Optional[Dict[str, Any]] = None,
-        amount: Optional[float] = None,
-        currency: Optional[str] = None,
-        gateway: Optional[str] = None,
-        failed_at: Optional[str] = None,
+        error_details: dict[str, Any] | None = None,
+        amount: float | None = None,
+        currency: str | None = None,
+        gateway: str | None = None,
+        failed_at: str | None = None,
         **kwargs,
     ) -> str:
         """Publish payment.failed event."""
@@ -3980,12 +4070,12 @@ class PaymentEventPublisher:
         self,
         payment_id: str,
         order_id: str,
-        refund_amount: Optional[float] = None,
-        currency: Optional[str] = None,
-        gateway: Optional[str] = None,
-        gateway_refund_id: Optional[str] = None,
-        refund_reason: Optional[str] = None,
-        refunded_at: Optional[str] = None,
+        refund_amount: float | None = None,
+        currency: str | None = None,
+        gateway: str | None = None,
+        gateway_refund_id: str | None = None,
+        refund_reason: str | None = None,
+        refunded_at: str | None = None,
         **kwargs,
     ) -> str:
         """Publish payment.refunded event."""
@@ -4027,10 +4117,10 @@ class ObservabilityEventPublisher:
             # Parent doesn't support __init__ with arguments, skip
             pass
         # Set tenant_id and user_id from kwargs if provided
-        if 'tenant_id' in kwargs:
-            self.tenant_id = kwargs['tenant_id']
-        if 'user_id' in kwargs:
-            self.user_id = kwargs['user_id']
+        if "tenant_id" in kwargs:
+            self.tenant_id = kwargs["tenant_id"]
+        if "user_id" in kwargs:
+            self.user_id = kwargs["user_id"]
         self._event_publisher = EventPublisher(
             service_name="observability_service",
             tenant_id=getattr(self, "tenant_id", None),
@@ -4040,9 +4130,9 @@ class ObservabilityEventPublisher:
     def publish_metric_recorded(
         self,
         metric_name: str,
-        metric_value: Optional[float] = None,
-        metric_type: Optional[str] = None,
-        labels: Optional[Dict[str, Any]] = None,
+        metric_value: float | None = None,
+        metric_type: str | None = None,
+        labels: dict[str, Any] | None = None,
         **kwargs,
     ) -> str:
         """Publish observability.metric.recorded event."""
@@ -4062,10 +4152,10 @@ class ObservabilityEventPublisher:
         self,
         trace_id: str,
         span_id: str,
-        operation_name: Optional[str] = None,
-        duration_ms: Optional[float] = None,
-        status: Optional[str] = None,
-        attributes: Optional[Dict[str, Any]] = None,
+        operation_name: str | None = None,
+        duration_ms: float | None = None,
+        status: str | None = None,
+        attributes: dict[str, Any] | None = None,
         **kwargs,
     ) -> str:
         """Publish observability.trace.created event."""
@@ -4086,9 +4176,9 @@ class ObservabilityEventPublisher:
     def publish_log_created(
         self,
         message: str,
-        log_level: Optional[str] = None,
-        logger_name: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
+        log_level: str | None = None,
+        logger_name: str | None = None,
+        context: dict[str, Any] | None = None,
         **kwargs,
     ) -> str:
         """Publish observability.log.created event."""
@@ -4108,14 +4198,14 @@ class ObservabilityEventPublisher:
         self,
         alert_name: str,
         alert_severity: str,
-        alert_message: Optional[str] = None,
-        metric_name: Optional[str] = None,
-        threshold_value: Optional[float] = None,
-        current_value: Optional[float] = None,
-        triggered_at: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        asset_id: Optional[str] = None,
-        labels: Optional[Dict[str, Any]] = None,
+        alert_message: str | None = None,
+        metric_name: str | None = None,
+        threshold_value: float | None = None,
+        current_value: float | None = None,
+        triggered_at: str | None = None,
+        dataset_id: str | None = None,
+        asset_id: str | None = None,
+        labels: dict[str, Any] | None = None,
         **kwargs,
     ) -> str:
         """Publish observability.alert.triggered event."""
@@ -4181,19 +4271,13 @@ class IntegrationEventPublisher:
         """
         from django.utils import timezone
 
-        if (
-            connection_id is None
-            or not isinstance(connection_id, str)
-            or not connection_id.strip()
-        ):
+        if connection_id is None or not isinstance(connection_id, str) or not connection_id.strip():
             raise ValueError(
                 "connection_id is required and must be a non-empty string "
                 "for integration.connection.created"
             )
         if marketplace_type is None:
-            raise ValueError(
-                "marketplace_type is required for integration.connection.created"
-            )
+            raise ValueError("marketplace_type is required for integration.connection.created")
         safe_name = name if name is not None else ""
         return self._event_publisher.publish(
             event_type="integration.connection.created",
@@ -4210,7 +4294,7 @@ class IntegrationEventPublisher:
     def publish_connection_updated(
         self,
         connection_id: str,
-        changes: Dict[str, Any],
+        changes: dict[str, Any],
         **kwargs,
     ) -> str:
         """Publish integration.connection.updated event."""
@@ -4231,8 +4315,8 @@ class IntegrationEventPublisher:
         self,
         connection_id: str,
         marketplace_type: str,
-        name: Optional[str] = None,
-        reason: Optional[str] = None,
+        name: str | None = None,
+        reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish integration.connection.deleted event."""
@@ -4255,7 +4339,7 @@ class IntegrationEventPublisher:
         self,
         connection_id: str,
         success: bool,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
         **kwargs,
     ) -> str:
         """Publish integration.connection.tested event."""
@@ -4350,7 +4434,7 @@ class IntegrationEventPublisher:
         sync_job_id: str,
         connection_id: str,
         direction: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish integration.sync_job.cancelled event."""
@@ -4423,6 +4507,7 @@ class IntegrationEventPublisher:
     ) -> str:
         """Publish integration.mapping.created event."""
         from django.utils import timezone
+
         return self._event_publisher.publish(
             event_type="integration.mapping.created",
             data={
@@ -4440,11 +4525,12 @@ class IntegrationEventPublisher:
         self,
         mapping_id: str,
         connection_id: str,
-        changes: Dict[str, Any],
+        changes: dict[str, Any],
         **kwargs,
     ) -> str:
         """Publish integration.mapping.updated event."""
         from django.utils import timezone
+
         return self._event_publisher.publish(
             event_type="integration.mapping.updated",
             data={
@@ -4463,11 +4549,12 @@ class IntegrationEventPublisher:
         connection_id: str,
         hub_asset_id: str,
         external_listing_id: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish integration.mapping.deleted event."""
         from django.utils import timezone
+
         return self._event_publisher.publish(
             event_type="integration.mapping.deleted",
             data={
@@ -4524,7 +4611,7 @@ class BaaSEventPublisher:
         api_key_id: str,
         tenant_id: str,
         user_id: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
         **kwargs,
     ) -> str:
         """Publish baas.api_key.revoked event."""
@@ -4627,12 +4714,13 @@ class MLEventPublisher:
         self,
         model_id: str,
         odh_model_id: str,
-        asset_id: Optional[str] = None,
-        contract_id: Optional[str] = None,
+        asset_id: str | None = None,
+        contract_id: str | None = None,
         **kwargs,
     ) -> str:
         """Publish ml.model.linked event."""
         from django.utils import timezone
+
         return self._event_publisher.publish(
             event_type="ml.model.linked",
             data={
@@ -4655,6 +4743,7 @@ class MLEventPublisher:
     ) -> str:
         """Publish ml.model.synced event."""
         from django.utils import timezone
+
         return self._event_publisher.publish(
             event_type="ml.model.synced",
             data={
@@ -4676,6 +4765,7 @@ class MLEventPublisher:
     ) -> str:
         """Publish ml.dataset.linked event."""
         from django.utils import timezone
+
         return self._event_publisher.publish(
             event_type="ml.dataset.linked",
             data={
@@ -4696,6 +4786,7 @@ class MLEventPublisher:
     ) -> str:
         """Publish ml.model.asset.created event."""
         from django.utils import timezone
+
         return self._event_publisher.publish(
             event_type="ml.model.asset.created",
             data={
@@ -4725,9 +4816,13 @@ class TransformationEventPublisher:
         )
 
     def publish_pipeline_created(
-        self, pipeline_id: str, name: str, **kwargs,
+        self,
+        pipeline_id: str,
+        name: str,
+        **kwargs,
     ) -> str:
         from django.utils import timezone
+
         return self._event_publisher.publish(
             event_type="transformation.pipeline.created",
             data={
@@ -4747,6 +4842,7 @@ class TransformationEventPublisher:
         **kwargs,
     ) -> str:
         from django.utils import timezone
+
         return self._event_publisher.publish(
             event_type="transformation.pipeline.executed",
             data={
@@ -4760,9 +4856,13 @@ class TransformationEventPublisher:
         )
 
     def publish_pipeline_updated(
-        self, pipeline_id: str, name: str, **kwargs,
+        self,
+        pipeline_id: str,
+        name: str,
+        **kwargs,
     ) -> str:
         from django.utils import timezone
+
         return self._event_publisher.publish(
             event_type="transformation.pipeline.updated",
             data={
@@ -4775,9 +4875,13 @@ class TransformationEventPublisher:
         )
 
     def publish_pipeline_deleted(
-        self, pipeline_id: str, name: str, **kwargs,
+        self,
+        pipeline_id: str,
+        name: str,
+        **kwargs,
     ) -> str:
         from django.utils import timezone
+
         return self._event_publisher.publish(
             event_type="transformation.pipeline.deleted",
             data={
@@ -4790,9 +4894,13 @@ class TransformationEventPublisher:
         )
 
     def publish_pipeline_started(
-        self, pipeline_id: str, execution_id: str, **kwargs,
+        self,
+        pipeline_id: str,
+        execution_id: str,
+        **kwargs,
     ) -> str:
         from django.utils import timezone
+
         return self._event_publisher.publish(
             event_type="transformation.pipeline.started",
             data={
@@ -4805,9 +4913,13 @@ class TransformationEventPublisher:
         )
 
     def publish_pipeline_completed(
-        self, pipeline_id: str, execution_id: str, **kwargs,
+        self,
+        pipeline_id: str,
+        execution_id: str,
+        **kwargs,
     ) -> str:
         from django.utils import timezone
+
         return self._event_publisher.publish(
             event_type="transformation.pipeline.completed",
             data={
@@ -4820,9 +4932,13 @@ class TransformationEventPublisher:
         )
 
     def publish_pipeline_failed(
-        self, pipeline_id: str, error: str, **kwargs,
+        self,
+        pipeline_id: str,
+        error: str,
+        **kwargs,
     ) -> str:
         from django.utils import timezone
+
         return self._event_publisher.publish(
             event_type="transformation.pipeline.failed",
             data={

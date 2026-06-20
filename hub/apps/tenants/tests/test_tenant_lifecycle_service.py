@@ -4,6 +4,7 @@ Covers suspend_tenant() and resume_tenant() with real DB — no mocks
 at the service boundary.  Previously these paths were only exercised
 through API views.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -30,7 +31,8 @@ class SuspendTenantTests(TestCase):
             status=TenantStatus.ACTIVE,
         )
         self.service = TenantLifecycleService(
-            tenant_id=str(self.tenant.id), user_id=None,
+            tenant_id=str(self.tenant.id),
+            user_id=None,
         )
 
     def test_suspend_active_tenant_sets_suspended(self):
@@ -74,7 +76,8 @@ class ResumeTenantTests(TestCase):
             status=TenantStatus.SUSPENDED,
         )
         self.service = TenantLifecycleService(
-            tenant_id=str(self.tenant.id), user_id=None,
+            tenant_id=str(self.tenant.id),
+            user_id=None,
         )
 
     def test_resume_suspended_tenant_reactivates(self):

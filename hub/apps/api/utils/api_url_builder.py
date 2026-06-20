@@ -7,15 +7,17 @@ This utility ensures consistent URL construction and prevents duplication issues
 For internal Django API calls, use this utility instead of hardcoding URLs.
 For external microservice calls, use the respective service client classes.
 """
-from typing import Optional, Dict, Any, Tuple
-from django.urls import reverse, NoReverseMatch
-from django.conf import settings
+
+from typing import Any
+
 import structlog
+from django.conf import settings
+from django.urls import NoReverseMatch, reverse
 
 logger = structlog.get_logger(__name__)
 
 # API base path
-API_V1_BASE = '/api/v1'
+API_V1_BASE = "/api/v1"
 
 
 class APIURLBuilder:
@@ -41,16 +43,16 @@ class APIURLBuilder:
         Args:
             base_path: Base path for API (default: '/api/v1')
         """
-        self.base_path = base_path.rstrip('/')
+        self.base_path = base_path.rstrip("/")
 
     def build(
         self,
         resource: str,
-        resource_id: Optional[str] = None,
-        action: Optional[str] = None,
-        query_params: Optional[Dict[str, Any]] = None,
+        resource_id: str | None = None,
+        action: str | None = None,
+        query_params: dict[str, Any] | None = None,
         use_reverse: bool = False,
-        url_name: Optional[str] = None
+        url_name: str | None = None,
     ) -> str:
         """
         Build an API URL following naming standards.
@@ -82,7 +84,7 @@ class APIURLBuilder:
             # Use Django's reverse() for URL name-based construction
             try:
                 if resource_id:
-                    url = reverse(url_name, kwargs={'id': resource_id})
+                    url = reverse(url_name, kwargs={"id": resource_id})
                 else:
                     url = reverse(url_name)
             except NoReverseMatch as e:
@@ -90,7 +92,7 @@ class APIURLBuilder:
                     "api_url_reverse_failed",
                     url_name=url_name,
                     error=str(e),
-                    message="Falling back to manual construction"
+                    message="Falling back to manual construction",
                 )
                 # Fall back to manual construction
                 url = self._build_manual(resource, resource_id, action)
@@ -101,16 +103,14 @@ class APIURLBuilder:
         # Add query parameters
         if query_params:
             from urllib.parse import urlencode
+
             query_string = urlencode(query_params)
             url = f"{url}?{query_string}"
 
         return url
 
     def _build_manual(
-        self,
-        resource: str,
-        resource_id: Optional[str] = None,
-        action: Optional[str] = None
+        self, resource: str, resource_id: str | None = None, action: str | None = None
     ) -> str:
         """
         Manually build URL path.
@@ -144,20 +144,20 @@ class APIURLBuilder:
             parts.append(action)
 
         # Join parts and ensure trailing slash for consistency
-        url = '/'.join(parts) + '/'
+        url = "/".join(parts) + "/"
 
         # Normalize multiple slashes
-        url = url.replace('//', '/').replace('//', '/')
+        url = url.replace("//", "/").replace("//", "/")
 
         return url
 
     def build_full_url(
         self,
         resource: str,
-        resource_id: Optional[str] = None,
-        action: Optional[str] = None,
-        query_params: Optional[Dict[str, Any]] = None,
-        base_url: Optional[str] = None
+        resource_id: str | None = None,
+        action: str | None = None,
+        query_params: dict[str, Any] | None = None,
+        base_url: str | None = None,
     ) -> str:
         """
         Build a full URL (with protocol and domain).
@@ -173,16 +173,16 @@ class APIURLBuilder:
             Full URL (e.g., 'http://localhost:8000/api/v1/contracts/123/')
         """
         if base_url is None:
-            base_url = getattr(settings, 'API_BASE_URL', 'http://localhost:8000')
+            base_url = getattr(settings, "API_BASE_URL", "http://localhost:8000")
 
         path = self.build(resource, resource_id, action, query_params)
 
         # Ensure base_url doesn't have trailing slash
-        base_url = base_url.rstrip('/')
+        base_url = base_url.rstrip("/")
 
         # Ensure path starts with /
-        if not path.startswith('/'):
-            path = '/' + path
+        if not path.startswith("/"):
+            path = "/" + path
 
         return f"{base_url}{path}"
 
@@ -204,10 +204,11 @@ class APIURLBuilder:
         # Cannot start or end with hyphen
         # Cannot have consecutive hyphens
         import re
-        pattern = r'^[a-z0-9]+(?:-[a-z0-9]+)*$'
+
+        pattern = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
         return bool(re.match(pattern, text))
 
-    def validate_url(self, url: str) -> Tuple[bool, Optional[str]]:
+    def validate_url(self, url: str) -> tuple[bool, str | None]:
         """
         Validate a URL follows naming standards.
 
@@ -221,13 +222,13 @@ class APIURLBuilder:
             return False, f"URL must start with {self.base_path}"
 
         # Remove base path and trailing slash
-        path = url[len(self.base_path):].strip('/')
+        path = url[len(self.base_path) :].strip("/")
 
         if not path:
             return True, None
 
         # Split into segments
-        segments = [s for s in path.split('/') if s]
+        segments = [s for s in path.split("/") if s]
 
         # Check for duplicate consecutive segments
         for i in range(len(segments) - 1):
@@ -238,7 +239,8 @@ class APIURLBuilder:
         for segment in segments:
             # Skip UUID-like segments
             import re
-            uuid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+
+            uuid_pattern = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
             if re.match(uuid_pattern, segment, re.IGNORECASE):
                 continue
 
@@ -251,9 +253,9 @@ class APIURLBuilder:
 # Convenience functions
 def build_api_url(
     resource: str,
-    resource_id: Optional[str] = None,
-    action: Optional[str] = None,
-    query_params: Optional[Dict[str, Any]] = None
+    resource_id: str | None = None,
+    action: str | None = None,
+    query_params: dict[str, Any] | None = None,
 ) -> str:
     """
     Convenience function to build an API URL.
@@ -277,10 +279,10 @@ def build_api_url(
 
 def build_full_api_url(
     resource: str,
-    resource_id: Optional[str] = None,
-    action: Optional[str] = None,
-    query_params: Optional[Dict[str, Any]] = None,
-    base_url: Optional[str] = None
+    resource_id: str | None = None,
+    action: str | None = None,
+    query_params: dict[str, Any] | None = None,
+    base_url: str | None = None,
 ) -> str:
     """
     Convenience function to build a full API URL.
@@ -301,4 +303,3 @@ def build_full_api_url(
     """
     builder = APIURLBuilder()
     return builder.build_full_url(resource, resource_id, action, query_params, base_url)
-

@@ -21,6 +21,7 @@ Eligibility gates (fail-closed when mixed):
 """
 
 from __future__ import annotations
+
 import logging
 from dataclasses import dataclass
 
@@ -265,38 +266,37 @@ def _reconcile_accumulated_vote(
             file_id=OuterRef("pk"),
         ),
     )
-    with tenant_context(tenant_id_str):
-        with transaction.atomic(using=using):
-            qs = (
-                File.objects.using(using)
-                .filter(pk=file_id_str, tenant_id=tenant_id_str)
-                .annotate(_has_ds=exists_ds)
-            )
-            candidates = qs.filter(_has_ds=False).select_for_update(of=("self",))
-            picked = candidates.first()
-            if picked is None:
-                return
-            if not picked.is_active():
-                return
+    with tenant_context(tenant_id_str), transaction.atomic(using=using):
+        qs = (
+            File.objects.using(using)
+            .filter(pk=file_id_str, tenant_id=tenant_id_str)
+            .annotate(_has_ds=exists_ds)
+        )
+        candidates = qs.filter(_has_ds=False).select_for_update(of=("self",))
+        picked = candidates.first()
+        if picked is None:
+            return
+        if not picked.is_active():
+            return
 
-            tenant = Tenant.objects.using(using).get(pk=tenant_id_str)
-            now_ts = timezone.now()
-            candidates.update(
-                status=FileStatus.DELETED.value,
-                deleted_at=now_ts,
-                updated_at=now_ts,
-            )
-            create_audit_event(
-                resource_type="FILE",
-                action=audit_event_types.FILE_ORPHAN_DETECTED,
-                actor_user=None,
-                tenant=tenant,
-                resource_id=file_id_str,
-                result="SUCCESS",
-                details={
-                    "file_id": file_id_str,
-                    "tenant_id": tenant_id_str,
-                    "reason": "eligible_dataset_burst_removed_last_ref",
-                    "reason_codes": reasons,
-                },
-            )
+        tenant = Tenant.objects.using(using).get(pk=tenant_id_str)
+        now_ts = timezone.now()
+        candidates.update(
+            status=FileStatus.DELETED.value,
+            deleted_at=now_ts,
+            updated_at=now_ts,
+        )
+        create_audit_event(
+            resource_type="FILE",
+            action=audit_event_types.FILE_ORPHAN_DETECTED,
+            actor_user=None,
+            tenant=tenant,
+            resource_id=file_id_str,
+            result="SUCCESS",
+            details={
+                "file_id": file_id_str,
+                "tenant_id": tenant_id_str,
+                "reason": "eligible_dataset_burst_removed_last_ref",
+                "reason_codes": reasons,
+            },
+        )

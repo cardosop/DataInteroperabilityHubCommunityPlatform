@@ -15,9 +15,9 @@ service names (grafana-test, prometheus-test, api-service-test). Hostnames 'graf
 the test container.
 """
 
-import unittest
 import json
 import os
+import unittest
 from pathlib import Path
 
 import pytest
@@ -68,8 +68,13 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
             f"http://localhost:{api_port}",
             "http://api-service:8000",
         ]
-        self.grafana_url = _first_reachable(grafana_candidates, "/api/health") or grafana_candidates[1]
-        self.prometheus_url = _first_reachable(prometheus_candidates, "/api/v1/status/config") or prometheus_candidates[1]
+        self.grafana_url = (
+            _first_reachable(grafana_candidates, "/api/health") or grafana_candidates[1]
+        )
+        self.prometheus_url = (
+            _first_reachable(prometheus_candidates, "/api/v1/status/config")
+            or prometheus_candidates[1]
+        )
         api_base = _first_reachable(api_candidates, "/metrics/") or api_candidates[1]
         self.api_metrics_url = f"{api_base.rstrip('/')}/metrics/"
 
@@ -165,7 +170,10 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
 
             if found_any:
                 # Great! Metrics are already exposed
-                self.assertTrue(has_prometheus_format, "Marketplace metrics should be exposed in Prometheus format")
+                self.assertTrue(
+                    has_prometheus_format,
+                    "Marketplace metrics should be exposed in Prometheus format",
+                )
             else:
                 # Metrics not exposed yet - this is expected if no operations have occurred
                 # The metrics endpoint is still valid and will expose metrics once operations start
@@ -203,8 +211,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
                 # If alerts file exists but not loaded, it's a configuration issue
                 # but not a test failure - alerts will be loaded on next reload
                 raise unittest.SkipTest(
-                    "Marketplace alerts not yet loaded in Prometheus "
-                    "(may need reload or restart)"
+                    "Marketplace alerts not yet loaded in Prometheus (may need reload or restart)"
                 )
             else:
                 # Verify at least one marketplace alert group exists
@@ -236,7 +243,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
             dashboard_file = self.dashboards_dir / "marketplace-connections-overview.json"
             self.assertTrue(dashboard_file.exists(), "Dashboard file should exist")
 
-            with open(dashboard_file, "r") as f:
+            with open(dashboard_file) as f:
                 dashboard_data = json.load(f)
 
             # Verify dashboard structure
@@ -270,7 +277,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
         for dashboard_name in dashboard_files:
             dashboard_path = self.dashboards_dir / dashboard_name
             with self.subTest(dashboard=dashboard_name):
-                with open(dashboard_path, "r") as f:
+                with open(dashboard_path) as f:
                     dashboard = json.load(f)
 
                 panels = dashboard["dashboard"].get("panels", [])
@@ -323,7 +330,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
         for dashboard_name in dashboard_files:
             dashboard_path = self.dashboards_dir / dashboard_name
             with self.subTest(dashboard=dashboard_name):
-                with open(dashboard_path, "r") as f:
+                with open(dashboard_path) as f:
                     dashboard = json.load(f)
 
                 panels = dashboard["dashboard"].get("panels", [])
@@ -391,7 +398,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
         for dashboard_name in dashboard_files:
             dashboard_path = self.dashboards_dir / dashboard_name
             with self.subTest(dashboard=dashboard_name):
-                with open(dashboard_path, "r") as f:
+                with open(dashboard_path) as f:
                     dashboard = json.load(f)
 
                 # Verify top-level structure

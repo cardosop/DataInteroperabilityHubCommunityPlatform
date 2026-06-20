@@ -1,4 +1,5 @@
 """Unit tests for SDK token handling — no backend needed (279.E.3)."""
+
 import pytest
 
 from datahub_interoperability.client import DataHubClient
@@ -28,7 +29,10 @@ class TestTokenDetection:
         config = make_config(api_token="eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dummy")
         client = DataHubClient(config)
         headers = await client._get_headers()
-        assert headers["Authorization"] == "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dummy"
+        assert (
+            headers["Authorization"]
+            == "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dummy"
+        )
 
     @pytest.mark.asyncio
     async def test_no_token_has_no_auth_header(self):

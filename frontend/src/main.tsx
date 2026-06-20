@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/react';
 import App from './App.tsx';
 import './index.css';
 import './shared/styles/a11y.css';
+import './shared/styles/accessibility.css';
 import '@xyflow/react/dist/style.css';
 
 // Vite stale-chunk recovery (primary path).

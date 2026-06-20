@@ -1,6 +1,7 @@
 """
 Phase 83.3 — reconcile_prefect_statuses management command tests.
 """
+
 from io import StringIO
 from unittest.mock import patch
 
@@ -11,7 +12,6 @@ from django.test import TestCase
 
 @pytest.mark.django_db(transaction=True)
 class ReconcilePrefectStatusesCommandTest(TestCase):
-
     @patch("hub.apps.jobs.tasks_prefect_sync.reconcile_prefect_run_statuses", return_value=3)
     def test_reconciles_stale_runs(self, mock_reconcile):
         out = StringIO()

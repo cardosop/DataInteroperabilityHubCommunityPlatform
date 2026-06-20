@@ -8,21 +8,20 @@ Uses Click's CliRunner for isolated CLI testing.
 
 import pytest
 from click.testing import CliRunner
-
-from datahub_cli.commands.transformation import transformation
-from datahub_cli.commands.semantic import semantic
-from datahub_cli.commands.billing import billing
 from datahub_cli.commands.baas import baas
-from datahub_cli.commands.ml import ml
+from datahub_cli.commands.billing import billing
 from datahub_cli.commands.compliance import compliance
-from datahub_cli.commands.governance import governance
 from datahub_cli.commands.dq import dq
-from datahub_cli.commands.scheduled_ingestion import (
-    scheduled_ingestion,
-)
+from datahub_cli.commands.governance import governance
+from datahub_cli.commands.ml import ml
 from datahub_cli.commands.scheduled_export import (
     scheduled_export,
 )
+from datahub_cli.commands.scheduled_ingestion import (
+    scheduled_ingestion,
+)
+from datahub_cli.commands.semantic import semantic
+from datahub_cli.commands.transformation import transformation
 
 
 @pytest.fixture
@@ -36,14 +35,16 @@ def runner():
 class TestTransformation:
     def test_pipelines_list_help(self, runner):
         r = runner.invoke(
-            transformation, ["pipelines", "list", "--help"],
+            transformation,
+            ["pipelines", "list", "--help"],
         )
         assert r.exit_code == 0
         assert "List transformation pipelines" in r.output
 
     def test_pipelines_get_help(self, runner):
         r = runner.invoke(
-            transformation, ["pipelines", "get", "--help"],
+            transformation,
+            ["pipelines", "get", "--help"],
         )
         assert r.exit_code == 0
         assert "Get pipeline details" in r.output
@@ -51,20 +52,23 @@ class TestTransformation:
 
     def test_pipelines_create_help(self, runner):
         r = runner.invoke(
-            transformation, ["pipelines", "create", "--help"],
+            transformation,
+            ["pipelines", "create", "--help"],
         )
         assert r.exit_code == 0
         assert "--name" in r.output
 
     def test_pipelines_create_requires_name(self, runner):
         r = runner.invoke(
-            transformation, ["pipelines", "create"],
+            transformation,
+            ["pipelines", "create"],
         )
         assert r.exit_code != 0
 
     def test_pipelines_update_help(self, runner):
         r = runner.invoke(
-            transformation, ["pipelines", "update", "--help"],
+            transformation,
+            ["pipelines", "update", "--help"],
         )
         assert r.exit_code == 0
         assert "Update a transformation pipeline" in r.output
@@ -72,7 +76,8 @@ class TestTransformation:
 
     def test_pipelines_delete_help(self, runner):
         r = runner.invoke(
-            transformation, ["pipelines", "delete", "--help"],
+            transformation,
+            ["pipelines", "delete", "--help"],
         )
         assert r.exit_code == 0
         assert "Delete a transformation pipeline" in r.output
@@ -80,7 +85,8 @@ class TestTransformation:
 
     def test_pipelines_validate_help(self, runner):
         r = runner.invoke(
-            transformation, ["pipelines", "validate", "--help"],
+            transformation,
+            ["pipelines", "validate", "--help"],
         )
         assert r.exit_code == 0
         assert "Validate a transformation pipeline" in r.output
@@ -88,14 +94,16 @@ class TestTransformation:
 
     def test_runs_list_help(self, runner):
         r = runner.invoke(
-            transformation, ["runs", "list", "--help"],
+            transformation,
+            ["runs", "list", "--help"],
         )
         assert r.exit_code == 0
         assert "List transformation runs" in r.output
 
     def test_runs_get_help(self, runner):
         r = runner.invoke(
-            transformation, ["runs", "get", "--help"],
+            transformation,
+            ["runs", "get", "--help"],
         )
         assert r.exit_code == 0
         assert "Get transformation run details" in r.output
@@ -103,7 +111,8 @@ class TestTransformation:
 
     def test_runs_submit_help(self, runner):
         r = runner.invoke(
-            transformation, ["runs", "submit", "--help"],
+            transformation,
+            ["runs", "submit", "--help"],
         )
         assert r.exit_code == 0
         assert "Submit a new transformation run" in r.output
@@ -111,7 +120,8 @@ class TestTransformation:
 
     def test_runs_cancel_help(self, runner):
         r = runner.invoke(
-            transformation, ["runs", "cancel", "--help"],
+            transformation,
+            ["runs", "cancel", "--help"],
         )
         assert r.exit_code == 0
         assert "Cancel a running transformation" in r.output
@@ -119,7 +129,8 @@ class TestTransformation:
 
     def test_plan_limits_help(self, runner):
         r = runner.invoke(
-            transformation, ["plan-limits", "--help"],
+            transformation,
+            ["plan-limits", "--help"],
         )
         assert r.exit_code == 0
         assert "Show transformation plan limits" in r.output
@@ -131,7 +142,8 @@ class TestTransformation:
 class TestSemantic:
     def test_sparql_query_help(self, runner):
         r = runner.invoke(
-            semantic, ["sparql", "query", "--help"],
+            semantic,
+            ["sparql", "query", "--help"],
         )
         assert r.exit_code == 0
         assert "--query" in r.output
@@ -147,7 +159,8 @@ class TestSemantic:
 
     def test_ontology_help(self, runner):
         r = runner.invoke(
-            semantic, ["ontology", "--help"],
+            semantic,
+            ["ontology", "--help"],
         )
         assert r.exit_code == 0
         assert "Get ontology definition" in r.output
@@ -157,7 +170,8 @@ class TestSemantic:
         # ``meshant semantic context`` (semantic-resources.md line 118),
         # so the CLI MUST expose it.
         r = runner.invoke(
-            semantic, ["context", "--help"],
+            semantic,
+            ["context", "--help"],
         )
         assert r.exit_code == 0
         assert "JSON-LD" in r.output
@@ -165,14 +179,16 @@ class TestSemantic:
 
     def test_void_help(self, runner):
         r = runner.invoke(
-            semantic, ["void", "--help"],
+            semantic,
+            ["void", "--help"],
         )
         assert r.exit_code == 0
         assert "Get VoID dataset description" in r.output
 
     def test_shacl_validate_help(self, runner):
         r = runner.invoke(
-            semantic, ["shacl", "validate", "--help"],
+            semantic,
+            ["shacl", "validate", "--help"],
         )
         assert r.exit_code == 0
         assert "Validate RDF data against SHACL shapes" in r.output
@@ -214,35 +230,40 @@ class TestBilling:
 class TestBaaS:
     def test_customers_list_help(self, runner):
         r = runner.invoke(
-            baas, ["customers", "list", "--help"],
+            baas,
+            ["customers", "list", "--help"],
         )
         assert r.exit_code == 0
         assert "List BaaS customers" in r.output
 
     def test_customers_usage_help(self, runner):
         r = runner.invoke(
-            baas, ["customers", "usage", "--help"],
+            baas,
+            ["customers", "usage", "--help"],
         )
         assert r.exit_code == 0
         assert "--period" in r.output
 
     def test_billing_reports_list_help(self, runner):
         r = runner.invoke(
-            baas, ["billing-reports", "list", "--help"],
+            baas,
+            ["billing-reports", "list", "--help"],
         )
         assert r.exit_code == 0
         assert "List billing reports" in r.output
 
     def test_billing_reports_generate_help(self, runner):
         r = runner.invoke(
-            baas, ["billing-reports", "generate", "--help"],
+            baas,
+            ["billing-reports", "generate", "--help"],
         )
         assert r.exit_code == 0
         assert "--period" in r.output
 
     def test_api_keys_rotate_help(self, runner):
         r = runner.invoke(
-            baas, ["api-keys", "rotate", "--help"],
+            baas,
+            ["api-keys", "rotate", "--help"],
         )
         assert r.exit_code == 0
         assert "--grace-hours" in r.output
@@ -279,7 +300,8 @@ class TestML:
 
     def test_marketplace_publish_help(self, runner):
         r = runner.invoke(
-            ml, ["marketplace-publish", "--help"],
+            ml,
+            ["marketplace-publish", "--help"],
         )
         assert r.exit_code == 0
         assert "--pricing-model" in r.output
@@ -291,7 +313,8 @@ class TestML:
 class TestCompliance:
     def test_scan_async_help(self, runner):
         r = runner.invoke(
-            compliance, ["scan-async", "--help"],
+            compliance,
+            ["scan-async", "--help"],
         )
         assert r.exit_code == 0
         assert "--file-id" in r.output
@@ -299,7 +322,8 @@ class TestCompliance:
 
     def test_scan_result_help(self, runner):
         r = runner.invoke(
-            compliance, ["scan-result", "--help"],
+            compliance,
+            ["scan-result", "--help"],
         )
         assert r.exit_code == 0
         assert "Get async compliance scan result" in r.output
@@ -307,14 +331,16 @@ class TestCompliance:
 
     def test_regulations_list_help(self, runner):
         r = runner.invoke(
-            compliance, ["regulations", "list", "--help"],
+            compliance,
+            ["regulations", "list", "--help"],
         )
         assert r.exit_code == 0
         assert "List available regulations" in r.output
 
     def test_regulations_get_help(self, runner):
         r = runner.invoke(
-            compliance, ["regulations", "get", "--help"],
+            compliance,
+            ["regulations", "get", "--help"],
         )
         assert r.exit_code == 0
         assert "Get regulation details" in r.output
@@ -326,14 +352,16 @@ class TestCompliance:
 class TestGovernance:
     def test_workflows_list_help(self, runner):
         r = runner.invoke(
-            governance, ["workflows", "list", "--help"],
+            governance,
+            ["workflows", "list", "--help"],
         )
         assert r.exit_code == 0
         assert "--status" in r.output
 
     def test_workflows_get_help(self, runner):
         r = runner.invoke(
-            governance, ["workflows", "get", "--help"],
+            governance,
+            ["workflows", "get", "--help"],
         )
         assert r.exit_code == 0
         assert "Get workflow details" in r.output
@@ -341,7 +369,8 @@ class TestGovernance:
 
     def test_workflows_retry_help(self, runner):
         r = runner.invoke(
-            governance, ["workflows", "retry", "--help"],
+            governance,
+            ["workflows", "retry", "--help"],
         )
         assert r.exit_code == 0
         assert "Retry a failed governance workflow" in r.output
@@ -362,7 +391,8 @@ class TestDQ:
 class TestScheduledIngestion:
     def test_get_help(self, runner):
         r = runner.invoke(
-            scheduled_ingestion, ["get", "--help"],
+            scheduled_ingestion,
+            ["get", "--help"],
         )
         assert r.exit_code == 0
         assert "Get scheduled ingestion details" in r.output
@@ -380,7 +410,8 @@ class TestScheduledIngestion:
 class TestScheduledExport:
     def test_get_help(self, runner):
         r = runner.invoke(
-            scheduled_export, ["get", "--help"],
+            scheduled_export,
+            ["get", "--help"],
         )
         assert r.exit_code == 0
         assert "Get scheduled export details" in r.output
@@ -392,6 +423,7 @@ class TestScheduledExport:
 class TestMainRegistration:
     def test_transformation_registered(self, runner):
         from datahub_cli.main import cli
+
         r = runner.invoke(cli, ["transformation", "--help"])
         assert r.exit_code == 0
         assert "pipelines" in r.output
@@ -399,6 +431,7 @@ class TestMainRegistration:
 
     def test_semantic_registered(self, runner):
         from datahub_cli.main import cli
+
         r = runner.invoke(cli, ["semantic", "--help"])
         assert r.exit_code == 0
         assert "sparql" in r.output

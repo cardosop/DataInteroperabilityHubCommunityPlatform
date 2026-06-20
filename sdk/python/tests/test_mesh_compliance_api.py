@@ -7,21 +7,20 @@ Tests for Mesh Compliance API methods.
 
 Tests compliance checking and report retrieval operations with comprehensive error handling.
 """
-import os
-import pytest
-import uuid
 import asyncio
-from typing import Optional
-from unittest.mock import AsyncMock, MagicMock
+import uuid
+from unittest.mock import AsyncMock
+
+import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig, MeshAPI
 from datahub_interoperability.errors import (
-    ValidationError,
     NotFoundError,
 )
 from tests._sdk_test_helpers import (
-    check_api_available,
     create_real_api_config,
 )
+import contextlib
 
 # File-specific tenant parameters
 _COMPLIANCE_TENANT_SLUG = "mesh-compliance-sdk-test-tenant"
@@ -32,6 +31,7 @@ _COMPLIANCE_EXTRA_TENANT_SETUP = "tenant.data_mesh_enabled = True; tenant.save()
 
 
 # ── Unit-test fixtures (no API calls) ───────────────────────────────
+
 
 @pytest.fixture
 def config():
@@ -60,6 +60,7 @@ def mesh_api(client):
 
 # ── Integration-test fixtures (real API) ────────────────────────────
 
+
 @pytest.fixture(scope="module")
 def real_api_config():
     """Fixture for real API configuration (module-scoped)."""
@@ -75,13 +76,13 @@ def real_api_config():
 @pytest.fixture
 async def real_client(real_api_config):
     """Create SDK client with real API configuration."""
-    import asyncio
     async with DataHubClient(real_api_config) as client:
         yield client
         await asyncio.sleep(0.1)  # Reduce server load between tests
 
 
 # Unit Tests - Method Structure and Parameters
+
 
 @pytest.mark.asyncio
 async def test_check_compliance_method_structure(mesh_api, client):
@@ -145,15 +146,14 @@ async def test_get_compliance_report_method_structure(mesh_api, client):
 
 # Integration Tests - Real API
 
+
 @pytest.mark.asyncio
 async def test_check_compliance_integration(real_client):
     """Test checking compliance with real API"""
     # First create a test domain
     domain_name = f"test-compliance-{uuid.uuid4().hex[:8]}"
     created_domain = await real_client.mesh.create_domain(
-        name=domain_name,
-        description="Test domain for compliance checking",
-        status="ACTIVE"
+        name=domain_name, description="Test domain for compliance checking", status="ACTIVE"
     )
 
     try:
@@ -170,10 +170,8 @@ async def test_check_compliance_integration(real_client):
         assert "id" in result
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await real_client.mesh.delete_domain(created_domain["id"])
-        except Exception:
-            pass
 
 
 @pytest.mark.asyncio
@@ -182,9 +180,7 @@ async def test_check_compliance_with_asset_id_integration(real_client):
     # First create a test domain
     domain_name = f"test-compliance-asset-{uuid.uuid4().hex[:8]}"
     created_domain = await real_client.mesh.create_domain(
-        name=domain_name,
-        description="Test domain for asset compliance",
-        status="ACTIVE"
+        name=domain_name, description="Test domain for asset compliance", status="ACTIVE"
     )
 
     try:
@@ -198,10 +194,8 @@ async def test_check_compliance_with_asset_id_integration(real_client):
         assert "id" in result  # Report ID
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await real_client.mesh.delete_domain(created_domain["id"])
-        except Exception:
-            pass
 
 
 @pytest.mark.asyncio
@@ -210,9 +204,7 @@ async def test_get_compliance_report_integration(real_client):
     # First create a test domain
     domain_name = f"test-compliance-report-{uuid.uuid4().hex[:8]}"
     created_domain = await real_client.mesh.create_domain(
-        name=domain_name,
-        description="Test domain for compliance report",
-        status="ACTIVE"
+        name=domain_name, description="Test domain for compliance report", status="ACTIVE"
     )
 
     try:
@@ -234,10 +226,8 @@ async def test_get_compliance_report_integration(real_client):
         assert "generated_at" in result
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await real_client.mesh.delete_domain(created_domain["id"])
-        except Exception:
-            pass
 
 
 @pytest.mark.asyncio
@@ -263,10 +253,8 @@ async def test_get_compliance_report_not_found_integration(real_client):
             await real_client.mesh.get_compliance_report(created_domain["id"], fake_report_id)
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await real_client.mesh.delete_domain(created_domain["id"])
-        except Exception:
-            pass
 
 
 @pytest.mark.asyncio
@@ -275,9 +263,7 @@ async def test_check_compliance_structure_integration(real_client):
     # First create a test domain
     domain_name = f"test-compliance-structure-{uuid.uuid4().hex[:8]}"
     created_domain = await real_client.mesh.create_domain(
-        name=domain_name,
-        description="Test domain for compliance structure",
-        status="ACTIVE"
+        name=domain_name, description="Test domain for compliance structure", status="ACTIVE"
     )
 
     try:
@@ -297,10 +283,8 @@ async def test_check_compliance_structure_integration(real_client):
         assert "generated_at" in result
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await real_client.mesh.delete_domain(created_domain["id"])
-        except Exception:
-            pass
 
 
 @pytest.mark.asyncio
@@ -309,9 +293,7 @@ async def test_get_compliance_report_structure_integration(real_client):
     # First create a test domain
     domain_name = f"test-compliance-report-structure-{uuid.uuid4().hex[:8]}"
     created_domain = await real_client.mesh.create_domain(
-        name=domain_name,
-        description="Test domain for report structure",
-        status="ACTIVE"
+        name=domain_name, description="Test domain for report structure", status="ACTIVE"
     )
 
     try:
@@ -336,8 +318,5 @@ async def test_get_compliance_report_structure_integration(real_client):
         assert "updated_at" in result
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await real_client.mesh.delete_domain(created_domain["id"])
-        except Exception:
-            pass
-

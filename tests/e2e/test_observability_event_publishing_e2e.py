@@ -4,6 +4,7 @@ E2E tests for Observability Event Publishing.
 Tests that observability API endpoints publish events correctly.
 Uses REAL services (no mocks/stubs).
 """
+
 try:
     import pytest
 
@@ -13,19 +14,19 @@ except ImportError:
     pass
 
 import uuid
-from django.test import TestCase, override_settings
-from django.utils import timezone
-from django.contrib.auth import get_user_model
-from django.urls import reverse
-from rest_framework import status
-from rest_framework.test import APIClient
 from datetime import timedelta
 
+from django.contrib.auth import get_user_model
+from django.test import TestCase, override_settings
+from django.urls import reverse
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.test import APIClient
+
+from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.core.events.models import Event
 from hub.apps.datasets.models import Dataset
-from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.files.models import File, FileStatus
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.users.models import UserStatus
 
 # Try to import E2ETestBase and get_response_data, fallback to TestCase if not available
@@ -42,6 +43,7 @@ except ImportError:
             return response.data
         try:
             import json
+
             return json.loads(response.content) if response.content else None
         except (TypeError, AttributeError, ValueError):
             return None
@@ -133,7 +135,8 @@ class ObservabilityEventPublishingE2ETest(E2ETestBase):
                 "observability.trace.created",
             )
             self.assertEqual(
-                event.source_service, "observability_service",
+                event.source_service,
+                "observability_service",
             )
 
     def test_get_volume_dashboard_publishes_trace_event(self):
@@ -161,7 +164,8 @@ class ObservabilityEventPublishingE2ETest(E2ETestBase):
                 "observability.trace.created",
             )
             self.assertEqual(
-                event.source_service, "observability_service",
+                event.source_service,
+                "observability_service",
             )
 
     def test_get_schema_drift_dashboard_publishes_trace_event(self):
@@ -189,7 +193,8 @@ class ObservabilityEventPublishingE2ETest(E2ETestBase):
                 "observability.trace.created",
             )
             self.assertEqual(
-                event.source_service, "observability_service",
+                event.source_service,
+                "observability_service",
             )
 
     def test_record_metric_publishes_metric_event(self):
@@ -269,7 +274,9 @@ class ObservabilityEventPublishingE2ETest(E2ETestBase):
         self.assertEqual(alert_event.data["metric_name"], "freshness_age_seconds")
         # Verify the alert references the correct stale dataset
         self.assertEqual(
-            alert_event.data.get("dataset_id", alert_event.data.get("labels", {}).get("dataset_id")),
+            alert_event.data.get(
+                "dataset_id", alert_event.data.get("labels", {}).get("dataset_id")
+            ),
             str(self.dataset.id),
             "Alert event must reference the stale dataset",
         )
@@ -339,7 +346,9 @@ class ObservabilityEventPublishingE2ETest(E2ETestBase):
         self.assertIn("Schema drift detected", drift_event.data["alert_message"])
         # Verify the alert references the correct dataset
         self.assertEqual(
-            drift_event.data.get("dataset_id", drift_event.data.get("labels", {}).get("dataset_id")),
+            drift_event.data.get(
+                "dataset_id", drift_event.data.get("labels", {}).get("dataset_id")
+            ),
             str(self.dataset.id),
             "Schema drift alert must reference the correct dataset",
         )
@@ -445,20 +454,15 @@ class ObservabilityEventPublishingE2ETest(E2ETestBase):
 
         # Verify metric event exists with correct data
         metric_events = all_events.filter(event_type="observability.metric.recorded")
-        self.assertGreater(
-            metric_events.count(), 0, "Expected at least one metric event"
-        )
+        self.assertGreater(metric_events.count(), 0, "Expected at least one metric event")
         metric_event = metric_events.first()
         self.assertEqual(metric_event.source_service, "observability_service")
-        self.assertEqual(
-            metric_event.data["labels"]["dataset_id"], str(self.dataset.id)
-        )
+        self.assertEqual(metric_event.data["labels"]["dataset_id"], str(self.dataset.id))
 
         # Trace events may not be published in test environments.
         # Only verify if they exist.
-        trace_events = all_events.filter(
+        all_events.filter(
             event_type="observability.trace.created",
         )
         # No hard assertion -- trace publishing is optional in
         # test mode.
-

@@ -5,12 +5,11 @@ Unit tests for Dataset model.
 import uuid
 
 import pytest
-from django.db import IntegrityError, transaction
-from django.test import TestCase
+from django.db import IntegrityError
 
 from hub.apps.assets.models import Asset
 from hub.apps.datasets.models import Dataset
-from hub.apps.datasets.tests.test_base import DatasetsTestBase, DatasetsTransactionTestBase
+from hub.apps.datasets.tests.test_base import DatasetsTestBase
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -76,7 +75,13 @@ class DatasetModelTest(DatasetsTestBase):
             created_by=self.user,
         )
 
-        self.assertIsNotNone(dataset)
+        self.assertEqual(dataset.tenant, self.tenant)
+        self.assertEqual(dataset.asset, self.asset)
+        self.assertEqual(dataset.file, self.file)
+        self.assertEqual(dataset.version, 1)
+        self.assertEqual(dataset.format, "CSV")
+        self.assertEqual(dataset.row_count, 1000)
+        self.assertEqual(dataset.semantic_version, "1.0.0")
 
     def test_create_dataset_with_all_fields_sets_semantic_version(self):
         """Test dataset creation with all fields sets semantic_version correctly (success scenario)"""
@@ -137,12 +142,9 @@ class DatasetModelTest(DatasetsTestBase):
 
     def test_create_dataset_missing_required_fields(self):
         """Test dataset creation with missing required fields (failure scenario)"""
-        # Missing tenant
-        with self.assertRaises(Exception) as cm:
+        # Missing tenant — the NOT NULL FK constraint raises IntegrityError.
+        with self.assertRaises(IntegrityError):
             Dataset.objects.create(file=self.file, version=1, format="CSV")
-
-        # Should raise IntegrityError or ValidationError
-        self.assertIsNotNone(cm.exception)
 
     def test_create_dataset_invalid_file(self):
         """Test dataset creation with invalid file reference raises IntegrityError"""
@@ -151,9 +153,9 @@ class DatasetModelTest(DatasetsTestBase):
         # Django defers FK checks until transaction commit
         # Force immediate FK validation using PostgreSQL constraint check
         from django.db import connection
-        
+
         with self.assertRaises(IntegrityError):
-            dataset = Dataset.objects.create(
+            Dataset.objects.create(
                 tenant=self.tenant, file_id=fake_file_id, version=1, format="CSV"
             )
             # Force FK constraint check immediately (PostgreSQL specific)
@@ -280,7 +282,7 @@ class DatasetModelTest(DatasetsTestBase):
     # ========== ERROR HANDLING ==========
 
     def test_create_dataset_with_valid_fields(self):
-        """Test that Dataset.objects.create succeeds with valid fields."""
+        """Minimal required fields produce a valid Dataset with correct defaults."""
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -289,8 +291,11 @@ class DatasetModelTest(DatasetsTestBase):
             format="CSV",
             created_by=self.user,
         )
-        self.assertIsNotNone(dataset,
-            "Dataset creation with valid fields must succeed")
+        self.assertEqual(dataset.tenant, self.tenant)
+        self.assertEqual(dataset.version, 1)
+        self.assertEqual(dataset.format, "CSV")
+        self.assertEqual(dataset.status, "ACTIVE")  # default
+        self.assertTrue(dataset.is_current)  # default
 
     def test_dataset_clean_validation(self):
         """dataset.clean() must succeed for a dataset with all required fields."""

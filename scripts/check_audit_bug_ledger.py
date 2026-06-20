@@ -44,7 +44,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -95,9 +95,7 @@ _EXTENSION_REQUIRED_FIELDS = ("extended_at", "new_expiry", "approver", "reason")
 # ---------------------------------------------------------------------------
 
 
-def _check_parseable_date(
-    problems: list[str], ctx: str, field: str, value: Any
-) -> None:
+def _check_parseable_date(problems: list[str], ctx: str, field: str, value: Any) -> None:
     """Append a parse-error problem if a non-empty value isn't ISO-8601.
 
     A null/missing value is not flagged here — required-field checks are
@@ -110,10 +108,7 @@ def _check_parseable_date(
     if not isinstance(value, str) or not value.strip():
         return
     if _parse_iso_dt(value) is None:
-        problems.append(
-            f"{ctx} {field} must parse as ISO-8601 (date or datetime), "
-            f"got {value!r}"
-        )
+        problems.append(f"{ctx} {field} must parse as ISO-8601 (date or datetime), got {value!r}")
 
 
 def validate_schema(doc: Any) -> list[str]:
@@ -151,9 +146,7 @@ def validate_schema(doc: Any) -> list[str]:
     if "default_expiry_days" in doc:
         ded = doc["default_expiry_days"]
         if not isinstance(ded, int) or isinstance(ded, bool) or ded <= 0:
-            problems.append(
-                f"default_expiry_days must be a positive integer, got {ded!r}"
-            )
+            problems.append(f"default_expiry_days must be a positive integer, got {ded!r}")
 
     cycle = doc.get("cycle") or {}
     if not isinstance(cycle, dict):
@@ -161,23 +154,16 @@ def validate_schema(doc: Any) -> list[str]:
     elif "residual_max" in cycle:
         rm = cycle["residual_max"]
         if not isinstance(rm, int) or isinstance(rm, bool) or rm < 0:
-            problems.append(
-                f"cycle.residual_max must be an integer ≥ 0, got {rm!r}"
-            )
+            problems.append(f"cycle.residual_max must be an integer ≥ 0, got {rm!r}")
 
     process = doc.get("process") or {}
     if not isinstance(process, dict):
         problems.append("process must be an object")
     elif "ticket_grace_period_hours" in process:
         g = process["ticket_grace_period_hours"]
-        if (
-            not isinstance(g, (int, float))
-            or isinstance(g, bool)
-            or g < 0
-        ):
+        if not isinstance(g, (int, float)) or isinstance(g, bool) or g < 0:
             problems.append(
-                f"process.ticket_grace_period_hours must be a non-negative "
-                f"number, got {g!r}"
+                f"process.ticket_grace_period_hours must be a non-negative number, got {g!r}"
             )
 
     bugs = doc.get("bugs")
@@ -205,9 +191,7 @@ def validate_schema(doc: Any) -> list[str]:
                 seen_ids.add(bug_id)
         status = bug.get("status")
         if status not in _BUG_VALID_STATUSES:
-            problems.append(
-                f"{ctx} status must be one of {_BUG_VALID_STATUSES}, got {status!r}"
-            )
+            problems.append(f"{ctx} status must be one of {_BUG_VALID_STATUSES}, got {status!r}")
         if status == "closed" and not bug.get("closed_at"):
             problems.append(f"{ctx} status=closed requires closed_at to be set")
 
@@ -229,9 +213,7 @@ def validate_schema(doc: Any) -> list[str]:
             else:
                 for e_idx, example in enumerate(examples):
                     if not isinstance(example, str):
-                        problems.append(
-                            f"{ctx}.skip_reason_examples[{e_idx}] must be a string"
-                        )
+                        problems.append(f"{ctx}.skip_reason_examples[{e_idx}] must be a string")
                         continue
                     if not example.startswith(AUDIT_BUG_SKIP_REASON_PREFIX):
                         problems.append(
@@ -291,7 +273,7 @@ def _parse_iso_dt(value: Any) -> datetime | None:
     except ValueError:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -334,9 +316,7 @@ def effective_expiry(bug: dict, *, default_days: int) -> datetime | None:
     return None
 
 
-def bug_is_past_expiry(
-    bug: dict, *, now: datetime, default_days: int
-) -> bool:
+def bug_is_past_expiry(bug: dict, *, now: datetime, default_days: int) -> bool:
     """True iff the bug is still open AND the effective expiry is in the past.
 
     Closed bugs are never past expiry (the 14 d clock stops at closure).
@@ -366,9 +346,7 @@ def check_process(doc: dict, *, now: datetime) -> tuple[bool, list[str]]:
     / expiry are hard failures.
     """
     process_cfg = doc.get("process") or {}
-    grace_hours = process_cfg.get(
-        "ticket_grace_period_hours", DEFAULT_TICKET_GRACE_HOURS
-    )
+    grace_hours = process_cfg.get("ticket_grace_period_hours", DEFAULT_TICKET_GRACE_HOURS)
     default_days = doc.get("default_expiry_days", DEFAULT_EXPIRY_DAYS)
     grace_window = timedelta(hours=grace_hours)
 
@@ -387,9 +365,7 @@ def check_process(doc: dict, *, now: datetime) -> tuple[bool, list[str]]:
             continue
 
         surfaced = _parse_iso_dt(bug.get("surfaced_at"))
-        within_grace = (
-            surfaced is not None and (now - surfaced) <= grace_window
-        )
+        within_grace = surfaced is not None and (now - surfaced) <= grace_window
 
         problems: list[str] = []
         if not (bug.get("ticket") or "").strip():
@@ -402,9 +378,9 @@ def check_process(doc: dict, *, now: datetime) -> tuple[bool, list[str]]:
         # the 14-d default applies. A non-empty string we can't parse
         # is a data-quality bug in the ledger entry itself.
         raw_expiry = bug.get("expiry")
-        if isinstance(raw_expiry, str) and raw_expiry.strip() and _parse_iso_dt(raw_expiry) is None:
-            problems.append("expiry")
-        elif effective_expiry(bug, default_days=default_days) is None:
+        if (
+            isinstance(raw_expiry, str) and raw_expiry.strip() and _parse_iso_dt(raw_expiry) is None
+        ) or effective_expiry(bug, default_days=default_days) is None:
             problems.append("expiry")
 
         if not problems:
@@ -422,10 +398,7 @@ def check_process(doc: dict, *, now: datetime) -> tuple[bool, list[str]]:
 
         any_fail = True
         for field in problems:
-            messages.append(
-                f"  [FAIL] {bug_id} — {field} missing past "
-                f"{grace_hours}h grace window"
-            )
+            messages.append(f"  [FAIL] {bug_id} — {field} missing past {grace_hours}h grace window")
 
     return (not any_fail), messages
 
@@ -470,9 +443,7 @@ def _aggregate_skip_events(artifact_dir: Path) -> dict[str, int]:
                 try:
                     entry = json.loads(line)
                 except json.JSONDecodeError as exc:
-                    raise RuntimeError(
-                        f"Malformed JSONL at {jsonl_path}:{line_no}: {exc}"
-                    ) from exc
+                    raise RuntimeError(f"Malformed JSONL at {jsonl_path}:{line_no}: {exc}") from exc
                 reason = str(entry.get("reason", "(no reason)"))
                 counts[reason] = counts.get(reason, 0) + 1
     return counts
@@ -505,9 +476,7 @@ def check_close(
 
     category_count = count_category_skips(skip_counts, prefix)
     if category_count <= residual_max:
-        messages.append(
-            f"  [ok] residual long-tail: {category_count} skip(s) ≤ {residual_max} cap"
-        )
+        messages.append(f"  [ok] residual long-tail: {category_count} skip(s) ≤ {residual_max} cap")
     else:
         any_fail = True
         messages.append(
@@ -526,9 +495,7 @@ def check_close(
     else:
         any_fail = True
         for bug_id in past_expiry:
-            messages.append(
-                f"  [FAIL] {bug_id} — past expiry without an active extension review"
-            )
+            messages.append(f"  [FAIL] {bug_id} — past expiry without an active extension review")
 
     return (not any_fail), messages
 
@@ -553,8 +520,7 @@ def load_ledger(path: Path) -> dict:
         raise ValueError(f"Malformed ledger at {path}: {exc}") from exc
     if not isinstance(parsed, dict):
         raise ValueError(
-            f"Malformed ledger at {path}: root must be a JSON object, "
-            f"got {type(parsed).__name__}"
+            f"Malformed ledger at {path}: root must be a JSON object, got {type(parsed).__name__}"
         )
     return parsed
 
@@ -594,8 +560,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help=(
-            "Override 'now' for deterministic tests; ISO-8601 datetime. "
-            "Defaults to current UTC."
+            "Override 'now' for deterministic tests; ISO-8601 datetime. Defaults to current UTC."
         ),
     )
     return parser
@@ -607,7 +572,7 @@ def _resolve_now(arg: str | None) -> datetime:
         if not parsed:
             raise SystemExit(f"--now must be ISO-8601, got {arg!r}")
         return parsed
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def main(argv: list[str] | None = None) -> int:

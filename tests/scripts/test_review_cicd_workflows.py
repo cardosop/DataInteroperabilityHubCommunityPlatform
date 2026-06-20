@@ -5,12 +5,13 @@ Tests for CI/CD workflow review script
 Tests the review and extraction of endpoint references from CI/CD workflows.
 """
 
+import json
 import sys
 import tempfile
 import unittest
-import json
-import yaml
 from pathlib import Path
+
+import yaml
 
 # Add scripts directory to path
 project_root = Path(__file__).parent.parent.parent
@@ -18,9 +19,9 @@ sys.path.insert(0, str(project_root / "scripts"))
 
 # Import with proper handling
 import importlib.util
+
 spec = importlib.util.spec_from_file_location(
-    "review_cicd_workflows",
-    project_root / "scripts" / "review_cicd_workflows.py"
+    "review_cicd_workflows", project_root / "scripts" / "review_cicd_workflows.py"
 )
 if spec and spec.loader:
     module = importlib.util.module_from_spec(spec)
@@ -115,6 +116,7 @@ jobs:
     def tearDown(self):
         """Clean up test fixtures"""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_review_all_workflows(self):
@@ -136,7 +138,9 @@ jobs:
 
         # Test OpenAPI workflow
         openapi_content = "name: OpenAPI Validation\njobs:\n  validate:\n    steps: []"
-        wf_type = reviewer._determine_workflow_type("OpenAPI Validation", openapi_content, ["validate"])
+        wf_type = reviewer._determine_workflow_type(
+            "OpenAPI Validation", openapi_content, ["validate"]
+        )
         self.assertEqual(wf_type, "openapi_validation")
 
         # Test API testing workflow
@@ -242,7 +246,7 @@ jobs:
         reviewer.review_all_workflows()
 
         output_file = self.temp_path / "report.json"
-        report = reviewer.generate_report(output_file)
+        reviewer.generate_report(output_file)
 
         self.assertTrue(output_file.exists(), "Report file should exist")
 
@@ -296,4 +300,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

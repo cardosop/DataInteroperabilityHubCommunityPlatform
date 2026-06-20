@@ -20,8 +20,8 @@ Test layout
   TestReviewGapFixes             — caller wiring + stale comment fixes
 """
 
-import re
 import pathlib
+import re
 
 import yaml
 
@@ -36,6 +36,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _read(rel: str) -> str:
     """Read a repo-relative file as text."""
     path = REPO_ROOT / rel
@@ -46,7 +47,8 @@ def _read(rel: str) -> str:
 def _non_comment_lines(text: str, comment_prefix: str = "#") -> str:
     """Return only non-comment, non-blank lines joined as a single string."""
     lines = [
-        line for line in text.splitlines()
+        line
+        for line in text.splitlines()
         if line.strip() and not line.strip().startswith(comment_prefix)
     ]
     return "\n".join(lines)
@@ -68,6 +70,7 @@ def _yaml_safe(rel: str):
 # ===========================================================================
 # 20.1 — SES IAM resources scoped to specific identity ARN
 # ===========================================================================
+
 
 class TestSESIdentityScoping:
     TF_MAIN = "infrastructure/terraform/modules/iam-irsa/main.tf"
@@ -133,11 +136,13 @@ class TestSESIdentityScoping:
     def test_api_service_ses_resources_not_wildcard(self):
         text = _read(self.TF_MAIN)
         # Find the api_service_policy SES statement
-        ses_blocks = list(re.finditer(
-            r'sid\s*=\s*"SESAccess"(.*?)(?=\n\s*\})',
-            text,
-            re.DOTALL,
-        ))
+        ses_blocks = list(
+            re.finditer(
+                r'sid\s*=\s*"SESAccess"(.*?)(?=\n\s*\})',
+                text,
+                re.DOTALL,
+            )
+        )
         assert ses_blocks, "At least one SESAccess statement must exist"
         for m in ses_blocks:
             block = m.group(1)
@@ -162,6 +167,7 @@ class TestSESIdentityScoping:
 # ===========================================================================
 # 20.2 — ALB Controller cluster-ownership tag conditions
 # ===========================================================================
+
 
 class TestALBControllerTagConditions:
     TF_MAIN = "infrastructure/terraform/modules/iam-irsa/main.tf"
@@ -207,8 +213,12 @@ class TestALBControllerTagConditions:
 
     def test_required_modify_delete_sids_present(self):
         text = _read(self.TF_MAIN)
-        for sid in ('"ModifyDeleteLBAndTG"', '"RegisterDeregisterTargets"',
-                    '"ModifyListenerAndRule"', '"DeleteSG"'):
+        for sid in (
+            '"ModifyDeleteLBAndTG"',
+            '"RegisterDeregisterTargets"',
+            '"ModifyListenerAndRule"',
+            '"DeleteSG"',
+        ):
             assert sid in text, f"Required Sid {sid} missing from ALB controller policy"
 
     def test_create_sids_use_request_tag(self):
@@ -242,6 +252,7 @@ class TestALBControllerTagConditions:
 # ===========================================================================
 # 20.3 — automountServiceAccountToken global opt-out + Prefect opt-in
 # ===========================================================================
+
 
 class TestServiceAccountTokenOptOut:
     SA_YAML = "helm/templates/serviceaccount.yaml"
@@ -294,14 +305,13 @@ class TestServiceAccountTokenOptOut:
     def test_prefect_worker_has_rbac_sa(self):
         """The Prefect worker must reference a dedicated service account."""
         text = _read(self.PREFECT_YAML)
-        assert "serviceAccountName" in text, (
-            "Prefect worker pod spec must set serviceAccountName"
-        )
+        assert "serviceAccountName" in text, "Prefect worker pod spec must set serviceAccountName"
 
 
 # ===========================================================================
 # 20.4 — Promtail non-root, no Docker socket, static file targets
 # ===========================================================================
+
 
 class TestPromtailNonRoot:
     COMPOSE = "docker-compose.production.yml"
@@ -315,16 +325,12 @@ class TestPromtailNonRoot:
 
     def test_promtail_user_is_non_root(self):
         user = self._promtail_svc().get("user", "")
-        assert user == "10001:10001", (
-            f"Promtail must run as user 10001:10001, got: {user!r}"
-        )
+        assert user == "10001:10001", f"Promtail must run as user 10001:10001, got: {user!r}"
 
     def test_promtail_no_docker_sock_volume(self):
         volumes = self._promtail_svc().get("volumes", [])
         docker_sock = [v for v in volumes if "docker.sock" in str(v)]
-        assert not docker_sock, (
-            f"Promtail must not mount docker.sock; found: {docker_sock}"
-        )
+        assert not docker_sock, f"Promtail must not mount docker.sock; found: {docker_sock}"
 
     def test_promtail_no_docker_containers_dir(self):
         volumes = self._promtail_svc().get("volumes", [])
@@ -363,9 +369,7 @@ class TestPromtailNonRoot:
     def test_promtail_config_uses_static_configs_for_containers(self):
         cfg = _yaml(self.PROMTAIL_CFG)
         jobs = cfg.get("scrape_configs", [])
-        containers_job = next(
-            (j for j in jobs if j.get("job_name") == "containers"), None
-        )
+        containers_job = next((j for j in jobs if j.get("job_name") == "containers"), None)
         assert containers_job is not None, "Promtail must have a 'containers' scrape_config job"
         assert "static_configs" in containers_job, (
             "Promtail 'containers' job must use static_configs"
@@ -374,15 +378,10 @@ class TestPromtailNonRoot:
     def test_promtail_config_targets_log_dir(self):
         cfg = _yaml(self.PROMTAIL_CFG)
         jobs = cfg.get("scrape_configs", [])
-        containers_job = next(
-            (j for j in jobs if j.get("job_name") == "containers"), None
-        )
+        containers_job = next((j for j in jobs if j.get("job_name") == "containers"), None)
         assert containers_job is not None
         static_cfgs = containers_job.get("static_configs", [])
-        all_paths = " ".join(
-            str(sc.get("labels", {}).get("__path__", ""))
-            for sc in static_cfgs
-        )
+        all_paths = " ".join(str(sc.get("labels", {}).get("__path__", "")) for sc in static_cfgs)
         assert "/var/log/containers" in all_paths, (
             "Promtail static_configs must target /var/log/containers"
         )
@@ -401,9 +400,7 @@ class TestPromtailNonRoot:
         """The pipeline must parse the Docker json-file outer envelope {log, stream, time}."""
         cfg = _yaml(self.PROMTAIL_CFG)
         jobs = cfg.get("scrape_configs", [])
-        containers_job = next(
-            (j for j in jobs if j.get("job_name") == "containers"), None
-        )
+        containers_job = next((j for j in jobs if j.get("job_name") == "containers"), None)
         assert containers_job is not None
         stages = containers_job.get("pipeline_stages", [])
         # First json stage must extract the 'log' field from the Docker envelope
@@ -420,6 +417,7 @@ class TestPromtailNonRoot:
 # 20.5 — Wildcard egress removed from RDS and ElastiCache SGs
 # ===========================================================================
 
+
 class TestDBEgressRemoved:
     TF_VPC = "infrastructure/terraform/modules/vpc/main.tf"
 
@@ -434,29 +432,26 @@ class TestDBEgressRemoved:
 
     def test_elasticache_egress_all_resource_removed(self):
         code = _non_comment_lines(_read(self.TF_VPC))
-        assert (
-            'resource "aws_security_group_rule" "elasticache_egress_all"'
-            not in code
-        ), "elasticache_egress_all security group rule must be removed (20.5)"
+        assert 'resource "aws_security_group_rule" "elasticache_egress_all"' not in code, (
+            "elasticache_egress_all security group rule must be removed (20.5)"
+        )
 
     def test_no_wildcard_egress_cidr_on_rds_sg(self):
         """Ensure 0.0.0.0/0 egress does not appear in any rule scoped to the RDS SG."""
         text = _read(self.TF_VPC)
         # Find any resource block that references rds SG and has 0.0.0.0/0
         match = re.search(
-            r'aws_security_group\.rds\.id[^}]*?0\.0\.0\.0/0',
+            r"aws_security_group\.rds\.id[^}]*?0\.0\.0\.0/0",
             text,
             re.DOTALL,
         )
-        assert match is None, (
-            "No rule referencing the RDS security group may use 0.0.0.0/0 CIDR"
-        )
+        assert match is None, "No rule referencing the RDS security group may use 0.0.0.0/0 CIDR"
 
     def test_no_wildcard_egress_cidr_on_elasticache_sg(self):
         """Ensure 0.0.0.0/0 egress does not appear in any rule scoped to the ElastiCache SG."""
         text = _read(self.TF_VPC)
         match = re.search(
-            r'aws_security_group\.elasticache\.id[^}]*?0\.0\.0\.0/0',
+            r"aws_security_group\.elasticache\.id[^}]*?0\.0\.0\.0/0",
             text,
             re.DOTALL,
         )
@@ -481,6 +476,7 @@ class TestDBEgressRemoved:
 # ===========================================================================
 # 20.6 — Trivy gate hardening: no force_deploy bypass
 # ===========================================================================
+
 
 class TestTrivyGateHardening:
     DEPLOY_YML = ".github/workflows/deploy.yml"
@@ -525,14 +521,15 @@ class TestTrivyGateHardening:
         assert "force_deploy == 'true'" not in text, (
             "Old force_deploy conditional must not appear in exit-code expressions"
         )
-        assert "force_deploy == \"true\"" not in text
+        assert 'force_deploy == "true"' not in text
 
     def test_all_trivy_gate_steps_use_exit_code_1(self):
         """All gate steps (one per service) must use the literal string '1', not a conditional."""
         cfg = self._workflow()
         scan_steps = cfg.get("jobs", {}).get("scan", {}).get("steps", [])
         gate_steps = [
-            s for s in scan_steps
+            s
+            for s in scan_steps
             if isinstance(s.get("name"), str) and s["name"].startswith("Trivy gate")
         ]
         assert len(gate_steps) == 9, (
@@ -549,13 +546,11 @@ class TestTrivyGateHardening:
         cfg = self._workflow()
         scan_steps = cfg.get("jobs", {}).get("scan", {}).get("steps", [])
         notify = [
-            s for s in scan_steps
-            if s.get("if") == "failure()"
-            and "notify" in s.get("name", "").lower()
+            s
+            for s in scan_steps
+            if s.get("if") == "failure()" and "notify" in s.get("name", "").lower()
         ]
-        assert notify, (
-            "The scan job must contain an if:failure() notification step"
-        )
+        assert notify, "The scan job must contain an if:failure() notification step"
 
     def test_notification_step_references_slack_secret(self):
         """The notification step must reference the Slack webhook secret."""
@@ -582,6 +577,7 @@ class TestTrivyGateHardening:
 # ===========================================================================
 # 20.7 — Traefik ACME email externalised via env var
 # ===========================================================================
+
 
 class TestTraefikACMEEmail:
     TRAEFIK_CFG = "infrastructure/traefik/traefik.yml"
@@ -645,6 +641,7 @@ class TestTraefikACMEEmail:
 # ===========================================================================
 # Review gap fixes — 20.1 caller wiring + stale comment
 # ===========================================================================
+
 
 class TestReviewGapFixes:
     STAGING_MAIN = "infrastructure/terraform/environments/staging/main.tf"
@@ -710,24 +707,22 @@ class TestReviewGapFixes:
     def test_terraform_workflow_staging_passes_var_flag(self):
         """The secret must be passed as a -var flag, not just referenced."""
         text = _read(self.TF_WORKFLOW)
-        assert 'ses_sender_identity=${{ secrets.TF_STAGING_SES_SENDER_IDENTITY }}' in text, (
+        assert "ses_sender_identity=${{ secrets.TF_STAGING_SES_SENDER_IDENTITY }}" in text, (
             "terraform.yml staging plan must include "
-            "-var=\"ses_sender_identity=${{ secrets.TF_STAGING_SES_SENDER_IDENTITY }}\""
+            '-var="ses_sender_identity=${{ secrets.TF_STAGING_SES_SENDER_IDENTITY }}"'
         )
 
     def test_terraform_workflow_prod_passes_var_flag(self):
         text = _read(self.TF_WORKFLOW)
-        assert 'ses_sender_identity=${{ secrets.TF_PROD_SES_SENDER_IDENTITY }}' in text, (
+        assert "ses_sender_identity=${{ secrets.TF_PROD_SES_SENDER_IDENTITY }}" in text, (
             "terraform.yml prod plan must include "
-            "-var=\"ses_sender_identity=${{ secrets.TF_PROD_SES_SENDER_IDENTITY }}\""
+            '-var="ses_sender_identity=${{ secrets.TF_PROD_SES_SENDER_IDENTITY }}"'
         )
 
     # ---- Gap 4: stale force_deploy comment in deploy.yml job header ----
 
     def test_job5_header_does_not_reference_force_deploy_bypass(self):
         text = _read(self.DEPLOY_YML)
-        assert (
-            "set force_deploy=true input to downgrade exit-code to 0" not in text
-        ), (
+        assert "set force_deploy=true input to downgrade exit-code to 0" not in text, (
             "Job 5 comment header must not retain the old force_deploy bypass instruction"
         )

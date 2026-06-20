@@ -1,10 +1,10 @@
 """Unit tests for ``datahub ropa`` commands (283.3.3.2)."""
+
 import json
+from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
-from unittest.mock import Mock
-
 from datahub_cli.main import cli
 
 
@@ -25,10 +25,20 @@ class TestRopaList:
     def test_list_table(self, runner, mock_api):
         mock_api.get.return_value = {
             "results": [
-                {"id": "11111111-1111-1111-1111-111111111111", "regulation": "GDPR",
-                 "output_format": "json", "status": "COMPLETED", "created_at": "2026-01-15T00:00:00Z"},
-                {"id": "22222222-2222-2222-2222-222222222222", "regulation": "LGPD",
-                 "output_format": "csv", "status": "FAILED", "created_at": "2026-02-01T00:00:00Z"},
+                {
+                    "id": "11111111-1111-1111-1111-111111111111",
+                    "regulation": "GDPR",
+                    "output_format": "json",
+                    "status": "COMPLETED",
+                    "created_at": "2026-01-15T00:00:00Z",
+                },
+                {
+                    "id": "22222222-2222-2222-2222-222222222222",
+                    "regulation": "LGPD",
+                    "output_format": "csv",
+                    "status": "FAILED",
+                    "created_at": "2026-02-01T00:00:00Z",
+                },
             ]
         }
         result = runner.invoke(cli, ["ropa", "list"])
@@ -63,9 +73,14 @@ class TestRopaGet:
     @pytest.mark.unit
     def test_get_table(self, runner, mock_api):
         mock_api.get.return_value = {
-            "id": "abc", "regulation": "GDPR", "output_format": "json",
-            "status": "COMPLETED", "byte_size": 1234, "created_at": "2026-01-01",
-            "completed_at": "2026-01-02", "summary_json": {"asset_count": 42},  # noqa: PHASE216-STATIC-ID
+            "id": "abc",
+            "regulation": "GDPR",
+            "output_format": "json",
+            "status": "COMPLETED",
+            "byte_size": 1234,
+            "created_at": "2026-01-01",
+            "completed_at": "2026-01-02",
+            "summary_json": {"asset_count": 42},  # noqa: PHASE216-STATIC-ID
         }
         result = runner.invoke(cli, ["ropa", "get", "abc"])
         assert result.exit_code == 0
@@ -90,7 +105,8 @@ class TestRopaPreview:
     @pytest.mark.unit
     def test_preview_table(self, runner, mock_api):
         mock_api.get.return_value = {
-            "regulation": "GDPR", "cache_hit": True,
+            "regulation": "GDPR",
+            "cache_hit": True,
             "summary": {"asset_count": 10, "gap_count": 2},  # noqa: PHASE216-STATIC-ID
             "gaps": [{"code": "GAP1", "asset_key": "sales", "message": "Missing processor"}],  # noqa: PHASE216-STATIC-ID
         }
@@ -112,7 +128,9 @@ class TestRopaGenerate:
     @pytest.mark.unit
     def test_generate_sync(self, runner, mock_api):
         mock_api.post.return_value = {
-            "ropa_generation_id": "gen-1", "async": False, "status": "COMPLETED",
+            "ropa_generation_id": "gen-1",
+            "async": False,
+            "status": "COMPLETED",
         }
         result = runner.invoke(cli, ["ropa", "generate", "--regulation", "GDPR"])
         assert result.exit_code == 0
@@ -137,7 +155,8 @@ class TestRopaDownload:
     @pytest.mark.unit
     def test_download_with_url(self, runner, mock_api):
         mock_api.get.return_value = {
-            "download_url": "https://s3.example.com/presigned/abc", "expires_in": 3600,
+            "download_url": "https://s3.example.com/presigned/abc",
+            "expires_in": 3600,
         }
         result = runner.invoke(cli, ["ropa", "download", "abc"])
         assert result.exit_code == 0

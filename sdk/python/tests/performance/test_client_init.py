@@ -11,6 +11,7 @@ must be fast so CLI commands feel instant.
 """
 
 import time
+
 from tests.fixtures.perf_record import build_perf_record, write_perf_record
 
 BUDGET_MS = 100.0

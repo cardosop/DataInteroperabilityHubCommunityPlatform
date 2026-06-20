@@ -6,19 +6,18 @@ Extracts ingestion logic from ingestion.py module.
 All create/update paths call ScheduledIngestionBusinessRules before mutation.
 """
 
-from typing import Any, Dict, Optional
+import contextlib
+from typing import Any
 
 from django.db import transaction
 
 from hub.apps.core.events.service_publishers import IngestionEventPublisher
-from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
+from hub.apps.core.services.base import BaseService, ValidationError
 from hub.apps.orchestration.workflows.scheduled_ingestion import ScheduledIngestionWorkflow
 from hub.apps.scheduled_ingestion.business_rules import ScheduledIngestionBusinessRules
 from hub.apps.scheduled_ingestion.models import (
     ScheduledIngestion,
     ScheduledIngestionStatus,
-    ScheduleType,
-    SourceType,
 )
 
 
@@ -34,7 +33,7 @@ class IngestionService(BaseService, IngestionEventPublisher):
 
     service_name = "ingestion_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize IngestionService.
 
@@ -45,8 +44,8 @@ class IngestionService(BaseService, IngestionEventPublisher):
         super().__init__(tenant_id=tenant_id, user_id=user_id)
 
     def execute_ingestion(
-        self, scheduled_ingestion_id: str, tenant_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, scheduled_ingestion_id: str, tenant_id: str | None = None
+    ) -> dict[str, Any]:
         """
         Execute a scheduled ingestion using workflow orchestration.
 
@@ -70,7 +69,7 @@ class IngestionService(BaseService, IngestionEventPublisher):
             tenant_id=str(scheduled_ingestion.tenant_id),
         )
 
-    def _execute_ingestion_impl(self, scheduled_ingestion: ScheduledIngestion) -> Dict[str, Any]:
+    def _execute_ingestion_impl(self, scheduled_ingestion: ScheduledIngestion) -> dict[str, Any]:
         """Internal implementation of ingestion execution."""
         # Phase 285.6 — when the dlt engine feature flag is enabled, use
         # the unified DataMovementPipeline instead of the legacy connector path.
@@ -110,11 +109,11 @@ class IngestionService(BaseService, IngestionEventPublisher):
         created_by,
         name: str,
         source_type: str,
-        source_config: Dict[str, Any],
+        source_config: dict[str, Any],
         schedule_type: str = "DAILY",
-        schedule_config: Optional[Dict[str, Any]] = None,
+        schedule_config: dict[str, Any] | None = None,
         file_pattern: str = "",
-        description: Optional[str] = None,
+        description: str | None = None,
         asset=None,
         contract=None,
         auto_create_asset: bool = False,
@@ -275,9 +274,10 @@ class IngestionService(BaseService, IngestionEventPublisher):
         scheduled_ingestion.save()
 
         # Create audit event (API expects actor_user and tenant instances)
+        from django.contrib.auth import get_user_model
+
         from hub.apps.audit.utils import create_audit_event
         from hub.apps.tenants.models import Tenant
-        from django.contrib.auth import get_user_model
 
         User = get_user_model()
         actor_user = User.objects.filter(id=user_id).first()
@@ -294,7 +294,7 @@ class IngestionService(BaseService, IngestionEventPublisher):
         return scheduled_ingestion
 
     def get_ingestion_status(
-        self, scheduled_ingestion_id: str, tenant_id: Optional[str] = None
+        self, scheduled_ingestion_id: str, tenant_id: str | None = None
     ) -> ScheduledIngestion:
         """
         Get scheduled ingestion status.
@@ -354,17 +354,13 @@ class IngestionService(BaseService, IngestionEventPublisher):
         User = get_user_model()
         actor_user = None
         if user_id:
-            try:
+            with contextlib.suppress(User.DoesNotExist):
                 actor_user = User.objects.get(id=user_id)
-            except User.DoesNotExist:
-                pass
 
         tenant = scheduled_ingestion.tenant
         if not tenant:
-            try:
+            with contextlib.suppress(Tenant.DoesNotExist):
                 tenant = Tenant.objects.get(id=tenant_id)
-            except Tenant.DoesNotExist:
-                pass
 
         create_audit_event(
             resource_type="SCHEDULED_INGESTION",

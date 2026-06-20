@@ -12,25 +12,23 @@ Engineering-grade implementation:
 - Best practices - follows testing standards
 """
 
-import os
-import sys
+import contextlib
 import subprocess
-import json
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+import sys
 from datetime import datetime
+from pathlib import Path
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # Color codes for terminal output
-GREEN = '\033[92m'
-RED = '\033[91m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
-NC = '\033[0m'  # No Color
-BOLD = '\033[1m'
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+BLUE = "\033[94m"
+NC = "\033[0m"  # No Color
+BOLD = "\033[1m"
 
 
 class ODPSIntegrationTestCoverage:
@@ -38,57 +36,57 @@ class ODPSIntegrationTestCoverage:
 
     # Integration test categories
     INTEGRATION_CATEGORIES = {
-        'creation_flows': {
-            'description': 'All creation flows tested',
-            'test_files': [
-                'tests/integration/test_all_services_odps_integration_comprehensive.py',
-                'hub/apps/contracts/tests/test_odps_creation_compensation_integration.py',
-                'hub/apps/contracts/tests/test_odps_integration_validation_comprehensive.py',
-                'hub/apps/contracts/tests/test_odps_use_cases_comprehensive.py',
+        "creation_flows": {
+            "description": "All creation flows tested",
+            "test_files": [
+                "tests/integration/test_all_services_odps_integration_comprehensive.py",
+                "hub/apps/contracts/tests/test_odps_creation_compensation_integration.py",
+                "hub/apps/contracts/tests/test_odps_integration_validation_comprehensive.py",
+                "hub/apps/contracts/tests/test_odps_use_cases_comprehensive.py",
             ],
-            'modules': [
-                'hub.apps.contracts.services',
-                'hub.apps.contracts.views',
-                'hub.apps.orchestration.workflows.product_creation',
-            ],
-        },
-        'export_endpoints': {
-            'description': 'All export endpoints tested',
-            'test_files': [
-                'hub/apps/contracts/tests/test_export_endpoint.py',
-                'hub/apps/contracts/tests/test_export_endpoints_integration.py',
-                'hub/apps/contracts/tests/test_odps_export_ci_integration.py',
-                'hub/apps/contracts/tests/test_hubcontract_to_odps_generation_integration.py',
-            ],
-            'modules': [
-                'hub.apps.contracts.views',
-                'hub.apps.contracts.odps_generator',
-                'hub.apps.contracts.services',
+            "modules": [
+                "hub.apps.contracts.services",
+                "hub.apps.contracts.views",
+                "hub.apps.orchestration.workflows.product_creation",
             ],
         },
-        'linking_operations': {
-            'description': 'All linking operations tested',
-            'test_files': [
-                'hub/apps/contracts/tests/test_odps_linking_endpoint.py',
-                'hub/apps/contracts/tests/test_odps_linking_compensation_integration.py',
-                'hub/apps/contracts/tests/test_linking_logic.py',
-                'hub/apps/contracts/tests/test_linking_validation.py',
+        "export_endpoints": {
+            "description": "All export endpoints tested",
+            "test_files": [
+                "hub/apps/contracts/tests/test_export_endpoint.py",
+                "hub/apps/contracts/tests/test_export_endpoints_integration.py",
+                "hub/apps/contracts/tests/test_odps_export_ci_integration.py",
+                "hub/apps/contracts/tests/test_hubcontract_to_odps_generation_integration.py",
             ],
-            'modules': [
-                'hub.apps.contracts.services',
-                'hub.apps.contracts.views',
+            "modules": [
+                "hub.apps.contracts.views",
+                "hub.apps.contracts.odps_generator",
+                "hub.apps.contracts.services",
             ],
         },
-        'semantic_mapping': {
-            'description': 'Semantic mapping tested',
-            'test_files': [
-                'tests/integration/test_odps_cross_integration.py',
-                'hub/apps/semantic/tests/test_odps_semantic_mapping.py',
+        "linking_operations": {
+            "description": "All linking operations tested",
+            "test_files": [
+                "hub/apps/contracts/tests/test_odps_linking_endpoint.py",
+                "hub/apps/contracts/tests/test_odps_linking_compensation_integration.py",
+                "hub/apps/contracts/tests/test_linking_logic.py",
+                "hub/apps/contracts/tests/test_linking_validation.py",
             ],
-            'modules': [
-                'hub.apps.semantic.service_client',
-                'hub.apps.semantic.utils',
-                'hub.apps.semantic.tasks',
+            "modules": [
+                "hub.apps.contracts.services",
+                "hub.apps.contracts.views",
+            ],
+        },
+        "semantic_mapping": {
+            "description": "Semantic mapping tested",
+            "test_files": [
+                "tests/integration/test_odps_cross_integration.py",
+                "hub/apps/semantic/tests/test_odps_semantic_mapping.py",
+            ],
+            "modules": [
+                "hub.apps.semantic.service_client",
+                "hub.apps.semantic.utils",
+                "hub.apps.semantic.tasks",
             ],
         },
     }
@@ -96,7 +94,7 @@ class ODPSIntegrationTestCoverage:
     def __init__(self):
         """Initialize the coverage runner."""
         self.project_root = PROJECT_ROOT
-        self.results: Dict[str, Dict] = {}
+        self.results: dict[str, dict] = {}
 
     def print_header(self, text: str):
         """Print a formatted header."""
@@ -109,7 +107,9 @@ class ODPSIntegrationTestCoverage:
         print(f"\n{BOLD}{text}{NC}")
         print(f"{'-' * len(text)}")
 
-    def run_command(self, cmd: List[str], cwd: Optional[Path] = None, use_docker: bool = True) -> Tuple[int, str, str]:
+    def run_command(
+        self, cmd: list[str], cwd: Path | None = None, use_docker: bool = True
+    ) -> tuple[int, str, str]:
         """
         Run a command and return exit code, stdout, and stderr.
 
@@ -127,18 +127,19 @@ class ODPSIntegrationTestCoverage:
         # Check if we should use Docker (Django is in the container)
         if use_docker:
             # Check if Docker container is running
-            check_cmd = ['docker', 'ps', '--filter', 'name=hub-api', '--format', '{{.Names}}']
-            check_result = subprocess.run(check_cmd, capture_output=True, text=True)
-            if check_result.returncode == 0 and 'hub-api' in check_result.stdout:
+            check_cmd = ["docker", "ps", "--filter", "name=hub-api", "--format", "{{.Names}}"]
+            check_result = subprocess.run(check_cmd, check=False, capture_output=True, text=True)
+            if check_result.returncode == 0 and "hub-api" in check_result.stdout:
                 # Run command in Docker container
-                docker_cmd = ['docker', 'exec', '-w', '/app', 'hub-api'] + cmd
+                docker_cmd = ["docker", "exec", "-w", "/app", "hub-api"] + cmd
                 try:
                     result = subprocess.run(
                         docker_cmd,
+                        check=False,
                         cwd=cwd,
                         capture_output=True,
                         text=True,
-                        timeout=1800  # 30 minute timeout for integration tests
+                        timeout=1800,  # 30 minute timeout for integration tests
                     )
                     return result.returncode, result.stdout, result.stderr
                 except subprocess.TimeoutExpired:
@@ -146,7 +147,9 @@ class ODPSIntegrationTestCoverage:
                 except Exception as e:
                     return 1, "", str(e)
             else:
-                print(f"{YELLOW}Warning: Docker container 'hub-api' not running, trying local execution{NC}")
+                print(
+                    f"{YELLOW}Warning: Docker container 'hub-api' not running, trying local execution{NC}"
+                )
                 use_docker = False
 
         # Fallback to local execution
@@ -154,10 +157,11 @@ class ODPSIntegrationTestCoverage:
             try:
                 result = subprocess.run(
                     cmd,
+                    check=False,
                     cwd=cwd,
                     capture_output=True,
                     text=True,
-                    timeout=1800  # 30 minute timeout for integration tests
+                    timeout=1800,  # 30 minute timeout for integration tests
                 )
                 return result.returncode, result.stdout, result.stderr
             except subprocess.TimeoutExpired:
@@ -165,11 +169,7 @@ class ODPSIntegrationTestCoverage:
             except Exception as e:
                 return 1, "", str(e)
 
-    def run_integration_tests(
-        self,
-        category: str,
-        config: Dict
-    ) -> Dict:
+    def run_integration_tests(self, category: str, config: dict) -> dict:
         """
         Run integration tests for a specific category.
 
@@ -185,12 +185,12 @@ class ODPSIntegrationTestCoverage:
 
         # Build coverage arguments
         cov_args = []
-        for module in config['modules']:
-            cov_args.extend(['--cov', module])
+        for module in config["modules"]:
+            cov_args.extend(["--cov", module])
 
         # Build test file paths
         test_paths = []
-        for test_file in config['test_files']:
+        for test_file in config["test_files"]:
             test_path = self.project_root / test_file
             if test_path.exists():
                 test_paths.append(str(test_path))
@@ -200,25 +200,28 @@ class ODPSIntegrationTestCoverage:
         if not test_paths:
             print(f"{YELLOW}Warning: No test files found for {category}{NC}")
             return {
-                'success': True,  # Not a failure if no tests exist
-                'tests_run': 0,
-                'tests_passed': 0,
-                'tests_failed': 0,
-                'skipped': True
+                "success": True,  # Not a failure if no tests exist
+                "tests_run": 0,
+                "tests_passed": 0,
+                "tests_failed": 0,
+                "skipped": True,
             }
 
         # Run pytest with coverage and integration marker
         # Override pytest.ini addopts to remove --reuse-db which may not be supported
         cmd = [
-            'python3', '-m', 'pytest',
-            '--override-ini=addopts=--strict-markers --disable-warnings --tb=short --asyncio-mode=auto',
+            "python3",
+            "-m",
+            "pytest",
+            "--override-ini=addopts=--strict-markers --disable-warnings --tb=short --asyncio-mode=auto",
             *cov_args,
-            '--cov-report=term-missing',
-            '--cov-report=xml',
-            '--cov-report=json',
-            '-v',
-            '-m', 'integration',
-            *test_paths
+            "--cov-report=term-missing",
+            "--cov-report=xml",
+            "--cov-report=json",
+            "-v",
+            "-m",
+            "integration",
+            *test_paths,
         ]
 
         print(f"Running: {' '.join(cmd)}")
@@ -231,32 +234,28 @@ class ODPSIntegrationTestCoverage:
 
         if exit_code == 0:
             # Try to extract test counts from pytest output
-            for line in stdout.split('\n'):
-                if 'passed' in line.lower():
+            for line in stdout.split("\n"):
+                if "passed" in line.lower():
                     # Format: "X passed, Y failed in Z.XXs"
                     parts = line.split()
                     for i, part in enumerate(parts):
-                        if part == 'passed':
-                            try:
-                                tests_passed = int(parts[i-1])
-                            except (ValueError, IndexError):
-                                pass
-                        elif part == 'failed':
-                            try:
-                                tests_failed = int(parts[i-1])
-                            except (ValueError, IndexError):
-                                pass
+                        if part == "passed":
+                            with contextlib.suppress(ValueError, IndexError):
+                                tests_passed = int(parts[i - 1])
+                        elif part == "failed":
+                            with contextlib.suppress(ValueError, IndexError):
+                                tests_failed = int(parts[i - 1])
                     tests_run = tests_passed + tests_failed
                     break
 
         result = {
-            'success': exit_code == 0,
-            'tests_run': tests_run,
-            'tests_passed': tests_passed,
-            'tests_failed': tests_failed,
-            'exit_code': exit_code,
-            'stdout': stdout,
-            'stderr': stderr
+            "success": exit_code == 0,
+            "tests_run": tests_run,
+            "tests_passed": tests_passed,
+            "tests_failed": tests_failed,
+            "exit_code": exit_code,
+            "stdout": stdout,
+            "stderr": stderr,
         }
 
         # Print summary
@@ -294,9 +293,9 @@ class ODPSIntegrationTestCoverage:
         total_failed = 0
 
         for category, result in self.results.items():
-            total_tests += result.get('tests_run', 0)
-            total_passed += result.get('tests_passed', 0)
-            total_failed += result.get('tests_failed', 0)
+            total_tests += result.get("tests_run", 0)
+            total_passed += result.get("tests_passed", 0)
+            total_failed += result.get("tests_failed", 0)
 
         report_lines.append(f"Total Tests Run: {total_tests}")
         report_lines.append(f"Total Tests Passed: {total_passed}")
@@ -315,9 +314,9 @@ class ODPSIntegrationTestCoverage:
             report_lines.append(f"  Tests Passed: {result.get('tests_passed', 0)}")
             report_lines.append(f"  Tests Failed: {result.get('tests_failed', 0)}")
 
-            if result.get('skipped'):
+            if result.get("skipped"):
                 report_lines.append(f"  Status: {YELLOW}SKIPPED (no test files found){NC}")
-            elif result.get('success'):
+            elif result.get("success"):
                 report_lines.append(f"  Status: {GREEN}✓ PASSED{NC}")
             else:
                 report_lines.append(f"  Status: {RED}✗ FAILED{NC}")
@@ -328,7 +327,7 @@ class ODPSIntegrationTestCoverage:
         report_lines.append("-" * 80)
 
         all_passed = all(
-            result.get('success', False) or result.get('skipped', False)
+            result.get("success", False) or result.get("skipped", False)
             for result in self.results.values()
         )
 
@@ -337,8 +336,10 @@ class ODPSIntegrationTestCoverage:
         else:
             report_lines.append("✗ Some integration test categories failed:")
             for category, result in self.results.items():
-                if not result.get('success', False) and not result.get('skipped', False):
-                    report_lines.append(f"  - {category}: {result.get('tests_failed', 0)} tests failed")
+                if not result.get("success", False) and not result.get("skipped", False):
+                    report_lines.append(
+                        f"  - {category}: {result.get('tests_failed', 0)} tests failed"
+                    )
 
         return "\n".join(report_lines)
 
@@ -356,7 +357,7 @@ class ODPSIntegrationTestCoverage:
             result = self.run_integration_tests(category, config)
             self.results[category] = result
 
-            if not result.get('success', False) and not result.get('skipped', False):
+            if not result.get("success", False) and not result.get("skipped", False):
                 print(f"{RED}Error: {category} integration tests failed{NC}")
 
         # Generate and print report
@@ -365,14 +366,14 @@ class ODPSIntegrationTestCoverage:
         print(report)
 
         # Save report to file
-        report_path = self.project_root / 'odps_integration_test_coverage_report.txt'
-        with open(report_path, 'w') as f:
+        report_path = self.project_root / "odps_integration_test_coverage_report.txt"
+        with open(report_path, "w") as f:
             f.write(report)
         print(f"\n{GREEN}Report saved to: {report_path}{NC}")
 
         # Validate results
         all_passed = all(
-            result.get('success', False) or result.get('skipped', False)
+            result.get("success", False) or result.get("skipped", False)
             for result in self.results.values()
         )
 
@@ -391,5 +392,5 @@ def main():
     sys.exit(exit_code)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

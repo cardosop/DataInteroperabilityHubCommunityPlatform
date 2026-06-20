@@ -53,10 +53,12 @@ Side effects on ``hub_contract``
 The helper does not touch ``hub_contract["schema"]["fields"]``; that is
 the per-version normaliser's responsibility (cf. ``_normalize_schema_minimal``).
 """
+
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict, Iterable, List, Optional, Set
+from collections.abc import Iterable
+from typing import Any
 
 import structlog
 
@@ -76,7 +78,7 @@ WARNING_INVALID_UUID = "STRUCTURELESS_PORT_CONTRACTID_INVALID_UUID"
 # ---------------------------------------------------------------------------
 
 
-def _coerce_uuid(value: Any) -> Optional[uuid.UUID]:
+def _coerce_uuid(value: Any) -> uuid.UUID | None:
     """Return a ``UUID`` for a stringly-typed contractId, or ``None``."""
     if value is None:
         return None
@@ -89,8 +91,9 @@ def _coerce_uuid(value: Any) -> Optional[uuid.UUID]:
 
 
 def _get_ports_from_data(
-    contract_data: Dict[str, Any], port_key: str,
-) -> List[Dict[str, Any]]:
+    contract_data: dict[str, Any],
+    port_key: str,
+) -> list[dict[str, Any]]:
     """Read ports from top-level OR ``contract_data["product"]``.
 
     ODPS allows both placements; matching the existing ``_get_ports``
@@ -109,7 +112,7 @@ def _get_ports_from_data(
 
 def _bulk_fetch_contract_models(
     contract_ids: Iterable[uuid.UUID],
-) -> Dict[uuid.UUID, List[Dict[str, Any]]]:
+) -> dict[uuid.UUID, list[dict[str, Any]]]:
     """Fetch ``hub_contract_json["models"]`` for the given IDs in ONE query.
 
     The query carries ``select_related('asset')`` plus ``asset_id`` in
@@ -137,7 +140,7 @@ def _bulk_fetch_contract_models(
         .select_related("asset")
         .only("id", "hub_contract_json", "asset_id")
     )
-    out: Dict[uuid.UUID, List[Dict[str, Any]]] = {}
+    out: dict[uuid.UUID, list[dict[str, Any]]] = {}
     for row in rows:
         payload = row.hub_contract_json
         if not isinstance(payload, dict):
@@ -150,7 +153,7 @@ def _bulk_fetch_contract_models(
 def _resolve_contract_url(
     url: str,
     ref_resolver: Any,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Resolve an external ``contractURL`` via the supplied resolver.
 
     The SSRF allowlist is enforced inside ``RefResolver.resolve()``, so
@@ -174,8 +177,8 @@ def _resolve_contract_url(
 
 
 def _extract_inline_fields(
-    port: Dict[str, Any],
-) -> Optional[List[Dict[str, Any]]]:
+    port: dict[str, Any],
+) -> list[dict[str, Any]] | None:
     """Return the first non-empty inline fields list, in priority order.
 
     Priority:
@@ -228,7 +231,7 @@ _ODCS_TO_HUB_RENAMES = {
 }
 
 
-def _normalize_field_shape(field: Any) -> Optional[Dict[str, Any]]:
+def _normalize_field_shape(field: Any) -> dict[str, Any] | None:
     """Convert an ODCS/Bitol field dict to canonical HubContract shape.
 
     Returns ``None`` for non-dicts or fields missing a usable name.
@@ -237,7 +240,7 @@ def _normalize_field_shape(field: Any) -> Optional[Dict[str, Any]]:
     """
     if not isinstance(field, dict):
         return None
-    out: Dict[str, Any] = {}
+    out: dict[str, Any] = {}
     name = field.get("name")
     if not isinstance(name, str) or not name.strip():
         return None
@@ -258,10 +261,10 @@ def _normalize_field_shape(field: Any) -> Optional[Dict[str, Any]]:
 
 
 def _normalize_fields(
-    raw_fields: List[Any],
-) -> List[Dict[str, Any]]:
+    raw_fields: list[Any],
+) -> list[dict[str, Any]]:
     """Apply :func:`_normalize_field_shape` to every entry; drop bad ones."""
-    normalised: List[Dict[str, Any]] = []
+    normalised: list[dict[str, Any]] = []
     for f in raw_fields:
         n = _normalize_field_shape(f)
         if n is not None:
@@ -270,8 +273,8 @@ def _normalize_fields(
 
 
 def _extract_fields_from_resolved_doc(
-    doc: Dict[str, Any],
-) -> Optional[List[Dict[str, Any]]]:
+    doc: dict[str, Any],
+) -> list[dict[str, Any]] | None:
     """Extract fields from a contractURL-resolved document.
 
     The shape can be either an ODCS-style document with
@@ -296,8 +299,8 @@ def _extract_fields_from_resolved_doc(
 
 def _model_from_fields(
     name: str,
-    fields: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    fields: list[dict[str, Any]],
+) -> dict[str, Any]:
     """Build a HubContractModelEntry-shaped dict.
 
     Only ``name`` + ``fields`` are populated here; downstream Pydantic
@@ -314,12 +317,12 @@ def _model_from_fields(
 
 
 def normalize_models_from_ports(
-    contract_data: Dict[str, Any],
-    hub_contract: Dict[str, Any],
-    warnings: List[str],
+    contract_data: dict[str, Any],
+    hub_contract: dict[str, Any],
+    warnings: list[str],
     *,
     ref_resolver: Any = None,
-    visited_contract_ids: Optional[Set[uuid.UUID]] = None,
+    visited_contract_ids: set[uuid.UUID] | None = None,
 ) -> None:
     """Emit one model per ``outputPort`` and lineage rows per ``inputPort``.
 
@@ -345,7 +348,7 @@ def normalize_models_from_ports(
     """
     if not isinstance(hub_contract.get("models"), list):
         hub_contract["models"] = []
-    visited: Set[uuid.UUID] = set(visited_contract_ids or set())
+    visited: set[uuid.UUID] = set(visited_contract_ids or set())
 
     _process_output_ports(
         contract_data=contract_data,
@@ -367,11 +370,11 @@ def normalize_models_from_ports(
 
 def _process_output_ports(
     *,
-    contract_data: Dict[str, Any],
-    hub_contract: Dict[str, Any],
-    warnings: List[str],
+    contract_data: dict[str, Any],
+    hub_contract: dict[str, Any],
+    warnings: list[str],
     ref_resolver: Any,
-    visited: Set[uuid.UUID],
+    visited: set[uuid.UUID],
 ) -> None:
     output_ports = _get_ports_from_data(contract_data, "outputPorts")
     if not output_ports:
@@ -381,8 +384,8 @@ def _process_output_ports(
     # SKIP UUIDs already in `visited` — they would be a cycle and should
     # never trigger a fetch (also the test asserts the cyclic case incurs
     # zero DB queries).
-    contract_ids_to_fetch: Set[uuid.UUID] = set()
-    port_uuids: List[Optional[uuid.UUID]] = []
+    contract_ids_to_fetch: set[uuid.UUID] = set()
+    port_uuids: list[uuid.UUID | None] = []
     for port in output_ports:
         cid_raw = port.get("contractId")
         cid = _coerce_uuid(cid_raw)
@@ -403,10 +406,7 @@ def _process_output_ports(
     for port, cid in zip(output_ports, port_uuids):
         port_name = str(port.get("name") or "").strip()
         if not port_name:
-            warnings.append(
-                f"{WARNING_NO_RESOLVABLE}: outputPort missing name; "
-                f"skipped"
-            )
+            warnings.append(f"{WARNING_NO_RESOLVABLE}: outputPort missing name; skipped")
             continue
 
         fields = _resolve_port_fields(
@@ -422,21 +422,19 @@ def _process_output_ports(
             # `_resolve_port_fields` already appended the appropriate
             # warning(s); nothing more to do for this port.
             continue
-        hub_contract["models"].append(
-            _model_from_fields(port_name, fields)
-        )
+        hub_contract["models"].append(_model_from_fields(port_name, fields))
 
 
 def _resolve_port_fields(
     *,
-    port: Dict[str, Any],
-    cid: Optional[uuid.UUID],
+    port: dict[str, Any],
+    cid: uuid.UUID | None,
     port_name: str,
-    visited: Set[uuid.UUID],
-    fetched: Dict[uuid.UUID, List[Dict[str, Any]]],
+    visited: set[uuid.UUID],
+    fetched: dict[uuid.UUID, list[dict[str, Any]]],
     ref_resolver: Any,
-    warnings: List[str],
-) -> Optional[List[Dict[str, Any]]]:
+    warnings: list[str],
+) -> list[dict[str, Any]] | None:
     """Walk the priority order and return the first usable field list.
 
     Priority order
@@ -525,8 +523,8 @@ def _resolve_port_fields(
 
 def _process_input_ports(
     *,
-    contract_data: Dict[str, Any],
-    hub_contract: Dict[str, Any],
+    contract_data: dict[str, Any],
+    hub_contract: dict[str, Any],
 ) -> None:
     """Map ``inputPorts[]`` → ``hub_contract["lineage"]["contracts"][]``.
 
@@ -538,12 +536,12 @@ def _process_input_ports(
     if not input_ports:
         return
 
-    lineage_entries: List[Dict[str, Any]] = []
+    lineage_entries: list[dict[str, Any]] = []
     for port in input_ports:
         name = port.get("name")
         if not name:
             continue
-        entry: Dict[str, Any] = {"name": str(name)}
+        entry: dict[str, Any] = {"name": str(name)}
         namespace = port.get("namespace")
         if namespace:
             entry["namespace"] = str(namespace)

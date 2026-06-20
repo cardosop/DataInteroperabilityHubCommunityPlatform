@@ -9,6 +9,7 @@ ast-parses both source files and asserts the function bodies are identical.
 This is the same doctrine used by Phase 215 for ``MVP_GATED_RELATIVE_PREFIXES``
 (see openspec/changes/preprod01/specs/cli-sdk-mvp-awareness/spec.md).
 """
+
 from __future__ import annotations
 
 import os

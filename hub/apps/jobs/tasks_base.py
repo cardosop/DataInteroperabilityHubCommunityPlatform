@@ -17,12 +17,20 @@ from django_rq import job
 
 from hub.apps.audit.utils import create_audit_event
 
-from .models import FailedJobDLQ, Job, JobPriority, JobStatus, JobType
+
+class JobExecutionError(Exception):
+    """Base exception for domain-specific job execution failures.
+
+    Subclass this instead of raising ``Exception`` directly so callers
+    (``process_job``, test helpers) can distinguish a known business
+    failure from an unexpected runtime error.
+    """
+
+    def __init__(self, message: str = "Job execution failed"):
+        super().__init__(message)
+
+from .models import FailedJobDLQ, Job, JobStatus, JobType
 from .utils import (
-    WORKER_MAX_CONCURRENCY,
-    WORKER_MAX_CONCURRENCY_PER_TENANT,
-    WORKER_RESERVED_SLOTS,
-    WORKER_SHARED_SLOTS,
     decrement_reserved_slots_usage,
     decrement_shared_slots_usage,
     decrement_tenant_job_counter,
@@ -51,7 +59,7 @@ def _write_to_dlq(job_obj: Job, job_type: str, exception: Exception):
         FailedJobDLQ.objects.create(
             job_id=job_obj.id,
             queue=get_queue_for_job_type(job_type),
-            func_name=f"hub.apps.jobs.tasks_base.process_job",
+            func_name="hub.apps.jobs.tasks_base.process_job",
             args_json={
                 "job_id": str(job_obj.id),
                 "job_type": job_type,
@@ -97,7 +105,7 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
     # Determine queue name and check starvation prevention
     queue_name = get_queue_for_job_type(job_type)
     is_elevated = should_elevate_job(job_id, queue_name)
-    wait_time = get_job_wait_time(job_id)
+    get_job_wait_time(job_id)
 
     # ── Step 1: Atomically claim the job (PENDING → RUNNING). ────────────────
     # A single UPDATE WHERE status='PENDING' is the definitive TOCTOU fix:
@@ -139,9 +147,7 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
     _tenant_id: str | None = None
     try:
         # ── Step 2: Load full job object with FK relations for audit events. ──
-        job_obj = Job.objects.select_related("created_by", "tenant").get(
-            id=job_id
-        )
+        job_obj = Job.objects.select_related("created_by", "tenant").get(id=job_id)
         # Capture tenant_id now so the finally block doesn't need to re-query.
         _tenant_id = str(job_obj.tenant.id) if job_obj.tenant else None
 
@@ -149,9 +155,7 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
         # try_acquire_*_slot() performs the check-and-increment atomically via
         # a Lua script, eliminating the TOCTOU race of the old
         # can_use_*_slot() + increment_*_slots_usage() two-step pattern.
-        if queue_name == "job_critical" or (
-            queue_name == "job_default" and is_elevated
-        ):
+        if queue_name == "job_critical" or (queue_name == "job_default" and is_elevated):
             # HIGH priority or elevated: reserved slot first, shared as fallback
             if try_acquire_reserved_slot():
                 slot_type = "reserved"
@@ -168,19 +172,18 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                 )
                 slot_type = "shared"
                 increment_shared_slots_usage()
+        # NORMAL or LOW priority: shared slot only
+        elif try_acquire_shared_slot():
+            slot_type = "shared"
         else:
-            # NORMAL or LOW priority: shared slot only
-            if try_acquire_shared_slot():
-                slot_type = "shared"
-            else:
-                logger.warning(
-                    "job_no_slots_available",
-                    job_id=job_id,
-                    queue_name=queue_name,
-                    message="Job picked but no slots available",
-                )
-                slot_type = "shared"
-                increment_shared_slots_usage()
+            logger.warning(
+                "job_no_slots_available",
+                job_id=job_id,
+                queue_name=queue_name,
+                message="Job picked but no slots available",
+            )
+            slot_type = "shared"
+            increment_shared_slots_usage()
 
         # Increment tenant job counter
         increment_tenant_job_counter(job_obj.tenant_id)
@@ -534,6 +537,11 @@ def _execute_job_logic(job_obj: Job, job_type: str) -> dict:
 
         return _execute_retention_policy_enforcement_job(job_obj)
 
+    elif job_type == JobType.RETENTION_ENFORCEMENT_SWEEP:
+        from .tasks_governance import _execute_retention_enforcement_sweep_job
+
+        return _execute_retention_enforcement_sweep_job(job_obj)
+
     elif job_type == JobType.SEARCH_INDEX_UPDATE:
         from .tasks_search import _execute_search_index_update_job
 
@@ -665,7 +673,11 @@ def check_job_timeouts():
     )
 
     for job_obj in running_jobs:
-        timeout_seconds = job_obj.timeout_seconds if job_obj.timeout_seconds is not None else default_timeout_seconds
+        timeout_seconds = (
+            job_obj.timeout_seconds
+            if job_obj.timeout_seconds is not None
+            else default_timeout_seconds
+        )
         threshold = now - timedelta(seconds=timeout_seconds)
         if job_obj.started_at >= threshold:
             continue
@@ -674,7 +686,11 @@ def check_job_timeouts():
         job_obj.completed_at = now
         error_msg = f"Job exceeded timeout ({timeout_seconds} seconds)"
         job_obj.error_message = error_msg
-        job_obj.result_json = {"error": error_msg, "error_code": "TIMEOUT", "timeout": timeout_seconds}
+        job_obj.result_json = {
+            "error": error_msg,
+            "error_code": "TIMEOUT",
+            "timeout": timeout_seconds,
+        }
         job_obj.save(update_fields=["status", "completed_at", "error_message", "result_json"])
 
         logger.warning(

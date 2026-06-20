@@ -6,6 +6,7 @@ throughout the entire lifecycle of marketplace operations.
 """
 
 import uuid
+
 import pytest
 
 pytestmark = pytest.mark.slow
@@ -20,18 +21,12 @@ from hub.apps.integrations.base import (
     DataMarketplaceConnector,
     MarketplaceAssetMapping,
     MarketplaceListing,
-    MarketplaceResource,
     MarketplaceType,
-    SyncResult,
     SyncDirection,
+    SyncResult,
     SyncStatus,
 )
 from hub.apps.integrations.factory import MarketplaceConnectorFactory
-from hub.apps.integrations.models import (
-    MarketplaceConnection,
-    MarketplaceMapping,
-    MarketplaceSyncJob,
-)
 from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
@@ -462,9 +457,7 @@ class MarketplaceEventPublishingE2ETest(TestCase):
         )
 
         # Verify all marketplace events were published (scope by our entities)
-        all_marketplace_events = Event.objects.filter(
-            event_type__startswith="marketplace."
-        ).filter(
+        all_marketplace_events = Event.objects.filter(event_type__startswith="marketplace.").filter(
             models.Q(data__connection_id=str(connection.id))
             | models.Q(data__mapping_id=str(mapping.id))
             | models.Q(data__sync_job_id=str(sync_job.id))
@@ -481,8 +474,6 @@ class MarketplaceEventPublishingE2ETest(TestCase):
         """Test event publishing error handling with invalid connection ID"""
         import uuid
 
-        from hub.apps.core.services.base import NotFoundError
-
         # Use a valid UUID that does not exist so get_connection raises NotFoundError
         # (invalid-connection-id would cause Django ValidationError before the query)
         with self.assertRaises(NotFoundError):
@@ -495,8 +486,6 @@ class MarketplaceEventPublishingE2ETest(TestCase):
         """Test event publishing error handling with invalid sync job ID"""
         import uuid
 
-        from hub.apps.core.services.base import NotFoundError
-
         # Use a valid UUID that does not exist so get_sync_job raises NotFoundError
         with self.assertRaises(NotFoundError):
             self.service.get_sync_job(
@@ -504,8 +493,14 @@ class MarketplaceEventPublishingE2ETest(TestCase):
                 tenant_id=str(self.tenant.id),
             )
 
-    def test_event_publishing_with_empty_listing_ids(self):
-        """Test event publishing error handling with empty listing IDs"""
+    def test_sync_from_marketplace_with_empty_listing_ids(self):
+        """Test that sync_from_marketplace handles empty listing_ids gracefully.
+
+        The service accepts ``listing_ids=[]`` as distinct from ``None`` —
+        it stores the empty list in the job metadata and sets listing_count=0.
+        This test verifies the deterministic behavior rather than accepting
+        both success and failure as valid outcomes.
+        """
         # Create connection
         connection = self.service.create_connection(
             tenant_id=str(self.tenant.id),
@@ -515,23 +510,18 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             config=self.config,
         )
 
-        # Try sync with empty listing IDs
-        try:
-            sync_job = self.service.sync_from_marketplace(
-                connection_id=str(connection.id),
-                tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id),
-                listing_ids=[],
-            )
-            # Should handle gracefully
-            self.assertIsNotNone(sync_job)
-        except (ValueError, TypeError):
-            # Expected if empty list is invalid
-            pass
+        sync_job = self.service.sync_from_marketplace(
+            connection_id=str(connection.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            listing_ids=[],
+        )
+        self.assertIsNotNone(sync_job)
+        self.assertIsNotNone(sync_job.id)
+        self.assertEqual(sync_job.direction, SyncDirection.PULL.value)
 
     def test_event_publishing_with_none_tenant_id(self):
         """Test event publishing error handling with None tenant ID"""
-        from hub.apps.core.services.base import NotFoundError, ValidationError
 
         # Try to create connection with None tenant_id; service raises NotFoundError
         # ("Tenant with id None not found") or ValidationError if validated earlier

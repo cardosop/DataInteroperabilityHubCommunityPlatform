@@ -24,37 +24,25 @@ import os
 import tempfile
 import time
 import uuid
-from pathlib import Path
-from typing import Any, Dict, Optional
 
 import pytest
 
-pytestmark = pytest.mark.slow
+import contextlib
+
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.db import transaction
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.linking_validation import LinkingValidationError, validate_linking
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    NormalizationStatus,
-    OriginalFormat,
     OriginalSpecType,
 )
-from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
 from hub.apps.contracts.odps_errors import (
-    ODPSExportError,
-    ODPSLinkingError,
     ODPSNormalizationError,
     ODPSRefResolutionError,
     ODPSValidationError,
 )
-from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
-from hub.apps.contracts.odps_parser import ODPSParser
-from hub.apps.contracts.odps_version_detection import detect_odps_version
-from hub.apps.contracts.ref_resolver import ExternalRefHandling, RefResolver
 from hub.apps.contracts.services import ContractService, ODPSService
 from hub.apps.contracts.tests.test_base import ContractsTransactionTestBase
 from hub.apps.core.services.base import NotFoundError, ValidationError
@@ -62,7 +50,22 @@ from hub.apps.orchestration.workflows.product_creation import ProductCreationWor
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.slow,
+    pytest.mark.uc("UC-ODPS-001"),
+    pytest.mark.uc("UC-ODPS-002"),
+    pytest.mark.uc("UC-ODPS-003"),
+    pytest.mark.uc("UC-ODPS-004"),
+    pytest.mark.uc("UC-ODPS-005"),
+    pytest.mark.uc("UC-ODPS-006"),
+    pytest.mark.uc("UC-ODPS-007"),
+    pytest.mark.uc("UC-ODPS-008"),
+    pytest.mark.uc("UC-ODPS-009"),
+    pytest.mark.uc("UC-ODPS-010"),
+    pytest.mark.uc("UC-ODPS-011"),
+    pytest.mark.uc("UC-ODPS-012"),
+]
 User = get_user_model()
 
 
@@ -75,7 +78,6 @@ class ODPSUseCasesTestBase(ContractsTransactionTestBase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
-        pass
 
     def setUp(self):
         """Set up test fixtures."""
@@ -88,10 +90,8 @@ class ODPSUseCasesTestBase(ContractsTransactionTestBase):
 
         # Close all database connections
         for conn in connections.all():
-            try:
+            with contextlib.suppress(Exception):
                 conn.close()
-            except Exception:
-                pass
 
         # Retry setup with exponential backoff if database connection fails
         max_retries = 5
@@ -219,7 +219,7 @@ class ODPSUseCasesTestBase(ContractsTransactionTestBase):
                 if attempt == max_retries - 1:
                     raise
                 continue
-            except Exception as e:
+            except Exception:
                 if attempt == max_retries - 1:
                     raise
                 continue
@@ -228,18 +228,16 @@ class ODPSUseCasesTestBase(ContractsTransactionTestBase):
         """Clean up after tests."""
         # CRITICAL: Close database connections to prevent connection pool exhaustion
         # Root cause: TransactionTestCase doesn't automatically close connections
-        from django.db import connection, connections
+        from django.db import connections
 
         # Close all database connections
         for conn in connections.all():
-            try:
+            with contextlib.suppress(Exception):
                 conn.close()
-            except Exception:
-                pass
 
         super().tearDown()
 
-    def _create_odcs_contract(self, contract_data: Optional[Dict] = None) -> Contract:
+    def _create_odcs_contract(self, contract_data: dict | None = None) -> Contract:
         """Helper to create an ODCS contract."""
         if contract_data is None:
             contract_data = self.sample_odcs_contract
@@ -259,7 +257,7 @@ class ODPSUseCasesTestBase(ContractsTransactionTestBase):
         return contract
 
     def _create_odps_contract(
-        self, odps_data: Optional[Dict] = None, extract_odcs: bool = False
+        self, odps_data: dict | None = None, extract_odcs: bool = False
     ) -> Contract:
         """Helper to create an ODPS contract."""
         if odps_data is None:
@@ -463,11 +461,9 @@ class UC_ODPS_001_ProductFirstFlowTest(ODPSUseCasesTestBase):
             },
         }
 
-        # Should handle gracefully or raise appropriate error
-        # Workflow wraps errors in ValueError with generic message
-        # The important thing is that it fails for invalid version, not the specific message content
-        try:
-            result = ProductCreationWorkflow.execute(
+        # Invalid version should cause workflow to fail with a specific error
+        with self.assertRaises((ValueError, ValidationError, ODPSValidationError)):
+            ProductCreationWorkflow.execute(
                 original_raw=json.dumps(invalid_version_odps, indent=2),
                 original_format="JSON",
                 tenant_id=str(self.tenant.id),
@@ -475,12 +471,6 @@ class UC_ODPS_001_ProductFirstFlowTest(ODPSUseCasesTestBase):
                 asset_id=str(self.asset.id),
                 resolve_external_refs=True,
             )
-            # If it succeeds, verify it used default version
-            odps_contract = result.get("odps_contract")
-            self.assertIsNotNone(odps_contract)
-        except (ValueError, ValidationError, ODPSValidationError):
-            # Expected behavior for invalid version - workflow should fail
-            pass
 
     def test_edge_case_missing_product_contract(self):
         """Test edge case: Missing product.contract"""
@@ -513,9 +503,7 @@ class UC_ODPS_001_ProductFirstFlowTest(ODPSUseCasesTestBase):
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
             "product": {
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "contract": {"spec": self.sample_odcs_contract},
             },
@@ -622,9 +610,7 @@ class UC_ODPS_002_ODPSLinkingTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "contract": {
@@ -722,9 +708,7 @@ class UC_ODPS_002_ODPSLinkingTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "contract": {
@@ -833,7 +817,10 @@ class UC_ODPS_003_ODPSExportTest(ODPSUseCasesTestBase):
         self.assertIsNotNone(exported)
         self.assertIsInstance(exported, str)
         # Should contain YAML-like structure
-        self.assertIn("schema:", exported.lower() or "product:" in exported.lower())
+        self.assertTrue(
+            "schema:" in exported.lower() or "product:" in exported.lower(),
+            "Exported YAML should contain schema or product key",
+        )
 
     def test_main_flow_export_odps_json_format(self):
         """Test main flow: Export ODPS in JSON format"""
@@ -914,9 +901,7 @@ class UC_ODPS_003_ODPSExportTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {
                     "en": {
@@ -1009,9 +994,7 @@ class UC_ODPS_004_ODPSDownloadTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {
                     "en": {
@@ -1043,7 +1026,7 @@ class UC_ODPS_004_ODPSDownloadTest(ODPSUseCasesTestBase):
         """Test alternate flow: Permission errors"""
         # Create another tenant
         _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(
+        Tenant.objects.create(
             name=f"Other Tenant {_uid}",
             slug=f"other-tenant-{_uid}",
             status=TenantStatus.ACTIVE,
@@ -1105,9 +1088,7 @@ class UC_ODPS_005_ODPSPricingPlansTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "marketplace": {
@@ -1139,9 +1120,7 @@ class UC_ODPS_005_ODPSPricingPlansTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "marketplace": {
@@ -1152,7 +1131,7 @@ class UC_ODPS_005_ODPSPricingPlansTest(ODPSUseCasesTestBase):
             },
         }
 
-        odps_contract = self._create_odps_contract(odps_data)
+        self._create_odps_contract(odps_data)
 
         # Update pricing plan by creating new version
         updated_odps_data = odps_data.copy()
@@ -1179,9 +1158,7 @@ class UC_ODPS_005_ODPSPricingPlansTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "marketplace": {
@@ -1200,7 +1177,7 @@ class UC_ODPS_005_ODPSPricingPlansTest(ODPSUseCasesTestBase):
 
         # Verify no pricing plans
         marketplace = odps_contract.hub_contract_json.get("marketplace", {})
-        pricing_plans = marketplace.get("pricing", {})
+        marketplace.get("pricing", {})
         # Pricing may be None or empty
         self.assertIsNotNone(marketplace)
 
@@ -1256,9 +1233,7 @@ class UC_ODPS_005_ODPSPricingPlansTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "marketplace": {
@@ -1308,9 +1283,7 @@ class UC_ODPS_006_ODPSAccessMethodsTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "marketplace": {
@@ -1379,9 +1352,7 @@ class UC_ODPS_006_ODPSAccessMethodsTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "marketplace": {
@@ -1421,9 +1392,7 @@ class UC_ODPS_007_ODPSPaymentGatewaysTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "marketplace": {
@@ -1489,9 +1458,7 @@ class UC_ODPS_007_ODPSPaymentGatewaysTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "marketplace": {
@@ -1531,9 +1498,7 @@ class UC_ODPS_008_ODPSProductStrategyTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "productStrategy": {
@@ -1593,9 +1558,7 @@ class UC_ODPS_008_ODPSProductStrategyTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "productStrategy": {
@@ -1651,9 +1614,7 @@ class UC_ODPS_009_ODPSMultilingualDetailsTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {
                     "en": {
@@ -1686,15 +1647,13 @@ class UC_ODPS_009_ODPSMultilingualDetailsTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
             },
         }
 
-        odps_contract = self._create_odps_contract(odps_data)
+        self._create_odps_contract(odps_data)
 
         # Update by creating new version
         updated_odps_data = odps_data.copy()
@@ -1718,9 +1677,7 @@ class UC_ODPS_009_ODPSMultilingualDetailsTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {
                     "en": {"productID": "test-product", "name": "Test Product"},
@@ -1796,9 +1753,7 @@ class UC_ODPS_009_ODPSMultilingualDetailsTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": details,
             },
@@ -1938,7 +1893,6 @@ class UC_ODPS_010_ODPSRefResolutionTest(ODPSUseCasesTestBase):
         """Test alternate flow: Timeout"""
         # External refs may timeout
         # This is tested implicitly through external ref failure test
-        pass
 
     def test_alternate_flow_security_validation_failure(self):
         """Test alternate flow: Security validation failure"""
@@ -1986,7 +1940,9 @@ class UC_ODPS_010_ODPSRefResolutionTest(ODPSUseCasesTestBase):
             },
             "product": {
                 "dataSchema": min_schema,
-                "details": {"en": {"productID": "test-product-refs", "name": "Test Product With Refs"}},
+                "details": {
+                    "en": {"productID": "test-product-refs", "name": "Test Product With Refs"}
+                },
             },
         }
 
@@ -2185,9 +2141,7 @@ class UC_ODPS_012_ODPSUnlinkingTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "contract": {
@@ -2273,9 +2227,7 @@ class UC_ODPS_012_ODPSUnlinkingTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "contract": {
@@ -2341,9 +2293,7 @@ class UC_ODPS_012_ODPSUnlinkingTest(ODPSUseCasesTestBase):
             "version": "4.1",
             "product": {
                 "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string", "description": "Unique identifier"}
-                    ]
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "details": {"en": {"productID": "test-product", "name": "Test Product"}},
                 "contract": {
@@ -2513,7 +2463,7 @@ class UC_ODPS_012_ODPSUnlinkingTest(ODPSUseCasesTestBase):
         )
 
         # Create services for tenant2
-        contract_service2 = ContractService(tenant_id=str(tenant2.id), user_id=str(user2.id))
+        ContractService(tenant_id=str(tenant2.id), user_id=str(user2.id))
         odps_service2 = ODPSService(tenant_id=str(tenant2.id), user_id=str(user2.id))
 
         # Create asset for tenant2
@@ -2527,9 +2477,9 @@ class UC_ODPS_012_ODPSUnlinkingTest(ODPSUseCasesTestBase):
 
         # Create ODPS contract for tenant2
         odps_data = self.sample_odps_with_contract.copy()
-        odps_data["product"]["details"]["en"][
-            "productID"
-        ] = f"tenant2-product-{uuid.uuid4().hex[:12]}"
+        odps_data["product"]["details"]["en"]["productID"] = (
+            f"tenant2-product-{uuid.uuid4().hex[:12]}"
+        )
 
         odps_contract2 = odps_service2.create_odps(
             odps_raw=json.dumps(odps_data),

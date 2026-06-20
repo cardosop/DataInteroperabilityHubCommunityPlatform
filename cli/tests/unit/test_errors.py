@@ -1,19 +1,16 @@
 """Unit tests for typed CLI errors (278.AA.13)."""
-import pytest
 
+import pytest
 from datahub_cli.errors import (
-    CLIError,
     CLIAuthError,
     CLIConfigError,
+    CLIError,
     CLINetworkError,
     CLINotFoundError,
     CLIRateLimitError,
     CLIServerError,
     CLIValidationError,
     error_from_http_status,
-    EX_DATAERR,
-    EX_TEMPFAIL,
-    EX_UNAVAILABLE,
 )
 
 
@@ -22,6 +19,7 @@ class TestErrorHierarchy:
     def test_base_is_click_exception(self):
         err = CLIError("msg")
         from click import ClickException
+
         assert isinstance(err, ClickException)
 
     @pytest.mark.unit
@@ -39,9 +37,7 @@ class TestErrorHierarchy:
         # 8 error classes, 7 distinct exit codes:
         # CLINetworkError and CLIRateLimitError intentionally share
         # EX_TEMPFAIL = 75 (both are transient failures).
-        assert len(codes) == 7, (
-            f"Expected 7 distinct exit codes, got {len(codes)}: {codes}"
-        )
+        assert len(codes) == 7, f"Expected 7 distinct exit codes, got {len(codes)}: {codes}"
 
     @pytest.mark.unit
     def test_error_codes_carried(self):

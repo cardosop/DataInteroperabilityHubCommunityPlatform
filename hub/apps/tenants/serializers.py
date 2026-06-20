@@ -6,11 +6,8 @@ DRF serializers for Tenant API.
 
 from rest_framework import serializers
 
-from hub.apps.compliance.models import RiskLevel
-
 from .models import KYCStatus, Tenant, TenantConfig, TenantStatus
 from .validators import (
-    get_platform_defaults,
     validate_compliance_regimes,
     validate_dq_profile,
     validate_rate_limits,
@@ -170,8 +167,6 @@ class TenantSuspendSerializer(serializers.Serializer):
 class TenantReactivateSerializer(serializers.Serializer):
     """Serializer for tenant reactivation"""
 
-    pass
-
 
 class RateLimitsSerializer(serializers.Serializer):
     """Serializer for rate limits structure"""
@@ -301,7 +296,8 @@ class TenantConfigUpdateSerializer(serializers.ModelSerializer):
     # (not TenantConfig); ``update()`` below routes the value to
     # the right model.
     compliance_legal_basis_strict = serializers.BooleanField(
-        required=False, allow_null=True,
+        required=False,
+        allow_null=True,
     )
 
     class Meta:
@@ -342,15 +338,19 @@ class TenantConfigUpdateSerializer(serializers.ModelSerializer):
         from django.db import transaction as _tx
 
         cross_model = validated_data.pop(
-            "compliance_legal_basis_strict", None,
+            "compliance_legal_basis_strict",
+            None,
         )
         with _tx.atomic():
             if cross_model is not None and instance.tenant is not None:
                 tenant = instance.tenant
                 tenant.compliance_legal_basis_strict = bool(cross_model)
-                tenant.save(update_fields=[
-                    "compliance_legal_basis_strict", "updated_at",
-                ])
+                tenant.save(
+                    update_fields=[
+                        "compliance_legal_basis_strict",
+                        "updated_at",
+                    ]
+                )
             return super().update(instance, validated_data)
 
     def validate_default_dq_profile(self, value):

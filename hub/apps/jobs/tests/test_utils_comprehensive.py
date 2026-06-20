@@ -1,24 +1,23 @@
 """Comprehensive tests for jobs/utils.py — Phase 100.3"""
+
 import uuid
+
 import pytest
 
 pytestmark = pytest.mark.slow
-from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from hub.apps.tenants.models import Tenant
-from hub.apps.jobs.models import Job, JobType, JobStatus, JobPriority
+from django.test import TestCase
+
+from hub.apps.jobs.models import JobType
 from hub.apps.jobs.utils import (
+    JOB_MAX_RETRIES,
+    decrement_tenant_job_counter,
     get_job_timeout,
     get_queue_for_job_type,
-    should_elevate_job,
-    get_job_wait_time,
-    JOB_TIMEOUTS,
-    JOB_MAX_RETRIES,
     increment_tenant_job_counter,
-    decrement_tenant_job_counter,
 )
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.tenants.models import Tenant
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -93,7 +92,9 @@ class TenantJobCounterTest(TestCase):
 
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(name=f"T {uid}", slug=f"t-{uid}", status="ACTIVE", kyc_status="UNVERIFIED")
+        self.tenant = Tenant.objects.create(
+            name=f"T {uid}", slug=f"t-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+        )
         self.tenant_id = str(self.tenant.id)
         # Clear counters
         cache.delete(f"job:tenant:{self.tenant_id}:running")

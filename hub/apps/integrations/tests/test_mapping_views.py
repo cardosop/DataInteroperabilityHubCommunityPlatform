@@ -10,7 +10,6 @@ from datetime import timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.db import transaction
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -89,9 +88,7 @@ class MarketplaceMappingViewSetTest(TestCase):
         )
 
         # Create DATA_PROVIDER role (tenant-scoped) and assign to user
-        data_provider_role = Role.objects.filter(
-            tenant=self.tenant, name="DATA_PROVIDER"
-        ).first()
+        data_provider_role = Role.objects.filter(tenant=self.tenant, name="DATA_PROVIDER").first()
         if not data_provider_role:
             data_provider_role = Role.objects.create(
                 tenant=self.tenant,
@@ -147,7 +144,7 @@ class MarketplaceMappingViewSetTest(TestCase):
         """Test successful mapping listing"""
         # Create additional mappings
         asset2 = Asset.objects.create(tenant=self.tenant, key="test-asset-2", name="Test Asset 2")
-        mapping2 = MarketplaceMapping.objects.create(
+        MarketplaceMapping.objects.create(
             tenant=self.tenant,
             connection=self.connection,
             hub_asset=asset2,
@@ -180,7 +177,7 @@ class MarketplaceMappingViewSetTest(TestCase):
             config={"access_key": "test"},
         )
         asset2 = Asset.objects.create(tenant=self.tenant, key="test-asset-2", name="Test Asset 2")
-        mapping2 = MarketplaceMapping.objects.create(
+        MarketplaceMapping.objects.create(
             tenant=self.tenant,
             connection=connection2,
             hub_asset=asset2,
@@ -199,7 +196,7 @@ class MarketplaceMappingViewSetTest(TestCase):
     def test_list_mappings_with_hub_asset_filter(self):
         """Test mapping listing with hub_asset_id filter"""
         asset2 = Asset.objects.create(tenant=self.tenant, key="test-asset-2", name="Test Asset 2")
-        mapping2 = MarketplaceMapping.objects.create(
+        MarketplaceMapping.objects.create(
             tenant=self.tenant,
             connection=self.connection,
             hub_asset=asset2,
@@ -218,7 +215,7 @@ class MarketplaceMappingViewSetTest(TestCase):
     def test_list_mappings_with_external_listing_id_filter(self):
         """Test mapping listing with external_listing_id filter"""
         asset2 = Asset.objects.create(tenant=self.tenant, key="test-asset-2", name="Test Asset 2")
-        mapping2 = MarketplaceMapping.objects.create(
+        MarketplaceMapping.objects.create(
             tenant=self.tenant,
             connection=self.connection,
             hub_asset=asset2,
@@ -366,9 +363,7 @@ class MarketplaceMappingViewSetTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
-        data_provider_role = Role.objects.filter(
-            tenant=self.tenant, name="DATA_PROVIDER"
-        ).first()
+        data_provider_role = Role.objects.filter(tenant=self.tenant, name="DATA_PROVIDER").first()
         if not data_provider_role:
             data_provider_role = Role.objects.create(
                 tenant=self.tenant,
@@ -380,7 +375,7 @@ class MarketplaceMappingViewSetTest(TestCase):
         # Create API key with only read scope
         plaintext_key = APIKey.generate_key()
         key_hash = APIKey.hash_key(plaintext_key)
-        api_key_readonly = APIKey.objects.create(
+        APIKey.objects.create(
             tenant=self.tenant,
             user=user_no_write,
             key_hash=key_hash,
@@ -620,8 +615,11 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
         self.assertEqual(response.data["results"][0]["tenant"], str(self.tenant1.id))
         # Verify cross-tenant mapping is NOT leaked in results
         result_ids = [r["id"] for r in response.data["results"]]
-        self.assertNotIn(str(self.mapping2.id), result_ids,
-                         "Cross-tenant mapping must not appear in list results")
+        self.assertNotIn(
+            str(self.mapping2.id),
+            result_ids,
+            "Cross-tenant mapping must not appear in list results",
+        )
 
     def test_tenant_isolation_retrieve(self):
         """Test that users cannot retrieve mappings from other tenants"""
@@ -723,9 +721,7 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
     def test_delete_with_tenant_admin_role(self):
         """Test that TENANT_ADMIN role can delete mappings"""
         # Create TENANT_ADMIN role for tenant1 (roles are tenant-scoped)
-        tenant_admin_role = Role.objects.filter(
-            tenant=self.tenant1, name="TENANT_ADMIN"
-        ).first()
+        tenant_admin_role = Role.objects.filter(tenant=self.tenant1, name="TENANT_ADMIN").first()
         if not tenant_admin_role:
             tenant_admin_role = Role.objects.create(
                 tenant=self.tenant1,
@@ -792,17 +788,22 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
     # ========== ERROR HANDLING TESTS ==========
 
     def test_list_mappings_validation_error_response_format(self):
-        """Test that validation errors return proper error response format"""
+        """Test that invalid UUID filter returns 200 with empty results.
+
+        The view's get_queryset() catches ValueError from uuid.UUID() and
+        returns MarketplaceMapping.objects.none(), producing an empty list
+        rather than a 400 error.
+        """
         self.client.force_authenticate(user=self.user1)
-        # Try to list with invalid connection_id filter
         response = self.client.get(
             "/api/v1/integrations/marketplace/mappings/", {"connection_id": "not-a-uuid"}
         )
 
-        # May return 200 with empty results or 400 with error
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            self.assertIn("detail", response.data or {})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("results", response.data)
+        self.assertEqual(len(response.data["results"]), 0)
+        self.assertIn("count", response.data)
+        self.assertEqual(response.data["count"], 0)
 
     def test_retrieve_mapping_error_handling(self):
         """Test that retrieve errors are handled gracefully"""
@@ -848,16 +849,21 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
         self.assertIn("count", response.data)
 
     def test_list_mappings_with_malformed_filters(self):
-        """Test that malformed filters are handled gracefully"""
+        """Test that invalid filter values return 200 with empty results.
+
+        The view's get_queryset() catches (ValueError, TypeError) when
+        parsing UUID filters and returns an empty queryset, so the API
+        response is 200 with zero results rather than a 4xx error.
+        """
         self.client.force_authenticate(user=self.user1)
-        # Try with invalid filter values
         response = self.client.get(
             "/api/v1/integrations/marketplace/mappings/",
             {"connection_id": "invalid", "hub_asset_id": "invalid"},
         )
 
-        # May return 200 with empty results or 400 with error
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("results", response.data)
+        self.assertEqual(len(response.data["results"]), 0)
 
     # ========== TDD COMPLIANCE TESTS ==========
 

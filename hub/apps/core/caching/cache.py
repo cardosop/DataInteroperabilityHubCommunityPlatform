@@ -9,21 +9,22 @@ Features:
 - Cache invalidation utilities (with Redis pattern support)
 - Cache warming utilities
 """
+
 import hashlib
 import json
 import re
-from typing import Any, Callable, Dict, List, Optional, Pattern
-from functools import lru_cache
+from collections.abc import Callable
+from typing import Any
 
-import structlog
 import redis
+import structlog
 from django.conf import settings
 from django.core.cache import cache as django_cache
 
 logger = structlog.get_logger(__name__)
 
 
-def get_redis_client() -> Optional[redis.Redis]:
+def get_redis_client() -> redis.Redis | None:
     """
     Get Redis client for cache operations.
 
@@ -34,6 +35,7 @@ def get_redis_client() -> Optional[redis.Redis]:
     """
     try:
         from hub.apps.core.redis_pools import get_redis_cache_client
+
         client = get_redis_cache_client()
         client.ping()
         return client
@@ -41,7 +43,7 @@ def get_redis_client() -> Optional[redis.Redis]:
         logger.warning(
             "cache_redis_unavailable",
             error=str(e),
-            message="Cache will use Django cache backend only (no pattern support)"
+            message="Cache will use Django cache backend only (no pattern support)",
         )
         return None
 
@@ -54,7 +56,7 @@ class CacheKeyGenerator:
     """
 
     # Characters that should be normalized in cache keys
-    KEY_NORMALIZATION_PATTERN = re.compile(r'[^\w\-:.]')
+    KEY_NORMALIZATION_PATTERN = re.compile(r"[^\w\-:.]")
 
     def generate(self, *parts: Any, separator: str = ":") -> str:
         """
@@ -118,11 +120,11 @@ class CacheKeyGenerator:
             Normalized cache key
         """
         # Replace invalid characters with underscores
-        normalized = self.KEY_NORMALIZATION_PATTERN.sub('_', key)
+        normalized = self.KEY_NORMALIZATION_PATTERN.sub("_", key)
         # Remove consecutive underscores
-        normalized = re.sub(r'_+', '_', normalized)
+        normalized = re.sub(r"_+", "_", normalized)
         # Remove leading/trailing underscores
-        normalized = normalized.strip('_')
+        normalized = normalized.strip("_")
         return normalized
 
 
@@ -138,27 +140,27 @@ class CacheTTLConfig:
 
     # Common TTL patterns (in seconds)
     DEFAULT_PATTERNS = {
-        'user:*': 300,           # 5 minutes
-        'asset:*': 300,          # 5 minutes
-        'contract:*': 300,       # 5 minutes
-        'query:*': 60,           # 1 minute
-        'search:*': 60,          # 1 minute
-        'metrics:*': 300,        # 5 minutes
-        'lineage:*': 600,        # 10 minutes
-        'validation:*': 3600,    # 1 hour
+        "user:*": 300,  # 5 minutes
+        "asset:*": 300,  # 5 minutes
+        "contract:*": 300,  # 5 minutes
+        "query:*": 60,  # 1 minute
+        "search:*": 60,  # 1 minute
+        "metrics:*": 300,  # 5 minutes
+        "lineage:*": 600,  # 10 minutes
+        "validation:*": 3600,  # 1 hour
     }
 
     def __init__(self):
         """Initialize TTL configuration."""
-        self._patterns: Dict[str, int] = {}
-        self._specific_keys: Dict[str, int] = {}
+        self._patterns: dict[str, int] = {}
+        self._specific_keys: dict[str, int] = {}
 
         # Load default patterns
         for pattern, ttl in self.DEFAULT_PATTERNS.items():
             self.set_ttl(pattern, ttl)
 
         # Load from settings
-        cache_ttl_config = getattr(settings, 'CACHE_TTL_CONFIG', {})
+        cache_ttl_config = getattr(settings, "CACHE_TTL_CONFIG", {})
         for pattern, ttl in cache_ttl_config.items():
             self.set_ttl(pattern, ttl)
 
@@ -170,7 +172,7 @@ class CacheTTLConfig:
             pattern: Cache key pattern (supports * wildcard)
             ttl: Time-to-live in seconds
         """
-        if '*' in pattern:
+        if "*" in pattern:
             self._patterns[pattern] = ttl
         else:
             self._specific_keys[pattern] = ttl
@@ -197,7 +199,7 @@ class CacheTTLConfig:
                 return ttl
 
         # Return default TTL
-        return getattr(settings, 'CACHE_DEFAULT_TTL', self.DEFAULT_TTL)
+        return getattr(settings, "CACHE_DEFAULT_TTL", self.DEFAULT_TTL)
 
     def _match_pattern(self, pattern: str, key: str) -> bool:
         """
@@ -211,7 +213,7 @@ class CacheTTLConfig:
             True if key matches pattern
         """
         # Convert pattern to regex
-        regex_pattern = pattern.replace('*', '.*')
+        regex_pattern = pattern.replace("*", ".*")
         return bool(re.match(regex_pattern, key))
 
 
@@ -246,11 +248,11 @@ class CacheInvalidator:
                 "cache_invalidation_error",
                 key=key,
                 error=str(e),
-                message="Failed to invalidate cache key"
+                message="Failed to invalidate cache key",
             )
             return False
 
-    def invalidate_keys(self, keys: List[str]) -> int:
+    def invalidate_keys(self, keys: list[str]) -> int:
         """
         Invalidate multiple cache keys.
 
@@ -286,8 +288,10 @@ class CacheInvalidator:
                 patterns_to_try = [pattern]
 
                 # Check if Django cache uses versioning
-                cache_backend = getattr(settings, 'CACHES', {}).get('default', {}).get('BACKEND', '')
-                if 'redis' in cache_backend.lower():
+                cache_backend = (
+                    getattr(settings, "CACHES", {}).get("default", {}).get("BACKEND", "")
+                )
+                if "redis" in cache_backend.lower():
                     # Django Redis cache may add version prefix
                     # Try with version prefix patterns
                     for version in range(1, 10):  # Check versions 1-9
@@ -327,7 +331,7 @@ class CacheInvalidator:
                     "cache_pattern_invalidation_error",
                     pattern=pattern,
                     error=str(e),
-                    message="Failed to invalidate cache pattern, falling back to Django cache"
+                    message="Failed to invalidate cache pattern, falling back to Django cache",
                 )
                 # Fallback: try Django cache (limited pattern support)
                 return self._invalidate_pattern_django(pattern)
@@ -354,7 +358,7 @@ class CacheInvalidator:
         logger.debug(
             "cache_pattern_invalidation_django_fallback",
             pattern=pattern,
-            message="Using Django cache fallback for pattern invalidation"
+            message="Using Django cache fallback for pattern invalidation",
         )
         # Return 0 to indicate limited support
         # In practice, with Redis cache backend, the main invalidate_pattern should work
@@ -380,10 +384,10 @@ class CacheWarmer:
 
     def warm_cache(
         self,
-        keys: List[str],
+        keys: list[str],
         fetch_func: Callable[[str], Any],
-        ttl: Optional[int] = None,
-        batch_size: Optional[int] = None
+        ttl: int | None = None,
+        batch_size: int | None = None,
     ) -> int:
         """
         Warm cache with data from fetch function.
@@ -402,7 +406,7 @@ class CacheWarmer:
 
         # Process in batches
         for i in range(0, len(keys), batch_size):
-            batch = keys[i:i + batch_size]
+            batch = keys[i : i + batch_size]
             for key in batch:
                 try:
                     # Fetch data
@@ -419,7 +423,7 @@ class CacheWarmer:
                         "cache_warming_error",
                         key=key,
                         error=str(e),
-                        message="Failed to warm cache for key"
+                        message="Failed to warm cache for key",
                     )
                     # Continue with next key
                     continue
@@ -428,16 +432,13 @@ class CacheWarmer:
             "cache_warming_complete",
             total_keys=len(keys),
             warmed_count=warmed_count,
-            message="Cache warming completed"
+            message="Cache warming completed",
         )
 
         return warmed_count
 
     def warm_cache_single(
-        self,
-        key: str,
-        fetch_func: Callable[[str], Any],
-        ttl: Optional[int] = None
+        self, key: str, fetch_func: Callable[[str], Any], ttl: int | None = None
     ) -> bool:
         """
         Warm cache for a single key.
@@ -457,10 +458,7 @@ class CacheWarmer:
             return True
         except Exception as e:
             logger.warning(
-                "cache_warming_error",
-                key=key,
-                error=str(e),
-                message="Failed to warm cache for key"
+                "cache_warming_error", key=key, error=str(e), message="Failed to warm cache for key"
             )
             return False
 
@@ -543,10 +541,7 @@ def invalidate_cache_pattern(pattern: str) -> int:
 
 
 def warm_cache(
-    key: str,
-    fetch_func: Callable[..., Any],
-    *args: Any,
-    ttl: Optional[int] = None
+    key: str, fetch_func: Callable[..., Any], *args: Any, ttl: int | None = None
 ) -> bool:
     """
     Warm cache for a single key.
@@ -566,6 +561,7 @@ def warm_cache(
         >>> warm_cache("user:123", fetch_user_data)
         True
     """
+
     def wrapped_fetch(k: str) -> Any:
         if args:
             return fetch_func(k, *args)
@@ -573,4 +569,3 @@ def warm_cache(
             return fetch_func(k)
 
     return _warmer.warm_cache_single(key, wrapped_fetch, ttl=ttl)
-

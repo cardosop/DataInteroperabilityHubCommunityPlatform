@@ -57,23 +57,22 @@ class TestTenantLabelIsBounded:
         violations = []
         for filepath, mtype, name in metrics:
             # High-cardinality patterns in metric names
-            if re.search(r'[0-9a-f]{8,}', name):
+            if re.search(r"[0-9a-f]{8,}", name):
                 violations.append(f"{filepath}: {mtype}('{name}') contains hex pattern")
             if "{" in name or "}" in name:
                 violations.append(f"{filepath}: {mtype}('{name}') contains braces")
         # Some legacy metrics may exist — report but don't fail
         if violations:
-            for v in violations[:10]:
+            for _v in violations[:10]:
                 pass  # Documented for awareness
         assert True  # Informational check
 
     def test_metric_labels_are_static_not_dynamic(self):
         """Metric label keys should be static, not generated from variable values."""
         metrics = self._find_metric_definitions()
-        for filepath, mtype, name in metrics:
+        for filepath, _mtype, name in metrics:
             # Metric names should be descriptive, not generated
-            assert isinstance(name, str) and len(name) > 0, \
-                f"Metric at {filepath} has empty name"
+            assert isinstance(name, str) and len(name) > 0, f"Metric at {filepath} has empty name"
 
 
 @pytest.mark.unit
@@ -111,8 +110,9 @@ class TestMetricExplosionProtection:
             # More than 10 labels per metric is a cardinality risk
             if len(labels) > 10:
                 pass  # Flag for review
-            assert len(labels) <= 20, \
+            assert len(labels) <= 20, (
                 f"Metric '{metric_name}' has {len(labels)} labels — cardinality risk"
+            )
 
     def test_no_metrics_with_unbounded_values(self):
         """Metric labels must not accept unbounded values like full URLs."""
@@ -124,8 +124,8 @@ class TestMetricExplosionProtection:
                     continue
                 try:
                     content = py_file.read_text()
-                    for match in re.finditer(
-                        r'\.labels\s*\(\s*(?:url|path|endpoint)\s*=\s*',
+                    for _match in re.finditer(
+                        r"\.labels\s*\(\s*(?:url|path|endpoint)\s*=\s*",
                         content,
                     ):
                         pytest.fail(

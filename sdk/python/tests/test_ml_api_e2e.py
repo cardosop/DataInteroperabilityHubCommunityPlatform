@@ -14,18 +14,19 @@ These tests require:
    OR set via environment variables: TEST_API_KEY or DATAHUB_API_KEY
 """
 import os
-import pytest
 import uuid
-import asyncio
+
+import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig
-from datahub_interoperability.ml import ODHIntegrationAPI, TrainingAPI, InferenceAPI
 from datahub_interoperability.errors import (
-    ValidationError,
-    NotFoundError,
-    UnauthorizedError,
-    ServerError,
     ConflictError,
+    NotFoundError,
+    ServerError,
+    UnauthorizedError,
+    ValidationError,
 )
+import contextlib
 
 
 def setup_authentication_for_sdk_tests(api_base_url: str):
@@ -45,6 +46,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str):
     # Method 2: Use canonical conftest helper
     try:
         from tests.conftest import get_api_key
+
         canonical = get_api_key()
         if canonical:
             return canonical
@@ -52,7 +54,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str):
         pass
 
     # Method 3: Fall back to env-var keys
-    api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
+    api_key = os.environ.get("TEST_API_KEY") or os.environ.get("DATAHUB_API_KEY")
     if api_key:
         return api_key
 
@@ -63,6 +65,7 @@ def _create_ml_e2e_tenant_and_key():
     """Create a dedicated tenant with ``ml_enabled=True`` and return an API key."""
     import subprocess
     import uuid
+
     try:
         unique_id = uuid.uuid4().hex[:8]
         # Use .format() instead of f-string to avoid nested brace issues
@@ -122,25 +125,36 @@ print(api_key_value)
 print('API_KEY_END')
 """.format(unique_id=unique_id)
         result = subprocess.run(
-                        ['docker', 'compose', '-f', 'docker-compose.test.yml', 'exec', '-T', 'api-service-test', 'python', 'hub/manage.py', 'shell'],
+            [
+                "docker",
+                "compose",
+                "-f",
+                "docker-compose.test.yml",
+                "exec",
+                "-T",
+                "api-service-test",
+                "python",
+                "hub/manage.py",
+                "shell",
+            ],
             input=django_shell_script,
             text=True,
             capture_output=True,
             timeout=30,
-            cwd='/home/ph/Desktop/DataInteroperabilityHub'
+            cwd="/home/ph/Desktop/DataInteroperabilityHub",
         )
         combined_output = result.stdout + result.stderr if result.stderr else result.stdout
 
         if result.returncode == 0:
-            output_lines = combined_output.strip().split('\n')
+            output_lines = combined_output.strip().split("\n")
             api_key = None
             in_api_key = False
             for line in output_lines:
                 line = line.strip()
-                if line == 'API_KEY_START':
+                if line == "API_KEY_START":
                     in_api_key = True
                     continue
-                elif line == 'API_KEY_END':
+                elif line == "API_KEY_END":
                     in_api_key = False
                     continue
                 elif in_api_key and line:
@@ -152,13 +166,13 @@ print('API_KEY_END')
                     line = line.strip()
                     if not line or len(line) < 20:
                         continue
-                    if line.startswith('>>>') or line.startswith('...'):
+                    if line.startswith(">>>") or line.startswith("..."):
                         continue
-                    if 'imported' in line.lower() or 'objects' in line.lower() or 'Error' in line:
+                    if "imported" in line.lower() or "objects" in line.lower() or "Error" in line:
                         continue
-                    if ' ' in line:
+                    if " " in line:
                         continue
-                    if all(c.isalnum() or c in '-_' for c in line):
+                    if all(c.isalnum() or c in "-_" for c in line):
                         api_key = line
                         break
 
@@ -175,7 +189,9 @@ def get_test_config():
     api_token = setup_authentication_for_sdk_tests(base_url)
 
     if not api_token:
-        pytest.skip("Could not obtain API key. Set DATAHUB_API_KEY or TEST_API_KEY environment variable, or ensure Docker Compose services are running.")
+        pytest.skip(
+            "Could not obtain API key. Set DATAHUB_API_KEY or TEST_API_KEY environment variable, or ensure Docker Compose services are running."
+        )
 
     return DataHubClientConfig(
         base_url=base_url,
@@ -348,10 +364,15 @@ class TestMLWorkflowE2E:
 
                     # Step 3: Get deployment details
                     deployment_details = await inference_api.get_deployment(deployment_id)
-                    assert deployment_details.get("deployment_id") == deployment_id or deployment_details.get("id") == deployment_id
+                    assert (
+                        deployment_details.get("deployment_id") == deployment_id
+                        or deployment_details.get("id") == deployment_id
+                    )
 
                     # Step 4: List deployments with filter
-                    filtered_deployments = await inference_api.list_deployments(model_id=test_model_id)
+                    filtered_deployments = await inference_api.list_deployments(
+                        model_id=test_model_id
+                    )
                     assert isinstance(filtered_deployments, list)
 
                     # Step 5: Run prediction (if deployment is ready)
@@ -380,7 +401,9 @@ class TestMLWorkflowE2E:
                         # Deployment may already be undeployed
                         pass
                 except (NotFoundError, ValidationError, ServerError) as e:
-                    pytest.skip(f"Inference deployment failed (may need setup or ODH services): {e}")
+                    pytest.skip(
+                        f"Inference deployment failed (may need setup or ODH services): {e}"
+                    )
         except (UnauthorizedError, ServerError) as e:
             pytest.skip(f"API not available or not authenticated: {e}")
 
@@ -488,28 +511,22 @@ class TestMLWorkflowE2E:
                             pass
 
                         # Step 5: Cleanup - undeploy
-                        try:
+                        with contextlib.suppress(NotFoundError, ServerError):
                             await inference_api.undeploy_model(deployment_id)
-                        except (NotFoundError, ServerError):
-                            pass
                     except (NotFoundError, ServerError, ValidationError):
                         # Deployment may fail if ODH services not available
                         pass
 
                     # Step 6: Cleanup - cancel training if still running
-                    try:
+                    with contextlib.suppress(NotFoundError, ServerError):
                         await training_api.cancel_training_job(job_id)
-                    except (NotFoundError, ServerError):
-                        pass
                 except (NotFoundError, ValidationError, ServerError):
                     # Training may fail if ODH services not available
                     pass
 
                 # Step 7: Cleanup - delete model
-                try:
+                with contextlib.suppress(NotFoundError, ServerError):
                     await ml_api.delete_model(model_id)
-                except (NotFoundError, ServerError):
-                    pass
             except (NotFoundError, ConflictError, ValidationError) as e:
                 pytest.skip(f"Complete pipeline test setup incomplete: {e}")
         except (UnauthorizedError, ServerError) as e:

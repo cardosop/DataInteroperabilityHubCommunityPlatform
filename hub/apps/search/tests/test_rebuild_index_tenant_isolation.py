@@ -15,7 +15,6 @@ from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserRole, UserStatus
 
-
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
@@ -28,7 +27,7 @@ def _make_tenant(prefix: str) -> Tenant:
         status="ACTIVE",
         kyc_status=KYCStatus.VERIFIED,
     )
-    return cast(Tenant, tenant)
+    return cast("Tenant", tenant)
 
 
 def _make_auditor_user(tenant: Tenant):
@@ -126,7 +125,7 @@ class RebuildIndexTenantIsolationTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         body = response.json()
         self.assertEqual(body.get("status"), "index rebuild started")
-        self.assertTrue(body.get("success", True))
+        self.assertTrue(body.get("success"), "Response must include 'success' key")
 
     def test_matching_body_tenant_id_is_transitionally_accepted(self) -> None:
         response: Any = self.api_client.post(
@@ -137,4 +136,4 @@ class RebuildIndexTenantIsolationTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         body = response.json()
         self.assertEqual(body.get("status"), "index rebuild started")
-        self.assertTrue(body.get("success", True))
+        self.assertTrue(body.get("success"), "Response must include 'success' key")

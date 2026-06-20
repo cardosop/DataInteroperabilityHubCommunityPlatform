@@ -1,15 +1,16 @@
 """
 Client Tests
 """
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
+import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
-    ValidationError,
     NotFoundError,
-    UnauthorizedError,
-    NetworkError,
+    ValidationError,
 )
 
 
@@ -100,19 +101,19 @@ async def test_error_handling_404(client):
         }
     }
     mock_response.is_error = True
-    
+
     error = httpx.HTTPStatusError(
         "404 Not Found",
         request=MagicMock(),
         response=mock_response,
     )
-    
+
     with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
         mock_request.side_effect = error
-        
+
         with pytest.raises(NotFoundError) as exc_info:
             await client.get("/assets/123/")
-        
+
         assert exc_info.value.http_status == 404
         assert exc_info.value.request_id == "req-123"
 
@@ -132,19 +133,19 @@ async def test_error_handling_400(client):
         }
     }
     mock_response.is_error = True
-    
+
     error = httpx.HTTPStatusError(
         "400 Bad Request",
         request=MagicMock(),
         response=mock_response,
     )
-    
+
     with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
         mock_request.side_effect = error
-        
+
         with pytest.raises(ValidationError) as exc_info:
             await client.post("/assets/", {})
-        
+
         assert exc_info.value.http_status == 400
         assert exc_info.value.details == {"field_errors": []}
 
@@ -152,27 +153,28 @@ async def test_error_handling_400(client):
 @pytest.mark.asyncio
 async def test_token_refresh(client):
     """Test token refresh on 401"""
+
     async def refresh_token():
         return "new-token"
-    
+
     client.set_token_refresh_callback(refresh_token)
-    
+
     # First request fails with 401
     mock_response_401 = MagicMock()
     mock_response_401.status_code = 401
     mock_response_401.is_error = True
-    
+
     # Second request succeeds
     mock_response_200 = MagicMock()
     mock_response_200.json.return_value = {"id": "123"}
     mock_response_200.is_error = False
-    
+
     error_401 = httpx.HTTPStatusError(
         "401 Unauthorized",
         request=MagicMock(),
         response=mock_response_401,
     )
-    
+
     with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
         mock_request.side_effect = [error_401, mock_response_200]
 
@@ -193,4 +195,3 @@ async def test_set_api_token(client):
     """Test setting API token"""
     client.set_api_token("new-token")
     assert client.config.api_token == "new-token"
-

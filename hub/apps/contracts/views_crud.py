@@ -7,11 +7,9 @@ and pagination support.
 SAVING CHECKPOINT: This module contains the core CRUD operations.
 """
 
-from typing import Optional
-
 from django.core.exceptions import FieldError
 from django.db import transaction
-from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -30,7 +28,9 @@ from rest_framework.response import Response
 def _contract_etag(contract) -> str:
     """Return the weak ETag for a Contract row, matching the middleware."""
     from hub.apps.api.middleware.cache_headers import generate_etag_from_model
+
     return generate_etag_from_model(contract)
+
 
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.core.services.base import (
@@ -65,8 +65,8 @@ from .serializers import (
     ContractCreateSerializer,
     ContractSerializer,
     ContractUpdateSerializer,
+    payload_size_envelope,
 )
-from .serializers import payload_size_envelope
 from .services import ContractService
 
 
@@ -80,7 +80,7 @@ from .services import ContractService
 #   * No serializer object built for bodies we will reject.
 #   * The same helper is reusable from every other write surface
 #     (`/contracts/validate-draft/`, `/contracts/products/`, ODPS link).
-def _check_payload_too_large(request) -> Optional[Response]:
+def _check_payload_too_large(request) -> Response | None:
     envelope = payload_size_envelope(request.data)
     if envelope is None:
         return None
@@ -180,7 +180,7 @@ class ContractCRUDMixin:
 
                 logger = logging.getLogger(__name__)
                 logger.error(
-                    f"Failed to serialize contract {contract.id}: " f"{serialization_error}",
+                    f"Failed to serialize contract {contract.id}: {serialization_error}",
                     exc_info=True,
                 )
                 # Return minimal contract data if serialization fails
@@ -509,10 +509,7 @@ class ContractCRUDMixin:
                 if user is None or not getattr(user, "is_authenticated", False):
                     return Response(
                         {
-                            "error": (
-                                "Authentication required to access "
-                                "?filter=structureless"
-                            ),
+                            "error": ("Authentication required to access ?filter=structureless"),
                             "code": "AUTHENTICATION_REQUIRED",
                         },
                         status=status.HTTP_401_UNAUTHORIZED,
@@ -520,10 +517,7 @@ class ContractCRUDMixin:
                 if not user.has_role("TENANT_ADMIN"):
                     return Response(
                         {
-                            "error": (
-                                "?filter=structureless requires "
-                                "TENANT_ADMIN role"
-                            ),
+                            "error": ("?filter=structureless requires TENANT_ADMIN role"),
                             "code": "PERMISSION_DENIED",
                             "details": {
                                 "required_roles": ["TENANT_ADMIN"],
@@ -543,8 +537,7 @@ class ContractCRUDMixin:
                 # see >1k contracts/tenant we can revisit with a
                 # generated column.
                 offending_ids = [
-                    c.id for c in queryset.iterator(chunk_size=200)
-                    if is_structureless(c)
+                    c.id for c in queryset.iterator(chunk_size=200) if is_structureless(c)
                 ]
                 queryset = queryset.filter(id__in=offending_ids).order_by("-updated_at")
 
@@ -592,7 +585,7 @@ class ContractCRUDMixin:
             if "ordering" in str(e).lower() or "order" in str(e).lower():
                 return Response(
                     {
-                        "error": f"Invalid ordering field: {str(e)}",
+                        "error": f"Invalid ordering field: {e!s}",
                         "code": "INVALID_ORDERING",
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -767,8 +760,7 @@ class ContractCRUDMixin:
             ),
             400: OpenApiResponse(
                 description=(
-                    "Invalid ``spec`` query parameter. ``code`` will "
-                    "be ``INVALID_SPEC``."
+                    "Invalid ``spec`` query parameter. ``code`` will be ``INVALID_SPEC``."
                 ),
             ),
         },
@@ -816,6 +808,7 @@ class ContractCRUDMixin:
                 status=status.HTTP_400_BAD_REQUEST,
             )
         from hub.apps.contracts.typed_models import HubContractModel
+
         try:
             json_schema = HubContractModel.model_json_schema(by_alias=True)
         except Exception as exc:  # pragma: no cover — defensive
@@ -880,11 +873,11 @@ class ContractCRUDMixin:
         same-tenant user with ``EDIT_LINEAGE`` permission OR contract
         owner.  Returns 403 ``EDIT_LINEAGE_FORBIDDEN`` otherwise.
         """
-        from hub.apps.contracts.lineage_edit_service import (
-            apply_lineage_patch,
-        )
         from hub.apps.contracts.lineage_edit_serializers import (
             LineageEditPatchSerializer,
+        )
+        from hub.apps.contracts.lineage_edit_service import (
+            apply_lineage_patch,
         )
         from hub.apps.contracts.permissions_lineage import (
             require_edit_lineage,
@@ -903,6 +896,7 @@ class ContractCRUDMixin:
             require_edit_lineage(request.user, contract)
         except Exception as exc:
             from rest_framework.exceptions import PermissionDenied
+
             if isinstance(exc, PermissionDenied):
                 return Response(
                     exc.detail
@@ -988,15 +982,16 @@ class ContractCRUDMixin:
         # ``IdempotencyService.check_idempotency`` /
         # ``store_idempotency`` API from
         # ``hub/apps/core/bug_prevention/services.py``.
-        idempotency_key = request.headers.get(
-            "Idempotency-Key"
-        ) or request.META.get("HTTP_IDEMPOTENCY_KEY")
+        idempotency_key = request.headers.get("Idempotency-Key") or request.META.get(
+            "HTTP_IDEMPOTENCY_KEY"
+        )
         cached_response = None
         if idempotency_key:
             try:
                 from hub.apps.core.bug_prevention.services import (
                     IdempotencyService,
                 )
+
                 _, cached_response = IdempotencyService.check_idempotency(
                     tenant_id=str(getattr(request.user, "tenant_id", "")),
                     idempotency_key=idempotency_key,
@@ -1008,7 +1003,9 @@ class ContractCRUDMixin:
                 cached_response = None
             if cached_response is not None:
                 return Response(
-                    cached_response.get("data") if isinstance(cached_response, dict) else cached_response,
+                    cached_response.get("data")
+                    if isinstance(cached_response, dict)
+                    else cached_response,
                     status=status.HTTP_200_OK,
                     headers={"X-Idempotent-Replay": "true"},
                 )
@@ -1022,8 +1019,11 @@ class ContractCRUDMixin:
             )
         except Exception as exc:
             from rest_framework.exceptions import ValidationError as _Validate
+
             from hub.apps.core.services.base import (
                 ConflictError,
+            )
+            from hub.apps.core.services.base import (
                 ValidationError as ServiceValidate,
             )
 
@@ -1038,9 +1038,11 @@ class ContractCRUDMixin:
                 )
             if isinstance(exc, (ServiceValidate, _Validate)):
                 # Validator findings (cycle, field-not-found, type-mismatch).
-                details = getattr(exc, "details", None) or getattr(
-                    exc, "detail", None
-                ) or {"error": str(exc)}
+                details = (
+                    getattr(exc, "details", None)
+                    or getattr(exc, "detail", None)
+                    or {"error": str(exc)}
+                )
                 return Response(
                     details,
                     status=status.HTTP_400_BAD_REQUEST,
@@ -1053,6 +1055,7 @@ class ContractCRUDMixin:
                 from hub.apps.core.bug_prevention.services import (
                     IdempotencyService,
                 )
+
                 IdempotencyService.store_idempotency(
                     tenant_id=str(getattr(request.user, "tenant_id", "")),
                     idempotency_key=idempotency_key,
@@ -1070,6 +1073,7 @@ class ContractCRUDMixin:
                 # ships dark.  Phase 228.F3.test-execution audit fix
                 # — was previously ``pass`` which masked the bug.
                 import logging as _logging
+
                 _logging.getLogger(__name__).warning(
                     "lineage_edit.idempotency_store_failed: %s",
                     _idem_exc,

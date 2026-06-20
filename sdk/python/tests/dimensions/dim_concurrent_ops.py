@@ -10,10 +10,11 @@ deadlock, data corruption, or server errors.
 """
 
 import concurrent.futures
+
 import requests
+
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_base_url
-
 
 CONCURRENCY = 10  # Number of parallel requests
 
@@ -87,8 +88,6 @@ def test_no_thread_hangs():
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
         futures = [pool.submit(_make_request, creds.api_key) for _ in range(5)]
         # If any future doesn't complete in 60s, this raises TimeoutError
-        done, not_done = concurrent.futures.wait(futures, timeout=60)
+        _done, not_done = concurrent.futures.wait(futures, timeout=60)
 
-    assert len(not_done) == 0, (
-        f"{len(not_done)} threads hung (deadlock?)"
-    )
+    assert len(not_done) == 0, f"{len(not_done)} threads hung (deadlock?)"

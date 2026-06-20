@@ -1,6 +1,7 @@
 """Shared RoPA materialisation logic (sync API path + worker job handler)."""
 
 from __future__ import annotations
+
 import hashlib
 
 from django.conf import settings
@@ -62,7 +63,11 @@ def materialize_generation(
     generation.cache_generation = int((payload.get("meta") or {}).get("cache_version") or 0)
     generation.save()
 
-    actor = actor_user if (actor_user is not None and getattr(actor_user, "is_authenticated", False)) else None
+    actor = (
+        actor_user
+        if (actor_user is not None and getattr(actor_user, "is_authenticated", False))
+        else None
+    )
     create_audit_event(
         resource_type="ROPA_GENERATION",
         action=event_types.ROPA_GENERATED,

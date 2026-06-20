@@ -1,19 +1,21 @@
 """
 285.12.3.2 — Processor Agreement ViewSet tests.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from rest_framework import status
 from rest_framework.test import APIClient
 
+pytestmark = [pytest.mark.journey("JOURNEY-CPO-014")]
+
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import Role, UserRole
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.users.models import Role, UserRole
 
 User = get_user_model()
 
@@ -22,11 +24,14 @@ class ProcessorAgreementViewSetTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test-{uid}", slug=f"t-{uid}", status="ACTIVE",
+            name=f"Test-{uid}",
+            slug=f"t-{uid}",
+            status="ACTIVE",
             compliance_processor_agreements_enabled=True,
         )
         self.user = User.objects.create_user(
-            email=f"user_{uid}@test.local", password="Pass1234!",
+            email=f"user_{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         ensure_tenant_has_active_subscription(self.tenant)

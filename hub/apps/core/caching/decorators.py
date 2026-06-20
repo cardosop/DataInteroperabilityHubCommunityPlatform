@@ -9,10 +9,12 @@ Features:
 - TTL configuration per cache key pattern
 - Automatic cache key generation from function arguments
 """
+
+import contextlib
 import functools
-import hashlib
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
 import structlog
 from django.core.cache import cache as django_cache
@@ -21,7 +23,6 @@ from django.utils.decorators import method_decorator
 
 from hub.apps.core.caching.cache import (
     CacheKeyGenerator,
-    CacheTTLConfig,
     generate_cache_key,
     get_cache_ttl,
 )
@@ -51,8 +52,9 @@ def _default_key_generator(func: Callable, *args: Any, **kwargs: Any) -> str:
     # Include args (skip self/cls for methods)
     if args:
         # For bound methods, skip first arg (self/cls)
-        if inspect.ismethod(func) or (args and hasattr(args[0], '__class__') and
-                                       func.__name__ in dir(args[0].__class__)):
+        if inspect.ismethod(func) or (
+            args and hasattr(args[0], "__class__") and func.__name__ in dir(args[0].__class__)
+        ):
             parts.extend(str(arg) for arg in args[1:])
         else:
             parts.extend(str(arg) for arg in args)
@@ -66,10 +68,10 @@ def _default_key_generator(func: Callable, *args: Any, **kwargs: Any) -> str:
 
 
 def cache_result(
-    key_prefix: Optional[str] = None,
-    ttl: Optional[int] = None,
-    key_generator: Optional[Callable[[Callable, Any], str]] = None,
-    cache_none: bool = True
+    key_prefix: str | None = None,
+    ttl: int | None = None,
+    key_generator: Callable[[Callable, Any], str] | None = None,
+    cache_none: bool = True,
 ) -> Callable:
     """
     Decorator to cache function results.
@@ -92,6 +94,7 @@ def cache_result(
         >>> get_user(123)  # Returns cached result
         {'id': 123, 'name': 'John'}
     """
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -115,7 +118,7 @@ def cache_result(
                         "cache_hit",
                         function=func.__qualname__,
                         key=cache_key,
-                        message="Cache hit for function result"
+                        message="Cache hit for function result",
                     )
                     # Unwrap None if it was wrapped
                     if isinstance(cached_result, dict) and cached_result.get("__cached_none__"):
@@ -127,7 +130,7 @@ def cache_result(
                     function=func.__qualname__,
                     key=cache_key,
                     error=str(e),
-                    message="Failed to get from cache, executing function"
+                    message="Failed to get from cache, executing function",
                 )
 
             # Cache miss — acquire lock to prevent stampede
@@ -136,6 +139,7 @@ def cache_result(
 
             try:
                 from django.core.cache import cache as _lock_cache
+
                 # Try to acquire exclusive lock
                 lock_acquired = _lock_cache.add(lock_key, "1", lock_ttl)
             except Exception:
@@ -147,10 +151,8 @@ def cache_result(
                     result = func(*args, **kwargs)
                 except Exception:
                     # Release lock on error so others can retry
-                    try:
+                    with contextlib.suppress(Exception):
                         _lock_cache.delete(lock_key)
-                    except Exception:
-                        pass
                     raise
 
                 # Cache result (if not None or cache_none is True)
@@ -167,7 +169,7 @@ def cache_result(
                             function=func.__qualname__,
                             key=cache_key,
                             ttl=cache_ttl,
-                            message="Cached function result"
+                            message="Cached function result",
                         )
                     except Exception as e:
                         logger.warning(
@@ -175,25 +177,26 @@ def cache_result(
                             function=func.__qualname__,
                             key=cache_key,
                             error=str(e),
-                            message="Failed to cache result"
+                            message="Failed to cache result",
                         )
 
                 # Release lock
-                try:
+                with contextlib.suppress(Exception):
                     _lock_cache.delete(lock_key)
-                except Exception:
-                    pass
 
                 return result
             else:
                 # Another thread holds the lock — wait and retry read
                 import time
+
                 for _ in range(10):  # 10 retries x 0.1s = 1s max wait
                     time.sleep(0.1)
                     try:
                         cached_result = django_cache.get(cache_key, _CACHE_SENTINEL)
                         if cached_result is not _CACHE_SENTINEL:
-                            if isinstance(cached_result, dict) and cached_result.get("__cached_none__"):
+                            if isinstance(cached_result, dict) and cached_result.get(
+                                "__cached_none__"
+                            ):
                                 return None
                             return cached_result
                     except Exception:
@@ -216,14 +219,15 @@ def cache_result(
                 return result
 
         return wrapper
+
     return decorator
 
 
 def cache_view(
-    key_prefix: Optional[str] = None,
-    ttl: Optional[int] = None,
-    vary_on: Optional[List[str]] = None,
-    cache_methods: Optional[List[str]] = None
+    key_prefix: str | None = None,
+    ttl: int | None = None,
+    vary_on: list[str] | None = None,
+    cache_methods: list[str] | None = None,
 ) -> Callable:
     """
     Decorator to cache Django view responses.
@@ -245,7 +249,7 @@ def cache_view(
         ...     return JsonResponse({"data": "value"})
     """
     if cache_methods is None:
-        cache_methods = ['GET']
+        cache_methods = ["GET"]
 
     if vary_on is None:
         vary_on = []
@@ -273,12 +277,12 @@ def cache_view(
                 key_parts.append(query_str)
 
             # Include user ID if authenticated
-            if hasattr(request, 'user') and request.user.is_authenticated:
+            if hasattr(request, "user") and request.user.is_authenticated:
                 key_parts.append(f"user:{request.user.id}")
 
             # Include vary headers
             for header in vary_on:
-                header_value = request.META.get(f'HTTP_{header.upper().replace("-", "_")}', '')
+                header_value = request.META.get(f"HTTP_{header.upper().replace('-', '_')}", "")
                 if header_value:
                     key_parts.append(f"{header}:{header_value}")
 
@@ -293,7 +297,7 @@ def cache_view(
                         view=view_func.__qualname__,
                         path=request.path,
                         key=cache_key,
-                        message="Cache hit for view"
+                        message="Cache hit for view",
                     )
                     return cached_response
             except Exception as e:
@@ -302,7 +306,7 @@ def cache_view(
                     view=view_func.__qualname__,
                     key=cache_key,
                     error=str(e),
-                    message="Failed to get from cache, executing view"
+                    message="Failed to get from cache, executing view",
                 )
 
             # Execute view
@@ -322,7 +326,7 @@ def cache_view(
                         path=request.path,
                         key=cache_key,
                         ttl=cache_ttl,
-                        message="Cached view response"
+                        message="Cached view response",
                     )
                 except Exception as e:
                     logger.warning(
@@ -330,7 +334,7 @@ def cache_view(
                         view=view_func.__qualname__,
                         key=cache_key,
                         error=str(e),
-                        message="Failed to cache response"
+                        message="Failed to cache response",
                     )
             else:
                 logger.debug(
@@ -338,19 +342,20 @@ def cache_view(
                     view=view_func.__qualname__,
                     path=request.path,
                     status_code=response.status_code,
-                    message="Skipping cache for error response"
+                    message="Skipping cache for error response",
                 )
 
             return response
 
         return wrapper
+
     return decorator
 
 
 def cache_method(
-    key_prefix: Optional[str] = None,
-    ttl: Optional[int] = None,
-    key_generator: Optional[Callable[[Callable, Any], str]] = None
+    key_prefix: str | None = None,
+    ttl: int | None = None,
+    key_generator: Callable[[Callable, Any], str] | None = None,
 ) -> Callable:
     """
     Decorator to cache class method results.
@@ -374,4 +379,3 @@ def cache_method(
     return method_decorator(
         cache_result(key_prefix=key_prefix, ttl=ttl, key_generator=key_generator)
     )
-

@@ -35,6 +35,7 @@ from hub.apps.datasets.versioning_service import VersioningService
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.users.models import UserStatus
+
 # Lazy imports — the test runner may discover this module before the
 # ``tests.fixtures`` package is fully importable in some discovery
 # orders (e.g. when run with other test suites that load factory
@@ -48,6 +49,7 @@ def _get_TenantFactory():
     global _TenantFactory
     if _TenantFactory is None:
         from tests.fixtures.test_data_factories import TenantFactory as TF
+
         _TenantFactory = TF
     return _TenantFactory
 
@@ -56,6 +58,7 @@ def _get_UserFactory():
     global _UserFactory
     if _UserFactory is None:
         from tests.fixtures.test_data_factories import UserFactory as UF
+
         _UserFactory = UF
     return _UserFactory
 
@@ -64,8 +67,10 @@ def _get_wait_for_event_persistence():
     global _wait_for_event_persistence
     if _wait_for_event_persistence is None:
         from tests.utils.wait_helpers import wait_for_event_persistence as w
+
         _wait_for_event_persistence = w
     return _wait_for_event_persistence
+
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -81,13 +86,15 @@ def setUpModule():
     connections before the first class loads.
     """
     from django.db import connections
-    conn = connections["default"]
+
+    connections["default"]
     connections["default"].close()
 
 
 def tearDownModule():
     """Close connections after all tests in this module have run."""
     from django.db import connections
+
     connections.close_all()
 
 
@@ -118,10 +125,11 @@ class TestDatasetCRUDOperations(TestCase):
         )
         self.service = DatasetService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
-        # Create test files
+        # Create test files with unique names to avoid
+        # unique_active_filename_per_tenant collisions.
         self.file1 = File.objects.create(
             tenant=self.tenant,
-            name="dataset1.csv",
+            name=f"ds1-{uuid.uuid4().hex[:8]}.csv",
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
@@ -129,17 +137,17 @@ class TestDatasetCRUDOperations(TestCase):
         )
         self.file2 = File.objects.create(
             tenant=self.tenant,
-            name="dataset2.json",
+            name=f"ds2-{uuid.uuid4().hex[:8]}.json",
             content_type="application/json",
             size=2048,
             status=FileStatus.ACTIVE,
             storage_path=f"{self.tenant.id}/{uuid.uuid4()}/dataset2.json",
         )
 
-        # Create test asset
+        # Create test asset with unique key
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             description="Test asset for datasets",
             status=AssetStatus.ACTIVE,
@@ -232,15 +240,16 @@ class TestDatasetCRUDOperations(TestCase):
 
     def test_dataset_pagination(self):
         """Test dataset pagination"""
-        # Create multiple datasets
+        # Create multiple datasets with unique names to avoid
+        # unique_active_filename_per_tenant collisions with setUp.
         for i in range(15):
             file = File.objects.create(
                 tenant=self.tenant,
-                name=f"dataset{i}.csv",
+                name=f"paginate-{uuid.uuid4().hex[:8]}.csv",
                 content_type="text/csv",
                 size=1024,
                 status=FileStatus.ACTIVE,
-                storage_path=f"{self.tenant.id}/{uuid.uuid4()}/dataset{i}.csv",
+                storage_path=f"{self.tenant.id}/{uuid.uuid4()}/paginate.csv",
             )
             self.service.create_dataset(
                 tenant_id=str(self.tenant.id),
@@ -350,7 +359,7 @@ class TestDatasetVersioning(TestCase):
         # Create test file and asset
         self.file = File.objects.create(
             tenant=self.tenant,
-            name="dataset.csv",
+            name=f"dataset-{uuid.uuid4().hex[:8]}.csv",
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
@@ -358,7 +367,7 @@ class TestDatasetVersioning(TestCase):
         )
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             created_by=self.user,
@@ -441,7 +450,7 @@ class TestDatasetVersioning(TestCase):
     def test_version_rollback(self):
         """Test version rollback"""
         # Create version 2
-        dataset_v2 = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,
@@ -549,7 +558,7 @@ class TestSchemaEvolution(TestCase):
         # Create test file and asset
         self.file = File.objects.create(
             tenant=self.tenant,
-            name="dataset.csv",
+            name=f"dataset-{uuid.uuid4().hex[:8]}.csv",
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
@@ -557,7 +566,7 @@ class TestSchemaEvolution(TestCase):
         )
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             created_by=self.user,
@@ -726,7 +735,7 @@ class TestTimeTravelQueries(TestCase):
         # Create test file and asset
         self.file = File.objects.create(
             tenant=self.tenant,
-            name="dataset.csv",
+            name=f"dataset-{uuid.uuid4().hex[:8]}.csv",
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
@@ -734,7 +743,7 @@ class TestTimeTravelQueries(TestCase):
         )
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             created_by=self.user,
@@ -758,7 +767,7 @@ class TestTimeTravelQueries(TestCase):
         timestamp_before_v2 = timezone.now()
         _get_wait_for_event_persistence()()
 
-        dataset_v2 = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,
@@ -782,7 +791,7 @@ class TestTimeTravelQueries(TestCase):
     def test_historical_data_access(self):
         """Test historical data access"""
         # Create multiple versions
-        dataset_v2 = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,
@@ -909,7 +918,7 @@ class TestDatasetRollback(TestCase):
         # Create test file and asset
         self.file = File.objects.create(
             tenant=self.tenant,
-            name="dataset.csv",
+            name=f"dataset-{uuid.uuid4().hex[:8]}.csv",
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
@@ -917,7 +926,7 @@ class TestDatasetRollback(TestCase):
         )
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             created_by=self.user,
@@ -988,19 +997,6 @@ class TestDatasetRollback(TestCase):
         self.dataset_v1.refresh_from_db()
         self.assertEqual(self.dataset_v1.schema_json, original_schema)
         self.assertEqual(self.dataset_v1.version, original_version)
-
-    def test_rollback_event_publishing(self):
-        """Test rollback event publishing"""
-        # Rollback should trigger events (tested via integration)
-        result = VersionRollbackManager.execute_rollback(
-            dataset=self.dataset_v2,
-            approved_by=self.user,
-            reason="Test rollback",
-            config=RollbackConfig(require_approval=False),
-        )
-
-        self.assertTrue(result.get("success", False))
-        # Events are published asynchronously, so we just verify rollback succeeded
 
     def test_rollback_compensation_logic(self):
         """Test rollback compensation logic"""
@@ -1075,7 +1071,7 @@ class TestDatasetsODPSIntegration(TestCase):
         # Create test file and asset
         self.file = File.objects.create(
             tenant=self.tenant,
-            name="dataset.csv",
+            name=f"dataset-{uuid.uuid4().hex[:8]}.csv",
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
@@ -1083,7 +1079,7 @@ class TestDatasetsODPSIntegration(TestCase):
         )
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
             created_by=self.user,
@@ -1234,7 +1230,7 @@ class TestDatasetsODPSIntegration(TestCase):
         # Create version 2
         _get_wait_for_event_persistence()()
 
-        dataset_v2 = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,

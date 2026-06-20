@@ -27,14 +27,16 @@ Spec contract (REQ-ADMIN-TENANT-CREATE-001 in
 > invitation (sent via SES with 7-day expiry). Emits ``TENANT_CREATED``
 > audit.
 """
+
 from __future__ import annotations
+
 import logging
 import uuid
 from datetime import timedelta
 from typing import Any
 
-from django.core.validators import validate_email
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
@@ -116,8 +118,7 @@ class AdminTenantCreateSerializer(serializers.Serializer):
         normalized = value.lower()
         if not normalized.replace("-", "").replace("_", "").isalnum():
             raise serializers.ValidationError(
-                "Slug must contain only lowercase letters, digits, hyphens, "
-                "and underscores."
+                "Slug must contain only lowercase letters, digits, hyphens, and underscores."
             )
         return normalized
 
@@ -217,12 +218,12 @@ def create_tenant_with_admin_invitation(
     # 0. Resolve plan (285.13.12.7) — default to "free" if unspecified.
     plan = TenantPlan.objects.filter(slug=plan_slug, is_active=True).first()
     if plan is None and plan_slug != "free":
-        raise serializers.ValidationError(
-            f"Plan '{plan_slug}' not found or inactive."
-        )
+        raise serializers.ValidationError(f"Plan '{plan_slug}' not found or inactive.")
     if plan is None:
         plan = TenantPlan.objects.filter(
-            tier="FREE", is_active=True, order=0,
+            tier="FREE",
+            is_active=True,
+            order=0,
         ).first()
 
     # 1. Tenant.
@@ -239,9 +240,7 @@ def create_tenant_with_admin_invitation(
     # If the platform default list is empty, we use [jurisdiction] alone.
     # If it already lists multiple regimes, ensure ours is included
     # (deduped) so the operator's intent isn't dropped.
-    default_regimes = list(
-        platform_defaults.get("default_compliance_regimes") or []
-    )
+    default_regimes = list(platform_defaults.get("default_compliance_regimes") or [])
     if jurisdiction not in default_regimes:
         default_regimes.append(jurisdiction)
     # ``allowed_compliance_regimes`` MUST be a SUPERSET of
@@ -346,9 +345,7 @@ def create_tenant_with_admin_invitation(
         from hub.apps.notifications.tasks import send_invitation_email
 
         try:
-            send_invitation_email.delay(
-                invited_user_id, plaintext_token=plaintext_token
-            )
+            send_invitation_email.delay(invited_user_id, plaintext_token=plaintext_token)
         except Exception as exc:  # pragma: no cover — Redis-outage path
             logger.warning(
                 "admin_tenant_create_invitation_email_enqueue_failed",
@@ -463,10 +460,7 @@ class AdminTenantCreateView(APIView):
                 return Response(
                     {
                         "code": "TENANT_SLUG_DUPLICATE",
-                        "detail": (
-                            f"A tenant with slug {validated['slug']!r} "
-                            "already exists."
-                        ),
+                        "detail": (f"A tenant with slug {validated['slug']!r} already exists."),
                     },
                     status=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 )
@@ -475,8 +469,7 @@ class AdminTenantCreateView(APIView):
                     {
                         "code": "ADMIN_EMAIL_DUPLICATE",
                         "detail": (
-                            f"A user with email {validated['admin_email']!r} "
-                            "already exists."
+                            f"A user with email {validated['admin_email']!r} already exists."
                         ),
                     },
                     status=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -501,11 +494,11 @@ class AdminTenantCreateView(APIView):
                     "plan": {
                         "name": assigned_plan.name if assigned_plan else None,
                         "tier": assigned_plan.tier if assigned_plan else None,
-                        "price_amount_cents": assigned_plan.price_amount_cents if assigned_plan else 0,
+                        "price_amount_cents": assigned_plan.price_amount_cents
+                        if assigned_plan
+                        else 0,
                     },
-                    "created_at": tenant.created_at.isoformat()
-                    if tenant.created_at
-                    else None,
+                    "created_at": tenant.created_at.isoformat() if tenant.created_at else None,
                 },
                 "admin_user": {
                     "id": str(admin_user.id),

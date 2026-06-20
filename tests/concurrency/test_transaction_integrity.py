@@ -10,9 +10,9 @@ transactions — no mocks.
 import uuid
 
 import pytest
-from django.db import transaction, IntegrityError
+from django.db import IntegrityError, transaction
 
-from hub.apps.tenants.models import Tenant, TenantPlan, KYCStatus
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantPlan
 
 
 @pytest.mark.integration
@@ -33,15 +33,14 @@ class TestTransactionAtomicRollback:
         )
 
         # Second create with same slug inside atomic — must roll back
-        with pytest.raises(IntegrityError):
-            with transaction.atomic():
-                Tenant.objects.create(
-                    name=f"Rollback Dup {slug}",
-                    slug=slug,
-                    kyc_status=KYCStatus.PENDING_REVIEW,
-                )
-                # If we reach here, the duplicate was NOT caught — that's a bug
-                pytest.fail("IntegrityError should have been raised")
+        with pytest.raises(IntegrityError), transaction.atomic():
+            Tenant.objects.create(
+                name=f"Rollback Dup {slug}",
+                slug=slug,
+                kyc_status=KYCStatus.PENDING_REVIEW,
+            )
+            # If we reach here, the duplicate was NOT caught — that's a bug
+            pytest.fail("IntegrityError should have been raised")
 
         # Count must still be 1
         count = Tenant.objects.filter(slug=slug).count()
@@ -82,11 +81,13 @@ class TestTransactionAtomicRollback:
         try:
             with transaction.atomic():
                 Tenant.objects.create(
-                    name=f"A {slug_a}", slug=slug_a,
+                    name=f"A {slug_a}",
+                    slug=slug_a,
                     kyc_status=KYCStatus.PENDING_REVIEW,
                 )
                 Tenant.objects.create(
-                    name=f"B {slug_b}", slug=slug_b,  # Duplicate!
+                    name=f"B {slug_b}",
+                    slug=slug_b,  # Duplicate!
                     kyc_status=KYCStatus.PENDING_REVIEW,
                 )
         except IntegrityError:
@@ -138,18 +139,15 @@ class TestNestedSavepointRollback:
 
             # Outer write must still exist
             outer_count = Tenant.objects.filter(slug=outer_slug).count()
-            assert outer_count == 1, \
-                f"Outer write should survive inner rollback, got {outer_count}"
+            assert outer_count == 1, f"Outer write should survive inner rollback, got {outer_count}"
 
         # Post-transaction: outer should be committed
         outer_count = Tenant.objects.filter(slug=outer_slug).count()
-        assert outer_count == 1, \
-            f"Outer write should be committed, got {outer_count}"
+        assert outer_count == 1, f"Outer write should be committed, got {outer_count}"
         # Inner should NOT exist (was never committed since pre-existing blocked it)
         # The pre-existing one should still be there
         inner_count = Tenant.objects.filter(slug=inner_slug).count()
-        assert inner_count == 1, \
-            f"Only pre-existing inner should exist, got {inner_count}"
+        assert inner_count == 1, f"Only pre-existing inner should exist, got {inner_count}"
 
     @pytest.mark.django_db(transaction=True)
     def test_nested_three_level_savepoints(self):
@@ -160,24 +158,28 @@ class TestNestedSavepointRollback:
 
         # Pre-create C to trigger conflict at level 3
         Tenant.objects.create(
-            name=f"Pre-C {slug_c}", slug=slug_c,
+            name=f"Pre-C {slug_c}",
+            slug=slug_c,
             kyc_status=KYCStatus.PENDING_REVIEW,
         )
 
         with transaction.atomic():  # level 1
             Tenant.objects.create(
-                name=f"A {slug_a}", slug=slug_a,
+                name=f"A {slug_a}",
+                slug=slug_a,
                 kyc_status=KYCStatus.PENDING_REVIEW,
             )
             with transaction.atomic():  # level 2 (savepoint)
                 Tenant.objects.create(
-                    name=f"B {slug_b}", slug=slug_b,
+                    name=f"B {slug_b}",
+                    slug=slug_b,
                     kyc_status=KYCStatus.PENDING_REVIEW,
                 )
                 try:
                     with transaction.atomic():  # level 3 (nested savepoint)
                         Tenant.objects.create(
-                            name=f"C {slug_c}", slug=slug_c,  # Conflict!
+                            name=f"C {slug_c}",
+                            slug=slug_c,  # Conflict!
                             kyc_status=KYCStatus.PENDING_REVIEW,
                         )
                 except IntegrityError:
@@ -209,7 +211,8 @@ class TestSelectForUpdate:
         slug = f"sfu-{uuid.uuid4().hex[:8]}"
 
         tenant = Tenant.objects.create(
-            name=f"SFU {slug}", slug=slug,
+            name=f"SFU {slug}",
+            slug=slug,
             kyc_status=KYCStatus.PENDING_REVIEW,
         )
         plan_free = TenantPlan.objects.get(slug="free")
@@ -221,14 +224,11 @@ class TestSelectForUpdate:
 
         def update_plan():
             from django.db import connections
+
             connections.close_all()
             try:
                 with transaction.atomic():
-                    t = (
-                        Tenant.objects
-                        .select_for_update()
-                        .get(slug=slug)
-                    )
+                    t = Tenant.objects.select_for_update().get(slug=slug)
                     current_id = t.plan_id
                     with lock:
                         plan_ids_seen.append(current_id)

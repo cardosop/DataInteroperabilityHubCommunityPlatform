@@ -5,6 +5,7 @@ Removes ``/tmp/meshant_dbt_*`` directories older than the specified
 threshold.  Designed for cron / scheduled Prefect flow to prevent
 tmpfs accumulation on long-running worker hosts.
 """
+
 import argparse
 import os
 import shutil
@@ -34,7 +35,6 @@ class Command(BaseCommand):
         dry_run: bool = options["dry_run"]
         cutoff = time.time() - (older_than_days * 86400)
 
-        work_dir_prefix = "/tmp/meshant_dbt_"
         removed = 0
 
         if not os.path.isdir("/tmp"):

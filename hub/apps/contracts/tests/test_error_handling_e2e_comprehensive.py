@@ -19,8 +19,6 @@ from rest_framework import status
 
 from hub.apps.contracts.linking_validation import (
     LinkingValidationError,
-    validate_contract_compatibility,
-    validate_contract_exists,
 )
 from hub.apps.contracts.models import (
     Contract,
@@ -30,16 +28,10 @@ from hub.apps.contracts.models import (
     OriginalSpecType,
 )
 from hub.apps.contracts.odps_errors import (
-    ODPSError,
     ODPSLinkingError,
-    ODPSNormalizationError,
-    ODPSRefResolutionError,
-    ODPSValidationError,
 )
-from hub.apps.contracts.odps_parser import ODPSParser
-from hub.apps.contracts.services import ContractService, ODPSService
+from hub.apps.contracts.services import ContractService
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
-from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
 
@@ -134,7 +126,7 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
         self.assertIn("error", response.data)
 
         # Verify error details
-        error_data = response.data.get("error") or response.data
+        error_data = response.data.get("error") or {}
         self.assertIsInstance(error_data, dict, "Error data should be a dict")
         self.assertIn("code", error_data)
         self.assertIn("message", error_data)
@@ -250,7 +242,7 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
         # Should return 400 Bad Request
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIsNotNone(response.data, "Response data should not be None")
-        error_data = response.data.get("error") or response.data
+        error_data = response.data.get("error") or {}
         self.assertIsInstance(error_data, dict, "Error data should be a dict")
         # Should mention missing product field
         error_message = str(error_data.get("message", "")).lower()
@@ -307,7 +299,7 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
         # Should return 400 Bad Request (contract is required for Product-First flow)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIsNotNone(response.data, "Response data should not be None")
-        error_data = response.data.get("error") or response.data
+        error_data = response.data.get("error") or {}
         self.assertIsInstance(error_data, dict, "Error data should be a dict")
         error_message = str(error_data.get("message", "")).lower()
         # Should mention missing contract
@@ -403,14 +395,12 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
         # Should return 400 Bad Request
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIsNotNone(response.data, "Response data should not be None")
-        error_data = response.data.get("error") or response.data
+        error_data = response.data.get("error") or {}
         self.assertIsInstance(error_data, dict, "Error data should be a dict")
         error_message = str(error_data.get("message", "")).lower()
         # Should mention ref resolution failure
         self.assertTrue(
-            "ref" in error_message
-            or "reference" in error_message
-            or "resolve" in error_message,
+            "ref" in error_message or "reference" in error_message or "resolve" in error_message,
             f"Error message should mention ref resolution: {error_message}",
         )
 
@@ -562,7 +552,7 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
         # Should return 400 Bad Request
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIsNotNone(response.data, "Response data should not be None")
-        error_data = response.data.get("error") or response.data
+        error_data = response.data.get("error") or {}
         self.assertIsInstance(error_data, dict, "Error data should be a dict")
         error_message = str(error_data.get("message", "")).lower()
         # Should mention missing contract
@@ -808,7 +798,6 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
             odcs_response_1.status_code == status.HTTP_201_CREATED
             and odcs_response_2.status_code == status.HTTP_201_CREATED
         ):
-
             odcs_contract_id_1 = odcs_response_1.data.get("id")
             odcs_contract_id_2 = odcs_response_2.data.get("id")
 
@@ -905,7 +894,7 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
                 # This depends on implementation - some may allow bidirectional links
                 # The test verifies that the system handles it gracefully
                 try:
-                    result = service.link_odps_to_odcs(
+                    service.link_odps_to_odcs(
                         odcs_contract_id=odcs_contract_id,
                         odps_contract_id=odps_contract_id,
                         tenant_id=str(self.tenant.id),
@@ -969,13 +958,11 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
                 # Verify error response structure
                 if response.status_code == status.HTTP_400_BAD_REQUEST:
                     self.assertIsNotNone(response.data)
-                    error_data = response.data.get("error") or response.data
+                    error_data = response.data.get("error") or {}
                     self.assertIsInstance(error_data, dict, "Error data should be a dict")
                     # Should have error information
                     self.assertTrue(
-                        "message" in error_data
-                        or "code" in error_data
-                        or "error" in error_data,
+                        "message" in error_data or "code" in error_data or "error" in error_data,
                         f"Error response should have message/code: {error_data}",
                     )
 
@@ -1036,12 +1023,10 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
 
         # Error should include context
         self.assertIsNotNone(response.data)
-        error_data = response.data.get("error") or response.data
+        error_data = response.data.get("error") or {}
         self.assertIsInstance(error_data, dict, "Error data should be a dict")
         # Should have some context information
-        self.assertGreater(
-            len(error_data), 0, "Error response should include context information"
-        )
+        self.assertGreater(len(error_data), 0, "Error response should include context information")
 
     def test_comprehensive_error_api_consistency(self):
         """Comprehensive test: Verify error handling is consistent across API endpoints"""
@@ -1116,7 +1101,7 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
         # Should return 400 Bad Request
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         # Error should handle unicode characters gracefully
-        error_data = response.data.get("error") or response.data
+        error_data = response.data.get("error") or {}
         self.assertIsNotNone(error_data)
 
     def test_error_handling_special_characters(self):
@@ -1147,7 +1132,7 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
         # Should return 400 Bad Request
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         # Error should handle special characters gracefully
-        error_data = response.data.get("error") or response.data
+        error_data = response.data.get("error") or {}
         self.assertIsNotNone(error_data)
 
     def test_error_handling_very_large_error_messages(self):
@@ -1180,7 +1165,7 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
         # Should return 400 Bad Request
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         # Error should handle large messages gracefully
-        error_data = response.data.get("error") or response.data
+        error_data = response.data.get("error") or {}
         self.assertIsNotNone(error_data)
 
     def test_error_handling_none_values(self):
@@ -1211,7 +1196,7 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
         # Should return 400 Bad Request
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         # Error should handle None values gracefully
-        error_data = response.data.get("error") or response.data
+        error_data = response.data.get("error") or {}
         self.assertIsNotNone(error_data)
 
     def test_error_handling_nested_error_structures(self):
@@ -1248,7 +1233,7 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
         # Should return 400 Bad Request
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         # Error should handle nested errors gracefully
-        error_data = response.data.get("error") or response.data
+        error_data = response.data.get("error") or {}
         self.assertIsNotNone(error_data)
 
     def test_error_handling_cross_tenant_isolation(self):
@@ -1301,7 +1286,7 @@ class ErrorHandlingE2EComprehensiveTest(ContractsAPITestBase):
         # Should return 400 Bad Request
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         # Error should be tenant-scoped
-        error_data = response.data.get("error") or response.data
+        error_data = response.data.get("error") or {}
         self.assertIsNotNone(error_data)
 
         # Verify tenant isolation (error should not expose tenant1 data)

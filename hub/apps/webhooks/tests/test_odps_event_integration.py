@@ -4,19 +4,17 @@ Integration tests for ODPS event handling in webhook service.
 Tests that ODPS events can be subscribed to via webhooks and are properly validated.
 """
 
-import json
 import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
-from django.utils import timezone
 
-from hub.apps.webhooks.models import Webhook, WebhookEventType, WebhookStatus, DeliveryStatus
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
+from hub.apps.webhooks.models import Webhook, WebhookEventType, WebhookStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -189,7 +187,7 @@ class ODPSEventIntegrationTest(TestCase):
             created_by=self.user,
         )
 
-        contract_webhook = Webhook.objects.create(
+        Webhook.objects.create(
             tenant=self.tenant,
             name="Contract Webhook",
             url="https://example.com/contract",
@@ -202,7 +200,8 @@ class ODPSEventIntegrationTest(TestCase):
         # Query webhooks that subscribe to ODPS events
         # Note: This is a simple check - in production, you'd use JSON field queries
         odps_webhooks = [
-            w for w in Webhook.objects.filter(tenant=self.tenant)
+            w
+            for w in Webhook.objects.filter(tenant=self.tenant)
             if WebhookEventType.ODPS_CREATED in w.event_types
         ]
 
@@ -342,9 +341,7 @@ class ODPSEventIntegrationTest(TestCase):
         )
 
         # Filter by ODPS events
-        odps_webhooks = Webhook.filter_by_odps_events(
-            Webhook.objects.filter(tenant=self.tenant)
-        )
+        odps_webhooks = Webhook.filter_by_odps_events(Webhook.objects.filter(tenant=self.tenant))
 
         odps_webhook_ids = {w.id for w in odps_webhooks}
         self.assertIn(odps_webhook.id, odps_webhook_ids)
@@ -387,11 +384,10 @@ class ODPSEventIntegrationTest(TestCase):
         # Filter by specific event type (using string value)
         created_webhooks = Webhook.filter_by_event_type(
             str(WebhookEventType.ODPS_CREATED),  # Convert enum to string
-            Webhook.objects.filter(tenant=self.tenant)
+            Webhook.objects.filter(tenant=self.tenant),
         )
 
         created_webhook_ids = {w.id for w in created_webhooks}
         self.assertIn(webhook1.id, created_webhook_ids)
         self.assertIn(webhook3.id, created_webhook_ids)
         self.assertNotIn(webhook2.id, created_webhook_ids)
-

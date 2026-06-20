@@ -33,7 +33,9 @@ Options
 * ``--skip-job-row`` — do not persist a ``Job`` observability row
   (local smoke tests).
 """
+
 from __future__ import annotations
+
 import uuid
 
 from django.core.management.base import BaseCommand
@@ -84,12 +86,8 @@ class Command(BaseCommand):
         sweep_run_id = str(job_row.id) if job_row is not None else str(resource_key)
 
         try:
-            summary = run_tenant_hard_delete_sweep(
-                dry_run=dry_run, sweep_run_id=sweep_run_id
-            )
-            self.stdout.write(
-                self.style.SUCCESS(f"Tenant hard-delete sweep: {summary}")
-            )
+            summary = run_tenant_hard_delete_sweep(dry_run=dry_run, sweep_run_id=sweep_run_id)
+            self.stdout.write(self.style.SUCCESS(f"Tenant hard-delete sweep: {summary}"))
             if job_row is not None:
                 job_row.mark_completed(result_json={"summary": summary})
         except Exception as exc:

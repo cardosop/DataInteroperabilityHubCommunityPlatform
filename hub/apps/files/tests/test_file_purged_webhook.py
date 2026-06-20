@@ -46,15 +46,15 @@ Tests pin three contracts:
    class of regression where the audit emission keeps working but
    the webhook trigger silently breaks.
 """
+
 from __future__ import annotations
-import pytest
 
 import os
 import uuid
 from datetime import timedelta
 from io import StringIO
-from unittest import SkipTest
 
+import pytest
 from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
@@ -71,16 +71,7 @@ from hub.apps.webhooks.models import (
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
-
-def _redis_or_skip() -> None:
-    """Skip when Redis is unreachable (purge command needs the lock)."""
-    from hub.apps.api.middleware.idempotency_utils import get_redis_client
-
-    try:
-        get_redis_client().ping()
-    except Exception as exc:  # pragma: no cover — environment-dependent
-        raise SkipTest(f"Redis required: {exc}") from exc
-
+from hub.apps.files.tests.test_base import redis_or_skip as _redis_or_skip  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # 260.7.G.2 — Enum registration. Pin that ``file.purged`` is in
@@ -161,13 +152,12 @@ class FilePurgedPublisherContractTest(FilesTestBase):
 
         after_deliveries = WebhookDelivery.objects.filter(webhook=webhook).count()
         self.assertEqual(
-            after_deliveries - before_deliveries, 1,
+            after_deliveries - before_deliveries,
+            1,
             "260.7.G contract: file.purged subscribe must produce exactly one "
             f"WebhookDelivery; got delta={after_deliveries - before_deliveries}",
         )
-        delivery = WebhookDelivery.objects.filter(webhook=webhook).order_by(
-            "-created_at"
-        ).first()
+        delivery = WebhookDelivery.objects.filter(webhook=webhook).order_by("-created_at").first()
         self.assertEqual(delivery.event_type, "file.purged")
         self.assertEqual(delivery.payload["resource_type"], "FILE")
         self.assertEqual(delivery.payload["resource_id"], str(file_id))
@@ -198,7 +188,8 @@ class FilePurgedPublisherContractTest(FilesTestBase):
 
         after_deliveries = WebhookDelivery.objects.filter(webhook=webhook).count()
         self.assertEqual(
-            after_deliveries, before_deliveries,
+            after_deliveries,
+            before_deliveries,
             "subscribers without 'file.purged' in event_types must NOT receive "
             "a WebhookDelivery from publish_file_purged",
         )
@@ -234,7 +225,8 @@ class FilePurgedPublisherContractTest(FilesTestBase):
 
         after_deliveries = WebhookDelivery.objects.filter(webhook=webhook).count()
         self.assertEqual(
-            after_deliveries, before_deliveries,
+            after_deliveries,
+            before_deliveries,
             "INACTIVE subscribers must NOT receive a WebhookDelivery",
         )
 
@@ -274,7 +266,8 @@ class FilePurgedPublisherContractTest(FilesTestBase):
             webhook=cross_webhook,
         ).count()
         self.assertEqual(
-            after_deliveries, before_deliveries,
+            after_deliveries,
+            before_deliveries,
             "cross-tenant webhook must NOT receive a delivery",
         )
 
@@ -325,7 +318,9 @@ class PurgeCommandFiresAuditAndWebhookTest(FilesTestBase):
         fid = f.id
 
         before_audit = AuditEvent.objects.filter(
-            tenant=self.tenant, action="FILE_PURGED", resource_id=fid,
+            tenant=self.tenant,
+            action="FILE_PURGED",
+            resource_id=fid,
         ).count()
         before_deliveries = WebhookDelivery.objects.filter(webhook=webhook).count()
 
@@ -350,23 +345,31 @@ class PurgeCommandFiresAuditAndWebhookTest(FilesTestBase):
 
         # Audit emitted (existing pre-260.7.G behaviour preserved).
         after_audit = AuditEvent.objects.filter(
-            tenant=self.tenant, action="FILE_PURGED", resource_id=fid,
+            tenant=self.tenant,
+            action="FILE_PURGED",
+            resource_id=fid,
         ).count()
         self.assertEqual(
-            after_audit - before_audit, 1,
+            after_audit - before_audit,
+            1,
             "260.7.G must NOT regress the existing FILE_PURGED audit emission",
         )
 
         # Webhook delivery emitted (NEW 260.7.G contract).
         after_deliveries = WebhookDelivery.objects.filter(webhook=webhook).count()
         self.assertEqual(
-            after_deliveries - before_deliveries, 1,
+            after_deliveries - before_deliveries,
+            1,
             "260.7.G contract: purge command MUST trigger one WebhookDelivery "
             f"per active subscriber; got delta={after_deliveries - before_deliveries}",
         )
-        delivery = WebhookDelivery.objects.filter(webhook=webhook).order_by(
-            "-created_at",
-        ).first()
+        delivery = (
+            WebhookDelivery.objects.filter(webhook=webhook)
+            .order_by(
+                "-created_at",
+            )
+            .first()
+        )
         self.assertEqual(delivery.event_type, "file.purged")
         self.assertEqual(delivery.payload["resource_type"], "FILE")
         self.assertEqual(delivery.payload["resource_id"], str(fid))
@@ -427,15 +430,24 @@ class PurgeCommandFiresAuditAndWebhookTest(FilesTestBase):
         fid = f.id
 
         before_audit = AuditEvent.objects.filter(
-            tenant=self.tenant, action="FILE_PURGED", resource_id=fid,
+            tenant=self.tenant,
+            action="FILE_PURGED",
+            resource_id=fid,
         ).count()
         before_deliveries = WebhookDelivery.objects.filter(webhook=webhook).count()
 
         # Storage client; tolerated failure if MinIO isn't reachable
         # (S3 delete in hard_purge_file_for_erasure is wrapped in try/except).
+        from hub.apps.files.storage import StorageError as _StorageError
+
         try:
             storage = S3StorageClient()
-        except Exception:
+        except (OSError, _StorageError):
+            # Best-effort: S3/MinIO may be unreachable in this test environment.
+            # ``hard_purge_file_for_erasure()`` handles storage=None gracefully
+            # by skipping the S3 deletion step. We catch OSError (socket errors,
+            # connection refused) and StorageError subclasses only — NOT bare
+            # Exception, so code bugs like ImportError/AttributeError surface.
             storage = None
 
         hard_purge_file_for_erasure(
@@ -451,10 +463,13 @@ class PurgeCommandFiresAuditAndWebhookTest(FilesTestBase):
 
         # Audit emitted (existing pre-260.7.G.R1 behaviour preserved).
         after_audit = AuditEvent.objects.filter(
-            tenant=self.tenant, action="FILE_PURGED", resource_id=fid,
+            tenant=self.tenant,
+            action="FILE_PURGED",
+            resource_id=fid,
         ).count()
         self.assertEqual(
-            after_audit - before_audit, 1,
+            after_audit - before_audit,
+            1,
             "260.7.G.R1 must NOT regress the existing GDPR FILE_PURGED audit",
         )
 
@@ -462,15 +477,20 @@ class PurgeCommandFiresAuditAndWebhookTest(FilesTestBase):
         # symmetric with cron path).
         after_deliveries = WebhookDelivery.objects.filter(webhook=webhook).count()
         self.assertEqual(
-            after_deliveries - before_deliveries, 1,
+            after_deliveries - before_deliveries,
+            1,
             "260.7.G.R1: GDPR hard-purge MUST trigger one WebhookDelivery "
             f"per active subscriber; got delta={after_deliveries - before_deliveries}",
         )
-        delivery = WebhookDelivery.objects.filter(webhook=webhook).order_by(
-            "-created_at",
-        ).first()
-        assert delivery is not None  # narrow Optional[WebhookDelivery] for the asserts below
-        self.assertEqual(delivery.event_type, "file.purged")
+        delivery = (
+            WebhookDelivery.objects.filter(webhook=webhook)
+            .order_by(
+                "-created_at",
+            )
+            .first()
+        )
+        self.assertIsNotNone(delivery, "WebhookDelivery should exist for the purge subscriber")
+        self.assertEqual(delivery.event_type, "file.purged")  # type: ignore[union-attr]
         self.assertEqual(delivery.payload["resource_type"], "FILE")
         self.assertEqual(delivery.payload["resource_id"], str(fid))
         data = delivery.payload.get("data", {})
@@ -502,7 +522,9 @@ class PurgeCommandFiresAuditAndWebhookTest(FilesTestBase):
         )
         fid = f.id
         before_audit = AuditEvent.objects.filter(
-            tenant=self.tenant, action="FILE_PURGED", resource_id=fid,
+            tenant=self.tenant,
+            action="FILE_PURGED",
+            resource_id=fid,
         ).count()
 
         prev = os.environ.pop("FILE_PURGE_DRY_RUN_REQUIRED", None)
@@ -523,7 +545,10 @@ class PurgeCommandFiresAuditAndWebhookTest(FilesTestBase):
         self.assertFalse(File.objects.filter(pk=fid).exists())
         self.assertEqual(
             AuditEvent.objects.filter(
-                tenant=self.tenant, action="FILE_PURGED", resource_id=fid,
-            ).count() - before_audit,
+                tenant=self.tenant,
+                action="FILE_PURGED",
+                resource_id=fid,
+            ).count()
+            - before_audit,
             1,
         )

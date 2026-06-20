@@ -7,21 +7,21 @@ Tests for state management validation including:
 - State consistency validation
 - Integration with WorkflowEngine
 """
+
 import uuid
 
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.orchestration.business_rules import OrchestrationBusinessRules
 from hub.apps.orchestration.models import (
-    WorkflowInstance,
-    WorkflowStep,
-    WorkflowDefinition,
-    WorkflowStatus,
     StepStatus,
+    WorkflowDefinition,
+    WorkflowInstance,
+    WorkflowStatus,
+    WorkflowStep,
 )
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
-from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
 
 
@@ -33,32 +33,29 @@ class WorkflowStatePersistenceValidationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
+        # Unique workflow name to avoid UniqueConstraint collisions
+        # across test classes and stale --reuse-db data.
+        self.workflow_name = f"test_workflow_{uuid.uuid4().hex[:8]}"
         self.workflow_definition = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=self.workflow_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
-                "steps": [
-                    {
-                        "name": "test_step",
-                        "type": "task",
-                        "task": "test_task"
-                    }
-                ]
+                "steps": [{"name": "test_step", "type": "task", "task": "test_task"}],
             },
-            created_by=self.user
+            created_by=self.user,
         )
         self.workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_definition,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.DRAFT,
@@ -66,8 +63,8 @@ class WorkflowStatePersistenceValidationTest(TestCase):
             state_data={
                 "current_step_index": 0,
                 "current_step_name": "test_step",
-                "progress_percentage": 0
-            }
+                "progress_percentage": 0,
+            },
         )
         self.rules = OrchestrationBusinessRules()
 
@@ -76,9 +73,9 @@ class WorkflowStatePersistenceValidationTest(TestCase):
         result = self.rules._validate_state_persistence(self.workflow, self.tenant, self.user)
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertIn('state_persistence_validation', result.details)
-        self.assertIn('workflow_id', result.details)
-        self.assertIn('state_data_keys', result.details)
+        self.assertIn("state_persistence_validation", result.details)
+        self.assertIn("workflow_id", result.details)
+        self.assertIn("state_data_keys", result.details)
 
     def test_state_persistence_validation_none_workflow(self):
         """Test state persistence validation with None workflow"""
@@ -109,15 +106,18 @@ class WorkflowStatePersistenceValidationTest(TestCase):
         """Test that state_data is JSON serializable"""
         # Add non-serializable data (should fail)
         import datetime
+
         self.workflow.state_data["date"] = datetime.datetime.now()
-        result = self.rules._validate_state_persistence(self.workflow, self.tenant, self.user)
+        self.rules._validate_state_persistence(self.workflow, self.tenant, self.user)
+
         # JSON serialization should fail for datetime objects
         # But Django JSONField handles this, so this might pass
         # Let's test with a truly non-serializable object
         class NonSerializable:
             pass
+
         self.workflow.state_data["non_serializable"] = NonSerializable()
-        result = self.rules._validate_state_persistence(self.workflow, self.tenant, self.user)
+        self.rules._validate_state_persistence(self.workflow, self.tenant, self.user)
         # This should fail or Django JSONField should handle it
         # The test verifies the validation catches JSON serialization issues
 
@@ -130,32 +130,29 @@ class WorkflowStateRecoveryValidationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
+        # Unique workflow name to avoid UniqueConstraint collisions
+        # across test classes and stale --reuse-db data.
+        self.workflow_name = f"test_workflow_{uuid.uuid4().hex[:8]}"
         self.workflow_definition = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=self.workflow_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
-                "steps": [
-                    {
-                        "name": "test_step",
-                        "type": "task",
-                        "task": "test_task"
-                    }
-                ]
+                "steps": [{"name": "test_step", "type": "task", "task": "test_task"}],
             },
-            created_by=self.user
+            created_by=self.user,
         )
         self.workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_definition,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.DRAFT,
@@ -164,8 +161,8 @@ class WorkflowStateRecoveryValidationTest(TestCase):
                 "current_step_index": 0,
                 "current_step_name": "test_step",
                 "progress_percentage": 50,
-                "custom_data": {"key": "value"}
-            }
+                "custom_data": {"key": "value"},
+            },
         )
         self.rules = OrchestrationBusinessRules()
 
@@ -174,9 +171,9 @@ class WorkflowStateRecoveryValidationTest(TestCase):
         result = self.rules._validate_state_recovery(self.workflow, self.tenant, self.user)
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertIn('state_recovery_validation', result.details)
-        self.assertIn('state_recovered', result.details)
-        self.assertTrue(result.details['state_recovered'])
+        self.assertIn("state_recovery_validation", result.details)
+        self.assertIn("state_recovered", result.details)
+        self.assertTrue(result.details["state_recovered"])
 
     def test_state_recovery_validation_none_workflow(self):
         """Test state recovery validation with None workflow"""
@@ -208,37 +205,32 @@ class WorkflowStateConsistencyValidationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
+        # Unique workflow name to avoid UniqueConstraint collisions
+        # across test classes and stale --reuse-db data.
+        self.workflow_name = f"test_workflow_{uuid.uuid4().hex[:8]}"
         self.workflow_definition = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=self.workflow_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
                 "steps": [
-                    {
-                        "name": "step1",
-                        "type": "task",
-                        "task": "test_task"
-                    },
-                    {
-                        "name": "step2",
-                        "type": "task",
-                        "task": "test_task"
-                    }
-                ]
+                    {"name": "step1", "type": "task", "task": "test_task"},
+                    {"name": "step2", "type": "task", "task": "test_task"},
+                ],
             },
-            created_by=self.user
+            created_by=self.user,
         )
         self.workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_definition,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.RUNNING,
@@ -247,8 +239,8 @@ class WorkflowStateConsistencyValidationTest(TestCase):
             state_data={
                 "current_step_index": 0,
                 "current_step_name": "step1",
-                "progress_percentage": 0
-            }
+                "progress_percentage": 0,
+            },
         )
         # Create workflow steps
         self.step1 = WorkflowStep.objects.create(
@@ -257,14 +249,14 @@ class WorkflowStateConsistencyValidationTest(TestCase):
             step_name="step1",
             step_type="task",
             status=StepStatus.RUNNING,
-            output_data={"result": "step1_output"}
+            output_data={"result": "step1_output"},
         )
         self.step2 = WorkflowStep.objects.create(
             workflow_instance=self.workflow,
             step_index=1,
             step_name="step2",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
         self.rules = OrchestrationBusinessRules()
 
@@ -272,8 +264,8 @@ class WorkflowStateConsistencyValidationTest(TestCase):
         """Test state consistency validation with consistent state"""
         result = self.rules._validate_state_consistency(self.workflow, self.tenant, self.user)
         self.assertTrue(result.is_valid)
-        self.assertIn('state_consistency_validation', result.details)
-        self.assertIn('workflow_id', result.details)
+        self.assertIn("state_consistency_validation", result.details)
+        self.assertIn("workflow_id", result.details)
 
     def test_state_consistency_validation_none_workflow(self):
         """Test state consistency validation with None workflow"""
@@ -326,13 +318,13 @@ class WorkflowStateManagementIntegrationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.rules = OrchestrationBusinessRules()
 
@@ -351,7 +343,7 @@ class WorkflowStateManagementIntegrationTest(TestCase):
     def test_state_management_validation_with_workflow_engine(self):
         """Test state management validation with WorkflowEngine"""
         # Create workflow definition
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_state_workflow",
             version="1.0.0",
             dsl_json={
@@ -362,7 +354,7 @@ class WorkflowStateManagementIntegrationTest(TestCase):
                 ],
             },
             is_active=True,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create workflow instance
@@ -375,10 +367,7 @@ class WorkflowStateManagementIntegrationTest(TestCase):
 
         # Validate state persistence
         result = self.rules.validate_state_management(
-            instance,
-            validation_type='persistence',
-            tenant=self.tenant,
-            user=self.user
+            instance, validation_type="persistence", tenant=self.tenant, user=self.user
         )
         self.assertTrue(result.is_valid)
 
@@ -387,10 +376,7 @@ class WorkflowStateManagementIntegrationTest(TestCase):
 
         # Validate state recovery
         result = self.rules.validate_state_management(
-            instance,
-            validation_type='recovery',
-            tenant=self.tenant,
-            user=self.user
+            instance, validation_type="recovery", tenant=self.tenant, user=self.user
         )
         self.assertTrue(result.is_valid)
 
@@ -400,17 +386,14 @@ class WorkflowStateManagementIntegrationTest(TestCase):
 
         # Validate state consistency
         result = self.rules.validate_state_management(
-            instance,
-            validation_type='consistency',
-            tenant=self.tenant,
-            user=self.user
+            instance, validation_type="consistency", tenant=self.tenant, user=self.user
         )
         self.assertTrue(result.is_valid)
 
     def test_state_management_validation_comprehensive(self):
         """Test comprehensive state management validation"""
         # Create workflow definition
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_comprehensive_workflow",
             version="1.0.0",
             dsl_json={
@@ -420,7 +403,7 @@ class WorkflowStateManagementIntegrationTest(TestCase):
                 ],
             },
             is_active=True,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create workflow instance
@@ -433,20 +416,17 @@ class WorkflowStateManagementIntegrationTest(TestCase):
 
         # Validate all state management aspects
         result = self.rules.validate_state_management(
-            instance,
-            validation_type='all',
-            tenant=self.tenant,
-            user=self.user
+            instance, validation_type="all", tenant=self.tenant, user=self.user
         )
         self.assertTrue(result.is_valid)
-        self.assertIn('persistence', result.details.get('validated_items', []))
-        self.assertIn('recovery', result.details.get('validated_items', []))
-        self.assertIn('consistency', result.details.get('validated_items', []))
+        self.assertIn("persistence", result.details.get("validated_items", []))
+        self.assertIn("recovery", result.details.get("validated_items", []))
+        self.assertIn("consistency", result.details.get("validated_items", []))
 
     def test_state_management_validation_via_main_validate(self):
         """Test state management validation via main validate method"""
         # Create workflow definition
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_validate_workflow",
             version="1.0.0",
             dsl_json={
@@ -456,7 +436,7 @@ class WorkflowStateManagementIntegrationTest(TestCase):
                 ],
             },
             is_active=True,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create workflow instance
@@ -470,12 +450,10 @@ class WorkflowStateManagementIntegrationTest(TestCase):
         # Validate via main validate method with state_management type
         result = self.rules.validate(
             workflow=instance,
-            validation_type='state_management',
-            state_management_type='all',
+            validation_type="state_management",
+            state_management_type="all",
             tenant=self.tenant,
-            user=self.user
+            user=self.user,
         )
         self.assertTrue(result.is_valid)
-        self.assertIn('state_management', result.details.get('validated_items', []))
-
-
+        self.assertIn("state_management", result.details.get("validated_items", []))

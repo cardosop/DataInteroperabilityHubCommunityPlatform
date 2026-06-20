@@ -6,11 +6,10 @@ prefetch query, not one query per asset.
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.db import connection, reset_queries
 from django.test import TestCase, override_settings
@@ -95,7 +94,8 @@ class AssetListCompliancePrefetchTests(TestCase):
         # row I/O. Counting it would penalise the prefetch contract
         # for an unrelated wire-up step.
         compliance_queries = [
-            q["sql"] for q in connection.queries
+            q["sql"]
+            for q in connection.queries
             if "compliance_run" in q["sql"].lower()
             and not q["sql"].lstrip().upper().startswith("SET ")
         ]

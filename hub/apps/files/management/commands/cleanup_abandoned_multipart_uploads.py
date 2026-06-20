@@ -5,7 +5,9 @@ Scheduled via Kubernetes CronJob (``helm/templates/cronjob/cleanup-abandoned-mul
 OpenSpec text referenced “Celery beat”; this repo uses management commands + CronJobs
 (same pattern as ``purge_deleted_files``).
 """
+
 from __future__ import annotations
+
 import sys
 
 from django.core.management.base import BaseCommand, CommandError

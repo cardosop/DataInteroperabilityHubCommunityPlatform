@@ -22,7 +22,8 @@ Returns a boolean — callers decide whether to 403 or return an empty list.
 from __future__ import annotations
 
 import uuid
-from typing import Callable, Optional, Union
+from collections.abc import Callable
+from typing import Union
 
 from django.db.models import Q
 
@@ -67,9 +68,7 @@ def _asset_owner(resource_id: uuid.UUID, user) -> bool:
 def _contract_owner(resource_id: uuid.UUID, user) -> bool:
     from hub.apps.contracts.models import Contract
 
-    return Contract.objects.filter(
-        id=resource_id, created_by_id=user.id
-    ).exists()
+    return Contract.objects.filter(id=resource_id, created_by_id=user.id).exists()
 
 
 def _order_owner(resource_id: uuid.UUID, user) -> bool:
@@ -81,9 +80,7 @@ def _order_owner(resource_id: uuid.UUID, user) -> bool:
 def _access_request_owner(resource_id: uuid.UUID, user) -> bool:
     from hub.apps.governance.models import AccessRequest
 
-    return AccessRequest.objects.filter(
-        id=resource_id, requested_by_id=user.id
-    ).exists()
+    return AccessRequest.objects.filter(id=resource_id, requested_by_id=user.id).exists()
 
 
 #: resource_type → callable(uuid, user) → bool.
@@ -103,7 +100,7 @@ def user_is_involved(
     *,
     resource_type: str,
     resource_id: uuid.UUID,
-    tenant_id: Optional[TenantId] = None,
+    tenant_id: TenantId | None = None,
 ) -> bool:
     """Return True if *user* is involved with the given resource."""
     if _user_has_admin_role(user):

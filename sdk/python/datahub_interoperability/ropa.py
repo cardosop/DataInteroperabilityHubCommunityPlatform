@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-
 _REGULATION_MAP: Dict[str, str] = {
     "GDPR": "General Data Protection Regulation (EU) 2016/679",
     "UK_GDPR": "UK General Data Protection Regulation",
@@ -30,9 +29,7 @@ class RopaAPI:
 
     async def list_records(self, page: int = 1, page_size: int = 25) -> Dict[str, Any]:
         """List RoPA generations for the active tenant (paginated)."""
-        return await self.client.get(
-            f"{self.BASE}/", params={"page": page, "page_size": page_size}
-        )
+        return await self.client.get(f"{self.BASE}/", params={"page": page, "page_size": page_size})
 
     async def get_record(self, record_id: str) -> Dict[str, Any]:
         """Retrieve a single RoPA generation by id."""
@@ -42,9 +39,7 @@ class RopaAPI:
 
     async def preview(self, regulation: str = "GDPR") -> Dict[str, Any]:
         """Preview the RoPA payload for *regulation* without persisting."""
-        return await self.client.get(
-            f"{self.BASE}/preview/", params={"regulation": regulation}
-        )
+        return await self.client.get(f"{self.BASE}/preview/", params={"regulation": regulation})
 
     # ── Generate ───────────────────────────────────────────────────────────
 
@@ -67,13 +62,9 @@ class RopaAPI:
 
     # ── Update / Delete ────────────────────────────────────────────────────
 
-    async def update_record(
-        self, record_id: str, **fields: Any
-    ) -> Dict[str, Any]:
+    async def update_record(self, record_id: str, **fields: Any) -> Dict[str, Any]:
         """Update mutable metadata on a RoPA generation (partial update)."""
-        return await self.client.patch(
-            f"{self.BASE}/{record_id}/update/", data=fields
-        )
+        return await self.client.patch(f"{self.BASE}/{record_id}/update/", data=fields)
 
     async def delete_record(self, record_id: str) -> Optional[Dict[str, Any]]:
         """Delete a RoPA generation."""
@@ -118,9 +109,7 @@ class RopaAPI:
                     f"RoPA PDF generation failed: {status_resp.get('error_message', 'unknown')}"
                 )
 
-        raise TimeoutError(
-            f"RoPA PDF generation did not complete within {max_wait_s}s"
-        )
+        raise TimeoutError(f"RoPA PDF generation did not complete within {max_wait_s}s")
 
     # ── Regulation map ─────────────────────────────────────────────────────
 
@@ -128,4 +117,3 @@ class RopaAPI:
     def get_regulation_map() -> Dict[str, str]:
         """Return a dict of supported regulation keys -> human-readable names."""
         return dict(_REGULATION_MAP)
-

@@ -4,18 +4,25 @@ Integration Tests: SPARQL Queries with Standard Vocabularies.
 Tests SPARQL queries using DQV, DPV, PROV-O, ODRL, SHACL, Schema.org, and FOAF vocabularies.
 Uses real semantic service (no mocks - skips if service unavailable).
 """
-import pytest
-from django.test import TestCase
-from django.contrib.auth import get_user_model
 
-from hub.apps.semantic.service_client import SemanticServiceClient
-from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
-from hub.apps.contracts.models import Contract, OriginalSpecType, OriginalFormat, NormalizationStatus
+import uuid
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+
+from hub.apps.contracts.models import (
+    Contract,
+    NormalizationStatus,
+    OriginalFormat,
+    OriginalSpecType,
+)
 from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+from hub.apps.semantic.service_client import SemanticServiceClient
 from hub.apps.semantic.utils import map_contract_to_semantic
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -25,7 +32,7 @@ def check_semantic_service_available():
     """Check if semantic service is available"""
     try:
         client = SemanticServiceClient()
-        is_healthy, fuseki_status = client.health_check(use_cache=False)
+        is_healthy, _fuseki_status = client.health_check(use_cache=False)
         # Service is available only if health check returns healthy status
         # fuseki_status can be "connected", "disconnected", "timeout", "unreachable", or "unknown"
         # We only consider the service available if is_healthy is True
@@ -33,6 +40,7 @@ def check_semantic_service_available():
     except Exception as e:
         # Log the exception for debugging but don't fail
         import logging
+
         logger = logging.getLogger(__name__)
         logger.debug(f"Semantic service not available: {e}")
         return False
@@ -40,7 +48,11 @@ def check_semantic_service_available():
 
 def _skip_if_circuit_breaker(result):
     """Skip test when semantic service returns circuit breaker (unavailable at runtime)."""
-    if isinstance(result, dict) and result.get("error") and "circuit breaker" in str(result.get("error", "")).lower():
+    if (
+        isinstance(result, dict)
+        and result.get("error")
+        and "circuit breaker" in str(result.get("error", "")).lower()
+    ):
         pytest.skip("Semantic service unavailable (circuit breaker open)")
     if isinstance(result, str) and "circuit breaker" in result.lower():
         pytest.skip("Semantic service unavailable (circuit breaker open)")
@@ -58,18 +70,18 @@ class SPARQLStandardVocabulariesTest(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
-        
+
         self.user = User.objects.create_user(
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        
+
         self.client = SemanticServiceClient()
-        
+
         # Create and map a contract with all sections for testing
         hub_contract = ContractFactoryEnhanced.create_hub_contract_json(
             contract_id="sparql-test-contract",
@@ -80,35 +92,35 @@ class SPARQLStandardVocabulariesTest(TestCase):
                     "rule_id": "completeness_rule",
                     "dimension": "completeness",
                     "expression": "id IS NOT NULL",
-                    "severity": "ERROR"
+                    "severity": "ERROR",
                 }
             ],
             compliance_policy={
                 "contains_personal_data": True,
                 "personal_data_categories": ["PII_DIRECT_EMAIL"],
                 "jurisdictions": ["GDPR"],
-                "legal_bases": ["CONSENT"]
+                "legal_bases": ["CONSENT"],
             },
             lifecycle_policy={
                 "data_source": "source.example.com",
                 "refresh_cadence": "DAILY",
-                "slas": {"availability": "99.0"}
+                "slas": {"availability": "99.0"},
             },
             marketplace_policy={
                 "license_summary": "MIT License",
                 "intended_use": ["analytics"],
-                "restricted_use": []
+                "restricted_use": [],
             },
             schema_fields=[
                 {
                     "name": "email",
                     "data_type": "string",
                     "semantic_type": "EMAIL",
-                    "format": "email"
+                    "format": "email",
                 }
-            ]
+            ],
         )
-        
+
         self.contract = Contract.objects.create(
             tenant=self.tenant,
             original_spec_type=OriginalSpecType.ODCS,
@@ -116,13 +128,13 @@ class SPARQLStandardVocabulariesTest(TestCase):
             original_raw='{"id": "sparql-test-contract"}',
             hub_contract_json=hub_contract,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         # Map contract to RDF
         self.semantic_resource = map_contract_to_semantic(self.contract, tenant=self.tenant)
         self.assertIsNotNone(self.semantic_resource)
-    
+
     def test_sparql_query_dqv_quality_rules(self):
         """Test SPARQL query for quality rules using DQV vocabulary"""
         query = """
@@ -138,14 +150,14 @@ class SPARQLStandardVocabulariesTest(TestCase):
         }
         LIMIT 10
         """
-        
+
         result = self.client.query_sparql(query, output_format="json")
         _skip_if_circuit_breaker(result)
         # Should not have error
         self.assertNotIn("error", result)
         # Should have results or empty results (depending on data)
         self.assertIsInstance(result, dict)
-    
+
     def test_sparql_query_dpv_compliance_policy(self):
         """Test SPARQL query for compliance policy using DPV vocabulary"""
         query = """
@@ -161,12 +173,12 @@ class SPARQLStandardVocabulariesTest(TestCase):
         }
         LIMIT 10
         """
-        
+
         result = self.client.query_sparql(query, output_format="json")
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
-    
+
     def test_sparql_query_prov_lifecycle_policy(self):
         """Test SPARQL query for lifecycle policy using PROV-O vocabulary"""
         query = """
@@ -182,12 +194,12 @@ class SPARQLStandardVocabulariesTest(TestCase):
         }
         LIMIT 10
         """
-        
+
         result = self.client.query_sparql(query, output_format="json")
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
-    
+
     def test_sparql_query_odrl_marketplace_policy(self):
         """Test SPARQL query for marketplace policy using ODRL vocabulary"""
         query = """
@@ -203,12 +215,12 @@ class SPARQLStandardVocabulariesTest(TestCase):
         }
         LIMIT 10
         """
-        
+
         result = self.client.query_sparql(query, output_format="json")
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
-    
+
     def test_sparql_query_shacl_field_validation(self):
         """Test SPARQL query for field validation using SHACL vocabulary"""
         query = """
@@ -225,12 +237,12 @@ class SPARQLStandardVocabulariesTest(TestCase):
         }
         LIMIT 10
         """
-        
+
         result = self.client.query_sparql(query, output_format="json")
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
-    
+
     def test_sparql_query_schema_org_semantic_types(self):
         """Test SPARQL query for semantic types using Schema.org vocabulary"""
         query = """
@@ -247,12 +259,12 @@ class SPARQLStandardVocabulariesTest(TestCase):
         }
         LIMIT 10
         """
-        
+
         result = self.client.query_sparql(query, output_format="json")
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
-    
+
     def test_sparql_query_foaf_owners(self):
         """Test SPARQL query for owners using FOAF vocabulary"""
         query = """
@@ -269,12 +281,12 @@ class SPARQLStandardVocabulariesTest(TestCase):
         }
         LIMIT 10
         """
-        
+
         result = self.client.query_sparql(query, output_format="json")
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
-    
+
     def test_sparql_query_all_vocabularies_combined(self):
         """Test SPARQL query combining all standard vocabularies"""
         query = """
@@ -296,12 +308,12 @@ class SPARQLStandardVocabulariesTest(TestCase):
         }
         LIMIT 10
         """
-        
+
         result = self.client.query_sparql(query, output_format="json")
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
-    
+
     def test_sparql_query_quality_rules_by_dimension(self):
         """Test SPARQL query filtering quality rules by dimension"""
         query = """
@@ -318,12 +330,12 @@ class SPARQLStandardVocabulariesTest(TestCase):
         }
         LIMIT 10
         """
-        
+
         result = self.client.query_sparql(query, output_format="json")
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
-    
+
     def test_sparql_query_compliance_by_jurisdiction(self):
         """Test SPARQL query filtering compliance policies by jurisdiction"""
         query = """
@@ -338,12 +350,12 @@ class SPARQLStandardVocabulariesTest(TestCase):
         }
         LIMIT 10
         """
-        
+
         result = self.client.query_sparql(query, output_format="json")
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
-    
+
     def test_sparql_query_fields_by_semantic_type(self):
         """Test SPARQL query filtering fields by semantic type"""
         query = """
@@ -360,12 +372,12 @@ class SPARQLStandardVocabulariesTest(TestCase):
         }
         LIMIT 10
         """
-        
+
         result = self.client.query_sparql(query, output_format="json")
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
-    
+
     def test_sparql_query_output_formats(self):
         """Test SPARQL query with different output formats"""
         query = """
@@ -380,7 +392,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         }
         LIMIT 5
         """
-        
+
         # Test JSON format
         result_json = self.client.query_sparql(query, output_format="json")
         _skip_if_circuit_breaker(result_json)
@@ -393,4 +405,3 @@ class SPARQLStandardVocabulariesTest(TestCase):
         result_turtle = self.client.query_sparql(query, output_format="turtle")
         _skip_if_circuit_breaker(result_turtle)
         self.assertNotIn("error", result_turtle)
-

@@ -5,7 +5,6 @@ unique constraints. Real DB and API; no mocks.
 
 import json
 import threading
-from typing import List
 
 from django.db import connection
 from rest_framework.test import APIClient
@@ -28,8 +27,8 @@ class DataConsistencyTest(ConcurrencyTestBase):
         clients = [APIClient() for _ in range(3)]
         for c in clients:
             c.force_authenticate(user=self.user)
-        created_ids: List[str] = []
-        errors: List[str] = []
+        created_ids: list[str] = []
+        errors: list[str] = []
         lock = threading.Lock()
 
         def create_and_read(client: APIClient, index: int) -> None:
@@ -76,9 +75,9 @@ class DataConsistencyTest(ConcurrencyTestBase):
         clients = [APIClient() for _ in range(8)]
         for c in clients:
             c.force_authenticate(user=self.user)
-        ids: List[str] = []
+        ids: list[str] = []
         lock = threading.Lock()
-        errors: List[str] = []
+        errors: list[str] = []
 
         def create_one(client: APIClient, index: int) -> None:
             try:
@@ -135,7 +134,7 @@ class DataConsistencyTest(ConcurrencyTestBase):
         for c in clients:
             c.force_authenticate(user=self.user)
         contracts = list(Contract.objects.filter(tenant=self.tenant).values_list("id", flat=True))
-        deleted: List[bool] = []
+        deleted: list[bool] = []
         lock = threading.Lock()
 
         def delete_one(client: APIClient, contract_id: str) -> None:
@@ -162,7 +161,7 @@ class DataConsistencyTest(ConcurrencyTestBase):
 
     def test_db_connection_per_thread_no_leak(self):
         """Worker threads that touch DB use connection correctly (ensure_connection/close)."""
-        results: List[bool] = []
+        results: list[bool] = []
         lock = threading.Lock()
 
         def query_in_thread(index: int) -> None:

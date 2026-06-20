@@ -4,10 +4,9 @@ Membership grant/revoke audit logging (OpenSpec 260.C.4).
 Uses real DB and AuditEvent rows — no mocks.
 """
 
-import pytest
-
 import uuid
 
+import pytest
 from django.test import TestCase
 
 from hub.apps.audit import event_types
@@ -48,7 +47,12 @@ class MembershipAuditLoggingTest(TestCase):
     @pytest.mark.integration
     def test_admin_grant_emits_membership_granted_with_actor_and_subject(self):
         svc = UserTenantMembershipService()
-        svc.add_membership(self.subject_user, self.tenant_b)
+        svc.add_membership(
+            self.subject_user,
+            self.tenant_b,
+            actor_user=self.admin_user,
+            reason="admin_test_grant",
+        )
 
         ev = AuditEvent.objects.filter(
             action=event_types.MEMBERSHIP_GRANTED,
@@ -56,7 +60,6 @@ class MembershipAuditLoggingTest(TestCase):
             tenant_id=self.tenant_b.id,
         ).first()
         self.assertIsNotNone(ev)
-        assert ev is not None
         self.assertEqual(ev.actor_user_id, self.admin_user.id)
         self.assertEqual(
             ev.details_json["subject_user_id"],
@@ -77,8 +80,12 @@ class MembershipAuditLoggingTest(TestCase):
     @pytest.mark.integration
     def test_idempotent_add_does_not_emit_second_grant_audit(self):
         svc = UserTenantMembershipService()
-        svc.add_membership(self.subject_user, self.tenant_b)
-        svc.add_membership(self.subject_user, self.tenant_b)
+        svc.add_membership(
+            self.subject_user, self.tenant_b, actor_user=self.admin_user
+        )
+        svc.add_membership(
+            self.subject_user, self.tenant_b, actor_user=self.admin_user
+        )
         count = AuditEvent.objects.filter(
             action=event_types.MEMBERSHIP_GRANTED,
             tenant_id=self.tenant_b.id,
@@ -109,7 +116,6 @@ class MembershipAuditLoggingTest(TestCase):
             tenant_id=self.tenant_b.id,
         ).first()
         self.assertIsNotNone(ev)
-        assert ev is not None
         self.assertEqual(ev.actor_user_id, self.subject_user.id)
         self.assertEqual(
             ev.details_json["subject_user_id"],

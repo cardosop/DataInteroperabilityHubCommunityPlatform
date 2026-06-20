@@ -106,7 +106,6 @@ class ODPSLinkingEndpointIntegrationTest(ContractsAPITestBase):
         """Test linking with existing ODPS contract ID"""
         # Create ODPS contract manually with normalized hub_contract_json
         # This ensures it's normalized but not already linked
-        from hub.apps.contracts.models import ContractStatus, NormalizationStatus
 
         odps_contract = Contract.objects.create(
             tenant=self.tenant,

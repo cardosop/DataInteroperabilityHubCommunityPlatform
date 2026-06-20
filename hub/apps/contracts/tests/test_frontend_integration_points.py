@@ -39,6 +39,7 @@ class FrontendIntegrationPointsTest(ContractsAPITestBase):
         """Set up test fixtures"""
         super().setUp()
         import uuid
+
         # Update tenant/user names for clarity
         self.tenant.name = f"Frontend Test Tenant {uuid.uuid4().hex[:8]}"
         self.tenant.slug = f"frontend-test-{uuid.uuid4().hex[:8]}"
@@ -168,6 +169,7 @@ class FrontendIntegrationPointsTest(ContractsAPITestBase):
             id_value = str(data["id"])
             # UUID format: 8-4-4-4-12 hex digits
             import re
+
             uuid_regex = re.compile(
                 r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
             )
@@ -180,7 +182,7 @@ class FrontendIntegrationPointsTest(ContractsAPITestBase):
         # Verify dates are in ISO 8601 format (if present)
         date_fields = ["created_at", "updated_at", "deleted_at"]
         for field in date_fields:
-            if field in data and data[field]:
+            if data.get(field):
                 date_value = str(data[field])
                 # Should be ISO 8601 format (contains T and Z or timezone)
                 self.assertIn("T", date_value or "", f"{field} should be in ISO 8601 format")
@@ -189,9 +191,13 @@ class FrontendIntegrationPointsTest(ContractsAPITestBase):
         """Test API list endpoint returns paginated data in frontend-consumable format"""
         # Create multiple contracts — each needs its own asset
         from hub.apps.assets.models import Asset, AssetStatus
+
         for i in range(5):
             list_asset = Asset.objects.create(
-                tenant=self.tenant, key=f"list-asset-{i}", name=f"List {i}", status=AssetStatus.ACTIVE
+                tenant=self.tenant,
+                key=f"list-asset-{i}",
+                name=f"List {i}",
+                status=AssetStatus.ACTIVE,
             )
             Contract.objects.create(
                 tenant=self.tenant,
@@ -276,7 +282,9 @@ class FrontendIntegrationPointsTest(ContractsAPITestBase):
         """Test all API error responses have consistent structure"""
         # Test 400 error (bad request)
         response = self.client.post(
-            "/api/v1/contracts/", {}, format="json"  # Empty data - should cause error
+            "/api/v1/contracts/",
+            {},
+            format="json",  # Empty data - should cause error
         )
 
         if response.status_code >= 400:
@@ -325,9 +333,9 @@ class FrontendIntegrationPointsTest(ContractsAPITestBase):
         """Test API responses handle special characters in frontend-consumable format"""
         # Create contract with special characters
         odps_with_special = self.valid_odps.copy()
-        odps_with_special["product"]["details"]["en"][
-            "name"
-        ] = "Test & Product <script>alert('xss')</script>"
+        odps_with_special["product"]["details"]["en"]["name"] = (
+            "Test & Product <script>alert('xss')</script>"
+        )
 
         contract = Contract.objects.create(
             tenant=self.tenant,

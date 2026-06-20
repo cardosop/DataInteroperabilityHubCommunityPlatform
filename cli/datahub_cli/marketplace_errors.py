@@ -4,9 +4,11 @@ Marketplace Error Handling for CLI
 Provides comprehensive error handling for marketplace operations in the CLI,
 mapping backend marketplace errors to user-friendly messages with actionable guidance.
 """
+
 import json
 import re
-from typing import Optional, Dict, Any
+from typing import Any
+
 import click
 
 
@@ -21,10 +23,10 @@ class MarketplaceCLIError(click.ClickException):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        suggestion: Optional[str] = None,
-        original_error: Optional[Exception] = None
+        error_code: str | None = None,
+        context: dict[str, Any] | None = None,
+        suggestion: str | None = None,
+        original_error: Exception | None = None,
     ):
         """
         Initialize Marketplace CLI error.
@@ -48,14 +50,14 @@ class MarketplaceCLIError(click.ClickException):
 
         if self.context:
             # Add context information
-            if 'connection_id' in self.context:
+            if "connection_id" in self.context:
                 lines.append(f"  Connection ID: {self.context['connection_id']}")
-            if 'marketplace_type' in self.context:
+            if "marketplace_type" in self.context:
                 lines.append(f"  Marketplace Type: {self.context['marketplace_type']}")
-            if 'expected' in self.context and 'actual' in self.context:
+            if "expected" in self.context and "actual" in self.context:
                 lines.append(f"  Expected: {self.context['expected']}")
                 lines.append(f"  Actual: {self.context['actual']}")
-            if 'endpoint' in self.context:
+            if "endpoint" in self.context:
                 lines.append(f"  Endpoint: {self.context['endpoint']}")
 
         if self.suggestion:
@@ -66,25 +68,21 @@ class MarketplaceCLIError(click.ClickException):
 
 class MarketplaceConnectionError(MarketplaceCLIError):
     """Error for marketplace connection failures"""
-    pass
 
 
 class MarketplaceAuthenticationError(MarketplaceCLIError):
     """Error for marketplace authentication failures"""
-    pass
 
 
 class MarketplaceSyncError(MarketplaceCLIError):
     """Error for marketplace synchronization failures"""
-    pass
 
 
 class MarketplaceValidationError(MarketplaceCLIError):
     """Error for marketplace validation failures"""
-    pass
 
 
-def parse_api_error_response(error_data: Dict[str, Any]) -> Optional[MarketplaceCLIError]:
+def parse_api_error_response(error_data: dict[str, Any]) -> MarketplaceCLIError | None:
     """
     Parse API error response and convert to appropriate Marketplace CLI error.
 
@@ -98,16 +96,22 @@ def parse_api_error_response(error_data: Dict[str, Any]) -> Optional[Marketplace
         return None
 
     # Extract error information
-    error_info = error_data.get('error', {})
+    error_info = error_data.get("error", {})
     if isinstance(error_info, str):
-        error_info = {'message': error_info}
+        error_info = {"message": error_info}
 
-    error_code = error_info.get('code') or error_info.get('error_code') or error_data.get('error_code')
-    error_message = error_info.get('message') or error_info.get('user_message') or error_data.get('message', 'Unknown error')
-    context_raw = error_info.get('context') or error_data.get('context', {})
+    error_code = (
+        error_info.get("code") or error_info.get("error_code") or error_data.get("error_code")
+    )
+    error_message = (
+        error_info.get("message")
+        or error_info.get("user_message")
+        or error_data.get("message", "Unknown error")
+    )
+    context_raw = error_info.get("context") or error_data.get("context", {})
     # Ensure context is a dict
     if not isinstance(context_raw, dict):
-        context: Dict[str, Any] = {}
+        context: dict[str, Any] = {}
     else:
         context = context_raw
 
@@ -116,65 +120,56 @@ def parse_api_error_response(error_data: Dict[str, Any]) -> Optional[Marketplace
         error_code_upper = error_code.upper()
 
         # Validation errors
-        if any(code in error_code_upper for code in [
-            'VALIDATION', 'INVALID', 'REQUIRED_FIELD', 'INVALID_DATA_TYPE', 'INVALID_VALUE'
-        ]):
+        if any(
+            code in error_code_upper
+            for code in [
+                "VALIDATION",
+                "INVALID",
+                "REQUIRED_FIELD",
+                "INVALID_DATA_TYPE",
+                "INVALID_VALUE",
+            ]
+        ):
             suggestion = _get_validation_suggestion(error_code, context)
             return MarketplaceValidationError(
-                message=error_message,
-                error_code=error_code,
-                context=context,
-                suggestion=suggestion
+                message=error_message, error_code=error_code, context=context, suggestion=suggestion
             )
 
         # Authentication errors
-        if any(code in error_code_upper for code in [
-            'AUTHENTICATION', 'AUTH_FAILED', 'UNAUTHORIZED', 'INVALID_CREDENTIALS'
-        ]):
+        if any(
+            code in error_code_upper
+            for code in ["AUTHENTICATION", "AUTH_FAILED", "UNAUTHORIZED", "INVALID_CREDENTIALS"]
+        ):
             suggestion = _get_authentication_suggestion(error_code, context)
             return MarketplaceAuthenticationError(
-                message=error_message,
-                error_code=error_code,
-                context=context,
-                suggestion=suggestion
+                message=error_message, error_code=error_code, context=context, suggestion=suggestion
             )
 
         # Connection errors
-        if any(code in error_code_upper for code in [
-            'CONNECTION', 'CONNECT_FAILED', 'TIMEOUT', 'NETWORK_ERROR'
-        ]):
+        if any(
+            code in error_code_upper
+            for code in ["CONNECTION", "CONNECT_FAILED", "TIMEOUT", "NETWORK_ERROR"]
+        ):
             suggestion = _get_connection_suggestion(error_code, context)
             return MarketplaceConnectionError(
-                message=error_message,
-                error_code=error_code,
-                context=context,
-                suggestion=suggestion
+                message=error_message, error_code=error_code, context=context, suggestion=suggestion
             )
 
         # Sync errors
-        if any(code in error_code_upper for code in [
-            'SYNC', 'SYNCHRONIZATION', 'SYNC_FAILED'
-        ]):
+        if any(code in error_code_upper for code in ["SYNC", "SYNCHRONIZATION", "SYNC_FAILED"]):
             suggestion = _get_sync_suggestion(error_code, context)
             return MarketplaceSyncError(
-                message=error_message,
-                error_code=error_code,
-                context=context,
-                suggestion=suggestion
+                message=error_message, error_code=error_code, context=context, suggestion=suggestion
             )
 
     # Default to generic marketplace error
     return MarketplaceCLIError(
-        message=error_message,
-        error_code=error_code or "MARKETPLACE_ERROR",
-        context=context
+        message=error_message, error_code=error_code or "MARKETPLACE_ERROR", context=context
     )
 
 
 def handle_marketplace_api_error(
-    response_text: str,
-    status_code: int,
-    endpoint: Optional[str] = None
+    response_text: str, status_code: int, endpoint: str | None = None
 ) -> MarketplaceCLIError:
     """
     Handle API error response and convert to Marketplace CLI error.
@@ -194,41 +189,38 @@ def handle_marketplace_api_error(
         error_data = json.loads(response_text)
     except (json.JSONDecodeError, ValueError):
         # Not JSON, use raw text
-        error_data = {'error': {'message': response_text or 'Unknown error'}}
+        error_data = {"error": {"message": response_text or "Unknown error"}}
 
     # Try to parse as marketplace error
     marketplace_error = parse_api_error_response(error_data)
     if marketplace_error:
         if endpoint:
-            marketplace_error.context['endpoint'] = endpoint
-        marketplace_error.context['status_code'] = status_code
+            marketplace_error.context["endpoint"] = endpoint
+        marketplace_error.context["status_code"] = status_code
         # Ensure suggestion is set if not already present
         if not marketplace_error.suggestion:
             marketplace_error.suggestion = _get_http_error_suggestion(status_code, endpoint)
         return marketplace_error
 
     # Fallback to generic error
-    error_info = error_data.get('error', {})
+    error_info = error_data.get("error", {})
     if isinstance(error_info, str):
-        error_info = {'message': error_info}
+        error_info = {"message": error_info}
 
-    error_message = error_info.get('message', response_text or 'Unknown error')
-    error_code_raw = error_info.get('code') or error_data.get('error_code') or f'HTTP_{status_code}'
+    error_message = error_info.get("message", response_text or "Unknown error")
+    error_code_raw = error_info.get("code") or error_data.get("error_code") or f"HTTP_{status_code}"
     # Ensure error_code is always a string
-    error_code = str(error_code_raw) if error_code_raw is not None else f'HTTP_{status_code}'
+    error_code = str(error_code_raw) if error_code_raw is not None else f"HTTP_{status_code}"
 
     suggestion = _get_http_error_suggestion(status_code, endpoint)
 
-    context: Dict[str, Any] = {}
+    context: dict[str, Any] = {}
     if endpoint:
-        context['endpoint'] = endpoint
-    context['status_code'] = status_code
+        context["endpoint"] = endpoint
+    context["status_code"] = status_code
 
     return MarketplaceCLIError(
-        message=error_message,
-        error_code=error_code,
-        context=context,
-        suggestion=suggestion
+        message=error_message, error_code=error_code, context=context, suggestion=suggestion
     )
 
 
@@ -246,39 +238,39 @@ def validate_marketplace_type(marketplace_type: str) -> None:
         raise MarketplaceValidationError(
             message="Marketplace type cannot be empty",
             error_code="EMPTY_MARKETPLACE_TYPE",
-            context={'marketplace_type': marketplace_type},
-            suggestion="Provide a valid marketplace type"
+            context={"marketplace_type": marketplace_type},
+            suggestion="Provide a valid marketplace type",
         )
 
     # Valid marketplace types (from MarketplaceType enum)
     valid_types = [
-        'SNOWFLAKE_DATA_MARKETPLACE',
-        'AWS_DATA_EXCHANGE',
-        'DATABRICKS_MARKETPLACE',
-        'GOOGLE_CLOUD_MARKETPLACE',
-        'AZURE_MARKETPLACE',
-        'DATA_WORLD',
-        'KAGGLE',
-        'QUANDL',
-        'APIS_GURU',
-        'RAPIDAPI',
-        'PROGRAMMABLE_WEB',
-        'DATA_GOV',
-        'EUROPEAN_DATA_PORTAL',
-        'CKAN_INSTANCE',
-        'CUSTOM',
+        "SNOWFLAKE_DATA_MARKETPLACE",
+        "AWS_DATA_EXCHANGE",
+        "DATABRICKS_MARKETPLACE",
+        "GOOGLE_CLOUD_MARKETPLACE",
+        "AZURE_MARKETPLACE",
+        "DATA_WORLD",
+        "KAGGLE",
+        "QUANDL",
+        "APIS_GURU",
+        "RAPIDAPI",
+        "PROGRAMMABLE_WEB",
+        "DATA_GOV",
+        "EUROPEAN_DATA_PORTAL",
+        "CKAN_INSTANCE",
+        "CUSTOM",
     ]
 
     if marketplace_type.upper() not in [t.upper() for t in valid_types]:
         raise MarketplaceValidationError(
             message=f"Invalid marketplace type: {marketplace_type}",
             error_code="INVALID_MARKETPLACE_TYPE",
-            context={'marketplace_type': marketplace_type, 'valid_types': valid_types},
-            suggestion=f"Use one of: {', '.join(valid_types)}"
+            context={"marketplace_type": marketplace_type, "valid_types": valid_types},
+            suggestion=f"Use one of: {', '.join(valid_types)}",
         )
 
 
-def validate_sync_direction(sync_direction: Optional[str]) -> None:
+def validate_sync_direction(sync_direction: str | None) -> None:
     """
     Validate sync direction format.
 
@@ -291,13 +283,13 @@ def validate_sync_direction(sync_direction: Optional[str]) -> None:
     if sync_direction is None:
         return
 
-    valid_directions = ['PUSH', 'PULL', 'BIDIRECTIONAL']
+    valid_directions = ["PUSH", "PULL", "BIDIRECTIONAL"]
     if sync_direction.upper() not in [d.upper() for d in valid_directions]:
         raise MarketplaceValidationError(
             message=f"Invalid sync direction: {sync_direction}",
             error_code="INVALID_SYNC_DIRECTION",
-            context={'sync_direction': sync_direction, 'valid_directions': valid_directions},
-            suggestion=f"Use one of: {', '.join(valid_directions)}"
+            context={"sync_direction": sync_direction, "valid_directions": valid_directions},
+            suggestion=f"Use one of: {', '.join(valid_directions)}",
         )
 
 
@@ -316,7 +308,7 @@ def validate_connection_config(config: Any) -> None:
             message="Connection configuration cannot be None",
             error_code="EMPTY_CONFIG",
             context={},
-            suggestion="Provide a valid configuration dictionary"
+            suggestion="Provide a valid configuration dictionary",
         )
 
     # If config is a string, try to parse as JSON
@@ -325,10 +317,10 @@ def validate_connection_config(config: Any) -> None:
             config = json.loads(config)
         except json.JSONDecodeError as e:
             raise MarketplaceValidationError(
-                message=f"Invalid JSON in configuration: {str(e)}",
+                message=f"Invalid JSON in configuration: {e!s}",
                 error_code="INVALID_JSON_CONFIG",
-                context={'config': config},
-                suggestion="Ensure configuration is valid JSON"
+                context={"config": config},
+                suggestion="Ensure configuration is valid JSON",
             )
 
     # Validate config is a dictionary
@@ -336,8 +328,8 @@ def validate_connection_config(config: Any) -> None:
         raise MarketplaceValidationError(
             message="Configuration must be a dictionary",
             error_code="INVALID_CONFIG_TYPE",
-            context={'config_type': type(config).__name__},
-            suggestion="Provide configuration as a JSON object (dictionary)"
+            context={"config_type": type(config).__name__},
+            suggestion="Provide configuration as a JSON object (dictionary)",
         )
 
 
@@ -356,17 +348,17 @@ def validate_connection_id(connection_id: str) -> None:
             message="Connection ID cannot be empty",
             error_code="EMPTY_CONNECTION_ID",
             context={},
-            suggestion="Provide a valid connection ID"
+            suggestion="Provide a valid connection ID",
         )
 
     # Basic UUID format validation (8-4-4-4-12 hex digits)
-    uuid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    uuid_pattern = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
     if not re.match(uuid_pattern, connection_id.lower()):
         raise MarketplaceValidationError(
             message=f"Invalid connection ID format: {connection_id}",
             error_code="INVALID_CONNECTION_ID_FORMAT",
-            context={'connection_id': connection_id},
-            suggestion="Connection ID must be a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)"
+            context={"connection_id": connection_id},
+            suggestion="Connection ID must be a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)",
         )
 
 
@@ -385,17 +377,17 @@ def validate_mapping_id(mapping_id: str) -> None:
             message="Mapping ID cannot be empty",
             error_code="EMPTY_MAPPING_ID",
             context={},
-            suggestion="Provide a valid mapping ID"
+            suggestion="Provide a valid mapping ID",
         )
 
     # Basic UUID format validation (8-4-4-4-12 hex digits)
-    uuid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    uuid_pattern = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
     if not re.match(uuid_pattern, mapping_id.lower()):
         raise MarketplaceValidationError(
             message=f"Invalid mapping ID format: {mapping_id}",
             error_code="INVALID_MAPPING_ID_FORMAT",
-            context={'mapping_id': mapping_id},
-            suggestion="Mapping ID must be a valid UUID (e.g., 770e8400-e29b-41d4-a716-446655440000)"
+            context={"mapping_id": mapping_id},
+            suggestion="Mapping ID must be a valid UUID (e.g., 770e8400-e29b-41d4-a716-446655440000)",
         )
 
 
@@ -414,40 +406,41 @@ def validate_asset_id(asset_id: str) -> None:
             message="Asset ID cannot be empty",
             error_code="EMPTY_ASSET_ID",
             context={},
-            suggestion="Provide a valid asset ID"
+            suggestion="Provide a valid asset ID",
         )
 
     # Basic UUID format validation (8-4-4-4-12 hex digits)
-    uuid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    uuid_pattern = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
     if not re.match(uuid_pattern, asset_id.lower()):
         raise MarketplaceValidationError(
             message=f"Invalid asset ID format: {asset_id}",
             error_code="INVALID_ASSET_ID_FORMAT",
-            context={'asset_id': asset_id},
-            suggestion="Asset ID must be a valid UUID (e.g., 880e8400-e29b-41d4-a716-446655440000)"
+            context={"asset_id": asset_id},
+            suggestion="Asset ID must be a valid UUID (e.g., 880e8400-e29b-41d4-a716-446655440000)",
         )
 
 
 # Helper functions for suggestions
 
-def _get_validation_suggestion(error_code: str, context: Dict[str, Any]) -> str:
+
+def _get_validation_suggestion(error_code: str, context: dict[str, Any]) -> str:
     """Get suggestion for validation errors"""
     error_code_upper = error_code.upper()
 
-    if 'REQUIRED_FIELD' in error_code_upper:
-        field_path = context.get('field_path', 'field')
+    if "REQUIRED_FIELD" in error_code_upper:
+        field_path = context.get("field_path", "field")
         return f"Add the required field '{field_path}' to your request"
 
-    if 'INVALID_VALUE' in error_code_upper or 'INVALID_DATA_TYPE' in error_code_upper:
-        field_path = context.get('field_path', 'field')
-        expected = context.get('expected')
-        actual = context.get('actual')
+    if "INVALID_VALUE" in error_code_upper or "INVALID_DATA_TYPE" in error_code_upper:
+        field_path = context.get("field_path", "field")
+        expected = context.get("expected")
+        actual = context.get("actual")
         if expected and actual:
             return f"Field '{field_path}' has invalid value. Expected: {expected}, Got: {actual}"
         return f"Check the value of field '{field_path}'"
 
-    if 'INVALID_MARKETPLACE_TYPE' in error_code_upper:
-        valid_types = context.get('valid_types', [])
+    if "INVALID_MARKETPLACE_TYPE" in error_code_upper:
+        valid_types = context.get("valid_types", [])
         if valid_types:
             return f"Use one of the supported marketplace types: {', '.join(valid_types)}"
         return "Check the marketplace type against the supported types"
@@ -455,39 +448,41 @@ def _get_validation_suggestion(error_code: str, context: Dict[str, Any]) -> str:
     return "Review your request parameters and ensure they are valid"
 
 
-def _get_authentication_suggestion(error_code: str, context: Dict[str, Any]) -> str:
+def _get_authentication_suggestion(error_code: str, context: dict[str, Any]) -> str:
     """Get suggestion for authentication errors"""
     return "Check your marketplace connection credentials. Verify API keys, tokens, or authentication settings are correct"
 
 
-def _get_connection_suggestion(error_code: str, context: Dict[str, Any]) -> str:
+def _get_connection_suggestion(error_code: str, context: dict[str, Any]) -> str:
     """Get suggestion for connection errors"""
     error_code_upper = error_code.upper()
 
-    if 'TIMEOUT' in error_code_upper:
+    if "TIMEOUT" in error_code_upper:
         return "Connection timed out. Check your network connection and marketplace service availability"
 
-    if 'NETWORK_ERROR' in error_code_upper:
+    if "NETWORK_ERROR" in error_code_upper:
         return "Network error occurred. Check your network connection and firewall settings"
 
     return "Unable to connect to marketplace. Verify connection settings and network connectivity"
 
 
-def _get_sync_suggestion(error_code: str, context: Dict[str, Any]) -> str:
+def _get_sync_suggestion(error_code: str, context: dict[str, Any]) -> str:
     """Get suggestion for sync errors"""
     return "Synchronization failed. Check connection status, marketplace service availability, and sync job details"
 
 
-def _get_http_error_suggestion(status_code: int, endpoint: Optional[str] = None) -> str:
+def _get_http_error_suggestion(status_code: int, endpoint: str | None = None) -> str:
     """Get suggestion for HTTP errors"""
     if status_code == 400:
         return "Check your request parameters and ensure they are valid"
     elif status_code == 401:
         return "Authentication failed. Run 'datahub login' to authenticate"
     elif status_code == 403:
-        return "You don't have permission to perform this operation. Check your role and permissions"
+        return (
+            "You don't have permission to perform this operation. Check your role and permissions"
+        )
     elif status_code == 404:
-        if endpoint and 'connection' in endpoint.lower():
+        if endpoint and "connection" in endpoint.lower():
             return "Connection not found. Check that the connection ID is correct"
         return "Resource not found. Check that the ID is correct"
     elif status_code == 409:

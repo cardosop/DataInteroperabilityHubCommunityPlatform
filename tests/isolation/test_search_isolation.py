@@ -4,8 +4,8 @@
 Verifies that Tenant A's searchable resources are invisible to Tenant B's
 search queries, even when searching by exact name or keyword.
 """
+
 import uuid
-import time
 
 import pytest
 
@@ -46,9 +46,7 @@ class TestSearchIsolation:
         assert resp.status_code == 200
         results = resp.data.get("results", resp.data)
         ids = [str(r["id"]) for r in results] if isinstance(results, list) else []
-        assert str(self.asset_a.id) not in ids, (
-            f"Search leaked Tenant A asset to Tenant B"
-        )
+        assert str(self.asset_a.id) not in ids, "Search leaked Tenant A asset to Tenant B"
 
     def test_tenant_a_search_finds_own_asset(self, client_a):
         """Tenant A searching own keyword finds its asset."""
@@ -59,9 +57,7 @@ class TestSearchIsolation:
         assert resp.status_code == 200
         results = resp.data.get("results", resp.data)
         ids = [str(r["id"]) for r in results] if isinstance(results, list) else []
-        assert str(self.asset_a.id) in ids, (
-            "Tenant A cannot find its own asset via search"
-        )
+        assert str(self.asset_a.id) in ids, "Tenant A cannot find its own asset via search"
 
     def test_tenant_b_search_excludes_tenant_a_from_results(self, client_b):
         """Even broad search returns only Tenant B's own assets."""
@@ -70,6 +66,4 @@ class TestSearchIsolation:
         results = resp.data.get("results", resp.data)
         if isinstance(results, list):
             for item in results:
-                assert str(item["id"]) != str(self.asset_a.id), (
-                    "Broad search leaked Tenant A asset"
-                )
+                assert str(item["id"]) != str(self.asset_a.id), "Broad search leaked Tenant A asset"

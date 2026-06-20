@@ -9,10 +9,12 @@ Tests cache size tracking functionality:
 
 All tests use real implementations (no mocks/stubs).
 """
-from django.test import TestCase
+
 from unittest.mock import Mock
 
-from hub.apps.contracts.ref_resolver import RefResolver, DEFAULT_CACHE_MAX_ENTRIES
+from django.test import TestCase
+
+from hub.apps.contracts.ref_resolver import DEFAULT_CACHE_MAX_ENTRIES, RefResolver
 from hub.apps.observability.otel_metrics import (
     odps_ref_cache_size,
     odps_ref_cache_size_limit,
@@ -33,10 +35,7 @@ class CacheSizeTrackingTest(TestCase):
 
         # Verify metric can be called with tenant_id and ref_type labels
         try:
-            odps_ref_cache_size.labels(
-                tenant_id=self.tenant_id,
-                ref_type='external'
-            ).set(100)
+            odps_ref_cache_size.labels(tenant_id=self.tenant_id, ref_type="external").set(100)
         except Exception as e:
             self.fail(f"Cache size metric should accept tenant_id and ref_type labels: {e}")
 
@@ -46,10 +45,9 @@ class CacheSizeTrackingTest(TestCase):
 
         # Verify metric can be called with tenant_id and ref_type labels
         try:
-            odps_ref_cache_size_limit.labels(
-                tenant_id=self.tenant_id,
-                ref_type='external'
-            ).set(1000)
+            odps_ref_cache_size_limit.labels(tenant_id=self.tenant_id, ref_type="external").set(
+                1000
+            )
         except Exception as e:
             self.fail(f"Cache size limit metric should accept tenant_id and ref_type labels: {e}")
 
@@ -134,14 +132,14 @@ class CacheSizeTrackingTest(TestCase):
 
         # Verify update_cache_size_gauge would be called
         # (We can't directly verify without mocking, but we can verify the method exists)
-        self.assertTrue(hasattr(self.resolver, '_update_cache_size_gauge'))
+        self.assertTrue(hasattr(self.resolver, "_update_cache_size_gauge"))
 
     def test_cache_size_tracking_on_eviction(self):
         """Test that cache size is tracked when eviction occurs."""
         # Mock Redis client
         mock_redis = Mock()
         mock_redis.llen.return_value = 1001  # Exceeds max entries
-        mock_redis.lrange.return_value = [b'key1', b'key2']
+        mock_redis.lrange.return_value = [b"key1", b"key2"]
         mock_redis.delete.return_value = 1
         mock_redis.lrem = Mock()
 
@@ -164,37 +162,31 @@ class CacheSizeTrackingTest(TestCase):
 
         # Verify metric can be set to limit value
         try:
-            odps_ref_cache_size_limit.labels(
-                tenant_id=self.tenant_id,
-                ref_type='external'
-            ).set(1000)
+            odps_ref_cache_size_limit.labels(tenant_id=self.tenant_id, ref_type="external").set(
+                1000
+            )
         except Exception as e:
             self.fail(f"Cache size limit metric should accept value 1000: {e}")
 
     def test_cache_size_metric_supports_all_ref_types(self):
         """Test that cache size metric supports ref_type label (even though cache is only for external)."""
         # Cache is only for external refs, but metric should support ref_type label
-        ref_types = ['external']  # Only external refs are cached
+        ref_types = ["external"]  # Only external refs are cached
 
         for ref_type in ref_types:
             try:
-                odps_ref_cache_size.labels(
-                    tenant_id=self.tenant_id,
-                    ref_type=ref_type
-                ).set(100)
+                odps_ref_cache_size.labels(tenant_id=self.tenant_id, ref_type=ref_type).set(100)
             except Exception as e:
                 self.fail(f"Cache size metric should support ref_type '{ref_type}': {e}")
 
     def test_cache_size_limit_metric_supports_all_ref_types(self):
         """Test that cache size limit metric supports ref_type label."""
-        ref_types = ['external']  # Only external refs are cached
+        ref_types = ["external"]  # Only external refs are cached
 
         for ref_type in ref_types:
             try:
-                odps_ref_cache_size_limit.labels(
-                    tenant_id=self.tenant_id,
-                    ref_type=ref_type
-                ).set(1000)
+                odps_ref_cache_size_limit.labels(tenant_id=self.tenant_id, ref_type=ref_type).set(
+                    1000
+                )
             except Exception as e:
                 self.fail(f"Cache size limit metric should support ref_type '{ref_type}': {e}")
-

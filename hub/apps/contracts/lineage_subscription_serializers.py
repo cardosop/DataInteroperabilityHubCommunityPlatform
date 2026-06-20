@@ -15,6 +15,7 @@ job (it has the ``request`` user and the queryset gates).  These
 serializers are concerned with field shape + rich validation
 errors only.
 """
+
 from __future__ import annotations
 
 from rest_framework import serializers
@@ -56,10 +57,7 @@ class LineageSubscriptionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {
                     "code": "INVALID_SUBSCRIPTION_SOURCE",
-                    "detail": (
-                        "Exactly one of source_contract or source_asset "
-                        "must be set."
-                    ),
+                    "detail": ("Exactly one of source_contract or source_asset must be set."),
                 },
             )
         # Severity must be one of the canonical tiers.  ModelSerializer

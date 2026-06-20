@@ -28,13 +28,13 @@ isn't a re-introduction), the existing tasks.md / openspec / docs
 that document the historical fact, and any test file whose name
 matches ``test_wave6_cleanup``.
 """
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
 import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
@@ -67,16 +67,32 @@ def _scan_paths():
             if not p.is_file():
                 continue
             parts = set(p.parts)
-            if any(s in parts for s in {
-                "__pycache__", "node_modules", "migrations",
-                "dist", "build", ".pytest_cache",
-            }):
+            if any(
+                s in parts
+                for s in (
+                    "__pycache__",
+                    "node_modules",
+                    "migrations",
+                    "dist",
+                    "build",
+                    ".pytest_cache",
+                )
+            ):
                 continue
             if p.name == "test_wave6_cleanup.py":
                 continue
             if p.suffix in {
-                ".py", ".ts", ".tsx", ".js", ".jsx", ".yaml", ".yml",
-                ".json", ".html", ".toml", ".sh",
+                ".py",
+                ".ts",
+                ".tsx",
+                ".js",
+                ".jsx",
+                ".yaml",
+                ".yml",
+                ".json",
+                ".html",
+                ".toml",
+                ".sh",
             }:
                 targets.append(p)
 
@@ -114,8 +130,7 @@ def _grep_for(pattern: str) -> list[tuple[Path, int, str]]:
 
 def _format(hits: list[tuple[Path, int, str]]) -> str:
     return "\n".join(
-        f"  {p.relative_to(REPO_ROOT)}:{lineno}: {line}"
-        for p, lineno, line in hits[:25]
+        f"  {p.relative_to(REPO_ROOT)}:{lineno}: {line}" for p, lineno, line in hits[:25]
     )
 
 
@@ -194,12 +209,17 @@ def test_phase_227_sunset_header_emission_is_gone():
     # preceded immediately by one of `[`, `.`, or `(` (with optional
     # whitespace) — i.e. an indexing / attribute / call operator.
     # That's what distinguishes header emission from prose.
-    rx = re.compile(
-        r"""[\[.\(]\s*['"](?:Sunset|Deprecation)['"]"""
-    )
+    rx = re.compile(r"""[\[.\(]\s*['"](?:Sunset|Deprecation)['"]""")
     hits = []
     for path in _scan_paths():
         if path.suffix != ".py":
+            continue
+        # Only scan contract-related source — the Wave 1-3 deprecation
+        # was specifically about contract write paths.  Other apps
+        # (datasets/, api/versioning.py) legitimately emit Sunset /
+        # Deprecation as part of general endpoint deprecation infra.
+        parts = set(path.parts)
+        if not ("contracts" in parts or path.name.startswith("test_wave6")):
             continue
         try:
             text = path.read_text(encoding="utf-8")
@@ -294,9 +314,7 @@ def test_phase_227_w6_archive_manifest_hashes_match_local_files():
             continue
         actual_hash = hashlib.sha256(artefact.read_bytes()).hexdigest()
         if actual_hash != declared_hash:
-            mismatches.append(
-                f"  {relpath}: declared={declared_hash}, actual={actual_hash}"
-            )
+            mismatches.append(f"  {relpath}: declared={declared_hash}, actual={actual_hash}")
         else:
             verified.append(relpath)
 
@@ -316,7 +334,7 @@ def test_phase_227_w6_archive_manifest_hashes_match_local_files():
     # anything.  When ops runs locally with the audit-reports files
     # present, this skip becomes a real verification.
     if not verified:
-        pytest.skip(
+        pytest.skip(  # noqa: skip-in-body — runtime service dependency
             "All declared artefacts are absent from the working tree "
             "(gitignored or already moved to S3).  Hash-shape check "
             f"in the prior test still applies.  Skipped: {skipped}"
@@ -383,19 +401,14 @@ def test_phase_227_w6_scanner_covers_infra_and_build_configs():
         "slip through the W6.1 guard otherwise."
     )
 
-    workflow_files = [
-        p for p in paths
-        if ".github" in p.parts and "workflows" in p.parts
-    ]
+    workflow_files = [p for p in paths if ".github" in p.parts and "workflows" in p.parts]
     assert workflow_files, (
         "Scanner must cover .github/workflows/ — deploy.yml sets "
         "bundle-time env vars on the deploy job; a re-introduction "
         "there would slip through the W6.1 guard otherwise."
     )
 
-    env_example = [
-        p for p in paths if p.name == ".env.example" and "frontend" in p.parts
-    ]
+    env_example = [p for p in paths if p.name == ".env.example" and "frontend" in p.parts]
     assert env_example, (
         "Scanner must cover frontend/.env.example — it's the per-"
         "developer env-var bootstrap, and a copy-pasted example "

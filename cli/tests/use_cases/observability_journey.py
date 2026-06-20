@@ -11,7 +11,6 @@ via real API calls against the staging environment.
 
 from tests.use_cases._api_helpers import api_unauthenticated_get
 
-
 # ===========================================================================
 # Tests
 # ===========================================================================
@@ -24,9 +23,7 @@ def test_health_endpoint_returns_ok():
     if resp.status_code == 404:
         pytest.skip("/health/ endpoint not found (404)")
 
-    assert resp.status_code == 200, (
-        f"/health/ returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"/health/ returned {resp.status_code}: {resp.text[:500]}"
 
     body = resp.json()
     # Should contain a status field indicating health
@@ -47,9 +44,7 @@ def test_health_live_endpoint():
     if resp.status_code == 404:
         pytest.skip("Liveness endpoint not found (404)")
 
-    assert resp.status_code == 200, (
-        f"Liveness probe returned {resp.status_code}: {resp.text[:300]}"
-    )
+    assert resp.status_code == 200, f"Liveness probe returned {resp.status_code}: {resp.text[:300]}"
 
 
 def test_metrics_endpoint():

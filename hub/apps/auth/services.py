@@ -5,14 +5,14 @@ Service layer for API key operations.
 All create/update/delete paths apply validation and audit.
 """
 
+import contextlib
 from datetime import timedelta
-from typing import Any, Dict, Optional
 
 from django.db import transaction
 from django.utils import timezone
 
 from hub.apps.audit.utils import create_audit_event
-from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
+from hub.apps.core.services.base import BaseService, NotFoundError
 
 from .models import APIKey
 
@@ -29,7 +29,7 @@ class APIKeyService(BaseService):
 
     service_name = "api_key_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         self.tenant_id = tenant_id
         self.user_id = user_id
 
@@ -37,11 +37,11 @@ class APIKeyService(BaseService):
     def create_api_key(
         self,
         tenant_id: str,
-        user_id: Optional[str],
+        user_id: str | None,
         name: str,
-        scopes: Optional[list] = None,
-        expires_in_days: Optional[int] = None,
-        rate_limit_per_hour: Optional[int] = None,
+        scopes: list | None = None,
+        expires_in_days: int | None = None,
+        rate_limit_per_hour: int | None = None,
     ) -> tuple[APIKey, str]:
         """
         Create an API key with validation and audit.
@@ -109,10 +109,8 @@ class APIKeyService(BaseService):
         User = get_user_model()
         actor_user = None
         if self.user_id or user_id:
-            try:
+            with contextlib.suppress(User.DoesNotExist):
                 actor_user = User.objects.get(id=self.user_id or user_id)
-            except User.DoesNotExist:
-                pass
 
         create_audit_event(
             resource_type="API_KEY",
@@ -160,10 +158,8 @@ class APIKeyService(BaseService):
         User = get_user_model()
         actor_user = None
         if actor_user_id:
-            try:
+            with contextlib.suppress(User.DoesNotExist):
                 actor_user = User.objects.get(id=actor_user_id)
-            except User.DoesNotExist:
-                pass
 
         create_audit_event(
             resource_type="API_KEY",

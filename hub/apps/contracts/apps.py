@@ -1,13 +1,14 @@
-from django.apps import AppConfig
 import structlog
+from django.apps import AppConfig
+
 from hub.apps.core.utils.test_mode import should_skip_initialization
 
 logger = structlog.get_logger(__name__)
 
 
 class ContractsConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'hub.apps.contracts'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "hub.apps.contracts"
 
     def ready(self):
         """
@@ -28,22 +29,26 @@ class ContractsConfig(AppConfig):
         from hub.apps.contracts.lineage_sync import (
             register_signals as _register_lineage_sync,
         )
+
         _register_lineage_sync()
 
         # Skip initialization during tests and migrations for performance
         if should_skip_initialization():
             logger.debug("contracts_app_init_skipped", reason="test_or_migration_mode")
             return
-        
+
         try:
             # Initialize startup cache warming
             from hub.apps.contracts.ref_warming import warm_cache_on_startup
+
             warm_cache_on_startup()
-            logger.info("contracts_app_ready", message="Contracts app initialized with cache warming")
+            logger.info(
+                "contracts_app_ready", message="Contracts app initialized with cache warming"
+            )
         except Exception as e:
             # Log but don't fail startup - cache warming is optional
             logger.warning(
                 "contracts_app_cache_warming_deferred",
                 error=str(e),
-                message="Cache warming initialization deferred"
+                message="Cache warming initialization deferred",
             )

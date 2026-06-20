@@ -40,7 +40,9 @@ row lock so a concurrent operator-driven exit + cron-driven
 expiration cannot race; the second caller observes ``status=ENDED``
 and 409s out via ``ALREADY_ENDED``.
 """
+
 from __future__ import annotations
+
 import logging
 from datetime import timedelta
 
@@ -97,6 +99,7 @@ class IsPlatformAdminOrActiveImpersonator(permissions.BasePermission):
         # Tagged by ImpersonationMiddleware when the JWT carried a
         # valid ACTIVE-session claim.
         return bool(getattr(request, "impersonation_session_id", None))
+
 
 logger = logging.getLogger(__name__)
 
@@ -258,9 +261,7 @@ class AdminImpersonateStartView(APIView):
         from hub.apps.users.models import User
 
         try:
-            target = User.objects.select_related("tenant").get(
-                pk=validated["user_id"]
-            )
+            target = User.objects.select_related("tenant").get(pk=validated["user_id"])
         except User.DoesNotExist:
             return Response(
                 {"detail": "User not found."},
@@ -351,10 +352,7 @@ class AdminImpersonateStartView(APIView):
         max_minutes = validated.get("max_minutes")
         if max_minutes is None:
             max_minutes = target_tenant.impersonation_default_max_minutes
-        if (
-            max_minutes < IMPERSONATION_MIN_MINUTES
-            or max_minutes > IMPERSONATION_MAX_MINUTES_CAP
-        ):
+        if max_minutes < IMPERSONATION_MIN_MINUTES or max_minutes > IMPERSONATION_MAX_MINUTES_CAP:
             return Response(
                 {
                     "code": "MAX_MINUTES_OUT_OF_RANGE",
@@ -419,10 +417,7 @@ class AdminImpersonateStartView(APIView):
             # home tenant — the row would be tenant=NULL which is the
             # platform-level surface; a duplicate of the target-tenant
             # row would only add noise.
-            if (
-                impersonator_tenant is not None
-                and impersonator_tenant.id != target_tenant.id
-            ):
+            if impersonator_tenant is not None and impersonator_tenant.id != target_tenant.id:
                 create_audit_event(
                     resource_type="IMPERSONATION_SESSION",
                     action=_audit_et.IMPERSONATION_STARTED,
@@ -446,9 +441,7 @@ class AdminImpersonateStartView(APIView):
                 )
 
                 try:
-                    send_impersonation_started_email.delay(
-                        session_id=session_id
-                    )
+                    send_impersonation_started_email.delay(session_id=session_id)
                 except Exception as exc:  # pragma: no cover — Redis-outage path
                     logger.warning(
                         "impersonation_email_enqueue_failed",
@@ -479,9 +472,7 @@ class AdminImpersonateStartView(APIView):
                     "impersonator_user_id": str(impersonator.id),
                     "impersonated_user_id": str(target.id),
                     "impersonator_tenant_id": (
-                        str(impersonator_tenant.id)
-                        if impersonator_tenant
-                        else None
+                        str(impersonator_tenant.id) if impersonator_tenant else None
                     ),
                     "impersonated_tenant_id": str(target_tenant.id),
                     "started_at": now.isoformat(),
@@ -712,9 +703,7 @@ class AdminImpersonateExitView(APIView):
                     "impersonator_user_id": str(sess.impersonator_id),
                     "impersonated_user_id": str(sess.impersonated_user_id),
                     "impersonator_tenant_id": (
-                        str(sess.impersonator_tenant_id)
-                        if sess.impersonator_tenant_id
-                        else None
+                        str(sess.impersonator_tenant_id) if sess.impersonator_tenant_id else None
                     ),
                     "impersonated_tenant_id": str(sess.impersonated_tenant_id),
                     "end_reason": sess.end_reason,
@@ -741,5 +730,3 @@ class AdminImpersonateExitView(APIView):
             },
             status=status.HTTP_200_OK,
         )
-
-

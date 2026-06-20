@@ -3,8 +3,8 @@
 
 Tenant-aware rate limiting per Phase 273 convention.
 """
+
 from __future__ import annotations
-from typing import Optional
 
 from rest_framework.throttling import SimpleRateThrottle
 
@@ -16,7 +16,7 @@ class TransformationTenantThrottle(SimpleRateThrottle):
 
     scope = "transformation"
 
-    def get_cache_key(self, request, view) -> Optional[str]:
+    def get_cache_key(self, request, view) -> str | None:
         if not request.user or not request.user.is_authenticated:
             return None
         tenant_id = get_request_tenant_id(request)

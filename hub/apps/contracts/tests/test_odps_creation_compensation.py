@@ -15,22 +15,16 @@ All tests use real implementations (no mocks/stubs) and verify:
 """
 
 import json
+import uuid
 
 import pytest
-from django.test import TestCase
 
 from hub.apps.contracts.models import (
     Contract,
-    ContractStatus,
-    NormalizationStatus,
-    OriginalFormat,
-    OriginalSpecType,
 )
 from hub.apps.contracts.odps_compensation import ODPSCreationCompensation, ODPSCreationState
 from hub.apps.contracts.tests.test_base import ContractsTestBase
-from hub.apps.core.services.base import ValidationError
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -320,7 +314,7 @@ class ODPSCreationCompensationComprehensiveTest(ODPSCreationCompensationTestBase
                             "description": "测试描述",
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -359,7 +353,7 @@ class ODPSCreationCompensationComprehensiveTest(ODPSCreationCompensationTestBase
                             "description": "Test <description> & more",
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -399,7 +393,7 @@ class ODPSCreationCompensationComprehensiveTest(ODPSCreationCompensationTestBase
                             "description": large_description,
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -438,7 +432,7 @@ class ODPSCreationCompensationComprehensiveTest(ODPSCreationCompensationTestBase
                             "description": "",  # ODPS schema requires string
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -477,7 +471,7 @@ class ODPSCreationCompensationComprehensiveTest(ODPSCreationCompensationTestBase
                             "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )

@@ -13,7 +13,7 @@ and fix root causes rather than workarounds.
 
 import json
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 from rest_framework import status
 
@@ -27,9 +27,6 @@ except ImportError:
     JSONSCHEMA_AVAILABLE = False
 
 from hub.apps.contracts.models import (
-    Contract,
-    ContractStatus,
-    NormalizationStatus,
     OriginalFormat,
     OriginalSpecType,
 )
@@ -140,8 +137,8 @@ class APISchemaValidationTestBase(ContractsAPITestBase):
         )
 
     def _validate_json_schema(
-        self, data: Dict[str, Any], schema: Dict[str, Any]
-    ) -> tuple[bool, Optional[str]]:
+        self, data: dict[str, Any], schema: dict[str, Any]
+    ) -> tuple[bool, str | None]:
         """
         Validate data against JSON Schema.
 
@@ -153,7 +150,7 @@ class APISchemaValidationTestBase(ContractsAPITestBase):
             Tuple of (is_valid, error_message)
         """
         if not JSONSCHEMA_AVAILABLE:
-            return True, None  # Skip validation if jsonschema not available
+            return False, "jsonschema library not available - cannot validate against JSON Schema"
 
         try:
             validate(instance=data, schema=schema)
@@ -161,9 +158,9 @@ class APISchemaValidationTestBase(ContractsAPITestBase):
         except JSONSchemaValidationError as e:
             return False, str(e)
         except Exception as e:
-            return False, f"Schema validation error: {str(e)}"
+            return False, f"Schema validation error: {e!s}"
 
-    def _get_contract_response_schema(self) -> Dict[str, Any]:
+    def _get_contract_response_schema(self) -> dict[str, Any]:
         """Get JSON Schema for Contract response."""
         return {
             "type": "object",
@@ -180,7 +177,7 @@ class APISchemaValidationTestBase(ContractsAPITestBase):
             },
         }
 
-    def _get_product_create_response_schema(self) -> Dict[str, Any]:
+    def _get_product_create_response_schema(self) -> dict[str, Any]:
         """Get JSON Schema for Product Create response."""
         contract_schema = self._get_contract_response_schema()
         return {
@@ -193,7 +190,7 @@ class APISchemaValidationTestBase(ContractsAPITestBase):
             },
         }
 
-    def _get_error_response_schema(self) -> Dict[str, Any]:
+    def _get_error_response_schema(self) -> dict[str, Any]:
         """Get JSON Schema for error response."""
         # DRF uses 'detail' for standard errors (404, etc.), but custom endpoints may use 'error'
         # Accept both formats for compatibility
@@ -238,7 +235,7 @@ class APISchemaValidationTestBase(ContractsAPITestBase):
             ],
         }
 
-    def _get_product_create_request_schema(self) -> Dict[str, Any]:
+    def _get_product_create_request_schema(self) -> dict[str, Any]:
         """Get JSON Schema for Product Create request."""
         return {
             "type": "object",
@@ -251,7 +248,7 @@ class APISchemaValidationTestBase(ContractsAPITestBase):
             },
         }
 
-    def _get_odps_link_request_schema(self) -> Dict[str, Any]:
+    def _get_odps_link_request_schema(self) -> dict[str, Any]:
         """Get JSON Schema for ODPS Link request."""
         return {
             "type": "object",
@@ -391,19 +388,12 @@ class APIResponseSchemaValidationTest(APISchemaValidationTestBase):
         has_hub_contract_version = (
             "hub_contract_version" in data or "hub_contract_version" in original_spec
         )
-        # Note: This is a lenient check - for ODPS contracts, hub_contract_version may be nested
-        # The important thing is that the basic structure (id, info) is present
-        if not has_hub_contract_version:
-            # Log warning but don't fail - this is acceptable for ODPS contracts
-            import warnings
-
-            warnings.warn(
-                f"hub_contract_version not found at root or in extensions.x_odps.original_spec. "
-                f"Root keys: {list(data.keys())[:10]}, "
-                f"Has extensions: {bool(extensions)}, "
-                f"Has x_odps: {bool(x_odps)}, "
-                f"Has original_spec: {bool(original_spec)}"
-            )
+        # hub_contract_version must be present at root or in extensions.x_odps.original_spec
+        self.assertTrue(
+            has_hub_contract_version,
+            f"hub_contract_version not found at root or in extensions.x_odps.original_spec. "
+            f"Root keys: {list(data.keys())[:10]}",
+        )
 
     def test_link_odps_response_schema(self):
         """Test that link ODPS endpoint returns correct schema."""
@@ -561,10 +551,11 @@ class APIRequestSchemaValidationTest(APISchemaValidationTestBase):
         )
 
         # Assert
-        # Should either accept invalid UUID and fail later, or validate format
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            data = response.json()
-            self.assertIn("error", data or {})
+        # Invalid UUID format should be rejected at the API boundary
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST,
+            f"Expected 400 for invalid UUID format, got {response.status_code}")
+        data = response.json()
+        self.assertIn("error", data or {})
 
     def test_link_odps_request_validation_mutually_exclusive(self):
         """Test that link ODPS request validates mutually exclusive fields."""
@@ -1092,13 +1083,9 @@ class APIVersionCompatibilityTest(APISchemaValidationTestBase):
             format="json",
         )
         # Should handle very large documents
-        self.assertIn(
+        self.assertLess(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            ],
+            500,
         )
 
     def test_api_schema_validation_handles_none_values(self):

@@ -8,7 +8,9 @@ Usage:
     class TransformationPipelineViewSet(TransformationFeatureFlagMixin, viewsets.ModelViewSet):
         ...
 """
+
 from __future__ import annotations
+
 from rest_framework.response import Response
 
 from hub.apps.tenants.feature_flag_gates import check_transformation_enabled

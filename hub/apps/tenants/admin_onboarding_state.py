@@ -7,7 +7,9 @@ Returns the checklist from ``compute_onboarding_state()`` so a
 PLATFORM_ADMIN can inspect a tenant's onboarding progress before
 approving KYC or activating features.
 """
+
 from __future__ import annotations
+
 from django.http import HttpRequest
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -57,4 +59,5 @@ class AdminTenantOnboardingStateView(APIView):
             return Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
             from django.http import Http404
+
             raise Http404("Tenant not found")

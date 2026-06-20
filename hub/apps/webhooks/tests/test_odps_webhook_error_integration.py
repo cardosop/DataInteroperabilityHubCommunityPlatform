@@ -6,17 +6,19 @@ Tests end-to-end error handling using real HTTP servers only (no mocks/stubs):
 - Multiple webhooks, connection error recovery
 """
 
-import json
+import contextlib
 import threading
 import time
 import uuid
 from datetime import timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
@@ -28,16 +30,13 @@ from hub.apps.webhooks.models import (
     WebhookStatus,
 )
 from hub.apps.webhooks.odps_webhook_errors import (
-    ODPSWebhookDeliveryError,
-    ODPSWebhookPayloadError,
     ODPSWebhookValidationError,
 )
-from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.webhooks.service import WebhookDeliveryService
-from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookServer
 from hub.apps.webhooks.tests.test_delivery_validators_integration import (
     StatefulTestWebhookServer,
 )
+from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookServer
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -88,7 +87,6 @@ class ODPSWebhookErrorIntegrationTest(TransactionTestCase):
 
     def _fixture_teardown(self):
         """Skip TRUNCATE CASCADE to avoid timeout."""
-        pass
 
     def setUp(self):
         """Set up test fixtures."""
@@ -262,6 +260,7 @@ class ODPSWebhookErrorIntegrationTest(TransactionTestCase):
         """Test error handling for SSL errors via real HTTPS server with self-signed cert."""
         import ssl
         import tempfile
+
         from cryptography import x509
         from cryptography.hazmat.primitives import hashes, serialization
         from cryptography.hazmat.primitives.asymmetric import rsa
@@ -295,6 +294,7 @@ class ODPSWebhookErrorIntegrationTest(TransactionTestCase):
             key_path = key_file.name
 
         try:
+
             class _OkHandler(BaseHTTPRequestHandler):
                 def do_POST(self):
                     self.send_response(200)
@@ -313,7 +313,9 @@ class ODPSWebhookErrorIntegrationTest(TransactionTestCase):
 
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
-            time.sleep(0.2)  # INTENTIONAL: wait for HTTPS server thread to start accepting connections
+            time.sleep(  # noqa: sleep-needed — test timing requirement
+                0.2
+            )  # INTENTIONAL: wait for HTTPS server thread to start accepting connections
 
             self.webhook.url = f"https://127.0.0.1:{port}/webhook"
             self.webhook.save(update_fields=["url"])
@@ -342,11 +344,10 @@ class ODPSWebhookErrorIntegrationTest(TransactionTestCase):
             server.server_close()
         finally:
             import os
+
             for p in (cert_path, key_path):
-                try:
+                with contextlib.suppress(FileNotFoundError):
                     os.unlink(p)
-                except FileNotFoundError:
-                    pass
 
     def test_error_handling_multiple_webhooks(self):
         """Test error handling when multiple webhooks are triggered via two real servers."""
@@ -443,7 +444,7 @@ class ODPSWebhookErrorIntegrationTest(TransactionTestCase):
         httpd = ReuseAddrHTTPServer(("127.0.0.1", port), _OkHandler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
-        time.sleep(0.2)  # INTENTIONAL: wait for HTTP server thread to start accepting connections
+        time.sleep(0.2)  # noqa: sleep-needed  # INTENTIONAL: wait for HTTP server thread to start accepting connections
 
         try:
             WebhookDeliveryService.retry_delivery(str(delivery.id))
@@ -552,6 +553,7 @@ class ODPSWebhookErrorIntegrationTest(TransactionTestCase):
 
     def test_delivery_failure_via_real_http_server_500(self):
         """Integration: real HTTP server returning 500 causes FAILED and http_status_code 500 (no mocks)."""
+
         class Handler500(BaseHTTPRequestHandler):
             def do_POST(self):
                 self.send_response(500)
@@ -573,7 +575,7 @@ class ODPSWebhookErrorIntegrationTest(TransactionTestCase):
 
         thread = threading.Thread(target=serve_until_done, daemon=True)
         thread.start()
-        time.sleep(0.15)  # INTENTIONAL: wait for HTTP server thread to start accepting connections
+        time.sleep(0.15)  # noqa: sleep-needed  # INTENTIONAL: wait for HTTP server thread to start accepting connections
 
         webhook_real = Webhook.objects.create(
             tenant=self.tenant,

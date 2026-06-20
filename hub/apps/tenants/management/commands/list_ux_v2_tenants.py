@@ -12,10 +12,13 @@ Usage:
     python manage.py list_ux_v2_tenants --disabled-only
     python manage.py list_ux_v2_tenants --json  # machine-readable output
 """
+
 import json
-from django.core.management.base import BaseCommand
-from hub.apps.tenants.models import Tenant
+
 import structlog
+from django.core.management.base import BaseCommand
+
+from hub.apps.tenants.models import Tenant
 
 logger = structlog.get_logger(__name__)
 
@@ -46,9 +49,7 @@ class Command(BaseCommand):
         json_output = options["json"]
 
         if enabled_only and disabled_only:
-            self.stderr.write(
-                "Cannot specify both --enabled-only and --disabled-only."
-            )
+            self.stderr.write("Cannot specify both --enabled-only and --disabled-only.")
             return
 
         tenants = (
@@ -91,16 +92,12 @@ class Command(BaseCommand):
         else:
             # Human-readable table
             self.stdout.write("")
-            self.stdout.write(
-                f"{'Slug':<30} {'Name':<30} {'UX v2':<8} {'Created'}"
-            )
+            self.stdout.write(f"{'Slug':<30} {'Name':<30} {'UX v2':<8} {'Created'}")
             self.stdout.write("-" * 90)
             for t in tenant_list:
                 status = "ENABLED" if t["ux_v2_enabled"] else "DISABLED"
                 created = t["created_at"].strftime("%Y-%m-%d") if t["created_at"] else "—"
-                self.stdout.write(
-                    f"{t['slug']:<30} {t['name']:<30} {status:<8} {created}"
-                )
+                self.stdout.write(f"{t['slug']:<30} {t['name']:<30} {status:<8} {created}")
             self.stdout.write("-" * 90)
             self.stdout.write(
                 f"Summary: {enabled_count} enabled, {disabled_count} disabled "

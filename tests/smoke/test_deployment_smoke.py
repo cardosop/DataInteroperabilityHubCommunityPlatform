@@ -3,7 +3,9 @@
 Validates critical deployment paths beyond the existing 9 smoke test files.
 Tests skip gracefully if the target service is unavailable.
 """
+
 import os
+
 import pytest
 import requests
 
@@ -63,9 +65,7 @@ class TestAPIDocumentation:
     def test_swagger_ui_requires_auth(self):
         """Swagger UI requires auth (221.4.2)."""
         r = _get("/api-docs/")
-        assert r.status_code in (401, 403, 404), (
-            f"Expected 401/403/404, got {r.status_code}"
-        )
+        assert r.status_code in (401, 403, 404), f"Expected 401/403/404, got {r.status_code}"
 
 
 class TestAuthEndpoints:
@@ -85,22 +85,28 @@ class TestAuthEndpoints:
 class TestCoreAPIEndpoints:
     """Validate core API endpoints require authentication."""
 
-    @pytest.mark.parametrize("path", [
-        "/api/v1/assets/",
-        "/api/v1/contracts/",
-        "/api/v1/datasets/",
-        "/api/v1/jobs/",
-    ])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/api/v1/assets/",
+            "/api/v1/contracts/",
+            "/api/v1/datasets/",
+            "/api/v1/jobs/",
+        ],
+    )
     def test_core_endpoints_require_auth(self, path):
         r = _get(path)
         assert r.status_code in (401, 403)
 
-    @pytest.mark.parametrize("path", [
-        "/api/v1/marketplace/listings/",
-        "/api/v1/webhooks/webhooks/",
-        "/api/v1/dq/runs/",
-        "/api/v1/compliance/runs/",
-    ])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/api/v1/marketplace/listings/",
+            "/api/v1/webhooks/webhooks/",
+            "/api/v1/dq/runs/",
+            "/api/v1/compliance/runs/",
+        ],
+    )
     def test_feature_endpoints_require_auth(self, path):
         r = _get(path)
         assert r.status_code in (401, 403)

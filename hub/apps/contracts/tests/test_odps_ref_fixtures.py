@@ -6,12 +6,15 @@ Tests verify that all ODPS $ref fixture files are:
 2. Valid ODPS (pass schema validation)
 3. Contain $ref references as expected
 """
+
 import json
 from pathlib import Path
+
 from django.test import TestCase
 
 try:
     import yaml
+
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
@@ -19,17 +22,31 @@ except ImportError:
 
 try:
     import jsonschema
-    from jsonschema import validate, Draft202012Validator, SchemaError, ValidationError
+    from jsonschema import Draft202012Validator, SchemaError, ValidationError, validate
+
     JSONSCHEMA_AVAILABLE = True
 except ImportError:
     JSONSCHEMA_AVAILABLE = False
+
     # Create mock classes for when jsonschema is not available
-    class Draft202012Validator:
+    # Use _Mock prefix to avoid shadowing real jsonschema class names
+    class _MockDraft202012Validator:
+        def check_schema(self, schema):
+            pass
+
+        def validate(self, instance):
+            pass
+
+    class _MockSchemaError(Exception):
         pass
-    class SchemaError(Exception):
+
+    class _MockValidationError(Exception):
         pass
-    class ValidationError(Exception):
-        pass
+
+    Draft202012Validator = _MockDraft202012Validator
+    SchemaError = _MockSchemaError
+    ValidationError = _MockValidationError
+
 
 from hub.apps.contracts.odps_schema import load_odps_schema
 
@@ -48,14 +65,14 @@ class ODPSRefFixturesTest(TestCase):
 
     def _load_json_file(self, file_path: Path) -> dict:
         """Load and parse a JSON file"""
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             return json.load(f)
 
     def _load_yaml_file(self, file_path: Path) -> dict:
         """Load and parse a YAML file"""
         if not YAML_AVAILABLE:
             raise ImportError("yaml library not available")
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             return yaml.safe_load(f)
 
     def _find_refs_in_object(self, obj: any, path: str = "") -> list:
@@ -78,7 +95,10 @@ class ODPSRefFixturesTest(TestCase):
         for version in self.required_versions:
             with self.subTest(version=version):
                 refs_dir = self.fixtures_dir / version / "with_refs"
-                internal_ref_file = refs_dir / f"sample-internal-ref-{version.replace('v', 'v') if version.startswith('v') else version}.json"
+                internal_ref_file = (
+                    refs_dir
+                    / f"sample-internal-ref-{version.replace('v', 'v') if version.startswith('v') else version}.json"
+                )
 
                 # Handle version-specific naming
                 if version == "v4.1":
@@ -94,10 +114,10 @@ class ODPSRefFixturesTest(TestCase):
 
                 self.assertTrue(
                     internal_ref_file.exists(),
-                    f"Internal $ref sample file should exist for version {version} at: {internal_ref_file}"
+                    f"Internal $ref sample file should exist for version {version} at: {internal_ref_file}",
                 )
 
-    def test_local_ref_files_exist(self):
+    def test_local_ref_json_sample_files_exist(self):
         """Test that local $ref sample files exist for all versions"""
         for version in self.required_versions:
             with self.subTest(version=version):
@@ -117,7 +137,7 @@ class ODPSRefFixturesTest(TestCase):
 
                 self.assertTrue(
                     local_ref_file.exists(),
-                    f"Local $ref sample file should exist for version {version} at: {local_ref_file}"
+                    f"Local $ref sample file should exist for version {version} at: {local_ref_file}",
                 )
 
     def test_external_ref_files_exist(self):
@@ -140,7 +160,7 @@ class ODPSRefFixturesTest(TestCase):
 
                 self.assertTrue(
                     external_ref_file.exists(),
-                    f"External $ref sample file should exist for version {version} at: {external_ref_file}"
+                    f"External $ref sample file should exist for version {version} at: {external_ref_file}",
                 )
 
     def test_internal_ref_files_are_valid_json(self):
@@ -160,7 +180,9 @@ class ODPSRefFixturesTest(TestCase):
 
                 try:
                     data = self._load_json_file(file_path)
-                    self.assertIsInstance(data, dict, f"File {filename} should contain a JSON object")
+                    self.assertIsInstance(
+                        data, dict, f"File {filename} should contain a JSON object"
+                    )
                 except json.JSONDecodeError as e:
                     self.fail(f"File {filename} is not valid JSON: {e}")
 
@@ -188,7 +210,7 @@ class ODPSRefFixturesTest(TestCase):
                 self.assertGreater(
                     len(internal_refs),
                     0,
-                    f"File {filename} should contain at least one internal $ref (starting with #)"
+                    f"File {filename} should contain at least one internal $ref (starting with #)",
                 )
 
     def test_local_ref_files_contain_local_refs(self):
@@ -215,7 +237,7 @@ class ODPSRefFixturesTest(TestCase):
                 self.assertGreater(
                     len(local_refs),
                     0,
-                    f"File {filename} should contain at least one local $ref (starting with ./)"
+                    f"File {filename} should contain at least one local $ref (starting with ./)",
                 )
 
     def test_external_ref_files_contain_external_refs(self):
@@ -239,13 +261,14 @@ class ODPSRefFixturesTest(TestCase):
 
                 # Check that at least one external $ref exists (starts with http:// or https://)
                 external_refs = [
-                    ref_value for _, ref_value in refs
+                    ref_value
+                    for _, ref_value in refs
                     if ref_value.startswith("http://") or ref_value.startswith("https://")
                 ]
                 self.assertGreater(
                     len(external_refs),
                     0,
-                    f"File {filename} should contain at least one external $ref (starting with http:// or https://)"
+                    f"File {filename} should contain at least one external $ref (starting with http:// or https://)",
                 )
 
     def test_ref_files_are_valid_odps(self):
@@ -294,12 +317,10 @@ class ODPSRefFixturesTest(TestCase):
                         f"File {filename} for version {schema_version} failed schema validation: {e.message}"
                     )
                 except SchemaError as e:
-                    self.fail(
-                        f"Schema error for version {schema_version}: {e.message}"
-                    )
+                    self.fail(f"Schema error for version {schema_version}: {e.message}")
 
-    def test_local_ref_files_exist(self):
-        """Test that local $ref referenced files exist"""
+    def test_local_ref_yaml_referenced_files_exist(self):
+        """Test that local $ref referenced YAML files (quality-rules, contract-definition) exist"""
         test_cases = [
             ("v4.1", "quality-rules.yaml"),
             ("v4.0", "quality-rules.yaml"),
@@ -317,7 +338,7 @@ class ODPSRefFixturesTest(TestCase):
 
                 self.assertTrue(
                     ref_file.exists(),
-                    f"Referenced local file {ref_filename} should exist for version {version} at: {ref_file}"
+                    f"Referenced local file {ref_filename} should exist for version {version} at: {ref_file}",
                 )
 
                 # Verify it's valid YAML
@@ -325,7 +346,9 @@ class ODPSRefFixturesTest(TestCase):
                     self.skipTest("yaml library not available")
                 try:
                     data = self._load_yaml_file(ref_file)
-                    self.assertIsInstance(data, dict, f"File {ref_filename} should contain a YAML object")
+                    self.assertIsInstance(
+                        data, dict, f"File {ref_filename} should contain a YAML object"
+                    )
                 except Exception as e:
                     self.fail(f"File {ref_filename} is not valid YAML: {e}")
 
@@ -335,8 +358,7 @@ class ODPSRefFixturesTest(TestCase):
         mixed_ref_file = refs_dir / "sample-mixed-refs-v4.1.json"
 
         self.assertTrue(
-            mixed_ref_file.exists(),
-            f"Mixed $ref sample file should exist at: {mixed_ref_file}"
+            mixed_ref_file.exists(), f"Mixed $ref sample file should exist at: {mixed_ref_file}"
         )
 
         # Verify it contains all three types of refs
@@ -346,11 +368,11 @@ class ODPSRefFixturesTest(TestCase):
         internal_refs = [ref_value for _, ref_value in refs if ref_value.startswith("#")]
         local_refs = [ref_value for _, ref_value in refs if ref_value.startswith("./")]
         external_refs = [
-            ref_value for _, ref_value in refs
+            ref_value
+            for _, ref_value in refs
             if ref_value.startswith("http://") or ref_value.startswith("https://")
         ]
 
         self.assertGreater(len(internal_refs), 0, "Mixed refs file should contain internal $ref")
         self.assertGreater(len(local_refs), 0, "Mixed refs file should contain local $ref")
         self.assertGreater(len(external_refs), 0, "Mixed refs file should contain external $ref")
-

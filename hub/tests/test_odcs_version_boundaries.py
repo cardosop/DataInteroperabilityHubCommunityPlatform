@@ -7,6 +7,7 @@ Validates normalizer version routing without hypothesis
 Run: pytest hub/tests/test_odcs_version_boundaries.py -v \\
      --noconftest -p no:django
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -26,30 +27,42 @@ class TestV31VersionMatching:
 
     @pytest.fixture()
     def src(self):
-        return _read(
-            "hub/apps/contracts/normalization/"
-            "odcs_normalizer_v3_1_0.py"
-        )
+        return _read("hub/apps/contracts/normalization/odcs_normalizer_v3_1_0.py")
 
     @pytest.fixture()
     def pattern(self, src):
         """Extract the compiled regex from source."""
         m = re.search(
-            r're\.compile\(r"([^"]+)"\)', src,
+            r're\.compile\(r"([^"]+)"\)',
+            src,
         )
         assert m, "_V3_1_PATTERN not found"
         return re.compile(m.group(1))
 
-    @pytest.mark.parametrize("version", [
-        "3.1.0", "3.1.1", "3.1.2", "3.1.99",
-    ])
+    @pytest.mark.parametrize(
+        "version",
+        [
+            "3.1.0",
+            "3.1.1",
+            "3.1.2",
+            "3.1.99",
+        ],
+    )
     def test_accepts_valid_31x(self, pattern, version):
         assert pattern.match(version)
 
-    @pytest.mark.parametrize("version", [
-        "3.1.0beta", "3.1.0-rc1", "3.1.0+build",
-        "3.10.0", "3.0.2", "2.2.2", "4.0.0",
-    ])
+    @pytest.mark.parametrize(
+        "version",
+        [
+            "3.1.0beta",
+            "3.1.0-rc1",
+            "3.1.0+build",
+            "3.10.0",
+            "3.0.2",
+            "2.2.2",
+            "4.0.0",
+        ],
+    )
     def test_rejects_non_31x(self, pattern, version):
         assert not pattern.match(version)
 
@@ -58,20 +71,14 @@ class TestV302VersionMatching:
     """The v3.0.2 normalizer must accept 3.0.2[+]."""
 
     def test_v302_supports_3_0_2(self):
-        src = _read(
-            "hub/apps/contracts/normalization/"
-            "odcs_normalizer_v3_0_2.py"
-        )
+        src = _read("hub/apps/contracts/normalization/odcs_normalizer_v3_0_2.py")
         # Must contain version check for 3.0.2
         assert '"3.0.2"' in src
 
     def test_v302_does_not_support_3_1_0(self):
-        src = _read(
-            "hub/apps/contracts/normalization/"
-            "odcs_normalizer_v3_0_2.py"
-        )
+        src = _read("hub/apps/contracts/normalization/odcs_normalizer_v3_0_2.py")
         idx = src.find("def _supports_version")
-        body = src[idx:idx + 300]
+        body = src[idx : idx + 300]
         assert '"3.1.0"' not in body
 
 
@@ -82,10 +89,17 @@ class TestGeneratorRegistryVersions:
     def src(self):
         return _read("hub/apps/contracts/odcs_generator.py")
 
-    @pytest.mark.parametrize("version", [
-        "3.1.0", "3.0.2", "3.0.1", "3.0.0",
-        "3.0.0-preview", "2.2.2",
-    ])
+    @pytest.mark.parametrize(
+        "version",
+        [
+            "3.1.0",
+            "3.0.2",
+            "3.0.1",
+            "3.0.0",
+            "3.0.0-preview",
+            "2.2.2",
+        ],
+    )
     def test_version_registered(self, src, version):
         assert f'register_odcs_generator("{version}"' in src
 
@@ -99,14 +113,11 @@ class TestNormalizerBaseVersionDetection:
 
     @pytest.fixture()
     def src(self):
-        return _read(
-            "hub/apps/contracts/normalization/"
-            "odcs_normalizer_base.py"
-        )
+        return _read("hub/apps/contracts/normalization/odcs_normalizer_base.py")
 
     def test_handles_odcs_io_prefix(self, src):
         idx = src.find("def _detect_odcs_version")
-        body = src[idx:idx + 600]
+        body = src[idx : idx + 600]
         assert "/v" in body
 
     def test_handles_short_v_prefix(self, src):
@@ -117,5 +128,5 @@ class TestNormalizerBaseVersionDetection:
 
     def test_falls_back_to_3_0_2(self, src):
         idx = src.find("def _detect_odcs_version")
-        body = src[idx:idx + 600]
+        body = src[idx : idx + 600]
         assert '"3.0.2"' in body

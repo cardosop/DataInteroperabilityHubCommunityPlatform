@@ -18,6 +18,7 @@ CI integration:
   is stale — the PR author must run this script locally (or via the CI
   artifact) and commit the regenerated file.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,6 +40,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 
 def _setup_django():
     import django
+
     django.setup()
 
 
@@ -46,15 +48,15 @@ def _generate_current_schema() -> dict:
     """Generate current OpenAPI schema via the same pipeline as ``contract_test_openapi.py``."""
     from django.contrib.auth.models import AnonymousUser
     from django.test import RequestFactory
-
     from drf_spectacular.generators import SchemaGenerator
+
     from hub.apps.api.openapi_enhancement import OpenAPISpecEnhancer
     from hub.apps.api.openapi_validation import OpenAPISpecValidator
 
     factory = RequestFactory()
     request = factory.get("/api/v1/")
     request.user = AnonymousUser()
-    setattr(request, "auth", None)
+    request.auth = None
 
     generator = SchemaGenerator(urlconf="hub.urls")
     schema = generator.get_schema(request=request, public=True)
@@ -122,6 +124,7 @@ def main() -> int:
 
         # Write to a temp file and compare SHA-256
         import tempfile
+
         with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
             _write_yaml(schema, Path(tmp.name))
             tmp_path = Path(tmp.name)

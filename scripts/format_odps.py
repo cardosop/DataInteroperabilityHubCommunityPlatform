@@ -12,14 +12,15 @@ Exit codes:
     0: All files are formatted correctly
     1: One or more files need formatting or have errors
 """
+
 import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Dict, Any, Optional
 
 try:
     import yaml
+
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
@@ -29,8 +30,8 @@ except ImportError:
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from hub.apps.contracts.odps_generator import format_odps_as_json, format_odps_as_yaml
 from hub.apps.contracts.odps_errors import ODPSExportError
+from hub.apps.contracts.odps_generator import format_odps_as_json, format_odps_as_yaml
 
 
 class ODPSFormatter:
@@ -43,7 +44,7 @@ class ODPSFormatter:
         self.formatted_count = 0
         self.error_count = 0
 
-    def format_file(self, file_path: Path, target_format: Optional[str] = None) -> bool:
+    def format_file(self, file_path: Path, target_format: str | None = None) -> bool:
         """
         Format a single ODPS file.
 
@@ -62,10 +63,10 @@ class ODPSFormatter:
         # Determine file format
         if target_format:
             file_format = target_format
-        elif file_path.suffix in ['.yaml', '.yml']:
-            file_format = 'yaml'
-        elif file_path.suffix == '.json':
-            file_format = 'json'
+        elif file_path.suffix in [".yaml", ".yml"]:
+            file_format = "yaml"
+        elif file_path.suffix == ".json":
+            file_format = "json"
         else:
             print(f"❌ {file_path}: Unknown file format")
             self.error_count += 1
@@ -73,15 +74,15 @@ class ODPSFormatter:
 
         try:
             # Load file
-            if file_format == 'yaml':
+            if file_format == "yaml":
                 if not YAML_AVAILABLE or yaml is None:
                     print(f"❌ {file_path}: PyYAML is not available")
                     self.error_count += 1
                     return False
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, encoding="utf-8") as f:
                     data = yaml.safe_load(f)
             else:  # json
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, encoding="utf-8") as f:
                     data = json.load(f)
 
             if not isinstance(data, dict):
@@ -90,27 +91,20 @@ class ODPSFormatter:
                 return False
 
             # Format using ODPS formatters
-            if file_format == 'yaml':
+            if file_format == "yaml":
                 formatted = format_odps_as_yaml(
-                    data,
-                    default_flow_style=False,
-                    allow_unicode=True,
-                    sort_keys=False
+                    data, default_flow_style=False, allow_unicode=True, sort_keys=False
                 )
             else:  # json
-                formatted = format_odps_as_json(
-                    data,
-                    indent=self.json_indent,
-                    ensure_ascii=False
-                )
+                formatted = format_odps_as_json(data, indent=self.json_indent, ensure_ascii=False)
 
             # Check if formatting changed
-            original_content = file_path.read_text(encoding='utf-8')
+            original_content = file_path.read_text(encoding="utf-8")
             needs_formatting = original_content.strip() != formatted.strip()
 
             if needs_formatting:
                 if self.in_place:
-                    file_path.write_text(formatted, encoding='utf-8')
+                    file_path.write_text(formatted, encoding="utf-8")
                     print(f"✅ {file_path}: Formatted")
                     self.formatted_count += 1
                     return True
@@ -155,9 +149,8 @@ class ODPSFormatter:
 
         all_valid = True
         for file_path in directory.glob(pattern):
-            if file_path.is_file():
-                if not self.format_file(file_path):
-                    all_valid = False
+            if file_path.is_file() and not self.format_file(file_path):
+                all_valid = False
 
         return all_valid
 
@@ -186,43 +179,28 @@ Examples:
 
   # Format with custom JSON indentation
   python scripts/format_odps.py --json-indent 4 --in-place file.json
-        """
+        """,
+    )
+    parser.add_argument("files", nargs="*", type=Path, help="ODPS files or directories to format")
+    parser.add_argument(
+        "--in-place", action="store_true", help="Format files in place (modify files)"
     )
     parser.add_argument(
-        'files',
-        nargs='*',
-        type=Path,
-        help='ODPS files or directories to format'
+        "--format",
+        choices=["json", "yaml"],
+        help="Target file format (auto-detected if not specified)",
     )
     parser.add_argument(
-        '--in-place',
-        action='store_true',
-        help='Format files in place (modify files)'
+        "--json-indent", type=int, default=2, help="JSON indentation level (default: 2)"
     )
     parser.add_argument(
-        '--format',
-        choices=['json', 'yaml'],
-        help='Target file format (auto-detected if not specified)'
-    )
-    parser.add_argument(
-        '--json-indent',
-        type=int,
-        default=2,
-        help='JSON indentation level (default: 2)'
-    )
-    parser.add_argument(
-        '--yaml-indent',
-        type=int,
-        default=2,
-        help='YAML indentation level (default: 2)'
+        "--yaml-indent", type=int, default=2, help="YAML indentation level (default: 2)"
     )
 
     args = parser.parse_args()
 
     formatter = ODPSFormatter(
-        in_place=args.in_place,
-        json_indent=args.json_indent,
-        yaml_indent=args.yaml_indent
+        in_place=args.in_place, json_indent=args.json_indent, yaml_indent=args.yaml_indent
     )
 
     if not args.files:
@@ -255,4 +233,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-

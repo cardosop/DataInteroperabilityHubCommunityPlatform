@@ -39,17 +39,16 @@ management commands invoked by Kubernetes CronJobs (no Celery beat,
 no rq-scheduler dependency). The Helm CronJob for THIS command
 lives at ``helm/templates/cronjob/purge-dq-runs.yaml``.
 """
+
 from __future__ import annotations
 
 import logging
 import os
 from datetime import timedelta
-from typing import List, Optional
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-
 
 logger = logging.getLogger(__name__)
 
@@ -93,10 +92,12 @@ def _emit_purged_audit(*, tenant, phase: str, count: int, dry_run: bool, batch: 
                 "batch": batch,
             },
         )
-    except Exception as exc:  # noqa: BLE001 — boundary
+    except Exception as exc:
         logger.warning(
             "purge_dq_runs_audit_emit_failed tenant_id=%s phase=%s error=%s",
-            tenant.id, phase, exc,
+            tenant.id,
+            phase,
+            exc,
         )
 
 
@@ -151,16 +152,19 @@ class Command(BaseCommand):
         # operator did not explicitly pass --no-dry-run, force dry-
         # run regardless of the CLI flag.
         env_dry_run = os.environ.get("DQ_PURGE_DRY_RUN", "").lower() in (
-            "1", "true", "yes",
+            "1",
+            "true",
+            "yes",
         )
         if env_dry_run and not no_dry_run:
             dry_run = True
-            self.stdout.write(self.style.WARNING(
-                "DQ_PURGE_DRY_RUN env-var set; forcing --dry-run "
-                "(pass --no-dry-run to override)."
-            ))
+            self.stdout.write(
+                self.style.WARNING(
+                    "DQ_PURGE_DRY_RUN env-var set; forcing --dry-run "
+                    "(pass --no-dry-run to override)."
+                )
+            )
 
-        from hub.apps.dq.models import DQRun
         from hub.apps.tenants.models import Tenant
 
         tenants_qs = Tenant.objects.all()
@@ -172,23 +176,33 @@ class Command(BaseCommand):
 
         for tenant in tenants_qs.iterator(chunk_size=50):
             soft_deleted_total += self._soft_delete_for_tenant(
-                tenant=tenant, batch_size=batch_size, dry_run=dry_run,
+                tenant=tenant,
+                batch_size=batch_size,
+                dry_run=dry_run,
             )
             hard_deleted_total += self._hard_delete_for_tenant(
-                tenant=tenant, batch_size=batch_size, dry_run=dry_run,
+                tenant=tenant,
+                batch_size=batch_size,
+                dry_run=dry_run,
             )
 
         action = "would soft-delete" if dry_run else "soft-deleted"
         action_h = "would hard-delete" if dry_run else "hard-deleted"
-        self.stdout.write(self.style.SUCCESS(
-            f"purge_dq_runs complete: {action} {soft_deleted_total} "
-            f"runs; {action_h} {hard_deleted_total} runs."
-        ))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"purge_dq_runs complete: {action} {soft_deleted_total} "
+                f"runs; {action_h} {hard_deleted_total} runs."
+            )
+        )
 
     # ---- soft-delete pass ------------------------------------------------
 
     def _soft_delete_for_tenant(
-        self, *, tenant, batch_size: int, dry_run: bool,
+        self,
+        *,
+        tenant,
+        batch_size: int,
+        dry_run: bool,
     ) -> int:
         from hub.apps.dq.models import DQRun
 
@@ -205,9 +219,7 @@ class Command(BaseCommand):
         total = 0
         batch_no = 0
         while True:
-            batch_ids: List[str] = list(
-                candidates.values_list("id", flat=True)[:batch_size]
-            )
+            batch_ids: list[str] = list(candidates.values_list("id", flat=True)[:batch_size])
             if not batch_ids:
                 break
             batch_no += 1
@@ -215,13 +227,17 @@ class Command(BaseCommand):
                 # Stamp deleted_at uniformly within the batch — easier
                 # to reason about than per-row clock skew.
                 DQRun.all_objects.filter(pk__in=batch_ids).update(
-                    is_deleted=True, deleted_at=timezone.now(),
+                    is_deleted=True,
+                    deleted_at=timezone.now(),
                 )
             count = len(batch_ids)
             total += count
             _emit_purged_audit(
-                tenant=tenant, phase="soft_delete",
-                count=count, dry_run=dry_run, batch=batch_no,
+                tenant=tenant,
+                phase="soft_delete",
+                count=count,
+                dry_run=dry_run,
+                batch=batch_no,
             )
             if dry_run:
                 # In dry-run mode the candidates queryset doesn't
@@ -233,7 +249,11 @@ class Command(BaseCommand):
     # ---- hard-delete pass + S3 cleanup -----------------------------------
 
     def _hard_delete_for_tenant(
-        self, *, tenant, batch_size: int, dry_run: bool,
+        self,
+        *,
+        tenant,
+        batch_size: int,
+        dry_run: bool,
     ) -> int:
         from hub.apps.dq.models import DQRun
 
@@ -250,9 +270,7 @@ class Command(BaseCommand):
         bucket, prefix = self._dq_s3_target()
 
         while True:
-            batch_rows = list(
-                candidates.values("id")[:batch_size]
-            )
+            batch_rows = list(candidates.values("id")[:batch_size])
             if not batch_rows:
                 break
             batch_no += 1
@@ -268,13 +286,15 @@ class Command(BaseCommand):
                         run_prefix = f"{prefix}{run_id}"
                         try:
                             s3_client.delete_prefix(
-                                run_prefix, bucket=bucket,
+                                run_prefix,
+                                bucket=bucket,
                             )
-                        except Exception as exc:  # noqa: BLE001
+                        except Exception as exc:
                             logger.warning(
-                                "purge_dq_runs_s3_cleanup_failed "
-                                "tenant_id=%s run_id=%s error=%s",
-                                tenant.id, run_id, exc,
+                                "purge_dq_runs_s3_cleanup_failed tenant_id=%s run_id=%s error=%s",
+                                tenant.id,
+                                run_id,
+                                exc,
                             )
                 # 2. DB delete.
                 DQRun.all_objects.filter(pk__in=batch_ids).delete()
@@ -282,8 +302,11 @@ class Command(BaseCommand):
             count = len(batch_ids)
             total += count
             _emit_purged_audit(
-                tenant=tenant, phase="hard_delete",
-                count=count, dry_run=dry_run, batch=batch_no,
+                tenant=tenant,
+                phase="hard_delete",
+                count=count,
+                dry_run=dry_run,
+                batch=batch_no,
             )
             if dry_run:
                 break
@@ -302,15 +325,17 @@ class Command(BaseCommand):
             from hub.apps.files.storage import S3StorageClient
 
             return S3StorageClient()
-        except Exception as exc:  # noqa: BLE001 — S3 init can fail
+        except Exception as exc:
             logger.warning(
-                "purge_dq_runs_s3_client_unavailable error=%s", exc,
+                "purge_dq_runs_s3_client_unavailable error=%s",
+                exc,
             )
             return None
 
     def _dq_s3_target(self) -> tuple:
-        bucket: Optional[str] = getattr(
-            settings, "DQ_S3_BUCKET",
+        bucket: str | None = getattr(
+            settings,
+            "DQ_S3_BUCKET",
             getattr(settings, "AWS_STORAGE_BUCKET_NAME", ""),
         )
         prefix: str = getattr(settings, "DQ_S3_PREFIX", "dq/") or "dq/"

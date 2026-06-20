@@ -3,9 +3,11 @@ Virtualization operations for DataHub SDK.
 
 Provides methods for managing virtual datasets, query executions, and topology.
 """
-from typing import Dict, Any, Optional
+
+from typing import Any, Dict, Optional
+
 from .client import DataHubClient
-from .errors import ValidationError, NotFoundError, ConflictError
+from .errors import ConflictError, NotFoundError, ValidationError
 
 
 class VirtualizationAPI:
@@ -164,11 +166,16 @@ class VirtualizationAPI:
         except Exception as e:
             # Handle specific error cases
             from .errors import DataHubError
+
             if isinstance(e, DataHubError):
                 if e.http_status == 400:
-                    raise ValidationError(str(e), getattr(e, 'request_id', None), getattr(e, 'details', None))
+                    raise ValidationError(
+                        str(e), getattr(e, "request_id", None), getattr(e, "details", None)
+                    )
                 elif e.http_status == 409:
-                    raise ConflictError(str(e), getattr(e, 'request_id', None), getattr(e, 'details', None))
+                    raise ConflictError(
+                        str(e), getattr(e, "request_id", None), getattr(e, "details", None)
+                    )
             raise
 
     async def list_datasets(
@@ -230,9 +237,11 @@ class VirtualizationAPI:
         except Exception as e:
             # Handle specific error cases
             from .errors import DataHubError
-            if isinstance(e, DataHubError):
-                if e.http_status == 400:
-                    raise ValidationError(str(e), getattr(e, 'request_id', None), getattr(e, 'details', None))
+
+            if isinstance(e, DataHubError) and e.http_status == 400:
+                raise ValidationError(
+                    str(e), getattr(e, "request_id", None), getattr(e, "details", None)
+                )
             raise
 
     async def get_dataset(self, dataset_id: str) -> Dict[str, Any]:
@@ -260,14 +269,17 @@ class VirtualizationAPI:
         except Exception as e:
             # Handle specific error cases
             from .errors import DataHubError
+
             if isinstance(e, DataHubError):
                 if e.http_status == 404:
                     raise NotFoundError(
                         f"Virtual dataset with ID '{dataset_id}' not found",
-                        getattr(e, 'request_id', None),
+                        getattr(e, "request_id", None),
                     )
                 elif e.http_status == 400:
-                    raise ValidationError(str(e), getattr(e, 'request_id', None), getattr(e, 'details', None))
+                    raise ValidationError(
+                        str(e), getattr(e, "request_id", None), getattr(e, "details", None)
+                    )
             raise
 
     async def update_dataset(
@@ -343,14 +355,17 @@ class VirtualizationAPI:
         except Exception as e:
             # Handle specific error cases
             from .errors import DataHubError
+
             if isinstance(e, DataHubError):
                 if e.http_status == 404:
                     raise NotFoundError(
                         f"Virtual dataset with ID '{dataset_id}' not found",
-                        getattr(e, 'request_id', None),
+                        getattr(e, "request_id", None),
                     )
                 elif e.http_status == 400:
-                    raise ValidationError(str(e), getattr(e, 'request_id', None), getattr(e, 'details', None))
+                    raise ValidationError(
+                        str(e), getattr(e, "request_id", None), getattr(e, "details", None)
+                    )
             raise
 
     async def delete_dataset(self, dataset_id: str) -> None:
@@ -375,14 +390,17 @@ class VirtualizationAPI:
         except Exception as e:
             # Handle specific error cases
             from .errors import DataHubError
+
             if isinstance(e, DataHubError):
                 if e.http_status == 404:
                     raise NotFoundError(
                         f"Virtual dataset with ID '{dataset_id}' not found",
-                        getattr(e, 'request_id', None),
+                        getattr(e, "request_id", None),
                     )
                 elif e.http_status == 400:
-                    raise ValidationError(str(e), getattr(e, 'request_id', None), getattr(e, 'details', None))
+                    raise ValidationError(
+                        str(e), getattr(e, "request_id", None), getattr(e, "details", None)
+                    )
             raise
 
     # Query Execution Methods
@@ -466,14 +484,17 @@ class VirtualizationAPI:
         except Exception as e:
             # Handle specific error cases
             from .errors import DataHubError
+
             if isinstance(e, DataHubError):
                 if e.http_status == 404:
                     raise NotFoundError(
                         f"Virtual dataset with ID '{dataset_id}' not found",
-                        getattr(e, 'request_id', None),
+                        getattr(e, "request_id", None),
                     )
                 elif e.http_status == 400:
-                    raise ValidationError(str(e), getattr(e, 'request_id', None), getattr(e, 'details', None))
+                    raise ValidationError(
+                        str(e), getattr(e, "request_id", None), getattr(e, "details", None)
+                    )
             raise
 
     async def list_query_executions(
@@ -509,9 +530,7 @@ class VirtualizationAPI:
         if status is not None:
             valid_statuses = ["PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"]
             if status.upper() not in valid_statuses:
-                raise ValidationError(
-                    f"status must be one of {valid_statuses}, got: {status}"
-                )
+                raise ValidationError(f"status must be one of {valid_statuses}, got: {status}")
 
         # Build query parameters
         params: Dict[str, Any] = {
@@ -531,9 +550,11 @@ class VirtualizationAPI:
         except Exception as e:
             # Handle specific error cases
             from .errors import DataHubError
-            if isinstance(e, DataHubError):
-                if e.http_status == 400:
-                    raise ValidationError(str(e), getattr(e, 'request_id', None), getattr(e, 'details', None))
+
+            if isinstance(e, DataHubError) and e.http_status == 400:
+                raise ValidationError(
+                    str(e), getattr(e, "request_id", None), getattr(e, "details", None)
+                )
             raise
 
     async def get_query_execution(self, execution_id: str) -> Dict[str, Any]:
@@ -577,14 +598,17 @@ class VirtualizationAPI:
         except Exception as e:
             # Handle specific error cases
             from .errors import DataHubError
+
             if isinstance(e, DataHubError):
                 if e.http_status == 404:
                     raise NotFoundError(
                         f"Query execution with ID '{execution_id}' not found",
-                        getattr(e, 'request_id', None),
+                        getattr(e, "request_id", None),
                     )
                 elif e.http_status == 400:
-                    raise ValidationError(str(e), getattr(e, 'request_id', None), getattr(e, 'details', None))
+                    raise ValidationError(
+                        str(e), getattr(e, "request_id", None), getattr(e, "details", None)
+                    )
             raise
 
     async def cancel_query_execution(self, execution_id: str) -> Dict[str, Any]:
@@ -618,15 +642,18 @@ class VirtualizationAPI:
         except Exception as e:
             # Handle specific error cases
             from .errors import DataHubError
+
             if isinstance(e, DataHubError):
                 if e.http_status == 404:
                     raise NotFoundError(
                         f"Query execution with ID '{execution_id}' not found",
-                        getattr(e, 'request_id', None),
+                        getattr(e, "request_id", None),
                     )
                 elif e.http_status == 400:
                     # Execution cannot be cancelled (already completed, failed, etc.)
-                    raise ValidationError(str(e), getattr(e, 'request_id', None), getattr(e, 'details', None))
+                    raise ValidationError(
+                        str(e), getattr(e, "request_id", None), getattr(e, "details", None)
+                    )
             raise
 
     async def get_query_result(
@@ -688,9 +715,7 @@ class VirtualizationAPI:
         valid_formats = ["json", "csv", "parquet"]
         format_lower = format.lower()
         if format_lower not in valid_formats:
-            raise ValidationError(
-                f"format must be one of {valid_formats}, got: {format}"
-            )
+            raise ValidationError(f"format must be one of {valid_formats}, got: {format}")
 
         # Validate pagination parameters
         # Either use page/page_size OR offset/limit, but not both
@@ -718,9 +743,7 @@ class VirtualizationAPI:
         # Validate offset/limit independently for the same reason as above.
         if offset is not None and (not isinstance(offset, int) or offset < 0):
             raise ValidationError("offset must be a non-negative integer")
-        if limit is not None and (
-            not isinstance(limit, int) or limit < 1 or limit > 1000
-        ):
+        if limit is not None and (not isinstance(limit, int) or limit < 1 or limit > 1000):
             raise ValidationError("limit must be between 1 and 1000")
 
         # Build query parameters
@@ -757,7 +780,9 @@ class VirtualizationAPI:
                     return {
                         "execution_id": execution_id,
                         "data": csv_text,
-                        "total_count": len(csv_text.split("\n")) - 1 if csv_text else 0,  # Approximate
+                        "total_count": len(csv_text.split("\n")) - 1
+                        if csv_text
+                        else 0,  # Approximate
                         "returned_count": len(csv_text.split("\n")) - 1 if csv_text else 0,
                         "format": "csv",
                         "content_type": "text/csv",
@@ -771,6 +796,7 @@ class VirtualizationAPI:
                 if "application/parquet" in content_type or "parquet" in content_type:
                     # Response is binary Parquet data
                     import base64
+
                     parquet_bytes = response.content
                     parquet_base64 = base64.b64encode(parquet_bytes).decode("utf-8")
                     return {
@@ -796,15 +822,18 @@ class VirtualizationAPI:
         except Exception as e:
             # Handle specific error cases
             from .errors import DataHubError
+
             if isinstance(e, DataHubError):
                 if e.http_status == 404:
                     raise NotFoundError(
                         f"Query execution with ID '{execution_id}' not found",
-                        getattr(e, 'request_id', None),
+                        getattr(e, "request_id", None),
                     )
                 elif e.http_status == 400:
                     # Execution not completed or other validation error
-                    raise ValidationError(str(e), getattr(e, 'request_id', None), getattr(e, 'details', None))
+                    raise ValidationError(
+                        str(e), getattr(e, "request_id", None), getattr(e, "details", None)
+                    )
             raise
 
     # Topology Methods
@@ -841,18 +870,21 @@ class VirtualizationAPI:
         except Exception as e:
             # Handle specific error cases
             from .errors import DataHubError, ServerError
+
             if isinstance(e, DataHubError):
                 if e.http_status == 400:
-                    raise ValidationError(str(e), getattr(e, 'request_id', None), getattr(e, 'details', None))
+                    raise ValidationError(
+                        str(e), getattr(e, "request_id", None), getattr(e, "details", None)
+                    )
                 elif e.http_status >= 500:
-                    error_code = getattr(e, 'code', None)
+                    error_code = getattr(e, "code", None)
                     if not isinstance(error_code, str):
-                        error_code = 'INTERNAL_ERROR'
+                        error_code = "INTERNAL_ERROR"
                     raise ServerError(
                         str(e),
                         code=error_code,
                         http_status=e.http_status,
-                        request_id=getattr(e, 'request_id', None)
+                        request_id=getattr(e, "request_id", None),
                     )
             raise
 
@@ -888,23 +920,25 @@ class VirtualizationAPI:
         except Exception as e:
             # Handle specific error cases
             from .errors import DataHubError, ServerError
+
             if isinstance(e, DataHubError):
                 if e.http_status == 404:
                     raise NotFoundError(
                         f"Virtual dataset with ID '{dataset_id}' not found",
-                        getattr(e, 'request_id', None),
+                        getattr(e, "request_id", None),
                     )
                 elif e.http_status == 400:
-                    raise ValidationError(str(e), getattr(e, 'request_id', None), getattr(e, 'details', None))
+                    raise ValidationError(
+                        str(e), getattr(e, "request_id", None), getattr(e, "details", None)
+                    )
                 elif e.http_status >= 500:
-                    error_code = getattr(e, 'code', None)
+                    error_code = getattr(e, "code", None)
                     if not isinstance(error_code, str):
-                        error_code = 'INTERNAL_ERROR'
+                        error_code = "INTERNAL_ERROR"
                     raise ServerError(
                         str(e),
                         code=error_code,
                         http_status=e.http_status,
-                        request_id=getattr(e, 'request_id', None)
+                        request_id=getattr(e, "request_id", None),
                     )
             raise
-

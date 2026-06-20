@@ -3,16 +3,18 @@ Unit tests for ODPS schema directory structure.
 
 Tests verify that the required directory structure exists for ODPS schema files.
 """
+
 try:
     import pytest
+
     pytestmark = pytest.mark.django_db
 except ImportError:
     # pytest not available, using Django test runner
     pytest = None
     pytestmark = None
 
-import os
 from pathlib import Path
+
 from django.test import TestCase
 
 
@@ -29,24 +31,16 @@ class ODPSSchemaDirectoryStructureTest(TestCase):
     def test_schemas_directory_exists(self):
         """Test that schemas directory exists"""
         self.assertTrue(
-            self.schemas_dir.exists(),
-            f"Schemas directory should exist at: {self.schemas_dir}"
+            self.schemas_dir.exists(), f"Schemas directory should exist at: {self.schemas_dir}"
         )
         self.assertTrue(
-            self.schemas_dir.is_dir(),
-            f"Schemas should be a directory: {self.schemas_dir}"
+            self.schemas_dir.is_dir(), f"Schemas should be a directory: {self.schemas_dir}"
         )
 
     def test_odps_directory_exists(self):
         """Test that ODPS directory exists"""
-        self.assertTrue(
-            self.odps_dir.exists(),
-            f"ODPS directory should exist at: {self.odps_dir}"
-        )
-        self.assertTrue(
-            self.odps_dir.is_dir(),
-            f"ODPS should be a directory: {self.odps_dir}"
-        )
+        self.assertTrue(self.odps_dir.exists(), f"ODPS directory should exist at: {self.odps_dir}")
+        self.assertTrue(self.odps_dir.is_dir(), f"ODPS should be a directory: {self.odps_dir}")
 
     def test_odps_version_directories_exist(self):
         """Test that all required ODPS version directories exist"""
@@ -57,11 +51,11 @@ class ODPSSchemaDirectoryStructureTest(TestCase):
             with self.subTest(version=version):
                 self.assertTrue(
                     version_dir.exists(),
-                    f"ODPS version directory '{version}' should exist at: {version_dir}"
+                    f"ODPS version directory '{version}' should exist at: {version_dir}",
                 )
                 self.assertTrue(
                     version_dir.is_dir(),
-                    f"ODPS version '{version}' should be a directory: {version_dir}"
+                    f"ODPS version '{version}' should be a directory: {version_dir}",
                 )
 
     def test_odps_version_directories_are_python_packages(self):
@@ -74,35 +68,31 @@ class ODPSSchemaDirectoryStructureTest(TestCase):
             with self.subTest(version=version):
                 self.assertTrue(
                     init_file.exists(),
-                    f"__init__.py should exist in '{version}' directory: {init_file}"
+                    f"__init__.py should exist in '{version}' directory: {init_file}",
                 )
                 self.assertTrue(
                     init_file.is_file(),
-                    f"__init__.py should be a file in '{version}' directory: {init_file}"
+                    f"__init__.py should be a file in '{version}' directory: {init_file}",
                 )
 
     def test_schemas_directory_is_python_package(self):
         """Test that schemas directory has __init__.py file"""
         init_file = self.schemas_dir / "__init__.py"
         self.assertTrue(
-            init_file.exists(),
-            f"__init__.py should exist in schemas directory: {init_file}"
+            init_file.exists(), f"__init__.py should exist in schemas directory: {init_file}"
         )
         self.assertTrue(
-            init_file.is_file(),
-            f"__init__.py should be a file in schemas directory: {init_file}"
+            init_file.is_file(), f"__init__.py should be a file in schemas directory: {init_file}"
         )
 
     def test_odps_directory_is_python_package(self):
         """Test that ODPS directory has __init__.py file"""
         init_file = self.odps_dir / "__init__.py"
         self.assertTrue(
-            init_file.exists(),
-            f"__init__.py should exist in ODPS directory: {init_file}"
+            init_file.exists(), f"__init__.py should exist in ODPS directory: {init_file}"
         )
         self.assertTrue(
-            init_file.is_file(),
-            f"__init__.py should be a file in ODPS directory: {init_file}"
+            init_file.is_file(), f"__init__.py should be a file in ODPS directory: {init_file}"
         )
 
     def test_directory_structure_completeness(self):
@@ -119,14 +109,8 @@ class ODPSSchemaDirectoryStructureTest(TestCase):
 
         for directory in expected_structure:
             with self.subTest(directory=directory):
-                self.assertTrue(
-                    directory.exists(),
-                    f"Directory should exist: {directory}"
-                )
-                self.assertTrue(
-                    directory.is_dir(),
-                    f"Path should be a directory: {directory}"
-                )
+                self.assertTrue(directory.exists(), f"Directory should exist: {directory}")
+                self.assertTrue(directory.is_dir(), f"Path should be a directory: {directory}")
 
     def test_no_unexpected_directories(self):
         """Test that only expected version directories exist"""
@@ -144,7 +128,7 @@ class ODPSSchemaDirectoryStructureTest(TestCase):
             self.assertEqual(
                 len(missing_versions),
                 0,
-                f"Missing required version directories: {missing_versions}"
+                f"Missing required version directories: {missing_versions}",
             )
 
             # Check that no unexpected version directories exist
@@ -158,7 +142,7 @@ class ODPSSchemaDirectoryStructureTest(TestCase):
                 len(unexpected_versions),
                 0,
                 f"Unexpected version directories found: {unexpected_versions}. "
-                f"Expected only: {required_versions}"
+                f"Expected only: {required_versions}",
             )
 
     def test_gitkeep_files_exist(self):
@@ -172,10 +156,9 @@ class ODPSSchemaDirectoryStructureTest(TestCase):
                 self.assertTrue(
                     gitkeep_file.exists(),
                     f".gitkeep file should exist in '{version}' directory: {gitkeep_file}. "
-                    f"This ensures the directory structure is preserved in git even if files are removed."
+                    f"This ensures the directory structure is preserved in git even if files are removed.",
                 )
                 self.assertTrue(
                     gitkeep_file.is_file(),
-                    f".gitkeep should be a file in '{version}' directory: {gitkeep_file}"
+                    f".gitkeep should be a file in '{version}' directory: {gitkeep_file}",
                 )
-

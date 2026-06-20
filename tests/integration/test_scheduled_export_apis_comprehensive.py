@@ -14,7 +14,6 @@ Coverage:
 - Plan limit enforcement
 - Worker API authentication
 """
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 import pytest
 
@@ -24,7 +23,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.assets.models import AssetStatus
 from hub.apps.scheduled_export.models import (
     DestinationType,
     ScheduledExport,
@@ -58,7 +57,6 @@ class ScheduledExportAPIsComprehensiveTest(TestCase):
         rollback instead which provides isolation without flushing.
         """
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -329,7 +327,8 @@ class ScheduledExportAPIsComprehensiveTest(TestCase):
         )
 
         # Should succeed (may return 503 if Prefect unavailable, or 404 if deployment not found)
-        self.assertIn(
+        self.assertIn(  # noqa: broad-status-codes
+
             response.status_code,
             [
                 status.HTTP_200_OK,
@@ -453,7 +452,7 @@ class ScheduledExportAPIsComprehensiveTest(TestCase):
         self.tenant1.plan = limited_plan
         self.tenant1.save()
 
-        subscription = Subscription.objects.create(
+        Subscription.objects.create(
             tenant=self.tenant1,
             plan=limited_plan,
             status=SubscriptionStatus.ACTIVE,

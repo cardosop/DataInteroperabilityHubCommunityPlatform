@@ -1,6 +1,7 @@
 """
 Core app configuration.
 """
+
 import sys
 
 from django.apps import AppConfig
@@ -22,23 +23,26 @@ def _should_run_startup_validation() -> bool:
 
 class CoreConfig(AppConfig):
     """Core app configuration."""
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'hub.apps.core'
-    verbose_name = 'Core'
+
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "hub.apps.core"
+    verbose_name = "Core"
 
     def ready(self) -> None:
         """Import subpackage models so Django discovers them, then run config validation."""
-        import hub.apps.core.bug_prevention.models  # noqa: F401
+        import hub.apps.core.bug_prevention.models
         import hub.apps.core.business_rules.chain_registry  # noqa: F401 — register all chains
 
         if not _should_run_startup_validation():
             return
         from django.conf import settings
+
         env = getattr(settings, "ENVIRONMENT", "development").strip().lower()
         if env != "production":
             return
         try:
             from hub.apps.core.config_validation import validate_all
+
             validate_all()
         except Exception:
             # Let it propagate so server fails to start
@@ -55,6 +59,7 @@ class CoreConfig(AppConfig):
             from hub.apps.core.cross_service_version_check import (
                 run_cross_service_version_check,
             )
+
             run_cross_service_version_check()
         except Exception:
             # Let it propagate so server fails to start.

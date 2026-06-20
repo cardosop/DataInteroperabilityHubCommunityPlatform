@@ -28,7 +28,7 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
-from hub.apps.governance.models import AccessRequest, AccessRequestStatus
+from hub.apps.governance.models import AccessPolicy, AccessRequest, AccessRequestStatus
 from hub.apps.governance.services import GovernanceService
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import Role, User, UserRole, UserStatus
@@ -43,7 +43,10 @@ class GovernanceServiceTest(TestCase):
         """Set up test data"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
@@ -87,6 +90,18 @@ class GovernanceServiceTest(TestCase):
             created_by=self.user,
         )
 
+        # Create an ALLOW policy so ABAC evaluation runs and emits
+        # audit events during approval/rejection.  Without this, the
+        # ABAC engine short-circuits (no policies → no audit events).
+        self.policy = AccessPolicy.objects.create(
+            tenant=self.tenant,
+            name="test-default-allow",
+            asset=self.asset,
+            enabled=True,
+            priority=0,
+            effect="ALLOW",
+        )
+
         # Create dataset
         self.dataset = Dataset.objects.create(
             tenant=self.tenant,
@@ -104,7 +119,9 @@ class GovernanceServiceTest(TestCase):
         """Test successful access request creation with asset"""
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F811
+            from hub.apps.orchestration.workflows.access_request import (
+                AccessRequestWorkflow,
+            )
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -126,7 +143,9 @@ class GovernanceServiceTest(TestCase):
         """Test successful access request creation with dataset"""
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F811
+            from hub.apps.orchestration.workflows.access_request import (
+                AccessRequestWorkflow,
+            )
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -145,7 +164,9 @@ class GovernanceServiceTest(TestCase):
         """Test successful access request creation with file"""
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F811
+            from hub.apps.orchestration.workflows.access_request import (
+                AccessRequestWorkflow,
+            )
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -185,7 +206,9 @@ class GovernanceServiceTest(TestCase):
         """Test creating access request with expiration date"""
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F811
+            from hub.apps.orchestration.workflows.access_request import (
+                AccessRequestWorkflow,
+            )
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -203,8 +226,11 @@ class GovernanceServiceTest(TestCase):
         self.assertIsNotNone(request.expires_at, "expires_at should be set on the access request")
         # Verify expires_at matches the requested value within a 1-second delta
         delta = abs(request.expires_at - requested_expires_at)
-        self.assertLess(delta, timezone.timedelta(seconds=5),
-                        f"expires_at {request.expires_at} should match requested {requested_expires_at}")
+        self.assertLess(
+            delta,
+            timezone.timedelta(seconds=5),
+            f"expires_at {request.expires_at} should match requested {requested_expires_at}",
+        )
 
     # ========== APPROVE ACCESS REQUEST TESTS ==========
 
@@ -231,13 +257,16 @@ class GovernanceServiceTest(TestCase):
         self.assertEqual(approved.approved_by_id, self.approver.id)
         self.assertIsNotNone(approved.approved_at)
 
-        # Verify audit event was created
+        # Verify the ABAC_DECISION_RECORDED audit event was emitted,
+        # since an ALLOW policy is configured in setUp.
+        from hub.apps.audit.event_types import ABAC_DECISION_RECORDED
+
         audit_events = AuditEvent.objects.filter(
             resource_type="ACCESS_REQUEST",
-            action="ACCESS_REQUEST_APPROVED",
+            action=ABAC_DECISION_RECORDED,
             resource_id=str(request.id),
         )
-        self.assertGreaterEqual(audit_events.count(), 0)
+        self.assertGreaterEqual(audit_events.count(), 1)
 
     def test_approve_access_request_validation_error_not_pending(self):
         """Test that approving non-pending access request raises ValidationError"""
@@ -294,13 +323,11 @@ class GovernanceServiceTest(TestCase):
         self.assertEqual(rejected.rejected_by_id, self.approver.id)
         self.assertIsNotNone(rejected.rejected_at)
 
-        # Verify audit event was created
-        audit_events = AuditEvent.objects.filter(
-            resource_type="ACCESS_REQUEST",
-            action="ACCESS_REQUEST_REJECTED",
-            resource_id=str(request.id),
-        )
-        self.assertGreaterEqual(audit_events.count(), 0)
+        # Verify the rejection was fully persisted: status, reason,
+        # rejected_by, and rejected_at are all correctly set.
+        # (Rejection doesn't run ABAC, so audit events aren't emitted
+        # for this path. The state checks above are the authoritative
+        # verification.)
 
     def test_reject_access_request_validation_error_not_pending(self):
         """Test that rejecting non-pending access request raises ValidationError"""
@@ -367,7 +394,10 @@ class GovernanceServiceTest(TestCase):
         # Create another tenant
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         request = AccessRequest.objects.create(
@@ -425,7 +455,10 @@ class GovernanceServiceTest(TestCase):
         # Create another tenant and request
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         AccessRequest.objects.create(
             tenant=other_tenant,
@@ -446,7 +479,9 @@ class GovernanceServiceTest(TestCase):
         """Test creating access requests with different access types"""
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F811
+            from hub.apps.orchestration.workflows.access_request import (
+                AccessRequestWorkflow,
+            )
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -461,10 +496,14 @@ class GovernanceServiceTest(TestCase):
                 requested_access_type=access_type,
             )
 
-            self.assertIsNotNone(request,
-                                f"Request should not be None for access_type={access_type}")
-            self.assertEqual(request.requested_access_type, access_type,
-                             f"requested_access_type should be {access_type}")
+            self.assertIsNotNone(
+                request, f"Request should not be None for access_type={access_type}"
+            )
+            self.assertEqual(
+                request.requested_access_type,
+                access_type,
+                f"requested_access_type should be {access_type}",
+            )
 
     def test_approve_access_request_with_comments(self):
         """Test approving access request with comments"""
@@ -501,5 +540,8 @@ class GovernanceServiceTest(TestCase):
                 reason="",  # Empty reason
             )
         # Verify the error code is correct
-        self.assertEqual(ctx.exception.code, "BUSINESS_RULES_VALIDATION",
-                         "Should raise BUSINESS_RULES_VALIDATION for missing reason")
+        self.assertEqual(
+            ctx.exception.code,
+            "BUSINESS_RULES_VALIDATION",
+            "Should raise BUSINESS_RULES_VALIDATION for missing reason",
+        )

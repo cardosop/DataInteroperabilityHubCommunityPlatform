@@ -1,10 +1,12 @@
 """
 Coverage metrics for ODCS normalization.
 """
+
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import Any
 
 from .models import OriginalSpecType
 
@@ -14,17 +16,17 @@ class SectionCoverage:
     """Coverage details for a HubContract section."""
 
     name: str
-    required_fields: Set[str]
-    optional_fields: Set[str]
-    present_required: Set[str] = field(default_factory=set)
-    present_optional: Set[str] = field(default_factory=set)
+    required_fields: set[str]
+    optional_fields: set[str]
+    present_required: set[str] = field(default_factory=set)
+    present_optional: set[str] = field(default_factory=set)
 
     @property
-    def missing_required(self) -> Set[str]:
+    def missing_required(self) -> set[str]:
         return self.required_fields - self.present_required
 
     @property
-    def missing_optional(self) -> Set[str]:
+    def missing_optional(self) -> set[str]:
         return self.optional_fields - self.present_optional
 
     @property
@@ -47,7 +49,7 @@ class SectionCoverage:
         optional_weight = 1.0 - required_weight
         return (self.required_score * required_weight) + (self.optional_score * optional_weight)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "required_fields": sorted(self.required_fields),
@@ -69,10 +71,10 @@ class CoverageResult:
     spec_type: str
     spec_version: str
     overall: float
-    sections: Dict[str, SectionCoverage]
-    unmapped_fields: List[str] = field(default_factory=list)
+    sections: dict[str, SectionCoverage]
+    unmapped_fields: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "spec_type": self.spec_type,
             "spec_version": self.spec_version,
@@ -83,10 +85,21 @@ class CoverageResult:
 
 
 # Definition of ODCS sections and expected fields
-ODCS_SECTION_SPEC: Dict[str, Dict[str, Iterable[str]]] = {
+ODCS_SECTION_SPEC: dict[str, dict[str, Iterable[str]]] = {
     "info": {
         "required": {"name"},
-        "optional": {"description", "version", "status", "domain", "tenant", "dataProduct", "links", "authoritativeDefinitions", "owners", "tags"},
+        "optional": {
+            "description",
+            "version",
+            "status",
+            "domain",
+            "tenant",
+            "dataProduct",
+            "links",
+            "authoritativeDefinitions",
+            "owners",
+            "tags",
+        },
     },
     "schema": {
         "required": {"fields"},
@@ -99,10 +112,19 @@ ODCS_SECTION_SPEC: Dict[str, Dict[str, Iterable[str]]] = {
     "terms": {"required": set(), "optional": {"usage", "limitations", "billing", "support", "sla"}},
     "privacy_compliance": {
         "required": set(),
-        "optional": {"contains_personal_data", "personal_data_categories", "jurisdictions", "legal_bases", "retention_policy"},
+        "optional": {
+            "contains_personal_data",
+            "personal_data_categories",
+            "jurisdictions",
+            "legal_bases",
+            "retention_policy",
+        },
     },
     "lifecycle": {"required": set(), "optional": {"data_source", "refresh_cadence", "slas"}},
-    "marketplace": {"required": set(), "optional": {"license_summary", "intended_use", "restricted_use"}},
+    "marketplace": {
+        "required": set(),
+        "optional": {"license_summary", "intended_use", "restricted_use"},
+    },
     "original_spec": {"required": {"type", "version"}, "optional": {"conforms_to"}},
     "servicelevels": {"required": set(), "optional": set()},
 }
@@ -124,17 +146,21 @@ def _field_is_present(section_data: Any, field_name: str) -> bool:
 
 
 def calculate_coverage(
-    hub_contract: Dict[str, Any],
+    hub_contract: dict[str, Any],
     spec_type: str = OriginalSpecType.ODCS,
-    spec_version: Optional[str] = None,
-    section_spec: Dict[str, Dict[str, Iterable[str]]] = ODCS_SECTION_SPEC,
+    spec_version: str | None = None,
+    section_spec: dict[str, dict[str, Iterable[str]]] = ODCS_SECTION_SPEC,
 ) -> CoverageResult:
     """
     Calculate coverage metrics for a HubContract.
     """
-    sections: Dict[str, SectionCoverage] = {}
+    sections: dict[str, SectionCoverage] = {}
     is_mapping = isinstance(hub_contract, dict)
-    spec_version = spec_version or (hub_contract.get("original_spec", {}).get("version") if is_mapping else None) or "unknown"
+    spec_version = (
+        spec_version
+        or (hub_contract.get("original_spec", {}).get("version") if is_mapping else None)
+        or "unknown"
+    )
 
     for section_name, spec in section_spec.items():
         section_data = hub_contract.get(section_name, {}) if isinstance(hub_contract, dict) else {}
@@ -152,10 +178,14 @@ def calculate_coverage(
         )
 
     # Overall score: average of section scores
-    overall = sum(section.score() for section in sections.values()) / len(sections) if sections else 0.0
+    overall = (
+        sum(section.score() for section in sections.values()) / len(sections) if sections else 0.0
+    )
 
     known_sections = set(section_spec.keys())
-    unmapped_fields = [field for field in hub_contract.keys() if field not in known_sections] if is_mapping else []
+    unmapped_fields = (
+        [field for field in hub_contract if field not in known_sections] if is_mapping else []
+    )
 
     return CoverageResult(
         spec_type=spec_type,

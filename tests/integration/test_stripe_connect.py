@@ -21,13 +21,10 @@ import requests
 @pytest.mark.integration
 @pytest.mark.stripe_connect
 class TestStripeConnectIntegration:
-
     @pytest.fixture(autouse=True)
     def auth_headers(self) -> dict | None:
         """Resolve auth token from env or from a local e2e login."""
-        token = os.environ.get("HUB_E2E_AUTH_TOKEN") or os.environ.get(
-            "HUB_API_TOKEN"
-        )
+        token = os.environ.get("HUB_E2E_AUTH_TOKEN") or os.environ.get("HUB_API_TOKEN")
         if not token:
             # Try the e2e login endpoint (dev/test only).
             try:
@@ -38,9 +35,7 @@ class TestStripeConnectIntegration:
                             "HUB_E2E_EMAIL",
                             "e2e-provider@meshant.com",
                         ),
-                        "password": os.environ.get(
-                            "HUB_E2E_PASSWORD", "e2e-test-password"
-                        ),
+                        "password": os.environ.get("HUB_E2E_PASSWORD", "e2e-test-password"),
                     },
                     timeout=10,
                 )
@@ -49,9 +44,7 @@ class TestStripeConnectIntegration:
             except Exception:
                 pass
         if not token:
-            pytest.skip(
-                "No HUB_E2E_AUTH_TOKEN / HUB_API_TOKEN set and login failed"
-            )
+            pytest.skip("No HUB_E2E_AUTH_TOKEN / HUB_API_TOKEN set and login failed")
         return {"Authorization": f"Bearer {token}"}
 
     def _api_base(self) -> str:
@@ -75,20 +68,19 @@ class TestStripeConnectIntegration:
     # ── 271.1.3 — onboarding link ─────────────────────────────
 
     def test_onboarding_link_returns_200_or_501(
-        self, auth_headers: dict,
+        self,
+        auth_headers: dict,
     ):
         """POST /billing/connect/onboarding-link/ returns 200 when
         Connect is enabled, or 501 when disabled (graceful)."""
         if not auth_headers:
-            pytest.skip("No auth headers available")
+            pytest.skip("No auth headers available")  # noqa: skip-in-body — runtime service dependency
         resp = requests.post(
             f"{self._api_base()}/billing/connect/onboarding-link/",
             headers=auth_headers,
             timeout=10,
         )
-        assert resp.status_code in (200, 501), (
-            f"Unexpected status {resp.status_code}: {resp.text}"
-        )
+        assert resp.status_code in (200, 501), f"Unexpected status {resp.status_code}: {resp.text}"
         if resp.status_code == 200:
             data = resp.json()
             assert "onboarding_url" in data
@@ -97,20 +89,19 @@ class TestStripeConnectIntegration:
     # ── 271.1.4 — connect status ──────────────────────────────
 
     def test_connect_status_returns_200_or_404(
-        self, auth_headers: dict,
+        self,
+        auth_headers: dict,
     ):
         """GET /billing/connect/status/ returns 200 for onboarded
         tenant or 404 when no ConnectAccount exists."""
         if not auth_headers:
-            pytest.skip("No auth headers available")
+            pytest.skip("No auth headers available")  # noqa: skip-in-body — runtime service dependency
         resp = requests.get(
             f"{self._api_base()}/billing/connect/status/",
             headers=auth_headers,
             timeout=10,
         )
-        assert resp.status_code in (200, 404), (
-            f"Unexpected status {resp.status_code}: {resp.text}"
-        )
+        assert resp.status_code in (200, 404), f"Unexpected status {resp.status_code}: {resp.text}"
         if resp.status_code == 200:
             data = resp.json()
             assert "stripe_account_id" in data
@@ -120,20 +111,19 @@ class TestStripeConnectIntegration:
     # ── 271.4.2 — payouts list ────────────────────────────────
 
     def test_payouts_list_returns_200_or_404(
-        self, auth_headers: dict,
+        self,
+        auth_headers: dict,
     ):
         """GET /billing/connect/payouts/ returns 200 for onboarded
         tenant or 404 when no ConnectAccount exists."""
         if not auth_headers:
-            pytest.skip("No auth headers available")
+            pytest.skip("No auth headers available")  # noqa: skip-in-body — runtime service dependency
         resp = requests.get(
             f"{self._api_base()}/billing/connect/payouts/",
             headers=auth_headers,
             timeout=10,
         )
-        assert resp.status_code in (200, 404), (
-            f"Unexpected status {resp.status_code}: {resp.text}"
-        )
+        assert resp.status_code in (200, 404), f"Unexpected status {resp.status_code}: {resp.text}"
         if resp.status_code == 200:
             data = resp.json()
             assert "results" in data
@@ -143,20 +133,19 @@ class TestStripeConnectIntegration:
     # ── 271.5.1 — KYB review queue ───────────────────────────
 
     def test_review_queue_403_for_non_admin(
-        self, auth_headers: dict,
+        self,
+        auth_headers: dict,
     ):
         """GET /admin/connect/review-queue/ returns 403 for non-admin."""
         if not auth_headers:
-            pytest.skip("No auth headers available")
+            pytest.skip("No auth headers available")  # noqa: skip-in-body — runtime service dependency
         resp = requests.get(
             f"{self._api_base()}/admin/connect/review-queue/",
             headers=auth_headers,
             timeout=10,
         )
         # 403 if non-admin; 200 if admin (CI uses admin token)
-        assert resp.status_code in (200, 403), (
-            f"Unexpected status {resp.status_code}: {resp.text}"
-        )
+        assert resp.status_code in (200, 403), f"Unexpected status {resp.status_code}: {resp.text}"
         if resp.status_code == 200:
             data = resp.json()
             assert "results" in data

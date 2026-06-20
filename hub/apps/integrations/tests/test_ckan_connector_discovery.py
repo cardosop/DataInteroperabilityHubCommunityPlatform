@@ -7,14 +7,20 @@ real CKAN instances. No mocks or stubs - all tests use actual CKAN API endpoints
 Uses centralized test utilities for consistent configuration.
 """
 
-import unittest
+import logging
 import time
+import unittest
+import uuid
+from datetime import datetime
 
+import httpx
 import pytest
 from django.test import TestCase
 
 from hub.apps.core.services.base import (
     ConnectionError as HubConnectionError,
+)
+from hub.apps.core.services.base import (
     NotFoundError,
 )
 from hub.apps.integrations.base import (
@@ -24,7 +30,6 @@ from hub.apps.integrations.base import (
 )
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
     create_test_connector,
-    get_test_ckan_url,  # Backward compatibility
     marketplace_available,
 )
 
@@ -37,9 +42,29 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
     Tests use real CKAN instances - no mocks or stubs.
     """
 
+    # Names/IDs of packages created on the CKAN instance during setUpClass
+    # so tearDownClass can clean them up.  Stored as a list of package names.
+    _seeded_package_names: list[str] = []
+    _seeded_tagged_package_name: str | None = None
+    _seeded_empty_package_name: str | None = None
+
     @classmethod
     def setUpClass(cls):
-        """Set up test class with real CKAN instance."""
+        """Set up test class with real CKAN instance.
+
+        Creates two test fixtures on the CKAN instance when write access
+        (API key) is available:
+
+        * A package with tags — so ``test_listing_tags_extraction`` has
+          guaranteed data to verify tag structure.
+        * A package with zero resources — so ``test_list_resources_empty_package``
+          can verify that the empty-resource path returns ``[]``.
+
+        Both are removed in ``tearDownClass``.  If the API key is unavailable
+        the fixtures are skipped and the dependent tests fall back to their
+        existing search-based approach (which may skip when the CKAN instance
+        has no matching data).
+        """
         # Check skip conditions BEFORE super().setUpClass() so that if we
         # raise SkipTest, no class-level atomics are opened and the PG
         # connection is not left in a stale transaction for the next class.
@@ -68,11 +93,138 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
                 listings = cls.connector.list_listings(limit=1)
                 if listings:
                     cls.test_package_id = listings[0].marketplace_id
-            except Exception:
-                pass
+            except (HubConnectionError, ValueError) as e:
+                # CKAN instance unreachable or returned malformed response —
+                # leave test_package_id as None so dependent tests will skip.
+                logger = logging.getLogger(__name__)
+                logger.debug(
+                    "Could not fetch initial listing for test fixture: %s", e
+                )
+
+            # --- Seed test data on the CKAN instance ---
+            cls._seed_ckan_test_fixtures()
         except Exception:
             cls._rollback_atomics(cls.cls_atomics)
             raise
+
+    @classmethod
+    def tearDownClass(cls):
+        """Clean up packages created on the CKAN instance during setUpClass."""
+        cls._remove_ckan_test_fixtures()
+        super().tearDownClass()
+
+    @classmethod
+    def _seed_ckan_test_fixtures(cls):
+        """Create tagged + empty packages on the CKAN instance for the
+        data-dependent tests, when the connector has a write-capable API key."""
+        cls._seeded_package_names = []
+        cls._seeded_tagged_package_name = None
+        cls._seeded_empty_package_name = None
+
+        api_key = getattr(cls.connector, "api_key", None)
+        if not api_key:
+            return  # read-only access — tests will use search-based fallback
+
+        headers = {"Authorization": api_key, "Content-Type": "application/json"}
+        base = cls.connector.base_url
+        suffix = uuid.uuid4().hex[:8]
+        logger = logging.getLogger(__name__)
+
+        # 1. Package with tags
+        tagged_name = f"hub-test-tagged-{suffix}"
+        try:
+            resp = httpx.post(
+                f"{base}/api/3/action/package_create",
+                json={
+                    "name": tagged_name,
+                    "title": f"Hub Test Tagged Package {suffix}",
+                    "owner_org": "meshant-test-org",
+                    "tags": [
+                        {"name": "hub-test-tag-alpha"},
+                        {"name": "hub-test-tag-beta"},
+                    ],
+                    "notes": "Auto-created by hub integration test — has tags.",
+                },
+                headers=headers,
+                timeout=30,
+            )
+            if resp.status_code == 200 and resp.json().get("success"):
+                cls._seeded_tagged_package_name = tagged_name
+                cls._seeded_package_names.append(tagged_name)
+                logger.debug("Seeded tagged CKAN package: %s", tagged_name)
+            else:
+                logger.debug(
+                    "Could not seed tagged CKAN package (%s): %s",
+                    resp.status_code,
+                    resp.text[:200],
+                )
+        except (httpx.HTTPError, OSError, ValueError) as e:
+            logger.debug("Could not seed tagged CKAN package: %s", e)
+
+        # 2. Empty package (no resources)
+        empty_name = f"hub-test-empty-{suffix}"
+        try:
+            resp = httpx.post(
+                f"{base}/api/3/action/package_create",
+                json={
+                    "name": empty_name,
+                    "title": f"Hub Test Empty Package {suffix}",
+                    "owner_org": "meshant-test-org",
+                    "notes": "Auto-created by hub integration test — zero resources.",
+                },
+                headers=headers,
+                timeout=30,
+            )
+            if resp.status_code == 200 and resp.json().get("success"):
+                cls._seeded_empty_package_name = empty_name
+                cls._seeded_package_names.append(empty_name)
+                logger.debug("Seeded empty CKAN package: %s", empty_name)
+            else:
+                logger.debug(
+                    "Could not seed empty CKAN package (%s): %s",
+                    resp.status_code,
+                    resp.text[:200],
+                )
+        except (httpx.HTTPError, OSError, ValueError) as e:
+            logger.debug("Could not seed empty CKAN package: %s", e)
+
+    @classmethod
+    def _remove_ckan_test_fixtures(cls):
+        """Delete the packages created by ``_seed_ckan_test_fixtures``."""
+        if not cls._seeded_package_names:
+            return
+
+        api_key = getattr(cls.connector, "api_key", None)
+        if not api_key:
+            return
+
+        headers = {"Authorization": api_key, "Content-Type": "application/json"}
+        base = cls.connector.base_url
+        logger = logging.getLogger(__name__)
+
+        for pkg_name in cls._seeded_package_names:
+            try:
+                resp = httpx.post(
+                    f"{base}/api/3/action/package_delete",
+                    json={"id": pkg_name},
+                    headers=headers,
+                    timeout=30,
+                )
+                if resp.status_code == 200 and resp.json().get("success"):
+                    logger.debug("Removed seeded CKAN package: %s", pkg_name)
+                else:
+                    logger.debug(
+                        "Could not remove seeded CKAN package %s (%s): %s",
+                        pkg_name,
+                        resp.status_code,
+                        resp.text[:200],
+                    )
+            except (httpx.HTTPError, OSError, ValueError) as e:
+                logger.debug("Could not remove seeded CKAN package %s: %s", pkg_name, e)
+
+        cls._seeded_package_names = []
+        cls._seeded_tagged_package_name = None
+        cls._seeded_empty_package_name = None
 
     def setUp(self):
         """Set up test fixtures."""
@@ -154,10 +306,16 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
                     self.assertEqual(listing.category, org_listing.category)
 
     def test_list_listings_empty_result(self):
-        """Test listing retrieval with filter that returns no results."""
-        # Use a very specific filter that likely won't match anything
+        """Test listing retrieval with filter that returns no results.
+
+        Uses ``fq=name:`` (filter query on the exact package-name field)
+        rather than the full-text ``q`` parameter.  CKAN / Solr does
+        partial matching on ``q`` which can produce false-positive hits
+        on unrelated packages as the instance grows.
+        """
+        ghost_term = f"zzz-no-match-{uuid.uuid4().hex}"
         listings = self.connector.list_listings(
-            filters={"q": "nonexistent_package_xyz_12345"}, limit=10
+            filters={"fq": f"name:{ghost_term}"}, limit=10
         )
 
         self.assertIsInstance(listings, list)
@@ -220,19 +378,36 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
             self.connector.list_resources("nonexistent-package-id-xyz-12345")
 
     def test_list_resources_empty_package(self):
-        """Test listing resources for a package with no resources."""
-        # Find a package without resources (may not always be possible)
+        """Test that a package with no resources returns an empty list.
+
+        Uses the empty package created in ``setUpClass`` when write access is
+        available; otherwise searches the CKAN instance for a suitable package."""
+        empty_name = type(self)._seeded_empty_package_name
+        if empty_name is not None:
+            # Use the fixture we created in setUpClass — guaranteed empty.
+            resources = self.connector.list_resources(empty_name)
+            self.assertEqual(resources, [], "Seeded empty package should return empty list")
+            return
+
+        # Fallback: search the CKAN instance for an empty package.
         all_listings = self.connector.list_listings(limit=20)
 
+        empty_package_found = False
         for listing in all_listings:
             try:
                 resources = self.connector.list_resources(listing.marketplace_id)
-                # If we find a package with no resources, verify it returns empty list
                 if len(resources) == 0:
-                    self.assertEqual(resources, [])
+                    empty_package_found = True
+                    self.assertEqual(resources, [], "Empty package should return empty list")
                     break
-            except Exception:
-                continue
+            except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
+                continue  # Transient CKAN errors — skip this listing
+
+        if not empty_package_found:
+            self.skipTest(
+                "No empty packages found in CKAN instance — "
+                "cannot verify empty-package resource behavior"
+            )
 
     def test_list_resources_mapping(self):
         """Test that resources are properly mapped from CKAN format."""
@@ -247,7 +422,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
             self.assertIsNotNone(resource.resource_id)
             self.assertIsNotNone(resource.name)
             self.assertIsNotNone(resource.resource_type)
-            self.assertIn(resource.resource_type, ["FILE", "API"])
+            self.assertIn(resource.resource_type, ["FILE", "API", "DATABASE"])
 
             # Verify metadata contains CKAN resource data
             self.assertIn("ckan_resource", resource.metadata)
@@ -274,41 +449,101 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         self.assertIn("title", ckan_package)
 
     def test_listing_tags_extraction(self):
-        """Test that tags are properly extracted from CKAN packages."""
+        """Test that tags are properly extracted from CKAN packages.
+
+        Uses the tagged package created in ``setUpClass`` when write access is
+        available; otherwise searches the CKAN instance for a suitable package."""
+        tagged_name = type(self)._seeded_tagged_package_name
+        if tagged_name is not None:
+            # Use the fixture we created in setUpClass — guaranteed to have tags.
+            listing = self.connector.get_listing(tagged_name)
+            self.assertIsInstance(listing, MarketplaceListing)
+            self.assertIsInstance(
+                listing.tags, list,
+                f"Tags should be a list, got {type(listing.tags)}"
+            )
+            self.assertGreater(len(listing.tags), 0,
+                "Seeded tagged package should have at least one tag")
+            for tag in listing.tags:
+                self.assertIsInstance(
+                    tag, str,
+                    f"Each tag should be a string, got {type(tag)}: {tag!r}"
+                )
+            return
+
+        # Fallback: search the CKAN instance for a listing with tags.
         all_listings = self.connector.list_listings(limit=20)
 
-        # Find a listing with tags
+        # Find a listing with tags and verify tag structure
+        tag_found = False
         for listing in all_listings:
             if listing.tags:
-                self.assertIsInstance(listing.tags, list)
+                tag_found = True
+                self.assertIsInstance(
+                    listing.tags, list,
+                    f"Tags should be a list, got {type(listing.tags)}"
+                )
                 for tag in listing.tags:
-                    self.assertIsInstance(tag, str)
+                    self.assertIsInstance(
+                        tag, str,
+                        f"Each tag should be a string, got {type(tag)}: {tag!r}"
+                    )
                 break
 
+        if not tag_found:
+            self.skipTest(
+                "No listings with tags found in CKAN instance — "
+                "cannot verify tag extraction structure"
+            )
+
     def test_listing_timestamps(self):
-        """Test that timestamps are properly parsed from CKAN packages."""
+        """Test that timestamps are properly parsed from CKAN packages.
+
+        Timestamps come from ``metadata_created`` / ``metadata_modified``
+        in the CKAN package (source: ckan_connector.py lines 497-506).
+        They should be timezone-aware datetime objects.
+        """
         if not self.test_package_id:
             self.skipTest("No test package available")
 
         listing = self.connector.get_listing(self.test_package_id)
 
-        # Timestamps may or may not be present
-        if listing.created_at:
-            self.assertIsInstance(listing.created_at, type(listing.created_at))
-        if listing.updated_at:
-            self.assertIsInstance(listing.updated_at, type(listing.updated_at))
+        if listing.created_at is not None:
+            self.assertIsInstance(
+                listing.created_at, datetime,
+                f"created_at should be a datetime, got {type(listing.created_at)}"
+            )
+        if listing.updated_at is not None:
+            self.assertIsInstance(
+                listing.updated_at, datetime,
+                f"updated_at should be a datetime, got {type(listing.updated_at)}"
+            )
 
     def test_listing_url_generation(self):
-        """Test that listing URLs are properly generated."""
+        """Test that listing URLs are properly generated.
+
+        Source ckan_connector.py line 508-511 constructs urls from
+        base_url + dataset/{package_id}, so URL should always be non-None.
+        """
         if not self.test_package_id:
             self.skipTest("No test package available")
 
         listing = self.connector.get_listing(self.test_package_id)
 
-        if listing.url:
-            self.assertIsInstance(listing.url, str)
-            self.assertTrue(listing.url.startswith("http"))
-            self.assertIn(listing.marketplace_id, listing.url)
+        self.assertIsNotNone(
+            listing.url,
+            f"Listing URL should not be None for package {self.test_package_id}"
+        )
+        assert listing.url is not None  # type narrow for type checker
+        self.assertIsInstance(listing.url, str)
+        self.assertTrue(
+            listing.url.startswith("http"),
+            f"URL should start with http, got: {listing.url!r}"
+        )
+        self.assertIn(
+            listing.marketplace_id, listing.url,
+            f"URL should contain marketplace_id '{listing.marketplace_id}', got: {listing.url!r}"
+        )
 
     def test_pagination_consistency(self):
         """Test that pagination returns consistent results."""
@@ -316,7 +551,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         page1 = self.connector.list_listings(limit=5, offset=0)
 
         # Small delay to ensure consistency
-        time.sleep(0.5)  # INTENTIONAL: test-specific timing requirement
+        time.sleep(0.5)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
 
         # Get first page again
         page1_again = self.connector.list_listings(limit=5, offset=0)
@@ -329,35 +564,60 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
             self.assertEqual(ids1, ids1_again)
 
     def test_error_handling_invalid_limit(self):
-        """Test error handling for invalid limit values."""
-        # Negative limit should be handled gracefully
+        """Test connector behavior with negative limit.
+
+        The CKANConnector passes negative limit through to CKAN as rows=-1
+        (_list_listings_via_search, line 389: ``limit or 100``).
+        Different CKAN versions handle this differently — some reject with
+        an HTTP error, others treat as 0 and return empty results.
+        The connector should handle either outcome without crashing.
+        """
+        handled = False
         try:
             listings = self.connector.list_listings(limit=-1)
-            # Some CKAN instances may accept negative and treat as 0 or default
             self.assertIsInstance(listings, list)
-        except (ValueError, HubConnectionError):
-            # Expected if validation is strict
-            pass
+            if len(listings) > 0:
+                for lst in listings[:5]:
+                    self.assertIsInstance(lst, MarketplaceListing)
+            handled = True
+        except HubConnectionError:
+            handled = True
+        except Exception as e:
+            self.fail(
+                f"Unexpected exception for negative limit: "
+                f"{type(e).__name__}: {e}"
+            )
+        self.assertTrue(handled, "Should get result or HubConnectionError")
 
     def test_error_handling_invalid_offset(self):
-        """Test error handling for invalid offset values."""
-        # Negative offset should be handled gracefully
+        """Test connector behavior with negative offset.
+
+        Same rationale as test_error_handling_invalid_limit — negative
+        offset is passed through to CKAN, behavior varies by CKAN version.
+        """
+        handled = False
         try:
             listings = self.connector.list_listings(offset=-1)
-            # Some CKAN instances may accept negative and treat as 0
             self.assertIsInstance(listings, list)
-        except (ValueError, HubConnectionError):
-            # Expected if validation is strict
-            pass
+            if len(listings) > 0:
+                for lst in listings[:5]:
+                    self.assertIsInstance(lst, MarketplaceListing)
+            handled = True
+        except HubConnectionError:
+            handled = True
+        except Exception as e:
+            self.fail(
+                f"Unexpected exception for negative offset: "
+                f"{type(e).__name__}: {e}"
+            )
+        self.assertTrue(handled, "Should get result or HubConnectionError")
 
     def test_connection_resilience(self):
         """Test that connector handles connection issues gracefully."""
         # Create connector with invalid URL
         from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 
-        invalid_connector = CKANConnector(
-            base_url="https://invalid-ckan-instance-xyz-12345.com"
-        )
+        invalid_connector = CKANConnector(base_url="https://invalid-ckan-instance-xyz-12345.com")
 
         with self.assertRaises(HubConnectionError):
             invalid_connector.list_listings(limit=1)
@@ -394,24 +654,24 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         self.assertIsNotNone(detailed_listing.metadata)
 
     def test_get_listing_with_empty_id(self):
-        """Test get_listing() error handling with empty ID"""
-        with self.assertRaises((ValueError, NotFoundError)):
+        """get_listing('') raises ValueError (source line 454)."""
+        with self.assertRaises(ValueError):
             self.connector.get_listing("")
 
     def test_get_listing_with_none_id(self):
-        """Test get_listing() error handling with None ID"""
-        with self.assertRaises((ValueError, TypeError, NotFoundError)):
-            self.connector.get_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
+        """get_listing(None) raises ValueError (source line 452)."""
+        with self.assertRaises(ValueError):
+            self.connector.get_listing(None)  # type: ignore[arg-type]
 
     def test_list_resources_with_empty_id(self):
-        """Test list_resources() error handling with empty ID"""
-        with self.assertRaises((ValueError, NotFoundError)):
+        """list_resources('') raises ValueError (via get_listing validation)."""
+        with self.assertRaises(ValueError):
             self.connector.list_resources("")
 
     def test_list_resources_with_none_id(self):
-        """Test list_resources() error handling with None ID"""
-        with self.assertRaises((ValueError, TypeError, NotFoundError)):
-            self.connector.list_resources(None)  # type: ignore[arg-type]  # test: edge-case type exercise
+        """list_resources(None) raises ValueError (via get_listing validation)."""
+        with self.assertRaises(ValueError):
+            self.connector.list_resources(None)  # type: ignore[arg-type]
 
     def test_list_listings_with_zero_limit(self):
         """Test list_listings() edge case with zero limit"""

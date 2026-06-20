@@ -3,13 +3,13 @@ Unit tests for DatasetsBusinessRules.
 
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
+
 import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
 
 from hub.apps.assets.tests.factories import AssetFactory
-from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.core.business_rules.registry import get_registry
 from hub.apps.datasets.business_rules import DatasetsBusinessRules, DatasetsRuleExecutionContext
 from hub.apps.datasets.models import Dataset
@@ -309,7 +309,10 @@ class DatasetsBusinessRulesValidationTest(DatasetsTestBase):
     def test_validate_structure_invalid_version(self):
         """Test structure validation with invalid version"""
         dataset = DatasetFactory.create_dataset(
-            tenant=self.tenant, file=self.file, format="CSV", version=0  # Invalid version
+            tenant=self.tenant,
+            file=self.file,
+            format="CSV",
+            version=0,  # Invalid version
         )
 
         result = self.rules._validate_dataset_structure(dataset)
@@ -488,7 +491,10 @@ class DatasetsBusinessRulesValidationTest(DatasetsTestBase):
     def test_validate_version_invalid(self):
         """Test version validation with invalid version"""
         dataset = DatasetFactory.create_dataset(
-            tenant=self.tenant, file=self.file, format="CSV", version=0  # Invalid
+            tenant=self.tenant,
+            file=self.file,
+            format="CSV",
+            version=0,  # Invalid
         )
 
         result = self.rules._validate_dataset_version(dataset)
@@ -540,7 +546,7 @@ class DatasetsBusinessRulesSchemaValidationTest(DatasetsTestBase):
                 {"name": "value", "type": "integer", "nullable": True},
             ]
         }
-        dataset = DatasetFactory.create_dataset(
+        DatasetFactory.create_dataset(
             tenant=self.tenant, file=self.file, format="CSV", version=1, schema_json=schema
         )
 
@@ -1118,7 +1124,7 @@ class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
 
     def test_validate_version_creation_duplicate_version(self):
         """Test version creation validation with duplicate version number"""
-        existing = DatasetFactory.create_dataset(
+        DatasetFactory.create_dataset(
             tenant=self.tenant,
             file=self.file,
             asset=self.asset,
@@ -1145,7 +1151,7 @@ class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
 
     def test_validate_version_creation_duplicate_semantic_version(self):
         """Test version creation validation with duplicate semantic version"""
-        existing = DatasetFactory.create_dataset(
+        DatasetFactory.create_dataset(
             tenant=self.tenant,
             file=self.file,
             asset=self.asset,
@@ -1174,7 +1180,7 @@ class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
 
     def test_validate_version_creation_version_increment(self):
         """Test version creation validation with invalid version increment"""
-        existing = DatasetFactory.create_dataset(
+        DatasetFactory.create_dataset(
             tenant=self.tenant,
             file=self.file,
             asset=self.asset,
@@ -1248,7 +1254,7 @@ class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
         )
 
         # Create child version
-        child = DatasetFactory.create_dataset(
+        DatasetFactory.create_dataset(
             tenant=self.tenant,
             file=self.file,
             asset=self.asset,
@@ -1357,8 +1363,9 @@ class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
         )
 
         result = self.rules.validate(dataset, validation_type="structure")
-        self.assertIsNotNone(result,
-            "validate on a persisted dataset must return a ValidationResult")
+        self.assertIsNotNone(
+            result, "validate on a persisted dataset must return a ValidationResult"
+        )
 
     def test_validate_error_handling_invalid_dataset(self):
         """Test error handling with invalid dataset"""
@@ -1368,15 +1375,15 @@ class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
 
         # Non-persisted Dataset must return a result with errors (not crash)
         result = self.rules.validate(fake_dataset, validation_type="structure")
-        self.assertIsNotNone(result,
-            "Validate on non-persisted dataset must return a ValidationResult")
+        self.assertIsNotNone(
+            result, "Validate on non-persisted dataset must return a ValidationResult"
+        )
 
     def test_validate_error_handling_none_dataset(self):
         """Test error handling with None dataset"""
         # Validate(None) must return a result without crashing
         result = self.rules.validate(None, validation_type="structure")
-        self.assertIsNotNone(result,
-            "validate(None) must return a ValidationResult (with errors)")
+        self.assertIsNotNone(result, "validate(None) must return a ValidationResult (with errors)")
 
     def test_validate_structure_with_persisted_dataset(self):
         """Test that structure validation handles persisted datasets without raising."""
@@ -1385,8 +1392,9 @@ class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
         )
 
         result = self.rules.validate(dataset=dataset, validation_type="structure")
-        self.assertIsNotNone(result,
-            "validate_structure on a persisted dataset must return a ValidationResult")
+        self.assertIsNotNone(
+            result, "validate_structure on a persisted dataset must return a ValidationResult"
+        )
 
     def test_validate_schema_with_persisted_dataset(self):
         """Test that schema validation handles persisted datasets without raising."""
@@ -1395,5 +1403,6 @@ class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
         )
 
         result = self.rules.validate_dataset_schema(dataset)
-        self.assertIsNotNone(result,
-            "validate_dataset_schema on a persisted dataset must return a ValidationResult")
+        self.assertIsNotNone(
+            result, "validate_dataset_schema on a persisted dataset must return a ValidationResult"
+        )

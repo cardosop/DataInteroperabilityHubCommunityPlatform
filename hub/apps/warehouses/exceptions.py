@@ -1,9 +1,11 @@
 """Typed exceptions for warehouse operations (Phase 275)."""
+
 from __future__ import annotations
 
 
 class WarehouseError(Exception):
     """Base exception for all warehouse errors."""
+
     default_message = "A warehouse error occurred."
 
     def __init__(self, message=None, code=None, details=None):

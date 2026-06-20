@@ -27,7 +27,6 @@ from hub.apps.orchestration.models import (
     WorkflowStatus,
     WorkflowStep,
 )
-from hub.apps.orchestration.state_machine import WorkflowStateMachine
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
 
@@ -38,15 +37,19 @@ class WorkflowStatusTransitionValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
         # Create workflow definition
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{uuid.uuid4().hex[:8]}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -59,7 +62,7 @@ class WorkflowStatusTransitionValidationTest(TestCase):
         """Test status transition validation for valid DRAFT workflow"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.DRAFT,
@@ -77,7 +80,7 @@ class WorkflowStatusTransitionValidationTest(TestCase):
         """Test status transition validation for DRAFT workflow with started_at set"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.DRAFT,
@@ -95,7 +98,7 @@ class WorkflowStatusTransitionValidationTest(TestCase):
         """Test status transition validation for valid RUNNING workflow"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.RUNNING,
@@ -114,7 +117,7 @@ class WorkflowStatusTransitionValidationTest(TestCase):
         """Test status transition validation for RUNNING workflow without started_at"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.RUNNING,
@@ -134,7 +137,7 @@ class WorkflowStatusTransitionValidationTest(TestCase):
 
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.COMPLETED,
@@ -155,7 +158,7 @@ class WorkflowStatusTransitionValidationTest(TestCase):
         """Test status transition validation for COMPLETED workflow without timestamps"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.COMPLETED,
@@ -180,7 +183,7 @@ class WorkflowStatusTransitionValidationTest(TestCase):
 
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.FAILED,
@@ -201,7 +204,7 @@ class WorkflowStatusTransitionValidationTest(TestCase):
         """Test status transition validation for invalid transition"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.DRAFT,
@@ -221,7 +224,7 @@ class WorkflowStatusTransitionValidationTest(TestCase):
         """Test status transition validation for valid transition"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.DRAFT,
@@ -243,15 +246,19 @@ class WorkflowStepExecutionValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
         # Create workflow definition
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{uuid.uuid4().hex[:8]}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -266,7 +273,7 @@ class WorkflowStepExecutionValidationTest(TestCase):
 
         self.workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.RUNNING,
@@ -293,7 +300,7 @@ class WorkflowStepExecutionValidationTest(TestCase):
     def test_validate_step_execution_prerequisites_met(self):
         """Test step execution validation when prerequisites are met"""
         # Create and complete first step
-        step1 = WorkflowStep.objects.create(
+        WorkflowStep.objects.create(
             workflow_instance=self.workflow,
             step_index=0,
             step_name="step1",
@@ -320,7 +327,7 @@ class WorkflowStepExecutionValidationTest(TestCase):
     def test_validate_step_execution_prerequisites_not_met(self):
         """Test step execution validation when prerequisites are not met"""
         # Create first step but don't complete it
-        step1 = WorkflowStep.objects.create(
+        WorkflowStep.objects.create(
             workflow_instance=self.workflow,
             step_index=0,
             step_name="step1",
@@ -433,15 +440,19 @@ class WorkflowCompensationValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
         # Create workflow definition with compensation
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{uuid.uuid4().hex[:8]}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -461,7 +472,7 @@ class WorkflowCompensationValidationTest(TestCase):
 
         self.workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.ROLLING_BACK,
@@ -555,7 +566,7 @@ class WorkflowCompensationValidationTest(TestCase):
     def test_validate_compensation_compensated_steps_order(self):
         """Test compensation validation for compensated steps order"""
         # Create steps in reverse order (as they would be compensated)
-        step2 = WorkflowStep.objects.create(
+        WorkflowStep.objects.create(
             workflow_instance=self.workflow,
             step_index=1,
             step_name="step2",
@@ -564,7 +575,7 @@ class WorkflowCompensationValidationTest(TestCase):
             compensation_data={"status": "compensated"},
         )
 
-        step1 = WorkflowStep.objects.create(
+        WorkflowStep.objects.create(
             workflow_instance=self.workflow,
             step_index=0,
             step_name="step1",
@@ -588,14 +599,18 @@ class WorkflowRetryValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{uuid.uuid4().hex[:8]}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -608,7 +623,7 @@ class WorkflowRetryValidationTest(TestCase):
         """Test retry validation for valid workflow"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.FAILED,
@@ -630,7 +645,7 @@ class WorkflowRetryValidationTest(TestCase):
         """Test retry validation with negative retry_count"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.FAILED,
@@ -649,7 +664,7 @@ class WorkflowRetryValidationTest(TestCase):
         """Test retry validation when retry_count exceeds max_retries"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.FAILED,
@@ -668,7 +683,7 @@ class WorkflowRetryValidationTest(TestCase):
         """Test retry validation for workflow that can retry"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.FAILED,
@@ -687,7 +702,7 @@ class WorkflowRetryValidationTest(TestCase):
         """Test retry validation for workflow that cannot retry (max exceeded)"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.FAILED,
@@ -706,7 +721,7 @@ class WorkflowRetryValidationTest(TestCase):
         """Test retry validation for non-FAILED workflow"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.COMPLETED,
@@ -728,14 +743,18 @@ class WorkflowComprehensiveValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{uuid.uuid4().hex[:8]}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -751,7 +770,7 @@ class WorkflowComprehensiveValidationTest(TestCase):
 
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.COMPLETED,
@@ -774,7 +793,7 @@ class WorkflowComprehensiveValidationTest(TestCase):
         """Test comprehensive validation for invalid workflow"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.COMPLETED,
@@ -790,7 +809,10 @@ class WorkflowComprehensiveValidationTest(TestCase):
         # Comprehensive validation should catch multiple issues (missing timestamps, invalid retry)
         error_text = " ".join(e.lower() for e in result.errors)
         self.assertTrue(
-            "retry" in error_text or "started_at" in error_text or "timestamp" in error_text or "non-negative" in error_text,
+            "retry" in error_text
+            or "started_at" in error_text
+            or "timestamp" in error_text
+            or "non-negative" in error_text,
             f"Errors should mention specific validation failures, got: {result.errors}",
         )
 
@@ -798,7 +820,7 @@ class WorkflowComprehensiveValidationTest(TestCase):
         """Test comprehensive validation with step"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.RUNNING,
@@ -826,13 +848,17 @@ class WorkflowExecutionValidatorFailureTest(TestCase):
 
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{uuid.uuid4().hex[:8]}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -845,7 +871,7 @@ class WorkflowExecutionValidatorFailureTest(TestCase):
         """Test status transition validation with invalid transition"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.COMPLETED,
@@ -864,7 +890,7 @@ class WorkflowExecutionValidatorFailureTest(TestCase):
         """Test step execution validation with missing step"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.RUNNING,
@@ -873,7 +899,9 @@ class WorkflowExecutionValidatorFailureTest(TestCase):
         )
 
         # Validate with None step (should handle gracefully)
-        result = WorkflowExecutionValidator.validate_step_execution(None, workflow_instance=workflow)
+        result = WorkflowExecutionValidator.validate_step_execution(
+            None, workflow_instance=workflow
+        )
 
         # Should return an invalid result when step is None
         self.assertIsNotNone(result)
@@ -885,13 +913,17 @@ class WorkflowExecutionValidatorEdgeCasesTest(TestCase):
 
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{uuid.uuid4().hex[:8]}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -904,7 +936,7 @@ class WorkflowExecutionValidatorEdgeCasesTest(TestCase):
         """Test status transition validation with edge case timestamps"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.RUNNING,
@@ -916,13 +948,16 @@ class WorkflowExecutionValidatorEdgeCasesTest(TestCase):
 
         # Should handle old timestamps gracefully and still validate as valid RUNNING workflow
         self.assertIsNotNone(result)
-        self.assertTrue(result.is_valid, f"Old timestamps should not invalidate a RUNNING workflow: {result.errors}")
+        self.assertTrue(
+            result.is_valid,
+            f"Old timestamps should not invalidate a RUNNING workflow: {result.errors}",
+        )
 
     def test_validate_all_with_empty_workflow(self):
         """Test comprehensive validation with minimal workflow"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.DRAFT,
@@ -941,13 +976,17 @@ class WorkflowExecutionValidatorErrorHandlingTest(TestCase):
 
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{uuid.uuid4().hex[:8]}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -960,7 +999,7 @@ class WorkflowExecutionValidatorErrorHandlingTest(TestCase):
         """Test status transition validation with corrupted workflow data"""
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.DRAFT,
@@ -975,7 +1014,9 @@ class WorkflowExecutionValidatorErrorHandlingTest(TestCase):
             result = WorkflowExecutionValidator.validate_status_transition(workflow)
             # If it doesn't raise, must return invalid result
             self.assertIsNotNone(result)
-            self.assertFalse(result.is_valid, "Corrupted status should produce an invalid validation result")
+            self.assertFalse(
+                result.is_valid, "Corrupted status should produce an invalid validation result"
+            )
         except (ValueError, AttributeError):
             # Raising on invalid status is also acceptable behavior
             pass
@@ -993,7 +1034,7 @@ class WorkflowExecutionValidatorErrorHandlingTest(TestCase):
 
         workflow = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_def.name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.DRAFT,

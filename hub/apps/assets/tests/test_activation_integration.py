@@ -2,6 +2,8 @@
 Integration tests for asset activation flow.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -19,14 +21,12 @@ from hub.apps.contracts.models import (
     ValidationStatus,
 )
 from hub.apps.datasets.models import Dataset
-from hub.apps.dq.models import DQRun, DQRunStatus
 from hub.apps.files.models import File, FileStatus
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
-import uuid
+from hub.apps.users.models import UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -37,17 +37,15 @@ class AssetActivationIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        # Recover from any aborted transaction left by a previous test
-        from django.db import connection
-        if connection.needs_rollback:
-            connection.rollback()
-
         self.client = APIClient()
 
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         # Active subscription required so TenantSuspensionMiddleware allows writes.
         ensure_tenant_has_active_subscription(self.tenant)
@@ -78,7 +76,7 @@ class AssetActivationIntegrationTest(TestCase):
         asset = Asset.objects.get(id=asset_id)
 
         # Step 2: Create and attach contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -102,7 +100,7 @@ class AssetActivationIntegrationTest(TestCase):
             created_by=self.user,
         )
 
-        dataset = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant, asset=asset, file=file_obj, format="CSV", created_by=self.user
         )
 
@@ -130,7 +128,7 @@ class AssetActivationIntegrationTest(TestCase):
         asset_id = create_response.data["id"]
         asset = Asset.objects.get(id=asset_id)
 
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -179,7 +177,7 @@ class AssetActivationIntegrationTest(TestCase):
         asset_id = create_response.data["id"]
         asset = Asset.objects.get(id=asset_id)
 
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -361,7 +359,7 @@ class AssetActivationIntegrationTest(TestCase):
         asset = Asset.objects.get(id=asset_id)
 
         # Step 2: Create and attach contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -436,7 +434,7 @@ class AssetActivationIntegrationTest(TestCase):
         # Create asset
         asset = Asset.objects.create(
             tenant=self.tenant,
-            key="test-asset",
+            key=f"warn-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             dq_status=DQStatus.WARN,
             compliance_status=ComplianceStatus.WARN,
@@ -444,7 +442,7 @@ class AssetActivationIntegrationTest(TestCase):
         )
 
         # Create valid contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -468,7 +466,7 @@ class AssetActivationIntegrationTest(TestCase):
             created_by=self.user,
         )
 
-        dataset = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant, asset=asset, file=file_obj, format="CSV", created_by=self.user
         )
 
@@ -494,7 +492,7 @@ class AssetActivationIntegrationTest(TestCase):
         asset = Asset.objects.get(id=asset_id)
 
         # Create contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -512,7 +510,9 @@ class AssetActivationIntegrationTest(TestCase):
 
         # Try to activate with old version
         activate_response = self.client.post(
-            f"/api/v1/assets/{asset_id}/activate/", {"version": 1}, format="json"  # Old version
+            f"/api/v1/assets/{asset_id}/activate/",
+            {"version": 1},
+            format="json",  # Old version
         )
 
         # Version mismatch should return 409 Conflict
@@ -527,7 +527,9 @@ class AssetActivationIntegrationTest(TestCase):
         """
         # Create asset
         create_response = self.client.post(
-            "/api/v1/assets/", {"key": f"partial-asset-{uuid.uuid4().hex[:8]}", "name": "Partial Asset"}, format="json"
+            "/api/v1/assets/",
+            {"key": f"partial-asset-{uuid.uuid4().hex[:8]}", "name": "Partial Asset"},
+            format="json",
         )
         asset_id = create_response.data["id"]
         asset = Asset.objects.get(id=asset_id)

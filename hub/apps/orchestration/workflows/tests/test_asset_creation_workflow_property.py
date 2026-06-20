@@ -77,15 +77,16 @@ operations have variable latency that would trip Hypothesis's default
 deadline. Database state is rolled back per-example via
 ``transaction=True``.
 """
+
 from __future__ import annotations
 
 import uuid
-from typing import Iterator
 from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
-from hypothesis import HealthCheck, assume, given, settings, strategies as st
+from hypothesis import HealthCheck, assume, given, settings
+from hypothesis import strategies as st
 
 from hub.apps.assets.models import Asset
 from hub.apps.files.models import File, FileStatus
@@ -93,7 +94,6 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -106,24 +106,24 @@ User = get_user_model()
 # Canonical v2 DSL step ordering (Phase 250.1.A re-sequence — 18 steps).
 # Indices must match the DSL registered by AssetCreationWorkflow.
 WORKFLOW_STEP_NAMES: tuple[str, ...] = (
-    "infer_schema",                     # 0
-    "generate_odcs_from_schema",        # 1
-    "validate_generated_odcs",          # 2
-    "normalize_generated_odcs",         # 3
-    "create_odcs_contract_from_schema", # 4
-    "compliance_check_inmemory",        # 5  (gate-step)
-    "dq_check_inmemory",                # 6  (gate-step)
-    "create_asset_record",              # 7  (persist-step)
-    "attach_contract",                  # 8
-    "create_dataset_from_file",         # 9
-    "attach_dataset",                   # 10
+    "infer_schema",  # 0
+    "generate_odcs_from_schema",  # 1
+    "validate_generated_odcs",  # 2
+    "normalize_generated_odcs",  # 3
+    "create_odcs_contract_from_schema",  # 4
+    "compliance_check_inmemory",  # 5  (gate-step)
+    "dq_check_inmemory",  # 6  (gate-step)
+    "create_asset_record",  # 7  (persist-step)
+    "attach_contract",  # 8
+    "create_dataset_from_file",  # 9
+    "attach_dataset",  # 10
     "compare_schema_against_contract",  # 11
-    "validate_contract",                # 12
-    "link_odps",                        # 13
-    "activate_asset",                   # 14
-    "index_for_search",                 # 15
-    "send_notifications",               # 16
-    "audit_logging",                    # 17
+    "validate_contract",  # 12
+    "link_odps",  # 13
+    "activate_asset",  # 14
+    "index_for_search",  # 15
+    "send_notifications",  # 16
+    "audit_logging",  # 17
 )
 
 GATE_STEP_INDICES: frozenset[int] = frozenset({5, 6})
@@ -153,7 +153,7 @@ class StepInjectedFailure(RuntimeError):
 # ---------------------------------------------------------------------------
 
 
-def _seed_tenant_and_file() -> tuple[Tenant, "User", File]:
+def _seed_tenant_and_file() -> tuple[Tenant, User, File]:
     uid = uuid.uuid4().hex[:8]
     tenant = Tenant.objects.create(
         name=f"Tenant {uid}",
@@ -184,7 +184,7 @@ def _seed_tenant_and_file() -> tuple[Tenant, "User", File]:
 
 def _execute_workflow_with_injected_failure(
     tenant: Tenant,
-    user: "User",
+    user: User,
     file_obj: File,
     failing_step_index: int,
 ) -> tuple[Exception | None, list[str]]:
@@ -205,7 +205,7 @@ def _execute_workflow_with_injected_failure(
         AssetCreationWorkflow,
     )
 
-    failing_step_name = WORKFLOW_STEP_NAMES[failing_step_index]
+    WORKFLOW_STEP_NAMES[failing_step_index]
     compensation_log: list[str] = []
 
     # The workflow may expose a `step_failure_injector` mechanism; if not,
@@ -274,7 +274,7 @@ def _execute_workflow_with_injected_failure(
         # execute(), capture it. (The engine normally catches it
         # internally, so this path is a safety net.)
         raised = exc
-    except Exception as exc:  # noqa: BLE001 — boundary
+    except Exception as exc:
         raised = exc
     finally:
         for p in boundary_patches:
@@ -364,15 +364,13 @@ def test_inv2_post_persist_failure_count_does_not_inflate(
 
     tenant, user, file_obj = _seed_tenant_and_file()
     before = Asset.objects.filter(tenant=tenant).count()
-    _execute_workflow_with_injected_failure(
-        tenant, user, file_obj, failing_step_index
-    )
+    _execute_workflow_with_injected_failure(tenant, user, file_obj, failing_step_index)
     after = Asset.objects.filter(tenant=tenant).count()
 
     assert after <= before + 1, (
         f"INV-2 violated: post-persist failure at step "
         f"{WORKFLOW_STEP_NAMES[failing_step_index]} (index {failing_step_index}) "
-        f"caused Asset count to inflate {before} → {after}; expected ≤ {before+1}. "
+        f"caused Asset count to inflate {before} → {after}; expected ≤ {before + 1}. "
         f"Either compensation is broken (created duplicates) or the "
         f"primary asset_create step is non-idempotent."
     )
@@ -397,29 +395,20 @@ def test_inv3_compensation_runs_in_reverse_order(failing_step_index: int):
     # (nothing to compensate before step 0).
     if failing_step_index == 0:
         assert comp_log == [], (
-            f"INV-3: failure at step 0 should leave compensation log empty; "
-            f"got {comp_log}."
+            f"INV-3: failure at step 0 should leave compensation log empty; got {comp_log}."
         )
         return
 
     # Compensation log should contain step names for indices 0..k-1.
-    expected_in_reverse = list(
-        reversed(WORKFLOW_STEP_NAMES[:failing_step_index])
-    )
+    expected_in_reverse = list(reversed(WORKFLOW_STEP_NAMES[:failing_step_index]))
 
     # Implementation freedom: the workflow MAY skip steps that didn't
     # actually run (e.g. early-exit from a conditional). The relaxed
     # invariant: every step that DID run MUST appear in comp_log AND
     # appear AFTER all its successor compensations (i.e. compensation
     # log is a sub-sequence of the reversed step ordering).
-    indices_in_log = [
-        WORKFLOW_STEP_NAMES.index(s) for s in comp_log
-        if s in WORKFLOW_STEP_NAMES
-    ]
-    assert all(
-        indices_in_log[i] > indices_in_log[i + 1]
-        for i in range(len(indices_in_log) - 1)
-    ), (
+    indices_in_log = [WORKFLOW_STEP_NAMES.index(s) for s in comp_log if s in WORKFLOW_STEP_NAMES]
+    assert all(indices_in_log[i] > indices_in_log[i + 1] for i in range(len(indices_in_log) - 1)), (
         f"INV-3 violated: compensation log indices {indices_in_log} are not "
         f"strictly decreasing for failure at step {failing_step_index}. "
         f"Compensation MUST run in reverse step order. "
@@ -473,10 +462,7 @@ def test_inv4_audit_records_failure_step_name(failing_step_index: int):
     )
     # At least one event MUST mention the failing step name in
     # details_json (the audit-event content's source-of-truth).
-    any_match = any(
-        failing_step_name in str(e.details_json or {})
-        for e in failure_events
-    )
+    any_match = any(failing_step_name in str(e.details_json or {}) for e in failure_events)
     assert any_match, (
         f"INV-4 violated: failure at step {failing_step_name!r} "
         f"emitted {failure_events.count()} audit event(s) but none "
@@ -500,13 +486,10 @@ def test_inv5_no_orphan_rows_after_compensation(failing_step_index: int):
     K but compensation in step K-1 doesn't know about it.
     """
     from hub.apps.assets.models import Asset
-    from hub.apps.contracts.models import Contract
     from hub.apps.datasets.models import Dataset
 
     tenant, user, file_obj = _seed_tenant_and_file()
-    _execute_workflow_with_injected_failure(
-        tenant, user, file_obj, failing_step_index
-    )
+    _execute_workflow_with_injected_failure(tenant, user, file_obj, failing_step_index)
 
     # An orphan dataset is one whose related Asset was rolled back
     # OR which has no Asset at all in this tenant context.

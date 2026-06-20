@@ -7,17 +7,17 @@ All tests use real EventPublisher and EventBus (no mocks/stubs).
 
 from django.contrib.auth import get_user_model
 from django.test import override_settings
-from django.utils import timezone
 
 from hub.apps.contracts.models import Contract, NormalizationStatus, OriginalSpecType
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import UserStatus
 
 User = get_user_model()
+import uuid
+
 from hub.apps.contracts.normalization_service import NormalizationService
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.core.events.models import Event
-import uuid
 
 
 @override_settings(
@@ -34,6 +34,7 @@ class NormalizationServiceEventPublishingIntegrationTest(ContractsTestBase):
 
         # Reset event bus singleton so override_settings takes effect
         import hub.apps.core.events.bus as _bus_mod
+
         _bus_mod._event_bus = None
 
         # Create a test contract for normalization
@@ -75,11 +76,11 @@ class NormalizationServiceEventPublishingIntegrationTest(ContractsTestBase):
         # Normalize contract
         (
             hub_contract,
-            detected_spec_type,
-            detected_spec_version,
+            _detected_spec_type,
+            _detected_spec_version,
             norm_status,
-            norm_errors,
-            norm_warnings,
+            _norm_errors,
+            _norm_warnings,
         ) = self.service.normalize_contract(
             raw_contract=raw_contract,
             format="json",
@@ -164,11 +165,11 @@ class NormalizationServiceEventPublishingIntegrationTest(ContractsTestBase):
         # Normalize contract without contract_id
         (
             hub_contract,
-            detected_spec_type,
-            detected_spec_version,
+            _detected_spec_type,
+            _detected_spec_version,
             norm_status,
-            norm_errors,
-            norm_warnings,
+            _norm_errors,
+            _norm_warnings,
         ) = self.service.normalize_contract(
             raw_contract=raw_contract,
             format="json",
@@ -257,19 +258,18 @@ class NormalizationServiceEventPublishingIntegrationTest(ContractsTestBase):
             "version": "1.0.0"
         }"""
 
-        # Count events before normalization
-        started_count_before = Event.objects.filter(event_type="normalization.started").count()
+        # Count failed events before normalization
         failed_count_before = Event.objects.filter(event_type="normalization.failed").count()
 
         # Normalize contract (may fail schema validation)
         try:
             (
-                hub_contract,
-                detected_spec_type,
-                detected_spec_version,
+                _hub_contract,
+                _detected_spec_type,
+                _detected_spec_version,
                 norm_status,
-                norm_errors,
-                norm_warnings,
+                _norm_errors,
+                _norm_warnings,
             ) = self.service.normalize_contract(
                 raw_contract=raw_contract,
                 format="json",
@@ -320,11 +320,11 @@ class NormalizationServiceEventPublishingIntegrationTest(ContractsTestBase):
 
         # Normalize contract
         (
-            hub_contract,
-            detected_spec_type,
-            detected_spec_version,
-            norm_status,
-            norm_errors,
+            _hub_contract,
+            _detected_spec_type,
+            _detected_spec_version,
+            _norm_status,
+            _norm_errors,
             norm_warnings,
         ) = self.service.normalize_contract(
             raw_contract=raw_contract,
@@ -375,12 +375,12 @@ class NormalizationServiceEventPublishingIntegrationTest(ContractsTestBase):
 
         # Normalize contract without explicitly passing tenant_id/user_id
         (
-            hub_contract,
-            detected_spec_type,
-            detected_spec_version,
-            norm_status,
-            norm_errors,
-            norm_warnings,
+            _hub_contract,
+            _detected_spec_type,
+            _detected_spec_version,
+            _norm_status,
+            _norm_errors,
+            _norm_warnings,
         ) = self.service.normalize_contract(
             raw_contract=raw_contract, format="json", contract_id=str(self.contract.id)
         )
@@ -430,12 +430,12 @@ class NormalizationServiceEventPublishingIntegrationTest(ContractsTestBase):
 
         # Normalize contract with overridden tenant_id and user_id
         (
-            hub_contract,
-            detected_spec_type,
-            detected_spec_version,
-            norm_status,
-            norm_errors,
-            norm_warnings,
+            _hub_contract,
+            _detected_spec_type,
+            _detected_spec_version,
+            _norm_status,
+            _norm_errors,
+            _norm_warnings,
         ) = self.service.normalize_contract(
             raw_contract=raw_contract,
             format="json",
@@ -483,11 +483,11 @@ class NormalizationServiceEventPublishingIntegrationTest(ContractsTestBase):
         # Normalization should still succeed even if event publishing fails
         (
             hub_contract,
-            detected_spec_type,
-            detected_spec_version,
+            _detected_spec_type,
+            _detected_spec_version,
             norm_status,
-            norm_errors,
-            norm_warnings,
+            _norm_errors,
+            _norm_warnings,
         ) = service.normalize_contract(
             raw_contract=raw_contract,
             format="json",

@@ -65,19 +65,13 @@ def test_page_beyond_last_returns_empty(creds):
     """Requesting a page beyond the last must return empty results, not 500."""
     resp = api_get("/assets/", creds, params={"page": 99999, "page_size": 10})
     # 200 with empty results or 404 — both acceptable
-    assert resp.status_code in (200, 404), (
-        f"Page 99999 returned {resp.status_code}"
-    )
+    assert resp.status_code in (200, 404), f"Page 99999 returned {resp.status_code}"
     if resp.status_code == 200:
         data = resp.json()
-        assert len(data.get("results", [])) == 0, (
-            "Page 99999 returned non-empty results"
-        )
+        assert len(data.get("results", [])) == 0, "Page 99999 returned non-empty results"
 
 
 def test_negative_page_returns_error(creds):
     """page=-1 must return 400, not 500."""
     resp = api_get("/assets/", creds, params={"page": -1})
-    assert resp.status_code < 500, (
-        f"Negative page caused server error: {resp.status_code}"
-    )
+    assert resp.status_code < 500, f"Negative page caused server error: {resp.status_code}"

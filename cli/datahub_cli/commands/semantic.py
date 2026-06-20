@@ -6,7 +6,6 @@ and SHACL validation.
 """
 
 import json
-from typing import Optional
 
 import click
 
@@ -16,7 +15,6 @@ from ..api_client import api_client
 @click.group()
 def semantic():
     """Semantic layer, SPARQL, and ontology commands"""
-    pass
 
 
 # ── SPARQL ───────────────────────────────────────────────
@@ -25,16 +23,17 @@ def semantic():
 @semantic.group("sparql")
 def sparql():
     """SPARQL query commands"""
-    pass
 
 
 @sparql.command("query")
 @click.option(
-    "--query", "query_str",
+    "--query",
+    "query_str",
     help="SPARQL query string",
 )
 @click.option(
-    "--file", "query_file",
+    "--file",
+    "query_file",
     type=click.Path(exists=True),
     help="File containing SPARQL query",
 )
@@ -44,24 +43,23 @@ def sparql():
     help="Accept header for results format",
 )
 @click.option(
-    "--format", "output_format",
+    "--format",
+    "output_format",
     type=click.Choice(["json", "table"]),
     default="table",
 )
 def sparql_query(
-    query_str: Optional[str],
-    query_file: Optional[str],
+    query_str: str | None,
+    query_file: str | None,
     accept: str,
     output_format: str,
 ):
     """Execute a SPARQL query"""
     if not query_str and not query_file:
-        raise click.ClickException(
-            "Provide --query or --file"
-        )
+        raise click.ClickException("Provide --query or --file")
 
     if query_file:
-        with open(query_file, "r") as f:
+        with open(query_file) as f:
             query_str = f.read()
 
     try:
@@ -89,19 +87,12 @@ def sparql_query(
             click.echo(header)
             click.echo("-" * len(header))
             for row in bindings:
-                vals = [
-                    str(row.get(c, {}).get("value", ""))[:28]
-                    for c in cols
-                ]
-                click.echo(
-                    "  ".join(f"{v:<30}" for v in vals)
-                )
+                vals = [str(row.get(c, {}).get("value", ""))[:28] for c in cols]
+                click.echo("  ".join(f"{v:<30}" for v in vals))
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(
-            f"SPARQL query failed: {e}"
-        )
+        raise click.ClickException(f"SPARQL query failed: {e}")
 
 
 @sparql.command("service-description")
@@ -115,9 +106,7 @@ def service_description():
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(
-            f"Failed to get service description: {e}"
-        )
+        raise click.ClickException(f"Failed to get service description: {e}")
 
 
 # ── Bulk RDF export (Phase 230.2.12 / REQ-SEM-EXPORT-001) ────
@@ -125,18 +114,21 @@ def service_description():
 
 @semantic.command("export")
 @click.option(
-    "--format", "fmt",
+    "--format",
+    "fmt",
     type=click.Choice(["n-triples", "turtle", "rdf-xml", "ld+json"]),
     default="n-triples",
     show_default=True,
     help="RDF serialization format.",
 )
 @click.option(
-    "--output", "-o", "output_path",
+    "--output",
+    "-o",
+    "output_path",
     type=click.Path(dir_okay=False, writable=True),
     help="Write the body to this file (default: stdout).",
 )
-def export_rdf(fmt: str, output_path: Optional[str]):
+def export_rdf(fmt: str, output_path: str | None):
     """Bulk-export the tenant's full semantic graph.
 
     Calls ``POST /api/v1/semantic/export`` on the configured Hub
@@ -148,7 +140,9 @@ def export_rdf(fmt: str, output_path: Optional[str]):
         # Use the streaming request path so very large bodies don't
         # buffer in memory before reaching the file handle.
         response = api_client.request(
-            "POST", "semantic/export", json_data={"format": fmt},
+            "POST",
+            "semantic/export",
+            json_data={"format": fmt},
         )
         if response.status_code == 200:
             body = response.content
@@ -163,6 +157,7 @@ def export_rdf(fmt: str, output_path: Optional[str]):
                 # stdout — write bytes directly so binary formats
                 # (xml) round-trip cleanly.
                 import sys
+
                 sys.stdout.buffer.write(body)
         elif response.status_code == 413:
             try:
@@ -180,8 +175,7 @@ def export_rdf(fmt: str, output_path: Optional[str]):
             )
         else:
             raise click.ClickException(
-                f"Export failed: HTTP {response.status_code} "
-                f"{response.text[:500]}"
+                f"Export failed: HTTP {response.status_code} {response.text[:500]}"
             )
     except click.ClickException:
         raise
@@ -201,9 +195,7 @@ def ontology():
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(
-            f"Failed to get ontology: {e}"
-        )
+        raise click.ClickException(f"Failed to get ontology: {e}")
 
 
 # ── JSON-LD context (Phase 230.6 / REQ-SEM-CONTEXT-ALIAS-001) ────
@@ -230,9 +222,7 @@ def context():
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(
-            f"Failed to get JSON-LD context: {e}"
-        )
+        raise click.ClickException(f"Failed to get JSON-LD context: {e}")
 
 
 # ── Custom ontology management (Phase 230.10 / REQ-SEM-ONTO-001) ───
@@ -247,23 +237,26 @@ def custom_ontology():
     upload, list, activate, and deactivate per-tenant Turtle / RDF/XML
     / JSON-LD ontologies.
     """
-    pass
 
 
 @custom_ontology.command("upload")
 @click.option("--name", required=True, help="Short, URL-safe ontology name.")
 @click.option(
-    "--namespace", "namespace_iri", required=True,
+    "--namespace",
+    "namespace_iri",
+    required=True,
     help="Declared namespace IRI (e.g. https://acme.example/ontology/).",
 )
 @click.option(
-    "--format", "fmt",
+    "--format",
+    "fmt",
     type=click.Choice(["turtle", "rdf_xml", "json_ld"]),
     default="turtle",
     show_default=True,
 )
 @click.option(
-    "--file", "rdf_file",
+    "--file",
+    "rdf_file",
     type=click.Path(exists=True, dir_okay=False, readable=True),
     required=True,
     help="Path to the RDF body file (≤ 10 MB).",
@@ -273,7 +266,7 @@ def upload_custom_ontology(name: str, namespace_iri: str, fmt: str, rdf_file: st
     validation failure (size / parse / namespace / reserved-
     namespace) — the response body's ``code`` field carries the
     machine-readable reason."""
-    with open(rdf_file, "r", encoding="utf-8") as fh:
+    with open(rdf_file, encoding="utf-8") as fh:
         rdf_content = fh.read()
     try:
         resp = api_client.request(
@@ -295,9 +288,7 @@ def upload_custom_ontology(name: str, namespace_iri: str, fmt: str, rdf_file: st
                 detail = resp.json()
             except Exception:
                 detail = {"raw": resp.text[:500]}
-            raise click.ClickException(
-                f"Upload failed: HTTP {resp.status_code} {detail}"
-            )
+            raise click.ClickException(f"Upload failed: HTTP {resp.status_code} {detail}")
     except click.ClickException:
         raise
     except Exception as e:
@@ -359,7 +350,6 @@ def deactivate_custom_ontology(ontology_id: str):
 @semantic.group("ldn")
 def ldn():
     """W3C Linked Data Notifications — inbox + subscriptions."""
-    pass
 
 
 @ldn.command("inbox-list")
@@ -430,45 +420,45 @@ def void_description():
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(
-            f"Failed to get VoID description: {e}"
-        )
+        raise click.ClickException(f"Failed to get VoID description: {e}")
 
 
 @semantic.group("shacl")
 def shacl():
     """SHACL validation commands"""
-    pass
 
 
 @shacl.command("validate")
 @click.option(
-    "--data", "data_file",
+    "--data",
+    "data_file",
     type=click.Path(exists=True),
     help="RDF data file to validate",
 )
 @click.option(
-    "--shapes", "shapes_file",
+    "--shapes",
+    "shapes_file",
     type=click.Path(exists=True),
     help="SHACL shapes file",
 )
 @click.option(
-    "--format", "output_format",
+    "--format",
+    "output_format",
     type=click.Choice(["json", "table"]),
     default="table",
 )
 def shacl_validate(
-    data_file: Optional[str],
-    shapes_file: Optional[str],
+    data_file: str | None,
+    shapes_file: str | None,
     output_format: str,
 ):
     """Validate RDF data against SHACL shapes"""
     payload = {}
     if data_file:
-        with open(data_file, "r") as f:
+        with open(data_file) as f:
             payload["data"] = f.read()
     if shapes_file:
-        with open(shapes_file, "r") as f:
+        with open(shapes_file) as f:
             payload["shapes"] = f.read()
 
     try:
@@ -481,25 +471,16 @@ def shacl_validate(
             click.echo(json.dumps(data, indent=2))
         else:
             conforms = data.get("conforms", False)
-            click.echo(
-                f"Conforms: {'Yes' if conforms else 'No'}"
-            )
+            click.echo(f"Conforms: {'Yes' if conforms else 'No'}")
             violations = data.get("violations", [])
             if violations:
-                click.echo(
-                    f"\nViolations ({len(violations)}):"
-                )
+                click.echo(f"\nViolations ({len(violations)}):")
                 for v in violations:
-                    click.echo(
-                        f"  - {v.get('message', 'N/A')} "
-                        f"({v.get('severity', 'N/A')})"
-                    )
+                    click.echo(f"  - {v.get('message', 'N/A')} ({v.get('severity', 'N/A')})")
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(
-            f"SHACL validation failed: {e}"
-        )
+        raise click.ClickException(f"SHACL validation failed: {e}")
 
 
 # ── Federation allowlist (Phase 230.8 / REQ-SEM-FED-001) ────
@@ -520,7 +501,8 @@ def federation():
 @click.option("--tenant-id", required=True, help="Tenant UUID.")
 @click.option("--name", required=True, help="Human-readable label (e.g. partner-X).")
 @click.option(
-    "--endpoint-url", required=True,
+    "--endpoint-url",
+    required=True,
     help="Public HTTPS SPARQL endpoint URL.",
 )
 def federation_add(tenant_id: str, name: str, endpoint_url: str):
@@ -543,9 +525,7 @@ def federation_add(tenant_id: str, name: str, endpoint_url: str):
                 body = response.json()
             except Exception:
                 body = {"raw": response.text[:500]}
-            raise click.ClickException(
-                f"federation add failed: HTTP {response.status_code} {body}"
-            )
+            raise click.ClickException(f"federation add failed: HTTP {response.status_code} {body}")
     except click.ClickException:
         raise
     except Exception as e:
@@ -555,7 +535,8 @@ def federation_add(tenant_id: str, name: str, endpoint_url: str):
 @federation.command("list")
 @click.option("--tenant-id", required=True, help="Tenant UUID.")
 @click.option(
-    "--format", "output_format",
+    "--format",
+    "output_format",
     type=click.Choice(["json", "table"]),
     default="table",
 )
@@ -577,7 +558,7 @@ def federation_list(tenant_id: str, output_format: str):
             click.echo(
                 f"{row.get('id', ''):<38}  "
                 f"{row.get('name', ''):<24}  "
-                f"{str(row.get('is_active', '')):<9}  "
+                f"{row.get('is_active', '')!s:<9}  "
                 f"{row.get('endpoint_url', '')}"
             )
     except click.ClickException:

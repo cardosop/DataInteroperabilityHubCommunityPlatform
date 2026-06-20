@@ -23,13 +23,14 @@ followed; the helper module's pure-function path is exercised
 without the HTTP layer for unit-test latency parity with the rest
 of the search test suite.
 """
+
 from __future__ import annotations
 
 import uuid
 
 import pytest
 from django.contrib.postgres.search import SearchVector
-from django.test import TestCase, TransactionTestCase
+from django.test import TransactionTestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -78,10 +79,7 @@ def _make_asset(tenant, user, *, name, description=""):
     # (the production signal-driven update is async via RQ; tests must
     # set it deterministically).
     Asset.objects.filter(pk=a.pk).update(
-        search_vector=(
-            SearchVector("name", weight="A")
-            + SearchVector("description", weight="B")
-        ),
+        search_vector=(SearchVector("name", weight="A") + SearchVector("description", weight="B")),
     )
     return a
 
@@ -92,6 +90,7 @@ def _make_active_ontology(tenant, *, turtle_body):
         OntologyValidationStatus,
         TenantOntology,
     )
+
     suffix = uuid.uuid4().hex[:6]
     return TenantOntology.objects.create(
         tenant=tenant,
@@ -175,7 +174,8 @@ class SemanticQueryExpansionUnitTests(TransactionTestCase):
         tenant = _make_tenant("sub")
         _make_active_ontology(tenant, turtle_body=_SUBCLASS_TURTLE)
         bridges = expand_query_terms(
-            query="goldcustomer", tenant_id=str(tenant.id),
+            query="goldcustomer",
+            tenant_id=str(tenant.id),
         )
         labels = {b.label.lower() for b in bridges}
         # Depth 1 ancestor.
@@ -189,7 +189,8 @@ class SemanticQueryExpansionUnitTests(TransactionTestCase):
         tenant = _make_tenant("sub3")
         _make_active_ontology(tenant, turtle_body=_SUBCLASS_TURTLE)
         bridges = expand_query_terms(
-            query="goldcustomer", tenant_id=str(tenant.id),
+            query="goldcustomer",
+            tenant_id=str(tenant.id),
         )
         labels = {b.label.lower() for b in bridges}
         # Depth 3+ MUST NOT be in the bridge set.
@@ -206,7 +207,8 @@ class SemanticQueryExpansionUnitTests(TransactionTestCase):
 
         bridges = expand_query_terms(query="customer", tenant_id=str(tenant.id))
         self.assertEqual(
-            bridges, [],
+            bridges,
+            [],
             msg="inactive ontology MUST NOT produce expansion bridges",
         )
 
@@ -218,7 +220,8 @@ class SemanticQueryExpansionUnitTests(TransactionTestCase):
         _make_active_ontology(tenant_a, turtle_body=_EQUIV_TURTLE)
         # Tenant B has no ontology — must see no bridges.
         bridges = expand_query_terms(
-            query="customer", tenant_id=str(tenant_b.id),
+            query="customer",
+            tenant_id=str(tenant_b.id),
         )
         self.assertEqual(bridges, [])
 
@@ -266,12 +269,14 @@ class SemanticSearchViewTests(TransactionTestCase):
         self.assertEqual(bridge_row.get("matched_via"), "ontology")
         # Bridge term is the label that connected "customer" → "client".
         self.assertIn(
-            (bridge_row.get("bridge_term") or "").lower(), {"client"},
+            (bridge_row.get("bridge_term") or "").lower(),
+            {"client"},
             msg=f"row: {bridge_row}",
         )
         # 0.5× multiplier — bridge-match rank MUST be ≤ exact-match rank.
         self.assertLessEqual(
-            float(bridge_row["rank"]), float(exact_row["rank"]),
+            float(bridge_row["rank"]),
+            float(exact_row["rank"]),
             msg="bridge match should rank ≤ exact match (0.5× multiplier)",
         )
 
@@ -293,7 +298,8 @@ class SemanticSearchViewTests(TransactionTestCase):
         results = resp.data.get("results", resp.data)
         ids = [r["id"] for r in results]
         self.assertNotIn(
-            str(bridge.pk), ids,
+            str(bridge.pk),
+            ids,
             msg="bridge match MUST NOT appear without ?semantic=true",
         )
 
@@ -347,7 +353,9 @@ def _make_search_index(tenant, *, title, description=""):
     deprecated SearchViewSet → SearchService → SearchEngine path
     finds it via PostgreSQL ``@@`` matching."""
     from django.contrib.postgres.search import SearchVector
+
     from hub.apps.search.models import SearchIndex
+
     idx = SearchIndex.objects.create(
         tenant=tenant,
         resource_id=uuid.uuid4(),
@@ -383,7 +391,8 @@ class SemanticSearchLegacyViewTests(TransactionTestCase):
         _make_active_ontology(tenant, turtle_body=_EQUIV_TURTLE)
 
         bridge_idx = _make_search_index(
-            tenant, title="Client Profile Dashboard",
+            tenant,
+            title="Client Profile Dashboard",
             description="dashboard for clients",
         )
 
@@ -402,7 +411,8 @@ class SemanticSearchLegacyViewTests(TransactionTestCase):
         )
         self.assertEqual(bridge_row.get("matched_via"), "ontology")
         self.assertIn(
-            (bridge_row.get("bridge_term") or "").lower(), {"client"},
+            (bridge_row.get("bridge_term") or "").lower(),
+            {"client"},
         )
 
     def test_legacy_path_without_semantic_param_excludes_bridge_match(self):
@@ -413,7 +423,8 @@ class SemanticSearchLegacyViewTests(TransactionTestCase):
         _make_active_ontology(tenant, turtle_body=_EQUIV_TURTLE)
 
         bridge_idx = _make_search_index(
-            tenant, title="Client Profile Dashboard",
+            tenant,
+            title="Client Profile Dashboard",
             description="dashboard for clients",
         )
 
@@ -424,7 +435,8 @@ class SemanticSearchLegacyViewTests(TransactionTestCase):
         results = resp.data.get("results", [])
         ids = [str(r["id"]) for r in results]
         self.assertNotIn(
-            str(bridge_idx.resource_id), ids,
+            str(bridge_idx.resource_id),
+            ids,
             msg="bridge match MUST NOT appear without ?semantic=true on the legacy path",
         )
 
@@ -449,7 +461,8 @@ class SubclassAncestorOnlyTests(TransactionTestCase):
         tenant = _make_tenant("anc-only")
         _make_active_ontology(tenant, turtle_body=_SUBCLASS_TURTLE)
         bridges = expand_query_terms(
-            query="customer", tenant_id=str(tenant.id),
+            query="customer",
+            tenant_id=str(tenant.id),
         )
         labels = {b.label.lower() for b in bridges}
         # Parent-direction (ancestors) MUST appear.

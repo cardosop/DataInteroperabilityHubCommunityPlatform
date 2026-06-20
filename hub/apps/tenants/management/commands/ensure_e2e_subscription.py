@@ -15,12 +15,11 @@ Or the e2e-detect-api.sh script runs it automatically when API is on port 8001.
 
 from django.core.management.base import BaseCommand
 
-from hub.apps.users.models import User
+from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
 from hub.apps.users.management.commands.ensure_e2e_user_roles import (
     PROFILE_ISOLATION_WORKER_COUNT,
 )
-from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
-
+from hub.apps.users.models import User
 
 # Must match ensure_e2e_user_roles.E2E_USERS and api/views.E2E_EMAILS
 _PROFILE_E2E_EMAILS = tuple(

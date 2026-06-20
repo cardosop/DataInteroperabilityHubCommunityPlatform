@@ -1,10 +1,10 @@
 """Unit tests for ``datahub drafts`` commands (283.5.8)."""
+
 import json
+from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
-from unittest.mock import Mock
-
 from datahub_cli.main import cli
 
 
@@ -23,7 +23,11 @@ def mock_api(monkeypatch):
 class TestDraftsGet:
     @pytest.mark.unit
     def test_get_json(self, runner, mock_api):
-        mock_api.get.return_value = {"resource_type": "asset", "draft_key": "default", "data": {"name": "test"}}
+        mock_api.get.return_value = {
+            "resource_type": "asset",
+            "draft_key": "default",
+            "data": {"name": "test"},
+        }
         result = runner.invoke(cli, ["drafts", "get", "--resource-type", "asset"])
         assert result.exit_code == 0
         parsed = json.loads(result.output)
@@ -32,7 +36,9 @@ class TestDraftsGet:
     @pytest.mark.unit
     def test_get_with_draft_key(self, runner, mock_api):
         mock_api.get.return_value = {"resource_type": "asset", "draft_key": "my-key", "data": {}}
-        result = runner.invoke(cli, ["drafts", "get", "--resource-type", "asset", "--draft-key", "my-key"])
+        result = runner.invoke(
+            cli, ["drafts", "get", "--resource-type", "asset", "--draft-key", "my-key"]
+        )
         assert result.exit_code == 0
         mock_api.get.assert_called_once()
         call_args = mock_api.get.call_args[1]["params"]
@@ -53,13 +59,17 @@ class TestDraftsSave:
         mock_response.json.return_value = {"id": "draft-1", "resource_type": "asset"}
         mock_api.request.return_value = mock_response
 
-        result = runner.invoke(cli, ["drafts", "save", "--resource-type", "asset", "--data", '{"name":"test"}'])
+        result = runner.invoke(
+            cli, ["drafts", "save", "--resource-type", "asset", "--data", '{"name":"test"}']
+        )
         assert result.exit_code == 0
         assert "draft-1" in result.output
 
     @pytest.mark.unit
     def test_save_invalid_json(self, runner, mock_api):
-        result = runner.invoke(cli, ["drafts", "save", "--resource-type", "asset", "--data", "not-json"])
+        result = runner.invoke(
+            cli, ["drafts", "save", "--resource-type", "asset", "--data", "not-json"]
+        )
         assert result.exit_code != 0
         assert "Invalid JSON" in result.output
 

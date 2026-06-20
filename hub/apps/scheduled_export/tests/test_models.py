@@ -22,7 +22,6 @@ from hub.apps.scheduled_export.models import (
     ScheduledExportStatus,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -64,7 +63,6 @@ class ScheduledExportModelTest(TestCase):
             source_scope={"asset_ids": [str(uuid.uuid4())]},
         )
 
-        self.assertIsNotNone(export.id)
         self.assertEqual(export.tenant, self.tenant)
         self.assertEqual(export.name, "Daily Export")
         self.assertEqual(export.destination_type, DestinationType.S3)
@@ -151,8 +149,6 @@ class ScheduledExportModelTest(TestCase):
             destination_config={"bucket": "my-bucket"},
             source_scope={"asset_ids": [str(uuid.uuid4())]},
         )
-
-        self.assertIsNotNone(export2.id)
 
     def test_scheduled_export_validation_invalid_cron(self):
         """Test validation fails with invalid cron expression"""
@@ -329,7 +325,6 @@ class ScheduledExportRunModelTest(TestCase):
             started_at=timezone.now(),
         )
 
-        self.assertIsNotNone(run.id)
         self.assertEqual(run.scheduled_export, self.scheduled_export)
         self.assertEqual(run.tenant, self.tenant)
         self.assertEqual(run.status, ScheduledExportRunStatus.RUNNING)
@@ -526,7 +521,6 @@ class ExportRunCostModelTest(TestCase):
             },
         )
 
-        self.assertIsNotNone(cost.id)
         self.assertEqual(cost.run, self.export_run)
         self.assertEqual(cost.tenant, self.tenant)
         self.assertIn("storage", cost.cost_components)

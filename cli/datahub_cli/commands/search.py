@@ -6,7 +6,6 @@ Uses real hub API - no mocks/stubs.
 """
 
 import json
-from typing import Optional
 
 import click
 
@@ -16,7 +15,6 @@ from ..api_client import api_client
 @click.group()
 def search():
     """Search commands"""
-    pass
 
 
 @search.command("search")
@@ -46,13 +44,13 @@ def search():
 )
 def search_resources(
     query: str,
-    type: Optional[str],
-    classification: Optional[str],
-    owner: Optional[str],
-    tags: Optional[str],
-    domain: Optional[str],
-    quality_status: Optional[str],
-    compliance_status: Optional[str],
+    type: str | None,
+    classification: str | None,
+    owner: str | None,
+    tags: str | None,
+    domain: str | None,
+    quality_status: str | None,
+    compliance_status: str | None,
     limit: int,
     offset: int,
     sort_by: str,
@@ -102,9 +100,7 @@ def search_resources(
                 resource_id = str(result.get("id", ""))[:38] if result.get("id") else ""
                 name = str(result.get("name", ""))[:38] if result.get("name") else ""
                 score = f"{result.get('score', 0):.2f}" if result.get("score") else "N/A"
-                click.echo(
-                    f"{resource_type:<15} " f"{resource_id:<40} " f"{name:<40} " f"{score:<10}"
-                )
+                click.echo(f"{resource_type:<15} {resource_id:<40} {name:<40} {score:<10}")
     except click.ClickException:
         raise
     except Exception as e:
@@ -165,7 +161,7 @@ def get_suggestions(query: str, limit: int, output_format: str):
     default="table",
     help="Output format",
 )
-def get_analytics(start_date: Optional[str], end_date: Optional[str], output_format: str):
+def get_analytics(start_date: str | None, end_date: str | None, output_format: str):
     """Get search analytics"""
     params = {}
     if start_date:

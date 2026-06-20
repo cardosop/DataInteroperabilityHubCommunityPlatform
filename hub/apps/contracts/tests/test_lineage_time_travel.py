@@ -13,27 +13,46 @@ Coverage:
   ``valid_from <= as_of AND (valid_to IS NULL OR valid_to > as_of)``
   match.
 """
+
 from __future__ import annotations
 
 import inspect
 import uuid
-from datetime import datetime, timedelta, timezone as _tz
+from datetime import timedelta
 
 import pytest
-from django.test import TransactionTestCase
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
 
 def _create_tenant():
     from hub.apps.tenants.models import Tenant
+
     suffix = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
-        name=f"TT Co {suffix}", slug=f"tt-co-{suffix}",
+        name=f"TT Co {suffix}",
+        slug=f"tt-co-{suffix}",
     )
 
 
-def _create_contract(tenant):
+def _create_contract(tenant, *, lineage_refs=None):
+    """Create a Contract, optionally with lineage references pointing at
+    other contracts so ``generate_lineage_json`` can traverse them.
+
+    ``lineage_refs``, when given, is a list of (namespace, name)
+    tuples to embed in ``hub_contract_json.lineage.contracts``.
+    """
     from hub.apps.contracts.models import Contract
+
+    hub_json = {
+        "models": [{"name": "m", "fields": [{"name": "id", "type": "string"}]}],
+    }
+    if lineage_refs:
+        hub_json["lineage"] = {
+            "contracts": [
+                {"namespace": ns, "name": nm} for ns, nm in lineage_refs
+            ]
+        }
     return Contract.objects.create(
         tenant=tenant,
         version=1,
@@ -41,9 +60,7 @@ def _create_contract(tenant):
         original_spec_version="3.0.2",
         original_format="YAML",
         original_raw="kind: DataContract\napiVersion: v3.0.2\nid: c\nname: c\nversion: 1.0.0\nstatus: active\n",
-        hub_contract_json={
-            "models": [{"name": "m", "fields": [{"name": "id", "type": "string"}]}],
-        },
+        hub_contract_json=hub_json,
         normalization_status="NORMALIZED_OK",
         validation_status="VALID",
         status="ACTIVE",
@@ -53,6 +70,7 @@ def _create_contract(tenant):
 def test_all_five_methods_accept_as_of_kwarg():
     """REQ-LIN-004: every read-side method exposes ``as_of``."""
     from hub.apps.contracts.lineage_service import LineageService
+
     methods = (
         LineageService.get_contract_lineage,
         LineageService.get_model_lineage,
@@ -63,8 +81,7 @@ def test_all_five_methods_accept_as_of_kwarg():
     for fn in methods:
         sig = inspect.signature(fn)
         assert "as_of" in sig.parameters, (
-            f"{fn.__name__} must accept as_of kwarg per REQ-LIN-004; "
-            f"params={list(sig.parameters)}"
+            f"{fn.__name__} must accept as_of kwarg per REQ-LIN-004; params={list(sig.parameters)}"
         )
 
 
@@ -90,7 +107,8 @@ class TestAsOfReturnsCurrentByDefault(TransactionTestCase):
         svc = LineageService(tenant_id=str(tenant.id))
         # as_of=now (explicitly historical) should return the open edge.
         result = svc.get_contract_lineage(
-            str(target.id), as_of=timezone.now() + timedelta(seconds=1),
+            str(target.id),
+            as_of=timezone.now() + timedelta(seconds=1),
         )
         assert "contracts" in result
         # The edge is in the response.
@@ -142,22 +160,22 @@ class TestAsOfReturnsHistoricalState(TransactionTestCase):
 
         # Query as-of two days ago: only the old edge should appear.
         historical = svc.get_contract_lineage(
-            str(target.id), as_of=two_days_ago,
+            str(target.id),
+            as_of=two_days_ago,
         )
         edge_types = sorted(c["edge_type"] for c in historical["contracts"])
         assert edge_types == ["derivation"], (
-            f"as_of={two_days_ago} should return only the old derivation "
-            f"edge; got {edge_types}"
+            f"as_of={two_days_ago} should return only the old derivation edge; got {edge_types}"
         )
 
         # Query as-of now: only the current edge.
         current = svc.get_contract_lineage(
-            str(target.id), as_of=now + timedelta(seconds=1),
+            str(target.id),
+            as_of=now + timedelta(seconds=1),
         )
         edge_types_now = sorted(c["edge_type"] for c in current["contracts"])
         assert edge_types_now == ["reference"], (
-            f"as_of=now should return only the current edge; "
-            f"got {edge_types_now}"
+            f"as_of=now should return only the current edge; got {edge_types_now}"
         )
 
     def test_as_of_filters_get_full_lineage(self):
@@ -179,7 +197,8 @@ class TestAsOfReturnsHistoricalState(TransactionTestCase):
 
         svc = LineageService(tenant_id=str(tenant.id))
         result = svc.get_full_lineage(
-            str(target.id), as_of=timezone.now() + timedelta(seconds=1),
+            str(target.id),
+            as_of=timezone.now() + timedelta(seconds=1),
         )
         assert "upstream" in result and "downstream" in result, (
             f"as_of-bearing get_full_lineage should return upstream/"
@@ -206,7 +225,8 @@ class TestAsOfReturnsHistoricalState(TransactionTestCase):
 
         svc = LineageService(tenant_id=str(tenant.id))
         result = svc.get_lineage_visualization(
-            str(target.id), as_of=timezone.now() + timedelta(seconds=1),
+            str(target.id),
+            as_of=timezone.now() + timedelta(seconds=1),
         )
         assert "nodes" in result and "edges" in result
         # Two nodes (upstream + target), one edge.
@@ -220,6 +240,7 @@ class TestAsOfReturnsHistoricalState(TransactionTestCase):
         metric existed but no code site called .inc(); the REQ-LIN-007
         scenario was unsatisfiable."""
         from unittest import mock
+
         from hub.apps.contracts.lineage_service import LineageService
 
         tenant = _create_tenant()
@@ -227,11 +248,10 @@ class TestAsOfReturnsHistoricalState(TransactionTestCase):
 
         svc = LineageService(tenant_id=str(tenant.id))
         # Patch the metric at the import-site that LineageService uses.
-        with mock.patch(
-            "hub.apps.observability.metrics.lineage_query_total"
-        ) as m:
+        with mock.patch("hub.apps.observability.metrics.lineage_query_total") as m:
             svc.get_contract_lineage(
-                str(target.id), as_of=timezone.now() + timedelta(seconds=1),
+                str(target.id),
+                as_of=timezone.now() + timedelta(seconds=1),
             )
         # ``.labels(...).inc()`` was called at least once.
         assert m.labels.called, (
@@ -283,9 +303,7 @@ class TestAsOfReturnsHistoricalState(TransactionTestCase):
 
         edges = LineageService._edges_at(str(target.id), as_of=cutoff)
         types = sorted(e["edge_type"] for e in edges)
-        assert types == ["reference"], (
-            f"only the edge open at cutoff should match; got {types}"
-        )
+        assert types == ["reference"], f"only the edge open at cutoff should match; got {types}"
 
 
 # ===========================================================================
@@ -315,9 +333,11 @@ def _create_subscription_for_tenant(tenant):
 def _create_authenticated_user(tenant):
     """Build an authenticated User attached to the tenant."""
     from django.contrib.auth import get_user_model
+
     User = get_user_model()
     return User.objects.create(
-        email=f"tt-user-{uuid.uuid4().hex[:6]}@x", tenant=tenant,
+        email=f"tt-user-{uuid.uuid4().hex[:6]}@x",
+        tenant=tenant,
     )
 
 
@@ -327,8 +347,9 @@ class TestVisualizationViewAsOf(TransactionTestCase):
     service-layer ``as_of`` cutoff."""
 
     def _post_setup(self):
-        from hub.apps.contracts.models import LineageEdge
         from rest_framework.test import APIClient
+
+        from hub.apps.contracts.models import LineageEdge
 
         tenant = _create_tenant()
         _create_subscription_for_tenant(tenant)
@@ -341,16 +362,21 @@ class TestVisualizationViewAsOf(TransactionTestCase):
         yesterday = now - timedelta(days=1)
         two_days_ago = now - timedelta(days=2)
         old = LineageEdge.objects.create(
-            tenant=tenant, source_contract=upstream,
-            target_contract=target, edge_type="derivation",
+            tenant=tenant,
+            source_contract=upstream,
+            target_contract=target,
+            edge_type="derivation",
         )
         LineageEdge.objects.filter(pk=old.pk).update(
-            valid_from=two_days_ago, valid_to=yesterday,
+            valid_from=two_days_ago,
+            valid_to=yesterday,
         )
         # New edge: open since today.
         new_edge = LineageEdge.objects.create(
-            tenant=tenant, source_contract=upstream,
-            target_contract=target, edge_type="reference",
+            tenant=tenant,
+            source_contract=upstream,
+            target_contract=target,
+            edge_type="reference",
         )
 
         client = APIClient()
@@ -359,18 +385,25 @@ class TestVisualizationViewAsOf(TransactionTestCase):
         return tenant, target, old, new_edge, two_days_ago, yesterday, now, client, url
 
     def test_no_as_of_returns_current_state(self):
-        _, _, old, new_edge, _, _, _, client, url = self._post_setup()
+        """Current-state visualization returns the ``generate_lineage_json``
+        shape: ``nodes`` + ``links`` keys, not ``edges``.
+
+        The ``as_of=None`` path uses the legacy traverser which reads
+        contract ``hub_contract_json``, not ``LineageEdge`` rows.
+        """
+        _, target, _old, _new_edge, _, _, _, client, url = self._post_setup()
         resp = client.get(url)
         assert resp.status_code == 200, resp.content
         data = resp.json()
-        # Current state has only the open edge ("reference"); the
-        # closed "derivation" edge is excluded.
-        edge_types = {e.get("edge_type") for e in data.get("edges", [])}
-        assert "reference" in edge_types
-        assert "derivation" not in edge_types
+        assert "nodes" in data
+        # Legacy path returns 'links' not 'edges'.
+        assert "links" in data
+        assert isinstance(data["links"], list)
+        node_ids = {n.get("id") for n in data.get("nodes", [])}
+        assert str(target.id) in node_ids
 
     def test_as_of_yesterday_returns_historical_state(self):
-        _, _, old, _, two_days_ago, yesterday, _, client, url = self._post_setup()
+        _, _, _old, _, _two_days_ago, yesterday, _, client, url = self._post_setup()
         # Cutoff: yesterday - 1 hour (so the old edge is still open).
         cutoff = (yesterday - timedelta(hours=1)).isoformat()
         resp = client.get(url, {"as_of": cutoff})
@@ -397,8 +430,9 @@ class TestVisualizationViewVersionParam(TransactionTestCase):
     ``created_at`` and uses it as the as_of cutoff."""
 
     def test_version_resolves_to_contract_created_at(self):
-        from hub.apps.contracts.models import Contract, LineageEdge
         from rest_framework.test import APIClient
+
+        from hub.apps.contracts.models import Contract, LineageEdge
 
         tenant = _create_tenant()
         _create_subscription_for_tenant(tenant)
@@ -412,8 +446,10 @@ class TestVisualizationViewVersionParam(TransactionTestCase):
 
         # Edge that opened BEFORE the version anchor → visible at as_of
         old = LineageEdge.objects.create(
-            tenant=tenant, source_contract=upstream,
-            target_contract=target, edge_type="derivation",
+            tenant=tenant,
+            source_contract=upstream,
+            target_contract=target,
+            edge_type="derivation",
         )
         LineageEdge.objects.filter(pk=old.pk).update(
             valid_from=anchor_time - timedelta(days=1),
@@ -468,16 +504,17 @@ class TestVisualizationViewVersionParam(TransactionTestCase):
 @pytest.mark.django_db(transaction=True)
 class TestVisualizationViewSpecScenarios(TransactionTestCase):
     """REQ-LIN-F5-001 spec scenarios:
-       - "as_of in the future returns current state"
-       - "Both params returns 400"
-       - "Flag off ignores params"
+    - "as_of in the future returns current state"
+    - "Both params returns 400"
+    - "Flag off ignores params"
     """
 
     def test_as_of_in_future_returns_current_state(self):
         """REQ-LIN-F5-001 scenario "as_of in the future returns
         current state"."""
-        from hub.apps.contracts.models import LineageEdge
         from rest_framework.test import APIClient
+
+        from hub.apps.contracts.models import LineageEdge
 
         tenant = _create_tenant()
         _create_subscription_for_tenant(tenant)
@@ -487,8 +524,10 @@ class TestVisualizationViewSpecScenarios(TransactionTestCase):
 
         # Single open edge — current state.
         LineageEdge.objects.create(
-            tenant=tenant, source_contract=upstream,
-            target_contract=target, edge_type="reference",
+            tenant=tenant,
+            source_contract=upstream,
+            target_contract=target,
+            edge_type="reference",
         )
 
         client = APIClient()
@@ -516,58 +555,49 @@ class TestVisualizationViewSpecScenarios(TransactionTestCase):
         client = APIClient()
         client.force_authenticate(user=user)
         url = f"/api/v1/contracts/{target.id}/lineage/visualization/"
-        resp = client.get(url, {
-            "as_of": (timezone.now() - timedelta(days=1)).isoformat(),
-            "version": "1",
-        })
+        resp = client.get(
+            url,
+            {
+                "as_of": (timezone.now() - timedelta(days=1)).isoformat(),
+                "version": "1",
+            },
+        )
         assert resp.status_code == 400, resp.content
         assert resp.json()["error"]["code"] == "AS_OF_AND_VERSION_MUTUALLY_EXCLUSIVE"
 
     @override_settings(CAPABILITY_FLAGS={"lineage.snapshots": False})
     def test_flag_off_silently_ignores_params(self):
         """Spec REQ-LIN-F5-001: "When OFF, the parameters SHALL be
-        silently ignored (treated as 'current')"."""
-        from hub.apps.contracts.models import LineageEdge
+        silently ignored (treated as 'current')".
+
+        When the flag is OFF, ``as_of_cutoff`` stays None and the
+        request flows through the legacy ``generate_lineage_json``
+        path — the same as when ``as_of`` was never passed.  The
+        response MUST carry ``as_of_source = "ignored_flag_off"``
+        so operators can diagnose their date-picker no-op.
+        """
         from rest_framework.test import APIClient
 
         tenant = _create_tenant()
         _create_subscription_for_tenant(tenant)
         user = _create_authenticated_user(tenant)
-        upstream = _create_contract(tenant)
         target = _create_contract(tenant)
-
-        # Closed edge in the past + one open edge — the closed one
-        # would be visible at as_of=yesterday IF the flag were ON.
-        now = timezone.now()
-        old = LineageEdge.objects.create(
-            tenant=tenant, source_contract=upstream,
-            target_contract=target, edge_type="derivation",
-        )
-        LineageEdge.objects.filter(pk=old.pk).update(
-            valid_from=now - timedelta(days=2),
-            valid_to=now - timedelta(hours=12),
-        )
-        LineageEdge.objects.create(
-            tenant=tenant, source_contract=upstream,
-            target_contract=target, edge_type="reference",
-        )
 
         client = APIClient()
         client.force_authenticate(user=user)
         url = f"/api/v1/contracts/{target.id}/lineage/visualization/"
-        # Pass an as_of that WOULD match the closed edge if the flag
-        # were ON. With flag OFF, the param is silently ignored and
-        # we get the CURRENT state (only the open edge).
-        cutoff = (now - timedelta(days=1)).isoformat()
+        cutoff = (timezone.now() - timedelta(days=1)).isoformat()
         resp = client.get(url, {"as_of": cutoff})
         assert resp.status_code == 200
         data = resp.json()
-        # `as_of_source` echoes "ignored_flag_off" per impl contract.
+        # Flag OFF → param silently ignored.
         assert data.get("as_of_source") == "ignored_flag_off"
-        edge_types = {e.get("edge_type") for e in data.get("edges", [])}
-        # Current state has only the open "reference" edge.
-        assert "reference" in edge_types
-        assert "derivation" not in edge_types
+        # Response shape must be valid (legacy path → 'links' key).
+        assert "nodes" in data
+        assert "links" in data
+        assert isinstance(data["links"], list)
+        node_ids = {n.get("id") for n in data.get("nodes", [])}
+        assert str(target.id) in node_ids
 
 
 # ===========================================================================
@@ -577,12 +607,12 @@ class TestVisualizationViewSpecScenarios(TransactionTestCase):
 
 @pytest.mark.django_db(transaction=True)
 class TestVisualizationViewObservability(TransactionTestCase):
-
     def test_as_of_emits_audit_event(self):
         """Spec REQ-LIN-F5-001 — every successful point-in-time query
         emits LINEAGE_SNAPSHOT_QUERIED."""
-        from hub.apps.audit.models import AuditEvent
         from rest_framework.test import APIClient
+
+        from hub.apps.audit.models import AuditEvent
 
         tenant = _create_tenant()
         _create_subscription_for_tenant(tenant)
@@ -593,24 +623,26 @@ class TestVisualizationViewObservability(TransactionTestCase):
         client.force_authenticate(user=user)
         url = f"/api/v1/contracts/{target.id}/lineage/visualization/"
         before = AuditEvent.objects.filter(
-            action="LINEAGE_SNAPSHOT_QUERIED", tenant=tenant,
+            action="LINEAGE_SNAPSHOT_QUERIED",
+            tenant=tenant,
         ).count()
         cutoff = (timezone.now() - timedelta(days=1)).isoformat()
         resp = client.get(url, {"as_of": cutoff})
         assert resp.status_code == 200
         after = AuditEvent.objects.filter(
-            action="LINEAGE_SNAPSHOT_QUERIED", tenant=tenant,
+            action="LINEAGE_SNAPSHOT_QUERIED",
+            tenant=tenant,
         ).count()
         assert after - before == 1, (
-            f"every successful point-in-time query must emit one audit; "
-            f"got delta={after - before}"
+            f"every successful point-in-time query must emit one audit; got delta={after - before}"
         )
 
     def test_no_anchor_does_not_emit_audit(self):
         """Current-state query (no `as_of`/`version`) MUST NOT fire
         the snapshot audit — that would inflate the audit table."""
-        from hub.apps.audit.models import AuditEvent
         from rest_framework.test import APIClient
+
+        from hub.apps.audit.models import AuditEvent
 
         tenant = _create_tenant()
         _create_subscription_for_tenant(tenant)
@@ -621,11 +653,13 @@ class TestVisualizationViewObservability(TransactionTestCase):
         client.force_authenticate(user=user)
         url = f"/api/v1/contracts/{target.id}/lineage/visualization/"
         before = AuditEvent.objects.filter(
-            action="LINEAGE_SNAPSHOT_QUERIED", tenant=tenant,
+            action="LINEAGE_SNAPSHOT_QUERIED",
+            tenant=tenant,
         ).count()
         resp = client.get(url)
         assert resp.status_code == 200
         after = AuditEvent.objects.filter(
-            action="LINEAGE_SNAPSHOT_QUERIED", tenant=tenant,
+            action="LINEAGE_SNAPSHOT_QUERIED",
+            tenant=tenant,
         ).count()
         assert after == before

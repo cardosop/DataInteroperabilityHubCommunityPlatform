@@ -70,9 +70,7 @@ class StructuredSuffixContentNegotiation(DefaultContentNegotiation):
     def select_renderer(self, request, renderers, format_suffix=None):
         # Try DRF's default first — covers exact matches and ``*/*``.
         try:
-            return super().select_renderer(
-                request, renderers, format_suffix=format_suffix
-            )
+            return super().select_renderer(request, renderers, format_suffix=format_suffix)
         except NotAcceptable:
             # Fall through to the RFC 6839 suffix-matching path below.
             pass
@@ -92,10 +90,7 @@ class StructuredSuffixContentNegotiation(DefaultContentNegotiation):
             # Only fire the suffix relaxation when the client
             # explicitly asked for ``application/json`` (or any
             # ``*/json``). Avoid relaxing for ``text/html`` etc.
-            if (
-                accept_parsed.full_type != "application/json"
-                and accept_parsed.sub_type != "json"
-            ):
+            if accept_parsed.full_type != "application/json" and accept_parsed.sub_type != "json":
                 continue
             for renderer in renderers:
                 renderer_media = getattr(renderer, "media_type", "")

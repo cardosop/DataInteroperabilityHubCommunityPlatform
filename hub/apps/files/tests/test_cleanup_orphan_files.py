@@ -5,14 +5,15 @@ Real DB, Redis lock, FileService soft-delete (no mocks). Orphan = no in-tenant
 row in Dataset, ComplianceRun, DQRun, RetentionPolicy, or AccessRequest pointing
 at the file; status not DELETING/DELETED; created_at past --min-age-days.
 """
+
 from __future__ import annotations
-import pytest
 
 import os
 import uuid
 from datetime import timedelta
 from io import StringIO
 
+import pytest
 from django.core.management import call_command
 from django.utils import timezone
 
@@ -27,13 +28,7 @@ from hub.apps.governance.models import RetentionPolicy, RetentionPolicyType
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def _redis_or_skip() -> None:
-    try:
-        get_redis_client().ping()
-    except Exception as exc:  # pragma: no cover — environment-dependent
-        import unittest
-
-        raise unittest.SkipTest(f"Redis required: {exc}") from exc
+from hub.apps.files.tests.test_base import redis_or_skip as _redis_or_skip
 
 
 class CleanupOrphanFilesCommandTests(FilesTestBase):
@@ -73,8 +68,10 @@ class CleanupOrphanFilesCommandTests(FilesTestBase):
             "7",
             stdout=out,
         )
+        # Phase 260.1.C: delete_file soft-deletes → DELETING (not DELETED).
+        # Hard-delete runs later via purge_deleted_files cron after grace window.
         f.refresh_from_db()
-        self.assertEqual(f.status, FileStatus.DELETED)
+        self.assertEqual(f.status, FileStatus.DELETING)
         self.assertIsNotNone(f.deleted_at)
 
     @pytest.mark.integration

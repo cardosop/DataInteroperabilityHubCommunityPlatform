@@ -9,17 +9,13 @@ import time
 import pytest
 
 pytestmark = pytest.mark.slow
-from django.test import TestCase
 from rest_framework import status
 
-from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import (
     Contract,
-    ContractStatus,
     NormalizationStatus,
     OriginalSpecType,
 )
-from hub.apps.jobs.models import Job, JobStatus, JobType
 
 from .conftest import E2ETestBase, get_response_data
 
@@ -148,12 +144,8 @@ class EnhancedContractNormalizationE2ETest(E2ETestBase):
         self.assertEqual(email_field.get("semantic_type"), "EMAIL")
         # After Pydantic model_dump(by_alias=True), min_length/max_length
         # are serialized as minLength/maxLength in hub_contract_json.
-        self.assertEqual(
-            email_field.get("minLength") or email_field.get("min_length"), 5
-        )
-        self.assertEqual(
-            email_field.get("maxLength") or email_field.get("max_length"), 255
-        )
+        self.assertEqual(email_field.get("minLength") or email_field.get("min_length"), 5)
+        self.assertEqual(email_field.get("maxLength") or email_field.get("max_length"), 255)
 
     def test_contract_update_triggers_remapping_all_sections(self):
         """Test contract update triggers remapping with all sections (7.5.5.2)"""
@@ -232,7 +224,7 @@ class EnhancedContractNormalizationE2ETest(E2ETestBase):
                 or "network error" in error_msg.lower()
                 or "semantic" in error_msg.lower()
             ):
-                pytest.skip("Semantic service not available for contract remapping")
+                pytest.skip("Semantic service not available for contract remapping")  # noqa: skip-in-body — runtime service dependency
             else:
                 self.assertEqual(
                     response.status_code,
@@ -243,7 +235,7 @@ class EnhancedContractNormalizationE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Wait for remapping
-        time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+        time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
         # Verify contract was remapped
         contract = Contract.objects.get(id=contract_id)
@@ -333,12 +325,8 @@ class EnhancedSPARQLQueriesE2ETest(E2ETestBase):
         )
         # After Pydantic model_dump(by_alias=True), min_length/max_length
         # are serialized as minLength/maxLength in hub_contract_json.
-        self.assertEqual(
-            email_field.get("minLength") or email_field.get("min_length"), 5
-        )
-        self.assertEqual(
-            email_field.get("maxLength") or email_field.get("max_length"), 255
-        )
+        self.assertEqual(email_field.get("minLength") or email_field.get("min_length"), 5)
+        self.assertEqual(email_field.get("maxLength") or email_field.get("max_length"), 255)
 
         amount_field = next((f for f in fields if f["name"] == "amount"), None)
         self.assertIsNotNone(amount_field)

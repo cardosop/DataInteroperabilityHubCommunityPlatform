@@ -280,6 +280,13 @@
      value (#0A1F44 navy) is invisible on dark backgrounds. */
   --color-primary-800: #93c5fd;
 
+  /* Primary-700 & 600: same remapping needed — many components use these raw
+     palette tokens for text (AuthPage.css, LandingPage.css, CommandPalette.css,
+     compliance/DQ/governance detail pages, etc.).  Without remapping they stay
+     #061530 which is invisible on the #0b1120 dark background (contrast ~1:1). */
+  --color-primary-700: #93c5fd;
+  --color-primary-600: #a5b4fc;
+
   /* Warning panel tokens — dark amber tints readable on dark backgrounds.
      Without these, var(--color-warning-bg) falls back to #fffbeb (light cream),
      which is jarring on dark. */

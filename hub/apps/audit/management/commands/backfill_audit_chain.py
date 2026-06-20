@@ -38,10 +38,12 @@ Options
   tenant.
 * ``--batch-size`` — rows written per ``update()`` (default 1000).
 """
+
 from __future__ import annotations
+
 import logging
 import uuid
-from typing import Iterable
+from collections.abc import Iterable
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
@@ -132,15 +134,11 @@ class Command(BaseCommand):
             except CommandError:
                 raise
             except Exception as exc:  # pragma: no cover — defensive surface
-                self.stderr.write(self.style.ERROR(
-                    f"[{tenant_label}] backfill failed: {exc}"
-                ))
+                self.stderr.write(self.style.ERROR(f"[{tenant_label}] backfill failed: {exc}"))
                 raise
             total_processed += rows
             verb = "would chain" if dry_run else "chained"
-            self.stdout.write(
-                self.style.SUCCESS(f"[{tenant_label}] {verb} {rows} row(s)")
-            )
+            self.stdout.write(self.style.SUCCESS(f"[{tenant_label}] {verb} {rows} row(s)"))
 
             # Phase 234.1 audit-fix Gap D — end-of-run integrity check.
             # Pull the freshly-chained rows back through the same verifier
@@ -155,25 +153,20 @@ class Command(BaseCommand):
                 self._verify_or_fail(tenant_id=tenant_id, tenant_label=tenant_label)
 
         verb = "would chain" if dry_run else "chained"
-        self.stdout.write(
-            self.style.SUCCESS(f"Total {verb}: {total_processed} row(s)")
-        )
+        self.stdout.write(self.style.SUCCESS(f"Total {verb}: {total_processed} row(s)"))
 
     def _verify_or_fail(self, *, tenant_id, tenant_label: str) -> None:
         """Re-run :func:`verify_chain_segment` against the freshly-chained rows."""
         from hub.apps.audit.chain import verify_chain_segment
 
         rows = list(
-            AuditEvent.all_objects.filter(
-                tenant_id=tenant_id, chain_hash__isnull=False
+            AuditEvent.all_objects.filter(tenant_id=tenant_id, chain_hash__isnull=False).order_by(
+                "chain_sequence"
             )
-            .order_by("chain_sequence")
         )
         result = verify_chain_segment(rows)
         if not result.verified:
-            preview = "; ".join(
-                f"{m.reason}@seq={m.chain_sequence}" for m in result.mismatches[:5]
-            )
+            preview = "; ".join(f"{m.reason}@seq={m.chain_sequence}" for m in result.mismatches[:5])
             raise CommandError(
                 f"[{tenant_label}] backfill produced an invalid chain — "
                 f"{len(result.mismatches)} mismatch(es): {preview}"
@@ -194,9 +187,7 @@ class Command(BaseCommand):
             # Every tenant that has at least one AuditEvent, plus the
             # platform chain when applicable.
             tenant_ids = list(
-                AuditEvent.all_objects.order_by()
-                .values_list("tenant_id", flat=True)
-                .distinct()
+                AuditEvent.all_objects.order_by().values_list("tenant_id", flat=True).distinct()
             )
             # ``distinct`` over a nullable column already collapses NULLs
             # to a single entry, so the platform chain shows up naturally
@@ -249,10 +240,15 @@ class Command(BaseCommand):
         # rows we're only going to UPDATE by id. We need every canonical
         # field plus id + timestamp + chain_sequence.
         FIELDS = [
-            "id", "tenant_id", "actor_user_id",
-            "resource_type", "resource_id",
-            "action", "result",
-            "details_json", "full_details_json",
+            "id",
+            "tenant_id",
+            "actor_user_id",
+            "resource_type",
+            "resource_id",
+            "action",
+            "result",
+            "details_json",
+            "full_details_json",
             "timestamp",
         ]
         # iterator() to keep memory flat even on huge tenants.
@@ -291,9 +287,7 @@ class Command(BaseCommand):
         """
         if resume_from == "auto":
             row = (
-                AuditEvent.all_objects.filter(
-                    tenant_id=tenant_id, chain_hash__isnull=False
-                )
+                AuditEvent.all_objects.filter(tenant_id=tenant_id, chain_hash__isnull=False)
                 .order_by("-chain_sequence")
                 .values("chain_sequence", "chain_hash")
                 .first()
@@ -305,9 +299,7 @@ class Command(BaseCommand):
         try:
             n = int(resume_from)
         except ValueError as exc:
-            raise CommandError(
-                "--resume-from must be 'auto' or an integer chain_sequence"
-            ) from exc
+            raise CommandError("--resume-from must be 'auto' or an integer chain_sequence") from exc
         if n < 0:
             raise CommandError("--resume-from must be >= 0")
         if n == 0:
@@ -319,20 +311,16 @@ class Command(BaseCommand):
             )
             return None, None
         row = (
-            AuditEvent.all_objects.filter(
-                tenant_id=tenant_id, chain_sequence=n
-            )
+            AuditEvent.all_objects.filter(tenant_id=tenant_id, chain_sequence=n)
             .values("chain_sequence", "chain_hash")
             .first()
         )
         if not row:
-            raise CommandError(
-                f"--resume-from={n}: no row at that chain_sequence for tenant"
-            )
+            raise CommandError(f"--resume-from={n}: no row at that chain_sequence for tenant")
         # Wipe rows AFTER the anchor so we can re-chain them.
-        AuditEvent.all_objects.filter(
-            tenant_id=tenant_id, chain_sequence__gt=n
-        ).update(chain_sequence=None, prev_chain_hash=None, chain_hash=None)
+        AuditEvent.all_objects.filter(tenant_id=tenant_id, chain_sequence__gt=n).update(
+            chain_sequence=None, prev_chain_hash=None, chain_hash=None
+        )
         return int(row["chain_sequence"]), row["chain_hash"]
 
     def _flush(

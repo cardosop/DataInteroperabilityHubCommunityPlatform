@@ -12,15 +12,15 @@ Docker containers where all services are accessible. This ensures:
 Usage:
     python scripts/run_comprehensive_test_execution_docker.py [--test-type TYPE] [--coverage] [--report-dir DIR]
 """
+
 import argparse
 import json
-import os
 import subprocess
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -32,8 +32,8 @@ class TestExecutionResult:
 
     def __init__(self, test_type: str):
         self.test_type = test_type
-        self.start_time: Optional[float] = None
-        self.end_time: Optional[float] = None
+        self.start_time: float | None = None
+        self.end_time: float | None = None
         self.duration: float = 0.0
         self.exit_code: int = 0
         self.total_tests: int = 0
@@ -42,16 +42,16 @@ class TestExecutionResult:
         self.errors: int = 0
         self.skipped: int = 0
         self.output: str = ""
-        self.coverage_data: Optional[Dict[str, Any]] = None
+        self.coverage_data: dict[str, Any] | None = None
         self.status: str = "PENDING"
-        self.error_message: Optional[str] = None
+        self.error_message: str | None = None
 
     @property
     def success(self) -> bool:
         """Check if test execution was successful."""
         return self.exit_code == 0 and self.failed == 0 and self.errors == 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert result to dictionary."""
         return {
             "test_type": self.test_type,
@@ -129,19 +129,20 @@ class DockerTestExecutor:
         try:
             result = subprocess.run(
                 ["docker", "compose", "ps", self.docker_service],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=5,  # Reduced timeout to avoid hanging
             )
             return "Up" in result.stdout or "healthy" in result.stdout.lower()
         except subprocess.TimeoutExpired:
-            print(f"⚠️  Warning: Docker service check timed out")
+            print("⚠️  Warning: Docker service check timed out")
             return False
         except Exception as e:
             print(f"⚠️  Warning: Docker service check failed: {e}")
             return False
 
-    def extract_test_summary(self, output: str) -> Dict[str, int]:
+    def extract_test_summary(self, output: str) -> dict[str, int]:
         """Extract test summary from pytest output."""
         import re
 
@@ -196,7 +197,7 @@ class DockerTestExecutor:
 
         return summary
 
-    def get_app_directories(self) -> List[str]:
+    def get_app_directories(self) -> list[str]:
         """Get list of app directories in hub/apps."""
         try:
             result = subprocess.run(
@@ -210,6 +211,7 @@ class DockerTestExecutor:
                     "-c",
                     "cd /app && find hub/apps -maxdepth 1 -type d -name '[a-z]*' | sort",
                 ],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -311,7 +313,7 @@ class DockerTestExecutor:
             app_dirs = self.get_app_directories()
             if app_dirs:
                 # Check if we should run only a specific batch
-                if hasattr(self, '_batch_only') and self._batch_only:
+                if hasattr(self, "_batch_only") and self._batch_only:
                     if self._batch_only in app_dirs:
                         app_dirs = [self._batch_only]
                         print(f"🎯 Running single batch: {self._batch_only}")
@@ -374,9 +376,9 @@ class DockerTestExecutor:
 
         sys.stdout.flush()
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"Running {config['description']} inside Docker")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
         print(f"Docker command: {' '.join(docker_cmd[:3])} ... {docker_cmd[-1][:100]}...")
         print()
         import sys
@@ -386,7 +388,7 @@ class DockerTestExecutor:
         result.start_time = time.time()
         result.status = "RUNNING"
 
-        print(f"Executing Docker command (timeout: {config['timeout']//60} minutes)...")
+        print(f"Executing Docker command (timeout: {config['timeout'] // 60} minutes)...")
         sys.stdout.flush()
 
         try:
@@ -496,14 +498,16 @@ class DockerTestExecutor:
                     print("\n".join(error_lines[-500:]))
                     print("=" * 80 + "\n")
 
-        except subprocess.TimeoutExpired as e:
+        except subprocess.TimeoutExpired:
             result.end_time = time.time()
             result.duration = result.end_time - result.start_time
             result.exit_code = 124  # Standard timeout exit code
             result.status = "TIMEOUT"
-            result.error_message = f"Test execution timed out after {config['timeout']//60} minutes"
+            result.error_message = (
+                f"Test execution timed out after {config['timeout'] // 60} minutes"
+            )
             result.output = f"Timeout after {config['timeout']} seconds"
-            print(f"\n⏱️  Test execution timed out after {config['timeout']//60} minutes")
+            print(f"\n⏱️  Test execution timed out after {config['timeout'] // 60} minutes")
             import sys
 
             sys.stdout.flush()
@@ -513,9 +517,9 @@ class DockerTestExecutor:
             result.duration = result.end_time - result.start_time
             result.exit_code = 1
             result.status = "ERROR"
-            result.error_message = f"Error running tests: {str(e)}"
+            result.error_message = f"Error running tests: {e!s}"
             result.output = str(e)
-            print(f"\n❌ Error during test execution: {str(e)}")
+            print(f"\n❌ Error during test execution: {e!s}")
             import sys
 
             sys.stdout.flush()
@@ -539,9 +543,9 @@ class DockerTestExecutor:
     def _run_tests_in_batches(
         self,
         test_type: str,
-        app_dirs: List[str],
-        base_pytest_cmd_parts: List[str],
-        config: Dict[str, Any],
+        app_dirs: list[str],
+        base_pytest_cmd_parts: list[str],
+        config: dict[str, Any],
         with_coverage: bool,
         verbose: bool,
     ) -> TestExecutionResult:
@@ -553,9 +557,9 @@ class DockerTestExecutor:
         batch_results = []
         total_batches = len(app_dirs)
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"Running {config['description']} in {total_batches} batches (by app)")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
         import sys
 
         sys.stdout.flush()
@@ -563,7 +567,7 @@ class DockerTestExecutor:
         for batch_num, app_dir in enumerate(app_dirs, 1):
             elapsed_time = time.time() - overall_result.start_time
             print(
-                f"\n[{batch_num}/{total_batches}] Running tests for {app_dir}... (Elapsed: {elapsed_time/60:.1f} min)"
+                f"\n[{batch_num}/{total_batches}] Running tests for {app_dir}... (Elapsed: {elapsed_time / 60:.1f} min)"
             )
             sys.stdout.flush()
 
@@ -650,7 +654,7 @@ class DockerTestExecutor:
                         stdout = ""
                         stderr = ""
                     raise
-                except Exception as e:
+                except Exception:
                     progress_stop.set()  # Stop progress indicator
                     raise
 
@@ -689,8 +693,8 @@ class DockerTestExecutor:
                 batch_result.duration = batch_result.end_time - batch_result.start_time
                 batch_result.status = "TIMEOUT"
                 batch_result.exit_code = 124
-                batch_result.error_message = f"Batch timed out after {batch_timeout//60} minutes"
-                print(f"  ⏱️  {app_dir}: TIMEOUT after {batch_timeout//60} minutes")
+                batch_result.error_message = f"Batch timed out after {batch_timeout // 60} minutes"
+                print(f"  ⏱️  {app_dir}: TIMEOUT after {batch_timeout // 60} minutes")
                 sys.stdout.flush()
 
             except Exception as e:
@@ -698,8 +702,8 @@ class DockerTestExecutor:
                 batch_result.duration = batch_result.end_time - batch_result.start_time
                 batch_result.status = "ERROR"
                 batch_result.exit_code = 1
-                batch_result.error_message = f"Error: {str(e)}"
-                print(f"  ❌ {app_dir}: ERROR - {str(e)}")
+                batch_result.error_message = f"Error: {e!s}"
+                print(f"  ❌ {app_dir}: ERROR - {e!s}")
                 sys.stdout.flush()
 
             batch_results.append((app_dir, batch_result))
@@ -727,9 +731,9 @@ class DockerTestExecutor:
         overall_result.exit_code = 0 if overall_result.status == "PASSED" else 1
 
         # Print batch summary
-        print(f"\n{'='*80}")
-        print(f"Batch Execution Summary")
-        print(f"{'='*80}")
+        print(f"\n{'=' * 80}")
+        print("Batch Execution Summary")
+        print(f"{'=' * 80}")
         print(f"Total batches: {total_batches}")
         print(f"Total tests: {overall_result.total_tests}")
         print(f"Passed: {overall_result.passed}")
@@ -737,16 +741,16 @@ class DockerTestExecutor:
         print(f"Errors: {overall_result.errors}")
         print(f"Skipped: {overall_result.skipped}")
         print(
-            f"Duration: {overall_result.duration:.2f}s ({overall_result.duration/60:.2f} minutes)"
+            f"Duration: {overall_result.duration:.2f}s ({overall_result.duration / 60:.2f} minutes)"
         )
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
         sys.stdout.flush()
 
         return overall_result
 
     def execute_all_tests(
-        self, test_types: Optional[List[str]] = None, with_coverage: bool = False
-    ) -> Dict[str, TestExecutionResult]:
+        self, test_types: list[str] | None = None, with_coverage: bool = False
+    ) -> dict[str, TestExecutionResult]:
         """Execute all specified test types."""
         if test_types is None:
             test_types = list(self.test_categories.keys())
@@ -797,7 +801,7 @@ class DockerTestExecutor:
             # Print summary
             result = results[test_type]
             print(f"\n{result.status}: {self.test_categories[test_type]['description']}")
-            print(f"  Duration: {result.duration:.2f} seconds ({result.duration/60:.2f} minutes)")
+            print(f"  Duration: {result.duration:.2f} seconds ({result.duration / 60:.2f} minutes)")
             print(f"  Total tests: {result.total_tests}")
             print(f"  Passed: {result.passed}")
             if result.failed > 0:
@@ -905,9 +909,9 @@ def main():
     with open(results_file, "w") as f:
         json.dump(results_json, f, indent=2)
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("TEST EXECUTION SUMMARY")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
 
     total_tests = sum(r.total_tests for r in results.values())
     total_passed = sum(r.passed for r in results.values())
@@ -915,14 +919,14 @@ def main():
     total_errors = sum(r.errors for r in results.values())
     total_skipped = sum(r.skipped for r in results.values())
 
-    print(f"\nOverall Results:")
+    print("\nOverall Results:")
     print(f"  Total tests: {total_tests}")
     print(f"  Passed: {total_passed}")
     print(f"  Failed: {total_failed}")
     print(f"  Errors: {total_errors}")
     print(f"  Skipped: {total_skipped}")
 
-    print(f"\nCategory Results:")
+    print("\nCategory Results:")
     for test_type, result in results.items():
         config = executor.test_categories[test_type]
         print(f"  {config['description']}: {result.status}")
@@ -936,14 +940,14 @@ def main():
     # Final status
     all_passed = all(r.success for r in results.values())
     if all_passed:
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("✅ ALL TESTS PASSED")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         return 0
     else:
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("❌ SOME TESTS FAILED")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         print("\nPlease review the test output above and fix any failures.")
         print("Remember: Fix root causes, not symptoms. No mocks/stubs.")
         return 1

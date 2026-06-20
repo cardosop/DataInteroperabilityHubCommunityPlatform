@@ -7,11 +7,12 @@ Detects ODCS version from contract data by:
 
 Supports all ODCS versions: 3.0.2, 3.0.1, 3.0.0, 2.2.2, 2.2.1, 2.2.0, etc.
 """
+
 import re
-from typing import Dict, Any
+from typing import Any
 
 
-def detect_odcs_version(contract_data: Dict[str, Any]) -> str:
+def detect_odcs_version(contract_data: dict[str, Any]) -> str:
     """
     Detect ODCS version from contract data.
 
@@ -85,11 +86,11 @@ def _extract_version_from_api_version(api_version: str) -> str:
 
     patterns = [
         # odcs.io/v{version} or datacontract.io/v{version} (supports -preview suffix)
-        r'(?:odcs|datacontract)\.io/v([\d.]+(?:-[a-zA-Z0-9-]+)?)',
+        r"(?:odcs|datacontract)\.io/v([\d.]+(?:-[a-zA-Z0-9-]+)?)",
         # odcs/v{version} (supports -preview suffix)
-        r'odcs/v([\d.]+(?:-[a-zA-Z0-9-]+)?)',
+        r"odcs/v([\d.]+(?:-[a-zA-Z0-9-]+)?)",
         # Generic /v{version} pattern as fallback (supports -preview suffix)
-        r'/v([\d.]+(?:-[a-zA-Z0-9-]+)?)',
+        r"/v([\d.]+(?:-[a-zA-Z0-9-]+)?)",
         # Bare ``v{version}`` form — canonical per docs/CONTRACTS.md and
         # the ODCS spec (e.g. ``apiVersion: v3.0.2``). Pre-fix the
         # detector required a prefix (odcs.io/, odcs/, or /v) and bare
@@ -99,7 +100,7 @@ def _extract_version_from_api_version(api_version: str) -> str:
         # normalizer and silently dropped the schema. Anchored on the
         # whole string so the prefix patterns above still win when both
         # forms could match (defensive against ambiguity).
-        r'^v([\d.]+(?:-[a-zA-Z0-9-]+)?)$',
+        r"^v([\d.]+(?:-[a-zA-Z0-9-]+)?)$",
     ]
 
     for pattern in patterns:
@@ -168,18 +169,18 @@ def _normalize_version_string(version_str: str) -> str:
     version_str = version_str.strip()
 
     # Remove "v" prefix if present
-    if version_str.startswith('v') or version_str.startswith('V'):
+    if version_str.startswith("v") or version_str.startswith("V"):
         version_str = version_str[1:]
 
     # Check for suffix (e.g., "-preview")
     suffix = ""
-    if '-' in version_str:
-        parts_with_suffix = version_str.split('-', 1)
+    if "-" in version_str:
+        parts_with_suffix = version_str.split("-", 1)
         version_str = parts_with_suffix[0]
-        suffix = '-' + parts_with_suffix[1] if len(parts_with_suffix) > 1 else ""
+        suffix = "-" + parts_with_suffix[1] if len(parts_with_suffix) > 1 else ""
 
     # Parse version components
-    parts = version_str.split('.')
+    parts = version_str.split(".")
 
     # Handle different version formats
     try:
@@ -233,4 +234,3 @@ def is_supported_odcs_version(version: str) -> bool:
     """
     supported = get_supported_odcs_versions()
     return version in supported
-

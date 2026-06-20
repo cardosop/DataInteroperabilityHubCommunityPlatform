@@ -10,16 +10,18 @@ Phased coverage:
   285.9.1.2.2 — dbt profile resolution (tmpfs profiles.yml, DBT_PROFILES_DIR, cleanup)
   285.9.1.2.3 — dbt log capture (run_results.json parsing, dbt.log ERROR forwarding)
 """
+
 from __future__ import annotations
+
 import json
 import os
 import re
 import shutil
 import stat
 import subprocess
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Dict, Generator, List, Optional
-from urllib.parse import urlparse, urlunparse
+from typing import Any
 
 import structlog
 import yaml
@@ -61,18 +63,16 @@ class DbtExecutor:
         self.profile_name = f"meshant_{self.tenant_slug}_{self.pipeline_id}"
 
         # Work directory on tmpfs.
-        self.work_dir = os.path.join(
-            work_dir_root, f"meshant_dbt_{self.run_id}"
-        )
+        self.work_dir = os.path.join(work_dir_root, f"meshant_dbt_{self.run_id}")
 
     # ── Public execution API (285.9.1.2.1) ────────────────────────────
 
     def dbt_run(
         self,
         project_path: str,
-        models: Optional[List[str]] = None,
+        models: list[str] | None = None,
         target: str = "prod",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Run dbt models.
 
         Args:
@@ -86,27 +86,19 @@ class DbtExecutor:
         """
         return self._execute("run", project_path, models=models, target=target)
 
-    def dbt_test(
-        self, project_path: str, target: str = "prod"
-    ) -> Dict[str, Any]:
+    def dbt_test(self, project_path: str, target: str = "prod") -> dict[str, Any]:
         """Run dbt tests on the project."""
         return self._execute("test", project_path, target=target)
 
-    def dbt_docs_generate(
-        self, project_path: str, target: str = "prod"
-    ) -> Dict[str, Any]:
+    def dbt_docs_generate(self, project_path: str, target: str = "prod") -> dict[str, Any]:
         """Generate catalog.json and manifest.json."""
         return self._execute("docs-generate", project_path, target=target)
 
-    def dbt_parse(
-        self, project_path: str, target: str = "prod"
-    ) -> Dict[str, Any]:
+    def dbt_parse(self, project_path: str, target: str = "prod") -> dict[str, Any]:
         """Validate the dbt project without executing models."""
         return self._execute("parse", project_path, target=target)
 
-    def dbt_deps(
-        self, project_path: str, target: str = "prod"
-    ) -> Dict[str, Any]:
+    def dbt_deps(self, project_path: str, target: str = "prod") -> dict[str, Any]:
         """Install dbt packages (``dbt deps``). Call before dbt_run
         when the project has a ``packages.yml``."""
         return self._execute("deps", project_path, target=target)
@@ -117,9 +109,9 @@ class DbtExecutor:
         self,
         action: str,
         project_path: str,
-        models: Optional[List[str]] = None,
+        models: list[str] | None = None,
         target: str = "prod",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Run a dbt command end-to-end with profile setup, execution,
         result parsing, and cleanup."""
         with self._profile_context():
@@ -219,9 +211,7 @@ class DbtExecutor:
 
     # ── Git clone (285.9.1.2.4) ──────────────────────────────────────
 
-    def _clone_dbt_project(
-        self, repo_url: str, branch: str = "main"
-    ) -> str:
+    def _clone_dbt_project(self, repo_url: str, branch: str = "main") -> str:
         """Clone a dbt project from a git repository into the work
         directory and return the path to the project root (the directory
         containing ``dbt_project.yml``).
@@ -259,7 +249,7 @@ class DbtExecutor:
                 )
                 # Continue without credentials (public repo fallback).
 
-        clone_kwargs: Dict[str, Any] = {
+        clone_kwargs: dict[str, Any] = {
             "depth": 1,
             "single_branch": True,
             "branch": branch,
@@ -269,21 +259,25 @@ class DbtExecutor:
             if "ssh_key" in git_creds:
                 clone_kwargs["env"] = {
                     "GIT_SSH_COMMAND": (
-                        f"ssh -i {git_creds['ssh_key']} "
-                        "-o StrictHostKeyChecking=no"
+                        f"ssh -i {git_creds['ssh_key']} -o StrictHostKeyChecking=no"
                     ),
                 }
             elif "username" in git_creds:
                 # HTTPS with token — embed in URL
                 from urllib.parse import urlparse, urlunparse
+
                 parsed = urlparse(repo_url)
-                repo_url = urlunparse(parsed._replace(
-                    netloc=f"{git_creds['username']}:{git_creds['password']}@{parsed.hostname}",
-                ))
+                repo_url = urlunparse(
+                    parsed._replace(
+                        netloc=f"{git_creds['username']}:{git_creds['password']}@{parsed.hostname}",
+                    )
+                )
 
         try:
             repo = _git.Repo.clone_from(
-                repo_url, project_path, **clone_kwargs,
+                repo_url,
+                project_path,
+                **clone_kwargs,
             )
             commit_sha = repo.head.commit.hexsha
             logger.info(
@@ -313,16 +307,16 @@ class DbtExecutor:
         self,
         action: str,
         project_path: str,
-        models: Optional[List[str]] = None,
+        models: list[str] | None = None,
         target: str = "prod",
-    ) -> List[str]:
+    ) -> list[str]:
         """Build the dbt CLI argument list.
 
         The ``DBT_PROFILES_DIR`` env var is set by ``_setup_profile()``
         so dbt picks it up automatically, but we also pass
         ``--profiles-dir`` explicitly for robustness.
         """
-        cmd: List[str] = ["dbt"]
+        cmd: list[str] = ["dbt"]
 
         # Handle compound commands like "docs-generate" → "docs" "generate"
         if "-" in action:
@@ -340,9 +334,7 @@ class DbtExecutor:
 
         return cmd
 
-    def _run_dbt_command(
-        self, cmd: List[str], cwd: str, timeout_seconds: int = 3600
-    ) -> None:
+    def _run_dbt_command(self, cmd: list[str], cwd: str, timeout_seconds: int = 3600) -> None:
         """Execute a dbt CLI command via subprocess.
 
         Raises:
@@ -355,6 +347,7 @@ class DbtExecutor:
         try:
             result = subprocess.run(
                 cmd,
+                check=False,
                 cwd=cwd,
                 env=env,
                 capture_output=True,
@@ -373,8 +366,7 @@ class DbtExecutor:
             ) from exc
         except FileNotFoundError:
             raise TransformationExecutionError(
-                "dbt executable not found. Ensure dbt Core is installed "
-                "and available on PATH."
+                "dbt executable not found. Ensure dbt Core is installed and available on PATH."
             )
 
         if result.returncode != 0:
@@ -387,8 +379,7 @@ class DbtExecutor:
                 stderr_tail=stderr_tail,
             )
             raise TransformationExecutionError(
-                f"dbt command exited with code {result.returncode}: "
-                f"{' '.join(cmd)}\n{stderr_tail}"
+                f"dbt command exited with code {result.returncode}: {' '.join(cmd)}\n{stderr_tail}"
             )
 
         # Log stdout tail for debugging
@@ -402,7 +393,7 @@ class DbtExecutor:
     # ── Log capture (285.9.1.2.3) ─────────────────────────────────────
 
     @staticmethod
-    def _parse_run_results(run_results_path: str) -> List[Dict[str, Any]]:
+    def _parse_run_results(run_results_path: str) -> list[dict[str, Any]]:
         """Parse ``target/run_results.json`` into a list of per-model
         result dicts with extracted timing and row-count data.
 
@@ -420,9 +411,9 @@ class DbtExecutor:
             logger.warning("run_results_unparseable", path=run_results_path, error=str(exc))
             return []
 
-        parsed: List[Dict[str, Any]] = []
+        parsed: list[dict[str, Any]] = []
         for result in data.get("results", []):
-            model_result: Dict[str, Any] = {
+            model_result: dict[str, Any] = {
                 "unique_id": result.get("unique_id", "unknown"),
                 "status": result.get("status", "unknown"),
                 "execution_time_seconds": result.get("execution_time", 0.0),
@@ -447,6 +438,7 @@ class DbtExecutor:
                     if started and completed:
                         try:
                             from datetime import datetime
+
                             dt_start = datetime.fromisoformat(started.replace("Z", "+00:00"))
                             dt_end = datetime.fromisoformat(completed.replace("Z", "+00:00"))
                             model_result[f"timing_{name}_seconds"] = (
@@ -459,7 +451,7 @@ class DbtExecutor:
         return parsed
 
     @staticmethod
-    def _parse_elapsed_time(run_results_path: str) -> Optional[float]:
+    def _parse_elapsed_time(run_results_path: str) -> float | None:
         """Return the total ``elapsed_time`` from run_results.json, or
         None if unavailable."""
         if not os.path.isfile(run_results_path):
@@ -472,7 +464,7 @@ class DbtExecutor:
             return None
 
     @staticmethod
-    def _capture_error_logs(dbt_log_path: str) -> List[str]:
+    def _capture_error_logs(dbt_log_path: str) -> list[str]:
         """Extract ERROR-level lines from ``logs/dbt.log``.
 
         Returns a list of log lines containing ``[error]`` (dbt's
@@ -481,7 +473,7 @@ class DbtExecutor:
         if not os.path.isfile(dbt_log_path):
             return []
 
-        error_lines: List[str] = []
+        error_lines: list[str] = []
         try:
             with open(dbt_log_path) as f:
                 for line in f:
@@ -495,8 +487,8 @@ class DbtExecutor:
 
     @staticmethod
     def _build_span_attributes(
-        results: List[Dict[str, Any]], elapsed_total: Optional[float]
-    ) -> Dict[str, Any]:
+        results: list[dict[str, Any]], elapsed_total: float | None
+    ) -> dict[str, Any]:
         """Build a Prefect-span-compatible dict from parsed dbt results.
 
         Includes aggregate counts, total timing + rows, and per-model
@@ -508,7 +500,7 @@ class DbtExecutor:
         skipped = sum(1 for r in results if r.get("status") == "skipped")
         total_rows = sum(r.get("rows_affected", 0) for r in results)
 
-        attrs: Dict[str, Any] = {
+        attrs: dict[str, Any] = {
             "dbt.models_run": total,
             "dbt.models_success": success,
             "dbt.models_error": error,

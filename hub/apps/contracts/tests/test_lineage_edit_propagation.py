@@ -13,6 +13,7 @@ patch:
 
 No mocks; real DB rows.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -27,7 +28,6 @@ from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 
-
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
@@ -35,8 +35,10 @@ User = get_user_model()
 def _setup_tenant_with_admin():
     suffix = uuid.uuid4().hex[:8]
     tenant = Tenant.objects.create(
-        name=f"prop-{suffix}", slug=f"prop-{suffix}",
-        status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+        name=f"prop-{suffix}",
+        slug=f"prop-{suffix}",
+        status="ACTIVE",
+        kyc_status=KYCStatus.VERIFIED,
     )
     ensure_tenant_has_active_subscription(tenant)
     user = User.objects.create_user(
@@ -46,6 +48,7 @@ def _setup_tenant_with_admin():
         status=UserStatus.ACTIVE,
     )
     from hub.apps.users.models import Role, UserRole
+
     role, _ = Role.objects.get_or_create(tenant=tenant, name="TENANT_ADMIN")
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
     return tenant, user
@@ -58,6 +61,7 @@ def _make_contract(tenant, *, name: str, field_name: str = "id"):
         OriginalFormat,
         OriginalSpecType,
     )
+
     asset = Asset.objects.create(
         tenant=tenant,
         key=f"asset-{uuid.uuid4().hex[:6]}",
@@ -65,7 +69,9 @@ def _make_contract(tenant, *, name: str, field_name: str = "id"):
         status=AssetStatus.DRAFT,
     )
     return Contract.objects.create(
-        tenant=tenant, asset=asset, version=1,
+        tenant=tenant,
+        asset=asset,
+        version=1,
         original_spec_type=OriginalSpecType.ODCS,
         original_spec_version="3.1.0",
         original_format=OriginalFormat.JSON,
@@ -89,10 +95,9 @@ def _make_contract(tenant, *, name: str, field_name: str = "id"):
 
 @pytest.mark.django_db(transaction=True)
 class PropagationTests(TestCase):
-
     def test_patch_propagates_to_jsonb_and_edge_table(self):
         from hub.apps.audit.models import AuditEvent
-        from hub.apps.contracts.models import Contract, LineageEdge
+        from hub.apps.contracts.models import LineageEdge
         from hub.apps.contracts.views_crud import _contract_etag
 
         tenant, user = _setup_tenant_with_admin()
@@ -111,9 +116,11 @@ class PropagationTests(TestCase):
                 "edges": [
                     {
                         "source_contract": str(c_src.id),
-                        "source_model": "default", "source_field": "x",
+                        "source_model": "default",
+                        "source_field": "x",
                         "target_contract": str(c_tgt.id),
-                        "target_model": "default", "target_field": "x",
+                        "target_model": "default",
+                        "target_field": "x",
                         "edge_type": "transformation",
                         "transformation_ref": "dbt_propagation_v1",
                     },
@@ -126,7 +133,8 @@ class PropagationTests(TestCase):
 
         # 1. LineageEdge row materialised + open.
         rows = LineageEdge.objects.filter(
-            target_contract_id=c_tgt.id, valid_to__isnull=True,
+            target_contract_id=c_tgt.id,
+            valid_to__isnull=True,
         )
         self.assertEqual(rows.count(), 1)
         self.assertEqual(rows.first().transformation_ref, "dbt_propagation_v1")
@@ -137,7 +145,8 @@ class PropagationTests(TestCase):
         entries = lineage.get("entries") or []
         self.assertEqual(len(entries), 1)
         self.assertEqual(
-            entries[0]["input_fields"][0]["field"], "x",
+            entries[0]["input_fields"][0]["field"],
+            "x",
         )
 
         # 3. Audit rows emitted (one ADDED).

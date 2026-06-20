@@ -14,7 +14,6 @@ Tests all API modules:
 Uses REAL API server (no mocks) - uses existing API service in Docker Compose.
 """
 
-import asyncio
 import json
 import uuid
 
@@ -38,13 +37,8 @@ except ImportError:
     SDK_AVAILABLE = False
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract
 from hub.apps.datasets.models import Dataset
-from hub.apps.files.models import File, FileStatus
-from hub.apps.governance.models import AccessRequest, AccessRequestStatus
-from hub.apps.tenants.models import KYCStatus, Tenant
-from hub.apps.users.models import User, UserStatus
-from hub.apps.webhooks.models import Webhook, WebhookStatus
+from hub.apps.governance.models import AccessRequestStatus
 from tests.sdk_python.conftest import SDKTestBase
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]

@@ -6,11 +6,11 @@ apps has throttle_classes defined. Calls the check_throttle_coverage
 management command and verifies exit-zero. Includes a negative test
 that verifies the check fails when a throttle is missing.
 """
+
 from __future__ import annotations
 
 import ast
 from io import StringIO
-from unittest.mock import patch, PropertyMock
 
 import pytest
 from django.core.management import call_command
@@ -33,14 +33,11 @@ class TestThrottleCoverageNegative(TestCase):
     """Stripping throttle_classes from a view causes check to fail."""
 
     def test_missing_throttle_detected(self):
-        import tempfile
         import os
-        from unittest.mock import patch
+        import tempfile
 
         # Write a temporary module with a View class that lacks throttle_classes.
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False
-        ) as tmp:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
             tmp.write(
                 "from rest_framework import viewsets\n"
                 "from rest_framework.permissions import IsAuthenticated\n\n"
@@ -54,10 +51,9 @@ class TestThrottleCoverageNegative(TestCase):
             from hub.apps.observability.management.commands.check_throttle_coverage import (
                 _check_module,
             )
+
             uncovered = _check_module(tmp_path)
-            assert len(uncovered) >= 1, (
-                f"Should report at least 1 uncovered view, got: {uncovered}"
-            )
+            assert len(uncovered) >= 1, f"Should report at least 1 uncovered view, got: {uncovered}"
         finally:
             os.unlink(tmp_path)
 
@@ -67,9 +63,7 @@ class TestViewHasAuditEmission(TestCase):
     handler references create_audit_event (direct call or decorator)."""
 
     def test_unified_search_view_has_audit_emission(self):
-        import ast
-
-        with open("hub/apps/search/views.py", "r") as fh:
+        with open("hub/apps/search/views.py") as fh:
             tree = ast.parse(fh.read())
 
         # Walk the UnifiedSearchView.get method for create_audit_event.

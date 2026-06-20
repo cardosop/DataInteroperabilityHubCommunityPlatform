@@ -119,7 +119,7 @@ class TestLineageTraversal(ContractsTestBase):
         unique = uuid.uuid4().hex[:8]
 
         # Contract B (referenced by A, references A back → cycle)
-        contract_b = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             version=1,
             status=ContractStatus.DRAFT,
@@ -205,8 +205,9 @@ class TestLineageTraversal(ContractsTestBase):
         self.assertIsNotNone(result)
         self.assertEqual(result["contract_id"], str(self.contract.id))
         self.assertIn("referenced_by", result)
-        self.assertIsInstance(result["referenced_by"], list,
-            "Bottom-up traversal 'referenced_by' must be a list")
+        self.assertIsInstance(
+            result["referenced_by"], list, "Bottom-up traversal 'referenced_by' must be a list"
+        )
 
     def test_traverse_bidirectional(self):
         """Test bidirectional traversal."""
@@ -245,8 +246,11 @@ class TestLineageTraversal(ContractsTestBase):
     def test_traverse_top_down_with_missing_hub_contract_json(self):
         """Traversal with hub_contract_json=None returns contract_id + empty models."""
         contract_no_json = Contract.objects.create(
-            tenant=self.tenant, version=1, status=ContractStatus.DRAFT,
-            original_spec_type=OriginalSpecType.ODPS, original_spec_version="3.0.0",
+            tenant=self.tenant,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="3.0.0",
             original_format=OriginalFormat.JSON,
             original_raw='{"info": {"name": "no-json-contract"}}',
             hub_contract_json=None,
@@ -258,8 +262,7 @@ class TestLineageTraversal(ContractsTestBase):
         self.assertIsNotNone(result)
         self.assertEqual(result["contract_id"], str(contract_no_json.id))
         self.assertIn("models", result)
-        self.assertEqual(result["models"], [],
-            "No hub_contract_json → no models to traverse")
+        self.assertEqual(result["models"], [], "No hub_contract_json → no models to traverse")
 
     def test_traverse_top_down_with_invalid_lineage_references(self):
         """Test top-down traversal with invalid lineage references (edge case)."""
@@ -405,7 +408,7 @@ class TestLineageTraversal(ContractsTestBase):
         """
         unique = uuid.uuid4().hex[:8]
 
-        contract_b = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             version=1,
             status=ContractStatus.DRAFT,
@@ -545,11 +548,7 @@ class TestLineageTraversal(ContractsTestBase):
             original_raw='{"info":{"name":"disconnected-' + unique + '"}}',
             hub_contract_json={
                 "info": {"name": "disconnected-" + unique, "domain": "ns1"},
-                "lineage": {
-                    "contracts": [
-                        {"namespace": "ns1", "name": "ghost-contract"}
-                    ]
-                },
+                "lineage": {"contracts": [{"namespace": "ns1", "name": "ghost-contract"}]},
                 "models": [],
             },
         )
@@ -557,14 +556,17 @@ class TestLineageTraversal(ContractsTestBase):
         traverser = LineageTraverser(contract)
         result = traverser.traverse_top_down()
 
-        self.assertIsNotNone(result,
-            "Traversal with disconnected contract lineage must not crash")
-        self.assertEqual(result["contract_id"], str(contract.id),
-            "Root contract must appear in traversal result")
+        self.assertIsNotNone(result, "Traversal with disconnected contract lineage must not crash")
+        self.assertEqual(
+            result["contract_id"], str(contract.id), "Root contract must appear in traversal result"
+        )
         # Broken reference must not appear in contract_lineage
         lineage_refs = result.get("contract_lineage", [])
-        self.assertEqual(len(lineage_refs), 0,
-            "Broken contract-level references to non-existent contracts must be absent")
+        self.assertEqual(
+            len(lineage_refs),
+            0,
+            "Broken contract-level references to non-existent contracts must be absent",
+        )
 
     def test_traverse_top_down_tenant_isolation(self):
         """Lineage traversal documents current cross-tenant behavior.
@@ -577,29 +579,54 @@ class TestLineageTraversal(ContractsTestBase):
         """
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         Contract.objects.create(
-            tenant=other_tenant, version=1, status=ContractStatus.DRAFT,
-            original_spec_type=OriginalSpecType.ODPS, original_spec_version="3.0.0",
+            tenant=other_tenant,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="3.0.0",
             original_format=OriginalFormat.JSON,
             original_raw='{"info":{"name":"other-tenant-contract"}}',
-            hub_contract_json={"info":{"name":"other-tenant-contract"}},
+            hub_contract_json={"info": {"name": "other-tenant-contract"}},
         )
 
         contract_cross_tenant = Contract.objects.create(
-            tenant=self.tenant, version=1, status=ContractStatus.DRAFT,
-            original_spec_type=OriginalSpecType.ODPS, original_spec_version="3.0.0",
+            tenant=self.tenant,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="3.0.0",
             original_format=OriginalFormat.JSON,
             original_raw='{"info":{"name":"cross-tenant-contract"}}',
             hub_contract_json={
-                "info":{"name":"cross-tenant-contract"},
-                "models":[{"name":"model1","fields":[{
-                    "name":"field1","lineage":{"input_fields":[{
-                        "namespace":"other","name":"other-tenant-contract",
-                        "model":"model1","field":"field1"}]}}]}]},
+                "info": {"name": "cross-tenant-contract"},
+                "models": [
+                    {
+                        "name": "model1",
+                        "fields": [
+                            {
+                                "name": "field1",
+                                "lineage": {
+                                    "input_fields": [
+                                        {
+                                            "namespace": "other",
+                                            "name": "other-tenant-contract",
+                                            "model": "model1",
+                                            "field": "field1",
+                                        }
+                                    ]
+                                },
+                            }
+                        ],
+                    }
+                ],
+            },
         )
 
         traverser = LineageTraverser(contract_cross_tenant)

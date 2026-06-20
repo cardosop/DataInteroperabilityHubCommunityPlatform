@@ -17,9 +17,9 @@ All validation methods follow engineering best practices:
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any
 
-from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.exceptions import ObjectDoesNotExist
 
 from hub.apps.core.business_rules.base import (
     BusinessRules,
@@ -30,11 +30,6 @@ from hub.apps.core.business_rules.registry import register_rule
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import FileScanStatus, FileStatus
 from hub.apps.users.models import User
-
-if TYPE_CHECKING:
-    from hub.apps.assets.models import Asset
-    from hub.apps.files.models import File
-    from hub.apps.tenants.models import Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -52,13 +47,13 @@ class DatasetsRuleExecutionContext(RuleExecutionContext):
     - asset: Optional asset instance for asset-dataset relationship validation
     """
 
-    dataset: Optional[Dataset] = None
-    tenant: Optional[Any] = None  # Using Any to avoid circular import
-    user: Optional[User] = None
-    file: Optional[Any] = None  # Using Any to avoid circular import
-    asset: Optional[Any] = None  # Using Any to avoid circular import
+    dataset: Dataset | None = None
+    tenant: Any | None = None  # Using Any to avoid circular import
+    user: User | None = None
+    file: Any | None = None  # Using Any to avoid circular import
+    asset: Any | None = None  # Using Any to avoid circular import
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert context to dictionary for caching/logging."""
         base_dict = super().to_dict()
         base_dict.update(
@@ -78,7 +73,6 @@ class DatasetsRuleExecutionContext(RuleExecutionContext):
     description="Validates dataset structure, schema, tenant context, and version management",
     tags=["datasets", "validation"],
     priority=10,
-
     openspec_ref="specs/datasets-business-rules/spec.md",
 )
 class DatasetsBusinessRules(BusinessRules):
@@ -98,7 +92,7 @@ class DatasetsBusinessRules(BusinessRules):
         return "DatasetsBusinessRules"
 
     def validate(
-        self, context: Optional[RuleExecutionContext] = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -163,9 +157,9 @@ class DatasetsBusinessRules(BusinessRules):
             )
 
         validation_type = kwargs.get("validation_type", "all")
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "dataset_id": str(dataset.id),
             "validation_type": validation_type,
             "validation_checks": {},
@@ -242,7 +236,7 @@ class DatasetsBusinessRules(BusinessRules):
         )
 
     def validate_dataset_schema(
-        self, dataset: Dataset, previous_dataset: Optional[Dataset] = None
+        self, dataset: Dataset, previous_dataset: Dataset | None = None
     ) -> ValidationResult:
         """
         Public method to validate dataset schema.
@@ -275,9 +269,9 @@ class DatasetsBusinessRules(BusinessRules):
         """
         from django.conf import settings as dj_settings
 
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "scan_status": getattr(src_file, "scan_status", None),
             "file_id": str(src_file.id) if getattr(src_file, "id", None) else None,
         }
@@ -288,13 +282,10 @@ class DatasetsBusinessRules(BusinessRules):
                 "Cannot create a dataset from a file flagged as infected by malware scanning."
             )
             details["blocked_reason"] = "FILE_INFECTED"
-        elif (
-            status_val == FileScanStatus.PENDING_SCAN
-            and getattr(dj_settings, "CLAMAV_ENABLED", True)
+        elif status_val == FileScanStatus.PENDING_SCAN and getattr(
+            dj_settings, "CLAMAV_ENABLED", True
         ):
-            errors.append(
-                "Cannot create a dataset while the source file is pending malware scan."
-            )
+            errors.append("Cannot create a dataset while the source file is pending malware scan.")
             details["blocked_reason"] = "FILE_SCAN_PENDING"
 
         return ValidationResult(
@@ -311,22 +302,22 @@ class DatasetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with structure validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         # Check for tenant (handle RelatedObjectDoesNotExist)
         try:
             has_tenant = dataset.tenant is not None
-        except Exception:
+        except ObjectDoesNotExist:
             has_tenant = False
 
         # Check for file (handle RelatedObjectDoesNotExist)
         try:
             has_file = dataset.file is not None
-        except Exception:
+        except ObjectDoesNotExist:
             has_file = False
 
-        details: Dict[str, Any] = {
+        details: dict[str, Any] = {
             "has_tenant": has_tenant,
             "has_file": has_file,
             "has_format": bool(dataset.format),
@@ -346,7 +337,7 @@ class DatasetsBusinessRules(BusinessRules):
         if has_file:
             try:
                 src = dataset.file
-            except Exception:
+            except ObjectDoesNotExist:
                 src = None
             if src is not None:
                 scan_gate = self._validate_dataset_source_file_scan_status(src)
@@ -377,18 +368,28 @@ class DatasetsBusinessRules(BusinessRules):
             file_name_lower = dataset.file.name.lower()
             format_matches = False
 
-            if dataset.format == "CSV" and (
-                file_name_lower.endswith(".csv") or "csv" in dataset.file.content_type.lower()
-            ):
-                format_matches = True
-            elif dataset.format == "JSON" and (
-                file_name_lower.endswith((".json", ".ndjson"))
-                or "json" in dataset.file.content_type.lower()
-            ):
-                format_matches = True
-            elif dataset.format == "PARQUET" and (
-                file_name_lower.endswith(".parquet")
-                or "parquet" in dataset.file.content_type.lower()
+            if (
+                (
+                    dataset.format == "CSV"
+                    and (
+                        file_name_lower.endswith(".csv")
+                        or "csv" in dataset.file.content_type.lower()
+                    )
+                )
+                or (
+                    dataset.format == "JSON"
+                    and (
+                        file_name_lower.endswith((".json", ".ndjson"))
+                        or "json" in dataset.file.content_type.lower()
+                    )
+                )
+                or (
+                    dataset.format == "PARQUET"
+                    and (
+                        file_name_lower.endswith(".parquet")
+                        or "parquet" in dataset.file.content_type.lower()
+                    )
+                )
             ):
                 format_matches = True
 
@@ -406,7 +407,7 @@ class DatasetsBusinessRules(BusinessRules):
         )
 
     def _validate_dataset_schema(
-        self, dataset: Dataset, previous_dataset: Optional[Dataset] = None
+        self, dataset: Dataset, previous_dataset: Dataset | None = None
     ) -> ValidationResult:
         """
         Validate dataset schema structure and content.
@@ -424,9 +425,9 @@ class DatasetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with schema validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "has_schema": dataset.schema_json is not None,
             "schema_valid": False,
             "fields_count": 0,
@@ -496,7 +497,7 @@ class DatasetsBusinessRules(BusinessRules):
             is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
-    def _validate_schema_structure(self, schema: Dict[str, Any]) -> ValidationResult:
+    def _validate_schema_structure(self, schema: dict[str, Any]) -> ValidationResult:
         """
         Validate schema structure conforms to JSON Schema format.
 
@@ -506,9 +507,9 @@ class DatasetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with structure validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "is_dict": isinstance(schema, dict),
             "has_fields": "fields" in schema,
             "has_valid_structure": False,
@@ -533,25 +534,18 @@ class DatasetsBusinessRules(BusinessRules):
                     is_valid=False, errors=errors, warnings=warnings, details=details
                 )
 
-        # Optional: Validate against JSON Schema draft if jsonschema library available
-        try:
-            import jsonschema
-            from jsonschema import Draft202012Validator, SchemaError
-
-            # Basic JSON Schema structure validation
-            # Note: We're validating the structure, not the schema itself as a JSON Schema
-            # Dataset schemas are custom format, so we validate structure only
-            details["has_valid_structure"] = True
-        except ImportError:
-            # jsonschema not available - skip JSON Schema validation
-            warnings.append("jsonschema library not available - JSON Schema validation skipped")
-            details["has_valid_structure"] = True  # Assume valid if we can't validate
+        # TODO: Validate against JSON Schema draft (jsonschema optional dep).
+        # The jsonschema import + Draft202012Validator usage was never
+        # implemented — both branches just set has_valid_structure=True.
+        # When implemented, catch ImportError for the optional dep and
+        # SchemaError for invalid schemas; let programming errors propagate.
+        details["has_valid_structure"] = True
 
         return ValidationResult(
             is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
-    def _validate_schema_fields(self, schema: Dict[str, Any]) -> ValidationResult:
+    def _validate_schema_fields(self, schema: dict[str, Any]) -> ValidationResult:
         """
         Validate schema fields have required properties and valid data types.
 
@@ -561,9 +555,9 @@ class DatasetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with field validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "fields_count": 0,
             "valid_fields": 0,
             "invalid_fields": 0,
@@ -668,9 +662,9 @@ class DatasetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with version compatibility status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "previous_version": previous_dataset.version,
             "current_version": current_dataset.version,
             "version_compatible": False,
@@ -721,7 +715,7 @@ class DatasetsBusinessRules(BusinessRules):
 
         except Exception as e:
             logger.warning(f"Failed to calculate schema compatibility: {e}", exc_info=True)
-            warnings.append(f"Schema compatibility check failed: {str(e)}")
+            warnings.append(f"Schema compatibility check failed: {e!s}")
 
         return ValidationResult(
             is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
@@ -740,9 +734,9 @@ class DatasetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with evolution validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {"backward_compatible": False, "evolution_valid": False}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"backward_compatible": False, "evolution_valid": False}
 
         # Check if both have schemas
         if not previous_dataset.schema_json or not current_dataset.schema_json:
@@ -800,14 +794,14 @@ class DatasetsBusinessRules(BusinessRules):
 
         except Exception as e:
             logger.warning(f"Failed to validate schema evolution: {e}", exc_info=True)
-            warnings.append(f"Schema evolution validation failed: {str(e)}")
+            warnings.append(f"Schema evolution validation failed: {e!s}")
 
         return ValidationResult(
             is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def _validate_tenant_context(
-        self, dataset: Dataset, tenant: Optional[Any] = None
+        self, dataset: Dataset, tenant: Any | None = None
     ) -> ValidationResult:
         """
         Validate dataset tenant context consistency.
@@ -819,9 +813,9 @@ class DatasetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with tenant context validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "dataset_tenant_id": str(dataset.tenant.id) if dataset.tenant else None,
             "provided_tenant_id": str(tenant.id) if tenant else None,
             "tenants_match": False,
@@ -868,7 +862,7 @@ class DatasetsBusinessRules(BusinessRules):
         )
 
     def _validate_permissions(
-        self, dataset: Dataset, user: Optional[User] = None, access_type: str = "READ"
+        self, dataset: Dataset, user: User | None = None, access_type: str = "READ"
     ) -> ValidationResult:
         """
         Validate user permissions for dataset access.
@@ -886,9 +880,9 @@ class DatasetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with permissions validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "user_provided": user is not None,
             "access_type": access_type,
             "read_access_allowed": False,
@@ -958,7 +952,7 @@ class DatasetsBusinessRules(BusinessRules):
                 details["read_access_allowed"] = True
             else:
                 details["write_access_allowed"] = True
-            warnings.append(f"Access granted via approved access request")
+            warnings.append("Access granted via approved access request")
         elif abac_result.allowed:
             # ABAC policy allows access
             if access_type == "READ":
@@ -977,9 +971,7 @@ class DatasetsBusinessRules(BusinessRules):
                 details["read_access_allowed"] = True
             else:
                 details["write_access_allowed"] = True
-            warnings.append(
-                f"Same-tenant access allowed by default (no explicit ABAC policy found)"
-            )
+            warnings.append("Same-tenant access allowed by default (no explicit ABAC policy found)")
         else:
             # Cross-tenant and no ABAC policy and no access request: deny access
             errors.append(
@@ -1015,9 +1007,9 @@ class DatasetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with tenant isolation validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "user_tenant_id": str(user.tenant.id) if user.tenant else None,
             "dataset_tenant_id": str(dataset.tenant.id) if dataset.tenant else None,
             "same_tenant": False,
@@ -1102,9 +1094,9 @@ class DatasetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with access request validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "has_approved_request": False,
             "access_request_id": None,
             "access_request_status": None,
@@ -1126,9 +1118,8 @@ class DatasetsBusinessRules(BusinessRules):
         valid_request = None
         for request in access_requests:
             # Check expiration if expires_at is set
-            if request.expires_at:
-                if request.expires_at < timezone.now():
-                    continue  # Expired, skip
+            if request.expires_at and request.expires_at < timezone.now():
+                continue  # Expired, skip
             valid_request = request
             break
 
@@ -1145,7 +1136,7 @@ class DatasetsBusinessRules(BusinessRules):
         return ValidationResult(is_valid=False, errors=errors, warnings=warnings, details=details)
 
     def validate_dataset_read_access(
-        self, dataset: Dataset, user: Optional[User] = None
+        self, dataset: Dataset, user: User | None = None
     ) -> ValidationResult:
         """
         Validate user has READ access to dataset.
@@ -1160,7 +1151,7 @@ class DatasetsBusinessRules(BusinessRules):
         return self._validate_permissions(dataset, user, access_type="READ")
 
     def validate_dataset_write_access(
-        self, dataset: Dataset, user: Optional[User] = None
+        self, dataset: Dataset, user: User | None = None
     ) -> ValidationResult:
         """
         Validate user has WRITE access to dataset.
@@ -1184,9 +1175,9 @@ class DatasetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with version validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "version": dataset.version,
             "version_valid": False,
             "has_parent_version": dataset.parent_version is not None,
@@ -1246,7 +1237,7 @@ class DatasetsBusinessRules(BusinessRules):
         )
 
     def _validate_file_relationship(
-        self, dataset: Dataset, file: Optional[Any] = None
+        self, dataset: Dataset, file: Any | None = None
     ) -> ValidationResult:
         """
         Validate dataset-file relationship.
@@ -1258,9 +1249,9 @@ class DatasetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with file relationship validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "dataset_file_id": str(dataset.file.id) if dataset.file else None,
             "provided_file_id": str(file.id) if file else None,
             "files_match": False,
@@ -1303,17 +1294,16 @@ class DatasetsBusinessRules(BusinessRules):
     # Phase 260.6.A — narrowed to ACTIVE only (legacy ``COMPLETED``
     # was retired and is forbidden by the DB CHECK constraint
     # ``file_status_no_completed``).
-    _FILE_STATUSES_ALLOWING_DATASET_CREATION: frozenset = frozenset(
-        {FileStatus.ACTIVE}
-    )
+    _FILE_STATUSES_ALLOWING_DATASET_CREATION: frozenset = frozenset({FileStatus.ACTIVE})
 
-    def _validate_file_active(self, file: Optional[Any]) -> ValidationResult:
+    def _validate_file_active(self, file: Any | None) -> ValidationResult:
         """Phase 260.5.B — REJECT dataset creation when the backing
         file is not ready to be ingested.
 
         Distinct from :meth:`_validate_file_relationship` which only
         warns: this method returns ``is_valid=False`` for any file
-        whose status is NOT one of ``(ACTIVE, COMPLETED)``. Callers
+        whose status is NOT ``ACTIVE``.  (Phase 260.6.A retired
+        ``COMPLETED`` — only ``ACTIVE`` is admitted.)  Callers
         (``DatasetService.create_dataset``) translate that into HTTP
         400 with code ``FILE_NOT_READY_FOR_DATASET`` so the user
         sees a clean rejection rather than a 5xx from a downstream
@@ -1322,7 +1312,7 @@ class DatasetsBusinessRules(BusinessRules):
 
         File states and outcomes:
 
-          * ``ACTIVE`` / ``COMPLETED``  → admit (dataset creation proceeds)
+          * ``ACTIVE``                  → admit (Phase 260.6.A: only ACTIVE)
           * ``PENDING`` / ``UPLOADING`` → reject (file not yet landed in S3)
           * ``DELETING`` / ``DELETED``  → reject (file being torn down)
           * ``FAILED``                  → reject (upload errored)
@@ -1331,7 +1321,7 @@ class DatasetsBusinessRules(BusinessRules):
         the file_relationship validator handles the dataset-without-
         file case separately.
         """
-        details: Dict[str, Any] = {
+        details: dict[str, Any] = {
             "file_id": str(file.id) if file else None,
             "file_status": getattr(file, "status", None),
         }
@@ -1371,7 +1361,7 @@ class DatasetsBusinessRules(BusinessRules):
                 (
                     f"File is not ready for dataset creation "
                     f"(status: {status_value!r}). Wait for the upload to "
-                    f"complete (ACTIVE / COMPLETED) before creating a "
+                    f"complete (ACTIVE) before creating a "
                     f"dataset, or re-upload the file if it is in a "
                     f"failed / deleting state."
                 )
@@ -1381,7 +1371,7 @@ class DatasetsBusinessRules(BusinessRules):
         )
 
     def validate_version_number(
-        self, dataset: Dataset, semantic_version: Optional[str] = None, raise_on_error: bool = False
+        self, dataset: Dataset, semantic_version: str | None = None, raise_on_error: bool = False
     ) -> ValidationResult:
         """
         Validate semantic version number format and rules.
@@ -1405,9 +1395,9 @@ class DatasetsBusinessRules(BusinessRules):
         """
         import re
 
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {"dataset_id": str(dataset.id), "version_validation": {}}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"dataset_id": str(dataset.id), "version_validation": {}}
 
         version_str = semantic_version or dataset.semantic_version
 
@@ -1502,7 +1492,7 @@ class DatasetsBusinessRules(BusinessRules):
     def validate_version_compatibility(
         self,
         dataset: Dataset,
-        parent_version: Optional[Dataset] = None,
+        parent_version: Dataset | None = None,
         raise_on_error: bool = False,
     ) -> ValidationResult:
         """
@@ -1525,9 +1515,9 @@ class DatasetsBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {"dataset_id": str(dataset.id), "compatibility_checks": {}}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"dataset_id": str(dataset.id), "compatibility_checks": {}}
 
         parent = parent_version or dataset.parent_version
 
@@ -1686,7 +1676,7 @@ class DatasetsBusinessRules(BusinessRules):
     def validate_version_creation(
         self,
         dataset: Dataset,
-        proposed_semantic_version: Optional[str] = None,
+        proposed_semantic_version: str | None = None,
         raise_on_error: bool = False,
     ) -> ValidationResult:
         """
@@ -1709,14 +1699,14 @@ class DatasetsBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {"dataset_id": str(dataset.id), "creation_checks": {}}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"dataset_id": str(dataset.id), "creation_checks": {}}
 
         if not dataset.asset:
             # No asset - version uniqueness not applicable
             warnings.append(
-                "Dataset is not associated with an asset. " "Version uniqueness validation skipped"
+                "Dataset is not associated with an asset. Version uniqueness validation skipped"
             )
             details["creation_checks"]["has_asset"] = False
             details["creation_checks"]["creation_valid"] = True
@@ -1851,9 +1841,9 @@ class DatasetsBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {"dataset_id": str(dataset.id), "deletion_checks": {}}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"dataset_id": str(dataset.id), "deletion_checks": {}}
 
         # Check for child versions
         child_versions = dataset.child_versions.all()

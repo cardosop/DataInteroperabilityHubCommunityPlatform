@@ -12,7 +12,7 @@ Reviews the OpenAPI specification and identifies:
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Set
+from typing import Any
 
 import yaml
 
@@ -28,21 +28,21 @@ class OpenAPISpecReviewer:
         """Initialize reviewer with OpenAPI spec path."""
         self.spec_path = Path(spec_path)
         self.spec = self._load_spec()
-        self.issues: List[Dict[str, Any]] = []
-        self.stats: Dict[str, Any] = {}
+        self.issues: list[dict[str, Any]] = []
+        self.stats: dict[str, Any] = {}
 
-    def _load_spec(self) -> Dict[str, Any]:
+    def _load_spec(self) -> dict[str, Any]:
         """Load OpenAPI specification."""
         if not self.spec_path.exists():
             raise FileNotFoundError(f"OpenAPI spec not found: {self.spec_path}")
 
-        with open(self.spec_path, "r") as f:
+        with open(self.spec_path) as f:
             if self.spec_path.suffix in [".yaml", ".yml"]:
                 return yaml.safe_load(f)
             else:
                 return json.load(f)
 
-    def review(self) -> Dict[str, Any]:
+    def review(self) -> dict[str, Any]:
         """Perform comprehensive review of OpenAPI spec."""
         print("=" * 80)
         print("OpenAPI Specification Review")
@@ -231,17 +231,17 @@ class OpenAPISpecReviewer:
                 request_body = operation.get("requestBody", {})
                 if request_body:
                     content = request_body.get("content", {})
-                    for media_type, media_spec in content.items():
+                    for _media_type, media_spec in content.items():
                         if "example" in media_spec or "examples" in media_spec:
                             has_example = True
                             break
 
                 # Check response examples
                 responses = operation.get("responses", {})
-                for status_code, response in responses.items():
+                for _status_code, response in responses.items():
                     if isinstance(response, dict):
                         content = response.get("content", {})
-                        for media_type, media_spec in content.items():
+                        for _media_type, media_spec in content.items():
                             if "example" in media_spec or "examples" in media_spec:
                                 has_example = True
                                 break
@@ -300,7 +300,7 @@ class OpenAPISpecReviewer:
                 }
             )
 
-    def _generate_report(self) -> Dict[str, Any]:
+    def _generate_report(self) -> dict[str, Any]:
         """Generate review report."""
         error_count = sum(1 for issue in self.issues if issue["severity"] == "error")
         warn_count = sum(1 for issue in self.issues if issue["severity"] == "warn")
@@ -319,7 +319,7 @@ class OpenAPISpecReviewer:
             for i, issue in enumerate(self.issues, 1):
                 severity_icon = "❌" if issue["severity"] == "error" else "⚠️"
                 print(f"{i}. {severity_icon} [{issue['category']}] {issue['message']}")
-                if "details" in issue and issue["details"]:
+                if issue.get("details"):
                     if isinstance(issue["details"], list):
                         for detail in issue["details"][:5]:
                             print(f"     - {detail}")

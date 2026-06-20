@@ -18,9 +18,8 @@ All tests use real implementations (no mocks of hub services).
 import uuid
 
 import pytest
-from rest_framework import status
 
-from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.assets.models import Asset
 from hub.apps.core.services.base import NotFoundError
 from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.tests.test_base import DatasetsAPITestBase
@@ -122,7 +121,10 @@ class DatasetVersioningTest(DatasetsAPITestBase):
         # Create another tenant and dataset
         _sfx = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_sfx}", slug=f"other-tenant-{_sfx}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_sfx}",
+            slug=f"other-tenant-{_sfx}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         other_file = File.objects.create(
@@ -229,8 +231,11 @@ class DatasetVersioningTest(DatasetsAPITestBase):
             is_current=True,
         )
         self.assertIsNotNone(new_version)
-        self.assertEqual(new_version.semantic_version, "invalid-version",
-            "Service must store invalid semantic versions as-is")
+        self.assertEqual(
+            new_version.semantic_version,
+            "invalid-version",
+            "Service must store invalid semantic versions as-is",
+        )
 
     # ========== VERSION TAGS TESTS ==========
 
@@ -395,5 +400,6 @@ class DatasetVersioningTest(DatasetsAPITestBase):
         # get_version_tree must handle a non-persisted dataset gracefully —
         # returning a result (even if empty), not raising.
         history = VersionHistoryManager.get_version_tree(fake_dataset)
-        self.assertIsNotNone(history,
-            "get_version_tree must return a result even for non-existent dataset")
+        self.assertIsNotNone(
+            history, "get_version_tree must return a result even for non-existent dataset"
+        )

@@ -7,7 +7,6 @@ and error handling. No mocks - real DB and services.
 """
 
 import uuid
-from datetime import timedelta
 
 import pytest
 from django.test import TestCase
@@ -21,7 +20,6 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.scheduled_export.models import (
     DestinationType,
     ScheduledExport,
-    ScheduledExportRun,
     ScheduledExportRunStatus,
     ScheduledExportStatus,
 )
@@ -93,7 +91,6 @@ class ScheduledExportServiceCRUDTest(TestCase):
             schedule_config={"cron": "0 0 * * *", "timezone": "UTC"},
             source_scope={"asset_ids": [str(self.asset.id)]},
         )
-        self.assertIsNotNone(export.id)
         self.assertEqual(export.name, "Daily Export")
         self.assertEqual(export.status, ScheduledExportStatus.ACTIVE)
         self.assertIsNotNone(export.next_run_at)
@@ -256,7 +253,6 @@ class ScheduledExportServiceRunLifecycleTest(TestCase):
             user_id=str(self.user.id),
             prefect_flow_run_id="pf-123",
         )
-        self.assertIsNotNone(run.id)
         self.assertEqual(run.status, ScheduledExportRunStatus.RUNNING)
         self.assertEqual(run.prefect_flow_run_id, "pf-123")
 

@@ -5,6 +5,8 @@ Tests for semantic versioning, version tagging, and diff visualization
 in the context of API and dataset creation workflows.
 """
 
+import uuid
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -16,9 +18,8 @@ from hub.apps.datasets.tests.test_base import DatasetsAPITestBase
 from hub.apps.datasets.version_comparison import VersionComparisonService
 from hub.apps.datasets.versioning import VersionHistoryManager
 from hub.apps.files.models import File, FileStatus
-from hub.apps.tenants.models import Tenant, TenantStatus
+from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
-import uuid
 
 User = get_user_model()
 
@@ -175,13 +176,17 @@ class VersionTaggingIntegrationTest(TestCase):
     """Integration tests for version tagging"""
 
     def setUp(self):
+        super().setUp()
         """Set up test fixtures"""
         self.client = APIClient()
 
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -329,13 +334,17 @@ class VersionDiffVisualizationIntegrationTest(TestCase):
     """Integration tests for version diff visualization"""
 
     def setUp(self):
+        super().setUp()
         """Set up test fixtures"""
         self.client = APIClient()
 
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -554,7 +563,7 @@ class VersionDiffVisualizationIntegrationTest(TestCase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_semantic_versioning_integration_error_handling(self):
+    def test_semantic_versioning_integration_create_succeeds(self):
         """Test error handling in semantic versioning integration"""
         dataset = Dataset.objects.create(
             tenant=self.tenant,

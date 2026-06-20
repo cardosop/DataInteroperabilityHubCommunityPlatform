@@ -84,8 +84,12 @@ class EventPublisher:
                     )
                     # Return existing event ID (deduplicated)
                     return existing_event_id
-            except Exception as dedup_error:
-                # Log error but continue with publish (fail open)
+            except (ValueError, TypeError) as dedup_error:
+                # Only ValueError/TypeError — the only realistic failures
+                # from generate_deduplication_key (bad data /
+                # non-hashable payload). check_event_duplicate has its
+                # own internal Redis-error catch and never raises.
+                # Continue with publish (fail open).
                 logger.warning(
                     "event_deduplication_check_failed",
                     service=self.service_name,
@@ -117,8 +121,11 @@ class EventPublisher:
                         event_id,
                         ttl=DEFAULT_DEDUPLICATION_TTL
                     )
-                except Exception as store_error:
-                    # Log error but don't fail publish (fail open)
+                except (ValueError, TypeError) as store_error:
+                    # Only ValueError/TypeError — the only realistic
+                    # failures from generate_deduplication_key.
+                    # store_event_id has its own internal Redis-error
+                    # catch and never raises. Fail open.
                     logger.warning(
                         "event_deduplication_store_failed",
                         service=self.service_name,
@@ -199,7 +206,7 @@ def event_publisher(event_type: str, **default_kwargs):
             # Publish event
             try:
                 publish_event(event_type, data, **default_kwargs)
-            except Exception as e:
+            except EventBusError as e:
                 logger.error(
                     "decorator_event_publish_failed",
                     event_type=event_type,

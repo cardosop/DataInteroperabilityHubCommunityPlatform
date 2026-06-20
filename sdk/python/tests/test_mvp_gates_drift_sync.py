@@ -7,6 +7,7 @@ No regex, no Django import.
 
 Phase 215.2 — see openspec/changes/preprod01/specs/cli-sdk-mvp-awareness/spec.md
 """
+
 from __future__ import annotations
 
 import ast
@@ -14,10 +15,7 @@ from pathlib import Path
 
 from datahub_interoperability._mvp_gates import MVP_GATED_PREFIXES
 
-
-CANONICAL_PATH = (
-    Path(__file__).resolve().parents[3] / "hub" / "apps" / "api" / "mvp_mode.py"
-)
+CANONICAL_PATH = Path(__file__).resolve().parents[3] / "hub" / "apps" / "api" / "mvp_mode.py"
 CANONICAL_NAME = "MVP_GATED_RELATIVE_PREFIXES"
 
 
@@ -51,15 +49,11 @@ def _extract_canonical_prefixes() -> frozenset[str]:
         ):
             elements = value.args[0].elts
         else:
-            raise AssertionError(
-                f"Unsupported AST shape for {CANONICAL_NAME}: {ast.dump(value)}"
-            )
+            raise AssertionError(f"Unsupported AST shape for {CANONICAL_NAME}: {ast.dump(value)}")
         prefixes: set[str] = set()
         for elt in elements:
             if not isinstance(elt, ast.Constant) or not isinstance(elt.value, str):
-                raise TypeError(
-                    f"Non-string literal element in {CANONICAL_NAME}: {ast.dump(elt)}"
-                )
+                raise TypeError(f"Non-string literal element in {CANONICAL_NAME}: {ast.dump(elt)}")
             prefixes.add(elt.value)
         return frozenset(prefixes)
     raise AssertionError(

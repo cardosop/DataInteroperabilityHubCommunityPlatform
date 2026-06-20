@@ -17,6 +17,7 @@ CI integration:
     The ``lint-cli-sdk-openapi-parity`` job in ci.yml runs this script
     on every PR touching hub/, cli/, or sdk/.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -79,19 +80,26 @@ _RE_JS_TEMPLATE = re.compile(
 # MVP-gated prefixes — these are expected to NOT have full CLI/SDK coverage
 # and are excluded from the "missing from CLI/SDK" report.
 _MVP_GATED_PREFIXES: set[str] = {
-    "mesh/", "virtualization/", "integrations/", "baas/",
-    "ml/", "ai/", "transformation/", "social/",
-    "scheduled-ingestions/", "scheduled-exports/",
+    "mesh/",
+    "virtualization/",
+    "integrations/",
+    "baas/",
+    "ml/",
+    "ai/",
+    "transformation/",
+    "social/",
+    "scheduled-ingestions/",
+    "scheduled-exports/",
 }
 
 # Non-MVP but intentionally not in CLI/SDK (internal/health/system paths)
 _EXCLUDED_PATH_PREFIXES: set[str] = {
-    "admin/",       # Admin-only endpoints
-    "internal/",    # Internal worker endpoints
-    "health/",      # Health check endpoints
-    "auth/",        # Auth endpoints (CLI has separate login flow, not per-path)
-    "api-keys/",    # API key management (CLI config-managed)
-    "sso/",         # SSO (browser-only)
+    "admin/",  # Admin-only endpoints
+    "internal/",  # Internal worker endpoints
+    "health/",  # Health check endpoints
+    "auth/",  # Auth endpoints (CLI has separate login flow, not per-path)
+    "api-keys/",  # API key management (CLI config-managed)
+    "sso/",  # SSO (browser-only)
 }
 
 
@@ -106,7 +114,6 @@ def _load_openapi_paths() -> set[str]:
         sys.exit(2)
 
     paths: set[str] = set()
-    in_paths = False
     with open(OPENAPI_YAML) as f:
         for line in f:
             stripped = line.rstrip()
@@ -115,7 +122,7 @@ def _load_openapi_paths() -> set[str]:
             if stripped.startswith("  /api/v1/") and stripped.endswith(":"):
                 path = stripped.strip().rstrip(":")
                 # Strip /api/v1/ prefix for comparison with CLI/SDK paths
-                rel = path[len("/api/v1/"):]
+                rel = path[len("/api/v1/") :]
                 paths.add(rel)
     return paths
 
@@ -273,16 +280,17 @@ def run_parity_check() -> dict:
         "py_sdk_extra": py_sdk_extra,
         "js_sdk_extra": js_sdk_extra,
         "cli_coverage_pct": (
-            round((1 - len(openapi_missing_cli) / reportable) * 100, 1)
-            if reportable > 0 else 100.0
+            round((1 - len(openapi_missing_cli) / reportable) * 100, 1) if reportable > 0 else 100.0
         ),
         "py_sdk_coverage_pct": (
             round((1 - len(openapi_missing_py_sdk) / reportable) * 100, 1)
-            if reportable > 0 else 100.0
+            if reportable > 0
+            else 100.0
         ),
         "js_sdk_coverage_pct": (
             round((1 - len(openapi_missing_js_sdk) / reportable) * 100, 1)
-            if reportable > 0 else 100.0
+            if reportable > 0
+            else 100.0
         ),
     }
 
@@ -325,14 +333,10 @@ def _print_human(result: dict) -> None:
             print(f"    - {p}")
 
     total_missing = (
-        len(result["cli_missing"])
-        + len(result["py_sdk_missing"])
-        + len(result["js_sdk_missing"])
+        len(result["cli_missing"]) + len(result["py_sdk_missing"]) + len(result["js_sdk_missing"])
     )
     total_extra = (
-        len(result["cli_extra"])
-        + len(result["py_sdk_extra"])
-        + len(result["js_sdk_extra"])
+        len(result["cli_extra"]) + len(result["py_sdk_extra"]) + len(result["js_sdk_extra"])
     )
 
     print()
@@ -346,11 +350,10 @@ def _print_human(result: dict) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="CLI / SDK ↔ OpenAPI parity checker (277.B.083)"
-    )
+    parser = argparse.ArgumentParser(description="CLI / SDK ↔ OpenAPI parity checker (277.B.083)")
     parser.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="Output results as JSON instead of human-readable.",
     )
     args = parser.parse_args()
@@ -366,14 +369,10 @@ def main() -> int:
         _print_human(result)
 
     total_missing = (
-        len(result["cli_missing"])
-        + len(result["py_sdk_missing"])
-        + len(result["js_sdk_missing"])
+        len(result["cli_missing"]) + len(result["py_sdk_missing"]) + len(result["js_sdk_missing"])
     )
     total_extra = (
-        len(result["cli_extra"])
-        + len(result["py_sdk_extra"])
-        + len(result["js_sdk_extra"])
+        len(result["cli_extra"]) + len(result["py_sdk_extra"]) + len(result["js_sdk_extra"])
     )
 
     return 0 if (total_missing == 0 and total_extra == 0) else 1

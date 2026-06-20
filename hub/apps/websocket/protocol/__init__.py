@@ -3,10 +3,11 @@ WebSocket Protocol Definitions
 
 Defines the message protocol for WebSocket communication.
 """
+
 import json
-from dataclasses import dataclass, asdict
-from typing import Any, Dict, List, Optional
+from dataclasses import asdict, dataclass
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 
 class WebSocketMessageType(str, Enum):
@@ -34,10 +35,10 @@ class WebSocketMessage:
     """WebSocket message structure."""
 
     type: str
-    data: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-    request_id: Optional[str] = None
-    timestamp: Optional[str] = None
+    data: dict[str, Any] | None = None
+    error: str | None = None
+    request_id: str | None = None
+    timestamp: str | None = None
 
     def to_json(self) -> str:
         """Convert message to JSON string."""
@@ -54,10 +55,10 @@ class WebSocketMessage:
 class SubscribeMessage:
     """Subscribe message structure."""
 
-    event_types: List[str]
-    filters: Optional[Dict[str, Any]] = None
+    event_types: list[str]
+    filters: dict[str, Any] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         result = {"event_types": self.event_types}
         if self.filters:
@@ -65,7 +66,7 @@ class SubscribeMessage:
         return result
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SubscribeMessage":
+    def from_dict(cls, data: dict[str, Any]) -> "SubscribeMessage":
         """Create from dictionary."""
         return cls(
             event_types=data.get("event_types", []),
@@ -81,11 +82,11 @@ class EventMessage:
     event_type: str
     event_version: str
     timestamp: str
-    source: Dict[str, Any]
-    data: Dict[str, Any]
-    metadata: Optional[Dict[str, Any]] = None
+    source: dict[str, Any]
+    data: dict[str, Any]
+    metadata: dict[str, Any] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         result = {
             "event_id": self.event_id,
@@ -100,7 +101,7 @@ class EventMessage:
         return result
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "EventMessage":
+    def from_dict(cls, data: dict[str, Any]) -> "EventMessage":
         """Create from dictionary."""
         return cls(
             event_id=data["event_id"],

@@ -15,7 +15,6 @@ The migration itself is verified to be applied correctly in the production datab
 import uuid
 
 from django.apps import apps
-from django.core.management import call_command
 from django.db import connection
 
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
@@ -266,7 +265,6 @@ class Migration0009Test(ContractsTestBase):
             self.assertIsNotNone(result, "Index should exist (migration already applied)")
 
         # Verify field exists (migration already applied)
-        from django.db import models
 
         contract_model = apps.get_model("contracts", "Contract")
         self.assertTrue(

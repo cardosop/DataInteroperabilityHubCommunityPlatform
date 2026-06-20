@@ -1,9 +1,10 @@
 """
 Typed HubContract models using Pydantic for validation and normalization.
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
@@ -11,8 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 class HubContractOwner(BaseModel):
     """Owner/contact entry."""
 
-    name: Optional[str] = None
-    email: Optional[str] = None
+    name: str | None = None
+    email: str | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -21,16 +22,16 @@ class HubContractInfo(BaseModel):
     """Info section of the HubContract."""
 
     name: str
-    description: Optional[str] = None
-    version: Optional[str] = None
-    status: Optional[str] = None
-    domain: Optional[str] = None
-    tenant: Optional[str] = None
-    dataProduct: Optional[str] = None
-    links: Optional[Any] = None
-    authoritativeDefinitions: Optional[Any] = None
-    owners: Optional[List[HubContractOwner]] = None
-    tags: Optional[List[str]] = None
+    description: str | None = None
+    version: str | None = None
+    status: str | None = None
+    domain: str | None = None
+    tenant: str | None = None
+    dataProduct: str | None = None
+    links: Any | None = None
+    authoritativeDefinitions: Any | None = None
+    owners: list[HubContractOwner] | None = None
+    tags: list[str] | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -45,15 +46,15 @@ class HubContractInfo(BaseModel):
 class HubContractRelationship(BaseModel):
     """Relationship between schema objects/fields (ODCS v3.1.0)."""
 
-    id: Optional[str] = None
-    name: Optional[str] = Field(default=None, max_length=255)
-    type: Optional[str] = Field(default=None, max_length=100)
-    source: List[str] = Field(default_factory=list)
-    target_contract: Optional[str] = None
-    target_model: Optional[str] = None
-    target_properties: List[str] = Field(default_factory=list)
-    description: Optional[str] = None
-    custom_properties: Optional[List[Dict[str, Any]]] = None
+    id: str | None = None
+    name: str | None = Field(default=None, max_length=255)
+    type: str | None = Field(default=None, max_length=100)
+    source: list[str] = Field(default_factory=list)
+    target_contract: str | None = None
+    target_model: str | None = None
+    target_properties: list[str] = Field(default_factory=list)
+    description: str | None = None
+    custom_properties: list[dict[str, Any]] | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -78,34 +79,34 @@ class HubContractField(BaseModel):
 
     name: str
     data_type: str = Field(default="string", alias="type")
-    element_id: Optional[str] = Field(
+    element_id: str | None = Field(
         default=None,
-        pattern=r'^[a-zA-Z0-9_\-\.]{1,128}$',
+        pattern=r"^[a-zA-Z0-9_\-\.]{1,128}$",
     )
     nullable: bool = True
-    description: Optional[str] = None
-    semantic_type: Optional[str] = None
-    format: Optional[str] = None
-    pattern: Optional[str] = None
-    enum: Optional[List[Any]] = None
-    default: Optional[Any] = None
-    min_length: Optional[int] = Field(default=None, alias="minLength")
-    max_length: Optional[int] = Field(default=None, alias="maxLength")
-    minimum: Optional[float] = None
-    maximum: Optional[float] = None
-    exclusiveMinimum: Optional[Any] = None
-    exclusiveMaximum: Optional[Any] = None
-    logicalType: Optional[str] = None
-    logicalTypeOptions: Optional[Dict[str, Any]] = None
-    metadata: Optional[Dict[str, Any]] = None
-    is_primary_key: Optional[bool] = False
-    is_unique: Optional[bool] = None
-    is_indexed: Optional[bool] = None
-    lineage: Optional[LineageEntry] = None
-    relationships: Optional[List[HubContractRelationship]] = None
+    description: str | None = None
+    semantic_type: str | None = None
+    format: str | None = None
+    pattern: str | None = None
+    enum: list[Any] | None = None
+    default: Any | None = None
+    min_length: int | None = Field(default=None, alias="minLength")
+    max_length: int | None = Field(default=None, alias="maxLength")
+    minimum: float | None = None
+    maximum: float | None = None
+    exclusiveMinimum: Any | None = None
+    exclusiveMaximum: Any | None = None
+    logicalType: str | None = None
+    logicalTypeOptions: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
+    is_primary_key: bool | None = False
+    is_unique: bool | None = None
+    is_indexed: bool | None = None
+    lineage: LineageEntry | None = None
+    relationships: list[HubContractRelationship] | None = None
     # Phase 227 Wave 1 (227.L2.2) — recursive nesting.
-    fields: Optional[List["HubContractField"]] = None
-    items: Optional["HubContractField"] = None
+    fields: list[HubContractField] | None = None
+    items: HubContractField | None = None
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -124,7 +125,7 @@ class HubContractField(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def validate_nested_shape(self) -> "HubContractField":
+    def validate_nested_shape(self) -> HubContractField:
         """Phase 227 Wave 1 structural floor invariants.
 
         We deliberately allow ``data_type == "object"`` with no
@@ -134,13 +135,12 @@ class HubContractField(BaseModel):
         treat those as warnings during normalisation rather than
         hard-fail (Wave 0 would have caught the same cases).
         """
-        if self.data_type == "object":
-            if not self.fields:
-                raise ValueError(
-                    f"schema.fields[].name={self.name!r} has data_type='object' "
-                    f"but no fields[] — object types must declare nested fields "
-                    f"(see Phase 227 structural floor invariant)"
-                )
+        if self.data_type == "object" and not self.fields:
+            raise ValueError(
+                f"schema.fields[].name={self.name!r} has data_type='object' "
+                f"but no fields[] — object types must declare nested fields "
+                f"(see Phase 227 structural floor invariant)"
+            )
         return self
 
     # Forward-ref resolution for the self-referential ``fields``/``items``
@@ -152,17 +152,17 @@ class HubContractField(BaseModel):
 class HubContractSchema(BaseModel):
     """Schema section of the HubContract."""
 
-    fields: List[HubContractField]
-    primary_key: Optional[List[str]] = None
-    unique_constraints: Optional[List[Any]] = None
-    indexes: Optional[List[Any]] = None
-    relationships: Optional[List[HubContractRelationship]] = None
+    fields: list[HubContractField]
+    primary_key: list[str] | None = None
+    unique_constraints: list[Any] | None = None
+    indexes: list[Any] | None = None
+    relationships: list[HubContractRelationship] | None = None
 
     model_config = ConfigDict(extra="allow")
 
     @field_validator("fields")
     @classmethod
-    def validate_fields(cls, value: List[HubContractField]) -> List[HubContractField]:
+    def validate_fields(cls, value: list[HubContractField]) -> list[HubContractField]:
         if not value:
             raise ValueError("schema.fields must contain at least one field")
         return value
@@ -172,22 +172,22 @@ class HubContractModelEntry(BaseModel):
     """Canonical model entry within models[]."""
 
     name: str
-    element_id: Optional[str] = Field(
+    element_id: str | None = Field(
         default=None,
-        pattern=r'^[a-zA-Z0-9_\-\.]{1,128}$',
+        pattern=r"^[a-zA-Z0-9_\-\.]{1,128}$",
     )
-    description: Optional[str] = None
-    fields: List[HubContractField]
-    primary_key: Optional[List[str]] = None
-    unique_constraints: Optional[List[Any]] = None
-    indexes: Optional[List[Any]] = None
-    logical_type: Optional[str] = None
-    physical_type: Optional[str] = None
-    physical_name: Optional[str] = None
-    data_granularity_description: Optional[str] = None
-    tags: Optional[List[str]] = None
-    lineage: Optional[LineageSection] = None
-    relationships: Optional[List[HubContractRelationship]] = None
+    description: str | None = None
+    fields: list[HubContractField]
+    primary_key: list[str] | None = None
+    unique_constraints: list[Any] | None = None
+    indexes: list[Any] | None = None
+    logical_type: str | None = None
+    physical_type: str | None = None
+    physical_name: str | None = None
+    data_granularity_description: str | None = None
+    tags: list[str] | None = None
+    lineage: LineageSection | None = None
+    relationships: list[HubContractRelationship] | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -200,7 +200,7 @@ class HubContractModelEntry(BaseModel):
 
     @field_validator("fields")
     @classmethod
-    def validate_model_fields(cls, value: List[HubContractField]) -> List[HubContractField]:
+    def validate_model_fields(cls, value: list[HubContractField]) -> list[HubContractField]:
         if not value:
             raise ValueError("models[].fields must contain at least one field")
         return value
@@ -209,20 +209,20 @@ class HubContractModelEntry(BaseModel):
 class ServiceLevel(BaseModel):
     """Canonical service level entry."""
 
-    id: Optional[str] = None
-    name: Optional[str] = None
-    description: Optional[str] = None
-    property: Optional[str] = None
-    metric: Optional[str] = None
-    objective: Optional[str] = None
-    target: Optional[Any] = None
-    unit: Optional[str] = None
-    operator: Optional[str] = None
-    threshold: Optional[Any] = None
-    window: Optional[str] = None
-    schedule: Optional[str] = None
-    tags: Optional[List[str]] = None
-    priority: Optional[str] = None
+    id: str | None = None
+    name: str | None = None
+    description: str | None = None
+    property: str | None = None
+    metric: str | None = None
+    objective: str | None = None
+    target: Any | None = None
+    unit: str | None = None
+    operator: str | None = None
+    threshold: Any | None = None
+    window: str | None = None
+    schedule: str | None = None
+    tags: list[str] | None = None
+    priority: str | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -230,25 +230,25 @@ class ServiceLevel(BaseModel):
 class QualityRule(BaseModel):
     """Canonical quality rule structure."""
 
-    id: Optional[str] = None
-    name: Optional[str] = None
-    dimension: Optional[str] = None
-    type: Optional[str] = None
-    rule: Optional[Any] = None
-    unit: Optional[str] = None
-    operator: Optional[str] = None
-    threshold: Optional[Any] = None
-    valid_values: Optional[List[Any]] = None
-    sql_query: Optional[str] = None
-    target: Optional[str] = None
-    engine: Optional[str] = None
-    implementation: Optional[str] = None
-    method: Optional[str] = None
-    severity: Optional[str] = None
-    business_impact: Optional[str] = None
-    scheduler: Optional[str] = None
-    schedule: Optional[str] = None
-    tags: Optional[List[str]] = None
+    id: str | None = None
+    name: str | None = None
+    dimension: str | None = None
+    type: str | None = None
+    rule: Any | None = None
+    unit: str | None = None
+    operator: str | None = None
+    threshold: Any | None = None
+    valid_values: list[Any] | None = None
+    sql_query: str | None = None
+    target: str | None = None
+    engine: str | None = None
+    implementation: str | None = None
+    method: str | None = None
+    severity: str | None = None
+    business_impact: str | None = None
+    scheduler: str | None = None
+    schedule: str | None = None
+    tags: list[str] | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -256,18 +256,18 @@ class QualityRule(BaseModel):
 class ContactChannel(BaseModel):
     """Canonical contact channel extracted from support[]."""
 
-    name: Optional[str] = None
-    email: Optional[str] = None
-    url: Optional[str] = None
-    description: Optional[str] = None
-    tool: Optional[str] = None
-    scope: Optional[str] = None
+    name: str | None = None
+    email: str | None = None
+    url: str | None = None
+    description: str | None = None
+    tool: str | None = None
+    scope: str | None = None
 
     model_config = ConfigDict(extra="allow")
 
     @field_validator("email")
     @classmethod
-    def validate_email(cls, value: Optional[str]) -> Optional[str]:
+    def validate_email(cls, value: str | None) -> str | None:
         if value and "@" not in value:
             raise ValueError("contact.email must be a valid email address")
         return value
@@ -276,22 +276,22 @@ class ContactChannel(BaseModel):
 class ServerEntry(BaseModel):
     """Canonical server entry."""
 
-    type: Optional[str] = None
-    url: Optional[str] = None
-    description: Optional[str] = None
-    variables: Optional[Dict[str, Any]] = None
-    host: Optional[str] = None
-    port: Optional[Any] = None
-    database: Optional[str] = None
-    catalog: Optional[str] = None
-    schema_: Optional[str] = Field(default=None, alias="schema")
-    warehouse: Optional[str] = None
-    account: Optional[str] = None
-    region: Optional[str] = None
-    bucket: Optional[str] = None
-    path: Optional[str] = None
-    topic: Optional[str] = None
-    queue: Optional[str] = None
+    type: str | None = None
+    url: str | None = None
+    description: str | None = None
+    variables: dict[str, Any] | None = None
+    host: str | None = None
+    port: Any | None = None
+    database: str | None = None
+    catalog: str | None = None
+    schema_: str | None = Field(default=None, alias="schema")
+    warehouse: str | None = None
+    account: str | None = None
+    region: str | None = None
+    bucket: str | None = None
+    path: str | None = None
+    topic: str | None = None
+    queue: str | None = None
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -299,12 +299,12 @@ class ServerEntry(BaseModel):
 class TermsSection(BaseModel):
     """Canonical terms of use."""
 
-    usage: Optional[Any] = None
-    limitations: Optional[Any] = None
-    billing: Optional[Any] = None
-    support: Optional[Any] = None
-    sla: Optional[Any] = None
-    pricing: Optional[Dict[str, Any]] = None
+    usage: Any | None = None
+    limitations: Any | None = None
+    billing: Any | None = None
+    support: Any | None = None
+    sla: Any | None = None
+    pricing: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -312,9 +312,9 @@ class TermsSection(BaseModel):
 class RoleEntry(BaseModel):
     """ODCS roles[] entry."""
 
-    roleName: Optional[str] = None
-    accessType: Optional[str] = None
-    approvers: Optional[List[Any]] = None
+    roleName: str | None = None
+    accessType: str | None = None
+    approvers: list[Any] | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -323,18 +323,18 @@ class DefinitionEntry(BaseModel):
     """Canonical definition entry for reusable field definitions."""
 
     name: str
-    description: Optional[str] = None
-    type: Optional[str] = None
-    nullable: Optional[bool] = None
-    format: Optional[str] = None
-    pattern: Optional[str] = None
-    enum: Optional[List[Any]] = None
-    default: Optional[Any] = None
-    min_length: Optional[int] = None
-    max_length: Optional[int] = None
-    minimum: Optional[float] = None
-    maximum: Optional[float] = None
-    metadata: Optional[Dict[str, Any]] = None
+    description: str | None = None
+    type: str | None = None
+    nullable: bool | None = None
+    format: str | None = None
+    pattern: str | None = None
+    enum: list[Any] | None = None
+    default: Any | None = None
+    min_length: int | None = None
+    max_length: int | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+    metadata: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -349,10 +349,10 @@ class DefinitionEntry(BaseModel):
 class SupportChannel(BaseModel):
     """ODCS support[] channel entry (separate from contact info)."""
 
-    tool: Optional[str] = None
-    url: Optional[str] = None
-    description: Optional[str] = None
-    scope: Optional[str] = None
+    tool: str | None = None
+    url: str | None = None
+    description: str | None = None
+    scope: str | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -360,10 +360,10 @@ class SupportChannel(BaseModel):
 class TeamEntry(BaseModel):
     """ODCS team[] entry."""
 
-    member: Optional[str] = None
-    role: Optional[str] = None
-    dateIn: Optional[str] = None
-    dateOut: Optional[str] = None
+    member: str | None = None
+    role: str | None = None
+    dateIn: str | None = None
+    dateOut: str | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -371,9 +371,9 @@ class TeamEntry(BaseModel):
 class PricingEntry(BaseModel):
     """ODCS price object."""
 
-    priceAmount: Optional[Any] = None
-    priceCurrency: Optional[str] = None
-    priceUnit: Optional[str] = None
+    priceAmount: Any | None = None
+    priceCurrency: str | None = None
+    priceUnit: str | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -381,10 +381,10 @@ class PricingEntry(BaseModel):
 class InputField(BaseModel):
     """Lineage input field reference."""
 
-    namespace: Optional[str] = None
-    name: Optional[str] = None
-    model_name: Optional[str] = None
-    field: Optional[str] = None
+    namespace: str | None = None
+    name: str | None = None
+    model_name: str | None = None
+    field: str | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -392,11 +392,11 @@ class InputField(BaseModel):
 class Transformation(BaseModel):
     """Lineage transformation."""
 
-    logic: Optional[Any] = None
-    description: Optional[str] = None
-    type: Optional[str] = None
-    subtype: Optional[str] = None
-    masking: Optional[Any] = None
+    logic: Any | None = None
+    description: str | None = None
+    type: str | None = None
+    subtype: str | None = None
+    masking: Any | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -404,8 +404,8 @@ class Transformation(BaseModel):
 class LineageEntry(BaseModel):
     """Canonical lineage entry (used at contract, model, and field levels)."""
 
-    input_fields: Optional[List[InputField]] = Field(default=None, alias="inputFields")
-    transformations: Optional[List[Transformation]] = None
+    input_fields: list[InputField] | None = Field(default=None, alias="inputFields")
+    transformations: list[Transformation] | None = None
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -413,10 +413,10 @@ class LineageEntry(BaseModel):
 class ContractLineageReference(BaseModel):
     """Contract-level lineage reference to another contract."""
 
-    namespace: Optional[str] = None
-    name: Optional[str] = None
-    version: Optional[str] = None
-    description: Optional[str] = None
+    namespace: str | None = None
+    name: str | None = None
+    version: str | None = None
+    description: str | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -424,10 +424,10 @@ class ContractLineageReference(BaseModel):
 class ModelLineageReference(BaseModel):
     """Model-level lineage reference to another model."""
 
-    namespace: Optional[str] = None
-    name: Optional[str] = None
-    model_name: Optional[str] = None
-    description: Optional[str] = None
+    namespace: str | None = None
+    name: str | None = None
+    model_name: str | None = None
+    description: str | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -435,9 +435,9 @@ class ModelLineageReference(BaseModel):
 class LineageSection(BaseModel):
     """Multi-level lineage section for HubContract."""
 
-    contracts: Optional[List[ContractLineageReference]] = None
-    models: Optional[List[ModelLineageReference]] = None
-    entries: Optional[List[LineageEntry]] = None
+    contracts: list[ContractLineageReference] | None = None
+    models: list[ModelLineageReference] | None = None
+    entries: list[LineageEntry] | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -445,10 +445,10 @@ class LineageSection(BaseModel):
 class QualitySection(BaseModel):
     """Quality section."""
 
-    default_profile_key: Optional[str] = None
-    rules: Optional[List[QualityRule]] = None
-    type: Optional[str] = None
-    specification: Optional[str] = None
+    default_profile_key: str | None = None
+    rules: list[QualityRule] | None = None
+    type: str | None = None
+    specification: str | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -456,11 +456,11 @@ class QualitySection(BaseModel):
 class PrivacyComplianceSection(BaseModel):
     """Privacy and compliance section."""
 
-    contains_personal_data: Optional[bool] = None
-    personal_data_categories: Optional[List[Any]] = None
-    jurisdictions: Optional[List[str]] = None
-    legal_bases: Optional[List[str]] = None
-    retention_policy: Optional[Dict[str, Any]] = None
+    contains_personal_data: bool | None = None
+    personal_data_categories: list[Any] | None = None
+    jurisdictions: list[str] | None = None
+    legal_bases: list[str] | None = None
+    retention_policy: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -468,9 +468,9 @@ class PrivacyComplianceSection(BaseModel):
 class LifecycleSection(BaseModel):
     """Lifecycle section."""
 
-    data_source: Optional[str] = None
-    refresh_cadence: Optional[str] = None
-    slas: Optional[Dict[str, Any]] = None
+    data_source: str | None = None
+    refresh_cadence: str | None = None
+    slas: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -478,9 +478,9 @@ class LifecycleSection(BaseModel):
 class MarketplaceSection(BaseModel):
     """Marketplace section."""
 
-    license_summary: Optional[str] = None
-    intended_use: Optional[List[str]] = None
-    restricted_use: Optional[List[str]] = None
+    license_summary: str | None = None
+    intended_use: list[str] | None = None
+    restricted_use: list[str] | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -490,7 +490,7 @@ class OriginalSpecMetadata(BaseModel):
 
     type: str
     version: str
-    conforms_to: Optional[Dict[str, Any]] = None
+    conforms_to: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -505,7 +505,7 @@ class OriginalSpecMetadata(BaseModel):
 class NormalizationMetadata(BaseModel):
     """Normalization metadata container."""
 
-    coverage: Optional[Dict[str, Any]] = None
+    coverage: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -520,24 +520,24 @@ class HubContractModel(BaseModel):
     id: str
     info: HubContractInfo
     schema_: HubContractSchema = Field(alias="schema")
-    models: Optional[List[HubContractModelEntry]] = None
-    definitions: Optional[List[DefinitionEntry]] = None
-    quality: Optional[QualitySection] = None
-    servicelevels: Optional[List[ServiceLevel]] = None
-    contact: Optional[List[ContactChannel]] = None
-    support: Optional[List[SupportChannel]] = None
-    servers: Optional[List[ServerEntry]] = None
-    terms: Optional[TermsSection] = None
-    roles: Optional[List[RoleEntry]] = None
-    team: Optional[List[TeamEntry]] = None
-    pricing: Optional[PricingEntry] = None
-    lineage: Optional[LineageSection] = None
-    privacy_compliance: Optional[PrivacyComplianceSection] = None
-    lifecycle: Optional[LifecycleSection] = None
-    marketplace: Optional[MarketplaceSection] = None
-    original_spec: Optional[OriginalSpecMetadata] = None
-    normalization: Optional[NormalizationMetadata] = None
-    extensions: Optional[Dict[str, Any]] = None
+    models: list[HubContractModelEntry] | None = None
+    definitions: list[DefinitionEntry] | None = None
+    quality: QualitySection | None = None
+    servicelevels: list[ServiceLevel] | None = None
+    contact: list[ContactChannel] | None = None
+    support: list[SupportChannel] | None = None
+    servers: list[ServerEntry] | None = None
+    terms: TermsSection | None = None
+    roles: list[RoleEntry] | None = None
+    team: list[TeamEntry] | None = None
+    pricing: PricingEntry | None = None
+    lineage: LineageSection | None = None
+    privacy_compliance: PrivacyComplianceSection | None = None
+    lifecycle: LifecycleSection | None = None
+    marketplace: MarketplaceSection | None = None
+    original_spec: OriginalSpecMetadata | None = None
+    normalization: NormalizationMetadata | None = None
+    extensions: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -549,13 +549,15 @@ class HubContractModel(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def check_required_sections(self) -> "HubContractModel":
+    def check_required_sections(self) -> HubContractModel:
         if not self.info or not self.schema_:
             raise ValueError("info and schema sections are required")
         return self
 
 
-def validate_hub_contract_dict(hub_contract: Dict[str, Any]) -> tuple[Optional[HubContractModel], List[str]]:
+def validate_hub_contract_dict(
+    hub_contract: dict[str, Any],
+) -> tuple[HubContractModel | None, list[str]]:
     """
     Validate HubContract dictionary using Pydantic models.
 
@@ -569,7 +571,7 @@ def validate_hub_contract_dict(hub_contract: Dict[str, Any]) -> tuple[Optional[H
         model = HubContractModel.model_validate(hub_contract)
         return model, []
     except ValidationError as exc:
-        errors: List[str] = []
+        errors: list[str] = []
         for error in exc.errors():
             location = " -> ".join(str(item) for item in error.get("loc", []))
             message = error.get("msg", "Invalid value")

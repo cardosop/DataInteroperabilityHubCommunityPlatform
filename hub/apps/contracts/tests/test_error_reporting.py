@@ -28,7 +28,7 @@ class ErrorReportingTest(TestCase):
             ],
         }
 
-        status, errors, warnings = interpret_validation_status(result)
+        _status, errors, _warnings = interpret_validation_status(result)
 
         self.assertEqual(len(errors), 1)
         error = errors[0]
@@ -61,7 +61,7 @@ class ErrorReportingTest(TestCase):
             ],
         }
 
-        status, errors, warnings = interpret_validation_status(result)
+        _status, _errors, warnings = interpret_validation_status(result)
 
         self.assertEqual(len(warnings), 1)
         warning = warnings[0]
@@ -154,7 +154,7 @@ class ErrorReportingTest(TestCase):
             ],
         }
 
-        status, errors, warnings = interpret_validation_status(result)
+        _status, errors, warnings = interpret_validation_status(result)
 
         # ERROR and CRITICAL should be in errors
         self.assertEqual(len(errors), 2)
@@ -183,7 +183,7 @@ class ErrorReportingTest(TestCase):
             ],
         }
 
-        status, errors, warnings = interpret_validation_status(result)
+        _status, errors, _warnings = interpret_validation_status(result)
 
         # Should still create error with defaults
         self.assertEqual(len(errors), 1)
@@ -195,61 +195,31 @@ class ErrorReportingTest(TestCase):
 
     # Edge cases and error handling tests
     def test_interpret_validation_status_with_none_result(self):
-        """Test handling of None result."""
-        try:
-            status, errors, warnings = interpret_validation_status(None)
-            # If it doesn't raise, verify structure
-            self.assertIsInstance(status, str)
-            self.assertIsInstance(errors, list)
-            self.assertIsInstance(warnings, list)
-        except (TypeError, AttributeError):
-            # If it raises exception, that's acceptable
-            pass
+        """Test handling of None result — should raise TypeError."""
+        with self.assertRaises((TypeError, AttributeError)):
+            interpret_validation_status(None)
 
     def test_interpret_validation_status_with_empty_dict(self):
-        """Test handling of empty dictionary."""
+        """Empty dict returns defaults gracefully."""
         result = {}
-
-        try:
-            status, errors, warnings = interpret_validation_status(result)
-            # Should handle gracefully
-            self.assertIsInstance(status, str)
-            self.assertIsInstance(errors, list)
-            self.assertIsInstance(warnings, list)
-        except (KeyError, AttributeError):
-            # If it raises exception, that's acceptable
-            pass
+        status, errors, warnings = interpret_validation_status(result)
+        self.assertIsInstance(status, str)
+        self.assertIsInstance(errors, list)
+        self.assertIsInstance(warnings, list)
 
     def test_interpret_validation_status_with_missing_issues(self):
-        """Test handling of result missing issues field."""
-        result = {
-            "validation_status": "VALID"
-            # Missing issues field
-        }
-
-        try:
-            status, errors, warnings = interpret_validation_status(result)
-            # Should handle gracefully
-            self.assertIsInstance(status, str)
-            self.assertIsInstance(errors, list)
-            self.assertIsInstance(warnings, list)
-        except (KeyError, AttributeError):
-            # If it raises exception, that's acceptable
-            pass
+        """Missing 'issues' key returns empty list."""
+        result = {"validation_status": "VALID"}
+        status, errors, warnings = interpret_validation_status(result)
+        self.assertEqual(status, "VALID")
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
 
     def test_interpret_validation_status_with_invalid_issues_type(self):
-        """Test handling of invalid issues type."""
-        result = {"validation_status": "INVALID", "issues": "not-a-list"}  # Invalid type
-
-        try:
-            status, errors, warnings = interpret_validation_status(result)
-            # Should handle gracefully
-            self.assertIsInstance(status, str)
-            self.assertIsInstance(errors, list)
-            self.assertIsInstance(warnings, list)
-        except (TypeError, AttributeError):
-            # If it raises exception, that's acceptable
-            pass
+        """Non-list issues field raises AttributeError (string has no .get)."""
+        result = {"validation_status": "INVALID", "issues": "not-a-list"}
+        with self.assertRaises(AttributeError):
+            interpret_validation_status(result)
 
     def test_group_errors_by_category_with_empty_list(self):
         """Test error grouping with empty error list."""
@@ -260,51 +230,24 @@ class ErrorReportingTest(TestCase):
         self.assertEqual(len(grouped), 0)
 
     def test_group_errors_by_category_with_none(self):
-        """Test error grouping with None."""
-        try:
-            grouped = group_errors_by_category(None)
-            # If it doesn't raise, verify structure
-            self.assertIsInstance(grouped, dict)
-        except (TypeError, AttributeError):
-            # If it raises exception, that's acceptable
-            pass
+        """Test error grouping with None — should raise TypeError."""
+        with self.assertRaises((TypeError, AttributeError)):
+            group_errors_by_category(None)
 
     def test_group_errors_by_category_with_invalid_error_structure(self):
-        """Test error grouping with invalid error structure."""
+        """Error grouping with mixed valid/invalid entries — should raise."""
         errors = [
-            "not-a-dict",  # Invalid error structure
+            "not-a-dict",
             {"category": "schema", "message": "Valid error"},
         ]
-
-        try:
-            grouped = group_errors_by_category(errors)
-            # Should handle gracefully - may skip invalid entries
-            self.assertIsInstance(grouped, dict)
-            if "schema" in grouped:
-                self.assertGreater(len(grouped["schema"]), 0)
-        except (TypeError, AttributeError, KeyError):
-            # If it raises exception, that's acceptable
-            pass
+        with self.assertRaises((TypeError, AttributeError)):
+            group_errors_by_category(errors)
 
     def test_group_errors_by_category_with_missing_category(self):
-        """Test error grouping with errors missing category field."""
-        errors = [
-            {
-                "severity": "ERROR",
-                "path": "/schema",
-                "message": "Error without category",
-                "rule_id": "rule1",
-                # Missing category
-            }
-        ]
-
-        try:
-            grouped = group_errors_by_category(errors)
-            # Should handle gracefully - may use default category
-            self.assertIsInstance(grouped, dict)
-        except (KeyError, AttributeError):
-            # If it raises exception, that's acceptable
-            pass
+        """Error grouping with missing category — handled gracefully."""
+        errors = [{"severity": "ERROR", "path": "/schema", "message": "No category"}]
+        grouped = group_errors_by_category(errors)
+        self.assertIsInstance(grouped, dict)
 
     def test_interpret_validation_status_with_nested_issues(self):
         """Test handling of nested issues structure."""
@@ -322,7 +265,7 @@ class ErrorReportingTest(TestCase):
             ],
         }
 
-        status, errors, warnings = interpret_validation_status(result)
+        _status, errors, _warnings = interpret_validation_status(result)
 
         # Should handle nested structures gracefully
         self.assertEqual(len(errors), 1)
@@ -346,7 +289,7 @@ class ErrorReportingTest(TestCase):
             ],
         }
 
-        status, errors, warnings = interpret_validation_status(result)
+        _status, errors, _warnings = interpret_validation_status(result)
 
         # Should handle long messages
         self.assertEqual(len(errors), 1)
@@ -367,7 +310,7 @@ class ErrorReportingTest(TestCase):
             ],
         }
 
-        status, errors, warnings = interpret_validation_status(result)
+        _status, errors, _warnings = interpret_validation_status(result)
 
         # Should handle special characters
         self.assertEqual(len(errors), 1)
@@ -390,7 +333,7 @@ class ErrorReportingTest(TestCase):
             ],
         }
 
-        status, errors, warnings = interpret_validation_status(result)
+        _status, errors, _warnings = interpret_validation_status(result)
 
         # Should handle unicode characters
         self.assertEqual(len(errors), 1)

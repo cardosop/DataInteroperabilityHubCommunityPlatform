@@ -1,13 +1,16 @@
 """Phase 98: Rate limiting enforcement tests."""
+
 import uuid
+from unittest.mock import patch
+
 import pytest
+from django.core.cache import cache
 from django.test import TestCase, override_settings
+from rest_framework.test import APIClient
+
+from hub.apps.auth.views import _check_ip_rate_limit, _check_password_reset_rate_limit
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-from django.core.cache import cache
-from unittest.mock import patch
-from rest_framework.test import APIClient
-from hub.apps.auth.views import _check_ip_rate_limit, _check_password_reset_rate_limit
 
 pytestmark = pytest.mark.security
 
@@ -26,7 +29,7 @@ class RateLimitingTest(TestCase):
         ip = "192.0.2.99"
         # Default is 10 per minute
         for i in range(10):
-            self.assertTrue(_check_ip_rate_limit(ip), f"Request {i+1} should pass")
+            self.assertTrue(_check_ip_rate_limit(ip), f"Request {i + 1} should pass")
         # 11th should be blocked
         self.assertFalse(_check_ip_rate_limit(ip))
 
@@ -36,7 +39,7 @@ class RateLimitingTest(TestCase):
         for i in range(5):
             self.assertTrue(
                 _check_password_reset_rate_limit(email),
-                f"Reset {i+1} should pass",
+                f"Reset {i + 1} should pass",
             )
         # 6th should be blocked
         self.assertFalse(_check_password_reset_rate_limit(email))
@@ -62,7 +65,9 @@ class RateLimitingTest(TestCase):
         )
         self.assertEqual(response.status_code, 429)
 
+
 # ── Phase 277.4.6 — Retry-After header verification ──────────────
+
 
 @override_settings(SEARCH_RATE_LIMIT_PER_MIN="3/min")
 class TestRetryAfterHeader(TestCase):
@@ -71,12 +76,15 @@ class TestRetryAfterHeader(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"RA-{uid}", slug=f"ra-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"RA-{uid}",
+            slug=f"ra-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"ra-{uid}@meshant.test",
-            password="testpass", tenant=self.tenant,
+            password="testpass",
+            tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
         self.client = APIClient()

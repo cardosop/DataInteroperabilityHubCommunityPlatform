@@ -45,11 +45,12 @@ Metrics emitted (Prometheus client present in the project):
 * ``lineage_subscription_debounced_total``
 * ``lineage_severity_classified_total{severity}``
 """
+
 from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from hub.apps.api.capabilities import is_capability_enabled
 from hub.apps.contracts.lineage_severity import (
@@ -58,7 +59,6 @@ from hub.apps.contracts.lineage_severity import (
     Severity,
     classify,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -86,9 +86,9 @@ def handle_contract_updated(
     tenant_id: str,
     old_lineage_hash: str,
     new_lineage_hash: str,
-    version: Optional[int] = None,
+    version: int | None = None,
     actor_user_id: str = "",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Top-level dispatcher entrypoint.
 
     Returns a dict with the dispatch outcome counts so callers
@@ -96,14 +96,14 @@ def handle_contract_updated(
     """
     # Counts are kept in a separate int-only dict so the per-outcome
     # ``result.get(outcome, 0) + 1`` increment stays type-uniform.
-    counts: Dict[str, int] = {
+    counts: dict[str, int] = {
         "candidates": 0,
         "dispatched": 0,
         "debounced": 0,
         "rate_limited": 0,
         "skipped_below_threshold": 0,
     }
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "contract_id": contract_id,
         "severity": None,
     }
@@ -112,14 +112,14 @@ def handle_contract_updated(
     # the flag when the GA rollout starts.
     if not is_capability_enabled("lineage.change_notifications"):
         logger.debug(
-            "lineage_impact_dispatch_flag_off contract_id=%s", contract_id,
+            "lineage_impact_dispatch_flag_off contract_id=%s",
+            contract_id,
         )
         result.update(counts)
         return result
 
     from hub.apps.contracts.models import (
         Contract,
-        LineageEdge,
         LineageSubscription,
     )
 
@@ -194,7 +194,9 @@ F3_DOWNSTREAM_MAX_NODES = int(
 
 
 def _walk_downstream_contracts(
-    *, source_contract_id: str, tenant_id: str,
+    *,
+    source_contract_id: str,
+    tenant_id: str,
 ) -> set:
     """Bounded-BFS over the open ``LineageEdge`` rows starting from
     ``source_contract_id``.
@@ -219,15 +221,11 @@ def _walk_downstream_contracts(
         # Find direct downstream successors: edges where source is
         # in the current frontier and target is a different contract.
         next_frontier: set = set()
-        rows = (
-            LineageEdge.objects
-            .filter(
-                tenant_id=tenant_id,
-                source_contract_id__in=frontier,
-                valid_to__isnull=True,
-            )
-            .values_list("target_contract_id", flat=True)
-        )
+        rows = LineageEdge.objects.filter(
+            tenant_id=tenant_id,
+            source_contract_id__in=frontier,
+            valid_to__isnull=True,
+        ).values_list("target_contract_id", flat=True)
         for tgt in rows:
             if tgt is None:
                 continue
@@ -244,9 +242,10 @@ def _walk_downstream_contracts(
         depth += 1
         if len(visited) >= F3_DOWNSTREAM_MAX_NODES:
             logger.warning(
-                "lineage_impact_downstream_walk_capped "
-                "source=%s visited=%d depth=%d",
-                source_contract_id, len(visited), depth,
+                "lineage_impact_downstream_walk_capped source=%s visited=%d depth=%d",
+                source_contract_id,
+                len(visited),
+                depth,
             )
             break
     # Drop the source itself — caller adds it explicitly.
@@ -304,7 +303,8 @@ def _process_subscription(
         _emit_metric(
             "lineage_subscription_dispatched_total",
             labels={
-                "severity": severity.value, "channel": "any",
+                "severity": severity.value,
+                "channel": "any",
                 "result": "rate_limited",
             },
         )
@@ -316,9 +316,7 @@ def _process_subscription(
     # this guard is the dispatcher-side enforcement so that a
     # backfilled cross-tenant row can't leak detail.
     user_tenant_id = getattr(subscription.user, "tenant_id", None)
-    is_cross_tenant = (
-        str(user_tenant_id) != str(contract.tenant_id)
-    )
+    is_cross_tenant = str(user_tenant_id) != str(contract.tenant_id)
 
     title, message = _format_notification_body(
         contract=contract,
@@ -328,11 +326,10 @@ def _process_subscription(
     )
 
     # Enqueue the in-app notification + (optional) email.
-    from hub.apps.notifications.utils import create_user_notification
     from hub.apps.notifications.models import (
         NotificationCategory,
-        NotificationType,
     )
+    from hub.apps.notifications.utils import create_user_notification
 
     notification = create_user_notification(
         user=subscription.user,
@@ -354,6 +351,7 @@ def _process_subscription(
     # last_dispatched_at — the subscription row tracks when it last
     # fired so the UI can render "last seen" timestamps.
     from django.utils import timezone
+
     subscription.last_dispatched_at = timezone.now()
     subscription.save(update_fields=["last_dispatched_at"])
 
@@ -369,7 +367,8 @@ def _process_subscription(
     _emit_metric(
         "lineage_subscription_dispatched_total",
         labels={
-            "severity": severity.value, "channel": "in_app",
+            "severity": severity.value,
+            "channel": "in_app",
             "result": "success",
         },
     )
@@ -390,27 +389,25 @@ def _compute_diff(contract) -> tuple[LineageDiff, ContractDiff]:
     """
     from hub.apps.contracts.models import LineageEdge
 
-    open_edges: List[Dict[str, Any]] = []
-    for row in (
-        LineageEdge.objects
-        .filter(
-            tenant_id=contract.tenant_id,
-            source_contract_id=contract.id,
-            valid_to__isnull=True,
+    open_edges: list[dict[str, Any]] = []
+    for row in LineageEdge.objects.filter(
+        tenant_id=contract.tenant_id,
+        source_contract_id=contract.id,
+        valid_to__isnull=True,
+    ).iterator(chunk_size=200):
+        open_edges.append(
+            {
+                "source_contract": str(row.source_contract_id) if row.source_contract_id else None,
+                "target_contract": str(row.target_contract_id) if row.target_contract_id else None,
+                "source_model": row.source_model,
+                "source_field": row.source_field,
+                "target_model": row.target_model,
+                "target_field": row.target_field,
+                "edge_type": row.edge_type,
+                "transformation_ref": row.transformation_ref,
+                "job_ref": row.job_ref,
+            }
         )
-        .iterator(chunk_size=200)
-    ):
-        open_edges.append({
-            "source_contract": str(row.source_contract_id) if row.source_contract_id else None,
-            "target_contract": str(row.target_contract_id) if row.target_contract_id else None,
-            "source_model": row.source_model,
-            "source_field": row.source_field,
-            "target_model": row.target_model,
-            "target_field": row.target_field,
-            "edge_type": row.edge_type,
-            "transformation_ref": row.transformation_ref,
-            "job_ref": row.job_ref,
-        })
 
     diff = LineageDiff(
         added=open_edges,
@@ -428,7 +425,10 @@ def _compute_diff(contract) -> tuple[LineageDiff, ContractDiff]:
 
 
 def _format_notification_body(
-    *, contract, severity: Severity, cross_tenant: bool,
+    *,
+    contract,
+    severity: Severity,
+    cross_tenant: bool,
     diff: LineageDiff,
 ) -> tuple[str, str]:
     """Return ``(title, message)`` for a lineage-impact notification.
@@ -523,7 +523,8 @@ def _enqueue_email(*, user, title: str, body: str, severity: Severity, contract)
         }
         try:
             html = render_to_string(
-                "notifications/emails/lineage_impact.html", context,
+                "notifications/emails/lineage_impact.html",
+                context,
             )
         except Exception:
             html = body
@@ -538,7 +539,8 @@ def _enqueue_email(*, user, title: str, body: str, severity: Severity, contract)
     except Exception as exc:
         logger.warning(
             "lineage_impact_email_enqueue_failed user_id=%s error=%s",
-            user.id, exc,
+            user.id,
+            exc,
         )
 
 
@@ -548,8 +550,11 @@ def _enqueue_email(*, user, title: str, body: str, severity: Severity, contract)
 
 
 def _audit_rate_limit_drop(
-    *, tenant_id: str, subscriber_id: str,
-    contract_id: str, actor_user_id: str,
+    *,
+    tenant_id: str,
+    subscriber_id: str,
+    contract_id: str,
+    actor_user_id: str,
 ) -> None:
     """Record a rate-limit drop in the audit log.
 
@@ -611,7 +616,9 @@ def _debounce_set(client, key: str, ttl_seconds: int) -> None:
         client.setex(key, ttl_seconds, "1")
     except Exception as exc:
         logger.warning(
-            "lineage_impact_debounce_set_failed key=%s error=%s", key, exc,
+            "lineage_impact_debounce_set_failed key=%s error=%s",
+            key,
+            exc,
         )
 
 
@@ -643,7 +650,9 @@ def _rate_limit_bump(client, key: str, ttl_seconds: int) -> None:
             client.expire(key, ttl_seconds)
     except Exception as exc:
         logger.warning(
-            "lineage_impact_rate_limit_bump_failed key=%s error=%s", key, exc,
+            "lineage_impact_rate_limit_bump_failed key=%s error=%s",
+            key,
+            exc,
         )
 
 
@@ -654,10 +663,10 @@ def _rate_limit_bump(client, key: str, ttl_seconds: int) -> None:
 
 # Module-level Counter cache keyed by metric name. Lazy registration
 # prevents Prometheus's double-registration warnings on dev autoreload.
-_METRIC_REGISTRY: Dict[str, Any] = {}
+_METRIC_REGISTRY: dict[str, Any] = {}
 
 
-def _emit_metric(name: str, labels: Optional[Dict[str, str]] = None) -> None:
+def _emit_metric(name: str, labels: dict[str, str] | None = None) -> None:
     """Best-effort Prometheus emission.  No-op if the client lib is
     unavailable in the runtime."""
     try:
@@ -665,7 +674,9 @@ def _emit_metric(name: str, labels: Optional[Dict[str, str]] = None) -> None:
 
         if name not in _METRIC_REGISTRY:
             _METRIC_REGISTRY[name] = Counter(
-                name, name, list((labels or {}).keys()),
+                name,
+                name,
+                list((labels or {}).keys()),
             )
         counter = _METRIC_REGISTRY[name]
         if labels:
@@ -677,7 +688,7 @@ def _emit_metric(name: str, labels: Optional[Dict[str, str]] = None) -> None:
 
 
 __all__ = [
-    "handle_contract_updated",
     "F3_DEBOUNCE_TTL_SECONDS",
     "F3_PER_TENANT_RATE_LIMIT",
+    "handle_contract_updated",
 ]

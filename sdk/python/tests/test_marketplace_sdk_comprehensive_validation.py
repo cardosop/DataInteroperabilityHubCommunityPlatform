@@ -15,19 +15,22 @@ This test suite provides engineering-grade comprehensive validation for ALL Mark
 All tests use real API connections (no mocks/stubs) and follow TDD principles.
 Tests verify complete workflows, error handling, authentication, and retry logic.
 """
+
 import os
-import pytest
 import uuid
-import asyncio
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, Optional
+
+import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig, MarketplaceIntegrationAPI
 from datahub_interoperability.errors import (
-    MarketplaceValidationError,
+    ConflictError,
     MarketplaceConnectionError,
+    MarketplaceValidationError,
     NotFoundError,
     ValidationError,
-    ConflictError,
 )
+import contextlib
 
 
 def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
@@ -46,6 +49,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     # Method 2: Use canonical conftest helper
     try:
         from tests.conftest import get_api_key
+
         canonical = get_api_key()
         if canonical:
             return canonical
@@ -53,7 +57,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         pass
 
     # Method 3: Fall back to env-var keys
-    api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
+    api_key = os.environ.get("TEST_API_KEY") or os.environ.get("DATAHUB_API_KEY")
     if api_key:
         return api_key
 
@@ -63,9 +67,10 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
 def _create_marketplace_comprehensive_tenant_and_key() -> Optional[str]:
     """Create a dedicated tenant with ``marketplace_integrations_enabled=True``."""
     # Try inside-Docker path (Method 2 from original code)
-    if os.path.exists('/app'):
+    if os.path.exists("/app"):
         try:
             import subprocess
+
             django_shell_script = """
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus, UserRole, Role
@@ -121,23 +126,23 @@ if plan:
 print(api_key_value)
 """
             result = subprocess.run(
-                ['python', 'manage.py', 'shell'],
+                ["python", "manage.py", "shell"],
                 input=django_shell_script,
                 text=True,
                 capture_output=True,
                 timeout=30,
-                cwd='/app/hub'
+                cwd="/app/hub",
             )
-            output_lines = result.stdout.strip().split('\n')
+            output_lines = result.stdout.strip().split("\n")
             for line in reversed(output_lines):
                 line = line.strip()
                 if not line:
                     continue
-                if 'imported' in line.lower() or 'objects' in line.lower():
+                if "imported" in line.lower() or "objects" in line.lower():
                     continue
-                if ' ' in line:
+                if " " in line:
                     continue
-                if len(line) >= 40 and all(c.isalnum() or c in '-_' for c in line):
+                if len(line) >= 40 and all(c.isalnum() or c in "-_" for c in line):
                     return line
         except Exception:
             pass
@@ -148,7 +153,7 @@ print(api_key_value)
 @pytest.fixture
 def api_base_url():
     """Get API base URL from environment or use default"""
-    return os.environ.get('API_BASE_URL', 'http://localhost:8001/api/v1')
+    return os.environ.get("API_BASE_URL", "http://localhost:8001/api/v1")
 
 
 @pytest.fixture
@@ -179,10 +184,8 @@ async def real_client(real_api_config):
     try:
         yield client
     finally:
-        try:
+        with contextlib.suppress(Exception):
             await client.close()
-        except Exception:
-            pass
 
 
 @pytest.fixture
@@ -192,7 +195,9 @@ def marketplace_api(real_client):
 
 
 # Helper function for creating connections with conflict handling
-async def create_test_connection(marketplace_api: MarketplaceIntegrationAPI, connection_name: Optional[str] = None) -> Dict[str, Any]:
+async def create_test_connection(
+    marketplace_api: MarketplaceIntegrationAPI, connection_name: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Helper function to create a test connection, handling conflicts.
     """
@@ -208,7 +213,7 @@ async def create_test_connection(marketplace_api: MarketplaceIntegrationAPI, con
                 "account": "test-account",
                 "user": "test-user",
                 "token": "test-token",
-            }
+            },
         )
         return connection
     except ConflictError:
@@ -216,10 +221,8 @@ async def create_test_connection(marketplace_api: MarketplaceIntegrationAPI, con
         connections = await marketplace_api.list_connections()
         for conn in connections:
             if conn.get("name") == connection_name:
-                try:
+                with contextlib.suppress(Exception):
                     await marketplace_api.delete_connection(conn["id"])
-                except Exception:
-                    pass
         # Retry creation
         connection = await marketplace_api.create_connection(
             marketplace_type="SNOWFLAKE_DATA_MARKETPLACE",
@@ -228,12 +231,13 @@ async def create_test_connection(marketplace_api: MarketplaceIntegrationAPI, con
                 "account": "test-account",
                 "user": "test-user",
                 "token": "test-token",
-            }
+            },
         )
         return connection
 
 
 # ========== Connection Methods Comprehensive Tests ==========
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -258,10 +262,7 @@ async def test_create_connection_all_marketplace_types(marketplace_api):
                 connection = await marketplace_api.create_connection(
                     marketplace_type=marketplace_type,
                     name=connection_name,
-                    config={
-                        "api_key": "test-key",
-                        "endpoint": "https://example.com"
-                    }
+                    config={"api_key": "test-key", "endpoint": "https://example.com"},
                 )
                 assert connection is not None
                 assert connection["marketplace_type"] == marketplace_type
@@ -272,10 +273,8 @@ async def test_create_connection_all_marketplace_types(marketplace_api):
     finally:
         # Cleanup
         for conn_id in created_connections:
-            try:
+            with contextlib.suppress(Exception):
                 await marketplace_api.delete_connection(conn_id)
-            except Exception:
-                pass
 
 
 @pytest.mark.asyncio
@@ -297,23 +296,16 @@ async def test_list_connections_all_filters(marketplace_api):
         assert isinstance(connections, list)
 
         # Test with is_active filter
-        connections = await marketplace_api.list_connections(
-            is_active=True
-        )
+        connections = await marketplace_api.list_connections(is_active=True)
         assert isinstance(connections, list)
 
         # Test with limit
-        connections = await marketplace_api.list_connections(
-            limit=5
-        )
+        connections = await marketplace_api.list_connections(limit=5)
         assert isinstance(connections, list)
         assert len(connections) <= 5
 
         # Test with offset
-        connections = await marketplace_api.list_connections(
-            offset=0,
-            limit=10
-        )
+        connections = await marketplace_api.list_connections(offset=0, limit=10)
         assert isinstance(connections, list)
     finally:
         await marketplace_api.delete_connection(connection["id"])
@@ -346,23 +338,18 @@ async def test_update_connection_all_fields(marketplace_api):
     try:
         # Update name
         updated = await marketplace_api.update_connection(
-            connection["id"],
-            name="Updated Connection Name"
+            connection["id"], name="Updated Connection Name"
         )
         assert updated["name"] == "Updated Connection Name"
 
         # Update config
         updated = await marketplace_api.update_connection(
-            connection["id"],
-            config={"api_key": "updated-key", "endpoint": "https://updated.com"}
+            connection["id"], config={"api_key": "updated-key", "endpoint": "https://updated.com"}
         )
         assert updated is not None
 
         # Update is_active
-        updated = await marketplace_api.update_connection(
-            connection["id"],
-            is_active=False
-        )
+        updated = await marketplace_api.update_connection(connection["id"], is_active=False)
         assert updated["is_active"] is False
     finally:
         await marketplace_api.delete_connection(connection["id"])
@@ -408,6 +395,7 @@ async def test_test_connection_success_and_failure(marketplace_api):
 
 # ========== Sync Methods Comprehensive Tests ==========
 
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_sync_assets_to_marketplace_comprehensive(marketplace_api):
@@ -418,10 +406,7 @@ async def test_sync_assets_to_marketplace_comprehensive(marketplace_api):
         asset_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
 
         try:
-            sync_job = await marketplace_api.sync_assets_to_marketplace(
-                connection["id"],
-                asset_ids
-            )
+            sync_job = await marketplace_api.sync_assets_to_marketplace(connection["id"], asset_ids)
             assert sync_job is not None
             assert sync_job["direction"] == "PUSH"
             assert "id" in sync_job
@@ -441,9 +426,7 @@ async def test_sync_from_marketplace_comprehensive(marketplace_api):
     try:
         # Test PULL without listing_ids
         try:
-            sync_job = await marketplace_api.sync_from_marketplace(
-                connection["id"]
-            )
+            sync_job = await marketplace_api.sync_from_marketplace(connection["id"])
             assert sync_job is not None
             assert sync_job["direction"] == "PULL"
             assert "id" in sync_job
@@ -453,8 +436,7 @@ async def test_sync_from_marketplace_comprehensive(marketplace_api):
         # Test PULL with listing_ids
         try:
             sync_job = await marketplace_api.sync_from_marketplace(
-                connection["id"],
-                listing_ids=["listing-1", "listing-2"]
+                connection["id"], listing_ids=["listing-1", "listing-2"]
             )
             assert sync_job is not None
             assert sync_job["direction"] == "PULL"
@@ -475,9 +457,7 @@ async def test_sync_bidirectional_comprehensive(marketplace_api):
 
         try:
             sync_job = await marketplace_api.sync_bidirectional(
-                connection["id"],
-                asset_ids,
-                listing_ids
+                connection["id"], asset_ids, listing_ids
             )
             assert sync_job is not None
             assert sync_job["direction"] == "BIDIRECTIONAL"
@@ -523,28 +503,19 @@ async def test_list_sync_jobs_all_filters(marketplace_api):
         assert isinstance(sync_jobs, list)
 
         # Test with connection_id filter
-        sync_jobs = await marketplace_api.list_sync_jobs(
-            connection_id=connection["id"]
-        )
+        sync_jobs = await marketplace_api.list_sync_jobs(connection_id=connection["id"])
         assert isinstance(sync_jobs, list)
 
         # Test with status filter
-        sync_jobs = await marketplace_api.list_sync_jobs(
-            status="PENDING"
-        )
+        sync_jobs = await marketplace_api.list_sync_jobs(status="PENDING")
         assert isinstance(sync_jobs, list)
 
         # Test with direction filter
-        sync_jobs = await marketplace_api.list_sync_jobs(
-            direction="PULL"
-        )
+        sync_jobs = await marketplace_api.list_sync_jobs(direction="PULL")
         assert isinstance(sync_jobs, list)
 
         # Test with limit and offset
-        sync_jobs = await marketplace_api.list_sync_jobs(
-            limit=10,
-            offset=0
-        )
+        sync_jobs = await marketplace_api.list_sync_jobs(limit=10, offset=0)
         assert isinstance(sync_jobs, list)
         assert len(sync_jobs) <= 10
     finally:
@@ -576,6 +547,7 @@ async def test_cancel_sync_job_comprehensive(marketplace_api):
 
 # ========== Mapping Methods Comprehensive Tests ==========
 
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_create_mapping_comprehensive(marketplace_api):
@@ -588,13 +560,17 @@ async def test_create_mapping_comprehensive(marketplace_api):
 
         try:
             mapping = await marketplace_api.create_mapping(
-                connection["id"],
-                hub_asset_id,
-                external_listing_id
+                connection["id"], hub_asset_id, external_listing_id
             )
             assert mapping is not None
-            assert mapping["connection_id"] == connection["id"] or mapping.get("connection", {}).get("id") == connection["id"]
-            assert mapping["hub_asset_id"] == hub_asset_id or mapping.get("hub_asset", {}).get("id") == hub_asset_id
+            assert (
+                mapping["connection_id"] == connection["id"]
+                or mapping.get("connection", {}).get("id") == connection["id"]
+            )
+            assert (
+                mapping["hub_asset_id"] == hub_asset_id
+                or mapping.get("hub_asset", {}).get("id") == hub_asset_id
+            )
             assert mapping["external_listing_id"] == external_listing_id
 
             # Cleanup
@@ -616,9 +592,7 @@ async def test_get_mapping_all_fields(marketplace_api):
 
         try:
             mapping = await marketplace_api.create_mapping(
-                connection["id"],
-                hub_asset_id,
-                external_listing_id
+                connection["id"], hub_asset_id, external_listing_id
             )
             mapping_id = mapping["id"]
 
@@ -649,23 +623,16 @@ async def test_list_mappings_all_filters(marketplace_api):
         assert isinstance(mappings, list)
 
         # Test with connection_id filter
-        mappings = await marketplace_api.list_mappings(
-            connection_id=connection["id"]
-        )
+        mappings = await marketplace_api.list_mappings(connection_id=connection["id"])
         assert isinstance(mappings, list)
 
         # Test with asset_id filter
         asset_id = str(uuid.uuid4())
-        mappings = await marketplace_api.list_mappings(
-            asset_id=asset_id
-        )
+        mappings = await marketplace_api.list_mappings(asset_id=asset_id)
         assert isinstance(mappings, list)
 
         # Test with limit and offset
-        mappings = await marketplace_api.list_mappings(
-            limit=10,
-            offset=0
-        )
+        mappings = await marketplace_api.list_mappings(limit=10, offset=0)
         assert isinstance(mappings, list)
         assert len(mappings) <= 10
     finally:
@@ -683,19 +650,13 @@ async def test_update_mapping_comprehensive(marketplace_api):
 
         try:
             mapping = await marketplace_api.create_mapping(
-                connection["id"],
-                hub_asset_id,
-                external_listing_id
+                connection["id"], hub_asset_id, external_listing_id
             )
             mapping_id = mapping["id"]
 
             # Update mapping
             updated = await marketplace_api.update_mapping(
-                mapping_id,
-                sync_metadata={
-                    "last_sync_status": "SUCCESS",
-                    "last_sync_errors": []
-                }
+                mapping_id, sync_metadata={"last_sync_status": "SUCCESS", "last_sync_errors": []}
             )
             assert updated is not None
             assert updated["id"] == mapping_id
@@ -719,9 +680,7 @@ async def test_delete_mapping_with_verification(marketplace_api):
 
         try:
             mapping = await marketplace_api.create_mapping(
-                connection["id"],
-                hub_asset_id,
-                external_listing_id
+                connection["id"], hub_asset_id, external_listing_id
             )
             mapping_id = mapping["id"]
 
@@ -738,6 +697,7 @@ async def test_delete_mapping_with_verification(marketplace_api):
 
 
 # ========== Connector Methods Comprehensive Tests ==========
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -769,6 +729,7 @@ async def test_get_connector_info_all_fields(marketplace_api):
 
 
 # ========== Error Handling Comprehensive Tests ==========
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -808,40 +769,32 @@ async def test_error_handling_validation_errors(marketplace_api):
     # Test empty marketplace_type
     with pytest.raises((MarketplaceValidationError, ValidationError)):
         await marketplace_api.create_connection(
-            marketplace_type="",
-            name="Test",
-            config={"key": "value"}
+            marketplace_type="", name="Test", config={"key": "value"}
         )
 
     # Test empty name
     with pytest.raises((MarketplaceValidationError, ValidationError)):
         await marketplace_api.create_connection(
-            marketplace_type="SNOWFLAKE_DATA_MARKETPLACE",
-            name="",
-            config={"key": "value"}
+            marketplace_type="SNOWFLAKE_DATA_MARKETPLACE", name="", config={"key": "value"}
         )
 
     # Test empty config
     with pytest.raises((MarketplaceValidationError, ValidationError)):
         await marketplace_api.create_connection(
-            marketplace_type="SNOWFLAKE_DATA_MARKETPLACE",
-            name="Test",
-            config={}
+            marketplace_type="SNOWFLAKE_DATA_MARKETPLACE", name="Test", config={}
         )
 
     # Test empty asset_ids
     connection = await create_test_connection(marketplace_api)
     try:
         with pytest.raises((MarketplaceValidationError, ValidationError)):
-            await marketplace_api.sync_assets_to_marketplace(
-                connection["id"],
-                []
-            )
+            await marketplace_api.sync_assets_to_marketplace(connection["id"], [])
     finally:
         await marketplace_api.delete_connection(connection["id"])
 
 
 # ========== Authentication Tests ==========
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -880,6 +833,7 @@ async def test_authentication_missing_key(api_base_url):
 
 
 # ========== Retry Logic Tests ==========
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration

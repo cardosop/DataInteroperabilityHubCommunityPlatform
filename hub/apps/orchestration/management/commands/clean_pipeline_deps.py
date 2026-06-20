@@ -9,7 +9,9 @@ audit event.
 
 Designed to run weekly via Kubernetes CronJob.
 """
+
 from __future__ import annotations
+
 import structlog
 from django.core.management.base import BaseCommand
 
@@ -29,11 +31,14 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--tenant-id", default=None,
+            "--tenant-id",
+            default=None,
             help="Restrict to a single tenant UUID.",
         )
         parser.add_argument(
-            "--dry-run", action="store_true", default=False,
+            "--dry-run",
+            action="store_true",
+            default=False,
             help="Report stale deps without modifying them.",
         )
 
@@ -45,8 +50,7 @@ class Command(BaseCommand):
             tenant_ids = [str(target_tenant_id)]
         else:
             tenant_ids = [
-                str(tid) for tid in
-                Tenant.objects.order_by("id").values_list("id", flat=True)
+                str(tid) for tid in Tenant.objects.order_by("id").values_list("id", flat=True)
             ]
 
         total_cleaned = 0
@@ -55,26 +59,25 @@ class Command(BaseCommand):
                 total_cleaned += self._clean_for_tenant(tenant_id, dry_run)
 
         if total_cleaned == 0:
-            self.stdout.write(
-                self.style.SUCCESS("No stale pipeline dependencies found.")
-            )
+            self.stdout.write(self.style.SUCCESS("No stale pipeline dependencies found."))
         else:
             self.stdout.write(
-                self.style.SUCCESS(
-                    f"Cleaned {total_cleaned} stale pipeline dependency(ies)."
-                )
+                self.style.SUCCESS(f"Cleaned {total_cleaned} stale pipeline dependency(ies).")
             )
 
     def _clean_for_tenant(self, tenant_id: str, dry_run: bool) -> int:
         deps = PipelineDependency.objects.filter(
-            tenant_id=tenant_id, is_active=True,
+            tenant_id=tenant_id,
+            is_active=True,
         )
         cleaned = 0
 
         for dep in deps:
             # Check if the upstream pipeline still exists.
             upstream_status = _get_pipeline_execution_status(
-                tenant_id, dep.pipeline_type, str(dep.pipeline_id),
+                tenant_id,
+                dep.pipeline_type,
+                str(dep.pipeline_id),
             )
             if upstream_status is not None:
                 continue  # pipeline still exists
@@ -110,7 +113,8 @@ class Command(BaseCommand):
             except Exception as exc:
                 logger.warning(
                     "clean_deps_audit_failed",
-                    dep_id=str(dep.id), error=str(exc),
+                    dep_id=str(dep.id),
+                    error=str(exc),
                 )
 
             logger.info(

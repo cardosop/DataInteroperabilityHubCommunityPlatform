@@ -35,20 +35,18 @@ tenant-scoped reads can use, plus a ``.get_for_tenant(tenant, **kw)``
 shortcut that raises ``DoesNotExist`` if the row exists but belongs
 to a different tenant.
 """
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from django.db import models
-
-if TYPE_CHECKING:
-    from hub.apps.tenants.models import Tenant
 
 
 class TenantScopedQuerySet(models.QuerySet):
     """QuerySet exposing the ``.for_tenant`` helper."""
 
-    def for_tenant(self, tenant) -> "TenantScopedQuerySet":
+    def for_tenant(self, tenant) -> TenantScopedQuerySet:
         """Filter to rows belonging to ``tenant``.
 
         Accepts either a Tenant instance or a tenant id (uuid /

@@ -5,8 +5,10 @@ Version-specific normalizer for ODCS (Open Data Contract Standard) version 3.0.0
 Implements ODCSNormalizerBase with 3.0.0-specific mappings and graceful degradation
 for missing ODCS 3.0.1/3.0.2 features.
 """
+
+from typing import Any
+
 import structlog
-from typing import Dict, Any, List
 
 from hub.apps.contracts.normalization.odcs_normalizer_base import ODCSNormalizerBase
 
@@ -41,10 +43,10 @@ class ODCSNormalizerV3_0_0(ODCSNormalizerBase):
 
     def _map_version_specific_fields(
         self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
-        spec_version: str
+        odcs_contract: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
+        spec_version: str,
     ) -> None:
         """
         Map ODCS 3.0.0-specific fields to HubContract format.
@@ -69,7 +71,7 @@ class ODCSNormalizerV3_0_0(ODCSNormalizerBase):
                 "odcs_v3_0_0_unexpected_version",
                 expected_version="3.0.0",
                 actual_version=spec_version,
-                message="ODCSNormalizerV3_0_0 received unexpected version"
+                message="ODCSNormalizerV3_0_0 received unexpected version",
             )
 
         # ODCS 3.0.0 does not support features introduced in 3.0.1+ and 3.0.2+
@@ -86,6 +88,5 @@ class ODCSNormalizerV3_0_0(ODCSNormalizerBase):
         logger.debug(
             "odcs_v3_0_0_version_specific_mapping_complete",
             spec_version=spec_version,
-            message="ODCS 3.0.0 version-specific mapping complete (graceful degradation for 3.0.1+/3.0.2+ features)"
+            message="ODCS 3.0.0 version-specific mapping complete (graceful degradation for 3.0.1+/3.0.2+ features)",
         )
-

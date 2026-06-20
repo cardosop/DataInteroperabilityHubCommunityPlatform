@@ -3,38 +3,45 @@
 import uuid
 Simple test to verify infrastructure works without file operations
 """
-import sys
+
 import os
-sys.path.insert(0, '/app')
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hub.settings')
+import sys
+
+sys.path.insert(0, "/app")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 
 try:
     import pytest
+
     HAS_PYTEST = True
 except ImportError:
     HAS_PYTEST = False
+
     class DummyPytest:
         class mark:
             @staticmethod
             def django_db(**kwargs):
                 return lambda f: f
+
             @staticmethod
             def integration(f):
                 return f
+
     pytest = DummyPytest()
 
+from django.db.models.signals import post_save
 from django.test import TestCase
-from rest_framework.test import APIClient
-from rest_framework import status
 from django.urls import reverse
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import User, Role, UserRole
-from tests.fixtures.test_data_factories import TenantFactory, UserFactory
+from rest_framework import status
+from rest_framework.test import APIClient
+
+from hub.apps.semantic.signals import asset_saved, contract_saved
+from hub.apps.tenants.models import KYCStatus, TenantStatus
+from hub.apps.tenants.signals import create_default_roles
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
-from django.db.models.signals import post_save
-from hub.apps.semantic.signals import contract_saved, asset_saved
-from hub.apps.tenants.signals import create_default_roles
+from hub.apps.users.models import Role, UserRole
+from tests.fixtures.test_data_factories import TenantFactory, UserFactory
 
 # Use default transaction=False so TenantSuspensionMiddleware sees subscription from setUp
 if HAS_PYTEST:
@@ -55,6 +62,7 @@ class SimpleAssetCreationTest(TestCase):
 
         # Create tenant (use unique name/slug to avoid conflicts)
         import uuid
+
         unique_id = str(uuid.uuid4())[:8]
         self.tenant = TenantFactory.create_tenant(
             name=f"Simple Test Tenant {unique_id}",
@@ -102,7 +110,9 @@ class SimpleAssetCreationTest(TestCase):
         print(f"[TEST] Asset creation response: status={response.status_code}")
 
         if response.status_code != status.HTTP_201_CREATED:
-            print(f"[TEST] Error: {response.data if hasattr(response, 'data') else response.content}")
+            print(
+                f"[TEST] Error: {response.data if hasattr(response, 'data') else response.content}"
+            )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn("id", response.data)

@@ -6,7 +6,7 @@ retry logic, and compensation. Manages domain validation, resource allocation,
 policy application, and analytics initialization.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import structlog
 from django.db import transaction
@@ -108,7 +108,7 @@ class DataMeshWorkflow:
                 logger.debug(
                     f"Workflow {cls.WORKFLOW_NAME} version {cls.WORKFLOW_VERSION} already exists, continuing"
                 )
-                pass  # Workflow exists, which is fine
+                # Workflow exists, which is fine
             else:
                 # Re-raise other errors
                 raise
@@ -204,8 +204,8 @@ class DataMeshWorkflow:
 
     @staticmethod
     def _validate_domain_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Validate domain configuration.
 
@@ -230,8 +230,6 @@ class DataMeshWorkflow:
         if not name or not name.strip():
             raise ValueError("Domain name is required")
 
-        from hub.apps.core.services.base import ValidationError
-        from hub.apps.mesh.models import DataMeshDomain
         from hub.apps.tenants.models import Tenant
 
         # Validate tenant exists
@@ -249,7 +247,7 @@ class DataMeshWorkflow:
             from hub.apps.users.models import User
 
             try:
-                owner = User.objects.get(id=owner_id, tenant_id=tenant_id)
+                User.objects.get(id=owner_id, tenant_id=tenant_id)
             except User.DoesNotExist:
                 raise ValueError(f"Owner user {owner_id} not found or does not belong to tenant")
 
@@ -267,9 +265,8 @@ class DataMeshWorkflow:
                 raise ValueError("boundaries.access_patterns must be a list")
 
         # Validate capabilities structure if provided
-        if capabilities:
-            if not isinstance(capabilities, dict):
-                raise ValueError("Capabilities must be a dictionary")
+        if capabilities and not isinstance(capabilities, dict):
+            raise ValueError("Capabilities must be a dictionary")
 
         # Validate resource_quota structure if provided
         if resource_quota:
@@ -366,8 +363,8 @@ class DataMeshWorkflow:
 
     @staticmethod
     def _allocate_resources_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Allocate resources for the domain.
 
@@ -412,7 +409,7 @@ class DataMeshWorkflow:
                     tenant_id=tenant_id,
                     error=str(e),
                 )
-                raise ValueError(f"Resource quota allocation failed: {str(e)}")
+                raise ValueError(f"Resource quota allocation failed: {e!s}")
 
         # Initialize resource usage tracking
         resource_usage = {}
@@ -439,8 +436,8 @@ class DataMeshWorkflow:
 
     @staticmethod
     def _rollback_resource_allocation_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Rollback resource allocation (compensation task).
 
@@ -462,8 +459,8 @@ class DataMeshWorkflow:
     @staticmethod
     @transaction.atomic
     def _create_domain_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create domain record.
 
@@ -476,7 +473,7 @@ class DataMeshWorkflow:
             Task output with domain_id
         """
         tenant_id = input_data.get("tenant_id") or instance.tenant_id
-        
+
         # Note: We don't refresh_from_db() here because:
         # 1. We're inside a transaction with select_for_update lock
         # 2. The workflow engine already merges step outputs into state_data (lines 342-355)
@@ -484,20 +481,20 @@ class DataMeshWorkflow:
         # 4. The instance.state_data is already up-to-date from the workflow engine's merge
         # Also check input_data as fallback (workflow engine merges step output into state_data)
         name = (
-            instance.state_data.get("validated_name") 
+            instance.state_data.get("validated_name")
             or instance.state_data.get("domain_name")  # From validation step output
             or input_data.get("name")  # Fallback to original input
         )
-        description = (
-            instance.state_data.get("validated_description")
-            or input_data.get("description")
+        description = instance.state_data.get("validated_description") or input_data.get(
+            "description"
         )
-        owner_id = (
-            instance.state_data.get("validated_owner_id")
-            or input_data.get("owner_id")
+        owner_id = instance.state_data.get("validated_owner_id") or input_data.get("owner_id")
+        boundaries = instance.state_data.get("validated_boundaries", {}) or input_data.get(
+            "boundaries", {}
         )
-        boundaries = instance.state_data.get("validated_boundaries", {}) or input_data.get("boundaries", {})
-        capabilities = instance.state_data.get("validated_capabilities", {}) or input_data.get("capabilities", {})
+        capabilities = instance.state_data.get("validated_capabilities", {}) or input_data.get(
+            "capabilities", {}
+        )
         allocated_quota = instance.state_data.get("allocated_resource_quota", {})
         resource_usage = instance.state_data.get("resource_usage", {})
 
@@ -513,7 +510,7 @@ class DataMeshWorkflow:
             )
             raise ValueError("Domain name is required (from validation step)")
 
-        from hub.apps.mesh.models import DataMeshDomain, DomainStatus
+        from hub.apps.mesh.models import DomainStatus
         from hub.apps.tenants.models import Tenant
 
         tenant = Tenant.objects.get(id=tenant_id)
@@ -609,8 +606,8 @@ class DataMeshWorkflow:
     @staticmethod
     @transaction.atomic
     def _rollback_domain_creation_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Rollback domain creation (compensation task).
 
@@ -647,8 +644,8 @@ class DataMeshWorkflow:
     @staticmethod
     @transaction.atomic
     def _apply_default_policies_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Apply default policies to the domain.
 
@@ -661,7 +658,7 @@ class DataMeshWorkflow:
             Task output with applied policies
         """
         tenant_id = input_data.get("tenant_id") or instance.tenant_id
-        
+
         # Note: We don't refresh_from_db() here because:
         # 1. We're inside a transaction with select_for_update lock
         # 2. The workflow engine already merges step outputs into state_data
@@ -686,14 +683,12 @@ class DataMeshWorkflow:
             raise ValueError("tenant_id is required")
 
         from hub.apps.governance.models import AccessPolicy
-        from hub.apps.mesh.models import DataMeshDomain
         from hub.apps.mesh.services import DataMeshService
 
-        domain = DataMeshDomain.objects.get(id=domain_id)
+        DataMeshDomain.objects.get(id=domain_id)
 
         # Get default policies for the tenant
         # Default policies are tenant-wide policies (asset and dataset are null) that should be applied to all domains
-        from django.db.models import Q
 
         default_policies = AccessPolicy.objects.filter(
             tenant_id=tenant_id, enabled=True, asset__isnull=True, dataset__isnull=True
@@ -762,8 +757,8 @@ class DataMeshWorkflow:
     @staticmethod
     @transaction.atomic
     def _rollback_policy_application_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Rollback policy application (compensation task).
 
@@ -775,8 +770,8 @@ class DataMeshWorkflow:
         Returns:
             Task output with rollback status
         """
-        tenant_id = input_data.get("tenant_id") or instance.tenant_id
-        
+        input_data.get("tenant_id") or instance.tenant_id
+
         # Note: We don't refresh_from_db() here because:
         # 1. We're inside a transaction with select_for_update lock
         # 2. The workflow engine already merges step outputs into state_data
@@ -791,8 +786,6 @@ class DataMeshWorkflow:
 
         if not domain_id:
             return {"rolled_back": True, "reason": "No domain_id in state"}
-
-        from hub.apps.mesh.models import PolicyApplication, PolicyApplicationStatus
 
         # Revoke applied policies
         for policy_info in applied_policies:
@@ -828,8 +821,8 @@ class DataMeshWorkflow:
 
     @staticmethod
     def _initialize_analytics_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Initialize analytics for the domain.
 
@@ -841,8 +834,8 @@ class DataMeshWorkflow:
         Returns:
             Task output with analytics initialization status
         """
-        tenant_id = input_data.get("tenant_id") or instance.tenant_id
-        
+        input_data.get("tenant_id") or instance.tenant_id
+
         # Note: We don't refresh_from_db() here because:
         # 1. We're inside a transaction with select_for_update lock
         # 2. The workflow engine already merges step outputs into state_data
@@ -864,9 +857,7 @@ class DataMeshWorkflow:
             )
             raise ValueError("domain_id is required (from create_domain step)")
 
-        from hub.apps.mesh.models import DataMeshDomain
-
-        domain = DataMeshDomain.objects.get(id=domain_id)
+        DataMeshDomain.objects.get(id=domain_id)
 
         # Initialize analytics tracking
         # In a production system, this would:
@@ -896,8 +887,8 @@ class DataMeshWorkflow:
 
     @staticmethod
     def _complete_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Complete workflow and publish final events.
 
@@ -910,7 +901,7 @@ class DataMeshWorkflow:
             Task output with completion status
         """
         tenant_id = input_data.get("tenant_id") or instance.tenant_id
-        
+
         # Note: We don't refresh_from_db() here because:
         # 1. We're inside a transaction with select_for_update lock
         # 2. The workflow engine already merges step outputs into state_data
@@ -931,8 +922,6 @@ class DataMeshWorkflow:
                 input_data_keys=list(input_data.keys()) if input_data else [],
             )
             raise ValueError("domain_id is required (from create_domain step)")
-
-        from hub.apps.mesh.models import DataMeshDomain
 
         domain = DataMeshDomain.objects.get(id=domain_id)
 
@@ -1006,8 +995,8 @@ class DataMeshWorkflow:
 
     @staticmethod
     def _audit_logging_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create audit log entry for domain creation.
 
@@ -1021,7 +1010,7 @@ class DataMeshWorkflow:
         """
         tenant_id = input_data.get("tenant_id") or instance.tenant_id
         created_by_id = instance.created_by_id
-        
+
         # Note: We don't refresh_from_db() here because:
         # 1. We're inside a transaction with select_for_update lock
         # 2. The workflow engine already merges step outputs into state_data
@@ -1048,7 +1037,6 @@ class DataMeshWorkflow:
         from django.contrib.auth import get_user_model
 
         from hub.apps.audit.utils import create_audit_event
-        from hub.apps.mesh.models import DataMeshDomain
         from hub.apps.tenants.models import Tenant
 
         User = get_user_model()
@@ -1099,15 +1087,15 @@ class DataMeshWorkflow:
         cls,
         tenant_id: str,
         name: str,
-        description: Optional[str] = None,
-        owner_id: Optional[str] = None,
-        boundaries: Optional[Dict[str, Any]] = None,
-        capabilities: Optional[Dict[str, Any]] = None,
-        resource_quota: Optional[Dict[str, Any]] = None,
-        created_by_id: Optional[str] = None,
-        engine: Optional[WorkflowEngine] = None,
-        registry: Optional[WorkflowRegistry] = None,
-    ) -> Dict[str, Any]:
+        description: str | None = None,
+        owner_id: str | None = None,
+        boundaries: dict[str, Any] | None = None,
+        capabilities: dict[str, Any] | None = None,
+        resource_quota: dict[str, Any] | None = None,
+        created_by_id: str | None = None,
+        engine: WorkflowEngine | None = None,
+        registry: WorkflowRegistry | None = None,
+    ) -> dict[str, Any]:
         """
         Execute data mesh domain creation workflow.
 

@@ -5,10 +5,10 @@ Iterates all active LIVE_QUERY assets, compares the warehouse schema
 against the stored Dataset.schema_json, and emits
 ``WAREHOUSE_SCHEMA_DRIFT_DETECTED`` audit events for any drift found.
 """
+
 from __future__ import annotations
 
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
 
 class Command(BaseCommand):
@@ -16,20 +16,25 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--asset-id", type=str, help="Check a single asset by UUID.",
+            "--asset-id",
+            type=str,
+            help="Check a single asset by UUID.",
         )
         parser.add_argument(
-            "--tenant-id", type=str, help="Limit check to one tenant.",
+            "--tenant-id",
+            type=str,
+            help="Limit check to one tenant.",
         )
         parser.add_argument(
-            "--dry-run", action="store_true",
+            "--dry-run",
+            action="store_true",
             help="Report drift without updating Dataset flags.",
         )
 
     def handle(self, *args, **options):
         from hub.apps.assets.models import Asset, DataStrategy
-        from hub.apps.warehouses.schema_drift import check_schema_drift
         from hub.apps.audit.utils import create_audit_event
+        from hub.apps.warehouses.schema_drift import check_schema_drift
 
         qs = Asset.objects.filter(
             data_strategy=DataStrategy.LIVE_QUERY,
@@ -72,6 +77,7 @@ class Command(BaseCommand):
 
                     if not dry_run:
                         from hub.apps.datasets.models import Dataset
+
                         Dataset.objects.filter(asset=asset).update(
                             schema_drift_pending=True,
                         )
@@ -89,9 +95,7 @@ class Command(BaseCommand):
                         },
                     )
             except Exception as exc:
-                self.stderr.write(
-                    self.style.ERROR(f"  ERROR: {asset.id} — {exc}")
-                )
+                self.stderr.write(self.style.ERROR(f"  ERROR: {asset.id} — {exc}"))
 
         if dry_run:
             self.stdout.write(
@@ -102,7 +106,5 @@ class Command(BaseCommand):
             )
         else:
             self.stdout.write(
-                self.style.SUCCESS(
-                    f"\nDone. {drift_count} of {total} asset(s) have schema drift."
-                )
+                self.style.SUCCESS(f"\nDone. {drift_count} of {total} asset(s) have schema drift.")
             )

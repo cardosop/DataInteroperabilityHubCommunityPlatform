@@ -4,17 +4,16 @@ Marketplace integration operations for DataHub SDK.
 Provides high-level methods for managing marketplace connections, sync jobs,
 mappings, and connectors.
 """
+
 import uuid
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from .client import DataHubClient
 from .errors import (
-    MarketplaceValidationError,
-    MarketplaceConnectionError,
-    NotFoundError,
-    ValidationError,
     ConflictError,
-    parse_error,
+    MarketplaceConnectionError,
+    MarketplaceValidationError,
+    NotFoundError,
 )
 
 
@@ -220,7 +219,11 @@ class MarketplaceIntegrationAPI:
             error_dict = error.to_dict() if hasattr(error, "to_dict") else {}
             if error_dict:
                 # Check if it's a marketplace-related error
-                code = error_dict.get("error", {}).get("code", "") if isinstance(error_dict.get("error"), dict) else ""
+                code = (
+                    error_dict.get("error", {}).get("code", "")
+                    if isinstance(error_dict.get("error"), dict)
+                    else ""
+                )
                 if "MARKETPLACE" in code.upper() or "CONNECTION" in code.upper():
                     return MarketplaceConnectionError(
                         f"Marketplace {operation} failed: {error.message}",
@@ -453,7 +456,9 @@ class MarketplaceIntegrationAPI:
             )
 
         try:
-            return await self.client.patch(f"integrations/marketplace/connections/{connection_id}/", data=data)
+            return await self.client.patch(
+                f"integrations/marketplace/connections/{connection_id}/", data=data
+            )
         except NotFoundError:
             raise
         except Exception as e:
@@ -497,7 +502,9 @@ class MarketplaceIntegrationAPI:
         self._validate_uuid(connection_id, "connection_id")
 
         try:
-            return await self.client.post(f"integrations/marketplace/connections/{connection_id}/test/")
+            return await self.client.post(
+                f"integrations/marketplace/connections/{connection_id}/test/"
+            )
         except NotFoundError:
             raise
         except Exception as e:
@@ -767,7 +774,9 @@ class MarketplaceIntegrationAPI:
         }
 
         try:
-            await self.client.post(f"integrations/marketplace/sync/{sync_job_id}/cancel/", data=data)
+            await self.client.post(
+                f"integrations/marketplace/sync/{sync_job_id}/cancel/", data=data
+            )
         except NotFoundError:
             raise
         except Exception as e:
@@ -963,7 +972,9 @@ class MarketplaceIntegrationAPI:
             )
 
         try:
-            return await self.client.patch(f"integrations/marketplace/mappings/{mapping_id}/", data=data)
+            return await self.client.patch(
+                f"integrations/marketplace/mappings/{mapping_id}/", data=data
+            )
         except NotFoundError:
             raise
         except Exception as e:

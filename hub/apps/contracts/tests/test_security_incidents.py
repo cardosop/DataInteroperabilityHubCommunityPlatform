@@ -9,15 +9,13 @@ Tests verify that:
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 
 from rest_framework import status
 
-from hub.apps.contracts.models import SecurityAuditLog, SecurityIncident
+from hub.apps.contracts.models import SecurityIncident
 from hub.apps.contracts.odps_security_logging import (
     SecurityEventType,
-    SecurityIncidentDetector,
-    SecurityLogger,
     SecuritySeverity,
     SecurityViolationLog,
     get_incident_detector,
@@ -43,10 +41,10 @@ class SecurityIncidentDetectionTest(ContractsTestBase):
 
         # Create 10 rate limit violations (threshold)
         for i in range(10):
-            violation_log = SecurityViolationLog(
+            SecurityViolationLog(
                 event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value,
                 severity=SecuritySeverity.MEDIUM.value,
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 violation_type="Rate Limit Exceeded",
                 description=f"Rate limit exceeded {i}",
                 tenant_id=tenant_id,
@@ -173,7 +171,8 @@ class SecurityIncidentDetectionTest(ContractsTestBase):
             event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value, tenant=self.tenant
         )
         self.assertEqual(
-            incidents.count(), 0,
+            incidents.count(),
+            0,
             "No incident should be created below the rate limit threshold of 10",
         )
 
@@ -226,7 +225,8 @@ class SecurityIncidentDetectionTest(ContractsTestBase):
             event_type=SecurityEventType.PATH_TRAVERSAL.value, tenant=self.tenant
         )
         self.assertEqual(
-            incidents.count(), 0,
+            incidents.count(),
+            0,
             "No incident should be created below the path traversal threshold of 5",
         )
 

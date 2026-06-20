@@ -19,9 +19,8 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.assets.models import AssetStatus
 from hub.apps.contracts.models import (
-    Contract,
     ContractStatus,
     NormalizationStatus,
     OriginalFormat,
@@ -31,7 +30,6 @@ from hub.apps.core.events.models import Event
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.search.indexing import SearchIndexer
-from hub.apps.search.models import SearchIndex
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
@@ -52,11 +50,16 @@ class SearchViewsEventPublishingE2ETest(TestCase):
         """Set up test fixtures."""
         # Reset the global event bus singleton so overridden settings take effect
         import hub.apps.core.events.bus as bus_module
+
         bus_module._event_bus = None
 
         # Flush Redis dedup keys so events are persisted fresh each run
         try:
-            from hub.apps.core.events.deduplication import get_redis_client, DEDUPLICATION_KEY_PREFIX
+            from hub.apps.core.events.deduplication import (
+                DEDUPLICATION_KEY_PREFIX,
+                get_redis_client,
+            )
+
             redis_client = get_redis_client()
             if redis_client:
                 for key in redis_client.scan_iter(f"{DEDUPLICATION_KEY_PREFIX}:*"):
@@ -81,7 +84,9 @@ class SearchViewsEventPublishingE2ETest(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
@@ -398,6 +403,7 @@ class SearchViewsEventPublishingE2ETest(TestCase):
     def tearDown(self):
         """Reconnect signals and reset event bus after test."""
         import hub.apps.core.events.bus as bus_module
+
         bus_module._event_bus = None
 
         from django.db.models.signals import post_save

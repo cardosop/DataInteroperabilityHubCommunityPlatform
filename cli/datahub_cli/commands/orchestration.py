@@ -1,8 +1,8 @@
 """
 285.11.4.6 — Pipeline dependency CLI commands.
 """
+
 import json
-from typing import Optional
 
 import click
 
@@ -12,23 +12,29 @@ from ..api_client import api_client
 @click.group()
 def orchestration():
     """Pipeline dependency management commands"""
-    pass
 
 
 @orchestration.group("dependencies")
 def dependencies_group():
     """Manage pipeline dependencies"""
-    pass
 
 
 @dependencies_group.command("list")
 @click.option("--pipeline-type", help="Filter by upstream pipeline type")
 @click.option("--pipeline-id", help="Filter by pipeline ID")
-@click.option("--direction", type=click.Choice(["upstream", "downstream", "both"]),
-              default="both", help="Dependency direction")
-@click.option("--format", "output_format",
-              type=click.Choice(["json", "table"]), default="table",
-              help="Output format")
+@click.option(
+    "--direction",
+    type=click.Choice(["upstream", "downstream", "both"]),
+    default="both",
+    help="Dependency direction",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
 def list_deps(pipeline_type, pipeline_id, direction, output_format):
     """List pipeline dependencies as a graph {nodes, links}."""
     params = {"direction": direction}
@@ -60,22 +66,34 @@ def list_deps(pipeline_type, pipeline_id, direction, output_format):
 
 
 @dependencies_group.command("add")
-@click.option("--upstream-type", required=True,
-              type=click.Choice(["scheduled_ingestion", "scheduled_export",
-                                 "transformation", "dq", "compliance"]))
+@click.option(
+    "--upstream-type",
+    required=True,
+    type=click.Choice(
+        ["scheduled_ingestion", "scheduled_export", "transformation", "dq", "compliance"]
+    ),
+)
 @click.option("--upstream-id", required=True)
-@click.option("--downstream-type", required=True,
-              type=click.Choice(["scheduled_ingestion", "scheduled_export",
-                                 "transformation", "dq", "compliance"]))
+@click.option(
+    "--downstream-type",
+    required=True,
+    type=click.Choice(
+        ["scheduled_ingestion", "scheduled_export", "transformation", "dq", "compliance"]
+    ),
+)
 @click.option("--downstream-id", required=True)
-@click.option("--dependency-type",
-              type=click.Choice(["DATA", "TRIGGER", "MANUAL"]),
-              default="DATA")
+@click.option("--dependency-type", type=click.Choice(["DATA", "TRIGGER", "MANUAL"]), default="DATA")
 @click.option("--priority", type=int, default=0)
-@click.option("--format", "output_format",
-              type=click.Choice(["json", "table"]), default="table")
-def add_dep(upstream_type, upstream_id, downstream_type, downstream_id,
-            dependency_type, priority, output_format):
+@click.option("--format", "output_format", type=click.Choice(["json", "table"]), default="table")
+def add_dep(
+    upstream_type,
+    upstream_id,
+    downstream_type,
+    downstream_id,
+    dependency_type,
+    priority,
+    output_format,
+):
     """Add a manual pipeline dependency."""
     payload = {
         "pipeline_type": upstream_type,
@@ -97,13 +115,16 @@ def add_dep(upstream_type, upstream_id, downstream_type, downstream_id,
 
 
 @dependencies_group.command("preview")
-@click.option("--pipeline-type", required=True,
-              type=click.Choice(["scheduled_ingestion", "scheduled_export",
-                                 "transformation", "dq", "compliance"]))
+@click.option(
+    "--pipeline-type",
+    required=True,
+    type=click.Choice(
+        ["scheduled_ingestion", "scheduled_export", "transformation", "dq", "compliance"]
+    ),
+)
 @click.option("--pipeline-id", required=True)
 @click.option("--max-depth", type=int, default=5)
-@click.option("--format", "output_format",
-              type=click.Choice(["json", "table"]), default="table")
+@click.option("--format", "output_format", type=click.Choice(["json", "table"]), default="table")
 def preview_deps(pipeline_type, pipeline_id, max_depth, output_format):
     """Preview the trigger chain for a pipeline execution."""
     params = {

@@ -31,13 +31,13 @@ other side-effect (DB writes, audit emission, business rules,
 signals) runs against real machinery. This is the documented
 boundary-mock pattern, not a business-logic mock.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
-from typing import Tuple
 from unittest.mock import patch
 
+import pytest
 from django.test import TestCase, override_settings
 
 from hub.apps.audit.models import AuditEvent
@@ -63,7 +63,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 # ---------------------------------------------------------------------------
 
 
-def _seed_tenant_user_si() -> Tuple[Tenant, User, ScheduledIngestion]:
+def _seed_tenant_user_si() -> tuple[Tenant, User, ScheduledIngestion]:
     uid = uuid.uuid4().hex[:8]
     tenant = Tenant.objects.create(
         name=f"FailMode-{uid}",
@@ -116,11 +116,7 @@ def _last_audit_for_action(*, tenant: Tenant, action: str) -> AuditEvent:
     # Pre-fix the ``-created_at`` order_by raised
     # ``FieldError: Cannot resolve keyword 'created_at'`` and masked
     # the failure-mode audit assertion below.
-    return (
-        AuditEvent.objects.filter(tenant=tenant, action=action)
-        .order_by("-timestamp")
-        .first()
-    )
+    return AuditEvent.objects.filter(tenant=tenant, action=action).order_by("-timestamp").first()
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +140,8 @@ class EmptyDataWarnAuditTest(TestCase):
         tenant, user, si = _seed_tenant_user_si()
         run = _seed_run(si)
         before_audit_count = _audit_count(
-            tenant=tenant, action="SCHEDULED_INGESTION_EMPTY_DATA_WARN",
+            tenant=tenant,
+            action="SCHEDULED_INGESTION_EMPTY_DATA_WARN",
         )
 
         # Header-only CSV: schema infers 2 columns, 0 data rows.
@@ -164,7 +161,8 @@ class EmptyDataWarnAuditTest(TestCase):
         self.assertIn("dataset_id", result)
         dataset = Dataset.objects.get(id=result["dataset_id"])
         self.assertEqual(
-            dataset.row_count or 0, 0,
+            dataset.row_count or 0,
+            0,
             "260.7.F contract: empty-data dataset must have row_count=0",
         )
         # Asset auto-created (per scheduled_ingestion.auto_create_asset=True);
@@ -176,18 +174,21 @@ class EmptyDataWarnAuditTest(TestCase):
         # Audit event emitted with WARNING severity + TENANT_ADMIN audience.
         self.assertEqual(
             _audit_count(
-                tenant=tenant, action="SCHEDULED_INGESTION_EMPTY_DATA_WARN",
+                tenant=tenant,
+                action="SCHEDULED_INGESTION_EMPTY_DATA_WARN",
             ),
             before_audit_count + 1,
             "260.7.F contract: empty-data must emit exactly one WARN audit",
         )
         audit = _last_audit_for_action(
-            tenant=tenant, action="SCHEDULED_INGESTION_EMPTY_DATA_WARN",
+            tenant=tenant,
+            action="SCHEDULED_INGESTION_EMPTY_DATA_WARN",
         )
         self.assertEqual(audit.result, "WARNING")
         self.assertEqual(audit.details_json.get("audience"), "TENANT_ADMIN")
         self.assertEqual(
-            audit.details_json.get("dataset_id"), str(dataset.id),
+            audit.details_json.get("dataset_id"),
+            str(dataset.id),
         )
         self.assertEqual(audit.details_json.get("row_count"), 0)
 
@@ -199,7 +200,8 @@ class EmptyDataWarnAuditTest(TestCase):
         tenant, user, si = _seed_tenant_user_si()
         run = _seed_run(si)
         before_audit_count = _audit_count(
-            tenant=tenant, action="SCHEDULED_INGESTION_EMPTY_DATA_WARN",
+            tenant=tenant,
+            action="SCHEDULED_INGESTION_EMPTY_DATA_WARN",
         )
 
         with _stub_s3_save_file():
@@ -213,7 +215,8 @@ class EmptyDataWarnAuditTest(TestCase):
 
         self.assertEqual(
             _audit_count(
-                tenant=tenant, action="SCHEDULED_INGESTION_EMPTY_DATA_WARN",
+                tenant=tenant,
+                action="SCHEDULED_INGESTION_EMPTY_DATA_WARN",
             ),
             before_audit_count,
             "non-empty CSV must NOT trigger empty-data warning",
@@ -263,16 +266,15 @@ class SchemaIncompatibleRejectionTest(TestCase):
         before_dataset_count = Dataset.objects.filter(tenant=tenant).count()
         before_file_count = File.objects.filter(tenant=tenant).count()
 
-        with _stub_s3_save_file():
-            with self.assertRaises(ServiceValidationError) as cm:
-                process_file_for_run(
-                    run_id=str(run_2.id),
-                    file_path="data/v2-broken.csv",
-                    # ``name`` removed from the new ingestion.
-                    file_content=b"id\n3\n4\n",
-                    tenant_id=str(tenant.id),
-                    user_id=str(user.id),
-                )
+        with _stub_s3_save_file(), self.assertRaises(ServiceValidationError) as cm:
+            process_file_for_run(
+                run_id=str(run_2.id),
+                file_path="data/v2-broken.csv",
+                # ``name`` removed from the new ingestion.
+                file_content=b"id\n3\n4\n",
+                tenant_id=str(tenant.id),
+                user_id=str(user.id),
+            )
 
         # The exception carries the typed code + the missing-fields detail.
         self.assertEqual(cm.exception.code, "SCHEMA_INCOMPATIBLE")
@@ -307,7 +309,8 @@ class SchemaIncompatibleRejectionTest(TestCase):
         self.assertEqual(audit.details_json.get("audience"), "TENANT_ADMIN")
         self.assertIn("name", audit.details_json.get("missing_fields", []))
         self.assertEqual(
-            audit.details_json.get("prior_dataset_id"), str(v1.id),
+            audit.details_json.get("prior_dataset_id"),
+            str(v1.id),
         )
 
     @pytest.mark.integration
@@ -446,7 +449,8 @@ class SourceUnreachableAuditTest(TestCase):
         wi = self._seed_workflow_instance(tenant, user)
 
         before_audit = _audit_count(
-            tenant=tenant, action="SCHEDULED_INGESTION_SOURCE_UNREACHABLE",
+            tenant=tenant,
+            action="SCHEDULED_INGESTION_SOURCE_UNREACHABLE",
         )
 
         # Patch the connector factory to return a connector whose
@@ -496,21 +500,25 @@ class SourceUnreachableAuditTest(TestCase):
         # Audit event emitted with FAILURE severity + TENANT_ADMIN audience.
         self.assertEqual(
             _audit_count(
-                tenant=tenant, action="SCHEDULED_INGESTION_SOURCE_UNREACHABLE",
+                tenant=tenant,
+                action="SCHEDULED_INGESTION_SOURCE_UNREACHABLE",
             ),
             before_audit + 1,
             "260.7.F contract: source-unreachable must emit exactly one FAILURE audit",
         )
         audit = _last_audit_for_action(
-            tenant=tenant, action="SCHEDULED_INGESTION_SOURCE_UNREACHABLE",
+            tenant=tenant,
+            action="SCHEDULED_INGESTION_SOURCE_UNREACHABLE",
         )
         self.assertEqual(audit.result, "FAILURE")
         self.assertEqual(audit.details_json.get("audience"), "TENANT_ADMIN")
         self.assertEqual(
-            audit.details_json.get("file_path"), "data/unreachable.csv",
+            audit.details_json.get("file_path"),
+            "data/unreachable.csv",
         )
         self.assertIn(
-            "Connection timed out", audit.details_json.get("error_message", ""),
+            "Connection timed out",
+            audit.details_json.get("error_message", ""),
         )
         # The failed-files state was also recorded — audit emission is
         # ADDITIVE, not replacing the existing failure path.
@@ -567,6 +575,7 @@ class FailureModeAuditEventConstantsTest(TestCase):
             "SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED",
         ):
             self.assertIn(
-                name, event_types.__all__,
+                name,
+                event_types.__all__,
                 f"Phase 260.7.F constant {name!r} must be in event_types.__all__",
             )

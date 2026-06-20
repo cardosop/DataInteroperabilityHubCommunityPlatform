@@ -26,7 +26,9 @@ Re-running the sweep is a no-op: a session already moved to ENDED
 by the previous run is filtered out by the ``status=ACTIVE`` clause
 in the candidate enumeration AND by the under-lock revalidation.
 """
+
 from __future__ import annotations
+
 import logging
 from typing import Any
 
@@ -74,10 +76,7 @@ def _expire_one_session(*, session_id, sweep_run_id: str | None) -> dict[str, An
             except ImpersonationSession.DoesNotExist:
                 return None
 
-            if (
-                sess.status != ImpersonationSessionStatus.ACTIVE
-                or sess.expires_at > now
-            ):
+            if sess.status != ImpersonationSessionStatus.ACTIVE or sess.expires_at > now:
                 return None
 
             sess.end(reason="expired")
@@ -93,9 +92,7 @@ def _expire_one_session(*, session_id, sweep_run_id: str | None) -> dict[str, An
                     "impersonator_user_id": str(sess.impersonator_id),
                     "impersonated_user_id": str(sess.impersonated_user_id),
                     "impersonator_tenant_id": (
-                        str(sess.impersonator_tenant_id)
-                        if sess.impersonator_tenant_id
-                        else None
+                        str(sess.impersonator_tenant_id) if sess.impersonator_tenant_id else None
                     ),
                     "impersonated_tenant_id": str(sess.impersonated_tenant_id),
                     "end_reason": sess.end_reason,
@@ -150,9 +147,7 @@ def run_expire_impersonation_sessions(
     skipped: list[dict[str, Any]] = []
     for pk in candidates:
         try:
-            result = _expire_one_session(
-                session_id=pk, sweep_run_id=sweep_run_id
-            )
+            result = _expire_one_session(session_id=pk, sweep_run_id=sweep_run_id)
         except Exception as exc:  # pragma: no cover — defensive
             logger.exception(
                 "impersonation_expire_sweep_session_failed",

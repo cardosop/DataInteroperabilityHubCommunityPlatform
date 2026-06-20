@@ -7,26 +7,27 @@ durations, and error rates. Produces optimization recommendations.
 
 No mocks: uses real WorkflowInstance and WorkflowStep data.
 """
+
 import logging
 from dataclasses import dataclass, field
 from datetime import timedelta
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Q
+from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F
 from django.utils import timezone
 
-from .models import WorkflowInstance, WorkflowStep, WorkflowStatus, StepStatus
+from .models import StepStatus, WorkflowInstance, WorkflowStatus, WorkflowStep
 
 logger = logging.getLogger(__name__)
 
 
 # Performance criteria (Phase 5 DoD-5.5)
 VALIDATION_FAILURE_RATE_THRESHOLD = Decimal("0.10")  # 10% invalid -> review
-VALIDATION_FAILURE_RATE_CRITICAL = Decimal("0.25")   # 25% -> critical
-WORKFLOW_SUCCESS_RATE_MIN = Decimal("0.95")         # 95% success target
-WORKFLOW_ERROR_RATE_MAX = Decimal("0.05")            # 5% error rate max
-STEP_FAILURE_RATE_MAX = Decimal("0.10")              # 10% step failure max
+VALIDATION_FAILURE_RATE_CRITICAL = Decimal("0.25")  # 25% -> critical
+WORKFLOW_SUCCESS_RATE_MIN = Decimal("0.95")  # 95% success target
+WORKFLOW_ERROR_RATE_MAX = Decimal("0.05")  # 5% error rate max
+STEP_FAILURE_RATE_MAX = Decimal("0.10")  # 10% step failure max
 
 
 @dataclass
@@ -39,27 +40,29 @@ class WorkflowExecutionStats:
     failed_count: int
     cancelled_count: int
     rolled_back_count: int
-    avg_duration_seconds: Optional[float]
+    avg_duration_seconds: float | None
     validation_failure_count: int  # instances/steps failed with validation in error
 
     @property
     def total_terminal(self) -> int:
-        return self.completed_count + self.failed_count + self.cancelled_count + self.rolled_back_count
+        return (
+            self.completed_count + self.failed_count + self.cancelled_count + self.rolled_back_count
+        )
 
     @property
-    def success_rate(self) -> Optional[Decimal]:
+    def success_rate(self) -> Decimal | None:
         if self.started_count == 0:
             return None
         return Decimal(self.completed_count) / Decimal(self.started_count)
 
     @property
-    def failure_rate(self) -> Optional[Decimal]:
+    def failure_rate(self) -> Decimal | None:
         if self.started_count == 0:
             return None
         return Decimal(self.failed_count) / Decimal(self.started_count)
 
     @property
-    def validation_failure_rate(self) -> Optional[Decimal]:
+    def validation_failure_rate(self) -> Decimal | None:
         total = self.started_count
         if total == 0 or self.validation_failure_count == 0:
             return None
@@ -75,7 +78,7 @@ class StepExecutionStats:
     started_count: int
     completed_count: int
     failed_count: int
-    avg_duration_seconds: Optional[float]
+    avg_duration_seconds: float | None
     validation_failure_count: int
 
     @property
@@ -83,13 +86,13 @@ class StepExecutionStats:
         return self.completed_count + self.failed_count
 
     @property
-    def success_rate(self) -> Optional[Decimal]:
+    def success_rate(self) -> Decimal | None:
         if self.started_count == 0:
             return None
         return Decimal(self.completed_count) / Decimal(self.started_count)
 
     @property
-    def failure_rate(self) -> Optional[Decimal]:
+    def failure_rate(self) -> Decimal | None:
         if self.started_count == 0:
             return None
         return Decimal(self.failed_count) / Decimal(self.started_count)
@@ -102,12 +105,12 @@ class PostDeploymentReport:
     window_minutes: int
     window_start: Any
     window_end: Any
-    workflow_stats: List[WorkflowExecutionStats] = field(default_factory=list)
-    step_stats: List[StepExecutionStats] = field(default_factory=list)
-    recommendations: List[str] = field(default_factory=list)
+    workflow_stats: list[WorkflowExecutionStats] = field(default_factory=list)
+    step_stats: list[StepExecutionStats] = field(default_factory=list)
+    recommendations: list[str] = field(default_factory=list)
 
 
-def _is_validation_failure(error_message: Optional[str], error_details: Optional[Dict]) -> bool:
+def _is_validation_failure(error_message: str | None, error_details: dict | None) -> bool:
     """Return True if the failure appears to be validation-related."""
     if error_message and (
         "validation" in error_message.lower()
@@ -117,7 +120,7 @@ def _is_validation_failure(error_message: Optional[str], error_details: Optional
     ):
         return True
     if error_details:
-        msg = (error_details.get("error_message") or error_details.get("message") or "")
+        msg = error_details.get("error_message") or error_details.get("message") or ""
         if "validation" in msg.lower() or "business rules" in msg.lower():
             return True
         if error_details.get("validation_errors") or error_details.get("validation_failed"):
@@ -165,7 +168,7 @@ class PostDeploymentMetricsCollector:
             .values("workflow_name")
             .annotate(count=Count("id"))
         )
-        by_name: Dict[str, Dict[str, Any]] = {}
+        by_name: dict[str, dict[str, Any]] = {}
         for row in started:
             by_name[row["workflow_name"]] = {
                 "started_count": row["count"],
@@ -297,7 +300,7 @@ class PostDeploymentMetricsCollector:
             .values("workflow_instance__workflow_name", "step_name")
             .annotate(count=Count("id"))
         )
-        by_step: Dict[tuple, Dict[str, Any]] = {}
+        by_step: dict[tuple, dict[str, Any]] = {}
         for row in steps_started:
             key = (row["workflow_instance__workflow_name"], row["step_name"])
             by_step[key] = {
@@ -339,13 +342,10 @@ class PostDeploymentMetricsCollector:
             if key in by_step:
                 by_step[key]["failed_count"] = row["count"]
         for step in failed_steps_qs.only(
-            "workflow_instance__workflow_name", "step_name",
-            "error_message", "error_details"
+            "workflow_instance__workflow_name", "step_name", "error_message", "error_details"
         ):
             key = (step.workflow_instance.workflow_name, step.step_name)
-            if key in by_step and _is_validation_failure(
-                step.error_message, step.error_details
-            ):
+            if key in by_step and _is_validation_failure(step.error_message, step.error_details):
                 by_step[key]["validation_failure_count"] = (
                     by_step[key].get("validation_failure_count", 0) + 1
                 )

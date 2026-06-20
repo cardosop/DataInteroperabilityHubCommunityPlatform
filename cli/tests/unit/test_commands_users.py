@@ -1,10 +1,10 @@
 """Unit tests for ``datahub users`` commands (278.AA.4)."""
+
 import json
+from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
-from unittest.mock import Mock
-
 from datahub_cli.main import cli
 
 
@@ -61,6 +61,7 @@ class TestUsersList:
     @pytest.mark.unit
     def test_list_users_api_error(self, runner, mock_api_client):
         from datahub_cli.errors import CLIError
+
         mock_api_client.get.side_effect = CLIError("boom", "TEST")
         result = runner.invoke(cli, ["users", "list"])
         assert result.exit_code != 0
@@ -71,9 +72,13 @@ class TestUsersGet:
     @pytest.mark.unit
     def test_get_user_table(self, runner, mock_api_client):
         mock_api_client.get.return_value = {
-            "id": "u1", "name": "Alice", "email": "a@x.com",
-            "roles": ["DATA_ENGINEER"], "tenant_name": "acme",  # noqa: PHASE216-STATIC-ID
-            "is_active": True, "created_at": "2025-01-01T00:00:00Z",
+            "id": "u1",
+            "name": "Alice",
+            "email": "a@x.com",
+            "roles": ["DATA_ENGINEER"],
+            "tenant_name": "acme",  # noqa: PHASE216-STATIC-ID
+            "is_active": True,
+            "created_at": "2025-01-01T00:00:00Z",
         }
         result = runner.invoke(cli, ["users", "get", "u1"])
         assert result.exit_code == 0
@@ -91,6 +96,7 @@ class TestUsersGet:
     @pytest.mark.unit
     def test_get_user_api_error(self, runner, mock_api_client):
         from click import ClickException
+
         mock_api_client.get.side_effect = ClickException("not found")
         result = runner.invoke(cli, ["users", "get", "u1"])
         assert result.exit_code != 0
@@ -110,10 +116,21 @@ class TestUsersInvite:
     @pytest.mark.unit
     def test_invite_with_name_and_roles(self, runner, mock_api_client):
         mock_api_client.post.return_value = {"id": "u1"}
-        result = runner.invoke(cli, [
-            "users", "invite", "--email", "a@x.com",
-            "--name", "Alice", "--role", "DATA_ENGINEER", "--role", "TENANT_ADMIN",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "users",
+                "invite",
+                "--email",
+                "a@x.com",
+                "--name",
+                "Alice",
+                "--role",
+                "DATA_ENGINEER",
+                "--role",
+                "TENANT_ADMIN",
+            ],
+        )
         assert result.exit_code == 0
         call = mock_api_client.post.call_args
         assert call[1]["json_data"]["email"] == "a@x.com"
@@ -130,6 +147,7 @@ class TestUsersInvite:
     @pytest.mark.unit
     def test_invite_api_error(self, runner, mock_api_client):
         from click import ClickException
+
         mock_api_client.post.side_effect = ClickException("invalid")
         result = runner.invoke(cli, ["users", "invite", "--email", "a@x.com"])
         assert result.exit_code != 0
@@ -139,7 +157,8 @@ class TestUsersRoles:
     @pytest.mark.unit
     def test_roles_table(self, runner, mock_api_client):
         mock_api_client.get.return_value = {
-            "id": "u1", "email": "a@x.com",
+            "id": "u1",
+            "email": "a@x.com",
             "roles": ["DATA_ENGINEER", "TENANT_ADMIN"],
         }
         result = runner.invoke(cli, ["users", "roles", "u1"])

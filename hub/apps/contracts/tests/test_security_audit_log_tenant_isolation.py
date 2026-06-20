@@ -14,7 +14,6 @@ from hub.apps.observability.cross_tenant_metrics import (
 )
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 
-
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
@@ -59,9 +58,7 @@ class SecurityAuditLogTenantIsolationTests(ContractsAPITestBase):
         ).count()
         before_counter = self._counter_value()
 
-        response = self.client.get(
-            f"/api/v1/security/audit-logs/?tenant_id={self.other_tenant.id}"
-        )
+        response = self.client.get(f"/api/v1/security/audit-logs/?tenant_id={self.other_tenant.id}")
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         payload = response.json()
@@ -93,9 +90,7 @@ class SecurityAuditLogTenantIsolationTests(ContractsAPITestBase):
         self.assertEqual(rows[0].get("tenant_id"), str(self.tenant.id))
 
     def test_matching_tenant_query_is_accepted_and_scoped(self):
-        response = self.client.get(
-            f"/api/v1/security/audit-logs/?tenant_id={self.tenant.id}"
-        )
+        response = self.client.get(f"/api/v1/security/audit-logs/?tenant_id={self.tenant.id}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         rows = response.json().get("results", [])
         self.assertEqual(len(rows), 1)

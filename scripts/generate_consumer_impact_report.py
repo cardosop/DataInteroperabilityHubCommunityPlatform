@@ -16,14 +16,14 @@ Dependencies:
 Usage:
     python scripts/generate_consumer_impact_report.py
 """
+
 import json
-import os
 import re
-from pathlib import Path
-from typing import Dict, List, Set, Optional, Any
+import sys
 from collections import defaultdict
 from datetime import datetime
-import sys
+from pathlib import Path
+from typing import Any
 
 
 class ConsumerImpactAnalyzer:
@@ -31,12 +31,12 @@ class ConsumerImpactAnalyzer:
 
     def __init__(self, base_path: str = "."):
         self.base_path = Path(base_path)
-        self.consumers: Dict[str, List[Dict]] = defaultdict(list)
-        self.endpoint_consumers: Dict[str, Set[str]] = defaultdict(set)
-        self.consumer_types: Dict[str, str] = {}
-        self.impact_matrix: Dict[str, Dict[str, Any]] = {}
+        self.consumers: dict[str, list[dict]] = defaultdict(list)
+        self.endpoint_consumers: dict[str, set[str]] = defaultdict(set)
+        self.consumer_types: dict[str, str] = {}
+        self.impact_matrix: dict[str, dict[str, Any]] = {}
 
-    def load_analysis_data(self) -> Dict[str, Any]:
+    def load_analysis_data(self) -> dict[str, Any]:
         """Load all analysis data from previous tasks"""
         data = {}
 
@@ -44,7 +44,7 @@ class ConsumerImpactAnalyzer:
         reverse_lookup_file = self.base_path / "reverse_lookup_analysis.json"
         if reverse_lookup_file.exists():
             try:
-                with open(reverse_lookup_file, "r") as f:
+                with open(reverse_lookup_file) as f:
                     data["reverse_lookups"] = json.load(f)
             except Exception as e:
                 print(f"Warning: Could not load reverse lookup analysis: {e}", file=sys.stderr)
@@ -53,16 +53,18 @@ class ConsumerImpactAnalyzer:
         api_client_file = self.base_path / "docs" / "api-audit" / "api-client-usage-report.json"
         if api_client_file.exists():
             try:
-                with open(api_client_file, "r") as f:
+                with open(api_client_file) as f:
                     data["api_client_usage"] = json.load(f)
             except Exception as e:
                 print(f"Warning: Could not load API client usage report: {e}", file=sys.stderr)
 
         # Load webhook payloads and events report
-        webhook_file = self.base_path / "docs" / "api-audit" / "webhook-payloads-and-events-report.json"
+        webhook_file = (
+            self.base_path / "docs" / "api-audit" / "webhook-payloads-and-events-report.json"
+        )
         if webhook_file.exists():
             try:
-                with open(webhook_file, "r") as f:
+                with open(webhook_file) as f:
                     data["webhook_payloads"] = json.load(f)
             except Exception as e:
                 print(f"Warning: Could not load webhook payloads report: {e}", file=sys.stderr)
@@ -71,16 +73,18 @@ class ConsumerImpactAnalyzer:
         endpoint_file = self.base_path / "docs" / "api-audit" / "endpoint-inventory-current.json"
         if endpoint_file.exists():
             try:
-                with open(endpoint_file, "r") as f:
+                with open(endpoint_file) as f:
                     data["endpoint_inventory"] = json.load(f)
             except Exception as e:
                 print(f"Warning: Could not load endpoint inventory: {e}", file=sys.stderr)
 
         # Load hardcoded endpoints impact matrix
-        hardcoded_file = self.base_path / "docs" / "api-audit" / "hardcoded-endpoints-impact-matrix.json"
+        hardcoded_file = (
+            self.base_path / "docs" / "api-audit" / "hardcoded-endpoints-impact-matrix.json"
+        )
         if hardcoded_file.exists():
             try:
-                with open(hardcoded_file, "r") as f:
+                with open(hardcoded_file) as f:
                     data["hardcoded_endpoints"] = json.load(f)
             except Exception as e:
                 print(f"Warning: Could not load hardcoded endpoints matrix: {e}", file=sys.stderr)
@@ -89,14 +93,14 @@ class ConsumerImpactAnalyzer:
         openapi_file = self.base_path / "docs" / "api-audit" / "openapi-spec-discrepancies.json"
         if openapi_file.exists():
             try:
-                with open(openapi_file, "r") as f:
+                with open(openapi_file) as f:
                     data["openapi_discrepancies"] = json.load(f)
             except Exception as e:
                 print(f"Warning: Could not load OpenAPI discrepancies: {e}", file=sys.stderr)
 
         return data
 
-    def normalize_endpoint(self, endpoint: str) -> Optional[str]:
+    def normalize_endpoint(self, endpoint: str) -> str | None:
         """Normalize endpoint path for consistent matching"""
         if not endpoint:
             return None
@@ -106,25 +110,32 @@ class ConsumerImpactAnalyzer:
             return None
 
         # Skip endpoints that are just base URLs without paths
-        if endpoint in ["localhost:8000", "api.example.com", "http://localhost:8000", "https://api.example.com"]:
+        if endpoint in [
+            "localhost:8000",
+            "api.example.com",
+            "http://localhost:8000",
+            "https://api.example.com",
+        ]:
             return None
 
         # Remove http:// or https:// prefixes
-        endpoint = re.sub(r'^https?://', '', endpoint)
+        endpoint = re.sub(r"^https?://", "", endpoint)
 
         # Skip regex patterns that aren't valid endpoints
         if endpoint.startswith("^") or endpoint.startswith("(?P<") or "regex" in endpoint.lower():
             # Try to extract the base path from regex
             # Pattern: ^api/v1/path/(?P<id>...)
-            match = re.match(r'[\^/]*api/v1/([^\(]+)', endpoint)
+            match = re.match(r"[\^/]*api/v1/([^\(]+)", endpoint)
             if match:
-                base_path = match.group(1).rstrip('/')
+                base_path = match.group(1).rstrip("/")
                 endpoint = f"/api/v1/{base_path}/{{id}}/"
             else:
                 return None
 
         # Skip endpoints with invalid characters or patterns
-        if any(pattern in endpoint for pattern in ['[^', ']*', 'webhook[^', 'http://localhost:8000']):
+        if any(
+            pattern in endpoint for pattern in ["[^", "]*", "webhook[^", "http://localhost:8000"]
+        ):
             return None
 
         # Remove leading/trailing slashes for processing
@@ -156,7 +167,7 @@ class ConsumerImpactAnalyzer:
         # Otherwise, add /api/v1/
         return f"/api/v1/{endpoint}"
 
-    def extract_endpoint_from_url_name(self, url_name: str) -> Optional[str]:
+    def extract_endpoint_from_url_name(self, url_name: str) -> str | None:
         """Extract endpoint path from Django URL name"""
         # Map common URL name patterns to endpoints
         # This is a simplified mapping - in practice, you'd need to resolve via Django's URL resolver
@@ -174,7 +185,7 @@ class ConsumerImpactAnalyzer:
                 return f"/api/v1/{resource}/{action}/"
         return None
 
-    def compile_consumer_references(self, data: Dict[str, Any]) -> None:
+    def compile_consumer_references(self, data: dict[str, Any]) -> None:
         """Compile all consumer references from analysis data"""
 
         # 1. Process reverse lookups
@@ -191,14 +202,16 @@ class ConsumerImpactAnalyzer:
                     if not endpoint:  # Skip invalid endpoints
                         continue
                     consumer_id = f"reverse_lookup:{file_path}:{line}"
-                    self.consumers[consumer_id].append({
-                        "type": "reverse_lookup",
-                        "url_name": url_name,
-                        "endpoint": endpoint,
-                        "file": file_path,
-                        "line": line,
-                        "code": reverse_call.get("code", ""),
-                    })
+                    self.consumers[consumer_id].append(
+                        {
+                            "type": "reverse_lookup",
+                            "url_name": url_name,
+                            "endpoint": endpoint,
+                            "file": file_path,
+                            "line": line,
+                            "code": reverse_call.get("code", ""),
+                        }
+                    )
                     self.endpoint_consumers[endpoint].add(consumer_id)
                     self.consumer_types[consumer_id] = "reverse_lookup"
 
@@ -216,15 +229,17 @@ class ConsumerImpactAnalyzer:
                     method = api_call.get("method", "GET")
 
                     consumer_id = f"api_client:{file_path}:{line}"
-                    self.consumers[consumer_id].append({
-                        "type": "api_client",
-                        "endpoint": endpoint,
-                        "method": method,
-                        "file": file_path,
-                        "line": line,
-                        "client_type": api_call.get("client_type", "unknown"),
-                        "context": api_call.get("context", ""),
-                    })
+                    self.consumers[consumer_id].append(
+                        {
+                            "type": "api_client",
+                            "endpoint": endpoint,
+                            "method": method,
+                            "file": file_path,
+                            "line": line,
+                            "client_type": api_call.get("client_type", "unknown"),
+                            "context": api_call.get("context", ""),
+                        }
+                    )
                     self.endpoint_consumers[endpoint].add(consumer_id)
                     self.consumer_types[consumer_id] = "api_client"
 
@@ -249,14 +264,16 @@ class ConsumerImpactAnalyzer:
                         if normalized_endpoint:  # Only add if endpoint is valid
                             endpoint = normalized_endpoint
                             consumer_id = f"sdk:{file_path}:{line}"
-                            self.consumers[consumer_id].append({
-                                "type": "sdk",
-                                "endpoint": endpoint,
-                                "file": file_path,
-                                "line": line,
-                                "sdk_module": client_class,
-                                "sdk_method": method_name,
-                            })
+                            self.consumers[consumer_id].append(
+                                {
+                                    "type": "sdk",
+                                    "endpoint": endpoint,
+                                    "file": file_path,
+                                    "line": line,
+                                    "sdk_module": client_class,
+                                    "sdk_method": method_name,
+                                }
+                            )
                             self.endpoint_consumers[endpoint].add(consumer_id)
                             self.consumer_types[consumer_id] = "sdk"
 
@@ -274,14 +291,16 @@ class ConsumerImpactAnalyzer:
                     event_type = endpoint_ref.get("event_type", "")
 
                     consumer_id = f"webhook:{file_path}:{line}"
-                    self.consumers[consumer_id].append({
-                        "type": "webhook",
-                        "endpoint": endpoint,
-                        "file": file_path,
-                        "line": line,
-                        "event_type": event_type,
-                        "context": endpoint_ref.get("context", ""),
-                    })
+                    self.consumers[consumer_id].append(
+                        {
+                            "type": "webhook",
+                            "endpoint": endpoint,
+                            "file": file_path,
+                            "line": line,
+                            "event_type": event_type,
+                            "context": endpoint_ref.get("context", ""),
+                        }
+                    )
                     self.endpoint_consumers[endpoint].add(consumer_id)
                     self.consumer_types[consumer_id] = "webhook"
 
@@ -316,17 +335,19 @@ class ConsumerImpactAnalyzer:
                 line = endpoint_info.get("line_number")
 
                 consumer_id = f"hardcoded:{file_path}:{line}"
-                self.consumers[consumer_id].append({
-                    "type": "hardcoded",
-                    "endpoint": endpoint,
-                    "file": file_path,
-                    "line": line,
-                    "context": endpoint_info.get("context", ""),
-                })
+                self.consumers[consumer_id].append(
+                    {
+                        "type": "hardcoded",
+                        "endpoint": endpoint,
+                        "file": file_path,
+                        "line": line,
+                        "context": endpoint_info.get("context", ""),
+                    }
+                )
                 self.endpoint_consumers[endpoint].add(consumer_id)
                 self.consumer_types[consumer_id] = "hardcoded"
 
-    def calculate_impact_score(self, endpoint: str) -> Dict[str, Any]:
+    def calculate_impact_score(self, endpoint: str) -> dict[str, Any]:
         """Calculate impact score for an endpoint"""
         consumers = self.endpoint_consumers.get(endpoint, set())
 
@@ -393,16 +414,16 @@ class ConsumerImpactAnalyzer:
                 "consumers": consumers,
             }
 
-    def categorize_by_priority_and_type(self) -> Dict[str, Dict[str, List[Dict]]]:
+    def categorize_by_priority_and_type(self) -> dict[str, dict[str, list[dict]]]:
         """Categorize endpoints by priority and consumer type"""
-        categories: Dict[str, Dict[str, List[Dict]]] = {
+        categories: dict[str, dict[str, list[dict]]] = {
             "CRITICAL": {},
             "HIGH": {},
             "MEDIUM": {},
             "LOW": {},
         }
 
-        for endpoint, info in self.impact_matrix.items():
+        for _endpoint, info in self.impact_matrix.items():
             priority = info["priority"]
             consumer_types = info["consumer_types"]
 
@@ -424,13 +445,15 @@ class ConsumerImpactAnalyzer:
         report.append("# Consumer Impact Analysis Report")
         report.append("")
         report.append(f"**Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        report.append(f"**Task**: 9.6.1.2.6 - Generate consumer impact report")
+        report.append("**Task**: 9.6.1.2.6 - Generate consumer impact report")
         report.append("")
         report.append("---")
         report.append("")
         report.append("## Overview")
         report.append("")
-        report.append("This report analyzes all API consumer references across the codebase to identify")
+        report.append(
+            "This report analyzes all API consumer references across the codebase to identify"
+        )
         report.append("which endpoints are consumed by which consumers and assess the impact of")
         report.append("potential API changes.")
         report.append("")
@@ -467,10 +490,18 @@ class ConsumerImpactAnalyzer:
         report.append("| Consumer Type | Count | Description |")
         report.append("|---------------|-------|-------------|")
         report.append(f"| **SDK** | **{type_totals['sdk']}** | SDK method calls |")
-        report.append(f"| **Webhook** | **{type_totals['webhook']}** | Webhook endpoint references |")
-        report.append(f"| **API Client** | **{type_totals['api_client']}** | Direct API client calls |")
-        report.append(f"| **Reverse Lookup** | **{type_totals['reverse_lookup']}** | Django reverse() calls |")
-        report.append(f"| **Hardcoded** | **{type_totals['hardcoded']}** | Hardcoded endpoint strings |")
+        report.append(
+            f"| **Webhook** | **{type_totals['webhook']}** | Webhook endpoint references |"
+        )
+        report.append(
+            f"| **API Client** | **{type_totals['api_client']}** | Direct API client calls |"
+        )
+        report.append(
+            f"| **Reverse Lookup** | **{type_totals['reverse_lookup']}** | Django reverse() calls |"
+        )
+        report.append(
+            f"| **Hardcoded** | **{type_totals['hardcoded']}** | Hardcoded endpoint strings |"
+        )
         report.append("")
 
         # Impact matrix by priority
@@ -501,14 +532,16 @@ class ConsumerImpactAnalyzer:
                 endpoint = endpoint_info["endpoint"]
                 score = endpoint_info["impact_score"]
                 consumers = endpoint_info["total_consumers"]
-                types_str = ", ".join([f"{k}:{v}" for k, v in endpoint_info["consumer_types"].items()])
+                types_str = ", ".join(
+                    [f"{k}:{v}" for k, v in endpoint_info["consumer_types"].items()]
+                )
 
                 report.append(f"| `{endpoint}` | {score:.1f} | {consumers} | {types_str} |")
 
             report.append("")
 
             # Breakdown by consumer type
-            report.append(f"### Breakdown by Consumer Type")
+            report.append("### Breakdown by Consumer Type")
             report.append("")
             for consumer_type, endpoints in sorted(priority_endpoints.items()):
                 if endpoints:
@@ -517,7 +550,9 @@ class ConsumerImpactAnalyzer:
                     report.append("| Endpoint | Impact Score | Consumers |")
                     report.append("|----------|--------------|-----------|")
 
-                    for endpoint_info in sorted(endpoints, key=lambda x: x["impact_score"], reverse=True)[:10]:
+                    for endpoint_info in sorted(
+                        endpoints, key=lambda x: x["impact_score"], reverse=True
+                    )[:10]:
                         endpoint = endpoint_info["endpoint"]
                         score = endpoint_info["impact_score"]
                         consumers = endpoint_info["total_consumers"]
@@ -533,9 +568,7 @@ class ConsumerImpactAnalyzer:
 
         # Sort endpoints by impact score
         sorted_endpoints = sorted(
-            self.impact_matrix.items(),
-            key=lambda x: x[1]["impact_score"],
-            reverse=True
+            self.impact_matrix.items(), key=lambda x: x[1]["impact_score"], reverse=True
         )
 
         for endpoint, info in sorted_endpoints[:50]:  # Top 50 endpoints
@@ -544,7 +577,9 @@ class ConsumerImpactAnalyzer:
             report.append(f"- **Impact Score**: {info['impact_score']:.1f}")
             report.append(f"- **Priority**: {info['priority']}")
             report.append(f"- **Total Consumers**: {info['total_consumers']}")
-            report.append(f"- **Consumer Types**: {', '.join([f'{k}:{v}' for k, v in info['consumer_types'].items()])}")
+            report.append(
+                f"- **Consumer Types**: {', '.join([f'{k}:{v}' for k, v in info['consumer_types'].items()])}"
+            )
             report.append("")
             report.append("**Consumers:**")
             report.append("")
@@ -596,13 +631,17 @@ class ConsumerImpactAnalyzer:
         report.append("")
         report.append("1. **Task 9.6.1.2.2**: URL reverse lookups (`reverse_lookup_analysis.json`)")
         report.append("2. **Task 9.6.1.2.3**: API client usage (`api-client-usage-report.json`)")
-        report.append("3. **Task 9.6.1.2.5**: Webhook payloads and events (`webhook-payloads-and-events-report.json`)")
-        report.append("4. **Task 9.6.1.2.1**: Hardcoded endpoints (`hardcoded-endpoints-impact-matrix.json`)")
+        report.append(
+            "3. **Task 9.6.1.2.5**: Webhook payloads and events (`webhook-payloads-and-events-report.json`)"
+        )
+        report.append(
+            "4. **Task 9.6.1.2.1**: Hardcoded endpoints (`hardcoded-endpoints-impact-matrix.json`)"
+        )
         report.append("")
 
         return "\n".join(report)
 
-    def run(self) -> Dict[str, Any]:
+    def run(self) -> dict[str, Any]:
         """Run complete analysis"""
         print("Loading analysis data...")
         data = self.load_analysis_data()
@@ -619,9 +658,13 @@ class ConsumerImpactAnalyzer:
         return {
             "summary": {
                 "total_endpoints": len(self.impact_matrix),
-                "total_consumers": sum(len(consumers) for consumers in self.endpoint_consumers.values()),
+                "total_consumers": sum(
+                    len(consumers) for consumers in self.endpoint_consumers.values()
+                ),
                 "priority_counts": {
-                    priority: sum(1 for info in self.impact_matrix.values() if info["priority"] == priority)
+                    priority: sum(
+                        1 for info in self.impact_matrix.values() if info["priority"] == priority
+                    )
                     for priority in ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
                 },
             },
@@ -656,7 +699,7 @@ def main():
 
     # Print summary
     summary = result["summary"]
-    print(f"\nSummary:")
+    print("\nSummary:")
     print(f"  Total endpoints: {summary['total_endpoints']}")
     print(f"  Total consumers: {summary['total_consumers']}")
     print(f"  CRITICAL: {summary['priority_counts']['CRITICAL']}")
@@ -667,4 +710,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

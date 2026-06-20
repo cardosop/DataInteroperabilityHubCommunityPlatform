@@ -9,12 +9,12 @@ Generates all required reports after test execution:
 - Security test report
 - Coverage analysis and recommendations
 """
+
 import json
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -23,7 +23,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 REPORT_DIR = PROJECT_ROOT / "test_reports_comprehensive"
 
 
-def load_test_results() -> Dict[str, Any]:
+def load_test_results() -> dict[str, Any]:
     """Load test execution results from JSON files or parse log files"""
     results = {}
 
@@ -40,7 +40,7 @@ def load_test_results() -> Dict[str, Any]:
     return results
 
 
-def parse_log_files() -> Dict[str, Any]:
+def parse_log_files() -> dict[str, Any]:
     """Parse test execution results from log files"""
     results = {"results": {}}
 
@@ -77,12 +77,12 @@ def parse_log_files() -> Dict[str, Any]:
     return results
 
 
-def parse_comprehensive_log(log_file: Path) -> Dict[str, Any]:
+def parse_comprehensive_log(log_file: Path) -> dict[str, Any]:
     """Parse comprehensive test suite log file"""
     results = {}
 
     try:
-        with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+        with open(log_file, encoding="utf-8", errors="ignore") as f:
             content = f.read()
 
         # Extract phase summaries
@@ -101,7 +101,7 @@ def parse_comprehensive_log(log_file: Path) -> Dict[str, Any]:
     return results
 
 
-def parse_unit_tests(log_files: List[Path]) -> Dict[str, Any]:
+def parse_unit_tests(log_files: list[Path]) -> dict[str, Any]:
     """Parse unit test log files"""
     total_tests = 0
     passed = 0
@@ -111,7 +111,7 @@ def parse_unit_tests(log_files: List[Path]) -> Dict[str, Any]:
 
     for log_file in log_files:
         try:
-            with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+            with open(log_file, encoding="utf-8", errors="ignore") as f:
                 content = f.read()
 
             # Extract test counts
@@ -146,7 +146,7 @@ def parse_unit_tests(log_files: List[Path]) -> Dict[str, Any]:
     }
 
 
-def parse_test_log(log_file: Path) -> Dict[str, Any]:
+def parse_test_log(log_file: Path) -> dict[str, Any]:
     """Parse a test log file for summary statistics"""
     total_tests = 0
     passed = 0
@@ -155,7 +155,7 @@ def parse_test_log(log_file: Path) -> Dict[str, Any]:
     skipped = 0
 
     try:
-        with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+        with open(log_file, encoding="utf-8", errors="ignore") as f:
             content = f.read()
 
         import re
@@ -192,7 +192,7 @@ def parse_test_log(log_file: Path) -> Dict[str, Any]:
     }
 
 
-def generate_execution_report(results: Dict[str, Any]) -> str:
+def generate_execution_report(results: dict[str, Any]) -> str:
     """Generate test execution report"""
     report = []
     report.append("# Comprehensive Test Execution Report")

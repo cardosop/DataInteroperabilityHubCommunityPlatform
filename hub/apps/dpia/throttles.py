@@ -1,9 +1,11 @@
 """283.3.5.4 — Tenant-scoped throttles for DPIA views."""
+
 from rest_framework.throttling import SimpleRateThrottle
 
 
 class DpiaTenantRateThrottle(SimpleRateThrottle):
     """Per-tenant rate limit for DPIA operations."""
+
     scope = "dpia_tenant"
 
     def get_cache_key(self, request, view):

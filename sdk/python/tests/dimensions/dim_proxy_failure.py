@@ -13,6 +13,7 @@ import os
 from unittest.mock import patch
 
 import requests
+
 from tests.fixtures.test_data import unique_port
 
 
@@ -22,10 +23,12 @@ def test_dead_proxy_raises_connection_error():
     dead_proxy = f"http://127.0.0.1:{dead_port}"
 
     with patch.dict(os.environ, {"HTTPS_PROXY": dead_proxy, "HTTP_PROXY": dead_proxy}):
-        with pytest.raises((
-            requests.exceptions.ConnectionError,
-            requests.exceptions.ProxyError,
-        )):
+        with pytest.raises(
+            (
+                requests.exceptions.ConnectionError,
+                requests.exceptions.ProxyError,
+            )
+        ):
             requests.get(
                 "https://stagingmeshant-internal.example.com/api/v1/health/",
                 timeout=5,
@@ -61,10 +64,13 @@ def test_no_proxy_env_is_respected():
     # With NO_PROXY set, the request should NOT go through the dead proxy
     # and instead connect directly (which may succeed or fail with a
     # different error — the point is it must NOT raise ProxyError).
-    with patch.dict(os.environ, {
-        "HTTPS_PROXY": dead_proxy,
-        "NO_PROXY": "*.meshant.com,localhost,127.0.0.1",
-    }):
+    with patch.dict(
+        os.environ,
+        {
+            "HTTPS_PROXY": dead_proxy,
+            "NO_PROXY": "*.meshant.com,localhost,127.0.0.1",
+        },
+    ):
         try:
             requests.get("http://127.0.0.1:1/health/", timeout=2)
         except requests.exceptions.ProxyError:

@@ -15,15 +15,14 @@ from ..api_client import api_client
 @click.group()
 def warehouses():
     """Warehouse connections, queries, ACLs, and Delta Sharing."""
-    pass
 
 
 # ── Connection CRUD ─────────────────────────────────────────────────────
 
+
 @warehouses.group("connections")
 def warehouses_connections():
     """Warehouse connection management."""
-    pass
 
 
 @warehouses_connections.command("list")
@@ -40,7 +39,9 @@ def warehouses_connections_list(output_format):
             click.echo("No connections found.")
             return
         for c in items:
-            click.echo(f"{c.get('id','?')[:8]}  {c.get('name','?'):20s}  {c.get('db_type','?'):10s}  {c.get('status','?')}")
+            click.echo(
+                f"{c.get('id', '?')[:8]}  {c.get('name', '?'):20s}  {c.get('db_type', '?'):10s}  {c.get('status', '?')}"
+            )
 
 
 @warehouses_connections.command("get")
@@ -53,7 +54,11 @@ def warehouses_connections_get(connection_id):
 
 @warehouses_connections.command("create")
 @click.option("--name", required=True)
-@click.option("--db-type", required=True, type=click.Choice(["postgresql", "mysql", "snowflake", "bigquery", "redshift", "databricks"]))
+@click.option(
+    "--db-type",
+    required=True,
+    type=click.Choice(["postgresql", "mysql", "snowflake", "bigquery", "redshift", "databricks"]),
+)
 @click.option("--host", required=True)
 @click.option("--port", type=int, default=5432)
 @click.option("--database", required=True)
@@ -62,11 +67,19 @@ def warehouses_connections_get(connection_id):
 @click.option("--ssl/--no-ssl", default=True)
 def warehouses_connections_create(name, db_type, host, port, database, username, password, ssl):
     """Create a new warehouse connection."""
-    resp = api_client.post("warehouses/connections/", json={
-        "name": name, "db_type": db_type, "host": host,
-        "port": port, "database": database, "username": username,
-        "password": password, "ssl": ssl,
-    })
+    resp = api_client.post(
+        "warehouses/connections/",
+        json={
+            "name": name,
+            "db_type": db_type,
+            "host": host,
+            "port": port,
+            "database": database,
+            "username": username,
+            "password": password,
+            "ssl": ssl,
+        },
+    )
     click.echo(json.dumps(resp, indent=2))
 
 
@@ -120,10 +133,10 @@ def warehouses_connections_schema(connection_id, table):
 
 # ── ACLs ────────────────────────────────────────────────────────────────
 
+
 @warehouses.group("acls")
 def warehouses_acls():
     """Connection ACL management."""
-    pass
 
 
 @warehouses_acls.command("list")
@@ -147,10 +160,14 @@ def warehouses_acls_get(acl_id):
 @click.option("--permission", required=True, type=click.Choice(["read", "write", "admin"]))
 def warehouses_acls_create(connection_id, principal, permission):
     """Create an ACL entry."""
-    resp = api_client.post("warehouses/acls/", json={
-        "connection_id": connection_id, "principal": principal,
-        "permission": permission,
-    })
+    resp = api_client.post(
+        "warehouses/acls/",
+        json={
+            "connection_id": connection_id,
+            "principal": principal,
+            "permission": permission,
+        },
+    )
     click.echo(json.dumps(resp, indent=2))
 
 
@@ -167,6 +184,7 @@ def warehouses_acls_delete(acl_id, confirm):
 
 # ── Live Query ──────────────────────────────────────────────────────────
 
+
 @warehouses.command("query")
 @click.option("--connection-id", required=True)
 @click.option("--sql", required=True, help="SQL query to execute")
@@ -181,10 +199,10 @@ def warehouses_query(connection_id, sql):
 
 # ── Delta Sharing ───────────────────────────────────────────────────────
 
+
 @warehouses.group("share")
 def warehouses_share():
     """Delta Sharing operations."""
-    pass
 
 
 @warehouses_share.command("list")
@@ -208,6 +226,7 @@ def warehouses_share_query(asset_id, sql):
 
 
 # ── Compliance ──────────────────────────────────────────────────────────
+
 
 @warehouses.command("residency-mismatches")
 def warehouses_residency_mismatches():

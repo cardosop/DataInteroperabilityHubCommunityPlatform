@@ -1,6 +1,7 @@
 """REST API for processor agreement tracker (Phase 232.6)."""
 
 from __future__ import annotations
+
 from typing import cast
 
 from rest_framework import permissions, viewsets
@@ -8,7 +9,11 @@ from rest_framework import permissions, viewsets
 from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.consent.permissions import IsTenantScoped
-from hub.apps.processor_agreements.models import AssetProcessorMembership, Processor, ProcessorAgreement
+from hub.apps.processor_agreements.models import (
+    AssetProcessorMembership,
+    Processor,
+    ProcessorAgreement,
+)
 from hub.apps.processor_agreements.permissions import IsTenantAdminProcessorAgreements
 from hub.apps.processor_agreements.serializers import (
     AssetProcessorLinkSerializer,
@@ -43,7 +48,7 @@ class ProcessorViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         tenant = _tenant(self.request)
         proc = serializer.save(tenant=tenant)
-        user = cast(User, self.request.user)
+        user = cast("User", self.request.user)
         create_audit_event(
             resource_type="PROCESSOR",
             action=audit_event_types.PROCESSOR_REGISTERED,
@@ -55,7 +60,7 @@ class ProcessorViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         instance = serializer.save()
-        user = cast(User, self.request.user)
+        user = cast("User", self.request.user)
         create_audit_event(
             resource_type="PROCESSOR",
             action=audit_event_types.PROCESSOR_UPDATED,
@@ -68,7 +73,7 @@ class ProcessorViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         tid = str(instance.id)
         t = instance.tenant
-        user = cast(User, self.request.user)
+        user = cast("User", self.request.user)
         create_audit_event(
             resource_type="PROCESSOR",
             action=audit_event_types.PROCESSOR_REMOVED,
@@ -99,7 +104,7 @@ class ProcessorAgreementViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save()
         obj = serializer.instance
-        user = cast(User, self.request.user)
+        user = cast("User", self.request.user)
         create_audit_event(
             resource_type="PROCESSOR_AGREEMENT",
             action=audit_event_types.PROCESSOR_AGREEMENT_CREATED,
@@ -117,7 +122,7 @@ class ProcessorAgreementViewSet(viewsets.ModelViewSet):
         prev_sub = list(instance.sub_processors_declared or [])
         serializer.save()
         obj = serializer.instance
-        user = cast(User, self.request.user)
+        user = cast("User", self.request.user)
         create_audit_event(
             resource_type="PROCESSOR_AGREEMENT",
             action=audit_event_types.PROCESSOR_AGREEMENT_UPDATED,
@@ -133,7 +138,7 @@ class ProcessorAgreementViewSet(viewsets.ModelViewSet):
         )
 
     def perform_destroy(self, instance):
-        user = cast(User, self.request.user)
+        user = cast("User", self.request.user)
         create_audit_event(
             resource_type="PROCESSOR_AGREEMENT",
             action=audit_event_types.PROCESSOR_AGREEMENT_DELETED,
@@ -169,7 +174,7 @@ class AssetProcessorLinkViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save()
-        user = cast(User, self.request.user)
+        user = cast("User", self.request.user)
         create_audit_event(
             resource_type="ASSET",
             action=audit_event_types.PROCESSOR_AGREEMENT_UPDATED,

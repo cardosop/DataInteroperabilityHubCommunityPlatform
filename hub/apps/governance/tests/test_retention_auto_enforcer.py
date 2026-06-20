@@ -1,13 +1,12 @@
 """Phase 232.7 retention auto-enforcer — DB-backed behavioural tests."""
 
 from __future__ import annotations
-import pytest
 
-import pytest
 import io
 import uuid
-from datetime import datetime, timedelta, timezone as datetime_timezone
+from datetime import UTC, datetime, timedelta
 
+import pytest
 from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
@@ -18,9 +17,9 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.dsar.models import DSARRequest, DSARRequestType, DSARStatus
 from hub.apps.governance.models import RetentionAction, RetentionPolicy, RetentionPolicyType
 from hub.apps.governance.retention_auto_enforcer import (
+    RetentionAutoEnforcerSweep,
     quarterly_retention_compliance_snapshot,
     retention_enforcement_dashboard,
-    RetentionAutoEnforcerSweep,
 )
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.jobs.tasks_base import _execute_job_logic
@@ -165,6 +164,7 @@ class Phase232RetentionAutoEnforcerTests(TestCase):
         # transition rather than the missing column.
         asset = Asset.objects.get(pk=self.asset.pk)
         from hub.apps.assets.models import AssetStatus
+
         self.assertEqual(asset.status, AssetStatus.RETIRED)
 
     @pytest.mark.integration
@@ -192,7 +192,9 @@ class Phase232RetentionAutoEnforcerTests(TestCase):
         self.assertFalse(RetentionPolicy.objects.filter(pk=pk).exists())
         self.assertFalse(Asset.objects.filter(pk=self.asset.pk).exists())
 
-        ev = AuditEvent.objects.filter(action=audit_evt.RETENTION_RESOURCE_HARD_DELETED_AUTOSWEEP).exists()
+        ev = AuditEvent.objects.filter(
+            action=audit_evt.RETENTION_RESOURCE_HARD_DELETED_AUTOSWEEP
+        ).exists()
         self.assertTrue(ev)
 
     @pytest.mark.integration
@@ -211,7 +213,7 @@ class Phase232RetentionAutoEnforcerTests(TestCase):
             details_json={"k": "v"},
         )
         AuditEvent.objects.filter(pk=ev.pk).update(
-            timestamp=datetime(2026, 2, 10, tzinfo=datetime_timezone.utc),
+            timestamp=datetime(2026, 2, 10, tzinfo=UTC),
         )
 
         snapshot = quarterly_retention_compliance_snapshot(

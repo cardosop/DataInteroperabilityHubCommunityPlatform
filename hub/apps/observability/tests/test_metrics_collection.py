@@ -4,10 +4,11 @@ Unit tests for Prometheus metrics collection
 Tests verify that metrics are incremented correctly and labels are set properly.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
-from prometheus_client import REGISTRY
 
 from hub.apps.observability.otel_metrics import (
     compliance_runs_total,
@@ -22,7 +23,6 @@ from hub.apps.observability.otel_metrics import (
     jobs_started_total,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -42,9 +42,7 @@ class MetricsCollectionTest(TestCase):
 
     def test_http_metrics_incremented(self):
         """Test that HTTP request counter increments correctly"""
-        labeled = http_requests_total.labels(
-            method="GET", route="/health/", status_class="2xx"
-        )
+        labeled = http_requests_total.labels(method="GET", route="/health/", status_class="2xx")
         before = labeled._value.get()
         labeled.inc()
         after = labeled._value.get()
@@ -91,7 +89,7 @@ class MetricsCollectionTest(TestCase):
 
     def test_job_metrics_labels(self):
         """Test that job metrics have correct labels"""
-        tenant_id = str(self.tenant.id)
+        str(self.tenant.id)
 
         # Test jobs_started_total
         labels = jobs_started_total._labelnames
@@ -119,12 +117,16 @@ class MetricsCollectionTest(TestCase):
         labeled.inc()
         self.assertEqual(labeled._value.get(), before + 1)
 
-        labeled2 = jobs_completed_total.labels(job_type="DQ_RUN", status="COMPLETED", tenant_id=tenant_id)
+        labeled2 = jobs_completed_total.labels(
+            job_type="DQ_RUN", status="COMPLETED", tenant_id=tenant_id
+        )
         before2 = labeled2._value.get()
         labeled2.inc()
         self.assertEqual(labeled2._value.get(), before2 + 1)
 
-        labeled3 = jobs_failed_total.labels(job_type="DQ_RUN", error_code="TIMEOUT", tenant_id=tenant_id)
+        labeled3 = jobs_failed_total.labels(
+            job_type="DQ_RUN", error_code="TIMEOUT", tenant_id=tenant_id
+        )
         before3 = labeled3._value.get()
         labeled3.inc()
         self.assertEqual(labeled3._value.get(), before3 + 1)
@@ -168,7 +170,9 @@ class MetricsCollectionTest(TestCase):
         self.assertIn("risk_level", labels)
         self.assertIn("tenant_id", labels)
 
-        labeled = compliance_runs_total.labels(status="success", risk_level="low", tenant_id=tenant_id)
+        labeled = compliance_runs_total.labels(
+            status="success", risk_level="low", tenant_id=tenant_id
+        )
         before = labeled._value.get()
         labeled.inc()
         self.assertEqual(labeled._value.get(), before + 1)

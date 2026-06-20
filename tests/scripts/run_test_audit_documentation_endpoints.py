@@ -17,8 +17,6 @@ sys.path.insert(0, str(project_root / "scripts"))
 
 from audit_documentation_endpoints import (
     DocumentationEndpointAuditor,
-    EndpointReference,
-    DocumentationMapping,
 )
 
 
@@ -104,14 +102,13 @@ curl -X POST http://localhost:8000/api/v1/assets/
 
         # Create auditor instance
         self.auditor = DocumentationEndpointAuditor(
-            base_path=str(self.temp_path),
-            docs_dir=str(docs_dir),
-            runbooks_dir=str(runbooks_dir)
+            base_path=str(self.temp_path), docs_dir=str(docs_dir), runbooks_dir=str(runbooks_dir)
         )
 
     def tearDown(self):
         """Clean up test fixtures"""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_extract_endpoints_from_api_files(self):
@@ -159,7 +156,7 @@ paths:
         paths = [ref.endpoint_path for ref in references]
         self.assertTrue(
             any("/api/v1/test/endpoint" in path for path in paths),
-            f"Should find /api/v1/test/endpoint in {paths}"
+            f"Should find /api/v1/test/endpoint in {paths}",
         )
 
     def test_extract_endpoints_from_runbooks(self):
@@ -185,20 +182,18 @@ paths:
         """Test endpoint path normalization"""
         # Test various formats
         self.assertEqual(
-            self.auditor._normalize_endpoint_path("/api/v1/contracts/"),
-            "/api/v1/contracts/"
+            self.auditor._normalize_endpoint_path("/api/v1/contracts/"), "/api/v1/contracts/"
         )
         self.assertEqual(
-            self.auditor._normalize_endpoint_path("`/api/v1/contracts/`"),
-            "/api/v1/contracts/"
+            self.auditor._normalize_endpoint_path("`/api/v1/contracts/`"), "/api/v1/contracts/"
         )
         self.assertEqual(
             self.auditor._normalize_endpoint_path("http://localhost:8000/api/v1/contracts/"),
-            "/api/v1/contracts/"
+            "/api/v1/contracts/",
         )
         self.assertEqual(
             self.auditor._normalize_endpoint_path("https://api.example.com/api/v1/contracts/"),
-            "/api/v1/contracts/"
+            "/api/v1/contracts/",
         )
 
     def test_map_documentation_to_endpoints(self):
@@ -210,8 +205,8 @@ paths:
 
         # Check that mappings contain expected structure
         for mapping in mappings:
-            self.assertTrue(hasattr(mapping, 'endpoint_path'))
-            self.assertTrue(hasattr(mapping, 'documentation_files'))
+            self.assertTrue(hasattr(mapping, "endpoint_path"))
+            self.assertTrue(hasattr(mapping, "documentation_files"))
             self.assertGreater(len(mapping.documentation_files), 0)
 
     def test_generate_report(self):
@@ -225,6 +220,7 @@ paths:
 
         # Verify report structure
         import json
+
         with open(output_file) as f:
             report = json.load(f)
 
@@ -264,13 +260,13 @@ paths:
 
         for input_text, expected in test_cases:
             # Extract endpoint from text
-            pattern = self.auditor.endpoint_patterns['rest']
+            pattern = self.auditor.endpoint_patterns["rest"]
             match = pattern.search(input_text)
             if match:
                 normalized = self.auditor._normalize_endpoint_path(match.group(1))
                 self.assertTrue(
                     normalized == expected or expected in normalized,
-                    f"Expected {expected} in {normalized} for input: {input_text}"
+                    f"Expected {expected} in {normalized} for input: {input_text}",
                 )
 
     def test_handles_missing_directories(self):
@@ -278,7 +274,7 @@ paths:
         auditor = DocumentationEndpointAuditor(
             base_path="/nonexistent",
             docs_dir="/nonexistent/docs",
-            runbooks_dir="/nonexistent/runbooks"
+            runbooks_dir="/nonexistent/runbooks",
         )
 
         # Should not raise exception, just return empty results
@@ -294,7 +290,7 @@ paths:
         endpoint_paths = [m.endpoint_path for m in mappings]
 
         # Should have unique endpoints
-        unique_paths = set(endpoint_paths)
+        set(endpoint_paths)
 
         # Verify that endpoints with multiple docs are properly aggregated
         for mapping in mappings:
@@ -303,7 +299,7 @@ paths:
                 self.assertEqual(
                     len(set(mapping.documentation_files)),
                     len(mapping.documentation_files),
-                    "Documentation files should be unique"
+                    "Documentation files should be unique",
                 )
 
 
@@ -320,4 +316,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

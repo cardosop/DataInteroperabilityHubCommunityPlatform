@@ -17,6 +17,7 @@ Usage::
 
     python manage.py delete_lineage_edges_for_user --user=<uuid>
 """
+
 from __future__ import annotations
 
 import json
@@ -25,7 +26,6 @@ import logging
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ class Command(BaseCommand):
         except User.DoesNotExist as exc:
             raise CommandError(f"User {user_id!r} not found") from exc
 
-        from hub.apps.audit.models import AuditEvent, LINEAGE_AUDIT_ACTIONS
+        from hub.apps.audit.models import LINEAGE_AUDIT_ACTIONS, AuditEvent
         from hub.apps.contracts.models import LineageEdge
 
         audit_qs = AuditEvent.objects.filter(
@@ -66,13 +66,18 @@ class Command(BaseCommand):
         edge_count = edge_qs.count()
 
         if dry_run:
-            self.stdout.write(json.dumps({
-                "phase": "228.X.3.2",
-                "dry_run": True,
-                "user_id": str(user.pk),
-                "audit_rows_to_scrub": audit_count,
-                "edge_rows_to_scrub": edge_count,
-            }, sort_keys=True))
+            self.stdout.write(
+                json.dumps(
+                    {
+                        "phase": "228.X.3.2",
+                        "dry_run": True,
+                        "user_id": str(user.pk),
+                        "audit_rows_to_scrub": audit_count,
+                        "edge_rows_to_scrub": edge_count,
+                    },
+                    sort_keys=True,
+                )
+            )
             return
 
         with transaction.atomic():
@@ -83,18 +88,21 @@ class Command(BaseCommand):
             #    still see "this run wrote this row" without
             #    revealing the operator id.
             for row in edge_qs:
-                row.created_by_run = (
-                    row.created_by_run.replace(str(user.pk), "REDACTED")
-                )
+                row.created_by_run = row.created_by_run.replace(str(user.pk), "REDACTED")
                 row.save(update_fields=["created_by_run"])
 
-        self.stdout.write(json.dumps({
-            "phase": "228.X.3.2",
-            "dry_run": False,
-            "user_id": str(user.pk),
-            "audit_rows_scrubbed": audit_count,
-            "edge_rows_scrubbed": edge_count,
-        }, sort_keys=True))
+        self.stdout.write(
+            json.dumps(
+                {
+                    "phase": "228.X.3.2",
+                    "dry_run": False,
+                    "user_id": str(user.pk),
+                    "audit_rows_scrubbed": audit_count,
+                    "edge_rows_scrubbed": edge_count,
+                },
+                sort_keys=True,
+            )
+        )
         logger.info(
             "lineage_gdpr_cascade_user_complete",
             extra={

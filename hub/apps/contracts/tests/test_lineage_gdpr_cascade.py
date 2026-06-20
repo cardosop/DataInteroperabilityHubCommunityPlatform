@@ -25,6 +25,7 @@ Spec mandates:
   3. Both commands are idempotent (re-running on an already-purged
      subject is a no-op + exits 0).
 """
+
 from __future__ import annotations
 
 import uuid
@@ -40,17 +41,22 @@ from django.utils import timezone
 
 def _create_tenant(prefix: str = "GDPR"):
     from hub.apps.tenants.models import Tenant
+
     suffix = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
-        name=f"{prefix} Co {suffix}", slug=f"{prefix.lower()}-co-{suffix}",
+        name=f"{prefix} Co {suffix}",
+        slug=f"{prefix.lower()}-co-{suffix}",
     )
 
 
 def _create_contract(tenant):
     from hub.apps.contracts.models import Contract
+
     return Contract.objects.create(
-        tenant=tenant, version=1,
-        original_spec_type="ODCS", original_spec_version="3.0.2",
+        tenant=tenant,
+        version=1,
+        original_spec_type="ODCS",
+        original_spec_version="3.0.2",
         original_format="YAML",
         original_raw=(
             "kind: DataContract\napiVersion: v3.0.2\nid: c\nname: c\n"
@@ -68,9 +74,11 @@ def _create_contract(tenant):
 
 def _create_user_for_tenant(tenant):
     from django.contrib.auth import get_user_model
+
     User = get_user_model()
     return User.objects.create(
-        email=f"gdpr-{uuid.uuid4().hex[:6]}@x", tenant=tenant,
+        email=f"gdpr-{uuid.uuid4().hex[:6]}@x",
+        tenant=tenant,
     )
 
 
@@ -82,11 +90,15 @@ def _seed_lineage_state(tenant, *, with_archive=True):
     src = _create_contract(tenant)
     tgt = _create_contract(tenant)
     open_edge = LineageEdge.objects.create(
-        tenant=tenant, source_contract=src, target_contract=tgt,
+        tenant=tenant,
+        source_contract=src,
+        target_contract=tgt,
         edge_type="reference",
     )
     closed_edge = LineageEdge.objects.create(
-        tenant=tenant, source_contract=src, target_contract=tgt,
+        tenant=tenant,
+        source_contract=src,
+        target_contract=tgt,
         edge_type="derivation",
     )
     LineageEdge.objects.filter(pk=closed_edge.pk).update(
@@ -168,6 +180,9 @@ class TestDeleteLineageEdgesForTenant(TransactionTestCase):
         assert not LineageEdgeArchive.objects.filter(pk=seed["archive_id"]).exists()
 
     def test_idempotent_rerun(self):
+        """Second call after all edges are deleted finds nothing → zero S3 operations."""
+        from hub.apps.contracts.models import LineageEdge, LineageEdgeArchive
+
         tenant = _create_tenant()
         _seed_lineage_state(tenant)
 
@@ -181,7 +196,13 @@ class TestDeleteLineageEdgesForTenant(TransactionTestCase):
                     f"--tenant={tenant.id}",
                     stdout=StringIO(),
                 )
-        # Second call finds nothing → exit 0.
+            # First call invokes S3 delete, second does nothing.
+            assert s3_del.call_count == 1, (
+                "Second idempotent call must not trigger additional S3 deletes"
+            )
+        # Post-conditions: all lineage edges + archives must be gone.
+        assert not LineageEdge.objects.filter(tenant=tenant).exists()
+        assert not LineageEdgeArchive.objects.filter(tenant=tenant).exists()
 
     def test_unknown_tenant_raises_command_error(self):
         from django.core.management.base import CommandError
@@ -213,7 +234,7 @@ class TestDeleteLineageEdgesForUser(TransactionTestCase):
             resource_type="LINEAGE",
             action="LINEAGE_VIEWED",
             resource_id=str(uuid.uuid4()),
-            details={"contract_id": "abc"},
+            details_json={"contract_id": "abc"},
         )
 
         call_command(
@@ -226,7 +247,8 @@ class TestDeleteLineageEdgesForUser(TransactionTestCase):
         # so GDPR cascade severs the personal-data link without
         # losing the audit trail.
         scrubbed = AuditEvent.objects.filter(
-            tenant=tenant, action="LINEAGE_VIEWED",
+            tenant=tenant,
+            action="LINEAGE_VIEWED",
         ).first()
         assert scrubbed is not None
         assert scrubbed.actor_user_id is None

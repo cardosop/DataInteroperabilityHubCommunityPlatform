@@ -2,17 +2,16 @@
 emit from all mutation paths. Real DB, real audit rows — no mocks."""
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import uuid
 
+import pytest
 from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.audit.models import AuditEvent
-from hub.apps.consent.models import ConsentPurpose, ConsentRecord, ConsentRecordStatus
+from hub.apps.consent.models import ConsentPurpose
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, User, UserRole, UserStatus
@@ -61,9 +60,7 @@ class ConsentAuditEmissionTests(TestCase):
     @pytest.mark.integration
     def test_grant_via_create_emits_consent_granted(self):
         """POST /consent-records/ → CONSENT_GRANTED."""
-        before = AuditEvent.objects.filter(
-            tenant=self.tenant, action="CONSENT_GRANTED"
-        ).count()
+        before = AuditEvent.objects.filter(tenant=self.tenant, action="CONSENT_GRANTED").count()
         resp = self.client.post(
             "/api/v1/consent/consent-records/",
             {"purpose_id": str(self.purpose.id), "payload": {"k": "v"}},
@@ -71,9 +68,7 @@ class ConsentAuditEmissionTests(TestCase):
             HTTP_X_TENANT_ID=str(self.tenant.id),
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        after = AuditEvent.objects.filter(
-            tenant=self.tenant, action="CONSENT_GRANTED"
-        ).count()
+        after = AuditEvent.objects.filter(tenant=self.tenant, action="CONSENT_GRANTED").count()
         self.assertEqual(after, before + 1)
 
     @pytest.mark.integration
@@ -88,9 +83,7 @@ class ConsentAuditEmissionTests(TestCase):
         )
         self.assertEqual(r.status_code, status.HTTP_201_CREATED)
         rec_id = r.data["id"]
-        before = AuditEvent.objects.filter(
-            tenant=self.tenant, action="CONSENT_GRANTED"
-        ).count()
+        before = AuditEvent.objects.filter(tenant=self.tenant, action="CONSENT_GRANTED").count()
         # re-grant with new payload
         r2 = self.client.patch(
             f"/api/v1/consent/consent-records/{rec_id}/",
@@ -99,9 +92,7 @@ class ConsentAuditEmissionTests(TestCase):
             HTTP_X_TENANT_ID=str(self.tenant.id),
         )
         self.assertEqual(r2.status_code, status.HTTP_200_OK)
-        after = AuditEvent.objects.filter(
-            tenant=self.tenant, action="CONSENT_GRANTED"
-        ).count()
+        after = AuditEvent.objects.filter(tenant=self.tenant, action="CONSENT_GRANTED").count()
         self.assertEqual(after, before + 1)
 
     # ── CONSENT_REVOKED path ───────────────────────────────────────────
@@ -117,9 +108,7 @@ class ConsentAuditEmissionTests(TestCase):
         )
         self.assertEqual(r.status_code, status.HTTP_201_CREATED)
         rec_id = r.data["id"]
-        before = AuditEvent.objects.filter(
-            tenant=self.tenant, action="CONSENT_REVOKED"
-        ).count()
+        before = AuditEvent.objects.filter(tenant=self.tenant, action="CONSENT_REVOKED").count()
         r2 = self.client.post(
             f"/api/v1/consent/consent-records/{rec_id}/revoke/",
             {},
@@ -127,9 +116,7 @@ class ConsentAuditEmissionTests(TestCase):
             HTTP_X_TENANT_ID=str(self.tenant.id),
         )
         self.assertEqual(r2.status_code, status.HTTP_200_OK)
-        after = AuditEvent.objects.filter(
-            tenant=self.tenant, action="CONSENT_REVOKED"
-        ).count()
+        after = AuditEvent.objects.filter(tenant=self.tenant, action="CONSENT_REVOKED").count()
         self.assertEqual(after, before + 1)
 
     # ── CONSENT_PURPOSE_CHANGED paths ──────────────────────────────────
@@ -189,11 +176,15 @@ class ConsentAuditEmissionTests(TestCase):
             tenant=self.tenant, action="CONSENT_PURPOSE_CHANGED"
         ).count()
         self.assertEqual(after, before + 1)
-        ev = AuditEvent.objects.filter(
-            tenant=self.tenant,
-            action="CONSENT_PURPOSE_CHANGED",
-            resource_id=str(self.purpose.id),
-        ).order_by("-timestamp").first()
+        ev = (
+            AuditEvent.objects.filter(
+                tenant=self.tenant,
+                action="CONSENT_PURPOSE_CHANGED",
+                resource_id=str(self.purpose.id),
+            )
+            .order_by("-timestamp")
+            .first()
+        )
         self.assertIsNotNone(ev)
         assert ev is not None
         self.assertTrue(ev.details_json.get("version_bumped"))

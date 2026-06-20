@@ -4,8 +4,8 @@ Integration tests for Retention Policy API (Phase 12.1.4)
 Tests for RetentionPolicyViewSet create and update endpoints via API
 with real DB and real audit events. No mocks.
 """
-import uuid
 
+import uuid
 from datetime import datetime, timedelta
 
 import pytest
@@ -34,7 +34,10 @@ class RetentionPolicyAPIIntegrationTest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         ensure_tenant_has_active_subscription(self.tenant)
 

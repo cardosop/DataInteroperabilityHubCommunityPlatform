@@ -7,72 +7,83 @@ Covers:
   26.8.3  v3.1.0 normalization metrics + fallback alert metric
   26.17   Observability: alerts, dashboard, promtail, metric wiring
 """
+
 from unittest import TestCase
-
-from hub.apps.contracts.models import OriginalSpecType
-
 
 # ======================================================================
 # 26.8.1 — spec_version filter parameter
 # ======================================================================
+
 
 class SpecVersionFilterParameterTest(TestCase):
     """Verify the spec_version OpenAPI parameter is declared."""
 
     def test_spec_version_in_openapi_parameters(self):
         """The ContractViewSet list action should declare spec_version."""
-        from hub.apps.contracts.views import ContractViewSet
         # The @extend_schema parameters are on the class; check the
         # schema_decorator attached by drf-spectacular
         import inspect
-        source = inspect.getsource(ContractViewSet)
+
+        from hub.apps.contracts.views import ContractViewSet
+
+        inspect.getsource(ContractViewSet)
         # The parameter is on the parent extend_schema decorator,
         # so check the views.py source directly
         from hub.apps.contracts import views
+
         view_source = inspect.getsource(views)
-        assert 'spec_version' in view_source, (
+        assert "spec_version" in view_source, (
             "spec_version parameter should be declared in views.py"
         )
 
     def test_spec_version_filter_in_queryset_logic(self):
         """The get_queryset method should filter by spec_version."""
-        from hub.apps.contracts import views
         import inspect
+
+        from hub.apps.contracts import views
+
         source = inspect.getsource(views)
-        assert 'original_spec_version=spec_version' in source or \
-               "original_spec_version=spec_version" in source, (
-            "get_queryset should filter by original_spec_version"
-        )
+        assert (
+            "original_spec_version=spec_version" in source
+            or "original_spec_version=spec_version" in source
+        ), "get_queryset should filter by original_spec_version"
 
 
 # ======================================================================
 # 26.8.2 — Relationship target_contract URL resolution
 # ======================================================================
 
+
 class RelationshipRefResolverTest(TestCase):
     """Test resolve_relationship_target_refs method."""
 
     def test_method_exists_on_ref_resolver(self):
         from hub.apps.contracts.ref_resolver import RefResolver
+
         resolver = RefResolver(tenant_id="test", user_id="test")
-        assert hasattr(resolver, 'resolve_relationship_target_refs')
+        assert hasattr(resolver, "resolve_relationship_target_refs")
 
     def test_non_url_targets_untouched(self):
         """Plain string targets should not be modified."""
         from hub.apps.contracts.ref_resolver import RefResolver
+
         resolver = RefResolver(tenant_id="test", user_id="test")
         hub = {
-            "models": [{
-                "name": "orders",
-                "fields": [],
-                "relationships": [{
-                    "type": "foreignKey",
-                    "source": ["customer_id"],
-                    "target_contract": "customers-contract",
-                    "target_model": "customers",
-                    "target_properties": ["id"],
-                }],
-            }],
+            "models": [
+                {
+                    "name": "orders",
+                    "fields": [],
+                    "relationships": [
+                        {
+                            "type": "foreignKey",
+                            "source": ["customer_id"],
+                            "target_contract": "customers-contract",
+                            "target_model": "customers",
+                            "target_properties": ["id"],
+                        }
+                    ],
+                }
+            ],
             "schema": {"fields": []},
         }
         result, warnings = resolver.resolve_relationship_target_refs(hub)
@@ -84,19 +95,24 @@ class RelationshipRefResolverTest(TestCase):
     def test_uuid_targets_untouched(self):
         """UUID targets should not be treated as URLs."""
         from hub.apps.contracts.ref_resolver import RefResolver
+
         resolver = RefResolver(tenant_id="test", user_id="test")
         hub = {
-            "models": [{
-                "name": "orders",
-                "fields": [],
-                "relationships": [{
-                    "type": "foreignKey",
-                    "source": ["id"],
-                    "target_contract": "550e8400-e29b-41d4-a716-446655440000",
-                    "target_model": "customers",
-                    "target_properties": ["id"],
-                }],
-            }],
+            "models": [
+                {
+                    "name": "orders",
+                    "fields": [],
+                    "relationships": [
+                        {
+                            "type": "foreignKey",
+                            "source": ["id"],
+                            "target_contract": "550e8400-e29b-41d4-a716-446655440000",
+                            "target_model": "customers",
+                            "target_properties": ["id"],
+                        }
+                    ],
+                }
+            ],
             "schema": {"fields": []},
         }
         result, warnings = resolver.resolve_relationship_target_refs(hub)
@@ -107,22 +123,27 @@ class RelationshipRefResolverTest(TestCase):
     def test_url_target_produces_warning_on_failure(self):
         """URL targets that can't be fetched produce a warning, not error."""
         from hub.apps.contracts.ref_resolver import RefResolver
+
         resolver = RefResolver(tenant_id="test", user_id="test")
         hub = {
-            "models": [{
-                "name": "orders",
-                "fields": [],
-                "relationships": [{
-                    "type": "foreignKey",
-                    "source": ["id"],
-                    "target_contract": "https://nonexistent.example.com/contract.json",
-                    "target_model": "customers",
-                    "target_properties": ["id"],
-                }],
-            }],
+            "models": [
+                {
+                    "name": "orders",
+                    "fields": [],
+                    "relationships": [
+                        {
+                            "type": "foreignKey",
+                            "source": ["id"],
+                            "target_contract": "https://nonexistent.example.com/contract.json",
+                            "target_model": "customers",
+                            "target_properties": ["id"],
+                        }
+                    ],
+                }
+            ],
             "schema": {"fields": []},
         }
-        result, warnings = resolver.resolve_relationship_target_refs(hub)
+        _result, warnings = resolver.resolve_relationship_target_refs(hub)
         # Should produce a warning, not raise
         assert len(warnings) >= 1
         assert "nonexistent.example.com" in warnings[0]
@@ -130,28 +151,32 @@ class RelationshipRefResolverTest(TestCase):
     def test_no_relationships_no_error(self):
         """Hub contract without relationships should not error."""
         from hub.apps.contracts.ref_resolver import RefResolver
+
         resolver = RefResolver(tenant_id="test", user_id="test")
         hub = {
             "models": [{"name": "m", "fields": []}],
             "schema": {"fields": []},
         }
-        result, warnings = resolver.resolve_relationship_target_refs(hub)
+        _result, warnings = resolver.resolve_relationship_target_refs(hub)
         assert len(warnings) == 0
 
     def test_schema_level_relationships_resolved(self):
         """Schema-level relationships should also be walked."""
         from hub.apps.contracts.ref_resolver import RefResolver
+
         resolver = RefResolver(tenant_id="test", user_id="test")
         hub = {
             "models": [],
             "schema": {
                 "fields": [],
-                "relationships": [{
-                    "type": "foreignKey",
-                    "source": ["id"],
-                    "target_contract": "plain-name",
-                    "target_properties": ["id"],
-                }],
+                "relationships": [
+                    {
+                        "type": "foreignKey",
+                        "source": ["id"],
+                        "target_contract": "plain-name",
+                        "target_properties": ["id"],
+                    }
+                ],
             },
         }
         result, warnings = resolver.resolve_relationship_target_refs(hub)
@@ -164,6 +189,7 @@ class RelationshipRefResolverTest(TestCase):
 # 26.8.3 — Normalization metrics
 # ======================================================================
 
+
 class NormalizationMetricsTest(TestCase):
     """Test v3.1.0-specific metric recording functions."""
 
@@ -171,6 +197,7 @@ class NormalizationMetricsTest(TestCase):
         from hub.apps.contracts.normalization_metrics import (
             record_v310_relationships_count,
         )
+
         hub = {
             "models": [
                 {
@@ -194,6 +221,7 @@ class NormalizationMetricsTest(TestCase):
         from hub.apps.contracts.normalization_metrics import (
             record_v310_relationships_count,
         )
+
         # No relationships
         record_v310_relationships_count({"models": []}, tenant_id="test")
 
@@ -201,15 +229,17 @@ class NormalizationMetricsTest(TestCase):
         from hub.apps.contracts.normalization_metrics import (
             record_v310_fallback,
         )
+
         # Should not raise
         record_v310_fallback("ODCSNormalizerV3_0_2", tenant_id="test")
 
     def test_metrics_constants_exist(self):
         """Verify the new metrics are importable."""
         from hub.apps.observability.otel_metrics import (
-            odcs_v310_relationships_count,
             odcs_v310_fallback_total,
+            odcs_v310_relationships_count,
         )
+
         assert odcs_v310_relationships_count is not None
         assert odcs_v310_fallback_total is not None
 
@@ -219,9 +249,14 @@ class PrometheusAlertTest(TestCase):
 
     def test_alert_rule_exists(self):
         import os
+
         alerts_path = os.path.join(
-            os.path.dirname(__file__), "..", "..",
-            "monitoring", "prometheus", "alerts.yml",
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "monitoring",
+            "prometheus",
+            "alerts.yml",
         )
         with open(alerts_path) as f:
             content = f.read()
@@ -260,7 +295,10 @@ def _load_promtail_yaml():
 def _load_dashboard_json():
     path = os.path.join(
         _project_root(),
-        "monitoring", "grafana", "dashboards", "contract-normalization.json",
+        "monitoring",
+        "grafana",
+        "dashboards",
+        "contract-normalization.json",
     )
     with open(path) as f:
         return json.load(f)
@@ -372,14 +410,17 @@ class AlertMetricsExistTest(TestCase):
 
     def test_odcs_v310_fallback_total_importable(self):
         from hub.apps.observability.otel_metrics import odcs_v310_fallback_total
+
         self.assertIsNotNone(odcs_v310_fallback_total)
 
     def test_normalization_backfill_remaining_importable(self):
         from hub.apps.observability.otel_metrics import normalization_backfill_remaining
+
         self.assertIsNotNone(normalization_backfill_remaining)
 
     def test_contract_export_total_importable(self):
         from hub.apps.observability.otel_metrics import contract_export_total
+
         self.assertIsNotNone(contract_export_total)
 
 
@@ -388,23 +429,29 @@ class BackfillGaugeWiringTest(TestCase):
 
     def test_tasks_imports_backfill_metric(self):
         import inspect
+
         from hub.apps.contracts import tasks
+
         source = inspect.getsource(tasks)
         self.assertIn("normalization_backfill_remaining", source)
 
     def test_tasks_calls_set_backfill_remaining(self):
         import inspect
+
         from hub.apps.contracts import tasks
+
         source = inspect.getsource(tasks)
         self.assertIn("_set_backfill_remaining", source)
 
     def test_set_backfill_remaining_function_exists(self):
         from hub.apps.contracts.tasks import _set_backfill_remaining
+
         self.assertTrue(callable(_set_backfill_remaining))
 
     def test_set_backfill_remaining_no_error(self):
         """Calling with 0 remaining should not raise."""
         from hub.apps.contracts.tasks import _set_backfill_remaining
+
         _set_backfill_remaining(0, tenant_id="test")
 
 
@@ -413,13 +460,17 @@ class ExportMetricWiringTest(TestCase):
 
     def test_views_export_imports_contract_export_total(self):
         import inspect
+
         from hub.apps.contracts import views_export
+
         source = inspect.getsource(views_export)
         self.assertIn("contract_export_total", source)
 
     def test_views_export_uses_downgrade_label(self):
         import inspect
+
         from hub.apps.contracts import views_export
+
         source = inspect.getsource(views_export)
         self.assertIn('downgrade="true"', source)
         self.assertIn('downgrade="false"', source)
@@ -454,11 +505,7 @@ class PromtailSpecVersionLabelTest(TestCase):
             sel = stage["match"].get("selector", "")
             if "hub-api" in sel or "worker" in sel:
                 inner = stage["match"].get("stages", [])
-                regex_exprs = [
-                    s["regex"]["expression"]
-                    for s in inner
-                    if "regex" in s
-                ]
+                regex_exprs = [s["regex"]["expression"] for s in inner if "regex" in s]
                 self.assertTrue(
                     len(regex_exprs) > 0,
                     "match stage should contain a regex sub-stage",
@@ -469,11 +516,13 @@ class PromtailSpecVersionLabelTest(TestCase):
                 # simple version presence check.
                 stripped = combined.replace("\\", "")
                 self.assertIn(
-                    "3.1.0", stripped,
+                    "3.1.0",
+                    stripped,
                     f"3.1.0 not found in regex: {combined}",
                 )
                 self.assertIn(
-                    "bitol-1.0.0", stripped,
+                    "bitol-1.0.0",
+                    stripped,
                     f"bitol-1.0.0 not found in regex: {combined}",
                 )
                 return

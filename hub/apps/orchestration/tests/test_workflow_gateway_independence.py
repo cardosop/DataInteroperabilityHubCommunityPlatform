@@ -23,13 +23,13 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
+from hub.apps.orchestration.models import WorkflowInstance
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.tenants.models import KYCStatus, Tenant
-from hub.apps.users.models import UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.users.models import UserStatus
 
 User = get_user_model()
 
@@ -111,8 +111,8 @@ class WorkflowGatewayIndependenceTest(TestCase):
             }
         }"""
 
-    def test_workflow_execution_via_direct_access(self):
-        """Test workflow execution via direct api-service access (no gateway headers)"""
+    def test_workflow_creation_via_direct_access(self):
+        """Test workflow instance creation via direct api-service access (no gateway headers)."""
         # Execute workflow directly (simulating direct api-service access)
         # Use engine and registry directly to avoid background thread issues in tests
         engine = WorkflowEngine()
@@ -159,8 +159,8 @@ class WorkflowGatewayIndependenceTest(TestCase):
             f"No gateway-specific keys should be in input_data, found: {gateway_keys}",
         )
 
-    def test_workflow_execution_via_gateway_headers(self):
-        """Test workflow execution via gateway (with gateway headers)"""
+    def test_workflow_creation_via_gateway_headers(self):
+        """Test workflow instance creation via API endpoint (with gateway headers)."""
         # Execute workflow via API endpoint (simulating gateway access)
         # Gateway adds X-Gateway-* headers, but workflow execution doesn't use them
         response = self.client.post(
@@ -206,8 +206,8 @@ class WorkflowGatewayIndependenceTest(TestCase):
             "input_data": instance.input_data,
         }
 
-    def test_workflow_execution_independence(self):
-        """Test that workflow execution is identical via gateway or direct access"""
+    def test_workflow_creation_independence(self):
+        """Test that workflow instance creation is identical via gateway or direct access."""
         # Execute via direct access (using workflow engine directly)
         engine = WorkflowEngine()
         registry = WorkflowRegistry()

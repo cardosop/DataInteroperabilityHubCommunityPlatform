@@ -12,11 +12,11 @@ or set via ``DATAHUB_CLI`` env var.
 Usage:
   DATAHUB_BASE_URL=http://localhost:8000/api/v1 pytest cli/tests/e2e/test_cli_sdk_consistency.py -v
 """
+
 import json
 import os
 import subprocess
-import sys
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pytest
 
@@ -32,6 +32,7 @@ def _backend_available() -> bool:
     if not DATAHUB_BASE_URL:
         return False
     import urllib.request
+
     try:
         req = urllib.request.Request(
             f"{DATAHUB_BASE_URL.rstrip('/')}/health/",
@@ -50,45 +51,54 @@ requires_backend = pytest.mark.skipif(
 )
 
 
-SKIP_KEYS = frozenset({
-    "created_at", "updated_at", "deleted_at", "last_modified",
-    "request_id", "timestamp", "expires_at", "published_at",
-    "last_login_at", "approved_at", "rejected_at", "revoked_at",
-    "last_triggered_at", "last_matched_count",
-})
+SKIP_KEYS = frozenset(
+    {
+        "created_at",
+        "updated_at",
+        "deleted_at",
+        "last_modified",
+        "request_id",
+        "timestamp",
+        "expires_at",
+        "published_at",
+        "last_login_at",
+        "approved_at",
+        "rejected_at",
+        "revoked_at",
+        "last_triggered_at",
+        "last_matched_count",
+    }
+)
 
 
 def strip_volatile(obj: Any) -> Any:
     """Recursively remove volatile keys from a dict/list."""
     if isinstance(obj, dict):
-        return {
-            k: strip_volatile(v)
-            for k, v in obj.items()
-            if k not in SKIP_KEYS
-        }
+        return {k: strip_volatile(v) for k, v in obj.items() if k not in SKIP_KEYS}
     if isinstance(obj, list):
         return [strip_volatile(v) for v in obj]
     return obj
 
 
-def cli_json(*args: str) -> Dict[str, Any]:
+def cli_json(*args: str) -> dict[str, Any]:
     """Run ``datahub <args> --format json`` and return parsed stdout."""
     cmd = [DATAHUB_CLI] + list(args) + ["--format", "json"]
     env = {**os.environ, "DATAHUB_BASE_URL": DATAHUB_BASE_URL}
     if API_TOKEN:
         env["DATAHUB_API_TOKEN"] = API_TOKEN
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, env=env)
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=60, env=env)
     if result.returncode != 0:
         raise RuntimeError(f"CLI failed (rc={result.returncode}): {result.stderr[:500]}")
     return json.loads(result.stdout)
 
 
-async def sdk_get(client, path: str, **kwargs) -> Dict[str, Any]:
+async def sdk_get(client, path: str, **kwargs) -> dict[str, Any]:
     """SDK GET with auth from env."""
     return await client.get(path, **kwargs)
 
 
 # ── Consistency tests ──────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 @requires_backend
@@ -98,6 +108,7 @@ class TestCLISDKConsistency:
     async def test_health_consistency(self):
         """CLI ``health check`` matches SDK ``check_health()``."""
         from datahub_interoperability import DataHubClient, DataHubClientConfig
+
         config = DataHubClientConfig(base_url=DATAHUB_BASE_URL, api_token=API_TOKEN)
         async with DataHubClient(config) as client:
             sdk_result = await client.check_health()
@@ -107,6 +118,7 @@ class TestCLISDKConsistency:
     async def test_tenants_list_consistency(self):
         """CLI ``tenants list`` matches SDK ``tenants.list_tenants()``."""
         from datahub_interoperability import DataHubClient, DataHubClientConfig
+
         config = DataHubClientConfig(base_url=DATAHUB_BASE_URL, api_token=API_TOKEN)
         async with DataHubClient(config) as client:
             sdk_result = await client.tenants.list_tenants()
@@ -118,6 +130,7 @@ class TestCLISDKConsistency:
     async def test_users_list_consistency(self):
         """CLI ``users list`` matches SDK ``users.list_users()``."""
         from datahub_interoperability import DataHubClient, DataHubClientConfig
+
         config = DataHubClientConfig(base_url=DATAHUB_BASE_URL, api_token=API_TOKEN)
         async with DataHubClient(config) as client:
             sdk_result = await client.users.list_users()
@@ -129,6 +142,7 @@ class TestCLISDKConsistency:
     async def test_assets_list_consistency(self):
         """CLI ``assets list`` matches SDK ``assets.list_assets()``."""
         from datahub_interoperability import DataHubClient, DataHubClientConfig
+
         config = DataHubClientConfig(base_url=DATAHUB_BASE_URL, api_token=API_TOKEN)
         async with DataHubClient(config) as client:
             sdk_result = await client.assets.list_assets()
@@ -140,6 +154,7 @@ class TestCLISDKConsistency:
     async def test_datasets_list_consistency(self):
         """CLI ``datasets list`` matches SDK ``datasets.list_datasets()``."""
         from datahub_interoperability import DataHubClient, DataHubClientConfig
+
         config = DataHubClientConfig(base_url=DATAHUB_BASE_URL, api_token=API_TOKEN)
         async with DataHubClient(config) as client:
             sdk_result = await client.datasets.list_datasets()
@@ -151,6 +166,7 @@ class TestCLISDKConsistency:
     async def test_contracts_list_consistency(self):
         """CLI ``contracts list`` matches SDK ``contracts.list_contracts()``."""
         from datahub_interoperability import DataHubClient, DataHubClientConfig
+
         config = DataHubClientConfig(base_url=DATAHUB_BASE_URL, api_token=API_TOKEN)
         async with DataHubClient(config) as client:
             sdk_result = await client.contracts.list_contracts()
@@ -162,6 +178,7 @@ class TestCLISDKConsistency:
     async def test_jobs_list_consistency(self):
         """CLI ``jobs list`` matches SDK ``jobs.list_jobs()``."""
         from datahub_interoperability import DataHubClient, DataHubClientConfig
+
         config = DataHubClientConfig(base_url=DATAHUB_BASE_URL, api_token=API_TOKEN)
         async with DataHubClient(config) as client:
             sdk_result = await client.jobs.list_jobs()
@@ -173,6 +190,7 @@ class TestCLISDKConsistency:
     async def test_observability_freshness_consistency(self):
         """CLI ``observability freshness`` matches SDK ``observability.get_freshness()``."""
         from datahub_interoperability import DataHubClient, DataHubClientConfig
+
         config = DataHubClientConfig(base_url=DATAHUB_BASE_URL, api_token=API_TOKEN)
         async with DataHubClient(config) as client:
             sdk_result = await client.observability.get_freshness_dashboard()
@@ -182,6 +200,7 @@ class TestCLISDKConsistency:
     async def test_capabilities_consistency(self):
         """CLI ``capabilities list`` matches SDK ``capabilities.list_capabilities()``."""
         from datahub_interoperability import DataHubClient, DataHubClientConfig
+
         config = DataHubClientConfig(base_url=DATAHUB_BASE_URL, api_token=API_TOKEN)
         async with DataHubClient(config) as client:
             sdk_result = await client.capabilities.list_capabilities()
@@ -191,6 +210,7 @@ class TestCLISDKConsistency:
     async def test_notifications_list_consistency(self):
         """CLI SDK: notifications list returns same shape."""
         from datahub_interoperability import DataHubClient, DataHubClientConfig
+
         config = DataHubClientConfig(base_url=DATAHUB_BASE_URL, api_token=API_TOKEN)
         async with DataHubClient(config) as client:
             sdk_result = await client.notifications.list_notifications()

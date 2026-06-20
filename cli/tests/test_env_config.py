@@ -6,7 +6,7 @@ for CLI tests, including API URL detection and service health checks.
 """
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 def get_test_api_url() -> str:
@@ -60,7 +60,7 @@ def is_test_environment() -> bool:
     )
 
 
-def get_test_config_path() -> Optional[str]:
+def get_test_config_path() -> str | None:
     """
     Get the path to the test configuration file.
 
@@ -72,7 +72,7 @@ def get_test_config_path() -> Optional[str]:
     )
 
 
-def get_test_credentials() -> Dict[str, Any]:
+def get_test_credentials() -> dict[str, Any]:
     """
     Get test credentials for CLI authentication.
 
@@ -87,7 +87,7 @@ def get_test_credentials() -> Dict[str, Any]:
     }
 
 
-def get_test_service_urls() -> Dict[str, str]:
+def get_test_service_urls() -> dict[str, str]:
     """
     Get test service URLs for all microservices.
 

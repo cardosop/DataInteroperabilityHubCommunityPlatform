@@ -43,11 +43,12 @@ the microservice. We assert on the state at the END of
 ``create_compliance_run`` (before the async dispatch), so no Redis
 or external service is required.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
@@ -151,9 +152,7 @@ class TestLicenseLenientWarning(TestCase):
         codes = [w.get("code") for w in warnings]
         assert "REGULATION_NOT_LICENSED" in codes, warnings
         # The warning carries the un-licensed reg list.
-        warning = next(
-            w for w in warnings if w["code"] == "REGULATION_NOT_LICENSED"
-        )
+        warning = next(w for w in warnings if w["code"] == "REGULATION_NOT_LICENSED")
         assert "PIPL_CN" in warning.get("regulations", [])
         assert "GDPR" not in warning.get("regulations", []), (
             "GDPR was licensed; must NOT appear in the warning"

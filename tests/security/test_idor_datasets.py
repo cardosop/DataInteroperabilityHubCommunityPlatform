@@ -106,4 +106,8 @@ class DatasetIDORTest(IDORTestBase):
         response = self.client.get(f"/api/v1/datasets/?asset_id={asset_b.id}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data.get("results", [])
-        self.assertEqual(len(results), 0, "Must not return other tenant's datasets when filtering by their asset_id")
+        self.assertEqual(
+            len(results),
+            0,
+            "Must not return other tenant's datasets when filtering by their asset_id",
+        )

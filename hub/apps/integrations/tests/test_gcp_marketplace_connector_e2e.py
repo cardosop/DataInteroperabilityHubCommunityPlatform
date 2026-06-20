@@ -16,15 +16,13 @@ import os
 import pytest
 
 pytestmark = pytest.mark.slow
-from django.db import transaction
+import uuid
+
 from django.test import TestCase
 
 from hub.apps.assets.models import (
-    Asset,
     AssetSourceType,
-    AssetStatus,
 )
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
 from hub.apps.integrations.base import (
     MarketplaceType,
     SyncResult,
@@ -35,7 +33,6 @@ from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJ
 from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 # Real service account credentials for testing
 # REAL_SERVICE_ACCOUNT_JSON removed — use get_test_credentials() below
@@ -50,18 +47,16 @@ def get_test_credentials():
     credentials in environments where they are not configured.
     """
     import unittest
-    import json
+
     env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
     if not env_json:
-        raise unittest.SkipTest(
-            "GCP_SERVICE_ACCOUNT_JSON not set — skipping"
-        )
+        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON not set — skipping")
     try:
         return json.loads(env_json)
     except json.JSONDecodeError:
-        raise unittest.SkipTest(
-            "GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping"
-        )
+        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping")
+
+
 class TestGCPMarketplaceConnectorE2E(TestCase):
     """
     End-to-end tests for GCP Marketplace connector.
@@ -79,7 +74,10 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", status="ACTIVE", kyc_status="VERIFIED"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            kyc_status="VERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"test-e2e-{uuid.uuid4().hex[:8]}@example.com",
@@ -288,7 +286,7 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
                 # Resource should have schema information if available
                 self.assertIsNotNone(resource)
                 self.assertIsNotNone(resource.resource_id)
-        except Exception as e:
+        except Exception:
             # Resources may not be available or listing may not have linked dataset
             # This is acceptable - schema extraction is optional
             pass
@@ -296,7 +294,7 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
     def test_end_to_end_pull_sync_only(self):
         """Test end-to-end pull sync workflow (harvest-only connector)."""
         # Create connection
-        connection = MarketplaceConnection.objects.create(
+        MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value,
             name="Test GCP Pull Sync Connection",
@@ -324,7 +322,7 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
             result = connector.sync_pull(options={"limit": 3})
             self.assertIsInstance(result, SyncResult)
             self.assertIn(
-                result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL, SyncStatus.FAILED]
+                result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL]
             )
         except Exception as e:
             # May fail if no listings available

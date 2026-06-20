@@ -11,23 +11,32 @@ Target: 95%+ coverage for all DPO API endpoints including:
 
 All tests use real API endpoints (no mocks/stubs).
 """
+
 import uuid
 
 import pytest
-from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus, DQStatus, ComplianceStatus
-from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus, NormalizationStatus
-from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.testing.billing_support import ensure_e2e_tenant_ready, ensure_tenant_has_active_subscription
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
+from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus, DQStatus
+from hub.apps.contracts.models import (
+    Contract,
+    ContractStatus,
+    NormalizationStatus,
+    ValidationStatus,
+)
 from hub.apps.datasets.models import Dataset
-from hub.apps.files.models import File, FileStatus
 from hub.apps.dq.models import DQRun, DQRunStatus
+from hub.apps.files.models import File, FileStatus
+from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
+from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import (
+    ensure_e2e_tenant_ready,
+    ensure_tenant_has_active_subscription,
+)
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 User = get_user_model()
 
@@ -62,129 +71,124 @@ class DPOAssetAPIEndpointTests(TestCase):
     def test_create_asset_endpoint(self):
         """Test POST /api/v1/assets/"""
         response = self.client.post(
-            '/api/v1/assets/',
+            "/api/v1/assets/",
             {
-                'key': 'test-asset-api',
-                'name': 'Test Asset API',
-                'description': 'Test description',
-                'domain': 'Sales'
+                "key": "test-asset-api",
+                "name": "Test Asset API",
+                "description": "Test description",
+                "domain": "Sales",
             },
-            format='json'
+            format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn('id', response.data)
-        
+        self.assertIn("id", response.data)
+
         # Verify asset was created
-        asset_id = response.data['id']
+        asset_id = response.data["id"]
         asset = Asset.objects.get(id=asset_id)
-        self.assertEqual(asset.key, 'test-asset-api')
+        self.assertEqual(asset.key, "test-asset-api")
         self.assertEqual(asset.status, AssetStatus.DRAFT)
-    
+
     def test_get_asset_endpoint(self):
         """Test GET /api/v1/assets/{id}/"""
         asset = Asset.objects.create(
-            tenant=self.tenant,
-            key='get-asset-test',
-            name='Get Asset Test',
-            created_by=self.user
+            tenant=self.tenant, key="get-asset-test", name="Get Asset Test", created_by=self.user
         )
-        
-        response = self.client.get(f'/api/v1/assets/{asset.id}/')
-        
+
+        response = self.client.get(f"/api/v1/assets/{asset.id}/")
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(asset.id))
-        self.assertEqual(response.data['key'], 'get-asset-test')
-    
+        self.assertEqual(response.data["id"], str(asset.id))
+        self.assertEqual(response.data["key"], "get-asset-test")
+
     def test_update_asset_endpoint(self):
         """Test PATCH /api/v1/assets/{id}/"""
         asset = Asset.objects.create(
             tenant=self.tenant,
-            key='update-asset-test',
-            name='Update Asset Test',
-            created_by=self.user
+            key="update-asset-test",
+            name="Update Asset Test",
+            created_by=self.user,
         )
-        
+
         response = self.client.patch(
-            f'/api/v1/assets/{asset.id}/',
+            f"/api/v1/assets/{asset.id}/",
             {
-                'name': 'Updated Asset Name',
-                'description': 'Updated description',
-                'version': asset.version
+                "name": "Updated Asset Name",
+                "description": "Updated description",
+                "version": asset.version,
             },
-            format='json'
+            format="json",
         )
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         asset.refresh_from_db()
-        self.assertEqual(asset.name, 'Updated Asset Name')
-    
+        self.assertEqual(asset.name, "Updated Asset Name")
+
     def test_delete_asset_endpoint(self):
         """Test DELETE /api/v1/assets/{id}/"""
         asset = Asset.objects.create(
             tenant=self.tenant,
-            key='delete-asset-test',
-            name='Delete Asset Test',
-            created_by=self.user
+            key="delete-asset-test",
+            name="Delete Asset Test",
+            created_by=self.user,
         )
-        
-        response = self.client.delete(f'/api/v1/assets/{asset.id}/')
-        
+
+        response = self.client.delete(f"/api/v1/assets/{asset.id}/")
+
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         asset.refresh_from_db()
         self.assertEqual(asset.status, AssetStatus.RETIRED)
-    
+
     def test_activate_asset_endpoint(self):
         """Test POST /api/v1/assets/{id}/activate/"""
         asset = Asset.objects.create(
             tenant=self.tenant,
-            key='activate-asset-test',
-            name='Activate Asset Test',
+            key="activate-asset-test",
+            name="Activate Asset Test",
             status=AssetStatus.DRAFT,
             dq_status=DQStatus.PASS,
             compliance_status=ComplianceStatus.PASS,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         # Create contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
-            original_spec_type='ODCS',
-            original_spec_version='1.0',
+            original_spec_type="ODCS",
+            original_spec_version="1.0",
             status=ContractStatus.ACTIVE,
             validation_status=ValidationStatus.VALID,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            hub_contract_json={'id': 'test-contract'},
-            created_by=self.user
+            hub_contract_json={"id": "test-contract"},
+            created_by=self.user,
         )
-        
+
         response = self.client.post(
-            f'/api/v1/assets/{asset.id}/activate/',
-            {'version': asset.version},
-            format='json'
+            f"/api/v1/assets/{asset.id}/activate/", {"version": asset.version}, format="json"
         )
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         asset.refresh_from_db()
         self.assertEqual(asset.status, AssetStatus.ACTIVE)
-    
+
     def test_get_asset_health_score_endpoint(self):
         """Test GET /api/v1/assets/{id}/health-score/"""
         asset = Asset.objects.create(
             tenant=self.tenant,
-            key='health-score-test',
-            name='Health Score Test',
+            key="health-score-test",
+            name="Health Score Test",
             status=AssetStatus.ACTIVE,
             dq_status=DQStatus.PASS,
             compliance_status=ComplianceStatus.PASS,
-            created_by=self.user
+            created_by=self.user,
         )
-        
-        response = self.client.get(f'/api/v1/assets/{asset.id}/health-score/')
-        
+
+        response = self.client.get(f"/api/v1/assets/{asset.id}/health-score/")
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('health_score', response.data)
-        self.assertIn('dq_status', response.data)
+        self.assertIn("health_score", response.data)
+        self.assertIn("dq_status", response.data)
 
 
 class DPOContractAPIEndpointTests(TestCase):
@@ -212,42 +216,42 @@ class DPOContractAPIEndpointTests(TestCase):
 
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key='contract-api-asset',
-            name='Contract API Asset',
-            created_by=self.user
+            key="contract-api-asset",
+            name="Contract API Asset",
+            created_by=self.user,
         )
-    
+
     def test_update_contract_endpoint(self):
         """Test PATCH /api/v1/contracts/{id}/"""
         contract = Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset,
-            original_spec_type='ODCS',
-            original_spec_version='1.0',
-            original_format='JSON',
+            original_spec_type="ODCS",
+            original_spec_version="1.0",
+            original_format="JSON",
             original_raw='{"id": "original-contract", "name": "Original", "schema": {"fields": []}}',
             status=ContractStatus.ACTIVE,
             validation_status=ValidationStatus.VALID,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             hub_contract_json={
-                'hub_contract_version': '1.0.0',
-                'id': 'original-contract',
-                'name': 'Original',
-                'info': {'title': 'Original Contract'},
-                'schema': {'fields': []}
+                "hub_contract_version": "1.0.0",
+                "id": "original-contract",
+                "name": "Original",
+                "info": {"title": "Original Contract"},
+                "schema": {"fields": []},
             },
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         response = self.client.patch(
-            f'/api/v1/contracts/{contract.id}/',
+            f"/api/v1/contracts/{contract.id}/",
             {
-                'original_raw': '{"id": "updated-contract", "name": "Updated Contract", "schema": {"fields": []}}',
-                'original_format': 'JSON'
+                "original_raw": '{"id": "updated-contract", "name": "Updated Contract", "schema": {"fields": []}}',
+                "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
-        
+
         # May return 200 (success) or 400 (validation error from DataContract service)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
         if response.status_code == status.HTTP_200_OK:
@@ -256,31 +260,28 @@ class DPOContractAPIEndpointTests(TestCase):
             # hub_contract_json should be updated by normalization, not directly set
             if contract.hub_contract_json:
                 self.assertIsNotNone(contract.original_raw)
-    
+
     def test_validate_contract_endpoint(self):
         """Test POST /api/v1/contracts/{id}/validate/"""
         contract = Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset,
-            original_spec_type='ODCS',
-            original_spec_version='1.0',
+            original_spec_type="ODCS",
+            original_spec_version="1.0",
             status=ContractStatus.DRAFT,
-            hub_contract_json={'id': 'validate-contract'},
-            created_by=self.user
+            hub_contract_json={"id": "validate-contract"},
+            created_by=self.user,
         )
-        
+
         response = self.client.post(
-            f'/api/v1/contracts/{contract.id}/validate/',
-            {'async': False},
-            format='json'
+            f"/api/v1/contracts/{contract.id}/validate/", {"async": False}, format="json"
         )
-        
+
         # Should succeed or return job ID (depending on service availability)
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_202_ACCEPTED,
-            status.HTTP_503_SERVICE_UNAVAILABLE
-        ])
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_202_ACCEPTED, status.HTTP_503_SERVICE_UNAVAILABLE],
+        )
 
 
 class DPOMarketplaceAPIEndpointTests(TestCase):
@@ -308,38 +309,38 @@ class DPOMarketplaceAPIEndpointTests(TestCase):
 
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key='marketplace-api-asset',
-            name='Marketplace API Asset',
+            key="marketplace-api-asset",
+            name="Marketplace API Asset",
             status=AssetStatus.ACTIVE,
             dq_status=DQStatus.PASS,
             compliance_status=ComplianceStatus.PASS,
-            created_by=self.user
+            created_by=self.user,
         )
-    
+
     def test_create_listing_endpoint(self):
         """Test POST /api/v1/marketplace/listings/"""
         response = self.client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': str(self.asset.id),
-                'title': 'Test Listing',
-                'short_description': 'Test description',
-                'pricing_model': PricingModel.FREE_AUTO_APPROVE,
-                'price_amount': 0.0,
-                'currency': 'USD'
+                "asset_id": str(self.asset.id),
+                "title": "Test Listing",
+                "short_description": "Test description",
+                "pricing_model": PricingModel.FREE_AUTO_APPROVE,
+                "price_amount": 0.0,
+                "currency": "USD",
             },
-            format='json'
+            format="json",
         )
-        
+
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn('id', response.data)
-        
+        self.assertIn("id", response.data)
+
         # Verify listing was created
-        listing_id = response.data['id']
+        listing_id = response.data["id"]
         listing = Listing.objects.get(id=listing_id)
         self.assertEqual(listing.asset_id, self.asset.id)
         self.assertEqual(listing.status, ListingStatus.DRAFT)
-    
+
     def test_publish_listing_endpoint(self):
         """Test PATCH /api/v1/marketplace/listings/{id}/ to publish"""
         listing = Listing.objects.create(
@@ -347,18 +348,15 @@ class DPOMarketplaceAPIEndpointTests(TestCase):
             asset=self.asset,
             pricing_model=PricingModel.FREE_AUTO_APPROVE,
             status=ListingStatus.DRAFT,
-            metadata_json={
-                'title': 'Test Listing',
-                'short_description': 'Test description'
-            }
+            metadata_json={"title": "Test Listing", "short_description": "Test description"},
         )
-        
+
         response = self.client.patch(
-            f'/api/v1/marketplace/listings/{listing.id}/',
-            {'status': ListingStatus.PUBLISHED},
-            format='json'
+            f"/api/v1/marketplace/listings/{listing.id}/",
+            {"status": ListingStatus.PUBLISHED},
+            format="json",
         )
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         listing.refresh_from_db()
         self.assertEqual(listing.status, ListingStatus.PUBLISHED)
@@ -389,115 +387,117 @@ class DPOQualityMonitoringAPIEndpointTests(TestCase):
 
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key='quality-api-asset',
-            name='Quality API Asset',
+            key="quality-api-asset",
+            name="Quality API Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         file_obj = File.objects.create(
             tenant=self.tenant,
-            name='test.csv',
-            content_type='text/csv',
+            name="test.csv",
+            content_type="text/csv",
             size=100,
             status=FileStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         self.dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=file_obj,
-            schema_json={'fields': []},
+            schema_json={"fields": []},
             row_count=10,
-            created_by=self.user
+            created_by=self.user,
         )
-    
+
     def test_create_dq_run_endpoint(self):
         """Test POST /api/v1/dq/runs/"""
         response = self.client.post(
-            '/api/v1/dq/runs/',
+            "/api/v1/dq/runs/",
             {
-                'asset_id': str(self.asset.id),
-                'dataset_id': str(self.dataset.id),
-                'profile_key': 'intake_basic_gx'
+                "asset_id": str(self.asset.id),
+                "dataset_id": str(self.dataset.id),
+                "profile_key": "intake_basic_gx",
             },
-            format='json'
+            format="json",
         )
-        
+
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn('id', response.data)
-        
+        self.assertIn("id", response.data)
+
         # Verify DQ run was created
-        dq_run_id = response.data['id']
+        dq_run_id = response.data["id"]
         dq_run = DQRun.objects.get(id=dq_run_id)
         self.assertEqual(dq_run.asset_id, self.asset.id)
-    
+
     def test_get_dq_run_endpoint(self):
         """Test GET /api/v1/dq/runs/{id}/"""
-        from hub.apps.jobs.models import Job, JobType, JobStatus
-        
+        from hub.apps.jobs.models import Job, JobStatus, JobType
+
         # Create a job first (DQRun requires a job)
         job = Job.objects.create(
             tenant=self.tenant,
             type=JobType.DQ_RUN,  # Use 'type' field, not 'job_type'
             status=JobStatus.COMPLETED,
-            resource_type='ASSET',
+            resource_type="ASSET",
             resource_id=self.asset.id,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         dq_run = DQRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             dataset=self.dataset,
             job=job,
-            profile_key='intake_basic_gx',
-            engine='GREAT_EXPECTATIONS',
+            profile_key="intake_basic_gx",
+            engine="GREAT_EXPECTATIONS",
             status=DQRunStatus.SUCCEEDED,
-            quality_score=95.0
+            quality_score=95.0,
         )
-        
-        response = self.client.get(f'/api/v1/dq/runs/{dq_run.id}/')
-        
+
+        response = self.client.get(f"/api/v1/dq/runs/{dq_run.id}/")
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(dq_run.id))
-        self.assertIn('quality_score', response.data)
-    
+        self.assertEqual(response.data["id"], str(dq_run.id))
+        self.assertIn("quality_score", response.data)
+
     def test_list_dq_runs_for_asset_endpoint(self):
         """Test GET /api/v1/dq/runs/?asset_id={id}"""
-        from hub.apps.jobs.models import Job, JobType, JobStatus
-        
+        from hub.apps.jobs.models import Job, JobStatus, JobType
+
         # Create multiple DQ runs
         for i in range(3):
             job = Job.objects.create(
                 tenant=self.tenant,
                 type=JobType.DQ_RUN,  # Use 'type' field, not 'job_type'
                 status=JobStatus.COMPLETED,
-                resource_type='ASSET',
+                resource_type="ASSET",
                 resource_id=self.asset.id,
-                created_by=self.user
+                created_by=self.user,
             )
             DQRun.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
                 dataset=self.dataset,
                 job=job,
-                profile_key='intake_basic_gx',
-                engine='GREAT_EXPECTATIONS',
+                profile_key="intake_basic_gx",
+                engine="GREAT_EXPECTATIONS",
                 status=DQRunStatus.SUCCEEDED,
-                quality_score=90.0 + i
+                quality_score=90.0 + i,
             )
-        
+
         response = self.client.get(
-            '/api/v1/dq/runs/',
-            {'asset_id': str(self.asset.id)},
-            format='json'
+            "/api/v1/dq/runs/", {"asset_id": str(self.asset.id)}, format="json"
         )
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should return list of DQ runs
-        results = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        results = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         if isinstance(results, list):
             self.assertGreaterEqual(len(results), 1)
 
@@ -527,70 +527,70 @@ class DPOVersionManagementAPIEndpointTests(TestCase):
 
         self.asset = Asset.objects.create(
             tenant=self.tenant,
-            key='version-api-asset',
-            name='Version API Asset',
-            created_by=self.user
+            key="version-api-asset",
+            name="Version API Asset",
+            created_by=self.user,
         )
-        
+
         file_obj = File.objects.create(
             tenant=self.tenant,
-            name='v1.csv',
-            content_type='text/csv',
+            name="v1.csv",
+            content_type="text/csv",
             size=100,
             status=FileStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         self.dataset_v1 = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=file_obj,
-            schema_json={'fields': [{'name': 'id', 'type': 'string'}]},
+            schema_json={"fields": [{"name": "id", "type": "string"}]},
             row_count=10,
-            created_by=self.user
+            created_by=self.user,
         )
-    
+
     def test_list_dataset_versions_endpoint(self):
         """Test GET /api/v1/datasets/{id}/versions/"""
-        response = self.client.get(f'/api/v1/datasets/{self.dataset_v1.id}/versions/')
-        
+        response = self.client.get(f"/api/v1/datasets/{self.dataset_v1.id}/versions/")
+
         # Should return version history (may return 404 if endpoint doesn't exist)
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_404_NOT_FOUND
-        ])
-    
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
+
     def test_list_datasets_for_asset_endpoint(self):
         """Test GET /api/v1/datasets/?asset_id={id}"""
         # Create another dataset version (version 2)
         file_obj_v2 = File.objects.create(
             tenant=self.tenant,
-            name='v2.csv',
-            content_type='text/csv',
+            name="v2.csv",
+            content_type="text/csv",
             size=100,
             status=FileStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=file_obj_v2,
-            format='CSV',
+            format="CSV",
             version=2,  # Explicitly set version 2 to avoid unique constraint violation
-            schema_json={'fields': [{'name': 'id', 'type': 'string'}, {'name': 'name', 'type': 'string'}]},
+            schema_json={
+                "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+            },
             row_count=10,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         response = self.client.get(
-            '/api/v1/datasets/',
-            {'asset_id': str(self.asset.id)},
-            format='json'
+            "/api/v1/datasets/", {"asset_id": str(self.asset.id)}, format="json"
         )
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        results = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        results = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         if isinstance(results, list):
             self.assertGreaterEqual(len(results), 1)
-

@@ -34,10 +34,11 @@ is the same pattern the existing
 already uses (file 80–101). The PRODUCTION header-building code
 in ``service_client.py:252-261, 331-340`` runs unchanged.
 """
+
 from __future__ import annotations
-import pytest
 
 import httpx
+import pytest
 from django.test import TestCase, override_settings
 
 from hub.apps.compliance.service_client import ComplianceServiceClient
@@ -92,9 +93,7 @@ class TestComplianceServiceClientForwardsXActorIdHeader(TestCase):
     def test_scan_file_async_sends_x_actor_id_header(self):
         """``POST /scan-file-async`` MUST carry ``X-Actor-Id``."""
         transport, recorded = self._intercept()
-        self.client.client = httpx.Client(
-            transport=transport, base_url=self.client.base_url
-        )
+        self.client.client = httpx.Client(transport=transport, base_url=self.client.base_url)
 
         self.client.scan_file_async(
             file_content=b"id,name\n1,Test",
@@ -110,7 +109,8 @@ class TestComplianceServiceClientForwardsXActorIdHeader(TestCase):
         self.assertEqual(request.method, "POST")
         self.assertIn("X-Actor-Id", request.headers, dict(request.headers))
         self.assertEqual(
-            request.headers["X-Actor-Id"], "hub-test-actor",
+            request.headers["X-Actor-Id"],
+            "hub-test-actor",
             "Header value must match settings.SERVICE_ACTOR_ID — "
             "the compliance-service uses this to derive the "
             "job_id prefix.",
@@ -123,9 +123,7 @@ class TestComplianceServiceClientForwardsXActorIdHeader(TestCase):
         check fails with 403 ``JOB_TENANT_MISMATCH`` and the
         legitimate poll path breaks."""
         transport, recorded = self._intercept()
-        self.client.client = httpx.Client(
-            transport=transport, base_url=self.client.base_url
-        )
+        self.client.client = httpx.Client(transport=transport, base_url=self.client.base_url)
 
         # Use a scoped-format job_id (matches the new contract).
         # The path is the load-bearing assertion; the body
@@ -152,18 +150,14 @@ class TestComplianceServiceClientForwardsXActorIdHeader(TestCase):
         reads ``settings``, the other a request-scoped var).
         """
         transport, recorded = self._intercept()
-        self.client.client = httpx.Client(
-            transport=transport, base_url=self.client.base_url
-        )
+        self.client.client = httpx.Client(transport=transport, base_url=self.client.base_url)
 
         self.client.scan_file_async(
             file_content=b"id\n1",
             file_format="csv",
             tenant_id="t",
         )
-        self.client.get_scan_result(
-            "deadbeef_00000000-0000-0000-0000-000000000000"
-        )
+        self.client.get_scan_result("deadbeef_00000000-0000-0000-0000-000000000000")
 
         self.assertEqual(len(recorded), 2)
         post_actor = recorded[0].headers.get("X-Actor-Id")
@@ -171,7 +165,8 @@ class TestComplianceServiceClientForwardsXActorIdHeader(TestCase):
         self.assertIsNotNone(post_actor)
         self.assertIsNotNone(poll_actor)
         self.assertEqual(
-            post_actor, poll_actor,
+            post_actor,
+            poll_actor,
             "Both async endpoints must emit the SAME X-Actor-Id "
             "value within a single client instance — otherwise "
             "the tenant-scoped job_id verification breaks for "

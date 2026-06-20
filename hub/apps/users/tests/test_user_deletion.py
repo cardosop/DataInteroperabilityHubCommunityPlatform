@@ -1,17 +1,18 @@
 """
 Unit tests for user deletion rules.
 """
-import pytest
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
-from rest_framework import status
 
-from hub.apps.users.models import User, UserStatus
-from hub.apps.tenants.models import Tenant
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 import uuid
 
+import pytest
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from rest_framework import status
+from rest_framework.test import APIClient
+
+from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -19,28 +20,29 @@ User = get_user_model()
 
 class UserDeletionTest(TestCase):
     """Test user deletion rules and resource checking"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
-        
+
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",
             slug=f"test-tenant-{uid}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
-        
+
         # Create tenant admin user with TENANT_ADMIN role (required for delete permission)
         self.tenant_admin = User.objects.create_user(
             email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         from hub.apps.users.models import Role, UserRole
+
         tenant_admin_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="TENANT_ADMIN",
@@ -50,26 +52,26 @@ class UserDeletionTest(TestCase):
 
         # Active subscription required so TenantSuspensionMiddleware allows DELETE
         ensure_tenant_has_active_subscription(self.tenant)
-    
+
     def test_hard_delete_user_no_resources(self):
         """Test hard delete when user has no resources"""
         self.client.force_authenticate(user=self.tenant_admin)
-        
+
         # Create a user with no resources
         test_user = User.objects.create_user(
             email=f"todelete-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         user_id = test_user.id
-        
+
         response = self.client.delete(f"/api/v1/users/{user_id}/")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        
+
         # Verify user was hard deleted
         self.assertFalse(User.objects.filter(id=user_id).exists())
-    
+
     def test_soft_delete_user_with_resources(self):
         """Test delete behaviour when user deletion endpoint is called.
 
@@ -94,54 +96,53 @@ class UserDeletionTest(TestCase):
         # should expect 200 with DISABLED status instead.
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT])
         self.assertFalse(User.objects.filter(id=user_id).exists())
-    
+
     def test_cannot_delete_self(self):
         """Test that a user cannot delete themselves"""
         self.client.force_authenticate(user=self.tenant_admin)
-        
+
         response = self.client.delete(f"/api/v1/users/{self.tenant_admin.id}/")
         # Should return 400 Bad Request with error message
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('error', response.data)
-        self.assertIn('cannot delete themselves', response.data['error'].lower())
-        
+        self.assertIn("error", response.data)
+        self.assertIn("cannot delete themselves", response.data["error"].lower())
+
         # Verify user still exists
         self.assertTrue(User.objects.filter(id=self.tenant_admin.id).exists())
-    
+
     def test_delete_invited_user(self):
         """Test deleting an invited user (should hard delete)"""
         self.client.force_authenticate(user=self.tenant_admin)
-        
+
         # Create an invited user
         invited_user = User.objects.create_user(
             email=f"invited-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
-            status=UserStatus.INVITED
+            status=UserStatus.INVITED,
         )
         user_id = invited_user.id
-        
+
         response = self.client.delete(f"/api/v1/users/{user_id}/")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        
+
         # Verify user was hard deleted
         self.assertFalse(User.objects.filter(id=user_id).exists())
-    
+
     def test_delete_disabled_user(self):
         """Test deleting a disabled user"""
         self.client.force_authenticate(user=self.tenant_admin)
-        
+
         # Create a disabled user
         disabled_user = User.objects.create_user(
             email=f"disabled-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
-            status=UserStatus.DISABLED
+            status=UserStatus.DISABLED,
         )
         user_id = disabled_user.id
-        
+
         response = self.client.delete(f"/api/v1/users/{user_id}/")
         # Disabled user should be hard deletable if no resources
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        
+
         # Verify user was hard deleted
         self.assertFalse(User.objects.filter(id=user_id).exists())
-

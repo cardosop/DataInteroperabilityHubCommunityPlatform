@@ -4,15 +4,17 @@ Phase 275.B — Schema reflection at LIVE_QUERY asset registration.
 Resolves the warehouse connector for a LIVE_QUERY asset, reflects the
 table schema, and populates Dataset.schema_json + sample_data_json.
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def reflect_and_populate(asset: Any, table_name: Optional[str] = None) -> Dict[str, Any]:
+def reflect_and_populate(asset: Any, table_name: str | None = None) -> dict[str, Any]:
     """Reflect the schema of *asset*'s warehouse table and populate its
     latest Dataset with the reflected schema + a 100-row sample.
 
@@ -48,9 +50,8 @@ def reflect_and_populate(asset: Any, table_name: Optional[str] = None) -> Dict[s
     try:
         # Reflect schema
         columns = connector.reflect_schema(table_name)
-        column_dicts: List[Dict[str, Any]] = [
-            {"name": c.name, "data_type": c.data_type,
-             "nullable": c.nullable, "comment": c.comment}
+        column_dicts: list[dict[str, Any]] = [
+            {"name": c.name, "data_type": c.data_type, "nullable": c.nullable, "comment": c.comment}
             for c in columns
         ]
 
@@ -59,8 +60,7 @@ def reflect_and_populate(asset: Any, table_name: Optional[str] = None) -> Dict[s
             result = connector.execute_query(
                 f"SELECT * FROM {table_name} LIMIT 100",
             )
-            sample_rows = [dict(zip([c.name for c in columns], row))
-                          for row in result.rows]
+            sample_rows = [dict(zip([c.name for c in columns], row)) for row in result.rows]
         except Exception as exc:
             logger.warning(
                 "warehouse_sample_fetch_failed",
@@ -69,10 +69,8 @@ def reflect_and_populate(asset: Any, table_name: Optional[str] = None) -> Dict[s
             )
             sample_rows = []
     finally:
-        try:
+        with contextlib.suppress(Exception):
             connector.close()
-        except Exception:
-            pass
 
     # Populate the latest Dataset
     latest = Dataset.objects.filter(asset=asset).order_by("-version").first()

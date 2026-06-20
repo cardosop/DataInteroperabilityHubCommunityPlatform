@@ -11,7 +11,6 @@ import pytest
 from django.test import TestCase
 
 from hub.apps.contracts.odcs_errors import (
-    ODCSExportError,
     ODCSGenerationError,
 )
 from hub.apps.contracts.odcs_generator import ODCSGeneratorBase
@@ -54,11 +53,11 @@ class ConcreteODCSGenerator(ODCSGeneratorBase):
 
         # Add optional fields
         info = hub_contract["info"]
-        if "version" in info and info["version"]:
+        if info.get("version"):
             self.validate_field_type(info["version"], str, "/info/version", allow_none=False)
             odcs_doc["version"] = info["version"]
 
-        if "description" in info and info["description"]:
+        if info.get("description"):
             self.validate_field_type(
                 info["description"], str, "/info/description", allow_none=False
             )

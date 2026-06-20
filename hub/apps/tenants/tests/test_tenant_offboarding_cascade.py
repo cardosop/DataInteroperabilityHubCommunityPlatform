@@ -4,12 +4,13 @@ Phase 260.1.F — Tenant hard-delete file offboarding cascade.
 NO mocks: uses real Postgres, Django RQ synchronous mode during tests,
 optional MinIO/S3 (skip when unavailable).
 """
+
 from __future__ import annotations
-import pytest
 
 import unittest
 import uuid
 
+import pytest
 from django.core.files.base import ContentFile
 from django.test import TransactionTestCase, override_settings
 from django.urls import reverse
@@ -32,6 +33,7 @@ _E2E_SECRET = "test-tenant-offboard-cascade-secret-not-for-production"
 @override_settings(E2E_TEST_SECRET=_E2E_SECRET)
 class TenantOffboardingSignalTests(TransactionTestCase):
     """Model-level Tenant.delete(): per-file audits + DB rows cleared + storage."""
+
     databases = {"default", "admin"}
 
     def setUp(self):
@@ -117,6 +119,7 @@ class TenantOffboardingSignalTests(TransactionTestCase):
 @override_settings(E2E_TEST_SECRET=_E2E_SECRET)
 class TenantDestroyCascadeApiTests(TransactionTestCase):
     """DELETE /tenants/{id}/?cascade=true — gated; User RESTRICT workaround."""
+
     databases = {"default", "admin"}
 
     def setUp(self):

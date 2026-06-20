@@ -30,10 +30,11 @@ Response: ``204 No Content`` on success. Unknown event names are
 ignored with ``204`` (forward-compat: a future frontend release can
 ship new events without a backend bump).
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -110,10 +111,7 @@ def _emit_event(
         ).inc()
         # Histogram only fires on the first successful save (sender
         # responsibility); we observe whatever value is supplied.
-        if (
-            normalized_outcome == "success"
-            and time_to_first_save_seconds is not None
-        ):
+        if normalized_outcome == "success" and time_to_first_save_seconds is not None:
             try:
                 ttfs = float(time_to_first_save_seconds)
             except (TypeError, ValueError):
@@ -126,9 +124,7 @@ def _emit_event(
         return
 
     # Unknown event — ignored for forward-compat.
-    logger.debug(
-        "schema_editor_metrics_unknown_event", extra={"event": event}
-    )
+    logger.debug("schema_editor_metrics_unknown_event", extra={"event": event})
 
 
 class SchemaEditorMetricsView(APIView):
@@ -142,7 +138,7 @@ class SchemaEditorMetricsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request: Request) -> Response:
-        body: Dict[str, Any] = request.data if isinstance(request.data, dict) else {}
+        body: dict[str, Any] = request.data if isinstance(request.data, dict) else {}
         event = str(body.get("event", "")).strip()
         if not event:
             return Response(
@@ -161,9 +157,7 @@ class SchemaEditorMetricsView(APIView):
             tenant_id=tenant_id,
             outcome=str(outcome).strip() if outcome is not None else None,
             time_to_first_save_seconds=(
-                float(ttfs_raw)
-                if isinstance(ttfs_raw, (int, float)) and ttfs_raw >= 0
-                else None
+                float(ttfs_raw) if isinstance(ttfs_raw, (int, float)) and ttfs_raw >= 0 else None
             ),
         )
 

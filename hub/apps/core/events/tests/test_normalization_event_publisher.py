@@ -4,13 +4,16 @@ Integration tests for NormalizationEventPublisher.
 Tests event publishing using real EventPublisher and EventBus (no mocks/stubs).
 All tests use real services and models following engineering best practices.
 """
+
 import uuid
+
 from django.test import TestCase, override_settings
 from django.utils import timezone
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus
-from hub.apps.core.events.service_publishers import NormalizationEventPublisher
+
 from hub.apps.core.events.models import Event
+from hub.apps.core.events.service_publishers import NormalizationEventPublisher
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import User, UserStatus
 
 uid = uuid.uuid4().hex[:8]
 
@@ -25,15 +28,13 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         class TestNormalizationService(NormalizationEventPublisher):
@@ -43,20 +44,20 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
                 super().__init__(tenant_id=tenant_id, user_id=user_id)
 
         self.service = TestNormalizationService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
     def test_publish_normalization_started_event(self):
         """Test publishing normalization.started event with real EventPublisher."""
         import uuid
+
         contract_id = str(uuid.uuid4())
 
         event_id = self.service.publish_normalization_started(
             contract_id=contract_id,
             normalization_type="ODPS",
             spec_version="4.1",
-            source_format="JSON"
+            source_format="JSON",
         )
 
         self.assertIsNotNone(event_id)
@@ -77,11 +78,11 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
     def test_publish_normalization_started_with_minimal_data(self):
         """Test publishing normalization.started event with minimal required data."""
         import uuid
+
         contract_id = str(uuid.uuid4())
 
         event_id = self.service.publish_normalization_started(
-            contract_id=contract_id,
-            normalization_type="ODCS"
+            contract_id=contract_id, normalization_type="ODCS"
         )
 
         self.assertIsNotNone(event_id)
@@ -95,6 +96,7 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
     def test_publish_normalization_completed_event(self):
         """Test publishing normalization.completed event with real EventPublisher."""
         import uuid
+
         contract_id = str(uuid.uuid4())
 
         event_id = self.service.publish_normalization_completed(
@@ -103,7 +105,7 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
             normalization_errors=None,
             normalization_warnings=["Warning: Missing optional field"],
             duration_ms=1500,
-            spec_version="4.1"
+            spec_version="4.1",
         )
 
         self.assertIsNotNone(event_id)
@@ -126,6 +128,7 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
     def test_publish_normalization_completed_with_errors(self):
         """Test publishing normalization.completed event with errors."""
         import uuid
+
         contract_id = str(uuid.uuid4())
 
         errors = ["Error: Invalid schema", "Error: Missing required field"]
@@ -134,7 +137,7 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
             normalization_status="FAILED",
             normalization_errors=errors,
             normalization_warnings=None,
-            duration_ms=2000
+            duration_ms=2000,
         )
 
         event = Event.objects.get(event_id=event_id)
@@ -146,11 +149,11 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
     def test_publish_normalization_completed_with_minimal_data(self):
         """Test publishing normalization.completed event with minimal required data."""
         import uuid
+
         contract_id = str(uuid.uuid4())
 
         event_id = self.service.publish_normalization_completed(
-            contract_id=contract_id,
-            normalization_status="SUCCESS"
+            contract_id=contract_id, normalization_status="SUCCESS"
         )
 
         event = Event.objects.get(event_id=event_id)
@@ -165,6 +168,7 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
     def test_publish_normalization_failed_event(self):
         """Test publishing normalization.failed event with real EventPublisher."""
         import uuid
+
         contract_id = str(uuid.uuid4())
 
         error_details = {"code": "SCHEMA_VALIDATION_ERROR", "field": "product.details"}
@@ -176,7 +180,7 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
             error_details=error_details,
             normalization_errors=errors,
             retry_count=2,
-            spec_version="4.1"
+            spec_version="4.1",
         )
 
         self.assertIsNotNone(event_id)
@@ -185,7 +189,9 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(event.event_type, "normalization.failed")
         self.assertEqual(event.data["contract_id"], contract_id)
-        self.assertEqual(event.data["error_message"], "Normalization failed due to schema validation errors")
+        self.assertEqual(
+            event.data["error_message"], "Normalization failed due to schema validation errors"
+        )
         self.assertEqual(event.data["error_details"], error_details)
         self.assertEqual(event.data["normalization_errors"], errors)
         self.assertEqual(event.data["retry_count"], 2)
@@ -199,11 +205,11 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
     def test_publish_normalization_failed_with_minimal_data(self):
         """Test publishing normalization.failed event with minimal required data."""
         import uuid
+
         contract_id = str(uuid.uuid4())
 
         event_id = self.service.publish_normalization_failed(
-            contract_id=contract_id,
-            error_message="Normalization failed"
+            contract_id=contract_id, error_message="Normalization failed"
         )
 
         event = Event.objects.get(event_id=event_id)
@@ -218,11 +224,11 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
     def test_event_source_includes_tenant_and_user(self):
         """Test that events include correct tenant_id and user_id."""
         import uuid
+
         contract_id = str(uuid.uuid4())
 
         event_id = self.service.publish_normalization_started(
-            contract_id=contract_id,
-            normalization_type="ODPS"
+            contract_id=contract_id, normalization_type="ODPS"
         )
 
         event = Event.objects.get(event_id=event_id)
@@ -232,11 +238,11 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
     def test_event_timestamp_is_set(self):
         """Test that events have timestamps."""
         import uuid
+
         contract_id = str(uuid.uuid4())
 
         event_id = self.service.publish_normalization_started(
-            contract_id=contract_id,
-            normalization_type="ODPS"
+            contract_id=contract_id, normalization_type="ODPS"
         )
 
         event = Event.objects.get(event_id=event_id)
@@ -246,12 +252,12 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
     def test_event_tags_are_set(self):
         """Test that events have correct tags."""
         import uuid
+
         contract_id = str(uuid.uuid4())
 
         # Test started event tags
         started_event_id = self.service.publish_normalization_started(
-            contract_id=contract_id,
-            normalization_type="ODPS"
+            contract_id=contract_id, normalization_type="ODPS"
         )
         started_event = Event.objects.get(event_id=started_event_id)
         self.assertIn("normalization", started_event.metadata["tags"])
@@ -259,8 +265,7 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
 
         # Test completed event tags
         completed_event_id = self.service.publish_normalization_completed(
-            contract_id=contract_id,
-            normalization_status="SUCCESS"
+            contract_id=contract_id, normalization_status="SUCCESS"
         )
         completed_event = Event.objects.get(event_id=completed_event_id)
         self.assertIn("normalization", completed_event.metadata["tags"])
@@ -268,8 +273,7 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
 
         # Test failed event tags
         failed_event_id = self.service.publish_normalization_failed(
-            contract_id=contract_id,
-            error_message="Test error"
+            contract_id=contract_id, error_message="Test error"
         )
         failed_event = Event.objects.get(event_id=failed_event_id)
         self.assertIn("normalization", failed_event.metadata["tags"])
@@ -277,6 +281,7 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
 
     def test_publisher_initialization_without_tenant_or_user(self):
         """Test that publisher can be initialized without tenant_id or user_id."""
+
         class TestService(NormalizationEventPublisher):
             def __init__(self):
                 super().__init__()
@@ -286,22 +291,20 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
 
     def test_publisher_uses_service_tenant_and_user(self):
         """Test that publisher uses tenant_id and user_id from service."""
+
         class TestService(NormalizationEventPublisher):
             def __init__(self, tenant_id=None, user_id=None):
                 self.tenant_id = tenant_id
                 self.user_id = user_id
                 super().__init__(tenant_id=tenant_id, user_id=user_id)
 
-        service = TestService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        service = TestService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         import uuid
+
         contract_id = str(uuid.uuid4())
         event_id = service.publish_normalization_started(
-            contract_id=contract_id,
-            normalization_type="ODPS"
+            contract_id=contract_id, normalization_type="ODPS"
         )
 
         event = Event.objects.get(event_id=event_id)
@@ -311,17 +314,16 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
     def test_publisher_allows_override_tenant_and_user(self):
         """Test that publisher allows overriding tenant_id and user_id per event."""
         import uuid
+
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}",
-            slug=f"other-tenant-{_uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         contract_id = str(uuid.uuid4())
@@ -329,10 +331,9 @@ class NormalizationEventPublisherIntegrationTest(TestCase):
             contract_id=contract_id,
             normalization_type="ODPS",
             tenant_id=str(other_tenant.id),
-            user_id=str(other_user.id)
+            user_id=str(other_user.id),
         )
 
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(str(event.tenant_id), str(other_tenant.id))
         self.assertEqual(str(event.user_id), str(other_user.id))
-

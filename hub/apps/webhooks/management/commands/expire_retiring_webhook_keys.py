@@ -22,14 +22,15 @@ release via Lua compare-and-del. Lock TTL = 30 minutes — generous
 enough for a slow batch but short enough that a crashed run frees the
 lock before the next hourly tick.
 """
+
 from __future__ import annotations
+
 import sys
 from datetime import timedelta
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
-
 
 # Distributed-lock key — versioned so a future schema change to the
 # rotation lifecycle (e.g. tighter overlap window) can re-key without
@@ -54,8 +55,7 @@ class Command(BaseCommand):
             action="store_true",
             default=False,
             help=(
-                "Identify keys that WOULD transition or be pruned, but make "
-                "no database changes."
+                "Identify keys that WOULD transition or be pruned, but make no database changes."
             ),
         )
 
@@ -176,8 +176,7 @@ class Command(BaseCommand):
                             "webhook_id": str(key.webhook_id),
                             "key_id": str(key.key_id),
                             "scheduled_retired_at": (
-                                key.retired_at.isoformat()
-                                if key.retired_at else None
+                                key.retired_at.isoformat() if key.retired_at else None
                             ),
                             "actual_retired_at": now.isoformat(),
                         },
@@ -190,12 +189,9 @@ class Command(BaseCommand):
         # -----------------------------------------------------------------
         prune_cutoff = now - _AUTO_PRUNE_RETENTION
         with transaction.atomic():
-            stale = (
-                WebhookSigningKey.objects.select_for_update()
-                .filter(
-                    status=WebhookSigningKeyStatus.RETIRED,
-                    retired_at__lt=prune_cutoff,
-                )
+            stale = WebhookSigningKey.objects.select_for_update().filter(
+                status=WebhookSigningKeyStatus.RETIRED,
+                retired_at__lt=prune_cutoff,
             )
             if dry_run:
                 prunes = stale.count()

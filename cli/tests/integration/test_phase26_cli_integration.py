@@ -10,7 +10,6 @@ All tests use real backend API - no mocks/stubs.
 import json
 import os
 import subprocess
-from typing import Any, Dict, Optional
 
 import pytest
 
@@ -45,7 +44,7 @@ def cli_config():
 
 def run_cli_command(cmd: list) -> tuple[int, str, str]:
     """Run CLI command and return exit code, stdout, stderr"""
-    result = subprocess.run(["datahub"] + cmd, capture_output=True, text=True)
+    result = subprocess.run(["datahub"] + cmd, check=False, capture_output=True, text=True)
     return result.returncode, result.stdout, result.stderr
 
 

@@ -4,16 +4,14 @@ Migration tests for federated asset fields.
 Tests forward and backward migrations for source_type and source_metadata fields.
 """
 
-from io import StringIO
+import uuid
 
 import pytest
-from django.core.management import call_command
 from django.db import connection
 from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetSourceType
 from hub.apps.tenants.models import Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -40,7 +38,7 @@ class FederatedAssetMigrationTest(TestCase):
             result = cursor.fetchone()
 
         self.assertIsNotNone(result, "source_type column should exist")
-        column_name, data_type, is_nullable, column_default = result
+        column_name, _data_type, _is_nullable, _column_default = result
         self.assertEqual(column_name, "source_type")
 
     def test_source_type_field_exists_has_correct_data_type(self):
@@ -56,7 +54,7 @@ class FederatedAssetMigrationTest(TestCase):
             )
             result = cursor.fetchone()
 
-        column_name, data_type, is_nullable, column_default = result
+        _column_name, data_type, _is_nullable, _column_default = result
         self.assertEqual(data_type, "character varying")
 
     def test_source_type_field_exists_is_not_nullable(self):
@@ -72,7 +70,7 @@ class FederatedAssetMigrationTest(TestCase):
             )
             result = cursor.fetchone()
 
-        column_name, data_type, is_nullable, column_default = result
+        _column_name, _data_type, is_nullable, _column_default = result
         self.assertEqual(is_nullable, "NO")
 
     def test_source_type_field_exists_has_default_value(self):
@@ -96,7 +94,7 @@ class FederatedAssetMigrationTest(TestCase):
             result = cursor.fetchone()
 
         self.assertIsNotNone(result, "source_metadata column should exist")
-        column_name, data_type, is_nullable = result
+        column_name, _data_type, _is_nullable = result
         self.assertEqual(column_name, "source_metadata")
 
     def test_source_metadata_field_exists_has_correct_data_type(self):
@@ -112,7 +110,7 @@ class FederatedAssetMigrationTest(TestCase):
             )
             result = cursor.fetchone()
 
-        column_name, data_type, is_nullable = result
+        _column_name, data_type, _is_nullable = result
         self.assertEqual(data_type, "jsonb")
 
     def test_source_metadata_field_exists_is_nullable(self):
@@ -128,7 +126,7 @@ class FederatedAssetMigrationTest(TestCase):
             )
             result = cursor.fetchone()
 
-        column_name, data_type, is_nullable = result
+        _column_name, _data_type, is_nullable = result
         self.assertEqual(is_nullable, "YES")
 
     def test_source_type_index_exists(self):

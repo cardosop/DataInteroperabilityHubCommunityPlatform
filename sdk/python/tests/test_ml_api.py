@@ -8,21 +8,20 @@ ML API Tests
 Unit tests for ODHIntegrationAPI, TrainingAPI, and InferenceAPI classes.
 Tests parameter validation, error handling, and method structure.
 """
-import pytest
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig
-from datahub_interoperability.ml import ODHIntegrationAPI, TrainingAPI, InferenceAPI
 from datahub_interoperability.errors import (
-    ValidationError,
     NotFoundError,
-    ConflictError,
-    ServerError,
-    ODHMLError,
-    ODHMLValidationError,
-    ODHMLNotFoundError,
     ODHMLConflictError,
+    ODHMLError,
+    ODHMLNotFoundError,
+    ODHMLValidationError,
+    ValidationError,
 )
+from datahub_interoperability.ml import InferenceAPI, ODHIntegrationAPI, TrainingAPI
 
 
 @pytest.fixture
@@ -179,7 +178,9 @@ class TestODHIntegrationAPIMethods:
 
         # Invalid contract_id format
         with pytest.raises(ValidationError):
-            await ml_api.create_model("odh-id", "1.0", valid_uuid, "CLASSIFICATION", contract_id="not-a-uuid")
+            await ml_api.create_model(
+                "odh-id", "1.0", valid_uuid, "CLASSIFICATION", contract_id="not-a-uuid"
+            )
 
     @pytest.mark.asyncio
     async def test_update_model_validation(self, ml_api):
@@ -402,7 +403,9 @@ class TestODHMLErrorClasses:
 
     def test_odh_ml_validation_error_initialization(self):
         """Test ODHMLValidationError can be initialized"""
-        error = ODHMLValidationError("Validation failed", field_path="/test", expected="string", actual="int")
+        error = ODHMLValidationError(
+            "Validation failed", field_path="/test", expected="string", actual="int"
+        )
         assert error.message == "Validation failed"
         assert error.field_path == "/test"
         assert error.expected == "string"
@@ -435,16 +438,14 @@ class TestMLAPISuccessPaths:
         """Real API config for integration tests."""
         import os as _os
 
-        from tests.conftest import is_api_available, get_api_key, default_api_base_url
+        from tests.conftest import default_api_base_url, get_api_key, is_api_available
 
         if not is_api_available():
             pytest.skip("API service is not available.")
         api_key = get_api_key()
         if not api_key:
             pytest.skip("No API key available.")
-        api_base_url = _os.environ.get(
-            "API_BASE_URL", f"{default_api_base_url()}/api/v1"
-        )
+        api_base_url = _os.environ.get("API_BASE_URL", f"{default_api_base_url()}/api/v1")
         return DataHubClientConfig(
             base_url=api_base_url,
             api_token=api_key,

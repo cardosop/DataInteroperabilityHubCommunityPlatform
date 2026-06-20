@@ -1,6 +1,7 @@
 """Periodic processor-agreement expiry sweep (Phase 232.6.7)."""
 
 from __future__ import annotations
+
 import uuid
 
 from django.core.management.base import BaseCommand

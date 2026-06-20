@@ -4,7 +4,7 @@ Lineage operations for DataHub SDK.
 Provides methods for querying multi-level lineage (contract, model, field levels).
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from .client import DataHubClient
 
@@ -55,9 +55,7 @@ class LineageAPI:
         Returns:
             Model-level lineage data
         """
-        return await self.client.get(
-            f"contracts/{contract_id}/models/{model_name}/lineage/"
-        )
+        return await self.client.get(f"contracts/{contract_id}/models/{model_name}/lineage/")
 
     async def get_field_lineage(
         self,
@@ -108,9 +106,7 @@ class LineageAPI:
             "max_model_depth": max_model_depth,
             "max_field_depth": max_field_depth,
         }
-        return await self.client.get(
-            f"contracts/{contract_id}/lineage/full/", params=params
-        )
+        return await self.client.get(f"contracts/{contract_id}/lineage/full/", params=params)
 
     async def get_visualization(
         self,
@@ -160,9 +156,7 @@ class LineageAPI:
             "depth": depth,
             "include_fields": include_fields,
         }
-        return await self.client.get(
-            f"contracts/{contract_id}/impact-analysis/", params=params
-        )
+        return await self.client.get(f"contracts/{contract_id}/impact-analysis/", params=params)
 
     # Convenience methods with shorter names (matching expected API)
     async def contract(self, contract_id: str) -> Dict[str, Any]:

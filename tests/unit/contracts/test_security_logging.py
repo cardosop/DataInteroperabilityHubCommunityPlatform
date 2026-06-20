@@ -7,19 +7,16 @@ Tests security logging functionality including:
 - Cache operation logging
 - Security violation logging
 """
-from django.test import TestCase
+
 from django.contrib.auth import get_user_model
-from unittest.mock import patch, MagicMock
-from datetime import datetime, timezone
+from django.test import TestCase
 
 from hub.apps.contracts.odps_security_logging import (
-    SecurityLogger,
     SecurityEventType,
+    SecurityLogger,
     SecuritySeverity,
     SecurityViolationLog,
-    RefResolutionAuditLog,
 )
-from hub.apps.tenants.models import Tenant
 from tests.factories import TenantFactory, UserFactory
 
 User = get_user_model()
@@ -69,7 +66,7 @@ class SecurityLoggerTest(TestCase):
 
         # Should have created one audit log entry
         self.assertEqual(SecurityAuditLog.objects.count(), initial_count + 1)
-        log_entry = SecurityAuditLog.objects.latest('timestamp')
+        log_entry = SecurityAuditLog.objects.latest("timestamp")
         # Implementation stores the specific event type (PATH_TRAVERSAL) for audit trail
         self.assertEqual(log_entry.event_type, SecurityEventType.PATH_TRAVERSAL.value)
         self.assertEqual(log_entry.severity, SecuritySeverity.HIGH.value)
@@ -94,13 +91,13 @@ class SecurityLoggerTest(TestCase):
 
         # Should have created one audit log entry
         self.assertEqual(SecurityAuditLog.objects.count(), initial_count + 1)
-        log_entry = SecurityAuditLog.objects.latest('timestamp')
+        log_entry = SecurityAuditLog.objects.latest("timestamp")
         self.assertEqual(log_entry.event_type, SecurityEventType.EXTERNAL_REF_FETCH.value)
         self.assertEqual(log_entry.ref_path, "https://example.com/schema.json")
         self.assertEqual(log_entry.ref_type, "external")
         self.assertEqual(log_entry.tenant_id, self.tenant.id)
         self.assertEqual(log_entry.user_id, self.user.id)
-        self.assertFalse(log_entry.metadata_json.get('cache_hit'))
+        self.assertFalse(log_entry.metadata_json.get("cache_hit"))
 
     def test_log_external_ref_fetch_with_cache_hit(self):
         """Test that log_external_ref_fetch logs cache hits correctly."""
@@ -114,8 +111,8 @@ class SecurityLoggerTest(TestCase):
             cache_hit=True,
         )
 
-        log_entry = SecurityAuditLog.objects.latest('timestamp')
-        self.assertTrue(log_entry.metadata_json.get('cache_hit'))
+        log_entry = SecurityAuditLog.objects.latest("timestamp")
+        self.assertTrue(log_entry.metadata_json.get("cache_hit"))
 
     def test_log_rate_limit_violation_creates_log(self):
         """Test that log_rate_limit_violation creates a log entry."""
@@ -133,7 +130,7 @@ class SecurityLoggerTest(TestCase):
 
         # Should have created one audit log entry
         self.assertEqual(SecurityAuditLog.objects.count(), initial_count + 1)
-        log_entry = SecurityAuditLog.objects.latest('timestamp')
+        log_entry = SecurityAuditLog.objects.latest("timestamp")
         self.assertEqual(log_entry.event_type, SecurityEventType.RATE_LIMIT_EXCEEDED.value)
         self.assertEqual(log_entry.rate_limit_level, "global")
         self.assertEqual(log_entry.severity, SecuritySeverity.MEDIUM.value)
@@ -156,7 +153,7 @@ class SecurityLoggerTest(TestCase):
 
         # Should have created one audit log entry
         self.assertEqual(SecurityAuditLog.objects.count(), initial_count + 1)
-        log_entry = SecurityAuditLog.objects.latest('timestamp')
+        log_entry = SecurityAuditLog.objects.latest("timestamp")
         self.assertEqual(log_entry.event_type, SecurityEventType.CACHE_HIT.value)
         self.assertEqual(log_entry.cache_operation, "hit")
         self.assertEqual(log_entry.cache_key, "odps_ref:abc123")
@@ -171,7 +168,7 @@ class SecurityLoggerTest(TestCase):
             tenant_id=str(self.tenant.id),
         )
 
-        log_entry = SecurityAuditLog.objects.latest('timestamp')
+        log_entry = SecurityAuditLog.objects.latest("timestamp")
         self.assertEqual(log_entry.event_type, SecurityEventType.CACHE_MISS.value)
         self.assertEqual(log_entry.cache_operation, "miss")
 
@@ -186,7 +183,7 @@ class SecurityLoggerTest(TestCase):
             tenant_id=str(self.tenant.id),
         )
 
-        log_entry = SecurityAuditLog.objects.latest('timestamp')
+        log_entry = SecurityAuditLog.objects.latest("timestamp")
         self.assertEqual(log_entry.event_type, SecurityEventType.CACHE_EVICTION.value)
         self.assertEqual(log_entry.cache_operation, "eviction")
         self.assertEqual(log_entry.eviction_reason, "size_limit")
@@ -211,12 +208,12 @@ class SecurityLoggerTest(TestCase):
 
         # Should have created one audit log entry
         self.assertEqual(SecurityAuditLog.objects.count(), initial_count + 1)
-        log_entry = SecurityAuditLog.objects.latest('timestamp')
+        log_entry = SecurityAuditLog.objects.latest("timestamp")
         self.assertEqual(log_entry.event_type, "REF_RESOLUTION_AUDIT")
         self.assertEqual(log_entry.ref_type, "external")
         self.assertEqual(log_entry.ref_path, "https://example.com/schema.json")
-        self.assertTrue(log_entry.metadata_json.get('success'))
-        self.assertEqual(log_entry.metadata_json.get('operation_id'), "test-op-123")
+        self.assertTrue(log_entry.metadata_json.get("success"))
+        self.assertEqual(log_entry.metadata_json.get("operation_id"), "test-op-123")
 
     def test_log_security_violation_without_tenant_user(self):
         """Test that log_security_violation works without tenant/user."""
@@ -233,7 +230,7 @@ class SecurityLoggerTest(TestCase):
 
         # Should still create log entry
         self.assertEqual(SecurityAuditLog.objects.count(), initial_count + 1)
-        log_entry = SecurityAuditLog.objects.latest('timestamp')
+        log_entry = SecurityAuditLog.objects.latest("timestamp")
         self.assertIsNone(log_entry.tenant)
         self.assertIsNone(log_entry.user)
 
@@ -248,9 +245,9 @@ class SecurityLoggerTest(TestCase):
             error_message="Connection timeout",
         )
 
-        log_entry = SecurityAuditLog.objects.latest('timestamp')
-        self.assertFalse(log_entry.metadata_json.get('success'))
-        self.assertEqual(log_entry.metadata_json.get('error_message'), "Connection timeout")
+        log_entry = SecurityAuditLog.objects.latest("timestamp")
+        self.assertFalse(log_entry.metadata_json.get("success"))
+        self.assertEqual(log_entry.metadata_json.get("error_message"), "Connection timeout")
 
     def test_log_cache_operation_invalid_operation(self):
         """Test that log_cache_operation ignores invalid operations."""
@@ -266,4 +263,3 @@ class SecurityLoggerTest(TestCase):
 
         # Should not have created any log entry
         self.assertEqual(SecurityAuditLog.objects.count(), initial_count)
-

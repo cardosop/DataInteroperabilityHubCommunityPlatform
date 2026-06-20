@@ -139,7 +139,10 @@ def ephemeral_tenant(request):
         # endpoint but still talks to the network). Log full context.
         logger.exception("ephemeral_tenant: provisioning failed", extra={"slug": slug})
         return Response(
-            {"detail": "ephemeral tenant provisioning failed", "error_class": exc.__class__.__name__},
+            {
+                "detail": "ephemeral tenant provisioning failed",
+                "error_class": exc.__class__.__name__,
+            },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 

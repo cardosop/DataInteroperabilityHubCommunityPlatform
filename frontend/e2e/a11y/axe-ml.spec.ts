@@ -7,6 +7,7 @@
 import { AxeBuilder } from '@axe-core/playwright';
 import { expect } from '@playwright/test';
 import { test } from '@playwright/test';
+import { getTestUser, loginUser } from '../fixtures/auth';
 
 async function assertNoA11yViolations(page: import('@playwright/test').Page, originalUrl: string): Promise<void> {
   await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
@@ -66,12 +67,20 @@ test.describe('ML Platform — Accessibility', () => {
 
 test.describe('ML — Dark mode', () => {
   test('ML page renders without contrast violations in dark mode', async ({ page }) => {
+    // Explicitly authenticate before navigating — dark mode tests run late
+    // in the suite (>55 tests in), so storageState auth may have expired.
+    // Without this, the SPA redirects to /login and axe scans the login page
+    // instead of the ML page (false positive contrast failures from AuthPage.css).
+    const user = await getTestUser();
+    await loginUser(page, user);
     await page.goto('/ml');
     await page.emulateMedia({ colorScheme: 'dark' });
     await assertNoA11yViolations(page, '/ml');
   });
 
   test('model detail page renders in dark mode', async ({ page }) => {
+    const user = await getTestUser();
+    await loginUser(page, user);
     await page.goto(`/ml/models/${MODEL_ID}`);
     await page.emulateMedia({ colorScheme: 'dark' });
     await assertNoA11yViolations(page, `/ml/models/${MODEL_ID}`);

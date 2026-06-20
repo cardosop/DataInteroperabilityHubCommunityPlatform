@@ -7,7 +7,6 @@ REST API views for virtual dataset management.
 import logging
 import time
 
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -28,7 +27,7 @@ from rest_framework.response import Response
 
 from hub.apps.api.standards.pagination import StandardPageNumberPagination
 from hub.apps.audit.utils import create_audit_event
-from hub.apps.auth.permissions import HasAnyRole, HasRole, HasScope
+from hub.apps.auth.permissions import HasAnyRole, HasScope
 from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import (
     ConflictError,
@@ -36,7 +35,7 @@ from hub.apps.core.services.base import (
     PermissionError,
     ValidationError,
 )
-from hub.apps.governance.abac import ABACEngine, PolicyEvaluationResult
+from hub.apps.governance.abac import ABACEngine
 from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
 
@@ -49,7 +48,6 @@ from .cross_tenant_helpers import (
 )
 from .models import (
     QueryExecution,
-    QueryExecutionMode,
     QueryExecutionStatus,
     QueryType,
     VirtualDataset,
@@ -174,14 +172,16 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
     lookup_field = "id"
 
     def initial(self, request, *args, **kwargs):
-        from hub.apps.tenants.feature_flag_gates import check_virtualization_enabled
         from rest_framework.exceptions import PermissionDenied
+
+        from hub.apps.tenants.feature_flag_gates import check_virtualization_enabled
+
         # Run DRF's initial (auth + permissions) first so unauthenticated
         # users get 401 before the per-tenant feature gate is evaluated.
         super().initial(request, *args, **kwargs)
         # Platform admins bypass the per-tenant virtualization feature gate
         # since they cross-tenant and may not have a tenant on their user record.
-        if request.user.is_authenticated and getattr(request.user, 'is_platform_admin', False):
+        if request.user.is_authenticated and getattr(request.user, "is_platform_admin", False):
             return
         result = check_virtualization_enabled(request)
         if isinstance(result, Response):
@@ -270,7 +270,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
 
     def get_tenant_from_request(self):
         """Get tenant from request using central helper (Phase 10.1.8)"""
-        tenant_id, tenant = get_request_tenant(self.request)
+        _tenant_id, tenant = get_request_tenant(self.request)
         return tenant
 
     def _check_abac_policy(
@@ -329,7 +329,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             raise
         except Exception as e:
             logger.warning(
-                f"ABAC policy check failed: {str(e)}",
+                f"ABAC policy check failed: {e!s}",
                 extra={
                     "user_id": user_id,
                     "tenant_id": tenant_id,
@@ -583,7 +583,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         dataset_id = kwargs.get("id")
 
         # Check cross-tenant access using shared helper
-        other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
+        _other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
             dataset_id, request
         )
         if permission_error:
@@ -636,7 +636,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         dataset_id = kwargs.get("id")
 
         # Check cross-tenant access using shared helper
-        other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
+        _other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
             dataset_id, request
         )
         if permission_error:
@@ -798,7 +798,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         dataset_id = kwargs.get("id")
 
         # Check cross-tenant access using shared helper
-        other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
+        _other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
             dataset_id, request
         )
         if permission_error:
@@ -918,7 +918,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         dataset_id = id or request.parser_context.get("kwargs", {}).get("id")
 
         # Check cross-tenant access using shared helper
-        other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
+        _other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
             dataset_id, request
         )
         if permission_error:
@@ -1006,7 +1006,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         dataset_id = id or request.parser_context.get("kwargs", {}).get("id")
 
         # Check cross-tenant access using shared helper
-        other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
+        _other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
             dataset_id, request
         )
         if permission_error:
@@ -1081,18 +1081,19 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 from hub.apps.tenants.request_tenant import (
                     get_request_tenant_id,
                 )
+
                 consumer_tid = get_request_tenant_id(request)
                 if consumer_tid:
                     asset_id = getattr(
-                        other_tenant_dataset, "asset_id", None,
+                        other_tenant_dataset,
+                        "asset_id",
+                        None,
                     )
                     if asset_id:
                         require_entitlement(
                             consumer_tenant_id=consumer_tid,
                             asset_id=str(asset_id),
-                            provider_tenant_id=str(
-                                other_tenant_dataset.tenant_id
-                            ),
+                            provider_tenant_id=str(other_tenant_dataset.tenant_id),
                         )
                 virtual_dataset = other_tenant_dataset
             elif permission_error:
@@ -1410,7 +1411,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_tenant_from_request(self):
         """Get tenant from request using central helper"""
-        tenant_id, tenant = get_request_tenant(self.request)
+        _tenant_id, tenant = get_request_tenant(self.request)
         return tenant
 
     def retrieve(self, request, *args, **kwargs):
@@ -1420,7 +1421,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         GET /api/v1/virtualization/queries/{id}/
         """
         execution_id = kwargs.get("id")
-        tenant_id, tenant = get_request_tenant(request)
+        tenant_id, _tenant = get_request_tenant(request)
 
         # Rate limiting check
         allowed, rate_limit_results = check_rate_limit(request)
@@ -1453,7 +1454,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             raise exception
 
         # Check cross-tenant access using shared helper
-        other_tenant_execution, permission_error = get_execution_for_cross_tenant_check(
+        _other_tenant_execution, permission_error = get_execution_for_cross_tenant_check(
             execution_id, request
         )
         if permission_error:
@@ -1523,7 +1524,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         POST /api/v1/virtualization/queries/{id}/cancel/
         """
         execution_id = id or request.parser_context.get("kwargs", {}).get("id")
-        tenant_id, tenant = get_request_tenant(request)
+        tenant_id, _tenant = get_request_tenant(request)
 
         # Ensure user_id is provided
         if not request.user or not request.user.id:
@@ -1562,7 +1563,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             raise exception
 
         # Check cross-tenant access using shared helper
-        other_tenant_execution, permission_error = get_execution_for_cross_tenant_check(
+        _other_tenant_execution, permission_error = get_execution_for_cross_tenant_check(
             execution_id, request
         )
         if permission_error:
@@ -1760,7 +1761,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         Note: Using 'output_format' instead of 'format' to avoid DRF content negotiation conflict
         """
         execution_id = id or request.parser_context.get("kwargs", {}).get("id")
-        tenant_id, tenant = get_request_tenant(request)
+        tenant_id, _tenant = get_request_tenant(request)
 
         # Ensure user_id is provided
         if not request.user or not request.user.id:
@@ -1799,7 +1800,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             raise exception
 
         # Check cross-tenant access using shared helper
-        other_tenant_execution, permission_error = get_execution_for_cross_tenant_check(
+        _other_tenant_execution, permission_error = get_execution_for_cross_tenant_check(
             execution_id, request
         )
         if permission_error:
@@ -1995,7 +1996,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         GET /api/v1/virtualization/queries/{id}/progress/
         """
         execution_id = id or request.parser_context.get("kwargs", {}).get("id")
-        tenant_id, tenant = get_request_tenant(request)
+        tenant_id, _tenant = get_request_tenant(request)
 
         # Ensure user_id is provided
         if not request.user or not request.user.id:
@@ -2034,7 +2035,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             raise exception
 
         # Check cross-tenant access using shared helper
-        other_tenant_execution, permission_error = get_execution_for_cross_tenant_check(
+        _other_tenant_execution, permission_error = get_execution_for_cross_tenant_check(
             execution_id, request
         )
         if permission_error:
@@ -2156,7 +2157,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         from django.http import StreamingHttpResponse
 
         execution_id = id or request.parser_context.get("kwargs", {}).get("id")
-        tenant_id, tenant = get_request_tenant(request)
+        tenant_id, _tenant = get_request_tenant(request)
 
         # Ensure user_id is provided
         if not request.user or not request.user.id:
@@ -2195,7 +2196,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             raise exception
 
         # Check cross-tenant access using shared helper
-        other_tenant_execution, permission_error = get_execution_for_cross_tenant_check(
+        _other_tenant_execution, permission_error = get_execution_for_cross_tenant_check(
             execution_id, request
         )
         if permission_error:
@@ -2417,7 +2418,7 @@ class VirtualizationTopologyViewSet(viewsets.ViewSet):
 
     def get_tenant_from_request(self):
         """Get tenant from request using central helper (Phase 10.1.8)"""
-        tenant_id, tenant = get_request_tenant(self.request)
+        _tenant_id, tenant = get_request_tenant(self.request)
         return tenant
 
     def get_tenant_id_from_request(self):

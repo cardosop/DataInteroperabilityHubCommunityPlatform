@@ -12,6 +12,7 @@ the real Django template renderer (no mocks). The underlying
 tests must NOT actually hit AWS SES — the patch is the thinnest possible
 boundary around the network call, not around our own code paths.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,22 +28,26 @@ from django.test import TestCase
 
 def _create_tenant(name: str = "Wave 0 Notify Co"):
     from hub.apps.tenants.models import Tenant
+
     return Tenant.objects.create(name=name, slug=name.lower().replace(" ", "-"))
 
 
 def _create_user(email, tenant):
     from django.contrib.auth import get_user_model
+
     return get_user_model().objects.create(email=email, tenant=tenant)
 
 
 def _grant_admin(user, tenant):
     from hub.apps.users.models import Role, UserRole
+
     role, _ = Role.objects.get_or_create(tenant=tenant, name="TENANT_ADMIN")
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
 
 
 def _create_contract(tenant, *, hub_contract_json=None, name: str | None = None):
     from hub.apps.contracts.models import Contract
+
     return Contract.objects.create(
         tenant=tenant,
         original_spec_type="ODCS",
@@ -80,7 +85,6 @@ def _write_jsonl(tmp_path: Path, rows: list[dict]) -> Path:
 
 @pytest.mark.django_db(transaction=True)
 class NotifyCommandTests(TestCase):
-
     def _cleanup(self, tmp_path: Path):
         if tmp_path.exists():
             for p in tmp_path.iterdir():
@@ -154,9 +158,7 @@ class NotifyCommandTests(TestCase):
                     stdout=StringIO(),
                 )
 
-            recipients = sorted(
-                call.kwargs["to_email"] for call in mock_send.call_args_list
-            )
+            recipients = sorted(call.kwargs["to_email"] for call in mock_send.call_args_list)
             assert recipients == ["admin1@example.com", "admin2@example.com"]
 
             # Each call carries the canonical EmailType value.
@@ -187,7 +189,8 @@ class NotifyCommandTests(TestCase):
                     "wave0_send_structureless_notifications",
                     f"--input={artefact}",
                     f"--deadline={deadline}",
-                    stdout=out, stderr=err,
+                    stdout=out,
+                    stderr=err,
                 )
 
             # The admin tenant got an email; the no-admin tenant was
@@ -266,9 +269,7 @@ class NotifyCommandTests(TestCase):
             deadline = (date.today() + timedelta(days=14)).isoformat()
             audit_path = tmp_path / "audit.jsonl"
 
-            with patch(
-                "hub.apps.contracts.notifications.structureless.send_email_async"
-            ):
+            with patch("hub.apps.contracts.notifications.structureless.send_email_async"):
                 call_command(
                     "wave0_send_structureless_notifications",
                     f"--input={artefact}",
@@ -279,8 +280,7 @@ class NotifyCommandTests(TestCase):
 
             assert audit_path.exists()
             lines = [
-                json.loads(ln) for ln in audit_path.read_text().splitlines()
-                if ln.startswith("{")
+                json.loads(ln) for ln in audit_path.read_text().splitlines() if ln.startswith("{")
             ]
             assert lines, "audit JSONL must contain at least one record"
             r = lines[0]
@@ -337,12 +337,14 @@ class NotifyCommandTests(TestCase):
 
             err = StringIO()
             from django.core.management.base import CommandError
+
             with pytest.raises((CommandError, ValueError, SystemExit)):
                 call_command(
                     "wave0_send_structureless_notifications",
                     f"--input={artefact}",
                     "--deadline=not-a-date",
-                    stdout=StringIO(), stderr=err,
+                    stdout=StringIO(),
+                    stderr=err,
                 )
         finally:
             self._cleanup(tmp_path)
@@ -361,6 +363,7 @@ class NotifyCommandTests(TestCase):
             past = (date.today() - timedelta(days=1)).isoformat()
 
             from django.core.management.base import CommandError
+
             with pytest.raises((CommandError, SystemExit)):
                 call_command(
                     "wave0_send_structureless_notifications",

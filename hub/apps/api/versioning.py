@@ -7,8 +7,6 @@ Version management, backward compatibility, and deprecation handling.
 from __future__ import annotations
 
 import datetime
-from datetime import timedelta
-from typing import Any, Dict, List, Optional, Set
 
 import structlog
 from django.http import HttpRequest, HttpResponse
@@ -49,7 +47,7 @@ class APIVersion:
         return not self < other
 
     @classmethod
-    def parse(cls, version_str: str) -> Optional["APIVersion"]:
+    def parse(cls, version_str: str) -> APIVersion | None:
         """Parse version string (e.g., 'v1', 'v1.0', 'v1.0.0')"""
         try:
             # Remove 'v' prefix if present
@@ -64,7 +62,7 @@ class APIVersion:
         except (ValueError, IndexError):
             return None
 
-    def is_compatible_with(self, other: "APIVersion") -> bool:
+    def is_compatible_with(self, other: APIVersion) -> bool:
         """Check if this version is backward compatible with another"""
         # Same major version is compatible
         return self.major == other.major
@@ -78,9 +76,9 @@ class DeprecatedEndpoint:
         path: str,
         method: str,
         deprecated_since: str,
-        sunset_date: Optional[str] = None,
-        replacement: Optional[str] = None,
-        migration_guide: Optional[str] = None,
+        sunset_date: str | None = None,
+        replacement: str | None = None,
+        migration_guide: str | None = None,
     ):
         self.path = path
         self.method = method
@@ -99,16 +97,16 @@ class DeprecatedEndpoint:
             now = timezone.now()
             # Ensure both datetimes are timezone-aware for comparison
             if timezone.is_naive(now):
-                now = timezone.make_aware(now, datetime.timezone.utc)
+                now = timezone.make_aware(now, datetime.UTC)
             if timezone.is_naive(sunset):
-                sunset = timezone.make_aware(sunset, datetime.timezone.utc)
+                sunset = timezone.make_aware(sunset, datetime.UTC)
             return now > sunset
         except (ValueError, AttributeError):
             return False
 
     def get_warning_header(self) -> str:
         """Generate deprecation warning header value"""
-        parts = [f'299 - "Deprecated API"']
+        parts = ['299 - "Deprecated API"']
 
         if self.sunset_date:
             parts.append(f'sunset="{self.sunset_date}"')
@@ -131,10 +129,10 @@ class APIVersionManager:
     SUPPORTED_VERSIONS = [APIVersion(1, 0, 0)]
 
     # Deprecated endpoints registry
-    DEPRECATED_ENDPOINTS: Dict[str, DeprecatedEndpoint] = {}
+    DEPRECATED_ENDPOINTS: dict[str, DeprecatedEndpoint] = {}
 
     @classmethod
-    def get_version_from_path(cls, path: str) -> Optional[APIVersion]:
+    def get_version_from_path(cls, path: str) -> APIVersion | None:
         """Extract API version from URL path"""
         # Path format: /api/v1/...
         parts = path.strip("/").split("/")
@@ -146,7 +144,7 @@ class APIVersionManager:
         return None
 
     @classmethod
-    def get_version_from_header(cls, request: HttpRequest) -> Optional[APIVersion]:
+    def get_version_from_header(cls, request: HttpRequest) -> APIVersion | None:
         """
         Extract API version from Accept header.
 
@@ -210,7 +208,7 @@ class APIVersionManager:
         cls.DEPRECATED_ENDPOINTS[key] = endpoint
 
     @classmethod
-    def get_deprecated_endpoint(cls, path: str, method: str) -> Optional[DeprecatedEndpoint]:
+    def get_deprecated_endpoint(cls, path: str, method: str) -> DeprecatedEndpoint | None:
         """Get deprecated endpoint info"""
         key = f"{method}:{path}"
         return cls.DEPRECATED_ENDPOINTS.get(key)
@@ -246,7 +244,7 @@ class APIVersionManager:
     @classmethod
     def check_backward_compatibility(
         cls, request_version: APIVersion, endpoint_version: APIVersion
-    ) -> tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """
         Check backward compatibility between request and endpoint versions.
 
@@ -297,7 +295,6 @@ class APIVersionMiddleware:
 
         # Check if version is supported
         if not APIVersionManager.is_version_supported(version):
-
             return Response(
                 {
                     "error": {
@@ -327,6 +324,7 @@ class APIVersionMiddleware:
         # Handle None response (root cause fix: test passes None)
         if response is None:
             from django.http import HttpResponse
+
             response = HttpResponse()
 
         # Get request version

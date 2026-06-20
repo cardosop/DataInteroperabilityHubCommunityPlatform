@@ -1,0 +1,138 @@
+# Auto-generated from frontend/e2e/personas/*.spec.ts import statements.
+# Regenerate: python scripts/extract_persona_journey_mapping.py
+# Generated: Phase 312.5.7
+
+mapping:
+  auditor:
+    - JOURNEY-AUD-001
+    - JOURNEY-AUD-002
+    - JOURNEY-AUD-003
+    - JOURNEY-AUD-004
+    - JOURNEY-AUD-005
+    - JOURNEY-AUD-006
+  community_manager:
+    - JOURNEY-CM-001
+    - JOURNEY-CM-002
+    - JOURNEY-CM-003
+    - JOURNEY-CM-004
+  compliance_officer:
+    - JOURNEY-CPO-001
+    - JOURNEY-CPO-002
+    - JOURNEY-CPO-003
+    - JOURNEY-CPO-004
+    - JOURNEY-CPO-005
+    - JOURNEY-CPO-006
+    - JOURNEY-CPO-007
+    - JOURNEY-CPO-008
+    - JOURNEY-CPO-009
+    - JOURNEY-CPO-010
+  data_analyst:
+    - JOURNEY-DA-001
+    - JOURNEY-DA-002
+    - JOURNEY-DA-003
+    - JOURNEY-DA-004
+  data_consumer:
+    - JOURNEY-DC-001
+    - JOURNEY-DC-002
+    - JOURNEY-DC-003
+    - JOURNEY-DC-004
+    - JOURNEY-DC-005
+    - JOURNEY-DC-006
+    - JOURNEY-DC-007
+    - JOURNEY-DC-008
+    - JOURNEY-DC-009
+    - JOURNEY-DC-010
+    - JOURNEY-DC-011
+    - JOURNEY-DC-012
+    - JOURNEY-DC-013
+    - JOURNEY-DC-014
+    - JOURNEY-DC-015
+  data_engineer:
+    - JOURNEY-DE-001
+    - JOURNEY-DE-002
+    - JOURNEY-DE-003
+    - JOURNEY-DE-004
+    - JOURNEY-DE-005
+    - JOURNEY-DE-006
+    - JOURNEY-DE-007
+    - JOURNEY-DE-008
+    - JOURNEY-DE-009
+    - JOURNEY-DE-010
+    - JOURNEY-DE-011
+    - JOURNEY-DE-012
+    - JOURNEY-DE-013
+    - JOURNEY-DE-014
+  data_mesh_domain_owner:
+    - JOURNEY-DMO-001
+    - JOURNEY-DMO-002
+    - JOURNEY-DMO-003
+    - JOURNEY-DMO-004
+    - JOURNEY-DMO-005
+  data_product_owner:
+    - JOURNEY-DPO-001
+    - JOURNEY-DPO-002
+    - JOURNEY-DPO-003
+    - JOURNEY-DPO-004
+    - JOURNEY-DPO-005
+    - JOURNEY-DPO-006
+    - JOURNEY-DPO-007
+    - JOURNEY-DPO-008
+    - JOURNEY-DPO-009
+    - JOURNEY-DPO-010
+    - JOURNEY-DPO-011
+    - JOURNEY-DPO-012
+    - JOURNEY-DPO-013
+    - JOURNEY-DPO-014
+    - JOURNEY-DPO-015
+    - JOURNEY-DPO-016
+    - JOURNEY-DPO-017
+    - JOURNEY-MP-001
+    - JOURNEY-MP-002
+    - JOURNEY-MP-003
+    - JOURNEY-MP-004
+    - JOURNEY-MP-005
+    - JOURNEY-MP-006
+    - JOURNEY-MP-007
+  data_scientist:
+    - JOURNEY-DS-001
+    - JOURNEY-DS-002
+    - JOURNEY-DS-003
+    - JOURNEY-DS-004
+    - JOURNEY-DS-005
+  external_developer:
+    - JOURNEY-DEV-001
+    - JOURNEY-DEV-002
+    - JOURNEY-DEV-003
+    - JOURNEY-DEV-004
+    - JOURNEY-DEV-005
+    - JOURNEY-DEV-006
+    - JOURNEY-DEV-007
+    - JOURNEY-DEV-008
+    - JOURNEY-DEV-009
+  platform_admin:
+    - JOURNEY-PA-001
+    - JOURNEY-MPA-001
+    - JOURNEY-MPA-002
+    - JOURNEY-MPA-003
+    - JOURNEY-MPA-004
+    - JOURNEY-MPA-005
+    - JOURNEY-MPA-006
+    - JOURNEY-MPA-007
+    - JOURNEY-MPA-008
+    - JOURNEY-MPA-009
+    - JOURNEY-PA-010
+  tenant_admin:
+    - JOURNEY-TA-001
+    - JOURNEY-TA-002
+    - JOURNEY-TA-003
+    - JOURNEY-TA-004
+    - JOURNEY-TA-005
+    - JOURNEY-TA-006
+    - JOURNEY-TA-007
+    - JOURNEY-TA-008
+    - JOURNEY-MP-001
+  visitor:
+    - JOURNEY-AUTH-001
+    - JOURNEY-AUTH-002
+    - JOURNEY-AUTH-003
+    - JOURNEY-AUTH-004

@@ -1,7 +1,9 @@
 """Marketplace discovery and federated asset methods for MarketplaceIntegrationService."""
-import structlog
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+import contextlib
+from typing import TYPE_CHECKING, Any, Optional
+
+import structlog
 from django.db import transaction
 from django.utils import timezone
 
@@ -38,7 +40,7 @@ class DiscoveryServiceMixin:
         asset_mapping: "MarketplaceAssetMapping",
         connection: MarketplaceConnection,
         consumer_tenant_id: str,
-        actor_user_id: Optional[str],
+        actor_user_id: str | None,
         data_strategy: str,
         cross_region_consent: bool,
     ) -> None:
@@ -86,7 +88,7 @@ class DiscoveryServiceMixin:
 
             try:
                 actor_user = get_user_model().objects.get(id=actor_user_id)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 actor_user = None  # best-effort; not load-bearing
 
         asset_key = (
@@ -94,9 +96,7 @@ class DiscoveryServiceMixin:
             or (asset_mapping.asset_data or {}).get("id")
             or "unknown"
         )
-        marketplace_type = (
-            (asset_mapping.source_metadata or {}).get("marketplace_type")
-        )
+        marketplace_type = (asset_mapping.source_metadata or {}).get("marketplace_type")
 
         # ---- Gate 1: tenant flag ---------------------------------
         if not consumer_tenant.federated_import_enabled:
@@ -118,7 +118,7 @@ class DiscoveryServiceMixin:
                     result="FAILURE",
                     details=details,
                 )
-            except Exception as audit_exc:  # noqa: BLE001
+            except Exception as audit_exc:
                 logger.warning(
                     "federated_import_rejection_audit_emit_failed",
                     extra={"error": str(audit_exc), **details},
@@ -134,9 +134,7 @@ class DiscoveryServiceMixin:
             )
 
         # ---- Gate 2: cross-region consent ------------------------
-        source_tenant_id = (
-            (asset_mapping.source_metadata or {}).get("source_tenant_id")
-        )
+        source_tenant_id = (asset_mapping.source_metadata or {}).get("source_tenant_id")
         if source_tenant_id:
             try:
                 source_tenant = Tenant.all_objects.get(id=source_tenant_id)
@@ -188,8 +186,8 @@ class DiscoveryServiceMixin:
                             resource_id=None,
                             result="FAILURE",
                             details=details,
-                            )
-                    except Exception as audit_exc:  # noqa: BLE001
+                        )
+                    except Exception as audit_exc:
                         logger.warning(
                             "cross_region_rejection_audit_emit_failed",
                             extra={"error": str(audit_exc), **details},
@@ -210,14 +208,14 @@ class DiscoveryServiceMixin:
         self,
         asset_mapping: "MarketplaceAssetMapping",
         connection: MarketplaceConnection,
-        sync_job: Optional[MarketplaceSyncJob] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request: Optional[Any] = None,
+        sync_job: MarketplaceSyncJob | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request: Any | None = None,
         skip_resource_downloads: bool = False,
         skip_semantic_mapping: bool = False,
         data_strategy: str = "METADATA_ONLY",
-        download_resources: Optional[List[str]] = None,
+        download_resources: list[str] | None = None,
         cross_region_consent: bool = False,
     ) -> "Asset":
         """
@@ -299,7 +297,6 @@ class DiscoveryServiceMixin:
         )
         from hub.apps.files.models import File, FileStatus
         from hub.apps.files.storage import S3StorageClient
-        from hub.apps.integrations.factory import MarketplaceConnectorFactory
         from hub.apps.observability.span_instrumentation import (
             add_span_attributes,
             create_span,
@@ -444,7 +441,8 @@ class DiscoveryServiceMixin:
                         description=asset_description,
                         domain=asset_domain,
                         status=AssetStatus.DRAFT,  # Changed from ACTIVE to DRAFT - will be activated after workflow validation
-                        visibility=AssetVisibility.PUBLIC,
+                        # visibility removed per D250.4 — derived from status;
+                        # PUBLIC visibility requires status=PUBLIC, set during activation
                         source_type=AssetSourceType.FEDERATED,
                         source_metadata=source_metadata,
                         data_strategy=asset_data_strategy,
@@ -477,7 +475,7 @@ class DiscoveryServiceMixin:
                     _src_tenant_uuid = source_metadata.get("source_tenant_id")
                     for resource in asset_mapping.resources:
                         # Create ExternalResourceReference record
-                        external_resource_ref, created = (
+                        _external_resource_ref, _created = (
                             ExternalResourceReference.objects.get_or_create(
                                 asset=asset,
                                 resource_id=resource.resource_id,
@@ -524,14 +522,18 @@ class DiscoveryServiceMixin:
 
                 # Check if ODPS contract already exists BEFORE creating
                 existing_odps = (
-                    asset.contracts.filter(tenant=tenant_obj, original_spec_type=OriginalSpecType.ODPS)
+                    asset.contracts.filter(
+                        tenant=tenant_obj, original_spec_type=OriginalSpecType.ODPS
+                    )
                     .order_by("-version")
                     .first()
                 )
 
                 if existing_odps:
                     odps_contract = existing_odps
-                    logger.debug(f"ODPS contract already exists for asset {asset.id}, using existing")
+                    logger.debug(
+                        f"ODPS contract already exists for asset {asset.id}, using existing"
+                    )
                 else:
                     # Always create ODPS contract, even if odps_metadata is None
                     odps_contract = self._create_odps_contract_from_metadata(
@@ -547,14 +549,18 @@ class DiscoveryServiceMixin:
                 # STEP 4: Create ODCS Contract with schema hints from external resources (ALWAYS)
                 # Check if ODCS contract already exists BEFORE creating
                 existing_odcs = (
-                    asset.contracts.filter(tenant=tenant_obj, original_spec_type=OriginalSpecType.ODCS)
+                    asset.contracts.filter(
+                        tenant=tenant_obj, original_spec_type=OriginalSpecType.ODCS
+                    )
                     .order_by("-version")
                     .first()
                 )
 
                 if existing_odcs:
                     odcs_contract = existing_odcs
-                    logger.debug(f"ODCS contract already exists for asset {asset.id}, using existing")
+                    logger.debug(
+                        f"ODCS contract already exists for asset {asset.id}, using existing"
+                    )
                 else:
                     odcs_contract = self._create_odcs_contract_from_metadata(
                         asset=asset,
@@ -588,11 +594,13 @@ class DiscoveryServiceMixin:
                             "test" in sys.argv
                             or "pytest" in sys.modules
                             or "unittest" in sys.modules
-                            or hasattr(sys, "_getframe")
-                            and any(
-                                "test" in str(f.filename).lower()
-                                for f in [sys._getframe(i) for i in range(10)]
-                                if f
+                            or (
+                                hasattr(sys, "_getframe")
+                                and any(
+                                    "test" in str(f.filename).lower()
+                                    for f in [sys._getframe(i) for i in range(10)]
+                                    if f
+                                )
                             )
                         )
 
@@ -619,7 +627,9 @@ class DiscoveryServiceMixin:
                                     exc_info=True,
                                 )
                                 try:
-                                    return map_contract_to_semantic(odps_contract, tenant=tenant_obj)
+                                    return map_contract_to_semantic(
+                                        odps_contract, tenant=tenant_obj
+                                    )
                                 except Exception as e:
                                     logger.warning(
                                         f"ODPS contract semantic mapping failed: {e}", exc_info=True
@@ -740,7 +750,8 @@ class DiscoveryServiceMixin:
                                     f"resource_{resource.resource_id}_{threading.current_thread().ident}",
                                 )
                                 downloaded_path = connector.download_resource(
-                                    resource_id=resource.resource_id, destination_path=destination_path
+                                    resource_id=resource.resource_id,
+                                    destination_path=destination_path,
                                 )
 
                                 # Read downloaded file
@@ -804,9 +815,9 @@ class DiscoveryServiceMixin:
                                 from django.db.models import Max
 
                                 max_version = (
-                                    Dataset.objects.filter(tenant=tenant_obj, asset=asset).aggregate(
-                                        max_version=Max("version")
-                                    )["max_version"]
+                                    Dataset.objects.filter(
+                                        tenant=tenant_obj, asset=asset
+                                    ).aggregate(max_version=Max("version"))["max_version"]
                                     or 0
                                 )
                                 next_version = max_version + 1
@@ -853,11 +864,13 @@ class DiscoveryServiceMixin:
                             "test" in sys.argv
                             or "pytest" in sys.modules
                             or "unittest" in sys.modules
-                            or hasattr(sys, "_getframe")
-                            and any(
-                                "test" in str(f.filename).lower()
-                                for f in [sys._getframe(i) for i in range(10)]
-                                if f
+                            or (
+                                hasattr(sys, "_getframe")
+                                and any(
+                                    "test" in str(f.filename).lower()
+                                    for f in [sys._getframe(i) for i in range(10)]
+                                    if f
+                                )
                             )
                         )
 
@@ -921,7 +934,9 @@ class DiscoveryServiceMixin:
                                 "activated": workflow_results.get("activated"),
                                 "contract_validated": workflow_results.get("contract_validated"),
                                 "dq_checks_run": workflow_results.get("dq_checks_run"),
-                                "compliance_checks_run": workflow_results.get("compliance_checks_run"),
+                                "compliance_checks_run": workflow_results.get(
+                                    "compliance_checks_run"
+                                ),
                                 "indexed": workflow_results.get("indexed"),
                                 "notifications_sent": workflow_results.get("notifications_sent"),
                                 "errors": workflow_results.get("errors", []),
@@ -1006,10 +1021,9 @@ class DiscoveryServiceMixin:
                 # that touches the DB can proceed.  The data mutations
                 # were already rolled back by the savepoint.
                 from django.db import transaction as _tx
-                try:
+
+                with contextlib.suppress(Exception):
                     _tx.set_rollback(False)
-                except Exception:
-                    pass
                 logger.error(
                     f"Unexpected error creating federated asset with contracts: {e}",
                     exc_info=True,
@@ -1034,10 +1048,10 @@ class DiscoveryServiceMixin:
     def _create_odps_contract_from_metadata(
         self,
         asset: "Asset",
-        odps_metadata: Optional[Dict[str, Any]],
+        odps_metadata: dict[str, Any] | None,
         tenant_obj: "Tenant",
         user_obj,
-        source_metadata: Dict[str, Any],
+        source_metadata: dict[str, Any],
     ) -> "Contract":
         """
         Create ODPS contract from metadata dictionary.
@@ -1220,11 +1234,11 @@ class DiscoveryServiceMixin:
     def _create_odcs_contract_from_metadata(
         self,
         asset: "Asset",
-        odcs_metadata: Optional[Dict[str, Any]],
+        odcs_metadata: dict[str, Any] | None,
         tenant_obj: "Tenant",
         user_obj,
-        source_metadata: Dict[str, Any],
-        external_resources: Optional[List[Dict[str, Any]]] = None,
+        source_metadata: dict[str, Any],
+        external_resources: list[dict[str, Any]] | None = None,
     ) -> "Contract":
         """
         Create ODCS contract from metadata or with defaults.
@@ -1462,7 +1476,7 @@ class DiscoveryServiceMixin:
             odcs_contract.save(update_fields=["hub_contract_json"])
 
     def _update_odcs_schema_from_inferred_schema(
-        self, odcs_contract: "Contract", schema_json: Dict[str, Any]
+        self, odcs_contract: "Contract", schema_json: dict[str, Any]
     ):
         """Update ODCS contract schema fields from inferred schema."""
         if not odcs_contract.hub_contract_json:
@@ -1510,11 +1524,11 @@ class DiscoveryServiceMixin:
         asset: "Asset",
         odps_contract: Optional["Contract"],
         odcs_contract: Optional["Contract"],
-        created_datasets: List,
+        created_datasets: list,
         tenant_obj: "Tenant",
         user_obj,
         data_strategy: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Execute federated asset creation workflow.
 
@@ -1673,10 +1687,7 @@ class DiscoveryServiceMixin:
                     # Activate contracts if validation passed
                     if contract_validated:
                         from hub.apps.contracts.models import (
-                            Contract,
                             ContractStatus,
-                            NormalizationStatus,
-                            ValidationStatus,
                         )
 
                         # Refresh contracts from DB to get updated validation_status
@@ -1705,7 +1716,7 @@ class DiscoveryServiceMixin:
                                     extra={"contract_id": str(contract.id), "reason": reason},
                                 )
                 except Exception as e:
-                    error_msg = f"Contract validation failed: {str(e)}"
+                    error_msg = f"Contract validation failed: {e!s}"
                     errors.append(error_msg)
                     logger.error(error_msg, exc_info=True)
                     if step:
@@ -1737,7 +1748,7 @@ class DiscoveryServiceMixin:
                         dq_checks_run = not result.get("skipped", False)
                         execution_results["dq_checks_run"] = dq_checks_run
                     except Exception as e:
-                        error_msg = f"DQ checks failed: {str(e)}"
+                        error_msg = f"DQ checks failed: {e!s}"
                         errors.append(error_msg)
                         logger.error(error_msg, exc_info=True)
                         if step:
@@ -1769,7 +1780,7 @@ class DiscoveryServiceMixin:
                         compliance_checks_run = not result.get("skipped", False)
                         execution_results["compliance_checks_run"] = compliance_checks_run
                     except Exception as e:
-                        error_msg = f"Compliance checks failed: {str(e)}"
+                        error_msg = f"Compliance checks failed: {e!s}"
                         errors.append(error_msg)
                         logger.error(error_msg, exc_info=True)
                         if step:
@@ -1805,7 +1816,7 @@ class DiscoveryServiceMixin:
                     warnings.extend(validation_result.warnings)
                     logger.warning(error_msg)
             except Exception as e:
-                error_msg = f"Business rules validation failed: {str(e)}"
+                error_msg = f"Business rules validation failed: {e!s}"
                 errors.append(error_msg)
                 logger.error(error_msg, exc_info=True)
 
@@ -1828,7 +1839,7 @@ class DiscoveryServiceMixin:
                     activated = result.get("activated", False)
                     execution_results["activated"] = activated
                 except Exception as e:
-                    error_msg = f"Asset activation failed: {str(e)}"
+                    error_msg = f"Asset activation failed: {e!s}"
                     errors.append(error_msg)
                     logger.error(error_msg, exc_info=True)
                     if step:
@@ -1852,7 +1863,7 @@ class DiscoveryServiceMixin:
                 indexed = result.get("indexed", False)
                 execution_results["indexed"] = indexed
             except Exception as e:
-                error_msg = f"Search indexing failed: {str(e)}"
+                error_msg = f"Search indexing failed: {e!s}"
                 errors.append(error_msg)
                 logger.error(error_msg, exc_info=True)
                 if step:
@@ -1878,7 +1889,7 @@ class DiscoveryServiceMixin:
                 notifications_sent = result.get("notifications_sent", False)
                 execution_results["notifications_sent"] = notifications_sent
             except Exception as e:
-                error_msg = f"Notification sending failed: {str(e)}"
+                error_msg = f"Notification sending failed: {e!s}"
                 errors.append(error_msg)
                 logger.error(error_msg, exc_info=True)
                 if step:
@@ -1893,7 +1904,7 @@ class DiscoveryServiceMixin:
             workflow_instance.save(update_fields=["status", "completed_at", "output_data"])
 
         except Exception as e:
-            error_msg = f"Workflow execution failed: {str(e)}"
+            error_msg = f"Workflow execution failed: {e!s}"
             errors.append(error_msg)
             logger.error(error_msg, exc_info=True)
             if workflow_instance:

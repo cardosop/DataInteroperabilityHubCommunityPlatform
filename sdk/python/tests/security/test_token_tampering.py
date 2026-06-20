@@ -10,15 +10,19 @@ Verifies that mutated/fabricated JWTs are rejected with 401.
 
 import base64
 import json
+
 import requests
+
 from tests.use_cases._api_helpers import api_base_url
 
 
 def _fabricate_jwt(payload_overrides: dict | None = None) -> str:
     """Build a syntactically valid but unsigned JWT."""
-    header = base64.urlsafe_b64encode(
-        json.dumps({"alg": "HS256", "typ": "JWT"}).encode()
-    ).rstrip(b"=").decode()
+    header = (
+        base64.urlsafe_b64encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+        .rstrip(b"=")
+        .decode()
+    )
     payload = {
         "sub": "fake-user-id",
         "exp": 9999999999,
@@ -27,9 +31,7 @@ def _fabricate_jwt(payload_overrides: dict | None = None) -> str:
     }
     if payload_overrides:
         payload.update(payload_overrides)
-    payload_b64 = base64.urlsafe_b64encode(
-        json.dumps(payload).encode()
-    ).rstrip(b"=").decode()
+    payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).rstrip(b"=").decode()
     sig = base64.urlsafe_b64encode(b"fakesignature").rstrip(b"=").decode()
     return f"{header}.{payload_b64}.{sig}"
 
@@ -42,9 +44,7 @@ def test_fabricated_jwt_returns_401():
         headers={"Authorization": f"Bearer {token}"},
         timeout=15,
     )
-    assert resp.status_code == 401, (
-        f"Fabricated JWT returned {resp.status_code}, expected 401"
-    )
+    assert resp.status_code == 401, f"Fabricated JWT returned {resp.status_code}, expected 401"
 
 
 def test_tampered_payload_returns_401():
@@ -60,12 +60,16 @@ def test_tampered_payload_returns_401():
 
 def test_empty_signature_returns_401():
     """JWT with empty signature segment must be rejected."""
-    header = base64.urlsafe_b64encode(
-        json.dumps({"alg": "none", "typ": "JWT"}).encode()
-    ).rstrip(b"=").decode()
-    payload = base64.urlsafe_b64encode(
-        json.dumps({"sub": "admin", "exp": 9999999999}).encode()
-    ).rstrip(b"=").decode()
+    header = (
+        base64.urlsafe_b64encode(json.dumps({"alg": "none", "typ": "JWT"}).encode())
+        .rstrip(b"=")
+        .decode()
+    )
+    payload = (
+        base64.urlsafe_b64encode(json.dumps({"sub": "admin", "exp": 9999999999}).encode())
+        .rstrip(b"=")
+        .decode()
+    )
     token = f"{header}.{payload}."
     resp = requests.get(
         f"{api_base_url()}/auth/me/",
@@ -81,12 +85,16 @@ def test_alg_none_with_signature_returns_401():
     Some vulnerable JWT libraries accept ``alg: none`` even when a
     signature is present, bypassing verification entirely.
     """
-    header = base64.urlsafe_b64encode(
-        json.dumps({"alg": "none", "typ": "JWT"}).encode()
-    ).rstrip(b"=").decode()
-    payload = base64.urlsafe_b64encode(
-        json.dumps({"sub": "admin", "exp": 9999999999}).encode()
-    ).rstrip(b"=").decode()
+    header = (
+        base64.urlsafe_b64encode(json.dumps({"alg": "none", "typ": "JWT"}).encode())
+        .rstrip(b"=")
+        .decode()
+    )
+    payload = (
+        base64.urlsafe_b64encode(json.dumps({"sub": "admin", "exp": 9999999999}).encode())
+        .rstrip(b"=")
+        .decode()
+    )
     # Non-empty signature with alg=none — must still be rejected
     sig = base64.urlsafe_b64encode(b"malicious-sig").rstrip(b"=").decode()
     token = f"{header}.{payload}.{sig}"
@@ -107,9 +115,7 @@ def test_truncated_token_returns_401():
         headers={"Authorization": "Bearer eyJhbGciOiJSUzI1NiJ9"},
         timeout=15,
     )
-    assert resp.status_code == 401, (
-        f"Truncated JWT returned {resp.status_code}, expected 401"
-    )
+    assert resp.status_code == 401, f"Truncated JWT returned {resp.status_code}, expected 401"
 
 
 def test_real_token_payload_tampering_returns_401():
@@ -141,9 +147,7 @@ def test_real_token_payload_tampering_returns_401():
     # Escalate privileges in the payload
     payload["roles"] = ["PLATFORM_ADMIN"]
     payload["is_platform_admin"] = True
-    new_payload_b64 = base64.urlsafe_b64encode(
-        json.dumps(payload).encode()
-    ).rstrip(b"=").decode()
+    new_payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).rstrip(b"=").decode()
 
     # Reassemble with the ORIGINAL (now-invalid) signature
     tampered = f"{header_b64}.{new_payload_b64}.{sig_b64}"

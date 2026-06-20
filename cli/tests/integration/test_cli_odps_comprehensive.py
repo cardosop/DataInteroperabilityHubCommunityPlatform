@@ -12,23 +12,27 @@ These tests require:
 To run:
     pytest cli/tests/integration/test_cli_odps_comprehensive.py -v
 """
-import pytest
+
 import json
 import os
-import uuid
-import tempfile
 import subprocess
-from pathlib import Path
+import tempfile
+import uuid
+
+import pytest
 from click.testing import CliRunner
-from datahub_cli.main import cli
 from datahub_cli.config import config
+from datahub_cli.main import cli
 
 
 def _check_api_available():
     """Check if API service is available"""
     try:
         import requests
-        response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2)
+
+        response = requests.get(
+            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
+        )
         return response.status_code < 600
     except Exception:
         return False
@@ -48,10 +52,10 @@ def setup_config():
 
     # Try to get API key from environment, config, or create one
     api_key = (
-        os.environ.get('DATAHUB_API_KEY') or
-        os.environ.get('TEST_API_KEY') or
-        config.get_api_key() or
-        _create_test_api_key()
+        os.environ.get("DATAHUB_API_KEY")
+        or os.environ.get("TEST_API_KEY")
+        or config.get_api_key()
+        or _create_test_api_key()
     )
 
     if api_key:
@@ -107,34 +111,37 @@ print(api_key_value)
 """
     try:
         result = subprocess.run(
-            ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'hub/manage.py', 'shell'],
+            ["docker", "compose", "exec", "-T", "api-service", "python", "hub/manage.py", "shell"],
+            check=False,
             input=django_shell_script,
             text=True,
             capture_output=True,
             timeout=30,
-            cwd='/home/ph/Desktop/DataInteroperabilityHub'
+            cwd="/home/ph/Desktop/DataInteroperabilityHub",
         )
 
         if result.returncode == 0:
             # Extract API key from output
             # Look for lines that match API key pattern (long alphanumeric strings)
-            output_lines = result.stdout.strip().split('\n')
+            output_lines = result.stdout.strip().split("\n")
             for line in reversed(output_lines):
                 line = line.strip()
                 # Skip log lines, JSON lines, and other noise
-                if (line and
-                    len(line) > 30 and  # API keys are typically 40+ characters
-                    not line.startswith('{') and
-                    not line.startswith('"') and
-                    not 'timestamp' in line.lower() and
-                    not 'logger' in line.lower() and
-                    not 'level' in line.lower() and
-                    not 'message' in line.lower() and
-                    ' ' not in line and
-                    ':' not in line and
-                    '/' not in line):
+                if (
+                    line
+                    and len(line) > 30  # API keys are typically 40+ characters
+                    and not line.startswith("{")
+                    and not line.startswith('"')
+                    and "timestamp" not in line.lower()
+                    and "logger" not in line.lower()
+                    and "level" not in line.lower()
+                    and "message" not in line.lower()
+                    and " " not in line
+                    and ":" not in line
+                    and "/" not in line
+                ):
                     # Additional validation: check if it looks like an API key
-                    cleaned = line.replace('-', '').replace('_', '')
+                    cleaned = line.replace("-", "").replace("_", "")
                     if cleaned.isalnum():
                         return line
     except Exception:
@@ -155,7 +162,7 @@ def sample_odps_json_file():
                     "name": "Test Product",
                     "description": "A test product for CLI testing",
                     "productVersion": "1.0.0",
-                    "category": "Data Product"
+                    "category": "Data Product",
                 }
             },
             "contract": {
@@ -165,15 +172,7 @@ def sample_odps_json_file():
                     "id": "test-contract",
                     "name": "test-contract",
                     "version": "1.0.0",
-                    "schema": {
-                        "fields": [
-                            {
-                                "name": "id",
-                                "type": "string",
-                                "nullable": False
-                            }
-                        ]
-                    }
+                    "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                 }
             },
             "pricing": {
@@ -183,21 +182,17 @@ def sample_odps_json_file():
                         "name": "Basic Plan",
                         "price": 99.99,
                         "currency": "USD",
-                        "billingPeriod": "monthly"
+                        "billingPeriod": "monthly",
                     }
                 ]
             },
             "accessMethods": [
-                {
-                    "type": "API",
-                    "endpoint": "https://api.example.com/data",
-                    "protocol": "REST"
-                }
-            ]
-        }
+                {"type": "API", "endpoint": "https://api.example.com/data", "protocol": "REST"}
+            ],
+        },
     }
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(odps_data, f)
         temp_path = f.name
 
@@ -243,9 +238,9 @@ product:
     - type: API
       endpoint: https://api.example.com/data
       protocol: REST
-""".replace('{uuid}', uuid.uuid4().hex[:8])
+""".replace("{uuid}", uuid.uuid4().hex[:8])
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(yaml_content)
         temp_path = f.name
 
@@ -263,12 +258,18 @@ def created_odps_contract(sample_odps_json_file, setup_config):
     Handles async workflow execution by polling for completion.
     """
     runner = CliRunner()
-    result = runner.invoke(cli, [
-        'contracts', 'create-odps',
-        '--file', sample_odps_json_file,
-        '--extract-odcs',
-        '--output-format', 'json'
-    ])
+    result = runner.invoke(
+        cli,
+        [
+            "contracts",
+            "create-odps",
+            "--file",
+            sample_odps_json_file,
+            "--extract-odcs",
+            "--output-format",
+            "json",
+        ],
+    )
 
     if result.exit_code != 0:
         pytest.skip(f"Failed to create test ODPS contract: {result.output}")
@@ -276,70 +277,83 @@ def created_odps_contract(sample_odps_json_file, setup_config):
     try:
         output_data = json.loads(result.output)
         # CLI polls for completion, so response may contain contracts directly
-        if 'odps_contract' in output_data:
+        if "odps_contract" in output_data:
             # CLI already polled and completed - extract contract ID
-            odps_contract = output_data['odps_contract']
-            if isinstance(odps_contract, dict) and 'id' in odps_contract:
-                return odps_contract['id']
+            odps_contract = output_data["odps_contract"]
+            if isinstance(odps_contract, dict) and "id" in odps_contract:
+                return odps_contract["id"]
             elif isinstance(odps_contract, str):
                 return odps_contract
         # If workflow_instance_id present but no contracts yet, poll for completion
-        elif 'workflow_instance_id' in output_data:
-            workflow_instance_id = output_data['workflow_instance_id']
+        elif "workflow_instance_id" in output_data:
+            workflow_instance_id = output_data["workflow_instance_id"]
             # Poll for completion
             import time
+
             from datahub_cli.api_client import api_client
+
             max_wait = 300
             start_time = time.time()
             while time.time() - start_time < max_wait:
                 try:
-                    status_result = api_client.get(f'contracts/products/workflows/{workflow_instance_id}/status/')
-                    if status_result.get('status') == 'COMPLETED':
-                        odps_contract = status_result.get('odps_contract', {})
-                        if odps_contract and 'id' in odps_contract:
-                            return odps_contract['id']
-                    elif status_result.get('status') in ['FAILED', 'CANCELLED']:
-                        pytest.skip(f"Workflow {status_result.get('status')}: {status_result.get('message', 'Unknown error')}")
-                    time.sleep(2)
+                    status_result = api_client.get(
+                        f"contracts/products/workflows/{workflow_instance_id}/status/"
+                    )
+                    if status_result.get("status") == "COMPLETED":
+                        odps_contract = status_result.get("odps_contract", {})
+                        if odps_contract and "id" in odps_contract:
+                            return odps_contract["id"]
+                    elif status_result.get("status") in ["FAILED", "CANCELLED"]:
+                        pytest.skip(
+                            f"Workflow {status_result.get('status')}: {status_result.get('message', 'Unknown error')}"
+                        )
+                    time.sleep(2)  # noqa: sleep-needed — polling loop
                 except Exception as e:
-                    if 'not found' not in str(e).lower():
-                        time.sleep(2)
+                    if "not found" not in str(e).lower():
+                        time.sleep(2)  # noqa: sleep-needed — polling loop
                         continue
                     raise
             pytest.skip(f"Workflow did not complete within {max_wait} seconds")
         # Synchronous response (legacy) or direct ID
-        elif 'id' in output_data:
-            return output_data['id']
+        elif "id" in output_data:
+            return output_data["id"]
         else:
             pytest.skip(f"Unexpected response format: {result.output}")
     except json.JSONDecodeError:
         # Try to extract ID from table format output
         import re
+
         # Check for workflow instance ID first
-        workflow_match = re.search(r'Workflow Instance ID:\s*([a-f0-9-]+)', result.output)
+        workflow_match = re.search(r"Workflow Instance ID:\s*([a-f0-9-]+)", result.output)
         if workflow_match:
             workflow_instance_id = workflow_match.group(1)
             # Poll for completion
             import time
+
             from datahub_cli.api_client import api_client
+
             max_wait = 300
             start_time = time.time()
             while time.time() - start_time < max_wait:
                 try:
-                    status_result = api_client.get(f'contracts/products/workflows/{workflow_instance_id}/status/')
-                    if status_result.get('status') == 'COMPLETED':
-                        odps_contract = status_result.get('odps_contract', {})
-                        if odps_contract and 'id' in odps_contract:
-                            return odps_contract['id']
-                    elif status_result.get('status') in ['FAILED', 'CANCELLED']:
-                        pytest.skip(f"Workflow {status_result.get('status')}: {status_result.get('message', 'Unknown error')}")
-                    time.sleep(2)
+                    status_result = api_client.get(
+                        f"contracts/products/workflows/{workflow_instance_id}/status/"
+                    )
+                    if status_result.get("status") == "COMPLETED":
+                        odps_contract = status_result.get("odps_contract", {})
+                        if odps_contract and "id" in odps_contract:
+                            return odps_contract["id"]
+                    elif status_result.get("status") in ["FAILED", "CANCELLED"]:
+                        pytest.skip(
+                            f"Workflow {status_result.get('status')}: {status_result.get('message', 'Unknown error')}"
+                        )
+                    time.sleep(2)  # noqa: sleep-needed — polling loop
                 except Exception:
-                    time.sleep(2)
+                    time.sleep(2)  # noqa: sleep-needed — polling loop
                     continue
             pytest.skip(f"Workflow did not complete within {max_wait} seconds")
         # Try to find ODPS contract ID directly
-        match = re.search(r'ODPS Contract ID:\s*([a-f0-9-]+)', result.output)
+        match = re.search(r"ODPS Contract ID:\s*([a-f0-9-]+)", result.output)
         if match:
             return match.group(1)
         pytest.skip(f"Could not extract contract ID from: {result.output}")
@@ -354,48 +368,40 @@ def created_odcs_contract(setup_config):
         "id": f"test-odcs-{uuid.uuid4().hex[:8]}",
         "name": f"test-odcs-{uuid.uuid4().hex[:8]}",
         "version": "1.0.0",
-        "schema": {
-            "fields": [
-                {
-                    "name": "id",
-                    "type": "string"
-                }
-            ]
-        }
+        "schema": {"fields": [{"name": "id", "type": "string"}]},
     }
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(odcs_data, f)
         temp_path = f.name
 
     try:
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            'contracts', 'create',
-            '--file', temp_path,
-            '--format', 'json'
-        ])
+        result = runner.invoke(
+            cli, ["contracts", "create", "--file", temp_path, "--format", "json"]
+        )
 
         if result.exit_code != 0:
             pytest.skip(f"Failed to create test ODCS contract: {result.output}")
 
         try:
             # Filter out stderr messages (like "Auto-detected spec type: ODCS")
-            output_lines = result.output.strip().split('\n')
-            json_lines = [line for line in output_lines if line.strip().startswith('{')]
+            output_lines = result.output.strip().split("\n")
+            json_lines = [line for line in output_lines if line.strip().startswith("{")]
             if json_lines:
-                output_data = json.loads('\n'.join(json_lines))
+                output_data = json.loads("\n".join(json_lines))
             else:
                 # Try parsing entire output
                 output_data = json.loads(result.output)
-            return output_data.get('id')
+            return output_data.get("id")
         except json.JSONDecodeError:
             import re
+
             # Try to extract ID from output
             match = re.search(r'"id"\s*:\s*"([a-f0-9-]+)"', result.output)
             if match:
                 return match.group(1)
-            match = re.search(r'ID:\s*([a-f0-9-]+)', result.output)
+            match = re.search(r"ID:\s*([a-f0-9-]+)", result.output)
             if match:
                 return match.group(1)
             pytest.skip(f"Could not extract ODCS contract ID from: {result.output[:200]}")
@@ -413,84 +419,119 @@ class TestODPSCommandsComprehensive:
         runner = CliRunner()
 
         # Test with JSON output
-        result = runner.invoke(cli, [
-            'contracts', 'create-odps',
-            '--file', sample_odps_json_file,
-            '--extract-odcs',
-            '--output-format', 'json'
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "contracts",
+                "create-odps",
+                "--file",
+                sample_odps_json_file,
+                "--extract-odcs",
+                "--output-format",
+                "json",
+            ],
+        )
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
         output_data = json.loads(result.output)
-        assert 'odps_contract' in output_data or 'id' in output_data
-        if 'odps_contract' in output_data:
-            assert 'odcs_contract' in output_data  # Product-First flow creates both
+        assert "odps_contract" in output_data or "id" in output_data
+        if "odps_contract" in output_data:
+            assert "odcs_contract" in output_data  # Product-First flow creates both
 
         # Test with table output
-        result_table = runner.invoke(cli, [
-            'contracts', 'create-odps',
-            '--file', sample_odps_json_file,
-            '--extract-odcs',
-            '--output-format', 'table'
-        ])
+        result_table = runner.invoke(
+            cli,
+            [
+                "contracts",
+                "create-odps",
+                "--file",
+                sample_odps_json_file,
+                "--extract-odcs",
+                "--output-format",
+                "table",
+            ],
+        )
         assert result_table.exit_code == 0
-        assert 'ODPS Contract' in result_table.output or 'Contract created' in result_table.output
+        assert "ODPS Contract" in result_table.output or "Contract created" in result_table.output
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_create_odps_with_link_odcs(self, sample_odps_json_file, created_odcs_contract, setup_config):
+    def test_create_odps_with_link_odcs(
+        self, sample_odps_json_file, created_odcs_contract, setup_config
+    ):
         """Test `contracts create-odps --link-odcs <odcs_id>` command"""
         runner = CliRunner()
 
         # Get ODCS contract to extract its original_raw.id
         from datahub_cli.api_client import api_client
-        odcs_contract_data = api_client.get(f'contracts/{created_odcs_contract}/')
-        odcs_original_raw = json.loads(odcs_contract_data.get('original_raw', '{}'))
-        odcs_contract_id_in_spec = odcs_original_raw.get('id') or created_odcs_contract
-        odcs_contract_name_in_spec = odcs_original_raw.get('name') or odcs_contract_id_in_spec
+
+        odcs_contract_data = api_client.get(f"contracts/{created_odcs_contract}/")
+        odcs_original_raw = json.loads(odcs_contract_data.get("original_raw", "{}"))
+        odcs_contract_id_in_spec = odcs_original_raw.get("id") or created_odcs_contract
+        odcs_contract_name_in_spec = odcs_original_raw.get("name") or odcs_contract_id_in_spec
 
         # Update ODPS file to use the ODCS contract ID from original_raw
-        with open(sample_odps_json_file, 'r') as f:
+        with open(sample_odps_json_file) as f:
             odps_data = json.load(f)
 
         # Set product.contract.spec.id to match ODCS contract ID from original_raw
-        if 'product' in odps_data and 'contract' in odps_data['product'] and 'spec' in odps_data['product']['contract']:
-            odps_data['product']['contract']['spec']['id'] = odcs_contract_id_in_spec
-            odps_data['product']['contract']['spec']['name'] = odcs_contract_name_in_spec
+        if (
+            "product" in odps_data
+            and "contract" in odps_data["product"]
+            and "spec" in odps_data["product"]["contract"]
+        ):
+            odps_data["product"]["contract"]["spec"]["id"] = odcs_contract_id_in_spec
+            odps_data["product"]["contract"]["spec"]["name"] = odcs_contract_name_in_spec
 
         # Write updated ODPS to temp file
         import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(odps_data, f)
             updated_odps_file = f.name
 
         try:
-            result = runner.invoke(cli, [
-                'contracts', 'create-odps',
-                '--file', updated_odps_file,
-                '--link-odcs', created_odcs_contract,
-                '--output-format', 'json'
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "contracts",
+                    "create-odps",
+                    "--file",
+                    updated_odps_file,
+                    "--link-odcs",
+                    created_odcs_contract,
+                    "--output-format",
+                    "json",
+                ],
+            )
         finally:
             import os
+
             if os.path.exists(updated_odps_file):
                 os.unlink(updated_odps_file)
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
         output_data = json.loads(result.output)
-        assert 'id' in output_data
+        assert "id" in output_data
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
     def test_create_odps_with_version(self, sample_odps_json_file, setup_config):
         """Test `contracts create-odps --version` option"""
         runner = CliRunner()
 
-        result = runner.invoke(cli, [
-            'contracts', 'create-odps',
-            '--file', sample_odps_json_file,
-            '--extract-odcs',
-            '--version', '4.1',
-            '--output-format', 'json'
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "contracts",
+                "create-odps",
+                "--file",
+                sample_odps_json_file,
+                "--extract-odcs",
+                "--version",
+                "4.1",
+                "--output-format",
+                "json",
+            ],
+        )
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
 
@@ -499,13 +540,19 @@ class TestODPSCommandsComprehensive:
         """Test `contracts create-odps --no-resolve-external-refs` option"""
         runner = CliRunner()
 
-        result = runner.invoke(cli, [
-            'contracts', 'create-odps',
-            '--file', sample_odps_json_file,
-            '--extract-odcs',
-            '--no-resolve-external-refs',
-            '--output-format', 'json'
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "contracts",
+                "create-odps",
+                "--file",
+                sample_odps_json_file,
+                "--extract-odcs",
+                "--no-resolve-external-refs",
+                "--output-format",
+                "json",
+            ],
+        )
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
 
@@ -514,13 +561,20 @@ class TestODPSCommandsComprehensive:
         """Test `contracts create-odps` with YAML file"""
         runner = CliRunner()
 
-        result = runner.invoke(cli, [
-            'contracts', 'create-odps',
-            '--file', sample_odps_yaml_file,
-            '--extract-odcs',
-            '--format', 'YAML',
-            '--output-format', 'json'
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "contracts",
+                "create-odps",
+                "--file",
+                sample_odps_yaml_file,
+                "--extract-odcs",
+                "--format",
+                "YAML",
+                "--output-format",
+                "json",
+            ],
+        )
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
 
@@ -530,60 +584,83 @@ class TestODPSCommandsComprehensive:
         runner = CliRunner()
 
         # Test JSON output format
-        result = runner.invoke(cli, [
-            'contracts', 'export',
-            created_odps_contract,
-            '--format', 'odps',
-            '--output-format', 'json',
-            '--version', '4.1',
-            '--cli-format', 'json'
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "contracts",
+                "export",
+                created_odps_contract,
+                "--format",
+                "odps",
+                "--output-format",
+                "json",
+                "--version",
+                "4.1",
+                "--cli-format",
+                "json",
+            ],
+        )
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
         # Should output valid JSON
         try:
             exported_data = json.loads(result.output)
-            assert 'schema' in exported_data or 'product' in exported_data
+            assert "schema" in exported_data or "product" in exported_data
         except json.JSONDecodeError:
             pytest.fail(f"Export did not produce valid JSON: {result.output}")
 
         # Test YAML output format
-        result_yaml = runner.invoke(cli, [
-            'contracts', 'export',
-            created_odps_contract,
-            '--format', 'odps',
-            '--output-format', 'yaml',
-            '--version', '4.1',
-            '--cli-format', 'json'
-        ])
+        result_yaml = runner.invoke(
+            cli,
+            [
+                "contracts",
+                "export",
+                created_odps_contract,
+                "--format",
+                "odps",
+                "--output-format",
+                "yaml",
+                "--version",
+                "4.1",
+                "--cli-format",
+                "json",
+            ],
+        )
 
         assert result_yaml.exit_code == 0
-        assert 'schema' in result_yaml.output or 'product' in result_yaml.output
+        assert "schema" in result_yaml.output or "product" in result_yaml.output
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
     def test_download_odps_format(self, created_odps_contract, setup_config):
         """Test `contracts download <id> --format odps` command"""
         runner = CliRunner()
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as temp_file:
             temp_path = temp_file.name
 
         try:
-            result = runner.invoke(cli, [
-                'contracts', 'download',
-                created_odps_contract,
-                '--format', 'odps',
-                '--output-format', 'json',
-                '--output', temp_path
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "contracts",
+                    "download",
+                    created_odps_contract,
+                    "--format",
+                    "odps",
+                    "--output-format",
+                    "json",
+                    "--output",
+                    temp_path,
+                ],
+            )
 
             assert result.exit_code == 0, f"Command failed: {result.output}"
             assert os.path.exists(temp_path)
 
             # Verify file content
-            with open(temp_path, 'r') as f:
+            with open(temp_path) as f:
                 downloaded_data = json.load(f)
-                assert 'schema' in downloaded_data or 'product' in downloaded_data
+                assert "schema" in downloaded_data or "product" in downloaded_data
         finally:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -595,52 +672,61 @@ class TestODPSCommandsComprehensive:
 
         # Get ODCS contract to extract its original_raw.id
         from datahub_cli.api_client import api_client
-        odcs_contract_data = api_client.get(f'contracts/{created_odcs_contract}/')
-        odcs_original_raw = json.loads(odcs_contract_data.get('original_raw', '{}'))
-        odcs_contract_id_in_spec = odcs_original_raw.get('id') or created_odcs_contract
-        odcs_contract_name_in_spec = odcs_original_raw.get('name') or odcs_contract_id_in_spec
+
+        odcs_contract_data = api_client.get(f"contracts/{created_odcs_contract}/")
+        odcs_original_raw = json.loads(odcs_contract_data.get("original_raw", "{}"))
+        odcs_contract_id_in_spec = odcs_original_raw.get("id") or created_odcs_contract
+        odcs_contract_name_in_spec = odcs_original_raw.get("name") or odcs_contract_id_in_spec
 
         # Update ODPS file to use the ODCS contract ID from original_raw
-        with open(sample_odps_json_file, 'r') as f:
+        with open(sample_odps_json_file) as f:
             odps_data = json.load(f)
 
         # Set product.contract.spec.id to match ODCS contract ID from original_raw
-        if 'product' in odps_data and 'contract' in odps_data['product'] and 'spec' in odps_data['product']['contract']:
-            odps_data['product']['contract']['spec']['id'] = odcs_contract_id_in_spec
-            odps_data['product']['contract']['spec']['name'] = odcs_contract_name_in_spec
+        if (
+            "product" in odps_data
+            and "contract" in odps_data["product"]
+            and "spec" in odps_data["product"]["contract"]
+        ):
+            odps_data["product"]["contract"]["spec"]["id"] = odcs_contract_id_in_spec
+            odps_data["product"]["contract"]["spec"]["name"] = odcs_contract_name_in_spec
 
         # Write updated ODPS to temp file
         import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(odps_data, f)
             updated_odps_file = f.name
 
         try:
             # Create an ODPS contract with --extract-odcs (creates its own ODCS)
             # This ODPS will be linked to the extracted ODCS
-            create_result = runner.invoke(cli, [
-                'contracts', 'create-odps',
-                '--file', updated_odps_file,
-                '--extract-odcs',
-                '--output-format', 'json'
-            ])
+            create_result = runner.invoke(
+                cli,
+                [
+                    "contracts",
+                    "create-odps",
+                    "--file",
+                    updated_odps_file,
+                    "--extract-odcs",
+                    "--output-format",
+                    "json",
+                ],
+            )
 
             assert create_result.exit_code == 0
             create_data = json.loads(create_result.output)
-            odps_id = create_data.get('odps_contract', {}).get('id') or create_data.get('id')
-            extracted_odcs_id = create_data.get('odcs_contract', {}).get('id')
+            odps_id = create_data.get("odps_contract", {}).get("id") or create_data.get("id")
+            extracted_odcs_id = create_data.get("odcs_contract", {}).get("id")
 
             # Test linking the ODPS to a different ODCS contract
             # This should work if the ODPS is not already linked, or be idempotent if already linked
             # Note: The ODPS is already linked to extracted_odcs_id, so linking to created_odcs_contract
             # would create a conflict. Instead, test linking to the extracted ODCS (idempotent)
-            result = runner.invoke(cli, [
-                'contracts', 'link-odps',
-                extracted_odcs_id,
-                odps_id
-            ])
+            result = runner.invoke(cli, ["contracts", "link-odps", extracted_odcs_id, odps_id])
         finally:
             import os
+
             if os.path.exists(updated_odps_file):
                 os.unlink(updated_odps_file)
 
@@ -653,46 +739,57 @@ class TestODPSCommandsComprehensive:
 
         # Get ODCS contract to extract its original_raw.id
         from datahub_cli.api_client import api_client
-        odcs_contract_data = api_client.get(f'contracts/{created_odcs_contract}/')
-        odcs_original_raw = json.loads(odcs_contract_data.get('original_raw', '{}'))
-        odcs_contract_id_in_spec = odcs_original_raw.get('id') or created_odcs_contract
-        odcs_contract_name_in_spec = odcs_original_raw.get('name') or odcs_contract_id_in_spec
+
+        odcs_contract_data = api_client.get(f"contracts/{created_odcs_contract}/")
+        odcs_original_raw = json.loads(odcs_contract_data.get("original_raw", "{}"))
+        odcs_contract_id_in_spec = odcs_original_raw.get("id") or created_odcs_contract
+        odcs_contract_name_in_spec = odcs_original_raw.get("name") or odcs_contract_id_in_spec
 
         # Update ODPS file to use the ODCS contract ID from original_raw
-        with open(sample_odps_json_file, 'r') as f:
+        with open(sample_odps_json_file) as f:
             odps_data = json.load(f)
 
         # Set product.contract.spec.id to match ODCS contract ID from original_raw
-        if 'product' in odps_data and 'contract' in odps_data['product'] and 'spec' in odps_data['product']['contract']:
-            odps_data['product']['contract']['spec']['id'] = odcs_contract_id_in_spec
-            odps_data['product']['contract']['spec']['name'] = odcs_contract_name_in_spec
+        if (
+            "product" in odps_data
+            and "contract" in odps_data["product"]
+            and "spec" in odps_data["product"]["contract"]
+        ):
+            odps_data["product"]["contract"]["spec"]["id"] = odcs_contract_id_in_spec
+            odps_data["product"]["contract"]["spec"]["name"] = odcs_contract_name_in_spec
 
         # Write updated ODPS to temp file
         import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(odps_data, f)
             updated_odps_file = f.name
 
         try:
             # First create and link an ODPS contract
-            create_result = runner.invoke(cli, [
-                'contracts', 'create-odps',
-                '--file', updated_odps_file,
-                '--link-odcs', created_odcs_contract,
-                '--output-format', 'json'
-            ])
+            create_result = runner.invoke(
+                cli,
+                [
+                    "contracts",
+                    "create-odps",
+                    "--file",
+                    updated_odps_file,
+                    "--link-odcs",
+                    created_odcs_contract,
+                    "--output-format",
+                    "json",
+                ],
+            )
         finally:
             import os
+
             if os.path.exists(updated_odps_file):
                 os.unlink(updated_odps_file)
 
         assert create_result.exit_code == 0
 
         # Now unlink it
-        result = runner.invoke(cli, [
-            'contracts', 'unlink-odps',
-            created_odcs_contract
-        ])
+        result = runner.invoke(cli, ["contracts", "unlink-odps", created_odcs_contract])
 
         assert result.exit_code == 0, f"Unlink command failed: {result.output}"
 
@@ -702,11 +799,9 @@ class TestODPSCommandsComprehensive:
         runner = CliRunner()
 
         # Test JSON format
-        result = runner.invoke(cli, [
-            'contracts', 'list-links',
-            created_odps_contract,
-            '--format', 'json'
-        ])
+        result = runner.invoke(
+            cli, ["contracts", "list-links", created_odps_contract, "--format", "json"]
+        )
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
         try:
@@ -714,13 +809,10 @@ class TestODPSCommandsComprehensive:
             assert isinstance(links_data, (dict, list))
         except json.JSONDecodeError:
             # Table format is also acceptable
-            assert 'links' in result.output.lower() or 'no links' in result.output.lower()
+            assert "links" in result.output.lower() or "no links" in result.output.lower()
 
         # Test table format (default)
-        result_table = runner.invoke(cli, [
-            'contracts', 'list-links',
-            created_odps_contract
-        ])
+        result_table = runner.invoke(cli, ["contracts", "list-links", created_odps_contract])
 
         assert result_table.exit_code == 0
 
@@ -730,27 +822,21 @@ class TestODPSCommandsComprehensive:
         runner = CliRunner()
 
         # Test JSON format
-        result = runner.invoke(cli, [
-            'contracts', 'get',
-            created_odps_contract,
-            '--show-odps',
-            '--format', 'json'
-        ])
+        result = runner.invoke(
+            cli, ["contracts", "get", created_odps_contract, "--show-odps", "--format", "json"]
+        )
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
         contract_data = json.loads(result.output)
-        assert 'id' in contract_data
+        assert "id" in contract_data
 
         # Test table format
-        result_table = runner.invoke(cli, [
-            'contracts', 'get',
-            created_odps_contract,
-            '--show-odps',
-            '--format', 'table'
-        ])
+        result_table = runner.invoke(
+            cli, ["contracts", "get", created_odps_contract, "--show-odps", "--format", "table"]
+        )
 
         assert result_table.exit_code == 0
-        assert 'ODPS' in result_table.output or 'pricing' in result_table.output.lower()
+        assert "ODPS" in result_table.output or "pricing" in result_table.output.lower()
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
     def test_get_pricing_command(self, created_odps_contract, setup_config):
@@ -758,23 +844,19 @@ class TestODPSCommandsComprehensive:
         runner = CliRunner()
 
         # Test JSON format
-        result = runner.invoke(cli, [
-            'contracts', 'get-pricing',
-            created_odps_contract,
-            '--format', 'json'
-        ])
+        result = runner.invoke(
+            cli, ["contracts", "get-pricing", created_odps_contract, "--format", "json"]
+        )
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
         pricing_data = json.loads(result.output)
-        assert 'contract_id' in pricing_data
+        assert "contract_id" in pricing_data
         # May or may not have pricing_plans depending on contract
 
         # Test table format
-        result_table = runner.invoke(cli, [
-            'contracts', 'get-pricing',
-            created_odps_contract,
-            '--format', 'table'
-        ])
+        result_table = runner.invoke(
+            cli, ["contracts", "get-pricing", created_odps_contract, "--format", "table"]
+        )
 
         assert result_table.exit_code == 0
 
@@ -784,22 +866,18 @@ class TestODPSCommandsComprehensive:
         runner = CliRunner()
 
         # Test JSON format
-        result = runner.invoke(cli, [
-            'contracts', 'get-access-methods',
-            created_odps_contract,
-            '--format', 'json'
-        ])
+        result = runner.invoke(
+            cli, ["contracts", "get-access-methods", created_odps_contract, "--format", "json"]
+        )
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
         access_data = json.loads(result.output)
-        assert 'contract_id' in access_data
+        assert "contract_id" in access_data
 
         # Test table format
-        result_table = runner.invoke(cli, [
-            'contracts', 'get-access-methods',
-            created_odps_contract,
-            '--format', 'table'
-        ])
+        result_table = runner.invoke(
+            cli, ["contracts", "get-access-methods", created_odps_contract, "--format", "table"]
+        )
 
         assert result_table.exit_code == 0
 
@@ -808,14 +886,12 @@ class TestODPSCommandsComprehensive:
         """Test CLI error handling for invalid file path"""
         runner = CliRunner()
 
-        result = runner.invoke(cli, [
-            'contracts', 'create-odps',
-            '--file', '/nonexistent/file.json',
-            '--extract-odcs'
-        ])
+        result = runner.invoke(
+            cli, ["contracts", "create-odps", "--file", "/nonexistent/file.json", "--extract-odcs"]
+        )
 
         assert result.exit_code != 0
-        assert 'file' in result.output.lower() or 'not found' in result.output.lower()
+        assert "file" in result.output.lower() or "not found" in result.output.lower()
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
     def test_cli_error_handling_missing_options(self, sample_odps_json_file, setup_config):
@@ -823,41 +899,42 @@ class TestODPSCommandsComprehensive:
         runner = CliRunner()
 
         # Should fail without --extract-odcs or --link-odcs
-        result = runner.invoke(cli, [
-            'contracts', 'create-odps',
-            '--file', sample_odps_json_file
-        ])
+        result = runner.invoke(cli, ["contracts", "create-odps", "--file", sample_odps_json_file])
 
         assert result.exit_code != 0
-        assert 'extract-odcs' in result.output.lower() or 'link-odcs' in result.output.lower()
+        assert "extract-odcs" in result.output.lower() or "link-odcs" in result.output.lower()
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
     def test_cli_error_handling_invalid_contract_id(self, setup_config):
         """Test CLI error handling for invalid contract ID"""
         runner = CliRunner()
 
-        invalid_id = '00000000-0000-0000-0000-000000000000'
+        invalid_id = "00000000-0000-0000-0000-000000000000"
 
-        result = runner.invoke(cli, [
-            'contracts', 'get',
-            invalid_id,
-            '--format', 'json'
-        ])
+        result = runner.invoke(cli, ["contracts", "get", invalid_id, "--format", "json"])
 
         # Should fail or return appropriate error
-        assert result.exit_code != 0 or 'not found' in result.output.lower()
+        assert result.exit_code != 0 or "not found" in result.output.lower()
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_cli_error_handling_both_options_provided(self, sample_odps_json_file, created_odcs_contract, setup_config):
+    def test_cli_error_handling_both_options_provided(
+        self, sample_odps_json_file, created_odcs_contract, setup_config
+    ):
         """Test CLI error handling when both --extract-odcs and --link-odcs are provided"""
         runner = CliRunner()
 
-        result = runner.invoke(cli, [
-            'contracts', 'create-odps',
-            '--file', sample_odps_json_file,
-            '--extract-odcs',
-            '--link-odcs', created_odcs_contract
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "contracts",
+                "create-odps",
+                "--file",
+                sample_odps_json_file,
+                "--extract-odcs",
+                "--link-odcs",
+                created_odcs_contract,
+            ],
+        )
 
         assert result.exit_code != 0
-        assert 'mutually exclusive' in result.output.lower() or 'both' in result.output.lower()
+        assert "mutually exclusive" in result.output.lower() or "both" in result.output.lower()

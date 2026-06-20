@@ -14,9 +14,9 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Error handling
 - Metrics recording
 """
-import uuid
 
 import json
+import uuid
 
 import pytest
 
@@ -42,7 +42,7 @@ class ODPSServiceTestBase(ContractsTestBase):
     def setUp(self):
         """Set up test fixtures."""
         super().setUp()
-        
+
         # Update user display_name
         self.user.display_name = "Test User"
         self.user.save()
@@ -82,7 +82,11 @@ class ODPSServiceTestBase(ContractsTestBase):
                         "channel": "API",
                         "dataModel": {
                             "fields": [
-                                {"name": "id", "type": "string", "description": "Unique identifier"},
+                                {
+                                    "name": "id",
+                                    "type": "string",
+                                    "description": "Unique identifier",
+                                },
                             ],
                         },
                     }
@@ -111,8 +115,12 @@ class ODPSServiceTestBase(ContractsTestBase):
                 {
                     "name": "default",
                     "fields": [
-                        {"name": "id", "type": "string", "nullable": False,
-                         "description": "Unique identifier"},
+                        {
+                            "name": "id",
+                            "type": "string",
+                            "nullable": False,
+                            "description": "Unique identifier",
+                        },
                     ],
                 }
             ],
@@ -257,8 +265,11 @@ class ODPSServiceCreateTest(ODPSServiceTestBase):
 
         # Version must be detected as 4.1 based on the schema URL
         # https://opendataproducts.org/schema/v4.1.
-        self.assertEqual(contract.original_spec_version, "4.1",
-            f"Schema v4.1 URL must be detected, got {contract.original_spec_version}")
+        self.assertEqual(
+            contract.original_spec_version,
+            "4.1",
+            f"Schema v4.1 URL must be detected, got {contract.original_spec_version}",
+        )
 
     def test_create_odps_with_target_version(self):
         """Test ODPS contract creation with explicit target version."""
@@ -288,7 +299,10 @@ class ODPSServiceCreateTest(ODPSServiceTestBase):
                         "version": "1.0.0",
                     }
                 },
-                "dataSchema": {"$ref": "#/definitions/schema", "fields": [{"name": "id", "type": "string"}]},
+                "dataSchema": {
+                    "$ref": "#/definitions/schema",
+                    "fields": [{"name": "id", "type": "string"}],
+                },
             },
             "definitions": {"schema": {"fields": [{"name": "id", "type": "string"}]}},
         }
@@ -343,7 +357,8 @@ class ODPSServiceNormalizeTest(ODPSServiceTestBase):
 
         with self.assertRaises(ValidationError):
             self.service.normalize_odps(
-                odps_doc=invalid_doc, tenant_id=str(self.tenant.id)  # type: ignore[misc]  # test: edge-case type exercise
+                odps_doc=invalid_doc,
+                tenant_id=str(self.tenant.id),  # type: ignore[misc]  # test: edge-case type exercise
             )
 
     def test_normalize_odps_missing_required_fields(self):
@@ -355,9 +370,7 @@ class ODPSServiceNormalizeTest(ODPSServiceTestBase):
 
         # Missing required fields must raise ValidationError
         with self.assertRaises(ValidationError):
-            self.service.normalize_odps(
-                odps_doc=incomplete_doc, tenant_id=str(self.tenant.id)
-            )
+            self.service.normalize_odps(odps_doc=incomplete_doc, tenant_id=str(self.tenant.id))
 
 
 class ODPSServiceLinkTest(ODPSServiceTestBase):
@@ -652,7 +665,8 @@ class ODPSServiceGenerateTest(ODPSServiceTestBase):
 
         with self.assertRaises(ValidationError):
             self.service.generate_odps_from_hubcontract(
-                hub_contract=invalid_hub_contract, target_version="4.1"  # type: ignore[misc]  # test: edge-case type exercise
+                hub_contract=invalid_hub_contract,
+                target_version="4.1",  # type: ignore[misc]  # test: edge-case type exercise
             )
 
     def test_generate_odps_from_hubcontract_different_version(self):
@@ -711,8 +725,11 @@ class ODPSServiceIntegrationTest(ODPSServiceTestBase):
             self.assertIsNotNone(normalized)
             self.assertIsInstance(normalized, dict)
         except ValidationError as e:
-            self.assertEqual(e.code, "STRUCTURELESS_CONTRACT",
-                f"Expected STRUCTURELESS_CONTRACT on round-trip, got {e.code}")
+            self.assertEqual(
+                e.code,
+                "STRUCTURELESS_CONTRACT",
+                f"Expected STRUCTURELESS_CONTRACT on round-trip, got {e.code}",
+            )
 
     def test_odps_service_event_publishing(self):
         """Test that ODPSService publishes events correctly."""
@@ -842,12 +859,7 @@ class ODPSServiceEdgeCasesTest(ODPSServiceTestBase):
                         "description": "A" * 500,
                     }
                 },
-                "dataSchema": {
-                    "fields": [
-                        {"name": f"f{i}", "type": "string"}
-                        for i in range(80)
-                    ]
-                },
+                "dataSchema": {"fields": [{"name": f"f{i}", "type": "string"} for i in range(80)]},
             },
         }
         odps_raw = json.dumps(large_doc, indent=2)
@@ -949,7 +961,8 @@ class ODPSServiceEdgeCasesTest(ODPSServiceTestBase):
         """Test ODPS normalization with None."""
         with self.assertRaises(ValidationError):
             self.service.normalize_odps(
-                odps_doc=None, tenant_id=str(self.tenant.id)  # type: ignore[misc]  # test: edge-case type exercise
+                odps_doc=None,
+                tenant_id=str(self.tenant.id),  # type: ignore[misc]  # test: edge-case type exercise
             )
 
     def test_normalize_odps_with_malformed_schema_url(self):
@@ -961,9 +974,7 @@ class ODPSServiceEdgeCasesTest(ODPSServiceTestBase):
 
         # Malformed schema URL must raise ValidationError
         with self.assertRaises(ValidationError):
-            self.service.normalize_odps(
-                odps_doc=malformed_doc, tenant_id=str(self.tenant.id)
-            )
+            self.service.normalize_odps(odps_doc=malformed_doc, tenant_id=str(self.tenant.id))
 
     def test_export_odps_with_empty_contract(self):
         """Test ODPS export with contract that has minimal data."""
@@ -1128,11 +1139,9 @@ class ODPSServiceEdgeCasesTest(ODPSServiceTestBase):
         result = self.service.normalize_odps(odps_doc=unicode_doc, tenant_id=str(self.tenant.id))
 
         self.assertIsNotNone(result)
-        self.assertIsInstance(result, dict,
-            "Normalized ODPS must be a dict")
+        self.assertIsInstance(result, dict, "Normalized ODPS must be a dict")
         self.assertIn("id", result)
-        self.assertIn("info", result,
-            "Normalized ODPS must contain 'info' section")
+        self.assertIn("info", result, "Normalized ODPS must contain 'info' section")
 
     def test_service_handles_special_characters(self):
         """Test that service handles special characters correctly."""
@@ -1154,8 +1163,9 @@ class ODPSServiceEdgeCasesTest(ODPSServiceTestBase):
 
         self.assertIsNotNone(result)
         self.assertIsInstance(result, dict)
-        self.assertIn("info", result,
-            "Normalized ODPS must contain 'info' section for special-char input")
+        self.assertIn(
+            "info", result, "Normalized ODPS must contain 'info' section for special-char input"
+        )
         self.assertIsNotNone(result["info"])
 
     def test_service_handles_none_values(self):
@@ -1177,8 +1187,9 @@ class ODPSServiceEdgeCasesTest(ODPSServiceTestBase):
         # None values must not crash — normalize must produce a valid dict result
         result = self.service.normalize_odps(odps_doc=none_doc, tenant_id=str(self.tenant.id))
         self.assertIsNotNone(result)
-        self.assertIsInstance(result, dict,
-            "None values must not crash — must produce a valid dict result")
+        self.assertIsInstance(
+            result, dict, "None values must not crash — must produce a valid dict result"
+        )
 
     def test_service_handles_nested_structures(self):
         """Test that service handles nested structures correctly."""
@@ -1208,6 +1219,9 @@ class ODPSServiceEdgeCasesTest(ODPSServiceTestBase):
 
         self.assertIsNotNone(result)
         self.assertIsInstance(result, dict)
-        self.assertIn("schema", result,
-            "Normalized ODPS must contain 'schema' section for nested-structure input")
+        self.assertIn(
+            "schema",
+            result,
+            "Normalized ODPS must contain 'schema' section for nested-structure input",
+        )
         self.assertIsNotNone(result["schema"])

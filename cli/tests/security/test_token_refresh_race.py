@@ -6,13 +6,13 @@ These are unit-level tests of the refresh mechanism — they do not
 simulate actual 401 HTTP responses (which requires a live server
 or HTTP mocking not available in this test environment).
 """
+
 import asyncio
 import base64
 import json
 import time
 
 import pytest
-
 from datahub_interoperability.client import DataHubClient
 from datahub_interoperability.config import DataHubClientConfig
 
@@ -84,7 +84,4 @@ class TestAsyncTokenRefreshRace:
             f"Authorization header invalid after failed refresh: {auth!r}"
         )
         # The client's stored token must be unchanged
-        assert client.config.api_token == token, (
-            "Client token was overwritten after failed refresh"
-        )
-
+        assert client.config.api_token == token, "Client token was overwritten after failed refresh"

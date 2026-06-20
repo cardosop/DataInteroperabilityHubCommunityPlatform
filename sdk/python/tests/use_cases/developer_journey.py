@@ -14,10 +14,10 @@ import json
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_get
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _dev_creds():
     return provision_persona("data_analyst")
@@ -46,13 +46,16 @@ def _try_paths(creds, paths):
 def test_api_docs_endpoint():
     """An API documentation endpoint (Swagger/Redoc) is accessible."""
     creds = _dev_creds()
-    resp = _try_paths(creds, [
-        "/docs/",
-        "/api/docs/",
-        "/swagger/",
-        "/redoc/",
-        "/api/v1/docs/",
-    ])
+    resp = _try_paths(
+        creds,
+        [
+            "/docs/",
+            "/api/docs/",
+            "/swagger/",
+            "/redoc/",
+            "/api/v1/docs/",
+        ],
+    )
     _skip_if_not_found(resp, "API docs")
 
     assert resp.status_code == 200, (
@@ -63,18 +66,19 @@ def test_api_docs_endpoint():
 def test_openapi_schema_endpoint():
     """The OpenAPI schema endpoint returns a JSON or YAML schema."""
     creds = _dev_creds()
-    resp = _try_paths(creds, [
-        "/openapi.json",
-        "/api/schema/",
-        "/api/v1/schema/",
-        "/schema/",
-        "/openapi/",
-    ])
+    resp = _try_paths(
+        creds,
+        [
+            "/openapi.json",
+            "/api/schema/",
+            "/api/v1/schema/",
+            "/schema/",
+            "/openapi/",
+        ],
+    )
     _skip_if_not_found(resp, "OpenAPI schema")
 
-    assert resp.status_code == 200, (
-        f"OpenAPI schema returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"OpenAPI schema returned {resp.status_code}: {resp.text[:500]}"
 
     content_type = resp.headers.get("content-type", "")
     assert "json" in content_type or "yaml" in content_type or "yml" in content_type, (
@@ -85,12 +89,15 @@ def test_openapi_schema_endpoint():
 def test_schema_is_valid_json():
     """The OpenAPI schema is parseable as valid JSON (if JSON endpoint)."""
     creds = _dev_creds()
-    resp = _try_paths(creds, [
-        "/openapi.json",
-        "/api/schema/",
-        "/api/v1/schema/",
-        "/schema/",
-    ])
+    resp = _try_paths(
+        creds,
+        [
+            "/openapi.json",
+            "/api/schema/",
+            "/api/v1/schema/",
+            "/schema/",
+        ],
+    )
     _skip_if_not_found(resp, "OpenAPI schema")
 
     if resp.status_code != 200:
@@ -107,11 +114,5 @@ def test_schema_is_valid_json():
 
     # Basic OpenAPI structure checks
     assert isinstance(schema, dict), f"Schema root is not a dict: {type(schema)}"
-    has_version = (
-        "openapi" in schema
-        or "swagger" in schema
-        or "info" in schema
-    )
-    assert has_version, (
-        f"Schema missing openapi/swagger/info key: {list(schema.keys())[:10]}"
-    )
+    has_version = "openapi" in schema or "swagger" in schema or "info" in schema
+    assert has_version, f"Schema missing openapi/swagger/info key: {list(schema.keys())[:10]}"

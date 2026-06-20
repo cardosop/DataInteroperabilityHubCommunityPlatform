@@ -13,9 +13,10 @@ Verifies that the client handles high-latency responses correctly:
 
 import threading
 import time
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import requests
+
 from tests.fixtures.test_data import unique_port
 
 

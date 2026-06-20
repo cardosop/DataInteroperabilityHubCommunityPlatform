@@ -3,23 +3,25 @@ Bug Prevention Services
 
 Services for idempotency keys and request deduplication.
 """
+
 import hashlib
 import json
 from datetime import timedelta
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import APIException
 
-from hub.apps.core.services.base import BaseService
 from hub.apps.core.bug_prevention.models import IdempotencyKey, RequestDeduplication
-from hub.apps.core.bug_prevention.validators import IdempotencyKeyValidator, ValidationResult
+from hub.apps.core.bug_prevention.validators import IdempotencyKeyValidator
+from hub.apps.core.services.base import BaseService
 
 
 class IdempotencyConflictError(APIException):
     """Exception raised when idempotency key conflict occurs."""
+
     status_code = status.HTTP_409_CONFLICT
     default_code = "IDEMPOTENCY_CONFLICT"
     default_detail = "Idempotency key already used with different request parameters"
@@ -31,7 +33,7 @@ class IdempotencyService(BaseService):
     service_name = "idempotency_service"
 
     @staticmethod
-    def validate_key_format(key: str) -> Tuple[bool, Optional[str]]:
+    def validate_key_format(key: str) -> tuple[bool, str | None]:
         """
         Validate idempotency key format.
 
@@ -42,7 +44,7 @@ class IdempotencyService(BaseService):
             Tuple of (is_valid, error_message)
         """
         try:
-            validator = IdempotencyKeyValidator(key=key)
+            IdempotencyKeyValidator(key=key)
             return True, None
         except Exception as e:
             return False, str(e)
@@ -53,8 +55,8 @@ class IdempotencyService(BaseService):
         idempotency_key: str,
         method: str,
         path: str,
-        body: Optional[Dict[str, Any]] = None
-    ) -> Tuple[Optional[IdempotencyKey], Optional[Dict[str, Any]]]:
+        body: dict[str, Any] | None = None,
+    ) -> tuple[IdempotencyKey | None, dict[str, Any] | None]:
         """
         Check if idempotency key exists and return cached response if found.
 
@@ -75,6 +77,7 @@ class IdempotencyService(BaseService):
         is_valid, error_message = IdempotencyService.validate_key_format(idempotency_key)
         if not is_valid:
             from rest_framework.exceptions import ValidationError
+
             raise ValidationError({"idempotency_key": error_message})
 
         # Compute request fingerprint
@@ -86,7 +89,7 @@ class IdempotencyService(BaseService):
                 tenant_id=tenant_id,
                 idempotency_key=idempotency_key,
                 method=method.upper(),
-                path=path
+                path=path,
             )
         except IdempotencyKey.DoesNotExist:
             return None, None
@@ -100,10 +103,7 @@ class IdempotencyService(BaseService):
         # Check fingerprint match
         if record.request_fingerprint == fingerprint:
             # Matching request, return cached response
-            return record, {
-                "status_code": record.response_status,
-                "data": record.response_body
-            }
+            return record, {"status_code": record.response_status, "data": record.response_body}
         else:
             # Different request with same key, raise conflict
             raise IdempotencyConflictError(
@@ -117,9 +117,9 @@ class IdempotencyService(BaseService):
         idempotency_key: str,
         method: str,
         path: str,
-        body: Optional[Dict[str, Any]],
+        body: dict[str, Any] | None,
         response_status: int,
-        response_body: Dict[str, Any]
+        response_body: dict[str, Any],
     ) -> IdempotencyKey:
         """
         Store idempotency key with response.
@@ -140,7 +140,7 @@ class IdempotencyService(BaseService):
         fingerprint = IdempotencyKey.compute_fingerprint(method, path, body)
 
         # Create or update record
-        record, created = IdempotencyKey.objects.update_or_create(
+        record, _created = IdempotencyKey.objects.update_or_create(
             tenant_id=tenant_id,
             idempotency_key=idempotency_key,
             method=method.upper(),
@@ -149,8 +149,8 @@ class IdempotencyService(BaseService):
                 "request_fingerprint": fingerprint,
                 "response_status": response_status,
                 "response_body": response_body,
-                "expires_at": timezone.now() + timedelta(hours=24)
-            }
+                "expires_at": timezone.now() + timedelta(hours=24),
+            },
         )
 
         return record
@@ -167,9 +167,7 @@ class IdempotencyService(BaseService):
             Number of deleted records
         """
         cutoff_time = timezone.now() - timedelta(hours=older_than_hours)
-        deleted_count, _ = IdempotencyKey.objects.filter(
-            expires_at__lt=cutoff_time
-        ).delete()
+        deleted_count, _ = IdempotencyKey.objects.filter(expires_at__lt=cutoff_time).delete()
         return deleted_count
 
 
@@ -183,9 +181,9 @@ class RequestDeduplicationService(BaseService):
         tenant_id: str,
         method: str,
         path: str,
-        body: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None
-    ) -> Tuple[bool, Optional[RequestDeduplication]]:
+        body: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[bool, RequestDeduplication | None]:
         """
         Check if request is a duplicate.
 
@@ -206,9 +204,7 @@ class RequestDeduplicationService(BaseService):
 
         # Check for existing record
         try:
-            record = RequestDeduplication.objects.get(
-                request_fingerprint=fingerprint
-            )
+            record = RequestDeduplication.objects.get(request_fingerprint=fingerprint)
         except RequestDeduplication.DoesNotExist:
             return False, None
 
@@ -226,8 +222,8 @@ class RequestDeduplicationService(BaseService):
         tenant_id: str,
         method: str,
         path: str,
-        body: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None
+        body: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> RequestDeduplication:
         """
         Store request fingerprint for deduplication.
@@ -254,15 +250,15 @@ class RequestDeduplicationService(BaseService):
             body_hash = hashlib.sha256(body_json.encode("utf-8")).hexdigest()
 
         # Create or update record
-        record, created = RequestDeduplication.objects.update_or_create(
+        record, _created = RequestDeduplication.objects.update_or_create(
             request_fingerprint=fingerprint,
             defaults={
                 "tenant_id": tenant_id,
                 "method": method.upper(),
                 "path": path,
                 "request_body_hash": body_hash,
-                "expires_at": timezone.now() + timedelta(minutes=5)
-            }
+                "expires_at": timezone.now() + timedelta(minutes=5),
+            },
         )
 
         return record
@@ -279,8 +275,5 @@ class RequestDeduplicationService(BaseService):
             Number of deleted records
         """
         cutoff_time = timezone.now() - timedelta(minutes=older_than_minutes)
-        deleted_count, _ = RequestDeduplication.objects.filter(
-            expires_at__lt=cutoff_time
-        ).delete()
+        deleted_count, _ = RequestDeduplication.objects.filter(expires_at__lt=cutoff_time).delete()
         return deleted_count
-

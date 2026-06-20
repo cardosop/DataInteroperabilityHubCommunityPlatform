@@ -15,11 +15,12 @@ Usage:
     def update_rate_limits(request, tenant_id):
         ...
 """
+
 from __future__ import annotations
 
 import functools
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from django.http import JsonResponse
 from rest_framework import status
@@ -44,10 +45,7 @@ def _evaluate_admin_action(request, resource_type: str, action: str) -> None:
     if not user or not user.is_authenticated:
         return
 
-    tenant_id = (
-        getattr(request, "tenant_id", None)
-        or getattr(user, "tenant_id", None)
-    )
+    tenant_id = getattr(request, "tenant_id", None) or getattr(user, "tenant_id", None)
     resource_id = getattr(request, "resolver_match", None)
     resource_id_str = str(resource_id.kwargs) if resource_id else "unknown"
 
@@ -75,11 +73,7 @@ def _evaluate_admin_action(request, resource_type: str, action: str) -> None:
                 details={
                     "admin_action": action,
                     "admin_user_id": str(user.id),
-                    "policy_id": (
-                        str(abac_result.policy.id)
-                        if abac_result.policy
-                        else None
-                    ),
+                    "policy_id": (str(abac_result.policy.id) if abac_result.policy else None),
                 },
                 request=request,
             )
@@ -116,7 +110,6 @@ def admin_abac_guard(
     """
 
     def decorator(view_func: Callable):
-
         @functools.wraps(view_func)
         def wrapper(request, *args, **kwargs):
             from hub.apps.audit.event_types import ABAC_POLICY_DENIED
@@ -131,12 +124,8 @@ def admin_abac_guard(
                     status=status.HTTP_401_UNAUTHORIZED,
                 )
 
-            tenant_id = get_request_tenant_id(request) or str(
-                getattr(user, "tenant_id", "")
-            )
-            resource_id = kwargs.get(
-                "tenant_id", kwargs.get("pk", tenant_id or "unknown")
-            )
+            tenant_id = get_request_tenant_id(request) or str(getattr(user, "tenant_id", ""))
+            resource_id = kwargs.get("tenant_id", kwargs.get("pk", tenant_id or "unknown"))
 
             # Evaluate ABAC
             try:
@@ -165,9 +154,7 @@ def admin_abac_guard(
                             "admin_action": action,
                             "admin_user_id": str(user.id),
                             "policy_id": (
-                                str(abac_result.policy.id)
-                                if abac_result.policy
-                                else None
+                                str(abac_result.policy.id) if abac_result.policy else None
                             ),
                         },
                         request=request,
@@ -179,9 +166,7 @@ def admin_abac_guard(
                     {
                         "error": {
                             "code": "ABAC_POLICY_DENIED",
-                            "message": (
-                                "This admin action is blocked by an ABAC policy."
-                            ),
+                            "message": ("This admin action is blocked by an ABAC policy."),
                             "http_status": 403,
                             "details": {
                                 "resource_type": resource_type,

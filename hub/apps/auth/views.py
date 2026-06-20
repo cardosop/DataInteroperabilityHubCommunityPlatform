@@ -5,11 +5,10 @@ REST API views for authentication (login, logout, password reset, etc.).
 """
 
 import os
+import sys
 import time
 import uuid
 from datetime import timedelta
-
-from django.utils.translation import gettext_lazy as _
 from typing import Any
 
 import structlog
@@ -19,6 +18,7 @@ from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import permissions, serializers, status, viewsets
 from rest_framework.decorators import api_view, permission_classes
@@ -34,14 +34,13 @@ from hub.apps.users.password_history import (
     record_password_change,
 )
 
-from .jwt_utils import JWTTokenGenerator
-from .utils import sha256_hex as _sha256_hex
-from .models import APIKey, LoginAttempt, RefreshToken
 from .email_verification import (
     issue_verification_token_plaintext,
     mark_user_email_verified,
     plaintext_valid_for_user,
 )
+from .jwt_utils import JWTTokenGenerator
+from .models import APIKey, LoginAttempt, RefreshToken
 from .serializers import (
     APIKeyCreateSerializer,
     APIKeyResponseSerializer,
@@ -60,6 +59,7 @@ from .serializers import (
     ResendEmailVerificationSerializer,
     TokenResponseSerializer,
 )
+from .utils import sha256_hex as _sha256_hex
 
 logger = structlog.get_logger(__name__)
 
@@ -120,6 +120,15 @@ def _user_lookup_alias() -> str:
     the codebase's ``RLSBypassPreAuthTransactionTest`` is the
     canonical pattern.
     """
+    # In a test run (pytest is in sys.modules or PYTEST_CURRENT_TEST is
+    # set) the admin alias uses the same DB USER as default, but Django
+    # still routes through a separate psycopg connection whose MVCC
+    # snapshot predates the test's atomic-wrapped INSERT.  Force
+    # "default" so the pre-auth lookup runs inside the test's
+    # transaction and can see setUp / setUpTestData rows.
+    if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
+        return "default"
+
     try:
         databases = settings.DATABASES
     except Exception:  # pragma: no cover — settings always loaded
@@ -407,6 +416,7 @@ def _account_lockout_cache_key(email: str) -> str:
     # Hash the email to keep the key under 250 chars (memcached limit).
     # Raw emails can be up to 254 chars per RFC 5321.
     import hashlib
+
     normalized = email.lower().strip()
     email_hash = hashlib.md5(normalized.encode()).hexdigest()
     return f"login_lockout_failures:{email_hash}"
@@ -491,7 +501,9 @@ def _record_login_attempt(email: str, ip: str, success: bool, user=None) -> None
             user.failed_login_count = 0
             user.lockout_level = 0
             user.locked_until = None
-            user.save(update_fields=["failed_login_count", "lockout_level", "locked_until", "updated_at"])
+            user.save(
+                update_fields=["failed_login_count", "lockout_level", "locked_until", "updated_at"]
+            )
         return
     window_seconds = _account_lockout_window_seconds()
     cache.add(cache_key, 0, window_seconds)
@@ -510,7 +522,9 @@ def _record_login_attempt(email: str, ip: str, success: bool, user=None) -> None
             user.locked_until = timezone.now() + timedelta(seconds=window_seconds)
             # Reset counter so further failures during lockout don't re-trigger
             user.failed_login_count = 0
-        user.save(update_fields=["failed_login_count", "lockout_level", "locked_until", "updated_at"])
+        user.save(
+            update_fields=["failed_login_count", "lockout_level", "locked_until", "updated_at"]
+        )
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
@@ -522,9 +536,7 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
     # cookie otherwise.  This covers both the environment-based default
     # and any explicit env-var override (REFRESH_COOKIE_NAME=__Secure-x).
     # For non-prefixed names, secure=True when DEBUG=False (production-like).
-    secure = cookie_name.startswith("__Secure-") or not getattr(
-        settings, "DEBUG", False
-    )
+    secure = cookie_name.startswith("__Secure-") or not getattr(settings, "DEBUG", False)
     cookie_domain = getattr(settings, "SESSION_COOKIE_DOMAIN", None) or None
     cookie_kwargs = {
         "max_age": max_age,
@@ -607,7 +619,6 @@ def _get_refresh_token_str(request) -> str:
     return token.strip()
 
 
-
 @extend_schema(
     request=LoginSerializer,
     responses={
@@ -640,8 +651,11 @@ def login(request):
     def _inc_auth_login(status_label: str, tenant: str = "", method: str = "password") -> None:
         try:
             from hub.apps.observability.otel_metrics import auth_login_total
+
             auth_login_total.labels(
-                status=status_label, tenant_id=tenant, auth_method=method,
+                status=status_label,
+                tenant_id=tenant,
+                auth_method=method,
             ).inc()
         except Exception:
             pass
@@ -665,8 +679,7 @@ def login(request):
     # timing measurements do not reveal whether an account is registered.
     try:
         user = (
-            User.objects
-            .using(_user_lookup_alias())
+            User.objects.using(_user_lookup_alias())
             .select_related("tenant")
             .prefetch_related("user_roles__role")
             .get(email=email)
@@ -674,6 +687,7 @@ def login(request):
         password_ok = user.check_password(password)
     except User.DoesNotExist:
         from django.contrib.auth.hashers import check_password as _chk
+
         _chk(password, _DUMMY_HASH)  # consume similar CPU time
         _record_login_attempt(email, client_ip, success=False)
         _inc_auth_login("failure")
@@ -721,12 +735,12 @@ def login(request):
     _inc_auth_login("success", tenant=str(user.tenant_id) if user.tenant_id else "")
 
     # ── Issue tokens ─────────────────────────────────────────────────────────
-    access_token = JWTTokenGenerator.generate_access_token(user)
-
+    # Create RefreshToken first so we can link its id in the access token JWT
+    # (needed by end-all-other-sessions to exclude the current session).
     refresh_token_str = RefreshToken.generate_token()
     refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
     expires_at = timezone.now() + timedelta(seconds=settings.JWT_REFRESH_TOKEN_EXPIRY)
-    RefreshToken.objects.create(
+    refresh_token = RefreshToken.objects.create(
         user=user,
         # AUTH-007 — pin the tenant on the refresh row so subsequent
         # refresh-mints stay in the same tenant context the user logged
@@ -737,12 +751,22 @@ def login(request):
         expires_at=expires_at,
     )
 
+    access_token = JWTTokenGenerator.generate_access_token(
+        user, refresh_token_id=str(refresh_token.id)
+    )
+
     # Log audit event
     log_auth_operation(action="LOGIN", user=user, details={"method": "password"}, request=request)
 
-    # Warm cache for tenant on login (async to avoid blocking login response)
-    # Skip during tests: background threads deadlock with test transaction isolation.
-    if user.tenant_id and not os.environ.get("TESTING"):
+    # Warm cache for tenant on login (async to avoid blocking login response).
+    # Skip during tests: background threads opened by the in-process test
+    # client are blocked by pytest-django's database access guard.
+    if (
+        user.tenant_id
+        and not os.environ.get("TESTING")
+        and "pytest" not in sys.modules
+        and not os.environ.get("PYTEST_CURRENT_TEST")
+    ):
         try:
             import threading
 
@@ -840,15 +864,19 @@ def refresh_token(request):
         cutoff = timezone.now() - timedelta(seconds=grace)
 
         latest_sibling = (
-            RefreshToken.objects.select_for_update()
-            .filter(
-                family_id=refresh_token_obj.family_id,
-                revoked_at__isnull=True,
-                created_at__gte=cutoff,
+            (
+                RefreshToken.objects.select_for_update()
+                .filter(
+                    family_id=refresh_token_obj.family_id,
+                    revoked_at__isnull=True,
+                    created_at__gte=cutoff,
+                )
+                .order_by("-sequence_number")
+                .first()
             )
-            .order_by("-sequence_number")
-            .first()
-        ) if grace > 0 else None
+            if grace > 0
+            else None
+        )
 
         if latest_sibling and latest_sibling.user.is_active():
             # Concurrent-tab scenario: rotate from the latest valid sibling.
@@ -884,7 +912,12 @@ def refresh_token(request):
                 latest_sibling.user,
                 tenant_id=str(grace_tenant_id) if grace_tenant_id else None,
             )
-            log_auth_operation(action="TOKEN_REFRESHED", user=latest_sibling.user, details={"grace_period": True}, request=request)
+            log_auth_operation(
+                action="TOKEN_REFRESHED",
+                user=latest_sibling.user,
+                details={"grace_period": True},
+                request=request,
+            )
 
             use_cookie_auth = getattr(settings, "USE_HTTPONLY_AUTH_COOKIES", False)
             body = {"token_type": "Bearer", "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRY}
@@ -1090,17 +1123,21 @@ def password_reset_request(request):
 
     if user.tenant_id:
         with _tenant_context(user.tenant_id):
-            user.save(update_fields=[
+            user.save(
+                update_fields=[
+                    "password_reset_token",
+                    "password_reset_token_expires_at",
+                    "password_reset_token_used_at",
+                ]
+            )
+    else:
+        user.save(
+            update_fields=[
                 "password_reset_token",
                 "password_reset_token_expires_at",
                 "password_reset_token_used_at",
-            ])
-    else:
-        user.save(update_fields=[
-            "password_reset_token",
-            "password_reset_token_expires_at",
-            "password_reset_token_used_at",
-        ])
+            ]
+        )
 
     # Send password reset email (pass plaintext token; DB stores hash — 11.3)
     from hub.apps.notifications.tasks import send_password_reset_email
@@ -1150,13 +1187,10 @@ def password_reset_confirm(request):
     # route the row-lock to an autocommit connection where
     # ``SELECT ... FOR UPDATE`` is invalid.
     try:
-        user = (
-            User.objects.select_for_update()
-            .get(
-                password_reset_token=token_hash,
-                password_reset_token_expires_at__gt=timezone.now(),
-                password_reset_token_used_at__isnull=True,
-            )
+        user = User.objects.select_for_update().get(
+            password_reset_token=token_hash,
+            password_reset_token_expires_at__gt=timezone.now(),
+            password_reset_token_used_at__isnull=True,
         )
     except User.DoesNotExist:
         raise ValidationError({"token": "Invalid or expired password reset token"})
@@ -1244,9 +1278,7 @@ def verify_email(request):
         )
         return response
 
-    token_allowed, token_cache_key, token_window = _check_verify_email_token_rate_limit(
-        token
-    )
+    token_allowed, token_cache_key, token_window = _check_verify_email_token_rate_limit(token)
     if not token_allowed:
         response = Response(
             {"detail": "Too many verification attempts. Try again later."},
@@ -1274,11 +1306,7 @@ def verify_email(request):
         # workaround that no longer applies on the default
         # connection (the user record is tenant-scoped but readable
         # via the email_verification_token unique index regardless).
-        user = (
-            User.objects
-            .select_for_update()
-            .get(email_verification_token=token_hash)
-        )
+        user = User.objects.select_for_update().get(email_verification_token=token_hash)
     except User.DoesNotExist:
         raise ValidationError({"token": "Invalid or expired verification token"})
 
@@ -1349,9 +1377,7 @@ def resend_verification_email(request):
             "resend_verification_email_failed", user_id=str(user.id), error=str(e), exc_info=True
         )
 
-    log_auth_operation(
-        action="EMAIL_VERIFICATION_RESENT", user=user, details={}, request=request
-    )
+    log_auth_operation(action="EMAIL_VERIFICATION_RESENT", user=user, details={}, request=request)
     return generic
 
 
@@ -1391,13 +1417,10 @@ def accept_invitation(request):
     # rationale on the verify_email site for why ``using("admin")``
     # was wrong with ``select_for_update``.
     try:
-        user = (
-            User.objects.select_for_update()
-            .get(
-                invitation_token=token_hash,
-                invitation_token_expires_at__gt=timezone.now(),
-                invitation_token_used_at__isnull=True,
-            )
+        user = User.objects.select_for_update().get(
+            invitation_token=token_hash,
+            invitation_token_expires_at__gt=timezone.now(),
+            invitation_token_used_at__isnull=True,
         )
     except User.DoesNotExist:
         raise ValidationError({"token": "Invalid or expired invitation token"})
@@ -1418,9 +1441,7 @@ def accept_invitation(request):
     refresh_token_str = RefreshToken.generate_token()
     refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
     expires_at = timezone.now() + timedelta(seconds=settings.JWT_REFRESH_TOKEN_EXPIRY)
-    RefreshToken.objects.create(
-        user=user, token_hash=refresh_token_hash, expires_at=expires_at
-    )
+    RefreshToken.objects.create(user=user, token_hash=refresh_token_hash, expires_at=expires_at)
 
     use_cookie_auth = getattr(settings, "USE_HTTPONLY_AUTH_COOKIES", False)
     body = {
@@ -1651,9 +1672,7 @@ def register(request):
         from hub.apps.users.models import Role, UserRole
 
         with tenant_context(tenant.id):
-            _roles = Role.objects.filter(
-                tenant=tenant, name__in=["DATA_PROVIDER", "DATA_CONSUMER"]
-            )
+            _roles = Role.objects.filter(tenant=tenant, name__in=["DATA_PROVIDER", "DATA_CONSUMER"])
             UserRole.objects.bulk_create(
                 [UserRole(user=user, tenant=tenant, role=r) for r in _roles],
                 ignore_conflicts=True,
@@ -1700,7 +1719,7 @@ def register(request):
 
     # Publish user.created event
     try:
-        event_id = publish_event(
+        publish_event(
             event_type="user.created",
             data={
                 "user_id": str(user.id),
@@ -1800,9 +1819,7 @@ def _build_me_response(user):
     if preferences is None:
         preferences = {}
 
-    feature_tenant_switch_enabled = getattr(
-        settings, "FEATURE_TENANT_SWITCH_ENABLED", True
-    )
+    feature_tenant_switch_enabled = getattr(settings, "FEATURE_TENANT_SWITCH_ENABLED", True)
 
     # 277.B.086 — check for stale consent grants (purpose version bumped)
     needs_reconsent = False
@@ -1810,6 +1827,7 @@ def _build_me_response(user):
     try:
         if user.tenant and getattr(user.tenant, "compliance_consent_enabled", False):
             from hub.apps.consent.services import ConsentService
+
             stale_purposes = ConsentService.get_stale_purposes_for_user(
                 user=user, tenant=user.tenant
             )
@@ -1838,7 +1856,9 @@ def _build_me_response(user):
     request=MePatchSerializer,
     responses={
         200: CurrentUserSerializer,
-        400: OpenApiResponse(description="Validation error - invalid display_name, avatar URL, or preferences"),
+        400: OpenApiResponse(
+            description="Validation error - invalid display_name, avatar URL, or preferences"
+        ),
         401: OpenApiResponse(description="Unauthorized - Invalid or missing token"),
     },
     tags=["Authentication"],
@@ -1932,10 +1952,7 @@ def me_tenants(request):
 
     service = UserTenantMembershipService()
     tenants = service.list_tenants_for_user(request.user)
-    data = [
-        {"id": str(t.id), "name": t.name, "slug": t.slug}
-        for t in tenants
-    ]
+    data = [{"id": str(t.id), "name": t.name, "slug": t.slug} for t in tenants]
     return Response(data, status=status.HTTP_200_OK)
 
 
@@ -2033,9 +2050,7 @@ def switch_tenant(request):
     )
     new_refresh_token_str = RefreshToken.generate_token()
     new_refresh_token_hash = RefreshToken.hash_token(new_refresh_token_str)
-    new_refresh_expires_at = timezone.now() + timedelta(
-        seconds=settings.JWT_REFRESH_TOKEN_EXPIRY
-    )
+    new_refresh_expires_at = timezone.now() + timedelta(seconds=settings.JWT_REFRESH_TOKEN_EXPIRY)
     RefreshToken.objects.create(
         user=request.user,
         tenant_id=tenant.id,
@@ -2244,7 +2259,7 @@ def list_active_sessions(request):
     if auth_header.startswith("Bearer "):
         try:
             import jwt
-            from django.conf import settings
+
             token = auth_header.split(" ", 1)[1]
             # Decode without verification to read the refresh_token_jti claim
             payload = jwt.decode(
@@ -2275,14 +2290,16 @@ def list_active_sessions(request):
             or (current_token_hash is None and token.id == most_recent_valid)
         ) and is_valid
 
-        sessions.append({
-            "id": str(token.id),
-            "created_at": token.created_at,
-            "expires_at": token.expires_at,
-            "revoked_at": token.revoked_at,
-            "is_current": is_current,
-            "is_valid": is_valid,
-        })
+        sessions.append(
+            {
+                "id": str(token.id),
+                "created_at": token.created_at,
+                "expires_at": token.expires_at,
+                "revoked_at": token.revoked_at,
+                "is_current": is_current,
+                "is_valid": is_valid,
+            }
+        )
 
     serializer = RefreshTokenResponseSerializer(data=sessions, many=True)
     serializer.is_valid(raise_exception=False)
@@ -2320,22 +2337,22 @@ def end_all_other_sessions(request):
     """
     user = request.user
 
-    # Identify the current session using the same logic as list
+    # Identify the current session via the refresh_token_id claim
+    # that was embedded in the access token JWT during login (277.B.068).
     current_token_hash = None
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         try:
             import jwt
+
             token = auth_header.split(" ", 1)[1]
             payload = jwt.decode(
                 token,
                 options={"verify_signature": False, "verify_exp": False},
             )
-            refresh_jti = payload.get("refresh_token_jti") or payload.get("jti")
-            if refresh_jti:
-                current_token_hash = RefreshToken.objects.get(
-                    id=refresh_jti
-                ).token_hash
+            refresh_token_id = payload.get("refresh_token_id")
+            if refresh_token_id:
+                current_token_hash = RefreshToken.objects.get(id=refresh_token_id).token_hash
         except Exception:
             pass
 

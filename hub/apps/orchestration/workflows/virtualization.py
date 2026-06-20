@@ -4,33 +4,35 @@ Virtualization Query Execution Workflow
 Orchestrates the virtual dataset query execution process with proper error handling,
 retry logic, and compensation. Manages the complete query execution lifecycle.
 """
+
+from typing import Any
+
 import structlog
-from typing import Dict, Any, Optional
+from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
-from django.core.cache import cache
 
-from hub.apps.orchestration.workflow_engine import (
-    WorkflowEngine, WorkflowStepValueError,
-)
-from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.audit.utils import create_audit_event
+from hub.apps.core.services.base import ValidationError
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
-from hub.apps.virtualization.models import (
-    VirtualDataset,
-    VirtualDatasetStatus,
-    QueryExecution,
-    QueryExecutionStatus,
-    QueryExecutionMode,
-    QueryType
+from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.orchestration.workflow_engine import (
+    WorkflowEngine,
+    WorkflowStepValueError,
 )
 from hub.apps.virtualization.business_rules import (
-    VirtualizationBusinessRules,
     QueryExecutionBusinessRules,
-    ResultBusinessRules
+    ResultBusinessRules,
+    VirtualizationBusinessRules,
+)
+from hub.apps.virtualization.models import (
+    QueryExecution,
+    QueryExecutionMode,
+    QueryExecutionStatus,
+    QueryType,
+    VirtualDataset,
 )
 from hub.apps.virtualization.services import VirtualizationService
-from hub.apps.core.services.base import ValidationError, NotFoundError
-from hub.apps.audit.utils import create_audit_event
 
 logger = structlog.get_logger(__name__)
 
@@ -65,54 +67,30 @@ class VirtualizationWorkflow:
             "version": cls.WORKFLOW_VERSION,
             "dependencies": [],
             "steps": [
-                {
-                    "name": "validate_query",
-                    "type": "task",
-                    "task": "virtualization.validate_query"
-                },
+                {"name": "validate_query", "type": "task", "task": "virtualization.validate_query"},
                 {
                     "name": "validate_sources",
                     "type": "task",
-                    "task": "virtualization.validate_sources"
+                    "task": "virtualization.validate_sources",
                 },
-                {
-                    "name": "optimize_query",
-                    "type": "task",
-                    "task": "virtualization.optimize_query"
-                },
-                {
-                    "name": "execute_query",
-                    "type": "task",
-                    "task": "virtualization.execute_query"
-                },
+                {"name": "optimize_query", "type": "task", "task": "virtualization.optimize_query"},
+                {"name": "execute_query", "type": "task", "task": "virtualization.execute_query"},
                 {
                     "name": "aggregate_results",
                     "type": "task",
-                    "task": "virtualization.aggregate_results"
+                    "task": "virtualization.aggregate_results",
                 },
-                {
-                    "name": "cache_results",
-                    "type": "task",
-                    "task": "virtualization.cache_results"
-                },
-                {
-                    "name": "store_results",
-                    "type": "task",
-                    "task": "virtualization.store_results"
-                },
-                {
-                    "name": "complete",
-                    "type": "task",
-                    "task": "virtualization.complete"
-                }
+                {"name": "cache_results", "type": "task", "task": "virtualization.cache_results"},
+                {"name": "store_results", "type": "task", "task": "virtualization.store_results"},
+                {"name": "complete", "type": "task", "task": "virtualization.complete"},
             ],
-            "compensation": {"enabled": True}
+            "compensation": {"enabled": True},
         }
         registry.register_workflow(
             workflow_name=cls.WORKFLOW_NAME,
             dsl_json=workflow_dsl,
             description="Orchestrates virtual dataset query execution with validation, optimization, execution, and result caching",
-            version=cls.WORKFLOW_VERSION
+            version=cls.WORKFLOW_VERSION,
         )
 
     @classmethod
@@ -152,7 +130,7 @@ class VirtualizationWorkflow:
 
         instance.state_data["progress_percentage"] = progress
         instance.state_data["current_step"] = step_name
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         # Publish workflow progress event
         try:
@@ -164,7 +142,7 @@ class VirtualizationWorkflow:
             if execution_id and virtual_dataset_id:
                 service = VirtualizationService(
                     tenant_id=str(tenant_id) if tenant_id else None,
-                    user_id=str(user_id) if user_id else None
+                    user_id=str(user_id) if user_id else None,
                 )
 
                 # Calculate elapsed time if available
@@ -187,7 +165,7 @@ class VirtualizationWorkflow:
                         elapsed_time_ms=elapsed_time_ms,
                         completed_steps=completed_steps,
                         total_steps=total_steps if total_steps > 0 else None,
-                        tenant_id=str(tenant_id) if tenant_id else None
+                        tenant_id=str(tenant_id) if tenant_id else None,
                     )
                 except Exception as e:
                     # Log but don't fail progress update if event publishing fails
@@ -196,7 +174,7 @@ class VirtualizationWorkflow:
                         workflow_instance_id=str(instance.id),
                         execution_id=str(execution_id),
                         error=str(e),
-                        exc_info=True
+                        exc_info=True,
                     )
 
                 logger.info(
@@ -207,7 +185,7 @@ class VirtualizationWorkflow:
                     current_step=step_name,
                     total_steps=total_steps if total_steps > 0 else None,
                     completed_steps=completed_steps,
-                    elapsed_time_ms=elapsed_time_ms
+                    elapsed_time_ms=elapsed_time_ms,
                 )
         except Exception as e:
             # Log but don't fail progress update if event publishing fails
@@ -215,11 +193,13 @@ class VirtualizationWorkflow:
                 "Failed to publish workflow progress event",
                 workflow_instance_id=str(instance.id),
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
 
     @staticmethod
-    def _validate_query_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _validate_query_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Validate query syntax using VirtualizationBusinessRules.
 
@@ -241,6 +221,7 @@ class VirtualizationWorkflow:
             raise ValueError("tenant_id is required")
 
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.get(id=tenant_id)
         virtual_dataset = VirtualDataset.objects.get(id=virtual_dataset_id, tenant=tenant)
 
@@ -249,15 +230,14 @@ class VirtualizationWorkflow:
 
         # Validate query syntax using business rules
         business_rules = VirtualizationBusinessRules(
-            tenant_id=str(tenant_id),
-            user_id=str(user_id) if user_id else None
+            tenant_id=str(tenant_id), user_id=str(user_id) if user_id else None
         )
 
         try:
             validation_result = business_rules.validate_query_syntax(
                 query=virtual_dataset.query,
                 query_type=virtual_dataset.query_type,
-                raise_on_error=True
+                raise_on_error=True,
             )
         except ValidationError as e:
             raise WorkflowStepValueError(str(e)) from e
@@ -270,26 +250,28 @@ class VirtualizationWorkflow:
             "is_valid": validation_result.is_valid,
             "errors": validation_result.errors,
             "warnings": validation_result.warnings,
-            "details": validation_result.details
+            "details": validation_result.details,
         }
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         logger.info(
             "Query validated",
             workflow_instance_id=str(instance.id),
             virtual_dataset_id=str(virtual_dataset.id),
             query_type=virtual_dataset.query_type,
-            validation_status=validation_result.is_valid
+            validation_status=validation_result.is_valid,
         )
 
         return {
             "validation_status": "VALID" if validation_result.is_valid else "INVALID",
             "errors": validation_result.errors,
-            "warnings": validation_result.warnings
+            "warnings": validation_result.warnings,
         }
 
     @staticmethod
-    def _validate_sources_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _validate_sources_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Validate source compatibility using VirtualizationBusinessRules.
 
@@ -311,6 +293,7 @@ class VirtualizationWorkflow:
             raise ValueError("tenant_id is required")
 
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.get(id=tenant_id)
         virtual_dataset = VirtualDataset.objects.get(id=virtual_dataset_id, tenant=tenant)
 
@@ -319,14 +302,12 @@ class VirtualizationWorkflow:
 
         # Validate source compatibility using business rules
         business_rules = VirtualizationBusinessRules(
-            tenant_id=str(tenant_id),
-            user_id=str(user_id) if user_id else None
+            tenant_id=str(tenant_id), user_id=str(user_id) if user_id else None
         )
 
         try:
             compatibility_result = business_rules.validate_source_compatibility(
-                virtual_dataset=virtual_dataset,
-                raise_on_error=True
+                virtual_dataset=virtual_dataset, raise_on_error=True
             )
         except ValidationError as e:
             raise WorkflowStepValueError(str(e)) from e
@@ -336,26 +317,30 @@ class VirtualizationWorkflow:
             "is_compatible": compatibility_result.is_valid,
             "errors": compatibility_result.errors,
             "warnings": compatibility_result.warnings,
-            "details": compatibility_result.details
+            "details": compatibility_result.details,
         }
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         logger.info(
             "Sources validated",
             workflow_instance_id=str(instance.id),
             virtual_dataset_id=str(virtual_dataset.id),
             source_count=len(virtual_dataset.get_sources()) if virtual_dataset.get_sources() else 0,
-            compatibility_status=compatibility_result.is_valid
+            compatibility_status=compatibility_result.is_valid,
         )
 
         return {
-            "compatibility_status": "COMPATIBLE" if compatibility_result.is_valid else "INCOMPATIBLE",
+            "compatibility_status": "COMPATIBLE"
+            if compatibility_result.is_valid
+            else "INCOMPATIBLE",
             "errors": compatibility_result.errors,
-            "warnings": compatibility_result.warnings
+            "warnings": compatibility_result.warnings,
         }
 
     @staticmethod
-    def _optimize_query_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _optimize_query_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Optimize query using QueryExecutionBusinessRules.
 
@@ -377,6 +362,7 @@ class VirtualizationWorkflow:
             raise ValueError("tenant_id is required")
 
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.get(id=tenant_id)
         virtual_dataset = VirtualDataset.objects.get(id=virtual_dataset_id, tenant=tenant)
 
@@ -385,40 +371,41 @@ class VirtualizationWorkflow:
 
         # Optimize query using business rules
         execution_business_rules = QueryExecutionBusinessRules(
-            tenant_id=str(tenant_id),
-            user_id=str(user_id) if user_id else None
+            tenant_id=str(tenant_id), user_id=str(user_id) if user_id else None
         )
 
         optimization_result = execution_business_rules.optimize_query(
-            query=virtual_dataset.query,
-            query_type=virtual_dataset.query_type,
-            raise_on_error=False
+            query=virtual_dataset.query, query_type=virtual_dataset.query_type, raise_on_error=False
         )
 
         # Store optimized query in state_data
         optimized_query = optimization_result.get("optimized_query", virtual_dataset.query)
         instance.state_data["original_query"] = virtual_dataset.query
         instance.state_data["optimized_query"] = optimized_query
-        instance.state_data["optimizations_applied"] = optimization_result.get("optimizations_applied", [])
+        instance.state_data["optimizations_applied"] = optimization_result.get(
+            "optimizations_applied", []
+        )
         instance.state_data["optimization_warnings"] = optimization_result.get("warnings", [])
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         logger.info(
             "Query optimized",
             workflow_instance_id=str(instance.id),
             virtual_dataset_id=str(virtual_dataset.id),
-            optimizations_applied=len(optimization_result.get("optimizations_applied", []))
+            optimizations_applied=len(optimization_result.get("optimizations_applied", [])),
         )
 
         return {
             "optimized_query": optimized_query,
             "optimizations_applied": optimization_result.get("optimizations_applied", []),
-            "warnings": optimization_result.get("warnings", [])
+            "warnings": optimization_result.get("warnings", []),
         }
 
     @staticmethod
     @transaction.atomic
-    def _execute_query_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _execute_query_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Execute query against sources using VirtualizationService.
 
@@ -447,8 +434,9 @@ class VirtualizationWorkflow:
 
         from hub.apps.tenants.models import Tenant
         from hub.apps.users.models import User
+
         tenant = Tenant.objects.get(id=tenant_id)
-        created_by = User.objects.get(id=user_id) if user_id else None
+        User.objects.get(id=user_id) if user_id else None
         virtual_dataset = VirtualDataset.objects.get(id=virtual_dataset_id, tenant=tenant)
 
         # Use optimized query if available, otherwise use original
@@ -463,25 +451,25 @@ class VirtualizationWorkflow:
             query=query_to_execute,
             parameters=parameters,
             execution_mode=execution_mode,
-            status=QueryExecutionStatus.PENDING
+            status=QueryExecutionStatus.PENDING,
         )
 
         # Store execution_id in state_data
         instance.state_data["execution_id"] = str(execution.id)
         instance.state_data["execution_mode"] = execution_mode
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         # Publish workflow started event
         try:
             service = VirtualizationService(
                 tenant_id=str(tenant_id) if tenant_id else None,
-                user_id=str(user_id) if user_id else None
+                user_id=str(user_id) if user_id else None,
             )
             service.publish_query_execution_started(
                 query_execution_id=str(execution.id),
                 virtual_dataset_id=str(virtual_dataset.id),
                 execution_mode=execution_mode,
-                tenant_id=str(tenant_id) if tenant_id else None
+                tenant_id=str(tenant_id) if tenant_id else None,
             )
         except Exception as e:
             logger.warning(
@@ -489,18 +477,17 @@ class VirtualizationWorkflow:
                 workflow_instance_id=str(instance.id),
                 execution_id=str(execution.id),
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
 
         # Mark execution as running
         execution.status = QueryExecutionStatus.RUNNING
         execution.started_at = timezone.now()
-        execution.save(update_fields=['status', 'started_at'])
+        execution.save(update_fields=["status", "started_at"])
 
         # Initialize virtualization service
         service = VirtualizationService(
-            tenant_id=str(tenant_id),
-            user_id=str(user_id) if user_id else None
+            tenant_id=str(tenant_id), user_id=str(user_id) if user_id else None
         )
 
         # Execute query
@@ -508,9 +495,7 @@ class VirtualizationWorkflow:
             # For SPARQL queries, use SemanticService integration
             if virtual_dataset.query_type == QueryType.SPARQL:
                 result_data = VirtualizationWorkflow._execute_sparql_query(
-                    service=service,
-                    query=query_to_execute,
-                    timeout_seconds=timeout_seconds or 300
+                    service=service, query=query_to_execute, timeout_seconds=timeout_seconds or 300
                 )
             elif virtual_dataset.query_type == QueryType.FEDERATED:
                 # For federated queries, execute against each source and aggregate
@@ -519,7 +504,7 @@ class VirtualizationWorkflow:
                     virtual_dataset=virtual_dataset,
                     query=query_to_execute,
                     parameters=parameters,
-                    timeout_seconds=timeout_seconds or 300
+                    timeout_seconds=timeout_seconds or 300,
                 )
             else:
                 # For standard query types (SQL, REST, GraphQL, etc.), use the same
@@ -536,7 +521,29 @@ class VirtualizationWorkflow:
             # Store execution results in state_data
             instance.state_data["execution_results"] = result_data
             instance.state_data["execution_status"] = "COMPLETED"
-            instance.save(update_fields=['state_data'])
+            instance.save(update_fields=["state_data"])
+
+            # Run quality checks on query results and append findings to
+            # execution_log so downstream consumers (DQ dashboards, audit)
+            # can inspect quality metrics without a separate DQ service call.
+            try:
+                result_rows = result_data.get("data", [])
+                if result_rows:
+                    service._run_quality_check_on_results(
+                        result_rows, execution, virtual_dataset
+                    )
+                    execution.save(update_fields=["execution_log", "updated_at"])
+            except Exception as quality_err:
+                execution.add_log_entry(
+                    "WARNING", f"Quality check failed: {quality_err!s}"
+                )
+                logger.warning(
+                    "Quality check failed for query execution",
+                    workflow_instance_id=str(instance.id),
+                    execution_id=str(execution.id),
+                    error=str(quality_err),
+                    exc_info=True,
+                )
 
             logger.info(
                 "Query executed",
@@ -544,33 +551,35 @@ class VirtualizationWorkflow:
                 virtual_dataset_id=str(virtual_dataset.id),
                 execution_id=str(execution.id),
                 query_type=virtual_dataset.query_type,
-                row_count=result_data.get("row_count", 0)
+                row_count=result_data.get("row_count", 0),
             )
 
             return {
                 "execution_status": "COMPLETED",
                 "result_data": result_data,
-                "row_count": result_data.get("row_count", 0)
+                "row_count": result_data.get("row_count", 0),
             }
         except Exception as e:
             # Mark execution as failed
             execution.status = QueryExecutionStatus.FAILED
             execution.completed_at = timezone.now()
-            execution.save(update_fields=['status', 'completed_at'])
+            execution.save(update_fields=["status", "completed_at"])
 
             # Publish execution failed event
             try:
                 # Calculate duration
                 duration_ms = None
                 if execution.started_at:
-                    duration_ms = int((timezone.now() - execution.started_at).total_seconds() * 1000)
+                    duration_ms = int(
+                        (timezone.now() - execution.started_at).total_seconds() * 1000
+                    )
 
                 service.publish_query_execution_failed(
                     query_execution_id=str(execution.id),
                     virtual_dataset_id=str(virtual_dataset.id),
                     error_message=str(e),
                     duration_ms=duration_ms,
-                    tenant_id=str(tenant_id) if tenant_id else None
+                    tenant_id=str(tenant_id) if tenant_id else None,
                 )
             except Exception as publish_error:
                 logger.warning(
@@ -578,12 +587,12 @@ class VirtualizationWorkflow:
                     workflow_instance_id=str(instance.id),
                     execution_id=str(execution.id),
                     error=str(publish_error),
-                    exc_info=True
+                    exc_info=True,
                 )
 
             instance.state_data["execution_status"] = "FAILED"
             instance.state_data["execution_error"] = str(e)
-            instance.save(update_fields=['state_data'])
+            instance.save(update_fields=["state_data"])
 
             logger.error(
                 "Query execution failed",
@@ -591,16 +600,14 @@ class VirtualizationWorkflow:
                 virtual_dataset_id=str(virtual_dataset.id),
                 execution_id=str(execution.id),
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
             raise
 
     @staticmethod
     def _execute_sparql_query(
-        service: VirtualizationService,
-        query: str,
-        timeout_seconds: int
-    ) -> Dict[str, Any]:
+        service: VirtualizationService, query: str, timeout_seconds: int
+    ) -> dict[str, Any]:
         """
         Execute SPARQL query using SemanticService.
 
@@ -626,7 +633,7 @@ class VirtualizationWorkflow:
             if "error" in result:
                 raise ValidationError(
                     f"SPARQL query execution failed: {result['error']}",
-                    code="SPARQL_EXECUTION_FAILED"
+                    code="SPARQL_EXECUTION_FAILED",
                 )
 
             # Extract bindings from SPARQL result
@@ -644,17 +651,14 @@ class VirtualizationWorkflow:
                 "columns": list(bindings[0].keys()) if bindings else [],
                 "row_count": len(data),
                 "source_type": "sparql",
-                "query_type": QueryType.SPARQL
+                "query_type": QueryType.SPARQL,
             }
         except Exception as e:
             logger.error(
-                f"SPARQL query execution failed: {e}",
-                extra={"error": str(e)},
-                exc_info=True
+                f"SPARQL query execution failed: {e}", extra={"error": str(e)}, exc_info=True
             )
             raise ValidationError(
-                f"SPARQL query execution failed: {str(e)}",
-                code="SPARQL_EXECUTION_FAILED"
+                f"SPARQL query execution failed: {e!s}", code="SPARQL_EXECUTION_FAILED"
             ) from e
 
     @staticmethod
@@ -662,9 +666,9 @@ class VirtualizationWorkflow:
         service: VirtualizationService,
         virtual_dataset: VirtualDataset,
         query: str,
-        parameters: Dict[str, Any],
+        parameters: dict[str, Any],
         timeout_seconds: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Execute standard query (SQL, REST, GraphQL, etc.) using the same path as REST.
 
@@ -710,7 +714,7 @@ class VirtualizationWorkflow:
                 exc_info=True,
             )
             raise ValidationError(
-                f"Query execution failed: {str(e)}",
+                f"Query execution failed: {e!s}",
                 code="QUERY_EXECUTION_FAILED",
             ) from e
 
@@ -719,9 +723,9 @@ class VirtualizationWorkflow:
         service: VirtualizationService,
         virtual_dataset: VirtualDataset,
         query: str,
-        parameters: Dict[str, Any],
-        timeout_seconds: int
-    ) -> Dict[str, Any]:
+        parameters: dict[str, Any],
+        timeout_seconds: int,
+    ) -> dict[str, Any]:
         """
         Execute federated query across multiple sources.
 
@@ -741,8 +745,7 @@ class VirtualizationWorkflow:
         sources = virtual_dataset.get_sources() or []
         if not sources:
             raise ValidationError(
-                "Federated queries require at least one source",
-                code="MISSING_SOURCES"
+                "Federated queries require at least one source", code="MISSING_SOURCES"
             )
 
         all_results = []
@@ -752,7 +755,7 @@ class VirtualizationWorkflow:
         # Execute query against each source
         for source_index, source in enumerate(sources):
             source_type = source.get("type", "").lower()
-            
+
             # Determine query type based on source type
             if source_type in ["postgresql", "mysql", "sqlserver", "mssql"]:
                 source_query_type = QueryType.SQL
@@ -774,12 +777,14 @@ class VirtualizationWorkflow:
                     source=source,
                     parameters=parameters,
                     timeout_seconds=timeout_seconds,
-                    source_index=source_index
+                    source_index=source_index,
                 )
 
                 source_data = result.get("data", [])
                 source_columns = result.get("columns", [])
-                source_rows = result.get("row_count", len(source_data) if isinstance(source_data, list) else 0)
+                source_rows = result.get(
+                    "row_count", len(source_data) if isinstance(source_data, list) else 0
+                )
 
                 if source_data:
                     all_results.extend(source_data)
@@ -794,8 +799,8 @@ class VirtualizationWorkflow:
                     extra={
                         "source_index": source_index,
                         "source_type": source_type,
-                        "error": str(e)
-                    }
+                        "error": str(e),
+                    },
                 )
                 # Continue with other sources even if one fails
                 continue
@@ -805,11 +810,13 @@ class VirtualizationWorkflow:
             "columns": all_columns,
             "row_count": total_rows,
             "source_count": len(sources),
-            "query_type": "FEDERATED"
+            "query_type": "FEDERATED",
         }
 
     @staticmethod
-    def _aggregate_results_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _aggregate_results_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Aggregate results from multiple sources (if applicable).
 
@@ -837,22 +844,24 @@ class VirtualizationWorkflow:
 
         # Store aggregated results in state_data
         instance.state_data["aggregated_results"] = aggregated_results
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         logger.info(
             "Results aggregated",
             workflow_instance_id=str(instance.id),
             virtual_dataset_id=str(virtual_dataset_id),
-            row_count=aggregated_results.get("row_count", 0)
+            row_count=aggregated_results.get("row_count", 0),
         )
 
         return {
             "aggregated_results": aggregated_results,
-            "row_count": aggregated_results.get("row_count", 0)
+            "row_count": aggregated_results.get("row_count", 0),
         }
 
     @staticmethod
-    def _cache_results_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _cache_results_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Cache query results using ResultBusinessRules validation.
 
@@ -881,17 +890,16 @@ class VirtualizationWorkflow:
 
         # Validate caching configuration using ResultBusinessRules
         result_business_rules = ResultBusinessRules(
-            tenant_id=str(tenant_id),
-            user_id=str(user_id) if user_id else None
+            tenant_id=str(tenant_id), user_id=str(user_id) if user_id else None
         )
 
         # Estimate result size (rough estimate)
-        result_size = len(str(aggregated_results).encode('utf-8'))
+        result_size = len(str(aggregated_results).encode("utf-8"))
         cache_validation = result_business_rules.validate_result_caching(
             cache_enabled=True,
             cache_ttl=3600,  # 1 hour default
             result_size=result_size,
-            raise_on_error=False
+            raise_on_error=False,
         )
 
         if not cache_validation.is_valid:
@@ -899,21 +907,21 @@ class VirtualizationWorkflow:
                 "Cache validation failed, skipping cache",
                 workflow_instance_id=str(instance.id),
                 execution_id=str(execution_id),
-                errors=cache_validation.errors
+                errors=cache_validation.errors,
             )
             instance.state_data["cache_status"] = "SKIPPED"
             instance.state_data["cache_errors"] = cache_validation.errors
-            instance.save(update_fields=['state_data'])
+            instance.save(update_fields=["state_data"])
             return {"cache_status": "SKIPPED", "reason": cache_validation.errors}
 
         # Generate cache key
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.get(id=tenant_id)
         virtual_dataset = VirtualDataset.objects.get(id=virtual_dataset_id, tenant=tenant)
 
         service = VirtualizationService(
-            tenant_id=str(tenant_id),
-            user_id=str(user_id) if user_id else None
+            tenant_id=str(tenant_id), user_id=str(user_id) if user_id else None
         )
         cache_key = service._get_query_cache_key(virtual_dataset, parameters)
 
@@ -925,38 +933,36 @@ class VirtualizationWorkflow:
                 "data": aggregated_results.get("data", []),
                 "row_count": aggregated_results.get("row_count", 0),
                 "columns": aggregated_results.get("columns", []),
-                "cached_at": timezone.now().isoformat()
+                "cached_at": timezone.now().isoformat(),
             },
-            timeout=cache_ttl
+            timeout=cache_ttl,
         )
 
         # Update execution with cache key
         execution = QueryExecution.objects.get(id=execution_id)
         execution.result_cache_key = cache_key
-        execution.save(update_fields=['result_cache_key'])
+        execution.save(update_fields=["result_cache_key"])
 
         # Store cache status in state_data
         instance.state_data["cache_status"] = "CACHED"
         instance.state_data["cache_key"] = cache_key
         instance.state_data["cache_ttl"] = cache_ttl
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         logger.info(
             "Results cached",
             workflow_instance_id=str(instance.id),
             execution_id=str(execution.id),
             cache_key=cache_key,
-            cache_ttl=cache_ttl
+            cache_ttl=cache_ttl,
         )
 
-        return {
-            "cache_status": "CACHED",
-            "cache_key": cache_key,
-            "cache_ttl": cache_ttl
-        }
+        return {"cache_status": "CACHED", "cache_key": cache_key, "cache_ttl": cache_ttl}
 
     @staticmethod
-    def _store_results_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _store_results_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Store query results (if storage is needed for large results).
 
@@ -979,7 +985,7 @@ class VirtualizationWorkflow:
 
         # For now, we'll skip storage if results are small enough to be cached
         # In production, this would store large results to S3 or similar
-        result_size = len(str(aggregated_results).encode('utf-8'))
+        result_size = len(str(aggregated_results).encode("utf-8"))
         large_result_threshold = 100 * 1024 * 1024  # 100MB
 
         if result_size > large_result_threshold:
@@ -989,7 +995,7 @@ class VirtualizationWorkflow:
                 "Large results detected, would store to persistent storage",
                 workflow_instance_id=str(instance.id),
                 execution_id=str(execution_id),
-                result_size=result_size
+                result_size=result_size,
             )
             instance.state_data["storage_status"] = "STORED"
             instance.state_data["storage_path"] = None  # Would be set in full implementation
@@ -997,16 +1003,18 @@ class VirtualizationWorkflow:
             instance.state_data["storage_status"] = "SKIPPED"
             instance.state_data["storage_reason"] = "Results small enough for cache"
 
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         return {
             "storage_status": instance.state_data.get("storage_status", "SKIPPED"),
-            "storage_path": instance.state_data.get("storage_path")
+            "storage_path": instance.state_data.get("storage_path"),
         }
 
     @staticmethod
     @transaction.atomic
-    def _complete_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _complete_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Complete workflow and mark execution as completed.
 
@@ -1029,6 +1037,7 @@ class VirtualizationWorkflow:
 
         from hub.apps.tenants.models import Tenant
         from hub.apps.users.models import User
+
         tenant = Tenant.objects.get(id=tenant_id)
         created_by = User.objects.get(id=user_id) if user_id else None
         execution = QueryExecution.objects.get(id=execution_id)
@@ -1040,19 +1049,21 @@ class VirtualizationWorkflow:
         execution.status = QueryExecutionStatus.COMPLETED
         execution.completed_at = timezone.now()
         execution.metrics = instance.state_data.get("execution_results", {})
-        execution.save(update_fields=['status', 'completed_at', 'metrics'])
+        execution.save(update_fields=["status", "completed_at", "metrics", "execution_log"])
 
         # Publish execution completed event
         try:
             service = VirtualizationService(
                 tenant_id=str(tenant_id) if tenant_id else None,
-                user_id=str(user_id) if user_id else None
+                user_id=str(user_id) if user_id else None,
             )
 
             # Calculate duration
             duration_ms = None
             if execution.started_at and execution.completed_at:
-                duration_ms = int((execution.completed_at - execution.started_at).total_seconds() * 1000)
+                duration_ms = int(
+                    (execution.completed_at - execution.started_at).total_seconds() * 1000
+                )
 
             # Get metrics from execution
             metrics = execution.metrics or {}
@@ -1064,7 +1075,7 @@ class VirtualizationWorkflow:
                 status="COMPLETED",
                 duration_ms=duration_ms,
                 rows_processed=row_count,
-                tenant_id=str(tenant_id) if tenant_id else None
+                tenant_id=str(tenant_id) if tenant_id else None,
             )
         except Exception as e:
             logger.warning(
@@ -1072,7 +1083,7 @@ class VirtualizationWorkflow:
                 workflow_instance_id=str(instance.id),
                 execution_id=str(execution.id),
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
 
         # Create audit event
@@ -1088,26 +1099,28 @@ class VirtualizationWorkflow:
                 "virtual_dataset_name": execution.virtual_dataset.name,
                 "query_type": execution.virtual_dataset.query_type,
                 "execution_mode": execution.execution_mode,
-                "workflow_instance_id": str(instance.id)
-            }
+                "workflow_instance_id": str(instance.id),
+            },
         )
 
         logger.info(
             "Workflow completed",
             workflow_instance_id=str(instance.id),
             execution_id=str(execution.id),
-            virtual_dataset_id=str(execution.virtual_dataset.id)
+            virtual_dataset_id=str(execution.virtual_dataset.id),
         )
 
         return {
             "completed": True,
             "execution_id": str(execution.id),
-            "row_count": execution.metrics.get("row_count", 0) if execution.metrics else 0
+            "row_count": execution.metrics.get("row_count", 0) if execution.metrics else 0,
         }
 
     @staticmethod
     @transaction.atomic
-    def _rollback_execution_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _rollback_execution_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Rollback execution record (compensation task).
 
@@ -1125,19 +1138,20 @@ class VirtualizationWorkflow:
         if not execution_id:
             logger.warning(
                 "Cannot rollback execution: execution_id not found",
-                workflow_instance_id=str(instance.id)
+                workflow_instance_id=str(instance.id),
             )
             return {"rolled_back": False, "reason": "execution_id not found"}
 
         if not tenant_id:
             logger.warning(
                 "Cannot rollback execution: tenant_id not found",
-                workflow_instance_id=str(instance.id)
+                workflow_instance_id=str(instance.id),
             )
             return {"rolled_back": False, "reason": "tenant_id not found"}
 
         from hub.apps.tenants.models import Tenant
-        tenant = Tenant.objects.get(id=tenant_id)
+
+        Tenant.objects.get(id=tenant_id)
 
         try:
             execution = QueryExecution.objects.get(id=execution_id)
@@ -1145,12 +1159,12 @@ class VirtualizationWorkflow:
             if execution.status != QueryExecutionStatus.FAILED:
                 execution.status = QueryExecutionStatus.FAILED
                 execution.completed_at = timezone.now()
-                execution.save(update_fields=['status', 'completed_at'])
+                execution.save(update_fields=["status", "completed_at"])
 
             logger.info(
                 "Execution rolled back",
                 workflow_instance_id=str(instance.id),
-                execution_id=str(execution.id)
+                execution_id=str(execution.id),
             )
 
             return {"rolled_back": True}
@@ -1158,13 +1172,15 @@ class VirtualizationWorkflow:
             logger.warning(
                 "Execution not found for rollback",
                 workflow_instance_id=str(instance.id),
-                execution_id=execution_id
+                execution_id=execution_id,
             )
             return {"rolled_back": False, "reason": "execution not found"}
 
     @staticmethod
     @transaction.atomic
-    def _rollback_cache_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _rollback_cache_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Rollback cache entry (compensation task).
 
@@ -1180,8 +1196,7 @@ class VirtualizationWorkflow:
 
         if not cache_key:
             logger.warning(
-                "Cannot rollback cache: cache_key not found",
-                workflow_instance_id=str(instance.id)
+                "Cannot rollback cache: cache_key not found", workflow_instance_id=str(instance.id)
             )
             return {"rolled_back": False, "reason": "cache_key not found"}
 
@@ -1192,7 +1207,7 @@ class VirtualizationWorkflow:
             logger.info(
                 "Cache rolled back (deleted)",
                 workflow_instance_id=str(instance.id),
-                cache_key=cache_key
+                cache_key=cache_key,
             )
 
             return {"rolled_back": True}
@@ -1202,22 +1217,22 @@ class VirtualizationWorkflow:
                 workflow_instance_id=str(instance.id),
                 cache_key=cache_key,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
-            return {"rolled_back": False, "reason": f"Failed to delete cache: {str(e)}"}
+            return {"rolled_back": False, "reason": f"Failed to delete cache: {e!s}"}
 
     @classmethod
     def execute(
         cls,
         virtual_dataset_id: str,
         tenant_id: str,
-        user_id: Optional[str] = None,
-        parameters: Optional[Dict[str, Any]] = None,
-        execution_mode: Optional[QueryExecutionMode] = None,
-        timeout_seconds: Optional[int] = None,
-        engine: Optional[WorkflowEngine] = None,
-        registry: Optional[WorkflowRegistry] = None
-    ) -> Dict[str, Any]:
+        user_id: str | None = None,
+        parameters: dict[str, Any] | None = None,
+        execution_mode: QueryExecutionMode | None = None,
+        timeout_seconds: int | None = None,
+        engine: WorkflowEngine | None = None,
+        registry: WorkflowRegistry | None = None,
+    ) -> dict[str, Any]:
         """
         Execute virtualization query execution workflow.
 
@@ -1248,6 +1263,7 @@ class VirtualizationWorkflow:
 
         # Validate tenant exists before creating workflow instance
         from hub.apps.tenants.models import Tenant
+
         try:
             Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
@@ -1260,7 +1276,7 @@ class VirtualizationWorkflow:
             "user_id": user_id,
             "parameters": parameters or {},
             "execution_mode": execution_mode or QueryExecutionMode.ASYNC,
-            "timeout_seconds": timeout_seconds
+            "timeout_seconds": timeout_seconds,
         }
 
         # Create workflow instance
@@ -1269,12 +1285,13 @@ class VirtualizationWorkflow:
                 workflow_name=cls.WORKFLOW_NAME,
                 input_data=workflow_input,
                 tenant_id=tenant_id,
-                created_by_id=user_id
+                created_by_id=user_id,
             )
         except Exception as e:
             # Surface database integrity errors with accurate context
             # instead of masking them as "Invalid tenant_id".
             from django.db import IntegrityError
+
             if isinstance(e, IntegrityError):
                 raise IntegrityError(
                     f"Failed to create workflow instance for "
@@ -1299,13 +1316,13 @@ class VirtualizationWorkflow:
                 workflow_instance_id=str(workflow_instance.id),
                 tenant_id=tenant_id,
                 virtual_dataset_id=virtual_dataset_id,
-                execution_id=workflow_instance.state_data.get("execution_id")
+                execution_id=workflow_instance.state_data.get("execution_id"),
             )
             return {
                 "success": True,
                 "workflow_instance_id": str(workflow_instance.id),
                 "execution_id": workflow_instance.state_data.get("execution_id"),
-                "output_data": workflow_instance.output_data
+                "output_data": workflow_instance.output_data,
             }
         else:
             error_message = workflow_instance.error_message or "Workflow execution failed"
@@ -1314,7 +1331,6 @@ class VirtualizationWorkflow:
                 workflow_instance_id=str(workflow_instance.id),
                 tenant_id=tenant_id,
                 virtual_dataset_id=virtual_dataset_id,
-                error=error_message
+                error=error_message,
             )
             raise ValueError(f"Virtualization query execution workflow failed: {error_message}")
-

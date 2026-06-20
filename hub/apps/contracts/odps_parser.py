@@ -4,14 +4,18 @@ ODPS Parser Module
 Parses ODPS (Open Data Product Standard) documents in YAML/JSON format.
 Supports format detection, error handling with context, and validation.
 """
+
 import json
-import yaml
-from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
+from typing import Any
+
+import yaml
 
 try:
     import jsonschema
-    from jsonschema import Draft202012Validator, ValidationError as JSONSchemaValidationError, SchemaError
+    from jsonschema import Draft202012Validator, SchemaError
+    from jsonschema import ValidationError as JSONSchemaValidationError
+
     JSONSCHEMA_AVAILABLE = True
 except ImportError:
     JSONSCHEMA_AVAILABLE = False
@@ -38,11 +42,11 @@ class ODPSValidationError(Exception):
     def __init__(
         self,
         message: str,
-        file_path: Optional[str] = None,
-        line_number: Optional[int] = None,
-        original_error: Optional[Exception] = None,
-        validation_errors: Optional[List[Dict[str, Any]]] = None,
-        error_code: Optional[str] = None
+        file_path: str | None = None,
+        line_number: int | None = None,
+        original_error: Exception | None = None,
+        validation_errors: list[dict[str, Any]] | None = None,
+        error_code: str | None = None,
     ):
         """
         Initialize ODPSValidationError.
@@ -71,7 +75,7 @@ class ODPSValidationError(Exception):
         if error_code:
             error_parts.append(f"Code: {error_code}")
         if original_error:
-            error_parts.append(f"Original error: {str(original_error)}")
+            error_parts.append(f"Original error: {original_error!s}")
 
         super().__init__(" | ".join(error_parts))
 
@@ -85,7 +89,7 @@ class ODPSValidationError(Exception):
         if self.error_code:
             error_parts.append(f"Code: {self.error_code}")
         if self.original_error:
-            error_parts.append(f"Original error: {str(self.original_error)}")
+            error_parts.append(f"Original error: {self.original_error!s}")
         if self.validation_errors:
             error_parts.append(f"Validation errors: {len(self.validation_errors)}")
         return " | ".join(error_parts)
@@ -101,11 +105,8 @@ class ODPSParser:
 
     @classmethod
     def parse(
-        cls,
-        content: str,
-        file_path: Optional[str] = None,
-        format: Optional[str] = None
-    ) -> Dict[str, Any]:
+        cls, content: str, file_path: str | None = None, format: str | None = None
+    ) -> dict[str, Any]:
         """
         Parse ODPS content from string.
 
@@ -124,10 +125,7 @@ class ODPSParser:
             ODPSValidationError: If parsing fails or content is invalid
         """
         if not content or not isinstance(content, str):
-            raise ODPSValidationError(
-                "Content must be a non-empty string",
-                file_path=file_path
-            )
+            raise ODPSValidationError("Content must be a non-empty string", file_path=file_path)
 
         # Detect format if not specified
         if format is None:
@@ -142,7 +140,7 @@ class ODPSParser:
             else:
                 raise ODPSValidationError(
                     f"Unsupported format: {format}. Supported formats: json, yaml",
-                    file_path=file_path
+                    file_path=file_path,
                 )
         except ODPSValidationError:
             # Re-raise ODPSValidationError as-is
@@ -150,13 +148,13 @@ class ODPSParser:
         except Exception as e:
             # Wrap unexpected errors
             raise ODPSValidationError(
-                f"Unexpected error parsing ODPS content: {str(e)}",
+                f"Unexpected error parsing ODPS content: {e!s}",
                 file_path=file_path,
-                original_error=e
+                original_error=e,
             )
 
     @classmethod
-    def parse_file(cls, file_path: str, format: Optional[str] = None) -> Dict[str, Any]:
+    def parse_file(cls, file_path: str, format: str | None = None) -> dict[str, Any]:
         """
         Parse ODPS content from file.
 
@@ -177,31 +175,24 @@ class ODPSParser:
             raise FileNotFoundError(f"ODPS file not found: {file_path}")
 
         if not path.is_file():
-            raise ODPSValidationError(
-                f"Path is not a file: {file_path}",
-                file_path=file_path
-            )
+            raise ODPSValidationError(f"Path is not a file: {file_path}", file_path=file_path)
 
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
         except UnicodeDecodeError as e:
             raise ODPSValidationError(
-                f"File encoding error: {str(e)}",
-                file_path=file_path,
-                original_error=e
+                f"File encoding error: {e!s}", file_path=file_path, original_error=e
             )
-        except IOError as e:
+        except OSError as e:
             raise ODPSValidationError(
-                f"Error reading file: {str(e)}",
-                file_path=file_path,
-                original_error=e
+                f"Error reading file: {e!s}", file_path=file_path, original_error=e
             )
 
         return cls.parse(content, file_path=str(path), format=format)
 
     @classmethod
-    def _parse_json(cls, content: str, file_path: Optional[str] = None) -> Dict[str, Any]:
+    def _parse_json(cls, content: str, file_path: str | None = None) -> dict[str, Any]:
         """
         Parse JSON content.
 
@@ -220,30 +211,30 @@ class ODPSParser:
         except json.JSONDecodeError as e:
             # Extract line number from JSON error
             line_number = None
-            if hasattr(e, 'lineno') and e.lineno:
+            if hasattr(e, "lineno") and e.lineno:
                 line_number = e.lineno
-            elif hasattr(e, 'pos'):
+            elif hasattr(e, "pos"):
                 # Estimate line number from position
-                line_number = content[:e.pos].count('\n') + 1
+                line_number = content[: e.pos].count("\n") + 1
 
             raise ODPSValidationError(
                 f"Invalid JSON format: {e.msg}",
                 file_path=file_path,
                 line_number=line_number,
-                original_error=e
+                original_error=e,
             )
 
         # Validate that parsed data is a dictionary
         if not isinstance(data, dict):
             raise ODPSValidationError(
                 f"ODPS document must be a JSON object, got {type(data).__name__}",
-                file_path=file_path
+                file_path=file_path,
             )
 
         return data
 
     @classmethod
-    def _parse_yaml(cls, content: str, file_path: Optional[str] = None) -> Dict[str, Any]:
+    def _parse_yaml(cls, content: str, file_path: str | None = None) -> dict[str, Any]:
         """
         Parse YAML content.
 
@@ -262,33 +253,32 @@ class ODPSParser:
         except yaml.YAMLError as e:
             # Extract line number from YAML error
             line_number = None
-            if hasattr(e, 'problem_mark') and e.problem_mark:
+            if hasattr(e, "problem_mark") and e.problem_mark:
                 line_number = e.problem_mark.line + 1  # YAML line numbers are 0-based
-            elif hasattr(e, 'context_mark') and e.context_mark:
+            elif hasattr(e, "context_mark") and e.context_mark:
                 line_number = e.context_mark.line + 1
 
             error_msg = str(e)
-            if hasattr(e, 'problem'):
+            if hasattr(e, "problem"):
                 error_msg = e.problem
 
             raise ODPSValidationError(
                 f"Invalid YAML format: {error_msg}",
                 file_path=file_path,
                 line_number=line_number,
-                original_error=e
+                original_error=e,
             )
 
         # Handle case where YAML is None or not a dict
         if data is None:
             raise ODPSValidationError(
-                "ODPS document is empty or contains no data",
-                file_path=file_path
+                "ODPS document is empty or contains no data", file_path=file_path
             )
 
         if not isinstance(data, dict):
             raise ODPSValidationError(
                 f"ODPS document must be a YAML object/mapping, got {type(data).__name__}",
-                file_path=file_path
+                file_path=file_path,
             )
 
         return data
@@ -315,7 +305,7 @@ class ODPSParser:
 
         # JSON typically starts with { or [
         # YAML can start with various characters
-        if stripped.startswith('{') or stripped.startswith('['):
+        if stripped.startswith("{") or stripped.startswith("["):
             # Try JSON first
             try:
                 json.loads(stripped)
@@ -345,11 +335,8 @@ class ODPSParser:
 
     @classmethod
     def validate(
-        cls,
-        odps_document: Dict[str, Any],
-        version: Optional[str] = None,
-        file_path: Optional[str] = None
-    ) -> Tuple[bool, List[Dict[str, Any]]]:
+        cls, odps_document: dict[str, Any], version: str | None = None, file_path: str | None = None
+    ) -> tuple[bool, list[dict[str, Any]]]:
         """
         Validate ODPS document against JSON Schema.
 
@@ -371,7 +358,7 @@ class ODPSParser:
                 "jsonschema library is required for ODPS validation. "
                 "Install it with: pip install jsonschema",
                 file_path=file_path,
-                error_code="JSONSCHEMA_NOT_AVAILABLE"
+                error_code="JSONSCHEMA_NOT_AVAILABLE",
             )
 
         # Detect version from document if not provided
@@ -383,7 +370,7 @@ class ODPSParser:
                 "ODPS version could not be determined. "
                 "Please specify version or ensure document contains 'schema' or 'version' field.",
                 file_path=file_path,
-                error_code="VERSION_NOT_FOUND"
+                error_code="VERSION_NOT_FOUND",
             )
 
         # Load schema for the version
@@ -391,17 +378,17 @@ class ODPSParser:
             schema = load_odps_schema(version)
         except FileNotFoundError as e:
             raise ODPSValidationError(
-                f"ODPS schema not found for version '{version}': {str(e)}",
+                f"ODPS schema not found for version '{version}': {e!s}",
                 file_path=file_path,
                 original_error=e,
-                error_code="SCHEMA_NOT_FOUND"
+                error_code="SCHEMA_NOT_FOUND",
             )
-        except (json.JSONDecodeError, ValueError, IOError) as e:
+        except (OSError, json.JSONDecodeError, ValueError) as e:
             raise ODPSValidationError(
-                f"Error loading ODPS schema for version '{version}': {str(e)}",
+                f"Error loading ODPS schema for version '{version}': {e!s}",
                 file_path=file_path,
                 original_error=e,
-                error_code="SCHEMA_LOAD_ERROR"
+                error_code="SCHEMA_LOAD_ERROR",
             )
 
         # Validate schema itself
@@ -409,10 +396,10 @@ class ODPSParser:
             Draft202012Validator.check_schema(schema)
         except SchemaError as e:
             raise ODPSValidationError(
-                f"ODPS schema for version '{version}' is invalid: {str(e)}",
+                f"ODPS schema for version '{version}' is invalid: {e!s}",
                 file_path=file_path,
                 original_error=e,
-                error_code="SCHEMA_INVALID"
+                error_code="SCHEMA_INVALID",
             )
 
         # Validate document against schema
@@ -422,12 +409,14 @@ class ODPSParser:
         try:
             validator.validate(odps_document)
             return True, []
-        except JSONSchemaValidationError as e:
+        except JSONSchemaValidationError:
             # Collect all validation errors
             errors = validator.iter_errors(odps_document)
 
             for error in errors:
-                error_path = ".".join(str(p) for p in error.absolute_path) if error.absolute_path else "root"
+                error_path = (
+                    ".".join(str(p) for p in error.absolute_path) if error.absolute_path else "root"
+                )
 
                 # Build user-friendly error message
                 error_message = error.message
@@ -437,31 +426,35 @@ class ODPSParser:
                 # Determine error code based on error type
                 error_code = cls._get_error_code(error)
 
-                validation_errors.append({
-                    "path": error_path,
-                    "message": error_message,
-                    "error": error.message,
-                    "schema_path": list(error.absolute_schema_path) if hasattr(error, 'absolute_schema_path') else [],
-                    "code": error_code
-                })
+                validation_errors.append(
+                    {
+                        "path": error_path,
+                        "message": error_message,
+                        "error": error.message,
+                        "schema_path": list(error.absolute_schema_path)
+                        if hasattr(error, "absolute_schema_path")
+                        else [],
+                        "code": error_code,
+                    }
+                )
 
             return False, validation_errors
         except Exception as e:
             raise ODPSValidationError(
-                f"Unexpected error during ODPS validation: {str(e)}",
+                f"Unexpected error during ODPS validation: {e!s}",
                 file_path=file_path,
                 original_error=e,
-                error_code="VALIDATION_ERROR"
+                error_code="VALIDATION_ERROR",
             )
 
     @classmethod
     def parse_and_validate(
         cls,
         content: str,
-        version: Optional[str] = None,
-        file_path: Optional[str] = None,
-        format: Optional[str] = None
-    ) -> Tuple[Dict[str, Any], bool, List[Dict[str, Any]]]:
+        version: str | None = None,
+        file_path: str | None = None,
+        format: str | None = None,
+    ) -> tuple[dict[str, Any], bool, list[dict[str, Any]]]:
         """
         Parse and validate ODPS content in one step.
 
@@ -485,15 +478,13 @@ class ODPSParser:
 
         # Then validate
         is_valid, validation_errors = cls.validate(
-            parsed_document,
-            version=version,
-            file_path=file_path
+            parsed_document, version=version, file_path=file_path
         )
 
         return parsed_document, is_valid, validation_errors
 
     @classmethod
-    def _detect_version(cls, odps_document: Dict[str, Any]) -> Optional[str]:
+    def _detect_version(cls, odps_document: dict[str, Any]) -> str | None:
         """
         Detect ODPS version from document.
 
@@ -520,7 +511,7 @@ class ODPSParser:
         if isinstance(version, str):
             # Normalize version (remove "v" prefix if present)
             version = version.strip()
-            if version.startswith('v'):
+            if version.startswith("v"):
                 version = version[1:]
             return version
 
@@ -538,26 +529,25 @@ class ODPSParser:
             Error code string
         """
         # Map common jsonschema error types to error codes
-        error_type = error.validator if hasattr(error, 'validator') else None
+        error_type = error.validator if hasattr(error, "validator") else None
 
-        if error_type == 'required':
+        if error_type == "required":
             return "REQUIRED_FIELD_MISSING"
-        elif error_type == 'type':
+        elif error_type == "type":
             return "INVALID_TYPE"
-        elif error_type == 'enum':
+        elif error_type == "enum":
             return "INVALID_ENUM_VALUE"
-        elif error_type == 'format':
+        elif error_type == "format":
             return "INVALID_FORMAT"
-        elif error_type == 'pattern':
+        elif error_type == "pattern":
             return "PATTERN_MISMATCH"
-        elif error_type == 'minLength' or error_type == 'maxLength':
+        elif error_type == "minLength" or error_type == "maxLength":
             return "INVALID_LENGTH"
-        elif error_type == 'minimum' or error_type == 'maximum':
+        elif error_type == "minimum" or error_type == "maximum":
             return "INVALID_RANGE"
-        elif error_type == 'additionalProperties':
+        elif error_type == "additionalProperties":
             return "UNEXPECTED_PROPERTY"
-        elif error_type == 'oneOf' or error_type == 'anyOf' or error_type == 'allOf':
+        elif error_type == "oneOf" or error_type == "anyOf" or error_type == "allOf":
             return "SCHEMA_CONDITION_FAILED"
         else:
             return "VALIDATION_ERROR"
-

@@ -20,6 +20,7 @@ External boundaries (compliance / DQ HTTP, S3) are mocked at their
 boundaries so the test focuses on the API contract, not the
 microservice behaviour.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -46,7 +47,6 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -187,9 +187,7 @@ class DataFirstDegradedModeTest(TestCase):
     def test_circuit_open_no_tenant_optin_returns_503_with_retry_after(self):
         from hub.apps.testing.idempotency_helpers import post_data_first
 
-        client, tenant, _user, file_obj = _seed_authenticated_client(
-            allow_degraded=False
-        )
+        client, tenant, _user, file_obj = _seed_authenticated_client(allow_degraded=False)
         breaker = get_shared_circuit_breaker("compliance-service")
         breaker._set_state(CircuitBreakerState.OPEN)
 
@@ -217,9 +215,7 @@ class DataFirstDegradedModeTest(TestCase):
         """
         from hub.apps.testing.idempotency_helpers import post_data_first
 
-        client, tenant, _user, file_obj = _seed_authenticated_client(
-            allow_degraded=True
-        )
+        client, tenant, _user, file_obj = _seed_authenticated_client(allow_degraded=True)
         breaker = get_shared_circuit_breaker("compliance-service")
         breaker._set_state(CircuitBreakerState.OPEN)
 
@@ -233,17 +229,17 @@ class DataFirstDegradedModeTest(TestCase):
             },
             tenant=tenant,
         )
-        # Must NOT be the upstream 503 short-circuit. Any other
-        # response (workflow failure, success, 422 fail-closed) is
-        # acceptable here — the assertion is about the code path,
-        # not the workflow outcome.
-        if response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
-            # If we DID get 503, it must NOT be the compliance short-circuit.
-            # (A workflow-level 503 is acceptable; the point is we bypassed
-            # the upstream breaker guard.)
-            assert response.data.get("code") != "COMPLIANCE_SERVICE_UNAVAILABLE", (
-                f"Got compliance short-circuit 503 unexpectedly: {response.data}"
-            )
+        # The tenant opted in to degraded mode, so the upstream 503
+        # short-circuit must NOT fire. The response must NOT be 503
+        # with the compliance short-circuit code — any other code
+        # (200, 201, 202, 422 fail-closed, 400 validation, etc.)
+        # proves the breaker guard was bypassed successfully.
+        self.assertNotEqual(
+            response.status_code,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Tenant with allow_degraded=True must bypass the upstream "
+            "503 short-circuit; the circuit breaker guard must NOT fire.",
+        )
 
 
 class DataFirstFailClosedGateTest(TestCase):
@@ -270,23 +266,28 @@ class DataFirstFailClosedGateTest(TestCase):
 
     def test_compliance_fail_returns_422_and_no_asset_persisted(self):
         client, tenant, _user, file_obj = _seed_authenticated_client()
-        with self._patch_storage(), patch(
-            "hub.apps.compliance.service_client.ComplianceServiceClient.scan_file",
-            return_value={
-                "overall_status": "FAIL",
-                "risk_level": "HIGH",
-                "allowed_to_store": False,
-                "metadata": {},
-            },
-        ), patch(
-            "hub.apps.dq.service_client.DQServiceClient.run_dq",
-            return_value={
-                "overall_status": "PASS",
-                "quality_score": 100,
-                "metadata": {},
-            },
+        with (
+            self._patch_storage(),
+            patch(
+                "hub.apps.compliance.service_client.ComplianceServiceClient.scan_file",
+                return_value={
+                    "overall_status": "FAIL",
+                    "risk_level": "HIGH",
+                    "allowed_to_store": False,
+                    "metadata": {},
+                },
+            ),
+            patch(
+                "hub.apps.dq.service_client.DQServiceClient.run_dq",
+                return_value={
+                    "overall_status": "PASS",
+                    "quality_score": 100,
+                    "metadata": {},
+                },
+            ),
         ):
             from hub.apps.testing.idempotency_helpers import post_data_first
+
             response = post_data_first(
                 client,
                 "/api/v1/assets/data-first/",
@@ -310,20 +311,24 @@ class DataFirstFailClosedGateTest(TestCase):
         from hub.apps.testing.idempotency_helpers import post_data_first
 
         client, tenant, _user, file_obj = _seed_authenticated_client()
-        with self._patch_storage(), patch(
-            "hub.apps.compliance.service_client.ComplianceServiceClient.scan_file",
-            return_value={
-                "overall_status": "PASS",
-                "allowed_to_store": True,
-                "metadata": {},
-            },
-        ), patch(
-            "hub.apps.dq.service_client.DQServiceClient.run_dq",
-            return_value={
-                "overall_status": "FAIL",
-                "quality_score": 12.0,
-                "metadata": {},
-            },
+        with (
+            self._patch_storage(),
+            patch(
+                "hub.apps.compliance.service_client.ComplianceServiceClient.scan_file",
+                return_value={
+                    "overall_status": "PASS",
+                    "allowed_to_store": True,
+                    "metadata": {},
+                },
+            ),
+            patch(
+                "hub.apps.dq.service_client.DQServiceClient.run_dq",
+                return_value={
+                    "overall_status": "FAIL",
+                    "quality_score": 12.0,
+                    "metadata": {},
+                },
+            ),
         ):
             response = post_data_first(
                 client,

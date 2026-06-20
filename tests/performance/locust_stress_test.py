@@ -27,7 +27,6 @@ except ImportError:
     pytestmark = pytest.mark.skip(reason="locust not installed - install with: pip install locust")
 
 if LOCUST_AVAILABLE:
-    import os
     import random
 
     # Import shared helpers

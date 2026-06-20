@@ -38,6 +38,7 @@ under a transactional savepoint, returning True iff a state
 transition occurred so signal-handler callers know whether to
 emit the ``ONBOARDING_COMPLETED`` audit event.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -66,16 +67,14 @@ isn't guaranteed to match the live code).
 """
 
 
-def _has_tenant_admin(tenant: "Tenant") -> bool:
+def _has_tenant_admin(tenant: Tenant) -> bool:
     """True iff at least one user holds the ``TENANT_ADMIN`` role on this tenant."""
     from hub.apps.users.models import UserRole
 
-    return UserRole.objects.filter(
-        tenant=tenant, role__name="TENANT_ADMIN"
-    ).exists()
+    return UserRole.objects.filter(tenant=tenant, role__name="TENANT_ADMIN").exists()
 
 
-def _has_kyc_submitted(tenant: "Tenant") -> bool:
+def _has_kyc_submitted(tenant: Tenant) -> bool:
     """True iff KYC has been submitted (PENDING_REVIEW or VERIFIED)."""
     # Defensive: tenants table allows a string-typed kyc_status, so
     # the safe predicate is "anything other than UNVERIFIED" rather
@@ -84,16 +83,14 @@ def _has_kyc_submitted(tenant: "Tenant") -> bool:
     return (tenant.kyc_status or "UNVERIFIED") != "UNVERIFIED"
 
 
-def _has_billing_setup(tenant: "Tenant") -> bool:
+def _has_billing_setup(tenant: Tenant) -> bool:
     """True iff a Subscription exists in an active billing state."""
     from hub.apps.billing.models import Subscription
 
-    return Subscription.objects.filter(
-        tenant=tenant, status__in=_BILLING_ACTIVE_STATES
-    ).exists()
+    return Subscription.objects.filter(tenant=tenant, status__in=_BILLING_ACTIVE_STATES).exists()
 
 
-def evaluate_onboarding_completion(tenant: "Tenant") -> bool:
+def evaluate_onboarding_completion(tenant: Tenant) -> bool:
     """Return True iff all three onboarding signals are satisfied.
 
     Pure: no caching, no DB writes, no side effects. Safe to call
@@ -111,7 +108,7 @@ def evaluate_onboarding_completion(tenant: "Tenant") -> bool:
     return True
 
 
-def compute_onboarding_state(tenant: "Tenant") -> dict:
+def compute_onboarding_state(tenant: Tenant) -> dict:
     """Return the per-signal breakdown of onboarding state.
 
     Diagnostic helper. Used by the SPA to render an onboarding
@@ -129,7 +126,7 @@ def compute_onboarding_state(tenant: "Tenant") -> dict:
     }
 
 
-def mark_onboarding_complete_if_ready(tenant: "Tenant") -> bool:
+def mark_onboarding_complete_if_ready(tenant: Tenant) -> bool:
     """Set ``onboarding_completed_at`` + release the kill switch when ready.
 
     Idempotent: if the timestamp is already set, returns False
@@ -170,9 +167,7 @@ def mark_onboarding_complete_if_ready(tenant: "Tenant") -> bool:
         # avoids re-emitting the audit event when the row is already
         # complete.
         fresh = (
-            _TenantModel.objects.filter(pk=tenant.pk)
-            .only("id", "onboarding_completed_at")
-            .first()
+            _TenantModel.objects.filter(pk=tenant.pk).only("id", "onboarding_completed_at").first()
         )
         if fresh is None:
             return False
@@ -204,7 +199,7 @@ def mark_onboarding_complete_if_ready(tenant: "Tenant") -> bool:
 
 
 __all__ = [
-    "evaluate_onboarding_completion",
     "compute_onboarding_state",
+    "evaluate_onboarding_completion",
     "mark_onboarding_complete_if_ready",
 ]

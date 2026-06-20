@@ -4,8 +4,6 @@ Standardized Error Codes
 Provides consistent error code definitions and mappings.
 """
 
-from typing import Dict, Optional
-
 from rest_framework import status
 
 
@@ -94,7 +92,7 @@ class StandardErrorCodes:
     UNSUPPORTED_RDF_MEDIA_TYPE = "UNSUPPORTED_RDF_MEDIA_TYPE"
 
     # Mapping from HTTP status to default error code
-    STATUS_TO_CODE: Dict[int, str] = {
+    STATUS_TO_CODE: dict[int, str] = {
         status.HTTP_400_BAD_REQUEST: VALIDATION_ERROR,
         status.HTTP_401_UNAUTHORIZED: AUTH_UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN: AUTH_FORBIDDEN,
@@ -108,7 +106,7 @@ class StandardErrorCodes:
 
 
 def get_error_code(
-    exception: Optional[Exception] = None,
+    exception: Exception | None = None,
     http_status: int = status.HTTP_400_BAD_REQUEST,
 ) -> str:
     """
@@ -133,9 +131,9 @@ def get_error_code(
 
 
 def get_error_message(
-    exception: Optional[Exception] = None,
+    exception: Exception | None = None,
     http_status: int = status.HTTP_400_BAD_REQUEST,
-    default_message: Optional[str] = None,
+    default_message: str | None = None,
 ) -> str:
     """
     Get user-friendly error message.

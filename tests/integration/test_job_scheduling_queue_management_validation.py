@@ -12,7 +12,6 @@ Tests cover:
 - 10.1.22.4: Job Worker Management Testing
 """
 
-import time
 import uuid
 from datetime import timedelta
 
@@ -20,10 +19,9 @@ import freezegun
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 from django_rq import get_queue
-from django_rq.jobs import Job as RQJob
 
 from hub.apps.core.redis_pools import get_redis_queue_client
 from hub.apps.jobs.models import Job, JobPriority, JobStatus, JobType
@@ -36,16 +34,12 @@ from hub.apps.jobs.utils import (
     decrement_reserved_slots_usage,
     decrement_shared_slots_usage,
     get_job_enqueue_timestamp,
-    get_job_priority,
-    get_job_wait_time,
-    get_queue_for_job_type,
     get_queue_for_priority,
     get_reserved_slots_usage,
     get_shared_slots_usage,
     get_tenant_job_counter,
     increment_reserved_slots_usage,
     increment_shared_slots_usage,
-    should_elevate_job,
 )
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
@@ -63,7 +57,6 @@ class JobQueueInfrastructureTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        import pytest
         cache.clear()
 
         # Check Redis availability
@@ -422,12 +415,12 @@ class JobQueueInfrastructureTest(TestCase):
         if not self.redis_available:
             self.skipTest("Redis queue not available in test environment")
         # Test tenant job limits
-        can_create, error_message = check_tenant_job_limits(str(self.tenant.id))
+        can_create, _error_message = check_tenant_job_limits(str(self.tenant.id))
         self.assertTrue(can_create, "Should be able to create jobs within limits")
 
         # Create multiple jobs to test queue capacity
         job_ids = []
-        for i in range(10):
+        for _i in range(10):
             job = create_job(
                 tenant=self.tenant,
                 user=self.user,
@@ -455,8 +448,7 @@ class JobQueueInfrastructureTest(TestCase):
         # Verify queue can handle capacity (no errors when adding more)
         # Note: Actual capacity limits are enforced by Redis memory, not by our code
         # We test that jobs can be added without errors
-        low_queue = get_queue("job_low")
-        initial_queue_count = low_queue.count
+        get_queue("job_low")
 
         try:
             another_job = create_job(
@@ -491,7 +483,6 @@ class JobSchedulingTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        import pytest
         cache.clear()
 
         # Check Redis availability
@@ -778,7 +769,6 @@ class JobQueueManagementTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        import pytest
         cache.clear()
 
         # Check Redis availability
@@ -879,7 +869,7 @@ class JobQueueManagementTest(TestCase):
             self.skipTest("Redis queue not available in test environment")
         # Create multiple jobs
         jobs = []
-        for i in range(5):
+        for _i in range(5):
             job = create_job(
                 tenant=self.tenant,
                 user=self.user,
@@ -898,7 +888,6 @@ class JobQueueManagementTest(TestCase):
             self.assertEqual(job.status, JobStatus.PENDING.value)
 
         low_queue = get_queue("job_low")
-        initial_count = low_queue.count
 
         # Clear queue
         low_queue.empty()
@@ -1052,7 +1041,7 @@ class JobQueueManagementTest(TestCase):
             self.skipTest("Redis queue not available in test environment")
         # Create jobs
         jobs = []
-        for i in range(3):
+        for _i in range(3):
             job = create_job(
                 tenant=self.tenant,
                 user=self.user,
@@ -1071,7 +1060,6 @@ class JobQueueManagementTest(TestCase):
             self.assertEqual(job.status, JobStatus.PENDING.value)
 
         critical_queue = get_queue("job_critical")
-        initial_count = critical_queue.count
 
         # Simulate Redis failure (clear queue to simulate connection loss)
         # In production, this would be handled by Redis failover/replication
@@ -1115,7 +1103,6 @@ class JobWorkerManagementTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        import pytest
         cache.clear()
 
         # Check Redis availability
@@ -1143,7 +1130,6 @@ class JobWorkerManagementTest(TestCase):
         """Clean up after tests"""
         cache.clear()
         # Reset slot usage
-        from django.conf import settings
 
         while get_reserved_slots_usage() > 0:
             decrement_reserved_slots_usage()
@@ -1196,7 +1182,7 @@ class JobWorkerManagementTest(TestCase):
         # Health check returns 'ok' not 'healthy' (see services/worker/health.py)
         self.assertEqual(health_data["status"], "ok")
 
-        status_code, ready_data = ready()
+        status_code, _ready_data = ready()
         # Ready might be 200 or 503 depending on dependencies
         self.assertIn(status_code, [200, 503])
 
@@ -1209,7 +1195,7 @@ class JobWorkerManagementTest(TestCase):
 
         # Create multiple jobs
         jobs = []
-        for i in range(5):
+        for _i in range(5):
             job = create_job(
                 tenant=self.tenant,
                 user=self.user,

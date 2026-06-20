@@ -269,8 +269,8 @@ describe('ContractFileReader — size limit', () => {
     const { container } = render(
       <ContractFileReader onContentChange={vi.fn()} />,
     );
-    // Component should exist without errors — 5MB default is internal
-    expect(container).toBeTruthy();
+    // Component renders without errors — 5MB default is internal
+    expect(container.querySelector('.contract-file-reader')).not.toBeNull();
   });
 });
 

@@ -12,9 +12,8 @@ Usage:
   python scripts/audit_cli_vs_api.py --json          # JSON for CI
   python scripts/audit_cli_vs_api.py --summary       # counts only
 """
-import ast
+
 import json
-import os
 import re
 import sys
 from collections import defaultdict
@@ -25,6 +24,7 @@ CLI_COMMANDS_DIR = PROJECT_ROOT / "cli" / "datahub_cli" / "commands"
 HUB_URLS_DIR = PROJECT_ROOT / "hub"
 
 # ── Extract CLI commands ──────────────────────────────────────────────────
+
 
 def extract_cli_commands() -> dict[str, set[str]]:
     """Return {module: {command_name, ...}} for the CLI."""
@@ -45,14 +45,14 @@ def extract_cli_commands() -> dict[str, set[str]]:
         # Find @click.command() decorated functions
         # Pattern: @click.command(...) \n def name(...)
         for m in re.finditer(
-            r'@(?:click\.)?(?:group|command)\s*\([^)]*\)\s*\n\s*def\s+(\w+)',
+            r"@(?:click\.)?(?:group|command)\s*\([^)]*\)\s*\n\s*def\s+(\w+)",
             content,
         ):
             commands[module].add(m.group(1))
 
         # Also find @<group>.command() patterns
         for m in re.finditer(
-            r'@(\w+)\.command\s*\([^)]*\)\s*\n\s*def\s+(\w+)',
+            r"@(\w+)\.command\s*\([^)]*\)\s*\n\s*def\s+(\w+)",
             content,
         ):
             commands[module].add(m.group(2))
@@ -61,6 +61,7 @@ def extract_cli_commands() -> dict[str, set[str]]:
 
 
 # ── Extract API endpoints ─────────────────────────────────────────────────
+
 
 def extract_api_endpoints() -> dict[str, set[str]]:
     """Return {prefix: {endpoint, ...}} from the backend API."""
@@ -186,8 +187,10 @@ def print_report(results: dict) -> None:
     print("  Per-Module Gap Summary:")
     for module, info in sorted(results["per_module"].items()):
         bar = "█" * max(1, int(info.get("gap_pct", 0) / 5))
-        print(f"    {module:25s} CLI={info['cli_commands']:3d}  API={info['api_endpoints']:3d}  "
-              f"gap={info['gap_pct']:5.1f}%  {bar}  [{info['status']}]")
+        print(
+            f"    {module:25s} CLI={info['cli_commands']:3d}  API={info['api_endpoints']:3d}  "
+            f"gap={info['gap_pct']:5.1f}%  {bar}  [{info['status']}]"
+        )
 
     print(f"\n  CLI-covered modules: {', '.join(results['cli_modules_list'])}")
     if results["cli_only_modules"]:
@@ -201,8 +204,10 @@ def main():
         print(json.dumps(results, indent=2, default=str))
     elif "--summary" in sys.argv:
         s = results["summary"]
-        print(f"cli={s['total_cli_commands']} api={s['total_api_endpoints']} "
-              f"no_cli={s['modules_without_cli']}")
+        print(
+            f"cli={s['total_cli_commands']} api={s['total_api_endpoints']} "
+            f"no_cli={s['modules_without_cli']}"
+        )
     else:
         print_report(results)
 

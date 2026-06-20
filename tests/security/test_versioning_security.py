@@ -31,11 +31,7 @@ def _create_contract(tenant, asset=None, version=1, **kwargs):
     }
     defaults.update(kwargs)
     return Contract.objects.create(
-        tenant=tenant,
-        asset=asset,
-        version=version,
-        status=ContractStatus.DRAFT,
-        **defaults
+        tenant=tenant, asset=asset, version=version, status=ContractStatus.DRAFT, **defaults
     )
 
 
@@ -62,6 +58,7 @@ class VersioningSecurityTestBase(TestCase):
 
     def _create_user(self, email, tenant):
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         return User.objects.create_user(
             email=email,

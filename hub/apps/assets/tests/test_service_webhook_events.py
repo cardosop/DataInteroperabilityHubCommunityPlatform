@@ -22,14 +22,16 @@ trigger synchronous persistence so the events are queryable from
 the ``Event`` table immediately after commit. No business-logic
 mocking — we exercise the real AssetService against real DB rows.
 """
+
 from __future__ import annotations
 
+import contextlib
 import uuid
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from unittest.mock import patch
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.assets.services import AssetService
@@ -38,7 +40,6 @@ from hub.apps.core.services.base import ValidationError
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -88,13 +89,9 @@ class AssetServiceCreateAssetEventTest(_OnCommitImmediateMixin, TestCase):
 
     def test_create_asset_fires_asset_created_event(self):
         tenant, user = _seed()
-        before = Event.objects.filter(
-            event_type="asset.created", tenant_id=tenant.id
-        ).count()
+        before = Event.objects.filter(event_type="asset.created", tenant_id=tenant.id).count()
 
-        service = AssetService(
-            tenant_id=str(tenant.id), user_id=str(user.id)
-        )
+        service = AssetService(tenant_id=str(tenant.id), user_id=str(user.id))
         asset = service.create_asset(
             tenant_id=str(tenant.id),
             user_id=str(user.id),
@@ -104,9 +101,9 @@ class AssetServiceCreateAssetEventTest(_OnCommitImmediateMixin, TestCase):
         )
 
         after = list(
-            Event.objects.filter(
-                event_type="asset.created", tenant_id=tenant.id
-            ).order_by("timestamp")
+            Event.objects.filter(event_type="asset.created", tenant_id=tenant.id).order_by(
+                "timestamp"
+            )
         )
         assert len(after) - before == 1, (
             f"expected exactly 1 asset.created event from "
@@ -125,13 +122,9 @@ class AssetServiceCreateAssetEventTest(_OnCommitImmediateMixin, TestCase):
         # Pre-create an asset so the next create_asset hits the
         # duplicate-key conflict path.
         Asset.objects.create(tenant=tenant, key="dup-key", name="A")
-        before = Event.objects.filter(
-            event_type="asset.created", tenant_id=tenant.id
-        ).count()
+        before = Event.objects.filter(event_type="asset.created", tenant_id=tenant.id).count()
 
-        service = AssetService(
-            tenant_id=str(tenant.id), user_id=str(user.id)
-        )
+        service = AssetService(tenant_id=str(tenant.id), user_id=str(user.id))
         from hub.apps.core.services.base import ConflictError
 
         with pytest.raises(ConflictError):
@@ -142,9 +135,7 @@ class AssetServiceCreateAssetEventTest(_OnCommitImmediateMixin, TestCase):
                 name="Duplicate",
             )
 
-        after = Event.objects.filter(
-            event_type="asset.created", tenant_id=tenant.id
-        ).count()
+        after = Event.objects.filter(event_type="asset.created", tenant_id=tenant.id).count()
         assert after == before, (
             "asset.created event leaked despite duplicate-key conflict; "
             "the on_commit registration must be discarded by the "
@@ -162,16 +153,10 @@ class AssetServiceUpdateAssetEventTest(_OnCommitImmediateMixin, TestCase):
 
     def test_update_asset_fires_asset_updated_event(self):
         tenant, user = _seed()
-        asset = Asset.objects.create(
-            tenant=tenant, key="upd", name="U", status=AssetStatus.DRAFT
-        )
-        before = Event.objects.filter(
-            event_type="asset.updated", tenant_id=tenant.id
-        ).count()
+        asset = Asset.objects.create(tenant=tenant, key="upd", name="U", status=AssetStatus.DRAFT)
+        before = Event.objects.filter(event_type="asset.updated", tenant_id=tenant.id).count()
 
-        service = AssetService(
-            tenant_id=str(tenant.id), user_id=str(user.id)
-        )
+        service = AssetService(tenant_id=str(tenant.id), user_id=str(user.id))
         service.update_asset(
             asset_id=str(asset.id),
             tenant_id=str(tenant.id),
@@ -194,9 +179,14 @@ class AssetServiceUpdateAssetEventTest(_OnCommitImmediateMixin, TestCase):
     def test_update_asset_status_to_active_fires_both_updated_and_activated(self):
         """A status transition to ACTIVE fires BOTH events in order."""
         from hub.apps.contracts.models import (
-            Contract, ContractStatus, NormalizationStatus,
-            OriginalFormat, OriginalSpecType, ValidationStatus,
+            Contract,
+            ContractStatus,
+            NormalizationStatus,
+            OriginalFormat,
+            OriginalSpecType,
+            ValidationStatus,
         )
+
         tenant, user = _seed()
         asset = Asset.objects.create(
             tenant=tenant,
@@ -220,20 +210,16 @@ class AssetServiceUpdateAssetEventTest(_OnCommitImmediateMixin, TestCase):
             normalization_status=NormalizationStatus.NORMALIZED_OK,
         )
 
-        service = AssetService(
-            tenant_id=str(tenant.id), user_id=str(user.id)
+        service = AssetService(tenant_id=str(tenant.id), user_id=str(user.id))
+        # The test seeds an ACTIVE contract with VALID validation status,
+        # so the activation business rules must pass. If they don't, the
+        # test fails explicitly rather than silently swallowing the error
+        # and falling through to a vacuous pass.
+        service.update_asset(
+            asset_id=str(asset.id),
+            tenant_id=str(tenant.id),
+            status=AssetStatus.ACTIVE,
         )
-        try:
-            service.update_asset(
-                asset_id=str(asset.id),
-                tenant_id=str(tenant.id),
-                status=AssetStatus.ACTIVE,
-            )
-        except ValidationError:
-            # Lifecycle business rules may still reject in the test
-            # env if other invariants fail; what matters for THIS
-            # test is the event flow when the update DOES succeed.
-            pass
 
         asset.refresh_from_db()
 
@@ -252,25 +238,24 @@ class AssetServiceUpdateAssetEventTest(_OnCommitImmediateMixin, TestCase):
             ).order_by("timestamp")
         )
 
-        if asset.status == AssetStatus.ACTIVE:
-            # Update succeeded — both events MUST be present in registration order.
-            self.assertTrue(updated_evs,
-                "asset.updated event missing after successful activation")
-            self.assertTrue(activated_evs,
-                "asset.activated event missing after successful activation")
-            self.assertLessEqual(
-                updated_evs[-1].timestamp, activated_evs[-1].timestamp,
-                "asset.updated MUST fire BEFORE asset.activated",
-            )
-            # Activation event should carry the gate snapshot.
-            self.assertIn("dq_status", activated_evs[-1].data)
-            self.assertIn("compliance_status", activated_evs[-1].data)
-        else:
-            # Update was rejected by lifecycle rules — no stray events.
-            self.assertFalse(updated_evs,
-                f"No asset.updated events expected when update rejected (status={asset.status})")
-            self.assertFalse(activated_evs,
-                f"No asset.activated events expected when update rejected (status={asset.status})")
+        # Activation must have succeeded — both events MUST be present.
+        self.assertEqual(
+            asset.status,
+            AssetStatus.ACTIVE,
+            "Asset status must be ACTIVE after successful update.",
+        )
+        self.assertTrue(updated_evs, "asset.updated event missing after successful activation")
+        self.assertTrue(
+            activated_evs, "asset.activated event missing after successful activation"
+        )
+        self.assertLessEqual(
+            updated_evs[-1].timestamp,
+            activated_evs[-1].timestamp,
+            "asset.updated MUST fire BEFORE asset.activated",
+        )
+        # Activation event should carry the gate snapshot.
+        self.assertIn("dq_status", activated_evs[-1].data)
+        self.assertIn("compliance_status", activated_evs[-1].data)
 
 
 @override_settings(
@@ -283,40 +268,31 @@ class AssetServiceDeleteAssetEventTest(_OnCommitImmediateMixin, TestCase):
 
     def test_delete_asset_fires_asset_retired_event(self):
         tenant, user = _seed()
-        asset = Asset.objects.create(
-            tenant=tenant, key="del", name="D", status=AssetStatus.DRAFT
-        )
-        before = Event.objects.filter(
-            event_type="asset.retired", tenant_id=tenant.id
-        ).count()
+        asset = Asset.objects.create(tenant=tenant, key="del", name="D", status=AssetStatus.DRAFT)
+        before = Event.objects.filter(event_type="asset.retired", tenant_id=tenant.id).count()
 
-        service = AssetService(
-            tenant_id=str(tenant.id), user_id=str(user.id)
+        service = AssetService(tenant_id=str(tenant.id), user_id=str(user.id))
+        # DRAFT → RETIRED is a valid transition for delete; the service
+        # must succeed. If business rules reject, the test fails explicitly.
+        service.delete_asset(
+            asset_id=str(asset.id),
+            tenant_id=str(tenant.id),
         )
-        try:
-            service.delete_asset(
-                asset_id=str(asset.id),
-                tenant_id=str(tenant.id),
-            )
-        except ValidationError:
-            pass
 
         after = Event.objects.filter(
             event_type="asset.retired",
             tenant_id=tenant.id,
             data__asset_id=str(asset.id),
         ).count()
-        # If the delete succeeded → exactly one event. If it was
-        # rejected by business rules → zero events. Anything between
-        # is a bug.
         asset.refresh_from_db()
-        if asset.status == AssetStatus.RETIRED:
-            self.assertEqual(after - before, 1,
-                f"delete succeeded (status=RETIRED) but no asset.retired "
-                f"event; got {after - before} new events")
-        else:
-            self.assertEqual(after, before,
-                "delete was rejected (status != RETIRED) but an "
-                "asset.retired event leaked; on_commit registration must "
-                "be discarded when the atomic block aborts."
-            )
+        self.assertEqual(
+            asset.status,
+            AssetStatus.RETIRED,
+            "Asset must be RETIRED after successful delete.",
+        )
+        self.assertEqual(
+            after - before,
+            1,
+            f"delete succeeded (status=RETIRED) but got {after - before} "
+            f"asset.retired events — expected exactly 1.",
+        )

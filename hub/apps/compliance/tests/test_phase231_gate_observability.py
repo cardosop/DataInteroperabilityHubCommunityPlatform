@@ -5,20 +5,25 @@ Uses real metric wrappers (no patch/stub of business logic).
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import json
 import uuid
 from pathlib import Path
 
+import pytest
 from django.core.cache import cache
 from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.compliance.intake_scan import enqueue_compliance_intake_scan
 from hub.apps.compliance.metrics_phase231 import (
+    EVENT_ACTIVATION_GATE_BLOCK,
+    EVENT_GATE_OVERRIDDEN,
+    EVENT_PUBLISH_GATE_NO_ASSET,
+    EVENT_PUBLISH_GATE_NO_RUN,
+    EVENT_PUBLISH_GATE_THRESHOLD,
     EVENT_SCAN_ENQUEUED,
+    EVENT_SERVICE_UNAVAILABLE,
+    EVENT_WEBHOOK_FIRED,
     record_compliance_intake_gate_event,
 )
 from hub.apps.observability.otel_metrics import (
@@ -102,6 +107,40 @@ class TestPhase231Metrics(TestCase):
             created_by=self.user,
         )
         self.assertEqual(labeled._value.get(), before + 1)
+
+    # NOTE: these metric tests read ``_LabeledMetric._value._count``,
+    # which is the wrapper's in-memory cached counter — not the
+    # underlying OTel meter's actual count.  This validates the
+    # wrapper's internal consistency contract; OTel end-to-end
+    # emission is validated in the integration test suite.
+    # See ``_ValueProxy`` docstring in otel_metrics.py.
+
+    ALL_EVENT_CONSTANTS = (
+        EVENT_SCAN_ENQUEUED,
+        EVENT_ACTIVATION_GATE_BLOCK,
+        EVENT_PUBLISH_GATE_NO_ASSET,
+        EVENT_PUBLISH_GATE_NO_RUN,
+        EVENT_PUBLISH_GATE_THRESHOLD,
+        EVENT_GATE_OVERRIDDEN,
+        EVENT_WEBHOOK_FIRED,
+        EVENT_SERVICE_UNAVAILABLE,
+    )
+
+    @pytest.mark.integration
+    def test_all_event_label_values_increment_counter(self):
+        """Every documented event constant can be used as a label value
+        and increments the gate-events counter."""
+        for event_label in self.ALL_EVENT_CONSTANTS:
+            labeled = compliance_intake_gate_events_total.labels(
+                event=event_label,
+                tenant_id=str(self.tenant.id),
+            )
+            before = labeled._value.get()
+            record_compliance_intake_gate_event(event_label, self.tenant.id)
+            self.assertEqual(
+                labeled._value.get(), before + 1,
+                f"Event constant {event_label!r} did not increment",
+            )
 
 
 @pytest.mark.integration

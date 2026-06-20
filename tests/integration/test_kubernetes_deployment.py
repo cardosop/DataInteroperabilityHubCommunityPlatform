@@ -14,27 +14,29 @@ from tests.integration.kubernetes_manifest_utils import (
     discover_k8s_bases,
     discover_k8s_overlays,
     get_resources_by_kind,
-    kustomize_available,
     kubectl_available,
+    kustomize_available,
     load_manifests_from_kustomize,
     validate_manifests_with_kubectl_dry_run,
 )
 
 # Application services that must have liveness and readiness probes (serve traffic).
-SERVICES_REQUIRING_PROBES = frozenset({
-    "api-service",
-    "worker-service",
-    "prefect-server",
-    "prefect-integration",
-    "prefect-workers",
-    "search-service",
-    "observability-service",
-    "webhook-service",
-    "dq-service",
-    "compliance-service",
-    "datacontract-service",
-    "semantic-service",
-})
+SERVICES_REQUIRING_PROBES = frozenset(
+    {
+        "api-service",
+        "worker-service",
+        "prefect-server",
+        "prefect-integration",
+        "prefect-workers",
+        "search-service",
+        "observability-service",
+        "webhook-service",
+        "dq-service",
+        "compliance-service",
+        "datacontract-service",
+        "semantic-service",
+    }
+)
 
 
 _K8S_BASES = discover_k8s_bases()
@@ -56,8 +58,7 @@ def kustomize_available_check():
     """Skip entire module if kustomize/kubectl is not available."""
     if not kustomize_available():
         pytest.skip(
-            "kustomize or kubectl kustomize not available; "
-            "install to run Kubernetes manifest tests"
+            "kustomize or kubectl kustomize not available; install to run Kubernetes manifest tests"
         )
 
 
@@ -71,13 +72,17 @@ class TestKubernetesDeploymentManifests:
         assert len(manifests) >= 1, f"{service_name}: kustomize build produced no resources"
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
-    def test_deployments_have_required_spec(self, service_name, base_path, kustomize_available_check):
+    def test_deployments_have_required_spec(
+        self, service_name, base_path, kustomize_available_check
+    ):
         """Deployments have spec.replicas, selector, template, and containers."""
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
         for d in by_kind.get("Deployment", []):
             spec = d.get("spec") or {}
-            assert "replicas" in spec, f"{service_name} Deployment {d.get('metadata', {}).get('name')} missing spec.replicas"
+            assert "replicas" in spec, (
+                f"{service_name} Deployment {d.get('metadata', {}).get('name')} missing spec.replicas"
+            )
             assert "selector" in spec, f"{service_name} Deployment missing spec.selector"
             template = spec.get("template", {})
             assert template, f"{service_name} Deployment missing spec.template"
@@ -86,26 +91,36 @@ class TestKubernetesDeploymentManifests:
             assert containers, f"{service_name} Deployment has no spec.template.spec.containers"
             for c in containers:
                 assert "image" in c, f"{service_name} container {c.get('name')} missing image"
-                assert "ports" in c or "name" in c, f"{service_name} container should have name and preferably ports"
+                assert "ports" in c or "name" in c, (
+                    f"{service_name} container should have name and preferably ports"
+                )
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
-    def test_statefulsets_have_required_spec(self, service_name, base_path, kustomize_available_check):
+    def test_statefulsets_have_required_spec(
+        self, service_name, base_path, kustomize_available_check
+    ):
         """StatefulSets have serviceName, selector, template, and containers."""
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
         for s in by_kind.get("StatefulSet", []):
             spec = s.get("spec") or {}
-            assert "serviceName" in spec, f"{service_name} StatefulSet {s.get('metadata', {}).get('name')} missing spec.serviceName"
+            assert "serviceName" in spec, (
+                f"{service_name} StatefulSet {s.get('metadata', {}).get('name')} missing spec.serviceName"
+            )
             assert "selector" in spec, f"{service_name} StatefulSet missing spec.selector"
             template = spec.get("template", {})
             assert template, f"{service_name} StatefulSet missing spec.template"
             containers = template.get("spec", {}).get("containers", [])
             assert containers, f"{service_name} StatefulSet has no containers"
             for c in containers:
-                assert "image" in c, f"{service_name} StatefulSet container {c.get('name')} missing image"
+                assert "image" in c, (
+                    f"{service_name} StatefulSet container {c.get('name')} missing image"
+                )
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
-    def test_deployments_rolling_update_strategy(self, service_name, base_path, kustomize_available_check):
+    def test_deployments_rolling_update_strategy(
+        self, service_name, base_path, kustomize_available_check
+    ):
         """Deployments use RollingUpdate strategy with valid maxSurge/maxUnavailable."""
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
@@ -119,14 +134,18 @@ class TestKubernetesDeploymentManifests:
                 )
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
-    def test_application_services_have_health_probes(self, service_name, base_path, kustomize_available_check):
+    def test_application_services_have_health_probes(
+        self, service_name, base_path, kustomize_available_check
+    ):
         """Application services have livenessProbe and readinessProbe on main containers."""
         if service_name not in SERVICES_REQUIRING_PROBES:
-            pytest.skip(f"{service_name} not in set of services requiring probes")
+            pytest.skip(f"{service_name} not in set of services requiring probes")  # noqa: skip-in-body — runtime service dependency
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
         for d in by_kind.get("Deployment", []):
-            for c in (d.get("spec") or {}).get("template", {}).get("spec", {}).get("containers", []):
+            for c in (
+                (d.get("spec") or {}).get("template", {}).get("spec", {}).get("containers", [])
+            ):
                 assert c.get("livenessProbe"), (
                     f"{service_name} Deployment container {c.get('name')} missing livenessProbe"
                 )
@@ -135,20 +154,28 @@ class TestKubernetesDeploymentManifests:
                 )
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
-    def test_deployment_containers_no_placeholder_images(self, service_name, base_path, kustomize_available_check):
+    def test_deployment_containers_no_placeholder_images(
+        self, service_name, base_path, kustomize_available_check
+    ):
         """Deployment container images are not placeholders like 'image: latest' or empty."""
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
         for d in by_kind.get("Deployment", []):
-            for c in (d.get("spec") or {}).get("template", {}).get("spec", {}).get("containers", []):
+            for c in (
+                (d.get("spec") or {}).get("template", {}).get("spec", {}).get("containers", [])
+            ):
                 image = (c.get("image") or "").strip()
                 assert image, f"{service_name} container {c.get('name')} has no image"
                 assert ":" in image or "/" in image, (
                     f"{service_name} container image should be a valid reference (repository:tag or path)"
                 )
 
-    @pytest.mark.parametrize("service_name,overlay_name,overlay_path", _K8S_OVERLAYS, ids=_K8S_OVERLAY_IDS)
-    def test_kustomize_overlay_build_succeeds(self, service_name, overlay_name, overlay_path, kustomize_available_check):
+    @pytest.mark.parametrize(
+        "service_name,overlay_name,overlay_path", _K8S_OVERLAYS, ids=_K8S_OVERLAY_IDS
+    )
+    def test_kustomize_overlay_build_succeeds(
+        self, service_name, overlay_name, overlay_path, kustomize_available_check
+    ):
         """Every k8s overlay (staging/production) builds successfully with kustomize."""
         manifests = load_manifests_from_kustomize(overlay_path)
         assert len(manifests) >= 1, (
@@ -160,7 +187,7 @@ class TestKubernetesDeploymentManifests:
     ):
         """When kubectl is available, apply --dry-run=client succeeds for each base (client-side validation)."""
         if not kubectl_available():
-            pytest.skip("kubectl not available; skip client dry-run validation")
+            pytest.skip("kubectl not available; skip client dry-run validation")  # noqa: skip-in-body — runtime service dependency
         for service_name, base_path in _K8S_BASES:
             raw = build_kustomize_raw(base_path)
             assert validate_manifests_with_kubectl_dry_run(raw), (
@@ -173,11 +200,13 @@ class TestKubernetesDeploymentManifests:
     ):
         """Application service probes use httpGet, tcpSocket, or exec with valid path/port/command."""
         if service_name not in SERVICES_REQUIRING_PROBES:
-            pytest.skip(f"{service_name} not in set of services requiring probes")
+            pytest.skip(f"{service_name} not in set of services requiring probes")  # noqa: skip-in-body — runtime service dependency
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
         for d in by_kind.get("Deployment", []):
-            for c in (d.get("spec") or {}).get("template", {}).get("spec", {}).get("containers", []):
+            for c in (
+                (d.get("spec") or {}).get("template", {}).get("spec", {}).get("containers", [])
+            ):
                 for probe_name in ("livenessProbe", "readinessProbe"):
                     probe = c.get(probe_name)
                     if not probe:

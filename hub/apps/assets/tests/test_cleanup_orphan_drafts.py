@@ -35,6 +35,7 @@ TDD doctrine
 * Test isolation via ``pytest.mark.django_db(transaction=True)`` — the
   command's per-batch transactions roll back per-test.
 """
+
 from __future__ import annotations
 
 import io
@@ -53,7 +54,6 @@ from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant
 
-
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
@@ -64,7 +64,14 @@ User = get_user_model()
 
 
 def _seed_tenant(*, slug_suffix: str | None = None) -> Tenant:
-    uid = slug_suffix or uuid.uuid4().hex[:8]
+    """Create a tenant with a guaranteed-unique name and slug.
+
+    Always includes a random UUID component so that even when
+    ``slug_suffix`` is provided (for human-readable test labelling),
+    the name/slug never collide across test-isolation boundaries.
+    """
+    rand = uuid.uuid4().hex[:8]
+    uid = f"{slug_suffix}-{rand}" if slug_suffix else rand
     return Tenant.objects.create(
         name=f"OrphanCleanupTest-{uid}",
         slug=f"orphan-cleanup-{uid}",
@@ -73,7 +80,7 @@ def _seed_tenant(*, slug_suffix: str | None = None) -> Tenant:
     )
 
 
-def _seed_user(tenant: Tenant) -> "User":
+def _seed_user(tenant: Tenant) -> User:
     return User.objects.create_user(
         email=f"u-{uuid.uuid4().hex[:8]}@example.com",
         password="testpass123",
@@ -84,7 +91,7 @@ def _seed_user(tenant: Tenant) -> "User":
 def _seed_orphan_draft(
     *,
     tenant: Tenant,
-    user: "User",
+    user: User,
     age_days: int,
     key: str | None = None,
 ) -> Asset:
@@ -104,7 +111,7 @@ def _seed_orphan_draft(
     return asset
 
 
-def _seed_active_asset(*, tenant: Tenant, user: "User", age_days: int = 60) -> Asset:
+def _seed_active_asset(*, tenant: Tenant, user: User, age_days: int = 60) -> Asset:
     """Seed an ACTIVE asset (NOT an orphan candidate regardless of age)."""
     asset = Asset.objects.create(
         tenant=tenant,
@@ -149,8 +156,7 @@ class TestOrphanDiscovery:
         _run_command("--no-dry-run")
 
         assert not Asset.objects.filter(pk=orphan.pk).exists(), (
-            "Orphan DRAFT older than 30-day threshold MUST be hard-"
-            "deleted in non-dry-run mode."
+            "Orphan DRAFT older than 30-day threshold MUST be hard-deleted in non-dry-run mode."
         )
 
     def test_recent_draft_is_NOT_deleted(self):
@@ -220,8 +226,7 @@ class TestDryRunIdempotency:
             _run_command()  # no --dry-run flag
 
         assert Asset.objects.filter(pk=orphan.pk).exists(), (
-            "Env var ASSET_ORPHAN_CLEANUP_DRY_RUN=true MUST force "
-            "dry-run regardless of CLI args."
+            "Env var ASSET_ORPHAN_CLEANUP_DRY_RUN=true MUST force dry-run regardless of CLI args."
         )
 
     def test_no_dry_run_overrides_env_var(self):
@@ -257,9 +262,7 @@ class TestDryRunIdempotency:
             tenant=tenant,
             action=audit_event_types.ASSET_ORPHAN_DRAFT_PURGED,
         ).count()
-        assert audit_count == 2, (
-            "Each dry-run invocation MUST emit its own audit row."
-        )
+        assert audit_count == 2, "Each dry-run invocation MUST emit its own audit row."
 
 
 # ---------------------------------------------------------------------------
@@ -301,15 +304,9 @@ class TestBatchedProcessing:
         # All batches in one cron-run carry the same correlation_id so
         # SRE can pivot from "last night's 04:00 sweep" to per-batch
         # detail without joining on timestamp windows.
-        assert details_first.get("correlation_id"), (
-            "audit row MUST include a correlation_id"
-        )
-        assert (
-            details_first.get("correlation_id")
-            == details_second.get("correlation_id")
-        ), (
-            "All batches from the same sweep MUST share one "
-            "correlation_id."
+        assert details_first.get("correlation_id"), "audit row MUST include a correlation_id"
+        assert details_first.get("correlation_id") == details_second.get("correlation_id"), (
+            "All batches from the same sweep MUST share one correlation_id."
         )
 
     def test_default_batch_size_is_500(self):
@@ -324,8 +321,7 @@ class TestBatchedProcessing:
         out = _run_command("--no-dry-run")
         # The output reports the batch size at start; assert 500 appears.
         assert "500" in out or "batch_size=500" in out.lower(), (
-            f"Default batch size of 500 MUST be reported in the command "
-            f"output; got: {out}"
+            f"Default batch size of 500 MUST be reported in the command output; got: {out}"
         )
 
 
@@ -353,12 +349,16 @@ class TestAuditEmission:
         details = audit_row.details_json or {}
         # Required keys per the contract.
         for required_key in (
-            "tenant_id", "count", "dry_run", "batch",
-            "age_threshold_days", "asset_ids", "correlation_id",
+            "tenant_id",
+            "count",
+            "dry_run",
+            "batch",
+            "age_threshold_days",
+            "asset_ids",
+            "correlation_id",
         ):
             assert required_key in details, (
-                f"audit details_json MUST include {required_key!r}; "
-                f"got keys {list(details.keys())}"
+                f"audit details_json MUST include {required_key!r}; got keys {list(details.keys())}"
             )
         assert details["dry_run"] is False
         assert details["age_threshold_days"] == 30
@@ -395,10 +395,7 @@ class TestAuditEmission:
             tenant=tenant,
             action=audit_event_types.ASSET_ORPHAN_DRAFT_PURGED,
         ).count()
-        assert audit_count == 0, (
-            "Zero-orphan sweep MUST NOT emit audit rows; "
-            f"got {audit_count}."
-        )
+        assert audit_count == 0, f"Zero-orphan sweep MUST NOT emit audit rows; got {audit_count}."
 
 
 # ---------------------------------------------------------------------------
@@ -423,8 +420,7 @@ class TestTenantFilter:
 
         assert not Asset.objects.filter(pk=orphan_a.pk).exists()
         assert Asset.objects.filter(pk=orphan_b.pk).exists(), (
-            "Tenant B's orphan MUST be untouched when --tenant-id "
-            "targets tenant A."
+            "Tenant B's orphan MUST be untouched when --tenant-id targets tenant A."
         )
 
     def test_no_filter_processes_all_tenants(self):

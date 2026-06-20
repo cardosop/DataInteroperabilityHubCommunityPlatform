@@ -156,12 +156,14 @@ class ContractImpactMixin:
             depth = int(request.query_params.get("depth", 10))
         except (ValueError, TypeError):
             from rest_framework.exceptions import ValidationError as DRFValidationError
+
             raise DRFValidationError(
                 {"depth": "Must be a valid integer."},
                 code="invalid",
             )
         if depth < 0:
             from rest_framework.exceptions import ValidationError as DRFValidationError
+
             raise DRFValidationError(
                 {"depth": "Must be a non-negative integer."},
                 code="invalid",
@@ -177,8 +179,11 @@ class ContractImpactMixin:
         VALID_FORMATS = {"json", "csv", "dot", "mermaid", "paths"}
         if format_type not in VALID_FORMATS:
             from rest_framework.exceptions import ValidationError as DRFValidationError
+
             raise DRFValidationError(
-                {"output": f"Invalid format '{format_type}'. Valid formats: {sorted(VALID_FORMATS)}"},
+                {
+                    "output": f"Invalid format '{format_type}'. Valid formats: {sorted(VALID_FORMATS)}"
+                },
                 code="invalid_choice",
             )
 

@@ -16,25 +16,22 @@ All tests use real implementations (no mocks/stubs) and verify:
 
 import json
 import uuid
-from io import StringIO
 
 import pytest
 
 pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True)]
+from datetime import UTC
+
 from django.core.exceptions import ValidationError
-from django.core.management import call_command
 from django.db import connection, transaction
-from django.test import TestCase, TransactionTestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.migration import (
     can_migrate,
     get_current_hubcontract_version,
-    migrate_hubcontract,
     needs_migration,
 )
 from hub.apps.contracts.migration_manager import ContractMigrationManager
-from hub.apps.contracts.migration_validation import MigrationValidator
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
@@ -169,7 +166,7 @@ class MigrationPrerequisitesValidationTest(MigrationValidationTestBase):
 
         # Act
         # Migration manager should handle missing hub_contract_json
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        migrated, migrated_data, _warnings = ContractMigrationManager.migrate_on_write(contract)
 
         # Assert
         self.assertFalse(migrated, "Should not migrate contract without hub_contract_json")
@@ -196,7 +193,7 @@ class MigrationDataIntegrityValidationTest(MigrationValidationTestBase):
         )
 
         # Perform migration
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        migrated, _migrated_data, _warnings = ContractMigrationManager.migrate_on_write(contract)
 
         self.assertTrue(migrated, "Migration should have occurred for old version contract")
         # Refresh from database
@@ -221,7 +218,7 @@ class MigrationDataIntegrityValidationTest(MigrationValidationTestBase):
         original_tenant_id = contract.tenant.id
 
         # Perform migration
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        migrated, _migrated_data, _warnings = ContractMigrationManager.migrate_on_write(contract)
 
         self.assertTrue(migrated, "Migration should have occurred for old version contract")
         # Refresh from database
@@ -247,7 +244,7 @@ class MigrationDataIntegrityValidationTest(MigrationValidationTestBase):
         original_asset_id = contract.asset.id
 
         # Perform migration
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        migrated, _migrated_data, _warnings = ContractMigrationManager.migrate_on_write(contract)
 
         self.assertTrue(migrated, "Migration should have occurred for old version contract")
         # Refresh from database
@@ -298,7 +295,7 @@ class MigrationDataIntegrityValidationTest(MigrationValidationTestBase):
         self.assertTrue(Asset.objects.filter(id=self.asset.id).exists(), "Asset should exist")
 
         # Perform migration
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        migrated, _migrated_data, _warnings = ContractMigrationManager.migrate_on_write(contract)
 
         self.assertTrue(migrated, "Migration should have occurred for old version contract")
         # Refresh from database
@@ -331,7 +328,9 @@ class MigrationErrorHandlingTest(MigrationValidationTestBase):
 
         # Migration should handle gracefully
         try:
-            migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+            _migrated, _migrated_data, warnings = ContractMigrationManager.migrate_on_write(
+                contract
+            )
             # Should either succeed or fail gracefully with warnings
             self.assertIsInstance(warnings, list, "Warnings should be a list")
         except Exception as e:
@@ -358,7 +357,7 @@ class MigrationErrorHandlingTest(MigrationValidationTestBase):
         )
 
         # Migration should handle missing fields
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        _migrated, _migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
         # Should provide warnings about missing fields
         self.assertIsInstance(warnings, list, "Warnings should be a list")
@@ -383,7 +382,7 @@ class MigrationErrorHandlingTest(MigrationValidationTestBase):
             contract.save()
 
         # Try to migrate
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        _migrated, _migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
         # Should handle gracefully (either succeed or fail with appropriate error)
         self.assertIsInstance(warnings, list, "Warnings should be a list")
@@ -404,7 +403,7 @@ class MigrationErrorHandlingTest(MigrationValidationTestBase):
         )
 
         # Normal migration should work without raising exceptions
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        migrated, _migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
         self.assertTrue(migrated, "Migration should have occurred for old version contract")
         # Verify contract was updated
@@ -459,7 +458,7 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         }
 
         # Perform migration
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        migrated, _migrated_data, _warnings = ContractMigrationManager.migrate_on_write(contract)
 
         self.assertTrue(migrated, "Migration should have occurred for old version contract")
         # Verify migration occurred
@@ -501,12 +500,12 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         original_version = contract.hub_contract_version
 
         # Perform migration
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        migrated, _migrated_data, _warnings = ContractMigrationManager.migrate_on_write(contract)
 
         self.assertTrue(migrated, "Migration should have occurred for old version contract")
         # Version should be updated
         contract.refresh_from_db()
-        current_version = get_current_hubcontract_version()
+        get_current_hubcontract_version()
         self.assertNotEqual(
             contract.hub_contract_version,
             original_version,
@@ -537,10 +536,8 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
                     created_by=self.user,
                 )
 
-                original_version = contract.hub_contract_version
-
                 # Perform migration within transaction
-                migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(
+                _migrated, _migrated_data, _warnings = ContractMigrationManager.migrate_on_write(
                     contract
                 )
 
@@ -588,7 +585,7 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         )
 
         # Migration should proceed
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        migrated, _migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
         self.assertTrue(migrated, "Migration should have occurred for old version contract")
         self.assertIsInstance(warnings, list, "Warnings should be a list")
@@ -609,7 +606,7 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         )
 
         # Migration should handle unicode characters
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        migrated, _migrated_data, _warnings = ContractMigrationManager.migrate_on_write(contract)
 
         self.assertTrue(migrated, "Migration should have occurred for old version contract")
         contract.refresh_from_db()
@@ -640,7 +637,7 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         )
 
         # Migration should handle special characters
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        migrated, _migrated_data, _warnings = ContractMigrationManager.migrate_on_write(contract)
 
         self.assertTrue(migrated, "Migration should have occurred for old version contract")
         contract.refresh_from_db()
@@ -671,17 +668,17 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         )
 
         # Migration should handle large documents
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        _migrated, _migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
         # Should either succeed or provide warnings
         self.assertIsInstance(warnings, list, "Warnings should be a list")
 
     def test_migration_preserves_created_at_timestamp(self):
         """Test that migration preserves created_at timestamp."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Create contract
-        before_creation = datetime.now(timezone.utc)
+        datetime.now(UTC)
         contract = Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -693,12 +690,12 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
             status=ContractStatus.ACTIVE,
             created_by=self.user,
         )
-        after_creation = datetime.now(timezone.utc)
+        datetime.now(UTC)
 
         original_created_at = contract.created_at
 
         # Perform migration
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        migrated, _migrated_data, _warnings = ContractMigrationManager.migrate_on_write(contract)
 
         self.assertTrue(migrated, "Migration should have occurred for old version contract")
         contract.refresh_from_db()
@@ -726,7 +723,7 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         )
 
         # Migration should handle None values
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        _migrated, _migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
         # Should either succeed or provide warnings
         self.assertIsInstance(warnings, list, "Warnings should be a list")
@@ -752,7 +749,7 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         )
 
         # Migration should handle nested structures
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        migrated, _migrated_data, _warnings = ContractMigrationManager.migrate_on_write(contract)
 
         self.assertTrue(migrated, "Migration should have occurred for old version contract")
         contract.refresh_from_db()
@@ -783,7 +780,7 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         )
 
         # Migration should handle list values
-        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+        migrated, _migrated_data, _warnings = ContractMigrationManager.migrate_on_write(contract)
 
         self.assertTrue(migrated, "Migration should have occurred for old version contract")
         contract.refresh_from_db()
@@ -813,7 +810,9 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
             )
 
             # Migration should handle all statuses
-            migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+            _migrated, _migrated_data, warnings = ContractMigrationManager.migrate_on_write(
+                contract
+            )
             self.assertIsInstance(warnings, list, "Warnings should be a list")
 
             # Clean up
@@ -837,7 +836,9 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
 
         # Perform multiple migrations
         for _ in range(3):
-            migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+            migrated, _migrated_data, _warnings = ContractMigrationManager.migrate_on_write(
+                contract
+            )
             if migrated:
                 contract.refresh_from_db()
             else:
@@ -898,8 +899,8 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         )
 
         # Migrate both contracts
-        migrated1, _, warnings1 = ContractMigrationManager.migrate_on_write(contract1)
-        migrated2, _, warnings2 = ContractMigrationManager.migrate_on_write(contract2)
+        _migrated1, _, _warnings1 = ContractMigrationManager.migrate_on_write(contract1)
+        _migrated2, _, _warnings2 = ContractMigrationManager.migrate_on_write(contract2)
 
         # Verify contracts remain isolated
         contract1.refresh_from_db()

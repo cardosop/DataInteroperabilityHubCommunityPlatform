@@ -5,12 +5,12 @@ Verifies that appending ?tenant_id=<other_tenant_uuid> to list endpoints
 does NOT leak cross-tenant data.  The server must always scope by the
 authenticated user's tenant, ignoring any tenant_id query parameter.
 """
+
 import uuid
 
 import pytest
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -51,9 +51,9 @@ class TestQueryParamInjection:
         if isinstance(results, list):
             for item in results:
                 # Every returned asset must belong to tenant A
-                assert str(item.get("tenant")) == str(tenant_a.id) or \
-                    "tenant" not in item, \
+                assert str(item.get("tenant")) == str(tenant_a.id) or "tenant" not in item, (
                     f"Leaked cross-tenant data: {item}"
+                )
 
     def test_no_500_on_injected_params(self, client_a, tenant_b):
         """Injecting foreign tenant_id must not cause 500 errors."""
@@ -61,11 +61,9 @@ class TestQueryParamInjection:
             resp = client_a.get(url, {"tenant_id": str(tenant_b.id)})
             if resp.status_code == 500:
                 # Tolerate transient deadlocks (infrastructure, not isolation bug)
-                body = getattr(resp, 'data', {}) or {}
-                msg = str(body.get('error', ''))
-                assert 'deadlock' in msg.lower(), (
-                    f"{url} returned non-deadlock 500: {msg}"
-                )
+                body = getattr(resp, "data", {}) or {}
+                msg = str(body.get("error", ""))
+                assert "deadlock" in msg.lower(), f"{url} returned non-deadlock 500: {msg}"
 
     def test_random_uuid_tenant_param_ignored(self, client_a):
         """Injecting a random UUID as tenant_id must not cause errors."""
@@ -73,11 +71,9 @@ class TestQueryParamInjection:
         for url in LIST_ENDPOINTS:
             resp = client_a.get(url, {"tenant_id": fake_id})
             if resp.status_code == 500:
-                body = getattr(resp, 'data', {}) or {}
-                msg = str(body.get('error', ''))
-                assert 'deadlock' in msg.lower(), (
-                    f"{url} returned non-deadlock 500: {msg}"
-                )
+                body = getattr(resp, "data", {}) or {}
+                msg = str(body.get("error", ""))
+                assert "deadlock" in msg.lower(), f"{url} returned non-deadlock 500: {msg}"
 
     def test_tenant_b_inject_tenant_a_id_gets_own_data(
         self, client_b, tenant_a, tenant_b, user_a, user_b
@@ -106,7 +102,5 @@ class TestQueryParamInjection:
         results = resp.data.get("results", resp.data)
         ids = {str(r["id"]) for r in results} if isinstance(results, list) else set()
         # Must not contain any tenant A asset IDs
-        a_assets = set(
-            str(a.id) for a in Asset.objects.filter(tenant=tenant_a)
-        )
+        a_assets = set(str(a.id) for a in Asset.objects.filter(tenant=tenant_a))
         assert ids.isdisjoint(a_assets), "Cross-tenant leak via query param"

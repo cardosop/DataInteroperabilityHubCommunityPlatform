@@ -11,9 +11,11 @@ This module provides a custom sampler that makes sampling decisions based on:
 - HTTP status code (for errors)
 - Configurable ratio for other requests
 """
-import os
+
 import logging
-from typing import Optional, Dict, Any, TYPE_CHECKING
+import os
+from typing import TYPE_CHECKING, Any
+
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,7 @@ try:
     from opentelemetry.sdk.trace import SamplingResult
     from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
     from opentelemetry.trace import SpanKind, TraceState
+
     OPENTELEMETRY_AVAILABLE = True
 except ImportError:
     logger.warning("OpenTelemetry packages not available for trace sampling")
@@ -44,14 +47,14 @@ except ImportError:
 
 # Critical endpoints that should always be sampled (100%)
 CRITICAL_ENDPOINTS = [
-    '/api/v1/auth/register',
-    '/api/v1/auth/login',
-    '/api/v1/auth/logout',
-    '/api/v1/auth/refresh',
-    '/api/v1/auth/me',
-    '/api/v1/assets/',
-    '/api/v1/assets/{id}/activate',
-    '/api/v1/assets/{id}/deactivate',
+    "/api/v1/auth/register",
+    "/api/v1/auth/login",
+    "/api/v1/auth/logout",
+    "/api/v1/auth/refresh",
+    "/api/v1/auth/me",
+    "/api/v1/assets/",
+    "/api/v1/assets/{id}/activate",
+    "/api/v1/assets/{id}/deactivate",
 ]
 
 
@@ -72,25 +75,26 @@ def is_critical_endpoint(path: str) -> bool:
     # Check pattern matches (for paths with IDs)
     for pattern in CRITICAL_ENDPOINTS:
         # Convert pattern to regex-like matching
-        if pattern.endswith('/'):
+        if pattern.endswith("/"):
             # Check if path starts with pattern
             if path.startswith(pattern):
                 return True
-        elif '{id}' in pattern:
+        elif "{id}" in pattern:
             # Replace {id} with any UUID or numeric ID
             import re
-            pattern_regex = pattern.replace('{id}', r'[0-9a-f-]+|\d+')
+
+            pattern_regex = pattern.replace("{id}", r"[0-9a-f-]+|\d+")
             if re.match(pattern_regex, path):
                 return True
         elif pattern in path:
             return True
 
     # Check for asset activation endpoints
-    if '/activate' in path or '/deactivate' in path:
+    if "/activate" in path or "/deactivate" in path:
         return True
 
     # Check for auth endpoints
-    if path.startswith('/api/v1/auth/'):
+    if path.startswith("/api/v1/auth/"):
         return True
 
     return False
@@ -106,11 +110,7 @@ class AdaptiveTraceSampler:
     Error-based sampling is handled by middleware that ensures error spans are created.
     """
 
-    def __init__(
-        self,
-        base_sampling_rate: float = 0.1,
-        critical_endpoints: Optional[list] = None
-    ):
+    def __init__(self, base_sampling_rate: float = 0.1, critical_endpoints: list | None = None):
         """
         Initialize adaptive trace sampler.
 
@@ -124,13 +124,13 @@ class AdaptiveTraceSampler:
 
     def should_sample(
         self,
-        parent_context: Optional[Any],
+        parent_context: Any | None,
         trace_id: int,
         name: str,
-        kind: Optional[Any] = None,
-        attributes: Optional[Dict[str, Any]] = None,
-        links: Optional[list] = None,
-        trace_state: Optional[Any] = None,
+        kind: Any | None = None,
+        attributes: dict[str, Any] | None = None,
+        links: list | None = None,
+        trace_state: Any | None = None,
     ) -> Any:
         """
         Make sampling decision for a span.
@@ -150,14 +150,18 @@ class AdaptiveTraceSampler:
         # Check if this is a critical endpoint
         if attributes:
             # Check HTTP target (path) from attributes
-            http_target = attributes.get('http.target') or attributes.get('http.url.path') or attributes.get('http.route')
+            http_target = (
+                attributes.get("http.target")
+                or attributes.get("http.url.path")
+                or attributes.get("http.route")
+            )
             if http_target and is_critical_endpoint(http_target):
                 logger.debug(
                     f"trace_sampling_critical_endpoint: path={http_target}, trace_id={format(trace_id, '032x')}"
                 )
                 return SamplingResult(
                     decision=SamplingResult.Decision.RECORD_AND_SAMPLE,
-                    attributes={"sampling.reason": "critical_endpoint"}
+                    attributes={"sampling.reason": "critical_endpoint"},
                 )
 
         # Use base sampler for other requests
@@ -199,7 +203,7 @@ class ErrorAwareSpanProcessor:
 
     def on_start(self, span, parent_context=None):
         """Called when a span starts."""
-        if hasattr(self.wrapped_processor, 'on_start'):
+        if hasattr(self.wrapped_processor, "on_start"):
             self.wrapped_processor.on_start(span, parent_context)
 
     def on_end(self, span):
@@ -218,14 +222,14 @@ class ErrorAwareSpanProcessor:
         reason = None
 
         # Check span status
-        if hasattr(span, 'status') and span.status:
+        if hasattr(span, "status") and span.status:
             if span.status.status_code == span.status.StatusCode.ERROR:
                 should_force_export = True
                 reason = "error_status"
 
         # Check HTTP status code from attributes
-        if hasattr(span, 'attributes') and span.attributes:
-            http_status_code = span.attributes.get('http.status_code')
+        if hasattr(span, "attributes") and span.attributes:
+            http_status_code = span.attributes.get("http.status_code")
             if http_status_code and http_status_code >= 400:
                 should_force_export = True
                 reason = "http_error"
@@ -233,39 +237,38 @@ class ErrorAwareSpanProcessor:
         # If we need to force export and span wasn't sampled, mark it
         if should_force_export and not is_sampled:
             # Add attributes to indicate forced sampling
-            if hasattr(span, 'set_attribute'):
+            if hasattr(span, "set_attribute"):
                 span.set_attribute("sampling.forced", True)
                 span.set_attribute("sampling.reason", reason)
             logger.debug(
                 "trace_sampling_error_detected",
-                trace_id=format(span_context.trace_id, '032x'),
-                span_id=format(span_context.span_id, '016x'),
-                reason=reason
+                trace_id=format(span_context.trace_id, "032x"),
+                span_id=format(span_context.span_id, "016x"),
+                reason=reason,
             )
 
         # Always call wrapped processor - it will handle export
         # Note: The wrapped processor (BatchSpanProcessor) will only export
         # sampled spans, so we need to ensure error spans are sampled
         # This is handled by the sampler checking status codes
-        if hasattr(self.wrapped_processor, 'on_end'):
+        if hasattr(self.wrapped_processor, "on_end"):
             self.wrapped_processor.on_end(span)
 
     def shutdown(self):
         """Shutdown the span processor."""
-        if hasattr(self.wrapped_processor, 'shutdown'):
+        if hasattr(self.wrapped_processor, "shutdown"):
             self.wrapped_processor.shutdown()
 
     def force_flush(self, timeout_millis: int = 30000):
         """Force flush spans."""
-        if hasattr(self.wrapped_processor, 'force_flush'):
+        if hasattr(self.wrapped_processor, "force_flush"):
             return self.wrapped_processor.force_flush(timeout_millis)
         return True
 
 
 def get_adaptive_sampler(
-    base_sampling_rate: Optional[float] = None,
-    critical_endpoints: Optional[list] = None
-) -> Optional[Any]:
+    base_sampling_rate: float | None = None, critical_endpoints: list | None = None
+) -> Any | None:
     """
     Get adaptive trace sampler with error-aware and critical endpoint support.
 
@@ -283,13 +286,10 @@ def get_adaptive_sampler(
         # Get from environment or settings
         base_sampling_rate = float(
             os.getenv(
-                'OTEL_TRACES_SAMPLER_ARG',
-                getattr(settings, 'OTEL_TRACES_SAMPLER_ARG', '0.1')
+                "OTEL_TRACES_SAMPLER_ARG", getattr(settings, "OTEL_TRACES_SAMPLER_ARG", "0.1")
             )
         )
 
     return AdaptiveTraceSampler(
-        base_sampling_rate=base_sampling_rate,
-        critical_endpoints=critical_endpoints
+        base_sampling_rate=base_sampling_rate, critical_endpoints=critical_endpoints
     )
-

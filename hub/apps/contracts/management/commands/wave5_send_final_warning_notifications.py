@@ -54,15 +54,16 @@ Usage
     python manage.py wave5_send_final_warning_notifications \\
         --deadline=2026-06-15 --tenant-id=<uuid> --force
 """
+
 from __future__ import annotations
 
 import datetime as _dt
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
-
 
 DEFAULT_IDEMPOTENCY_DAYS = 14
 W51_AUDIT_ACTION = "ASSET_AUTO_REVERT_WARNING_NOTIFIED"
@@ -167,14 +168,15 @@ class Command(BaseCommand):
             all_tenants=all_tenants,
         )
         if not residue_rows:
-            self.stdout.write(self.style.WARNING(
-                "  [no-op] no tenants with structureless ACTIVE "
-                "contracts found"
-            ))
-            self.stdout.write(self.style.SUCCESS(
-                "\nWave 5 final-warning summary: "
-                "sent=0, skipped-idempotent=0, skipped-no-admin=0, failed=0"
-            ))
+            self.stdout.write(
+                self.style.WARNING("  [no-op] no tenants with structureless ACTIVE contracts found")
+            )
+            self.stdout.write(
+                self.style.SUCCESS(
+                    "\nWave 5 final-warning summary: "
+                    "sent=0, skipped-idempotent=0, skipped-no-admin=0, failed=0"
+                )
+            )
             return
 
         sent_count = 0
@@ -184,21 +186,25 @@ class Command(BaseCommand):
 
         for row in residue_rows:
             tenant = row["tenant"]
-            tenant_label = (
-                f"{getattr(tenant, 'name', '?')} ({tenant.id})"
-            )
+            tenant_label = f"{getattr(tenant, 'name', '?')} ({tenant.id})"
 
-            if not force and idempotency_days > 0:
-                if self._already_warned(
-                    tenant=tenant, days=idempotency_days,
-                ):
-                    self.stdout.write(self.style.WARNING(
+            if (
+                not force
+                and idempotency_days > 0
+                and self._already_warned(
+                    tenant=tenant,
+                    days=idempotency_days,
+                )
+            ):
+                self.stdout.write(
+                    self.style.WARNING(
                         f"  [skipped-idempotent] {tenant_label}: "
                         f"warning sent within last "
                         f"{idempotency_days} day(s)"
-                    ))
-                    skipped_idem += 1
-                    continue
+                    )
+                )
+                skipped_idem += 1
+                continue
 
             still_residue = row["contracts"]
 
@@ -218,27 +224,30 @@ class Command(BaseCommand):
                     deadline=deadline,
                 )
             except NoTenantAdminsError:
-                self.stdout.write(self.style.WARNING(
-                    f"  [skipped-no-admin] {tenant_label}: no "
-                    "TENANT_ADMIN — escalate per runbook §227.W5.1"
-                ))
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"  [skipped-no-admin] {tenant_label}: no "
+                        "TENANT_ADMIN — escalate per runbook §227.W5.1"
+                    )
+                )
                 skipped_no_admin += 1
                 continue
             except Exception as exc:  # pragma: no cover — operator visibility
-                self.stdout.write(self.style.ERROR(
-                    f"  [failed] {tenant_label}: "
-                    f"{type(exc).__name__}: {exc}"
-                ))
+                self.stdout.write(
+                    self.style.ERROR(f"  [failed] {tenant_label}: {type(exc).__name__}: {exc}")
+                )
                 failed += 1
                 continue
 
             success_count = sum(1 for d in dispatched if d.get("success"))
             error_count = len(dispatched) - success_count
-            self.stdout.write(self.style.SUCCESS(
-                f"  Warned {tenant_label}: "
-                f"{success_count} succeeded, {error_count} failed, "
-                f"{len(still_residue)} structureless ACTIVE contract(s)"
-            ))
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"  Warned {tenant_label}: "
+                    f"{success_count} succeeded, {error_count} failed, "
+                    f"{len(still_residue)} structureless ACTIVE contract(s)"
+                )
+            )
 
             # Critical idempotency sub-invariant — only when ≥1 admin
             # actually received the email. All-failed batch leaves
@@ -252,30 +261,34 @@ class Command(BaseCommand):
                 sent_count += 1
 
             for d in dispatched:
-                audit_records.append({
-                    "tenant_id": str(tenant.id),
-                    "tenant_name": getattr(tenant, "name", ""),
-                    "to_email": d["to_email"],
-                    "email_type": d["email_type"],
-                    "success": d["success"],
-                    "error": d["error"],
-                    "deadline": deadline.isoformat(),
-                    "residue_count": len(still_residue),
-                    "dispatched_at": _dt.datetime.now(
-                        _dt.timezone.utc,
-                    ).isoformat(),
-                })
+                audit_records.append(
+                    {
+                        "tenant_id": str(tenant.id),
+                        "tenant_name": getattr(tenant, "name", ""),
+                        "to_email": d["to_email"],
+                        "email_type": d["email_type"],
+                        "success": d["success"],
+                        "error": d["error"],
+                        "deadline": deadline.isoformat(),
+                        "residue_count": len(still_residue),
+                        "dispatched_at": _dt.datetime.now(
+                            _dt.UTC,
+                        ).isoformat(),
+                    }
+                )
 
         if audit_output and audit_records:
             self._write_audit_jsonl(Path(audit_output), audit_records)
 
-        self.stdout.write(self.style.SUCCESS(
-            f"\nWave 5 final-warning summary: "
-            f"sent={sent_count}, "
-            f"skipped-idempotent={skipped_idem}, "
-            f"skipped-no-admin={skipped_no_admin}, "
-            f"failed={failed}"
-        ))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"\nWave 5 final-warning summary: "
+                f"sent={sent_count}, "
+                f"skipped-idempotent={skipped_idem}, "
+                f"skipped-no-admin={skipped_no_admin}, "
+                f"failed={failed}"
+            )
+        )
 
     # ------------------------------------------------------------------
 
@@ -284,9 +297,7 @@ class Command(BaseCommand):
         try:
             d = _dt.date.fromisoformat(raw)
         except (TypeError, ValueError) as exc:
-            raise CommandError(
-                f"--deadline must be ISO date (YYYY-MM-DD); got {raw!r}"
-            ) from exc
+            raise CommandError(f"--deadline must be ISO date (YYYY-MM-DD); got {raw!r}") from exc
         if d <= _dt.date.today():
             raise CommandError(
                 f"--deadline must be in the future; got {raw} "
@@ -296,7 +307,9 @@ class Command(BaseCommand):
 
     @staticmethod
     def _load_cohort(
-        *, tenant_id: str | None, all_tenants: bool,
+        *,
+        tenant_id: str | None,
+        all_tenants: bool,
     ) -> list[dict[str, Any]]:
         """Build the (tenant, structureless ACTIVE contracts) tuples
         to dispatch. Default scope: only tenants whose currently-
@@ -378,7 +391,11 @@ class Command(BaseCommand):
         ).exists()
 
     def _record_warned_audit(
-        self, *, tenant: Any, deadline: _dt.date, residue_count: int,
+        self,
+        *,
+        tenant: Any,
+        deadline: _dt.date,
+        residue_count: int,
     ) -> None:
         """Write the ``ASSET_AUTO_REVERT_WARNING_NOTIFIED`` audit row
         that guards the next re-run from re-emailing this tenant.
@@ -387,6 +404,7 @@ class Command(BaseCommand):
         ops can correlate the at-send-time deadline (vs guessing from
         a config file)."""
         from hub.apps.audit.utils import create_audit_event
+
         try:
             create_audit_event(
                 resource_type="TENANT",
@@ -400,14 +418,17 @@ class Command(BaseCommand):
                 },
             )
         except Exception as exc:  # pragma: no cover — best-effort
-            self.stdout.write(self.style.WARNING(
-                f"  [warn] failed to record audit row for "
-                f"{tenant.id}: {type(exc).__name__}: {exc}"
-            ))
+            self.stdout.write(
+                self.style.WARNING(
+                    f"  [warn] failed to record audit row for "
+                    f"{tenant.id}: {type(exc).__name__}: {exc}"
+                )
+            )
 
     @staticmethod
     def _write_audit_jsonl(
-        path: Path, records: Iterable[dict[str, Any]],
+        path: Path,
+        records: Iterable[dict[str, Any]],
     ) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as fp:

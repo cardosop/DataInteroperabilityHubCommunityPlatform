@@ -1,7 +1,8 @@
 """Connection management methods for MarketplaceIntegrationService."""
-import structlog
-from typing import Any, Dict, List, Optional
 
+from typing import Any
+
+import structlog
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -41,9 +42,9 @@ class ConnectionServiceMixin:
         user_id: str,
         marketplace_type: str,
         name: str,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         is_active: bool = True,
-        request: Optional[Any] = None,
+        request: Any | None = None,
     ) -> MarketplaceConnection:
         """
         Create a new marketplace connection.
@@ -81,6 +82,7 @@ class ConnectionServiceMixin:
 
         # Plan limit enforcement
         from hub.apps.tenants.services import PlanLimitService
+
         plan_limit_service = PlanLimitService(tenant_id=tenant_id)
         plan_limit_service.check_limit(
             tenant_id=tenant_id,
@@ -160,11 +162,17 @@ class ConnectionServiceMixin:
             # Phase 90.6: SSRF validation on URL-like config values
             # Gated on INTEGRATION_SSRF_ENABLED (same pattern as WEBHOOK_SSRF_ENABLED)
             from django.conf import settings as _django_settings
+
             if getattr(_django_settings, "INTEGRATION_SSRF_ENABLED", True):
-                from hub.apps.webhooks.ssrf_guard import validate_webhook_url, SSRFViolationError
+                from hub.apps.webhooks.ssrf_guard import SSRFViolationError, validate_webhook_url
+
                 _url_keys = {"url", "endpoint", "api_url", "base_url", "host_url", "callback_url"}
                 for key, value in (config or {}).items():
-                    if key.lower() in _url_keys and isinstance(value, str) and value.startswith(("http://", "https://")):
+                    if (
+                        key.lower() in _url_keys
+                        and isinstance(value, str)
+                        and value.startswith(("http://", "https://"))
+                    ):
                         try:
                             validate_webhook_url(value, raise_as_validation_error=False)
                         except SSRFViolationError as ssrf_exc:
@@ -341,7 +349,7 @@ class ConnectionServiceMixin:
                 exc_info=True,
             )
             raise ValidationError(
-                f"Failed to create marketplace connection: {str(e)}", details={"error": str(e)}
+                f"Failed to create marketplace connection: {e!s}", details={"error": str(e)}
             ) from e
         finally:
             if span_context:
@@ -357,12 +365,12 @@ class ConnectionServiceMixin:
     def update_connection(
         self,
         connection_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        name: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
-        is_active: Optional[bool] = None,
-        request: Optional[Any] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        name: str | None = None,
+        config: dict[str, Any] | None = None,
+        is_active: bool | None = None,
+        request: Any | None = None,
     ) -> MarketplaceConnection:
         """
         Update an existing marketplace connection.
@@ -465,11 +473,10 @@ class ConnectionServiceMixin:
                 changes["config"] = "[UPDATED]"
 
             # Update is_active if provided
-            if is_active is not None:
-                if is_active != connection.is_active:
-                    original_values["is_active"] = connection.is_active
-                    connection.is_active = is_active
-                    changes["is_active"] = is_active
+            if is_active is not None and is_active != connection.is_active:
+                original_values["is_active"] = connection.is_active
+                connection.is_active = is_active
+                changes["is_active"] = is_active
 
             # Save if there are changes
             if changes:
@@ -608,7 +615,7 @@ class ConnectionServiceMixin:
                 exc_info=True,
             )
             raise ValidationError(
-                f"Failed to update marketplace connection: {str(e)}", details={"error": str(e)}
+                f"Failed to update marketplace connection: {e!s}", details={"error": str(e)}
             ) from e
         finally:
             if span_context:
@@ -624,10 +631,10 @@ class ConnectionServiceMixin:
     def delete_connection(
         self,
         connection_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        reason: Optional[str] = None,
-        request: Optional[Any] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        reason: str | None = None,
+        request: Any | None = None,
     ) -> None:
         """
         Delete a marketplace connection.
@@ -680,7 +687,6 @@ class ConnectionServiceMixin:
             connection_id_str = str(connection.id)
             marketplace_type = connection.marketplace_type
             name = connection.name
-            was_active = connection.is_active
 
             # Record metrics before deletion
             try:
@@ -692,9 +698,7 @@ class ConnectionServiceMixin:
                     marketplace_type=marketplace_type,
                     tenant_id=effective_tenant_id,
                     connection_id=connection_id_str,
-                ).set(
-                    0
-                )  # Set to 0 (inactive) before deletion
+                ).set(0)  # Set to 0 (inactive) before deletion
             except Exception as e:
                 # Log but don't fail deletion if metrics fail
                 logger.warning(
@@ -811,10 +815,10 @@ class ConnectionServiceMixin:
 
     def list_connections(
         self,
-        tenant_id: Optional[str] = None,
-        marketplace_type: Optional[str] = None,
-        is_active: Optional[bool] = None,
-    ) -> List[MarketplaceConnection]:
+        tenant_id: str | None = None,
+        marketplace_type: str | None = None,
+        is_active: bool | None = None,
+    ) -> list[MarketplaceConnection]:
         """
         List marketplace connections.
 
@@ -922,7 +926,7 @@ class ConnectionServiceMixin:
     def get_connection(
         self,
         connection_id: str,
-        tenant_id: Optional[str] = None,
+        tenant_id: str | None = None,
     ) -> MarketplaceConnection:
         """
         Get a marketplace connection by ID.
@@ -1011,10 +1015,10 @@ class ConnectionServiceMixin:
     def test_connection(
         self,
         connection_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request: Optional[Any] = None,
-    ) -> Dict[str, Any]:
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request: Any | None = None,
+    ) -> dict[str, Any]:
         """
         Test a marketplace connection.
 
@@ -1077,7 +1081,7 @@ class ConnectionServiceMixin:
                 config = connection.get_config()
             except Exception as e:
                 raise ValidationError(
-                    f"Failed to decrypt connection configuration: {str(e)}",
+                    f"Failed to decrypt connection configuration: {e!s}",
                     details={"error": str(e)},
                 ) from e
 
@@ -1089,7 +1093,7 @@ class ConnectionServiceMixin:
                 )
             except Exception as e:
                 raise ValidationError(
-                    f"Failed to create connector: {str(e)}",
+                    f"Failed to create connector: {e!s}",
                     details={"error": str(e), "marketplace_type": connection.marketplace_type},
                 ) from e
 
@@ -1111,15 +1115,16 @@ class ConnectionServiceMixin:
                 error_message = f"Authentication error: {e.message}"
                 error_type = "AUTHENTICATION_ERROR"
             except Exception as e:
-                error_message = f"Unexpected error: {str(e)}"
+                error_message = f"Unexpected error: {e!s}"
                 error_type = "UNEXPECTED_ERROR"
 
             # Record connection test metrics
             try:
                 from hub.apps.observability.otel_metrics import (
-                    marketplace_connection_tests_total,
                     marketplace_connection_test_failures_total,
+                    marketplace_connection_tests_total,
                 )
+
                 status = "success" if success else "failure"
                 marketplace_connection_tests_total.labels(
                     marketplace_type=connection.marketplace_type,
@@ -1203,13 +1208,16 @@ class ConnectionServiceMixin:
             # Send notification email if test failed (Task 9.10.6.3.2)
             if not success and error_message:
                 try:
-                    from hub.apps.notifications.tasks import send_marketplace_connection_test_failure_email
+                    from hub.apps.notifications.tasks import (
+                        send_marketplace_connection_test_failure_email,
+                    )
+
                     send_marketplace_connection_test_failure_email.delay(
                         connection_id=str(connection.id),
                         error_message=error_message,
                         tested_at=tested_at.isoformat(),
                         user_id=effective_user_id,
-                        tenant_id=effective_tenant_id
+                        tenant_id=effective_tenant_id,
                     )
                 except Exception as e:
                     # Log but don't fail test if notification fails
@@ -1257,7 +1265,7 @@ class ConnectionServiceMixin:
                 },
             )
             raise ValidationError(
-                f"Failed to test marketplace connection: {str(e)}", details={"error": str(e)}
+                f"Failed to test marketplace connection: {e!s}", details={"error": str(e)}
             ) from e
         finally:
             if span_context:

@@ -7,7 +7,6 @@ Tests for impact visualization formats (JSON, CSV, DOT, Mermaid) and paths.
 import pytest
 from django.test import TestCase
 
-from hub.apps.contracts.impact_analysis import ImpactNode
 from hub.apps.contracts.impact_visualization import ImpactVisualizer
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -109,7 +108,8 @@ class ImpactVisualizerTest(TestCase):
 
         self.assertIsInstance(paths, list)
         self.assertGreater(
-            len(paths), 0,
+            len(paths),
+            0,
             "Impact result with a populated impact_graph must produce at least one path",
         )
         path = paths[0]
@@ -268,8 +268,7 @@ class ImpactVisualizerTest(TestCase):
         paths = ImpactVisualizer.generate_impact_paths(empty_result)
 
         self.assertIsInstance(paths, list)
-        self.assertEqual(len(paths), 0,
-            "Empty impact graph must produce zero paths")
+        self.assertEqual(len(paths), 0, "Empty impact graph must produce zero paths")
 
     def test_generate_impact_paths_with_deep_nesting(self):
         """Test impact paths generation with deeply nested impact graph."""
@@ -310,8 +309,7 @@ class ImpactVisualizerTest(TestCase):
         paths = ImpactVisualizer.generate_impact_paths(deep_result)
 
         self.assertIsInstance(paths, list)
-        self.assertGreater(len(paths), 0,
-            "Deeply nested result must produce at least one path")
+        self.assertGreater(len(paths), 0, "Deeply nested result must produce at least one path")
 
     def test_generate_impact_json_structure_consistency(self):
         """Test that JSON format has consistent structure."""

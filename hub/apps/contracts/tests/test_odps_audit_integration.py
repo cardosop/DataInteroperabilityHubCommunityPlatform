@@ -79,9 +79,7 @@ class ODPSCreateAuditTest(ODPSAuditIntegrationTestBase):
     def test_create_odps_creates_audit_event(self):
         """Test that creating an ODPS contract creates an audit event."""
         # Get initial audit event count
-        initial_count = AuditEvent.objects.filter(
-            resource_type="ODPS", action="ODPS_CREATED"
-        ).count()
+        AuditEvent.objects.filter(resource_type="ODPS", action="ODPS_CREATED").count()
 
         # Create ODPS service
         odps_service = ODPSService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -144,7 +142,9 @@ class ODPSCreateAuditTest(ODPSAuditIntegrationTestBase):
         )
 
         # Should have at least one failure audit event
-        self.assertGreaterEqual(audit_events.count(), 1, "Should have at least one failure audit event")
+        self.assertGreaterEqual(
+            audit_events.count(), 1, "Should have at least one failure audit event"
+        )
 
     def test_create_odps_audit_event_contains_request_id(self):
         """Test that audit event contains request_id if provided."""
@@ -182,7 +182,7 @@ class ODPSNormalizeAuditTest(ODPSAuditIntegrationTestBase):
         odps_service = ODPSService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         # Normalize ODPS document
-        hub_contract = odps_service.normalize_odps(
+        odps_service.normalize_odps(
             odps_doc=self.base_odps_contract, odps_version="4.1", tenant_id=str(self.tenant.id)
         )
 
@@ -335,7 +335,9 @@ class ODPSLinkAuditTest(ODPSAuditIntegrationTestBase):
         )
 
         # Should have at least one failure audit event
-        self.assertGreaterEqual(audit_events.count(), 1, "Should have at least one failure audit event")
+        self.assertGreaterEqual(
+            audit_events.count(), 1, "Should have at least one failure audit event"
+        )
 
 
 class ODPSExportAuditTest(ODPSAuditIntegrationTestBase):
@@ -444,7 +446,9 @@ class ODPSExportAuditTest(ODPSAuditIntegrationTestBase):
         )
 
         # Should have at least one failure audit event
-        self.assertGreaterEqual(audit_events.count(), 1, "Should have at least one failure audit event")
+        self.assertGreaterEqual(
+            audit_events.count(), 1, "Should have at least one failure audit event"
+        )
 
 
 class ODPSAuditTrailTest(ODPSAuditIntegrationTestBase):
@@ -467,7 +471,7 @@ class ODPSAuditTrailTest(ODPSAuditIntegrationTestBase):
         )
 
         # Step 2: Export ODPS contract
-        exported = odps_service.export_odps(
+        odps_service.export_odps(
             contract_id=str(contract.id), output_format="json", tenant_id=str(self.tenant.id)
         )
 

@@ -11,7 +11,6 @@ from django.db import transaction
 logger = logging.getLogger(__name__)
 from django.utils import timezone
 from drf_spectacular.utils import (
-    OpenApiResponse,
     extend_schema,
     extend_schema_view,
     inline_serializer,
@@ -34,7 +33,6 @@ from .models import (
     ScheduledExportRunStatus,
     ScheduledExportStatus,
 )
-from .throttles import ScheduledExportTenantThrottle
 from .serializers import (
     ScheduledExportCreateSerializer,
     ScheduledExportRunSerializer,
@@ -42,6 +40,7 @@ from .serializers import (
     ScheduledExportTriggerSerializer,
 )
 from .services import ScheduledExportService
+from .throttles import ScheduledExportTenantThrottle
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +229,9 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         """Create scheduled export via service (validates via ScheduledExportBusinessRules)."""
         # Phase 275.E.3l — Idempotency-Key support for retried writes.
-        idempotency_key = request.META.get("HTTP_IDEMPOTENCY_KEY") or request.headers.get("Idempotency-Key")
+        idempotency_key = request.META.get("HTTP_IDEMPOTENCY_KEY") or request.headers.get(
+            "Idempotency-Key"
+        )
         if idempotency_key:
             existing = ScheduledExport.objects.filter(
                 tenant=request.user.tenant,
@@ -241,11 +242,13 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
                 return Response(serializer.data, status=status.HTTP_200_OK)
 
         # Fail-fast: check plan limit BEFORE expensive serializer validation.
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if tenant:
-            from hub.apps.tenants.services import PlanLimitService
-            from hub.apps.core.services.base import ValidationError as SvcValidationError
             from django.db import transaction as db_transaction
+
+            from hub.apps.core.services.base import ValidationError as SvcValidationError
+            from hub.apps.tenants.services import PlanLimitService
+
             try:
                 plan_svc = PlanLimitService(tenant_id=str(tenant.id))
                 with db_transaction.atomic():
@@ -333,7 +336,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         # Use central helper for tenant resolution (Phase 21)
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             tenant = instance.tenant
 
@@ -393,7 +396,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
         3. Only hard-delete the DB record after a successful deployment delete.
         """
         instance = self.get_object()
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             tenant = instance.tenant
 
@@ -499,7 +502,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
             )
 
         scheduled_export = self.get_object()
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             tenant = scheduled_export.tenant
 
@@ -575,6 +578,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
             )
             if cached is not None:
                 import logging as _logging
+
                 _logging.getLogger(__name__).info(
                     "idempotency_replay_hit",
                     extra={
@@ -584,7 +588,8 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
                     },
                 )
                 replay_response = Response(
-                    cached.data, status=cached.status_code,
+                    cached.data,
+                    status=cached.status_code,
                 )
                 for header_name, header_value in cached.headers.items():
                     replay_response[header_name] = header_value
@@ -682,6 +687,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
                     from hub.apps.jobs.tasks_prefect_sync import (
                         enqueue_prefect_status_sync,
                     )
+
                     transaction.on_commit(
                         lambda frid=flow_run_id, rid=str(run.id): enqueue_prefect_status_sync(
                             flow_run_id=frid,
@@ -730,7 +736,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
             )
             return Response(
                 {
-                    "error": f"Failed to trigger export: {str(e)}",
+                    "error": f"Failed to trigger export: {e!s}",
                     "code": "INTERNAL_ERROR",
                     "details": {},
                 },

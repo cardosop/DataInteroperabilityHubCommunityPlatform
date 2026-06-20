@@ -7,73 +7,68 @@ and executes them using the workflow engine.
 Usage:
     python manage.py process_workflows [--poll-interval SECONDS] [--batch-size N]
 """
+
 import logging
 import time
+
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.db.utils import OperationalError as DjangoOperationalError
-from django.utils import timezone
-from typing import Optional
 
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
 
 logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = 'Process workflow instances continuously (polls for DRAFT and RUNNING workflows)'
+    help = "Process workflow instances continuously (polls for DRAFT and RUNNING workflows)"
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--poll-interval',
-            type=int,
-            default=5,
-            help='Polling interval in seconds (default: 5)'
+            "--poll-interval", type=int, default=5, help="Polling interval in seconds (default: 5)"
         )
         parser.add_argument(
-            '--batch-size',
+            "--batch-size",
             type=int,
             default=10,
-            help='Number of workflows to process per batch (default: 10)'
+            help="Number of workflows to process per batch (default: 10)",
         )
         parser.add_argument(
-            '--once',
-            action='store_true',
-            help='Process one batch and exit (for testing)'
+            "--once", action="store_true", help="Process one batch and exit (for testing)"
         )
 
     def handle(self, *args, **options):
-        poll_interval = options['poll_interval']
-        batch_size = options['batch_size']
-        run_once = options['once']
+        poll_interval = options["poll_interval"]
+        batch_size = options["batch_size"]
+        run_once = options["once"]
 
         self.stdout.write(
             self.style.SUCCESS(
-                f'Starting workflow processor '
-                f'(poll_interval={poll_interval}s, batch_size={batch_size})'
+                f"Starting workflow processor "
+                f"(poll_interval={poll_interval}s, batch_size={batch_size})"
             )
         )
 
         # Initialize workflow engine and registry
         workflow_engine = WorkflowEngine()
-        workflow_registry = WorkflowRegistry()
+        WorkflowRegistry()
 
         # Register all workflow tasks from workflow classes
         try:
             from hub.apps.orchestration.workflows import (
-                ContractCreationWorkflow,
-                ScheduledIngestionWorkflow,
                 AccessRequestWorkflow,
-                DataQualityCheckWorkflow,
-                ComplianceReportingWorkflow,
                 AssetCreationWorkflow,
+                ComplianceReportingWorkflow,
+                ContractCreationWorkflow,
+                DataQualityCheckWorkflow,
                 DatasetCreationWorkflow,
-                VersionCreationWorkflow,
                 MarketplacePublicationWorkflow,
-                ProductCreationWorkflow,
                 MarketplaceSyncWorkflow,
+                ProductCreationWorkflow,
+                ScheduledIngestionWorkflow,
+                VersionCreationWorkflow,
             )
 
             workflow_classes = [
@@ -92,15 +87,17 @@ class Command(BaseCommand):
 
             # Register tasks from each workflow class
             for workflow_class in workflow_classes:
-                if hasattr(workflow_class, 'register_tasks'):
+                if hasattr(workflow_class, "register_tasks"):
                     workflow_class.register_tasks(workflow_engine)
 
             self.stdout.write(
-                self.style.SUCCESS(f'Registered tasks from {len(workflow_classes)} workflow classes')
+                self.style.SUCCESS(
+                    f"Registered tasks from {len(workflow_classes)} workflow classes"
+                )
             )
         except Exception as e:
             self.stdout.write(
-                self.style.WARNING(f'Warning: Could not register workflow tasks: {e}')
+                self.style.WARNING(f"Warning: Could not register workflow tasks: {e}")
             )
             logger.warning(f"Could not register workflow tasks: {e}", exc_info=True)
 
@@ -119,7 +116,7 @@ class Command(BaseCommand):
                     if processed > 0:
                         self.stdout.write(
                             self.style.SUCCESS(
-                                f'Processed {processed} workflow(s) (total: {total_processed})'
+                                f"Processed {processed} workflow(s) (total: {total_processed})"
                             )
                         )
 
@@ -127,12 +124,10 @@ class Command(BaseCommand):
                         break
 
                 except DjangoOperationalError as e:
-                    logger.warning(
-                        "Database unavailable (will retry): %s", e, exc_info=True
-                    )
+                    logger.warning("Database unavailable (will retry): %s", e, exc_info=True)
                     self.stdout.write(
                         self.style.WARNING(
-                            f'Database unavailable, retrying in {db_retry_delay}s: {e}'
+                            f"Database unavailable, retrying in {db_retry_delay}s: {e}"
                         )
                     )
                     time.sleep(db_retry_delay)
@@ -144,13 +139,9 @@ class Command(BaseCommand):
                     time.sleep(poll_interval)
 
         except KeyboardInterrupt:
-            self.stdout.write(
-                self.style.SUCCESS(f'\nStopped. Total processed: {total_processed}')
-            )
+            self.stdout.write(self.style.SUCCESS(f"\nStopped. Total processed: {total_processed}"))
         except Exception as e:
-            self.stdout.write(
-                self.style.ERROR(f'Error processing workflows: {e}')
-            )
+            self.stdout.write(self.style.ERROR(f"Error processing workflows: {e}"))
             logger.error(f"Workflow processing error: {e}", exc_info=True)
             raise CommandError(f"Workflow processing failed: {e}")
 
@@ -174,9 +165,11 @@ class Command(BaseCommand):
         # Process DRAFT workflows first (start them)
         # select_for_update requires a transaction, so we need to evaluate the queryset inside a transaction
         with transaction.atomic():
-            draft_workflows = list(WorkflowInstance.objects.filter(
-                status=WorkflowStatus.DRAFT
-            ).select_for_update(skip_locked=True)[:batch_size])
+            draft_workflows = list(
+                WorkflowInstance.objects.filter(status=WorkflowStatus.DRAFT).select_for_update(
+                    skip_locked=True
+                )[:batch_size]
+            )
 
         for instance in draft_workflows:
             try:
@@ -201,16 +194,14 @@ class Command(BaseCommand):
                     )
             except Exception as e:
                 logger.error(
-                    f"Error processing DRAFT workflow instance {instance.id}: {e}",
-                    exc_info=True
+                    f"Error processing DRAFT workflow instance {instance.id}: {e}", exc_info=True
                 )
                 # Mark as failed if retries exhausted
                 try:
                     instance.refresh_from_db()
                     if instance.retry_count >= instance.max_retries:
                         instance.mark_failed(
-                            error_message=str(e),
-                            error_details={'exception_type': type(e).__name__}
+                            error_message=str(e), error_details={"exception_type": type(e).__name__}
                         )
                 except Exception:
                     pass  # Ignore errors during failure marking
@@ -220,9 +211,11 @@ class Command(BaseCommand):
         if remaining_slots > 0:
             # select_for_update requires a transaction, so we need to evaluate the queryset inside a transaction
             with transaction.atomic():
-                running_workflows = list(WorkflowInstance.objects.filter(
-                    status=WorkflowStatus.RUNNING
-                ).select_for_update(skip_locked=True)[:remaining_slots])
+                running_workflows = list(
+                    WorkflowInstance.objects.filter(
+                        status=WorkflowStatus.RUNNING
+                    ).select_for_update(skip_locked=True)[:remaining_slots]
+                )
 
             for instance in running_workflows:
                 try:
@@ -245,7 +238,7 @@ class Command(BaseCommand):
                 except Exception as e:
                     logger.error(
                         f"Error continuing RUNNING workflow instance {instance.id}: {e}",
-                        exc_info=True
+                        exc_info=True,
                     )
                     # Mark as failed if retries exhausted
                     try:
@@ -253,10 +246,9 @@ class Command(BaseCommand):
                         if instance.retry_count >= instance.max_retries:
                             instance.mark_failed(
                                 error_message=str(e),
-                                error_details={'exception_type': type(e).__name__}
+                                error_details={"exception_type": type(e).__name__},
                             )
                     except Exception:
                         pass  # Ignore errors during failure marking
 
         return processed
-

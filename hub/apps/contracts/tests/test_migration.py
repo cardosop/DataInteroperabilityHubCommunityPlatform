@@ -2,7 +2,6 @@
 Contract Migration Tests
 """
 
-
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -17,8 +16,7 @@ from hub.apps.contracts.migration import (
 from hub.apps.contracts.migration_manager import ContractMigrationManager
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
 from hub.apps.contracts.tests.test_base import ContractsTestBase
-from hub.apps.jobs.models import Job, JobStatus, JobType
-
+from hub.apps.jobs.models import Job
 
 
 class MigrationTest(ContractsTestBase):
@@ -55,8 +53,7 @@ class MigrationTest(ContractsTestBase):
     def test_get_current_hubcontract_version(self):
         """Test getting current HubContract version returns a valid semver."""
         version = get_current_hubcontract_version()
-        self.assertRegex(version, r'^\d+\.\d+\.\d+$',
-                         f"Expected semver, got: {version}")
+        self.assertRegex(version, r"^\d+\.\d+\.\d+$", f"Expected semver, got: {version}")
 
     def test_needs_migration(self):
         """Test needs_migration check"""
@@ -120,7 +117,7 @@ class MigrationTest(ContractsTestBase):
             "schema": {"fields": []},
         }
 
-        migrated, warnings, errors = migrate_hubcontract(hub_contract, "invalid", "1.0.0")
+        migrated, _warnings, errors = migrate_hubcontract(hub_contract, "invalid", "1.0.0")
 
         self.assertIsNone(migrated)
         self.assertGreater(len(errors), 0)
@@ -145,14 +142,14 @@ class MigrationTest(ContractsTestBase):
             normalization_status="NORMALIZED_OK",
             created_by=self.user,
         )
-        self.assertTrue(needs_migration("0.9.0"),
-                        "0.9.0 must need migration to current version")
+        self.assertTrue(needs_migration("0.9.0"), "0.9.0 must need migration to current version")
 
-        migrated, migrated_hub_contract, warnings = ContractMigrationManager.migrate_on_write(
+        migrated, _migrated_hub_contract, _warnings = ContractMigrationManager.migrate_on_write(
             old_contract
         )
-        self.assertTrue(migrated,
-                        "migrate_on_write must migrate 0.9.0 contracts to current version")
+        self.assertTrue(
+            migrated, "migrate_on_write must migrate 0.9.0 contracts to current version"
+        )
 
         # Verify contract was updated in the DB
         old_contract.refresh_from_db()
@@ -181,12 +178,15 @@ class MigrationTest(ContractsTestBase):
         )
         self.assertTrue(needs_migration("0.9.0"))
 
-        migrated_hub_contract, warnings = ContractMigrationManager.migrate_on_read(old_contract)
+        migrated_hub_contract, _warnings = ContractMigrationManager.migrate_on_read(old_contract)
         self.assertIsNotNone(migrated_hub_contract)
         # Migration should update hub_contract_version to the current version.
-        current_version = get_current_hubcontract_version()
-        self.assertEqual(migrated_hub_contract.get("hub_contract_version"), 1,
-                         "Migrated contract must have numeric version 1")
+        get_current_hubcontract_version()
+        self.assertEqual(
+            migrated_hub_contract.get("hub_contract_version"),
+            1,
+            "Migrated contract must have numeric version 1",
+        )
 
     def test_migrate_background(self):
         """Test BACKGROUND migration strategy handles old contracts."""
@@ -244,13 +244,16 @@ class MigrationTest(ContractsTestBase):
         )
         self.assertTrue(needs_migration("0.9.0"))
 
-        hub_contract, warnings = ContractMigrationManager.ensure_migrated(
+        hub_contract, _warnings = ContractMigrationManager.ensure_migrated(
             old_contract, strategy=MigrationStrategy.ON_READ
         )
         self.assertIsNotNone(hub_contract)
         # Migration should produce a data structure with current version.
-        self.assertEqual(hub_contract.get("hub_contract_version"), 1,
-                         "Migrated contract must have numeric version 1")
+        self.assertEqual(
+            hub_contract.get("hub_contract_version"),
+            1,
+            "Migrated contract must have numeric version 1",
+        )
 
     def test_ensure_migrated_on_write(self):
         """Test ensure_migrated ON_WRITE strategy migrates 0.9.0 contracts."""
@@ -274,7 +277,7 @@ class MigrationTest(ContractsTestBase):
         )
         self.assertTrue(needs_migration("0.9.0"))
 
-        hub_contract, warnings = ContractMigrationManager.ensure_migrated(
+        hub_contract, _warnings = ContractMigrationManager.ensure_migrated(
             old_contract, strategy=MigrationStrategy.ON_WRITE
         )
         self.assertIsNotNone(hub_contract)
@@ -353,7 +356,7 @@ class EnhancedMigrationTest(ContractsTestBase):
 
     def test_migration_of_all_sections(self):
         """Test migration of all sections from v1 to v2 (GAP-10.2.1)"""
-        migrated, warnings = migrate_hubcontract_v1_to_v2(self.contract_v1_full)
+        migrated, _warnings = migrate_hubcontract_v1_to_v2(self.contract_v1_full)
 
         # Verify version is updated
         self.assertEqual(migrated["hub_contract_version"], 2)
@@ -393,7 +396,7 @@ class EnhancedMigrationTest(ContractsTestBase):
 
     def test_migration_warnings_generated_for_missing_sections(self):
         """Test that migration warnings are generated for missing sections (GAP-10.2.1)"""
-        migrated, warnings = migrate_hubcontract_v1_to_v2(self.contract_v1_minimal)
+        _migrated, warnings = migrate_hubcontract_v1_to_v2(self.contract_v1_minimal)
 
         # Verify warnings are generated
         self.assertGreater(len(warnings), 0)
@@ -435,7 +438,7 @@ class EnhancedMigrationTest(ContractsTestBase):
 
     def test_migration_of_field_properties(self):
         """Test migration of field properties (GAP-10.2.1)"""
-        migrated, warnings = migrate_hubcontract_v1_to_v2(self.contract_v1_full)
+        migrated, _warnings = migrate_hubcontract_v1_to_v2(self.contract_v1_full)
 
         # Verify field properties are added
         fields = migrated["schema"]["fields"]
@@ -538,7 +541,7 @@ class BackwardCompatibilityTest(ContractsTestBase):
         self.assertIn("info", self.contract_v1.hub_contract_json)
 
         # Verify ON_READ migration works (lazy migration)
-        migrated, warnings = ContractMigrationManager.migrate_on_read(self.contract_v1)
+        migrated, _warnings = ContractMigrationManager.migrate_on_read(self.contract_v1)
         self.assertIsNotNone(migrated)
 
     def test_v2_contract_works(self):
@@ -700,14 +703,18 @@ class DCSRemovalMigrationTest(ContractsTestBase):
         # Verify DATACONTRACT_COM is NOT in the valid choices.
         choices = OriginalSpecType.choices
         choice_values = [c[0] for c in choices]
-        self.assertNotIn("DATACONTRACT_COM", choice_values,
-                         "DATACONTRACT_COM must not be a valid OriginalSpecType choice")
+        self.assertNotIn(
+            "DATACONTRACT_COM",
+            choice_values,
+            "DATACONTRACT_COM must not be a valid OriginalSpecType choice",
+        )
 
         # Verify only ODCS and ODPS remain.
         self.assertIn(OriginalSpecType.ODCS, choice_values)
         self.assertIn(OriginalSpecType.ODPS, choice_values)
-        self.assertEqual(len(choice_values), 2,
-                         f"Expected exactly 2 choices (ODCS, ODPS), got: {choice_values}")
+        self.assertEqual(
+            len(choice_values), 2, f"Expected exactly 2 choices (ODCS, ODPS), got: {choice_values}"
+        )
 
         # Model-level create without full_clean() may succeed because Django
         # TextChoices validation only runs at the form/serializer level.

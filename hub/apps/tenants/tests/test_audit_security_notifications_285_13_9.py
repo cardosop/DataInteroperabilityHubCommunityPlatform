@@ -8,12 +8,11 @@ Covers:
 - 285.13.9.4: 8 notification triggers
 - 285.13.9.5: Webhook event type constants
 """
-import pytest
 
 import uuid
 
-from django.test import TestCase, override_settings
-from django.utils import timezone
+import pytest
+from django.test import TestCase
 
 from hub.apps.audit.event_types import (
     MARKETPLACE_TAKE_RATE_APPLIED,
@@ -46,6 +45,7 @@ from hub.apps.tenants.notifications import (
     notify_price_change,
     notify_upgrade_confirmation,
 )
+from hub.apps.users.models import User
 from hub.apps.webhooks.event_types import (
     TENANT_PLAN_DOWNGRADED as WEBHOOK_TENANT_PLAN_DOWNGRADED,
 )
@@ -53,21 +53,26 @@ from hub.apps.webhooks.event_types import (
     TENANT_PLAN_UPGRADED as WEBHOOK_TENANT_PLAN_UPGRADED,
 )
 from hub.apps.webhooks.event_types import WEBHOOK_EVENT_TYPES
-from hub.apps.users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
 # ── 285.13.9.1 — Audit event type constants ──────────────────────────────
 
+
 class AuditEventTypeRegistrationTests(TestCase):
     @pytest.mark.integration
     def test_all_10_constants_defined(self):
         for name in [
-            "PLAN_CREATED", "PLAN_UPDATED", "PLAN_PRICE_CHANGED",
-            "PLAN_DELETED", "PLAN_LIMITS_BACKFILLED",
-            "TENANT_PLAN_UPGRADED", "TENANT_PLAN_DOWNGRADED",
-            "TENANT_PLAN_UPGRADE_FAILED", "MARKETPLACE_TAKE_RATE_APPLIED",
+            "PLAN_CREATED",
+            "PLAN_UPDATED",
+            "PLAN_PRICE_CHANGED",
+            "PLAN_DELETED",
+            "PLAN_LIMITS_BACKFILLED",
+            "TENANT_PLAN_UPGRADED",
+            "TENANT_PLAN_DOWNGRADED",
+            "TENANT_PLAN_UPGRADE_FAILED",
+            "MARKETPLACE_TAKE_RATE_APPLIED",
             "PLAN_PRICING_VALIDATION_FAILED",
         ]:
             assert isinstance(globals()[name], str)
@@ -75,35 +80,49 @@ class AuditEventTypeRegistrationTests(TestCase):
 
     @pytest.mark.integration
     def test_constant_values_are_strings(self):
-        for const in [PLAN_CREATED, PLAN_UPDATED, PLAN_PRICE_CHANGED,
-                      PLAN_DELETED, PLAN_LIMITS_BACKFILLED,
-                      TENANT_PLAN_UPGRADED, TENANT_PLAN_DOWNGRADED,
-                      TENANT_PLAN_UPGRADE_FAILED, MARKETPLACE_TAKE_RATE_APPLIED,
-                      PLAN_PRICING_VALIDATION_FAILED]:
+        for const in [
+            PLAN_CREATED,
+            PLAN_UPDATED,
+            PLAN_PRICE_CHANGED,
+            PLAN_DELETED,
+            PLAN_LIMITS_BACKFILLED,
+            TENANT_PLAN_UPGRADED,
+            TENANT_PLAN_DOWNGRADED,
+            TENANT_PLAN_UPGRADE_FAILED,
+            MARKETPLACE_TAKE_RATE_APPLIED,
+            PLAN_PRICING_VALIDATION_FAILED,
+        ]:
             assert isinstance(const, str)
 
 
 # ── 285.13.9.3 — Two-person approval for price changes ───────────────────
 
+
 class PriceChangeApprovalModelTests(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name="approval-test", slug=f"approval-{uuid.uuid4().hex[:8]}",
+            name="approval-test",
+            slug=f"approval-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
         self.user1 = User.objects.create_user(
             email=f"admin1-{uuid.uuid4().hex[:8]}@example.com",
-            password="testpass123", tenant=self.tenant,
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.user2 = User.objects.create_user(
             email=f"admin2-{uuid.uuid4().hex[:8]}@example.com",
-            password="testpass123", tenant=self.tenant,
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.plan = TenantPlan.objects.create(
             slug=f"price-plan-{uuid.uuid4().hex[:8]}",
-            name="Test Plan", tier=PlanTier.PRO, order=1,
+            name="Test Plan",
+            tier=PlanTier.PRO,
+            order=1,
             category=PlanCategory.BASE,
-            price_amount_cents=5000, is_active=True,
+            price_amount_cents=5000,
+            is_active=True,
         )
 
     @pytest.mark.integration
@@ -124,20 +143,26 @@ class PriceChangeApprovalModelTests(TestCase):
     @pytest.mark.integration
     def test_one_pending_per_plan_constraint(self):
         PlanPriceChangeApproval.objects.create(
-            tenant_plan=self.plan, old_price_cents=5000,
-            new_price_cents=150000, requested_by=self.user1,
+            tenant_plan=self.plan,
+            old_price_cents=5000,
+            new_price_cents=150000,
+            requested_by=self.user1,
         )
         with pytest.raises(Exception):
             PlanPriceChangeApproval.objects.create(
-                tenant_plan=self.plan, old_price_cents=5000,
-                new_price_cents=200000, requested_by=self.user1,
+                tenant_plan=self.plan,
+                old_price_cents=5000,
+                new_price_cents=200000,
+                requested_by=self.user1,
             )
 
     @pytest.mark.integration
     def test_approval_transition_to_approved(self):
         approval = PlanPriceChangeApproval.objects.create(
-            tenant_plan=self.plan, old_price_cents=5000,
-            new_price_cents=150000, requested_by=self.user1,
+            tenant_plan=self.plan,
+            old_price_cents=5000,
+            new_price_cents=150000,
+            requested_by=self.user1,
         )
         approval.status = PriceChangeApprovalStatus.APPROVED
         approval.approved_by = self.user2
@@ -148,48 +173,73 @@ class PriceChangeApprovalModelTests(TestCase):
 
 # ── 285.13.9.4 — Notification triggers ────────────────────────────────────
 
+
 class NotificationTriggerTests(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name="notif-test", slug=f"notif-{uuid.uuid4().hex[:8]}",
+            name="notif-test",
+            slug=f"notif-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
 
-    @pytest.mark.integration
-    def test_notify_limit_warning_no_crash(self):
-        # Verify the function runs without error (no email config in test)
-        notify_limit_warning(self.tenant, "max_assets", 85.0)
+    # ── 285.13.9.4.A — Notification stubs log at INFO ───────────────────────
+    # Each notification function currently logs at INFO and returns None.
+    # When real email/audit delivery is wired, these tests will fail (the
+    # assertLogs won't match), which is the intended alert that the stub
+    # implementation changed and the test must be updated.
+    _NOTIFY_LOGGER = "hub.apps.tenants.notifications"
 
     @pytest.mark.integration
-    def test_notify_limit_critical_no_crash(self):
-        notify_limit_critical(self.tenant, "max_api_calls", 92.0)
+    def test_notify_limit_warning_logs(self):
+        with self.assertLogs(self._NOTIFY_LOGGER, level="INFO") as cm:
+            notify_limit_warning(self.tenant, "max_assets", 85.0)
+        self.assertTrue(any("notify_limit_warning" in r for r in cm.output))
 
     @pytest.mark.integration
-    def test_notify_limit_exceeded_no_crash(self):
-        notify_limit_exceeded(self.tenant, "max_storage_gb")
+    def test_notify_limit_critical_logs(self):
+        with self.assertLogs(self._NOTIFY_LOGGER, level="INFO") as cm:
+            notify_limit_critical(self.tenant, "max_api_calls", 92.0)
+        self.assertTrue(any("notify_limit_critical" in r for r in cm.output))
 
     @pytest.mark.integration
-    def test_notify_upgrade_confirmation_no_crash(self):
-        notify_upgrade_confirmation(self.tenant, "free", "pro", "PRO")
+    def test_notify_limit_exceeded_logs(self):
+        with self.assertLogs(self._NOTIFY_LOGGER, level="INFO") as cm:
+            notify_limit_exceeded(self.tenant, "max_storage_gb")
+        self.assertTrue(any("notify_limit_exceeded" in r for r in cm.output))
 
     @pytest.mark.integration
-    def test_notify_downgrade_confirmation_no_crash(self):
-        notify_downgrade_confirmation(self.tenant, "pro", "free")
+    def test_notify_upgrade_confirmation_logs(self):
+        with self.assertLogs(self._NOTIFY_LOGGER, level="INFO") as cm:
+            notify_upgrade_confirmation(self.tenant, "free", "pro", "PRO")
+        self.assertTrue(any("notify_upgrade_confirmation" in r for r in cm.output))
 
     @pytest.mark.integration
-    def test_notify_payment_failure_no_crash(self):
-        notify_payment_failure(self.tenant, 2999, "Card declined")
+    def test_notify_downgrade_confirmation_logs(self):
+        with self.assertLogs(self._NOTIFY_LOGGER, level="INFO") as cm:
+            notify_downgrade_confirmation(self.tenant, "pro", "free")
+        self.assertTrue(any("notify_downgrade_confirmation" in r for r in cm.output))
 
     @pytest.mark.integration
-    def test_notify_price_change_no_crash(self):
-        notify_price_change(self.tenant, "Pro Plan", 2999, 4999)
+    def test_notify_payment_failure_logs(self):
+        with self.assertLogs(self._NOTIFY_LOGGER, level="INFO") as cm:
+            notify_payment_failure(self.tenant, 2999, "Card declined")
+        self.assertTrue(any("notify_payment_failure" in r for r in cm.output))
 
     @pytest.mark.integration
-    def test_notify_enterprise_backfill_no_crash(self):
-        notify_enterprise_backfill(self.tenant, "Enterprise", 150)
+    def test_notify_price_change_logs(self):
+        with self.assertLogs(self._NOTIFY_LOGGER, level="INFO") as cm:
+            notify_price_change(self.tenant, "Pro Plan", 2999, 4999)
+        self.assertTrue(any("notify_price_change" in r for r in cm.output))
+
+    @pytest.mark.integration
+    def test_notify_enterprise_backfill_logs(self):
+        with self.assertLogs(self._NOTIFY_LOGGER, level="INFO") as cm:
+            notify_enterprise_backfill(self.tenant, "Enterprise", 150)
+        self.assertTrue(any("notify_enterprise_backfill" in r for r in cm.output))
 
 
 # ── 285.13.9.5 — Webhook event types ──────────────────────────────────────
+
 
 class WebhookEventTypeRegistrationTests(TestCase):
     @pytest.mark.integration

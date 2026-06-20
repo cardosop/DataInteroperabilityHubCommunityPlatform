@@ -11,8 +11,8 @@ Usage:
     python tests/performance/establish_baseline.py --test-type endurance --duration 2h
     python tests/performance/establish_baseline.py --test-type spike --spike-users 500
 """
+
 import argparse
-import json
 import subprocess
 import sys
 from datetime import datetime
@@ -23,7 +23,6 @@ project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from tests.performance.performance_baseline_manager import (
-    PerformanceBaseline,
     PerformanceBaselineManager,
 )
 
@@ -88,7 +87,7 @@ def run_locust_test(test_type: str, **kwargs) -> Path:
     print(f"Running {test_type} test...")
     print(f"Command: {' '.join(cmd)}")
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
     if result.returncode != 0:
         print(f"Error running test: {result.stderr}")
@@ -119,7 +118,7 @@ def parse_locust_results(results_dir: Path) -> dict:
     metrics = {}
 
     # Parse CSV (simple parsing, could be enhanced)
-    with open(stats_file, "r") as f:
+    with open(stats_file) as f:
         lines = f.readlines()
 
         # Skip header
@@ -232,7 +231,7 @@ def main():
 
     try:
         baseline, baseline_path = establish_baseline(args.test_type, **kwargs)
-        print(f"\n✅ Baseline established successfully!")
+        print("\n✅ Baseline established successfully!")
         print(f"   Test Type: {args.test_type}")
         print(f"   Baseline File: {baseline_path}")
         print(f"   Metrics: {len(baseline.metrics)}")

@@ -1,8 +1,8 @@
 """Phase D (TR.D.5) — Breach test expansion: service + API + feature-flag + audit."""
-import pytest
-import uuid
-from datetime import timedelta
 
+import uuid
+
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -29,17 +29,20 @@ class BreachServiceTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"br-svc-{uid}", slug=f"br-svc-{uid}",
+            name=f"br-svc-{uid}",
+            slug=f"br-svc-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_breach_enabled=True,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email=f"br-svc-{uid}@test.local", password="Pass1234!",
+            email=f"br-svc-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         role, _ = Role.objects.get_or_create(
-            name="TENANT_ADMIN", tenant=self.tenant,
+            name="TENANT_ADMIN",
+            tenant=self.tenant,
             defaults={"description": "Tenant Administrator"},
         )
         UserRole.objects.get_or_create(user=self.user, tenant=self.tenant, role=role)
@@ -47,9 +50,9 @@ class BreachServiceTests(TestCase):
     def test_breach_model_exists(self):
         """Verify BreachIncident model is importable and field contract is intact."""
         assert self.tenant.id is not None
-        from hub.apps.breach.models import BreachIncident
+
         fields = {f.name for f in BreachIncident._meta.get_fields()}
-        for required in ('tenant', 'title', 'status', 'discovered_at'):
+        for required in ("tenant", "title", "status", "discovered_at"):
             assert required in fields, f"BreachIncident must have '{required}' field"
 
     def test_service_create(self):
@@ -74,9 +77,12 @@ class BreachServiceTests(TestCase):
         """mark_notification_sent() transitions notification + records proof hash."""
         regimes = ["GDPR"]
         incident = create_breach_incident(
-            tenant=self.tenant, actor=self.user,
-            title="Workflow breach", summary="Notification workflow test",
-            regimes=regimes, discovered_at=timezone.now(),
+            tenant=self.tenant,
+            actor=self.user,
+            title="Workflow breach",
+            summary="Notification workflow test",
+            regimes=regimes,
+            discovered_at=timezone.now(),
         )
         notification = incident.notifications.first()
         assert notification is not None
@@ -99,17 +105,20 @@ class BreachApiTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"br-api-{uid}", slug=f"br-api-{uid}",
+            name=f"br-api-{uid}",
+            slug=f"br-api-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_breach_enabled=True,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email=f"br-api-{uid}@test.local", password="Pass1234!",
+            email=f"br-api-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         role, _ = Role.objects.get_or_create(
-            name="TENANT_ADMIN", tenant=self.tenant,
+            name="TENANT_ADMIN",
+            tenant=self.tenant,
             defaults={"description": "Tenant Administrator"},
         )
         UserRole.objects.get_or_create(user=self.user, tenant=self.tenant, role=role)
@@ -128,7 +137,8 @@ class BreachApiTests(TestCase):
         # Create a user without TENANT_ADMIN/DPO/SECURITY_ADMIN role
         uid = uuid.uuid4().hex[:8]
         plain_user = User.objects.create_user(
-            email=f"plain-{uid}@test.local", password="Pass1234!",
+            email=f"plain-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         plain_client = APIClient()
@@ -143,17 +153,20 @@ class BreachFeatureFlagTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"br-ff-{uid}", slug=f"br-ff-{uid}",
+            name=f"br-ff-{uid}",
+            slug=f"br-ff-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_breach_enabled=False,  # disabled by default for this test class
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email=f"br-ff-{uid}@test.local", password="Pass1234!",
+            email=f"br-ff-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         role, _ = Role.objects.get_or_create(
-            name="TENANT_ADMIN", tenant=self.tenant,
+            name="TENANT_ADMIN",
+            tenant=self.tenant,
             defaults={"description": "Tenant Administrator"},
         )
         UserRole.objects.get_or_create(user=self.user, tenant=self.tenant, role=role)
@@ -162,12 +175,16 @@ class BreachFeatureFlagTests(TestCase):
 
     def test_flag_disabled_gated(self):
         """When compliance_breach_enabled=False, breach create is blocked."""
-        resp = self.client.post("/api/v1/breach/incidents/", {
-            "title": "Flag test breach",
-            "summary": "Testing flag gating",
-            "regimes": ["GDPR"],
-            "discovered_at": timezone.now().isoformat(),
-        }, format="json")
+        resp = self.client.post(
+            "/api/v1/breach/incidents/",
+            {
+                "title": "Flag test breach",
+                "summary": "Testing flag gating",
+                "regimes": ["GDPR"],
+                "discovered_at": timezone.now().isoformat(),
+            },
+            format="json",
+        )
         # Should be denied when breach workflow is disabled
         assert resp.status_code != 201
 
@@ -185,17 +202,20 @@ class BreachAuditTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"br-audit-{uid}", slug=f"br-audit-{uid}",
+            name=f"br-audit-{uid}",
+            slug=f"br-audit-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_breach_enabled=True,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email=f"br-audit-{uid}@test.local", password="Pass1234!",
+            email=f"br-audit-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         role, _ = Role.objects.get_or_create(
-            name="TENANT_ADMIN", tenant=self.tenant,
+            name="TENANT_ADMIN",
+            tenant=self.tenant,
             defaults={"description": "Tenant Administrator"},
         )
         UserRole.objects.get_or_create(user=self.user, tenant=self.tenant, role=role)
@@ -207,9 +227,12 @@ class BreachAuditTests(TestCase):
             action="BREACH_INCIDENT_OPENED",
         ).count()
         create_breach_incident(
-            tenant=self.tenant, actor=self.user,
-            title="Audit test breach", summary="Verify audit on create",
-            regimes=["GDPR"], discovered_at=timezone.now(),
+            tenant=self.tenant,
+            actor=self.user,
+            title="Audit test breach",
+            summary="Verify audit on create",
+            regimes=["GDPR"],
+            discovered_at=timezone.now(),
         )
         after = AuditEvent.objects.filter(
             resource_type="BREACH_INCIDENT",
@@ -220,9 +243,12 @@ class BreachAuditTests(TestCase):
     def test_update_audit(self):
         """Transitioning incident status emits BREACH_INCIDENT_STATUS_CHANGED audit."""
         incident = create_breach_incident(
-            tenant=self.tenant, actor=self.user,
-            title="Audit update test", summary="Verify audit on update",
-            regimes=["GDPR"], discovered_at=timezone.now(),
+            tenant=self.tenant,
+            actor=self.user,
+            title="Audit update test",
+            summary="Verify audit on update",
+            regimes=["GDPR"],
+            discovered_at=timezone.now(),
         )
         before = AuditEvent.objects.filter(
             resource_type="BREACH_INCIDENT",

@@ -59,30 +59,32 @@ Per-step + workflow timeouts (250.1.A.5 / B-4)
   ``execute()`` time; each step checks the deadline at entry and
   raises ``WorkflowDeadlineExceeded`` if breached.
 """
+
 import functools
 import json
-import structlog
 import time
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any, Optional
+
+import structlog
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.utils import timezone
 
+from hub.apps.assets.business_rules import AssetsBusinessRules
+from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, ComplianceStatus, DQStatus
+from hub.apps.audit import event_types as audit_event_types
+from hub.apps.audit.utils import create_audit_event, redact_fail_closed_audit_payload
+from hub.apps.notifications.models import EmailType
+from hub.apps.notifications.tasks import send_email_async
+from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
+from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.workflow_engine import (
     ControlledWorkflowException,
     WorkflowEngine,
     WorkflowStepValueError,
 )
-from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
-from hub.apps.assets.business_rules import AssetsBusinessRules
-from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, DQStatus, ComplianceStatus
 from hub.apps.search.indexing import SearchIndexer
 from hub.apps.semantic.utils import map_asset_to_semantic
-from hub.apps.audit.utils import create_audit_event, redact_fail_closed_audit_payload
-from hub.apps.audit import event_types as audit_event_types
-from hub.apps.notifications.tasks import send_email_async
-from hub.apps.notifications.models import EmailType
 from hub.apps.tenants.models import Tenant
 
 logger = structlog.get_logger(__name__)
@@ -144,8 +146,8 @@ class FailClosedRejection(ControlledWorkflowException):
         gate: str,
         gate_status: str,
         reason: str,
-        compliance_run_id: Optional[str] = None,
-        dq_run_id: Optional[str] = None,
+        compliance_run_id: str | None = None,
+        dq_run_id: str | None = None,
     ):
         self.gate = gate
         self.gate_status = gate_status
@@ -178,7 +180,7 @@ class FailClosedRejection(ControlledWorkflowException):
     _END: str = "::FCR_END::"
 
     @classmethod
-    def from_message(cls, message: Optional[str]) -> Optional["FailClosedRejection"]:
+    def from_message(cls, message: str | None) -> Optional["FailClosedRejection"]:
         """Reconstruct from a stored ``error_message`` if it embeds the sentinel.
 
         Returns ``None`` for any string that doesn't contain a valid
@@ -199,7 +201,7 @@ class FailClosedRejection(ControlledWorkflowException):
         end = message.find(cls._END, start + len(cls._BEGIN))
         if end == -1:
             return None
-        raw = message[start + len(cls._BEGIN):end]
+        raw = message[start + len(cls._BEGIN) : end]
         try:
             payload = json.loads(raw)
         except (TypeError, ValueError):
@@ -220,9 +222,9 @@ class FailClosedRejection(ControlledWorkflowException):
 def _build_fail_closed_audit_payload(
     *,
     tenant_id: str,
-    file_id: Optional[str],
-    key: Optional[str],
-    name: Optional[str],
+    file_id: str | None,
+    key: str | None,
+    name: str | None,
     workflow_instance_id: str,
     rejection: FailClosedRejection,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -277,8 +279,7 @@ def _check_workflow_deadline(instance: WorkflowInstance) -> None:
         return
     if time.time() > float(deadline):
         raise WorkflowDeadlineExceeded(
-            f"asset_creation workflow exceeded "
-            f"{DEFAULT_WORKFLOW_TIMEOUT_SECONDS}s deadline"
+            f"asset_creation workflow exceeded {DEFAULT_WORKFLOW_TIMEOUT_SECONDS}s deadline"
         )
 
 
@@ -370,36 +371,28 @@ class AssetCreationWorkflow:
                     "name": "infer_schema",
                     "type": "task",
                     "task": "asset_creation.infer_schema",
-                    "condition": {
-                        "if": "{{ file_id != null && contract_id == null }}"
-                    },
+                    "condition": {"if": "{{ file_id != null && contract_id == null }}"},
                     "timeout_seconds": DEFAULT_STEP_TIMEOUT_SECONDS,
                 },
                 {
                     "name": "generate_odcs_from_schema",
                     "type": "task",
                     "task": "asset_creation.generate_odcs_from_schema",
-                    "condition": {
-                        "if": "{{ schema_json != null && contract_id == null }}"
-                    },
+                    "condition": {"if": "{{ schema_json != null && contract_id == null }}"},
                     "timeout_seconds": DEFAULT_STEP_TIMEOUT_SECONDS,
                 },
                 {
                     "name": "validate_generated_odcs",
                     "type": "task",
                     "task": "asset_creation.validate_generated_odcs",
-                    "condition": {
-                        "if": "{{ odcs_contract_json != null && contract_id == null }}"
-                    },
+                    "condition": {"if": "{{ odcs_contract_json != null && contract_id == null }}"},
                     "timeout_seconds": DEFAULT_STEP_TIMEOUT_SECONDS,
                 },
                 {
                     "name": "normalize_generated_odcs",
                     "type": "task",
                     "task": "asset_creation.normalize_generated_odcs",
-                    "condition": {
-                        "if": "{{ odcs_contract_json != null && contract_id == null }}"
-                    },
+                    "condition": {"if": "{{ odcs_contract_json != null && contract_id == null }}"},
                     "timeout_seconds": DEFAULT_STEP_TIMEOUT_SECONDS,
                 },
                 {
@@ -416,18 +409,14 @@ class AssetCreationWorkflow:
                     "name": "compliance_check_inmemory",
                     "type": "task",
                     "task": "asset_creation.compliance_check_inmemory",
-                    "condition": {
-                        "if": "{{ file_id != null }}"
-                    },
+                    "condition": {"if": "{{ file_id != null }}"},
                     "timeout_seconds": DEFAULT_STEP_TIMEOUT_SECONDS,
                 },
                 {
                     "name": "dq_check_inmemory",
                     "type": "task",
                     "task": "asset_creation.dq_check_inmemory",
-                    "condition": {
-                        "if": "{{ file_id != null }}"
-                    },
+                    "condition": {"if": "{{ file_id != null }}"},
                     "timeout_seconds": DEFAULT_STEP_TIMEOUT_SECONDS,
                 },
                 # ----- Asset row + downstream -----
@@ -448,18 +437,14 @@ class AssetCreationWorkflow:
                     "name": "create_dataset_from_file",
                     "type": "task",
                     "task": "asset_creation.create_dataset_from_file",
-                    "condition": {
-                        "if": "{{ file_id != null && dataset_id == null }}"
-                    },
+                    "condition": {"if": "{{ file_id != null && dataset_id == null }}"},
                     "timeout_seconds": DEFAULT_STEP_TIMEOUT_SECONDS,
                 },
                 {
                     "name": "attach_dataset",
                     "type": "task",
                     "task": "asset_creation.attach_dataset",
-                    "condition": {
-                        "if": "{{ dataset_id != null }}"
-                    },
+                    "condition": {"if": "{{ dataset_id != null }}"},
                     "timeout_seconds": DEFAULT_STEP_TIMEOUT_SECONDS,
                 },
                 # ----- Phase 250.2.B.2 — schema-drift comparison -----
@@ -474,11 +459,7 @@ class AssetCreationWorkflow:
                     "name": "compare_schema_against_contract",
                     "type": "task",
                     "task": "asset_creation.compare_schema_against_contract",
-                    "condition": {
-                        "if": (
-                            "{{ dataset_id != null && contract_id != null }}"
-                        )
-                    },
+                    "condition": {"if": ("{{ dataset_id != null && contract_id != null }}")},
                     "timeout_seconds": DEFAULT_STEP_TIMEOUT_SECONDS,
                 },
                 {
@@ -494,18 +475,14 @@ class AssetCreationWorkflow:
                     "name": "link_odps",
                     "type": "task",
                     "task": "asset_creation.link_odps",
-                    "condition": {
-                        "if": "{{ odps_action != null }}"
-                    },
+                    "condition": {"if": "{{ odps_action != null }}"},
                     "timeout_seconds": DEFAULT_STEP_TIMEOUT_SECONDS,
                 },
                 {
                     "name": "activate_asset",
                     "type": "task",
                     "task": "asset_creation.activate_asset",
-                    "condition": {
-                        "if": "{{ auto_activate == true }}"
-                    },
+                    "condition": {"if": "{{ auto_activate == true }}"},
                     "timeout_seconds": DEFAULT_STEP_TIMEOUT_SECONDS,
                 },
                 {
@@ -573,33 +550,25 @@ class AssetCreationWorkflow:
                     "name": "infer_schema",
                     "type": "task",
                     "task": "asset_creation.infer_schema",
-                    "condition": {
-                        "if": "{{ file_id != null && contract_id == null }}"
-                    },
+                    "condition": {"if": "{{ file_id != null && contract_id == null }}"},
                 },
                 {
                     "name": "generate_odcs_from_schema",
                     "type": "task",
                     "task": "asset_creation.generate_odcs_from_schema",
-                    "condition": {
-                        "if": "{{ schema_json != null && contract_id == null }}"
-                    },
+                    "condition": {"if": "{{ schema_json != null && contract_id == null }}"},
                 },
                 {
                     "name": "validate_generated_odcs",
                     "type": "task",
                     "task": "asset_creation.validate_generated_odcs",
-                    "condition": {
-                        "if": "{{ odcs_contract_json != null && contract_id == null }}"
-                    },
+                    "condition": {"if": "{{ odcs_contract_json != null && contract_id == null }}"},
                 },
                 {
                     "name": "normalize_generated_odcs",
                     "type": "task",
                     "task": "asset_creation.normalize_generated_odcs",
-                    "condition": {
-                        "if": "{{ odcs_contract_json != null && contract_id == null }}"
-                    },
+                    "condition": {"if": "{{ odcs_contract_json != null && contract_id == null }}"},
                 },
                 {
                     "name": "create_odcs_contract_from_schema",
@@ -628,34 +597,26 @@ class AssetCreationWorkflow:
                     "name": "create_dataset_from_file",
                     "type": "task",
                     "task": "asset_creation.create_dataset_from_file",
-                    "condition": {
-                        "if": "{{ file_id != null && dataset_id == null }}"
-                    },
+                    "condition": {"if": "{{ file_id != null && dataset_id == null }}"},
                 },
                 {
                     "name": "attach_dataset",
                     "type": "task",
                     "task": "asset_creation.attach_dataset",
-                    "condition": {
-                        "if": "{{ dataset_id != null }}"
-                    },
+                    "condition": {"if": "{{ dataset_id != null }}"},
                 },
                 # ----- v1 post-asset gates (legacy) -----
                 {
                     "name": "run_dq_checks",
                     "type": "task",
                     "task": "asset_creation.run_dq_checks",
-                    "condition": {
-                        "if": "{{ dataset_id != null }}"
-                    },
+                    "condition": {"if": "{{ dataset_id != null }}"},
                 },
                 {
                     "name": "run_compliance_checks",
                     "type": "task",
                     "task": "asset_creation.run_compliance_checks",
-                    "condition": {
-                        "if": "{{ dataset_id != null }}"
-                    },
+                    "condition": {"if": "{{ dataset_id != null }}"},
                 },
                 # ----- Phase 250.2.B.2 — schema-drift comparison (v1) -----
                 # Same task as v2; the v1 DSL just runs it after the
@@ -667,38 +628,27 @@ class AssetCreationWorkflow:
                     "name": "compare_schema_against_contract",
                     "type": "task",
                     "task": "asset_creation.compare_schema_against_contract",
-                    "condition": {
-                        "if": (
-                            "{{ dataset_id != null && contract_id != null }}"
-                        )
-                    },
+                    "condition": {"if": ("{{ dataset_id != null && contract_id != null }}")},
                 },
                 {
                     "name": "validate_contract",
                     "type": "task",
                     "task": "asset_creation.validate_contract",
                     "condition": {
-                        "if": (
-                            "{{ contract_id != null && "
-                            "contract_validation_status != 'VALID' }}"
-                        )
+                        "if": ("{{ contract_id != null && contract_validation_status != 'VALID' }}")
                     },
                 },
                 {
                     "name": "link_odps",
                     "type": "task",
                     "task": "asset_creation.link_odps",
-                    "condition": {
-                        "if": "{{ odps_action != null }}"
-                    },
+                    "condition": {"if": "{{ odps_action != null }}"},
                 },
                 {
                     "name": "activate_asset",
                     "type": "task",
                     "task": "asset_creation.activate_asset",
-                    "condition": {
-                        "if": "{{ auto_activate == true }}"
-                    },
+                    "condition": {"if": "{{ auto_activate == true }}"},
                 },
                 {
                     "name": "index_for_search",
@@ -770,7 +720,7 @@ class AssetCreationWorkflow:
         if not warnings_payload:
             return
 
-        state_data: Dict[str, Any] = dict(instance.state_data or {})
+        state_data: dict[str, Any] = dict(instance.state_data or {})
         result_summary = state_data.get("result_summary")
         if not isinstance(result_summary, dict):
             result_summary = {}
@@ -778,7 +728,7 @@ class AssetCreationWorkflow:
         warnings_list_raw = result_summary.get("warnings")
         if not isinstance(warnings_list_raw, list):
             warnings_list_raw = []
-        warnings_list: List[Dict[str, Any]] = list(warnings_list_raw)
+        warnings_list: list[dict[str, Any]] = list(warnings_list_raw)
 
         warnings_list.append(
             {
@@ -807,12 +757,25 @@ class AssetCreationWorkflow:
         """
         wrap = cls._wrap_with_deadline_check
         engine.register_task("asset_creation.infer_schema", wrap(cls._infer_schema_task))
-        engine.register_task("asset_creation.generate_odcs_from_schema", wrap(cls._generate_odcs_from_schema_task))
-        engine.register_task("asset_creation.validate_generated_odcs", wrap(cls._validate_generated_odcs_task))
-        engine.register_task("asset_creation.normalize_generated_odcs", wrap(cls._normalize_generated_odcs_task))
-        engine.register_task("asset_creation.create_odcs_contract_from_schema", wrap(cls._create_odcs_contract_from_schema_task))
-        engine.register_task("asset_creation.create_asset_record", wrap(cls._create_asset_record_task))
-        engine.register_task("asset_creation.create_dataset_from_file", wrap(cls._create_dataset_from_file_task))
+        engine.register_task(
+            "asset_creation.generate_odcs_from_schema", wrap(cls._generate_odcs_from_schema_task)
+        )
+        engine.register_task(
+            "asset_creation.validate_generated_odcs", wrap(cls._validate_generated_odcs_task)
+        )
+        engine.register_task(
+            "asset_creation.normalize_generated_odcs", wrap(cls._normalize_generated_odcs_task)
+        )
+        engine.register_task(
+            "asset_creation.create_odcs_contract_from_schema",
+            wrap(cls._create_odcs_contract_from_schema_task),
+        )
+        engine.register_task(
+            "asset_creation.create_asset_record", wrap(cls._create_asset_record_task)
+        )
+        engine.register_task(
+            "asset_creation.create_dataset_from_file", wrap(cls._create_dataset_from_file_task)
+        )
         engine.register_task("asset_creation.attach_contract", wrap(cls._attach_contract_task))
         engine.register_task("asset_creation.attach_dataset", wrap(cls._attach_dataset_task))
         # Phase 250.2.B.2 — schema-drift comparison step.
@@ -833,20 +796,28 @@ class AssetCreationWorkflow:
         # unit tests + the v1 workflow handler (per 250.1.C) can
         # still call them. Removed from the v2 DSL above.
         engine.register_task("asset_creation.run_dq_checks", wrap(cls._run_dq_checks_task))
-        engine.register_task("asset_creation.run_compliance_checks", wrap(cls._run_compliance_checks_task))
+        engine.register_task(
+            "asset_creation.run_compliance_checks", wrap(cls._run_compliance_checks_task)
+        )
         engine.register_task("asset_creation.validate_contract", wrap(cls._validate_contract_task))
         engine.register_task("asset_creation.link_odps", wrap(cls._link_odps_task))
         # rollback_odps_linking runs as a compensation step — it MUST
         # NOT short-circuit on a deadline exceedance (compensation is
         # the last hope to undo state); intentionally NOT wrapped.
-        engine.register_task("asset_creation.rollback_odps_linking", cls._rollback_odps_linking_task)
+        engine.register_task(
+            "asset_creation.rollback_odps_linking", cls._rollback_odps_linking_task
+        )
         engine.register_task("asset_creation.activate_asset", wrap(cls._activate_asset_task))
         engine.register_task("asset_creation.index_for_search", wrap(cls._index_for_search_task))
-        engine.register_task("asset_creation.send_notifications", wrap(cls._send_notifications_task))
+        engine.register_task(
+            "asset_creation.send_notifications", wrap(cls._send_notifications_task)
+        )
         engine.register_task("asset_creation.audit_logging", wrap(cls._audit_logging_task))
 
     @staticmethod
-    def _infer_schema_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _infer_schema_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Infer schema from data file (Data-First flow step 2).
 
@@ -858,12 +829,12 @@ class AssetCreationWorkflow:
         Returns:
             Task output with inferred schema
         """
-        from hub.apps.files.models import File
         from hub.apps.datasets.schema_inference import (
             infer_schema_from_csv,
             infer_schema_from_json,
-            infer_schema_from_parquet
+            infer_schema_from_parquet,
         )
+        from hub.apps.files.models import File
         from hub.apps.files.storage import (
             S3StorageClient,
             StorageError,
@@ -879,6 +850,7 @@ class AssetCreationWorkflow:
             raise ValueError("tenant_id is required")
 
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.get(id=tenant_id)
         file_obj = File.objects.get(id=file_id, tenant=tenant)
 
@@ -887,17 +859,17 @@ class AssetCreationWorkflow:
         if not file_format:
             # Try to infer from file extension
             if file_obj.name:
-                ext = file_obj.name.split('.')[-1].upper()
+                ext = file_obj.name.split(".")[-1].upper()
                 format_map = {
-                    'CSV': 'CSV',
-                    'JSON': 'JSON',
-                    'PARQUET': 'PARQUET',
-                    'XLSX': 'XLSX',
-                    'XLS': 'XLS'
+                    "CSV": "CSV",
+                    "JSON": "JSON",
+                    "PARQUET": "PARQUET",
+                    "XLSX": "XLSX",
+                    "XLS": "XLS",
                 }
-                file_format = format_map.get(ext, 'CSV')
+                file_format = format_map.get(ext, "CSV")
             else:
-                file_format = 'CSV'
+                file_format = "CSV"
 
         # Download file from storage
         storage_client = S3StorageClient()
@@ -915,7 +887,7 @@ class AssetCreationWorkflow:
                 storage_path=file_obj.storage_path,
                 error=str(e),
             )
-            raise WorkflowStepValueError(f"File not found in storage: {str(e)}") from e
+            raise WorkflowStepValueError(f"File not found in storage: {e!s}") from e
         except StorageError as e:
             logger.error(
                 "Storage failure during schema inference download",
@@ -923,19 +895,21 @@ class AssetCreationWorkflow:
                 file_id=str(file_id),
                 error=str(e),
             )
-            raise WorkflowStepValueError(f"Failed to download file: {str(e)}") from e
+            raise WorkflowStepValueError(f"Failed to download file: {e!s}") from e
 
         # Infer schema based on format
         schema_json = {}
         try:
-            if file_format.upper() == 'CSV':
+            if file_format.upper() == "CSV":
                 schema_json = infer_schema_from_csv(file_content)
-            elif file_format.upper() == 'JSON':
+            elif file_format.upper() == "JSON":
                 schema_json = infer_schema_from_json(file_content)
-            elif file_format.upper() == 'PARQUET':
+            elif file_format.upper() == "PARQUET":
                 schema_json = infer_schema_from_parquet(file_content)
             else:
-                raise WorkflowStepValueError(f"Unsupported file format for schema inference: {file_format}")
+                raise WorkflowStepValueError(
+                    f"Unsupported file format for schema inference: {file_format}"
+                )
         except Exception as e:
             logger.error(
                 "Schema inference failed",
@@ -943,32 +917,30 @@ class AssetCreationWorkflow:
                 file_id=str(file_id),
                 file_format=file_format,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
-            raise ValueError(f"Schema inference failed: {str(e)}")
+            raise ValueError(f"Schema inference failed: {e!s}")
 
         # Store schema in state_data
         instance.state_data["schema_json"] = schema_json
         instance.state_data["file_id"] = str(file_id)
         instance.state_data["file_format"] = file_format
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         logger.info(
             "Schema inferred from data",
             workflow_instance_id=str(instance.id),
             file_id=str(file_id),
             file_format=file_format,
-            fields_count=len(schema_json.get('fields', []))
+            fields_count=len(schema_json.get("fields", [])),
         )
 
-        return {
-            "schema_json": schema_json,
-            "file_id": str(file_id),
-            "file_format": file_format
-        }
+        return {"schema_json": schema_json, "file_id": str(file_id), "file_format": file_format}
 
     @staticmethod
-    def _generate_odcs_from_schema_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _generate_odcs_from_schema_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Generate ODCS contract from inferred schema (Data-First flow step 3).
 
@@ -987,8 +959,14 @@ class AssetCreationWorkflow:
             raise ValueError("schema_json is required (from previous step)")
 
         contract_id = input_data.get("contract_id")
-        contract_name = input_data.get("contract_name") or input_data.get("name") or "Generated Contract from Data"
-        contract_description = input_data.get("contract_description") or input_data.get("description")
+        contract_name = (
+            input_data.get("contract_name")
+            or input_data.get("name")
+            or "Generated Contract from Data"
+        )
+        contract_description = input_data.get("contract_description") or input_data.get(
+            "description"
+        )
         contract_version = input_data.get("contract_version", "1.0.0")
         odcs_version = input_data.get("odcs_version", "v3")
 
@@ -999,28 +977,27 @@ class AssetCreationWorkflow:
             contract_name=contract_name,
             contract_description=contract_description,
             contract_version=contract_version,
-            odcs_version=odcs_version
+            odcs_version=odcs_version,
         )
 
         # Store ODCS contract in state_data
         instance.state_data["odcs_contract_json"] = odcs_contract
         instance.state_data["odcs_contract_id"] = odcs_contract.get("id")
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         logger.info(
             "ODCS contract generated from schema",
             workflow_instance_id=str(instance.id),
             contract_id=odcs_contract.get("id"),
-            fields_count=len(odcs_contract.get("schema", {}).get("fields", []))
+            fields_count=len(odcs_contract.get("schema", {}).get("fields", [])),
         )
 
-        return {
-            "odcs_contract_json": odcs_contract,
-            "odcs_contract_id": odcs_contract.get("id")
-        }
+        return {"odcs_contract_json": odcs_contract, "odcs_contract_id": odcs_contract.get("id")}
 
     @staticmethod
-    def _validate_generated_odcs_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _validate_generated_odcs_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Validate generated ODCS contract (Data-First flow step 4).
 
@@ -1032,8 +1009,8 @@ class AssetCreationWorkflow:
         Returns:
             Task output with validation status
         """
-        from hub.apps.contracts.normalization import parse_contract
         from hub.apps.contracts.models import OriginalFormat
+        from hub.apps.contracts.normalization import parse_contract
 
         odcs_contract_json = instance.state_data.get("odcs_contract_json")
         if not odcs_contract_json:
@@ -1041,6 +1018,7 @@ class AssetCreationWorkflow:
 
         # Convert to JSON string for validation
         import json
+
         odcs_raw = json.dumps(odcs_contract_json)
 
         # Parse and validate ODCS contract
@@ -1063,28 +1041,27 @@ class AssetCreationWorkflow:
                 "ODCS contract validation failed",
                 workflow_instance_id=str(instance.id),
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
-            raise ValueError(f"ODCS contract validation failed: {str(e)}")
+            raise ValueError(f"ODCS contract validation failed: {e!s}")
 
         # Store validation status in state_data
         instance.state_data["odcs_validation_status"] = validation_status
         instance.state_data["odcs_validation_errors"] = validation_errors
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         logger.info(
             "ODCS contract validated",
             workflow_instance_id=str(instance.id),
-            validation_status=validation_status
+            validation_status=validation_status,
         )
 
-        return {
-            "validation_status": validation_status,
-            "validation_errors": validation_errors
-        }
+        return {"validation_status": validation_status, "validation_errors": validation_errors}
 
     @staticmethod
-    def _normalize_generated_odcs_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _normalize_generated_odcs_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Normalize generated ODCS → HubContract (Data-First flow step 5).
 
@@ -1096,8 +1073,8 @@ class AssetCreationWorkflow:
         Returns:
             Task output with normalized HubContract
         """
+        from hub.apps.contracts.models import OriginalSpecType
         from hub.apps.contracts.normalization import normalize_contract
-        from hub.apps.contracts.models import OriginalSpecType, OriginalFormat
 
         odcs_contract_json = instance.state_data.get("odcs_contract_json")
         if not odcs_contract_json:
@@ -1106,22 +1083,24 @@ class AssetCreationWorkflow:
         # Track ODCS ingestion (Task 6.2.2 - explicit backward compatibility)
         try:
             from hub.apps.observability.otel_metrics import odcs_ingestion_total
-            tenant_id = getattr(instance, 'tenant_id', None) or 'unknown'
-            odcs_ingestion_total.labels(source='technical', tenant_id=tenant_id).inc()
+
+            tenant_id = getattr(instance, "tenant_id", None) or "unknown"
+            odcs_ingestion_total.labels(source="technical", tenant_id=tenant_id).inc()
         except Exception:
             pass  # Metrics failure should not affect workflow
 
         # Convert to JSON string for normalization
         import json
+
         odcs_raw = json.dumps(odcs_contract_json)
 
         # Normalize ODCS → HubContract
         try:
             # normalize_contract returns: (hub_contract, spec_type, spec_version, status, errors, warnings)
-            hub_contract, detected_spec_type, detected_spec_version, status, errors, warnings = normalize_contract(
-                raw_contract=odcs_raw,
-                format="JSON",
-                spec_type=OriginalSpecType.ODCS.value
+            hub_contract, _detected_spec_type, _detected_spec_version, status, errors, warnings = (
+                normalize_contract(
+                    raw_contract=odcs_raw, format="JSON", spec_type=OriginalSpecType.ODCS.value
+                )
             )
 
             if status.value == "NORMALIZATION_FAILED":
@@ -1136,35 +1115,37 @@ class AssetCreationWorkflow:
                 "ODCS normalization failed",
                 workflow_instance_id=str(instance.id),
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
-            raise ValueError(f"ODCS normalization failed: {str(e)}")
+            raise ValueError(f"ODCS normalization failed: {e!s}")
 
         # Store HubContract in state_data
         instance.state_data["hub_contract_json"] = hub_contract
         instance.state_data["normalization_status"] = status.value
         instance.state_data["normalization_errors"] = errors
         instance.state_data["normalization_warnings"] = warnings
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         logger.info(
             "ODCS contract normalized to HubContract",
             workflow_instance_id=str(instance.id),
             normalization_status=status.value,
             errors_count=len(errors),
-            warnings_count=len(warnings)
+            warnings_count=len(warnings),
         )
 
         return {
             "hub_contract_json": hub_contract,
             "normalization_status": status.value,
             "normalization_errors": errors,
-            "normalization_warnings": warnings
+            "normalization_warnings": warnings,
         }
 
     @staticmethod
     @transaction.atomic
-    def _create_odcs_contract_from_schema_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _create_odcs_contract_from_schema_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create ODCS Contract record from generated contract (Data-First flow step 6).
 
@@ -1176,16 +1157,18 @@ class AssetCreationWorkflow:
         Returns:
             Task output with created contract ID
         """
+        import json
+
+        from django.contrib.auth import get_user_model
+
         from hub.apps.contracts.models import (
             Contract,
             ContractStatus,
-            OriginalSpecType,
-            OriginalFormat,
             NormalizationStatus,
+            OriginalFormat,
+            OriginalSpecType,
             ValidationStatus,
         )
-        from django.contrib.auth import get_user_model
-        import json
 
         User = get_user_model()
 
@@ -1214,6 +1197,7 @@ class AssetCreationWorkflow:
             raise ValueError("hub_contract_json is required (from previous step)")
 
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.get(id=tenant_id)
         user_id = instance.created_by_id or input_data.get("created_by_id")
         user = User.objects.get(id=user_id) if user_id else None
@@ -1222,7 +1206,11 @@ class AssetCreationWorkflow:
         odcs_raw = json.dumps(odcs_contract_json, indent=2)
 
         # Determine ODCS version from contract
-        odcs_version = odcs_contract_json.get("apiVersion", "odcs/v3").split("/")[-1] if odcs_contract_json.get("apiVersion") else "3.0.2"
+        odcs_version = (
+            odcs_contract_json.get("apiVersion", "odcs/v3").split("/")[-1]
+            if odcs_contract_json.get("apiVersion")
+            else "3.0.2"
+        )
 
         # Resolve validation_status into the model enum. ``None`` is kept
         # as ``None`` (column is nullable) so we don't fabricate a state
@@ -1245,29 +1233,31 @@ class AssetCreationWorkflow:
             original_raw=odcs_raw,
             hub_contract_version="1.0.0",
             hub_contract_json=hub_contract_json,
-            normalization_status=NormalizationStatus(normalization_status) if normalization_status else NormalizationStatus.NORMALIZED_OK,
+            normalization_status=NormalizationStatus(normalization_status)
+            if normalization_status
+            else NormalizationStatus.NORMALIZED_OK,
             normalization_errors=instance.state_data.get("normalization_errors", []),
             normalization_warnings=instance.state_data.get("normalization_warnings", []),
             validation_status=contract_validation_status,
             validation_errors=odcs_validation_errors,
-            created_by=user
+            created_by=user,
         )
 
         # Store contract_id in state_data
         instance.state_data["contract_id"] = str(contract.id)
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         logger.info(
             "ODCS contract created from schema",
             workflow_instance_id=str(instance.id),
             contract_id=str(contract.id),
-            odcs_version=odcs_version
+            odcs_version=odcs_version,
         )
 
         return {
             "contract_id": str(contract.id),
             "contract_version": contract.version,
-            "normalization_status": normalization_status
+            "normalization_status": normalization_status,
         }
 
     # ------------------------------------------------------------------
@@ -1276,10 +1266,10 @@ class AssetCreationWorkflow:
 
     @staticmethod
     def _compliance_check_inmemory_task(
-        input_data: Dict[str, Any],
+        input_data: dict[str, Any],
         instance: WorkflowInstance,
         step,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Run the compliance microservice scan against the file payload, NO Asset persisted.
 
         Phase 250.1.A.3 — invokes
@@ -1320,9 +1310,7 @@ class AssetCreationWorkflow:
         # the data-first endpoint translates to 503.
         breaker = get_shared_circuit_breaker("compliance-service")
         if breaker.get_state() == CircuitBreakerState.OPEN:
-            allow_degraded = bool(getattr(
-                tenant, "allow_intake_on_compliance_degraded", False
-            ))
+            allow_degraded = bool(getattr(tenant, "allow_intake_on_compliance_degraded", False))
             if not allow_degraded:
                 raise FailClosedRejection(
                     gate="compliance",
@@ -1371,9 +1359,7 @@ class AssetCreationWorkflow:
 
         instance.state_data["compliance_inmemory_status"] = gate_status
         instance.state_data["compliance_inmemory_run_id"] = str(run.id)
-        instance.state_data["compliance_inmemory_allowed_to_store"] = bool(
-            run.allowed_to_store
-        )
+        instance.state_data["compliance_inmemory_allowed_to_store"] = bool(run.allowed_to_store)
         instance.save(update_fields=["state_data"])
 
         logger.info(
@@ -1392,10 +1378,10 @@ class AssetCreationWorkflow:
 
     @staticmethod
     def _dq_check_inmemory_task(
-        input_data: Dict[str, Any],
+        input_data: dict[str, Any],
         instance: WorkflowInstance,
         step,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Run the dq-service scan against the file payload, NO Asset persisted.
 
         Companion to :meth:`_compliance_check_inmemory_task`.
@@ -1448,7 +1434,9 @@ class AssetCreationWorkflow:
 
     @staticmethod
     @transaction.atomic
-    def _create_asset_record_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _create_asset_record_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create asset record in DRAFT status.
 
@@ -1477,7 +1465,10 @@ class AssetCreationWorkflow:
         name = input_data.get("name")
         description = input_data.get("description")
         domain = input_data.get("domain")
-        visibility = input_data.get("visibility", AssetVisibility.INTERNAL)
+        # visibility is a derived @property as of Phase 250.3.B (D250.4);
+        # it derives from status — do NOT pass the legacy kwarg to the
+        # service layer. The in-memory workflow dict may still carry the
+        # legacy key from pre-phase-2 callers, but we discard it here.
         created_by_id = input_data.get("created_by_id") or instance.created_by_id
 
         if not tenant_id:
@@ -1505,40 +1496,29 @@ class AssetCreationWorkflow:
         # reject runs whose tenant flipped fail-closed ON during
         # the soak window. We therefore guard the gate on the
         # workflow_version pinned at instance create-time.
-        file_id_present = bool(
-            input_data.get("file_id") or instance.state_data.get("file_id")
-        )
-        fail_closed_on = bool(getattr(
-            tenant, "compliance_fail_closed_enabled", False
-        ))
+        file_id_present = bool(input_data.get("file_id") or instance.state_data.get("file_id"))
+        fail_closed_on = bool(getattr(tenant, "compliance_fail_closed_enabled", False))
         instance_version = instance.workflow_version or "1.0.0"
         try:
             from hub.apps.orchestration.versioning import (
                 WorkflowVersionManager,
             )
+
             gate_runs_on_this_version = (
-                WorkflowVersionManager.compare_versions(
-                    instance_version, "2.0.0"
-                ) >= 0
+                WorkflowVersionManager.compare_versions(instance_version, "2.0.0") >= 0
             )
         except Exception:
             # Defensive fallback — non-semver versions count as v1.
             gate_runs_on_this_version = False
 
         if file_id_present and fail_closed_on and gate_runs_on_this_version:
-            comp_status = (instance.state_data or {}).get(
-                "compliance_inmemory_status"
-            )
-            dq_status = (instance.state_data or {}).get(
-                "dq_inmemory_status"
-            )
-            comp_run_id = (instance.state_data or {}).get(
-                "compliance_inmemory_run_id"
-            )
+            comp_status = (instance.state_data or {}).get("compliance_inmemory_status")
+            dq_status = (instance.state_data or {}).get("dq_inmemory_status")
+            comp_run_id = (instance.state_data or {}).get("compliance_inmemory_run_id")
             dq_run_id = (instance.state_data or {}).get("dq_inmemory_run_id")
 
-            failing_gate: Optional[str] = None
-            failing_status: Optional[str] = None
+            failing_gate: str | None = None
+            failing_status: str | None = None
             if comp_status not in _GATE_PASS_STATUSES:
                 failing_gate = "compliance"
                 failing_status = comp_status or "UNKNOWN"
@@ -1611,7 +1591,6 @@ class AssetCreationWorkflow:
                 description=description,
                 domain=domain,
                 status=AssetStatus.DRAFT,
-                visibility=visibility,
                 created_by=created_by,
                 dq_status=dq_status_seed,
                 compliance_status=compliance_status_seed,
@@ -1620,14 +1599,11 @@ class AssetCreationWorkflow:
         # Validate created asset using AssetsBusinessRules
         assets_rules = AssetsBusinessRules(
             tenant_id=str(tenant_id) if tenant_id else None,
-            user_id=str(created_by_id) if created_by_id else None
+            user_id=str(created_by_id) if created_by_id else None,
         )
 
         asset_validation_result = assets_rules.validate(
-            asset=asset,
-            tenant=tenant,
-            user=created_by,
-            validation_type="all"
+            asset=asset, tenant=tenant, user=created_by, validation_type="all"
         )
 
         if not asset_validation_result.is_valid:
@@ -1662,7 +1638,7 @@ class AssetCreationWorkflow:
 
         # Store asset_id in state_data for subsequent steps
         instance.state_data["asset_id"] = str(asset.id)
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         # Phase 250.1.G.3 — fire ``asset.created`` webhook event
         # synchronously inside the caller's atomic block. The event row
@@ -1683,9 +1659,7 @@ class AssetCreationWorkflow:
                 # is in state_data at on_commit time so a v1 (post-
                 # asset gates) instance still carries the contract
                 # link if it was set.
-                "contract_id": (instance.state_data or {}).get(
-                    "contract_id"
-                ),
+                "contract_id": (instance.state_data or {}).get("contract_id"),
             },
         )
 
@@ -1694,14 +1668,10 @@ class AssetCreationWorkflow:
             workflow_instance_id=str(instance.id),
             asset_id=str(asset.id),
             key=key,
-            name=name
+            name=name,
         )
 
-        return {
-            "asset_id": str(asset.id),
-            "status": asset.status,
-            "key": asset.key
-        }
+        return {"asset_id": str(asset.id), "status": asset.status, "key": asset.key}
 
     @staticmethod
     def _enqueue_asset_event(
@@ -1709,8 +1679,8 @@ class AssetCreationWorkflow:
         event: str,
         asset: "Asset",
         tenant,
-        user_id: Optional[str],
-        data_extra: Optional[Dict[str, Any]] = None,
+        user_id: str | None,
+        data_extra: dict[str, Any] | None = None,
     ) -> None:
         """Publish an ``asset.*`` event synchronously within the caller's transaction.
 
@@ -1741,13 +1711,13 @@ class AssetCreationWorkflow:
             tenant_id=str(tenant.id) if tenant else None,
             user_id=str(user_id) if user_id else None,
         )
-        payload: Dict[str, Any] = {"asset_id": str(asset.id)}
+        payload: dict[str, Any] = {"asset_id": str(asset.id)}
         if data_extra:
             payload.update({k: v for k, v in data_extra.items() if v is not None})
 
         try:
             publisher.publish(event_type=event, data=payload)
-        except Exception as exc:  # noqa: BLE001 — webhook is best-effort
+        except Exception as exc:
             logger.warning(
                 "asset_webhook_publish_failed",
                 event_type=event,
@@ -1757,7 +1727,9 @@ class AssetCreationWorkflow:
 
     @staticmethod
     @transaction.atomic
-    def _create_dataset_from_file_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _create_dataset_from_file_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create dataset from file and link to asset (Data-First flow step 9).
 
@@ -1770,12 +1742,12 @@ class AssetCreationWorkflow:
             Task output with dataset_id
         """
         from hub.apps.datasets.models import Dataset
-        from hub.apps.files.models import File
         from hub.apps.datasets.schema_inference import (
             infer_schema_from_csv,
             infer_schema_from_json,
-            infer_schema_from_parquet
+            infer_schema_from_parquet,
         )
+        from hub.apps.files.models import File
         from hub.apps.files.storage import (
             S3StorageClient,
             StorageError,
@@ -1798,22 +1770,22 @@ class AssetCreationWorkflow:
         # Determine file format if not provided
         if not file_format:
             format_map = {
-                'text/csv': 'CSV',
-                'application/csv': 'CSV',
-                'application/json': 'JSON',
-                'text/json': 'JSON',
-                'application/parquet': 'PARQUET',
-                'application/x-parquet': 'PARQUET',
+                "text/csv": "CSV",
+                "application/csv": "CSV",
+                "application/json": "JSON",
+                "text/json": "JSON",
+                "application/parquet": "PARQUET",
+                "application/x-parquet": "PARQUET",
             }
-            file_format = format_map.get(file_obj.content_type, 'CSV')
+            file_format = format_map.get(file_obj.content_type, "CSV")
 
             # Infer from filename if still not determined
-            if file_format == 'CSV' and file_obj.name:
+            if file_format == "CSV" and file_obj.name:
                 filename_lower = file_obj.name.lower()
-                if filename_lower.endswith('.json') or filename_lower.endswith('.ndjson'):
-                    file_format = 'JSON'
-                elif filename_lower.endswith('.parquet'):
-                    file_format = 'PARQUET'
+                if filename_lower.endswith(".json") or filename_lower.endswith(".ndjson"):
+                    file_format = "JSON"
+                elif filename_lower.endswith(".parquet"):
+                    file_format = "PARQUET"
 
         # Infer schema if not already inferred
         if not schema_json:
@@ -1828,7 +1800,7 @@ class AssetCreationWorkflow:
                     storage_path=file_obj.storage_path,
                     error=str(e),
                 )
-                raise WorkflowStepValueError(f"File not found in storage: {str(e)}") from e
+                raise WorkflowStepValueError(f"File not found in storage: {e!s}") from e
             except StorageError as e:
                 logger.error(
                     "Storage failure during schema inference download",
@@ -1836,15 +1808,15 @@ class AssetCreationWorkflow:
                     file_id=str(file_id),
                     error=str(e),
                 )
-                raise WorkflowStepValueError(f"Failed to download file: {str(e)}") from e
+                raise WorkflowStepValueError(f"Failed to download file: {e!s}") from e
 
             # Infer schema based on format
             try:
-                if file_format.upper() == 'CSV':
+                if file_format.upper() == "CSV":
                     schema_json = infer_schema_from_csv(file_content)
-                elif file_format.upper() == 'JSON':
+                elif file_format.upper() == "JSON":
                     schema_json = infer_schema_from_json(file_content)
-                elif file_format.upper() == 'PARQUET':
+                elif file_format.upper() == "PARQUET":
                     schema_json = infer_schema_from_parquet(file_content)
                 else:
                     schema_json = {"fields": []}
@@ -1853,17 +1825,18 @@ class AssetCreationWorkflow:
                     "Schema inference failed, creating dataset without schema",
                     workflow_instance_id=str(instance.id),
                     file_id=str(file_id),
-                    error=str(e)
+                    error=str(e),
                 )
                 schema_json = {"fields": []}
 
         # Get next version for asset
-        latest_dataset = asset.datasets.order_by('-version').first()
+        latest_dataset = asset.datasets.order_by("-version").first()
         next_version = latest_dataset.version + 1 if latest_dataset else 1
 
         # Create dataset
         user_id = instance.created_by_id or input_data.get("created_by_id")
         from hub.apps.users.models import User
+
         created_by = User.objects.get(id=user_id) if user_id else None
 
         dataset = Dataset.objects.create(
@@ -1874,12 +1847,12 @@ class AssetCreationWorkflow:
             format=file_format,
             is_current=True,
             created_by=created_by,
-            schema_json=schema_json
+            schema_json=schema_json,
         )
 
         # Store dataset_id in state_data
         instance.state_data["dataset_id"] = str(dataset.id)
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         logger.info(
             "Dataset created from file",
@@ -1887,17 +1860,19 @@ class AssetCreationWorkflow:
             asset_id=str(asset.id),
             dataset_id=str(dataset.id),
             file_id=str(file_id),
-            version=next_version
+            version=next_version,
         )
 
         return {
             "dataset_id": str(dataset.id),
             "dataset_version": next_version,
-            "file_id": str(file_id)
+            "file_id": str(file_id),
         }
 
     @staticmethod
-    def _attach_contract_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _attach_contract_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Attach contract to asset.
 
@@ -1920,7 +1895,7 @@ class AssetCreationWorkflow:
             logger.info(
                 "Skipping contract attachment: contract_id not provided",
                 workflow_instance_id=str(instance.id),
-                asset_id=str(asset_id)
+                asset_id=str(asset_id),
             )
             return {"skipped": True, "reason": "contract_id not provided"}
 
@@ -1933,7 +1908,7 @@ class AssetCreationWorkflow:
         contract.asset = asset
 
         # Get next version for asset
-        latest_contract = asset.contracts.order_by('-version').first()
+        latest_contract = asset.contracts.order_by("-version").first()
         if latest_contract:
             contract.version = latest_contract.version + 1
         else:
@@ -1955,14 +1930,10 @@ class AssetCreationWorkflow:
             "NORMALIZED_OK",
             "NORMALIZED_WITH_WARNINGS",
         )
-        update_fields = ['asset', 'version']
-        if (
-            validation_ok
-            and normalization_ok
-            and contract.status == ContractStatus.DRAFT
-        ):
+        update_fields = ["asset", "version"]
+        if validation_ok and normalization_ok and contract.status == ContractStatus.DRAFT:
             contract.status = ContractStatus.ACTIVE
-            update_fields.append('status')
+            update_fields.append("status")
             logger.info(
                 "Contract promoted DRAFT -> ACTIVE on attach",
                 workflow_instance_id=str(instance.id),
@@ -1978,14 +1949,14 @@ class AssetCreationWorkflow:
         instance.state_data["contract_id"] = str(contract.id)
         instance.state_data["contract_validation_status"] = contract.validation_status
         instance.state_data["contract_normalization_status"] = contract.normalization_status
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         logger.info(
             "Contract attached to asset",
             workflow_instance_id=str(instance.id),
             asset_id=str(asset.id),
             contract_id=str(contract.id),
-            contract_version=contract.version
+            contract_version=contract.version,
         )
 
         return {
@@ -1997,7 +1968,9 @@ class AssetCreationWorkflow:
         }
 
     @staticmethod
-    def _attach_dataset_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _attach_dataset_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Attach dataset to asset.
 
@@ -2019,7 +1992,7 @@ class AssetCreationWorkflow:
             logger.info(
                 "Skipping dataset attachment: dataset_id not provided",
                 workflow_instance_id=str(instance.id),
-                asset_id=str(asset_id)
+                asset_id=str(asset_id),
             )
             return {"skipped": True, "reason": "dataset_id not provided"}
 
@@ -2032,30 +2005,27 @@ class AssetCreationWorkflow:
         dataset.asset = asset
 
         # Get next version for asset
-        latest_dataset = asset.datasets.order_by('-version').first()
+        latest_dataset = asset.datasets.order_by("-version").first()
         if latest_dataset:
             dataset.version = latest_dataset.version + 1
         else:
             dataset.version = 1
 
-        dataset.save(update_fields=['asset', 'version'])
+        dataset.save(update_fields=["asset", "version"])
 
         # Store dataset_id in state_data
         instance.state_data["dataset_id"] = str(dataset.id)
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         logger.info(
             "Dataset attached to asset",
             workflow_instance_id=str(instance.id),
             asset_id=str(asset.id),
             dataset_id=str(dataset.id),
-            dataset_version=dataset.version
+            dataset_version=dataset.version,
         )
 
-        return {
-            "dataset_id": str(dataset.id),
-            "dataset_version": dataset.version
-        }
+        return {"dataset_id": str(dataset.id), "dataset_version": dataset.version}
 
     # ------------------------------------------------------------------
     # Phase 250.2.B — schema-drift comparison
@@ -2069,10 +2039,10 @@ class AssetCreationWorkflow:
 
     @staticmethod
     def _compare_schema_against_contract_task(
-        input_data: Dict[str, Any],
+        input_data: dict[str, Any],
         instance: WorkflowInstance,
         step,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Diff the contract's schema vs the dataset's inferred schema.
 
         Phase 250.2.B.2 — runs between ``attach_dataset`` and
@@ -2212,9 +2182,7 @@ class AssetCreationWorkflow:
                             # ``tenants``) rely on the JSON copy. Removing
                             # the duplicate would silently break those
                             # downstream readers.
-                            "tenant_id": (
-                                str(instance.tenant_id) if instance.tenant_id else None
-                            ),
+                            "tenant_id": (str(instance.tenant_id) if instance.tenant_id else None),
                             "asset_id": instance.state_data.get("asset_id"),
                             "contract_id": str(contract.id),
                             "dataset_id": str(dataset.id),
@@ -2223,12 +2191,10 @@ class AssetCreationWorkflow:
                             "missing_fields": drift["missing_fields"][:cap],
                             "extra_fields": drift["extra_fields"][:cap],
                             "type_mismatches": drift["type_mismatches"][:cap],
-                            "structural_incompatibility": drift[
-                                "structural_incompatibility"
-                            ],
+                            "structural_incompatibility": drift["structural_incompatibility"],
                         },
                     )
-                except Exception as audit_exc:  # noqa: BLE001
+                except Exception as audit_exc:
                     # Audit emission is best-effort — a failure here
                     # MUST NOT block the workflow because the drift is
                     # already in state_data + result_summary.
@@ -2250,7 +2216,9 @@ class AssetCreationWorkflow:
         return {"schema_drift": drift}
 
     @staticmethod
-    def _run_dq_checks_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _run_dq_checks_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Run data quality checks on asset dataset.
 
@@ -2273,7 +2241,7 @@ class AssetCreationWorkflow:
             logger.info(
                 "Skipping DQ checks: dataset_id not provided",
                 workflow_instance_id=str(instance.id),
-                asset_id=str(asset_id)
+                asset_id=str(asset_id),
             )
             return {"skipped": True, "reason": "dataset_id not provided"}
 
@@ -2288,18 +2256,20 @@ class AssetCreationWorkflow:
                 asset_id=str(asset.id),
                 dataset_id=dataset_id,
                 profile_key=profile_key,
-                triggered_by_id=str(instance.created_by_id)
+                triggered_by_id=str(instance.created_by_id),
             )
 
             # Get DQ run result from workflow state
             workflow_instance_id = dq_result.get("workflow_instance_id")
             if workflow_instance_id:
                 from hub.apps.orchestration.models import WorkflowInstance as DQWorkflowInstance
+
                 dq_workflow_instance = DQWorkflowInstance.objects.get(id=workflow_instance_id)
                 dq_run_id = dq_workflow_instance.state_data.get("dq_run_id")
 
                 if dq_run_id:
                     from hub.apps.dq.models import DQRun
+
                     dq_run = DQRun.objects.get(id=dq_run_id)
 
                     # Update asset DQ status
@@ -2312,26 +2282,26 @@ class AssetCreationWorkflow:
                     else:
                         asset.dq_status = DQStatus.UNKNOWN
 
-                    asset.save(update_fields=['dq_status'])
+                    asset.save(update_fields=["dq_status"])
 
                     # Store DQ status in state_data
                     instance.state_data["dq_status"] = asset.dq_status
                     instance.state_data["dq_run_id"] = str(dq_run.id)
                     instance.state_data["quality_score"] = dq_run.quality_score
-                    instance.save(update_fields=['state_data'])
+                    instance.save(update_fields=["state_data"])
 
                     logger.info(
                         "DQ checks completed",
                         workflow_instance_id=str(instance.id),
                         asset_id=str(asset.id),
                         dq_status=asset.dq_status,
-                        quality_score=dq_run.quality_score
+                        quality_score=dq_run.quality_score,
                     )
 
                     return {
                         "dq_status": asset.dq_status,
                         "quality_score": dq_run.quality_score,
-                        "dq_run_id": str(dq_run.id)
+                        "dq_run_id": str(dq_run.id),
                     }
         except Exception as e:
             error_str = str(e)
@@ -2342,31 +2312,34 @@ class AssetCreationWorkflow:
                     "DQ service unavailable, skipping DQ checks",
                     workflow_instance_id=str(instance.id),
                     asset_id=str(asset.id),
-                    error=error_str
+                    error=error_str,
                 )
                 asset.dq_status = DQStatus.UNKNOWN
-                asset.save(update_fields=['dq_status'])
+                asset.save(update_fields=["dq_status"])
                 instance.state_data["dq_status"] = asset.dq_status
-                instance.save(update_fields=['state_data'])
-                return {"skipped": True, "reason": "DQ service unavailable", "dq_status": asset.dq_status}
+                instance.save(update_fields=["state_data"])
+                return {
+                    "skipped": True,
+                    "reason": "DQ service unavailable",
+                    "dq_status": asset.dq_status,
+                }
             logger.error(
                 "Failed to run DQ checks",
                 workflow_instance_id=str(instance.id),
                 asset_id=str(asset.id),
-                error=error_str
+                error=error_str,
             )
             # Set DQ status to UNKNOWN on failure
             asset.dq_status = DQStatus.UNKNOWN
-            asset.save(update_fields=['dq_status'])
+            asset.save(update_fields=["dq_status"])
             raise
 
-        return {
-            "dq_status": DQStatus.UNKNOWN,
-            "quality_score": None
-        }
+        return {"dq_status": DQStatus.UNKNOWN, "quality_score": None}
 
     @staticmethod
-    def _run_compliance_checks_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _run_compliance_checks_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Run compliance checks on asset dataset.
 
@@ -2390,14 +2363,14 @@ class AssetCreationWorkflow:
             logger.info(
                 "Skipping compliance checks: dataset_id not provided",
                 workflow_instance_id=str(instance.id),
-                asset_id=str(asset_id)
+                asset_id=str(asset_id),
             )
             return {"skipped": True, "reason": "dataset_id not provided"}
 
         from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
         from hub.apps.datasets.models import Dataset
-        from hub.apps.jobs.utils import create_job
         from hub.apps.jobs.models import JobType
+        from hub.apps.jobs.utils import create_job
 
         asset = Asset.objects.get(id=asset_id)
         dataset = Dataset.objects.get(id=dataset_id, tenant=asset.tenant)
@@ -2408,6 +2381,7 @@ class AssetCreationWorkflow:
         # Create compliance run
         triggered_by_id = instance.created_by_id
         from hub.apps.users.models import User
+
         triggered_by = User.objects.get(id=triggered_by_id) if triggered_by_id else None
 
         job = create_job(
@@ -2416,10 +2390,7 @@ class AssetCreationWorkflow:
             job_type=JobType.COMPLIANCE_RUN,
             resource_type="COMPLIANCE_RUN",
             resource_id=str(asset.id),
-            details_json={
-                "scan_mode": scan_mode,
-                "applicable_regulations": applicable_regulations
-            }
+            details_json={"scan_mode": scan_mode, "applicable_regulations": applicable_regulations},
         )
 
         compliance_run = ComplianceRun.objects.create(
@@ -2429,12 +2400,13 @@ class AssetCreationWorkflow:
             file=dataset.file,
             job=job,
             regulations=applicable_regulations if applicable_regulations else [],
-            status=ComplianceRunStatus.PENDING
+            status=ComplianceRunStatus.PENDING,
         )
 
         # Execute compliance check
         try:
             from hub.apps.compliance.views import execute_compliance_run
+
             execute_compliance_run(str(compliance_run.id))
 
             # Refresh compliance run to get result
@@ -2450,40 +2422,42 @@ class AssetCreationWorkflow:
             else:
                 asset.compliance_status = ComplianceStatus.UNKNOWN
 
-            asset.save(update_fields=['compliance_status'])
+            asset.save(update_fields=["compliance_status"])
 
             # Store compliance status in state_data
             instance.state_data["compliance_status"] = asset.compliance_status
             instance.state_data["compliance_run_id"] = str(compliance_run.id)
-            instance.save(update_fields=['state_data'])
+            instance.save(update_fields=["state_data"])
 
             logger.info(
                 "Compliance checks completed",
                 workflow_instance_id=str(instance.id),
                 asset_id=str(asset.id),
                 compliance_status=asset.compliance_status,
-                risk_level=compliance_run.risk_level
+                risk_level=compliance_run.risk_level,
             )
 
             return {
                 "compliance_status": asset.compliance_status,
                 "risk_level": compliance_run.risk_level,
-                "compliance_run_id": str(compliance_run.id)
+                "compliance_run_id": str(compliance_run.id),
             }
         except Exception as e:
             logger.error(
                 "Failed to run compliance checks",
                 workflow_instance_id=str(instance.id),
                 asset_id=str(asset.id),
-                error=str(e)
+                error=str(e),
             )
             # Set compliance status to UNKNOWN on failure
             asset.compliance_status = ComplianceStatus.UNKNOWN
-            asset.save(update_fields=['compliance_status'])
+            asset.save(update_fields=["compliance_status"])
             raise
 
     @staticmethod
-    def _validate_contract_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _validate_contract_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Validate contract if not already validated.
 
@@ -2497,7 +2471,7 @@ class AssetCreationWorkflow:
         """
         asset_id = instance.state_data.get("asset_id")
         contract_id = instance.state_data.get("contract_id") or input_data.get("contract_id")
-        contract_validation_status = instance.state_data.get("contract_validation_status")
+        instance.state_data.get("contract_validation_status")
 
         if not asset_id:
             raise ValueError("asset_id is required (from previous step)")
@@ -2506,7 +2480,7 @@ class AssetCreationWorkflow:
             logger.info(
                 "Skipping contract validation: contract_id not provided",
                 workflow_instance_id=str(instance.id),
-                asset_id=str(asset_id)
+                asset_id=str(asset_id),
             )
             return {"skipped": True, "reason": "contract_id not provided"}
 
@@ -2527,11 +2501,7 @@ class AssetCreationWorkflow:
             "NORMALIZED_OK",
             "NORMALIZED_WITH_WARNINGS",
         )
-        if (
-            already_validated
-            and normalization_ok
-            and contract.status == ContractStatus.DRAFT
-        ):
+        if already_validated and normalization_ok and contract.status == ContractStatus.DRAFT:
             contract.status = ContractStatus.ACTIVE
             contract.save(update_fields=["status"])
             logger.info(
@@ -2563,24 +2533,23 @@ class AssetCreationWorkflow:
         # delegate to ContractCreationWorkflow.validate_contract here.
         # For now, surface what we know without falsifying state.
         instance.state_data["contract_validation_status"] = contract.validation_status
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         logger.info(
             "Contract validation checked",
             workflow_instance_id=str(instance.id),
             asset_id=str(asset.id),
             contract_id=str(contract.id),
-            validation_status=contract.validation_status
+            validation_status=contract.validation_status,
         )
 
-        return {
-            "validation_status": contract.validation_status,
-            "already_validated": False
-        }
+        return {"validation_status": contract.validation_status, "already_validated": False}
 
     @staticmethod
     @transaction.atomic
-    def _link_odps_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _link_odps_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Link ODPS contract (optional step for marketplace).
 
@@ -2597,14 +2566,22 @@ class AssetCreationWorkflow:
         Returns:
             Task output with ODPS contract ID and linking results
         """
-        from hub.apps.contracts.odps_parser import ODPSParser
-        from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
-        from hub.apps.contracts.linking_validation import validate_linking
-        from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat, NormalizationStatus
-        from hub.apps.contracts.normalization import parse_contract
-        from hub.apps.contracts.odps_version_detection import detect_odps_version
-        from django.contrib.auth import get_user_model
         import json
+
+        from django.contrib.auth import get_user_model
+
+        from hub.apps.contracts.linking_validation import validate_linking
+        from hub.apps.contracts.models import (
+            Contract,
+            ContractStatus,
+            NormalizationStatus,
+            OriginalFormat,
+            OriginalSpecType,
+        )
+        from hub.apps.contracts.normalization import parse_contract
+        from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
+        from hub.apps.contracts.odps_parser import ODPSParser
+        from hub.apps.contracts.odps_version_detection import detect_odps_version
 
         User = get_user_model()
 
@@ -2625,12 +2602,9 @@ class AssetCreationWorkflow:
             logger.info(
                 "ODPS linking skipped (no action specified)",
                 workflow_instance_id=str(instance.id),
-                asset_id=str(asset_id)
+                asset_id=str(asset_id),
             )
-            return {
-                "odps_linking_skipped": True,
-                "reason": "No ODPS action specified"
-            }
+            return {"odps_linking_skipped": True, "reason": "No ODPS action specified"}
 
         # Get contract_id from state_data if available (for data-first flow)
         # Also check if contract is already attached to asset (for contract-first flow)
@@ -2645,15 +2619,17 @@ class AssetCreationWorkflow:
                 logger.warning(
                     "Contract not found for ODPS linking",
                     workflow_instance_id=str(instance.id),
-                    contract_id=contract_id
+                    contract_id=contract_id,
                 )
 
         # If no contract found by ID, try to get from asset's contracts
         if not contract:
             # Try to get ODCS contract from asset (for data-first flow where contract was just created)
-            odcs_contract = asset.contracts.filter(
-                original_spec_type=OriginalSpecType.ODCS
-            ).order_by('-version').first()
+            odcs_contract = (
+                asset.contracts.filter(original_spec_type=OriginalSpecType.ODCS)
+                .order_by("-version")
+                .first()
+            )
             if odcs_contract:
                 contract = odcs_contract
                 contract_id = str(contract.id)
@@ -2661,7 +2637,7 @@ class AssetCreationWorkflow:
                     "Using ODCS contract from asset for ODPS linking",
                     workflow_instance_id=str(instance.id),
                     asset_id=str(asset.id),
-                    contract_id=contract_id
+                    contract_id=contract_id,
                 )
 
         odps_contract = None
@@ -2689,12 +2665,15 @@ class AssetCreationWorkflow:
 
                 # Normalize ODPS to HubContract
                 from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+
                 normalizer = ODPSNormalizer()
-                normalize_result = normalizer.normalize(contract_data=odps_doc, spec_version=odps_version)
+                normalize_result = normalizer.normalize(
+                    contract_data=odps_doc, spec_version=odps_version
+                )
                 hub_contract_from_odps = normalize_result.hub_contract
 
                 # Get next version for asset
-                latest_contract = asset.contracts.order_by('-version').first()
+                latest_contract = asset.contracts.order_by("-version").first()
                 next_version = latest_contract.version + 1 if latest_contract else 1
 
                 # Create ODPS contract record
@@ -2705,14 +2684,16 @@ class AssetCreationWorkflow:
                     status=ContractStatus.DRAFT,
                     original_spec_type=OriginalSpecType.ODPS,
                     original_spec_version=odps_version,
-                    original_format=OriginalFormat.JSON if odps_format.upper() == "JSON" else OriginalFormat.YAML,
+                    original_format=OriginalFormat.JSON
+                    if odps_format.upper() == "JSON"
+                    else OriginalFormat.YAML,
                     original_raw=odps_raw,
                     hub_contract_version="1.0.0",
                     hub_contract_json=hub_contract_from_odps,
                     normalization_status=NormalizationStatus.NORMALIZED_OK,
                     normalization_errors=[],
                     normalization_warnings=[],
-                    created_by=user
+                    created_by=user,
                 )
                 odps_contract_id = str(odps_contract.id)
 
@@ -2720,13 +2701,15 @@ class AssetCreationWorkflow:
                     "ODPS contract created from upload",
                     workflow_instance_id=str(instance.id),
                     asset_id=str(asset.id),
-                    odps_contract_id=odps_contract_id
+                    odps_contract_id=odps_contract_id,
                 )
 
             elif odps_action == "generate":
                 # Generate ODPS from HubContract
                 if not contract:
-                    raise ValueError("No contract available. Cannot generate ODPS from HubContract.")
+                    raise ValueError(
+                        "No contract available. Cannot generate ODPS from HubContract."
+                    )
                 if not contract.hub_contract_json:
                     raise ValueError("Contract has no hub_contract_json. Cannot generate ODPS.")
 
@@ -2753,7 +2736,7 @@ class AssetCreationWorkflow:
                 odps_raw = json.dumps(odps_doc, indent=2)
 
                 # Get next version for asset
-                latest_contract = asset.contracts.order_by('-version').first()
+                latest_contract = asset.contracts.order_by("-version").first()
                 next_version = latest_contract.version + 1 if latest_contract else 1
 
                 # Create ODPS contract record
@@ -2771,7 +2754,7 @@ class AssetCreationWorkflow:
                     normalization_status=NormalizationStatus.NORMALIZED_OK,
                     normalization_errors=[],
                     normalization_warnings=[],
-                    created_by=user
+                    created_by=user,
                 )
                 odps_contract_id = str(odps_contract.id)
 
@@ -2779,7 +2762,7 @@ class AssetCreationWorkflow:
                     "ODPS contract generated from HubContract",
                     workflow_instance_id=str(instance.id),
                     asset_id=str(asset.id),
-                    odps_contract_id=odps_contract_id
+                    odps_contract_id=odps_contract_id,
                 )
 
             elif odps_action == "link":
@@ -2793,28 +2776,30 @@ class AssetCreationWorkflow:
                     existing_odps_contract = Contract.objects.get(
                         id=existing_odps_contract_id,
                         tenant=asset.tenant,
-                        original_spec_type=OriginalSpecType.ODPS
+                        original_spec_type=OriginalSpecType.ODPS,
                     )
                 except Contract.DoesNotExist:
-                    raise ValueError(f"ODPS contract {existing_odps_contract_id} not found or not an ODPS contract")
+                    raise ValueError(
+                        f"ODPS contract {existing_odps_contract_id} not found or not an ODPS contract"
+                    )
 
                 # If there's an ODCS contract, validate linking
                 if contract:
                     validate_linking(
                         odps_contract_id=existing_odps_contract_id,
                         odcs_contract_id=str(contract.id),
-                        tenant_id=tenant_id
+                        tenant_id=tenant_id,
                     )
 
                 # Attach ODPS contract to asset
                 existing_odps_contract.asset = asset
                 # Get next version for asset
-                latest_contract = asset.contracts.order_by('-version').first()
+                latest_contract = asset.contracts.order_by("-version").first()
                 if latest_contract:
                     existing_odps_contract.version = latest_contract.version + 1
                 else:
                     existing_odps_contract.version = 1
-                existing_odps_contract.save(update_fields=['asset', 'version'])
+                existing_odps_contract.save(update_fields=["asset", "version"])
 
                 odps_contract = existing_odps_contract
                 odps_contract_id = str(odps_contract.id)
@@ -2823,7 +2808,7 @@ class AssetCreationWorkflow:
                     "ODPS contract validated for linking",
                     workflow_instance_id=str(instance.id),
                     asset_id=str(asset.id),
-                    odps_contract_id=odps_contract_id
+                    odps_contract_id=odps_contract_id,
                 )
 
             # Establish bidirectional link if both ODPS and ODCS contracts exist
@@ -2834,7 +2819,9 @@ class AssetCreationWorkflow:
                         odps_contract.hub_contract_json["extensions"] = {}
                     if "x_odps" not in odps_contract.hub_contract_json["extensions"]:
                         odps_contract.hub_contract_json["extensions"]["x_odps"] = {}
-                    odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"] = str(contract.id)
+                    odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"] = str(
+                        contract.id
+                    )
                     odps_contract.save(update_fields=["hub_contract_json"])
 
                 # ODCS → ODPS: Store in ODCS contract's hub_contract_json.extensions.x_odps.odps_link
@@ -2843,7 +2830,9 @@ class AssetCreationWorkflow:
                         contract.hub_contract_json["extensions"] = {}
                     if "x_odps" not in contract.hub_contract_json["extensions"]:
                         contract.hub_contract_json["extensions"]["x_odps"] = {}
-                    contract.hub_contract_json["extensions"]["x_odps"]["odps_link"] = odps_contract_id
+                    contract.hub_contract_json["extensions"]["x_odps"]["odps_link"] = (
+                        odps_contract_id
+                    )
                     contract.save(update_fields=["hub_contract_json"])
 
                 logger.info(
@@ -2852,11 +2841,12 @@ class AssetCreationWorkflow:
                     asset_id=str(asset.id),
                     contract_id=str(contract.id),
                     odps_contract_id=odps_contract_id,
-                    action=odps_action
+                    action=odps_action,
                 )
 
             # Publish ODPS events
             from hub.apps.core.events.service_publishers import ODPSEventPublisher
+
             # Create ODPSEventPublisher instance with tenant_id and user_id
             # ODPSEventPublisher uses getattr to get tenant_id and user_id in __init__
             class TempODPSEventPublisher(ODPSEventPublisher):
@@ -2867,6 +2857,7 @@ class AssetCreationWorkflow:
             odps_event_publisher.user_id = str(user_id) if user_id else None
             # Re-initialize _event_publisher with correct tenant/user
             from hub.apps.core.events.publisher import EventPublisher
+
             odps_event_publisher._event_publisher = EventPublisher(
                 service_name="contract_service",
                 tenant_id=tenant_id,
@@ -2878,7 +2869,7 @@ class AssetCreationWorkflow:
                 # Get original_format as string
                 original_format_str = None
                 if odps_contract.original_format:
-                    if hasattr(odps_contract.original_format, 'value'):
+                    if hasattr(odps_contract.original_format, "value"):
                         original_format_str = odps_contract.original_format.value
                     elif isinstance(odps_contract.original_format, str):
                         original_format_str = odps_contract.original_format
@@ -2890,7 +2881,7 @@ class AssetCreationWorkflow:
                     asset_id=str(asset.id),
                     status=odps_contract.status,
                     odps_version=odps_contract.original_spec_version,
-                    original_format=original_format_str
+                    original_format=original_format_str,
                 )
 
             # Publish ODPS linked event (if both contracts exist)
@@ -2898,7 +2889,7 @@ class AssetCreationWorkflow:
                 odps_event_publisher.publish_odps_linked(
                     odps_contract_id=odps_contract_id,
                     odcs_contract_id=str(contract.id),
-                    link_type="bidirectional"
+                    link_type="bidirectional",
                 )
 
             # Store ODPS contract ID and action in state_data for compensation
@@ -2906,15 +2897,13 @@ class AssetCreationWorkflow:
             instance.state_data["odps_action"] = odps_action
             if contract:
                 instance.state_data["contract_id"] = str(contract.id)
-            instance.save(update_fields=['state_data'])
+            instance.save(update_fields=["state_data"])
 
             return {
                 "odps_linked": True,
                 "odps_contract_id": odps_contract_id,
                 "action": odps_action,
-                "state": {
-                    "odps_contract_id": odps_contract_id
-                }
+                "state": {"odps_contract_id": odps_contract_id},
             }
 
         except Exception as e:
@@ -2924,13 +2913,15 @@ class AssetCreationWorkflow:
                 asset_id=str(asset.id),
                 action=odps_action,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
-            raise ValueError(f"ODPS linking failed: {str(e)}")
+            raise ValueError(f"ODPS linking failed: {e!s}")
 
     @staticmethod
     @transaction.atomic
-    def _rollback_odps_linking_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _rollback_odps_linking_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Rollback ODPS linking (remove links and delete created ODPS contract if needed).
 
@@ -2965,13 +2956,13 @@ class AssetCreationWorkflow:
                         logger.info(
                             "ODPS link removed from ODCS contract during rollback",
                             workflow_instance_id=str(instance.id),
-                            contract_id=contract_id
+                            contract_id=contract_id,
                         )
             except Contract.DoesNotExist:
                 logger.warning(
                     "ODCS contract not found during ODPS linking rollback",
                     workflow_instance_id=str(instance.id),
-                    contract_id=contract_id
+                    contract_id=contract_id,
                 )
 
         # Remove ODCS link from ODPS contract and delete if created during workflow
@@ -2979,7 +2970,10 @@ class AssetCreationWorkflow:
             try:
                 odps_contract = Contract.objects.get(id=odps_contract_id)
                 # Remove ODCS link from ODPS contract
-                if odps_contract.hub_contract_json and "extensions" in odps_contract.hub_contract_json:
+                if (
+                    odps_contract.hub_contract_json
+                    and "extensions" in odps_contract.hub_contract_json
+                ):
                     x_odps = odps_contract.hub_contract_json["extensions"].get("x_odps", {})
                     if "odcs_link" in x_odps:
                         del x_odps["odcs_link"]
@@ -2991,20 +2985,20 @@ class AssetCreationWorkflow:
                     logger.info(
                         "ODPS contract rolled back (deleted)",
                         workflow_instance_id=str(instance.id),
-                        odps_contract_id=odps_contract_id
+                        odps_contract_id=odps_contract_id,
                     )
                 else:
                     # For "link" action, just remove the link but keep the contract
                     logger.info(
                         "ODPS link removed from existing ODPS contract during rollback",
                         workflow_instance_id=str(instance.id),
-                        odps_contract_id=odps_contract_id
+                        odps_contract_id=odps_contract_id,
                     )
             except Contract.DoesNotExist:
                 logger.warning(
                     "ODPS contract not found during rollback",
                     workflow_instance_id=str(instance.id),
-                    odps_contract_id=odps_contract_id
+                    odps_contract_id=odps_contract_id,
                 )
 
         logger.info(
@@ -3012,14 +3006,16 @@ class AssetCreationWorkflow:
             workflow_instance_id=str(instance.id),
             contract_id=contract_id,
             odps_contract_id=odps_contract_id,
-            odps_action=odps_action
+            odps_action=odps_action,
         )
 
         return {"rolled_back": True}
 
     @staticmethod
     @transaction.atomic
-    def _activate_asset_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _activate_asset_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Activate asset if all checks pass.
 
@@ -3061,13 +3057,9 @@ class AssetCreationWorkflow:
             logger.info(
                 "Auto-activation disabled, skipping activation",
                 workflow_instance_id=str(instance.id),
-                asset_id=str(asset_id)
+                asset_id=str(asset_id),
             )
-            return {
-                "activated": False,
-                "reason": "auto_activate is False",
-                "skipped": True
-            }
+            return {"activated": False, "reason": "auto_activate is False", "skipped": True}
 
         # Phase 250.1.A.6 — take a row-level lock on the Asset for
         # the activation critical section. Two concurrent activation
@@ -3083,22 +3075,19 @@ class AssetCreationWorkflow:
                 "Cannot activate asset: requirements not met",
                 workflow_instance_id=str(instance.id),
                 asset_id=str(asset.id),
-                blockers=blockers
+                blockers=blockers,
             )
             return {
                 "activated": False,
                 "reason": "activation requirements not met",
-                "blockers": blockers
+                "blockers": blockers,
             }
 
         # Validate asset lifecycle transition using AssetsBusinessRules
         tenant_id = str(asset.tenant_id) if asset.tenant_id else None
         user_id = str(instance.created_by_id) if instance.created_by_id else None
 
-        assets_rules = AssetsBusinessRules(
-            tenant_id=tenant_id,
-            user_id=user_id
-        )
+        assets_rules = AssetsBusinessRules(tenant_id=tenant_id, user_id=user_id)
 
         # Validate status transition
         old_status = asset.status
@@ -3110,14 +3099,12 @@ class AssetCreationWorkflow:
             user=instance.created_by,
             validation_type="lifecycle",
             old_status=old_status,
-            new_status=new_status
+            new_status=new_status,
         )
 
         if not lifecycle_validation_result.is_valid:
             error_messages = lifecycle_validation_result.errors
-            raise ValueError(
-                f"Asset activation validation failed: {'; '.join(error_messages)}"
-            )
+            raise ValueError(f"Asset activation validation failed: {'; '.join(error_messages)}")
 
         # Log validation warnings if any
         if lifecycle_validation_result.warnings:
@@ -3137,7 +3124,7 @@ class AssetCreationWorkflow:
         # Activate asset
         asset.status = AssetStatus.ACTIVE
         asset.increment_version()
-        asset.save(update_fields=['status', 'version', 'updated_at'])
+        asset.save(update_fields=["status", "version", "updated_at"])
 
         # Phase 250.1.G.3 — fire ``asset.activated`` webhook event
         # synchronously inside the caller's atomic block. The payload
@@ -3154,9 +3141,7 @@ class AssetCreationWorkflow:
             data_extra={
                 "activation_reason": "auto_gate_pass",
                 "dq_status": getattr(asset, "dq_status", None),
-                "compliance_status": getattr(
-                    asset, "compliance_status", None
-                ),
+                "compliance_status": getattr(asset, "compliance_status", None),
             },
         )
 
@@ -3176,7 +3161,7 @@ class AssetCreationWorkflow:
                 "Semantic mapping failed for asset",
                 workflow_instance_id=str(instance.id),
                 asset_id=str(asset.id),
-                error=str(e)
+                error=str(e),
             )
             # Don't fail activation if semantic mapping fails — this
             # is the load-bearing graceful-degrade contract.
@@ -3191,20 +3176,16 @@ class AssetCreationWorkflow:
                     resource_id=str(asset.id),
                     result="WARNING",
                     details={
-                        "tenant_id": (
-                            str(instance.tenant_id) if instance.tenant_id else None
-                        ),
+                        "tenant_id": (str(instance.tenant_id) if instance.tenant_id else None),
                         "asset_id": str(asset.id),
                         "workflow_instance_id": str(instance.id),
                         "degraded_step": "activate_asset_semantic_map",
                         "error": str(e),
-                        "previous_semantic_status": str(
-                            previous_semantic_status_for_map
-                        ),
+                        "previous_semantic_status": str(previous_semantic_status_for_map),
                         "new_semantic_status": "FAIL",
                     },
                 )
-            except Exception as audit_exc:  # noqa: BLE001 — boundary
+            except Exception as audit_exc:
                 logger.warning(
                     "asset_semantic_degraded_audit_emit_failed",
                     workflow_instance_id=str(instance.id),
@@ -3215,14 +3196,14 @@ class AssetCreationWorkflow:
         # Store activation status in state_data
         instance.state_data["asset_status"] = asset.status
         instance.state_data["activated"] = True
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         logger.info(
             "Asset activated",
             workflow_instance_id=str(instance.id),
             asset_id=str(asset.id),
             old_status=old_status,
-            new_status=asset.status
+            new_status=asset.status,
         )
 
         # Phase 250.2.A.3 (closes Gap 2) — emit ASSET_AUTO_ACTIVATED.
@@ -3248,9 +3229,7 @@ class AssetCreationWorkflow:
                     "previous_status": str(old_status),
                     "new_status": str(asset.status),
                     "dq_status": str(getattr(asset, "dq_status", None)),
-                    "compliance_status": str(
-                        getattr(asset, "compliance_status", None)
-                    ),
+                    "compliance_status": str(getattr(asset, "compliance_status", None)),
                     "caller_auto_activate": bool(
                         input_data.get("caller_auto_activate", auto_activate)
                     ),
@@ -3260,7 +3239,7 @@ class AssetCreationWorkflow:
                     "resolved_auto_activate": True,
                 },
             )
-        except Exception as audit_exc:  # noqa: BLE001 — boundary
+        except Exception as audit_exc:
             # Audit emission is best-effort: a backend hiccup must
             # NOT roll back the activation. Mirrors the
             # ``cleanup_orphan_drafts`` and Phase 240 disciplines.
@@ -3271,14 +3250,12 @@ class AssetCreationWorkflow:
                 error=str(audit_exc),
             )
 
-        return {
-            "activated": True,
-            "old_status": old_status,
-            "new_status": asset.status
-        }
+        return {"activated": True, "old_status": old_status, "new_status": asset.status}
 
     @staticmethod
-    def _index_for_search_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _index_for_search_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Index asset for search.
 
         Phase 250.7.A.2 (closes Gap 15) — graceful degrade contract
@@ -3328,7 +3305,7 @@ class AssetCreationWorkflow:
                 "Asset indexed for search",
                 workflow_instance_id=str(instance.id),
                 asset_id=str(asset.id),
-                search_index_id=str(search_index.id)
+                search_index_id=str(search_index.id),
             )
 
             # Mark PASS only if the field is still UNKNOWN. If a
@@ -3347,12 +3324,12 @@ class AssetCreationWorkflow:
                 "indexed": True,
                 "semantic_status": asset.semantic_status,
             }
-        except Exception as e:  # noqa: BLE001 — boundary
+        except Exception as e:
             logger.error(
                 "Failed to index asset for search",
                 workflow_instance_id=str(instance.id),
                 asset_id=str(asset.id),
-                error=str(e)
+                error=str(e),
             )
             # Phase 250.7.A.2 — degrade gracefully. Don't fail the
             # workflow; mark the asset's semantic_status FAIL and
@@ -3369,9 +3346,7 @@ class AssetCreationWorkflow:
                     resource_id=str(asset.id),
                     result="WARNING",
                     details={
-                        "tenant_id": (
-                            str(instance.tenant_id) if instance.tenant_id else None
-                        ),
+                        "tenant_id": (str(instance.tenant_id) if instance.tenant_id else None),
                         "asset_id": str(asset.id),
                         "workflow_instance_id": str(instance.id),
                         "degraded_step": "index_for_search",
@@ -3380,7 +3355,7 @@ class AssetCreationWorkflow:
                         "new_semantic_status": "FAIL",
                     },
                 )
-            except Exception as audit_exc:  # noqa: BLE001 — boundary
+            except Exception as audit_exc:
                 # Best-effort audit. The workflow already committed
                 # the semantic_status flip; losing the audit row is
                 # recoverable via DB diff (matches the
@@ -3400,7 +3375,9 @@ class AssetCreationWorkflow:
             }
 
     @staticmethod
-    def _send_notifications_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _send_notifications_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Send notifications about asset creation/activation.
 
@@ -3422,12 +3399,9 @@ class AssetCreationWorkflow:
             logger.info(
                 "Notifications disabled, skipping",
                 workflow_instance_id=str(instance.id),
-                asset_id=str(asset_id)
+                asset_id=str(asset_id),
             )
-            return {
-                "notifications_sent": False,
-                "reason": "send_notifications is False"
-            }
+            return {"notifications_sent": False, "reason": "send_notifications is False"}
 
         asset = Asset.objects.get(id=asset_id)
         activated = instance.state_data.get("activated", False)
@@ -3452,9 +3426,14 @@ class AssetCreationWorkflow:
                     email_type=EmailType.JOB_COMPLETION,
                     to_email=creator_email,
                     subject=subject,
-                    template_name="notifications/emails/job_completion.html",
-                    context={"message": message, "asset_name": asset.name, "asset_key": asset.key},
-                    tenant_id=str(asset.tenant.id)
+                    template_name="notifications/emails/asset_status_change.html",
+                    context={
+                        "message": message,
+                        "asset_name": asset.name,
+                        "asset_key": asset.key,
+                        "asset_status": "Activated" if activated else "Created",
+                    },
+                    tenant_id=str(asset.tenant.id),
                 )
                 notifications_sent.append(creator_email)
 
@@ -3462,24 +3441,23 @@ class AssetCreationWorkflow:
                     "Notification sent to creator",
                     workflow_instance_id=str(instance.id),
                     asset_id=str(asset.id),
-                    email=creator_email
+                    email=creator_email,
                 )
         except Exception as e:
             logger.error(
                 "Failed to send notification",
                 workflow_instance_id=str(instance.id),
                 asset_id=str(asset.id),
-                error=str(e)
+                error=str(e),
             )
             # Don't fail workflow if notification fails
 
-        return {
-            "notifications_sent": len(notifications_sent) > 0,
-            "recipients": notifications_sent
-        }
+        return {"notifications_sent": len(notifications_sent) > 0, "recipients": notifications_sent}
 
     @staticmethod
-    def _audit_logging_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _audit_logging_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create audit log entry for asset creation/activation.
 
@@ -3525,8 +3503,8 @@ class AssetCreationWorkflow:
                 "has_dataset": asset.datasets.exists(),
                 "dq_status": asset.dq_status,
                 "compliance_status": asset.compliance_status,
-                "workflow_instance_id": str(instance.id)
-            }
+                "workflow_instance_id": str(instance.id),
+            },
         )
 
         logger.info(
@@ -3534,7 +3512,7 @@ class AssetCreationWorkflow:
             workflow_instance_id=str(instance.id),
             asset_id=str(asset.id),
             audit_event_id=str(audit_event.id),
-            action=action
+            action=action,
         )
 
         result_summary = instance.state_data.get("result_summary") or {}
@@ -3557,10 +3535,7 @@ class AssetCreationWorkflow:
                 },
             )
 
-        return {
-            "audit_event_id": str(audit_event.id),
-            "action": action
-        }
+        return {"audit_event_id": str(audit_event.id), "action": action}
 
     # ------------------------------------------------------------------
     # Phase 250.2.A.2 (closes Gap 2) — auto-activate resolver
@@ -3572,7 +3547,7 @@ class AssetCreationWorkflow:
         *,
         tenant: "Tenant",  # type: ignore[name-defined]  # forward-reference to Tenant model; resolved at runtime
         caller_auto_activate: bool,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Resolve the effective ``auto_activate`` decision.
 
         The decision is ``caller_auto_activate AND tenant.
@@ -3604,9 +3579,7 @@ class AssetCreationWorkflow:
         # the column-level default fills both new and existing
         # rows, but a partial deploy could see stale instances
         # in memory).
-        tenant_flag = bool(
-            getattr(tenant, "asset_auto_activate_on_gate_pass", True)
-        )
+        tenant_flag = bool(getattr(tenant, "asset_auto_activate_on_gate_pass", True))
         caller_flag = bool(caller_auto_activate)
         return {
             "resolved_auto_activate": caller_flag and tenant_flag,
@@ -3620,14 +3593,16 @@ class AssetCreationWorkflow:
         tenant_id: str,
         key: str,
         name: str,
-        description: Optional[str] = None,
-        domain: Optional[str] = None,
-        visibility: str = AssetVisibility.INTERNAL,
-        contract_id: Optional[str] = None,
-        dataset_id: Optional[str] = None,
+        description: str | None = None,
+        domain: str | None = None,
+        # visibility removed per D250.4 — derives from status;
+        # the legacy kwarg was a no-op that generated deprecation
+        # warnings on every data-first call.
+        contract_id: str | None = None,
+        dataset_id: str | None = None,
         profile_key: str = "intake_basic_gx",
         scan_mode: str = "internal",
-        applicable_regulations: Optional[list] = None,
+        applicable_regulations: list | None = None,
         # Phase 250.1.A.3 / D250.2 — auto_activate now defaults TRUE.
         # The workflow's gate steps already enforce fail-closed
         # semantics; once they pass, the asset SHOULD become ACTIVE
@@ -3635,28 +3610,28 @@ class AssetCreationWorkflow:
         # call (the legacy default-False produced orphan DRAFTs).
         auto_activate: bool = True,
         send_notifications: bool = True,
-        legal_basis: Optional[str] = None,
-        destination_jurisdiction: Optional[str] = None,
-        created_by_id: Optional[str] = None,
-        file_id: Optional[str] = None,
-        file_format: Optional[str] = None,
-        odps_action: Optional[str] = None,
-        odps_raw: Optional[str] = None,
+        legal_basis: str | None = None,
+        destination_jurisdiction: str | None = None,
+        created_by_id: str | None = None,
+        file_id: str | None = None,
+        file_format: str | None = None,
+        odps_action: str | None = None,
+        odps_raw: str | None = None,
         odps_format: str = "JSON",
-        odps_contract_id: Optional[str] = None,
-        contract_name: Optional[str] = None,
-        contract_description: Optional[str] = None,
+        odps_contract_id: str | None = None,
+        contract_name: str | None = None,
+        contract_description: str | None = None,
         contract_version: str = "1.0.0",
         odcs_version: str = "v3",
-        engine: Optional[WorkflowEngine] = None,
-        registry: Optional[WorkflowRegistry] = None,
+        engine: WorkflowEngine | None = None,
+        registry: WorkflowRegistry | None = None,
         # Phase 250.1.A test-mode hooks — only set during property-based
         # testing. step_failure_injector receives (step_index, step_name)
         # and may raise to simulate a step failure; compensation_observer
         # receives step_name after each compensated step.
-        step_failure_injector: Optional[Callable[[int, str], None]] = None,
-        compensation_observer: Optional[Callable[[str], None]] = None,
-    ) -> Dict[str, Any]:
+        step_failure_injector: Callable[[int, str], None] | None = None,
+        compensation_observer: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
         """
         Execute asset creation workflow.
 
@@ -3666,7 +3641,7 @@ class AssetCreationWorkflow:
             name: Asset name
             description: Asset description (optional)
             domain: Asset domain (optional)
-            visibility: Asset visibility (default: INTERNAL)
+            # visibility removed per D250.4 — derives from status
             contract_id: Contract ID to attach (optional, for contract-first flow)
             dataset_id: Dataset ID to attach (optional, for data-first flow)
             profile_key: DQ profile key (default: intake_basic_gx)
@@ -3711,6 +3686,7 @@ class AssetCreationWorkflow:
 
         # Validate tenant exists before creating workflow instance
         from hub.apps.tenants.models import Tenant
+
         try:
             tenant_obj = Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
@@ -3738,8 +3714,7 @@ class AssetCreationWorkflow:
             workflow_input["description"] = description
         if domain is not None:
             workflow_input["domain"] = domain
-        if visibility is not None:
-            workflow_input["visibility"] = visibility
+        # visibility intentionally omitted — derives from status per D250.4.
         if contract_id is not None:
             workflow_input["contract_id"] = contract_id
         if dataset_id is not None:
@@ -3758,15 +3733,13 @@ class AssetCreationWorkflow:
         # preserve the inputs for audit replay (read by
         # ``_activate_asset_task`` and stamped into
         # ``ASSET_AUTO_ACTIVATED.details_json``).
-        workflow_input["auto_activate"] = (
-            resolved_auto_activate_input["resolved_auto_activate"]
-        )
-        workflow_input["caller_auto_activate"] = (
-            resolved_auto_activate_input["caller_auto_activate"]
-        )
-        workflow_input["tenant_auto_activate"] = (
-            resolved_auto_activate_input["tenant_auto_activate"]
-        )
+        workflow_input["auto_activate"] = resolved_auto_activate_input["resolved_auto_activate"]
+        workflow_input["caller_auto_activate"] = resolved_auto_activate_input[
+            "caller_auto_activate"
+        ]
+        workflow_input["tenant_auto_activate"] = resolved_auto_activate_input[
+            "tenant_auto_activate"
+        ]
         workflow_input["send_notifications"] = send_notifications
         if legal_basis is not None:
             workflow_input["legal_basis"] = legal_basis
@@ -3797,11 +3770,12 @@ class AssetCreationWorkflow:
                 workflow_name=cls.WORKFLOW_NAME,
                 input_data=workflow_input,
                 tenant_id=tenant_id,
-                created_by_id=created_by_id
+                created_by_id=created_by_id,
             )
         except Exception as e:
             # Catch database integrity errors and convert to ValueError
             from django.db import IntegrityError
+
             if isinstance(e, IntegrityError) or "foreign key constraint" in str(e).lower():
                 raise ValueError(f"Invalid tenant_id: {tenant_id}") from e
             raise
@@ -3826,12 +3800,12 @@ class AssetCreationWorkflow:
                 "Asset creation workflow completed",
                 workflow_instance_id=str(workflow_instance.id),
                 tenant_id=tenant_id,
-                asset_id=workflow_instance.state_data.get("asset_id")
+                asset_id=workflow_instance.state_data.get("asset_id"),
             )
             return {
                 "success": True,
                 "workflow_instance_id": str(workflow_instance.id),
-                "output_data": workflow_instance.output_data
+                "output_data": workflow_instance.output_data,
             }
 
         # Phase 250.1.A — workflow ran to a non-COMPLETED terminal
@@ -3860,11 +3834,13 @@ class AssetCreationWorkflow:
         # Also detect other controlled exceptions (e.g.
         # WorkflowStepValueError from storage-not-found) via the
         # exception_type stored in error_details by the engine.
-        _controlled_exc_types = frozenset({
-            "WorkflowStepValueError",
-            "WorkflowDeadlineExceeded",
-            "FailClosedRejection",
-        })
+        _controlled_exc_types = frozenset(
+            {
+                "WorkflowStepValueError",
+                "WorkflowDeadlineExceeded",
+                "FailClosedRejection",
+            }
+        )
         # The engine nests the step's error_details inside the
         # instance-level error_details dict:
         #   {"failed_step_index": …, "failed_step_name": …,
@@ -3874,11 +3850,7 @@ class AssetCreationWorkflow:
             # Normal path: step's error_details is nested inside the
             # instance-level dict.
             _inner = _outer.get("error_details", {})
-            _exc_type = (
-                _inner.get("exception_type", "")
-                if isinstance(_inner, dict)
-                else ""
-            )
+            _exc_type = _inner.get("exception_type", "") if isinstance(_inner, dict) else ""
             # Fallback: in the catch-all failure path (engine line 558)
             # exception_type is stored flat, without the "error_details"
             # wrapper key.
@@ -3886,9 +3858,7 @@ class AssetCreationWorkflow:
                 _exc_type = _outer.get("exception_type", "")
         else:
             _exc_type = ""
-        _is_controlled = (
-            fcr is not None or _exc_type in _controlled_exc_types
-        )
+        _is_controlled = fcr is not None or _exc_type in _controlled_exc_types
 
         if _is_controlled:
             logger.warning(
@@ -3919,9 +3889,7 @@ class AssetCreationWorkflow:
             try:
                 _tenant = Tenant.objects.filter(id=tenant_id).first()
                 _user = (
-                    UserModel.objects.filter(id=created_by_id).first()
-                    if created_by_id
-                    else None
+                    UserModel.objects.filter(id=created_by_id).first() if created_by_id else None
                 )
                 redacted_details, full_details = _build_fail_closed_audit_payload(
                     tenant_id=str(tenant_id),
@@ -3951,25 +3919,16 @@ class AssetCreationWorkflow:
 
         # ---- (b) downstream rollback after asset persistence ----
         rolled_back_asset_id = (
-            workflow_instance.state_data.get("asset_id")
-            if workflow_instance.state_data
-            else None
+            workflow_instance.state_data.get("asset_id") if workflow_instance.state_data else None
         )
-        if (
-            workflow_instance.status == WorkflowStatus.ROLLED_BACK
-            and rolled_back_asset_id
-        ):
+        if workflow_instance.status == WorkflowStatus.ROLLED_BACK and rolled_back_asset_id:
             try:
                 _tenant = Tenant.objects.filter(id=tenant_id).first()
                 _user = (
-                    UserModel.objects.filter(id=created_by_id).first()
-                    if created_by_id
-                    else None
+                    UserModel.objects.filter(id=created_by_id).first() if created_by_id else None
                 )
                 failed_step_name = (
-                    (workflow_instance.error_details or {}).get(
-                        "failed_step_name"
-                    )
+                    (workflow_instance.error_details or {}).get("failed_step_name")
                     if workflow_instance.error_details
                     else None
                 )
@@ -3996,4 +3955,3 @@ class AssetCreationWorkflow:
                 )
 
         raise ValueError(f"Asset creation workflow failed: {error_message}")
-

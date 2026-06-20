@@ -10,6 +10,7 @@ entire batch — the good items succeed and the bad item is reported.
 """
 
 import requests
+
 from tests._persona_provisioning import provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import api_base_url
@@ -57,12 +58,8 @@ def test_batch_create_with_one_invalid_item(creds):
         # At least one good item must succeed even though one is invalid
         successes = [s for s in results if s in (200, 201)]
         failures = [s for s in results if s in (400, 422)]
-        assert len(successes) >= 1, (
-            f"No successful creates in batch: {results}"
-        )
-        assert len(failures) >= 1, (
-            f"Invalid item was not rejected: {results}"
-        )
+        assert len(successes) >= 1, f"No successful creates in batch: {results}"
+        assert len(failures) >= 1, f"Invalid item was not rejected: {results}"
         return
 
     # Bulk endpoint exists
@@ -115,6 +112,4 @@ def test_valid_item_after_invalid_succeeds(creds):
         json={"name": fresh_id("after-bad"), "key": fresh_id("ab-key")},
         timeout=15,
     )
-    assert resp.status_code in (200, 201), (
-        f"Valid item after invalid returned {resp.status_code}"
-    )
+    assert resp.status_code in (200, 201), f"Valid item after invalid returned {resp.status_code}"

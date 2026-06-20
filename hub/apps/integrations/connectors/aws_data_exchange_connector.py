@@ -14,35 +14,37 @@ Features:
 
 AWS Data Exchange API Documentation: https://docs.aws.amazon.com/data-exchange/
 """
+
 import logging
 import os
 import time
-from typing import Dict, Any, List, Optional, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
-T = TypeVar('T')
-from django.utils import timezone
+T = TypeVar("T")
 from datetime import datetime
 
 import boto3
-from botocore.exceptions import ClientError, BotoCoreError
-from django.conf import settings
 import structlog
+from botocore.exceptions import BotoCoreError, ClientError
+from django.conf import settings
+from django.utils import timezone
 
-from hub.apps.integrations.base import (
-    DataMarketplaceConnector,
-    MarketplaceType,
-    SyncDirection,
-    SyncStatus,
-    MarketplaceListing,
-    MarketplaceResource,
-    SyncResult,
-    MarketplaceAssetMapping,
-)
 from hub.apps.assets.models import AssetSourceType
-from hub.apps.core.services.base import ConnectionError, NotFoundError, PermissionError
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
     get_redis_client,
+)
+from hub.apps.core.services.base import ConnectionError, NotFoundError, PermissionError
+from hub.apps.integrations.base import (
+    DataMarketplaceConnector,
+    MarketplaceAssetMapping,
+    MarketplaceListing,
+    MarketplaceResource,
+    MarketplaceType,
+    SyncDirection,
+    SyncResult,
+    SyncStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,11 +77,11 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
 
     def __init__(
         self,
-        aws_access_key_id: Optional[str] = None,
-        aws_secret_access_key: Optional[str] = None,
-        aws_session_token: Optional[str] = None,
-        region_name: str = 'us-east-1',
-        role_arn: Optional[str] = None
+        aws_access_key_id: str | None = None,
+        aws_secret_access_key: str | None = None,
+        aws_session_token: str | None = None,
+        region_name: str = "us-east-1",
+        role_arn: str | None = None,
     ):
         """
         Initialize AWS Data Exchange connector.
@@ -99,7 +101,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         self._role_arn = role_arn
 
         # Store temporary credentials after role assumption
-        self._assumed_role_credentials: Optional[Dict[str, Any]] = None
+        self._assumed_role_credentials: dict[str, Any] | None = None
 
         # Cache for boto3 clients
         self._dataexchange_client = None
@@ -115,12 +117,12 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             failure_threshold=5,
             timeout_seconds=60,
             success_threshold=2,
-            redis_client=get_redis_client()
+            redis_client=get_redis_client(),
         )
 
         # Initialize boto3 client placeholders (lazy initialization)
-        self._dataexchange_client: Optional[Any] = None
-        self._s3_client: Optional[Any] = None
+        self._dataexchange_client: Any | None = None
+        self._s3_client: Any | None = None
 
         # Track authentication state
         self._authenticated = False
@@ -136,15 +138,15 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             True if error is transient and should be retried, False otherwise
         """
         transient_errors = {
-            'ThrottlingException',
-            'ServiceUnavailableException',
-            'InternalServerException',
-            'TooManyRequestsException',
-            'RequestTimeout',
+            "ThrottlingException",
+            "ServiceUnavailableException",
+            "InternalServerException",
+            "TooManyRequestsException",
+            "RequestTimeout",
         }
         return error_code in transient_errors
 
-    def _map_aws_error(self, error: ClientError, context: str = '') -> Exception:
+    def _map_aws_error(self, error: ClientError, context: str = "") -> Exception:
         """
         Map AWS ClientError to connector-specific exceptions.
 
@@ -155,34 +157,26 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         Returns:
             Appropriate exception type (NotFoundError, PermissionError, ValueError, ConnectionError)
         """
-        error_code = error.response.get('Error', {}).get('Code', '')
-        error_message = error.response.get('Error', {}).get('Message', str(error))
+        error_code = error.response.get("Error", {}).get("Code", "")
+        error_message = error.response.get("Error", {}).get("Message", str(error))
 
         # Map AWS errors to connector exceptions
-        if error_code == 'ResourceNotFoundException':
+        if error_code == "ResourceNotFoundException":
             return NotFoundError(
                 f"{context}Resource not found in AWS Data Exchange: {error_message}"
             )
-        elif error_code == 'AccessDeniedException':
-            return PermissionError(
-                f"{context}Access denied: {error_message}"
-            )
-        elif error_code == 'ValidationException':
-            return ValueError(
-                f"{context}Invalid request: {error_message}"
-            )
+        elif error_code == "AccessDeniedException":
+            return PermissionError(f"{context}Access denied: {error_message}")
+        elif error_code == "ValidationException":
+            return ValueError(f"{context}Invalid request: {error_message}")
         elif self._is_transient_error(error_code):
             # Transient errors are wrapped in ConnectionError for retry logic
-            return ConnectionError(
-                f"{context}Transient AWS error ({error_code}): {error_message}"
-            )
+            return ConnectionError(f"{context}Transient AWS error ({error_code}): {error_message}")
         else:
             # Other errors are connection errors
-            return ConnectionError(
-                f"{context}AWS error ({error_code}): {error_message}"
-            )
+            return ConnectionError(f"{context}AWS error ({error_code}): {error_message}")
 
-    def _get_correlation_context(self) -> Dict[str, Any]:
+    def _get_correlation_context(self) -> dict[str, Any]:
         """
         Get correlation context for structured logging.
 
@@ -195,13 +189,13 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
 
         # Try to get trace context from structlog
         try:
-            trace_id = structlog.contextvars.get_contextvars().get('trace_id')
-            span_id = structlog.contextvars.get_contextvars().get('span_id')
+            trace_id = structlog.contextvars.get_contextvars().get("trace_id")
+            span_id = structlog.contextvars.get_contextvars().get("span_id")
             if trace_id:
-                context['trace_id'] = trace_id
+                context["trace_id"] = trace_id
             if span_id:
-                context['span_id'] = span_id
-        except Exception as e:
+                context["span_id"] = span_id
+        except (ImportError, AttributeError) as e:
             structlogger.debug(
                 "aws_data_exchange_trace_context_failed",
                 extra={"error_type": type(e).__name__, "error": str(e)},
@@ -210,12 +204,13 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         # Try to get trace headers from request context
         try:
             from hub.apps.api.middleware.trace_propagation import get_current_request
+
             request = get_current_request()
-            if request and hasattr(request, 'trace_id'):
-                context['trace_id'] = request.trace_id
-            if request and hasattr(request, 'span_id'):
-                context['span_id'] = request.span_id
-        except Exception as e:
+            if request and hasattr(request, "trace_id"):
+                context["trace_id"] = request.trace_id
+            if request and hasattr(request, "span_id"):
+                context["span_id"] = request.span_id
+        except (ImportError, AttributeError) as e:
             structlogger.debug(
                 "aws_data_exchange_request_trace_failed",
                 extra={"error_type": type(e).__name__, "error": str(e)},
@@ -233,26 +228,23 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             **kwargs: Additional log fields
         """
         context = self._get_correlation_context()
-        log_data = {**context, **kwargs, 'message': message}
+        log_data = {**context, **kwargs, "message": message}
 
-        if level == 'info':
+        if level == "info":
             structlogger.info(**log_data)
-        elif level == 'warning':
+        elif level == "warning":
             structlogger.warning(**log_data)
-        elif level == 'error':
+        elif level == "error":
             structlogger.error(**log_data)
-        elif level == 'debug':
+        elif level == "debug":
             structlogger.debug(**log_data)
         else:
             logger.log(getattr(logging, level.upper(), logging.INFO), message, extra=kwargs)
 
-    T = TypeVar('T')
+    T = TypeVar("T")
 
     def _execute_with_retry(
-        self,
-        operation: Callable[[], T],
-        operation_name: str,
-        context: str = ''
+        self, operation: Callable[[], T], operation_name: str, context: str = ""
     ) -> T:
         """
         Execute AWS API operation with retry logic and circuit breaker protection.
@@ -276,6 +268,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             ValueError: If validation error
             ConnectionError: If connection failed after retries
         """
+
         def execute_with_retry_inner() -> T:
             """Inner function for retry logic."""
             last_exception = None
@@ -286,23 +279,23 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     # Log success on retry
                     if attempt > 0:
                         self._log_with_context(
-                            'info',
+                            "info",
                             f"AWS Data Exchange {operation_name} succeeded after {attempt} retries",
                             operation=operation_name,
                             attempt=attempt + 1,
-                            max_retries=self.max_retries + 1
+                            max_retries=self.max_retries + 1,
                         )
                     return result
 
                 except ClientError as e:
-                    error_code = e.response.get('Error', {}).get('Code', '')
-                    error_message = e.response.get('Error', {}).get('Message', str(e))
+                    error_code = e.response.get("Error", {}).get("Code", "")
+                    error_message = e.response.get("Error", {}).get("Message", str(e))
 
                     # Check if error is transient and should be retried
                     if self._is_transient_error(error_code) and attempt < self.max_retries:
-                        delay = self.backoff_factor * (2 ** attempt)
+                        delay = self.backoff_factor * (2**attempt)
                         self._log_with_context(
-                            'warning',
+                            "warning",
                             f"AWS Data Exchange {operation_name} returned {error_code}. "
                             f"Retrying in {delay}s... (attempt {attempt + 1}/{self.max_retries + 1})",
                             operation=operation_name,
@@ -310,7 +303,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                             error_message=error_message,
                             attempt=attempt + 1,
                             max_retries=self.max_retries + 1,
-                            delay=delay
+                            delay=delay,
                         )
                         time.sleep(delay)
                         last_exception = e
@@ -323,16 +316,16 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 except BotoCoreError as e:
                     # Network/connection errors - retry if not last attempt
                     if attempt < self.max_retries:
-                        delay = self.backoff_factor * (2 ** attempt)
+                        delay = self.backoff_factor * (2**attempt)
                         self._log_with_context(
-                            'warning',
+                            "warning",
                             f"Network error during AWS Data Exchange {operation_name}. "
                             f"Retrying in {delay}s... (attempt {attempt + 1}/{self.max_retries + 1})",
                             operation=operation_name,
                             error=str(e),
                             attempt=attempt + 1,
                             max_retries=self.max_retries + 1,
-                            delay=delay
+                            delay=delay,
                         )
                         time.sleep(delay)
                         last_exception = e
@@ -363,11 +356,11 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         except Exception as e:
             # Log unexpected errors
             self._log_with_context(
-                'warning',
+                "warning",
                 f"AWS Data Exchange {operation_name} failed",
                 operation=operation_name,
                 error=str(e),
-                error_type=type(e).__name__
+                error_type=type(e).__name__,
             )
             raise
 
@@ -400,44 +393,37 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     # Build STS client credentials (allow None for default credential chain)
                     sts_credentials = {}
                     if self._aws_access_key_id:
-                        sts_credentials['aws_access_key_id'] = self._aws_access_key_id
+                        sts_credentials["aws_access_key_id"] = self._aws_access_key_id
                     if self._aws_secret_access_key:
-                        sts_credentials['aws_secret_access_key'] = self._aws_secret_access_key
+                        sts_credentials["aws_secret_access_key"] = self._aws_secret_access_key
                     if self._aws_session_token:
-                        sts_credentials['aws_session_token'] = self._aws_session_token
+                        sts_credentials["aws_session_token"] = self._aws_session_token
 
                     sts_client = boto3.client(
-                        'sts',
-                        region_name=self._region_name,
-                        **sts_credentials
+                        "sts", region_name=self._region_name, **sts_credentials
                     )
 
                     response = sts_client.assume_role(
-                        RoleArn=self._role_arn,
-                        RoleSessionName='data-exchange-connector-session'
+                        RoleArn=self._role_arn, RoleSessionName="data-exchange-connector-session"
                     )
 
-                    creds = response['Credentials']
+                    creds = response["Credentials"]
                     self._assumed_role_credentials = {
-                        'aws_access_key_id': creds['AccessKeyId'],
-                        'aws_secret_access_key': creds['SecretAccessKey'],
-                        'aws_session_token': creds['SessionToken']
+                        "aws_access_key_id": creds["AccessKeyId"],
+                        "aws_secret_access_key": creds["SecretAccessKey"],
+                        "aws_session_token": creds["SessionToken"],
                     }
 
                     logger.info(f"Successfully assumed IAM role: {self._role_arn}")
                 except ClientError as e:
-                    error_code = e.response.get('Error', {}).get('Code', '')
-                    if error_code == 'AccessDenied':
+                    error_code = e.response.get("Error", {}).get("Code", "")
+                    if error_code == "AccessDenied":
                         raise PermissionError(
                             f"Access denied when assuming role {self._role_arn}: {e}"
                         ) from e
-                    raise ConnectionError(
-                        f"Failed to assume IAM role {self._role_arn}: {e}"
-                    ) from e
+                    raise ConnectionError(f"Failed to assume IAM role {self._role_arn}: {e}") from e
                 except Exception as e:
-                    raise ConnectionError(
-                        f"Unexpected error assuming IAM role: {e}"
-                    ) from e
+                    raise ConnectionError(f"Unexpected error assuming IAM role: {e}") from e
 
             credentials = self._assumed_role_credentials
         else:
@@ -448,26 +434,22 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 )
 
             credentials = {
-                'aws_access_key_id': self._aws_access_key_id,
-                'aws_secret_access_key': self._aws_secret_access_key,
+                "aws_access_key_id": self._aws_access_key_id,
+                "aws_secret_access_key": self._aws_secret_access_key,
             }
 
             if self._aws_session_token:
-                credentials['aws_session_token'] = self._aws_session_token
+                credentials["aws_session_token"] = self._aws_session_token
 
         # Create Data Exchange client
         try:
             self._dataexchange_client = boto3.client(
-                'dataexchange',
-                region_name=self._region_name,
-                **credentials
+                "dataexchange", region_name=self._region_name, **credentials
             )
             logger.debug(f"Created AWS Data Exchange client for region {self._region_name}")
             return self._dataexchange_client
         except Exception as e:
-            raise ConnectionError(
-                f"Failed to create AWS Data Exchange client: {e}"
-            ) from e
+            raise ConnectionError(f"Failed to create AWS Data Exchange client: {e}") from e
 
     def _get_s3_client(self):
         """
@@ -495,25 +477,19 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             credentials = self._assumed_role_credentials
         else:
             credentials = {
-                'aws_access_key_id': self._aws_access_key_id,
-                'aws_secret_access_key': self._aws_secret_access_key,
+                "aws_access_key_id": self._aws_access_key_id,
+                "aws_secret_access_key": self._aws_secret_access_key,
             }
             if self._aws_session_token:
-                credentials['aws_session_token'] = self._aws_session_token
+                credentials["aws_session_token"] = self._aws_session_token
 
         # Create S3 client
         try:
-            self._s3_client = boto3.client(
-                's3',
-                region_name=self._region_name,
-                **credentials
-            )
+            self._s3_client = boto3.client("s3", region_name=self._region_name, **credentials)
             logger.debug(f"Created AWS S3 client for region {self._region_name}")
             return self._s3_client
         except Exception as e:
-            raise ConnectionError(
-                f"Failed to create AWS S3 client: {e}"
-            ) from e
+            raise ConnectionError(f"Failed to create AWS S3 client: {e}") from e
 
     @property
     def marketplace_type(self) -> MarketplaceType:
@@ -521,7 +497,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         return MarketplaceType.AWS_DATA_EXCHANGE
 
     @property
-    def supported_sync_directions(self) -> List[SyncDirection]:
+    def supported_sync_directions(self) -> list[SyncDirection]:
         """
         Get the list of sync directions supported by this connector.
 
@@ -530,7 +506,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         """
         return [SyncDirection.PULL]
 
-    def authenticate(self, credentials: Dict[str, Any]) -> bool:
+    def authenticate(self, credentials: dict[str, Any]) -> bool:
         """
         Authenticate with AWS Data Exchange using provided credentials.
 
@@ -554,11 +530,13 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             raise ValueError("Credentials dictionary is required")
 
         # Extract credentials with support for both naming conventions
-        aws_access_key_id = credentials.get('aws_access_key_id') or credentials.get('access_key_id')
-        aws_secret_access_key = credentials.get('aws_secret_access_key') or credentials.get('secret_access_key')
-        aws_session_token = credentials.get('aws_session_token') or credentials.get('session_token')
-        region_name = credentials.get('region_name', 'us-east-1')
-        role_arn = credentials.get('role_arn')
+        aws_access_key_id = credentials.get("aws_access_key_id") or credentials.get("access_key_id")
+        aws_secret_access_key = credentials.get("aws_secret_access_key") or credentials.get(
+            "secret_access_key"
+        )
+        aws_session_token = credentials.get("aws_session_token") or credentials.get("session_token")
+        region_name = credentials.get("region_name", "us-east-1")
+        role_arn = credentials.get("role_arn")
 
         # Validate credentials: either role_arn OR access keys must be provided
         if not role_arn and (not aws_access_key_id or not aws_secret_access_key):
@@ -587,7 +565,9 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 return True
             else:
                 self._authenticated = False
-                logger.warning("AWS Data Exchange authentication failed: Connection test returned False")
+                logger.warning(
+                    "AWS Data Exchange authentication failed: Connection test returned False"
+                )
                 raise ConnectionError("Connection test failed")
         except (PermissionError, ConnectionError):
             self._authenticated = False
@@ -610,30 +590,35 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             ConnectionError: If unable to connect to AWS Data Exchange
             PermissionError: If credentials lack required permissions
         """
+
         def execute_test() -> bool:
             """Execute connection test."""
             client = self._get_dataexchange_client()
             # Call ListDataSets API with MaxResults=1 to test connection
-            response = client.list_data_sets(MaxResults=1)
+            client.list_data_sets(MaxResults=1)
             # If we get a response without exception, connection is successful
-            self._log_with_context('info', "Connection test successful for AWS Data Exchange")
+            self._log_with_context("info", "Connection test successful for AWS Data Exchange")
             return True
 
         try:
-            return self._execute_with_retry(execute_test, 'ListDataSets', 'AWS Data Exchange connection test: ')
+            return self._execute_with_retry(
+                execute_test, "ListDataSets", "AWS Data Exchange connection test: "
+            )
         except (PermissionError, ConnectionError):
             raise
         except Exception as e:
             self._log_with_context(
-                'warning',
+                "warning",
                 "AWS Data Exchange connection test failed",
                 error=str(e),
-                error_type=type(e).__name__
+                error_type=type(e).__name__,
             )
-            raise ConnectionError(f"Unexpected error testing AWS Data Exchange connection: {e}") from e
+            raise ConnectionError(
+                f"Unexpected error testing AWS Data Exchange connection: {e}"
+            ) from e
 
     # Helper methods for discovery operations
-    def _extract_tags(self, tags_data: Any) -> List[str]:
+    def _extract_tags(self, tags_data: Any) -> list[str]:
         """
         Extract tags from AWS Data Exchange Tags field.
 
@@ -655,16 +640,21 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             for tag_item in tags_data:
                 if isinstance(tag_item, dict):
                     # Extract from Key or Value field
-                    tag_value = tag_item.get('Key') or tag_item.get('Value') or tag_item.get('name') or tag_item.get('display_name')
+                    tag_value = (
+                        tag_item.get("Key")
+                        or tag_item.get("Value")
+                        or tag_item.get("name")
+                        or tag_item.get("display_name")
+                    )
                     if tag_value:
                         tags.append(str(tag_value))
                 elif isinstance(tag_item, str):
                     tags.append(tag_item)
         elif isinstance(tags_data, dict):
             # Tags might be a dict with 'Tags' key or a flat dict
-            if 'Tags' in tags_data:
+            if "Tags" in tags_data:
                 # Nested Tags dict
-                nested_tags = tags_data['Tags']
+                nested_tags = tags_data["Tags"]
                 if isinstance(nested_tags, list):
                     tags.extend(self._extract_tags(nested_tags))
             else:
@@ -672,11 +662,11 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 tags.extend([str(v) for v in tags_data.values() if v])
         elif isinstance(tags_data, str):
             # Comma-separated string
-            tags = [tag.strip() for tag in tags_data.split(',') if tag.strip()]
+            tags = [tag.strip() for tag in tags_data.split(",") if tag.strip()]
 
         return tags
 
-    def _parse_aws_datetime(self, aws_datetime_str: Optional[str]) -> Optional[datetime]:
+    def _parse_aws_datetime(self, aws_datetime_str: str | None) -> datetime | None:
         """
         Parse AWS datetime strings (ISO 8601 format) to Python datetime objects.
 
@@ -696,12 +686,13 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             # AWS uses ISO 8601 format with timezone info
             # Example: "2023-01-01T12:00:00Z" or "2023-01-01T12:00:00+00:00"
             from dateutil import parser as dateutil_parser
+
             return dateutil_parser.isoparse(aws_datetime_str)
         except (ValueError, TypeError) as e:
             logger.warning(f"Failed to parse AWS datetime '{aws_datetime_str}': {e}")
             return None
 
-    def _get_dataset_details(self, dataset_id: str) -> Dict[str, Any]:
+    def _get_dataset_details(self, dataset_id: str) -> dict[str, Any]:
         """
         Get dataset details by calling GetDataSet API.
 
@@ -716,24 +707,20 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             PermissionError: If access denied
             ConnectionError: If unable to connect to AWS Data Exchange
         """
-        def execute_get_dataset() -> Dict[str, Any]:
+
+        def execute_get_dataset() -> dict[str, Any]:
             """Execute GetDataSet API call."""
             client = self._get_dataexchange_client()
             response = client.get_data_set(DataSetId=dataset_id)
             return response
 
         return self._execute_with_retry(
-            execute_get_dataset,
-            'GetDataSet',
-            f"Unable to get dataset '{dataset_id}': "
+            execute_get_dataset, "GetDataSet", f"Unable to get dataset '{dataset_id}': "
         )
 
     def _list_revisions(
-        self,
-        dataset_id: str,
-        max_results: Optional[int] = None,
-        next_token: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, dataset_id: str, max_results: int | None = None, next_token: str | None = None
+    ) -> dict[str, Any]:
         """
         List dataset revisions by calling ListDataSetRevisions API.
 
@@ -753,26 +740,29 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             NotFoundError: If dataset not found
             ConnectionError: If unable to connect to AWS Data Exchange
         """
-        def execute_list_revisions() -> Dict[str, Any]:
+
+        def execute_list_revisions() -> dict[str, Any]:
             """Execute ListDataSetRevisions API call."""
             client = self._get_dataexchange_client()
-            params = {'DataSetId': dataset_id}
+            params = {"DataSetId": dataset_id}
 
             if max_results is not None:
-                params['MaxResults'] = min(int(max_results), 100)  # AWS max is 100
+                params["MaxResults"] = min(int(max_results), 100)  # AWS max is 100
             if next_token:
-                params['NextToken'] = next_token
+                params["NextToken"] = next_token
 
             response = client.list_data_set_revisions(**params)
             return response
 
         return self._execute_with_retry(
             execute_list_revisions,
-            'ListDataSetRevisions',
-            f"Unable to list revisions for dataset '{dataset_id}': "
+            "ListDataSetRevisions",
+            f"Unable to list revisions for dataset '{dataset_id}': ",
         )
 
-    def _extract_odps_metadata(self, dataset_data: Dict[str, Any], revision_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _extract_odps_metadata(
+        self, dataset_data: dict[str, Any], revision_data: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """
         Extract ODPS contract metadata from AWS Data Exchange dataset data.
 
@@ -790,81 +780,85 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         odps_metadata = {}
 
         # Extract product details
-        dataset_id = dataset_data.get('Id', '')
-        dataset_name = dataset_data.get('Name', '')
-        dataset_description = dataset_data.get('Description', '')
+        dataset_id = dataset_data.get("Id", "")
+        dataset_name = dataset_data.get("Name", "")
+        dataset_description = dataset_data.get("Description", "")
         revision_id = None
         if revision_data:
-            revision_id = revision_data.get('Id', '')
-        elif dataset_data.get('LatestRevision'):
-            revision_id = dataset_data['LatestRevision'].get('Id', '')
+            revision_id = revision_data.get("Id", "")
+        elif dataset_data.get("LatestRevision"):
+            revision_id = dataset_data["LatestRevision"].get("Id", "")
 
-        odps_metadata['product_details'] = {
-            'productID': dataset_id,
-            'product_name': dataset_name,
-            'product_description': dataset_description or '',
-            'version': revision_id or ''
+        odps_metadata["product_details"] = {
+            "productID": dataset_id,
+            "product_name": dataset_name,
+            "product_description": dataset_description or "",
+            "version": revision_id or "",
         }
 
         # Extract pricing plans (AWS Data Exchange uses subscription-based pricing)
         # Pricing information may be in dataset metadata or asset metadata
         pricing_plans = []
-        if dataset_data.get('AssetType') == 'S3_SNAPSHOT':
+        if dataset_data.get("AssetType") == "S3_SNAPSHOT":
             # S3 snapshot datasets typically have subscription pricing
-            pricing_plans.append({
-                'planID': 'subscription',
-                'plan_name': 'AWS Data Exchange Subscription',
-                'billing_period': 'MONTHLY',  # AWS Data Exchange typically uses monthly billing
-                'currency': 'USD',
-                # Price information may not be available in API response
-                # It's typically set by the data provider in AWS Marketplace
-            })
+            pricing_plans.append(
+                {
+                    "planID": "subscription",
+                    "plan_name": "AWS Data Exchange Subscription",
+                    "billing_period": "MONTHLY",  # AWS Data Exchange typically uses monthly billing
+                    "currency": "USD",
+                    # Price information may not be available in API response
+                    # It's typically set by the data provider in AWS Marketplace
+                }
+            )
 
         if pricing_plans:
-            odps_metadata['pricing_plans'] = pricing_plans
+            odps_metadata["pricing_plans"] = pricing_plans
 
         # Extract access methods
         # AWS Data Exchange supports S3 export and API access
         access_methods = {}
-        asset_type = dataset_data.get('AssetType', '')
+        asset_type = dataset_data.get("AssetType", "")
 
-        if asset_type == 'S3_SNAPSHOT':
-            access_methods['S3_EXPORT'] = {
-                'method': 'S3_EXPORT',
-                'description': 'Export dataset to S3 bucket',
-                'requires_subscription': True
+        if asset_type == "S3_SNAPSHOT":
+            access_methods["S3_EXPORT"] = {
+                "method": "S3_EXPORT",
+                "description": "Export dataset to S3 bucket",
+                "requires_subscription": True,
             }
-        elif asset_type == 'API':
-            access_methods['API'] = {
-                'method': 'API',
-                'description': 'Access via AWS Data Exchange API',
-                'requires_subscription': True
+        elif asset_type == "API":
+            access_methods["API"] = {
+                "method": "API",
+                "description": "Access via AWS Data Exchange API",
+                "requires_subscription": True,
             }
-        elif asset_type == 'REDSHIFT_DATA_SHARE':
-            access_methods['REDSHIFT_DATA_SHARE'] = {
-                'method': 'REDSHIFT_DATA_SHARE',
-                'description': 'Access via Redshift data share',
-                'requires_subscription': True
+        elif asset_type == "REDSHIFT_DATA_SHARE":
+            access_methods["REDSHIFT_DATA_SHARE"] = {
+                "method": "REDSHIFT_DATA_SHARE",
+                "description": "Access via Redshift data share",
+                "requires_subscription": True,
             }
 
         if access_methods:
-            odps_metadata['access_methods'] = access_methods
+            odps_metadata["access_methods"] = access_methods
 
         # Extract payment gateways (AWS payment gateway)
         payment_gateways = {
-            'aws': {
-                'gateway_id': 'aws',
-                'gateway_name': 'AWS Payment Gateway',
-                'enabled': True,
-                'supported_currencies': ['USD'],
-                'payment_methods': ['credit_card', 'aws_account']
+            "aws": {
+                "gateway_id": "aws",
+                "gateway_name": "AWS Payment Gateway",
+                "enabled": True,
+                "supported_currencies": ["USD"],
+                "payment_methods": ["credit_card", "aws_account"],
             }
         }
-        odps_metadata['payment_gateways'] = payment_gateways
+        odps_metadata["payment_gateways"] = payment_gateways
 
         return odps_metadata
 
-    def _extract_odcs_metadata(self, dataset_data: Dict[str, Any], revision_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _extract_odcs_metadata(
+        self, dataset_data: dict[str, Any], revision_data: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """
         Extract ODCS contract metadata hints from AWS Data Exchange dataset.
 
@@ -882,70 +876,70 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
 
         # Extract schema hints (if available in dataset metadata)
         schema_hints = {}
-        if dataset_data.get('Schema'):
-            schema_hints['schema_format'] = dataset_data['Schema'].get('Format', '')
-            schema_hints['schema_name'] = dataset_data['Schema'].get('Name', '')
+        if dataset_data.get("Schema"):
+            schema_hints["schema_format"] = dataset_data["Schema"].get("Format", "")
+            schema_hints["schema_name"] = dataset_data["Schema"].get("Name", "")
 
         # Schema information may also be in revision assets
-        if revision_data and revision_data.get('Assets'):
+        if revision_data and revision_data.get("Assets"):
             # Assets may contain schema information
-            assets = revision_data['Assets']
+            assets = revision_data["Assets"]
             if assets:
                 # Try to extract schema from first asset
                 first_asset = assets[0] if isinstance(assets, list) else assets
                 if isinstance(first_asset, dict):
-                    asset_type = first_asset.get('AssetType', '')
-                    if asset_type == 'S3_SNAPSHOT':
-                        schema_hints['data_format'] = 'S3_SNAPSHOT'
-                    elif asset_type == 'API':
-                        schema_hints['data_format'] = 'API'
+                    asset_type = first_asset.get("AssetType", "")
+                    if asset_type == "S3_SNAPSHOT":
+                        schema_hints["data_format"] = "S3_SNAPSHOT"
+                    elif asset_type == "API":
+                        schema_hints["data_format"] = "API"
 
         # Also check dataset asset type
-        asset_type = dataset_data.get('AssetType', '')
-        if asset_type and 'data_format' not in schema_hints:
-            if asset_type == 'S3_SNAPSHOT':
-                schema_hints['data_format'] = 'S3_SNAPSHOT'
-            elif asset_type == 'API':
-                schema_hints['data_format'] = 'API'
-            elif asset_type == 'REDSHIFT_DATA_SHARE':
-                schema_hints['data_format'] = 'REDSHIFT_DATA_SHARE'
+        asset_type = dataset_data.get("AssetType", "")
+        if asset_type and "data_format" not in schema_hints:
+            if asset_type == "S3_SNAPSHOT":
+                schema_hints["data_format"] = "S3_SNAPSHOT"
+            elif asset_type == "API":
+                schema_hints["data_format"] = "API"
+            elif asset_type == "REDSHIFT_DATA_SHARE":
+                schema_hints["data_format"] = "REDSHIFT_DATA_SHARE"
 
         # Always include schema_hints (even if empty)
-        odcs_metadata['schema_hints'] = schema_hints
+        odcs_metadata["schema_hints"] = schema_hints
 
         # Extract quality hints (if available)
         quality_hints = {}
         # AWS Data Exchange doesn't provide explicit quality metrics in API
         # But we can infer from dataset metadata
-        if dataset_data.get('Origin'):
-            quality_hints['origin'] = dataset_data['Origin']
-        if dataset_data.get('OriginDetails'):
-            quality_hints['origin_details'] = dataset_data['OriginDetails']
+        if dataset_data.get("Origin"):
+            quality_hints["origin"] = dataset_data["Origin"]
+        if dataset_data.get("OriginDetails"):
+            quality_hints["origin_details"] = dataset_data["OriginDetails"]
 
         # Always include quality_hints (even if empty)
-        odcs_metadata['quality_hints'] = quality_hints
+        odcs_metadata["quality_hints"] = quality_hints
 
         # Extract SLA hints (always present)
         sla_hints = {}
         # AWS Data Exchange SLA information may be in dataset metadata
         # Typically, AWS Data Exchange provides availability SLA
-        sla_hints['availability'] = {
-            'target': '99.9%',  # AWS standard SLA
-            'description': 'AWS Data Exchange standard availability SLA'
+        sla_hints["availability"] = {
+            "target": "99.9%",  # AWS standard SLA
+            "description": "AWS Data Exchange standard availability SLA",
         }
 
         # Always include sla_hints
-        odcs_metadata['sla_hints'] = sla_hints
+        odcs_metadata["sla_hints"] = sla_hints
 
         return odcs_metadata
 
     # Abstract method implementations
     def list_listings(
         self,
-        filters: Optional[Dict[str, Any]] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None
-    ) -> List[MarketplaceListing]:
+        filters: dict[str, Any] | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[MarketplaceListing]:
         """
         List available listings (datasets) from AWS Data Exchange.
 
@@ -965,7 +959,8 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             ValueError: If filters or pagination parameters are invalid
             ConnectionError: If unable to connect to AWS Data Exchange
         """
-        def execute_list_datasets() -> List[MarketplaceListing]:
+
+        def execute_list_datasets() -> list[MarketplaceListing]:
             """Execute ListDataSets API call with pagination and filters."""
             client = self._get_dataexchange_client()
             listings = []
@@ -978,39 +973,30 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 return []
             max_results = min(limit, 100) if limit is not None else 100  # AWS max is 100
 
-            # Handle offset via pagination (skip items until offset is reached)
-            if offset and offset > 0:
-                # We'll need to paginate through results to skip offset items
-                # This is not ideal but AWS Data Exchange doesn't support offset directly
-                items_to_skip = offset
-
             while True:
                 # Build request parameters
-                params = {'MaxResults': max_results}
+                params = {"MaxResults": max_results}
 
                 # Apply server-side filters.
                 # Only ``Origin`` is a native ListDataSets parameter.
                 # ``Name`` filtering is applied client-side below because
                 # the AWS API does not accept a Name parameter.
-                if filters:
-                    if filters.get('origin'):
-                        params['Origin'] = filters['origin']
+                if filters and filters.get("origin"):
+                    params["Origin"] = filters["origin"]
 
                 if next_token:
-                    params['NextToken'] = next_token
+                    params["NextToken"] = next_token
 
                 # Call ListDataSets API with retry logic
                 def call_list_datasets():
                     return client.list_data_sets(**params)
 
                 response = self._execute_with_retry(
-                    call_list_datasets,
-                    'ListDataSets',
-                    'Unable to list datasets: '
+                    call_list_datasets, "ListDataSets", "Unable to list datasets: "
                 )
 
                 # Process datasets
-                datasets = response.get('DataSets', [])
+                datasets = response.get("DataSets", [])
 
                 for dataset_summary in datasets:
                     # Skip items until we reach offset
@@ -1019,7 +1005,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                         continue
 
                     try:
-                        dataset_id = dataset_summary.get('Id', '')
+                        dataset_id = dataset_summary.get("Id", "")
                         if not dataset_id:
                             logger.warning(f"Skipping dataset without ID: {dataset_summary}")
                             continue
@@ -1029,37 +1015,41 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
 
                         # Get latest revision if available
                         latest_revision = None
-                        if dataset_details.get('LatestRevision'):
-                            latest_revision = dataset_details['LatestRevision']
+                        if dataset_details.get("LatestRevision"):
+                            latest_revision = dataset_details["LatestRevision"]
 
                         # Extract ODPS and ODCS metadata
-                        odps_metadata = self._extract_odps_metadata(dataset_details, latest_revision)
-                        odcs_metadata = self._extract_odcs_metadata(dataset_details, latest_revision)
+                        odps_metadata = self._extract_odps_metadata(
+                            dataset_details, latest_revision
+                        )
+                        odcs_metadata = self._extract_odcs_metadata(
+                            dataset_details, latest_revision
+                        )
 
                         # Build MarketplaceListing
                         listing = MarketplaceListing(
                             marketplace_id=dataset_id,
                             marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE,
-                            title=dataset_details.get('Name', ''),
-                            description=dataset_details.get('Description', ''),
+                            title=dataset_details.get("Name", ""),
+                            description=dataset_details.get("Description", ""),
                             product_id=dataset_id,
-                            category=dataset_details.get('Origin', ''),
-                            tags=self._extract_tags(dataset_details.get('Tags')),
-                            pricing_plans=odps_metadata.get('pricing_plans', []),
-                            access_methods=odps_metadata.get('access_methods', {}),
-                            payment_gateways=odps_metadata.get('payment_gateways', {}),
+                            category=dataset_details.get("Origin", ""),
+                            tags=self._extract_tags(dataset_details.get("Tags")),
+                            pricing_plans=odps_metadata.get("pricing_plans", []),
+                            access_methods=odps_metadata.get("access_methods", {}),
+                            payment_gateways=odps_metadata.get("payment_gateways", {}),
                             metadata={
-                                'odps_metadata': odps_metadata,
-                                'odcs_metadata': odcs_metadata,
-                                'asset_type': dataset_details.get('AssetType', ''),
-                                'origin': dataset_details.get('Origin', ''),
-                                'origin_details': dataset_details.get('OriginDetails', {}),
-                                'created_at': dataset_details.get('CreatedAt', ''),
-                                'updated_at': dataset_details.get('UpdatedAt', ''),
+                                "odps_metadata": odps_metadata,
+                                "odcs_metadata": odcs_metadata,
+                                "asset_type": dataset_details.get("AssetType", ""),
+                                "origin": dataset_details.get("Origin", ""),
+                                "origin_details": dataset_details.get("OriginDetails", {}),
+                                "created_at": dataset_details.get("CreatedAt", ""),
+                                "updated_at": dataset_details.get("UpdatedAt", ""),
                             },
-                            created_at=self._parse_aws_datetime(dataset_details.get('CreatedAt')),
-                            updated_at=self._parse_aws_datetime(dataset_details.get('UpdatedAt')),
-                            url=f"https://console.aws.amazon.com/dataexchange/home?region={self._region_name}#/data-sets/{dataset_id}"
+                            created_at=self._parse_aws_datetime(dataset_details.get("CreatedAt")),
+                            updated_at=self._parse_aws_datetime(dataset_details.get("UpdatedAt")),
+                            url=f"https://console.aws.amazon.com/dataexchange/home?region={self._region_name}#/data-sets/{dataset_id}",
                         )
                         # Apply client-side name filter (AWS API doesn't
                         # accept a Name parameter on ListDataSets).
@@ -1086,7 +1076,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     break
 
                 # Check for more pages
-                next_token = response.get('NextToken')
+                next_token = response.get("NextToken")
                 if not next_token:
                     break
 
@@ -1103,9 +1093,8 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             if limit > 100:
                 raise ValueError("limit cannot exceed 100 (AWS Data Exchange API limit)")
 
-        if offset is not None:
-            if not isinstance(offset, int) or offset < 0:
-                raise ValueError("offset must be a non-negative integer")
+        if offset is not None and (not isinstance(offset, int) or offset < 0):
+            raise ValueError("offset must be a non-negative integer")
 
         try:
             return self._circuit_breaker.call(execute_list_datasets)
@@ -1113,10 +1102,10 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             raise
         except Exception as e:
             self._log_with_context(
-                'warning',
+                "warning",
                 "AWS Data Exchange list listings failed",
                 error=str(e),
-                error_type=type(e).__name__
+                error_type=type(e).__name__,
             )
             raise ConnectionError(f"Failed to list listings: {e}") from e
 
@@ -1149,14 +1138,14 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
 
                 # Get dataset revisions
                 revisions_response = self._list_revisions(listing_id, max_results=1)
-                revisions = revisions_response.get('Revisions', [])
+                revisions = revisions_response.get("Revisions", [])
 
                 # Use latest revision if available, otherwise use dataset's LatestRevision
                 latest_revision = None
                 if revisions:
                     latest_revision = revisions[0]  # Revisions are typically sorted newest first
-                elif dataset_details.get('LatestRevision'):
-                    latest_revision = dataset_details['LatestRevision']
+                elif dataset_details.get("LatestRevision"):
+                    latest_revision = dataset_details["LatestRevision"]
 
                 # Extract ODPS and ODCS metadata
                 odps_metadata = self._extract_odps_metadata(dataset_details, latest_revision)
@@ -1166,27 +1155,31 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 listing = MarketplaceListing(
                     marketplace_id=listing_id,
                     marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE,
-                    title=dataset_details.get('Name', ''),
-                    description=dataset_details.get('Description', ''),
+                    title=dataset_details.get("Name", ""),
+                    description=dataset_details.get("Description", ""),
                     product_id=listing_id,
-                    category=dataset_details.get('Origin', ''),
-                    tags=dataset_details.get('Tags', {}).get('Tags', []) if isinstance(dataset_details.get('Tags'), dict) else [],
-                    pricing_plans=odps_metadata.get('pricing_plans', []),
-                    access_methods=odps_metadata.get('access_methods', {}),
-                    payment_gateways=odps_metadata.get('payment_gateways', {}),
+                    category=dataset_details.get("Origin", ""),
+                    tags=dataset_details.get("Tags", {}).get("Tags", [])
+                    if isinstance(dataset_details.get("Tags"), dict)
+                    else [],
+                    pricing_plans=odps_metadata.get("pricing_plans", []),
+                    access_methods=odps_metadata.get("access_methods", {}),
+                    payment_gateways=odps_metadata.get("payment_gateways", {}),
                     metadata={
-                        'odps_metadata': odps_metadata,
-                        'odcs_metadata': odcs_metadata,
-                        'asset_type': dataset_details.get('AssetType', ''),
-                        'origin': dataset_details.get('Origin', ''),
-                        'origin_details': dataset_details.get('OriginDetails', {}),
-                        'created_at': dataset_details.get('CreatedAt', ''),
-                        'updated_at': dataset_details.get('UpdatedAt', ''),
-                        'latest_revision_id': latest_revision.get('Id', '') if latest_revision else '',
+                        "odps_metadata": odps_metadata,
+                        "odcs_metadata": odcs_metadata,
+                        "asset_type": dataset_details.get("AssetType", ""),
+                        "origin": dataset_details.get("Origin", ""),
+                        "origin_details": dataset_details.get("OriginDetails", {}),
+                        "created_at": dataset_details.get("CreatedAt", ""),
+                        "updated_at": dataset_details.get("UpdatedAt", ""),
+                        "latest_revision_id": latest_revision.get("Id", "")
+                        if latest_revision
+                        else "",
                     },
-                    created_at=self._parse_aws_datetime(dataset_details.get('CreatedAt')),
-                    updated_at=self._parse_aws_datetime(dataset_details.get('UpdatedAt')),
-                    url=f"https://console.aws.amazon.com/dataexchange/home?region={self._region_name}#/data-sets/{listing_id}"
+                    created_at=self._parse_aws_datetime(dataset_details.get("CreatedAt")),
+                    updated_at=self._parse_aws_datetime(dataset_details.get("UpdatedAt")),
+                    url=f"https://console.aws.amazon.com/dataexchange/home?region={self._region_name}#/data-sets/{listing_id}",
                 )
 
                 return listing
@@ -1205,7 +1198,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             logger.warning(f"AWS Data Exchange get listing failed: {e}")
             raise ConnectionError(f"Failed to get listing '{listing_id}': {e}") from e
 
-    def list_resources(self, listing_id: str) -> List[MarketplaceResource]:
+    def list_resources(self, listing_id: str) -> list[MarketplaceResource]:
         """
         List resources (assets) associated with an AWS Data Exchange dataset.
 
@@ -1232,25 +1225,25 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         if not isinstance(listing_id, str) or not listing_id.strip():
             raise ValueError("listing_id must be a non-empty string")
 
-        def execute_list_resources() -> List[MarketplaceResource]:
+        def execute_list_resources() -> list[MarketplaceResource]:
             """Execute ListRevisionAssets API call and build MarketplaceResource objects."""
             # Get dataset details to find latest revision
             dataset_details = self._get_dataset_details(listing_id)
 
             # Get latest revision ID
             latest_revision_id = None
-            if dataset_details.get('LatestRevision'):
-                latest_revision_id = dataset_details['LatestRevision'].get('Id', '')
+            if dataset_details.get("LatestRevision"):
+                latest_revision_id = dataset_details["LatestRevision"].get("Id", "")
 
             if not latest_revision_id:
                 # Try to get revisions
                 revisions_response = self._list_revisions(listing_id, max_results=1)
-                revisions = revisions_response.get('Revisions', [])
+                revisions = revisions_response.get("Revisions", [])
                 if revisions:
-                    latest_revision_id = revisions[0].get('Id', '')
+                    latest_revision_id = revisions[0].get("Id", "")
 
             if not latest_revision_id:
-                self._log_with_context('warning', f"No revisions found for dataset '{listing_id}'")
+                self._log_with_context("warning", f"No revisions found for dataset '{listing_id}'")
                 return []
 
             # List assets in the latest revision
@@ -1260,13 +1253,13 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
 
             while True:
                 params = {
-                    'DataSetId': listing_id,
-                    'RevisionId': latest_revision_id,
-                    'MaxResults': 100  # AWS max
+                    "DataSetId": listing_id,
+                    "RevisionId": latest_revision_id,
+                    "MaxResults": 100,  # AWS max
                 }
 
                 if next_token:
-                    params['NextToken'] = next_token
+                    params["NextToken"] = next_token
 
                 # Call ListRevisionAssets API with retry logic
                 def call_list_revision_assets():
@@ -1274,74 +1267,74 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
 
                 response = self._execute_with_retry(
                     call_list_revision_assets,
-                    'ListRevisionAssets',
-                    f"Unable to list assets for dataset '{listing_id}': "
+                    "ListRevisionAssets",
+                    f"Unable to list assets for dataset '{listing_id}': ",
                 )
-                assets = response.get('Assets', [])
+                assets = response.get("Assets", [])
 
                 for asset in assets:
-                        asset_id = asset.get('Id', '')
-                        asset_name = asset.get('Name', '')
-                        asset_type = asset.get('AssetType', '')
+                    asset_id = asset.get("Id", "")
+                    asset_name = asset.get("Name", "")
+                    asset_type = asset.get("AssetType", "")
 
-                        # Determine resource type based on asset type
-                        resource_type = 'FILE'  # Default
-                        if asset_type == 'S3_SNAPSHOT':
-                            resource_type = 'S3_OBJECT'
-                        elif asset_type == 'API':
-                            resource_type = 'API_ENDPOINT'
-                        elif asset_type == 'REDSHIFT_DATA_SHARE':
-                            resource_type = 'REDSHIFT_TABLE'
+                    # Determine resource type based on asset type
+                    resource_type = "FILE"  # Default
+                    if asset_type == "S3_SNAPSHOT":
+                        resource_type = "S3_OBJECT"
+                    elif asset_type == "API":
+                        resource_type = "API_ENDPOINT"
+                    elif asset_type == "REDSHIFT_DATA_SHARE":
+                        resource_type = "REDSHIFT_TABLE"
 
-                        # Extract asset source details
-                        asset_source = asset.get('Source', {})
-                        asset_source_id = asset_source.get('Id', '')
-                        asset_source_bucket = asset_source.get('Bucket', '')
-                        asset_source_key = asset_source.get('Key', '')
+                    # Extract asset source details
+                    asset_source = asset.get("Source", {})
+                    asset_source_id = asset_source.get("Id", "")
+                    asset_source_bucket = asset_source.get("Bucket", "")
+                    asset_source_key = asset_source.get("Key", "")
 
-                        # Build resource URL or identifier
-                        resource_url = None
-                        if asset_type == 'S3_SNAPSHOT' and asset_source_bucket and asset_source_key:
-                            resource_url = f"s3://{asset_source_bucket}/{asset_source_key}"
-                        elif asset_type == 'API':
-                            resource_url = f"api://{asset_source_id}"
+                    # Build resource URL or identifier
+                    resource_url = None
+                    if asset_type == "S3_SNAPSHOT" and asset_source_bucket and asset_source_key:
+                        resource_url = f"s3://{asset_source_bucket}/{asset_source_key}"
+                    elif asset_type == "API":
+                        resource_url = f"api://{asset_source_id}"
 
-                        # Extract format from asset details
-                        resource_format = None
-                        if asset_source_key:
-                            # Try to infer format from file extension
-                            if asset_source_key.endswith('.csv'):
-                                resource_format = 'CSV'
-                            elif asset_source_key.endswith('.json'):
-                                resource_format = 'JSON'
-                            elif asset_source_key.endswith('.parquet'):
-                                resource_format = 'PARQUET'
-                            elif asset_source_key.endswith('.avro'):
-                                resource_format = 'AVRO'
+                    # Extract format from asset details
+                    resource_format = None
+                    if asset_source_key:
+                        # Try to infer format from file extension
+                        if asset_source_key.endswith(".csv"):
+                            resource_format = "CSV"
+                        elif asset_source_key.endswith(".json"):
+                            resource_format = "JSON"
+                        elif asset_source_key.endswith(".parquet"):
+                            resource_format = "PARQUET"
+                        elif asset_source_key.endswith(".avro"):
+                            resource_format = "AVRO"
 
-                        resource = MarketplaceResource(
-                            resource_id=asset_id,
-                            resource_type=resource_type,
-                            name=asset_name or asset_id,
-                            description=asset.get('Description', ''),
-                            url=resource_url,
-                            format=resource_format,
-                            size_bytes=asset.get('Size', None),
-                            metadata={
-                                'asset_type': asset_type,
-                                'asset_source_id': asset_source_id,
-                                'asset_source_bucket': asset_source_bucket,
-                                'asset_source_key': asset_source_key,
-                                'revision_id': latest_revision_id,
-                                'dataset_id': listing_id,
-                                'external': True,  # Mark as external resource
-                                'download_url': resource_url,  # For on-demand download
-                            }
-                        )
-                        resources.append(resource)
+                    resource = MarketplaceResource(
+                        resource_id=asset_id,
+                        resource_type=resource_type,
+                        name=asset_name or asset_id,
+                        description=asset.get("Description", ""),
+                        url=resource_url,
+                        format=resource_format,
+                        size_bytes=asset.get("Size", None),
+                        metadata={
+                            "asset_type": asset_type,
+                            "asset_source_id": asset_source_id,
+                            "asset_source_bucket": asset_source_bucket,
+                            "asset_source_key": asset_source_key,
+                            "revision_id": latest_revision_id,
+                            "dataset_id": listing_id,
+                            "external": True,  # Mark as external resource
+                            "download_url": resource_url,  # For on-demand download
+                        },
+                    )
+                    resources.append(resource)
 
                 # Check for more pages
-                next_token = response.get('NextToken')
+                next_token = response.get("NextToken")
                 if not next_token:
                     break
 
@@ -1353,13 +1346,15 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             raise
         except Exception as e:
             self._log_with_context(
-                'warning',
+                "warning",
                 "AWS Data Exchange list resources failed",
                 dataset_id=listing_id,
                 error=str(e),
-                error_type=type(e).__name__
+                error_type=type(e).__name__,
             )
-            raise ConnectionError(f"Failed to list resources for dataset '{listing_id}': {e}") from e
+            raise ConnectionError(
+                f"Failed to list resources for dataset '{listing_id}': {e}"
+            ) from e
 
     def create_listing(self, listing: MarketplaceListing) -> MarketplaceListing:
         """
@@ -1371,11 +1366,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             "AWS Data Exchange connector does not support push operations (create_listing)"
         )
 
-    def update_listing(
-        self,
-        listing_id: str,
-        listing: MarketplaceListing
-    ) -> MarketplaceListing:
+    def update_listing(self, listing_id: str, listing: MarketplaceListing) -> MarketplaceListing:
         """
         Update an existing listing in AWS Data Exchange (PUSH operation).
 
@@ -1386,9 +1377,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         )
 
     def publish_resource(
-        self,
-        listing_id: str,
-        resource: MarketplaceResource
+        self, listing_id: str, resource: MarketplaceResource
     ) -> MarketplaceResource:
         """
         Publish a resource to an AWS Data Exchange dataset (PUSH operation).
@@ -1414,34 +1403,37 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             PermissionError: If subscription fails or user lacks permission
             ConnectionError: If unable to connect to AWS Data Exchange
         """
+
         def check_subscription() -> None:
             """Check subscription status by attempting to list revisions."""
             client = self._get_dataexchange_client()
             # Check subscription status by attempting to list revisions
             # If we can list revisions, we're subscribed
-            response = client.list_data_set_revisions(DataSetId=dataset_id, MaxResults=1)
+            client.list_data_set_revisions(DataSetId=dataset_id, MaxResults=1)
             # If successful, we're already subscribed
-            self._log_with_context('info', f"Dataset {dataset_id} is already subscribed", dataset_id=dataset_id)
+            self._log_with_context(
+                "info", f"Dataset {dataset_id} is already subscribed", dataset_id=dataset_id
+            )
 
         try:
             self._execute_with_retry(
                 check_subscription,
-                'ListDataSetRevisions',
-                f"Unable to check subscription for dataset '{dataset_id}': "
+                "ListDataSetRevisions",
+                f"Unable to check subscription for dataset '{dataset_id}': ",
             )
         except PermissionError as e:
             # AccessDeniedException means not subscribed
             self._log_with_context(
-                'warning',
+                "warning",
                 f"Dataset {dataset_id} is not subscribed. "
                 "Subscription must be done via AWS Console or with additional permissions.",
-                dataset_id=dataset_id
+                dataset_id=dataset_id,
             )
             raise PermissionError(
                 f"Dataset {dataset_id} is not subscribed. "
                 "Please subscribe via AWS Console or ensure you have subscription permissions."
             ) from e
-        except Exception as e:
+        except Exception:
             raise
 
     def _get_latest_revision(self, dataset_id: str) -> str:
@@ -1460,14 +1452,14 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         """
         try:
             revisions_response = self._list_revisions(dataset_id, max_results=1)
-            revisions = revisions_response.get('Revisions', [])
+            revisions = revisions_response.get("Revisions", [])
 
             if not revisions:
                 raise NotFoundError(f"Dataset {dataset_id} has no revisions")
 
             # Sort by CreatedAt descending to get latest
             latest_revision = revisions[0]
-            revision_id = latest_revision.get('Id')
+            revision_id = latest_revision.get("Id")
 
             if not revision_id:
                 raise NotFoundError(f"Dataset {dataset_id} revision has no ID")
@@ -1486,8 +1478,8 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         self,
         dataset_id: str,
         revision_id: str,
-        destination_bucket: Optional[str] = None,
-        destination_key_prefix: Optional[str] = None
+        destination_bucket: str | None = None,
+        destination_key_prefix: str | None = None,
     ) -> str:
         """
         Create an export job to export assets from AWS Data Exchange to S3.
@@ -1512,9 +1504,11 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             raise ValueError("revision_id must be a non-empty string")
 
         # Get destination bucket from options or settings
-        if not destination_bucket or (isinstance(destination_bucket, str) and not destination_bucket.strip()):
+        if not destination_bucket or (
+            isinstance(destination_bucket, str) and not destination_bucket.strip()
+        ):
             # Try to get from Django settings
-            destination_bucket = getattr(settings, 'AWS_DATA_EXCHANGE_EXPORT_BUCKET', None)
+            destination_bucket = getattr(settings, "AWS_DATA_EXCHANGE_EXPORT_BUCKET", None)
             if not destination_bucket:
                 raise ValueError(
                     "Destination S3 bucket must be specified. "
@@ -1523,7 +1517,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
 
         # Set default key prefix
         if not destination_key_prefix:
-            destination_key_prefix = 'dataexchange-exports/'
+            destination_key_prefix = "dataexchange-exports/"
 
         def create_job_operation() -> str:
             """Create export job operation."""
@@ -1531,40 +1525,40 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
 
             # Create export job
             job_params = {
-                'Type': 'EXPORT_ASSETS_TO_S3',
-                'Details': {
-                    'ExportAssetsToS3': {
-                        'DataSetId': dataset_id,
-                        'RevisionId': revision_id,
-                        'AssetDestination': {
-                            'S3Destination': {
-                                'Bucket': destination_bucket,
-                                'KeyPrefix': destination_key_prefix
+                "Type": "EXPORT_ASSETS_TO_S3",
+                "Details": {
+                    "ExportAssetsToS3": {
+                        "DataSetId": dataset_id,
+                        "RevisionId": revision_id,
+                        "AssetDestination": {
+                            "S3Destination": {
+                                "Bucket": destination_bucket,
+                                "KeyPrefix": destination_key_prefix,
                             }
-                        }
+                        },
                     }
-                }
+                },
             }
 
             response = client.create_job(**job_params)
-            job_id = response.get('Id')
+            job_id = response.get("Id")
 
             if not job_id:
                 raise ValueError("Failed to create export job: No job ID returned")
 
             self._log_with_context(
-                'info',
+                "info",
                 f"Created export job {job_id} for dataset {dataset_id}, revision {revision_id}",
                 job_id=job_id,
                 dataset_id=dataset_id,
-                revision_id=revision_id
+                revision_id=revision_id,
             )
             return job_id
 
         return self._execute_with_retry(
             create_job_operation,
-            'CreateJob',
-            f"Unable to create export job for dataset '{dataset_id}': "
+            "CreateJob",
+            f"Unable to create export job for dataset '{dataset_id}': ",
         )
 
     def _start_job(self, job_id: str) -> None:
@@ -1579,24 +1573,20 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             ValueError: If job cannot be started (already started, invalid state, etc.)
             ConnectionError: If unable to connect to AWS Data Exchange
         """
+
         def start_job_operation() -> None:
             """Start export job operation."""
             client = self._get_dataexchange_client()
             client.start_job(JobId=job_id)
-            self._log_with_context('info', f"Started export job {job_id}", job_id=job_id)
+            self._log_with_context("info", f"Started export job {job_id}", job_id=job_id)
 
         self._execute_with_retry(
-            start_job_operation,
-            'StartJob',
-            f"Unable to start job '{job_id}': "
+            start_job_operation, "StartJob", f"Unable to start job '{job_id}': "
         )
 
     def _wait_for_job_completion(
-        self,
-        job_id: str,
-        timeout_seconds: int = 3600,
-        poll_interval_seconds: int = 5
-    ) -> Dict[str, Any]:
+        self, job_id: str, timeout_seconds: int = 3600, poll_interval_seconds: int = 5
+    ) -> dict[str, Any]:
         """
         Wait for an export job to complete by polling GetJob API.
 
@@ -1630,9 +1620,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
 
             try:
                 response = self._execute_with_retry(
-                    get_job_status,
-                    'GetJob',
-                    f"Unable to get job status for '{job_id}': "
+                    get_job_status, "GetJob", f"Unable to get job status for '{job_id}': "
                 )
             except NotFoundError:
                 raise NotFoundError(f"Job {job_id} not found")
@@ -1643,39 +1631,39 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     raise
                 # Log and continue polling on connection errors
                 self._log_with_context(
-                    'warning',
+                    "warning",
                     f"Error getting job status for {job_id}, retrying...",
                     job_id=job_id,
-                    error=str(e)
+                    error=str(e),
                 )
                 time.sleep(poll_interval_seconds)
                 continue
 
-            job = response.get('Job', {})
-            state = job.get('State', '')
+            job = response.get("Job", {})
+            state = job.get("State", "")
 
-            if state == 'COMPLETED':
-                self._log_with_context('info', f"Job {job_id} completed successfully", job_id=job_id)
-                return job
-            elif state in ('ERROR', 'CANCELLED'):
-                error_message = job.get('Errors', [{}])[0].get('Message', 'Unknown error') if job.get('Errors') else 'Unknown error'
-                raise RuntimeError(
-                    f"Job {job_id} failed with state {state}: {error_message}"
+            if state == "COMPLETED":
+                self._log_with_context(
+                    "info", f"Job {job_id} completed successfully", job_id=job_id
                 )
-            elif state in ('WAITING', 'IN_PROGRESS'):
+                return job
+            elif state in ("ERROR", "CANCELLED"):
+                error_message = (
+                    job.get("Errors", [{}])[0].get("Message", "Unknown error")
+                    if job.get("Errors")
+                    else "Unknown error"
+                )
+                raise RuntimeError(f"Job {job_id} failed with state {state}: {error_message}")
+            elif state in ("WAITING", "IN_PROGRESS"):
                 # Continue polling
-                self._log_with_context('debug', f"Job {job_id} state: {state}, waiting...", job_id=job_id, state=state)
+                self._log_with_context(
+                    "debug", f"Job {job_id} state: {state}, waiting...", job_id=job_id, state=state
+                )
                 time.sleep(poll_interval_seconds)
             else:
-                raise RuntimeError(
-                    f"Job {job_id} in unknown state: {state}"
-                )
+                raise RuntimeError(f"Job {job_id} in unknown state: {state}")
 
-    def _download_exported_assets(
-        self,
-        job_result: Dict[str, Any],
-        destination_path: str
-    ) -> str:
+    def _download_exported_assets(self, job_result: dict[str, Any], destination_path: str) -> str:
         """
         Download exported assets from S3 to local filesystem.
 
@@ -1694,19 +1682,22 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         """
         try:
             # Extract S3 destination from job result
-            details = job_result.get('Details', {})
-            export_details = details.get('ExportAssetsToS3', {})
-            asset_destination = export_details.get('AssetDestination', {})
-            s3_destination = asset_destination.get('S3Destination', {})
+            details = job_result.get("Details", {})
+            export_details = details.get("ExportAssetsToS3", {})
+            asset_destination = export_details.get("AssetDestination", {})
+            s3_destination = asset_destination.get("S3Destination", {})
 
-            bucket = s3_destination.get('Bucket')
-            key_prefix = s3_destination.get('KeyPrefix', '')
+            bucket = s3_destination.get("Bucket")
+            key_prefix = s3_destination.get("KeyPrefix", "")
 
             if not bucket:
                 raise ValueError("Job result does not contain S3 bucket information")
 
             # Ensure destination directory exists
-            os.makedirs(os.path.dirname(destination_path) if os.path.dirname(destination_path) else '.', exist_ok=True)
+            os.makedirs(
+                os.path.dirname(destination_path) if os.path.dirname(destination_path) else ".",
+                exist_ok=True,
+            )
 
             # Get S3 client
             s3_client = self._get_s3_client()
@@ -1714,16 +1705,16 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             # List objects in S3 bucket/prefix with retry logic
             def list_s3_objects():
                 objects = []
-                paginator = s3_client.get_paginator('list_objects_v2')
+                paginator = s3_client.get_paginator("list_objects_v2")
                 for page in paginator.paginate(Bucket=bucket, Prefix=key_prefix):
-                    if 'Contents' in page:
-                        objects.extend(page['Contents'])
+                    if "Contents" in page:
+                        objects.extend(page["Contents"])
                 return objects
 
             objects = self._execute_with_retry(
                 list_s3_objects,
-                'ListObjectsV2',
-                f"Unable to list objects in S3 bucket '{bucket}': "
+                "ListObjectsV2",
+                f"Unable to list objects in S3 bucket '{bucket}': ",
             )
 
             if not objects:
@@ -1732,7 +1723,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             # Download all objects (or first object if single file expected)
             downloaded_files = []
             for obj in objects:
-                s3_key = obj['Key']
+                s3_key = obj["Key"]
                 # Create local file path
                 if len(objects) == 1:
                     # Single file - use destination_path as-is
@@ -1741,8 +1732,10 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     # Multiple files - append filename to destination_path
                     filename = os.path.basename(s3_key)
                     local_file_path = os.path.join(
-                        os.path.dirname(destination_path) if os.path.dirname(destination_path) else '.',
-                        filename
+                        os.path.dirname(destination_path)
+                        if os.path.dirname(destination_path)
+                        else ".",
+                        filename,
                     )
 
                 # Download file with retry logic
@@ -1750,25 +1743,28 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     s3_client.download_file(bucket, s3_key, local_file_path)
 
                 self._execute_with_retry(
-                    download_s3_file,
-                    'GetObject',
-                    f"Unable to download S3 object '{s3_key}': "
+                    download_s3_file, "GetObject", f"Unable to download S3 object '{s3_key}': "
                 )
                 downloaded_files.append(local_file_path)
-                self._log_with_context('info', f"Downloaded {s3_key} to {local_file_path}", s3_key=s3_key, local_path=local_file_path)
+                self._log_with_context(
+                    "info",
+                    f"Downloaded {s3_key} to {local_file_path}",
+                    s3_key=s3_key,
+                    local_path=local_file_path,
+                )
 
             # Return first file path (or destination_path if single file)
             return downloaded_files[0] if len(downloaded_files) == 1 else destination_path
 
-        except (ValueError, PermissionError, IOError):
+        except (OSError, ValueError, PermissionError):
             raise
         except ClientError as e:
             # Map S3 errors appropriately
-            error_code = e.response.get('Error', {}).get('Code', '')
-            error_message = e.response.get('Error', {}).get('Message', str(e))
-            if error_code == 'NoSuchBucket':
+            error_code = e.response.get("Error", {}).get("Code", "")
+            error_message = e.response.get("Error", {}).get("Message", str(e))
+            if error_code == "NoSuchBucket":
                 raise ValueError(f"S3 bucket not found: {bucket}") from e
-            if error_code == 'AccessDenied':
+            if error_code == "AccessDenied":
                 raise PermissionError(
                     f"Access denied when downloading from S3 bucket {bucket}: {error_message}"
                 ) from e
@@ -1776,15 +1772,11 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 f"Failed to download from S3: {error_code} - {error_message}"
             ) from e
         except OSError as e:
-            raise IOError(
-                f"Unable to write to destination path {destination_path}: {e}"
-            ) from e
+            raise OSError(f"Unable to write to destination path {destination_path}: {e}") from e
         except Exception as e:
-            raise ConnectionError(
-                f"Unexpected error downloading from S3: {e}"
-            ) from e
+            raise ConnectionError(f"Unexpected error downloading from S3: {e}") from e
 
-    def _extract_schema_from_assets(self, file_path: str) -> Dict[str, Any]:
+    def _extract_schema_from_assets(self, file_path: str) -> dict[str, Any]:
         """
         Extract schema metadata from downloaded assets.
 
@@ -1811,92 +1803,84 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             # Determine file format from extension
             file_ext = os.path.splitext(file_path)[1].lower()
 
-            if file_ext == '.csv':
+            if file_ext == ".csv":
                 # CSV file - basic schema extraction
                 import csv
-                with open(file_path, 'r', encoding='utf-8') as f:
+
+                with open(file_path, encoding="utf-8") as f:
                     reader = csv.DictReader(f)
                     fields = []
                     for field_name in reader.fieldnames or []:
-                        fields.append({
-                            'name': field_name,
-                            'type': 'string',  # Default to string for CSV
-                            'nullable': True
-                        })
-                    schema_hints['fields'] = fields
-                    schema_hints['format'] = 'CSV'
+                        fields.append(
+                            {
+                                "name": field_name,
+                                "type": "string",  # Default to string for CSV
+                                "nullable": True,
+                            }
+                        )
+                    schema_hints["fields"] = fields
+                    schema_hints["format"] = "CSV"
 
-            elif file_ext == '.json':
+            elif file_ext == ".json":
                 # JSON file - try to infer schema from first object
                 import json
-                with open(file_path, 'r', encoding='utf-8') as f:
+
+                with open(file_path, encoding="utf-8") as f:
                     data = json.load(f)
                     if isinstance(data, list) and len(data) > 0:
                         # Array of objects - infer from first object
                         first_obj = data[0]
                         fields = []
                         for key, value in first_obj.items():
-                            field_type = 'string'
+                            field_type = "string"
                             if isinstance(value, bool):
-                                field_type = 'boolean'
+                                field_type = "boolean"
                             elif isinstance(value, int):
-                                field_type = 'integer'
+                                field_type = "integer"
                             elif isinstance(value, float):
-                                field_type = 'float'
+                                field_type = "float"
                             elif isinstance(value, dict):
-                                field_type = 'object'
+                                field_type = "object"
                             elif isinstance(value, list):
-                                field_type = 'array'
-                            fields.append({
-                                'name': key,
-                                'type': field_type,
-                                'nullable': True
-                            })
-                        schema_hints['fields'] = fields
-                        schema_hints['format'] = 'JSON'
+                                field_type = "array"
+                            fields.append({"name": key, "type": field_type, "nullable": True})
+                        schema_hints["fields"] = fields
+                        schema_hints["format"] = "JSON"
                     elif isinstance(data, dict):
                         # Single object - infer schema
                         fields = []
                         for key, value in data.items():
-                            field_type = 'string'
+                            field_type = "string"
                             if isinstance(value, bool):
-                                field_type = 'boolean'
+                                field_type = "boolean"
                             elif isinstance(value, int):
-                                field_type = 'integer'
+                                field_type = "integer"
                             elif isinstance(value, float):
-                                field_type = 'float'
+                                field_type = "float"
                             elif isinstance(value, dict):
-                                field_type = 'object'
+                                field_type = "object"
                             elif isinstance(value, list):
-                                field_type = 'array'
-                            fields.append({
-                                'name': key,
-                                'type': field_type,
-                                'nullable': True
-                            })
-                        schema_hints['fields'] = fields
-                        schema_hints['format'] = 'JSON'
+                                field_type = "array"
+                            fields.append({"name": key, "type": field_type, "nullable": True})
+                        schema_hints["fields"] = fields
+                        schema_hints["format"] = "JSON"
 
-            elif file_ext == '.parquet':
+            elif file_ext == ".parquet":
                 # Parquet file - would need pyarrow or similar
-                schema_hints['format'] = 'PARQUET'
-                schema_hints['note'] = 'Parquet schema extraction requires additional dependencies'
+                schema_hints["format"] = "PARQUET"
+                schema_hints["note"] = "Parquet schema extraction requires additional dependencies"
 
             else:
-                schema_hints['format'] = 'UNKNOWN'
-                schema_hints['note'] = f'Schema extraction not supported for file type: {file_ext}'
+                schema_hints["format"] = "UNKNOWN"
+                schema_hints["note"] = f"Schema extraction not supported for file type: {file_ext}"
 
         except Exception as e:
             logger.warning(f"Failed to extract schema from {file_path}: {e}")
-            schema_hints['error'] = str(e)
+            schema_hints["error"] = str(e)
 
-        return {'schema': schema_hints} if schema_hints else {}
+        return {"schema": schema_hints} if schema_hints else {}
 
-    def download_resource(
-        self,
-        resource_id: str,
-        destination_path: str
-    ) -> str:
+    def download_resource(self, resource_id: str, destination_path: str) -> str:
         """
         Download a resource from AWS Data Exchange on-demand (PULL operation).
 
@@ -1945,16 +1929,16 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         connector.download_resource("asset-456", "/tmp/asset_data.csv")
         ```
         """
+
         def execute_download() -> str:
             """Execute download with circuit breaker protection."""
             # Parse resource_id to determine dataset_id, revision_id, asset_id
             dataset_id = None
             revision_id = None
-            asset_id = None
 
-            if ':' in resource_id:
+            if ":" in resource_id:
                 # Format: "dataset_id:revision_id:asset_id" or "dataset_id:revision_id"
-                parts = resource_id.split(':')
+                parts = resource_id.split(":")
                 if len(parts) >= 1:
                     dataset_id = parts[0]
                 if len(parts) >= 2:
@@ -1977,9 +1961,13 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 # If subscription fails, log warning but continue
                 # User may have subscribed via AWS Console
                 if isinstance(e, PermissionError):
-                    logger.warning(f"Could not verify subscription for dataset {dataset_id}, continuing...")
+                    logger.warning(
+                        f"Could not verify subscription for dataset {dataset_id}, continuing..."
+                    )
                 else:
-                    logger.warning(f"Subscription check failed for dataset {dataset_id}: {e}, continuing...")
+                    logger.warning(
+                        f"Subscription check failed for dataset {dataset_id}: {e}, continuing..."
+                    )
 
             # Step 2: Get latest revision if not specified
             if not revision_id:
@@ -1987,11 +1975,11 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
 
             # Step 3: Create export job
             # Get destination bucket from settings or use default
-            destination_bucket = getattr(settings, 'AWS_DATA_EXCHANGE_EXPORT_BUCKET', None)
+            destination_bucket = getattr(settings, "AWS_DATA_EXCHANGE_EXPORT_BUCKET", None)
             job_id = self._create_export_job(
                 dataset_id=dataset_id,
                 revision_id=revision_id,
-                destination_bucket=destination_bucket
+                destination_bucket=destination_bucket,
             )
 
             # Step 4: Start export job
@@ -2013,9 +2001,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         return self._circuit_breaker.call(execute_download)
 
     def map_to_hub_asset(
-        self,
-        listing: MarketplaceListing,
-        sync_job_id: Optional[str] = None
+        self, listing: MarketplaceListing, sync_job_id: str | None = None
     ) -> MarketplaceAssetMapping:
         """
         Map an AWS Data Exchange dataset to a Hub asset representation.
@@ -2041,78 +2027,84 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             raise ValueError("Listing is required")
 
         # Extract AWS Data Exchange dataset data from metadata
-        dataset_data = listing.metadata.get('aws_data_exchange_dataset', {}) if listing.metadata else {}
-        latest_revision = listing.metadata.get('latest_revision', {}) if listing.metadata else {}
-        odps_metadata = listing.metadata.get('odps_metadata', {}) if listing.metadata else {}
-        odcs_metadata = listing.metadata.get('odcs_metadata', {}) if listing.metadata else {}
+        dataset_data = (
+            listing.metadata.get("aws_data_exchange_dataset", {}) if listing.metadata else {}
+        )
+        latest_revision = listing.metadata.get("latest_revision", {}) if listing.metadata else {}
+        odps_metadata = listing.metadata.get("odps_metadata", {}) if listing.metadata else {}
+        odcs_metadata = listing.metadata.get("odcs_metadata", {}) if listing.metadata else {}
 
         # Extract title and description
-        title = listing.title or dataset_data.get('Name', 'Untitled Dataset')
-        description = listing.description or dataset_data.get('Description', '')
+        title = listing.title or dataset_data.get("Name", "Untitled Dataset")
+        description = listing.description or dataset_data.get("Description", "")
 
         # Extract domain from Origin or OriginDetails
         domain = None
         if listing.category:
             domain = listing.category
-        elif dataset_data.get('Origin'):
-            domain = dataset_data['Origin']
-        elif dataset_data.get('OriginDetails', {}).get('ProductId'):
-            domain = dataset_data['OriginDetails']['ProductId']
+        elif dataset_data.get("Origin"):
+            domain = dataset_data["Origin"]
+        elif dataset_data.get("OriginDetails", {}).get("ProductId"):
+            domain = dataset_data["OriginDetails"]["ProductId"]
 
         # Determine status and visibility
         # AWS Data Exchange datasets are typically ACTIVE and PUBLIC
-        status = 'ACTIVE'
-        visibility = 'PUBLIC'
+        status = "ACTIVE"
+        visibility = "PUBLIC"
 
         # Extract tags
         tags = listing.tags or []
 
         # Build comprehensive asset_data
-        asset_data: Dict[str, Any] = {
-            'name': title,
-            'description': description,
-            'key': f"aws-data-exchange-{listing.marketplace_id}",
-            'tags': tags,
-            'status': status,
-            'visibility': visibility,
+        asset_data: dict[str, Any] = {
+            "name": title,
+            "description": description,
+            "key": f"aws-data-exchange-{listing.marketplace_id}",
+            "tags": tags,
+            "status": status,
+            "visibility": visibility,
         }
 
         # Add optional fields if available
         if domain:
-            asset_data['domain'] = domain
+            asset_data["domain"] = domain
 
         # Extract Provider from OriginDetails if available
         provider = None
-        if dataset_data.get('OriginDetails', {}).get('ProductId'):
-            provider = dataset_data['OriginDetails']['ProductId']
-        elif dataset_data.get('OriginDetails', {}).get('Name'):
-            provider = dataset_data['OriginDetails']['Name']
+        if dataset_data.get("OriginDetails", {}).get("ProductId"):
+            provider = dataset_data["OriginDetails"]["ProductId"]
+        elif dataset_data.get("OriginDetails", {}).get("Name"):
+            provider = dataset_data["OriginDetails"]["Name"]
 
         # Extract source metadata
-        source_metadata: Dict[str, Any] = {
-            'marketplace_type': MarketplaceType.AWS_DATA_EXCHANGE.value,
-            'marketplace_id': listing.marketplace_id,
-            'listing_id': listing.marketplace_id,
-            'listing_url': listing.url,
-            'synced_at': timezone.now().isoformat(),
-            'dataset_id': listing.marketplace_id,
-            'revision_id': latest_revision.get('Id') if latest_revision else None,
+        source_metadata: dict[str, Any] = {
+            "marketplace_type": MarketplaceType.AWS_DATA_EXCHANGE.value,
+            "marketplace_id": listing.marketplace_id,
+            "listing_id": listing.marketplace_id,
+            "listing_url": listing.url,
+            "synced_at": timezone.now().isoformat(),
+            "dataset_id": listing.marketplace_id,
+            "revision_id": latest_revision.get("Id") if latest_revision else None,
         }
 
         # Add Provider if available
         if provider:
-            source_metadata['provider'] = provider
+            source_metadata["provider"] = provider
 
         # Add sync_job_id if provided
         if sync_job_id:
-            source_metadata['sync_job_id'] = sync_job_id
+            source_metadata["sync_job_id"] = sync_job_id
 
         # Use ODPS and ODCS metadata from listing (already extracted)
         # If not present, extract them
         if not odps_metadata:
-            odps_metadata = self._extract_odps_metadata(dataset_data, latest_revision if latest_revision else None)
+            odps_metadata = self._extract_odps_metadata(
+                dataset_data, latest_revision if latest_revision else None
+            )
         if not odcs_metadata:
-            odcs_metadata = self._extract_odcs_metadata(dataset_data, latest_revision if latest_revision else None)
+            odcs_metadata = self._extract_odcs_metadata(
+                dataset_data, latest_revision if latest_revision else None
+            )
 
         # Get resources (with external references for on-demand download)
         resources = []
@@ -2122,9 +2114,11 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             for resource in resources:
                 if not resource.metadata:
                     resource.metadata = {}
-                resource.metadata['external'] = True
-                resource.metadata['dataset_id'] = listing.marketplace_id
-                resource.metadata['revision_id'] = latest_revision.get('Id') if latest_revision else None
+                resource.metadata["external"] = True
+                resource.metadata["dataset_id"] = listing.marketplace_id
+                resource.metadata["revision_id"] = (
+                    latest_revision.get("Id") if latest_revision else None
+                )
         except Exception as e:
             logger.warning(f"Failed to fetch resources for mapping: {e}")
 
@@ -2134,14 +2128,14 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             source_metadata=source_metadata,
             odps_metadata=odps_metadata if odps_metadata else None,
             odcs_metadata=odcs_metadata if odcs_metadata else None,
-            resources=resources
+            resources=resources,
         )
 
     def map_from_hub_asset(
         self,
-        asset_data: Dict[str, Any],
-        odps_metadata: Optional[Dict[str, Any]] = None,
-        odcs_metadata: Optional[Dict[str, Any]] = None
+        asset_data: dict[str, Any],
+        odps_metadata: dict[str, Any] | None = None,
+        odcs_metadata: dict[str, Any] | None = None,
     ) -> MarketplaceListing:
         """
         Map a Hub asset to an AWS Data Exchange dataset representation.
@@ -2152,11 +2146,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             "AWS Data Exchange connector does not support push operations (map_from_hub_asset)"
         )
 
-    def sync_push(
-        self,
-        asset_ids: List[str],
-        options: Optional[Dict[str, Any]] = None
-    ) -> SyncResult:
+    def sync_push(self, asset_ids: list[str], options: dict[str, Any] | None = None) -> SyncResult:
         """
         Perform bulk push synchronization (Hub → AWS Data Exchange).
 
@@ -2168,9 +2158,9 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
 
     def sync_pull(
         self,
-        listing_ids: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        options: Optional[Dict[str, Any]] = None
+        listing_ids: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
     ) -> SyncResult:
         """
         Perform bulk pull synchronization (AWS Data Exchange → Hub) following metadata-first pattern.
@@ -2224,9 +2214,9 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             ConnectionError: If unable to connect to AWS Data Exchange
         """
         options = options or {}
-        dry_run = options.get('dry_run', False)
-        limit = options.get('limit')
-        include_resources = options.get('include_resources', True)
+        dry_run = options.get("dry_run", False)
+        limit = options.get("limit")
+        include_resources = options.get("include_resources", True)
         started_at = timezone.now()
 
         successful_items = 0
@@ -2283,9 +2273,9 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     failed_items=0,
                     skipped_items=0,
                     errors=errors,
-                    metadata={'dry_run': dry_run},
+                    metadata={"dry_run": dry_run},
                     started_at=started_at,
-                    completed_at=timezone.now()
+                    completed_at=timezone.now(),
                 )
 
             # If we have skipped items but no listings, return early
@@ -2298,9 +2288,9 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     failed_items=failed_items,
                     skipped_items=skipped_items,
                     errors=errors,
-                    metadata={'dry_run': dry_run, 'reason': 'no_datasets_found', 'mappings': []},
+                    metadata={"dry_run": dry_run, "reason": "no_datasets_found", "mappings": []},
                     started_at=started_at,
-                    completed_at=timezone.now()
+                    completed_at=timezone.now(),
                 )
 
             if not listings:
@@ -2312,16 +2302,18 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     failed_items=0,
                     skipped_items=0,
                     errors=[],
-                    metadata={'dry_run': dry_run, 'reason': 'no_datasets_found', 'mappings': []},
+                    metadata={"dry_run": dry_run, "reason": "no_datasets_found", "mappings": []},
                     started_at=started_at,
-                    completed_at=timezone.now()
+                    completed_at=timezone.now(),
                 )
 
             # Process each listing
             for listing in listings:
                 try:
                     if dry_run:
-                        logger.info(f"DRY RUN: Would pull dataset {listing.marketplace_id} from AWS Data Exchange")
+                        logger.info(
+                            f"DRY RUN: Would pull dataset {listing.marketplace_id} from AWS Data Exchange"
+                        )
                         successful_items += 1
                         continue
 
@@ -2334,13 +2326,21 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                             for resource in resources:
                                 if not resource.metadata:
                                     resource.metadata = {}
-                                resource.metadata['external'] = True
-                                resource.metadata['dataset_id'] = listing.marketplace_id
+                                resource.metadata["external"] = True
+                                resource.metadata["dataset_id"] = listing.marketplace_id
                                 # Get revision ID from listing metadata
-                                latest_revision = listing.metadata.get('latest_revision', {}) if listing.metadata else {}
-                                resource.metadata['revision_id'] = latest_revision.get('Id') if latest_revision else None
+                                latest_revision = (
+                                    listing.metadata.get("latest_revision", {})
+                                    if listing.metadata
+                                    else {}
+                                )
+                                resource.metadata["revision_id"] = (
+                                    latest_revision.get("Id") if latest_revision else None
+                                )
                         except Exception as e:
-                            logger.warning(f"Dataset {listing.marketplace_id}: Failed to fetch resources: {e}")
+                            logger.warning(
+                                f"Dataset {listing.marketplace_id}: Failed to fetch resources: {e}"
+                            )
                             # Continue without resources
 
                     # Map listing to Hub asset format
@@ -2352,34 +2352,40 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
 
                         # Serialize mapping to dict for SyncResult metadata
                         mapping_dict = {
-                            'asset_data': mapping.asset_data,
-                            'source_type': mapping.source_type.value if hasattr(mapping.source_type, 'value') else str(mapping.source_type),
-                            'source_metadata': mapping.source_metadata,
-                            'odps_metadata': mapping.odps_metadata,
-                            'odcs_metadata': mapping.odcs_metadata,
-                            'resources': [
+                            "asset_data": mapping.asset_data,
+                            "source_type": mapping.source_type.value
+                            if hasattr(mapping.source_type, "value")
+                            else str(mapping.source_type),
+                            "source_metadata": mapping.source_metadata,
+                            "odps_metadata": mapping.odps_metadata,
+                            "odcs_metadata": mapping.odcs_metadata,
+                            "resources": [
                                 {
-                                    'resource_id': r.resource_id,
-                                    'resource_type': r.resource_type,
-                                    'name': r.name,
-                                    'description': r.description,
-                                    'url': r.url,
-                                    'format': r.format,
-                                    'size_bytes': r.size_bytes,
-                                    'metadata': r.metadata
+                                    "resource_id": r.resource_id,
+                                    "resource_type": r.resource_type,
+                                    "name": r.name,
+                                    "description": r.description,
+                                    "url": r.url,
+                                    "format": r.format,
+                                    "size_bytes": r.size_bytes,
+                                    "metadata": r.metadata,
                                 }
                                 for r in mapping.resources
-                            ]
+                            ],
                         }
-                        mappings.append({
-                            'listing_id': listing.marketplace_id,
-                            'mapping': mapping_dict,
-                        })
+                        mappings.append(
+                            {
+                                "listing_id": listing.marketplace_id,
+                                "mapping": mapping_dict,
+                            }
+                        )
                         successful_items += 1
                         logger.info(f"Dataset {listing.marketplace_id}: Mapped to Hub asset format")
                     except Exception as e:
                         failed_items += 1
-                        error_msg = f"Dataset {listing.marketplace_id}: Failed to map to Hub asset: {e}"
+                        error_msg = (
+                            f"Dataset {listing.marketplace_id}: Failed to map to Hub asset: {e}"
+                        )
                         errors.append(error_msg)
                         logger.warning(error_msg, exc_info=True)
                         continue
@@ -2392,7 +2398,13 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     continue
 
             completed_at = timezone.now()
-            status = SyncStatus.COMPLETED if failed_items == 0 else SyncStatus.PARTIAL if successful_items > 0 else SyncStatus.FAILED
+            status = (
+                SyncStatus.COMPLETED
+                if failed_items == 0
+                else SyncStatus.PARTIAL
+                if successful_items > 0
+                else SyncStatus.FAILED
+            )
 
             return SyncResult(
                 status=status,
@@ -2402,13 +2414,12 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 skipped_items=skipped_items,
                 errors=errors,
                 metadata={
-                    'dry_run': dry_run,
-                    'mappings': mappings,  # List of mappings for asset creation
-                    'include_resources': include_resources,
+                    "dry_run": dry_run,
+                    "mappings": mappings,  # List of mappings for asset creation
+                    "include_resources": include_resources,
                 },
                 started_at=started_at,
-                completed_at=completed_at
+                completed_at=completed_at,
             )
 
         return self._circuit_breaker.call(execute_sync_pull)
-

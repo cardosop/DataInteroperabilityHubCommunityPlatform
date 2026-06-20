@@ -1,8 +1,9 @@
 """Daily API-key rotation reminder & expiry notification sweep (277.B.069)."""
 
 from __future__ import annotations
+
+import contextlib
 import uuid
-from datetime import timedelta
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -38,9 +39,7 @@ def run_api_key_rotation_reminder_scan(
     if now is None:
         now = timezone.now()
 
-    thresholds: list[int] = getattr(
-        settings, "API_KEY_ROTATION_REMINDER_DAYS", [30, 14, 7, 1]
-    )
+    thresholds: list[int] = getattr(settings, "API_KEY_ROTATION_REMINDER_DAYS", [30, 14, 7, 1])
     if not thresholds:
         return {"skipped (no thresholds configured)": 0}
 
@@ -56,9 +55,8 @@ def run_api_key_rotation_reminder_scan(
     }
 
     # Only keys that (a) are not revoked, (b) have an expiry set
-    qs = (
-        APIKey.objects.filter(revoked_at__isnull=True, expires_at__isnull=False)
-        .select_related("user", "tenant")
+    qs = APIKey.objects.filter(revoked_at__isnull=True, expires_at__isnull=False).select_related(
+        "user", "tenant"
     )
 
     for api_key in qs.iterator(chunk_size=200):
@@ -85,6 +83,10 @@ def run_api_key_rotation_reminder_scan(
             continue
 
         # ── Upcoming expiry: find the tightest applicable threshold ───────
+        # Pick the smallest threshold that is >= days_remaining (the most
+        # urgent window the key falls into).  When days_remaining exceeds
+        # every configured threshold the key is still too far from expiry
+        # and no reminder is sent.
         applicable: int | None = None
         for t in thresholds:
             if days_remaining <= t:
@@ -100,9 +102,7 @@ def run_api_key_rotation_reminder_scan(
         # still GREATER than this threshold?  If so, we have crossed into
         # a new window and should send.
         if api_key.last_rotation_reminder_at is not None:
-            days_at_last_reminder = (
-                api_key.expires_at - api_key.last_rotation_reminder_at
-            ).days
+            days_at_last_reminder = (api_key.expires_at - api_key.last_rotation_reminder_at).days
             if days_at_last_reminder <= applicable:
                 # Already reminded within this threshold window
                 continue
@@ -156,7 +156,7 @@ def _send_expiry_email(api_key: APIKey, recipient: str, now) -> None:
     """Enqueue an API_KEY_EXPIRED notification."""
     from hub.apps.notifications.tasks import send_email_async
 
-    try:
+    with contextlib.suppress(Exception):
         send_email_async(
             email_type=EmailType.API_KEY_EXPIRED,
             to_email=recipient,
@@ -171,15 +171,10 @@ def _send_expiry_email(api_key: APIKey, recipient: str, now) -> None:
             tenant_id=str(api_key.tenant_id) if api_key.tenant_id else None,
             user_id=str(api_key.user_id) if api_key.user_id else None,
         )
-    except Exception:
-        pass
 
 
 class Command(BaseCommand):
-    help = (
-        "Scan API keys approaching expiry and send rotation reminders "
-        "via email (277.B.069)."
-    )
+    help = "Scan API keys approaching expiry and send rotation reminders via email (277.B.069)."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -205,9 +200,7 @@ class Command(BaseCommand):
         counters: dict[str, int] = {}
         try:
             counters = run_api_key_rotation_reminder_scan()
-            self.stdout.write(
-                self.style.SUCCESS(f"API key rotation reminder scan: {counters}")
-            )
+            self.stdout.write(self.style.SUCCESS(f"API key rotation reminder scan: {counters}"))
             if job_row:
                 job_row.mark_completed(result_json={"counters": counters})
         except Exception as exc:

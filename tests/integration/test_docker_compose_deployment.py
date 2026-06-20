@@ -17,14 +17,13 @@ a container that does not have Docker (e.g. api-service-test container).
 """
 
 import json
-import shutil
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +52,7 @@ class DockerComposeManager:
         self.services_started = False
 
     def _run_command(
-        self, command: List[str], check: bool = True, timeout: int = 300
+        self, command: list[str], check: bool = True, timeout: int = 300
     ) -> subprocess.CompletedProcess:
         """Run docker compose command."""
         cmd = ["docker", "compose", "-f", str(self.compose_file), "-p", self.project_name] + command
@@ -68,7 +67,7 @@ class DockerComposeManager:
 
     def start_services(
         self,
-        services: Optional[List[str]] = None,
+        services: list[str] | None = None,
         wait: bool = True,
         no_deps: bool = False,
         force: bool = False,
@@ -158,7 +157,7 @@ class DockerComposeManager:
         if wait:
             self.wait_for_services_healthy(services or self.get_all_services())
 
-    def stop_services(self, services: Optional[List[str]] = None) -> None:
+    def stop_services(self, services: list[str] | None = None) -> None:
         """Stop Docker Compose services."""
         cmd = ["stop"]
         if services:
@@ -181,7 +180,7 @@ class DockerComposeManager:
 
         self.services_started = False
 
-    def get_service_status(self, service_name: str) -> Optional[Dict]:
+    def get_service_status(self, service_name: str) -> dict | None:
         """Get service status."""
         result = self._run_command(["ps", "--format", "json", service_name], check=False)
         if result.returncode != 0 or not result.stdout.strip():
@@ -193,9 +192,9 @@ class DockerComposeManager:
         except json.JSONDecodeError:
             return None
 
-    def get_all_services(self) -> List[str]:
+    def get_all_services(self) -> list[str]:
         """Get all service names from docker-compose.yml."""
-        with open(self.compose_file, "r") as f:
+        with open(self.compose_file) as f:
             config = yaml.safe_load(f)
         return list(config.get("services", {}).keys())
 
@@ -209,10 +208,10 @@ class DockerComposeManager:
                 state = status.get("State", "")
                 if health == "healthy" or (state == "running" and health == ""):
                     return True
-            time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
         return False
 
-    def wait_for_services_healthy(self, services: List[str], timeout: int = 300) -> None:
+    def wait_for_services_healthy(self, services: list[str], timeout: int = 300) -> None:
         """Wait for multiple services to become healthy."""
         for service in services:
             if not self.wait_for_service_healthy(service, timeout):
@@ -249,7 +248,7 @@ def docker_compose_file():
 @pytest.fixture(scope="module")
 def docker_compose_config(docker_compose_file):
     """Load docker-compose.yml configuration."""
-    with open(docker_compose_file, "r") as f:
+    with open(docker_compose_file) as f:
         return yaml.safe_load(f)
 
 
@@ -285,9 +284,9 @@ class TestDockerComposeDeployment:
 
     def test_docker_compose_file_exists(self, docker_compose_file):
         """Test that docker-compose.yml exists."""
-        assert (
-            docker_compose_file.exists()
-        ), f"docker-compose.yml not found at {docker_compose_file}"
+        assert docker_compose_file.exists(), (
+            f"docker-compose.yml not found at {docker_compose_file}"
+        )
 
     def test_docker_compose_valid_yaml(self, docker_compose_config):
         """Test that docker-compose.yml is valid YAML."""
@@ -312,13 +311,13 @@ class TestDockerComposeDeployment:
         for service_name in application_services:
             if service_name in services:
                 service_config = services[service_name]
-                assert (
-                    "healthcheck" in service_config
-                ), f"Service {service_name} must have a healthcheck"
+                assert "healthcheck" in service_config, (
+                    f"Service {service_name} must have a healthcheck"
+                )
 
 
 @pytest.mark.integration
-@pytest.mark.docker_compose_runtime
+@pytest.mark.requires_db
 class TestDockerComposeServiceStartup:
     """Integration tests for service startup.
 
@@ -333,9 +332,9 @@ class TestDockerComposeServiceStartup:
         for service_name in infrastructure_services:
             status = docker_compose_manager.get_service_status(service_name)
             assert status is not None, f"Service {service_name} not found after start"
-            assert (
-                status.get("State") == "running"
-            ), f"Service {service_name} is not running: {status.get('State')}"
+            assert status.get("State") == "running", (
+                f"Service {service_name} is not running: {status.get('State')}"
+            )
 
     def test_application_services_start_after_infrastructure(
         self, docker_compose_manager, infrastructure_services, application_services
@@ -350,9 +349,9 @@ class TestDockerComposeServiceStartup:
         for service_name in application_services:
             status = docker_compose_manager.get_service_status(service_name)
             assert status is not None, f"Service {service_name} not found after start"
-            assert (
-                status.get("State") == "running"
-            ), f"Service {service_name} is not running: {status.get('State')}"
+            assert status.get("State") == "running", (
+                f"Service {service_name} is not running: {status.get('State')}"
+            )
 
     def test_service_startup_order_respects_dependencies(
         self, docker_compose_manager, docker_compose_config
@@ -374,9 +373,9 @@ class TestDockerComposeServiceStartup:
             if "postgres" in depends_on:
                 postgres_dep = depends_on["postgres"]
                 if isinstance(postgres_dep, dict):
-                    assert (
-                        postgres_dep.get("condition") == "service_healthy"
-                    ), "workflow-engine-service should wait for postgres to be healthy"
+                    assert postgres_dep.get("condition") == "service_healthy", (
+                        "workflow-engine-service should wait for postgres to be healthy"
+                    )
 
         # Verify postgres is healthy before workflow-engine starts
         postgres_status = docker_compose_manager.get_service_status("postgres")
@@ -403,7 +402,7 @@ class TestDockerComposeServiceStartup:
 
 
 @pytest.mark.integration
-@pytest.mark.docker_compose_runtime
+@pytest.mark.requires_db
 class TestDockerComposeHealthChecks:
     """Integration tests for service health checks."""
 
@@ -432,15 +431,15 @@ class TestDockerComposeHealthChecks:
             # Check if service is running
             status = docker_compose_manager.get_service_status(service_name)
             if not status or status.get("State") != "running":
-                pytest.skip(f"Service {service_name} is not running")
+                pytest.skip(f"Service {service_name} is not running")  # noqa: skip-in-body — runtime service dependency
 
             # Try to access health endpoint
             url = f"http://localhost:{port}{endpoint}"
             try:
                 response = requests.get(url, timeout=5)
-                assert (
-                    response.status_code == 200
-                ), f"Health endpoint {url} returned {response.status_code}"
+                assert response.status_code == 200, (
+                    f"Health endpoint {url} returned {response.status_code}"
+                )
             except requests.exceptions.RequestException as e:
                 pytest.fail(f"Failed to access health endpoint {url}: {e}")
 
@@ -453,13 +452,13 @@ class TestDockerComposeHealthChecks:
         for service_name, port, endpoint in liveness_endpoints:
             status = docker_compose_manager.get_service_status(service_name)
             if not status or status.get("State") != "running":
-                pytest.skip(f"Service {service_name} is not running")
+                pytest.skip(f"Service {service_name} is not running")  # noqa: skip-in-body — runtime service dependency
 
             url = f"http://localhost:{port}{endpoint}"
             response = requests.get(url, timeout=5)
-            assert (
-                response.status_code == 200
-            ), f"Liveness probe {url} returned {response.status_code}"
+            assert response.status_code == 200, (
+                f"Liveness probe {url} returned {response.status_code}"
+            )
 
             # Check response format
             try:
@@ -478,13 +477,13 @@ class TestDockerComposeHealthChecks:
         for service_name, port, endpoint in readiness_endpoints:
             status = docker_compose_manager.get_service_status(service_name)
             if not status or status.get("State") != "running":
-                pytest.skip(f"Service {service_name} is not running")
+                pytest.skip(f"Service {service_name} is not running")  # noqa: skip-in-body — runtime service dependency
 
             url = f"http://localhost:{port}{endpoint}"
             response = requests.get(url, timeout=5)
-            assert (
-                response.status_code == 200
-            ), f"Readiness probe {url} returned {response.status_code}"
+            assert response.status_code == 200, (
+                f"Readiness probe {url} returned {response.status_code}"
+            )
 
             # Check response includes dependency status
             try:
@@ -496,19 +495,18 @@ class TestDockerComposeHealthChecks:
 
     def test_comprehensive_health_checks(self, docker_compose_manager, started_services):
         """Test comprehensive health check endpoints."""
-        comprehensive_endpoints = [
-        ]
+        comprehensive_endpoints = []
 
         for service_name, port, endpoint in comprehensive_endpoints:
             status = docker_compose_manager.get_service_status(service_name)
             if not status or status.get("State") != "running":
-                pytest.skip(f"Service {service_name} is not running")
+                pytest.skip(f"Service {service_name} is not running")  # noqa: skip-in-body — runtime service dependency
 
             url = f"http://localhost:{port}{endpoint}"
             response = requests.get(url, timeout=5)
-            assert (
-                response.status_code == 200
-            ), f"Health endpoint {url} returned {response.status_code}"
+            assert response.status_code == 200, (
+                f"Health endpoint {url} returned {response.status_code}"
+            )
 
             data = response.json()
             assert "status" in data, "Health check response should include status"
@@ -527,22 +525,22 @@ class TestDockerComposeHealthChecks:
         for service_name, port, endpoint in metrics_endpoints:
             status = docker_compose_manager.get_service_status(service_name)
             if not status or status.get("State") != "running":
-                pytest.skip(f"Service {service_name} is not running")
+                pytest.skip(f"Service {service_name} is not running")  # noqa: skip-in-body — runtime service dependency
 
             url = f"http://localhost:{port}{endpoint}"
             response = requests.get(url, timeout=5)
-            assert (
-                response.status_code == 200
-            ), f"Metrics endpoint {url} returned {response.status_code}"
+            assert response.status_code == 200, (
+                f"Metrics endpoint {url} returned {response.status_code}"
+            )
 
             # Check that response contains Prometheus format
-            assert (
-                "# HELP" in response.text or "# TYPE" in response.text
-            ), f"Metrics endpoint {url} should return Prometheus format"
+            assert "# HELP" in response.text or "# TYPE" in response.text, (
+                f"Metrics endpoint {url} should return Prometheus format"
+            )
 
 
 @pytest.mark.integration
-@pytest.mark.docker_compose_runtime
+@pytest.mark.requires_db
 class TestDockerComposeServiceCommunication:
     """Integration tests for service-to-service communication."""
 
@@ -572,9 +570,9 @@ class TestDockerComposeServiceCommunication:
             # Test network connectivity by checking if workflow-engine can connect to postgres
             # This is verified by the service being healthy (which requires DB connection)
             workflow_health = requests.get("http://localhost:8098/ready", timeout=5)
-            assert (
-                workflow_health.status_code == 200
-            ), "workflow-engine-service should be able to connect to postgres"
+            assert workflow_health.status_code == 200, (
+                "workflow-engine-service should be able to connect to postgres"
+            )
 
     def test_event_bus_redis_connection(self, docker_compose_manager, started_services):
         """Test that event bus service can connect to Redis (redis-cache and other redis instances)."""
@@ -620,13 +618,13 @@ class TestDockerComposeServiceCommunication:
         if api_status and api_status.get("State") == "running":
             # API service health check should succeed
             api_health = requests.get("http://localhost:8000/health", timeout=5)
-            assert (
-                api_health.status_code == 200
-            ), "API service should be healthy and able to reach backend services"
+            assert api_health.status_code == 200, (
+                "API service should be healthy and able to reach backend services"
+            )
 
 
 @pytest.mark.integration
-@pytest.mark.docker_compose_runtime
+@pytest.mark.requires_db
 class TestDockerComposeServiceDependencies:
     """Integration tests for service dependencies."""
 
@@ -680,11 +678,9 @@ class TestDockerComposeServiceDependencies:
     def test_event_bus_depends_on_postgres_and_redis(
         self, docker_compose_manager, started_services, docker_compose_config
     ):
-        event_bus_config = docker_compose_config.get("services", {}).get(
-        )
+        event_bus_config = docker_compose_config.get("services", {}).get()
         depends_on = event_bus_config.get("depends_on", {})
-        dep_list = list(depends_on.keys()) if isinstance(depends_on, dict) else (depends_on or [])
-
+        list(depends_on.keys()) if isinstance(depends_on, dict) else (depends_on or [])
 
         # Verify dependencies are healthy
         postgres_status = docker_compose_manager.get_service_status("postgres")
@@ -720,9 +716,9 @@ class TestDockerComposeServiceDependencies:
         if isinstance(depends_on, dict) and "postgres" in depends_on:
             postgres_dep = depends_on["postgres"]
             if isinstance(postgres_dep, dict):
-                assert (
-                    postgres_dep.get("condition") == "service_healthy"
-                ), "workflow-engine-service should wait for postgres to be healthy"
+                assert postgres_dep.get("condition") == "service_healthy", (
+                    "workflow-engine-service should wait for postgres to be healthy"
+                )
 
     def test_services_fail_without_dependencies(
         self, docker_compose_manager, docker_compose_config
@@ -740,14 +736,14 @@ class TestDockerComposeServiceDependencies:
             docker_compose_manager.start_services(
                 ["workflow-engine-service"], wait=False, no_deps=True
             )
-            time.sleep(15)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(15)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
             status = docker_compose_manager.get_service_status("workflow-engine-service")
             if status:
                 health = status.get("Health", "")
                 state = status.get("State", "")
-                assert not (
-                    state == "running" and health == "healthy"
-                ), "workflow-engine-service should not be healthy when postgres is down"
+                assert not (state == "running" and health == "healthy"), (
+                    "workflow-engine-service should not be healthy when postgres is down"
+                )
         except AssertionError:
             raise
         except Exception as e:

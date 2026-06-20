@@ -5,6 +5,7 @@ Mirrors ``cli/tests/test_mvp_detection.py``. Real functions, no mocks.
 
 Phase 215.2 — see openspec/changes/preprod01/specs/cli-sdk-mvp-awareness/spec.md
 """
+
 from __future__ import annotations
 
 import pytest
@@ -14,7 +15,6 @@ from datahub_interoperability._mvp_detection import (
     extract_environment_url,
 )
 from datahub_interoperability._mvp_gates import MVP_GATED_PREFIXES
-
 
 # ---------------------------------------------------------------------------
 # detect_mvp_gated_feature
@@ -83,7 +83,10 @@ def test_detect_is_deterministic_under_multiple_matches() -> None:
     [
         ("https://meshant-internal.example.com/api/v1/mesh/", "https://meshant-internal.example.com"),
         ("http://localhost:8000/api/v1/mesh/", "http://localhost:8000"),
-        ("https://meshant-internal.example.com:443/api/v1/ml/jobs", "https://meshant-internal.example.com:443"),
+        (
+            "https://meshant-internal.example.com:443/api/v1/ml/jobs",
+            "https://meshant-internal.example.com:443",
+        ),
         ("https://meshant.com", "https://meshant.com"),
     ],
 )

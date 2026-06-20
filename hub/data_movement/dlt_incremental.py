@@ -5,8 +5,10 @@ dlt tracks cursor state automatically via pipeline.state.
 No custom state management needed — dlt handles watermarks,
 processed files, and deduplication natively.
 """
+
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+
+from typing import Any
 
 import dlt
 import structlog
@@ -15,10 +17,10 @@ logger = structlog.get_logger(__name__)
 
 
 def incremental_by_last_modified(
-    source_files: List[Dict[str, Any]],
+    source_files: list[dict[str, Any]],
     pipeline_name: str,
     cursor_field: str = "last_modified",
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     285.6.3.2 — Filter files to only new/modified since last run.
 
@@ -32,7 +34,7 @@ def incremental_by_last_modified(
     state = pipeline.state
 
     last_cursor = state.get("last_processed_cursor", "")
-    new_files: List[Dict[str, Any]] = []
+    new_files: list[dict[str, Any]] = []
 
     for f in source_files:
         file_cursor = f.get(cursor_field, "")
@@ -55,7 +57,7 @@ def incremental_by_last_modified(
     return new_files
 
 
-def get_processed_keys(pipeline_name: str) -> List[str]:
+def get_processed_keys(pipeline_name: str) -> list[str]:
     """
     285.6.3.2 — Return list of already-processed file keys from dlt state.
 
@@ -66,7 +68,7 @@ def get_processed_keys(pipeline_name: str) -> List[str]:
     return state.get("processed_keys", [])
 
 
-def mark_processed(pipeline_name: str, file_keys: List[str]) -> None:
+def mark_processed(pipeline_name: str, file_keys: list[str]) -> None:
     """
     285.6.3.2 — Mark file keys as processed in dlt state.
 
@@ -82,7 +84,7 @@ def mark_processed(pipeline_name: str, file_keys: List[str]) -> None:
 
 @dlt.source
 def incremental_file_source(
-    files: List[Dict[str, Any]],
+    files: list[dict[str, Any]],
     pipeline_name: str,
 ):
     """

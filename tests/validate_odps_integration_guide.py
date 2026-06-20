@@ -11,11 +11,7 @@ Tests use REAL services (no mocks/stubs) and follow development best practices.
 import json
 import os
 import sys
-import tempfile
-import time
 import uuid
-from pathlib import Path
-from typing import Dict, Any, Optional
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -24,28 +20,27 @@ from urllib3.util.retry import Retry
 # Test configuration
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
 API_KEY = (
-    os.environ.get("API_KEY") or
-    os.environ.get("DATAHUB_API_KEY") or
-    os.environ.get("TEST_API_KEY")
+    os.environ.get("API_KEY") or os.environ.get("DATAHUB_API_KEY") or os.environ.get("TEST_API_KEY")
 )
 TEST_TIMEOUT = 30
 
 
 class Colors:
     """ANSI color codes for terminal output"""
-    GREEN = '\033[92m'
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    RESET = '\033[0m'
-    BOLD = '\033[1m'
+
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
 
 
 class ODPSIntegrationGuideValidator:
     """Validates ODPS Integration Guide implementation"""
 
-    def __init__(self, api_base_url: str, api_key: Optional[str] = None):
-        self.api_base_url = api_base_url.rstrip('/')
+    def __init__(self, api_base_url: str, api_key: str | None = None):
+        self.api_base_url = api_base_url.rstrip("/")
         self.api_key = api_key
         self.session = requests.Session()
 
@@ -62,17 +57,11 @@ class ODPSIntegrationGuideValidator:
         # Set headers
         if self.api_key:
             # API keys use "ApiKey" prefix, not "Bearer"
-            self.session.headers.update({
-                "Authorization": f"ApiKey {self.api_key}",
-                "Content-Type": "application/json"
-            })
+            self.session.headers.update(
+                {"Authorization": f"ApiKey {self.api_key}", "Content-Type": "application/json"}
+            )
 
-        self.test_results = {
-            "passed": [],
-            "failed": [],
-            "skipped": [],
-            "errors": []
-        }
+        self.test_results = {"passed": [], "failed": [], "skipped": [], "errors": []}
 
     def log(self, message: str, color: str = Colors.RESET):
         """Log message with color"""
@@ -99,21 +88,18 @@ class ODPSIntegrationGuideValidator:
         """Record test error"""
         self.test_results["errors"].append((test_name, str(error)))
         self.log(f"✗ ERROR: {test_name}", Colors.RED)
-        self.log(f"  Error: {str(error)}", Colors.RED)
+        self.log(f"  Error: {error!s}", Colors.RED)
 
     def check_api_available(self) -> bool:
         """Check if API is available"""
         try:
-            response = self.session.get(
-                f"{self.api_base_url}/",
-                timeout=5
-            )
+            response = self.session.get(f"{self.api_base_url}/", timeout=5)
             return response.status_code in [200, 401, 403]
         except Exception as e:
-            self.log(f"API not available: {str(e)}", Colors.RED)
+            self.log(f"API not available: {e!s}", Colors.RED)
             return False
 
-    def create_test_tenant_and_user(self) -> tuple[Optional[str], Optional[str]]:
+    def create_test_tenant_and_user(self) -> tuple[str | None, str | None]:
         """Create test tenant and user for testing"""
         # This would require admin access or a test setup script
         # For now, we'll use existing credentials or skip
@@ -133,7 +119,7 @@ class ODPSIntegrationGuideValidator:
                         "en": {
                             "productID": f"test-product-{uuid.uuid4().hex[:8]}",
                             "name": "Test Product for Integration Guide",
-                            "description": "Test product created to validate integration guide"
+                            "description": "Test product created to validate integration guide",
                         }
                     },
                     "contract": {
@@ -145,10 +131,14 @@ class ODPSIntegrationGuideValidator:
                             "version": "1.0.0",
                             "schema": {
                                 "fields": [
-                                    {"name": "id", "type": "string", "description": "Unique identifier"},
-                                    {"name": "name", "type": "string", "description": "Name field"}
+                                    {
+                                        "name": "id",
+                                        "type": "string",
+                                        "description": "Unique identifier",
+                                    },
+                                    {"name": "name", "type": "string", "description": "Name field"},
                                 ]
-                            }
+                            },
                         }
                     },
                     "marketplace": {
@@ -158,11 +148,11 @@ class ODPSIntegrationGuideValidator:
                                 "name": "Basic Plan",
                                 "price": 9.99,
                                 "currency": "USD",
-                                "billingPeriod": "monthly"
+                                "billingPeriod": "monthly",
                             }
                         ]
-                    }
-                }
+                    },
+                },
             }
 
             # POST to /api/v1/contracts/products/
@@ -171,9 +161,9 @@ class ODPSIntegrationGuideValidator:
                 json={
                     "original_raw": json.dumps(odps_document),
                     "original_format": "JSON",
-                    "resolve_external_refs": True
+                    "resolve_external_refs": True,
                 },
-                timeout=TEST_TIMEOUT
+                timeout=TEST_TIMEOUT,
             )
 
             if response.status_code == 201:
@@ -198,14 +188,17 @@ class ODPSIntegrationGuideValidator:
                         error_details = error_json["error"]
                 except:
                     pass
-                self.test_fail(test_name, f"Unexpected status code: {response.status_code}, Response: {error_details}")
+                self.test_fail(
+                    test_name,
+                    f"Unexpected status code: {response.status_code}, Response: {error_details}",
+                )
                 return None, None
 
         except Exception as e:
             self.test_error(test_name, e)
             return None, None
 
-    def test_odps_ingestion_link_flow(self, odcs_contract_id: Optional[str] = None):
+    def test_odps_ingestion_link_flow(self, odcs_contract_id: str | None = None):
         """Test ODPS ingestion via Link flow (REST API)"""
         test_name = "ODPS Ingestion - Link Flow (REST API)"
 
@@ -219,7 +212,7 @@ class ODPSIntegrationGuideValidator:
                         "en": {
                             "productID": f"test-linked-product-{uuid.uuid4().hex[:8]}",
                             "name": "Test Linked Product",
-                            "description": "Test product for link flow validation"
+                            "description": "Test product for link flow validation",
                         }
                     },
                     "marketplace": {
@@ -229,16 +222,18 @@ class ODPSIntegrationGuideValidator:
                                 "name": "Basic Plan",
                                 "price": 9.99,
                                 "currency": "USD",
-                                "billingPeriod": "monthly"
+                                "billingPeriod": "monthly",
                             }
                         ]
-                    }
-                }
+                    },
+                },
             }
 
             # If no ODCS contract provided, skip this test
             if not odcs_contract_id:
-                self.test_skip(test_name, "ODCS contract ID required (run Product-First flow first)")
+                self.test_skip(
+                    test_name, "ODCS contract ID required (run Product-First flow first)"
+                )
                 return None
 
             # POST to /api/v1/contracts/ with link_odcs_id
@@ -248,9 +243,9 @@ class ODPSIntegrationGuideValidator:
                     "original_raw": json.dumps(odps_document),
                     "original_format": "JSON",
                     "original_spec_type": "ODPS",
-                    "link_odcs_id": odcs_contract_id
+                    "link_odcs_id": odcs_contract_id,
                 },
-                timeout=TEST_TIMEOUT
+                timeout=TEST_TIMEOUT,
             )
 
             if response.status_code == 201:
@@ -265,14 +260,17 @@ class ODPSIntegrationGuideValidator:
                 self.test_skip(test_name, "Authentication required (API key not set)")
                 return None
             else:
-                self.test_fail(test_name, f"Unexpected status code: {response.status_code}, Response: {response.text}")
+                self.test_fail(
+                    test_name,
+                    f"Unexpected status code: {response.status_code}, Response: {response.text}",
+                )
                 return None
 
         except Exception as e:
             self.test_error(test_name, e)
             return None
 
-    def test_odps_export_json(self, odps_contract_id: Optional[str] = None):
+    def test_odps_export_json(self, odps_contract_id: str | None = None):
         """Test ODPS export as JSON"""
         test_name = "ODPS Export - JSON Format"
 
@@ -284,12 +282,8 @@ class ODPSIntegrationGuideValidator:
             # GET /api/v1/contracts/{id}/export/?format=odps&output_format=json
             response = self.session.get(
                 f"{self.api_base_url}/contracts/{odps_contract_id}/export/",
-                params={
-                    "format": "odps",
-                    "output_format": "json",
-                    "version": "4.1"
-                },
-                timeout=TEST_TIMEOUT
+                params={"format": "odps", "output_format": "json", "version": "4.1"},
+                timeout=TEST_TIMEOUT,
             )
 
             if response.status_code == 200:
@@ -303,16 +297,17 @@ class ODPSIntegrationGuideValidator:
                             self.test_pass(test_name)
                             return data
                         else:
-                            self.test_fail(test_name, "Response is not a valid ODPS document (missing schema)")
+                            self.test_fail(
+                                test_name, "Response is not a valid ODPS document (missing schema)"
+                            )
                             return None
-                    else:
-                        # If it's a string, try to parse it
-                        if isinstance(data, str):
-                            parsed = json.loads(data)
-                            if isinstance(parsed, dict) and "schema" in parsed and "product" in parsed:
-                                if "opendataproducts.org" in str(parsed.get("schema", "")):
-                                    self.test_pass(test_name)
-                                    return parsed
+                    # If it's a string, try to parse it
+                    elif isinstance(data, str):
+                        parsed = json.loads(data)
+                        if isinstance(parsed, dict) and "schema" in parsed and "product" in parsed:
+                            if "opendataproducts.org" in str(parsed.get("schema", "")):
+                                self.test_pass(test_name)
+                                return parsed
                 except json.JSONDecodeError:
                     # Response might be a JSON string, try parsing the text
                     try:
@@ -325,7 +320,10 @@ class ODPSIntegrationGuideValidator:
                         pass
 
                 # If we get here, validation failed
-                self.test_fail(test_name, f"Response is not a valid ODPS JSON document. Content type: {type(response.text).__name__}")
+                self.test_fail(
+                    test_name,
+                    f"Response is not a valid ODPS JSON document. Content type: {type(response.text).__name__}",
+                )
                 return None
             elif response.status_code == 401:
                 self.test_skip(test_name, "Authentication required (API key not set)")
@@ -334,14 +332,17 @@ class ODPSIntegrationGuideValidator:
                 self.test_fail(test_name, "Contract not found")
                 return None
             else:
-                self.test_fail(test_name, f"Unexpected status code: {response.status_code}, Response: {response.text}")
+                self.test_fail(
+                    test_name,
+                    f"Unexpected status code: {response.status_code}, Response: {response.text}",
+                )
                 return None
 
         except Exception as e:
             self.test_error(test_name, e)
             return None
 
-    def test_odps_export_yaml(self, odps_contract_id: Optional[str] = None):
+    def test_odps_export_yaml(self, odps_contract_id: str | None = None):
         """Test ODPS export as YAML"""
         test_name = "ODPS Export - YAML Format"
 
@@ -353,11 +354,8 @@ class ODPSIntegrationGuideValidator:
             # GET /api/v1/contracts/{id}/export/?format=odps&output_format=yaml
             response = self.session.get(
                 f"{self.api_base_url}/contracts/{odps_contract_id}/export/",
-                params={
-                    "format": "odps",
-                    "output_format": "yaml"
-                },
-                timeout=TEST_TIMEOUT
+                params={"format": "odps", "output_format": "yaml"},
+                timeout=TEST_TIMEOUT,
             )
 
             if response.status_code == 200:
@@ -377,14 +375,17 @@ class ODPSIntegrationGuideValidator:
                 self.test_fail(test_name, "Contract not found")
                 return None
             else:
-                self.test_fail(test_name, f"Unexpected status code: {response.status_code}, Response: {response.text}")
+                self.test_fail(
+                    test_name,
+                    f"Unexpected status code: {response.status_code}, Response: {response.text}",
+                )
                 return None
 
         except Exception as e:
             self.test_error(test_name, e)
             return None
 
-    def test_odps_download_json(self, odps_contract_id: Optional[str] = None):
+    def test_odps_download_json(self, odps_contract_id: str | None = None):
         """Test ODPS download as JSON file"""
         test_name = "ODPS Download - JSON File"
 
@@ -396,11 +397,8 @@ class ODPSIntegrationGuideValidator:
             # GET /api/v1/contracts/{id}/download/?format=odps&output_format=json
             response = self.session.get(
                 f"{self.api_base_url}/contracts/{odps_contract_id}/download/",
-                params={
-                    "format": "odps",
-                    "output_format": "json"
-                },
-                timeout=TEST_TIMEOUT
+                params={"format": "odps", "output_format": "json"},
+                timeout=TEST_TIMEOUT,
             )
 
             if response.status_code == 200:
@@ -431,14 +429,17 @@ class ODPSIntegrationGuideValidator:
                 self.test_fail(test_name, "Contract not found")
                 return None
             else:
-                self.test_fail(test_name, f"Unexpected status code: {response.status_code}, Response: {response.text}")
+                self.test_fail(
+                    test_name,
+                    f"Unexpected status code: {response.status_code}, Response: {response.text}",
+                )
                 return None
 
         except Exception as e:
             self.test_error(test_name, e)
             return None
 
-    def test_odps_download_yaml(self, odps_contract_id: Optional[str] = None):
+    def test_odps_download_yaml(self, odps_contract_id: str | None = None):
         """Test ODPS download as YAML file"""
         test_name = "ODPS Download - YAML File"
 
@@ -450,11 +451,8 @@ class ODPSIntegrationGuideValidator:
             # GET /api/v1/contracts/{id}/download/?format=odps&output_format=yaml
             response = self.session.get(
                 f"{self.api_base_url}/contracts/{odps_contract_id}/download/",
-                params={
-                    "format": "odps",
-                    "output_format": "yaml"
-                },
-                timeout=TEST_TIMEOUT
+                params={"format": "odps", "output_format": "yaml"},
+                timeout=TEST_TIMEOUT,
             )
 
             if response.status_code == 200:
@@ -479,7 +477,10 @@ class ODPSIntegrationGuideValidator:
                 self.test_fail(test_name, "Contract not found")
                 return None
             else:
-                self.test_fail(test_name, f"Unexpected status code: {response.status_code}, Response: {response.text}")
+                self.test_fail(
+                    test_name,
+                    f"Unexpected status code: {response.status_code}, Response: {response.text}",
+                )
                 return None
 
         except Exception as e:
@@ -488,13 +489,16 @@ class ODPSIntegrationGuideValidator:
 
     def run_all_tests(self):
         """Run all validation tests"""
-        self.log("\n" + "="*80, Colors.BOLD)
+        self.log("\n" + "=" * 80, Colors.BOLD)
         self.log("ODPS Integration Guide Validation", Colors.BOLD + Colors.BLUE)
-        self.log("="*80 + "\n", Colors.BOLD)
+        self.log("=" * 80 + "\n", Colors.BOLD)
 
         # Check API availability
         if not self.check_api_available():
-            self.log("API is not available. Please ensure Docker Compose services are running.", Colors.RED)
+            self.log(
+                "API is not available. Please ensure Docker Compose services are running.",
+                Colors.RED,
+            )
             self.log("Run: docker compose ps", Colors.YELLOW)
             return False
 
@@ -509,19 +513,19 @@ class ODPSIntegrationGuideValidator:
         odps_contract_id, odcs_contract_id = self.test_odps_ingestion_product_first_flow()
 
         # Test 2: Link Flow (requires ODCS contract from Test 1)
-        linked_odps_contract_id = self.test_odps_ingestion_link_flow(odcs_contract_id)
+        self.test_odps_ingestion_link_flow(odcs_contract_id)
 
         # Test 3: Export as JSON
-        exported_json = self.test_odps_export_json(odps_contract_id)
+        self.test_odps_export_json(odps_contract_id)
 
         # Test 4: Export as YAML
-        exported_yaml = self.test_odps_export_yaml(odps_contract_id)
+        self.test_odps_export_yaml(odps_contract_id)
 
         # Test 5: Download as JSON
-        downloaded_json = self.test_odps_download_json(odps_contract_id)
+        self.test_odps_download_json(odps_contract_id)
 
         # Test 6: Download as YAML
-        downloaded_yaml = self.test_odps_download_yaml(odps_contract_id)
+        self.test_odps_download_yaml(odps_contract_id)
 
         # Print summary
         self.print_summary()
@@ -531,15 +535,15 @@ class ODPSIntegrationGuideValidator:
 
     def print_summary(self):
         """Print test summary"""
-        self.log("\n" + "="*80, Colors.BOLD)
+        self.log("\n" + "=" * 80, Colors.BOLD)
         self.log("Test Summary", Colors.BOLD + Colors.BLUE)
-        self.log("="*80, Colors.BOLD)
+        self.log("=" * 80, Colors.BOLD)
 
         total = (
-            len(self.test_results["passed"]) +
-            len(self.test_results["failed"]) +
-            len(self.test_results["skipped"]) +
-            len(self.test_results["errors"])
+            len(self.test_results["passed"])
+            + len(self.test_results["failed"])
+            + len(self.test_results["skipped"])
+            + len(self.test_results["errors"])
         )
 
         self.log(f"\nTotal Tests: {total}", Colors.BOLD)
@@ -570,9 +574,9 @@ def main():
     """Main entry point"""
     api_base_url = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
     api_key = (
-        os.environ.get("API_KEY") or
-        os.environ.get("DATAHUB_API_KEY") or
-        os.environ.get("TEST_API_KEY")
+        os.environ.get("API_KEY")
+        or os.environ.get("DATAHUB_API_KEY")
+        or os.environ.get("TEST_API_KEY")
     )
 
     validator = ODPSIntegrationGuideValidator(api_base_url, api_key)
@@ -583,4 +587,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

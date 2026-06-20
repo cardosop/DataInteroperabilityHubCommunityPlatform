@@ -5,30 +5,27 @@ Tests Prometheus metrics collection for mesh operations.
 Verifies that real metric objects are incremented/observed when service
 methods execute — no mocking of metric objects.
 """
-import pytest
-import uuid
-from django.test import TestCase
-from django.core.cache import cache
 
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, Role, UserRole
-from hub.apps.mesh.models import DataMeshDomain, DomainStatus
+import uuid
+
+import pytest
+from django.core.cache import cache
+from django.test import TestCase
+
 from hub.apps.governance.models import AccessPolicy
-from hub.apps.mesh.services import DataMeshService
 from hub.apps.mesh.metrics import (
-    mesh_domain_created_total,
-    mesh_domain_updated_total,
-    mesh_domain_deleted_total,
-    mesh_domain_creation_duration_seconds,
-    mesh_policy_applied_total,
+    get_domain_id,
+    get_tenant_id,
     mesh_compliance_check_duration_seconds,
     mesh_compliance_violations_total,
-    mesh_topology_update_duration_seconds,
+    mesh_domain_created_total,
     mesh_domain_health_status,
-    get_tenant_id,
-    get_domain_id,
+    mesh_policy_applied_total,
+    mesh_topology_update_duration_seconds,
 )
-
+from hub.apps.mesh.services import DataMeshService
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import Role, User, UserRole
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -48,8 +45,8 @@ class _MetricSpy:
     def __init__(self, metric_wrapper):
         self._wrapper = metric_wrapper
         self._original_labels = metric_wrapper.labels
-        self.captured = []          # list of _LabeledMetric instances
-        self.label_calls = []       # list of kwargs dicts
+        self.captured = []  # list of _LabeledMetric instances
+        self.label_calls = []  # list of kwargs dicts
 
         def _spy_labels(**kwargs):
             labeled = self._original_labels(**kwargs)
@@ -89,14 +86,12 @@ class MeshMetricsTest(TestCase):
         slug = f"test-tenant-{uuid.uuid4().hex[:8]}"
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=slug,
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=slug, kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
-            tenant=self.tenant
+            tenant=self.tenant,
         )
         # create_domain requires TENANT_ADMIN
         tenant_admin_role, _ = Role.objects.get_or_create(
@@ -148,9 +143,13 @@ class MeshMetricsTest(TestCase):
         """Test that all mesh metrics are properly initialized"""
         self.assertEqual(mesh_domain_created_total.name, "mesh_domain_created_total")
         self.assertEqual(mesh_policy_applied_total.name, "mesh_policy_applied_total")
-        self.assertEqual(mesh_compliance_check_duration_seconds.name, "mesh_compliance_check_duration_seconds")
+        self.assertEqual(
+            mesh_compliance_check_duration_seconds.name, "mesh_compliance_check_duration_seconds"
+        )
         self.assertEqual(mesh_compliance_violations_total.name, "mesh_compliance_violations_total")
-        self.assertEqual(mesh_topology_update_duration_seconds.name, "mesh_topology_update_duration_seconds")
+        self.assertEqual(
+            mesh_topology_update_duration_seconds.name, "mesh_topology_update_duration_seconds"
+        )
         self.assertEqual(mesh_domain_health_status.name, "mesh_domain_health_status")
 
     # ------------------------------------------------------------------
@@ -180,30 +179,29 @@ class MeshMetricsTest(TestCase):
         spy_duration = self._spy(mesh_metrics_mod.mesh_domain_creation_duration_seconds)
         spy_count = self._spy(mesh_metrics_mod.mesh_domain_count)
 
-        domain = self.service.create_domain(
-            tenant_id=str(self.tenant.id),
-            name="Test Domain"
-        )
+        self.service.create_domain(tenant_id=str(self.tenant.id), name="Test Domain")
 
         # The service must have called .labels().inc() on the created counter
-        self.assertEqual(spy_created.call_count, 1,
-                         "mesh_domain_created_total.labels() was never called")
-        self.assertEqual(spy_created.total_inc, 1,
-                         "mesh_domain_created_total was not incremented")
+        self.assertEqual(
+            spy_created.call_count, 1, "mesh_domain_created_total.labels() was never called"
+        )
+        self.assertEqual(spy_created.total_inc, 1, "mesh_domain_created_total was not incremented")
 
         # Duration histogram must have been observed
-        self.assertEqual(spy_duration.call_count, 1,
-                         "mesh_domain_creation_duration_seconds.labels() was never called")
+        self.assertEqual(
+            spy_duration.call_count,
+            1,
+            "mesh_domain_creation_duration_seconds.labels() was never called",
+        )
 
         # Domain gauge must have been incremented
-        self.assertEqual(spy_count.call_count, 1,
-                         "mesh_domain_count.labels() was never called")
-        self.assertEqual(spy_count.total_inc, 1,
-                         "mesh_domain_count was not incremented")
+        self.assertEqual(spy_count.call_count, 1, "mesh_domain_count.labels() was never called")
+        self.assertEqual(spy_count.total_inc, 1, "mesh_domain_count was not incremented")
 
         # Verify correct tenant_id label was passed
-        tenant_labels = [c for c in spy_created.label_calls
-                         if c.get("tenant_id") == str(self.tenant.id)]
+        tenant_labels = [
+            c for c in spy_created.label_calls if c.get("tenant_id") == str(self.tenant.id)
+        ]
         self.assertTrue(tenant_labels, "tenant_id label not passed to mesh_domain_created_total")
 
     # ------------------------------------------------------------------
@@ -215,27 +213,24 @@ class MeshMetricsTest(TestCase):
         from hub.apps.mesh import metrics as mesh_metrics_mod
 
         # Create domain first (without spying on update metrics)
-        domain = self.service.create_domain(
-            tenant_id=str(self.tenant.id),
-            name="Original Name"
-        )
+        domain = self.service.create_domain(tenant_id=str(self.tenant.id), name="Original Name")
 
         # Now spy on update metrics
         spy_updated = self._spy(mesh_metrics_mod.mesh_domain_updated_total)
         spy_duration = self._spy(mesh_metrics_mod.mesh_domain_update_duration_seconds)
 
-        updated_domain = self.service.update_domain(
-            domain_id=str(domain.id),
-            name="Updated Name"
+        self.service.update_domain(domain_id=str(domain.id), name="Updated Name")
+
+        self.assertEqual(
+            spy_updated.call_count, 1, "mesh_domain_updated_total.labels() was never called"
         )
+        self.assertEqual(spy_updated.total_inc, 1, "mesh_domain_updated_total was not incremented")
 
-        self.assertEqual(spy_updated.call_count, 1,
-                         "mesh_domain_updated_total.labels() was never called")
-        self.assertEqual(spy_updated.total_inc, 1,
-                         "mesh_domain_updated_total was not incremented")
-
-        self.assertEqual(spy_duration.call_count, 1,
-                         "mesh_domain_update_duration_seconds.labels() was never called")
+        self.assertEqual(
+            spy_duration.call_count,
+            1,
+            "mesh_domain_update_duration_seconds.labels() was never called",
+        )
 
     # ------------------------------------------------------------------
     # Policy application metrics
@@ -245,35 +240,32 @@ class MeshMetricsTest(TestCase):
         """Test that policy application records real metrics"""
         from hub.apps.mesh import metrics as mesh_metrics_mod
 
-        domain = self.service.create_domain(
-            tenant_id=str(self.tenant.id),
-            name="Test Domain"
-        )
+        domain = self.service.create_domain(tenant_id=str(self.tenant.id), name="Test Domain")
 
         policy = AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Test Policy",
             enabled=True,
             effect="ALLOW",
-            conditions={"type": "always"}
+            conditions={"type": "always"},
         )
 
         # Spy after domain creation so we only capture policy-application calls
         spy_applied = self._spy(mesh_metrics_mod.mesh_policy_applied_total)
         spy_duration = self._spy(mesh_metrics_mod.mesh_policy_application_duration_seconds)
 
-        policy_application = self.service.apply_policy(
-            domain_id=str(domain.id),
-            policy_id=str(policy.id)
+        self.service.apply_policy(domain_id=str(domain.id), policy_id=str(policy.id))
+
+        self.assertEqual(
+            spy_applied.call_count, 1, "mesh_policy_applied_total.labels() was never called"
         )
+        self.assertEqual(spy_applied.total_inc, 1, "mesh_policy_applied_total was not incremented")
 
-        self.assertEqual(spy_applied.call_count, 1,
-                         "mesh_policy_applied_total.labels() was never called")
-        self.assertEqual(spy_applied.total_inc, 1,
-                         "mesh_policy_applied_total was not incremented")
-
-        self.assertEqual(spy_duration.call_count, 1,
-                         "mesh_policy_application_duration_seconds.labels() was never called")
+        self.assertEqual(
+            spy_duration.call_count,
+            1,
+            "mesh_policy_application_duration_seconds.labels() was never called",
+        )
 
     # ------------------------------------------------------------------
     # Compliance check metrics
@@ -283,31 +275,35 @@ class MeshMetricsTest(TestCase):
         """Test that compliance check records real metrics"""
         from hub.apps.mesh import metrics as mesh_metrics_mod
 
-        domain = self.service.create_domain(
-            tenant_id=str(self.tenant.id),
-            name="Test Domain"
-        )
+        domain = self.service.create_domain(tenant_id=str(self.tenant.id), name="Test Domain")
 
         spy_checks = self._spy(mesh_metrics_mod.mesh_compliance_checks_total)
         spy_duration = self._spy(mesh_metrics_mod.mesh_compliance_check_duration_seconds)
         spy_report = self._spy(mesh_metrics_mod.mesh_compliance_report_generated_total)
 
-        compliance_report = self.service.check_compliance(
-            domain_id=str(domain.id)
+        self.service.check_compliance(domain_id=str(domain.id))
+
+        self.assertEqual(
+            spy_checks.call_count, 1, "mesh_compliance_checks_total.labels() was never called"
+        )
+        self.assertEqual(
+            spy_checks.total_inc, 1, "mesh_compliance_checks_total was not incremented"
         )
 
-        self.assertEqual(spy_checks.call_count, 1,
-                         "mesh_compliance_checks_total.labels() was never called")
-        self.assertEqual(spy_checks.total_inc, 1,
-                         "mesh_compliance_checks_total was not incremented")
+        self.assertEqual(
+            spy_duration.call_count,
+            1,
+            "mesh_compliance_check_duration_seconds.labels() was never called",
+        )
 
-        self.assertEqual(spy_duration.call_count, 1,
-                         "mesh_compliance_check_duration_seconds.labels() was never called")
-
-        self.assertEqual(spy_report.call_count, 1,
-                         "mesh_compliance_report_generated_total.labels() was never called")
-        self.assertEqual(spy_report.total_inc, 1,
-                         "mesh_compliance_report_generated_total was not incremented")
+        self.assertEqual(
+            spy_report.call_count,
+            1,
+            "mesh_compliance_report_generated_total.labels() was never called",
+        )
+        self.assertEqual(
+            spy_report.total_inc, 1, "mesh_compliance_report_generated_total was not incremented"
+        )
 
     # ------------------------------------------------------------------
     # Topology update metrics
@@ -317,25 +313,25 @@ class MeshMetricsTest(TestCase):
         """Test that topology update records real metrics"""
         from hub.apps.mesh import metrics as mesh_metrics_mod
 
-        domain = self.service.create_domain(
-            tenant_id=str(self.tenant.id),
-            name="Test Domain"
-        )
+        self.service.create_domain(tenant_id=str(self.tenant.id), name="Test Domain")
 
         spy_updates = self._spy(mesh_metrics_mod.mesh_topology_updates_total)
         spy_duration = self._spy(mesh_metrics_mod.mesh_topology_update_duration_seconds)
 
-        topology = self.service.get_topology(
-            tenant_id=str(self.tenant.id)
+        self.service.get_topology(tenant_id=str(self.tenant.id))
+
+        self.assertEqual(
+            spy_updates.call_count, 1, "mesh_topology_updates_total.labels() was never called"
+        )
+        self.assertEqual(
+            spy_updates.total_inc, 1, "mesh_topology_updates_total was not incremented"
         )
 
-        self.assertEqual(spy_updates.call_count, 1,
-                         "mesh_topology_updates_total.labels() was never called")
-        self.assertEqual(spy_updates.total_inc, 1,
-                         "mesh_topology_updates_total was not incremented")
-
-        self.assertEqual(spy_duration.call_count, 1,
-                         "mesh_topology_update_duration_seconds.labels() was never called")
+        self.assertEqual(
+            spy_duration.call_count,
+            1,
+            "mesh_topology_update_duration_seconds.labels() was never called",
+        )
 
     # ------------------------------------------------------------------
     # Health status metrics
@@ -345,30 +341,30 @@ class MeshMetricsTest(TestCase):
         """Test that health status update records real metrics"""
         from hub.apps.mesh import metrics as mesh_metrics_mod
 
-        domain = self.service.create_domain(
-            tenant_id=str(self.tenant.id),
-            name="Test Domain"
-        )
+        domain = self.service.create_domain(tenant_id=str(self.tenant.id), name="Test Domain")
 
         spy_status = self._spy(mesh_metrics_mod.mesh_domain_health_status)
-        spy_changes = self._spy(mesh_metrics_mod.mesh_domain_health_status_changes_total)
+        self._spy(mesh_metrics_mod.mesh_domain_health_status_changes_total)
         spy_duration = self._spy(mesh_metrics_mod.mesh_domain_health_check_duration_seconds)
 
         self.service.update_domain_health_status(
             domain_id=str(domain.id),
             health_status="HEALTHY",
-            health_metrics={"cpu": 50, "memory": 60}
+            health_metrics={"cpu": 50, "memory": 60},
         )
 
-        self.assertEqual(spy_status.call_count, 1,
-                         "mesh_domain_health_status.labels() was never called")
+        self.assertEqual(
+            spy_status.call_count, 1, "mesh_domain_health_status.labels() was never called"
+        )
 
-        self.assertEqual(spy_duration.call_count, 1,
-                         "mesh_domain_health_check_duration_seconds.labels() was never called")
+        self.assertEqual(
+            spy_duration.call_count,
+            1,
+            "mesh_domain_health_check_duration_seconds.labels() was never called",
+        )
 
         # Verify the health_status label was passed correctly
-        status_labels = [c for c in spy_status.label_calls
-                         if c.get("health_status") == "HEALTHY"]
+        status_labels = [c for c in spy_status.label_calls if c.get("health_status") == "HEALTHY"]
         self.assertTrue(status_labels, "health_status='HEALTHY' label not passed")
 
     # ------------------------------------------------------------------
@@ -383,30 +379,25 @@ class MeshMetricsTest(TestCase):
         # are captured — total_inc will be 0 (1 inc + 1 dec).
         spy_count = self._spy(mesh_metrics_mod.mesh_domain_count)
 
-        domain = self.service.create_domain(
-            tenant_id=str(self.tenant.id),
-            name="Test Domain"
-        )
+        domain = self.service.create_domain(tenant_id=str(self.tenant.id), name="Test Domain")
 
         spy_deleted = self._spy(mesh_metrics_mod.mesh_domain_deleted_total)
 
-        self.service.delete_domain(
-            domain_id=str(domain.id),
-            reason="Test deletion"
-        )
+        self.service.delete_domain(domain_id=str(domain.id), reason="Test deletion")
 
         # Deletion counter must have been incremented exactly once
-        self.assertEqual(spy_deleted.call_count, 1,
-                         "mesh_domain_deleted_total.labels() was never called")
-        self.assertEqual(spy_deleted.total_inc, 1,
-                         "mesh_domain_deleted_total was not incremented")
+        self.assertEqual(
+            spy_deleted.call_count, 1, "mesh_domain_deleted_total.labels() was never called"
+        )
+        self.assertEqual(spy_deleted.total_inc, 1, "mesh_domain_deleted_total was not incremented")
 
         # Domain gauge net should be 0 (1 inc from create + 1 dec from delete)
-        self.assertEqual(spy_count.total_inc, 0,
-                         "mesh_domain_count net should be 0 after create+delete")
+        self.assertEqual(
+            spy_count.total_inc, 0, "mesh_domain_count net should be 0 after create+delete"
+        )
 
         # Verify the reason label was passed
-        reason_labels = [c for c in spy_deleted.label_calls
-                         if c.get("reason") == "Test deletion"]
-        self.assertTrue(reason_labels,
-                        "reason='Test deletion' label not passed to mesh_domain_deleted_total")
+        reason_labels = [c for c in spy_deleted.label_calls if c.get("reason") == "Test deletion"]
+        self.assertTrue(
+            reason_labels, "reason='Test deletion' label not passed to mesh_domain_deleted_total"
+        )

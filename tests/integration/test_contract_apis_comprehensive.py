@@ -27,34 +27,36 @@ Tests all contract endpoints with 120+ test cases covering:
 
 All tests use real services (no mocks/stubs) and run against Docker Compose instances.
 """
+
 import pytest
 
 pytestmark = pytest.mark.slow
-import time
 import json
+import time
 import uuid
 from datetime import timedelta
-from django.test import TestCase
+
 from django.contrib.auth import get_user_model
-from django.utils import timezone
 from django.core.cache import cache
-from rest_framework.test import APIClient
+from django.test import TestCase
+from django.utils import timezone
 from rest_framework import status
+from rest_framework.test import APIClient
 
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
     NormalizationStatus,
-    ValidationStatus,
+    OriginalFormat,
     OriginalSpecType,
-    OriginalFormat
+    ValidationStatus,
 )
+from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
+from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
-from tests.fixtures.test_data_factories import UserFactory, TenantFactory
+from tests.fixtures.test_data_factories import TenantFactory, UserFactory
 
 # Use default transaction=False so TenantSuspensionMiddleware sees subscription from setUp
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -74,13 +76,13 @@ class TestContractListAPI(TestCase):
             name=f"Tenant A {uuid.uuid4().hex[:8]}",
             slug=f"tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         self.tenant_b = TenantFactory.create_tenant(
             name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         ensure_tenant_has_active_subscription(self.tenant_a)
         ensure_tenant_has_active_subscription(self.tenant_b)
@@ -89,12 +91,12 @@ class TestContractListAPI(TestCase):
         self.user_a = UserFactory.create_user(
             email=f"user_a-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_a,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         self.user_b = UserFactory.create_user(
             email=f"user_b-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_b,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
 
         # Refresh users to ensure tenant_id is loaded
@@ -108,27 +110,22 @@ class TestContractListAPI(TestCase):
             name="Contract A1",
             owners=[{"name": "John Doe", "email": "john@example.com"}],
             tags=["analytics", "sales"],
-            quality_rules=[{
-                "rule_id": "not_null_field",
-                "dimension": "completeness",
-                "expression": "field IS NOT NULL",
-                "severity": "ERROR",
-                "field": "field"
-            }],
-            compliance_policy={
-                "contains_personal_data": False,
-                "jurisdictions": ["GDPR"]
-            },
+            quality_rules=[
+                {
+                    "rule_id": "not_null_field",
+                    "dimension": "completeness",
+                    "expression": "field IS NOT NULL",
+                    "severity": "ERROR",
+                    "field": "field",
+                }
+            ],
+            compliance_policy={"contains_personal_data": False, "jurisdictions": ["GDPR"]},
             lifecycle_policy={
                 "data_source": "s3://bucket1/data",
                 "refresh_cadence": "DAILY",
-                "slas": {"availability": "99.9", "latency_ms_p95": 100}
+                "slas": {"availability": "99.9", "latency_ms_p95": 100},
             },
-            schema_fields=[{
-                "name": "id",
-                "data_type": "string",
-                "nullable": False
-            }]
+            schema_fields=[{"name": "id", "data_type": "string", "nullable": False}],
         )
 
         self.contract_a2 = ContractFactoryEnhanced.create_contract(
@@ -137,22 +134,17 @@ class TestContractListAPI(TestCase):
             name="Contract A2",
             owners=[{"name": "Jane Smith", "email": "jane@example.com"}],
             tags=["marketing"],
-            compliance_policy={
-                "contains_personal_data": True,
-                "jurisdictions": ["CCPA"]
-            },
+            compliance_policy={"contains_personal_data": True, "jurisdictions": ["CCPA"]},
             lifecycle_policy={
                 "data_source": "s3://bucket2/data",
                 "refresh_cadence": "HOURLY",
-                "slas": {"availability": "99.5", "latency_ms_p95": 200}
-            }
+                "slas": {"availability": "99.5", "latency_ms_p95": 200},
+            },
         )
 
         # Create contract for tenant B
         self.contract_b1 = ContractFactoryEnhanced.create_contract(
-            tenant=self.tenant_b,
-            created_by=self.user_b,
-            name="Contract B1"
+            tenant=self.tenant_b, created_by=self.user_b, name="Contract B1"
         )
 
     def tearDown(self):
@@ -164,107 +156,107 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_success(self):
         """Test successful listing of contracts"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/')
+        response = self.client.get("/api/v1/contracts/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('results', response.data)
-        self.assertIn('count', response.data)
-        self.assertEqual(response.data['count'], 2)
-        self.assertEqual(len(response.data['results']), 2)
+        self.assertIn("results", response.data)
+        self.assertIn("count", response.data)
+        self.assertEqual(response.data["count"], 2)
+        self.assertEqual(len(response.data["results"]), 2)
 
     def test_list_contracts_pagination_page_1(self):
         """Test pagination - first page"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'page': 1, 'page_size': 1})
+        response = self.client.get("/api/v1/contracts/", {"page": 1, "page_size": 1})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(len(response.data["results"]), 1)
         # Response uses next_page, not next
-        self.assertIn('next_page', response.data)
-        self.assertIsNotNone(response.data['next_page'])
+        self.assertIn("next_page", response.data)
+        self.assertIsNotNone(response.data["next_page"])
 
     def test_list_contracts_pagination_page_2(self):
         """Test pagination - second page"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'page': 2, 'page_size': 1})
+        response = self.client.get("/api/v1/contracts/", {"page": 2, "page_size": 1})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(len(response.data["results"]), 1)
         # Response uses previous_page, not previous
-        self.assertIn('previous_page', response.data)
-        self.assertIsNotNone(response.data['previous_page'])
+        self.assertIn("previous_page", response.data)
+        self.assertIsNotNone(response.data["previous_page"])
 
     def test_list_contracts_pagination_last_page(self):
         """Test pagination - last page"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'page': 2, 'page_size': 1})
+        response = self.client.get("/api/v1/contracts/", {"page": 2, "page_size": 1})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should have no next page
-        if 'next' in response.data:
-            self.assertIsNone(response.data['next'])
+        if "next" in response.data:
+            self.assertIsNone(response.data["next"])
 
     def test_list_contracts_filter_by_owner_email(self):
         """Test filtering by owner email"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'owner_email': 'john@example.com'})
+        response = self.client.get("/api/v1/contracts/", {"owner_email": "john@example.com"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['count'], 1)
-        self.assertEqual(response.data['results'][0]['id'], str(self.contract_a1.id))
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], str(self.contract_a1.id))
 
     def test_list_contracts_filter_by_owner_email_case_insensitive(self):
         """Test filtering by owner email (case-insensitive)"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'owner_email': 'JOHN@EXAMPLE.COM'})
+        response = self.client.get("/api/v1/contracts/", {"owner_email": "JOHN@EXAMPLE.COM"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data["count"], 1)
 
     def test_list_contracts_filter_by_owner_name(self):
         """Test filtering by owner name"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'owner_name': 'John'})
+        response = self.client.get("/api/v1/contracts/", {"owner_name": "John"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data["count"], 1)
 
     def test_list_contracts_filter_by_tag(self):
         """Test filtering by tag"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'tag': 'analytics'})
+        response = self.client.get("/api/v1/contracts/", {"tag": "analytics"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['count'], 1)
-        self.assertEqual(response.data['results'][0]['id'], str(self.contract_a1.id))
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], str(self.contract_a1.id))
 
     def test_list_contracts_filter_by_multiple_tags(self):
         """Test filtering by multiple tags"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'tag': ['analytics', 'sales']})
+        response = self.client.get("/api/v1/contracts/", {"tag": ["analytics", "sales"]})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['count'], 1)
-        self.assertEqual(response.data['results'][0]['id'], str(self.contract_a1.id))
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], str(self.contract_a1.id))
 
     def test_list_contracts_filter_by_quality_profile(self):
         """Test filtering by quality profile"""
         self.client.force_authenticate(user=self.user_a)
         # Both contracts have intake_basic, so expect >= 1
-        response = self.client.get('/api/v1/contracts/', {'quality_profile': 'intake_basic'})
+        response = self.client.get("/api/v1/contracts/", {"quality_profile": "intake_basic"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Both contracts have intake_basic quality profile
-        self.assertGreaterEqual(response.data['count'], 1)
+        self.assertGreaterEqual(response.data["count"], 1)
 
     def test_list_contracts_filter_by_compliance_regime(self):
         """Test filtering by compliance regime"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'compliance_regime': 'GDPR'})
+        response = self.client.get("/api/v1/contracts/", {"compliance_regime": "GDPR"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['count'], 1)
-        self.assertEqual(response.data['results'][0]['id'], str(self.contract_a1.id))
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], str(self.contract_a1.id))
 
     def test_list_contracts_filter_by_contact_email(self):
         """Test filtering by contact email"""
@@ -273,17 +265,19 @@ class TestContractListAPI(TestCase):
         self.contract_a1.refresh_from_db()
         if self.contract_a1.hub_contract_json:
             contract_json = self.contract_a1.hub_contract_json.copy()
-            if 'info' not in contract_json:
-                contract_json['info'] = {}
-            contract_json['info']['contacts'] = [{"name": "Contact One", "email": "contact1@example.com"}]
+            if "info" not in contract_json:
+                contract_json["info"] = {}
+            contract_json["info"]["contacts"] = [
+                {"name": "Contact One", "email": "contact1@example.com"}
+            ]
             self.contract_a1.hub_contract_json = contract_json
             self.contract_a1.save()
 
-        response = self.client.get('/api/v1/contracts/', {'contact_email': 'contact1@example.com'})
+        response = self.client.get("/api/v1/contracts/", {"contact_email": "contact1@example.com"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Filter may return 0 if contact filtering doesn't work or contract wasn't updated
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_list_contracts_filter_by_contact_name(self):
         """Test filtering by contact name"""
@@ -292,129 +286,124 @@ class TestContractListAPI(TestCase):
         self.contract_a1.refresh_from_db()
         if self.contract_a1.hub_contract_json:
             contract_json = self.contract_a1.hub_contract_json.copy()
-            if 'info' not in contract_json:
-                contract_json['info'] = {}
-            contract_json['info']['contacts'] = [{"name": "Contact One", "email": "contact1@example.com"}]
+            if "info" not in contract_json:
+                contract_json["info"] = {}
+            contract_json["info"]["contacts"] = [
+                {"name": "Contact One", "email": "contact1@example.com"}
+            ]
             self.contract_a1.hub_contract_json = contract_json
             self.contract_a1.save()
 
-        response = self.client.get('/api/v1/contracts/', {'contact_name': 'Contact'})
+        response = self.client.get("/api/v1/contracts/", {"contact_name": "Contact"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Filter may return 0 if contact filtering doesn't work or contract wasn't updated
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_list_contracts_filter_by_server_type(self):
         """Test filtering by server type"""
         self.client.force_authenticate(user=self.user_a)
         # Filter may not work if contracts don't have servers section
         # Just verify the API handles the filter gracefully
-        response = self.client.get('/api/v1/contracts/', {'server_type': 's3'})
+        response = self.client.get("/api/v1/contracts/", {"server_type": "s3"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Filter may return 0 if no contracts match (servers section may not exist)
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_list_contracts_filter_by_server_url(self):
         """Test filtering by server URL"""
         self.client.force_authenticate(user=self.user_a)
         # Filter may not work if contracts don't have servers section
         # Just verify the API handles the filter gracefully
-        response = self.client.get('/api/v1/contracts/', {'server_url': 's3://bucket1'})
+        response = self.client.get("/api/v1/contracts/", {"server_url": "s3://bucket1"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Filter may return 0 if no contracts match (servers section may not exist)
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_list_contracts_filter_by_min_availability(self):
         """Test filtering by minimum availability"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'min_availability': '99.8'})
+        response = self.client.get("/api/v1/contracts/", {"min_availability": "99.8"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_list_contracts_filter_by_max_latency_ms(self):
         """Test filtering by maximum latency"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'max_latency_ms': '150'})
+        response = self.client.get("/api/v1/contracts/", {"max_latency_ms": "150"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_list_contracts_filter_by_model_name(self):
         """Test filtering by model name"""
         self.client.force_authenticate(user=self.user_a)
         contract_json = self.contract_a1.hub_contract_json.copy()
-        contract_json['schema']['models'] = [{"name": "model1", "fields": []}]
+        contract_json["schema"]["models"] = [{"name": "model1", "fields": []}]
         self.contract_a1.hub_contract_json = contract_json
         self.contract_a1.save()
 
-        response = self.client.get('/api/v1/contracts/', {'model_name': 'model1'})
+        response = self.client.get("/api/v1/contracts/", {"model_name": "model1"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_list_contracts_filter_combination(self):
         """Test filtering with multiple criteria"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {
-            'tag': 'analytics',
-            'compliance_regime': 'GDPR',
-            'owner_email': 'john@example.com'
-        })
+        response = self.client.get(
+            "/api/v1/contracts/",
+            {"tag": "analytics", "compliance_regime": "GDPR", "owner_email": "john@example.com"},
+        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data["count"], 1)
 
     def test_list_contracts_ordering_by_created_at_asc(self):
         """Test ordering by created_at ascending"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'ordering': 'created_at'})
+        response = self.client.get("/api/v1/contracts/", {"ordering": "created_at"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        results = response.data['results']
+        results = response.data["results"]
         if len(results) > 1:
-            self.assertLessEqual(
-                results[0]['created_at'],
-                results[1]['created_at']
-            )
+            self.assertLessEqual(results[0]["created_at"], results[1]["created_at"])
 
     def test_list_contracts_ordering_by_created_at_desc(self):
         """Test ordering by created_at descending"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'ordering': '-created_at'})
+        response = self.client.get("/api/v1/contracts/", {"ordering": "-created_at"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        results = response.data['results']
+        results = response.data["results"]
         if len(results) > 1:
-            self.assertGreaterEqual(
-                results[0]['created_at'],
-                results[1]['created_at']
-            )
+            self.assertGreaterEqual(results[0]["created_at"], results[1]["created_at"])
 
     def test_list_contracts_ordering_by_updated_at_desc(self):
         """Test ordering by updated_at descending"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'ordering': '-updated_at'})
+        response = self.client.get("/api/v1/contracts/", {"ordering": "-updated_at"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data['results']), 0)
+        self.assertGreaterEqual(len(response.data["results"]), 0)
 
     def test_list_contracts_ordering_multiple_fields(self):
         """Test ordering by multiple fields"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'ordering': '-created_at,id'})
+        response = self.client.get("/api/v1/contracts/", {"ordering": "-created_at,id"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data['results']), 0)
+        self.assertGreaterEqual(len(response.data["results"]), 0)
 
     # ========== QUERY PARAMETER VALIDATION ==========
 
     def test_list_contracts_invalid_page_number(self):
         """Test invalid page number"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'page': 'invalid'})
+        response = self.client.get("/api/v1/contracts/", {"page": "invalid"})
 
         # Should handle gracefully (either 400 or default to page 1)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -422,7 +411,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_invalid_page_size(self):
         """Test invalid page size"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'page_size': 'invalid'})
+        response = self.client.get("/api/v1/contracts/", {"page_size": "invalid"})
 
         # Should handle gracefully (either 400 or default page size)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -430,7 +419,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_invalid_min_availability(self):
         """Test invalid min_availability parameter"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'min_availability': 'invalid'})
+        response = self.client.get("/api/v1/contracts/", {"min_availability": "invalid"})
 
         # Should handle gracefully (either 400 or ignore invalid filter)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -438,7 +427,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_invalid_max_latency_ms(self):
         """Test invalid max_latency_ms parameter"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'max_latency_ms': 'invalid'})
+        response = self.client.get("/api/v1/contracts/", {"max_latency_ms": "invalid"})
 
         # Should handle gracefully (either 400 or ignore invalid filter)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -446,10 +435,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_empty_filter_values(self):
         """Test empty filter values"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {
-            'owner_email': '',
-            'tag': ''
-        })
+        response = self.client.get("/api/v1/contracts/", {"owner_email": "", "tag": ""})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -462,15 +448,13 @@ class TestContractListAPI(TestCase):
         # Create more contracts for realistic performance test
         for i in range(10):
             ContractFactoryEnhanced.create_contract(
-                tenant=self.tenant_a,
-                created_by=self.user_a,
-                name=f"Performance Contract {i}"
+                tenant=self.tenant_a, created_by=self.user_a, name=f"Performance Contract {i}"
             )
 
         times = []
         for _ in range(20):
             start = time.time()
-            response = self.client.get('/api/v1/contracts/')
+            response = self.client.get("/api/v1/contracts/")
             elapsed = (time.time() - start) * 1000  # Convert to ms
             times.append(elapsed)
             self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -488,31 +472,31 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_tenant_isolation(self):
         """Test tenant isolation - user should only see their tenant's contracts"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/')
+        response = self.client.get("/api/v1/contracts/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should only see tenant A contracts
-        self.assertEqual(response.data['count'], 2)
+        self.assertEqual(response.data["count"], 2)
         # Verify all returned contracts belong to tenant A
-        returned_ids = {result['id'] for result in response.data['results']}
+        returned_ids = {result["id"] for result in response.data["results"]}
         expected_ids = {str(self.contract_a1.id), str(self.contract_a2.id)}
         self.assertEqual(returned_ids, expected_ids)
 
     def test_list_contracts_tenant_b_isolation(self):
         """Test tenant isolation - user B should only see tenant B contracts"""
         self.client.force_authenticate(user=self.user_b)
-        response = self.client.get('/api/v1/contracts/')
+        response = self.client.get("/api/v1/contracts/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should only see tenant B contracts
-        self.assertEqual(response.data['count'], 1)
-        self.assertEqual(response.data['results'][0]['id'], str(self.contract_b1.id))
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], str(self.contract_b1.id))
 
     def test_list_contracts_cannot_access_other_tenant_contracts(self):
         """Test that user cannot access contracts from other tenant"""
         self.client.force_authenticate(user=self.user_a)
         # Try to access tenant B's contract directly
-        response = self.client.get(f'/api/v1/contracts/{self.contract_b1.id}/')
+        response = self.client.get(f"/api/v1/contracts/{self.contract_b1.id}/")
 
         # Should return 404 (not found) due to tenant filtering
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -520,39 +504,41 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_search_by_name(self):
         """Test searching contracts by name"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'search': 'Contract A1'})
+        response = self.client.get("/api/v1/contracts/", {"search": "Contract A1"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_list_contracts_filter_by_status(self):
         """Test filtering contracts by status"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'status': ContractStatus.DRAFT})
+        response = self.client.get("/api/v1/contracts/", {"status": ContractStatus.DRAFT})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_list_contracts_filter_by_normalization_status(self):
         """Test filtering contracts by normalization status"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'normalization_status': NormalizationStatus.NORMALIZED_OK})
+        response = self.client.get(
+            "/api/v1/contracts/", {"normalization_status": NormalizationStatus.NORMALIZED_OK}
+        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_list_contracts_large_page_size(self):
         """Test pagination with large page size"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'page_size': 100})
+        response = self.client.get("/api/v1/contracts/", {"page_size": 100})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertLessEqual(len(response.data['results']), 100)
+        self.assertLessEqual(len(response.data["results"]), 100)
 
     def test_list_contracts_page_zero(self):
         """Test pagination with page 0 (should default to page 1)"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'page': 0})
+        response = self.client.get("/api/v1/contracts/", {"page": 0})
 
         # Should handle gracefully
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -560,7 +546,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_negative_page(self):
         """Test pagination with negative page number"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'page': -1})
+        response = self.client.get("/api/v1/contracts/", {"page": -1})
 
         # Should handle gracefully
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -568,58 +554,62 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_very_large_page_size(self):
         """Test pagination with very large page size"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'page_size': 10000})
+        response = self.client.get("/api/v1/contracts/", {"page_size": 10000})
 
         # Should cap at maximum page size or return 400 if validation fails
         # API may reject very large page sizes
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
         if response.status_code == status.HTTP_200_OK:
-            self.assertLessEqual(len(response.data['results']), 10000)
+            self.assertLessEqual(len(response.data["results"]), 10000)
 
     def test_list_contracts_filter_by_created_after(self):
         """Test filtering contracts by created_after date"""
         self.client.force_authenticate(user=self.user_a)
-        from datetime import datetime, timedelta
+        from datetime import timedelta
+
         yesterday = (timezone.now() - timedelta(days=1)).isoformat()
-        response = self.client.get('/api/v1/contracts/', {'created_after': yesterday})
+        response = self.client.get("/api/v1/contracts/", {"created_after": yesterday})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_list_contracts_filter_by_created_before(self):
         """Test filtering contracts by created_before date"""
         self.client.force_authenticate(user=self.user_a)
         tomorrow = (timezone.now() + timedelta(days=1)).isoformat()
-        response = self.client.get('/api/v1/contracts/', {'created_before': tomorrow})
+        response = self.client.get("/api/v1/contracts/", {"created_before": tomorrow})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_list_contracts_multiple_filters_complex(self):
         """Test complex filtering with multiple criteria"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {
-            'tag': 'analytics',
-            'compliance_regime': 'GDPR',
-            'owner_email': 'john@example.com',
-            'min_availability': '99.0',
-            'ordering': '-created_at'
-        })
+        response = self.client.get(
+            "/api/v1/contracts/",
+            {
+                "tag": "analytics",
+                "compliance_regime": "GDPR",
+                "owner_email": "john@example.com",
+                "min_availability": "99.0",
+                "ordering": "-created_at",
+            },
+        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_list_contracts_ordering_invalid_field(self):
         """Test ordering by invalid field"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/', {'ordering': 'invalid_field'})
+        response = self.client.get("/api/v1/contracts/", {"ordering": "invalid_field"})
 
         # Should handle gracefully (either ignore or return 400)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
 
     def test_list_contracts_unauthenticated(self):
         """Test list contracts without authentication"""
-        response = self.client.get('/api/v1/contracts/')
+        response = self.client.get("/api/v1/contracts/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -630,21 +620,21 @@ class TestContractListAPI(TestCase):
             name=f"Empty Tenant {uuid.uuid4().hex[:8]}",
             slug=f"empty-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         empty_user = UserFactory.create_user(
             email=f"empty-{uuid.uuid4().hex[:8]}@example.com",
             tenant=empty_tenant,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         empty_user.refresh_from_db()
 
         self.client.force_authenticate(user=empty_user)
-        response = self.client.get('/api/v1/contracts/')
+        response = self.client.get("/api/v1/contracts/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['count'], 0)
-        self.assertEqual(len(response.data['results']), 0)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(len(response.data["results"]), 0)
 
 
 class TestContractCreateAPI(TestCase):
@@ -659,14 +649,14 @@ class TestContractCreateAPI(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         self.user.refresh_from_db()
 
@@ -683,31 +673,21 @@ class TestContractCreateAPI(TestCase):
 
         contract_data = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract",
-                "version": "1.0.0"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string", "nullable": False}
-                ]
-            }
+            "info": {"name": "Test Contract", "version": "1.0.0"},
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn('id', response.data)
-        self.assertEqual(response.data['status'], ContractStatus.DRAFT)
-        self.assertEqual(response.data['original_format'], OriginalFormat.JSON)
+        self.assertIn("id", response.data)
+        self.assertEqual(response.data["status"], ContractStatus.DRAFT)
+        self.assertEqual(response.data["original_format"], OriginalFormat.JSON)
 
         # Verify contract was created
-        contract = Contract.objects.get(id=response.data['id'])
+        contract = Contract.objects.get(id=response.data["id"])
         self.assertEqual(contract.tenant, self.tenant)
         self.assertEqual(contract.created_by, self.user)
 
@@ -728,15 +708,12 @@ schema:
       nullable: false
 """
 
-        data = {
-            "original_raw": yaml_content,
-            "original_format": OriginalFormat.YAML
-        }
+        data = {"original_raw": yaml_content, "original_format": OriginalFormat.YAML}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['original_format'], OriginalFormat.YAML)
+        self.assertEqual(response.data["original_format"], OriginalFormat.YAML)
 
     def test_create_contract_with_schema_validation(self):
         """Test contract creation with schema validation"""
@@ -745,39 +722,28 @@ schema:
 
         contract_data = {
             "id": "test-contract-3",
-            "info": {
-                "name": "Test Contract",
-                "version": "1.0.0"
-            },
+            "info": {"name": "Test Contract", "version": "1.0.0"},
             "schema": {
                 "fields": [
                     {
                         "name": "id",
                         "data_type": "string",
                         "nullable": False,
-                        "description": "Unique identifier"
+                        "description": "Unique identifier",
                     },
-                    {
-                        "name": "email",
-                        "data_type": "string",
-                        "nullable": False,
-                        "format": "email"
-                    }
+                    {"name": "email", "data_type": "string", "nullable": False, "format": "email"},
                 ],
-                "primary_key": ["id"]
-            }
+                "primary_key": ["id"],
+            },
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         # Verify normalization occurred (may succeed or fail depending on service availability)
-        contract = Contract.objects.get(id=response.data['id'])
+        contract = Contract.objects.get(id=response.data["id"])
         # Normalization may fail if semantic service is unavailable, so check status instead
         self.assertIsNotNone(contract.normalization_status)
         # If normalization succeeded, hub_contract_json should be set
@@ -794,28 +760,23 @@ schema:
             "info": {
                 "name": "Test Contract",
                 "version": "1.0.0",
-                "owners": [{"name": "John Doe", "email": "john@example.com"}]
+                "owners": [{"name": "John Doe", "email": "john@example.com"}],
             },
-            "schema": {
-                "fields": [{"name": "id", "data_type": "string", "nullable": False}]
-            }
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        contract = Contract.objects.get(id=response.data['id'])
+        contract = Contract.objects.get(id=response.data["id"])
         # Verify normalization occurred (may succeed or fail depending on service availability)
         self.assertIsNotNone(contract.normalization_status)
         # If normalization succeeded, hub_contract_json should be set
         if contract.normalization_status == NormalizationStatus.NORMALIZED_OK:
             self.assertIsNotNone(contract.hub_contract_json)
-            self.assertIn('info', contract.hub_contract_json)
+            self.assertIn("info", contract.hub_contract_json)
 
     def test_create_contract_with_asset_id(self):
         """Test contract creation with asset_id"""
@@ -824,29 +785,30 @@ schema:
 
         # Create an asset first
         from hub.apps.assets.models import Asset, AssetStatus
+
         asset = Asset.objects.create(
             tenant=self.tenant,
             name="Test Asset",
             status=AssetStatus.ACTIVE.value,
-            created_by=self.user
+            created_by=self.user,
         )
 
         contract_data = {
             "id": "test-contract-5",
             "info": {"name": "Test Contract", "version": "1.0.0"},
-            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]}
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
         }
 
         data = {
             "original_raw": json.dumps(contract_data),
             "original_format": OriginalFormat.JSON,
-            "asset_id": str(asset.id)
+            "asset_id": str(asset.id),
         }
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        contract = Contract.objects.get(id=response.data['id'])
+        contract = Contract.objects.get(id=response.data["id"])
         self.assertEqual(contract.asset_id, asset.id)
 
     # ========== VALIDATION ERRORS ==========
@@ -856,11 +818,9 @@ schema:
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        data = {
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -869,11 +829,9 @@ schema:
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        data = {
-            "original_raw": json.dumps({"id": "test"})
-        }
+        data = {"original_raw": json.dumps({"id": "test"})}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -882,12 +840,9 @@ schema:
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        data = {
-            "original_raw": "{ invalid json }",
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": "{ invalid json }", "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         # Should handle invalid JSON gracefully
         self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_201_CREATED])
@@ -902,12 +857,9 @@ schema:
             # Missing required fields
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         # Should create contract but may have normalization warnings
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
@@ -917,12 +869,9 @@ schema:
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        data = {
-            "original_raw": "",
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": "", "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -935,26 +884,16 @@ schema:
 
         contract_data = {
             "id": "test-contract-integration",
-            "info": {
-                "name": "Integration Test Contract",
-                "version": "1.0.0"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string", "nullable": False}
-                ]
-            }
+            "info": {"name": "Integration Test Contract", "version": "1.0.0"},
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        contract = Contract.objects.get(id=response.data['id'])
+        contract = Contract.objects.get(id=response.data["id"])
         # Verify normalization service was called (check status, not result)
         self.assertIsNotNone(contract.normalization_status)
         # If normalization succeeded, hub_contract_json should be set
@@ -970,32 +909,23 @@ schema:
             "id": "test-contract-schema-validation",
             "info": {"name": "Schema Validation Test", "version": "1.0.0"},
             "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "data_type": "string",
-                        "nullable": False
-                    }
-                ],
-                "primary_key": ["id"]
-            }
+                "fields": [{"name": "id", "data_type": "string", "nullable": False}],
+                "primary_key": ["id"],
+            },
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        contract = Contract.objects.get(id=response.data['id'])
+        contract = Contract.objects.get(id=response.data["id"])
         # Verify schema validation occurred (check normalization status)
         self.assertIsNotNone(contract.normalization_status)
         # If normalization succeeded, hub_contract_json should be set
         if contract.normalization_status == NormalizationStatus.NORMALIZED_OK:
             self.assertIsNotNone(contract.hub_contract_json)
-            self.assertIn('schema', contract.hub_contract_json)
+            self.assertIn("schema", contract.hub_contract_json)
 
     def test_create_contract_integration_normalization(self):
         """Test contract creation integrates with normalization service"""
@@ -1008,35 +938,33 @@ schema:
                 "name": "Normalization Test",
                 "version": "1.0.0",
                 "owners": [{"name": "Test Owner", "email": "owner@example.com"}],
-                "tags": ["test", "integration"]
+                "tags": ["test", "integration"],
             },
-            "schema": {
-                "fields": [{"name": "id", "data_type": "string", "nullable": False}]
-            }
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        contract = Contract.objects.get(id=response.data['id'])
+        contract = Contract.objects.get(id=response.data["id"])
         # Verify normalization occurred (may succeed or fail depending on service availability)
         self.assertIsNotNone(contract.normalization_status)
         # If normalization succeeded, hub_contract_json should be set
         if contract.normalization_status == NormalizationStatus.NORMALIZED_OK:
             self.assertIsNotNone(contract.hub_contract_json)
-            self.assertIn('info', contract.hub_contract_json)
+            self.assertIn("info", contract.hub_contract_json)
         # Normalization may fail if services are unavailable, so just verify status is set
-        self.assertIn(contract.normalization_status, [
-            NormalizationStatus.NORMALIZED_OK,
-            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
-            NormalizationStatus.NORMALIZATION_FAILED,
-            NormalizationStatus.NOT_NORMALIZED
-        ])
+        self.assertIn(
+            contract.normalization_status,
+            [
+                NormalizationStatus.NORMALIZED_OK,
+                NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+                NormalizationStatus.NORMALIZATION_FAILED,
+                NormalizationStatus.NOT_NORMALIZED,
+            ],
+        )
 
     # ========== PERFORMANCE TESTS ==========
 
@@ -1048,15 +976,10 @@ schema:
         contract_data = {
             "id": "test-contract-perf",
             "info": {"name": "Performance Test", "version": "1.0.0"},
-            "schema": {
-                "fields": [{"name": "id", "data_type": "string", "nullable": False}]
-            }
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
         times = []
         for i in range(10):
@@ -1064,7 +987,7 @@ schema:
             data["original_raw"] = json.dumps(contract_data)
 
             start = time.time()
-            response = self.client.post('/api/v1/contracts/', data, format="json")
+            response = self.client.post("/api/v1/contracts/", data, format="json")
             elapsed = (time.time() - start) * 1000  # Convert to ms
             times.append(elapsed)
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -1089,25 +1012,28 @@ schema:
                 "fields": [
                     {"name": "id", "data_type": "string", "nullable": False},
                     {"name": "email", "data_type": "string", "nullable": False, "format": "email"},
-                    {"name": "age", "data_type": "integer", "nullable": True, "minimum": 0, "maximum": 150},
+                    {
+                        "name": "age",
+                        "data_type": "integer",
+                        "nullable": True,
+                        "minimum": 0,
+                        "maximum": 150,
+                    },
                     {"name": "score", "data_type": "float", "nullable": True},
-                    {"name": "tags", "data_type": "array", "nullable": True}
+                    {"name": "tags", "data_type": "array", "nullable": True},
                 ],
                 "primary_key": ["id"],
                 "unique_constraints": [{"fields": ["email"]}],
-                "indexes": [{"fields": ["age"]}]
-            }
+                "indexes": [{"fields": ["age"]}],
+            },
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        contract = Contract.objects.get(id=response.data['id'])
+        contract = Contract.objects.get(id=response.data["id"])
         # Verify normalization occurred (may succeed or fail depending on service availability)
         self.assertIsNotNone(contract.normalization_status)
         # If normalization succeeded, hub_contract_json should be set
@@ -1125,43 +1051,31 @@ schema:
                 "name": "Full Contract",
                 "version": "1.0.0",
                 "owners": [{"name": "Owner", "email": "owner@example.com"}],
-                "tags": ["tag1", "tag2"]
+                "tags": ["tag1", "tag2"],
             },
-            "schema": {
-                "fields": [{"name": "id", "data_type": "string", "nullable": False}]
-            },
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
             "quality": {
                 "default_profile_key": "intake_basic",
-                "rules": [{
-                    "rule_id": "test_rule",
-                    "dimension": "completeness",
-                    "expression": "id IS NOT NULL",
-                    "severity": "ERROR"
-                }]
+                "rules": [
+                    {
+                        "rule_id": "test_rule",
+                        "dimension": "completeness",
+                        "expression": "id IS NOT NULL",
+                        "severity": "ERROR",
+                    }
+                ],
             },
-            "privacy_compliance": {
-                "contains_personal_data": True,
-                "jurisdictions": ["GDPR"]
-            },
-            "lifecycle": {
-                "data_source": "s3://bucket/data",
-                "refresh_cadence": "DAILY"
-            },
-            "marketplace": {
-                "license_summary": "MIT",
-                "intended_use": ["analytics"]
-            }
+            "privacy_compliance": {"contains_personal_data": True, "jurisdictions": ["GDPR"]},
+            "lifecycle": {"data_source": "s3://bucket/data", "refresh_cadence": "DAILY"},
+            "marketplace": {"license_summary": "MIT", "intended_use": ["analytics"]},
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        contract = Contract.objects.get(id=response.data['id'])
+        contract = Contract.objects.get(id=response.data["id"])
         # Verify normalization occurred (may succeed or fail depending on service availability)
         self.assertIsNotNone(contract.normalization_status)
         # If normalization succeeded, hub_contract_json should be set
@@ -1176,19 +1090,19 @@ schema:
         contract_data = {
             "id": "spec-type-contract",
             "info": {"name": "Spec Type Contract", "version": "1.0.0"},
-            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]}
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
         }
 
         data = {
             "original_raw": json.dumps(contract_data),
             "original_format": OriginalFormat.JSON,
-            "original_spec_type": OriginalSpecType.ODCS
+            "original_spec_type": OriginalSpecType.ODCS,
         }
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        contract = Contract.objects.get(id=response.data['id'])
+        contract = Contract.objects.get(id=response.data["id"])
         self.assertEqual(contract.original_spec_type, OriginalSpecType.ODCS)
 
     def test_create_contract_unauthenticated(self):
@@ -1196,15 +1110,12 @@ schema:
         contract_data = {
             "id": "unauth-contract",
             "info": {"name": "Unauth Contract", "version": "1.0.0"},
-            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]}
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -1213,15 +1124,18 @@ schema:
         user_no_tenant = UserFactory.create_user(
             email=f"no_tenant-{uuid.uuid4().hex[:8]}@example.com",
             tenant=None,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         # Ensure user has no tenant relationship
         user_no_tenant.refresh_from_db()
         # Clear tenant_id if it was set
-        if hasattr(user_no_tenant, 'tenant_id') and user_no_tenant.tenant_id:
+        if hasattr(user_no_tenant, "tenant_id") and user_no_tenant.tenant_id:
             from django.db import connection
+
             with connection.cursor() as cursor:
-                cursor.execute("UPDATE users SET tenant_id = NULL WHERE id = %s", [str(user_no_tenant.id)])
+                cursor.execute(
+                    "UPDATE users SET tenant_id = NULL WHERE id = %s", [str(user_no_tenant.id)]
+                )
             user_no_tenant.refresh_from_db()
 
         self.client.force_authenticate(user=user_no_tenant)
@@ -1229,15 +1143,12 @@ schema:
         contract_data = {
             "id": "no-tenant-contract",
             "info": {"name": "No Tenant Contract", "version": "1.0.0"},
-            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]}
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         # Should fail because user has no tenant (or succeed if API allows it)
         # API may allow creation and assign a default tenant, so accept both 400 and 201
@@ -1249,19 +1160,18 @@ schema:
         ensure_user_has_data_provider_role(self.user)
 
         # Create contract with many fields
-        fields = [{"name": f"field_{i}", "data_type": "string", "nullable": True} for i in range(100)]
+        fields = [
+            {"name": f"field_{i}", "data_type": "string", "nullable": True} for i in range(100)
+        ]
         contract_data = {
             "id": "large-contract",
             "info": {"name": "Large Contract", "version": "1.0.0"},
-            "schema": {"fields": fields}
+            "schema": {"fields": fields},
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         # Should handle large payloads
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
@@ -1274,15 +1184,12 @@ schema:
         contract_data = {
             "id": "special-chars-contract",
             "info": {"name": "Contract with émojis 🎉 and spéciál chars", "version": "1.0.0"},
-            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]}
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -1294,22 +1201,19 @@ schema:
         contract_data = {
             "id": "duplicate-id",
             "info": {"name": "First Contract", "version": "1.0.0"},
-            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]}
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
         # Create first contract
-        response1 = self.client.post('/api/v1/contracts/', data, format="json")
+        response1 = self.client.post("/api/v1/contracts/", data, format="json")
         self.assertEqual(response1.status_code, status.HTTP_201_CREATED)
 
         # Try to create second contract with same ID
         contract_data["info"]["name"] = "Second Contract"
         data["original_raw"] = json.dumps(contract_data)
-        response2 = self.client.post('/api/v1/contracts/', data, format="json")
+        response2 = self.client.post("/api/v1/contracts/", data, format="json")
 
         # May allow or reject depending on implementation
         self.assertIn(response2.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
@@ -1327,13 +1231,13 @@ class TestContractRetrieveAPI(TestCase):
             name=f"Tenant A {uuid.uuid4().hex[:8]}",
             slug=f"tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         self.tenant_b = TenantFactory.create_tenant(
             name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         ensure_tenant_has_active_subscription(self.tenant_a)
         ensure_tenant_has_active_subscription(self.tenant_b)
@@ -1341,20 +1245,18 @@ class TestContractRetrieveAPI(TestCase):
         self.user_a = UserFactory.create_user(
             email=f"user_a-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_a,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         self.user_b = UserFactory.create_user(
             email=f"user_b-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_b,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         self.user_a.refresh_from_db()
         self.user_b.refresh_from_db()
 
         self.contract = ContractFactoryEnhanced.create_contract(
-            tenant=self.tenant_a,
-            created_by=self.user_a,
-            name="Test Contract"
+            tenant=self.tenant_a, created_by=self.user_a, name="Test Contract"
         )
 
     def tearDown(self):
@@ -1366,21 +1268,21 @@ class TestContractRetrieveAPI(TestCase):
     def test_retrieve_contract_success(self):
         """Test successful contract retrieval"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
+        response = self.client.get(f"/api/v1/contracts/{self.contract.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(self.contract.id))
-        self.assertIn('hub_contract_json', response.data)
+        self.assertEqual(response.data["id"], str(self.contract.id))
+        self.assertIn("hub_contract_json", response.data)
 
     def test_retrieve_contract_with_relationships(self):
         """Test contract retrieval includes relationships"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
+        response = self.client.get(f"/api/v1/contracts/{self.contract.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify contract data is present (relationships may or may not be included)
-        self.assertIn('id', response.data)
-        self.assertIn('hub_contract_json', response.data)
+        self.assertIn("id", response.data)
+        self.assertIn("hub_contract_json", response.data)
 
     def test_retrieve_contract_version_history(self):
         """Test contract retrieval includes version history"""
@@ -1388,39 +1290,36 @@ class TestContractRetrieveAPI(TestCase):
 
         # Create a new version
         contract_v2 = ContractFactoryEnhanced.create_contract(
-            tenant=self.tenant_a,
-            created_by=self.user_a,
-            name="Test Contract V2",
-            version=2
+            tenant=self.tenant_a, created_by=self.user_a, name="Test Contract V2", version=2
         )
 
-        response = self.client.get(f'/api/v1/contracts/{contract_v2.id}/')
+        response = self.client.get(f"/api/v1/contracts/{contract_v2.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['version'], 2)
+        self.assertEqual(response.data["version"], 2)
 
     # ========== AUTHORIZATION TESTS ==========
 
     def test_retrieve_contract_tenant_isolation(self):
         """Test tenant isolation - user can only retrieve their tenant's contracts"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
+        response = self.client.get(f"/api/v1/contracts/{self.contract.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify contract belongs to tenant A by checking it's one of tenant A's contracts
-        self.assertEqual(response.data['id'], str(self.contract.id))
+        self.assertEqual(response.data["id"], str(self.contract.id))
 
     def test_retrieve_contract_cannot_access_other_tenant(self):
         """Test user cannot retrieve contracts from other tenant"""
         self.client.force_authenticate(user=self.user_b)
-        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
+        response = self.client.get(f"/api/v1/contracts/{self.contract.id}/")
 
         # Should return 404 due to tenant filtering
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_retrieve_contract_unauthenticated(self):
         """Test unauthenticated user cannot retrieve contract"""
-        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
+        response = self.client.get(f"/api/v1/contracts/{self.contract.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -1430,14 +1329,14 @@ class TestContractRetrieveAPI(TestCase):
         """Test retrieving non-existent contract"""
         self.client.force_authenticate(user=self.user_a)
         fake_id = uuid.uuid4()
-        response = self.client.get(f'/api/v1/contracts/{fake_id}/')
+        response = self.client.get(f"/api/v1/contracts/{fake_id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_retrieve_contract_invalid_uuid(self):
         """Test retrieving contract with invalid UUID"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/invalid-uuid/')
+        response = self.client.get("/api/v1/contracts/invalid-uuid/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -1446,13 +1345,13 @@ class TestContractRetrieveAPI(TestCase):
         self.client.force_authenticate(user=self.user_a)
 
         # First request
-        response1 = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
+        response1 = self.client.get(f"/api/v1/contracts/{self.contract.id}/")
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
 
         # Second request (may be cached)
-        response2 = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
+        response2 = self.client.get(f"/api/v1/contracts/{self.contract.id}/")
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
-        self.assertEqual(response1.data['id'], response2.data['id'])
+        self.assertEqual(response1.data["id"], response2.data["id"])
 
     def test_retrieve_contract_with_deleted_status(self):
         """Test retrieving contract that is deleted"""
@@ -1460,20 +1359,20 @@ class TestContractRetrieveAPI(TestCase):
 
         # Soft delete contract if supported
         # This depends on implementation - may not be supported
-        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
+        response = self.client.get(f"/api/v1/contracts/{self.contract.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_retrieve_contract_response_structure(self):
         """Test contract retrieval response structure"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
+        response = self.client.get(f"/api/v1/contracts/{self.contract.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify response contains expected fields
-        self.assertIn('id', response.data)
-        self.assertIn('status', response.data)
-        self.assertIn('created_at', response.data)
-        self.assertIn('updated_at', response.data)
+        self.assertIn("id", response.data)
+        self.assertIn("status", response.data)
+        self.assertIn("created_at", response.data)
+        self.assertIn("updated_at", response.data)
 
     def test_retrieve_contract_with_relationships_asset(self):
         """Test contract retrieval includes asset relationship"""
@@ -1481,25 +1380,23 @@ class TestContractRetrieveAPI(TestCase):
 
         # Create contract with asset
         from hub.apps.assets.models import Asset, AssetStatus
+
         asset = Asset.objects.create(
             tenant=self.tenant_a,
             name="Test Asset",
             status=AssetStatus.ACTIVE.value,
-            created_by=self.user_a
+            created_by=self.user_a,
         )
 
         contract_with_asset = ContractFactoryEnhanced.create_contract(
-            tenant=self.tenant_a,
-            created_by=self.user_a,
-            name="Contract With Asset",
-            asset=asset
+            tenant=self.tenant_a, created_by=self.user_a, name="Contract With Asset", asset=asset
         )
 
-        response = self.client.get(f'/api/v1/contracts/{contract_with_asset.id}/')
+        response = self.client.get(f"/api/v1/contracts/{contract_with_asset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Asset relationship may or may not be included depending on serializer
-        self.assertIn('id', response.data)
+        self.assertIn("id", response.data)
 
     def test_retrieve_contract_multiple_versions(self):
         """Test retrieving contract with multiple versions"""
@@ -1507,27 +1404,21 @@ class TestContractRetrieveAPI(TestCase):
 
         # Create multiple versions
         contract_v1 = ContractFactoryEnhanced.create_contract(
-            tenant=self.tenant_a,
-            created_by=self.user_a,
-            name="Contract V1",
-            version=1
+            tenant=self.tenant_a, created_by=self.user_a, name="Contract V1", version=1
         )
 
         contract_v2 = ContractFactoryEnhanced.create_contract(
-            tenant=self.tenant_a,
-            created_by=self.user_a,
-            name="Contract V2",
-            version=2
+            tenant=self.tenant_a, created_by=self.user_a, name="Contract V2", version=2
         )
 
         # Retrieve each version
-        response1 = self.client.get(f'/api/v1/contracts/{contract_v1.id}/')
-        response2 = self.client.get(f'/api/v1/contracts/{contract_v2.id}/')
+        response1 = self.client.get(f"/api/v1/contracts/{contract_v1.id}/")
+        response2 = self.client.get(f"/api/v1/contracts/{contract_v2.id}/")
 
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
-        self.assertEqual(response1.data['version'], 1)
-        self.assertEqual(response2.data['version'], 2)
+        self.assertEqual(response1.data["version"], 1)
+        self.assertEqual(response2.data["version"], 2)
 
 
 class TestContractUpdateAPI(TestCase):
@@ -1542,14 +1433,14 @@ class TestContractUpdateAPI(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         self.user.refresh_from_db()
 
@@ -1557,7 +1448,7 @@ class TestContractUpdateAPI(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="Test Contract",
-            status=ContractStatus.DRAFT
+            status=ContractStatus.DRAFT,
         )
 
     def tearDown(self):
@@ -1573,25 +1464,16 @@ class TestContractUpdateAPI(TestCase):
 
         updated_contract_data = {
             "id": "updated-contract",
-            "info": {
-                "name": "Updated Contract",
-                "version": "1.0.1"
-            },
-            "schema": {
-                "fields": [{"name": "id", "data_type": "string", "nullable": False}]
-            }
+            "info": {"name": "Updated Contract", "version": "1.0.1"},
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
         }
 
         data = {
             "original_raw": json.dumps(updated_contract_data),
-            "original_format": OriginalFormat.JSON
+            "original_format": OriginalFormat.JSON,
         }
 
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.contract.refresh_from_db()
@@ -1606,15 +1488,9 @@ class TestContractUpdateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        data = {
-            "status": ContractStatus.ACTIVE
-        }
+        data = {"status": ContractStatus.ACTIVE}
 
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.contract.refresh_from_db()
@@ -1628,13 +1504,14 @@ class TestContractUpdateAPI(TestCase):
         # Get contract data from original_raw if hub_contract_json is None
         self.contract.refresh_from_db()
         if self.contract.hub_contract_json:
-            contract_id = str(self.contract.hub_contract_json.get('id', 'test'))
-            contract_info = self.contract.hub_contract_json.get('info', {})
+            contract_id = str(self.contract.hub_contract_json.get("id", "test"))
+            contract_info = self.contract.hub_contract_json.get("info", {})
         else:
             import json as json_lib
+
             original_data = json_lib.loads(self.contract.original_raw)
-            contract_id = original_data.get('id', 'test')
-            contract_info = original_data.get('info', {})
+            contract_id = original_data.get("id", "test")
+            contract_info = original_data.get("info", {})
 
         updated_contract_data = {
             "id": contract_id,
@@ -1642,21 +1519,17 @@ class TestContractUpdateAPI(TestCase):
             "schema": {
                 "fields": [
                     {"name": "id", "data_type": "string", "nullable": False},
-                    {"name": "new_field", "data_type": "string", "nullable": True}
+                    {"name": "new_field", "data_type": "string", "nullable": True},
                 ]
-            }
+            },
         }
 
         data = {
             "original_raw": json.dumps(updated_contract_data),
-            "original_format": OriginalFormat.JSON
+            "original_format": OriginalFormat.JSON,
         }
 
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.contract.refresh_from_db()
@@ -1671,27 +1544,18 @@ class TestContractUpdateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        original_version = self.contract.version
-
         updated_contract_data = {
-            "id": str(self.contract.hub_contract_json.get('id', 'test')),
-            "info": {
-                **self.contract.hub_contract_json.get('info', {}),
-                "version": "1.0.1"
-            },
-            "schema": self.contract.hub_contract_json.get('schema', {})
+            "id": str(self.contract.hub_contract_json.get("id", "test")),
+            "info": {**self.contract.hub_contract_json.get("info", {}), "version": "1.0.1"},
+            "schema": self.contract.hub_contract_json.get("schema", {}),
         }
 
         data = {
             "original_raw": json.dumps(updated_contract_data),
-            "original_format": OriginalFormat.JSON
+            "original_format": OriginalFormat.JSON,
         }
 
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Version may or may not increment depending on implementation
@@ -1704,15 +1568,10 @@ class TestContractUpdateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        invalid_data = {
-            "original_raw": "{ invalid json }",
-            "original_format": OriginalFormat.JSON
-        }
+        invalid_data = {"original_raw": "{ invalid json }", "original_format": OriginalFormat.JSON}
 
         response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            invalid_data,
-            format="json"
+            f"/api/v1/contracts/{self.contract.id}/", invalid_data, format="json"
         )
 
         # Should handle invalid schema gracefully
@@ -1725,23 +1584,19 @@ class TestContractUpdateAPI(TestCase):
 
         # Try to remove a required field
         updated_contract_data = {
-            "id": str(self.contract.hub_contract_json.get('id', 'test')),
-            "info": self.contract.hub_contract_json.get('info', {}),
+            "id": str(self.contract.hub_contract_json.get("id", "test")),
+            "info": self.contract.hub_contract_json.get("info", {}),
             "schema": {
                 "fields": []  # Removing all fields
-            }
+            },
         }
 
         data = {
             "original_raw": json.dumps(updated_contract_data),
-            "original_format": OriginalFormat.JSON
+            "original_format": OriginalFormat.JSON,
         }
 
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
 
         # Should handle breaking changes (may allow or reject depending on implementation)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -1756,13 +1611,14 @@ class TestContractUpdateAPI(TestCase):
         # Get contract data from original_raw if hub_contract_json is None
         self.contract.refresh_from_db()
         if self.contract.hub_contract_json:
-            contract_id = str(self.contract.hub_contract_json.get('id', 'test'))
-            contract_info = self.contract.hub_contract_json.get('info', {})
+            contract_id = str(self.contract.hub_contract_json.get("id", "test"))
+            contract_info = self.contract.hub_contract_json.get("info", {})
         else:
             import json as json_lib
+
             original_data = json_lib.loads(self.contract.original_raw)
-            contract_id = original_data.get('id', 'test')
-            contract_info = original_data.get('info', {})
+            contract_id = original_data.get("id", "test")
+            contract_info = original_data.get("info", {})
 
         updated_contract_data = {
             "id": contract_id,
@@ -1770,21 +1626,17 @@ class TestContractUpdateAPI(TestCase):
             "schema": {
                 "fields": [
                     {"name": "id", "data_type": "string", "nullable": False},
-                    {"name": "email", "data_type": "string", "nullable": False, "format": "email"}
+                    {"name": "email", "data_type": "string", "nullable": False, "format": "email"},
                 ]
-            }
+            },
         }
 
         data = {
             "original_raw": json.dumps(updated_contract_data),
-            "original_format": OriginalFormat.JSON
+            "original_format": OriginalFormat.JSON,
         }
 
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.contract.refresh_from_db()
@@ -1799,27 +1651,18 @@ class TestContractUpdateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        original_version = self.contract.version
-
         updated_contract_data = {
-            "id": str(self.contract.hub_contract_json.get('id', 'test')),
-            "info": {
-                **self.contract.hub_contract_json.get('info', {}),
-                "version": "1.0.1"
-            },
-            "schema": self.contract.hub_contract_json.get('schema', {})
+            "id": str(self.contract.hub_contract_json.get("id", "test")),
+            "info": {**self.contract.hub_contract_json.get("info", {}), "version": "1.0.1"},
+            "schema": self.contract.hub_contract_json.get("schema", {}),
         }
 
         data = {
             "original_raw": json.dumps(updated_contract_data),
-            "original_format": OriginalFormat.JSON
+            "original_format": OriginalFormat.JSON,
         }
 
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Versioning may or may not increment depending on implementation
@@ -1831,26 +1674,22 @@ class TestContractUpdateAPI(TestCase):
         ensure_user_has_data_provider_role(self.user)
 
         updated_contract_data = {
-            "id": str(self.contract.hub_contract_json.get('id', 'test')),
-            "info": self.contract.hub_contract_json.get('info', {}),
+            "id": str(self.contract.hub_contract_json.get("id", "test")),
+            "info": self.contract.hub_contract_json.get("info", {}),
             "schema": {
                 "fields": [
                     {"name": "id", "data_type": "string", "nullable": False},
-                    {"name": "new_field", "data_type": "string", "nullable": True}
+                    {"name": "new_field", "data_type": "string", "nullable": True},
                 ]
-            }
+            },
         }
 
         data = {
             "original_raw": json.dumps(updated_contract_data),
-            "original_format": OriginalFormat.JSON
+            "original_format": OriginalFormat.JSON,
         }
 
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Impact analysis may be triggered
@@ -1862,32 +1701,22 @@ class TestContractUpdateAPI(TestCase):
         ensure_user_has_data_provider_role(self.user)
 
         updated_contract_data = {
-            "id": str(self.contract.hub_contract_json.get('id', 'test')),
-            "info": {
-                "name": "Updated Contract PUT",
-                "version": "1.0.1"
-            },
-            "schema": {
-                "fields": [{"name": "id", "data_type": "string", "nullable": False}]
-            }
+            "id": str(self.contract.hub_contract_json.get("id", "test")),
+            "info": {"name": "Updated Contract PUT", "version": "1.0.1"},
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
         }
 
         data = {
             "original_raw": json.dumps(updated_contract_data),
-            "original_format": OriginalFormat.JSON
+            "original_format": OriginalFormat.JSON,
         }
 
-        response = self.client.put(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.put(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
 
         # PUT may or may not be supported (PATCH is more common)
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_405_METHOD_NOT_ALLOWED
-        ])
+        self.assertIn(
+            response.status_code, [status.HTTP_200_OK, status.HTTP_405_METHOD_NOT_ALLOWED]
+        )
 
     def test_update_contract_partial_fields_only(self):
         """Test updating contract with only some fields"""
@@ -1895,15 +1724,9 @@ class TestContractUpdateAPI(TestCase):
         ensure_user_has_data_provider_role(self.user)
 
         # Only update status
-        data = {
-            "status": ContractStatus.ACTIVE
-        }
+        data = {"status": ContractStatus.ACTIVE}
 
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.contract.refresh_from_db()
@@ -1911,15 +1734,9 @@ class TestContractUpdateAPI(TestCase):
 
     def test_update_contract_unauthenticated(self):
         """Test updating contract without authentication"""
-        data = {
-            "status": ContractStatus.ACTIVE
-        }
+        data = {"status": ContractStatus.ACTIVE}
 
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -1929,27 +1746,21 @@ class TestContractUpdateAPI(TestCase):
             name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         ensure_tenant_has_active_subscription(other_tenant)
         other_user = UserFactory.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             tenant=other_tenant,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         other_user.refresh_from_db()
 
         self.client.force_authenticate(user=other_user)
 
-        data = {
-            "status": ContractStatus.ACTIVE
-        }
+        data = {"status": ContractStatus.ACTIVE}
 
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
 
         # Should return 404 due to tenant filtering
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -1961,11 +1772,7 @@ class TestContractUpdateAPI(TestCase):
 
         # DRAFT -> ACTIVE
         data = {"status": ContractStatus.ACTIVE}
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         self.contract.refresh_from_db()
@@ -1973,11 +1780,7 @@ class TestContractUpdateAPI(TestCase):
 
         # ACTIVE -> RETIRED
         data = {"status": ContractStatus.RETIRED}
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         self.contract.refresh_from_db()
@@ -1988,20 +1791,16 @@ class TestContractUpdateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        original_name = self.contract.hub_contract_json.get('info', {}).get('name')
+        original_name = self.contract.hub_contract_json.get("info", {}).get("name")
 
         # Only update status
         data = {"status": ContractStatus.ACTIVE}
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.contract.refresh_from_db()
         # Name should be preserved
-        updated_name = self.contract.hub_contract_json.get('info', {}).get('name')
+        updated_name = self.contract.hub_contract_json.get("info", {}).get("name")
         self.assertEqual(updated_name, original_name)
 
     def test_update_contract_empty_payload(self):
@@ -2009,11 +1808,7 @@ class TestContractUpdateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            {},
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", {}, format="json")
 
         # Should handle empty payload gracefully
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -2025,11 +1820,7 @@ class TestContractUpdateAPI(TestCase):
 
         data = {"status": "INVALID_STATUS"}
 
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
 
         # Should reject invalid status
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -2047,14 +1838,14 @@ class TestContractValidateAPI(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         self.user.refresh_from_db()
 
@@ -2062,7 +1853,7 @@ class TestContractValidateAPI(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="Test Contract",
-            status=ContractStatus.DRAFT
+            status=ContractStatus.DRAFT,
         )
 
     def tearDown(self):
@@ -2076,18 +1867,19 @@ class TestContractValidateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
         response = self.client.post(
-            f'/api/v1/contracts/{self.contract.id}/validate/',
-            {},
-            format="json"
+            f"/api/v1/contracts/{self.contract.id}/validate/", {}, format="json"
         )
 
         # Validation may succeed or return warnings/errors
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_202_ACCEPTED  # Async validation
-        ])
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_200_OK,
+                status.HTTP_202_ACCEPTED,  # Async validation
+            ],
+        )
         if response.status_code == status.HTTP_200_OK:
-            self.assertIn('validation_status', response.data)
+            self.assertIn("validation_status", response.data)
 
     def test_validate_contract_validation_warnings(self):
         """Test contract validation with warnings"""
@@ -2099,19 +1891,14 @@ class TestContractValidateAPI(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="Contract With Warnings",
-            normalization_status=NormalizationStatus.NORMALIZED_WITH_WARNINGS
+            normalization_status=NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         )
 
         response = self.client.post(
-            f'/api/v1/contracts/{contract_with_warnings.id}/validate/',
-            {},
-            format="json"
+            f"/api/v1/contracts/{contract_with_warnings.id}/validate/", {}, format="json"
         )
 
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_202_ACCEPTED
-        ])
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
 
     def test_validate_contract_validation_errors(self):
         """Test contract validation with errors"""
@@ -2122,11 +1909,7 @@ class TestContractValidateAPI(TestCase):
         invalid_contract_data = {
             "id": "invalid-contract",
             "info": {"name": "Invalid Contract"},
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "invalid_type", "nullable": False}
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "data_type": "invalid_type", "nullable": False}]},
         }
 
         invalid_contract = Contract.objects.create(
@@ -2139,19 +1922,14 @@ class TestContractValidateAPI(TestCase):
             hub_contract_version="1.0.0",
             hub_contract_json=invalid_contract_data,
             normalization_status=NormalizationStatus.NORMALIZATION_FAILED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         response = self.client.post(
-            f'/api/v1/contracts/{invalid_contract.id}/validate/',
-            {},
-            format="json"
+            f"/api/v1/contracts/{invalid_contract.id}/validate/", {}, format="json"
         )
 
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_202_ACCEPTED
-        ])
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
         if response.status_code == status.HTTP_200_OK:
             # May have validation errors
             pass
@@ -2163,15 +1941,10 @@ class TestContractValidateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
         response = self.client.post(
-            f'/api/v1/contracts/{self.contract.id}/validate/',
-            {},
-            format="json"
+            f"/api/v1/contracts/{self.contract.id}/validate/", {}, format="json"
         )
 
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_202_ACCEPTED
-        ])
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
         # Verify validation was triggered
         self.contract.refresh_from_db()
 
@@ -2184,25 +1957,22 @@ class TestContractValidateAPI(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="Contract With Rules",
-            quality_rules=[{
-                "rule_id": "test_rule",
-                "dimension": "completeness",
-                "expression": "field IS NOT NULL",
-                "severity": "ERROR",
-                "field": "field"
-            }]
+            quality_rules=[
+                {
+                    "rule_id": "test_rule",
+                    "dimension": "completeness",
+                    "expression": "field IS NOT NULL",
+                    "severity": "ERROR",
+                    "field": "field",
+                }
+            ],
         )
 
         response = self.client.post(
-            f'/api/v1/contracts/{contract_with_rules.id}/validate/',
-            {},
-            format="json"
+            f"/api/v1/contracts/{contract_with_rules.id}/validate/", {}, format="json"
         )
 
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_202_ACCEPTED
-        ])
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
 
     # ========== PERFORMANCE TESTS ==========
 
@@ -2215,9 +1985,7 @@ class TestContractValidateAPI(TestCase):
         for _ in range(10):
             start = time.time()
             response = self.client.post(
-                f'/api/v1/contracts/{self.contract.id}/validate/',
-                {},
-                format="json"
+                f"/api/v1/contracts/{self.contract.id}/validate/", {}, format="json"
             )
             elapsed = (time.time() - start) * 1000  # Convert to ms
 
@@ -2225,10 +1993,7 @@ class TestContractValidateAPI(TestCase):
             if response.status_code == status.HTTP_200_OK:
                 times.append(elapsed)
 
-            self.assertIn(response.status_code, [
-                status.HTTP_200_OK,
-                status.HTTP_202_ACCEPTED
-            ])
+            self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
 
         if times:
             # Calculate p95
@@ -2245,14 +2010,16 @@ class TestContractValidateAPI(TestCase):
             else:
                 # p95 should be less than 1000ms (for sync validations)
                 # Use a more lenient threshold (10s) to account for service variability
-                self.assertLess(p95_time, 10000, f"p95 response time {p95_time}ms exceeds 10000ms threshold (services may be slow)")
+                self.assertLess(
+                    p95_time,
+                    10000,
+                    f"p95 response time {p95_time}ms exceeds 10000ms threshold (services may be slow)",
+                )
 
     def test_validate_contract_unauthenticated(self):
         """Test validating contract without authentication"""
         response = self.client.post(
-            f'/api/v1/contracts/{self.contract.id}/validate/',
-            {},
-            format="json"
+            f"/api/v1/contracts/{self.contract.id}/validate/", {}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -2263,22 +2030,20 @@ class TestContractValidateAPI(TestCase):
             name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         ensure_tenant_has_active_subscription(other_tenant)
         other_user = UserFactory.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             tenant=other_tenant,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         other_user.refresh_from_db()
 
         self.client.force_authenticate(user=other_user)
 
         response = self.client.post(
-            f'/api/v1/contracts/{self.contract.id}/validate/',
-            {},
-            format="json"
+            f"/api/v1/contracts/{self.contract.id}/validate/", {}, format="json"
         )
 
         # Should return 404 due to tenant filtering
@@ -2290,16 +2055,11 @@ class TestContractValidateAPI(TestCase):
         ensure_user_has_data_provider_role(self.user)
 
         response = self.client.post(
-            f'/api/v1/contracts/{self.contract.id}/validate/',
-            {"async": True},
-            format="json"
+            f"/api/v1/contracts/{self.contract.id}/validate/", {"async": True}, format="json"
         )
 
         # Should return 202 Accepted for async
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_202_ACCEPTED
-        ])
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
 
     def test_validate_contract_sync_mode(self):
         """Test validating contract in sync mode"""
@@ -2307,16 +2067,11 @@ class TestContractValidateAPI(TestCase):
         ensure_user_has_data_provider_role(self.user)
 
         response = self.client.post(
-            f'/api/v1/contracts/{self.contract.id}/validate/',
-            {"async": False},
-            format="json"
+            f"/api/v1/contracts/{self.contract.id}/validate/", {"async": False}, format="json"
         )
 
         # Should return 200 OK for sync
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_202_ACCEPTED
-        ])
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
 
     def test_validate_contract_not_found(self):
         """Test validating non-existent contract"""
@@ -2324,11 +2079,7 @@ class TestContractValidateAPI(TestCase):
         ensure_user_has_data_provider_role(self.user)
         fake_id = uuid.uuid4()
 
-        response = self.client.post(
-            f'/api/v1/contracts/{fake_id}/validate/',
-            {},
-            format="json"
-        )
+        response = self.client.post(f"/api/v1/contracts/{fake_id}/validate/", {}, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -2337,19 +2088,14 @@ class TestContractValidateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
         response = self.client.post(
-            f'/api/v1/contracts/{self.contract.id}/validate/',
-            {},
-            format="json"
+            f"/api/v1/contracts/{self.contract.id}/validate/", {}, format="json"
         )
 
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_202_ACCEPTED
-        ])
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
 
         if response.status_code == status.HTTP_200_OK:
             # Verify response structure
-            self.assertIn('validation_status', response.data)
+            self.assertIn("validation_status", response.data)
 
     def test_validate_contract_updates_last_validated_at(self):
         """Test validation updates last_validated_at timestamp"""
@@ -2361,21 +2107,15 @@ class TestContractValidateAPI(TestCase):
         self.contract.save()
 
         response = self.client.post(
-            f'/api/v1/contracts/{self.contract.id}/validate/',
-            {},
-            format="json"
+            f"/api/v1/contracts/{self.contract.id}/validate/", {}, format="json"
         )
 
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_202_ACCEPTED
-        ])
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
 
         # For sync validation, check if timestamp was updated
         if response.status_code == status.HTTP_200_OK:
             self.contract.refresh_from_db()
             # May or may not update timestamp depending on implementation
-            pass
 
     def test_validate_contract_large_contract(self):
         """Test validating large contract"""
@@ -2383,11 +2123,13 @@ class TestContractValidateAPI(TestCase):
         ensure_user_has_data_provider_role(self.user)
 
         # Create large contract
-        large_fields = [{"name": f"field_{i}", "data_type": "string", "nullable": True} for i in range(50)]
+        large_fields = [
+            {"name": f"field_{i}", "data_type": "string", "nullable": True} for i in range(50)
+        ]
         large_contract_data = {
             "id": "large-contract-validate",
             "info": {"name": "Large Contract", "version": "1.0.0"},
-            "schema": {"fields": large_fields}
+            "schema": {"fields": large_fields},
         }
 
         large_contract = Contract.objects.create(
@@ -2400,20 +2142,15 @@ class TestContractValidateAPI(TestCase):
             hub_contract_version="1.0.0",
             hub_contract_json=large_contract_data,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            created_by=self.user
+            created_by=self.user,
         )
 
         response = self.client.post(
-            f'/api/v1/contracts/{large_contract.id}/validate/',
-            {},
-            format="json"
+            f"/api/v1/contracts/{large_contract.id}/validate/", {}, format="json"
         )
 
         # Large contracts may trigger async validation
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_202_ACCEPTED
-        ])
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
 
     def test_validate_contract_multiple_times(self):
         """Test validating contract multiple times"""
@@ -2423,14 +2160,9 @@ class TestContractValidateAPI(TestCase):
         # Validate multiple times
         for _ in range(3):
             response = self.client.post(
-                f'/api/v1/contracts/{self.contract.id}/validate/',
-                {},
-                format="json"
+                f"/api/v1/contracts/{self.contract.id}/validate/", {}, format="json"
             )
-            self.assertIn(response.status_code, [
-                status.HTTP_200_OK,
-                status.HTTP_202_ACCEPTED
-            ])
+            self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
 
     def test_validate_contract_with_validation_errors_response(self):
         """Test validation response includes errors when present"""
@@ -2448,19 +2180,14 @@ class TestContractValidateAPI(TestCase):
             hub_contract_version="1.0.0",
             hub_contract_json={"id": "invalid", "schema": {}},
             normalization_status=NormalizationStatus.NORMALIZATION_FAILED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         response = self.client.post(
-            f'/api/v1/contracts/{invalid_contract.id}/validate/',
-            {},
-            format="json"
+            f"/api/v1/contracts/{invalid_contract.id}/validate/", {}, format="json"
         )
 
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_202_ACCEPTED
-        ])
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
 
     def test_validate_contract_with_validation_warnings_response(self):
         """Test validation response includes warnings when present"""
@@ -2471,19 +2198,14 @@ class TestContractValidateAPI(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="Contract With Warnings",
-            normalization_status=NormalizationStatus.NORMALIZED_WITH_WARNINGS
+            normalization_status=NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         )
 
         response = self.client.post(
-            f'/api/v1/contracts/{contract_with_warnings.id}/validate/',
-            {},
-            format="json"
+            f"/api/v1/contracts/{contract_with_warnings.id}/validate/", {}, format="json"
         )
 
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_202_ACCEPTED
-        ])
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
 
     def test_list_contracts_filter_by_validation_status(self):
         """Test filtering contracts by validation status"""
@@ -2491,37 +2213,41 @@ class TestContractValidateAPI(TestCase):
         ensure_user_has_data_provider_role(self.user)
 
         # Create contract with specific validation status
-        validated_contract = ContractFactoryEnhanced.create_contract(
+        ContractFactoryEnhanced.create_contract(
             tenant=self.tenant,
             created_by=self.user,
             name="Validated Contract",
-            validation_status=ValidationStatus.VALID
+            validation_status=ValidationStatus.VALID,
         )
 
-        response = self.client.get('/api/v1/contracts/', {'validation_status': ValidationStatus.VALID})
+        response = self.client.get(
+            "/api/v1/contracts/", {"validation_status": ValidationStatus.VALID}
+        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_list_contracts_filter_by_original_format(self):
         """Test filtering contracts by original format"""
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        response = self.client.get('/api/v1/contracts/', {'original_format': OriginalFormat.JSON})
+        response = self.client.get("/api/v1/contracts/", {"original_format": OriginalFormat.JSON})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_list_contracts_filter_by_original_spec_type(self):
         """Test filtering contracts by original spec type"""
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        response = self.client.get('/api/v1/contracts/', {'original_spec_type': OriginalSpecType.ODCS})
+        response = self.client.get(
+            "/api/v1/contracts/", {"original_spec_type": OriginalSpecType.ODCS}
+        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(response.data['count'], 0)
+        self.assertGreaterEqual(response.data["count"], 0)
 
     def test_create_contract_with_yaml_complex(self):
         """Test creating contract with complex YAML structure"""
@@ -2579,15 +2305,12 @@ marketplace:
     - machine_learning
 """
 
-        data = {
-            "original_raw": yaml_content,
-            "original_format": OriginalFormat.YAML
-        }
+        data = {"original_raw": yaml_content, "original_format": OriginalFormat.YAML}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        contract = Contract.objects.get(id=response.data['id'])
+        contract = Contract.objects.get(id=response.data["id"])
         self.assertEqual(contract.original_format, OriginalFormat.YAML)
 
     def test_create_contract_minimal_valid(self):
@@ -2597,17 +2320,15 @@ marketplace:
 
         minimal_contract = {
             "id": "minimal-contract",
-            "schema": {
-                "fields": [{"name": "id", "data_type": "string", "nullable": False}]
-            }
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
         }
 
         data = {
             "original_raw": json.dumps(minimal_contract),
-            "original_format": OriginalFormat.JSON
+            "original_format": OriginalFormat.JSON,
         }
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         # Should accept minimal structure
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
@@ -2622,26 +2343,22 @@ marketplace:
             tenant=self.tenant,
             created_by=self.user,
             name="YAML Contract",
-            original_format=OriginalFormat.YAML
+            original_format=OriginalFormat.YAML,
         )
 
         # Update to JSON
         json_contract_data = {
-            "id": str(yaml_contract.hub_contract_json.get('id', 'test')),
-            "info": yaml_contract.hub_contract_json.get('info', {}),
-            "schema": yaml_contract.hub_contract_json.get('schema', {})
+            "id": str(yaml_contract.hub_contract_json.get("id", "test")),
+            "info": yaml_contract.hub_contract_json.get("info", {}),
+            "schema": yaml_contract.hub_contract_json.get("schema", {}),
         }
 
         data = {
             "original_raw": json.dumps(json_contract_data),
-            "original_format": OriginalFormat.JSON
+            "original_format": OriginalFormat.JSON,
         }
 
-        response = self.client.patch(
-            f'/api/v1/contracts/{yaml_contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{yaml_contract.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         yaml_contract.refresh_from_db()
@@ -2652,22 +2369,22 @@ marketplace:
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
+        response = self.client.get(f"/api/v1/contracts/{self.contract.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Lineage may or may not be included depending on serializer
-        self.assertIn('id', response.data)
+        self.assertIn("id", response.data)
 
     def test_list_contracts_with_relationships_prefetch(self):
         """Test list contracts efficiently prefetches relationships"""
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        response = self.client.get('/api/v1/contracts/')
+        response = self.client.get("/api/v1/contracts/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should return results efficiently
-        self.assertGreaterEqual(len(response.data['results']), 0)
+        self.assertGreaterEqual(len(response.data["results"]), 0)
 
     def test_create_contract_with_unicode_characters(self):
         """Test creating contract with unicode characters"""
@@ -2679,22 +2396,17 @@ marketplace:
             "info": {
                 "name": "合同测试 - Contrat de test - テスト契約",
                 "version": "1.0.0",
-                "description": "Test with unicode: 中文, Français, 日本語"
+                "description": "Test with unicode: 中文, Français, 日本語",
             },
-            "schema": {
-                "fields": [{"name": "id", "data_type": "string", "nullable": False}]
-            }
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
         }
 
-        data = {
-            "original_raw": json.dumps(contract_data),
-            "original_format": OriginalFormat.JSON
-        }
+        data = {"original_raw": json.dumps(contract_data), "original_format": OriginalFormat.JSON}
 
-        response = self.client.post('/api/v1/contracts/', data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        contract = Contract.objects.get(id=response.data['id'])
+        contract = Contract.objects.get(id=response.data["id"])
         # Verify normalization occurred (may succeed or fail depending on service availability)
         self.assertIsNotNone(contract.normalization_status)
         # If normalization succeeded, hub_contract_json should be set
@@ -2708,15 +2420,9 @@ marketplace:
 
         original_created_by = self.contract.created_by
 
-        data = {
-            "status": ContractStatus.ACTIVE
-        }
+        data = {"status": ContractStatus.ACTIVE}
 
-        response = self.client.patch(
-            f'/api/v1/contracts/{self.contract.id}/',
-            data,
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/contracts/{self.contract.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.contract.refresh_from_db()
@@ -2728,17 +2434,11 @@ marketplace:
         ensure_user_has_data_provider_role(self.user)
 
         response = self.client.post(
-            f'/api/v1/contracts/{self.contract.id}/validate/',
-            {},
-            format="json"
+            f"/api/v1/contracts/{self.contract.id}/validate/", {}, format="json"
         )
 
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_202_ACCEPTED
-        ])
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
 
         if response.status_code == status.HTTP_200_OK:
             # May include validation timestamp
             pass
-

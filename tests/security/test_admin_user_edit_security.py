@@ -171,7 +171,11 @@ class TestAdminUserEditRoleEscalation:
         # Cannot edit self
         resp_self = self.client.put(
             f"/api/v1/users/{self.regular_user.id}/",
-            {"display_name": "Self Escalation", "status": "ACTIVE", "role_ids": [self.admin_role_id]},
+            {
+                "display_name": "Self Escalation",
+                "status": "ACTIVE",
+                "role_ids": [self.admin_role_id],
+            },
             format="json",
         )
         assert resp_self.status_code == status.HTTP_403_FORBIDDEN

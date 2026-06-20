@@ -32,10 +32,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--older-than",
             default="90d",
-            help=(
-                "Age threshold. Format: <number>d for days, "
-                "<number>h for hours. Default: 90d"
-            ),
+            help=("Age threshold. Format: <number>d for days, <number>h for hours. Default: 90d"),
         )
         parser.add_argument(
             "--status",
@@ -67,9 +64,7 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
         batch_size = options["batch_size"]
 
-        statuses = (
-            [status_filter] if status_filter else list(TERMINAL_STATUSES)
-        )
+        statuses = [status_filter] if status_filter else list(TERMINAL_STATUSES)
 
         qs = PipelineExecution.objects.filter(
             status__in=statuses,
@@ -100,9 +95,7 @@ class Command(BaseCommand):
 
         deleted_total = 0
         while True:
-            batch_ids = list(
-                qs.values_list("id", flat=True)[:batch_size]
-            )
+            batch_ids = list(qs.values_list("id", flat=True)[:batch_size])
             if not batch_ids:
                 break
             count, _ = PipelineExecution.objects.filter(
@@ -145,9 +138,7 @@ class Command(BaseCommand):
             num = int(value)
 
         if num <= 0:
-            raise ValueError(
-                f"Duration must be positive, got: {value}"
-            )
+            raise ValueError(f"Duration must be positive, got: {value}")
 
         if value.endswith("h"):
             return timedelta(hours=num)

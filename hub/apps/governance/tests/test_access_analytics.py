@@ -3,24 +3,23 @@ Unit tests for Access Analytics
 
 Tests for access logging, anomaly detection, and analytics.
 """
+
 import uuid
 
 import pytest
 from django.test import TestCase
 from django.utils import timezone
-from datetime import timedelta
 
 from hub.apps.governance.access_analytics import AccessAnalyticsService, AccessLog
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class AccessAnalyticsServiceTest(TestCase):
     """Test AccessAnalyticsService"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
@@ -28,16 +27,16 @@ class AccessAnalyticsServiceTest(TestCase):
             name=f"Test Tenant {uid}",
             slug=f"test-tenant-{uid}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
-        
+
         self.user = User.objects.create_user(
             email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-    
+
     def test_log_access(self):
         """Test access logging"""
         resource_uuid = str(uuid.uuid4())
@@ -58,7 +57,7 @@ class AccessAnalyticsServiceTest(TestCase):
         self.assertEqual(str(log.resource_id), resource_uuid)
         self.assertEqual(log.action, "READ")
         self.assertEqual(log.result, "ALLOWED")
-    
+
     def test_get_access_patterns(self):
         """Test access pattern analysis"""
         resource_uuid = str(uuid.uuid4())
@@ -72,9 +71,7 @@ class AccessAnalyticsServiceTest(TestCase):
                 result="ALLOWED",
             )
 
-        patterns = AccessAnalyticsService.get_access_patterns(
-            tenant_id=str(self.tenant.id)
-        )
+        patterns = AccessAnalyticsService.get_access_patterns(tenant_id=str(self.tenant.id))
 
         self.assertGreaterEqual(len(patterns), 1)
         # Verify our created resource appears in patterns
@@ -85,7 +82,7 @@ class AccessAnalyticsServiceTest(TestCase):
         self.assertEqual(pattern["resource_type"], "ASSET")
         self.assertEqual(pattern["action"], "READ")
         self.assertGreaterEqual(pattern["access_count"], 10)
-    
+
     def test_get_anomalies(self):
         """Test anomaly detection"""
         # Create access log outside business hours (2 AM)
@@ -106,8 +103,10 @@ class AccessAnalyticsServiceTest(TestCase):
 
         AccessAnalyticsService._check_anomalies(log)
         log.refresh_from_db()
-        self.assertTrue(log.is_anomaly, msg=f"Expected is_anomaly=True (created_at={log.created_at})")
-    
+        self.assertTrue(
+            log.is_anomaly, msg=f"Expected is_anomaly=True (created_at={log.created_at})"
+        )
+
     def test_get_security_events(self):
         """Test security event tracking"""
         resource_uuid = str(uuid.uuid4())
@@ -120,16 +119,14 @@ class AccessAnalyticsServiceTest(TestCase):
             result="DENIED",
         )
 
-        events = AccessAnalyticsService.get_security_events(
-            tenant_id=str(self.tenant.id)
-        )
+        events = AccessAnalyticsService.get_security_events(tenant_id=str(self.tenant.id))
 
         self.assertGreater(len(events), 0)
         self.assertEqual(events[0]["result"], "DENIED")
-    
+
     def test_get_analytics_dashboard(self):
         """Test complete analytics dashboard"""
-        for i in range(5):
+        for _i in range(5):
             AccessAnalyticsService.log_access(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
@@ -139,9 +136,7 @@ class AccessAnalyticsServiceTest(TestCase):
                 result="ALLOWED",
             )
 
-        dashboard = AccessAnalyticsService.get_analytics_dashboard(
-            tenant_id=str(self.tenant.id)
-        )
+        dashboard = AccessAnalyticsService.get_analytics_dashboard(tenant_id=str(self.tenant.id))
 
         self.assertIn("summary", dashboard)
         self.assertIsInstance(dashboard["summary"], dict)
@@ -156,4 +151,3 @@ class AccessAnalyticsServiceTest(TestCase):
         self.assertIsInstance(dashboard["top_resources"], list)
         self.assertIn("anomalies", dashboard)
         self.assertIn("security_events", dashboard)
-

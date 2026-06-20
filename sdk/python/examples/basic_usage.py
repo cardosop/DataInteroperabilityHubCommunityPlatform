@@ -1,24 +1,28 @@
 """
 Basic SDK Usage Examples
 """
+
 import asyncio
 import os
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
-    ValidationError,
     NotFoundError,
-    UnauthorizedError,
+    ValidationError,
 )
 
 
 async def list_assets(client: DataHubClient):
     """Example: List assets"""
     try:
-        assets = await client.get("/assets/", params={
-            "status": "ACTIVE",
-            "limit": 20,
-            "offset": 0,
-        })
+        assets = await client.get(
+            "/assets/",
+            params={
+                "status": "ACTIVE",
+                "limit": 20,
+                "offset": 0,
+            },
+        )
         print("Assets:", assets)
     except NotFoundError as e:
         print(f"Assets not found: {e.message}")
@@ -29,12 +33,15 @@ async def list_assets(client: DataHubClient):
 async def create_asset(client: DataHubClient):
     """Example: Create asset"""
     try:
-        asset = await client.post("/assets/", {
-            "key": "my-asset",
-            "name": "My Asset",
-            "description": "Asset description",
-            "domain": "marketing",
-        })
+        asset = await client.post(
+            "/assets/",
+            {
+                "key": "my-asset",
+                "name": "My Asset",
+                "description": "Asset description",
+                "domain": "marketing",
+            },
+        )
         print("Created asset:", asset)
     except ValidationError as e:
         print(f"Validation errors: {e.details}")
@@ -56,9 +63,12 @@ async def get_asset(client: DataHubClient, asset_id: str):
 async def update_asset(client: DataHubClient, asset_id: str):
     """Example: Update asset"""
     try:
-        asset = await client.patch(f"/assets/{asset_id}/", {
-            "description": "Updated description",
-        })
+        asset = await client.patch(
+            f"/assets/{asset_id}/",
+            {
+                "description": "Updated description",
+            },
+        )
         print("Updated asset:", asset)
     except Exception as e:
         print(f"Error: {e}")
@@ -81,7 +91,7 @@ async def main():
         api_token=os.getenv("DATAHUB_API_TOKEN"),
         enable_logging=True,
     )
-    
+
     async with DataHubClient(config) as client:
         await list_assets(client)
         await create_asset(client)
@@ -92,4 +102,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

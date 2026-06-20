@@ -27,10 +27,12 @@ Design notes
 * Fail-soft per recipient: a single misconfigured admin email must not
   block the rest of the notification batch.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from django.conf import settings
 
@@ -42,9 +44,7 @@ from hub.apps.users.services import get_tenant_admin_users
 logger = logging.getLogger(__name__)
 
 
-_DEFAULT_CONTRACT_HEALTH_URL = (
-    "https://stagingmeshant-internal.example.com/admin/contract-health"
-)
+_DEFAULT_CONTRACT_HEALTH_URL = "https://stagingmeshant-internal.example.com/admin/contract-health"
 
 
 def send_schema_editor_available_notification(
@@ -80,13 +80,8 @@ def send_schema_editor_available_notification(
 
     tenant_name = str(getattr(tenant, "name", "")) or "your tenant"
     tenant_id = str(getattr(tenant, "id", "")) or None
-    subject = (
-        f"Schema editor is now available in {tenant_name} — triage "
-        "your contracts"
-    )
-    template_name = (
-        "notifications/emails/schema_editor_available.html"
-    )
+    subject = f"Schema editor is now available in {tenant_name} — triage your contracts"
+    template_name = "notifications/emails/schema_editor_available.html"
     email_type_value = EmailType.SCHEMA_EDITOR_AVAILABLE.value
 
     dispatched: list[dict[str, Any]] = []
@@ -103,9 +98,7 @@ def send_schema_editor_available_notification(
             # ``admin_first_name`` is rendered in the greeting when
             # populated, otherwise the template falls back to "there".
             "admin_first_name": (
-                getattr(admin, "first_name", None)
-                or getattr(admin, "name", None)
-                or ""
+                getattr(admin, "first_name", None) or getattr(admin, "name", None) or ""
             ),
         }
 

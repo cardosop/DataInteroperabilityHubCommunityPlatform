@@ -1,6 +1,6 @@
-import pytest
 from uuid import uuid4
 
+import pytest
 from django.db import connection
 from django.test import TestCase
 
@@ -47,10 +47,9 @@ class TenantContextTest(TestCase):
         baseline = _current_tenant_guc()
         tenant_id = str(uuid4())
 
-        with pytest.raises(RuntimeError):
-            with tenant_context(tenant_id):
-                self.assertEqual(_current_tenant_guc(), tenant_id)
-                raise RuntimeError("boom")
+        with pytest.raises(RuntimeError), tenant_context(tenant_id):
+            self.assertEqual(_current_tenant_guc(), tenant_id)
+            raise RuntimeError("boom")
 
         self.assertEqual(_current_tenant_guc(), baseline)
 

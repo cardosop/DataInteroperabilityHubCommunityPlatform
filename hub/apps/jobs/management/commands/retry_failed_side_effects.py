@@ -26,12 +26,8 @@ DEFAULT_RETRY_AFTER_MINUTES = 30
 
 # Map app_label -> executor module path
 _EXECUTOR_MAP = {
-    "scheduled_ingestion": (
-        "hub.apps.scheduled_ingestion.worker_run_lifecycle"
-    ),
-    "scheduled_export": (
-        "hub.apps.scheduled_export.worker_run_lifecycle"
-    ),
+    "scheduled_ingestion": ("hub.apps.scheduled_ingestion.worker_run_lifecycle"),
+    "scheduled_export": ("hub.apps.scheduled_export.worker_run_lifecycle"),
 }
 
 
@@ -45,10 +41,7 @@ def _get_executor(se: SideEffect):
     app_label = se.run_content_type.app_label
     module_path = _EXECUTOR_MAP.get(app_label)
     if module_path is None:
-        raise ValueError(
-            f"No side-effect executor registered for "
-            f"app_label={app_label!r}"
-        )
+        raise ValueError(f"No side-effect executor registered for app_label={app_label!r}")
     mod = importlib.import_module(module_path)
     return mod.execute_side_effect
 
@@ -68,10 +61,7 @@ class Command(BaseCommand):
                 "MAX_SIDE_EFFECT_ATTEMPTS",
                 DEFAULT_MAX_ATTEMPTS,
             ),
-            help=(
-                "Skip rows with attempt_count >= this value "
-                f"(default: {DEFAULT_MAX_ATTEMPTS})."
-            ),
+            help=(f"Skip rows with attempt_count >= this value (default: {DEFAULT_MAX_ATTEMPTS})."),
         )
         parser.add_argument(
             "--retry-after-minutes",
@@ -99,25 +89,23 @@ class Command(BaseCommand):
             minutes=retry_after_minutes,
         )
 
-        retryable = SideEffect.objects.filter(
-            status=SideEffectStatus.FAILED,
-            attempt_count__lt=max_attempts,
-            updated_at__lt=cutoff,
-        ).select_related("run_content_type").order_by("created_at")
+        retryable = (
+            SideEffect.objects.filter(
+                status=SideEffectStatus.FAILED,
+                attempt_count__lt=max_attempts,
+                updated_at__lt=cutoff,
+            )
+            .select_related("run_content_type")
+            .order_by("created_at")
+        )
 
         count = retryable.count()
         if count == 0:
             logger.info("retry_failed_side_effects_none_found")
-            self.stdout.write(
-                self.style.SUCCESS(
-                    "No retryable side effects found."
-                )
-            )
+            self.stdout.write(self.style.SUCCESS("No retryable side effects found."))
             return
 
-        self.stdout.write(
-            f"Found {count} retryable side effect(s)."
-        )
+        self.stdout.write(f"Found {count} retryable side effect(s).")
 
         if dry_run:
             for se in retryable:

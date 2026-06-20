@@ -29,6 +29,7 @@ runs against the real implementations, in line with the project's
 covered end-to-end by ``test_call_compliance_service.py`` /
 ``test_service_client.py``.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -44,7 +45,6 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -137,8 +137,11 @@ class ScanInMemoryHappyPathTest(TestCase):
         from hub.apps.assets.models import Asset
 
         before = Asset.objects.filter(tenant=tenant).count()
-        with _patched_storage_returns(b"a,b\n1,2\n"), _patched_client_returns(
-            {"overall_status": "PASS", "allowed_to_store": True, "metadata": {}}
+        with (
+            _patched_storage_returns(b"a,b\n1,2\n"),
+            _patched_client_returns(
+                {"overall_status": "PASS", "allowed_to_store": True, "metadata": {}}
+            ),
         ):
             ComplianceService.scan_inmemory(
                 file_id=str(file_obj.id),
@@ -155,13 +158,16 @@ class ScanInMemoryFailClosedTest(TestCase):
     def test_unknown_overall_status_marks_disallowed(self):
         tenant, _user, file_obj = _seed_tenant_and_user()
 
-        with _patched_storage_returns(b"x"), _patched_client_returns(
-            {
-                "overall_status": "UNKNOWN",
-                "risk_level": "UNKNOWN",
-                "allowed_to_store": True,  # service lies — Hub must override
-                "metadata": {},
-            }
+        with (
+            _patched_storage_returns(b"x"),
+            _patched_client_returns(
+                {
+                    "overall_status": "UNKNOWN",
+                    "risk_level": "UNKNOWN",
+                    "allowed_to_store": True,  # service lies — Hub must override
+                    "metadata": {},
+                }
+            ),
         ):
             run = ComplianceService.scan_inmemory(
                 file_id=str(file_obj.id),
@@ -170,20 +176,25 @@ class ScanInMemoryFailClosedTest(TestCase):
             )
 
         run.refresh_from_db()
-        self.assertFalse(run.allowed_to_store,
+        self.assertFalse(
+            run.allowed_to_store,
             "fail-closed: UNKNOWN must override the service's "
-            "allowed_to_store hint per the platform contract")
+            "allowed_to_store hint per the platform contract",
+        )
 
     def test_explicit_fail_response_is_persisted(self):
         tenant, _user, file_obj = _seed_tenant_and_user()
-        with _patched_storage_returns(b"x"), _patched_client_returns(
-            {
-                "overall_status": "FAIL",
-                "risk_level": "HIGH",
-                "allowed_to_store": False,
-                "detected_categories": ["PII_SSN"],
-                "metadata": {},
-            }
+        with (
+            _patched_storage_returns(b"x"),
+            _patched_client_returns(
+                {
+                    "overall_status": "FAIL",
+                    "risk_level": "HIGH",
+                    "allowed_to_store": False,
+                    "detected_categories": ["PII_SSN"],
+                    "metadata": {},
+                }
+            ),
         ):
             run = ComplianceService.scan_inmemory(
                 file_id=str(file_obj.id),
@@ -201,9 +212,12 @@ class ScanInMemoryServiceFailureTest(TestCase):
 
     def test_service_exception_marks_run_failed_and_disallows_storage(self):
         tenant, _user, file_obj = _seed_tenant_and_user()
-        with _patched_storage_returns(b"x"), patch(
-            "hub.apps.compliance.service_client.ComplianceServiceClient.scan_file",
-            side_effect=RuntimeError("compliance microservice unreachable"),
+        with (
+            _patched_storage_returns(b"x"),
+            patch(
+                "hub.apps.compliance.service_client.ComplianceServiceClient.scan_file",
+                side_effect=RuntimeError("compliance microservice unreachable"),
+            ),
         ):
             run = ComplianceService.scan_inmemory(
                 file_id=str(file_obj.id),
@@ -232,14 +246,14 @@ class ScanInMemoryArgumentValidationTest(TestCase):
             )
 
     def test_file_belonging_to_different_tenant_is_rejected(self):
-        tenant_a, _user_a, file_a = _seed_tenant_and_user()
+        _tenant_a, _user_a, file_a = _seed_tenant_and_user()
         tenant_b, _user_b, _file_b = _seed_tenant_and_user()
         from hub.apps.core.services.base import ValidationError
 
         with pytest.raises(ValidationError):
             ComplianceService.scan_inmemory(
                 file_id=str(file_a.id),  # file_a belongs to tenant_a
-                tenant=tenant_b,         # cross-tenant access — must reject
+                tenant=tenant_b,  # cross-tenant access — must reject
                 legal_basis="CONSENT",
             )
 
@@ -249,10 +263,13 @@ class ScanInMemoryRegulationsForwardingTest(TestCase):
 
     def test_regulations_forwarded_to_microservice(self):
         tenant, _user, file_obj = _seed_tenant_and_user()
-        with _patched_storage_returns(b"x"), patch(
-            "hub.apps.compliance.service_client.ComplianceServiceClient.scan_file",
-            return_value={"overall_status": "PASS", "allowed_to_store": True, "metadata": {}},
-        ) as scan_mock:
+        with (
+            _patched_storage_returns(b"x"),
+            patch(
+                "hub.apps.compliance.service_client.ComplianceServiceClient.scan_file",
+                return_value={"overall_status": "PASS", "allowed_to_store": True, "metadata": {}},
+            ) as scan_mock,
+        ):
             ComplianceService.scan_inmemory(
                 file_id=str(file_obj.id),
                 tenant=tenant,

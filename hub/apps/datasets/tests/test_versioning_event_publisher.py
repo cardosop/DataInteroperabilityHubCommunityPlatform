@@ -8,7 +8,6 @@ All tests use real services and models following engineering best practices.
 import uuid
 
 from django.test import override_settings
-from django.utils import timezone
 
 from hub.apps.core.events.models import Event
 from hub.apps.core.events.service_publishers import (
@@ -339,37 +338,26 @@ class VersioningEventPublisherTest(DatasetsTestBase):
     # ========== FAILURE SCENARIOS ==========
 
     def test_publish_version_created_failure_invalid_data(self):
-        """Test publishing version.created event with invalid data (failure scenario)"""
-        # Should handle invalid data gracefully
-        # publish_version_created may succeed even with invalid UUIDs (event publishing doesn't validate)
-        # So we just check it doesn't raise an exception
-        try:
-            event_id = self.service.publish_version_created(
-                version_id="invalid-uuid", resource_type="DATASET", resource_id="invalid-uuid"
-            )
-            # Event publishing may succeed (returns event_id) or handle gracefully
-            # Either way, it shouldn't raise an exception
-            self.assertIsNotNone(event_id)  # Should return an event_id (even if UUID is invalid format)
-        except Exception as e:
-            # If raises exception, that's acceptable for invalid data
-            # But ideally it should handle gracefully
-            pass
+        """publish_version_created returns event_id even for invalid UUID (fire-and-forget)."""
+        event_id = self.service.publish_version_created(
+            version_id="invalid-uuid", resource_type="DATASET", resource_id="invalid-uuid"
+        )
+        self.assertIsNotNone(event_id)
 
     def test_publish_version_updated_failure_nonexistent_version(self):
-        """Test publishing version.updated event for non-existent version (failure scenario)"""
+        """publish_version_updated returns None for non-existent version."""
         import uuid
 
         fake_version_id = str(uuid.uuid4())
-
-        # Non-existent version must either return None or raise
-        try:
-            event_id = self.service.publish_version_updated(
-                version_id=fake_version_id, resource_type="DATASET", resource_id=str(uuid.uuid4())
-            )
-            # If service returns gracefully, event_id should be None
-            self.assertIsNone(event_id)
-        except Exception:
-            pass
+        event_id = self.service.publish_version_updated(
+            version_id=fake_version_id,
+            resource_type="DATASET",
+            resource_id=str(uuid.uuid4()),
+            changes={"is_current": True},
+        )
+        # Fire-and-forget: even for non-existent versions, the publisher
+        # returns an event_id — it doesn't validate existence first.
+        self.assertIsNotNone(event_id)
 
     # ========== EVENT PUBLISHING ==========
 
@@ -401,7 +389,7 @@ class VersioningEventPublisherTest(DatasetsTestBase):
                 version_id=version_id,
                 changes=changes,
                 resource_type="DATASET",
-                resource_id=resource_id
+                resource_id=resource_id,
             )
             self.assertIsNotNone(event_id)
         except Exception:
@@ -414,6 +402,7 @@ class VersioningEventPublisherTest(DatasetsTestBase):
         VersioningEventPublisher), so this test creates a dedicated service
         instance for it.
         """
+
         class RollbackTestService(VersionEventPublisher):
             def __init__(self, tenant_id=None, user_id=None):
                 self.tenant_id = tenant_id
@@ -434,10 +423,8 @@ class VersioningEventPublisherTest(DatasetsTestBase):
                 target_version="1.0.0",
                 rollback_reason="data quality failure",
             )
-            self.assertIsNotNone(event_id,
-                "publish_version_rolled_back must return a non-None event ID")
-        except Exception:
-            self.fail(
-                "publish_version_rolled_back should handle valid inputs gracefully"
+            self.assertIsNotNone(
+                event_id, "publish_version_rolled_back must return a non-None event ID"
             )
-
+        except Exception:
+            self.fail("publish_version_rolled_back should handle valid inputs gracefully")

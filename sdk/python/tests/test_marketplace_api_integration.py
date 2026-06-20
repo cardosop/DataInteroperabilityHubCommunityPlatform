@@ -21,20 +21,23 @@ To run these tests:
 2. Set API key: export TEST_API_KEY=your-api-key
 3. Run: pytest tests/test_marketplace_api_integration.py -v -m integration
 """
+
 import os
-import pytest
-import uuid
 import subprocess
-import asyncio
-from typing import Optional, Dict, Any
+import uuid
+from typing import Optional
+
+import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig, MarketplaceIntegrationAPI
 from datahub_interoperability.errors import (
-    MarketplaceValidationError,
+    ConflictError,
     MarketplaceConnectionError,
+    MarketplaceValidationError,
     NotFoundError,
     ValidationError,
-    ConflictError,
 )
+import contextlib
 
 
 def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
@@ -62,6 +65,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     # Method 2: Use canonical conftest helper (validates, auto-provisions)
     try:
         from tests.conftest import get_api_key
+
         canonical = get_api_key()
         if canonical:
             return canonical
@@ -69,7 +73,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         pass
 
     # Method 3: Fall back to env-var keys
-    api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
+    api_key = os.environ.get("TEST_API_KEY") or os.environ.get("DATAHUB_API_KEY")
     if api_key:
         return api_key
 
@@ -81,7 +85,7 @@ def _create_marketplace_tenant_and_key() -> Optional[str]:
     and return an API key.  Tries inside-Docker path first, then docker-compose.
     """
     # Try inside-Docker path (Method 2 from original code)
-    if os.path.exists('/app'):
+    if os.path.exists("/app"):
         try:
             django_shell_script = """
 from hub.apps.tenants.models import Tenant
@@ -155,23 +159,27 @@ if plan:
 print(api_key_value)
 """
             result = subprocess.run(
-                ['python', 'manage.py', 'shell'],
+                ["python", "manage.py", "shell"],
                 input=django_shell_script,
                 text=True,
                 capture_output=True,
                 timeout=30,
-                cwd='/app/hub'
+                cwd="/app/hub",
             )
-            output_lines = result.stdout.strip().split('\n')
+            output_lines = result.stdout.strip().split("\n")
             for line in reversed(output_lines):
                 line = line.strip()
                 if not line:
                     continue
-                if 'imported' in line.lower() or 'objects' in line.lower() or 'details' in line.lower():
+                if (
+                    "imported" in line.lower()
+                    or "objects" in line.lower()
+                    or "details" in line.lower()
+                ):
                     continue
-                if ' ' in line:
+                if " " in line:
                     continue
-                if len(line) >= 40 and all(c.isalnum() or c in '-_' for c in line):
+                if len(line) >= 40 and all(c.isalnum() or c in "-_" for c in line):
                     return line
         except Exception:
             pass
@@ -250,23 +258,34 @@ if plan:
 print(api_key_value)
 """
         result = subprocess.run(
-                        ['docker', 'compose', '-f', 'docker-compose.test.yml', 'exec', '-T', 'api-service-test', 'python', 'hub/manage.py', 'shell'],
+            [
+                "docker",
+                "compose",
+                "-f",
+                "docker-compose.test.yml",
+                "exec",
+                "-T",
+                "api-service-test",
+                "python",
+                "hub/manage.py",
+                "shell",
+            ],
             input=django_shell_script,
             text=True,
             capture_output=True,
             timeout=30,
-            cwd=os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            cwd=os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
         )
-        output_lines = result.stdout.strip().split('\n')
+        output_lines = result.stdout.strip().split("\n")
         for line in reversed(output_lines):
             line = line.strip()
             if not line:
                 continue
-            if 'imported' in line.lower() or 'objects' in line.lower() or 'details' in line.lower():
+            if "imported" in line.lower() or "objects" in line.lower() or "details" in line.lower():
                 continue
-            if ' ' in line:
+            if " " in line:
                 continue
-            if len(line) >= 40 and all(c.isalnum() or c in '-_' for c in line):
+            if len(line) >= 40 and all(c.isalnum() or c in "-_" for c in line):
                 return line
     except Exception:
         pass
@@ -277,7 +296,7 @@ print(api_key_value)
 @pytest.fixture
 def api_base_url():
     """Get API base URL from environment or use default"""
-    return os.environ.get('API_BASE_URL', 'http://localhost:8001/api/v1')
+    return os.environ.get("API_BASE_URL", "http://localhost:8001/api/v1")
 
 
 @pytest.fixture
@@ -309,10 +328,8 @@ async def real_client(real_api_config):
         yield client
     finally:
         # Ensure client is properly closed
-        try:
+        with contextlib.suppress(Exception):
             await client.close()
-        except Exception:
-            pass
 
 
 @pytest.fixture
@@ -346,7 +363,7 @@ async def create_test_connection(marketplace_api, connection_name=None):
                 "account": "test-account",
                 "user": "test-user",
                 "token": "test-token",
-            }
+            },
         )
         return connection
     except ConflictError:
@@ -354,10 +371,8 @@ async def create_test_connection(marketplace_api, connection_name=None):
         connections = await marketplace_api.list_connections()
         for conn in connections:
             if conn.get("name") == connection_name:
-                try:
+                with contextlib.suppress(Exception):
                     await marketplace_api.delete_connection(conn["id"])
-                except Exception:
-                    pass
         # Retry creation
         connection = await marketplace_api.create_connection(
             marketplace_type="SNOWFLAKE_DATA_MARKETPLACE",
@@ -366,12 +381,13 @@ async def create_test_connection(marketplace_api, connection_name=None):
                 "account": "test-account",
                 "user": "test-user",
                 "token": "test-token",
-            }
+            },
         )
         return connection
 
 
 # Connection Management Integration Tests
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -390,17 +406,15 @@ async def test_create_connection_success_integration(marketplace_api):
                 "account": "test-account",
                 "user": "test-user",
                 "token": "test-token",
-            }
+            },
         )
     except ConflictError:
         # If connection already exists, try to find and delete it first
         connections = await marketplace_api.list_connections()
         for conn in connections:
             if conn.get("name") == connection_name:
-                try:
+                with contextlib.suppress(Exception):
                     await marketplace_api.delete_connection(conn["id"])
-                except Exception:
-                    pass
         # Retry creation
         connection = await marketplace_api.create_connection(
             marketplace_type="SNOWFLAKE_DATA_MARKETPLACE",
@@ -409,7 +423,7 @@ async def test_create_connection_success_integration(marketplace_api):
                 "account": "test-account",
                 "user": "test-user",
                 "token": "test-token",
-            }
+            },
         )
 
     assert connection is not None
@@ -418,10 +432,8 @@ async def test_create_connection_success_integration(marketplace_api):
     assert "name" in connection
 
     # Cleanup
-    try:
+    with contextlib.suppress(Exception):
         await marketplace_api.delete_connection(connection["id"])
-    except Exception:
-        pass
 
 
 @pytest.mark.asyncio
@@ -432,7 +444,7 @@ async def test_create_connection_validation_error_integration(marketplace_api):
         await marketplace_api.create_connection(
             marketplace_type="",  # Empty marketplace type
             name="Test Connection",
-            config={"key": "value"}
+            config={"key": "value"},
         )
 
 
@@ -449,8 +461,7 @@ async def test_list_connections_success_integration(marketplace_api):
 async def test_list_connections_with_filters_integration(marketplace_api):
     """Test connection listing with filters"""
     connections = await marketplace_api.list_connections(
-        marketplace_type="SNOWFLAKE_DATA_MARKETPLACE",
-        limit=10
+        marketplace_type="SNOWFLAKE_DATA_MARKETPLACE", limit=10
     )
     assert isinstance(connections, list)
 
@@ -469,10 +480,8 @@ async def test_get_connection_success_integration(marketplace_api):
         assert retrieved["id"] == connection["id"]
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await marketplace_api.delete_connection(connection["id"])
-        except Exception:
-            pass
 
 
 @pytest.mark.asyncio
@@ -494,17 +503,14 @@ async def test_update_connection_success_integration(marketplace_api):
     try:
         # Update the connection
         updated = await marketplace_api.update_connection(
-            connection["id"],
-            name="Updated Connection Name"
+            connection["id"], name="Updated Connection Name"
         )
         assert updated is not None
         assert updated["name"] == "Updated Connection Name"
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await marketplace_api.delete_connection(connection["id"])
-        except Exception:
-            pass
 
 
 @pytest.mark.asyncio
@@ -540,13 +546,12 @@ async def test_test_connection_integration(marketplace_api):
             pass
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await marketplace_api.delete_connection(connection["id"])
-        except Exception:
-            pass
 
 
 # Connector Information Integration Tests
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -586,6 +591,7 @@ async def test_get_connector_info_not_found_integration(marketplace_api):
 
 # Validation Error Integration Tests
 
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_create_connection_validation_empty_name_integration(marketplace_api):
@@ -594,7 +600,7 @@ async def test_create_connection_validation_empty_name_integration(marketplace_a
         await marketplace_api.create_connection(
             marketplace_type="SNOWFLAKE_DATA_MARKETPLACE",
             name="",  # Empty name
-            config={"key": "value"}
+            config={"key": "value"},
         )
 
 
@@ -606,7 +612,7 @@ async def test_create_connection_validation_empty_config_integration(marketplace
         await marketplace_api.create_connection(
             marketplace_type="SNOWFLAKE_DATA_MARKETPLACE",
             name="Test Connection",
-            config={}  # Empty config
+            config={},  # Empty config
         )
 
 
@@ -629,14 +635,12 @@ async def test_sync_assets_to_marketplace_validation_empty_asset_ids_integration
         with pytest.raises((MarketplaceValidationError, ValidationError)):
             await marketplace_api.sync_assets_to_marketplace(
                 connection["id"],
-                []  # Empty asset_ids
+                [],  # Empty asset_ids
             )
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await marketplace_api.delete_connection(connection["id"])
-        except Exception:
-            pass
 
 
 @pytest.mark.asyncio
@@ -650,14 +654,12 @@ async def test_sync_assets_to_marketplace_validation_invalid_asset_id_integratio
         with pytest.raises((MarketplaceValidationError, ValidationError)):
             await marketplace_api.sync_assets_to_marketplace(
                 connection["id"],
-                ["not-a-uuid"]  # Invalid UUID
+                ["not-a-uuid"],  # Invalid UUID
             )
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await marketplace_api.delete_connection(connection["id"])
-        except Exception:
-            pass
 
 
 # Note: Sync job, mapping, and other integration tests would follow similar patterns

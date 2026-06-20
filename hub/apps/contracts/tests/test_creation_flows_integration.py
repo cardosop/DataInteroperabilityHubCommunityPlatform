@@ -934,7 +934,7 @@ class CreationFlowsIntegrationTest(ContractsAPITestBase):
 
         self.assertIn(
             response.status_code,
-            [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR],
+            [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR]  # FIXME: 500 is a known bug - ODPSValidationError not caught by exception handler,
         )
 
     def test_technical_first_flow_link_invalid_odps(self):
@@ -960,7 +960,7 @@ class CreationFlowsIntegrationTest(ContractsAPITestBase):
 
         self.assertIn(
             response.status_code,
-            [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR],
+            [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR]  # FIXME: 500 is a known bug - ODPSValidationError not caught by exception handler,
         )
 
     def test_link_odps_to_non_odcs_contract(self):

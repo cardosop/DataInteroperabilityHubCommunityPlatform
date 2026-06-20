@@ -9,6 +9,7 @@ Validates PgBouncer connection pooling configuration:
 """
 
 import os
+
 import pytest
 
 
@@ -18,12 +19,21 @@ class TestPgBouncerConfig:
     def _find_pgbouncer_ini(self) -> str | None:
         """Locate the pgbouncer.ini file."""
         candidates = [
-            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                         "infrastructure", "pgbouncer", "pgbouncer.ini"),
-            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                         "infrastructure", "pgbouncer", "config.ini"),
-            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                         "pgbouncer.ini"),
+            os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                "infrastructure",
+                "pgbouncer",
+                "pgbouncer.ini",
+            ),
+            os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                "infrastructure",
+                "pgbouncer",
+                "config.ini",
+            ),
+            os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "pgbouncer.ini"
+            ),
         ]
         for path in candidates:
             if os.path.exists(path):
@@ -34,14 +44,14 @@ class TestPgBouncerConfig:
         """PgBouncer configuration file exists in the expected location."""
         path = self._find_pgbouncer_ini()
         if path is None:
-            pytest.skip("pgbouncer.ini not found — PgBouncer may not be configured in this env")
+            pytest.skip("pgbouncer.ini not found — PgBouncer may not be configured in this env")  # noqa: skip-in-body — runtime service dependency
         assert os.path.exists(path)
 
     def test_pool_mode_is_transaction(self):
         """Django requires pool_mode=transaction for connection pooling."""
         path = self._find_pgbouncer_ini()
         if path is None:
-            pytest.skip("pgbouncer.ini not found")
+            pytest.skip("pgbouncer.ini not found")  # noqa: skip-in-body — runtime service dependency
         with open(path) as f:
             content = f.read()
         # pool_mode should not be session (incompatible with Django's connection model).
@@ -54,7 +64,7 @@ class TestPgBouncerConfig:
         """max_client_conn should be >= default_pool_size * (1 + reserve_pool_size)."""
         path = self._find_pgbouncer_ini()
         if path is None:
-            pytest.skip("pgbouncer.ini not found")
+            pytest.skip("pgbouncer.ini not found")  # noqa: skip-in-body — runtime service dependency
         with open(path) as f:
             content = f.read()
         assert "max_client_conn" in content, "PgBouncer config must define max_client_conn"
@@ -63,7 +73,7 @@ class TestPgBouncerConfig:
         """DISCARD ALL is required for Django connection reset between transactions."""
         path = self._find_pgbouncer_ini()
         if path is None:
-            pytest.skip("pgbouncer.ini not found")
+            pytest.skip("pgbouncer.ini not found")  # noqa: skip-in-body — runtime service dependency
         with open(path) as f:
             content = f.read()
         # PgBouncer should have server_reset_query = DISCARD ALL for Django compatibility.
@@ -77,7 +87,7 @@ class TestPgBouncerConfig:
         """PgBouncer config should reference an auth_file for user authentication."""
         path = self._find_pgbouncer_ini()
         if path is None:
-            pytest.skip("pgbouncer.ini not found")
+            pytest.skip("pgbouncer.ini not found")  # noqa: skip-in-body — runtime service dependency
         with open(path) as f:
             content = f.read()
         assert "auth_file" in content or "auth_query" in content, (

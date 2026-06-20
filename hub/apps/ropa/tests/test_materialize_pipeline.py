@@ -1,11 +1,10 @@
 """RoPA pipeline — S3 materialisation + ``ROPA_GENERATED`` audit (real boto3 client / MinIO)."""
 
 from __future__ import annotations
-import pytest
 
-import pytest
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 

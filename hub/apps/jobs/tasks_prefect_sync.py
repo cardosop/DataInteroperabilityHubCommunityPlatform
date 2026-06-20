@@ -153,6 +153,7 @@ def _mark_run_failed(resource_id: str, resource_type: str, flow_run_id: str):
                 ScheduledIngestionRun,
                 ScheduledIngestionRunStatus,
             )
+
             ScheduledIngestionRun.objects.filter(id=resource_id).update(
                 status=ScheduledIngestionRunStatus.FAILED,
                 error_message=f"Prefect status sync failed after {MAX_RETRIES} retries (flow_run_id={flow_run_id})",
@@ -162,6 +163,7 @@ def _mark_run_failed(resource_id: str, resource_type: str, flow_run_id: str):
                 ScheduledExportRun,
                 ScheduledExportRunStatus,
             )
+
             ScheduledExportRun.objects.filter(id=resource_id).update(
                 status=ScheduledExportRunStatus.FAILED,
             )
@@ -262,9 +264,7 @@ def reconcile_prefect_run_statuses():
     ).exclude(prefect_flow_run_id="")
 
     for run in stale_ingestion_runs:
-        terminal = _check_flow_run_status(
-            base_url, run.prefect_flow_run_id, requests
-        )
+        terminal = _check_flow_run_status(base_url, run.prefect_flow_run_id, requests)
         if terminal:
             if terminal == "COMPLETED":
                 run.status = ScheduledIngestionRunStatus.COMPLETED
@@ -299,9 +299,7 @@ def reconcile_prefect_run_statuses():
     ).exclude(prefect_flow_run_id="")
 
     for run in stale_export_runs:
-        new_status = _check_flow_run_status(
-            base_url, run.prefect_flow_run_id, requests
-        )
+        new_status = _check_flow_run_status(base_url, run.prefect_flow_run_id, requests)
         if new_status:
             # Map to export status enum
             if new_status == "COMPLETED":

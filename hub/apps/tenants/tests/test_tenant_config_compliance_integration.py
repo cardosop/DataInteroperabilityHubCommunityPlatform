@@ -15,11 +15,11 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
+from hub.apps.compliance.models import ComplianceRun
 from hub.apps.compliance.service_client import ComplianceServiceClient
 from hub.apps.tenants.models import Tenant, TenantConfig
-from hub.apps.tenants.services import get_tenant_compliance_regimes, get_tenant_config
-from hub.apps.tenants.validators import VALID_COMPLIANCE_REGIMES, get_platform_defaults
+from hub.apps.tenants.services import get_tenant_compliance_regimes
+from hub.apps.tenants.validators import get_platform_defaults
 from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -47,7 +47,6 @@ class TenantConfigComplianceIntegrationTest(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -78,6 +77,7 @@ class TenantConfigComplianceIntegrationTest(TestCase):
         # Create subscription so middleware doesn't block write ops
         from hub.apps.billing.models import Subscription, SubscriptionStatus
         from hub.apps.tenants.models import TenantPlan
+
         free_plan = TenantPlan.objects.filter(slug="free").first()
         if free_plan:
             Subscription.objects.get_or_create(
@@ -86,11 +86,12 @@ class TenantConfigComplianceIntegrationTest(TestCase):
                     "plan": free_plan,
                     "status": SubscriptionStatus.ACTIVE,
                     "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
-                }
+                },
             )
 
         # Create a real File so the Compliance endpoint can find it
         from hub.apps.files.models import File, FileStatus
+
         self.test_file = File.objects.create(
             tenant=self.tenant,
             name="test-data.csv",

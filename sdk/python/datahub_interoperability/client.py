@@ -11,8 +11,8 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 
 import httpx
 
-from .config import DataHubClientConfig
 from ._mvp_detection import detect_mvp_gated_feature, extract_environment_url
+from .config import DataHubClientConfig
 from .errors import (
     DataHubError,
     MVPGatedFeatureError,
@@ -45,7 +45,7 @@ def calculate_backoff_delay(
     Returns:
         Delay in seconds
     """
-    base = base_delay * (2 ** attempt)
+    base = base_delay * (2**attempt)
     if error is not None and isinstance(error, RateLimitError):
         retry_after = getattr(error, "retry_after", None)
         if isinstance(retry_after, (int, float)) and retry_after > 0:
@@ -274,7 +274,9 @@ class DataHubClient:
         if "." not in token:
             return False
         try:
-            import base64, json
+            import base64
+            import json
+
             payload_b64 = token.split(".")[1]
             # Add padding if needed
             payload_b64 += "=" * (4 - len(payload_b64) % 4)
@@ -298,10 +300,7 @@ class DataHubClient:
             token = self.config.api_token
             # Proactive JWT refresh: if the token is expired and we have
             # a callback, refresh it now rather than waiting for a 401.
-            if (
-                self._is_jwt_expired(token)
-                and self.token_refresh_callback is not None
-            ):
+            if self._is_jwt_expired(token) and self.token_refresh_callback is not None:
                 try:
                     new_token = await self.token_refresh_callback()
                     if new_token:
@@ -404,7 +403,7 @@ class DataHubClient:
                     # Try token refresh for 401 (before parsing error)
                     if response.status_code == 401 and not token_refresh_attempted:
                         error = httpx.HTTPStatusError(
-                            f"401 Unauthorized", request=response.request, response=response
+                            "401 Unauthorized", request=response.request, response=response
                         )
                         if await self._handle_token_refresh(error):
                             # Token was refreshed - retry with new token
@@ -626,7 +625,11 @@ class DataHubClient:
         # appends the URL to the configured base_url.
         response = await self.client.get(health_url)
         if response.is_error:
-            return response.json() if response.headers.get("content-type", "").startswith("application/json") else {"status": "error", "http_status": response.status_code}
+            return (
+                response.json()
+                if response.headers.get("content-type", "").startswith("application/json")
+                else {"status": "error", "http_status": response.status_code}
+            )
         return response.json()
 
     async def post(

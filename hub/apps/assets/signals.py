@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import logging
 
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
+from redis.exceptions import RedisError
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +82,18 @@ def _fire_asset_tombstone_if_retired(sender, instance, **kwargs):
                 resource_id=instance.pk,
                 reason=REASON_ASSET_RETIRED,
             )
-        except Exception as exc:  # pragma: no cover — best-effort
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            # Transient infrastructure failure — best-effort tombstone.
             logger.warning(
                 "asset_tombstone_dispatch_failed asset_id=%s error=%s",
                 instance.pk, exc,
+            )
+        except DatabaseError as exc:
+            # Database error during tombstone dispatch — still
+            # best-effort, but log at ERROR.
+            logger.error(
+                "asset_tombstone_dispatch_db_error asset_id=%s error=%s",
+                instance.pk, exc, exc_info=True,
             )
 
     transaction.on_commit(_dispatch)
@@ -168,7 +177,7 @@ def rebuild_asset_search_vector(sender, instance, **kwargs):
                     pk=instance.pk,
                     search_vector__isnull=False,
                 ).update(search_vector=None)
-            except Exception as exc:  # noqa: BLE001 — boundary
+            except DatabaseError as exc:  # DB error during vector clear — best-effort
                 logger.warning(
                     "asset_search_vector_clear_failed "
                     "asset_id=%s prior_status=%s error=%s",
@@ -185,9 +194,22 @@ def rebuild_asset_search_vector(sender, instance, **kwargs):
             )
 
             enqueue_asset_search_vector_update(str(pk))
-        except Exception as exc:
+        except (ConnectionError, TimeoutError, OSError, ImportError) as exc:
+            # Transient infrastructure / import failure — best-effort.
             logger.warning(
                 "asset_search_vector_enqueue_failed "
+                "asset_id=%s error=%s",
+                pk,
+                exc,
+            )
+        except (RedisError, RuntimeError) as exc:
+            # Redis/RQ operational error — log at ERROR so SRE can
+            # distinguish infra failures from coding errors.
+            # Programming errors (AttributeError, TypeError, KeyError,
+            # NameError) are NOT caught — they propagate so tests/CI
+            # catch bugs before production.
+            logger.error(
+                "asset_search_vector_enqueue_redis_or_rq_error "
                 "asset_id=%s error=%s",
                 pk,
                 exc,

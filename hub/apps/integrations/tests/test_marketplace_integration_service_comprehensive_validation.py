@@ -27,11 +27,9 @@ Follows TDD principles and engineering best practices.
 import json
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pytest
-
-pytestmark = pytest.mark.slow
 
 # CRITICAL: Patch sql_flush to use CASCADE for foreign key constraints
 # This is needed when running tests with manage.py test (not pytest)
@@ -70,11 +68,12 @@ except Exception as e:
 
     logger = logging.getLogger(__name__)
     logger.warning(f"Failed to patch sql_flush: {e}")
-    pass
+import contextlib
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -82,13 +81,9 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import Asset, AssetSourceType, AssetStatus
 from hub.apps.contracts.models import (
     Contract,
-    ContractStatus,
-    NormalizationStatus,
     OriginalFormat,
-    OriginalSpecType,
-    ValidationStatus,
 )
-from hub.apps.contracts.services import ContractService, ODPSService
+from hub.apps.contracts.services import ODPSService
 from hub.apps.core.events.models import Event
 from hub.apps.core.services.base import ConflictError, NotFoundError, ValidationError
 from hub.apps.integrations.base import (
@@ -99,8 +94,6 @@ from hub.apps.integrations.base import (
     SyncDirection,
     SyncStatus,
 )
-from hub.apps.integrations.encryption import decrypt_json_field
-from hub.apps.integrations.event_publishers import MarketplaceEventPublisher
 from hub.apps.integrations.factory import MarketplaceConnectorFactory
 from hub.apps.integrations.models import (
     MarketplaceConnection,
@@ -120,7 +113,7 @@ from tests.utils.wait_helpers import wait_for_event_persistence
 
 User = get_user_model()
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.slow, pytest.mark.journey("JOURNEY-MP-001"), pytest.mark.journey("JOURNEY-MP-002"), pytest.mark.journey("JOURNEY-MP-003"), pytest.mark.journey("JOURNEY-MP-004"), pytest.mark.journey("JOURNEY-MP-005"), pytest.mark.journey("JOURNEY-MP-006"), pytest.mark.journey("JOURNEY-MP-007")]
 
 
 class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase):
@@ -135,7 +128,6 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
 
     def _fixture_teardown(self):
         """Skip TRUNCATE CASCADE to avoid timeout."""
-        pass
 
     def setUp(self):
         """Set up comprehensive test fixtures"""
@@ -171,7 +163,7 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
                     connection.ensure_connection()
                     # Longer wait for "database system is starting up" errors
                     wait_time = retry_delay * (2 ** min(attempt, 4))  # Cap at 16 seconds
-                    time.sleep(wait_time)  # INTENTIONAL: exponential backoff for DB startup retry
+                    time.sleep(wait_time)  # noqa: sleep-needed  # INTENTIONAL: exponential backoff for DB startup retry
 
                 # Create test tenants with unique names to avoid conflicts
                 # TransactionTestCase with _fixture_teardown override doesn't clean up between tests
@@ -215,8 +207,8 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
 
                 # ROOT CAUSE: API endpoints require DATA_PROVIDER or TENANT_ADMIN role and integrations:write scope
                 # Role model requires tenant_id (NOT NULL); roles are tenant-scoped (unique_tenant_role_name).
-                from hub.apps.users.models import Role
                 from hub.apps.auth.models import APIKey
+                from hub.apps.users.models import Role
 
                 data_provider_role1 = Role.objects.filter(
                     tenant=self.tenant1, name="DATA_PROVIDER"
@@ -249,7 +241,7 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
                     user=self.user1,
                     name=f"Test API Key 1 {unique_suffix}",
                     key_hash=key_hash1,
-                    scopes=["integrations:write", "integrations:read"]
+                    scopes=["integrations:write", "integrations:read"],
                 )
 
                 plaintext_key2 = APIKey.generate_key()
@@ -260,7 +252,7 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
                     user=self.user2,
                     name=f"Test API Key 2 {unique_suffix}",
                     key_hash=key_hash2,
-                    scopes=["integrations:write", "integrations:read"]
+                    scopes=["integrations:write", "integrations:read"],
                 )
 
                 # Create service instances
@@ -322,7 +314,7 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
                     if attempt == max_retries - 1:
                         raise
                     # Wait longer for database startup
-                    time.sleep(5.0)  # INTENTIONAL: wait for database system startup
+                    time.sleep(5.0)  # noqa: sleep-needed  # INTENTIONAL: wait for database system startup
                     continue
                 # Other operational errors - retry with exponential backoff
                 if attempt == max_retries - 1:
@@ -335,7 +327,9 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
                     # Unique constraint violation - regenerate unique suffix and retry
                     if attempt < max_retries - 1:
                         connection.ensure_connection()
-                        time.sleep(0.5)  # INTENTIONAL: retry backoff for unique constraint violation
+                        time.sleep(  # noqa: sleep-needed — polling loop
+                            0.5
+                        )  # INTENTIONAL: retry backoff for unique constraint violation
                         continue
                 if attempt == max_retries - 1:
                     # Last attempt failed - re-raise the exception
@@ -496,10 +490,8 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
 
         # Ensure connection is open so TransactionTestCase teardown (flush) succeeds
         # and subsequent tests in the same process do not see "connection already closed".
-        try:
+        with contextlib.suppress(Exception):
             connection.ensure_connection()
-        except Exception:
-            pass
         super().tearDown()
 
     def _create_test_connection(
@@ -508,7 +500,7 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
         user_id: str,
         marketplace_type: str = MarketplaceType.CKAN_INSTANCE.value,
         name: str = "Test Connection",
-        config: Optional[Dict[str, Any]] = None,
+        config: dict[str, Any] | None = None,
         is_active: bool = True,
     ) -> MarketplaceConnection:
         """Helper to create a test connection"""
@@ -698,7 +690,7 @@ class ConnectionManagementTest(MarketplaceIntegrationComprehensiveValidationTest
                     # Result may be success or failure depending on connector
                     self.assertIn("success", result)
                     self.assertIn("tested_at", result)
-                except (ValidationError, NotFoundError) as e:
+                except (ValidationError, NotFoundError):
                     # Some connectors may not be fully implemented
                     # This is acceptable for comprehensive testing
                     pass
@@ -799,7 +791,7 @@ class ConnectionManagementTest(MarketplaceIntegrationComprehensiveValidationTest
             )
 
         # Test duplicate name
-        connection1 = self._create_test_connection(
+        self._create_test_connection(
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
             name="Duplicate Name",
@@ -824,7 +816,7 @@ class ConnectionManagementTest(MarketplaceIntegrationComprehensiveValidationTest
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             is_active=True,
         )
-        conn2 = self._create_test_connection(
+        self._create_test_connection(
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
             name="Connection 2",
@@ -1022,7 +1014,7 @@ class SyncJobTest(MarketplaceIntegrationComprehensiveValidationTestBase):
         if cancelled_job.errors:
             first_error = cancelled_job.errors[0]
             if isinstance(first_error, dict):
-                error_text = first_error.get('message', str(first_error)).lower()
+                error_text = first_error.get("message", str(first_error)).lower()
             else:
                 error_text = str(first_error).lower()
         self.assertIn("cancelled", error_text)
@@ -1105,12 +1097,12 @@ class SyncJobTest(MarketplaceIntegrationComprehensiveValidationTestBase):
         )
 
         # Create multiple sync jobs
-        job1 = self._create_test_sync_job(
+        self._create_test_sync_job(
             connection,
             direction=SyncDirection.PUSH.value,
             status=SyncStatus.COMPLETED.value,
         )
-        job2 = self._create_test_sync_job(
+        self._create_test_sync_job(
             connection,
             direction=SyncDirection.PULL.value,
             status=SyncStatus.FAILED.value,
@@ -1142,7 +1134,7 @@ class SyncJobTest(MarketplaceIntegrationComprehensiveValidationTestBase):
         )
 
         # Create multiple sync jobs
-        for i in range(15):
+        for _i in range(15):
             self._create_test_sync_job(
                 connection,
                 status=SyncStatus.PENDING.value,
@@ -1231,12 +1223,12 @@ class MappingManagementTest(MarketplaceIntegrationComprehensiveValidationTestBas
         )
 
         # Create multiple mappings
-        mapping1 = self._create_test_mapping(
+        self._create_test_mapping(
             connection,
             self.asset1,
             external_listing_id="listing-1",
         )
-        mapping2 = self._create_test_mapping(
+        self._create_test_mapping(
             connection,
             self.asset2,
             external_listing_id="listing-2",
@@ -1309,7 +1301,7 @@ class MappingManagementTest(MarketplaceIntegrationComprehensiveValidationTestBas
         )
 
         # Test duplicate mapping (same connection + asset)
-        mapping1 = self._create_test_mapping(
+        self._create_test_mapping(
             connection,
             self.asset1,
         )
@@ -1331,12 +1323,12 @@ class MappingManagementTest(MarketplaceIntegrationComprehensiveValidationTestBas
         )
 
         # Create multiple mappings
-        mapping1 = self._create_test_mapping(
+        self._create_test_mapping(
             connection,
             self.asset1,
             external_listing_id="listing-1",
         )
-        mapping2 = self._create_test_mapping(
+        self._create_test_mapping(
             connection,
             self.asset2,
             external_listing_id="listing-2",
@@ -1523,7 +1515,7 @@ class MetadataMappingTest(MarketplaceIntegrationComprehensiveValidationTestBase)
         )
 
         # Create ODPS contract
-        contract = self._create_odps_contract(self.asset1)
+        self._create_odps_contract(self.asset1)
 
         # Get connector
         config = connection.get_config()
@@ -1922,7 +1914,7 @@ class MarketplaceIntegrationEventSystemTest(MarketplaceIntegrationComprehensiveV
 
     def test_event_schema_validation(self):
         """Test event schema validation (JSON Schema validation for all marketplace events)"""
-        connection = self._create_test_connection(
+        self._create_test_connection(
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
         )
@@ -1938,7 +1930,7 @@ class MarketplaceIntegrationEventSystemTest(MarketplaceIntegrationComprehensiveV
 
     def test_event_publishing(self):
         """Test event publishing (events published to event bus)"""
-        connection = self._create_test_connection(
+        self._create_test_connection(
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
         )
@@ -1956,7 +1948,7 @@ class MarketplaceIntegrationEventSystemTest(MarketplaceIntegrationComprehensiveV
         """Test event subscribers (semantic service, notification service, audit service subscribe to marketplace events)"""
         # Note: Event subscription is tested via integration tests
         # This test verifies events are published (subscribers will receive them)
-        connection = self._create_test_connection(
+        self._create_test_connection(
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
         )
@@ -1967,7 +1959,7 @@ class MarketplaceIntegrationEventSystemTest(MarketplaceIntegrationComprehensiveV
 
     def test_event_replay(self):
         """Test event replay (events can be replayed from PostgreSQL persistence)"""
-        connection = self._create_test_connection(
+        self._create_test_connection(
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
         )
@@ -2086,7 +2078,7 @@ class MarketplaceIntegrationPerformanceTest(MarketplaceIntegrationComprehensiveV
 
         # Create multiple sync jobs
         sync_jobs = []
-        for i in range(10):
+        for _i in range(10):
             job = self._create_test_sync_job(
                 connection,
                 status=SyncStatus.PENDING.value,
@@ -2821,11 +2813,11 @@ class MarketplaceIntegrationMultiTenancyTest(MarketplaceIntegrationComprehensive
     def test_tenant_scoped_event_filtering(self):
         """Test tenant-scoped event filtering (events filtered by tenant_id)"""
         # Create connections for both tenants
-        connection1 = self._create_test_connection(
+        self._create_test_connection(
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
         )
-        connection2 = self._create_test_connection(
+        self._create_test_connection(
             tenant_id=str(self.tenant2.id),
             user_id=str(self.user2.id),
         )
@@ -3079,7 +3071,7 @@ class MarketplaceIntegrationODPSTest(MarketplaceIntegrationComprehensiveValidati
 
     def test_odps_pricing_access_payment_metadata_mapping(self):
         """Test ODPS pricing/access/payment metadata mapping"""
-        connection = self._create_test_connection(
+        self._create_test_connection(
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
         )
@@ -3138,7 +3130,7 @@ class MarketplaceIntegrationODPSTest(MarketplaceIntegrationComprehensiveValidati
         contract = self._create_odps_contract(self.asset1)
 
         # Create mapping
-        mapping = self._create_test_mapping(connection, self.asset1)
+        self._create_test_mapping(connection, self.asset1)
 
         # Verify contract is linked to asset
         contract.refresh_from_db()
@@ -3186,7 +3178,7 @@ class MarketplaceIntegrationODPSTest(MarketplaceIntegrationComprehensiveValidati
 
         # Map to semantic layer
         try:
-            rdf_graph = map_asset_to_semantic(federated_asset)
+            map_asset_to_semantic(federated_asset)
             # Verify RDF mapping
             # Note: Actual RDF structure depends on semantic service implementation
             self.assertIsNotNone(federated_asset.id)

@@ -4,8 +4,8 @@ Tests for Internal Worker API (run lifecycle, process-export, config, auth).
 No mocks: real DB, real ScheduledExportRun, real services (ScheduledExportService, BusinessRules, etc.).
 """
 
+import contextlib
 import uuid
-from datetime import timedelta
 
 import pytest
 from django.db.transaction import TransactionManagementError
@@ -14,7 +14,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset
+from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.audit.models import AuditEvent
 from hub.apps.auth.models import APIKey
 from hub.apps.datasets.models import Dataset
@@ -59,16 +59,15 @@ class InternalWorkerAPITest(TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        try:
+        with contextlib.suppress(TransactionManagementError):
             super().tearDownClass()
-        except TransactionManagementError:
-            pass
 
     @classmethod
     def setUpClass(cls):
         # Recover from a poisoned connection left by a prior test class's
         # teardown (see TestHubAPIConnectivity for the full explanation).
         from django.db import connections
+
         for alias in connections:
             conn = connections[alias]
             conn.closed_in_transaction = False
@@ -78,10 +77,8 @@ class InternalWorkerAPITest(TestCase):
             conn.atomic_blocks = []
             if conn.connection is not None and conn.connection.closed:
                 conn.connection = None
-            try:
+            with contextlib.suppress(Exception):
                 conn.ensure_connection()
-            except Exception:
-                pass
         super().setUpClass()
 
     def setUp(self):
@@ -111,8 +108,7 @@ class InternalWorkerAPITest(TestCase):
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
-            status="ACTIVE",
-            visibility="PUBLIC",
+            status=AssetStatus.PUBLIC,
             dq_status="PASSED",
             compliance_status="COMPLIANT",
             version=1,
@@ -300,6 +296,7 @@ class InternalWorkerAPITest(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
 
     def test_reject_invalid_token(self):
         self.client.credentials(HTTP_AUTHORIZATION="ApiKey invalid-key-12345")
@@ -309,6 +306,7 @@ class InternalWorkerAPITest(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
 
     def test_reject_token_without_scope(self):
         plaintext = APIKey.generate_key()
@@ -326,6 +324,7 @@ class InternalWorkerAPITest(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
 
     def test_reject_wrong_tenant(self):
         import uuid
@@ -571,6 +570,7 @@ class InternalWorkerAPITest(TestCase):
         url = f"/api/v1/scheduled-exports/internal/config/{uuid.uuid4()}/"
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
 
     def test_patch_run_nonexistent_run_returns_404(self):
         """PATCH run with non-existent run_id returns 404."""
@@ -581,6 +581,7 @@ class InternalWorkerAPITest(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(response.content, f"Response body must be non-empty for {response.status_code}")
 
     def test_create_run_missing_scheduled_export_id_returns_400(self):
         """POST internal/runs/ without scheduled_export_id returns 400."""
@@ -628,7 +629,6 @@ class InternalWorkerAPIIntegrationTest(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
-        pass
 
     def setUp(self):
         self.client = APIClient()

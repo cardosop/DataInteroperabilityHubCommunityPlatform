@@ -8,8 +8,8 @@ import logging
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
-from rest_framework import permissions, serializers, status, viewsets
+from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -17,10 +17,8 @@ from rest_framework.response import Response
 from hub.apps.api.e2e_gating import is_e2e_environment, verify_e2e_token
 from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.utils import create_audit_event, log_tenant_operation
-from hub.apps.compliance.models import RiskLevel
-from hub.apps.auth.permissions import HasRole
 from hub.apps.billing.serializers import TenantPlanAdminSerializer
-from hub.apps.billing.services import SubscriptionService
+from hub.apps.compliance.models import RiskLevel
 from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import ServiceError
 
@@ -95,7 +93,8 @@ class TenantViewSet(viewsets.ModelViewSet):
 
         # Use TenantService to create tenant (publishes events automatically)
         service = TenantService(
-            tenant_id=None, user_id=str(request.user.id)  # Platform admin operations
+            tenant_id=None,
+            user_id=str(request.user.id),  # Platform admin operations
         )
         try:
             tenant = service.create_tenant(
@@ -373,7 +372,6 @@ class TenantViewSet(viewsets.ModelViewSet):
         # )
         # for admin in admins:
         #     send_email(admin.email, "tenant_suspended", {"tenant": tenant, "reason": reason})
-        pass
 
     def _send_reactivation_notification(self, tenant):
         """Send reactivation notification to tenant admins (placeholder)"""
@@ -386,7 +384,6 @@ class TenantViewSet(viewsets.ModelViewSet):
         # )
         # for admin in admins:
         #     send_email(admin.email, "tenant_reactivated", {"tenant": tenant})
-        pass
 
 
 class TenantConfigViewSet(viewsets.ViewSet):
@@ -498,7 +495,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
         tenant = self.get_tenant(tenant_id)
 
         # Get or create tenant config for validation
-        config, created = TenantConfig.objects.get_or_create(tenant=tenant)
+        config, _created = TenantConfig.objects.get_or_create(tenant=tenant)
 
         prev_compliance_thr = str(
             getattr(config, "compliance_risk_threshold", RiskLevel.HIGH.value)
@@ -538,9 +535,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
 
         if "compliance_risk_threshold" in vd:
             cfg_fresh = TenantConfig.objects.get(pk=config.pk)
-            new_thr = str(
-                getattr(cfg_fresh, "compliance_risk_threshold", RiskLevel.HIGH.value)
-            )
+            new_thr = str(getattr(cfg_fresh, "compliance_risk_threshold", RiskLevel.HIGH.value))
             if new_thr != prev_compliance_thr:
                 try:
                     create_audit_event(
@@ -604,7 +599,10 @@ class TenantConfigViewSet(viewsets.ViewSet):
         # Only Platform Admins can create organizations
         if not (
             request.user.is_superuser
-            or (hasattr(request.user, "user_roles") and request.user.user_roles.filter(role__name="PLATFORM_ADMIN").exists())
+            or (
+                hasattr(request.user, "user_roles")
+                and request.user.user_roles.filter(role__name="PLATFORM_ADMIN").exists()
+            )
         ):
             return Response(
                 {"error": "Organization creation requires PLATFORM_ADMIN role."},
@@ -710,12 +708,8 @@ class TenantConfigViewSet(viewsets.ViewSet):
         service.update_tenant_config(
             tenant_id=str(tenant.id),
             default_dq_profile=serializer.validated_data.get("default_dq_profile"),
-            allowed_compliance_regimes=serializer.validated_data.get(
-                "allowed_compliance_regimes"
-            ),
-            default_compliance_regimes=serializer.validated_data.get(
-                "default_compliance_regimes"
-            ),
+            allowed_compliance_regimes=serializer.validated_data.get("allowed_compliance_regimes"),
+            default_compliance_regimes=serializer.validated_data.get("default_compliance_regimes"),
             data_retention_days=serializer.validated_data.get("data_retention_days"),
             rate_limits=serializer.validated_data.get("rate_limits"),
             max_file_size_bytes=serializer.validated_data.get("max_file_size_bytes"),
@@ -851,21 +845,14 @@ class TenantConfigViewSet(viewsets.ViewSet):
         otherwise. Mirrors the gate-helper pattern from
         ``hub/apps/assets/views.py::_check_asset_creation_kill_switch``."""
         user = request.user
-        is_tenant_admin = (
-            user.has_role("TENANT_ADMIN")
-            if hasattr(user, "has_role")
-            else False
-        )
-        is_platform_admin = (
-            hasattr(user, "is_platform_admin") and user.is_platform_admin
-        )
+        is_tenant_admin = user.has_role("TENANT_ADMIN") if hasattr(user, "has_role") else False
+        is_platform_admin = hasattr(user, "is_platform_admin") and user.is_platform_admin
         if is_tenant_admin or is_platform_admin:
             return None
         return Response(
             {
                 "error": (
-                    "Permission denied: TENANT_ADMIN role required to "
-                    "manage tenant feature flags."
+                    "Permission denied: TENANT_ADMIN role required to manage tenant feature flags."
                 ),
                 "code": "PERMISSION_DENIED",
             },
@@ -933,8 +920,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
         body = request.data or {}
         if not isinstance(body, dict):
             return Response(
-                {"error": "Request body must be a JSON object",
-                 "code": "INVALID_REQUEST"},
+                {"error": "Request body must be a JSON object", "code": "INVALID_REQUEST"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         known_flag_names = {n for n, _ in self._TENANT_FEATURE_FLAGS}
@@ -956,9 +942,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
             )
 
         # Capture before-values for audit before mutating.
-        before_values = {
-            name: bool(getattr(tenant, name, False)) for name in body.keys()
-        }
+        before_values = {name: bool(getattr(tenant, name, False)) for name in body.keys()}
         # Apply each flag.
         update_fields = []
         for name, value in body.items():
@@ -989,7 +973,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
                     },
                     request=request,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 # Best-effort: audit emission failure logs a warning
                 # but doesn't roll back the flag write (the operator
                 # already committed the intent; losing the audit row
@@ -1062,9 +1046,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
             {
                 "id": str(ev.id),
                 "action": ev.action,
-                "actor_user_id": (
-                    str(ev.actor_user_id) if ev.actor_user_id else None
-                ),
+                "actor_user_id": (str(ev.actor_user_id) if ev.actor_user_id else None),
                 "result": ev.result,
                 "created_at": ev.timestamp.isoformat(),
                 "details_json": ev.details_json,
@@ -1132,7 +1114,6 @@ class TenantConfigViewSet(viewsets.ViewSet):
                     usage_percentages[limit_key] = round(min(percentage, 100.0), 1)
 
         # Phase 277.B.106 — quota_warnings for limits at >=80%
-        from hub.apps.billing.limit_registry import RESOURCE_COUNTERS
         quota_warnings: dict[str, dict[str, Any]] = {}
         for limit_key, pct in usage_percentages.items():
             if pct is not None and pct >= 80.0:
@@ -1171,9 +1152,16 @@ class TenantConfigViewSet(viewsets.ViewSet):
             current_order = getattr(plan, "order", 0) or 0
             current_cat = getattr(plan, "category", "") or ""
             from hub.apps.tenants.models import TenantPlan as _TP
-            upgrades = _TP.objects.filter(
-                is_active=True, category=current_cat, order__gt=current_order,
-            ).order_by("order").values_list("slug", flat=True)
+
+            upgrades = (
+                _TP.objects.filter(
+                    is_active=True,
+                    category=current_cat,
+                    order__gt=current_order,
+                )
+                .order_by("order")
+                .values_list("slug", flat=True)
+            )
             response_data["upgrade_recommendation"] = list(upgrades)
         else:
             response_data["upgrade_recommendation"] = []
@@ -1183,6 +1171,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
 
         # Phase 285.13.8 — response-level caching
         from django.core.cache import cache as _dj_cache
+
         _dj_cache.set(f"tenant_usage_response:{tenant_id}", data, timeout=60)
 
         return Response(data, status=status.HTTP_200_OK)
@@ -1212,8 +1201,8 @@ class TenantConfigViewSet(viewsets.ViewSet):
     def seed_sample(self, request):
         """Idempotently seed one sample asset, contract, and listing."""
         from hub.apps.assets.models import Asset
-        from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
         from hub.apps.audit.utils import create_audit_event
+        from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
 
         tenant_id = get_request_tenant_id(request)
         if not tenant_id:
@@ -1223,6 +1212,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
             )
 
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.get(id=tenant_id)
 
         created_any = False
@@ -1295,8 +1285,10 @@ class TenantConfigViewSet(viewsets.ViewSet):
         if hasattr(plan, "tier_profile") and plan.tier_profile is not None:
             tp = plan.tier_profile
             data["tier_profile"] = {
-                "headline": tp.headline, "is_public": tp.is_public,
-                "self_serve": tp.self_serve, "sort_order": tp.sort_order,
+                "headline": tp.headline,
+                "is_public": tp.is_public,
+                "self_serve": tp.self_serve,
+                "sort_order": tp.sort_order,
             }
         # Nest under "plan" key per test expectations
         return Response({"plan": data})
@@ -1314,9 +1306,15 @@ class TenantConfigViewSet(viewsets.ViewSet):
         current_cat = requested_cat or getattr(current, "category", "") or ""
 
         # Available: active plans in the chosen category with order > current
-        candidates = TenantPlan.objects.filter(
-            is_active=True, category=current_cat, order__gt=current_order,
-        ).select_related("tier_profile").order_by("order")
+        candidates = (
+            TenantPlan.objects.filter(
+                is_active=True,
+                category=current_cat,
+                order__gt=current_order,
+            )
+            .select_related("tier_profile")
+            .order_by("order")
+        )
 
         def _serialize(p):
             d = TenantPlanAdminSerializer(p).data
@@ -1357,16 +1355,16 @@ class TenantConfigViewSet(viewsets.ViewSet):
 
         tenant.plan = target
         tenant.save(update_fields=["plan"])
-        from hub.apps.audit.utils import create_audit_event
         from hub.apps.audit.event_types import TENANT_PLAN_UPGRADED
+        from hub.apps.audit.utils import create_audit_event
+
         create_audit_event(
             resource_type="TENANT",
             action=TENANT_PLAN_UPGRADED,
             actor_user=request.user,
             tenant=tenant,
             resource_id=str(tenant.id),
-            details={"from_slug": getattr(current, "slug", None),
-                     "to_slug": target.slug},
+            details={"from_slug": getattr(current, "slug", None), "to_slug": target.slug},
             request=request,
         )
         return Response({"plan_slug": target.slug, "message": "Plan upgraded"})
@@ -1386,6 +1384,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
         tenant = Tenant.objects.get(id=tenant_id)
         # Validate downgrade
         from hub.apps.billing.services import PlanLimitService as BillingPlanLimitService
+
         result = BillingPlanLimitService.validate_downgrade(str(tenant.id), target)
         if not result.is_valid:
             return Response(
@@ -1399,8 +1398,9 @@ class TenantConfigViewSet(viewsets.ViewSet):
         old_slug = getattr(tenant.plan, "slug", None)
         tenant.plan = target
         tenant.save(update_fields=["plan"])
-        from hub.apps.audit.utils import create_audit_event
         from hub.apps.audit.event_types import TENANT_PLAN_DOWNGRADED
+        from hub.apps.audit.utils import create_audit_event
+
         create_audit_event(
             resource_type="TENANT",
             action=TENANT_PLAN_DOWNGRADED,
@@ -1410,11 +1410,13 @@ class TenantConfigViewSet(viewsets.ViewSet):
             details={"from_slug": old_slug, "to_slug": target.slug},
             request=request,
         )
-        return Response({
-            "plan_slug": target.slug,
-            "message": "Plan downgraded",
-            "warnings": list(result.details.keys()) if result.details else [],
-        })
+        return Response(
+            {
+                "plan_slug": target.slug,
+                "message": "Plan downgraded",
+                "warnings": list(result.details.keys()) if result.details else [],
+            }
+        )
 
     def me_plan_available_ml_addons(self, request):
         """GET /api/v1/tenants/me/plan/available-ml-addons/ — ML add-on plans."""
@@ -1429,8 +1431,11 @@ class TenantConfigViewSet(viewsets.ViewSet):
         has_ml = Subscription.objects.filter(
             tenant=tenant,
             plan__category=PlanCategory.ML_AI,
-            status__in=[SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL,
-                        SubscriptionStatus.PAST_DUE],
+            status__in=[
+                SubscriptionStatus.ACTIVE,
+                SubscriptionStatus.TRIAL,
+                SubscriptionStatus.PAST_DUE,
+            ],
         ).exists()
         if has_ml:
             return Response(
@@ -1439,12 +1444,19 @@ class TenantConfigViewSet(viewsets.ViewSet):
             )
 
         # Check if tenant has a qualifying base plan via subscription
-        base_sub = Subscription.objects.filter(
-            tenant=tenant,
-            plan__category=PlanCategory.BASE,
-            status__in=[SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL,
-                        SubscriptionStatus.PAST_DUE],
-        ).select_related("plan").first()
+        base_sub = (
+            Subscription.objects.filter(
+                tenant=tenant,
+                plan__category=PlanCategory.BASE,
+                status__in=[
+                    SubscriptionStatus.ACTIVE,
+                    SubscriptionStatus.TRIAL,
+                    SubscriptionStatus.PAST_DUE,
+                ],
+            )
+            .select_related("plan")
+            .first()
+        )
         base_order = getattr(base_sub.plan if base_sub else None, "order", 0) or 0
         if base_order < 1:
             return Response(
@@ -1452,10 +1464,14 @@ class TenantConfigViewSet(viewsets.ViewSet):
                 status=400,
             )
 
-        ml_plans = TenantPlan.objects.filter(
-            is_active=True,
-            category=PlanCategory.ML_AI,
-        ).select_related("tier_profile").order_by("order")
+        ml_plans = (
+            TenantPlan.objects.filter(
+                is_active=True,
+                category=PlanCategory.ML_AI,
+            )
+            .select_related("tier_profile")
+            .order_by("order")
+        )
 
         def _serialize(p):
             d = TenantPlanAdminSerializer(p).data
@@ -1497,8 +1513,8 @@ class TenantConfigViewSet(viewsets.ViewSet):
         from hub.apps.audit import event_types as _ev
         from hub.apps.audit.utils import create_audit_event
         from hub.apps.tenants.tax_id_service import (
-            submit_tax_id_to_stripe,
             TaxIdSubmissionError,
+            submit_tax_id_to_stripe,
         )
 
         tenant_id = get_request_tenant_id(request)
@@ -1562,6 +1578,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
         # encrypted Tenant.tax_id column is the system-of-record
         # for the unmasked value.
         from hub.apps.billing.views import _mask_tax_id  # local import
+
         create_audit_event(
             resource_type="TENANT",
             action=_ev.TENANT_TAX_ID_SUBMITTED,
@@ -1606,6 +1623,7 @@ class RateLimitConfigView(viewsets.ViewSet):
 
     def get_permissions(self):
         from hub.apps.tenants.permissions import IsPlatformAdmin
+
         return [IsPlatformAdmin()]
 
     # Phase 277.B.092 — ABAC enforcement before admin mutations
@@ -1613,6 +1631,7 @@ class RateLimitConfigView(viewsets.ViewSet):
         super().check_permissions(request)
         if request.method in ("POST", "PATCH", "PUT", "DELETE"):
             from hub.apps.governance.admin_abac import _evaluate_admin_action
+
             _evaluate_admin_action(request, "TENANT_CONFIG", "ADMIN_WRITE")
 
     def _get_tenant_or_404(self, tenant_id: str) -> Tenant:
@@ -1620,6 +1639,7 @@ class RateLimitConfigView(viewsets.ViewSet):
             return Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
             from rest_framework.exceptions import NotFound
+
             raise NotFound("Tenant not found")
 
     def _get_config_or_create(self, tenant: Tenant) -> TenantConfig:
@@ -1651,28 +1671,40 @@ class RateLimitConfigView(viewsets.ViewSet):
 
         effective_limits = {}
         for category in [
-            "auth", "asset", "contract", "search", "file_upload",
-            "dq_runs", "compliance_runs", "file_download",
-            "contract_validation", "catalog_reads", "sparql_queries", "general",
+            "auth",
+            "asset",
+            "contract",
+            "search",
+            "file_upload",
+            "dq_runs",
+            "compliance_runs",
+            "file_download",
+            "contract_validation",
+            "catalog_reads",
+            "sparql_queries",
+            "general",
         ]:
             from hub.apps.rate_limiting.config import (
                 get_tenant_rate_limit,
-                get_platform_default_limit,
-                get_platform_maximum_limit,
             )
             from hub.apps.rate_limiting.utils import TimeWindow
 
             effective_limits[category] = {
                 "burst_per_10s": get_tenant_rate_limit(tenant_id, category, TimeWindow.BURST),
-                "sustained_per_min": get_tenant_rate_limit(tenant_id, category, TimeWindow.SUSTAINED),
+                "sustained_per_min": get_tenant_rate_limit(
+                    tenant_id, category, TimeWindow.SUSTAINED
+                ),
                 "daily_cap": get_tenant_rate_limit(tenant_id, category, TimeWindow.DAILY),
             }
 
-        return Response({
-            "tenant_id": str(tenant.id),
-            "overrides": config.rate_limits or {},
-            "effective": effective_limits,
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "tenant_id": str(tenant.id),
+                "overrides": config.rate_limits or {},
+                "effective": effective_limits,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(
         operation_id="update_tenant_rate_limits",
@@ -1727,8 +1759,11 @@ class RateLimitConfigView(viewsets.ViewSet):
             request=request,
         )
 
-        return Response({
-            "tenant_id": str(tenant.id),
-            "rate_limits": config.rate_limits,
-            "message": "Rate limits updated successfully",
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "tenant_id": str(tenant.id),
+                "rate_limits": config.rate_limits,
+                "message": "Rate limits updated successfully",
+            },
+            status=status.HTTP_200_OK,
+        )

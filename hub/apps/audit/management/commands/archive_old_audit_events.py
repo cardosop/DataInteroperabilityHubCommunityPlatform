@@ -49,7 +49,9 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        retention_years = options.get("retention_years", getattr(settings, "AUDIT_RETENTION_YEARS", 3))
+        retention_years = options.get(
+            "retention_years", getattr(settings, "AUDIT_RETENTION_YEARS", 3)
+        )
         dry_run = options.get("dry_run", False)
         batch_size = options.get("batch_size", DEFAULT_BATCH_SIZE)
 
@@ -80,11 +82,7 @@ class Command(BaseCommand):
 
         # Only scan for policies if the candidate set is non-empty.
         if eligible.exists():
-            distinct_pairs = list(
-                eligible.order_by()
-                .values_list("tenant_id", "action")
-                .distinct()
-            )
+            distinct_pairs = list(eligible.order_by().values_list("tenant_id", "action").distinct())
             for tid, action in distinct_pairs:
                 effective_days = resolve_retention_days_for_event_type(
                     tenant_id=tid,
@@ -119,10 +117,7 @@ class Command(BaseCommand):
                             is_archived=True,
                             archived_at=now,
                         )
-                        self.stdout.write(
-                            f"  Archived batch (per-event-type policy): "
-                            f"{len(pks)}"
-                        )
+                        self.stdout.write(f"  Archived batch (per-event-type policy): {len(pks)}")
 
             if excluded_pks:
                 eligible = eligible.exclude(pk__in=excluded_pks)
@@ -134,11 +129,9 @@ class Command(BaseCommand):
         # table directly.
         from hub.apps.audit.models import AuditEventRetentionPolicy
 
-        shortened_rows = (
-            AuditEventRetentionPolicy.objects
-            .filter(enabled=True, retention_days__gt=0, retention_days__lt=global_days)
-            .values("tenant_id", "event_type", "retention_days")
-        )
+        shortened_rows = AuditEventRetentionPolicy.objects.filter(
+            enabled=True, retention_days__gt=0, retention_days__lt=global_days
+        ).values("tenant_id", "event_type", "retention_days")
         for row in shortened_rows:
             tid = row["tenant_id"]
             action = row["event_type"]
@@ -158,10 +151,7 @@ class Command(BaseCommand):
                     is_archived=True,
                     archived_at=now,
                 )
-                self.stdout.write(
-                    f"  Archived batch (per-event-type shortened policy): "
-                    f"{len(pks)}"
-                )
+                self.stdout.write(f"  Archived batch (per-event-type shortened policy): {len(pks)}")
 
         total_count = eligible.count()
 
@@ -194,8 +184,7 @@ class Command(BaseCommand):
         sample = eligible.order_by("timestamp")[:5]
         for event in sample:
             self.stdout.write(
-                f"  - {event.action} on {event.resource_type} "
-                f"at {event.timestamp.isoformat()}"
+                f"  - {event.action} on {event.resource_type} at {event.timestamp.isoformat()}"
             )
         if total_count > 5:
             self.stdout.write(f"  ... and {total_count - 5} more")
@@ -211,8 +200,7 @@ class Command(BaseCommand):
 
         while True:
             batch_pks = list(
-                eligible.order_by("timestamp")
-                .values_list("pk", flat=True)[:batch_size]
+                eligible.order_by("timestamp").values_list("pk", flat=True)[:batch_size]
             )
             if not batch_pks:
                 break
@@ -222,8 +210,6 @@ class Command(BaseCommand):
                 archived_at=now,
             )
             archived_total += updated
-            self.stdout.write(
-                f"  Archived batch: {updated} (total: {archived_total})"
-            )
+            self.stdout.write(f"  Archived batch: {updated} (total: {archived_total})")
 
         return archived_total

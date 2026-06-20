@@ -14,14 +14,11 @@ Following TDD approach and engineering best practices:
 - Follow DRY, SOLID, and clean code principles
 """
 
-import time
 import uuid
-from typing import Any, Dict
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase, override_settings
-from django.utils import timezone
+from django.test import TestCase
 
 from hub.apps.core.business_rules.base import (
     BusinessRules,
@@ -195,14 +192,10 @@ class DataMeshBusinessRulesFrameworkFeaturesTest(TestCase):
         context = self.rules.create_context(resource=self.domain)
 
         # Execute with caching disabled via parameter
-        result1 = self.rules.execute(
-            context, domain=self.domain, use_cache=False
-        )
+        result1 = self.rules.execute(context, domain=self.domain, use_cache=False)
 
         # Execute again with caching enabled
-        result2 = self.rules.execute(
-            context, domain=self.domain, use_cache=True
-        )
+        result2 = self.rules.execute(context, domain=self.domain, use_cache=True)
 
         # Both should execute (not use cache on first, may use cache on second if valid)
         self.assertEqual(result1.is_valid, result2.is_valid)
@@ -269,14 +262,13 @@ class DataMeshBusinessRulesValidateMethodTest(TestCase):
             owner=self.user,
             status=DomainStatus.ACTIVE,
         )
-        self.rules = DataMeshBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        self.rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_validate_with_data_mesh_context(self):
         """Test validate() with DataMeshRuleExecutionContext"""
         # Set up TENANT_ADMIN role for user
         from hub.apps.users.models import Role, UserRole
+
         tenant_admin_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="TENANT_ADMIN",
@@ -311,6 +303,7 @@ class DataMeshBusinessRulesValidateMethodTest(TestCase):
         """Test validate() with domain in kwargs"""
         # Set up TENANT_ADMIN role for user
         from hub.apps.users.models import Role, UserRole
+
         tenant_admin_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="TENANT_ADMIN",
@@ -334,18 +327,14 @@ class DataMeshBusinessRulesValidateMethodTest(TestCase):
 
     def test_validate_with_validation_type_structure(self):
         """Test validate() with validation_type='structure'"""
-        result = self.rules.validate(
-            domain=self.domain, validation_type="structure"
-        )
+        result = self.rules.validate(domain=self.domain, validation_type="structure")
 
         self.assertIsInstance(result, ValidationResult)
         self.assertEqual(result.details["validation_type"], "structure")
 
     def test_validate_with_validation_type_ownership(self):
         """Test validate() with validation_type='ownership'"""
-        result = self.rules.validate(
-            domain=self.domain, validation_type="ownership"
-        )
+        result = self.rules.validate(domain=self.domain, validation_type="ownership")
 
         self.assertIsInstance(result, ValidationResult)
         self.assertEqual(result.details["validation_type"], "ownership")
@@ -355,9 +344,7 @@ class DataMeshBusinessRulesValidateMethodTest(TestCase):
         self.domain.boundaries = {"data_products": ["product1"]}
         self.domain.save()
 
-        result = self.rules.validate(
-            domain=self.domain, validation_type="boundaries"
-        )
+        result = self.rules.validate(domain=self.domain, validation_type="boundaries")
 
         self.assertIsInstance(result, ValidationResult)
         self.assertEqual(result.details["validation_type"], "boundaries")
@@ -422,9 +409,7 @@ class DataMeshBusinessRulesAllMethodsTest(TestCase):
             owner=self.user,
             status=DomainStatus.ACTIVE,
         )
-        self.rules = DataMeshBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        self.rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_validate_domain_structure_comprehensive(self):
         """Test validate_domain_structure() comprehensively"""
@@ -445,13 +430,13 @@ class DataMeshBusinessRulesAllMethodsTest(TestCase):
     def test_validate_ownership_transfer_comprehensive(self):
         """Test validate_ownership_transfer() comprehensively"""
         new_owner = User.objects.create_user(
-            email=f"new-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"new-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
         # Valid transfer
-        result = self.rules.validate_ownership_transfer(
-            self.domain, str(new_owner.id)
-        )
+        result = self.rules.validate_ownership_transfer(self.domain, str(new_owner.id))
         self.assertTrue(result.is_valid)
 
         # Remove owner
@@ -547,9 +532,7 @@ class DataMeshBusinessRulesAllMethodsTest(TestCase):
         self.assertTrue(result.details["same_domain"])
 
         # Different domains same tenant
-        result = self.rules.validate_cross_domain_access(
-            str(self.user.id), self.domain, domain2
-        )
+        result = self.rules.validate_cross_domain_access(str(self.user.id), self.domain, domain2)
         self.assertTrue(result.is_valid)
         self.assertFalse(result.details["same_domain"])
 
@@ -564,9 +547,7 @@ class DataMeshBusinessRulesAllMethodsTest(TestCase):
             status=DomainStatus.ACTIVE,
         )
 
-        result = self.rules.validate_cross_domain_access(
-            str(self.user.id), self.domain, domain3
-        )
+        result = self.rules.validate_cross_domain_access(str(self.user.id), self.domain, domain3)
         self.assertFalse(result.is_valid)
 
     def test_validate_domain_resource_quota_comprehensive(self):
@@ -737,9 +718,7 @@ class DataMeshBusinessRulesAllMethodsTest(TestCase):
             priority=100,
         )
 
-        result = self.rules.validate_policy_compatibility(
-            self.domain, conflicting_policy
-        )
+        result = self.rules.validate_policy_compatibility(self.domain, conflicting_policy)
         self.assertFalse(result.is_valid)
         self.assertFalse(result.details.get("compatible", True))
 
@@ -863,9 +842,7 @@ class DataMeshBusinessRulesIntegrationTest(TestCase):
             owner=self.user,
             status=DomainStatus.ACTIVE,
         )
-        self.rules = DataMeshBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        self.rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_inherits_from_business_rules(self):
         """Test that DataMeshBusinessRules inherits from BusinessRules"""
@@ -886,6 +863,7 @@ class DataMeshBusinessRulesIntegrationTest(TestCase):
         """Test execute() method from base class"""
         # Set up TENANT_ADMIN role for user
         from hub.apps.users.models import Role, UserRole
+
         tenant_admin_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="TENANT_ADMIN",
@@ -909,6 +887,7 @@ class DataMeshBusinessRulesIntegrationTest(TestCase):
 
     def test_compose_method_from_base_class(self):
         """Test compose() method from base class"""
+
         def rule1(context: RuleExecutionContext) -> ValidationResult:
             return ValidationResult(is_valid=True, details={"rule1": "executed"})
 
@@ -925,6 +904,7 @@ class DataMeshBusinessRulesIntegrationTest(TestCase):
 
     def test_compose_with_short_circuit(self):
         """Test compose() with short_circuit=True"""
+
         def rule1(context: RuleExecutionContext) -> ValidationResult:
             return ValidationResult(is_valid=False, errors=["error1"])
 
@@ -941,6 +921,7 @@ class DataMeshBusinessRulesIntegrationTest(TestCase):
 
     def test_create_rule_function_from_base_class(self):
         """Test create_rule_function() from base class"""
+
         def custom_rule(context: RuleExecutionContext) -> ValidationResult:
             return ValidationResult(
                 is_valid=True, details={"rule": "custom", "tenant_id": context.tenant_id}
@@ -953,4 +934,3 @@ class DataMeshBusinessRulesIntegrationTest(TestCase):
         self.assertIsInstance(result, ValidationResult)
         self.assertTrue(result.is_valid)
         self.assertIn("rule", result.details)
-

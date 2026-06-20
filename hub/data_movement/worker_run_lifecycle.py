@@ -3,11 +3,12 @@
 
 Unifies the duplicated worker lifecycle from scheduled_ingestion and scheduled_export.
 """
-from __future__ import annotations
-import structlog
-from datetime import datetime
-from typing import Any, Dict, Optional
 
+from __future__ import annotations
+
+from typing import Any
+
+import structlog
 from django.utils import timezone
 
 from hub.apps.audit.utils import create_audit_event
@@ -20,7 +21,7 @@ def start_run(
     job_id: str,
     tenant_id: str,
     direction: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Mark a run as STARTED and emit audit event."""
     run_instance.status = "RUNNING"
     run_instance.started_at = timezone.now()
@@ -45,8 +46,8 @@ def complete_run(
     job_id: str,
     tenant_id: str,
     direction: str,
-    result: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    result: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Mark a run as COMPLETED and emit audit event."""
     run_instance.status = "COMPLETED"
     run_instance.completed_at = timezone.now()
@@ -74,7 +75,7 @@ def fail_run(
     tenant_id: str,
     direction: str,
     error: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Mark a run as FAILED and emit audit event."""
     run_instance.status = "FAILED"
     run_instance.completed_at = timezone.now()

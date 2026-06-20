@@ -48,6 +48,7 @@ Execution model
 ``pytest.mark.django_db(transaction=True)`` per existing pattern; each
 test runs in an isolated transaction.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -67,7 +68,6 @@ from hub.apps.testing.idempotency_helpers import post_data_first
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
 
-
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
@@ -83,7 +83,7 @@ def _seed_authenticated_client(
     *,
     fail_closed_enabled: bool = True,
     allow_degraded: bool = False,
-) -> tuple[APIClient, Tenant, "User", File]:
+) -> tuple[APIClient, Tenant, User, File]:
     """Return ``(client, tenant, user, file_obj)`` with an authenticated
     DRF client + a tenant whose feature flags match the test scenario.
 
@@ -176,9 +176,11 @@ class TestTenantKillSwitch:
         client, tenant, _user, file_obj = _seed_authenticated_client(
             fail_closed_enabled=False,
         )
-        with _patch_storage(), _patch_compliance(
-            allowed_to_store=False, overall_status="FAIL"
-        ), _patch_dq():
+        with (
+            _patch_storage(),
+            _patch_compliance(allowed_to_store=False, overall_status="FAIL"),
+            _patch_dq(),
+        ):
             response = post_data_first(
                 client,
                 "/api/v1/assets/data-first/",
@@ -200,9 +202,7 @@ class TestTenantKillSwitch:
             "expected legacy create-then-validate to return success even "
             "when compliance FAILED, since fail_closed_enabled=False."
         )
-        asset = Asset.objects.filter(
-            tenant=tenant, key="legacy-fallback"
-        ).first()
+        asset = Asset.objects.filter(tenant=tenant, key="legacy-fallback").first()
         assert asset is not None, (
             "Legacy fallback contract violated: tenant has "
             "compliance_fail_closed_enabled=False but no Asset row was "
@@ -213,9 +213,11 @@ class TestTenantKillSwitch:
         client, tenant, _user, file_obj = _seed_authenticated_client(
             fail_closed_enabled=False,
         )
-        with _patch_storage(), _patch_compliance(
-            allowed_to_store=True, overall_status="PASS"
-        ), _patch_dq(overall_status="FAIL"):
+        with (
+            _patch_storage(),
+            _patch_compliance(allowed_to_store=True, overall_status="PASS"),
+            _patch_dq(overall_status="FAIL"),
+        ):
             response = post_data_first(
                 client,
                 "/api/v1/assets/data-first/",
@@ -232,9 +234,7 @@ class TestTenantKillSwitch:
             status.HTTP_201_CREATED,
             status.HTTP_202_ACCEPTED,
         ), f"got {response.status_code}: {response.data}"
-        assert Asset.objects.filter(
-            tenant=tenant, key="legacy-dq-fallback"
-        ).exists(), (
+        assert Asset.objects.filter(tenant=tenant, key="legacy-dq-fallback").exists(), (
             "Legacy fallback violated for DQ FAIL: Asset MUST persist "
             "when fail_closed_enabled=False even with DQ failure."
         )
@@ -255,9 +255,7 @@ class TestQuotaInvariant:
     def test_compliance_fail_does_not_increment_tenant_asset_count(self):
         client, tenant, _user, file_obj = _seed_authenticated_client()
         before = Asset.objects.filter(tenant=tenant).count()
-        with _patch_storage(), _patch_compliance(
-            allowed_to_store=False
-        ), _patch_dq():
+        with _patch_storage(), _patch_compliance(allowed_to_store=False), _patch_dq():
             post_data_first(
                 client,
                 "/api/v1/assets/data-first/",
@@ -278,9 +276,11 @@ class TestQuotaInvariant:
     def test_dq_fail_does_not_increment_tenant_asset_count(self):
         client, tenant, _user, file_obj = _seed_authenticated_client()
         before = Asset.objects.filter(tenant=tenant).count()
-        with _patch_storage(), _patch_compliance(
-            allowed_to_store=True, overall_status="PASS"
-        ), _patch_dq(overall_status="FAIL"):
+        with (
+            _patch_storage(),
+            _patch_compliance(allowed_to_store=True, overall_status="PASS"),
+            _patch_dq(overall_status="FAIL"),
+        ):
             post_data_first(
                 client,
                 "/api/v1/assets/data-first/",
@@ -293,8 +293,7 @@ class TestQuotaInvariant:
             )
         after = Asset.objects.filter(tenant=tenant).count()
         assert after == before, (
-            f"Quota invariant violated for DQ FAIL: count went "
-            f"{before}→{after}."
+            f"Quota invariant violated for DQ FAIL: count went {before}→{after}."
         )
 
 
@@ -313,9 +312,7 @@ class TestAuditEmission:
 
     def test_compliance_fail_emits_audit_with_compliance_run_link(self):
         client, tenant, _user, file_obj = _seed_authenticated_client()
-        with _patch_storage(), _patch_compliance(
-            allowed_to_store=False
-        ), _patch_dq():
+        with _patch_storage(), _patch_compliance(allowed_to_store=False), _patch_dq():
             post_data_first(
                 client,
                 "/api/v1/assets/data-first/",
@@ -355,9 +352,7 @@ class TestAuditEmission:
         must not appear in ``details_json``.
         """
         client, tenant, _user, file_obj = _seed_authenticated_client()
-        with _patch_storage(), _patch_compliance(
-            allowed_to_store=False
-        ), _patch_dq():
+        with _patch_storage(), _patch_compliance(allowed_to_store=False), _patch_dq():
             post_data_first(
                 client,
                 "/api/v1/assets/data-first/",
@@ -416,9 +411,7 @@ class TestIdempotencyReplay:
         # Compose a real D250.8-conformant key.
         idempotency_key = f"{tenant.id}:{hashlib.sha256(canonical).hexdigest()}"
 
-        with _patch_storage(), _patch_compliance(
-            allowed_to_store=False
-        ), _patch_dq():
+        with _patch_storage(), _patch_compliance(allowed_to_store=False), _patch_dq():
             first = client.post(
                 "/api/v1/assets/data-first/",
                 canonical,
@@ -473,9 +466,11 @@ class TestIdempotencyReplay:
         body_b["key"] = "second-body-different"
         canonical_b = _json.dumps(body_b, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
-        with _patch_storage(), _patch_compliance(
-            allowed_to_store=True, overall_status="PASS"
-        ), _patch_dq():
+        with (
+            _patch_storage(),
+            _patch_compliance(allowed_to_store=True, overall_status="PASS"),
+            _patch_dq(),
+        ):
             second = client.post(
                 "/api/v1/assets/data-first/",
                 canonical_b,
@@ -505,9 +500,11 @@ class TestCrossTenantIsolation:
         # Tenant B tries to use it.
         client_b, tenant_b, _user_b, _file_b = _seed_authenticated_client()
 
-        with _patch_storage(), _patch_compliance(
-            allowed_to_store=True, overall_status="PASS"
-        ) as compliance_mock, _patch_dq() as dq_mock:
+        with (
+            _patch_storage(),
+            _patch_compliance(allowed_to_store=True, overall_status="PASS") as compliance_mock,
+            _patch_dq() as dq_mock,
+        ):
             # Idempotency-Key MUST be composed against tenant B (the
             # request tenant), even though the file_id belongs to
             # tenant A. The view's idempotency check passes (key
@@ -536,9 +533,7 @@ class TestCrossTenantIsolation:
             "Compliance scan should NEVER fire for a cross-tenant "
             "file_id; the 404 must be returned BEFORE gate dispatch."
         )
-        assert not dq_mock.called, (
-            "DQ scan should NEVER fire for a cross-tenant file_id."
-        )
+        assert not dq_mock.called, "DQ scan should NEVER fire for a cross-tenant file_id."
 
 
 # ---------------------------------------------------------------------------
@@ -561,9 +556,7 @@ class TestWorkflowRunTerminalState:
 
         before = WorkflowInstance.objects.filter(tenant=tenant).count()
 
-        with _patch_storage(), _patch_compliance(
-            allowed_to_store=False
-        ), _patch_dq():
+        with _patch_storage(), _patch_compliance(allowed_to_store=False), _patch_dq():
             post_data_first(
                 client,
                 "/api/v1/assets/data-first/",
@@ -575,23 +568,23 @@ class TestWorkflowRunTerminalState:
                 tenant=tenant,
             )
 
-        after_runs = WorkflowInstance.objects.filter(tenant=tenant).order_by(
-            "-created_at"
-        )
-        assert after_runs.count() >= before, (
+        after_runs = WorkflowInstance.objects.filter(tenant=tenant).order_by("-created_at")
+        assert after_runs.count() > before, (
             "Phase 250.1.A async workflow MUST create a WorkflowInstance "
-            "row even on fail-closed (so frontend polling terminates)."
+            "row on fail-closed — frontend polling requires a terminal "
+            "state and cannot hang on PENDING/RUNNING."
         )
-        # If a new run was created, assert it landed in a TERMINAL
-        # state — never stuck in PENDING/RUNNING after a synchronous
-        # gate fail-closed.
-        if after_runs.count() > before:
-            latest = after_runs.first()
-            assert latest is not None
-            terminal_states = ("FAILED", "COMPLETED", "ABORTED")
-            assert latest.status in terminal_states, (
-                f"WorkflowInstance landed in non-terminal state "
-                f"{latest.status!r}; frontend polling would hang. "
-                "Phase 250.4 polling contract requires terminal state "
-                "after fail-closed."
-            )
+        latest = after_runs.first()
+        assert latest is not None
+        # ROLLED_BACK is a terminal state per
+        # WorkflowInstance.is_terminal() in orchestration/models.py.
+        # The asset-creation workflow has compensation enabled, so
+        # a fail-closed rejection triggers full rollback → status
+        # lands on ROLLED_BACK, not FAILED. Both are terminal.
+        terminal_states = ("FAILED", "COMPLETED", "ABORTED", "ROLLED_BACK")
+        assert latest.status in terminal_states, (
+            f"WorkflowInstance landed in non-terminal state "
+            f"{latest.status!r}; frontend polling would hang. "
+            "Phase 250.4 polling contract requires terminal state "
+            "after fail-closed."
+        )

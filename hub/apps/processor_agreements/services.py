@@ -1,8 +1,10 @@
 """Notifications and helpers for processor agreements (Phase 232.6.8)."""
 
 from __future__ import annotations
+
 import json
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.utils import create_audit_event

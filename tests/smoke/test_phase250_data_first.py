@@ -43,16 +43,18 @@ References
 - ``hub/apps/assets/views.py::AssetViewSet.partial_update``
 - ``hub/apps/integrations/services/discovery_service.py``
 """
+
 from __future__ import annotations
 
+import contextlib
 import os
 import time
 import uuid
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 import pytest
 import requests
-
 
 # ---------------------------------------------------------------------------
 # Config knobs
@@ -75,6 +77,7 @@ FEDERATED_IMPORT_PATH = "/api/v1/marketplace/imports/"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _percentile(values: list[float], pct: float) -> float:
     """Linear-interpolation percentile (matches numpy default)."""
@@ -119,10 +122,7 @@ def _upload_smoke_file(
         timeout=timeout,
     )
     if init_response.status_code != 200:
-        pytest.skip(
-            f"/files/init returned {init_response.status_code}: "
-            f"{init_response.text[:300]}"
-        )
+        pytest.skip(f"/files/init returned {init_response.status_code}: {init_response.text[:300]}")
     init_body = init_response.json()
     file_id = str(init_body["file_id"])
     upload_url = str(init_body["upload_url"])
@@ -138,8 +138,7 @@ def _upload_smoke_file(
     )
     if upload_resp.status_code not in (200, 204):
         pytest.skip(
-            f"Presigned upload returned {upload_resp.status_code}: "
-            f"{upload_resp.text[:300]}"
+            f"Presigned upload returned {upload_resp.status_code}: {upload_resp.text[:300]}"
         )
 
     complete_resp = session.post(
@@ -162,15 +161,14 @@ def _delete_asset(
     asset_id: str,
 ) -> None:
     """Best-effort delete; never raises."""
-    try:
+    with contextlib.suppress(requests.RequestException):
         session.delete(f"{base_url}{ASSETS_PATH}{asset_id}/", timeout=timeout)
-    except requests.RequestException:
-        pass
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def smoke_run_id() -> str:
@@ -195,6 +193,7 @@ def created_assets(
 # 1) Data-first P95 ≤ 8 s
 # ---------------------------------------------------------------------------
 
+
 class TestDataFirstLatency:
     """DoD.7 — data-first creation P95 ≤ 8 s."""
 
@@ -207,7 +206,7 @@ class TestDataFirstLatency:
         created_assets: list[str],
     ) -> None:
         if LATENCY_ITERATIONS < 3:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
                 "Need at least 3 iterations for a meaningful P95 — set "
                 "SMOKE_PHASE250_LATENCY_ITERATIONS >= 5 (default 5)"
             )
@@ -231,7 +230,7 @@ class TestDataFirstLatency:
                 "name": f"Smoke P250 latency {i}",
                 "description": "Phase 250 DoD.7 smoke — safe to delete",
             }
-            content = io.BytesIO()
+            io.BytesIO()
             # We pass the JSON via requests so it computes Content-Length itself,
             # which the data-first view requires (rejects chunked transfer).
             started = time.perf_counter()
@@ -243,8 +242,7 @@ class TestDataFirstLatency:
             elapsed_ms = (time.perf_counter() - started) * 1000.0
 
             assert response.status_code in (200, 201, 202), (
-                f"data-first iteration {i} failed "
-                f"({response.status_code}): {response.text[:500]}"
+                f"data-first iteration {i} failed ({response.status_code}): {response.text[:500]}"
             )
             body = response.json()
             asset_id = body.get("asset_id") or body.get("id")
@@ -264,6 +262,7 @@ class TestDataFirstLatency:
 # 2) Fail-closed → zero orphan DRAFTs
 # ---------------------------------------------------------------------------
 
+
 class TestFailClosedNoOrphanDrafts:
     """DoD.7 — a fail-closed data-first run leaves no DRAFT row behind."""
 
@@ -278,9 +277,7 @@ class TestFailClosedNoOrphanDrafts:
         # exercise the **gate** rejection path — so we upload a file the
         # compliance gate is configured to reject. The repo's fail-closed test
         # plane recognises a sentinel content marker.
-        compliance_reject_payload = (
-            b"id,name\n1,smoke-fail-closed-sentinel\n"
-        )
+        compliance_reject_payload = b"id,name\n1,smoke-fail-closed-sentinel\n"
         file_id = _upload_smoke_file(
             base_url,
             authenticated_session,
@@ -316,7 +313,7 @@ class TestFailClosedNoOrphanDrafts:
             asset_id = body.get("asset_id") or body.get("id")
             if asset_id:
                 _delete_asset(base_url, authenticated_session, timeout, asset_id)
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
                 "Staging plane accepted the synthetic fail-closed payload — "
                 "configure a compliance-fail fixture or set "
                 "ASSET_FAIL_CLOSED_SMOKE_FIXTURE on the API to exercise this."
@@ -334,20 +331,18 @@ class TestFailClosedNoOrphanDrafts:
             timeout=timeout,
         )
         assert list_resp.status_code == 200, (
-            f"Asset list query failed ({list_resp.status_code}): "
-            f"{list_resp.text[:300]}"
+            f"Asset list query failed ({list_resp.status_code}): {list_resp.text[:300]}"
         )
         listed = list_resp.json()
         results = listed.get("results", listed if isinstance(listed, list) else [])
         matching = [r for r in results if r.get("key") == unique_key]
-        assert matching == [], (
-            f"Fail-closed left orphan DRAFT(s) for key={unique_key}: {matching}"
-        )
+        assert matching == [], f"Fail-closed left orphan DRAFT(s) for key={unique_key}: {matching}"
 
 
 # ---------------------------------------------------------------------------
 # 3) Federated import — flag flipped → succeeds with compliance gate
 # ---------------------------------------------------------------------------
+
 
 class TestFederatedImportFlagFlipped:
     """DoD.7 — federated-import flag flipped → import succeeds with compliance gate."""
@@ -368,7 +363,7 @@ class TestFederatedImportFlagFlipped:
         created_assets: list[str],
     ) -> None:
         if not FEDERATED_SOURCE_LISTING_ID:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
                 "SMOKE_PHASE250_FEDERATED_SOURCE_LISTING_ID is required when "
                 "the federated-import smoke is enabled."
             )
@@ -383,14 +378,13 @@ class TestFederatedImportFlagFlipped:
         )
 
         if response.status_code == 404:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
                 f"Federated-import endpoint not exposed at {FEDERATED_IMPORT_PATH} "
                 "in this environment — update SMOKE config or the path constant."
             )
 
         assert response.status_code in (200, 201, 202), (
-            f"Federated import failed ({response.status_code}): "
-            f"{response.text[:500]}"
+            f"Federated import failed ({response.status_code}): {response.text[:500]}"
         )
         body = response.json()
         asset_id = body.get("asset_id") or body.get("id")
@@ -405,14 +399,14 @@ class TestFederatedImportFlagFlipped:
             or (body.get("gates") or {}).get("compliance")
         )
         assert compliance_signal, (
-            f"Federated import response missing compliance-gate metadata: "
-            f"{list(body.keys())}"
+            f"Federated import response missing compliance-gate metadata: {list(body.keys())}"
         )
 
 
 # ---------------------------------------------------------------------------
 # 4) If-Match 412 → structured error
 # ---------------------------------------------------------------------------
+
 
 class TestIfMatch412Contract:
     """DoD.7 — ``If-Match`` mismatch returns the structured 412 contract."""
@@ -440,13 +434,12 @@ class TestIfMatch412Contract:
             timeout=timeout,
         )
         if create_resp.status_code == 422:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
                 f"Asset create endpoint refused minimal payload ({create_resp.status_code}): "
                 f"{create_resp.text[:300]} — adjust create_payload for this environment."
             )
         assert create_resp.status_code in (200, 201), (
-            f"Asset create failed ({create_resp.status_code}): "
-            f"{create_resp.text[:500]}"
+            f"Asset create failed ({create_resp.status_code}): {create_resp.text[:500]}"
         )
         asset = create_resp.json()
         asset_id = asset.get("id") or asset.get("asset_id")
@@ -487,12 +480,8 @@ class TestIfMatch412Contract:
         )
         assert "error" in body, f"412 body missing error message: {body}"
         details = body.get("details") or {}
-        assert "expected_version" in details, (
-            f"412 body.details missing expected_version: {body}"
-        )
-        assert "provided_version" in details, (
-            f"412 body.details missing provided_version: {body}"
-        )
+        assert "expected_version" in details, f"412 body.details missing expected_version: {body}"
+        assert "provided_version" in details, f"412 body.details missing provided_version: {body}"
         assert int(details["provided_version"]) == int(stale_version), (
             f"412 details.provided_version mismatch: {details}"
         )

@@ -41,7 +41,7 @@ def production_compose_file():
 @pytest.fixture(scope="module")
 def production_compose_config(production_compose_file):
     """Load docker-compose.production.yml configuration."""
-    with open(production_compose_file, "r") as f:
+    with open(production_compose_file) as f:
         return yaml.safe_load(f)
 
 
@@ -51,9 +51,9 @@ class TestDockerComposeProduction:
 
     def test_production_compose_file_exists(self, production_compose_file):
         """docker-compose.production.yml must exist."""
-        assert (
-            production_compose_file.exists()
-        ), f"docker-compose.production.yml not found at {production_compose_file}"
+        assert production_compose_file.exists(), (
+            f"docker-compose.production.yml not found at {production_compose_file}"
+        )
 
     def test_production_compose_valid_yaml(self, production_compose_config):
         """docker-compose.production.yml must be valid YAML with services."""
@@ -109,9 +109,9 @@ class TestDockerComposeProduction:
         for service_name, service_config in services.items():
             networks = service_config.get("networks", [])
             net_list = list(networks) if isinstance(networks, list) else list(networks.keys())
-            assert (
-                "hub-net-production" in net_list
-            ), f"Service {service_name} must be on hub-net-production"
+            assert "hub-net-production" in net_list, (
+                f"Service {service_name} must be on hub-net-production"
+            )
 
     def test_production_no_debug(self, production_compose_config):
         """Application services must not have DEBUG=True in production."""
@@ -128,7 +128,9 @@ class TestDockerComposeProduction:
                     "false",
                     "0",
                     "no",
-                ), f"Service {service_name} must have DEBUG=False in production, got {env.get('DEBUG')}"
+                ), (
+                    f"Service {service_name} must have DEBUG=False in production, got {env.get('DEBUG')}"
+                )
 
     def test_production_environment_variables(self, production_compose_config):
         """Application services must have ENVIRONMENT=production and appropriate LOG_LEVEL."""
@@ -139,16 +141,18 @@ class TestDockerComposeProduction:
                 continue
             raw_env = services[service_name].get("environment", {})
             env = _env_to_dict(raw_env)
-            assert (
-                env.get("ENVIRONMENT") == "production"
-            ), f"Service {service_name} must have ENVIRONMENT=production, got {env.get('ENVIRONMENT')}"
+            assert env.get("ENVIRONMENT") == "production", (
+                f"Service {service_name} must have ENVIRONMENT=production, got {env.get('ENVIRONMENT')}"
+            )
             log_level = env.get("LOG_LEVEL", "").upper()
             assert log_level in (
                 "INFO",
                 "WARNING",
                 "ERROR",
                 "",
-            ), f"Service {service_name} LOG_LEVEL should be INFO/WARNING/ERROR for production, got {env.get('LOG_LEVEL')}"
+            ), (
+                f"Service {service_name} LOG_LEVEL should be INFO/WARNING/ERROR for production, got {env.get('LOG_LEVEL')}"
+            )
 
     def test_production_resource_limits(self, production_compose_config):
         """Services with deploy must have resource limits and reservations."""
@@ -160,12 +164,12 @@ class TestDockerComposeProduction:
             resources = deploy.get("resources", {})
             if not resources:
                 continue
-            assert (
-                "limits" in resources
-            ), f"Service {service_name} with deploy must have resources.limits"
-            assert (
-                "reservations" in resources
-            ), f"Service {service_name} with deploy must have resources.reservations"
+            assert "limits" in resources, (
+                f"Service {service_name} with deploy must have resources.limits"
+            )
+            assert "reservations" in resources, (
+                f"Service {service_name} with deploy must have resources.reservations"
+            )
             limits = resources.get("limits", {})
             assert limits.get("memory"), f"Service {service_name} must have memory limit"
 
@@ -176,9 +180,9 @@ class TestDockerComposeProduction:
             has_restart = "restart" in service_config
             deploy = service_config.get("deploy", {})
             has_deploy_restart = isinstance(deploy, dict) and "restart_policy" in deploy
-            assert (
-                has_restart or has_deploy_restart
-            ), f"Service {service_name} must have restart or deploy.restart_policy"
+            assert has_restart or has_deploy_restart, (
+                f"Service {service_name} must have restart or deploy.restart_policy"
+            )
 
     def test_production_container_names(self, production_compose_config):
         """Container names must include production identifier where set."""
@@ -187,17 +191,17 @@ class TestDockerComposeProduction:
             if "container_name" not in service_config:
                 continue
             name = service_config["container_name"]
-            assert (
-                "production" in name
-            ), f"Service {service_name} container_name must include 'production': {name}"
+            assert "production" in name, (
+                f"Service {service_name} container_name must include 'production': {name}"
+            )
 
     def test_production_all_services_have_build_or_image(self, production_compose_config):
         """All services must have build or image."""
         services = production_compose_config.get("services", {})
         for service_name, service_config in services.items():
-            assert (
-                "build" in service_config or "image" in service_config
-            ), f"Service {service_name} must have build or image"
+            assert "build" in service_config or "image" in service_config, (
+                f"Service {service_name} must have build or image"
+            )
 
     def test_production_env_file_format_if_present(self, production_compose_config):
         """When env_file is present, it must be a string or list of strings (no mocks)."""
@@ -206,11 +210,11 @@ class TestDockerComposeProduction:
             if "env_file" not in service_config:
                 continue
             env_file = service_config["env_file"]
-            assert isinstance(
-                env_file, (str, list)
-            ), f"Service {service_name} env_file must be string or list, got {type(env_file)}"
+            assert isinstance(env_file, (str, list)), (
+                f"Service {service_name} env_file must be string or list, got {type(env_file)}"
+            )
             if isinstance(env_file, list):
                 for path in env_file:
-                    assert isinstance(
-                        path, str
-                    ), f"Service {service_name} env_file list entries must be strings, got {type(path)}"
+                    assert isinstance(path, str), (
+                        f"Service {service_name} env_file list entries must be strings, got {type(path)}"
+                    )

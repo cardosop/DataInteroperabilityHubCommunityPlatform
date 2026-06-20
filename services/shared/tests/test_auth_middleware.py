@@ -3,6 +3,7 @@ Phase 79.3 — InternalApiKeyMiddleware + require_internal_key tests.
 
 Tests run against a real FastAPI app with real middleware (no mocks).
 """
+
 import pytest
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -144,7 +145,8 @@ async def test_extra_public_paths():
 
     transport = ASGITransport(app=app)
     async with AsyncClient(
-        transport=transport, base_url="http://testserver",
+        transport=transport,
+        base_url="http://testserver",
     ) as ac:
         r = await ac.get("/custom")
         assert r.status_code == 200
@@ -163,7 +165,8 @@ async def test_extra_public_paths_does_not_open_other_routes():
 
     transport = ASGITransport(app=app)
     async with AsyncClient(
-        transport=transport, base_url="http://testserver",
+        transport=transport,
+        base_url="http://testserver",
     ) as ac:
         r = await ac.get("/protected")
         assert r.status_code == 401
@@ -202,18 +205,26 @@ def test_hmac_compare_digest_used():
     """The auth module must use hmac.compare_digest (not ==)
     for key comparison to prevent timing attacks."""
     import inspect
+
     import shared.auth as auth_mod
 
     source = inspect.getsource(auth_mod)
     assert "hmac.compare_digest" in source
 
-    # The dispatch method must use hmac.compare_digest
+    # The dispatch method must use hmac.compare_digest for the
+    # API-key comparison(s).  Bare ``key ==`` or
+    # ``_INTERNAL_API_KEY ==`` in the dispatch body would be a
+    # timing leak.  (Numeric comparisons like ``== 0`` on the
+    # expiry-epoch are not timing-sensitive and are allowed.)
     dispatch_src = inspect.getsource(
         auth_mod.InternalApiKeyMiddleware.dispatch,
     )
     assert "hmac.compare_digest" in dispatch_src
-    # Must NOT use bare == for key comparison in dispatch
-    assert "==" not in dispatch_src
+    bad_patterns = ["key ==", "_INTERNAL_API_KEY =="]
+    for pat in bad_patterns:
+        assert pat not in dispatch_src, (
+            f"dispatch must not use bare equality `{pat}` for key comparison (timing leak)"
+        )
 
 
 # ── WWW-Authenticate header on 401 ─────────────────────────────
@@ -241,7 +252,8 @@ async def test_require_internal_key_valid(valid_api_key):
 
     transport = ASGITransport(app=app)
     async with AsyncClient(
-        transport=transport, base_url="http://testserver",
+        transport=transport,
+        base_url="http://testserver",
     ) as ac:
         r = await ac.get(
             "/dep-test",
@@ -263,7 +275,8 @@ async def test_require_internal_key_missing():
 
     transport = ASGITransport(app=app)
     async with AsyncClient(
-        transport=transport, base_url="http://testserver",
+        transport=transport,
+        base_url="http://testserver",
     ) as ac:
         r = await ac.get("/dep-test")
         assert r.status_code == 401
@@ -282,7 +295,8 @@ async def test_require_internal_key_invalid():
 
     transport = ASGITransport(app=app)
     async with AsyncClient(
-        transport=transport, base_url="http://testserver",
+        transport=transport,
+        base_url="http://testserver",
     ) as ac:
         r = await ac.get(
             "/dep-test",

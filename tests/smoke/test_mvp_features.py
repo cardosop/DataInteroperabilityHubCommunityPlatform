@@ -63,7 +63,7 @@ class TestMvpFeatureSmoke:
                 f"body snippet: {response.text[:200]!r}"
             )
 
-    @pytest.mark.smoke_mvp_mode
+    @pytest.mark.e2e
     @pytest.mark.skipif(
         not _truthy_env("SMOKE_EXPECT_MVP_MODE"),
         reason="Set SMOKE_EXPECT_MVP_MODE=1 when the target API runs with MVP_MODE=true",
@@ -79,6 +79,5 @@ class TestMvpFeatureSmoke:
             url = f"{base_url}{path}"
             response = api_session.get(url, timeout=timeout)
             assert response.status_code == 404, (
-                f"Expected 404 for gated path {path} on MVP deployment, "
-                f"got {response.status_code}"
+                f"Expected 404 for gated path {path} on MVP deployment, got {response.status_code}"
             )

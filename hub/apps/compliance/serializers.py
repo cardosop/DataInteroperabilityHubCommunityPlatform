@@ -1,7 +1,9 @@
 """
 Compliance Serializers
 """
+
 from rest_framework import serializers
+
 from .models import ComplianceRun
 
 
@@ -74,9 +76,7 @@ class ComplianceRunSerializer(serializers.ModelSerializer):
     def get_estimated_population_ratio(self, obj):
         """Read from regulation_mapping_json.metadata."""
         mapping = obj.regulation_mapping_json or {}
-        return mapping.get("metadata", {}).get(
-            "estimated_population_ratio"
-        )
+        return mapping.get("metadata", {}).get("estimated_population_ratio")
 
     def get_schema_version(self, obj):
         """Read schema_version stored in regulation_mapping_json."""
@@ -92,12 +92,8 @@ class ComplianceRunSerializer(serializers.ModelSerializer):
 class ComplianceRunCreateSerializer(serializers.Serializer):
     """Serializer for creating a compliance run."""
 
-    asset_id = serializers.UUIDField(
-        required=False, help_text="Asset ID (optional)"
-    )
-    dataset_id = serializers.UUIDField(
-        required=False, help_text="Dataset ID (optional)"
-    )
+    asset_id = serializers.UUIDField(required=False, help_text="Asset ID (optional)")
+    dataset_id = serializers.UUIDField(required=False, help_text="Dataset ID (optional)")
     file_id = serializers.UUIDField(
         required=False,
         help_text="File ID (optional, scan-only)",
@@ -105,10 +101,7 @@ class ComplianceRunCreateSerializer(serializers.Serializer):
     scan_mode = serializers.ChoiceField(
         choices=["internal", "external"],
         default="internal",
-        help_text=(
-            "Scan mode: 'internal' for stored data, "
-            "'external' for scan-only"
-        ),
+        help_text=("Scan mode: 'internal' for stored data, 'external' for scan-only"),
     )
     applicable_regulations = serializers.ListField(
         child=serializers.CharField(),
@@ -134,10 +127,7 @@ class ComplianceRunCreateSerializer(serializers.Serializer):
         allow_blank=True,
         allow_null=True,
         write_only=True,
-        help_text=(
-            "Destination jurisdiction for cross-border transfer checks "
-            "(e.g. 'US', 'CN')."
-        ),
+        help_text=("Destination jurisdiction for cross-border transfer checks (e.g. 'US', 'CN')."),
     )
 
     def validate(self, data):

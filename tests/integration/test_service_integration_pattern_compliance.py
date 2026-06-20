@@ -12,13 +12,10 @@ These tests verify:
 All tests run against real Docker Compose services - no mocks or stubs.
 """
 
-import ast
 import inspect
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Set
 
-import django
 from django.conf import settings
 from django.test import TestCase
 
@@ -397,7 +394,6 @@ class AuditScriptValidationTest(TestCase):
     def test_audit_script_can_be_imported(self):
         """Test that audit script can be imported"""
         import importlib.util
-        import sys
 
         script_path = self.project_root / "scripts" / "audit_service_integrations.py"
         spec = importlib.util.spec_from_file_location("audit_service_integrations", script_path)
@@ -418,7 +414,7 @@ class AuditScriptValidationTest(TestCase):
 
         report_path = self.project_root / "docs" / "api-audit" / "service-integration-audit.json"
         if report_path.exists():
-            with open(report_path, "r") as f:
+            with open(report_path) as f:
                 try:
                     data = json.load(f)
                     self.assertIsInstance(data, dict)

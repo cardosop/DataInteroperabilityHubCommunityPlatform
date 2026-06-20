@@ -1,4 +1,5 @@
 """Tests for DataMovementConfig model."""
+
 import pytest
 
 from hub.data_movement.models import DataMovementConfig

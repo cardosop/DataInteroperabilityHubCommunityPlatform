@@ -7,11 +7,12 @@ Business logic for asset operations.
 from typing import Any, Dict, List, Optional
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 
 from hub.apps.assets.business_rules import AssetsBusinessRules
 from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, ComplianceStatus, DQStatus
 from hub.apps.audit.utils import create_audit_event
+from hub.apps.core.events.publisher import EventBusError
 from hub.apps.core.events.service_publishers import AssetEventPublisher
 from hub.apps.core.services.base import BaseService, ConflictError, NotFoundError, ValidationError
 from hub.apps.core.transaction_safe import run_side_effect
@@ -305,7 +306,7 @@ class AssetService(BaseService, AssetEventPublisher):
                         "derived_visibility": str(AssetVisibility.INTERNAL),
                     },
                 )
-            except Exception as audit_exc:  # noqa: BLE001
+            except (ConnectionError, TimeoutError, OSError) as audit_exc:
                 import logging as _logging
 
                 _logging.getLogger(__name__).warning(
@@ -314,6 +315,17 @@ class AssetService(BaseService, AssetEventPublisher):
                         "call_site": "service.create_asset",
                         "error": str(audit_exc),
                     },
+                )
+            except DatabaseError as audit_exc:
+                import logging as _logging
+
+                _logging.getLogger(__name__).error(
+                    "asset_visibility_deprecation_audit_emit_db_error",
+                    extra={
+                        "call_site": "service.create_asset",
+                        "error": str(audit_exc),
+                    },
+                    exc_info=True,
                 )
 
         def _create():
@@ -633,7 +645,7 @@ class AssetService(BaseService, AssetEventPublisher):
             import logging as _logging
             try:
                 publisher.publish(event_type=event_type, data=payload)
-            except Exception as exc:  # noqa: BLE001 — webhook is best-effort
+            except EventBusError as exc:  # event-bus failure — best-effort
                 _logging.getLogger(__name__).warning(
                     "asset_webhook_publish_failed",
                     extra={
@@ -997,8 +1009,8 @@ class AssetService(BaseService, AssetEventPublisher):
                         resource_id=str(asset_id),
                         details={"odps_contract_id": str(odps_contract.id)},
                     )
-                except Exception:
-                    pass
+                except DatabaseError:
+                    pass  # best-effort audit — DB outage must not block ODPS linking
                 return odps_contract
             else:
                 raise ValidationError(

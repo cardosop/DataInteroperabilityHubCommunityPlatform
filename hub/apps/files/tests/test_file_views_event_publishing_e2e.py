@@ -12,7 +12,7 @@ import pytest
 
 pytestmark = [pytest.mark.slow, pytest.mark.django_db]
 from django.core.files.base import ContentFile
-from django.test import TestCase, override_settings
+from django.test import override_settings
 from rest_framework import status
 
 from hub.apps.core.events.models import Event
@@ -39,7 +39,7 @@ class FileViewsEventPublishingE2ETest(FilesAPITestBase):
             self.storage_client = S3StorageClient()
             self.storage_client._ensure_bucket_exists()
             self.storage_available = True
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover — S3 probe
             self.storage_available = False
 
     def test_e2e_file_lifecycle_events(self):
@@ -297,9 +297,10 @@ class FileViewsEventPublishingE2ETest(FilesAPITestBase):
         self.assertEqual(event.data["reason"], "User requested deletion")
         self.assertIn("deleted_at", event.data)
 
-        # Verify file was soft deleted
+        # Phase 260.1.C: delete is soft-delete via FileService → DELETING
+        # (purge_deleted_files cron converts to hard delete after grace).
         file_obj.refresh_from_db()
-        self.assertEqual(file_obj.status, FileStatus.DELETED)
+        self.assertEqual(file_obj.status, FileStatus.DELETING)
 
     def test_e2e_multipart_upload_events(self):
         """Test that multipart upload publishes correct events.
@@ -346,9 +347,12 @@ class FileViewsEventPublishingE2ETest(FilesAPITestBase):
         )
         real_etag = part_resp["ETag"]
 
-        # Fix declared size to match actual upload so complete succeeds
+        # Fix declared size to match actual upload so complete succeeds.
+        # Also fix chunk_count in metadata — the init computed 15 parts
+        # for the 150 MB declared size, but we're only uploading 1 part.
         file_obj.size = len(part_data)
-        file_obj.save(update_fields=["size"])
+        file_obj.metadata_json["chunk_count"] = 1
+        file_obj.save(update_fields=["size", "metadata_json"])
 
         sha256_hash = hashlib.sha256(part_data).hexdigest()
         complete_data = {

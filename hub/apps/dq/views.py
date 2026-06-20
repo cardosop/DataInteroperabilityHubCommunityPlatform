@@ -4,8 +4,9 @@ DQ Views
 REST API views for DQ run management.
 """
 
+import contextlib
 import uuid
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import UTC, datetime
 
 import structlog
 from django.db import connection, transaction
@@ -26,21 +27,17 @@ from hub.apps.assets.models import DQStatus as AssetDQStatus
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.core.responses import api_error_response, handle_service_exception
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
-from hub.apps.jobs.models import Job, JobStatus, JobType
-from hub.apps.jobs.utils import create_job, get_job_timeout
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
 from hub.apps.tenants.services import get_tenant_dq_profile
 
-from .anomaly_detection import AnomalyDetector
 from .feature_flags import DQFeatureFlagMixin
+from .mixins import AuditorPermissionMixin
 from .log_helpers import _redact
 from .models import (
     DQAlertingRule,
     DQAnomaly,
-    DQEngine,
     DQRun,
     DQRunStatus,
-    DQTrend,
 )
 from .root_cause_analysis import RootCauseAnalyzer
 from .scorecards import DQScorecardService
@@ -57,7 +54,7 @@ from .trend_analysis import TrendAnalyzer
 logger = structlog.get_logger(__name__)
 
 
-class DQRunViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
+class DQRunViewSet(AuditorPermissionMixin, DQFeatureFlagMixin, viewsets.ModelViewSet):
     """
     ViewSet for DQ run management.
 
@@ -74,32 +71,17 @@ class DQRunViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
 
-    def check_auditor_permissions(self, request, view_action):
-        """Check if AUDITOR role can perform the action (read-only)"""
-        if not request.user or not request.user.is_authenticated:
-            return True  # Let IsAuthenticated handle this
-
-        # Check if user has AUDITOR role
-        if hasattr(request.user, "user_roles"):
-            role_names = [ur.role.name for ur in request.user.user_roles.all()]
-            if "AUDITOR" in role_names:
-                # AUDITOR can only read, not write
-                if view_action in ["create", "update", "partial_update", "destroy"]:
-                    from rest_framework.exceptions import PermissionDenied
-
-                    raise PermissionDenied(
-                        "AUDITOR role has read-only access. Cannot perform write operations."
-                    )
-
-        return True
-
     def get_queryset(self):
         """Filter queryset based on user permissions and query parameters"""
         user = self.request.user
 
         # Platform admins can see all DQ runs
         base = DQRun.objects.select_related(
-            "tenant", "asset", "dataset", "file", "job",
+            "tenant",
+            "asset",
+            "dataset",
+            "file",
+            "job",
         )
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
             queryset = base
@@ -122,6 +104,7 @@ class DQRunViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
         if dataset_id:
             try:
                 import uuid
+
                 uuid.UUID(dataset_id)  # Validate UUID format
                 queryset = queryset.filter(dataset_id=dataset_id)
             except (ValueError, TypeError):
@@ -136,14 +119,16 @@ class DQRunViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
             try:
                 # Parse date_from - fromisoformat returns timezone-aware datetime if timezone info is present
                 # Normalize: "Z" -> "+00:00"; space before offset (e.g. + decoded as space in query) -> "+"
-                date_from_str = date_from.replace("Z", "+00:00").replace(" +", "+").replace(" 00:00", "+00:00")
+                date_from_str = (
+                    date_from.replace("Z", "+00:00").replace(" +", "+").replace(" 00:00", "+00:00")
+                )
                 date_from_dt = datetime.fromisoformat(date_from_str)
                 # Ensure timezone-aware datetime in UTC
                 if timezone.is_naive(date_from_dt):
-                    date_from_dt = timezone.make_aware(date_from_dt, dt_timezone.utc)
+                    date_from_dt = timezone.make_aware(date_from_dt, UTC)
                 else:
                     # Convert to UTC if not already
-                    date_from_dt = date_from_dt.astimezone(dt_timezone.utc)
+                    date_from_dt = date_from_dt.astimezone(UTC)
                 # Django ORM handles timezone-aware datetimes correctly
                 queryset = queryset.filter(created_at__gte=date_from_dt)
             except (ValueError, AttributeError, TypeError):
@@ -153,14 +138,16 @@ class DQRunViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
             try:
                 # Parse date_to - fromisoformat returns timezone-aware datetime if timezone info is present
                 # Normalize: "Z" -> "+00:00"; space before offset (e.g. + decoded as space in query) -> "+"
-                date_to_str = date_to.replace("Z", "+00:00").replace(" +", "+").replace(" 00:00", "+00:00")
+                date_to_str = (
+                    date_to.replace("Z", "+00:00").replace(" +", "+").replace(" 00:00", "+00:00")
+                )
                 date_to_dt = datetime.fromisoformat(date_to_str)
                 # Ensure timezone-aware datetime in UTC
                 if timezone.is_naive(date_to_dt):
-                    date_to_dt = timezone.make_aware(date_to_dt, dt_timezone.utc)
+                    date_to_dt = timezone.make_aware(date_to_dt, UTC)
                 else:
                     # Convert to UTC if not already
-                    date_to_dt = date_to_dt.astimezone(dt_timezone.utc)
+                    date_to_dt = date_to_dt.astimezone(UTC)
                 # Django ORM handles timezone-aware datetimes correctly
                 queryset = queryset.filter(created_at__lte=date_to_dt)
             except (ValueError, AttributeError, TypeError):
@@ -186,7 +173,7 @@ class DQRunViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         # Get tenant using central helper (Phase 10.1.1)
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             return Response(
                 {"error": "User must belong to a tenant to create DQ runs"},
@@ -415,7 +402,9 @@ class DQRunViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
                 "severity": (
                     "HIGH"
                     if check_status == "FAIL"
-                    else "MEDIUM" if check_status == "WARN" else "LOW"
+                    else "MEDIUM"
+                    if check_status == "WARN"
+                    else "LOW"
                 ),
             }
             check_details.append(check_detail)
@@ -470,9 +459,7 @@ class DQRunViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
                 if trend:
                     period_days = None
                     if trend.period_start and trend.period_end:
-                        period_days = (
-                            trend.period_end - trend.period_start
-                        ).days
+                        period_days = (trend.period_end - trend.period_start).days
                     trend_analysis = {
                         "direction": trend.direction,
                         "change_percentage": trend.change_percent,
@@ -524,10 +511,7 @@ class DQRunViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
         for check in checks:
             if check.get("status") == "FAIL":
                 check_name = check.get("name", "Unknown")
-                check_category = (
-                    check.get("category")
-                    or check.get("type", "unknown")
-                )
+                check_category = check.get("category") or check.get("type", "unknown")
                 message = (
                     check.get("message")
                     or check.get("details", {}).get("message", "")
@@ -540,10 +524,7 @@ class DQRunViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
                         "check_type": check_category,
                         "issue": message,
                         "priority": "HIGH",
-                        "suggestion": (
-                            f"Review and fix {check_category} "
-                            f"check: {check_name}"
-                        ),
+                        "suggestion": (f"Review and fix {check_category} check: {check_name}"),
                     }
                 )
 
@@ -580,37 +561,59 @@ class DQRunViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
-    @action(detail=False, methods=["post"], url_path="warehouse-run",
-            throttle_classes=[ScopedRateThrottle])
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="warehouse-run",
+        throttle_classes=[ScopedRateThrottle],
+    )
     def warehouse_run(self, request):
         """Run DQ checks directly in the customer's warehouse (Phase 285.10).
 
         POST /api/v1/dq/warehouse-run/
         """
-        from hub.apps.dq.services import DQService
         from hub.apps.datasets.models import Dataset
-        from hub.apps.tenants.models import Tenant
+        from hub.apps.dq.services import DQService
 
-        tenant = self._resolve_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
+        if not tenant:
+            return Response(
+                {"error": "User must belong to a tenant to run warehouse DQ."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         warehouse_config = request.data.get("warehouse_config", {})
         dataset_id = request.data.get("dataset_id")
         check_definitions = request.data.get("check_definitions", [])
 
         if not dataset_id:
-            raise ValidationError({"dataset_id": "This field is required."})
+            return api_error_response(
+                message="dataset_id is required.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="VALIDATION_ERROR",
+            )
         if not warehouse_config:
-            raise ValidationError({"warehouse_config": "This field is required."})
+            return api_error_response(
+                message="warehouse_config is required.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="VALIDATION_ERROR",
+            )
 
         try:
             dataset = Dataset.objects.get(id=dataset_id, tenant_id=str(tenant.id))
         except Dataset.DoesNotExist:
-            raise NotFound("Dataset not found or not in your tenant.")
+            return api_error_response(
+                message="Dataset not found or not in your tenant.",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="NOT_FOUND",
+            )
 
         # Feature flag gate (Fix 11)
         if not getattr(tenant, "warehouse_dq_enabled", False):
             return Response(
-                {"error": "WAREHOUSE_DQ_DISABLED",
-                 "message": "Warehouse-native DQ is not enabled for this tenant."},
+                {
+                    "error": "WAREHOUSE_DQ_DISABLED",
+                    "message": "Warehouse-native DQ is not enabled for this tenant.",
+                },
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -621,15 +624,18 @@ class DQRunViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
             warehouse_config=warehouse_config,
             user=request.user,
         )
-        return Response({
-            "id": str(run.id),
-            "status": run.status,
-            "overall_status": run.overall_status,
-            "quality_score": run.quality_score,
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "id": str(run.id),
+                "status": run.status,
+                "overall_status": run.overall_status,
+                "quality_score": run.quality_score,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
-class DQAlertingRuleViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
+class DQAlertingRuleViewSet(AuditorPermissionMixin, DQFeatureFlagMixin, viewsets.ModelViewSet):
     """
     ViewSet for DQ alerting rule management.
 
@@ -670,10 +676,11 @@ class DQAlertingRuleViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
         return queryset.order_by("-created_at")
 
     def create(self, request):
+        self.check_auditor_permissions(request, "create")
         serializer = DQAlertingRuleCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             return Response(
                 {"error": "User must belong to a tenant to create alerting rules"},
@@ -728,6 +735,18 @@ class DQAlertingRuleViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
             DQAlertingRuleSerializer(rule).data,
             status=status.HTTP_201_CREATED,
         )
+
+    def update(self, request, *args, **kwargs):
+        self.check_auditor_permissions(request, "update")
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self.check_auditor_permissions(request, "partial_update")
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self.check_auditor_permissions(request, "destroy")
+        return super().destroy(request, *args, **kwargs)
 
 
 # Phase 240.3.B (REQ-DQ-A2) — advanced quality endpoints.
@@ -788,7 +807,11 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
     # ─── Plan-limit / audit helpers ──────────────────────────────
 
     def _enforce_plan_limit_and_emit_audit(
-        self, request, tenant, endpoint, extra=None,
+        self,
+        request,
+        tenant,
+        endpoint,
+        extra=None,
     ):
         """Atomic ``max_quality_queries_per_day`` check **+** audit-row
         emit, both inside the same ``transaction.atomic()`` so the
@@ -826,7 +849,10 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
                 # create``, which will not commit until the outer
                 # ``with`` exits.
                 self._emit_quality_query_audit(
-                    request, tenant, endpoint, extra=extra,
+                    request,
+                    tenant,
+                    endpoint,
+                    extra=extra,
                 )
         except SvcValidationError as plan_err:
             if plan_err.code == "plan_limit_exceeded":
@@ -862,11 +888,17 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
             OpenApiParameter("asset_id", str, OpenApiParameter.QUERY, required=False),
             OpenApiParameter("dataset_id", str, OpenApiParameter.QUERY, required=False),
             OpenApiParameter(
-                "severity", str, OpenApiParameter.QUERY, required=False,
+                "severity",
+                str,
+                OpenApiParameter.QUERY,
+                required=False,
                 description="One of CRITICAL / HIGH / MEDIUM / LOW",
             ),
             OpenApiParameter(
-                "since", str, OpenApiParameter.QUERY, required=False,
+                "since",
+                str,
+                OpenApiParameter.QUERY,
+                required=False,
                 description="ISO-8601 timestamp; only anomalies detected at or after this point are returned",
             ),
         ],
@@ -883,7 +915,7 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
     @action(detail=False, methods=["get"], url_path="anomalies")
     def anomalies(self, request):
         """List detected DQ anomalies for the requesting tenant."""
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             return api_error_response(
                 message="User must belong to a tenant",
@@ -892,7 +924,9 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
             )
 
         denied = self._enforce_plan_limit_and_emit_audit(
-            request, tenant, "anomalies",
+            request,
+            tenant,
+            "anomalies",
         )
         if denied is not None:
             return denied
@@ -922,11 +956,9 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
         since = request.query_params.get("since")
         if since:
             try:
-                since_dt = datetime.fromisoformat(
-                    since.replace("Z", "+00:00")
-                )
+                since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
                 if timezone.is_naive(since_dt):
-                    since_dt = timezone.make_aware(since_dt, dt_timezone.utc)
+                    since_dt = timezone.make_aware(since_dt, UTC)
                 qs = qs.filter(detected_at__gte=since_dt)
             except (ValueError, TypeError):
                 pass
@@ -964,15 +996,24 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
             OpenApiParameter("asset_id", str, OpenApiParameter.QUERY, required=False),
             OpenApiParameter("dataset_id", str, OpenApiParameter.QUERY, required=False),
             OpenApiParameter(
-                "metric_type", str, OpenApiParameter.QUERY, required=False,
+                "metric_type",
+                str,
+                OpenApiParameter.QUERY,
+                required=False,
                 description="Default: ``quality_score``",
             ),
             OpenApiParameter(
-                "time_range", int, OpenApiParameter.QUERY, required=False,
+                "time_range",
+                int,
+                OpenApiParameter.QUERY,
+                required=False,
                 description="Lookback window in days (1–365). Default 30.",
             ),
             OpenApiParameter(
-                "period_type", str, OpenApiParameter.QUERY, required=False,
+                "period_type",
+                str,
+                OpenApiParameter.QUERY,
+                required=False,
                 description="HOURLY / DAILY / WEEKLY / MONTHLY. Default DAILY.",
             ),
         ],
@@ -989,7 +1030,7 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
     @action(detail=False, methods=["get"], url_path="trends")
     def trends(self, request):
         """Compute / list quality trends for an asset or dataset."""
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             return api_error_response(
                 message="User must belong to a tenant",
@@ -1022,7 +1063,9 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
                 )
 
         denied = self._enforce_plan_limit_and_emit_audit(
-            request, tenant, "trends",
+            request,
+            tenant,
+            "trends",
             extra={"metric_type": metric_type},
         )
         if denied is not None:
@@ -1032,9 +1075,13 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
         # tenant, return an empty result set rather than leaking the
         # existence of cross-tenant rows.  ``calculate_trend`` would
         # also return [] but this short-circuit is explicit + cheap.
-        if asset_id and not Asset.objects.filter(
-            id=asset_id, tenant_id=str(tenant.id),
-        ).exists():
+        if (
+            asset_id
+            and not Asset.objects.filter(
+                id=asset_id,
+                tenant_id=str(tenant.id),
+            ).exists()
+        ):
             return Response({"results": []}, status=status.HTTP_200_OK)
 
         trends = TrendAnalyzer.calculate_trend(
@@ -1055,11 +1102,17 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
         operation_id="get_dq_quality_scorecard",
         parameters=[
             OpenApiParameter(
-                "asset_id", str, OpenApiParameter.QUERY, required=False,
+                "asset_id",
+                str,
+                OpenApiParameter.QUERY,
+                required=False,
                 description="If supplied, returns asset-level scorecard; else tenant-level executive dashboard.",
             ),
             OpenApiParameter(
-                "time_range", int, OpenApiParameter.QUERY, required=False,
+                "time_range",
+                int,
+                OpenApiParameter.QUERY,
+                required=False,
                 description="Lookback window in days (1–365). Default 30.",
             ),
         ],
@@ -1074,7 +1127,7 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
     @action(detail=False, methods=["get"], url_path="scorecards")
     def scorecards(self, request):
         """Return an executive dashboard or per-asset scorecard."""
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             return api_error_response(
                 message="User must belong to a tenant",
@@ -1101,7 +1154,9 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
                 )
 
         denied = self._enforce_plan_limit_and_emit_audit(
-            request, tenant, "scorecards",
+            request,
+            tenant,
+            "scorecards",
             extra={"asset_id": asset_id, "days": days},
         )
         if denied is not None:
@@ -1112,9 +1167,7 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
             # an asset outside the tenant.  Returning 404 (vs 403)
             # is the standard cross-tenant pattern in this codebase
             # (don't disclose whether the resource exists at all).
-            if not Asset.objects.filter(
-                id=asset_id, tenant_id=str(tenant.id)
-            ).exists():
+            if not Asset.objects.filter(id=asset_id, tenant_id=str(tenant.id)).exists():
                 return api_error_response(
                     message="Asset not found",
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -1139,15 +1192,24 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
         operation_id="get_dq_quality_root_cause_analysis",
         parameters=[
             OpenApiParameter(
-                "dq_run_id", str, OpenApiParameter.QUERY, required=False,
+                "dq_run_id",
+                str,
+                OpenApiParameter.QUERY,
+                required=False,
                 description="Analyse a specific DQ run.  Mutually exclusive with ``asset_id``.",
             ),
             OpenApiParameter(
-                "asset_id", str, OpenApiParameter.QUERY, required=False,
+                "asset_id",
+                str,
+                OpenApiParameter.QUERY,
+                required=False,
                 description="If supplied without ``dq_run_id``, the latest SUCCEEDED run for the asset is analysed.",
             ),
             OpenApiParameter(
-                "lookback_days", int, OpenApiParameter.QUERY, required=False,
+                "lookback_days",
+                int,
+                OpenApiParameter.QUERY,
+                required=False,
                 description="Window of historical context (1–365).  Default 30.",
             ),
         ],
@@ -1163,7 +1225,7 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
     @action(detail=False, methods=["get"], url_path="root_cause_analysis")
     def root_cause_analysis(self, request):
         """Return a root-cause analysis report for a DQ run."""
-        tenant_id, tenant = get_request_tenant(request)
+        _tenant_id, tenant = get_request_tenant(request)
         if not tenant:
             return api_error_response(
                 message="User must belong to a tenant",
@@ -1206,7 +1268,9 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
                 )
 
         denied = self._enforce_plan_limit_and_emit_audit(
-            request, tenant, "root_cause_analysis",
+            request,
+            tenant,
+            "root_cause_analysis",
             extra={"dq_run_id": dq_run_id, "asset_id": asset_id},
         )
         if denied is not None:
@@ -1215,9 +1279,7 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
         # Resolve a single DQRun, tenant-scoped.
         target_run = None
         if dq_run_id:
-            target_run = DQRun.objects.filter(
-                id=dq_run_id, tenant_id=str(tenant.id)
-            ).first()
+            target_run = DQRun.objects.filter(id=dq_run_id, tenant_id=str(tenant.id)).first()
             if target_run is None:
                 return api_error_response(
                     message="DQ run not found",
@@ -1225,9 +1287,7 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
                     code="NOT_FOUND",
                 )
         else:
-            if not Asset.objects.filter(
-                id=asset_id, tenant_id=str(tenant.id)
-            ).exists():
+            if not Asset.objects.filter(id=asset_id, tenant_id=str(tenant.id)).exists():
                 return api_error_response(
                     message="Asset not found",
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -1250,7 +1310,8 @@ class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
                 )
 
         report = RootCauseAnalyzer.analyze_root_cause(
-            target_run, lookback_days=lookback_days,
+            target_run,
+            lookback_days=lookback_days,
         )
 
         return Response(report, status=status.HTTP_200_OK)
@@ -1307,10 +1368,8 @@ def _persist_dq_run_failure_state(
             first_exc,
             exc_info=True,
         )
-        try:
+        with contextlib.suppress(Exception):
             connection.close()
-        except Exception:
-            pass
         try:
             _save()
         except Exception as second_exc:
@@ -1334,15 +1393,14 @@ def execute_dq_run(dq_run_id: str) -> None:
     from hub.apps.datasets.models import Dataset
     from hub.apps.files.storage import S3StorageClient
 
-    dq_run = (
-        DQRun.objects.select_related(
-            "asset",
-            "file",
-            "dataset",
-            "dataset__file",
-        ).get(id=dq_run_id)
-    )
+    dq_run = DQRun.objects.select_related(
+        "asset",
+        "file",
+        "dataset",
+        "dataset__file",
+    ).get(id=dq_run_id)
     import time as _time
+
     from django.conf import settings as _s
 
     dq_run.status = DQRunStatus.RUNNING
@@ -1408,6 +1466,7 @@ def execute_dq_run(dq_run_id: str) -> None:
             # Phase 78: Prometheus counter for poll timeouts
             try:
                 from hub.apps.observability.otel_metrics import poll_timeout_total
+
                 poll_timeout_total.labels(service="dq").inc()
             except Exception:
                 pass
@@ -1425,9 +1484,7 @@ def execute_dq_run(dq_run_id: str) -> None:
         dq_run.overall_status = result.get("overall_status")
         raw_score = result.get("quality_score")
         dq_run.quality_score = (
-            max(0.0, min(100.0, float(raw_score)))
-            if raw_score is not None
-            else None
+            max(0.0, min(100.0, float(raw_score))) if raw_score is not None else None
         )
         dq_run.checks_json = result.get("checks", [])
         dq_run.details_json = {
@@ -1479,7 +1536,7 @@ def execute_dq_run(dq_run_id: str) -> None:
                 payload={
                     "tenant_id": str(dq_run.tenant_id) if dq_run.tenant_id else None,
                     "dq_run_id": str(dq_run.id),
-                    "engine": result.get("engine_type"),
+                    "engine": result.get("engine_type") or "",
                     "rows_inspected": row_count,
                     "columns_inspected": column_count,
                     "execution_time_seconds": round(execution_time, 2),
@@ -1487,7 +1544,7 @@ def execute_dq_run(dq_run_id: str) -> None:
                 },
                 tenant_id=str(dq_run.tenant_id) if dq_run.tenant_id else None,
             )
-        except Exception as billing_emit_exc:  # noqa: BLE001 — defence-in-depth
+        except Exception as billing_emit_exc:
             # ``emit_event`` already catches bus errors internally
             # and returns None. The outer try/except here covers
             # the import path itself (e.g., a circular-import
@@ -1524,7 +1581,9 @@ def execute_dq_run(dq_run_id: str) -> None:
                 from hub.apps.notifications.utils import create_user_notification
 
                 create_user_notification(
-                    user=dq_run.created_by if hasattr(dq_run, "created_by") and dq_run.created_by else dq_run.asset.created_by,
+                    user=dq_run.created_by
+                    if hasattr(dq_run, "created_by") and dq_run.created_by
+                    else dq_run.asset.created_by,
                     tenant=dq_run.asset.tenant,
                     title="Data Quality Check Complete",
                     message=f"Data quality check for '{dq_run.asset.name}' completed with status: {dq_run.overall_status or 'UNKNOWN'}.",

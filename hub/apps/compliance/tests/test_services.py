@@ -37,7 +37,10 @@ class ComplianceServiceTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -392,7 +395,10 @@ class ComplianceServiceTest(TestCase):
         # Create another tenant
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         asset = Asset.objects.create(

@@ -19,7 +19,7 @@ import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Set, Optional
+from typing import Any
 
 
 class ServiceIntegrationImpactAnalyzer:
@@ -27,28 +27,33 @@ class ServiceIntegrationImpactAnalyzer:
 
     def __init__(self, base_path: str = "."):
         self.base_path = Path(base_path)
-        self.service_integrations: Dict[str, Dict[str, Any]] = defaultdict(dict)
-        self.integration_matrix: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
-        self.service_details: Dict[str, Dict[str, Any]] = defaultdict(dict)
+        self.service_integrations: dict[str, dict[str, Any]] = defaultdict(dict)
+        self.integration_matrix: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        self.service_details: dict[str, dict[str, Any]] = defaultdict(dict)
 
-    def load_analysis_data(self) -> Dict[str, Any]:
+    def load_analysis_data(self) -> dict[str, Any]:
         """Load all analysis data from previous tasks"""
         data = {}
 
         # Load inter-service communication report
-        inter_service_file = self.base_path / "docs" / "api-audit" / "inter-service-communication-report.json"
+        inter_service_file = (
+            self.base_path / "docs" / "api-audit" / "inter-service-communication-report.json"
+        )
         if inter_service_file.exists():
             try:
-                with open(inter_service_file, "r") as f:
+                with open(inter_service_file) as f:
                     data["inter_service_communication"] = json.load(f)
             except Exception as e:
-                print(f"Warning: Could not load inter-service communication report: {e}", file=sys.stderr)
+                print(
+                    f"Warning: Could not load inter-service communication report: {e}",
+                    file=sys.stderr,
+                )
 
         # Load service client audit report
         service_client_file = self.base_path / "docs" / "api-audit" / "service-client-audit.json"
         if service_client_file.exists():
             try:
-                with open(service_client_file, "r") as f:
+                with open(service_client_file) as f:
                     data["service_client_audit"] = json.load(f)
             except Exception as e:
                 print(f"Warning: Could not load service client audit report: {e}", file=sys.stderr)
@@ -57,14 +62,14 @@ class ServiceIntegrationImpactAnalyzer:
         gateway_file = self.base_path / "docs" / "api-audit" / "gateway-config-review.json"
         if gateway_file.exists():
             try:
-                with open(gateway_file, "r") as f:
+                with open(gateway_file) as f:
                     data["gateway_config"] = json.load(f)
             except Exception as e:
                 print(f"Warning: Could not load gateway config review report: {e}", file=sys.stderr)
 
         return data
 
-    def compile_service_integrations(self, data: Dict[str, Any]) -> None:
+    def compile_service_integrations(self, data: dict[str, Any]) -> None:
         """Compile service integration references from all sources"""
 
         # Process inter-service communication data
@@ -79,10 +84,10 @@ class ServiceIntegrationImpactAnalyzer:
         if "gateway_config" in data:
             self._process_gateway_config(data["gateway_config"])
 
-    def _process_inter_service_communication(self, report: Dict[str, Any]) -> None:
+    def _process_inter_service_communication(self, report: dict[str, Any]) -> None:
         """Process inter-service communication report"""
         dependencies = report.get("dependencies", {})
-        service_calls = report.get("service_calls", [])
+        report.get("service_calls", [])
 
         for dep_key, dep_data in dependencies.items():
             # Handle both "source->target" and "source -> target" formats
@@ -101,7 +106,7 @@ class ServiceIntegrationImpactAnalyzer:
                     "gateway_routes": [],
                     "service_clients": [],
                     "call_count": 0,
-                    "endpoints": set()
+                    "endpoints": set(),
                 }
 
             if target not in self.service_integrations:
@@ -111,21 +116,21 @@ class ServiceIntegrationImpactAnalyzer:
                     "gateway_routes": [],
                     "service_clients": [],
                     "call_count": 0,
-                    "endpoints": set()
+                    "endpoints": set(),
                 }
 
             # Track outbound from source
             self.service_integrations[source]["outbound"][target] = {
                 "call_count": dep_data.get("call_count", 0),
                 "endpoints": dep_data.get("endpoints", []),
-                "client_types": dep_data.get("client_types", [])
+                "client_types": dep_data.get("client_types", []),
             }
 
             # Track inbound to target
             self.service_integrations[target]["inbound"][source] = {
                 "call_count": dep_data.get("call_count", 0),
                 "endpoints": dep_data.get("endpoints", []),
-                "client_types": dep_data.get("client_types", [])
+                "client_types": dep_data.get("client_types", []),
             }
 
             # Update integration matrix
@@ -140,7 +145,7 @@ class ServiceIntegrationImpactAnalyzer:
             self.service_integrations[source]["call_count"] += dep_data.get("call_count", 0)
             self.service_integrations[target]["call_count"] += dep_data.get("call_count", 0)
 
-    def _process_service_client_audit(self, report: Dict[str, Any]) -> None:
+    def _process_service_client_audit(self, report: dict[str, Any]) -> None:
         """Process service client audit report"""
         service_clients = report.get("service_clients", [])
 
@@ -160,7 +165,7 @@ class ServiceIntegrationImpactAnalyzer:
                     "gateway_routes": [],
                     "service_clients": [],
                     "call_count": 0,
-                    "endpoints": set()
+                    "endpoints": set(),
                 }
 
             # Track service client
@@ -168,14 +173,18 @@ class ServiceIntegrationImpactAnalyzer:
                 "class_name": class_name,
                 "base_url": base_url,
                 "file_path": client.get("file_path", ""),
-                "methods": []
+                "methods": [],
             }
 
             for method in methods:
                 method_info = {
                     "method_name": method.get("method_name", ""),
-                    "endpoints": [call.get("endpoint", "") for call in method.get("http_calls", [])],
-                    "http_methods": [call.get("http_method", "") for call in method.get("http_calls", [])]
+                    "endpoints": [
+                        call.get("endpoint", "") for call in method.get("http_calls", [])
+                    ],
+                    "http_methods": [
+                        call.get("http_method", "") for call in method.get("http_calls", [])
+                    ],
                 }
                 client_info["methods"].append(method_info)
 
@@ -185,7 +194,7 @@ class ServiceIntegrationImpactAnalyzer:
 
             self.service_integrations[normalized_name]["service_clients"].append(client_info)
 
-    def _process_gateway_config(self, report: Dict[str, Any]) -> None:
+    def _process_gateway_config(self, report: dict[str, Any]) -> None:
         """Process gateway configuration review report"""
         traefik_review = report.get("traefik_review", {})
         ingress_review = report.get("ingress_review", {})
@@ -204,7 +213,7 @@ class ServiceIntegrationImpactAnalyzer:
                         "gateway_routes": [],
                         "service_clients": [],
                         "call_count": 0,
-                        "endpoints": set()
+                        "endpoints": set(),
                     }
 
                 route_info = {
@@ -212,13 +221,15 @@ class ServiceIntegrationImpactAnalyzer:
                     "path_prefix": router.get("path_prefix", ""),
                     "host_pattern": router.get("host_pattern", ""),
                     "middlewares": router.get("middlewares", []),
-                    "type": "traefik"
+                    "type": "traefik",
                 }
                 self.service_integrations[normalized_name]["gateway_routes"].append(route_info)
 
                 # Track path prefix as endpoint
                 if route_info["path_prefix"]:
-                    self.service_integrations[normalized_name]["endpoints"].add(route_info["path_prefix"])
+                    self.service_integrations[normalized_name]["endpoints"].add(
+                        route_info["path_prefix"]
+                    )
 
         # Process Kubernetes ingress rules
         ingress_rules = ingress_review.get("rules", [])
@@ -234,7 +245,7 @@ class ServiceIntegrationImpactAnalyzer:
                         "gateway_routes": [],
                         "service_clients": [],
                         "call_count": 0,
-                        "endpoints": set()
+                        "endpoints": set(),
                     }
 
                 route_info = {
@@ -242,7 +253,7 @@ class ServiceIntegrationImpactAnalyzer:
                     "host": rule.get("host", ""),
                     "path": rule.get("path", ""),
                     "namespace": rule.get("namespace", ""),
-                    "type": "kubernetes-ingress"
+                    "type": "kubernetes-ingress",
                 }
                 self.service_integrations[normalized_name]["gateway_routes"].append(route_info)
 
@@ -268,11 +279,11 @@ class ServiceIntegrationImpactAnalyzer:
             "search": "search-service",
             "webhook": "webhook-service",
             "observability": "observability-service",
-            "worker": "worker-service"
+            "worker": "worker-service",
         }
         return name_mapping.get(name, name)
 
-    def generate_integration_matrix(self) -> Dict[str, Dict[str, int]]:
+    def generate_integration_matrix(self) -> dict[str, dict[str, int]]:
         """Generate service integration matrix"""
         # Get all unique services
         all_services = set(self.service_integrations.keys())
@@ -295,7 +306,7 @@ class ServiceIntegrationImpactAnalyzer:
 
         return matrix
 
-    def generate_report(self) -> Dict[str, Any]:
+    def generate_report(self) -> dict[str, Any]:
         """Generate comprehensive service integration impact report"""
         # Convert sets to lists for JSON serialization
         report_data = {}
@@ -307,7 +318,7 @@ class ServiceIntegrationImpactAnalyzer:
                 "service_clients": details["service_clients"],
                 "call_count": details["call_count"],
                 "endpoint_count": len(details["endpoints"]),
-                "endpoints": sorted(list(details["endpoints"]))
+                "endpoints": sorted(list(details["endpoints"])),
             }
 
         matrix = self.generate_integration_matrix()
@@ -315,12 +326,10 @@ class ServiceIntegrationImpactAnalyzer:
         # Calculate summary statistics
         total_services = len(self.service_integrations)
         total_integrations = sum(
-            len(details.get("outbound", {}))
-            for details in self.service_integrations.values()
+            len(details.get("outbound", {})) for details in self.service_integrations.values()
         )
         total_service_calls = sum(
-            details.get("call_count", 0)
-            for details in self.service_integrations.values()
+            details.get("call_count", 0) for details in self.service_integrations.values()
         )
 
         return {
@@ -329,13 +338,13 @@ class ServiceIntegrationImpactAnalyzer:
                 "total_services": total_services,
                 "total_integrations": total_integrations,
                 "total_service_calls": total_service_calls,
-                "services": sorted(list(self.service_integrations.keys()))
+                "services": sorted(list(self.service_integrations.keys())),
             },
             "service_integrations": report_data,
-            "integration_matrix": matrix
+            "integration_matrix": matrix,
         }
 
-    def generate_markdown_report(self, report: Dict[str, Any]) -> str:
+    def generate_markdown_report(self, report: dict[str, Any]) -> str:
         """Generate markdown report"""
         md_lines = []
 
@@ -352,14 +361,16 @@ class ServiceIntegrationImpactAnalyzer:
 
         # Integration Matrix
         md_lines.append("## Service Integration Matrix\n")
-        md_lines.append("This matrix shows the number of service calls from each source service to each target service.\n")
-        md_lines.append("\n| Source → Target | " + " | ".join(summary['services']) + " |")
-        md_lines.append("|" + "---|" * (len(summary['services']) + 1))
+        md_lines.append(
+            "This matrix shows the number of service calls from each source service to each target service.\n"
+        )
+        md_lines.append("\n| Source → Target | " + " | ".join(summary["services"]) + " |")
+        md_lines.append("|" + "---|" * (len(summary["services"]) + 1))
 
         matrix = report["integration_matrix"]
-        for source in summary['services']:
+        for source in summary["services"]:
             row = [source]
-            for target in summary['services']:
+            for target in summary["services"]:
                 count = matrix.get(source, {}).get(target, 0)
                 row.append(str(count) if count > 0 else "-")
             md_lines.append("| " + " | ".join(row) + " |")
@@ -380,7 +391,7 @@ class ServiceIntegrationImpactAnalyzer:
                     md_lines.append(f"- **{target}**: {details['call_count']} calls")
                     if details.get("endpoints"):
                         md_lines.append(f"  - Endpoints: {', '.join(details['endpoints'][:5])}")
-                        if len(details['endpoints']) > 5:
+                        if len(details["endpoints"]) > 5:
                             md_lines.append(f"  - ... and {len(details['endpoints']) - 5} more")
                     md_lines.append("")
 
@@ -391,7 +402,7 @@ class ServiceIntegrationImpactAnalyzer:
                     md_lines.append(f"- **{source}**: {details['call_count']} calls")
                     if details.get("endpoints"):
                         md_lines.append(f"  - Endpoints: {', '.join(details['endpoints'][:5])}")
-                        if len(details['endpoints']) > 5:
+                        if len(details["endpoints"]) > 5:
                             md_lines.append(f"  - ... and {len(details['endpoints']) - 5} more")
                     md_lines.append("")
 
@@ -406,7 +417,9 @@ class ServiceIntegrationImpactAnalyzer:
                         if route.get("middlewares"):
                             md_lines.append(f"  - Middlewares: {', '.join(route['middlewares'])}")
                     elif route.get("type") == "kubernetes-ingress":
-                        md_lines.append(f"- **Kubernetes Ingress**: {route.get('ingress_name', 'N/A')}")
+                        md_lines.append(
+                            f"- **Kubernetes Ingress**: {route.get('ingress_name', 'N/A')}"
+                        )
                         if route.get("host"):
                             md_lines.append(f"  - Host: `{route['host']}`")
                         if route.get("path"):
@@ -429,7 +442,9 @@ class ServiceIntegrationImpactAnalyzer:
                 for endpoint in endpoints:
                     md_lines.append(f"- `{endpoint}`")
                 if len(service_data["endpoints"]) > 10:
-                    md_lines.append(f"- ... and {len(service_data['endpoints']) - 10} more endpoints")
+                    md_lines.append(
+                        f"- ... and {len(service_data['endpoints']) - 10} more endpoints"
+                    )
                 md_lines.append("")
 
             md_lines.append("---\n")
@@ -450,7 +465,10 @@ def main():
     data = analyzer.load_analysis_data()
 
     if not data:
-        print("Error: No analysis data found. Please run previous analysis tasks first.", file=sys.stderr)
+        print(
+            "Error: No analysis data found. Please run previous analysis tasks first.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     print("Compiling service integrations...")
@@ -480,7 +498,7 @@ def main():
     print("Report Generation Complete")
     print("=" * 80)
     print()
-    print(f"Summary:")
+    print("Summary:")
     print(f"  Total Services: {report['summary']['total_services']}")
     print(f"  Total Integrations: {report['summary']['total_integrations']}")
     print(f"  Total Service Calls: {report['summary']['total_service_calls']}")
@@ -489,4 +507,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

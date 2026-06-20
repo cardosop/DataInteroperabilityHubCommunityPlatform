@@ -48,7 +48,10 @@ class AccessRequestViewSetTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -84,7 +87,10 @@ class AccessRequestViewSetTest(TestCase):
         # Create another tenant and user for isolation tests
         _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         ensure_tenant_has_active_subscription(self.tenant)
         ensure_tenant_has_active_subscription(self.other_tenant)
@@ -242,7 +248,7 @@ class AccessRequestViewSetTest(TestCase):
             requested_access_type="READ",
             status=AccessRequestStatus.PENDING,
         )
-        approved_request = AccessRequest.objects.create(
+        AccessRequest.objects.create(
             tenant=self.tenant,
             requested_by=self.user,
             asset=self.asset,
@@ -281,7 +287,7 @@ class AccessRequestViewSetTest(TestCase):
             requested_access_type="READ",
             status=AccessRequestStatus.PENDING,
         )
-        request2 = AccessRequest.objects.create(
+        AccessRequest.objects.create(
             tenant=self.tenant,
             requested_by=self.user,
             asset=asset2,
@@ -411,7 +417,9 @@ class AccessRequestViewSetTest(TestCase):
 
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F401
+            from hub.apps.orchestration.workflows.access_request import (
+                AccessRequestWorkflow,  # noqa: F401
+            )
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -428,7 +436,7 @@ class AccessRequestViewSetTest(TestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_201_CREATED,
-            f"Expected 201 CREATED, got {response.status_code}: {response.content}"
+            f"Expected 201 CREATED, got {response.status_code}: {response.content}",
         )
 
         self.assertIn("id", response.data)
@@ -446,9 +454,7 @@ class AccessRequestViewSetTest(TestCase):
             action="ACCESS_REQUEST_CREATED",
             resource_id=request_id,
         )
-        self.assertGreaterEqual(
-            audit_events.count(), 0
-        )  # May or may not be created by workflow
+        self.assertGreater(audit_events.count(), 0)
 
     def test_create_access_request_success_with_dataset(self):
         """Test creating access request successfully with dataset"""
@@ -456,7 +462,9 @@ class AccessRequestViewSetTest(TestCase):
 
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F401
+            from hub.apps.orchestration.workflows.access_request import (
+                AccessRequestWorkflow,  # noqa: F401
+            )
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -473,7 +481,7 @@ class AccessRequestViewSetTest(TestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_201_CREATED,
-            f"Expected 201 CREATED, got {response.status_code}: {response.content}"
+            f"Expected 201 CREATED, got {response.status_code}: {response.content}",
         )
 
     def test_create_access_request_success_with_file(self):
@@ -482,7 +490,9 @@ class AccessRequestViewSetTest(TestCase):
 
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F401
+            from hub.apps.orchestration.workflows.access_request import (
+                AccessRequestWorkflow,  # noqa: F401
+            )
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -499,7 +509,7 @@ class AccessRequestViewSetTest(TestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_201_CREATED,
-            f"Expected 201 CREATED, got {response.status_code}: {response.content}"
+            f"Expected 201 CREATED, got {response.status_code}: {response.content}",
         )
 
     def test_create_access_request_missing_reason(self):
@@ -607,7 +617,7 @@ class AccessRequestViewSetTest(TestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_200_OK,
-            f"Expected 200 OK, got {response.status_code}: {response.content}"
+            f"Expected 200 OK, got {response.status_code}: {response.content}",
         )
 
         request.refresh_from_db()
@@ -620,7 +630,7 @@ class AccessRequestViewSetTest(TestCase):
             action="ACCESS_REQUEST_APPROVED",
             resource_id=str(request.id),
         )
-        self.assertGreaterEqual(audit_events.count(), 0)
+        self.assertGreater(audit_events.count(), 0)
 
     def test_approve_access_request_not_pending(self):
         """Test approving non-pending access request returns error"""
@@ -690,7 +700,7 @@ class AccessRequestViewSetTest(TestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_200_OK,
-            f"Expected 200 OK, got {response.status_code}: {response.content}"
+            f"Expected 200 OK, got {response.status_code}: {response.content}",
         )
 
         request.refresh_from_db()
@@ -704,7 +714,7 @@ class AccessRequestViewSetTest(TestCase):
             action="ACCESS_REQUEST_REJECTED",
             resource_id=str(request.id),
         )
-        self.assertGreaterEqual(audit_events.count(), 0)
+        self.assertGreater(audit_events.count(), 0)
 
     def test_reject_access_request_missing_reason(self):
         """Test rejecting access request without reason returns error"""
@@ -807,7 +817,9 @@ class AccessRequestViewSetTest(TestCase):
 
         # Check if workflow is available
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F401
+            from hub.apps.orchestration.workflows.access_request import (
+                AccessRequestWorkflow,  # noqa: F401
+            )
         except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
@@ -825,7 +837,7 @@ class AccessRequestViewSetTest(TestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_201_CREATED,
-            f"Expected 201 CREATED, got {response.status_code}: {response.content}"
+            f"Expected 201 CREATED, got {response.status_code}: {response.content}",
         )
 
     # ========== ERROR HANDLING TESTS ==========
@@ -850,7 +862,7 @@ class AccessRequestViewSetTest(TestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_400_BAD_REQUEST,
-            f"Expected 400 BAD_REQUEST, got {response.status_code}: {response.content}"
+            f"Expected 400 BAD_REQUEST, got {response.status_code}: {response.content}",
         )
 
     def test_approve_access_request_nonexistent(self):
@@ -905,17 +917,16 @@ class AccessRequestViewSetTest(TestCase):
             format="json",
         )
 
-        # ModelViewSet allows update if serializer allows it
-        # Since some fields are read-only, this might return 400 or 200
-        self.assertIn(
+        # PUT with valid writable fields (reason, requested_access_type) — all
+        # required fields are provided; optional fields retain current values.
+        self.assertEqual(
             response.status_code,
-            [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST],
+            status.HTTP_200_OK,
+            f"Expected 200 OK, got {response.status_code}: {response.content}",
         )
-
-        if response.status_code == status.HTTP_200_OK:
-            request.refresh_from_db()
-            # Verify update if allowed
-            self.assertEqual(response.data["reason"], "Updated reason")
+        request.refresh_from_db()
+        self.assertEqual(response.data["reason"], "Updated reason")
+        self.assertEqual(response.data["requested_access_type"], "WRITE")
 
     def test_partial_update_access_request_success(self):
         """Test partial updating access request successfully (PATCH)"""
@@ -938,16 +949,14 @@ class AccessRequestViewSetTest(TestCase):
             format="json",
         )
 
-        # ModelViewSet allows partial update if serializer allows it
-        # Since some fields are read-only, this might return 400 or 200
-        self.assertIn(
+        # PATCH is partial — no fields are required; sending just "reason" is always valid.
+        self.assertEqual(
             response.status_code,
-            [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST],
+            status.HTTP_200_OK,
+            f"Expected 200 OK, got {response.status_code}: {response.content}",
         )
-
-        if response.status_code == status.HTTP_200_OK:
-            request.refresh_from_db()
-            self.assertEqual(response.data["reason"], "Partially updated reason")
+        request.refresh_from_db()
+        self.assertEqual(response.data["reason"], "Partially updated reason")
 
     def test_update_access_request_tenant_isolation(self):
         """Test that users can only update access requests in their tenant"""
@@ -1129,9 +1138,7 @@ class AccessRequestPendingCountTest(TestCase):
             name="TENANT_ADMIN",
             defaults={"description": "Tenant Administrator"},
         )
-        UserRole.objects.create(
-            user=self.tenant_admin, tenant=self.tenant, role=admin_role
-        )
+        UserRole.objects.create(user=self.tenant_admin, tenant=self.tenant, role=admin_role)
 
         self.other_admin = User.objects.create_user(
             email=f"otheradmin-{other_uid}@example.com",
@@ -1184,9 +1191,7 @@ class AccessRequestPendingCountTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_pending_count_forbidden_for_regular_user(self):
-        self._make_request(
-            self.tenant, self.asset, self.regular_user, AccessRequestStatus.PENDING
-        )
+        self._make_request(self.tenant, self.asset, self.regular_user, AccessRequestStatus.PENDING)
         self.client.force_authenticate(user=self.regular_user)
         response = self.client.get(self.PENDING_COUNT_URL)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -1198,15 +1203,9 @@ class AccessRequestPendingCountTest(TestCase):
         self.assertEqual(response.data, {"count": 0})
 
     def test_pending_count_tenant_admin_sees_only_own_tenant(self):
-        self._make_request(
-            self.tenant, self.asset, self.regular_user, AccessRequestStatus.PENDING
-        )
-        self._make_request(
-            self.tenant, self.asset, self.regular_user, AccessRequestStatus.PENDING
-        )
-        self._make_request(
-            self.tenant, self.asset, self.regular_user, AccessRequestStatus.APPROVED
-        )
+        self._make_request(self.tenant, self.asset, self.regular_user, AccessRequestStatus.PENDING)
+        self._make_request(self.tenant, self.asset, self.regular_user, AccessRequestStatus.PENDING)
+        self._make_request(self.tenant, self.asset, self.regular_user, AccessRequestStatus.APPROVED)
         self._make_request(
             self.other_tenant,
             self.other_asset,
@@ -1238,9 +1237,7 @@ class AccessRequestPendingCountTest(TestCase):
         self.assertEqual(baseline.status_code, status.HTTP_200_OK)
         baseline_count = baseline.data["count"]
 
-        self._make_request(
-            self.tenant, self.asset, self.regular_user, AccessRequestStatus.PENDING
-        )
+        self._make_request(self.tenant, self.asset, self.regular_user, AccessRequestStatus.PENDING)
         self._make_request(
             self.other_tenant,
             self.other_asset,
@@ -1291,9 +1288,7 @@ class AccessRequestBulkActionsTest(TestCase):
             name="TENANT_ADMIN",
             defaults={"description": "Tenant Admin"},
         )
-        UserRole.objects.create(
-            user=self.admin, tenant=self.tenant, role=admin_role
-        )
+        UserRole.objects.create(user=self.admin, tenant=self.tenant, role=admin_role)
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key=f"asset-{uid}",
@@ -1314,16 +1309,12 @@ class AccessRequestBulkActionsTest(TestCase):
 
     def test_bulk_approve_rejects_empty_ids(self):
         self.client.force_authenticate(user=self.admin)
-        response = self.client.post(
-            self.URL_BULK_APPROVE, {"ids": []}, format="json"
-        )
+        response = self.client.post(self.URL_BULK_APPROVE, {"ids": []}, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_bulk_approve_requires_ids_list(self):
         self.client.force_authenticate(user=self.admin)
-        response = self.client.post(
-            self.URL_BULK_APPROVE, {}, format="json"
-        )
+        response = self.client.post(self.URL_BULK_APPROVE, {}, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_bulk_approve_all_pending(self):
@@ -1369,9 +1360,7 @@ class AccessRequestBulkActionsTest(TestCase):
     def test_bulk_approve_unknown_id_returns_failed_entry(self):
         unknown = str(uuid.uuid4())
         self.client.force_authenticate(user=self.admin)
-        response = self.client.post(
-            self.URL_BULK_APPROVE, {"ids": [unknown]}, format="json"
-        )
+        response = self.client.post(self.URL_BULK_APPROVE, {"ids": [unknown]}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["succeeded"], [])
         self.assertEqual(len(response.data["failed"]), 1)
@@ -1380,9 +1369,7 @@ class AccessRequestBulkActionsTest(TestCase):
     def test_bulk_reject_requires_reason(self):
         a = self._make()
         self.client.force_authenticate(user=self.admin)
-        response = self.client.post(
-            self.URL_BULK_REJECT, {"ids": [str(a.id)]}, format="json"
-        )
+        response = self.client.post(self.URL_BULK_REJECT, {"ids": [str(a.id)]}, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_bulk_reject_all_pending(self):
@@ -1406,7 +1393,5 @@ class AccessRequestBulkActionsTest(TestCase):
         self.assertEqual(a.rejection_reason, "nope")
 
     def test_bulk_endpoints_require_authentication(self):
-        response = self.client.post(
-            self.URL_BULK_APPROVE, {"ids": ["x"]}, format="json"
-        )
+        response = self.client.post(self.URL_BULK_APPROVE, {"ids": ["x"]}, format="json")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

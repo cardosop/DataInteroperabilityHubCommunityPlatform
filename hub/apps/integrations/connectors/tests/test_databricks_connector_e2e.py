@@ -10,40 +10,45 @@ Requirements:
 - Network access to Databricks workspace
 - Databricks workspace with Unity Catalog shares (for full E2E testing)
 """
-import unittest
+
 import os
+import unittest
+
 import pytest
 
 pytestmark = pytest.mark.slow
 import time
-from django.test import TestCase
-from django.db import transaction
+import uuid
 
-from hub.apps.integrations.connectors.databricks_connector import DatabricksConnector
-from hub.apps.integrations.services import MarketplaceIntegrationService
-from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob, MarketplaceMapping
-from hub.apps.integrations.base import (
-    MarketplaceType,
-    SyncStatus,
-    SyncResult,
-)
+from django.test import TestCase
+
 from hub.apps.assets.models import (
-    Asset,
-    AssetStatus,
     AssetSourceType,
+    AssetStatus,
     ExternalResourceReference,
 )
-from hub.apps.contracts.models import Contract, OriginalSpecType, ContractStatus
+from hub.apps.contracts.models import Contract
+from hub.apps.integrations.base import (
+    MarketplaceType,
+    SyncResult,
+    SyncStatus,
+)
+from hub.apps.integrations.connectors.databricks_connector import DatabricksConnector
+from hub.apps.integrations.models import (
+    MarketplaceConnection,
+    MarketplaceMapping,
+    MarketplaceSyncJob,
+)
+from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 
 def get_databricks_credentials():
     """Get Databricks credentials from environment"""
-    host = os.environ.get('DATABRICKS_HOST')
-    token = os.environ.get('DATABRICKS_TOKEN')
-    cluster_id = os.environ.get('DATABRICKS_CLUSTER_ID')  # Optional
+    host = os.environ.get("DATABRICKS_HOST")
+    token = os.environ.get("DATABRICKS_TOKEN")
+    cluster_id = os.environ.get("DATABRICKS_CLUSTER_ID")  # Optional
 
     if not host or not token:
         raise unittest.SkipTest(
@@ -51,11 +56,11 @@ def get_databricks_credentials():
         )
 
     credentials = {
-        'host': host,
-        'token': token,
+        "host": host,
+        "token": token,
     }
     if cluster_id:
-        credentials['cluster_id'] = cluster_id
+        credentials["cluster_id"] = cluster_id
 
     return credentials
 
@@ -76,9 +81,9 @@ class TestDatabricksConnectorE2E(TestCase):
         # _fixture_teardown() closing connections on the skip path.
         cls.credentials = get_databricks_credentials()
         super().setUpClass()
-        cls.host = cls.credentials['host']
-        cls.token = cls.credentials['token']
-        cls.cluster_id = cls.credentials.get('cluster_id')
+        cls.host = cls.credentials["host"]
+        cls.token = cls.credentials["token"]
+        cls.cluster_id = cls.credentials.get("cluster_id")
 
     def setUp(self):
         """Set up test fixtures"""
@@ -86,18 +91,18 @@ class TestDatabricksConnectorE2E(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
-            kyc_status="VERIFIED"
+            kyc_status="VERIFIED",
         )
         self.user = User.objects.create_user(
-            email='test-databricks-e2e@example.com',
-            password='testpass',
+            email="test-databricks-e2e@example.com",
+            password="testpass",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id=f"test-databricks-e2e-{int(time.time())}"
+            request_id=f"test-databricks-e2e-{int(time.time())}",
         )
         # Track created objects for cleanup
         self.created_connections = []
@@ -151,15 +156,13 @@ class TestDatabricksConnectorE2E(TestCase):
             marketplace_type=MarketplaceType.DATABRICKS_MARKETPLACE.value,
             name="Databricks E2E Test Connection",
             config=self.credentials,
-            is_active=True
+            is_active=True,
         )
         self.created_connections.append(connection)
 
         # Step 2: Test connection
         connector = DatabricksConnector(
-            host=self.host,
-            token=self.token,
-            cluster_id=self.cluster_id
+            host=self.host, token=self.token, cluster_id=self.cluster_id
         )
         connection_test = connector.test_connection()
         self.assertTrue(connection_test, "Connection test should succeed")
@@ -185,16 +188,15 @@ class TestDatabricksConnectorE2E(TestCase):
             sync_job = MarketplaceSyncJob.objects.create(
                 tenant=self.tenant,
                 connection=connection,
-                direction='PULL',
+                direction="PULL",
                 status=SyncStatus.PENDING.value,
-                metadata={'include_resources': True}
+                metadata={"include_resources": True},
             )
             self.created_sync_jobs.append(sync_job)
 
             # Perform sync_pull
             sync_result = connector.sync_pull(
-                listing_ids=[listing_id],
-                options={'include_resources': True}
+                listing_ids=[listing_id], options={"include_resources": True}
             )
 
             self.assertIsInstance(sync_result, SyncResult)
@@ -205,7 +207,10 @@ class TestDatabricksConnectorE2E(TestCase):
                 mapping = connector.map_to_hub_asset(listing, sync_job_id=str(sync_job.id))
                 self.assertIsNotNone(mapping)
                 self.assertEqual(mapping.source_type, AssetSourceType.FEDERATED)
-                self.assertEqual(mapping.source_metadata['marketplace_type'], MarketplaceType.DATABRICKS_MARKETPLACE.value)
+                self.assertEqual(
+                    mapping.source_metadata["marketplace_type"],
+                    MarketplaceType.DATABRICKS_MARKETPLACE.value,
+                )
 
         # Test passes if we can complete the workflow up to the point where we have listings
         # If no listings, we still verify the connection and discovery work
@@ -218,15 +223,13 @@ class TestDatabricksConnectorE2E(TestCase):
             marketplace_type=MarketplaceType.DATABRICKS_MARKETPLACE.value,
             name="Databricks Pull Sync E2E",
             config=self.credentials,
-            is_active=True
+            is_active=True,
         )
         self.created_connections.append(connection)
 
         # Initialize connector
         connector = DatabricksConnector(
-            host=self.host,
-            token=self.token,
-            cluster_id=self.cluster_id
+            host=self.host, token=self.token, cluster_id=self.cluster_id
         )
 
         # Discover listings
@@ -240,37 +243,37 @@ class TestDatabricksConnectorE2E(TestCase):
         sync_job = MarketplaceSyncJob.objects.create(
             tenant=self.tenant,
             connection=connection,
-            direction='PULL',
+            direction="PULL",
             status=SyncStatus.PENDING.value,
-            metadata={'include_resources': True}
+            metadata={"include_resources": True},
         )
         self.created_sync_jobs.append(sync_job)
 
         # Perform pull sync
         sync_result = connector.sync_pull(
-            listing_ids=[listing.marketplace_id],
-            options={'include_resources': True}
+            listing_ids=[listing.marketplace_id], options={"include_resources": True}
         )
 
         # Verify sync result
         self.assertIsInstance(sync_result, SyncResult)
         self.assertIn(sync_result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
         self.assertIsNotNone(sync_result.metadata)
-        self.assertIn('mappings', sync_result.metadata)
+        self.assertIn("mappings", sync_result.metadata)
 
         # Verify mappings were created
-        if sync_result.metadata.get('mappings'):
-            mapping_data = sync_result.metadata['mappings'][0]
-            self.assertIn('asset_data', mapping_data)
-            self.assertIn('source_metadata', mapping_data)
-            self.assertEqual(mapping_data['source_metadata']['marketplace_type'], MarketplaceType.DATABRICKS_MARKETPLACE.value)
+        if sync_result.metadata.get("mappings"):
+            mapping_data = sync_result.metadata["mappings"][0]
+            self.assertIn("asset_data", mapping_data)
+            self.assertIn("source_metadata", mapping_data)
+            self.assertEqual(
+                mapping_data["source_metadata"]["marketplace_type"],
+                MarketplaceType.DATABRICKS_MARKETPLACE.value,
+            )
 
     def test_metadata_extraction_and_mapping(self):
         """Test metadata extraction and mapping from Databricks listing"""
         connector = DatabricksConnector(
-            host=self.host,
-            token=self.token,
-            cluster_id=self.cluster_id
+            host=self.host, token=self.token, cluster_id=self.cluster_id
         )
 
         # Get a real listing
@@ -290,15 +293,18 @@ class TestDatabricksConnectorE2E(TestCase):
         self.assertEqual(mapping.source_type, AssetSourceType.FEDERATED)
 
         # Verify asset data
-        self.assertIn('name', mapping.asset_data)
-        self.assertIn('description', mapping.asset_data)
-        self.assertIn('status', mapping.asset_data)
-        self.assertEqual(mapping.asset_data['status'], AssetStatus.ACTIVE.value)
+        self.assertIn("name", mapping.asset_data)
+        self.assertIn("description", mapping.asset_data)
+        self.assertIn("status", mapping.asset_data)
+        self.assertEqual(mapping.asset_data["status"], AssetStatus.ACTIVE.value)
 
         # Verify source metadata
-        self.assertEqual(mapping.source_metadata['marketplace_type'], MarketplaceType.DATABRICKS_MARKETPLACE.value)
-        self.assertIn('listing_id', mapping.source_metadata)
-        self.assertIn('listing_url', mapping.source_metadata)
+        self.assertEqual(
+            mapping.source_metadata["marketplace_type"],
+            MarketplaceType.DATABRICKS_MARKETPLACE.value,
+        )
+        self.assertIn("listing_id", mapping.source_metadata)
+        self.assertIn("listing_url", mapping.source_metadata)
 
         # Verify ODPS metadata if available
         if mapping.odps_metadata:
@@ -311,9 +317,7 @@ class TestDatabricksConnectorE2E(TestCase):
     def test_schema_extraction_and_type_mapping(self):
         """Test schema extraction and type mapping from Databricks tables"""
         connector = DatabricksConnector(
-            host=self.host,
-            token=self.token,
-            cluster_id=self.cluster_id
+            host=self.host, token=self.token, cluster_id=self.cluster_id
         )
 
         # Get a real listing with resources
@@ -330,46 +334,41 @@ class TestDatabricksConnectorE2E(TestCase):
                 break
 
         if not listing_with_resources:
-            raise unittest.SkipTest("No shares with resources available for schema extraction testing")
+            raise unittest.SkipTest(
+                "No shares with resources available for schema extraction testing"
+            )
 
-        # Get resources
-        resources = connector.list_resources(listing_with_resources.listing_id)
+        # Get resources using marketplace_id (Databricks share name)
+        resources = connector.list_resources(listing_with_resources.marketplace_id)
         self.assertGreater(len(resources), 0, "Should have at least one resource")
 
         # Test schema extraction for first resource (if it's a table)
         resource = resources[0]
-        if hasattr(resource, 'metadata') and resource.metadata.get('table_name'):
-            # Verify the connector exposes the schema extraction hook.
-            # Actual extraction requires share consumption which may not
-            # be available in the test workspace — just check the method exists.
-            table_name = resource.metadata.get('table_name')
-            if table_name:
-                self.assertTrue(
-                    hasattr(connector, '_extract_schema_from_table'),
-                    "Connector must expose _extract_schema_from_table"
-                )
+        table_name = resource.metadata.get("table_name") if resource.metadata else None
+        if table_name:
+            # Verify the connector exposes the schema extraction hook
+            self.assertTrue(
+                hasattr(connector, "_extract_schema_from_table"),
+                "Connector must expose _extract_schema_from_table",
+            )
 
     def test_error_scenarios(self):
         """Test error scenarios with real Databricks workspace"""
         # Test invalid credentials
-        invalid_connector = DatabricksConnector(
-            host=self.host,
-            token='invalid_token_12345'
-        )
+        invalid_connector = DatabricksConnector(host=self.host, token="invalid_token_12345")
 
-        with self.assertRaises(Exception):
+        with self.assertRaises(ConnectionError):
             invalid_connector.test_connection()
 
         # Test share not found
         connector = DatabricksConnector(
-            host=self.host,
-            token=self.token,
-            cluster_id=self.cluster_id
+            host=self.host, token=self.token, cluster_id=self.cluster_id
         )
 
         from hub.apps.core.services.base import NotFoundError
+
         with self.assertRaises(NotFoundError):
-            connector.get_listing('non_existent_share_12345')
+            connector.get_listing("non_existent_share_12345")
 
         # Test permission denied (if we can trigger it)
         # This is harder to test without actually having permission issues
@@ -378,9 +377,7 @@ class TestDatabricksConnectorE2E(TestCase):
     def test_dual_contract_creation(self):
         """Test dual contract creation (ODPS + ODCS) from marketplace listing"""
         connector = DatabricksConnector(
-            host=self.host,
-            token=self.token,
-            cluster_id=self.cluster_id
+            host=self.host, token=self.token, cluster_id=self.cluster_id
         )
 
         # Get a real listing
@@ -412,4 +409,3 @@ class TestDatabricksConnectorE2E(TestCase):
 
         # The actual contract creation would be done by MarketplaceIntegrationService
         # This E2E test verifies the mapping contains the necessary data
-

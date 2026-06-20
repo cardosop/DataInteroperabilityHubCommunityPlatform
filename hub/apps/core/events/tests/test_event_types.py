@@ -1,14 +1,16 @@
 """
 Tests for event type definitions and validation.
 """
+
 import uuid
+
 from django.test import TestCase
+
 from hub.apps.core.events.event_types import (
-    EVENT_TYPE_SCHEMAS,
-    get_event_schema,
+    CURRENT_EVENT_VERSION,
     get_all_event_types,
+    get_event_schema,
     validate_event_data,
-    CURRENT_EVENT_VERSION
 )
 
 
@@ -96,9 +98,7 @@ class EventTypesTest(TestCase):
 
     def test_validate_event_data_valid(self):
         """Test validating valid event data."""
-        data = {
-            "contract_id": str(uuid.uuid4())
-        }
+        data = {"contract_id": str(uuid.uuid4())}
         is_valid, error = validate_event_data("contract.created", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
         self.assertIsNone(error)
@@ -165,4 +165,3 @@ class EventTypesTest(TestCase):
             self.assertIsNotNone(schema, f"No schema for {event_type}")
             self.assertIn("data", schema)
             self.assertIn("properties", schema["data"])
-

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Fix test methods that use {uid} without defining uid."""
+
 import os
 import subprocess
 
@@ -7,7 +8,10 @@ import subprocess
 def find_files():
     r = subprocess.run(
         ["grep", "-rln", "{uid}", "hub/apps/", "--include=*.py"],
-        capture_output=True, text=True, cwd="/app"
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd="/app",
     )
     return [f for f in r.stdout.strip().split("\n") if f]
 
@@ -22,9 +26,8 @@ def fix_file(filepath):
     in_method = False
     method_indent = 0
     uid_defined = False
-    method_name = ""
 
-    for i, line in enumerate(lines):
+    for _i, line in enumerate(lines):
         stripped = line.strip()
 
         # Detect method start
@@ -32,10 +35,16 @@ def fix_file(filepath):
             in_method = True
             method_indent = len(line) - len(line.lstrip())
             uid_defined = False
-            method_name = stripped
 
         # Detect leaving method (new method or class at same/lower indent)
-        if in_method and not stripped.startswith("def ") and stripped and not stripped.startswith("#") and not stripped.startswith('"""') and not stripped.startswith("'''"):
+        if (
+            in_method
+            and not stripped.startswith("def ")
+            and stripped
+            and not stripped.startswith("#")
+            and not stripped.startswith('"""')
+            and not stripped.startswith("'''")
+        ):
             curr_indent = len(line) - len(line.lstrip())
             if curr_indent <= method_indent and stripped:
                 in_method = False

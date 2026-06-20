@@ -10,15 +10,13 @@ both the direct-ClientError and wrapped variants.
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 from unittest import TestCase
 
+import pytest
 from botocore.exceptions import ClientError
 
 from hub.apps.core.services.base import ValidationError
-
 from hub.apps.datasets.storage_fetch import (
     fetch_file_content_for_dataset_schema_safe,
 )
@@ -92,7 +90,7 @@ class WrappedSlowDownThenOkStorage:
                     "GetObject",
                 )
             except ClientError as e:
-                raise Exception(f"Failed to download file: {str(e)}") from e
+                raise Exception(f"Failed to download file: {e!s}") from e
         return b"a,b\n1"
 
 
@@ -106,7 +104,7 @@ class WrappedAlways404Storage:
                 "GetObject",
             )
         except ClientError as e:
-            raise Exception(f"Failed to download file: {str(e)}") from e
+            raise Exception(f"Failed to download file: {e!s}") from e
 
 
 class RangedSlowDownThenOkStorage:
@@ -124,7 +122,7 @@ class RangedSlowDownThenOkStorage:
                     "GetObject",
                 )
             except ClientError as e:
-                raise Exception(f"Failed to download object range: {str(e)}") from e
+                raise Exception(f"Failed to download object range: {e!s}") from e
         # Return only ``end`` bytes — matches real S3 ranged GET.
         return b"a,b\n1\n2,3\n"[:end]
 
@@ -137,7 +135,7 @@ class RangedAlways404Storage:
                 "GetObject",
             )
         except ClientError as e:
-            raise Exception(f"Failed to download object range: {str(e)}") from e
+            raise Exception(f"Failed to download object range: {e!s}") from e
 
 
 class DatasetStorageFetchRetryTests(TestCase):
@@ -185,7 +183,8 @@ class WrappedClientErrorUnwrapTests(TestCase):
         )
         self.assertEqual(body, b"a,b\n1")
         self.assertGreaterEqual(
-            storage.attempts, 3,
+            storage.attempts,
+            3,
             "Wrapped SlowDown was not retried — unwrap regressed",
         )
 
@@ -214,7 +213,8 @@ class WrappedClientErrorUnwrapTests(TestCase):
         )
         self.assertTrue(body.startswith(b"a,b"))
         self.assertGreaterEqual(
-            storage.attempts, 3,
+            storage.attempts,
+            3,
             "Wrapped ranged-SlowDown was not retried — unwrap regressed",
         )
 
@@ -296,7 +296,8 @@ class RetryBudgetTighteningTests(TestCase):
             )
         # stop_after_attempt(3) → exactly 3 attempts made before giving up.
         self.assertEqual(
-            storage.attempts, 3,
+            storage.attempts,
+            3,
             f"stop_after_attempt(3) must produce 3 attempts; got {storage.attempts}",
         )
 
@@ -316,9 +317,7 @@ class DatasetInferenceRetriesMetricTests(TestCase):
             dataset_inference_retries_total,
         )
 
-        return float(
-            dataset_inference_retries_total.labels(result=result)._value._count
-        )
+        return float(dataset_inference_retries_total.labels(result=result)._value._count)
 
     @pytest.mark.integration
     def test_first_attempt_success_increments_success_only(self) -> None:
@@ -333,15 +332,18 @@ class DatasetInferenceRetriesMetricTests(TestCase):
 
         self.assertEqual(body, b"id,value\n1,a\n")
         self.assertEqual(
-            self._counter_value("success") - before_success, 1.0,
+            self._counter_value("success") - before_success,
+            1.0,
             "first-attempt success must increment result=success exactly once",
         )
         self.assertEqual(
-            self._counter_value("retry") - before_retry, 0.0,
+            self._counter_value("retry") - before_retry,
+            0.0,
             "first-attempt success must NOT fire result=retry",
         )
         self.assertEqual(
-            self._counter_value("failure") - before_failure, 0.0,
+            self._counter_value("failure") - before_failure,
+            0.0,
             "first-attempt success must NOT fire result=failure",
         )
 
@@ -361,15 +363,18 @@ class DatasetInferenceRetriesMetricTests(TestCase):
 
         self.assertEqual(storage.attempts, 3)
         self.assertEqual(
-            self._counter_value("retry") - before_retry, 2.0,
+            self._counter_value("retry") - before_retry,
+            2.0,
             "2 retries (between attempts 1→2 and 2→3) must increment result=retry twice",
         )
         self.assertEqual(
-            self._counter_value("success") - before_success, 1.0,
+            self._counter_value("success") - before_success,
+            1.0,
             "successful eventual return must increment result=success once",
         )
         self.assertEqual(
-            self._counter_value("failure") - before_failure, 0.0,
+            self._counter_value("failure") - before_failure,
+            0.0,
             "successful eventual return must NOT fire result=failure",
         )
 
@@ -391,15 +396,18 @@ class DatasetInferenceRetriesMetricTests(TestCase):
         # without firing before_sleep — tenacity's stop check happens
         # BEFORE before_sleep.
         self.assertEqual(
-            self._counter_value("retry") - before_retry, 2.0,
+            self._counter_value("retry") - before_retry,
+            2.0,
             "exhausted retries must increment result=retry twice (one per backoff sleep)",
         )
         self.assertEqual(
-            self._counter_value("failure") - before_failure, 1.0,
+            self._counter_value("failure") - before_failure,
+            1.0,
             "exhausted retries must increment result=failure once (RetryError → ValidationError)",
         )
         self.assertEqual(
-            self._counter_value("success") - before_success, 0.0,
+            self._counter_value("success") - before_success,
+            0.0,
             "exhausted retries must NOT fire result=success",
         )
 
@@ -419,15 +427,18 @@ class DatasetInferenceRetriesMetricTests(TestCase):
             )
 
         self.assertEqual(
-            self._counter_value("retry") - before_retry, 0.0,
+            self._counter_value("retry") - before_retry,
+            0.0,
             "permanent 404 must NOT increment result=retry",
         )
         self.assertEqual(
-            self._counter_value("failure") - before_failure, 1.0,
+            self._counter_value("failure") - before_failure,
+            1.0,
             "permanent 404 (FileMissingInStorageError) must increment result=failure",
         )
         self.assertEqual(
-            self._counter_value("success") - before_success, 0.0,
+            self._counter_value("success") - before_success,
+            0.0,
             "permanent 404 must NOT fire result=success",
         )
 
@@ -443,20 +454,24 @@ class DatasetInferenceRetriesMetricTests(TestCase):
 
         # Three calls: 1 first-attempt success + 1 retry-then-success + 1 permanent-failure.
         fetch_file_content_for_dataset_schema_safe(
-            storage=FirstAttemptOkStorage(), storage_path="a",
+            storage=FirstAttemptOkStorage(),
+            storage_path="a",
         )
         fetch_file_content_for_dataset_schema_safe(
-            storage=SlowDownThenOkStorage(), storage_path="b",
+            storage=SlowDownThenOkStorage(),
+            storage_path="b",
         )
         with self.assertRaises(ValidationError):
             fetch_file_content_for_dataset_schema_safe(
-                storage=Always404Storage(), storage_path="c",
+                storage=Always404Storage(),
+                storage_path="c",
             )
 
         delta_success = self._counter_value("success") - before_success
         delta_failure = self._counter_value("failure") - before_failure
         self.assertEqual(
-            delta_success + delta_failure, 3.0,
+            delta_success + delta_failure,
+            3.0,
             "260.7.D invariant: every safe-wrapper call increments exactly one of "
             f"{{success, failure}}; got success+failure delta = {delta_success + delta_failure}",
         )
@@ -487,7 +502,8 @@ class DatasetInferenceRetriesMetricTests(TestCase):
         # and re-raises Exception(f"Failed to ...: {e}") from e).
         storage = WrappedSlowDownThenOkStorage()
         body = fetch_file_content_for_dataset_schema_safe(
-            storage=storage, storage_path="tenant/wrapped.csv",
+            storage=storage,
+            storage_path="tenant/wrapped.csv",
         )
         self.assertEqual(body, b"a,b\n1")
         self.assertEqual(storage.attempts, 3)
@@ -495,12 +511,14 @@ class DatasetInferenceRetriesMetricTests(TestCase):
         # The metric MUST fire identically to the unwrapped path —
         # 2 retries (between attempts 1→2 and 2→3) + 1 success.
         self.assertEqual(
-            self._counter_value("retry") - before_retry, 2.0,
+            self._counter_value("retry") - before_retry,
+            2.0,
             "wrapped-SlowDown path must increment result=retry twice "
             "(_unwrap_client_error + tenacity classifier + before_sleep "
             "all chained correctly)",
         )
         self.assertEqual(
-            self._counter_value("success") - before_success, 1.0,
+            self._counter_value("success") - before_success,
+            1.0,
             "wrapped-SlowDown eventual success must increment result=success once",
         )

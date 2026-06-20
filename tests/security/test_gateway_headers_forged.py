@@ -8,17 +8,18 @@ session; it does not read gateway headers for auth.
 
 Uses real DB, real API key, real API; no mocks.
 """
-import pytest
+
 from pathlib import Path
 
-from django.test import TestCase, RequestFactory, override_settings
+import pytest
 from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
+from django.test import RequestFactory, TestCase, override_settings
 from rest_framework import status
+from rest_framework.test import APIClient
 
+from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.auth.middleware import TenantScopingMiddleware
 from hub.apps.auth.models import APIKey
-from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 
@@ -63,6 +64,7 @@ class TestGatewayHeadersNotUsedForAuth:
                     f"{path.name} must not reference gateway header {marker!r}; "
                     "api-service derives tenant/user only from JWT, API key, or session."
                 )
+
 
 # Use local memory cache in tests to avoid Redis connection/blocking in
 # container; asserts auth/tenant behavior, not cache behavior.

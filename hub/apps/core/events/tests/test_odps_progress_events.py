@@ -9,22 +9,24 @@ Comprehensive tests for:
 - ODPS export progress events
 - Event schema validation
 """
+
 try:
     import pytest
+
     pytestmark = pytest.mark.django_db(transaction=True)
 except ImportError:
     pytest = None
     pytestmark = None
 
 import uuid
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
 from django.test import TestCase
 
-from hub.apps.core.events.service_publishers import ODPSEventPublisher
-from hub.apps.core.events.publisher import EventPublisher
 from hub.apps.core.events.event_types import validate_event_data
+from hub.apps.core.events.publisher import EventPublisher
 from hub.apps.core.events.schema import get_event_schema
-from hub.apps.core.events.models import Event
+from hub.apps.core.events.service_publishers import ODPSEventPublisher
 
 
 class ODPSEventPublisherProgressEventsTest(TestCase):
@@ -45,7 +47,7 @@ class ODPSEventPublisherProgressEventsTest(TestCase):
             user_id=self.user_id,
         )
 
-    @patch('hub.apps.core.events.publisher.EventPublisher.publish')
+    @patch("hub.apps.core.events.publisher.EventPublisher.publish")
     def test_publish_odps_creation_progress(self, mock_publish):
         """Test publishing odps.creation.progress event"""
         mock_publish.return_value = str(uuid.uuid4())
@@ -65,15 +67,15 @@ class ODPSEventPublisherProgressEventsTest(TestCase):
         self.assertIsNotNone(event_id)
         mock_publish.assert_called_once()
         call_args = mock_publish.call_args
-        self.assertEqual(call_args[1]['event_type'], "odps.creation.progress")
-        self.assertEqual(call_args[1]['data']['progress_percentage'], 50.0)
-        self.assertEqual(call_args[1]['data']['contract_id'], self.contract_id)
-        self.assertEqual(call_args[1]['data']['workflow_instance_id'], self.workflow_instance_id)
-        self.assertEqual(call_args[1]['data']['current_step'], "normalize_odps")
-        self.assertEqual(call_args[1]['data']['total_steps'], 10)
-        self.assertEqual(call_args[1]['data']['step_index'], 5)
+        self.assertEqual(call_args[1]["event_type"], "odps.creation.progress")
+        self.assertEqual(call_args[1]["data"]["progress_percentage"], 50.0)
+        self.assertEqual(call_args[1]["data"]["contract_id"], self.contract_id)
+        self.assertEqual(call_args[1]["data"]["workflow_instance_id"], self.workflow_instance_id)
+        self.assertEqual(call_args[1]["data"]["current_step"], "normalize_odps")
+        self.assertEqual(call_args[1]["data"]["total_steps"], 10)
+        self.assertEqual(call_args[1]["data"]["step_index"], 5)
 
-    @patch('hub.apps.core.events.publisher.EventPublisher.publish')
+    @patch("hub.apps.core.events.publisher.EventPublisher.publish")
     def test_publish_odps_normalization_progress(self, mock_publish):
         """Test publishing odps.normalization.progress event"""
         mock_publish.return_value = str(uuid.uuid4())
@@ -95,17 +97,17 @@ class ODPSEventPublisherProgressEventsTest(TestCase):
         self.assertIsNotNone(event_id)
         mock_publish.assert_called_once()
         call_args = mock_publish.call_args
-        self.assertEqual(call_args[1]['event_type'], "odps.normalization.progress")
-        self.assertEqual(call_args[1]['data']['progress_percentage'], 75.0)
-        self.assertEqual(call_args[1]['data']['contract_id'], self.contract_id)
-        self.assertEqual(call_args[1]['data']['current_phase'], "marketplace_mapping")
-        self.assertEqual(call_args[1]['data']['total_phases'], 6)
-        self.assertEqual(call_args[1]['data']['phase_index'], 4)
-        self.assertEqual(call_args[1]['data']['items_processed'], 15)
-        self.assertEqual(call_args[1]['data']['items_total'], 20)
-        self.assertEqual(call_args[1]['data']['odps_version'], "4.1")
+        self.assertEqual(call_args[1]["event_type"], "odps.normalization.progress")
+        self.assertEqual(call_args[1]["data"]["progress_percentage"], 75.0)
+        self.assertEqual(call_args[1]["data"]["contract_id"], self.contract_id)
+        self.assertEqual(call_args[1]["data"]["current_phase"], "marketplace_mapping")
+        self.assertEqual(call_args[1]["data"]["total_phases"], 6)
+        self.assertEqual(call_args[1]["data"]["phase_index"], 4)
+        self.assertEqual(call_args[1]["data"]["items_processed"], 15)
+        self.assertEqual(call_args[1]["data"]["items_total"], 20)
+        self.assertEqual(call_args[1]["data"]["odps_version"], "4.1")
 
-    @patch('hub.apps.core.events.publisher.EventPublisher.publish')
+    @patch("hub.apps.core.events.publisher.EventPublisher.publish")
     def test_publish_odps_ref_progress(self, mock_publish):
         """Test publishing odps.ref.progress event"""
         mock_publish.return_value = str(uuid.uuid4())
@@ -125,15 +127,15 @@ class ODPSEventPublisherProgressEventsTest(TestCase):
         self.assertIsNotNone(event_id)
         mock_publish.assert_called_once()
         call_args = mock_publish.call_args
-        self.assertEqual(call_args[1]['event_type'], "odps.ref.progress")
-        self.assertEqual(call_args[1]['data']['progress_percentage'], 60.0)
-        self.assertEqual(call_args[1]['data']['contract_id'], self.contract_id)
-        self.assertEqual(call_args[1]['data']['refs_processed'], 6)
-        self.assertEqual(call_args[1]['data']['refs_total'], 10)
-        self.assertEqual(call_args[1]['data']['current_ref_path'], "#/definitions/quality")
-        self.assertEqual(call_args[1]['data']['ref_type'], "internal")
+        self.assertEqual(call_args[1]["event_type"], "odps.ref.progress")
+        self.assertEqual(call_args[1]["data"]["progress_percentage"], 60.0)
+        self.assertEqual(call_args[1]["data"]["contract_id"], self.contract_id)
+        self.assertEqual(call_args[1]["data"]["refs_processed"], 6)
+        self.assertEqual(call_args[1]["data"]["refs_total"], 10)
+        self.assertEqual(call_args[1]["data"]["current_ref_path"], "#/definitions/quality")
+        self.assertEqual(call_args[1]["data"]["ref_type"], "internal")
 
-    @patch('hub.apps.core.events.publisher.EventPublisher.publish')
+    @patch("hub.apps.core.events.publisher.EventPublisher.publish")
     def test_publish_odps_linking_status(self, mock_publish):
         """Test publishing odps.linking.status event"""
         mock_publish.return_value = str(uuid.uuid4())
@@ -156,15 +158,15 @@ class ODPSEventPublisherProgressEventsTest(TestCase):
         self.assertIsNotNone(event_id)
         mock_publish.assert_called_once()
         call_args = mock_publish.call_args
-        self.assertEqual(call_args[1]['event_type'], "odps.linking.status")
-        self.assertEqual(call_args[1]['data']['odps_contract_id'], self.contract_id)
-        self.assertEqual(call_args[1]['data']['odcs_contract_id'], odcs_contract_id)
-        self.assertEqual(call_args[1]['data']['status'], "completed")
-        self.assertEqual(call_args[1]['data']['progress_percentage'], 100.0)
-        self.assertEqual(call_args[1]['data']['validation_passed'], True)
-        self.assertEqual(call_args[1]['data']['link_type'], "bidirectional")
+        self.assertEqual(call_args[1]["event_type"], "odps.linking.status")
+        self.assertEqual(call_args[1]["data"]["odps_contract_id"], self.contract_id)
+        self.assertEqual(call_args[1]["data"]["odcs_contract_id"], odcs_contract_id)
+        self.assertEqual(call_args[1]["data"]["status"], "completed")
+        self.assertEqual(call_args[1]["data"]["progress_percentage"], 100.0)
+        self.assertEqual(call_args[1]["data"]["validation_passed"], True)
+        self.assertEqual(call_args[1]["data"]["link_type"], "bidirectional")
 
-    @patch('hub.apps.core.events.publisher.EventPublisher.publish')
+    @patch("hub.apps.core.events.publisher.EventPublisher.publish")
     def test_publish_odps_export_progress(self, mock_publish):
         """Test publishing odps.export.progress event"""
         mock_publish.return_value = str(uuid.uuid4())
@@ -185,14 +187,14 @@ class ODPSEventPublisherProgressEventsTest(TestCase):
         self.assertIsNotNone(event_id)
         mock_publish.assert_called_once()
         call_args = mock_publish.call_args
-        self.assertEqual(call_args[1]['event_type'], "odps.export.progress")
-        self.assertEqual(call_args[1]['data']['contract_id'], self.contract_id)
-        self.assertEqual(call_args[1]['data']['export_format'], "json")
-        self.assertEqual(call_args[1]['data']['progress_percentage'], 80.0)
-        self.assertEqual(call_args[1]['data']['current_phase'], "formatting")
-        self.assertEqual(call_args[1]['data']['bytes_processed'], 8000)
-        self.assertEqual(call_args[1]['data']['bytes_total'], 10000)
-        self.assertEqual(call_args[1]['data']['odps_version'], "4.1")
+        self.assertEqual(call_args[1]["event_type"], "odps.export.progress")
+        self.assertEqual(call_args[1]["data"]["contract_id"], self.contract_id)
+        self.assertEqual(call_args[1]["data"]["export_format"], "json")
+        self.assertEqual(call_args[1]["data"]["progress_percentage"], 80.0)
+        self.assertEqual(call_args[1]["data"]["current_phase"], "formatting")
+        self.assertEqual(call_args[1]["data"]["bytes_processed"], 8000)
+        self.assertEqual(call_args[1]["data"]["bytes_total"], 10000)
+        self.assertEqual(call_args[1]["data"]["odps_version"], "4.1")
 
 
 class ODPSProgressEventSchemaTest(TestCase):
@@ -214,7 +216,7 @@ class ODPSProgressEventSchemaTest(TestCase):
             "current_step": "normalize_odps",
             "total_steps": 10,
             "step_index": 5,
-            "status_message": "Processing step"
+            "status_message": "Processing step",
         }
         is_valid, error = validate_event_data("odps.creation.progress", valid_data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -234,7 +236,7 @@ class ODPSProgressEventSchemaTest(TestCase):
             "items_processed": 15,
             "items_total": 20,
             "status_message": "Mapping fields",
-            "odps_version": "4.1"
+            "odps_version": "4.1",
         }
         is_valid, error = validate_event_data("odps.normalization.progress", valid_data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -252,7 +254,7 @@ class ODPSProgressEventSchemaTest(TestCase):
             "refs_total": 10,
             "current_ref_path": "#/definitions/quality",
             "ref_type": "internal",
-            "status_message": "Resolving references"
+            "status_message": "Resolving references",
         }
         is_valid, error = validate_event_data("odps.ref.progress", valid_data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -272,7 +274,7 @@ class ODPSProgressEventSchemaTest(TestCase):
             "validation_passed": True,
             "validation_errors": [],
             "link_type": "bidirectional",
-            "status_message": "Linking completed"
+            "status_message": "Linking completed",
         }
         is_valid, error = validate_event_data("odps.linking.status", valid_data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -291,7 +293,7 @@ class ODPSProgressEventSchemaTest(TestCase):
             "bytes_processed": 8000,
             "bytes_total": 10000,
             "status_message": "Formatting output",
-            "odps_version": "4.1"
+            "odps_version": "4.1",
         }
         is_valid, error = validate_event_data("odps.export.progress", valid_data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -319,4 +321,3 @@ class ODPSProgressEventSchemaTest(TestCase):
         }
         is_valid, error = validate_event_data("odps.ref.progress", valid_data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
-

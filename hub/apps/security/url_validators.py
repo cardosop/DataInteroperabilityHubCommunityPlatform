@@ -34,27 +34,22 @@ HTTP-layer ``ApiError``. The class facade lets us add the
 allowlist + dnspython without breaking the webhook caller's
 existing behaviour.
 """
+
 from __future__ import annotations
 
 import ipaddress
-import re
-import socket
-from typing import Iterable, Optional, Set
+from collections.abc import Iterable
 from urllib.parse import urlparse
-
 
 # Re-export the existing exception so callers have a single import
 # point.
 from hub.apps.webhooks.ssrf_guard import (  # noqa: F401
-    SSRFViolationError,
-)
-from hub.apps.webhooks.ssrf_guard import (
-    _BLOCKED_NETWORKS,
     _ALLOWED_SCHEMES,
+    _BLOCKED_NETWORKS,
+    SSRFViolationError,
     _is_private_ip,
     _resolve_and_check,
 )
-
 
 __all__ = [
     "SSRFGuard",
@@ -71,8 +66,8 @@ _DNS_RESOLVE_TIMEOUT_SECONDS: float = 5.0
 
 
 def _normalise_allowlist(
-    allowlist: Optional[Iterable[str]],
-) -> Set[str]:
+    allowlist: Iterable[str] | None,
+) -> set[str]:
     """Lowercase + strip every allowlist entry once so per-call
     matching doesn't pay the normalization cost."""
     if not allowlist:
@@ -100,7 +95,7 @@ class SSRFGuard:
     def validate(
         cls,
         url: str,
-        allowlist: Optional[Iterable[str]] = None,
+        allowlist: Iterable[str] | None = None,
     ) -> None:
         """Validate ``url`` for SSRF safety. Raises
         :class:`SSRFViolationError` on any of:
@@ -173,7 +168,7 @@ class SSRFGuard:
     def revalidate_resolved_ip(
         cls,
         hostname: str,
-        allowlist: Optional[Iterable[str]] = None,
+        allowlist: Iterable[str] | None = None,
         timeout: float = _DNS_RESOLVE_TIMEOUT_SECONDS,
     ) -> None:
         """Phase 250.5.B.3 — worker-time DNS re-resolution using
@@ -203,8 +198,8 @@ class SSRFGuard:
         # used. The lazy import also makes the package optional
         # for non-worker-deploy footprints.
         try:
-            import dns.resolver
             import dns.exception
+            import dns.resolver
         except ImportError as exc:  # pragma: no cover — boundary
             raise SSRFViolationError(
                 "dnspython is required for worker-time DNS "
@@ -216,32 +211,28 @@ class SSRFGuard:
         for rdtype in ("A", "AAAA"):
             try:
                 answer = dns.resolver.resolve(
-                    hostname, rdtype, lifetime=timeout,
+                    hostname,
+                    rdtype,
+                    lifetime=timeout,
                 )
             except dns.resolver.NoAnswer:
                 continue
             except dns.resolver.NXDOMAIN as exc:
                 raise SSRFViolationError(
-                    f"Hostname '{hostname}' does not resolve "
-                    f"(NXDOMAIN): {exc}"
+                    f"Hostname '{hostname}' does not resolve (NXDOMAIN): {exc}"
                 ) from exc
             except dns.exception.Timeout as exc:
                 raise SSRFViolationError(
-                    f"DNS resolution of '{hostname}' timed out "
-                    f"after {timeout}s: {exc}"
+                    f"DNS resolution of '{hostname}' timed out after {timeout}s: {exc}"
                 ) from exc
-            except Exception as exc:  # noqa: BLE001 — boundary
-                raise SSRFViolationError(
-                    f"DNS resolution of '{hostname}' failed: {exc}"
-                ) from exc
+            except Exception as exc:
+                raise SSRFViolationError(f"DNS resolution of '{hostname}' failed: {exc}") from exc
 
             for rdata in answer:
                 addresses.append(str(rdata))
 
         if not addresses:
-            raise SSRFViolationError(
-                f"Hostname '{hostname}' resolved to no addresses."
-            )
+            raise SSRFViolationError(f"Hostname '{hostname}' resolved to no addresses.")
 
         for ip_str in addresses:
             if _is_private_ip(ip_str):

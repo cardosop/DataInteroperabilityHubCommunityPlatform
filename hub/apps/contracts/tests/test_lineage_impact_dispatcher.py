@@ -20,17 +20,15 @@ dispatcher actually touches: ``exists``, ``setex``, ``get``,
 exercise debounce + rate-limit semantics deterministically without
 a live Redis.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
-from typing import Dict
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-
-from hub.apps.contracts.tests.test_base import ContractsTransactionTestBase
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.lineage_impact_dispatcher import (
@@ -38,10 +36,10 @@ from hub.apps.contracts.lineage_impact_dispatcher import (
     handle_contract_updated,
 )
 from hub.apps.contracts.lineage_severity import Severity
+from hub.apps.contracts.tests.test_base import ContractsTransactionTestBase
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -59,8 +57,8 @@ class FakeRedis:
     """
 
     def __init__(self):
-        self._data: Dict[str, bytes] = {}
-        self._expires_at: Dict[str, float] = {}
+        self._data: dict[str, bytes] = {}
+        self._expires_at: dict[str, float] = {}
 
     # Helpers ----------------------------------------------------------------
 
@@ -119,7 +117,7 @@ def _make_tenant(slug_prefix: str = "f3d") -> Tenant:
     return tenant
 
 
-def _make_user(tenant: Tenant) -> "User":  # type: ignore[name-defined]  # test: edge-case type exercise
+def _make_user(tenant: Tenant) -> User:  # type: ignore[name-defined]  # test: edge-case type exercise
     suffix = uuid.uuid4().hex[:8]
     return User.objects.create_user(
         email=f"u-{suffix}@example.com",
@@ -136,6 +134,7 @@ def _make_contract(tenant: Tenant, name: str = "c"):
         OriginalFormat,
         OriginalSpecType,
     )
+
     asset = Asset.objects.create(
         tenant=tenant,
         key=f"asset-{uuid.uuid4().hex[:6]}",
@@ -160,25 +159,46 @@ def _make_contract(tenant: Tenant, name: str = "c"):
 def _seed_derivation_edge(tenant, source_contract, target_contract):
     """A derivation edge → severity classifier returns HIGH."""
     from hub.apps.contracts.models import LineageEdge
+
     return LineageEdge.objects.create(
         tenant=tenant,
         source_contract_id=source_contract.id,
         target_contract_id=target_contract.id,
-        source_model="default", source_field="x",
-        target_model="default", target_field="x",
+        source_model="default",
+        source_field="x",
+        target_model="default",
+        target_field="x",
         edge_type="derivation",
     )
 
 
-def _patch_redis(monkeypatch_or_self) -> FakeRedis:
-    fake = FakeRedis()
+_ORIGINAL_GET_REDIS_CLIENT = None
+
+
+def _patch_redis(test_case) -> FakeRedis:
+    """Replace module-level ``_get_redis_client`` with a FakeRedis.
+
+    Saves the original so it can be restored in ``tearDown`` via
+    ``_unpatch_redis``, preventing cross-test-class leaks.
+    """
+    global _ORIGINAL_GET_REDIS_CLIENT
     from hub.apps.contracts import lineage_impact_dispatcher as mod
 
-    # Patch the module-level _get_redis_client; we inject the fake
-    # client directly so the dispatcher uses it for both debounce +
-    # rate limit.
-    mod._get_redis_client = lambda: fake  # type: ignore[assignment]  # test: edge-case type exercise
+    if _ORIGINAL_GET_REDIS_CLIENT is None:
+        _ORIGINAL_GET_REDIS_CLIENT = mod._get_redis_client
+    fake = FakeRedis()
+    mod._get_redis_client = lambda: fake  # type: ignore[assignment]
     return fake
+
+
+def _unpatch_redis():
+    """Restore the original ``_get_redis_client`` (idempotent)."""
+    global _ORIGINAL_GET_REDIS_CLIENT
+    if _ORIGINAL_GET_REDIS_CLIENT is not None:
+        from hub.apps.contracts import lineage_impact_dispatcher as mod
+
+        mod._get_redis_client = _ORIGINAL_GET_REDIS_CLIENT
+        _ORIGINAL_GET_REDIS_CLIENT = None
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +207,9 @@ def _patch_redis(monkeypatch_or_self) -> FakeRedis:
 
 
 class DispatcherSeverityGateTests(TestCase):
+    def tearDown(self):
+        _unpatch_redis()
+        super().tearDown()
 
     def test_high_severity_dispatched_to_high_threshold_subscriber(self):
         from hub.apps.contracts.models import LineageSubscription
@@ -198,22 +221,27 @@ class DispatcherSeverityGateTests(TestCase):
         c_tgt = _make_contract(tenant, name="tgt")
         _seed_derivation_edge(tenant, c_src, c_tgt)
         LineageSubscription.objects.create(
-            user=user, source_contract=c_src,
-            severity_threshold="HIGH", in_app=True, email=False,
+            user=user,
+            source_contract=c_src,
+            severity_threshold="HIGH",
+            in_app=True,
+            email=False,
         )
         _patch_redis(self)
 
         result = handle_contract_updated(
             contract_id=str(c_src.id),
             tenant_id=str(tenant.id),
-            old_lineage_hash="old", new_lineage_hash="new",
+            old_lineage_hash="old",
+            new_lineage_hash="new",
         )
         self.assertEqual(result["severity"], Severity.HIGH.value)
         self.assertEqual(result["dispatched"], 1)
         # The in-app row landed.
         self.assertEqual(
             UserNotification.objects.filter(
-                user=user, category="LINEAGE_IMPACT",
+                user=user,
+                category="LINEAGE_IMPACT",
             ).count(),
             1,
         )
@@ -228,7 +256,8 @@ class DispatcherSeverityGateTests(TestCase):
         c_tgt = _make_contract(tenant, name="tgt")
         _seed_derivation_edge(tenant, c_src, c_tgt)
         LineageSubscription.objects.create(
-            user=user, source_contract=c_src,
+            user=user,
+            source_contract=c_src,
             severity_threshold="CRITICAL",
         )
         _patch_redis(self)
@@ -236,12 +265,14 @@ class DispatcherSeverityGateTests(TestCase):
         result = handle_contract_updated(
             contract_id=str(c_src.id),
             tenant_id=str(tenant.id),
-            old_lineage_hash="old", new_lineage_hash="new",
+            old_lineage_hash="old",
+            new_lineage_hash="new",
         )
         self.assertEqual(result["skipped_below_threshold"], 1)
         self.assertEqual(
             UserNotification.objects.filter(
-                user=user, category="LINEAGE_IMPACT",
+                user=user,
+                category="LINEAGE_IMPACT",
             ).count(),
             0,
         )
@@ -253,7 +284,9 @@ class DispatcherSeverityGateTests(TestCase):
 
 
 class DispatcherDebounceTests(TestCase):
-
+    def tearDown(self):
+        _unpatch_redis()
+        super().tearDown()
     def test_second_dispatch_within_window_is_debounced(self):
         from hub.apps.contracts.models import LineageSubscription
         from hub.apps.notifications.models import UserNotification
@@ -264,28 +297,34 @@ class DispatcherDebounceTests(TestCase):
         c_tgt = _make_contract(tenant, name="tgt")
         _seed_derivation_edge(tenant, c_src, c_tgt)
         LineageSubscription.objects.create(
-            user=user, source_contract=c_src,
+            user=user,
+            source_contract=c_src,
             severity_threshold="HIGH",
         )
         _patch_redis(self)
 
         first = handle_contract_updated(
-            contract_id=str(c_src.id), tenant_id=str(tenant.id),
-            old_lineage_hash="a", new_lineage_hash="b",
+            contract_id=str(c_src.id),
+            tenant_id=str(tenant.id),
+            old_lineage_hash="a",
+            new_lineage_hash="b",
         )
         self.assertEqual(first["dispatched"], 1)
 
         # Second event for the same source within the debounce window.
         second = handle_contract_updated(
-            contract_id=str(c_src.id), tenant_id=str(tenant.id),
-            old_lineage_hash="b", new_lineage_hash="c",
+            contract_id=str(c_src.id),
+            tenant_id=str(tenant.id),
+            old_lineage_hash="b",
+            new_lineage_hash="c",
         )
         self.assertEqual(second["debounced"], 1)
         self.assertEqual(second["dispatched"], 0)
         # Only one notification row.
         self.assertEqual(
             UserNotification.objects.filter(
-                user=user, category="LINEAGE_IMPACT",
+                user=user,
+                category="LINEAGE_IMPACT",
             ).count(),
             1,
         )
@@ -297,6 +336,9 @@ class DispatcherDebounceTests(TestCase):
 
 
 class DispatcherRateLimitTests(ContractsTransactionTestBase):
+    def tearDown(self):
+        _unpatch_redis()
+        super().tearDown()
     """``TransactionTestCase`` (not ``TestCase``) because the
     rate-limit drop emits an audit row via ``create_audit_event(
     tenant=None, action='DISPATCH_RATE_LIMITED', ...)`` which routes
@@ -321,7 +363,8 @@ class DispatcherRateLimitTests(ContractsTransactionTestBase):
         c_tgt = _make_contract(tenant, name="tgt")
         _seed_derivation_edge(tenant, c_src, c_tgt)
         LineageSubscription.objects.create(
-            user=user, source_contract=c_src,
+            user=user,
+            source_contract=c_src,
             severity_threshold="HIGH",
         )
         fake = _patch_redis(self)
@@ -331,14 +374,17 @@ class DispatcherRateLimitTests(ContractsTransactionTestBase):
         fake._expires_at[rate_key] = time.time() + 3600
 
         result = handle_contract_updated(
-            contract_id=str(c_src.id), tenant_id=str(tenant.id),
-            old_lineage_hash="a", new_lineage_hash="b",
+            contract_id=str(c_src.id),
+            tenant_id=str(tenant.id),
+            old_lineage_hash="a",
+            new_lineage_hash="b",
         )
         self.assertEqual(result["rate_limited"], 1)
         self.assertEqual(result["dispatched"], 0)
         self.assertEqual(
             UserNotification.objects.filter(
-                user=user, category="LINEAGE_IMPACT",
+                user=user,
+                category="LINEAGE_IMPACT",
             ).count(),
             0,
         )
@@ -357,7 +403,8 @@ class DispatcherRateLimitTests(ContractsTransactionTestBase):
         c_tgt = _make_contract(tenant, name="tgt")
         _seed_derivation_edge(tenant, c_src, c_tgt)
         LineageSubscription.objects.create(
-            user=user, source_contract=c_src,
+            user=user,
+            source_contract=c_src,
             severity_threshold="HIGH",
         )
         fake = _patch_redis(self)
@@ -369,8 +416,10 @@ class DispatcherRateLimitTests(ContractsTransactionTestBase):
             action="DISPATCH_RATE_LIMITED",
         ).count()
         handle_contract_updated(
-            contract_id=str(c_src.id), tenant_id=str(tenant.id),
-            old_lineage_hash="a", new_lineage_hash="b",
+            contract_id=str(c_src.id),
+            tenant_id=str(tenant.id),
+            old_lineage_hash="a",
+            new_lineage_hash="b",
         )
         after_drops = AuditEvent.objects.filter(
             action="DISPATCH_RATE_LIMITED",
@@ -385,6 +434,9 @@ class DispatcherRateLimitTests(ContractsTransactionTestBase):
 
 
 class DispatcherDownstreamWalkTests(TestCase):
+    def tearDown(self):
+        _unpatch_redis()
+        super().tearDown()
     """Subscribers attached to contracts DOWNSTREAM of the changed
     contract receive notifications too — the dispatcher walks the
     LineageEdge graph BFS to enumerate affected contracts before
@@ -403,33 +455,44 @@ class DispatcherDownstreamWalkTests(TestCase):
         c_c = _make_contract(tenant, name="c")
         LineageEdge.objects.create(
             tenant=tenant,
-            source_contract_id=c_a.id, target_contract_id=c_b.id,
-            source_model="default", source_field="x",
-            target_model="default", target_field="x",
+            source_contract_id=c_a.id,
+            target_contract_id=c_b.id,
+            source_model="default",
+            source_field="x",
+            target_model="default",
+            target_field="x",
             edge_type="derivation",
         )
         LineageEdge.objects.create(
             tenant=tenant,
-            source_contract_id=c_b.id, target_contract_id=c_c.id,
-            source_model="default", source_field="x",
-            target_model="default", target_field="x",
+            source_contract_id=c_b.id,
+            target_contract_id=c_c.id,
+            source_model="default",
+            source_field="x",
+            target_model="default",
+            target_field="x",
             edge_type="derivation",
         )
         # Subscriber attached to C (downstream of A).
         LineageSubscription.objects.create(
-            user=user, source_contract=c_c, severity_threshold="HIGH",
+            user=user,
+            source_contract=c_c,
+            severity_threshold="HIGH",
         )
         _patch_redis(self)
 
         result = handle_contract_updated(
-            contract_id=str(c_a.id), tenant_id=str(tenant.id),
-            old_lineage_hash="a", new_lineage_hash="b",
+            contract_id=str(c_a.id),
+            tenant_id=str(tenant.id),
+            old_lineage_hash="a",
+            new_lineage_hash="b",
         )
         # The subscriber on C must have been picked up.
         self.assertEqual(result["dispatched"], 1)
         self.assertEqual(
             UserNotification.objects.filter(
-                user=user, category="LINEAGE_IMPACT",
+                user=user,
+                category="LINEAGE_IMPACT",
             ).count(),
             1,
         )
@@ -441,6 +504,9 @@ class DispatcherDownstreamWalkTests(TestCase):
 
 
 class DispatcherBodySummaryTests(TestCase):
+    def tearDown(self):
+        _unpatch_redis()
+        super().tearDown()
     """The notification body MUST surface the added / removed edge
     counts per REQ-LIN-F3-006 'What changed summary'."""
 
@@ -455,25 +521,34 @@ class DispatcherBodySummaryTests(TestCase):
         # 2 derivation edges → diff.added has 2 entries.
         _seed_derivation_edge(tenant, c_src, c_tgt)
         from hub.apps.contracts.models import LineageEdge
+
         c_tgt2 = _make_contract(tenant, name="tgt2")
         LineageEdge.objects.create(
             tenant=tenant,
-            source_contract_id=c_src.id, target_contract_id=c_tgt2.id,
-            source_model="default", source_field="x",
-            target_model="default", target_field="x",
+            source_contract_id=c_src.id,
+            target_contract_id=c_tgt2.id,
+            source_model="default",
+            source_field="x",
+            target_model="default",
+            target_field="x",
             edge_type="derivation",
         )
         LineageSubscription.objects.create(
-            user=user, source_contract=c_src, severity_threshold="HIGH",
+            user=user,
+            source_contract=c_src,
+            severity_threshold="HIGH",
         )
         _patch_redis(self)
 
         handle_contract_updated(
-            contract_id=str(c_src.id), tenant_id=str(tenant.id),
-            old_lineage_hash="a", new_lineage_hash="b",
+            contract_id=str(c_src.id),
+            tenant_id=str(tenant.id),
+            old_lineage_hash="a",
+            new_lineage_hash="b",
         )
         notif = UserNotification.objects.get(
-            user=user, category="LINEAGE_IMPACT",
+            user=user,
+            category="LINEAGE_IMPACT",
         )
         # The summary clause is rendered in the message body.
         self.assertIn("edges added", notif.message.lower() + " ")
@@ -485,7 +560,9 @@ class DispatcherBodySummaryTests(TestCase):
 
 
 class DispatcherCrossTenantContentTests(TestCase):
-
+    def tearDown(self):
+        _unpatch_redis()
+        super().tearDown()
     def test_cross_tenant_subscriber_receives_summary_only(self):
         """The dispatcher computes the user-tenant vs source-tenant
         relationship at notification time; cross-tenant subscribers
@@ -503,7 +580,8 @@ class DispatcherCrossTenantContentTests(TestCase):
         # Backfilled cross-tenant subscription (the API blocks creating
         # this in v1, but the dispatcher must still downgrade).
         LineageSubscription.objects.create(
-            user=user_b, source_contract=c_src,
+            user=user_b,
+            source_contract=c_src,
             severity_threshold="HIGH",
         )
         _patch_redis(self)
@@ -511,11 +589,13 @@ class DispatcherCrossTenantContentTests(TestCase):
         result = handle_contract_updated(
             contract_id=str(c_src.id),
             tenant_id=str(tenant_a.id),
-            old_lineage_hash="a", new_lineage_hash="b",
+            old_lineage_hash="a",
+            new_lineage_hash="b",
         )
         self.assertEqual(result["dispatched"], 1)
         notif = UserNotification.objects.get(
-            user=user_b, category="LINEAGE_IMPACT",
+            user=user_b,
+            category="LINEAGE_IMPACT",
         )
         # Summary-only body: must NOT contain the contract's name
         # (which is the in-tenant detail).

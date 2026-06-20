@@ -9,12 +9,14 @@ Client for interacting with the DataContract CLI service.
 - For Django API endpoint construction, use `hub.apps.api.utils.api_url_builder.APIURLBuilder`
 - This client follows service-to-service communication patterns with circuit breaker protection
 """
-import httpx
+
 import hashlib
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Any
+
+import httpx
+import structlog
 from django.conf import settings
 from django.core.cache import cache
-import structlog
 
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
@@ -40,38 +42,36 @@ class DataContractCLIClient:
         """Initialize client with service URL from settings"""
         import os
         import sys
+
         # In test environment, use localhost instead of service name
-        default_url = 'http://datacontract-service:8080'
-        if hasattr(settings, 'TESTING') and settings.TESTING:
-            if os.getenv('TEST_ENVIRONMENT') == 'staging':
-                default_url = 'http://localhost:8092'  # Staging uses port 8092
-            elif os.getenv('TEST_ENVIRONMENT') == 'default':
-                default_url = 'http://localhost:8080'
-        if 'pytest' in sys.modules or 'unittest' in sys.modules:
+        default_url = "http://datacontract-service:8080"
+        if hasattr(settings, "TESTING") and settings.TESTING:
+            if os.getenv("TEST_ENVIRONMENT") == "staging":
+                default_url = "http://localhost:8092"  # Staging uses port 8092
+            elif os.getenv("TEST_ENVIRONMENT") == "default":
+                default_url = "http://localhost:8080"
+        if "pytest" in sys.modules or "unittest" in sys.modules:
             # Auto-detect staging vs default
             import httpx
+
             try:
                 # Check if staging port is accessible
                 response = httpx.get("http://localhost:8092/health", timeout=1)
                 if response.status_code == 200:
-                    default_url = 'http://localhost:8092'
+                    default_url = "http://localhost:8092"
                 else:
-                    default_url = 'http://localhost:8080'
-            except Exception:
-                # Default to standard port
-                default_url = 'http://localhost:8080'
+                    default_url = "http://localhost:8080"
+            except (httpx.RequestError, OSError):
+                # Network / connection errors → fall back to standard port.
+                default_url = "http://localhost:8080"
 
         # Support both variable names for compatibility
         self.base_url = getattr(
             settings,
-            'DATACONTRACT_SERVICE_URL',
-            getattr(
-                settings,
-                'DATACONTRACT_CLI_SERVICE_URL',
-                default_url
-            )
+            "DATACONTRACT_SERVICE_URL",
+            getattr(settings, "DATACONTRACT_CLI_SERVICE_URL", default_url),
         )
-        self.timeout = getattr(settings, 'DATACONTRACT_SERVICE_TIMEOUT', DEFAULT_TIMEOUT)
+        self.timeout = getattr(settings, "DATACONTRACT_SERVICE_TIMEOUT", DEFAULT_TIMEOUT)
 
         # Initialize circuit breaker with 30-second timeout
         self._circuit_breaker = CircuitBreaker(
@@ -79,16 +79,12 @@ class DataContractCLIClient:
             failure_threshold=5,
             timeout_seconds=30,  # 30 seconds as specified
             success_threshold=2,
-            redis_client=get_redis_client()
+            redis_client=get_redis_client(),
         )
 
     def _make_request(
-        self,
-        endpoint: str,
-        data: Dict[str, Any],
-        timeout: Optional[int] = None,
-        max_retries: int = 2
-    ) -> Dict[str, Any]:
+        self, endpoint: str, data: dict[str, Any], timeout: int | None = None, max_retries: int = 2
+    ) -> dict[str, Any]:
         """
         Make HTTP request to DataContract service with retry logic.
 
@@ -108,7 +104,7 @@ class DataContractCLIClient:
         timeout = timeout or self.timeout
 
         # Build request headers — include internal API key for service-to-service auth
-        request_headers: Dict[str, str] = {}
+        request_headers: dict[str, str] = {}
         internal_key = getattr(settings, "INTERNAL_API_KEY", "")
         if internal_key:
             request_headers["X-Internal-Api-Key"] = internal_key
@@ -124,64 +120,89 @@ class DataContractCLIClient:
                     return response.json()
             except httpx.TimeoutException as e:
                 if attempt < max_retries:
-                    delay = backoff_delays[attempt] if attempt < len(backoff_delays) else backoff_delays[-1]
+                    delay = (
+                        backoff_delays[attempt]
+                        if attempt < len(backoff_delays)
+                        else backoff_delays[-1]
+                    )
                     logger.warning(
                         "datacontract_service_timeout_retry",
                         endpoint=endpoint,
                         attempt=attempt + 1,
                         max_retries=max_retries,
-                        delay=delay
+                        delay=delay,
                     )
                     import time
+
                     time.sleep(delay)
                     continue
                 logger.warning("datacontract_service_timeout", endpoint=endpoint, timeout=timeout)
-                raise Exception(f"DataContract service timeout after {timeout}s (after {max_retries} retries)") from e
+                raise Exception(
+                    f"DataContract service timeout after {timeout}s (after {max_retries} retries)"
+                ) from e
             except httpx.HTTPStatusError as e:
                 # Don't retry on client errors (4xx)
                 if e.response.status_code < 500:
-                    logger.warning("datacontract_service_client_error", endpoint=endpoint, status_code=e.response.status_code)
-                    raise Exception(f"DataContract service client error: {e.response.status_code}") from e
+                    logger.warning(
+                        "datacontract_service_client_error",
+                        endpoint=endpoint,
+                        status_code=e.response.status_code,
+                    )
+                    raise Exception(
+                        f"DataContract service client error: {e.response.status_code}"
+                    ) from e
                 # Retry on server errors (5xx)
                 if attempt < max_retries:
-                    delay = backoff_delays[attempt] if attempt < len(backoff_delays) else backoff_delays[-1]
+                    delay = (
+                        backoff_delays[attempt]
+                        if attempt < len(backoff_delays)
+                        else backoff_delays[-1]
+                    )
                     logger.warning(
                         "datacontract_service_server_error_retry",
                         endpoint=endpoint,
                         status_code=e.response.status_code,
                         attempt=attempt + 1,
                         max_retries=max_retries,
-                        delay=delay
+                        delay=delay,
                     )
                     import time
+
                     time.sleep(delay)
                     continue
-                logger.error("datacontract_service_server_error", endpoint=endpoint, status_code=e.response.status_code)
-                raise Exception(f"DataContract service server error: {e.response.status_code}") from e
+                logger.error(
+                    "datacontract_service_server_error",
+                    endpoint=endpoint,
+                    status_code=e.response.status_code,
+                )
+                raise Exception(
+                    f"DataContract service server error: {e.response.status_code}"
+                ) from e
             except httpx.HTTPError as e:
                 if attempt < max_retries:
-                    delay = backoff_delays[attempt] if attempt < len(backoff_delays) else backoff_delays[-1]
+                    delay = (
+                        backoff_delays[attempt]
+                        if attempt < len(backoff_delays)
+                        else backoff_delays[-1]
+                    )
                     logger.warning(
                         "datacontract_service_error_retry",
                         endpoint=endpoint,
                         error=str(e),
                         attempt=attempt + 1,
                         max_retries=max_retries,
-                        delay=delay
+                        delay=delay,
                     )
                     import time
+
                     time.sleep(delay)
                     continue
                 logger.warning("datacontract_service_error", endpoint=endpoint, error=str(e))
-                raise Exception(f"DataContract service error: {str(e)}") from e
+                raise Exception(f"DataContract service error: {e!s}") from e
 
         raise Exception(f"DataContract service failed after {max_retries} retries")
 
-    def _compute_contract_hash(
-        self,
-        raw_contract: str,
-        format: str
-    ) -> str:
+    def _compute_contract_hash(self, raw_contract: str, format: str) -> str:
         """
         Compute hash for contract caching.
 
@@ -192,15 +213,10 @@ class DataContractCLIClient:
         Returns:
             SHA-256 hash as hex string
         """
-        content = f"{format}:{raw_contract}".encode('utf-8')
+        content = f"{format}:{raw_contract}".encode()
         return hashlib.sha256(content).hexdigest()
 
-    def _get_cache_key(
-        self,
-        contract_hash: str,
-        cli_version: str,
-        operation: str
-    ) -> str:
+    def _get_cache_key(self, contract_hash: str, cli_version: str, operation: str) -> str:
         """Generate cache key for validation result"""
         return f"datacontract:{operation}:{contract_hash}:{cli_version}"
 
@@ -208,10 +224,10 @@ class DataContractCLIClient:
         self,
         raw_contract: str,
         format: str,
-        tenant_id: Optional[str] = None,
+        tenant_id: str | None = None,
         use_cache: bool = True,
-        timeout: Optional[int] = None
-    ) -> Dict[str, Any]:
+        timeout: int | None = None,
+    ) -> dict[str, Any]:
         """
         Validate a contract.
 
@@ -235,27 +251,27 @@ class DataContractCLIClient:
             # Get CLI version first (for cache key)
             try:
                 health = self.health_check()
-                cli_version = health.get('cli_version', 'unknown')
-                cache_key = self._get_cache_key(contract_hash, cli_version, 'validate')
+                cli_version = health.get("cli_version", "unknown")
+                cache_key = self._get_cache_key(contract_hash, cli_version, "validate")
                 cached_result = cache.get(cache_key)
                 if cached_result:
                     logger.info("datacontract_validation_cache_hit", contract_hash=contract_hash)
                     return cached_result
-            except Exception:
-                pass  # Continue with validation if cache check fails
+            except (httpx.RequestError, OSError):
+                pass  # Continue with validation if cache/health check fails
 
         # Define fallback response
-        def fallback_response(*args, **kwargs) -> Dict[str, Any]:
+        def fallback_response(*args, **kwargs) -> dict[str, Any]:
             """Fallback response when circuit breaker is open or service fails."""
             return {
                 "validation_status": "ERROR",
                 "issues": [],
                 "cli_version": "unknown",
-                "error": "DataContract service unavailable (circuit breaker open)"
+                "error": "DataContract service unavailable (circuit breaker open)",
             }
 
         # Execute with circuit breaker protection
-        def execute_validation() -> Dict[str, Any]:
+        def execute_validation() -> dict[str, Any]:
             """Execute validation operation."""
             # Make validation request
             request_data = {
@@ -263,23 +279,20 @@ class DataContractCLIClient:
                 "format": format.lower(),
                 "timeout": timeout or SYNC_TIMEOUT,
                 "tenant_id": tenant_id,
-                "use_cache": use_cache
+                "use_cache": use_cache,
             }
 
             result = self._make_request("/validate", request_data, timeout=timeout or SYNC_TIMEOUT)
 
             # Cache result if enabled
-            if use_cache and 'cli_version' in result:
-                cache_key = self._get_cache_key(contract_hash, result['cli_version'], 'validate')
+            if use_cache and "cli_version" in result:
+                cache_key = self._get_cache_key(contract_hash, result["cli_version"], "validate")
                 cache.set(cache_key, result, timeout=3600)  # Cache for 1 hour
 
             return result
 
         try:
-            result = self._circuit_breaker.call(
-                execute_validation,
-                fallback=fallback_response
-            )
+            result = self._circuit_breaker.call(execute_validation, fallback=fallback_response)
             return result
         except Exception as e:
             # The underlying _make_request / circuit-breaker call already
@@ -287,19 +300,10 @@ class DataContractCLIClient:
             # This catch-all returns a fallback response (graceful
             # degradation), so log at WARNING — not ERROR — since the
             # caller is expected to handle the fallback.
-            logger.warning(
-                "datacontract_validation_error",
-                error=str(e),
-                endpoint="/validate"
-            )
+            logger.warning("datacontract_validation_error", error=str(e), endpoint="/validate")
             return fallback_response()
 
-    def lint(
-        self,
-        raw_contract: str,
-        format: str,
-        timeout: Optional[int] = None
-    ) -> Dict[str, Any]:
+    def lint(self, raw_contract: str, format: str, timeout: int | None = None) -> dict[str, Any]:
         """
         Lint a contract.
 
@@ -314,18 +318,14 @@ class DataContractCLIClient:
         request_data = {
             "raw_contract": raw_contract,
             "format": format.lower(),
-            "timeout": timeout or SYNC_TIMEOUT
+            "timeout": timeout or SYNC_TIMEOUT,
         }
 
         return self._make_request("/lint", request_data, timeout=timeout or SYNC_TIMEOUT)
 
     def convert(
-        self,
-        raw_contract: str,
-        source_format: str,
-        target_format: str,
-        timeout: Optional[int] = None
-    ) -> Dict[str, Any]:
+        self, raw_contract: str, source_format: str, target_format: str, timeout: int | None = None
+    ) -> dict[str, Any]:
         """
         Convert a contract between formats.
 
@@ -342,12 +342,12 @@ class DataContractCLIClient:
             "raw_contract": raw_contract,
             "source_format": source_format.lower(),
             "target_format": target_format.lower(),
-            "timeout": timeout or SYNC_TIMEOUT
+            "timeout": timeout or SYNC_TIMEOUT,
         }
 
         return self._make_request("/convert", request_data, timeout=timeout or SYNC_TIMEOUT)
 
-    def health_check(self) -> Dict[str, Any]:
+    def health_check(self) -> dict[str, Any]:
         """
         Check service health and get CLI version.
 
@@ -366,8 +366,8 @@ class DataContractCLIClient:
 
 
 def interpret_validation_status(
-    validation_result: Dict[str, Any]
-) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]]]:
+    validation_result: dict[str, Any],
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
     """
     Interpret validation result into status and structured errors/warnings.
 
@@ -377,31 +377,31 @@ def interpret_validation_status(
     Returns:
         Tuple of (validation_status, errors, warnings)
     """
-    validation_status = validation_result.get('validation_status', 'ERROR')
-    issues = validation_result.get('issues', [])
+    validation_status = validation_result.get("validation_status", "ERROR")
+    issues = validation_result.get("issues", [])
 
     errors = []
     warnings = []
 
     for issue in issues:
-        severity = issue.get('severity', 'INFO')
+        severity = issue.get("severity", "INFO")
         structured_issue = {
-            'severity': severity,
-            'category': issue.get('category', 'unknown'),
-            'path': issue.get('path', ''),
-            'message': issue.get('message', ''),
-            'rule_id': issue.get('rule_id', '')
+            "severity": severity,
+            "category": issue.get("category", "unknown"),
+            "path": issue.get("path", ""),
+            "message": issue.get("message", ""),
+            "rule_id": issue.get("rule_id", ""),
         }
 
-        if severity in ['ERROR', 'CRITICAL']:
+        if severity in ["ERROR", "CRITICAL"]:
             errors.append(structured_issue)
-        elif severity in ['WARNING', 'INFO']:
+        elif severity in ["WARNING", "INFO"]:
             warnings.append(structured_issue)
 
     return validation_status, errors, warnings
 
 
-def group_errors_by_category(errors: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+def group_errors_by_category(errors: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     """
     Group validation errors by category.
 
@@ -413,9 +413,8 @@ def group_errors_by_category(errors: List[Dict[str, Any]]) -> Dict[str, List[Dic
     """
     grouped = {}
     for error in errors:
-        category = error.get('category', 'unknown')
+        category = error.get("category", "unknown")
         if category not in grouped:
             grouped[category] = []
         grouped[category].append(error)
     return grouped
-

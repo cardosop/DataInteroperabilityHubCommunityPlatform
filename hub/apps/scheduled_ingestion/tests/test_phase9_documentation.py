@@ -8,11 +8,7 @@ Tests verify:
 4. Code changes (checkpoints) don't break imports or functionality
 """
 
-import json
-
 from django.test import TestCase
-from drf_spectacular.openapi import AutoSchema
-from drf_spectacular.utils import extend_schema
 
 from hub.apps.scheduled_ingestion.internal_views import (
     InternalConfigView,
@@ -39,9 +35,7 @@ class Phase9DocumentationTest(TestCase):
         self.assertIsNotNone(update, "partial_update method missing")
         # extend_schema sets kwargs on the method
         self.assertTrue(
-            hasattr(create, "kwargs")
-            or hasattr(create, "cls")
-            or hasattr(create, "initkwargs"),
+            hasattr(create, "kwargs") or hasattr(create, "cls") or hasattr(create, "initkwargs"),
             "create should be a DRF action or have schema metadata",
         )
 

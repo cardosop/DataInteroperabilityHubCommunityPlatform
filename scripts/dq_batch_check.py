@@ -4,6 +4,7 @@ Check that DQ, Compliance, MinIO, and S3 are ready before Data Quality / DQ batc
 Used by run_phase_12a_batched.sh to avoid heredoc parsing issues.
 Exit 0 if all ready, 1 otherwise.
 """
+
 import os
 import sys
 import urllib.request
@@ -21,12 +22,9 @@ def ok(url, timeout=5):
 
 
 def main():
-    dq = ok(
-        os.getenv("DQ_SERVICE_URL", "http://dq-service-test:8083") + "/health"
-    )
+    dq = ok(os.getenv("DQ_SERVICE_URL", "http://dq-service-test:8083") + "/health")
     comp = ok(
-        os.getenv("COMPLIANCE_SERVICE_URL", "http://compliance-service-test:8082")
-        + "/health"
+        os.getenv("COMPLIANCE_SERVICE_URL", "http://compliance-service-test:8082") + "/health"
     )
     ep = (
         os.getenv("AWS_S3_ENDPOINT_URL", "http://minio-test:9000")
@@ -43,28 +41,18 @@ def main():
 
             c = boto3.client(
                 "s3",
-                endpoint_url=os.getenv(
-                    "AWS_S3_ENDPOINT_URL", "http://minio-test:9000"
-                ),
+                endpoint_url=os.getenv("AWS_S3_ENDPOINT_URL", "http://minio-test:9000"),
                 aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "minioadmin"),
-                aws_secret_access_key=os.getenv(
-                    "AWS_SECRET_ACCESS_KEY", "minioadmin"
-                ),
+                aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin"),
             )
             try:
-                c.head_bucket(
-                    Bucket=os.getenv("AWS_STORAGE_BUCKET_NAME", "hub-test")
-                )
+                c.head_bucket(Bucket=os.getenv("AWS_STORAGE_BUCKET_NAME", "hub-test"))
             except ClientError as e:
                 if e.response.get("Error", {}).get("Code", "") in (
                     "404",
                     "NoSuchBucket",
                 ):
-                    c.create_bucket(
-                        Bucket=os.getenv(
-                            "AWS_STORAGE_BUCKET_NAME", "hub-test"
-                        )
-                    )
+                    c.create_bucket(Bucket=os.getenv("AWS_STORAGE_BUCKET_NAME", "hub-test"))
                 else:
                     raise
             c.put_object(
@@ -81,13 +69,13 @@ def main():
 def diagnose():
     """Print readiness of each service to stderr and exit 1."""
     import sys as _sys
+
     dq = ok(
         os.getenv("DQ_SERVICE_URL", "http://dq-service-test:8083") + "/health",
         timeout=3,
     )
     comp = ok(
-        os.getenv("COMPLIANCE_SERVICE_URL", "http://compliance-service-test:8082")
-        + "/health",
+        os.getenv("COMPLIANCE_SERVICE_URL", "http://compliance-service-test:8082") + "/health",
         timeout=3,
     )
     ep = (

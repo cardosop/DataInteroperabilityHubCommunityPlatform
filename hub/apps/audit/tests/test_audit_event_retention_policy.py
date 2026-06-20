@@ -30,18 +30,18 @@ Engineering contract this suite pins (preprod01 tasks.md 234.5):
     tenant-scoped queryset, emits audit events on create/update/delete
     (``AUDIT_EVENT_RETENTION_POLICY_*``).
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 from datetime import timedelta
 from io import StringIO
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db import IntegrityError
-from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -67,7 +67,9 @@ User = get_user_model()
 
 def _ensure_tenant_has_subscription(tenant: Tenant) -> None:
     from datetime import timedelta
+
     from django.utils import timezone
+
     from hub.apps.billing.models import Subscription, SubscriptionStatus
     from hub.apps.tenants.models import PlanTier, TenantPlan
 
@@ -408,15 +410,11 @@ class TestArchiveCommandConsultsPerEventTypePolicy:
             event_type="GDPR_PROTECTED",
             regulation_keys=["GDPR"],  # 2555d
         )
-        protected = _make_archived_event(
-            self.tenant, action="GDPR_PROTECTED", age_days=4 * 365
-        )
+        protected = _make_archived_event(self.tenant, action="GDPR_PROTECTED", age_days=4 * 365)
         # Also create a plain event of the same age + a different action
         # that has NO per-event-type override — must be archived under
         # the global 3y default.
-        unprotected = _make_archived_event(
-            self.tenant, action="STANDARD_EVENT", age_days=4 * 365
-        )
+        unprotected = _make_archived_event(self.tenant, action="STANDARD_EVENT", age_days=4 * 365)
 
         self._run("--retention-years=3")
 
@@ -438,9 +436,7 @@ class TestArchiveCommandConsultsPerEventTypePolicy:
         )
         # Sanity: a same-age event of a non-overridden action survives
         # because it's under the global 3y window.
-        survivor = _make_archived_event(
-            self.tenant, action="OTHER_EVENT", age_days=int(2.5 * 365)
-        )
+        survivor = _make_archived_event(self.tenant, action="OTHER_EVENT", age_days=int(2.5 * 365))
 
         self._run("--retention-years=3")
 
@@ -457,9 +453,7 @@ class TestArchiveCommandConsultsPerEventTypePolicy:
             regulation_keys=["GDPR"],
             enabled=False,
         )
-        evt = _make_archived_event(
-            self.tenant, action="DISABLED_GDPR", age_days=4 * 365
-        )
+        evt = _make_archived_event(self.tenant, action="DISABLED_GDPR", age_days=4 * 365)
         self._run("--retention-years=3")
         evt.refresh_from_db()
         # Disabled policy is invisible → global 3y applies → archived.
@@ -472,9 +466,7 @@ class TestArchiveCommandConsultsPerEventTypePolicy:
             event_type="DRY_PROTECTED",
             regulation_keys=["GDPR"],
         )
-        evt = _make_archived_event(
-            self.tenant, action="DRY_PROTECTED", age_days=4 * 365
-        )
+        evt = _make_archived_event(self.tenant, action="DRY_PROTECTED", age_days=4 * 365)
         self._run("--dry-run", "--retention-years=3")
         evt.refresh_from_db()
         # Dry-run never writes; behaviour is independent of policy.
@@ -501,14 +493,10 @@ class TestArchiveCommandConsultsPerEventTypePolicy:
             event_type="POSSIBLY_BAD",
             retention_days=365,
         )
-        AuditEventRetentionPolicy.objects.filter(pk=bad.pk).update(
-            retention_days=None
-        )
+        AuditEventRetentionPolicy.objects.filter(pk=bad.pk).update(retention_days=None)
 
         # Unrelated event that SHOULD remain under the global 3y rule.
-        survivor = _make_archived_event(
-            self.tenant, action="OTHER_KEEP", age_days=int(2 * 365)
-        )
+        survivor = _make_archived_event(self.tenant, action="OTHER_KEEP", age_days=(2 * 365))
 
         self._run("--retention-years=3")
 
@@ -728,10 +716,14 @@ class TestAuditEventRetentionPolicyAPI:
         row.refresh_from_db()
         assert row.retention_days == 2555
         # The UPDATED audit event carries the previous retention.
-        upd = AuditEvent.objects.filter(
-            tenant=self.tenant,
-            action=_audit_et.AUDIT_EVENT_RETENTION_POLICY_UPDATED,
-        ).order_by("-timestamp").first()
+        upd = (
+            AuditEvent.objects.filter(
+                tenant=self.tenant,
+                action=_audit_et.AUDIT_EVENT_RETENTION_POLICY_UPDATED,
+            )
+            .order_by("-timestamp")
+            .first()
+        )
         assert upd is not None
         assert upd.details_json.get("previous_retention_days") == 730
         assert upd.details_json.get("retention_days") == 2555

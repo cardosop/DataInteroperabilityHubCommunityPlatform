@@ -11,9 +11,14 @@ Tests cover:
 All tests use real implementations (no mocks of hub services).
 """
 
-# CRITICAL: Patch sql_flush to use CASCADE for foreign key constraints
-# This is needed when running tests with manage.py test (not pytest)
-# The conftest.py patch only applies when using pytest
+# CRITICAL: Patch sql_flush to use CASCADE for foreign key constraints.
+# This is needed when running tests with ``manage.py test`` (not pytest).
+# The conftest.py patch only applies when using pytest; this module-level
+# patch handles the ``manage.py test`` path.  The patch is intentionally
+# never restored — sql_flush is only called during test teardown and
+# the CASCADE variant is a strict superset (all tests benefit from
+# automatic CASCADE during truncation).  The ``_patched_for_cascade``
+# guard prevents double-patching when the conftest patch is also active.
 try:
     import django.db.backends.postgresql.operations as pg_operations
 
@@ -36,24 +41,23 @@ try:
 
         _patched_sql_flush._patched_for_cascade = True
         pg_operations.DatabaseOperations.sql_flush = _patched_sql_flush
-except Exception:
-    # Patch failed, but tests should still run
+except (AttributeError, ImportError):
+    # Patch failed (e.g. sql_flush already patched by conftest, or module
+    # not importable). Tests should still run.
     pass
 
-import json
 import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase, override_settings
-from django.utils import timezone
 from django_rq import get_queue
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.auth.jwt_utils import JWTTokenGenerator
-from hub.apps.auth.models import APIKey, RefreshToken
+from hub.apps.auth.models import APIKey
 from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.core.events.models import Event
 from hub.apps.tenants.models import Tenant, TenantConfig, TenantPlan
@@ -166,33 +170,36 @@ class RegisterEndpointTest(TestCase):
 
     def test_register_success_creates_user_with_display_name(self):
         """Test successful user registration creates user with display_name."""
-        self.client.post(
+        response = self.client.post(
             "/api/v1/auth/register/",
             {"email": "newuser@example.com", "password": "SecureP@ss123!", "name": "New User"},
             format="json",
         )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         user = User.objects.get(email="newuser@example.com")
         self.assertEqual(user.display_name, "New User")
 
     def test_register_success_creates_user_with_active_status(self):
         """Test successful user registration creates user with ACTIVE status."""
-        self.client.post(
+        response = self.client.post(
             "/api/v1/auth/register/",
             {"email": "newuser@example.com", "password": "SecureP@ss123!", "name": "New User"},
             format="json",
         )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         user = User.objects.get(email="newuser@example.com")
         self.assertEqual(user.status, UserStatus.ACTIVE)
 
     def test_register_success_creates_user_with_password(self):
         """Test successful user registration creates user with password."""
-        self.client.post(
+        response = self.client.post(
             "/api/v1/auth/register/",
             {"email": "newuser@example.com", "password": "SecureP@ss123!", "name": "New User"},
             format="json",
         )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         user = User.objects.get(email="newuser@example.com")
         self.assertTrue(user.check_password("SecureP@ss123!"))
@@ -229,7 +236,7 @@ class RegisterEndpointTest(TestCase):
 
     def test_register_with_tenant_associates_user(self):
         """Test registration with tenant associates user with tenant."""
-        self.client.post(
+        response = self.client.post(
             "/api/v1/auth/register/",
             {
                 "email": "tenantuser@example.com",
@@ -239,6 +246,7 @@ class RegisterEndpointTest(TestCase):
             },
             format="json",
         )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         user = User.objects.get(email="tenantuser@example.com")
         self.assertEqual(user.tenant, self.tenant)
@@ -247,9 +255,7 @@ class RegisterEndpointTest(TestCase):
         """Test registration with duplicate email returns 409 (Conflict)."""
         # Create existing user with a known email
         dup_email = f"existing-{uuid.uuid4().hex[:8]}@example.com"
-        User.objects.create_user(
-            email=dup_email, password="password123", tenant=self.tenant
-        )
+        User.objects.create_user(email=dup_email, password="password123", tenant=self.tenant)
 
         # Try to register with the SAME email
         response = self.client.post(
@@ -264,9 +270,7 @@ class RegisterEndpointTest(TestCase):
         """Test registration with duplicate email returns EMAIL_ALREADY_EXISTS code."""
         # Create existing user with a known email
         dup_email = f"existing-{uuid.uuid4().hex[:8]}@example.com"
-        User.objects.create_user(
-            email=dup_email, password="password123", tenant=self.tenant
-        )
+        User.objects.create_user(email=dup_email, password="password123", tenant=self.tenant)
 
         # Try to register with the SAME email
         response = self.client.post(
@@ -501,11 +505,12 @@ class RegisterPersonalTenantTest(TestCase):
     def test_register_without_tenant_id_assigns_data_provider_and_consumer_roles(self):
         """Registration without tenant_id assigns DATA_PROVIDER and DATA_CONSUMER roles."""
         email = "roles@example.com"
-        self.client.post(
+        response = self.client.post(
             "/api/v1/auth/register/",
             {"email": email, "password": "SecureP@ss123!", "name": "Roles User"},
             format="json",
         )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         user = User.objects.get(email=email)
         role_names = [ur.role.name for ur in user.user_roles.all()]
@@ -516,7 +521,11 @@ class RegisterPersonalTenantTest(TestCase):
         """Registration without tenant_id returns tenant_id (personal tenant) in response."""
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": "response@example.com", "password": "SecureP@ss123!", "name": "Response User"},
+            {
+                "email": "response@example.com",
+                "password": "SecureP@ss123!",
+                "name": "Response User",
+            },
             format="json",
         )
 
@@ -527,11 +536,12 @@ class RegisterPersonalTenantTest(TestCase):
     def test_register_without_tenant_id_personal_tenant_has_free_plan(self):
         """Personal tenant created on registration has FREE plan."""
         email = "freeplan@example.com"
-        self.client.post(
+        response = self.client.post(
             "/api/v1/auth/register/",
             {"email": email, "password": "SecureP@ss123!", "name": "Free Plan User"},
             format="json",
         )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         user = User.objects.get(email=email)
         self.assertEqual(user.tenant.plan.slug, "free")
@@ -539,11 +549,12 @@ class RegisterPersonalTenantTest(TestCase):
     def test_register_without_tenant_id_personal_tenant_has_tenant_config(self):
         """Personal tenant has TenantConfig with platform defaults."""
         email = "config@example.com"
-        self.client.post(
+        response = self.client.post(
             "/api/v1/auth/register/",
             {"email": email, "password": "SecureP@ss123!", "name": "Config User"},
             format="json",
         )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         user = User.objects.get(email=email)
         config = TenantConfig.objects.get(tenant=user.tenant)
@@ -553,11 +564,12 @@ class RegisterPersonalTenantTest(TestCase):
     def test_register_without_tenant_id_personal_tenant_has_active_subscription(self):
         """Personal tenant has active Subscription (required for write operations)."""
         email = "sub@example.com"
-        self.client.post(
+        response = self.client.post(
             "/api/v1/auth/register/",
             {"email": email, "password": "SecureP@ss123!", "name": "Sub User"},
             format="json",
         )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         user = User.objects.get(email=email)
         subscription = Subscription.objects.get(tenant=user.tenant)
@@ -678,11 +690,12 @@ class RegisterPlanNotFoundTest(TestCase):
         self.assertNotIn("PLAN_NOT_FOUND", body)
 
     def test_register_without_free_plan_does_not_create_user(self):
-        self.client.post(
+        response = self.client.post(
             "/api/v1/auth/register/",
             {"email": "nofreeplan4@example.com", "password": "SecureP@ss123!", "name": "No Plan"},
             format="json",
         )
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
         self.assertFalse(User.objects.filter(email="nofreeplan4@example.com").exists())
 
 
@@ -750,21 +763,19 @@ class RegisterEventPublishingTest(TestCase):
             user_created_event_persisted, timeout=5.0, message="user.created event not persisted"
         )
 
-        # Check for user.created event in database
+        # wait_until above already guarantees the event exists — if it timed out
+        # the test would have failed.  The conditional fallback is dead code and
+        # would silently mask a regression in event persistence.
         events = Event.objects.filter(event_type="user.created", data__email=email)
-
-        if events.exists():
-            event = events.first()
-            self.assertEqual(event.event_type, "user.created")
-            self.assertEqual(event.data["email"], email)
-            self.assertIn("user_id", event.data)
-            self.assertEqual(str(event.tenant_id), str(self.tenant.id))
-        else:
-            # If event not found, verify user was created (main functionality works)
-            # Event publishing may be disabled or async in some configurations
-            user = User.objects.get(email=email)
-            self.assertIsNotNone(user)
-            # Note: Event publishing is verified when events are enabled
+        self.assertTrue(
+            events.exists(),
+            f"user.created event should be persisted for {email}",
+        )
+        event = events.first()
+        self.assertEqual(event.event_type, "user.created")
+        self.assertEqual(event.data["email"], email)
+        self.assertIn("user_id", event.data)
+        self.assertEqual(str(event.tenant_id), str(self.tenant.id))
 
     def test_register_sends_welcome_email(self):
         """
@@ -775,10 +786,6 @@ class RegisterEventPublishingTest(TestCase):
         # Use unique email to avoid conflicts when database flush is skipped
         unique_id = uuid.uuid4().hex[:8]
         email = f"emailuser-{unique_id}@example.com"
-
-        # Get real queue
-        queue = get_queue("default")
-        initial_count = queue.count
 
         response = self.client.post(
             "/api/v1/auth/register/",
@@ -797,23 +804,17 @@ class RegisterEventPublishingTest(TestCase):
         user = User.objects.get(email=email)
         self.assertIsNotNone(user)
 
-        # Verify email was queued (check queue count increased)
-        # Note: Email queuing may be conditional or may fail silently
-        # We verify the registration succeeded, which is the main functionality
-        # Email queuing is a side effect that may or may not occur depending on configuration
-        final_count = queue.count
+        # Verify welcome email was sent — the notification task fires on
+        # every successful registration.  In the test environment the RQ
+        # worker processes the job synchronously, so the queue count may
+        # already be back at zero.  Check the EmailDelivery record instead.
+        from hub.apps.notifications.models import EmailDelivery
 
-        # If queue count increased, email was queued
-        # If not, email queuing may be disabled or failed (acceptable)
-        # The important thing is that registration succeeded
-        if final_count > initial_count:
-            # Email was queued - verify it's a welcome email job
-            jobs = queue.jobs
-            welcome_email_jobs = [
-                j for j in jobs if "welcome" in str(j).lower() or "email" in str(j).lower()
-            ]
-            # At least one email-related job should be in queue
-            self.assertGreater(len(welcome_email_jobs), 0)
+        deliveries = EmailDelivery.objects.filter(to_email=email)
+        self.assertTrue(
+            deliveries.exists(),
+            f"Expected at least 1 email delivery for {email}",
+        )
 
 
 class MeEndpointTest(TestCase):
@@ -857,10 +858,7 @@ class MeEndpointTest(TestCase):
         response = self.client.get("/api/v1/auth/me/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Handle both UUID object and string representation
-        response_id = response.data["id"]
-        if hasattr(response_id, "__str__"):
-            response_id = str(response_id)
+        response_id = str(response.data["id"])
         self.assertEqual(response_id, str(self.user.id))
         self.assertEqual(response.data["email"], self.user.email)
         self.assertEqual(response.data["name"], "Test User")
@@ -896,7 +894,7 @@ class MeEndpointTest(TestCase):
     def test_me_with_api_key(self):
         """Test get current user with API key"""
         # Create API key
-        api_key = APIKey.objects.create(
+        APIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
             name="Test API Key",
@@ -905,7 +903,7 @@ class MeEndpointTest(TestCase):
         )
 
         # Make request with API key
-        response = self.client.get("/api/v1/auth/me/", HTTP_AUTHORIZATION=f"ApiKey test-key-123")
+        self.client.get("/api/v1/auth/me/", HTTP_AUTHORIZATION="ApiKey test-key-123")
 
         # Note: API key authentication might need additional setup
         # This test verifies the endpoint works with authentication
@@ -932,7 +930,7 @@ class MeEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # First request
-        response1 = self.client.get("/api/v1/auth/me/")
+        self.client.get("/api/v1/auth/me/")
 
         # Second request should use cache
         response2 = self.client.get("/api/v1/auth/me/")
@@ -1073,7 +1071,7 @@ class RegisterMeSecurityTest(TestCase):
         )
 
     def test_register_sql_injection_email(self):
-        """Test SQL injection attempt in email field"""
+        """Django EmailField rejects single quotes per RFC 5321/5322."""
         response = self.client.post(
             "/api/v1/auth/register/",
             {
@@ -1083,14 +1081,11 @@ class RegisterMeSecurityTest(TestCase):
             },
             format="json",
         )
-
-        # Should fail validation (invalid email format) or create user safely
-        # Django ORM should protect against SQL injection
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_201_CREATED])
-        # If created, verify it was created safely (email stored as-is, not executed)
-        if response.status_code == status.HTTP_201_CREATED:
-            user = User.objects.get(email="user'; DROP TABLE users; --@example.com")
-            self.assertIsNotNone(user)
+        # Single-quote in local-part is invalid per RFC 5321/5322.
+        # Django's EmailField rejects it; the ORM already uses
+        # parameterised queries so SQL injection is not possible.
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("email", response.data)
 
     def test_register_xss_name(self):
         """Test XSS attempt in name field"""
@@ -1113,7 +1108,9 @@ class RegisterMeSecurityTest(TestCase):
     def test_me_token_tampering(self):
         """Test me endpoint with tampered token"""
         user = User.objects.create_user(
-            email=f"user-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"user-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
         # Generate valid token
@@ -1129,19 +1126,27 @@ class RegisterMeSecurityTest(TestCase):
         # Should fail authentication
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    @override_settings(RATE_LIMIT_ENABLED=True)
     def test_register_rate_limiting(self):
-        """Test rate limiting on register endpoint.
+        """Register endpoint is categorised under AUTH rate limiting.
 
-        Rate limiting on the register endpoint is handled by middleware
-        (RateLimitMiddleware), which is disabled in test settings
-        (RATE_LIMIT_ENABLED=False).  A proper rate-limiting integration
-        test should use @override_settings(RATE_LIMIT_ENABLED=True) and
-        verify 429 responses after exceeding the configured threshold.
+        When RATE_LIMIT_ENABLED is True the middleware applies
+        AUTH-category rate limits.  A single request must still
+        succeed — the limit is reached only after many rapid
+        attempts, which is tested exhaustively in the rate-limiting
+        middleware test suite.
         """
-        # Rate limiting is tested at the middleware level in
-        # hub/apps/rate_limiting/tests/ — not here.
-        self.skipTest("Rate limiting disabled in test settings")
-
+        response = self.client.post(
+            "/api/v1/auth/register/",
+            {
+                "email": f"rate-limit-test-{uuid.uuid4().hex[:8]}@example.com",
+                "password": "SecureP@ss123!",
+                "name": "RateLimit Test User",
+            },
+            format="json",
+        )
+        # A single request must always pass even with rate limiting enabled.
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
 
 class RegisterMePerformanceTest(TestCase):
@@ -1183,7 +1188,9 @@ class RegisterMePerformanceTest(TestCase):
         import time
 
         user = User.objects.create_user(
-            email=f"perf-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
         self.client.force_authenticate(user=user)
@@ -1204,7 +1211,9 @@ class RegisterMePerformanceTest(TestCase):
         import time
 
         user = User.objects.create_user(
-            email=f"cached-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"cached-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
         self.client.force_authenticate(user=user)

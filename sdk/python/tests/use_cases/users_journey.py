@@ -13,10 +13,10 @@ from tests._persona_provisioning import provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import api_get, api_put
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _admin_creds():
     return provision_persona("platform_admin")
@@ -57,9 +57,7 @@ def test_get_current_user():
     resp = _get_current_user(creds)
     _skip_if_not_found(resp, "Current user")
 
-    assert resp.status_code == 200, (
-        f"Current user returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"Current user returned {resp.status_code}: {resp.text[:500]}"
     body = resp.json()
     assert isinstance(body, dict)
     user_id = body.get("id") or body.get("user_id")
@@ -128,15 +126,11 @@ def test_update_user_profile():
     get_resp = _get_current_user(creds)
     if get_resp.status_code == 200:
         body = get_resp.json()
-        actual_name = (
-            body.get("display_name")
-            or body.get("name")
-            or body.get("full_name")
-            or ""
-        )
+        actual_name = body.get("display_name") or body.get("name") or body.get("full_name") or ""
         # Soft check: the name may be stored differently
         if new_display not in actual_name:
             import warnings
+
             warnings.warn(
                 f"Updated display_name not reflected in GET response: "
                 f"expected '{new_display}', got '{actual_name}'"

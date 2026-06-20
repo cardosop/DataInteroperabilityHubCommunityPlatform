@@ -42,21 +42,33 @@ class SeedContractLineageCommandTest(TestCase):
     point operators use. No mocking — real ORM, real Pydantic validation,
     real lineage traversal."""
 
-    @classmethod
-    def setUpTestData(cls):
-        cls.tenant = Tenant.objects.create(
-            slug="default",
-            name="Default Tenant",
+    def setUp(self):
+        super().setUp()
+        import uuid
+        # Use instance-level setUp instead of setUpTestData so the DB
+        # transaction is active when creating test fixtures (pytest-django
+        # transaction=True only wraps test methods, not class setup).
+        # Unique slug prevents collisions with reuse-db.
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            slug=f"default-{uid}",
+            name=f"Default Tenant {uid}",
             status=TenantStatus.ACTIVE,
         )
-        cls.owner = User.objects.create(
-            email="e2e_admin@example.com",
-            tenant=cls.tenant,
+        self.owner = User.objects.create(
+            email=f"e2e_admin_{uid}@example.com",
+            tenant=self.tenant,
         )
 
     def _run(self, *args: str) -> str:
         out = StringIO()
-        call_command("seed_contract_lineage", *args, stdout=out)
+        call_command(
+            "seed_contract_lineage",
+            f"--tenant-slug={self.tenant.slug}",
+            f"--owner-email={self.owner.email}",
+            *args,
+            stdout=out,
+        )
         return out.getvalue()
 
     # ---------------------------------------------------------- (1) creates
@@ -67,9 +79,7 @@ class SeedContractLineageCommandTest(TestCase):
         contracts = Contract.objects.filter(tenant=self.tenant).order_by("created_at")
         self.assertEqual(contracts.count(), 2)
 
-        names = sorted(
-            (c.hub_contract_json or {}).get("info", {}).get("name") for c in contracts
-        )
+        names = sorted((c.hub_contract_json or {}).get("info", {}).get("name") for c in contracts)
         self.assertEqual(sorted([SOURCE_NAME, DERIVED_NAME]), names)
 
         for c in contracts:
@@ -183,15 +193,11 @@ class SeedContractLineageCommandTest(TestCase):
 
     def test_force_recreate_replaces_existing_rows(self):
         self._run()
-        first_ids = set(
-            Contract.objects.filter(tenant=self.tenant).values_list("id", flat=True)
-        )
+        first_ids = set(Contract.objects.filter(tenant=self.tenant).values_list("id", flat=True))
         self.assertEqual(len(first_ids), 2)
 
         self._run("--force-recreate")
-        second_ids = set(
-            Contract.objects.filter(tenant=self.tenant).values_list("id", flat=True)
-        )
+        second_ids = set(Contract.objects.filter(tenant=self.tenant).values_list("id", flat=True))
         self.assertEqual(len(second_ids), 2)
         # Recreate ⇒ new rows ⇒ disjoint id sets.
         self.assertTrue(first_ids.isdisjoint(second_ids))

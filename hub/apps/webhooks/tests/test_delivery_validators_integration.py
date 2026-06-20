@@ -11,12 +11,9 @@ import uuid
 from datetime import timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from queue import Queue
-from typing import List
 
 from django.test import TestCase, override_settings
 from django.utils import timezone
-
-from tests.utils.polling import wait_until
 
 from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.tenants.models import Tenant
@@ -32,12 +29,13 @@ from hub.apps.webhooks.models import (
 )
 from hub.apps.webhooks.service import WebhookDeliveryService
 from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookServer
+from tests.utils.polling import wait_until
 
 
 class _StatefulHandler(BaseHTTPRequestHandler):
     """Handler that returns status codes from a sequence (e.g. [500, 200])."""
 
-    def __init__(self, response_sequence: List[int], request_queue: Queue, *args, **kwargs):
+    def __init__(self, response_sequence: list[int], request_queue: Queue, *args, **kwargs):
         self.response_sequence = response_sequence
         self.request_queue = request_queue
         super().__init__(*args, **kwargs)
@@ -61,7 +59,7 @@ class _StatefulHandler(BaseHTTPRequestHandler):
 class StatefulTestWebhookServer:
     """Test server that returns a sequence of HTTP statuses (e.g. 500 then 200)."""
 
-    def __init__(self, response_sequence: List[int]):
+    def __init__(self, response_sequence: list[int]):
         self.response_sequence = list(response_sequence)
         self.request_queue: Queue = Queue()
         self.server = None
@@ -99,7 +97,7 @@ class StatefulTestWebhookServer:
         self.stop()
 
 
-@override_settings(WEBHOOK_ASYNC_DELIVERY=True)
+@override_settings(WEBHOOK_ASYNC_DELIVERY=False)
 class WebhookDeliveryValidatorIntegrationTest(TestCase):
     """Integration tests for delivery validators with WebhookService"""
 
@@ -169,8 +167,8 @@ class WebhookDeliveryValidatorIntegrationTest(TestCase):
         result = WebhookDeliveryValidator.validate_delivery_retry(delivery)
         self.assertEqual(delivery.status, DeliveryStatus.DEAD_LETTER)
         self.assertTrue(
-            result.details.get("should_be_dead_letter", False)
-            or delivery.status == DeliveryStatus.DEAD_LETTER
+            result.details.get("should_be_dead_letter", False),
+            "Validator should flag delivery as dead-letter candidate (attempt_number=4, max_retries=3)",
         )
 
     def test_integration_timeout_validation_with_service(self):
@@ -186,16 +184,12 @@ class WebhookDeliveryValidatorIntegrationTest(TestCase):
             response_body="",
             error_message="TimeoutError: Request timed out",
         )
-        result = WebhookDeliveryValidator.validate_delivery_timeout(
-            delivery
-        )
+        result = WebhookDeliveryValidator.validate_delivery_timeout(delivery)
         self.assertTrue(
             result.is_valid,
             f"Validation failed: {result.errors}",
         )
-        self.assertTrue(
-            result.details.get("has_timeout_error", False)
-        )
+        self.assertTrue(result.details.get("has_timeout_error", False))
         self.assertEqual(
             result.details["timeout_seconds"],
             str(WebhookDeliveryService._get_request_timeout()),
@@ -243,9 +237,7 @@ class WebhookDeliveryValidatorIntegrationTest(TestCase):
             attempt_number=4,
             next_retry_at=None,
         )
-        result = WebhookDeliveryValidator.validate_dead_letter_queue(
-            delivery
-        )
+        result = WebhookDeliveryValidator.validate_dead_letter_queue(delivery)
         self.assertEqual(delivery.status, DeliveryStatus.DEAD_LETTER)
         self.assertTrue(result.details["is_dead_letter"])
         self.assertTrue(result.details["max_retries_exceeded"])
@@ -292,9 +284,7 @@ class WebhookDeliveryValidatorIntegrationTest(TestCase):
             next_retry_at=timezone.now() + timedelta(seconds=5),
         )
         self.assertEqual(delivery.status, DeliveryStatus.FAILED)
-        result = WebhookDeliveryValidator.validate_delivery_retry(
-            delivery
-        )
+        result = WebhookDeliveryValidator.validate_delivery_retry(delivery)
         self.assertTrue(
             result.is_valid,
             f"Validation failed: {result.errors}",
@@ -331,9 +321,7 @@ class WebhookDeliveryValidatorIntegrationTest(TestCase):
             next_retry_at=timezone.now() + timedelta(seconds=5),
         )
         self.assertEqual(delivery.status, DeliveryStatus.FAILED)
-        result = WebhookDeliveryValidator.validate_delivery_timeout(
-            delivery
-        )
+        result = WebhookDeliveryValidator.validate_delivery_timeout(delivery)
         self.assertTrue(
             result.is_valid,
             f"Validation failed: {result.errors}",

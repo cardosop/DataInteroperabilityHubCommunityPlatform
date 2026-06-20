@@ -1,10 +1,10 @@
 from django.urls import include, path, re_path
 
+# Phase 226 OQ-MailHog — E2E-only MailHog inbox proxy.
+from .mailhog_proxy_views import mailhog_message_detail, mailhog_messages_list
 from .views import (
     OpenAPISchemaView,
     OpenAPIYAMLView,
-    ReDocView,
-    SwaggerUIView,
     api_info,
     api_not_found,
     capabilities_view,
@@ -16,10 +16,9 @@ from .views import (
     raise_500,
     reset_e2e_auth_rate_limits,
 )
+
 # Phase 226 G11 — E2E-only webhook sink endpoint.
 from .webhook_sink_views import webhook_sink
-# Phase 226 OQ-MailHog — E2E-only MailHog inbox proxy.
-from .mailhog_proxy_views import mailhog_message_detail, mailhog_messages_list
 
 # Non-MVP areas remain mounted so URLconf is stable across Django settings reloads
 # (e.g. tests using @override_settings). When MVP_MODE is True, access is blocked
@@ -100,10 +99,22 @@ urlpatterns = [
     path("dsar/", include("hub.apps.dsar.urls")),
     path("consent/", include("hub.apps.consent.urls")),
     path("processor-agreements/", include("hub.apps.processor_agreements.urls")),
-    path("test/ensure-e2e-free-plan-tenant/", ensure_e2e_free_plan_tenant, name="ensure-e2e-free-plan-tenant"),
+    path(
+        "test/ensure-e2e-free-plan-tenant/",
+        ensure_e2e_free_plan_tenant,
+        name="ensure-e2e-free-plan-tenant",
+    ),
     path("test/ensure-e2e-subscription/", ensure_e2e_subscription, name="ensure-e2e-subscription"),
-    path("test/ensure-e2e-invitation-token/", ensure_e2e_invitation_token, name="ensure-e2e-invitation-token"),
-    path("test/ensure-e2e-tenant-switch-setup/", ensure_e2e_tenant_switch_setup, name="ensure-e2e-tenant-switch-setup"),
+    path(
+        "test/ensure-e2e-invitation-token/",
+        ensure_e2e_invitation_token,
+        name="ensure-e2e-invitation-token",
+    ),
+    path(
+        "test/ensure-e2e-tenant-switch-setup/",
+        ensure_e2e_tenant_switch_setup,
+        name="ensure-e2e-tenant-switch-setup",
+    ),
     path("test/ensure-e2e-users/", ensure_e2e_users, name="ensure-e2e-users"),
     # E2E-only: deliberately raise an unhandled exception so the
     # test_500_errors_do_not_contain_stack_traces security test can
@@ -113,7 +124,11 @@ urlpatterns = [
     # Remote runner equivalent of `manage.py reset_e2e_auth_rate_limits` —
     # required because the per-tenant auth limiter accumulates over the
     # 287-test MVP suite and only the local docker path had a reset hook.
-    path("test/reset-e2e-auth-rate-limits/", reset_e2e_auth_rate_limits, name="reset-e2e-auth-rate-limits"),
+    path(
+        "test/reset-e2e-auth-rate-limits/",
+        reset_e2e_auth_rate_limits,
+        name="reset-e2e-auth-rate-limits",
+    ),
     # Phase 226 G11 — E2E webhook sink. Receives inbound POSTs from the
     # WebhookDeliveryService so specs can assert delivery + payload shape.
     path("test/webhook-sink/<str:sink_id>/", webhook_sink, name="webhook-sink"),

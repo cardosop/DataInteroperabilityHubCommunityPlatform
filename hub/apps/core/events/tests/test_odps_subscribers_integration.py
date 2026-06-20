@@ -4,18 +4,19 @@ Integration tests for ODPS event subscribers.
 Tests that ODPS event subscribers properly handle events when they are published.
 Uses real event bus and subscribers (no mocks) to verify end-to-end integration.
 """
-import uuid
-import json
-from unittest.mock import patch, MagicMock
-from django.test import TestCase, override_settings
-from django.contrib.auth import get_user_model
 
-from hub.apps.core.events.service_publishers import ODPSEventPublisher
-from hub.apps.core.events.bus import get_event_bus
-from hub.apps.tenants.models import Tenant
-from hub.apps.contracts.models import Contract, OriginalSpecType, OriginalFormat, ContractStatus
+import json
+import uuid
+from unittest.mock import MagicMock, patch
+
+from django.contrib.auth import get_user_model
+from django.test import TestCase, override_settings
+
 from hub.apps.assets.models import Asset
 from hub.apps.audit.models import AuditEvent
+from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
+from hub.apps.core.events.service_publishers import ODPSEventPublisher
+from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 
 uid = uuid.uuid4().hex[:8]
@@ -30,25 +31,19 @@ class ODPSSubscribersIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         # Create tenant
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
         # Create user
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create asset
         self.asset = Asset.objects.create(
-            tenant=self.tenant,
-            name="Test Asset",
-            domain="test",
-            status="DRAFT"
+            tenant=self.tenant, name="Test Asset", domain="test", status="DRAFT"
         )
 
         # Create ODPS contract
@@ -56,12 +51,7 @@ class ODPSSubscribersIntegrationTest(TestCase):
             "product": {
                 "name": "Test Product",
                 "version": "1.0.0",
-                "details": {
-                    "en": {
-                        "name": "Test Product",
-                        "description": "A test product"
-                    }
-                }
+                "details": {"en": {"name": "Test Product", "description": "A test product"}},
             }
         }
 
@@ -79,12 +69,12 @@ class ODPSSubscribersIntegrationTest(TestCase):
                 "info": {
                     "title": "Test Product",
                     "version": "1.0.0",
-                    "tenant_id": str(self.tenant.id)
+                    "tenant_id": str(self.tenant.id),
                 },
-                "product": odps_product["product"]
+                "product": odps_product["product"],
             },
             normalization_status="NORMALIZED_OK",
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create ODCS contract for linking
@@ -102,12 +92,12 @@ class ODPSSubscribersIntegrationTest(TestCase):
                 "info": {
                     "title": "Test Contract",
                     "version": "1.0.0",
-                    "tenant_id": str(self.tenant.id)
+                    "tenant_id": str(self.tenant.id),
                 },
-                "schema": {}
+                "schema": {},
             },
             normalization_status="NORMALIZED_OK",
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create publisher with tenant and user context
@@ -120,7 +110,7 @@ class ODPSSubscribersIntegrationTest(TestCase):
         self.publisher._event_publisher.default_tenant_id = str(self.tenant.id)
         self.publisher._event_publisher.default_user_id = str(self.user.id)
 
-    @patch('hub.apps.semantic.service_client.SemanticServiceClient')
+    @patch("hub.apps.semantic.service_client.SemanticServiceClient")
     def test_semantic_service_odps_created_subscriber(self, mock_semantic_client_class):
         """Test that semantic service subscriber handles odps.created events."""
         # Setup mock
@@ -128,7 +118,7 @@ class ODPSSubscribersIntegrationTest(TestCase):
         mock_client.map_odps.return_value = {
             "product_uri": "https://hub.example.com/id/product/test",
             "triples_count": 10,
-            "semantic_status": "OK"
+            "semantic_status": "OK",
         }
         mock_semantic_client_class.return_value = mock_client
 
@@ -141,14 +131,14 @@ class ODPSSubscribersIntegrationTest(TestCase):
             asset_id=str(self.asset.id),
             status="ACTIVE",
             odps_version="4.1",
-            original_format="JSON"
+            original_format="JSON",
         )
 
         # Manually trigger the subscriber handler since decorators register lazily
-        from hub.apps.core.events.odps_subscribers import handle_odps_created_for_semantic
-
         # Get the published event and convert to dict format
         from hub.apps.core.events.models import Event
+        from hub.apps.core.events.odps_subscribers import handle_odps_created_for_semantic
+
         event_obj = Event.objects.get(event_id=event_id)
         event_dict = {
             "event_id": str(event_obj.event_id),
@@ -160,7 +150,7 @@ class ODPSSubscribersIntegrationTest(TestCase):
                 "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
             },
             "data": event_obj.data,
-            "metadata": event_obj.metadata or {}
+            "metadata": event_obj.metadata or {},
         }
         if event_obj.user_id:
             event_dict["source"]["user_id"] = str(event_obj.user_id)
@@ -176,7 +166,7 @@ class ODPSSubscribersIntegrationTest(TestCase):
         self.assertEqual(call_args[1]["product_uuid"], str(self.odps_contract.id))
         self.assertIsNotNone(call_args[1]["product"])
 
-    @patch('hub.apps.semantic.service_client.SemanticServiceClient')
+    @patch("hub.apps.semantic.service_client.SemanticServiceClient")
     def test_semantic_service_odps_updated_subscriber(self, mock_semantic_client_class):
         """Test that semantic service subscriber handles odps.updated events."""
         # Setup mock
@@ -184,7 +174,7 @@ class ODPSSubscribersIntegrationTest(TestCase):
         mock_client.map_odps.return_value = {
             "product_uri": "https://hub.example.com/id/product/test",
             "triples_count": 15,
-            "semantic_status": "OK"
+            "semantic_status": "OK",
         }
         mock_semantic_client_class.return_value = mock_client
 
@@ -196,14 +186,14 @@ class ODPSSubscribersIntegrationTest(TestCase):
             contract_id=str(self.odps_contract.id),
             changes={"status": "ACTIVE"},
             previous_status="DRAFT",
-            new_status="ACTIVE"
+            new_status="ACTIVE",
         )
 
         # Manually trigger the subscriber handler
-        from hub.apps.core.events.odps_subscribers import handle_odps_updated_for_semantic
-
         # Get the published event and convert to dict format
         from hub.apps.core.events.models import Event
+        from hub.apps.core.events.odps_subscribers import handle_odps_updated_for_semantic
+
         event_obj = Event.objects.get(event_id=event_id)
         event_dict = {
             "event_id": str(event_obj.event_id),
@@ -215,7 +205,7 @@ class ODPSSubscribersIntegrationTest(TestCase):
                 "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
             },
             "data": event_obj.data,
-            "metadata": event_obj.metadata or {}
+            "metadata": event_obj.metadata or {},
         }
         if event_obj.user_id:
             event_dict["source"]["user_id"] = str(event_obj.user_id)
@@ -237,14 +227,14 @@ class ODPSSubscribersIntegrationTest(TestCase):
         event_id = self.publisher.publish_odps_linked(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=str(self.odcs_contract.id),
-            link_type="bidirectional"
+            link_type="bidirectional",
         )
 
         # Manually trigger the subscriber handler
-        from hub.apps.core.events.odps_subscribers import handle_odps_linked_for_marketplace
-
         # Get the published event and convert to dict format
         from hub.apps.core.events.models import Event
+        from hub.apps.core.events.odps_subscribers import handle_odps_linked_for_marketplace
+
         event_obj = Event.objects.get(event_id=event_id)
         event_dict = {
             "event_id": str(event_obj.event_id),
@@ -256,7 +246,7 @@ class ODPSSubscribersIntegrationTest(TestCase):
                 "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
             },
             "data": event_obj.data,
-            "metadata": event_obj.metadata or {}
+            "metadata": event_obj.metadata or {},
         }
         if event_obj.user_id:
             event_dict["source"]["user_id"] = str(event_obj.user_id)
@@ -277,14 +267,14 @@ class ODPSSubscribersIntegrationTest(TestCase):
         event_id = self.publisher.publish_odps_linked(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=str(self.odcs_contract.id),
-            link_type="bidirectional"
+            link_type="bidirectional",
         )
 
         # Manually trigger the subscriber handler
-        from hub.apps.core.events.odps_subscribers import handle_odps_linked_for_asset
-
         # Get the published event and convert to dict format
         from hub.apps.core.events.models import Event
+        from hub.apps.core.events.odps_subscribers import handle_odps_linked_for_asset
+
         event_obj = Event.objects.get(event_id=event_id)
         event_dict = {
             "event_id": str(event_obj.event_id),
@@ -296,7 +286,7 @@ class ODPSSubscribersIntegrationTest(TestCase):
                 "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
             },
             "data": event_obj.data,
-            "metadata": event_obj.metadata or {}
+            "metadata": event_obj.metadata or {},
         }
         if event_obj.user_id:
             event_dict["source"]["user_id"] = str(event_obj.user_id)
@@ -318,14 +308,14 @@ class ODPSSubscribersIntegrationTest(TestCase):
             contract_id=str(self.odps_contract.id),
             asset_id=str(self.asset.id),
             status="ACTIVE",
-            odps_version="4.1"
+            odps_version="4.1",
         )
 
         # Manually trigger the subscriber handler
-        from hub.apps.core.events.odps_subscribers import handle_odps_events_for_notification
-
         # Get the published event and convert to dict format
         from hub.apps.core.events.models import Event
+        from hub.apps.core.events.odps_subscribers import handle_odps_events_for_notification
+
         event_obj = Event.objects.get(event_id=event_id)
         event_dict = {
             "event_id": str(event_obj.event_id),
@@ -337,7 +327,7 @@ class ODPSSubscribersIntegrationTest(TestCase):
                 "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
             },
             "data": event_obj.data,
-            "metadata": event_obj.metadata or {}
+            "metadata": event_obj.metadata or {},
         }
         if event_obj.user_id:
             event_dict["source"]["user_id"] = str(event_obj.user_id)
@@ -362,14 +352,14 @@ class ODPSSubscribersIntegrationTest(TestCase):
             contract_id=str(self.odps_contract.id),
             asset_id=str(self.asset.id),
             status="ACTIVE",
-            odps_version="4.1"
+            odps_version="4.1",
         )
 
         # Manually trigger the subscriber handler
-        from hub.apps.core.events.odps_subscribers import handle_odps_events_for_audit
-
         # Get the published event and convert to dict format
         from hub.apps.core.events.models import Event
+        from hub.apps.core.events.odps_subscribers import handle_odps_events_for_audit
+
         event_obj = Event.objects.get(event_id=event_id)
         event_dict = {
             "event_id": str(event_obj.event_id),
@@ -381,7 +371,7 @@ class ODPSSubscribersIntegrationTest(TestCase):
                 "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
             },
             "data": event_obj.data,
-            "metadata": event_obj.metadata or {}
+            "metadata": event_obj.metadata or {},
         }
         if event_obj.user_id:
             event_dict["source"]["user_id"] = str(event_obj.user_id)
@@ -396,10 +386,9 @@ class ODPSSubscribersIntegrationTest(TestCase):
         self.assertEqual(final_count, initial_count + 1)
 
         # Verify audit event details
-        audit_event = AuditEvent.objects.filter(
-            resource_type="ODPS",
-            action="ODPS_CREATED"
-        ).latest('timestamp')
+        audit_event = AuditEvent.objects.filter(resource_type="ODPS", action="ODPS_CREATED").latest(
+            "timestamp"
+        )
 
         # resource_id is stored as UUID, compare as UUID or convert both to string
         self.assertEqual(str(audit_event.resource_id), str(self.odps_contract.id))
@@ -415,7 +404,6 @@ class ODPSSubscribersIntegrationTest(TestCase):
         from hub.apps.core.events import odps_subscribers  # noqa
 
         # Check that subscriptions exist in the database
-        from hub.apps.core.events.models import EventSubscription
 
         # Note: Subscriptions may be registered lazily, so we check the handlers exist
         # The actual registration happens when the decorator runs, which may be deferred
@@ -429,7 +417,7 @@ class ODPSSubscribersIntegrationTest(TestCase):
             handle_odps_updated_for_marketplace,
             handle_odps_linked_for_asset,
             handle_odps_events_for_notification,
-            handle_odps_events_for_audit
+            handle_odps_events_for_audit,
         )
 
         self.assertTrue(callable(handle_odps_created_for_semantic))
@@ -439,4 +427,3 @@ class ODPSSubscribersIntegrationTest(TestCase):
         self.assertTrue(callable(handle_odps_linked_for_asset))
         self.assertTrue(callable(handle_odps_events_for_notification))
         self.assertTrue(callable(handle_odps_events_for_audit))
-

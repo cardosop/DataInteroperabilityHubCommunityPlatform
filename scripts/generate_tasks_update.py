@@ -4,8 +4,6 @@ Generate tasks.md update based on comprehensive test review results
 """
 
 import json
-from pathlib import Path
-from typing import Dict, List
 
 # Map of app names to task section numbers
 APP_TO_TASK = {
@@ -41,13 +39,13 @@ APP_TO_TASK = {
 }
 
 
-def load_review_report(report_path: str = "test_review_report.json") -> Dict:
+def load_review_report(report_path: str = "test_review_report.json") -> dict:
     """Load the review report"""
-    with open(report_path, "r") as f:
+    with open(report_path) as f:
         return json.load(f)
 
 
-def generate_review_summary(report: Dict) -> str:
+def generate_review_summary(report: dict) -> str:
     """Generate markdown summary for tasks.md update"""
     lines = []
 
@@ -109,11 +107,11 @@ def generate_review_summary(report: Dict) -> str:
             if len(app_data["gaps"]) > 5:
                 lines.append(f"      - ... and {len(app_data['gaps']) - 5} more")
         else:
-            lines.append(f"    - [x] **No gaps identified**")
+            lines.append("    - [x] **No gaps identified**")
 
         # Update plan
         if app_data["update_plan"]:
-            lines.append(f"    - [ ] **Update Plan**:")
+            lines.append("    - [ ] **Update Plan**:")
             for item in app_data["update_plan"]:
                 lines.append(f"      - {item}")
 

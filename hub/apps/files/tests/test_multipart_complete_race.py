@@ -24,11 +24,12 @@ Tests use REAL MinIO multipart APIs (boto3's ``upload_part`` via
 the storage client's ``.client`` attribute) — no mocks of the
 parts-validation logic. Skip when MinIO is unavailable.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase
 from rest_framework import status
@@ -95,7 +96,7 @@ class _MultipartCompleteRaceTestMixin:
             self.storage_client = S3StorageClient()
             self.storage_client._ensure_bucket_exists()
             self.storage_available = True
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover — S3 probe
             self.storage_available = False
 
         uid = uuid.uuid4().hex[:8]
@@ -109,6 +110,7 @@ class _MultipartCompleteRaceTestMixin:
         # (otherwise Phase 250.x ``subscription_inactive`` short-circuits
         # at 403) AND a DATA_PROVIDER role on the user.
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"mprace-{uid}@example.com",
@@ -117,6 +119,7 @@ class _MultipartCompleteRaceTestMixin:
             status=UserStatus.ACTIVE,
         )
         from hub.apps.testing.role_support import ensure_user_has_data_provider_role
+
         ensure_user_has_data_provider_role(self.user)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
@@ -175,9 +178,7 @@ class _MultipartCompleteRaceTestMixin:
 
 
 @pytest.mark.xdist_group("minio_multipart")
-class MultipartIncompleteRaceTest(
-    _MultipartCompleteRaceTestMixin, TransactionTestCase
-):
+class MultipartIncompleteRaceTest(_MultipartCompleteRaceTestMixin, TransactionTestCase):
     """Phase 260.5.H.1 — when the client claims to have uploaded
     N parts but S3 is missing some, the server returns 409
     ``MULTIPART_INCOMPLETE`` with the missing-parts list.
@@ -303,9 +304,7 @@ class MultipartIncompleteRaceTest(
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
-        self.assertEqual(
-            _extract_error_code(response_body(response)), "MULTIPART_INCOMPLETE"
-        )
+        self.assertEqual(_extract_error_code(response_body(response)), "MULTIPART_INCOMPLETE")
 
         # Client retries the missing part.
         etag2 = self._upload_part(file_obj=f, upload_id=upload_id, part_number=2)
@@ -350,9 +349,7 @@ class MultipartIncompleteRaceTest(
 
 
 @pytest.mark.xdist_group("minio_multipart")
-class MultipartUploadNoLongerExistsTest(
-    _MultipartCompleteRaceTestMixin, TransactionTestCase
-):
+class MultipartUploadNoLongerExistsTest(_MultipartCompleteRaceTestMixin, TransactionTestCase):
     """Phase 260.5.H — when the upload was aborted / expired, the
     server returns 409 ``MULTIPART_UPLOAD_NO_LONGER_EXISTS``
     distinct from MULTIPART_INCOMPLETE.
@@ -372,7 +369,8 @@ class MultipartUploadNoLongerExistsTest(
         # / expired session — same observable shape on the server
         # side: list_parts raises NoSuchUpload).
         self.storage_client.abort_multipart_upload(
-            key=f.storage_path, upload_id=upload_id,
+            key=f.storage_path,
+            upload_id=upload_id,
         )
 
         response = self.client.post(
@@ -399,9 +397,7 @@ class MultipartUploadNoLongerExistsTest(
 
 
 @pytest.mark.xdist_group("minio_multipart")
-class MultipartIncompleteFallbackTest(
-    _MultipartCompleteRaceTestMixin, TransactionTestCase
-):
+class MultipartIncompleteFallbackTest(_MultipartCompleteRaceTestMixin, TransactionTestCase):
     """When ``metadata_json.chunk_count`` is missing (legacy
     uploads pre-260.5.H), the server falls back to the client-
     submitted ``parts`` list to determine what should be present.
@@ -413,7 +409,7 @@ class MultipartIncompleteFallbackTest(
     def test_missing_chunk_count_uses_client_parts_as_expected_set(self):
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
-        f, upload_id = self._seed_pending_multipart_file(chunk_count=2)
+        f, _upload_id = self._seed_pending_multipart_file(chunk_count=2)
         # Strip chunk_count from metadata to simulate a legacy
         # upload — we still expect the gate to fire on missing
         # parts, just using the client's submission as the
@@ -453,9 +449,7 @@ class MultipartIncompleteFallbackTest(
 # ---------------------------------------------------------------------------
 
 
-class CompleteUploadAlreadyCompletedTest(
-    _MultipartCompleteRaceTestMixin, TransactionTestCase
-):
+class CompleteUploadAlreadyCompletedTest(_MultipartCompleteRaceTestMixin, TransactionTestCase):
     """Phase 260.5.H.R1 GAP-B — when two concurrent ``complete_upload``
     requests race, the second loser MUST get a typed
     ``UPLOAD_ALREADY_COMPLETED`` 409, not a generic flat-string
@@ -511,9 +505,7 @@ class CompleteUploadAlreadyCompletedTest(
 # ---------------------------------------------------------------------------
 
 
-class MultipartListFailedTest(
-    _MultipartCompleteRaceTestMixin, TransactionTestCase
-):
+class MultipartListFailedTest(_MultipartCompleteRaceTestMixin, TransactionTestCase):
     """Phase 260.5.H.R1 GAP-C — when ``list_multipart_parts``
     fails with a non-LookupError, non-ClientError exception
     (transient transport error, S3 5xx that bubbled past the
@@ -548,9 +540,7 @@ class MultipartListFailedTest(
 
         class TransientListFailureClient(S3StorageClient):
             def list_multipart_parts(self, key, upload_id):
-                raise RuntimeError(
-                    "simulated transient S3 error (proxy 503)"
-                )
+                raise RuntimeError("simulated transient S3 error (proxy 503)")
 
         from unittest.mock import patch
 
@@ -570,8 +560,7 @@ class MultipartListFailedTest(
         self.assertEqual(
             response.status_code,
             status.HTTP_502_BAD_GATEWAY,
-            f"Expected 502 for transient list_parts failure; "
-            f"got body={response_body(response)!r}",
+            f"Expected 502 for transient list_parts failure; got body={response_body(response)!r}",
         )
         self.assertEqual(
             _extract_error_code(response_body(response)),

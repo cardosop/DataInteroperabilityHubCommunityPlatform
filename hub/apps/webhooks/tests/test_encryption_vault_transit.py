@@ -18,14 +18,13 @@ import boto3
 from django.test import TestCase, override_settings
 from moto import mock_aws
 
+from hub.apps.integrations.encryption import reset_kms_client
 from hub.apps.webhooks.encryption import (
     _AWS_KMS_PREFIX,
     _PREFIX,
-    _VAULT_PREFIX,
     decrypt_secret,
     encrypt_secret,
 )
-from hub.apps.integrations.encryption import reset_kms_client
 
 
 @mock_aws
@@ -58,6 +57,8 @@ class WebhookKmsEncryptTest(TestCase):
         """encrypt_secret should use KMS when AWS_KMS_KEY_ID is set."""
         result = encrypt_secret("my-webhook-secret")
         self.assertTrue(result.startswith(_AWS_KMS_PREFIX))
+        decrypted = decrypt_secret(result)
+        self.assertEqual(decrypted, "my-webhook-secret")
 
     @override_settings(ENCRYPTION_KEY="test-key-for-webhook-tests")
     def test_encrypt_kms_roundtrip(self):

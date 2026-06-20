@@ -12,11 +12,10 @@ Usage:
   python scripts/audit_migrations.py --json         # JSON output
   python scripts/audit_migrations.py --check        # exit 1 if any app > threshold
 """
+
 import json
-import os
 import sys
 from argparse import ArgumentParser
-from collections import defaultdict
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -31,8 +30,7 @@ def count_migrations(app_dir: Path) -> tuple[int, list[str]]:
         return 0, []
 
     files = sorted(
-        f.stem for f in mig_dir.glob("*.py")
-        if f.stem != "__init__" and not f.name.startswith(".")
+        f.stem for f in mig_dir.glob("*.py") if f.stem != "__init__" and not f.name.startswith(".")
     )
     return len(files), files
 
@@ -89,8 +87,10 @@ def print_report(results: dict) -> None:
         print(f"  🚫 Apps OVER {t} migrations (needs squash):")
         for app in results["apps_over_threshold"]:
             info = results["per_app"][app]
-            print(f"    {app}: {info['count']} migrations "
-                  f"(oldest={info['oldest']}, newest={info['newest']})")
+            print(
+                f"    {app}: {info['count']} migrations "
+                f"(oldest={info['oldest']}, newest={info['newest']})"
+            )
     else:
         print(f"  ✅ No apps exceed the {t}-migration threshold.")
 
@@ -104,11 +104,14 @@ def print_report(results: dict) -> None:
 
 def main():
     parser = ArgumentParser(description="Audit Django migration counts")
-    parser.add_argument("--threshold", type=int, default=DEFAULT_THRESHOLD,
-                        help=f"Squash threshold (default: {DEFAULT_THRESHOLD})")
+    parser.add_argument(
+        "--threshold",
+        type=int,
+        default=DEFAULT_THRESHOLD,
+        help=f"Squash threshold (default: {DEFAULT_THRESHOLD})",
+    )
     parser.add_argument("--json", action="store_true", help="Output JSON")
-    parser.add_argument("--check", action="store_true",
-                        help="Exit 1 if any app exceeds threshold")
+    parser.add_argument("--check", action="store_true", help="Exit 1 if any app exceeds threshold")
     args = parser.parse_args()
 
     results = audit_all_apps(args.threshold)
@@ -119,8 +122,11 @@ def main():
         print_report(results)
 
     if args.check and results["apps_over_threshold"]:
-        print(f"\nError: {len(results['apps_over_threshold'])} app(s) exceed "
-              f"the {args.threshold}-migration threshold.", file=sys.stderr)
+        print(
+            f"\nError: {len(results['apps_over_threshold'])} app(s) exceed "
+            f"the {args.threshold}-migration threshold.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 

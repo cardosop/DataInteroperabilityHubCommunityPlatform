@@ -13,15 +13,11 @@ covering:
 - Update plan generation
 """
 
-import ast
 import json
-import os
 import re
-from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
 
 
 @dataclass
@@ -32,12 +28,12 @@ class TestFileReview:
     exists: bool
     line_count: int
     test_count: int
-    mock_usage: List[Dict]
-    stub_usage: List[Dict]
-    scenarios_covered: Dict[str, bool]  # success, failure, edge_cases, error_handling
+    mock_usage: list[dict]
+    stub_usage: list[dict]
+    scenarios_covered: dict[str, bool]  # success, failure, edge_cases, error_handling
     tdd_compliance: bool
-    best_practices_issues: List[str]
-    coverage_estimate: Optional[float]
+    best_practices_issues: list[str]
+    coverage_estimate: float | None
 
 
 @dataclass
@@ -46,13 +42,13 @@ class AppReview:
 
     app_name: str
     app_path: str
-    test_files: Dict[str, TestFileReview]
+    test_files: dict[str, TestFileReview]
     total_tests: int
     total_mocks: int
     total_stubs: int
     coverage_status: str  # "complete", "partial", "missing"
-    gaps: List[str]
-    update_plan: List[str]
+    gaps: list[str]
+    update_plan: list[str]
 
 
 class TestReviewer:
@@ -98,9 +94,9 @@ class TestReviewer:
 
     def __init__(self, base_path: str = "hub/apps"):
         self.base_path = Path(base_path)
-        self.reviews: Dict[str, AppReview] = {}
+        self.reviews: dict[str, AppReview] = {}
 
-    def review_all_apps(self) -> Dict[str, AppReview]:
+    def review_all_apps(self) -> dict[str, AppReview]:
         """Review all apps"""
         apps = self._get_all_apps()
 
@@ -111,7 +107,7 @@ class TestReviewer:
 
         return self.reviews
 
-    def _get_all_apps(self) -> List[str]:
+    def _get_all_apps(self) -> list[str]:
         """Get list of all apps"""
         apps = []
         if self.base_path.exists():
@@ -176,7 +172,7 @@ class TestReviewer:
             update_plan=update_plan,
         )
 
-    def _get_expected_test_files(self, app_name: str) -> List[str]:
+    def _get_expected_test_files(self, app_name: str) -> list[str]:
         """Get expected test files for an app based on tasks.md"""
         expected_files_map = {
             "auth": [
@@ -519,7 +515,7 @@ class TestReviewer:
             coverage_estimate=coverage_estimate,
         )
 
-    def _find_mocks(self, content: str, file_path: str) -> List[Dict]:
+    def _find_mocks(self, content: str, file_path: str) -> list[dict]:
         """Find mock usage in content"""
         mocks = []
         lines = content.split("\n")
@@ -541,7 +537,7 @@ class TestReviewer:
 
         return mocks
 
-    def _find_stubs(self, content: str, file_path: str) -> List[Dict]:
+    def _find_stubs(self, content: str, file_path: str) -> list[dict]:
         """Find stub usage in content"""
         stubs = []
         lines = content.split("\n")
@@ -588,7 +584,7 @@ class TestReviewer:
         """Check if stub is justified"""
         return self._is_justified_mock(line, content, file_path)
 
-    def _check_scenarios(self, content: str) -> Dict[str, bool]:
+    def _check_scenarios(self, content: str) -> dict[str, bool]:
         """Check if scenarios are covered"""
         scenarios = {
             "success": False,
@@ -668,7 +664,7 @@ class TestReviewer:
 
         return has_tests and has_assertions
 
-    def _check_best_practices(self, content: str, file_path: str) -> List[str]:
+    def _check_best_practices(self, content: str, file_path: str) -> list[str]:
         """Check for best practices violations"""
         issues = []
 
@@ -680,7 +676,7 @@ class TestReviewer:
 
         return issues
 
-    def _estimate_coverage(self, content: str, test_count: int) -> Optional[float]:
+    def _estimate_coverage(self, content: str, test_count: int) -> float | None:
         """Rough coverage estimate based on test count and file structure"""
         # This is a rough estimate - actual coverage requires running pytest-cov
         if test_count == 0:
@@ -696,7 +692,7 @@ class TestReviewer:
         return None
 
     def _determine_coverage_status(
-        self, test_files: Dict[str, TestFileReview], app_name: str
+        self, test_files: dict[str, TestFileReview], app_name: str
     ) -> str:
         """Determine overall coverage status"""
         existing_files = [f for f, r in test_files.items() if r.exists]
@@ -709,7 +705,7 @@ class TestReviewer:
         else:
             return "complete"
 
-    def _identify_gaps(self, test_files: Dict[str, TestFileReview], app_name: str) -> List[str]:
+    def _identify_gaps(self, test_files: dict[str, TestFileReview], app_name: str) -> list[str]:
         """Identify gaps in test coverage"""
         gaps = []
         expected_files = self._get_expected_test_files(app_name)
@@ -752,8 +748,8 @@ class TestReviewer:
         return gaps
 
     def _create_update_plan(
-        self, test_files: Dict[str, TestFileReview], gaps: List[str], app_name: str
-    ) -> List[str]:
+        self, test_files: dict[str, TestFileReview], gaps: list[str], app_name: str
+    ) -> list[str]:
         """Create update plan for an app"""
         plan = []
 
@@ -908,18 +904,18 @@ def main():
     print(f"\nReview complete! Reviewed {len(reviews)} apps.")
 
     # Generate report
-    report = reviewer.generate_report("test_review_report.json")
+    reviewer.generate_report("test_review_report.json")
 
-    print(f"\nReport generated:")
-    print(f"  - JSON: test_review_report.json")
-    print(f"  - Markdown: test_review_report.md")
+    print("\nReport generated:")
+    print("  - JSON: test_review_report.json")
+    print("  - Markdown: test_review_report.md")
 
     # Print summary
     total_tests = sum(r.total_tests for r in reviews.values())
     total_mocks = sum(r.total_mocks for r in reviews.values())
     apps_with_gaps = sum(1 for r in reviews.values() if r.gaps)
 
-    print(f"\nSummary:")
+    print("\nSummary:")
     print(f"  - Total tests: {total_tests}")
     print(f"  - Total mocks: {total_mocks}")
     print(f"  - Apps with gaps: {apps_with_gaps}/{len(reviews)}")

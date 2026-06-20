@@ -4,21 +4,18 @@ Unit tests for Data Volume Monitoring
 Tests for volume tracking, trend aggregation, and anomaly detection.
 """
 
-from datetime import timedelta
+import uuid
 
 import pytest
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.observability.freshness import FreshnessMonitor
-from hub.apps.observability.models import VolumeTrend
 from hub.apps.observability.volume import VolumeMonitor
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

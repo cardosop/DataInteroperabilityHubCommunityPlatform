@@ -4,6 +4,7 @@ Security tests for transformation SQL safety — Phase 115F.4
 Tests SQL injection prevention, blocked keywords, parameterization,
 and DuckDB security configuration.
 """
+
 import uuid
 
 import pytest
@@ -24,7 +25,8 @@ class SQLInjectionPreventionTest(TestCase):
 
     def setUp(self):
         self.rules = TransformationBusinessRules(
-            tenant_id="test-tenant", user_id="test-user",
+            tenant_id="test-tenant",
+            user_id="test-user",
         )
 
     def test_drop_table_in_filter_expression(self):
@@ -134,19 +136,23 @@ class TenantIsolationTest(TestCase):
         """Create Tenants and Users for each test."""
         uid = uuid.uuid4().hex[:8]
         self.tenant_a = Tenant.objects.create(
-            name=f"TA-{uid}", slug=f"ta-{uid}",
+            name=f"TA-{uid}",
+            slug=f"ta-{uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
         self.tenant_b = Tenant.objects.create(
-            name=f"TB-{uid}", slug=f"tb-{uid}",
+            name=f"TB-{uid}",
+            slug=f"tb-{uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
         self.user_a = User.objects.create_user(
-            email=f"ua-{uid}@test.com", password="pass",
+            email=f"ua-{uid}@test.com",
+            password="pass",
             tenant=self.tenant_a,
         )
         self.user_b = User.objects.create_user(
-            email=f"ub-{uid}@test.com", password="pass",
+            email=f"ub-{uid}@test.com",
+            password="pass",
             tenant=self.tenant_b,
         )
 
@@ -156,7 +162,7 @@ class TenantIsolationTest(TestCase):
             TransformationPipeline,
         )
 
-        pipeline = TransformationPipeline.objects.create(
+        TransformationPipeline.objects.create(
             tenant=self.tenant_a,
             created_by=self.user_a,
             name="Tenant A Pipeline",

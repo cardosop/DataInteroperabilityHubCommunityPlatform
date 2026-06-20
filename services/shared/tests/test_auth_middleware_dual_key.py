@@ -51,6 +51,7 @@ import time, not at request time). This is the same pattern the
 existing single-key tests use: env at module-top, swap private
 module state in test setup for variations.
 """
+
 from __future__ import annotations
 
 import json
@@ -64,7 +65,6 @@ from httpx import ASGITransport, AsyncClient
 # ``INTERNAL_API_KEY`` BEFORE importing shared.auth. The same
 # bootstrap-env-first pattern is documented at conftest.py:4-12.
 from shared.auth import InternalApiKeyMiddleware
-
 
 _PREV_KEY = "test-shared-services-key-PREVIOUS-rotation"
 _BOGUS_KEY = "test-shared-services-key-BOGUS"
@@ -91,12 +91,15 @@ async def dual_key_client(monkeypatch):
     import shared.auth as auth_mod
 
     monkeypatch.setattr(
-        auth_mod, "_INTERNAL_API_KEY_PREVIOUS", _PREV_KEY,
+        auth_mod,
+        "_INTERNAL_API_KEY_PREVIOUS",
+        _PREV_KEY,
     )
     app = _build_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(
-        transport=transport, base_url="http://testserver",
+        transport=transport,
+        base_url="http://testserver",
     ) as ac:
         yield ac
 
@@ -113,7 +116,8 @@ async def empty_prev_client(monkeypatch):
     app = _build_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(
-        transport=transport, base_url="http://testserver",
+        transport=transport,
+        base_url="http://testserver",
     ) as ac:
         yield ac
 
@@ -125,7 +129,9 @@ async def empty_prev_client(monkeypatch):
 
 class TestDualKeyAcceptance:
     async def test_current_key_accepted(
-        self, dual_key_client, valid_api_key,
+        self,
+        dual_key_client,
+        valid_api_key,
     ):
         """The CURRENT key is the freshly-rotated value. Pods that
         already picked up the new ExternalSecret sync present it."""
@@ -171,7 +177,9 @@ class TestDualKeyAcceptance:
 
 class TestEmptyPreviousCollapsesToSingleKey:
     async def test_current_key_still_works(
-        self, empty_prev_client, valid_api_key,
+        self,
+        empty_prev_client,
+        valid_api_key,
     ):
         """No regression on the 99% steady-state path."""
         r = await empty_prev_client.get(
@@ -181,7 +189,8 @@ class TestEmptyPreviousCollapsesToSingleKey:
         assert r.status_code == 200
 
     async def test_empty_string_in_header_does_not_match_empty_previous(
-        self, empty_prev_client,
+        self,
+        empty_prev_client,
     ):
         """Defence: a client presenting an empty
         ``X-Internal-Api-Key`` header MUST NOT short-circuit to
@@ -196,7 +205,8 @@ class TestEmptyPreviousCollapsesToSingleKey:
         assert "required" in r.json()["detail"].lower()
 
     async def test_what_would_have_been_previous_now_rejected(
-        self, empty_prev_client,
+        self,
+        empty_prev_client,
     ):
         """With PREVIOUS empty (post-rotation-window state), the
         old key MUST now be rejected — proves the 24h overlap
@@ -222,6 +232,7 @@ class TestSecurityContractPreserved:
         rationale as Phase 270.C.1.AUDIT.1.
         """
         import inspect
+
         import shared.auth as auth_mod
 
         dispatch_src = inspect.getsource(
@@ -231,9 +242,7 @@ class TestSecurityContractPreserved:
         # comparison region. We can't trivially count occurrences
         # because of literal substring matches in comments, so
         # we anchor on the unambiguous prefix.
-        assert (
-            dispatch_src.count("hmac.compare_digest") >= 2
-        ), (
+        assert dispatch_src.count("hmac.compare_digest") >= 2, (
             "dispatch must invoke hmac.compare_digest at least "
             "TWICE — once for CURRENT, once for PREVIOUS"
         )
@@ -244,12 +253,12 @@ class TestSecurityContractPreserved:
         bad_patterns = ["key ==", "_INTERNAL_API_KEY =="]
         for pat in bad_patterns:
             assert pat not in dispatch_src, (
-                f"dispatch must not use bare equality `{pat}` "
-                "for key comparison (timing leak)"
+                f"dispatch must not use bare equality `{pat}` for key comparison (timing leak)"
             )
 
     async def test_401_includes_www_authenticate_dual_key(
-        self, dual_key_client,
+        self,
+        dual_key_client,
     ):
         """Even with dual-key enabled, 401 responses must carry
         the ``WWW-Authenticate: ApiKey`` header for client-side
@@ -276,7 +285,9 @@ class TestSecurityContractPreserved:
 
 class TestPreviousEqualsCurrentEdgeCase:
     async def test_same_value_in_both_slots_still_accepts(
-        self, monkeypatch, valid_api_key,
+        self,
+        monkeypatch,
+        valid_api_key,
     ):
         """If a rotation Lambda partially failed and left
         CURRENT == PREVIOUS, the middleware must still accept the
@@ -286,12 +297,15 @@ class TestPreviousEqualsCurrentEdgeCase:
         import shared.auth as auth_mod
 
         monkeypatch.setattr(
-            auth_mod, "_INTERNAL_API_KEY_PREVIOUS", valid_api_key,
+            auth_mod,
+            "_INTERNAL_API_KEY_PREVIOUS",
+            valid_api_key,
         )
         app = _build_app()
         transport = ASGITransport(app=app)
         async with AsyncClient(
-            transport=transport, base_url="http://testserver",
+            transport=transport,
+            base_url="http://testserver",
         ) as ac:
             r = await ac.get(
                 "/protected",
@@ -314,7 +328,8 @@ class TestOverlapWindowExpiry:
     requiring a follow-up scheduled-clear Lambda invocation."""
 
     async def test_previous_accepted_when_expiry_is_in_future(
-        self, monkeypatch,
+        self,
+        monkeypatch,
     ):
         """The happy path during the 24h overlap — the rotation
         completed within the last 24h, the EXPIRES_AT epoch is
@@ -324,7 +339,9 @@ class TestOverlapWindowExpiry:
         import shared.auth as auth_mod
 
         monkeypatch.setattr(
-            auth_mod, "_INTERNAL_API_KEY_PREVIOUS", _PREV_KEY,
+            auth_mod,
+            "_INTERNAL_API_KEY_PREVIOUS",
+            _PREV_KEY,
         )
         # 1 hour from now — well within the 24h overlap window.
         monkeypatch.setattr(
@@ -335,7 +352,8 @@ class TestOverlapWindowExpiry:
         app = _build_app()
         transport = ASGITransport(app=app)
         async with AsyncClient(
-            transport=transport, base_url="http://testserver",
+            transport=transport,
+            base_url="http://testserver",
         ) as ac:
             r = await ac.get(
                 "/protected",
@@ -354,7 +372,9 @@ class TestOverlapWindowExpiry:
         import shared.auth as auth_mod
 
         monkeypatch.setattr(
-            auth_mod, "_INTERNAL_API_KEY_PREVIOUS", _PREV_KEY,
+            auth_mod,
+            "_INTERNAL_API_KEY_PREVIOUS",
+            _PREV_KEY,
         )
         # 1 second in the PAST — the overlap window has elapsed.
         monkeypatch.setattr(
@@ -365,7 +385,8 @@ class TestOverlapWindowExpiry:
         app = _build_app()
         transport = ASGITransport(app=app)
         async with AsyncClient(
-            transport=transport, base_url="http://testserver",
+            transport=transport,
+            base_url="http://testserver",
         ) as ac:
             r = await ac.get(
                 "/protected",
@@ -375,7 +396,9 @@ class TestOverlapWindowExpiry:
             assert "invalid" in r.json()["detail"].lower()
 
     async def test_current_key_still_works_after_previous_expired(
-        self, monkeypatch, valid_api_key,
+        self,
+        monkeypatch,
+        valid_api_key,
     ):
         """Even after the PREVIOUS slot has expired, the CURRENT
         key MUST still work. Pins that the expiry only affects
@@ -386,7 +409,9 @@ class TestOverlapWindowExpiry:
         import shared.auth as auth_mod
 
         monkeypatch.setattr(
-            auth_mod, "_INTERNAL_API_KEY_PREVIOUS", _PREV_KEY,
+            auth_mod,
+            "_INTERNAL_API_KEY_PREVIOUS",
+            _PREV_KEY,
         )
         monkeypatch.setattr(
             auth_mod,
@@ -396,7 +421,8 @@ class TestOverlapWindowExpiry:
         app = _build_app()
         transport = ASGITransport(app=app)
         async with AsyncClient(
-            transport=transport, base_url="http://testserver",
+            transport=transport,
+            base_url="http://testserver",
         ) as ac:
             r = await ac.get(
                 "/protected",
@@ -405,7 +431,8 @@ class TestOverlapWindowExpiry:
             assert r.status_code == 200, r.text
 
     async def test_expires_at_zero_disables_enforcement(
-        self, monkeypatch,
+        self,
+        monkeypatch,
     ):
         """EXPIRES_AT == 0 is the rollout-compatibility sentinel
         ("no expiry set") — the middleware accepts PREVIOUS
@@ -416,15 +443,20 @@ class TestOverlapWindowExpiry:
         import shared.auth as auth_mod
 
         monkeypatch.setattr(
-            auth_mod, "_INTERNAL_API_KEY_PREVIOUS", _PREV_KEY,
+            auth_mod,
+            "_INTERNAL_API_KEY_PREVIOUS",
+            _PREV_KEY,
         )
         monkeypatch.setattr(
-            auth_mod, "_INTERNAL_API_KEY_PREVIOUS_EXPIRES_AT", 0,
+            auth_mod,
+            "_INTERNAL_API_KEY_PREVIOUS_EXPIRES_AT",
+            0,
         )
         app = _build_app()
         transport = ASGITransport(app=app)
         async with AsyncClient(
-            transport=transport, base_url="http://testserver",
+            transport=transport,
+            base_url="http://testserver",
         ) as ac:
             r = await ac.get(
                 "/protected",
@@ -433,7 +465,8 @@ class TestOverlapWindowExpiry:
             assert r.status_code == 200, r.text
 
     def test_load_previous_expires_at_handles_malformed(
-        self, monkeypatch,
+        self,
+        monkeypatch,
     ):
         """``_load_previous_expires_at_at_startup`` MUST treat a
         malformed env-var value as 0 (no enforcement) rather than
@@ -441,19 +474,22 @@ class TestOverlapWindowExpiry:
         SecretString that would otherwise crash every service on
         startup."""
         monkeypatch.setenv(
-            "INTERNAL_API_KEY_PREVIOUS_EXPIRES_AT", "not-an-int",
+            "INTERNAL_API_KEY_PREVIOUS_EXPIRES_AT",
+            "not-an-int",
         )
         from shared.auth import _load_previous_expires_at_at_startup
 
         assert _load_previous_expires_at_at_startup() == 0
 
     def test_load_previous_expires_at_parses_unix_epoch(
-        self, monkeypatch,
+        self,
+        monkeypatch,
     ):
         """Happy path — a well-formed integer string parses
         cleanly to int."""
         monkeypatch.setenv(
-            "INTERNAL_API_KEY_PREVIOUS_EXPIRES_AT", "1715520000",
+            "INTERNAL_API_KEY_PREVIOUS_EXPIRES_AT",
+            "1715520000",
         )
         from shared.auth import _load_previous_expires_at_at_startup
 

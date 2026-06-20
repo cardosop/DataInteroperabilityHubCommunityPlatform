@@ -1,21 +1,24 @@
-"""  # noqa: D400
+"""# noqa: D400
 Compliance Service
 
 Service layer for compliance run operations.
 All create/update/delete paths call ComplianceBusinessRules before mutation.
 """
+
+import contextlib
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from django.db import transaction
 from django.utils import timezone
 
+from hub.apps.compliance.business_rules import ComplianceBusinessRules
+from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.core.services.base import (
     BaseService,
     NotFoundError,
     ValidationError,
 )
-from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
-from hub.apps.compliance.business_rules import ComplianceBusinessRules
 
 
 class ComplianceService(BaseService):
@@ -32,8 +35,8 @@ class ComplianceService(BaseService):
 
     def __init__(
         self,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
     ):
         self.tenant_id = tenant_id
         self.user_id = user_id
@@ -43,13 +46,13 @@ class ComplianceService(BaseService):
         self,
         tenant_id: str,
         user_id: str,
-        asset_id: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        file_id: Optional[str] = None,
+        asset_id: str | None = None,
+        dataset_id: str | None = None,
+        file_id: str | None = None,
         scan_mode: str = "internal",
-        applicable_regulations: Optional[List[str]] = None,
-        legal_basis: Optional[str] = None,
-        destination_jurisdiction: Optional[str] = None,
+        applicable_regulations: list[str] | None = None,
+        legal_basis: str | None = None,
+        destination_jurisdiction: str | None = None,
         tenant=None,
         user=None,
         asset=None,
@@ -79,16 +82,17 @@ class ComplianceService(BaseService):
         Raises:
             ValidationError: If ComplianceBusinessRules reject
         """
-        from hub.apps.tenants.models import Tenant
-        from hub.apps.users.models import User
         from hub.apps.assets.models import Asset
         from hub.apps.datasets.models import Dataset
         from hub.apps.files.models import File
         from hub.apps.jobs.models import JobType
         from hub.apps.jobs.utils import create_job, get_job_timeout
+        from hub.apps.tenants.models import Tenant
 
         # Plan limit enforcement (monthly)
         from hub.apps.tenants.services import PlanLimitService
+        from hub.apps.users.models import User
+
         plan_limit_service = PlanLimitService(tenant_id=tenant_id)
         plan_limit_service.check_limit(
             tenant_id=tenant_id,
@@ -99,21 +103,15 @@ class ComplianceService(BaseService):
         try:
             tenant = tenant or Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:
-            raise NotFoundError(
-                "Tenant not found", details={"tenant_id": tenant_id}
-            )
+            raise NotFoundError("Tenant not found", details={"tenant_id": tenant_id})
         try:
             user = user or User.objects.get(id=user_id)
         except User.DoesNotExist:
-            raise NotFoundError(
-                "User not found", details={"user_id": user_id}
-            )
+            raise NotFoundError("User not found", details={"user_id": user_id})
 
         if asset is None and asset_id:
             try:
-                asset = Asset.objects.get(
-                    id=asset_id, tenant_id=tenant_id
-                )
+                asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
             except Asset.DoesNotExist:
                 raise ValidationError(
                     "Asset not found",
@@ -122,9 +120,7 @@ class ComplianceService(BaseService):
                 )
         if dataset is None and dataset_id:
             try:
-                dataset = Dataset.objects.get(
-                    id=dataset_id, tenant_id=tenant_id
-                )
+                dataset = Dataset.objects.get(id=dataset_id, tenant_id=tenant_id)
             except Dataset.DoesNotExist:
                 raise ValidationError(
                     "Dataset not found",
@@ -141,9 +137,7 @@ class ComplianceService(BaseService):
                 asset = dataset.asset
         if file_obj is None and file_id:
             try:
-                file_obj = File.objects.get(
-                    id=file_id, tenant_id=tenant_id
-                )
+                file_obj = File.objects.get(id=file_id, tenant_id=tenant_id)
             except File.DoesNotExist:
                 raise ValidationError(
                     "File not found",
@@ -159,9 +153,7 @@ class ComplianceService(BaseService):
             file=file_obj,
             status=ComplianceRunStatus.PENDING,
         )
-        rules = ComplianceBusinessRules(
-            tenant_id=tenant_id, user_id=user_id
-        )
+        rules = ComplianceBusinessRules(tenant_id=tenant_id, user_id=user_id)
         result = rules.validate(
             compliance_run=payload_run,
             tenant=tenant,
@@ -175,9 +167,53 @@ class ComplianceService(BaseService):
                 details=result.details,
             )
 
+        # ── Phase 270.C.5 — Tenant license validation ──────────────────
+        # Check applicable_regulations against tenant.licensed_regulation_keys.
+        # Lenient mode (default): un-licensed regs → WARNING in metadata_json;
+        #   scan proceeds normally.
+        # Strict mode (strict_license_check=True): un-licensed regs → HTTP 422
+        #   REGULATION_NOT_LICENSED rejection; no ComplianceRun is created.
+        # Empty licensed_regulation_keys → check is skipped (backward-compat
+        #   for pre-Phase-270.C.5 tenants).
+        # Empty/null applicable_regulations → check is skipped (nothing to
+        #   validate against).
+        _license_warnings = None
+        if tenant.licensed_regulation_keys and applicable_regulations:
+            _unlicensed = [
+                r for r in applicable_regulations
+                if r not in tenant.licensed_regulation_keys
+            ]
+            if _unlicensed:
+                if tenant.strict_license_check:
+                    raise ValidationError(
+                        f"Tenant not licensed for regulations: "
+                        f"{', '.join(sorted(_unlicensed))}",
+                        code="REGULATION_NOT_LICENSED",
+                        http_status=422,
+                        details={
+                            "unlicensed_regulations": sorted(_unlicensed),
+                            "licensed_regulation_keys": sorted(
+                                tenant.licensed_regulation_keys
+                            ),
+                        },
+                    )
+                # Lenient mode — collect warnings; applied to run metadata below.
+                _license_warnings = [
+                    {
+                        "code": "REGULATION_NOT_LICENSED",
+                        "severity": "WARNING",
+                        "regulations": sorted(_unlicensed),
+                        "message": (
+                            f"Tenant is not licensed for: "
+                            f"{', '.join(sorted(_unlicensed))}"
+                        ),
+                    }
+                ]
+
         # Create job and run.  executed_by_prefect=True prevents immediate
         # enqueue; we enqueue after writing compliance_run_id into job.
         import uuid
+
         temp_resource_id = str(uuid.uuid4())
         job = create_job(
             tenant=tenant,
@@ -194,14 +230,19 @@ class ComplianceService(BaseService):
             timeout_seconds=get_job_timeout(JobType.COMPLIANCE_RUN),
             executed_by_prefect=True,
         )
-        compliance_run = ComplianceRun.objects.create(
-            tenant=tenant,
-            asset=asset,
-            dataset=dataset,
-            file=file_obj,
-            job=job,
-            status=ComplianceRunStatus.PENDING,
-        )
+        _run_kwargs: dict[str, Any] = {
+            "tenant": tenant,
+            "asset": asset,
+            "dataset": dataset,
+            "file": file_obj,
+            "job": job,
+            "status": ComplianceRunStatus.PENDING,
+        }
+        # Persist license warnings on the run so operators can see them
+        # in the run-detail page and downstream alerting can ingest them.
+        if _license_warnings:
+            _run_kwargs["metadata_json"] = {"license_warnings": _license_warnings}
+        compliance_run = ComplianceRun.objects.create(**_run_kwargs)
         job.resource_id = str(compliance_run.id)
         job.details_json["compliance_run_id"] = str(compliance_run.id)
         job.save(update_fields=["resource_id", "details_json"])
@@ -215,13 +256,9 @@ class ComplianceService(BaseService):
                 increment_tenant_job_counter,
             )
 
-            can_create, error_message = check_tenant_job_limits(
-                str(tenant.id)
-            )
+            can_create, error_message = check_tenant_job_limits(str(tenant.id))
             if not can_create:
-                raise ValidationError(
-                    error_message or "Tenant job limit exceeded"
-                )
+                raise ValidationError(error_message or "Tenant job limit exceeded")
 
             increment_tenant_job_counter(str(tenant.id), "queued")
 
@@ -240,6 +277,7 @@ class ComplianceService(BaseService):
             )
         except Exception as e:
             import logging
+
             _logger = logging.getLogger(__name__)
             _logger.error(
                 "Failed to enqueue compliance run job %s (run %s): %s. "
@@ -260,19 +298,16 @@ class ComplianceService(BaseService):
             # error_message was removed in Phase 278 (Django 6 upgrade);
             # persist error context in metadata_json instead.
             meta = compliance_run.metadata_json or {}
-            meta["error_message"] = (
-                f"Job enqueue failed: {e}. "
-                "Verify Redis/RQ connectivity."
-            )[:500]
+            meta["error_message"] = (f"Job enqueue failed: {e}. Verify Redis/RQ connectivity.")[
+                :500
+            ]
             compliance_run.metadata_json = meta
             compliance_run.save(
                 update_fields=["status", "completed_at", "metadata_json", "updated_at"],
             )
             job.status = JobStatus.FAILED
             job.completed_at = _now
-            job.error_message = (
-                f"Failed to enqueue COMPLIANCE_RUN job: {e}"
-            )[:2000]
+            job.error_message = (f"Failed to enqueue COMPLIANCE_RUN job: {e}")[:2000]
             job.save(
                 update_fields=["status", "completed_at", "error_message", "updated_at"],
             )
@@ -297,11 +332,7 @@ class ComplianceService(BaseService):
         """
         # run.job is a ForeignKey descriptor; truthy check avoids the
         # django-stubs false-positive on the `job_id` attname.
-        scan_mode = (
-            run.job.details_json.get("scan_mode", "internal")
-            if run.job
-            else "internal"
-        )
+        scan_mode = run.job.details_json.get("scan_mode", "internal") if run.job else "internal"
 
         # Phase 213.G.4 — defensive guard. If a caller hands us a FAILED
         # payload (legacy callers, retry shims, sync fallback after the
@@ -342,16 +373,11 @@ class ComplianceService(BaseService):
 
         allowed_to_store = result_data.get("allowed_to_store")
         # Fail-closed: UNKNOWN overall_status or missing flag → block
-        if (
-            result_data.get("overall_status") == "UNKNOWN"
-            or allowed_to_store is None
-        ):
+        if result_data.get("overall_status") == "UNKNOWN" or allowed_to_store is None:
             allowed_to_store = False
         run.allowed_to_store = bool(allowed_to_store)
 
-        run.detected_categories_json = result_data.get(
-            "detected_categories", []
-        )
+        run.detected_categories_json = result_data.get("detected_categories", [])
         run.column_findings_json = result_data.get("column_findings", [])
 
         # v2 fields
@@ -359,18 +385,14 @@ class ComplianceService(BaseService):
         # the Django model field is "localisation_alert" (British).
         run.cross_border_alert = result_data.get("cross_border_alert")
         run.localisation_alert = result_data.get("localization_alert")
-        run.legal_basis_violations = result_data.get(
-            "legal_basis_violations"
-        )
+        run.legal_basis_violations = result_data.get("legal_basis_violations")
 
         # Build regulation_mapping_json preserving v2 sub-keys
         reg_mapping = dict(result_data.get("regulation_mapping") or {})
         if result_data.get("schema_version"):
             reg_mapping["schema_version"] = result_data["schema_version"]
         if result_data.get("regulation_summary"):
-            reg_mapping["regulation_summary"] = (
-                result_data["regulation_summary"]
-            )
+            reg_mapping["regulation_summary"] = result_data["regulation_summary"]
         if result_data.get("metadata"):
             reg_mapping["metadata"] = result_data["metadata"]
 
@@ -391,9 +413,7 @@ class ComplianceService(BaseService):
             "risk_score": result_data.get("risk_score", 0.0),
             "risk_level": result_data.get("risk_level"),
             "allowed_to_store": run.allowed_to_store,
-            "regulations_checked": result_data.get(
-                "applicable_regulations", []
-            ),
+            "regulations_checked": result_data.get("applicable_regulations", []),
         }
 
         run.completed_at = now
@@ -422,6 +442,7 @@ class ComplianceService(BaseService):
             from hub.apps.assets.models import (
                 ComplianceStatus as AssetComplianceStatus,
             )
+
             status_map = {
                 "PASS": AssetComplianceStatus.PASS,
                 "WARN": AssetComplianceStatus.WARN,
@@ -469,9 +490,9 @@ class ComplianceService(BaseService):
         file_content: bytes,
         file_format: str,
         scan_mode: str,
-        applicable_regulations: Optional[List[str]],
-        legal_basis: Optional[str],
-        destination_jurisdiction: Optional[str],
+        applicable_regulations: list[str] | None,
+        legal_basis: str | None,
+        destination_jurisdiction: str | None,
         tenant_id: str,
         correlation_id: str,
     ) -> None:
@@ -488,6 +509,7 @@ class ComplianceService(BaseService):
           - Calls _persist_result directly
         """
         import logging
+
         from hub.apps.compliance.service_client import (
             ComplianceServiceClient,
         )
@@ -521,10 +543,11 @@ class ComplianceService(BaseService):
                     applicable_regulations=applicable_regulations,
                     tenant_id=tenant_id,
                     correlation_id=correlation_id,
+                    legal_basis=legal_basis,
                 )
                 ComplianceService._persist_result(
-                    compliance_run=compliance_run,
-                    result=sync_result,
+                    run=compliance_run,
+                    result_data=sync_result,
                 )
                 return
 
@@ -549,9 +572,7 @@ class ComplianceService(BaseService):
                     "job_id": job_id,
                     "poll_url": poll_url,
                 }
-                compliance_run.save(
-                    update_fields=["status", "metadata_json", "updated_at"]
-                )
+                compliance_run.save(update_fields=["status", "metadata_json", "updated_at"])
                 logger.info(
                     "compliance_run_queued_async",
                     extra={
@@ -562,10 +583,12 @@ class ComplianceService(BaseService):
                 # Import inside the branch to avoid module-level
                 # circular dependency (tasks.py imports services.py
                 # only inside function bodies, so this is safe).
+                from django_rq import get_queue
+
                 from hub.apps.compliance.tasks import (
                     poll_compliance_job,
                 )
-                from django_rq import get_queue
+
                 _queue = get_queue("job_default")
                 _run_id = compliance_run.id
                 transaction.on_commit(
@@ -577,9 +600,7 @@ class ComplianceService(BaseService):
                 )
             else:
                 # Synchronous 200 response from async endpoint
-                ComplianceService._persist_result(
-                    compliance_run, async_result
-                )
+                ComplianceService._persist_result(compliance_run, async_result)
 
         except Exception as exc:
             # Async endpoint unavailable — fall back to synchronous scan
@@ -594,9 +615,7 @@ class ComplianceService(BaseService):
                 file_content=file_content,
                 file_format=file_format,
                 scan_mode=scan_mode,
-                applicable_regulations=(
-                    applicable_regulations or None
-                ),
+                applicable_regulations=(applicable_regulations or None),
                 tenant_id=tenant_id,
                 correlation_id=correlation_id,
                 legal_basis=legal_basis,
@@ -608,12 +627,12 @@ class ComplianceService(BaseService):
         file_content: bytes,
         file_format: str,
         scan_mode: str = "internal",
-        applicable_regulations: Optional[List[str]] = None,
-        contract: Optional[Any] = None,
-        tenant_id: Optional[str] = None,
-        correlation_id: Optional[str] = None,
-        legal_basis: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        applicable_regulations: list[str] | None = None,
+        contract: Any | None = None,
+        tenant_id: str | None = None,
+        correlation_id: str | None = None,
+        legal_basis: str | None = None,
+    ) -> dict[str, Any]:
         """
         Synchronous compliance scan via microservice.
 
@@ -641,7 +660,7 @@ class ComplianceService(BaseService):
     #: Anything unrecognised falls back to "csv" — the compliance
     #: microservice's default — so a misclassified upload still gets
     #: scanned rather than 5xx-ing the whole intake.
-    _FORMAT_BY_CONTENT_TYPE: Dict[str, str] = {
+    _FORMAT_BY_CONTENT_TYPE: dict[str, str] = {
         "text/csv": "csv",
         "application/csv": "csv",
         "application/json": "json",
@@ -650,7 +669,7 @@ class ComplianceService(BaseService):
         "application/parquet": "parquet",
         "application/x-parquet": "parquet",
     }
-    _FORMAT_BY_EXTENSION: Dict[str, str] = {
+    _FORMAT_BY_EXTENSION: dict[str, str] = {
         "csv": "csv",
         "json": "json",
         "ndjson": "json",
@@ -677,12 +696,12 @@ class ComplianceService(BaseService):
     def scan_inmemory(
         file_id: str,
         tenant,
-        legal_basis: Optional[str] = None,
-        applicable_regulations: Optional[List[str]] = None,
+        legal_basis: str | None = None,
+        applicable_regulations: list[str] | None = None,
         scan_mode: str = "internal",
-        destination_jurisdiction: Optional[str] = None,
+        destination_jurisdiction: str | None = None,
         user=None,
-        correlation_id: Optional[str] = None,
+        correlation_id: str | None = None,
     ) -> ComplianceRun:
         """Run a compliance scan against ``file_id`` synchronously.
 
@@ -783,8 +802,8 @@ class ComplianceService(BaseService):
 
         run: ComplianceRun = ComplianceRun.objects.create(
             tenant=tenant,
-            asset=None,        # Phase 250.1.A.1 — NO asset attached.
-            dataset=None,      # Same — pre-persistence in the workflow.
+            asset=None,  # Phase 250.1.A.1 — NO asset attached.
+            dataset=None,  # Same — pre-persistence in the workflow.
             file=file_obj,
             job=job,
             regulations=applicable_regulations or [],
@@ -820,7 +839,7 @@ class ComplianceService(BaseService):
                 legal_basis=legal_basis,
             )
             ComplianceService._persist_result(run, result)
-        except Exception as exc:  # noqa: BLE001 — see fail-closed contract below
+        except Exception as exc:
             # Fail-closed: ANY exception leaves a FAILED row with
             # ``allowed_to_store=False`` so the workflow gate refuses
             # to persist the Asset. ``_persist_result`` already knows
@@ -863,6 +882,8 @@ class ComplianceService(BaseService):
         """
         from hub.apps.assets.models import (
             Asset,
+        )
+        from hub.apps.assets.models import (
             ComplianceStatus as AssetComplianceStatus,
         )
         from hub.apps.audit.utils import create_audit_event
@@ -882,9 +903,7 @@ class ComplianceService(BaseService):
             return
 
         st = br.get_status()
-        Asset.objects.filter(pk=asset.pk).update(
-            compliance_status=AssetComplianceStatus.WARN
-        )
+        Asset.objects.filter(pk=asset.pk).update(compliance_status=AssetComplianceStatus.WARN)
 
         user = actor_user
         if user is None and request is not None:
@@ -1001,39 +1020,53 @@ class ComplianceService(BaseService):
         job.details_json["compliance_run_id"] = str(run.id)
         job.save(update_fields=["resource_id", "details_json"])
 
+        import logging
+
+        _logger = logging.getLogger(__name__)
+
         try:
             compiler = ComplianceWarehouseSQLCompiler()
+            # scan_definitions come from warehouse_config["checks"]
+            # (list of dicts with ``type`` / ``column`` / optional
+            # params).  When no checks are provided the compiled list
+            # is empty → zero findings → overall_status PASS.
+            scan_defs = warehouse_config.get("checks") or []
             compiled = compiler.compile(
-                scan_types=regulations or ["pii_email", "pii_phone", "pii_ssn",
-                                            "pii_credit_card", "retention_breach",
-                                            "classification_mismatch"],
+                scan_definitions=scan_defs,
                 warehouse_type=warehouse_type,
                 table_fqn=warehouse_config["table_fqn"],
+                applicable_regulations=regulations,
             )
 
             from hub.apps.dq.services import _resolve_warehouse_connector
-            connector = _resolve_warehouse_connector(
-                warehouse_config, tenant_id=str(tenant.id),
-            )
 
             results: list[dict] = []
-            connector.connect()
-            try:
-                for c in compiled:
-                    rows, _cols = connector.execute_query(c.sql)
-                    match_count = rows[0][0] if rows else 0
-                    results.append({
-                        "check_name": c.check_name,
-                        "check_type": c.check_type,
-                        "column_name": c.column_name,
-                        "match_count": match_count,
-                        "sql_preview": c.sql[:200],
-                    })
-            finally:
+            # Only connect to the warehouse when there are checks to
+            # execute — an empty check list (e.g. empty "checks" key
+            # in warehouse_config) is a valid no-op scan that should
+            # succeed without warehouse connectivity.
+            if compiled:
+                connector = _resolve_warehouse_connector(
+                    warehouse_config,
+                    tenant_id=str(tenant.id),
+                )
+                connector.connect()
                 try:
-                    connector.close()
-                except Exception:
-                    pass
+                    for c in compiled:
+                        rows, _cols = connector.execute_query(c.sql)
+                        match_count = rows[0][0] if rows else 0
+                        results.append(
+                            {
+                                "check_name": c.check_name,
+                                "check_type": c.check_type,
+                                "column_name": c.column_name,
+                                "match_count": match_count,
+                                "sql_preview": c.sql[:200],
+                            }
+                        )
+                finally:
+                    with contextlib.suppress(Exception):
+                        connector.close()
 
             total_matches = sum(r["match_count"] for r in results)
             has_findings = total_matches > 0
@@ -1046,14 +1079,21 @@ class ComplianceService(BaseService):
                 r["check_type"] for r in results if r["match_count"] > 0
             ]
             run.completed_at = timezone.now()
-            run.save(update_fields=[
-                "status", "overall_status", "risk_level",
-                "allowed_to_store", "detected_categories_json",
-                "completed_at", "updated_at",
-            ])
+            run.save(
+                update_fields=[
+                    "status",
+                    "overall_status",
+                    "risk_level",
+                    "allowed_to_store",
+                    "detected_categories_json",
+                    "completed_at",
+                    "updated_at",
+                ]
+            )
 
             try:
                 from hub.apps.audit.utils import create_audit_event
+
                 create_audit_event(
                     resource_type="COMPLIANCE_RUN",
                     action="COMPLIANCE_WAREHOUSE_SCANNED",
@@ -1068,10 +1108,10 @@ class ComplianceService(BaseService):
                     },
                 )
             except Exception:
-                logger.warning("compliance_warehouse_audit_failed", exc_info=True)
+                _logger.warning("compliance_warehouse_audit_failed", exc_info=True)
 
         except Exception as exc:
-            logger.warning(
+            _logger.warning(
                 "compliance_scan_inmemory_warehouse_failed",
                 extra={
                     "dataset_id": str(dataset.id),
@@ -1092,11 +1132,95 @@ class ComplianceService(BaseService):
             meta["error_message"] = str(exc)[:2000]
             run.metadata_json = meta
             run.completed_at = timezone.now()
-            run.save(update_fields=[
-                "status", "overall_status", "risk_level",
-                "allowed_to_store", "metadata_json",
-                "completed_at", "updated_at",
-            ])
+            run.save(
+                update_fields=[
+                    "status",
+                    "overall_status",
+                    "risk_level",
+                    "allowed_to_store",
+                    "metadata_json",
+                    "completed_at",
+                    "updated_at",
+                ]
+            )
 
         run.refresh_from_db()
         return run
+
+    # ── run_warehouse_compliance (Phase 285.10.3.4.2) ─────────────────
+
+    @staticmethod
+    @transaction.atomic
+    def run_warehouse_compliance(
+        run_id: str,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+    ) -> dict:
+        """Validate and dispatch a warehouse-mode ComplianceRun.
+
+        Takes an existing PENDING ComplianceRun whose ``scan_mode`` is
+        ``WAREHOUSE_SQL`` and creates the orchestrating Job, then
+        returns the job id + status for the caller to track.
+
+        Raises:
+            ValidationError: if the run's scan_mode is not
+                ``WAREHOUSE_SQL`` or the run is not in a dispatchable
+                state.
+            NotFoundError: if ``run_id`` does not exist.
+        """
+        from hub.apps.jobs.models import JobType
+        from hub.apps.jobs.utils import create_job, get_job_timeout
+
+        try:
+            run = ComplianceRun.objects.select_related("tenant").get(id=run_id)
+        except ComplianceRun.DoesNotExist:
+            raise NotFoundError(
+                "ComplianceRun not found",
+                details={"run_id": run_id},
+            )
+
+        if run.scan_mode != "WAREHOUSE_SQL":
+            raise ValidationError(
+                f"run_warehouse_compliance requires scan_mode=WAREHOUSE_SQL, "
+                f"got {run.scan_mode}",
+                code="WAREHOUSE_SCAN_MODE_REQUIRED",
+            )
+
+        if run.status not in (
+            ComplianceRunStatus.PENDING,
+            ComplianceRunStatus.QUEUED,
+        ):
+            raise ValidationError(
+                f"Cannot dispatch run in status {run.status}",
+                code="COMPLIANCE_RUN_NOT_DISPATCHABLE",
+            )
+
+        actor = None
+        if user_id:
+            from hub.apps.users.models import User
+
+            try:
+                actor = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                pass
+
+        job = create_job(
+            tenant=run.tenant,
+            user=actor,
+            job_type=JobType.COMPLIANCE_RUN,
+            resource_type="COMPLIANCE_RUN",
+            resource_id=str(run.id),
+            details_json={
+                "warehouse_native": True,
+                "scan_mode": run.scan_mode,
+                "compliance_run_id": str(run.id),
+            },
+            timeout_seconds=get_job_timeout(JobType.COMPLIANCE_RUN),
+            executed_by_prefect=True,
+        )
+
+        run.job = job
+        run.status = ComplianceRunStatus.QUEUED
+        run.save(update_fields=["job", "status", "updated_at"])
+
+        return {"job_id": str(job.id), "status": run.status}

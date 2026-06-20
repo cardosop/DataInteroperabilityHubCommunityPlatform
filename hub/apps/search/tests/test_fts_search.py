@@ -10,6 +10,7 @@ Covers:
 """
 
 import os
+import uuid
 from unittest.mock import patch
 
 import pytest
@@ -23,15 +24,16 @@ from hub.apps.contracts.models import Contract
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _disconnect_semantic_signals():
     """Disconnect heavy signals that cause external HTTP calls during tests."""
-    from django.db.models.signals import post_save
     import importlib
+
+    from django.db.models.signals import post_save
 
     for dotted in (
         "hub.apps.semantic.signals.asset_saved",
@@ -56,9 +58,10 @@ def _disconnect_semantic_signals():
 
 
 def _create_tenant(slug):
+    uid = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
-        name=f"Tenant {slug}",
-        slug=slug,
+        name=f"Tenant {slug}-{uid}",
+        slug=f"{slug}-{uid}",
         status="ACTIVE",
         kyc_status="UNVERIFIED",
     )
@@ -98,6 +101,7 @@ def _create_contract(tenant, user, *, original_spec_type="datacontract"):
 # 1. Ranked results
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.django_db(transaction=True)
 class TestFTSSearchRankedResults(TestCase):
     def setUp(self):
@@ -123,8 +127,7 @@ class TestFTSSearchRankedResults(TestCase):
         for asset in (self.asset_alpha, self.asset_beta):
             Asset.objects.filter(pk=asset.pk).update(
                 search_vector=(
-                    SearchVector("name", weight="A")
-                    + SearchVector("description", weight="B")
+                    SearchVector("name", weight="A") + SearchVector("description", weight="B")
                 )
             )
 
@@ -169,6 +172,7 @@ class TestFTSSearchRankedResults(TestCase):
 # 2. Tenant isolation
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.django_db(transaction=True)
 class TestFTSSearchTenantScoped(TestCase):
     def setUp(self):
@@ -180,17 +184,11 @@ class TestFTSSearchTenantScoped(TestCase):
         self.user_a = _create_user(self.tenant_a, email="a@test.com")
         self.user_b = _create_user(self.tenant_b, email="b@test.com")
 
-        self.asset_a = _create_asset(
-            self.tenant_a, self.user_a, name="Confidential Report A"
-        )
-        self.asset_b = _create_asset(
-            self.tenant_b, self.user_b, name="Confidential Report B"
-        )
+        self.asset_a = _create_asset(self.tenant_a, self.user_a, name="Confidential Report A")
+        self.asset_b = _create_asset(self.tenant_b, self.user_b, name="Confidential Report B")
 
         for asset in (self.asset_a, self.asset_b):
-            Asset.objects.filter(pk=asset.pk).update(
-                search_vector=SearchVector("name", weight="A")
-            )
+            Asset.objects.filter(pk=asset.pk).update(search_vector=SearchVector("name", weight="A"))
 
     def test_tenant_a_sees_only_own_assets(self):
         self.client.force_authenticate(user=self.user_a)
@@ -213,12 +211,14 @@ class TestFTSSearchTenantScoped(TestCase):
 # 3. post_save signal enqueues RQ task
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.django_db(transaction=True)
 class TestFTSIndexUpdatedOnSave(TestCase):
     """Verify that saving an Asset/Contract triggers the RQ enqueue function."""
 
     def setUp(self):
         from django.db.models.signals import post_save
+
         from hub.apps.assets.signals import rebuild_asset_search_vector
         from hub.apps.contracts.signals import rebuild_contract_search_vector
 
@@ -234,8 +234,10 @@ class TestFTSIndexUpdatedOnSave(TestCase):
     def tearDown(self):
         """Clean up signal connections to leave state clean for subsequent tests."""
         from django.db.models.signals import post_save
+
         from hub.apps.assets.signals import rebuild_asset_search_vector
         from hub.apps.contracts.signals import rebuild_contract_search_vector
+
         post_save.disconnect(rebuild_asset_search_vector, sender=Asset)
         post_save.disconnect(rebuild_contract_search_vector, sender=Contract)
         super().tearDown()
@@ -254,10 +256,16 @@ class TestFTSIndexUpdatedOnSave(TestCase):
 
     @patch(
         "hub.apps.search.tasks.enqueue_asset_search_vector_update",
-        side_effect=Exception("rq down"),
+        side_effect=ConnectionError("rq down"),
     )
     def test_enqueue_failure_does_not_raise(self, _mock):
-        """Signal must swallow enqueue errors so saves never fail."""
+        """Signal must swallow enqueue errors so saves never fail.
+
+        Uses ``ConnectionError`` — the most realistic RQ-down exception
+        type that the signal handler's ``except`` clause catches (the
+        handler deliberately rejects ``Exception`` to avoid masking
+        programming errors).
+        """
         try:
             with self.captureOnCommitCallbacks(execute=True):
                 _create_asset(self.tenant, self.user, name="Safe Even If RQ Down")
@@ -269,6 +277,7 @@ class TestFTSIndexUpdatedOnSave(TestCase):
 # 4. Terraform S3 module — public access block sanity
 # ---------------------------------------------------------------------------
 
+
 class TestS3ModuleBucketPolicyBlocksPublicAccess(TestCase):
     """
     Read-only check that the Terraform S3 module HCL blocks all public access
@@ -276,11 +285,13 @@ class TestS3ModuleBucketPolicyBlocksPublicAccess(TestCase):
     """
 
     # From tests/ → apps/search/ → apps/ → hub/ → repo-root
-    MAIN_TF = os.path.normpath(os.path.join(
-        os.path.dirname(__file__),
-        "../../../..",
-        "infrastructure/terraform/s3/main.tf",
-    ))
+    MAIN_TF = os.path.normpath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "../../../..",
+            "infrastructure/terraform/s3/main.tf",
+        )
+    )
 
     def _read_tf(self):
         with open(self.MAIN_TF) as fh:
@@ -316,17 +327,20 @@ class TestS3ModuleBucketPolicyBlocksPublicAccess(TestCase):
 # 5. Migration script idempotency
 # ---------------------------------------------------------------------------
 
+
 class TestMigrationScriptIdempotent(TestCase):
     """
     Unit-test the idempotency logic of migrate-minio-to-s3.sh without running
     actual AWS/MinIO commands.
     """
 
-    SCRIPT = os.path.normpath(os.path.join(
-        os.path.dirname(__file__),
-        "../../../..",
-        "scripts/migrate-minio-to-s3.sh",
-    ))
+    SCRIPT = os.path.normpath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "../../../..",
+            "scripts/migrate-minio-to-s3.sh",
+        )
+    )
 
     def _read_script(self):
         with open(self.SCRIPT) as fh:

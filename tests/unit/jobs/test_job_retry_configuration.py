@@ -6,15 +6,17 @@ and that retry delay calculation works correctly with configurable factors.
 
 All tests use real implementations (no mocks/stubs) and follow engineering best practices.
 """
+
 from django.test import TestCase, override_settings
+
+from hub.apps.jobs.models import JobType
 from hub.apps.jobs.utils import (
+    calculate_retry_delay,
     get_job_max_retries,
+    get_job_retry_backoff_factor,
     get_job_retry_initial_delay,
     get_job_retry_max_delay,
-    get_job_retry_backoff_factor,
-    calculate_retry_delay,
 )
-from hub.apps.jobs.models import JobType
 
 
 class JobRetryConfigurationTest(TestCase):
@@ -28,7 +30,7 @@ class JobRetryConfigurationTest(TestCase):
 
     def test_get_job_max_retries_default(self):
         """Test that get_job_max_retries returns default for unknown job type"""
-        max_retries = get_job_max_retries('UNKNOWN_JOB_TYPE')
+        max_retries = get_job_max_retries("UNKNOWN_JOB_TYPE")
         self.assertEqual(max_retries, 2)  # Default from function
 
     def test_get_job_retry_initial_delay_from_settings(self):
@@ -39,7 +41,7 @@ class JobRetryConfigurationTest(TestCase):
 
     def test_get_job_retry_initial_delay_default(self):
         """Test that get_job_retry_initial_delay returns default for unknown job type"""
-        initial_delay = get_job_retry_initial_delay('UNKNOWN_JOB_TYPE')
+        initial_delay = get_job_retry_initial_delay("UNKNOWN_JOB_TYPE")
         self.assertEqual(initial_delay, 60)  # Default JOB_RETRY_BASE_DELAY
 
     def test_get_job_retry_max_delay_from_settings(self):
@@ -50,7 +52,7 @@ class JobRetryConfigurationTest(TestCase):
 
     def test_get_job_retry_max_delay_default(self):
         """Test that get_job_retry_max_delay returns default for unknown job type"""
-        max_delay = get_job_retry_max_delay('UNKNOWN_JOB_TYPE')
+        max_delay = get_job_retry_max_delay("UNKNOWN_JOB_TYPE")
         self.assertEqual(max_delay, 3600)  # Default 1 hour
 
     def test_get_job_retry_backoff_factor_from_settings(self):
@@ -61,7 +63,7 @@ class JobRetryConfigurationTest(TestCase):
 
     def test_get_job_retry_backoff_factor_default(self):
         """Test that get_job_retry_backoff_factor returns default for unknown job type"""
-        backoff_factor = get_job_retry_backoff_factor('UNKNOWN_JOB_TYPE')
+        backoff_factor = get_job_retry_backoff_factor("UNKNOWN_JOB_TYPE")
         self.assertEqual(backoff_factor, 2.0)  # Default
 
     def test_calculate_retry_delay_with_job_type(self):
@@ -88,9 +90,9 @@ class JobRetryConfigurationTest(TestCase):
         self.assertEqual(delay, 120)  # 60 * (2^1) = 120
 
     @override_settings(
-        JOB_RETRY_INITIAL_DELAY={'DQ_RUN': 30},
-        JOB_RETRY_BACKOFF_FACTOR={'DQ_RUN': 3.0},
-        JOB_RETRY_MAX_DELAY={'DQ_RUN': 600}
+        JOB_RETRY_INITIAL_DELAY={"DQ_RUN": 30},
+        JOB_RETRY_BACKOFF_FACTOR={"DQ_RUN": 3.0},
+        JOB_RETRY_MAX_DELAY={"DQ_RUN": 600},
     )
     def test_calculate_retry_delay_custom_configuration(self):
         """Test that calculate_retry_delay uses custom configuration from settings"""
@@ -148,5 +150,6 @@ class JobRetryConfigurationTest(TestCase):
             self.assertGreater(initial_delay, 0, f"Initial delay should be > 0 for {job_type}")
             self.assertGreater(max_delay, 0, f"Max delay should be > 0 for {job_type}")
             self.assertGreater(backoff_factor, 0, f"Backoff factor should be > 0 for {job_type}")
-            self.assertLessEqual(initial_delay, max_delay, f"Initial delay should be <= max_delay for {job_type}")
-
+            self.assertLessEqual(
+                initial_delay, max_delay, f"Initial delay should be <= max_delay for {job_type}"
+            )

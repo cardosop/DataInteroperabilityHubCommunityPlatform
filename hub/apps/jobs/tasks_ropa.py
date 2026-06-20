@@ -1,6 +1,7 @@
 """RQ handler for async RoPA artefacts (Phase 232.4)."""
 
 from __future__ import annotations
+
 from hub.apps.jobs.models import Job
 from hub.apps.ropa.models import RopaGeneration
 from hub.apps.ropa.services.pipeline import failure_generation, materialize_generation
@@ -15,7 +16,7 @@ def _execute_ropa_generate_job(job_obj: Job) -> dict:
     user = job_obj.created_by
     try:
         materialize_generation(generation=gen, actor_user=user)
-    except Exception as exc:  # noqa: BLE001 — surface to job framework
+    except Exception as exc:
         failure_generation(gen, str(exc))
         raise
     return {

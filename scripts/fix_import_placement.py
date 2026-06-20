@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Fix import uuid placement - ensure it's not inside multi-line imports."""
+
 import os
 import subprocess
 
@@ -7,7 +8,10 @@ import subprocess
 def find_files():
     r = subprocess.run(
         ["grep", "-rln", "import uuid", "hub/apps/", "--include=*.py"],
-        capture_output=True, text=True, cwd="/app"
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd="/app",
     )
     return [f for f in r.stdout.strip().split("\n") if f]
 
@@ -50,7 +54,9 @@ def fix_file(filepath):
         last_import = 0
         for i, line in enumerate(result):
             stripped = line.strip()
-            if (stripped.startswith("import ") or stripped.startswith("from ")) and "(" not in stripped:
+            if (
+                stripped.startswith("import ") or stripped.startswith("from ")
+            ) and "(" not in stripped:
                 last_import = i
         for i, line in enumerate(result):
             final.append(line)
@@ -73,10 +79,14 @@ def fix_file(filepath):
                     # Skip misplaced import
                     continue
                 result2.append(line)
-                if not added and (stripped.startswith("import ") or stripped.startswith("from ")) and "(" not in stripped and ")" not in stripped:
-                    if stripped != "import uuid":
-                        result2.append("import uuid\n")
-                        added = True
+                if (
+                    not added
+                    and (stripped.startswith("import ") or stripped.startswith("from "))
+                    and "(" not in stripped
+                    and ")" not in stripped
+                ) and stripped != "import uuid":
+                    result2.append("import uuid\n")
+                    added = True
             content = "".join(result2)
             try:
                 compile(content, filepath, "exec")

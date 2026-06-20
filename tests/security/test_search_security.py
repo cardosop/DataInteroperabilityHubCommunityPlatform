@@ -49,9 +49,8 @@ def test_search_tenant_isolation_user_sees_only_own_tenant_results():
         title=term_a,
         description="Asset in tenant A",
     )
-    idx_a.search_vector = (
-        SearchVector("title", weight="A", config="english")
-        + SearchVector("description", weight="B", config="english")
+    idx_a.search_vector = SearchVector("title", weight="A", config="english") + SearchVector(
+        "description", weight="B", config="english"
     )
     idx_a.save()
     # Create SearchIndex for tenant B
@@ -62,9 +61,8 @@ def test_search_tenant_isolation_user_sees_only_own_tenant_results():
         title=term_b,
         description="Asset in tenant B",
     )
-    idx_b.search_vector = (
-        SearchVector("title", weight="A", config="english")
-        + SearchVector("description", weight="B", config="english")
+    idx_b.search_vector = SearchVector("title", weight="A", config="english") + SearchVector(
+        "description", weight="B", config="english"
     )
     idx_b.save()
     # User A searches for tenant B's term - must get 0 results (tenant isolation)

@@ -21,6 +21,7 @@ Coverage:
 No mocks of internal code.  Real DB rows for tenants, users,
 contracts, lineage edges, audit events.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -34,7 +35,6 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -57,7 +57,7 @@ def _make_tenant(slug_prefix: str = "f2") -> Tenant:
     return tenant
 
 
-def _make_user(tenant: Tenant) -> "User":  # type: ignore[name-defined]  # test: edge-case type exercise
+def _make_user(tenant: Tenant) -> User:  # type: ignore[name-defined]  # test: edge-case type exercise
     suffix = uuid.uuid4().hex[:8]
     return User.objects.create_user(
         email=f"u-{suffix}@example.com",
@@ -69,12 +69,16 @@ def _make_user(tenant: Tenant) -> "User":  # type: ignore[name-defined]  # test:
 
 def _grant_tenant_admin(user, tenant):
     from hub.apps.users.models import Role, UserRole
+
     role, _ = Role.objects.get_or_create(tenant=tenant, name="TENANT_ADMIN")
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
 
 
 def _make_contract_with_field(
-    tenant: Tenant, *, name: str, field_name: str = "id",
+    tenant: Tenant,
+    *,
+    name: str,
+    field_name: str = "id",
 ):
     """Contract with a structurally-sound HubContract carrying one
     model + one field of the given name."""
@@ -128,6 +132,7 @@ def _url(contract) -> str:
 
 def _etag(contract) -> str:
     from hub.apps.contracts.views_crud import _contract_etag
+
     return _contract_etag(contract)
 
 
@@ -137,7 +142,6 @@ def _etag(contract) -> str:
 
 
 class LineageEditSuccessTests(TestCase):
-
     def test_apply_one_edge_returns_200_and_persists(self):
         from hub.apps.contracts.models import LineageEdge
 
@@ -162,7 +166,9 @@ class LineageEditSuccessTests(TestCase):
             ],
         }
         response = client.patch(
-            _url(c_tgt), data=body, format="json",
+            _url(c_tgt),
+            data=body,
+            format="json",
             HTTP_IF_MATCH=_etag(c_tgt),
         )
         self.assertEqual(response.status_code, 200, response.content)
@@ -170,7 +176,8 @@ class LineageEditSuccessTests(TestCase):
         # Edge persisted.
         self.assertEqual(
             LineageEdge.objects.filter(
-                target_contract_id=c_tgt.id, valid_to__isnull=True,
+                target_contract_id=c_tgt.id,
+                valid_to__isnull=True,
             ).count(),
             1,
         )
@@ -188,21 +195,26 @@ class LineageEditSuccessTests(TestCase):
             tenant=tenant,
             source_contract_id=c_src.id,
             target_contract_id=c_tgt.id,
-            source_model="default", source_field="cid",
-            target_model="default", target_field="cid",
+            source_model="default",
+            source_field="cid",
+            target_model="default",
+            target_field="cid",
             edge_type="reference",
         )
         client = _client(user)
         # Empty edges list → close everything.
         response = client.patch(
-            _url(c_tgt), data={"edges": []}, format="json",
+            _url(c_tgt),
+            data={"edges": []},
+            format="json",
             HTTP_IF_MATCH=_etag(c_tgt),
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["removed"], 1)
         self.assertEqual(
             LineageEdge.objects.filter(
-                target_contract_id=c_tgt.id, valid_to__isnull=True,
+                target_contract_id=c_tgt.id,
+                valid_to__isnull=True,
             ).count(),
             0,
         )
@@ -214,7 +226,6 @@ class LineageEditSuccessTests(TestCase):
 
 
 class LineageEditValidationTests(TestCase):
-
     def test_cycle_returns_409_with_cycle_path(self):
         """REQ-LIN-F2-002 spec — cycle returns HTTP 409 (not 400) with
         a ``cycle: [path]`` array in the response body.  Phase 228.F2
@@ -229,9 +240,12 @@ class LineageEditValidationTests(TestCase):
         # Pre-existing edge a → b.
         LineageEdge.objects.create(
             tenant=tenant,
-            source_contract_id=c_a.id, target_contract_id=c_b.id,
-            source_model="default", source_field="x",
-            target_model="default", target_field="x",
+            source_contract_id=c_a.id,
+            target_contract_id=c_b.id,
+            source_model="default",
+            source_field="x",
+            target_model="default",
+            target_field="x",
             edge_type="reference",
         )
         client = _client(user)
@@ -241,22 +255,28 @@ class LineageEditValidationTests(TestCase):
             "edges": [
                 {
                     "source_contract": str(c_a.id),
-                    "source_model": "default", "source_field": "x",
+                    "source_model": "default",
+                    "source_field": "x",
                     "target_contract": str(c_b.id),
-                    "target_model": "default", "target_field": "x",
+                    "target_model": "default",
+                    "target_field": "x",
                     "edge_type": "reference",
                 },
                 {
                     "source_contract": str(c_b.id),
-                    "source_model": "default", "source_field": "x",
+                    "source_model": "default",
+                    "source_field": "x",
                     "target_contract": str(c_a.id),
-                    "target_model": "default", "target_field": "x",
+                    "target_model": "default",
+                    "target_field": "x",
                     "edge_type": "reference",
                 },
             ],
         }
         response = client.patch(
-            _url(c_a), data=body, format="json",
+            _url(c_a),
+            data=body,
+            format="json",
             HTTP_IF_MATCH=_etag(c_a),
         )
         self.assertEqual(response.status_code, 409, response.content)
@@ -281,20 +301,25 @@ class LineageEditValidationTests(TestCase):
             "edges": [
                 {
                     "source_contract": str(c_a.id),
-                    "source_model": "default", "source_field": "x",
+                    "source_model": "default",
+                    "source_field": "x",
                     "target_contract": str(c_b.id),
-                    "target_model": "default", "target_field": "MISSING",
+                    "target_model": "default",
+                    "target_field": "MISSING",
                     "edge_type": "reference",
                 },
             ],
         }
         response = client.patch(
-            _url(c_b), data=body, format="json",
+            _url(c_b),
+            data=body,
+            format="json",
             HTTP_IF_MATCH=_etag(c_b),
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(
-            response.json().get("code"), "LINEAGE_FIELD_NOT_FOUND",
+            response.json().get("code"),
+            "LINEAGE_FIELD_NOT_FOUND",
         )
 
 
@@ -304,7 +329,6 @@ class LineageEditValidationTests(TestCase):
 
 
 class LineageEditConcurrencyAndRbacTests(TestCase):
-
     def test_stale_if_match_returns_412(self):
         tenant = _make_tenant("etag")
         user = _make_user(tenant)
@@ -312,7 +336,9 @@ class LineageEditConcurrencyAndRbacTests(TestCase):
         c = _make_contract_with_field(tenant, name="c")
         client = _client(user)
         response = client.patch(
-            _url(c), data={"edges": []}, format="json",
+            _url(c),
+            data={"edges": []},
+            format="json",
             HTTP_IF_MATCH='W/"stale-etag"',
         )
         self.assertEqual(response.status_code, 412)
@@ -329,15 +355,19 @@ class LineageEditConcurrencyAndRbacTests(TestCase):
         edges = [
             {
                 "source_contract": str(c.id),
-                "source_model": "default", "source_field": "id",
+                "source_model": "default",
+                "source_field": "id",
                 "target_contract": str(c.id),
-                "target_model": "default", "target_field": "id",
+                "target_model": "default",
+                "target_field": "id",
                 "edge_type": "reference",
             }
             for _ in range(1001)
         ]
         response = client.patch(
-            _url(c), data={"edges": edges}, format="json",
+            _url(c),
+            data={"edges": edges},
+            format="json",
             HTTP_IF_MATCH=_etag(c),
         )
         self.assertEqual(response.status_code, 413)
@@ -351,7 +381,9 @@ class LineageEditConcurrencyAndRbacTests(TestCase):
         c = _make_contract_with_field(tenant_a, name="rbac-a")
         client = _client(user_b)
         response = client.patch(
-            _url(c), data={"edges": []}, format="json",
+            _url(c),
+            data={"edges": []},
+            format="json",
             HTTP_IF_MATCH=_etag(c),
         )
         # Cross-tenant access is bound by the queryset's tenant
@@ -366,12 +398,15 @@ class LineageEditConcurrencyAndRbacTests(TestCase):
         c = _make_contract_with_field(tenant, name="noadmin")
         client = _client(user)
         response = client.patch(
-            _url(c), data={"edges": []}, format="json",
+            _url(c),
+            data={"edges": []},
+            format="json",
             HTTP_IF_MATCH=_etag(c),
         )
         self.assertEqual(response.status_code, 403)
         self.assertEqual(
-            response.json().get("code"), "EDIT_LINEAGE_FORBIDDEN",
+            response.json().get("code"),
+            "EDIT_LINEAGE_FORBIDDEN",
         )
 
 
@@ -406,20 +441,25 @@ class LineageEditCrossTenantEdgeTests(TestCase):
             "edges": [
                 {
                     "source_contract": str(c_b.id),  # foreign tenant
-                    "source_model": "default", "source_field": "x",
+                    "source_model": "default",
+                    "source_field": "x",
                     "target_contract": str(c_a.id),
-                    "target_model": "default", "target_field": "x",
+                    "target_model": "default",
+                    "target_field": "x",
                     "edge_type": "reference",
                 },
             ],
         }
         response = client.patch(
-            _url(c_a), data=body, format="json",
+            _url(c_a),
+            data=body,
+            format="json",
             HTTP_IF_MATCH=_etag(c_a),
         )
         self.assertEqual(response.status_code, 400, response.content)
         self.assertEqual(
-            response.json().get("code"), "CROSS_TENANT_EDGE_FORBIDDEN",
+            response.json().get("code"),
+            "CROSS_TENANT_EDGE_FORBIDDEN",
         )
 
 
@@ -444,9 +484,11 @@ class LineageEditIdempotencyTests(TestCase):
             "edges": [
                 {
                     "source_contract": str(c_src.id),
-                    "source_model": "default", "source_field": "x",
+                    "source_model": "default",
+                    "source_field": "x",
                     "target_contract": str(c_tgt.id),
-                    "target_model": "default", "target_field": "x",
+                    "target_model": "default",
+                    "target_field": "x",
                     "edge_type": "reference",
                 },
             ],
@@ -455,7 +497,9 @@ class LineageEditIdempotencyTests(TestCase):
 
         # First call lands the patch.
         first = client.patch(
-            _url(c_tgt), data=body, format="json",
+            _url(c_tgt),
+            data=body,
+            format="json",
             HTTP_IF_MATCH=_etag(c_tgt),
             HTTP_IDEMPOTENCY_KEY=idem_key,
         )
@@ -463,14 +507,17 @@ class LineageEditIdempotencyTests(TestCase):
         self.assertEqual(first.json()["added"], 1)
 
         rows_after_first = LineageEdge.objects.filter(
-            target_contract_id=c_tgt.id, valid_to__isnull=True,
+            target_contract_id=c_tgt.id,
+            valid_to__isnull=True,
         ).count()
         self.assertEqual(rows_after_first, 1)
 
         # Replay with the same key + same body.
         c_tgt.refresh_from_db()
         second = client.patch(
-            _url(c_tgt), data=body, format="json",
+            _url(c_tgt),
+            data=body,
+            format="json",
             HTTP_IF_MATCH=_etag(c_tgt),
             HTTP_IDEMPOTENCY_KEY=idem_key,
         )
@@ -488,7 +535,8 @@ class LineageEditIdempotencyTests(TestCase):
         # have closed-and-reopened the edge — same open count but
         # with a different row id and a closed historical row.
         rows_after_second = LineageEdge.objects.filter(
-            target_contract_id=c_tgt.id, valid_to__isnull=True,
+            target_contract_id=c_tgt.id,
+            valid_to__isnull=True,
         ).count()
         self.assertEqual(rows_after_second, 1)
         # No closed historical row from a re-apply (the only edge in
@@ -517,18 +565,18 @@ class IncludeFieldsDefaultBehaviourTests(TestCase):
         c = _make_contract_with_field(tenant, name="default-flag")
         client = _client(user)
         # No `include_fields` param.
-        response = client.get(
-            f"/api/v1/contracts/{c.id}/lineage/visualization/?format=json"
-        )
+        response = client.get(f"/api/v1/contracts/{c.id}/lineage/visualization/?format=json")
         self.assertEqual(response.status_code, 200)
         body = response.json()
         # Default-false: keys must NOT appear.
         self.assertNotIn(
-            "field_nodes", body,
+            "field_nodes",
+            body,
             msg="Default visualization must NOT carry field_nodes",
         )
         self.assertNotIn(
-            "field_links", body,
+            "field_links",
+            body,
             msg="Default visualization must NOT carry field_links",
         )
 
@@ -544,16 +592,18 @@ class IncludeFieldsDefaultBehaviourTests(TestCase):
         # endpoint has data to project into field_nodes / field_links.
         LineageEdge.objects.create(
             tenant=tenant,
-            source_contract_id=c_src.id, target_contract_id=c_tgt.id,
-            source_model="default", source_field="x",
-            target_model="default", target_field="x",
+            source_contract_id=c_src.id,
+            target_contract_id=c_tgt.id,
+            source_model="default",
+            source_field="x",
+            target_model="default",
+            target_field="x",
             edge_type="reference",
         )
 
         client = _client(user)
         response = client.get(
-            f"/api/v1/contracts/{c_tgt.id}/lineage/visualization/"
-            f"?format=json&include_fields=true"
+            f"/api/v1/contracts/{c_tgt.id}/lineage/visualization/?format=json&include_fields=true"
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
@@ -564,7 +614,8 @@ class IncludeFieldsDefaultBehaviourTests(TestCase):
         # REQ-LIN-F2-001 spec scenario "Field nodes returned when toggle on" —
         # the response MUST include nodes with ``type='field'``.
         self.assertGreaterEqual(
-            len(body["field_nodes"]), 1,
+            len(body["field_nodes"]),
+            1,
             msg="field_nodes should be populated when seeded edges exist",
         )
         self.assertTrue(
@@ -574,7 +625,6 @@ class IncludeFieldsDefaultBehaviourTests(TestCase):
 
 
 class LineageEditAuditTests(TestCase):
-
     def test_one_audit_row_per_added_edge(self):
         from hub.apps.audit.models import AuditEvent
         from hub.apps.contracts.models import LineageEdge  # noqa: F401
@@ -586,7 +636,8 @@ class LineageEditAuditTests(TestCase):
         c_tgt = _make_contract_with_field(tenant, name="tgt", field_name="x")
         client = _client(user)
         before = AuditEvent.objects.filter(
-            action="LINEAGE_EDGE_ADDED", tenant=tenant,
+            action="LINEAGE_EDGE_ADDED",
+            tenant=tenant,
         ).count()
         response = client.patch(
             _url(c_tgt),
@@ -594,9 +645,11 @@ class LineageEditAuditTests(TestCase):
                 "edges": [
                     {
                         "source_contract": str(c_src.id),
-                        "source_model": "default", "source_field": "x",
+                        "source_model": "default",
+                        "source_field": "x",
                         "target_contract": str(c_tgt.id),
-                        "target_model": "default", "target_field": "x",
+                        "target_model": "default",
+                        "target_field": "x",
                         "edge_type": "reference",
                     },
                 ],
@@ -606,6 +659,7 @@ class LineageEditAuditTests(TestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
         after = AuditEvent.objects.filter(
-            action="LINEAGE_EDGE_ADDED", tenant=tenant,
+            action="LINEAGE_EDGE_ADDED",
+            tenant=tenant,
         ).count()
         self.assertEqual(after, before + 1)

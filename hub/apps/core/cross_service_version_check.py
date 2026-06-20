@@ -50,12 +50,12 @@ Failure is fail-closed at startup: the pod refuses to come up. k8s
 restart-loop kicks in; deploy fails with a clear error message; ops
 sees the version mismatch in pod logs.
 """
+
 from __future__ import annotations
 
 import logging
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
@@ -127,7 +127,7 @@ def _compare_semver(actual: str, required: str) -> int:
 def _http_get_version(
     base_url: str,
     timeout_s: float,
-) -> Optional[str]:
+) -> str | None:
     """Probe ``{base_url}/version`` and return the reported version string.
 
     Returns ``None`` if the service is unreachable or returns a
@@ -159,15 +159,13 @@ def _http_get_version(
         body = response.json()
     except ValueError as exc:
         raise ImproperlyConfigured(
-            f"Service at {url} returned non-JSON body: {exc}. "
-            "Expected JSON with a 'version' field."
+            f"Service at {url} returned non-JSON body: {exc}. Expected JSON with a 'version' field."
         ) from exc
 
     version = body.get("version")
     if not version or not isinstance(version, str):
         raise ImproperlyConfigured(
-            f"Service at {url} returned JSON without a 'version' string field. "
-            f"Got: {body!r}"
+            f"Service at {url} returned JSON without a 'version' string field. Got: {body!r}"
         )
     return version
 
@@ -224,11 +222,14 @@ def _check_one(
         )
         if is_production:
             raise ImproperlyConfigured(message)
-        logger.warning("cross_service_version_check_too_old_nonprod", extra={
-            "service": probe.name,
-            "actual_version": actual,
-            "required_version": required,
-        })
+        logger.warning(
+            "cross_service_version_check_too_old_nonprod",
+            extra={
+                "service": probe.name,
+                "actual_version": actual,
+                "required_version": required,
+            },
+        )
         return
 
     logger.info(
@@ -278,7 +279,7 @@ def run_cross_service_version_check() -> None:
 
 
 __all__ = [
-    "run_cross_service_version_check",
     "_compare_semver",  # exported for tests
-    "_parse_semver",    # exported for tests
+    "_parse_semver",  # exported for tests
+    "run_cross_service_version_check",
 ]

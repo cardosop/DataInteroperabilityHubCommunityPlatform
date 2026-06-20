@@ -1,7 +1,7 @@
-import pytest
 import uuid
 from unittest import skipUnless
 
+import pytest
 from django.db import connection
 from django.test import TestCase
 
@@ -10,8 +10,7 @@ from hub.apps.tenants.models import Tenant
 
 _POSTGRESQL_ONLY = skipUnless(
     connection.vendor == "postgresql",
-    "Tenant context RLS test requires PostgreSQL "
-    "(current_setting + ::uuid cast)",
+    "Tenant context RLS test requires PostgreSQL (current_setting + ::uuid cast)",
 )
 
 
@@ -26,9 +25,7 @@ class NotificationsTaskTenantContextTest(TestCase):
 
     def _tenant_lookup_requires_context(self):
         return Tenant.objects.extra(
-            where=[
-                "id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid"
-            ]
+            where=["id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid"]
         ).get(id=self.tenant.id)
 
     @_POSTGRESQL_ONLY

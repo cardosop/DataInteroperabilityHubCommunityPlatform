@@ -5,6 +5,7 @@ Comprehensive tests without mocks/stubs, following engineering best practices.
 """
 
 import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -26,51 +27,10 @@ from hub.apps.virtualization.services import VirtualizationService
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription as _ensure_tenant_has_active_subscription
+
 # Default sources for SQL queries (sources are required for non-SPARQL query types)
 _DEFAULT_SQL_SOURCES = [{"type": "postgresql", "host": "localhost", "database": "testdb"}]
-
-
-def _ensure_tenant_has_active_subscription(tenant):
-    """Ensure tenant has an active subscription so plan-limit checks pass."""
-    plan, _ = TenantPlan.objects.get_or_create(
-        slug="virtualization-test-plan",
-        defaults={
-            "name": "Virtualization Test Plan",
-            "tier": PlanTier.PRO,
-            "limits_json": {
-                "max_assets": 100,
-                "max_storage_gb": 1000,
-                "max_virtual_datasets": 100,
-            },
-            "is_active": True,
-        },
-    )
-    if "max_virtual_datasets" not in (plan.limits_json or {}):
-        plan.limits_json = {
-            **(plan.limits_json or {}),
-            "max_storage_gb": 1000,
-            "max_virtual_datasets": 100,
-        }
-        plan.save(update_fields=["limits_json"])
-    if tenant.plan_id != plan.id:
-        tenant.plan = plan
-        tenant.save(update_fields=["plan"])
-    sub = (
-        Subscription.objects.filter(tenant_id=tenant.id)
-        .order_by("-created_at")
-        .first()
-    )
-    if not sub or sub.status not in (
-        SubscriptionStatus.ACTIVE,
-        SubscriptionStatus.TRIAL,
-    ):
-        Subscription.objects.create(
-            tenant=tenant,
-            plan=plan,
-            status=SubscriptionStatus.ACTIVE,
-            current_period_start=timezone.now(),
-            current_period_end=timezone.now(),
-        )
 
 
 class VirtualizationServiceInitializationTest(TestCase):
@@ -668,9 +628,7 @@ class VirtualizationServiceCreateVirtualDatasetIntegrationTest(TestCase):
             name="DATA_PROVIDER",
             defaults={"description": "Data Provider"},
         )
-        UserRole.objects.get_or_create(
-            user=self.user, role=provider_role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=provider_role)
 
         self.service = VirtualizationService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -853,7 +811,9 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             name="Search Test Tenant", slug="search-test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email=f"search-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"search-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         _ensure_tenant_has_active_subscription(self.tenant)
 
@@ -1048,24 +1008,25 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             found, f"Virtual dataset should be found in search results. Results: {results}"
         )
 
-    def test_search_index_handles_indexing_failure_gracefully(self):
-        """Test success path: dataset creation succeeds; indexing failure handling is structural."""
-        # Verifies create_virtual_dataset succeeds. Indexing failure path would require
-        # external failure injection (no mocks); this test asserts the happy path only.
+    def test_create_virtual_dataset_succeeds_with_sources(self):
+        """Test that create_virtual_dataset succeeds with valid SQL sources.
 
-        # Create dataset - should succeed even if indexing has issues
+        NOTE: The indexing failure-gracefulness path (search indexer unavailable)
+        is structural in the service layer (try/except around indexing calls) and
+        would require external error injection to test directly. This test verifies
+        the success path — the dataset is created and returned correctly.
+        """
         dataset = self.service.create_virtual_dataset(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            name="Graceful Failure Test",
+            name="Success Path Dataset",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
             sources=_DEFAULT_SQL_SOURCES,
         )
 
-        # Dataset should be created successfully
         self.assertIsNotNone(dataset)
-        self.assertEqual(dataset.name, "Graceful Failure Test")
+        self.assertEqual(dataset.name, "Success Path Dataset")
 
     def test_search_index_with_empty_schema(self):
         """Test search indexing with empty schema"""
@@ -1325,9 +1286,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             name="DATA_PROVIDER",
             defaults={"description": "Data Provider"},
         )
-        UserRole.objects.get_or_create(
-            user=self.user, role=provider_role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=provider_role)
 
         self.service = VirtualizationService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -1348,8 +1307,11 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
 
         # Create asset with compliant dataset
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset",
-            source_type="FEDERATED", compliance_status="PASS",
+            tenant=self.tenant,
+            key="test-asset",
+            name="Test Asset",
+            source_type="FEDERATED",
+            compliance_status="PASS",
         )
 
         # Create test CSV content (compliant - no PII)
@@ -1456,7 +1418,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             status="ACTIVE",
         )
 
-        dataset = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=asset,
             file=file_obj,
@@ -1466,7 +1428,9 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             },
         )
 
-        sources = [{"type": "federated_asset", "asset_id": str(asset.id), "name": "non-compliant-source"}]
+        sources = [
+            {"type": "federated_asset", "asset_id": str(asset.id), "name": "non-compliant-source"}
+        ]
 
         # Use real compliance service - should block creation
         with self.assertRaises(ValidationError) as cm:
@@ -1484,8 +1448,6 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
     def test_create_virtual_dataset_blocks_cross_tenant_source_without_entitlement(self):
         """Test that cross-tenant source access is blocked without entitlement"""
         from hub.apps.assets.models import Asset
-        from hub.apps.datasets.models import Dataset
-        from hub.apps.files.models import File
 
         # Create asset in other tenant
         other_asset = Asset.objects.create(
@@ -1497,7 +1459,11 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
         )
 
         sources = [
-            {"type": "federated_asset", "asset_id": str(other_asset.id), "name": "cross-tenant-source"}
+            {
+                "type": "federated_asset",
+                "asset_id": str(other_asset.id),
+                "name": "cross-tenant-source",
+            }
         ]
 
         with self.assertRaises(ValidationError) as cm:
@@ -1581,12 +1547,16 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             metadata_json={"title": "Other Asset Listing"},
         )
 
-        entitlement = Entitlement.objects.create(
+        Entitlement.objects.create(
             tenant=self.tenant, listing=listing, asset=other_asset, status=EntitlementStatus.ACTIVE
         )
 
         sources = [
-            {"type": "federated_asset", "asset_id": str(other_asset.id), "name": "cross-tenant-source"}
+            {
+                "type": "federated_asset",
+                "asset_id": str(other_asset.id),
+                "name": "cross-tenant-source",
+            }
         ]
 
         # Use real compliance service
@@ -1617,13 +1587,19 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
 
         # Create two assets
         asset1 = Asset.objects.create(
-            tenant=self.tenant, key="asset1", name="Asset 1",
-            source_type="FEDERATED", compliance_status="PASS",
+            tenant=self.tenant,
+            key="asset1",
+            name="Asset 1",
+            source_type="FEDERATED",
+            compliance_status="PASS",
         )
 
         asset2 = Asset.objects.create(
-            tenant=self.tenant, key="asset2", name="Asset 2",
-            source_type="FEDERATED", compliance_status="PASS",
+            tenant=self.tenant,
+            key="asset2",
+            name="Asset 2",
+            source_type="FEDERATED",
+            compliance_status="PASS",
         )
 
         # Create test CSV content for both assets
@@ -1652,7 +1628,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             status="ACTIVE",
         )
 
-        dataset1 = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=asset1,
             file=file_obj1,
@@ -1680,7 +1656,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             status="ACTIVE",
         )
 
-        dataset2 = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=asset2,
             file=file_obj2,
@@ -1716,8 +1692,11 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
         from hub.apps.files.storage import S3StorageClient
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset",
-            source_type="FEDERATED", compliance_status="PASS",
+            tenant=self.tenant,
+            key="test-asset",
+            name="Test Asset",
+            source_type="FEDERATED",
+            compliance_status="PASS",
         )
 
         # Create test CSV content
@@ -1794,13 +1773,14 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
         """Test that user permissions are checked for virtual dataset creation"""
         # Create user without required role
         regular_user = User.objects.create_user(
-            email=f"regular-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"regular-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
         service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(regular_user.id))
 
         # Should fail without required role
-        from hub.apps.core.services.base import PermissionError
 
         with self.assertRaises(PermissionError) as cm:
             service.create_virtual_dataset(
@@ -1841,7 +1821,6 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
 
     def test_create_virtual_dataset_validates_resource_quota(self):
         """Test that resource quota is validated for virtual dataset creation"""
-        from hub.apps.governance.services import GovernanceService
         from hub.apps.users.models import Role, UserRole
 
         # Create DATA_PROVIDER role
@@ -1933,7 +1912,6 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
         )
 
         # Should fail with ABAC policy denying access
-        from hub.apps.core.services.base import PermissionError
 
         with self.assertRaises(PermissionError) as cm:
             self.service.create_virtual_dataset(
@@ -1949,7 +1927,6 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
 
     def test_create_virtual_dataset_enforces_tenant_resource_limits(self):
         """Test that tenant-level resource limits are enforced"""
-        from hub.apps.governance.services import GovernanceService
         from hub.apps.users.models import Role, UserRole
 
         # Create DATA_PROVIDER role
@@ -2001,7 +1978,9 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             name="Audit Test Tenant", slug="audit-test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email=f"audit-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"audit-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         _ensure_tenant_has_active_subscription(self.tenant)
 
@@ -2109,7 +2088,7 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
         ).count()
 
         # Update the dataset
-        updated_dataset = self.service.update_virtual_dataset(
+        self.service.update_virtual_dataset(
             virtual_dataset_id=str(dataset.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
@@ -2157,7 +2136,7 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
         )
 
         # Update multiple fields
-        updated_dataset = self.service.update_virtual_dataset(
+        self.service.update_virtual_dataset(
             virtual_dataset_id=str(dataset.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
@@ -2277,24 +2256,26 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
         self.assertIsInstance(details["sources"], list)
         self.assertEqual(len(details["sources"]), 2)
 
-    def test_audit_logging_handles_failure_gracefully(self):
-        """Test success path: dataset creation succeeds; audit failure handling is structural."""
-        # Verifies create_virtual_dataset succeeds. Audit failure path would require
-        # external failure injection (no mocks); this test asserts the happy path only.
+    def test_create_virtual_dataset_succeeds(self):
+        """Test that create_virtual_dataset succeeds with valid SQL query and sources.
 
-        # Create dataset - should succeed even if audit logging fails
+        NOTE: The audit-logging failure-gracefulness path (audit DB unavailable)
+        is structural in the service layer (try/except around audit_event creation)
+        and would require external failure injection to test directly. This test
+        verifies the success path — the dataset is created and returned correctly.
+        For full audit lifecycle coverage, see test_audit_event_creation_integration.
+        """
         dataset = self.service.create_virtual_dataset(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            name="Graceful Failure Test",
+            name="Audit Success Path Dataset",
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
             sources=_DEFAULT_SQL_SOURCES,
         )
 
-        # Dataset should be created successfully
         self.assertIsNotNone(dataset)
-        self.assertEqual(dataset.name, "Graceful Failure Test")
+        self.assertEqual(dataset.name, "Audit Success Path Dataset")
 
     def test_audit_event_creation_integration(self):
         """Integration test for complete audit logging workflow"""
@@ -2656,7 +2637,6 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
 
     def test_get_query_result_execution_not_completed(self):
         """Test retrieving result from execution that is not completed"""
-        from django.utils import timezone
 
         # Create pending execution
         execution = QueryExecution.objects.create(
@@ -2829,7 +2809,9 @@ class VirtualizationServiceODBCTest(TestCase):
             name="ODBC Test Tenant", slug="odbc-test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email=f"odbc-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"odbc-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         _ensure_tenant_has_active_subscription(self.tenant)
         self.service = VirtualizationService(

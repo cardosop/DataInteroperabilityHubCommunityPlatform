@@ -7,17 +7,17 @@ Tests:
 - check_transformation_enabled() returns structured response
 - capability endpoint includes transformation_pipelines
 """
-import pytest
 
 import uuid
 
-from django.test import TestCase
+import pytest
 from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
+from django.test import TestCase
 from rest_framework import status
+from rest_framework.test import APIClient
 
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import UserStatus, Role
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import Role, UserStatus
 
 User = get_user_model()
 
@@ -108,10 +108,11 @@ class TransformationFeatureGateTest(TestCase):
     def test_gate_function_returns_structured_response(self):
         """check_transformation_enabled() returns Tenant on success, 403
         Response on failure."""
-        from hub.apps.tenants.feature_flag_gates import check_transformation_enabled
-
         # Create a request-like object for the disabled tenant
         from unittest.mock import MagicMock
+
+        from hub.apps.tenants.feature_flag_gates import check_transformation_enabled
+
         request = MagicMock()
         request.user = self.user_disabled
         request.tenant = self.tenant_disabled
@@ -121,6 +122,7 @@ class TransformationFeatureGateTest(TestCase):
         assert result is not None
         # When disabled, returns a Response (not a Tenant)
         from rest_framework.response import Response
+
         assert isinstance(result, Response)
         assert result.status_code == status.HTTP_403_FORBIDDEN
         assert result.data.get("error_code") == "TRANSFORMATION_DISABLED"
@@ -130,6 +132,7 @@ class TransformationFeatureGateTest(TestCase):
         request.tenant = self.tenant_enabled
         result = check_transformation_enabled(request)
         from hub.apps.tenants.models import Tenant as TenantModel
+
         assert isinstance(result, TenantModel)
 
     # ── 285.9.1.5.3 test 4: capability endpoint ────────────────────────

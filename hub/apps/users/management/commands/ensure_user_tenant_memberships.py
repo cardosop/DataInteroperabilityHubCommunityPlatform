@@ -16,21 +16,16 @@ from hub.apps.users.services import UserTenantMembershipService
 
 
 class Command(BaseCommand):
-    help = (
-        "Ensure all users with tenant_id have UserTenantMembership "
-        "(fixes 403 on API access)"
-    )
+    help = "Ensure all users with tenant_id have UserTenantMembership (fixes 403 on API access)"
 
     def handle(self, *args, **options):
         service = UserTenantMembershipService()
-        users = User.objects.filter(
-            tenant_id__isnull=False
-        ).select_related("tenant")
+        users = User.objects.filter(tenant_id__isnull=False).select_related("tenant")
         added = 0
         for user in users:
             if user.tenant:
-                service.add_membership(user, user.tenant)
+                service.add_membership(
+                    user, user.tenant, reason="ensure_user_tenant_memberships_command"
+                )
                 added += 1
-        self.stdout.write(
-            self.style.SUCCESS(f"Ensured membership for {added} user(s).")
-        )
+        self.stdout.write(self.style.SUCCESS(f"Ensured membership for {added} user(s)."))

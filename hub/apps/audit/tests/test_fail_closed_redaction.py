@@ -9,9 +9,7 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.audit.utils import create_audit_event, redact_fail_closed_audit_payload
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
-from hub.apps.users.models import Role, UserRole
-from hub.apps.users.models import UserStatus
-
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()

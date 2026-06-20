@@ -13,7 +13,6 @@ All tests use real services (no mocks/stubs) and run against Docker Compose inst
 """
 
 import hashlib
-import io
 import time
 import uuid
 
@@ -29,7 +28,7 @@ from rest_framework.test import APIClient
 from hub.apps.audit.models import AuditEvent
 from hub.apps.files.models import File, FileStatus
 from hub.apps.files.storage import S3StorageClient
-from hub.apps.tenants.models import KYCStatus, TenantStatus
+from hub.apps.tenants.models import TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
@@ -372,13 +371,13 @@ class TestFileInitUploadAPI(TestCase):
 
         max_retries = 5
         new_count = initial_count
-        for i in range(max_retries):
+        for _i in range(max_retries):
             new_count = AuditEvent.objects.filter(
                 resource_type="FILE", action="FILE_UPLOAD_INITIATED"
             ).count()
             if new_count > initial_count:
                 break
-            time.sleep(0.2)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(0.2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
         # Verify audit event was created if available
         # Note: Audit events are created synchronously, so they should be available immediately
@@ -476,9 +475,11 @@ class TestFileCompleteUploadAPI(TestCase):
         # Simulate file upload by creating file in storage
         storage_client = S3StorageClient()
         # Create test content that matches the file size
-        test_content = b"test file content" + b"x" * (self.file_obj.size - len(b"test file content"))
+        test_content = b"test file content" + b"x" * (
+            self.file_obj.size - len(b"test file content")
+        )
         # Ensure exact size match
-        test_content = test_content[:self.file_obj.size]
+        test_content = test_content[: self.file_obj.size]
         content_hash = hashlib.sha256(test_content).hexdigest()
 
         # Upload test file to storage
@@ -526,7 +527,7 @@ class TestFileCompleteUploadAPI(TestCase):
 
         # Note: Actual multipart completion requires real S3/MinIO integration
         # This test verifies the endpoint accepts multipart completion data
-        response = self.client.post(
+        self.client.post(
             f"/api/v1/files/{multipart_file.id}/complete",
             {
                 "content_sha256": "abc123" * 8,  # 48 chars
@@ -544,7 +545,7 @@ class TestFileCompleteUploadAPI(TestCase):
         """Test error when hash doesn't match"""
         # This would require actual file verification, which may not be implemented
         # For now, test that endpoint accepts hash
-        response = self.client.post(
+        self.client.post(
             f"/api/v1/files/{self.file_obj.id}/complete/",
             {"content_sha256": "invalid_hash" * 4},
             format="json",
@@ -584,7 +585,9 @@ class TestFileCompleteUploadAPI(TestCase):
         )
 
         # 301 (redirect) or 404 (not found) are both valid responses
-        self.assertIn(response.status_code, [status.HTTP_301_MOVED_PERMANENTLY, status.HTTP_404_NOT_FOUND])
+        self.assertIn(
+            response.status_code, [status.HTTP_301_MOVED_PERMANENTLY, status.HTTP_404_NOT_FOUND]
+        )
 
     def test_complete_upload_error_multipart_missing_parts(self):
         """Test error when multipart upload is missing parts"""
@@ -602,8 +605,7 @@ class TestFileCompleteUploadAPI(TestCase):
         response = self.client.post(
             f"/api/v1/files/{multipart_file.id}/complete/",
             {
-                "content_sha256": "abc123"
-                * 8
+                "content_sha256": "abc123" * 8
                 # Missing parts
             },
             format="json",
@@ -859,7 +861,9 @@ class TestFileDownloadAPI(TestCase):
         response = self.client.get(f"/api/v1/files/{other_file.id}/download")
 
         # 301 (redirect) or 404 (not found) are both valid responses
-        self.assertIn(response.status_code, [status.HTTP_301_MOVED_PERMANENTLY, status.HTTP_404_NOT_FOUND])
+        self.assertIn(
+            response.status_code, [status.HTTP_301_MOVED_PERMANENTLY, status.HTTP_404_NOT_FOUND]
+        )
 
     def test_download_file_unauthorized(self):
         """Test unauthorized download access"""
@@ -912,7 +916,7 @@ class TestFileDownloadAPI(TestCase):
     def test_download_file_performance(self):
         """Test download URL generation performance"""
         times = []
-        for i in range(10):
+        for _i in range(10):
             start_time = time.time()
             response = self.client.get(f"/api/v1/files/{self.file_obj.id}/download/")
             elapsed = (time.time() - start_time) * 1000
@@ -994,7 +998,6 @@ class TestFileDeleteAPI(TestCase):
             )
 
             file_id = self.file_obj.id
-            storage_path = self.file_obj.storage_path
 
             response = self.client.delete(f"/api/v1/files/{file_id}/")
 
@@ -1075,9 +1078,7 @@ class TestFileDeleteAPI(TestCase):
 
     def test_delete_file_integration_audit_logging(self):
         """Test audit logging for file deletion"""
-        initial_count = AuditEvent.objects.filter(
-            resource_type="FILE", action="FILE_DELETED"
-        ).count()
+        AuditEvent.objects.filter(resource_type="FILE", action="FILE_DELETED").count()
 
         response = self.client.delete(f"/api/v1/files/{self.file_obj.id}/")
 

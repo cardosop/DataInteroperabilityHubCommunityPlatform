@@ -1,6 +1,7 @@
 """DPIA record model — Phase 232.5."""
 
 from __future__ import annotations
+
 import uuid
 
 from django.conf import settings

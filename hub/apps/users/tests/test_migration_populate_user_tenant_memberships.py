@@ -4,9 +4,9 @@ Tests for migration 0006_populate_user_tenant_memberships.
 Verifies that users with tenant_id get UserTenantMembership created (idempotent).
 Uses real DB; calls migration function directly (no mocks/stubs).
 """
-import uuid
 
 import importlib.util
+import uuid
 
 import pytest
 from django.apps import apps
@@ -57,9 +57,7 @@ class MigrationPopulateUserTenantMembershipsTest(TestCase):
         self.assertIsNotNone(user.tenant_id)
 
         # No membership before migration
-        self.assertFalse(
-            UserTenantMembership.objects.filter(user=user, tenant=tenant).exists()
-        )
+        self.assertFalse(UserTenantMembership.objects.filter(user=user, tenant=tenant).exists())
 
         create_memberships(apps, None)
 

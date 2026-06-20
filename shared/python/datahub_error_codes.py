@@ -83,8 +83,7 @@ _FEATURE_GATE_REMEDIATION: dict[str, str] = {
         "Enable it via: datahub admin feature-flags update <tenant-id> --enable-warehouse"
     ),
     FEATURE_NOT_ENABLED: (
-        "This feature is not enabled for your tenant. "
-        "Contact your Platform Admin to enable it."
+        "This feature is not enabled for your tenant. Contact your Platform Admin to enable it."
     ),
 }
 

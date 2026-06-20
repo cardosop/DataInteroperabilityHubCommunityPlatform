@@ -22,19 +22,20 @@ Pinned spec scenarios (from 240.1.C tasks 4, 7, 8):
 Real DB rows + real boto3 + ``moto`` for the S3 boundary; no
 internal mocks beyond the network edge.
 """
+
 from __future__ import annotations
 
+import contextlib
 import io
 import os
 import uuid
 from datetime import timedelta
 
 import pytest
-from django.core.management import call_command
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
 from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
-
 
 pytestmark = [pytest.mark.django_db(transaction=True)]
 
@@ -74,23 +75,33 @@ def _make_dq_run(tenant, *, created_at=None, asset=None, file_obj=None):
     uid = uuid.uuid4().hex[:8]
     if asset is None:
         asset = Asset.objects.create(
-            tenant=tenant, key=f"a-{uid}", name=f"Asset {uid}",
+            tenant=tenant,
+            key=f"a-{uid}",
+            name=f"Asset {uid}",
             status=AssetStatus.ACTIVE,
         )
     if file_obj is None:
         file_obj = File.objects.create(
-            tenant=tenant, name=f"f-{uid}.csv",
-            content_type="text/csv", size=10,
+            tenant=tenant,
+            name=f"f-{uid}.csv",
+            content_type="text/csv",
+            size=10,
             status=FileStatus.ACTIVE,
             storage_path=f"dq/{tenant.id}/{uid}/payload.csv",
             content_sha256="0" * 64,
         )
     job = Job.objects.create(
-        tenant=tenant, type=JobType.DQ_RUN, status=JobStatus.COMPLETED,
-        resource_type="ASSET", resource_id=asset.id,
+        tenant=tenant,
+        type=JobType.DQ_RUN,
+        status=JobStatus.COMPLETED,
+        resource_type="ASSET",
+        resource_id=asset.id,
     )
     dq_run = DQRun.objects.create(
-        tenant=tenant, asset=asset, file=file_obj, job=job,
+        tenant=tenant,
+        asset=asset,
+        file=file_obj,
+        job=job,
         profile_key="intake_basic_soda",
         engine=DQEngine.SODA,
         status=DQRunStatus.SUCCEEDED,
@@ -108,7 +119,6 @@ def _make_dq_run(tenant, *, created_at=None, asset=None, file_obj=None):
 
 
 class TenantRetentionValidationTests(TransactionTestCase):
-
     def test_default_is_90_days(self):
         tenant = _make_tenant(retention_days=90)
         assert tenant.dq_run_retention_days == 90
@@ -117,7 +127,9 @@ class TenantRetentionValidationTests(TransactionTestCase):
         from hub.apps.tenants.models import Tenant
 
         t = Tenant(
-            name="X", slug="x-bound-low", status="ACTIVE",
+            name="X",
+            slug="x-bound-low",
+            status="ACTIVE",
             kyc_status="UNVERIFIED",
             dq_run_retention_days=6,
         )
@@ -128,7 +140,9 @@ class TenantRetentionValidationTests(TransactionTestCase):
         from hub.apps.tenants.models import Tenant
 
         t = Tenant(
-            name="X", slug="x-bound-high", status="ACTIVE",
+            name="X",
+            slug="x-bound-high",
+            status="ACTIVE",
             kyc_status="UNVERIFIED",
             dq_run_retention_days=400,
         )
@@ -149,7 +163,6 @@ class TenantRetentionValidationTests(TransactionTestCase):
 
 
 class SoftDeleteManagerTests(TransactionTestCase):
-
     def test_default_manager_hides_soft_deleted_rows(self):
         from hub.apps.dq.models import DQRun
 
@@ -207,7 +220,7 @@ class _BaseS3Mock:
     """
 
     def _start_moto(self):
-        moto = pytest.importorskip("moto")
+        pytest.importorskip("moto")
         from moto import mock_aws
 
         # ``S3StorageClient.__init__`` resolution chain:
@@ -222,7 +235,8 @@ class _BaseS3Mock:
         # So we have to clear (1)+(2) AND stamp (3) so the constructor
         # leaves endpoint_url = None and the moto patcher takes over.
         self._prior_endpoint_env = os.environ.pop(
-            "AWS_S3_ENDPOINT_URL", None,
+            "AWS_S3_ENDPOINT_URL",
+            None,
         )
         self._prior_environment_env = os.environ.get("ENVIRONMENT")
         os.environ["ENVIRONMENT"] = "production"
@@ -233,7 +247,7 @@ class _BaseS3Mock:
         os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
         self._mock = mock_aws()
         self._mock.start()
-        import boto3  # noqa: WPS433 — mock must be active first
+        import boto3
 
         # Override the Django setting too, so a test that sets
         # ``override_settings(AWS_STORAGE_BUCKET_NAME=...)`` doesn't
@@ -252,14 +266,10 @@ class _BaseS3Mock:
         self._s3 = s3
 
     def _stop_moto(self):
-        try:
+        with contextlib.suppress(Exception):
             self._settings_override.disable()
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             self._mock.stop()
-        except Exception:
-            pass
         if self._prior_endpoint_env is not None:
             os.environ["AWS_S3_ENDPOINT_URL"] = self._prior_endpoint_env
         if self._prior_environment_env is None:
@@ -271,7 +281,9 @@ class _BaseS3Mock:
         prefix = f"dq/{run_id}/"
         for name in ("input.csv", "checks.json", "report.html"):
             self._s3.put_object(
-                Bucket=self._bucket, Key=f"{prefix}{name}", Body=b"x",
+                Bucket=self._bucket,
+                Key=f"{prefix}{name}",
+                Body=b"x",
             )
         return prefix
 
@@ -287,16 +299,16 @@ class PurgeSoftDeleteTests(_BaseS3Mock, TransactionTestCase):
         self._stop_moto()
 
     def test_runs_inside_retention_are_left_alone(self):
-        from hub.apps.dq.models import DQRun
-
         tenant = _make_tenant(retention_days=30)
         # 10 days old — well inside retention.
         recent = _make_dq_run(
-            tenant, created_at=timezone.now() - timedelta(days=10),
+            tenant,
+            created_at=timezone.now() - timedelta(days=10),
         )
         out = io.StringIO()
         with override_settings(
-            DQ_S3_BUCKET=self._bucket, DQ_S3_PREFIX="dq/",
+            DQ_S3_BUCKET=self._bucket,
+            DQ_S3_PREFIX="dq/",
         ):
             call_command("purge_dq_runs", stdout=out)
         recent.refresh_from_db()
@@ -308,11 +320,13 @@ class PurgeSoftDeleteTests(_BaseS3Mock, TransactionTestCase):
         tenant = _make_tenant(retention_days=30)
         # 60 days old — past retention.
         old = _make_dq_run(
-            tenant, created_at=timezone.now() - timedelta(days=60),
+            tenant,
+            created_at=timezone.now() - timedelta(days=60),
         )
         out = io.StringIO()
         with override_settings(
-            DQ_S3_BUCKET=self._bucket, DQ_S3_PREFIX="dq/",
+            DQ_S3_BUCKET=self._bucket,
+            DQ_S3_PREFIX="dq/",
         ):
             call_command("purge_dq_runs", stdout=out)
         reloaded = DQRun.all_objects.get(pk=old.pk)
@@ -328,15 +342,18 @@ class PurgeSoftDeleteTests(_BaseS3Mock, TransactionTestCase):
         tenant_b = _make_tenant(retention_days=365)
 
         run_a = _make_dq_run(
-            tenant_a, created_at=timezone.now() - timedelta(days=60),
+            tenant_a,
+            created_at=timezone.now() - timedelta(days=60),
         )
         run_b = _make_dq_run(
-            tenant_b, created_at=timezone.now() - timedelta(days=60),
+            tenant_b,
+            created_at=timezone.now() - timedelta(days=60),
         )
 
         out = io.StringIO()
         with override_settings(
-            DQ_S3_BUCKET=self._bucket, DQ_S3_PREFIX="dq/",
+            DQ_S3_BUCKET=self._bucket,
+            DQ_S3_PREFIX="dq/",
         ):
             call_command("purge_dq_runs", stdout=out)
 
@@ -348,18 +365,21 @@ class PurgeSoftDeleteTests(_BaseS3Mock, TransactionTestCase):
 
         tenant = _make_tenant(retention_days=30)
         old = _make_dq_run(
-            tenant, created_at=timezone.now() - timedelta(days=60),
+            tenant,
+            created_at=timezone.now() - timedelta(days=60),
         )
         out = io.StringIO()
         with override_settings(
-            DQ_S3_BUCKET=self._bucket, DQ_S3_PREFIX="dq/",
+            DQ_S3_BUCKET=self._bucket,
+            DQ_S3_PREFIX="dq/",
         ):
             call_command("purge_dq_runs", "--dry-run", stdout=out)
         assert DQRun.all_objects.get(pk=old.pk).is_deleted is False
         # Output reports what would happen.
         text = out.getvalue().lower()
-        self.assertIn("would soft-delete", text,
-            "Dry-run output must include the phrase 'would soft-delete'")
+        self.assertIn(
+            "would soft-delete", text, "Dry-run output must include the phrase 'would soft-delete'"
+        )
         # Contextual match on the action phrase WITH the count of 1 run:
         self.assertTrue(
             "soft-delete 1" in text or "soft-delete 1 runs" in text,
@@ -367,15 +387,15 @@ class PurgeSoftDeleteTests(_BaseS3Mock, TransactionTestCase):
         )
 
     def test_dry_run_idempotent_repeats(self):
-        from hub.apps.dq.models import DQRun
-
         tenant = _make_tenant(retention_days=30)
         _make_dq_run(
-            tenant, created_at=timezone.now() - timedelta(days=60),
+            tenant,
+            created_at=timezone.now() - timedelta(days=60),
         )
         out_a, out_b = io.StringIO(), io.StringIO()
         with override_settings(
-            DQ_S3_BUCKET=self._bucket, DQ_S3_PREFIX="dq/",
+            DQ_S3_BUCKET=self._bucket,
+            DQ_S3_PREFIX="dq/",
         ):
             call_command("purge_dq_runs", "--dry-run", stdout=out_a)
             call_command("purge_dq_runs", "--dry-run", stdout=out_b)
@@ -388,16 +408,20 @@ class PurgeSoftDeleteTests(_BaseS3Mock, TransactionTestCase):
 
         tenant = _make_tenant(retention_days=30)
         _make_dq_run(
-            tenant, created_at=timezone.now() - timedelta(days=60),
+            tenant,
+            created_at=timezone.now() - timedelta(days=60),
         )
         with override_settings(
-            DQ_S3_BUCKET=self._bucket, DQ_S3_PREFIX="dq/",
+            DQ_S3_BUCKET=self._bucket,
+            DQ_S3_PREFIX="dq/",
         ):
             call_command(
-                "purge_dq_runs", stdout=io.StringIO(),
+                "purge_dq_runs",
+                stdout=io.StringIO(),
             )
         rows = AuditEvent.objects.filter(
-            action="DQ_RUN_PURGED", tenant=tenant,
+            action="DQ_RUN_PURGED",
+            tenant=tenant,
         )
         assert rows.exists()
         details = rows.first().details_json or {}
@@ -420,7 +444,8 @@ class PurgeHardDeleteTests(_BaseS3Mock, TransactionTestCase):
 
         tenant = _make_tenant(retention_days=30)
         run = _make_dq_run(
-            tenant, created_at=timezone.now() - timedelta(days=60),
+            tenant,
+            created_at=timezone.now() - timedelta(days=60),
         )
         run.soft_delete()
         # Pretend we soft-deleted 10 days ago (<30, still in grace).
@@ -428,7 +453,8 @@ class PurgeHardDeleteTests(_BaseS3Mock, TransactionTestCase):
             deleted_at=timezone.now() - timedelta(days=10),
         )
         with override_settings(
-            DQ_S3_BUCKET=self._bucket, DQ_S3_PREFIX="dq/",
+            DQ_S3_BUCKET=self._bucket,
+            DQ_S3_PREFIX="dq/",
         ):
             call_command("purge_dq_runs", stdout=io.StringIO())
         # Still present (not hard-deleted).
@@ -439,7 +465,8 @@ class PurgeHardDeleteTests(_BaseS3Mock, TransactionTestCase):
 
         tenant = _make_tenant(retention_days=30)
         run = _make_dq_run(
-            tenant, created_at=timezone.now() - timedelta(days=60),
+            tenant,
+            created_at=timezone.now() - timedelta(days=60),
         )
         run.soft_delete()
         # Soft-deleted 40 days ago — past the 30-day grace.
@@ -450,7 +477,8 @@ class PurgeHardDeleteTests(_BaseS3Mock, TransactionTestCase):
         prefix = self._seed_run_payload(run.id)
 
         with override_settings(
-            DQ_S3_BUCKET=self._bucket, DQ_S3_PREFIX="dq/",
+            DQ_S3_BUCKET=self._bucket,
+            DQ_S3_PREFIX="dq/",
         ):
             call_command("purge_dq_runs", stdout=io.StringIO())
 
@@ -458,7 +486,8 @@ class PurgeHardDeleteTests(_BaseS3Mock, TransactionTestCase):
         assert not DQRun.all_objects.filter(pk=run.pk).exists()
         # S3 prefix gone (no objects under it).
         listing = self._s3.list_objects_v2(
-            Bucket=self._bucket, Prefix=prefix,
+            Bucket=self._bucket,
+            Prefix=prefix,
         )
         assert listing.get("KeyCount", 0) == 0
 
@@ -468,26 +497,26 @@ class PurgeHardDeleteTests(_BaseS3Mock, TransactionTestCase):
 
         tenant = _make_tenant(retention_days=30)
         run = _make_dq_run(
-            tenant, created_at=timezone.now() - timedelta(days=60),
+            tenant,
+            created_at=timezone.now() - timedelta(days=60),
         )
         run.soft_delete()
         DQRun.all_objects.filter(pk=run.pk).update(
             deleted_at=timezone.now() - timedelta(days=40),
         )
         with override_settings(
-            DQ_S3_BUCKET=self._bucket, DQ_S3_PREFIX="dq/",
+            DQ_S3_BUCKET=self._bucket,
+            DQ_S3_PREFIX="dq/",
         ):
             call_command("purge_dq_runs", stdout=io.StringIO())
         rows = AuditEvent.objects.filter(
-            action="DQ_RUN_PURGED", tenant=tenant,
+            action="DQ_RUN_PURGED",
+            tenant=tenant,
         ).order_by("-timestamp")
         # Two phases at minimum: soft_delete (recorded in earlier
         # invocations or this run if both pass run together) and
         # hard_delete now.
-        assert any(
-            (r.details_json or {}).get("phase") == "hard_delete"
-            for r in rows
-        )
+        assert any((r.details_json or {}).get("phase") == "hard_delete" for r in rows)
 
 
 # ---------------------------------------------------------------------------
@@ -496,7 +525,6 @@ class PurgeHardDeleteTests(_BaseS3Mock, TransactionTestCase):
 
 
 class PurgeBatchingTests(_BaseS3Mock, TransactionTestCase):
-
     def setUp(self):
         self._start_moto()
 
@@ -514,26 +542,34 @@ class PurgeBatchingTests(_BaseS3Mock, TransactionTestCase):
         tenant = _make_tenant(retention_days=30)
         for _ in range(5):
             _make_dq_run(
-                tenant, created_at=timezone.now() - timedelta(days=60),
+                tenant,
+                created_at=timezone.now() - timedelta(days=60),
             )
         stdout = io.StringIO()
         with override_settings(
-            DQ_S3_BUCKET=self._bucket, DQ_S3_PREFIX="dq/",
+            DQ_S3_BUCKET=self._bucket,
+            DQ_S3_PREFIX="dq/",
         ):
             call_command(
-                "purge_dq_runs", "--batch-size", "2",
+                "purge_dq_runs",
+                "--batch-size",
+                "2",
                 stdout=stdout,
             )
         soft_deleted = DQRun.all_objects.filter(
-            tenant=tenant, is_deleted=True,
+            tenant=tenant,
+            is_deleted=True,
         ).count()
         assert soft_deleted == 5
 
         # 5 items ÷ batch_size 2 → at least 3 batches. Verify the
         # output mentions all 5 rows were soft-deleted.
         output = stdout.getvalue()
-        self.assertIn("soft-deleted 5 runs", output,
-            f"Expected soft-delete count in output, got: {output[:200]}")
+        self.assertIn(
+            "soft-deleted 5 runs",
+            output,
+            f"Expected soft-delete count in output, got: {output[:200]}",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -542,7 +578,6 @@ class PurgeBatchingTests(_BaseS3Mock, TransactionTestCase):
 
 
 class PurgeDryRunEnvVarTests(_BaseS3Mock, TransactionTestCase):
-
     def setUp(self):
         self._start_moto()
         self._prior_env = os.environ.get("DQ_PURGE_DRY_RUN")
@@ -562,12 +597,14 @@ class PurgeDryRunEnvVarTests(_BaseS3Mock, TransactionTestCase):
 
         tenant = _make_tenant(retention_days=30)
         run = _make_dq_run(
-            tenant, created_at=timezone.now() - timedelta(days=60),
+            tenant,
+            created_at=timezone.now() - timedelta(days=60),
         )
 
         os.environ["DQ_PURGE_DRY_RUN"] = "1"
         with override_settings(
-            DQ_S3_BUCKET=self._bucket, DQ_S3_PREFIX="dq/",
+            DQ_S3_BUCKET=self._bucket,
+            DQ_S3_PREFIX="dq/",
         ):
             call_command("purge_dq_runs", stdout=io.StringIO())
         # Untouched.
@@ -580,15 +617,19 @@ class PurgeDryRunEnvVarTests(_BaseS3Mock, TransactionTestCase):
 
         tenant = _make_tenant(retention_days=30)
         run = _make_dq_run(
-            tenant, created_at=timezone.now() - timedelta(days=60),
+            tenant,
+            created_at=timezone.now() - timedelta(days=60),
         )
 
         os.environ["DQ_PURGE_DRY_RUN"] = "1"
         with override_settings(
-            DQ_S3_BUCKET=self._bucket, DQ_S3_PREFIX="dq/",
+            DQ_S3_BUCKET=self._bucket,
+            DQ_S3_PREFIX="dq/",
         ):
             call_command(
-                "purge_dq_runs", "--no-dry-run", stdout=io.StringIO(),
+                "purge_dq_runs",
+                "--no-dry-run",
+                stdout=io.StringIO(),
             )
         assert DQRun.all_objects.get(pk=run.pk).is_deleted is True
 
@@ -599,16 +640,16 @@ class PurgeDryRunEnvVarTests(_BaseS3Mock, TransactionTestCase):
 
 
 class S3PrefixDeleteHelperTests(TransactionTestCase):
-
     def setUp(self):
-        moto = pytest.importorskip("moto")
+        pytest.importorskip("moto")
         from moto import mock_aws
 
         # See ``_BaseS3Mock._start_moto`` for the resolution-chain
         # rationale — this is the standalone copy for tests that
         # don't use the mixin.
         self._prior_endpoint_env = os.environ.pop(
-            "AWS_S3_ENDPOINT_URL", None,
+            "AWS_S3_ENDPOINT_URL",
+            None,
         )
         self._prior_environment_env = os.environ.get("ENVIRONMENT")
         os.environ["ENVIRONMENT"] = "production"
@@ -620,7 +661,6 @@ class S3PrefixDeleteHelperTests(TransactionTestCase):
         self._mock = mock_aws()
         self._mock.start()
         import boto3
-
         from django.test.utils import override_settings as _ov
 
         self._settings_override = _ov(AWS_S3_ENDPOINT_URL=None)
@@ -631,10 +671,8 @@ class S3PrefixDeleteHelperTests(TransactionTestCase):
         self._s3.create_bucket(Bucket=self._bucket)
 
     def tearDown(self):
-        try:
+        with contextlib.suppress(Exception):
             self._settings_override.disable()
-        except Exception:
-            pass
         self._mock.stop()
         if self._prior_endpoint_env is not None:
             os.environ["AWS_S3_ENDPOINT_URL"] = self._prior_endpoint_env
@@ -658,17 +696,22 @@ class S3PrefixDeleteHelperTests(TransactionTestCase):
         from hub.apps.files.storage import S3StorageClient
 
         self._s3.put_object(
-            Bucket=self._bucket, Key="dq/abc/payload.csv", Body=b"x",
+            Bucket=self._bucket,
+            Key="dq/abc/payload.csv",
+            Body=b"x",
         )
         self._s3.put_object(
-            Bucket=self._bucket, Key="dq/abcd/payload.csv", Body=b"x",
+            Bucket=self._bucket,
+            Key="dq/abcd/payload.csv",
+            Body=b"x",
         )
         with override_settings(AWS_STORAGE_BUCKET_NAME=self._bucket):
             client = S3StorageClient()
             deleted = client.delete_prefix("dq/abc", bucket=self._bucket)
         assert deleted == 1
         listing = self._s3.list_objects_v2(
-            Bucket=self._bucket, Prefix="dq/abcd/",
+            Bucket=self._bucket,
+            Prefix="dq/abcd/",
         )
         assert listing.get("KeyCount", 0) == 1
 
@@ -676,7 +719,9 @@ class S3PrefixDeleteHelperTests(TransactionTestCase):
         from hub.apps.files.storage import S3StorageClient
 
         self._s3.put_object(
-            Bucket=self._bucket, Key="dq/run1/x.csv", Body=b"x",
+            Bucket=self._bucket,
+            Key="dq/run1/x.csv",
+            Body=b"x",
         )
         with override_settings(AWS_STORAGE_BUCKET_NAME=self._bucket):
             client = S3StorageClient()

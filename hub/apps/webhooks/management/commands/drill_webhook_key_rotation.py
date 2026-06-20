@@ -21,6 +21,7 @@ Retry/replay audit:
     key_ids so operators can correlate delivery failures during the
     overlap window against the rotation timeline.
 """
+
 from __future__ import annotations
 
 import secrets
@@ -51,8 +52,6 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from hub.apps.webhooks.models import (
             Webhook,
-            WebhookSigningKey,
-            WebhookSigningKeyStatus,
         )
 
         dry_run = options["dry_run"]
@@ -83,7 +82,9 @@ class Command(BaseCommand):
 
         for webhook in webhooks:
             self._rotate_webhook_keys(
-                webhook, summary, dry_run,
+                webhook,
+                summary,
+                dry_run,
             )
 
         summary["drill_completed_at"] = timezone.now().isoformat()
@@ -95,9 +96,7 @@ class Command(BaseCommand):
         self.stdout.write(f"  Signatures OK:     {summary['signatures_verified']}")
         self.stdout.write(f"  Stale active keys: {summary['stale_active_keys']}")
         if summary["errors"]:
-            self.stdout.write(
-                self.style.WARNING(f"  Errors:            {summary['errors']}")
-            )
+            self.stdout.write(self.style.WARNING(f"  Errors:            {summary['errors']}"))
         if dry_run:
             self.stdout.write(self.style.NOTICE("\n  DRY RUN — no keys were mutated."))
 
@@ -126,12 +125,9 @@ class Command(BaseCommand):
             summary["stale_active_keys"] += 1
 
         if dry_run:
-            retiring = key_qs.filter(
-                status=WebhookSigningKeyStatus.RETIRING
-            ).count()
+            retiring = key_qs.filter(status=WebhookSigningKeyStatus.RETIRING).count()
             self.stdout.write(
-                f"  Webhook {webhook.id}: "
-                f"active={bool(active_key)}, retiring={retiring}"
+                f"  Webhook {webhook.id}: active={bool(active_key)}, retiring={retiring}"
             )
             return
 
@@ -156,9 +152,7 @@ class Command(BaseCommand):
             secret_encrypted=encrypt_secret(new_secret),
             status=WebhookSigningKeyStatus.ACTIVE,
         )
-        self.stdout.write(
-            f"    Created key {new_key.key_id} (ACTIVE)"
-        )
+        self.stdout.write(f"    Created key {new_key.key_id} (ACTIVE)")
         summary["keys_cycled"] += 1
 
         # ── Step 3: Verify signatures ──────────────────────────
@@ -170,9 +164,9 @@ class Command(BaseCommand):
             sig_old = previous_key.generate_signature(test_payload)
             assert sig_old, f"Old key {previous_key.key_id} produced empty signature"
             assert sig_new != sig_old, "Old and new signatures must differ"
-            self.stdout.write(f"    HMAC signatures verified (new + old)")
+            self.stdout.write("    HMAC signatures verified (new + old)")
         else:
-            self.stdout.write(f"    HMAC signature verified (new only)")
+            self.stdout.write("    HMAC signature verified (new only)")
         summary["signatures_verified"] += 1
 
         # ── Step 4: Audit event ──────────────────────────────

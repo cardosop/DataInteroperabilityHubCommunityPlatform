@@ -1,5 +1,7 @@
 """Phase 235.1 + 235.2 + 235.3 — PLATFORM_ADMIN URL surface (mounted at ``/api/v1/admin/``)."""
+
 from __future__ import annotations
+
 from django.urls import path
 
 from hub.apps.billing import connect_views

@@ -14,11 +14,10 @@ import json
 import shutil
 import tempfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import unquote, urlparse
 from pathlib import Path
 from threading import Thread
-from typing import Any, Dict
-from unittest import TestCase
+from typing import Any
+from urllib.parse import unquote, urlparse
 
 try:
     import pytest
@@ -34,7 +33,6 @@ from hub.apps.contracts.config.odps_refs_config import ODPSRefsConfig
 from hub.apps.contracts.odps_errors import ODPSRefResolutionError
 from hub.apps.contracts.ref_resolver import (
     ExternalRefHandling,
-    RefMode,
     RefResolver,
 )
 
@@ -54,10 +52,10 @@ class TestHTTPServer:
         self.port = port
         self.server = None
         self.thread = None
-        self.served_content: Dict[str, Dict[str, Any]] = {}
+        self.served_content: dict[str, dict[str, Any]] = {}
         self.request_count = 0
 
-    def add_route(self, path: str, content: Dict[str, Any]):
+    def add_route(self, path: str, content: dict[str, Any]):
         """
         Add a route to serve content.
 
@@ -113,7 +111,7 @@ class TestHTTPServer:
         # Give server a moment to start
         import time
 
-        time.sleep(0.1)  # INTENTIONAL: test-specific timing requirement
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
 
     def stop(self):
         """Stop HTTP server."""
@@ -245,7 +243,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
             "product": {"owner": {"$ref": "#/definitions/User"}},
         }
 
-        original, resolved = self.resolver.resolve_all_refs(
+        _original, resolved = self.resolver.resolve_all_refs(
             document, preserve_original=True, external_ref_handling=ExternalRefHandling.DISABLE
         )
 
@@ -281,7 +279,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
             "product": {"details": {"en": {"$ref": "./contracts/refs/product.json"}}},
         }
 
-        original, resolved = self.resolver.resolve_all_refs(
+        _original, resolved = self.resolver.resolve_all_refs(
             document, preserve_original=True, external_ref_handling=ExternalRefHandling.DISABLE
         )
 
@@ -302,7 +300,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
             "product": {"owner": {"$ref": "./contracts/refs/user.json"}},
         }
 
-        original, resolved = self.resolver.resolve_all_refs(
+        _original, resolved = self.resolver.resolve_all_refs(
             document, preserve_original=True, external_ref_handling=ExternalRefHandling.DISABLE
         )
 
@@ -365,7 +363,9 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
                 "url_allowlist": [server.get_base_url()],
                 "url_denylist": [],
             }
-            resolver = RefResolver(config=config, base_path=self.temp_dir, enable_caching=False, tenant_id="system")
+            resolver = RefResolver(
+                config=config, base_path=self.temp_dir, enable_caching=False, tenant_id="system"
+            )
 
             document = {
                 "schema": "https://opendataproducts.org/schema/v4.1",
@@ -375,7 +375,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
                 },
             }
 
-            original, resolved = resolver.resolve_all_refs(
+            _original, resolved = resolver.resolve_all_refs(
                 document, preserve_original=True, external_ref_handling=ExternalRefHandling.RESOLVE
             )
 
@@ -398,7 +398,9 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
                 "url_allowlist": [],
                 "url_denylist": [server.get_base_url()],
             }
-            resolver = RefResolver(config=config, base_path=self.temp_dir, enable_caching=False, tenant_id="system")
+            resolver = RefResolver(
+                config=config, base_path=self.temp_dir, enable_caching=False, tenant_id="system"
+            )
 
             document = {
                 "schema": "https://opendataproducts.org/schema/v4.1",
@@ -430,7 +432,9 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
                 "url_allowlist": ["http://allowed.example.com"],
                 "url_denylist": [],
             }
-            resolver = RefResolver(config=config, base_path=self.temp_dir, enable_caching=False, tenant_id="system")
+            resolver = RefResolver(
+                config=config, base_path=self.temp_dir, enable_caching=False, tenant_id="system"
+            )
 
             document = {
                 "schema": "https://opendataproducts.org/schema/v4.1",
@@ -520,7 +524,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
         }
 
         # Test with external refs removed
-        original, resolved = self.resolver.resolve_all_refs(
+        _original, resolved = self.resolver.resolve_all_refs(
             document, preserve_original=True, external_ref_handling=ExternalRefHandling.REMOVE
         )
 
@@ -547,7 +551,9 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
                 "url_allowlist": [server.get_base_url()],
                 "url_denylist": [],
             }
-            resolver = RefResolver(config=config, base_path=self.temp_dir, enable_caching=False, tenant_id="system")
+            resolver = RefResolver(
+                config=config, base_path=self.temp_dir, enable_caching=False, tenant_id="system"
+            )
 
             document = {
                 "schema": "https://opendataproducts.org/schema/v4.1",
@@ -568,9 +574,9 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
             # Wait a bit for server to be ready
             import time
 
-            time.sleep(0.2)  # INTENTIONAL: test-specific timing requirement
+            time.sleep(0.2)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
 
-            original, resolved = resolver.resolve_all_refs(
+            _original, resolved = resolver.resolve_all_refs(
                 document, preserve_original=True, external_ref_handling=ExternalRefHandling.RESOLVE
             )
 
@@ -635,7 +641,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
             "product": {"details": {"en": {"$ref": "#/definitions/产品详情"}}},
         }
 
-        original, resolved = self.resolver.resolve_all_refs(
+        _original, resolved = self.resolver.resolve_all_refs(
             document, preserve_original=True, external_ref_handling=ExternalRefHandling.DISABLE
         )
 
@@ -657,7 +663,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
 
         # Should handle special characters in $ref paths
         try:
-            original, resolved = self.resolver.resolve_all_refs(
+            _original, resolved = self.resolver.resolve_all_refs(
                 document, preserve_original=True, external_ref_handling=ExternalRefHandling.DISABLE
             )
             # May succeed or fail depending on JSON pointer spec compliance
@@ -684,7 +690,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
             "product": {"details": {"en": {"$ref": "#/definitions/ProductDetails"}}},
         }
 
-        original, resolved = self.resolver.resolve_all_refs(
+        _original, resolved = self.resolver.resolve_all_refs(
             document, preserve_original=True, external_ref_handling=ExternalRefHandling.DISABLE
         )
 
@@ -707,7 +713,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
             "product": {"details": {"en": {"$ref": "#/definitions/ProductDetails"}}},
         }
 
-        original, resolved = self.resolver.resolve_all_refs(
+        _original, resolved = self.resolver.resolve_all_refs(
             document, preserve_original=True, external_ref_handling=ExternalRefHandling.DISABLE
         )
 
@@ -735,7 +741,7 @@ class ODPSSRefResolutionCITest(DjangoTestCase):
             "product": {"details": {"en": {"$ref": "#/definitions/Level1"}}},
         }
 
-        original, resolved = self.resolver.resolve_all_refs(
+        _original, resolved = self.resolver.resolve_all_refs(
             document, preserve_original=True, external_ref_handling=ExternalRefHandling.DISABLE
         )
 

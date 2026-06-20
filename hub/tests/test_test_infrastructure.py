@@ -7,12 +7,13 @@ Proves:
 3. E.2: Teardown resilience covers statement-timeout errors
 4. E.3: Production DB guard blocks prod-like names and hosts
 """
-import os
-import pytest
-from unittest.mock import patch
-from django.test import TestCase
-from django.core.exceptions import ImproperlyConfigured
 
+import os
+from unittest.mock import patch
+
+import pytest
+from django.core.exceptions import ImproperlyConfigured
+from django.test import TestCase
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -26,12 +27,12 @@ class ConftestConsolidationTest(TestCase):
         are applied even for hub-only test runs.
         """
         import hub.conftest as hub_conf
+
         source = open(hub_conf.__file__).read()
         self.assertIn(
             "import tests.conftest",
             source,
-            "hub/conftest.py must import tests/conftest.py "
-            "for single-source patch bridging",
+            "hub/conftest.py must import tests/conftest.py for single-source patch bridging",
         )
 
     def test_hub_conftest_delegates_pytest_configure(self):
@@ -40,12 +41,12 @@ class ConftestConsolidationTest(TestCase):
         tests.conftest.pytest_configure when available.
         """
         import hub.conftest as hub_conf
+
         source = open(hub_conf.__file__).read()
         self.assertIn(
             "tests_conftest.pytest_configure(config)",
             source,
-            "hub/conftest.py must delegate to "
-            "tests.conftest.pytest_configure",
+            "hub/conftest.py must delegate to tests.conftest.pytest_configure",
         )
 
     def test_sql_flush_cascade_patch_idempotent(self):
@@ -55,6 +56,7 @@ class ConftestConsolidationTest(TestCase):
         double-applied.
         """
         import django.db.backends.postgresql.operations as pg_ops
+
         self.assertTrue(
             getattr(
                 pg_ops.DatabaseOperations.sql_flush,
@@ -75,12 +77,12 @@ class StrictTeardownFlagTest(TestCase):
         errors (PgBouncer statement_timeout during TRUNCATE).
         """
         import hub.conftest as hub_conf
+
         source = open(hub_conf.__file__).read()
         self.assertIn(
             '"canceling statement"',
             source,
-            "Teardown must handle 'canceling statement' "
-            "(PgBouncer statement_timeout)",
+            "Teardown must handle 'canceling statement' (PgBouncer statement_timeout)",
         )
         self.assertIn(
             '"statement timeout"',
@@ -94,11 +96,11 @@ class StrictTeardownFlagTest(TestCase):
         hub/conftest.py module docstring.
         """
         import hub.conftest as hub_conf
+
         self.assertIn(
             "STRICT_TEST_TEARDOWN",
             hub_conf.__doc__,
-            "STRICT_TEST_TEARDOWN must be documented in "
-            "hub/conftest.py docstring",
+            "STRICT_TEST_TEARDOWN must be documented in hub/conftest.py docstring",
         )
 
     def test_strict_flag_checked_in_teardown(self):
@@ -107,13 +109,13 @@ class StrictTeardownFlagTest(TestCase):
         STRICT_TEST_TEARDOWN and raise if set.
         """
         import hub.conftest as hub_conf
+
         source = open(hub_conf.__file__).read()
         # Count occurrences of STRICT_TEST_TEARDOWN check
-        count = source.count(
-            'os.environ.get("STRICT_TEST_TEARDOWN") == "1"'
-        )
+        count = source.count('os.environ.get("STRICT_TEST_TEARDOWN") == "1"')
         self.assertGreaterEqual(
-            count, 3,
+            count,
+            3,
             "STRICT_TEST_TEARDOWN must be checked in all "
             "three teardown error handlers (Operational, "
             "Programming, Integrity)",
@@ -133,6 +135,7 @@ class ProductionDBGuardTest(TestCase):
     def test_guard_blocks_prod_in_db_name(self):
         """DB name containing 'prod' must be rejected."""
         from hub.test_runner import _guard_against_production_db
+
         with self.settings(
             DATABASES={"default": {"NAME": "meshant_prod", "HOST": "localhost"}},
         ):
@@ -143,24 +146,31 @@ class ProductionDBGuardTest(TestCase):
     def test_guard_blocks_production_in_db_name(self):
         """DB name containing 'production' must be rejected."""
         from hub.test_runner import _guard_against_production_db
-        with self.settings(
-            DATABASES={"default": {"NAME": "hub_production", "HOST": "localhost"}},
+
+        with (
+            self.settings(
+                DATABASES={"default": {"NAME": "hub_production", "HOST": "localhost"}},
+            ),
+            self.assertRaises(ImproperlyConfigured),
         ):
-            with self.assertRaises(ImproperlyConfigured):
-                _guard_against_production_db()
+            _guard_against_production_db()
 
     def test_guard_blocks_live_in_db_name(self):
         """DB name containing 'live' must be rejected."""
         from hub.test_runner import _guard_against_production_db
-        with self.settings(
-            DATABASES={"default": {"NAME": "hub_live_db", "HOST": "localhost"}},
+
+        with (
+            self.settings(
+                DATABASES={"default": {"NAME": "hub_live_db", "HOST": "localhost"}},
+            ),
+            self.assertRaises(ImproperlyConfigured),
         ):
-            with self.assertRaises(ImproperlyConfigured):
-                _guard_against_production_db()
+            _guard_against_production_db()
 
     def test_guard_blocks_prod_in_host(self):
         """Host containing 'prod' (without 'test') must be rejected."""
         from hub.test_runner import _guard_against_production_db
+
         with self.settings(
             DATABASES={"default": {"NAME": "hub_test", "HOST": "db-prod.rds.amazonaws.com"}},
         ):
@@ -171,6 +181,7 @@ class ProductionDBGuardTest(TestCase):
     def test_guard_allows_test_db_name(self):
         """DB name with 'test' must be allowed."""
         from hub.test_runner import _guard_against_production_db
+
         with self.settings(
             DATABASES={"default": {"NAME": "hub_test_shared", "HOST": "postgres"}},
         ):
@@ -180,6 +191,7 @@ class ProductionDBGuardTest(TestCase):
     def test_guard_allows_prod_test_host(self):
         """Host containing both 'prod' and 'test' must be allowed."""
         from hub.test_runner import _guard_against_production_db
+
         with self.settings(
             DATABASES={"default": {"NAME": "hub_test", "HOST": "prod-test-db.internal"}},
         ):
@@ -189,6 +201,7 @@ class ProductionDBGuardTest(TestCase):
     def test_guard_called_in_test_runner(self):
         """NoMigrateTestRunner.setup_databases must call the guard."""
         import hub.test_runner as runner_mod
+
         source = open(runner_mod.__file__).read()
         self.assertIn(
             "_guard_against_production_db()",

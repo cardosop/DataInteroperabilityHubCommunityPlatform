@@ -11,7 +11,6 @@ All tests use real services: Files, Datasets, DQ, Search, DLQ, Redis, Postgres.
 
 import os
 import sys
-import time
 from uuid import uuid4
 
 import pytest
@@ -442,8 +441,8 @@ class TestFullPathIntegration(TestCase):
         # Verify process-file created artifacts (File/Dataset).
         # Note: files_processed counter is updated by PATCH /runs/, not
         # by process-file itself — so we check actual DB artifacts.
-        from hub.apps.files.models import File
         from hub.apps.datasets.models import Dataset
+        from hub.apps.files.models import File
 
         run.refresh_from_db()
         files_created = File.objects.filter(
@@ -453,6 +452,7 @@ class TestFullPathIntegration(TestCase):
             tenant=ingestion.tenant,
         ).count()
         self.assertGreater(
-            files_created + datasets_created, 0,
+            files_created + datasets_created,
+            0,
             "process-file should create at least one File or Dataset",
         )

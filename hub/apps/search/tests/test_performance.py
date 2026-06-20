@@ -6,10 +6,10 @@ Tests performance requirements for search endpoints:
 
 These tests use real services and infrastructure (no mocks).
 """
-import uuid
 
 import statistics
 import time
+import uuid
 
 from django.contrib.auth import get_user_model
 from django.db import connection, reset_queries
@@ -31,7 +31,9 @@ class SearchPerformanceTest(TestCase):
         """Set up test data"""
         self.client = APIClient()
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE")
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE"
+        )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
@@ -60,16 +62,16 @@ class SearchPerformanceTest(TestCase):
         execution_times = []
         query_counts = []
 
-        for i in range(iterations):
+        for _i in range(iterations):
             reset_queries()
             start_queries = len(connection.queries)
 
             start_time = time.perf_counter()
 
             if method == "GET":
-                response = self.client.get(url, format="json")
+                self.client.get(url, format="json")
             elif method == "POST":
-                response = self.client.post(url, data, format="json")
+                self.client.post(url, data, format="json")
 
             end_time = time.perf_counter()
 
@@ -87,12 +89,16 @@ class SearchPerformanceTest(TestCase):
             "p95": (
                 statistics.quantiles(execution_times, n=20)[18]
                 if len(execution_times) >= 20
-                else max(execution_times) if execution_times else 0
+                else max(execution_times)
+                if execution_times
+                else 0
             ),
             "p99": (
                 statistics.quantiles(execution_times, n=100)[98]
                 if len(execution_times) >= 100
-                else max(execution_times) if execution_times else 0
+                else max(execution_times)
+                if execution_times
+                else 0
             ),
             "avg_queries": statistics.mean(query_counts) if query_counts else 0,
             "max_queries": max(query_counts) if query_counts else 0,
@@ -111,16 +117,14 @@ class SearchPerformanceTest(TestCase):
             f"P95 response time ({results['p95']:.2f}ms) exceeds target (200ms)",
         )
 
-        # Log results
-        print(f"\n{'='*60}")
-        print("GET /api/v1/search/search/ Performance Results")
-        print(f"{'='*60}")
-        print(f"P50: {results['p50']:.2f}ms")
-        print(f"P95: {results['p95']:.2f}ms (Target: < 200ms)")
-        print(f"P99: {results['p99']:.2f}ms")
-        print(f"Average Queries: {results['avg_queries']:.2f}")
-        print(f"Max Queries: {results['max_queries']}")
-        print(f"{'='*60}\n")
+        # Log results via logging instead of print for clean CI output.
+        import logging
+        _log = logging.getLogger(__name__)
+        _log.debug(
+            "Search performance: P50=%.2fms P95=%.2fms P99=%.2fms avg_queries=%.2f max_queries=%d",
+            results["p50"], results["p95"], results["p99"],
+            results["avg_queries"], results["max_queries"],
+        )
 
     def test_search_query_count(self):
         """Test that search uses optimized queries"""

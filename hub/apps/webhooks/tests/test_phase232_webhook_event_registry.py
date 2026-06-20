@@ -1,7 +1,6 @@
 """Phase 232.8.16 — Phase-232 subsystem events are valid WebhookEventType choices."""
 
 from __future__ import annotations
-import pytest
 
 import pytest
 from django.test import SimpleTestCase

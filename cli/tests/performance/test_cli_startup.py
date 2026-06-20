@@ -26,6 +26,7 @@ def _measure_startup_ms() -> float:
     start = time.perf_counter()
     result = subprocess.run(
         [sys.executable, "-m", "datahub_cli", "--help"],
+        check=False,
         capture_output=True,
         timeout=10,
     )

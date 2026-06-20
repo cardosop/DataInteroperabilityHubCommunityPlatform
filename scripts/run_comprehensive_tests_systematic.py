@@ -8,18 +8,18 @@ Follows engineering-grade practices:
 - Fix root causes
 - Follow best practices
 """
+
 import re
 import subprocess
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-def get_all_apps() -> List[str]:
+def get_all_apps() -> list[str]:
     """Get all Django apps in hub/apps."""
     try:
         result = subprocess.run(
@@ -33,6 +33,7 @@ def get_all_apps() -> List[str]:
                 "-c",
                 "cd /app/hub && python manage.py test --help 2>&1 | grep -A 1000 'test labels' | head -200",
             ],
+            check=False,
             capture_output=True,
             text=True,
             timeout=30,
@@ -52,6 +53,7 @@ def get_all_apps() -> List[str]:
                 "-type",
                 "d",
             ],
+            check=False,
             capture_output=True,
             text=True,
             timeout=30,
@@ -73,11 +75,11 @@ def get_all_apps() -> List[str]:
     return []
 
 
-def run_django_tests(app_path: str, timeout: int = 1800) -> Dict[str, any]:
+def run_django_tests(app_path: str, timeout: int = 1800) -> dict[str, any]:
     """Run Django tests for a specific app."""
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Running tests for: {app_path}")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     start_time = time.time()
 
@@ -95,6 +97,7 @@ def run_django_tests(app_path: str, timeout: int = 1800) -> Dict[str, any]:
     try:
         result = subprocess.run(
             cmd,
+            check=False,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -139,7 +142,7 @@ def run_django_tests(app_path: str, timeout: int = 1800) -> Dict[str, any]:
         }
 
 
-def parse_test_output(output: str) -> Dict[str, int]:
+def parse_test_output(output: str) -> dict[str, int]:
     """Parse Django test output to extract statistics."""
     stats = {
         "total": 0,

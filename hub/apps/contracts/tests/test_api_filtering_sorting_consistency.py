@@ -25,7 +25,6 @@ from hub.apps.contracts.models import (
     OriginalSpecType,
 )
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
-from hub.apps.tenants.models import KYCStatus
 from hub.apps.users.models import Role, UserRole
 
 
@@ -346,7 +345,8 @@ class APIFilteringSortingConsistencyTest(ContractsAPITestBase):
         """Test sorting with invalid sort direction"""
         # Test with invalid sort format
         response = self.client.get(
-            "/api/v1/contracts/", {"ordering": "++created_at"}  # Invalid format
+            "/api/v1/contracts/",
+            {"ordering": "++created_at"},  # Invalid format
         )
 
         # Should handle invalid sort format gracefully
@@ -393,7 +393,8 @@ class APIFilteringSortingConsistencyTest(ContractsAPITestBase):
     def test_multiple_filters_with_same_field(self):
         """Test multiple filters with same field (should use last one or combine)"""
         response = self.client.get(
-            "/api/v1/contracts/", {"status": "ACTIVE", "status": "DRAFT"}  # Duplicate filter
+            "/api/v1/contracts/",
+            {"status": "ACTIVE", "status": "DRAFT"},  # Duplicate filter
         )
 
         # Should handle duplicate filters (may use last one or combine)

@@ -1,13 +1,12 @@
 """
 Integration tests for ODPS notification emails.
 """
-import uuid
 
+import uuid
 from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import (
@@ -342,8 +341,10 @@ class ODPSNotificationIntegrationTest(TestCase):
 
         # Send email - task records failure and propagates EmailServiceError to caller.
         # The ERROR log is expected — verified with assertLogs to keep CI output clean.
-        with self.assertRaises(EmailServiceError), \
-             self.assertLogs('hub.apps.notifications.tasks', level='ERROR'):
+        with (
+            self.assertRaises(EmailServiceError),
+            self.assertLogs("hub.apps.notifications.tasks", level="ERROR"),
+        ):
             send_odps_creation_completion_email(str(self.odps_contract.id))
 
         # Verify delivery record was created with failure status

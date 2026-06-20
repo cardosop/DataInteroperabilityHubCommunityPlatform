@@ -1,6 +1,7 @@
 """TENANT_ADMIN gate for processor agreement APIs (Phase 232.6.11)."""
 
 from __future__ import annotations
+
 from rest_framework.permissions import BasePermission
 
 from hub.apps.users.models import UserRole

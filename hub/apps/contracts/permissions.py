@@ -7,7 +7,7 @@ Provides permission validation for ODPS operations:
 - Contract modification/linking (TENANT_ADMIN, DATA_PROVIDER)
 - Contract deletion (TENANT_ADMIN)
 """
-from typing import Optional
+
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -19,7 +19,6 @@ except ImportError:
     # Fallback for environments where graphql is not available
     class GraphQLError(Exception):
         """GraphQL Error exception"""
-        pass
 
 
 class ContractPermissionChecker:
@@ -134,6 +133,4 @@ class ContractPermissionChecker:
         # Check if user has required role
         has_permission = user.has_role("TENANT_ADMIN")
         if not has_permission:
-            raise GraphQLError(
-                "Permission denied: Contract deletion requires TENANT_ADMIN role"
-            )
+            raise GraphQLError("Permission denied: Contract deletion requires TENANT_ADMIN role")

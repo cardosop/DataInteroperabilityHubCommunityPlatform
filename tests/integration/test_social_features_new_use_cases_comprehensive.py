@@ -20,23 +20,19 @@ Features:
 Total: 80+ test cases
 """
 
-import json
 import time
 import uuid
-from typing import Any, Dict, List
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
-from django.utils import timezone
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.social.models import Rating, Review, Comment, Community, CommunityMember, ReviewStatus
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.assets.models import AssetStatus
+from hub.apps.social.models import Comment, CommunityMember, Rating, Review, ReviewStatus
+from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     AssetFactory,
@@ -50,6 +46,15 @@ User = get_user_model()
 pytestmark = [
     pytest.mark.django_db,
     pytest.mark.integration,
+    pytest.mark.uc("UC-SOCIAL-001"),
+    pytest.mark.uc("UC-SOCIAL-002"),
+    pytest.mark.uc("UC-SOCIAL-003"),
+    pytest.mark.uc("UC-SOCIAL-004"),
+    pytest.mark.uc("UC-SOCIAL-005"),
+    pytest.mark.uc("UC-SOCIAL-006"),
+    pytest.mark.uc("UC-CM-002"),
+    pytest.mark.uc("UC-CM-003"),
+    pytest.mark.uc("UC-CM-004"),
 ]
 
 
@@ -211,6 +216,7 @@ class UCSOCIAL001RateAssetTest(SocialFeaturesNewUseCasesTestBase):
 
         # Verify all 10 ratings were persisted
         from hub.apps.social.models import Rating
+
         total = Rating.objects.filter(user=self.dc_user).count()
         self.assertEqual(total, 10, f"Expected 10 ratings, got {total}")
 
@@ -231,8 +237,9 @@ class UCSOCIAL001RateAssetTest(SocialFeaturesNewUseCasesTestBase):
 
     def test_rate_asset_quality_score_update(self):
         """Test that asset quality score is updated after rating"""
-        from django.urls import reverse
         from django.db.models import Avg
+        from django.urls import reverse
+
         from hub.apps.social.models import Rating
 
         self.client.force_authenticate(user=self.dc_user)
@@ -240,7 +247,7 @@ class UCSOCIAL001RateAssetTest(SocialFeaturesNewUseCasesTestBase):
         # Get initial rating count and average (if any)
         initial_ratings = Rating.objects.filter(asset=self.asset)
         initial_count = initial_ratings.count()
-        initial_avg = initial_ratings.aggregate(Avg('rating'))['rating__avg'] if initial_count > 0 else None
+        (initial_ratings.aggregate(Avg("rating"))["rating__avg"] if initial_count > 0 else None)
 
         rating_data = {
             "asset_id": str(self.asset.id),
@@ -258,14 +265,15 @@ class UCSOCIAL001RateAssetTest(SocialFeaturesNewUseCasesTestBase):
         self.assertEqual(ratings.count(), initial_count + 1)
 
         # Verify average rating is updated
-        avg_rating = ratings.aggregate(Avg('rating'))['rating__avg']
+        avg_rating = ratings.aggregate(Avg("rating"))["rating__avg"]
         self.assertIsNotNone(avg_rating)
         self.assertEqual(avg_rating, 5.0)
 
         # Verify rating score may be stored in source_metadata (if implementation supports it)
         # Note: Asset model doesn't have quality_score field, rating aggregation is the source of truth
-        if self.asset.source_metadata and 'user_rating_score' in self.asset.source_metadata:
-            self.assertGreater(self.asset.source_metadata['user_rating_score'], 0)
+        if self.asset.source_metadata and "user_rating_score" in self.asset.source_metadata:
+            self.assertGreater(self.asset.source_metadata["user_rating_score"], 0)
+
     @pytest.mark.performance
     def test_rate_asset_performance(self):
         """Test performance target: rating submission should be < 500ms (relaxed to 5000ms for integration tests)"""
@@ -286,7 +294,11 @@ class UCSOCIAL001RateAssetTest(SocialFeaturesNewUseCasesTestBase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         # Integration tests with TransactionTestCase are slower due to DB flushing
         # Use a more reasonable threshold for integration tests (5 seconds)
-        self.assertLess(elapsed_time, 5000, f"Rating submission took {elapsed_time}ms, exceeds 5000ms threshold for integration tests")
+        self.assertLess(
+            elapsed_time,
+            5000,
+            f"Rating submission took {elapsed_time}ms, exceeds 5000ms threshold for integration tests",
+        )
 
 
 class UCSOCIAL002ReviewAssetTest(SocialFeaturesNewUseCasesTestBase):
@@ -323,16 +335,17 @@ class UCSOCIAL002ReviewAssetTest(SocialFeaturesNewUseCasesTestBase):
 
         review_data = {
             "asset_id": str(self.asset.id),
-            "review_text": (
-                "This is a good review with appropriate content."
-            ),
+            "review_text": ("This is a good review with appropriate content."),
         }
         review_url = reverse("review-list")
         response = self.client.post(
-            review_url, review_data, format="json",
+            review_url,
+            review_data,
+            format="json",
         )
         self.assertEqual(
-            response.status_code, status.HTTP_201_CREATED,
+            response.status_code,
+            status.HTTP_201_CREATED,
         )
         review_id = response.data["id"]
 
@@ -353,14 +366,13 @@ class UCSOCIAL002ReviewAssetTest(SocialFeaturesNewUseCasesTestBase):
             review_url,
             {
                 "asset_id": str(self.asset.id),
-                "review_text": (
-                    "A detailed review for list verification."
-                ),
+                "review_text": ("A detailed review for list verification."),
             },
             format="json",
         )
         self.assertEqual(
-            create_resp.status_code, status.HTTP_201_CREATED,
+            create_resp.status_code,
+            status.HTTP_201_CREATED,
         )
 
         # ReviewViewSet.list() requires asset_id query param
@@ -368,7 +380,8 @@ class UCSOCIAL002ReviewAssetTest(SocialFeaturesNewUseCasesTestBase):
             f"{review_url}?asset_id={self.asset.id}",
         )
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         data = response.json()
         results = data.get("results", data)
@@ -510,7 +523,9 @@ class UCSOCIAL005ManageActivityFeedTest(SocialFeaturesNewUseCasesTestBase):
         """Unauthenticated activity feed → 401/403."""
         self.client.logout()
         response = self.client.get("/api/v1/social/activity-feeds/")
-        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+        self.assertIn(
+            response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]
+        )
 
 
 class UCSOCIAL006AssignDataStewardTest(
@@ -536,9 +551,7 @@ class UCSOCIAL006AssignDataStewardTest(
         self.asset.status = _AS.DRAFT
         self.asset.save(update_fields=["status", "updated_at"])
 
-        steward_desc = (
-            f"Data Steward: {self.dc_user.email}"
-        )
+        steward_desc = f"Data Steward: {self.dc_user.email}"
         self.client.force_authenticate(user=self.dpo_user)
         response = self.client.patch(
             f"/api/v1/assets/{self.asset.id}/",
@@ -546,16 +559,19 @@ class UCSOCIAL006AssignDataStewardTest(
             format="json",
         )
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         self.assertEqual(
-            response.data["description"], steward_desc,
+            response.data["description"],
+            steward_desc,
         )
 
         # Verify steward persisted via DB
         self.asset.refresh_from_db()
         self.assertEqual(
-            self.asset.description, steward_desc,
+            self.asset.description,
+            steward_desc,
         )
 
     def test_assign_steward_unauthorized(self):

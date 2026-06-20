@@ -16,9 +16,9 @@ import pytest
 
 pytestmark = [pytest.mark.slow, pytest.mark.workflow_e2e]
 
+import contextlib
 import json
 import re
-import time
 import uuid
 
 from django.test.utils import override_settings
@@ -27,7 +27,6 @@ from hub.apps.core.events.models import Event
 from hub.apps.orchestration.models import WorkflowStatus
 from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
 from tests.e2e.workflow_e2e_base import WorkflowE2ETestBase
-from tests.factories import TenantFactory, UserFactory
 
 
 def _valid_odcs_contract_minimal():
@@ -120,7 +119,7 @@ def _parse_metric_samples(metrics_text, metric_name):
 
 
 @pytest.mark.e2e
-@pytest.mark.requires_database
+@pytest.mark.requires_db
 @pytest.mark.timeout(900)
 @override_settings(
     ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=True,
@@ -267,7 +266,7 @@ class TestWorkflowMetricsBusinessRulesE2E(WorkflowE2ETestBase):
 
 
 @pytest.mark.e2e
-@pytest.mark.requires_database
+@pytest.mark.requires_db
 @pytest.mark.timeout(900)
 @override_settings(
     ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=True,
@@ -358,11 +357,11 @@ class TestWorkflowEventsBusinessRulesE2E(WorkflowE2ETestBase):
         """
         from django.contrib.auth import get_user_model
 
-        from hub.apps.orchestration.models import WorkflowDefinition, WorkflowStatus
+        from hub.apps.orchestration.models import WorkflowDefinition
 
-        User = get_user_model()
+        get_user_model()
         # Minimal workflow with one task that raises so failure is inside try block
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="observability_e2e_fail_step",
             version="1.0.0",
             dsl_json={
@@ -440,7 +439,7 @@ class TestWorkflowEventsBusinessRulesE2E(WorkflowE2ETestBase):
 
 
 @pytest.mark.e2e
-@pytest.mark.requires_database
+@pytest.mark.requires_db
 @pytest.mark.timeout(900)
 @override_settings(
     ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=True,
@@ -508,7 +507,8 @@ class TestWorkflowStructuredLoggingBusinessRulesE2E(WorkflowE2ETestBase):
             self.create_start_and_execute(ContractCreationWorkflow.WORKFLOW_NAME, input_data)
         log_output = "\n".join(log_ctx.output)
         self.assertTrue(
-            "step" in log_output.lower() and ("duration" in log_output.lower() or "validation" in log_output.lower()),
+            "step" in log_output.lower()
+            and ("duration" in log_output.lower() or "validation" in log_output.lower()),
             "Logs should contain step context with duration or validation info",
         )
 
@@ -529,10 +529,8 @@ class TestWorkflowStructuredLoggingBusinessRulesE2E(WorkflowE2ETestBase):
             "user_id": str(self.user.id),
         }
         with self.assertLogs("hub.apps.orchestration.workflow_engine", level="ERROR") as log_ctx:
-            try:
+            with contextlib.suppress(Exception):
                 self.create_start_and_execute(ContractCreationWorkflow.WORKFLOW_NAME, input_data)
-            except Exception:
-                pass
         log_output = "\n".join(log_ctx.output).lower()
         # Engine logs "Workflow validation failed" (validation path) or
         # "Error executing step" (task exception path) at ERROR level.
@@ -596,7 +594,7 @@ def _get_tracer_with_in_memory_exporter():
 
 
 @pytest.mark.e2e
-@pytest.mark.requires_database
+@pytest.mark.requires_db
 @pytest.mark.timeout(900)
 @override_settings(
     ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=True,
@@ -617,7 +615,7 @@ class TestWorkflowDistributedTracingBusinessRulesE2E(WorkflowE2ETestBase):
         """Test validation spans are in OpenTelemetry traces."""
         tracer, span_exporter = _get_tracer_with_in_memory_exporter()
         if tracer is None or span_exporter is None:
-            pytest.skip("OpenTelemetry SDK not available")
+            pytest.skip("OpenTelemetry SDK not available")  # noqa: skip-in-body — runtime service dependency
 
         import hub.apps.orchestration.workflow_engine as engine_module
 
@@ -647,7 +645,7 @@ class TestWorkflowDistributedTracingBusinessRulesE2E(WorkflowE2ETestBase):
         """Test validation spans are linked to workflow spans (same trace)."""
         tracer, span_exporter = _get_tracer_with_in_memory_exporter()
         if tracer is None or span_exporter is None:
-            pytest.skip("OpenTelemetry SDK not available")
+            pytest.skip("OpenTelemetry SDK not available")  # noqa: skip-in-body — runtime service dependency
 
         import hub.apps.orchestration.workflow_engine as engine_module
 
@@ -677,7 +675,7 @@ class TestWorkflowDistributedTracingBusinessRulesE2E(WorkflowE2ETestBase):
         """Test validation results are in span attributes."""
         tracer, span_exporter = _get_tracer_with_in_memory_exporter()
         if tracer is None or span_exporter is None:
-            pytest.skip("OpenTelemetry SDK not available")
+            pytest.skip("OpenTelemetry SDK not available")  # noqa: skip-in-body — runtime service dependency
 
         import hub.apps.orchestration.workflow_engine as engine_module
 
@@ -723,7 +721,7 @@ class TestWorkflowDistributedTracingBusinessRulesE2E(WorkflowE2ETestBase):
         """Test rule name and duration are in span attributes."""
         tracer, span_exporter = _get_tracer_with_in_memory_exporter()
         if tracer is None or span_exporter is None:
-            pytest.skip("OpenTelemetry SDK not available")
+            pytest.skip("OpenTelemetry SDK not available")  # noqa: skip-in-body — runtime service dependency
 
         import hub.apps.orchestration.workflow_engine as engine_module
 

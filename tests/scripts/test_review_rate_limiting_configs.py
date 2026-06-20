@@ -5,10 +5,10 @@ Tests for rate limiting configuration review script
 Tests the review and mapping of rate limiting configurations to endpoints.
 """
 
+import json
 import sys
 import tempfile
 import unittest
-import json
 from pathlib import Path
 
 # Add scripts directory to path
@@ -17,9 +17,9 @@ sys.path.insert(0, str(project_root / "scripts"))
 
 # Import with proper handling
 import importlib.util
+
 spec = importlib.util.spec_from_file_location(
-    "review_rate_limiting_configs",
-    project_root / "scripts" / "review_rate_limiting_configs.py"
+    "review_rate_limiting_configs", project_root / "scripts" / "review_rate_limiting_configs.py"
 )
 if spec and spec.loader:
     module = importlib.util.module_from_spec(spec)
@@ -46,12 +46,21 @@ class TestRateLimitingConfigReviewer(unittest.TestCase):
         self.assertGreater(len(mappings), 0, "Should find category mappings")
 
         # Check for expected categories
-        expected_categories = ['auth', 'asset', 'contract', 'search', 'dq_run',
-                              'compliance_run', 'file_upload', 'file_download']
+        expected_categories = [
+            "auth",
+            "asset",
+            "contract",
+            "search",
+            "dq_run",
+            "compliance_run",
+            "file_upload",
+            "file_download",
+        ]
         for category in expected_categories:
             if category in mappings:
-                self.assertGreater(len(mappings[category]), 0,
-                                 f"Category {category} should have endpoint patterns")
+                self.assertGreater(
+                    len(mappings[category]), 0, f"Category {category} should have endpoint patterns"
+                )
 
     def test_review_rate_limit_rules(self):
         """Test rate limit rules review"""
@@ -63,12 +72,25 @@ class TestRateLimitingConfigReviewer(unittest.TestCase):
         # Check rule structure
         for rule in rules:
             self.assertIsInstance(rule, RateLimitRule)
-            self.assertIn(rule.category, ['auth', 'asset', 'contract', 'search',
-                                         'dq_run', 'compliance_run', 'file_upload',
-                                         'file_download', 'contract_validation',
-                                         'catalog_read', 'sparql_query',
-                                         'transformation', 'general'])
-            self.assertIn(rule.window, ['BURST', 'SUSTAINED', 'DAILY'])
+            self.assertIn(
+                rule.category,
+                [
+                    "auth",
+                    "asset",
+                    "contract",
+                    "search",
+                    "dq_run",
+                    "compliance_run",
+                    "file_upload",
+                    "file_download",
+                    "contract_validation",
+                    "catalog_read",
+                    "sparql_query",
+                    "transformation",
+                    "general",
+                ],
+            )
+            self.assertIn(rule.window, ["BURST", "SUSTAINED", "DAILY"])
             self.assertGreaterEqual(rule.default_limit, 0)
             self.assertGreaterEqual(rule.maximum_limit, 0)
 
@@ -90,11 +112,24 @@ class TestRateLimitingConfigReviewer(unittest.TestCase):
         # Check mapping structure
         for mapping in mappings:
             self.assertIsInstance(mapping, EndpointRateLimitMapping)
-            self.assertIn(mapping.category, ['auth', 'asset', 'contract', 'search',
-                                            'dq_run', 'compliance_run', 'file_upload',
-                                            'file_download', 'contract_validation',
-                                            'catalog_read', 'sparql_query',
-                                            'transformation', 'general'])
+            self.assertIn(
+                mapping.category,
+                [
+                    "auth",
+                    "asset",
+                    "contract",
+                    "search",
+                    "dq_run",
+                    "compliance_run",
+                    "file_upload",
+                    "file_download",
+                    "contract_validation",
+                    "catalog_read",
+                    "sparql_query",
+                    "transformation",
+                    "general",
+                ],
+            )
             self.assertGreaterEqual(mapping.burst_limit, 0)
             self.assertGreaterEqual(mapping.sustained_limit, 0)
             self.assertGreaterEqual(mapping.daily_limit, 0)
@@ -109,8 +144,8 @@ class TestRateLimitingConfigReviewer(unittest.TestCase):
 
         # Check endpoint structure
         for endpoint in endpoints[:5]:  # Check first 5
-            self.assertIn('path', endpoint)
-            self.assertIn('method', endpoint)
+            self.assertIn("path", endpoint)
+            self.assertIn("method", endpoint)
 
     def test_verify_all_rate_limiting_configs_reviewed(self):
         """Test verification that all rate limiting configs are reviewed"""
@@ -126,8 +161,7 @@ class TestRateLimitingConfigReviewer(unittest.TestCase):
         self.assertIn("expected_rules", verification)
 
         # Should have reviewed all categories
-        self.assertEqual(verification["categories_reviewed"],
-                        verification["total_categories"])
+        self.assertEqual(verification["categories_reviewed"], verification["total_categories"])
 
     def test_verify_rate_limiting_mapping(self):
         """Test verification of rate limiting mapping"""
@@ -160,9 +194,9 @@ class TestRateLimitingConfigReviewer(unittest.TestCase):
         self.reviewer.map_rate_limiting_to_endpoints(test_endpoints)
 
         # Generate report
-        temp_file = Path(tempfile.mktemp(suffix='.json'))
+        temp_file = Path(tempfile.mktemp(suffix=".json"))
         try:
-            report = self.reviewer.generate_report(temp_file)
+            self.reviewer.generate_report(temp_file)
 
             self.assertTrue(temp_file.exists(), "Report file should exist")
 
@@ -183,36 +217,41 @@ class TestRateLimitingConfigReviewer(unittest.TestCase):
         """Test that auth endpoints map to AUTH category"""
         mappings = self.reviewer.review_endpoint_category_mappings()
 
-        if 'auth' in mappings:
-            auth_endpoints = mappings['auth']
+        if "auth" in mappings:
+            auth_endpoints = mappings["auth"]
             self.assertGreater(len(auth_endpoints), 0, "Should have auth endpoints")
 
             # Check that auth endpoints are in the list
             paths = [ep[0] for ep in auth_endpoints]
-            self.assertTrue(any('/auth/' in path.lower() for path in paths),
-                          "Should contain auth paths")
+            self.assertTrue(
+                any("/auth/" in path.lower() for path in paths), "Should contain auth paths"
+            )
 
     def test_category_mapping_for_asset_endpoints(self):
         """Test that asset endpoints map correctly"""
         mappings = self.reviewer.review_endpoint_category_mappings()
 
         # Check asset category
-        if 'asset' in mappings:
-            asset_endpoints = mappings['asset']
-            paths = [ep[0] for ep in asset_endpoints]
+        if "asset" in mappings:
+            asset_endpoints = mappings["asset"]
+            [ep[0] for ep in asset_endpoints]
             methods = [ep[1] for ep in asset_endpoints]
             # Asset endpoints should have write methods
-            self.assertTrue(any(m in ['POST', 'PUT', 'PATCH', 'DELETE'] for m in methods),
-                          "Should have write methods for asset category")
+            self.assertTrue(
+                any(m in ["POST", "PUT", "PATCH", "DELETE"] for m in methods),
+                "Should have write methods for asset category",
+            )
 
         # Check catalog_read category (GET requests to assets)
-        if 'catalog_read' in mappings:
-            catalog_endpoints = mappings['catalog_read']
-            paths = [ep[0] for ep in catalog_endpoints]
+        if "catalog_read" in mappings:
+            catalog_endpoints = mappings["catalog_read"]
+            [ep[0] for ep in catalog_endpoints]
             methods = [ep[1] for ep in catalog_endpoints]
             # Catalog read should have GET methods
-            self.assertTrue(any(m == 'GET' for m in methods),
-                          "Should have GET methods for catalog_read category")
+            self.assertTrue(
+                any(m == "GET" for m in methods),
+                "Should have GET methods for catalog_read category",
+            )
 
     def test_rate_limit_rules_have_all_windows(self):
         """Test that rate limit rules have all three time windows"""
@@ -228,9 +267,9 @@ class TestRateLimitingConfigReviewer(unittest.TestCase):
         # Each category should have 3 windows
         for category, category_rules in rules_by_category.items():
             windows = [rule.window for rule in category_rules]
-            self.assertIn('BURST', windows, f"{category} should have BURST window")
-            self.assertIn('SUSTAINED', windows, f"{category} should have SUSTAINED window")
-            self.assertIn('DAILY', windows, f"{category} should have DAILY window")
+            self.assertIn("BURST", windows, f"{category} should have BURST window")
+            self.assertIn("SUSTAINED", windows, f"{category} should have SUSTAINED window")
+            self.assertIn("DAILY", windows, f"{category} should have DAILY window")
 
     def test_maximum_limits_greater_than_defaults(self):
         """Test that maximum limits are greater than or equal to default limits"""
@@ -244,8 +283,11 @@ class TestRateLimitingConfigReviewer(unittest.TestCase):
 
         # Check that maximum >= default for each rule
         for key, rule in limits_by_key.items():
-            self.assertGreaterEqual(rule.maximum_limit, rule.default_limit,
-                                  f"Maximum limit should be >= default for {key}")
+            self.assertGreaterEqual(
+                rule.maximum_limit,
+                rule.default_limit,
+                f"Maximum limit should be >= default for {key}",
+            )
 
     def test_integration_with_real_codebase(self):
         """Integration test with real codebase - no mocks"""
@@ -289,4 +331,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

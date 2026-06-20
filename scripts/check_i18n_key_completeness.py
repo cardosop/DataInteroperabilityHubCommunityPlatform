@@ -9,12 +9,11 @@ Usage:
     python scripts/check_i18n_key_completeness.py
     python scripts/check_i18n_key_completeness.py --locales-dir frontend/src/i18n
 """
+
 from __future__ import annotations
 
 import argparse
 import json
-import os
-import sys
 from pathlib import Path
 
 

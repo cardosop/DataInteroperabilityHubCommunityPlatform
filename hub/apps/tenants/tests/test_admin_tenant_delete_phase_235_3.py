@@ -27,13 +27,14 @@ REQ-ADMIN-TENANT-HARD-DELETE-001 in
 8.  Tenants whose ``scheduled_for_deletion_at`` is < 90 days old are
     skipped by the sweep (the grace window is mandatory).
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 from datetime import timedelta
 from io import StringIO
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.utils import timezone
@@ -56,7 +57,9 @@ User = get_user_model()
 
 def _ensure_tenant_has_subscription(tenant: Tenant) -> None:
     from datetime import timedelta
+
     from django.utils import timezone
+
     from hub.apps.billing.models import Subscription, SubscriptionStatus
     from hub.apps.tenants.models import PlanTier, TenantPlan
 
@@ -191,10 +194,14 @@ class TestAdminTenantDeleteHappyPath:
     @pytest.mark.integration
     def test_emits_tenant_soft_deleted_audit_event(self):
         self.client.delete(_detail_url(self.target.id))
-        audit = AuditEvent.all_objects.filter(
-            tenant=self.target,
-            action=_audit_et.TENANT_SOFT_DELETED,
-        ).order_by("-timestamp").first()
+        audit = (
+            AuditEvent.all_objects.filter(
+                tenant=self.target,
+                action=_audit_et.TENANT_SOFT_DELETED,
+            )
+            .order_by("-timestamp")
+            .first()
+        )
         assert audit is not None
         d = audit.details_json or {}
         assert d.get("slug") == self.target.slug
@@ -273,9 +280,7 @@ class TestAdminTenantDeleteBlockers:
 class TestTenantHardDeleteSweep:
     def _run_sweep_command(self, *args):
         out, err = StringIO(), StringIO()
-        call_command(
-            "tenant_hard_delete_sweep", *args, stdout=out, stderr=err
-        )
+        call_command("tenant_hard_delete_sweep", *args, stdout=out, stderr=err)
         return out.getvalue(), err.getvalue()
 
     @pytest.mark.integration
@@ -300,10 +305,14 @@ class TestTenantHardDeleteSweep:
         assert not Tenant.all_objects.filter(pk=t.pk).exists()
         # TENANT_HARD_DELETED audit row survives the cascade because
         # AuditEvent.tenant uses on_delete=SET_NULL.
-        audit = AuditEvent.all_objects.filter(
-            action=_audit_et.TENANT_HARD_DELETED,
-            details_json__tenant_id=str(t.pk),
-        ).order_by("-timestamp").first()
+        audit = (
+            AuditEvent.all_objects.filter(
+                action=_audit_et.TENANT_HARD_DELETED,
+                details_json__tenant_id=str(t.pk),
+            )
+            .order_by("-timestamp")
+            .first()
+        )
         assert audit is not None
         assert summary["hard_deleted_count"] >= 1
 
@@ -373,8 +382,7 @@ class TestTenantHardDeleteSweep:
         summary = run_tenant_hard_delete_sweep(dry_run=False)
         assert Tenant.all_objects.filter(pk=t.pk).exists()
         assert any(
-            str(t.pk) == r.get("tenant_id")
-            and r.get("reason") == "dsar_restriction_active"
+            str(t.pk) == r.get("tenant_id") and r.get("reason") == "dsar_restriction_active"
             for r in summary.get("skipped", [])
         )
 
@@ -518,9 +526,7 @@ class TestSweepRaceProtection:
             legal_hold=True,
         )
 
-        result = _hard_delete_one_tenant(
-            tenant_id=t.pk, sweep_run_id="test-run-1"
-        )
+        result = _hard_delete_one_tenant(tenant_id=t.pk, sweep_run_id="test-run-1")
         assert result is None, (
             "_hard_delete_one_tenant must return None when the under-lock "
             "re-validation sees legal_hold=True"

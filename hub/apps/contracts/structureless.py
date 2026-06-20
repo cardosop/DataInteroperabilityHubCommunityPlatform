@@ -37,11 +37,12 @@ Public API
 * :func:`classify_structureless_contract` — assigns a triage class to a
   structureless contract using its `original_spec_type` + `original_raw`.
 """
+
 from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Protocol
 
 from django.db.models import Q
 
@@ -84,7 +85,7 @@ class StructurelessClassification(str, Enum):
 
 
 def is_payload_structureless(
-    payload: Optional[Dict[str, Any]],
+    payload: dict[str, Any] | None,
 ) -> bool:
     """Phase 227 L3 — payload-level structureless predicate.
 
@@ -110,9 +111,7 @@ def is_payload_structureless(
     # non-empty `fields[]`. A model with `fields=[]` carries no payload.
     models = payload.get("models") or []
     has_model_fields = any(
-        isinstance(m, dict) and (m.get("fields") or [])
-        for m in models
-        if isinstance(m, dict)
+        isinstance(m, dict) and (m.get("fields") or []) for m in models if isinstance(m, dict)
     )
 
     schema_block = payload.get("schema") or {}
@@ -133,9 +132,7 @@ def is_structureless(contract: _ContractLike) -> bool:
     * ``models`` missing OR empty list OR list-of-models-with-empty-fields.
     * ``schema.fields`` missing OR empty OR null.
     """
-    return is_payload_structureless(
-        getattr(contract, "hub_contract_json", None)
-    )
+    return is_payload_structureless(getattr(contract, "hub_contract_json", None))
 
 
 def structureless_filter_q() -> Q:

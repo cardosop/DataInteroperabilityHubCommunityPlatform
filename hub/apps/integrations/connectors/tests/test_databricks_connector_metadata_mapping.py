@@ -3,20 +3,17 @@ Unit tests for Databricks connector metadata mapping operations.
 
 Tests map_to_hub_asset and verifies that push methods raise NotImplementedError.
 """
-import pytest
-from unittest.mock import Mock, patch
-from datetime import datetime, timezone
 
 from django.test import TestCase
 
-from hub.apps.integrations.connectors.databricks_connector import DatabricksConnector
+from hub.apps.assets.models import AssetSourceType
 from hub.apps.integrations.base import (
+    MarketplaceAssetMapping,
     MarketplaceListing,
     MarketplaceResource,
     MarketplaceType,
-    MarketplaceAssetMapping,
 )
-from hub.apps.assets.models import AssetSourceType
+from hub.apps.integrations.connectors.databricks_connector import DatabricksConnector
 
 
 class TestDatabricksConnectorMetadataMapping(TestCase):
@@ -25,10 +22,10 @@ class TestDatabricksConnectorMetadataMapping(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
-        reset_circuit_breaker_by_name('databricks-connector')
+
+        reset_circuit_breaker_by_name("databricks-connector")
         self.connector = DatabricksConnector(
-            host="https://test-workspace.cloud.databricks.com",
-            token="test-token"
+            host="https://test-workspace.cloud.databricks.com", token="test-token"
         )
 
     def test_map_to_hub_asset_complete_metadata(self):
@@ -46,44 +43,21 @@ class TestDatabricksConnectorMetadataMapping(TestCase):
                     "comment": "Test comment",
                     "owner": "test_owner",
                     "created_at": "2024-01-01T00:00:00Z",
-                    "updated_at": "2024-01-02T00:00:00Z"
+                    "updated_at": "2024-01-02T00:00:00Z",
                 },
                 "odps_metadata": {
-                    "product": {
-                        "name": "Test Product",
-                        "description": "Product description"
-                    },
-                    "pricing_plans": [
-                        {
-                            "name": "Free",
-                            "price": 0
-                        }
-                    ],
-                    "access_methods": {
-                        "api": {
-                            "type": "REST"
-                        }
-                    },
-                    "payment_gateways": {}
+                    "product": {"name": "Test Product", "description": "Product description"},
+                    "pricing_plans": [{"name": "Free", "price": 0}],
+                    "access_methods": {"api": {"type": "REST"}},
+                    "payment_gateways": {},
                 },
                 "odcs_metadata": {
-                    "schema": {
-                        "fields": [
-                            {
-                                "name": "col1",
-                                "type": "string"
-                            }
-                        ]
-                    },
-                    "quality": {
-                        "completeness": 0.95
-                    },
-                    "sla": {
-                        "availability": "99.9%"
-                    }
-                }
+                    "schema": {"fields": [{"name": "col1", "type": "string"}]},
+                    "quality": {"completeness": 0.95},
+                    "sla": {"availability": "99.9%"},
+                },
             },
-            url="https://test-workspace.cloud.databricks.com/#share/test_share"
+            url="https://test-workspace.cloud.databricks.com/#share/test_share",
         )
 
         # Execute map_to_hub_asset
@@ -102,7 +76,10 @@ class TestDatabricksConnectorMetadataMapping(TestCase):
         self.assertEqual(mapping.asset_data["visibility"], "PUBLIC")
 
         # Verify source_metadata
-        self.assertEqual(mapping.source_metadata["marketplace_type"], MarketplaceType.DATABRICKS_MARKETPLACE.value)
+        self.assertEqual(
+            mapping.source_metadata["marketplace_type"],
+            MarketplaceType.DATABRICKS_MARKETPLACE.value,
+        )
         self.assertEqual(mapping.source_metadata["listing_id"], "test_share")
         self.assertIn("synced_at", mapping.source_metadata)
         self.assertIn("listing_url", mapping.source_metadata)
@@ -126,15 +103,15 @@ class TestDatabricksConnectorMetadataMapping(TestCase):
                 resource_type="TABLE",
                 name="Table 1",
                 description="Test table 1",
-                format="DATABRICKS_TABLE"
+                format="DATABRICKS_TABLE",
             ),
             MarketplaceResource(
                 resource_id="catalog.schema.table2",
                 resource_type="TABLE",
                 name="Table 2",
                 description="Test table 2",
-                format="DATABRICKS_TABLE"
-            )
+                format="DATABRICKS_TABLE",
+            ),
         ]
 
         listing = MarketplaceListing(
@@ -142,11 +119,7 @@ class TestDatabricksConnectorMetadataMapping(TestCase):
             marketplace_type=MarketplaceType.DATABRICKS_MARKETPLACE,
             title="Test Share",
             resources=resources,
-            metadata={
-                "databricks_share": {
-                    "name": "test_share"
-                }
-            }
+            metadata={"databricks_share": {"name": "test_share"}},
         )
 
         # Execute map_to_hub_asset
@@ -167,12 +140,7 @@ class TestDatabricksConnectorMetadataMapping(TestCase):
             marketplace_id="test_share",
             marketplace_type=MarketplaceType.DATABRICKS_MARKETPLACE,
             title="Test Share",
-            metadata={
-                "databricks_share": {
-                    "name": "test_share",
-                    "owner": "owner@example.com"
-                }
-            }
+            metadata={"databricks_share": {"name": "test_share", "owner": "owner@example.com"}},
         )
 
         # Execute map_to_hub_asset
@@ -187,11 +155,7 @@ class TestDatabricksConnectorMetadataMapping(TestCase):
             marketplace_id="test_share",
             marketplace_type=MarketplaceType.DATABRICKS_MARKETPLACE,
             title="Test Share",
-            metadata={
-                "databricks_share": {
-                    "name": "test_share"
-                }
-            }
+            metadata={"databricks_share": {"name": "test_share"}},
         )
 
         sync_job_id = "job-123-456"
@@ -208,11 +172,7 @@ class TestDatabricksConnectorMetadataMapping(TestCase):
             marketplace_id="test_share",
             marketplace_type=MarketplaceType.DATABRICKS_MARKETPLACE,
             title="Test Share",
-            metadata={
-                "databricks_share": {
-                    "name": "test_share"
-                }
-            }
+            metadata={"databricks_share": {"name": "test_share"}},
         )
 
         # Execute map_to_hub_asset
@@ -228,7 +188,7 @@ class TestDatabricksConnectorMetadataMapping(TestCase):
             marketplace_id="minimal_share",
             marketplace_type=MarketplaceType.DATABRICKS_MARKETPLACE,
             title="Minimal Share",
-            metadata={}
+            metadata={},
         )
 
         # Execute map_to_hub_asset
@@ -249,18 +209,15 @@ class TestDatabricksConnectorPushOperations(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
-        reset_circuit_breaker_by_name('databricks-connector')
+
+        reset_circuit_breaker_by_name("databricks-connector")
         self.connector = DatabricksConnector(
-            host="https://test-workspace.cloud.databricks.com",
-            token="test-token"
+            host="https://test-workspace.cloud.databricks.com", token="test-token"
         )
 
     def test_create_listing_raises_not_implemented(self):
         """Test create_listing() raises NotImplementedError."""
-        listing_data = {
-            "name": "test_share",
-            "comment": "Test share"
-        }
+        listing_data = {"name": "test_share", "comment": "Test share"}
 
         with self.assertRaises(NotImplementedError) as cm:
             self.connector.create_listing(listing_data)
@@ -270,9 +227,7 @@ class TestDatabricksConnectorPushOperations(TestCase):
 
     def test_update_listing_raises_not_implemented(self):
         """Test update_listing() raises NotImplementedError."""
-        listing_data = {
-            "comment": "Updated comment"
-        }
+        listing_data = {"comment": "Updated comment"}
 
         with self.assertRaises(NotImplementedError) as cm:
             self.connector.update_listing("test_share", listing_data)
@@ -282,10 +237,7 @@ class TestDatabricksConnectorPushOperations(TestCase):
 
     def test_publish_resource_raises_not_implemented(self):
         """Test publish_resource() raises NotImplementedError."""
-        resource_data = {
-            "name": "test_table",
-            "type": "TABLE"
-        }
+        resource_data = {"name": "test_table", "type": "TABLE"}
 
         with self.assertRaises(NotImplementedError) as cm:
             self.connector.publish_resource("test_share", resource_data)
@@ -295,10 +247,7 @@ class TestDatabricksConnectorPushOperations(TestCase):
 
     def test_map_from_hub_asset_raises_not_implemented(self):
         """Test map_from_hub_asset() raises NotImplementedError."""
-        asset_data = {
-            "name": "Test Asset",
-            "description": "Test description"
-        }
+        asset_data = {"name": "Test Asset", "description": "Test description"}
 
         with self.assertRaises(NotImplementedError) as cm:
             self.connector.map_from_hub_asset(asset_data)
@@ -316,10 +265,7 @@ class TestDatabricksConnectorPushOperations(TestCase):
 
     def test_sync_push_with_options_raises_not_implemented(self):
         """Test sync_push() with options raises NotImplementedError."""
-        options = {
-            "dry_run": True,
-            "force_update": False
-        }
+        options = {"dry_run": True, "force_update": False}
 
         with self.assertRaises(NotImplementedError) as cm:
             self.connector.sync_push(["asset-1"], options)

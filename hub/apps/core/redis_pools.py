@@ -7,21 +7,24 @@ with proper configuration and health checks.
 This module implements per-instance connection pooling as specified in the
 Redis Instance Separation Design.
 """
-import redis
+
 import logging
-from typing import Optional
+
+import redis
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
 # Global connection pools (lazy initialization)
-_redis_cache_pool: Optional[redis.ConnectionPool] = None
-_redis_queue_pool: Optional[redis.ConnectionPool] = None
-_redis_events_pool: Optional[redis.ConnectionPool] = None
-_redis_channels_pool: Optional[redis.ConnectionPool] = None
+_redis_cache_pool: redis.ConnectionPool | None = None
+_redis_queue_pool: redis.ConnectionPool | None = None
+_redis_events_pool: redis.ConnectionPool | None = None
+_redis_channels_pool: redis.ConnectionPool | None = None
 
 
-def _get_redis_url_with_fallback(env_var: str, default_port: int, fallback_env_var: str = "REDIS_URL") -> str:
+def _get_redis_url_with_fallback(
+    env_var: str, default_port: int, fallback_env_var: str = "REDIS_URL"
+) -> str:
     """
     Get Redis URL from environment variable with fallback to REDIS_URL.
 
@@ -43,7 +46,7 @@ def _get_redis_url_with_fallback(env_var: str, default_port: int, fallback_env_v
     if fallback_url:
         logger.info(
             f"Using {fallback_env_var} as fallback for {env_var}",
-            extra={"env_var": env_var, "fallback_env_var": fallback_env_var}
+            extra={"env_var": env_var, "fallback_env_var": fallback_env_var},
         )
         return fallback_url
 
@@ -64,10 +67,10 @@ def get_redis_cache_pool() -> redis.ConnectionPool:
         redis_url = _get_redis_url_with_fallback("REDIS_CACHE_URL", 6379)
 
         # Cache pool configuration (read-heavy workload)
-        max_connections = getattr(settings, 'REDIS_CACHE_MAX_CONNECTIONS', 50)
-        socket_timeout = getattr(settings, 'REDIS_CACHE_SOCKET_TIMEOUT', 5)
-        socket_connect_timeout = getattr(settings, 'REDIS_CACHE_SOCKET_CONNECT_TIMEOUT', 5)
-        health_check_interval = getattr(settings, 'REDIS_CACHE_HEALTH_CHECK_INTERVAL', 30)
+        max_connections = getattr(settings, "REDIS_CACHE_MAX_CONNECTIONS", 50)
+        socket_timeout = getattr(settings, "REDIS_CACHE_SOCKET_TIMEOUT", 5)
+        socket_connect_timeout = getattr(settings, "REDIS_CACHE_SOCKET_CONNECT_TIMEOUT", 5)
+        health_check_interval = getattr(settings, "REDIS_CACHE_HEALTH_CHECK_INTERVAL", 30)
 
         _redis_cache_pool = redis.ConnectionPool.from_url(
             redis_url,
@@ -77,12 +80,12 @@ def get_redis_cache_pool() -> redis.ConnectionPool:
             retry_on_timeout=True,
             socket_keepalive=True,
             health_check_interval=health_check_interval,
-            decode_responses=True
+            decode_responses=True,
         )
 
         logger.info(
             "redis_cache_pool_created",
-            extra={"redis_url": redis_url, "max_connections": max_connections}
+            extra={"redis_url": redis_url, "max_connections": max_connections},
         )
 
     return _redis_cache_pool
@@ -101,10 +104,10 @@ def get_redis_queue_pool() -> redis.ConnectionPool:
         redis_url = _get_redis_url_with_fallback("REDIS_QUEUE_URL", 6380)
 
         # Queue pool configuration (write-heavy workload)
-        max_connections = getattr(settings, 'REDIS_QUEUE_MAX_CONNECTIONS', 20)
-        socket_timeout = getattr(settings, 'REDIS_QUEUE_SOCKET_TIMEOUT', 10)
-        socket_connect_timeout = getattr(settings, 'REDIS_QUEUE_SOCKET_CONNECT_TIMEOUT', 5)
-        health_check_interval = getattr(settings, 'REDIS_QUEUE_HEALTH_CHECK_INTERVAL', 60)
+        max_connections = getattr(settings, "REDIS_QUEUE_MAX_CONNECTIONS", 20)
+        socket_timeout = getattr(settings, "REDIS_QUEUE_SOCKET_TIMEOUT", 10)
+        socket_connect_timeout = getattr(settings, "REDIS_QUEUE_SOCKET_CONNECT_TIMEOUT", 5)
+        health_check_interval = getattr(settings, "REDIS_QUEUE_HEALTH_CHECK_INTERVAL", 60)
 
         _redis_queue_pool = redis.ConnectionPool.from_url(
             redis_url,
@@ -114,12 +117,12 @@ def get_redis_queue_pool() -> redis.ConnectionPool:
             retry_on_timeout=True,
             socket_keepalive=True,
             health_check_interval=health_check_interval,
-            decode_responses=True
+            decode_responses=True,
         )
 
         logger.info(
             "redis_queue_pool_created",
-            extra={"redis_url": redis_url, "max_connections": max_connections}
+            extra={"redis_url": redis_url, "max_connections": max_connections},
         )
 
     return _redis_queue_pool
@@ -138,10 +141,10 @@ def get_redis_events_pool() -> redis.ConnectionPool:
         redis_url = _get_redis_url_with_fallback("REDIS_EVENTS_URL", 6381)
 
         # Events pool configuration (high throughput)
-        max_connections = getattr(settings, 'REDIS_EVENTS_MAX_CONNECTIONS', 30)
-        socket_timeout = getattr(settings, 'REDIS_EVENTS_SOCKET_TIMEOUT', 5)
-        socket_connect_timeout = getattr(settings, 'REDIS_EVENTS_SOCKET_CONNECT_TIMEOUT', 5)
-        health_check_interval = getattr(settings, 'REDIS_EVENTS_HEALTH_CHECK_INTERVAL', 30)
+        max_connections = getattr(settings, "REDIS_EVENTS_MAX_CONNECTIONS", 30)
+        socket_timeout = getattr(settings, "REDIS_EVENTS_SOCKET_TIMEOUT", 5)
+        socket_connect_timeout = getattr(settings, "REDIS_EVENTS_SOCKET_CONNECT_TIMEOUT", 5)
+        health_check_interval = getattr(settings, "REDIS_EVENTS_HEALTH_CHECK_INTERVAL", 30)
 
         _redis_events_pool = redis.ConnectionPool.from_url(
             redis_url,
@@ -151,12 +154,12 @@ def get_redis_events_pool() -> redis.ConnectionPool:
             retry_on_timeout=True,
             socket_keepalive=True,
             health_check_interval=health_check_interval,
-            decode_responses=True
+            decode_responses=True,
         )
 
         logger.info(
             "redis_events_pool_created",
-            extra={"redis_url": redis_url, "max_connections": max_connections}
+            extra={"redis_url": redis_url, "max_connections": max_connections},
         )
 
     return _redis_events_pool
@@ -175,10 +178,10 @@ def get_redis_channels_pool() -> redis.ConnectionPool:
         redis_url = _get_redis_url_with_fallback("REDIS_CHANNELS_URL", 6382)
 
         # Channels pool configuration (WebSocket connections)
-        max_connections = getattr(settings, 'REDIS_CHANNELS_MAX_CONNECTIONS', 40)
-        socket_timeout = getattr(settings, 'REDIS_CHANNELS_SOCKET_TIMEOUT', 3)
-        socket_connect_timeout = getattr(settings, 'REDIS_CHANNELS_SOCKET_CONNECT_TIMEOUT', 5)
-        health_check_interval = getattr(settings, 'REDIS_CHANNELS_HEALTH_CHECK_INTERVAL', 30)
+        max_connections = getattr(settings, "REDIS_CHANNELS_MAX_CONNECTIONS", 40)
+        socket_timeout = getattr(settings, "REDIS_CHANNELS_SOCKET_TIMEOUT", 3)
+        socket_connect_timeout = getattr(settings, "REDIS_CHANNELS_SOCKET_CONNECT_TIMEOUT", 5)
+        health_check_interval = getattr(settings, "REDIS_CHANNELS_HEALTH_CHECK_INTERVAL", 30)
 
         _redis_channels_pool = redis.ConnectionPool.from_url(
             redis_url,
@@ -188,12 +191,12 @@ def get_redis_channels_pool() -> redis.ConnectionPool:
             retry_on_timeout=True,
             socket_keepalive=True,
             health_check_interval=health_check_interval,
-            decode_responses=True
+            decode_responses=True,
         )
 
         logger.info(
             "redis_channels_pool_created",
-            extra={"redis_url": redis_url, "max_connections": max_connections}
+            extra={"redis_url": redis_url, "max_connections": max_connections},
         )
 
     return _redis_channels_pool
@@ -323,4 +326,3 @@ def health_check_all_redis_instances() -> dict:
         results["channels"]["error"] = str(e)
 
     return results
-

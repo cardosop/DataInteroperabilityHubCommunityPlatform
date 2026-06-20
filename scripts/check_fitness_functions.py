@@ -17,11 +17,10 @@ Usage:
   python scripts/check_fitness_functions.py --check           # exit 1 on violation
   python scripts/check_fitness_functions.py --json            # JSON output
 """
+
 import ast
 import json
-import os
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -37,36 +36,61 @@ MAX_COMPLEXITY = 15
 # Apps in DIFFERENT groups should not cross-import without explicit exception.
 APP_GROUPS = {
     "data-pipeline": {
-        "integrations", "virtualization", "transformation",
-        "scheduled_ingestion", "scheduled_export",
+        "integrations",
+        "virtualization",
+        "transformation",
+        "scheduled_ingestion",
+        "scheduled_export",
     },
     "governance-compliance": {
-        "governance", "compliance", "regulation_policies", "dsar",
+        "governance",
+        "compliance",
+        "regulation_policies",
+        "dsar",
     },
     "assets-contracts": {
-        "assets", "contracts", "datasets", "files",
+        "assets",
+        "contracts",
+        "datasets",
+        "files",
     },
     "marketplace-billing": {
-        "marketplace", "billing", "baas",
+        "marketplace",
+        "billing",
+        "baas",
     },
     "observability-audit": {
-        "observability", "audit", "notifications",
+        "observability",
+        "audit",
+        "notifications",
     },
     "core-infra": {
-        "core", "api", "auth", "tenants", "users", "jobs", "mesh",
+        "core",
+        "api",
+        "auth",
+        "tenants",
+        "users",
+        "jobs",
+        "mesh",
     },
     "search-semantic": {
-        "search", "semantic",
+        "search",
+        "semantic",
     },
     "quality-webhooks": {
-        "dq", "webhooks", "processor_agreements",
+        "dq",
+        "webhooks",
+        "processor_agreements",
     },
 }
 
 # Allowed cross-group imports (documented exceptions)
 ALLOWED_CROSS_GROUP = {
     # Any app is allowed to import from 'core' (shared infrastructure)
-    "core", "api", "auth", "tenants",
+    "core",
+    "api",
+    "auth",
+    "tenants",
 }
 
 # Files exempt from line-count checks
@@ -84,6 +108,7 @@ def _app_group(app_name: str) -> str | None:
 
 
 # ── Check 1: File size ────────────────────────────────────────────────────
+
 
 def check_file_sizes(max_lines: int = MAX_FILE_LINES) -> list[dict]:
     """Return files exceeding the line-count threshold."""
@@ -106,18 +131,21 @@ def check_file_sizes(max_lines: int = MAX_FILE_LINES) -> list[dict]:
             continue
 
         if line_count > threshold:
-            violations.append({
-                "file": rel,
-                "lines": line_count,
-                "threshold": threshold,
-                "is_test": is_test,
-            })
+            violations.append(
+                {
+                    "file": rel,
+                    "lines": line_count,
+                    "threshold": threshold,
+                    "is_test": is_test,
+                }
+            )
 
     violations.sort(key=lambda v: v["lines"], reverse=True)
     return violations
 
 
 # ── Check 2: Cyclomatic complexity (AST approximation) ─────────────────────
+
 
 def _ast_complexity(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     """Approximate McCabe cyclomatic complexity from AST.
@@ -131,8 +159,9 @@ def _ast_complexity(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
             complexity += 1
         elif isinstance(node, ast.BoolOp):
             complexity += len(node.values) - 1
-        elif isinstance(node, (ast.IfExp, ast.ListComp, ast.SetComp,
-                                ast.DictComp, ast.GeneratorExp)):
+        elif isinstance(
+            node, (ast.IfExp, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+        ):
             complexity += 1
         elif isinstance(node, ast.Try):
             complexity += len(node.handlers)
@@ -156,19 +185,22 @@ def check_complexity(max_cc: int = MAX_COMPLEXITY) -> list[dict]:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 cc = _ast_complexity(node)
                 if cc > max_cc:
-                    violations.append({
-                        "file": rel,
-                        "function": node.name,
-                        "line": node.lineno,
-                        "complexity": cc,
-                        "threshold": max_cc,
-                    })
+                    violations.append(
+                        {
+                            "file": rel,
+                            "function": node.name,
+                            "line": node.lineno,
+                            "complexity": cc,
+                            "threshold": max_cc,
+                        }
+                    )
 
     violations.sort(key=lambda v: v["complexity"], reverse=True)
     return violations
 
 
 # ── Check 3: App boundary (cross-group imports) ────────────────────────────
+
 
 def check_app_boundaries() -> list[dict]:
     """Return cross-group imports that violate architectural boundaries."""
@@ -219,23 +251,25 @@ def check_app_boundaries() -> list[dict]:
                 if target_app in ALLOWED_CROSS_GROUP:
                     continue  # Explicitly allowed
 
-                violations.append({
-                    "file": rel,
-                    "line": node.lineno,
-                    "source_app": source_app,
-                    "source_group": source_group,
-                    "target_app": target_app,
-                    "target_group": target_group,
-                    "import": f"from {node.module} import ...",
-                })
+                violations.append(
+                    {
+                        "file": rel,
+                        "line": node.lineno,
+                        "source_app": source_app,
+                        "source_group": source_group,
+                        "target_app": target_app,
+                        "target_group": target_group,
+                        "import": f"from {node.module} import ...",
+                    }
+                )
 
     return violations
 
 
 # ── Main ───────────────────────────────────────────────────────────────────
 
-def run_all(max_lines: int = MAX_FILE_LINES,
-            max_cc: int = MAX_COMPLEXITY) -> dict:
+
+def run_all(max_lines: int = MAX_FILE_LINES, max_cc: int = MAX_COMPLEXITY) -> dict:
     """Run all fitness checks and return a structured report."""
     size_violations = check_file_sizes(max_lines)
     cc_violations = check_complexity(max_cc)
@@ -259,8 +293,9 @@ def run_all(max_lines: int = MAX_FILE_LINES,
             "details": boundary_violations[:30],
         },
         "summary": {
-            "total_violations": (len(size_violations) + len(cc_violations) +
-                                 len(boundary_violations)),
+            "total_violations": (
+                len(size_violations) + len(cc_violations) + len(boundary_violations)
+            ),
             "pass": (len(size_violations) == 0 and len(cc_violations) == 0),
         },
     }
@@ -274,15 +309,13 @@ def print_report(results: dict) -> None:
 
     print("Architectural Fitness Check (281.A.1.4)\n")
 
-    print(f"1. File Size (max {fs['threshold']} lines, "
-          f"tests {fs['test_threshold']}):")
+    print(f"1. File Size (max {fs['threshold']} lines, tests {fs['test_threshold']}):")
     if fs["violations"] == 0:
         print("   ✅ All files within limits")
     else:
         print(f"   ❌ {fs['violations']} file(s) exceed limit:")
         for v in fs["details"][:10]:
-            print(f"      {v['file']}: {v['lines']} lines "
-                  f"(limit={v['threshold']})")
+            print(f"      {v['file']}: {v['lines']} lines (limit={v['threshold']})")
 
     print(f"\n2. Cyclomatic Complexity (max {cc['threshold']}):")
     if cc["violations"] == 0:
@@ -290,38 +323,40 @@ def print_report(results: dict) -> None:
     else:
         print(f"   ❌ {cc['violations']} function(s) exceed limit:")
         for v in cc["details"][:10]:
-            print(f"      {v['file']}:{v['line']} {v['function']}() "
-                  f"— complexity {v['complexity']} "
-                  f"(limit={v['threshold']})")
+            print(
+                f"      {v['file']}:{v['line']} {v['function']}() "
+                f"— complexity {v['complexity']} "
+                f"(limit={v['threshold']})"
+            )
 
-    print(f"\n3. App Boundaries (cross-group imports):")
+    print("\n3. App Boundaries (cross-group imports):")
     if ab["violations"] == 0:
         print("   ✅ No cross-group boundary violations")
     else:
         print(f"   ⚠️  {ab['violations']} cross-group import(s):")
         for v in ab["details"][:10]:
-            print(f"      {v['file']}:{v['line']} — "
-                  f"{v['source_group']} → {v['target_group']} "
-                  f"({v['import']})")
+            print(
+                f"      {v['file']}:{v['line']} — "
+                f"{v['source_group']} → {v['target_group']} "
+                f"({v['import']})"
+            )
 
     s = results["summary"]
-    print(f"\nSummary: {s['total_violations']} total violations "
-          f"({'PASS' if s['pass'] else 'FAIL'})")
+    print(
+        f"\nSummary: {s['total_violations']} total violations ({'PASS' if s['pass'] else 'FAIL'})"
+    )
 
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser(description="Architectural fitness checks")
     parser.add_argument("--max-lines", type=int, default=MAX_FILE_LINES)
     parser.add_argument("--max-complexity", type=int, default=MAX_COMPLEXITY)
-    parser.add_argument("--check", action="store_true",
-                        help="Exit 1 if any violation found")
-    parser.add_argument("--json", action="store_true",
-                        help="Output JSON")
-    parser.add_argument("--file-size-only", action="store_true",
-                        help="Check file sizes only")
-    parser.add_argument("--complexity-only", action="store_true",
-                        help="Check complexity only")
+    parser.add_argument("--check", action="store_true", help="Exit 1 if any violation found")
+    parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--file-size-only", action="store_true", help="Check file sizes only")
+    parser.add_argument("--complexity-only", action="store_true", help="Check complexity only")
     args = parser.parse_args()
 
     if args.file_size_only:
@@ -339,9 +374,11 @@ def main():
         print_report(results)
 
     if args.check:
-        total = results.get("summary", {}).get("total_violations",
-                  len(results.get("file_size", {}).get("details", [])) +
-                  len(results.get("complexity", {}).get("details", [])))
+        total = results.get("summary", {}).get(
+            "total_violations",
+            len(results.get("file_size", {}).get("details", []))
+            + len(results.get("complexity", {}).get("details", [])),
+        )
         if total > 0:
             sys.exit(1)
 

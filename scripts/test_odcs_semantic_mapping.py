@@ -14,33 +14,32 @@ Requirements:
     - Fuseki must be running
     - Test database must be set up
 """
+
 import os
 import sys
-import django
-import json
-import requests
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
+
+import django
+import requests
 
 # Setup Django
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hub.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 django.setup()
 
-from hub.apps.contracts.models import Contract, OriginalSpecType
-from hub.apps.tenants.models import Tenant
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
 # Configuration
-SEMANTIC_SERVICE_URL = os.getenv('SEMANTIC_SERVICE_URL', 'http://localhost:8082')
-FUSEKI_URL = os.getenv('FUSEKI_URL', 'http://localhost:3030')
-FUSEKI_DATASET = os.getenv('FUSEKI_DATASET', 'hub')
+SEMANTIC_SERVICE_URL = os.getenv("SEMANTIC_SERVICE_URL", "http://localhost:8082")
+FUSEKI_URL = os.getenv("FUSEKI_URL", "http://localhost:3030")
+FUSEKI_DATASET = os.getenv("FUSEKI_DATASET", "hub")
 
 
-def create_test_odcs_contract() -> Dict[str, Any]:
+def create_test_odcs_contract() -> dict[str, Any]:
     """Create a test ODCS contract for semantic mapping"""
     return {
         "apiVersion": "odcs.io/v3.0.2",
@@ -55,26 +54,21 @@ def create_test_odcs_contract() -> Dict[str, Any]:
                     "name": "id",
                     "type": "string",
                     "nullable": False,
-                    "description": "Unique identifier"
+                    "description": "Unique identifier",
                 },
                 {
                     "name": "email",
                     "type": "string",
                     "nullable": True,
                     "description": "Email address",
-                    "format": "email"
-                }
+                    "format": "email",
+                },
             ]
         },
         "info": {
-            "owners": [
-                {
-                    "name": "Test Owner",
-                    "email": "owner@example.com"
-                }
-            ],
-            "tags": ["test", "semantic"]
-        }
+            "owners": [{"name": "Test Owner", "email": "owner@example.com"}],
+            "tags": ["test", "semantic"],
+        },
     }
 
 
@@ -120,28 +114,25 @@ def test_jsonld_context_endpoint() -> bool:
         return False
 
 
-def test_contract_mapping(contract_data: Dict[str, Any], contract_uuid: str) -> bool:
+def test_contract_mapping(contract_data: dict[str, Any], contract_uuid: str) -> bool:
     """Test that a contract can be mapped to RDF"""
     try:
         # Map contract to RDF
         response = requests.post(
             f"{SEMANTIC_SERVICE_URL}/map/contract",
-            json={
-                "hub_contract": contract_data,
-                "contract_uuid": contract_uuid
-            },
-            timeout=10
+            json={"hub_contract": contract_data, "contract_uuid": contract_uuid},
+            timeout=10,
         )
-        
+
         if response.status_code == 200:
             result = response.json()
             if "contract_uri" in result and "triples_count" in result:
-                print(f"✓ Contract mapped successfully")
+                print("✓ Contract mapped successfully")
                 print(f"  Contract URI: {result['contract_uri']}")
                 print(f"  Triples count: {result['triples_count']}")
-                
+
                 # Verify contract URI is resolvable
-                if test_contract_uri_resolution(result['contract_uri']):
+                if test_contract_uri_resolution(result["contract_uri"]):
                     return True
                 else:
                     return False
@@ -165,17 +156,16 @@ def test_contract_uri_resolution(contract_uri: str) -> bool:
         if "/id/contract/" in contract_uri:
             resource_path = contract_uri.split("/id/contract/")[-1]
             response = requests.get(
-                f"{SEMANTIC_SERVICE_URL}/id/contract/{resource_path}",
-                timeout=5
+                f"{SEMANTIC_SERVICE_URL}/id/contract/{resource_path}", timeout=5
             )
-            
+
             if response.status_code == 200:
                 jsonld = response.json()
                 if "@context" in jsonld and "@id" in jsonld:
-                    print(f"  ✓ Contract URI resolved to JSON-LD")
+                    print("  ✓ Contract URI resolved to JSON-LD")
                     return True
                 else:
-                    print(f"  ✗ Invalid JSON-LD format")
+                    print("  ✗ Invalid JSON-LD format")
                     return False
             else:
                 print(f"  ✗ URI resolution failed: {response.status_code}")
@@ -201,13 +191,11 @@ def test_sparql_query() -> bool:
             ?contract hub:contractSpecType ?specType .
         } LIMIT 10
         """
-        
+
         response = requests.post(
-            f"{SEMANTIC_SERVICE_URL}/sparql",
-            json={"query": query},
-            timeout=10
+            f"{SEMANTIC_SERVICE_URL}/sparql", json={"query": query}, timeout=10
         )
-        
+
         if response.status_code == 200:
             result = response.json()
             if "results" in result or "bindings" in result:
@@ -230,10 +218,10 @@ def main():
     print("ODCS Semantic Mapping Tests")
     print("=" * 80)
     print("")
-    
+
     tests_passed = 0
     tests_failed = 0
-    
+
     # Test 1: Semantic service health
     print("Test 1: Semantic Service Health Check")
     print("-" * 80)
@@ -244,7 +232,7 @@ def main():
         print("\n⚠️  Semantic service is not running. Some tests will be skipped.")
         print("   Start semantic service with: docker-compose up semantic-service")
         print("")
-    
+
     # Test 2: JSON-LD context endpoint
     print("\nTest 2: JSON-LD Context Endpoint")
     print("-" * 80)
@@ -252,19 +240,19 @@ def main():
         tests_passed += 1
     else:
         tests_failed += 1
-    
+
     # Test 3: Contract mapping (only if service is available)
     if tests_failed == 0:
         print("\nTest 3: Contract to RDF Mapping")
         print("-" * 80)
         contract_data = create_test_odcs_contract()
         contract_uuid = "test-uuid-123"
-        
+
         if test_contract_mapping(contract_data, contract_uuid):
             tests_passed += 1
         else:
             tests_failed += 1
-        
+
         # Test 4: SPARQL queries
         print("\nTest 4: SPARQL Query")
         print("-" * 80)
@@ -275,7 +263,7 @@ def main():
     else:
         print("\n⚠️  Skipping contract mapping and SPARQL tests (service not available)")
         tests_failed += 1
-    
+
     # Summary
     print("")
     print("=" * 80)
@@ -284,7 +272,7 @@ def main():
     print(f"Passed: {tests_passed}")
     print(f"Failed: {tests_failed}")
     print("")
-    
+
     if tests_failed == 0:
         print("✓ All semantic mapping tests passed!")
         return 0
@@ -296,7 +284,7 @@ def main():
         return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         sys.exit(main())
     except KeyboardInterrupt:
@@ -305,6 +293,6 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"\n\nUnexpected error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
-

@@ -6,7 +6,8 @@ Product creation and workflow actions for contract viewsets.
 SAVING CHECKPOINT: This module contains product-related actions.
 """
 
-from typing import Any, Dict, Optional
+import contextlib
+from typing import Any
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -22,7 +23,7 @@ from rest_framework.response import Response
 from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 
 from .business_rules import ODPSBusinessRules
-from .models import Contract, OriginalSpecType
+from .models import OriginalSpecType
 from .odps_parser import ODPSParser
 from .odps_version_detection import detect_odps_version
 from .serializers import ProductCreateSerializer
@@ -31,12 +32,12 @@ from .serializers import ProductCreateSerializer
 def _product_error_response(
     message: str,
     code: str,
-    details: Optional[Dict[str, Any]] = None,
+    details: dict[str, Any] | None = None,
     *,
     http_status: int = status.HTTP_400_BAD_REQUEST,
 ) -> Response:
     """Structured product-API error: tests and clients read ``error.message`` / ``error.code``."""
-    payload: Dict[str, Any] = {"message": message, "code": code}
+    payload: dict[str, Any] = {"message": message, "code": code}
     if details:
         payload["details"] = details
     return Response({"error": payload}, status=http_status)
@@ -88,7 +89,9 @@ class ContractProductMixin:
         # the standard contract-create path. Without this, ODPS
         # bodies could route around the cap via /contracts/products/.
         from rest_framework.response import Response
+
         from .serializers import payload_size_envelope
+
         envelope = payload_size_envelope(request.data)
         if envelope is not None:
             return Response(envelope, status=413)
@@ -157,6 +160,7 @@ class ContractProductMixin:
         # In production, execute asynchronously and return workflow instance ID
         import os
         import sys
+
         from django.conf import settings
 
         is_test_env = False
@@ -166,8 +170,7 @@ class ContractProductMixin:
         if not is_test_env and hasattr(sys, "argv"):
             test_indicators = ["test", "pytest", "unittest"]
             is_test_env = any(
-                any(indicator in arg.lower() for indicator in test_indicators)
-                for arg in sys.argv
+                any(indicator in arg.lower() for indicator in test_indicators) for arg in sys.argv
             )
         if not is_test_env:
             try:
@@ -175,7 +178,7 @@ class ContractProductMixin:
                 is_test_env = "test" in db_name.lower() or db_name.startswith("test_")
             except Exception:
                 pass
-        
+
         try:
             if is_test_env:
                 # Synchronous execution for tests - returns contracts directly
@@ -187,12 +190,13 @@ class ContractProductMixin:
                     asset_id=str(asset_id) if asset_id else None,
                     resolve_external_refs=resolve_external_refs,
                 )
-                
+
                 # Serialize contracts for response
                 from .serializers import ContractSerializer
+
                 odps_contract_data = ContractSerializer(result["odps_contract"]).data
                 odcs_contract_data = ContractSerializer(result["odcs_contract"]).data
-                
+
                 return Response(
                     {
                         "odps_contract": odps_contract_data,
@@ -234,7 +238,7 @@ class ContractProductMixin:
             logger = logging.getLogger(__name__)
             logger.exception("Product creation failed: %s", e)
             return _product_error_response(
-                f"Product creation failed: {str(e)}",
+                f"Product creation failed: {e!s}",
                 "INTERNAL_ERROR",
                 {"error": str(e)},
                 http_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -311,7 +315,7 @@ class ContractProductMixin:
             WorkflowStatus.ROLLING_BACK: "RUNNING",
             WorkflowStatus.ROLLED_BACK: "FAILED",
         }
-        api_status = status_map.get(workflow_instance.status, "PENDING")
+        status_map.get(workflow_instance.status, "PENDING")
 
         if workflow_instance.status == WorkflowStatus.RUNNING:
             status_data = {
@@ -334,15 +338,11 @@ class ContractProductMixin:
             odps_contract = None
             odcs_contract = None
             if odps_contract_id:
-                try:
+                with contextlib.suppress(Contract.DoesNotExist):
                     odps_contract = Contract.objects.get(id=odps_contract_id)
-                except Contract.DoesNotExist:
-                    pass
             if odcs_contract_id:
-                try:
+                with contextlib.suppress(Contract.DoesNotExist):
                     odcs_contract = Contract.objects.get(id=odcs_contract_id)
-                except Contract.DoesNotExist:
-                    pass
             status_data = {
                 "workflow_instance_id": str(workflow_instance.id),
                 "status": "COMPLETED",
@@ -449,9 +449,9 @@ class ContractProductMixin:
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.error(f"Failed to get payment gateways: {str(e)}", exc_info=True)
+            logger.error(f"Failed to get payment gateways: {e!s}", exc_info=True)
             return Response(
-                {"error": f"Failed to get payment gateways: {str(e)}"},
+                {"error": f"Failed to get payment gateways: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -584,9 +584,9 @@ class ContractProductMixin:
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.error(f"Failed to get product strategy: {str(e)}", exc_info=True)
+            logger.error(f"Failed to get product strategy: {e!s}", exc_info=True)
             return Response(
-                {"error": f"Failed to get product strategy: {str(e)}"},
+                {"error": f"Failed to get product strategy: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -696,8 +696,8 @@ class ContractProductMixin:
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.error(f"Failed to get product details: {str(e)}", exc_info=True)
+            logger.error(f"Failed to get product details: {e!s}", exc_info=True)
             return Response(
-                {"error": f"Failed to get product details: {str(e)}"},
+                {"error": f"Failed to get product details: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

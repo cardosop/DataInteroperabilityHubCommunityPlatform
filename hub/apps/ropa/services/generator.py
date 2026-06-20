@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import Any
 
 from django.db.models import Prefetch
@@ -24,9 +25,7 @@ def _asset_row_dict(asset: Asset) -> dict[str, Any]:
     }
 
 
-def _retention_for_assets(
-    tenant_id: str, asset_ids: list[str]
-) -> dict[str, list[dict[str, Any]]]:
+def _retention_for_assets(tenant_id: str, asset_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
     if not asset_ids:
         return {}
     qs = RetentionPolicy.objects.filter(tenant_id=tenant_id, asset_id__in=asset_ids)

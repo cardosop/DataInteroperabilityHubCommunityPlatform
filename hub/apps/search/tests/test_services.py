@@ -43,15 +43,20 @@ class SearchServiceTest(TestCase):
         )
 
         results, total = self.service.search(
-            tenant_id=str(self.tenant.id), query="Test",
+            tenant_id=str(self.tenant.id),
+            query="Test",
         )
 
         self.assertIsInstance(results, list)
         self.assertIsInstance(total, int)
-        self.assertGreater(total, 0,
-            f"Search for 'Test' should return at least 1 result, got {total}")
-        self.assertEqual(results[0]["id"], str(resource_id),
-            f"First result should be the indexed contract; got {results[0].get('id')}")
+        self.assertGreater(
+            total, 0, f"Search for 'Test' should return at least 1 result, got {total}"
+        )
+        self.assertEqual(
+            results[0]["id"],
+            str(resource_id),
+            f"First result should be the indexed contract; got {results[0].get('id')}",
+        )
 
     def test_search_empty_query_success(self):
         """Edge case: search with empty query returns filter_only results."""

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from rest_framework.permissions import BasePermission
 
 from hub.apps.users.models import UserRole
@@ -24,4 +25,3 @@ class IsDsarHandler(BasePermission):
             tenant=tenant,
             role__name__in=["TENANT_ADMIN", "DPO", "LEGAL_ADMIN"],
         ).exists()
-

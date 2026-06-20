@@ -17,9 +17,8 @@ from django.test import SimpleTestCase, TestCase
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 
 # Import from normalization package (which re-exports from normalization_engine.py)
-from hub.apps.contracts.normalization import NormalizationResult, SpecNormalizer
+from hub.apps.contracts.normalization import SpecNormalizer
 from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
-from hub.apps.contracts.odps_errors import ODPSNormalizationError
 from hub.apps.contracts.tests.normalizer_edge_case_mixin import ODPSEdgeCaseMixin
 
 
@@ -97,14 +96,13 @@ class ODPSNormalizerNormalizeTest(TestCase):
         self.assertEqual(result.spec_version, "4.1")
 
     def test_normalize_auto_detects_version(self):
-        """Test that normalize() auto-detects version if not provided using real detect_odps_version"""
+        """Test that normalize() auto-detects version from schema URL when version field is absent."""
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {"details": {"en": {"productID": "test"}}},
+            "product": {"details": {"en": {"productID": "test", "name": "Test Product"}}},
         }
 
-        # Use real detect_odps_version implementation
+        # Version is auto-detected from the schema URL, not from an explicit field
         result = self.normalizer.normalize(contract_data)
         self.assertEqual(result.spec_version, "4.1")
 
@@ -120,8 +118,11 @@ class ODPSNormalizerNormalizeTest(TestCase):
         # The normalizer should handle this gracefully
         result = self.normalizer.normalize(contract_data)
         # Version detection failure must return "unknown" — NOT fallback to "4.1"
-        self.assertEqual(result.spec_version, "unknown",
-            "Version detection failure must return 'unknown', not fallback '4.1'")
+        self.assertEqual(
+            result.spec_version,
+            "unknown",
+            "Version detection failure must return 'unknown', not fallback '4.1'",
+        )
         self.assertIsNotNone(result.spec_version)
 
     def test_normalize_initializes_hub_contract(self):
@@ -324,13 +325,14 @@ class ODPSNormalizerGracefulDegradationTest(TestCase):
 
     def test_normalize_handles_invalid_optional_field_types_gracefully(self):
         """Test that normalize() handles invalid optional field types gracefully"""
-        # Contract with invalid type for optional field (if such exists)
-        # Note: This tests behavior - if optional fields have invalid types, they should be handled gracefully
+        # Contract with genuinely invalid type for optional field: SLA should be a dict
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
             "product": {
-                "details": {"en": {"name": "Test Product"}},
+                "details": {"en": {"name": "Test Product", "productID": "test-1"}},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                "SLA": "invalid",  # Invalid type: should be a dict, not a string
             },
         }
 
@@ -342,6 +344,10 @@ class ODPSNormalizerGracefulDegradationTest(TestCase):
             result.status,
             [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
         )
+        # Verify a warning was generated about the invalid SLA type
+        sla_warnings = [w for w in result.warnings if "SLA" in w and "invalid type" in w]
+        self.assertGreater(len(sla_warnings), 0,
+            "Should warn about invalid SLA type")
 
     def test_normalize_with_valid_optional_fields_succeeds(self):
         """Test that normalize() succeeds when optional fields are provided correctly"""
@@ -444,25 +450,23 @@ class ODPSNormalizerStatusDeterminationTest(TestCase):
 
     def test_normalize_status_with_warnings(self):
         """Test that normalize() returns NORMALIZED_WITH_WARNINGS when warnings occur"""
-        # Valid contract but with optional fields that might generate warnings
+        # Contract with an invalid type for an optional field that generates a warning
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
             "product": {
-                "details": {"en": {"name": "Test Product"}},
-                # Include optional fields that might generate warnings if incomplete
+                "details": {"en": {"name": "Test Product", "productID": "test-1"}},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                "SLA": "invalid",  # Invalid type: should be a dict, produces a warning
             },
         }
 
         result = self.normalizer.normalize(contract_data)
 
-        # Should succeed, may have warnings
         self.assertIsNotNone(result.hub_contract)
-        # Status should be OK or WITH_WARNINGS
-        self.assertIn(
-            result.status,
-            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
-        )
+        self.assertEqual(result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS)
+        self.assertGreater(len(result.warnings), 0,
+            "Should have warnings when optional fields have invalid types")
 
     def test_normalize_status_ok(self):
         """Test that normalize() returns NORMALIZED_OK for successful normalization"""
@@ -1311,8 +1315,11 @@ class ODPSNormalizerLifecycleMappingTest(TestCase):
         self.assertIsNotNone(result.hub_contract)
         self.assertIn("lifecycle", result.hub_contract)
         self.assertIn("x_odps", result.hub_contract["lifecycle"])
-        self.assertNotIn("status", result.hub_contract["lifecycle"]["x_odps"],
-            "Invalid status type must NOT set status on the output")
+        self.assertNotIn(
+            "status",
+            result.hub_contract["lifecycle"]["x_odps"],
+            "Invalid status type must NOT set status on the output",
+        )
         self.assertTrue(len(result.warnings) > 0)
         warning_msg = " ".join(result.warnings)
         self.assertIn("status", warning_msg)
@@ -1340,8 +1347,11 @@ class ODPSNormalizerLifecycleMappingTest(TestCase):
         self.assertIsNotNone(result.hub_contract)
         self.assertIn("lifecycle", result.hub_contract)
         self.assertIn("x_odps", result.hub_contract["lifecycle"])
-        self.assertNotIn("visibility", result.hub_contract["lifecycle"]["x_odps"],
-            "Invalid visibility type must NOT set visibility on the output")
+        self.assertNotIn(
+            "visibility",
+            result.hub_contract["lifecycle"]["x_odps"],
+            "Invalid visibility type must NOT set visibility on the output",
+        )
         self.assertTrue(len(result.warnings) > 0)
         warning_msg = " ".join(result.warnings)
         self.assertIn("visibility", warning_msg)
@@ -1363,8 +1373,11 @@ class ODPSNormalizerLifecycleMappingTest(TestCase):
         # Should not process SLA, but should log warning
         self.assertIsNotNone(result.hub_contract)
         self.assertIn("lifecycle", result.hub_contract)
-        self.assertNotIn("slas", result.hub_contract["lifecycle"],
-            "Invalid SLA type must NOT set slas on the output")
+        self.assertNotIn(
+            "slas",
+            result.hub_contract["lifecycle"],
+            "Invalid SLA type must NOT set slas on the output",
+        )
         self.assertTrue(len(result.warnings) > 0)
         warning_msg = " ".join(result.warnings)
         self.assertIn("SLA", warning_msg)
@@ -1390,8 +1403,11 @@ class ODPSNormalizerLifecycleMappingTest(TestCase):
         # Should not create dimensions, but should log warning
         self.assertIsNotNone(result.hub_contract)
         self.assertIn("lifecycle", result.hub_contract)
-        self.assertNotIn("slas", result.hub_contract["lifecycle"],
-            "Invalid SLA type must NOT set slas on the output")
+        self.assertNotIn(
+            "slas",
+            result.hub_contract["lifecycle"],
+            "Invalid SLA type must NOT set slas on the output",
+        )
         self.assertTrue(len(result.warnings) > 0)
         warning_msg = " ".join(result.warnings)
         self.assertIn("availability", warning_msg)
@@ -1838,10 +1854,9 @@ class ODPSNormalizerInfoMappingTest(TestCase):
         # Verify that normalization succeeded and used English (preferred language)
         self.assertIsNotNone(result.hub_contract)
         self.assertIn("info", result.hub_contract)
-        # The info.name should be from English details (preferred language)
-        if "name" in result.hub_contract["info"]:
-            # Verify English was used (could be "English" or the actual name)
-            self.assertIsNotNone(result.hub_contract["info"]["name"])
+        self.assertIn("name", result.hub_contract["info"])
+        # Should use the English name (preferred language), not French or German
+        self.assertEqual(result.hub_contract["info"]["name"], "English")
 
     def test_get_preferred_language(self):
         """Test preferred language selection through public API - normalize() uses _get_preferred_language internally"""
@@ -2193,7 +2208,8 @@ class ODPSNormalizerContractExtractionTest(SimpleTestCase):
         )
         # When only contractURL is present (no inline spec), schema extraction may add one warning
         self.assertLessEqual(
-            len(result.warnings), 1,
+            len(result.warnings),
+            1,
             "At most one warning (e.g. failed to extract schema when no inline spec)",
         )
 
@@ -2283,7 +2299,8 @@ class ODPSNormalizerContractExtractionTest(SimpleTestCase):
         self.assertNotIn("contract", x_odps)
         # When contract section is missing, schema extraction may add one warning
         self.assertLessEqual(
-            len(result.warnings), 1,
+            len(result.warnings),
+            1,
             "At most one warning (e.g. failed to extract schema when no contract)",
         )
 
@@ -2305,8 +2322,11 @@ class ODPSNormalizerContractExtractionTest(SimpleTestCase):
         self.assertIsNotNone(result.hub_contract)
         extensions = result.hub_contract.get("extensions", {})
         x_odps = extensions.get("x_odps", {})
-        self.assertNotIn("contract_url", x_odps,
-            "Invalid contract_url type must NOT set contract_url on the output")
+        self.assertNotIn(
+            "contract_url",
+            x_odps,
+            "Invalid contract_url type must NOT set contract_url on the output",
+        )
         self.assertTrue(len(result.warnings) > 0)
         warning_msg = " ".join(result.warnings)
         self.assertIn("contractURL", warning_msg)
@@ -2330,8 +2350,7 @@ class ODPSNormalizerContractExtractionTest(SimpleTestCase):
         self.assertIsNotNone(result.hub_contract)
         extensions = result.hub_contract.get("extensions", {})
         x_odps = extensions.get("x_odps", {})
-        self.assertNotIn("contract", x_odps,
-            "Invalid type must NOT set contract on the output")
+        self.assertNotIn("contract", x_odps, "Invalid type must NOT set contract on the output")
         self.assertTrue(len(result.warnings) > 0)
         warning_msg = " ".join(result.warnings)
         self.assertIn("$ref", warning_msg)
@@ -2355,8 +2374,7 @@ class ODPSNormalizerContractExtractionTest(SimpleTestCase):
         self.assertIsNotNone(result.hub_contract)
         extensions = result.hub_contract.get("extensions", {})
         x_odps = extensions.get("x_odps", {})
-        self.assertNotIn("contract", x_odps,
-            "Invalid type must NOT set contract on the output")
+        self.assertNotIn("contract", x_odps, "Invalid type must NOT set contract on the output")
         self.assertTrue(len(result.warnings) > 0)
         warning_msg = " ".join(result.warnings)
         self.assertIn("spec", warning_msg)

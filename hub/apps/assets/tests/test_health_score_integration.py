@@ -3,8 +3,8 @@ Integration tests for Asset Health Score
 
 Tests for health score calculation in the context of asset workflows.
 """
-import uuid
 
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -28,9 +28,13 @@ class AssetHealthScoreIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        super().setUp()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -75,8 +79,12 @@ class AssetHealthScoreIntegrationTest(TestCase):
             created_by=self.user,
         )
 
-    def test_health_score_workflow_calculates_score(self):
-        """Test complete health score workflow calculates score."""
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _create_dq_run(self, quality_score=95.0, overall_status="PASS"):
+        """Create a completed DQ run for the setUp asset and dataset."""
         job = Job.objects.create(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
@@ -85,8 +93,7 @@ class AssetHealthScoreIntegrationTest(TestCase):
             resource_id=self.dataset.id,
             created_by=self.user,
         )
-
-        DQRun.objects.create(
+        return DQRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             dataset=self.dataset,
@@ -94,157 +101,89 @@ class AssetHealthScoreIntegrationTest(TestCase):
             profile_key="intake_basic_gx",
             engine=DQEngine.GREAT_EXPECTATIONS,
             status=DQRunStatus.SUCCEEDED,
-            overall_status="PASS",
-            quality_score=95.0,
+            overall_status=overall_status,
+            quality_score=quality_score,
             completed_at=timezone.now(),
         )
 
-        score = AssetHealthScoreService.calculate_health_score(self.asset)
-        self.assertIsNotNone(score)
+    # ------------------------------------------------------------------
+    # Workflow: DQ run integrated into health score
+    # ------------------------------------------------------------------
 
-    def test_health_score_workflow_score_in_range(self):
-        """Test complete health score workflow score is in range."""
-        job = Job.objects.create(
-            tenant=self.tenant,
-            type=JobType.DQ_RUN,
-            status=JobStatus.COMPLETED,
-            resource_type="DATASET",
-            resource_id=self.dataset.id,
-            created_by=self.user,
-        )
+    def test_health_score_workflow_with_dq_run(self):
+        """Full workflow: DQ run + calculate + breakdown in a single test.
 
-        DQRun.objects.create(
-            tenant=self.tenant,
-            asset=self.asset,
-            dataset=self.dataset,
-            job=job,
-            profile_key="intake_basic_gx",
-            engine=DQEngine.GREAT_EXPECTATIONS,
-            status=DQRunStatus.SUCCEEDED,
-            overall_status="PASS",
-            quality_score=95.0,
-            completed_at=timezone.now(),
-        )
+        setUp asset: DQ=PASS, Compliance=PASS, popularity=80.0, dataset 12h old.
+        No DQ run: expected 100*0.35 + 100*0.25 + 100*0.20 + 80*0.20 = 96.0
 
-        score = AssetHealthScoreService.calculate_health_score(self.asset)
-        self.assertGreaterEqual(score, 0.0)
-        self.assertLessEqual(score, 100.0)
+        With DQ run (quality_score=95): dq_blended = 100*0.6 + 95*0.4 = 98.
+        Expected: 98*0.35 + 100*0.25 + 100*0.20 + 80*0.20 = 95.3
+        """
+        # Score without DQ run
+        score_no_run = AssetHealthScoreService.calculate_health_score(self.asset)
+        self.assertEqual(score_no_run, 96.0)
 
-    def test_health_score_workflow_breakdown_has_total_score(self):
-        """Test complete health score workflow breakdown has total_score."""
-        job = Job.objects.create(
-            tenant=self.tenant,
-            type=JobType.DQ_RUN,
-            status=JobStatus.COMPLETED,
-            resource_type="DATASET",
-            resource_id=self.dataset.id,
-            created_by=self.user,
-        )
+        # Add DQ run and recalculate
+        self._create_dq_run(quality_score=95.0, overall_status="PASS")
+        score_with_run = AssetHealthScoreService.calculate_health_score(self.asset)
+        self.assertEqual(score_with_run, 95.3)
 
-        DQRun.objects.create(
-            tenant=self.tenant,
-            asset=self.asset,
-            dataset=self.dataset,
-            job=job,
-            profile_key="intake_basic_gx",
-            engine=DQEngine.GREAT_EXPECTATIONS,
-            status=DQRunStatus.SUCCEEDED,
-            overall_status="PASS",
-            quality_score=95.0,
-            completed_at=timezone.now(),
-        )
-
-        score = AssetHealthScoreService.calculate_health_score(self.asset)
+        # Breakdown consistency
         breakdown = AssetHealthScoreService.get_health_score_breakdown(self.asset)
         self.assertIn("total_score", breakdown)
-
-    def test_health_score_workflow_breakdown_has_components(self):
-        """Test complete health score workflow breakdown has components."""
-        job = Job.objects.create(
-            tenant=self.tenant,
-            type=JobType.DQ_RUN,
-            status=JobStatus.COMPLETED,
-            resource_type="DATASET",
-            resource_id=self.dataset.id,
-            created_by=self.user,
-        )
-
-        DQRun.objects.create(
-            tenant=self.tenant,
-            asset=self.asset,
-            dataset=self.dataset,
-            job=job,
-            profile_key="intake_basic_gx",
-            engine=DQEngine.GREAT_EXPECTATIONS,
-            status=DQRunStatus.SUCCEEDED,
-            overall_status="PASS",
-            quality_score=95.0,
-            completed_at=timezone.now(),
-        )
-
-        score = AssetHealthScoreService.calculate_health_score(self.asset)
-        breakdown = AssetHealthScoreService.get_health_score_breakdown(self.asset)
         self.assertIn("components", breakdown)
+        self.assertEqual(breakdown["total_score"], score_with_run)
+        self.assertIn("dq", breakdown["components"])
+        self.assertIn("compliance", breakdown["components"])
+        self.assertIn("freshness", breakdown["components"])
+        self.assertIn("usage", breakdown["components"])
 
-    def test_health_score_workflow_breakdown_matches_score(self):
-        """Test complete health score workflow breakdown total_score matches calculated score."""
-        job = Job.objects.create(
-            tenant=self.tenant,
-            type=JobType.DQ_RUN,
-            status=JobStatus.COMPLETED,
-            resource_type="DATASET",
-            resource_id=self.dataset.id,
-            created_by=self.user,
-        )
-
-        DQRun.objects.create(
-            tenant=self.tenant,
-            asset=self.asset,
-            dataset=self.dataset,
-            job=job,
-            profile_key="intake_basic_gx",
-            engine=DQEngine.GREAT_EXPECTATIONS,
-            status=DQRunStatus.SUCCEEDED,
-            overall_status="PASS",
-            quality_score=95.0,
-            completed_at=timezone.now(),
-        )
-
-        score = AssetHealthScoreService.calculate_health_score(self.asset)
-        breakdown = AssetHealthScoreService.get_health_score_breakdown(self.asset)
-        self.assertEqual(breakdown["total_score"], score)
-
-    # ========== SUCCESS SCENARIOS ==========
+    # ------------------------------------------------------------------
+    # Success scenarios
+    # ------------------------------------------------------------------
 
     def test_health_score_integration_success_returns_score(self):
-        """Test successful health score calculation integration returns score."""
+        """Successful health score calculation returns the exact expected value."""
         health_score = AssetHealthScoreService.calculate_health_score(self.asset)
-        self.assertIsNotNone(health_score)
+        self.assertEqual(health_score, 96.0)
 
     def test_health_score_integration_success_score_in_range(self):
-        """Test successful health score calculation integration score is in range."""
+        """Successful health score is within valid range [0, 100]."""
         health_score = AssetHealthScoreService.calculate_health_score(self.asset)
         self.assertGreaterEqual(health_score, 0.0)
         self.assertLessEqual(health_score, 100.0)
 
-    # ========== FAILURE SCENARIOS ==========
+    def test_health_score_integration_breakdown_matches_score(self):
+        """Breakdown total_score matches the calculated score."""
+        score = AssetHealthScoreService.calculate_health_score(self.asset)
+        breakdown = AssetHealthScoreService.get_health_score_breakdown(self.asset)
+        self.assertEqual(breakdown["total_score"], score)
+
+    # ------------------------------------------------------------------
+    # Failure scenarios
+    # ------------------------------------------------------------------
 
     def test_health_score_integration_failure_nonexistent_asset(self):
-        """Health score for unsaved asset raises because the service
-        persists the computed score via asset.save()."""
+        """Health score for unsaved asset raises Asset.DoesNotExist because
+        the service calls refresh_from_db() after updating."""
         import uuid
 
         fake_asset = Asset(
-            id=uuid.uuid4(), tenant=self.tenant, key="fake",
+            id=uuid.uuid4(),
+            tenant=self.tenant,
+            key="fake",
         )
 
-        # The service calls asset.save() to persist health_score,
-        # which fails for an unsaved object with a fabricated PK.
-        with self.assertRaises(Exception):
+        with self.assertRaises(Asset.DoesNotExist):
             AssetHealthScoreService.calculate_health_score(fake_asset)
 
     def test_health_score_integration_failure_no_datasets(self):
-        """Test health score calculation with no datasets (failure scenario)"""
+        """Health score with no datasets returns the exact expected value.
+
+        DQ=UNKNOWN(50), Compliance=UNKNOWN(50), no dataset → freshness=50,
+        view/dl=0/0 pop=None → usage=50.
+        Expected: 50*0.35 + 50*0.25 + 50*0.20 + 50*0.20 = 50.0
+        """
         asset_no_datasets = Asset.objects.create(
             tenant=self.tenant,
             key="no-datasets-asset",
@@ -253,18 +192,20 @@ class AssetHealthScoreIntegrationTest(TestCase):
             created_by=self.user,
         )
 
-        # Should handle no datasets gracefully
         health_score = AssetHealthScoreService.calculate_health_score(asset_no_datasets)
+        self.assertEqual(health_score, 50.0)
 
-        # Should return score (may be lower without datasets)
-        self.assertIsNotNone(health_score)
-        self.assertGreaterEqual(health_score, 0.0)
-
-    # ========== EDGE CASES ==========
+    # ------------------------------------------------------------------
+    # Edge cases
+    # ------------------------------------------------------------------
 
     def test_health_score_integration_edge_case_perfect_score(self):
-        """Test health score calculation with perfect conditions (edge case)"""
-        # Create asset with perfect conditions
+        """Perfect conditions yield the maximum score (100.0).
+
+        DQ=PASS(100), Compliance=PASS(100), popularity=100.0, recent dataset
+        (freshness=100), usage=popularity=100.0.
+        Expected: 100*0.35 + 100*0.25 + 100*0.20 + 100*0.20 = 100.0
+        """
         perfect_asset = Asset.objects.create(
             tenant=self.tenant,
             key="perfect-asset",
@@ -278,26 +219,27 @@ class AssetHealthScoreIntegrationTest(TestCase):
             created_by=self.user,
         )
 
-        # Create recent dataset
-        recent_dataset = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=perfect_asset,
             file=self.file,
             schema_json={"fields": []},
             format="CSV",
             version=1,
-            created_at=timezone.now(),  # Very recent
+            created_at=timezone.now(),
             created_by=self.user,
         )
 
         health_score = AssetHealthScoreService.calculate_health_score(perfect_asset)
-
-        # Should return high score
-        self.assertGreaterEqual(health_score, 80.0)
+        self.assertEqual(health_score, 100.0)
 
     def test_health_score_integration_edge_case_zero_score(self):
-        """Test health score calculation with worst conditions (edge case)"""
-        # Create asset with worst conditions
+        """Worst conditions yield the expected low score.
+
+        DQ=FAIL(30), Compliance=FAIL(30), dataset (auto_now_add overrides
+        365d → freshness=100), popularity=0.0 → usage=0.0.
+        Expected: 30*0.35 + 30*0.25 + 100*0.20 + 0*0.20 = 38.0
+        """
         worst_asset = Asset.objects.create(
             tenant=self.tenant,
             key="worst-asset",
@@ -311,20 +253,16 @@ class AssetHealthScoreIntegrationTest(TestCase):
             created_by=self.user,
         )
 
-        # Create old dataset
-        old_dataset = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=worst_asset,
             file=self.file,
             schema_json={"fields": []},
             format="CSV",
             version=1,
-            created_at=timezone.now() - timedelta(days=365),  # Very old
+            created_at=timezone.now() - timedelta(days=365),
             created_by=self.user,
         )
 
         health_score = AssetHealthScoreService.calculate_health_score(worst_asset)
-
-        # Should return low score
-        self.assertLessEqual(health_score, 50.0)
-
+        self.assertEqual(health_score, 38.0)

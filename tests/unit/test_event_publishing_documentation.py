@@ -6,11 +6,10 @@ This test ensures that:
 2. All event types are documented in EVENT_TYPES_REFERENCE.md
 3. Event publisher pattern is documented
 """
+
 import inspect
 import re
 from pathlib import Path
-from typing import List, Set
-
 from unittest import TestCase
 
 from hub.apps.core.events.service_publishers import (
@@ -82,10 +81,7 @@ class EventPublishingDocumentationTest(TestCase):
 
     def test_all_publishers_documented_in_event_bus(self):
         """Test that all event publishers are documented in EVENT_BUS.md."""
-        self.assertTrue(
-            self.event_bus_doc.exists(),
-            "EVENT_BUS.md should exist"
-        )
+        self.assertTrue(self.event_bus_doc.exists(), "EVENT_BUS.md should exist")
 
         content = self.event_bus_doc.read_text()
 
@@ -93,7 +89,7 @@ class EventPublishingDocumentationTest(TestCase):
         self.assertIn(
             "Event Publisher Pattern",
             content,
-            "EVENT_BUS.md should document the event publisher pattern"
+            "EVENT_BUS.md should document the event publisher pattern",
         )
 
         # Check that all publishers are documented
@@ -127,17 +123,12 @@ class EventPublishingDocumentationTest(TestCase):
 
         for publisher_name in publisher_names:
             self.assertIn(
-                publisher_name,
-                content,
-                f"{publisher_name} should be documented in EVENT_BUS.md"
+                publisher_name, content, f"{publisher_name} should be documented in EVENT_BUS.md"
             )
 
     def test_all_event_types_documented(self):
         """Test that all event types are documented in EVENT_TYPES_REFERENCE.md."""
-        self.assertTrue(
-            self.event_types_doc.exists(),
-            "EVENT_TYPES_REFERENCE.md should exist"
-        )
+        self.assertTrue(self.event_types_doc.exists(), "EVENT_TYPES_REFERENCE.md should exist")
 
         content = self.event_types_doc.read_text()
 
@@ -174,9 +165,7 @@ class EventPublishingDocumentationTest(TestCase):
 
         for category in event_categories:
             self.assertIn(
-                category,
-                content,
-                f"{category} should be documented in EVENT_TYPES_REFERENCE.md"
+                category, content, f"{category} should be documented in EVENT_TYPES_REFERENCE.md"
             )
 
         # Check that key event types are documented
@@ -193,14 +182,14 @@ class EventPublishingDocumentationTest(TestCase):
             self.assertIn(
                 f"`{event_type}`",
                 content,
-                f"{event_type} should be documented in EVENT_TYPES_REFERENCE.md"
+                f"{event_type} should be documented in EVENT_TYPES_REFERENCE.md",
             )
 
         # Validate that we extracted event types successfully
         self.assertGreater(
             len(all_event_types),
             50,
-            f"Should extract at least 50 event types from publishers, got {len(all_event_types)}"
+            f"Should extract at least 50 event types from publishers, got {len(all_event_types)}",
         )
 
     def test_event_publisher_pattern_documented(self):
@@ -217,11 +206,7 @@ class EventPublishingDocumentationTest(TestCase):
         ]
 
         for section in pattern_sections:
-            self.assertIn(
-                section,
-                content,
-                f"{section} should be documented in EVENT_BUS.md"
-            )
+            self.assertIn(section, content, f"{section} should be documented in EVENT_BUS.md")
 
     def test_publisher_methods_exist(self):
         """Test that all publishers have publish methods."""
@@ -238,7 +223,7 @@ class EventPublishingDocumentationTest(TestCase):
             self.assertGreater(
                 len(methods),
                 0,
-                f"{publisher_class.__name__} should have at least one publish method"
+                f"{publisher_class.__name__} should have at least one publish method",
             )
             total_methods += len(methods)
 
@@ -246,10 +231,10 @@ class EventPublishingDocumentationTest(TestCase):
         self.assertGreater(
             total_methods,
             100,
-            f"Should have at least 100 publisher methods across all publishers, got {total_methods}"
+            f"Should have at least 100 publisher methods across all publishers, got {total_methods}",
         )
 
-    def _extract_all_event_types(self) -> Set[str]:
+    def _extract_all_event_types(self) -> set[str]:
         """Extract all event types from all publishers."""
         event_types = set()
 
@@ -274,22 +259,12 @@ class EventPublishingDocumentationTest(TestCase):
 
     def test_documentation_files_exist(self):
         """Test that documentation files exist."""
-        self.assertTrue(
-            self.event_bus_doc.exists(),
-            "EVENT_BUS.md should exist"
-        )
-        self.assertTrue(
-            self.event_types_doc.exists(),
-            "EVENT_TYPES_REFERENCE.md should exist"
-        )
+        self.assertTrue(self.event_bus_doc.exists(), "EVENT_BUS.md should exist")
+        self.assertTrue(self.event_types_doc.exists(), "EVENT_TYPES_REFERENCE.md should exist")
 
     def test_event_publisher_count(self):
         """Test that we have the expected number of event publishers."""
-        self.assertEqual(
-            len(self.EVENT_PUBLISHERS),
-            25,
-            "Should have 25 event publishers"
-        )
+        self.assertEqual(len(self.EVENT_PUBLISHERS), 25, "Should have 25 event publishers")
 
     def test_publisher_services_documented(self):
         """Test that publisher services are documented in EVENT_BUS.md."""
@@ -308,7 +283,7 @@ class EventPublishingDocumentationTest(TestCase):
             self.assertIn(
                 service_class,
                 content,
-                f"Service class '{service_class}' should be documented in EVENT_BUS.md"
+                f"Service class '{service_class}' should be documented in EVENT_BUS.md",
             )
 
     def test_event_publisher_usage_examples(self):
@@ -327,6 +302,5 @@ class EventPublishingDocumentationTest(TestCase):
             self.assertIn(
                 keyword,
                 content,
-                f"Usage example with '{keyword}' should be documented in EVENT_BUS.md"
+                f"Usage example with '{keyword}' should be documented in EVENT_BUS.md",
             )
-

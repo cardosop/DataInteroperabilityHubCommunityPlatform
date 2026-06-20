@@ -4,7 +4,9 @@ Integration tests for Success Criteria documentation in proposal.md.
 These tests validate that Phase 9.7 success criteria are complete, accurate, and up-to-date
 with the current implementation.
 """
+
 import os
+
 from django.test import TestCase
 
 
@@ -15,22 +17,21 @@ class ProposalSuccessCriteriaTest(TestCase):
         """Set up test fixtures."""
         self.proposal_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            'openspec',
-            'changes',
-            'odps1',
-            'proposal.md'
+            "openspec",
+            "changes",
+            "odps1",
+            "proposal.md",
         )
 
     def _read_proposal_content(self):
         """Read the proposal.md file content."""
-        with open(self.proposal_path, 'r', encoding='utf-8') as f:
+        with open(self.proposal_path, encoding="utf-8") as f:
             return f.read()
 
     def test_proposal_file_exists(self):
         """Test that the proposal.md file exists."""
         self.assertTrue(
-            os.path.exists(self.proposal_path),
-            f"Proposal file not found: {self.proposal_path}"
+            os.path.exists(self.proposal_path), f"Proposal file not found: {self.proposal_path}"
         )
 
     def test_success_criteria_section_exists(self):
@@ -74,7 +75,9 @@ class ProposalSuccessCriteriaTest(TestCase):
         content = self._read_proposal_content()
 
         # Check for Redis Infrastructure Separation section
-        self.assertIn("#### Redis Infrastructure Separation Success Criteria (Phase 9.7.1.3)", content)
+        self.assertIn(
+            "#### Redis Infrastructure Separation Success Criteria (Phase 9.7.1.3)", content
+        )
 
         # Check for key success criteria
         self.assertIn("Four dedicated Redis instances deployed", content)
@@ -138,7 +141,10 @@ class ProposalSuccessCriteriaTest(TestCase):
         content = self._read_proposal_content()
 
         # Check for Service Integration Pattern Standardization section
-        self.assertIn("#### Service Integration Pattern Standardization Success Criteria (Phase 9.7.3)", content)
+        self.assertIn(
+            "#### Service Integration Pattern Standardization Success Criteria (Phase 9.7.3)",
+            content,
+        )
 
         # Check for key success criteria
         self.assertIn("Service integration patterns documented", content)
@@ -174,7 +180,8 @@ class ProposalSuccessCriteriaTest(TestCase):
         # Check for consistent format (number, checkmark, description)
         # Look for patterns like "44. ✅" followed by text
         import re
-        pattern = r'\d+\.\s*✅\s+[A-Z]'
+
+        pattern = r"\d+\.\s*✅\s+[A-Z]"
         matches = re.findall(pattern, content)
         self.assertGreater(len(matches), 40, "Should have at least 40 formatted success criteria")
 
@@ -246,4 +253,3 @@ class ProposalSuccessCriteriaTest(TestCase):
 
         for code_ref in code_references:
             self.assertIn(code_ref, content, f"Missing code reference: {code_ref}")
-

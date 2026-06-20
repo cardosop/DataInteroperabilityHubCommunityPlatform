@@ -40,7 +40,9 @@ pytestmark = pytest.mark.django_db(transaction=True)
 # Helpers — shared infrastructure
 # ---------------------------------------------------------------------------
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]  # .../DataInteroperabilityHub/hub/../../ = project root
+_PROJECT_ROOT = (
+    Path(__file__).resolve().parents[2]
+)  # .../DataInteroperabilityHub/hub/../../ = project root
 
 
 def _make_tenant(suffix=None):
@@ -121,9 +123,7 @@ def _load_migration_function(app_label: str, migration_filename: str, func_name:
     Load a RunPython function from a migration file by path (avoids the Python
     identifier restriction for module names that start with a digit).
     """
-    migrations_dir = (
-        _PROJECT_ROOT / "hub" / "apps" / app_label / "migrations"
-    )
+    migrations_dir = _PROJECT_ROOT / "hub" / "apps" / app_label / "migrations"
     path = migrations_dir / migration_filename
     spec = importlib.util.spec_from_file_location(f"_migration_{app_label}", path)
     mod = importlib.util.module_from_spec(spec)
@@ -162,65 +162,47 @@ class TestNormaliseRegulationKeysMigration(TestCase):
         """'PIPL' → 'PIPL_CN'"""
         c = _make_contract(
             self.tenant,
-            hub_contract_json={
-                "privacy_compliance": {"jurisdictions": ["PIPL"]}
-            },
+            hub_contract_json={"privacy_compliance": {"jurisdictions": ["PIPL"]}},
         )
         _run_normalise_regulation_keys()
         c.refresh_from_db()
-        self.assertEqual(
-            c.hub_contract_json["privacy_compliance"]["jurisdictions"], ["PIPL_CN"]
-        )
+        self.assertEqual(c.hub_contract_json["privacy_compliance"]["jurisdictions"], ["PIPL_CN"])
 
     def test_pipl_china_normalised_to_pipl_cn(self):
         """'PIPL_CHINA' → 'PIPL_CN'"""
         c = _make_contract(
             self.tenant,
-            hub_contract_json={
-                "privacy_compliance": {"jurisdictions": ["PIPL_CHINA"]}
-            },
+            hub_contract_json={"privacy_compliance": {"jurisdictions": ["PIPL_CHINA"]}},
         )
         _run_normalise_regulation_keys()
         c.refresh_from_db()
-        self.assertEqual(
-            c.hub_contract_json["privacy_compliance"]["jurisdictions"], ["PIPL_CN"]
-        )
+        self.assertEqual(c.hub_contract_json["privacy_compliance"]["jurisdictions"], ["PIPL_CN"])
 
     def test_ccpa_cpra_underscore_normalised_to_ccpa(self):
         """'CCPA_CPRA' → 'CCPA'"""
         c = _make_contract(
             self.tenant,
-            hub_contract_json={
-                "privacy_compliance": {"jurisdictions": ["CCPA_CPRA"]}
-            },
+            hub_contract_json={"privacy_compliance": {"jurisdictions": ["CCPA_CPRA"]}},
         )
         _run_normalise_regulation_keys()
         c.refresh_from_db()
-        self.assertEqual(
-            c.hub_contract_json["privacy_compliance"]["jurisdictions"], ["CCPA"]
-        )
+        self.assertEqual(c.hub_contract_json["privacy_compliance"]["jurisdictions"], ["CCPA"])
 
     def test_ccpa_cpra_slash_normalised_to_ccpa(self):
         """'CCPA/CPRA' → 'CCPA'"""
         c = _make_contract(
             self.tenant,
-            hub_contract_json={
-                "privacy_compliance": {"jurisdictions": ["CCPA/CPRA"]}
-            },
+            hub_contract_json={"privacy_compliance": {"jurisdictions": ["CCPA/CPRA"]}},
         )
         _run_normalise_regulation_keys()
         c.refresh_from_db()
-        self.assertEqual(
-            c.hub_contract_json["privacy_compliance"]["jurisdictions"], ["CCPA"]
-        )
+        self.assertEqual(c.hub_contract_json["privacy_compliance"]["jurisdictions"], ["CCPA"])
 
     def test_privacy_act_normalised_to_privacy_act_au(self):
         """'PRIVACY_ACT' → 'PRIVACY_ACT_AU'"""
         c = _make_contract(
             self.tenant,
-            hub_contract_json={
-                "privacy_compliance": {"jurisdictions": ["PRIVACY_ACT"]}
-            },
+            hub_contract_json={"privacy_compliance": {"jurisdictions": ["PRIVACY_ACT"]}},
         )
         _run_normalise_regulation_keys()
         c.refresh_from_db()
@@ -260,9 +242,7 @@ class TestNormaliseRegulationKeysMigration(TestCase):
         )
         _run_normalise_regulation_keys()
         c.refresh_from_db()
-        self.assertEqual(
-            c.hub_contract_json["privacy_compliance"]["jurisdictions"], ["GDPR"]
-        )
+        self.assertEqual(c.hub_contract_json["privacy_compliance"]["jurisdictions"], ["GDPR"])
 
     def test_canonical_pipl_cn_unchanged(self):
         c = _make_contract(
@@ -271,9 +251,7 @@ class TestNormaliseRegulationKeysMigration(TestCase):
         )
         _run_normalise_regulation_keys()
         c.refresh_from_db()
-        self.assertEqual(
-            c.hub_contract_json["privacy_compliance"]["jurisdictions"], ["PIPL_CN"]
-        )
+        self.assertEqual(c.hub_contract_json["privacy_compliance"]["jurisdictions"], ["PIPL_CN"])
 
     def test_mixed_canonical_and_alias(self):
         """Canonical keys preserved; alias keys normalised."""
@@ -296,9 +274,7 @@ class TestNormaliseRegulationKeysMigration(TestCase):
         """Keys not in the alias map and not canonical are preserved as-is."""
         c = _make_contract(
             self.tenant,
-            hub_contract_json={
-                "privacy_compliance": {"jurisdictions": ["MYSTERY_REG_2099"]}
-            },
+            hub_contract_json={"privacy_compliance": {"jurisdictions": ["MYSTERY_REG_2099"]}},
         )
         _run_normalise_regulation_keys()
         c.refresh_from_db()
@@ -348,9 +324,13 @@ class TestNormaliseRegulationKeysMigration(TestCase):
         original = {"privacy_compliance": {"jurisdictions": ["GDPR", "CCPA", "PIPL_CN"]}}
         c = _make_contract(self.tenant, hub_contract_json=original)
         # Track updated_at to verify no DB write occurred.
-        before_updated = Contract.objects.filter(id=c.id).values_list("updated_at", flat=True).first()
+        before_updated = (
+            Contract.objects.filter(id=c.id).values_list("updated_at", flat=True).first()
+        )
         _run_normalise_regulation_keys()
-        after_updated = Contract.objects.filter(id=c.id).values_list("updated_at", flat=True).first()
+        after_updated = (
+            Contract.objects.filter(id=c.id).values_list("updated_at", flat=True).first()
+        )
         # updated_at is auto_now — it changes on every save/bulk_update.
         # If no bulk_update happened, it stays the same.
         self.assertEqual(before_updated, after_updated, "Row was needlessly updated")
@@ -384,9 +364,13 @@ class TestNormaliseRegulationKeysMigration(TestCase):
         self.assertEqual(c.hub_contract_json["privacy_compliance"]["jurisdictions"], ["PIPL_CN"])
 
         # Second run: row is now canonical, must not be rewritten.
-        updated_before = Contract.objects.filter(id=c.id).values_list("updated_at", flat=True).first()
+        updated_before = (
+            Contract.objects.filter(id=c.id).values_list("updated_at", flat=True).first()
+        )
         _run_normalise_regulation_keys()
-        updated_after = Contract.objects.filter(id=c.id).values_list("updated_at", flat=True).first()
+        updated_after = (
+            Contract.objects.filter(id=c.id).values_list("updated_at", flat=True).first()
+        )
         self.assertEqual(updated_before, updated_after)
 
     # --- Multiple contracts in one pass -------------------------------------
@@ -422,12 +406,18 @@ class TestNormaliseRegulationKeysMigration(TestCase):
         """
         from hub.apps.compliance.contract_integration import REGULATION_KEY_ALIASES as live_map
 
-        migration_mod = _load_migration_function.__module__  # unused, just to ensure path works
-        fn = _load_migration_function("contracts", "0015_normalise_regulation_keys.py", "normalise_regulation_keys")
+        _load_migration_function(
+            "contracts", "0015_normalise_regulation_keys.py", "normalise_regulation_keys"
+        )
         # The module is loaded; fetch the alias dict from it.
         spec = importlib.util.spec_from_file_location(
             "_mig0015",
-            _PROJECT_ROOT / "hub" / "apps" / "contracts" / "migrations" / "0015_normalise_regulation_keys.py",
+            _PROJECT_ROOT
+            / "hub"
+            / "apps"
+            / "contracts"
+            / "migrations"
+            / "0015_normalise_regulation_keys.py",
         )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -580,13 +570,15 @@ class TestMigrateComplianceRunsV2Command(TestCase):
         Keys like 'metering', 'error', 'schema_version', 'regulation_summary',
         'metadata' must NOT be treated as regulation entries.
         """
-        run = self._make_run({
-            "metering": {"tokens": 100},
-            "schema_version": "2.0",
-            "regulation_summary": {"total": 0},
-            "metadata": {"source": "v1"},
-            "error": None,            # non-dict value → also filtered out
-        })
+        run = self._make_run(
+            {
+                "metering": {"tokens": 100},
+                "schema_version": "2.0",
+                "regulation_summary": {"total": 0},
+                "metadata": {"source": "v1"},
+                "error": None,  # non-dict value → also filtered out
+            }
+        )
         self._call()
         run.refresh_from_db()
         # No actual regulations present → both alerts not applicable
@@ -599,10 +591,12 @@ class TestMigrateComplianceRunsV2Command(TestCase):
         Only dict-valued keys (actual regulation entries) count; scalar / None
         values under non-structural keys should also be excluded.
         """
-        run = self._make_run({
-            "GDPR": "some-string-not-a-dict",   # string value → not a regulation entry
-            "LGPD": None,                         # None value → not a regulation entry
-        })
+        run = self._make_run(
+            {
+                "GDPR": "some-string-not-a-dict",  # string value → not a regulation entry
+                "LGPD": None,  # None value → not a regulation entry
+            }
+        )
         self._call()
         run.refresh_from_db()
         self.assertFalse(run.cross_border_alert["applicable"])
@@ -612,7 +606,7 @@ class TestMigrateComplianceRunsV2Command(TestCase):
     def test_run_with_null_regulation_mapping_json_not_eligible(self):
         """Rows without regulation_mapping_json are not processed."""
         run = self._make_run(regulation_mapping_json=None)
-        out = self._call()
+        self._call()
         run.refresh_from_db()
         self.assertIsNone(run.cross_border_alert)
         self.assertIsNone(run.localisation_alert)
@@ -627,7 +621,7 @@ class TestMigrateComplianceRunsV2Command(TestCase):
             localisation_alert=existing_alert,
             legal_basis_violations=["violation_1"],
         )
-        out = self._call()
+        self._call()
         run.refresh_from_db()
         # Should remain as set (not overwritten with derived backfill)
         self.assertEqual(run.cross_border_alert, existing_alert)
@@ -735,11 +729,13 @@ class TestMigrateComplianceRunsV2Command(TestCase):
         The applicable_regulations list in cross_border_alert should be sorted
         to produce deterministic output.
         """
-        run = self._make_run({
-            "UK_GDPR": {"applied": True},
-            "GDPR": {"applied": True},
-            "LGPD": {"applied": True},
-        })
+        run = self._make_run(
+            {
+                "UK_GDPR": {"applied": True},
+                "GDPR": {"applied": True},
+                "LGPD": {"applied": True},
+            }
+        )
         self._call()
         run.refresh_from_db()
         regs = run.cross_border_alert["applicable_regulations"]
@@ -793,10 +789,12 @@ class TestMigrateComplianceRunsV2Command(TestCase):
             _derive_v2_fields,
         )
 
-        result = _derive_v2_fields({
-            "metering": {"tokens": 50},
-            "schema_version": "2.0",
-            "regulation_summary": {},
-        })
+        result = _derive_v2_fields(
+            {
+                "metering": {"tokens": 50},
+                "schema_version": "2.0",
+                "regulation_summary": {},
+            }
+        )
         self.assertFalse(result["cross_border_alert"]["applicable"])
         self.assertFalse(result["localisation_alert"]["applicable"])

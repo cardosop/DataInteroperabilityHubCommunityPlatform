@@ -1,5 +1,7 @@
 """Fixture with zero swallows, zero ORM, zero status assertions."""
 
+import contextlib
+
 
 def clean():
     try:
@@ -9,7 +11,5 @@ def clean():
 
 
 def also_clean():
-    try:
-        pass
-    except ValueError:
+    with contextlib.suppress(ValueError):
         pass

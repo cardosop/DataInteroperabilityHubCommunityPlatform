@@ -1,8 +1,8 @@
 """
 Comprehensive tests for WebSocket protocol.
 """
+
 import json
-from datetime import datetime
 
 from django.test import TestCase
 
@@ -150,4 +150,3 @@ class TestEventMessage(TestCase):
         self.assertEqual(event.event_id, "123")
         self.assertEqual(event.event_type, "contract.created")
         self.assertEqual(event.data["contract_id"], "789")
-

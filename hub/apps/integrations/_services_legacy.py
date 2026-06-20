@@ -7,9 +7,9 @@ CRUD operations and connection testing with distributed tracing, audit logging,
 and event publishing.
 """
 
-import structlog
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
+import structlog
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -37,10 +37,10 @@ from hub.apps.integrations.base import (
     SyncDirection,
     SyncStatus,
 )
+from hub.apps.integrations.business_rules import MarketplaceIntegrationBusinessRules
 from hub.apps.integrations.event_publishers import MarketplaceEventPublisher
 from hub.apps.integrations.factory import MarketplaceConnectorFactory
 from hub.apps.integrations.logging_utils import get_correlation_context
-from hub.apps.integrations.business_rules import MarketplaceIntegrationBusinessRules
 from hub.apps.integrations.models import (
     MarketplaceConnection,
     MarketplaceMapping,
@@ -80,9 +80,9 @@ class MarketplaceIntegrationService(
 
     def __init__(
         self,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request_id: Optional[str] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request_id: str | None = None,
     ):
         """
         Initialize MarketplaceIntegrationService.
@@ -107,9 +107,9 @@ class MarketplaceIntegrationService(
         user_id: str,
         marketplace_type: str,
         name: str,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         is_active: bool = True,
-        request: Optional[Any] = None,
+        request: Any | None = None,
     ) -> MarketplaceConnection:
         """
         Create a new marketplace connection.
@@ -217,11 +217,17 @@ class MarketplaceIntegrationService(
             # Phase 90.6: SSRF validation on URL-like config values
             # Gated on INTEGRATION_SSRF_ENABLED (same pattern as WEBHOOK_SSRF_ENABLED)
             from django.conf import settings as _django_settings
+
             if getattr(_django_settings, "INTEGRATION_SSRF_ENABLED", True):
-                from hub.apps.webhooks.ssrf_guard import validate_webhook_url, SSRFViolationError
+                from hub.apps.webhooks.ssrf_guard import SSRFViolationError, validate_webhook_url
+
                 _url_keys = {"url", "endpoint", "api_url", "base_url", "host_url", "callback_url"}
                 for key, value in (config or {}).items():
-                    if key.lower() in _url_keys and isinstance(value, str) and value.startswith(("http://", "https://")):
+                    if (
+                        key.lower() in _url_keys
+                        and isinstance(value, str)
+                        and value.startswith(("http://", "https://"))
+                    ):
                         try:
                             validate_webhook_url(value, raise_as_validation_error=False)
                         except SSRFViolationError as ssrf_exc:
@@ -398,7 +404,7 @@ class MarketplaceIntegrationService(
                 exc_info=True,
             )
             raise ValidationError(
-                f"Failed to create marketplace connection: {str(e)}", details={"error": str(e)}
+                f"Failed to create marketplace connection: {e!s}", details={"error": str(e)}
             ) from e
         finally:
             if span_context:
@@ -414,12 +420,12 @@ class MarketplaceIntegrationService(
     def update_connection(
         self,
         connection_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        name: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
-        is_active: Optional[bool] = None,
-        request: Optional[Any] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        name: str | None = None,
+        config: dict[str, Any] | None = None,
+        is_active: bool | None = None,
+        request: Any | None = None,
     ) -> MarketplaceConnection:
         """
         Update an existing marketplace connection.
@@ -522,11 +528,10 @@ class MarketplaceIntegrationService(
                 changes["config"] = "[UPDATED]"
 
             # Update is_active if provided
-            if is_active is not None:
-                if is_active != connection.is_active:
-                    original_values["is_active"] = connection.is_active
-                    connection.is_active = is_active
-                    changes["is_active"] = is_active
+            if is_active is not None and is_active != connection.is_active:
+                original_values["is_active"] = connection.is_active
+                connection.is_active = is_active
+                changes["is_active"] = is_active
 
             # Save if there are changes
             if changes:
@@ -665,7 +670,7 @@ class MarketplaceIntegrationService(
                 exc_info=True,
             )
             raise ValidationError(
-                f"Failed to update marketplace connection: {str(e)}", details={"error": str(e)}
+                f"Failed to update marketplace connection: {e!s}", details={"error": str(e)}
             ) from e
         finally:
             if span_context:
@@ -681,10 +686,10 @@ class MarketplaceIntegrationService(
     def delete_connection(
         self,
         connection_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        reason: Optional[str] = None,
-        request: Optional[Any] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        reason: str | None = None,
+        request: Any | None = None,
     ) -> None:
         """
         Delete a marketplace connection.
@@ -737,7 +742,6 @@ class MarketplaceIntegrationService(
             connection_id_str = str(connection.id)
             marketplace_type = connection.marketplace_type
             name = connection.name
-            was_active = connection.is_active
 
             # Record metrics before deletion
             try:
@@ -749,9 +753,7 @@ class MarketplaceIntegrationService(
                     marketplace_type=marketplace_type,
                     tenant_id=effective_tenant_id,
                     connection_id=connection_id_str,
-                ).set(
-                    0
-                )  # Set to 0 (inactive) before deletion
+                ).set(0)  # Set to 0 (inactive) before deletion
             except Exception as e:
                 # Log but don't fail deletion if metrics fail
                 logger.warning(
@@ -868,10 +870,10 @@ class MarketplaceIntegrationService(
 
     def list_connections(
         self,
-        tenant_id: Optional[str] = None,
-        marketplace_type: Optional[str] = None,
-        is_active: Optional[bool] = None,
-    ) -> List[MarketplaceConnection]:
+        tenant_id: str | None = None,
+        marketplace_type: str | None = None,
+        is_active: bool | None = None,
+    ) -> list[MarketplaceConnection]:
         """
         List marketplace connections.
 
@@ -979,7 +981,7 @@ class MarketplaceIntegrationService(
     def get_connection(
         self,
         connection_id: str,
-        tenant_id: Optional[str] = None,
+        tenant_id: str | None = None,
     ) -> MarketplaceConnection:
         """
         Get a marketplace connection by ID.
@@ -1068,10 +1070,10 @@ class MarketplaceIntegrationService(
     def test_connection(
         self,
         connection_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request: Optional[Any] = None,
-    ) -> Dict[str, Any]:
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request: Any | None = None,
+    ) -> dict[str, Any]:
         """
         Test a marketplace connection.
 
@@ -1134,7 +1136,7 @@ class MarketplaceIntegrationService(
                 config = connection.get_config()
             except Exception as e:
                 raise ValidationError(
-                    f"Failed to decrypt connection configuration: {str(e)}",
+                    f"Failed to decrypt connection configuration: {e!s}",
                     details={"error": str(e)},
                 ) from e
 
@@ -1146,7 +1148,7 @@ class MarketplaceIntegrationService(
                 )
             except Exception as e:
                 raise ValidationError(
-                    f"Failed to create connector: {str(e)}",
+                    f"Failed to create connector: {e!s}",
                     details={"error": str(e), "marketplace_type": connection.marketplace_type},
                 ) from e
 
@@ -1168,15 +1170,16 @@ class MarketplaceIntegrationService(
                 error_message = f"Authentication error: {e.message}"
                 error_type = "AUTHENTICATION_ERROR"
             except Exception as e:
-                error_message = f"Unexpected error: {str(e)}"
+                error_message = f"Unexpected error: {e!s}"
                 error_type = "UNEXPECTED_ERROR"
 
             # Record connection test metrics
             try:
                 from hub.apps.observability.otel_metrics import (
-                    marketplace_connection_tests_total,
                     marketplace_connection_test_failures_total,
+                    marketplace_connection_tests_total,
                 )
+
                 status = "success" if success else "failure"
                 marketplace_connection_tests_total.labels(
                     marketplace_type=connection.marketplace_type,
@@ -1260,13 +1263,16 @@ class MarketplaceIntegrationService(
             # Send notification email if test failed (Task 9.10.6.3.2)
             if not success and error_message:
                 try:
-                    from hub.apps.notifications.tasks import send_marketplace_connection_test_failure_email
+                    from hub.apps.notifications.tasks import (
+                        send_marketplace_connection_test_failure_email,
+                    )
+
                     send_marketplace_connection_test_failure_email.delay(
                         connection_id=str(connection.id),
                         error_message=error_message,
                         tested_at=tested_at.isoformat(),
                         user_id=effective_user_id,
-                        tenant_id=effective_tenant_id
+                        tenant_id=effective_tenant_id,
                     )
                 except Exception as e:
                     # Log but don't fail test if notification fails
@@ -1314,7 +1320,7 @@ class MarketplaceIntegrationService(
                 },
             )
             raise ValidationError(
-                f"Failed to test marketplace connection: {str(e)}", details={"error": str(e)}
+                f"Failed to test marketplace connection: {e!s}", details={"error": str(e)}
             ) from e
         finally:
             if span_context:
@@ -1331,9 +1337,9 @@ class MarketplaceIntegrationService(
         connection_id: str,
         tenant_id: str,
         user_id: str,
-        asset_ids: List[str],
-        options: Optional[Dict[str, Any]] = None,
-        request: Optional[Any] = None,
+        asset_ids: list[str],
+        options: dict[str, Any] | None = None,
+        request: Any | None = None,
     ) -> MarketplaceSyncJob:
         """
         Synchronize Hub assets to marketplace (PUSH operation).
@@ -1360,8 +1366,6 @@ class MarketplaceIntegrationService(
         from django.contrib.auth import get_user_model
         from opentelemetry.trace import StatusCode
 
-        from hub.apps.jobs.models import JobType
-        from hub.apps.jobs.utils import create_job, get_job_timeout
         from hub.apps.observability.span_instrumentation import (
             add_span_attributes,
             create_span,
@@ -1451,9 +1455,11 @@ class MarketplaceIntegrationService(
                     MarketplaceSyncWorkflow.register_workflow(registry)
                     MarketplaceSyncWorkflow.register_tasks(engine)
 
-                    # Create workflow instance
+                    # Create workflow instance — pass explicit version so the
+                    # engine looks up by name+version rather than is_active=True.
                     workflow_instance = engine.create_instance(
                         workflow_name="marketplace_sync_push",
+                        workflow_version=MarketplaceSyncWorkflow.WORKFLOW_VERSION,
                         input_data={
                             "connection_id": connection_id,
                             "asset_ids": asset_ids,
@@ -1613,10 +1619,10 @@ class MarketplaceIntegrationService(
         connection_id: str,
         tenant_id: str,
         user_id: str,
-        listing_ids: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        options: Optional[Dict[str, Any]] = None,
-        request: Optional[Any] = None,
+        listing_ids: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
+        request: Any | None = None,
     ) -> MarketplaceSyncJob:
         """
         Synchronize marketplace listings to Hub (PULL operation).
@@ -1654,8 +1660,6 @@ class MarketplaceIntegrationService(
         from django.contrib.auth import get_user_model
         from opentelemetry.trace import StatusCode
 
-        from hub.apps.jobs.models import JobType
-        from hub.apps.jobs.utils import create_job, get_job_timeout
         from hub.apps.observability.span_instrumentation import (
             add_span_attributes,
             create_span,
@@ -1739,9 +1743,10 @@ class MarketplaceIntegrationService(
                     MarketplaceSyncWorkflow.register_workflow(registry)
                     MarketplaceSyncWorkflow.register_tasks(engine)
 
-                    # Create workflow instance
+                    # Create workflow instance — pass explicit version.
                     workflow_instance = engine.create_instance(
                         workflow_name="marketplace_sync_pull",
+                        workflow_version=MarketplaceSyncWorkflow.WORKFLOW_VERSION,
                         input_data={
                             "connection_id": connection_id,
                             "listing_ids": listing_ids,
@@ -1901,7 +1906,7 @@ class MarketplaceIntegrationService(
         self,
         tenant_id: str,
         sync_job_id: str,
-        request: Optional[Any] = None,
+        request: Any | None = None,
     ) -> MarketplaceSyncJob:
         """
         Retrieve a marketplace sync job by its ID.
@@ -1991,13 +1996,13 @@ class MarketplaceIntegrationService(
     def list_sync_jobs(
         self,
         tenant_id: str,
-        connection_id: Optional[str] = None,
-        direction: Optional[str] = None,
-        status: Optional[str] = None,
+        connection_id: str | None = None,
+        direction: str | None = None,
+        status: str | None = None,
         limit: int = 100,
         offset: int = 0,
-        request: Optional[Any] = None,
-    ) -> List[MarketplaceSyncJob]:
+        request: Any | None = None,
+    ) -> list[MarketplaceSyncJob]:
         """
         List marketplace sync jobs for a tenant.
 
@@ -2107,8 +2112,8 @@ class MarketplaceIntegrationService(
         sync_job_id: str,
         tenant_id: str,
         user_id: str,
-        reason: Optional[str] = None,
-        request: Optional[Any] = None,
+        reason: str | None = None,
+        request: Any | None = None,
     ) -> MarketplaceSyncJob:
         """
         Cancel a running marketplace sync job.
@@ -2310,11 +2315,11 @@ class MarketplaceIntegrationService(
         connection_id: str,
         hub_asset_id: str,
         external_listing_id: str,
-        external_resource_ids: Optional[List[str]] = None,
-        sync_metadata: Optional[Dict[str, Any]] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request: Optional[Any] = None,
+        external_resource_ids: list[str] | None = None,
+        sync_metadata: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request: Any | None = None,
     ) -> MarketplaceMapping:
         """
         Create a marketplace mapping between a Hub asset and an external marketplace listing.
@@ -2526,14 +2531,14 @@ class MarketplaceIntegrationService(
         self,
         asset_mapping: "MarketplaceAssetMapping",
         connection: MarketplaceConnection,
-        sync_job: Optional[MarketplaceSyncJob] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request: Optional[Any] = None,
+        sync_job: MarketplaceSyncJob | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request: Any | None = None,
         skip_resource_downloads: bool = False,
         skip_semantic_mapping: bool = False,
         data_strategy: str = "METADATA_ONLY",
-        download_resources: Optional[List[str]] = None,
+        download_resources: list[str] | None = None,
     ) -> "Asset":
         """
         Create federated asset with ODPS and ODCS contracts from marketplace mapping.
@@ -2741,7 +2746,7 @@ class MarketplaceIntegrationService(
 
                 for resource in asset_mapping.resources:
                     # Create ExternalResourceReference record
-                    external_resource_ref, created = (
+                    _external_resource_ref, _created = (
                         ExternalResourceReference.objects.get_or_create(
                             asset=asset,
                             resource_id=resource.resource_id,
@@ -2851,11 +2856,13 @@ class MarketplaceIntegrationService(
                         "test" in sys.argv
                         or "pytest" in sys.modules
                         or "unittest" in sys.modules
-                        or hasattr(sys, "_getframe")
-                        and any(
-                            "test" in str(f.filename).lower()
-                            for f in [sys._getframe(i) for i in range(10)]
-                            if f
+                        or (
+                            hasattr(sys, "_getframe")
+                            and any(
+                                "test" in str(f.filename).lower()
+                                for f in [sys._getframe(i) for i in range(10)]
+                                if f
+                            )
                         )
                     )
 
@@ -3116,11 +3123,13 @@ class MarketplaceIntegrationService(
                         "test" in sys.argv
                         or "pytest" in sys.modules
                         or "unittest" in sys.modules
-                        or hasattr(sys, "_getframe")
-                        and any(
-                            "test" in str(f.filename).lower()
-                            for f in [sys._getframe(i) for i in range(10)]
-                            if f
+                        or (
+                            hasattr(sys, "_getframe")
+                            and any(
+                                "test" in str(f.filename).lower()
+                                for f in [sys._getframe(i) for i in range(10)]
+                                if f
+                            )
                         )
                     )
 
@@ -3288,10 +3297,10 @@ class MarketplaceIntegrationService(
     def _create_odps_contract_from_metadata(
         self,
         asset: "Asset",
-        odps_metadata: Optional[Dict[str, Any]],
+        odps_metadata: dict[str, Any] | None,
         tenant_obj: "Tenant",
         user_obj,
-        source_metadata: Dict[str, Any],
+        source_metadata: dict[str, Any],
     ) -> "Contract":
         """
         Create ODPS contract from metadata dictionary.
@@ -3474,11 +3483,11 @@ class MarketplaceIntegrationService(
     def _create_odcs_contract_from_metadata(
         self,
         asset: "Asset",
-        odcs_metadata: Optional[Dict[str, Any]],
+        odcs_metadata: dict[str, Any] | None,
         tenant_obj: "Tenant",
         user_obj,
-        source_metadata: Dict[str, Any],
-        external_resources: Optional[List[Dict[str, Any]]] = None,
+        source_metadata: dict[str, Any],
+        external_resources: list[dict[str, Any]] | None = None,
     ) -> "Contract":
         """
         Create ODCS contract from metadata or with defaults.
@@ -3716,7 +3725,7 @@ class MarketplaceIntegrationService(
             odcs_contract.save(update_fields=["hub_contract_json"])
 
     def _update_odcs_schema_from_inferred_schema(
-        self, odcs_contract: "Contract", schema_json: Dict[str, Any]
+        self, odcs_contract: "Contract", schema_json: dict[str, Any]
     ):
         """Update ODCS contract schema fields from inferred schema."""
         if not odcs_contract.hub_contract_json:
@@ -3764,11 +3773,11 @@ class MarketplaceIntegrationService(
         asset: "Asset",
         odps_contract: Optional["Contract"],
         odcs_contract: Optional["Contract"],
-        created_datasets: List["Dataset"],
+        created_datasets: list["Dataset"],
         tenant_obj: "Tenant",
         user_obj,
         data_strategy: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Execute federated asset creation workflow.
 
@@ -3921,10 +3930,7 @@ class MarketplaceIntegrationService(
                     # Activate contracts if validation passed
                     if contract_validated:
                         from hub.apps.contracts.models import (
-                            Contract,
                             ContractStatus,
-                            NormalizationStatus,
-                            ValidationStatus,
                         )
 
                         # Refresh contracts from DB to get updated validation_status
@@ -3953,7 +3959,7 @@ class MarketplaceIntegrationService(
                                     extra={"contract_id": str(contract.id), "reason": reason},
                                 )
                 except Exception as e:
-                    error_msg = f"Contract validation failed: {str(e)}"
+                    error_msg = f"Contract validation failed: {e!s}"
                     errors.append(error_msg)
                     logger.error(error_msg, exc_info=True)
                     if step:
@@ -3985,7 +3991,7 @@ class MarketplaceIntegrationService(
                         dq_checks_run = not result.get("skipped", False)
                         execution_results["dq_checks_run"] = dq_checks_run
                     except Exception as e:
-                        error_msg = f"DQ checks failed: {str(e)}"
+                        error_msg = f"DQ checks failed: {e!s}"
                         errors.append(error_msg)
                         logger.error(error_msg, exc_info=True)
                         if step:
@@ -4017,7 +4023,7 @@ class MarketplaceIntegrationService(
                         compliance_checks_run = not result.get("skipped", False)
                         execution_results["compliance_checks_run"] = compliance_checks_run
                     except Exception as e:
-                        error_msg = f"Compliance checks failed: {str(e)}"
+                        error_msg = f"Compliance checks failed: {e!s}"
                         errors.append(error_msg)
                         logger.error(error_msg, exc_info=True)
                         if step:
@@ -4049,7 +4055,7 @@ class MarketplaceIntegrationService(
                     warnings.extend(validation_result.warnings)
                     logger.warning(error_msg)
             except Exception as e:
-                error_msg = f"Business rules validation failed: {str(e)}"
+                error_msg = f"Business rules validation failed: {e!s}"
                 errors.append(error_msg)
                 logger.error(error_msg, exc_info=True)
 
@@ -4072,7 +4078,7 @@ class MarketplaceIntegrationService(
                     activated = result.get("activated", False)
                     execution_results["activated"] = activated
                 except Exception as e:
-                    error_msg = f"Asset activation failed: {str(e)}"
+                    error_msg = f"Asset activation failed: {e!s}"
                     errors.append(error_msg)
                     logger.error(error_msg, exc_info=True)
                     if step:
@@ -4096,7 +4102,7 @@ class MarketplaceIntegrationService(
                 indexed = result.get("indexed", False)
                 execution_results["indexed"] = indexed
             except Exception as e:
-                error_msg = f"Search indexing failed: {str(e)}"
+                error_msg = f"Search indexing failed: {e!s}"
                 errors.append(error_msg)
                 logger.error(error_msg, exc_info=True)
                 if step:
@@ -4122,7 +4128,7 @@ class MarketplaceIntegrationService(
                 notifications_sent = result.get("notifications_sent", False)
                 execution_results["notifications_sent"] = notifications_sent
             except Exception as e:
-                error_msg = f"Notification sending failed: {str(e)}"
+                error_msg = f"Notification sending failed: {e!s}"
                 errors.append(error_msg)
                 logger.error(error_msg, exc_info=True)
                 if step:
@@ -4137,7 +4143,7 @@ class MarketplaceIntegrationService(
             workflow_instance.save(update_fields=["status", "completed_at", "output_data"])
 
         except Exception as e:
-            error_msg = f"Workflow execution failed: {str(e)}"
+            error_msg = f"Workflow execution failed: {e!s}"
             errors.append(error_msg)
             logger.error(error_msg, exc_info=True)
             if workflow_instance:
@@ -4153,8 +4159,8 @@ class MarketplaceIntegrationService(
     def get_mapping(
         self,
         mapping_id: str,
-        tenant_id: Optional[str] = None,
-        request: Optional[Any] = None,
+        tenant_id: str | None = None,
+        request: Any | None = None,
     ) -> MarketplaceMapping:
         """
         Retrieve a marketplace mapping by its ID.
@@ -4242,13 +4248,13 @@ class MarketplaceIntegrationService(
 
     def list_mappings(
         self,
-        tenant_id: Optional[str] = None,
-        connection_id: Optional[str] = None,
-        hub_asset_id: Optional[str] = None,
+        tenant_id: str | None = None,
+        connection_id: str | None = None,
+        hub_asset_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
-        request: Optional[Any] = None,
-    ) -> List[MarketplaceMapping]:
+        request: Any | None = None,
+    ) -> list[MarketplaceMapping]:
         """
         List marketplace mappings for a tenant.
 
@@ -4358,12 +4364,12 @@ class MarketplaceIntegrationService(
     def update_mapping(
         self,
         mapping_id: str,
-        external_listing_id: Optional[str] = None,
-        external_resource_ids: Optional[List[str]] = None,
-        sync_metadata: Optional[Dict[str, Any]] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request: Optional[Any] = None,
+        external_listing_id: str | None = None,
+        external_resource_ids: list[str] | None = None,
+        sync_metadata: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request: Any | None = None,
     ) -> MarketplaceMapping:
         """
         Update a marketplace mapping.
@@ -4583,10 +4589,10 @@ class MarketplaceIntegrationService(
     def delete_mapping(
         self,
         mapping_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        reason: Optional[str] = None,
-        request: Optional[Any] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        reason: str | None = None,
+        request: Any | None = None,
     ) -> None:
         """
         Delete a marketplace mapping.
@@ -4753,7 +4759,7 @@ class MarketplaceIntegrationService(
     def sync_workflow_status_to_sync_job(
         self,
         sync_job_id: str,
-        tenant_id: Optional[str] = None,
+        tenant_id: str | None = None,
     ) -> MarketplaceSyncJob:
         """
         Sync workflow status to sync job status.
@@ -4908,8 +4914,8 @@ class MarketplaceIntegrationService(
         self,
         sync_job_id: str,
         progress_percentage: int,
-        current_step: Optional[str] = None,
-        tenant_id: Optional[str] = None,
+        current_step: str | None = None,
+        tenant_id: str | None = None,
     ) -> MarketplaceSyncJob:
         """
         Update sync job progress.
@@ -4962,10 +4968,10 @@ class MarketplaceIntegrationService(
         name: str,
         direction: str,
         schedule_type: str,
-        schedule_config: Dict[str, Any],
-        sync_options: Optional[Dict[str, Any]] = None,
-        description: Optional[str] = None,
-        request: Optional[Any] = None,
+        schedule_config: dict[str, Any],
+        sync_options: dict[str, Any] | None = None,
+        description: str | None = None,
+        request: Any | None = None,
     ) -> ScheduledMarketplaceSync:
         """
         Schedule a recurring marketplace sync operation.
@@ -5079,7 +5085,7 @@ class MarketplaceIntegrationService(
                     croniter(schedule_config["cron"])
                 except Exception as e:
                     raise ValidationError(
-                        f"Invalid cron expression: {str(e)}",
+                        f"Invalid cron expression: {e!s}",
                         details={"schedule_config": schedule_config, "error": str(e)},
                     ) from e
 
@@ -5208,8 +5214,8 @@ class MarketplaceIntegrationService(
     def unschedule_sync(
         self,
         scheduled_sync_id: str,
-        tenant_id: Optional[str] = None,
-        request: Optional[Any] = None,
+        tenant_id: str | None = None,
+        request: Any | None = None,
     ) -> None:
         """
         Unschedule a recurring marketplace sync operation.

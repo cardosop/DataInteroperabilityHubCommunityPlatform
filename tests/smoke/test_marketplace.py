@@ -9,6 +9,7 @@ Usage:
 """
 
 import os
+
 import pytest
 import requests
 
@@ -38,14 +39,14 @@ class TestMarketplaceSmoke:
         """Marketplace endpoints are reachable."""
         r = _api("/api/v1/marketplace/health/")
         if r.status_code == 404:
-            pytest.skip("Marketplace health endpoint not available")
+            pytest.skip("Marketplace health endpoint not available")  # noqa: skip-in-body — runtime service dependency
         assert r.status_code in (200, 503)
 
     def test_02_list_listings(self, session):
         """List marketplace listings."""
         r = _api("/api/v1/marketplace/listings/", session=session)
         if r.status_code == 404:
-            pytest.skip("Marketplace listings endpoint not available (gated?)")
+            pytest.skip("Marketplace listings endpoint not available (gated?)")  # noqa: skip-in-body — runtime service dependency
         assert r.status_code == 200, f"Listings failed: {r.status_code}"
         data = r.json()
         results = data if isinstance(data, list) else data.get("results", data.get("data", []))
@@ -53,12 +54,16 @@ class TestMarketplaceSmoke:
 
     def test_03_create_listing_requires_auth(self):
         """Creating a listing without auth is rejected."""
-        r = _api("/api/v1/marketplace/listings/", method="post", json={
-            "title": "smoke-test-listing",
-            "description": "Should be rejected — no auth",
-        })
+        r = _api(
+            "/api/v1/marketplace/listings/",
+            method="post",
+            json={
+                "title": "smoke-test-listing",
+                "description": "Should be rejected — no auth",
+            },
+        )
         if r.status_code == 404:
-            pytest.skip("Marketplace endpoint not available")
+            pytest.skip("Marketplace endpoint not available")  # noqa: skip-in-body — runtime service dependency
         assert r.status_code in (401, 403), (
             f"Unauthenticated listing creation should be rejected, got {r.status_code}"
         )
@@ -67,13 +72,13 @@ class TestMarketplaceSmoke:
         """Each listing in the response has required fields."""
         r = _api("/api/v1/marketplace/listings/", session=session)
         if r.status_code == 404:
-            pytest.skip("Marketplace endpoint not available")
+            pytest.skip("Marketplace endpoint not available")  # noqa: skip-in-body — runtime service dependency
         if r.status_code != 200:
-            pytest.skip(f"Marketplace returned {r.status_code}")
+            pytest.skip(f"Marketplace returned {r.status_code}")  # noqa: skip-in-body — runtime service dependency
         data = r.json()
         results = data if isinstance(data, list) else data.get("results", data.get("data", []))
         if not results:
-            pytest.skip("No listings available — seed data may be empty")
+            pytest.skip("No listings available — seed data may be empty")  # noqa: skip-in-body — runtime service dependency
         for listing in results[:3]:
             assert isinstance(listing, dict), f"Expected dict, got {type(listing)}"
 
@@ -81,12 +86,12 @@ class TestMarketplaceSmoke:
         """Entitlements endpoint responds (may be empty for unauth user)."""
         r = _api("/api/v1/marketplace/entitlements/", session=session)
         if r.status_code == 404:
-            pytest.skip("Entitlements endpoint not available")
+            pytest.skip("Entitlements endpoint not available")  # noqa: skip-in-body — runtime service dependency
         assert r.status_code in (200, 401, 403), f"Unexpected: {r.status_code}"
 
     def test_06_orders_endpoint_exists(self, session):
         """Orders endpoint responds."""
         r = _api("/api/v1/marketplace/orders/", session=session)
         if r.status_code == 404:
-            pytest.skip("Orders endpoint not available")
+            pytest.skip("Orders endpoint not available")  # noqa: skip-in-body — runtime service dependency
         assert r.status_code in (200, 401, 403), f"Unexpected: {r.status_code}"

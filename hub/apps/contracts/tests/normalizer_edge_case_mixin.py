@@ -13,8 +13,6 @@ Usage:
             self.normalizer = self.normalizer_class()
 """
 
-from hub.apps.contracts.models import NormalizationStatus
-
 
 class NormalizerEdgeCaseMixin:
     """Mixin providing standard edge-case normalization tests.
@@ -33,42 +31,52 @@ class NormalizerEdgeCaseMixin:
         """Normalization handles unicode characters in all text fields."""
         contract_data = self._build_unicode_contract()
         result = self.normalizer.normalize(contract_data, spec_version=self.spec_version)
-        self.assertIsNotNone(result.hub_contract,
-            "Normalizer should produce a hub_contract with unicode input")
-        self.assertIsNotNone(result.hub_contract.get("info"),
-            "info section must be present with unicode input")
+        self.assertIsNotNone(
+            result.hub_contract, "Normalizer should produce a hub_contract with unicode input"
+        )
+        self.assertIsNotNone(
+            result.hub_contract.get("info"), "info section must be present with unicode input"
+        )
 
     def test_edge_case_handles_special_characters(self):
         """Normalization handles special characters (&, <, >, parentheses) correctly."""
         contract_data = self._build_special_chars_contract()
         result = self.normalizer.normalize(contract_data, spec_version=self.spec_version)
-        self.assertIsNotNone(result.hub_contract,
-            "Normalizer should produce a hub_contract with special character input")
-        self.assertIsNotNone(result.hub_contract.get("info"),
-            "info section must be present with special character input")
+        self.assertIsNotNone(
+            result.hub_contract,
+            "Normalizer should produce a hub_contract with special character input",
+        )
+        self.assertIsNotNone(
+            result.hub_contract.get("info"),
+            "info section must be present with special character input",
+        )
 
     def test_edge_case_handles_very_large_documents(self):
         """Normalization handles very large documents (100KB+ strings) correctly."""
         contract_data = self._build_large_contract()
         result = self.normalizer.normalize(contract_data, spec_version=self.spec_version)
-        self.assertIsNotNone(result.hub_contract,
-            "Normalizer should handle very large documents without crashing")
+        self.assertIsNotNone(
+            result.hub_contract, "Normalizer should handle very large documents without crashing"
+        )
 
     def test_edge_case_handles_none_values(self):
         """Normalization handles None values in optional fields gracefully."""
         contract_data = self._build_none_value_contract()
         result = self.normalizer.normalize(contract_data, spec_version=self.spec_version)
-        self.assertIsNotNone(result.hub_contract,
-            "Normalizer should handle None values without crashing")
+        self.assertIsNotNone(
+            result.hub_contract, "Normalizer should handle None values without crashing"
+        )
 
     def test_edge_case_handles_nested_structures(self):
         """Normalization handles deeply nested structures correctly."""
         contract_data = self._build_nested_contract()
         result = self.normalizer.normalize(contract_data, spec_version=self.spec_version)
-        self.assertIsNotNone(result.hub_contract,
-            "Normalizer should handle deeply nested structures")
-        self.assertIn("schema", result.hub_contract,
-            "schema key must be present with nested structure input")
+        self.assertIsNotNone(
+            result.hub_contract, "Normalizer should handle deeply nested structures"
+        )
+        self.assertIn(
+            "schema", result.hub_contract, "schema key must be present with nested structure input"
+        )
 
     # ── contract builders (override per normalizer type) ──────────────────
 

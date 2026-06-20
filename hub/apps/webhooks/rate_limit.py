@@ -24,7 +24,9 @@ allowing transient over-burst during a Redis outage. Same defensive
 default as the existing distributed-lock primitive in
 ``hub.apps.core.distributed_lock``.
 """
+
 from __future__ import annotations
+
 from typing import TYPE_CHECKING, Protocol
 
 import structlog
@@ -50,7 +52,7 @@ class _RateLimitCounter(Protocol):
     the module type-checks under either branch of the import-fallback.
     """
 
-    def labels(self, **kwargs: str) -> "_RateLimitCounter": ...
+    def labels(self, **kwargs: str) -> _RateLimitCounter: ...
 
     def inc(self) -> None: ...
 
@@ -67,8 +69,9 @@ try:
         ["tenant_id", "webhook_id", "event_type"],
     )
 except Exception:  # pragma: no cover — defensive fallback
+
     class _CounterStub:
-        def labels(self, **_: object) -> "_CounterStub":  # noqa: ARG002
+        def labels(self, **_: object) -> _CounterStub:
             return self
 
         def inc(self) -> None:
@@ -97,7 +100,7 @@ def _counter_key(tenant_id: str, bucket: str) -> str:
     return f"webhook:outbound:{tenant_id}:{bucket}"
 
 
-def check_outbound_rate_limit(tenant: "Tenant") -> tuple[bool, int, str]:
+def check_outbound_rate_limit(tenant: Tenant) -> tuple[bool, int, str]:
     """Atomically increment the per-tenant minute bucket and decide allow/deny.
 
     Returns

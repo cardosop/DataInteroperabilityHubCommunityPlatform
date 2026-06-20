@@ -7,18 +7,17 @@ Includes retry logic and dead letter queue handling.
 
 import time
 import traceback
-from typing import Dict, Any, Optional
+from typing import Any
+
 import structlog
-from django.utils import timezone
 from django.contrib.auth import get_user_model
 
-from hub.apps.core.events.subscriber import EventSubscriber
 from hub.apps.core.events.models import DeadLetterQueue
+from hub.apps.core.events.subscriber import EventSubscriber
 from hub.apps.notifications.tasks import (
     send_odps_creation_completion_email,
-    send_odps_normalization_failure_email
+    send_odps_normalization_failure_email,
 )
-from hub.apps.contracts.models import Contract
 
 User = get_user_model()
 logger = structlog.get_logger(__name__)
@@ -33,21 +32,13 @@ class ODPSNotificationSubscriber(EventSubscriber):
     """
 
     # ODPS event types that trigger notifications
-    LIFECYCLE_EVENTS = [
-        "odps.created",
-        "odps.updated",
-        "odps.deleted"
-    ]
+    LIFECYCLE_EVENTS = ["odps.created", "odps.updated", "odps.deleted"]
 
-    WORKFLOW_EVENTS = [
-        "odps.workflow.started",
-        "odps.workflow.completed",
-        "odps.workflow.failed"
-    ]
+    WORKFLOW_EVENTS = ["odps.workflow.started", "odps.workflow.completed", "odps.workflow.failed"]
 
     NORMALIZATION_EVENTS = [
         "odps.normalized",
-        "odps.ref.failed"  # Can indicate normalization issues
+        "odps.ref.failed",  # Can indicate normalization issues
     ]
 
     def __init__(self):
@@ -60,35 +51,29 @@ class ODPSNotificationSubscriber(EventSubscriber):
         # Subscribe to lifecycle events
         for event_type in self.LIFECYCLE_EVENTS:
             self.subscribe(
-                event_type_pattern=event_type,
-                handler=self._handle_odps_event,
-                is_active=True
+                event_type_pattern=event_type, handler=self._handle_odps_event, is_active=True
             )
 
         # Subscribe to workflow events
         for event_type in self.WORKFLOW_EVENTS:
             self.subscribe(
-                event_type_pattern=event_type,
-                handler=self._handle_odps_event,
-                is_active=True
+                event_type_pattern=event_type, handler=self._handle_odps_event, is_active=True
             )
 
         # Subscribe to normalization events
         for event_type in self.NORMALIZATION_EVENTS:
             self.subscribe(
-                event_type_pattern=event_type,
-                handler=self._handle_odps_event,
-                is_active=True
+                event_type_pattern=event_type, handler=self._handle_odps_event, is_active=True
             )
 
         logger.info(
             "odps_notification_subscriber_initialized",
             lifecycle_events=len(self.LIFECYCLE_EVENTS),
             workflow_events=len(self.WORKFLOW_EVENTS),
-            normalization_events=len(self.NORMALIZATION_EVENTS)
+            normalization_events=len(self.NORMALIZATION_EVENTS),
         )
 
-    def _handle_odps_event(self, event: Dict[str, Any]) -> None:
+    def _handle_odps_event(self, event: dict[str, Any]) -> None:
         """
         Handle ODPS event and trigger notification with retry logic and DLQ handling.
 
@@ -106,17 +91,12 @@ class ODPSNotificationSubscriber(EventSubscriber):
 
             if not tenant_id:
                 logger.warning(
-                    "odps_notification_missing_tenant_id",
-                    event_type=event_type,
-                    event_id=event_id
+                    "odps_notification_missing_tenant_id", event_type=event_type, event_id=event_id
                 )
                 return
 
             if not event_type:
-                logger.warning(
-                    "odps_notification_missing_event_type",
-                    event_id=event_id
-                )
+                logger.warning("odps_notification_missing_event_type", event_id=event_id)
                 return
 
             # Extract contract ID from event data
@@ -126,7 +106,7 @@ class ODPSNotificationSubscriber(EventSubscriber):
                     "odps_notification_missing_contract_id",
                     event_type=event_type,
                     event_id=event_id,
-                    event_data_keys=list(event_data.keys())
+                    event_data_keys=list(event_data.keys()),
                 )
                 return
 
@@ -137,7 +117,7 @@ class ODPSNotificationSubscriber(EventSubscriber):
                 contract_id=contract_id,
                 tenant_id=tenant_id,
                 user_id=user_id,
-                event_data=event_data
+                event_data=event_data,
             )
 
         except Exception as e:
@@ -146,21 +126,21 @@ class ODPSNotificationSubscriber(EventSubscriber):
                 event_id=event_id,
                 event_type=event_type,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
             # Send to DLQ after handler-level error
             self._send_to_dlq(event, str(e), retry_count=0)
 
     def _send_notification_with_retry(
         self,
-        event: Dict[str, Any],
+        event: dict[str, Any],
         event_type: str,
         contract_id: str,
         tenant_id: str,
-        user_id: Optional[str],
-        event_data: Dict[str, Any],
+        user_id: str | None,
+        event_data: dict[str, Any],
         max_retries: int = 3,
-        base_delay: float = 1.0
+        base_delay: float = 1.0,
     ) -> None:
         """
         Send notification with retry logic and DLQ handling.
@@ -190,7 +170,7 @@ class ODPSNotificationSubscriber(EventSubscriber):
                         event_id=event.get("event_id"),
                         contract_id=contract_id,
                         notification_type="creation_completion",
-                        retry_count=retry_count
+                        retry_count=retry_count,
                     )
                     return
 
@@ -201,16 +181,22 @@ class ODPSNotificationSubscriber(EventSubscriber):
                         # Send normalization failure notification
                         error_message = event_data.get("normalization_errors", [])
                         if isinstance(error_message, list):
-                            error_message = "; ".join(error_message) if error_message else "ODPS normalization failed"
+                            error_message = (
+                                "; ".join(error_message)
+                                if error_message
+                                else "ODPS normalization failed"
+                            )
                         else:
-                            error_message = str(error_message) if error_message else "ODPS normalization failed"
+                            error_message = (
+                                str(error_message) if error_message else "ODPS normalization failed"
+                            )
 
                         send_odps_normalization_failure_email.delay(
                             contract_id=contract_id,
                             error_message=error_message,
                             error_code="ODPS_NORMALIZATION_ERROR",
                             errors=event_data.get("normalization_errors", []),
-                            field_path=None
+                            field_path=None,
                         )
                         logger.info(
                             "odps_notification_sent",
@@ -218,7 +204,7 @@ class ODPSNotificationSubscriber(EventSubscriber):
                             event_id=event.get("event_id"),
                             contract_id=contract_id,
                             notification_type="normalization_failure",
-                            retry_count=retry_count
+                            retry_count=retry_count,
                         )
                     else:
                         # Normalization succeeded - send completion notification
@@ -229,19 +215,21 @@ class ODPSNotificationSubscriber(EventSubscriber):
                             event_id=event.get("event_id"),
                             contract_id=contract_id,
                             notification_type="normalization_success",
-                            retry_count=retry_count
+                            retry_count=retry_count,
                         )
                     return
 
                 elif event_type == "odps.ref.failed":
                     # Reference resolution failure - send notification
-                    error_message = event_data.get("error_message", "ODPS reference resolution failed")
+                    error_message = event_data.get(
+                        "error_message", "ODPS reference resolution failed"
+                    )
                     send_odps_normalization_failure_email.delay(
                         contract_id=contract_id,
                         error_message=error_message,
                         error_code=event_data.get("error_code", "ODPS_REF_RESOLUTION_ERROR"),
                         errors=[error_message],
-                        field_path=event_data.get("ref_path")
+                        field_path=event_data.get("ref_path"),
                     )
                     logger.info(
                         "odps_notification_sent",
@@ -249,7 +237,7 @@ class ODPSNotificationSubscriber(EventSubscriber):
                         event_id=event.get("event_id"),
                         contract_id=contract_id,
                         notification_type="ref_resolution_failure",
-                        retry_count=retry_count
+                        retry_count=retry_count,
                     )
                     return
 
@@ -260,7 +248,7 @@ class ODPSNotificationSubscriber(EventSubscriber):
                         event_type=event_type,
                         event_id=event.get("event_id"),
                         contract_id=contract_id,
-                        workflow_instance_id=event_data.get("workflow_instance_id")
+                        workflow_instance_id=event_data.get("workflow_instance_id"),
                     )
                     return
 
@@ -270,7 +258,7 @@ class ODPSNotificationSubscriber(EventSubscriber):
                         "odps_lifecycle_event_received",
                         event_type=event_type,
                         event_id=event.get("event_id"),
-                        contract_id=contract_id
+                        contract_id=contract_id,
                     )
                     return
 
@@ -286,7 +274,7 @@ class ODPSNotificationSubscriber(EventSubscriber):
                         event_id=event.get("event_id"),
                         contract_id=contract_id,
                         error=str(e),
-                        error_type=type(e).__name__
+                        error_type=type(e).__name__,
                     )
                     self._send_to_dlq(event, str(e), retry_count=retry_count)
                     return
@@ -302,13 +290,13 @@ class ODPSNotificationSubscriber(EventSubscriber):
                         retry_count=retry_count,
                         max_retries=max_retries,
                         error=str(e),
-                        error_type=type(e).__name__
+                        error_type=type(e).__name__,
                     )
                     self._send_to_dlq(event, str(e), retry_count=retry_count)
                     return
 
                 # Retry with exponential backoff
-                delay = base_delay * (2 ** retry_count)
+                delay = base_delay * (2**retry_count)
                 logger.warning(
                     "odps_notification_retry_attempt",
                     event_type=event_type,
@@ -318,7 +306,7 @@ class ODPSNotificationSubscriber(EventSubscriber):
                     max_retries=max_retries,
                     delay=delay,
                     error=str(e),
-                    error_type=type(e).__name__
+                    error_type=type(e).__name__,
                 )
                 time.sleep(delay)
                 retry_count += 1
@@ -342,21 +330,36 @@ class ODPSNotificationSubscriber(EventSubscriber):
 
         # Transient error indicators
         transient_keywords = [
-            'timeout', 'timed out', 'connection', 'unavailable', 'network',
-            'temporary', 'retry', 'service unavailable', '503', '502', '504',
-            'connection refused', 'connection reset', 'broken pipe',
-            'connection pool', 'socket', 'errno', 'database', 'lock'
+            "timeout",
+            "timed out",
+            "connection",
+            "unavailable",
+            "network",
+            "temporary",
+            "retry",
+            "service unavailable",
+            "503",
+            "502",
+            "504",
+            "connection refused",
+            "connection reset",
+            "broken pipe",
+            "connection pool",
+            "socket",
+            "errno",
+            "database",
+            "lock",
         ]
 
         # Non-retryable error types
         non_retryable_errors = [
-            'ValidationError',
-            'PermissionDenied',
-            'AuthenticationFailed',
-            'NotFound',
-            'ValueError',
-            'TypeError',
-            'AttributeError',
+            "ValidationError",
+            "PermissionDenied",
+            "AuthenticationFailed",
+            "NotFound",
+            "ValueError",
+            "TypeError",
+            "AttributeError",
         ]
 
         # Don't retry on non-retryable error types
@@ -366,12 +369,7 @@ class ODPSNotificationSubscriber(EventSubscriber):
         # Check for transient keywords in error message
         return any(keyword in error_str for keyword in transient_keywords)
 
-    def _send_to_dlq(
-        self,
-        event: Dict[str, Any],
-        error_message: str,
-        retry_count: int = 0
-    ) -> None:
+    def _send_to_dlq(self, event: dict[str, Any], error_message: str, retry_count: int = 0) -> None:
         """
         Send failed event to dead letter queue.
 
@@ -390,9 +388,9 @@ class ODPSNotificationSubscriber(EventSubscriber):
                 error_details={
                     "traceback": traceback.format_exc(),
                     "event_id": event.get("event_id"),
-                    "retry_count": retry_count
+                    "retry_count": retry_count,
                 },
-                retry_count=retry_count
+                retry_count=retry_count,
             )
             logger.warning(
                 "odps_notification_sent_to_dlq",
@@ -400,7 +398,7 @@ class ODPSNotificationSubscriber(EventSubscriber):
                 event_id=event.get("event_id"),
                 subscriber=self.subscriber_name,
                 retry_count=retry_count,
-                error_message=error_message
+                error_message=error_message,
             )
         except Exception as dlq_error:
             # Log but don't raise - DLQ failure shouldn't break event processing
@@ -410,7 +408,7 @@ class ODPSNotificationSubscriber(EventSubscriber):
                 event_id=event.get("event_id"),
                 subscriber=self.subscriber_name,
                 dlq_error=str(dlq_error),
-                exc_info=True
+                exc_info=True,
             )
 
 
@@ -443,8 +441,6 @@ def initialize_odps_notification_subscriber() -> ODPSNotificationSubscriber:
     """
     subscriber = get_odps_notification_subscriber()
     logger.info(
-        "odps_notification_subscriber_initialized",
-        subscriber_name=subscriber.subscriber_name
+        "odps_notification_subscriber_initialized", subscriber_name=subscriber.subscriber_name
     )
     return subscriber
-

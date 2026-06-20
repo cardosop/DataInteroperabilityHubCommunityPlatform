@@ -5,8 +5,10 @@ where _check_odh_inference_available() fails. Usage:
   docker compose -f docker-compose.test.yml exec -T api-service-test \\
     bash -c 'cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python scripts/diagnose_odh_availability.py'
 """
+
 import os
 import sys
+
 
 def step(name, fn):
     try:
@@ -17,17 +19,20 @@ def step(name, fn):
         print(f"[FAIL] {name}: {type(e).__name__}: {e}", file=sys.stderr)
         raise
 
+
 # 1) Env URL
 url_env = os.environ.get("ODH_INFERENCE_SCHEDULER_URL")
-print(f"1. ODH_INFERENCE_SCHEDULER_URL (env): {repr(url_env)}")
+print(f"1. ODH_INFERENCE_SCHEDULER_URL (env): {url_env!r}")
 
 # 2) Django settings (requires Django setup)
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 import django
+
 django.setup()
 from django.conf import settings
+
 url_settings = getattr(settings, "ODH_INFERENCE_SCHEDULER_URL", None)
-print(f"2. ODH_INFERENCE_SCHEDULER_URL (settings): {repr(url_settings)}")
+print(f"2. ODH_INFERENCE_SCHEDULER_URL (settings): {url_settings!r}")
 
 base_url = url_env or url_settings
 if not base_url:
@@ -36,6 +41,7 @@ if not base_url:
 
 # 3) Health check
 import urllib.request
+
 health_url = base_url.rstrip("/") + "/health"
 print(f"3. Health URL: {health_url}")
 for attempt in range(3):
@@ -56,10 +62,13 @@ else:
 
 # 4) Path resolution: repo root from this script (scripts/diagnose_odh_availability.py -> parent.parent)
 from pathlib import Path
+
 repo_root = Path(__file__).resolve().parent.parent
 services_root = repo_root / "services"
 inference_client_path = services_root / "odh-integration" / "inference_client.py"
-print(f"4. repo_root={repo_root} inference_client_path={inference_client_path} exists={inference_client_path.exists()}")
+print(
+    f"4. repo_root={repo_root} inference_client_path={inference_client_path} exists={inference_client_path.exists()}"
+)
 
 if not inference_client_path.exists():
     print("ABORT: inference_client.py not found")
@@ -69,6 +78,7 @@ if not inference_client_path.exists():
 sys.path.insert(0, str(services_root))
 sys.path.insert(0, str(repo_root))
 import importlib.util
+
 spec = importlib.util.spec_from_file_location("inference_client", str(inference_client_path))
 if not spec or not spec.loader:
     print("ABORT: spec or spec.loader is None")
@@ -83,6 +93,7 @@ try:
 except Exception as e:
     print(f"   [FAIL] {type(e).__name__}: {e}")
     import traceback
+
     traceback.print_exc()
     sys.exit(1)
 

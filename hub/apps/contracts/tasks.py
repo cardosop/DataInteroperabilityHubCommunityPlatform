@@ -4,17 +4,35 @@ Phase 26.15.1 — Async re-normalization task for ODCS v3.1.0 contracts.
 Processes contracts in batches with per-contract error isolation,
 cache invalidation, and progress events.
 """
+
 import hashlib
 import json
+from typing import Any, Callable
 
 import structlog
 
 logger = structlog.get_logger(__name__)
 
+
+def _run_with_tenant_context(tenant_id: str | None, callable: Callable[[], Any]) -> Any:
+    """Run *callable* inside a tenant context for *tenant_id*.
+
+    When *tenant_id* is ``None`` the callable runs without any tenant
+    context (useful for testing RLS rejection).
+    """
+    if tenant_id is None:
+        return callable()
+
+    from hub.apps.tenants.request_tenant import tenant_context
+
+    with tenant_context(tenant_id):
+        return callable()
+
 try:
     from hub.apps.observability.otel_metrics import (
         normalization_backfill_remaining,
     )
+
     _BACKFILL_METRICS = True
 except ImportError:
     _BACKFILL_METRICS = False
@@ -65,7 +83,7 @@ def renormalize_contracts_v310(
     dry_run_warnings: dict = {}
 
     for offset in range(0, total, batch_size):
-        batch_ids = contract_ids[offset:offset + batch_size]
+        batch_ids = contract_ids[offset : offset + batch_size]
         batch = list(Contract.objects.filter(id__in=batch_ids))
 
         for contract in batch:
@@ -78,39 +96,39 @@ def renormalize_contracts_v310(
                 hub_json, _, _, status, errors, warnings = result
 
                 if dry_run:
-                    dry_run_warnings[str(contract.id)] = (
-                        warnings or []
-                    )
+                    dry_run_warnings[str(contract.id)] = warnings or []
                     processed += 1
                     continue
 
                 if hub_json and str(status) == "NORMALIZED_OK":
                     contract.hub_contract_json = hub_json
-                    contract.normalization_warnings = (
-                        warnings or []
+                    contract.normalization_warnings = warnings or []
+                    contract.save(
+                        update_fields=[
+                            "hub_contract_json",
+                            "normalization_warnings",
+                        ]
                     )
-                    contract.save(update_fields=[
-                        "hub_contract_json",
-                        "normalization_warnings",
-                    ])
                     processed += 1
 
                     # 26.15.4: Cache invalidation
                     _invalidate_contract_cache(contract)
                 else:
-                    contract.normalization_status = (
-                        "NORMALIZATION_FAILED"
-                    )
+                    contract.normalization_status = "NORMALIZATION_FAILED"
                     existing = contract.normalization_errors or []
-                    existing.append({
-                        "task": "renormalize_contracts_v310",
-                        "errors": errors or [],
-                    })
+                    existing.append(
+                        {
+                            "task": "renormalize_contracts_v310",
+                            "errors": errors or [],
+                        }
+                    )
                     contract.normalization_errors = existing
-                    contract.save(update_fields=[
-                        "normalization_status",
-                        "normalization_errors",
-                    ])
+                    contract.save(
+                        update_fields=[
+                            "normalization_status",
+                            "normalization_errors",
+                        ]
+                    )
                     failed += 1
 
             except Exception as exc:
@@ -121,21 +139,21 @@ def renormalize_contracts_v310(
                 )
                 if not dry_run:
                     try:
-                        contract.normalization_status = (
-                            "NORMALIZATION_FAILED"
+                        contract.normalization_status = "NORMALIZATION_FAILED"
+                        existing = contract.normalization_errors or []
+                        existing.append(
+                            {
+                                "task": "renormalize_contracts_v310",
+                                "error": str(exc),
+                            }
                         )
-                        existing = (
-                            contract.normalization_errors or []
-                        )
-                        existing.append({
-                            "task": "renormalize_contracts_v310",
-                            "error": str(exc),
-                        })
                         contract.normalization_errors = existing
-                        contract.save(update_fields=[
-                            "normalization_status",
-                            "normalization_errors",
-                        ])
+                        contract.save(
+                            update_fields=[
+                                "normalization_status",
+                                "normalization_errors",
+                            ]
+                        )
                     except Exception:
                         pass
                 failed += 1
@@ -200,12 +218,16 @@ def _get_redis_pub_client():
     global _redis_pub_client
     if _redis_pub_client is None:
         import os
+
         import redis as redis_lib
+
         url = os.getenv(
-            "REDIS_CACHE_URL", "redis://localhost:6379/0",
+            "REDIS_CACHE_URL",
+            "redis://localhost:6379/0",
         )
         _redis_pub_client = redis_lib.Redis.from_url(
-            url, socket_timeout=2,
+            url,
+            socket_timeout=2,
         )
     return _redis_pub_client
 

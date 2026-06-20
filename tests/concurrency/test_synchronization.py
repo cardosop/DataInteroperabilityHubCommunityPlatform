@@ -4,7 +4,6 @@ Real DB; no mocks.
 """
 
 import threading
-from typing import List
 
 from django.db import connection, transaction
 
@@ -34,7 +33,7 @@ class SynchronizationTest(ConcurrencyTestBase):
             version=1,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
         )
-        versions: List[int] = []
+        versions: list[int] = []
         lock = threading.Lock()
 
         def update_version(inc: int) -> None:
@@ -71,7 +70,7 @@ class SynchronizationTest(ConcurrencyTestBase):
     def test_concurrent_simple_atomic_updates(self):
         """Concurrent atomic updates on different rows: all succeed."""
         contracts = []
-        for i in range(4):
+        for _i in range(4):
             c = Contract.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
@@ -84,7 +83,7 @@ class SynchronizationTest(ConcurrencyTestBase):
                 normalization_status=NormalizationStatus.NORMALIZED_OK,
             )
             contracts.append(c)
-        results: List[bool] = []
+        results: list[bool] = []
         lock = threading.Lock()
 
         def update_one(contract_id) -> None:

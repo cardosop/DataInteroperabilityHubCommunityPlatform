@@ -11,13 +11,13 @@ deploy.yml, drops the step by mistake, and the structural-floor
 enforcement starts silently regressing in production with no alarm
 fired until a customer hits the bug.
 """
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
 import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEPLOY_YML = REPO_ROOT / ".github" / "workflows" / "deploy.yml"
@@ -26,9 +26,7 @@ DEPLOY_YML = REPO_ROOT / ".github" / "workflows" / "deploy.yml"
 @pytest.fixture(scope="module")
 def deploy_yml_text() -> str:
     if not DEPLOY_YML.exists():
-        pytest.skip(
-            f"deploy.yml not found at {DEPLOY_YML} — repo layout drift?"
-        )
+        pytest.skip(f"deploy.yml not found at {DEPLOY_YML} — repo layout drift?")
     return DEPLOY_YML.read_text(encoding="utf-8")
 
 
@@ -64,10 +62,7 @@ def test_w44_smoke_gate_fails_on_nonzero_count(deploy_yml_text):
     """The gate must hard-fail (`exit 1`) on non-zero residue; a
     softer warning would let regressions ship to production."""
     # Look for the failure branch — count != "0" → error → exit 1.
-    assert (
-        "exit 1" in deploy_yml_text
-        and "W4.4 smoke gate FAILED" in deploy_yml_text
-    ), (
+    assert "exit 1" in deploy_yml_text and "W4.4 smoke gate FAILED" in deploy_yml_text, (
         "W4.4 smoke gate must hard-fail (exit 1) and emit a "
         "'W4.4 smoke gate FAILED' error annotation on non-zero "
         "structureless residue."

@@ -50,8 +50,10 @@ def render_csv_bytes(payload: dict[str, Any]) -> tuple[bytes, str, str]:
 
 def render_pdf_bytes(payload: dict[str, Any]) -> tuple[bytes, str, str]:
     try:
-        from weasyprint import HTML  # type: ignore[import-untyped]  # optional dependency; has no stubs package
-    except Exception as exc:  # noqa: BLE001 — optional system deps / import graph
+        from weasyprint import (
+            HTML,  # type: ignore[import-untyped]  # optional dependency; has no stubs package
+        )
+    except Exception as exc:
         raise RuntimeError(
             "WeasyPrint is not available in this runtime (missing native Cairo/Pango "
             "libraries or Python package)."
@@ -63,7 +65,9 @@ def render_pdf_bytes(payload: dict[str, Any]) -> tuple[bytes, str, str]:
 
 
 def render_docx_bytes(payload: dict[str, Any]) -> tuple[bytes, str, str]:
-    from docx import Document  # type: ignore[import-untyped]  # optional dependency; has no stubs package
+    from docx import (
+        Document,  # type: ignore[import-untyped]  # optional dependency; has no stubs package
+    )
 
     doc = Document()
     doc.add_heading("Record of Processing Activities", 0)
@@ -76,7 +80,9 @@ def render_docx_bytes(payload: dict[str, Any]) -> tuple[bytes, str, str]:
     if payload.get("gaps"):
         doc.add_heading("Gaps / completeness", level=2)
         for g in payload["gaps"][:200]:
-            doc.add_paragraph(f"[{g.get('code')}] {g.get('asset_key')}: {g.get('message')}", style="List Bullet")
+            doc.add_paragraph(
+                f"[{g.get('code')}] {g.get('asset_key')}: {g.get('message')}", style="List Bullet"
+            )
         doc.add_paragraph()
     doc.add_heading("Processing activities", level=2)
     table = doc.add_table(rows=1, cols=4)
@@ -94,7 +100,11 @@ def render_docx_bytes(payload: dict[str, Any]) -> tuple[bytes, str, str]:
     bio = io.BytesIO()
     doc.save(bio)
     raw = bio.getvalue()
-    return raw, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "ropa.docx"
+    return (
+        raw,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "ropa.docx",
+    )
 
 
 def _ropa_html(payload: dict[str, Any]) -> str:
@@ -118,29 +128,26 @@ def _ropa_html(payload: dict[str, Any]) -> str:
     rows_html = ""
     for row in payload.get("activities") or []:
         purposes = ", ".join(
-            p.get("name", p.get("key", ""))
-            for p in row.get("processing_purposes", [])
+            p.get("name", p.get("key", "")) for p in row.get("processing_purposes", [])
         )
         subjects = ", ".join(str(x) for x in (row.get("categories_of_subjects") or []))
         recipients = ", ".join(str(x) for x in (row.get("recipient_categories") or []))
         third_country = row.get("third_country_transfers") or ""
         if isinstance(third_country, list):
             third_country = ", ".join(third_country)
-        safeguards = row.get("transfer_safeguards") or ""
+        row.get("transfer_safeguards") or ""
         retention = row.get("retention_period") or ""
         if not retention:
             policies = row.get("retention_policies") or []
-            retention = ", ".join(
-                p.get("name", p.get("key", "")) for p in policies[:3]
-            )
+            retention = ", ".join(p.get("name", p.get("key", "")) for p in policies[:3])
         measures = row.get("security_measures") or ""
         if isinstance(measures, list):
             measures = ", ".join(measures)
 
         rows_html += (
             f"<tr>"
-            f"<td>{row.get('key','')}</td>"
-            f"<td>{row.get('name','')}</td>"
+            f"<td>{row.get('key', '')}</td>"
+            f"<td>{row.get('name', '')}</td>"
             f"<td>{purposes}</td>"
             f"<td>{subjects}</td>"
             f"<td>{recipients}</td>"
@@ -276,7 +283,7 @@ def _ropa_html(payload: dict[str, Any]) -> str:
 <p>A general description of the technical and organisational security measures referred to in Art. 32(1) is listed per activity (Art. 30(1)(g)).</p>
 
 <h2>8. Gaps and Completeness</h2>
-<ul>{gh or '<li>None detected — all processing activities are fully documented.</li>'}</ul>
+<ul>{gh or "<li>None detected — all processing activities are fully documented.</li>"}</ul>
 
 <h2>9. Processing Activities</h2>
 <table>

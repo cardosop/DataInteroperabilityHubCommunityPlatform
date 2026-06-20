@@ -25,10 +25,11 @@ call — same precedent as
 ``test_service_client_x_actor_id_header.py``. The PRODUCTION
 header-building code in ``service_client.py`` runs unchanged.
 """
+
 from __future__ import annotations
-import pytest
 
 import httpx
+import pytest
 from django.test import TestCase, override_settings
 
 from hub.apps.compliance.service_client import ComplianceServiceClient
@@ -88,7 +89,8 @@ class TestComplianceServiceClientForwardsLegalBasisStrictHeader(TestCase):
         to the new flag."""
         transport, recorded = self._intercept()
         self.client.client = httpx.Client(
-            transport=transport, base_url=self.client.base_url,
+            transport=transport,
+            base_url=self.client.base_url,
         )
 
         self.client.scan_file(
@@ -99,7 +101,8 @@ class TestComplianceServiceClientForwardsLegalBasisStrictHeader(TestCase):
         self.assertEqual(len(recorded), 1)
         request = recorded[0]
         self.assertNotIn(
-            "X-Compliance-Legal-Basis-Strict", request.headers,
+            "X-Compliance-Legal-Basis-Strict",
+            request.headers,
             "Default (legal_basis_strict=False) MUST omit the header — "
             "preserves Phase 19.7.1 wire format",
         )
@@ -110,7 +113,8 @@ class TestComplianceServiceClientForwardsLegalBasisStrictHeader(TestCase):
         header omitted."""
         transport, recorded = self._intercept()
         self.client.client = httpx.Client(
-            transport=transport, base_url=self.client.base_url,
+            transport=transport,
+            base_url=self.client.base_url,
         )
 
         self.client.scan_file(
@@ -119,6 +123,7 @@ class TestComplianceServiceClientForwardsLegalBasisStrictHeader(TestCase):
             tenant_id="tnt",
             legal_basis_strict=False,
         )
+        self.assertEqual(len(recorded), 1)
         self.assertNotIn(
             "X-Compliance-Legal-Basis-Strict",
             recorded[0].headers,
@@ -130,7 +135,8 @@ class TestComplianceServiceClientForwardsLegalBasisStrictHeader(TestCase):
         ``"true"``."""
         transport, recorded = self._intercept()
         self.client.client = httpx.Client(
-            transport=transport, base_url=self.client.base_url,
+            transport=transport,
+            base_url=self.client.base_url,
         )
 
         self.client.scan_file(
@@ -153,7 +159,8 @@ class TestComplianceServiceClientForwardsLegalBasisStrictHeader(TestCase):
     def test_scan_file_async_omits_header_by_default(self):
         transport, recorded = self._intercept()
         self.client.client = httpx.Client(
-            transport=transport, base_url=self.client.base_url,
+            transport=transport,
+            base_url=self.client.base_url,
         )
 
         self.client.scan_file_async(
@@ -161,6 +168,7 @@ class TestComplianceServiceClientForwardsLegalBasisStrictHeader(TestCase):
             file_format="csv",
             tenant_id="tnt",
         )
+        self.assertEqual(len(recorded), 1)
         self.assertNotIn(
             "X-Compliance-Legal-Basis-Strict",
             recorded[0].headers,
@@ -170,7 +178,8 @@ class TestComplianceServiceClientForwardsLegalBasisStrictHeader(TestCase):
     def test_scan_file_async_forwards_header_when_strict(self):
         transport, recorded = self._intercept()
         self.client.client = httpx.Client(
-            transport=transport, base_url=self.client.base_url,
+            transport=transport,
+            base_url=self.client.base_url,
         )
 
         self.client.scan_file_async(
@@ -179,6 +188,7 @@ class TestComplianceServiceClientForwardsLegalBasisStrictHeader(TestCase):
             tenant_id="tnt",
             legal_basis_strict=True,
         )
+        self.assertEqual(len(recorded), 1)
         self.assertEqual(
             recorded[0].headers.get("X-Compliance-Legal-Basis-Strict"),
             "true",

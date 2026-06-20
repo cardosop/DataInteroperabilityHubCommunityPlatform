@@ -1,12 +1,10 @@
 """Tests for consent re-prompt on purpose version bump (277.B.086)."""
 
-import pytest
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from django.utils import timezone
-from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.consent.models import ConsentPurpose, ConsentRecord, ConsentRecordStatus
@@ -36,6 +34,7 @@ class PurposeVersionBumpTest(TestCase):
         )
         ensure_tenant_has_active_subscription(self.tenant)
         from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
+
         self.user = User.objects.create_user(
             email=f"version-bump-{self.uid}@example.com",
             password="testpass",
@@ -251,11 +250,17 @@ class ReconsentDetectionTest(TestCase):
     @pytest.mark.integration
     def test_needs_reconsent_false_when_grants_up_to_date(self):
         purpose = ConsentPurpose.objects.create(
-            tenant=self.tenant, key="current.purpose", name="Current", version=1,
+            tenant=self.tenant,
+            key="current.purpose",
+            name="Current",
+            version=1,
         )
         ConsentRecord.objects.create(
-            tenant=self.tenant, user=self.user, purpose=purpose,
-            status=ConsentRecordStatus.GRANTED, purpose_version_at_grant=1,
+            tenant=self.tenant,
+            user=self.user,
+            purpose=purpose,
+            status=ConsentRecordStatus.GRANTED,
+            purpose_version_at_grant=1,
         )
         self.assertFalse(
             ConsentService.check_user_needs_reconsent(user=self.user, tenant=self.tenant)
@@ -265,11 +270,17 @@ class ReconsentDetectionTest(TestCase):
     @pytest.mark.integration
     def test_needs_reconsent_true_when_version_stale(self):
         purpose = ConsentPurpose.objects.create(
-            tenant=self.tenant, key="stale.purpose", name="Stale", version=5,
+            tenant=self.tenant,
+            key="stale.purpose",
+            name="Stale",
+            version=5,
         )
         ConsentRecord.objects.create(
-            tenant=self.tenant, user=self.user, purpose=purpose,
-            status=ConsentRecordStatus.GRANTED, purpose_version_at_grant=2,
+            tenant=self.tenant,
+            user=self.user,
+            purpose=purpose,
+            status=ConsentRecordStatus.GRANTED,
+            purpose_version_at_grant=2,
         )
         self.assertTrue(
             ConsentService.check_user_needs_reconsent(user=self.user, tenant=self.tenant)
@@ -279,11 +290,17 @@ class ReconsentDetectionTest(TestCase):
     @pytest.mark.integration
     def test_get_stale_purposes_returns_details(self):
         purpose = ConsentPurpose.objects.create(
-            tenant=self.tenant, key="stale.detail", name="Stale Detail", version=4,
+            tenant=self.tenant,
+            key="stale.detail",
+            name="Stale Detail",
+            version=4,
         )
         ConsentRecord.objects.create(
-            tenant=self.tenant, user=self.user, purpose=purpose,
-            status=ConsentRecordStatus.GRANTED, purpose_version_at_grant=1,
+            tenant=self.tenant,
+            user=self.user,
+            purpose=purpose,
+            status=ConsentRecordStatus.GRANTED,
+            purpose_version_at_grant=1,
         )
         stale = ConsentService.get_stale_purposes_for_user(user=self.user, tenant=self.tenant)
         self.assertEqual(len(stale), 1)
@@ -296,11 +313,17 @@ class ReconsentDetectionTest(TestCase):
     def test_revoked_records_not_stale(self):
         """Revoked grants don't trigger re-prompt."""
         purpose = ConsentPurpose.objects.create(
-            tenant=self.tenant, key="revoked.purpose", name="Revoked", version=3,
+            tenant=self.tenant,
+            key="revoked.purpose",
+            name="Revoked",
+            version=3,
         )
         ConsentRecord.objects.create(
-            tenant=self.tenant, user=self.user, purpose=purpose,
-            status=ConsentRecordStatus.REVOKED, purpose_version_at_grant=1,
+            tenant=self.tenant,
+            user=self.user,
+            purpose=purpose,
+            status=ConsentRecordStatus.REVOKED,
+            purpose_version_at_grant=1,
         )
         self.assertFalse(
             ConsentService.check_user_needs_reconsent(user=self.user, tenant=self.tenant)
@@ -311,12 +334,18 @@ class ReconsentDetectionTest(TestCase):
     def test_inactive_purpose_not_reported(self):
         """Inactive purposes don't trigger re-prompt even if version is stale."""
         purpose = ConsentPurpose.objects.create(
-            tenant=self.tenant, key="inactive.purpose", name="Inactive",
-            version=5, is_active=False,
+            tenant=self.tenant,
+            key="inactive.purpose",
+            name="Inactive",
+            version=5,
+            is_active=False,
         )
         ConsentRecord.objects.create(
-            tenant=self.tenant, user=self.user, purpose=purpose,
-            status=ConsentRecordStatus.GRANTED, purpose_version_at_grant=1,
+            tenant=self.tenant,
+            user=self.user,
+            purpose=purpose,
+            status=ConsentRecordStatus.GRANTED,
+            purpose_version_at_grant=1,
         )
         stale = ConsentService.get_stale_purposes_for_user(user=self.user, tenant=self.tenant)
         self.assertEqual(len(stale), 0)
@@ -325,18 +354,30 @@ class ReconsentDetectionTest(TestCase):
     @pytest.mark.integration
     def test_multiple_stale_purposes_all_reported(self):
         p1 = ConsentPurpose.objects.create(
-            tenant=self.tenant, key="stale.1", name="Stale 1", version=3,
+            tenant=self.tenant,
+            key="stale.1",
+            name="Stale 1",
+            version=3,
         )
         p2 = ConsentPurpose.objects.create(
-            tenant=self.tenant, key="stale.2", name="Stale 2", version=2,
+            tenant=self.tenant,
+            key="stale.2",
+            name="Stale 2",
+            version=2,
         )
         ConsentRecord.objects.create(
-            tenant=self.tenant, user=self.user, purpose=p1,
-            status=ConsentRecordStatus.GRANTED, purpose_version_at_grant=1,
+            tenant=self.tenant,
+            user=self.user,
+            purpose=p1,
+            status=ConsentRecordStatus.GRANTED,
+            purpose_version_at_grant=1,
         )
         ConsentRecord.objects.create(
-            tenant=self.tenant, user=self.user, purpose=p2,
-            status=ConsentRecordStatus.GRANTED, purpose_version_at_grant=1,
+            tenant=self.tenant,
+            user=self.user,
+            purpose=p2,
+            status=ConsentRecordStatus.GRANTED,
+            purpose_version_at_grant=1,
         )
         stale = ConsentService.get_stale_purposes_for_user(user=self.user, tenant=self.tenant)
         self.assertEqual(len(stale), 2)
@@ -366,11 +407,17 @@ class MeEndpointReconsentTest(TestCase):
     @pytest.mark.integration
     def test_me_includes_needs_reconsent_false_when_up_to_date(self):
         purpose = ConsentPurpose.objects.create(
-            tenant=self.tenant, key="uptodate.purpose", name="Up To Date", version=1,
+            tenant=self.tenant,
+            key="uptodate.purpose",
+            name="Up To Date",
+            version=1,
         )
         ConsentRecord.objects.create(
-            tenant=self.tenant, user=self.user, purpose=purpose,
-            status=ConsentRecordStatus.GRANTED, purpose_version_at_grant=1,
+            tenant=self.tenant,
+            user=self.user,
+            purpose=purpose,
+            status=ConsentRecordStatus.GRANTED,
+            purpose_version_at_grant=1,
         )
         resp = self.client.get("/api/v1/auth/me/")
         self.assertEqual(resp.status_code, 200)
@@ -380,11 +427,17 @@ class MeEndpointReconsentTest(TestCase):
     @pytest.mark.integration
     def test_me_includes_needs_reconsent_true_when_stale(self):
         purpose = ConsentPurpose.objects.create(
-            tenant=self.tenant, key="stale.purpose", name="Stale", version=3,
+            tenant=self.tenant,
+            key="stale.purpose",
+            name="Stale",
+            version=3,
         )
         ConsentRecord.objects.create(
-            tenant=self.tenant, user=self.user, purpose=purpose,
-            status=ConsentRecordStatus.GRANTED, purpose_version_at_grant=1,
+            tenant=self.tenant,
+            user=self.user,
+            purpose=purpose,
+            status=ConsentRecordStatus.GRANTED,
+            purpose_version_at_grant=1,
         )
         resp = self.client.get("/api/v1/auth/me/")
         self.assertEqual(resp.status_code, 200)
@@ -400,11 +453,17 @@ class MeEndpointReconsentTest(TestCase):
         self.tenant.save()
 
         purpose = ConsentPurpose.objects.create(
-            tenant=self.tenant, key="disabled.purpose", name="Disabled", version=5,
+            tenant=self.tenant,
+            key="disabled.purpose",
+            name="Disabled",
+            version=5,
         )
         ConsentRecord.objects.create(
-            tenant=self.tenant, user=self.user, purpose=purpose,
-            status=ConsentRecordStatus.GRANTED, purpose_version_at_grant=1,
+            tenant=self.tenant,
+            user=self.user,
+            purpose=purpose,
+            status=ConsentRecordStatus.GRANTED,
+            purpose_version_at_grant=1,
         )
         resp = self.client.get("/api/v1/auth/me/")
         self.assertEqual(resp.status_code, 200)
@@ -490,7 +549,10 @@ class ReconsentAfterVersionBumpIntegrationTest(TestCase):
         # Grant at v1 — verify the record was created.
         service = ConsentService()
         record = service.grant(
-            tenant=self.tenant, user=self.user, purpose=purpose, payload={"source": "test"},
+            tenant=self.tenant,
+            user=self.user,
+            purpose=purpose,
+            payload={"source": "test"},
         )
         self.assertIsNotNone(record, "ConsentService.grant() must return a record")
         self.assertEqual(record.purpose_version_at_grant, 1)
@@ -501,24 +563,30 @@ class ReconsentAfterVersionBumpIntegrationTest(TestCase):
 
         # Verify stale detection works via direct service call.
         stale_after = ConsentService.get_stale_purposes_for_user(
-            user=self.user, tenant=self.tenant,
+            user=self.user,
+            tenant=self.tenant,
         )
-        self.assertEqual(len(stale_after), 1,
-                         f"Direct service: expected 1 stale, got {len(stale_after)}")
+        self.assertEqual(
+            len(stale_after), 1, f"Direct service: expected 1 stale, got {len(stale_after)}"
+        )
 
         # Verify stale detection via direct service call (confirmed working).
         # The /api/v1/auth/me/ endpoint may not reflect this in test due to
         # connection-state differences with django.test.Client.
         stale_after = ConsentService.get_stale_purposes_for_user(
-            user=self.user, tenant=self.tenant,
+            user=self.user,
+            tenant=self.tenant,
         )
-        self.assertEqual(len(stale_after), 1,
-                         f"Expected 1 stale purpose after bump, got {len(stale_after)}")
+        self.assertEqual(
+            len(stale_after), 1, f"Expected 1 stale purpose after bump, got {len(stale_after)}"
+        )
         self.assertEqual(stale_after[0]["purpose_id"], str(purpose.id))
 
         # Re-grant
         service.grant(
-            tenant=self.tenant, user=self.user, purpose=purpose,
+            tenant=self.tenant,
+            user=self.user,
+            purpose=purpose,
             payload={"source": "reconsent", "purpose_version": 2},
         )
 

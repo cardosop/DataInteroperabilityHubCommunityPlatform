@@ -11,14 +11,13 @@ import pytest
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from tests.utils.polling import wait_until
-
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User
 from hub.apps.webhooks.models import DeliveryStatus, Webhook, WebhookDelivery, WebhookStatus
 from hub.apps.webhooks.service import WebhookDeliveryService
 from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookServer
+from tests.utils.polling import wait_until
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

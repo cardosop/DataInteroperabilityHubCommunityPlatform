@@ -11,28 +11,27 @@ These tests verify that:
 4. HTTP redirects to private IPs are blocked — the redirect SSRF guard
    validates the Location header before following.
 """
+
 import socket
 import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from rest_framework.test import APIRequestFactory
 
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 from hub.apps.webhooks.models import (
+    DeliveryStatus,
     Webhook,
     WebhookDelivery,
     WebhookEventType,
     WebhookStatus,
-    DeliveryStatus,
 )
 from hub.apps.webhooks.serializers import WebhookSerializer
 from hub.apps.webhooks.service import WebhookDeliveryService
-
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
@@ -58,6 +57,7 @@ def _build_tenant_and_user():
 # ---------------------------------------------------------------------------
 # Delivery service — SSRF blocked delivery marks record FAILED (not doubled)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.django_db
 class TestSSRFDeliveryBlocked(TestCase):
@@ -180,6 +180,7 @@ class TestSSRFDeliveryBlocked(TestCase):
         )
 
         import socket
+
         fake_result = [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 0))]
         with patch("hub.apps.webhooks.ssrf_guard.socket.getaddrinfo", return_value=fake_result):
             WebhookDeliveryService._attempt_delivery(delivery)
@@ -216,8 +217,7 @@ class TestSSRFDeliveryBlocked(TestCase):
         # test is deterministic — a real connection to port 19999 can
         # produce false failures if something is listening.
         with patch(
-            "hub.apps.webhooks.service_client.WebhookDeliveryClient"
-            ".deliver_webhook_with_response",
+            "hub.apps.webhooks.service_client.WebhookDeliveryClient.deliver_webhook_with_response",
             side_effect=httpx.ConnectError("Connection refused"),
         ):
             WebhookDeliveryService._attempt_delivery(delivery)
@@ -232,6 +232,7 @@ class TestSSRFDeliveryBlocked(TestCase):
 # ---------------------------------------------------------------------------
 # Serializer — validate_url SSRF gating
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.django_db
 class TestSSRFSerializerValidation(TestCase):
@@ -347,18 +348,19 @@ class TestSSRFRedirectBlocked(TestCase):
         # on the webhook URL), then the first HTTP request returns a 301
         # redirect to the AWS IMDS address.
         public_dns = [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 0))]
-        mock_initial = _make_redirect_mock_response(
-            301, "http://169.254.169.254/latest/meta-data/"
-        )
+        mock_initial = _make_redirect_mock_response(301, "http://169.254.169.254/latest/meta-data/")
 
-        with patch(
-            "hub.apps.webhooks.ssrf_guard.socket.getaddrinfo",
-            return_value=public_dns,
-        ) as mock_dns, patch(
-            "hub.apps.webhooks.service_client.WebhookDeliveryClient"
-            ".deliver_webhook_with_response",
-            return_value=mock_initial,
-        ) as mock_probe:
+        with (
+            patch(
+                "hub.apps.webhooks.ssrf_guard.socket.getaddrinfo",
+                return_value=public_dns,
+            ),
+            patch(
+                "hub.apps.webhooks.service_client.WebhookDeliveryClient"
+                ".deliver_webhook_with_response",
+                return_value=mock_initial,
+            ) as mock_probe,
+        ):
             WebhookDeliveryService._attempt_delivery(delivery)
 
         # Verify the probe used follow_redirects=False — without this the
@@ -399,18 +401,19 @@ class TestSSRFRedirectBlocked(TestCase):
         )
 
         public_dns = [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 0))]
-        mock_initial = _make_redirect_mock_response(
-            302, "http://10.0.0.1/internal"
-        )
+        mock_initial = _make_redirect_mock_response(302, "http://10.0.0.1/internal")
 
-        with patch(
-            "hub.apps.webhooks.ssrf_guard.socket.getaddrinfo",
-            return_value=public_dns,
-        ), patch(
-            "hub.apps.webhooks.service_client.WebhookDeliveryClient"
-            ".deliver_webhook_with_response",
-            return_value=mock_initial,
-        ) as mock_probe:
+        with (
+            patch(
+                "hub.apps.webhooks.ssrf_guard.socket.getaddrinfo",
+                return_value=public_dns,
+            ),
+            patch(
+                "hub.apps.webhooks.service_client.WebhookDeliveryClient"
+                ".deliver_webhook_with_response",
+                return_value=mock_initial,
+            ) as mock_probe,
+        ):
             WebhookDeliveryService._attempt_delivery(delivery)
 
         mock_probe.assert_called_once()
@@ -440,17 +443,18 @@ class TestSSRFRedirectBlocked(TestCase):
             attempt_number=0,
         )
         public_dns = [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 0))]
-        mock_initial = _make_redirect_mock_response(
-            308, "http://169.254.169.254/latest/meta-data/"
-        )
-        with patch(
-            "hub.apps.webhooks.ssrf_guard.socket.getaddrinfo",
-            return_value=public_dns,
-        ), patch(
-            "hub.apps.webhooks.service_client.WebhookDeliveryClient"
-            ".deliver_webhook_with_response",
-            return_value=mock_initial,
-        ) as mock_probe:
+        mock_initial = _make_redirect_mock_response(308, "http://169.254.169.254/latest/meta-data/")
+        with (
+            patch(
+                "hub.apps.webhooks.ssrf_guard.socket.getaddrinfo",
+                return_value=public_dns,
+            ),
+            patch(
+                "hub.apps.webhooks.service_client.WebhookDeliveryClient"
+                ".deliver_webhook_with_response",
+                return_value=mock_initial,
+            ) as mock_probe,
+        ):
             WebhookDeliveryService._attempt_delivery(delivery)
 
         mock_probe.assert_called_once()
@@ -491,30 +495,36 @@ class TestSSRFRedirectSafeFollowed(TestCase):
         )
 
         public_dns = [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 0))]
-        mock_initial = _make_redirect_mock_response(
-            301, "https://example.com/new-location"
-        )
+        mock_initial = _make_redirect_mock_response(301, "https://example.com/new-location")
 
-        with patch(
-            "hub.apps.webhooks.ssrf_guard.socket.getaddrinfo",
-            return_value=public_dns,
-        ), patch(
-            "hub.apps.webhooks.service_client.WebhookDeliveryClient"
-            ".deliver_webhook_with_response",
-            return_value=mock_initial,
-        ) as mock_probe, patch(
-            "hub.apps.webhooks.service_client.WebhookDeliveryClient"
-            ".deliver_webhook",
-            return_value=(200, '{"status": "ok"}'),
-        ) as mock_follow:
+        with (
+            patch(
+                "hub.apps.webhooks.ssrf_guard.socket.getaddrinfo",
+                return_value=public_dns,
+            ),
+            patch(
+                "hub.apps.webhooks.service_client.WebhookDeliveryClient"
+                ".deliver_webhook_with_response",
+                return_value=mock_initial,
+            ) as mock_probe,
+            patch(
+                "hub.apps.webhooks.service_client.WebhookDeliveryClient.deliver_webhook",
+                return_value=(200, '{"status": "ok"}'),
+            ) as mock_follow,
+        ):
             WebhookDeliveryService._attempt_delivery(delivery)
 
         # Verify the redirect guard followed the safe Location and delivered.
         mock_probe.assert_called_once()
         mock_follow.assert_called_once()
-        _follow_url = mock_follow.call_args[0][0] if mock_follow.call_args[0] else mock_follow.call_args[1]["url"]
+        _follow_url = (
+            mock_follow.call_args[0][0]
+            if mock_follow.call_args[0]
+            else mock_follow.call_args[1]["url"]
+        )
         self.assertEqual(
-            _follow_url, "https://example.com/new-location",
+            _follow_url,
+            "https://example.com/new-location",
             "deliver_webhook must be called with the redirect Location URL",
         )
 

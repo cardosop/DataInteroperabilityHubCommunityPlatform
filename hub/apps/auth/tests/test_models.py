@@ -2,13 +2,14 @@
 Unit tests for Auth models (APIKey).
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from hub.apps.auth.models import APIKey
 from hub.apps.tenants.models import Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -105,9 +106,6 @@ class APIKeyModelTest(TestCase):
 
     def test_api_key_is_expired_none_expires_at_returns_false(self):
         """Test API key expiration check with None expires_at returns False."""
-        from datetime import timedelta
-
-        from django.utils import timezone
 
         key = APIKey.generate_key()
         key_hash = APIKey.hash_key(key)
@@ -188,13 +186,69 @@ class APIKeyModelTest(TestCase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_api_key_hash_none_handles_gracefully(self):
-        """Test API key hashing None handles gracefully."""
-        # Should raise TypeError or handle gracefully
-        try:
-            key_hash = APIKey.hash_key(None)
-            # If it doesn't raise, should return None or empty string
-            self.assertIsNotNone(key_hash)
-        except (TypeError, AttributeError):
-            # Expected behavior
-            pass
+    def test_api_key_hash_none_raises_attribute_error(self):
+        """hash_key(None) raises AttributeError — None has no .encode()."""
+        with self.assertRaises(AttributeError):
+            APIKey.hash_key(None)
+
+
+class APIKeyModelMethodTests(TestCase):
+    """Dedicated tests for APIKey model lifecycle methods."""
+
+    def setUp(self):
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Method Test {uid}",
+            slug=f"method-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        self.user = User.objects.create_user(
+            email=f"method-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+        )
+        plain_key = APIKey.generate_key()
+        self.plain_key = plain_key
+        self.api_key = APIKey.objects.create(
+            tenant=self.tenant,
+            user=self.user,
+            name="Method Test Key",
+            key_hash=APIKey.hash_key(plain_key),
+        )
+
+    def test_verify_key_with_correct_key_returns_true(self):
+        self.assertTrue(self.api_key.verify_key(self.plain_key))
+
+    def test_verify_key_with_wrong_key_returns_false(self):
+        self.assertFalse(self.api_key.verify_key("wrong-key-123456"))
+
+    def test_verify_key_with_empty_string_returns_false(self):
+        self.assertFalse(self.api_key.verify_key(""))
+
+    def test_update_last_used_sets_timestamp(self):
+        from django.utils import timezone
+
+        self.assertIsNone(self.api_key.last_used_at)
+        self.api_key.update_last_used()
+        self.api_key.refresh_from_db()
+        self.assertIsNotNone(self.api_key.last_used_at)
+        self.assertLess(
+            (timezone.now() - self.api_key.last_used_at).total_seconds(), 5,
+        )
+
+    def test_revoke_sets_revoked_at(self):
+        self.assertIsNone(self.api_key.revoked_at)
+        self.api_key.revoke()
+        self.api_key.refresh_from_db()
+        self.assertIsNotNone(self.api_key.revoked_at)
+        self.assertTrue(self.api_key.is_revoked())
+
+    def test_revoke_on_already_revoked_key_is_idempotent(self):
+        self.api_key.revoke()
+        self.api_key.refresh_from_db()
+        first_revoked_at = self.api_key.revoked_at
+        # revoke again — should not change revoked_at
+        self.api_key.revoke()
+        self.api_key.refresh_from_db()
+        self.assertEqual(self.api_key.revoked_at, first_revoked_at)

@@ -2,7 +2,6 @@
 Unit tests for workflow orchestration alerting.
 """
 
-import logging
 import uuid
 from datetime import timedelta
 
@@ -27,15 +26,21 @@ class WorkflowAlertingTest(TestCase):
     def setUp(self):
         """Set up test data"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
-        # Create workflow definition
+        # Create workflow definition with unique name to avoid collisions
+        # across test classes and stale --reuse-db data.
+        self.workflow_name = f"test_workflow_{uuid.uuid4().hex[:8]}"
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=self.workflow_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0",
@@ -49,9 +54,9 @@ class WorkflowAlertingTest(TestCase):
     def test_check_workflow_timeouts_no_timeouts(self):
         """Test checking for timeouts when none exist"""
         # Create a recent workflow instance
-        instance = WorkflowInstance.objects.create(
+        WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.RUNNING,
@@ -67,7 +72,7 @@ class WorkflowAlertingTest(TestCase):
         old_time = timezone.now() - timedelta(hours=2)
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.RUNNING,
@@ -87,10 +92,10 @@ class WorkflowAlertingTest(TestCase):
     def test_check_failed_workflows_with_failures(self):
         """Test checking for failed workflows when failures exist"""
         # Create multiple failed workflow instances
-        for i in range(6):
+        for _i in range(6):
             WorkflowInstance.objects.create(
                 workflow_definition=self.workflow_def,
-                workflow_name="test_workflow",
+                workflow_name=self.workflow_name,
                 workflow_version="1.0.0",
                 tenant=self.tenant,
                 status=WorkflowStatus.FAILED,
@@ -99,15 +104,15 @@ class WorkflowAlertingTest(TestCase):
             )
 
         alerts = self.alerting.check_failed_workflows(min_failure_count=5, time_window_minutes=60)
-        self.assertGreater(len(alerts), 0)
+        self.assertEqual(len(alerts), 1, "Expected exactly 1 alert for 6 failures with min_failure_count=5")
         self.assertEqual(alerts[0]["alert_type"], "workflow_failure_rate")
 
     def test_check_retry_exhaustion_no_exhaustion(self):
         """Test checking for retry exhaustion when none exists"""
         # Create a failed workflow that hasn't exhausted retries
-        instance = WorkflowInstance.objects.create(
+        WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.FAILED,
@@ -123,7 +128,7 @@ class WorkflowAlertingTest(TestCase):
         # Create a failed workflow that has exhausted retries
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.FAILED,
@@ -140,9 +145,9 @@ class WorkflowAlertingTest(TestCase):
     def test_check_stuck_workflows_no_stuck(self):
         """Test checking for stuck workflows when none exist"""
         # Create a recent running workflow
-        instance = WorkflowInstance.objects.create(
+        WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.RUNNING,
@@ -158,7 +163,7 @@ class WorkflowAlertingTest(TestCase):
         old_time = timezone.now() - timedelta(hours=1)
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.RUNNING,
@@ -202,19 +207,18 @@ class WorkflowAlertingTest(TestCase):
         result = self.alerting.send_alert(alert)
         self.assertTrue(result)
 
-    def test_send_alert_failure(self):
-        """Test send_alert handles exceptions gracefully."""
+    def test_send_alert_returns_boolean(self):
+        """Test that send_alert returns a boolean on the success path.
+        (The failure path, where the logger itself raises, is exercised
+        separately via unit tests that mock the logger.)"""
         alert = {
             "alert_type": "test_alert",
             "severity": "high",
             "message": "Test alert message",
             "timestamp": timezone.now().isoformat(),
         }
-        # Test that send_alert handles exceptions gracefully
-        # The real implementation should catch exceptions and return False
         result = self.alerting.send_alert(alert)
-        # Should return True if logging succeeds, False if it fails
-        self.assertIsInstance(result, bool)
+        self.assertTrue(result, "send_alert should return True when logging succeeds")
 
     def test_check_all_alerts(self):
         """Test checking all alert conditions"""
@@ -223,7 +227,7 @@ class WorkflowAlertingTest(TestCase):
         old_time = timezone.now() - timedelta(hours=2)
         WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.RUNNING,
@@ -233,7 +237,7 @@ class WorkflowAlertingTest(TestCase):
         # Retry exhaustion
         WorkflowInstance.objects.create(
             workflow_definition=self.workflow_def,
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             workflow_version="1.0.0",
             tenant=self.tenant,
             status=WorkflowStatus.FAILED,
@@ -242,13 +246,26 @@ class WorkflowAlertingTest(TestCase):
         )
 
         # Test real alert checking - should return dict with alert categories
-        alerts = self.alerting.check_all_alerts()
-        # Should have keys for validation_failures (Task 5.3.1)
-        self.assertIn("validation_failures", alerts)
-        # Should have at least timeout and retry exhaustion alerts
-        self.assertGreater(len(alerts), 0)
+        alerts = self.alerting.check_all_alerts(
+            timeout_threshold_seconds=3600,
+            stuck_threshold_minutes=30,
+        )
+        # Verify expected keys are present
+        for key in ("timeouts", "failures", "retry_exhaustion", "stuck",
+                     "step_failures", "validation_failures"):
+            self.assertIn(key, alerts, f"check_all_alerts must include '{key}' key")
+        # We created a 2-hour-old RUNNING instance → timeout alert expected
+        self.assertGreaterEqual(
+            len(alerts["timeouts"]), 1,
+            "Expected at least 1 timeout alert for a workflow running for 2 hours",
+        )
+        # We created a FAILED instance with retries exhausted → retry alert expected
+        self.assertGreaterEqual(
+            len(alerts["retry_exhaustion"]), 1,
+            "Expected at least 1 retry exhaustion alert",
+        )
         # Verify alerts structure
-        for category, alert_list in alerts.items():
+        for _category, alert_list in alerts.items():
             self.assertIsInstance(alert_list, list)
             for alert in alert_list:
                 self.assertIsInstance(alert, dict)
@@ -271,7 +288,7 @@ class WorkflowAlertingTest(TestCase):
         for i in range(6):
             WorkflowInstance.objects.create(
                 workflow_definition=self.workflow_def,
-                workflow_name="test_workflow",
+                workflow_name=self.workflow_name,
                 workflow_version="1.0.0",
                 tenant=self.tenant,
                 status=WorkflowStatus.FAILED,
@@ -285,7 +302,9 @@ class WorkflowAlertingTest(TestCase):
             min_failure_rate=0.1,
             time_window_minutes=60,
         )
-        self.assertGreaterEqual(len(alerts), 1)
+        self.assertEqual(len(alerts), 1,
+                         "Expected exactly 1 alert for 6 validation failures with min=5")
         self.assertEqual(alerts[0]["alert_type"], "validation_failure_rate")
-        self.assertEqual(alerts[0]["workflow_name"], "test_workflow")
-        self.assertGreaterEqual(alerts[0]["validation_failed_count"], 5)
+        self.assertEqual(alerts[0]["workflow_name"], self.workflow_name)
+        self.assertEqual(alerts[0]["validation_failed_count"], 6,
+                         "Expected 6 validation-failed instances (we created exactly 6)")

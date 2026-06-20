@@ -20,11 +20,12 @@ The contract under test is:
   None, not an opaque enum) so operators can reason about edge
   cases.
 """
+
 from __future__ import annotations
-import pytest
 
 import os
 
+import pytest
 from django.test import SimpleTestCase
 
 from hub.apps.core.services.base import ValidationError
@@ -83,7 +84,7 @@ class DetectEncodingPureUnitTest(SimpleTestCase):
 
     @pytest.mark.unit
     def test_utf8_with_non_ascii_admit(self):
-        content = "café,müller,hôtel\n€,£,¥\n".encode("utf-8")
+        content = "café,müller,hôtel\n€,£,¥\n".encode()
         result = detect_encoding(content)
         # ``utf_8`` is the canonical Python codec name (not the
         # IANA ``utf-8`` form).
@@ -110,7 +111,7 @@ class DetectEncodingPureUnitTest(SimpleTestCase):
         # utf-8-sig" to "the detector returns the right codec
         # name". The ``bom=True`` flag is preserved separately so
         # serialisers can still round-trip the BOM if needed.
-        content = b"\xef\xbb\xbf" + "hello,world".encode("utf-8")
+        content = b"\xef\xbb\xbf" + b"hello,world"
         result = detect_encoding(content)
         self.assertEqual(
             result.encoding,
@@ -137,9 +138,7 @@ class DetectEncodingPureUnitTest(SimpleTestCase):
         # the threshold. Without enough text the detector can pick
         # ``utf_16``, ``utf_16_le`` or ``utf_16_be`` — assert the
         # FAMILY rather than the exact variant.
-        content = "héllo wörld; this row has enough text to be unambiguous".encode(
-            "utf-16"
-        )
+        content = "héllo wörld; this row has enough text to be unambiguous".encode("utf-16")
         result = detect_encoding(content)
         self.assertIsNotNone(result.encoding)
         self.assertTrue(result.encoding.startswith("utf_16"))
@@ -161,9 +160,7 @@ class DetectEncodingPureUnitTest(SimpleTestCase):
 
     @pytest.mark.unit
     def test_chaos_property_is_inverse_of_confidence(self):
-        result = EncodingDetection(
-            encoding="utf_8", confidence=0.85, is_confident=False, bom=False
-        )
+        result = EncodingDetection(encoding="utf_8", confidence=0.85, is_confident=False, bom=False)
         self.assertAlmostEqual(result.chaos, 0.15, places=6)
 
 
@@ -237,9 +234,7 @@ class ValidateTextEncodingTest(SimpleTestCase):
         content = os.urandom(2000)
         with self.assertRaises(ValidationError) as ctx:
             validate_text_encoding(content, "JSON")
-        self.assertEqual(
-            getattr(ctx.exception, "code", None), "FILE_ENCODING_UNSUPPORTED"
-        )
+        self.assertEqual(getattr(ctx.exception, "code", None), "FILE_ENCODING_UNSUPPORTED")
 
     @pytest.mark.unit
     def test_empty_csv_admits(self):
@@ -270,9 +265,9 @@ class ValidationErrorShapeTest(SimpleTestCase):
         #     BOMs)
         for field in ("file_format", "detected_encoding", "confidence", "min_confidence", "bom"):
             self.assertIn(
-                field, details,
-                f"FILE_ENCODING_UNSUPPORTED details missing field {field!r}; "
-                f"got {details!r}",
+                field,
+                details,
+                f"FILE_ENCODING_UNSUPPORTED details missing field {field!r}; got {details!r}",
             )
 
     @pytest.mark.unit
@@ -313,10 +308,7 @@ class BomlessUtf16RejectionTest(SimpleTestCase):
         # 260.5.E rule, this would PASS the gate and silently
         # decode (potentially OK, but indistinguishable from
         # corruption — see ``test_short_nul_corrupted_ascii_*``).
-        body = (
-            "name,age\nAlice,30\nBob,25\n"
-            "Charlie,40\nDave,28\nEve,55\n"
-        )
+        body = "name,age\nAlice,30\nBob,25\nCharlie,40\nDave,28\nEve,55\n"
         content = body.encode("utf-16-le")
         with self.assertRaises(ValidationError) as ctx:
             validate_text_encoding(content, "CSV")
@@ -354,8 +346,7 @@ class BomlessUtf16RejectionTest(SimpleTestCase):
         self.assertEqual(
             details.get("rejection_reason"),
             "BOM_LESS_UTF16_AMBIGUOUS",
-            f"Short NUL-corrupted ASCII should hit the BOM_LESS_UTF16 "
-            f"path; got {details!r}",
+            f"Short NUL-corrupted ASCII should hit the BOM_LESS_UTF16 path; got {details!r}",
         )
 
     @pytest.mark.unit
@@ -464,9 +455,7 @@ class GatedInferenceDispatchTest(SimpleTestCase):
             infer_schema_with_encoding_gate(os.urandom(2000), "CSV")
         # Same code as the bare gate — callers don't need to know
         # the helper exists to handle the typed error.
-        self.assertEqual(
-            getattr(ctx.exception, "code", None), "FILE_ENCODING_UNSUPPORTED"
-        )
+        self.assertEqual(getattr(ctx.exception, "code", None), "FILE_ENCODING_UNSUPPORTED")
         self.assertEqual(getattr(ctx.exception, "http_status", None), 400)
 
     @pytest.mark.unit
@@ -481,9 +470,7 @@ class GatedInferenceDispatchTest(SimpleTestCase):
 
         with self.assertRaises(ValidationError) as ctx:
             infer_schema_with_encoding_gate(b"irrelevant", "AVRO")
-        self.assertEqual(
-            getattr(ctx.exception, "code", None), "UNSUPPORTED_FILE_FORMAT"
-        )
+        self.assertEqual(getattr(ctx.exception, "code", None), "UNSUPPORTED_FILE_FORMAT")
 
     @pytest.mark.unit
     def test_parquet_skips_encoding_gate(self):
@@ -504,7 +491,8 @@ class GatedInferenceDispatchTest(SimpleTestCase):
                 "FILE_ENCODING_UNSUPPORTED",
                 "Parquet must NOT trigger the text-encoding gate",
             )
-        except Exception:
-            # Parquet parser raised — that's fine; it's not the
-            # encoding gate's concern.
+        except (ValueError, OSError, RuntimeError):
+            # Parquet parser raised — expected for random binary input.
+            # Only catch expected parser errors; programming errors
+            # (AttributeError, ImportError, etc.) still propagate.
             pass

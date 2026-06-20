@@ -6,7 +6,6 @@ Uses real hub API - no mocks/stubs.
 """
 
 import json
-from typing import Optional
 
 import click
 
@@ -16,7 +15,6 @@ from ..api_client import api_client
 @click.group()
 def scheduled_export():
     """Scheduled export management commands [Post-MVP]"""
-    pass
 
 
 @scheduled_export.command("list")
@@ -30,7 +28,7 @@ def scheduled_export():
     default="table",
     help="Output format",
 )
-def list_exports(status: Optional[str], limit: int, offset: int, output_format: str):
+def list_exports(status: str | None, limit: int, offset: int, output_format: str):
     """List scheduled exports"""
     params = {"limit": limit, "offset": offset}
     if status:
@@ -73,11 +71,7 @@ def list_exports(status: Optional[str], limit: int, offset: int, output_format: 
                     str(export.get("next_run_at", ""))[:23] if export.get("next_run_at") else "N/A"
                 )
                 click.echo(
-                    f"{export_id:<40} "
-                    f"{name:<30} "
-                    f"{dest_type:<15} "
-                    f"{status_val:<15} "
-                    f"{next_run:<25}"
+                    f"{export_id:<40} {name:<30} {dest_type:<15} {status_val:<15} {next_run:<25}"
                 )
     except click.ClickException:
         raise
@@ -225,11 +219,11 @@ def create_export(
 )
 def update_export(
     export_id: str,
-    name: Optional[str],
-    destination_config: Optional[str],
-    schedule_config: Optional[str],
-    source_scope: Optional[str],
-    status: Optional[str],
+    name: str | None,
+    destination_config: str | None,
+    schedule_config: str | None,
+    source_scope: str | None,
+    status: str | None,
     output_format: str,
 ):
     """Update scheduled export"""
@@ -315,7 +309,7 @@ def trigger_export(export_id: str, output_format: str):
     default="table",
     help="Output format",
 )
-def list_runs(export_id: str, status: Optional[str], limit: int, offset: int, output_format: str):
+def list_runs(export_id: str, status: str | None, limit: int, offset: int, output_format: str):
     """List runs for scheduled export"""
     params = {"limit": limit, "offset": offset}
     if status:
@@ -350,9 +344,7 @@ def list_runs(export_id: str, status: Optional[str], limit: int, offset: int, ou
                 completed = (
                     str(run.get("completed_at", ""))[:23] if run.get("completed_at") else "N/A"
                 )
-                click.echo(
-                    f"{run_id:<40} " f"{status_val:<15} " f"{started:<25} " f"{completed:<25}"
-                )
+                click.echo(f"{run_id:<40} {status_val:<15} {started:<25} {completed:<25}")
     except click.ClickException:
         raise
     except Exception as e:

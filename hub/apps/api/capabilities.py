@@ -25,12 +25,12 @@ exercise the full feature surface without per-test setup. The
 default policy is encoded in :func:`get_capabilities` so future
 flags inherit the same shape.
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from django.conf import settings
-
 
 # Phase 228 lineage capability flag names. The shared registry is the
 # single source of truth for the five names — frontend
@@ -50,6 +50,7 @@ def _is_test_environment() -> bool:
     (legacy), or pytest's own ``PYTEST_CURRENT_TEST`` env var (so any
     test-runner invocation defaults to ON regardless of how the env is set)."""
     import os
+
     if getattr(settings, "ENVIRONMENT", "").lower() == "test":
         return True
     if os.environ.get("DJANGO_ENV", "").lower() == "test":
@@ -59,7 +60,7 @@ def _is_test_environment() -> bool:
     return False
 
 
-def get_capabilities() -> Dict[str, bool]:
+def get_capabilities() -> dict[str, bool]:
     """Return the flat capability map for the current environment.
 
     Default policy (REQ-LIN-006):
@@ -73,9 +74,9 @@ def get_capabilities() -> Dict[str, bool]:
     that's the escape hatch ops uses to flip a flag on for a single
     customer or to roll-out gradually.
     """
-    overrides: Dict[str, bool] = getattr(settings, "CAPABILITY_FLAGS", {}) or {}
+    overrides: dict[str, bool] = getattr(settings, "CAPABILITY_FLAGS", {}) or {}
     test_default = _is_test_environment()
-    out: Dict[str, bool] = {}
+    out: dict[str, bool] = {}
     for name in LINEAGE_CAPABILITY_FLAGS:
         if name in overrides:
             out[name] = bool(overrides[name])
@@ -120,7 +121,7 @@ def is_capability_enabled_for_tenant(name: str, tenant_id: str | None) -> bool:
     return str(tenant_id) in {str(x) for x in allow_list}
 
 
-def _compute_asset_creation_blocked_reason(tenant) -> Optional[str]:
+def _compute_asset_creation_blocked_reason(tenant) -> str | None:
     """Phase 250.6.D.2 — discriminate WHY ``asset_creation_enabled`` is False.
 
     Returns one of:
@@ -161,7 +162,7 @@ def _compute_asset_creation_blocked_reason(tenant) -> Optional[str]:
     return "DISABLED_BY_OPS"
 
 
-def get_capabilities_for_request(request) -> Dict[str, Any]:
+def get_capabilities_for_request(request) -> dict[str, Any]:
     """Phase 240.4.B.4 — per-request capability map.
 
     Extends :func:`get_capabilities` with PER-TENANT capability values
@@ -189,13 +190,14 @@ def get_capabilities_for_request(request) -> Dict[str, Any]:
     # is ``str | None``). The wire shape is documented in the
     # capability response schema; SPA consumers must accept mixed
     # value types per-key.
-    base: Dict[str, Any] = dict(get_capabilities())
+    base: dict[str, Any] = dict(get_capabilities())
 
     tenant = None
     try:
         from hub.apps.tenants.request_tenant import get_request_tenant
+
         _tid, tenant = get_request_tenant(request)
-    except Exception:  # noqa: BLE001 — capabilities must NEVER 500
+    except Exception:
         # If tenant resolution itself blows up (e.g. middleware not
         # in pipeline), degrade gracefully — anonymous capability
         # response is correct for an unauthenticated request.
@@ -203,9 +205,7 @@ def get_capabilities_for_request(request) -> Dict[str, Any]:
 
     dq_base = bool(getattr(tenant, "data_quality_enabled", True)) if tenant else False
     dq_advanced_flag = (
-        bool(getattr(tenant, "data_quality_advanced_enabled", False))
-        if tenant
-        else False
+        bool(getattr(tenant, "data_quality_advanced_enabled", False)) if tenant else False
     )
     base["data_quality"] = dq_base
     # Conjunctive on the wire so the SPA never sees
@@ -238,17 +238,13 @@ def get_capabilities_for_request(request) -> Dict[str, Any]:
     # boolean ``asset_creation`` above stays for backward-compat with
     # 250.6.A's CapabilityRoute gate; the reason field is purely
     # additive enrichment.
-    base["asset_creation_blocked_reason"] = (
-        _compute_asset_creation_blocked_reason(tenant)
-    )
+    base["asset_creation_blocked_reason"] = _compute_asset_creation_blocked_reason(tenant)
 
     # Phase 285.13 — per-tenant datasets/files kill switch capabilities
     if tenant:
         base["datasets"] = bool(getattr(tenant, "datasets_enabled", True))
         base["files"] = bool(getattr(tenant, "files_enabled", True))
-        base["transformation_pipelines"] = bool(
-            getattr(tenant, "transformation_enabled", False)
-        )
+        base["transformation_pipelines"] = bool(getattr(tenant, "transformation_enabled", False))
     else:
         base["datasets"] = True
         base["files"] = True

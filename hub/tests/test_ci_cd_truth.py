@@ -6,11 +6,11 @@ Proves:
 2. G.2: Path filters + caching + OpenAPI contract test present
 3. G.3: Makefile has canonical local=CI targets
 """
+
 import os
 
 import pytest
 from django.test import TestCase
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -70,7 +70,8 @@ class CIPathFiltersAndCachingTest(TestCase):
     def test_node_cache_exists(self):
         ci = _read_file(".github/workflows/ci.yml")
         self.assertIn(
-            "hashFiles('frontend/package-lock.json')", ci,
+            "hashFiles('frontend/package-lock.json')",
+            ci,
         )
 
     def test_openapi_contract_test_exists(self):
@@ -115,24 +116,26 @@ class MakefileCIParityTest(TestCase):
         # Isolate the test-ci-backend target recipe to avoid matching
         # substrings from unrelated targets or comments.
         import re
-        target_match = re.search(
-            r"^test-ci-backend:.*?\n(?:^\t.*\n?)*", mk, re.MULTILINE
-        )
+
+        target_match = re.search(r"^test-ci-backend:.*?\n(?:^\t.*\n?)*", mk, re.MULTILINE)
         self.assertIsNotNone(target_match, "test-ci-backend target not found")
         target_recipe = target_match.group(0)
         # Both CI and Makefile must use the same core command.
         # The Makefile uses ``python -u -m pytest`` (with -u for unbuffered),
         # while CI may use ``python -m pytest``.  Match on the stable suffix.
         self.assertIn(
-            "pytest hub/apps/", target_recipe,
+            "pytest hub/apps/",
+            target_recipe,
             f"test-ci-backend must run pytest hub/apps/\nTarget:\n{target_recipe}",
         )
         self.assertIn(
-            "--reuse-db", target_recipe,
+            "--reuse-db",
+            target_recipe,
             f"test-ci-backend must use --reuse-db\nTarget:\n{target_recipe}",
         )
         self.assertIn(
-            "docker-compose.test.yml", target_recipe,
+            "docker-compose.test.yml",
+            target_recipe,
             f"test-ci-backend must use docker-compose.test.yml\nTarget:\n{target_recipe}",
         )
 

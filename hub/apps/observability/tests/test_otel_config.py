@@ -187,7 +187,9 @@ class OpenTelemetryConfigTest(TestCase):
             self.assertIsNone(resource)
             return
 
-        self.assertIsNotNone(resource, "create_resource() returned None but OpenTelemetry IS available")
+        self.assertIsNotNone(
+            resource, "create_resource() returned None but OpenTelemetry IS available"
+        )
         attributes = resource.attributes
         self.assertIn("service.name", attributes)
         self.assertIn("service.version", attributes)
@@ -227,8 +229,10 @@ class OpenTelemetryConfigTest(TestCase):
             exporter = create_otlp_exporter()
 
             if exporter is not None:
-                self.assertTrue(hasattr(exporter, 'export'),
-                    f"Expected a SpanExporter, got {type(exporter).__name__}")
+                self.assertTrue(
+                    hasattr(exporter, "export"),
+                    f"Expected a SpanExporter, got {type(exporter).__name__}",
+                )
         finally:
             # Restore original environment
             for key, original_value in original_env.items():
@@ -252,8 +256,10 @@ class OpenTelemetryConfigTest(TestCase):
             exporter = create_jaeger_exporter()
 
             if exporter is not None:
-                self.assertTrue(hasattr(exporter, 'export'),
-                    f"Expected a SpanExporter, got {type(exporter).__name__}")
+                self.assertTrue(
+                    hasattr(exporter, "export"),
+                    f"Expected a SpanExporter, got {type(exporter).__name__}",
+                )
         finally:
             # Restore original environment
             for key, original_value in original_env.items():
@@ -275,8 +281,9 @@ class OpenTelemetryConfigTest(TestCase):
             tracer = setup_opentelemetry_tracing()
 
             if tracer is not None:
-                self.assertTrue(hasattr(tracer, 'start_span'),
-                    f"Expected a Tracer, got {type(tracer).__name__}")
+                self.assertTrue(
+                    hasattr(tracer, "start_span"), f"Expected a Tracer, got {type(tracer).__name__}"
+                )
         finally:
             # Restore original environment
             if original_exporter is None:
@@ -297,10 +304,11 @@ class OpenTelemetryConfigTest(TestCase):
         try:
             if not OPENTELEMETRY_AVAILABLE:
                 self.assertIsNone(tracer)
-            else:
-                if tracer is not None:
-                    self.assertTrue(hasattr(tracer, 'start_span'),
-                        f"Expected a Tracer, got {type(tracer).__name__}")
+            elif tracer is not None:
+                self.assertTrue(
+                    hasattr(tracer, "start_span"),
+                    f"Expected a Tracer, got {type(tracer).__name__}",
+                )
         finally:
             # Shut down the TracerProvider to stop the background
             # BatchSpanProcessor thread from trying to flush spans
@@ -332,10 +340,10 @@ class OpenTelemetryConfigTest(TestCase):
 
         if not OPENTELEMETRY_AVAILABLE:
             self.assertIsNone(tracer)
-        else:
-            if tracer is not None:
-                self.assertTrue(hasattr(tracer, 'start_span'),
-                    f"Expected a Tracer, got {type(tracer).__name__}")
+        elif tracer is not None:
+            self.assertTrue(
+                hasattr(tracer, "start_span"), f"Expected a Tracer, got {type(tracer).__name__}"
+            )
 
     @override_settings(OPENTELEMETRY_ENABLED=False)
     def test_get_tracer_disabled(self):
@@ -354,10 +362,10 @@ class OpenTelemetryConfigTest(TestCase):
 
         if not OPENTELEMETRY_AVAILABLE:
             self.assertIsNone(span)
-        else:
-            if span is not None:
-                self.assertTrue(hasattr(span, 'set_attribute'),
-                    f"Expected a Span, got {type(span).__name__}")
+        elif span is not None:
+            self.assertTrue(
+                hasattr(span, "set_attribute"), f"Expected a Span, got {type(span).__name__}"
+            )
 
     @override_settings(OPENTELEMETRY_ENABLED=True)
     def test_add_span_attributes(self):

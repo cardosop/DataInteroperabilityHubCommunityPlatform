@@ -1,8 +1,9 @@
 """285.14.3.6 — Verify RLS policy coverage for scheduled_export app."""
-import pytest
+
 import os
 import re
 
+import pytest
 from django.test import TestCase
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -30,6 +31,7 @@ def _migration_texts(app_dir):
 class ScheduledExportRLSPolicyTests(TestCase):
     def setUp(self):
         import hub.apps.scheduled_export
+
         app_dir = os.path.dirname(hub.apps.scheduled_export.__file__)
         self.migrations = _migration_texts(app_dir)
 
@@ -40,12 +42,11 @@ class ScheduledExportRLSPolicyTests(TestCase):
         for table, model_name in _SE_MODELS.items():
             if not re.search(
                 rf"CREATE\s+POLICY\s+\S+\s+ON\s+{table}",
-                all_content, re.IGNORECASE,
+                all_content,
+                re.IGNORECASE,
             ):
                 missing.append(f"{model_name} ({table})")
-        assert not missing, (
-            f"Scheduled export models missing RLS policies: {missing}"
-        )
+        assert not missing, f"Scheduled export models missing RLS policies: {missing}"
 
     @pytest.mark.integration
     def test_all_three_models_individually_covered(self):
@@ -53,7 +54,8 @@ class ScheduledExportRLSPolicyTests(TestCase):
         for table in _SE_MODELS:
             assert re.search(
                 rf"CREATE\s+POLICY\s+\S+\s+ON\s+{table}",
-                all_content, re.IGNORECASE,
+                all_content,
+                re.IGNORECASE,
             ), f"{table} RLS policy not found"
 
     @pytest.mark.integration

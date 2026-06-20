@@ -7,8 +7,6 @@ Tests network errors, API errors, retry logic, and timeouts.
 Uses REAL API server (no mocks) - uses existing API service in Docker Compose.
 """
 
-import asyncio
-
 import pytest
 from asgiref.sync import sync_to_async
 
@@ -29,11 +27,8 @@ try:
 except ImportError:
     SDK_AVAILABLE = False
 
-from rest_framework.test import APIClient
 
-from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-from tests.e2e.conftest import TenantFactory
 from tests.sdk_python.conftest import SDKTestBase
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
@@ -93,7 +88,7 @@ class TestSDKErrorHandling(SDKTestBase):
         from django.db import transaction
 
         unique_email = f"limited_{uuid.uuid4().hex[:8]}@example.com"
-        limited_user = await sync_to_async(User.objects.create_user)(
+        await sync_to_async(User.objects.create_user)(
             email=unique_email,
             password="testpass123",
             tenant=self.tenant,
@@ -112,11 +107,11 @@ class TestSDKErrorHandling(SDKTestBase):
                 timeout=30.0,
             )
             if login_response.status_code != 200:
-                pytest.skip(f"Login failed: {login_response.status_code} - {login_response.text}")
+                pytest.skip(f"Login failed: {login_response.status_code} - {login_response.text}")  # noqa: skip-in-body — runtime service dependency
             data = login_response.json()
             access_token = data.get("access_token") or data.get("token")
             if not access_token:
-                pytest.skip(f"No access token in login response: {data}")
+                pytest.skip(f"No access token in login response: {data}")  # noqa: skip-in-body — runtime service dependency
 
         config = DataHubClientConfig(base_url=self.base_url, api_token=access_token)
 

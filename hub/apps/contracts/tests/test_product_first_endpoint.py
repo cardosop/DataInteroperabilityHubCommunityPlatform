@@ -15,8 +15,6 @@ from rest_framework import status
 
 from hub.apps.contracts.models import (
     Contract,
-    ContractStatus,
-    NormalizationStatus,
     OriginalFormat,
     OriginalSpecType,
 )

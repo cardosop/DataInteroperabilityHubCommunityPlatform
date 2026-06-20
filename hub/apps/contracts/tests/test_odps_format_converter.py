@@ -545,17 +545,10 @@ product:
       description: {large_description}
 """
         # Should handle large documents gracefully
-        try:
-            result = convert_yaml_to_json(yaml_content)
-            parsed = json.loads(result)
-            # If conversion succeeds, verify structure
-            self.assertIn("product", parsed)
-            self.assertIn("details", parsed["product"])
-        except Exception as e:
-            # If conversion fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
-            )
+        result = convert_yaml_to_json(yaml_content)
+        parsed = json.loads(result)
+        self.assertIn("product", parsed)
+        self.assertIn("details", parsed["product"])
 
     def test_convert_json_to_yaml_handles_unicode_characters(self):
         """Test that JSON to YAML conversion handles unicode characters correctly."""
@@ -621,19 +614,12 @@ product:
         )
 
         # Should handle large documents gracefully
-        try:
-            result = convert_json_to_yaml(json_content)
-            import yaml
+        result = convert_json_to_yaml(json_content)
+        import yaml
 
-            parsed = yaml.safe_load(result)
-            # If conversion succeeds, verify structure
-            self.assertIn("product", parsed)
-            self.assertIn("details", parsed["product"])
-        except Exception as e:
-            # If conversion fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
-            )
+        parsed = yaml.safe_load(result)
+        self.assertIn("product", parsed)
+        self.assertIn("details", parsed["product"])
 
     def test_convert_yaml_to_json_handles_nested_structures(self):
         """Test that YAML to JSON conversion handles deeply nested structures correctly."""

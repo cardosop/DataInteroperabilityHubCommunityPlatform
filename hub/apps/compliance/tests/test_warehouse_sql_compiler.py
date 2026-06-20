@@ -1,10 +1,10 @@
 """
 285.10.1.3 — Tests for ComplianceWarehouseSQLCompiler.
 """
+
 import pytest
 
 from hub.apps.compliance.warehouse_sql_compiler import ComplianceWarehouseSQLCompiler
-
 
 # ── PII detection tests ────────────────────────────────────────────────
 
@@ -116,8 +116,11 @@ class TestCompileClassification:
     def test_classification_mismatch_bigquery(self):
         checks = [{"type": "classification_mismatch", "column": "dtype"}]
         result = ComplianceWarehouseSQLCompiler.compile(checks, "bigquery", "p.d.t")
-        # BigQuery has no TYPEOF — uses SAFE_CAST or column type check
+        # BigQuery has no TYPEOF — uses SAFE_CAST with INT64 / FLOAT64
         assert result[0].check_type == "classification_mismatch"
+        assert "SAFE_CAST" in result[0].sql
+        assert "INT64" in result[0].sql
+        assert "FLOAT64" in result[0].sql
 
     @pytest.mark.unit
     def test_classification_mismatch_databricks(self):
@@ -145,15 +148,36 @@ class TestMultipleScans:
     def test_regulations_param_passed(self):
         checks = [{"type": "pii_email", "column": "email"}]
         result = ComplianceWarehouseSQLCompiler.compile(
-            checks, "snowflake", "DB.S.T",
+            checks,
+            "snowflake",
+            "DB.S.T",
             applicable_regulations=["GDPR", "CCPA"],
         )
         assert len(result) == 1
-        # Regulations should be reflected in the check name
-        assert "gdpr" in result[0].check_name.lower() or "ccpa" in result[0].check_name.lower()
+        # Both regulations MUST be reflected in the check name
+        check_lower = result[0].check_name.lower()
+        assert "gdpr" in check_lower, (
+            f"Expected 'gdpr' in check name, got: {result[0].check_name}"
+        )
+        assert "ccpa" in check_lower, (
+            f"Expected 'ccpa' in check name, got: {result[0].check_name}"
+        )
 
     @pytest.mark.unit
     def test_unknown_type_skipped(self):
         checks = [{"type": "unknown_scan", "column": "x"}]
         result = ComplianceWarehouseSQLCompiler.compile(checks, "snowflake", "DB.S.T")
         assert len(result) == 0
+
+    @pytest.mark.unit
+    def test_mixed_known_and_unknown_types(self):
+        """Unknown types are skipped while known types compile normally."""
+        checks = [
+            {"type": "pii_email", "column": "email"},
+            {"type": "unknown_scan", "column": "x"},
+            {"type": "pii_ssn", "column": "ssn"},
+        ]
+        result = ComplianceWarehouseSQLCompiler.compile(checks, "snowflake", "DB.S.T")
+        assert len(result) == 2
+        assert result[0].check_type == "pii_email"
+        assert result[1].check_type == "pii_ssn"

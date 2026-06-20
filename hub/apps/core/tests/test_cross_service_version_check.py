@@ -13,6 +13,7 @@ TDD doctrine:
   - Master switch off → skip silently.
   - Malformed response → ImproperlyConfigured.
 """
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -27,7 +28,6 @@ from hub.apps.core.cross_service_version_check import (
     _parse_semver,
     run_cross_service_version_check,
 )
-
 
 # ---------------------------------------------------------------------------
 # Pure-function unit tests — semver parsing & comparison
@@ -89,6 +89,7 @@ def _stub_httpx_response(status_code: int, json_body: dict | None = None):
     if json_body is None:
         return httpx.Response(status_code=status_code, content=b"")
     import json as _json
+
     return httpx.Response(
         status_code=status_code,
         content=_json.dumps(json_body).encode("utf-8"),
@@ -126,9 +127,7 @@ class TestVersionCheckProduction:
     )
     def test_raises_when_dq_too_old(self):
         with patch("httpx.get") as mock_get:
-            mock_get.return_value = _stub_httpx_response(
-                200, {"version": "1.2.2"}
-            )
+            mock_get.return_value = _stub_httpx_response(200, {"version": "1.2.2"})
             with pytest.raises(
                 ImproperlyConfigured,
                 match=r"dq-service: reported version '1.2.2' is less than",
@@ -145,9 +144,7 @@ class TestVersionCheckProduction:
     )
     def test_raises_when_dq_unreachable(self):
         with patch("httpx.get") as mock_get:
-            mock_get.side_effect = httpx.ConnectError(
-                "Connection refused"
-            )
+            mock_get.side_effect = httpx.ConnectError("Connection refused")
             with pytest.raises(
                 ImproperlyConfigured,
                 match=r"dq-service: unreachable",
@@ -164,9 +161,7 @@ class TestVersionCheckProduction:
     )
     def test_raises_when_response_missing_version_field(self):
         with patch("httpx.get") as mock_get:
-            mock_get.return_value = _stub_httpx_response(
-                200, {"some_other_field": "value"}
-            )
+            mock_get.return_value = _stub_httpx_response(200, {"some_other_field": "value"})
             with pytest.raises(
                 ImproperlyConfigured,
                 match=r"without a 'version' string field",
@@ -201,9 +196,7 @@ class TestVersionCheckNonProduction:
     )
     def test_does_not_raise_when_dq_too_old_in_dev(self):
         with patch("httpx.get") as mock_get:
-            mock_get.return_value = _stub_httpx_response(
-                200, {"version": "1.0.0"}
-            )
+            mock_get.return_value = _stub_httpx_response(200, {"version": "1.0.0"})
             # No raise — warning logged instead.
             run_cross_service_version_check()
 

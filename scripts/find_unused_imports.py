@@ -3,30 +3,30 @@
 Script to find unused imports in Python files.
 Uses AST analysis to detect imports that are not used in the code.
 """
+
 import ast
 import sys
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
 
 
 class ImportVisitor(ast.NodeVisitor):
     """Visitor to collect all imports and their usage."""
 
     def __init__(self):
-        self.imports: Dict[str, Tuple[int, str]] = {}  # name -> (line, full_import)
-        self.used_names: Set[str] = set()
-        self.import_star: List[int] = []  # lines with "from X import *"
+        self.imports: dict[str, tuple[int, str]] = {}  # name -> (line, full_import)
+        self.used_names: set[str] = set()
+        self.import_star: list[int] = []  # lines with "from X import *"
 
     def visit_Import(self, node):
         for alias in node.names:
-            name = alias.asname if alias.asname else alias.name.split('.')[0]
+            name = alias.asname if alias.asname else alias.name.split(".")[0]
             self.imports[name] = (node.lineno, f"import {alias.name}")
             self.used_names.add(name)  # Import statement itself uses the name
 
     def visit_ImportFrom(self, node):
         if node.module:
-            module_name = node.module.split('.')[0]
-            if node.names[0].name == '*':
+            node.module.split(".")[0]
+            if node.names[0].name == "*":
                 self.import_star.append(node.lineno)
                 return
             for alias in node.names:
@@ -51,10 +51,10 @@ class ImportVisitor(ast.NodeVisitor):
                 self.used_names.add(node.value.id)
 
 
-def analyze_file(file_path: Path) -> List[Tuple[int, str, str]]:
+def analyze_file(file_path: Path) -> list[tuple[int, str, str]]:
     """Analyze a Python file for unused imports."""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
     except Exception as e:
         return [(0, str(e), "")]
@@ -72,7 +72,7 @@ def analyze_file(file_path: Path) -> List[Tuple[int, str, str]]:
         if name not in visitor.used_names and line not in visitor.import_star:
             # Check if it's a type-only import (used in type hints)
             # This is a simplified check - might have false positives
-            if name.startswith('_') or name in ['TYPE_CHECKING', 'typing']:
+            if name.startswith("_") or name in ["TYPE_CHECKING", "typing"]:
                 continue
             unused.append((line, name, full_import))
 
@@ -127,4 +127,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

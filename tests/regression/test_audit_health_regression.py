@@ -5,6 +5,8 @@ Uses real APIClient and real DB; no mocks/stubs. Closes gap from
 TEST_GAP_ANALYSIS_5_5.md (5.5.1) and UPDATE_PLAN_MISSING_COVERAGE_5_6_1.md (P1).
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -14,7 +16,6 @@ from rest_framework.test import APIClient
 from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
-import uuid
 
 User = get_user_model()
 

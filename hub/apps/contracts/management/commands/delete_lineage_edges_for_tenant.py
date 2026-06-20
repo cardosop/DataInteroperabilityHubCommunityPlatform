@@ -17,15 +17,15 @@ Usage::
     python manage.py delete_lineage_edges_for_tenant --tenant=<uuid>
     python manage.py delete_lineage_edges_for_tenant --tenant=<uuid> --dry-run
 """
+
 from __future__ import annotations
 
 import json
 import logging
-from typing import Iterable
+from collections.abc import Iterable
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +37,10 @@ def _s3_delete_objects(*, uris: Iterable[str]) -> int:
     aggregates partial-success counts.
     """
     try:
-        import boto3
         from urllib.parse import urlparse
-    except Exception as exc:  # noqa: BLE001
+
+        import boto3
+    except Exception as exc:
         raise CommandError("boto3 is required for the S3 cascade") from exc
 
     client = boto3.client("s3")
@@ -84,19 +85,22 @@ class Command(BaseCommand):
 
         edge_count = edges_qs.count()
         archive_count = archive_qs.count()
-        s3_uris = list(
-            archive_qs.exclude(s3_uri="").values_list("s3_uri", flat=True)
-        )
+        s3_uris = list(archive_qs.exclude(s3_uri="").values_list("s3_uri", flat=True))
 
         if dry_run:
-            self.stdout.write(json.dumps({
-                "phase": "228.X.3.1",
-                "dry_run": True,
-                "tenant_id": str(tenant.id),
-                "lineage_edges": edge_count,
-                "archive_rows": archive_count,
-                "s3_blobs": len(s3_uris),
-            }, sort_keys=True))
+            self.stdout.write(
+                json.dumps(
+                    {
+                        "phase": "228.X.3.1",
+                        "dry_run": True,
+                        "tenant_id": str(tenant.id),
+                        "lineage_edges": edge_count,
+                        "archive_rows": archive_count,
+                        "s3_blobs": len(s3_uris),
+                    },
+                    sort_keys=True,
+                )
+            )
             return
 
         # Atomic delete of relational rows; S3 cleanup happens AFTER
@@ -111,7 +115,7 @@ class Command(BaseCommand):
         if s3_uris:
             try:
                 s3_deleted = _s3_delete_objects(uris=s3_uris)
-            except Exception as exc:  # noqa: BLE001 — partial-success
+            except Exception as exc:
                 logger.warning(
                     "lineage_gdpr_cascade_s3_partial",
                     extra={
@@ -122,15 +126,20 @@ class Command(BaseCommand):
                 )
                 s3_errors = 1
 
-        self.stdout.write(json.dumps({
-            "phase": "228.X.3.1",
-            "dry_run": False,
-            "tenant_id": str(tenant.id),
-            "lineage_edges_deleted": edge_count,
-            "archive_rows_deleted": archive_count,
-            "s3_blobs_deleted": s3_deleted,
-            "s3_errors": s3_errors,
-        }, sort_keys=True))
+        self.stdout.write(
+            json.dumps(
+                {
+                    "phase": "228.X.3.1",
+                    "dry_run": False,
+                    "tenant_id": str(tenant.id),
+                    "lineage_edges_deleted": edge_count,
+                    "archive_rows_deleted": archive_count,
+                    "s3_blobs_deleted": s3_deleted,
+                    "s3_errors": s3_errors,
+                },
+                sort_keys=True,
+            )
+        )
         logger.info(
             "lineage_gdpr_cascade_tenant_complete",
             extra={

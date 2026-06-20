@@ -33,6 +33,7 @@ _TEST_PREFIX = "hub/test"
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _create_secret(client, name: str, data: dict[str, Any]) -> None:
     """Create a secret in the moto mock Secrets Manager."""
     client.create_secret(
@@ -48,55 +49,91 @@ def sm_client():
         client = boto3.client("secretsmanager", region_name=_TEST_REGION)
 
         # Django core secrets
-        _create_secret(client, f"{_TEST_PREFIX}/django", {
-            "SECRET_KEY": "test-secret-key-from-aws",
-            "JWT_SECRET_KEY": "test-jwt-secret-from-aws",
-            "ENCRYPTION_KEY": "test-encryption-key-from-aws",
-        })
+        _create_secret(
+            client,
+            f"{_TEST_PREFIX}/django",
+            {
+                "SECRET_KEY": "test-secret-key-from-aws",
+                "JWT_SECRET_KEY": "test-jwt-secret-from-aws",
+                "ENCRYPTION_KEY": "test-encryption-key-from-aws",
+            },
+        )
 
         # Redis
-        _create_secret(client, f"{_TEST_PREFIX}/redis", {
-            "REDIS_CACHE_PASSWORD": "cache-pw",
-            "REDIS_QUEUE_PASSWORD": "queue-pw",
-            "REDIS_EVENTS_PASSWORD": "events-pw",
-            "REDIS_CHANNELS_PASSWORD": "channels-pw",
-        })
+        _create_secret(
+            client,
+            f"{_TEST_PREFIX}/redis",
+            {
+                "REDIS_CACHE_PASSWORD": "cache-pw",
+                "REDIS_QUEUE_PASSWORD": "queue-pw",
+                "REDIS_EVENTS_PASSWORD": "events-pw",
+                "REDIS_CHANNELS_PASSWORD": "channels-pw",
+            },
+        )
 
         # S3/MinIO
-        _create_secret(client, f"{_TEST_PREFIX}/s3", {
-            "AWS_ACCESS_KEY_ID": "minio-user",
-            "AWS_SECRET_ACCESS_KEY": "minio-pass",
-        })
+        _create_secret(
+            client,
+            f"{_TEST_PREFIX}/s3",
+            {
+                "AWS_ACCESS_KEY_ID": "minio-user",
+                "AWS_SECRET_ACCESS_KEY": "minio-pass",
+            },
+        )
 
         # Postgres
-        _create_secret(client, f"{_TEST_PREFIX}/postgres", {
-            "POSTGRES_PASSWORD": "pg-pass",
-        })
+        _create_secret(
+            client,
+            f"{_TEST_PREFIX}/postgres",
+            {
+                "POSTGRES_PASSWORD": "pg-pass",
+            },
+        )
 
         # PgBouncer
-        _create_secret(client, f"{_TEST_PREFIX}/pgbouncer", {
-            "PGBOUNCER_ADMIN_PASSWORD": "pgb-pass",
-        })
+        _create_secret(
+            client,
+            f"{_TEST_PREFIX}/pgbouncer",
+            {
+                "PGBOUNCER_ADMIN_PASSWORD": "pgb-pass",
+            },
+        )
 
         # Fuseki
-        _create_secret(client, f"{_TEST_PREFIX}/fuseki", {
-            "FUSEKI_ADMIN_PASSWORD": "fuseki-pass",
-        })
+        _create_secret(
+            client,
+            f"{_TEST_PREFIX}/fuseki",
+            {
+                "FUSEKI_ADMIN_PASSWORD": "fuseki-pass",
+            },
+        )
 
         # Workers
-        _create_secret(client, f"{_TEST_PREFIX}/workers", {
-            "HUB_WORKER_API_KEY": "worker-key",
-        })
+        _create_secret(
+            client,
+            f"{_TEST_PREFIX}/workers",
+            {
+                "HUB_WORKER_API_KEY": "worker-key",
+            },
+        )
 
         # API
-        _create_secret(client, f"{_TEST_PREFIX}/api", {
-            "INTERNAL_API_KEY": "internal-key",
-        })
+        _create_secret(
+            client,
+            f"{_TEST_PREFIX}/api",
+            {
+                "INTERNAL_API_KEY": "internal-key",
+            },
+        )
 
         # Email
-        _create_secret(client, f"{_TEST_PREFIX}/email", {
-            "SENDGRID_API_KEY": "sg-test-key",
-        })
+        _create_secret(
+            client,
+            f"{_TEST_PREFIX}/email",
+            {
+                "SENDGRID_API_KEY": "sg-test-key",
+            },
+        )
 
         # stripe and ckan intentionally NOT created — tests optional secret handling
 
@@ -106,6 +143,7 @@ def sm_client():
 # ---------------------------------------------------------------------------
 # Tests: successful loading
 # ---------------------------------------------------------------------------
+
 
 class TestAwsSecretsLoaderSuccess:
     """Tests for successful secret loading from AWS Secrets Manager."""
@@ -122,6 +160,7 @@ class TestAwsSecretsLoaderSuccess:
             monkeypatch.delenv(key, raising=False)
 
         from hub.aws_secrets_loader import load_from_aws
+
         load_from_aws()
 
         assert os.environ["SECRET_KEY"] == "test-secret-key-from-aws"
@@ -136,11 +175,16 @@ class TestAwsSecretsLoaderSuccess:
         """All Redis password env vars are injected."""
         monkeypatch.setenv("AWS_REGION", _TEST_REGION)
         monkeypatch.setenv("AWS_SECRETS_PREFIX", _TEST_PREFIX)
-        for key in ("REDIS_CACHE_PASSWORD", "REDIS_QUEUE_PASSWORD",
-                    "REDIS_EVENTS_PASSWORD", "REDIS_CHANNELS_PASSWORD"):
+        for key in (
+            "REDIS_CACHE_PASSWORD",
+            "REDIS_QUEUE_PASSWORD",
+            "REDIS_EVENTS_PASSWORD",
+            "REDIS_CHANNELS_PASSWORD",
+        ):
             monkeypatch.delenv(key, raising=False)
 
         from hub.aws_secrets_loader import load_from_aws
+
         load_from_aws()
 
         assert os.environ["REDIS_CACHE_PASSWORD"] == "cache-pw"
@@ -160,6 +204,7 @@ class TestAwsSecretsLoaderSuccess:
             monkeypatch.delenv(key, raising=False)
 
         from hub.aws_secrets_loader import load_from_aws
+
         load_from_aws()
 
         assert os.environ["AWS_ACCESS_KEY_ID"] == "minio-user"
@@ -175,6 +220,7 @@ class TestAwsSecretsLoaderSuccess:
         monkeypatch.setenv("AWS_SECRETS_PREFIX", _TEST_PREFIX)
 
         from hub.aws_secrets_loader import load_from_aws
+
         load_from_aws()
 
         assert os.environ["POSTGRES_PASSWORD"] == "pg-pass"
@@ -194,6 +240,7 @@ class TestAwsSecretsLoaderSuccess:
         monkeypatch.delenv("SENDGRID_API_KEY", raising=False)
 
         from hub.aws_secrets_loader import load_from_aws
+
         load_from_aws()
 
         assert os.environ["SENDGRID_API_KEY"] == "sg-test-key"
@@ -211,6 +258,7 @@ class TestAwsSecretsLoaderSuccess:
         monkeypatch.delenv("CKAN_DADOS_GOV_BR_API_KEY", raising=False)
 
         from hub.aws_secrets_loader import load_from_aws
+
         # Should not raise even though stripe and ckan secrets don't exist
         load_from_aws()
 
@@ -230,6 +278,7 @@ class TestAwsSecretsLoaderSuccess:
         monkeypatch.setenv("AWS_SECRETS_PREFIX", _TEST_PREFIX)
 
         from hub.aws_secrets_loader import load_from_aws
+
         load_from_aws()
         assert os.environ["SECRET_KEY"] == "test-secret-key-from-aws"
 
@@ -245,6 +294,7 @@ class TestAwsSecretsLoaderSuccess:
 # Tests: error handling
 # ---------------------------------------------------------------------------
 
+
 class TestAwsSecretsLoaderErrors:
     """Tests for error handling and retry behavior."""
 
@@ -253,8 +303,9 @@ class TestAwsSecretsLoaderErrors:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """NoCredentialsError raises RuntimeError without retrying."""
-        import hub.aws_secrets_loader as loader_mod
         from botocore.exceptions import NoCredentialsError
+
+        import hub.aws_secrets_loader as loader_mod
 
         monkeypatch.setenv("AWS_REGION", _TEST_REGION)
         monkeypatch.setenv("AWS_SECRETS_PREFIX", _TEST_PREFIX)
@@ -275,8 +326,9 @@ class TestAwsSecretsLoaderErrors:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """AccessDeniedException raises RuntimeError without retrying."""
-        import hub.aws_secrets_loader as loader_mod
         from botocore.exceptions import ClientError
+
+        import hub.aws_secrets_loader as loader_mod
 
         monkeypatch.setenv("AWS_REGION", _TEST_REGION)
         monkeypatch.setenv("AWS_SECRETS_PREFIX", _TEST_PREFIX)
@@ -306,6 +358,7 @@ class TestAwsSecretsLoaderErrors:
         monkeypatch.delenv("SECRET_KEY", raising=False)
 
         from hub.aws_secrets_loader import load_from_aws
+
         # Succeeds (all ResourceNotFound → skipped)
         load_from_aws()
         # But SECRET_KEY was never injected — it stays absent
@@ -335,6 +388,7 @@ class TestAwsSecretsLoaderErrors:
             raise EndpointConnectionError(endpoint_url="https://fake.endpoint.com")
 
         from botocore.exceptions import EndpointConnectionError
+
         monkeypatch.setattr(loader_mod, "_build_client", _failing_client)
 
         with pytest.raises(RuntimeError, match="after 3 attempts"):
@@ -350,6 +404,7 @@ class TestAwsSecretsLoaderErrors:
 # Tests: settings.py integration
 # ---------------------------------------------------------------------------
 
+
 class TestSettingsIntegration:
     """Tests that settings.py branching logic matches the env var contract.
 
@@ -361,6 +416,7 @@ class TestSettingsIntegration:
     def test_settings_has_aws_secrets_enabled_check(self) -> None:
         """settings.py checks AWS_SECRETS_ENABLED and imports aws_secrets_loader."""
         import inspect
+
         from hub import settings as settings_mod
 
         source = inspect.getsource(settings_mod)
@@ -370,6 +426,7 @@ class TestSettingsIntegration:
     def test_settings_has_no_vault_references(self) -> None:
         """settings.py no longer references vault_loader (deleted in 210.20l)."""
         import inspect
+
         from hub import settings as settings_mod
 
         source = inspect.getsource(settings_mod)
@@ -378,6 +435,5 @@ class TestSettingsIntegration:
             "it was deleted in Phase 211 cleanup (210.20l)"
         )
         assert "VAULT_ENABLED" not in source, (
-            "settings.py still references VAULT_ENABLED — "
-            "vault backward compat removed in 210.20l"
+            "settings.py still references VAULT_ENABLED — vault backward compat removed in 210.20l"
         )

@@ -3,32 +3,28 @@ Unit tests for TransformationBusinessRules.
 
 Tests all validation methods using real services and models (no mocks/stubs).
 """
-import uuid
-from django.test import TestCase
-from django.core.exceptions import ValidationError as DjangoValidationError
 
-from hub.apps.transformation.business_rules import (
-    TransformationBusinessRules,
-    TransformationRuleExecutionContext,
-)
-from hub.apps.core.business_rules.base import ValidationResult, RuleExecutionContext
-from hub.apps.transformation.models import (
-    TransformationPipeline,
-    TransformationNode,
-    NodeType,
-    PipelineStatus
-)
-from hub.apps.transformation.exceptions import (
-    TransformationValidationError,
-    AssetCompatibilityError,
-    ResourceQuotaExceededError
-)
+import uuid
+
+from django.test import TestCase
+
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import Tenant
+from hub.apps.transformation.business_rules import (
+    TransformationBusinessRules,
+)
+from hub.apps.transformation.exceptions import (
+    AssetCompatibilityError,
+    ResourceQuotaExceededError,
+    TransformationValidationError,
+)
+from hub.apps.transformation.models import (
+    PipelineStatus,
+    TransformationPipeline,
+)
 from hub.apps.users.models import User, UserStatus
-from django.contrib.auth import get_user_model
 
 
 class TransformationBusinessRulesTest(TestCase):
@@ -37,20 +33,16 @@ class TransformationBusinessRulesTest(TestCase):
     def setUp(self):
         """Set up per-test fixtures."""
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         self.business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create valid pipeline definition
@@ -60,27 +52,18 @@ class TransformationBusinessRulesTest(TestCase):
                 {
                     "name": "filter_step",
                     "type": "task",
-                    "node_config": {
-                        "node_type": "filter",
-                        "filter_expression": "age > 18"
-                    }
+                    "node_config": {"node_type": "filter", "filter_expression": "age > 18"},
                 },
                 {
                     "name": "transform_step",
                     "type": "task",
                     "node_config": {
                         "node_type": "transform",
-                        "transform_expression": "name.upper()"
-                    }
+                        "transform_expression": "name.upper()",
+                    },
                 },
-                {
-                    "name": "output_step",
-                    "type": "task",
-                    "node_config": {
-                        "node_type": "output"
-                    }
-                }
-            ]
+                {"name": "output_step", "type": "task", "node_config": {"node_type": "output"}},
+            ],
         }
 
         # Create test asset with dataset (per-test: some tests mutate these)
@@ -88,7 +71,7 @@ class TransformationBusinessRulesTest(TestCase):
             tenant=self.tenant,
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
-            status=AssetStatus.ACTIVE
+            status=AssetStatus.ACTIVE,
         )
 
         self.file = File.objects.create(
@@ -97,7 +80,7 @@ class TransformationBusinessRulesTest(TestCase):
             storage_path=f"test/test-{uuid.uuid4().hex[:8]}.csv",
             size=1000,
             content_type="text/csv",
-            status=FileStatus.ACTIVE
+            status=FileStatus.ACTIVE,
         )
 
         self.dataset = Dataset.objects.create(
@@ -111,9 +94,9 @@ class TransformationBusinessRulesTest(TestCase):
                 "fields": [
                     {"name": "id", "data_type": "integer"},
                     {"name": "name", "data_type": "string"},
-                    {"name": "age", "data_type": "integer"}
+                    {"name": "age", "data_type": "integer"},
                 ]
-            }
+            },
         )
 
     def test_validate_pipeline_structure_valid(self):
@@ -123,7 +106,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_pipeline_structure(pipeline, raise_on_error=False)
@@ -141,15 +124,11 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Update to invalid definition using update() to bypass validation
-        invalid_definition = {
-            "steps": [
-                {"name": "step1", "type": "task"}
-            ]
-        }
+        invalid_definition = {"steps": [{"name": "step1", "type": "task"}]}
         TransformationPipeline.objects.filter(id=pipeline.id).update(
             pipeline_definition=invalid_definition
         )
@@ -169,14 +148,11 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Update to invalid definition using update() to bypass validation
-        invalid_definition = {
-            "version": "1.0.0",
-            "steps": []
-        }
+        invalid_definition = {"version": "1.0.0", "steps": []}
         TransformationPipeline.objects.filter(id=pipeline.id).update(
             pipeline_definition=invalid_definition
         )
@@ -191,10 +167,7 @@ class TransformationBusinessRulesTest(TestCase):
         """Test validate_pipeline_structure with duplicate step names."""
         invalid_definition = {
             "version": "1.0.0",
-            "steps": [
-                {"name": "step1", "type": "task"},
-                {"name": "step1", "type": "task"}
-            ]
+            "steps": [{"name": "step1", "type": "task"}, {"name": "step1", "type": "task"}],
         }
 
         pipeline = TransformationPipeline.objects.create(
@@ -202,7 +175,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=invalid_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_pipeline_structure(pipeline, raise_on_error=False)
@@ -218,7 +191,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Update to invalid definition using update() to bypass validation
@@ -233,7 +206,7 @@ class TransformationBusinessRulesTest(TestCase):
 
         self.assertEqual(
             cm.exception.error_code,
-            TransformationValidationError.ERROR_CODE_INVALID_PIPELINE_DEFINITION
+            TransformationValidationError.ERROR_CODE_INVALID_PIPELINE_DEFINITION,
         )
 
     def test_validate_node_compatibility_valid(self):
@@ -243,7 +216,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_node_compatibility(pipeline, raise_on_error=False)
@@ -259,11 +232,9 @@ class TransformationBusinessRulesTest(TestCase):
                 {
                     "name": "invalid_step",
                     "type": "task",
-                    "node_config": {
-                        "node_type": "invalid_type"
-                    }
+                    "node_config": {"node_type": "invalid_type"},
                 }
-            ]
+            ],
         }
 
         pipeline = TransformationPipeline.objects.create(
@@ -271,7 +242,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=invalid_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_node_compatibility(pipeline, raise_on_error=False)
@@ -290,9 +261,9 @@ class TransformationBusinessRulesTest(TestCase):
                     "node_config": {
                         "node_type": "filter"
                         # Missing filter_expression
-                    }
+                    },
                 }
-            ]
+            ],
         }
 
         pipeline = TransformationPipeline.objects.create(
@@ -300,7 +271,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=invalid_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_node_compatibility(pipeline, raise_on_error=False)
@@ -316,12 +287,9 @@ class TransformationBusinessRulesTest(TestCase):
                 {
                     "name": "filter_step",
                     "type": "task",
-                    "node_config": {
-                        "node_type": "filter",
-                        "filter_expression": "age > 18"
-                    }
+                    "node_config": {"node_type": "filter", "filter_expression": "age > 18"},
                 }
-            ]
+            ],
         }
 
         pipeline = TransformationPipeline.objects.create(
@@ -329,7 +297,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=definition_no_output,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_node_compatibility(pipeline, raise_on_error=False)
@@ -348,9 +316,9 @@ class TransformationBusinessRulesTest(TestCase):
                     "node_config": {
                         "node_type": "filter"
                         # Missing filter_expression
-                    }
+                    },
                 }
-            ]
+            ],
         }
 
         pipeline = TransformationPipeline.objects.create(
@@ -358,15 +326,14 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=invalid_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         with self.assertRaises(TransformationValidationError) as cm:
             self.business_rules.validate_node_compatibility(pipeline, raise_on_error=True)
 
         self.assertEqual(
-            cm.exception.error_code,
-            TransformationValidationError.ERROR_CODE_INVALID_NODE_CONFIG
+            cm.exception.error_code, TransformationValidationError.ERROR_CODE_INVALID_NODE_CONFIG
         )
 
     def test_validate_schema_alignment_valid(self):
@@ -376,7 +343,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_schema_alignment(
@@ -406,10 +373,10 @@ class TransformationBusinessRulesTest(TestCase):
                     "type": "task",
                     "node_config": {
                         "node_type": "filter",
-                        "filter_expression": "email IS NOT NULL"
-                    }
+                        "filter_expression": "email IS NOT NULL",
+                    },
                 }
-            ]
+            ],
         }
 
         pipeline = TransformationPipeline.objects.create(
@@ -417,7 +384,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=definition_with_missing_field,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_schema_alignment(
@@ -433,7 +400,7 @@ class TransformationBusinessRulesTest(TestCase):
             tenant=self.tenant,
             key="no-dataset-asset",
             name="No Dataset Asset",
-            status=AssetStatus.ACTIVE
+            status=AssetStatus.ACTIVE,
         )
 
         pipeline = TransformationPipeline.objects.create(
@@ -441,7 +408,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_schema_alignment(
@@ -457,7 +424,7 @@ class TransformationBusinessRulesTest(TestCase):
             tenant=self.tenant,
             key="no-dataset-asset",
             name="No Dataset Asset",
-            status=AssetStatus.ACTIVE
+            status=AssetStatus.ACTIVE,
         )
 
         pipeline = TransformationPipeline.objects.create(
@@ -465,7 +432,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         with self.assertRaises(AssetCompatibilityError) as cm:
@@ -474,8 +441,7 @@ class TransformationBusinessRulesTest(TestCase):
             )
 
         self.assertEqual(
-            cm.exception.error_code,
-            AssetCompatibilityError.ERROR_CODE_SCHEMA_INCOMPATIBLE
+            cm.exception.error_code, AssetCompatibilityError.ERROR_CODE_SCHEMA_INCOMPATIBLE
         )
 
     def test_validate_asset_compatibility_valid(self):
@@ -485,7 +451,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -500,10 +466,7 @@ class TransformationBusinessRulesTest(TestCase):
     def test_validate_asset_compatibility_invalid_status(self):
         """Test validate_asset_compatibility with asset in invalid status."""
         asset_draft = Asset.objects.create(
-            tenant=self.tenant,
-            key="draft-asset",
-            name="Draft Asset",
-            status=AssetStatus.DRAFT
+            tenant=self.tenant, key="draft-asset", name="Draft Asset", status=AssetStatus.DRAFT
         )
 
         pipeline = TransformationPipeline.objects.create(
@@ -511,7 +474,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -527,7 +490,7 @@ class TransformationBusinessRulesTest(TestCase):
             tenant=self.tenant,
             key="no-dataset-asset",
             name="No Dataset Asset",
-            status=AssetStatus.ACTIVE
+            status=AssetStatus.ACTIVE,
         )
 
         pipeline = TransformationPipeline.objects.create(
@@ -535,7 +498,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -548,10 +511,7 @@ class TransformationBusinessRulesTest(TestCase):
     def test_validate_asset_compatibility_with_target_asset(self):
         """Test validate_asset_compatibility with target asset."""
         target_asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="target-asset",
-            name="Target Asset",
-            status=AssetStatus.DRAFT
+            tenant=self.tenant, key="target-asset", name="Target Asset", status=AssetStatus.DRAFT
         )
 
         pipeline = TransformationPipeline.objects.create(
@@ -559,7 +519,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -575,7 +535,7 @@ class TransformationBusinessRulesTest(TestCase):
             tenant=self.tenant,
             key="no-dataset-asset",
             name="No Dataset Asset",
-            status=AssetStatus.ACTIVE
+            status=AssetStatus.ACTIVE,
         )
 
         pipeline = TransformationPipeline.objects.create(
@@ -583,7 +543,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         with self.assertRaises(AssetCompatibilityError) as cm:
@@ -592,8 +552,7 @@ class TransformationBusinessRulesTest(TestCase):
             )
 
         self.assertEqual(
-            cm.exception.error_code,
-            AssetCompatibilityError.ERROR_CODE_ASSET_INCOMPATIBLE
+            cm.exception.error_code, AssetCompatibilityError.ERROR_CODE_ASSET_INCOMPATIBLE
         )
 
     def test_validate_asset_compatibility_schema_validation(self):
@@ -605,19 +564,16 @@ class TransformationBusinessRulesTest(TestCase):
                 "fields": [
                     {"name": "id", "data_type": "integer"},
                     {"name": "name", "data_type": "string"},
-                    {"name": "age", "data_type": "integer"}
+                    {"name": "age", "data_type": "integer"},
                 ]
             },
             "steps": [
                 {
                     "name": "filter_step",
                     "type": "task",
-                    "node_config": {
-                        "node_type": "filter",
-                        "filter_expression": "age > 18"
-                    }
+                    "node_config": {"node_type": "filter", "filter_expression": "age > 18"},
                 }
-            ]
+            ],
         }
 
         pipeline = TransformationPipeline.objects.create(
@@ -625,7 +581,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=pipeline_def,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -647,19 +603,16 @@ class TransformationBusinessRulesTest(TestCase):
                     {"name": "id", "data_type": "integer"},
                     {"name": "name", "data_type": "string"},
                     {"name": "age", "data_type": "integer"},
-                    {"name": "email", "data_type": "string"}  # Not in asset schema
+                    {"name": "email", "data_type": "string"},  # Not in asset schema
                 ]
             },
             "steps": [
                 {
                     "name": "filter_step",
                     "type": "task",
-                    "node_config": {
-                        "node_type": "filter",
-                        "filter_expression": "age > 18"
-                    }
+                    "node_config": {"node_type": "filter", "filter_expression": "age > 18"},
                 }
-            ]
+            ],
         }
 
         pipeline = TransformationPipeline.objects.create(
@@ -667,7 +620,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=pipeline_def,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -690,10 +643,10 @@ class TransformationBusinessRulesTest(TestCase):
                     "type": "task",
                     "node_config": {
                         "node_type": "filter",
-                        "filter_expression": "age > 18 and name != ''"
-                    }
+                        "filter_expression": "age > 18 and name != ''",
+                    },
                 }
-            ]
+            ],
         }
 
         pipeline = TransformationPipeline.objects.create(
@@ -701,7 +654,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=pipeline_def,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -709,10 +662,7 @@ class TransformationBusinessRulesTest(TestCase):
         )
 
         schema_validation = result.details["asset_compatibility_checks"]["schema_validation"]
-        self.assertEqual(
-            schema_validation["pipeline_input_schema_source"],
-            "extracted_from_steps"
-        )
+        self.assertEqual(schema_validation["pipeline_input_schema_source"], "extracted_from_steps")
 
     def test_validate_asset_compatibility_format_validation_csv(self):
         """Test asset format validation for CSV format."""
@@ -721,7 +671,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -735,7 +685,7 @@ class TransformationBusinessRulesTest(TestCase):
 
     def test_validate_asset_compatibility_format_validation_json(self):
         """Test asset format validation for JSON format."""
-        json_dataset = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,
@@ -745,9 +695,9 @@ class TransformationBusinessRulesTest(TestCase):
             schema_json={
                 "fields": [
                     {"name": "id", "data_type": "integer"},
-                    {"name": "name", "data_type": "string"}
+                    {"name": "name", "data_type": "string"},
                 ]
-            }
+            },
         )
 
         pipeline = TransformationPipeline.objects.create(
@@ -755,7 +705,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -768,7 +718,7 @@ class TransformationBusinessRulesTest(TestCase):
 
     def test_validate_asset_compatibility_format_validation_parquet(self):
         """Test asset format validation for Parquet format."""
-        parquet_dataset = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,
@@ -778,9 +728,9 @@ class TransformationBusinessRulesTest(TestCase):
             schema_json={
                 "fields": [
                     {"name": "id", "data_type": "integer"},
-                    {"name": "name", "data_type": "string"}
+                    {"name": "name", "data_type": "string"},
                 ]
-            }
+            },
         )
 
         pipeline = TransformationPipeline.objects.create(
@@ -788,7 +738,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -801,18 +751,14 @@ class TransformationBusinessRulesTest(TestCase):
 
     def test_validate_asset_compatibility_format_validation_unsupported(self):
         """Test asset format validation rejects unsupported formats."""
-        unsupported_dataset = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,
             version=4,
             format="XML",  # Unsupported format
             row_count=100,
-            schema_json={
-                "fields": [
-                    {"name": "id", "data_type": "integer"}
-                ]
-            }
+            schema_json={"fields": [{"name": "id", "data_type": "integer"}]},
         )
 
         pipeline = TransformationPipeline.objects.create(
@@ -820,7 +766,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -833,18 +779,14 @@ class TransformationBusinessRulesTest(TestCase):
 
     def test_validate_asset_compatibility_size_validation_sync_mode(self):
         """Test asset size validation selects SYNC mode for small datasets."""
-        small_dataset = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,
             version=5,
             format="CSV",
             row_count=5000,  # Below SYNC threshold (10000)
-            schema_json={
-                "fields": [
-                    {"name": "id", "data_type": "integer"}
-                ]
-            }
+            schema_json={"fields": [{"name": "id", "data_type": "integer"}]},
         )
 
         pipeline = TransformationPipeline.objects.create(
@@ -852,7 +794,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -872,21 +814,17 @@ class TransformationBusinessRulesTest(TestCase):
             storage_path="test/large.csv",
             size=20 * 1024 * 1024,  # 20MB, above SYNC threshold (10MB)
             content_type="text/csv",
-            status=FileStatus.ACTIVE
+            status=FileStatus.ACTIVE,
         )
 
-        large_dataset = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=large_file,
             version=6,
             format="CSV",
             row_count=50000,  # Above SYNC threshold
-            schema_json={
-                "fields": [
-                    {"name": "id", "data_type": "integer"}
-                ]
-            }
+            schema_json={"fields": [{"name": "id", "data_type": "integer"}]},
         )
 
         pipeline = TransformationPipeline.objects.create(
@@ -894,7 +832,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -908,18 +846,14 @@ class TransformationBusinessRulesTest(TestCase):
 
     def test_validate_asset_compatibility_size_validation_no_size_info(self):
         """Test asset size validation handles missing size information."""
-        dataset_no_size = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,
             version=7,
             format="CSV",
             row_count=None,  # No row count
-            schema_json={
-                "fields": [
-                    {"name": "id", "data_type": "integer"}
-                ]
-            }
+            schema_json={"fields": [{"name": "id", "data_type": "integer"}]},
         )
         # Set file size to 0
         self.file.size = 0
@@ -930,7 +864,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -949,7 +883,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -964,16 +898,10 @@ class TransformationBusinessRulesTest(TestCase):
     def test_validate_asset_compatibility_access_validation_cross_tenant(self):
         """Test asset access validation for cross-tenant access."""
         # Create another tenant and asset
-        other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant"
-        )
+        other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
 
         other_asset = Asset.objects.create(
-            tenant=other_tenant,
-            key="other-asset",
-            name="Other Asset",
-            status=AssetStatus.ACTIVE
+            tenant=other_tenant, key="other-asset", name="Other Asset", status=AssetStatus.ACTIVE
         )
 
         other_file = File.objects.create(
@@ -982,7 +910,7 @@ class TransformationBusinessRulesTest(TestCase):
             storage_path="other/other.csv",
             size=1000,
             content_type="text/csv",
-            status=FileStatus.ACTIVE
+            status=FileStatus.ACTIVE,
         )
 
         Dataset.objects.create(
@@ -992,11 +920,7 @@ class TransformationBusinessRulesTest(TestCase):
             version=1,
             format="CSV",
             row_count=100,
-            schema_json={
-                "fields": [
-                    {"name": "id", "data_type": "integer"}
-                ]
-            }
+            schema_json={"fields": [{"name": "id", "data_type": "integer"}]},
         )
 
         pipeline = TransformationPipeline.objects.create(
@@ -1004,7 +928,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_asset_compatibility(
@@ -1025,17 +949,13 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Use AssetService to get asset
-        asset_service = AssetService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        asset_service = AssetService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         retrieved_asset = asset_service.get_asset(
-            asset_id=str(self.asset.id),
-            tenant_id=str(self.tenant.id)
+            asset_id=str(self.asset.id), tenant_id=str(self.tenant.id)
         )
 
         # Validate compatibility using business rules
@@ -1049,7 +969,10 @@ class TransformationBusinessRulesTest(TestCase):
             print(f"Warnings: {result.warnings}")
             print(f"Details: {result.details}")
 
-        self.assertTrue(result.is_valid, f"Validation failed with errors: {result.errors}, warnings: {result.warnings}")
+        self.assertTrue(
+            result.is_valid,
+            f"Validation failed with errors: {result.errors}, warnings: {result.warnings}",
+        )
         self.assertIn("asset_compatibility_checks", result.details)
         self.assertIn("schema_validation", result.details["asset_compatibility_checks"])
         self.assertIn("format_validation", result.details["asset_compatibility_checks"])
@@ -1063,12 +986,10 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
-        result = self.business_rules.validate_all(
-            pipeline, self.asset, raise_on_error=False
-        )
+        result = self.business_rules.validate_all(pipeline, self.asset, raise_on_error=False)
 
         # Validate_all combines all validations, so check structure is present
         self.assertIn("validation_results", result.details)
@@ -1081,7 +1002,9 @@ class TransformationBusinessRulesTest(TestCase):
         self.assertTrue(result.is_valid)
 
         # Structure and node_compatibility should be valid
-        structure_valid = result.details["validation_results"]["structure"].get("validation_checks", {})
+        structure_valid = result.details["validation_results"]["structure"].get(
+            "validation_checks", {}
+        )
         self.assertTrue(structure_valid)
         # Check that basic validations passed
         self.assertTrue(structure_valid.get("pipeline_definition_type", False))
@@ -1094,7 +1017,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Update to invalid definition using update() to bypass validation
@@ -1104,9 +1027,7 @@ class TransformationBusinessRulesTest(TestCase):
         )
         pipeline.refresh_from_db()
 
-        result = self.business_rules.validate_all(
-            pipeline, self.asset, raise_on_error=False
-        )
+        result = self.business_rules.validate_all(pipeline, self.asset, raise_on_error=False)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -1119,7 +1040,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Update to invalid definition using update() to bypass validation
@@ -1132,9 +1053,7 @@ class TransformationBusinessRulesTest(TestCase):
         # validate_all may raise either TransformationValidationError or AssetCompatibilityError
         # depending on the type of validation failure
         with self.assertRaises((TransformationValidationError, AssetCompatibilityError)):
-            self.business_rules.validate_all(
-                pipeline, self.asset, raise_on_error=True
-            )
+            self.business_rules.validate_all(pipeline, self.asset, raise_on_error=True)
 
     def test_validate_join_node_config(self):
         """Test validation of JOIN node configuration."""
@@ -1144,13 +1063,9 @@ class TransformationBusinessRulesTest(TestCase):
                 {
                     "name": "join_step",
                     "type": "task",
-                    "node_config": {
-                        "node_type": "join",
-                        "join_keys": ["id"],
-                        "join_type": "inner"
-                    }
+                    "node_config": {"node_type": "join", "join_keys": ["id"], "join_type": "inner"},
                 }
-            ]
+            ],
         }
 
         pipeline = TransformationPipeline.objects.create(
@@ -1158,7 +1073,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=join_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_node_compatibility(pipeline, raise_on_error=False)
@@ -1176,12 +1091,10 @@ class TransformationBusinessRulesTest(TestCase):
                     "node_config": {
                         "node_type": "aggregate",
                         "group_by": ["category"],
-                        "aggregation_functions": {
-                            "total": "sum(amount)"
-                        }
-                    }
+                        "aggregation_functions": {"total": "sum(amount)"},
+                    },
                 }
-            ]
+            ],
         }
 
         pipeline = TransformationPipeline.objects.create(
@@ -1189,7 +1102,7 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=aggregate_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_node_compatibility(pipeline, raise_on_error=False)
@@ -1207,9 +1120,9 @@ class TransformationBusinessRulesTest(TestCase):
                     "node_config": {
                         "node_type": "join"
                         # Missing join_keys and join_type
-                    }
+                    },
                 }
-            ]
+            ],
         }
 
         pipeline = TransformationPipeline.objects.create(
@@ -1217,13 +1130,18 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=invalid_join_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_node_compatibility(pipeline, raise_on_error=False)
 
         self.assertFalse(result.is_valid)
-        self.assertTrue(any("join_keys" in error.lower() or "join_type" in error.lower() for error in result.errors))
+        self.assertTrue(
+            any(
+                "join_keys" in error.lower() or "join_type" in error.lower()
+                for error in result.errors
+            )
+        )
 
     def test_validate_aggregate_node_missing_config(self):
         """Test validation of AGGREGATE node with missing configuration."""
@@ -1236,9 +1154,9 @@ class TransformationBusinessRulesTest(TestCase):
                     "node_config": {
                         "node_type": "aggregate"
                         # Missing group_by and aggregation_functions
-                    }
+                    },
                 }
-            ]
+            ],
         }
 
         pipeline = TransformationPipeline.objects.create(
@@ -1246,13 +1164,18 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=invalid_aggregate_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_node_compatibility(pipeline, raise_on_error=False)
 
         self.assertFalse(result.is_valid)
-        self.assertTrue(any("group_by" in error.lower() or "aggregation_functions" in error.lower() for error in result.errors))
+        self.assertTrue(
+            any(
+                "group_by" in error.lower() or "aggregation_functions" in error.lower()
+                for error in result.errors
+            )
+        )
 
     # Cross-service business rules tests
 
@@ -1262,12 +1185,11 @@ class TransformationBusinessRulesTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         result = business_rules.validate_cross_tenant_operations(
@@ -1283,7 +1205,7 @@ class TransformationBusinessRulesTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         business_rules = TransformationBusinessRules()
@@ -1304,7 +1226,10 @@ class TransformationBusinessRulesTest(TestCase):
         """
         from hub.apps.governance.models import AccessPolicy
         from hub.apps.marketplace.models import (
-            Entitlement, Listing, ListingStatus, PricingModel,
+            Entitlement,
+            Listing,
+            ListingStatus,
+            PricingModel,
         )
 
         # Create another tenant (KYC-verified, required to publish listings) and asset
@@ -1318,19 +1243,17 @@ class TransformationBusinessRulesTest(TestCase):
             tenant=other_tenant,
             key=f"other-asset-{uuid.uuid4().hex[:8]}",
             name="Other Asset",
-            status=AssetStatus.ACTIVE
+            status=AssetStatus.ACTIVE,
         )
 
         # Gate 1: ABAC ALLOW policy for cross-tenant access
         AccessPolicy.objects.create(
             tenant=other_tenant,
             name="Allow Cross-Tenant Access",
-            conditions={
-                "user": {"tenant_id": str(self.tenant.id)}
-            },
+            conditions={"user": {"tenant_id": str(self.tenant.id)}},
             effect="ALLOW",
             priority=100,
-            asset=other_asset
+            asset=other_asset,
         )
 
         # Gate 2: Marketplace entitlement
@@ -1350,12 +1273,11 @@ class TransformationBusinessRulesTest(TestCase):
             tenant=self.tenant,
             name=f"Test Pipeline {uuid.uuid4().hex[:8]}",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         result = business_rules.validate_cross_tenant_operations(
@@ -1363,9 +1285,7 @@ class TransformationBusinessRulesTest(TestCase):
         )
 
         self.assertTrue(
-            result.is_valid,
-            f"Expected valid with ABAC+entitlement, "
-            f"got errors: {result.errors}"
+            result.is_valid, f"Expected valid with ABAC+entitlement, got errors: {result.errors}"
         )
 
     def test_validate_resource_quota_success(self):
@@ -1374,7 +1294,7 @@ class TransformationBusinessRulesTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         business_rules = TransformationBusinessRules(tenant_id=str(self.tenant.id))
@@ -1389,7 +1309,7 @@ class TransformationBusinessRulesTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         business_rules = TransformationBusinessRules()
@@ -1402,13 +1322,14 @@ class TransformationBusinessRulesTest(TestCase):
     def test_validate_resource_quota_exceeded(self):
         """Test resource quota validation when quota is exceeded"""
         from django.core.cache import cache
+
         from hub.apps.tenants.services import get_tenant_job_limits
 
         pipeline = TransformationPipeline.objects.create(
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Set running jobs to exceed limit
@@ -1419,8 +1340,6 @@ class TransformationBusinessRulesTest(TestCase):
         cache.set(running_key, max_concurrency, timeout=300)  # Set to limit
 
         business_rules = TransformationBusinessRules(tenant_id=str(self.tenant.id))
-
-        from hub.apps.transformation.exceptions import ResourceQuotaExceededError
 
         with self.assertRaises(ResourceQuotaExceededError):
             business_rules.validate_resource_quota(pipeline, raise_on_error=True)
@@ -1437,22 +1356,19 @@ class TransformationBusinessRulesTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
-        policy = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Allow Pipeline Execution",
-            conditions={
-                "user": {"tenant_id": str(self.tenant.id)}
-            },
+            conditions={"user": {"tenant_id": str(self.tenant.id)}},
             effect="ALLOW",
-            priority=100
+            priority=100,
         )
 
         business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         result = business_rules.validate_pipeline_execution_permission(
@@ -1467,7 +1383,7 @@ class TransformationBusinessRulesTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         business_rules = TransformationBusinessRules(tenant_id=str(self.tenant.id))
@@ -1487,35 +1403,30 @@ class TransformationBusinessRulesTest(TestCase):
             tenant=self.tenant,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Create policies for assets
-        source_policy = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Allow Source Asset Read",
-            conditions={
-                "user": {"tenant_id": str(self.tenant.id)}
-            },
+            conditions={"user": {"tenant_id": str(self.tenant.id)}},
             effect="ALLOW",
             priority=100,
-            asset=self.asset
+            asset=self.asset,
         )
 
-        target_policy = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Allow Target Asset Write",
-            conditions={
-                "user": {"tenant_id": str(self.tenant.id)}
-            },
+            conditions={"user": {"tenant_id": str(self.tenant.id)}},
             effect="ALLOW",
             priority=100,
-            asset=self.asset
+            asset=self.asset,
         )
 
         business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         result = business_rules.validate_pipeline_execution_permission(
@@ -1531,19 +1442,15 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         result = business_rules.validate_resource_quota(
-            pipeline,
-            source_asset=None,
-            is_preview=False,
-            raise_on_error=False
+            pipeline, source_asset=None, is_preview=False, raise_on_error=False
         )
 
         # Should have quota checks details
@@ -1578,12 +1485,35 @@ class TransformationBusinessRulesTest(TestCase):
         complex_pipeline_def = {
             "version": "1.0.0",
             "steps": [
-                {"name": "filter1", "type": "task", "node_config": {"node_type": "FILTER", "filter_expression": "age > 18"}},
-                {"name": "join1", "type": "task", "node_config": {"node_type": "JOIN", "join_keys": ["id"], "join_type": "INNER"}},
-                {"name": "aggregate1", "type": "task", "node_config": {"node_type": "AGGREGATE", "group_by": ["category"], "aggregation_functions": {"sum": "amount"}}},
-                {"name": "transform1", "type": "task", "node_config": {"node_type": "TRANSFORM", "transform_expression": "amount * 1.1"}},
-                {"name": "output1", "type": "task", "node_config": {"node_type": "OUTPUT"}}
-            ]
+                {
+                    "name": "filter1",
+                    "type": "task",
+                    "node_config": {"node_type": "FILTER", "filter_expression": "age > 18"},
+                },
+                {
+                    "name": "join1",
+                    "type": "task",
+                    "node_config": {"node_type": "JOIN", "join_keys": ["id"], "join_type": "INNER"},
+                },
+                {
+                    "name": "aggregate1",
+                    "type": "task",
+                    "node_config": {
+                        "node_type": "AGGREGATE",
+                        "group_by": ["category"],
+                        "aggregation_functions": {"sum": "amount"},
+                    },
+                },
+                {
+                    "name": "transform1",
+                    "type": "task",
+                    "node_config": {
+                        "node_type": "TRANSFORM",
+                        "transform_expression": "amount * 1.1",
+                    },
+                },
+                {"name": "output1", "type": "task", "node_config": {"node_type": "OUTPUT"}},
+            ],
         }
 
         pipeline = TransformationPipeline.objects.create(
@@ -1591,12 +1521,11 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Complex Pipeline",
             pipeline_definition=complex_pipeline_def,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Test compute quota estimation
@@ -1615,10 +1544,7 @@ class TransformationBusinessRulesTest(TestCase):
         """Test storage quota estimation from pipeline"""
         # Create source asset with dataset
         source_asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="source-asset",
-            name="Source Asset",
-            status=AssetStatus.ACTIVE
+            tenant=self.tenant, key="source-asset", name="Source Asset", status=AssetStatus.ACTIVE
         )
 
         source_file = File.objects.create(
@@ -1627,7 +1553,7 @@ class TransformationBusinessRulesTest(TestCase):
             storage_path="test/source.csv",
             size=5 * 1024 * 1024,  # 5MB
             content_type="text/csv",
-            status=FileStatus.ACTIVE
+            status=FileStatus.ACTIVE,
         )
 
         source_dataset = Dataset.objects.create(
@@ -1640,9 +1566,9 @@ class TransformationBusinessRulesTest(TestCase):
             schema_json={
                 "fields": [
                     {"name": "id", "data_type": "integer"},
-                    {"name": "name", "data_type": "string"}
+                    {"name": "name", "data_type": "string"},
                 ]
-            }
+            },
         )
 
         # Set dataset size_bytes
@@ -1654,12 +1580,11 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Test storage quota estimation
@@ -1675,12 +1600,11 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Test query quota estimation for preview
@@ -1700,19 +1624,15 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         result = business_rules.validate_resource_quota(
-            pipeline,
-            source_asset=None,
-            is_preview=True,
-            raise_on_error=False
+            pipeline, source_asset=None, is_preview=True, raise_on_error=False
         )
 
         quota_checks = result.details["quota_checks"]
@@ -1721,13 +1641,11 @@ class TransformationBusinessRulesTest(TestCase):
 
         # Requested quota should include query_quota for preview operations
         requested_quota = quota_checks.get("requested_quota", {})
-        if "governance_validation_passed" in quota_checks and quota_checks["governance_validation_passed"]:
+        if quota_checks.get("governance_validation_passed"):
             self.assertIn("query_quota", requested_quota)
 
     def test_validate_resource_quota_storage_exceeded(self):
         """Test resource quota validation when storage quota is exceeded"""
-        from hub.apps.governance.services import GovernanceService
-        from hub.apps.core.services.base import ValidationError
 
         # Create a pipeline
         pipeline = TransformationPipeline.objects.create(
@@ -1735,15 +1653,12 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Create source asset with large dataset
         source_asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="large-asset",
-            name="Large Asset",
-            status=AssetStatus.ACTIVE
+            tenant=self.tenant, key="large-asset", name="Large Asset", status=AssetStatus.ACTIVE
         )
 
         source_file = File.objects.create(
@@ -1752,7 +1667,7 @@ class TransformationBusinessRulesTest(TestCase):
             storage_path="test/large.csv",
             size=100 * 1024 * 1024 * 1024,  # 100GB
             content_type="text/csv",
-            status=FileStatus.ACTIVE
+            status=FileStatus.ACTIVE,
         )
 
         source_dataset = Dataset.objects.create(
@@ -1762,29 +1677,21 @@ class TransformationBusinessRulesTest(TestCase):
             version=1,
             format="CSV",
             row_count=10000000,
-            schema_json={
-                "fields": [
-                    {"name": "id", "data_type": "integer"}
-                ]
-            }
+            schema_json={"fields": [{"name": "id", "data_type": "integer"}]},
         )
 
         source_dataset.size_bytes = 100 * 1024 * 1024 * 1024
         source_dataset.save()
 
         business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Mock GovernanceService to raise ValidationError for storage
         # Since we can't mock, we'll test the error handling path
         # by ensuring the method handles GovernanceService errors gracefully
         result = business_rules.validate_resource_quota(
-            pipeline,
-            source_asset=source_asset,
-            is_preview=False,
-            raise_on_error=False
+            pipeline, source_asset=source_asset, is_preview=False, raise_on_error=False
         )
 
         # Should have attempted governance validation
@@ -1800,9 +1707,13 @@ class TransformationBusinessRulesTest(TestCase):
         complex_pipeline_def = {
             "version": "1.0.0",
             "steps": [
-                {"name": f"join{i}", "type": "task", "node_config": {"node_type": "JOIN", "join_keys": ["id"], "join_type": "INNER"}}
+                {
+                    "name": f"join{i}",
+                    "type": "task",
+                    "node_config": {"node_type": "JOIN", "join_keys": ["id"], "join_type": "INNER"},
+                }
                 for i in range(20)  # 20 join operations
-            ]
+            ],
         }
 
         pipeline = TransformationPipeline.objects.create(
@@ -1810,12 +1721,11 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Complex Pipeline",
             pipeline_definition=complex_pipeline_def,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Test that compute quota is estimated correctly
@@ -1826,10 +1736,7 @@ class TransformationBusinessRulesTest(TestCase):
 
         # Validate quota (should pass if GovernanceService allows it)
         result = business_rules.validate_resource_quota(
-            pipeline,
-            source_asset=None,
-            is_preview=False,
-            raise_on_error=False
+            pipeline, source_asset=None, is_preview=False, raise_on_error=False
         )
 
         quota_checks = result.details["quota_checks"]
@@ -1843,19 +1750,15 @@ class TransformationBusinessRulesTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         result = business_rules.validate_resource_quota(
-            pipeline,
-            source_asset=None,
-            is_preview=False,
-            raise_on_error=False
+            pipeline, source_asset=None, is_preview=False, raise_on_error=False
         )
 
         quota_checks = result.details["quota_checks"]
@@ -1873,27 +1776,22 @@ class TransformationBusinessRulesTest(TestCase):
 
     def test_validate_resource_quota_integration_with_governance_service(self):
         """Test full integration with GovernanceService for quota validation"""
-        from hub.apps.governance.services import GovernanceService
 
         pipeline = TransformationPipeline.objects.create(
             tenant=self.tenant,
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Validate quota - should integrate with GovernanceService
         result = business_rules.validate_resource_quota(
-            pipeline,
-            source_asset=None,
-            is_preview=False,
-            raise_on_error=False
+            pipeline, source_asset=None, is_preview=False, raise_on_error=False
         )
 
         quota_checks = result.details["quota_checks"]
@@ -1918,4 +1816,3 @@ class TransformationBusinessRulesTest(TestCase):
                 self.assertIn("governance_validation_error", quota_checks)
                 self.assertIn("quota_exceeded", quota_checks)
                 self.assertTrue(quota_checks["quota_exceeded"])
-

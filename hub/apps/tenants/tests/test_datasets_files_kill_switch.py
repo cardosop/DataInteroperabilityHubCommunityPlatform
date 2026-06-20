@@ -8,13 +8,15 @@ booleans for SPA route gates.
 
 Tests use real Django ORM + DRF ``APIClient`` (no mocks).
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant, TenantStatus
@@ -24,8 +26,6 @@ from hub.apps.testing.role_support import (
     ensure_user_has_tenant_admin_role,
 )
 from hub.apps.users.models import UserStatus
-from rest_framework import status
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()

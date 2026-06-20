@@ -7,9 +7,11 @@ Validates:
 - 17.3 Optional: frontend depends_on api-service condition service_healthy;
   DATA_RESIDENCY_RETENTION.md exists
 """
+
+from pathlib import Path
+
 import pytest
 import yaml
-from pathlib import Path
 
 project_root = Path(__file__).resolve().parent.parent.parent
 
@@ -35,7 +37,14 @@ class TestPhase17EventBusDocumentation:
             "EVENT_BUS.md should list api-service as publisher"
         )
         # At least one of semantic/dq/compliance/webhook documented as N/A or Not yet
-        keywords = ["semantic-service", "dq-service", "compliance-service", "webhook-service", "N/A", "Not yet"]
+        keywords = [
+            "semantic-service",
+            "dq-service",
+            "compliance-service",
+            "webhook-service",
+            "N/A",
+            "Not yet",
+        ]
         assert any(k in content for k in keywords), (
             "EVENT_BUS.md should document which microservices do not publish"
         )
@@ -50,9 +59,9 @@ class TestPhase17TracingDocumentation:
         path = project_root / "docs" / "MONITORING.md"
         assert path.exists(), "docs/MONITORING.md should exist"
         content = path.read_text()
-        assert "W3C" in content and ("trace context" in content.lower() or "traceparent" in content.lower()), (
-            "MONITORING.md should document W3C trace context (Phase 17.2.1)"
-        )
+        assert "W3C" in content and (
+            "trace context" in content.lower() or "traceparent" in content.lower()
+        ), "MONITORING.md should document W3C trace context (Phase 17.2.1)"
 
     def test_monitoring_doc_lists_services_tracing(self):
         """MONITORING.md must list which services use trace context."""
@@ -72,7 +81,7 @@ class TestPhase17DependsOnAndDataResidency:
         """Load docker-compose.yml."""
         path = project_root / "docker-compose.yml"
         assert path.exists(), "docker-compose.yml should exist"
-        with open(path, "r") as f:
+        with open(path) as f:
             return yaml.safe_load(f)
 
     def test_frontend_depends_on_api_service_healthy(self, docker_compose_config):

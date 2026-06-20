@@ -3,7 +3,9 @@ Versioning operations for DataHub SDK.
 
 Provides methods for querying version history, schema evolution, time-travel queries, and version comparison.
 """
-from typing import Dict, Any, Optional
+
+from typing import Any, Dict, Optional
+
 from .client import DataHubClient
 
 
@@ -138,4 +140,3 @@ class VersioningAPI:
             "version2": version2_id,
         }
         return await self.client.get(f"datasets/{dataset_id}/versions/compare/", params=params)
-

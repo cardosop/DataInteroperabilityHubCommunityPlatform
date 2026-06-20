@@ -15,8 +15,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 def test_two_tenant_setup_cross_tenant_idor(authenticated_client_per_tenant, two_tenant_setup):
     """User from tenant A must not access tenant B's asset (validates fixtures)."""
-    tenant_a, tenant_b, user_a, user_b = two_tenant_setup
-    client_a, client_b = authenticated_client_per_tenant
+    _tenant_a, tenant_b, _user_a, _user_b = two_tenant_setup
+    client_a, _client_b = authenticated_client_per_tenant
 
     asset_b = Asset.objects.create(
         tenant=tenant_b,

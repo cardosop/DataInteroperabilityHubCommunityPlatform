@@ -4,7 +4,6 @@ Integration tests for docker-compose.staging.yml configuration.
 Tests staging-specific configurations, environment variables, volumes, and service settings.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -25,7 +24,7 @@ def staging_compose_file():
 @pytest.fixture(scope="module")
 def staging_compose_config(staging_compose_file):
     """Load docker-compose.staging.yml configuration."""
-    with open(staging_compose_file, "r") as f:
+    with open(staging_compose_file) as f:
         return yaml.safe_load(f)
 
 
@@ -33,7 +32,7 @@ def staging_compose_config(staging_compose_file):
 def base_compose_config():
     """Load base docker-compose.yml configuration for comparison."""
     base_file = project_root / "docker-compose.yml"
-    with open(base_file, "r") as f:
+    with open(base_file) as f:
         return yaml.safe_load(f)
 
 
@@ -42,9 +41,9 @@ class TestDockerComposeStaging:
 
     def test_staging_compose_file_exists(self, staging_compose_file):
         """Test that docker-compose.staging.yml exists."""
-        assert (
-            staging_compose_file.exists()
-        ), f"docker-compose.staging.yml not found at {staging_compose_file}"
+        assert staging_compose_file.exists(), (
+            f"docker-compose.staging.yml not found at {staging_compose_file}"
+        )
 
     def test_staging_compose_valid_yaml(self, staging_compose_config):
         """Test that docker-compose.staging.yml is valid YAML."""
@@ -84,9 +83,9 @@ class TestDockerComposeStaging:
         for service_name, service_config in services.items():
             if "container_name" in service_config:
                 container_name = service_config["container_name"]
-                assert (
-                    "staging" in container_name
-                ), f"Service {service_name} container_name must include 'staging': {container_name}"
+                assert "staging" in container_name, (
+                    f"Service {service_name} container_name must include 'staging': {container_name}"
+                )
 
     def _env_to_dict(self, environment):
         """Normalize environment (list of KEY=VALUE or dict) to dict for assertions."""
@@ -117,19 +116,19 @@ class TestDockerComposeStaging:
             raw_env = service_config.get("environment", {})
             environment = self._env_to_dict(raw_env)
 
-            assert (
-                "ENVIRONMENT" in environment
-            ), f"Service {service_name} must have ENVIRONMENT variable"
-            assert (
-                environment.get("ENVIRONMENT") == "staging"
-            ), f"Service {service_name} ENVIRONMENT must be 'staging', got '{environment.get('ENVIRONMENT')}'"
+            assert "ENVIRONMENT" in environment, (
+                f"Service {service_name} must have ENVIRONMENT variable"
+            )
+            assert environment.get("ENVIRONMENT") == "staging", (
+                f"Service {service_name} ENVIRONMENT must be 'staging', got '{environment.get('ENVIRONMENT')}'"
+            )
 
-            assert (
-                "LOG_LEVEL" in environment
-            ), f"Service {service_name} must have LOG_LEVEL variable"
-            assert (
-                environment.get("LOG_LEVEL") == "INFO"
-            ), f"Service {service_name} LOG_LEVEL must be 'INFO' for staging"
+            assert "LOG_LEVEL" in environment, (
+                f"Service {service_name} must have LOG_LEVEL variable"
+            )
+            assert environment.get("LOG_LEVEL") == "INFO", (
+                f"Service {service_name} LOG_LEVEL must be 'INFO' for staging"
+            )
 
             if "DEBUG" in environment:
                 debug_value = str(environment.get("DEBUG"))
@@ -138,7 +137,9 @@ class TestDockerComposeStaging:
                         "false",
                         "0",
                         "no",
-                    ], f"Service {service_name} DEBUG should be False for staging, got '{debug_value}'"
+                    ], (
+                        f"Service {service_name} DEBUG should be False for staging, got '{debug_value}'"
+                    )
 
     def test_staging_volumes_use_staging_suffix(self, staging_compose_config):
         """Test that volumes use staging-specific names (matches docker-compose.staging.yml)."""
@@ -166,23 +167,19 @@ class TestDockerComposeStaging:
                     vol_name = vol.split(":")[0]
                     # Check if it's a named volume (not a path)
                     if vol_name and not vol_name.startswith(".") and not vol_name.startswith("/"):
-                        assert (
-                            "staging" in vol_name or vol_name in allowed_volume_names
-                        ), f"Service {service_name} volume {vol_name} should use staging suffix"
+                        assert "staging" in vol_name or vol_name in allowed_volume_names, (
+                            f"Service {service_name} volume {vol_name} should use staging suffix"
+                        )
 
     def test_staging_networks_use_staging_network(self, staging_compose_config):
         """Test that all services use hub-net-staging network."""
         services = staging_compose_config.get("services", {})
         for service_name, service_config in services.items():
             networks = service_config.get("networks", [])
-            if isinstance(networks, list):
-                assert (
-                    "hub-net-staging" in networks
-                ), f"Service {service_name} must be connected to hub-net-staging network"
-            elif isinstance(networks, dict):
-                assert (
-                    "hub-net-staging" in networks
-                ), f"Service {service_name} must be connected to hub-net-staging network"
+            if isinstance(networks, list) or isinstance(networks, dict):
+                assert "hub-net-staging" in networks, (
+                    f"Service {service_name} must be connected to hub-net-staging network"
+                )
 
     def test_staging_health_check_intervals(self, staging_compose_config):
         """Test that health checks have staging-appropriate intervals."""
@@ -196,37 +193,23 @@ class TestDockerComposeStaging:
                 if interval:
                     # Parse interval (e.g., "20s" -> 20)
                     interval_value = int("".join(filter(str.isdigit, interval)))
-                    assert (
-                        interval_value <= 30
-                    ), f"Service {service_name} health check interval should be <= 30s for staging, got {interval}"
+                    assert interval_value <= 30, (
+                        f"Service {service_name} health check interval should be <= 30s for staging, got {interval}"
+                    )
 
     def test_staging_no_env_file(self, staging_compose_config):
         """Test that staging services don't use env_file (should use environment variables directly)."""
         services = staging_compose_config.get("services", {})
         for service_name, service_config in services.items():
-            assert (
-                "env_file" not in service_config
-            ), f"Service {service_name} should not use env_file in staging, use environment variables directly"
+            assert "env_file" not in service_config, (
+                f"Service {service_name} should not use env_file in staging, use environment variables directly"
+            )
 
     def test_staging_resource_limits(self, staging_compose_config):
         """Test that application services have resource limits configured."""
         services = staging_compose_config.get("services", {})
 
         # Infrastructure services may not have resource limits (matches docker-compose.staging.yml)
-        infrastructure_services = {
-            "postgres",
-            "redis-cache",
-            "redis-queue",
-            "redis-events",
-            "redis-channels",
-            "minio",
-            "fuseki",
-            "prometheus",
-            "grafana",
-            "jaeger",
-            "alertmanager",
-            "traefik",
-        }
 
         application_services = [
             "api-service",
@@ -244,16 +227,16 @@ class TestDockerComposeStaging:
                 # Check if deploy.resources is configured
                 if "deploy" in service_config:
                     deploy = service_config["deploy"]
-                    assert (
-                        "resources" in deploy
-                    ), f"Service {service_name} should have resource limits configured"
+                    assert "resources" in deploy, (
+                        f"Service {service_name} should have resource limits configured"
+                    )
                     resources = deploy["resources"]
-                    assert (
-                        "limits" in resources
-                    ), f"Service {service_name} should have resource limits"
-                    assert (
-                        "reservations" in resources
-                    ), f"Service {service_name} should have resource reservations"
+                    assert "limits" in resources, (
+                        f"Service {service_name} should have resource limits"
+                    )
+                    assert "reservations" in resources, (
+                        f"Service {service_name} should have resource reservations"
+                    )
 
     def test_staging_restart_policy(self, staging_compose_config):
         """Test that services have restart policies configured."""
@@ -270,30 +253,30 @@ class TestDockerComposeStaging:
                 service_config = services[service_name]
                 if "deploy" in service_config:
                     deploy = service_config["deploy"]
-                    assert (
-                        "restart_policy" in deploy
-                    ), f"Service {service_name} should have restart policy configured"
+                    assert "restart_policy" in deploy, (
+                        f"Service {service_name} should have restart policy configured"
+                    )
                     restart_policy = deploy["restart_policy"]
-                    assert (
-                        "condition" in restart_policy
-                    ), f"Service {service_name} restart policy should specify condition"
+                    assert "condition" in restart_policy, (
+                        f"Service {service_name} restart policy should specify condition"
+                    )
 
     def test_staging_all_services_have_build_or_image(self, staging_compose_config):
         """Test that all services have either build or image specified."""
         services = staging_compose_config.get("services", {})
         for service_name, service_config in services.items():
-            assert (
-                "build" in service_config or "image" in service_config
-            ), f"Service {service_name} must have either 'build' or 'image'"
+            assert "build" in service_config or "image" in service_config, (
+                f"Service {service_name} must have either 'build' or 'image'"
+            )
 
     def test_staging_infrastructure_services_exist(self, staging_compose_config):
         """Test that required infrastructure services exist (docker-compose.staging.yml uses redis-cache)."""
         services = staging_compose_config.get("services", {})
         required_services = ["postgres", "redis-cache", "minio", "fuseki"]
         for service_name in required_services:
-            assert (
-                service_name in services
-            ), f"Required infrastructure service {service_name} not found"
+            assert service_name in services, (
+                f"Required infrastructure service {service_name} not found"
+            )
 
     def test_staging_monitoring_services_exist(self, staging_compose_config):
         """Test that monitoring services exist."""
@@ -315,6 +298,6 @@ class TestDockerComposeStaging:
             "search-service",
         ]
         for service_name in application_services:
-            assert (
-                service_name in services
-            ), f"Required application service {service_name} not found"
+            assert service_name in services, (
+                f"Required application service {service_name} not found"
+            )

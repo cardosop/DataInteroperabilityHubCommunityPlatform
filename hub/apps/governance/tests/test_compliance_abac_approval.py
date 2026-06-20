@@ -1,6 +1,7 @@
 """
 Phase 272.2 + 272.3 — compliance gate + ABAC approval tests.
 """
+
 from __future__ import annotations
 
 import json
@@ -8,8 +9,7 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
-from rest_framework import status
+from django.test import TestCase
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -26,7 +26,10 @@ def _mk_tenant(slug=None):
 
     s = slug or uuid.uuid4().hex[:8]
     tenant = Tenant.objects.create(
-        name=f"CG-{s}", slug=f"cg-{s}", status="ACTIVE", kyc_status="UNVERIFIED",
+        name=f"CG-{s}",
+        slug=f"cg-{s}",
+        status="ACTIVE",
+        kyc_status="UNVERIFIED",
     )
     ensure_tenant_has_active_subscription(tenant)
     return tenant
@@ -113,6 +116,7 @@ class TestComplianceGate(TestCase):
 
     def test_blocks_when_allowed_to_store_false(self):
         from hub.apps.compliance.models import ComplianceRun
+
         ComplianceRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -129,6 +133,7 @@ class TestComplianceGate(TestCase):
 
     def test_approval_proceeds_when_allowed_to_store_true(self):
         from hub.apps.compliance.models import ComplianceRun
+
         ComplianceRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -178,8 +183,7 @@ class TestForceApproveBypass(TestCase):
 
     def test_force_approve_bypasses_compliance_gate(self):
         resp = self.client.post(
-            f"/api/v1/governance/access-requests/{self.ar.id}/approve/"
-            f"?force_approve=true",
+            f"/api/v1/governance/access-requests/{self.ar.id}/approve/?force_approve=true",
             data={},
             format="json",
         )
@@ -193,8 +197,7 @@ class TestForceApproveBypass(TestCase):
         from hub.apps.audit.models import AuditEvent
 
         self.client.post(
-            f"/api/v1/governance/access-requests/{self.ar.id}/approve/"
-            f"?force_approve=true",
+            f"/api/v1/governance/access-requests/{self.ar.id}/approve/?force_approve=true",
             data={},
             format="json",
         )
@@ -206,8 +209,7 @@ class TestForceApproveBypass(TestCase):
         self.approver.is_platform_admin = False
         self.approver.save()
         resp = self.client.post(
-            f"/api/v1/governance/access-requests/{self.ar.id}/approve/"
-            f"?force_approve=true",
+            f"/api/v1/governance/access-requests/{self.ar.id}/approve/?force_approve=true",
             data={},
             format="json",
         )

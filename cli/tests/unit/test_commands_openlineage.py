@@ -1,10 +1,10 @@
 """Unit tests for ``datahub openlineage`` commands (283.5.13)."""
+
 import json
+from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
-from unittest.mock import Mock
-
 from datahub_cli.main import cli
 
 

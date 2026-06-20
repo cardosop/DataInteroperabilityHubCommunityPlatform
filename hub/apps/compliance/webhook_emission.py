@@ -7,8 +7,9 @@ internal bus events (``compliance.check.completed``). This module fans out scrub
 """
 
 from __future__ import annotations
+
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 import structlog
@@ -49,7 +50,7 @@ def decode_report_presigned_token(raw_token: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
-def build_report_presigned_url_for_run(run: ComplianceRun) -> Optional[str]:
+def build_report_presigned_url_for_run(run: ComplianceRun) -> str | None:
     base = (getattr(settings, "COMPLIANCE_WEBHOOK_REPORT_BASE_URL", "") or "").strip()
     if not base:
         return None
@@ -60,8 +61,8 @@ def build_report_presigned_url_for_run(run: ComplianceRun) -> Optional[str]:
 def build_compliance_completed_webhook_data(
     run: ComplianceRun,
     *,
-    report_presigned_url: Optional[str],
-) -> Dict[str, Any]:
+    report_presigned_url: str | None,
+) -> dict[str, Any]:
     """D231.8 — whitelist-only payload nested under webhook ``data``."""
     asset_id = str(run.asset_id) if run.asset_id else None
     completed = run.completed_at.isoformat() if run.completed_at else None
@@ -118,9 +119,7 @@ def publish_compliance_check_completed(run: ComplianceRun) -> None:
             return
 
         report_url = build_report_presigned_url_for_run(row)
-        event_data = build_compliance_completed_webhook_data(
-            row, report_presigned_url=report_url
-        )
+        event_data = build_compliance_completed_webhook_data(row, report_presigned_url=report_url)
 
         try:
             delivery_targets = WebhookDeliveryService.trigger_webhook(
@@ -154,7 +153,7 @@ def publish_compliance_check_completed(run: ComplianceRun) -> None:
 
         record_compliance_intake_gate_event(EVENT_WEBHOOK_FIRED, row.tenant_id)
 
-        tenant_row: Optional[Tenant] = getattr(row, "tenant", None)
+        tenant_row: Tenant | None = getattr(row, "tenant", None)
 
         try:
             create_audit_event(

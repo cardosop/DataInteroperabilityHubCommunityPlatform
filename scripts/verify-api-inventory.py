@@ -13,95 +13,100 @@ Usage:
 """
 
 import re
-from pathlib import Path
-from typing import List, Dict, Set
 import sys
+from pathlib import Path
 
 
-def read_inventory(inventory_path: Path) -> Dict[str, List[Dict]]:
+def read_inventory(inventory_path: Path) -> dict[str, list[dict]]:
     """Read and parse the inventory markdown file"""
-    content = inventory_path.read_text(encoding='utf-8')
+    content = inventory_path.read_text(encoding="utf-8")
 
     endpoints_by_app = {}
     current_app = None
 
-    for line in content.split('\n'):
+    for line in content.split("\n"):
         # Match app section header
-        app_match = re.match(r'^### (\w+) \((\d+) endpoints\)', line)
+        app_match = re.match(r"^### (\w+) \((\d+) endpoints\)", line)
         if app_match:
             current_app = app_match.group(1).lower()
             endpoints_by_app[current_app] = []
             continue
 
         # Match endpoint table row
-        if current_app and '|' in line and line.strip().startswith('|'):
-            parts = [p.strip() for p in line.split('|')]
+        if current_app and "|" in line and line.strip().startswith("|"):
+            parts = [p.strip() for p in line.split("|")]
             if len(parts) >= 5 and parts[1] and parts[2]:
                 method = parts[1]
-                path = parts[2].strip('`')
-                view = parts[3].strip('`') if len(parts) > 3 else ''
-                action = parts[4] if len(parts) > 4 else ''
-                endpoint_type = parts[5] if len(parts) > 5 else ''
+                path = parts[2].strip("`")
+                view = parts[3].strip("`") if len(parts) > 3 else ""
+                action = parts[4] if len(parts) > 4 else ""
+                endpoint_type = parts[5] if len(parts) > 5 else ""
 
                 # Skip header/separator rows (Method, or path that is not a path)
-                if method == 'Method' or not path.startswith('/') or path.replace('-', '').replace(' ', '').strip() == '':
+                if (
+                    method == "Method"
+                    or not path.startswith("/")
+                    or path.replace("-", "").replace(" ", "").strip() == ""
+                ):
                     continue
                 if method and path:
-                    endpoints_by_app[current_app].append({
-                        'method': method,
-                        'path': path,
-                        'view': view,
-                        'action': action,
-                        'type': endpoint_type
-                    })
+                    endpoints_by_app[current_app].append(
+                        {
+                            "method": method,
+                            "path": path,
+                            "view": view,
+                            "action": action,
+                            "type": endpoint_type,
+                        }
+                    )
 
     return endpoints_by_app
 
 
-def verify_compliance_endpoints(endpoints: List[Dict]) -> tuple[bool, List[str]]:
+def verify_compliance_endpoints(endpoints: list[dict]) -> tuple[bool, list[str]]:
     """Verify compliance endpoints use standardized patterns"""
     issues = []
 
     # Check for old patterns
-    old_patterns = [e for e in endpoints if '/compliance-runs/' in e['path']]
+    old_patterns = [e for e in endpoints if "/compliance-runs/" in e["path"]]
     if old_patterns:
         issues.append(f"Found {len(old_patterns)} endpoints with old pattern '/compliance-runs/':")
         for ep in old_patterns:
             issues.append(f"  - {ep['method']} {ep['path']}")
 
     # Check for standardized patterns
-    standardized = [e for e in endpoints if '/runs/' in e['path']]
+    standardized = [e for e in endpoints if "/runs/" in e["path"]]
     if not standardized:
         issues.append("No endpoints found with standardized '/runs/' pattern")
 
     # Expected endpoints
     expected_paths = {
-        'GET /api/v1/compliance/runs/',
-        'POST /api/v1/compliance/runs/',
-        'GET /api/v1/compliance/runs/{id}/',
-        'PUT /api/v1/compliance/runs/{id}/',
-        'PATCH /api/v1/compliance/runs/{id}/',
-        'DELETE /api/v1/compliance/runs/{id}/',
-        'GET /api/v1/compliance/runs/{id}/results/',
+        "GET /api/v1/compliance/runs/",
+        "POST /api/v1/compliance/runs/",
+        "GET /api/v1/compliance/runs/{id}/",
+        "PUT /api/v1/compliance/runs/{id}/",
+        "PATCH /api/v1/compliance/runs/{id}/",
+        "DELETE /api/v1/compliance/runs/{id}/",
+        "GET /api/v1/compliance/runs/{id}/results/",
     }
 
     found_paths = {f"{e['method']} {e['path']}" for e in endpoints}
 
     missing = expected_paths - found_paths
     if missing:
-        issues.append(f"Missing expected endpoints:")
+        issues.append("Missing expected endpoints:")
         for path in missing:
             issues.append(f"  - {path}")
 
     return len(issues) == 0, issues
 
 
-def verify_dq_endpoints(endpoints: List[Dict]) -> tuple[bool, List[str]]:
+def verify_dq_endpoints(endpoints: list[dict]) -> tuple[bool, list[str]]:
     """Verify DQ endpoints use standardized patterns"""
     issues = []
 
     # Check for old patterns
-    old_patterns = [e for e in endpoints if '/dq-runs/' in e['path']]
+    old_patterns = [e for e in endpoints if "/dq-runs/" in e["path"]]
     if old_patterns:
         issues.append(f"Found {len(old_patterns)} endpoints with old pattern '/dq-runs/':")
         for ep in old_patterns:
@@ -110,24 +115,26 @@ def verify_dq_endpoints(endpoints: List[Dict]) -> tuple[bool, List[str]]:
     return len(issues) == 0, issues
 
 
-def verify_inventory_completeness(endpoints_by_app: Dict[str, List[Dict]]) -> tuple[bool, List[str]]:
+def verify_inventory_completeness(
+    endpoints_by_app: dict[str, list[dict]],
+) -> tuple[bool, list[str]]:
     """Verify inventory completeness"""
     issues = []
 
     # Check for expected apps (case-insensitive)
     # Note: Some apps may have different names in inventory
-    expected_apps = {'compliance', 'dq', 'assets', 'contracts', 'datasets', 'auth', 'audit'}
-    found_apps_lower = {app.lower() for app in endpoints_by_app.keys()}
+    expected_apps = {"compliance", "dq", "assets", "contracts", "datasets", "auth", "audit"}
+    found_apps_lower = {app.lower() for app in endpoints_by_app}
 
     # Check for variations and partial matches
     found_apps_variations = set(found_apps_lower)
     for app in found_apps_lower:
         # Handle variations like "data quality" -> "dq"
-        if 'data' in app and 'quality' in app:
-            found_apps_variations.add('dq')
+        if "data" in app and "quality" in app:
+            found_apps_variations.add("dq")
         # Handle variations like "contract" -> "contracts"
-        if 'contract' in app:
-            found_apps_variations.add('contracts')
+        if "contract" in app:
+            found_apps_variations.add("contracts")
 
     missing_apps = expected_apps - found_apps_variations
     # Only report if truly missing (not just a naming variation)
@@ -135,12 +142,12 @@ def verify_inventory_completeness(endpoints_by_app: Dict[str, List[Dict]]) -> tu
     # This is acceptable - we'll only warn, not fail
     if missing_apps:
         # Check if it's a critical app
-        critical_apps = {'compliance', 'dq', 'assets', 'datasets', 'auth', 'audit'}
+        critical_apps = {"compliance", "dq", "assets", "datasets", "auth", "audit"}
         critical_missing = missing_apps & critical_apps
         if critical_missing:
             issues.append(f"Missing critical expected apps: {', '.join(critical_missing)}")
         # Contracts is optional - may have been removed or renamed
-        if 'contracts' in missing_apps and len(missing_apps) == 1:
+        if "contracts" in missing_apps and len(missing_apps) == 1:
             # Only contracts missing - this is acceptable
             pass
 
@@ -155,7 +162,7 @@ def verify_inventory_completeness(endpoints_by_app: Dict[str, List[Dict]]) -> tu
 def main():
     """Main verification"""
     project_root = Path(__file__).resolve().parent.parent
-    inventory_path = project_root / 'docs' / 'api-audit' / 'current-api-inventory.md'
+    inventory_path = project_root / "docs" / "api-audit" / "current-api-inventory.md"
 
     if not inventory_path.exists():
         print(f"❌ Inventory file not found: {inventory_path}")
@@ -174,9 +181,9 @@ def main():
     all_passed = True
 
     # Verify compliance endpoints
-    if 'compliance' in endpoints_by_app:
+    if "compliance" in endpoints_by_app:
         print("\n✅ Verifying compliance endpoints...")
-        passed, issues = verify_compliance_endpoints(endpoints_by_app['compliance'])
+        passed, issues = verify_compliance_endpoints(endpoints_by_app["compliance"])
         if not passed:
             all_passed = False
             all_issues.extend(issues)
@@ -189,8 +196,8 @@ def main():
         all_passed = False
 
     # Verify DQ endpoints
-    if 'dq' in endpoints_by_app or 'data quality' in endpoints_by_app:
-        dq_key = 'dq' if 'dq' in endpoints_by_app else 'data quality'
+    if "dq" in endpoints_by_app or "data quality" in endpoints_by_app:
+        dq_key = "dq" if "dq" in endpoints_by_app else "data quality"
         print("\n✅ Verifying DQ endpoints...")
         passed, issues = verify_dq_endpoints(endpoints_by_app[dq_key])
         if not passed:
@@ -213,7 +220,7 @@ def main():
         print("  ✅ Inventory completeness verified")
 
     # Summary
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     if all_passed:
         print("✅ All verification checks passed!")
         return 0
@@ -224,6 +231,5 @@ def main():
         return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
-

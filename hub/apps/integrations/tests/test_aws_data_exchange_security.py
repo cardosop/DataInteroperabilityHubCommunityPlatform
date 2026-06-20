@@ -7,6 +7,7 @@ and real AWS when testing error mapping (skips when credentials not available).
 """
 
 import os
+import uuid
 
 import pytest
 from django.db import connection
@@ -17,7 +18,6 @@ from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.connectors.aws_data_exchange_connector import AWSDataExchangeConnector
 from hub.apps.integrations.models import MarketplaceConnection
 from hub.apps.tenants.models import Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -29,7 +29,7 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
         """Set up test fixtures. Ensure DB connection is open after prior tests (avoids connection already closed)."""
         connection.ensure_connection()
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug="test-tenant-security")
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-security-{uid}")
 
     def test_iam_credentials_validation(self):
         """Test IAM credentials validation"""
@@ -127,24 +127,6 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
                 destination_key_prefix="prefix",
             )
 
-    def test_least_privilege_principle(self):
-        """Test that connector follows least privilege principle"""
-        # Verify connector only requests necessary AWS permissions
-        # This is tested by verifying the connector only calls necessary AWS APIs
-
-        connector = AWSDataExchangeConnector(
-            aws_access_key_id="test-key", aws_secret_access_key="test-secret"
-        )
-
-        # Verify connector only uses read operations for discovery
-        # (list_data_sets, get_data_set, list_data_set_revisions, list_revision_assets)
-        # Verify connector only uses necessary operations for downloads
-        # (create_job, start_job, get_job, list_objects_v2, get_object)
-
-        # This is more of a documentation/design verification
-        # Actual permission testing requires AWS IAM policy testing
-        pass
-
     def test_credential_rotation_support(self):
         """Test that connector supports credential rotation"""
         # Test that connector can be re-authenticated with new credentials
@@ -185,7 +167,9 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
     def test_resource_not_found_exception_handling(self):
         """Test that non-existent dataset ID leads to NotFoundError (real AWS when creds available)."""
         access_key = os.getenv("AWS_DATA_EXCHANGE_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID")
-        secret_key = os.getenv("AWS_DATA_EXCHANGE_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY")
+        secret_key = os.getenv("AWS_DATA_EXCHANGE_SECRET_ACCESS_KEY") or os.getenv(
+            "AWS_SECRET_ACCESS_KEY"
+        )
         if not access_key or not secret_key:
             self.skipTest("AWS credentials required to test real NotFoundError mapping")
         connector = AWSDataExchangeConnector(
@@ -194,11 +178,13 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
             region_name=os.getenv("AWS_REGION", "us-east-1"),
         )
         try:
-            connector.authenticate({
-                "aws_access_key_id": access_key,
-                "aws_secret_access_key": secret_key,
-                "region_name": os.getenv("AWS_REGION", "us-east-1"),
-            })
+            connector.authenticate(
+                {
+                    "aws_access_key_id": access_key,
+                    "aws_secret_access_key": secret_key,
+                    "region_name": os.getenv("AWS_REGION", "us-east-1"),
+                }
+            )
         except (ConnectionError, PermissionError):
             self.skipTest(
                 "AWS credentials invalid or expired - cannot test ResourceNotFoundException mapping"
@@ -209,22 +195,11 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
             connector.get_listing(fake_dataset_id)
 
     def test_aws_security_best_practices(self):
-        """Test AWS security best practices"""
-        # Verify connector uses secure defaults
+        """Test AWS security best practices — pins default region."""
         connector = AWSDataExchangeConnector(
             aws_access_key_id="test-key", aws_secret_access_key="test-secret"
         )
-
-        # Verify region is set (default: us-east-1)
         self.assertEqual(connector._region_name, "us-east-1")
-
-        # Verify credentials are not logged
-        # (This is verified by checking that credentials are not in log output)
-        # Actual verification requires log inspection
-
-        # Verify connector uses HTTPS for AWS API calls
-        # (boto3 uses HTTPS by default, but we verify the connector doesn't override this)
-        pass
 
     def test_credential_exposure_prevention(self):
         """Test prevention of credential exposure"""

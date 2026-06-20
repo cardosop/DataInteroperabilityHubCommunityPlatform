@@ -25,21 +25,14 @@ and fix root causes rather than workarounds.
 
 import json
 import threading
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional
+import uuid
 
-from tests.utils.wait_helpers import wait_for_event_persistence
-
-from django.db import transaction
 from django.test import TransactionTestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    NormalizationStatus,
-    OriginalFormat,
     OriginalSpecType,
 )
 from hub.apps.contracts.services import ContractService, ODPSService
@@ -49,7 +42,7 @@ from hub.apps.core.events.models import Event
 from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import User, UserStatus
-import uuid
+from tests.utils.wait_helpers import wait_for_event_persistence
 
 
 class ODPSMultiTenancyTestBase(ContractsTestBase):
@@ -242,7 +235,6 @@ class TenantIsolationTest(ODPSMultiTenancyTestBase):
     def test_tenant_cannot_link_to_other_tenant_odcs_contract(self):
         """Test that tenant A cannot link ODPS to tenant B's ODCS contract."""
         # Create ODCS contract for tenant B
-        from hub.apps.contracts.services import ContractService
 
         contract_service_b = ContractService(
             tenant_id=str(self.tenant_b.id), user_id=str(self.user_b.id)
@@ -281,7 +273,6 @@ class TenantIsolationTest(ODPSMultiTenancyTestBase):
     def test_tenant_cannot_link_to_other_tenant_odps_contract(self):
         """Test that tenant A cannot link their ODCS to tenant B's ODPS contract."""
         # Create ODCS contract for tenant A
-        from hub.apps.contracts.services import ContractService
 
         contract_service_a = ContractService(
             tenant_id=str(self.tenant_a.id), user_id=str(self.user_a.id)
@@ -406,13 +397,13 @@ class MultiTenantConcurrentOperationsTest(ODPSMultiTenancyTestBase, TransactionT
         self.results = {"tenant_a": [], "tenant_b": [], "tenant_c": []}
         self.errors = {"tenant_a": [], "tenant_b": [], "tenant_c": []}
 
-    def test_multiple_tenants_creating_odps_simultaneously(self):
+    def test_multiple_tenants_creating_odps_with_isolation(self):
         """
-        Test multiple tenants creating ODPS simultaneously.
+        Test multiple tenants creating ODPS contracts with cross-tenant isolation.
 
-        Note: Due to TransactionTestCase limitations with threading (threads can't see
-        uncommitted data), this test creates contracts sequentially but verifies that
-        isolation is maintained - no cross-tenant data leakage occurs.
+        Creates contracts sequentially (TransactionTestCase threading limitations
+        prevent true concurrency testing) but verifies that no cross-tenant data
+        leakage occurs — each tenant only sees their own contracts.
         """
         # Create ODPS contracts for all tenants sequentially
         # (TransactionTestCase threading limitations prevent true concurrency testing,
@@ -465,7 +456,7 @@ class MultiTenantConcurrentOperationsTest(ODPSMultiTenancyTestBase, TransactionT
             len(contract_ids_b & contract_ids_c), 0, "Tenant B and C contracts should not overlap"
         )
 
-    def test_multiple_tenants_linking_odps_simultaneously(self):
+    def test_multiple_tenants_linking_odps_with_isolation(self):
         """
         Test multiple tenants linking ODPS simultaneously.
 
@@ -473,11 +464,10 @@ class MultiTenantConcurrentOperationsTest(ODPSMultiTenancyTestBase, TransactionT
         uncommitted data), this test creates and links contracts sequentially but verifies
         that isolation is maintained - no cross-tenant data leakage occurs.
         """
-        from hub.apps.contracts.services import ContractService
 
         # Create ODPS and ODCS contracts for each tenant sequentially
         contracts = {}
-        for tenant_id, tenant_obj, user_obj, asset_obj, service_odps, service_contract in [
+        for tenant_id, tenant_obj, _user_obj, asset_obj, service_odps, service_contract in [
             (
                 "a",
                 self.tenant_a,
@@ -557,7 +547,7 @@ class MultiTenantConcurrentOperationsTest(ODPSMultiTenancyTestBase, TransactionT
                     f"Contract {contract.id} should belong to tenant {tenant_id}",
                 )
 
-    def test_multiple_tenants_exporting_odps_simultaneously(self):
+    def test_multiple_tenants_exporting_odps_with_isolation(self):
         """
         Test multiple tenants exporting ODPS simultaneously.
 
@@ -912,7 +902,7 @@ class TenantScopedEventTest(ODPSMultiTenancyTestBase, TransactionTestCase):
             resolve_external_refs=False,
         )
 
-        contract_b = self.service_b.create_odps(
+        self.service_b.create_odps(
             odps_raw=self.sample_odps_json,
             odps_format="json",
             asset_id=str(self.asset_b.id),
@@ -921,7 +911,6 @@ class TenantScopedEventTest(ODPSMultiTenancyTestBase, TransactionTestCase):
 
         # Soft-delete tenant A's contract
         from hub.apps.users.models import Role, UserRole
-        from hub.apps.contracts.services import ContractService
 
         # Assign TENANT_ADMIN role to user_a for deletion permission
         admin_role, _ = Role.objects.get_or_create(
@@ -958,7 +947,7 @@ class TenantScopedEventTest(ODPSMultiTenancyTestBase, TransactionTestCase):
         contract_a_draft.status = ContractStatus.DRAFT
         contract_a_draft.save()
 
-        contract_b_active = self.service_b.create_odps(
+        self.service_b.create_odps(
             odps_raw=self.sample_odps_json,
             odps_format="json",
             asset_id=str(self.asset_b.id),
@@ -1092,43 +1081,39 @@ class TenantScopedEventTest(ODPSMultiTenancyTestBase, TransactionTestCase):
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
             "product": {
-                "details": {"en": {"productID": "test-large", "description": large_description}}
+                "details": {"en": {"productID": "test-large", "name": "Test Large", "description": large_description}},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
             },
         }
-        try:
-            contract = self.service_a.create_odps(
-                odps_raw=json.dumps(odps_data),
-                odps_format="json",
-                tenant_id=str(self.tenant_a.id),
-                user_id=str(self.user_a.id),
-            )
-            # Should handle very large documents
-            self.assertIsNotNone(contract)
-            self.assertEqual(contract.tenant, self.tenant_a)
-        except Exception:
-            # May fail if document is too large
-            pass
+        contract = self.service_a.create_odps(
+            odps_raw=json.dumps(odps_data),
+            odps_format="json",
+            tenant_id=str(self.tenant_a.id),
+            user_id=str(self.user_a.id),
+        )
+        # Should handle very large documents
+        self.assertIsNotNone(contract)
+        self.assertEqual(contract.tenant, self.tenant_a)
 
     def test_multi_tenancy_validation_handles_none_values(self):
         """Test that multi-tenancy validation handles None values correctly."""
         odps_data = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
-            "product": {"details": {"en": {"productID": "test-none", "description": None}}},
+            "product": {
+                "details": {"en": {"productID": "test-none", "name": "Test None", "description": None}},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
         }
-        try:
-            contract = self.service_a.create_odps(
-                odps_raw=json.dumps(odps_data),
-                odps_format="json",
-                tenant_id=str(self.tenant_a.id),
-                user_id=str(self.user_a.id),
-            )
-            # Should handle None values gracefully
-            self.assertIsNotNone(contract)
-            self.assertEqual(contract.tenant, self.tenant_a)
-        except Exception:
-            # May fail validation
-            pass
+        contract = self.service_a.create_odps(
+            odps_raw=json.dumps(odps_data),
+            odps_format="json",
+            tenant_id=str(self.tenant_a.id),
+            user_id=str(self.user_a.id),
+        )
+        # Should handle None values gracefully
+        self.assertIsNotNone(contract)
+        self.assertEqual(contract.tenant, self.tenant_a)
 
     def test_multi_tenancy_validation_handles_nested_structures(self):
         """Test that multi-tenancy validation handles nested structures correctly."""

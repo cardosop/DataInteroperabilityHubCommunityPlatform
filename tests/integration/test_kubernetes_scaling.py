@@ -25,8 +25,7 @@ def kustomize_available_check():
     """Skip entire module if kustomize/kubectl is not available."""
     if not kustomize_available():
         pytest.skip(
-            "kustomize or kubectl kustomize not available; "
-            "install to run Kubernetes manifest tests"
+            "kustomize or kubectl kustomize not available; install to run Kubernetes manifest tests"
         )
 
 
@@ -34,7 +33,9 @@ class TestKubernetesScaling:
     """Validate HPA, ResourceQuota, and PVC scaling-related structure."""
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
-    def test_hpa_has_scale_target_and_metrics(self, service_name, base_path, kustomize_available_check):
+    def test_hpa_has_scale_target_and_metrics(
+        self, service_name, base_path, kustomize_available_check
+    ):
         """HorizontalPodAutoscaler has scaleTargetRef, minReplicas, maxReplicas, and metrics."""
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
@@ -65,8 +66,14 @@ class TestKubernetesScaling:
         """HPA scaleTargetRef points to a Deployment or StatefulSet in the same build."""
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
-        deployments = {(d.get("metadata", {}).get("name"), d.get("metadata", {}).get("namespace", "default")) for d in by_kind.get("Deployment", [])}
-        statefulsets = {(s.get("metadata", {}).get("name"), s.get("metadata", {}).get("namespace", "default")) for s in by_kind.get("StatefulSet", [])}
+        deployments = {
+            (d.get("metadata", {}).get("name"), d.get("metadata", {}).get("namespace", "default"))
+            for d in by_kind.get("Deployment", [])
+        }
+        statefulsets = {
+            (s.get("metadata", {}).get("name"), s.get("metadata", {}).get("namespace", "default"))
+            for s in by_kind.get("StatefulSet", [])
+        }
         for hpa in by_kind.get("HorizontalPodAutoscaler", []):
             ref = (hpa.get("spec") or {}).get("scaleTargetRef") or {}
             name = ref.get("name")
@@ -84,7 +91,9 @@ class TestKubernetesScaling:
                 )
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
-    def test_resource_quota_has_hard_limits(self, service_name, base_path, kustomize_available_check):
+    def test_resource_quota_has_hard_limits(
+        self, service_name, base_path, kustomize_available_check
+    ):
         """ResourceQuota has non-empty spec.hard."""
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
@@ -95,7 +104,9 @@ class TestKubernetesScaling:
             )
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
-    def test_resource_quota_namespace_consistent(self, service_name, base_path, kustomize_available_check):
+    def test_resource_quota_namespace_consistent(
+        self, service_name, base_path, kustomize_available_check
+    ):
         """ResourceQuota metadata.namespace is set and consistent with spec (same namespace)."""
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
@@ -124,7 +135,9 @@ class TestKubernetesScaling:
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
         for pvc in by_kind.get("PersistentVolumeClaim", []):
-            storage = (pvc.get("spec") or {}).get("resources", {}).get("requests", {}).get("storage")
+            storage = (
+                (pvc.get("spec") or {}).get("resources", {}).get("requests", {}).get("storage")
+            )
             assert storage, (
                 f"{service_name} PVC {pvc.get('metadata', {}).get('name')} missing spec.resources.requests.storage"
             )

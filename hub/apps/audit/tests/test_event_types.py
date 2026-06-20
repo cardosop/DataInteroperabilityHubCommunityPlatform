@@ -7,10 +7,10 @@ attributes (not just string literals scattered through the codebase) so
 that callers can import them and the linter/type-checker can flag a
 typo at the import site instead of at audit-replay time.
 """
+
 from __future__ import annotations
 
 import pytest
-
 
 pytestmark = [pytest.mark.unit]
 
@@ -138,8 +138,7 @@ def test_onboarding_completed_constant_exists_and_is_self_describing():
     value = event_types.ONBOARDING_COMPLETED
     assert isinstance(value, str)
     assert value == "ONBOARDING_COMPLETED", (
-        "convention: constant value matches the constant name so "
-        "audit rows are self-describing"
+        "convention: constant value matches the constant name so audit rows are self-describing"
     )
 
 

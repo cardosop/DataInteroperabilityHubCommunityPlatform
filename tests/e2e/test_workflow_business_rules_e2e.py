@@ -22,22 +22,22 @@ import pytest
 
 pytestmark = [pytest.mark.slow, pytest.mark.workflow_e2e]
 
+from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, ValidationStatus
 from hub.apps.orchestration.models import WorkflowStatus
 from hub.apps.orchestration.workflow_engine import WorkflowExecutionError
 from hub.apps.orchestration.workflows.asset_creation import AssetCreationWorkflow
 from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
+from hub.apps.orchestration.workflows.dataset_creation import DatasetCreationWorkflow
 from hub.apps.orchestration.workflows.marketplace_publication import (
     MarketplacePublicationWorkflow,
 )
 from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
-from tests.e2e.workflow_e2e_base import WorkflowE2ETestBase
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, ValidationStatus
-from hub.apps.orchestration.workflows.dataset_creation import DatasetCreationWorkflow
 from hub.apps.orchestration.workflows.scheduled_ingestion import (
     ScheduledIngestionWorkflow,
 )
 from hub.apps.tenants.models import KYCStatus
+from tests.e2e.workflow_e2e_base import WorkflowE2ETestBase
 
 
 def _valid_odps_doc():
@@ -206,7 +206,7 @@ class TestContractCreationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
             "tenant_id": str(self.tenant.id),
             "user_id": str(self.user.id),
         }
-        instance, err = self.create_start_and_execute(
+        instance, _err = self.create_start_and_execute(
             ContractCreationWorkflow.WORKFLOW_NAME, input_data
         )
         self.assert_workflow_failed(instance)
@@ -268,7 +268,7 @@ class TestAssetCreationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
             "user_id": str(self.user.id),
             # missing contract_id and file_id - will fail validation or first step
         }
-        instance, err = self.create_start_and_execute(
+        instance, _err = self.create_start_and_execute(
             AssetCreationWorkflow.WORKFLOW_NAME, asset_input
         )
         # May fail at start or first step; expect failed or rolled back (compensation runs)
@@ -334,7 +334,9 @@ class TestMarketplacePublicationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
         instance, err = self.create_start_and_execute(
             MarketplacePublicationWorkflow.WORKFLOW_NAME, mp_input
         )
-        self.assertIsNone(err, f"Marketplace workflow should succeed for eligible asset, got: {err}")
+        self.assertIsNone(
+            err, f"Marketplace workflow should succeed for eligible asset, got: {err}"
+        )
         self.assert_workflow_completed(instance)
         self.assert_validation_results_in_state_data(instance)
 
@@ -345,7 +347,7 @@ class TestMarketplacePublicationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
             "tenant_id": str(self.tenant.id),
             "user_id": str(self.user.id),
         }
-        instance, err = self.create_start_and_execute(
+        instance, _err = self.create_start_and_execute(
             MarketplacePublicationWorkflow.WORKFLOW_NAME, mp_input
         )
         instance.refresh_from_db()
@@ -367,7 +369,7 @@ class TestDatasetCreationWorkflowBusinessRulesE2E(WorkflowE2ETestBase):
             "tenant_id": str(self.tenant.id),
             "user_id": str(self.user.id),
         }
-        instance, err = self.create_start_and_execute(
+        instance, _err = self.create_start_and_execute(
             DatasetCreationWorkflow.WORKFLOW_NAME, input_data
         )
         instance.refresh_from_db()

@@ -3,16 +3,19 @@ Tests for Marketplace Integration API.
 
 Unit tests for validation logic and error handling.
 """
-import pytest
+
 import uuid
+
+import pytest
+
 from tests.pytest_mvp_skip import skip_if_mvp_mode
 
 pytestmark = skip_if_mvp_mode
 
 from datahub_interoperability import DataHubClient, DataHubClientConfig, MarketplaceIntegrationAPI
 from datahub_interoperability.errors import (
-    MarketplaceValidationError,
     MarketplaceConnectionError,
+    MarketplaceValidationError,
     NotFoundError,
 )
 
@@ -45,17 +48,20 @@ def marketplace_api(client):
 
 # Module Structure Tests
 
+
 def test_marketplace_api_import():
     """Test that MarketplaceIntegrationAPI can be imported from package"""
     from datahub_interoperability import MarketplaceIntegrationAPI
+
     assert MarketplaceIntegrationAPI is not None
-    assert hasattr(MarketplaceIntegrationAPI, '__init__')
+    assert hasattr(MarketplaceIntegrationAPI, "__init__")
 
 
 def test_marketplace_api_in_package_exports():
     """Test that MarketplaceIntegrationAPI is in package __all__ exports"""
     import datahub_interoperability
-    assert 'MarketplaceIntegrationAPI' in datahub_interoperability.__all__
+
+    assert "MarketplaceIntegrationAPI" in datahub_interoperability.__all__
 
 
 def test_marketplace_api_initialization(marketplace_api, client):
@@ -69,7 +75,7 @@ def test_marketplace_api_initialization(marketplace_api, client):
 async def test_marketplace_api_accessible_from_client(config):
     """Test that marketplace API is accessible from client"""
     async with DataHubClient(config) as client:
-        assert hasattr(client, 'marketplace')
+        assert hasattr(client, "marketplace")
         assert client.marketplace is not None
         assert isinstance(client.marketplace, MarketplaceIntegrationAPI)
 
@@ -82,6 +88,7 @@ async def test_marketplace_api_has_client_reference(config):
 
 
 # Connection Management Validation Tests
+
 
 def test_create_connection_validation_marketplace_type_empty(marketplace_api):
     """Test create_connection validation: empty marketplace_type"""
@@ -163,11 +170,15 @@ async def test_list_connections_validation_offset_negative(marketplace_api):
 
 # Sync Job Validation Tests
 
+
 def test_sync_assets_to_marketplace_validation_empty_asset_ids(marketplace_api):
     """Test sync_assets_to_marketplace validation: empty asset_ids"""
     with pytest.raises(MarketplaceValidationError) as exc_info:
         marketplace_api._validate_asset_ids([])
-    assert "required" in exc_info.value.message.lower() or "cannot be empty" in exc_info.value.message.lower()
+    assert (
+        "required" in exc_info.value.message.lower()
+        or "cannot be empty" in exc_info.value.message.lower()
+    )
 
 
 def test_sync_assets_to_marketplace_validation_invalid_asset_id(marketplace_api):
@@ -196,6 +207,7 @@ async def test_sync_bidirectional_validation_empty_listing_ids(marketplace_api):
 
 # Mapping Validation Tests
 
+
 def test_create_mapping_validation_empty_external_listing_id(marketplace_api):
     """Test create_mapping validation: empty external_listing_id"""
     with pytest.raises(MarketplaceValidationError) as exc_info:
@@ -212,12 +224,16 @@ def test_create_mapping_validation_external_listing_id_not_string(marketplace_ap
 
 # Connector Validation Tests
 
+
 @pytest.mark.asyncio
 async def test_get_connector_info_validation_empty_type(marketplace_api):
     """Test get_connector_info validation: empty connector_type"""
     with pytest.raises(MarketplaceValidationError) as exc_info:
         await marketplace_api.get_connector_info("")
-    assert "connector_type" in exc_info.value.message.lower() or "required" in exc_info.value.message.lower()
+    assert (
+        "connector_type" in exc_info.value.message.lower()
+        or "required" in exc_info.value.message.lower()
+    )
 
 
 @pytest.mark.asyncio
@@ -229,6 +245,7 @@ async def test_get_connector_info_validation_type_not_string(marketplace_api):
 
 
 # Error Handling Tests
+
 
 def test_handle_marketplace_error_preserves_not_found(marketplace_api):
     """Test that NotFoundError is preserved in error handling"""
@@ -254,6 +271,7 @@ def test_handle_marketplace_error_preserves_validation_error(marketplace_api):
 def test_handle_marketplace_error_wraps_generic_error(marketplace_api):
     """Test that generic errors are wrapped in MarketplaceConnectionError"""
     from datahub_interoperability.errors import DataHubError
+
     generic_error = DataHubError("Generic error", "GENERIC_ERROR", 500)
     result = marketplace_api._handle_marketplace_error(generic_error, "test")
     assert isinstance(result, MarketplaceConnectionError)
@@ -262,40 +280,41 @@ def test_handle_marketplace_error_wraps_generic_error(marketplace_api):
 
 # Method Existence Tests
 
+
 def test_marketplace_api_methods_exist(marketplace_api):
     """Test that MarketplaceIntegrationAPI has expected methods"""
     # Connection methods
-    assert hasattr(marketplace_api, 'create_connection')
-    assert hasattr(marketplace_api, 'list_connections')
-    assert hasattr(marketplace_api, 'get_connection')
-    assert hasattr(marketplace_api, 'update_connection')
-    assert hasattr(marketplace_api, 'delete_connection')
-    assert hasattr(marketplace_api, 'test_connection')
+    assert hasattr(marketplace_api, "create_connection")
+    assert hasattr(marketplace_api, "list_connections")
+    assert hasattr(marketplace_api, "get_connection")
+    assert hasattr(marketplace_api, "update_connection")
+    assert hasattr(marketplace_api, "delete_connection")
+    assert hasattr(marketplace_api, "test_connection")
 
     # Sync job methods
-    assert hasattr(marketplace_api, 'sync_assets_to_marketplace')
-    assert hasattr(marketplace_api, 'sync_from_marketplace')
-    assert hasattr(marketplace_api, 'sync_bidirectional')
-    assert hasattr(marketplace_api, 'get_sync_job')
-    assert hasattr(marketplace_api, 'list_sync_jobs')
-    assert hasattr(marketplace_api, 'cancel_sync_job')
+    assert hasattr(marketplace_api, "sync_assets_to_marketplace")
+    assert hasattr(marketplace_api, "sync_from_marketplace")
+    assert hasattr(marketplace_api, "sync_bidirectional")
+    assert hasattr(marketplace_api, "get_sync_job")
+    assert hasattr(marketplace_api, "list_sync_jobs")
+    assert hasattr(marketplace_api, "cancel_sync_job")
 
     # Mapping methods
-    assert hasattr(marketplace_api, 'create_mapping')
-    assert hasattr(marketplace_api, 'get_mapping')
-    assert hasattr(marketplace_api, 'list_mappings')
-    assert hasattr(marketplace_api, 'update_mapping')
-    assert hasattr(marketplace_api, 'delete_mapping')
+    assert hasattr(marketplace_api, "create_mapping")
+    assert hasattr(marketplace_api, "get_mapping")
+    assert hasattr(marketplace_api, "list_mappings")
+    assert hasattr(marketplace_api, "update_mapping")
+    assert hasattr(marketplace_api, "delete_mapping")
 
     # Connector methods
-    assert hasattr(marketplace_api, 'list_connectors')
-    assert hasattr(marketplace_api, 'get_connector_info')
+    assert hasattr(marketplace_api, "list_connectors")
+    assert hasattr(marketplace_api, "get_connector_info")
 
 
 def test_marketplace_api_validation_helpers_exist(marketplace_api):
     """Test that MarketplaceIntegrationAPI has validation helper methods"""
-    assert hasattr(marketplace_api, '_validate_uuid')
-    assert hasattr(marketplace_api, '_validate_marketplace_type')
-    assert hasattr(marketplace_api, '_validate_config')
-    assert hasattr(marketplace_api, '_validate_asset_ids')
-    assert hasattr(marketplace_api, '_handle_marketplace_error')
+    assert hasattr(marketplace_api, "_validate_uuid")
+    assert hasattr(marketplace_api, "_validate_marketplace_type")
+    assert hasattr(marketplace_api, "_validate_config")
+    assert hasattr(marketplace_api, "_validate_asset_ids")
+    assert hasattr(marketplace_api, "_handle_marketplace_error")

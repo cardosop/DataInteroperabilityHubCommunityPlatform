@@ -9,13 +9,14 @@ No mocks - uses real implementations.
 """
 
 import json
+import uuid
+
 import pytest
 from rest_framework import status
 
 from hub.apps.contracts.models import Contract, OriginalFormat, OriginalSpecType
 
 from .base_idor import IDORTestBase
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -53,16 +54,18 @@ class ContractSecurity401Test:
 
     def test_contracts_retrieve_returns_401_when_unauthenticated(self):
         """GET contracts/{id}/ without auth must return 401."""
+        from django.contrib.auth import get_user_model
         from rest_framework.test import APIClient
 
         from hub.apps.tenants.models import Tenant
         from hub.apps.users.models import UserStatus
 
-        from django.contrib.auth import get_user_model
-
         User = get_user_model()
-        tenant = Tenant.objects.create(name=f"Temp Tenant {uuid.uuid4().hex[:8]}", slug=f"temp-tenant-dc-{uuid.uuid4().hex[:8]}")
-        user = User.objects.create_user(
+        tenant = Tenant.objects.create(
+            name=f"Temp Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"temp-tenant-dc-{uuid.uuid4().hex[:8]}",
+        )
+        User.objects.create_user(
             email=f"temp-dc-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant,

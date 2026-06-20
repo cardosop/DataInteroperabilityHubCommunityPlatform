@@ -12,12 +12,14 @@ Skip helper conventions (Phase 279 post-cleanup):
 - ``requires_backend`` — ``pytest.mark.skipif`` marker for use-case / journey
   tests that use ``DATAHUB_BASE_URL`` + ``DATAHUB_API_TOKEN`` env vars.
 """
-import warnings
-import pytest
-import requests
+
+import os
 import subprocess
 import time
-import os
+import warnings
+
+import pytest
+import requests
 
 # Phase 216.X.3 — surface the cleanup_registry autouse fixture and the
 # persona teardown plumbing to every test under sdk/python/tests/.
@@ -28,8 +30,10 @@ from tests.fixtures.cleanup_registry import (  # noqa: F401
     cleanup_registry,
     drain_persona_teardown_callbacks,
 )
+import contextlib
 
 # ── Canonical skip-helpers (DRY — prefer these in new / updated tests) ──────
+
 
 def default_api_base_url() -> str:
     """Return the default API base URL for health checks.
@@ -195,10 +199,7 @@ def require_api_key_or_skip() -> str:
 def require_api_or_skip() -> None:
     """Skip the current test if the hub API is not reachable."""
     if not is_api_available():
-        pytest.skip(
-            "API service is not available. "
-            "Ensure Docker Compose services are running."
-        )
+        pytest.skip("API service is not available. Ensure Docker Compose services are running.")
 
 
 def pytest_sessionstart(session):  # noqa: ARG001
@@ -215,11 +216,14 @@ def pytest_sessionstart(session):  # noqa: ARG001
     """
     # ── 1. Purge persona caches ──────────────────────────────────────
     import glob as _glob
+
     from tests._persona_provisioning import _CACHE_DIR as _cache_dir
+
     if _cache_dir.exists():
         for f in _glob.glob(str(_cache_dir / "*.json")):
             try:
                 from pathlib import Path
+
                 Path(f).unlink()
             except OSError:
                 pass
@@ -229,6 +233,7 @@ def pytest_sessionstart(session):  # noqa: ARG001
         for f in _glob.glob(str(_cache_dir / "*.lock")):
             try:
                 from pathlib import Path
+
                 Path(f).unlink()
             except OSError:
                 pass
@@ -253,10 +258,8 @@ def pytest_sessionstart(session):  # noqa: ARG001
     # ── 4. Enable feature flags on the platform-admin tenant ──────────
     # Uses the auto-provisioned admin token to PATCH the admin tenant
     # via the REST API (no Docker / Django shell dependency).
-    try:
+    with contextlib.suppress(Exception):
         _enable_admin_tenant_feature_flags()
-    except Exception:
-        pass
 
     # Reset ODH circuit breaker at session start so integration tests
     # don't get blocked by a stale OPEN breaker from a previous run.
@@ -320,7 +323,10 @@ def _reset_odh_circuit_breaker() -> None:
 
     _sp.run(
         [
-            "docker", "exec", "hub-test-redis-cache", "redis-cli",
+            "docker",
+            "exec",
+            "hub-test-redis-cache",
+            "redis-cli",
             "DEL",
             "circuit_breaker:odh-inference-scheduler:state",
             "circuit_breaker:odh-inference-scheduler:failure_count",
@@ -349,7 +355,9 @@ def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
             )
 
 
-def check_service_health(service_name: str, port: int, health_path: str = "/health", max_wait: int = 30) -> bool:
+def check_service_health(
+    service_name: str, port: int, health_path: str = "/health", max_wait: int = 30
+) -> bool:
     """
     Check if a service is healthy.
 
@@ -391,12 +399,12 @@ def start_service_if_needed(service_name: str, port: int, health_path: str = "/h
 
     # Try to start the service
     try:
-        project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
+        project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
         result = subprocess.run(
-            ['docker', 'compose', 'up', '-d', service_name],
+            ["docker", "compose", "up", "-d", service_name],
             capture_output=True,
             timeout=60,
-            cwd=project_dir
+            cwd=project_dir,
         )
         if result.returncode == 0:
             # Wait for service to be healthy

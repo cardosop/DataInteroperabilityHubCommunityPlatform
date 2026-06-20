@@ -18,7 +18,6 @@ Usage:
 
 import os
 from datetime import timedelta
-from typing import Optional
 
 import requests
 from django.core.management.base import BaseCommand
@@ -227,11 +226,9 @@ class Command(BaseCommand):
             if synced:
                 self.stdout.write(f"    DLQ sync: {synced} item(s) synced")
         except Exception as e:
-            self.stdout.write(
-                self.style.WARNING(f"    ⚠️  DLQ sync failed (non-fatal): {e}")
-            )
+            self.stdout.write(self.style.WARNING(f"    ⚠️  DLQ sync failed (non-fatal): {e}"))
 
-    def _check_prefect_flow_run_status(self, prefect_flow_run_id: str) -> Optional[dict]:
+    def _check_prefect_flow_run_status(self, prefect_flow_run_id: str) -> dict | None:
         """Check Prefect flow run status via Prefect API."""
         prefect_api_url = os.getenv("PREFECT_API_URL", "http://prefect-server:4200/api")
         prefect_api_key = os.getenv("PREFECT_API_KEY", "")

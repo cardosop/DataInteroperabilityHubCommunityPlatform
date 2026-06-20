@@ -6,19 +6,19 @@ _handle_response() status-code routing.  Only ``requests.request`` is
 mocked at the module level — the real ``APIClient`` instance is used
 with a controlled ``auth_manager`` injected directly.
 """
-import pytest
-import requests
+
 from unittest.mock import Mock, patch
 
+import pytest
+import requests
 from datahub_cli.api_client import APIClient
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_response(status_code=200, json_body=None, content=b"{}", url="",
-                   text_body=None):
+
+def _make_response(status_code=200, json_body=None, content=b"{}", url="", text_body=None):
     """Build a realistic ``requests.Response`` for use with mocked requests."""
     resp = Mock(spec=requests.Response)
     resp.status_code = status_code
@@ -54,6 +54,7 @@ def _auth_manager_mock(*, authenticated=True, headers=None, api_key=None):
 # ---------------------------------------------------------------------------
 # _request() tests
 # ---------------------------------------------------------------------------
+
 
 class TestAPIClientRequest:
     """Unit tests for APIClient._request()."""
@@ -254,6 +255,7 @@ class TestAPIClientRequest:
 # _handle_response() tests
 # ---------------------------------------------------------------------------
 
+
 class TestAPIClientHandleResponse:
     """Unit tests for APIClient._handle_response()."""
 
@@ -261,8 +263,9 @@ class TestAPIClientHandleResponse:
         from click import ClickException
 
         client = APIClient()
-        resp = _make_response(400, json_body={"error": "bad request"},
-                              text_body='{"error":"bad request"}')
+        resp = _make_response(
+            400, json_body={"error": "bad request"}, text_body='{"error":"bad request"}'
+        )
 
         with pytest.raises(ClickException):
             client._handle_response(resp)
@@ -271,8 +274,9 @@ class TestAPIClientHandleResponse:
         from click import ClickException
 
         client = APIClient()
-        resp = _make_response(500, json_body={"error": "server error"},
-                              text_body='{"error":"server error"}')
+        resp = _make_response(
+            500, json_body={"error": "server error"}, text_body='{"error":"server error"}'
+        )
 
         with pytest.raises(ClickException):
             client._handle_response(resp)

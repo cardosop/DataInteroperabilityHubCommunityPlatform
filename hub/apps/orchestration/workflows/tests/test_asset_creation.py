@@ -1,23 +1,23 @@
 """
 Unit tests for Asset Creation/Activation Workflow
 """
-import unittest
-import uuid
-from unittest.mock import patch, MagicMock, Mock
-from django.test import TestCase
-from django.utils import timezone
 
-from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus, StepStatus
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
-from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.workflows.asset_creation import AssetCreationWorkflow
-from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, DQStatus, ComplianceStatus
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User
-from hub.apps.datasets.models import Dataset
-from hub.apps.files.models import File as FileModel
+import uuid
+from unittest.mock import MagicMock, patch
+
+from django.test import TestCase
+
+from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, ComplianceStatus, DQStatus
 from hub.apps.contracts.models import Contract, ContractStatus
 from hub.apps.core.events.models import Event
+from hub.apps.datasets.models import Dataset
+from hub.apps.files.models import File as FileModel
+from hub.apps.orchestration.models import StepStatus, WorkflowInstance, WorkflowStatus
+from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflows.asset_creation import AssetCreationWorkflow
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User
 
 
 class AssetCreationWorkflowUnitTest(TestCase):
@@ -28,32 +28,36 @@ class AssetCreationWorkflowUnitTest(TestCase):
         self.tenant, _ = Tenant.objects.get_or_create(name=f"Test Tenant {uid}")
         self.user, _ = User.objects.get_or_create(
             email=f"test-{uid}@example.com",
-            defaults={"password": "testpass123", "tenant": self.tenant}
+            defaults={"password": "testpass123", "tenant": self.tenant},
         )
         self.file_obj, _ = FileModel.objects.get_or_create(
             tenant=self.tenant,
             name="test_data.csv",
             storage_path="test/test_data.csv",
-            defaults={"content_type": "text/csv", "size": 100}
+            defaults={"content_type": "text/csv", "size": 100},
         )
         self.dataset, _ = Dataset.objects.get_or_create(
             tenant=self.tenant,
             file=self.file_obj,
             is_current=True,
-            defaults={"created_by": self.user, "format": "CSV"}
+            defaults={"created_by": self.user, "format": "CSV"},
         )
         self.contract, _ = Contract.objects.get_or_create(
             tenant=self.tenant,
             original_spec_type="OpenAPI",
             original_spec_version="3.0.0",
-            defaults={"status": ContractStatus.ACTIVE, "validation_status": "VALID", "normalization_status": "NORMALIZED_OK"}
+            defaults={
+                "status": ContractStatus.ACTIVE,
+                "validation_status": "VALID",
+                "normalization_status": "NORMALIZED_OK",
+            },
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
         AssetCreationWorkflow.register_workflow(self.registry)
         AssetCreationWorkflow.register_tasks(self.engine)
 
-    @patch('hub.apps.orchestration.workflows.asset_creation.create_audit_event')
+    @patch("hub.apps.orchestration.workflows.asset_creation.create_audit_event")
     def test_create_asset_record_task(self, mock_audit):
         """Test creating asset record"""
         mock_audit.return_value = MagicMock(id="audit-123")
@@ -65,27 +69,26 @@ class AssetCreationWorkflowUnitTest(TestCase):
             "description": "Test description",
             "domain": "test",
             "visibility": AssetVisibility.INTERNAL,
-            "created_by_id": str(self.user.id)
+            "created_by_id": str(self.user.id),
         }
         instance = self.engine.create_instance(
             workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=0,
             step_name="create_asset_record",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = AssetCreationWorkflow._create_asset_record_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._create_asset_record_task(input_data, instance, step)
 
         self.assertIn("asset_id", result)
         self.assertEqual(result["status"], AssetStatus.DRAFT)
@@ -106,35 +109,34 @@ class AssetCreationWorkflowUnitTest(TestCase):
             key="existing-key",
             name="Existing Asset",
             status=AssetStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         input_data = {
             "tenant_id": str(self.tenant.id),
             "key": "existing-key",
             "name": "New Asset",
-            "created_by_id": str(self.user.id)
+            "created_by_id": str(self.user.id),
         }
         instance = self.engine.create_instance(
             workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=0,
             step_name="create_asset_record",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
         with self.assertRaises(ValueError) as context:
-            AssetCreationWorkflow._create_asset_record_task(
-                input_data, instance, step
-            )
+            AssetCreationWorkflow._create_asset_record_task(input_data, instance, step)
 
         self.assertIn("already exists", str(context.exception))
 
@@ -145,7 +147,7 @@ class AssetCreationWorkflowUnitTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         input_data = {"contract_id": str(self.contract.id)}
@@ -153,23 +155,22 @@ class AssetCreationWorkflowUnitTest(TestCase):
             workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(asset.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=1,
             step_name="attach_contract",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = AssetCreationWorkflow._attach_contract_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._attach_contract_task(input_data, instance, step)
 
         self.assertIn("contract_id", result)
         self.assertEqual(result["contract_id"], str(self.contract.id))
@@ -186,7 +187,7 @@ class AssetCreationWorkflowUnitTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         input_data = {"dataset_id": str(self.dataset.id)}
@@ -194,23 +195,22 @@ class AssetCreationWorkflowUnitTest(TestCase):
             workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(asset.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=2,
             step_name="attach_dataset",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = AssetCreationWorkflow._attach_dataset_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._attach_dataset_task(input_data, instance, step)
 
         self.assertIn("dataset_id", result)
         self.assertEqual(result["dataset_id"], str(self.dataset.id))
@@ -220,7 +220,7 @@ class AssetCreationWorkflowUnitTest(TestCase):
         self.assertEqual(self.dataset.asset, asset)
         self.assertEqual(self.dataset.version, 1)
 
-    @patch('hub.apps.orchestration.workflows.data_quality.DataQualityCheckWorkflow')
+    @patch("hub.apps.orchestration.workflows.data_quality.DataQualityCheckWorkflow")
     def test_run_dq_checks_task(self, mock_dq_workflow_class):
         """Test running DQ checks"""
         asset = Asset.objects.create(
@@ -228,7 +228,7 @@ class AssetCreationWorkflowUnitTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
         self.dataset.asset = asset
         self.dataset.save()
@@ -238,21 +238,20 @@ class AssetCreationWorkflowUnitTest(TestCase):
         mock_dq_workflow_instance.state_data = {"dq_run_id": "dq-run-123"}
         mock_dq_workflow.execute.return_value = {
             "success": True,
-            "workflow_instance_id": "dq-workflow-123"
+            "workflow_instance_id": "dq-workflow-123",
         }
         mock_dq_workflow_class.execute = mock_dq_workflow.execute
 
-        from hub.apps.orchestration.models import WorkflowInstance as DQWorkflowInstance
-        from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine
-        from hub.apps.jobs.utils import create_job
+        from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
         from hub.apps.jobs.models import JobType
+        from hub.apps.jobs.utils import create_job
 
         job = create_job(
             tenant=self.tenant,
             user=self.user,
             job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
-            resource_id=str(asset.id)
+            resource_id=str(asset.id),
         )
 
         dq_run = DQRun.objects.create(
@@ -264,11 +263,11 @@ class AssetCreationWorkflowUnitTest(TestCase):
             engine=DQEngine.GREAT_EXPECTATIONS,
             status=DQRunStatus.SUCCEEDED,
             overall_status="PASS",
-            quality_score=0.95
+            quality_score=0.95,
         )
 
         # Mock WorkflowInstance.objects.get
-        with patch('hub.apps.orchestration.models.WorkflowInstance') as mock_wi_class:
+        with patch("hub.apps.orchestration.models.WorkflowInstance") as mock_wi_class:
             mock_wi_instance = MagicMock()
             mock_wi_instance.state_data = {"dq_run_id": str(dq_run.id)}
             mock_wi_class.objects.get.return_value = mock_wi_instance
@@ -278,24 +277,23 @@ class AssetCreationWorkflowUnitTest(TestCase):
                 workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
                 input_data=input_data,
                 tenant_id=str(self.tenant.id),
-                created_by_id=str(self.user.id)
+                created_by_id=str(self.user.id),
             )
             instance.state_data["asset_id"] = str(asset.id)
             instance.state_data["dataset_id"] = str(self.dataset.id)
             instance.save()
 
             from hub.apps.orchestration.models import WorkflowStep
+
             step = WorkflowStep(
                 workflow_instance=instance,
                 step_index=3,
                 step_name="run_dq_checks",
                 step_type="task",
-                status=StepStatus.PENDING
+                status=StepStatus.PENDING,
             )
 
-            result = AssetCreationWorkflow._run_dq_checks_task(
-                input_data, instance, step
-            )
+            result = AssetCreationWorkflow._run_dq_checks_task(input_data, instance, step)
 
             self.assertIn("dq_status", result)
             self.assertEqual(result["dq_status"], DQStatus.PASS)
@@ -305,7 +303,7 @@ class AssetCreationWorkflowUnitTest(TestCase):
             asset.refresh_from_db()
             self.assertEqual(asset.dq_status, DQStatus.PASS)
 
-    @patch('hub.apps.compliance.views.execute_compliance_run')
+    @patch("hub.apps.compliance.views.execute_compliance_run")
     def test_run_compliance_checks_task(self, mock_execute_compliance):
         """Test running compliance checks"""
         asset = Asset.objects.create(
@@ -313,7 +311,7 @@ class AssetCreationWorkflowUnitTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
         self.dataset.asset = asset
         self.dataset.save()
@@ -338,24 +336,23 @@ class AssetCreationWorkflowUnitTest(TestCase):
             workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(asset.id)
         instance.state_data["dataset_id"] = str(self.dataset.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=4,
             step_name="run_compliance_checks",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = AssetCreationWorkflow._run_compliance_checks_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._run_compliance_checks_task(input_data, instance, step)
 
         self.assertIn("compliance_status", result)
         # Verify compliance run was created and executed
@@ -363,7 +360,7 @@ class AssetCreationWorkflowUnitTest(TestCase):
         self.assertGreater(compliance_runs.count(), 0)
 
         # Check if the compliance run was updated (if mock worked)
-        latest_run = compliance_runs.order_by('-created_at').first()
+        latest_run = compliance_runs.order_by("-created_at").first()
         if latest_run and latest_run.overall_status == "PASS":
             self.assertEqual(result["compliance_status"], ComplianceStatus.PASS)
         else:
@@ -377,7 +374,7 @@ class AssetCreationWorkflowUnitTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
         self.contract.asset = asset
         self.contract.validation_status = "VALID"
@@ -388,29 +385,28 @@ class AssetCreationWorkflowUnitTest(TestCase):
             workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(asset.id)
         instance.state_data["contract_id"] = str(self.contract.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=6,
             step_name="validate_contract",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = AssetCreationWorkflow._validate_contract_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._validate_contract_task(input_data, instance, step)
 
         self.assertEqual(result["validation_status"], "VALID")
         self.assertTrue(result["already_validated"])
 
-    @patch('hub.apps.orchestration.workflows.asset_creation.map_asset_to_semantic')
+    @patch("hub.apps.orchestration.workflows.asset_creation.map_asset_to_semantic")
     def test_activate_asset_task(self, mock_semantic):
         """Test activating asset"""
         asset = Asset.objects.create(
@@ -420,7 +416,7 @@ class AssetCreationWorkflowUnitTest(TestCase):
             status=AssetStatus.DRAFT,
             created_by=self.user,
             dq_status=DQStatus.PASS,
-            compliance_status=ComplianceStatus.PASS
+            compliance_status=ComplianceStatus.PASS,
         )
         self.contract.asset = asset
         self.contract.validation_status = "VALID"
@@ -433,23 +429,22 @@ class AssetCreationWorkflowUnitTest(TestCase):
             workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(asset.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=7,
             step_name="activate_asset",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = AssetCreationWorkflow._activate_asset_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._activate_asset_task(input_data, instance, step)
 
         self.assertTrue(result["activated"])
         self.assertEqual(result["old_status"], AssetStatus.DRAFT)
@@ -468,7 +463,7 @@ class AssetCreationWorkflowUnitTest(TestCase):
             status=AssetStatus.DRAFT,
             created_by=self.user,
             dq_status=DQStatus.FAIL,  # DQ check failed
-            compliance_status=ComplianceStatus.PASS
+            compliance_status=ComplianceStatus.PASS,
         )
         # No contract attached
 
@@ -477,29 +472,28 @@ class AssetCreationWorkflowUnitTest(TestCase):
             workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(asset.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=7,
             step_name="activate_asset",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = AssetCreationWorkflow._activate_asset_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._activate_asset_task(input_data, instance, step)
 
         self.assertFalse(result["activated"])
         self.assertIn("blockers", result)
         self.assertGreater(len(result["blockers"]), 0)
 
-    @patch('hub.apps.orchestration.workflows.asset_creation.SearchIndexer')
+    @patch("hub.apps.orchestration.workflows.asset_creation.SearchIndexer")
     def test_index_for_search_task(self, mock_indexer_class):
         """Test indexing asset for search"""
         asset = Asset.objects.create(
@@ -507,7 +501,7 @@ class AssetCreationWorkflowUnitTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         mock_search_index = MagicMock()
@@ -519,29 +513,28 @@ class AssetCreationWorkflowUnitTest(TestCase):
             workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(asset.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=8,
             step_name="index_for_search",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = AssetCreationWorkflow._index_for_search_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._index_for_search_task(input_data, instance, step)
 
         self.assertTrue(result["indexed"])
         self.assertEqual(result["search_index_id"], "search-index-123")
         mock_indexer_class.index_asset.assert_called_once_with(asset)
 
-    @patch('hub.apps.orchestration.workflows.asset_creation.send_email_async')
+    @patch("hub.apps.orchestration.workflows.asset_creation.send_email_async")
     def test_send_notifications_task(self, mock_email):
         """Test sending notifications"""
         asset = Asset.objects.create(
@@ -549,7 +542,7 @@ class AssetCreationWorkflowUnitTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         mock_email.return_value = {"success": True, "delivery_id": "delivery-123"}
@@ -559,29 +552,28 @@ class AssetCreationWorkflowUnitTest(TestCase):
             workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(asset.id)
         instance.state_data["activated"] = False
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=9,
             step_name="send_notifications",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = AssetCreationWorkflow._send_notifications_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._send_notifications_task(input_data, instance, step)
 
         self.assertTrue(result["notifications_sent"])
         mock_email.assert_called_once()
 
-    @patch('hub.apps.orchestration.workflows.asset_creation.create_audit_event')
+    @patch("hub.apps.orchestration.workflows.asset_creation.create_audit_event")
     def test_audit_logging_task(self, mock_audit):
         """Test audit logging"""
         asset = Asset.objects.create(
@@ -589,7 +581,7 @@ class AssetCreationWorkflowUnitTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         mock_audit.return_value = MagicMock(id="audit-123")
@@ -599,24 +591,23 @@ class AssetCreationWorkflowUnitTest(TestCase):
             workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(asset.id)
         instance.state_data["activated"] = False
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=10,
             step_name="audit_logging",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = AssetCreationWorkflow._audit_logging_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._audit_logging_task(input_data, instance, step)
 
         self.assertIn("audit_event_id", result)
         self.assertEqual(result["action"], "ASSET_CREATED")
@@ -629,18 +620,19 @@ class AssetCreationWorkflowIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         import uuid
+
         unique_id = str(uuid.uuid4())[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant Integration {unique_id}",
             slug=f"test-tenant-integration-{unique_id}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"test-integration-{unique_id}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            display_name="Test User"
+            display_name="Test User",
         )
 
         self.file_obj = FileModel.objects.create(
@@ -649,7 +641,7 @@ class AssetCreationWorkflowIntegrationTest(TestCase):
             storage_path="test/test.csv",
             size=1024,
             content_type="text/csv",
-            status="ACTIVE"
+            status="ACTIVE",
         )
 
         self.dataset = Dataset.objects.create(
@@ -657,7 +649,7 @@ class AssetCreationWorkflowIntegrationTest(TestCase):
             file=self.file_obj,
             is_current=True,
             created_by=self.user,
-            format="CSV"
+            format="CSV",
         )
 
         self.contract = Contract.objects.create(
@@ -665,15 +657,17 @@ class AssetCreationWorkflowIntegrationTest(TestCase):
             created_by=self.user,
             status=ContractStatus.ACTIVE,
             validation_status="VALID",
-            normalization_status="NORMALIZED_OK"
+            normalization_status="NORMALIZED_OK",
         )
 
-    @patch('hub.apps.orchestration.workflows.data_quality.DataQualityCheckWorkflow')
-    @patch('hub.apps.compliance.views.execute_compliance_run')
-    @patch('hub.apps.search.indexing.SearchIndexer')
-    @patch('hub.apps.notifications.tasks.send_email_async')
-    @patch('hub.apps.audit.utils.create_audit_event')
-    def test_full_workflow_execution_data_first(self, mock_audit, mock_email, mock_indexer, mock_compliance, mock_dq_workflow):
+    @patch("hub.apps.orchestration.workflows.data_quality.DataQualityCheckWorkflow")
+    @patch("hub.apps.compliance.views.execute_compliance_run")
+    @patch("hub.apps.search.indexing.SearchIndexer")
+    @patch("hub.apps.notifications.tasks.send_email_async")
+    @patch("hub.apps.audit.utils.create_audit_event")
+    def test_full_workflow_execution_data_first(
+        self, mock_audit, mock_email, mock_indexer, mock_compliance, mock_dq_workflow
+    ):
         """Test full workflow execution with data-first flow"""
         mock_audit.return_value = MagicMock(id="audit-123")
         mock_email.return_value = {"success": True}
@@ -682,15 +676,15 @@ class AssetCreationWorkflowIntegrationTest(TestCase):
         mock_indexer.index_asset.return_value = mock_search_index
 
         from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
-        from hub.apps.jobs.utils import create_job
         from hub.apps.jobs.models import JobType
+        from hub.apps.jobs.utils import create_job
 
         # Mock DQ workflow
         mock_dq_workflow_instance = MagicMock()
         mock_dq_workflow_instance.state_data = {"dq_run_id": "dq-run-123"}
         mock_dq_workflow.execute.return_value = {
             "success": True,
-            "workflow_instance_id": "dq-workflow-123"
+            "workflow_instance_id": "dq-workflow-123",
         }
 
         # Mock compliance run
@@ -699,10 +693,10 @@ class AssetCreationWorkflowIntegrationTest(TestCase):
             user=self.user,
             job_type=JobType.COMPLIANCE_RUN,
             resource_type="COMPLIANCE_RUN",
-            resource_id=str(self.tenant.id)
+            resource_id=str(self.tenant.id),
         )
 
-        compliance_run = ComplianceRun.objects.create(
+        ComplianceRun.objects.create(
             tenant=self.tenant,
             dataset=self.dataset,
             file=self.file_obj,
@@ -710,18 +704,19 @@ class AssetCreationWorkflowIntegrationTest(TestCase):
             regulations=[],
             status=ComplianceRunStatus.SUCCEEDED,
             overall_status="PASS",
-            risk_level="LOW"
+            risk_level="LOW",
         )
 
         # Mock WorkflowInstance for DQ workflow
-        with patch('hub.apps.orchestration.models.WorkflowInstance') as mock_wi_class:
-            from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine
+        with patch("hub.apps.orchestration.models.WorkflowInstance") as mock_wi_class:
+            from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
+
             dq_job = create_job(
                 tenant=self.tenant,
                 user=self.user,
                 job_type=JobType.DQ_RUN,
                 resource_type="DQ_RUN",
-                resource_id=str(self.tenant.id)
+                resource_id=str(self.tenant.id),
             )
             dq_run = DQRun.objects.create(
                 tenant=self.tenant,
@@ -731,7 +726,7 @@ class AssetCreationWorkflowIntegrationTest(TestCase):
                 engine=DQEngine.GREAT_EXPECTATIONS,
                 status=DQRunStatus.SUCCEEDED,
                 overall_status="PASS",
-                quality_score=0.95
+                quality_score=0.95,
             )
 
             mock_wi_instance = MagicMock()
@@ -754,7 +749,7 @@ class AssetCreationWorkflowIntegrationTest(TestCase):
                 auto_activate=False,
                 created_by_id=str(self.user.id),
                 engine=engine,
-                registry=registry
+                registry=registry,
             )
 
             # Verify workflow completed successfully
@@ -764,12 +759,16 @@ class AssetCreationWorkflowIntegrationTest(TestCase):
             # Get workflow instance to access state_data
             workflow_instance_id = result["workflow_instance_id"]
             from hub.apps.orchestration.models import WorkflowInstance
+
             workflow_instance = WorkflowInstance.objects.get(id=workflow_instance_id)
 
             # Verify asset was created - find by key since we know it from workflow input
             asset = Asset.objects.filter(tenant=self.tenant, key="test-asset-integration").first()
-            self.assertIsNotNone(asset, f"Asset not found by key 'test-asset-integration'. Workflow completed: {workflow_instance.status}")
-            asset_id = str(asset.id)
+            self.assertIsNotNone(
+                asset,
+                f"Asset not found by key 'test-asset-integration'. Workflow completed: {workflow_instance.status}",
+            )
+            str(asset.id)
 
             self.assertEqual(asset.tenant, self.tenant)
             self.assertEqual(asset.key, "test-asset-integration")
@@ -779,9 +778,9 @@ class AssetCreationWorkflowIntegrationTest(TestCase):
             self.dataset.refresh_from_db()
             self.assertEqual(self.dataset.asset, asset)
 
-    @patch('hub.apps.search.indexing.SearchIndexer')
-    @patch('hub.apps.notifications.tasks.send_email_async')
-    @patch('hub.apps.audit.utils.create_audit_event')
+    @patch("hub.apps.search.indexing.SearchIndexer")
+    @patch("hub.apps.notifications.tasks.send_email_async")
+    @patch("hub.apps.audit.utils.create_audit_event")
     def test_full_workflow_execution_contract_first(self, mock_audit, mock_email, mock_indexer):
         """Test full workflow execution with contract-first flow"""
         mock_audit.return_value = MagicMock(id="audit-123")
@@ -804,7 +803,7 @@ class AssetCreationWorkflowIntegrationTest(TestCase):
             auto_activate=False,
             created_by_id=str(self.user.id),
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Verify workflow completed successfully
@@ -813,6 +812,7 @@ class AssetCreationWorkflowIntegrationTest(TestCase):
         # Get workflow instance to access state_data
         workflow_instance_id = result["workflow_instance_id"]
         from hub.apps.orchestration.models import WorkflowInstance
+
         workflow_instance = WorkflowInstance.objects.get(id=workflow_instance_id)
 
         # Verify asset was created
@@ -840,7 +840,7 @@ class AssetCreationWorkflowIntegrationTest(TestCase):
                 name="Test Asset",
                 created_by_id=str(self.user.id),
                 engine=engine,
-                registry=registry
+                registry=registry,
             )
 
         # Verify the error message indicates tenant not found
@@ -853,18 +853,19 @@ class AssetCreationWorkflowE2ETest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         import uuid
+
         unique_id = str(uuid.uuid4())[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant E2E {unique_id}",
             slug=f"test-tenant-e2e-{unique_id}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"test-e2e-{unique_id}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            display_name="Test User"
+            display_name="Test User",
         )
 
         self.file_obj = FileModel.objects.create(
@@ -873,7 +874,7 @@ class AssetCreationWorkflowE2ETest(TestCase):
             storage_path="test/test.csv",
             size=1024,
             content_type="text/csv",
-            status="ACTIVE"
+            status="ACTIVE",
         )
 
         self.dataset = Dataset.objects.create(
@@ -881,7 +882,7 @@ class AssetCreationWorkflowE2ETest(TestCase):
             file=self.file_obj,
             is_current=True,
             created_by=self.user,
-            format="CSV"
+            format="CSV",
         )
 
         self.contract = Contract.objects.create(
@@ -889,16 +890,18 @@ class AssetCreationWorkflowE2ETest(TestCase):
             created_by=self.user,
             status=ContractStatus.ACTIVE,
             validation_status="VALID",
-            normalization_status="NORMALIZED_OK"
+            normalization_status="NORMALIZED_OK",
         )
 
-    @patch('hub.apps.orchestration.workflows.data_quality.DataQualityCheckWorkflow')
-    @patch('hub.apps.compliance.views.execute_compliance_run')
-    @patch('hub.apps.search.indexing.SearchIndexer')
-    @patch('hub.apps.notifications.tasks.send_email_async')
-    @patch('hub.apps.audit.utils.create_audit_event')
-    @patch('hub.apps.semantic.utils.map_asset_to_semantic')
-    def test_asset_creation_with_activation(self, mock_semantic, mock_audit, mock_email, mock_indexer, mock_compliance, mock_dq_workflow):
+    @patch("hub.apps.orchestration.workflows.data_quality.DataQualityCheckWorkflow")
+    @patch("hub.apps.compliance.views.execute_compliance_run")
+    @patch("hub.apps.search.indexing.SearchIndexer")
+    @patch("hub.apps.notifications.tasks.send_email_async")
+    @patch("hub.apps.audit.utils.create_audit_event")
+    @patch("hub.apps.semantic.utils.map_asset_to_semantic")
+    def test_asset_creation_with_activation(
+        self, mock_semantic, mock_audit, mock_email, mock_indexer, mock_compliance, mock_dq_workflow
+    ):
         """
         Test creating asset via workflow execution with auto-activation.
 
@@ -912,13 +915,13 @@ class AssetCreationWorkflowE2ETest(TestCase):
         mock_indexer.index_asset.return_value = mock_search_index
 
         from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
-        from hub.apps.jobs.utils import create_job
         from hub.apps.jobs.models import JobType
+        from hub.apps.jobs.utils import create_job
 
         # Mock DQ workflow
         mock_dq_workflow.execute.return_value = {
             "success": True,
-            "workflow_instance_id": "dq-workflow-123"
+            "workflow_instance_id": "dq-workflow-123",
         }
 
         # Mock compliance run
@@ -927,10 +930,10 @@ class AssetCreationWorkflowE2ETest(TestCase):
             user=self.user,
             job_type=JobType.COMPLIANCE_RUN,
             resource_type="COMPLIANCE_RUN",
-            resource_id=str(self.tenant.id)
+            resource_id=str(self.tenant.id),
         )
 
-        compliance_run = ComplianceRun.objects.create(
+        ComplianceRun.objects.create(
             tenant=self.tenant,
             dataset=self.dataset,
             file=self.file_obj,
@@ -938,17 +941,18 @@ class AssetCreationWorkflowE2ETest(TestCase):
             regulations=[],
             status=ComplianceRunStatus.SUCCEEDED,
             overall_status="PASS",
-            risk_level="LOW"
+            risk_level="LOW",
         )
 
         # Mock WorkflowInstance for DQ workflow - patch only the specific lookup in the DQ workflow task
-        from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine
+        from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
+
         dq_job = create_job(
             tenant=self.tenant,
             user=self.user,
             job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
-            resource_id=str(self.tenant.id)
+            resource_id=str(self.tenant.id),
         )
         dq_run = DQRun.objects.create(
             tenant=self.tenant,
@@ -958,7 +962,7 @@ class AssetCreationWorkflowE2ETest(TestCase):
             engine=DQEngine.GREAT_EXPECTATIONS,
             status=DQRunStatus.SUCCEEDED,
             overall_status="PASS",
-            quality_score=0.95
+            quality_score=0.95,
         )
 
         # Mock only the DQ workflow's WorkflowInstance lookup within the run_dq_checks_task
@@ -967,14 +971,14 @@ class AssetCreationWorkflowE2ETest(TestCase):
 
         def mock_get_side_effect(*args, **kwargs):
             # If looking up the DQ workflow instance (by workflow_instance_id from DQ workflow)
-            if 'dq-workflow-123' in str(args) or 'dq-workflow-123' in str(kwargs):
+            if "dq-workflow-123" in str(args) or "dq-workflow-123" in str(kwargs):
                 mock_wi_instance = MagicMock()
                 mock_wi_instance.state_data = {"dq_run_id": str(dq_run.id)}
                 return mock_wi_instance
             # Otherwise, use the real WorkflowInstance
             return RealWorkflowInstance.objects.get(*args, **kwargs)
 
-        with patch.object(RealWorkflowInstance.objects, 'get', side_effect=mock_get_side_effect):
+        with patch.object(RealWorkflowInstance.objects, "get", side_effect=mock_get_side_effect):
             # Execute workflow with auto-activation
             result = AssetCreationWorkflow.execute(
                 tenant_id=str(self.tenant.id),
@@ -984,7 +988,7 @@ class AssetCreationWorkflowE2ETest(TestCase):
                 contract_id=str(self.contract.id),
                 profile_key="intake_basic_gx",
                 auto_activate=True,
-                created_by_id=str(self.user.id)
+                created_by_id=str(self.user.id),
             )
 
         # Verify complete workflow execution
@@ -994,15 +998,19 @@ class AssetCreationWorkflowE2ETest(TestCase):
         # Get workflow instance to access state_data (use real WorkflowInstance)
         workflow_instance_id = result["workflow_instance_id"]
         from hub.apps.orchestration.models import WorkflowInstance
+
         workflow_instance = WorkflowInstance.objects.get(id=workflow_instance_id)
 
         # Verify asset exists and is activated - find by key since we know it from workflow input
         asset = Asset.objects.filter(tenant=self.tenant, key="test-asset-e2e").first()
-        self.assertIsNotNone(asset, f"Asset not found by key 'test-asset-e2e'. Workflow status: {workflow_instance.status}")
-        asset_id = str(asset.id)
+        self.assertIsNotNone(
+            asset,
+            f"Asset not found by key 'test-asset-e2e'. Workflow status: {workflow_instance.status}",
+        )
+        str(asset.id)
 
         # Asset should be activated if all checks passed (but compliance might be UNKNOWN, so activation might be blocked)
-        activated = workflow_instance.state_data.get("activated", False)
+        workflow_instance.state_data.get("activated", False)
         # Note: Activation might be blocked if compliance check returns UNKNOWN
         # This is expected behavior - the workflow completes successfully but doesn't activate if checks fail
 
@@ -1026,13 +1034,13 @@ class AssetCreationWorkflowStepEventsTest(TestCase):
             name=f"Test Tenant Step Events {unique_id}",
             slug=f"test-tenant-step-events-{unique_id}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"test-step-events-{unique_id}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            display_name="Test User"
+            display_name="Test User",
         )
 
     def test_asset_creation_workflow_receives_step_events(self):
@@ -1052,7 +1060,7 @@ class AssetCreationWorkflowStepEventsTest(TestCase):
             send_notifications=False,
             created_by_id=str(self.user.id),
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Verify workflow completed successfully
@@ -1064,20 +1072,25 @@ class AssetCreationWorkflowStepEventsTest(TestCase):
 
         # Query actual events from database (no mocks - real event persistence)
         step_started_events = Event.objects.filter(
-            event_type="workflow.step.started",
-            data__workflow_instance_id=str(workflow_instance.id)
-        ).order_by('created_at')
+            event_type="workflow.step.started", data__workflow_instance_id=str(workflow_instance.id)
+        ).order_by("created_at")
 
         step_completed_events = Event.objects.filter(
             event_type="workflow.step.completed",
-            data__workflow_instance_id=str(workflow_instance.id)
-        ).order_by('created_at')
+            data__workflow_instance_id=str(workflow_instance.id),
+        ).order_by("created_at")
 
         # AssetCreationWorkflow has multiple steps, so we should have step events
-        self.assertGreater(step_started_events.count(), 0,
-                          f"Expected step.started events, got {step_started_events.count()}")
-        self.assertGreater(step_completed_events.count(), 0,
-                          f"Expected step.completed events, got {step_completed_events.count()}")
+        self.assertGreater(
+            step_started_events.count(),
+            0,
+            f"Expected step.started events, got {step_started_events.count()}",
+        )
+        self.assertGreater(
+            step_completed_events.count(),
+            0,
+            f"Expected step.completed events, got {step_completed_events.count()}",
+        )
 
         # Collect event data
         step_started_data = [event.data for event in step_started_events]
@@ -1109,11 +1122,18 @@ class AssetCreationWorkflowStepEventsTest(TestCase):
             self.assertGreaterEqual(event_data["duration_ms"], 0)
 
         # Verify progress increases or stays the same as steps progress
-        started_progresses = sorted([e["progress_percentage"] for e in step_started_data],
-                                   key=lambda x: step_started_data[[e["progress_percentage"] for e in step_started_data].index(x)]["step_index"])
+        started_progresses = sorted(
+            [e["progress_percentage"] for e in step_started_data],
+            key=lambda x: step_started_data[
+                [e["progress_percentage"] for e in step_started_data].index(x)
+            ]["step_index"],
+        )
         for i in range(1, len(started_progresses)):
-            self.assertGreaterEqual(started_progresses[i], started_progresses[i-1] - 1.0,
-                                  "Progress should generally increase or stay the same")
+            self.assertGreaterEqual(
+                started_progresses[i],
+                started_progresses[i - 1] - 1.0,
+                "Progress should generally increase or stay the same",
+            )
 
     def test_asset_creation_workflow_step_events_no_breaking_changes(self):
         """Regression test: Verify workflow execution still works correctly with step events"""
@@ -1133,7 +1153,7 @@ class AssetCreationWorkflowStepEventsTest(TestCase):
             send_notifications=False,
             created_by_id=str(self.user.id),
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Verify workflow completed successfully (no breaking changes)
@@ -1167,13 +1187,13 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
             name=f"Test Tenant ODPS {unique_id}",
             slug=f"test-tenant-odps-{unique_id}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"test-odps-{unique_id}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            display_name="Test User"
+            display_name="Test User",
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
@@ -1181,7 +1201,8 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
         AssetCreationWorkflow.register_tasks(self.engine)
 
         # Create sample ODCS contract
-        from hub.apps.contracts.models import OriginalSpecType, OriginalFormat, NormalizationStatus
+        from hub.apps.contracts.models import NormalizationStatus, OriginalFormat, OriginalSpecType
+
         self.odcs_contract = Contract.objects.create(
             tenant=self.tenant,
             original_spec_type=OriginalSpecType.ODCS,
@@ -1193,19 +1214,14 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
                 "info": {
                     "name": "Test Contract",
                     "description": "Test description",
-                    "version": "1.0.0"
+                    "version": "1.0.0",
                 },
-                "schema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                },
-                "marketplace": {
-                    "license_summary": "Test license",
-                    "intended_use": ["analytics"]
-                }
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
+                "marketplace": {"license_summary": "Test license", "intended_use": ["analytics"]},
             },
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create sample ODPS document
@@ -1217,10 +1233,10 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
                     "en": {
                         "productID": "test-product",
                         "name": "Test Product",
-                        "description": "Test product description"
+                        "description": "Test product description",
                     }
                 }
-            }
+            },
         }
 
         # Create asset
@@ -1229,7 +1245,7 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
             key="test-asset-odps",
             name="Test Asset ODPS",
             status=AssetStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_link_odps_task_skip_no_action(self):
@@ -1240,26 +1256,25 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
                 "tenant_id": str(self.tenant.id),
                 "key": "test-asset",
                 "name": "Test Asset",
-                "created_by_id": str(self.user.id)
+                "created_by_id": str(self.user.id),
             },
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(self.asset.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=5,
             step_name="link_odps",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        result = AssetCreationWorkflow._link_odps_task(
-            {}, instance, step
-        )
+        result = AssetCreationWorkflow._link_odps_task({}, instance, step)
 
         self.assertTrue(result.get("odps_linking_skipped"))
         self.assertEqual(result.get("reason"), "No ODPS action specified")
@@ -1267,6 +1282,7 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
     def test_link_odps_task_upload(self):
         """Test ODPS linking task with upload action"""
         import json
+
         from hub.apps.contracts.models import OriginalSpecType
 
         instance = self.engine.create_instance(
@@ -1278,32 +1294,31 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
                 "created_by_id": str(self.user.id),
                 "odps_action": "upload",
                 "odps_raw": json.dumps(self.sample_odps),
-                "odps_format": "JSON"
+                "odps_format": "JSON",
             },
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(self.asset.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=5,
             step_name="link_odps",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
         input_data = {
             "odps_action": "upload",
             "odps_raw": json.dumps(self.sample_odps),
-            "odps_format": "JSON"
+            "odps_format": "JSON",
         }
 
-        result = AssetCreationWorkflow._link_odps_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._link_odps_task(input_data, instance, step)
 
         self.assertTrue(result.get("odps_linked"))
         self.assertIn("odps_contract_id", result)
@@ -1319,7 +1334,6 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
 
     def test_link_odps_task_generate_with_contract(self):
         """Test ODPS linking task with generate action when ODCS contract is attached"""
-        import json
         from hub.apps.contracts.models import OriginalSpecType
 
         # Attach ODCS contract to asset
@@ -1334,31 +1348,28 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
                 "key": "test-asset",
                 "name": "Test Asset",
                 "created_by_id": str(self.user.id),
-                "odps_action": "generate"
+                "odps_action": "generate",
             },
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(self.asset.id)
         instance.state_data["contract_id"] = str(self.odcs_contract.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=5,
             step_name="link_odps",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        input_data = {
-            "odps_action": "generate"
-        }
+        input_data = {"odps_action": "generate"}
 
-        result = AssetCreationWorkflow._link_odps_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._link_odps_task(input_data, instance, step)
 
         self.assertTrue(result.get("odps_linked"))
         self.assertIn("odps_contract_id", result)
@@ -1375,7 +1386,7 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
         self.assertIn("x_odps", self.odcs_contract.hub_contract_json["extensions"])
         self.assertEqual(
             self.odcs_contract.hub_contract_json["extensions"]["x_odps"]["odps_link"],
-            result["odps_contract_id"]
+            result["odps_contract_id"],
         )
 
         odps_contract.refresh_from_db()
@@ -1383,13 +1394,11 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
         self.assertIn("x_odps", odps_contract.hub_contract_json["extensions"])
         self.assertEqual(
             odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"],
-            str(self.odcs_contract.id)
+            str(self.odcs_contract.id),
         )
 
     def test_link_odps_task_generate_without_contract(self):
         """Test ODPS linking task with generate action when no ODCS contract is attached"""
-        import json
-        from hub.apps.contracts.models import OriginalSpecType
 
         instance = self.engine.create_instance(
             workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
@@ -1398,39 +1407,37 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
                 "key": "test-asset",
                 "name": "Test Asset",
                 "created_by_id": str(self.user.id),
-                "odps_action": "generate"
+                "odps_action": "generate",
             },
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(self.asset.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=5,
             step_name="link_odps",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        input_data = {
-            "odps_action": "generate"
-        }
+        input_data = {"odps_action": "generate"}
 
         # Should raise error when no contract is available
         with self.assertRaises(ValueError) as context:
-            AssetCreationWorkflow._link_odps_task(
-                input_data, instance, step
-            )
+            AssetCreationWorkflow._link_odps_task(input_data, instance, step)
 
         self.assertIn("No contract available", str(context.exception))
 
     def test_link_odps_task_link_existing(self):
         """Test ODPS linking task with link action (existing ODPS)"""
         import json
-        from hub.apps.contracts.models import OriginalSpecType, OriginalFormat, NormalizationStatus
+
+        from hub.apps.contracts.models import NormalizationStatus, OriginalFormat, OriginalSpecType
 
         # Create existing ODPS contract
         existing_odps_contract = Contract.objects.create(
@@ -1442,7 +1449,7 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
             hub_contract_json={"id": "test-product", "info": {"name": "Test Product"}},
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Attach ODCS contract to asset
@@ -1458,32 +1465,28 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
                 "name": "Test Asset",
                 "created_by_id": str(self.user.id),
                 "odps_action": "link",
-                "odps_contract_id": str(existing_odps_contract.id)
+                "odps_contract_id": str(existing_odps_contract.id),
             },
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(self.asset.id)
         instance.state_data["contract_id"] = str(self.odcs_contract.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=5,
             step_name="link_odps",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        input_data = {
-            "odps_action": "link",
-            "odps_contract_id": str(existing_odps_contract.id)
-        }
+        input_data = {"odps_action": "link", "odps_contract_id": str(existing_odps_contract.id)}
 
-        result = AssetCreationWorkflow._link_odps_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._link_odps_task(input_data, instance, step)
 
         self.assertTrue(result.get("odps_linked"))
         self.assertEqual(result["odps_contract_id"], str(existing_odps_contract.id))
@@ -1498,7 +1501,7 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
         self.assertIn("x_odps", self.odcs_contract.hub_contract_json["extensions"])
         self.assertEqual(
             self.odcs_contract.hub_contract_json["extensions"]["x_odps"]["odps_link"],
-            str(existing_odps_contract.id)
+            str(existing_odps_contract.id),
         )
 
         existing_odps_contract.refresh_from_db()
@@ -1506,13 +1509,14 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
         self.assertIn("x_odps", existing_odps_contract.hub_contract_json["extensions"])
         self.assertEqual(
             existing_odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"],
-            str(self.odcs_contract.id)
+            str(self.odcs_contract.id),
         )
 
     def test_link_odps_task_link_existing_without_contract(self):
         """Test ODPS linking task with link action when no ODCS contract is attached"""
         import json
-        from hub.apps.contracts.models import OriginalSpecType, OriginalFormat, NormalizationStatus
+
+        from hub.apps.contracts.models import NormalizationStatus, OriginalFormat, OriginalSpecType
 
         # Create existing ODPS contract
         existing_odps_contract = Contract.objects.create(
@@ -1524,7 +1528,7 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
             hub_contract_json={"id": "test-product", "info": {"name": "Test Product"}},
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         instance = self.engine.create_instance(
@@ -1535,31 +1539,27 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
                 "name": "Test Asset",
                 "created_by_id": str(self.user.id),
                 "odps_action": "link",
-                "odps_contract_id": str(existing_odps_contract.id)
+                "odps_contract_id": str(existing_odps_contract.id),
             },
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(self.asset.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=5,
             step_name="link_odps",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        input_data = {
-            "odps_action": "link",
-            "odps_contract_id": str(existing_odps_contract.id)
-        }
+        input_data = {"odps_action": "link", "odps_contract_id": str(existing_odps_contract.id)}
 
-        result = AssetCreationWorkflow._link_odps_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._link_odps_task(input_data, instance, step)
 
         self.assertTrue(result.get("odps_linked"))
         self.assertEqual(result["odps_contract_id"], str(existing_odps_contract.id))
@@ -1570,8 +1570,6 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
 
     def test_link_odps_task_publishes_events(self):
         """Test that ODPS linking task publishes odps.created and odps.linked events"""
-        import json
-        from hub.apps.contracts.models import OriginalSpecType
         from hub.apps.core.events.models import Event
 
         # Attach ODCS contract to asset
@@ -1586,46 +1584,42 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
                 "key": "test-asset",
                 "name": "Test Asset",
                 "created_by_id": str(self.user.id),
-                "odps_action": "generate"
+                "odps_action": "generate",
             },
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(self.asset.id)
         instance.state_data["contract_id"] = str(self.odcs_contract.id)
         instance.save()
 
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=5,
             step_name="link_odps",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        input_data = {
-            "odps_action": "generate"
-        }
+        input_data = {"odps_action": "generate"}
 
-        result = AssetCreationWorkflow._link_odps_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._link_odps_task(input_data, instance, step)
 
         self.assertTrue(result.get("odps_linked"))
         self.assertIn("odps_contract_id", result)
 
         # Verify events were published
         odps_created_events = Event.objects.filter(
-            event_type="odps.created",
-            data__contract_id=result["odps_contract_id"]
+            event_type="odps.created", data__contract_id=result["odps_contract_id"]
         )
         self.assertGreater(odps_created_events.count(), 0, "odps.created event should be published")
 
         odps_linked_events = Event.objects.filter(
             event_type="odps.linked",
             data__odps_contract_id=result["odps_contract_id"],
-            data__odcs_contract_id=str(self.odcs_contract.id)
+            data__odcs_contract_id=str(self.odcs_contract.id),
         )
         self.assertGreater(odps_linked_events.count(), 0, "odps.linked event should be published")
 
@@ -1635,8 +1629,6 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
 
     def test_rollback_odps_linking_task_deletes_created_contract(self):
         """Test that rollback task deletes ODPS contract created during workflow"""
-        import json
-        from hub.apps.contracts.models import OriginalSpecType, OriginalFormat, NormalizationStatus
 
         # Attach ODCS contract to asset
         self.odcs_contract.asset = self.asset
@@ -1650,10 +1642,10 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
                 "key": "test-asset",
                 "name": "Test Asset",
                 "created_by_id": str(self.user.id),
-                "odps_action": "generate"
+                "odps_action": "generate",
             },
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(self.asset.id)
         instance.state_data["contract_id"] = str(self.odcs_contract.id)
@@ -1661,27 +1653,25 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
 
         # First, create ODPS contract via linking task
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=5,
             step_name="link_odps",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        input_data = {
-            "odps_action": "generate"
-        }
+        input_data = {"odps_action": "generate"}
 
-        result = AssetCreationWorkflow._link_odps_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._link_odps_task(input_data, instance, step)
 
         odps_contract_id = result["odps_contract_id"]
         self.assertIsNotNone(odps_contract_id)
 
         # Verify ODPS contract exists
         from hub.apps.contracts.models import Contract
+
         odps_contract = Contract.objects.get(id=odps_contract_id)
         self.assertIsNotNone(odps_contract)
 
@@ -1691,7 +1681,7 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
             step_index=6,
             step_name="rollback_odps_linking",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
         rollback_result = AssetCreationWorkflow._rollback_odps_linking_task(
@@ -1706,14 +1696,23 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
 
         # Verify links were removed from ODCS contract
         self.odcs_contract.refresh_from_db()
-        if self.odcs_contract.hub_contract_json and "extensions" in self.odcs_contract.hub_contract_json:
+        if (
+            self.odcs_contract.hub_contract_json
+            and "extensions" in self.odcs_contract.hub_contract_json
+        ):
             x_odps = self.odcs_contract.hub_contract_json.get("extensions", {}).get("x_odps", {})
             self.assertNotIn("odps_link", x_odps, "ODPS link should be removed from ODCS contract")
 
     def test_rollback_odps_linking_task_keeps_existing_contract(self):
         """Test that rollback task keeps existing ODPS contract when action is 'link'"""
         import json
-        from hub.apps.contracts.models import Contract, OriginalSpecType, OriginalFormat, NormalizationStatus
+
+        from hub.apps.contracts.models import (
+            Contract,
+            NormalizationStatus,
+            OriginalFormat,
+            OriginalSpecType,
+        )
 
         # Create existing ODPS contract
         existing_odps_contract = Contract.objects.create(
@@ -1725,7 +1724,7 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
             hub_contract_json={"id": "test-product", "info": {"name": "Test Product"}},
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Attach ODCS contract to asset
@@ -1741,10 +1740,10 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
                 "name": "Test Asset",
                 "created_by_id": str(self.user.id),
                 "odps_action": "link",
-                "odps_contract_id": str(existing_odps_contract.id)
+                "odps_contract_id": str(existing_odps_contract.id),
             },
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
         instance.state_data["asset_id"] = str(self.asset.id)
         instance.state_data["contract_id"] = str(self.odcs_contract.id)
@@ -1752,22 +1751,18 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
 
         # First, link ODPS contract
         from hub.apps.orchestration.models import WorkflowStep
+
         step = WorkflowStep(
             workflow_instance=instance,
             step_index=5,
             step_name="link_odps",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
-        input_data = {
-            "odps_action": "link",
-            "odps_contract_id": str(existing_odps_contract.id)
-        }
+        input_data = {"odps_action": "link", "odps_contract_id": str(existing_odps_contract.id)}
 
-        result = AssetCreationWorkflow._link_odps_task(
-            input_data, instance, step
-        )
+        result = AssetCreationWorkflow._link_odps_task(input_data, instance, step)
 
         self.assertTrue(result.get("odps_linked"))
 
@@ -1777,7 +1772,7 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
             step_index=6,
             step_name="rollback_odps_linking",
             step_type="task",
-            status=StepStatus.PENDING
+            status=StepStatus.PENDING,
         )
 
         rollback_result = AssetCreationWorkflow._rollback_odps_linking_task(
@@ -1788,18 +1783,27 @@ class AssetCreationWorkflowODPSLinkingTest(TestCase):
 
         # Verify ODPS contract still exists (since it was linked, not created)
         from hub.apps.contracts.models import Contract
+
         existing_odps_contract.refresh_from_db()
         self.assertIsNotNone(existing_odps_contract)
 
         # Verify links were removed
         self.odcs_contract.refresh_from_db()
-        if self.odcs_contract.hub_contract_json and "extensions" in self.odcs_contract.hub_contract_json:
+        if (
+            self.odcs_contract.hub_contract_json
+            and "extensions" in self.odcs_contract.hub_contract_json
+        ):
             x_odps = self.odcs_contract.hub_contract_json.get("extensions", {}).get("x_odps", {})
             self.assertNotIn("odps_link", x_odps, "ODPS link should be removed from ODCS contract")
 
         existing_odps_contract.refresh_from_db()
-        if existing_odps_contract.hub_contract_json and "extensions" in existing_odps_contract.hub_contract_json:
-            x_odps = existing_odps_contract.hub_contract_json.get("extensions", {}).get("x_odps", {})
+        if (
+            existing_odps_contract.hub_contract_json
+            and "extensions" in existing_odps_contract.hub_contract_json
+        ):
+            x_odps = existing_odps_contract.hub_contract_json.get("extensions", {}).get(
+                "x_odps", {}
+            )
             self.assertNotIn("odcs_link", x_odps, "ODCS link should be removed from ODPS contract")
 
 
@@ -1820,16 +1824,17 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
             email=f"test-data-first-{unique_id}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            display_name="Test User"
+            display_name="Test User",
         )
 
         # Create test CSV file content
-        self.csv_content = b'id,name,email,age\n1,John Doe,john@example.com,30\n2,Jane Smith,jane@example.com,25\n3,Bob Johnson,bob@example.com,35\n'
+        self.csv_content = b"id,name,email,age\n1,John Doe,john@example.com,30\n2,Jane Smith,jane@example.com,25\n3,Bob Johnson,bob@example.com,35\n"
 
         # Create file record
+        from django.core.files.base import ContentFile
+
         from hub.apps.files.models import File, FileStatus
         from hub.apps.files.storage import S3StorageClient
-        from django.core.files.base import ContentFile
 
         self.file_obj = File.objects.create(
             tenant=self.tenant,
@@ -1837,7 +1842,7 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
             content_type="text/csv",
             size=len(self.csv_content),
             status=FileStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Upload file to storage
@@ -1846,13 +1851,14 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
             storage_path = storage.save_file(
                 tenant_id=str(self.tenant.id),
                 file_id=str(self.file_obj.id),
-                file_content=ContentFile(self.csv_content, name="test_data.csv")
+                file_content=ContentFile(self.csv_content, name="test_data.csv"),
             )
             self.file_obj.storage_path = storage_path
-            self.file_obj.save(update_fields=['storage_path'])
+            self.file_obj.save(update_fields=["storage_path"])
         except Exception as e:
             # If S3 is not available, we'll handle it in the test
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(f"Could not upload file to S3: {e}")
 
@@ -1861,13 +1867,15 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
         AssetCreationWorkflow.register_workflow(self.registry)
         AssetCreationWorkflow.register_tasks(self.engine)
 
-    @patch('hub.apps.orchestration.workflows.data_quality.DataQualityCheckWorkflow')
-    @patch('hub.apps.compliance.views.execute_compliance_run')
-    @patch('hub.apps.search.indexing.SearchIndexer')
-    @patch('hub.apps.notifications.tasks.send_email_async')
-    @patch('hub.apps.audit.utils.create_audit_event')
-    @patch('hub.apps.semantic.utils.map_asset_to_semantic')
-    def test_data_first_flow_complete(self, mock_semantic, mock_audit, mock_email, mock_indexer, mock_compliance, mock_dq_workflow):
+    @patch("hub.apps.orchestration.workflows.data_quality.DataQualityCheckWorkflow")
+    @patch("hub.apps.compliance.views.execute_compliance_run")
+    @patch("hub.apps.search.indexing.SearchIndexer")
+    @patch("hub.apps.notifications.tasks.send_email_async")
+    @patch("hub.apps.audit.utils.create_audit_event")
+    @patch("hub.apps.semantic.utils.map_asset_to_semantic")
+    def test_data_first_flow_complete(
+        self, mock_semantic, mock_audit, mock_email, mock_indexer, mock_compliance, mock_dq_workflow
+    ):
         """Test complete Data-First flow: file → schema → ODCS → contract → asset → ODPS (optional)"""
         mock_audit.return_value = MagicMock(id="audit-123")
         mock_email.return_value = {"success": True}
@@ -1893,7 +1901,7 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
         # Mock DQ workflow
         mock_dq_workflow.execute.return_value = {
             "success": True,
-            "workflow_instance_id": "dq-workflow-123"
+            "workflow_instance_id": "dq-workflow-123",
         }
 
         # Mock WorkflowInstance for DQ workflow
@@ -1903,27 +1911,23 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
 
         def mock_get_side_effect(*args, **kwargs):
             from hub.apps.orchestration.models import WorkflowInstance as RealWorkflowInstance
-            if 'dq-workflow-123' in str(args) or 'dq-workflow-123' in str(kwargs):
+
+            if "dq-workflow-123" in str(args) or "dq-workflow-123" in str(kwargs):
                 # Create a real DQRun when the workflow needs it
-                from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine
-                from hub.apps.jobs.utils import create_job
-                from hub.apps.jobs.models import JobType
-                from hub.apps.assets.models import Asset
+                from hub.apps.dq.models import DQRun
 
                 # Get asset from workflow instance if available
-                asset_id = None
-                dataset_id = None
                 try:
                     # Try to get the actual workflow instance to extract asset_id
-                    if hasattr(kwargs, 'get') or isinstance(kwargs, dict):
+                    if hasattr(kwargs, "get") or isinstance(kwargs, dict):
                         # This is a mock, so we'll create DQRun later when we have the asset
                         pass
                 except:
                     pass
 
                 # Try to find an actual DQRun and return its workflow instance
-                from hub.apps.dq.models import DQRun
-                dq_runs = DQRun.objects.filter(tenant=self.tenant).order_by('-created_at')
+
+                dq_runs = DQRun.objects.filter(tenant=self.tenant).order_by("-created_at")
                 if dq_runs.exists():
                     dq_run = dq_runs.first()
                     mock_wi_instance = MagicMock()
@@ -1937,16 +1941,16 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
 
         # Mock the DQ workflow to create a proper DQRun when executed
         def mock_dq_execute(*args, **kwargs):
-            from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine
-            from hub.apps.jobs.utils import create_job
-            from hub.apps.jobs.models import JobType
             from hub.apps.assets.models import Asset
             from hub.apps.datasets.models import Dataset
+            from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
+            from hub.apps.jobs.models import JobType
+            from hub.apps.jobs.utils import create_job
 
             # Extract asset_id and dataset_id from input
-            input_data = args[0] if args else kwargs.get('input_data', {})
-            asset_id = input_data.get('asset_id')
-            dataset_id = input_data.get('dataset_id')
+            input_data = args[0] if args else kwargs.get("input_data", {})
+            asset_id = input_data.get("asset_id")
+            dataset_id = input_data.get("dataset_id")
 
             if asset_id:
                 asset = Asset.objects.get(id=asset_id)
@@ -1959,7 +1963,7 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
                     user=self.user,
                     job_type=JobType.DQ_RUN.value,
                     resource_type="DQ_RUN",
-                    resource_id=str(asset.id)
+                    resource_id=str(asset.id),
                 )
                 dq_run = DQRun.objects.create(
                     tenant=asset.tenant,
@@ -1970,22 +1974,19 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
                     engine=DQEngine.GREAT_EXPECTATIONS,
                     status=DQRunStatus.SUCCEEDED,
                     overall_status="PASS",
-                    quality_score=0.95
+                    quality_score=0.95,
                 )
 
                 return {
                     "success": True,
                     "workflow_instance_id": "dq-workflow-123",
-                    "dq_run_id": str(dq_run.id)
+                    "dq_run_id": str(dq_run.id),
                 }
-            return {
-                "success": True,
-                "workflow_instance_id": "dq-workflow-123"
-            }
+            return {"success": True, "workflow_instance_id": "dq-workflow-123"}
 
         mock_dq_workflow.execute.side_effect = mock_dq_execute
 
-        with patch.object(WorkflowInstance.objects, 'get', side_effect=mock_get_side_effect):
+        with patch.object(WorkflowInstance.objects, "get", side_effect=mock_get_side_effect):
             # Execute Data-First workflow
             result = AssetCreationWorkflow.execute(
                 tenant_id=str(self.tenant.id),
@@ -2000,7 +2001,7 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
                 send_notifications=False,
                 created_by_id=str(self.user.id),
                 engine=self.engine,
-                registry=self.registry
+                registry=self.registry,
             )
 
         # Verify workflow completed successfully
@@ -2025,6 +2026,7 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
         contract_id = workflow_instance.state_data.get("contract_id")
         self.assertIsNotNone(contract_id)
         from hub.apps.contracts.models import Contract, OriginalSpecType
+
         contract = Contract.objects.get(id=contract_id)
         self.assertEqual(contract.original_spec_type, OriginalSpecType.ODCS)
         self.assertEqual(contract.tenant, self.tenant)
@@ -2034,6 +2036,7 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
         dataset_id = workflow_instance.state_data.get("dataset_id")
         self.assertIsNotNone(dataset_id)
         from hub.apps.datasets.models import Dataset
+
         dataset = Dataset.objects.get(id=dataset_id)
         self.assertEqual(dataset.asset, asset)
         self.assertEqual(dataset.file, self.file_obj)
@@ -2054,9 +2057,9 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
         self.assertIsNotNone(hub_contract_json)
         self.assertIn("schema", hub_contract_json)
 
-    @patch('hub.apps.search.indexing.SearchIndexer')
-    @patch('hub.apps.notifications.tasks.send_email_async')
-    @patch('hub.apps.audit.utils.create_audit_event')
+    @patch("hub.apps.search.indexing.SearchIndexer")
+    @patch("hub.apps.notifications.tasks.send_email_async")
+    @patch("hub.apps.audit.utils.create_audit_event")
     def test_data_first_flow_with_odps_generation(self, mock_audit, mock_email, mock_indexer):
         """Test Data-First flow with ODPS generation"""
         mock_audit.return_value = MagicMock(id="audit-123")
@@ -2079,7 +2082,7 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
             send_notifications=False,
             created_by_id=str(self.user.id),
             engine=self.engine,
-            registry=self.registry
+            registry=self.registry,
         )
 
         # Verify workflow completed successfully
@@ -2094,6 +2097,7 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
         self.assertIsNotNone(odps_contract_id)
 
         from hub.apps.contracts.models import Contract, OriginalSpecType
+
         odps_contract = Contract.objects.get(id=odps_contract_id)
         self.assertEqual(odps_contract.original_spec_type, OriginalSpecType.ODPS)
 
@@ -2103,7 +2107,5 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
         self.assertIn("extensions", odcs_contract.hub_contract_json)
         self.assertIn("x_odps", odcs_contract.hub_contract_json["extensions"])
         self.assertEqual(
-            odcs_contract.hub_contract_json["extensions"]["x_odps"]["odps_link"],
-            odps_contract_id
+            odcs_contract.hub_contract_json["extensions"]["x_odps"]["odps_link"], odps_contract_id
         )
-

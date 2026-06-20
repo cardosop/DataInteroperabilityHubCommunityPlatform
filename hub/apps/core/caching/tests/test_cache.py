@@ -8,18 +8,16 @@ Tests cover:
 - Cache warming
 - Redis pattern support
 """
-import time
-from unittest.mock import Mock, patch
-from django.test import TestCase, override_settings
-from django.conf import settings
-from django.core.cache import cache
 
 import redis
+from django.conf import settings
+from django.core.cache import cache
+from django.test import TestCase, override_settings
 
 from hub.apps.core.caching.cache import (
+    CacheInvalidator,
     CacheKeyGenerator,
     CacheTTLConfig,
-    CacheInvalidator,
     CacheWarmer,
     generate_cache_key,
     get_cache_ttl,
@@ -32,12 +30,9 @@ from hub.apps.core.caching.cache import (
 def get_real_redis_client_or_none():
     """Get real Redis client or return None if unavailable."""
     try:
-        redis_url = getattr(settings, 'REDIS_URL', 'redis://redis-cache-test:6379/0')
+        redis_url = getattr(settings, "REDIS_URL", "redis://redis-cache-test:6379/0")
         client = redis.from_url(
-            redis_url,
-            decode_responses=True,
-            socket_connect_timeout=2,
-            socket_timeout=2
+            redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
         )
         client.ping()
         return client
@@ -152,7 +147,7 @@ class TestCacheTTLConfig(TestCase):
 class TestCacheInvalidator(TestCase):
     """Test cache invalidation utilities."""
 
-    @override_settings(REDIS_URL='redis://redis-cache-test:6379/0')
+    @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
     def setUp(self):
         """Set up test fixtures."""
         self.redis_client = get_real_redis_client_or_none()
@@ -265,7 +260,7 @@ class TestCacheInvalidator(TestCase):
 class TestCacheWarmer(TestCase):
     """Test cache warming utilities."""
 
-    @override_settings(REDIS_URL='redis://redis-cache-test:6379/0')
+    @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
     def setUp(self):
         """Set up test fixtures."""
         self.redis_client = get_real_redis_client_or_none()
@@ -285,6 +280,7 @@ class TestCacheWarmer(TestCase):
 
     def test_warm_single_entry(self):
         """Test warming cache with single entry."""
+
         def fetch_data(key):
             return f"data_for_{key}"
 
@@ -296,6 +292,7 @@ class TestCacheWarmer(TestCase):
 
     def test_warm_multiple_entries(self):
         """Test warming cache with multiple entries."""
+
         def fetch_data(key):
             return f"data_for_{key}"
 
@@ -309,6 +306,7 @@ class TestCacheWarmer(TestCase):
 
     def test_warm_with_custom_ttl(self):
         """Test warming cache with custom TTL."""
+
         def fetch_data(key):
             return f"data_for_{key}"
 
@@ -320,6 +318,7 @@ class TestCacheWarmer(TestCase):
 
     def test_warm_function(self):
         """Test warm_cache convenience function."""
+
         def fetch_data(key):
             return f"data_for_{key}"
 
@@ -330,6 +329,7 @@ class TestCacheWarmer(TestCase):
 
     def test_warm_handles_errors(self):
         """Test warming handles fetch errors gracefully."""
+
         def fetch_data(key):
             raise Exception("Fetch error")
 
@@ -341,6 +341,7 @@ class TestCacheWarmer(TestCase):
 
     def test_warm_batch_processing(self):
         """Test warming processes entries in batches."""
+
         def fetch_data(key):
             return f"data_for_{key}"
 
@@ -356,7 +357,7 @@ class TestCacheWarmer(TestCase):
 class TestCacheIntegration(TestCase):
     """Integration tests for caching utilities."""
 
-    @override_settings(REDIS_URL='redis://redis-cache-test:6379/0')
+    @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
     def setUp(self):
         """Set up test fixtures."""
         self.redis_client = get_real_redis_client_or_none()
@@ -395,10 +396,7 @@ class TestCacheIntegration(TestCase):
     def test_pattern_based_invalidation(self):
         """Test pattern-based invalidation with multiple keys."""
         # Set multiple keys
-        keys = [
-            generate_cache_key("integration", "pattern", f"key{i}")
-            for i in range(5)
-        ]
+        keys = [generate_cache_key("integration", "pattern", f"key{i}") for i in range(5)]
 
         for key in keys:
             cache.set(key, f"value_{key}", timeout=300)
@@ -424,6 +422,7 @@ class TestCacheIntegration(TestCase):
 
     def test_cache_warming_and_invalidation(self):
         """Test cache warming followed by invalidation."""
+
         def fetch_data(key):
             return f"warmed_data_for_{key}"
 
@@ -451,4 +450,3 @@ class TestCacheIntegration(TestCase):
                 invalidate_cache(key)
             for key in keys:
                 self.assertIsNone(cache.get(key))
-

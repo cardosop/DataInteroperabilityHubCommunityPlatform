@@ -10,9 +10,9 @@ Comprehensive integration tests verifying:
 
 Tests use real implementations (no mocks/stubs) and follow TDD principles.
 """
-import uuid
 
 import json
+import uuid
 
 from rest_framework import status
 
@@ -25,7 +25,6 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.tenants.models import Tenant
-
 
 
 class ContractDownloadEndpointTest(ContractsAPITestBase):
@@ -92,7 +91,7 @@ class ContractDownloadEndpointTest(ContractsAPITestBase):
         self.assertIn(".hubcontract.json", response["Content-Disposition"])
 
         # Verify content is valid JSON
-        data = response.data
+        data = json.loads(response.content)
         self.assertEqual(data["id"], "test-contract-odcs")
         self.assertEqual(data["info"]["name"], "Test ODCS Contract")
 
@@ -133,7 +132,7 @@ class ContractDownloadEndpointTest(ContractsAPITestBase):
         self.assertIn("attachment", response["Content-Disposition"])
         self.assertIn(".odcs.json", response["Content-Disposition"])
 
-        data = response.data
+        data = json.loads(response.content)
         self.assertEqual(data["id"], "test-contract-odcs")
         self.assertEqual(data["name"], "Test ODCS Contract")
 
@@ -175,7 +174,7 @@ class ContractDownloadEndpointTest(ContractsAPITestBase):
         self.assertIn(".odps.json", response["Content-Disposition"])
 
         # Verify content is valid JSON and contains ODPS structure
-        data = response.data
+        data = json.loads(response.content)
         self.assertIn("schema", data)
         self.assertIn("version", data)
 
@@ -216,7 +215,7 @@ class ContractDownloadEndpointTest(ContractsAPITestBase):
         self.assertIn(".hubcontract.json", response["Content-Disposition"])
 
         # Verify content is valid JSON
-        data = response.data
+        data = json.loads(response.content)
         self.assertEqual(data["id"], "test-contract-odcs")
 
     def test_download_invalid_format(self):
@@ -229,7 +228,7 @@ class ContractDownloadEndpointTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data)
+        self.assertIn("error", json.loads(response.content))
 
     def test_download_invalid_output_format(self):
         """Test downloading contract with invalid output_format parameter"""
@@ -241,7 +240,7 @@ class ContractDownloadEndpointTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data)
+        self.assertIn("error", json.loads(response.content))
 
     def test_download_nonexistent_contract(self):
         """Test downloading nonexistent contract ID"""
@@ -290,7 +289,7 @@ class ContractDownloadEndpointTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data)
+        self.assertIn("error", json.loads(response.content))
 
         # Try to download as odcs (should work if original_raw exists)
         response = self.client.get(
@@ -477,7 +476,7 @@ class ODCSDownloadVersionSupportTest(ContractsAPITestBase):
             f"Filename '{filename}' should contain version 3.0.2",
         )
 
-        data = response.data
+        data = json.loads(response.content)
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.2")
         self.assertEqual(data["id"], "test-contract-version")
 
@@ -514,7 +513,7 @@ class ODCSDownloadVersionSupportTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = response.data
+        data = json.loads(response.content)
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.1")
 
         filename = self._extract_filename_from_content_disposition(response["Content-Disposition"])
@@ -531,7 +530,7 @@ class ODCSDownloadVersionSupportTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = response.data
+        data = json.loads(response.content)
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.0")
 
     def test_download_odcs_with_version_parameter_3_0_0_preview_json(self):
@@ -544,7 +543,7 @@ class ODCSDownloadVersionSupportTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = response.data
+        data = json.loads(response.content)
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.0-preview")
 
     def test_download_odcs_with_version_parameter_2_2_2_json(self):
@@ -557,7 +556,7 @@ class ODCSDownloadVersionSupportTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = response.data
+        data = json.loads(response.content)
         self.assertEqual(data["apiVersion"], "odcs.io/v2.2.2")
 
     def test_download_odcs_when_original_raw_missing_generates_json(self):
@@ -573,7 +572,7 @@ class ODCSDownloadVersionSupportTest(ContractsAPITestBase):
         self.assertIn("Content-Disposition", response)
         self.assertIn("attachment", response["Content-Disposition"])
 
-        data = response.data
+        data = json.loads(response.content)
         self.assertIn("apiVersion", data)
         self.assertIn("kind", data)
         self.assertEqual(data["kind"], "DataContract")
@@ -591,7 +590,7 @@ class ODCSDownloadVersionSupportTest(ContractsAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("Content-Disposition", response)
 
-        data = response.data
+        data = json.loads(response.content)
         # Should return original (not generated)
         self.assertEqual(data["id"], "test-contract-v302")
         self.assertEqual(data["name"], "Test Contract v3.0.2")
@@ -609,7 +608,7 @@ class ODCSDownloadVersionSupportTest(ContractsAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("Content-Disposition", response)
 
-        data = response.data
+        data = json.loads(response.content)
         # Should generate new version (not return original)
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.1")
         # ID should come from hub_contract_json, not original
@@ -671,7 +670,7 @@ class ODCSDownloadVersionSupportTest(ContractsAPITestBase):
         self.assertIsNotNone(filename)
         self.assertIn(".odcs.json", filename)
 
-        data = response.data
+        data = json.loads(response.content)
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.2")
         self.assertEqual(data["id"], "test-yaml")
 
@@ -685,8 +684,8 @@ class ODCSDownloadVersionSupportTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data)
-        error_msg = str(response.data["error"]).lower()
+        self.assertIn("error", json.loads(response.content))
+        error_msg = str(json.loads(response.content)["error"]).lower()
         self.assertIn("version", error_msg)
 
     def test_download_odcs_error_handling_generation_failure(self):
@@ -713,7 +712,7 @@ class ODCSDownloadVersionSupportTest(ContractsAPITestBase):
 
         # Should return 500 with error details
         self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
-        self.assertIn("error", response.data)
+        self.assertIn("error", json.loads(response.content))
 
     def test_download_odcs_filename_includes_version(self):
         """Test that downloaded filename includes version information"""
@@ -758,7 +757,7 @@ class ODCSDownloadVersionSupportTest(ContractsAPITestBase):
                 self.assertEqual(response["Content-Type"], "application/json")
                 self.assertIn("Content-Disposition", response)
 
-                data = response.data
+                data = json.loads(response.content)
                 self.assertEqual(data["apiVersion"], f"odcs.io/v{version}")
                 self.assertEqual(data["id"], "test-contract-version")
 

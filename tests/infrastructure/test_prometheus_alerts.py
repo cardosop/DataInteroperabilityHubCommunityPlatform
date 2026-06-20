@@ -3,7 +3,9 @@
 Validates alert rule structure, uniqueness, and required annotations.
 Uses YAML parsing — does NOT require promtool.
 """
+
 import os
+
 import pytest
 import yaml
 
@@ -61,18 +63,19 @@ class TestAlertRuleStructure:
     def test_all_rules_have_severity(self, all_rules):
         for rule in all_rules:
             severity = rule.get("labels", {}).get("severity")
-            assert severity in ("critical", "warning", "info"), \
+            assert severity in ("critical", "warning", "info"), (
                 f"Alert {rule['alert']} has invalid severity: {severity}"
+            )
 
     def test_critical_alerts_have_annotations(self, all_rules):
         """Critical alerts must have summary and description."""
         for rule in all_rules:
             if rule.get("labels", {}).get("severity") == "critical":
                 annotations = rule.get("annotations", {})
-                assert "summary" in annotations, \
-                    f"Critical alert {rule['alert']} missing summary"
-                assert "description" in annotations, \
+                assert "summary" in annotations, f"Critical alert {rule['alert']} missing summary"
+                assert "description" in annotations, (
                     f"Critical alert {rule['alert']} missing description"
+                )
 
     def test_at_least_10_alert_rules(self, all_rules):
         assert len(all_rules) >= 10, f"Only {len(all_rules)} alert rules defined"

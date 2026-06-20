@@ -10,6 +10,8 @@ Regression tests for Phase 25 features:
 No mocks - uses real DB and real services.
 """
 
+import uuid
+
 import pytest
 from django.test import TestCase
 from django.utils import timezone
@@ -20,9 +22,8 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.scheduled_export.models import DestinationType, ScheduledExport, ScheduledExportStatus
 from hub.apps.tenants.models import Tenant, TenantPlan, TenantStatus
-from hub.apps.users.models import User, UserStatus
 from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
-import uuid
+from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -67,7 +68,6 @@ class Phase25PlanLimitsRegressionTest(TestCase):
         self.tenant.save()
 
         # Create subscription
-        from hub.apps.billing.models import Subscription
 
         self.subscription = Subscription.objects.create(
             tenant=self.tenant,
@@ -201,7 +201,6 @@ class Phase25SubscriptionStateRegressionTest(TestCase):
         self.tenant.save()
 
         # Create subscription
-        from hub.apps.billing.models import Subscription
 
         self.subscription = Subscription.objects.create(
             tenant=self.tenant,
@@ -325,7 +324,7 @@ class Phase25TenantSuspensionRegressionTest(TestCase):
         )
 
         # Create plan and assign to tenant
-        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        from hub.apps.billing.models import SubscriptionStatus
         from hub.apps.tenants.models import TenantPlan
 
         plan = TenantPlan.objects.create(
@@ -437,7 +436,7 @@ class Phase25APIVersionHeadersRegressionTest(TestCase):
         )
 
         # Create plan and assign to tenant
-        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        from hub.apps.billing.models import SubscriptionStatus
         from hub.apps.tenants.models import TenantPlan
 
         plan = TenantPlan.objects.create(

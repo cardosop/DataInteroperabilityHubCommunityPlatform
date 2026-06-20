@@ -15,37 +15,34 @@ Tests all critical user journeys:
 
 All tests use real services (no mocks/stubs) to ensure comprehensive E2E coverage.
 """
-import uuid
-import pytest
-from django.test import TestCase
-from django.utils import timezone
-from django.core.cache import cache
 
-from hub.apps.transformation.services import TransformationService
-from hub.apps.transformation.business_rules import TransformationBusinessRules
-from hub.apps.transformation.models import (
-    TransformationPipeline,
-    PipelineExecution,
-    PipelineStatus,
-    ExecutionStatus,
-    ExecutionMode
-)
-from hub.apps.core.services.base import NotFoundError
-from hub.apps.transformation.exceptions import (
-    TransformationValidationError,
-    TransformationExecutionError,
-    AssetCompatibilityError,
-    ResourceQuotaExceededError
-)
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus, Role, UserRole
+import uuid
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.test import TestCase
+
 from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.audit.models import AuditEvent
+from hub.apps.core.services.base import NotFoundError
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.governance.models import AccessPolicy
-from hub.apps.jobs.models import Job, JobType, JobStatus
-from hub.apps.audit.models import AuditEvent
-from django.contrib.auth import get_user_model
+from hub.apps.tenants.models import Tenant
+from hub.apps.transformation.business_rules import TransformationBusinessRules
+from hub.apps.transformation.exceptions import (
+    ResourceQuotaExceededError,
+    TransformationExecutionError,
+)
+from hub.apps.transformation.models import (
+    ExecutionMode,
+    ExecutionStatus,
+    PipelineStatus,
+    TransformationPipeline,
+)
+from hub.apps.transformation.services import TransformationService
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 User = get_user_model()
 
@@ -62,57 +59,45 @@ class TransformationE2ETest(TestCase):
     def setUp(self):
         """Set up per-test fixtures."""
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"t-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"t-{uid}")
 
         # Create user
         self.user = User.objects.create_user(
             email=f"t-{uid}@test.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create DATA_PROVIDER role
         self.data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
 
         # Assign role to user
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=self.data_provider_role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=self.data_provider_role)
 
         # Create access policy
         AccessPolicy.objects.get_or_create(
             tenant=self.tenant,
             name="Allow Pipeline Operations",
             defaults={
-                "conditions": {
-                    "user": {"tenant_id": str(self.tenant.id)}
-                },
+                "conditions": {"user": {"tenant_id": str(self.tenant.id)}},
                 "effect": "ALLOW",
                 "priority": 100,
                 "enabled": True,
-                "created_by": self.user
-            }
+                "created_by": self.user,
+            },
         )
 
         # Create service
         self.service = TransformationService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create business rules
         self.business_rules = TransformationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create valid pipeline definition
@@ -122,27 +107,15 @@ class TransformationE2ETest(TestCase):
                 {
                     "name": "filter_step",
                     "type": "task",
-                    "node_config": {
-                        "node_type": "filter",
-                        "filter_expression": "age > 18"
-                    }
+                    "node_config": {"node_type": "filter", "filter_expression": "age > 18"},
                 },
                 {
                     "name": "transform_step",
                     "type": "task",
-                    "node_config": {
-                        "node_type": "transform",
-                        "transform_expression": "name"
-                    }
+                    "node_config": {"node_type": "transform", "transform_expression": "name"},
                 },
-                {
-                    "name": "output_step",
-                    "type": "task",
-                    "node_config": {
-                        "node_type": "output"
-                    }
-                }
-            ]
+                {"name": "output_step", "type": "task", "node_config": {"node_type": "output"}},
+            ],
         }
 
         # Create asset with dataset
@@ -151,7 +124,7 @@ class TransformationE2ETest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create CSV file content
@@ -165,7 +138,7 @@ class TransformationE2ETest(TestCase):
             size=len(self.csv_content),
             content_type="text/csv",
             status=FileStatus.PENDING,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Upload file to storage (real service)
@@ -177,7 +150,7 @@ class TransformationE2ETest(TestCase):
             storage_path = storage_client.save_file(
                 tenant_id=str(self.tenant.id),
                 file_id=str(self.file.id),
-                file_content=self.csv_content
+                file_content=self.csv_content,
             )
             # Update file with the actual storage path used
             self.file.storage_path = storage_path
@@ -200,10 +173,10 @@ class TransformationE2ETest(TestCase):
                 "fields": [
                     {"name": "id", "data_type": "integer"},
                     {"name": "name", "data_type": "string"},
-                    {"name": "age", "data_type": "integer"}
+                    {"name": "age", "data_type": "integer"},
                 ]
             },
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_e2e_create_validate_execute_complete(self):
@@ -217,7 +190,7 @@ class TransformationE2ETest(TestCase):
             user_id=str(self.user.id),
             name="E2E Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
         self.assertIsNotNone(pipeline.id)
         self.assertEqual(pipeline.status, PipelineStatus.ACTIVE)
@@ -235,7 +208,7 @@ class TransformationE2ETest(TestCase):
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.ASYNC
+                execution_mode=ExecutionMode.ASYNC,
             )
             self.assertIsNotNone(execution.id)
             self.assertEqual(execution.pipeline, pipeline)
@@ -265,15 +238,13 @@ class TransformationE2ETest(TestCase):
             user_id=str(self.user.id),
             name="Preview E2E Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Step 2: Preview transformation
         try:
             preview_result = self.service.preview_transformation(
-                pipeline_id=str(pipeline.id),
-                asset_id=str(self.asset.id),
-                sample_size=10
+                pipeline_id=str(pipeline.id), asset_id=str(self.asset.id), sample_size=10
             )
             self.assertIsNotNone(preview_result)
             self.assertIn("preview_id", preview_result)
@@ -288,22 +259,15 @@ class TransformationE2ETest(TestCase):
                         "type": "task",
                         "node_config": {
                             "node_type": "filter",
-                            "filter_expression": "age > 21"  # Adjusted filter
-                        }
+                            "filter_expression": "age > 21",  # Adjusted filter
+                        },
                     },
-                    {
-                        "name": "output_step",
-                        "type": "task",
-                        "node_config": {
-                            "node_type": "output"
-                        }
-                    }
-                ]
+                    {"name": "output_step", "type": "task", "node_config": {"node_type": "output"}},
+                ],
             }
 
             updated_pipeline = self.service.update_pipeline(
-                pipeline_id=str(pipeline.id),
-                pipeline_definition=adjusted_definition
+                pipeline_id=str(pipeline.id), pipeline_definition=adjusted_definition
             )
             self.assertEqual(updated_pipeline.get_pipeline_definition(), adjusted_definition)
 
@@ -313,7 +277,7 @@ class TransformationE2ETest(TestCase):
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.ASYNC
+                execution_mode=ExecutionMode.ASYNC,
             )
             self.assertIsNotNone(execution.id)
         except (TransformationExecutionError, ConnectionError, OSError, NotFoundError) as e:
@@ -334,7 +298,7 @@ class TransformationE2ETest(TestCase):
             user_id=str(self.user.id),
             name="Error Handling E2E Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Step 2: Execute pipeline
@@ -344,7 +308,7 @@ class TransformationE2ETest(TestCase):
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.ASYNC
+                execution_mode=ExecutionMode.ASYNC,
             )
 
             # Step 3: Check execution status
@@ -359,7 +323,7 @@ class TransformationE2ETest(TestCase):
                     asset_id=str(self.asset.id),
                     tenant_id=str(self.tenant.id),
                     user_id=str(self.user.id),
-                    execution_mode=ExecutionMode.ASYNC
+                    execution_mode=ExecutionMode.ASYNC,
                 )
                 self.assertIsNotNone(retry_execution.id)
                 self.assertNotEqual(retry_execution.id, execution.id)
@@ -381,7 +345,7 @@ class TransformationE2ETest(TestCase):
             user_id=str(self.user.id),
             name="Cancel E2E Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Step 2: Execute pipeline in async mode
@@ -390,15 +354,12 @@ class TransformationE2ETest(TestCase):
             asset_id=str(self.asset.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            execution_mode=ExecutionMode.ASYNC
+            execution_mode=ExecutionMode.ASYNC,
         )
 
         # Step 3: Monitor progress (check status is cancellable)
         execution.refresh_from_db()
-        self.assertIn(execution.status, [
-            ExecutionStatus.PENDING,
-            ExecutionStatus.RUNNING
-        ])
+        self.assertIn(execution.status, [ExecutionStatus.PENDING, ExecutionStatus.RUNNING])
 
         # Step 4: Verify execution can be cancelled, then cancel via model method
         self.assertTrue(execution.can_cancel())
@@ -420,7 +381,7 @@ class TransformationE2ETest(TestCase):
             user_id=str(self.user.id),
             name="Results E2E Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Step 2: Execute pipeline
@@ -430,7 +391,7 @@ class TransformationE2ETest(TestCase):
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.ASYNC
+                execution_mode=ExecutionMode.ASYNC,
             )
 
             # Step 3: Verify async execution state (Phase 285.9)
@@ -452,10 +413,7 @@ class TransformationE2ETest(TestCase):
             self.skipTest(f"Storage not available: {self.storage_error}")
 
         # Create another tenant
-        other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug=f"o-{uuid.uuid4().hex[:8]}"
-        )
+        other_tenant = Tenant.objects.create(name="Other Tenant", slug=f"o-{uuid.uuid4().hex[:8]}")
 
         # Create asset in other tenant
         other_asset = Asset.objects.create(
@@ -463,7 +421,7 @@ class TransformationE2ETest(TestCase):
             key="other-asset",
             name="Other Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         other_file = File.objects.create(
@@ -473,17 +431,17 @@ class TransformationE2ETest(TestCase):
             size=1000,
             content_type="text/csv",
             status=FileStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
-        other_dataset = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=other_tenant,
             asset=other_asset,
             file=other_file,
             version=1,
             format="CSV",
             row_count=100,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create pipeline in current tenant
@@ -492,7 +450,7 @@ class TransformationE2ETest(TestCase):
             created_by=self.user,
             name="Cross-Tenant E2E Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Validate cross-tenant access
@@ -516,11 +474,12 @@ class TransformationE2ETest(TestCase):
             created_by=self.user,
             name="Quota E2E Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Set running jobs to exceed limit
         from hub.apps.tenants.services import get_tenant_job_limits
+
         limits = get_tenant_job_limits(str(self.tenant.id))
         max_concurrency = limits["max_job_concurrency"]
 
@@ -529,14 +488,18 @@ class TransformationE2ETest(TestCase):
 
         # Try to execute pipeline (should fail due to quota)
         try:
-            async_mode = ExecutionMode.ASYNC[0] if isinstance(ExecutionMode.ASYNC, tuple) else ExecutionMode.ASYNC
+            async_mode = (
+                ExecutionMode.ASYNC[0]
+                if isinstance(ExecutionMode.ASYNC, tuple)
+                else ExecutionMode.ASYNC
+            )
             with self.assertRaises((ResourceQuotaExceededError, TransformationExecutionError)):
                 self.service.execute_pipeline(
                     pipeline_id=str(pipeline.id),
                     asset_id=str(self.asset.id),
                     tenant_id=str(self.tenant.id),
                     user_id=str(self.user.id),
-                    execution_mode=async_mode
+                    execution_mode=async_mode,
                 )
         finally:
             # Cleanup
@@ -553,7 +516,7 @@ class TransformationE2ETest(TestCase):
             created_by=self.user,
             name="Compliance E2E Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Execute pipeline (should trigger compliance checks)
@@ -564,7 +527,7 @@ class TransformationE2ETest(TestCase):
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.ASYNC
+                execution_mode=ExecutionMode.ASYNC,
             )
 
             # Compliance checks gate before async execution enqueue (Phase 285.9)
@@ -589,7 +552,7 @@ class TransformationE2ETest(TestCase):
             created_by=self.user,
             name="Quality E2E Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Execute pipeline (should trigger quality checks)
@@ -599,7 +562,7 @@ class TransformationE2ETest(TestCase):
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.ASYNC
+                execution_mode=ExecutionMode.ASYNC,
             )
 
             # Quality checks are performed during workflow execution
@@ -623,32 +586,28 @@ class TransformationE2ETest(TestCase):
             user_id=str(self.user.id),
             name="Audit E2E Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Verify audit event was created for pipeline creation
         audit_events = AuditEvent.objects.filter(
-            resource_type="TRANSFORMATION_PIPELINE",
-            action="CREATED",
-            resource_id=pipeline.id
+            resource_type="TRANSFORMATION_PIPELINE", action="CREATED", resource_id=pipeline.id
         )
         self.assertGreaterEqual(audit_events.count(), 1)
 
         # Execute pipeline (should create audit log for execution)
         try:
-            execution = self.service.execute_pipeline(
+            self.service.execute_pipeline(
                 pipeline_id=str(pipeline.id),
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.ASYNC
+                execution_mode=ExecutionMode.ASYNC,
             )
 
             # Verify audit event was created for execution
-            execution_audit_events = AuditEvent.objects.filter(
-                resource_type="TRANSFORMATION_PIPELINE",
-                action="EXECUTED",
-                resource_id=pipeline.id
+            AuditEvent.objects.filter(
+                resource_type="TRANSFORMATION_PIPELINE", action="EXECUTED", resource_id=pipeline.id
             )
             # May or may not have execution audit events depending on implementation
             # At minimum, creation audit event should exist
@@ -659,4 +618,3 @@ class TransformationE2ETest(TestCase):
                 self.skipTest(f"Service not available: {e}")
             else:
                 raise
-

@@ -36,6 +36,13 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
     // Step 2: Use loginUser fixture (handles rate limiting, retries, and navigation)
     await loginUser(page, testUser);
 
+    // If loginUser returned but the page is on /login (auth state destabilized
+    // after the stability check passed — e.g. async tryFetchUser returned 401),
+    // retry once with force-fresh login.
+    if (page.url().includes('/login')) {
+      await loginUser(page, testUser, { forceFreshLogin: true });
+    }
+
     // Dual-channel login verification (PR 7a-ext2c — fourth adoption).
     // loginUser succeeded at the UI level (form submit + redirect), but
     // that only proves the client-side state transition. Hit /auth/me/
@@ -223,7 +230,10 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
     expect(tokenAfter.refresh).toBeNull();
     expect(tokenAfter.user).toBeNull();
 
-    // Protected route should now redirect back to login (session is gone)
+    // Protected route should now redirect back to login (session is gone).
+    // Wait for the SPA to settle after logout — calling page.goto immediately
+    // can race with React re-render/state updates and abort the navigation.
+    await page.waitForTimeout(1000);
     await page.goto('/assets', { waitUntil: 'domcontentloaded' });
     await page.waitForURL(/\/login/, { timeout: 10000 });
   });

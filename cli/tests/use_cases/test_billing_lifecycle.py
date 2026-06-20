@@ -10,25 +10,17 @@ Tests cover the happy paths (GET plan, GET usage) and the enforcement
 path (exceeding plan limits triggers an appropriate error).
 """
 
-import os
 import requests
-from tests._persona_provisioning import provision_persona, PersonaCredentials
-from tests.fixtures.personas import MVP_PERSONA_ROLES
+from tests._persona_provisioning import PersonaCredentials, provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import (
     api_base_url,
-    api_get,
-    api_post,
-    api_put,
-    api_delete,
-    api_login,
-    api_unauthenticated_get,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
@@ -71,12 +63,9 @@ def test_get_current_plan():
 
     body = resp.json()
     # Should contain plan identification
-    assert (
-        "plan" in body
-        or "tier" in body
-        or "name" in body
-        or "subscription" in body
-    ), f"Billing plan response missing plan/tier/name: {body}"
+    assert "plan" in body or "tier" in body or "name" in body or "subscription" in body, (
+        f"Billing plan response missing plan/tier/name: {body}"
+    )
 
 
 def test_get_current_plan_contains_limits():
@@ -102,9 +91,7 @@ def test_get_current_plan_contains_limits():
         keyword in body_str
         for keyword in ["limit", "quota", "max", "allowance", "seats", "storage"]
     )
-    assert has_limits, (
-        f"Billing plan response contains no limit/quota information: {body}"
-    )
+    assert has_limits, f"Billing plan response contains no limit/quota information: {body}"
 
 
 def test_usage_metering_returns_data():
@@ -166,9 +153,8 @@ def test_usage_metering_includes_period():
     # This is a soft assertion — warn but do not fail if period is missing
     if not has_period:
         import warnings
-        warnings.warn(
-            f"Billing usage response has no period/cycle information: {body}"
-        )
+
+        warnings.warn(f"Billing usage response has no period/cycle information: {body}")
 
 
 @pytest.mark.timeout(300)  # 50 assets × 15s timeout each — needs more than default 60s
@@ -201,11 +187,14 @@ def test_quota_exceeded_returns_402_or_429():
         if resp.status_code in (402, 429, 413):
             hit_limit = True
             # Verify the error response is informative
-            body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+            body = (
+                resp.json()
+                if resp.headers.get("content-type", "").startswith("application/json")
+                else {}
+            )
             body_str = str(body).lower()
             has_message = any(
-                keyword in body_str
-                for keyword in ["limit", "quota", "exceeded", "upgrade", "plan"]
+                keyword in body_str for keyword in ["limit", "quota", "exceeded", "upgrade", "plan"]
             )
             assert has_message or resp.status_code in (402, 429), (
                 f"Quota error response lacks informative message: {body}"
@@ -259,8 +248,7 @@ def test_non_admin_can_view_own_usage():
 
     # Regular users should get 200 (own usage) or 403 (admin-only)
     assert resp.status_code in (200, 403), (
-        f"Data analyst billing/usage returned {resp.status_code}: "
-        f"{resp.text[:300]}"
+        f"Data analyst billing/usage returned {resp.status_code}: {resp.text[:300]}"
     )
 
 
@@ -296,6 +284,5 @@ def test_billing_plan_upgrade_endpoint_exists():
     # The endpoint exists — it may return 400 (invalid plan), 402 (payment needed),
     # or 200 (upgraded). All are valid as long as it is not a 5xx.
     assert resp.status_code < 500, (
-        f"Billing plan upgrade returned server error {resp.status_code}: "
-        f"{resp.text[:300]}"
+        f"Billing plan upgrade returned server error {resp.status_code}: {resp.text[:300]}"
     )

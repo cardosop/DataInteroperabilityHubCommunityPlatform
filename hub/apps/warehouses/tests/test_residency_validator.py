@@ -1,6 +1,7 @@
 """
 Phase 277.B.093 — data residency cross-validation tests.
 """
+
 import pytest
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -70,17 +71,24 @@ class ResidencyValidatorTests(TestCase):
 class WarehouseModelResidencyValidationTests(TestCase):
     def setUp(self):
         import uuid
+
         _uid = lambda: uuid.uuid4().hex[:8]
         self.eu_tenant = Tenant.objects.create(
-            name=f"EU Corp {_uid()}", slug=f"eu-corp-{_uid()}", status=TenantStatus.ACTIVE,
+            name=f"EU Corp {_uid()}",
+            slug=f"eu-corp-{_uid()}",
+            status=TenantStatus.ACTIVE,
             data_residency_region="eu-west-1",
         )
         self.us_tenant = Tenant.objects.create(
-            name=f"US Corp {_uid()}", slug=f"us-corp-{_uid()}", status=TenantStatus.ACTIVE,
+            name=f"US Corp {_uid()}",
+            slug=f"us-corp-{_uid()}",
+            status=TenantStatus.ACTIVE,
             data_residency_region="us-east-1",
         )
         self.no_residency_tenant = Tenant.objects.create(
-            name=f"Global Corp {_uid()}", slug=f"global-corp-{_uid()}", status=TenantStatus.ACTIVE,
+            name=f"Global Corp {_uid()}",
+            slug=f"global-corp-{_uid()}",
+            status=TenantStatus.ACTIVE,
             data_residency_region=None,
         )
 
@@ -130,9 +138,12 @@ class WarehouseModelResidencyValidationTests(TestCase):
 class FindResidencyMismatchesTests(TestCase):
     def setUp(self):
         import uuid
+
         _uid = uuid.uuid4().hex[:8]
         self.eu_tenant = Tenant.objects.create(
-            name=f"EU Corp {_uid}", slug=f"eu-corp-{_uid}", status=TenantStatus.ACTIVE,
+            name=f"EU Corp {_uid}",
+            slug=f"eu-corp-{_uid}",
+            status=TenantStatus.ACTIVE,
             data_residency_region="eu",
         )
 

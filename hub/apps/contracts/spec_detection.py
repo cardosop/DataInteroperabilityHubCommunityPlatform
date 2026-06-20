@@ -3,12 +3,14 @@ Spec Detection and Metadata Tracking
 
 Detects contract specification type (ODPS and ODCS) and tracks original spec metadata.
 """
-from typing import Dict, Any, Tuple, Optional
+
+from typing import Any
+
 from .models import OriginalSpecType
 from .odps_version_detection import detect_odps_version as detect_odps_version_from_data
 
 
-def detect_odps_version(contract_data: Dict[str, Any]) -> Optional[str]:
+def detect_odps_version(contract_data: dict[str, Any]) -> str | None:
     """
     Detect ODPS version from contract data.
 
@@ -35,7 +37,7 @@ def detect_odps_version(contract_data: Dict[str, Any]) -> Optional[str]:
     return version
 
 
-def is_odps_contract(contract_data: Dict[str, Any]) -> bool:
+def is_odps_contract(contract_data: dict[str, Any]) -> bool:
     """
     Check if contract data represents an ODPS contract.
 
@@ -56,6 +58,7 @@ def is_odps_contract(contract_data: Dict[str, Any]) -> bool:
     # 1. Bitol ODPS detection (highest priority — explicit discriminator)
     #    kind: DataProduct + Bitol schema URL or Bitol apiVersion
     from .odps_version_detection import _detect_bitol_odps_version
+
     if _detect_bitol_odps_version(contract_data):
         return True
 
@@ -109,7 +112,7 @@ def is_odps_contract(contract_data: Dict[str, Any]) -> bool:
     return False
 
 
-def detect_spec_type(contract_data: Dict[str, Any]) -> Tuple[str, str]:
+def detect_spec_type(contract_data: dict[str, Any]) -> tuple[str, str]:
     """
     Detect contract specification type (ODPS or ODCS).
 
@@ -160,9 +163,10 @@ def detect_spec_type(contract_data: Dict[str, Any]) -> Tuple[str, str]:
             return OriginalSpecType.ODPS, "4.1"
 
     # Check for ODCS - has 'apiVersion' and 'kind' fields
-    if 'apiVersion' in contract_data and 'kind' in contract_data:
+    if "apiVersion" in contract_data and "kind" in contract_data:
         # Use detect_odcs_version to properly extract version (handles -preview suffix)
         from .odcs_version_detection import detect_odcs_version
+
         spec_version = detect_odcs_version(contract_data)
 
         # Default to 3.0.2 if version detection failed
@@ -175,7 +179,7 @@ def detect_spec_type(contract_data: Dict[str, Any]) -> Tuple[str, str]:
     return OriginalSpecType.ODCS, "3.0.2"
 
 
-def extract_original_spec_metadata(contract_data: Dict[str, Any]) -> Dict[str, Any]:
+def extract_original_spec_metadata(contract_data: dict[str, Any]) -> dict[str, Any]:
     """
     Extract original specification metadata from contract.
 
@@ -191,19 +195,21 @@ def extract_original_spec_metadata(contract_data: Dict[str, Any]) -> Dict[str, A
     spec_type, spec_version = detect_spec_type(contract_data)
 
     metadata = {
-        'type': spec_type,
-        'version': spec_version,
+        "type": spec_type,
+        "version": spec_version,
     }
 
     # Extract conformance information (dct:conformsTo)
     conforms_to = extract_conformance_info(contract_data, spec_type)
     if conforms_to:
-        metadata['conforms_to'] = conforms_to
+        metadata["conforms_to"] = conforms_to
 
     return metadata
 
 
-def extract_conformance_info(contract_data: Dict[str, Any], spec_type: str) -> Optional[Dict[str, Any]]:
+def extract_conformance_info(
+    contract_data: dict[str, Any], spec_type: str
+) -> dict[str, Any] | None:
     """
     Extract spec conformance tracking information (dct:conformsTo).
 
@@ -218,28 +224,30 @@ def extract_conformance_info(contract_data: Dict[str, Any], spec_type: str) -> O
         return None
 
     # Check for dct:conformsTo field (Dublin Core Terms)
-    conforms_to = contract_data.get('dct:conformsTo') or contract_data.get('conformsTo')
+    conforms_to = contract_data.get("dct:conformsTo") or contract_data.get("conformsTo")
 
     if conforms_to:
         return {
-            'uri': conforms_to if isinstance(conforms_to, str) else conforms_to.get('uri'),
-            'spec_type': spec_type,
-            'spec_version': detect_spec_type(contract_data)[1]
+            "uri": conforms_to if isinstance(conforms_to, str) else conforms_to.get("uri"),
+            "spec_type": spec_type,
+            "spec_version": detect_spec_type(contract_data)[1],
         }
 
     # For ODCS, check apiVersion as conformance indicator
-    if spec_type == OriginalSpecType.ODCS and 'apiVersion' in contract_data:
-        api_version = contract_data.get('apiVersion')
+    if spec_type == OriginalSpecType.ODCS and "apiVersion" in contract_data:
+        api_version = contract_data.get("apiVersion")
         return {
-            'uri': f"https://bitol-io.github.io/open-data-contract-standard/{api_version.split('/')[-1]}",
-            'spec_type': spec_type,
-            'spec_version': detect_spec_type(contract_data)[1]
+            "uri": f"https://bitol-io.github.io/open-data-contract-standard/{api_version.split('/')[-1]}",
+            "spec_type": spec_type,
+            "spec_version": detect_spec_type(contract_data)[1],
         }
 
     return None
 
 
-def store_original_spec_metadata(hub_contract: Dict[str, Any], contract_data: Dict[str, Any]) -> Dict[str, Any]:
+def store_original_spec_metadata(
+    hub_contract: dict[str, Any], contract_data: dict[str, Any]
+) -> dict[str, Any]:
     """
     Store original specification metadata in HubContract.
 
@@ -262,7 +270,6 @@ def store_original_spec_metadata(hub_contract: Dict[str, Any], contract_data: Di
     original_metadata = extract_original_spec_metadata(contract_data)
 
     # Add original_spec section to HubContract
-    hub_contract['original_spec'] = original_metadata
+    hub_contract["original_spec"] = original_metadata
 
     return hub_contract
-

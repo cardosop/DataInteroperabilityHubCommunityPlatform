@@ -33,6 +33,7 @@ Why a dedicated service module rather than a DRF mixin?
   client agree on the SHA-256 input byte-for-byte (no
   whitespace-induced false-mismatches).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -41,10 +42,9 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 from django.core.cache import cache
-
 
 logger = logging.getLogger(__name__)
 
@@ -151,9 +151,9 @@ class CachedResponse:
 
     status_code: int
     data: Any
-    headers: Dict[str, str]
+    headers: dict[str, str]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "status_code": self.status_code,
             "data": self.data,
@@ -161,7 +161,7 @@ class CachedResponse:
         }
 
     @classmethod
-    def from_dict(cls, raw: Dict[str, Any]) -> "CachedResponse":
+    def from_dict(cls, raw: dict[str, Any]) -> CachedResponse:
         return cls(
             status_code=int(raw["status_code"]),
             data=raw.get("data"),
@@ -187,7 +187,7 @@ class IdempotencyService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def canonical_body_bytes(body: Union[bytes, bytearray, str, dict, list]) -> bytes:
+    def canonical_body_bytes(body: bytes | bytearray | str | dict | list) -> bytes:
         """Return the canonical byte representation used to compute the SHA.
 
         For dict / list payloads we serialise with ``sort_keys=True``
@@ -202,18 +202,14 @@ class IdempotencyService:
         if isinstance(body, str):
             return body.encode("utf-8")
         if isinstance(body, (dict, list)):
-            return json.dumps(
-                body, sort_keys=True, separators=(",", ":")
-            ).encode("utf-8")
-        raise TypeError(
-            f"unsupported body type for canonical_body_bytes: {type(body)!r}"
-        )
+            return json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        raise TypeError(f"unsupported body type for canonical_body_bytes: {type(body)!r}")
 
     @classmethod
     def compose_key(
         cls,
-        tenant_uuid: Union[str, uuid.UUID],
-        body: Union[bytes, bytearray, str, dict, list],
+        tenant_uuid: str | uuid.UUID,
+        body: bytes | bytearray | str | dict | list,
     ) -> str:
         """Compose an Idempotency-Key from ``tenant_uuid`` and ``body``.
 
@@ -228,7 +224,7 @@ class IdempotencyService:
         return f"{normalised_tenant}:{sha}"
 
     @classmethod
-    def parse_key(cls, key: Optional[str]) -> Tuple[uuid.UUID, str]:
+    def parse_key(cls, key: str | None) -> tuple[uuid.UUID, str]:
         """Parse a key into ``(tenant_uuid, body_sha256_hex)`` or raise.
 
         The key MUST be in **canonical lowercase form** for both the
@@ -248,24 +244,19 @@ class IdempotencyService:
                 shape.
         """
         if not key:
-            raise IdempotencyKeyMissing(
-                "Idempotency-Key header is required for this endpoint."
-            )
+            raise IdempotencyKeyMissing("Idempotency-Key header is required for this endpoint.")
         # Exactly ONE colon separates the two fields (UUIDs themselves
         # contain hyphens, not colons; sha256 hex is colon-free).
         parts = key.split(":")
         if len(parts) != 2 or not parts[0] or not parts[1]:
             raise IdempotencyKeyMalformed(
-                "Idempotency-Key MUST be of the form "
-                "<tenant_uuid>:<sha256(body)>."
+                "Idempotency-Key MUST be of the form <tenant_uuid>:<sha256(body)>."
             )
         tenant_part, sha_part = parts
         try:
             tenant_uuid = uuid.UUID(tenant_part)
         except ValueError:
-            raise IdempotencyKeyMalformed(
-                "Idempotency-Key tenant prefix MUST be a valid UUID."
-            )
+            raise IdempotencyKeyMalformed("Idempotency-Key tenant prefix MUST be a valid UUID.")
         # Reject non-canonical (uppercase / mixed-case) UUIDs. The
         # canonical lowercase string from ``str(uuid.UUID(...))`` is
         # the wire form server + SDK agree on; anything else would
@@ -277,8 +268,7 @@ class IdempotencyService:
             )
         if not _SHA256_HEX_RE.match(sha_part):
             raise IdempotencyKeyMalformed(
-                "Idempotency-Key suffix MUST be a 64-char lowercase "
-                "SHA-256 hex digest."
+                "Idempotency-Key suffix MUST be a 64-char lowercase SHA-256 hex digest."
             )
         return tenant_uuid, sha_part
 
@@ -286,9 +276,9 @@ class IdempotencyService:
     def assert_body_matches_key(
         cls,
         key: str,
-        body: Union[bytes, bytearray, str, dict, list],
-        request_tenant_uuid: Union[str, uuid.UUID],
-    ) -> Tuple[uuid.UUID, str]:
+        body: bytes | bytearray | str | dict | list,
+        request_tenant_uuid: str | uuid.UUID,
+    ) -> tuple[uuid.UUID, str]:
         """Validate ``key`` against the actual request body + tenant.
 
         Returns ``(tenant_uuid, body_sha)`` on success; raises a
@@ -299,8 +289,7 @@ class IdempotencyService:
         tenant_uuid, sha_in_key = cls.parse_key(key)
         if str(tenant_uuid) != str(uuid.UUID(str(request_tenant_uuid))):
             raise IdempotencyKeyTenantMismatch(
-                "Idempotency-Key tenant prefix does not match the "
-                "authenticated tenant."
+                "Idempotency-Key tenant prefix does not match the authenticated tenant."
             )
         body_bytes = cls.canonical_body_bytes(body)
         actual_sha = hashlib.sha256(body_bytes).hexdigest()
@@ -317,7 +306,7 @@ class IdempotencyService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _cache_key(idem_key: str, scope: Optional[str] = None) -> str:
+    def _cache_key(idem_key: str, scope: str | None = None) -> str:
         """Namespace the raw header value behind a versioned prefix.
 
         The prefix lets ops bump ``v1`` to ``v2`` and instantly
@@ -336,7 +325,7 @@ class IdempotencyService:
         return _CACHE_KEY_PREFIX + idem_key
 
     @staticmethod
-    def _lock_key(idem_key: str, scope: Optional[str] = None) -> str:
+    def _lock_key(idem_key: str, scope: str | None = None) -> str:
         """Cache key for the concurrent-request lock (review-pass fix)."""
         if scope:
             return f"{_LOCK_KEY_PREFIX}{scope}:{idem_key}"
@@ -350,7 +339,7 @@ class IdempotencyService:
     def acquire_lock(
         cls,
         idem_key: str,
-        scope: Optional[str] = None,
+        scope: str | None = None,
         ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS,
     ) -> bool:
         """Atomically claim the in-flight slot for ``idem_key``.
@@ -371,12 +360,14 @@ class IdempotencyService:
         every write while Redis recovers.
         """
         try:
-            return bool(cache.add(
-                cls._lock_key(idem_key, scope),
-                "in_progress",
-                timeout=ttl_seconds,
-            ))
-        except Exception as exc:  # noqa: BLE001 — degrade gracefully
+            return bool(
+                cache.add(
+                    cls._lock_key(idem_key, scope),
+                    "in_progress",
+                    timeout=ttl_seconds,
+                )
+            )
+        except Exception as exc:
             logger.warning(
                 "idempotency_lock_acquire_failed",
                 extra={
@@ -392,7 +383,7 @@ class IdempotencyService:
     def release_lock(
         cls,
         idem_key: str,
-        scope: Optional[str] = None,
+        scope: str | None = None,
     ) -> None:
         """Release the in-flight lock for ``idem_key`` after the workflow.
 
@@ -405,7 +396,7 @@ class IdempotencyService:
         """
         try:
             cache.delete(cls._lock_key(idem_key, scope))
-        except Exception as exc:  # noqa: BLE001 — TTL fallback
+        except Exception as exc:
             logger.warning(
                 "idempotency_lock_release_failed",
                 extra={
@@ -420,8 +411,8 @@ class IdempotencyService:
     def get_cached_response(
         cls,
         idem_key: str,
-        scope: Optional[str] = None,
-    ) -> Optional[CachedResponse]:
+        scope: str | None = None,
+    ) -> CachedResponse | None:
         """Return the cached :class:`CachedResponse` for ``idem_key``.
 
         Returns ``None`` for a cache miss OR for any cache backend
@@ -430,7 +421,7 @@ class IdempotencyService:
         """
         try:
             raw = cache.get(cls._cache_key(idem_key, scope))
-        except Exception as exc:  # noqa: BLE001 — degrade gracefully
+        except Exception as exc:
             logger.warning(
                 "idempotency_cache_get_failed",
                 extra={
@@ -463,7 +454,7 @@ class IdempotencyService:
         idem_key: str,
         response: CachedResponse,
         ttl_seconds: int = DEFAULT_IDEMPOTENCY_TTL_SECONDS,
-        scope: Optional[str] = None,
+        scope: str | None = None,
     ) -> None:
         """Persist ``response`` keyed on ``idem_key`` for ``ttl_seconds``.
 
@@ -478,7 +469,7 @@ class IdempotencyService:
                 response.to_dict(),
                 timeout=ttl_seconds,
             )
-        except Exception as exc:  # noqa: BLE001 — degrade gracefully
+        except Exception as exc:
             logger.warning(
                 "idempotency_cache_set_failed",
                 extra={

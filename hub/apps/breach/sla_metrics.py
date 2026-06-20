@@ -9,6 +9,7 @@ Usage:
     from hub.apps.breach.sla_metrics import emit_breach_sla_metrics
     emit_breach_sla_metrics()
 """
+
 from __future__ import annotations
 
 import logging
@@ -30,26 +31,32 @@ def emit_breach_sla_metrics() -> list[dict]:
     from hub.apps.observability.otel_metrics import breach_hours_since_discovery
 
     now = timezone.now()
-    unresolved = BreachIncident.objects.filter(
-        status__in=(
-            BreachIncidentStatus.OPEN,
-            BreachIncidentStatus.CONTAINED,
-            BreachIncidentStatus.NOTIFIED,
-        ),
-        legal_hold=False,
-        discovered_at__isnull=False,
-    ).select_related("tenant").order_by("discovered_at")
+    unresolved = (
+        BreachIncident.objects.filter(
+            status__in=(
+                BreachIncidentStatus.OPEN,
+                BreachIncidentStatus.CONTAINED,
+                BreachIncidentStatus.NOTIFIED,
+            ),
+            legal_hold=False,
+            discovered_at__isnull=False,
+        )
+        .select_related("tenant")
+        .order_by("discovered_at")
+    )
 
     results: list[dict] = []
     try:
         for incident in unresolved:
             delta = now - incident.discovered_at
             hours = max(0.0, delta.total_seconds() / 3600.0)
-            results.append({
-                "tenant_id": str(incident.tenant_id),
-                "breach_id": str(incident.id),
-                "hours": round(hours, 1),
-            })
+            results.append(
+                {
+                    "tenant_id": str(incident.tenant_id),
+                    "breach_id": str(incident.id),
+                    "hours": round(hours, 1),
+                }
+            )
             breach_hours_since_discovery.labels(
                 tenant_id=str(incident.tenant_id),
                 breach_id=str(incident.id),

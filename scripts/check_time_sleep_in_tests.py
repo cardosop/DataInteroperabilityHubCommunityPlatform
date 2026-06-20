@@ -41,8 +41,11 @@ def _find_test_files(search_roots: list[str]) -> list[str]:
         if not p.exists():
             continue
         for dirpath, dirnames, filenames in os.walk(p):
-            dirnames[:] = [d for d in dirnames if d not in ("__pycache__", ".git", "migrations",
-                                                             ".venv", "venv", "node_modules")]
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if d not in ("__pycache__", ".git", "migrations", ".venv", "venv", "node_modules")
+            ]
             for fn in filenames:
                 if not fn.endswith(".py"):
                     continue
@@ -74,19 +77,28 @@ def check_file(file_path: str) -> tuple[int, int]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="GATE-05: No time.sleep() in tests")
-    parser.add_argument("--max-allowed", type=int, default=20,
-                        help="Maximum allowed unannotated sleep calls (default: 20).")
-    parser.add_argument("--list-all", action="store_true",
-                        help="List all sleep occurrences, not just violations.")
+    parser.add_argument(
+        "--max-allowed",
+        type=int,
+        default=20,
+        help="Maximum allowed unannotated sleep calls (default: 20).",
+    )
+    parser.add_argument(
+        "--list-all", action="store_true", help="List all sleep occurrences, not just violations."
+    )
     parser.add_argument("--path", nargs="*", default=None)
     args = parser.parse_args()
 
-    roots = args.path if args.path else [
-        str(REPO_ROOT / "hub"),
-        str(REPO_ROOT / "tests"),
-        str(REPO_ROOT / "cli/tests"),
-        str(REPO_ROOT / "services"),
-    ]
+    roots = (
+        args.path
+        if args.path
+        else [
+            str(REPO_ROOT / "hub"),
+            str(REPO_ROOT / "tests"),
+            str(REPO_ROOT / "cli/tests"),
+            str(REPO_ROOT / "services"),
+        ]
+    )
     test_files = _find_test_files(roots)
 
     all_total = 0
@@ -100,20 +112,23 @@ def main() -> None:
         if unannotated > 0:
             violations.append((fp, unannotated))
 
-    print(f"GATE-05: Found {all_total} total time.sleep() calls "
-          f"({all_unannotated} unannotated) in {len(test_files)} test files.")
+    print(
+        f"GATE-05: Found {all_total} total time.sleep() calls "
+        f"({all_unannotated} unannotated) in {len(test_files)} test files."
+    )
 
     if all_unannotated > args.max_allowed:
-        print(f"GATE-05: FAILED — {all_unannotated} unannotated sleep calls "
-              f"exceeds max {args.max_allowed}.")
+        print(
+            f"GATE-05: FAILED — {all_unannotated} unannotated sleep calls "
+            f"exceeds max {args.max_allowed}."
+        )
         for fp, count in sorted(violations, key=lambda x: -x[1])[:15]:
             rel = os.path.relpath(fp, REPO_ROOT)
             print(f"  {rel}  ({count} unannotated)")
         print("Add '# noqa: sleep-needed' with documented reason to allow.")
         sys.exit(1)
 
-    print(f"GATE-05: PASSED — {all_unannotated} unannotated sleep calls "
-          f"(max {args.max_allowed}).")
+    print(f"GATE-05: PASSED — {all_unannotated} unannotated sleep calls (max {args.max_allowed}).")
     sys.exit(0)
 
 

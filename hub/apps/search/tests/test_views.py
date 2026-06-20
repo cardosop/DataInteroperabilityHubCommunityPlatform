@@ -5,18 +5,18 @@ Tests for search endpoints, suggestions, analytics, and index rebuild.
 """
 
 import uuid
+
 import pytest
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract
+from hub.apps.assets.models import AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.search.indexing import SearchIndexer
-from hub.apps.search.models import SearchAnalytics, SearchIndex
+from hub.apps.search.models import SearchAnalytics
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
@@ -46,7 +46,10 @@ class SearchViewSetTest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="VERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="VERIFIED",
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
@@ -131,7 +134,6 @@ class SearchViewSetTest(TestCase):
     def test_track_click_endpoint(self):
         """Test track click endpoint"""
         # Create analytics first
-        from hub.apps.search.models import SearchAnalytics
         from hub.apps.search.search_engine import SearchEngine
 
         analytics = SearchEngine.track_search(
@@ -157,10 +159,6 @@ class SearchViewSetTest(TestCase):
             format="json",
         )
 
-        # Debug: Print response if failed
-        if response.status_code != status.HTTP_200_OK:
-            print(f"Response status: {response.status_code}")
-            print(f"Response data: {response.data if hasattr(response, 'data') else 'N/A'}")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("status", response.data)

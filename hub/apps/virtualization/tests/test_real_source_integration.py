@@ -5,29 +5,29 @@ Phase 20 — Virtualization Real Source Testing.
 Uses real PostgreSQL, Jena Fuseki (SPARQL), and HTTP endpoints — no mocks/stubs.
 Requires docker-compose.test.yml services to be running.
 """
+
 import unittest
 import uuid
 
 import pytest
-from django.test import TestCase, TransactionTestCase
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.conf import settings
 from django.db import connection
+from django.test import TestCase, TransactionTestCase
 
-from hub.apps.tenants.models import Tenant, KYCStatus, TenantPlan, PlanTier
 from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.core.services.base import ValidationError
+from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan
+from hub.apps.users.models import Role, UserRole
 from hub.apps.virtualization.models import (
-    VirtualDataset,
-    QueryExecution,
-    QueryType,
-    VirtualDatasetStatus,
-    QueryExecutionStatus,
     QueryExecutionMode,
+    QueryExecutionStatus,
+    QueryType,
+    VirtualDataset,
+    VirtualDatasetStatus,
 )
 from hub.apps.virtualization.services import VirtualizationService
-from hub.apps.core.services.base import ValidationError
-from hub.apps.users.models import Role, UserRole
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -36,6 +36,7 @@ User = get_user_model()
 def _setup_subscription(tenant):
     """Set up subscription/plan for a tenant."""
     from django.utils import timezone
+
     plan, _ = TenantPlan.objects.get_or_create(
         slug="virtualization-test-plan",
         defaults={
@@ -46,7 +47,11 @@ def _setup_subscription(tenant):
         },
     )
     if "max_storage_gb" not in (plan.limits_json or {}):
-        plan.limits_json = {**(plan.limits_json or {}), "max_storage_gb": 1000, "max_virtual_datasets": 100}
+        plan.limits_json = {
+            **(plan.limits_json or {}),
+            "max_storage_gb": 1000,
+            "max_virtual_datasets": 100,
+        }
         plan.save(update_fields=["limits_json"])
     if tenant.plan_id != plan.id:
         tenant.plan = plan
@@ -93,6 +98,7 @@ def _get_odbc_postgres_driver() -> str | None:
     """Return PostgreSQL Unicode driver if available, else first PostgreSQL driver, or None."""
     try:
         import pyodbc
+
         drivers = [d for d in pyodbc.drivers() if "postgresql" in d.lower()]
         if not drivers:
             return None
@@ -140,13 +146,18 @@ class RealPostgreSQLSourceIntegrationTest(TransactionTestCase):
 
     def setUp(self):
         from hub.apps.orchestration.registry import reset_workflow_definition_cache
+
         reset_workflow_definition_cache()
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
@@ -180,22 +191,22 @@ class RealPostgreSQLSourceIntegrationTest(TransactionTestCase):
                     connection.connection.rollback()
             except Exception as e:
                 import logging
+
                 logging.getLogger(__name__).warning(
                     f"tearDown: failed to rollback connection for {table_name}: {e}"
                 )
             try:
                 with connection.cursor() as cursor:
-                    cursor.execute(
-                        f'DROP TABLE IF EXISTS "{table_name}" CASCADE'
-                    )
+                    cursor.execute(f'DROP TABLE IF EXISTS "{table_name}" CASCADE')
             except Exception as e:
                 import logging
+
                 logging.getLogger(__name__).warning(
                     f"tearDown: failed to drop table {table_name}: {e}"
                 )
 
     @pytest.mark.integration
-    @pytest.mark.real_virtualization_e2e
+    @pytest.mark.virtualization
     @pytest.mark.timeout(180)
     def test_postgresql_create_table_select_assert_rows(self):
         """
@@ -246,10 +257,17 @@ class RealPostgreSQLSourceIntegrationTest(TransactionTestCase):
             )
         except (ValidationError, Exception) as e:
             err = str(e).lower()
-            if any(kw in err for kw in (
-                "connection", "refused", "timeout",
-                "operational", "config", "valid json",
-            )):
+            if any(
+                kw in err
+                for kw in (
+                    "connection",
+                    "refused",
+                    "timeout",
+                    "operational",
+                    "config",
+                    "valid json",
+                )
+            ):
                 self.skipTest(f"Database source not reachable: {e}")
             pytest.fail(f"Query execution failed: {e}")
 
@@ -258,18 +276,12 @@ class RealPostgreSQLSourceIntegrationTest(TransactionTestCase):
         self.assertEqual(
             execution.status,
             QueryExecutionStatus.COMPLETED,
-            f"Expected COMPLETED, got {execution.status}. "
-            f"Log: {execution.execution_log}",
+            f"Expected COMPLETED, got {execution.status}. Log: {execution.execution_log}",
         )
 
-        result = self.service.get_query_result(
-            execution_id=str(execution.id), format="json"
-        )
+        result = self.service.get_query_result(execution_id=str(execution.id), format="json")
         data = result.get("data", [])
-        self.assertEqual(
-            len(data), 3,
-            f"Expected 3 rows, got {len(data)}: {data}"
-        )
+        self.assertEqual(len(data), 3, f"Expected 3 rows, got {len(data)}: {data}")
         self.assertEqual(data[0]["name"], "alpha")
         self.assertEqual(data[0]["value"], 10)
         self.assertEqual(data[1]["name"], "beta")
@@ -278,7 +290,7 @@ class RealPostgreSQLSourceIntegrationTest(TransactionTestCase):
         self.assertEqual(data[2]["value"], 30)
 
     @pytest.mark.integration
-    @pytest.mark.real_virtualization_e2e
+    @pytest.mark.virtualization
     @pytest.mark.timeout(180)
     @pytest.mark.skipif(
         not _odbc_postgres_available(),
@@ -334,25 +346,28 @@ class RealPostgreSQLSourceIntegrationTest(TransactionTestCase):
             )
         except (ValidationError, Exception) as e:
             err = str(e).lower()
-            if any(kw in err for kw in (
-                "refused", "driver not found", "driver not installed",
-                "no suitable driver",
-            )):
+            if any(
+                kw in err
+                for kw in (
+                    "refused",
+                    "driver not found",
+                    "driver not installed",
+                    "no suitable driver",
+                )
+            ):
                 self.skipTest(f"ODBC driver/connection unavailable: {e}")
-            raise
+            pytest.fail(f"Unexpected ODBC execution error: {e}")
 
         self.assertIsNotNone(execution)
         self.assertEqual(execution.status, QueryExecutionStatus.COMPLETED)
-        result = self.service.get_query_result(
-            execution_id=str(execution.id), format="json"
-        )
+        result = self.service.get_query_result(execution_id=str(execution.id), format="json")
         data = result.get("data", [])
         self.assertEqual(len(data), 2)
         self.assertEqual(data[0]["label"], "odbc_row_1")
         self.assertEqual(data[1]["label"], "odbc_row_2")
 
     @pytest.mark.integration
-    @pytest.mark.real_virtualization_e2e
+    @pytest.mark.virtualization
     @pytest.mark.timeout(180)
     @pytest.mark.skipif(
         not _odbc_postgres_available(),
@@ -391,9 +406,7 @@ class RealPostgreSQLSourceIntegrationTest(TransactionTestCase):
                 )
                 """
             )
-            cursor.execute(
-                f'INSERT INTO "{self._test_table_name}" (val) VALUES (42), (99)'
-            )
+            cursor.execute(f'INSERT INTO "{self._test_table_name}" (val) VALUES (42), (99)')
 
         vd = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -415,24 +428,21 @@ class RealPostgreSQLSourceIntegrationTest(TransactionTestCase):
             )
         except (ValidationError, Exception) as e:
             err = str(e).lower()
-            if any(kw in err for kw in (
-                "refused", "driver not found",
-                "driver not installed", "no suitable driver",
-            )):
-                self.skipTest(
-                    f"ODBC driver/connection unavailable: {e}"
+            if any(
+                kw in err
+                for kw in (
+                    "refused",
+                    "driver not found",
+                    "driver not installed",
+                    "no suitable driver",
                 )
-            pytest.fail(
-                f"ODBC connection_string execution failed: {e}"
-            )
+            ):
+                self.skipTest(f"ODBC driver/connection unavailable: {e}")
+            pytest.fail(f"ODBC connection_string execution failed: {e}")
 
         self.assertIsNotNone(execution)
-        self.assertEqual(
-            execution.status, QueryExecutionStatus.COMPLETED
-        )
-        result = self.service.get_query_result(
-            execution_id=str(execution.id), format="json"
-        )
+        self.assertEqual(execution.status, QueryExecutionStatus.COMPLETED)
+        result = self.service.get_query_result(execution_id=str(execution.id), format="json")
         data = result.get("data", [])
         self.assertEqual(len(data), 2)
         self.assertEqual(data[0]["val"], 42)
@@ -448,6 +458,7 @@ class RealSPARQLSourceIntegrationTest(TestCase):
 
     def setUp(self):
         from hub.apps.orchestration.registry import reset_workflow_definition_cache
+
         reset_workflow_definition_cache()
         _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
@@ -473,7 +484,7 @@ class RealSPARQLSourceIntegrationTest(TestCase):
         cache.clear()
 
     @pytest.mark.integration
-    @pytest.mark.real_virtualization_e2e
+    @pytest.mark.virtualization
     @pytest.mark.skipif(
         not _semantic_service_available(),
         reason="SemanticService/Fuseki not available",
@@ -515,9 +526,7 @@ class RealSPARQLSourceIntegrationTest(TestCase):
             f"Expected COMPLETED, got {execution.status}. Log: {execution.execution_log}",
         )
 
-        result = self.service.get_query_result(
-            execution_id=str(execution.id), format="json"
-        )
+        result = self.service.get_query_result(execution_id=str(execution.id), format="json")
         self.assertIn("data", result)
         self.assertIsInstance(result["data"], list)
         self.assertIn("total_count", result)
@@ -533,6 +542,7 @@ class RealRESTSourceIntegrationTest(TestCase):
 
     def setUp(self):
         from hub.apps.orchestration.registry import reset_workflow_definition_cache
+
         reset_workflow_definition_cache()
         _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
@@ -558,11 +568,21 @@ class RealRESTSourceIntegrationTest(TestCase):
         cache.clear()
 
     @pytest.mark.integration
-    @pytest.mark.real_virtualization_e2e
+    @pytest.mark.virtualization
+    @pytest.mark.network
     def test_rest_against_real_http_endpoint(self):
         """
         Execute REST query against real HTTP endpoint (jsonplaceholder.typicode.com).
         """
+        # Guard: skip if jsonplaceholder is unreachable
+        try:
+            import httpx
+            r = httpx.head("https://jsonplaceholder.typicode.com/posts", timeout=10)
+            if r.status_code >= 500:
+                raise unittest.SkipTest("jsonplaceholder.typicode.com returned 5xx")
+        except Exception as e:
+            raise unittest.SkipTest(f"jsonplaceholder.typicode.com unreachable: {e}")
+
         vd = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -598,9 +618,7 @@ class RealRESTSourceIntegrationTest(TestCase):
             f"Expected COMPLETED, got {execution.status}. Log: {execution.execution_log}",
         )
 
-        result = self.service.get_query_result(
-            execution_id=str(execution.id), format="json"
-        )
+        result = self.service.get_query_result(execution_id=str(execution.id), format="json")
         data = result.get("data", [])
         self.assertIsInstance(data, list)
         self.assertGreater(len(data), 0, "Expected at least one post from jsonplaceholder")

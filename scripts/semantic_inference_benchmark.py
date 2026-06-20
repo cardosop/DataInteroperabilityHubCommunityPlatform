@@ -16,6 +16,7 @@ Exit codes:
     2 — p99 exceeded the hard budget (real regression).
     3 — on/off ratio exceeded the budget (reasoner regression).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -23,10 +24,8 @@ import json
 import statistics
 import sys
 import time
-from typing import Dict, List, Tuple
 
 import requests
-
 
 # Spec scenario — superclass closure against the hub ontology. Picked so
 # inference-on returns at least one binding (DataAsset is a subClassOf
@@ -39,7 +38,7 @@ SPEC_QUERY = (
 )
 
 
-def _login(api_url: str, email: str, password: str) -> Tuple[str, str]:
+def _login(api_url: str, email: str, password: str) -> tuple[str, str]:
     """Returns (auth_token, tenant_id). Auth is OIDC password-grant
     against the hub /auth/login endpoint."""
     resp = requests.post(
@@ -80,9 +79,9 @@ def _set_inference_flag(api_url: str, token: str, tenant_id: str, enabled: bool)
         )
 
 
-def _bench_one(api_url: str, token: str, samples: int) -> Dict[str, float]:
+def _bench_one(api_url: str, token: str, samples: int) -> dict[str, float]:
     """Run ``samples`` queries and return percentile-summarised latency."""
-    timings_ms: List[float] = []
+    timings_ms: list[float] = []
     endpoint_seen = ""
     for _ in range(samples):
         t0 = time.perf_counter()
@@ -106,7 +105,9 @@ def _bench_one(api_url: str, token: str, samples: int) -> Dict[str, float]:
         "samples": len(timings_ms),
         "p50_ms": round(statistics.median(timings_ms), 1),
         "p95_ms": round(timings_ms[int(len(timings_ms) * 0.95)], 1),
-        "p99_ms": round(timings_ms[int(len(timings_ms) * 0.99)], 1) if len(timings_ms) >= 100 else round(max(timings_ms), 1),
+        "p99_ms": round(timings_ms[int(len(timings_ms) * 0.99)], 1)
+        if len(timings_ms) >= 100
+        else round(max(timings_ms), 1),
         "max_ms": round(max(timings_ms), 1),
         "endpoint_seen": endpoint_seen,
     }
@@ -124,7 +125,7 @@ def main() -> int:
     parser.add_argument("--output", default="-")
     args = parser.parse_args()
 
-    print(f"=== Phase 230.7 inference benchmark ===")
+    print("=== Phase 230.7 inference benchmark ===")
     print(f"  API: {args.api_url}")
     print(f"  Samples / mode: {args.samples}")
 
@@ -166,19 +167,19 @@ def main() -> int:
             json.dump(summary, fh, indent=2)
 
     print()
-    print(f"=== Gate evaluation ===")
+    print("=== Gate evaluation ===")
     print(f"  p99 (on)            = {on['p99_ms']:.1f} ms  (budget {args.p99_budget_ms} ms)")
     print(f"  ratio p95 on/off    = {ratio:.2f}x  (budget {args.ratio_budget}x)")
     print(f"  endpoint label (on) = {on['endpoint_seen']!r}  (expected 'dataset/inferred')")
 
     if on["p99_ms"] > args.p99_budget_ms:
-        print(f"FAIL: p99 budget exceeded")
+        print("FAIL: p99 budget exceeded")
         return 2
     if ratio > args.ratio_budget:
-        print(f"FAIL: on/off latency ratio exceeded")
+        print("FAIL: on/off latency ratio exceeded")
         return 3
     if on["p99_ms"] > args.warn_budget_ms:
-        print(f"WARN: p99 above early-warning threshold")
+        print("WARN: p99 above early-warning threshold")
     print("PASS")
     return 0
 

@@ -4,6 +4,7 @@ Pytest configuration and shared fixtures
 
 # IMPORTANT: Patch Django BEFORE importing Django modules
 # This must happen before Django initializes database connections
+import contextlib
 import logging
 import os
 import sys
@@ -21,6 +22,19 @@ if os.environ.get("PYTEST_DOCKER_COMPOSE_RUNTIME") == "1":
 else:
     sys.stderr.write("Starting pytest (unit tests; collection may take 30s-2min)...\n")
     sys.stderr.flush()
+
+# Suppress noisy third-party debug logs that flood test output when
+# LOG_LEVEL=DEBUG is set in docker-compose.test.yml.  These libraries
+# log at DEBUG for every S3/HTTP call, generating thousands of lines
+# per test run and masking real application errors.
+for _noisy in (
+    "botocore",
+    "boto3",
+    "s3transfer",
+    "urllib3",
+    "charset_normalizer",
+):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 # Set up logging for patch verification. Use WARNING by default to avoid I/O
 # during test DB setup (create_test_db + migrate), which is the main bottleneck.
@@ -89,7 +103,6 @@ def _ensure_sync_apps_patched():
             )
             _patch_logger.info("=" * 80)
             # Always return immediately - migrations will create tables
-            return
 
         # Apply class-level patch
         migrate_module.Command.sync_apps = types.MethodType(
@@ -101,7 +114,6 @@ def _ensure_sync_apps_patched():
         _patch_logger.debug(
             f"Could not apply early sync_apps patch (expected if Django not loaded): {e}"
         )
-        pass
 
 
 # Try to patch early if Django is already imported
@@ -171,7 +183,6 @@ if True:  # Always apply patches
     except (ImportError, AttributeError):
         # Django not loaded yet, will patch later
         _patch_logger.debug("MigrationExecutor not available yet, will patch later")
-        pass
     # Patch Django's database wrapper to disable thread validation for tests
     # This fixes the issue where pytest-django creates connections in one thread
     # but Django's TestCase uses them in another thread
@@ -184,13 +195,11 @@ if True:  # Always apply patches
 
         def _noop_validate(self):
             """Disable thread validation for tests - safe because pytest-django manages connections"""
-            pass
 
         django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing = _noop_validate
     except ImportError:
         # Django not available yet - will patch later when Django is loaded
         _patch_logger.debug("Django not available yet, will patch thread validation later")
-        pass
 
     # Patch Django's migrate command to skip sync_apps entirely
     # This must be done before Django is fully initialized
@@ -231,7 +240,6 @@ if True:  # Always apply patches
             _log_patch("MigrationLoader.__init__ (clear unmigrated_apps)")
     except AttributeError:
         _patch_logger.debug("MigrationLoader.__init__ not available yet, will patch later")
-        pass
 
     # CRITICAL: Patch MigrationLoader.load_disk() to prevent populating unmigrated_apps
     # This ensures unmigrated_apps stays empty even after load_disk() runs
@@ -256,7 +264,6 @@ if True:  # Always apply patches
                 _log_patch("MigrationLoader.load_disk (clear unmigrated_apps)")
     except AttributeError:
         _patch_logger.debug("MigrationLoader.load_disk not available yet, will patch later")
-        pass
 
     # CRITICAL: Patch table_names to return empty list ONLY when called from sync_apps
     # This prevents sync_apps from trying to query tables that don't exist yet
@@ -278,11 +285,9 @@ if True:  # Always apply patches
             FIX: cursor is optional (defaults to None) to match Django's signature.
             """
             # Phase 95: replaced inspect.getouterframes() with thread-local flag
-            called_from_sync_apps = getattr(_conftest_flags, 'in_sync_apps', False)
+            called_from_sync_apps = getattr(_conftest_flags, "in_sync_apps", False)
             if called_from_sync_apps:
-                _patch_logger.info(
-                    "table_names: called from sync_apps — returning empty list"
-                )
+                _patch_logger.info("table_names: called from sync_apps — returning empty list")
                 return []
 
             # For non-sync_apps contexts (like MigrationRecorder), call original
@@ -371,9 +376,7 @@ if True:  # Always apply patches
                 """
                 _conftest_flags.in_sync_apps = True
                 try:
-                    _patch_logger.info(
-                        "sync_apps: suppressed (Phase 95 thread-local flag)"
-                    )
+                    _patch_logger.info("sync_apps: suppressed (Phase 95 thread-local flag)")
                     return  # no-op
                 finally:
                     _conftest_flags.in_sync_apps = False
@@ -422,7 +425,7 @@ if True:  # Always apply patches
                 # CRITICAL: Set run_syncdb=False to prevent sync_apps from being called
                 # Django reads this at the beginning of handle, so set it BEFORE calling original
                 # This is the ROOT CAUSE FIX - ensures sync_apps never runs
-                original_run_syncdb = options.get("run_syncdb", None)
+                original_run_syncdb = options.get("run_syncdb")
                 options["run_syncdb"] = False
                 _patch_logger.info(
                     f"✓ Command.handle: Overriding run_syncdb={original_run_syncdb} -> False (ROOT CAUSE FIX)"
@@ -448,7 +451,6 @@ if True:  # Always apply patches
                         "✓ sync_apps (handle): ROOT CAUSE FIX - returning immediately without SQL"
                     )
                     _patch_logger.info("=" * 80)
-                    return
 
                 # CRITICAL: Patch sync_apps on THIS instance using __dict__ to bypass method resolution
                 # This ensures that when handle calls self.sync_apps(), it calls our no-op
@@ -629,7 +631,7 @@ if True:  # Always apply patches
                 # CRITICAL: Force run_syncdb=False - this prevents sync_apps from running
                 # This is the ROOT CAUSE FIX - Django's create_test_db passes run_syncdb=True
                 # We override it here to False so migrations run first, then sync_apps is skipped
-                original_run_syncdb = options.get("run_syncdb", None)
+                original_run_syncdb = options.get("run_syncdb")
                 options["run_syncdb"] = False
                 _patch_logger.info(
                     f"✓ call_command: Overriding run_syncdb={original_run_syncdb} -> False for migrate command"
@@ -654,10 +656,9 @@ if True:  # Always apply patches
     def _reapply_contenttypes_permissions_patches():
         """Re-apply contenttypes/permissions patches before migrate (post_migrate can overwrite)."""
         try:
-            from django.db.models.signals import post_migrate
-
             import django.contrib.auth.management as auth_mgmt
             import django.contrib.contenttypes.management as ct_mgmt
+            from django.db.models.signals import post_migrate
 
             if hasattr(ct_mgmt, "_patched_create_contenttypes_func"):
                 ct_mgmt.create_contenttypes = ct_mgmt._patched_create_contenttypes_func
@@ -666,7 +667,9 @@ if True:  # Always apply patches
                 auth_mgmt.create_permissions = auth_mgmt._patched_create_permissions_func
                 from django.db.models.signals import post_migrate
 
-                post_migrate.disconnect(dispatch_uid="django.contrib.auth.management.create_permissions")
+                post_migrate.disconnect(
+                    dispatch_uid="django.contrib.auth.management.create_permissions"
+                )
                 post_migrate.connect(
                     auth_mgmt._patched_create_permissions_func,
                     dispatch_uid="django.contrib.auth.management.create_permissions",
@@ -680,11 +683,12 @@ if True:  # Always apply patches
         if not hasattr(ct_management, "_original_create_contenttypes"):
             ct_management._original_create_contenttypes = ct_management.create_contenttypes
 
-        def _patched_create_contenttypes(app_config, verbosity=2, interactive=True, using=None, apps=None, **kwargs):
+        def _patched_create_contenttypes(
+            app_config, verbosity=2, interactive=True, using=None, apps=None, **kwargs
+        ):
             """Idempotent create_contenttypes when TEST_DB_SUFFIX set - skip duplicates via ignore_conflicts."""
             from django.apps import apps as global_apps
-            from django.db import DEFAULT_DB_ALIAS
-            from django.db import router
+            from django.db import DEFAULT_DB_ALIAS, router
 
             using = using or DEFAULT_DB_ALIAS
             apps = apps or global_apps
@@ -715,9 +719,7 @@ if True:  # Always apply patches
                 return
             # When TEST_DB_SUFFIX set, use ignore_conflicts to handle shared DB reuse (ContentTypes may exist)
             use_ignore_conflicts = bool(os.getenv("TEST_DB_SUFFIX"))
-            ContentType.objects.using(using).bulk_create(
-                cts, ignore_conflicts=use_ignore_conflicts
-            )
+            ContentType.objects.using(using).bulk_create(cts, ignore_conflicts=use_ignore_conflicts)
             if verbosity >= 2:
                 for ct in cts:
                     _patch_logger.debug(f"Adding content type '{ct.app_label} | {ct.model}'")
@@ -728,6 +730,7 @@ if True:  # Always apply patches
         # so create_permissions (post_migrate) uses our idempotent version (ignore_conflicts).
         try:
             import django.contrib.auth.management as auth_mgmt
+
             auth_mgmt.create_contenttypes = _patched_create_contenttypes
         except Exception:
             pass
@@ -772,7 +775,7 @@ if True:  # Always apply patches
                 Permission = apps.get_model("auth", "Permission")
             except LookupError:
                 return
-            from django.db import router, DEFAULT_DB_ALIAS
+            from django.db import DEFAULT_DB_ALIAS, router
 
             if not router.allow_migrate_model(using or DEFAULT_DB_ALIAS, Permission):
                 return
@@ -827,7 +830,9 @@ if True:  # Always apply patches
         try:
             from django.db.models.signals import post_migrate
 
-            post_migrate.disconnect(dispatch_uid="django.contrib.auth.management.create_permissions")
+            post_migrate.disconnect(
+                dispatch_uid="django.contrib.auth.management.create_permissions"
+            )
             post_migrate.connect(
                 _patched_create_permissions,
                 dispatch_uid="django.contrib.auth.management.create_permissions",
@@ -851,9 +856,7 @@ if True:  # Always apply patches
                 pg_creation_module.DatabaseCreation._create_test_db
             )
 
-        def _patched_create_test_db_internal(
-            self, verbosity=1, autoclobber=False, keepdb=False
-        ):
+        def _patched_create_test_db_internal(self, verbosity=1, autoclobber=False, keepdb=False):
             test_database_name = self._get_test_db_name()
             try:
                 return pg_creation_module.DatabaseCreation._original_create_test_db_internal(
@@ -970,16 +973,18 @@ if True:  # Always apply patches
                             pass
 
                     if _already_migrated:
-                        _patch_logger.debug("create_test_db: fast path (DB already migrated, skipping migrate)")
+                        _patch_logger.debug(
+                            "create_test_db: fast path (DB already migrated, skipping migrate)"
+                        )
                         # Restore timeout, run createcachetable, and return
-                        try:
+                        with contextlib.suppress(Exception):
                             current_call_command("createcachetable", database=self.connection.alias)
-                        except Exception:
-                            pass
                         self.connection.ensure_connection()
                         return test_database_name
 
-                    _patch_logger.debug("create_test_db: keepdb path, running migrate to ensure schema current")
+                    _patch_logger.debug(
+                        "create_test_db: keepdb path, running migrate to ensure schema current"
+                    )
 
                     # Temporarily disable statement_timeout for migrate. The
                     # default 60s timeout is too short for schema migrations on
@@ -1026,6 +1031,7 @@ if True:  # Always apply patches
                             self.connection.close()
                             import psycopg2
                             from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+
                             db = settings.DATABASES[self.connection.alias]
                             conn = psycopg2.connect(
                                 dbname="postgres",
@@ -1042,7 +1048,7 @@ if True:  # Always apply patches
                                         "WHERE datname = %s AND pid <> pg_backend_pid()",
                                         [test_database_name],
                                     )
-                                    cur.execute('DROP DATABASE IF EXISTS "{}"'.format(test_database_name))
+                                    cur.execute(f'DROP DATABASE IF EXISTS "{test_database_name}"')
                             finally:
                                 conn.close()
                             keepdb = False
@@ -1175,7 +1181,6 @@ if True:  # Always apply patches
             _patch_logger.debug(f"Could not patch Command.__init__ (approach 2): {e}")
 
 import os
-import time
 import uuid
 
 import pytest
@@ -1254,7 +1259,6 @@ def pytest_configure(config):
     This hook runs before Django is initialized, so we can apply patches here.
     """
     import os
-    import sys
 
     # Set TESTING environment variable early to help apps detect test mode
     os.environ["TESTING"] = "1"
@@ -1410,9 +1414,6 @@ def pytest_configure(config):
 
     # Apply cursor-level patches if not already applied
     try:
-        import django.db.backends.postgresql.base as pg_base
-        import django.db.backends.utils as db_utils
-
         # No error suppression patches - if sync_apps doesn't run, we won't get table errors
         # The root cause fixes (run_syncdb=False, unmigrated_apps clearing, sync_apps no-op) should prevent errors
         _patch_logger.debug(
@@ -1478,7 +1479,7 @@ def pytest_configure(config):
                 # self-import that hard-registers tests.conftest in sys.modules,
                 # which causes ImportPathMismatchError when app-specific conftest
                 # files (e.g. hub/apps/webhooks/tests/conftest.py) are collected.
-                outer_patched_create_test_db = globals()['_patched_create_test_db']
+                outer_patched_create_test_db = globals()["_patched_create_test_db"]
 
                 # Re-apply the patch
                 creation_module.BaseDatabaseCreation.create_test_db = outer_patched_create_test_db
@@ -1543,7 +1544,7 @@ def pytest_configure(config):
                         e,
                         delay,
                     )
-                    time.sleep(delay)  # INTENTIONAL: test infrastructure startup wait
+                    time.sleep(delay)  # noqa: sleep-needed  # INTENTIONAL: test infrastructure startup wait
             if last_exc is not None:
                 raise last_exc
 
@@ -1662,21 +1663,21 @@ def pytest_sessionstart(session):
                         _patch_logger.info(
                             f"PostgreSQL is still starting up... (waited {elapsed}s)"
                         )
-                    time.sleep(retry_interval)  # INTENTIONAL: test infrastructure startup wait
+                    time.sleep(retry_interval)  # noqa: sleep-needed  # INTENTIONAL: test infrastructure startup wait
                     continue
                 else:
                     # Non-starting-up error - log and continue (may be connection refused, etc.)
                     elapsed = int(time.time() - start_time)
                     if elapsed % 10 == 0:
                         _patch_logger.warning(f"PostgreSQL connection error (will retry): {e}")
-                    time.sleep(retry_interval)  # INTENTIONAL: test infrastructure startup wait
+                    time.sleep(retry_interval)  # noqa: sleep-needed  # INTENTIONAL: test infrastructure startup wait
                     continue
             except Exception as e:
                 # Other errors - log and continue
                 elapsed = int(time.time() - start_time)
                 if elapsed % 10 == 0:
                     _patch_logger.warning(f"PostgreSQL connection error (will retry): {e}")
-                time.sleep(retry_interval)  # INTENTIONAL: test infrastructure startup wait
+                time.sleep(retry_interval)  # noqa: sleep-needed  # INTENTIONAL: test infrastructure startup wait
                 continue
         else:
             # Timeout reached
@@ -1744,10 +1745,8 @@ def pytest_runtest_setup(item):
         if conn.connection is None:
             # Clear flags even on connections without an active psycopg2
             # object — a prior TransactionTestCase may have set them.
-            try:
+            with contextlib.suppress(Exception):
                 conn.closed_in_transaction = False
-            except Exception:
-                pass
             continue
 
         # Probe the connection with a lightweight query.
@@ -1765,18 +1764,14 @@ def pytest_runtest_setup(item):
             # as closed-in-transaction.  The psycopg2 level is fine, so
             # these flags serve no purpose and will only cause
             # ``ProgrammingError`` on the next ensure_connection() call.
-            try:
+            with contextlib.suppress(Exception):
                 conn.closed_in_transaction = False
-            except Exception:
-                pass
             continue
 
         # -- Recovery ----------------------------------------------------------
         # 1. Close Django's wrapper (which also calls psycopg2.close()).
-        try:
+        with contextlib.suppress(Exception):
             conn.close()
-        except Exception:
-            pass
 
         # 2. Re-establish with retries (3 attempts, 100 ms back-off).
         recovered = False
@@ -1787,7 +1782,7 @@ def pytest_runtest_setup(item):
                 break
             except Exception:
                 if attempt < 3:
-                    time.sleep(0.1)
+                    time.sleep(0.1)  # noqa: sleep-needed — polling loop
 
         # 3. Last resort: psycopg2-level reset (nuke the underlying object
         #    and let Django create a fresh one on next access).
@@ -1799,20 +1794,17 @@ def pytest_runtest_setup(item):
                 pass
 
         # 4. Clear Django's internal bookkeeping flags after recovery.
-        try:
+        with contextlib.suppress(Exception):
             conn.closed_in_transaction = False
-        except Exception:
-            pass
 
     # Reset circuit breakers between tests so a transient failure in one
     # test does not OPEN a breaker and cascade into unrelated tests.
     try:
         from hub.apps.core.resilience.circuit_breaker import get_all_circuit_breakers
+
         for breaker in get_all_circuit_breakers().values():
-            try:
+            with contextlib.suppress(Exception):
                 breaker.reset()
-            except Exception:
-                pass
     except Exception:
         pass  # Django / circuit_breaker module may not be available
 
@@ -1848,7 +1840,9 @@ def test_user(db):
     """Create a test user"""
     User = _get_user_model()
     return User.objects.create_user(
-        email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", display_name="Test User"
+        email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+        password="testpass123",
+        display_name="Test User",
     )
 
 
@@ -1882,7 +1876,7 @@ def _validate_test_environment_config(config):
         # Use non-strict mode to avoid failing tests - warnings are logged
         EnvironmentValidator = _get_test_env_validator()
         validator = EnvironmentValidator(strict=False)
-        is_valid, errors, warnings = validator.validate_all()
+        _is_valid, errors, warnings = validator.validate_all()
 
         if warnings:
             _patch_logger.warning("Test environment validation warnings:")
@@ -1981,7 +1975,7 @@ def wait_for_service_health(url: str, timeout: int = 30, interval: float = 1.0) 
                             return True
                 except Exception:
                     pass
-                time.sleep(interval)  # INTENTIONAL: test infrastructure startup wait
+                time.sleep(interval)  # noqa: sleep-needed  # INTENTIONAL: test infrastructure startup wait
             return False
         except ImportError:
             pytest.skip("httpx or requests required for service health checks")
@@ -2001,7 +1995,7 @@ def wait_for_service_health(url: str, timeout: int = 30, interval: float = 1.0) 
                     return True
         except Exception:
             pass
-        time.sleep(interval)  # INTENTIONAL: test infrastructure startup wait
+        time.sleep(interval)  # noqa: sleep-needed  # INTENTIONAL: test infrastructure startup wait
     return False
 
 
@@ -2139,7 +2133,7 @@ def validate_test_env(test_env_validator):
     if os.getenv("SKIP_TEST_ENV_VALIDATION", "").lower() == "1":
         return
 
-    is_valid, errors, warnings = test_env_validator.validate_all()
+    is_valid, errors, _warnings = test_env_validator.validate_all()
 
     if not is_valid and errors:
         pytest.skip(
@@ -2224,7 +2218,6 @@ def tenant_with_plan(db):
 
     from hub.apps.billing.models import Subscription, SubscriptionStatus
     from hub.apps.tenants.models import PlanTier, Tenant, TenantPlan, TenantStatus
-    from tests.factories import TenantFactory, UserFactory
 
     # Create plan
     plan = TenantPlan.objects.create(
@@ -2329,7 +2322,6 @@ def scheduled_ingestion_factory(db):
     Returns:
         Factory function that creates ScheduledIngestion instances
     """
-    from hub.apps.assets.models import Asset
     from hub.apps.assets.tests.factories import AssetFactory
     from hub.apps.scheduled_ingestion.models import (
         ScheduledIngestion,
@@ -2405,7 +2397,6 @@ def scheduled_export_factory(db):
     Returns:
         Factory function that creates ScheduledExport instances
     """
-    from hub.apps.assets.models import Asset
     from hub.apps.assets.tests.factories import AssetFactory
     from hub.apps.scheduled_export.models import (
         DestinationType,

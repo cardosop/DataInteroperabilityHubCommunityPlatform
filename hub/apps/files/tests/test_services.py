@@ -3,18 +3,16 @@ Unit tests for FileService.
 
 Tests use real FileService implementation without mocks/stubs.
 """
-import uuid
 
 import hashlib
+import uuid
 
 import pytest
-from django.core.files.base import ContentFile
-from django.test import TestCase, override_settings
+from django.test import override_settings
 
 from hub.apps.audit.models import AuditEvent
 from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.files.models import File, FileScanStatus, FileStatus
-from hub.apps.files.services import FileService
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.files.tests.test_base import FilesTestBase
 
@@ -32,7 +30,7 @@ class FileServiceTest(FilesTestBase):
             storage_client = S3StorageClient()
             storage_client._ensure_bucket_exists()
             self.storage_available = True
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover — S3 probe
             self.storage_available = False
 
     def test_get_file_success(self):
@@ -274,8 +272,7 @@ class FileServiceTest(FilesTestBase):
             action="FILE_MALWARE_SCAN_UNAVAILABLE",
             resource_id=pending_file.id,
         ).first()
-        self.assertIsNotNone(audit,
-            "FILE_MALWARE_SCAN_UNAVAILABLE audit event must be emitted")
+        self.assertIsNotNone(audit, "FILE_MALWARE_SCAN_UNAVAILABLE audit event must be emitted")
         self.assertEqual(audit.result, "WARNING")
         self.assertEqual(
             audit.details_json.get("reason"),
@@ -313,8 +310,7 @@ class FileServiceTest(FilesTestBase):
             action="FILE_MALWARE_SCAN_SKIPPED",
             resource_id=updated.id,
         ).first()
-        self.assertIsNotNone(audit,
-            "FILE_MALWARE_SCAN_SKIPPED audit event must be emitted")
+        self.assertIsNotNone(audit, "FILE_MALWARE_SCAN_SKIPPED audit event must be emitted")
         self.assertEqual(audit.result, "WARNING")
         self.assertEqual(audit.details_json.get("reason"), "CLAMAV_DISABLED")
         self.assertEqual(audit.tenant, self.tenant)

@@ -11,11 +11,12 @@ Phase 216 has zero tolerance for flake (no ``pytest-rerunfailures``,
 no auto-retry); the only acceptable way to handle eventual consistency
 is to express it as a polling predicate via this helper.
 """
+
 from __future__ import annotations
 
 import time
-from typing import Any, Callable, Optional, TypeVar
-
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 T = TypeVar("T")
 
@@ -25,7 +26,7 @@ def wait_for(
     *,
     timeout: float = 30.0,
     interval: float = 0.1,
-    description: Optional[str] = None,
+    description: str | None = None,
 ) -> T:
     """Poll ``predicate`` until it returns truthy or ``timeout`` elapses.
 

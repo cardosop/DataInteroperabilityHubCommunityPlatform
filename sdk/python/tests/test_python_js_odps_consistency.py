@@ -20,14 +20,16 @@ To run these tests:
 2. Set API key: export TEST_API_KEY=your-api-key
 3. Run: pytest tests/test_python_js_odps_consistency.py -v
 """
-import os
-import pytest
+
 import json
-import uuid
+import os
 import subprocess
-import tempfile
+import uuid
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Optional
+
+import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 
 
@@ -40,30 +42,33 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     always receive a working credential.
     """
     from tests.conftest import get_api_key
+
     return get_api_key()
 
 
 @pytest.fixture
 def real_api_config():
     """Fixture for real API configuration"""
-    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8001/api/v1')
+    api_base_url = os.environ.get("API_BASE_URL", "http://localhost:8001/api/v1")
     api_key = setup_authentication_for_sdk_tests(api_base_url)
 
     if not api_key:
-        pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+        pytest.skip(
+            "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+        )
 
     # Use longer timeout for comprehensive tests (60 seconds) to handle slow operations
     return DataHubClientConfig(
         base_url=api_base_url,
         api_token=api_key,
-        timeout=60.0  # 60 seconds for comprehensive tests
+        timeout=60.0,  # 60 seconds for comprehensive tests
     )
 
 
 def check_nodejs_available():
     """Check if Node.js is available"""
     try:
-        result = subprocess.run(['node', '--version'], capture_output=True, text=True)
+        result = subprocess.run(["node", "--version"], capture_output=True, text=True)
         return result.returncode == 0
     except FileNotFoundError:
         return False
@@ -73,7 +78,9 @@ def check_nodejs_available():
 def js_sdk_available():
     """Check if JavaScript SDK is available"""
     if not check_nodejs_available():
-        pytest.skip("Node.js not available. Install Node.js to run JavaScript SDK consistency tests.")
+        pytest.skip(
+            "Node.js not available. Install Node.js to run JavaScript SDK consistency tests."
+        )
 
     js_sdk_path = Path(__file__).parent.parent.parent / "js"
     if not (js_sdk_path / "package.json").exists():
@@ -86,7 +93,7 @@ def create_valid_odps_json(
     product_id: str = None,
     include_contract: bool = True,
     odcs_contract_id: str = None,
-    odcs_contract_name: str = None
+    odcs_contract_name: str = None,
 ) -> str:
     """Create a valid ODPS JSON document"""
     if product_id is None:
@@ -100,7 +107,7 @@ def create_valid_odps_json(
                 "en": {
                     "productID": product_id,
                     "name": f"Test Product {product_id}",
-                    "description": f"Test product for consistency tests: {product_id}"
+                    "description": f"Test product for consistency tests: {product_id}",
                 }
             },
             "contract": {
@@ -108,19 +115,15 @@ def create_valid_odps_json(
                     "apiVersion": "odcs/v3",
                     "kind": "DataContract",
                     "id": odcs_contract_id if odcs_contract_id else f"{product_id}-contract",
-                    "name": odcs_contract_name if odcs_contract_name else f"Test Contract {product_id}",
+                    "name": odcs_contract_name
+                    if odcs_contract_name
+                    else f"Test Contract {product_id}",
                     "version": "1.0.0",
-                    "schema": {
-                        "fields": [
-                            {
-                                "name": "id",
-                                "type": "string",
-                                "nullable": False
-                            }
-                        ]
-                    }
+                    "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                 }
-            } if include_contract else None,
+            }
+            if include_contract
+            else None,
             "marketplace": {
                 "pricingPlans": [
                     {
@@ -128,24 +131,19 @@ def create_valid_odps_json(
                         "name": "Basic Plan",
                         "price": 9.99,
                         "currency": "USD",
-                        "billingPeriod": "monthly"
+                        "billingPeriod": "monthly",
                     }
                 ],
                 "accessMethods": {
                     "api": {
                         "type": "REST API",
                         "endpoint": f"https://api.example.com/v1/products/{product_id}",
-                        "protocol": "HTTPS"
+                        "protocol": "HTTPS",
                     }
                 },
-                "paymentGateways": {
-                    "stripe": {
-                        "enabled": True,
-                        "mode": "test"
-                    }
-                }
-            }
-        }
+                "paymentGateways": {"stripe": {"enabled": True, "mode": "test"}},
+            },
+        },
     }
 
     return json.dumps(odps, indent=2)
@@ -178,6 +176,7 @@ class TestMethodNameConsistency:
     def sdk_methods(self) -> frozenset[str]:
         """Return frozenset of public ContractsAPI method names."""
         import inspect as _inspect
+
         from datahub_interoperability.contracts import ContractsAPI
 
         return frozenset(
@@ -202,14 +201,22 @@ class TestParameterConsistency:
     # Keys are method names, values are the expected parameter names.
     EXPECTED_PARAMS: dict[str, tuple[str, ...]] = {
         "create_odps": (
-            "original_raw", "extract_odcs", "link_odcs_id",
-            "original_format", "odps_version", "resolve_external_refs", "asset_id",
+            "original_raw",
+            "extract_odcs",
+            "link_odcs_id",
+            "original_format",
+            "odps_version",
+            "resolve_external_refs",
+            "asset_id",
         ),
         "export_odps": ("contract_id", "version", "format"),
         "download_odps": ("contract_id", "version", "format"),
         "link_odps_to_odcs": (
-            "odcs_contract_id", "odps_contract_id",
-            "odps_raw", "odps_format", "resolve_external_refs",
+            "odcs_contract_id",
+            "odps_contract_id",
+            "odps_raw",
+            "odps_format",
+            "resolve_external_refs",
         ),
     }
 
@@ -217,6 +224,7 @@ class TestParameterConsistency:
     def sdk_signatures(self) -> dict[str, tuple[str, ...]]:
         """Return {method_name: (parameter_names, ...)} for ContractsAPI."""
         import inspect as _inspect
+
         from datahub_interoperability.contracts import ContractsAPI
 
         result: dict[str, tuple[str, ...]] = {}
@@ -228,9 +236,11 @@ class TestParameterConsistency:
             except (ValueError, TypeError):
                 continue
             params = tuple(
-                p.name for p in sig.parameters.values()
+                p.name
+                for p in sig.parameters.values()
                 if p.name not in ("self",)
-                and p.kind not in (
+                and p.kind
+                not in (
                     _inspect.Parameter.VAR_POSITIONAL,
                     _inspect.Parameter.VAR_KEYWORD,
                 )
@@ -275,9 +285,7 @@ class TestResponseFormatConsistency:
 
         try:
             result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             if isinstance(result, dict) and "error" in result:
@@ -289,7 +297,9 @@ class TestResponseFormatConsistency:
 
             # Product-First flow should return odps_contract, odcs_contract, workflow_instance_id
             if "odps_contract" in result:
-                assert isinstance(result["odps_contract"], dict), "odps_contract should be a dictionary"
+                assert isinstance(result["odps_contract"], dict), (
+                    "odps_contract should be a dictionary"
+                )
                 assert "id" in result["odps_contract"], "odps_contract should have 'id' field"
             elif "id" in result:
                 assert isinstance(result["id"], str), "id should be a string"
@@ -307,13 +317,12 @@ class TestResponseFormatConsistency:
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             # Handle async workflow if needed
             from tests.test_contracts_api_odps_comprehensive import handle_async_workflow_response
+
             create_result = await handle_async_workflow_response(client, create_result, timeout=300)
 
             if isinstance(create_result, dict) and "error" in create_result:
@@ -324,10 +333,7 @@ class TestResponseFormatConsistency:
             if not odps_id:
                 pytest.skip("Could not create ODPS contract for response format test")
 
-            export_result = await client.contracts.export_odps(
-                contract_id=odps_id,
-                format="json"
-            )
+            export_result = await client.contracts.export_odps(contract_id=odps_id, format="json")
 
             # Verify response format
             assert export_result is not None
@@ -362,8 +368,7 @@ class TestResponseFormatConsistency:
   }}
 }}"""
         odcs_result = await client.contracts.create(
-            original_raw=odcs_content,
-            original_format="JSON"
+            original_raw=odcs_content, original_format="JSON"
         )
         odcs_id = odcs_result["id"]
 
@@ -372,13 +377,11 @@ class TestResponseFormatConsistency:
             "linked-response-format",
             include_contract=True,
             odcs_contract_id=odcs_contract_id,
-            odcs_contract_name=odcs_contract_name
+            odcs_contract_name=odcs_contract_name,
         )
         try:
             link_result = await client.contracts.link_odps_to_odcs(
-                odcs_contract_id=odcs_id,
-                odps_raw=odps_content,
-                odps_format="JSON"
+                odcs_contract_id=odcs_id, odps_raw=odps_content, odps_format="JSON"
             )
 
             if isinstance(link_result, dict) and "error" in link_result:
@@ -416,7 +419,7 @@ class TestErrorHandlingConsistency:
                 original_raw=odps_content,
                 extract_odcs=True,
                 link_odcs_id="some-id",
-                original_format="JSON"
+                original_format="JSON",
             )
 
         # Verify error message contains relevant information
@@ -434,12 +437,16 @@ class TestErrorHandlingConsistency:
         with pytest.raises(ODPSValidationError) as exc_info:
             await client.contracts.create_odps(
                 original_raw=odps_content,
-                original_format="JSON"
+                original_format="JSON",
                 # Missing both extract_odcs and link_odcs_id
             )
 
         error_msg = str(exc_info.value).lower()
-        assert "extract_odcs" in error_msg or "link_odcs_id" in error_msg or "must specify" in error_msg
+        assert (
+            "extract_odcs" in error_msg
+            or "link_odcs_id" in error_msg
+            or "must specify" in error_msg
+        )
 
     @pytest.mark.asyncio
     async def test_export_odps_error_invalid_contract_id(self, real_api_config):
@@ -450,10 +457,7 @@ class TestErrorHandlingConsistency:
         from datahub_interoperability.errors import NotFoundError, ODPSExportError
 
         with pytest.raises((NotFoundError, ODPSExportError)):
-            await client.contracts.export_odps(
-                contract_id=invalid_id,
-                format="json"
-            )
+            await client.contracts.export_odps(contract_id=invalid_id, format="json")
 
 
 class TestHelperMethodsConsistency:
@@ -467,9 +471,7 @@ class TestHelperMethodsConsistency:
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             if isinstance(create_result, dict) and "error" in create_result:
@@ -499,8 +501,7 @@ class TestHelperMethodsConsistency:
   }
 }"""
             odcs_result = await client.contracts.create(
-                original_raw=odcs_content,
-                original_format="JSON"
+                original_raw=odcs_content, original_format="JSON"
             )
             odcs_contract = await client.contracts.get(odcs_result["id"])
             is_odps_odcs = client.contracts.is_odps_contract(odcs_contract)
@@ -523,7 +524,7 @@ class TestHelperMethodsConsistency:
                 original_raw=odps_content,
                 extract_odcs=True,
                 original_format="JSON",
-                odps_version="4.1"
+                odps_version="4.1",
             )
 
             if isinstance(create_result, dict) and "error" in create_result:

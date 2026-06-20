@@ -1,8 +1,9 @@
 """
 Phase 83.6 — process_event_outbox management command tests.
 """
+
 from io import StringIO
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from django.core.management import call_command
 from django.test import TestCase
@@ -12,7 +13,6 @@ _GET_PUB = "hub.apps.core.management.commands.process_event_outbox.get_outbox_pu
 
 
 class ProcessEventOutboxCommandTest(TestCase):
-
     @patch(_GET_PUB)
     def test_once_processes_batch(self, mock_get):
         publisher = MagicMock()

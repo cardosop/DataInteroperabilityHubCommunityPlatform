@@ -23,6 +23,7 @@ def test_verify_test_traceability_exit_zero():
         pytest.skip("verify_test_traceability.py not found")
     result = subprocess.run(
         [sys.executable, str(script)],
+        check=False,
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
@@ -41,6 +42,7 @@ def test_verify_test_traceability_stdout_contains_ok():
         pytest.skip("verify_test_traceability.py not found")
     result = subprocess.run(
         [sys.executable, str(script)],
+        check=False,
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,

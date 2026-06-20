@@ -1,8 +1,13 @@
 """Phase 87: Tests for JWT scope bypass prevention."""
+
 from unittest.mock import MagicMock
+
 from django.test import TestCase, override_settings
+
 from hub.apps.auth.permissions import (
-    HasScope, HasAnyScope, ROLE_SCOPE_MAP,
+    ROLE_SCOPE_MAP,
+    HasAnyScope,
+    HasScope,
 )
 
 

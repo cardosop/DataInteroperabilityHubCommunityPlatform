@@ -6,11 +6,14 @@ rate limiting, network failures, and timeout behaviour.
 Uses unittest.mock to simulate HTTP responses (project
 convention — no additional mocking library required).
 """
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
+import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig
-from datahub_interoperability.errors import DataHubError, NetworkError, RateLimitError
+from datahub_interoperability.errors import DataHubError, NetworkError
 
 
 @pytest.fixture
@@ -31,12 +34,16 @@ async def client(config):
 
 # ── Transient error retries ────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("status_code,message", [
-    (502, "Bad Gateway"),
-    (503, "Service Unavailable"),
-    (504, "Gateway Timeout"),
-])
+@pytest.mark.parametrize(
+    "status_code,message",
+    [
+        (502, "Bad Gateway"),
+        (503, "Service Unavailable"),
+        (504, "Gateway Timeout"),
+    ],
+)
 async def test_retries_on_transient_server_error(client, status_code, message):
     """All 5xx server errors are retryable — first attempt fails, second succeeds."""
     mock_err = MagicMock()
@@ -60,6 +67,7 @@ async def test_retries_on_transient_server_error(client, status_code, message):
 
 
 # ── Network error retries ──────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_retries_on_network_error(client):
@@ -93,12 +101,15 @@ async def test_retries_on_timeout(client):
 
 # ── Max retries exhaustion ─────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_raises_after_max_retries_exhausted(client):
     mock_err = MagicMock()
     mock_err.status_code = 503
     mock_err.is_error = True
-    mock_err.json.return_value = {"error": {"code": "SERVER_ERROR", "message": "Service Unavailable", "http_status": 503}}
+    mock_err.json.return_value = {
+        "error": {"code": "SERVER_ERROR", "message": "Service Unavailable", "http_status": 503}
+    }
     err = httpx.HTTPStatusError("503", request=MagicMock(), response=mock_err)
 
     with patch.object(client.client, "request", new_callable=AsyncMock) as req:
@@ -121,6 +132,7 @@ async def test_raises_after_max_retries_on_network_error(client):
 
 
 # ── Non-retryable errors ───────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_does_not_retry_on_400(client):

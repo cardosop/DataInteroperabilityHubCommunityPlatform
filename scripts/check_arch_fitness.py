@@ -7,6 +7,7 @@ Expanded from W5.1 max-file-size + max-complexity to full criteria set.
 
 Usage: python scripts/check_arch_fitness.py [--ci]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,15 +28,27 @@ SOURCE_DIRS = ("hub/", "cli/datahub_cli/", "sdk/python/datahub_interoperability/
 
 def _count_indented_lines(body: list[ast.stmt]) -> int:
     """Count non-blank, non-comment lines in a function body."""
-    return len([s for s in body if not (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant) and isinstance(s.value.value, str))])
+    return len(
+        [
+            s
+            for s in body
+            if not (
+                isinstance(s, ast.Expr)
+                and isinstance(s.value, ast.Constant)
+                and isinstance(s.value.value, str)
+            )
+        ]
+    )
 
 
 def cyclomatic_complexity(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     """McCabe cyclomatic complexity: 1 + branches."""
     branches = 0
     for child in ast.walk(node):
-        if isinstance(child, (ast.If, ast.For, ast.While, ast.And, ast.Or,
-                              ast.ExceptHandler, ast.With, ast.Match)):
+        if isinstance(
+            child,
+            (ast.If, ast.For, ast.While, ast.And, ast.Or, ast.ExceptHandler, ast.With, ast.Match),
+        ):
             branches += 1
         elif isinstance(child, ast.BoolOp):
             branches += len(child.values) - 1
@@ -56,16 +69,12 @@ def check_fitness(source_dir: str, violations: list[str]) -> None:
 
         # 1. Max file size
         if file_lines > MAX_FILE_LINES:
-            violations.append(
-                f"{py_file}: {file_lines} lines (max {MAX_FILE_LINES})"
-            )
+            violations.append(f"{py_file}: {file_lines} lines (max {MAX_FILE_LINES})")
 
         # 2. Max imports
         imports = content.count("\nimport ") + content.count("\nfrom ")
         if imports > MAX_MODULE_COUPLING:
-            violations.append(
-                f"{py_file}: {imports} imports (max {MAX_MODULE_COUPLING})"
-            )
+            violations.append(f"{py_file}: {imports} imports (max {MAX_MODULE_COUPLING})")
 
         # 3. Per-function checks
         try:
@@ -93,8 +102,9 @@ def check_fitness(source_dir: str, violations: list[str]) -> None:
 
             # 4. Max class methods
             if isinstance(node, ast.ClassDef):
-                methods = [n for n in node.body
-                           if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+                methods = [
+                    n for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                ]
                 if len(methods) > MAX_CLASS_METHODS:
                     violations.append(
                         f"{py_file}:{node.lineno} {node.name} "
@@ -115,6 +125,7 @@ def main() -> int:
 
     if args.json:
         import json
+
         print(json.dumps({"violations": violations, "count": len(violations)}, indent=2))
     elif violations:
         print(f"Architectural fitness violations ({len(violations)}):")

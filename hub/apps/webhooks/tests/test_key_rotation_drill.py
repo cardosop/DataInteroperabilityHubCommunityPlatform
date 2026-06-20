@@ -1,6 +1,7 @@
 """
 Phase 277.B.080 — webhook signing-key rotation drill tests.
 """
+
 import uuid
 from io import StringIO
 
@@ -21,7 +22,9 @@ pytestmark = pytest.mark.django_db(transaction=True)
 class KeyRotationDrillTests(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name="Drill Tenant", slug=f"drill-{uuid.uuid4().hex[:8]}", status=TenantStatus.ACTIVE,
+            name="Drill Tenant",
+            slug=f"drill-{uuid.uuid4().hex[:8]}",
+            status=TenantStatus.ACTIVE,
         )
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
@@ -40,7 +43,8 @@ class KeyRotationDrillTests(TestCase):
         self.assertIn("no keys were mutated", output.lower())
         # No keys should have been created
         self.assertEqual(
-            WebhookSigningKey.objects.filter(webhook=self.webhook).count(), 0,
+            WebhookSigningKey.objects.filter(webhook=self.webhook).count(),
+            0,
         )
 
     def test_drill_creates_active_key(self):
@@ -66,14 +70,30 @@ class KeyRotationDrillTests(TestCase):
     def test_drill_verifies_signatures(self):
         """Drill output confirms signature verification."""
         out = StringIO()
-        # First drill (no previous key)
-        call_command("drill_webhook_key_rotation", stdout=out)
+        # First drill (no previous key) → 1 key created
+        call_command(
+            "drill_webhook_key_rotation",
+            f"--webhook-id={self.webhook.id}",
+            stdout=out,
+        )
         self.assertIn("HMAC signature verified", out.getvalue())
+        self.assertEqual(
+            WebhookSigningKey.objects.filter(webhook=self.webhook).count(),
+            1,
+        )
 
-        # Second drill (old + new signature verification)
+        # Second drill (old + new signature verification) → 2 keys total
         out2 = StringIO()
-        call_command("drill_webhook_key_rotation", stdout=out2)
+        call_command(
+            "drill_webhook_key_rotation",
+            f"--webhook-id={self.webhook.id}",
+            stdout=out2,
+        )
         self.assertIn("HMAC signatures verified (new + old)", out2.getvalue())
+        self.assertEqual(
+            WebhookSigningKey.objects.filter(webhook=self.webhook).count(),
+            2,
+        )
 
     def test_drill_with_webhook_id(self):
         """--webhook-id drills a single webhook."""
@@ -84,7 +104,8 @@ class KeyRotationDrillTests(TestCase):
             stdout=out,
         )
         self.assertEqual(
-            WebhookSigningKey.objects.filter(webhook=self.webhook).count(), 1,
+            WebhookSigningKey.objects.filter(webhook=self.webhook).count(),
+            1,
         )
         self.assertIn("Webhook", out.getvalue())
 
@@ -103,11 +124,15 @@ class KeyRotationDrillTests(TestCase):
     def test_drill_output_includes_summary(self):
         """Output includes a summary with key counts and status."""
         out = StringIO()
-        call_command("drill_webhook_key_rotation", stdout=out)
+        call_command(
+            "drill_webhook_key_rotation",
+            f"--webhook-id={self.webhook.id}",
+            stdout=out,
+        )
         output = out.getvalue()
         self.assertIn("Rotation drill complete", output)
-        self.assertIn("Keys cycled:", output)
-        self.assertIn("Signatures", output)
+        self.assertIn("Keys cycled:       1", output)
+        self.assertIn("Signatures OK:     1", output)
 
     def test_drill_generates_distinct_key_ids(self):
         """Each rotation generates a unique key_id."""
@@ -117,8 +142,7 @@ class KeyRotationDrillTests(TestCase):
         call_command("drill_webhook_key_rotation", stdout=StringIO())
 
         key_ids = list(
-            WebhookSigningKey.objects.filter(webhook=self.webhook)
-            .values_list("key_id", flat=True)
+            WebhookSigningKey.objects.filter(webhook=self.webhook).values_list("key_id", flat=True)
         )
         self.assertEqual(len(key_ids), len(set(key_ids)), "Key IDs must be unique")
 

@@ -23,7 +23,6 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from hub.apps.orchestration.models import (
-    StepStatus,
     WorkflowDefinition,
     WorkflowInstance,
     WorkflowStatus,
@@ -43,7 +42,10 @@ class WorkflowProgressStateTest(TestCase):
         self.engine = WorkflowEngine()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
@@ -58,7 +60,7 @@ class WorkflowProgressStateTest(TestCase):
     def test_progress_stored_when_step_starts(self):
         """Test that progress_percentage is stored in state_data when step starts (Task 0.3.2)"""
         # Create workflow with 3 steps
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_progress_workflow",
             version="1.0.0",
             dsl_json={
@@ -101,7 +103,7 @@ class WorkflowProgressStateTest(TestCase):
     def test_progress_updated_after_step_completion(self):
         """Test that progress_percentage is updated in state_data after step completion (Task 0.3.2)"""
         # Create workflow with 4 steps
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_progress_completion",
             version="1.0.0",
             dsl_json={
@@ -148,7 +150,7 @@ class WorkflowProgressStateTest(TestCase):
         self.engine.register_task("failing_task", failing_task)
 
         # Create workflow with 3 steps, second step fails
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_progress_failure",
             version="1.0.0",
             dsl_json={
@@ -170,12 +172,11 @@ class WorkflowProgressStateTest(TestCase):
         )
         instance = self.engine.start_instance(str(instance.id))
 
-        # Execute workflow (will fail at step2)
+        # Execute workflow (will fail at step2 due to invalid state transition)
         try:
             self.engine.execute_instance(str(instance.id))
         except Exception:
-            # Expected to fail
-            pass
+            pass  # Expected failure — state verified below
 
         instance.refresh_from_db()
 
@@ -205,7 +206,7 @@ class WorkflowProgressStateTest(TestCase):
     def test_progress_reaches_100_percent_on_completion(self):
         """Test that progress_percentage reaches 100% when workflow completes (Task 0.3.2)"""
         # Create workflow with 2 steps
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_progress_completion_100",
             version="1.0.0",
             dsl_json={
@@ -252,7 +253,7 @@ class WorkflowProgressStateTest(TestCase):
 
         self.engine.register_task("progress_aware_task", progress_aware_task)
 
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_progress_persistence",
             version="1.0.0",
             dsl_json={
@@ -285,7 +286,7 @@ class WorkflowProgressStateTest(TestCase):
 
     def test_progress_with_single_step_workflow(self):
         """Test progress storage with single step workflow (Task 0.3.2)"""
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_progress_single_step",
             version="1.0.0",
             dsl_json={
@@ -316,7 +317,7 @@ class WorkflowProgressStateTest(TestCase):
 
     def test_progress_state_data_structure(self):
         """Test that state_data contains all expected progress-related fields (Task 0.3.2)"""
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_progress_structure",
             version="1.0.0",
             dsl_json={
@@ -366,7 +367,10 @@ class WorkflowProgressIntegrationTest(TestCase):
         self.engine = WorkflowEngine()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
@@ -381,7 +385,7 @@ class WorkflowProgressIntegrationTest(TestCase):
     def test_progress_persistence_through_complete_workflow(self):
         """Integration test: Progress persists through complete workflow execution (Task 0.3.2)"""
         # Create workflow with 4 steps
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_integration_progress",
             version="1.0.0",
             dsl_json={
@@ -415,7 +419,7 @@ class WorkflowProgressIntegrationTest(TestCase):
 
     def test_progress_persistence_after_database_reload(self):
         """Integration test: Progress persists after reloading instance from database (Task 0.3.2)"""
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_progress_reload",
             version="1.0.0",
             dsl_json={
@@ -461,7 +465,7 @@ class WorkflowProgressIntegrationTest(TestCase):
 
     def test_progress_with_multiple_workflow_instances(self):
         """Integration test: Progress is correctly tracked for multiple workflow instances (Task 0.3.2)"""
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_multi_instance_progress",
             version="1.0.0",
             dsl_json={

@@ -20,15 +20,16 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Set
+from typing import Any
 
 import pytest
 
 pytestmark = pytest.mark.slow
-from django.db import transaction
-from django.test import TestCase, TransactionTestCase
+from django.test import TransactionTestCase
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+import contextlib
 
 from hub.apps.contracts.models import Contract
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
@@ -151,7 +152,7 @@ class ConcurrentODPSCreationTestBase(TransactionTestCase):
                     break
                 except OperationalError as e:
                     if "deadlock" in str(e).lower() and attempt < 2:
-                        time.sleep(0.1 * (attempt + 1))  # INTENTIONAL: test-specific delay
+                        time.sleep(0.1 * (attempt + 1))  # noqa: sleep-needed  # INTENTIONAL: test-specific delay
                         continue
                     raise
 
@@ -167,7 +168,6 @@ class ConcurrentODPSCreationTestBase(TransactionTestCase):
         which provides isolation without flushing.
         """
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
 
 class TestConcurrentODPSCreation(ConcurrentODPSCreationTestBase):
@@ -194,8 +194,8 @@ class TestConcurrentODPSCreation(ConcurrentODPSCreationTestBase):
             f"[TEST] Starting _test_concurrent_creations with {num_concurrent} concurrent creations"
         )
 
-        results: List[Dict[str, Any]] = []
-        errors: List[Exception] = []
+        results: list[dict[str, Any]] = []
+        errors: list[Exception] = []
         lock = threading.Lock()
 
         def create_odps(user: User, index: int):
@@ -296,11 +296,11 @@ class TestConcurrentODPSCreation(ConcurrentODPSCreationTestBase):
                 error_type = err.get("error_type", "Unknown")
                 error_summary[error_type] = error_summary.get(error_type, 0) + 1
 
-            print(f"\n=== Error Summary ===")
+            print("\n=== Error Summary ===")
             print(f"Total errors: {len(error_details)}")
             print(f"Error types: {error_summary}")
             if error_details:
-                print(f"\nFirst error details:")
+                print("\nFirst error details:")
                 first_error = error_details[0]
                 print(f"Error: {first_error.get('error', 'N/A')}")
                 if "traceback" in first_error:
@@ -338,8 +338,8 @@ class TestConcurrentODPSCreationRaceConditions(ConcurrentODPSCreationTestBase):
     def test_same_product_id_concurrent_creation(self):
         """Test concurrent creation with same product ID (should handle gracefully)"""
         product_id = f"race-test-{int(time.time() * 1000)}"
-        results: List[Dict[str, Any]] = []
-        errors: List[Exception] = []
+        results: list[dict[str, Any]] = []
+        errors: list[Exception] = []
         lock = threading.Lock()
 
         def create_odps(user: User):
@@ -403,8 +403,8 @@ class TestConcurrentODPSCreationDeadlocks(ConcurrentODPSCreationTestBase):
 
     def test_no_deadlocks_on_concurrent_creation(self):
         """Test that no deadlocks occur during concurrent creation"""
-        results: List[Dict[str, Any]] = []
-        errors: List[Exception] = []
+        results: list[dict[str, Any]] = []
+        errors: list[Exception] = []
         lock = threading.Lock()
         start_time = time.time()
         timeout = 120  # 2 minute timeout
@@ -481,7 +481,7 @@ class TestConcurrentODPSCreationDataIntegrity(ConcurrentODPSCreationTestBase):
 
     def test_data_integrity_on_concurrent_creation(self):
         """Test that data integrity is maintained during concurrent creation"""
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         lock = threading.Lock()
 
         def create_odps(user: User, index: int):
@@ -520,10 +520,8 @@ class TestConcurrentODPSCreationDataIntegrity(ConcurrentODPSCreationTestBase):
                 futures.append(future)
 
             for future in as_completed(futures):
-                try:
+                with contextlib.suppress(Exception):
                     future.result(timeout=60)
-                except Exception:
-                    pass
 
         # Verify all successful workflows have valid data
         workflow_ids = [r.get("workflow_id") for r in results if r.get("workflow_id")]
@@ -550,7 +548,7 @@ class TestConcurrentODPSCreationDataIntegrity(ConcurrentODPSCreationTestBase):
 
             # Verify no orphaned contracts (contracts without workflows)
             # This is a simplified check - in reality, would need more sophisticated validation
-            contracts = Contract.objects.filter(tenant=self.tenant, original_spec_type="ODPS")
+            Contract.objects.filter(tenant=self.tenant, original_spec_type="ODPS")
 
             # All ODPS contracts should be linked to workflows (simplified check)
             # In reality, would verify proper linking through workflow results

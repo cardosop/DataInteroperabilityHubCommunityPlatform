@@ -4,16 +4,17 @@ Search Service
 Service layer for search operations.
 Extracts search logic from search_engine.py module.
 """
-import time
-from typing import Dict, List, Any, Optional, Tuple
 
+import time
+from typing import Any
+
+from hub.apps.core.events.service_publishers import SearchEventPublisher
 from hub.apps.core.services.base import BaseService
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
-from hub.apps.core.events.service_publishers import SearchEventPublisher
 from hub.apps.search.business_rules import SearchBusinessRules
-from hub.apps.search.search_engine import SearchEngine
 from hub.apps.search.indexing import SearchIndexer
 from hub.apps.search.models import SearchIndex
+from hub.apps.search.search_engine import SearchEngine
 
 logger = None
 
@@ -23,6 +24,7 @@ def get_logger():
     global logger
     if logger is None:
         import structlog
+
         logger = structlog.get_logger(__name__)
     return logger
 
@@ -40,7 +42,7 @@ class SearchService(BaseService, SearchEventPublisher):
 
     service_name = "search_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize SearchService.
 
@@ -58,20 +60,20 @@ class SearchService(BaseService, SearchEventPublisher):
         self,
         tenant_id: str,
         query: str,
-        resource_type: Optional[str] = None,
-        classification: Optional[str] = None,
-        owner_id: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        domain: Optional[str] = None,
-        quality_status: Optional[str] = None,
-        compliance_status: Optional[str] = None,
+        resource_type: str | None = None,
+        classification: str | None = None,
+        owner_id: str | None = None,
+        tags: list[str] | None = None,
+        domain: str | None = None,
+        quality_status: str | None = None,
+        compliance_status: str | None = None,
         limit: int = 20,
         offset: int = 0,
         sort_by: str = "relevance",
         sort_order: str = "desc",
-        weights: Optional[Dict[str, float]] = None,
-        user_id: Optional[str] = None
-    ) -> Tuple[List[Dict[str, Any]], int]:
+        weights: dict[str, float] | None = None,
+        user_id: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
         """
         Perform full-text search with filters and ranking.
 
@@ -109,9 +111,7 @@ class SearchService(BaseService, SearchEventPublisher):
             "quality_status": quality_status,
             "compliance_status": compliance_status,
         }
-        active_filters = {
-            k: v for k, v in raw_filters.items() if v is not None
-        }
+        active_filters = {k: v for k, v in raw_filters.items() if v is not None}
         rules = SearchBusinessRules(
             tenant_id=tenant_id,
             user_id=user_id or self.user_id,
@@ -164,9 +164,9 @@ class SearchService(BaseService, SearchEventPublisher):
                 offset=offset,
                 sort_by=sort_by,
                 sort_order=sort_order,
-                weights=weights
+                weights=weights,
             ),
-            tenant_id=tenant_id
+            tenant_id=tenant_id,
         )
 
         # Calculate execution time
@@ -182,7 +182,7 @@ class SearchService(BaseService, SearchEventPublisher):
                 no_results=(total == 0),
                 execution_time_ms=execution_time_ms,
                 tenant_id=tenant_id,
-                user_id=user_id or self.user_id
+                user_id=user_id or self.user_id,
             )
         except Exception as e:
             # Log error but don't fail search if event publishing fails
@@ -191,7 +191,7 @@ class SearchService(BaseService, SearchEventPublisher):
                 query=query,
                 tenant_id=tenant_id,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
 
         return results, total
@@ -200,12 +200,12 @@ class SearchService(BaseService, SearchEventPublisher):
         self,
         resource_type: str,
         resource_id: str,
-        tenant_id: Optional[str] = None,
-        index_id: Optional[str] = None,
-        title: Optional[str] = None,
-        update_type: Optional[str] = None,
-        user_id: Optional[str] = None
-    ) -> Optional[SearchIndex]:
+        tenant_id: str | None = None,
+        index_id: str | None = None,
+        title: str | None = None,
+        update_type: str | None = None,
+        user_id: str | None = None,
+    ) -> SearchIndex | None:
         """
         Update search index for a resource and publish event.
 
@@ -230,12 +230,15 @@ class SearchService(BaseService, SearchEventPublisher):
         try:
             if resource_type == "CONTRACT":
                 from hub.apps.contracts.models import Contract
+
                 try:
                     contract = Contract.objects.get(id=resource_id, tenant_id=effective_tenant_id)
                     search_index = SearchIndexer.index_contract(contract)
                     if not title:
                         # Get title from hub_contract_json
-                        if contract.hub_contract_json and isinstance(contract.hub_contract_json, dict):
+                        if contract.hub_contract_json and isinstance(
+                            contract.hub_contract_json, dict
+                        ):
                             info = contract.hub_contract_json.get("info", {})
                             if isinstance(info, dict):
                                 title = info.get("title") or info.get("name")
@@ -247,12 +250,13 @@ class SearchService(BaseService, SearchEventPublisher):
                     get_logger().warning(
                         "Contract not found for indexing",
                         resource_id=resource_id,
-                        tenant_id=effective_tenant_id
+                        tenant_id=effective_tenant_id,
                     )
                     return None
 
             elif resource_type == "ASSET":
                 from hub.apps.assets.models import Asset
+
                 try:
                     asset = Asset.objects.get(id=resource_id, tenant_id=effective_tenant_id)
                     search_index = SearchIndexer.index_asset(asset)
@@ -264,12 +268,13 @@ class SearchService(BaseService, SearchEventPublisher):
                     get_logger().warning(
                         "Asset not found for indexing",
                         resource_id=resource_id,
-                        tenant_id=effective_tenant_id
+                        tenant_id=effective_tenant_id,
                     )
                     return None
 
             elif resource_type == "DATASET":
                 from hub.apps.datasets.models import Dataset
+
                 try:
                     dataset = Dataset.objects.get(id=resource_id, tenant_id=effective_tenant_id)
                     search_index = SearchIndexer.index_dataset(dataset)
@@ -285,14 +290,17 @@ class SearchService(BaseService, SearchEventPublisher):
                     get_logger().warning(
                         "Dataset not found for indexing",
                         resource_id=resource_id,
-                        tenant_id=effective_tenant_id
+                        tenant_id=effective_tenant_id,
                     )
                     return None
 
             elif resource_type == "VIRTUAL_DATASET":
                 from hub.apps.virtualization.models import VirtualDataset
+
                 try:
-                    virtual_dataset = VirtualDataset.objects.get(id=resource_id, tenant_id=effective_tenant_id)
+                    virtual_dataset = VirtualDataset.objects.get(
+                        id=resource_id, tenant_id=effective_tenant_id
+                    )
                     search_index = SearchIndexer.index_virtual_dataset(virtual_dataset)
                     if not title:
                         title = virtual_dataset.name or str(virtual_dataset.id)
@@ -303,7 +311,7 @@ class SearchService(BaseService, SearchEventPublisher):
                         "VirtualDataset not found for indexing",
                         resource_id=resource_id,
                         tenant_id=effective_tenant_id,
-                        error=str(e)
+                        error=str(e),
                     )
                     return None
 
@@ -311,7 +319,7 @@ class SearchService(BaseService, SearchEventPublisher):
                 get_logger().warning(
                     "Unknown resource type for indexing",
                     resource_type=resource_type,
-                    resource_id=resource_id
+                    resource_id=resource_id,
                 )
                 return None
 
@@ -325,7 +333,7 @@ class SearchService(BaseService, SearchEventPublisher):
                         title=title or search_index.title if search_index else None,
                         update_type=update_type or "updated",
                         tenant_id=effective_tenant_id,
-                        user_id=user_id or self.user_id
+                        user_id=user_id or self.user_id,
                     )
                 except Exception as e:
                     # Log error but don't fail indexing if event publishing fails
@@ -335,7 +343,7 @@ class SearchService(BaseService, SearchEventPublisher):
                         resource_id=resource_id,
                         tenant_id=effective_tenant_id,
                         error=str(e),
-                        exc_info=True
+                        exc_info=True,
                     )
 
             return search_index
@@ -347,7 +355,7 @@ class SearchService(BaseService, SearchEventPublisher):
                 resource_id=resource_id,
                 tenant_id=effective_tenant_id,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
             return None
 
@@ -355,8 +363,8 @@ class SearchService(BaseService, SearchEventPublisher):
         self,
         resource_type: str,
         resource_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        tenant_id: str | None = None,
+        user_id: str | None = None,
     ) -> None:
         """
         Delete search index for a resource and publish event.
@@ -374,9 +382,7 @@ class SearchService(BaseService, SearchEventPublisher):
         # Get index title before deletion
         try:
             index = SearchIndex.objects.get(
-                tenant_id=effective_tenant_id,
-                resource_type=resource_type,
-                resource_id=resource_id
+                tenant_id=effective_tenant_id, resource_type=resource_type, resource_id=resource_id
             )
             title = index.title
             index_id = str(index.id)
@@ -386,9 +392,7 @@ class SearchService(BaseService, SearchEventPublisher):
 
         # Delete index
         SearchIndexer.delete_index(
-            tenant_id=effective_tenant_id,
-            resource_type=resource_type,
-            resource_id=resource_id
+            tenant_id=effective_tenant_id, resource_type=resource_type, resource_id=resource_id
         )
 
         # Publish search.index.updated event with update_type='deleted'
@@ -400,7 +404,7 @@ class SearchService(BaseService, SearchEventPublisher):
                 title=title,
                 update_type="deleted",
                 tenant_id=effective_tenant_id,
-                user_id=user_id or self.user_id
+                user_id=user_id or self.user_id,
             )
         except Exception as e:
             # Log error but don't fail deletion if event publishing fails
@@ -410,14 +414,12 @@ class SearchService(BaseService, SearchEventPublisher):
                 resource_id=resource_id,
                 tenant_id=effective_tenant_id,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
 
     def rebuild_index(
-        self,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, tenant_id: str | None = None, user_id: str | None = None
+    ) -> dict[str, Any]:
         """
         Rebuild search index and publish event.
 
@@ -436,23 +438,25 @@ class SearchService(BaseService, SearchEventPublisher):
         try:
             # Count resources before rebuild
             from django.db.models import Q
+
             queryset = Q()
             if effective_tenant_id:
                 queryset = Q(tenant_id=effective_tenant_id)
 
-            from hub.apps.contracts.models import Contract
             from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
             from hub.apps.datasets.models import Dataset
 
             resource_count = (
-                Contract.objects.filter(queryset).count() +
-                Asset.objects.filter(queryset).count() +
-                Dataset.objects.filter(queryset).count()
+                Contract.objects.filter(queryset).count()
+                + Asset.objects.filter(queryset).count()
+                + Dataset.objects.filter(queryset).count()
             )
 
             # Try to count virtual datasets if available
             try:
                 from hub.apps.virtualization.models import VirtualDataset
+
                 resource_count += VirtualDataset.objects.filter(queryset).count()
             except ImportError:
                 pass
@@ -466,10 +470,16 @@ class SearchService(BaseService, SearchEventPublisher):
             # Get resource types that were indexed
             resource_types = []
             if effective_tenant_id:
-                indexed_types = SearchIndex.objects.filter(tenant_id=effective_tenant_id).values_list('resource_type', flat=True).distinct()
+                indexed_types = (
+                    SearchIndex.objects.filter(tenant_id=effective_tenant_id)
+                    .values_list("resource_type", flat=True)
+                    .distinct()
+                )
                 resource_types = list(indexed_types)
             else:
-                indexed_types = SearchIndex.objects.values_list('resource_type', flat=True).distinct()
+                indexed_types = SearchIndex.objects.values_list(
+                    "resource_type", flat=True
+                ).distinct()
                 resource_types = list(indexed_types)
 
             # Publish search.index.rebuilt event
@@ -481,7 +491,7 @@ class SearchService(BaseService, SearchEventPublisher):
                     resource_types=resource_types,
                     success=True,
                     errors=errors,
-                    user_id=user_id or self.user_id
+                    user_id=user_id or self.user_id,
                 )
             except Exception as e:
                 # Log error but don't fail rebuild if event publishing fails
@@ -489,7 +499,7 @@ class SearchService(BaseService, SearchEventPublisher):
                     "Failed to publish search.index.rebuilt event",
                     tenant_id=effective_tenant_id,
                     error=str(e),
-                    exc_info=True
+                    exc_info=True,
                 )
 
             return {
@@ -497,7 +507,7 @@ class SearchService(BaseService, SearchEventPublisher):
                 "duration_ms": duration_ms,
                 "success": True,
                 "errors": errors,
-                "resource_types": resource_types
+                "resource_types": resource_types,
             }
 
         except Exception as e:
@@ -509,7 +519,7 @@ class SearchService(BaseService, SearchEventPublisher):
                 "Failed to rebuild search index",
                 tenant_id=effective_tenant_id,
                 error=error_msg,
-                exc_info=True
+                exc_info=True,
             )
 
             # Publish search.index.rebuilt event with failure
@@ -521,14 +531,14 @@ class SearchService(BaseService, SearchEventPublisher):
                     resource_types=[],
                     success=False,
                     errors=errors,
-                    user_id=user_id or self.user_id
+                    user_id=user_id or self.user_id,
                 )
             except Exception as event_error:
                 get_logger().warning(
                     "Failed to publish search.index.rebuilt event for failure",
                     tenant_id=effective_tenant_id,
                     error=str(event_error),
-                    exc_info=True
+                    exc_info=True,
                 )
 
             return {
@@ -536,6 +546,5 @@ class SearchService(BaseService, SearchEventPublisher):
                 "duration_ms": duration_ms,
                 "success": False,
                 "errors": errors,
-                "resource_types": []
+                "resource_types": [],
             }
-

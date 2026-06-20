@@ -10,13 +10,13 @@ from datetime import timedelta
 import pytest
 
 pytestmark = pytest.mark.slow
-from django.utils import timezone
+import uuid
+
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

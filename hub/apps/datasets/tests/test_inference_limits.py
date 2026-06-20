@@ -21,9 +21,10 @@ The contract under test:
 * **Truncation** — text content trims to last newline; binary
   passes through unchanged.
 """
-from __future__ import annotations
-import pytest
 
+from __future__ import annotations
+
+import pytest
 from django.test import SimpleTestCase, override_settings
 
 from hub.apps.core.services.base import ValidationError
@@ -32,7 +33,6 @@ from hub.apps.datasets.inference_limits import (
     INFERENCE_MAX_BYTES_DEFAULT,
     INFERENCE_SAMPLE_BYTES_DEFAULT,
     InferenceMode,
-    InferencePlan,
     plan_inference_for_file,
     truncate_to_clean_boundary,
 )
@@ -120,9 +120,7 @@ class PlanInferenceForFileTest(SimpleTestCase):
         with self.assertRaises(ValidationError) as ctx:
             plan_inference_for_file(file_size=size, file_format="CSV")
         # Spec contract — error code + HTTP 413.
-        self.assertEqual(
-            getattr(ctx.exception, "code", None), "FILE_TOO_LARGE_FOR_INFERENCE"
-        )
+        self.assertEqual(getattr(ctx.exception, "code", None), "FILE_TOO_LARGE_FOR_INFERENCE")
         self.assertEqual(getattr(ctx.exception, "http_status", None), 413)
 
     @pytest.mark.unit
@@ -131,9 +129,7 @@ class PlanInferenceForFileTest(SimpleTestCase):
         size = INFERENCE_MAX_BYTES_DEFAULT + 1
         with self.assertRaises(ValidationError) as ctx:
             plan_inference_for_file(file_size=size, file_format="PARQUET")
-        self.assertEqual(
-            getattr(ctx.exception, "code", None), "FILE_TOO_LARGE_FOR_INFERENCE"
-        )
+        self.assertEqual(getattr(ctx.exception, "code", None), "FILE_TOO_LARGE_FOR_INFERENCE")
 
     @pytest.mark.unit
     def test_oversize_details_carry_full_triage_payload(self):
@@ -145,13 +141,17 @@ class PlanInferenceForFileTest(SimpleTestCase):
         # cap that fired, both supporting thresholds, the format
         # (so cross-format triage works), and a remediation hint.
         for field in (
-            "file_size", "max_bytes", "full_read_bytes",
-            "sample_bytes", "file_format", "remediation",
+            "file_size",
+            "max_bytes",
+            "full_read_bytes",
+            "sample_bytes",
+            "file_format",
+            "remediation",
         ):
             self.assertIn(
-                field, details,
-                f"FILE_TOO_LARGE_FOR_INFERENCE details missing {field!r}; "
-                f"got {details!r}",
+                field,
+                details,
+                f"FILE_TOO_LARGE_FOR_INFERENCE details missing {field!r}; got {details!r}",
             )
         self.assertEqual(details["file_size"], size)
         self.assertEqual(details["file_format"], "CSV")
@@ -261,9 +261,7 @@ class SettingsOverrideTest(SimpleTestCase):
         # should reject.
         with self.assertRaises(ValidationError) as ctx:
             plan_inference_for_file(file_size=20 * 1024, file_format="CSV")
-        self.assertEqual(
-            getattr(ctx.exception, "code", None), "FILE_TOO_LARGE_FOR_INFERENCE"
-        )
+        self.assertEqual(getattr(ctx.exception, "code", None), "FILE_TOO_LARGE_FOR_INFERENCE")
 
     @override_settings(
         DATASET_INFERENCE_FULL_READ_BYTES=1024,
@@ -317,11 +315,10 @@ class SampleCoversWholeFileDowngradeTest(SimpleTestCase):
         # File 20 MB; FULL_READ threshold 10 MB; SAMPLE budget
         # 50 MB. The 20 MB file is above FULL_READ but the SAMPLE
         # budget covers it entirely → effectively FULL_READ.
-        plan = plan_inference_for_file(
-            file_size=20 * 1024 * 1024, file_format="CSV"
-        )
+        plan = plan_inference_for_file(file_size=20 * 1024 * 1024, file_format="CSV")
         self.assertEqual(
-            plan.mode, InferenceMode.FULL_READ,
+            plan.mode,
+            InferenceMode.FULL_READ,
             "SAMPLE budget covers whole file → must downgrade to FULL_READ",
         )
         self.assertFalse(
@@ -340,9 +337,7 @@ class SampleCoversWholeFileDowngradeTest(SimpleTestCase):
     def test_genuine_partial_read_still_samples(self):
         # File 100 MB; SAMPLE budget 50 MB. 50 MB < 100 MB →
         # genuine partial read → SAMPLE mode.
-        plan = plan_inference_for_file(
-            file_size=100 * 1024 * 1024, file_format="CSV"
-        )
+        plan = plan_inference_for_file(file_size=100 * 1024 * 1024, file_format="CSV")
         self.assertEqual(plan.mode, InferenceMode.SAMPLE)
         self.assertTrue(plan.is_sampled)
         self.assertLess(plan.bytes_to_read, plan.total_bytes)
@@ -355,8 +350,6 @@ class SampleCoversWholeFileDowngradeTest(SimpleTestCase):
     def test_at_sample_threshold_boundary_is_full_read(self):
         # File size exactly equal to SAMPLE budget → still
         # downgrades (the read covers the whole file).
-        plan = plan_inference_for_file(
-            file_size=20 * 1024 * 1024, file_format="CSV"
-        )
+        plan = plan_inference_for_file(file_size=20 * 1024 * 1024, file_format="CSV")
         self.assertEqual(plan.mode, InferenceMode.FULL_READ)
         self.assertFalse(plan.is_sampled)

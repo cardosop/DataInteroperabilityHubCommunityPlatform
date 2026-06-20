@@ -12,12 +12,13 @@ Orchestrates the complete test execution, reporting, and validation process:
 Usage:
     python scripts/run_comprehensive_test_suite.py [--test-type TYPE] [--coverage] [--report-dir DIR]
 """
+
 import argparse
 import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -55,21 +56,21 @@ def find_python_executable() -> str:
     return python_executable
 
 
-def load_coverage_data(report_dir: Path, test_type: str) -> Optional[Dict[str, Any]]:
+def load_coverage_data(report_dir: Path, test_type: str) -> dict[str, Any] | None:
     """Load coverage data from JSON file."""
     coverage_file = report_dir / f"coverage_{test_type}.json"
     if coverage_file.exists():
         try:
-            with open(coverage_file, "r") as f:
+            with open(coverage_file) as f:
                 return json.load(f)
         except Exception as e:
             print(f"Warning: Could not load coverage data from {coverage_file}: {e}")
     return None
 
 
-def aggregate_coverage_data(report_dir: Path, test_types: list) -> Optional[Dict[str, Any]]:
+def aggregate_coverage_data(report_dir: Path, test_types: list) -> dict[str, Any] | None:
     """Aggregate coverage data from multiple test types."""
-    all_coverage: Dict[str, Any] = {}
+    all_coverage: dict[str, Any] = {}
 
     for test_type in test_types:
         coverage_data = load_coverage_data(report_dir, test_type)
@@ -288,31 +289,28 @@ def main():
     validator = TestValidator(report_dir)
 
     # Validate test results
-    all_tests_valid, test_validation = validator.validate_test_results(execution_results)
-    print(f"✅ Test validation report generated")
+    all_tests_valid, _test_validation = validator.validate_test_results(execution_results)
+    print("✅ Test validation report generated")
 
     # Validate coverage requirements
     coverage_valid = True
-    coverage_validation = {}
     if args.coverage and coverage_data:
-        coverage_valid, coverage_validation = validator.validate_coverage_requirements(
+        coverage_valid, _coverage_validation = validator.validate_coverage_requirements(
             coverage_data, min_coverage=args.min_coverage
         )
-        print(f"✅ Coverage validation report generated")
+        print("✅ Coverage validation report generated")
 
     # Validate performance targets
     perf_valid = True
-    perf_validation = {}
     if performance_data:
-        perf_valid, perf_validation = validator.validate_performance_targets(performance_data)
-        print(f"✅ Performance validation report generated")
+        perf_valid, _perf_validation = validator.validate_performance_targets(performance_data)
+        print("✅ Performance validation report generated")
 
     # Validate security requirements
     sec_valid = True
-    sec_validation = {}
     if security_data:
-        sec_valid, sec_validation = validator.validate_security_requirements(security_data)
-        print(f"✅ Security validation report generated")
+        sec_valid, _sec_validation = validator.validate_security_requirements(security_data)
+        print("✅ Security validation report generated")
 
     # Final summary
     print("\n" + "=" * 80)
@@ -325,14 +323,14 @@ def main():
     total_failed = sum(r.failed for r in results.values())
     total_errors = sum(r.errors for r in results.values())
 
-    print(f"Test Execution:")
+    print("Test Execution:")
     print(f"  Total Tests: {total_tests}")
     print(f"  Passed: {total_passed}")
     print(f"  Failed: {total_failed}")
     print(f"  Errors: {total_errors}")
     print()
 
-    print(f"Validation Results:")
+    print("Validation Results:")
     print(f"  All Tests Passing: {'✅ YES' if all_tests_valid else '❌ NO'}")
     if args.coverage:
         print(f"  Coverage Requirements Met: {'✅ YES' if coverage_valid else '❌ NO'}")

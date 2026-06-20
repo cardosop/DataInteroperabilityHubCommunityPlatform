@@ -7,8 +7,7 @@ Validates:
 - New response shape uses ``results``, ``next_cursor``, ``previous_cursor``
 - Old cursor returns correct next page
 """
-import base64
-import json
+
 from types import SimpleNamespace as _NS
 from unittest.mock import patch
 
@@ -37,7 +36,8 @@ class MockConnector:
 
     def execute_query(self, sql):
         import re
-        limit_match = re.search(r'LIMIT\s+(\d+)', sql, re.IGNORECASE)
+
+        limit_match = re.search(r"LIMIT\s+(\d+)", sql, re.IGNORECASE)
         limit = int(limit_match.group(1)) if limit_match else 100
         cursor_match = re.search(r"WHERE id > '([^']*)'", sql)
         after_id = cursor_match.group(1) if cursor_match else None
@@ -58,6 +58,7 @@ class RecordsCursorBackwardCompatTests(TestCase):
     def setUp(self):
         super().setUp()
         import uuid as _uuid
+
         _uid = _uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Cursor Test {_uid}",
@@ -65,8 +66,10 @@ class RecordsCursorBackwardCompatTests(TestCase):
             status=TenantStatus.ACTIVE,
         )
         self.platform_admin = User.objects.create_user(
-            email=f"admin-{_uid}@cursor.test", password="testpass",
-            tenant=self.tenant, status="ACTIVE",
+            email=f"admin-{_uid}@cursor.test",
+            password="testpass",
+            tenant=self.tenant,
+            status="ACTIVE",
         )
         admin_role, _ = Role.objects.get_or_create(
             name="PLATFORM_ADMIN",
@@ -75,6 +78,7 @@ class RecordsCursorBackwardCompatTests(TestCase):
         )
         UserRole.objects.create(user=self.platform_admin, role=admin_role)
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.wh_conn = WarehouseConnection.objects.create(
@@ -98,10 +102,7 @@ class RecordsCursorBackwardCompatTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.platform_admin)
         # 150 rows (id-000 through id-149)
-        self.mock_rows = [
-            [f"id-{i:03d}", f"name-{i}", str(i * 10)]
-            for i in range(150)
-        ]
+        self.mock_rows = [[f"id-{i:03d}", f"name-{i}", str(i * 10)] for i in range(150)]
         self._connector = MockConnector(self.mock_rows)
         self._connector_patch = patch(
             "hub.apps.datasets.views.DatasetViewSet._resolve_connector",
@@ -139,10 +140,12 @@ class RecordsCursorBackwardCompatTests(TestCase):
         """Third page should have exactly 50 rows (150 total, 50/page)."""
         page1 = self.client.get(self.url, {"limit": 50}).json()
         page2 = self.client.get(
-            self.url, {"limit": 50, "cursor": page1["next_cursor"]},
+            self.url,
+            {"limit": 50, "cursor": page1["next_cursor"]},
         ).json()
         page3 = self.client.get(
-            self.url, {"limit": 50, "cursor": page2["next_cursor"]},
+            self.url,
+            {"limit": 50, "cursor": page2["next_cursor"]},
         ).json()
         self.assertEqual(len(page3["results"]), 50)
         self.assertEqual(page3["results"][0][0], "id-100")
@@ -207,7 +210,8 @@ class RecordsCursorBackwardCompatTests(TestCase):
         self.assertIsNotNone(page1["next_cursor"])
 
         page2 = self.client.get(
-            self.url, {"limit": 100, "cursor": page1["next_cursor"]},
+            self.url,
+            {"limit": 100, "cursor": page1["next_cursor"]},
         ).json()
         # 150 rows, page_size=100: page2 has 50 rows, no more pages
         self.assertEqual(len(page2["results"]), 50)

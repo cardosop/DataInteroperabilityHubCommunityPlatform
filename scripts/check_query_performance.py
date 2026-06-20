@@ -23,12 +23,18 @@ DEFAULT_QUERY_LOG = "query_profile.json"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="CI gate: detect slow Django queries")
-    parser.add_argument("--query-log", default=DEFAULT_QUERY_LOG,
-                        help=f"Path to query profile JSON (default: {DEFAULT_QUERY_LOG})")
-    parser.add_argument("--threshold-ms", type=float, default=DEFAULT_THRESHOLD_MS,
-                        help=f"Max query duration in ms (default: {DEFAULT_THRESHOLD_MS})")
-    parser.add_argument("--ci", action="store_true",
-                        help="CI mode: exit 1 on threshold violation")
+    parser.add_argument(
+        "--query-log",
+        default=DEFAULT_QUERY_LOG,
+        help=f"Path to query profile JSON (default: {DEFAULT_QUERY_LOG})",
+    )
+    parser.add_argument(
+        "--threshold-ms",
+        type=float,
+        default=DEFAULT_THRESHOLD_MS,
+        help=f"Max query duration in ms (default: {DEFAULT_THRESHOLD_MS})",
+    )
+    parser.add_argument("--ci", action="store_true", help="CI mode: exit 1 on threshold violation")
     args = parser.parse_args()
 
     log_path = Path(args.query_log)
@@ -44,8 +50,7 @@ def main() -> int:
 
     queries = data.get("queries", []) if isinstance(data, dict) else data
     if not isinstance(queries, list):
-        print(f"Error: expected list of queries, got {type(queries).__name__}",
-              file=sys.stderr)
+        print(f"Error: expected list of queries, got {type(queries).__name__}", file=sys.stderr)
         return 2
 
     slow_queries = []
@@ -59,24 +64,30 @@ def main() -> int:
         total_time += duration
 
         if duration > args.threshold_ms / 1000.0:
-            slow_queries.append({
-                "sql": sql[:200],
-                "duration_ms": round(duration * 1000, 2),
-            })
+            slow_queries.append(
+                {
+                    "sql": sql[:200],
+                    "duration_ms": round(duration * 1000, 2),
+                }
+            )
 
-    print(f"Query profile: {len(queries)} queries, "
-          f"{total_time:.2f}s total, "
-          f"{len(slow_queries)} slow queries "
-          f"(>{args.threshold_ms}ms)")
+    print(
+        f"Query profile: {len(queries)} queries, "
+        f"{total_time:.2f}s total, "
+        f"{len(slow_queries)} slow queries "
+        f"(>{args.threshold_ms}ms)"
+    )
 
     if slow_queries:
-        print(f"\n⚠️  Slow queries detected:")
+        print("\n⚠️  Slow queries detected:")
         for sq in sorted(slow_queries, key=lambda x: x["duration_ms"], reverse=True)[:10]:
             print(f"  {sq['duration_ms']:.1f}ms — {sq['sql']}")
 
         if args.ci:
-            print(f"\nCI gate: FAILED — {len(slow_queries)} query/queries exceed "
-                  f"{args.threshold_ms}ms threshold.")
+            print(
+                f"\nCI gate: FAILED — {len(slow_queries)} query/queries exceed "
+                f"{args.threshold_ms}ms threshold."
+            )
             return 1
         return 0
 

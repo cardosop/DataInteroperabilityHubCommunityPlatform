@@ -1,10 +1,10 @@
 """
 Phase 83.5 — validate_config management command tests.
 """
+
 from io import StringIO
 from unittest.mock import patch
 
-import pytest
 from django.core.exceptions import ImproperlyConfigured
 from django.core.management import call_command
 from django.test import TestCase
@@ -14,7 +14,6 @@ _VALIDATE_ALL = "hub.apps.core.management.commands.validate_config.validate_all"
 
 
 class ValidateConfigCommandTest(TestCase):
-
     @patch(_VALIDATE_ALL)
     def test_valid_config_exits_zero(self, mock_validate):
         out = StringIO()

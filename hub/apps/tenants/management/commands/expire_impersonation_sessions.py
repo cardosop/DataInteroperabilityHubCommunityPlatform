@@ -26,7 +26,9 @@ Kubernetes wiring (every 5 minutes):
                           "expire_impersonation_sessions"]
               restartPolicy: OnFailure
 """
+
 from __future__ import annotations
+
 import uuid
 
 from django.core.management.base import BaseCommand
@@ -73,9 +75,7 @@ class Command(BaseCommand):
 
         try:
             summary = run_expire_impersonation_sessions(sweep_run_id=sweep_run_id)
-            self.stdout.write(
-                self.style.SUCCESS(f"Impersonation expire sweep: {summary}")
-            )
+            self.stdout.write(self.style.SUCCESS(f"Impersonation expire sweep: {summary}"))
             if job_row is not None:
                 job_row.mark_completed(result_json={"summary": summary})
         except Exception as exc:

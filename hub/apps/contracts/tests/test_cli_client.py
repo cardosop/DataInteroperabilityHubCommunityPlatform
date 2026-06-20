@@ -22,7 +22,6 @@ from django.core.cache import cache
 from django.test import TestCase
 
 from hub.apps.contracts.cli_client import (
-    SYNC_TIMEOUT,
     DataContractCLIClient,
     group_errors_by_category,
     interpret_validation_status,
@@ -59,8 +58,11 @@ class DataContractCLIClientTest(TestCase):
         result = self.client.health_check()
         self.assertIsInstance(result, dict)
         self.assertIn("status", result)
-        self.assertEqual(result["status"], "healthy",
-            "Health check must report 'healthy' when service is available")
+        self.assertEqual(
+            result["status"],
+            "healthy",
+            "Health check must report 'healthy' when service is available",
+        )
         self.assertIn("cli_version", result)
 
     # ========== VALIDATION TESTS ==========
@@ -94,7 +96,8 @@ class DataContractCLIClientTest(TestCase):
         self.assertIn("validation_status", result2)
         # Both calls must return the same validation_status for the same input.
         self.assertEqual(
-            result1["validation_status"], result2["validation_status"],
+            result1["validation_status"],
+            result2["validation_status"],
             "Cached and non-cached calls must return the same validation_status",
         )
 
@@ -135,11 +138,14 @@ class DataContractCLIClientTest(TestCase):
 
         try:
             result = self.client.validate(
-                raw_contract='{"id": "test"}', format="JSON", use_cache=False,
+                raw_contract='{"id": "test"}',
+                format="JSON",
+                use_cache=False,
             )
 
-            self.assertEqual(len(recorded_requests), 1,
-                "Expected exactly 1 request through the mock transport")
+            self.assertEqual(
+                len(recorded_requests), 1, "Expected exactly 1 request through the mock transport"
+            )
             request = recorded_requests[0]
             self.assertEqual(request.url.path, "/validate")
             self.assertEqual(request.method, "POST")
@@ -154,13 +160,16 @@ class DataContractCLIClientTest(TestCase):
 
         try:
             result = self.client.validate(raw_contract='{"id": "test"}', format="JSON")
-            self.assertIsInstance(result, dict,
-                "Must return a dict (fallback response) when service is unavailable")
+            self.assertIsInstance(
+                result, dict, "Must return a dict (fallback response) when service is unavailable"
+            )
             self.assertIn("validation_status", result)
-            self.assertEqual(result["validation_status"], "ERROR",
-                "Unreachable service must return validation_status='ERROR'")
-            self.assertIn("error", result,
-                "Fallback response must include an 'error' key")
+            self.assertEqual(
+                result["validation_status"],
+                "ERROR",
+                "Unreachable service must return validation_status='ERROR'",
+            )
+            self.assertIn("error", result, "Fallback response must include an 'error' key")
         finally:
             self.client.base_url = original_base_url
 
@@ -209,8 +218,7 @@ class DataContractCLIClientTest(TestCase):
         result = self.client.lint(raw_contract='{"id": "test", "name": "Test"}', format="JSON")
         self.assertIsInstance(result, dict)
         self.assertIn("issues", result)
-        self.assertIsInstance(result["issues"], list,
-            "Lint 'issues' must be a list")
+        self.assertIsInstance(result["issues"], list, "Lint 'issues' must be a list")
 
     # ========== CONVERT TESTS ==========
 
@@ -264,10 +272,10 @@ class DataContractCLIClientTest(TestCase):
         self.assertIsInstance(result, dict)
         self.assertIn("converted_contract", result)
         self.assertIn("target_format", result)
-        self.assertIsNotNone(result["converted_contract"],
-            "converted_contract must not be None")
-        self.assertEqual(result["target_format"], "YAML",
-            "target_format must match the requested YAML format")
+        self.assertIsNotNone(result["converted_contract"], "converted_contract must not be None")
+        self.assertEqual(
+            result["target_format"], "YAML", "target_format must match the requested YAML format"
+        )
 
     # ========== ERROR HANDLING ==========
 
@@ -278,16 +286,21 @@ class DataContractCLIClientTest(TestCase):
 
         try:
             result = self.client.validate(raw_contract='{"id": "test"}', format="JSON")
-            self.assertIsInstance(result, dict,
-                "Must return a dict even with short timeout (circuit breaker fallback)")
+            self.assertIsInstance(
+                result,
+                dict,
+                "Must return a dict even with short timeout (circuit breaker fallback)",
+            )
             self.assertIn("validation_status", result)
             # A very short timeout may or may not trigger — local services
             # can respond within 1ms. Either ERROR (timeout hit) or a real
             # status (fast response) is valid; the contract is that we
             # never crash.
-            self.assertIn(result["validation_status"],
+            self.assertIn(
+                result["validation_status"],
                 {"VALID", "WARNING_ONLY", "INVALID", "ERROR", "SKIPPED"},
-                f"Timeout path returned unexpected status: {result.get('validation_status')}")
+                f"Timeout path returned unexpected status: {result.get('validation_status')}",
+            )
         finally:
             self.client.timeout = original_timeout
 
@@ -295,8 +308,11 @@ class DataContractCLIClientTest(TestCase):
         """Validate handles invalid JSON gracefully — returns dict with validation_status."""
         result = self.client.validate(raw_contract="invalid json", format="JSON")
         self.assertIsInstance(result, dict)
-        self.assertIn("validation_status", result,
-            "Response must include validation_status even for invalid JSON")
+        self.assertIn(
+            "validation_status",
+            result,
+            "Response must include validation_status even for invalid JSON",
+        )
 
     # ========== EDGE CASES ==========
 
@@ -304,19 +320,26 @@ class DataContractCLIClientTest(TestCase):
         """Validate handles empty JSON contract — returns dict with validation_status."""
         result = self.client.validate(raw_contract="{}", format="JSON")
         self.assertIsInstance(result, dict)
-        self.assertIn("validation_status", result,
-            "Response must include validation_status even for empty contract")
+        self.assertIn(
+            "validation_status",
+            result,
+            "Response must include validation_status even for empty contract",
+        )
 
     def test_validate_large_contract(self):
         """Validate handles large contract — must not crash, must return a dict."""
         large_contract = '{"id": "test", "data": "' + "x" * 100000 + '"}'
 
         result = self.client.validate(raw_contract=large_contract, format="JSON")
-        self.assertIsInstance(result, dict,
-            "Large contract must return a dict (fallback or async trigger)")
+        self.assertIsInstance(
+            result, dict, "Large contract must return a dict (fallback or async trigger)"
+        )
         self.assertIn("validation_status", result)
-        self.assertIn(result["validation_status"], {"VALID", "WARNING_ONLY", "INVALID", "ERROR", "SKIPPED"},
-            "Large contract must return a valid validation_status value")
+        self.assertIn(
+            result["validation_status"],
+            {"VALID", "WARNING_ONLY", "INVALID", "ERROR", "SKIPPED"},
+            "Large contract must return a valid validation_status value",
+        )
 
 
 class InterpretValidationStatusTest(TestCase):

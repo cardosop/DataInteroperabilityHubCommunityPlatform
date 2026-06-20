@@ -5,8 +5,10 @@ Version-specific normalizer for ODPS (Open Data Product Standard) version 2.x.
 Implements ODPSNormalizerBase with 2.x-specific mappings and graceful degradation
 for missing ODPS 3.0+ features (enhanced marketplace, lifecycle features).
 """
+
+from typing import Any
+
 import structlog
-from typing import Dict, Any, List
 
 from hub.apps.contracts.normalization.odps_normalizer_base import ODPSNormalizerBase
 
@@ -44,19 +46,19 @@ class ODPSNormalizerV2_X(ODPSNormalizerBase):
         # Support versions 2.0 through 2.9
         if spec_version.startswith("2."):
             return True
-        
+
         # Also support "2.x" as a generic version identifier
         if spec_version == "2.x":
             return True
-        
+
         return False
 
     def _map_version_specific_fields(
         self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
-        spec_version: str
+        contract_data: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
+        spec_version: str,
     ) -> None:
         """
         Map ODPS 2.x-specific fields to HubContract format.
@@ -85,7 +87,7 @@ class ODPSNormalizerV2_X(ODPSNormalizerBase):
                 "odps_v2_x_unexpected_version",
                 expected_version="2.x",
                 actual_version=spec_version,
-                message="ODPSNormalizerV2_X received unexpected version"
+                message="ODPSNormalizerV2_X received unexpected version",
             )
 
         # ODPS 2.x does not support:
@@ -93,47 +95,19 @@ class ODPSNormalizerV2_X(ODPSNormalizerBase):
         # - paymentGateways (introduced in 4.1)
         # - Enhanced marketplace features (introduced in 3.0+)
         # - Enhanced lifecycle features (introduced in 3.0+)
-        
+
         # The base class methods already check version and skip processing
         # for unsupported features, but we're being explicit here
-        
+
         # All other normalization is handled by the base class
         # Marketplace and lifecycle normalization gracefully handle missing
         # features (they're optional, so no special handling needed)
-        
+
         # ODPS 2.x may have different field structures, but the base class
         # normalization methods handle missing fields gracefully
-        
+
         logger.debug(
             "odps_v2_x_version_specific_mapping_complete",
             spec_version=spec_version,
-            message="ODPS 2.x version-specific mapping complete (no 3.0+ features to process)"
+            message="ODPS 2.x version-specific mapping complete (no 3.0+ features to process)",
         )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

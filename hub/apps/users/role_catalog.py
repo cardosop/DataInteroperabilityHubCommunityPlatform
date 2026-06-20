@@ -6,6 +6,7 @@ backfill MUST stay aligned with ``STANDARD_TENANT_ROLE_DEFINITIONS``.
 """
 
 from __future__ import annotations
+
 from typing import Final
 
 #: Roles provisioned on every NEW tenant (non-test environments). See tenants.signals.

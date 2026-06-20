@@ -18,7 +18,9 @@ Usage::
             response = self.client.post(f"/api/v1/assets/{asset.id}/activate/", ...)
             self.assertEqual(response.status_code, 200)
 """
+
 import uuid
+
 from django.utils import timezone
 
 

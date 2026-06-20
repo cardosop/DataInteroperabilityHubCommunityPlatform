@@ -92,7 +92,10 @@ class DatasetVersioningTest(TestCase):
         """First attached dataset gets version=1 and is_current=True."""
         ds = self._make_unattached_dataset()
         resp = self._attach(ds)
-        self.assertIn(resp.status_code, (status.HTTP_200_OK, status.HTTP_201_CREATED))
+        self.assertIn(
+            resp.status_code,
+            (status.HTTP_200_OK, status.HTTP_201_CREATED),
+        )
         ds.refresh_from_db()
         self.assertEqual(ds.version, 1)
         self.assertTrue(ds.is_current)
@@ -140,7 +143,9 @@ class DatasetVersioningTest(TestCase):
         self.assertTrue(datasets[2].is_current)
 
     def test_attachment_cross_tenant_rejected(self):
-        """Attaching a dataset from a different tenant returns 400."""
+        """Attaching a dataset from a different tenant returns 404 —
+        the tenant-scoped queryset excludes the cross-tenant dataset
+        and raises DoesNotExist, which the view maps to 404."""
         other_uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
             name=f"Other Tenant {other_uid}",
@@ -174,4 +179,11 @@ class DatasetVersioningTest(TestCase):
             created_by=other_user,
         )
         resp = self._attach(other_ds)
-        self.assertIn(resp.status_code, (status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND))
+        self.assertEqual(
+            resp.status_code,
+            status.HTTP_404_NOT_FOUND,
+            "Cross-tenant dataset lookup MUST return 404 — "
+            "the Dataset.objects.get(id=…, tenant=asset.tenant) "
+            "filter excludes the foreign-tenant dataset, raising "
+            "DoesNotExist inside the view.",
+        )

@@ -3,16 +3,18 @@ Virtualization Models
 
 Models for data virtualization and federated query capabilities.
 """
+
 import uuid
-from django.db import models
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.db import models
 from django.utils import timezone
 
 from hub.apps.integrations.encryption import (
+    EncryptionError,
     decrypt_json_field,
     encrypt_json_field,
-    EncryptionError,
 )
 
 
@@ -28,6 +30,7 @@ def default_empty_list():
 
 class QueryType(models.TextChoices):
     """Query type enumeration for virtual datasets"""
+
     SQL = "SQL", "SQL Query"
     SPARQL = "SPARQL", "SPARQL Query"
     FEDERATED = "FEDERATED", "Federated Query"
@@ -37,6 +40,7 @@ class QueryType(models.TextChoices):
 
 class VirtualDatasetStatus(models.TextChoices):
     """Virtual dataset status enumeration"""
+
     DRAFT = "DRAFT", "Draft"
     ACTIVE = "ACTIVE", "Active"
     INACTIVE = "INACTIVE", "Inactive"
@@ -45,6 +49,7 @@ class VirtualDatasetStatus(models.TextChoices):
 
 class QueryExecutionStatus(models.TextChoices):
     """Query execution status enumeration"""
+
     PENDING = "PENDING", "Pending"
     RUNNING = "RUNNING", "Running"
     COMPLETED = "COMPLETED", "Completed"
@@ -54,6 +59,7 @@ class QueryExecutionStatus(models.TextChoices):
 
 class QueryExecutionMode(models.TextChoices):
     """Query execution mode enumeration"""
+
     SYNC = "SYNC", "Synchronous"
     ASYNC = "ASYNC", "Asynchronous"
     SCHEDULED = "SCHEDULED", "Scheduled"
@@ -88,17 +94,18 @@ class VirtualDataset(models.Model):
         created_at: Timestamp when dataset was created
         updated_at: Timestamp when dataset was last updated
     """
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
         editable=False,
-        help_text="Unique identifier for the virtual dataset"
+        help_text="Unique identifier for the virtual dataset",
     )
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="virtual_datasets",
-        help_text="Tenant this virtual dataset belongs to"
+        help_text="Tenant this virtual dataset belongs to",
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -106,55 +113,44 @@ class VirtualDataset(models.Model):
         related_name="created_virtual_datasets",
         null=True,
         blank=True,
-        help_text="User who created the virtual dataset"
+        help_text="User who created the virtual dataset",
     )
-    name = models.CharField(
-        max_length=255,
-        help_text="Virtual dataset name (unique per tenant)"
-    )
-    description = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Virtual dataset description"
-    )
-    query = models.TextField(
-        help_text="Query definition (SQL, SPARQL, federated query, etc.)"
-    )
+    name = models.CharField(max_length=255, help_text="Virtual dataset name (unique per tenant)")
+    description = models.TextField(null=True, blank=True, help_text="Virtual dataset description")
+    query = models.TextField(help_text="Query definition (SQL, SPARQL, federated query, etc.)")
     query_type = models.CharField(
         max_length=20,
         choices=QueryType.choices,
-        help_text="Type of query: SQL, SPARQL, FEDERATED, GRAPHQL, REST"
+        help_text="Type of query: SQL, SPARQL, FEDERATED, GRAPHQL, REST",
     )
     schema = models.JSONField(
         default=default_empty_dict,
         blank=True,
         null=True,
-        help_text="Output schema definition as JSON (fields, types, constraints, etc.)"
+        help_text="Output schema definition as JSON (fields, types, constraints, etc.)",
     )
     sources = models.JSONField(
         default=default_empty_list,
         blank=True,
         null=True,
-        help_text="Source system configurations as JSON array (connection details, mappings, etc.)"
+        help_text="Source system configurations as JSON array (connection details, mappings, etc.)",
     )
     version = models.CharField(
         max_length=50,
         default="1.0.0",
-        help_text="Virtual dataset version (semantic versioning: major.minor.patch)"
+        help_text="Virtual dataset version (semantic versioning: major.minor.patch)",
     )
     status = models.CharField(
         max_length=20,
         choices=VirtualDatasetStatus.choices,
         default=VirtualDatasetStatus.DRAFT,
-        help_text="Virtual dataset status: DRAFT, ACTIVE, INACTIVE, ARCHIVED"
+        help_text="Virtual dataset status: DRAFT, ACTIVE, INACTIVE, ARCHIVED",
     )
     created_at = models.DateTimeField(
-        auto_now_add=True,
-        help_text="When the virtual dataset was created"
+        auto_now_add=True, help_text="When the virtual dataset was created"
     )
     updated_at = models.DateTimeField(
-        auto_now=True,
-        help_text="When the virtual dataset was last updated"
+        auto_now=True, help_text="When the virtual dataset was last updated"
     )
 
     class Meta:
@@ -173,7 +169,7 @@ class VirtualDataset(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["tenant", "name", "version"],
-                name="unique_virtual_dataset_name_version_per_tenant"
+                name="unique_virtual_dataset_name_version_per_tenant",
             )
         ]
 
@@ -199,50 +195,54 @@ class VirtualDataset(models.Model):
 
         # Validate schema is a dictionary
         if self.schema is not None and not isinstance(self.schema, dict):
-            raise ValidationError({
-                "schema": "Schema must be a JSON object"
-            })
+            raise ValidationError({"schema": "Schema must be a JSON object"})
 
         # Validate sources is a list (skip if already encrypted)
         if self.sources is not None:
             if isinstance(self.sources, dict) and "_encrypted" in self.sources:
                 pass  # Already encrypted, skip validation
             elif not isinstance(self.sources, list):
-                raise ValidationError({
-                    "sources": "Sources must be a JSON array"
-                })
+                raise ValidationError({"sources": "Sources must be a JSON array"})
 
         # Validate version format (basic semantic versioning check)
         if self.version:
-            version_parts = self.version.split('.')
+            version_parts = self.version.split(".")
             if len(version_parts) != 3:
-                raise ValidationError({
-                    "version": "Version must follow semantic versioning format (major.minor.patch)"
-                })
+                raise ValidationError(
+                    {
+                        "version": "Version must follow semantic versioning format (major.minor.patch)"
+                    }
+                )
             try:
                 int(version_parts[0])  # major
                 int(version_parts[1])  # minor
                 int(version_parts[2])  # patch
             except ValueError:
-                raise ValidationError({
-                    "version": "Version parts must be numeric (e.g., '1.0.0')"
-                })
+                raise ValidationError({"version": "Version parts must be numeric (e.g., '1.0.0')"})
 
         # Validate query type matches query content (basic validation)
         if self.query_type == QueryType.SQL:
             # Basic SQL validation - check for common SQL keywords
             query_upper = self.query.upper().strip()
-            if not any(keyword in query_upper for keyword in ['SELECT', 'WITH', 'INSERT', 'UPDATE', 'DELETE']):
-                raise ValidationError({
-                    "query": "SQL query should contain SQL keywords (SELECT, WITH, etc.)"
-                })
+            if not any(
+                keyword in query_upper
+                for keyword in ["SELECT", "WITH", "INSERT", "UPDATE", "DELETE"]
+            ):
+                raise ValidationError(
+                    {"query": "SQL query should contain SQL keywords (SELECT, WITH, etc.)"}
+                )
         elif self.query_type == QueryType.SPARQL:
             # Basic SPARQL validation - check for SPARQL keywords
             query_upper = self.query.upper().strip()
-            if not any(keyword in query_upper for keyword in ['SELECT', 'CONSTRUCT', 'ASK', 'DESCRIBE', 'PREFIX']):
-                raise ValidationError({
-                    "query": "SPARQL query should contain SPARQL keywords (SELECT, CONSTRUCT, ASK, DESCRIBE, PREFIX)"
-                })
+            if not any(
+                keyword in query_upper
+                for keyword in ["SELECT", "CONSTRUCT", "ASK", "DESCRIBE", "PREFIX"]
+            ):
+                raise ValidationError(
+                    {
+                        "query": "SPARQL query should contain SPARQL keywords (SELECT, CONSTRUCT, ASK, DESCRIBE, PREFIX)"
+                    }
+                )
 
     def save(self, *args, **kwargs):
         """
@@ -260,9 +260,7 @@ class VirtualDataset(models.Model):
                 encrypted = encrypt_json_field(wrapper)
                 self.sources = {"_encrypted": encrypted}
             except EncryptionError as e:
-                raise ValidationError(
-                    {"sources": f"Failed to encrypt: {e}"}
-                ) from e
+                raise ValidationError({"sources": f"Failed to encrypt: {e}"}) from e
 
         super().save(*args, **kwargs)
 
@@ -278,9 +276,7 @@ class VirtualDataset(models.Model):
             return []
         if isinstance(self.sources, dict):
             if "_encrypted" in self.sources:
-                decrypted = decrypt_json_field(
-                    self.sources["_encrypted"]
-                )
+                decrypted = decrypt_json_field(self.sources["_encrypted"])
                 return decrypted.get("_items", [])
             return []
         if isinstance(self.sources, list):
@@ -327,6 +323,7 @@ class VirtualDataset(models.Model):
 
 class QueryExecutionStatus(models.TextChoices):
     """Query execution status enumeration"""
+
     PENDING = "PENDING", "Pending"
     RUNNING = "RUNNING", "Running"
     COMPLETED = "COMPLETED", "Completed"
@@ -336,6 +333,7 @@ class QueryExecutionStatus(models.TextChoices):
 
 class QueryExecutionMode(models.TextChoices):
     """Query execution mode enumeration"""
+
     SYNC = "SYNC", "Synchronous"
     ASYNC = "ASYNC", "Asynchronous"
     SCHEDULED = "SCHEDULED", "Scheduled"
@@ -369,17 +367,18 @@ class QueryExecution(models.Model):
         execution_log: JSONB field storing execution logs and messages
         metrics: JSONB field storing execution metrics (duration, rows processed, etc.)
     """
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
         editable=False,
-        help_text="Unique identifier for the query execution"
+        help_text="Unique identifier for the query execution",
     )
     virtual_dataset = models.ForeignKey(
         VirtualDataset,
         on_delete=models.CASCADE,
         related_name="executions",
-        help_text="Virtual dataset that was executed"
+        help_text="Virtual dataset that was executed",
     )
     query = models.TextField(
         help_text="Query text that was executed (may include parameter substitution)"
@@ -388,53 +387,41 @@ class QueryExecution(models.Model):
         default=default_empty_dict,
         blank=True,
         null=True,
-        help_text="Query parameters as JSON object (parameter name -> value mapping)"
+        help_text="Query parameters as JSON object (parameter name -> value mapping)",
     )
     execution_mode = models.CharField(
         max_length=20,
         choices=QueryExecutionMode.choices,
         default=QueryExecutionMode.MANUAL,
-        help_text="Execution mode: SYNC, ASYNC, SCHEDULED, MANUAL, AUTOMATED"
+        help_text="Execution mode: SYNC, ASYNC, SCHEDULED, MANUAL, AUTOMATED",
     )
     status = models.CharField(
         max_length=20,
         choices=QueryExecutionStatus.choices,
         default=QueryExecutionStatus.PENDING,
-        help_text="Execution status: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED"
+        help_text="Execution status: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED",
     )
-    started_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When the execution started"
-    )
+    started_at = models.DateTimeField(null=True, blank=True, help_text="When the execution started")
     completed_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When the execution completed"
+        null=True, blank=True, help_text="When the execution completed"
     )
     result_cache_key = models.CharField(
-        max_length=255,
-        null=True,
-        blank=True,
-        help_text="Cache key for result storage (optional)"
+        max_length=255, null=True, blank=True, help_text="Cache key for result storage (optional)"
     )
     result_storage_path = models.CharField(
-        max_length=512,
-        null=True,
-        blank=True,
-        help_text="Path to stored result file (optional)"
+        max_length=512, null=True, blank=True, help_text="Path to stored result file (optional)"
     )
     execution_log = models.JSONField(
         default=default_empty_list,
         blank=True,
         null=True,
-        help_text="Execution logs as JSON array (log entries with timestamp, level, message)"
+        help_text="Execution logs as JSON array (log entries with timestamp, level, message)",
     )
     metrics = models.JSONField(
         default=default_empty_dict,
         blank=True,
         null=True,
-        help_text="Execution metrics as JSON object (duration_ms, rows_processed, memory_used, etc.)"
+        help_text="Execution metrics as JSON object (duration_ms, rows_processed, memory_used, etc.)",
     )
     job = models.ForeignKey(
         "jobs.Job",
@@ -442,7 +429,7 @@ class QueryExecution(models.Model):
         related_name="query_executions",
         null=True,
         blank=True,
-        help_text="Job record for async execution (null for sync executions)"
+        help_text="Job record for async execution (null for sync executions)",
     )
     workflow_instance = models.ForeignKey(
         "orchestration.WorkflowInstance",
@@ -450,15 +437,13 @@ class QueryExecution(models.Model):
         related_name="query_executions",
         null=True,
         blank=True,
-        help_text="Workflow instance that orchestrates this execution (null if not using workflow)"
+        help_text="Workflow instance that orchestrates this execution (null if not using workflow)",
     )
     created_at = models.DateTimeField(
-        auto_now_add=True,
-        help_text="When the query execution was created"
+        auto_now_add=True, help_text="When the query execution was created"
     )
     updated_at = models.DateTimeField(
-        auto_now=True,
-        help_text="When the query execution was last updated"
+        auto_now=True, help_text="When the query execution was last updated"
     )
 
     class Meta:
@@ -491,28 +476,21 @@ class QueryExecution(models.Model):
 
         # Validate parameters is a dictionary
         if self.parameters is not None and not isinstance(self.parameters, dict):
-            raise ValidationError({
-                "parameters": "Parameters must be a JSON object"
-            })
+            raise ValidationError({"parameters": "Parameters must be a JSON object"})
 
         # Validate execution_log is a list
         if self.execution_log is not None and not isinstance(self.execution_log, list):
-            raise ValidationError({
-                "execution_log": "Execution log must be a JSON array"
-            })
+            raise ValidationError({"execution_log": "Execution log must be a JSON array"})
 
         # Validate metrics is a dictionary
         if self.metrics is not None and not isinstance(self.metrics, dict):
-            raise ValidationError({
-                "metrics": "Metrics must be a JSON object"
-            })
+            raise ValidationError({"metrics": "Metrics must be a JSON object"})
 
         # Validate completed_at is after started_at if both are set
-        if self.started_at and self.completed_at:
-            if self.completed_at < self.started_at:
-                raise ValidationError({
-                    "completed_at": "Completed timestamp must be after started timestamp"
-                })
+        if self.started_at and self.completed_at and self.completed_at < self.started_at:
+            raise ValidationError(
+                {"completed_at": "Completed timestamp must be after started timestamp"}
+            )
 
         # Validate status transitions (only if timestamps are set)
         # Note: We allow status to be set without timestamps during creation,
@@ -520,21 +498,23 @@ class QueryExecution(models.Model):
         if self.status == QueryExecutionStatus.COMPLETED:
             if self.completed_at is None and self.started_at is not None:
                 # If started but not completed, this is invalid
-                raise ValidationError({
-                    "completed_at": "Completed executions must have a completed_at timestamp"
-                })
+                raise ValidationError(
+                    {"completed_at": "Completed executions must have a completed_at timestamp"}
+                )
         elif self.status == QueryExecutionStatus.FAILED:
             if self.completed_at is None and self.started_at is not None:
                 # If started but not completed, this is invalid
-                raise ValidationError({
-                    "completed_at": "Failed executions must have a completed_at timestamp"
-                })
+                raise ValidationError(
+                    {"completed_at": "Failed executions must have a completed_at timestamp"}
+                )
         elif self.status == QueryExecutionStatus.RUNNING:
             # Allow RUNNING without started_at during creation, but if completed_at is set, started_at must be set too
             if self.completed_at is not None and self.started_at is None:
-                raise ValidationError({
-                    "started_at": "Running executions with completed_at must have a started_at timestamp"
-                })
+                raise ValidationError(
+                    {
+                        "started_at": "Running executions with completed_at must have a started_at timestamp"
+                    }
+                )
 
     def save(self, *args, **kwargs):
         """
@@ -594,7 +574,7 @@ class QueryExecution(models.Model):
         self.execution_log.append(log_entry)
 
         if save:
-            self.save(update_fields=['execution_log', 'updated_at'])
+            self.save(update_fields=["execution_log", "updated_at"])
 
     def set_metric(self, key, value, save=True):
         """
@@ -610,7 +590,7 @@ class QueryExecution(models.Model):
         self.metrics[key] = value
 
         if save:
-            self.save(update_fields=['metrics', 'updated_at'])
+            self.save(update_fields=["metrics", "updated_at"])
 
     def get_metric(self, key, default=None):
         """
@@ -753,15 +733,27 @@ class QueryExecution(models.Model):
                 return False
             # If both are terminal, allow sync to ensure consistency (but only if statuses match)
             # For example, if execution is COMPLETED and job is COMPLETED, no update needed
-            if (self.status == QueryExecutionStatus.COMPLETED and job_status == JobStatus.COMPLETED) or \
-               (self.status == QueryExecutionStatus.FAILED and job_status == JobStatus.FAILED) or \
-               (self.status == QueryExecutionStatus.CANCELLED and job_status == JobStatus.CANCELLED):
+            if (
+                (
+                    self.status == QueryExecutionStatus.COMPLETED
+                    and job_status == JobStatus.COMPLETED
+                )
+                or (self.status == QueryExecutionStatus.FAILED and job_status == JobStatus.FAILED)
+                or (
+                    self.status == QueryExecutionStatus.CANCELLED
+                    and job_status == JobStatus.CANCELLED
+                )
+            ):
                 return False  # Already in sync
 
         # Map job status to execution status
         if job_status == JobStatus.PENDING and self.status != QueryExecutionStatus.PENDING:
             # Job is pending, execution should be pending
-            if self.status not in [QueryExecutionStatus.COMPLETED, QueryExecutionStatus.FAILED, QueryExecutionStatus.CANCELLED]:
+            if self.status not in [
+                QueryExecutionStatus.COMPLETED,
+                QueryExecutionStatus.FAILED,
+                QueryExecutionStatus.CANCELLED,
+            ]:
                 self.status = QueryExecutionStatus.PENDING
                 updated = True
         elif job_status == JobStatus.RUNNING and self.status != QueryExecutionStatus.RUNNING:
@@ -794,18 +786,19 @@ class QueryExecution(models.Model):
                 self.status = QueryExecutionStatus.CANCELLED
                 if not self.completed_at:
                     self.completed_at = timezone.now()
-                self.add_log_entry("WARNING", "Execution cancelled via job cancellation", save=False)
+                self.add_log_entry(
+                    "WARNING", "Execution cancelled via job cancellation", save=False
+                )
                 updated = True
 
         if updated:
-            update_fields = ['status', 'updated_at']
+            update_fields = ["status", "updated_at"]
             if self.started_at:
-                update_fields.append('started_at')
+                update_fields.append("started_at")
             if self.completed_at:
-                update_fields.append('completed_at')
+                update_fields.append("completed_at")
             if self.execution_log:
-                update_fields.append('execution_log')
+                update_fields.append("execution_log")
             self.save(update_fields=update_fields)
 
         return updated
-

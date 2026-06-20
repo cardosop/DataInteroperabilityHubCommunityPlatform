@@ -43,9 +43,8 @@ class Command(BaseCommand):
 
             try:
                 from hub.apps.scheduled_ingestion.dead_letter_queue import DeadLetterQueueManager
-                DeadLetterQueueManager.sync_from_ingestion_state(
-                    str(run.scheduled_ingestion_id)
-                )
+
+                DeadLetterQueueManager.sync_from_ingestion_state(str(run.scheduled_ingestion_id))
                 run.dlq_sync_status = "SYNCED"
                 run.save(update_fields=["dlq_sync_status", "updated_at"])
                 retried += 1

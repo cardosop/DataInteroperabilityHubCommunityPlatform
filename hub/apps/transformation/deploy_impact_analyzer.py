@@ -7,11 +7,12 @@ the orchestration dependency graph to find all downstream pipelines that would
 be affected, checks contract compatibility, and produces an impact report so
 operators can assess risk before proceeding.
 """
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -19,23 +20,25 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DownstreamImpact:
     """Impact assessment for a single downstream pipeline."""
+
     pipeline_id: str
     pipeline_name: str
     pipeline_status: str
     contract_compatible: bool = True
-    contract_conflicts: List[Dict[str, str]] = field(default_factory=list)
+    contract_conflicts: list[dict[str, str]] = field(default_factory=list)
     estimated_impact: str = "none"  # none, low, medium, high
 
 
 @dataclass
 class ImpactReport:
     """Complete pre-deploy impact analysis for a transformation pipeline."""
+
     pipeline_id: str
     pipeline_name: str
-    downstream_pipelines: List[DownstreamImpact] = field(default_factory=list)
+    downstream_pipelines: list[DownstreamImpact] = field(default_factory=list)
     total_downstream: int = 0
     breaking_count: int = 0
-    estimated_downtime: Optional[str] = None  # human-readable, e.g. "~5 min"
+    estimated_downtime: str | None = None  # human-readable, e.g. "~5 min"
 
     @property
     def is_safe_to_deploy(self) -> bool:
@@ -67,13 +70,13 @@ class DeployImpactAnalyzer:
             ImpactReport with downstream impact details.
         """
         from hub.apps.transformation.models import (
-            PipelineStatus,
             TransformationPipeline,
         )
 
         try:
             pipeline = TransformationPipeline.objects.get(
-                id=pipeline_id, tenant_id=tenant_id,
+                id=pipeline_id,
+                tenant_id=tenant_id,
             )
         except TransformationPipeline.DoesNotExist:
             raise ValueError(f"Pipeline {pipeline_id} not found in tenant {tenant_id}")
@@ -85,7 +88,8 @@ class DeployImpactAnalyzer:
 
         # Find downstream pipelines via the orchestration dependency graph.
         downstream = DeployImpactAnalyzer._find_downstream_pipelines(
-            pipeline, tenant_id,
+            pipeline,
+            tenant_id,
         )
         report.total_downstream = len(downstream)
 
@@ -93,7 +97,8 @@ class DeployImpactAnalyzer:
 
         for ds_pipeline in downstream:
             impact = DeployImpactAnalyzer._assess_downstream_impact(
-                ds_pipeline, output_schema,
+                ds_pipeline,
+                output_schema,
             )
             report.downstream_pipelines.append(impact)
             if not impact.contract_compatible:
@@ -109,8 +114,9 @@ class DeployImpactAnalyzer:
 
     @staticmethod
     def _find_downstream_pipelines(
-        pipeline: Any, tenant_id: str,
-    ) -> List[Any]:
+        pipeline: Any,
+        tenant_id: str,
+    ) -> list[Any]:
         """Find downstream transformation pipelines that depend on *pipeline*.
 
         Uses the orchestration trigger engine's dependency graph to find
@@ -128,10 +134,7 @@ class DeployImpactAnalyzer:
             pdef = pipeline.pipeline_definition
 
         # Find pipelines that consume this pipeline's output datasets.
-        output_ids = (
-            pdef.get("output_dataset_ids", [])
-            if isinstance(pdef, dict) else []
-        )
+        output_ids = pdef.get("output_dataset_ids", []) if isinstance(pdef, dict) else []
 
         if not output_ids:
             # Check metadata for result asset info from previous runs.
@@ -140,7 +143,7 @@ class DeployImpactAnalyzer:
             if result_asset_id:
                 output_ids = [result_asset_id]
 
-        downstream: List[TransformationPipeline] = []
+        downstream: list[TransformationPipeline] = []
         seen: set = set()
 
         for output_id in output_ids:
@@ -159,10 +162,7 @@ class DeployImpactAnalyzer:
                     )
                 except Exception:
                     cdef = candidate.pipeline_definition
-                input_ids = (
-                    cdef.get("input_dataset_ids", [])
-                    if isinstance(cdef, dict) else []
-                )
+                input_ids = cdef.get("input_dataset_ids", []) if isinstance(cdef, dict) else []
                 if str(output_id) in [str(i) for i in input_ids]:
                     downstream.append(candidate)
                     seen.add(candidate.id)
@@ -170,7 +170,7 @@ class DeployImpactAnalyzer:
         return downstream
 
     @staticmethod
-    def _get_output_schema(pipeline: Any) -> Optional[Dict[str, Any]]:
+    def _get_output_schema(pipeline: Any) -> dict[str, Any] | None:
         """Extract the expected output schema from the pipeline's metadata."""
         metadata = pipeline.metadata or {}
         return metadata.get("output_schema")
@@ -178,7 +178,7 @@ class DeployImpactAnalyzer:
     @staticmethod
     def _assess_downstream_impact(
         downstream: Any,
-        upstream_output_schema: Optional[Dict[str, Any]],
+        upstream_output_schema: dict[str, Any] | None,
     ) -> DownstreamImpact:
         """Assess whether *downstream* can consume *upstream_output_schema*."""
         impact = DownstreamImpact(
@@ -200,47 +200,43 @@ class DeployImpactAnalyzer:
         except Exception:
             pdef = downstream.pipeline_definition
 
-        expected_input = (
-            pdef.get("expected_input_schema", {})
-            if isinstance(pdef, dict) else {}
-        )
+        expected_input = pdef.get("expected_input_schema", {}) if isinstance(pdef, dict) else {}
         if not expected_input:
             return impact  # No explicit input expectations — assume compatible
 
-        upstream_fields = {
-            f["name"]: f for f in upstream_output_schema.get("fields", [])
-        }
-        expected_fields = {
-            f["name"]: f for f in expected_input.get("fields", [])
-        }
+        upstream_fields = {f["name"]: f for f in upstream_output_schema.get("fields", [])}
+        expected_fields = {f["name"]: f for f in expected_input.get("fields", [])}
 
-        conflicts: List[Dict[str, str]] = []
+        conflicts: list[dict[str, str]] = []
 
         # Check for removed required fields.
         for name, expected in expected_fields.items():
             if name not in upstream_fields:
-                conflicts.append({
-                    "field": name,
-                    "issue": "missing",
-                    "expected_type": expected.get("data_type", "unknown"),
-                })
+                conflicts.append(
+                    {
+                        "field": name,
+                        "issue": "missing",
+                        "expected_type": expected.get("data_type", "unknown"),
+                    }
+                )
             else:
                 u_type = upstream_fields[name].get("data_type", "").lower()
                 e_type = expected.get("data_type", "").lower()
                 if u_type != e_type:
-                    conflicts.append({
-                        "field": name,
-                        "issue": "type_mismatch",
-                        "expected_type": e_type,
-                        "actual_type": u_type,
-                    })
+                    conflicts.append(
+                        {
+                            "field": name,
+                            "issue": "type_mismatch",
+                            "expected_type": e_type,
+                            "actual_type": u_type,
+                        }
+                    )
 
         if conflicts:
             impact.contract_compatible = False
             impact.contract_conflicts = conflicts
             impact.estimated_impact = (
-                "high" if len(conflicts) > 2 else
-                "medium" if len(conflicts) > 0 else "low"
+                "high" if len(conflicts) > 2 else "medium" if len(conflicts) > 0 else "low"
             )
 
         return impact

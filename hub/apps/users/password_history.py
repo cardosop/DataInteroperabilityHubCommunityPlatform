@@ -35,7 +35,7 @@ if TYPE_CHECKING:  # pragma: no cover
 PASSWORD_HISTORY_WINDOW = 5
 
 
-def record_password_change(user: "User") -> PasswordHistory | None:
+def record_password_change(user: User) -> PasswordHistory | None:
     """
     Persist the user's currently set password hash as a history entry.
 
@@ -61,7 +61,7 @@ def record_password_change(user: "User") -> PasswordHistory | None:
 
 
 def is_password_reused(
-    user: "User",
+    user: User,
     plaintext: str,
     *,
     window: int = PASSWORD_HISTORY_WINDOW,

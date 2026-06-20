@@ -1,13 +1,13 @@
 """
 Unit tests for complete Models section normalization.
 """
+
 import json
 
-import pytest
 from django.test import TestCase
 
-from hub.apps.contracts.normalization import normalize_contract
 from hub.apps.contracts.models import NormalizationStatus
+from hub.apps.contracts.normalization import normalize_contract
 
 
 class TestModelsCompleteNormalization(TestCase):
@@ -45,13 +45,14 @@ class TestModelsCompleteNormalization(TestCase):
             ],
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
-        assert status == NormalizationStatus.NORMALIZED_OK or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert (
+            status == NormalizationStatus.NORMALIZED_OK
+            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        )
         assert hub_contract is not None
         assert "models" in hub_contract
         assert len(hub_contract["models"]) == 2
@@ -97,10 +98,8 @@ class TestModelsCompleteNormalization(TestCase):
             },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         assert hub_contract is not None
@@ -143,10 +142,8 @@ class TestModelsCompleteNormalization(TestCase):
             },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         assert hub_contract is not None
@@ -178,10 +175,8 @@ class TestModelsCompleteNormalization(TestCase):
             },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         assert hub_contract is not None
@@ -201,10 +196,8 @@ class TestModelsCompleteNormalization(TestCase):
             "version": "1.0.0",
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        _hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         # Without schema/fields, normalization may fail and return None
@@ -226,10 +219,8 @@ class TestModelsCompleteNormalization(TestCase):
             "schema": "invalid_string",  # Should be dict or list
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        _hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         # Invalid schema data may cause normalization failure (hub_contract=None)
@@ -258,10 +249,8 @@ class TestModelsCompleteNormalization(TestCase):
             },
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         assert hub_contract is not None
@@ -297,10 +286,8 @@ class TestModelsCompleteNormalization(TestCase):
             ],
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         assert hub_contract is not None
@@ -310,4 +297,3 @@ class TestModelsCompleteNormalization(TestCase):
         # Schema should be derived from first model
         assert "schema" in hub_contract
         assert hub_contract["schema"]["fields"][0]["name"] == "id1"
-

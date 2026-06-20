@@ -22,7 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Real email domains that must NOT appear in factories
 _BLOCKED_EMAIL_DOMAINS = re.compile(
-    r'@(gmail|yahoo|hotmail|outlook|icloud|protonmail|aol|mail)\.com',
+    r"@(gmail|yahoo|hotmail|outlook|icloud|protonmail|aol|mail)\.com",
     re.IGNORECASE,
 )
 
@@ -34,11 +34,16 @@ _BLOCKED_NAME_PATTERNS = [
 ]
 
 # Real IPs (not RFC 5737 documentation/test ranges: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24)
-_IP_RE = re.compile(r'\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b')
+_IP_RE = re.compile(r"\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b")
 _TEST_IPS = {
-    (192, 0, 2), (198, 51, 100), (203, 0, 113),
+    (192, 0, 2),
+    (198, 51, 100),
+    (203, 0, 113),
     # Also allow common test IPs
-    (127, 0, 0), (10,), (172,), (192, 168),
+    (127, 0, 0),
+    (10,),
+    (172,),
+    (192, 168),
 }
 _LOCALHOST_IPS = {(127, 0, 0, 1), (0, 0, 0, 0)}
 
@@ -66,7 +71,7 @@ def _is_faker_pattern(value: str) -> bool:
     if "@example.com" in value or "@example.org" in value or "@example.net" in value:
         return True
     # Faker names contain random-looking hex
-    if re.search(r'[a-f0-9]{6,}', value):
+    if re.search(r"[a-f0-9]{6,}", value):
         return True
     return False
 
@@ -98,7 +103,9 @@ def audit_factory_file(filepath: Path) -> list:
         for ip_match in _IP_RE.finditer(line):
             octets = tuple(int(g) for g in ip_match.groups())
             if not _is_test_ip(octets):
-                violations.append((i, f"Potential real IP: {ip_match.group()} in: {line.strip()[:80]}"))
+                violations.append(
+                    (i, f"Potential real IP: {ip_match.group()} in: {line.strip()[:80]}")
+                )
 
     return violations
 

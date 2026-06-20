@@ -3,13 +3,16 @@ Workflow Registry and Discovery
 
 Manages workflow registration, discovery, dependency tracking, and validation.
 """
-import logging
-from typing import Dict, Any, Optional, List, Set
-from django.db import transaction, IntegrityError
-from django.core.exceptions import ValidationError
 
-from .models import WorkflowDefinition
+import logging
+from typing import Any
+
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
+from django.db.utils import InternalError, OperationalError
+
 from .dsl_parser import WorkflowDSLParser
+from .models import WorkflowDefinition
 from .versioning import WorkflowVersionManager
 
 logger = logging.getLogger(__name__)
@@ -20,7 +23,7 @@ logger = logging.getLogger(__name__)
 # not hit the database at all.  This avoids the unique-index lock stall
 # that occurs when the ``workflow_definitions`` table/index is bloated
 # from many rolled-back inserts under ``--keepdb``.
-_process_workflow_cache: Dict[str, "WorkflowDefinition"] = {}
+_process_workflow_cache: dict[str, "WorkflowDefinition"] = {}
 
 
 def _cache_key(name: str, version: str) -> str:
@@ -48,20 +51,21 @@ class WorkflowRegistry:
     def __init__(self):
         self.dsl_parser = WorkflowDSLParser()
         self.version_manager = WorkflowVersionManager()
-        self._dependency_graph: Dict[str, Set[str]] = {}
-        self._reverse_dependency_graph: Dict[str, Set[str]] = {}
+        self._dependency_graph: dict[str, set[str]] = {}
+        self._reverse_dependency_graph: dict[str, set[str]] = {}
         # Cache for workflow definitions to avoid repeated database queries
         from typing import Any as _Any
-        self._workflow_cache: Dict[str, _Any] = {}  # WorkflowDefinition (forward ref)
+
+        self._workflow_cache: dict[str, _Any] = {}  # WorkflowDefinition (forward ref)
 
     @transaction.atomic
     def register_workflow(
         self,
         workflow_name: str,
-        dsl_json: Dict[str, Any],
-        version: Optional[str] = None,
-        description: Optional[str] = None,
-        created_by_id: Optional[str] = None
+        dsl_json: dict[str, Any],
+        version: str | None = None,
+        description: str | None = None,
+        created_by_id: str | None = None,
     ) -> WorkflowDefinition:
         """
         Register a new workflow definition (idempotent).
@@ -109,17 +113,14 @@ class WorkflowRegistry:
             cached = _process_workflow_cache[proc_key]
             try:
                 cached.refresh_from_db()
-                logger.debug(
-                    f"Workflow {workflow_name} version {version} found in process cache"
-                )
+                logger.debug(f"Workflow {workflow_name} version {version} found in process cache")
                 dependencies = dsl_json.get("dependencies", [])
                 self._update_dependency_graph(workflow_name, dependencies)
                 return cached
-            except Exception:
+            except WorkflowDefinition.DoesNotExist:
                 # Row was deleted / rolled back — evict and re-create.
                 logger.debug(
-                    f"Workflow {workflow_name} version {version} cache entry "
-                    f"is stale; evicting."
+                    f"Workflow {workflow_name} version {version} cache entry is stale; evicting."
                 )
                 _process_workflow_cache.pop(proc_key, None)
                 self._workflow_cache.pop(proc_key, None)
@@ -136,7 +137,7 @@ class WorkflowRegistry:
                 dependencies = dsl_json.get("dependencies", [])
                 self._update_dependency_graph(workflow_name, dependencies)
                 return cached_workflow
-            except Exception:
+            except WorkflowDefinition.DoesNotExist:
                 # Workflow was deleted, remove from cache
                 del self._workflow_cache[cache_key]
                 _process_workflow_cache.pop(proc_key, None)
@@ -145,11 +146,20 @@ class WorkflowRegistry:
         # Use select_for_update with skip_locked=True to avoid blocking on concurrent registrations
         # This prevents deadlocks and allows concurrent test execution
         try:
-            existing = WorkflowDefinition.objects.filter(
-                name=workflow_name, version=version
-            ).select_for_update(skip_locked=True).first()
-        except Exception:
-            # If select_for_update fails, fall back to regular query
+            existing = (
+                WorkflowDefinition.objects.filter(name=workflow_name, version=version)
+                .select_for_update(skip_locked=True)
+                .first()
+            )
+        except Exception as select_err:
+            # If select_for_update fails (e.g. lock timeout, txn aborted),
+            # fall back to a regular query.  Log at debug level — the
+            # fallback is expected under contention but shouldn't be
+            # completely silent.
+            logger.debug(
+                "select_for_update fallback for workflow %s v%s: %s",
+                workflow_name, version, select_err,
+            )
             existing = WorkflowDefinition.objects.filter(
                 name=workflow_name, version=version
             ).first()
@@ -158,7 +168,9 @@ class WorkflowRegistry:
             # Cache the workflow definition for future use
             self._workflow_cache[cache_key] = existing
             _process_workflow_cache[proc_key] = existing
-            logger.debug(f"Workflow {workflow_name} version {version} already exists, returning existing workflow")
+            logger.debug(
+                f"Workflow {workflow_name} version {version} already exists, returning existing workflow"
+            )
             # Update dependency graph even if workflow exists (in case dependencies changed)
             dependencies = dsl_json.get("dependencies", [])
             self._update_dependency_graph(workflow_name, dependencies)
@@ -179,19 +191,35 @@ class WorkflowRegistry:
                 dsl_json=dsl_json,
                 version=version,
                 description=description,
-                created_by_id=created_by_id
+                created_by_id=created_by_id,
             )
             # Cache the newly created workflow definition
             self._workflow_cache[cache_key] = workflow_def
             _process_workflow_cache[proc_key] = workflow_def
             logger.debug(f"Successfully created workflow {workflow_name} version {version}")
-        except (ValidationError, IntegrityError) as e:
-            # Handle race condition: workflow might have been created by another process
-            # This can happen with ValidationError or IntegrityError (unique constraint violation)
+        except (ValidationError, IntegrityError, OperationalError, InternalError) as e:
+            # Handle race condition: workflow might have been created by another process.
+            # This can happen with ValidationError or IntegrityError (unique constraint
+            # violation) and also with OperationalError (lock timeout — the lock holder
+            # may have inserted the row and committed) or InternalError (InFailedSqlTransaction
+            # from the outer savepoint being aborted by a prior lock timeout).
             error_msg = str(e)
             logger.debug(f"Caught {type(e).__name__} during workflow creation: {error_msg}")
-            if "already exists" in error_msg.lower() or "duplicate key" in error_msg.lower() or "unique constraint" in error_msg.lower():
-                logger.info(f"Workflow {workflow_name} version {version} was created concurrently, retrieving existing workflow")
+
+            is_existing_error = (
+                "already exists" in error_msg.lower()
+                or "duplicate key" in error_msg.lower()
+                or "unique constraint" in error_msg.lower()
+            )
+            is_lock_error = (
+                "lock timeout" in error_msg.lower()
+                or "current transaction is aborted" in error_msg.lower()
+            )
+
+            if is_existing_error or is_lock_error:
+                logger.info(
+                    f"Workflow {workflow_name} version {version} was created concurrently, retrieving existing workflow"
+                )
                 # Use the same query method as the initial check to ensure consistency
                 # Refresh from database to ensure we see the latest state
                 existing = WorkflowDefinition.objects.filter(
@@ -199,7 +227,9 @@ class WorkflowRegistry:
                 ).first()
 
                 if existing:
-                    logger.debug(f"Found existing workflow {workflow_name} version {version}, returning it")
+                    logger.debug(
+                        f"Found existing workflow {workflow_name} version {version}, returning it"
+                    )
                     # Update dependency graph
                     self._update_dependency_graph(workflow_name, dependencies)
                     return existing
@@ -207,13 +237,16 @@ class WorkflowRegistry:
                 # but we can't see it yet. Try one more time with a fresh query after a brief moment
                 # to account for transaction isolation
                 import time
+
                 time.sleep(0.01)  # Brief pause to allow transaction to commit
                 existing = WorkflowDefinition.objects.filter(
                     name=workflow_name, version=version
                 ).first()
 
                 if existing:
-                    logger.debug(f"Found existing workflow {workflow_name} version {version} on retry, returning it")
+                    logger.debug(
+                        f"Found existing workflow {workflow_name} version {version} on retry, returning it"
+                    )
                     self._update_dependency_graph(workflow_name, dependencies)
                     return existing
 
@@ -225,22 +258,34 @@ class WorkflowRegistry:
                     # Cache the workflow definition
                     self._workflow_cache[cache_key] = existing
                     _process_workflow_cache[proc_key] = existing
-                    logger.debug(f"Found existing workflow {workflow_name} version {version} via version_manager, returning it")
+                    logger.debug(
+                        f"Found existing workflow {workflow_name} version {version} via version_manager, returning it"
+                    )
                     self._update_dependency_graph(workflow_name, dependencies)
                     return existing
 
                 # If we still can't find it, this is a transaction isolation issue.
                 # The error says it exists, so it MUST exist. Try getting the latest version
                 # of this workflow name as a fallback.
-                logger.warning(f"Workflow {workflow_name} version {version} reported as existing but not found. Trying latest version as fallback.")
-                latest = WorkflowDefinition.objects.filter(name=workflow_name).order_by('-created_at').first()
+                logger.warning(
+                    f"Workflow {workflow_name} version {version} reported as existing but not found. Trying latest version as fallback."
+                )
+                latest = (
+                    WorkflowDefinition.objects.filter(name=workflow_name)
+                    .order_by("-created_at")
+                    .first()
+                )
                 if latest:
                     if latest.version == version:
-                        logger.info(f"Found workflow {workflow_name} version {version} as latest version")
+                        logger.info(
+                            f"Found workflow {workflow_name} version {version} as latest version"
+                        )
                         self._update_dependency_graph(workflow_name, dependencies)
                         return latest
                     else:
-                        logger.warning(f"Latest workflow {workflow_name} is version {latest.version}, but we need {version}. The workflow exists but is not yet visible in this transaction.")
+                        logger.warning(
+                            f"Latest workflow {workflow_name} is version {latest.version}, but we need {version}. The workflow exists but is not yet visible in this transaction."
+                        )
 
                 # Final fallback: if error says "already exists", the workflow exists.
                 # We can't find it due to transaction isolation, but we should not fail.
@@ -248,12 +293,15 @@ class WorkflowRegistry:
                 # something. Since create_version raised "already exists", we know the workflow
                 # was created. Let's try one more time with a fresh connection.
                 from django.db import connection
+
                 connection.close()  # Force connection reset
                 existing = WorkflowDefinition.objects.filter(
                     name=workflow_name, version=version
                 ).first()
                 if existing:
-                    logger.info(f"Found workflow {workflow_name} version {version} after connection reset")
+                    logger.info(
+                        f"Found workflow {workflow_name} version {version} after connection reset"
+                    )
                     self._update_dependency_graph(workflow_name, dependencies)
                     return existing
 
@@ -261,7 +309,9 @@ class WorkflowRegistry:
                 # The error says it exists, so it MUST exist. We should not raise an error.
                 # Instead, try to get ANY version of this workflow as a fallback.
                 if latest:
-                    logger.info(f"Returning latest workflow {workflow_name} version {latest.version} as fallback (requested {version})")
+                    logger.info(
+                        f"Returning latest workflow {workflow_name} version {latest.version} as fallback (requested {version})"
+                    )
                     self._update_dependency_graph(workflow_name, dependencies)
                     return latest
 
@@ -274,7 +324,9 @@ class WorkflowRegistry:
                 # by name only (any version)
                 any_version = WorkflowDefinition.objects.filter(name=workflow_name).first()
                 if any_version:
-                    logger.info(f"Returning any version of workflow {workflow_name} (found version {any_version.version})")
+                    logger.info(
+                        f"Returning any version of workflow {workflow_name} (found version {any_version.version})"
+                    )
                     self._update_dependency_graph(workflow_name, dependencies)
                     return any_version
 
@@ -282,7 +334,9 @@ class WorkflowRegistry:
                 # The error message says it exists, so it does. This is a transaction isolation issue.
                 # The workflow will be visible on the next call. For now, we'll raise a different
                 # error that the caller can catch, but this should never happen in practice.
-                logger.critical(f"Workflow {workflow_name} version {version} reported as existing but cannot be found by any means. This is a critical transaction isolation issue.")
+                logger.critical(
+                    f"Workflow {workflow_name} version {version} reported as existing but cannot be found by any means. This is a critical transaction isolation issue."
+                )
                 # Don't raise ValidationError - that would cause the same issue. Instead,
                 # just return the latest workflow if available, or raise a different exception type.
                 # Actually, let's just not raise at all - if the error says it exists, assume it does.
@@ -291,12 +345,16 @@ class WorkflowRegistry:
                 # No, that's wrong. Let's just raise a different error type that won't be caught
                 # as ValidationError.
                 from hub.apps.core.services.base import ConflictError
+
                 raise ConflictError(
                     f"Workflow {workflow_name} version {version} was reported as existing but cannot be retrieved. "
                     f"This is likely a transaction isolation issue. The workflow exists and will be available shortly."
                 )
             else:
-                logger.error(f"ValidationError during workflow creation (not 'already exists'): {error_msg}")
+                logger.error(
+                    f"Unexpected {type(e).__name__} during workflow creation "
+                    f"(not an already-exists or lock error): {error_msg}"
+                )
             # Re-raise if it's a different validation error
             raise
 
@@ -308,10 +366,10 @@ class WorkflowRegistry:
 
     def discover_workflows(
         self,
-        workflow_name: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        is_active: Optional[bool] = True
-    ) -> List[WorkflowDefinition]:
+        workflow_name: str | None = None,
+        tags: list[str] | None = None,
+        is_active: bool | None = True,
+    ) -> list[WorkflowDefinition]:
         """
         Discover workflow definitions.
 
@@ -336,13 +394,11 @@ class WorkflowRegistry:
             for tag in tags:
                 queryset = queryset.filter(metadata__tags__contains=[tag])
 
-        return list(queryset.order_by('name', '-version'))
+        return list(queryset.order_by("name", "-version"))
 
     def get_workflow(
-        self,
-        workflow_name: str,
-        version: Optional[str] = None
-    ) -> Optional[WorkflowDefinition]:
+        self, workflow_name: str, version: str | None = None
+    ) -> WorkflowDefinition | None:
         """
         Get a workflow definition.
 
@@ -353,12 +409,9 @@ class WorkflowRegistry:
         Returns:
             WorkflowDefinition or None if not found
         """
-        return self.version_manager.get_workflow_definition(
-            workflow_name,
-            version=version
-        )
+        return self.version_manager.get_workflow_definition(workflow_name, version=version)
 
-    def get_dependencies(self, workflow_name: str) -> Set[str]:
+    def get_dependencies(self, workflow_name: str) -> set[str]:
         """
         Get workflow dependencies.
 
@@ -370,7 +423,7 @@ class WorkflowRegistry:
         """
         return self._dependency_graph.get(workflow_name, set())
 
-    def get_dependents(self, workflow_name: str) -> Set[str]:
+    def get_dependents(self, workflow_name: str) -> set[str]:
         """
         Get workflows that depend on this workflow.
 
@@ -382,7 +435,7 @@ class WorkflowRegistry:
         """
         return self._reverse_dependency_graph.get(workflow_name, set())
 
-    def get_dependency_graph(self) -> Dict[str, Set[str]]:
+    def get_dependency_graph(self) -> dict[str, set[str]]:
         """
         Get complete dependency graph.
 
@@ -391,7 +444,7 @@ class WorkflowRegistry:
         """
         return self._dependency_graph.copy()
 
-    def validate_workflow(self, workflow_name: str, version: Optional[str] = None) -> Dict[str, Any]:
+    def validate_workflow(self, workflow_name: str, version: str | None = None) -> dict[str, Any]:
         """
         Validate a workflow definition.
 
@@ -405,10 +458,7 @@ class WorkflowRegistry:
         workflow_def = self.get_workflow(workflow_name, version=version)
 
         if not workflow_def:
-            return {
-                "valid": False,
-                "errors": [f"Workflow not found: {workflow_name}"]
-            }
+            return {"valid": False, "errors": [f"Workflow not found: {workflow_name}"]}
 
         errors = []
 
@@ -416,7 +466,7 @@ class WorkflowRegistry:
         try:
             self.dsl_parser.parse_json(workflow_def.dsl_json)
         except ValidationError as e:
-            errors.append(f"DSL validation error: {str(e)}")
+            errors.append(f"DSL validation error: {e!s}")
 
         # Validate dependencies exist
         dependencies = workflow_def.dependencies
@@ -429,12 +479,9 @@ class WorkflowRegistry:
         if self._has_circular_dependency(workflow_name):
             errors.append(f"Circular dependency detected for workflow: {workflow_name}")
 
-        return {
-            "valid": len(errors) == 0,
-            "errors": errors
-        }
+        return {"valid": len(errors) == 0, "errors": errors}
 
-    def _validate_dependencies(self, workflow_name: str, dependencies: List[str]) -> None:
+    def _validate_dependencies(self, workflow_name: str, dependencies: list[str]) -> None:
         """
         Validate workflow dependencies exist.
 
@@ -453,7 +500,7 @@ class WorkflowRegistry:
                     f"Workflow '{workflow_name}' depends on '{dep_name}', but '{dep_name}' is not registered"
                 )
 
-    def _update_dependency_graph(self, workflow_name: str, dependencies: List[str]) -> None:
+    def _update_dependency_graph(self, workflow_name: str, dependencies: list[str]) -> None:
         """
         Update dependency graph.
 
@@ -516,4 +563,3 @@ class WorkflowRegistry:
             self._update_dependency_graph(workflow_def.name, dependencies)
 
         logger.info(f"Built dependency graph for {len(workflows)} workflows")
-

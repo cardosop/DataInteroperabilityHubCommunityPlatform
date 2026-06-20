@@ -54,10 +54,11 @@ TDD doctrine
   (which depends on DQ / compliance / contract validation that
   this sub-phase doesn't gate).
 """
+
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict
+from typing import Any
 
 import pytest
 from django.test import TestCase
@@ -80,7 +81,6 @@ from hub.apps.orchestration.workflows.asset_creation import (
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User
 
-
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
@@ -92,7 +92,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 # A minimal hub_contract_json that satisfies the structural-floor at
 # hub/apps/contracts/structureless.py:86 — at least one schema field
 # carries the contract past ``is_payload_structureless``.
-_VALID_HUB_CONTRACT_JSON: Dict[str, Any] = {
+_VALID_HUB_CONTRACT_JSON: dict[str, Any] = {
     "schema": {
         "fields": [
             {"name": "id", "type": "string"},
@@ -162,7 +162,7 @@ def _build_workflow_instance(
     tenant: Tenant,
     user: User,
     asset: Asset,
-    workflow_input: Dict[str, Any],
+    workflow_input: dict[str, Any],
 ):
     """Materialise a WorkflowInstance pointing at ``asset`` so
     ``_activate_asset_task`` can run end-to-end against real ORM."""
@@ -237,7 +237,7 @@ class TestExecuteResolvesAutoActivate(TestCase):
         *,
         tenant: Tenant,
         caller_auto_activate: bool,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Drive ``AssetCreationWorkflow._resolve_auto_activate`` (the
         helper this phase introduces) directly — the helper is
         deliberately surfaced as a classmethod so the resolver
@@ -251,7 +251,8 @@ class TestExecuteResolvesAutoActivate(TestCase):
     def test_caller_true_tenant_true_resolves_true(self):
         tenant = _seed_tenant(auto_activate_flag=True)
         resolved = self._capture_workflow_input(
-            tenant=tenant, caller_auto_activate=True,
+            tenant=tenant,
+            caller_auto_activate=True,
         )
         assert resolved["resolved_auto_activate"] is True
         assert resolved["caller_auto_activate"] is True
@@ -262,7 +263,8 @@ class TestExecuteResolvesAutoActivate(TestCase):
         cannot bypass the tenant-level kill switch by passing True."""
         tenant = _seed_tenant(auto_activate_flag=False)
         resolved = self._capture_workflow_input(
-            tenant=tenant, caller_auto_activate=True,
+            tenant=tenant,
+            caller_auto_activate=True,
         )
         assert resolved["resolved_auto_activate"] is False
         assert resolved["caller_auto_activate"] is True
@@ -274,7 +276,8 @@ class TestExecuteResolvesAutoActivate(TestCase):
         that allow auto-activation."""
         tenant = _seed_tenant(auto_activate_flag=True)
         resolved = self._capture_workflow_input(
-            tenant=tenant, caller_auto_activate=False,
+            tenant=tenant,
+            caller_auto_activate=False,
         )
         assert resolved["resolved_auto_activate"] is False
         assert resolved["caller_auto_activate"] is False
@@ -283,7 +286,8 @@ class TestExecuteResolvesAutoActivate(TestCase):
     def test_caller_false_tenant_false_resolves_false(self):
         tenant = _seed_tenant(auto_activate_flag=False)
         resolved = self._capture_workflow_input(
-            tenant=tenant, caller_auto_activate=False,
+            tenant=tenant,
+            caller_auto_activate=False,
         )
         assert resolved["resolved_auto_activate"] is False
 
@@ -305,10 +309,14 @@ class TestActivationOutcome(TestCase):
         user = _seed_user(tenant)
         contract = _seed_active_contract(tenant, user)
         asset = _seed_activatable_asset(
-            tenant=tenant, user=user, contract=contract,
+            tenant=tenant,
+            user=user,
+            contract=contract,
         )
         instance, step = _build_workflow_instance(
-            tenant=tenant, user=user, asset=asset,
+            tenant=tenant,
+            user=user,
+            asset=asset,
             workflow_input={"auto_activate": True},
         )
         result = AssetCreationWorkflow._activate_asset_task(
@@ -329,10 +337,14 @@ class TestActivationOutcome(TestCase):
         user = _seed_user(tenant)
         contract = _seed_active_contract(tenant, user)
         asset = _seed_activatable_asset(
-            tenant=tenant, user=user, contract=contract,
+            tenant=tenant,
+            user=user,
+            contract=contract,
         )
         instance, step = _build_workflow_instance(
-            tenant=tenant, user=user, asset=asset,
+            tenant=tenant,
+            user=user,
+            asset=asset,
             workflow_input={"auto_activate": False},
         )
         result = AssetCreationWorkflow._activate_asset_task(
@@ -357,10 +369,14 @@ class TestActivationOutcome(TestCase):
         user = _seed_user(tenant)
         contract = _seed_active_contract(tenant, user)
         asset = _seed_activatable_asset(
-            tenant=tenant, user=user, contract=contract,
+            tenant=tenant,
+            user=user,
+            contract=contract,
         )
         instance, step = _build_workflow_instance(
-            tenant=tenant, user=user, asset=asset,
+            tenant=tenant,
+            user=user,
+            asset=asset,
             workflow_input={"auto_activate": False},
         )
         result = AssetCreationWorkflow._activate_asset_task(
@@ -392,21 +408,27 @@ class TestAutoActivatedAudit(TestCase):
         user = _seed_user(tenant)
         contract = _seed_active_contract(tenant, user)
         asset = _seed_activatable_asset(
-            tenant=tenant, user=user, contract=contract,
+            tenant=tenant,
+            user=user,
+            contract=contract,
         )
         return tenant, user, asset
 
     def _audit_rows_for_asset(self, asset: Asset):
-        return list(AuditEvent.objects.filter(
-            tenant=asset.tenant,
-            action=audit_event_types.ASSET_AUTO_ACTIVATED,
-            resource_id=asset.id,
-        ).order_by("timestamp"))
+        return list(
+            AuditEvent.objects.filter(
+                tenant=asset.tenant,
+                action=audit_event_types.ASSET_AUTO_ACTIVATED,
+                resource_id=asset.id,
+            ).order_by("timestamp")
+        )
 
     def test_audit_emitted_on_successful_auto_activation(self):
         tenant, user, asset = self._seed(tenant_flag=True)
         instance, step = _build_workflow_instance(
-            tenant=tenant, user=user, asset=asset,
+            tenant=tenant,
+            user=user,
+            asset=asset,
             workflow_input={"auto_activate": True},
         )
         AssetCreationWorkflow._activate_asset_task(
@@ -450,7 +472,9 @@ class TestAutoActivatedAudit(TestCase):
     def test_audit_NOT_emitted_when_tenant_flag_false(self):
         tenant, user, asset = self._seed(tenant_flag=False)
         instance, step = _build_workflow_instance(
-            tenant=tenant, user=user, asset=asset,
+            tenant=tenant,
+            user=user,
+            asset=asset,
             workflow_input={"auto_activate": False},
         )
         AssetCreationWorkflow._activate_asset_task(
@@ -471,7 +495,9 @@ class TestAutoActivatedAudit(TestCase):
     def test_audit_NOT_emitted_when_caller_false(self):
         tenant, user, asset = self._seed(tenant_flag=True)
         instance, step = _build_workflow_instance(
-            tenant=tenant, user=user, asset=asset,
+            tenant=tenant,
+            user=user,
+            asset=asset,
             workflow_input={"auto_activate": False},
         )
         AssetCreationWorkflow._activate_asset_task(
@@ -505,7 +531,9 @@ class TestAutoActivatedAudit(TestCase):
             created_by=user,
         )
         instance, step = _build_workflow_instance(
-            tenant=tenant, user=user, asset=asset,
+            tenant=tenant,
+            user=user,
+            asset=asset,
             workflow_input={"auto_activate": True},
         )
         result = AssetCreationWorkflow._activate_asset_task(

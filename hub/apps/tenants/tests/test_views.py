@@ -4,6 +4,8 @@ Unit tests for Tenant API views.
 Uses real User model (no mocks/stubs). Platform admin has tenant=None; regular user has a tenant.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -12,7 +14,6 @@ from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -183,7 +184,8 @@ class TenantViewSetTest(TestCase):
         for tid in [str(t1.id), str(t2.id)]:
             detail = self.client.get(f"/api/v1/tenants/{tid}/")
             self.assertEqual(
-                detail.status_code, status.HTTP_200_OK,
+                detail.status_code,
+                status.HTTP_200_OK,
                 f"Should be able to retrieve own tenant {tid}",
             )
 

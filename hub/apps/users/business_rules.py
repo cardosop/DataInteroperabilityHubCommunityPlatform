@@ -12,17 +12,21 @@ across serializers and services into a single registered rule class.
   - role assignment validation (roles must belong to the same tenant)
   - invitation token expiry check
 """
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import IntegrityError
 from django.utils.translation import gettext_lazy as _
 
-from hub.apps.core.business_rules.base import BusinessRules, register_rule
+from hub.apps.core.business_rules.base import (
+    BusinessRules,
+    RuleExecutionContext,
+    ValidationResult,
+)
+from hub.apps.core.business_rules.registry import register_rule
 from hub.apps.users.models import User, UserStatus
 
 logger = logging.getLogger(__name__)
@@ -31,8 +35,8 @@ logger = logging.getLogger(__name__)
 @dataclass
 class UserCreationValidationResult:
     is_valid: bool
-    errors: List[str] = field(default_factory=list)
-    details: Dict[str, Any] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
+    details: dict[str, Any] = field(default_factory=dict)
 
 
 @register_rule(
@@ -48,11 +52,11 @@ class UserBusinessRules(BusinessRules):
     def validate_user_creation(
         self,
         email: str,
-        tenant_id: Optional[str] = None,
-        password: Optional[str] = None,
-        status: Optional[str] = None,
-        role_ids: Optional[List[str]] = None,
-        invitation_token: Optional[str] = None,
+        tenant_id: str | None = None,
+        password: str | None = None,
+        status: str | None = None,
+        role_ids: list[str] | None = None,
+        invitation_token: str | None = None,
     ) -> UserCreationValidationResult:
         """
         Validate user-creation inputs.
@@ -60,8 +64,8 @@ class UserBusinessRules(BusinessRules):
         Returns ``UserCreationValidationResult(is_valid=True)`` when all
         checks pass, or ``is_valid=False`` with a list of error messages.
         """
-        errors: List[str] = []
-        details: Dict[str, Any] = {}
+        errors: list[str] = []
+        details: dict[str, Any] = {}
 
         # 1. Duplicate email
         email_lower = email.lower().strip() if email else ""
@@ -91,9 +95,14 @@ class UserBusinessRules(BusinessRules):
         #    the business-rule contract layer.
         if role_ids is not None and tenant_id is not None:
             from hub.apps.users.models import Role
-            mismatched = Role.objects.filter(
-                id__in=role_ids,
-            ).exclude(tenant_id=tenant_id).count()
+
+            mismatched = (
+                Role.objects.filter(
+                    id__in=role_ids,
+                )
+                .exclude(tenant_id=tenant_id)
+                .count()
+            )
             if mismatched > 0:
                 errors.append(f"{mismatched} role(s) do not belong to tenant {tenant_id}")
                 details.setdefault("code", "ROLE_TENANT_MISMATCH")
@@ -103,6 +112,7 @@ class UserBusinessRules(BusinessRules):
             user = User.objects.filter(invitation_token=invitation_token).first()
             if user is not None and hasattr(user, "invitation_token_expires_at"):
                 from django.utils import timezone
+
                 expires = user.invitation_token_expires_at
                 if expires is not None and timezone.now() > expires:
                     errors.append(str(_("Invitation token has expired")))
@@ -116,3 +126,36 @@ class UserBusinessRules(BusinessRules):
             )
 
         return UserCreationValidationResult(is_valid=True)
+
+    def validate(
+        self, context: RuleExecutionContext | None = None, *args, **kwargs  # noqa: ARG002
+    ) -> ValidationResult:
+        """Abstract method required by :class:`BusinessRules`.
+
+        Delegates to :meth:`validate_user_creation` with parameters
+        extracted from *context* or *kwargs*.
+
+        Returns a standard :class:`ValidationResult`.
+        """
+        if context is not None:
+            kwargs.setdefault("tenant_id", context.tenant_id)
+            if context.metadata:
+                kwargs.setdefault("email", context.metadata.get("email"))
+                kwargs.setdefault("password", context.metadata.get("password"))
+                kwargs.setdefault("status", context.metadata.get("status"))
+                kwargs.setdefault("role_ids", context.metadata.get("role_ids"))
+                kwargs.setdefault("invitation_token", context.metadata.get("invitation_token"))
+
+        result = self.validate_user_creation(
+            email=kwargs.get("email", ""),
+            tenant_id=kwargs.get("tenant_id"),
+            password=kwargs.get("password"),
+            status=kwargs.get("status"),
+            role_ids=kwargs.get("role_ids"),
+            invitation_token=kwargs.get("invitation_token"),
+        )
+        return ValidationResult(
+            is_valid=result.is_valid,
+            errors=result.errors,
+            details=result.details,
+        )

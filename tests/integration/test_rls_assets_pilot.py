@@ -70,9 +70,8 @@ def _count_assets_raw() -> int:
 def test_assets_rls_blocks_reads_without_tenant_guc(seeded_assets, pytestconfig):
     selected_role = pytestconfig.getoption("database")
     if selected_role not in {"default", "meshant_app"}:
-        pytest.skip(
-            "assets pilot RLS test expects --database=meshant_app or default, "
-            f"got {selected_role}"
+        pytest.skip(  # noqa: skip-in-body — runtime service dependency
+            f"assets pilot RLS test expects --database=meshant_app or default, got {selected_role}"
         )
     with _set_role("meshant_app"):
         assert _count_assets_raw() == 0
@@ -81,29 +80,24 @@ def test_assets_rls_blocks_reads_without_tenant_guc(seeded_assets, pytestconfig)
 def test_assets_rls_scopes_orm_reads_by_tenant_context(seeded_assets, pytestconfig):
     selected_role = pytestconfig.getoption("database")
     if selected_role not in {"default", "meshant_app"}:
-        pytest.skip(
-            "assets pilot RLS test expects --database=meshant_app or default, "
-            f"got {selected_role}"
+        pytest.skip(  # noqa: skip-in-body — runtime service dependency
+            f"assets pilot RLS test expects --database=meshant_app or default, got {selected_role}"
         )
     tenant_a, _, asset_a, _ = seeded_assets
     with _set_role("meshant_app"):
         assert list(Asset.objects.values_list("id", flat=True)) == []
         with tenant_context(str(tenant_a.id)):
-            visible_asset_ids = list(
-                Asset.objects.order_by("id").values_list("id", flat=True)
-            )
+            visible_asset_ids = list(Asset.objects.order_by("id").values_list("id", flat=True))
         assert visible_asset_ids == [asset_a.id]
 
 
 def test_assets_rls_kill_switch_guc_off_exposes_all_rows(seeded_assets, pytestconfig):
     selected_role = pytestconfig.getoption("database")
     if selected_role not in {"default", "meshant_app"}:
-        pytest.skip(
-            "assets pilot RLS test expects --database=meshant_app or default, "
-            f"got {selected_role}"
+        pytest.skip(  # noqa: skip-in-body — runtime service dependency
+            f"assets pilot RLS test expects --database=meshant_app or default, got {selected_role}"
         )
-    with _set_role("meshant_app"):
-        with transaction.atomic():
-            with connection.cursor() as cursor:
-                cursor.execute("SET LOCAL app.rls_assets_enabled = 'false'")
-            assert _count_assets_raw() == 2
+    with _set_role("meshant_app"), transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute("SET LOCAL app.rls_assets_enabled = 'false'")
+        assert _count_assets_raw() == 2

@@ -37,16 +37,12 @@ urlpatterns = [
     # `<id>/` pattern that would otherwise match `me` as a UUID.
     path(
         "me/feature-flags/",
-        TenantConfigViewSet.as_view(
-            {"get": "me_feature_flags", "patch": "me_feature_flags"}
-        ),
+        TenantConfigViewSet.as_view({"get": "me_feature_flags", "patch": "me_feature_flags"}),
         name="tenant-me-feature-flags",
     ),
     path(
         "me/feature-flag-history/",
-        TenantConfigViewSet.as_view(
-            {"get": "me_feature_flag_history"}
-        ),
+        TenantConfigViewSet.as_view({"get": "me_feature_flag_history"}),
         name="tenant-me-feature-flag-history",
     ),
     # Phase 270.D.3 — Tax & Billing Identity surface. Manually
@@ -55,9 +51,7 @@ urlpatterns = [
     # match ``me`` as a tenant UUID).
     path(
         "me/tax-id/",
-        TenantConfigViewSet.as_view(
-            {"get": "me_tax_id", "post": "me_tax_id"}
-        ),
+        TenantConfigViewSet.as_view({"get": "me_tax_id", "post": "me_tax_id"}),
         name="tenant-me-tax-id",
     ),
     # Phase 278.B.2 — seed sample data for activation

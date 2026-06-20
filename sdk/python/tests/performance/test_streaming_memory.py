@@ -13,10 +13,12 @@ stays roughly constant regardless of total result count.
 
 import os
 import resource
+
 import requests
+
 from tests._persona_provisioning import provision_persona
-from tests.use_cases._api_helpers import api_get
 from tests.fixtures.perf_record import build_perf_record, write_perf_record
+from tests.use_cases._api_helpers import api_get
 
 BUDGET_MB = 100.0
 PAGE_SIZE = 100
@@ -42,10 +44,14 @@ def test_streaming_memory_under_budget():
     rss_before = _get_rss_mb()
 
     for page in range(1, MAX_PAGES + 1):
-        resp = api_get("/assets/", creds, params={
-            "page": page,
-            "page_size": PAGE_SIZE,
-        })
+        resp = api_get(
+            "/assets/",
+            creds,
+            params={
+                "page": page,
+                "page_size": PAGE_SIZE,
+            },
+        )
         if resp.status_code != 200:
             break
         data = resp.json()
@@ -68,6 +74,5 @@ def test_streaming_memory_under_budget():
     write_perf_record(record)
 
     assert delta_mb < BUDGET_MB, (
-        f"Streaming pagination grew RSS by {delta_mb:.1f}MB "
-        f"(budget: {BUDGET_MB}MB)"
+        f"Streaming pagination grew RSS by {delta_mb:.1f}MB (budget: {BUDGET_MB}MB)"
     )

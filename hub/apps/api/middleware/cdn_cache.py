@@ -24,8 +24,10 @@ Activation:
   ``MIDDLEWARE`` in settings.py, AFTER ``AuthenticationMiddleware``
   so ``request.user`` is available for the authenticated-GET check.
 """
+
 from __future__ import annotations
-from typing import Callable
+
+from collections.abc import Callable
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
@@ -43,6 +45,7 @@ try:
         except Exception:
             pass  # Cache invalidation is best-effort; never break the response
 except ImportError:
+
     def _publish_invalidation(_path_prefix: str) -> None:
         pass
 
@@ -79,12 +82,7 @@ class CDNCacheMiddleware:
                 if len(parts) >= 4 and parts[-1]:
                     # Check if the last segment is a resource ID (UUID / numeric / k6- prefix)
                     last = parts[-1]
-                    if (
-                        len(last) >= 32
-                        or last.isdigit()
-                        or last.startswith("k6-")
-                        or "-" in last
-                    ):
+                    if len(last) >= 32 or last.isdigit() or last.startswith("k6-") or "-" in last:
                         prefix = "/" + "/".join(parts[:-1]) + "/"
                     else:
                         prefix = "/" + "/".join(parts) + "/"
@@ -110,9 +108,7 @@ class CDNCacheMiddleware:
         if 200 <= response.status_code < 300:
             browser_ttl = getattr(settings, "CDN_CACHE_BROWSER_MAX_AGE", 60)
             cdn_ttl = getattr(settings, "CDN_CACHE_MAX_AGE", 300)
-            response["Cache-Control"] = (
-                f"public, max-age={browser_ttl}, s-maxage={cdn_ttl}"
-            )
+            response["Cache-Control"] = f"public, max-age={browser_ttl}, s-maxage={cdn_ttl}"
             response["Vary"] = "Accept-Encoding, Origin"
 
         return response

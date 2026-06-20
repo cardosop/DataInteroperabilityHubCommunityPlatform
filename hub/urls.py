@@ -2,6 +2,8 @@
 URL configuration for hub project.
 """
 
+from importlib import import_module
+
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
@@ -9,6 +11,25 @@ from django.urls import include, path
 
 from hub.apps.api.views import OpenAPISchemaView, ReDocView, SwaggerUIView
 from hub.apps.security.views import csp_report_view
+
+
+class _LazyURLConf:
+    """Defer importing a URLconf module until the first request to its prefix.
+
+    Using this wrapper with ``include()`` prevents eager imports of expensive
+    schemas (e.g. graphql-graphene) from blocking URL resolution for unrelated
+    routes during Django startup or test runs.
+    """
+
+    def __init__(self, module_path: str):
+        self._module_path = module_path
+        self._urlconf = None
+
+    @property
+    def urlpatterns(self):
+        if self._urlconf is None:
+            self._urlconf = import_module(self._module_path)
+        return self._urlconf.urlpatterns
 
 
 def _is_graphene_django_available() -> bool:
@@ -52,27 +73,28 @@ def _build_urlpatterns() -> list:
     if settings.ENVIRONMENT not in ("production", "staging"):
         patterns.insert(0, path("admin/", admin.site.urls))
 
-    # Conditionally include graphql_graphene URLs if available
-    # This prevents import errors if graphene_django is not installed
+    # Conditionally include graphql_graphene URLs if available.
+    # Uses _LazyURLConf to defer the expensive schema import until the
+    # first request to /graphql-graphene/ — avoids blocking unrelated
+    # URL resolution during startup and test runs (pytest-timeout).
     if _is_graphene_django_available():
-        try:
-            from hub.apps.graphql_graphene import urls as graphql_graphene_urls
-            # Add graphql_graphene URLs directly after graphql URLs
-            patterns.append(path("graphql-graphene/", include(graphql_graphene_urls)))
-        except (ImportError, ValueError, AttributeError) as e:
-            # If graphql_graphene.urls can't be imported, skip it
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to import graphql_graphene URLs: {e}")
+        patterns.append(
+            path(
+                "graphql-graphene/",
+                include(_LazyURLConf("hub.apps.graphql_graphene.urls")),
+            )
+        )
 
     # Add remaining URL patterns
-    patterns.extend([
-        path("health/", include("hub.apps.health.urls")),
-        # Metrics endpoint (trailing slash canonical; Django APPEND_SLASH handles redirect)
-        path("metrics/", include("hub.apps.observability.urls")),
-        # CSP violation reports — unauthenticated; browsers send before scripts run.
-        path("api/csp-report/", csp_report_view, name="csp-report"),
-    ])
+    patterns.extend(
+        [
+            path("health/", include("hub.apps.health.urls")),
+            # Metrics endpoint (trailing slash canonical; Django APPEND_SLASH handles redirect)
+            path("metrics/", include("hub.apps.observability.urls")),
+            # CSP violation reports — unauthenticated; browsers send before scripts run.
+            path("api/csp-report/", csp_report_view, name="csp-report"),
+        ]
+    )
 
     # Phase 221.4.1 + Track A PR 1 — API documentation endpoints are only
     # available outside production AND staging. Swagger UI, ReDoc, and the
@@ -83,23 +105,25 @@ def _build_urlpatterns() -> list:
     # URL conf and is required pre-auth by the frontend's capability
     # discovery service (capabilitiesService.ts).
     if settings.ENVIRONMENT not in ("production", "staging"):
-        patterns.extend([
-            path(
-                "api-docs/openapi.json",
-                OpenAPISchemaView.as_view(),
-                name="openapi-schema",
-            ),
-            path(
-                "api-docs/",
-                SwaggerUIView.as_view(url_name="openapi-schema"),
-                name="swagger-ui",
-            ),
-            path(
-                "api-docs/redoc/",
-                ReDocView.as_view(url_name="openapi-schema"),
-                name="redoc",
-            ),
-        ])
+        patterns.extend(
+            [
+                path(
+                    "api-docs/openapi.json",
+                    OpenAPISchemaView.as_view(),
+                    name="openapi-schema",
+                ),
+                path(
+                    "api-docs/",
+                    SwaggerUIView.as_view(url_name="openapi-schema"),
+                    name="swagger-ui",
+                ),
+                path(
+                    "api-docs/redoc/",
+                    ReDocView.as_view(url_name="openapi-schema"),
+                    name="redoc",
+                ),
+            ]
+        )
 
     return patterns
 

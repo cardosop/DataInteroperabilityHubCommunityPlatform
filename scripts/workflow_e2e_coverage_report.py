@@ -15,7 +15,7 @@ Run from repo root: python scripts/workflow_e2e_coverage_report.py
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # All workflow types (WORKFLOW_NAME) from hub/apps/orchestration/workflows
@@ -185,7 +185,7 @@ def build_report_data() -> dict:
     workflows_tested = [w for w in ALL_WORKFLOW_TYPES if WORKFLOW_COVERAGE.get(w)]
     workflows_untested = [w for w in ALL_WORKFLOW_TYPES if not WORKFLOW_COVERAGE.get(w)]
     return {
-        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "workflow_coverage": {
             "all_workflow_types": ALL_WORKFLOW_TYPES,
             "tested": workflows_tested,

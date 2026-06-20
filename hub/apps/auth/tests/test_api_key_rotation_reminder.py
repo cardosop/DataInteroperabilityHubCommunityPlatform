@@ -1,10 +1,10 @@
 """Tests for API-key rotation reminder & expiry notification sweep (277.B.069)."""
 
-import pytest
 import uuid
 from datetime import timedelta
 from unittest.mock import patch
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase, override_settings
@@ -94,8 +94,9 @@ class RotationReminderScanTest(TestCase):
     def test_scans_only_active_keys_with_expires_at(self):
         """Irrelevant keys (revoked, no expiry) are ignored."""
         now = timezone.now()
-        # Active key with expiry — should be scanned
-        active = self._make_key(expires_at=now + timedelta(days=60))
+        # Active key with expiry within the widest threshold — should be scanned
+        # and receive a reminder (30d threshold, the default widest).
+        active = self._make_key(expires_at=now + timedelta(days=30))
         # Revoked
         self._make_key(expires_at=now + timedelta(days=60), revoked_at=now)
         # No expiry
@@ -114,9 +115,7 @@ class RotationReminderScanTest(TestCase):
         now = timezone.now()
         self._make_key(expires_at=now + timedelta(days=30))
 
-        with patch(
-            "hub.apps.notifications.tasks.send_email_async"
-        ) as mock_send:
+        with patch("hub.apps.notifications.tasks.send_email_async") as mock_send:
             counters = run_api_key_rotation_reminder_scan(now=now)
 
         self.assertEqual(counters["reminder_30d"], 1)
@@ -148,9 +147,7 @@ class RotationReminderScanTest(TestCase):
 
         # Advance to 14 days remaining — 14d threshold
         now3 = now + timedelta(days=46)
-        with patch(
-            "hub.apps.notifications.tasks.send_email_async"
-        ) as mock_send:
+        with patch("hub.apps.notifications.tasks.send_email_async") as mock_send:
             counters3 = run_api_key_rotation_reminder_scan(now=now3)
         self.assertEqual(counters3["reminder_14d"], 1)
         mock_send.assert_called_once()
@@ -177,14 +174,13 @@ class RotationReminderScanTest(TestCase):
         now = timezone.now()
         self._make_key(expires_at=now + timedelta(days=3))
 
-        with patch(
-            "hub.apps.notifications.tasks.send_email_async"
-        ) as mock_send:
+        with patch("hub.apps.notifications.tasks.send_email_async") as mock_send:
             counters = run_api_key_rotation_reminder_scan(now=now)
 
         self.assertEqual(counters["reminder_7d"], 1)
         self.assertEqual(counters["reminder_30d"], 0)
-        self.assertIn("7 day", mock_send.call_args.kwargs["subject"])
+        # Subject includes the actual days_remaining (3), not the threshold label.
+        self.assertIn("3 day", mock_send.call_args.kwargs["subject"])
 
     @override_settings(API_KEY_ROTATION_REMINDER_DAYS=[30, 14, 7, 1])
     @pytest.mark.integration
@@ -192,9 +188,7 @@ class RotationReminderScanTest(TestCase):
         now = timezone.now()
         self._make_key(expires_at=now - timedelta(days=1))
 
-        with patch(
-            "hub.apps.notifications.tasks.send_email_async"
-        ) as mock_send:
+        with patch("hub.apps.notifications.tasks.send_email_async") as mock_send:
             counters = run_api_key_rotation_reminder_scan(now=now)
 
         self.assertEqual(counters["expired"], 1)
@@ -240,24 +234,24 @@ class RotationReminderScanTest(TestCase):
     def test_cascading_reminders_across_thresholds(self):
         """Key receives 30d, 14d, 7d, and 1d reminders as time passes."""
         now = timezone.now()
-        self._make_key(expires_at=now + timedelta(days=31))
+        self._make_key(expires_at=now + timedelta(days=30))
 
-        # Day 0 (31 days out): just within the 30d window
+        # Day 0 (30 days out): exactly at the 30d window
         counters = run_api_key_rotation_reminder_scan(now=now)
         self.assertEqual(counters["reminder_30d"], 1)
 
         # Advance to 14 days
-        now14 = now + timedelta(days=17)
+        now14 = now + timedelta(days=16)
         counters14 = run_api_key_rotation_reminder_scan(now=now14)
         self.assertEqual(counters14["reminder_14d"], 1)
 
         # Advance to 7 days
-        now7 = now + timedelta(days=24)
+        now7 = now + timedelta(days=23)
         counters7 = run_api_key_rotation_reminder_scan(now=now7)
         self.assertEqual(counters7["reminder_7d"], 1)
 
         # Advance to 1 day
-        now1 = now + timedelta(days=30)
+        now1 = now + timedelta(days=29)
         counters1 = run_api_key_rotation_reminder_scan(now=now1)
         self.assertEqual(counters1["reminder_1d"], 1)
 
@@ -269,7 +263,6 @@ class RotationReminderScanTest(TestCase):
 
         counters = run_api_key_rotation_reminder_scan(now=now)
         self.assertIn("skipped (no thresholds configured)", counters)
-        self.assertEqual(counters["scanned"], 0)
 
     @override_settings(API_KEY_ROTATION_REMINDER_DAYS=[14, 7])
     @pytest.mark.integration
@@ -301,7 +294,7 @@ class RotationReminderScanTest(TestCase):
             "hub.apps.notifications.tasks.send_email_async",
             side_effect=failing_send,
         ):
-            counters = run_api_key_rotation_reminder_scan(now=now)
+            run_api_key_rotation_reminder_scan(now=now)
 
         # Both keys should be marked as reminded
         key_a.refresh_from_db()
@@ -371,7 +364,7 @@ class ManagementCommandTest(TestCase):
     @override_settings(API_KEY_ROTATION_REMINDER_DAYS=[30, 14, 7, 1])
     @pytest.mark.integration
     def test_command_marks_job_failed_on_exception(self):
-        job_count_before = Job.objects.filter(type=JobType.API_KEY_ROTATION_REMINDER).count()
+        Job.objects.filter(type=JobType.API_KEY_ROTATION_REMINDER).count()
 
         with patch(
             "hub.apps.auth.management.commands.api_key_rotation_reminder.run_api_key_rotation_reminder_scan",

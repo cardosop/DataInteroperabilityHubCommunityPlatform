@@ -4,12 +4,14 @@ Dados.gov.br Swagger API Client
 Client for interacting with dados.gov.br Swagger API endpoints.
 Supports Swagger specification loading, endpoint resolution, and JWT Bearer token authentication.
 """
-import httpx
+
+import contextlib
 import logging
 import re
-from html.parser import HTMLParser
-from typing import Dict, Any, Optional
+from typing import Any
 from urllib.parse import urljoin
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +30,7 @@ class DadosGovBrAPIClient:
         client: HTTP client for making requests
     """
 
-    def __init__(self, base_url: str, jwt_token: Optional[str] = None):
+    def __init__(self, base_url: str, jwt_token: str | None = None, swagger_spec_url: str | None = None):
         """
         Initialize dados.gov.br API client.
 
@@ -36,24 +38,32 @@ class DadosGovBrAPIClient:
             base_url: Base URL of the dados.gov.br API (e.g., "https://dados.gov.br")
             jwt_token: Optional JWT Bearer token for authentication.
                       Public endpoints may work without authentication.
+            swagger_spec_url: Optional URL to Swagger JSON specification.
+                             When provided, the spec is loaded lazily on first use
+                             (via get_endpoint_path), not eagerly during __init__.
         """
-        self.base_url = base_url.rstrip('/')
+        self.base_url = base_url.rstrip("/")
         self.jwt_token = jwt_token
-        self._swagger_spec: Optional[Dict[str, Any]] = None
+        self._swagger_spec: dict[str, Any] | None = None
+        self._swagger_spec_url = swagger_spec_url  # stored for lazy loading
 
         # Initialize HTTP client with Bearer token authentication
         # Note: follow_redirects=True allows following redirects, but we check for signin redirects
-        # to detect authentication failures
+        # to detect authentication failures.
+        # Use httpx.Timeout for granular control: connect=10s, read=25s, write=10s.
+        # A single float timeout (30.0) maps to connect/read/write/pool=30s,
+        # but follow_redirects=True can reset the timer per redirect, allowing
+        # a hung server to hold the socket open much longer than expected.
         self.client = httpx.Client(
             base_url=self.base_url,
-            timeout=30.0,
+            timeout=httpx.Timeout(connect=10.0, read=25.0, write=10.0, pool=5.0),
             headers=self._get_default_headers(),
             follow_redirects=True,
             # Track redirects to detect authentication failures
-            max_redirects=10
+            max_redirects=10,
         )
 
-    def _get_default_headers(self) -> Dict[str, str]:
+    def _get_default_headers(self) -> dict[str, str]:
         """
         Get default HTTP headers with optional JWT token.
 
@@ -61,17 +71,17 @@ class DadosGovBrAPIClient:
         According to Swagger spec: https://dados.gov.br/swagger-ui/index.html
         """
         headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
+            "Content-Type": "application/json",
+            "Accept": "application/json",
         }
 
         if self.jwt_token:
             # dados.gov.br API uses 'chave-api-dados-abertos' header, not 'Authorization: Bearer'
-            headers['chave-api-dados-abertos'] = self.jwt_token
+            headers["chave-api-dados-abertos"] = self.jwt_token
 
         return headers
 
-    def load_swagger_spec(self, swagger_url: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def load_swagger_spec(self, swagger_url: str | None = None) -> dict[str, Any] | None:
         """
         Load Swagger JSON specification from URL.
 
@@ -82,15 +92,15 @@ class DadosGovBrAPIClient:
             Swagger specification dictionary if successful, None otherwise
         """
         if swagger_url is None:
-            swagger_url = urljoin(self.base_url, '/v3/api-docs')
+            swagger_url = urljoin(self.base_url, "/v3/api-docs")
 
         try:
             response = httpx.get(swagger_url, timeout=10.0, follow_redirects=True)
             response.raise_for_status()
 
             # Check if response is JSON
-            content_type = response.headers.get('content-type', '')
-            if content_type and 'application/json' not in str(content_type):
+            content_type = response.headers.get("content-type", "")
+            if content_type and "application/json" not in str(content_type):
                 logger.warning(
                     f"Swagger spec URL returned non-JSON content: {content_type}. "
                     f"Response preview: {response.text[:200]}"
@@ -110,9 +120,7 @@ class DadosGovBrAPIClient:
             logger.warning(f"Failed to load Swagger spec from {swagger_url}: {e}")
             return None
         except httpx.HTTPStatusError as e:
-            logger.warning(
-                f"Swagger spec URL returned {e.response.status_code}: {swagger_url}"
-            )
+            logger.warning(f"Swagger spec URL returned {e.response.status_code}: {swagger_url}")
             return None
         except Exception as e:
             logger.warning(f"Unexpected error loading Swagger spec: {e}")
@@ -122,7 +130,8 @@ class DadosGovBrAPIClient:
         """
         Resolve endpoint path from Swagger spec using operation ID.
 
-        Falls back to dados.gov.br Swagger API endpoint pattern if Swagger spec not available.
+        Loads the Swagger spec lazily on first call (if a URL was provided),
+        then falls back to a hardcoded endpoint map if the spec is unavailable.
 
         Args:
             operation_id: Operation ID from Swagger spec (e.g., "listDatasets")
@@ -130,11 +139,17 @@ class DadosGovBrAPIClient:
         Returns:
             Endpoint path (e.g., "/dados/api/publico/conjuntos-dados")
         """
+        # Lazy-load the Swagger spec on first use — avoids making an HTTP
+        # request during __init__ (which causes 10 s timeouts in tests and
+        # slows down application startup).
+        if self._swagger_spec is None and self._swagger_spec_url is not None:
+            self.load_swagger_spec(self._swagger_spec_url)
+
         if self._swagger_spec:
-            paths = self._swagger_spec.get('paths', {})
+            paths = self._swagger_spec.get("paths", {})
             for path, methods in paths.items():
-                for method, operation in methods.items():
-                    if operation.get('operationId') == operation_id:
+                for _method, operation in methods.items():
+                    if operation.get("operationId") == operation_id:
                         logger.debug(
                             f"Resolved endpoint '{operation_id}' to '{path}' from Swagger spec"
                         )
@@ -143,25 +158,25 @@ class DadosGovBrAPIClient:
         # Fallback to dados.gov.br Swagger API endpoint pattern (NOT CKAN-style)
         # Map common operation IDs to dados.gov.br endpoints
         endpoint_map = {
-            'package_search': '/dados/api/publico/conjuntos-dados',
-            'listDatasets': '/dados/api/publico/conjuntos-dados',
-            'package_show': '/dados/api/publico/conjuntos-dados',  # Will be appended with {id}
-            'getDataset': '/dados/api/publico/conjuntos-dados',  # Will be appended with {id}
-            'resource_show': '/dados/api/publico/conjuntos-dados',  # Resources are nested in datasets
-            'getResource': '/dados/api/publico/conjuntos-dados',  # Resources are nested in datasets
+            "package_search": "/dados/api/publico/conjuntos-dados",
+            "listDatasets": "/dados/api/publico/conjuntos-dados",
+            "package_show": "/dados/api/publico/conjuntos-dados",  # Will be appended with {id}
+            "getDataset": "/dados/api/publico/conjuntos-dados",  # Will be appended with {id}
+            "resource_show": "/dados/api/publico/conjuntos-dados",  # Resources are nested in datasets
+            "getResource": "/dados/api/publico/conjuntos-dados",  # Resources are nested in datasets
         }
 
         fallback_path = endpoint_map.get(operation_id)
         if not fallback_path:
             # Default fallback to dados.gov.br public API pattern
-            fallback_path = f'/dados/api/publico/{operation_id}'
+            fallback_path = f"/dados/api/publico/{operation_id}"
 
         logger.debug(
             f"Using fallback endpoint path '{fallback_path}' for operation '{operation_id}'"
         )
         return fallback_path
 
-    def _parse_html_error(self, html_content: str) -> Dict[str, Any]:
+    def _parse_html_error(self, html_content: str) -> dict[str, Any]:
         """
         Parse HTML error response to extract error messages and diagnostic information.
 
@@ -176,18 +191,18 @@ class DadosGovBrAPIClient:
             - details: Additional diagnostic information
         """
         error_info = {
-            'error_message': None,
-            'redirect_url': None,
-            'status_code': None,
-            'details': []
+            "error_message": None,
+            "redirect_url": None,
+            "status_code": None,
+            "details": [],
         }
 
         # Try to extract error messages from common HTML patterns
         # Look for error messages in common tags
         error_patterns = [
-            r'<title[^>]*>(.*?)</title>',
-            r'<h1[^>]*>(.*?)</h1>',
-            r'<h2[^>]*>(.*?)</h2>',
+            r"<title[^>]*>(.*?)</title>",
+            r"<h1[^>]*>(.*?)</h1>",
+            r"<h2[^>]*>(.*?)</h2>",
             r'<div[^>]*class=["\']error["\'][^>]*>(.*?)</div>',
             r'<div[^>]*class=["\']alert["\'][^>]*>(.*?)</div>',
             r'<p[^>]*class=["\']error["\'][^>]*>(.*?)</p>',
@@ -196,7 +211,7 @@ class DadosGovBrAPIClient:
         for pattern in error_patterns:
             matches = re.findall(pattern, html_content, re.IGNORECASE | re.DOTALL)
             if matches:
-                error_info['error_message'] = matches[0].strip()
+                error_info["error_message"] = matches[0].strip()
                 break
 
         # Extract redirect URL if present
@@ -209,37 +224,35 @@ class DadosGovBrAPIClient:
         for pattern in redirect_patterns:
             matches = re.findall(pattern, html_content, re.IGNORECASE)
             if matches:
-                error_info['redirect_url'] = matches[0]
+                error_info["redirect_url"] = matches[0]
                 break
 
         # Extract status code if present
         status_patterns = [
-            r'<h1[^>]*>(\d{3})[^<]*</h1>',
-            r'Status[:\s]+(\d{3})',
-            r'HTTP[/\d\.]+\s+(\d{3})',
+            r"<h1[^>]*>(\d{3})[^<]*</h1>",
+            r"Status[:\s]+(\d{3})",
+            r"HTTP[/\d\.]+\s+(\d{3})",
         ]
 
         for pattern in status_patterns:
             matches = re.findall(pattern, html_content, re.IGNORECASE)
             if matches:
-                try:
-                    error_info['status_code'] = int(matches[0])
-                except ValueError:
-                    pass
+                with contextlib.suppress(ValueError):
+                    error_info["status_code"] = int(matches[0])
                 break
 
         # Extract additional details from common error page elements
         detail_patterns = [
-            r'<p[^>]*>(.*?)</p>',
-            r'<li[^>]*>(.*?)</li>',
+            r"<p[^>]*>(.*?)</p>",
+            r"<li[^>]*>(.*?)</li>",
         ]
 
         for pattern in detail_patterns:
             matches = re.findall(pattern, html_content, re.IGNORECASE | re.DOTALL)
             for match in matches[:5]:  # Limit to first 5 matches
-                text = re.sub(r'<[^>]+>', '', match).strip()
+                text = re.sub(r"<[^>]+>", "", match).strip()
                 if text and len(text) > 10:  # Only include substantial text
-                    error_info['details'].append(text)
+                    error_info["details"].append(text)
 
         return error_info
 
@@ -247,9 +260,9 @@ class DadosGovBrAPIClient:
         self,
         method: str,
         endpoint: str,
-        params: Optional[Dict[str, Any]] = None,
-        body: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        params: dict[str, Any] | None = None,
+        body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         Make authenticated API request.
 
@@ -267,14 +280,12 @@ class DadosGovBrAPIClient:
             httpx.RequestError: For network errors
             ValueError: If response is HTML and cannot be parsed
         """
-        kwargs: Dict[str, Any] = {
-            'headers': self._get_default_headers()
-        }
+        kwargs: dict[str, Any] = {"headers": self._get_default_headers()}
 
         if params:
-            kwargs['params'] = params
+            kwargs["params"] = params
         if body:
-            kwargs['json'] = body
+            kwargs["json"] = body
 
         try:
             response = self.client.request(method, endpoint, **kwargs)
@@ -283,7 +294,7 @@ class DadosGovBrAPIClient:
             if response.status_code == 200:
                 # Check if the final URL after redirects is the signin page
                 final_url = str(response.url)
-                if '/signin' in final_url or '/login' in final_url:
+                if "/signin" in final_url or "/login" in final_url:
                     logger.error(
                         f"API endpoint redirected to signin page: {method} {endpoint} -> {final_url}. "
                         f"This indicates authentication failure - JWT token may be expired or invalid."
@@ -297,15 +308,15 @@ class DadosGovBrAPIClient:
             response.raise_for_status()
 
             # Check if response is JSON
-            content_type = response.headers.get('content-type', '')
-            if content_type and 'application/json' not in str(content_type):
+            content_type = response.headers.get("content-type", "")
+            if content_type and "application/json" not in str(content_type):
                 # Check if it's HTML (error response)
-                if 'text/html' in str(content_type) or response.text.strip().startswith('<'):
+                if "text/html" in str(content_type) or response.text.strip().startswith("<"):
                     error_info = self._parse_html_error(response.text)
-                    error_msg = error_info.get('error_message') or 'API returned HTML error page'
-                    if error_info.get('redirect_url'):
+                    error_msg = error_info.get("error_message") or "API returned HTML error page"
+                    if error_info.get("redirect_url"):
                         error_msg += f" (redirects to: {error_info['redirect_url']})"
-                    if error_info.get('details'):
+                    if error_info.get("details"):
                         error_msg += f" - {error_info['details'][0]}"
 
                     logger.warning(
@@ -323,7 +334,7 @@ class DadosGovBrAPIClient:
                 # Try to parse as JSON anyway (some APIs don't set content-type correctly)
                 try:
                     return response.json()
-                except Exception:
+                except (ValueError, TypeError, AttributeError):
                     raise ValueError(
                         f"API endpoint returned non-JSON response: {response.text[:200]}"
                     )
@@ -331,8 +342,8 @@ class DadosGovBrAPIClient:
             return response.json()
         except httpx.HTTPStatusError as e:
             # Check if we were redirected to signin (authentication failure)
-            final_url = str(e.response.url) if hasattr(e.response, 'url') else ''
-            if '/signin' in final_url or '/login' in final_url:
+            final_url = str(e.response.url) if hasattr(e.response, "url") else ""
+            if "/signin" in final_url or "/login" in final_url:
                 logger.error(
                     f"API endpoint redirected to signin page: {method} {endpoint} -> {final_url}. "
                     f"This indicates authentication failure - JWT token may be expired or invalid."
@@ -343,13 +354,15 @@ class DadosGovBrAPIClient:
                 ) from e
 
             # Check if error response is HTML
-            content_type = e.response.headers.get('content-type', '')
-            if 'text/html' in str(content_type) or e.response.text.strip().startswith('<'):
+            content_type = e.response.headers.get("content-type", "")
+            if "text/html" in str(content_type) or e.response.text.strip().startswith("<"):
                 error_info = self._parse_html_error(e.response.text)
-                error_msg = error_info.get('error_message') or f'HTTP {e.response.status_code} error'
-                if error_info.get('redirect_url'):
+                error_msg = (
+                    error_info.get("error_message") or f"HTTP {e.response.status_code} error"
+                )
+                if error_info.get("redirect_url"):
                     error_msg += f" (redirects to: {error_info['redirect_url']})"
-                if error_info.get('details'):
+                if error_info.get("details"):
                     error_msg += f" - {error_info['details'][0]}"
 
                 logger.warning(
@@ -358,9 +371,7 @@ class DadosGovBrAPIClient:
                 )
                 # Create a new exception with parsed error message
                 raise httpx.HTTPStatusError(
-                    error_msg,
-                    request=e.request,
-                    response=e.response
+                    error_msg, request=e.request, response=e.response
                 ) from e
 
             # Log 4xx (client errors) at WARNING — they are expected outcomes
@@ -383,12 +394,12 @@ class DadosGovBrAPIClient:
 
     def search_datasets(
         self,
-        query: Optional[str] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-        page: Optional[int] = None
-    ) -> Dict[str, Any]:
+        query: str | None = None,
+        filters: dict[str, Any] | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        page: int | None = None,
+    ) -> dict[str, Any]:
         """
         Search datasets using dados.gov.br Swagger API endpoint.
 
@@ -409,7 +420,7 @@ class DadosGovBrAPIClient:
             List of datasets (array response from API)
         """
         # Use dados.gov.br Swagger API endpoint directly
-        endpoint = '/dados/api/publico/conjuntos-dados'
+        endpoint = "/dados/api/publico/conjuntos-dados"
 
         # Calculate page number from offset/limit if page not provided
         if page is None:
@@ -420,28 +431,28 @@ class DadosGovBrAPIClient:
                 # Default to page 1 if not specified
                 page = 1
 
-        params: Dict[str, Any] = {
-            'pagina': page  # Required parameter
+        params: dict[str, Any] = {
+            "pagina": page  # Required parameter
         }
 
         # Map query to nomeConjuntoDados parameter
         if query:
-            params['nomeConjuntoDados'] = query
+            params["nomeConjuntoDados"] = query
 
         # Map filters to API parameters
         if filters:
-            if 'idOrganizacao' in filters:
-                params['idOrganizacao'] = filters['idOrganizacao']
-            if 'dadosAbertos' in filters:
-                params['dadosAbertos'] = filters['dadosAbertos']
-            if 'isPrivado' in filters:
-                params['isPrivado'] = filters['isPrivado']
+            if "idOrganizacao" in filters:
+                params["idOrganizacao"] = filters["idOrganizacao"]
+            if "dadosAbertos" in filters:
+                params["dadosAbertos"] = filters["dadosAbertos"]
+            if "isPrivado" in filters:
+                params["isPrivado"] = filters["isPrivado"]
             # Note: tags filtering is not directly supported by this endpoint
             # Tags are available via get_dataset_tags() method
 
-        return self._request('GET', endpoint, params=params)
+        return self._request("GET", endpoint, params=params)
 
-    def get_dataset(self, dataset_id: str) -> Dict[str, Any]:
+    def get_dataset(self, dataset_id: str) -> dict[str, Any]:
         """
         Get dataset details by ID using dados.gov.br Swagger API endpoint.
 
@@ -454,13 +465,11 @@ class DadosGovBrAPIClient:
             Dataset details dictionary (may vary based on dados.gov.br API response format)
         """
         # Use dados.gov.br Swagger API endpoint directly with ID in path
-        endpoint = f'/dados/api/publico/conjuntos-dados/{dataset_id}'
+        endpoint = f"/dados/api/publico/conjuntos-dados/{dataset_id}"
 
-        return self._request('GET', endpoint)
+        return self._request("GET", endpoint)
 
-    def get_resource(
-        self, resource_id: str, dataset_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+    def get_resource(self, resource_id: str, dataset_id: str | None = None) -> dict[str, Any]:
         """
         Get resource details by ID.
 
@@ -498,9 +507,7 @@ class DadosGovBrAPIClient:
                     return {"success": True, "result": r}
 
             # Resource not found in this dataset
-            raise ValueError(
-                f"Resource '{resource_id}' not found in dataset {dataset_id}"
-            )
+            raise ValueError(f"Resource '{resource_id}' not found in dataset {dataset_id}")
 
         # 2) Legacy fallback — direct resource endpoints.
         #    These endpoints are *not* part of the published Swagger spec
@@ -509,13 +516,11 @@ class DadosGovBrAPIClient:
         try:
             return self._request("GET", endpoint)
         except (httpx.HTTPStatusError, ValueError):
-            logger.warning(
-                "Direct resource endpoint /recurso/ failed, trying /recursos/ fallback"
-            )
+            logger.warning("Direct resource endpoint /recurso/ failed, trying /recursos/ fallback")
             endpoint = f"/dados/api/publico/recursos/{resource_id}"
             return self._request("GET", endpoint)
 
-    def get_dataset_tags(self, dataset_id: str) -> Dict[str, Any]:
+    def get_dataset_tags(self, dataset_id: str) -> dict[str, Any]:
         """
         Get tags for a specific dataset.
 
@@ -527,10 +532,10 @@ class DadosGovBrAPIClient:
         Returns:
             Tags dictionary (may vary based on dados.gov.br API response format)
         """
-        endpoint = f'/dados/api/publico/conjuntos-dados/{dataset_id}/tag'
-        return self._request('GET', endpoint)
+        endpoint = f"/dados/api/publico/conjuntos-dados/{dataset_id}/tag"
+        return self._request("GET", endpoint)
 
-    def get_themes(self) -> Dict[str, Any]:
+    def get_themes(self) -> dict[str, Any]:
         """
         List all available themes.
 
@@ -539,10 +544,10 @@ class DadosGovBrAPIClient:
         Returns:
             Themes dictionary (may vary based on dados.gov.br API response format)
         """
-        endpoint = '/dados/api/temas'
-        return self._request('GET', endpoint)
+        endpoint = "/dados/api/temas"
+        return self._request("GET", endpoint)
 
-    def get_tags(self, nome: str = "") -> Dict[str, Any]:
+    def get_tags(self, nome: str = "") -> dict[str, Any]:
         """
         List available tags matching a name pattern.
 
@@ -555,15 +560,11 @@ class DadosGovBrAPIClient:
         Returns:
             List of tags matching the name pattern (array response from API)
         """
-        endpoint = '/dados/api/tags'
-        params = {'nome': nome}  # Required parameter
-        return self._request('GET', endpoint, params=params)
+        endpoint = "/dados/api/tags"
+        params = {"nome": nome}  # Required parameter
+        return self._request("GET", endpoint, params=params)
 
-    def list_organizations(
-        self,
-        nome: Optional[str] = None,
-        page: int = 1
-    ) -> Dict[str, Any]:
+    def list_organizations(self, nome: str | None = None, page: int = 1) -> dict[str, Any]:
         """
         List organizations.
 
@@ -577,15 +578,15 @@ class DadosGovBrAPIClient:
         Returns:
             List of organizations (array response from API)
         """
-        endpoint = '/dados/api/publico/organizacao'
-        params: Dict[str, Any] = {
-            'pagina': page  # Required parameter
+        endpoint = "/dados/api/publico/organizacao"
+        params: dict[str, Any] = {
+            "pagina": page  # Required parameter
         }
         if nome:
-            params['nome'] = nome
-        return self._request('GET', endpoint, params=params)
+            params["nome"] = nome
+        return self._request("GET", endpoint, params=params)
 
-    def get_organization(self, organization_id: str) -> Dict[str, Any]:
+    def get_organization(self, organization_id: str) -> dict[str, Any]:
         """
         Get organization details by ID.
 
@@ -597,6 +598,5 @@ class DadosGovBrAPIClient:
         Returns:
             Organization details dictionary (may vary based on dados.gov.br API response format)
         """
-        endpoint = f'/dados/api/publico/organizacao/{organization_id}'
-        return self._request('GET', endpoint)
-
+        endpoint = f"/dados/api/publico/organizacao/{organization_id}"
+        return self._request("GET", endpoint)

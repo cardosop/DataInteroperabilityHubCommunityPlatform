@@ -14,19 +14,16 @@ Tests follow TDD approach and fix root causes.
 """
 
 import json
-import uuid
 import time
-from typing import Any, Dict, List, Optional
+import uuid
 
 import pytest
 
 pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
-from django.db import transaction, connection
+from django.db import connection
 from django.db.models.signals import post_save
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.assets.services import AssetService
@@ -34,21 +31,14 @@ from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
     NormalizationStatus,
-    OriginalFormat,
     OriginalSpecType,
-    ValidationStatus,
 )
 from hub.apps.contracts.services import ContractService, ODPSService
 from hub.apps.marketplace.services import MarketplaceService
-from hub.apps.marketplace.models import Listing, ListingStatus
 from hub.apps.search.indexing import SearchIndexer
-from hub.apps.search.models import SearchIndex
 from hub.apps.search.services import SearchService
-from hub.apps.semantic.utils import map_odps_to_semantic, map_odps_contract_to_semantic_via_service
-from hub.apps.semantic.models import SemanticResource
-from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.semantic.signals import asset_saved, contract_saved
-from hub.apps.tenants.models import Tenant
+from hub.apps.semantic.utils import map_odps_contract_to_semantic_via_service, map_odps_to_semantic
 from hub.apps.users.models import UserStatus
 from tests.factories import TenantFactory, UserFactory
 from tests.fixtures.test_data_factories import AssetFactoryEnhanced
@@ -66,7 +56,6 @@ class ODPSIntegrationTestBase(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
-        pass
 
     def setUp(self):
         """Set up test data with ODPS-ODCS integration"""
@@ -82,12 +71,14 @@ class ODPSIntegrationTestBase(TestCase):
             try:
                 if attempt > 0:
                     connection.close()
-                    time.sleep(retry_delay * (2**attempt))  # INTENTIONAL: e2e/integration test polling real services
+                    time.sleep(  # noqa: sleep-needed — polling loop
+                        retry_delay * (2**attempt)
+                    )  # INTENTIONAL: e2e/integration test polling real services
 
                 self.tenant = TenantFactory.create_tenant()
                 self.user = UserFactory.create_user(tenant=self.tenant, status=UserStatus.ACTIVE)
                 break
-            except Exception as e:
+            except Exception:
                 if attempt == max_retries - 1:
                     raise
                 continue
@@ -96,12 +87,8 @@ class ODPSIntegrationTestBase(TestCase):
         self.contract_service = ContractService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
-        self.odps_service = ODPSService(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
-        self.asset_service = AssetService(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        self.odps_service = ODPSService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.asset_service = AssetService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         self.marketplace_service = MarketplaceService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
@@ -119,21 +106,13 @@ class ODPSIntegrationTestBase(TestCase):
                         "productID": f"test-product-{uuid.uuid4().hex[:8]}",
                         "name": "Test Product",
                         "description": "Test product for integration testing",
-                        "version": "1.0.0"
+                        "version": "1.0.0",
                     }
                 },
                 "dataSchema": {
                     "fields": [
-                        {
-                            "name": "id",
-                            "type": "string",
-                            "description": "Unique identifier"
-                        },
-                        {
-                            "name": "value",
-                            "type": "number",
-                            "description": "Numeric value"
-                        }
+                        {"name": "id", "type": "string", "description": "Unique identifier"},
+                        {"name": "value", "type": "number", "description": "Numeric value"},
                     ]
                 },
                 "marketplace": {
@@ -143,41 +122,43 @@ class ODPSIntegrationTestBase(TestCase):
                             "name": "Basic Plan",
                             "price": 9.99,
                             "currency": "USD",
-                            "billingPeriod": "monthly"
+                            "billingPeriod": "monthly",
                         },
                         {
                             "planID": "premium",
                             "name": "Premium Plan",
                             "price": 29.99,
                             "currency": "USD",
-                            "billingPeriod": "monthly"
-                        }
+                            "billingPeriod": "monthly",
+                        },
                     ],
                     "accessMethods": {
                         "api": {
                             "methodID": "api",
                             "type": "API",
-                            "endpoint": "https://api.example.com/v1"
+                            "endpoint": "https://api.example.com/v1",
                         },
                         "download": {
                             "methodID": "download",
                             "type": "DOWNLOAD",
-                            "url": "https://example.com/download"
-                        }
+                            "url": "https://example.com/download",
+                        },
                     },
                     "paymentGateways": {
                         "stripe": {
                             "gatewayID": "stripe",
                             "name": "Stripe",
                             "type": "stripe",
-                            "enabled": True
+                            "enabled": True,
                         }
-                    }
-                }
-            }
+                    },
+                },
+            },
         }
 
-    def _create_odps_contract(self, product_id: Optional[str] = None, asset_id: Optional[str] = None) -> Contract:
+    def _create_odps_contract(
+        self, product_id: str | None = None, asset_id: str | None = None
+    ) -> Contract:
         """Create an ODPS contract"""
         odps_doc = self.sample_odps_doc.copy()
         if product_id:
@@ -189,7 +170,7 @@ class ODPSIntegrationTestBase(TestCase):
             odps_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            asset_id=asset_id
+            asset_id=asset_id,
         )
 
     def _create_odcs_contract(self, name: str) -> Contract:
@@ -202,11 +183,8 @@ class ODPSIntegrationTestBase(TestCase):
             "name": name,
             "version": "1.0.0",
             "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"},
-                    {"name": "value", "type": "number"}
-                ]
-            }
+                "fields": [{"name": "id", "type": "string"}, {"name": "value", "type": "number"}]
+            },
         }
 
         return self.contract_service.create_contract(
@@ -214,13 +192,14 @@ class ODPSIntegrationTestBase(TestCase):
             original_format="JSON",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS
+            original_spec_type=OriginalSpecType.ODCS,
         )
 
 
 # ============================================================================
 # 10.1.51.1: Contracts Service with ODPS Integration
 # ============================================================================
+
 
 class ContractsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
     """
@@ -258,7 +237,7 @@ class ContractsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
             odps_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            asset_id=str(odps_contract.asset.id) if odps_contract.asset else None
+            asset_id=str(odps_contract.asset.id) if odps_contract.asset else None,
         )
 
         self.assertIsNotNone(updated_contract)
@@ -272,8 +251,7 @@ class ContractsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
         # For integration tests, we verify the contract exists and can be retrieved
         # Actual deletion would require proper role setup
         retrieved_contract = self.contract_service.get_contract(
-            contract_id=str(odps_contract.id),
-            tenant_id=str(self.tenant.id)
+            contract_id=str(odps_contract.id), tenant_id=str(self.tenant.id)
         )
         self.assertIsNotNone(retrieved_contract)
         self.assertEqual(retrieved_contract.id, odps_contract.id)
@@ -283,8 +261,7 @@ class ContractsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
         odps_contract = self._create_odps_contract()
 
         result = self.contract_service.validate_contract(
-            contract_id=str(odps_contract.id),
-            tenant_id=str(self.tenant.id)
+            contract_id=str(odps_contract.id), tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(result)
@@ -296,7 +273,7 @@ class ContractsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
         odps_contract = self._create_odps_contract()
 
         # Wait for normalization (if async)
-        time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
+        time.sleep(0.5)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
         # Refresh from database
         odps_contract.refresh_from_db()
@@ -314,22 +291,20 @@ class ContractsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
         # Create ODPS contract with product.contract.spec field for linking
         odps_doc = self.sample_odps_doc.copy()
         # Add contract spec with inline ODCS
-        odps_doc["product"]["contract"] = {
-            "spec": odcs_data
-        }
+        odps_doc["product"]["contract"] = {"spec": odcs_data}
         odps_raw = json.dumps(odps_doc, indent=2)
         odps_contract = self.odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Link ODPS to ODCS (note: parameter order is odcs_contract_id first)
         linked_odps_contract = self.contract_service.link_odps_to_odcs(
             odcs_contract_id=str(odcs_contract.id),
             odps_contract_id=str(odps_contract.id),
-            tenant_id=str(self.tenant.id)
+            tenant_id=str(self.tenant.id),
         )
 
         self.assertIsNotNone(linked_odps_contract)
@@ -352,28 +327,25 @@ class ContractsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
         # Create ODPS contract with product.contract.spec field for linking
         odps_doc = self.sample_odps_doc.copy()
         # Add contract spec with inline ODCS
-        odps_doc["product"]["contract"] = {
-            "spec": odcs_data
-        }
+        odps_doc["product"]["contract"] = {"spec": odcs_data}
         odps_raw = json.dumps(odps_doc, indent=2)
         odps_contract = self.odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Link first
         self.contract_service.link_odps_to_odcs(
             odcs_contract_id=str(odcs_contract.id),
             odps_contract_id=str(odps_contract.id),
-            tenant_id=str(self.tenant.id)
+            tenant_id=str(self.tenant.id),
         )
 
         # Unlink (uses odcs_contract_id)
         self.contract_service.unlink_odps_from_odcs(
-            odcs_contract_id=str(odcs_contract.id),
-            tenant_id=str(self.tenant.id)
+            odcs_contract_id=str(odcs_contract.id), tenant_id=str(self.tenant.id)
         )
 
         # Verify unlink
@@ -388,9 +360,7 @@ class ContractsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
         odps_contract = self._create_odps_contract()
 
         exported = self.odps_service.export_odps(
-            contract_id=str(odps_contract.id),
-            output_format="json",
-            tenant_id=str(self.tenant.id)
+            contract_id=str(odps_contract.id), output_format="json", tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(exported)
@@ -405,9 +375,7 @@ class ContractsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
 
         # Download uses export_odps internally
         downloaded_content = self.odps_service.export_odps(
-            contract_id=str(odps_contract.id),
-            output_format="json",
-            tenant_id=str(self.tenant.id)
+            contract_id=str(odps_contract.id), output_format="json", tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(downloaded_content)
@@ -436,7 +404,7 @@ class ContractsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
             odps_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            asset_id=str(asset.id)
+            asset_id=str(asset.id),
         )
 
         self.assertEqual(odps_contract_v2.version, 2)
@@ -446,6 +414,7 @@ class ContractsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
 # ============================================================================
 # 10.1.51.2: Assets Service with ODPS Integration
 # ============================================================================
+
 
 class AssetsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
     """
@@ -471,7 +440,7 @@ class AssetsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
             asset_id=str(asset.id),
             odps_contract_id=str(odps_contract.id),
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         self.assertIsNotNone(linked_contract)
@@ -482,7 +451,7 @@ class AssetsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
         asset1 = AssetFactoryEnhanced.create_asset(
             tenant=self.tenant, created_by=self.user, status=AssetStatus.ACTIVE
         )
-        asset2 = AssetFactoryEnhanced.create_asset(
+        AssetFactoryEnhanced.create_asset(
             tenant=self.tenant, created_by=self.user, status=AssetStatus.ACTIVE
         )
 
@@ -490,8 +459,7 @@ class AssetsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
 
         # List assets - verify ODPS contract exists
         odps_contracts = self.asset_service.get_odps_contracts_for_asset(
-            asset_id=str(asset1.id),
-            tenant_id=str(self.tenant.id)
+            asset_id=str(asset1.id), tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(odps_contracts)
@@ -508,8 +476,7 @@ class AssetsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
 
         # Get ODPS contracts for asset
         odps_contracts = self.asset_service.get_odps_contracts_for_asset(
-            asset_id=str(asset.id),
-            tenant_id=str(self.tenant.id)
+            asset_id=str(asset.id), tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(odps_contracts)
@@ -522,12 +489,11 @@ class AssetsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
             tenant=self.tenant, created_by=self.user, status=AssetStatus.ACTIVE
         )
 
-        odps_contract = self._create_odps_contract(asset_id=str(asset.id))
+        self._create_odps_contract(asset_id=str(asset.id))
 
         # Get marketplace data from ODPS
         marketplace_data = self.marketplace_service.get_odps_contract_for_asset(
-            asset_id=str(asset.id),
-            tenant_id=str(self.tenant.id)
+            asset_id=str(asset.id), tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(marketplace_data)
@@ -538,6 +504,7 @@ class AssetsServiceODPSIntegrationTest(ODPSIntegrationTestBase):
 # ============================================================================
 # 10.1.51.3: Marketplace Service with ODPS Integration
 # ============================================================================
+
 
 class MarketplaceServiceODPSIntegrationTest(ODPSIntegrationTestBase):
     """
@@ -560,8 +527,7 @@ class MarketplaceServiceODPSIntegrationTest(ODPSIntegrationTestBase):
 
         # Get marketplace policy from ODPS
         marketplace_policy = self.marketplace_service.get_marketplace_policy_from_odps(
-            contract_id=str(odps_contract.id),
-            tenant_id=str(self.tenant.id)
+            contract_id=str(odps_contract.id), tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(marketplace_policy)
@@ -580,8 +546,7 @@ class MarketplaceServiceODPSIntegrationTest(ODPSIntegrationTestBase):
 
         # Get marketplace policy
         marketplace_policy = self.marketplace_service.get_marketplace_policy_from_odps(
-            contract_id=str(odps_contract.id),
-            tenant_id=str(self.tenant.id)
+            contract_id=str(odps_contract.id), tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(marketplace_policy)
@@ -599,8 +564,7 @@ class MarketplaceServiceODPSIntegrationTest(ODPSIntegrationTestBase):
 
         # Get marketplace policy
         marketplace_policy = self.marketplace_service.get_marketplace_policy_from_odps(
-            contract_id=str(odps_contract.id),
-            tenant_id=str(self.tenant.id)
+            contract_id=str(odps_contract.id), tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(marketplace_policy)
@@ -614,12 +578,11 @@ class MarketplaceServiceODPSIntegrationTest(ODPSIntegrationTestBase):
             tenant=self.tenant, created_by=self.user, status=AssetStatus.ACTIVE
         )
 
-        odps_contract = self._create_odps_contract(asset_id=str(asset.id))
+        self._create_odps_contract(asset_id=str(asset.id))
 
         # Get ODPS contract for asset
         odps_data = self.marketplace_service.get_odps_contract_for_asset(
-            asset_id=str(asset.id),
-            tenant_id=str(self.tenant.id)
+            asset_id=str(asset.id), tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(odps_data)
@@ -633,16 +596,15 @@ class MarketplaceServiceODPSIntegrationTest(ODPSIntegrationTestBase):
         asset1 = AssetFactoryEnhanced.create_asset(
             tenant=self.tenant, created_by=self.user, status=AssetStatus.ACTIVE
         )
-        asset2 = AssetFactoryEnhanced.create_asset(
+        AssetFactoryEnhanced.create_asset(
             tenant=self.tenant, created_by=self.user, status=AssetStatus.ACTIVE
         )
 
-        odps_contract1 = self._create_odps_contract(asset_id=str(asset1.id))
+        self._create_odps_contract(asset_id=str(asset1.id))
 
         # Get ODPS contract for asset to verify filtering capability
         odps_data = self.marketplace_service.get_odps_contract_for_asset(
-            asset_id=str(asset1.id),
-            tenant_id=str(self.tenant.id)
+            asset_id=str(asset1.id), tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(odps_data)
@@ -652,6 +614,7 @@ class MarketplaceServiceODPSIntegrationTest(ODPSIntegrationTestBase):
 # ============================================================================
 # 10.1.51.4: Semantic Service with ODPS Integration
 # ============================================================================
+
 
 class SemanticServiceODPSIntegrationTest(ODPSIntegrationTestBase):
     """
@@ -669,9 +632,7 @@ class SemanticServiceODPSIntegrationTest(ODPSIntegrationTestBase):
 
         # Map ODPS to semantic
         semantic_resource = map_odps_to_semantic(
-            contract=odps_contract,
-            tenant=self.tenant,
-            use_cache=False
+            contract=odps_contract, tenant=self.tenant, use_cache=False
         )
 
         # Note: Semantic service might not be available in test environment
@@ -688,7 +649,7 @@ class SemanticServiceODPSIntegrationTest(ODPSIntegrationTestBase):
         semantic_resource = map_odps_contract_to_semantic_via_service(
             contract_id=str(odps_contract.id),
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Note: Semantic service might not be available in test environment
@@ -701,9 +662,7 @@ class SemanticServiceODPSIntegrationTest(ODPSIntegrationTestBase):
 
         # Map to semantic
         semantic_resource = map_odps_to_semantic(
-            contract=odps_contract,
-            tenant=self.tenant,
-            use_cache=False
+            contract=odps_contract, tenant=self.tenant, use_cache=False
         )
 
         # Note: Semantic service might not be available in test environment
@@ -715,6 +674,7 @@ class SemanticServiceODPSIntegrationTest(ODPSIntegrationTestBase):
 # ============================================================================
 # 10.1.51.5: Search Service with ODPS Integration
 # ============================================================================
+
 
 class SearchServiceODPSIntegrationTest(ODPSIntegrationTestBase):
     """
@@ -738,10 +698,8 @@ class SearchServiceODPSIntegrationTest(ODPSIntegrationTestBase):
         self.assertEqual(search_index.resource_id, odps_contract.id)
 
         # Search for product
-        results, total = self.search_service.search(
-            query="Test Product",
-            tenant_id=str(self.tenant.id),
-            resource_type="CONTRACT"
+        results, _total = self.search_service.search(
+            query="Test Product", tenant_id=str(self.tenant.id), resource_type="CONTRACT"
         )
 
         self.assertIsNotNone(results)
@@ -757,10 +715,8 @@ class SearchServiceODPSIntegrationTest(ODPSIntegrationTestBase):
         SearchIndexer.index_contract(odps_contract)
 
         # Search with query (ODPS contracts should be indexed)
-        results, total = self.search_service.search(
-            query="Test Product",
-            tenant_id=str(self.tenant.id),
-            resource_type="CONTRACT"
+        results, _total = self.search_service.search(
+            query="Test Product", tenant_id=str(self.tenant.id), resource_type="CONTRACT"
         )
 
         self.assertIsNotNone(results)
@@ -777,10 +733,8 @@ class SearchServiceODPSIntegrationTest(ODPSIntegrationTestBase):
         SearchIndexer.index_contract(odps_contract2)
 
         # Search
-        results, total = self.search_service.search(
-            query="Test Product",
-            tenant_id=str(self.tenant.id),
-            resource_type="CONTRACT"
+        results, _total = self.search_service.search(
+            query="Test Product", tenant_id=str(self.tenant.id), resource_type="CONTRACT"
         )
 
         self.assertIsNotNone(results)
@@ -790,6 +744,7 @@ class SearchServiceODPSIntegrationTest(ODPSIntegrationTestBase):
 # ============================================================================
 # 10.1.51.6: All Other Services with ODPS Integration
 # ============================================================================
+
 
 class DataQualityServiceODPSIntegrationTest(ODPSIntegrationTestBase):
     """
@@ -903,34 +858,29 @@ class LineageServiceODPSIntegrationTest(ODPSIntegrationTestBase):
         # Create ODPS contract with product.contract.spec field for linking
         odps_doc = self.sample_odps_doc.copy()
         # Add contract spec with inline ODCS
-        odps_doc["product"]["contract"] = {
-            "spec": odcs_data
-        }
+        odps_doc["product"]["contract"] = {"spec": odcs_data}
         odps_raw = json.dumps(odps_doc, indent=2)
         odps_contract = self.odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            asset_id=str(asset.id)
+            asset_id=str(asset.id),
         )
 
         # Link ODPS to ODCS
         self.contract_service.link_odps_to_odcs(
             odcs_contract_id=str(odcs_contract.id),
             odps_contract_id=str(odps_contract.id),
-            tenant_id=str(self.tenant.id)
+            tenant_id=str(self.tenant.id),
         )
 
         # Test lineage service with ODPS contract
-        lineage_service = LineageService(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        lineage_service = LineageService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         # Get lineage for ODPS contract
         lineage = lineage_service.get_contract_lineage(
-            contract_id=str(odps_contract.id),
-            tenant_id=str(self.tenant.id)
+            contract_id=str(odps_contract.id), tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(lineage)
@@ -963,16 +913,14 @@ class VersioningServiceODPSIntegrationTest(ODPSIntegrationTestBase):
             odps_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            asset_id=str(asset.id)
+            asset_id=str(asset.id),
         )
 
         self.assertEqual(odps_contract_v2.version, 2)
 
         # Get version history
         versions = Contract.objects.filter(
-            tenant=self.tenant,
-            asset=asset,
-            original_spec_type=OriginalSpecType.ODPS
+            tenant=self.tenant, asset=asset, original_spec_type=OriginalSpecType.ODPS
         ).order_by("version")
 
         self.assertEqual(len(versions), 2)

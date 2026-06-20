@@ -2,7 +2,7 @@
 Workflow state consistency tests under concurrency. Real engine and DB; no mocks.
 """
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 from django.db import connection
 

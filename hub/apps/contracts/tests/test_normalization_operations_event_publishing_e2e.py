@@ -28,6 +28,7 @@ class NormalizationOperationsEventPublishingE2ETest(ContractsAPITestBase):
 
         # Reset event bus singleton so override_settings takes effect
         import hub.apps.core.events.bus as _bus_mod
+
         _bus_mod._event_bus = None
 
     def test_update_contract_publishes_normalization_events(self):
@@ -195,7 +196,7 @@ class NormalizationOperationsEventPublishingE2ETest(ContractsAPITestBase):
         # Execute normalization job
         try:
             _execute_odps_normalization_job(job)
-        except Exception as e:
+        except Exception:
             # Job may fail, but events should still be published
             pass
 
@@ -246,7 +247,7 @@ class NormalizationOperationsEventPublishingE2ETest(ContractsAPITestBase):
             "original_format": "JSON",
         }
 
-        response = self.client.post(url, data, format="json")
+        self.client.post(url, data, format="json")
 
         # Contract creation may succeed or fail, but normalization events should not be published
         # (because contract_id is not available during normalization)

@@ -1,4 +1,5 @@
 """Phase 98: CORS header validation tests."""
+
 import pytest
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -18,11 +19,13 @@ class CORSSecurityTest(TestCase):
         )
         acao = response.get("Access-Control-Allow-Origin", "")
         self.assertNotEqual(
-            acao, "https://evil.com",
+            acao,
+            "https://evil.com",
             "CORS should not allow arbitrary origins",
         )
         self.assertNotEqual(
-            acao, "*",
+            acao,
+            "*",
             "CORS should not use wildcard in non-dev",
         )
 

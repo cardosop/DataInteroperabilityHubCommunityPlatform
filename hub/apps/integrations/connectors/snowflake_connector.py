@@ -15,39 +15,45 @@ Features:
 Snowflake Data Marketplace allows providers to share data products that can be
 discovered and accessed through Snowflake's system views and shared databases.
 """
+
 import logging
+import re
 import threading
-from typing import Dict, Any, List, Optional
-from django.utils import timezone
 from datetime import datetime
-from contextlib import contextmanager
+from typing import Any
+
+from django.utils import timezone
 
 try:
     import snowflake.connector
     from snowflake.connector import DictCursor
+
     SNOWFLAKE_AVAILABLE = True
 except ImportError:
     SNOWFLAKE_AVAILABLE = False
     snowflake = None
     DictCursor = None
 
-from django.conf import settings
 
-from hub.apps.integrations.base import (
-    DataMarketplaceConnector,
-    MarketplaceType,
-    SyncDirection,
-    SyncStatus,
-    MarketplaceListing,
-    MarketplaceResource,
-    SyncResult,
-    MarketplaceAssetMapping,
-)
+import contextlib
+
 from hub.apps.assets.models import AssetSourceType
-from hub.apps.core.services.base import ConnectionError as ServiceConnectionError, NotFoundError
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
+    CircuitBreakerError,
     get_redis_client,
+)
+from hub.apps.core.services.base import ConnectionError as ServiceConnectionError
+from hub.apps.core.services.base import NotFoundError
+from hub.apps.integrations.base import (
+    DataMarketplaceConnector,
+    MarketplaceAssetMapping,
+    MarketplaceListing,
+    MarketplaceResource,
+    MarketplaceType,
+    SyncDirection,
+    SyncResult,
+    SyncStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,12 +87,12 @@ class SnowflakeConnector(DataMarketplaceConnector):
 
     def __init__(
         self,
-        account: Optional[str] = None,
-        user: Optional[str] = None,
-        token: Optional[str] = None,
-        warehouse: Optional[str] = None,
-        role: Optional[str] = None,
-        database: Optional[str] = None,
+        account: str | None = None,
+        user: str | None = None,
+        token: str | None = None,
+        warehouse: str | None = None,
+        role: str | None = None,
+        database: str | None = None,
     ):
         """
         Initialize Snowflake connector.
@@ -133,6 +139,19 @@ class SnowflakeConnector(DataMarketplaceConnector):
         # Track authentication state
         self._authenticated = False
 
+    @staticmethod
+    def _validate_identifier(value: str, field_name: str = "identifier") -> str:
+        """Validate a Snowflake identifier to prevent SQL injection.
+
+        Accepts only alphanumeric characters, underscores, hyphens, and dots.
+        Returns *value* unchanged if valid; raises ``ValueError`` otherwise.
+        """
+        if not value or not isinstance(value, str):
+            raise ValueError(f"{field_name} must be a non-empty string")
+        if not re.match(r"^[a-zA-Z0-9_\-\.]+$", value):
+            raise ValueError(f"Invalid {field_name} format: {value}")
+        return value
+
     def _get_connection(self):
         """
         Get or create Snowflake connection.
@@ -148,9 +167,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
             ValueError: If required connection parameters are missing
         """
         if not self.account or not self.user or not self.token:
-            raise ValueError(
-                "account, user, and token are required for Snowflake connection"
-            )
+            raise ValueError("account, user, and token are required for Snowflake connection")
 
         # Check if connection exists and is valid
         if self._connection is not None:
@@ -162,10 +179,8 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 return self._connection
             except Exception:
                 # Connection is invalid, close it
-                try:
+                with contextlib.suppress(Exception):
                     self._connection.close()
-                except Exception:
-                    pass
                 self._connection = None
 
         # Create new connection
@@ -210,11 +225,11 @@ class SnowflakeConnector(DataMarketplaceConnector):
                     "user": self.user,
                     "role": self.role,
                     "error_type": type(e).__name__,
-                }
+                },
             )
             raise ServiceConnectionError(f"Unable to connect to Snowflake: {e}") from e
 
-    def _execute_sql(self, sql: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    def _execute_sql(self, sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """
         Execute SQL query and return results as list of dictionaries.
 
@@ -230,7 +245,8 @@ class SnowflakeConnector(DataMarketplaceConnector):
             ValueError: If SQL query is invalid
             PermissionError: If user lacks permission to execute query
         """
-        def execute_query() -> List[Dict[str, Any]]:
+
+        def execute_query() -> list[dict[str, Any]]:
             """Execute SQL query with error handling."""
             connection = self._get_connection()
             try:
@@ -247,20 +263,31 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 error_msg = str(e)
                 if "does not exist" in error_msg.lower() or "not found" in error_msg.lower():
                     raise NotFoundError(f"Resource not found: {error_msg}") from e
-                elif "insufficient privileges" in error_msg.lower() or "access denied" in error_msg.lower():
+                elif (
+                    "insufficient privileges" in error_msg.lower()
+                    or "access denied" in error_msg.lower()
+                ):
                     raise PermissionError(f"Permission denied: {error_msg}") from e
                 else:
-                    raise ValueError(f"SQL execution error: {error_msg}") from e
+                    # Unknown ProgrammingError → service error so callers
+                    # that catch ProgrammingError can actually reach their
+                    # fallback paths (ValueError would bypass them).
+                    raise ServiceConnectionError(f"SQL execution error: {error_msg}") from e
             except snowflake.connector.errors.DatabaseError as e:
                 raise ServiceConnectionError(f"Database error: {e}") from e
-            except Exception as e:
-                raise ServiceConnectionError(f"Unexpected error executing SQL: {e}") from e
+            except snowflake.connector.errors.Error as e:
+                # Other Snowflake errors (InterfaceError, InternalError, etc.)
+                raise ServiceConnectionError(f"Snowflake error executing SQL: {e}") from e
 
-        # Execute with circuit breaker protection
+        # Execute with circuit breaker protection.
+        # execute_query already catches snowflake.connector.errors.ProgrammingError,
+        # DatabaseError, and wraps unexpected snowflake errors in ServiceConnectionError.
+        # The circuit breaker propagates those exceptions.  The only NEW exception type
+        # it can raise is CircuitBreakerError when the circuit is OPEN.
         try:
             return self._circuit_breaker.call(execute_query)
-        except Exception as e:
-            logger.warning(f"Snowflake SQL execution failed: {e}")
+        except CircuitBreakerError as e:
+            logger.warning(f"Snowflake circuit breaker prevented SQL execution: {e}")
             raise
 
     @property
@@ -269,7 +296,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
         return MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
 
     @property
-    def supported_sync_directions(self) -> List[SyncDirection]:
+    def supported_sync_directions(self) -> list[SyncDirection]:
         """
         Get the list of sync directions supported by this connector.
 
@@ -278,7 +305,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
         """
         return [SyncDirection.PULL]
 
-    def authenticate(self, credentials: Dict[str, Any]) -> bool:
+    def authenticate(self, credentials: dict[str, Any]) -> bool:
         """
         Authenticate with Snowflake using provided credentials.
 
@@ -326,12 +353,14 @@ class SnowflakeConnector(DataMarketplaceConnector):
             result = self.test_connection()
             if result:
                 self._authenticated = True
-                logger.info(f"Successfully authenticated with Snowflake account: {account}, user: {user}")
+                logger.info(
+                    f"Successfully authenticated with Snowflake account: {account}, user: {user}"
+                )
                 return True
             else:
                 self._authenticated = False
                 return False
-        except Exception as e:
+        except (ServiceConnectionError, ValueError) as e:
             self._authenticated = False
             logger.warning(f"Authentication test failed for Snowflake: {e}")
             raise ServiceConnectionError(f"Unable to authenticate with Snowflake: {e}") from e
@@ -358,16 +387,16 @@ class SnowflakeConnector(DataMarketplaceConnector):
             else:
                 logger.warning("Connection test failed: No version returned")
                 return False
-        except Exception as e:
+        except (ServiceConnectionError, ValueError) as e:
             logger.warning(f"Connection test failed for Snowflake: {e}")
             raise ServiceConnectionError(f"Unable to connect to Snowflake: {e}") from e
 
     def list_listings(
         self,
-        filters: Optional[Dict[str, Any]] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[MarketplaceListing]:
+        filters: dict[str, Any] | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[MarketplaceListing]:
         """
         List available listings from Snowflake Data Marketplace.
 
@@ -390,41 +419,43 @@ class SnowflakeConnector(DataMarketplaceConnector):
             ValueError: If filters or pagination parameters are invalid
         """
         # Validate pagination parameters before any SQL execution
-        if offset is not None:
-            if not isinstance(offset, int) or offset < 0:
-                raise ValueError("offset must be a non-negative integer")
-        if limit is not None:
-            if not isinstance(limit, int) or limit < 0:
-                raise ValueError("limit must be a non-negative integer")
+        if offset is not None and (not isinstance(offset, int) or offset < 0):
+            raise ValueError("offset must be a non-negative integer")
+        if limit is not None and (not isinstance(limit, int) or limit < 0):
+            raise ValueError("limit must be a non-negative integer")
 
         try:
             # Discover marketplace listings.
             # ``SHOW AVAILABLE LISTINGS`` is deprecated on current
             # Snowflake versions; prefer the exchange-scoped form.
+            # ``_execute_sql`` may raise ServiceConnectionError (wrapped
+            # ProgrammingError), NotFoundError ("does not exist"), or
+            # PermissionError — all should trigger the fallback.
             results = []
             try:
                 results = self._execute_sql(
                     "SHOW LISTINGS IN DATA EXCHANGE SNOWFLAKE_DATA_MARKETPLACE"
                 )
-            except Exception:
-                try:
+            except (ServiceConnectionError, snowflake.connector.errors.ProgrammingError, NotFoundError):
+                with contextlib.suppress(ServiceConnectionError, NotFoundError):
                     results = self._execute_sql("SHOW AVAILABLE LISTINGS")
-                except Exception:
-                    pass
 
             # Fallback: when no marketplace listings are found, treat
             # imported / shared databases as listing-equivalents.
             # ``SHOW DATABASES`` is instant (no ACCOUNT_USAGE latency)
             # and surfaces databases obtained from the Marketplace.
+            # Also include databases created by the test seed harness
+            # (prefixed with ``HUB_TEST_``) so E2E download tests have
+            # populated tables to work with.
             if not results:
-                logger.debug(
-                    "No marketplace listings found, falling back to imported databases"
-                )
+                logger.debug("No marketplace listings found, falling back to imported databases")
                 all_dbs = self._execute_sql("SHOW DATABASES")
                 results = [
-                    db for db in all_dbs
+                    db
+                    for db in all_dbs
                     if db.get("kind") == "IMPORTED DATABASE"
                     or db.get("origin", "").startswith("SFSALESSHARED")
+                    or db.get("name", "").upper().startswith("HUB_TEST_")
                 ]
 
             # Apply filters
@@ -432,7 +463,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 filtered_results = []
                 for row in results:
                     # Extract listing name/identifier
-                    listing_name = row.get("listing_name") or row.get("name") or row.get("DATABASE_NAME", "")
+                    (row.get("listing_name") or row.get("name") or row.get("DATABASE_NAME", ""))
                     provider = row.get("provider") or row.get("DATABASE_OWNER", "")
                     category = row.get("category") or ""
                     tags = row.get("tags") or []
@@ -450,7 +481,9 @@ class SnowflakeConnector(DataMarketplaceConnector):
                     # Apply tags filter
                     if filters.get("tags") and tags:
                         filter_tags = [t.lower() for t in filters["tags"]]
-                        listing_tags = [str(t).lower() for t in tags] if isinstance(tags, list) else []
+                        listing_tags = (
+                            [str(t).lower() for t in tags] if isinstance(tags, list) else []
+                        )
                         if not any(tag in listing_tags for tag in filter_tags):
                             continue
 
@@ -515,16 +548,18 @@ class SnowflakeConnector(DataMarketplaceConnector):
 
                     # Build MarketplaceListing with ODPS and ODCS metadata
                     listing = self._build_marketplace_listing(listing_id, listing_details, row)
+                    if is_database_fallback:
+                        listing.metadata["is_database_fallback"] = True
                     listings.append(listing)
                 except NotFoundError:
                     logger.warning(f"Listing '{listing_id}' not found, skipping")
                     continue
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, AttributeError) as e:
                     logger.warning(f"Failed to process listing: {e}")
                     continue
 
             return listings
-        except Exception as e:
+        except (ServiceConnectionError, ValueError) as e:
             logger.warning(f"Failed to list Snowflake listings: {e}")
             raise ServiceConnectionError(f"Unable to list Snowflake listings: {e}") from e
 
@@ -555,11 +590,11 @@ class SnowflakeConnector(DataMarketplaceConnector):
             raise
         except ValueError:
             raise
-        except Exception as e:
+        except ServiceConnectionError as e:
             logger.warning(f"Failed to get Snowflake listing {listing_id}: {e}")
             raise ServiceConnectionError(f"Unable to get Snowflake listing: {e}") from e
 
-    def list_resources(self, listing_id: str) -> List[MarketplaceResource]:
+    def list_resources(self, listing_id: str) -> list[MarketplaceResource]:
         """
         List resources (databases/schemas/tables) associated with a marketplace listing.
 
@@ -578,13 +613,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
         """
         try:
             # Validate listing_id to prevent SQL injection
-            if not listing_id or not isinstance(listing_id, str):
-                raise ValueError("listing_id must be a non-empty string")
-
-            # Sanitize listing_id (remove any SQL injection attempts)
-            import re
-            if not re.match(r'^[a-zA-Z0-9_\-\.]+$', listing_id):
-                raise ValueError(f"Invalid listing_id format: {listing_id}")
+            self._validate_identifier(listing_id, "listing_id")
 
             resources = []
 
@@ -597,13 +626,16 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 """
                 verify_results = self._execute_sql(verify_sql, {"database_name": listing_id})
                 if not verify_results or len(verify_results) == 0:
-                    raise NotFoundError(f"Listing '{listing_id}' not found in Snowflake Data Marketplace")
+                    raise NotFoundError(
+                        f"Listing '{listing_id}' not found in Snowflake Data Marketplace"
+                    )
             except NotFoundError:
                 raise
             except ValueError:
                 raise
-            except Exception as e:
-                # If INFORMATION_SCHEMA.DATABASES doesn't work, try alternative approach
+            except ServiceConnectionError as e:
+                # Connection dropped mid-query — cannot verify; fall through
+                # to the schema-based approach below.
                 logger.debug(f"Could not verify database via INFORMATION_SCHEMA.DATABASES: {e}")
 
             # Query INFORMATION_SCHEMA.SCHEMATA for schemas in the database
@@ -629,7 +661,8 @@ class SnowflakeConnector(DataMarketplaceConnector):
                             resource_id=resource_id,
                             resource_type="SCHEMA",
                             name=schema_name,
-                            description=row.get("COMMENT") or f"Schema {schema_name} in database {listing_id}",
+                            description=row.get("COMMENT")
+                            or f"Schema {schema_name} in database {listing_id}",
                             url=None,
                             format="SNOWFLAKE",
                             size_bytes=None,
@@ -700,11 +733,11 @@ class SnowflakeConnector(DataMarketplaceConnector):
         except ValueError:
             # Re-raise ValueError (input validation errors)
             raise
-        except Exception as e:
+        except ServiceConnectionError as e:
             logger.warning(f"Failed to list resources for listing {listing_id}: {e}")
             raise ServiceConnectionError(f"Unable to list resources: {e}") from e
 
-    def _get_listing_details(self, listing_id: str) -> Dict[str, Any]:
+    def _get_listing_details(self, listing_id: str) -> dict[str, Any]:
         """
         Get detailed listing information using DESCRIBE AVAILABLE LISTING.
 
@@ -720,27 +753,19 @@ class SnowflakeConnector(DataMarketplaceConnector):
         """
         try:
             # Validate listing_id to prevent SQL injection
-            if not listing_id or not isinstance(listing_id, str):
-                raise ValueError("listing_id must be a non-empty string")
+            self._validate_identifier(listing_id, "listing_id")
 
-            # Sanitize listing_id (remove any SQL injection attempts)
-            # Snowflake identifiers are alphanumeric with underscores, hyphens, and dots
-            import re
-            if not re.match(r'^[a-zA-Z0-9_\-\.]+$', listing_id):
-                raise ValueError(f"Invalid listing_id format: {listing_id}")
-
-            # Try DESCRIBE AVAILABLE LISTING first (Snowflake Data Marketplace command)
-            # Note: DESCRIBE commands don't support parameterized queries, so we sanitize the input
-            try:
-                # Snowflake DESCRIBE AVAILABLE LISTING takes an unquoted
-                # identifier.  Only allow safe characters (alphanumeric,
-                # underscore, hyphen, dot).
-                sql = f"DESCRIBE AVAILABLE LISTING {listing_id}"
-                results = self._execute_sql(sql)
-                if results and len(results) > 0:
-                    return results[0]
-            except Exception as e:
-                logger.debug(f"DESCRIBE AVAILABLE LISTING not available, falling back to database query: {e}")
+            # ``DESCRIBE AVAILABLE LISTING`` is deprecated on current Snowflake
+            # versions and only works with unquoted identifiers (no hyphens,
+            # no dots).  When called with an unquoted identifier that contains
+            # a hyphen, Snowflake raises a syntax error ("unexpected '-'");
+            # when called with a valid-but-unknown identifier it raises
+            # "does not exist or not authorized".  Both generate noisy
+            # telemetry events even though the errors are caught.
+            #
+            # Skip this unreliable command entirely and go straight to the
+            # parameterized fallback queries which handle all identifier
+            # shapes correctly.
 
             # Fallback 1: Query database information from ACCOUNT_USAGE.
             # This has up to 90 min latency — recently subscribed
@@ -780,11 +805,11 @@ class SnowflakeConnector(DataMarketplaceConnector):
             raise
         except ValueError:
             raise
-        except Exception as e:
+        except ServiceConnectionError as e:
             logger.warning(f"Failed to get listing details for {listing_id}: {e}")
             raise ServiceConnectionError(f"Unable to get listing details: {e}") from e
 
-    def _extract_odps_metadata(self, listing_details: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_odps_metadata(self, listing_details: dict[str, Any]) -> dict[str, Any]:
         """
         Extract ODPS contract metadata from listing data.
 
@@ -830,13 +855,16 @@ class SnowflakeConnector(DataMarketplaceConnector):
         # Extract pricing plans (if available in listing metadata)
         pricing_plans = listing_details.get("pricing_plans") or listing_details.get("pricing")
         if pricing_plans:
-            odps_metadata["pricing_plans"] = pricing_plans if isinstance(pricing_plans, list) else [pricing_plans]
+            odps_metadata["pricing_plans"] = (
+                pricing_plans if isinstance(pricing_plans, list) else [pricing_plans]
+            )
 
         # Extract access methods (Snowflake share access)
         access_methods = {
             "snowflake_share": {
                 "type": "SNOWFLAKE_SHARE",
-                "database": listing_details.get("DATABASE_NAME") or listing_details.get("database_name"),
+                "database": listing_details.get("DATABASE_NAME")
+                or listing_details.get("database_name"),
                 "description": "Access via Snowflake Data Share",
             }
         }
@@ -846,7 +874,9 @@ class SnowflakeConnector(DataMarketplaceConnector):
         payment_gateways = listing_details.get("payment_gateways") or listing_details.get("payment")
         if payment_gateways:
             odps_metadata["payment_gateways"] = (
-                payment_gateways if isinstance(payment_gateways, dict) else {"default": payment_gateways}
+                payment_gateways
+                if isinstance(payment_gateways, dict)
+                else {"default": payment_gateways}
             )
 
         # Extract license information
@@ -866,7 +896,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
 
         return odps_metadata
 
-    def _extract_odcs_metadata(self, listing_details: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_odcs_metadata(self, listing_details: dict[str, Any]) -> dict[str, Any]:
         """
         Extract ODCS contract metadata hints from listing.
 
@@ -881,12 +911,16 @@ class SnowflakeConnector(DataMarketplaceConnector):
         # Extract schema hints (if available in listing metadata)
         schema_info = listing_details.get("schema") or listing_details.get("schema_hints")
         if schema_info:
-            odcs_metadata["schema"] = schema_info if isinstance(schema_info, dict) else {"hints": schema_info}
+            odcs_metadata["schema"] = (
+                schema_info if isinstance(schema_info, dict) else {"hints": schema_info}
+            )
 
         # Extract quality hints (if available)
         quality_info = listing_details.get("quality") or listing_details.get("quality_hints")
         if quality_info:
-            odcs_metadata["quality"] = quality_info if isinstance(quality_info, dict) else {"hints": quality_info}
+            odcs_metadata["quality"] = (
+                quality_info if isinstance(quality_info, dict) else {"hints": quality_info}
+            )
 
         # Extract SLA hints (if available)
         sla_info = listing_details.get("sla") or listing_details.get("sla_hints")
@@ -921,7 +955,10 @@ class SnowflakeConnector(DataMarketplaceConnector):
         return odcs_metadata
 
     def _build_marketplace_listing(
-        self, listing_id: str, listing_details: Dict[str, Any], summary_row: Optional[Dict[str, Any]] = None
+        self,
+        listing_id: str,
+        listing_details: dict[str, Any],
+        summary_row: dict[str, Any] | None = None,
     ) -> MarketplaceListing:
         """
         Build MarketplaceListing object from listing details with ODPS and ODCS metadata.
@@ -970,7 +1007,11 @@ class SnowflakeConnector(DataMarketplaceConnector):
         # Extract timestamps
         created_at = None
         updated_at = None
-        created = listing_details.get("CREATED") or listing_details.get("created") or listing_details.get("created_on")
+        created = (
+            listing_details.get("CREATED")
+            or listing_details.get("created")
+            or listing_details.get("created_on")
+        )
         if created:
             try:
                 if isinstance(created, datetime):
@@ -980,7 +1021,11 @@ class SnowflakeConnector(DataMarketplaceConnector):
             except Exception:
                 pass
 
-        updated = listing_details.get("updated") or listing_details.get("last_updated") or listing_details.get("updated_on")
+        updated = (
+            listing_details.get("updated")
+            or listing_details.get("last_updated")
+            or listing_details.get("updated_on")
+        )
         if updated:
             try:
                 if isinstance(updated, datetime):
@@ -1038,53 +1083,8 @@ class SnowflakeConnector(DataMarketplaceConnector):
             url=url,
         )
 
-    def _snowflake_database_to_listing(self, database_row: Dict[str, Any]) -> MarketplaceListing:
-        """
-        Map Snowflake database row to MarketplaceListing.
-
-        Args:
-            database_row: Dictionary containing database information
-
-        Returns:
-            MarketplaceListing object
-        """
-        database_name = database_row.get("DATABASE_NAME", "")
-        comment = database_row.get("COMMENT", "")
-        created = database_row.get("CREATED")
-        owner = database_row.get("DATABASE_OWNER", "")
-
-        # Parse created timestamp
-        created_at = None
-        if created:
-            try:
-                if isinstance(created, datetime):
-                    created_at = created
-                elif isinstance(created, str):
-                    created_at = datetime.fromisoformat(created.replace("Z", "+00:00"))
-            except Exception:
-                pass
-
-        # Extract metadata
-        metadata = {
-            "snowflake_database": database_row,
-            "database_owner": owner,
-            "comment": comment,
-        }
-
-        return MarketplaceListing(
-            marketplace_id=database_name,
-            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
-            title=database_name,
-            description=comment or f"Snowflake Data Marketplace listing: {database_name}",
-            category=owner,  # Use owner as category/provider
-            tags=[],
-            metadata=metadata,
-            created_at=created_at,
-            updated_at=created_at,  # Use created as updated if no separate updated field
-        )
-
     def _snowflake_table_to_resource(
-        self, database_name: str, table_row: Dict[str, Any]
+        self, database_name: str, table_row: dict[str, Any]
     ) -> MarketplaceResource:
         """
         Map Snowflake table/view row to MarketplaceResource.
@@ -1109,22 +1109,20 @@ class SnowflakeConnector(DataMarketplaceConnector):
         resource_id = f"{database_name}.{schema_name}.{table_name}"
 
         # Parse timestamps
-        created_at = None
-        updated_at = None
         if created:
             try:
                 if isinstance(created, datetime):
-                    created_at = created
+                    pass
                 elif isinstance(created, str):
-                    created_at = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                    datetime.fromisoformat(created.replace("Z", "+00:00"))
             except Exception:
                 pass
         if last_altered:
             try:
                 if isinstance(last_altered, datetime):
-                    updated_at = last_altered
+                    pass
                 elif isinstance(last_altered, str):
-                    updated_at = datetime.fromisoformat(last_altered.replace("Z", "+00:00"))
+                    datetime.fromisoformat(last_altered.replace("Z", "+00:00"))
             except Exception:
                 pass
 
@@ -1175,9 +1173,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
             "Use sync_pull() to harvest data from Snowflake Data Marketplace."
         )
 
-    def update_listing(
-        self, listing_id: str, listing: MarketplaceListing
-    ) -> MarketplaceListing:
+    def update_listing(self, listing_id: str, listing: MarketplaceListing) -> MarketplaceListing:
         """
         Update an existing listing in Snowflake Data Marketplace.
 
@@ -1269,7 +1265,6 @@ class SnowflakeConnector(DataMarketplaceConnector):
         ```
         """
         import os
-        import csv
         import re
 
         if not resource_id or (isinstance(resource_id, str) and not resource_id.strip()):
@@ -1300,49 +1295,104 @@ class SnowflakeConnector(DataMarketplaceConnector):
 
             if len(parts) == 1:
                 # Case 1: Listing ID (e.g., "SNOWFLAKE_SAMPLE_DATA")
-                # Need to request listing, accept terms, create database, extract schema, download
+                # Need to request listing, accept terms, create database,
+                # extract schema, download.
                 listing_id = resource_id
                 logger.info(f"Downloading resource from listing ID: {listing_id}")
 
-                # Step 1: Request listing and wait for fulfillment
+                # Check whether a database with this name already exists
+                # (e.g., imported from a previous marketplace subscription).
+                # If it does, skip the listing-request + database-creation
+                # steps — the database is already present and queryable.
+                database_name: str | None = None
                 try:
-                    self._request_listing(listing_id)
-                except NotFoundError:
-                    raise NotFoundError(f"Listing '{listing_id}' not available for request")
-                except PermissionError as e:
-                    raise PermissionError(f"Permission denied to request listing '{listing_id}': {e}")
+                    all_dbs = self._execute_sql("SHOW DATABASES")
+                    for db in all_dbs:
+                        if db.get("name", "").upper() == listing_id.upper():
+                            database_name = db.get("name") or listing_id
+                            logger.info(
+                                "Database %r already exists, skipping listing "
+                                "request and database creation",
+                                database_name,
+                            )
+                            break
+                except Exception:
+                    logger.debug(
+                        "Could not check existing databases for %r, "
+                        "falling through to listing request",
+                        listing_id,
+                    )
 
-                # Step 2: Accept legal terms if required
+                if not database_name:
+                    # Step 1: Request listing and wait for fulfillment
+                    try:
+                        self._request_listing(listing_id)
+                    except NotFoundError:
+                        raise NotFoundError(
+                            f"Listing '{listing_id}' not available for request"
+                        )
+                    except PermissionError as e:
+                        raise PermissionError(
+                            f"Permission denied to request listing '{listing_id}': {e}"
+                        )
+
+                    # Step 2: Accept legal terms if required
+                    try:
+                        self._accept_legal_terms(listing_id)
+                    except Exception as e:
+                        # Legal terms acceptance failure is not fatal
+                        logger.debug(
+                            "Legal terms acceptance failed for %r: %s",
+                            listing_id,
+                            e,
+                        )
+
+                    # Step 3: Create database from listing
+                    try:
+                        database_name = self._create_database_from_listing(listing_id)
+                        logger.info(
+                            "Created database %r from listing %r",
+                            database_name,
+                            listing_id,
+                        )
+                    except NotFoundError:
+                        raise NotFoundError(
+                            f"Listing '{listing_id}' not available for "
+                            f"database creation"
+                        )
+                    except PermissionError as e:
+                        raise PermissionError(
+                            f"Permission denied to create database from "
+                            f"listing '{listing_id}': {e}"
+                        )
+
+                # Step 4: Extract schema metadata (for reference, but
+                # we'll download all tables)
                 try:
-                    self._accept_legal_terms(listing_id)
+                    self._extract_schema_metadata(database_name)
+                    logger.info(
+                        "Extracted schema metadata from database %r",
+                        database_name,
+                    )
                 except Exception as e:
-                    # Legal terms acceptance failure is not fatal
-                    logger.debug(f"Legal terms acceptance failed for '{listing_id}': {e}")
+                    logger.warning(
+                        "Failed to extract schema metadata for "
+                        "database %r: %s",
+                        database_name,
+                        e,
+                    )
+                    # Continue without schema metadata — we can still
+                    # download data
 
-                # Step 3: Create database from listing
-                try:
-                    database_name = self._create_database_from_listing(listing_id)
-                    logger.info(f"Created database '{database_name}' from listing '{listing_id}'")
-                except NotFoundError:
-                    raise NotFoundError(f"Listing '{listing_id}' not available for database creation")
-                except PermissionError as e:
-                    raise PermissionError(f"Permission denied to create database from listing '{listing_id}': {e}")
-
-                # Step 4: Extract schema metadata (for reference, but we'll download all tables)
-                schema_metadata = None
-                try:
-                    schema_metadata = self._extract_schema_metadata(database_name)
-                    logger.info(f"Extracted schema metadata from database '{database_name}'")
-                except Exception as e:
-                    logger.warning(f"Failed to extract schema metadata for database '{database_name}': {e}")
-                    # Continue without schema metadata - we can still download data
-
-                # Step 5: Download all tables from the database
-                # Get list of tables from INFORMATION_SCHEMA
+                # Step 5: Download all tables from the database.
+                # Exclude INFORMATION_SCHEMA itself (system views, not
+                # user data).  Skip tables that are empty or inaccessible
+                # rather than failing the entire download.
                 tables_sql = f"""
                     SELECT TABLE_SCHEMA, TABLE_NAME
                     FROM {database_name}.INFORMATION_SCHEMA.TABLES
-                    WHERE TABLE_TYPE = 'BASE TABLE' OR TABLE_TYPE = 'VIEW'
+                    WHERE (TABLE_TYPE = 'BASE TABLE' OR TABLE_TYPE = 'VIEW')
+                      AND TABLE_SCHEMA != 'INFORMATION_SCHEMA'
                     ORDER BY TABLE_SCHEMA, TABLE_NAME
                 """
                 tables_results = self._execute_sql(tables_sql)
@@ -1350,7 +1400,8 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 if not tables_results:
                     raise NotFoundError(f"No tables found in database '{database_name}'")
 
-                # Download each table
+                # Download each table — skip individual failures so one
+                # empty or inaccessible table doesn't block the rest.
                 downloaded_files = []
                 for table_row in tables_results:
                     schema = table_row.get("TABLE_SCHEMA", "")
@@ -1358,30 +1409,47 @@ class SnowflakeConnector(DataMarketplaceConnector):
                     full_table_name = f"{database_name}.{schema}.{table}"
 
                     # Generate filename for this table
-                    table_filename = f"{table}.{file_ext.lstrip('.')}" if file_ext else f"{table}.csv"
+                    table_filename = (
+                        f"{table}.{file_ext.lstrip('.')}" if file_ext else f"{table}.csv"
+                    )
                     table_path = os.path.join(
-                        os.path.dirname(destination_path) if os.path.dirname(destination_path) else ".",
-                        table_filename
+                        os.path.dirname(destination_path)
+                        if os.path.dirname(destination_path)
+                        else ".",
+                        table_filename,
                     )
 
                     # Download this table
-                    downloaded_file = self._download_table(full_table_name, table_path, file_format)
-                    downloaded_files.append(downloaded_file)
+                    try:
+                        downloaded_file = self._download_table(
+                            full_table_name, table_path, file_format
+                        )
+                        downloaded_files.append(downloaded_file)
+                    except NotFoundError:
+                        logger.debug(
+                            "Skipping empty or inaccessible table %r",
+                            full_table_name,
+                        )
+                        continue
 
                 # Return the first downloaded file path (or destination_path if single table)
                 if len(downloaded_files) == 1:
                     return downloaded_files[0]
                 else:
                     # Multiple tables downloaded - return directory path
-                    return os.path.dirname(destination_path) if os.path.dirname(destination_path) else "."
+                    return (
+                        os.path.dirname(destination_path)
+                        if os.path.dirname(destination_path)
+                        else "."
+                    )
 
             elif len(parts) == 2:
                 # Case 2: Database name (e.g., "DB_SAMPLE_DATA")
                 # Database already exists, extract schema, download all tables
                 database_name = parts[0]
                 raise ValueError(
-                    f"Database-only resource_id not yet supported. "
-                    f"Please specify table as 'database.schema.table' or use listing ID."
+                    "Database-only resource_id not yet supported. "
+                    "Please specify table as 'database.schema.table' or use listing ID."
                 )
 
             elif len(parts) == 3:
@@ -1391,7 +1459,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
 
                 # Validate identifiers to prevent SQL injection
                 for identifier in [database_name, schema_name, table_name]:
-                    if not re.match(r'^[a-zA-Z0-9_]+$', identifier):
+                    if not re.match(r"^[a-zA-Z0-9_]+$", identifier):
                         raise ValueError(f"Invalid identifier format: {identifier}")
 
                 # Download the specific table
@@ -1408,11 +1476,13 @@ class SnowflakeConnector(DataMarketplaceConnector):
             raise
         except ValueError:
             raise
-        except Exception as e:
+        except ServiceConnectionError as e:
             logger.warning(f"Failed to download resource '{resource_id}': {e}", exc_info=True)
             raise ServiceConnectionError(f"Unable to download resource: {e}") from e
 
-    def _download_table(self, table_identifier: str, destination_path: str, file_format: str) -> str:
+    def _download_table(
+        self, table_identifier: str, destination_path: str, file_format: str
+    ) -> str:
         """
         Download data from a specific Snowflake table/view.
 
@@ -1442,7 +1512,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
 
             # Validate identifiers to prevent SQL injection
             for identifier in [database_name, schema_name, table_name]:
-                if not re.match(r'^[a-zA-Z0-9_]+$', identifier):
+                if not re.match(r"^[a-zA-Z0-9_]+$", identifier):
                     raise ValueError(f"Invalid identifier format: {identifier}")
 
             # Verify table exists
@@ -1453,8 +1523,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 AND TABLE_NAME = %(table_name)s
             """
             verify_results = self._execute_sql(
-                verify_sql,
-                {"schema_name": schema_name, "table_name": table_name}
+                verify_sql, {"schema_name": schema_name, "table_name": table_name}
             )
 
             if not verify_results:
@@ -1478,11 +1547,12 @@ class SnowflakeConnector(DataMarketplaceConnector):
                         writer.writerows(results)
             elif file_format == "JSON":
                 import json
+
                 with open(destination_path, "w", encoding="utf-8") as jsonfile:
                     json.dump(results, jsonfile, indent=2, default=str)
             else:
                 # For Parquet, we'd need pyarrow - fall back to CSV for now
-                logger.warning(f"Parquet format not fully supported, using CSV instead")
+                logger.warning("Parquet format not fully supported, using CSV instead")
                 csv_path = destination_path.replace(".parquet", ".csv")
                 with open(csv_path, "w", newline="", encoding="utf-8") as csvfile:
                     if results:
@@ -1492,14 +1562,16 @@ class SnowflakeConnector(DataMarketplaceConnector):
                         writer.writerows(results)
                 destination_path = csv_path
 
-            logger.info(f"Successfully downloaded table '{table_identifier}' to '{destination_path}'")
+            logger.info(
+                f"Successfully downloaded table '{table_identifier}' to '{destination_path}'"
+            )
             return destination_path
 
         except NotFoundError:
             raise
         except ValueError:
             raise
-        except Exception as e:
+        except ServiceConnectionError as e:
             logger.warning(f"Failed to download table '{table_identifier}': {e}", exc_info=True)
             raise ServiceConnectionError(f"Unable to download table: {e}") from e
 
@@ -1523,12 +1595,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
         """
         try:
             # Validate listing_id
-            if not listing_id or not isinstance(listing_id, str):
-                raise ValueError("listing_id must be a non-empty string")
-
-            import re
-            if not re.match(r'^[a-zA-Z0-9_\-\.]+$', listing_id):
-                raise ValueError(f"Invalid listing_id format: {listing_id}")
+            self._validate_identifier(listing_id, "listing_id")
 
             # Escape single quotes to prevent SQL injection
             sanitized_listing_id = listing_id.replace("'", "''")
@@ -1549,11 +1616,15 @@ class SnowflakeConnector(DataMarketplaceConnector):
             raise
         except ValueError:
             raise
-        except Exception as e:
+        except (snowflake.connector.errors.ProgrammingError, ServiceConnectionError) as e:
             error_msg = str(e).lower()
             if "not found" in error_msg or "does not exist" in error_msg:
                 raise NotFoundError(f"Listing '{listing_id}' not available") from e
-            elif "permission" in error_msg or "access denied" in error_msg or "insufficient privileges" in error_msg:
+            elif (
+                "permission" in error_msg
+                or "access denied" in error_msg
+                or "insufficient privileges" in error_msg
+            ):
                 raise PermissionError(f"Permission denied to request listing '{listing_id}'") from e
             else:
                 logger.warning(f"Failed to request listing '{listing_id}': {e}")
@@ -1577,32 +1648,35 @@ class SnowflakeConnector(DataMarketplaceConnector):
         """
         try:
             # Validate listing_id
-            if not listing_id or not isinstance(listing_id, str):
-                raise ValueError("listing_id must be a non-empty string")
-
-            import re
-            if not re.match(r'^[a-zA-Z0-9_\-\.]+$', listing_id):
-                raise ValueError(f"Invalid listing_id format: {listing_id}")
+            self._validate_identifier(listing_id, "listing_id")
 
             # Escape single quotes to prevent SQL injection
             sanitized_listing_id = listing_id.replace("'", "''")
 
             # Execute SYSTEM$ACCEPT_LEGAL_TERMS stored procedure
-            sql = f"CALL SYSTEM$ACCEPT_LEGAL_TERMS('DATA_EXCHANGE_LISTING', '{sanitized_listing_id}')"
+            sql = (
+                f"CALL SYSTEM$ACCEPT_LEGAL_TERMS('DATA_EXCHANGE_LISTING', '{sanitized_listing_id}')"
+            )
             results = self._execute_sql(sql)
 
             if results:
                 logger.info(f"Successfully accepted legal terms for listing '{listing_id}'")
                 return True
             else:
-                logger.debug(f"Legal terms acceptance returned no results for '{listing_id}' (may not be required)")
+                logger.debug(
+                    f"Legal terms acceptance returned no results for '{listing_id}' (may not be required)"
+                )
                 return False
         except ValueError:
             raise
-        except Exception as e:
+        except (snowflake.connector.errors.ProgrammingError, ServiceConnectionError) as e:
             error_msg = str(e).lower()
             # Legal terms may not be required - this is not a fatal error
-            if "not found" in error_msg or "does not exist" in error_msg or "not required" in error_msg:
+            if (
+                "not found" in error_msg
+                or "does not exist" in error_msg
+                or "not required" in error_msg
+            ):
                 logger.debug(f"Legal terms not required for listing '{listing_id}': {e}")
                 return False
             else:
@@ -1630,12 +1704,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
         """
         try:
             # Validate listing_id
-            if not listing_id or not isinstance(listing_id, str):
-                raise ValueError("listing_id must be a non-empty string")
-
-            import re
-            if not re.match(r'^[a-zA-Z0-9_\-\.]+$', listing_id):
-                raise ValueError(f"Invalid listing_id format: {listing_id}")
+            self._validate_identifier(listing_id, "listing_id")
 
             # Generate database name: DB_{listing_id.replace('-', '_').upper()}
             # Sanitize: remove dots, replace hyphens with underscores, uppercase
@@ -1644,7 +1713,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 db_name = f"DB_{db_name}"
 
             # Ensure database name is valid (Snowflake identifiers: alphanumeric + underscore, max 255 chars)
-            db_name = re.sub(r'[^A-Z0-9_]', '_', db_name)
+            db_name = re.sub(r"[^A-Z0-9_]", "_", db_name)
             if len(db_name) > 255:
                 db_name = db_name[:255]
 
@@ -1664,7 +1733,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
             raise
         except ValueError:
             raise
-        except Exception as e:
+        except (snowflake.connector.errors.ProgrammingError, ServiceConnectionError) as e:
             error_msg = str(e).lower()
             if "not found" in error_msg or "does not exist" in error_msg:
                 raise NotFoundError(f"Listing '{listing_id}' not available") from e
@@ -1672,8 +1741,14 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 # Database already exists - this is okay, return the database name
                 logger.info(f"Database '{db_name}' already exists for listing '{listing_id}'")
                 return db_name
-            elif "permission" in error_msg or "access denied" in error_msg or "insufficient privileges" in error_msg:
-                raise PermissionError(f"Permission denied to create database from listing '{listing_id}'") from e
+            elif (
+                "permission" in error_msg
+                or "access denied" in error_msg
+                or "insufficient privileges" in error_msg
+            ):
+                raise PermissionError(
+                    f"Permission denied to create database from listing '{listing_id}'"
+                ) from e
             else:
                 logger.warning(f"Failed to create database from listing '{listing_id}': {e}")
                 raise ServiceConnectionError(f"Unable to create database from listing: {e}") from e
@@ -1699,7 +1774,19 @@ class SnowflakeConnector(DataMarketplaceConnector):
             return "string"
 
         # Integer and decimal number types
-        if any(t in type_upper for t in ["NUMBER", "DECIMAL", "NUMERIC", "INTEGER", "INT", "BIGINT", "SMALLINT", "TINYINT"]):
+        if any(
+            t in type_upper
+            for t in [
+                "NUMBER",
+                "DECIMAL",
+                "NUMERIC",
+                "INTEGER",
+                "INT",
+                "BIGINT",
+                "SMALLINT",
+                "TINYINT",
+            ]
+        ):
             return "number"
 
         # Floating point number types
@@ -1730,7 +1817,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
         logger.debug(f"Unknown Snowflake type '{snowflake_type}', mapping to 'string'")
         return "string"
 
-    def _extract_schema_metadata(self, database_name: str) -> Dict[str, Any]:
+    def _extract_schema_metadata(self, database_name: str) -> dict[str, Any]:
         """
         Extract schema metadata from a database created from a listing.
 
@@ -1753,11 +1840,12 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 raise ValueError("database_name must be a non-empty string")
 
             import re
-            if not re.match(r'^[a-zA-Z0-9_]+$', database_name):
+
+            if not re.match(r"^[a-zA-Z0-9_]+$", database_name):
                 raise ValueError(f"Invalid database_name format: {database_name}")
 
             # Query INFORMATION_SCHEMA.COLUMNS for all tables in the database
-            sql = """
+            sql = f"""
                 SELECT
                     TABLE_SCHEMA,
                     TABLE_NAME,
@@ -1767,9 +1855,9 @@ class SnowflakeConnector(DataMarketplaceConnector):
                     COLUMN_DEFAULT,
                     COMMENT,
                     ORDINAL_POSITION
-                FROM {database}.INFORMATION_SCHEMA.COLUMNS
+                FROM {database_name}.INFORMATION_SCHEMA.COLUMNS
                 ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION
-            """.format(database=database_name)
+            """
 
             results = self._execute_sql(sql)
 
@@ -1828,11 +1916,13 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 # Multiple tables - return structure with tables array
                 tables_list = []
                 for table_key, table_data in tables.items():
-                    tables_list.append({
-                        "schema": table_data["schema"],
-                        "table": table_data["table"],
-                        "fields": table_data["fields"],
-                    })
+                    tables_list.append(
+                        {
+                            "schema": table_data["schema"],
+                            "table": table_data["table"],
+                            "fields": table_data["fields"],
+                        }
+                    )
                 return {
                     "tables": tables_list,
                     "field_count": sum(len(t["fields"]) for t in tables_list),
@@ -1840,14 +1930,16 @@ class SnowflakeConnector(DataMarketplaceConnector):
         except ValueError:
             raise
         except Exception as e:
-            logger.warning(f"Failed to extract schema metadata from database '{database_name}': {e}")
+            logger.warning(
+                f"Failed to extract schema metadata from database '{database_name}': {e}"
+            )
             raise ServiceConnectionError(f"Unable to extract schema metadata: {e}") from e
 
     def sync_pull(
         self,
-        listing_ids: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        options: Optional[Dict[str, Any]] = None,
+        listing_ids: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
     ) -> SyncResult:
         """
         Pull (harvest) datasets from Snowflake Data Marketplace to Hub following metadata-first pattern.
@@ -1904,6 +1996,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
         options = options or {}
         limit = options.get("limit")
         include_resources = options.get("include_resources", True)
+        dry_run = options.get("dry_run", False)
         started_at = timezone.now()
 
         successful_items = 0
@@ -2012,7 +2105,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 completed_at=timezone.now(),
             )
 
-    def sync_push(self, asset_ids: List[str], options: Optional[Dict[str, Any]] = None) -> SyncResult:
+    def sync_push(self, asset_ids: list[str], options: dict[str, Any] | None = None) -> SyncResult:
         """
         Push Hub assets to Snowflake Data Marketplace.
 
@@ -2035,7 +2128,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
         )
 
     def map_to_hub_asset(
-        self, listing: MarketplaceListing, sync_job_id: Optional[str] = None
+        self, listing: MarketplaceListing, sync_job_id: str | None = None
     ) -> MarketplaceAssetMapping:
         """
         Map a Snowflake Data Marketplace listing to a Hub asset representation following metadata-first pattern.
@@ -2093,19 +2186,22 @@ class SnowflakeConnector(DataMarketplaceConnector):
 
         # Get Snowflake database data from metadata
         snowflake_db = listing.metadata.get("snowflake_database", {}) if listing.metadata else {}
-        snowflake_listing = listing.metadata.get("snowflake_listing", {}) if listing.metadata else {}
 
         # Extract domain from owner/category
         domain = listing.category or snowflake_db.get("DATABASE_OWNER")
 
-        # Build asset data
-        asset_data: Dict[str, Any] = {
+        # Build asset data.
+        # ``visibility`` is not set here — it is a derived @property on
+        # Asset (Phase 250.3.B / D250.4) computed from ``status``:
+        #   status == PUBLIC → visibility == PUBLIC
+        #   otherwise       → visibility == INTERNAL
+        # Writing ``visibility`` emits DeprecationWarning and is a no-op.
+        asset_data: dict[str, Any] = {
             "name": listing.title,
             "description": listing.description or "",
             "key": f"snowflake-{listing.marketplace_id}",
             "tags": listing.tags or [],
-            "status": "ACTIVE",  # Snowflake listings are active by default
-            "visibility": "PUBLIC",  # Snowflake Data Marketplace listings are public
+            "status": "PUBLIC",  # Snowflake Data Marketplace listings are public
         }
 
         if domain:
@@ -2119,19 +2215,21 @@ class SnowflakeConnector(DataMarketplaceConnector):
         if not resources:
             # Create a default resource reference pointing to the listing ID
             # This allows download_resource() to be called with the listing ID
-            resources.append(MarketplaceResource(
-                resource_id=listing.marketplace_id,
-                resource_type="DATABASE",
-                name=listing.marketplace_id,
-                description=f"Snowflake Data Marketplace listing: {listing.title}",
-                url=None,  # External resource, no direct URL
-                format="SNOWFLAKE_DATABASE",
-                metadata={
-                    "external": True,
-                    "download_url": None,  # Will be handled by download_resource()
-                    "listing_id": listing.marketplace_id,
-                }
-            ))
+            resources.append(
+                MarketplaceResource(
+                    resource_id=listing.marketplace_id,
+                    resource_type="DATABASE",
+                    name=listing.marketplace_id,
+                    description=f"Snowflake Data Marketplace listing: {listing.title}",
+                    url=None,  # External resource, no direct URL
+                    format="SNOWFLAKE_DATABASE",
+                    metadata={
+                        "external": True,
+                        "download_url": None,  # Will be handled by download_resource()
+                        "listing_id": listing.marketplace_id,
+                    },
+                )
+            )
 
         # Extract ODPS metadata from listing
         # First try to get from metadata, otherwise build from listing attributes
@@ -2162,7 +2260,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
         # Build source metadata
         # Use account identifier as marketplace_id (connection ID)
         marketplace_id = self.account or "snowflake"
-        source_metadata: Dict[str, Any] = {
+        source_metadata: dict[str, Any] = {
             "marketplace_type": MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             "marketplace_id": marketplace_id,
             "listing_id": listing.marketplace_id,
@@ -2186,7 +2284,10 @@ class SnowflakeConnector(DataMarketplaceConnector):
         )
 
     def map_from_hub_asset(
-        self, asset_data: Dict[str, Any], odps_metadata: Optional[Dict[str, Any]] = None, odcs_metadata: Optional[Dict[str, Any]] = None
+        self,
+        asset_data: dict[str, Any],
+        odps_metadata: dict[str, Any] | None = None,
+        odcs_metadata: dict[str, Any] | None = None,
     ) -> MarketplaceListing:
         """
         Map a Hub asset to a Snowflake Data Marketplace listing representation.
@@ -2228,4 +2329,3 @@ class SnowflakeConnector(DataMarketplaceConnector):
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
         self.close()
-

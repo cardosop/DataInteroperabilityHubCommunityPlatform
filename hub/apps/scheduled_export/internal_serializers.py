@@ -6,7 +6,7 @@ Request/response serializers for scheduled export internal endpoints.
 
 from rest_framework import serializers
 
-from .models import ScheduledExportRun, ScheduledExportRunStatus
+from .models import ScheduledExportRunStatus
 
 
 class InternalCreateExportRunSerializer(serializers.Serializer):

@@ -1,9 +1,9 @@
 """
 Unit tests for audit event querying and filtering.
 """
-import uuid
 
-from datetime import timedelta
+import uuid
+from datetime import UTC, timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -24,10 +24,9 @@ def _grant_role(user, tenant, name):
     read their tenant's events. Granting AUDITOR in setUp preserves the
     original assertions under the stricter gate.
     """
-    role, _ = Role.objects.get_or_create(
-        tenant=tenant, name=name, defaults={"description": name}
-    )
+    role, _ = Role.objects.get_or_create(tenant=tenant, name=name, defaults={"description": name})
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
+
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -231,13 +230,10 @@ class AuditEventQueryingTest(TestCase):
         # Create an old event with timestamp in the past (20 days ago to ensure it's outside the range)
         # Since audit events are immutable and have auto_now_add, we need to use update() to bypass save()
         # Ensure timezone-aware timestamp
-        from datetime import timezone as dt_timezone
-
-        from hub.apps.audit.models import AuditEvent
 
         old_timestamp = timezone.now() - timedelta(days=20)
         if old_timestamp.tzinfo is None:
-            old_timestamp = timezone.make_aware(old_timestamp, dt_timezone.utc)
+            old_timestamp = timezone.make_aware(old_timestamp, UTC)
 
         old_event = create_audit_event(
             resource_type="TEST", action="OLD_ACTION", actor_user=self.user1, tenant=self.tenant1
@@ -253,12 +249,11 @@ class AuditEventQueryingTest(TestCase):
 
         # Filter for recent events (last 7 days)
         # Ensure start_date is timezone-aware and in UTC
-        from datetime import timezone as dt_timezone
 
         start_datetime = timezone.now() - timedelta(days=7)
         if start_datetime.tzinfo is None:
-            start_datetime = timezone.make_aware(start_datetime, dt_timezone.utc)
-        start_datetime = start_datetime.astimezone(dt_timezone.utc)
+            start_datetime = timezone.make_aware(start_datetime, UTC)
+        start_datetime = start_datetime.astimezone(UTC)
         start_date = start_datetime.isoformat()
 
         response = self.client.get(f"/api/v1/audit/audit-events/?start_date={start_date}")
@@ -286,9 +281,7 @@ class AuditEventQueryingTest(TestCase):
 
                     event_timestamp = parser.isoparse(event_timestamp_str)
                     if event_timestamp.tzinfo is None:
-                        from datetime import timezone as dt_timezone
-
-                        event_timestamp = timezone.make_aware(event_timestamp, dt_timezone.utc)
+                        event_timestamp = timezone.make_aware(event_timestamp, UTC)
                     self.assertGreaterEqual(
                         event_timestamp,
                         start_datetime,

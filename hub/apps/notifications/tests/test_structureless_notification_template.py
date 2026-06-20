@@ -8,10 +8,10 @@ contract rollout. These tests pin the canonical context shape and the
 key copy elements so a stray edit does not silently break the in-app
 and email notifications driving the rollout.
 """
+
 from django.test import TestCase, override_settings
 
 from hub.apps.notifications.templates import render_email_template
-
 
 CANONICAL_CONTEXT = {
     "tenant_name": "Acme Data Co",

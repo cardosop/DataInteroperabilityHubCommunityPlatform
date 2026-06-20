@@ -27,6 +27,7 @@ the audit emission either.
 
 Tests use real Django ORM rows + real DRF APIClient — no mocks.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -34,6 +35,7 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.audit import event_types as audit_event_types
@@ -45,8 +47,6 @@ from hub.apps.testing.role_support import (
     ensure_user_has_tenant_admin_role,
 )
 from hub.apps.users.models import UserStatus
-from rest_framework import status
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -74,7 +74,7 @@ class FeatureFlagsGetTest(TestCase):
     """``GET`` returns the per-tenant flag values + descriptions."""
 
     def test_admin_can_read_flags(self):
-        tenant, user = _seed_tenant()
+        _tenant, user = _seed_tenant()
         ensure_user_has_tenant_admin_role(user)
 
         client = APIClient()
@@ -84,14 +84,14 @@ class FeatureFlagsGetTest(TestCase):
         body = resp.json()
         # Each flag entry carries its current value + a description
         # so the SPA can render a self-describing settings page.
-        self.assertIn('flags', body)
+        self.assertIn("flags", body)
         flags = {f["name"]: f for f in body["flags"]}
         # Anchor on a few flags from prior phases — these are the
         # canonical per-tenant capability flags the admin surface
         # exposes:
-        self.assertIn('asset_creation_enabled', flags)
-        self.assertIn('federated_import_enabled', flags)
-        self.assertIn('asset_auto_activate_on_gate_pass', flags)
+        self.assertIn("asset_creation_enabled", flags)
+        self.assertIn("federated_import_enabled", flags)
+        self.assertIn("asset_auto_activate_on_gate_pass", flags)
         # Each flag has the contract shape we render against.
         for f in body["flags"]:
             assert "name" in f
@@ -100,7 +100,7 @@ class FeatureFlagsGetTest(TestCase):
             assert isinstance(f["value"], bool)
 
     def test_non_admin_gets_403(self):
-        tenant, user = _seed_tenant()
+        _tenant, user = _seed_tenant()
         # DATA_PROVIDER (non-admin) — must NOT see the admin endpoint.
         ensure_user_has_data_provider_role(user)
 
@@ -145,9 +145,9 @@ class FeatureFlagsPatchTest(TestCase):
         ).order_by("-timestamp")
         self.assertEqual(after.count() - before, 1)
         ev = after.first()
-        self.assertEqual(ev.details_json['flag_name'], 'federated_import_enabled')
-        self.assertFalse(ev.details_json['previous_value'])
-        self.assertTrue(ev.details_json['new_value'])
+        self.assertEqual(ev.details_json["flag_name"], "federated_import_enabled")
+        self.assertFalse(ev.details_json["previous_value"])
+        self.assertTrue(ev.details_json["new_value"])
 
     def test_non_admin_patch_gets_403_no_side_effects(self):
         tenant, user = _seed_tenant()
@@ -178,7 +178,7 @@ class FeatureFlagsPatchTest(TestCase):
         self.assertEqual(after_audit, before_audit)
 
     def test_unknown_flag_returns_400(self):
-        tenant, user = _seed_tenant()
+        _tenant, user = _seed_tenant()
         ensure_user_has_tenant_admin_role(user)
 
         client = APIClient()
@@ -190,7 +190,7 @@ class FeatureFlagsPatchTest(TestCase):
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST, resp.content)
         body = resp.json()
-        self.assertEqual(body.get('code'), 'UNKNOWN_FLAG')
+        self.assertEqual(body.get("code"), "UNKNOWN_FLAG")
 
 
 class FeatureFlagHistoryTest(TestCase):
@@ -199,7 +199,7 @@ class FeatureFlagHistoryTest(TestCase):
     (existence-leak protection per the IDOR pattern)."""
 
     def test_admin_sees_own_tenant_history(self):
-        tenant, user = _seed_tenant()
+        _tenant, user = _seed_tenant()
         ensure_user_has_tenant_admin_role(user)
 
         client = APIClient()
@@ -215,14 +215,14 @@ class FeatureFlagHistoryTest(TestCase):
         resp = client.get("/api/v1/tenants/me/feature-flag-history/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.content)
         body = resp.json()
-        self.assertIn('events', body)
-        self.assertGreaterEqual(len(body['events']), 1)
+        self.assertIn("events", body)
+        self.assertGreaterEqual(len(body["events"]), 1)
         ev = body["events"][0]
-        self.assertEqual(ev['action'], 'TENANT_FEATURE_FLAG_UPDATED')
-        self.assertEqual(ev['details_json']['flag_name'], 'federated_import_enabled')
+        self.assertEqual(ev["action"], "TENANT_FEATURE_FLAG_UPDATED")
+        self.assertEqual(ev["details_json"]["flag_name"], "federated_import_enabled")
 
     def test_non_admin_history_gets_403(self):
-        tenant, user = _seed_tenant()
+        _tenant, user = _seed_tenant()
         ensure_user_has_data_provider_role(user)
 
         client = APIClient()

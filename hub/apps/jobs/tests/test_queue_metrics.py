@@ -1,6 +1,7 @@
 """
 Phase 277.B.071 — RQ queue depth metric tests.
 """
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,7 +18,7 @@ class TestRqQueueDepthMetric:
 
     def test_set_value_updates_labeled_gauge(self):
         labeled = rq_queue_depth.labels(queue_name="job_default", status="queued")
-        before = labeled._value.get()
+        labeled._value.get()
         labeled.set(42)
         after = labeled._value.get()
         assert after == 42
@@ -91,13 +92,9 @@ class TestEmitRqQueueDepth:
         assert result["job_critical"] == 3
 
         # Verify the gauge was updated
-        default_labeled = rq_queue_depth.labels(
-            queue_name="job_default", status="queued"
-        )
+        default_labeled = rq_queue_depth.labels(queue_name="job_default", status="queued")
         assert default_labeled._value.get() == 15
-        critical_labeled = rq_queue_depth.labels(
-            queue_name="job_critical", status="queued"
-        )
+        critical_labeled = rq_queue_depth.labels(queue_name="job_critical", status="queued")
         assert critical_labeled._value.get() == 3
 
     def test_emit_reports_registry_counts(self, settings):

@@ -45,9 +45,7 @@ class FederatedAssetModelTest(TestCase):
 
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
     # ------------------------------------------------------------------
     # Hub-native asset creation (consolidated from 3 single-assertion tests)
@@ -55,9 +53,7 @@ class FederatedAssetModelTest(TestCase):
 
     def test_create_hub_native_asset(self):
         """Hub-native asset has correct defaults: source_type, None metadata, display."""
-        asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset"
-        )
+        asset = Asset.objects.create(tenant=self.tenant, key="test-asset", name="Test Asset")
         self.assertEqual(asset.source_type, AssetSourceType.HUB_NATIVE)
         self.assertIsNone(asset.source_metadata)
         self.assertEqual(asset.get_source_type_display(), "Hub Native")
@@ -83,8 +79,7 @@ class FederatedAssetModelTest(TestCase):
             },
         )
         self.assertEqual(asset.source_type, AssetSourceType.FEDERATED)
-        self.assertEqual(asset.source_metadata["marketplace_type"],
-                         "SNOWFLAKE_DATA_MARKETPLACE")
+        self.assertEqual(asset.source_metadata["marketplace_type"], "SNOWFLAKE_DATA_MARKETPLACE")
         self.assertEqual(asset.source_metadata["listing_id"], "listing-456")
         self.assertEqual(asset.get_source_type_display(), "Federated")
 
@@ -181,9 +176,7 @@ class FederatedAssetModelTest(TestCase):
         )
         asset.refresh_from_db()
 
-        self.assertEqual(
-            asset.source_metadata["additional_info"]["provider"], "Data Provider Inc"
-        )
+        self.assertEqual(asset.source_metadata["additional_info"]["provider"], "Data Provider Inc")
         self.assertEqual(len(asset.source_metadata["sync_history"]), 2)
         self.assertEqual(asset.source_metadata["sync_history"][0]["status"], "success")
 
@@ -195,21 +188,29 @@ class FederatedAssetModelTest(TestCase):
         """Filtering by source_type returns correct assets; tenant + source_type index works."""
         # Hub-native assets
         Asset.objects.create(
-            tenant=self.tenant, key="hub-asset-1", name="Hub Asset 1",
+            tenant=self.tenant,
+            key="hub-asset-1",
+            name="Hub Asset 1",
             source_type=AssetSourceType.HUB_NATIVE,
         )
         Asset.objects.create(
-            tenant=self.tenant, key="hub-asset-2", name="Hub Asset 2",
+            tenant=self.tenant,
+            key="hub-asset-2",
+            name="Hub Asset 2",
             source_type=AssetSourceType.HUB_NATIVE,
         )
         # Federated assets
         Asset.objects.create(
-            tenant=self.tenant, key="federated-asset-1", name="Federated Asset 1",
+            tenant=self.tenant,
+            key="federated-asset-1",
+            name="Federated Asset 1",
             source_type=AssetSourceType.FEDERATED,
             source_metadata={"marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE"},
         )
         Asset.objects.create(
-            tenant=self.tenant, key="federated-asset-2", name="Federated Asset 2",
+            tenant=self.tenant,
+            key="federated-asset-2",
+            name="Federated Asset 2",
             source_type=AssetSourceType.FEDERATED,
             source_metadata={"marketplace_type": "AWS_DATA_EXCHANGE"},
         )
@@ -219,9 +220,7 @@ class FederatedAssetModelTest(TestCase):
         )
         self.assertEqual(hub_native.count(), 2)
 
-        federated = Asset.objects.filter(
-            tenant=self.tenant, source_type=AssetSourceType.FEDERATED
-        )
+        federated = Asset.objects.filter(tenant=self.tenant, source_type=AssetSourceType.FEDERATED)
         self.assertEqual(federated.count(), 2)
         for asset in federated:
             self.assertEqual(asset.source_type, AssetSourceType.FEDERATED)
@@ -264,11 +263,15 @@ class FederatedAssetModelTest(TestCase):
     def test_source_type_display(self):
         """get_source_type_display() returns correct values for both types."""
         hub_asset = Asset.objects.create(
-            tenant=self.tenant, key="hub-asset", name="Hub Asset",
+            tenant=self.tenant,
+            key="hub-asset",
+            name="Hub Asset",
             source_type=AssetSourceType.HUB_NATIVE,
         )
         fed_asset = Asset.objects.create(
-            tenant=self.tenant, key="federated-asset", name="Federated Asset",
+            tenant=self.tenant,
+            key="federated-asset",
+            name="Federated Asset",
             source_type=AssetSourceType.FEDERATED,
         )
         self.assertEqual(hub_asset.get_source_type_display(), "Hub Native")
@@ -295,9 +298,7 @@ class FederatedAssetIntegrationTest(TestCase):
 
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
     # ------------------------------------------------------------------
     # Federated asset with marketplace info (consolidated from 4 tests)
@@ -367,9 +368,7 @@ class FederatedAssetIntegrationTest(TestCase):
                 source_metadata={"marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE"},
             )
 
-        federated = Asset.objects.filter(
-            tenant=self.tenant, source_type=AssetSourceType.FEDERATED
-        )
+        federated = Asset.objects.filter(tenant=self.tenant, source_type=AssetSourceType.FEDERATED)
         self.assertEqual(federated.count(), 5)
         for asset in federated:
             self.assertEqual(asset.source_type, AssetSourceType.FEDERATED)

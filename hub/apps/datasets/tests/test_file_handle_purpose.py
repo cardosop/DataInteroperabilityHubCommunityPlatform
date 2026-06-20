@@ -22,14 +22,14 @@ constraint:
 * Choices enum: only ``primary``, ``sample``, ``schema_only`` accepted
   by the serializer; unknown values 400.
 """
+
 from __future__ import annotations
-import pytest
 
 import threading
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
-from django.db import IntegrityError
 from django.test import TestCase, TransactionTestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -393,10 +393,11 @@ class DatasetCreateConcurrencyTest(TransactionTestCase):
 
     def setUp(self):
         super().setUp()
-        from hub.apps.files.storage import S3StorageClient
         from django.db.models.signals import pre_save
+
         from hub.apps.datasets.models import Dataset
         from hub.apps.datasets.tests.conftest import _rotate_purpose
+        from hub.apps.files.storage import S3StorageClient
 
         # The session-wide ``conftest._rotate_purpose`` pre_save signal
         # auto-rotates ``file_handle_purpose`` so concurrent tests don't
@@ -420,7 +421,7 @@ class DatasetCreateConcurrencyTest(TransactionTestCase):
             self.storage_client = S3StorageClient()
             self.storage_client._ensure_bucket_exists()
             self.storage_available = True
-        except Exception:
+        except (OSError, ConnectionError, TimeoutError):
             self.storage_available = False
 
         uid = uuid.uuid4().hex[:8]
@@ -466,7 +467,7 @@ class DatasetCreateConcurrencyTest(TransactionTestCase):
         )
 
     @pytest.mark.integration
-    def test_concurrent_same_purpose_returns_one_201_and_one_409(self):
+    def test_concurrent_same_purpose_both_return_201(self):
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
         f = self._seed_file_with_bytes()

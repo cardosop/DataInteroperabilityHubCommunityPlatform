@@ -11,10 +11,10 @@ Tests the AWSDataExchangeConnector implementation including:
 - Error handling
 """
 
-import unittest
 from datetime import datetime
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
+import pytest
 from botocore.exceptions import BotoCoreError, ClientError
 from django.test import TestCase
 
@@ -28,8 +28,6 @@ from hub.apps.integrations.base import (
     SyncStatus,
 )
 from hub.apps.integrations.connectors.aws_data_exchange_connector import AWSDataExchangeConnector
-
-import pytest
 
 pytestmark = [pytest.mark.django_db]
 
@@ -315,12 +313,10 @@ class TestAWSDataExchangeConnectorConnectionTest(TestCase):
 
         with self.assertRaises(ConnectionError) as cm:
             self.connector.test_connection()
-        # Error message should contain either 'Unable to connect', 'AWS', or 'connection'
+        # Error message should indicate connection failure.
         error_msg = str(cm.exception)
         self.assertTrue(
-            "Unable to connect" in error_msg
-            or "AWS" in error_msg
-            or "connection" in error_msg.lower(),
+            "Unable to connect" in error_msg or "AWS" in error_msg,
             f"Error message '{error_msg}' does not contain expected text",
         )
 
@@ -334,9 +330,7 @@ class TestAWSDataExchangeConnectorConnectionTest(TestCase):
         error_msg = str(cm.exception)
         # Error message should mention connection failure or AWS Data Exchange
         self.assertTrue(
-            "Unable to connect" in error_msg
-            or "AWS Data Exchange" in error_msg
-            or "connection" in error_msg.lower(),
+            "Unable to connect" in error_msg or "AWS Data Exchange" in error_msg,
             f"Expected connection error message, got: {error_msg}",
         )
 
@@ -823,7 +817,7 @@ class TestAWSDataExchangeConnectorDiscoveryOperations(TestCase):
             "UpdatedAt": "2023-01-01T12:00:00Z",
         }
 
-        listings = self.connector.list_listings(filters={"origin": "OWNED", "name": "Dataset"})
+        self.connector.list_listings(filters={"origin": "OWNED", "name": "Dataset"})
 
         call_args = mock_client.list_data_sets.call_args
         self.assertEqual(call_args[1]["Origin"], "OWNED")
@@ -916,7 +910,7 @@ class TestAWSDataExchangeConnectorDiscoveryOperations(TestCase):
     @patch("hub.apps.integrations.connectors.aws_data_exchange_connector.boto3")
     def test_get_listing_not_found(self, mock_boto3, mock_get_details):
         """Test get_listing raises NotFoundError when dataset not found"""
-        from hub.apps.core.services.base import NotFoundError, PermissionError
+        from hub.apps.core.services.base import NotFoundError
 
         mock_get_details.side_effect = NotFoundError("Dataset not found")
 
@@ -957,7 +951,7 @@ class TestAWSDataExchangeConnectorDiscoveryOperations(TestCase):
     @patch("hub.apps.integrations.connectors.aws_data_exchange_connector.boto3")
     def test_list_resources_not_found(self, mock_boto3, mock_get_details):
         """Test list_resources raises NotFoundError when dataset not found"""
-        from hub.apps.core.services.base import NotFoundError, PermissionError
+        from hub.apps.core.services.base import NotFoundError
 
         mock_get_details.side_effect = NotFoundError("Dataset not found")
 
@@ -1082,7 +1076,6 @@ class TestAWSDataExchangeConnectorPullOperations(TestCase):
     )
     def test_map_to_hub_asset_with_resources(self, mock_list_resources):
         """Test map_to_hub_asset includes resources with external metadata"""
-        from hub.apps.integrations.base import MarketplaceAssetMapping
 
         listing = MarketplaceListing(
             marketplace_id="dataset-123",
@@ -1161,7 +1154,7 @@ class TestAWSDataExchangeConnectorPullOperations(TestCase):
     def test_sync_pull_with_listing_ids(self, mock_map_to_hub_asset, mock_get_listing):
         """Test sync_pull with specific listing IDs"""
         from hub.apps.assets.models import AssetSourceType
-        from hub.apps.integrations.base import MarketplaceAssetMapping, SyncResult
+        from hub.apps.integrations.base import MarketplaceAssetMapping
 
         listing = MarketplaceListing(
             marketplace_id="dataset-123",
@@ -1188,7 +1181,6 @@ class TestAWSDataExchangeConnectorPullOperations(TestCase):
     )
     def test_sync_pull_dry_run(self, mock_list_listings):
         """Test sync_pull with dry_run option"""
-        from hub.apps.integrations.base import SyncResult
 
         listing = MarketplaceListing(
             marketplace_id="dataset-123",
@@ -1246,7 +1238,7 @@ class TestAWSDataExchangeConnectorPullOperations(TestCase):
     )
     def test_get_latest_revision_no_revisions(self, mock_list_revisions):
         """Test _get_latest_revision raises NotFoundError when no revisions"""
-        from hub.apps.core.services.base import NotFoundError, PermissionError
+        from hub.apps.core.services.base import NotFoundError
 
         mock_list_revisions.return_value = {"Revisions": []}
 
@@ -1292,7 +1284,6 @@ class TestAWSDataExchangeConnectorPullOperations(TestCase):
     @patch("hub.apps.integrations.connectors.aws_data_exchange_connector.boto3")
     def test_wait_for_job_completion_success(self, mock_boto3):
         """Test _wait_for_job_completion successfully waits for job completion"""
-        import time
         from unittest.mock import patch as mock_patch
 
         mock_client = Mock()
@@ -1311,7 +1302,6 @@ class TestAWSDataExchangeConnectorPullOperations(TestCase):
     @patch("hub.apps.integrations.connectors.aws_data_exchange_connector.boto3")
     def test_wait_for_job_completion_timeout(self, mock_boto3):
         """Test _wait_for_job_completion raises TimeoutError on timeout"""
-        import time
         from unittest.mock import patch as mock_patch
 
         mock_client = Mock()
@@ -1332,7 +1322,6 @@ class TestAWSDataExchangeConnectorPullOperations(TestCase):
     @patch("hub.apps.integrations.connectors.aws_data_exchange_connector.boto3")
     def test_wait_for_job_completion_failed(self, mock_boto3):
         """Test _wait_for_job_completion raises RuntimeError when job fails"""
-        import time
         from unittest.mock import patch as mock_patch
 
         mock_client = Mock()
@@ -1539,7 +1528,6 @@ class TestAWSDataExchangeConnectorMetadataMapping(TestCase):
     def test_map_to_hub_asset_extracts_all_metadata(self, mock_list_resources):
         """Test map_to_hub_asset extracts all required metadata fields"""
         from hub.apps.assets.models import AssetSourceType
-        from hub.apps.integrations.base import MarketplaceAssetMapping
 
         listing = MarketplaceListing(
             marketplace_id="dataset-123",
@@ -2084,9 +2072,12 @@ class TestAWSDataExchangeConnectorErrorHandling(TestCase):
         with self.assertRaises(ConnectionError) as cm:
             self.connector.test_connection()
 
-        # Check that error message contains either 'transient' or 'throttling' or 'aws'
+        # Check that error message indicates a transient/throttling failure.
         error_msg = str(cm.exception).lower()
-        self.assertTrue("transient" in error_msg or "throttling" in error_msg or "aws" in error_msg)
+        self.assertTrue(
+            "transient" in error_msg or "throttling" in error_msg,
+            f"Expected transient/throttling error, got: {error_msg}",
+        )
 
     @patch(
         "hub.apps.integrations.connectors.aws_data_exchange_connector.AWSDataExchangeConnector._get_dataexchange_client"
@@ -2226,7 +2217,7 @@ class TestAWSDataExchangeConnectorDistributedTracing(TestCase):
 
         self.assertTrue(result)
         # Verify correlation context was retrieved
-        mock_get_request.assert_called()
+        mock_get_request.assert_called_once()
 
     def test_get_correlation_context(self):
         """Test _get_correlation_context method"""
@@ -2298,7 +2289,7 @@ class TestAWSDataExchangeConnectorEdgeCases(TestCase):
             self.assertEqual(listings[0].title, "Test Dataset")
             # Should handle missing fields gracefully (may be None or empty string)
             description = listings[0].description
-            self.assertTrue(description is None or description == "")
+            self.assertEqual(description, "", "Description should be empty for listing without description")
 
     @patch(
         "hub.apps.integrations.connectors.aws_data_exchange_connector.AWSDataExchangeConnector._get_dataexchange_client"
@@ -2478,7 +2469,7 @@ class TestAWSDataExchangeConnectorEdgeCases(TestCase):
         self.assertEqual(mapping.asset_data["name"], "Test Dataset")
         # Should handle missing fields gracefully (may be None or empty string)
         description = mapping.asset_data.get("description")
-        self.assertTrue(description is None or description == "")
+        self.assertEqual(description, "", "Description should be empty for listing without description")
 
     def test_download_resource_invalid_resource_id_format(self):
         """Test download_resource with invalid resource ID format"""

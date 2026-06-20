@@ -11,6 +11,7 @@ These tests are pure-stdlib and do NOT import Django. The
 bytes the server would hash; the actual server module is exercised
 in ``hub/apps/assets/tests/test_data_first_idempotency.py``.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -26,10 +27,7 @@ from datahub_interoperability.idempotency import (
     compose_idempotency_key,
 )
 
-
-_KEY_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{64}$"
-)
+_KEY_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{64}$")
 
 
 def test_header_constant_is_canonical_form():
@@ -59,7 +57,7 @@ def test_canonical_body_bytes_passes_through_bytes():
 
 
 def test_canonical_body_bytes_encodes_str_as_utf8():
-    s = "{\"unicode\": \"é\"}"
+    s = '{"unicode": "é"}'
     assert canonical_body_bytes(s) == s.encode("utf-8")
 
 

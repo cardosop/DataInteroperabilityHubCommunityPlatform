@@ -21,14 +21,13 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "split_phase7_5.cjs"
 
 
 def _has_node() -> bool:
     try:
-        res = subprocess.run(["node", "--version"], capture_output=True, timeout=10)
+        res = subprocess.run(["node", "--version"], check=False, capture_output=True, timeout=10)
         return res.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
@@ -46,7 +45,7 @@ def _node_eval(expr: str) -> str:
         "-e",
         f"const m = require('{SCRIPT}'); process.stdout.write(JSON.stringify({expr}));",
     ]
-    res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    res = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=15)
     assert res.returncode == 0, f"node failed: {res.stderr}"
     return res.stdout
 
@@ -100,6 +99,7 @@ def test_extractTestBlocks_handles_nested_braces_correctly() -> None:
 
 
 # --------------------------- groupBlocks ---------------------------------
+
 
 def test_groupBlocks_routes_each_block_to_a_target_file() -> None:
     out = _node_eval(
@@ -171,13 +171,14 @@ def test_groupBlocks_each_target_file_appears_at_most_once() -> None:
 
 # --------------------------- buildFileContent ----------------------------
 
+
 def test_buildFileContent_includes_describe_with_deprecated_tag() -> None:
     out = _node_eval(
         f"m.buildFileContent({{describe: 'foo @deprecated', tests: m.extractTestBlocks({json.dumps(SAMPLE_SOURCE)}).slice(0,1)}})"
     )
     content = json.loads(out)
     assert "@deprecated" in content
-    assert "test.describe(\"foo @deprecated\"" in content
+    assert 'test.describe("foo @deprecated"' in content
     # Required imports always present (every split file's beforeEach uses them).
     assert "getTestUser" in content
     assert "loginUser" in content
@@ -257,9 +258,7 @@ def test_rewriteTestSkipTrueLiterals_multi_line() -> None:
     `test.skip(` must also be rewritten."""
     src = "      test.skip(\n        true,\n        'reason'\n      );"
     out = _node_eval(f"m.rewriteTestSkipTrueLiterals({json.dumps(src)})")
-    expected = (
-        "      test.skip(\n        Boolean(true),\n        'reason'\n      );"
-    )
+    expected = "      test.skip(\n        Boolean(true),\n        'reason'\n      );"
     assert json.loads(out) == expected
 
 
@@ -296,6 +295,7 @@ def test_selectImportsForBodies_groups_by_module() -> None:
 
 # --------------------------- CLI integration -----------------------------
 
+
 def test_cli_split_writes_files_and_replaces_src_with_stub(tmp_path: Path) -> None:
     src = tmp_path / "phase7.5-features-gap-closure.spec.ts"
     out_dir = tmp_path / "features"
@@ -303,7 +303,10 @@ def test_cli_split_writes_files_and_replaces_src_with_stub(tmp_path: Path) -> No
     src.write_text(SAMPLE_SOURCE)
     res = subprocess.run(
         ["node", str(SCRIPT), f"--src={src}", f"--out-dir={out_dir}"],
-        capture_output=True, text=True, timeout=15,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     assert res.returncode == 0, res.stderr
     payload = json.loads(res.stdout)
@@ -333,7 +336,10 @@ def test_cli_dry_run_does_not_mutate(tmp_path: Path) -> None:
     src.write_text(original)
     res = subprocess.run(
         ["node", str(SCRIPT), f"--src={src}", f"--out-dir={out_dir}", "--dry-run"],
-        capture_output=True, text=True, timeout=15,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     assert res.returncode == 0, res.stderr
     # Source unchanged.
@@ -353,17 +359,21 @@ def test_cli_idempotent_rerun_on_stub_is_clean_noop(tmp_path: Path) -> None:
     # First split.
     res1 = subprocess.run(
         ["node", str(SCRIPT), f"--src={src}", f"--out-dir={out_dir}"],
-        capture_output=True, text=True, timeout=15,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     assert res1.returncode == 0
     # Second invocation against the now-stub file.
     res2 = subprocess.run(
         ["node", str(SCRIPT), f"--src={src}", f"--out-dir={out_dir}"],
-        capture_output=True, text=True, timeout=15,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
-    assert res2.returncode == 0, (
-        f"re-run on stub must be a clean no-op, got: {res2.stderr}"
-    )
+    assert res2.returncode == 0, f"re-run on stub must be a clean no-op, got: {res2.stderr}"
     payload = json.loads(res2.stdout)
     assert payload.get("alreadySplit") is True
     assert payload["totalTests"] == 0
@@ -378,7 +388,10 @@ def test_cli_exits_2_on_corrupted_source_with_no_blocks(tmp_path: Path) -> None:
     src.write_text("// some unexpected content with no tests and no stub marker\n")
     res = subprocess.run(
         ["node", str(SCRIPT), f"--src={src}", f"--out-dir={out_dir}"],
-        capture_output=True, text=True, timeout=15,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     assert res.returncode == 2
     assert "no test blocks extracted" in res.stderr
@@ -387,7 +400,10 @@ def test_cli_exits_2_on_corrupted_source_with_no_blocks(tmp_path: Path) -> None:
 def test_cli_exits_2_on_missing_src(tmp_path: Path) -> None:
     res = subprocess.run(
         ["node", str(SCRIPT), f"--src={tmp_path}/missing.ts", f"--out-dir={tmp_path}"],
-        capture_output=True, text=True, timeout=15,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     assert res.returncode == 2
     assert "src not found" in res.stderr

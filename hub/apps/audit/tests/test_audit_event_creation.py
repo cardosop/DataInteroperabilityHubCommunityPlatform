@@ -2,14 +2,12 @@
 Unit tests for audit event creation.
 """
 
-from datetime import timedelta
+import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 
-from hub.apps.audit.models import AuditEvent
 from hub.apps.audit.utils import (
     create_audit_event,
     log_auth_operation,
@@ -19,7 +17,6 @@ from hub.apps.audit.utils import (
 )
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -33,7 +30,10 @@ class AuditEventCreationTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create user

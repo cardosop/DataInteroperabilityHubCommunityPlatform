@@ -1,6 +1,7 @@
 """Phase 98: SQL injection prevention tests."""
-import uuid
+
 import pytest
+
 from tests.security.base_injection import InjectionTestBase
 
 pytestmark = pytest.mark.security
@@ -26,7 +27,8 @@ class SQLInjectionAPITest(InjectionTestBase):
                 HTTP_X_TENANT_ID=str(self.tenant.id),
             )
             self.assertNotEqual(
-                response.status_code, 500,
+                response.status_code,
+                500,
                 f"SQL injection payload caused 500: {payload}",
             )
 
@@ -39,7 +41,8 @@ class SQLInjectionAPITest(InjectionTestBase):
                 HTTP_X_TENANT_ID=str(self.tenant.id),
             )
             self.assertNotEqual(
-                response.status_code, 500,
+                response.status_code,
+                500,
                 f"SQL injection in filter caused 500: {payload}",
             )
 
@@ -52,7 +55,8 @@ class SQLInjectionAPITest(InjectionTestBase):
                 HTTP_X_TENANT_ID=str(self.tenant.id),
             )
             self.assertNotEqual(
-                response.status_code, 500,
+                response.status_code,
+                500,
                 f"SQL injection in ordering caused 500: {payload}",
             )
 
@@ -66,6 +70,7 @@ class SQLInjectionAPITest(InjectionTestBase):
                 HTTP_X_TENANT_ID=str(self.tenant.id),
             )
             self.assertNotEqual(
-                response.status_code, 500,
+                response.status_code,
+                500,
                 f"SQL injection in contract creation caused 500: {payload}",
             )

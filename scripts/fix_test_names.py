@@ -4,8 +4,8 @@
 Replaces fixed names like "Test Tenant" / "test-tenant" / "test@example.com"
 with UUID-based unique names to prevent IntegrityError collisions in --reuse-db mode.
 """
+
 import os
-import re
 import subprocess
 
 
@@ -13,13 +13,19 @@ def find_target_files():
     """Find files with transaction=True AND fixed tenant names."""
     r1 = subprocess.run(
         ["grep", "-rln", "transaction=True", "hub/apps/", "--include=*.py"],
-        capture_output=True, text=True, cwd="/app"
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd="/app",
     )
     tx = set(r1.stdout.strip().split("\n")) if r1.stdout.strip() else set()
 
     r2 = subprocess.run(
         ["grep", "-rln", '"Test Tenant"', "hub/apps/", "--include=*.py"],
-        capture_output=True, text=True, cwd="/app"
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd="/app",
     )
     tn = set(r2.stdout.strip().split("\n")) if r2.stdout.strip() else set()
 

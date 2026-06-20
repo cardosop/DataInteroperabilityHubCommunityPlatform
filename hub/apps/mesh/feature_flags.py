@@ -3,6 +3,7 @@
 
 Gates the Data Mesh Domain ViewSet on ``Tenant.data_mesh_enabled``.
 """
+
 from __future__ import annotations
 
 from rest_framework.response import Response

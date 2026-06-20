@@ -4,6 +4,7 @@
 Verifies that webhooks subscribed by Tenant A are not visible to or
 manageable by Tenant B.
 """
+
 import uuid
 
 import pytest
@@ -66,18 +67,12 @@ class TestWebhookIsolation:
 
     def test_tenant_b_cannot_delete_tenant_a_webhook(self, client_b):
         """Tenant B cannot DELETE Tenant A's webhook."""
-        resp = client_b.delete(
-            f"/api/v1/webhooks/{self.webhook_a.id}/"
-        )
+        resp = client_b.delete(f"/api/v1/webhooks/{self.webhook_a.id}/")
         assert resp.status_code == 404
         assert Webhook.objects.filter(id=self.webhook_a.id).exists()
 
     def test_webhook_db_scoping(self, tenant_a, tenant_b):
         """ORM confirms webhooks are tenant-scoped."""
-        a_ids = set(
-            str(w.id) for w in Webhook.objects.filter(tenant=tenant_a)
-        )
-        b_ids = set(
-            str(w.id) for w in Webhook.objects.filter(tenant=tenant_b)
-        )
+        a_ids = set(str(w.id) for w in Webhook.objects.filter(tenant=tenant_a))
+        b_ids = set(str(w.id) for w in Webhook.objects.filter(tenant=tenant_b))
         assert a_ids.isdisjoint(b_ids)

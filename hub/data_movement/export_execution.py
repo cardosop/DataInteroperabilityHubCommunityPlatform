@@ -6,10 +6,11 @@ is True (or when the destination is a warehouse type with no legacy connector).
 Replaces the ``DestinationConnectorFactory`` path with dlt verified
 destinations.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from hub.apps.scheduled_export.models import ScheduledExport
 from hub.data_movement.dlt_credentials import resolve_credentials
@@ -22,15 +23,17 @@ logger = logging.getLogger(__name__)
 
 # Warehouse destination types that have NO legacy connector implementation.
 # These MUST go through the dlt path regardless of the feature flag.
-_WAREHOUSE_DESTINATIONS = frozenset({
-    "SNOWFLAKE_TABLE",
-    "BIGQUERY_TABLE",
-    "DATABRICKS_TABLE",
-    "ATHENA_TABLE",
-})
+_WAREHOUSE_DESTINATIONS = frozenset(
+    {
+        "SNOWFLAKE_TABLE",
+        "BIGQUERY_TABLE",
+        "DATABRICKS_TABLE",
+        "ATHENA_TABLE",
+    }
+)
 
 
-def execute_dlt_export(scheduled_export_id: str) -> Dict[str, Any]:
+def execute_dlt_export(scheduled_export_id: str) -> dict[str, Any]:
     """Execute a scheduled export via the dlt DataMovementPipeline.
 
     Returns a dict matching the existing export output shape:
@@ -41,9 +44,7 @@ def execute_dlt_export(scheduled_export_id: str) -> Dict[str, Any]:
             "error_message": str | None,
         }
     """
-    obj = ScheduledExport.objects.select_related("tenant").get(
-        id=scheduled_export_id
-    )
+    obj = ScheduledExport.objects.select_related("tenant").get(id=scheduled_export_id)
 
     # ---- resolve credentials -----------------------------------------------
     creds = resolve_credentials(obj.credential_ref) if obj.credential_ref else {}

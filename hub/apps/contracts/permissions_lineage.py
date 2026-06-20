@@ -24,6 +24,7 @@ Class-based permissions return True/False; this surface needs to
 emit a typed PermissionDenied with a `code` field for the API
 contract — easier as a function.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -51,17 +52,13 @@ def require_edit_lineage(user: Any, contract: Any) -> None:
         return
 
     user_tenant_id = str(getattr(user, "tenant_id", "") or "")
-    contract_tenant_id = str(
-        getattr(contract, "tenant_id", "") or ""
-    )
+    contract_tenant_id = str(getattr(contract, "tenant_id", "") or "")
 
     # Cross-tenant edit denied unconditionally (F2 v1 non-goal).
     if user_tenant_id != contract_tenant_id:
         raise PermissionDenied(
             {
-                "error": (
-                    "Cross-tenant lineage edits are not permitted."
-                ),
+                "error": ("Cross-tenant lineage edits are not permitted."),
                 "code": "EDIT_LINEAGE_FORBIDDEN",
             }
         )
@@ -99,6 +96,7 @@ def _has_tenant_admin_role(user: Any, tenant_id: str) -> bool:
         # explicit UserRole join.
         try:
             from hub.apps.users.models import UserRole
+
             return UserRole.objects.filter(
                 user=user,
                 tenant_id=tenant_id,

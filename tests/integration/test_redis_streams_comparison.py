@@ -9,21 +9,16 @@ Tests:
 """
 
 import statistics
-import threading
 import time
 import uuid
-from collections import defaultdict
-from typing import Any, Dict, List
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.db import transaction
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
-from hub.apps.core.events.bus import EventBus, get_event_bus
-from hub.apps.core.events.models import Event, EventSubscription
-from hub.apps.core.events.streams_bus import EventStreamsBus, get_event_streams_bus
-from hub.apps.tenants.models import Tenant
+from hub.apps.core.events.bus import get_event_bus
+from hub.apps.core.events.models import Event
+from hub.apps.core.events.streams_bus import get_event_streams_bus
 from tests.factories import TenantFactory, UserFactory
 from tests.utils.polling import wait_until
 
@@ -37,7 +32,6 @@ class RedisStreamsComparisonTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        import pytest
 
         # Check Redis availability
         try:
@@ -58,7 +52,7 @@ class RedisStreamsComparisonTest(TestCase):
     def test_throughput_comparison(self):
         """Compare throughput between Pub/Sub and Streams"""
         if not self.redis_available:
-            pytest.skip("Redis not available in test environment")
+            pytest.skip("Redis not available in test environment")  # noqa: skip-in-body — runtime service dependency
         num_events = 1000
 
         # Test Pub/Sub throughput
@@ -87,7 +81,7 @@ class RedisStreamsComparisonTest(TestCase):
         streams_time = time.time() - streams_start
         streams_throughput = num_events / streams_time
 
-        print(f"\nThroughput Comparison:")
+        print("\nThroughput Comparison:")
         print(f"  Pub/Sub: {pubsub_throughput:.2f} events/sec ({pubsub_time:.2f}s)")
         print(f"  Streams: {streams_throughput:.2f} events/sec ({streams_time:.2f}s)")
         print(
@@ -131,7 +125,7 @@ class RedisStreamsComparisonTest(TestCase):
         streams_avg = statistics.mean(streams_latencies)
         streams_p95 = self._percentile(streams_latencies, 95)
 
-        print(f"\nLatency Comparison:")
+        print("\nLatency Comparison:")
         print(f"  Pub/Sub - Avg: {pubsub_avg:.2f}ms, P95: {pubsub_p95:.2f}ms")
         print(f"  Streams - Avg: {streams_avg:.2f}ms, P95: {streams_p95:.2f}ms")
         print(
@@ -145,7 +139,7 @@ class RedisStreamsComparisonTest(TestCase):
     def test_persistence_comparison(self):
         """Compare persistence capabilities"""
         if not self.redis_available:
-            pytest.skip("Redis not available in test environment")
+            pytest.skip("Redis not available in test environment")  # noqa: skip-in-body — runtime service dependency
         num_events = 100
         event_type = "contract.created"
 
@@ -181,7 +175,7 @@ class RedisStreamsComparisonTest(TestCase):
         stream_name = self.streams_bus._get_stream_name(event_type)
         stream_length = self.streams_bus.redis_client.xlen(stream_name)
 
-        print(f"\nPersistence Comparison:")
+        print("\nPersistence Comparison:")
         print(f"  Pub/Sub - PostgreSQL: {pubsub_persisted}/{num_events}")
         print(f"  Streams - PostgreSQL: {streams_persisted}/{num_events}")
         print(f"  Streams - Redis Stream: {stream_length} messages")
@@ -193,7 +187,7 @@ class RedisStreamsComparisonTest(TestCase):
     def test_consumer_groups_capability(self):
         """Test consumer groups feature (Streams only)"""
         if not self.redis_available:
-            pytest.skip("Redis not available in test environment")
+            pytest.skip("Redis not available in test environment")  # noqa: skip-in-body — runtime service dependency
         num_events = 50
         event_type = "contract.created"
         stream_name = self.streams_bus._get_stream_name(event_type)
@@ -216,14 +210,14 @@ class RedisStreamsComparisonTest(TestCase):
         group_names = [g["name"] for g in groups]
         self.assertIn(consumer_group, group_names, "Consumer group not created")
 
-        print(f"\nConsumer Groups Test:")
+        print("\nConsumer Groups Test:")
         print(f"  Consumer group created: {consumer_group}")
         print(f"  Groups in stream: {group_names}")
 
     def test_replay_capability(self):
         """Test event replay capability (Streams only)"""
         if not self.redis_available:
-            pytest.skip("Redis not available in test environment")
+            pytest.skip("Redis not available in test environment")  # noqa: skip-in-body — runtime service dependency
         num_events = 20
         event_type = "contract.created"
         stream_name = self.streams_bus._get_stream_name(event_type)
@@ -249,7 +243,7 @@ class RedisStreamsComparisonTest(TestCase):
         # Replay events from stream
         replayed_events = self.streams_bus.replay_events(stream_name, count=num_events)
 
-        print(f"\nReplay Capability Test:")
+        print("\nReplay Capability Test:")
         print(f"  Published events: {num_events}")
         print(f"  Replayed events: {len(replayed_events)}")
 
@@ -266,7 +260,7 @@ class RedisStreamsComparisonTest(TestCase):
     def test_message_acknowledgment(self):
         """Test message acknowledgment (Streams only)"""
         if not self.redis_available:
-            pytest.skip("Redis not available in test environment")
+            pytest.skip("Redis not available in test environment")  # noqa: skip-in-body — runtime service dependency
         num_events = 10
         event_type = "contract.created"
         stream_name = self.streams_bus._get_stream_name(event_type)
@@ -292,8 +286,8 @@ class RedisStreamsComparisonTest(TestCase):
         )
 
         message_ids = []
-        for stream_name_read, stream_messages in messages:
-            for message_id, message_data in stream_messages:
+        for _stream_name_read, stream_messages in messages:
+            for message_id, _message_data in stream_messages:
                 message_ids.append(message_id)
 
         # Check pending messages
@@ -310,7 +304,7 @@ class RedisStreamsComparisonTest(TestCase):
             stream_name, consumer_group, consumer_name
         )
 
-        print(f"\nMessage Acknowledgment Test:")
+        print("\nMessage Acknowledgment Test:")
         print(f"  Messages read: {len(message_ids)}")
         print(
             f"  Pending before ACK: {len(pending_before) if isinstance(pending_before, list) else pending_before}"
@@ -325,7 +319,7 @@ class RedisStreamsComparisonTest(TestCase):
     def test_infrastructure_overhead(self):
         """Test infrastructure overhead (same Redis instance)"""
         if not self.redis_available:
-            pytest.skip("Redis not available in test environment")
+            pytest.skip("Redis not available in test environment")  # noqa: skip-in-body — runtime service dependency
         num_events = 100
         event_type = "contract.created"
 
@@ -360,7 +354,7 @@ class RedisStreamsComparisonTest(TestCase):
         pubsub_overhead = memory_after_pubsub - memory_before
         streams_overhead = memory_after_streams - memory_after_pubsub
 
-        print(f"\nInfrastructure Overhead:")
+        print("\nInfrastructure Overhead:")
         print(f"  Memory before: {memory_before / 1024 / 1024:.2f} MB")
         print(f"  Memory after Pub/Sub: {memory_after_pubsub / 1024 / 1024:.2f} MB")
         print(f"  Memory after Streams: {memory_after_streams / 1024 / 1024:.2f} MB")
@@ -371,7 +365,7 @@ class RedisStreamsComparisonTest(TestCase):
         # Streams will use more memory due to persistence
         self.assertGreater(streams_overhead, 0, "Streams should use more memory for persistence")
 
-    def _percentile(self, data: List[float], percentile: float) -> float:
+    def _percentile(self, data: list[float], percentile: float) -> float:
         """Calculate percentile value"""
         if not data:
             return 0
@@ -390,7 +384,6 @@ class RedisStreamsMigrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        import pytest
 
         # Check Redis availability
         try:
@@ -410,7 +403,7 @@ class RedisStreamsMigrationTest(TestCase):
     def test_dual_mode_operation(self):
         """Test running both Pub/Sub and Streams simultaneously"""
         if not self.redis_available:
-            pytest.skip("Redis not available in test environment")
+            pytest.skip("Redis not available in test environment")  # noqa: skip-in-body — runtime service dependency
         num_events = 50
         event_type = "contract.created"
 
@@ -439,7 +432,7 @@ class RedisStreamsMigrationTest(TestCase):
         pubsub_persisted = Event.objects.filter(event_id__in=pubsub_ids).count()
         streams_persisted = Event.objects.filter(event_id__in=streams_ids).count()
 
-        print(f"\nDual Mode Operation:")
+        print("\nDual Mode Operation:")
         print(f"  Pub/Sub events published: {len(pubsub_ids)}")
         print(f"  Streams events published: {len(streams_ids)}")
         print(f"  Pub/Sub persisted: {pubsub_persisted}")
@@ -451,7 +444,7 @@ class RedisStreamsMigrationTest(TestCase):
     def test_api_compatibility(self):
         """Test API compatibility between Pub/Sub and Streams"""
         if not self.redis_available:
-            pytest.skip("Redis not available in test environment")
+            pytest.skip("Redis not available in test environment")  # noqa: skip-in-body — runtime service dependency
         event_type = "contract.created"
         contract_id = str(uuid.uuid4())
 
@@ -469,15 +462,15 @@ class RedisStreamsMigrationTest(TestCase):
         self.assertIsNotNone(streams_event_id)
         self.assertEqual(len(pubsub_event_id), len(streams_event_id))  # Both UUIDs
 
-        print(f"\nAPI Compatibility:")
+        print("\nAPI Compatibility:")
         print(f"  Pub/Sub event ID: {pubsub_event_id}")
         print(f"  Streams event ID: {streams_event_id}")
-        print(f"  APIs are compatible: ✅")
+        print("  APIs are compatible: ✅")
 
     def test_migration_readiness(self):
         """Test migration readiness checklist"""
         if not self.redis_available:
-            pytest.skip("Redis not available in test environment")
+            pytest.skip("Redis not available in test environment")  # noqa: skip-in-body — runtime service dependency
         event_type = "contract.created"
 
         # Test 1: Can publish to Streams
@@ -502,9 +495,9 @@ class RedisStreamsMigrationTest(TestCase):
         pending = self.streams_bus.get_pending_messages(stream_name, consumer_group)
         self.assertIsNotNone(pending)
 
-        print(f"\nMigration Readiness Checklist:")
-        print(f"  ✅ Can publish to Streams")
-        print(f"  ✅ Can create consumer groups")
-        print(f"  ✅ Can replay events")
-        print(f"  ✅ Can read pending messages")
-        print(f"  Migration path validated: ✅")
+        print("\nMigration Readiness Checklist:")
+        print("  ✅ Can publish to Streams")
+        print("  ✅ Can create consumer groups")
+        print("  ✅ Can replay events")
+        print("  ✅ Can read pending messages")
+        print("  Migration path validated: ✅")

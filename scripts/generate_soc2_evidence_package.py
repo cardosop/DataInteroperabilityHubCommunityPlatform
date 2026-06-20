@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """285.12.6.12 4L — Generate SOC2 evidence package from audit logs."""
+
 from __future__ import annotations
-import sys, json
-from datetime import datetime, timezone, timedelta
+
+import json
+import sys
+from datetime import UTC, datetime, timedelta
+
 
 def generate(days: int = 90) -> int:
     """Collect SOC2 evidence counts from the last *days* days."""
-    since = datetime.now(tz=timezone.utc) - timedelta(days=days)
+    since = datetime.now(tz=UTC) - timedelta(days=days)
     evidence = {
-        "generated_at": datetime.now(tz=timezone.utc).isoformat(),
+        "generated_at": datetime.now(tz=UTC).isoformat(),
         "period_days": days,
         "since": since.isoformat(),
         "controls": {
@@ -24,5 +28,6 @@ def generate(days: int = 90) -> int:
     }
     print(json.dumps(evidence, indent=2))
     return 0
+
 
 sys.exit(generate())

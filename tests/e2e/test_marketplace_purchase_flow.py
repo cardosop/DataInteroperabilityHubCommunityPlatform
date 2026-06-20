@@ -4,23 +4,28 @@ End-to-End tests for marketplace purchase flow (T.14).
 Tests complete user journey from browsing listings to accessing purchased data.
 Uses REAL services.
 """
-import pytest
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
-from rest_framework import status
 
-from hub.apps.tenants.models import Tenant, KYCStatus
+import uuid
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from rest_framework import status
+from rest_framework.test import APIClient
+
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.marketplace.models import (
-    Listing, ListingStatus, PricingModel,
-    Order, OrderStatus,
-    Entitlement, EntitlementStatus
-)
 from hub.apps.marketplace.access_utils import check_entitlement
+from hub.apps.marketplace.models import (
+    Entitlement,
+    EntitlementStatus,
+    ListingStatus,
+    Order,
+    OrderStatus,
+    PricingModel,
+)
+from hub.apps.tenants.models import KYCStatus, Tenant
 
 from .conftest import get_response_data
-import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 User = get_user_model()
@@ -28,7 +33,7 @@ User = get_user_model()
 
 class MarketplacePurchaseE2ETest(TestCase):
     """E2E tests for marketplace purchase flow (T.14)"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
@@ -37,115 +42,115 @@ class MarketplacePurchaseE2ETest(TestCase):
         self.provider_tenant = Tenant.objects.create(
             name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
             slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         ensure_e2e_tenant_ready(self.provider_tenant)
 
         self.provider_user = User.objects.create_user(
             email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
-            tenant=self.provider_tenant
+            tenant=self.provider_tenant,
         )
-        
+
         self.provider_client = APIClient()
         self.provider_client.force_authenticate(user=self.provider_user)
-        
+
         # Consumer tenant (buyer) - needs subscription for order creation
         self.consumer_tenant = Tenant.objects.create(
             name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
             slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         ensure_e2e_tenant_ready(self.consumer_tenant)
 
         self.consumer_user = User.objects.create_user(
             email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
-            tenant=self.consumer_tenant
+            tenant=self.consumer_tenant,
         )
-        
+
         self.consumer_client = APIClient()
         self.consumer_client.force_authenticate(user=self.consumer_user)
-        
+
         # Create asset for provider
         self.asset = Asset.objects.create(
             tenant=self.provider_tenant,
             key="public-dataset",
             name="Public Dataset",
             status=AssetStatus.ACTIVE,
-            created_by=self.provider_user
+            created_by=self.provider_user,
         )
-    
+
     def test_complete_marketplace_purchase_journey(self):
         """Test complete marketplace purchase journey"""
         # Step 1: Provider creates listing
         listing_response = self.provider_client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': str(self.asset.id),
-                'title': 'Public Dataset',
-                'short_description': 'A valuable dataset',
-                'pricing_model': PricingModel.FREE_AUTO_APPROVE,
-                'price_amount': 0.0
+                "asset_id": str(self.asset.id),
+                "title": "Public Dataset",
+                "short_description": "A valuable dataset",
+                "pricing_model": PricingModel.FREE_AUTO_APPROVE,
+                "price_amount": 0.0,
             },
-            format='json'
+            format="json",
         )
         self.assertEqual(listing_response.status_code, status.HTTP_201_CREATED)
-        listing_id = (get_response_data(listing_response) or {}).get('id')
-        
+        listing_id = (get_response_data(listing_response) or {}).get("id")
+
         # Step 2: Provider publishes listing
         publish_response = self.provider_client.patch(
-            f'/api/v1/marketplace/listings/{listing_id}/',
-            {'status': ListingStatus.PUBLISHED},
-            format='json'
+            f"/api/v1/marketplace/listings/{listing_id}/",
+            {"status": ListingStatus.PUBLISHED},
+            format="json",
         )
         self.assertEqual(publish_response.status_code, status.HTTP_200_OK)
-        
+
         # Step 3: Consumer searches/browses listings
         search_response = self.consumer_client.get(
-            '/api/v1/marketplace/listings/search/',
-            {'q': 'dataset'}
+            "/api/v1/marketplace/listings/search/", {"q": "dataset"}
         )
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
         search_data = get_response_data(search_response) or {}
-        results = search_data.get('results', [])
+        results = search_data.get("results", [])
         self.assertGreater(len(results), 0)
-        listing_ids_found = [r.get('id') for r in results]
-        self.assertIn(str(listing_id), listing_ids_found,
-            f"Search results should include our published listing {listing_id}")
-        
+        listing_ids_found = [r.get("id") for r in results]
+        self.assertIn(
+            str(listing_id),
+            listing_ids_found,
+            f"Search results should include our published listing {listing_id}",
+        )
+
         # Step 4: Consumer views listing details
         listing_detail_response = self.consumer_client.get(
-            f'/api/v1/marketplace/listings/{listing_id}/'
+            f"/api/v1/marketplace/listings/{listing_id}/"
         )
         self.assertEqual(listing_detail_response.status_code, status.HTTP_200_OK)
-        
+
         # Step 5: Consumer creates order
         order_response = self.consumer_client.post(
-            '/api/v1/marketplace/orders/',
-            {
-                'listing_id': listing_id
-            },
-            format='json'
+            "/api/v1/marketplace/orders/", {"listing_id": listing_id}, format="json"
         )
         self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
         order_resp_data = get_response_data(order_response) or {}
-        order_data = order_resp_data.get('order', order_resp_data)
-        order_id = order_data['id']
-        
+        order_data = order_resp_data.get("order", order_resp_data)
+        order_id = order_data["id"]
+
         # Step 6: Order is auto-approved (FREE listing)
         order = Order.objects.get(id=order_id)
         # For FREE listings, order should be auto-approved
         if order.status == OrderStatus.REQUESTED:
             # Manually approve if not auto-approved
             approve_response = self.provider_client.post(
-                f'/api/v1/marketplace/orders/{order_id}/approve/',
-                format='json'
+                f"/api/v1/marketplace/orders/{order_id}/approve/", format="json"
             )
-            self.assertEqual(approve_response.status_code, status.HTTP_200_OK,
-                f"Order approval should succeed: {get_response_data(approve_response)}")
+            self.assertEqual(
+                approve_response.status_code,
+                status.HTTP_200_OK,
+                f"Order approval should succeed: {get_response_data(approve_response)}",
+            )
             order.refresh_from_db()
-        
+
         # Step 7: Verify entitlement is created
         entitlement = Entitlement.objects.filter(order=order).first()
         if not entitlement and order.status == OrderStatus.FULFILLED:
@@ -155,30 +160,27 @@ class MarketplacePurchaseE2ETest(TestCase):
         elif entitlement:
             self.assertEqual(entitlement.status, EntitlementStatus.ACTIVE)
             self.assertEqual(entitlement.tenant, self.consumer_tenant)
-        
+
         # Step 8: Consumer can access asset via entitlement
         if entitlement:
             has_access, error_code, _ = check_entitlement(
                 consumer_tenant_id=str(self.consumer_tenant.id),
                 asset_id=str(self.asset.id),
-                provider_tenant_id=str(self.provider_tenant.id)
+                provider_tenant_id=str(self.provider_tenant.id),
             )
             self.assertTrue(has_access)
-            self.assertIsNone(error_code, f"Error code should be None when access is granted, got: {error_code}")
-        
+            self.assertIsNone(
+                error_code, f"Error code should be None when access is granted, got: {error_code}"
+            )
+
         # Step 9: Consumer views their entitlements
-        entitlements_response = self.consumer_client.get(
-            '/api/v1/marketplace/entitlements/'
-        )
+        entitlements_response = self.consumer_client.get("/api/v1/marketplace/entitlements/")
         self.assertEqual(entitlements_response.status_code, status.HTTP_200_OK)
-        
+
         # Step 10: Consumer can access asset data
         # (In real flow, this would be via asset download/access endpoints)
-        asset_access_response = self.consumer_client.get(
-            f'/api/v1/assets/{self.asset.id}/'
-        )
+        self.consumer_client.get(f"/api/v1/assets/{self.asset.id}/")
         # May return 404 if asset access requires entitlement check in view
         # For E2E test, we verify the entitlement exists
         if entitlement:
             self.assertEqual(entitlement.status, EntitlementStatus.ACTIVE)
-

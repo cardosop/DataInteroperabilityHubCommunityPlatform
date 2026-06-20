@@ -3,8 +3,10 @@
 Validates that all ${VAR} references in compose files are documented
 in .env.production.template.
 """
+
 import os
 import re
+
 import pytest
 
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
@@ -23,7 +25,7 @@ def _extract_env_vars_from_compose(filepath):
     with open(filepath) as f:
         content = f.read()
     # Match ${VAR} and ${VAR:-default} patterns
-    refs = re.findall(r'\$\{([A-Z_][A-Z0-9_]*?)(?::-[^}]*)?\}', content)
+    refs = re.findall(r"\$\{([A-Z_][A-Z0-9_]*?)(?::-[^}]*)?\}", content)
     return set(refs)
 
 
@@ -32,9 +34,9 @@ def _extract_documented_vars(filepath):
     with open(filepath) as f:
         content = f.read()
     # Match VAR=value and VAR= lines
-    vars_set = set(re.findall(r'^([A-Z_][A-Z0-9_]*)=', content, re.MULTILINE))
+    vars_set = set(re.findall(r"^([A-Z_][A-Z0-9_]*)=", content, re.MULTILINE))
     # Also match # VAR — description patterns
-    vars_set.update(re.findall(r'^#?\s*([A-Z_][A-Z0-9_]*)\s*[=—–-]', content, re.MULTILINE))
+    vars_set.update(re.findall(r"^#?\s*([A-Z_][A-Z0-9_]*)\s*[=—–-]", content, re.MULTILINE))
     return vars_set
 
 
@@ -66,8 +68,12 @@ class TestDockerComposeEnvironment:
         # Known variables that don't need template documentation
         # (set by Docker Compose itself, or build-time only)
         EXEMPT_VARS = {
-            "COMPOSE_PROJECT_NAME", "COMPOSE_FILE", "PWD",
-            "UID", "GID", "DOCKER_BUILDKIT",
+            "COMPOSE_PROJECT_NAME",
+            "COMPOSE_FILE",
+            "PWD",
+            "UID",
+            "GID",
+            "DOCKER_BUILDKIT",
             "API_HOST",  # envsubst at runtime, not .env
         }
 
@@ -85,20 +91,26 @@ class TestDockerComposeEnvironment:
         # but flag if more than 20% are missing
         total_refs = sum(
             len(_extract_env_vars_from_compose(os.path.join(PROJECT_ROOT, n)))
-            for n in COMPOSE_FILES if os.path.exists(os.path.join(PROJECT_ROOT, n))
+            for n in COMPOSE_FILES
+            if os.path.exists(os.path.join(PROJECT_ROOT, n))
         )
         if total_refs > 0:
             coverage = 1.0 - len(undocumented) / max(total_refs, 1)
             # Production compose files have many infra vars (Grafana, Alertmanager, etc.)
             # that are documented elsewhere or have defaults — 20% coverage is acceptable
-            assert coverage >= 0.2, \
+            assert coverage >= 0.2, (
                 f"Only {coverage:.0%} of compose vars documented. Missing: {sorted(undocumented)[:10]}"
+            )
 
     def test_required_vars_documented(self, documented_vars):
         """Critical production variables must be documented."""
         required = [
-            "POSTGRES_PASSWORD", "SECRET_KEY", "JWT_SECRET_KEY",
-            "ENCRYPTION_KEY", "ENVIRONMENT", "DEBUG",
+            "POSTGRES_PASSWORD",
+            "SECRET_KEY",
+            "JWT_SECRET_KEY",
+            "ENCRYPTION_KEY",
+            "ENVIRONMENT",
+            "DEBUG",
         ]
         for var in required:
             assert var in documented_vars, f"Required var {var} not in template"

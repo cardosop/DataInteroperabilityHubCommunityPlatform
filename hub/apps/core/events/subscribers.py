@@ -4,7 +4,7 @@ Event Subscribers
 Pre-built event subscribers for common use cases (webhooks, notifications, workflows).
 """
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import structlog
 
@@ -47,7 +47,7 @@ class WebhookSubscriber:
             event_type_pattern="*.*", handler=self._handle_event, is_active=True
         )
 
-    def _handle_event(self, event: Dict[str, Any]):
+    def _handle_event(self, event: dict[str, Any]):
         """Handle event and deliver to webhooks."""
         try:
             if self.webhook_service:
@@ -109,7 +109,7 @@ class NotificationSubscriber:
                 event_type_pattern=event_type, handler=self._handle_event, is_active=True
             )
 
-    def _handle_event(self, event: Dict[str, Any]):
+    def _handle_event(self, event: dict[str, Any]):
         """Handle event and send notification."""
         try:
             if self.notification_service:
@@ -147,9 +147,7 @@ class WorkflowTriggerSubscriber:
             workflow_engine: Optional workflow engine instance
         """
         self.workflow_engine = workflow_engine
-        self.subscriber = EventSubscriber(
-            subscriber_name="workflow_trigger_subscriber"
-        )
+        self.subscriber = EventSubscriber(subscriber_name="workflow_trigger_subscriber")
         # Event type to workflow name mapping
         self.workflow_mapping = {}
 
@@ -183,7 +181,7 @@ class WorkflowTriggerSubscriber:
                 event_type_pattern=event_type, handler=self._handle_event, is_active=True
             )
 
-    def _handle_event(self, event: Dict[str, Any]):
+    def _handle_event(self, event: dict[str, Any]):
         """Handle event and trigger workflow."""
         try:
             if not self.workflow_engine:
@@ -268,9 +266,7 @@ class WorkflowStepSubscriber:
             workflow_engine: Optional workflow engine instance
         """
         self.workflow_engine = workflow_engine
-        self.subscriber = EventSubscriber(
-            subscriber_name="workflow_step_subscriber"
-        )
+        self.subscriber = EventSubscriber(subscriber_name="workflow_step_subscriber")
 
     def start(self):
         """Start listening for workflow step events."""
@@ -288,7 +284,7 @@ class WorkflowStepSubscriber:
             is_active=True,
         )
 
-    def _handle_workflow_started(self, event: Dict[str, Any]):
+    def _handle_workflow_started(self, event: dict[str, Any]):
         """Handle workflow.started event and begin execution."""
         try:
             if not self.workflow_engine:
@@ -320,7 +316,7 @@ class WorkflowStepSubscriber:
                 exc_info=True,
             )
 
-    def _handle_step_completed(self, event: Dict[str, Any]):
+    def _handle_step_completed(self, event: dict[str, Any]):
         """Handle workflow.step.completed event and trigger next step if needed."""
         try:
             if not self.workflow_engine:
@@ -370,7 +366,7 @@ class WorkflowStepSubscriber:
 
 # Decorator-based subscribers for easy registration
 @event_subscriber("contract_event_handler", "contract.*")
-def handle_contract_events(event: Dict[str, Any]):
+def handle_contract_events(event: dict[str, Any]):
     """Handle all contract events."""
     logger.info(
         "contract_event_received",
@@ -380,7 +376,7 @@ def handle_contract_events(event: Dict[str, Any]):
 
 
 @event_subscriber("asset_event_handler", "asset.*")
-def handle_asset_events(event: Dict[str, Any]):
+def handle_asset_events(event: dict[str, Any]):
     """Handle all asset events."""
     logger.info(
         "asset_event_received",
@@ -390,7 +386,7 @@ def handle_asset_events(event: Dict[str, Any]):
 
 
 @event_subscriber("workflow_event_handler", "workflow.*")
-def handle_workflow_events(event: Dict[str, Any]):
+def handle_workflow_events(event: dict[str, Any]):
     """Handle all workflow events."""
     logger.info(
         "workflow_event_received",

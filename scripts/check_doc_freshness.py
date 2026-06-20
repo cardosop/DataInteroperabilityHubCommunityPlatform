@@ -43,8 +43,7 @@ def _check_cli_freshness() -> list[str]:
         doc = doc_dir / f"{src.stem}.md"
         if doc.exists() and _mtime(src) > _mtime(doc):
             errors.append(
-                f"cli-reference/{doc.name} is stale"
-                f" (source: {src.relative_to(REPO_ROOT)})"
+                f"cli-reference/{doc.name} is stale (source: {src.relative_to(REPO_ROOT)})"
             )
     return errors
 
@@ -52,14 +51,8 @@ def _check_cli_freshness() -> list[str]:
 def _check_sdk_freshness() -> list[str]:
     """Check SDK reference pages vs source modules."""
     errors: list[str] = []
-    src_dir = (
-        REPO_ROOT / "sdk" / "python"
-        / "datahub_interoperability"
-    )
-    doc_dir = (
-        REPO_ROOT / "docs" / "mvpdocs"
-        / "sdk-reference" / "python"
-    )
+    src_dir = REPO_ROOT / "sdk" / "python" / "datahub_interoperability"
+    doc_dir = REPO_ROOT / "docs" / "mvpdocs" / "sdk-reference" / "python"
     if not src_dir.exists() or not doc_dir.exists():
         return errors
     for src in sorted(src_dir.glob("*.py")):
@@ -71,8 +64,7 @@ def _check_sdk_freshness() -> list[str]:
             doc = doc_dir / f"{stem}.md"
         if doc.exists() and _mtime(src) > _mtime(doc):
             errors.append(
-                f"sdk-reference/python/{doc.name} is stale"
-                f" (source: {src.relative_to(REPO_ROOT)})"
+                f"sdk-reference/python/{doc.name} is stale (source: {src.relative_to(REPO_ROOT)})"
             )
     return errors
 
@@ -91,8 +83,7 @@ def _check_api_freshness() -> list[str]:
         doc = doc_dir / f"{app_name}.md"
         if doc.exists() and _mtime(urls_file) > _mtime(doc):
             errors.append(
-                f"api-reference/{doc.name} is stale"
-                f" (source: {urls_file.relative_to(REPO_ROOT)})"
+                f"api-reference/{doc.name} is stale (source: {urls_file.relative_to(REPO_ROOT)})"
             )
     return errors
 
@@ -104,10 +95,7 @@ def main() -> int:
     all_errors.extend(_check_api_freshness())
 
     if all_errors:
-        print(
-            f"FAIL: {len(all_errors)} stale doc page(s)."
-            " Regenerate with the appropriate script."
-        )
+        print(f"FAIL: {len(all_errors)} stale doc page(s). Regenerate with the appropriate script.")
         for e in all_errors:
             print(f"  - {e}")
         return 1

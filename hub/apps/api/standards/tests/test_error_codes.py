@@ -1,6 +1,7 @@
 """
 Comprehensive tests for standardized error codes.
 """
+
 from django.test import TestCase
 from rest_framework import status
 
@@ -27,17 +28,13 @@ class TestStandardErrorCodes(TestCase):
         self.assertEqual(StandardErrorCodes.AUTH_UNAUTHORIZED, "AUTH_UNAUTHORIZED")
         self.assertEqual(StandardErrorCodes.AUTH_TOKEN_EXPIRED, "AUTH_TOKEN_EXPIRED")
         self.assertEqual(StandardErrorCodes.AUTH_TOKEN_INVALID, "AUTH_TOKEN_INVALID")
-        self.assertEqual(
-            StandardErrorCodes.AUTH_CREDENTIALS_INVALID, "AUTH_CREDENTIALS_INVALID"
-        )
+        self.assertEqual(StandardErrorCodes.AUTH_CREDENTIALS_INVALID, "AUTH_CREDENTIALS_INVALID")
 
     def test_authorization_error_codes(self):
         """Test authorization error codes."""
         self.assertEqual(StandardErrorCodes.AUTH_FORBIDDEN, "AUTH_FORBIDDEN")
         self.assertEqual(StandardErrorCodes.PERMISSION_DENIED, "PERMISSION_DENIED")
-        self.assertEqual(
-            StandardErrorCodes.INSUFFICIENT_PERMISSIONS, "INSUFFICIENT_PERMISSIONS"
-        )
+        self.assertEqual(StandardErrorCodes.INSUFFICIENT_PERMISSIONS, "INSUFFICIENT_PERMISSIONS")
         self.assertEqual(StandardErrorCodes.TENANT_ACCESS_DENIED, "TENANT_ACCESS_DENIED")
 
     def test_not_found_error_codes(self):
@@ -171,22 +168,14 @@ class TestErrorCodeHelpers(TestCase):
 
     def test_get_error_message_default_messages(self):
         """Test getting default error messages for common status codes."""
-        self.assertEqual(
-            get_error_message(None, status.HTTP_400_BAD_REQUEST), "Invalid request"
-        )
+        self.assertEqual(get_error_message(None, status.HTTP_400_BAD_REQUEST), "Invalid request")
         self.assertEqual(
             get_error_message(None, status.HTTP_401_UNAUTHORIZED),
             "Authentication required",
         )
-        self.assertEqual(
-            get_error_message(None, status.HTTP_403_FORBIDDEN), "Permission denied"
-        )
-        self.assertEqual(
-            get_error_message(None, status.HTTP_404_NOT_FOUND), "Resource not found"
-        )
-        self.assertEqual(
-            get_error_message(None, status.HTTP_409_CONFLICT), "Resource conflict"
-        )
+        self.assertEqual(get_error_message(None, status.HTTP_403_FORBIDDEN), "Permission denied")
+        self.assertEqual(get_error_message(None, status.HTTP_404_NOT_FOUND), "Resource not found")
+        self.assertEqual(get_error_message(None, status.HTTP_409_CONFLICT), "Resource conflict")
         self.assertEqual(
             get_error_message(None, status.HTTP_429_TOO_MANY_REQUESTS),
             "Rate limit exceeded",

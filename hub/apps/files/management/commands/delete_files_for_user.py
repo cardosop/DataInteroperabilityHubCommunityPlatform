@@ -9,7 +9,9 @@ Cross-tenant safe: only files attributed to the given user id.
 
 Distributed lock ``meshant:gdpr_delete_files_user:v1`` (Redis).
 """
+
 from __future__ import annotations
+
 import logging
 import sys
 import uuid

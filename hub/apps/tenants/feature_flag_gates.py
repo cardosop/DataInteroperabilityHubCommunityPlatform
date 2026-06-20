@@ -14,8 +14,10 @@ Usage in ViewSets:
             super().initial(request, *args, **kwargs)
             check_ml_enabled(request)  # raises/returns 403 if disabled
 """
+
 from __future__ import annotations
-from typing import Optional, Union
+
+from typing import Union
 
 from django.http import HttpRequest
 from rest_framework import status
@@ -35,7 +37,7 @@ def _gate_disabled(flag_name: str, error_code: str) -> Response:
     )
 
 
-def _get_tenant(request: HttpRequest) -> Optional[Tenant]:
+def _get_tenant(request: HttpRequest) -> Tenant | None:
     """Resolve the request tenant. Returns None if unresolvable."""
     tenant = getattr(request, "tenant", None)
     if tenant is None and hasattr(request, "user") and request.user.is_authenticated:
@@ -55,7 +57,9 @@ def check_marketplace_integrations_enabled(request: HttpRequest) -> GateResult:
     if tenant is None:
         return tenant
     if not getattr(tenant, "marketplace_integrations_enabled", False):
-        return _gate_disabled("marketplace_integrations_enabled", "MARKETPLACE_INTEGRATIONS_DISABLED")
+        return _gate_disabled(
+            "marketplace_integrations_enabled", "MARKETPLACE_INTEGRATIONS_DISABLED"
+        )
     return tenant
 
 

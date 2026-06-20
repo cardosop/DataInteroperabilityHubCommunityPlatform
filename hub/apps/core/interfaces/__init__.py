@@ -4,14 +4,15 @@
 Protocol-based interfaces that both producers and consumers can import
 without creating circular dependency chains.
 """
-from .contracts import IContractService
+
 from .assets import IAssetService
 from .audit import IAuditService
+from .contracts import IContractService
 from .notifications import INotificationService
 
 __all__ = [
-    "IContractService",
     "IAssetService",
     "IAuditService",
+    "IContractService",
     "INotificationService",
 ]

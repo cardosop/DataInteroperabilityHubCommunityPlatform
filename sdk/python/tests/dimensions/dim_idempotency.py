@@ -10,7 +10,9 @@ Idempotency-Key does NOT double-create the resource.
 """
 
 import uuid
+
 import requests
+
 from tests._persona_provisioning import provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import api_base_url
@@ -51,13 +53,12 @@ def test_duplicate_post_with_idempotency_key_returns_same_resource(creds):
     if resp2.status_code in (200, 201):
         id1 = resp1.json().get("id")
         id2 = resp2.json().get("id")
-        assert id1 == id2, (
-            f"Idempotency violation: first={id1}, retry={id2} — double-create!"
-        )
+        assert id1 == id2, f"Idempotency violation: first={id1}, retry={id2} — double-create!"
 
 
 def test_different_idempotency_key_creates_new_resource(creds):
     """Two POSTs with DIFFERENT Idempotency-Keys must create two resources."""
+
     def _create(key_suffix):
         return requests.post(
             f"{api_base_url()}/assets/",

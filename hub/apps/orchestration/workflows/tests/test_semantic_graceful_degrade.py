@@ -38,6 +38,7 @@ stable system boundaries (search index, Fuseki RPC) where
 fault-injection is the standard pattern (matching the convention
 established by Phase 250.2.B's audit-best-effort tests).
 """
+
 from __future__ import annotations
 
 import uuid
@@ -60,7 +61,6 @@ from hub.apps.orchestration.workflows.asset_creation import AssetCreationWorkflo
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -122,19 +122,23 @@ class AssetSemanticStatusFieldTest(TestCase):
     four values from the SemanticStatus enum."""
 
     def test_default_unknown(self):
-        tenant, user = _seed()
+        tenant, _user = _seed()
         asset = Asset.objects.create(
-            tenant=tenant, key=f"a-{uuid.uuid4().hex[:6]}",
-            name="A", status=AssetStatus.DRAFT,
+            tenant=tenant,
+            key=f"a-{uuid.uuid4().hex[:6]}",
+            name="A",
+            status=AssetStatus.DRAFT,
         )
         assert asset.semantic_status == "UNKNOWN"
 
     def test_accepts_all_four_values(self):
-        tenant, user = _seed()
+        tenant, _user = _seed()
         for value in ("UNKNOWN", "PASS", "WARN", "FAIL"):
             asset = Asset.objects.create(
-                tenant=tenant, key=f"a-{uuid.uuid4().hex[:6]}-{value}",
-                name="A", status=AssetStatus.DRAFT,
+                tenant=tenant,
+                key=f"a-{uuid.uuid4().hex[:6]}-{value}",
+                name="A",
+                status=AssetStatus.DRAFT,
                 semantic_status=value,
             )
             assert asset.semantic_status == value
@@ -154,7 +158,9 @@ class IndexForSearchDegradedTest(TestCase):
     def test_indexer_failure_emits_audit_and_marks_fail(self):
         tenant, user = _seed()
         asset, instance = _seed_asset_and_workflow(
-            tenant, user, status=AssetStatus.ACTIVE,
+            tenant,
+            user,
+            status=AssetStatus.ACTIVE,
         )
         before = AuditEvent.objects.filter(
             action=audit_event_types.ASSET_SEMANTIC_DEGRADED,
@@ -166,7 +172,9 @@ class IndexForSearchDegradedTest(TestCase):
             side_effect=RuntimeError("search index unreachable"),
         ):
             result = AssetCreationWorkflow._index_for_search_task(
-                input_data={}, instance=instance, step=None,
+                input_data={},
+                instance=instance,
+                step=None,
             )
 
         # Task did NOT propagate the exception.
@@ -208,7 +216,7 @@ class ActivationSemanticMappingDegradedTest(TestCase):
         # Pre-condition: asset is DRAFT with all gates green (so
         # activation will fire). The asset will be activated by the
         # task; we only need the basic shape here.
-        from hub.apps.assets.models import DQStatus, ComplianceStatus
+        from hub.apps.assets.models import ComplianceStatus, DQStatus
 
         asset = Asset.objects.create(
             tenant=tenant,
@@ -299,7 +307,9 @@ class IndexForSearchPassTest(TestCase):
     def test_clean_index_marks_pass_no_audit(self):
         tenant, user = _seed()
         asset, instance = _seed_asset_and_workflow(
-            tenant, user, status=AssetStatus.ACTIVE,
+            tenant,
+            user,
+            status=AssetStatus.ACTIVE,
         )
         before = AuditEvent.objects.filter(
             action=audit_event_types.ASSET_SEMANTIC_DEGRADED,
@@ -315,7 +325,9 @@ class IndexForSearchPassTest(TestCase):
             return_value=SimpleNamespace(id=uuid.uuid4()),
         ):
             result = AssetCreationWorkflow._index_for_search_task(
-                input_data={}, instance=instance, step=None,
+                input_data={},
+                instance=instance,
+                step=None,
             )
 
         assert result["indexed"] is True
@@ -347,7 +359,9 @@ class IndexForSearchPreservesPriorFailTest(TestCase):
     def test_index_success_preserves_prior_fail(self):
         tenant, user = _seed()
         asset, instance = _seed_asset_and_workflow(
-            tenant, user, status=AssetStatus.ACTIVE,
+            tenant,
+            user,
+            status=AssetStatus.ACTIVE,
         )
         # Pre-condition: a prior step already marked FAIL.
         asset.semantic_status = "FAIL"
@@ -365,7 +379,9 @@ class IndexForSearchPreservesPriorFailTest(TestCase):
             return_value=SimpleNamespace(id=uuid.uuid4()),
         ):
             result = AssetCreationWorkflow._index_for_search_task(
-                input_data={}, instance=instance, step=None,
+                input_data={},
+                instance=instance,
+                step=None,
             )
 
         # Indexing succeeded BUT the FAIL ratchet held: no overwrite.

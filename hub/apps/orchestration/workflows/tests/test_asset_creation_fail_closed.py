@@ -21,6 +21,7 @@ External boundaries (S3, compliance / dq HTTP clients) are mocked
 at their boundaries; everything else (engine, ORM, audit, business
 rules) runs against the real implementations.
 """
+
 from __future__ import annotations
 
 import json
@@ -46,7 +47,6 @@ from hub.apps.testing.role_support import (
     ensure_user_has_tenant_admin_role,
 )
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -122,7 +122,7 @@ class FailClosedRejectionRoundTripTest(TestCase):
         )
         wrapped = (
             f"Workflow rolled back due to step failure: create_asset_record: "
-            f"{str(original)} additional ops context"
+            f"{original!s} additional ops context"
         )
         recovered = FailClosedRejection.from_message(wrapped)
         assert recovered is not None
@@ -137,8 +137,8 @@ class FailClosedRejectionRoundTripTest(TestCase):
             "Asset creation workflow failed: some other error",
             "FCR_BEGIN without proper end",
             "::FCR_BEGIN::not-json::FCR_END::",
-            "::FCR_BEGIN::{\"_sentinel\": \"WRONG\"}::FCR_END::",
-            "::FCR_BEGIN::[\"a\", \"b\"]::FCR_END::",  # not a dict
+            '::FCR_BEGIN::{"_sentinel": "WRONG"}::FCR_END::',
+            '::FCR_BEGIN::["a", "b"]::FCR_END::',  # not a dict
         ]:
             assert FailClosedRejection.from_message(message) is None, (
                 f"unexpectedly parsed: {message!r}"
@@ -200,21 +200,23 @@ class ExecuteFailClosedAuditTest(TestCase):
         ).count()
         before_assets = Asset.objects.filter(tenant=tenant).count()
 
-        with _patch_storage_returns(b"a,b\n1,2\n"), _patch_compliance(
-            {
-                "overall_status": "FAIL",
-                "allowed_to_store": False,
-                "column_findings": [
-                    {
-                        "column": "customer_email_address",
-                        "categories": ["PII_DIRECT_EMAIL"],
-                        "sample_value": "alice@example.com",
-                    }
-                ],
-                "metadata": {},
-            }
-        ), _patch_dq(
-            {"overall_status": "PASS", "quality_score": 100, "metadata": {}}
+        with (
+            _patch_storage_returns(b"a,b\n1,2\n"),
+            _patch_compliance(
+                {
+                    "overall_status": "FAIL",
+                    "allowed_to_store": False,
+                    "column_findings": [
+                        {
+                            "column": "customer_email_address",
+                            "categories": ["PII_DIRECT_EMAIL"],
+                            "sample_value": "alice@example.com",
+                        }
+                    ],
+                    "metadata": {},
+                }
+            ),
+            _patch_dq({"overall_status": "PASS", "quality_score": 100, "metadata": {}}),
         ):
             with pytest.raises(FailClosedRejection) as excinfo:
                 AssetCreationWorkflow.execute(
@@ -247,10 +249,14 @@ class ExecuteFailClosedAuditTest(TestCase):
         )
         # No Asset row created.
         assert Asset.objects.filter(tenant=tenant).count() == before_assets
-        event = AuditEvent.objects.filter(
-            action=audit_event_types.ASSET_FAIL_CLOSED_REJECTED,
-            tenant=tenant,
-        ).order_by("-timestamp").first()
+        event = (
+            AuditEvent.objects.filter(
+                action=audit_event_types.ASSET_FAIL_CLOSED_REJECTED,
+                tenant=tenant,
+            )
+            .order_by("-timestamp")
+            .first()
+        )
         assert event is not None
         details_blob = json.dumps(event.details_json or {})
         assert "customer_email_address" not in details_blob
@@ -267,10 +273,10 @@ class ExecuteFailClosedAuditTest(TestCase):
             tenant=tenant,
         ).count()
 
-        with _patch_storage_returns(b"a,b\n1,2\n"), _patch_compliance(
-            {"overall_status": "PASS", "allowed_to_store": True, "metadata": {}}
-        ), _patch_dq(
-            {"overall_status": "FAIL", "quality_score": 12.0, "metadata": {}}
+        with (
+            _patch_storage_returns(b"a,b\n1,2\n"),
+            _patch_compliance({"overall_status": "PASS", "allowed_to_store": True, "metadata": {}}),
+            _patch_dq({"overall_status": "FAIL", "quality_score": 12.0, "metadata": {}}),
         ):
             with pytest.raises(FailClosedRejection) as excinfo:
                 AssetCreationWorkflow.execute(
@@ -306,17 +312,19 @@ class ExecuteFailClosedTenantOptOutTest(TestCase):
         tenant, user, file_obj = _seed_tenant_user_file(fail_closed=False)
         before_assets = Asset.objects.filter(tenant=tenant).count()
 
-        with _patch_storage_returns(b"a,b\n1,2\n"), _patch_compliance(
-            {
-                "overall_status": "FAIL",
-                "allowed_to_store": False,
-                "metadata": {},
-            }
-        ), _patch_dq(
-            {"overall_status": "PASS", "quality_score": 100, "metadata": {}}
+        with (
+            _patch_storage_returns(b"a,b\n1,2\n"),
+            _patch_compliance(
+                {
+                    "overall_status": "FAIL",
+                    "allowed_to_store": False,
+                    "metadata": {},
+                }
+            ),
+            _patch_dq({"overall_status": "PASS", "quality_score": 100, "metadata": {}}),
         ):
             try:
-                result = AssetCreationWorkflow.execute(
+                AssetCreationWorkflow.execute(
                     tenant_id=str(tenant.id),
                     key="legacy-test",
                     name="Legacy Test",

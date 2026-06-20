@@ -1,7 +1,8 @@
 """Sync workflow methods for MarketplaceIntegrationService."""
-import structlog
-from typing import Any, Dict, List, Optional
 
+from typing import Any
+
+import structlog
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -38,9 +39,9 @@ class SyncServiceMixin:
         connection_id: str,
         tenant_id: str,
         user_id: str,
-        asset_ids: List[str],
-        options: Optional[Dict[str, Any]] = None,
-        request: Optional[Any] = None,
+        asset_ids: list[str],
+        options: dict[str, Any] | None = None,
+        request: Any | None = None,
     ) -> MarketplaceSyncJob:
         """
         Synchronize Hub assets to marketplace (PUSH operation).
@@ -67,8 +68,6 @@ class SyncServiceMixin:
         from django.contrib.auth import get_user_model
         from opentelemetry.trace import StatusCode
 
-        from hub.apps.jobs.models import JobType
-        from hub.apps.jobs.utils import create_job, get_job_timeout
         from hub.apps.observability.span_instrumentation import (
             add_span_attributes,
             create_span,
@@ -160,9 +159,14 @@ class SyncServiceMixin:
                     MarketplaceSyncWorkflow.register_workflow(registry)
                     MarketplaceSyncWorkflow.register_tasks(engine)
 
-                    # Create workflow instance
+                    # Create workflow instance — pass the explicit version so
+                    # the engine looks up the exact version rather than
+                    # querying by is_active=True, which is fragile when
+                    # the table has accumulated many inactive rows from
+                    # earlier auto-incremented registrations.
                     workflow_instance = engine.create_instance(
                         workflow_name="marketplace_sync_push",
+                        workflow_version=MarketplaceSyncWorkflow.WORKFLOW_VERSION,
                         input_data={
                             "connection_id": connection_id,
                             "asset_ids": asset_ids,
@@ -322,10 +326,10 @@ class SyncServiceMixin:
         connection_id: str,
         tenant_id: str,
         user_id: str,
-        listing_ids: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        options: Optional[Dict[str, Any]] = None,
-        request: Optional[Any] = None,
+        listing_ids: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
+        request: Any | None = None,
     ) -> MarketplaceSyncJob:
         """
         Synchronize marketplace listings to Hub (PULL operation).
@@ -363,8 +367,6 @@ class SyncServiceMixin:
         from django.contrib.auth import get_user_model
         from opentelemetry.trace import StatusCode
 
-        from hub.apps.jobs.models import JobType
-        from hub.apps.jobs.utils import create_job, get_job_timeout
         from hub.apps.observability.span_instrumentation import (
             add_span_attributes,
             create_span,
@@ -450,9 +452,11 @@ class SyncServiceMixin:
                     MarketplaceSyncWorkflow.register_workflow(registry)
                     MarketplaceSyncWorkflow.register_tasks(engine)
 
-                    # Create workflow instance
+                    # Create workflow instance — pass the explicit version (see
+                    # marketplace_sync_push comment above for rationale).
                     workflow_instance = engine.create_instance(
                         workflow_name="marketplace_sync_pull",
+                        workflow_version=MarketplaceSyncWorkflow.WORKFLOW_VERSION,
                         input_data={
                             "connection_id": connection_id,
                             "listing_ids": listing_ids,
@@ -612,7 +616,7 @@ class SyncServiceMixin:
         self,
         tenant_id: str,
         sync_job_id: str,
-        request: Optional[Any] = None,
+        request: Any | None = None,
     ) -> MarketplaceSyncJob:
         """
         Retrieve a marketplace sync job by its ID.
@@ -702,13 +706,13 @@ class SyncServiceMixin:
     def list_sync_jobs(
         self,
         tenant_id: str,
-        connection_id: Optional[str] = None,
-        direction: Optional[str] = None,
-        status: Optional[str] = None,
+        connection_id: str | None = None,
+        direction: str | None = None,
+        status: str | None = None,
         limit: int = 100,
         offset: int = 0,
-        request: Optional[Any] = None,
-    ) -> List[MarketplaceSyncJob]:
+        request: Any | None = None,
+    ) -> list[MarketplaceSyncJob]:
         """
         List marketplace sync jobs for a tenant.
 
@@ -818,8 +822,8 @@ class SyncServiceMixin:
         sync_job_id: str,
         tenant_id: str,
         user_id: str,
-        reason: Optional[str] = None,
-        request: Optional[Any] = None,
+        reason: str | None = None,
+        request: Any | None = None,
     ) -> MarketplaceSyncJob:
         """
         Cancel a running marketplace sync job.
@@ -1018,7 +1022,7 @@ class SyncServiceMixin:
     def sync_workflow_status_to_sync_job(
         self,
         sync_job_id: str,
-        tenant_id: Optional[str] = None,
+        tenant_id: str | None = None,
     ) -> MarketplaceSyncJob:
         """
         Sync workflow status to sync job status.
@@ -1055,6 +1059,7 @@ class SyncServiceMixin:
         try:
             # Validate workflow_instance_id is a valid UUID before ORM query
             import uuid as _uuid
+
             try:
                 _uuid.UUID(str(workflow_instance_id))
             except (ValueError, AttributeError):
@@ -1188,8 +1193,8 @@ class SyncServiceMixin:
         self,
         sync_job_id: str,
         progress_percentage: int,
-        current_step: Optional[str] = None,
-        tenant_id: Optional[str] = None,
+        current_step: str | None = None,
+        tenant_id: str | None = None,
     ) -> MarketplaceSyncJob:
         """
         Update sync job progress.
@@ -1242,10 +1247,10 @@ class SyncServiceMixin:
         name: str,
         direction: str,
         schedule_type: str,
-        schedule_config: Dict[str, Any],
-        sync_options: Optional[Dict[str, Any]] = None,
-        description: Optional[str] = None,
-        request: Optional[Any] = None,
+        schedule_config: dict[str, Any],
+        sync_options: dict[str, Any] | None = None,
+        description: str | None = None,
+        request: Any | None = None,
     ) -> ScheduledMarketplaceSync:
         """
         Schedule a recurring marketplace sync operation.
@@ -1359,7 +1364,7 @@ class SyncServiceMixin:
                     croniter(schedule_config["cron"])
                 except Exception as e:
                     raise ValidationError(
-                        f"Invalid cron expression: {str(e)}",
+                        f"Invalid cron expression: {e!s}",
                         details={"schedule_config": schedule_config, "error": str(e)},
                     ) from e
 
@@ -1488,8 +1493,8 @@ class SyncServiceMixin:
     def unschedule_sync(
         self,
         scheduled_sync_id: str,
-        tenant_id: Optional[str] = None,
-        request: Optional[Any] = None,
+        tenant_id: str | None = None,
+        request: Any | None = None,
     ) -> None:
         """
         Unschedule a recurring marketplace sync operation.

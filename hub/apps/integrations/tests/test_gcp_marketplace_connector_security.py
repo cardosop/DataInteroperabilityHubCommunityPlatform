@@ -10,7 +10,6 @@ These tests use real Google Cloud SDK clients - no mocks/stubs.
 import json
 import os
 
-from django.conf import settings
 from django.test import TestCase
 
 from hub.apps.core.services.base import NotFoundError, PermissionError
@@ -28,8 +27,9 @@ except ImportError:
     GoogleAuthError = None
     GOOGLE_CLOUD_AVAILABLE = False
 
-import pytest
 import uuid
+
+import pytest
 
 pytestmark = pytest.mark.skipif(
     not GOOGLE_CLOUD_AVAILABLE, reason="Google Cloud libraries not installed"
@@ -49,18 +49,16 @@ def get_test_credentials():
     credentials in environments where they are not configured.
     """
     import unittest
-    import json
+
     env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
     if not env_json:
-        raise unittest.SkipTest(
-            "GCP_SERVICE_ACCOUNT_JSON not set — skipping"
-        )
+        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON not set — skipping")
     try:
         return json.loads(env_json)
     except json.JSONDecodeError:
-        raise unittest.SkipTest(
-            "GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping"
-        )
+        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping")
+
+
 class TestGCPMarketplaceConnectorSecurity(TestCase):
     """Security tests for GCP Marketplace connector"""
 
@@ -448,7 +446,9 @@ class TestGCPMarketplaceConnectorSecurity(TestCase):
         # Test empty credentials_json (should require either credentials_json or use_adc)
         with self.assertRaises(ValueError):
             connector = GCPMarketplaceConnector(
-                project_id=self.project_id, credentials_json={}, use_adc=False  # Empty dict
+                project_id=self.project_id,
+                credentials_json={},
+                use_adc=False,  # Empty dict
             )
 
     def test_authentication_with_malformed_credentials(self):

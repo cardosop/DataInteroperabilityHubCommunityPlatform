@@ -1,13 +1,14 @@
 """
 Phase 277.B.092 — ABAC enforcement on admin endpoints tests.
 """
+
 from unittest.mock import patch
 
 import pytest
 from django.test import RequestFactory, TestCase
 from rest_framework.exceptions import PermissionDenied
 
-from hub.apps.governance.abac import ABACEngine, PolicyEvaluationResult
+from hub.apps.governance.abac import ABACEngine
 from hub.apps.governance.admin_abac import (
     _evaluate_admin_action,
     admin_abac_guard,
@@ -18,19 +19,19 @@ from hub.apps.users.models import User
 
 
 class TestAdminABACGuard(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        cls.tenant = Tenant.objects.create(
-            name="ABAC Admin", slug="abac-admin", status=TenantStatus.ACTIVE,
-        )
-        # User must have a tenant so real ABAC policies can match
-        cls.user = User.objects.create_user(
-            email="admin@abac.test", password="testpass",
-            tenant=cls.tenant,
-        )
-
     def setUp(self):
         self.factory = RequestFactory()
+        self.tenant = Tenant.objects.create(
+            name="ABAC Admin",
+            slug="abac-admin",
+            status=TenantStatus.ACTIVE,
+        )
+        # User must have a tenant so real ABAC policies can match
+        self.user = User.objects.create_user(
+            email="admin@abac.test",
+            password="testpass",
+            tenant=self.tenant,
+        )
 
     def _make_request(self, method="PATCH", user=None):
         req = getattr(self.factory, method.lower())("/api/v1/tenants/uuid/rate-limits/")
@@ -100,6 +101,7 @@ class TestAdminABACGuard(TestCase):
             nonlocal call_count
             call_count += 1
             from django.http import JsonResponse
+
             return JsonResponse({"ok": True})
 
         req = self._make_request()
@@ -127,11 +129,13 @@ class TestAdminABACGuard(TestCase):
         resp = my_admin_view(req)
         assert resp.status_code == 403
         import json
+
         data = json.loads(resp.content)
         assert data["error"]["code"] == "ABAC_POLICY_DENIED"
 
     def test_decorator_returns_401_for_unauthenticated(self):
         """@admin_abac_guard returns 401 when user is not authenticated."""
+
         @admin_abac_guard("TENANT_CONFIG")
         def my_admin_view(request):
             return None
@@ -147,12 +151,11 @@ class TestAdminABACGuard(TestCase):
         @admin_abac_guard("TENANT_CONFIG")
         def documented_view(request, tenant_id):
             """Updates tenant configuration."""
-            pass
 
         assert documented_view.__name__ == "documented_view"
         assert documented_view.__doc__ == "Updates tenant configuration."
 
-    def test_read_operations_not_blocked_by_guard(self):
+    def test_read_operations_evaluated_by_abac_guard(self):
         """GET requests are evaluated by ABAC guard regardless of HTTP method."""
         # Create a real DENY policy — it blocks GET too
         AccessPolicy.objects.create(
@@ -167,6 +170,7 @@ class TestAdminABACGuard(TestCase):
         @admin_abac_guard("TENANT_CONFIG", action="ADMIN_READ")
         def read_view(request):
             from django.http import JsonResponse
+
             return JsonResponse({"data": []})
 
         req = self._make_request("GET")

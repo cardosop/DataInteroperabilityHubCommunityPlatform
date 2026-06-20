@@ -1,12 +1,15 @@
 """Phase 98: Session and cookie security tests."""
+
 import uuid
+
 import pytest
-from django.test import TestCase
 from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.test import TestCase
 from rest_framework.test import APIClient
+
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
@@ -59,7 +62,8 @@ class SessionSecurityTest(TestCase):
             cookie = response.cookies.get(cookie_name)
             if cookie:
                 self.assertEqual(
-                    cookie["samesite"], "Strict",
+                    cookie["samesite"],
+                    "Strict",
                     "Refresh cookie must have SameSite=Strict",
                 )
 
@@ -74,5 +78,6 @@ class SessionSecurityTest(TestCase):
     def test_session_cookie_samesite(self):
         """Session cookie must have SameSite set."""
         self.assertIn(
-            settings.SESSION_COOKIE_SAMESITE, ["Strict", "Lax"],
+            settings.SESSION_COOKIE_SAMESITE,
+            ["Strict", "Lax"],
         )

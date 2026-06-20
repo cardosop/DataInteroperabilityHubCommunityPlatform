@@ -4,8 +4,10 @@ Phase 118B — Python SDK Endpoint & Method Fixes (GF-22.8–22.13)
 TDD tests verifying SDK methods send correct endpoint paths and parameters
 to match the backend ViewSet implementations.
 """
+
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, Mock
 
 from datahub_interoperability.client import DataHubClient
 from datahub_interoperability.config import DataHubClientConfig
@@ -71,10 +73,11 @@ class TestContractsExportDownload:
     async def test_export_method_exists_and_calls_correct_endpoint(self, client):
         """contracts.export() must GET contracts/{id}/export/."""
         from datahub_interoperability.contracts import ContractsAPI
+
         api = ContractsAPI(client)
         client.get = AsyncMock(return_value={"format": "hubcontract", "content": {}})
 
-        result = await api.export("contract-1")
+        await api.export("contract-1")
 
         client.get.assert_called_once()
         call_args = client.get.call_args
@@ -84,6 +87,7 @@ class TestContractsExportDownload:
     async def test_export_with_format_param(self, client):
         """contracts.export() must pass format as query param."""
         from datahub_interoperability.contracts import ContractsAPI
+
         api = ContractsAPI(client)
         client.get = AsyncMock(return_value={"format": "odps", "content": {}})
 
@@ -97,10 +101,11 @@ class TestContractsExportDownload:
     async def test_download_method_exists_and_calls_correct_endpoint(self, client):
         """contracts.download() must GET contracts/{id}/download/."""
         from datahub_interoperability.contracts import ContractsAPI
+
         api = ContractsAPI(client)
         client.get = AsyncMock(return_value={"content": "yaml data"})
 
-        result = await api.download("contract-1")
+        await api.download("contract-1")
 
         client.get.assert_called_once()
         call_args = client.get.call_args
@@ -110,6 +115,7 @@ class TestContractsExportDownload:
     async def test_download_with_format_param(self, client):
         """contracts.download() must pass format as query param."""
         from datahub_interoperability.contracts import ContractsAPI
+
         api = ContractsAPI(client)
         client.get = AsyncMock(return_value={"content": "yaml"})
 
@@ -130,6 +136,7 @@ class TestContractsListSpecVersion:
     async def test_list_sends_spec_version_param(self, client):
         """contracts.list(spec_version='4.1') must send spec_version param."""
         from datahub_interoperability.contracts import ContractsAPI
+
         api = ContractsAPI(client)
         client.get = AsyncMock(return_value={"results": [], "count": 0})
 
@@ -153,6 +160,7 @@ class TestLineageFieldModelName:
     async def test_field_lineage_passes_model_name_as_param(self, client):
         """get_field_lineage() must pass model_name as query param."""
         from datahub_interoperability.lineage import LineageAPI
+
         api = LineageAPI(client)
         client.get = AsyncMock(return_value={"lineage": {"input_fields": []}})
 
@@ -168,6 +176,7 @@ class TestLineageFieldModelName:
     async def test_field_lineage_url_has_no_model_name_segment(self, client):
         """Field lineage URL must NOT contain model_name as a path segment."""
         from datahub_interoperability.lineage import LineageAPI
+
         api = LineageAPI(client)
         client.get = AsyncMock(return_value={"lineage": {}})
 
@@ -190,6 +199,7 @@ class TestGovernanceClassification:
     async def test_governance_endpoints_use_governance_prefix(self, client):
         """Governance access-request/retention-policy use governance/ prefix."""
         from datahub_interoperability.governance import GovernanceAPI
+
         api = GovernanceAPI(client)
         client.get = AsyncMock(return_value={"results": []})
 
@@ -201,6 +211,7 @@ class TestGovernanceClassification:
     async def test_access_request_uses_governance_prefix(self, client):
         """Access request endpoints use governance/ prefix."""
         from datahub_interoperability.governance import GovernanceAPI
+
         api = GovernanceAPI(client)
         client.post = AsyncMock(return_value={"id": "req-1", "status": "PENDING"})
 
@@ -221,6 +232,7 @@ class TestSearchEndpoints:
     async def test_search_uses_correct_path(self, client):
         """search() must hit search/search/ (action name is 'search')."""
         from datahub_interoperability.search import SearchAPI
+
         api = SearchAPI(client)
         client.get = AsyncMock(return_value={"results": []})
 
@@ -233,6 +245,7 @@ class TestSearchEndpoints:
     async def test_suggestions_uses_correct_path(self, client):
         """get_suggestions() must hit search/suggestions/ NOT search/search/suggestions/."""
         from datahub_interoperability.search import SearchAPI
+
         api = SearchAPI(client)
         client.get = AsyncMock(return_value={"suggestions": []})
 
@@ -245,6 +258,7 @@ class TestSearchEndpoints:
     async def test_analytics_uses_correct_path(self, client):
         """get_analytics() must hit search/analytics/ NOT search/search/analytics/."""
         from datahub_interoperability.search import SearchAPI
+
         api = SearchAPI(client)
         client.get = AsyncMock(return_value={"analytics": {}})
 
@@ -264,6 +278,7 @@ class TestMeshEndpointsCorrect:
     async def test_apply_policy_endpoint(self, client):
         """apply_policy() must hit mesh/domains/{id}/policies/apply/."""
         from datahub_interoperability.mesh import MeshAPI
+
         api = MeshAPI(client)
         client.post = AsyncMock(return_value={"id": "p1", "status": "APPLIED"})
 
@@ -276,6 +291,7 @@ class TestMeshEndpointsCorrect:
     async def test_check_compliance_endpoint(self, client):
         """check_compliance() must hit mesh/domains/{id}/compliance/check/."""
         from datahub_interoperability.mesh import MeshAPI
+
         api = MeshAPI(client)
         client.post = AsyncMock(return_value={"compliance_status": "COMPLIANT"})
 
@@ -297,6 +313,7 @@ class TestObservabilityEndpoints:
     async def test_freshness_uses_correct_path(self, client):
         """get_freshness() must hit observability/freshness/."""
         from datahub_interoperability.observability import ObservabilityAPI
+
         api = ObservabilityAPI(client)
         client.get = AsyncMock(return_value={"metrics": []})
 
@@ -309,6 +326,7 @@ class TestObservabilityEndpoints:
     async def test_volume_uses_correct_path(self, client):
         """get_volume() must hit observability/volume/."""
         from datahub_interoperability.observability import ObservabilityAPI
+
         api = ObservabilityAPI(client)
         client.get = AsyncMock(return_value={"metrics": []})
 
@@ -321,6 +339,7 @@ class TestObservabilityEndpoints:
     async def test_schema_drift_uses_correct_path(self, client):
         """get_schema_drift() must hit observability/schema-drift/."""
         from datahub_interoperability.observability import ObservabilityAPI
+
         api = ObservabilityAPI(client)
         client.get = AsyncMock(return_value={"drifts": []})
 
@@ -333,6 +352,7 @@ class TestObservabilityEndpoints:
     async def test_pipelines_uses_correct_path(self, client):
         """get_pipelines() must hit observability/pipelines/."""
         from datahub_interoperability.observability import ObservabilityAPI
+
         api = ObservabilityAPI(client)
         client.get = AsyncMock(return_value={"pipelines": []})
 
@@ -345,6 +365,7 @@ class TestObservabilityEndpoints:
     async def test_slas_uses_correct_path(self, client):
         """get_slas() must hit observability/slas/."""
         from datahub_interoperability.observability import ObservabilityAPI
+
         api = ObservabilityAPI(client)
         client.get = AsyncMock(return_value={"slas": []})
 
@@ -357,6 +378,7 @@ class TestObservabilityEndpoints:
     async def test_incidents_uses_correct_path(self, client):
         """list_incidents() must hit observability/incidents/."""
         from datahub_interoperability.observability import ObservabilityAPI
+
         api = ObservabilityAPI(client)
         client.get = AsyncMock(return_value={"results": []})
 
@@ -369,6 +391,7 @@ class TestObservabilityEndpoints:
     async def test_create_incident_uses_correct_path(self, client):
         """create_incident() must POST to observability/incidents/."""
         from datahub_interoperability.observability import ObservabilityAPI
+
         api = ObservabilityAPI(client)
         client.post = AsyncMock(return_value={"id": "inc-1"})
 
@@ -381,6 +404,7 @@ class TestObservabilityEndpoints:
     async def test_update_incident_uses_correct_path_and_data(self, client):
         """update_incident() must PATCH to observability/incidents/update/ with incident_id in body."""
         from datahub_interoperability.observability import ObservabilityAPI
+
         api = ObservabilityAPI(client)
         client.patch = AsyncMock(return_value={"id": "inc-1", "status": "RESOLVED"})
 
@@ -408,6 +432,7 @@ class TestVersioningEndpoints:
     async def test_version_history_path(self, client):
         """get_version_history() must hit datasets/{id}/versions/."""
         from datahub_interoperability.versioning import VersioningAPI
+
         api = VersioningAPI(client)
         client.get = AsyncMock(return_value={"results": []})
 
@@ -420,6 +445,7 @@ class TestVersioningEndpoints:
     async def test_compare_versions_uses_correct_params(self, client):
         """compare_versions() must send version1/version2 params (not version1_id)."""
         from datahub_interoperability.versioning import VersioningAPI
+
         api = VersioningAPI(client)
         client.get = AsyncMock(return_value={"diff": {}})
 
@@ -435,10 +461,13 @@ class TestVersioningEndpoints:
     async def test_compare_versions_endpoint_path(self, client):
         """compare_versions() must hit datasets/{id}/versions/compare/."""
         from datahub_interoperability.versioning import VersioningAPI
+
         api = VersioningAPI(client)
         client.get = AsyncMock(return_value={"diff": {}})
 
         await api.compare_versions("ds-1", "v1", "v2")
 
         url = client.get.call_args[0][0]
-        assert url == "datasets/ds-1/versions/compare/", f"Expected 'datasets/ds-1/versions/compare/', got: {url}"
+        assert url == "datasets/ds-1/versions/compare/", (
+            f"Expected 'datasets/ds-1/versions/compare/', got: {url}"
+        )

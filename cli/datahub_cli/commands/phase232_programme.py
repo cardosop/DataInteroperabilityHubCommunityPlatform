@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 import click
 
 from ..api_client import api_client
-
 
 # Order matches OpenSpec D232 subsystem list + compliance runs driver.
 _PHASE232_LIST_ROUTES: tuple[tuple[str, str, str], ...] = (
@@ -76,7 +76,7 @@ def phase232_probe_lists(fmt: str, limit: int) -> None:
         try:
             data = api_client.get(path, params={"limit": limit})
             results.append({"subsystem": name, "path": path, "ok": True, "sample": data})
-        except Exception as exc:  # noqa: BLE001 — surface CLI errors to operator
+        except Exception as exc:
             results.append({"subsystem": name, "path": path, "ok": False, "error": str(exc)})
     if fmt == "json":
         click.echo(json.dumps(results, indent=2, default=str))
@@ -86,4 +86,4 @@ def phase232_probe_lists(fmt: str, limit: int) -> None:
             click.echo(f"[{status}] {row['subsystem']}: {row.get('error', 'received payload')}")
 
 
-__all__ = ["phase232_group", "format_phase232_catalogue_table", "_PHASE232_LIST_ROUTES"]
+__all__ = ["_PHASE232_LIST_ROUTES", "format_phase232_catalogue_table", "phase232_group"]

@@ -17,9 +17,7 @@ All validation methods follow engineering best practices:
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
-
-from django.utils import timezone as django_timezone
+from typing import Any
 
 from hub.apps.core.business_rules.base import (
     BusinessRules,
@@ -31,12 +29,7 @@ from hub.apps.scheduled_export.models import (
     DestinationType,
     ScheduledExport,
     ScheduledExportRun,
-    ScheduledExportStatus,
 )
-
-if TYPE_CHECKING:
-    from hub.apps.tenants.models import Tenant
-    from hub.apps.users.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -54,13 +47,13 @@ class ScheduledExportRuleExecutionContext(RuleExecutionContext):
     - user: Optional user instance for permission validation
     """
 
-    scheduled_export: Optional[ScheduledExport] = None
-    export_run: Optional[ScheduledExportRun] = None
-    destination: Optional[Dict[str, Any]] = None
-    tenant: Optional[Any] = None  # Using Any to avoid circular import
-    user: Optional[Any] = None  # Using Any to avoid circular import
+    scheduled_export: ScheduledExport | None = None
+    export_run: ScheduledExportRun | None = None
+    destination: dict[str, Any] | None = None
+    tenant: Any | None = None  # Using Any to avoid circular import
+    user: Any | None = None  # Using Any to avoid circular import
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert context to dictionary for caching/logging."""
         base_dict = super().to_dict()
         # Add scheduled export-specific fields
@@ -95,7 +88,6 @@ class ScheduledExportRuleExecutionContext(RuleExecutionContext):
     description="Validates scheduled export exports, runs, destinations, and tenant context",
     tags=["scheduled_export", "validation", "export"],
     priority=10,
-
     openspec_ref="specs/scheduled-export-business-rules/spec.md",
 )
 class ScheduledExportBusinessRules(BusinessRules):
@@ -111,10 +103,10 @@ class ScheduledExportBusinessRules(BusinessRules):
 
     def validate(
         self,
-        scheduled_export: Optional[ScheduledExport] = None,
-        export_run: Optional[ScheduledExportRun] = None,
-        tenant: Optional[Any] = None,
-        user: Optional[Any] = None,
+        scheduled_export: ScheduledExport | None = None,
+        export_run: ScheduledExportRun | None = None,
+        tenant: Any | None = None,
+        user: Any | None = None,
         validation_type: str = "all",
         **kwargs,
     ) -> ValidationResult:
@@ -198,9 +190,9 @@ class ScheduledExportBusinessRules(BusinessRules):
         - All IDs are valid UUIDs
         - All referenced resources exist and belong to tenant
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "scope_validated": False,
             "has_asset_ids": False,
             "has_dataset_ids": False,
@@ -258,7 +250,7 @@ class ScheduledExportBusinessRules(BusinessRules):
                     except Asset.DoesNotExist:
                         errors.append(f"Asset {asset_id} not found or not in tenant")
                     except Exception as e:
-                        errors.append(f"Error validating asset {asset_id}: {str(e)}")
+                        errors.append(f"Error validating asset {asset_id}: {e!s}")
 
         # Validate dataset_ids
         if dataset_ids:
@@ -274,7 +266,7 @@ class ScheduledExportBusinessRules(BusinessRules):
                     except Dataset.DoesNotExist:
                         errors.append(f"Dataset {dataset_id} not found or not in tenant")
                     except Exception as e:
-                        errors.append(f"Error validating dataset {dataset_id}: {str(e)}")
+                        errors.append(f"Error validating dataset {dataset_id}: {e!s}")
 
         # Validate file_ids
         if file_ids:
@@ -290,7 +282,7 @@ class ScheduledExportBusinessRules(BusinessRules):
                     except File.DoesNotExist:
                         errors.append(f"File {file_id} not found or not in tenant")
                     except Exception as e:
-                        errors.append(f"Error validating file {file_id}: {str(e)}")
+                        errors.append(f"Error validating file {file_id}: {e!s}")
 
         # Validate contract_id
         if contract_id:
@@ -302,7 +294,7 @@ class ScheduledExportBusinessRules(BusinessRules):
             except Contract.DoesNotExist:
                 errors.append(f"Contract {contract_id} not found or not in tenant")
             except Exception as e:
-                errors.append(f"Error validating contract {contract_id}: {str(e)}")
+                errors.append(f"Error validating contract {contract_id}: {e!s}")
 
         details["scope_validated"] = len(errors) == 0
         return ValidationResult(
@@ -319,9 +311,9 @@ class ScheduledExportBusinessRules(BusinessRules):
         - Tenant isolation
         - User permissions for each resource in scope
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "access_validated": False,
             "tenant_isolation_valid": False,
         }
@@ -367,7 +359,7 @@ class ScheduledExportBusinessRules(BusinessRules):
                             ]
                         )
                 except Exception as e:
-                    warnings.append(f"Could not validate access to asset {asset_id}: {str(e)}")
+                    warnings.append(f"Could not validate access to asset {asset_id}: {e!s}")
 
         # Check dataset access
         dataset_ids = source_scope.get("dataset_ids", [])
@@ -393,7 +385,7 @@ class ScheduledExportBusinessRules(BusinessRules):
                             ]
                         )
                 except Exception as e:
-                    warnings.append(f"Could not validate access to dataset {dataset_id}: {str(e)}")
+                    warnings.append(f"Could not validate access to dataset {dataset_id}: {e!s}")
 
         # Check file access
         file_ids = source_scope.get("file_ids", [])
@@ -417,7 +409,7 @@ class ScheduledExportBusinessRules(BusinessRules):
                             ]
                         )
                 except Exception as e:
-                    warnings.append(f"Could not validate access to file {file_id}: {str(e)}")
+                    warnings.append(f"Could not validate access to file {file_id}: {e!s}")
 
         details["access_validated"] = len(errors) == 0
         return ValidationResult(
@@ -436,9 +428,9 @@ class ScheduledExportBusinessRules(BusinessRules):
         - Credentials are present (but masked in responses)
         - Optional format/size limits are valid
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {"destination_validated": False}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"destination_validated": False}
 
         if not context.scheduled_export:
             return ValidationResult(
@@ -507,19 +499,18 @@ class ScheduledExportBusinessRules(BusinessRules):
             format_limits = destination_config["format_limits"]
             if not isinstance(format_limits, dict):
                 errors.append("format_limits must be a dictionary")
-            else:
-                # Validate allowed formats (if specified)
-                if "allowed_formats" in format_limits:
-                    allowed_formats = format_limits["allowed_formats"]
-                    if not isinstance(allowed_formats, list):
-                        errors.append("allowed_formats must be a list")
-                    else:
-                        valid_formats = ["CSV", "JSON", "PARQUET", "AVRO", "ORC"]
-                        for fmt in allowed_formats:
-                            if fmt not in valid_formats:
-                                warnings.append(
-                                    f"Unknown format in allowed_formats: {fmt}. Valid formats: {', '.join(valid_formats)}"
-                                )
+            # Validate allowed formats (if specified)
+            elif "allowed_formats" in format_limits:
+                allowed_formats = format_limits["allowed_formats"]
+                if not isinstance(allowed_formats, list):
+                    errors.append("allowed_formats must be a list")
+                else:
+                    valid_formats = ["CSV", "JSON", "PARQUET", "AVRO", "ORC"]
+                    for fmt in allowed_formats:
+                        if fmt not in valid_formats:
+                            warnings.append(
+                                f"Unknown format in allowed_formats: {fmt}. Valid formats: {', '.join(valid_formats)}"
+                            )
 
         if "size_limits" in destination_config:
             size_limits = destination_config["size_limits"]
@@ -562,9 +553,9 @@ class ScheduledExportBusinessRules(BusinessRules):
         - Run belongs to tenant
         - Status transitions are valid
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {"run_validated": False}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"run_validated": False}
 
         if not context.export_run:
             return ValidationResult(

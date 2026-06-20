@@ -91,7 +91,10 @@ def _ensure_test_bucket_exists():
                 try:
                     s3.create_bucket(Bucket="test-bucket")
                 except ClientError as create_err:
-                    if create_err.response.get("Error", {}).get("Code") != "BucketAlreadyOwnedByYou":
+                    if (
+                        create_err.response.get("Error", {}).get("Code")
+                        != "BucketAlreadyOwnedByYou"
+                    ):
                         raise
     except Exception:
         pass  # Don't fail setUp if MinIO not reachable
@@ -121,7 +124,6 @@ class ScheduledIngestionJobTest(TestCase):
         setUp — each test creates its own object graph that doesn't
         conflict with other tests.
         """
-        pass
 
     def setUp(self):
         """Set up test fixtures with unique names to avoid collisions in parallel runs."""
@@ -196,7 +198,7 @@ class ScheduledIngestionJobTest(TestCase):
         self.assertTrue(self.job.result_json.get("executed_by_prefect"))
         self.assertIn("Prefect", self.job.result_json.get("message", ""))
 
-    @pytest.mark.scheduled_ingestion_integration
+    @pytest.mark.requires_prefect
     def test_execute_scheduled_ingestion_job_success(self):
         """
         Test successful scheduled ingestion job execution using real ScheduledIngestionProcessor.
@@ -236,7 +238,7 @@ class ScheduledIngestionJobTest(TestCase):
                 self.skipTest(reason)
             raise  # Re-raise unexpected errors
 
-    @pytest.mark.scheduled_ingestion_integration
+    @pytest.mark.requires_prefect
     def test_execute_scheduled_ingestion_job_with_failures(self):
         """
         Test scheduled ingestion job execution with failures using real processor.
@@ -281,7 +283,7 @@ class ScheduledIngestionJobTest(TestCase):
                 self.assertEqual(run.status, ScheduledIngestionRunStatus.FAILED)
                 self.assertIsNotNone(run.error_message)
 
-    @pytest.mark.scheduled_ingestion_integration
+    @pytest.mark.requires_prefect
     def test_execute_scheduled_ingestion_job_processor_exception(self):
         """
         Test scheduled ingestion job execution error handling using real processor.
@@ -328,7 +330,7 @@ class ScheduledIngestionJobTest(TestCase):
 
         self.assertIn("not found", str(cm.exception))
 
-    @pytest.mark.scheduled_ingestion_integration
+    @pytest.mark.requires_prefect
     def test_execute_scheduled_ingestion_job_incremental_timestamp(self):
         """
         Test scheduled ingestion job persists last_incremental_value using real processor.
@@ -356,7 +358,7 @@ class ScheduledIngestionJobTest(TestCase):
                 self.skipTest(reason)
             raise
 
-    @pytest.mark.scheduled_ingestion_integration
+    @pytest.mark.requires_prefect
     def test_execute_scheduled_ingestion_job_existing_run(self):
         """
         Test scheduled ingestion job with existing run using real processor.
@@ -380,7 +382,7 @@ class ScheduledIngestionJobTest(TestCase):
 
         # Execute job using real processor
         try:
-            result = _execute_scheduled_ingestion_job(self.job)
+            _execute_scheduled_ingestion_job(self.job)
 
             # Verify existing run updated (not new one created)
             runs = ScheduledIngestionRun.objects.filter(job_id=self.job.id)
@@ -432,4 +434,7 @@ class ScheduledIngestionJobTest(TestCase):
         with self.assertRaises(ValidationError) as cm:
             self.scheduled_ingestion.save(update_fields=["file_pattern"])
         msg = str(cm.exception).lower()
-        self.assertTrue("file pattern" in msg or "regex" in msg, f"Expected file pattern/regex in message: {cm.exception}")
+        self.assertTrue(
+            "file pattern" in msg or "regex" in msg,
+            f"Expected file pattern/regex in message: {cm.exception}",
+        )

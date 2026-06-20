@@ -15,7 +15,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.billing.models import Subscription, SubscriptionStatus
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantPlan, PlanTier
+from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan
 from hub.apps.users.models import Role, User, UserRole, UserStatus
 from hub.apps.virtualization.models import QueryType, VirtualDataset, VirtualDatasetStatus
 
@@ -33,20 +33,26 @@ class VirtualDatasetViewSetTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED,
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            kyc_status=KYCStatus.VERIFIED,
             virtualization_enabled=True,
         )
 
         # Create another tenant for isolation tests
         _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED,
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            kyc_status=KYCStatus.VERIFIED,
             virtualization_enabled=True,
         )
 
         # Create platform admin user
         self.platform_admin = User.objects.create_user(
-            email=f"admin-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", is_platform_admin=True
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            is_platform_admin=True,
         )
 
         # Create roles
@@ -118,12 +124,20 @@ class VirtualDatasetViewSetTest(TestCase):
             defaults={
                 "name": "Virtualization Test Plan",
                 "tier": PlanTier.PRO,
-                "limits_json": {"max_assets": 100, "max_storage_gb": 1000, "max_virtual_datasets": 100},
+                "limits_json": {
+                    "max_assets": 100,
+                    "max_storage_gb": 1000,
+                    "max_virtual_datasets": 100,
+                },
                 "is_active": True,
             },
         )
         if "max_storage_gb" not in (plan.limits_json or {}):
-            plan.limits_json = {**(plan.limits_json or {}), "max_storage_gb": 1000, "max_virtual_datasets": 100}
+            plan.limits_json = {
+                **(plan.limits_json or {}),
+                "max_storage_gb": 1000,
+                "max_virtual_datasets": 100,
+            }
             plan.save(update_fields=["limits_json"])
         if self.tenant.plan_id != plan.id:
             self.tenant.plan = plan
@@ -180,9 +194,7 @@ class VirtualDatasetViewSetTest(TestCase):
             "sources": [{"type": "postgresql", "host": "localhost", "database": "testdb"}],
         }
 
-        response = self.client.post(
-            "/api/v1/virtualization/datasets/", minimal_data, format="json"
-        )
+        response = self.client.post("/api/v1/virtualization/datasets/", minimal_data, format="json")
 
         if response.status_code == status.HTTP_400_BAD_REQUEST:
             self.fail(f"Create failed with 400: {response.data}")
@@ -419,8 +431,11 @@ class VirtualDatasetViewSetTest(TestCase):
             f"/api/v1/virtualization/datasets/{dataset.id}/", update_data, format="json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK,
-                         f"Update failed: {getattr(response, 'data', '')}")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            f"Update failed: {getattr(response, 'data', '')}",
+        )
         self.assertEqual(response.data["name"], update_data["name"])
         self.assertEqual(response.data["status"], update_data["status"])
 
@@ -596,7 +611,7 @@ class VirtualDatasetViewSetTest(TestCase):
             version="1.0.0",
             sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
         )
-        dataset2 = VirtualDataset.objects.create(
+        VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
             name="Test Dataset",
@@ -605,7 +620,7 @@ class VirtualDatasetViewSetTest(TestCase):
             version="2.0.0",
             sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
         )
-        dataset3 = VirtualDataset.objects.create(
+        VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
             name="Test Dataset",
@@ -705,7 +720,7 @@ class VirtualDatasetViewSetTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # Create test datasets
-        dataset1 = VirtualDataset.objects.create(
+        VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
             name="A Dataset",
@@ -713,7 +728,7 @@ class VirtualDatasetViewSetTest(TestCase):
             query_type=QueryType.SQL,
             sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
         )
-        dataset2 = VirtualDataset.objects.create(
+        VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
             name="B Dataset",
@@ -728,13 +743,22 @@ class VirtualDatasetViewSetTest(TestCase):
         names = [d["name"] for d in response.data["results"]]
         self.assertIn("A Dataset", names)
         self.assertIn("B Dataset", names)
+        # Verify actual ascending order (A before B)
+        a_idx = names.index("A Dataset") if "A Dataset" in names else -1
+        b_idx = names.index("B Dataset") if "B Dataset" in names else -1
+        self.assertLess(a_idx, b_idx, f"Expected A before B in ascending order; got {names}")
 
         # Order by name descending
         response = self.client.get("/api/v1/virtualization/datasets/?ordering=-name")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        names = [d["name"] for d in response.data["results"]]
-        self.assertIn("A Dataset", names)
-        self.assertIn("B Dataset", names)
+        names_desc = [d["name"] for d in response.data["results"]]
+        self.assertIn("A Dataset", names_desc)
+        self.assertIn("B Dataset", names_desc)
+        # Verify actual descending order (B before A)
+        a_idx_desc = names_desc.index("A Dataset") if "A Dataset" in names_desc else -1
+        b_idx_desc = names_desc.index("B Dataset") if "B Dataset" in names_desc else -1
+        self.assertLess(b_idx_desc, a_idx_desc,
+                        f"Expected B before A in descending order; got {names_desc}")
 
     def test_filter_by_owner(self):
         """Test filtering virtual datasets by owner/created_by"""
@@ -830,7 +854,7 @@ class VirtualDatasetViewSetTest(TestCase):
         self.assertTrue(
             has_rate_limit_header,
             f"At least one rate-limit header must be present in the response. "
-            f"Headers found: {dict(headers)}"
+            f"Headers found: {dict(headers)}",
         )
 
     def test_rbac_write_operations_require_role(self):
@@ -911,19 +935,16 @@ class VirtualDatasetViewSetTest(TestCase):
             conditions={"resource": {"type": "VIRTUAL_DATASET"}},
         )
 
-        response = self.client.get(
-            f"/api/v1/virtualization/datasets/{dataset.id}/"
-        )
+        response = self.client.get(f"/api/v1/virtualization/datasets/{dataset.id}/")
 
-        # With a DENY policy the request should be 403.
-        # If ABAC is not enforced on this endpoint, verify the
-        # dataset is returned correctly instead (no silent skip).
-        if response.status_code == status.HTTP_200_OK:
-            self.assertEqual(response.data["id"], str(dataset.id))
-        else:
-            self.assertEqual(
-                response.status_code, status.HTTP_403_FORBIDDEN
-            )
+        # A DENY policy MUST block access with 403 FORBIDDEN.
+        # The ABAC engine is expected to be active in the test environment.
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            f"ABAC DENY policy should block virtual dataset access. "
+            f"Got status {response.status_code}: {getattr(response, 'data', '')}",
+        )
 
     def test_audit_logging_on_create(self):
         """Test that audit events are created on virtual dataset creation"""
@@ -984,7 +1005,8 @@ class VirtualDatasetViewSetTest(TestCase):
         )
 
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
             f"Update failed: {getattr(response, 'data', '')}",
         )
 
@@ -1033,3 +1055,27 @@ class VirtualDatasetViewSetTest(TestCase):
         self.assertEqual(str(audit_event.resource_id), str(dataset.id))
         self.assertIn("name", audit_event.details_json)
         self.assertEqual(audit_event.details_json["name"], dataset.name)
+
+    # ==================== EDGE CASE TESTS ====================
+
+    def test_update_virtual_dataset_not_found(self):
+        """Test that updating a non-existent virtual dataset returns 404"""
+        self.client.force_authenticate(user=self.user)
+        fake_id = uuid.uuid4()
+
+        response = self.client.patch(
+            f"/api/v1/virtualization/datasets/{fake_id}/",
+            {"name": "New Name"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_delete_virtual_dataset_not_found(self):
+        """Test that deleting a non-existent virtual dataset returns 404"""
+        self.client.force_authenticate(user=self.user)
+        fake_id = uuid.uuid4()
+
+        response = self.client.delete(f"/api/v1/virtualization/datasets/{fake_id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

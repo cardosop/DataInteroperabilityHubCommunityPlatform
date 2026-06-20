@@ -13,26 +13,24 @@ Engineering-grade implementation:
 - Best practices - follows testing standards
 """
 
-import os
-import sys
-import subprocess
+import contextlib
 import json
-import xml.etree.ElementTree as ET
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+import subprocess
+import sys
 from datetime import datetime
+from pathlib import Path
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # Color codes for terminal output
-GREEN = '\033[92m'
-RED = '\033[91m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
-NC = '\033[0m'  # No Color
-BOLD = '\033[1m'
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+BLUE = "\033[94m"
+NC = "\033[0m"  # No Color
+BOLD = "\033[1m"
 
 
 class ODPSUnitTestCoverage:
@@ -43,51 +41,51 @@ class ODPSUnitTestCoverage:
 
     # ODPS modules to test
     ODPS_MODULES = {
-        'normalizers': [
-            'hub.apps.contracts.normalization.odps_normalizer',
-            'hub.apps.contracts.normalization.odps_normalizer_base',
-            'hub.apps.contracts.normalization.odps_normalizer_v4_1',
-            'hub.apps.contracts.normalization.odps_normalizer_v4_0',
-            'hub.apps.contracts.normalization.odps_normalizer_v3_x',
-            'hub.apps.contracts.normalization.odps_normalizer_v2_x',
-            'hub.apps.contracts.normalization.odps_normalizer_v1_x',
+        "normalizers": [
+            "hub.apps.contracts.normalization.odps_normalizer",
+            "hub.apps.contracts.normalization.odps_normalizer_base",
+            "hub.apps.contracts.normalization.odps_normalizer_v4_1",
+            "hub.apps.contracts.normalization.odps_normalizer_v4_0",
+            "hub.apps.contracts.normalization.odps_normalizer_v3_x",
+            "hub.apps.contracts.normalization.odps_normalizer_v2_x",
+            "hub.apps.contracts.normalization.odps_normalizer_v1_x",
         ],
-        'generators': [
-            'hub.apps.contracts.odps_generator',
+        "generators": [
+            "hub.apps.contracts.odps_generator",
         ],
-        'resolvers': [
-            'hub.apps.contracts.ref_resolver',
+        "resolvers": [
+            "hub.apps.contracts.ref_resolver",
         ],
     }
 
     # Test files for each module category
     TEST_FILES = {
-        'normalizers': [
-            'hub/apps/contracts/tests/test_odps_normalizer.py',
-            'hub/apps/contracts/tests/test_odps_normalizer_base.py',
-            'hub/apps/contracts/tests/test_odps_normalizer_v4_1.py',
-            'hub/apps/contracts/tests/test_odps_normalizer_v4_0.py',
+        "normalizers": [
+            "hub/apps/contracts/tests/test_odps_normalizer.py",
+            "hub/apps/contracts/tests/test_odps_normalizer_base.py",
+            "hub/apps/contracts/tests/test_odps_normalizer_v4_1.py",
+            "hub/apps/contracts/tests/test_odps_normalizer_v4_0.py",
         ],
-        'generators': [
-            'hub/apps/contracts/tests/test_odps_generator.py',
-            'hub/apps/contracts/tests/test_odps_generator_assembly.py',
-            'hub/apps/contracts/tests/test_odps_generator_contract.py',
-            'hub/apps/contracts/tests/test_odps_generator_lifecycle.py',
-            'hub/apps/contracts/tests/test_odps_generator_marketplace.py',
-            'hub/apps/contracts/tests/test_odps_generator_product_strategy.py',
+        "generators": [
+            "hub/apps/contracts/tests/test_odps_generator.py",
+            "hub/apps/contracts/tests/test_odps_generator_assembly.py",
+            "hub/apps/contracts/tests/test_odps_generator_contract.py",
+            "hub/apps/contracts/tests/test_odps_generator_lifecycle.py",
+            "hub/apps/contracts/tests/test_odps_generator_marketplace.py",
+            "hub/apps/contracts/tests/test_odps_generator_product_strategy.py",
         ],
-        'resolvers': [
-            'hub/apps/contracts/tests/test_ref_resolver.py',
-            'hub/apps/contracts/tests/test_ref_resolver_caching.py',
-            'hub/apps/contracts/tests/test_ref_resolver_performance.py',
+        "resolvers": [
+            "hub/apps/contracts/tests/test_ref_resolver.py",
+            "hub/apps/contracts/tests/test_ref_resolver_caching.py",
+            "hub/apps/contracts/tests/test_ref_resolver_performance.py",
         ],
     }
 
     def __init__(self):
         """Initialize the coverage runner."""
         self.project_root = PROJECT_ROOT
-        self.results: Dict[str, Dict] = {}
-        self.coverage_data: Dict[str, float] = {}
+        self.results: dict[str, dict] = {}
+        self.coverage_data: dict[str, float] = {}
 
     def print_header(self, text: str):
         """Print a formatted header."""
@@ -100,7 +98,9 @@ class ODPSUnitTestCoverage:
         print(f"\n{BOLD}{text}{NC}")
         print(f"{'-' * len(text)}")
 
-    def run_command(self, cmd: List[str], cwd: Optional[Path] = None, use_docker: bool = True) -> Tuple[int, str, str]:
+    def run_command(
+        self, cmd: list[str], cwd: Path | None = None, use_docker: bool = True
+    ) -> tuple[int, str, str]:
         """
         Run a command and return exit code, stdout, and stderr.
 
@@ -118,18 +118,19 @@ class ODPSUnitTestCoverage:
         # Check if we should use Docker (Django is in the container)
         if use_docker:
             # Check if Docker container is running
-            check_cmd = ['docker', 'ps', '--filter', 'name=hub-api', '--format', '{{.Names}}']
-            check_result = subprocess.run(check_cmd, capture_output=True, text=True)
-            if check_result.returncode == 0 and 'hub-api' in check_result.stdout:
+            check_cmd = ["docker", "ps", "--filter", "name=hub-api", "--format", "{{.Names}}"]
+            check_result = subprocess.run(check_cmd, check=False, capture_output=True, text=True)
+            if check_result.returncode == 0 and "hub-api" in check_result.stdout:
                 # Run command in Docker container
-                docker_cmd = ['docker', 'exec', '-w', '/app', 'hub-api'] + cmd
+                docker_cmd = ["docker", "exec", "-w", "/app", "hub-api"] + cmd
                 try:
                     result = subprocess.run(
                         docker_cmd,
+                        check=False,
                         cwd=cwd,
                         capture_output=True,
                         text=True,
-                        timeout=600  # 10 minute timeout
+                        timeout=600,  # 10 minute timeout
                     )
                     return result.returncode, result.stdout, result.stderr
                 except subprocess.TimeoutExpired:
@@ -137,7 +138,9 @@ class ODPSUnitTestCoverage:
                 except Exception as e:
                     return 1, "", str(e)
             else:
-                print(f"{YELLOW}Warning: Docker container 'hub-api' not running, trying local execution{NC}")
+                print(
+                    f"{YELLOW}Warning: Docker container 'hub-api' not running, trying local execution{NC}"
+                )
                 use_docker = False
 
         # Fallback to local execution
@@ -145,10 +148,11 @@ class ODPSUnitTestCoverage:
             try:
                 result = subprocess.run(
                     cmd,
+                    check=False,
                     cwd=cwd,
                     capture_output=True,
                     text=True,
-                    timeout=600  # 10 minute timeout
+                    timeout=600,  # 10 minute timeout
                 )
                 return result.returncode, result.stdout, result.stderr
             except subprocess.TimeoutExpired:
@@ -157,11 +161,8 @@ class ODPSUnitTestCoverage:
                 return 1, "", str(e)
 
     def run_unit_tests_with_coverage(
-        self,
-        category: str,
-        modules: List[str],
-        test_files: List[str]
-    ) -> Dict:
+        self, category: str, modules: list[str], test_files: list[str]
+    ) -> dict:
         """
         Run unit tests with coverage for a specific category.
 
@@ -178,7 +179,7 @@ class ODPSUnitTestCoverage:
         # Build coverage arguments
         cov_args = []
         for module in modules:
-            cov_args.extend(['--cov', module])
+            cov_args.extend(["--cov", module])
 
         # Build test file paths
         test_paths = []
@@ -192,61 +193,67 @@ class ODPSUnitTestCoverage:
         if not test_paths:
             print(f"{RED}Error: No test files found for {category}{NC}")
             return {
-                'success': False,
-                'coverage': 0.0,
-                'tests_run': 0,
-                'tests_passed': 0,
-                'tests_failed': 0,
-                'error': 'No test files found'
+                "success": False,
+                "coverage": 0.0,
+                "tests_run": 0,
+                "tests_passed": 0,
+                "tests_failed": 0,
+                "error": "No test files found",
             }
 
         # Run pytest with coverage
         # Override pytest.ini addopts to remove --reuse-db which may not be supported
         # We'll use --override-ini to replace addopts with compatible options
         cmd = [
-            'python3', '-m', 'pytest',
-            '--override-ini=addopts=--strict-markers --disable-warnings --tb=short --asyncio-mode=auto',
+            "python3",
+            "-m",
+            "pytest",
+            "--override-ini=addopts=--strict-markers --disable-warnings --tb=short --asyncio-mode=auto",
             *cov_args,
-            '--cov-report=term-missing',
-            '--cov-report=xml:coverage.xml',
-            '--cov-report=json:coverage.json',
-            '-v',
-            *test_paths
+            "--cov-report=term-missing",
+            "--cov-report=xml:coverage.xml",
+            "--cov-report=json:coverage.json",
+            "-v",
+            *test_paths,
         ]
 
         print(f"Running: {' '.join(cmd)}")
         exit_code, stdout, stderr = self.run_command(cmd)
 
         # If still failing, try without any override (let pytest handle it)
-        if exit_code != 0 and '--reuse-db' in stderr:
+        if exit_code != 0 and "--reuse-db" in stderr:
             print(f"{YELLOW}Warning: Retrying without --reuse-db override{NC}")
             cmd_retry = [
-                'python3', '-m', 'pytest',
+                "python3",
+                "-m",
+                "pytest",
                 *cov_args,
-                '--cov-report=term-missing',
-                '--cov-report=xml:coverage.xml',
-                '--cov-report=json:coverage.json',
-                '--tb=short',
-                '-v',
-                *test_paths
+                "--cov-report=term-missing",
+                "--cov-report=xml:coverage.xml",
+                "--cov-report=json:coverage.json",
+                "--tb=short",
+                "-v",
+                *test_paths,
             ]
             # Try to run with a custom pytest.ini that doesn't have --reuse-db
             # Create temporary pytest.ini without --reuse-db
-            import tempfile
             import shutil
-            original_pytest_ini = self.project_root / 'pytest.ini'
-            backup_pytest_ini = self.project_root / 'pytest.ini.backup'
+
+            original_pytest_ini = self.project_root / "pytest.ini"
+            backup_pytest_ini = self.project_root / "pytest.ini.backup"
 
             try:
                 # Backup original
                 if original_pytest_ini.exists():
                     shutil.copy2(original_pytest_ini, backup_pytest_ini)
                     # Read and modify
-                    with open(original_pytest_ini, 'r') as f:
+                    with open(original_pytest_ini) as f:
                         content = f.read()
                     # Remove --reuse-db from addopts
-                    modified_content = content.replace('--reuse-db', '').replace('    --reuse-db', '')
-                    with open(original_pytest_ini, 'w') as f:
+                    modified_content = content.replace("--reuse-db", "").replace(
+                        "    --reuse-db", ""
+                    )
+                    with open(original_pytest_ini, "w") as f:
                         f.write(modified_content)
 
                 exit_code, stdout, stderr = self.run_command(cmd_retry, use_docker=True)
@@ -257,20 +264,24 @@ class ODPSUnitTestCoverage:
 
         # Parse coverage from JSON report
         # Coverage files are in Docker container, copy them if needed
-        coverage_json_path = self.project_root / 'coverage.json'
+        coverage_json_path = self.project_root / "coverage.json"
 
         # Try to copy coverage.json from Docker container if it doesn't exist locally
         if not coverage_json_path.exists():
             try:
                 import subprocess
+
                 result = subprocess.run(
-                    ['docker', 'cp', 'hub-api:/app/coverage.json', str(coverage_json_path)],
+                    ["docker", "cp", "hub-api:/app/coverage.json", str(coverage_json_path)],
+                    check=False,
                     capture_output=True,
                     text=True,
-                    timeout=10
+                    timeout=10,
                 )
                 if result.returncode != 0:
-                    print(f"{YELLOW}Warning: Could not copy coverage.json from Docker container{NC}")
+                    print(
+                        f"{YELLOW}Warning: Could not copy coverage.json from Docker container{NC}"
+                    )
             except Exception as e:
                 print(f"{YELLOW}Warning: Could not copy coverage.json from Docker: {e}{NC}")
         coverage_data = {}
@@ -278,21 +289,21 @@ class ODPSUnitTestCoverage:
 
         if coverage_json_path.exists():
             try:
-                with open(coverage_json_path, 'r') as f:
+                with open(coverage_json_path) as f:
                     coverage_json = json.load(f)
 
                 # Calculate coverage for each module
-                totals = coverage_json.get('totals', {})
-                overall_coverage = totals.get('percent_covered', 0.0)
+                totals = coverage_json.get("totals", {})
+                overall_coverage = totals.get("percent_covered", 0.0)
 
                 # Get per-file coverage
-                files = coverage_json.get('files', {})
+                files = coverage_json.get("files", {})
                 for module in modules:
                     # Find matching files
-                    module_parts = module.split('.')
+                    module_parts = module.split(".")
                     for file_path, file_data in files.items():
                         if all(part in file_path for part in module_parts):
-                            file_coverage = file_data.get('summary', {}).get('percent_covered', 0.0)
+                            file_coverage = file_data.get("summary", {}).get("percent_covered", 0.0)
                             coverage_data[module] = file_coverage
                             break
             except Exception as e:
@@ -305,34 +316,30 @@ class ODPSUnitTestCoverage:
 
         if exit_code == 0:
             # Try to extract test counts from pytest output
-            for line in stdout.split('\n'):
-                if 'passed' in line.lower() and 'failed' in line.lower():
+            for line in stdout.split("\n"):
+                if "passed" in line.lower() and "failed" in line.lower():
                     # Format: "X passed, Y failed in Z.XXs"
                     parts = line.split()
                     for i, part in enumerate(parts):
-                        if part == 'passed':
-                            try:
-                                tests_passed = int(parts[i-1])
-                            except (ValueError, IndexError):
-                                pass
-                        elif part == 'failed':
-                            try:
-                                tests_failed = int(parts[i-1])
-                            except (ValueError, IndexError):
-                                pass
+                        if part == "passed":
+                            with contextlib.suppress(ValueError, IndexError):
+                                tests_passed = int(parts[i - 1])
+                        elif part == "failed":
+                            with contextlib.suppress(ValueError, IndexError):
+                                tests_failed = int(parts[i - 1])
                     tests_run = tests_passed + tests_failed
                     break
 
         result = {
-            'success': exit_code == 0,
-            'coverage': overall_coverage,
-            'module_coverage': coverage_data,
-            'tests_run': tests_run,
-            'tests_passed': tests_passed,
-            'tests_failed': tests_failed,
-            'exit_code': exit_code,
-            'stdout': stdout,
-            'stderr': stderr
+            "success": exit_code == 0,
+            "coverage": overall_coverage,
+            "module_coverage": coverage_data,
+            "tests_run": tests_run,
+            "tests_passed": tests_passed,
+            "tests_failed": tests_failed,
+            "exit_code": exit_code,
+            "stdout": stdout,
+            "stderr": stderr,
         }
 
         # Print summary
@@ -342,7 +349,9 @@ class ODPSUnitTestCoverage:
                 print(f"{RED}✗ Tests failed: {tests_failed}{NC}")
             print(f"{BLUE}Coverage: {overall_coverage:.2f}%{NC}")
             if overall_coverage < self.TARGET_COVERAGE:
-                print(f"{YELLOW}Warning: Coverage {overall_coverage:.2f}% is below target {self.TARGET_COVERAGE}%{NC}")
+                print(
+                    f"{YELLOW}Warning: Coverage {overall_coverage:.2f}% is below target {self.TARGET_COVERAGE}%{NC}"
+                )
         else:
             print(f"{RED}✗ Tests failed with exit code {exit_code}{NC}")
             if stderr:
@@ -351,7 +360,7 @@ class ODPSUnitTestCoverage:
 
         return result
 
-    def validate_coverage(self) -> Tuple[bool, List[str]]:
+    def validate_coverage(self) -> tuple[bool, list[str]]:
         """
         Validate that coverage meets requirements.
 
@@ -361,14 +370,14 @@ class ODPSUnitTestCoverage:
         issues = []
 
         for category, result in self.results.items():
-            coverage = result.get('coverage', 0.0)
+            coverage = result.get("coverage", 0.0)
             if coverage < self.TARGET_COVERAGE:
                 issues.append(
                     f"{category}: Coverage {coverage:.2f}% is below target {self.TARGET_COVERAGE}%"
                 )
 
             # Check module-level coverage
-            module_coverage = result.get('module_coverage', {})
+            module_coverage = result.get("module_coverage", {})
             for module, mod_cov in module_coverage.items():
                 if mod_cov < self.TARGET_COVERAGE:
                     issues.append(
@@ -401,10 +410,10 @@ class ODPSUnitTestCoverage:
         avg_coverage = 0.0
 
         for category, result in self.results.items():
-            total_tests += result.get('tests_run', 0)
-            total_passed += result.get('tests_passed', 0)
-            total_failed += result.get('tests_failed', 0)
-            avg_coverage += result.get('coverage', 0.0)
+            total_tests += result.get("tests_run", 0)
+            total_passed += result.get("tests_passed", 0)
+            total_failed += result.get("tests_failed", 0)
+            avg_coverage += result.get("coverage", 0.0)
 
         avg_coverage = avg_coverage / len(self.results) if self.results else 0.0
 
@@ -425,7 +434,7 @@ class ODPSUnitTestCoverage:
             report_lines.append(f"  Tests Failed: {result.get('tests_failed', 0)}")
             report_lines.append(f"  Overall Coverage: {result.get('coverage', 0.0):.2f}%")
 
-            module_coverage = result.get('module_coverage', {})
+            module_coverage = result.get("module_coverage", {})
             if module_coverage:
                 report_lines.append("  Module Coverage:")
                 for module, coverage in module_coverage.items():
@@ -457,14 +466,14 @@ class ODPSUnitTestCoverage:
         self.print_header("ODPS Unit Test Coverage - Comprehensive Testing")
 
         # Run tests for each category
-        for category in ['normalizers', 'generators', 'resolvers']:
+        for category in ["normalizers", "generators", "resolvers"]:
             modules = self.ODPS_MODULES.get(category, [])
             test_files = self.TEST_FILES.get(category, [])
 
             result = self.run_unit_tests_with_coverage(category, modules, test_files)
             self.results[category] = result
 
-            if not result.get('success', False):
+            if not result.get("success", False):
                 print(f"{RED}Error: {category} tests failed{NC}")
 
         # Generate and print report
@@ -473,8 +482,8 @@ class ODPSUnitTestCoverage:
         print(report)
 
         # Save report to file
-        report_path = self.project_root / 'odps_unit_test_coverage_report.txt'
-        with open(report_path, 'w') as f:
+        report_path = self.project_root / "odps_unit_test_coverage_report.txt"
+        with open(report_path, "w") as f:
             f.write(report)
         print(f"\n{GREEN}Report saved to: {report_path}{NC}")
 
@@ -498,5 +507,5 @@ def main():
     sys.exit(exit_code)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

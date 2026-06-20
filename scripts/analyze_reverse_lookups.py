@@ -12,14 +12,13 @@ This script:
 Usage:
     python scripts/analyze_reverse_lookups.py
 """
-import os
-import re
+
 import ast
 import json
-from pathlib import Path
-from typing import Dict, List, Set, Tuple, Optional
-from collections import defaultdict
+import re
 import sys
+from collections import defaultdict
+from pathlib import Path
 
 
 class ReverseLookupAnalyzer:
@@ -27,12 +26,12 @@ class ReverseLookupAnalyzer:
 
     def __init__(self, base_path: str = "hub"):
         self.base_path = Path(base_path)
-        self.reverse_calls: List[Dict] = []
-        self.template_url_tags: List[Dict] = []
-        self.url_patterns: Dict[str, Dict] = {}
-        self.reverse_dependencies: Dict[str, Set[str]] = defaultdict(set)
+        self.reverse_calls: list[dict] = []
+        self.template_url_tags: list[dict] = []
+        self.url_patterns: dict[str, dict] = {}
+        self.reverse_dependencies: dict[str, set[str]] = defaultdict(set)
 
-    def find_reverse_calls(self) -> List[Dict]:
+    def find_reverse_calls(self) -> list[dict]:
         """Find all reverse() calls in Python files"""
         reverse_calls = []
 
@@ -41,7 +40,7 @@ class ReverseLookupAnalyzer:
                 continue
 
             try:
-                with open(py_file, "r", encoding="utf-8") as f:
+                with open(py_file, encoding="utf-8") as f:
                     content = f.read()
                     lines = content.split("\n")
 
@@ -55,7 +54,9 @@ class ReverseLookupAnalyzer:
                                 reverse_call = self._extract_reverse_call(node, py_file, lines)
                                 if reverse_call:
                                     reverse_calls.append(reverse_call)
-                            elif isinstance(node.func, ast.Attribute) and node.func.attr == "reverse":
+                            elif (
+                                isinstance(node.func, ast.Attribute) and node.func.attr == "reverse"
+                            ):
                                 # Found reverse() call via import (e.g., django.urls.reverse)
                                 reverse_call = self._extract_reverse_call(node, py_file, lines)
                                 if reverse_call:
@@ -70,14 +71,16 @@ class ReverseLookupAnalyzer:
                     matches = re.finditer(r'reverse\s*\(\s*["\']([^"\']+)["\']', line)
                     for match in matches:
                         url_name = match.group(1)
-                        reverse_calls.append({
-                            "type": "reverse_call",
-                            "url_name": url_name,
-                            "file": str(py_file.relative_to(self.base_path)),
-                            "line": line_num,
-                            "code": line.strip(),
-                            "kwargs": self._extract_kwargs_from_line(line),
-                        })
+                        reverse_calls.append(
+                            {
+                                "type": "reverse_call",
+                                "url_name": url_name,
+                                "file": str(py_file.relative_to(self.base_path)),
+                                "line": line_num,
+                                "code": line.strip(),
+                                "kwargs": self._extract_kwargs_from_line(line),
+                            }
+                        )
 
             except Exception as e:
                 print(f"Error processing {py_file}: {e}", file=sys.stderr)
@@ -86,7 +89,9 @@ class ReverseLookupAnalyzer:
         self.reverse_calls = reverse_calls
         return reverse_calls
 
-    def _extract_reverse_call(self, node: ast.Call, file_path: Path, lines: List[str]) -> Optional[Dict]:
+    def _extract_reverse_call(
+        self, node: ast.Call, file_path: Path, lines: list[str]
+    ) -> dict | None:
         """Extract reverse call information from AST node"""
         if not node.args:
             return None
@@ -95,7 +100,7 @@ class ReverseLookupAnalyzer:
         url_name = None
         if isinstance(node.args[0], ast.Constant):
             url_name = node.args[0].value
-        elif hasattr(ast, 'Str') and isinstance(node.args[0], ast.Str):  # Python < 3.8
+        elif hasattr(ast, "Str") and isinstance(node.args[0], ast.Str):  # Python < 3.8
             url_name = node.args[0].s
         elif isinstance(node.args[0], ast.JoinedStr):  # f-strings
             # Try to extract string parts
@@ -103,10 +108,10 @@ class ReverseLookupAnalyzer:
             for value in node.args[0].values:
                 if isinstance(value, ast.Constant):
                     parts.append(str(value.value))
-                elif hasattr(ast, 'Str') and isinstance(value, ast.Str):
+                elif hasattr(ast, "Str") and isinstance(value, ast.Str):
                     parts.append(value.s)
             if parts:
-                url_name = ''.join(parts)
+                url_name = "".join(parts)
 
         if not url_name:
             return None
@@ -121,20 +126,25 @@ class ReverseLookupAnalyzer:
                     for key_node, value_node in zip(keyword.value.keys, keyword.value.values):
                         if isinstance(key_node, ast.Constant):
                             key = key_node.value
-                        elif hasattr(ast, 'Str') and isinstance(key_node, ast.Str):
+                        elif hasattr(ast, "Str") and isinstance(key_node, ast.Str):
                             key = key_node.s
                         else:
                             continue
                         # Extract value - handle both constants and expressions
                         if isinstance(value_node, ast.Constant):
                             value = value_node.value
-                        elif hasattr(ast, 'Str') and isinstance(value_node, ast.Str):
+                        elif hasattr(ast, "Str") and isinstance(value_node, ast.Str):
                             value = value_node.s
                         elif isinstance(value_node, ast.Call):
                             # Handle function calls like str(self.domain1.id)
                             # Convert to string representation for analysis
-                            if isinstance(value_node.func, ast.Name) and value_node.func.id == "str":
-                                if value_node.args and isinstance(value_node.args[0], ast.Attribute):
+                            if (
+                                isinstance(value_node.func, ast.Name)
+                                and value_node.func.id == "str"
+                            ):
+                                if value_node.args and isinstance(
+                                    value_node.args[0], ast.Attribute
+                                ):
                                     # str(self.domain1.id) -> 'str(self.domain1.id)'
                                     attr = value_node.args[0]
                                     if isinstance(attr.value, ast.Attribute):
@@ -166,13 +176,13 @@ class ReverseLookupAnalyzer:
             for key_node, value_node in zip(node.args[1].keys, node.args[1].values):
                 if isinstance(key_node, ast.Constant):
                     key = key_node.value
-                elif hasattr(ast, 'Str') and isinstance(key_node, ast.Str):
+                elif hasattr(ast, "Str") and isinstance(key_node, ast.Str):
                     key = key_node.s
                 else:
                     continue
                 if isinstance(value_node, ast.Constant):
                     value = value_node.value
-                elif hasattr(ast, 'Str') and isinstance(value_node, ast.Str):
+                elif hasattr(ast, "Str") and isinstance(value_node, ast.Str):
                     value = value_node.s
                 else:
                     continue
@@ -188,11 +198,11 @@ class ReverseLookupAnalyzer:
             "kwargs": kwargs,
         }
 
-    def _extract_kwargs_from_line(self, line: str) -> Dict[str, str]:
+    def _extract_kwargs_from_line(self, line: str) -> dict[str, str]:
         """Extract kwargs from reverse() call line"""
         kwargs = {}
         # Match kwargs={'key': 'value'} or kwargs={"key": "value"}
-        kwargs_match = re.search(r'kwargs\s*=\s*\{([^}]+)\}', line)
+        kwargs_match = re.search(r"kwargs\s*=\s*\{([^}]+)\}", line)
         if kwargs_match:
             kwargs_str = kwargs_match.group(1)
             # Extract key-value pairs
@@ -201,7 +211,7 @@ class ReverseLookupAnalyzer:
                 kwargs[key] = value.strip()
         return kwargs
 
-    def find_template_url_tags(self) -> List[Dict]:
+    def find_template_url_tags(self) -> list[dict]:
         """Find all {% url %} template tags in HTML/template files"""
         template_tags = []
 
@@ -211,13 +221,13 @@ class ReverseLookupAnalyzer:
             self.base_path / "apps" / "**" / "templates",
         ]
 
-        for template_dir_pattern in template_dirs:
+        for _template_dir_pattern in template_dirs:
             for template_file in self.base_path.rglob("*.html"):
                 if "migrations" in str(template_file) or "__pycache__" in str(template_file):
                     continue
 
                 try:
-                    with open(template_file, "r", encoding="utf-8") as f:
+                    with open(template_file, encoding="utf-8") as f:
                         content = f.read()
                         lines = content.split("\n")
 
@@ -228,20 +238,24 @@ class ReverseLookupAnalyzer:
                         for match in matches:
                             url_name = match.group(1)
                             # Extract arguments
-                            args_match = re.search(r'{%\s*url\s+["\'][^"\']+["\']\s+([^%]+)%}', line)
+                            args_match = re.search(
+                                r'{%\s*url\s+["\'][^"\']+["\']\s+([^%]+)%}', line
+                            )
                             args = []
                             if args_match:
                                 args_str = args_match.group(1).strip()
                                 args = [arg.strip() for arg in args_str.split() if arg.strip()]
 
-                            template_tags.append({
-                                "type": "template_url_tag",
-                                "url_name": url_name,
-                                "file": str(template_file.relative_to(self.base_path)),
-                                "line": line_num,
-                                "code": line.strip(),
-                                "args": args,
-                            })
+                            template_tags.append(
+                                {
+                                    "type": "template_url_tag",
+                                    "url_name": url_name,
+                                    "file": str(template_file.relative_to(self.base_path)),
+                                    "line": line_num,
+                                    "code": line.strip(),
+                                    "args": args,
+                                }
+                            )
 
                 except Exception as e:
                     print(f"Error processing {template_file}: {e}", file=sys.stderr)
@@ -250,7 +264,7 @@ class ReverseLookupAnalyzer:
         self.template_url_tags = template_tags
         return template_tags
 
-    def find_url_patterns(self) -> Dict[str, Dict]:
+    def find_url_patterns(self) -> dict[str, dict]:
         """Find all URL patterns in urls.py files"""
         url_patterns = {}
 
@@ -259,7 +273,7 @@ class ReverseLookupAnalyzer:
                 continue
 
             try:
-                with open(urls_file, "r", encoding="utf-8") as f:
+                with open(urls_file, encoding="utf-8") as f:
                     content = f.read()
 
                 # Parse URL patterns
@@ -278,33 +292,37 @@ class ReverseLookupAnalyzer:
         self.url_patterns = url_patterns
         return url_patterns
 
-    def _parse_url_patterns(self, content: str, file_path: Path) -> List[Dict]:
+    def _parse_url_patterns(self, content: str, file_path: Path) -> list[dict]:
         """Parse URL patterns from urls.py content"""
         patterns = []
 
         # Match path('pattern', view, name='name')
         path_pattern = re.compile(
             r'path\s*\(\s*["\']([^"\']+)["\']\s*,\s*[^,]+,\s*name\s*=\s*["\']([^"\']+)["\']',
-            re.MULTILINE
+            re.MULTILINE,
         )
         for match in path_pattern.finditer(content):
-            patterns.append({
-                "pattern": match.group(1),
-                "name": match.group(2),
-                "type": "path",
-            })
+            patterns.append(
+                {
+                    "pattern": match.group(1),
+                    "name": match.group(2),
+                    "type": "path",
+                }
+            )
 
         # Match re_path('pattern', view, name='name')
         re_path_pattern = re.compile(
             r're_path\s*\(\s*["\']([^"\']+)["\']\s*,\s*[^,]+,\s*name\s*=\s*["\']([^"\']+)["\']',
-            re.MULTILINE
+            re.MULTILINE,
         )
         for match in re_path_pattern.finditer(content):
-            patterns.append({
-                "pattern": match.group(1),
-                "name": match.group(2),
-                "type": "re_path",
-            })
+            patterns.append(
+                {
+                    "pattern": match.group(1),
+                    "name": match.group(2),
+                    "type": "re_path",
+                }
+            )
 
         # Also parse custom actions from views.py files
         # Find corresponding views.py file (could be in same directory or parent)
@@ -315,29 +333,29 @@ class ReverseLookupAnalyzer:
         for views_file in views_files:
             if views_file.exists():
                 try:
-                    with open(views_file, "r", encoding="utf-8") as f:
+                    with open(views_file, encoding="utf-8") as f:
                         views_content = f.read()
                     custom_actions = self._parse_custom_viewset_actions(views_content, file_path)
                     patterns.extend(custom_actions)
                     break  # Only parse once
-                except Exception as e:
+                except Exception:
                     continue
 
         # Match router.register() calls (DRF routers)
         # Pattern 1: router.register(r'prefix', ViewSet, basename='basename')
         router_pattern1 = re.compile(
             r'router\.register\s*\(\s*r?["\']([^"\']+)["\']\s*,\s*\w+ViewSet\s*,\s*basename\s*=\s*["\']([^"\']+)["\']',
-            re.MULTILINE
+            re.MULTILINE,
         )
         # Pattern 2: router.register(r'prefix', ViewSet, basename="basename")
         router_pattern2 = re.compile(
             r'router\.register\s*\(\s*r?["\']([^"\']+)["\']\s*,\s*\w+ViewSet\s*,\s*basename\s*=\s*["\']([^"\']+)["\']',
-            re.MULTILINE
+            re.MULTILINE,
         )
         # Pattern 3: router.register('prefix', ViewSet, basename='basename')
         router_pattern3 = re.compile(
             r'router\.register\s*\(\s*["\']([^"\']+)["\']\s*,\s*\w+ViewSet\s*,\s*basename\s*=\s*["\']([^"\']+)["\']',
-            re.MULTILINE
+            re.MULTILINE,
         )
 
         for pattern in [router_pattern1, router_pattern2, router_pattern3]:
@@ -347,41 +365,45 @@ class ReverseLookupAnalyzer:
                 # DRF routers create multiple URLs with suffixes
                 # Standard actions: list, detail, create, update, partial_update, destroy
                 for action in ["list", "detail"]:
-                    patterns.append({
-                        "pattern": f"{prefix}/" if prefix else "",
-                        "name": f"{basename}-{action}",
-                        "type": "router",
-                        "basename": basename,
-                        "action": action,
-                    })
+                    patterns.append(
+                        {
+                            "pattern": f"{prefix}/" if prefix else "",
+                            "name": f"{basename}-{action}",
+                            "type": "router",
+                            "basename": basename,
+                            "action": action,
+                        }
+                    )
 
         # Also check for custom router names (runs_router, etc.)
         custom_router_pattern = re.compile(
             r'(\w+router)\.register\s*\(\s*r?["\']([^"\']+)["\']\s*,\s*\w+ViewSet\s*,\s*basename\s*=\s*["\']([^"\']+)["\']',
-            re.MULTILINE
+            re.MULTILINE,
         )
         for match in custom_router_pattern.finditer(content):
             basename = match.group(3)
             prefix = match.group(2)
             for action in ["list", "detail"]:
-                patterns.append({
-                    "pattern": f"{prefix}/" if prefix else "",
-                    "name": f"{basename}-{action}",
-                    "type": "router",
-                    "basename": basename,
-                    "action": action,
-                })
+                patterns.append(
+                    {
+                        "pattern": f"{prefix}/" if prefix else "",
+                        "name": f"{basename}-{action}",
+                        "type": "router",
+                        "basename": basename,
+                        "action": action,
+                    }
+                )
 
         return patterns
 
-    def _parse_custom_viewset_actions(self, content: str, urls_file: Path) -> List[Dict]:
+    def _parse_custom_viewset_actions(self, content: str, urls_file: Path) -> list[dict]:
         """Parse custom viewset actions from views.py to generate URL names"""
         patterns = []
 
         # Find router.register() calls in corresponding urls.py to get basenames
         urls_content = ""
         try:
-            with open(urls_file, "r", encoding="utf-8") as f:
+            with open(urls_file, encoding="utf-8") as f:
                 urls_content = f.read()
         except Exception:
             return patterns
@@ -390,7 +412,7 @@ class ReverseLookupAnalyzer:
         basenames = {}
         router_pattern = re.compile(
             r'router\.register\s*\(\s*r?["\']([^"\']+)["\']\s*,\s*(\w+ViewSet)\s*,\s*basename\s*=\s*["\']([^"\']+)["\']',
-            re.MULTILINE
+            re.MULTILINE,
         )
         for match in router_pattern.finditer(urls_content):
             viewset_name = match.group(2)
@@ -401,10 +423,7 @@ class ReverseLookupAnalyzer:
         # Pattern: @action(...) followed by def method_name(...)
         # Need to handle multi-line decorators and find the method definition
         # Use a more sophisticated approach to handle nested parentheses
-        action_decorator_pattern = re.compile(
-            r'@action\s*\(',
-            re.MULTILINE
-        )
+        action_decorator_pattern = re.compile(r"@action\s*\(", re.MULTILINE)
 
         for match in action_decorator_pattern.finditer(content):
             decorator_start = match.start()
@@ -413,20 +432,22 @@ class ReverseLookupAnalyzer:
             pos = match.end()
             decorator_end = pos
             while pos < len(content) and paren_count > 0:
-                if content[pos] == '(':
+                if content[pos] == "(":
                     paren_count += 1
-                elif content[pos] == ')':
+                elif content[pos] == ")":
                     paren_count -= 1
                 pos += 1
             if paren_count == 0:
                 decorator_end = pos - 1
-                decorator_content = content[match.end():decorator_end]
+                decorator_content = content[match.end() : decorator_end]
             else:
                 continue  # Unmatched parentheses, skip
 
             # Find the method name after this decorator (skip any intermediate decorators)
             # Look for def method_name( within next 500 characters after decorator ends
-            method_match = re.search(r'def\s+(\w+)\s*\(', content[decorator_end+1:decorator_end+501])
+            method_match = re.search(
+                r"def\s+(\w+)\s*\(", content[decorator_end + 1 : decorator_end + 501]
+            )
             if not method_match:
                 continue
 
@@ -435,14 +456,14 @@ class ReverseLookupAnalyzer:
             # Extract url_path, url_name, and detail from decorator
             url_path_match = re.search(r'url_path\s*=\s*["\']([^"\']+)["\']', decorator_content)
             url_name_match = re.search(r'url_name\s*=\s*["\']([^"\']+)["\']', decorator_content)
-            detail_match = re.search(r'detail\s*=\s*(True|False)', decorator_content)
+            detail_match = re.search(r"detail\s*=\s*(True|False)", decorator_content)
 
-            url_path = url_path_match.group(1) if url_path_match else method_name.replace('_', '-')
+            url_path = url_path_match.group(1) if url_path_match else method_name.replace("_", "-")
             is_detail = detail_match.group(1) == "True" if detail_match else True
 
             # Find which ViewSet this method belongs to
             # Look backwards for class definition (find the most recent class before this decorator)
-            class_matches = list(re.finditer(r'class\s+(\w+ViewSet)', content[:decorator_start]))
+            class_matches = list(re.finditer(r"class\s+(\w+ViewSet)", content[:decorator_start]))
             if not class_matches:
                 continue
 
@@ -464,25 +485,27 @@ class ReverseLookupAnalyzer:
                 else:
                     # DRF generates URL name as: {basename}-{method_name}
                     # Convert method_name from snake_case to kebab-case
-                    method_kebab = method_name.replace('_', '-')
+                    method_kebab = method_name.replace("_", "-")
                     url_name_options = [f"{basename}-{method_kebab}"]
 
                 # Add all possible URL name variations
                 for url_name in url_name_options:
                     # Only add if url_name is valid (not empty or just a dash)
                     if url_name and url_name.strip() and url_name != "-":
-                        patterns.append({
-                            "pattern": url_path,
-                            "name": url_name,
-                            "type": "custom_action",
-                            "basename": basename,
-                            "method": method_name,
-                            "detail": is_detail,
-                        })
+                        patterns.append(
+                            {
+                                "pattern": url_path,
+                                "name": url_name,
+                                "type": "custom_action",
+                                "basename": basename,
+                                "method": method_name,
+                                "detail": is_detail,
+                            }
+                        )
 
         return patterns
 
-    def map_reverse_to_patterns(self) -> Dict[str, List[Dict]]:
+    def map_reverse_to_patterns(self) -> dict[str, list[dict]]:
         """Map reverse lookups to URL patterns"""
         mapping = defaultdict(list)
 
@@ -490,37 +513,45 @@ class ReverseLookupAnalyzer:
         for reverse_call in self.reverse_calls:
             url_name = reverse_call["url_name"]
             if url_name in self.url_patterns:
-                mapping[url_name].append({
-                    "type": "reverse_call",
-                    "source": reverse_call,
-                    "pattern": self.url_patterns[url_name],
-                })
+                mapping[url_name].append(
+                    {
+                        "type": "reverse_call",
+                        "source": reverse_call,
+                        "pattern": self.url_patterns[url_name],
+                    }
+                )
             else:
-                mapping[url_name].append({
-                    "type": "reverse_call",
-                    "source": reverse_call,
-                    "pattern": None,  # Pattern not found
-                })
+                mapping[url_name].append(
+                    {
+                        "type": "reverse_call",
+                        "source": reverse_call,
+                        "pattern": None,  # Pattern not found
+                    }
+                )
 
         # Map template tags
         for template_tag in self.template_url_tags:
             url_name = template_tag["url_name"]
             if url_name in self.url_patterns:
-                mapping[url_name].append({
-                    "type": "template_url_tag",
-                    "source": template_tag,
-                    "pattern": self.url_patterns[url_name],
-                })
+                mapping[url_name].append(
+                    {
+                        "type": "template_url_tag",
+                        "source": template_tag,
+                        "pattern": self.url_patterns[url_name],
+                    }
+                )
             else:
-                mapping[url_name].append({
-                    "type": "template_url_tag",
-                    "source": template_tag,
-                    "pattern": None,  # Pattern not found
-                })
+                mapping[url_name].append(
+                    {
+                        "type": "template_url_tag",
+                        "source": template_tag,
+                        "pattern": None,  # Pattern not found
+                    }
+                )
 
         return dict(mapping)
 
-    def identify_dependencies(self) -> Dict[str, Set[str]]:
+    def identify_dependencies(self) -> dict[str, set[str]]:
         """Identify dependencies between reverse lookups"""
         dependencies = defaultdict(set)
 
@@ -537,7 +568,7 @@ class ReverseLookupAnalyzer:
         self.reverse_dependencies = dependencies
         return dependencies
 
-    def generate_report(self) -> Dict:
+    def generate_report(self) -> dict:
         """Generate comprehensive report"""
         mapping = self.map_reverse_to_patterns()
         dependencies = self.identify_dependencies()
@@ -546,17 +577,21 @@ class ReverseLookupAnalyzer:
         unmapped = []
         for url_name, mappings in mapping.items():
             if any(m["pattern"] is None for m in mappings):
-                unmapped.append({
-                    "url_name": url_name,
-                    "sources": [m["source"] for m in mappings],
-                })
+                unmapped.append(
+                    {
+                        "url_name": url_name,
+                        "sources": [m["source"] for m in mappings],
+                    }
+                )
 
         return {
             "summary": {
                 "total_reverse_calls": len(self.reverse_calls),
                 "total_template_tags": len(self.template_url_tags),
                 "total_url_patterns": len(self.url_patterns),
-                "mapped_lookups": len([m for m in mapping.values() if any(p["pattern"] is not None for p in m)]),
+                "mapped_lookups": len(
+                    [m for m in mapping.values() if any(p["pattern"] is not None for p in m)]
+                ),
                 "unmapped_lookups": len(unmapped),
                 "dependencies": len(dependencies),
             },
@@ -568,7 +603,7 @@ class ReverseLookupAnalyzer:
             "dependencies": {k: list(v) for k, v in dependencies.items()},
         }
 
-    def run(self) -> Dict:
+    def run(self) -> dict:
         """Run complete analysis"""
         print("Searching for reverse() calls...")
         self.find_reverse_calls()
@@ -583,10 +618,10 @@ class ReverseLookupAnalyzer:
         print(f"Found {len(self.url_patterns)} URL patterns")
 
         print("Mapping reverse lookups to patterns...")
-        mapping = self.map_reverse_to_patterns()
+        self.map_reverse_to_patterns()
 
         print("Identifying dependencies...")
-        dependencies = self.identify_dependencies()
+        self.identify_dependencies()
 
         print("Generating report...")
         report = self.generate_report()
@@ -605,20 +640,21 @@ def main():
         json.dump(report, f, indent=2)
 
     print(f"\nAnalysis complete! Report saved to {output_file}")
-    print(f"\nSummary:")
+    print("\nSummary:")
     print(f"  Reverse calls: {report['summary']['total_reverse_calls']}")
     print(f"  Template tags: {report['summary']['total_template_tags']}")
     print(f"  URL patterns: {report['summary']['total_url_patterns']}")
     print(f"  Mapped lookups: {report['summary']['mapped_lookups']}")
     print(f"  Unmapped lookups: {report['summary']['unmapped_lookups']}")
 
-    if report['summary']['unmapped_lookups'] > 0:
-        print(f"\n⚠️  Warning: {report['summary']['unmapped_lookups']} reverse lookups could not be mapped to URL patterns")
+    if report["summary"]["unmapped_lookups"] > 0:
+        print(
+            f"\n⚠️  Warning: {report['summary']['unmapped_lookups']} reverse lookups could not be mapped to URL patterns"
+        )
         print("Unmapped lookups:")
-        for unmapped in report['unmapped'][:10]:  # Show first 10
+        for unmapped in report["unmapped"][:10]:  # Show first 10
             print(f"  - {unmapped['url_name']} (used in {len(unmapped['sources'])} places)")
 
 
 if __name__ == "__main__":
     main()
-

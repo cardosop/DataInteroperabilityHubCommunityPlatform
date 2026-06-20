@@ -4,7 +4,6 @@ shared state protection. Real cache and DB; no mocks.
 """
 
 import threading
-from typing import List
 
 from django.core.cache import cache
 from django.db import connection
@@ -20,7 +19,7 @@ class ThreadSafetyTest(ConcurrencyTestBase):
         """Concurrent set and get on Django cache: no errors, correct final value."""
         key = "concurrency_thread_safety_key"
         cache.delete(key)
-        errors: List[str] = []
+        errors: list[str] = []
         lock = threading.Lock()
 
         def set_value(idx: int) -> None:
@@ -58,7 +57,7 @@ class ThreadSafetyTest(ConcurrencyTestBase):
         """Concurrent delete of same key: no errors."""
         key = "concurrency_delete_key"
         cache.set(key, "x", timeout=60)
-        errors: List[str] = []
+        errors: list[str] = []
         lock = threading.Lock()
 
         def delete_key() -> None:
@@ -78,7 +77,7 @@ class ThreadSafetyTest(ConcurrencyTestBase):
 
     def test_db_query_concurrent_same_connection_pattern(self):
         """Each thread uses ensure_connection/close; no cross-thread connection leak."""
-        results: List[bool] = []
+        results: list[bool] = []
         lock = threading.Lock()
 
         def query() -> None:

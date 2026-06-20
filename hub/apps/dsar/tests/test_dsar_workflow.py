@@ -1,13 +1,13 @@
 """Phase 232.2 DSAR workflow — real DB, mail outbox, no stubbed captcha (skip flag)."""
 
 from __future__ import annotations
-import pytest
 
-import pytest
 import io
 import uuid
 import zipfile
 
+import pytest
+from django.contrib.auth import get_user_model
 from django.core import mail
 from django.test import TestCase, override_settings
 from freezegun import freeze_time
@@ -15,12 +15,12 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.dsar.models import (
+    BackupAffectedBySubject,
     DSARRequest,
     DSARRequestType,
     DSARSLALevel,
     DSARStatus,
     DSARVerificationMethod,
-    BackupAffectedBySubject,
 )
 from hub.apps.dsar.packaging import (
     build_dsar_zip_bytes,
@@ -29,11 +29,8 @@ from hub.apps.dsar.packaging import (
 )
 from hub.apps.dsar.sla_scan import run_dsar_statutory_clock_scan
 from hub.apps.dsar.workflow import create_dsar_public, transition_status
-from django.contrib.auth import get_user_model
-
 from hub.apps.gdpr.models import ErasureRequest, ErasureRequestStatus
 from hub.apps.tenants.models import Tenant
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 
 
@@ -90,6 +87,7 @@ class DsarPublicFlowTests(TestCase):
         # Idempotent retry returns the original response (201, not 200).
         self.assertEqual(r2.status_code, status.HTTP_201_CREATED)
         import json
+
         body1 = json.loads(r1.content)
         body2 = json.loads(r2.content)
         self.assertEqual(body1["public_reference_token"], body2["public_reference_token"])
@@ -178,7 +176,6 @@ class DsarSlaScanTests(TestCase):
         self.assertEqual(sum(c2.values()), 0)
 
 
-
 @override_settings(DSAR_SKIP_HCAPTCHA_VERIFICATION=True)
 class DsarZipManifestTests(TestCase):
     def setUp(self):
@@ -263,4 +260,3 @@ class DsarErasureWarmCompletenessTests(TestCase):
         latest = ErasureRequest.objects.filter(user=user).order_by("-requested_at").first()
         self.assertIsNotNone(latest)
         self.assertEqual(latest.status, ErasureRequestStatus.COMPLETED)
-

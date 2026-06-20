@@ -28,9 +28,8 @@ from hub.apps.scheduled_ingestion.models import (
     SourceType,
 )
 from hub.apps.tenants.models import KYCStatus
-from hub.apps.users.models import Role, UserRole, UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
+from hub.apps.users.models import Role, UserRole, UserStatus
 from tests.factories import TenantFactory, UserFactory
 
 
@@ -337,7 +336,7 @@ class TestODPSServiceCreateOdpsBusinessRulesAlignment(TestCase):
             }
         )
         count_before = Contract.objects.count()
-        with self.assertRaises(ServiceValidationError) as ctx:
+        with self.assertRaises(ServiceValidationError):
             odps_service.create_odps(
                 odps_raw=invalid_odps_raw,
                 odps_format="json",

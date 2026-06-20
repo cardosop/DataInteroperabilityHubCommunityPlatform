@@ -18,24 +18,20 @@ Features:
 Total: 50+ test cases
 """
 
-import json
 import time
 import uuid
-from typing import Any, Dict, List
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.virtualization.models import VirtualDataset, VirtualDatasetStatus, QueryType
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.assets.models import AssetStatus
+from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import Role, UserRole
+from hub.apps.virtualization.models import QueryType, VirtualDataset, VirtualDatasetStatus
 from tests.fixtures.test_data_factories import (
     AssetFactory,
     TenantFactory,
@@ -49,6 +45,10 @@ pytestmark = [
     pytest.mark.django_db,
     pytest.mark.integration,
     pytest.mark.slow,  # Mark as slow due to TransactionTestCase
+    pytest.mark.uc("UC-VIRT-001"),
+    pytest.mark.uc("UC-VIRT-002"),
+    pytest.mark.uc("UC-VIRT-003"),
+    pytest.mark.uc("UC-VIRT-004"),
 ]
 
 
@@ -106,7 +106,7 @@ class VirtualizationNewUseCasesTestBase(TestCase, TestDatabaseIsolationMixin):
             user=self.dpo_user,
             name="DPO API Key",
             key_hash=dpo_key_hash,
-            scopes=['virtualization:write', 'virtualization:read']
+            scopes=["virtualization:write", "virtualization:read"],
         )
         self.dpo_api_key._plaintext_key = dpo_key_value
 
@@ -118,12 +118,13 @@ class VirtualizationNewUseCasesTestBase(TestCase, TestDatabaseIsolationMixin):
             user=self.dc_user,
             name="DC API Key",
             key_hash=dc_key_hash,
-            scopes=['virtualization:read', 'virtualization:write']
+            scopes=["virtualization:read", "virtualization:write"],
         )
         self.dc_api_key._plaintext_key = dc_key_value
 
         # Create test assets with FEDERATED source type (required for federated queries)
         from hub.apps.assets.models import AssetSourceType
+
         self.asset1 = AssetFactory.create_asset(
             tenant=self.tenant,
             created_by=self.dpo_user,
@@ -146,7 +147,7 @@ class UCVIRT001CreateVirtualDatasetTest(VirtualizationNewUseCasesTestBase):
         from django.urls import reverse
 
         # Use API key authentication for proper scope checking
-        self.client.credentials(HTTP_AUTHORIZATION=f'ApiKey {self.dpo_api_key._plaintext_key}')
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.dpo_api_key._plaintext_key}")
 
         virtual_dataset_data = {
             "name": "Federated Customer Dataset",
@@ -161,7 +162,7 @@ class UCVIRT001CreateVirtualDatasetTest(VirtualizationNewUseCasesTestBase):
                 "properties": {
                     "customer_id": {"type": "string"},
                     "customer_name": {"type": "string"},
-                }
+                },
             },
         }
         dataset_url = reverse("virtual-dataset-list")
@@ -189,7 +190,7 @@ class UCVIRT001CreateVirtualDatasetTest(VirtualizationNewUseCasesTestBase):
         from django.urls import reverse
 
         # Use API key authentication for proper scope checking
-        self.client.credentials(HTTP_AUTHORIZATION=f'ApiKey {self.dpo_api_key._plaintext_key}')
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.dpo_api_key._plaintext_key}")
 
         virtual_dataset_data = {
             "name": "",  # Invalid: empty name
@@ -206,7 +207,7 @@ class UCVIRT001CreateVirtualDatasetTest(VirtualizationNewUseCasesTestBase):
         from django.urls import reverse
 
         # Use API key authentication for proper scope checking
-        self.client.credentials(HTTP_AUTHORIZATION=f'ApiKey {self.dpo_api_key._plaintext_key}')
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.dpo_api_key._plaintext_key}")
 
         virtual_dataset_data = {
             "name": f"Performance Test Dataset {uuid.uuid4()}",
@@ -224,9 +225,9 @@ class UCVIRT001CreateVirtualDatasetTest(VirtualizationNewUseCasesTestBase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertLess(
-            elapsed_time, 5000,
-            f"Dataset creation took {elapsed_time:.0f}ms, "
-            f"exceeds 5000ms",
+            elapsed_time,
+            5000,
+            f"Dataset creation took {elapsed_time:.0f}ms, exceeds 5000ms",
         )
 
 
@@ -239,7 +240,7 @@ class UCVIRT002ExecuteFederatedQueryTest(VirtualizationNewUseCasesTestBase):
 
         # Use API key authentication for proper scope checking
         # Use data provider API key since virtualization requires DATA_PROVIDER or TENANT_ADMIN role
-        self.client.credentials(HTTP_AUTHORIZATION=f'ApiKey {self.dpo_api_key._plaintext_key}')
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.dpo_api_key._plaintext_key}")
 
         # Create virtual dataset first with sources (required for FEDERATED queries)
         virtual_dataset_data = {
@@ -260,9 +261,10 @@ class UCVIRT002ExecuteFederatedQueryTest(VirtualizationNewUseCasesTestBase):
 
         # Activate the virtual dataset (queries can only be executed on ACTIVE datasets)
         from hub.apps.virtualization.models import VirtualDataset
+
         dataset = VirtualDataset.objects.get(id=dataset_id)
         dataset.status = VirtualDatasetStatus.ACTIVE
-        dataset.save(update_fields=['status'])
+        dataset.save(update_fields=["status"])
 
         # Execute query
         query_data = {
@@ -273,7 +275,9 @@ class UCVIRT002ExecuteFederatedQueryTest(VirtualizationNewUseCasesTestBase):
         query_response = self.client.post(query_url, query_data, format="json")
 
         # Query execution may be async (202) or synchronous (201); both are legitimate
-        self.assertIn(query_response.status_code, [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED])
+        self.assertIn(
+            query_response.status_code, [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]
+        )
         # Verify response body contains relevant fields
         self.assertIsNotNone(query_response.data)
         if query_response.status_code == status.HTTP_201_CREATED:
@@ -292,7 +296,7 @@ class UCVIRT002ExecuteFederatedQueryTest(VirtualizationNewUseCasesTestBase):
 
         # Use API key authentication for proper scope checking
         # Use data provider API key since virtualization requires DATA_PROVIDER or TENANT_ADMIN role
-        self.client.credentials(HTTP_AUTHORIZATION=f'ApiKey {self.dpo_api_key._plaintext_key}')
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.dpo_api_key._plaintext_key}")
 
         # Create virtual dataset with sources (required for FEDERATED queries)
         virtual_dataset_data = {
@@ -312,9 +316,10 @@ class UCVIRT002ExecuteFederatedQueryTest(VirtualizationNewUseCasesTestBase):
 
         # Activate the virtual dataset (queries can only be executed on ACTIVE datasets)
         from hub.apps.virtualization.models import VirtualDataset
+
         dataset = VirtualDataset.objects.get(id=dataset_id)
         dataset.status = VirtualDatasetStatus.ACTIVE
-        dataset.save(update_fields=['status'])
+        dataset.save(update_fields=["status"])
 
         # Execute query
         query_data = {
@@ -327,12 +332,14 @@ class UCVIRT002ExecuteFederatedQueryTest(VirtualizationNewUseCasesTestBase):
         query_response = self.client.post(query_url, query_data, format="json")
         elapsed_time = (time.time() - start_time) * 1000
 
-        self.assertIn(query_response.status_code, [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED])
+        self.assertIn(
+            query_response.status_code, [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]
+        )
         # 202 = request accepted (not full execution time)
         self.assertLess(
-            elapsed_time, 5000,
-            f"Query acceptance took {elapsed_time:.0f}ms, "
-            f"exceeds 5000ms",
+            elapsed_time,
+            5000,
+            f"Query acceptance took {elapsed_time:.0f}ms, exceeds 5000ms",
         )
         # Verify response body
         self.assertIsNotNone(query_response.data)
@@ -355,7 +362,9 @@ class UCVIRT003ManageFederationTopologyTest(VirtualizationNewUseCasesTestBase):
         """Unauthenticated topology → 401/403."""
         self.client.logout()
         response = self.client.get("/api/v1/virtualization/topology/")
-        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+        self.assertIn(
+            response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]
+        )
 
 
 class UCVIRT004MonitorVirtualizationPerformanceTest(VirtualizationNewUseCasesTestBase):
@@ -368,7 +377,8 @@ class UCVIRT004MonitorVirtualizationPerformanceTest(VirtualizationNewUseCasesTes
             "/api/v1/virtualization/datasets/",
         )
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         data = response.json()
         results = data.get("results", data)
@@ -381,7 +391,8 @@ class UCVIRT004MonitorVirtualizationPerformanceTest(VirtualizationNewUseCasesTes
             "/api/v1/virtualization/queries/",
         )
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         data = response.json()
         results = data.get("results", data)

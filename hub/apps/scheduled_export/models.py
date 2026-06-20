@@ -4,19 +4,17 @@ Scheduled Export Models
 Models for managing scheduled/recurring data exports to external destinations.
 """
 
-import re
 import uuid
 
 from croniter import croniter
-from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
 from hub.apps.integrations.encryption import (
+    EncryptionError,
     decrypt_json_field,
     encrypt_json_field,
-    EncryptionError,
 )
 
 
@@ -170,7 +168,7 @@ class ScheduledExport(models.Model):
         try:
             croniter(cron_expr)
         except Exception as e:
-            raise ValidationError(f"Invalid cron expression: {str(e)}")
+            raise ValidationError(f"Invalid cron expression: {e!s}")
 
         # Validate source_scope structure
         if not isinstance(self.source_scope, dict):
@@ -204,9 +202,7 @@ class ScheduledExport(models.Model):
                 encrypted = encrypt_json_field(self.destination_config)
                 self.destination_config = {"_encrypted": encrypted}
             except EncryptionError as e:
-                raise ValidationError(
-                    {"destination_config": f"Failed to encrypt: {e}"}
-                ) from e
+                raise ValidationError({"destination_config": f"Failed to encrypt: {e}"}) from e
 
         # Calculate next_run_at if not set or if schedule changed
         if not self.next_run_at or self._state.adding:
@@ -226,9 +222,7 @@ class ScheduledExport(models.Model):
             return {}
         if isinstance(self.destination_config, dict):
             if "_encrypted" in self.destination_config:
-                return decrypt_json_field(
-                    self.destination_config["_encrypted"]
-                )
+                return decrypt_json_field(self.destination_config["_encrypted"])
             return self.destination_config
         return {}
 
@@ -242,7 +236,10 @@ class ScheduledExport(models.Model):
 
         if not cron_expr:
             return (now + timedelta(days=1)).replace(
-                hour=0, minute=0, second=0, microsecond=0,
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
             )
 
         try:
@@ -256,11 +253,25 @@ class ScheduledExport(models.Model):
             if timezone.is_naive(next_run):
                 next_run = timezone.make_aware(next_run, tz)
             return next_run
-        except Exception:
+        except (ImportError, KeyError, ValueError, AttributeError, TypeError) as e:
+            # Graceful fallback when cron expression / timezone parsing
+            # fails.  Log at warning so SRE can detect configuration drift.
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "CUSTOM_CRON next_run calculation failed for %s: %s — "
+                "falling back to tomorrow.",
+                self.name if hasattr(self, "name") else str(self.pk),
+                e,
+            )
             from datetime import timedelta
 
             return (now + timedelta(days=1)).replace(
-                hour=0, minute=0, second=0, microsecond=0,
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
             )
 
 

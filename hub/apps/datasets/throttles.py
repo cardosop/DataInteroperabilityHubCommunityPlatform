@@ -20,8 +20,8 @@ Mirror the established :mod:`hub.apps.files.throttles` pattern:
 declared throttle on the action and 429s with the maximum ``wait``
 when any one denies (per the DRF throttle stack semantics).
 """
+
 from __future__ import annotations
-from typing import Optional
 
 from rest_framework.throttling import SimpleRateThrottle
 
@@ -31,7 +31,7 @@ class DatasetRefreshUserThrottle(SimpleRateThrottle):
 
     scope = "dataset_refresh_user"
 
-    def get_cache_key(self, request, view) -> Optional[str]:
+    def get_cache_key(self, request, view) -> str | None:
         if not request.user or not request.user.is_authenticated:
             return None
         return self.cache_format % {
@@ -45,7 +45,7 @@ class DatasetRefreshTenantThrottle(SimpleRateThrottle):
 
     scope = "dataset_refresh_tenant"
 
-    def get_cache_key(self, request, view) -> Optional[str]:
+    def get_cache_key(self, request, view) -> str | None:
         if not request.user or not request.user.is_authenticated:
             return None
         from hub.apps.tenants.request_tenant import get_request_tenant_id
@@ -68,7 +68,7 @@ class DatasetTenantThrottle(SimpleRateThrottle):
 
     scope = "dataset_tenant"
 
-    def get_cache_key(self, request, view) -> Optional[str]:
+    def get_cache_key(self, request, view) -> str | None:
         if not request.user or not request.user.is_authenticated:
             return None
         from hub.apps.tenants.request_tenant import get_request_tenant_id

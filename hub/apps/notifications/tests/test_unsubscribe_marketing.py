@@ -1,12 +1,11 @@
 """Tests for CAN-SPAM/GDPR unsubscribe in marketing emails (277.B.097)."""
 
-import pytest
 import hashlib
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
-from rest_framework import status
+from django.test import TestCase
 from rest_framework.test import APIClient
 
 from hub.apps.audit.models import AuditEvent
@@ -20,6 +19,7 @@ User = get_user_model()
 
 def _ensure_sub(tenant):
     from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
     ensure_tenant_has_active_subscription(tenant)
 
 
@@ -53,12 +53,16 @@ class UnsubscribeTokenTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"UnsubToken {uid}", slug=f"unsub-token-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"UnsubToken {uid}",
+            slug=f"unsub-token-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         _ensure_sub(self.tenant)
         self.user = User.objects.create_user(
-            email=f"unsub-{uid}@example.com", password="testpass", tenant=self.tenant,
+            email=f"unsub-{uid}@example.com",
+            password="testpass",
+            tenant=self.tenant,
         )
 
     @pytest.mark.integration
@@ -94,12 +98,16 @@ class UnsubscribeEndpointTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"UnsubEP {uid}", slug=f"unsub-ep-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"UnsubEP {uid}",
+            slug=f"unsub-ep-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         _ensure_sub(self.tenant)
         self.user = User.objects.create_user(
-            email=f"unsub-ep-{uid}@example.com", password="testpass", tenant=self.tenant,
+            email=f"unsub-ep-{uid}@example.com",
+            password="testpass",
+            tenant=self.tenant,
         )
         self.plaintext = str(uuid.uuid4())
         self.user.unsubscribe_token = hashlib.sha256(self.plaintext.encode()).hexdigest()
@@ -190,12 +198,16 @@ class MarketingOptOutEnforcementTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"OptOut {uid}", slug=f"opt-out-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"OptOut {uid}",
+            slug=f"opt-out-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         _ensure_sub(self.tenant)
         self.user = User.objects.create_user(
-            email=f"opt-out-{uid}@example.com", password="testpass", tenant=self.tenant,
+            email=f"opt-out-{uid}@example.com",
+            password="testpass",
+            tenant=self.tenant,
             preferences={
                 "notifications": {
                     "marketing_opt_out": True,
@@ -240,12 +252,16 @@ class UnsubscribeURLInjectionTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"URLInj {uid}", slug=f"url-inj-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"URLInj {uid}",
+            slug=f"url-inj-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         _ensure_sub(self.tenant)
         self.user = User.objects.create_user(
-            email=f"url-inj-{uid}@example.com", password="testpass", tenant=self.tenant,
+            email=f"url-inj-{uid}@example.com",
+            password="testpass",
+            tenant=self.tenant,
         )
 
     @pytest.mark.integration
@@ -297,12 +313,16 @@ class GDPRIntegrationTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"GDPRUnsub {uid}", slug=f"gdpr-unsub-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"GDPRUnsub {uid}",
+            slug=f"gdpr-unsub-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         _ensure_sub(self.tenant)
         self.user = User.objects.create_user(
-            email=f"gdpr-unsub-{uid}@example.com", password="testpass", tenant=self.tenant,
+            email=f"gdpr-unsub-{uid}@example.com",
+            password="testpass",
+            tenant=self.tenant,
             preferences={"notifications": {"marketing_opt_out": False}},
             unsubscribe_token=hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest(),
             unsubscribe_token_created_at="2026-01-01T00:00:00Z",
@@ -314,7 +334,9 @@ class GDPRIntegrationTest(TestCase):
         from hub.apps.gdpr.services import ErasureService
 
         req = ErasureRequest.objects.create(
-            tenant=self.tenant, user=self.user, status=ErasureRequestStatus.PENDING,
+            tenant=self.tenant,
+            user=self.user,
+            status=ErasureRequestStatus.PENDING,
         )
         service = ErasureService(tenant_id=str(self.tenant.id))
         service.execute_erasure(str(req.id))

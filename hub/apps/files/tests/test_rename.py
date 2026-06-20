@@ -18,17 +18,16 @@ Real DB rows; only the file's storage object is irrelevant (not touched
 on rename).  No mocks.
 """
 
-import pytest
-
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.audit.models import AuditEvent
 from hub.apps.audit import event_types as audit_event_types
+from hub.apps.audit.models import AuditEvent
 from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.tests.test_base import (
     FilesAPITestBase,
@@ -285,7 +284,9 @@ class FileRenamePermissionsTest(FilesAPITestBase):
             data={"name": "anon.csv"},
             format="json",
         )
-        self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
+        self.assertIn(
+            response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN)
+        )
 
 
 class FileRenamedAuditConstantTest(FilesAPITestBase):
@@ -456,8 +457,8 @@ class FileRenameConcurrentLockTest(TransactionTestCase):
             with results_lock:
                 results.append(response.status_code)
 
-        t1 = threading.Thread(target=_do_rename, args=(client_a, "concurrent-B.csv"))
-        t2 = threading.Thread(target=_do_rename, args=(client_b, "concurrent-C.csv"))
+        t1 = threading.Thread(daemon=True, target=_do_rename, args=(client_a, "concurrent-B.csv"))
+        t2 = threading.Thread(daemon=True, target=_do_rename, args=(client_b, "concurrent-C.csv"))
         t1.start()
         t2.start()
         t1.join(timeout=30)

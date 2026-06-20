@@ -12,10 +12,10 @@ the response contains nodes and edges, and confirming the endpoint exists.
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_get
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _admin_creds():
     return provision_persona("platform_admin")
@@ -36,8 +36,10 @@ def _get_any_asset_id(creds):
     if resp.status_code != 200:
         return None
     body = resp.json()
-    items = body if isinstance(body, list) else (
-        body.get("results") or body.get("items") or body.get("data") or []
+    items = (
+        body
+        if isinstance(body, list)
+        else (body.get("results") or body.get("items") or body.get("data") or [])
     )
     if not items:
         return None
@@ -65,8 +67,7 @@ def test_get_lineage_for_asset():
         resp = api_get(path, creds)
         if resp.status_code != 404:
             assert resp.status_code in (200, 204), (
-                f"Lineage endpoint {path} returned {resp.status_code}: "
-                f"{resp.text[:500]}"
+                f"Lineage endpoint {path} returned {resp.status_code}: {resp.text[:500]}"
             )
             return
 
@@ -103,10 +104,7 @@ def test_lineage_has_nodes_and_edges():
         k in keys_lower
         for k in ("nodes", "vertices", "entities", "sources", "upstream", "downstream")
     )
-    has_edges = any(
-        k in keys_lower
-        for k in ("edges", "links", "relationships", "connections")
-    )
+    has_edges = any(k in keys_lower for k in ("edges", "links", "relationships", "connections"))
 
     # At minimum the body should have some structure
     assert has_nodes or has_edges or isinstance(body, list), (

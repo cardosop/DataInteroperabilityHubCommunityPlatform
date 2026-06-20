@@ -14,6 +14,7 @@ The smoke-test invocation is::
 These tests pin the flag's filter semantics end-to-end against real
 ``Contract`` rows (no mocks of internal code).
 """
+
 from __future__ import annotations
 
 from io import StringIO
@@ -25,7 +26,9 @@ from django.test import TestCase
 
 def _create_tenant(slug_prefix: str = "w44"):
     import uuid as _uuid
+
     from hub.apps.tenants.models import Tenant
+
     suffix = _uuid.uuid4().hex[:8]
     return Tenant.objects.create(
         name=f"{slug_prefix}-{suffix}",
@@ -40,6 +43,7 @@ def _create_contract(tenant, *, status, hub_contract_json):
         OriginalFormat,
         OriginalSpecType,
     )
+
     return Contract.objects.create(
         tenant=tenant,
         version=1,
@@ -73,6 +77,11 @@ def _last_count_line(out: StringIO) -> int:
 @pytest.mark.django_db(transaction=True)
 class IncludeActiveOnlyFilterTests(TestCase):
     """The flag scopes the structureless predicate to ACTIVE contracts."""
+
+    def setUp(self):
+        """Purge structureless contracts left by a previous --reuse-db run."""
+        from hub.apps.contracts.models import Contract
+        Contract.objects.all().delete()
 
     def test_active_structureless_counted_when_flag_set(self):
         from hub.apps.contracts.models import ContractStatus
@@ -156,7 +165,9 @@ class IncludeActiveOnlyFilterTests(TestCase):
         tenant = _create_tenant("all")
         for status in (ContractStatus.DRAFT, ContractStatus.ACTIVE, ContractStatus.RETIRED):
             _create_contract(
-                tenant, status=status, hub_contract_json=_HC_STRUCTURELESS,
+                tenant,
+                status=status,
+                hub_contract_json=_HC_STRUCTURELESS,
             )
 
         out = StringIO()

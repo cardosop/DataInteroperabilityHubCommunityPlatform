@@ -3,51 +3,60 @@ Normalization Metrics
 
 Records metrics for normalization coverage, contract size, missing objects, and broken lineage links.
 """
+
 import json
-from typing import Dict, Any, Optional, List
-from django.conf import settings
+from typing import Any
 
 try:
     from hub.apps.observability.otel_metrics import (
-        normalization_coverage_by_object,
+        contract_broken_lineage_links_total,
         contract_json_size_bytes,
         contract_missing_objects_total,
-        contract_broken_lineage_links_total,
-        odcs_v310_relationships_count,
-        odcs_v310_fallback_total,
+        contract_normalization_fields_total_count,
+        contract_normalization_models_count,
+        contract_structureless_backlog,
+        contract_structureless_total,
         # Phase 227 Wave 1 (227.L7.1) — structureless / floor metrics.
         contract_validation_failed_total,
-        contract_structureless_total,
-        contract_normalization_models_count,
-        contract_normalization_fields_total_count,
         contracts_renormalize_batch_duration_seconds,
-        contract_structureless_backlog,
+        normalization_coverage_by_object,
+        odcs_v310_fallback_total,
+        odcs_v310_relationships_count,
     )
+
     METRICS_AVAILABLE = True
 except ImportError:
     METRICS_AVAILABLE = False
 
 
 def record_normalization_coverage(
-    hub_contract: Dict[str, Any],
-    tenant_id: Optional[str] = None
+    hub_contract: dict[str, Any], tenant_id: str | None = None
 ) -> None:
     """
     Record normalization coverage metrics by object type.
-    
+
     Args:
         hub_contract: Normalized HubContract JSON
         tenant_id: Tenant ID (optional)
     """
     if not METRICS_AVAILABLE or not hub_contract:
         return
-    
+
     # Object types to track
     object_types = [
-        'contact', 'servers', 'terms', 'definitions', 'servicelevels',
-        'models', 'lineage', 'roles', 'team', 'pricing', 'support'
+        "contact",
+        "servers",
+        "terms",
+        "definitions",
+        "servicelevels",
+        "models",
+        "lineage",
+        "roles",
+        "team",
+        "pricing",
+        "support",
     ]
-    
+
     # Calculate coverage for each object type
     for obj_type in object_types:
         if obj_type in hub_contract:
@@ -56,79 +65,82 @@ def record_normalization_coverage(
         else:
             # Object is missing
             coverage = 0.0
-        
+
         # Record metric
-        labels = {'object_type': obj_type}
+        labels = {"object_type": obj_type}
         if tenant_id:
-            labels['tenant_id'] = str(tenant_id)
-        
+            labels["tenant_id"] = str(tenant_id)
+
         normalization_coverage_by_object.labels(**labels).observe(coverage)
 
 
-def record_contract_json_size(
-    hub_contract: Dict[str, Any],
-    tenant_id: Optional[str] = None
-) -> None:
+def record_contract_json_size(hub_contract: dict[str, Any], tenant_id: str | None = None) -> None:
     """
     Record contract JSON size metric.
-    
+
     Args:
         hub_contract: Normalized HubContract JSON
         tenant_id: Tenant ID (optional)
     """
     if not METRICS_AVAILABLE or not hub_contract:
         return
-    
+
     # Calculate JSON size in bytes
     json_str = json.dumps(hub_contract)
-    size_bytes = len(json_str.encode('utf-8'))
-    
+    size_bytes = len(json_str.encode("utf-8"))
+
     # Record metric
     labels = {}
     if tenant_id:
-        labels['tenant_id'] = str(tenant_id)
-    
+        labels["tenant_id"] = str(tenant_id)
+
     contract_json_size_bytes.labels(**labels).observe(size_bytes)
 
 
-def record_missing_objects(
-    hub_contract: Dict[str, Any],
-    tenant_id: Optional[str] = None
-) -> None:
+def record_missing_objects(hub_contract: dict[str, Any], tenant_id: str | None = None) -> None:
     """
     Record missing objects metric.
-    
+
     Args:
         hub_contract: Normalized HubContract JSON
         tenant_id: Tenant ID (optional)
     """
     if not METRICS_AVAILABLE or not hub_contract:
         return
-    
+
     # Expected objects
     expected_objects = [
-        'contact', 'servers', 'terms', 'definitions', 'servicelevels',
-        'models', 'lineage', 'roles', 'team', 'pricing', 'support'
+        "contact",
+        "servers",
+        "terms",
+        "definitions",
+        "servicelevels",
+        "models",
+        "lineage",
+        "roles",
+        "team",
+        "pricing",
+        "support",
     ]
-    
+
     # Check for missing objects
     for obj_type in expected_objects:
         if obj_type not in hub_contract:
-            labels = {'object_type': obj_type}
+            labels = {"object_type": obj_type}
             if tenant_id:
-                labels['tenant_id'] = str(tenant_id)
-            
+                labels["tenant_id"] = str(tenant_id)
+
             contract_missing_objects_total.labels(**labels).inc()
 
 
 def record_broken_lineage_links(
-    hub_contract: Dict[str, Any],
-    broken_links: Optional[List[Dict[str, Any]]],
-    tenant_id: Optional[str] = None
+    hub_contract: dict[str, Any],
+    broken_links: list[dict[str, Any]] | None,
+    tenant_id: str | None = None,
 ) -> None:
     """
     Record broken lineage links metric.
-    
+
     Args:
         hub_contract: Normalized HubContract JSON
         broken_links: List of broken link dictionaries with 'type' field (optional)
@@ -136,26 +148,26 @@ def record_broken_lineage_links(
     """
     if not METRICS_AVAILABLE or not broken_links:
         return
-    
+
     # Count broken links by type
     link_types = {}
     for link in broken_links:
-        link_type = link.get('type', 'unknown')
+        link_type = link.get("type", "unknown")
         link_types[link_type] = link_types.get(link_type, 0) + 1
-    
+
     # Record metrics
     for link_type, count in link_types.items():
-        labels = {'link_type': link_type}
+        labels = {"link_type": link_type}
         if tenant_id:
-            labels['tenant_id'] = str(tenant_id)
-        
+            labels["tenant_id"] = str(tenant_id)
+
         for _ in range(count):
             contract_broken_lineage_links_total.labels(**labels).inc()
 
 
 def record_v310_relationships_count(
-    hub_contract: Dict[str, Any],
-    tenant_id: Optional[str] = None,
+    hub_contract: dict[str, Any],
+    tenant_id: str | None = None,
 ) -> None:
     """Record count of relationships mapped in a v3.1.0 normalisation."""
     if not METRICS_AVAILABLE or not hub_contract:
@@ -171,7 +183,7 @@ def record_v310_relationships_count(
         rels = schema.get("relationships")
         if isinstance(rels, list):
             count += len(rels)
-    labels: Dict[str, str] = {}
+    labels: dict[str, str] = {}
     if tenant_id:
         labels["tenant_id"] = str(tenant_id)
     odcs_v310_relationships_count.labels(**labels).inc(count)
@@ -179,12 +191,12 @@ def record_v310_relationships_count(
 
 def record_v310_fallback(
     fallback_normalizer: str,
-    tenant_id: Optional[str] = None,
+    tenant_id: str | None = None,
 ) -> None:
     """Record when a v3.1.0 contract falls back to a non-v3.1.0 normalizer."""
     if not METRICS_AVAILABLE:
         return
-    labels: Dict[str, str] = {
+    labels: dict[str, str] = {
         "fallback_normalizer": fallback_normalizer,
     }
     if tenant_id:
@@ -193,10 +205,10 @@ def record_v310_fallback(
 
 
 def record_all_normalization_metrics(
-    hub_contract: Dict[str, Any],
-    broken_links: Optional[List[Dict[str, Any]]] = None,
-    tenant_id: Optional[str] = None,
-    spec_type: Optional[str] = None,
+    hub_contract: dict[str, Any],
+    broken_links: list[dict[str, Any]] | None = None,
+    tenant_id: str | None = None,
+    spec_type: str | None = None,
 ) -> None:
     """
     Record all normalization metrics at once.
@@ -220,9 +232,7 @@ def record_all_normalization_metrics(
     # Phase 227 Wave 1 (227.L7.1) — model + field count histograms.
     if spec_type:
         record_normalization_models_count(hub_contract, spec_type=spec_type)
-        record_normalization_fields_total_count(
-            hub_contract, spec_type=spec_type
-        )
+        record_normalization_fields_total_count(hub_contract, spec_type=spec_type)
 
 
 # ---------------------------------------------------------------------------
@@ -233,8 +243,8 @@ def record_all_normalization_metrics(
 def record_validation_failed(
     *,
     code: str,
-    subcode: Optional[str],
-    spec_type: Optional[str],
+    subcode: str | None,
+    spec_type: str | None,
 ) -> None:
     """Increment ``contract_validation_failed_total{code,subcode,spec_type}``.
 
@@ -256,7 +266,7 @@ def record_validation_failed(
 
 def record_structureless(
     *,
-    spec_type: Optional[str],
+    spec_type: str | None,
     source: str,
 ) -> None:
     """Increment ``contract_structureless_total{spec_type, source}``.
@@ -275,7 +285,7 @@ def record_structureless(
 
 
 def record_normalization_models_count(
-    hub_contract: Dict[str, Any],
+    hub_contract: dict[str, Any],
     *,
     spec_type: str,
 ) -> None:
@@ -296,7 +306,7 @@ def record_normalization_models_count(
 
 
 def record_normalization_fields_total_count(
-    hub_contract: Dict[str, Any],
+    hub_contract: dict[str, Any],
     *,
     spec_type: str,
 ) -> None:
@@ -325,7 +335,7 @@ def record_normalization_fields_total_count(
 
 def record_renormalize_batch_duration(
     *,
-    spec_type: Optional[str],
+    spec_type: str | None,
     outcome: str,
     duration_seconds: float,
 ) -> None:
@@ -346,7 +356,7 @@ def record_renormalize_batch_duration(
 def set_structureless_backlog(
     *,
     count: int,
-    tenant_id: Optional[str] = None,
+    tenant_id: str | None = None,
 ) -> None:
     """Set the ``contract_structureless_backlog`` gauge (UpDownCounter).
 
@@ -357,7 +367,7 @@ def set_structureless_backlog(
     """
     if not METRICS_AVAILABLE:
         return
-    labels: Dict[str, str] = {}
+    labels: dict[str, str] = {}
     if tenant_id:
         labels["tenant_id"] = str(tenant_id)
     # UpDownCounter doesn't have ``set``; emit the absolute count via
@@ -380,5 +390,4 @@ def set_structureless_backlog(
 # Process-local cache for the backlog gauge so we can emit deltas
 # rather than absolute values (the underlying OTel UpDownCounter API
 # only supports `inc(delta)`, not `set(value)`).
-_last_backlog_value: Dict[str, int] = {}
-
+_last_backlog_value: dict[str, int] = {}

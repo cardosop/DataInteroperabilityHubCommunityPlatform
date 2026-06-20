@@ -8,7 +8,6 @@ All tests use real services and models following engineering best practices.
 import uuid
 
 from django.test import override_settings
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.core.events.models import Event
@@ -261,7 +260,8 @@ class VersioningServiceEventPublishingTest(DatasetsTestBase):
         )
 
         with patch.object(
-            self.service._event_publisher, "publish",
+            self.service._event_publisher,
+            "publish",
             side_effect=RuntimeError("simulated bus failure"),
         ):
             updated_dataset = self.service.create_version(
@@ -367,44 +367,26 @@ class VersioningServiceEventPublishingTest(DatasetsTestBase):
     # ========== FAILURE SCENARIOS ==========
 
     def test_create_version_failure_nonexistent_dataset(self):
-        """Test create_version with non-existent dataset (failure scenario)"""
-        import uuid
+        """create_version with non-existent dataset raises NotFoundError."""
 
         fake_dataset_id = str(uuid.uuid4())
 
-        # Should handle non-existent dataset gracefully
-        try:
-            result = self.service.create_version(
+        with self.assertRaises(NotFoundError):
+            self.service.create_version(
                 dataset_id=fake_dataset_id, tenant_id=str(self.tenant.id), semantic_version="1.0.0"
             )
-            # If succeeds, should return result or handle gracefully
-            # Result can be None or a Dataset object
-            if result is not None:
-                self.assertIsNotNone(result)
-        except NotFoundError:
-            # If fails, that's acceptable for non-existent dataset
-            pass
 
     def test_update_version_failure_nonexistent_version(self):
-        """Test update_version with non-existent version (failure scenario)"""
-        import uuid
+        """update_version with non-existent version raises NotFoundError."""
 
         fake_version_id = str(uuid.uuid4())
 
-        # Should handle non-existent version gracefully
-        try:
-            result = self.service.update_version(
+        with self.assertRaises(NotFoundError):
+            self.service.update_version(
                 version_id=fake_version_id,
                 tenant_id=str(self.tenant.id),
                 changes={"semantic_version": "1.1.0"},
             )
-            # If succeeds, should return result or handle gracefully
-            # Result can be None or a Dataset object
-            if result is not None:
-                self.assertIsNotNone(result)
-        except NotFoundError:
-            # If fails, that's acceptable for non-existent version
-            pass
 
     # ========== SERVICE OPERATIONS ==========
 

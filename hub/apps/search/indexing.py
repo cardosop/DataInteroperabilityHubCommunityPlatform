@@ -3,17 +3,19 @@ Search Indexing
 
 Indexing logic for contracts, assets, datasets, schemas, descriptions, and lineage metadata.
 """
-from typing import Dict, List, Any, Optional
-from django.db import transaction
-from django.contrib.postgres.search import SearchVector
-from django.utils import timezone
+
+from typing import Any
+
 import structlog
+from django.contrib.postgres.search import SearchVector
+from django.db import transaction
+
+from hub.apps.assets.models import Asset
+from hub.apps.contracts.models import Contract
+from hub.apps.datasets.models import Dataset
+from hub.apps.governance.models import ClassificationCategory, DataClassification
 
 from .models import SearchIndex
-from hub.apps.contracts.models import Contract
-from hub.apps.assets.models import Asset
-from hub.apps.datasets.models import Dataset
-from hub.apps.governance.models import DataClassification, ClassificationCategory
 
 logger = structlog.get_logger(__name__)
 
@@ -24,7 +26,7 @@ class SearchIndexer:
     """
 
     @staticmethod
-    def _flatten_schema(schema_json: Optional[Dict[str, Any]]) -> str:
+    def _flatten_schema(schema_json: dict[str, Any] | None) -> str:
         """Flatten schema JSON to searchable text"""
         if not schema_json:
             return ""
@@ -51,7 +53,7 @@ class SearchIndexer:
         return " ".join(text_parts)
 
     @staticmethod
-    def _flatten_lineage(lineage_json: Optional[Dict[str, Any]]) -> str:
+    def _flatten_lineage(lineage_json: dict[str, Any] | None) -> str:
         """Flatten lineage JSON to searchable text"""
         if not lineage_json:
             return ""
@@ -89,14 +91,14 @@ class SearchIndexer:
         return " ".join(text_parts)
 
     @staticmethod
-    def _flatten_tags(tags: Optional[List[str]]) -> str:
+    def _flatten_tags(tags: list[str] | None) -> str:
         """Flatten tags list to searchable text"""
         if not tags:
             return ""
         return " ".join(str(tag) for tag in tags if tag)
 
     @staticmethod
-    def _get_classification(tenant_id: str, resource_type: str, resource_id: str) -> Optional[str]:
+    def _get_classification(tenant_id: str, resource_type: str, resource_id: str) -> str | None:
         """Get highest classification for a resource"""
         from django.db import transaction
 
@@ -105,13 +107,11 @@ class SearchIndexer:
                 classifications = None
                 if resource_type == "DATASET":
                     classifications = DataClassification.objects.filter(
-                        tenant_id=tenant_id,
-                        dataset_id=resource_id
+                        tenant_id=tenant_id, dataset_id=resource_id
                     ).exclude(status="REJECTED")
                 elif resource_type == "ASSET":
                     classifications = DataClassification.objects.filter(
-                        tenant_id=tenant_id,
-                        asset_id=resource_id
+                        tenant_id=tenant_id, asset_id=resource_id
                     ).exclude(status="REJECTED")
                 elif resource_type == "CONTRACT":
                     return None
@@ -123,7 +123,7 @@ class SearchIndexer:
                     if classification_list:
                         highest = max(
                             classification_list,
-                            key=lambda c: SearchIndexer._get_classification_priority(c.category)
+                            key=lambda c: SearchIndexer._get_classification_priority(c.category),
                         )
                         return highest.category
 
@@ -133,7 +133,7 @@ class SearchIndexer:
                 tenant_id=tenant_id,
                 resource_type=resource_type,
                 resource_id=resource_id,
-                error=str(e)
+                error=str(e),
             )
 
         return None
@@ -206,9 +206,7 @@ class SearchIndexer:
 
         # Get classification
         classification = cls._get_classification(
-            str(contract.tenant_id),
-            "CONTRACT",
-            str(contract.id)
+            str(contract.tenant_id), "CONTRACT", str(contract.id)
         )
 
         # Get owner
@@ -232,16 +230,16 @@ class SearchIndexer:
                 "owner_id": owner_id,
                 "owner_email": owner_email,
                 "classification": classification,
-            }
+            },
         )
 
         # Update search vector
         search_index.search_vector = (
-            SearchVector("title", weight="A", config="english") +
-            SearchVector("description", weight="B", config="english") +
-            SearchVector("schema_text", weight="C", config="english") +
-            SearchVector("lineage_text", weight="C", config="english") +
-            SearchVector("tags_text", weight="C", config="english")
+            SearchVector("title", weight="A", config="english")
+            + SearchVector("description", weight="B", config="english")
+            + SearchVector("schema_text", weight="C", config="english")
+            + SearchVector("lineage_text", weight="C", config="english")
+            + SearchVector("tags_text", weight="C", config="english")
         )
         search_index.save()
 
@@ -249,7 +247,7 @@ class SearchIndexer:
             "Indexed contract",
             contract_id=str(contract.id),
             tenant_id=str(contract.tenant_id),
-            created=created
+            created=created,
         )
 
         return search_index
@@ -262,15 +260,11 @@ class SearchIndexer:
         description = asset.description or ""
 
         # Extract tags (Asset model doesn't have tags field, use empty list)
-        tags = getattr(asset, 'tags', []) or []
+        tags = getattr(asset, "tags", []) or []
         tags_text = cls._flatten_tags(tags)
 
         # Get classification
-        classification = cls._get_classification(
-            str(asset.tenant_id),
-            "ASSET",
-            str(asset.id)
-        )
+        classification = cls._get_classification(str(asset.tenant_id), "ASSET", str(asset.id))
 
         # Get owner
         owner_id = asset.created_by_id
@@ -290,22 +284,19 @@ class SearchIndexer:
                 "owner_id": owner_id,
                 "owner_email": owner_email,
                 "classification": classification,
-            }
+            },
         )
 
         # Update search vector
         search_index.search_vector = (
-            SearchVector("title", weight="A", config="english") +
-            SearchVector("description", weight="B", config="english") +
-            SearchVector("tags_text", weight="C", config="english")
+            SearchVector("title", weight="A", config="english")
+            + SearchVector("description", weight="B", config="english")
+            + SearchVector("tags_text", weight="C", config="english")
         )
         search_index.save()
 
         logger.info(
-            "Indexed asset",
-            asset_id=str(asset.id),
-            tenant_id=str(asset.tenant_id),
-            created=created
+            "Indexed asset", asset_id=str(asset.id), tenant_id=str(asset.tenant_id), created=created
         )
 
         return search_index
@@ -315,24 +306,21 @@ class SearchIndexer:
     def index_dataset(cls, dataset: Dataset) -> SearchIndex:
         """Index a dataset"""
         # Dataset doesn't have a name field, use file name or fallback
-        title = getattr(dataset, 'name', None) or (dataset.file.name if dataset.file else f"Dataset {dataset.id}")
-        description = getattr(dataset, 'description', None) or ""
+        title = getattr(dataset, "name", None) or (
+            dataset.file.name if dataset.file else f"Dataset {dataset.id}"
+        )
+        description = getattr(dataset, "description", None) or ""
 
         # Extract schema
         schema_json = dataset.schema_json
         schema_fields = []
         schema_text = cls._flatten_schema(schema_json)
 
-        if schema_json and isinstance(schema_json, dict):
-            if "fields" in schema_json:
-                schema_fields = schema_json["fields"]
+        if schema_json and isinstance(schema_json, dict) and "fields" in schema_json:
+            schema_fields = schema_json["fields"]
 
         # Get classification
-        classification = cls._get_classification(
-            str(dataset.tenant_id),
-            "DATASET",
-            str(dataset.id)
-        )
+        classification = cls._get_classification(str(dataset.tenant_id), "DATASET", str(dataset.id))
 
         # Get owner
         owner_id = dataset.created_by_id
@@ -351,14 +339,14 @@ class SearchIndexer:
                 "owner_id": owner_id,
                 "owner_email": owner_email,
                 "classification": classification,
-            }
+            },
         )
 
         # Update search vector
         search_index.search_vector = (
-            SearchVector("title", weight="A", config="english") +
-            SearchVector("description", weight="B", config="english") +
-            SearchVector("schema_text", weight="C", config="english")
+            SearchVector("title", weight="A", config="english")
+            + SearchVector("description", weight="B", config="english")
+            + SearchVector("schema_text", weight="C", config="english")
         )
         search_index.save()
 
@@ -366,7 +354,7 @@ class SearchIndexer:
             "Indexed dataset",
             dataset_id=str(dataset.id),
             tenant_id=str(dataset.tenant_id),
-            created=created
+            created=created,
         )
 
         return search_index
@@ -383,7 +371,6 @@ class SearchIndexer:
         Returns:
             SearchIndex instance
         """
-        from hub.apps.virtualization.models import VirtualDataset
 
         # Extract virtual dataset data
         title = virtual_dataset.name
@@ -400,30 +387,32 @@ class SearchIndexer:
             else:
                 # If schema is a dict with field names as keys, convert to fields list
                 schema_fields = [
-                    {"name": key, "type": value.get("type", "") if isinstance(value, dict) else str(value)}
+                    {
+                        "name": key,
+                        "type": value.get("type", "") if isinstance(value, dict) else str(value),
+                    }
                     for key, value in schema_json.items()
                 ]
 
         # Extract query type and query text for search
         query_type = virtual_dataset.query_type
-        query_text = virtual_dataset.query or ""
 
         # Extract source information
         sources = virtual_dataset.sources or []
-        sources_text = " ".join([
-            str(source.get("type", "")) + " " + str(source.get("host", ""))
-            for source in sources
-            if isinstance(source, dict)
-        ])
+        sources_text = " ".join(
+            [
+                str(source.get("type", "")) + " " + str(source.get("host", ""))
+                for source in sources
+                if isinstance(source, dict)
+            ]
+        )
 
         # Combine searchable text: description, schema, query type, sources
-        searchable_text = f"{description} {schema_text} {query_type} {sources_text}".strip()
+        f"{description} {schema_text} {query_type} {sources_text}".strip()
 
         # Get classification (virtual datasets may not have direct classification)
         classification = cls._get_classification(
-            str(virtual_dataset.tenant_id),
-            "VIRTUAL_DATASET",
-            str(virtual_dataset.id)
+            str(virtual_dataset.tenant_id), "VIRTUAL_DATASET", str(virtual_dataset.id)
         )
 
         # Get owner
@@ -449,14 +438,14 @@ class SearchIndexer:
                 "classification": classification,
                 "tags": tags,
                 "tags_text": tags_text,
-            }
+            },
         )
 
         # Update search vector - include query type and sources in search
         search_index.search_vector = (
-            SearchVector("title", weight="A", config="english") +
-            SearchVector("description", weight="B", config="english") +
-            SearchVector("schema_text", weight="C", config="english")
+            SearchVector("title", weight="A", config="english")
+            + SearchVector("description", weight="B", config="english")
+            + SearchVector("schema_text", weight="C", config="english")
         )
         search_index.save()
 
@@ -464,7 +453,7 @@ class SearchIndexer:
             "Indexed virtual dataset",
             virtual_dataset_id=str(virtual_dataset.id),
             tenant_id=str(virtual_dataset.tenant_id),
-            created=created
+            created=created,
         )
 
         return search_index
@@ -474,20 +463,18 @@ class SearchIndexer:
     def delete_index(tenant_id: str, resource_type: str, resource_id: str):
         """Delete a search index"""
         SearchIndex.objects.filter(
-            tenant_id=tenant_id,
-            resource_type=resource_type,
-            resource_id=resource_id
+            tenant_id=tenant_id, resource_type=resource_type, resource_id=resource_id
         ).delete()
 
         logger.info(
             "Deleted search index",
             tenant_id=tenant_id,
             resource_type=resource_type,
-            resource_id=resource_id
+            resource_id=resource_id,
         )
 
     @staticmethod
-    def rebuild_index(tenant_id: Optional[str] = None):
+    def rebuild_index(tenant_id: str | None = None):
         """Rebuild search index for all resources or a specific tenant"""
         from django.db.models import Q
 
@@ -501,11 +488,7 @@ class SearchIndexer:
             try:
                 SearchIndexer.index_contract(contract)
             except Exception as e:
-                logger.error(
-                    "Failed to index contract",
-                    contract_id=str(contract.id),
-                    error=str(e)
-                )
+                logger.error("Failed to index contract", contract_id=str(contract.id), error=str(e))
 
         # Index assets
         assets = Asset.objects.filter(queryset)
@@ -513,11 +496,7 @@ class SearchIndexer:
             try:
                 SearchIndexer.index_asset(asset)
             except Exception as e:
-                logger.error(
-                    "Failed to index asset",
-                    asset_id=str(asset.id),
-                    error=str(e)
-                )
+                logger.error("Failed to index asset", asset_id=str(asset.id), error=str(e))
 
         # Index datasets
         datasets = Dataset.objects.filter(queryset)
@@ -525,15 +504,12 @@ class SearchIndexer:
             try:
                 SearchIndexer.index_dataset(dataset)
             except Exception as e:
-                logger.error(
-                    "Failed to index dataset",
-                    dataset_id=str(dataset.id),
-                    error=str(e)
-                )
+                logger.error("Failed to index dataset", dataset_id=str(dataset.id), error=str(e))
 
         # Index virtual datasets
         try:
             from hub.apps.virtualization.models import VirtualDataset
+
             virtual_datasets = VirtualDataset.objects.filter(queryset)
             for virtual_dataset in virtual_datasets:
                 try:
@@ -542,14 +518,10 @@ class SearchIndexer:
                     logger.error(
                         "Failed to index virtual dataset",
                         virtual_dataset_id=str(virtual_dataset.id),
-                        error=str(e)
+                        error=str(e),
                     )
         except ImportError:
             # VirtualDataset model not available (e.g., in migrations)
             pass
 
-        logger.info(
-            "Rebuilt search index",
-            tenant_id=tenant_id or "all"
-        )
-
+        logger.info("Rebuilt search index", tenant_id=tenant_id or "all")

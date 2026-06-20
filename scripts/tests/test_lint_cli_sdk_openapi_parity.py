@@ -1,12 +1,11 @@
 """Tests for CLI/SDK ↔ OpenAPI parity lint script (277.B.083)."""
 
-import re
 import tempfile
 from pathlib import Path
 
 from scripts.lint_cli_sdk_openapi_parity import (
-    _RE_CLI_PATH,
     _RE_CLI_FSTRING,
+    _RE_CLI_PATH,
     _RE_JS_SDK_PATH,
     _RE_JS_TEMPLATE,
     _RE_PY_FSTRING,
@@ -134,7 +133,7 @@ class TestPathExtractionJSSDK:
     def test_full_extraction_from_source_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp)
-            (src / "test_api.ts").write_text("""
+            (src / "test_api.ts").write_text(r"""
 import { DataHubClient } from './client';
 
 export class TestAPI {
@@ -200,6 +199,6 @@ class TestGatingAndExclusion:
 
     def test_should_report_missing_excludes_gated_and_excluded(self):
         assert not _should_report_missing("mesh/clusters/")  # MVP-gated
-        assert not _should_report_missing("admin/tenants/")   # excluded
-        assert _should_report_missing("assets/")              # reportable
-        assert _should_report_missing("contracts/")           # reportable
+        assert not _should_report_missing("admin/tenants/")  # excluded
+        assert _should_report_missing("assets/")  # reportable
+        assert _should_report_missing("contracts/")  # reportable

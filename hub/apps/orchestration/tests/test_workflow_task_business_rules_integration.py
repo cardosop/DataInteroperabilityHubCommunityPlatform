@@ -11,24 +11,19 @@ Comprehensive TDD tests for:
 All tests follow TDD principles, use real implementations (no mocks/stubs),
 and fix root causes rather than workarounds.
 """
+
 import uuid
 
-import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
 from hub.apps.datasets.models import Dataset
-from hub.apps.marketplace.models import Listing, ListingStatus
 from hub.apps.orchestration.models import (
-    StepStatus,
     WorkflowDefinition,
-    WorkflowInstance,
-    WorkflowStatus,
-    WorkflowStep,
 )
-from hub.apps.orchestration.workflow_engine import WorkflowEngine, WorkflowExecutionError
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.workflows.asset_creation import AssetCreationWorkflow
 from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
 from hub.apps.orchestration.workflows.dataset_creation import DatasetCreationWorkflow
@@ -67,17 +62,16 @@ class WorkflowTaskBusinessRulesIntegrationTestBase(TestCase):
 
         # Ensure database connection is valid (TestCase manages connections automatically,
         # but we ensure it's ready after super().setUp())
-        from django.db import connection
+        from django.db import OperationalError, InterfaceError, connection
 
         try:
             connection.ensure_connection()
-        except Exception:
-            # If connection fails, Django will handle it on first use
+        except (OperationalError, InterfaceError):
+            # Django will handle on first use
             pass
 
         self.engine = WorkflowEngine()
         # Use unique tenant name/slug to avoid conflicts with --reuse-db
-        import uuid
 
         unique_id = str(uuid.uuid4())[:8]
         self.tenant = Tenant.objects.create(
@@ -184,12 +178,16 @@ class TestProductCreationWorkflowBusinessRules(WorkflowTaskBusinessRulesIntegrat
         self.assertIn("odps_document", result)
         self.assertIn("odps_version", result)
 
-    def test_create_odps_contract_task_validates_using_business_rules(self):
-        """Test that _create_odps_contract_task validates using business rules"""
-        # This test would require a full workflow execution
-        # For now, we verify the method exists and can be called
-        # Full integration test would require setting up the complete workflow state
-        self.assertTrue(hasattr(ProductCreationWorkflow, "_create_odps_contract_task"))
+    def test_create_odps_contract_task_method_exists(self):
+        """Structural check: _create_odps_contract_task method exists.
+
+        Full business-rules validation test would require a complete workflow
+        execution with the contract creation workflow — tracked separately.
+        """
+        self.assertTrue(
+            hasattr(ProductCreationWorkflow, "_create_odps_contract_task"),
+            "_create_odps_contract_task method must exist on ProductCreationWorkflow",
+        )
 
 
 class TestContractCreationWorkflowBusinessRules(WorkflowTaskBusinessRulesIntegrationTestBase):
@@ -423,7 +421,7 @@ class TestMarketplacePublicationWorkflowBusinessRules(WorkflowTaskBusinessRulesI
         )
 
         # Create contract with validation_status
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -728,7 +726,13 @@ class TestWorkflowTaskBusinessRulesFailureTest(WorkflowTaskBusinessRulesIntegrat
             defaults={
                 "dsl_json": {
                     "version": "1.0.0",
-                    "steps": [{"name": "parse_odps", "type": "task", "task": "product_creation.parse_odps"}],
+                    "steps": [
+                        {
+                            "name": "parse_odps",
+                            "type": "task",
+                            "task": "product_creation.parse_odps",
+                        }
+                    ],
                 },
                 "created_by": self.user,
             },
@@ -745,8 +749,10 @@ class TestWorkflowTaskBusinessRulesFailureTest(WorkflowTaskBusinessRulesIntegrat
         step = instance.steps.first()
         step_def = workflow_def.dsl_json["steps"][0]
 
-        # Should raise error or return error result
-        with self.assertRaises(Exception):
+        # Should raise workflow error for invalid step input
+        from hub.apps.orchestration.workflow_engine import WorkflowExecutionError
+
+        with self.assertRaises((WorkflowExecutionError, ValueError)):
             self.engine._execute_task_step(instance, step, step_def)
 
     def test_create_contract_task_fails_with_missing_data(self):
@@ -764,7 +770,11 @@ class TestWorkflowTaskBusinessRulesFailureTest(WorkflowTaskBusinessRulesIntegrat
                 "dsl_json": {
                     "version": "1.0.0",
                     "steps": [
-                        {"name": "create_contract", "type": "task", "task": "contract_creation.create_contract"}
+                        {
+                            "name": "create_contract",
+                            "type": "task",
+                            "task": "contract_creation.create_contract",
+                        }
                     ],
                 },
                 "created_by": self.user,
@@ -804,7 +814,13 @@ class TestWorkflowTaskBusinessRulesEdgeCasesTest(WorkflowTaskBusinessRulesIntegr
             defaults={
                 "dsl_json": {
                     "version": "1.0.0",
-                    "steps": [{"name": "parse_odps", "type": "task", "task": "product_creation.parse_odps"}],
+                    "steps": [
+                        {
+                            "name": "parse_odps",
+                            "type": "task",
+                            "task": "product_creation.parse_odps",
+                        }
+                    ],
                 },
                 "created_by": self.user,
             },
@@ -843,7 +859,11 @@ class TestWorkflowTaskBusinessRulesEdgeCasesTest(WorkflowTaskBusinessRulesIntegr
                 "dsl_json": {
                     "version": "1.0.0",
                     "steps": [
-                        {"name": "create_contract", "type": "task", "task": "contract_creation.create_contract"}
+                        {
+                            "name": "create_contract",
+                            "type": "task",
+                            "task": "contract_creation.create_contract",
+                        }
                     ],
                 },
                 "created_by": self.user,
@@ -861,14 +881,15 @@ class TestWorkflowTaskBusinessRulesEdgeCasesTest(WorkflowTaskBusinessRulesIntegr
         step = instance.steps.first()
         step_def = workflow_def.dsl_json["steps"][0]
 
-        # Should handle large documents (may succeed or fail gracefully)
+        # Large documents should be handled gracefully — either processed
+        # successfully or rejected with a meaningful error (not a crash).
         try:
             result = self.engine._execute_task_step(instance, step, step_def)
-            # If succeeds, verify result is valid
             self.assertIsNotNone(result)
+        except (KeyError, TypeError, AttributeError, RuntimeError) as e:
+            self.fail(f"Unexpected code error processing large document: {e}")
         except Exception:
-            # If fails, that's acceptable for very large documents
-            pass
+            pass  # Expected rejection (ValueError from workflow) for oversized content
 
 
 class TestWorkflowTaskBusinessRulesErrorHandlingTest(WorkflowTaskBusinessRulesIntegrationTestBase):
@@ -888,7 +909,13 @@ class TestWorkflowTaskBusinessRulesErrorHandlingTest(WorkflowTaskBusinessRulesIn
             defaults={
                 "dsl_json": {
                     "version": "1.0.0",
-                    "steps": [{"name": "parse_odps", "type": "task", "task": "product_creation.parse_odps"}],
+                    "steps": [
+                        {
+                            "name": "parse_odps",
+                            "type": "task",
+                            "task": "product_creation.parse_odps",
+                        }
+                    ],
                 },
                 "created_by": self.user,
             },
@@ -930,7 +957,11 @@ class TestWorkflowTaskBusinessRulesErrorHandlingTest(WorkflowTaskBusinessRulesIn
                 "dsl_json": {
                     "version": "1.0.0",
                     "steps": [
-                        {"name": "create_contract", "type": "task", "task": "contract_creation.create_contract"}
+                        {
+                            "name": "create_contract",
+                            "type": "task",
+                            "task": "contract_creation.create_contract",
+                        }
                     ],
                 },
                 "created_by": self.user,

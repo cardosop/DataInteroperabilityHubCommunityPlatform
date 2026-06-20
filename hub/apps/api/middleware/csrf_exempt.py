@@ -5,8 +5,8 @@ This middleware exempts API endpoints from CSRF protection when using
 API key or JWT token authentication, as these authentication methods
 don't require CSRF protection.
 """
+
 from django.utils.deprecation import MiddlewareMixin
-from django.views.decorators.csrf import csrf_exempt
 
 
 class APIEndpointCSRFExemptMiddleware(MiddlewareMixin):
@@ -24,10 +24,7 @@ class APIEndpointCSRFExemptMiddleware(MiddlewareMixin):
         This runs before CSRF middleware checks the request.
         """
         # Exempt all /api/v1/ endpoints from CSRF
-        if request.path.startswith('/api/v1/'):
+        if request.path.startswith("/api/v1/"):
             # All API endpoints use stateless authentication (JWT, ApiKey)
             # or DRF's force_authenticate — none need CSRF protection.
-            setattr(request, '_dont_enforce_csrf_checks', True)
-
-        return None
-
+            request._dont_enforce_csrf_checks = True

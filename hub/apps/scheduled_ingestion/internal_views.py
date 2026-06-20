@@ -11,10 +11,8 @@ import logging
 from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import (
-    OpenApiParameter,
     OpenApiResponse,
     extend_schema,
-    extend_schema_view,
 )
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -35,8 +33,8 @@ from hub.apps.observability.otel_metrics import (
 
 from .internal_auth import WorkerAPIKeyAuthentication, WorkerInternalAPIPermission
 from .internal_serializers import (
-    InternalCreateJobSerializer,
     InternalCreateIngestionRunSerializer,
+    InternalCreateJobSerializer,
     InternalProcessFileSerializer,
     InternalUpdateIngestionRunSerializer,
 )
@@ -44,7 +42,6 @@ from .models import (
     ScheduledIngestion,
     ScheduledIngestionRun,
     ScheduledIngestionRunStatus,
-    ScheduledIngestionStatus,
 )
 from .services import IngestionService
 from .worker_run_lifecycle import apply_run_completion_side_effects

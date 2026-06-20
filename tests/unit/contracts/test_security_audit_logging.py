@@ -7,18 +7,19 @@ Tests the enhanced security logging methods:
 - log_cache_operation
 - Database persistence
 """
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from unittest.mock import patch, MagicMock
-import uuid
 
+import uuid
+from unittest.mock import patch
+
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+
+from hub.apps.contracts.models import SecurityAuditLog
 from hub.apps.contracts.odps_security_logging import (
-    SecurityLogger,
     SecurityEventType,
+    SecurityLogger,
     SecuritySeverity,
 )
-from hub.apps.contracts.models import SecurityAuditLog
-from hub.apps.tenants.models import Tenant
 from tests.factories import TenantFactory, UserFactory
 
 User = get_user_model()
@@ -210,7 +211,7 @@ class SecurityAuditLoggingUnitTest(TestCase):
     def test_log_security_violation_persistence(self):
         """Test that security violations are persisted to database."""
         # Log security violation
-        violation_log = self.security_logger.log_security_violation(
+        self.security_logger.log_security_violation(
             event_type=SecurityEventType.PATH_TRAVERSAL,
             severity=SecuritySeverity.HIGH,
             violation_type="Path Traversal Attempt",
@@ -238,7 +239,7 @@ class SecurityAuditLoggingUnitTest(TestCase):
         operation_id = str(uuid.uuid4())
 
         # Log ref resolution audit
-        audit_log = self.security_logger.log_ref_resolution_audit(
+        self.security_logger.log_ref_resolution_audit(
             operation_id=operation_id,
             ref_type="external",
             ref_path="https://example.com/schema.json",
@@ -330,7 +331,7 @@ class SecurityAuditLoggingUnitTest(TestCase):
         ref_path = "https://example.com/schema.json"
 
         # Mock database error
-        with patch('hub.apps.contracts.models.SecurityAuditLog.objects.create') as mock_create:
+        with patch("hub.apps.contracts.models.SecurityAuditLog.objects.create") as mock_create:
             mock_create.side_effect = Exception("Database error")
 
             # Logging should not raise exception

@@ -37,17 +37,16 @@ Bugs surfaced + fixed during 260.5.E:
   ``FILE_ENCODING_UNSUPPORTED`` 400 with a confidence score and
   the documented remediation (re-export with BOM or use UTF-8).
 """
+
 from __future__ import annotations
-import pytest
 
 from dataclasses import dataclass
-from typing import Optional
 
+import pytest
 from django.test import SimpleTestCase
 
 from hub.apps.core.services.base import ValidationError
 from hub.apps.datasets.schema_inference import infer_schema_with_encoding_gate
-
 
 # ---------------------------------------------------------------------------
 # Fixture matrix — 12 long-tail CSV cases
@@ -80,25 +79,29 @@ class CsvFixture:
     name: str
     content: bytes
     expected_outcome: str  # "admit" | "reject_encoding"
-    expected_field_names: Optional[list] = None
-    expected_row_count: Optional[int] = None
-    expected_delimiter: Optional[str] = None
-    expected_encoding_substring: Optional[str] = None
+    expected_field_names: list | None = None
+    expected_row_count: int | None = None
+    expected_delimiter: str | None = None
+    expected_encoding_substring: str | None = None
 
 
 # Reusable text bodies; kept as Python strings so the encoding pass
 # is what makes each fixture distinct.
 _PLAIN_BODY = "name,age\nAlice,30\nBob,25\n"
 _PLAIN_BODY_CRLF = "name,age\r\nAlice,30\r\nBob,25\r\n"
-_LATIN_BODY = "name,city\nJoseph,Köln\nMarie,Zürich\n" + "\n".join(
-    f"User{i},Town{i}" for i in range(30)
-) + "\n"
-_CP1252_BODY = "name,note\nJoseph,café — special\nMarie,Müller\n" + "\n".join(
-    f"User{i},Note{i}" for i in range(30)
-) + "\n"
-_GB2312_BODY = "姓名,年龄\n张三,30\n李四,25\n" + "\n".join(
-    f"用户{i},{20+i}" for i in range(20)
-) + "\n"
+_LATIN_BODY = (
+    "name,city\nJoseph,Köln\nMarie,Zürich\n"
+    + "\n".join(f"User{i},Town{i}" for i in range(30))
+    + "\n"
+)
+_CP1252_BODY = (
+    "name,note\nJoseph,café — special\nMarie,Müller\n"
+    + "\n".join(f"User{i},Note{i}" for i in range(30))
+    + "\n"
+)
+_GB2312_BODY = (
+    "姓名,年龄\n张三,30\n李四,25\n" + "\n".join(f"用户{i},{20 + i}" for i in range(20)) + "\n"
+)
 
 
 def _build_fixtures() -> list:
@@ -206,11 +209,7 @@ def _build_fixtures() -> list:
             # The description column contains a comma INSIDE quotes
             # — RFC 4180 standard. csv.DictReader's default dialect
             # handles this; the schema must NOT split the description.
-            content=(
-                b'name,description\n'
-                b'"Alice","hello, world"\n'
-                b'"Bob","line1, line2, line3"\n'
-            ),
+            content=(b'name,description\n"Alice","hello, world"\n"Bob","line1, line2, line3"\n'),
             expected_outcome="admit",
             expected_field_names=["name", "description"],
             expected_row_count=2,
@@ -315,8 +314,7 @@ class CsvLongTailFormatTest(SimpleTestCase):
             self.assertEqual(
                 meta.get("delimiter"),
                 fixture.expected_delimiter,
-                f"[{fixture.name}] delimiter mismatch — got "
-                f"{meta.get('delimiter')!r}",
+                f"[{fixture.name}] delimiter mismatch — got {meta.get('delimiter')!r}",
             )
 
         if fixture.expected_encoding_substring is not None:
@@ -403,8 +401,7 @@ class LongTailMatrixCoverageTest(SimpleTestCase):
         self.assertEqual(
             len(_FIXTURES),
             12,
-            "Spec mandates 12 long-tail CSV fixtures; matrix changed "
-            "without an R-block update.",
+            "Spec mandates 12 long-tail CSV fixtures; matrix changed without an R-block update.",
         )
 
     @pytest.mark.unit

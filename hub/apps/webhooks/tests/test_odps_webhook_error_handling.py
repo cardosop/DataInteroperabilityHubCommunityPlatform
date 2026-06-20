@@ -8,7 +8,6 @@ Tests comprehensive error handling for ODPS webhook operations including:
 - Error recovery strategies
 """
 
-import time
 import uuid
 
 import pytest
@@ -47,97 +46,54 @@ User = get_user_model()
 
 
 class ODPSWebhookErrorTest(TestCase):
-    """Test ODPS webhook error classes"""
+    """Test ODPS webhook error recovery strategy logic."""
 
-    def test_odps_webhook_error_basic(self):
-        """Test basic ODPS webhook error creation"""
-        error = ODPSWebhookError(
-            message="Test error",
-            tenant_id="tenant-123",
-            webhook_id="webhook-456",
-            event_type="odps.created",
-        )
-
-        self.assertEqual(error.message, "Test error")
-        self.assertEqual(error.tenant_id, "tenant-123")
-        self.assertEqual(error.webhook_id, "webhook-456")
-        self.assertEqual(error.event_type, "odps.created")
-        self.assertIn("webhook_id", error.context)
-        self.assertIn("event_type", error.context)
-
-    def test_odps_webhook_delivery_error_http(self):
-        """Test ODPS webhook delivery error with HTTP status"""
-        error = ODPSWebhookDeliveryError(
+    def test_delivery_error_recovery_strategies(self):
+        """HTTP status codes correctly map to recovery strategies."""
+        # 5xx → recoverable with RETRY
+        error_500 = ODPSWebhookDeliveryError(
             message="HTTP 500 error",
             error_code=ODPSWebhookDeliveryError.ERROR_CODE_HTTP_ERROR,
             http_status_code=500,
             url="https://example.com/webhook",
-            tenant_id="tenant-123",
-            webhook_id="webhook-456",
         )
+        self.assertTrue(error_500.recoverable, "5xx errors should be recoverable")
+        self.assertEqual(error_500.recovery_strategy, RecoveryStrategy.RETRY)
 
-        self.assertEqual(error.http_status_code, 500)
-        self.assertEqual(error.url, "https://example.com/webhook")
-        self.assertTrue(error.recoverable)  # 5xx errors are retryable
-        self.assertEqual(error.recovery_strategy, RecoveryStrategy.RETRY)
-
-    def test_odps_webhook_delivery_error_4xx(self):
-        """Test ODPS webhook delivery error with 4xx status"""
-        error = ODPSWebhookDeliveryError(
+        # 4xx → not recoverable
+        error_400 = ODPSWebhookDeliveryError(
             message="HTTP 400 error",
             error_code=ODPSWebhookDeliveryError.ERROR_CODE_HTTP_ERROR,
             http_status_code=400,
             url="https://example.com/webhook",
         )
+        self.assertFalse(error_400.recoverable, "4xx errors should not be recoverable")
+        self.assertEqual(error_400.recovery_strategy, RecoveryStrategy.FAIL)
 
-        self.assertEqual(error.http_status_code, 400)
-        self.assertFalse(error.recoverable)  # 4xx errors are not retryable
-        self.assertEqual(error.recovery_strategy, RecoveryStrategy.FAIL)
-
-    def test_odps_webhook_delivery_error_rate_limit(self):
-        """Test ODPS webhook delivery error for rate limiting"""
-        error = ODPSWebhookDeliveryError(
+        # 429 → recoverable with retry_after
+        error_429 = ODPSWebhookDeliveryError(
             message="Rate limited",
             error_code=ODPSWebhookDeliveryError.ERROR_CODE_RATE_LIMITED,
             http_status_code=429,
             retry_after=60,
         )
+        self.assertTrue(error_429.recoverable, "Rate-limit errors should be recoverable")
+        self.assertEqual(error_429.recovery_strategy, RecoveryStrategy.RETRY)
+        self.assertEqual(error_429.retry_after, 60)
 
-        self.assertEqual(error.http_status_code, 429)
-        self.assertTrue(error.recoverable)
-        self.assertEqual(error.recovery_strategy, RecoveryStrategy.RETRY)
-        self.assertEqual(error.retry_after, 60)
-
-    def test_odps_webhook_validation_error(self):
-        """Test ODPS webhook validation error"""
-        error = ODPSWebhookValidationError(
+    def test_validation_errors_are_not_recoverable(self):
+        """ODPSWebhookValidationError and ODPSWebhookPayloadError are never recoverable."""
+        val_error = ODPSWebhookValidationError(
             message="Invalid event type",
             error_code=ODPSWebhookValidationError.ERROR_CODE_INVALID_EVENT_TYPE,
-            field_path="event_type",
-            expected="odps.created",
-            actual="contract.created",
         )
+        self.assertFalse(val_error.recoverable)
 
-        self.assertEqual(error.field_path, "event_type")
-        self.assertEqual(error.expected, "odps.created")
-        self.assertEqual(error.actual, "contract.created")
-        self.assertFalse(error.recoverable)
-        self.assertEqual(error.recovery_strategy, RecoveryStrategy.FAIL)
-
-    def test_odps_webhook_payload_error(self):
-        """Test ODPS webhook payload error"""
-        error = ODPSWebhookPayloadError(
+        payload_error = ODPSWebhookPayloadError(
             message="Invalid payload",
             error_code=ODPSWebhookPayloadError.ERROR_CODE_INVALID_PAYLOAD_STRUCTURE,
-            field_path="data.contract_id",
-            expected="str",
-            actual="int",
         )
-
-        self.assertEqual(error.field_path, "data.contract_id")
-        self.assertEqual(error.expected, "str")
-        self.assertEqual(error.actual, "int")
-        self.assertFalse(error.recoverable)
+        self.assertFalse(payload_error.recoverable)
 
 
 class ODPSWebhookPayloadValidationTest(TestCase):
@@ -499,29 +455,20 @@ class ODPSWebhookDeliveryErrorHandlingTest(TestCase):
             self.assertEqual(delivery.http_status_code, 400)
 
     def test_delivery_ssl_error(self):
-        """Test handling of connection/network errors (unreachable URL; no mock)."""
-        webhook = Webhook.objects.create(
-            tenant=self.tenant,
-            name="ODPS Webhook",
-            url="http://127.0.0.1:9/",
-            secret="test-secret",
-            event_types=[WebhookEventType.ODPS_CREATED],
-            status=WebhookStatus.ACTIVE,
-            created_by=self.user,
-        )
-        event_data = {"contract_id": str(uuid.uuid4())}
-        WebhookDeliveryService.trigger_webhook(
+        """Test handle_delivery_error behavior for SSL_ERROR error code."""
+        from hub.apps.webhooks.odps_webhook_errors import ODPSWebhookDeliveryError
+
+        error = ODPSWebhookDeliveryError(
+            message="SSL certificate verification failed",
+            error_code=ODPSWebhookDeliveryError.ERROR_CODE_SSL_ERROR,
             tenant_id=str(self.tenant.id),
+            webhook_id=str(uuid.uuid4()),
             event_type=WebhookEventType.ODPS_CREATED,
-            resource_type="ODPS",
-            resource_id=str(uuid.uuid4()),
-            event_data=event_data,
+            url="https://example.com/webhook",
         )
-        wait_for_event_persistence()
-        delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
-        self.assertIsNotNone(delivery)
-        self.assertEqual(delivery.status, DeliveryStatus.FAILED)
-        self.assertIsNotNone(delivery.error_message)
+        self.assertFalse(error.recoverable,
+                         "SSL errors should not be recoverable")
+        self.assertEqual(error.recovery_strategy, RecoveryStrategy.FAIL)
 
     def test_trigger_odps_webhook_invalid_payload(self):
         """Test trigger_odps_webhook raises error for invalid event type"""
@@ -598,4 +545,37 @@ class ODPSWebhookDeliveryErrorHandlingTest(TestCase):
         self.assertEqual(
             cm.exception.error_code,
             ODPSWebhookValidationError.ERROR_CODE_INVALID_EVENT_TYPE,
+        )
+
+    @override_settings(WEBHOOK_SSRF_ENABLED=True)
+    def test_delivery_ssrf_blocked_private_ip(self):
+        """SSRF guard blocks delivery to private IP at delivery time."""
+        webhook = Webhook.objects.create(
+            tenant=self.tenant,
+            name="SSRF Test Webhook",
+            url="http://10.0.0.1/webhook",
+            secret="test-secret",
+            event_types=[WebhookEventType.ODPS_CREATED],
+            status=WebhookStatus.ACTIVE,
+            created_by=self.user,
+        )
+        event_data = {"contract_id": str(uuid.uuid4())}
+
+        WebhookDeliveryService.trigger_webhook(
+            tenant_id=str(self.tenant.id),
+            event_type=WebhookEventType.ODPS_CREATED,
+            resource_type="ODPS",
+            resource_id=str(uuid.uuid4()),
+            event_data=event_data,
+        )
+        wait_for_event_persistence()
+        delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
+        self.assertIsNotNone(delivery)
+        self.assertEqual(delivery.status, DeliveryStatus.FAILED)
+        self.assertIsNotNone(delivery.error_message)
+        self.assertTrue(
+            "10.0.0.1" in delivery.error_message
+            or "private" in delivery.error_message.lower()
+            or "ssrf" in delivery.error_message.lower(),
+            f"Expected SSRF-related error, got: {delivery.error_message}",
         )

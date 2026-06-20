@@ -25,9 +25,7 @@ _LIST_ENDPOINTS = [
 ]
 
 # ISO 8601 regex with optional timezone
-_ISO8601_RE = re.compile(
-    r'^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$'
-)
+_ISO8601_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$")
 
 
 @pytest.mark.integration
@@ -41,12 +39,13 @@ class TestPaginationEnvelope:
         client = APIClient()
         response = client.get(endpoint)
         if response.status_code >= 500:
-            pytest.skip(f"Backend unavailable for {endpoint}")
+            pytest.skip(f"Backend unavailable for {endpoint}")  # noqa: skip-in-body — runtime service dependency
         if response.status_code == 404:
-            pytest.skip(f"Endpoint not mounted: {endpoint}")
+            pytest.skip(f"Endpoint not mounted: {endpoint}")  # noqa: skip-in-body — runtime service dependency
 
-        assert response.status_code == 200, \
+        assert response.status_code == 200, (
             f"Expected 200, got {response.status_code} for {endpoint}"
+        )
 
         data = response.json()
         if isinstance(data, dict) and "results" in data:
@@ -54,10 +53,12 @@ class TestPaginationEnvelope:
             assert "count" in data, f"Missing 'count' in paginated response for {endpoint}"
             assert "next" in data, f"Missing 'next' in paginated response for {endpoint}"
             assert "previous" in data, f"Missing 'previous' in paginated response for {endpoint}"
-            assert isinstance(data["results"], list), \
+            assert isinstance(data["results"], list), (
                 f"'results' must be list, got {type(data['results'])} for {endpoint}"
-            assert isinstance(data["count"], int), \
+            )
+            assert isinstance(data["count"], int), (
                 f"'count' must be int, got {type(data['count'])} for {endpoint}"
+            )
 
 
 @pytest.mark.integration
@@ -65,7 +66,7 @@ class TestPaginationEnvelope:
 class TestFieldNaming:
     """Response fields MUST use snake_case."""
 
-    _SNAKE_CASE_RE = re.compile(r'^[a-z][a-z0-9_]*$')
+    _SNAKE_CASE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
     def _check_keys_snake_case(self, data, path="root"):
         """Recursively check all keys in a dict for snake_case."""
@@ -91,7 +92,7 @@ class TestFieldNaming:
         client = APIClient()
         response = client.get(endpoint)
         if response.status_code >= 400:
-            pytest.skip(f"Endpoint {endpoint} returned {response.status_code}")
+            pytest.skip(f"Endpoint {endpoint} returned {response.status_code}")  # noqa: skip-in-body — runtime service dependency
 
         data = response.json()
         ok, msg = self._check_keys_snake_case(data)
@@ -123,13 +124,14 @@ class TestDateTimeFormat:
         client = APIClient()
         response = client.get(endpoint)
         if response.status_code >= 400:
-            pytest.skip(f"Endpoint {endpoint} returned {response.status_code}")
+            pytest.skip(f"Endpoint {endpoint} returned {response.status_code}")  # noqa: skip-in-body — runtime service dependency
 
         data = response.json()
         datetimes = self._find_datetime_fields(data)
         for path, value in datetimes:
-            assert _ISO8601_RE.match(value), \
+            assert _ISO8601_RE.match(value), (
                 f"Date/time field {path}='{value}' is not ISO 8601 in {endpoint}"
+            )
 
 
 @pytest.mark.integration
@@ -144,11 +146,13 @@ class TestNullAndEmptyRepresentation:
         client = APIClient()
         response = client.get(endpoint)
         if response.status_code >= 400:
-            pytest.skip(f"Endpoint {endpoint} returned {response.status_code}")
+            pytest.skip(f"Endpoint {endpoint} returned {response.status_code}")  # noqa: skip-in-body — runtime service dependency
 
         data = response.json()
         if isinstance(data, dict) and "results" in data:
-            assert isinstance(data["results"], list), \
+            assert isinstance(data["results"], list), (
                 f"'results' must be a JSON array, got {type(data['results'])} in {endpoint}"
-            assert data["results"] is not None, \
+            )
+            assert data["results"] is not None, (
                 f"'results' must not be null (use [] for empty) in {endpoint}"
+            )

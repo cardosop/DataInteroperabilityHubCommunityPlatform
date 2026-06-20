@@ -6,8 +6,10 @@ Implements ODCSNormalizerBase with 3.0.2-specific support, focusing on:
 - Explicit support for ODCS 3.0.2 and 3.0.2+ versions
 - ODCS 3.0.2-specific field mappings (if any)
 """
+
+from typing import Any
+
 import structlog
-from typing import Dict, Any, List
 
 from hub.apps.contracts.normalization.odcs_normalizer_base import ODCSNormalizerBase
 
@@ -62,10 +64,10 @@ class ODCSNormalizerV3_0_2(ODCSNormalizerBase):
 
     def _map_version_specific_fields(
         self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
-        spec_version: str
+        odcs_contract: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
+        spec_version: str,
     ) -> None:
         """
         Map ODCS 3.0.2-specific fields to HubContract format.
@@ -82,12 +84,19 @@ class ODCSNormalizerV3_0_2(ODCSNormalizerBase):
             spec_version: ODCS spec version (should be "3.0.2" or "3.0.2+" for this normalizer)
         """
         # Verify version is 3.0.2 or 3.0.2+
-        if not (spec_version and (spec_version == "3.0.2" or spec_version == "3.0.2+" or (isinstance(spec_version, str) and spec_version.startswith("3.0.2")))):
+        if not (
+            spec_version
+            and (
+                spec_version == "3.0.2"
+                or spec_version == "3.0.2+"
+                or (isinstance(spec_version, str) and spec_version.startswith("3.0.2"))
+            )
+        ):
             logger.warning(
                 "odcs_v3_0_2_unexpected_version",
                 expected_version="3.0.2 or 3.0.2+",
                 actual_version=spec_version,
-                message="ODCSNormalizerV3_0_2 received unexpected version"
+                message="ODCSNormalizerV3_0_2 received unexpected version",
             )
 
         # ODCS 3.0.2 uses the standard normalization logic from the base class.
@@ -98,6 +107,5 @@ class ODCSNormalizerV3_0_2(ODCSNormalizerBase):
         logger.debug(
             "odcs_v3_0_2_version_specific_mapping_complete",
             spec_version=spec_version,
-            message="ODCS 3.0.2 version-specific mapping complete"
+            message="ODCS 3.0.2 version-specific mapping complete",
         )
-

@@ -11,9 +11,10 @@ Features:
 - Add trace ID to response headers (X-Trace-Id) for frontend correlation
 - Store trace ID in request for use by service clients
 """
+
 import uuid
+
 import structlog
-from typing import Optional
 from django.http import HttpRequest, HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 
@@ -23,7 +24,7 @@ logger = structlog.get_logger(__name__)
 TRACEPARENT_VERSION = "00"
 
 
-def parse_traceparent_header(traceparent: str) -> Optional[dict]:
+def parse_traceparent_header(traceparent: str) -> dict | None:
     """
     Parse W3C Trace Context traceparent header.
 
@@ -40,7 +41,7 @@ def parse_traceparent_header(traceparent: str) -> Optional[dict]:
         return None
 
     try:
-        parts = traceparent.split('-')
+        parts = traceparent.split("-")
         if len(parts) != 4:
             logger.debug("traceparent_invalid_format", traceparent=traceparent[:50])
             return None
@@ -53,25 +54,25 @@ def parse_traceparent_header(traceparent: str) -> Optional[dict]:
             return None
 
         # Validate trace_id (32 hex characters)
-        if len(trace_id) != 32 or not all(c in '0123456789abcdefABCDEF' for c in trace_id):
+        if len(trace_id) != 32 or not all(c in "0123456789abcdefABCDEF" for c in trace_id):
             logger.debug("traceparent_invalid_trace_id", trace_id=trace_id)
             return None
 
         # Validate parent_id (16 hex characters)
-        if len(parent_id) != 16 or not all(c in '0123456789abcdefABCDEF' for c in parent_id):
+        if len(parent_id) != 16 or not all(c in "0123456789abcdefABCDEF" for c in parent_id):
             logger.debug("traceparent_invalid_parent_id", parent_id=parent_id)
             return None
 
         # Validate flags (2 hex characters)
-        if len(flags) != 2 or not all(c in '0123456789abcdefABCDEF' for c in flags):
+        if len(flags) != 2 or not all(c in "0123456789abcdefABCDEF" for c in flags):
             logger.debug("traceparent_invalid_flags", flags=flags)
             return None
 
         return {
-            'version': version,
-            'trace_id': trace_id.lower(),  # Normalize to lowercase
-            'parent_id': parent_id.lower(),
-            'flags': flags.lower()
+            "version": version,
+            "trace_id": trace_id.lower(),  # Normalize to lowercase
+            "parent_id": parent_id.lower(),
+            "flags": flags.lower(),
         }
     except Exception as e:
         logger.warning("traceparent_parse_error", error=str(e), traceparent=traceparent[:50])
@@ -117,7 +118,7 @@ def format_traceparent(trace_id: str, parent_id: str, flags: str = "01") -> str:
     return f"{TRACEPARENT_VERSION}-{trace_id}-{parent_id}-{flags}"
 
 
-def extract_trace_id_from_request(request: HttpRequest) -> tuple[str, Optional[str], Optional[str]]:
+def extract_trace_id_from_request(request: HttpRequest) -> tuple[str, str | None, str | None]:
     """
     Extract trace ID from incoming request headers.
 
@@ -135,23 +136,25 @@ def extract_trace_id_from_request(request: HttpRequest) -> tuple[str, Optional[s
         - flags: Trace flags from traceparent (None if not present)
     """
     # Try traceparent header first (W3C Trace Context)
-    traceparent = request.META.get('HTTP_TRACEPARENT', '')
+    traceparent = request.META.get("HTTP_TRACEPARENT", "")
     if traceparent:
         parsed = parse_traceparent_header(traceparent)
         if parsed:
             logger.debug(
                 "trace_id_extracted_from_traceparent",
-                trace_id=parsed['trace_id'],
-                parent_id=parsed['parent_id']
+                trace_id=parsed["trace_id"],
+                parent_id=parsed["parent_id"],
             )
-            return parsed['trace_id'], parsed['parent_id'], parsed['flags']
+            return parsed["trace_id"], parsed["parent_id"], parsed["flags"]
 
     # Try X-Trace-Id header (fallback)
-    trace_id_header = request.META.get('HTTP_X_TRACE_ID', '')
+    trace_id_header = request.META.get("HTTP_X_TRACE_ID", "")
     if trace_id_header:
         # Validate format (should be 32 hex characters)
         trace_id_header = trace_id_header.strip()
-        if len(trace_id_header) == 32 and all(c in '0123456789abcdefABCDEF' for c in trace_id_header):
+        if len(trace_id_header) == 32 and all(
+            c in "0123456789abcdefABCDEF" for c in trace_id_header
+        ):
             logger.debug("trace_id_extracted_from_x_trace_id", trace_id=trace_id_header.lower())
             return trace_id_header.lower(), None, None
 
@@ -191,13 +194,11 @@ class TraceIDMiddleware(MiddlewareMixin):
         request.traceparent = format_traceparent(trace_id, request.span_id, flags or "01")
 
         # Add trace context to structlog
-        structlog.contextvars.bind_contextvars(
-            trace_id=trace_id,
-            span_id=request.span_id
-        )
+        structlog.contextvars.bind_contextvars(trace_id=trace_id, span_id=request.span_id)
 
         # Store request in context for trace propagation to service clients
         from hub.apps.api.middleware.trace_propagation import set_current_request
+
         set_current_request(request)
 
         logger.debug(
@@ -205,16 +206,10 @@ class TraceIDMiddleware(MiddlewareMixin):
             trace_id=trace_id,
             span_id=request.span_id,
             parent_id=parent_id,
-            path=request.path
+            path=request.path,
         )
 
-        return None
-
-    def process_response(
-        self,
-        request: HttpRequest,
-        response: HttpResponse
-    ) -> HttpResponse:
+    def process_response(self, request: HttpRequest, response: HttpResponse) -> HttpResponse:
         """
         Add trace ID to response headers.
 
@@ -226,19 +221,18 @@ class TraceIDMiddleware(MiddlewareMixin):
             HTTP response with trace ID header
         """
         # Only add headers to API responses
-        if not request.path.startswith('/api/'):
+        if not request.path.startswith("/api/"):
             return response
 
         # Add X-Trace-Id header for frontend correlation
-        if hasattr(request, 'trace_id'):
-            response['X-Trace-Id'] = request.trace_id
+        if hasattr(request, "trace_id"):
+            response["X-Trace-Id"] = request.trace_id
 
             logger.debug(
                 "trace_id_added_to_response",
                 trace_id=request.trace_id,
                 path=request.path,
-                status_code=response.status_code
+                status_code=response.status_code,
             )
 
         return response
-

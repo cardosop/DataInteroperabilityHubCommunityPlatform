@@ -1,10 +1,10 @@
 """Unit tests for ``datahub semantic`` commands (283.V.4 gap closure)."""
+
 import json
+from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
-from unittest.mock import Mock
-
 from datahub_cli.main import cli
 
 
@@ -36,13 +36,21 @@ class TestSemanticSparqlQuery:
         mock_resp.json.return_value = {
             "results": {
                 "bindings": [
-                    {"s": {"value": "http://example.org/s1"}, "p": {"value": "http://example.org/p1"}},
-                    {"s": {"value": "http://example.org/s2"}, "p": {"value": "http://example.org/p2"}},
+                    {
+                        "s": {"value": "http://example.org/s1"},
+                        "p": {"value": "http://example.org/p1"},
+                    },
+                    {
+                        "s": {"value": "http://example.org/s2"},
+                        "p": {"value": "http://example.org/p2"},
+                    },
                 ]
             }
         }
         mock_api_client.request.return_value = mock_resp
-        result = runner.invoke(cli, ["semantic", "sparql", "query", "--query", "SELECT * WHERE { ?s ?p ?o }"])
+        result = runner.invoke(
+            cli, ["semantic", "sparql", "query", "--query", "SELECT * WHERE { ?s ?p ?o }"]
+        )
         assert result.exit_code == 0
         assert "example.org" in result.output
 
@@ -54,7 +62,16 @@ class TestSemanticSparqlQuery:
         mock_resp.json.return_value = {"results": {"bindings": [{"s": {"value": "x"}}]}}
         mock_api_client.request.return_value = mock_resp
         result = runner.invoke(
-            cli, ["semantic", "sparql", "query", "--query", "SELECT * WHERE { ?s ?p ?o }", "--format", "json"]
+            cli,
+            [
+                "semantic",
+                "sparql",
+                "query",
+                "--query",
+                "SELECT * WHERE { ?s ?p ?o }",
+                "--format",
+                "json",
+            ],
         )
         assert result.exit_code == 0
         data = json.loads(result.output)
@@ -67,7 +84,9 @@ class TestSemanticSparqlQuery:
         mock_resp.text = "{}"
         mock_resp.json.return_value = {"results": {"bindings": []}}
         mock_api_client.request.return_value = mock_resp
-        result = runner.invoke(cli, ["semantic", "sparql", "query", "--query", "SELECT * WHERE { ?s ?p ?o }"])
+        result = runner.invoke(
+            cli, ["semantic", "sparql", "query", "--query", "SELECT * WHERE { ?s ?p ?o }"]
+        )
         assert result.exit_code == 0
         assert "No results" in result.output
 
@@ -79,7 +98,9 @@ class TestSemanticSparqlQuery:
     @pytest.mark.unit
     def test_query_api_error(self, runner, mock_api_client):
         mock_api_client.request.side_effect = Exception("SPARQL endpoint timeout")
-        result = runner.invoke(cli, ["semantic", "sparql", "query", "--query", "SELECT * WHERE { ?s ?p ?o }"])
+        result = runner.invoke(
+            cli, ["semantic", "sparql", "query", "--query", "SELECT * WHERE { ?s ?p ?o }"]
+        )
         assert result.exit_code != 0
         assert "timeout" in result.output.lower()
 
@@ -99,7 +120,10 @@ class TestSemanticSparqlQuery:
 class TestSemanticSparqlServiceDescription:
     @pytest.mark.unit
     def test_service_description(self, runner, mock_api_client):
-        mock_api_client.get.return_value = {"endpoint": "http://sparql.example/", "features": ["basic-federated-query"]}
+        mock_api_client.get.return_value = {
+            "endpoint": "http://sparql.example/",
+            "features": ["basic-federated-query"],
+        }
         result = runner.invoke(cli, ["semantic", "sparql", "service-description"])
         assert result.exit_code == 0
         data = json.loads(result.output)
@@ -108,6 +132,7 @@ class TestSemanticSparqlServiceDescription:
     @pytest.mark.unit
     def test_service_description_error(self, runner, mock_api_client):
         from click import ClickException
+
         mock_api_client.get.side_effect = ClickException("down")
         result = runner.invoke(cli, ["semantic", "sparql", "service-description"])
         assert result.exit_code != 0
@@ -118,7 +143,9 @@ class TestSemanticExport:
     def test_export_stdout(self, runner, mock_api_client):
         mock_resp = Mock()
         mock_resp.status_code = 200
-        mock_resp.content = b"<http://example.org/s> <http://example.org/p> <http://example.org/o> .\n"
+        mock_resp.content = (
+            b"<http://example.org/s> <http://example.org/p> <http://example.org/o> .\n"
+        )
         mock_api_client.request.return_value = mock_resp
         result = runner.invoke(cli, ["semantic", "export", "--format", "n-triples"])
         assert result.exit_code == 0
@@ -130,7 +157,9 @@ class TestSemanticExport:
         mock_resp.status_code = 200
         mock_resp.content = b"triple data"
         mock_api_client.request.return_value = mock_resp
-        result = runner.invoke(cli, ["semantic", "export", "--format", "n-triples", "--output", str(output)])
+        result = runner.invoke(
+            cli, ["semantic", "export", "--format", "n-triples", "--output", str(output)]
+        )
         assert result.exit_code == 0
         assert output.read_bytes() == b"triple data"
 
@@ -167,6 +196,7 @@ class TestSemanticOntology:
     @pytest.mark.unit
     def test_ontology_error(self, runner, mock_api_client):
         from click import ClickException
+
         mock_api_client.get.side_effect = ClickException("not found")
         result = runner.invoke(cli, ["semantic", "ontology"])
         assert result.exit_code != 0
@@ -184,6 +214,7 @@ class TestSemanticContext:
     @pytest.mark.unit
     def test_context_error(self, runner, mock_api_client):
         from click import ClickException
+
         mock_api_client.get.side_effect = ClickException("down")
         result = runner.invoke(cli, ["semantic", "context"])
         assert result.exit_code != 0
@@ -203,10 +234,15 @@ class TestCustomOntologyUpload:
         result = runner.invoke(
             cli,
             [
-                "semantic", "custom-ontology", "upload",
-                "--name", "test-onto",
-                "--namespace", "http://example.org/",
-                "--file", str(rdf_file),
+                "semantic",
+                "custom-ontology",
+                "upload",
+                "--name",
+                "test-onto",
+                "--namespace",
+                "http://example.org/",
+                "--file",
+                str(rdf_file),
             ],
         )
         assert result.exit_code == 0
@@ -282,7 +318,16 @@ class TestLdnSubscribe:
         mock_resp.json.return_value = {"id": "sub-1", "status": "active"}
         mock_api_client.request.return_value = mock_resp
         result = runner.invoke(
-            cli, ["semantic", "ldn", "subscribe", "--target-url", "http://inbox.example/", "--resource-type", "dataset"]
+            cli,
+            [
+                "semantic",
+                "ldn",
+                "subscribe",
+                "--target-url",
+                "http://inbox.example/",
+                "--resource-type",
+                "dataset",
+            ],
         )
         assert result.exit_code == 0
 
@@ -315,6 +360,7 @@ class TestSemanticVoid:
     @pytest.mark.unit
     def test_void_error(self, runner, mock_api_client):
         from click import ClickException
+
         mock_api_client.get.side_effect = ClickException("unavailable")
         result = runner.invoke(cli, ["semantic", "void"])
         assert result.exit_code != 0
@@ -335,7 +381,10 @@ class TestShaclValidate:
 
     @pytest.mark.unit
     def test_validate_missing_shapes(self, runner, mock_api_client):
-        mock_api_client.post.return_value = {"conforms": False, "violations": [{"message": "No shapes", "severity": "Violation"}]}
+        mock_api_client.post.return_value = {
+            "conforms": False,
+            "violations": [{"message": "No shapes", "severity": "Violation"}],
+        }
         result = runner.invoke(cli, ["semantic", "shacl", "validate"])
         # API returns non-conforming; CLI exits 0 (validation ran, result is non-conforming)
         assert result.exit_code == 0
@@ -350,7 +399,15 @@ class TestShaclValidate:
         mock_api_client.post.return_value = {"conforms": True, "violations": []}
         result = runner.invoke(
             cli,
-            ["semantic", "shacl", "validate", "--data", str(data_file), "--shapes", str(shapes_file)],
+            [
+                "semantic",
+                "shacl",
+                "validate",
+                "--data",
+                str(data_file),
+                "--shapes",
+                str(shapes_file),
+            ],
         )
         assert result.exit_code == 0
 
@@ -378,9 +435,15 @@ class TestFederationAdd:
         result = runner.invoke(
             cli,
             [
-                "semantic", "federation", "add",
-                "--tenant-id", "t1", "--name", "remote1",
-                "--endpoint-url", "http://sparql.remote/query",
+                "semantic",
+                "federation",
+                "add",
+                "--tenant-id",
+                "t1",
+                "--name",
+                "remote1",
+                "--endpoint-url",
+                "http://sparql.remote/query",
             ],
         )
         assert result.exit_code == 0
@@ -438,9 +501,7 @@ class TestGraphQLQuery:
         mock_graphql_api_client.post.return_value = {
             "data": {"assets": [{"id": "a1", "name": "Alpha"}]},
         }
-        result = runner.invoke(
-            cli, ["graphql", "query", "--query", "{ assets { id name } }"]
-        )
+        result = runner.invoke(cli, ["graphql", "query", "--query", "{ assets { id name } }"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "data" in data
@@ -451,9 +512,7 @@ class TestGraphQLQuery:
         query_file = tmp_path / "query.gql"
         query_file.write_text("{ contracts { id version } }")
         mock_graphql_api_client.post.return_value = {"data": {"contracts": []}}
-        result = runner.invoke(
-            cli, ["graphql", "query", "--file", str(query_file)]
-        )
+        result = runner.invoke(cli, ["graphql", "query", "--file", str(query_file)])
         assert result.exit_code == 0
 
     @pytest.mark.unit
@@ -464,9 +523,12 @@ class TestGraphQLQuery:
         result = runner.invoke(
             cli,
             [
-                "graphql", "query",
-                "--query", "query Q($id: ID!) { asset(id: $id) { id name } }",
-                "--variables", '{"id": "a1"}',
+                "graphql",
+                "query",
+                "--query",
+                "query Q($id: ID!) { asset(id: $id) { id name } }",
+                "--variables",
+                '{"id": "a1"}',
             ],
         )
         assert result.exit_code == 0
@@ -481,9 +543,12 @@ class TestGraphQLQuery:
         result = runner.invoke(
             cli,
             [
-                "graphql", "query",
-                "--query", "{ assets { id } }",
-                "--variables", "not json",
+                "graphql",
+                "query",
+                "--query",
+                "{ assets { id } }",
+                "--variables",
+                "not json",
             ],
         )
         assert result.exit_code != 0
@@ -492,11 +557,10 @@ class TestGraphQLQuery:
     @pytest.mark.unit
     def test_query_api_error(self, runner, mock_graphql_api_client):
         from click import ClickException
+
         mock_graphql_api_client.post.side_effect = ClickException(
             "GraphQL query exceeded 10.0s timeout"
         )
-        result = runner.invoke(
-            cli, ["graphql", "query", "--query", "{ assets { id } }"]
-        )
+        result = runner.invoke(cli, ["graphql", "query", "--query", "{ assets { id } }"])
         assert result.exit_code != 0
         assert "timeout" in result.output.lower()

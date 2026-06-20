@@ -14,11 +14,9 @@ from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.orchestration.models import (
-    StepStatus,
     WorkflowDefinition,
     WorkflowInstance,
     WorkflowStatus,
-    WorkflowStep,
 )
 from hub.apps.orchestration.post_deployment import (
     PostDeploymentMetricsCollector,
@@ -60,7 +58,9 @@ class PostDeploymentMetricsCollectorTests(TestCase):
     def setUp(self):
         self.uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {self.uid}", slug=f"test-tenant-{self.uid}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {self.uid}",
+            slug=f"test-tenant-{self.uid}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"postdeploy-{self.uid}@example.com",
@@ -200,10 +200,7 @@ class PostDeploymentMetricsCollectorTests(TestCase):
         report = collector.collect()
 
         self.assertTrue(
-            any(
-                "success rate" in rec and self.wf_name in rec
-                for rec in report.recommendations
-            ),
+            any("success rate" in rec and self.wf_name in rec for rec in report.recommendations),
             report.recommendations,
         )
 
@@ -214,7 +211,9 @@ class ReportWorkflowPostDeploymentMetricsCommandTests(TestCase):
     def setUp(self):
         self.uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Cmd Tenant {self.uid}", slug=f"cmd-tenant-{self.uid}", kyc_status=KYCStatus.VERIFIED
+            name=f"Cmd Tenant {self.uid}",
+            slug=f"cmd-tenant-{self.uid}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"cmd-{self.uid}@example.com",

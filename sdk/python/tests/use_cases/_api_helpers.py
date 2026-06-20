@@ -5,6 +5,7 @@ Thin wrapper around requests that uses persona credentials to hit the
 live staging API. Every helper returns the raw response so tests can
 assert on status codes, headers, and bodies.
 """
+
 from __future__ import annotations
 
 import os
@@ -236,7 +237,7 @@ def api_login(email: str, password: str, timeout: int = 15) -> requests.Response
         try:
             resp = requests.post(url, json=payload, timeout=timeout)
         except (requests.ConnectionError, requests.Timeout):
-            wait = min(2 ** attempt, 30)
+            wait = min(2**attempt, 30)
             if attempt < max_attempts - 1:
                 time.sleep(wait)
                 continue
@@ -258,7 +259,7 @@ def api_login(email: str, password: str, timeout: int = 15) -> requests.Response
 
         # ---- 5xx infrastructure errors: Redis, DB, etc. ----
         if resp.status_code >= 500:
-            wait = min(2 ** attempt, 30)
+            wait = min(2**attempt, 30)
             if attempt < max_attempts - 1:
                 time.sleep(wait)
                 last_resp = resp

@@ -21,7 +21,7 @@ def _hex_key(seed: int) -> str:
     return ("%.64x" % (seed * (1 << 128) + 1))[:64]
 
 
-@pytest.mark.e2e_batch2
+@pytest.mark.e2e
 class ConsentGrantRevokeE2ETests(E2ETestBase):
     """E2E tests for consent grant/revoke flow (283.3.1.3)."""
 

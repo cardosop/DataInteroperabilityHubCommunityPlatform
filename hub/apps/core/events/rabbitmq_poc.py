@@ -15,25 +15,26 @@ Usage:
     event_id = bus.publish("contract.created", {"contract_id": "..."})
     bus.subscribe("contract.*", handler_function)
 """
+
 from __future__ import annotations
 
 import json
-import structlog
-import time
-from typing import Dict, Any, Optional, Callable, List
-from django.conf import settings
-from django.utils import timezone
-from datetime import datetime
+from collections.abc import Callable
+from typing import Any
 
+import structlog
+from django.conf import settings
+
+from .event_types import validate_event_data
 from .schema import EventSchema
-from .event_types import validate_event_data, CURRENT_EVENT_VERSION
 
 logger = structlog.get_logger(__name__)
 
 # Try to import pika (RabbitMQ client)
 try:
     import pika
-    from pika.exceptions import AMQPConnectionError, AMQPChannelError
+    from pika.exceptions import AMQPChannelError, AMQPConnectionError
+
     RABBITMQ_AVAILABLE = True
 except ImportError:
     RABBITMQ_AVAILABLE = False
@@ -44,7 +45,6 @@ except ImportError:
 
 class RabbitMQEventBusError(Exception):
     """Base exception for RabbitMQ event bus errors."""
-    pass
 
 
 class RabbitMQEventBus:
@@ -62,7 +62,7 @@ class RabbitMQEventBus:
     - Advanced routing (direct, topic, fanout exchanges)
     """
 
-    def __init__(self, connection_url: Optional[str] = None):
+    def __init__(self, connection_url: str | None = None):
         """
         Initialize RabbitMQ event bus.
 
@@ -70,23 +70,21 @@ class RabbitMQEventBus:
             connection_url: RabbitMQ connection URL (default: from settings)
         """
         if not RABBITMQ_AVAILABLE:
-            raise RabbitMQEventBusError(
-                "pika not installed. Install with: pip install pika"
-            )
+            raise RabbitMQEventBusError("pika not installed. Install with: pip install pika")
 
         # Get RabbitMQ configuration from settings
         self.connection_url = connection_url or getattr(
-            settings, 'RABBITMQ_URL', 'amqp://guest:guest@localhost:5672/'
+            settings, "RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"
         )
-        self.exchange_name = getattr(settings, 'RABBITMQ_EXCHANGE_NAME', 'events')
-        self.exchange_type = 'topic'  # Use topic exchange for pattern matching
+        self.exchange_name = getattr(settings, "RABBITMQ_EXCHANGE_NAME", "events")
+        self.exchange_type = "topic"  # Use topic exchange for pattern matching
 
         # Connection and channel
-        self.connection: Optional[pika.BlockingConnection] = None
-        self.channel: Optional[pika.channel.Channel] = None
+        self.connection: pika.BlockingConnection | None = None
+        self.channel: pika.channel.Channel | None = None
 
         # Queue bindings
-        self.queues: Dict[str, str] = {}  # subscriber_name -> queue_name
+        self.queues: dict[str, str] = {}  # subscriber_name -> queue_name
 
     def _ensure_connection(self) -> None:
         """Ensure RabbitMQ connection is established."""
@@ -100,30 +98,24 @@ class RabbitMQEventBus:
                 self.channel.exchange_declare(
                     exchange=self.exchange_name,
                     exchange_type=self.exchange_type,
-                    durable=True  # Survive broker restart
+                    durable=True,  # Survive broker restart
                 )
 
-                logger.info(
-                    "rabbitmq_connection_established",
-                    exchange=self.exchange_name
-                )
+                logger.info("rabbitmq_connection_established", exchange=self.exchange_name)
             except AMQPConnectionError as e:
-                logger.error(
-                    "rabbitmq_connection_failed",
-                    error=str(e)
-                )
+                logger.error("rabbitmq_connection_failed", error=str(e))
                 raise RabbitMQEventBusError(f"Failed to connect to RabbitMQ: {e}")
 
     def publish(
         self,
         event_type: str,
-        data: Dict[str, Any],
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request_id: Optional[str] = None,
-        correlation_id: Optional[str] = None,
-        causation_id: Optional[str] = None,
-        tags: Optional[List[str]] = None,
+        data: dict[str, Any],
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
+        causation_id: str | None = None,
+        tags: list[str] | None = None,
     ) -> str:
         """
         Publish an event to RabbitMQ.
@@ -161,11 +153,7 @@ class RabbitMQEventBus:
         try:
             validate_event_data(event_type, data)
         except Exception as e:
-            logger.error(
-                "rabbitmq_event_validation_failed",
-                event_type=event_type,
-                error=str(e)
-            )
+            logger.error("rabbitmq_event_validation_failed", event_type=event_type, error=str(e))
             raise RabbitMQEventBusError(f"Event validation failed: {e}")
 
         # Ensure connection
@@ -179,16 +167,16 @@ class RabbitMQEventBus:
                 body=json.dumps(event),
                 properties=pika.BasicProperties(
                     delivery_mode=2,  # Make message persistent
-                    content_type='application/json',
+                    content_type="application/json",
                     message_id=event_id,
                     correlation_id=correlation_id or event_id,
                     headers={
-                        'event_type': event_type,
-                        'tenant_id': tenant_id,
-                        'user_id': user_id,
-                        'request_id': request_id,
-                    }
-                )
+                        "event_type": event_type,
+                        "tenant_id": tenant_id,
+                        "user_id": user_id,
+                        "request_id": request_id,
+                    },
+                ),
             )
 
             logger.debug(
@@ -196,7 +184,7 @@ class RabbitMQEventBus:
                 event_id=event_id,
                 event_type=event_type,
                 exchange=self.exchange_name,
-                routing_key=event_type
+                routing_key=event_type,
             )
 
             return event_id
@@ -206,7 +194,7 @@ class RabbitMQEventBus:
                 "rabbitmq_event_publish_failed",
                 event_id=event_id,
                 event_type=event_type,
-                error=str(e)
+                error=str(e),
             )
             raise RabbitMQEventBusError(f"Failed to publish event: {e}")
 
@@ -214,7 +202,7 @@ class RabbitMQEventBus:
         self,
         subscriber_name: str,
         event_type_pattern: str,
-        handler: Callable[[Dict[str, Any]], None],
+        handler: Callable[[dict[str, Any]], None],
         is_active: bool = True,
     ) -> None:
         """
@@ -230,7 +218,7 @@ class RabbitMQEventBus:
             logger.debug(
                 "rabbitmq_subscription_inactive",
                 subscriber_name=subscriber_name,
-                event_type_pattern=event_type_pattern
+                event_type_pattern=event_type_pattern,
             )
             return
 
@@ -241,9 +229,9 @@ class RabbitMQEventBus:
         queue_name = f"{self.exchange_name}.{subscriber_name}"
 
         # Declare queue
-        result = self.channel.queue_declare(
+        self.channel.queue_declare(
             queue=queue_name,
-            durable=True  # Survive broker restart
+            durable=True,  # Survive broker restart
         )
 
         # Convert pattern to RabbitMQ routing pattern
@@ -253,9 +241,7 @@ class RabbitMQEventBus:
 
         # Bind queue to exchange with routing pattern
         self.channel.queue_bind(
-            exchange=self.exchange_name,
-            queue=queue_name,
-            routing_key=routing_pattern
+            exchange=self.exchange_name, queue=queue_name, routing_key=routing_pattern
         )
 
         # Store queue name
@@ -279,7 +265,7 @@ class RabbitMQEventBus:
                     "rabbitmq_event_processing_failed",
                     subscriber_name=subscriber_name,
                     queue=queue_name,
-                    error=str(e)
+                    error=str(e),
                 )
                 # Reject message (would go to dead letter queue if configured)
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
@@ -288,7 +274,7 @@ class RabbitMQEventBus:
         self.channel.basic_consume(
             queue=queue_name,
             on_message_callback=callback,
-            auto_ack=False  # Manual acknowledgment
+            auto_ack=False,  # Manual acknowledgment
         )
 
         logger.info(
@@ -296,10 +282,10 @@ class RabbitMQEventBus:
             subscriber_name=subscriber_name,
             event_type_pattern=event_type_pattern,
             queue=queue_name,
-            routing_pattern=routing_pattern
+            routing_pattern=routing_pattern,
         )
 
-    def start_consuming(self, subscriber_name: Optional[str] = None) -> None:
+    def start_consuming(self, subscriber_name: str | None = None) -> None:
         """
         Start consuming events.
 
@@ -311,19 +297,13 @@ class RabbitMQEventBus:
         if self.channel is None:
             raise RabbitMQEventBusError("No active connection")
 
-        logger.info(
-            "rabbitmq_consumer_started",
-            subscriber_name=subscriber_name or "all"
-        )
+        logger.info("rabbitmq_consumer_started", subscriber_name=subscriber_name or "all")
 
         try:
             # Start consuming (blocking)
             self.channel.start_consuming()
         except KeyboardInterrupt:
-            logger.info(
-                "rabbitmq_consumer_stopped",
-                subscriber_name=subscriber_name or "all"
-            )
+            logger.info("rabbitmq_consumer_stopped", subscriber_name=subscriber_name or "all")
             self.channel.stop_consuming()
 
     def close(self) -> None:
@@ -343,7 +323,6 @@ class RabbitMQEventBus:
 
 def get_rabbitmq_event_bus() -> RabbitMQEventBus:
     """Get global RabbitMQ event bus instance."""
-    if not hasattr(get_rabbitmq_event_bus, '_instance'):
+    if not hasattr(get_rabbitmq_event_bus, "_instance"):
         get_rabbitmq_event_bus._instance = RabbitMQEventBus()
     return get_rabbitmq_event_bus._instance
-

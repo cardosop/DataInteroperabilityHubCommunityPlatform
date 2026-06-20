@@ -8,7 +8,7 @@ Uses REAL factories (no mocks).
 """
 
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from django.contrib.auth import get_user_model
 
@@ -18,7 +18,6 @@ from hub.apps.contracts.models import Contract
 from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
 from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.tests.factories import DatasetFactory
-from hub.apps.files.models import File
 from hub.apps.files.tests.factories import FileFactory
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
@@ -129,7 +128,7 @@ class SampleTestData:
 
     @staticmethod
     def create_sample_contract_customer(
-        tenant: Tenant, created_by: User, asset: Optional[Asset] = None
+        tenant: Tenant, created_by: User, asset: Asset | None = None
     ) -> Contract:
         """Create a sample customer data contract"""
         if asset is None:
@@ -182,7 +181,7 @@ class SampleTestData:
 
     @staticmethod
     def create_sample_contract_orders(
-        tenant: Tenant, created_by: User, asset: Optional[Asset] = None
+        tenant: Tenant, created_by: User, asset: Asset | None = None
     ) -> Contract:
         """Create a sample orders contract"""
         if asset is None:
@@ -232,7 +231,7 @@ class SampleTestData:
 
     @staticmethod
     def create_sample_dataset_customer(
-        tenant: Tenant, created_by: User, asset: Optional[Asset] = None
+        tenant: Tenant, created_by: User, asset: Asset | None = None
     ) -> Dataset:
         """Create a sample customer dataset"""
         if asset is None:
@@ -291,7 +290,7 @@ class SampleTestData:
 
     @staticmethod
     def create_sample_dataset_orders(
-        tenant: Tenant, created_by: User, asset: Optional[Asset] = None
+        tenant: Tenant, created_by: User, asset: Asset | None = None
     ) -> Dataset:
         """Create a sample orders dataset"""
         if asset is None:
@@ -385,7 +384,7 @@ class SampleTestData:
     # ========== Complete Sample Environments ==========
 
     @staticmethod
-    def create_sample_environment_basic() -> Dict[str, Any]:
+    def create_sample_environment_basic() -> dict[str, Any]:
         """
         Create a basic sample test environment.
 
@@ -421,7 +420,7 @@ class SampleTestData:
         }
 
     @staticmethod
-    def create_sample_environment_complete() -> Dict[str, Any]:
+    def create_sample_environment_complete() -> dict[str, Any]:
         """
         Create a complete sample test environment with all data types.
 

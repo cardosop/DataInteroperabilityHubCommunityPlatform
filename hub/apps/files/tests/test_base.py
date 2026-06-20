@@ -50,9 +50,7 @@ def _ensure_tenant_has_active_subscription(tenant):
         tenant.plan = plan
         tenant.save(update_fields=["plan"])
 
-    subscription = (
-        Subscription.objects.filter(tenant_id=tenant.id).order_by("-created_at").first()
-    )
+    subscription = Subscription.objects.filter(tenant_id=tenant.id).order_by("-created_at").first()
     if not subscription or subscription.status not in (
         SubscriptionStatus.ACTIVE,
         SubscriptionStatus.TRIAL,
@@ -173,3 +171,50 @@ class FilesAPITransactionTestBase(FilesTransactionTestBase):
         _ensure_tenant_has_active_subscription(self.tenant)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
+
+
+# ── Redis-availability guard ───────────────────────────────────────────
+# Memoized per-session so multiple ``setUp`` / test-method calls share
+# one connection probe.
+
+import logging as _logging  # noqa: E402
+
+_redis_log = _logging.getLogger(__name__)
+_redis_available: bool | None = None
+
+
+def redis_or_skip() -> None:
+    """Skip the current test if Redis is unavailable.
+
+    Used by management-command tests that require Redis for
+    distributed locking.  Call at the top of ``setUp`` or the test
+    method body.  The first call probes and caches the result per
+    session; subsequent calls are zero-cost.
+
+    Only connection-level failures trigger a skip — unexpected
+    errors (e.g. import errors, misconfiguration) are NOT silenced.
+    """
+    global _redis_available
+
+    if _redis_available is not None:
+        if not _redis_available:
+            import unittest  # noqa: E402
+
+            raise unittest.SkipTest("Redis unavailable (cached from earlier probe)")
+        return
+
+    import redis as _redis  # noqa: E402
+
+    try:
+        from hub.apps.api.middleware.idempotency_utils import get_redis_client
+
+        get_redis_client().ping()
+        _redis_available = True
+    except (_redis.ConnectionError, _redis.TimeoutError, OSError) as exc:
+        _redis_available = False
+        _redis_log.info("redis_or_skip: Redis unavailable — tests will skip. %s", exc)
+        import unittest  # noqa: E402
+
+        raise unittest.SkipTest(f"Redis required: {exc}") from exc
+    # Any other exception (ImportError, SyntaxError, …) is a real bug
+    # and must fail the test, not silently skip.

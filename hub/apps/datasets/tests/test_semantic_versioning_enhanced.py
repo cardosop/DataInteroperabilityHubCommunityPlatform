@@ -5,13 +5,10 @@ Tests for semantic version increment rules, version tagging, and enhanced diff v
 """
 
 import uuid
-from datetime import timedelta
 
 import pytest
-from django.test import TestCase
-from django.utils import timezone
-
 from django.contrib.auth import get_user_model
+from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
@@ -19,7 +16,7 @@ from hub.apps.datasets.tests.test_base import DatasetsTestBase
 from hub.apps.datasets.version_comparison import VersionComparisonService
 from hub.apps.datasets.versioning import VersionHistoryManager
 from hub.apps.files.models import File, FileStatus
-from hub.apps.tenants.models import Tenant, TenantStatus
+from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 
 User = get_user_model()
@@ -289,10 +286,14 @@ class VersionTaggingTest(TestCase):
     """Test version tagging functionality"""
 
     def setUp(self):
+        super().setUp()
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -382,6 +383,17 @@ class VersionTaggingTest(TestCase):
         # version_tags is a list, count occurrences
         tag_count = sum(1 for tag in dataset.version_tags if tag == "production")
         self.assertEqual(tag_count, 1)
+
+    def test_add_version_tag_empty_raises(self):
+        """add_version_tag with empty string raises ValueError."""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=self.file,
+            schema_json={"fields": [{"name": "col1", "type": "string"}]},
+            format="CSV", version=1, created_by=self.user,
+        )
+        VersionHistoryManager.create_version(dataset, is_current=True)
+        with self.assertRaises(ValueError):
+            VersionHistoryManager.add_version_tag(dataset, "")
 
     def test_remove_version_tag(self):
         """Test removing a tag from a version"""
@@ -557,15 +569,26 @@ class VersionTaggingTest(TestCase):
         self.assertEqual(len(versions), 1)  # Only v2 has both tags
         self.assertEqual(versions[0].id, v2.id)
 
+    def test_get_versions_by_tags_empty_list(self):
+        """get_versions_by_tags with empty list returns empty list."""
+        result = VersionHistoryManager.get_versions_by_tags(
+            self.asset.id, self.tenant.id, []
+        )
+        self.assertEqual(result, [])
+
 
 class VersionDiffVisualizationTest(TestCase):
     """Test enhanced version diff visualization"""
 
     def setUp(self):
+        super().setUp()
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -852,6 +875,7 @@ class VersionDiffVisualizationTest(TestCase):
     def test_semantic_versioning_failure_nonexistent_parent(self):
         """Test semantic versioning with non-existent parent (failure scenario)"""
         import uuid
+
         from django.db import IntegrityError, connection
 
         fake_parent_id = uuid.uuid4()
@@ -880,7 +904,7 @@ class VersionDiffVisualizationTest(TestCase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_semantic_versioning_error_handling_database_error(self):
+    def test_semantic_versioning_create_succeeds(self):
         """Test error handling when database operations fail"""
         dataset = Dataset.objects.create(
             tenant=self.tenant,

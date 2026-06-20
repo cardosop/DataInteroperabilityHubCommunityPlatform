@@ -6,6 +6,7 @@ Registered in hub/urls.py as:
 
 Resulting URL:  GET /api/search/?q=<term>&types=assets,contracts
 """
+
 from django.urls import path
 
 from .views import UnifiedSearchView

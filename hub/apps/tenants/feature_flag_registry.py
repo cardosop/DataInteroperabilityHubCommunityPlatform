@@ -35,12 +35,12 @@ Cross-references
 * Lifecycle policy: [docs/runbooks/feature-flag-lifecycle.md](../../../docs/runbooks/feature-flag-lifecycle.md)
 * Phase 250 design: D250.13 in `openspec/changes/preprod01/design.md`
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal
-
 
 FeatureFlagStage = Literal["DRAFT", "CANARY", "GA", "DEPRECATED", "RETIRED"]
 
@@ -104,20 +104,20 @@ class FeatureFlag:
 # Sorted by Phase + flag name for stable diff churn.
 # ---------------------------------------------------------------------------
 
-_PHASE_240_INTRODUCED = datetime(2026, 3, 1, tzinfo=timezone.utc)
-_PHASE_250_INTRODUCED = datetime(2026, 5, 3, tzinfo=timezone.utc)
+_PHASE_240_INTRODUCED = datetime(2026, 3, 1, tzinfo=UTC)
+_PHASE_250_INTRODUCED = datetime(2026, 5, 3, tzinfo=UTC)
 
 
 REGISTRY: tuple[FeatureFlag, ...] = (
     # ─── Phase 240 — DQ feature (Phase 240.4.B per D240.18) ────────────────
     FeatureFlag(
         name="data_quality_enabled",
-        description="Enables the DQ feature for the tenant. Kill-switch.",
+        description="Enables the DQ feature for the tenant. Kill-switch — opt-in feature.",
         owner_team="dq-eng",
         owner_email="dq-eng@meshant.com",
         created_at=_PHASE_240_INTRODUCED,
         stage="GA",
-        retire_by=datetime(2027, 3, 1, tzinfo=timezone.utc),  # annual review
+        retire_by=datetime(2027, 3, 1, tzinfo=UTC),  # annual review
         default_existing_tenants=True,
         default_new_tenants=False,
         related_phase="Phase 240.4.B",
@@ -125,28 +125,27 @@ REGISTRY: tuple[FeatureFlag, ...] = (
     ),
     FeatureFlag(
         name="data_quality_advanced_enabled",
-        description="Gates advanced DQ endpoints (trends / scorecards / anomalies / RCA).",
+        description="Gates advanced DQ endpoints (trends / scorecards / anomalies / RCA). Power-user opt-in feature.",
         owner_team="dq-eng",
         owner_email="dq-eng@meshant.com",
         created_at=_PHASE_240_INTRODUCED,
         stage="GA",
-        retire_by=datetime(2027, 3, 1, tzinfo=timezone.utc),
+        retire_by=datetime(2027, 3, 1, tzinfo=UTC),
         default_existing_tenants=False,
         default_new_tenants=False,
         related_phase="Phase 240.3.B",
         related_design_doc="D240.9",
     ),
-
     # ─── Phase 250 — Asset Creation Hardening ──────────────────────────────
     FeatureFlag(
         name="compliance_fail_closed_enabled",
         description="When True, asset creation is rejected if compliance gate fails. "
-                    "When False, falls back to legacy create-then-validate (Phase 250 deprecation window).",
+        "When False, falls back to legacy create-then-validate (Phase 250 deprecation window).",
         owner_team="asset-creation-eng",
         owner_email="asset-creation-eng@meshant.com",
         created_at=_PHASE_250_INTRODUCED,
         stage="CANARY",
-        retire_by=datetime(2026, 8, 1, tzinfo=timezone.utc),  # move to GA after 30d soak
+        retire_by=datetime(2026, 8, 1, tzinfo=UTC),  # move to GA after 30d soak
         default_existing_tenants=False,  # 30-day soak per D250.12
         default_new_tenants=True,
         related_phase="Phase 250.1.A",
@@ -156,7 +155,7 @@ REGISTRY: tuple[FeatureFlag, ...] = (
     FeatureFlag(
         name="allow_intake_on_compliance_degraded",
         description="When True AND compliance circuit is OPEN, allow asset creation in permissive mode "
-                    "(emergency-override only). When False (default), block with retry-after.",
+        "(emergency-override only). When False (default), block with retry-after.",
         owner_team="asset-creation-eng",
         owner_email="asset-creation-eng@meshant.com",
         created_at=_PHASE_250_INTRODUCED,
@@ -187,12 +186,12 @@ REGISTRY: tuple[FeatureFlag, ...] = (
     FeatureFlag(
         name="asset_creation_enabled",
         description="Per-tenant kill-switch for asset creation. Default ON for existing tenants; "
-                    "OFF until onboarding completion for new tenants.",
+        "OFF until onboarding completion for new tenants.",
         owner_team="asset-creation-eng",
         owner_email="asset-creation-eng@meshant.com",
         created_at=_PHASE_250_INTRODUCED,
         stage="GA",
-        retire_by=datetime(2027, 5, 1, tzinfo=timezone.utc),
+        retire_by=datetime(2027, 5, 1, tzinfo=UTC),
         default_existing_tenants=True,
         default_new_tenants=False,
         related_phase="Phase 250.6.A",
@@ -215,12 +214,12 @@ REGISTRY: tuple[FeatureFlag, ...] = (
     FeatureFlag(
         name="compliance_intake_gate_enabled",
         description="When True, the compliance intake gate must PASS before asset creation "
-                    "proceeds. When False, gate failures are logged but not blocking.",
+        "proceeds. When False, gate failures are logged but not blocking.",
         owner_team="compliance-eng",
         owner_email="compliance-eng@meshant.com",
         created_at=_PHASE_250_INTRODUCED,
         stage="CANARY",
-        retire_by=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        retire_by=datetime(2026, 8, 1, tzinfo=UTC),
         default_existing_tenants=False,
         default_new_tenants=True,
         related_phase="Phase 260",
@@ -241,7 +240,6 @@ REGISTRY: tuple[FeatureFlag, ...] = (
         related_design_doc="D260.2",
         related_audit_event="FILE_METADATA_VIEWED",
     ),
-
     # ─── Phase 285.13.10 — Tier-gated feature flags ──────────────────────
     FeatureFlag(
         name="data_mesh_enabled",
@@ -348,11 +346,8 @@ def stale_flags(now: datetime | None = None) -> tuple[FeatureFlag, ...]:
     is overdue). Caller decides severity classification.
     """
     if now is None:
-        now = datetime.now(tz=timezone.utc)
-    return tuple(
-        f for f in REGISTRY
-        if f.retire_by is not None and f.retire_by < now
-    )
+        now = datetime.now(tz=UTC)
+    return tuple(f for f in REGISTRY if f.retire_by is not None and f.retire_by < now)
 
 
 def is_tier_at_least(tenant, minimum_order: int) -> bool:
@@ -385,19 +380,17 @@ def is_sensitive(name: str) -> bool:
     if flag is None:
         return False
     return bool(
-        flag.related_audit_event
-        or flag.requires_dpo_signoff
-        or flag.requires_legal_signoff
+        flag.related_audit_event or flag.requires_dpo_signoff or flag.requires_legal_signoff
     )
 
 
 __all__ = [
+    "REGISTRY",
     "FeatureFlag",
     "FeatureFlagStage",
-    "REGISTRY",
-    "get_flag",
     "all_flags_in_stage",
-    "stale_flags",
+    "get_flag",
     "is_sensitive",
     "is_tier_at_least",
+    "stale_flags",
 ]

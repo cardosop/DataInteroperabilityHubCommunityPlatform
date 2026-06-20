@@ -15,13 +15,13 @@ to be relaxed (with a documented reason).
 
 Real file-system scan; no mocks. Cheap (~5 ms on a warm cache).
 """
+
 from __future__ import annotations
 
 import os
 import pathlib
 import re
 import unittest
-
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 SPA_SRC = REPO_ROOT / "frontend" / "src"
@@ -71,19 +71,19 @@ class SPAQualityPrefixForbiddenTest(unittest.TestCase):
             for line_no, line in enumerate(text.splitlines(), start=1):
                 for pat in _FORBIDDEN_PATTERNS:
                     if pat.search(line):
-                        offenders.append((
-                            os.path.relpath(path, REPO_ROOT),
-                            line_no,
-                            line.strip(),
-                        ))
+                        offenders.append(
+                            (
+                                os.path.relpath(path, REPO_ROOT),
+                                line_no,
+                                line.strip(),
+                            )
+                        )
                         break
 
         self.assertEqual(
-            offenders, [],
+            offenders,
+            [],
             "SPA must use the canonical /api/v1/dq/ prefix; "
             "found references to the deprecated /api/v1/quality/ "
-            "alias:\n"
-            + "\n".join(
-                f"  {p}:{ln}: {snippet}" for p, ln, snippet in offenders
-            ),
+            "alias:\n" + "\n".join(f"  {p}:{ln}: {snippet}" for p, ln, snippet in offenders),
         )

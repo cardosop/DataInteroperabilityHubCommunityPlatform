@@ -28,11 +28,12 @@ Test layers:
   the API serializer. The model accepts EXTERNAL_REF as a
   legitimate value; only the API serializer rejects it.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
@@ -215,9 +216,7 @@ class DatasetCreateSerializerKindContractTest(_DatasetKindTestBase):
         s = DatasetCreateSerializer(data=self._payload(kind="EXTERNAL_REF"))
         self.assertFalse(s.is_valid())
         self.assertIn("kind", s.errors)
-        codes = [
-            getattr(d, "code", None) for d in s.errors["kind"]
-        ]
+        codes = [getattr(d, "code", None) for d in s.errors["kind"]]
         self.assertIn(
             "EXTERNAL_REF_NOT_API_SETTABLE",
             codes,
@@ -271,28 +270,49 @@ class DatasetServiceLayerKindBypassTest(_DatasetKindTestBase):
         # future migration that drops the index or breaks the
         # field semantics).
         Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=self.file,
-            kind=DatasetKind.FILE, schema_json={}, sample_data_json=[],
-            row_count=0, format="CSV", version=1, created_by=self.user,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            kind=DatasetKind.FILE,
+            schema_json={},
+            sample_data_json=[],
+            row_count=0,
+            format="CSV",
+            version=1,
+            created_by=self.user,
         )
         Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=None,
-            kind=DatasetKind.EXTERNAL_REF, schema_json={},
-            sample_data_json=[], row_count=0, format="EXTERNAL",
-            version=2, created_by=self.user,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=None,
+            kind=DatasetKind.EXTERNAL_REF,
+            schema_json={},
+            sample_data_json=[],
+            row_count=0,
+            format="EXTERNAL",
+            version=2,
+            created_by=self.user,
         )
         Dataset.objects.create(
-            tenant=self.tenant, asset=self.asset, file=None,
-            kind=DatasetKind.EXTERNAL_REF, schema_json={},
-            sample_data_json=[], row_count=0, format="EXTERNAL",
-            version=3, created_by=self.user,
+            tenant=self.tenant,
+            asset=self.asset,
+            file=None,
+            kind=DatasetKind.EXTERNAL_REF,
+            schema_json={},
+            sample_data_json=[],
+            row_count=0,
+            format="EXTERNAL",
+            version=3,
+            created_by=self.user,
         )
 
         file_count = Dataset.objects.filter(
-            tenant=self.tenant, kind=DatasetKind.FILE,
+            tenant=self.tenant,
+            kind=DatasetKind.FILE,
         ).count()
         external_count = Dataset.objects.filter(
-            tenant=self.tenant, kind=DatasetKind.EXTERNAL_REF,
+            tenant=self.tenant,
+            kind=DatasetKind.EXTERNAL_REF,
         ).count()
 
         self.assertEqual(file_count, 1)

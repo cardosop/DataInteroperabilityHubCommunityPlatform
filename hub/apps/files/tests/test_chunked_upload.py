@@ -4,6 +4,7 @@ Unit tests for chunked/multipart upload functionality.
 Tests use real S3StorageClient with graceful handling when storage unavailable.
 """
 
+import contextlib
 import hashlib
 import uuid
 
@@ -29,7 +30,7 @@ class ChunkedUploadTest(FilesAPITestBase):
             self.storage_client = S3StorageClient()
             self.storage_client._ensure_bucket_exists()
             self.storage_available = True
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover — S3 probe
             self.storage_available = False
 
     def test_get_chunk_size_small_file(self):
@@ -104,12 +105,10 @@ class ChunkedUploadTest(FilesAPITestBase):
         self.assertEqual(response.data["expires_in"], 3600)
 
         # Clean up multipart upload
-        try:
+        with contextlib.suppress(Exception):
             self.storage_client.abort_multipart_upload(
                 key=file_obj.storage_path, upload_id=upload_id
             )
-        except Exception:
-            pass
 
     def test_init_chunk_upload_not_uploading(self):
         """Test chunk upload initialization for non-uploading file"""
@@ -179,23 +178,18 @@ class ChunkedUploadTest(FilesAPITestBase):
         parts = [{"ETag": real_etag, "PartNumber": 1}]
         data = {"content_sha256": sha256_hash, "parts": parts}
 
-        response = self.client.post(
-            f"/api/v1/files/{file_obj.id}/complete/", data, format="json"
-        )
+        response = self.client.post(f"/api/v1/files/{file_obj.id}/complete/", data, format="json")
 
         self.assertEqual(
             response.status_code,
             status.HTTP_200_OK,
-            f"Expected 200 but got {response.status_code}: "
-            f"{getattr(response, 'data', '')}",
+            f"Expected 200 but got {response.status_code}: {getattr(response, 'data', '')}",
         )
         file_obj.refresh_from_db()
         self.assertEqual(file_obj.status, FileStatus.ACTIVE)
 
         # Clean up multipart upload
-        try:
+        with contextlib.suppress(Exception):
             self.storage_client.abort_multipart_upload(
                 key=file_obj.storage_path, upload_id=upload_id
             )
-        except Exception:
-            pass

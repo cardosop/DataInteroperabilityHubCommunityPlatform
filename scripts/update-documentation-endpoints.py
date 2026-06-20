@@ -12,38 +12,35 @@ Usage:
 """
 
 import re
-from pathlib import Path
-from typing import List, Tuple
 import sys
-
+from pathlib import Path
 
 # Patterns to replace
 REPLACEMENTS = [
     # Compliance endpoints
-    (r'/api/v1/compliance/compliance-runs/', '/api/v1/compliance/runs/'),
-    (r'/api/v1/compliance/compliance-runs\b', '/api/v1/compliance/runs'),
-    (r'compliance-runs/', 'runs/'),
-    (r'compliance-runs\b', 'runs'),
-
+    (r"/api/v1/compliance/compliance-runs/", "/api/v1/compliance/runs/"),
+    (r"/api/v1/compliance/compliance-runs\b", "/api/v1/compliance/runs"),
+    (r"compliance-runs/", "runs/"),
+    (r"compliance-runs\b", "runs"),
     # DQ endpoints
-    (r'/api/v1/dq/dq-runs/', '/api/v1/dq/runs/'),
-    (r'/api/v1/dq/dq-runs\b', '/api/v1/dq/runs'),
-    (r'dq-runs/', 'runs/'),
-    (r'dq-runs\b', 'runs'),
+    (r"/api/v1/dq/dq-runs/", "/api/v1/dq/runs/"),
+    (r"/api/v1/dq/dq-runs\b", "/api/v1/dq/runs"),
+    (r"dq-runs/", "runs/"),
+    (r"dq-runs\b", "runs"),
 ]
 
 # Files to check (exclude audit files and deprecated docs)
 DOC_PATTERNS = [
-    'docs/*.md',
-    'docs/**/*.md',
+    "docs/*.md",
+    "docs/**/*.md",
 ]
 
 # Files to exclude
 EXCLUDE_PATTERNS = [
-    '**/api-audit/**',
-    '**/deprecated-doc/**',
-    '**/node_modules/**',
-    '**/.git/**',
+    "**/api-audit/**",
+    "**/deprecated-doc/**",
+    "**/node_modules/**",
+    "**/.git/**",
 ]
 
 
@@ -53,36 +50,36 @@ def should_process_file(file_path: Path) -> bool:
 
     # Exclude patterns
     for exclude_pattern in EXCLUDE_PATTERNS:
-        if exclude_pattern.replace('**/', '') in file_str:
+        if exclude_pattern.replace("**/", "") in file_str:
             return False
 
     # Only process markdown files
-    if not file_path.suffix == '.md':
+    if not file_path.suffix == ".md":
         return False
 
     return True
 
 
-def find_old_patterns(content: str) -> List[Tuple[int, str, str]]:
+def find_old_patterns(content: str) -> list[tuple[int, str, str]]:
     """Find all old patterns in content"""
     issues = []
-    lines = content.split('\n')
+    lines = content.split("\n")
 
     for line_num, line in enumerate(lines, 1):
         # Check for old compliance patterns
-        if '/compliance-runs/' in line or '/compliance/compliance-runs' in line:
-            if '/api/v1/compliance/runs/' not in line:  # Not already correct
-                issues.append((line_num, line, 'compliance-runs'))
+        if "/compliance-runs/" in line or "/compliance/compliance-runs" in line:
+            if "/api/v1/compliance/runs/" not in line:  # Not already correct
+                issues.append((line_num, line, "compliance-runs"))
 
         # Check for old DQ patterns
-        if '/dq-runs/' in line or '/dq/dq-runs' in line:
-            if '/api/v1/dq/runs/' not in line:  # Not already correct
-                issues.append((line_num, line, 'dq-runs'))
+        if "/dq-runs/" in line or "/dq/dq-runs" in line:
+            if "/api/v1/dq/runs/" not in line:  # Not already correct
+                issues.append((line_num, line, "dq-runs"))
 
     return issues
 
 
-def update_content(content: str) -> Tuple[str, int]:
+def update_content(content: str) -> tuple[str, int]:
     """Update content with standardized patterns"""
     updated_content = content
     replacements_count = 0
@@ -96,10 +93,12 @@ def update_content(content: str) -> Tuple[str, int]:
     return updated_content, replacements_count
 
 
-def process_file(file_path: Path, dry_run: bool = False) -> Tuple[bool, int, List[Tuple[int, str, str]]]:
+def process_file(
+    file_path: Path, dry_run: bool = False
+) -> tuple[bool, int, list[tuple[int, str, str]]]:
     """Process a single file"""
     try:
-        content = file_path.read_text(encoding='utf-8')
+        content = file_path.read_text(encoding="utf-8")
 
         # Find old patterns
         issues = find_old_patterns(content)
@@ -114,7 +113,7 @@ def process_file(file_path: Path, dry_run: bool = False) -> Tuple[bool, int, Lis
         updated_content, replacements_count = update_content(content)
 
         # Write back
-        file_path.write_text(updated_content, encoding='utf-8')
+        file_path.write_text(updated_content, encoding="utf-8")
 
         return True, replacements_count, issues
 
@@ -126,10 +125,10 @@ def process_file(file_path: Path, dry_run: bool = False) -> Tuple[bool, int, Lis
 def main():
     """Main execution"""
     project_root = Path(__file__).resolve().parent.parent
-    docs_dir = project_root / 'docs'
+    docs_dir = project_root / "docs"
 
     # Parse command line arguments
-    dry_run = '--dry-run' in sys.argv
+    dry_run = "--dry-run" in sys.argv
 
     print("🔍 Searching for old endpoint patterns in documentation...")
     print(f"📁 Scanning: {docs_dir}")
@@ -140,7 +139,7 @@ def main():
     # Find all markdown files
     all_files = []
     for pattern in DOC_PATTERNS:
-        all_files.extend(docs_dir.glob(pattern.replace('docs/', '')))
+        all_files.extend(docs_dir.glob(pattern.replace("docs/", "")))
 
     # Filter files
     files_to_process = [f for f in all_files if should_process_file(f)]
@@ -160,8 +159,9 @@ def main():
         if was_updated:
             updated_files.append(relative_path)
             total_replacements += replacements
-            all_issues.extend([(relative_path, line_num, line, pattern)
-                              for line_num, line, pattern in issues])
+            all_issues.extend(
+                [(relative_path, line_num, line, pattern) for line_num, line, pattern in issues]
+            )
 
             if dry_run:
                 print(f"⚠️  {relative_path}: {len(issues)} issues found")
@@ -176,7 +176,7 @@ def main():
     print()
     print("=" * 60)
     if dry_run:
-        print(f"🔍 DRY RUN SUMMARY")
+        print("🔍 DRY RUN SUMMARY")
         print(f"📊 Files with issues: {len(updated_files)}")
         print(f"📊 Total issues found: {len(all_issues)}")
         if all_issues:
@@ -186,7 +186,7 @@ def main():
             if len(all_issues) > 10:
                 print(f"  ... and {len(all_issues) - 10} more")
     else:
-        print(f"✅ UPDATE SUMMARY")
+        print("✅ UPDATE SUMMARY")
         print(f"📊 Files updated: {len(updated_files)}")
         print(f"📊 Total replacements: {total_replacements}")
         if updated_files:
@@ -199,6 +199,5 @@ def main():
     return 0 if len(updated_files) == 0 or not dry_run else 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
-

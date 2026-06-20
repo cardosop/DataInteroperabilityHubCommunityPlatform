@@ -13,6 +13,8 @@ Tests cover:
 All tests use real implementations (no mocks/stubs).
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -27,7 +29,6 @@ from hub.apps.gdpr.models import (
     ErasureRequestStatus,
 )
 from hub.apps.tenants.models import Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -40,7 +41,9 @@ class DataExportJobModelTest(TestCase):
         """Set up test fixtures"""
         # Create tenant
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE")
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE"
+        )
 
         # Create user
         self.user = User.objects.create_user(
@@ -118,11 +121,14 @@ class DataExportJobModelTest(TestCase):
     # ========== MODEL STATUS CHOICES TESTS ==========
 
     def test_data_export_status_choices(self):
-        """Test DataExportStatus choices are valid"""
-        self.assertEqual(DataExportStatus.PENDING, "PENDING")
-        self.assertEqual(DataExportStatus.PROCESSING, "PROCESSING")
-        self.assertEqual(DataExportStatus.COMPLETED, "COMPLETED")
-        self.assertEqual(DataExportStatus.FAILED, "FAILED")
+        """Test DataExportStatus.choices returns the full expected tuple list."""
+        expected = [
+            ("PENDING", "Pending"),
+            ("PROCESSING", "Processing"),
+            ("COMPLETED", "Completed"),
+            ("FAILED", "Failed"),
+        ]
+        self.assertEqual(list(DataExportStatus.choices), expected)
 
     def test_data_export_job_status_choices_validation(self):
         """Test that only valid status choices are accepted"""
@@ -162,18 +168,25 @@ class DataExportJobModelTest(TestCase):
 
         self.assertFalse(DataExportJob.objects.filter(id=job_id).exists())
 
-    def test_data_export_job_cascade_delete_tenant(self):
-        """Test that DataExportJob.tenant FK is CASCADE (tenant delete would remove jobs).
+    def test_data_export_job_tenant_fk_is_cascade(self):
+        """Verify DataExportJob.tenant FK uses CASCADE (structural invariant).
 
-        We cannot actually delete the tenant here because User.tenant is RESTRICT;
-        we assert the FK behavior so cascade is verified without hitting that restriction.
+        Runtime cascade behavior via user delete is verified in
+        ``test_data_export_job_cascade_delete_user`` (same FK pattern).
+        Tenant-level cascade requires pre-clearing user rows first
+        (User.tenant is RESTRICT, so we cannot delete the tenant directly).
+
+        If a future migration intentionally changes this FK to e.g. PROTECT
+        or SET_NULL, update this assertion to document the deliberate decision.
         """
         from django.db import models
 
         self.assertEqual(
             DataExportJob._meta.get_field("tenant").remote_field.on_delete,
             models.CASCADE,
-            "DataExportJob.tenant should CASCADE on tenant delete",
+            f"DataExportJob.tenant FK is "
+            f"{DataExportJob._meta.get_field('tenant').remote_field.on_delete}; "
+            "expected CASCADE. If changed intentionally, update this assertion.",
         )
 
     # ========== MODEL METHODS TESTS ==========
@@ -260,7 +273,9 @@ class ErasureRequestModelTest(TestCase):
         """Set up test fixtures"""
         # Create tenant
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE")
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE"
+        )
 
         # Create user
         self.user = User.objects.create_user(
@@ -350,11 +365,14 @@ class ErasureRequestModelTest(TestCase):
     # ========== MODEL STATUS CHOICES TESTS ==========
 
     def test_erasure_request_status_choices(self):
-        """Test ErasureRequestStatus choices are valid"""
-        self.assertEqual(ErasureRequestStatus.PENDING, "PENDING")
-        self.assertEqual(ErasureRequestStatus.PROCESSING, "PROCESSING")
-        self.assertEqual(ErasureRequestStatus.COMPLETED, "COMPLETED")
-        self.assertEqual(ErasureRequestStatus.FAILED, "FAILED")
+        """Test ErasureRequestStatus.choices returns the full expected tuple list."""
+        expected = [
+            ("PENDING", "Pending"),
+            ("PROCESSING", "Processing"),
+            ("COMPLETED", "Completed"),
+            ("FAILED", "Failed"),
+        ]
+        self.assertEqual(list(ErasureRequestStatus.choices), expected)
 
     def test_erasure_request_status_choices_validation(self):
         """Test that only valid status choices are accepted"""
@@ -394,18 +412,25 @@ class ErasureRequestModelTest(TestCase):
 
         self.assertFalse(ErasureRequest.objects.filter(id=request_id).exists())
 
-    def test_erasure_request_cascade_delete_tenant(self):
-        """Test that ErasureRequest.tenant FK is CASCADE (tenant delete would remove requests).
+    def test_erasure_request_tenant_fk_is_cascade(self):
+        """Verify ErasureRequest.tenant FK uses CASCADE (structural invariant).
 
-        We cannot actually delete the tenant here because User.tenant is RESTRICT;
-        we assert the FK behavior so cascade is verified without hitting that restriction.
+        Runtime cascade behavior via user delete is verified in
+        ``test_erasure_request_cascade_delete_user`` (same FK pattern).
+        Tenant-level cascade requires pre-clearing user rows first
+        (User.tenant is RESTRICT, so we cannot delete the tenant directly).
+
+        If a future migration intentionally changes this FK to e.g. PROTECT
+        or SET_NULL, update this assertion to document the deliberate decision.
         """
         from django.db import models
 
         self.assertEqual(
             ErasureRequest._meta.get_field("tenant").remote_field.on_delete,
             models.CASCADE,
-            "ErasureRequest.tenant should CASCADE on tenant delete",
+            f"ErasureRequest.tenant FK is "
+            f"{ErasureRequest._meta.get_field('tenant').remote_field.on_delete}; "
+            "expected CASCADE. If changed intentionally, update this assertion.",
         )
 
     # ========== MODEL METHODS TESTS ==========

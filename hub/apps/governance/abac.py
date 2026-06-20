@@ -4,7 +4,7 @@ Attribute-Based Access Control (ABAC)
 Policy evaluation engine for fine-grained access control.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from django.core.cache import cache
 from django.utils import timezone
@@ -20,8 +20,8 @@ class PolicyEvaluationResult:
     def __init__(
         self,
         allowed: bool,
-        policy: Optional[AccessPolicy] = None,
-        field_policies: Optional[List[FieldAccessPolicy]] = None,
+        policy: AccessPolicy | None = None,
+        field_policies: list[FieldAccessPolicy] | None = None,
         masking_required: bool = False,
     ):
         self.allowed = allowed
@@ -49,9 +49,9 @@ class ABACEngine:
         resource_type: str,
         resource_id: str,
         access_type: str = "READ",
-        field_name: Optional[str] = None,
-        user_attributes: Optional[Dict[str, Any]] = None,
-        environment_attributes: Optional[Dict[str, Any]] = None,
+        field_name: str | None = None,
+        user_attributes: dict[str, Any] | None = None,
+        environment_attributes: dict[str, Any] | None = None,
     ) -> PolicyEvaluationResult:
         """
         Evaluate access for a user to a resource.
@@ -117,8 +117,11 @@ class ABACEngine:
                         try:
                             from hub.apps.audit.utils import create_audit_event
 
-                            masked_fields = [fp.field_name for fp in field_policies
-                                             if fp.masking_strategy and fp.masking_strategy != "NONE"]
+                            masked_fields = [
+                                fp.field_name
+                                for fp in field_policies
+                                if fp.masking_strategy and fp.masking_strategy != "NONE"
+                            ]
                             create_audit_event(
                                 resource_type=resource_type,
                                 action="FIELD_MASKING_APPLIED",
@@ -129,7 +132,8 @@ class ABACEngine:
                                     "masked_fields": masked_fields,
                                     "policy_id": str(policy.id),
                                     "masking_strategies": [
-                                        fp.masking_strategy for fp in field_policies
+                                        fp.masking_strategy
+                                        for fp in field_policies
                                         if fp.masking_strategy and fp.masking_strategy != "NONE"
                                     ],
                                 },
@@ -154,7 +158,7 @@ class ABACEngine:
         return PolicyEvaluationResult(allowed=False)
 
     @staticmethod
-    def _get_user_attributes(user_id: str) -> Dict[str, Any]:
+    def _get_user_attributes(user_id: str) -> dict[str, Any]:
         """Get user attributes"""
         from hub.apps.users.models import User
 
@@ -179,7 +183,7 @@ class ABACEngine:
     @staticmethod
     def _get_resource_attributes(
         resource_type: str, resource_id: str, tenant_id: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get resource attributes"""
         attributes = {
             "resource_type": resource_type,
@@ -248,7 +252,6 @@ class ABACEngine:
                 # Set basic attributes for policy evaluation
                 attributes["virtual_dataset_name"] = "new_virtual_dataset"
                 attributes["virtual_dataset_status"] = "DRAFT"
-                pass
         elif resource_type == "FILE":
             import uuid
 
@@ -273,20 +276,18 @@ class ABACEngine:
                 # Set basic attributes for policy evaluation
                 attributes["file_name"] = "new_file"
                 attributes["file_status"] = "PENDING"
-                pass
         elif resource_type == "ML_MODEL":
             from hub.apps.ml.models import MLModel
 
             try:
                 ml_model = MLModel.objects.get(
-                    id=resource_id, tenant_id=tenant_id,
+                    id=resource_id,
+                    tenant_id=tenant_id,
                 )
                 attributes["ml_model_name"] = ml_model.odh_model_name
                 attributes["ml_model_type"] = ml_model.model_type
                 attributes["ml_model_status"] = ml_model.status
-                attributes["ml_model_version"] = (
-                    ml_model.odh_model_version
-                )
+                attributes["ml_model_version"] = ml_model.odh_model_version
                 if ml_model.asset_id:
                     attributes["ml_model_asset_id"] = str(
                         ml_model.asset_id,
@@ -297,7 +298,7 @@ class ABACEngine:
         return attributes
 
     @staticmethod
-    def _get_environment_attributes() -> Dict[str, Any]:
+    def _get_environment_attributes() -> dict[str, Any]:
         """Get environment attributes"""
         return {
             "timestamp": timezone.now().isoformat(),
@@ -325,7 +326,7 @@ class ABACEngine:
     @staticmethod
     def _get_applicable_policies(
         tenant_id: str, resource_type: str, resource_id: str
-    ) -> List[AccessPolicy]:
+    ) -> list[AccessPolicy]:
         """Get applicable policies for a resource with caching"""
         cache_key = ABACEngine._get_cache_key(tenant_id, resource_type, resource_id)
 
@@ -339,7 +340,7 @@ class ABACEngine:
         if cached is not None:
             # Return cached policy IDs, then fetch policies
             policy_ids = cached
-            policies = list(AccessPolicy.objects.filter(id__in=policy_ids).order_by("priority"))
+            policies = list(AccessPolicy.objects.filter(id__in=policy_ids).order_by("priority", "created_at"))
         else:
             # Build query
             from django.db.models import Q
@@ -370,7 +371,7 @@ class ABACEngine:
                 )
 
             # Use select_related/prefetch_related to optimize query
-            policies = list(queryset.select_related("tenant", "created_by").order_by("priority"))
+            policies = list(queryset.select_related("tenant", "created_by").order_by("priority", "created_at"))
 
             # Cache policy IDs with TTL (handle cache failures gracefully)
             try:
@@ -384,10 +385,10 @@ class ABACEngine:
 
     @staticmethod
     def _evaluate_conditions(
-        conditions: Dict[str, Any],
-        user_attributes: Dict[str, Any],
-        resource_attributes: Dict[str, Any],
-        environment_attributes: Dict[str, Any],
+        conditions: dict[str, Any],
+        user_attributes: dict[str, Any],
+        resource_attributes: dict[str, Any],
+        environment_attributes: dict[str, Any],
     ) -> bool:
         """
         Evaluate policy conditions.
@@ -403,7 +404,7 @@ class ABACEngine:
         if "user" in conditions:
             for key, value in conditions["user"].items():
                 # Map common condition keys to user attribute keys.
-                attr_key = {"roles": "user_roles"}.get(key, key)
+                attr_key = {"roles": "user_roles", "role": "user_roles"}.get(key, key)
                 if attr_key not in user_attributes:
                     return False
                 # Handle list values (e.g., user_roles)
@@ -412,9 +413,12 @@ class ABACEngine:
                     if isinstance(user_attributes[attr_key], list):
                         if not any(v in user_attributes[attr_key] for v in value):
                             return False
-                    else:
-                        if user_attributes[attr_key] not in value:
-                            return False
+                    elif user_attributes[attr_key] not in value:
+                        return False
+                elif isinstance(user_attributes[attr_key], list):
+                    # Single value against a list attribute — check membership
+                    if value not in user_attributes[attr_key]:
+                        return False
                 elif user_attributes[attr_key] != value:
                     return False
 
@@ -425,7 +429,23 @@ class ABACEngine:
                 attr_key = "resource_type" if key == "type" else key
                 if attr_key not in resource_attributes:
                     return False
-                if resource_attributes[attr_key] != value:
+                _res_val = resource_attributes[attr_key]
+                # Support comparison operators (same set validated by
+                # _validate_policy_rules in business_rules.py).
+                if isinstance(value, dict):
+                    if "$gte" in value and _res_val < value["$gte"]:
+                        return False
+                    if "$lte" in value and _res_val > value["$lte"]:
+                        return False
+                    if "$gt" in value and _res_val <= value["$gt"]:
+                        return False
+                    if "$lt" in value and _res_val >= value["$lt"]:
+                        return False
+                    if "$ne" in value and _res_val == value["$ne"]:
+                        return False
+                    if "$in" in value and _res_val not in value["$in"]:
+                        return False
+                elif _res_val != value:
                     return False
 
         # Check resource_type condition if specified
@@ -463,7 +483,7 @@ class ABACEngine:
         field_name: str,
         access_policy: AccessPolicy,
         access_type: str,
-    ) -> Tuple[List[FieldAccessPolicy], bool]:
+    ) -> tuple[list[FieldAccessPolicy], bool]:
         """Get field-level policies and check if masking is required"""
         field_policies = list(
             FieldAccessPolicy.objects.filter(
@@ -493,7 +513,7 @@ class ABACEngine:
 
     @staticmethod
     def invalidate_policy_cache(
-        tenant_id: str, resource_type: Optional[str] = None, resource_id: Optional[str] = None
+        tenant_id: str, resource_type: str | None = None, resource_id: str | None = None
     ):
         """Invalidate policy cache"""
         if resource_type and resource_id:

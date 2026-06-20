@@ -8,6 +8,7 @@ Spec scenarios:
   * Empty pattern list → no redaction (legacy).
   * Malformed regex → skipped, no crash.
 """
+
 from __future__ import annotations
 
 
@@ -26,7 +27,6 @@ def _edge(**overrides):
 
 
 class TestPIIRedaction:
-
     def test_cross_tenant_with_matching_pattern_redacts(self):
         from hub.apps.contracts.lineage_redaction import (
             REDACTED_PLACEHOLDER,
@@ -92,6 +92,7 @@ class TestPIIRedaction:
         """A bad regex on one tenant must NOT crash a cross-tenant
         view of any other tenant."""
         from hub.apps.contracts.lineage_redaction import (
+            REDACTED_PLACEHOLDER,
             redact_edges_for_cross_tenant_viewer,
         )
 
@@ -102,7 +103,7 @@ class TestPIIRedaction:
             owner_tenant_id="owner-uuid",
             patterns=[r"[unclosed", r"^ssn$"],
         )
-        assert out[0]["source_field"] == "[REDACTED]", (
+        assert out[0]["source_field"] == REDACTED_PLACEHOLDER, (
             "good pattern still applies; malformed pattern skipped"
         )
 
@@ -111,6 +112,7 @@ class TestPIIRedaction:
         candidates for redaction. ``source_model`` / ``edge_type``
         are structural metadata."""
         from hub.apps.contracts.lineage_redaction import (
+            REDACTED_PLACEHOLDER,
             redact_edges_for_cross_tenant_viewer,
         )
 
@@ -122,7 +124,7 @@ class TestPIIRedaction:
             patterns=[r"^ssn$"],
         )
         # source_field redacted.
-        assert out[0]["source_field"] == "[REDACTED]"
+        assert out[0]["source_field"] == REDACTED_PLACEHOLDER
         # source_model NOT redacted.
         assert out[0]["source_model"] == "ssn"
         # edge_type NOT redacted.

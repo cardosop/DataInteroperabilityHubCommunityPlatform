@@ -138,13 +138,12 @@ class PlanLimitServiceTest(TestCase):
                 name=f"Asset {i}",
             )
 
-        with self.assertRaises(ValidationError) as cm:
-            with transaction.atomic():
-                self.service.check_limit(
-                    tenant_id=str(self.tenant.id),
-                    limit_key="max_assets",
-                    delta=1,
-                )
+        with self.assertRaises(ValidationError) as cm, transaction.atomic():
+            self.service.check_limit(
+                tenant_id=str(self.tenant.id),
+                limit_key="max_assets",
+                delta=1,
+            )
 
         error = cm.exception
         self.assertEqual(error.code, "plan_limit_exceeded")
@@ -193,6 +192,7 @@ class PlanLimitServiceTest(TestCase):
         self.assertEqual(result["plan_slug"], "free")
         # Verify max matches the free plan's actual limit
         from hub.apps.tenants.models import TenantPlan
+
         free_plan = TenantPlan.objects.get(slug="free")
         self.assertEqual(result["max"], free_plan.get_limit("max_assets"))
 
@@ -202,12 +202,11 @@ class PlanLimitServiceTest(TestCase):
         """Non-existent tenant → NotFoundError."""
         service = PlanLimitService()
 
-        with self.assertRaises(NotFoundError):
-            with transaction.atomic():
-                service.check_limit(
-                    tenant_id="00000000-0000-0000-0000-000000000000",
-                    limit_key="max_assets",
-                )
+        with self.assertRaises(NotFoundError), transaction.atomic():
+            service.check_limit(
+                tenant_id="00000000-0000-0000-0000-000000000000",
+                limit_key="max_assets",
+            )
 
     # ── PRO plan higher limits ──
 
@@ -244,6 +243,7 @@ class PlanLimitServiceTest(TestCase):
     def test_check_limit_no_default_free_plan_raises_error(self):
         """Tenant without plan + no FREE plan in DB → NotFoundError."""
         from hub.apps.billing.models import Subscription
+
         tenant_no_plan = _make_tenant(name_prefix="OrphanTenant")
         # Delete subscriptions first (RESTRICT FK), then the free plan
         Subscription.objects.filter(plan__slug="free").delete()
@@ -251,13 +251,12 @@ class PlanLimitServiceTest(TestCase):
 
         service = PlanLimitService(tenant_id=str(tenant_no_plan.id))
 
-        with self.assertRaises(NotFoundError) as cm:
-            with transaction.atomic():
-                service.check_limit(
-                    tenant_id=str(tenant_no_plan.id),
-                    limit_key="max_assets",
-                    delta=1,
-                )
+        with self.assertRaises(NotFoundError) as cm, transaction.atomic():
+            service.check_limit(
+                tenant_id=str(tenant_no_plan.id),
+                limit_key="max_assets",
+                delta=1,
+            )
 
         self.assertEqual(cm.exception.code, "PLAN_NOT_FOUND")
 

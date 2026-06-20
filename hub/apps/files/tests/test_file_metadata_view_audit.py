@@ -9,17 +9,16 @@ Real ``APIClient``, ``AuditEvent`` rows — no mocks.
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import uuid
 
+import pytest
 from django.test import TestCase, override_settings
 from rest_framework import status
 
+from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.audit import event_types
 from hub.apps.audit.models import AuditEvent
-from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.metadata_view_audit import file_metadata_view_should_emit
 from hub.apps.files.models import File, FileScanStatus, FileStatus
@@ -37,9 +36,7 @@ def _find_file_id_for_sample(
     for _ in range(max_trials):
         fid = uuid.uuid4()
         if (
-            file_metadata_view_should_emit(
-                file_tenant=tenant, file_id=fid, user_id=user_id
-            )
+            file_metadata_view_should_emit(file_tenant=tenant, file_id=fid, user_id=user_id)
             == want_emit
         ):
             return fid
@@ -59,9 +56,7 @@ class FileMetadataViewAuditSamplingTest(TestCase):
             compliance_audit_full_sampling=True,
         )
         fid = uuid.uuid4()
-        self.assertTrue(
-            file_metadata_view_should_emit(file_tenant=t, file_id=fid, user_id=1)
-        )
+        self.assertTrue(file_metadata_view_should_emit(file_tenant=t, file_id=fid, user_id=1))
 
     @pytest.mark.integration
     def test_deterministic_stable_for_same_tuple(self):
@@ -150,7 +145,6 @@ class FileMetadataViewAuditHTTPTest(FilesAPITestBase):
             created_by=self.user,
         )
 
-        key = {"action": event_types.FILE_METADATA_VIEWED, "resource_id": str(f.id)}
         before = AuditEvent.objects.filter(action=event_types.FILE_METADATA_VIEWED).count()
         resp = self.client.get(f"/api/v1/files/{f.id}/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)

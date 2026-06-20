@@ -7,7 +7,9 @@ phase. Does **not** run full audit-log scrub (that is user-scoped in
 
 Distributed lock ``meshant:gdpr_delete_files_tenant:v1`` (Redis).
 """
+
 from __future__ import annotations
+
 import logging
 import sys
 import uuid
@@ -127,7 +129,6 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"delete_files_for_tenant complete: purged {purged} file(s) "
-                f"for tenant {tenant_id}",
+                f"delete_files_for_tenant complete: purged {purged} file(s) for tenant {tenant_id}",
             ),
         )

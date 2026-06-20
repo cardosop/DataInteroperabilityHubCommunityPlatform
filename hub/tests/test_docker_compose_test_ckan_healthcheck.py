@@ -4,6 +4,7 @@ Regression: CKAN test Postgres/Solr healthchecks must survive slow recovery/firs
 docker compose marks dependent services blocked when healthchecks fail too early; see
 docker-compose.test.yml comments on ckan-test-db-test.
 """
+
 import os
 import unittest
 

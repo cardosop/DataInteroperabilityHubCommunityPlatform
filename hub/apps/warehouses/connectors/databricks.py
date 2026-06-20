@@ -4,11 +4,13 @@ Phase 275.C.2 — DatabricksConnector over databricks-sql-connector.
 Auth via PAT/OAuth/Service Principal from encrypted vault.
 SparkSQL dialect. Unity Catalog reflection. DBU cost attribution.
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from hub.apps.warehouses.base import (
     QueryResult,
@@ -83,7 +85,7 @@ class DatabricksConnector(WarehouseConnector):
     def execute_query(
         self,
         sql: str,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         limit: int = 100,
     ) -> QueryResult:
         self._check_circuit_breaker(self._tenant_id)
@@ -116,7 +118,7 @@ class DatabricksConnector(WarehouseConnector):
         finally:
             cursor.close()
 
-    def reflect_schema(self, table_name: str) -> List[SchemaColumn]:
+    def reflect_schema(self, table_name: str) -> list[SchemaColumn]:
         # DESCRIBE TABLE is universally supported across Databricks versions
         # (INFORMATION_SCHEMA.COLUMNS requires fine-grained UC permissions on
         # some workspaces).
@@ -124,7 +126,8 @@ class DatabricksConnector(WarehouseConnector):
         result = self.execute_query(sql)
         return [
             SchemaColumn(
-                name=r[0], data_type=r[1],
+                name=r[0],
+                data_type=r[1],
                 nullable=True,
                 comment=r[2] or "",
             )
@@ -133,8 +136,6 @@ class DatabricksConnector(WarehouseConnector):
 
     def close(self) -> None:
         if self._conn:
-            try:
+            with contextlib.suppress(Exception):
                 self._conn.close()
-            except Exception:
-                pass
             self._connected = False

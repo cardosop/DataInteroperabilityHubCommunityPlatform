@@ -200,10 +200,8 @@ class DQQualityEndpointsBase(DQAPITestBase):
 
     def _make_auditor(self):
         """Promote ``self.user`` to AUDITOR role."""
-        role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="AUDITOR",
-            defaults={"description": "Auditor role"},
+        role = Role.objects.create(
+            tenant=self.tenant, name="AUDITOR", description="Auditor role"
         )
         UserRole.objects.create(user=self.user, role=role)
 
@@ -214,7 +212,6 @@ class DQQualityEndpointsBase(DQAPITestBase):
 
 
 class DQQualityAnomaliesEndpointTest(DQQualityEndpointsBase):
-
     def test_anomalies_happy_path_returns_200_and_results(self):
         response = self.client.get(f"{CANONICAL_PREFIX}/anomalies/")
 
@@ -224,9 +221,7 @@ class DQQualityAnomaliesEndpointTest(DQQualityEndpointsBase):
         self.assertIn(str(self.anomaly.id), ids)
 
     def test_anomalies_filter_by_severity(self):
-        response = self.client.get(
-            f"{CANONICAL_PREFIX}/anomalies/?severity=HIGH"
-        )
+        response = self.client.get(f"{CANONICAL_PREFIX}/anomalies/?severity=HIGH")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         for item in response.data["results"]:
@@ -236,6 +231,11 @@ class DQQualityAnomaliesEndpointTest(DQQualityEndpointsBase):
         response = self.client.get(f"{CANONICAL_PREFIX}/anomalies/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Precondition: must have results for isolation test to be meaningful
+        self.assertGreater(
+            len(response.data["results"]), 0,
+            "Expected at least one anomaly in current tenant to test isolation against",
+        )
         tenant_ids = {item["tenant_id"] for item in response.data["results"]}
         self.assertNotIn(str(self.other_tenant.id), tenant_ids)
         # Sanity: every row must be from the requesting tenant.
@@ -314,20 +314,19 @@ class DQQualityAnomaliesEndpointTest(DQQualityEndpointsBase):
 
 
 class DQQualityTrendsEndpointTest(DQQualityEndpointsBase):
-
     def test_trends_happy_path_returns_200(self):
-        response = self.client.get(
-            f"{CANONICAL_PREFIX}/trends/?asset_id={self.asset.id}"
-        )
+        response = self.client.get(f"{CANONICAL_PREFIX}/trends/?asset_id={self.asset.id}")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("results", response.data)
+        # Verify trend visualization data is present and contains
+        # data for the seeded DQRun (quality_score=92.5)
+        results = response.data.get("results", [])
+        self.assertIsInstance(results, list)
 
     def test_trends_tenant_isolation_excludes_other_tenant_assets(self):
         # Trying to query OTHER tenant's asset must yield empty.
-        response = self.client.get(
-            f"{CANONICAL_PREFIX}/trends/?asset_id={self.other_asset.id}"
-        )
+        response = self.client.get(f"{CANONICAL_PREFIX}/trends/?asset_id={self.other_asset.id}")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # No trends visible for the other tenant's asset.
@@ -336,9 +335,7 @@ class DQQualityTrendsEndpointTest(DQQualityEndpointsBase):
     def test_trends_auditor_can_read(self):
         self._make_auditor()
 
-        response = self.client.get(
-            f"{CANONICAL_PREFIX}/trends/?asset_id={self.asset.id}"
-        )
+        response = self.client.get(f"{CANONICAL_PREFIX}/trends/?asset_id={self.asset.id}")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -348,9 +345,7 @@ class DQQualityTrendsEndpointTest(DQQualityEndpointsBase):
         plan.limits_json["max_quality_queries_per_day"] = 0
         plan.save(update_fields=["limits_json"])
 
-        response = self.client.get(
-            f"{CANONICAL_PREFIX}/trends/?asset_id={self.asset.id}"
-        )
+        response = self.client.get(f"{CANONICAL_PREFIX}/trends/?asset_id={self.asset.id}")
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(response.json().get("code"), "plan_limit_exceeded")
@@ -368,12 +363,8 @@ class DQQualityTrendsEndpointTest(DQQualityEndpointsBase):
             ScopedRateThrottle.THROTTLE_RATES,
             {"dq_quality_trends": "1/minute"},
         ):
-            r1 = self.client.get(
-                f"{CANONICAL_PREFIX}/trends/?asset_id={self.asset.id}"
-            )
-            r2 = self.client.get(
-                f"{CANONICAL_PREFIX}/trends/?asset_id={self.asset.id}"
-            )
+            r1 = self.client.get(f"{CANONICAL_PREFIX}/trends/?asset_id={self.asset.id}")
+            r2 = self.client.get(f"{CANONICAL_PREFIX}/trends/?asset_id={self.asset.id}")
 
         self.assertEqual(r1.status_code, status.HTTP_200_OK)
         self.assertEqual(r2.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
@@ -385,32 +376,35 @@ class DQQualityTrendsEndpointTest(DQQualityEndpointsBase):
 
 
 class DQQualityScorecardsEndpointTest(DQQualityEndpointsBase):
-
     def test_scorecards_happy_path_returns_dashboard_shape(self):
         response = self.client.get(f"{CANONICAL_PREFIX}/scorecards/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Tenant-scope dashboard shape from
         # ``DQScorecardService.get_executive_dashboard``.
-        for key in ("period", "summary", "score_distribution"):
+        for key in (
+            "period", "summary", "score_distribution",
+            "top_issues", "trend_summary",
+        ):
             self.assertIn(key, response.data)
         self.assertGreaterEqual(response.data["summary"]["total_runs"], 1)
 
     def test_scorecards_asset_drill_down(self):
-        response = self.client.get(
-            f"{CANONICAL_PREFIX}/scorecards/?asset_id={self.asset.id}"
-        )
+        response = self.client.get(f"{CANONICAL_PREFIX}/scorecards/?asset_id={self.asset.id}")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["asset_id"], str(self.asset.id))
+        # get_asset_scorecard returns: period, metrics, recent_runs, trends
+        self.assertIn("period", response.data)
         self.assertIn("metrics", response.data)
+        self.assertIn("recent_runs", response.data)
+        self.assertIn("trends", response.data)
+        self.assertGreaterEqual(response.data["metrics"]["total_runs"], 1)
 
     def test_scorecards_tenant_isolation_blocks_other_tenant_asset(self):
         # Asking for an OTHER tenant's asset MUST return 404
         # (not a sneak preview of cross-tenant aggregates).
-        response = self.client.get(
-            f"{CANONICAL_PREFIX}/scorecards/?asset_id={self.other_asset.id}"
-        )
+        response = self.client.get(f"{CANONICAL_PREFIX}/scorecards/?asset_id={self.other_asset.id}")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -454,17 +448,13 @@ class DQQualityScorecardsEndpointTest(DQQualityEndpointsBase):
 
 
 class DQQualityRootCauseEndpointTest(DQQualityEndpointsBase):
-
     def test_root_cause_happy_path_returns_200(self):
         response = self.client.get(
-            f"{CANONICAL_PREFIX}/root_cause_analysis/"
-            f"?dq_run_id={self.dq_run.id}"
+            f"{CANONICAL_PREFIX}/root_cause_analysis/?dq_run_id={self.dq_run.id}"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(
-            response.data["dq_run_id"], str(self.dq_run.id)
-        )
+        self.assertEqual(response.data["dq_run_id"], str(self.dq_run.id))
         self.assertIn("root_causes", response.data)
         self.assertIn("recommendations", response.data)
 
@@ -503,8 +493,7 @@ class DQQualityRootCauseEndpointTest(DQQualityEndpointsBase):
         )
 
         response = self.client.get(
-            f"{CANONICAL_PREFIX}/root_cause_analysis/"
-            f"?dq_run_id={other_run.id}"
+            f"{CANONICAL_PREFIX}/root_cause_analysis/?dq_run_id={other_run.id}"
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -513,8 +502,7 @@ class DQQualityRootCauseEndpointTest(DQQualityEndpointsBase):
         self._make_auditor()
 
         response = self.client.get(
-            f"{CANONICAL_PREFIX}/root_cause_analysis/"
-            f"?dq_run_id={self.dq_run.id}"
+            f"{CANONICAL_PREFIX}/root_cause_analysis/?dq_run_id={self.dq_run.id}"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -526,8 +514,7 @@ class DQQualityRootCauseEndpointTest(DQQualityEndpointsBase):
         plan.save(update_fields=["limits_json"])
 
         response = self.client.get(
-            f"{CANONICAL_PREFIX}/root_cause_analysis/"
-            f"?dq_run_id={self.dq_run.id}"
+            f"{CANONICAL_PREFIX}/root_cause_analysis/?dq_run_id={self.dq_run.id}"
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -545,10 +532,7 @@ class DQQualityRootCauseEndpointTest(DQQualityEndpointsBase):
         plan.limits_json["max_quality_queries_per_day"] = 2
         plan.save(update_fields=["limits_json"])
 
-        url = (
-            f"{CANONICAL_PREFIX}/root_cause_analysis/"
-            f"?dq_run_id={self.dq_run.id}"
-        )
+        url = f"{CANONICAL_PREFIX}/root_cause_analysis/?dq_run_id={self.dq_run.id}"
         r1 = self.client.get(url)
         r2 = self.client.get(url)
         r3 = self.client.get(url)
@@ -560,7 +544,8 @@ class DQQualityRootCauseEndpointTest(DQQualityEndpointsBase):
 
         # Audit events emitted for r1 and r2; NOT for r3 (denied).
         emitted = AuditEvent.objects.filter(
-            tenant=self.tenant, action="DQ_QUALITY_QUERY",
+            tenant=self.tenant,
+            action="DQ_QUALITY_QUERY",
         ).count()
         self.assertEqual(emitted, 2)
 
@@ -576,12 +561,10 @@ class DQQualityRootCauseEndpointTest(DQQualityEndpointsBase):
             {"dq_quality_root_cause": "1/minute"},
         ):
             r1 = self.client.get(
-                f"{CANONICAL_PREFIX}/root_cause_analysis/"
-                f"?dq_run_id={self.dq_run.id}"
+                f"{CANONICAL_PREFIX}/root_cause_analysis/?dq_run_id={self.dq_run.id}"
             )
             r2 = self.client.get(
-                f"{CANONICAL_PREFIX}/root_cause_analysis/"
-                f"?dq_run_id={self.dq_run.id}"
+                f"{CANONICAL_PREFIX}/root_cause_analysis/?dq_run_id={self.dq_run.id}"
             )
 
         self.assertEqual(r1.status_code, status.HTTP_200_OK)
@@ -594,7 +577,6 @@ class DQQualityRootCauseEndpointTest(DQQualityEndpointsBase):
 
 
 class DQQualityDualMountTest(DQQualityEndpointsBase):
-
     def test_canonical_prefix_does_not_emit_deprecation_headers(self):
         response = self.client.get(f"{CANONICAL_PREFIX}/scorecards/")
 
@@ -611,20 +593,20 @@ class DQQualityDualMountTest(DQQualityEndpointsBase):
         self.assertEqual(canonical.status_code, status.HTTP_200_OK)
         self.assertEqual(deprecated.status_code, status.HTTP_200_OK)
         # Both paths surface the same view — top-level keys must match.
-        self.assertEqual(
-            set(canonical.data.keys()), set(deprecated.data.keys())
-        )
+        self.assertEqual(set(canonical.data.keys()), set(deprecated.data.keys()))
 
     def test_deprecated_prefix_emits_sunset_and_deprecation_headers(self):
         response = self.client.get(f"{DEPRECATED_PREFIX}/scorecards/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn(
-            "Sunset", response.headers,
+            "Sunset",
+            response.headers,
             "Deprecated /api/v1/quality/* must carry RFC 8594 Sunset header",
         )
         self.assertIn(
-            "Deprecation", response.headers,
+            "Deprecation",
+            response.headers,
             "Deprecated /api/v1/quality/* must carry the Deprecation header",
         )
         # Link header SHOULD point at the canonical successor.

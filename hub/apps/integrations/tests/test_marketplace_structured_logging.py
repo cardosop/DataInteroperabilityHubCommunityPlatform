@@ -15,7 +15,7 @@ import json
 
 import pytest
 import structlog
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -344,7 +344,6 @@ class MarketplaceStructuredLoggingTest(TestCase):
 
     def test_base_uses_structlog(self):
         """Test that base.py uses structlog in _track_connector_operation"""
-        from hub.apps.integrations.base import DataMarketplaceConnector
 
         # Verify the method exists and uses structlog
         # We can't easily test the abstract class, but we can verify

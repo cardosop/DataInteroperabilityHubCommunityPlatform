@@ -479,12 +479,8 @@ product:
             "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
         # Should auto-detect version or handle None gracefully
-        try:
-            is_valid, errors = ODPSParser.validate(valid_odps, version=None)
-            self.assertIsNotNone(is_valid)
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        is_valid, _errors = ODPSParser.validate(valid_odps, version=None)
+        self.assertIsInstance(is_valid, bool)
 
     def test_validate_with_empty_version_string(self):
         """Test validation with empty version string."""
@@ -493,13 +489,10 @@ product:
             "version": "4.1",
             "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
-        # Should handle empty version string
-        try:
-            is_valid, errors = ODPSParser.validate(valid_odps, version="")
-            self.assertIsNotNone(is_valid)
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        # Empty version should raise ODPSValidationError with VERSION_NOT_FOUND
+        from hub.apps.contracts.odps_parser import ODPSValidationError
+        with self.assertRaises(ODPSValidationError):
+            ODPSParser.validate(valid_odps, version="")
 
     def test_validate_with_invalid_version(self):
         """Test validation with invalid version."""
@@ -508,14 +501,10 @@ product:
             "version": "4.1",
             "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
-        # Should handle invalid version gracefully
-        try:
-            is_valid, errors = ODPSParser.validate(valid_odps, version="invalid-version")
-            # May return errors or handle gracefully
-            self.assertIsNotNone(is_valid)
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        # Invalid version should raise ODPSValidationError with SCHEMA_NOT_FOUND
+        from hub.apps.contracts.odps_parser import ODPSValidationError
+        with self.assertRaises(ODPSValidationError):
+            ODPSParser.validate(valid_odps, version="invalid-version")
 
     def test_validate_with_special_characters(self):
         """Test validation with special characters in document."""
@@ -524,9 +513,10 @@ product:
             "version": "4.1",
             "product": {"details": {"en": {"productID": "test-<>&\"'", "name": "Product <>&\"'"}}},
         }
-        is_valid, errors = ODPSParser.validate(odps_with_special, version="4.1")
+        is_valid, _errors = ODPSParser.validate(odps_with_special, version="4.1")
         # Should handle special characters
-        self.assertIsNotNone(is_valid)
+        self.assertTrue(is_valid)
+        self.assertEqual(_errors, [])
 
     def test_validate_with_unicode(self):
         """Test validation with unicode characters."""
@@ -535,9 +525,10 @@ product:
             "version": "4.1",
             "product": {"details": {"en": {"productID": "产品", "name": "产品名称"}}},
         }
-        is_valid, errors = ODPSParser.validate(odps_with_unicode, version="4.1")
+        is_valid, _errors = ODPSParser.validate(odps_with_unicode, version="4.1")
         # Should handle unicode
-        self.assertIsNotNone(is_valid)
+        self.assertTrue(is_valid)
+        self.assertEqual(_errors, [])
 
     def test_validate_with_very_large_document(self):
         """Test validation with very large document."""
@@ -554,9 +545,10 @@ product:
                 }
             },
         }
-        is_valid, errors = ODPSParser.validate(large_odps, version="4.1")
+        is_valid, _errors = ODPSParser.validate(large_odps, version="4.1")
         # Should handle very large documents
-        self.assertIsNotNone(is_valid)
+        self.assertTrue(is_valid)
+        self.assertEqual(_errors, [])
 
     def test_validate_with_deep_nesting(self):
         """Test validation with deeply nested structure."""
@@ -572,9 +564,10 @@ product:
                 }
             },
         }
-        is_valid, errors = ODPSParser.validate(nested_odps, version="4.1")
+        is_valid, _errors = ODPSParser.validate(nested_odps, version="4.1")
         # Should handle deep nesting
-        self.assertIsNotNone(is_valid)
+        self.assertTrue(is_valid)
+        self.assertEqual(_errors, [])
 
     def test_validate_error_structure_consistency(self):
         """Test that validation errors have consistent structure."""
@@ -597,54 +590,34 @@ product:
 
     def test_parse_and_validate_with_none_input(self):
         """Test parse_and_validate with None input."""
-        try:
-            parsed_doc, is_valid, errors = ODPSParser.parse_and_validate(None, version="4.1")
-            # May handle None or raise exception
-            self.assertIsNotNone(parsed_doc or True)
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        from hub.apps.contracts.odps_parser import ODPSValidationError
+        with self.assertRaises(ODPSValidationError):
+            ODPSParser.parse_and_validate(None, version="4.1")
 
     def test_parse_and_validate_with_empty_string(self):
         """Test parse_and_validate with empty string."""
-        try:
-            parsed_doc, is_valid, errors = ODPSParser.parse_and_validate("", version="4.1")
-            # May handle empty string or raise exception
-            self.assertIsNotNone(parsed_doc or True)
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        from hub.apps.contracts.odps_parser import ODPSValidationError
+        with self.assertRaises(ODPSValidationError):
+            ODPSParser.parse_and_validate("", version="4.1")
 
     def test_parse_and_validate_with_invalid_json_string(self):
         """Test parse_and_validate with invalid JSON string."""
+        from hub.apps.contracts.odps_parser import ODPSValidationError
         invalid_json = '{"schema": "invalid}'
-        try:
-            parsed_doc, is_valid, errors = ODPSParser.parse_and_validate(
-                invalid_json, version="4.1"
-            )
-            # May parse with errors or raise exception
-            self.assertIsNotNone(parsed_doc or True)
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        with self.assertRaises((ODPSValidationError, json.JSONDecodeError)):
+            ODPSParser.parse_and_validate(invalid_json, version="4.1")
 
     def test_parse_and_validate_with_malformed_yaml(self):
         """Test parse_and_validate with malformed YAML."""
+        from hub.apps.contracts.odps_parser import ODPSValidationError
         invalid_yaml = """
 schema: https://opendataproducts.org/schema/v4.1
 version: "4.1"
 product:
   details: [invalid: yaml
 """
-        try:
-            parsed_doc, is_valid, errors = ODPSParser.parse_and_validate(
-                invalid_yaml, version="4.1"
-            )
-            # May parse with errors or raise exception
-            self.assertIsNotNone(parsed_doc or True)
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        with self.assertRaises(ODPSValidationError):
+            ODPSParser.parse_and_validate(invalid_yaml, version="4.1")
 
     def test_validate_with_missing_schema_field(self):
         """Test validation with missing schema field."""
@@ -652,9 +625,9 @@ product:
             "version": "4.1",
             "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
-        is_valid, errors = ODPSParser.validate(odps_no_schema, version="4.1")
-        # May or may not be valid depending on schema requirements
-        self.assertIsNotNone(is_valid)
+        is_valid, _errors = ODPSParser.validate(odps_no_schema, version="4.1")
+        self.assertFalse(is_valid)
+        self.assertGreater(len(_errors), 0)
 
     def test_validate_with_missing_version_field(self):
         """Test validation with missing version field."""
@@ -662,9 +635,9 @@ product:
             "schema": "https://opendataproducts.org/schema/v4.1",
             "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
-        is_valid, errors = ODPSParser.validate(odps_no_version, version="4.1")
-        # May or may not be valid depending on schema requirements
-        self.assertIsNotNone(is_valid)
+        is_valid, _errors = ODPSParser.validate(odps_no_version, version="4.1")
+        # Valid because the version parameter is passed explicitly
+        self.assertTrue(is_valid)
 
     def test_validate_with_wrong_schema_url(self):
         """Test validation with wrong schema URL."""
@@ -673,9 +646,10 @@ product:
             "version": "4.1",
             "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
-        is_valid, errors = ODPSParser.validate(odps_wrong_schema, version="4.1")
-        # May validate against specified version or return errors
-        self.assertIsNotNone(is_valid)
+        is_valid, _errors = ODPSParser.validate(odps_wrong_schema, version="4.1")
+        # Wrong schema URL — should not pass validation
+        self.assertFalse(is_valid)
+        self.assertGreater(len(_errors), 0)
 
     def test_parser_validation_handles_unicode_characters(self):
         """Test that parser validation handles unicode characters correctly."""
@@ -684,9 +658,10 @@ product:
             "version": "4.1",
             "product": {"details": {"en": {"productID": "测试产品", "name": "测试名称"}}},
         }
-        is_valid, errors = ODPSParser.validate(odps_unicode, version="4.1")
+        is_valid, _errors = ODPSParser.validate(odps_unicode, version="4.1")
         # Should handle unicode characters
-        self.assertIsNotNone(is_valid)
+        self.assertTrue(is_valid)
+        self.assertEqual(_errors, [])
 
     def test_parser_validation_handles_special_characters(self):
         """Test that parser validation handles special characters correctly."""
@@ -697,9 +672,10 @@ product:
                 "details": {"en": {"productID": "test-<>&\"'", "name": "Test & Co. (Special)"}}
             },
         }
-        is_valid, errors = ODPSParser.validate(odps_special, version="4.1")
+        is_valid, _errors = ODPSParser.validate(odps_special, version="4.1")
         # Should handle special characters
-        self.assertIsNotNone(is_valid)
+        self.assertTrue(is_valid)
+        self.assertEqual(_errors, [])
 
     def test_parser_validation_handles_very_large_documents(self):
         """Test that parser validation handles very large documents correctly."""
@@ -711,19 +687,17 @@ product:
                 "details": {"en": {"productID": "test-large", "description": large_description}}
             },
         }
-        is_valid, errors = ODPSParser.validate(odps_large, version="4.1")
+        is_valid, _errors = ODPSParser.validate(odps_large, version="4.1")
         # Should handle very large documents
-        self.assertIsNotNone(is_valid)
+        self.assertTrue(is_valid)
+        self.assertEqual(_errors, [])
 
     def test_parser_validation_handles_none_values(self):
         """Test that parser validation handles None values correctly."""
-        try:
-            is_valid, errors = ODPSParser.validate(None, version="4.1")  # type: ignore[misc]  # test: edge-case type exercise
-            # Should handle None values gracefully
-            self.assertIsNotNone(is_valid)
-        except (TypeError, ValueError):
-            # If it raises exception, that's acceptable
-            pass
+        # validate(None) should return failure (is_valid=False), not crash
+        is_valid, errors = ODPSParser.validate(None, version="4.1")  # type: ignore[misc]  # test: edge-case type exercise
+        self.assertFalse(is_valid)
+        self.assertGreater(len(errors), 0)
 
     def test_parser_validation_handles_nested_structures(self):
         """Test that parser validation handles nested structures correctly."""
@@ -739,6 +713,7 @@ product:
                 }
             },
         }
-        is_valid, errors = ODPSParser.validate(odps_nested, version="4.1")
+        is_valid, _errors = ODPSParser.validate(odps_nested, version="4.1")
         # Should handle nested structures
-        self.assertIsNotNone(is_valid)
+        self.assertTrue(is_valid)
+        self.assertEqual(_errors, [])

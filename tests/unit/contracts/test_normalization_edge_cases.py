@@ -4,23 +4,21 @@ Edge case tests for contract normalization.
 Tests missing optional sections, partial field properties, invalid properties,
 information preservation, and large contracts.
 """
+
+import uuid
+
 import pytest
-import json
 from django.test import TestCase
 
 from hub.apps.contracts.normalization import (
-    normalize_contract,
+    NormalizationStatus,
     normalize_odcs_to_hubcontract,
-    NormalizationStatus
 )
-from hub.apps.contracts.models import Contract, NormalizationStatus as ModelNormalizationStatus
-from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 from tests.factories import TenantFactory
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
-User = __import__('django.contrib.auth', fromlist=['get_user_model']).get_user_model()
+User = __import__("django.contrib.auth", fromlist=["get_user_model"]).get_user_model()
 
 
 class NormalizationEdgeCaseTest(TestCase):
@@ -33,7 +31,7 @@ class NormalizationEdgeCaseTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
     def _get_field_by_name(self, fields, field_name):
@@ -54,15 +52,11 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-contract-1",
             "name": "Test Contract",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
             # No owners
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -76,15 +70,11 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-contract-2",
             "name": "Test Contract",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
             # No tags
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -98,15 +88,11 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-contract-3",
             "name": "Test Contract",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
             # No quality section
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -119,15 +105,11 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-contract-4",
             "name": "Test Contract",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
             # No compliance section
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -140,15 +122,11 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-contract-5",
             "name": "Test Contract",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
             # No lifecycle section
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -161,15 +139,11 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-contract-6",
             "name": "Test Contract",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
             # No marketplace section
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -182,14 +156,10 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-contract-7",
             "name": "Test Contract",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -208,18 +178,10 @@ class NormalizationEdgeCaseTest(TestCase):
         odcs_contract = {
             "id": "test-contract-8",
             "name": "Test Contract",
-            "schema": {
-                "fields": [
-                    {
-                        "name": "email",
-                        "type": "string",
-                        "format": "email"
-                    }
-                ]
-            }
+            "schema": {"fields": [{"name": "email", "type": "string", "format": "email"}]},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -238,16 +200,12 @@ class NormalizationEdgeCaseTest(TestCase):
             "name": "Test Contract",
             "schema": {
                 "fields": [
-                    {
-                        "name": "status",
-                        "type": "string",
-                        "enum": ["active", "inactive", "pending"]
-                    }
+                    {"name": "status", "type": "string", "enum": ["active", "inactive", "pending"]}
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -264,18 +222,10 @@ class NormalizationEdgeCaseTest(TestCase):
         odcs_contract = {
             "id": "test-contract-10",
             "name": "Test Contract",
-            "schema": {
-                "fields": [
-                    {
-                        "name": "age",
-                        "type": "integer",
-                        "minimum": 0
-                    }
-                ]
-            }
+            "schema": {"fields": [{"name": "age", "type": "integer", "minimum": 0}]},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -292,18 +242,10 @@ class NormalizationEdgeCaseTest(TestCase):
         odcs_contract = {
             "id": "test-contract-11",
             "name": "Test Contract",
-            "schema": {
-                "fields": [
-                    {
-                        "name": "age",
-                        "type": "integer",
-                        "maximum": 120
-                    }
-                ]
-            }
+            "schema": {"fields": [{"name": "age", "type": "integer", "maximum": 120}]},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -321,18 +263,11 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-contract-12",
             "name": "Test Contract",
             "schema": {
-                "fields": [
-                    {
-                        "name": "age",
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 120
-                    }
-                ]
-            }
+                "fields": [{"name": "age", "type": "integer", "minimum": 0, "maximum": 120}]
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -347,17 +282,11 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-contract-13",
             "name": "Test Contract",
             "schema": {
-                "fields": [
-                    {
-                        "name": "order_id",
-                        "type": "string",
-                        "pattern": "^ORD-[0-9]{8}$"
-                    }
-                ]
-            }
+                "fields": [{"name": "order_id", "type": "string", "pattern": "^ORD-[0-9]{8}$"}]
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -373,17 +302,11 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-contract-14",
             "name": "Test Contract",
             "schema": {
-                "fields": [
-                    {
-                        "name": "field1",
-                        "type": "string",
-                        "format": "invalid_format_xyz"
-                    }
-                ]
-            }
+                "fields": [{"name": "field1", "type": "string", "format": "invalid_format_xyz"}]
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         # Should still normalize, but may have warnings
         self.assertIsNotNone(hub_contract)
@@ -398,17 +321,11 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-contract-15",
             "name": "Test Contract",
             "schema": {
-                "fields": [
-                    {
-                        "name": "field1",
-                        "type": "string",
-                        "pattern": "[invalid(regex"
-                    }
-                ]
-            }
+                "fields": [{"name": "field1", "type": "string", "pattern": "[invalid(regex"}]
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         # Should still normalize, invalid pattern preserved
         self.assertIsNotNone(hub_contract)
@@ -417,7 +334,9 @@ class NormalizationEdgeCaseTest(TestCase):
         self.assertEqual(field.get("pattern"), "[invalid(regex")
         # May have warnings about invalid regex
         if warnings:
-            self.assertTrue(any("pattern" in str(w).lower() or "regex" in str(w).lower() for w in warnings))
+            self.assertTrue(
+                any("pattern" in str(w).lower() or "regex" in str(w).lower() for w in warnings)
+            )
 
     def test_normalize_contract_invalid_enum_values(self):
         """Test normalization with invalid enum values (wrong types)"""
@@ -429,13 +348,13 @@ class NormalizationEdgeCaseTest(TestCase):
                     {
                         "name": "field1",
                         "type": "string",
-                        "enum": ["value1", 123, None, {"nested": "object"}]
+                        "enum": ["value1", 123, None, {"nested": "object"}],
                     }
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         # Should normalize, enum values preserved (may have warnings)
         self.assertIsNotNone(hub_contract)
@@ -456,13 +375,13 @@ class NormalizationEdgeCaseTest(TestCase):
                         "name": "field1",
                         "type": "integer",
                         "minimum": 100,
-                        "maximum": 50  # Invalid: min > max
+                        "maximum": 50,  # Invalid: min > max
                     }
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         # Should normalize, but may have warnings
         self.assertIsNotNone(hub_contract)
@@ -472,7 +391,9 @@ class NormalizationEdgeCaseTest(TestCase):
         self.assertEqual(field.get("max"), 50)
         # May have warnings about invalid range
         if warnings:
-            self.assertTrue(any("min" in str(w).lower() or "max" in str(w).lower() for w in warnings))
+            self.assertTrue(
+                any("min" in str(w).lower() or "max" in str(w).lower() for w in warnings)
+            )
 
     def test_normalize_contract_invalid_min_type(self):
         """Test normalization with invalid min type (string instead of number)"""
@@ -484,13 +405,13 @@ class NormalizationEdgeCaseTest(TestCase):
                     {
                         "name": "field1",
                         "type": "integer",
-                        "minimum": "invalid"  # Should be number
+                        "minimum": "invalid",  # Should be number
                     }
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         # Should normalize, invalid value preserved
         self.assertIsNotNone(hub_contract)
@@ -510,13 +431,13 @@ class NormalizationEdgeCaseTest(TestCase):
                     {
                         "name": "field1",
                         "type": "integer",
-                        "maximum": "invalid"  # Should be number
+                        "maximum": "invalid",  # Should be number
                     }
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         # Should normalize, invalid value preserved
         self.assertIsNotNone(hub_contract)
@@ -532,24 +453,18 @@ class NormalizationEdgeCaseTest(TestCase):
         odcs_contract = {
             "id": "test-contract-20",
             "name": "Test Contract",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            },
-            "custom_extension": {
-                "unmappable_field": "value",
-                "nested": {
-                    "data": "preserved"
-                }
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
+            "custom_extension": {"unmappable_field": "value", "nested": {"data": "preserved"}},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         # Extensions cause NORMALIZED_WITH_WARNINGS status (they indicate unmappable fields)
-        self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         # Extensions should be preserved
         self.assertIn("extensions", hub_contract)
         extensions = hub_contract.get("extensions", {})
@@ -561,17 +476,13 @@ class NormalizationEdgeCaseTest(TestCase):
         odcs_contract = {
             "id": "test-contract-21",
             "name": "Test Contract",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            },
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
             "extension1": {"data": "value1"},
             "extension2": {"data": "value2"},
-            "x-custom": {"data": "value3"}
+            "x-custom": {"data": "value3"},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         extensions = hub_contract.get("extensions", {})
@@ -585,21 +496,11 @@ class NormalizationEdgeCaseTest(TestCase):
         odcs_contract = {
             "id": "test-contract-22",
             "name": "Test Contract",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            },
-            "custom": {
-                "level1": {
-                    "level2": {
-                        "level3": "deep_value"
-                    }
-                }
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
+            "custom": {"level1": {"level2": {"level3": "deep_value"}}},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         extensions = hub_contract.get("extensions", {})
@@ -613,21 +514,17 @@ class NormalizationEdgeCaseTest(TestCase):
         """Test normalization with 1000+ fields"""
         fields = []
         for i in range(1000):
-            fields.append({
-                "name": f"field_{i}",
-                "type": "string",
-                "description": f"Field {i} description"
-            })
+            fields.append(
+                {"name": f"field_{i}", "type": "string", "description": f"Field {i} description"}
+            )
 
         odcs_contract = {
             "id": "test-contract-large",
             "name": "Large Contract",
-            "schema": {
-                "fields": fields
-            }
+            "schema": {"fields": fields},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -639,27 +536,23 @@ class NormalizationEdgeCaseTest(TestCase):
         """Test normalization with 100+ quality rules"""
         quality_rules = []
         for i in range(100):
-            quality_rules.append({
-                "rule_id": f"rule_{i}",
-                "dimension": "completeness",
-                "expression": f"field_{i} IS NOT NULL",
-                "severity": "ERROR"
-            })
+            quality_rules.append(
+                {
+                    "rule_id": f"rule_{i}",
+                    "dimension": "completeness",
+                    "expression": f"field_{i} IS NOT NULL",
+                    "severity": "ERROR",
+                }
+            )
 
         odcs_contract = {
             "id": "test-contract-quality",
             "name": "Contract with Many Rules",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            },
-            "quality": {
-                "rules": quality_rules
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
+            "quality": {"rules": quality_rules},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -671,25 +564,16 @@ class NormalizationEdgeCaseTest(TestCase):
         """Test normalization with 20+ owners"""
         owners = []
         for i in range(20):
-            owners.append({
-                "name": f"Owner {i}",
-                "email": f"owner{i}@example.com"
-            })
+            owners.append({"name": f"Owner {i}", "email": f"owner{i}@example.com"})
 
         odcs_contract = {
             "id": "test-contract-owners",
             "name": "Contract with Many Owners",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            },
-            "info": {
-                "owners": owners
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
+            "info": {"owners": owners},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -704,17 +588,11 @@ class NormalizationEdgeCaseTest(TestCase):
         odcs_contract = {
             "id": "test-contract-tags",
             "name": "Contract with Many Tags",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            },
-            "info": {
-                "tags": tags
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
+            "info": {"tags": tags},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -725,31 +603,27 @@ class NormalizationEdgeCaseTest(TestCase):
     def test_normalize_contract_all_large_sections(self):
         """Test normalization with all large sections (1000 fields, 100 rules, 20 owners, 100 tags)"""
         fields = [{"name": f"field_{i}", "type": "string"} for i in range(1000)]
-        quality_rules = [{
-            "rule_id": f"rule_{i}",
-            "dimension": "completeness",
-            "expression": f"field_{i} IS NOT NULL",
-            "severity": "ERROR"
-        } for i in range(100)]
+        quality_rules = [
+            {
+                "rule_id": f"rule_{i}",
+                "dimension": "completeness",
+                "expression": f"field_{i} IS NOT NULL",
+                "severity": "ERROR",
+            }
+            for i in range(100)
+        ]
         owners = [{"name": f"Owner {i}", "email": f"owner{i}@example.com"} for i in range(20)]
         tags = [f"tag_{i}" for i in range(100)]
 
         odcs_contract = {
             "id": "test-contract-all-large",
             "name": "Large Contract All Sections",
-            "schema": {
-                "fields": fields
-            },
-            "quality": {
-                "rules": quality_rules
-            },
-            "info": {
-                "owners": owners,
-                "tags": tags
-            }
+            "schema": {"fields": fields},
+            "quality": {"rules": quality_rules},
+            "info": {"owners": owners, "tags": tags},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -766,12 +640,10 @@ class NormalizationEdgeCaseTest(TestCase):
         odcs_contract = {
             "id": "test-contract-empty",
             "name": "Empty Contract",
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         # Empty fields array causes validation errors, so hub_contract may be None
         # When errors are present, hub_contract should be None (consistent with test_status_normalization_failed_missing_fields)
@@ -789,14 +661,10 @@ class NormalizationEdgeCaseTest(TestCase):
             "name": "Contract with Nulls",
             "description": None,
             "version": None,
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string", "description": None}
-                ]
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string", "description": None}]},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -811,14 +679,10 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-contract-empty-strings",
             "name": "",
             "description": "",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string", "description": ""}
-                ]
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string", "description": ""}]},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         # Should normalize, empty strings preserved
         self.assertIsNotNone(hub_contract)
@@ -836,17 +700,11 @@ class NormalizationEdgeCaseTest(TestCase):
             "name": "Contract with Long Strings",
             "description": long_string,
             "schema": {
-                "fields": [
-                    {
-                        "name": "field1",
-                        "type": "string",
-                        "description": long_string
-                    }
-                ]
-            }
+                "fields": [{"name": "field1", "type": "string", "description": long_string}]
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -864,21 +722,15 @@ class NormalizationEdgeCaseTest(TestCase):
                     {
                         "name": "field-with-dashes",
                         "type": "string",
-                        "description": "Field with special chars: !@#$%^&*()"
+                        "description": "Field with special chars: !@#$%^&*()",
                     },
-                    {
-                        "name": "field_with_underscores",
-                        "type": "string"
-                    },
-                    {
-                        "name": "field.with.dots",
-                        "type": "string"
-                    }
+                    {"name": "field_with_underscores", "type": "string"},
+                    {"name": "field.with.dots", "type": "string"},
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -900,13 +752,13 @@ class NormalizationEdgeCaseTest(TestCase):
                     {
                         "name": "field_测试",
                         "type": "string",
-                        "description": "Field with 中文 description"
+                        "description": "Field with 中文 description",
                     }
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -929,19 +781,15 @@ class NormalizationEdgeCaseTest(TestCase):
                         "properties": {
                             "nested1": {
                                 "type": "object",
-                                "properties": {
-                                    "nested2": {
-                                        "type": "string"
-                                    }
-                                }
+                                "properties": {"nested2": {"type": "string"}},
                             }
-                        }
+                        },
                     }
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -977,25 +825,13 @@ class NormalizationEdgeCaseTest(TestCase):
             "name": "Array Contract",
             "schema": {
                 "fields": [
-                    {
-                        "name": "tags",
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "name": "numbers",
-                        "type": "array",
-                        "items": {
-                            "type": "integer"
-                        }
-                    }
+                    {"name": "tags", "type": "array", "items": {"type": "string"}},
+                    {"name": "numbers", "type": "array", "items": {"type": "integer"}},
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -1012,20 +848,13 @@ class NormalizationEdgeCaseTest(TestCase):
             "name": "Boolean Contract",
             "schema": {
                 "fields": [
-                    {
-                        "name": "is_active",
-                        "type": "boolean"
-                    },
-                    {
-                        "name": "is_verified",
-                        "type": "boolean",
-                        "default": False
-                    }
+                    {"name": "is_active", "type": "boolean"},
+                    {"name": "is_verified", "type": "boolean", "default": False},
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -1044,26 +873,14 @@ class NormalizationEdgeCaseTest(TestCase):
             "name": "DateTime Contract",
             "schema": {
                 "fields": [
-                    {
-                        "name": "created_at",
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    {
-                        "name": "birth_date",
-                        "type": "string",
-                        "format": "date"
-                    },
-                    {
-                        "name": "time_only",
-                        "type": "string",
-                        "format": "time"
-                    }
+                    {"name": "created_at", "type": "string", "format": "date-time"},
+                    {"name": "birth_date", "type": "string", "format": "date"},
+                    {"name": "time_only", "type": "string", "format": "time"},
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -1083,18 +900,14 @@ class NormalizationEdgeCaseTest(TestCase):
                         "type": "number",
                         "format": "decimal",
                         "precision": 10,
-                        "scale": 2
+                        "scale": 2,
                     },
-                    {
-                        "name": "amount",
-                        "type": "number",
-                        "format": "double"
-                    }
+                    {"name": "amount", "type": "number", "format": "double"},
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -1113,26 +926,14 @@ class NormalizationEdgeCaseTest(TestCase):
             "name": "Required Fields Contract",
             "schema": {
                 "fields": [
-                    {
-                        "name": "required_field",
-                        "type": "string",
-                        "required": True
-                    },
-                    {
-                        "name": "optional_field",
-                        "type": "string",
-                        "required": False
-                    },
-                    {
-                        "name": "nullable_field",
-                        "type": "string",
-                        "nullable": True
-                    }
+                    {"name": "required_field", "type": "string", "required": True},
+                    {"name": "optional_field", "type": "string", "required": False},
+                    {"name": "nullable_field", "type": "string", "nullable": True},
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -1152,26 +953,14 @@ class NormalizationEdgeCaseTest(TestCase):
             "name": "Defaults Contract",
             "schema": {
                 "fields": [
-                    {
-                        "name": "status",
-                        "type": "string",
-                        "default": "pending"
-                    },
-                    {
-                        "name": "count",
-                        "type": "integer",
-                        "default": 0
-                    },
-                    {
-                        "name": "is_active",
-                        "type": "boolean",
-                        "default": True
-                    }
+                    {"name": "status", "type": "string", "default": "pending"},
+                    {"name": "count", "type": "integer", "default": 0},
+                    {"name": "is_active", "type": "boolean", "default": True},
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -1188,12 +977,12 @@ class NormalizationEdgeCaseTest(TestCase):
                 "fields": [
                     {"name": "id", "type": "string", "primaryKey": True},
                     {"name": "name", "type": "string"},
-                    {"name": "email", "type": "string", "unique": True}
+                    {"name": "email", "type": "string", "unique": True},
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -1211,15 +1000,13 @@ class NormalizationEdgeCaseTest(TestCase):
                 "fields": [
                     {"name": "id", "type": "string"},
                     {"name": "email", "type": "string", "unique": True},
-                    {"name": "username", "type": "string", "unique": True}
+                    {"name": "username", "type": "string", "unique": True},
                 ],
-                "uniqueConstraints": [
-                    {"fields": ["email", "username"]}
-                ]
-            }
+                "uniqueConstraints": [{"fields": ["email", "username"]}],
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -1237,16 +1024,16 @@ class NormalizationEdgeCaseTest(TestCase):
                 "fields": [
                     {"name": "id", "type": "string"},
                     {"name": "email", "type": "string", "indexed": True},
-                    {"name": "created_at", "type": "date-time", "indexed": True}
+                    {"name": "created_at", "type": "date-time", "indexed": True},
                 ],
                 "indexes": [
                     {"name": "idx_email", "fields": ["email"]},
-                    {"name": "idx_created", "fields": ["created_at"]}
-                ]
-            }
+                    {"name": "idx_created", "fields": ["created_at"]},
+                ],
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -1264,24 +1051,16 @@ class NormalizationEdgeCaseTest(TestCase):
                 "fields": [
                     {"name": "id", "type": "string"},
                     {"name": "user_id", "type": "string"},
-                    {"name": "order_id", "type": "string"}
+                    {"name": "order_id", "type": "string"},
                 ],
                 "relationships": [
-                    {
-                        "type": "foreignKey",
-                        "from": "user_id",
-                        "to": "users.id"
-                    },
-                    {
-                        "type": "foreignKey",
-                        "from": "order_id",
-                        "to": "orders.id"
-                    }
-                ]
-            }
+                    {"type": "foreignKey", "from": "user_id", "to": "users.id"},
+                    {"type": "foreignKey", "from": "order_id", "to": "orders.id"},
+                ],
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -1299,14 +1078,10 @@ class NormalizationEdgeCaseTest(TestCase):
             "apiVersion": "odcs.io/v3.0.2",
             "kind": "DataContract",
             "name": "ODCS Contract",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         # Should normalize successfully
         self.assertIsNotNone(hub_contract)
@@ -1319,14 +1094,10 @@ class NormalizationEdgeCaseTest(TestCase):
         odcs_contract = {
             "id": "test-status",
             "name": "Status Test",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         # Status should be NORMALIZED_OK for valid contract
@@ -1343,21 +1114,21 @@ class NormalizationEdgeCaseTest(TestCase):
                     {
                         "name": "field1",
                         "type": "string",
-                        "pattern": "[invalid(regex"  # Invalid regex
+                        "pattern": "[invalid(regex",  # Invalid regex
                     }
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         # May have warnings about invalid pattern
         # Status should still be OK or WITH_WARNINGS
-        self.assertIn(status, [
-            NormalizationStatus.NORMALIZED_OK,
-            NormalizationStatus.NORMALIZED_WITH_WARNINGS
-        ])
+        self.assertIn(
+            status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
 
     def test_normalize_contract_normalization_errors(self):
         """Test that normalization errors are generated for invalid contracts"""
@@ -1367,7 +1138,7 @@ class NormalizationEdgeCaseTest(TestCase):
             # Missing name and schema
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(invalid_contract)
+        hub_contract, status, errors, _warnings = normalize_odcs_to_hubcontract(invalid_contract)
 
         # Should fail normalization
         self.assertIsNone(hub_contract)
@@ -1380,14 +1151,10 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-preserve",
             "name": "Preserve Test",
             "custom_field": "custom_value",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         # Custom fields should be preserved in extensions
@@ -1407,16 +1174,13 @@ class NormalizationEdgeCaseTest(TestCase):
                         "type": "string",
                         "description": "Field description",
                         "examples": ["example1", "example2"],
-                        "metadata": {
-                            "source": "database",
-                            "column": "field_1"
-                        }
+                        "metadata": {"source": "database", "column": "field_1"},
                     }
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         fields = hub_contract.get("schema", {}).get("fields", [])
@@ -1433,22 +1197,13 @@ class NormalizationEdgeCaseTest(TestCase):
             "name": "Semantic Test",
             "schema": {
                 "fields": [
-                    {
-                        "name": "email",
-                        "type": "string",
-                        "format": "email",
-                        "semanticType": "EMAIL"
-                    },
-                    {
-                        "name": "phone",
-                        "type": "string",
-                        "semanticType": "PHONE"
-                    }
+                    {"name": "email", "type": "string", "format": "email", "semanticType": "EMAIL"},
+                    {"name": "phone", "type": "string", "semanticType": "PHONE"},
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         fields = hub_contract.get("schema", {}).get("fields", [])
@@ -1461,18 +1216,11 @@ class NormalizationEdgeCaseTest(TestCase):
         odcs_contract = {
             "id": "test-quality-profile",
             "name": "Quality Profile Test",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            },
-            "quality": {
-                "default_profile_key": "intake_basic_gx",
-                "rules": []
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
+            "quality": {"default_profile_key": "intake_basic_gx", "rules": []},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         quality = hub_contract.get("quality", {})
@@ -1483,17 +1231,11 @@ class NormalizationEdgeCaseTest(TestCase):
         odcs_contract = {
             "id": "test-compliance",
             "name": "Compliance Test",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            },
-            "privacy": {
-                "jurisdictions": ["GDPR", "LGPD", "CCPA"]
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
+            "privacy": {"jurisdictions": ["GDPR", "LGPD", "CCPA"]},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         compliance = hub_contract.get("privacy_compliance", {})
@@ -1507,18 +1249,11 @@ class NormalizationEdgeCaseTest(TestCase):
         odcs_contract = {
             "id": "test-lifecycle",
             "name": "Lifecycle Test",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            },
-            "lifecycle": {
-                "refresh_cadence": "DAILY",
-                "data_source": "OLTP.orders"
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
+            "lifecycle": {"refresh_cadence": "DAILY", "data_source": "OLTP.orders"},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         lifecycle = hub_contract.get("lifecycle", {})
@@ -1530,18 +1265,14 @@ class NormalizationEdgeCaseTest(TestCase):
         odcs_contract = {
             "id": "test-marketplace",
             "name": "Marketplace Test",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            },
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
             "marketplace": {
                 "license_summary": "MIT License",
-                "intended_use": ["analytics", "machine_learning"]
-            }
+                "intended_use": ["analytics", "machine_learning"],
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         marketplace = hub_contract.get("marketplace", {})
@@ -1574,13 +1305,13 @@ class NormalizationEdgeCaseTest(TestCase):
                         "maximum": 1000,
                         "nullable": False,
                         "required": True,
-                        "metadata": {"source": "database", "column": "email_col"}
+                        "metadata": {"source": "database", "column": "email_col"},
                     }
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
@@ -1606,10 +1337,10 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-empty-owners",
             "name": "Empty Owners Test",
             "schema": {"fields": [{"name": "field1", "type": "string"}]},
-            "info": {"owners": []}
+            "info": {"owners": []},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         info = hub_contract.get("info", {})
@@ -1622,10 +1353,10 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-empty-tags",
             "name": "Empty Tags Test",
             "schema": {"fields": [{"name": "field1", "type": "string"}]},
-            "info": {"tags": []}
+            "info": {"tags": []},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         info = hub_contract.get("info", {})
@@ -1638,10 +1369,10 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-empty-quality",
             "name": "Empty Quality Test",
             "schema": {"fields": [{"name": "field1", "type": "string"}]},
-            "quality": {"rules": []}
+            "quality": {"rules": []},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         quality = hub_contract.get("quality", {})
@@ -1654,10 +1385,10 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-owner-no-email",
             "name": "Owner No Email Test",
             "schema": {"fields": [{"name": "field1", "type": "string"}]},
-            "info": {"owners": [{"name": "Owner Name"}]}
+            "info": {"owners": [{"name": "Owner Name"}]},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         info = hub_contract.get("info", {})
@@ -1672,10 +1403,10 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-owner-no-name",
             "name": "Owner No Name Test",
             "schema": {"fields": [{"name": "field1", "type": "string"}]},
-            "info": {"owners": [{"email": "owner@example.com"}]}
+            "info": {"owners": [{"email": "owner@example.com"}]},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         info = hub_contract.get("info", {})
@@ -1692,12 +1423,12 @@ class NormalizationEdgeCaseTest(TestCase):
             "schema": {
                 "fields": [
                     {"name": "field1", "type": "string"},
-                    {"name": "field1", "type": "integer"}  # Duplicate name
+                    {"name": "field1", "type": "integer"},  # Duplicate name
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         fields = hub_contract.get("schema", {}).get("fields", [])
@@ -1714,10 +1445,10 @@ class NormalizationEdgeCaseTest(TestCase):
                 "fields": [
                     {"type": "string"}  # Missing name
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         # Should normalize but may have warnings/errors about missing name
         self.assertIsNotNone(hub_contract)
@@ -1736,10 +1467,10 @@ class NormalizationEdgeCaseTest(TestCase):
                 "fields": [
                     {"name": "field1"}  # Missing type
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         fields = hub_contract.get("schema", {}).get("fields", [])
@@ -1756,16 +1487,12 @@ class NormalizationEdgeCaseTest(TestCase):
             "schema": {"fields": [{"name": "field1", "type": "string"}]},
             "quality": {
                 "rules": [
-                    {
-                        "rule_id": "rule1",
-                        "expression": "field1 IS NOT NULL",
-                        "severity": "ERROR"
-                    }
+                    {"rule_id": "rule1", "expression": "field1 IS NOT NULL", "severity": "ERROR"}
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         quality = hub_contract.get("quality", {})
@@ -1781,17 +1508,11 @@ class NormalizationEdgeCaseTest(TestCase):
             "name": "Quality No Expression Test",
             "schema": {"fields": [{"name": "field1", "type": "string"}]},
             "quality": {
-                "rules": [
-                    {
-                        "rule_id": "rule1",
-                        "dimension": "completeness",
-                        "severity": "ERROR"
-                    }
-                ]
-            }
+                "rules": [{"rule_id": "rule1", "dimension": "completeness", "severity": "ERROR"}]
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         quality = hub_contract.get("quality", {})
@@ -1807,11 +1528,11 @@ class NormalizationEdgeCaseTest(TestCase):
             "schema": {"fields": [{"name": "field1", "type": "string"}]},
             "privacy_compliance": {
                 "contains_personal_data": True,
-                "personal_data_categories": ["EMAIL"]
-            }
+                "personal_data_categories": ["EMAIL"],
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         compliance = hub_contract.get("privacy_compliance", {})
@@ -1826,12 +1547,10 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-lifecycle-no-cadence",
             "name": "Lifecycle No Cadence Test",
             "schema": {"fields": [{"name": "field1", "type": "string"}]},
-            "lifecycle": {
-                "data_source": "OLTP.orders"
-            }
+            "lifecycle": {"data_source": "OLTP.orders"},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         lifecycle = hub_contract.get("lifecycle", {})
@@ -1845,12 +1564,10 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-marketplace-no-license",
             "name": "Marketplace No License Test",
             "schema": {"fields": [{"name": "field1", "type": "string"}]},
-            "marketplace": {
-                "intended_use": ["analytics"]
-            }
+            "marketplace": {"intended_use": ["analytics"]},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         marketplace = hub_contract.get("marketplace", {})
@@ -1873,17 +1590,13 @@ class NormalizationEdgeCaseTest(TestCase):
                         "expression": "field1 IS NOT NULL",
                         "severity": "ERROR",
                         "field": "field1",
-                        "metadata": {
-                            "nested": {
-                                "deep": "value"
-                            }
-                        }
+                        "metadata": {"nested": {"deep": "value"}},
                     }
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         quality = hub_contract.get("quality", {})
@@ -1909,12 +1622,12 @@ class NormalizationEdgeCaseTest(TestCase):
                 "retention_policy": {
                     "period": "P5Y",
                     "notes": "5 years retention",
-                    "conditions": ["After contract end", "Upon request"]
-                }
-            }
+                    "conditions": ["After contract end", "Upon request"],
+                },
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         compliance = hub_contract.get("privacy_compliance", {})
@@ -1936,16 +1649,13 @@ class NormalizationEdgeCaseTest(TestCase):
                     "availability": "99.9",
                     "latency_ms_p95": 5000,
                     "latency_ms_p99": 10000,
-                    "throughput_rps": 1000
+                    "throughput_rps": 1000,
                 },
-                "backup_policy": {
-                    "frequency": "DAILY",
-                    "retention": "P30D"
-                }
-            }
+                "backup_policy": {"frequency": "DAILY", "retention": "P30D"},
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         lifecycle = hub_contract.get("lifecycle", {})
@@ -1969,12 +1679,12 @@ class NormalizationEdgeCaseTest(TestCase):
                     {"name": "Field1", "type": "string"},
                     {"name": "field_2", "type": "string"},
                     {"name": "FIELD_3", "type": "string"},
-                    {"name": "field-4", "type": "string"}
+                    {"name": "field-4", "type": "string"},
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         fields = hub_contract.get("schema", {}).get("fields", [])
@@ -1994,12 +1704,12 @@ class NormalizationEdgeCaseTest(TestCase):
                 "fields": [
                     {"name": "field with spaces", "type": "string"},
                     {"name": "field\twith\ttabs", "type": "string"},
-                    {"name": "field\nwith\nnewlines", "type": "string"}
+                    {"name": "field\nwith\nnewlines", "type": "string"},
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         fields = hub_contract.get("schema", {}).get("fields", [])
@@ -2018,12 +1728,12 @@ class NormalizationEdgeCaseTest(TestCase):
                     {"name": "from", "type": "string"},
                     {"name": "where", "type": "string"},
                     {"name": "order", "type": "string"},
-                    {"name": "group", "type": "string"}
+                    {"name": "group", "type": "string"},
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         fields = hub_contract.get("schema", {}).get("fields", [])
@@ -2040,14 +1750,10 @@ class NormalizationEdgeCaseTest(TestCase):
         odcs_contract = {
             "id": "test-long-names",
             "name": "Long Names Test",
-            "schema": {
-                "fields": [
-                    {"name": long_name, "type": "string"}
-                ]
-            }
+            "schema": {"fields": [{"name": long_name, "type": "string"}]},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         fields = hub_contract.get("schema", {}).get("fields", [])
@@ -2064,12 +1770,12 @@ class NormalizationEdgeCaseTest(TestCase):
                 "fields": [
                     {"name": "field_测试", "type": "string"},
                     {"name": "field_émoji🎉", "type": "string"},
-                    {"name": "field_中文", "type": "string"}
+                    {"name": "field_中文", "type": "string"},
                 ]
-            }
+            },
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         fields = hub_contract.get("schema", {}).get("fields", [])
@@ -2085,12 +1791,10 @@ class NormalizationEdgeCaseTest(TestCase):
             "id": "test-quality-profile-only",
             "name": "Quality Profile Only Test",
             "schema": {"fields": [{"name": "field1", "type": "string"}]},
-            "quality": {
-                "default_profile_key": "intake_basic_gx"
-            }
+            "quality": {"default_profile_key": "intake_basic_gx"},
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, _status, _errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
         self.assertIsNotNone(hub_contract)
         quality = hub_contract.get("quality", {})
@@ -2098,4 +1802,3 @@ class NormalizationEdgeCaseTest(TestCase):
         # Rules may be missing or empty
         rules = quality.get("rules", [])
         self.assertIsInstance(rules, list)
-

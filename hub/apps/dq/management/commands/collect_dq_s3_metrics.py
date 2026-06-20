@@ -22,10 +22,10 @@ dependency). Existing precedent: ``recover-stuck-jobs`` /
 calling Django management commands. This collector follows the same
 pattern.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Dict
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -35,8 +35,7 @@ logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     help = (
-        "Walk the DQ payload S3 bucket and update the "
-        "dq_s3_payload_bytes_total gauge per-tenant."
+        "Walk the DQ payload S3 bucket and update the dq_s3_payload_bytes_total gauge per-tenant."
     )
 
     def add_arguments(self, parser):
@@ -60,7 +59,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **opts):
         bucket = opts.get("bucket") or getattr(
-            settings, "DQ_S3_BUCKET",
+            settings,
+            "DQ_S3_BUCKET",
             getattr(settings, "AWS_STORAGE_BUCKET_NAME", ""),
         )
         prefix = opts.get("prefix")
@@ -70,21 +70,25 @@ class Command(BaseCommand):
             prefix = prefix + "/"
 
         if not bucket:
-            self.stdout.write(self.style.WARNING(
-                "DQ_S3_BUCKET unset; nothing to collect.",
-            ))
+            self.stdout.write(
+                self.style.WARNING(
+                    "DQ_S3_BUCKET unset; nothing to collect.",
+                )
+            )
             return
 
         try:
             import boto3
         except ImportError:  # pragma: no cover — boto3 is a hard dep
-            self.stdout.write(self.style.ERROR(
-                "boto3 not installed; cannot collect DQ S3 metrics.",
-            ))
+            self.stdout.write(
+                self.style.ERROR(
+                    "boto3 not installed; cannot collect DQ S3 metrics.",
+                )
+            )
             return
 
         s3 = boto3.client("s3")
-        per_tenant: Dict[str, int] = {}
+        per_tenant: dict[str, int] = {}
         objects_scanned = 0
         try:
             paginator = s3.get_paginator("list_objects_v2")
@@ -94,22 +98,26 @@ class Command(BaseCommand):
                     key = obj.get("Key") or ""
                     size = int(obj.get("Size") or 0)
                     # Strip the prefix; the next segment is the tenant id.
-                    tail = key[len(prefix):]
+                    tail = key[len(prefix) :]
                     tenant_id = tail.split("/", 1)[0] if "/" in tail else tail
                     if not tenant_id:
                         continue
                     per_tenant[tenant_id] = per_tenant.get(tenant_id, 0) + size
-        except Exception as exc:  # noqa: BLE001 — fail-soft; collector is
+        except Exception as exc:
             # observability-only.  Exiting non-zero would page oncall;
             # the alert ``DQS3PayloadGrowthAnomaly`` can't fire if the
             # gauge isn't written, so an empty pass is the right
             # signal.
-            self.stdout.write(self.style.ERROR(
-                f"S3 list failed: {exc}",
-            ))
+            self.stdout.write(
+                self.style.ERROR(
+                    f"S3 list failed: {exc}",
+                )
+            )
             logger.warning(
                 "collect_dq_s3_metrics_list_failed bucket=%s prefix=%s error=%s",
-                bucket, prefix, exc,
+                bucket,
+                prefix,
+                exc,
             )
             return
 
@@ -118,11 +126,14 @@ class Command(BaseCommand):
 
         for tenant_id, total in per_tenant.items():
             dq_s3_payload_bytes_total.labels(
-                service="hub", tenant_id=tenant_id,
+                service="hub",
+                tenant_id=tenant_id,
             ).set(total)
 
-        self.stdout.write(self.style.SUCCESS(
-            f"Collected DQ S3 metrics: {objects_scanned} objects, "
-            f"{len(per_tenant)} tenants, "
-            f"{sum(per_tenant.values())} total bytes."
-        ))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Collected DQ S3 metrics: {objects_scanned} objects, "
+                f"{len(per_tenant)} tenants, "
+                f"{sum(per_tenant.values())} total bytes."
+            )
+        )

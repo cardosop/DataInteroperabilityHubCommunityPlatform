@@ -8,10 +8,10 @@ gates its ViewSet: Flag ON → 200 with valid response data, Flag OFF →
 Pattern follows DQFeatureFlagMixin from hub/apps/dq/tests/test_feature_flag.py.
 Real DB, no mocks at the gate boundary.
 """
+
 import uuid
 
 import pytest
-
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -27,6 +27,7 @@ def _setup_tenant_with_flag(flag_name: str, flag_value: bool):
     test classes that share the same flag name.
     """
     from django.contrib.auth import get_user_model
+
     User = get_user_model()
     uid = uuid.uuid4().hex[:8]
     kwargs = {
@@ -37,10 +38,14 @@ def _setup_tenant_with_flag(flag_name: str, flag_value: bool):
     tenant = Tenant.objects.create(**kwargs)
     ensure_tenant_has_active_subscription(tenant)
     user = User.objects.create_user(
-        email=f"{flag_name}-{uid}@test.com", password="p", tenant=tenant,
+        email=f"{flag_name}-{uid}@test.com",
+        password="p",
+        tenant=tenant,
     )
     role, _ = Role.objects.get_or_create(
-        tenant=tenant, name="TENANT_ADMIN", defaults={"description": ""},
+        tenant=tenant,
+        name="TENANT_ADMIN",
+        defaults={"description": ""},
     )
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
     return tenant, user
@@ -54,18 +59,19 @@ class MarketplaceIntegrationsGateTest(TestCase):
 
     @pytest.mark.integration
     def test_flag_on_returns_200(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, True)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, True)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get(self.ENDPOINT)
         self.assertEqual(resp.status_code, 200)
         # When the flag is ON, the response should contain paginated data.
-        self.assertIn("results", resp.data,
-                      "Flag ON should return paginated list with 'results' key")
+        self.assertIn(
+            "results", resp.data, "Flag ON should return paginated list with 'results' key"
+        )
 
     @pytest.mark.integration
     def test_flag_off_returns_403(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, False)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, False)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get(self.ENDPOINT)
@@ -78,18 +84,18 @@ class MarketplaceIntegrationsGateTest(TestCase):
         )
 
     @pytest.mark.integration
-    def test_capability_endpoint_reflects_flag(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, True)
+    def test_capabilities_endpoint_accessible_when_flag_on(self):
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, True)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get("/api/v1/capabilities/")
         self.assertEqual(resp.status_code, 200)
-        # The capabilities response must contain a 'capabilities' key
-        # with the available feature set.  Individual flag names are
-        # not necessarily 1:1 with capability keys, but the endpoint
-        # itself must be reachable and return valid JSON.
-        self.assertIn("capabilities", resp.data,
-                      "Capabilities response must include 'capabilities' key")
+        # Verify the capabilities response structure.
+        caps = resp.data.get("capabilities")
+        self.assertIsInstance(caps, dict, "Capabilities must be a dict")
+        # Per-tenant capabilities that are always present when the
+        # tenant is resolved.
+        self.assertIn("asset_creation", caps)
 
 
 class DataMeshGateTest(TestCase):
@@ -100,17 +106,18 @@ class DataMeshGateTest(TestCase):
 
     @pytest.mark.integration
     def test_flag_on_returns_200(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, True)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, True)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get(self.ENDPOINT)
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("results", resp.data,
-                      "Flag ON should return paginated list with 'results' key")
+        self.assertIn(
+            "results", resp.data, "Flag ON should return paginated list with 'results' key"
+        )
 
     @pytest.mark.integration
     def test_flag_off_returns_403(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, False)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, False)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get(self.ENDPOINT)
@@ -122,13 +129,14 @@ class DataMeshGateTest(TestCase):
 
     @pytest.mark.integration
     def test_capability_endpoint_reflects_flag(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, True)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, True)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get("/api/v1/capabilities/")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(
-            "capabilities", resp.data,
+            "capabilities",
+            resp.data,
             "Capabilities response must include 'capabilities' key",
         )
 
@@ -141,17 +149,18 @@ class VirtualizationGateTest(TestCase):
 
     @pytest.mark.integration
     def test_flag_on_returns_200(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, True)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, True)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get(self.ENDPOINT)
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("results", resp.data,
-                      "Flag ON should return paginated list with 'results' key")
+        self.assertIn(
+            "results", resp.data, "Flag ON should return paginated list with 'results' key"
+        )
 
     @pytest.mark.integration
     def test_flag_off_returns_403(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, False)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, False)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get(self.ENDPOINT)
@@ -163,13 +172,14 @@ class VirtualizationGateTest(TestCase):
 
     @pytest.mark.integration
     def test_capability_endpoint_reflects_flag(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, True)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, True)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get("/api/v1/capabilities/")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(
-            "capabilities", resp.data,
+            "capabilities",
+            resp.data,
             "Capabilities response must include 'capabilities' key",
         )
 
@@ -182,17 +192,18 @@ class DeveloperGateTest(TestCase):
 
     @pytest.mark.integration
     def test_flag_on_returns_200(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, True)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, True)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get(self.ENDPOINT)
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("results", resp.data,
-                      "Flag ON should return paginated list with 'results' key")
+        self.assertIn(
+            "results", resp.data, "Flag ON should return paginated list with 'results' key"
+        )
 
     @pytest.mark.integration
     def test_flag_off_returns_403(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, False)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, False)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get(self.ENDPOINT)
@@ -204,13 +215,14 @@ class DeveloperGateTest(TestCase):
 
     @pytest.mark.integration
     def test_capability_endpoint_reflects_flag(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, True)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, True)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get("/api/v1/capabilities/")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(
-            "capabilities", resp.data,
+            "capabilities",
+            resp.data,
             "Capabilities response must include 'capabilities' key",
         )
 
@@ -223,17 +235,18 @@ class MLGateTest(TestCase):
 
     @pytest.mark.integration
     def test_flag_on_returns_200(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, True)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, True)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get(self.ENDPOINT)
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("results", resp.data,
-                      "Flag ON should return paginated list with 'results' key")
+        self.assertIn(
+            "results", resp.data, "Flag ON should return paginated list with 'results' key"
+        )
 
     @pytest.mark.integration
     def test_flag_off_returns_403(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, False)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, False)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get(self.ENDPOINT)
@@ -245,13 +258,14 @@ class MLGateTest(TestCase):
 
     @pytest.mark.integration
     def test_capability_endpoint_reflects_flag(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, True)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, True)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get("/api/v1/capabilities/")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(
-            "capabilities", resp.data,
+            "capabilities",
+            resp.data,
             "Capabilities response must include 'capabilities' key",
         )
 
@@ -264,17 +278,18 @@ class TransformationGateTest(TestCase):
 
     @pytest.mark.integration
     def test_flag_on_returns_200(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, True)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, True)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get(self.ENDPOINT)
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("results", resp.data,
-                      "Flag ON should return paginated list with 'results' key")
+        self.assertIn(
+            "results", resp.data, "Flag ON should return paginated list with 'results' key"
+        )
 
     @pytest.mark.integration
     def test_flag_off_returns_403(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, False)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, False)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get(self.ENDPOINT)
@@ -286,13 +301,14 @@ class TransformationGateTest(TestCase):
 
     @pytest.mark.integration
     def test_capability_endpoint_reflects_flag(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, True)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, True)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get("/api/v1/capabilities/")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(
-            "capabilities", resp.data,
+            "capabilities",
+            resp.data,
             "Capabilities response must include 'capabilities' key",
         )
 
@@ -305,17 +321,18 @@ class BaaSGateTest(TestCase):
 
     @pytest.mark.integration
     def test_flag_on_returns_200(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, True)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, True)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get(self.ENDPOINT)
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("results", resp.data,
-                      "Flag ON should return paginated list with 'results' key")
+        self.assertIn(
+            "results", resp.data, "Flag ON should return paginated list with 'results' key"
+        )
 
     @pytest.mark.integration
     def test_flag_off_returns_403(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, False)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, False)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get(self.ENDPOINT)
@@ -327,12 +344,13 @@ class BaaSGateTest(TestCase):
 
     @pytest.mark.integration
     def test_capability_endpoint_reflects_flag(self):
-        tenant, user = _setup_tenant_with_flag(self.FLAG, True)
+        _tenant, user = _setup_tenant_with_flag(self.FLAG, True)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get("/api/v1/capabilities/")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(
-            "capabilities", resp.data,
+            "capabilities",
+            resp.data,
             "Capabilities response must include 'capabilities' key",
         )

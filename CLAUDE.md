@@ -102,3 +102,33 @@ SRE alert fires when `degraded_count > 0`.
   BooleanField (default True for new tenants, False for existing).
 - Migration template: `AddField` with `default=False`, model default callable
   returning True for new rows (mirrors Phase 271.1.2 `_default_connect_enabled`).
+
+# Documentation Sync Contract (Phase 312.5)
+
+When implementing a feature that introduces a user journey or use case:
+
+1. Add journey entry to `docs/USER_JOURNEYS.md` — ID, title, persona, phase.
+2. Add use case entry to `docs/USE_CASES.md` — ID, title, persona, file ref.
+3. Add `@pytest.mark.journey("JOURNEY-XXX")` to ≥1 backend test method.
+4. Add `@pytest.mark.uc("UC-XXX")` to ≥1 backend test method.
+5. Create frontend E2E spec at `frontend/e2e/journeys/<persona>/JOURNEY-XXX.spec.ts`.
+6. Import the spec in the persona aggregator at `frontend/e2e/personas/<persona>.spec.ts`.
+7. If critical, add the ID to `docs/CRITICAL_UC_JOURNEY_IDS.yaml`.
+8. Run `make audit-docs` before merge.
+
+**Enforcement**:
+- CI GATE-26 (`lint_journey_marker_coverage.py --blocking`) — critical journeys MUST have markers.
+- CI GATE-27 (`check_doc_journey_marker_sync.py --ci-mode`) — bidirectional journey doc↔marker sync.
+- CI GATE-28 (`check_doc_uc_marker_sync.py --ci-mode`) — bidirectional UC doc↔marker sync.
+- Pre-commit hooks run on changed docs/test files.
+- `check_persona_mapping_drift.py` enforces persona fixture consistency.
+- `check_assert_true_true.py` blocks `assertTrue(True)` stubs.
+
+**Traceability registries** (single source of truth):
+1. `docs/USER_JOURNEYS.md` — 149 canonical journeys across 13 personas.
+2. `docs/USE_CASES.md` — 95 canonical use cases across 12 domains.
+3. `docs/CRITICAL_UC_JOURNEY_IDS.yaml` — CI gate critical ID subset (37 UC + 28 journey).
+4. `docs/mvpdocs/_meta/persona-mapping.yaml` — 13 fixture personas → 6 canonical personas.
+5. `docs/mvpdocs/_meta/persona-journey-mapping.yaml` — persona → journey ID list (frontend-extracted).
+
+**See also**: `docs/TRACEABILITY_ARCHITECTURE.md` for the full traceability system reference.

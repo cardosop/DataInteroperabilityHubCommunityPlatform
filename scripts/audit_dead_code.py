@@ -14,11 +14,10 @@ Usage:
   python scripts/audit_dead_code.py --remove     # audit + remove safe items
   python scripts/audit_dead_code.py --json       # JSON output
 """
+
 import ast
-import os
 import re
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -74,12 +73,26 @@ def find_orphaned_modules() -> list[Path]:
     # management/commands, __init__.py) which are loaded by Django's app registry,
     # not by explicit import statements — they're not dead code.
     DJANGO_AUTO_FILES = {
-        "apps", "admin", "urls", "signals", "receivers",
-        "tasks", "forms", "__init__", "conftest", "settings",
+        "apps",
+        "admin",
+        "urls",
+        "signals",
+        "receivers",
+        "tasks",
+        "forms",
+        "__init__",
+        "conftest",
+        "settings",
         "factories",
     }
-    EXCLUDED_DIRS = {"tests", "migrations", "management", "__pycache__",
-                      "node_modules", ".mypy_cache"}
+    EXCLUDED_DIRS = {
+        "tests",
+        "migrations",
+        "management",
+        "__pycache__",
+        "node_modules",
+        ".mypy_cache",
+    }
 
     orphans = []
     for mod in sorted(all_modules):
@@ -91,18 +104,22 @@ def find_orphaned_modules() -> list[Path]:
             continue
         # Skip files loaded via dotted-path settings (serializers, views, etc.
         # imported through REST framework routers and Django URL confs)
-        if mod_path.stem in ("serializers", "views", "models", "metrics",
-                              "business_rules", "event_types", "feature_flags"):
+        if mod_path.stem in (
+            "serializers",
+            "views",
+            "models",
+            "metrics",
+            "business_rules",
+            "event_types",
+            "feature_flags",
+        ):
             # These are almost always imported dynamically; flag as
             # "low-confidence orphan" rather than certain dead code
             continue
 
         module_name = mod_path.stem
         module_dotpath = str(mod_path.with_suffix("")).replace("/", ".")
-        is_imported = any(
-            module_name in imp or module_dotpath in imp
-            for imp in imported_modules
-        )
+        is_imported = any(module_name in imp or module_dotpath in imp for imp in imported_modules)
         if not is_imported:
             orphans.append(mod)
 
@@ -132,18 +149,19 @@ def find_commented_out_blocks() -> list[dict]:
 
                 block_start = i + 1  # 1-indexed line number
                 while i < len(lines) and (
-                    lines[i].strip().startswith("#") and
-                    not lines[i].strip().startswith("##")
+                    lines[i].strip().startswith("#") and not lines[i].strip().startswith("##")
                 ):
                     i += 1
                 block_len = i - block_start + 1
                 if block_len >= 3:
-                    blocks.append({
-                        "file": str(py_file.relative_to(PROJECT_ROOT)),
-                        "line": block_start,
-                        "lines": block_len,
-                        "preview": lines[block_start - 1].strip()[:80],
-                    })
+                    blocks.append(
+                        {
+                            "file": str(py_file.relative_to(PROJECT_ROOT)),
+                            "line": block_start,
+                            "lines": block_len,
+                            "preview": lines[block_start - 1].strip()[:80],
+                        }
+                    )
             else:
                 i += 1
 
@@ -168,11 +186,13 @@ def find_always_true_flags() -> list[dict]:
         for m in flag_pattern.finditer(content):
             flag_name = m.group(2)
             if flag_name in ALWAYS_TRUE_FLAGS:
-                results.append({
-                    "file": str(py_file.relative_to(PROJECT_ROOT)),
-                    "flag": flag_name,
-                    "line": content[:m.start()].count("\n") + 1,
-                })
+                results.append(
+                    {
+                        "file": str(py_file.relative_to(PROJECT_ROOT)),
+                        "flag": flag_name,
+                        "line": content[: m.start()].count("\n") + 1,
+                    }
+                )
 
     return results
 
@@ -225,7 +245,7 @@ def print_report(results: dict) -> None:
     for f in flags:
         print(f"  {f['file']}:{f['line']} — flag={f['flag']}")
 
-    print(f"\nKnown dead files ready for removal:")
+    print("\nKnown dead files ready for removal:")
     for f in KNOWN_DEAD_FILES:
         exists = (PROJECT_ROOT / f).exists()
         status = "EXISTS — ready to remove" if exists else "already removed"
@@ -245,6 +265,7 @@ def main():
         results = audit()
         if json_mode:
             import json
+
             print(json.dumps(results, indent=2, default=str))
         else:
             print_report(results)

@@ -21,10 +21,11 @@ The decorator uses ``distributed_lock`` from ``hub.apps.core.distributed_lock``
 under the hood.  When the lock cannot be acquired (another instance is
 already running), ``SweepLockHeldError`` is raised.
 """
+
 from __future__ import annotations
 
 import functools
-from typing import Any, Callable
+from collections.abc import Callable
 
 from hub.apps.core.distributed_lock import (
     distributed_lock_acquire,
@@ -69,8 +70,7 @@ class SweepLockHeldError(RuntimeError):
 
     def __init__(self, lock_key: str):
         super().__init__(
-            f"Sweep lock held for '{lock_key}'. "
-            "Another instance of this sweep is already running."
+            f"Sweep lock held for '{lock_key}'. Another instance of this sweep is already running."
         )
         self.lock_key = lock_key
 

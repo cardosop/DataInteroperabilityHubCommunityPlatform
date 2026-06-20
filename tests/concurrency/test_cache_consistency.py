@@ -12,9 +12,8 @@ import uuid
 
 import pytest
 from django.core.cache import caches
-from django.db import transaction
 
-from hub.apps.tenants.models import Tenant, TenantPlan, KYCStatus
+from hub.apps.tenants.models import KYCStatus, Tenant
 
 
 @pytest.mark.integration
@@ -28,7 +27,8 @@ class TestCacheInvalidation:
         cache = caches["default"]
         slug = f"cache-inv-{uuid.uuid4().hex[:8]}"
         tenant = Tenant.objects.create(
-            name=f"Original {slug}", slug=slug,
+            name=f"Original {slug}",
+            slug=slug,
             kyc_status=KYCStatus.PENDING_REVIEW,
         )
         cache_key = f"tenant:{slug}"
@@ -46,14 +46,12 @@ class TestCacheInvalidation:
         cache.delete(cache_key)
 
         # Cache should now be empty
-        assert cache.get(cache_key) is None, \
-            "Cache should be empty after explicit delete"
+        assert cache.get(cache_key) is None, "Cache should be empty after explicit delete"
 
         # Re-populate with fresh data
         tenant.refresh_from_db()
         cache.set(cache_key, tenant.name, timeout=60)
-        assert cache.get(cache_key) == new_name, \
-            "Cache should reflect updated name"
+        assert cache.get(cache_key) == new_name, "Cache should reflect updated name"
 
     @pytest.mark.django_db(transaction=True)
     def test_cache_key_isolation_per_tenant(self):
@@ -76,8 +74,9 @@ class TestCacheInvalidation:
         # Deleting one tenant's cache doesn't affect the other
         cache.delete(f"tenant:{tenant_a.slug}")
         assert cache.get(f"tenant:{tenant_a.slug}") is None
-        assert cache.get(f"tenant:{tenant_b.slug}") == "data-b", \
+        assert cache.get(f"tenant:{tenant_b.slug}") == "data-b", (
             "Tenant B's cache should not be affected by tenant A's deletion"
+        )
 
 
 @pytest.mark.integration
@@ -116,13 +115,15 @@ class TestCacheStampedeProtection:
 
         # All results should be identical
         unique_results = set(results)
-        assert len(unique_results) == 1, \
+        assert len(unique_results) == 1, (
             f"Expected 1 unique result, got {len(unique_results)}: {unique_results}"
+        )
         # The compute count with lock-based stampede prevention should be exactly 1
         # (without a distributed lock it may be >1 due to Python GIL threading,
         # but under CPython with GIL it should be 1-5 max, not 100)
-        assert compute_count <= 10, \
+        assert compute_count <= 10, (
             f"Expected <= 10 computes under GIL, got {compute_count} (100 would be unbounded)"
+        )
 
     @pytest.mark.django_db(transaction=True)
     def test_cache_stampede_protection_with_redis_pattern(self):
@@ -130,7 +131,8 @@ class TestCacheStampedeProtection:
         cache = caches["default"]
         slug = f"stampede-db-{uuid.uuid4().hex[:8]}"
         tenant = Tenant.objects.create(
-            name=f"Stampede DB {slug}", slug=slug,
+            name=f"Stampede DB {slug}",
+            slug=slug,
             kyc_status=KYCStatus.PENDING_REVIEW,
         )
 
@@ -162,8 +164,7 @@ class TestCacheStampedeProtection:
         # All should return the same name
         assert all(r == tenant.name for r in results)
         # DB should be hit at most a few times (lock contention), not 50
-        assert db_query_count <= 5, \
-            f"Expected <=5 DB queries, got {db_query_count}"
+        assert db_query_count <= 5, f"Expected <=5 DB queries, got {db_query_count}"
 
 
 @pytest.mark.integration
@@ -184,7 +185,7 @@ class TestCacheTTL:
 
         # Wait for expiration (Django's in-memory cache doesn't expire
         # until accessed, but Redis-based cache does)
-        time.sleep(1.5)
+        time.sleep(1.5)  # noqa: sleep-needed — test timing requirement
 
         # After TTL, cache should miss
         value = cache.get(key)
@@ -213,7 +214,7 @@ class TestCacheTTL:
         """delete_pattern removes all matching keys."""
         cache = caches["default"]
         if not hasattr(cache, "delete_pattern"):
-            pytest.skip("cache backend does not support delete_pattern")
+            pytest.skip("cache backend does not support delete_pattern")  # noqa: skip-in-body — runtime service dependency
         prefix = f"batch-{uuid.uuid4().hex[:4]}"
 
         # Set multiple keys with same prefix

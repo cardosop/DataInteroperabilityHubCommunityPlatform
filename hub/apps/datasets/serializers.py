@@ -1,10 +1,13 @@
 """
 Dataset Serializers
 """
+
 from rest_framework import serializers
-from .models import Dataset, SchemaVersion
+
 # Phase 226 G7a — canonical IRI exposure for SDK + dereferenceability proofs.
 from hub.apps.semantic.iri import canonical_iri_for
+
+from .models import Dataset
 
 
 class DatasetSerializer(serializers.ModelSerializer):
@@ -47,57 +50,56 @@ class DatasetSerializer(serializers.ModelSerializer):
     class Meta:
         model = Dataset
         fields = [
-            'id',
-            'tenant',
-            'asset',
-            'file',
-            'schema_json',
-            'sample_data_json',
-            'row_count',
-            'format',
-            'version',
-            'parent_version',
-            'semantic_version',
-            'version_tags',
-            'is_current',
-            'status',
-            'retired_at',
-            'kind',
-            'file_handle_purpose',
-            'created_by',
-            'created_at',
-            'updated_at',
-            'canonical_iri',
+            "id",
+            "tenant",
+            "asset",
+            "file",
+            "schema_json",
+            "sample_data_json",
+            "row_count",
+            "format",
+            "version",
+            "parent_version",
+            "semantic_version",
+            "version_tags",
+            "is_current",
+            "status",
+            "retired_at",
+            "kind",
+            "file_handle_purpose",
+            "created_by",
+            "created_at",
+            "updated_at",
+            "canonical_iri",
         ]
         read_only_fields = [
-            'id',
-            'tenant',
-            'schema_json',
-            'sample_data_json',
-            'row_count',
-            'version',
-            'parent_version',
-            'semantic_version',
-            'version_tags',
-            'is_current',
-            'status',
-            'retired_at',
-            'kind',
-            'file_handle_purpose',
-            'created_by',
-            'created_at',
-            'updated_at',
-            'canonical_iri',
+            "id",
+            "tenant",
+            "schema_json",
+            "sample_data_json",
+            "row_count",
+            "version",
+            "parent_version",
+            "semantic_version",
+            "version_tags",
+            "is_current",
+            "status",
+            "retired_at",
+            "kind",
+            "file_handle_purpose",
+            "created_by",
+            "created_at",
+            "updated_at",
+            "canonical_iri",
         ]
 
 
 class DatasetCreateSerializer(serializers.Serializer):
     """Serializer for dataset creation"""
+
     file_id = serializers.UUIDField(help_text="ID of the file to create dataset from")
     asset_id = serializers.UUIDField(
-        required=False,
-        allow_null=True,
-        help_text="ID of the asset to attach dataset to (optional)"
+        required=False, allow_null=True, help_text="ID of the asset to attach dataset to (optional)"
     )
     kind = serializers.ChoiceField(
         choices=[
@@ -106,7 +108,7 @@ class DatasetCreateSerializer(serializers.Serializer):
         ],
         default="FILE",
         help_text="Dataset kind. Only FILE is settable via API; "
-                  "EXTERNAL_REF is set server-side by the federation pipeline.",
+        "EXTERNAL_REF is set server-side by the federation pipeline.",
     )
     file_handle_purpose = serializers.ChoiceField(
         choices=[
@@ -115,7 +117,7 @@ class DatasetCreateSerializer(serializers.Serializer):
             ("SCHEMA_ONLY", "Schema Only"),
         ],
         required=False,
-        help_text="Purpose for which the file handle was stored (e.g. primary, sample, schema_only)"
+        help_text="Purpose for which the file handle was stored (e.g. primary, sample, schema_only)",
     )
 
     def validate_kind(self, value):
@@ -135,89 +137,94 @@ class DatasetCreateSerializer(serializers.Serializer):
 
 class DatasetVersionCreateSerializer(serializers.Serializer):
     """Serializer for creating a new dataset version"""
+
     description = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        help_text="Description of changes in this version"
+        required=False, allow_blank=True, help_text="Description of changes in this version"
     )
     schema_changes = serializers.DictField(
         required=False,
-        help_text="Schema changes summary (added_fields, removed_fields, modified_fields)"
+        help_text="Schema changes summary (added_fields, removed_fields, modified_fields)",
     )
     semantic_version = serializers.CharField(
         required=False,
         allow_null=True,
-        help_text="Semantic version string (e.g., '1.0.0'). If not provided, will be inferred."
+        help_text="Semantic version string (e.g., '1.0.0'). If not provided, will be inferred.",
     )
     version_tags = serializers.ListField(
         child=serializers.CharField(),
         required=False,
         allow_empty=True,
-        help_text="Version tags (e.g., ['production', 'staging'])"
+        help_text="Version tags (e.g., ['production', 'staging'])",
     )
 
 
 class DatasetVersionSerializer(serializers.ModelSerializer):
     """Serializer for Dataset version listing"""
-    parent_version_id = serializers.UUIDField(source='parent_version.id', read_only=True, allow_null=True)
-    schema_version_id = serializers.UUIDField(source='schema_version.id', read_only=True, allow_null=True)
-    compatibility_level = serializers.CharField(source='schema_version.compatibility_level', read_only=True, allow_null=True)
-    
+
+    parent_version_id = serializers.UUIDField(
+        source="parent_version.id", read_only=True, allow_null=True
+    )
+    schema_version_id = serializers.UUIDField(
+        source="schema_version.id", read_only=True, allow_null=True
+    )
+    compatibility_level = serializers.CharField(
+        source="schema_version.compatibility_level", read_only=True, allow_null=True
+    )
+
     class Meta:
         model = Dataset
         fields = [
-            'id',
-            'version',
-            'semantic_version',
-            'version_tags',
-            'is_current',
-            'parent_version_id',
-            'schema_version_id',
-            'compatibility_level',
-            'schema_json',
-            'created_at',
-            'updated_at'
+            "id",
+            "version",
+            "semantic_version",
+            "version_tags",
+            "is_current",
+            "parent_version_id",
+            "schema_version_id",
+            "compatibility_level",
+            "schema_json",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = [
-            'id',
-            'version',
-            'semantic_version',
-            'version_tags',
-            'is_current',
-            'parent_version_id',
-            'schema_version_id',
-            'compatibility_level',
-            'schema_json',
-            'created_at',
-            'updated_at'
+            "id",
+            "version",
+            "semantic_version",
+            "version_tags",
+            "is_current",
+            "parent_version_id",
+            "schema_version_id",
+            "compatibility_level",
+            "schema_json",
+            "created_at",
+            "updated_at",
         ]
 
 
 class SchemaVersionCompareSerializer(serializers.Serializer):
     """Serializer for schema version comparison request"""
+
     version1 = serializers.UUIDField(
         required=False,
         allow_null=True,
-        help_text="First version ID (defaults to parent version if not provided)"
+        help_text="First version ID (defaults to parent version if not provided)",
     )
     version2 = serializers.UUIDField(
         required=False,
         allow_null=True,
-        help_text="Second version ID (defaults to current version if not provided)"
+        help_text="Second version ID (defaults to current version if not provided)",
     )
 
 
 class DatasetRefreshFromFileSerializer(serializers.Serializer):
     """Request serializer for refreshing a dataset from its source file."""
+
     file_id = serializers.UUIDField(required=True)
 
 
 class DatasetRefreshFromFileResponseSerializer(serializers.Serializer):
     """Response serializer for dataset refresh operation."""
-    pass
 
 
 class DatasetManualRefreshResponseSerializer(serializers.Serializer):
     """Response serializer for manual dataset refresh."""
-    pass
-

@@ -5,12 +5,10 @@ Performs a complete audit of all documentation files in the docs/ directory.
 """
 
 import json
-import os
 import re
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
 
 
 class DocumentationAuditor:
@@ -115,10 +113,10 @@ class DocumentationAuditor:
 
         return "other"
 
-    def analyze_file_content(self, file_path: Path) -> Dict:
+    def analyze_file_content(self, file_path: Path) -> dict:
         """Analyze file content for keywords and references."""
         try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            with open(file_path, encoding="utf-8", errors="ignore") as f:
                 content = f.read()
         except Exception as e:
             return {"error": str(e), "size": 0, "keywords_found": {}}
@@ -131,7 +129,7 @@ class DocumentationAuditor:
         }
 
         # Check for keywords
-        content_lower = content.lower()
+        content.lower()
         for group, keywords in self.keyword_groups.items():
             found_keywords = []
             for keyword in keywords:
@@ -152,7 +150,7 @@ class DocumentationAuditor:
 
         return analysis
 
-    def audit(self) -> Dict:
+    def audit(self) -> dict:
         """Perform comprehensive audit."""
         print(f"Starting documentation audit of {self.docs_root}...")
 
@@ -192,7 +190,7 @@ class DocumentationAuditor:
 
         return self.generate_report()
 
-    def generate_report(self) -> Dict:
+    def generate_report(self) -> dict:
         """Generate comprehensive audit report."""
         report = {
             "audit_date": datetime.now().isoformat(),
@@ -224,7 +222,7 @@ class DocumentationAuditor:
 
         return report
 
-    def save_report(self, report: Dict, output_path: str):
+    def save_report(self, report: dict, output_path: str):
         """Save report to file."""
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -240,7 +238,7 @@ class DocumentationAuditor:
         print(f"Report saved to {output_file}")
         print(f"Markdown summary saved to {md_output}")
 
-    def generate_markdown_report(self, report: Dict, output_path: Path):
+    def generate_markdown_report(self, report: dict, output_path: Path):
         """Generate human-readable markdown report."""
         md_lines = [
             "# Documentation Audit Report",
@@ -310,10 +308,10 @@ def main():
     print("AUDIT SUMMARY")
     print("=" * 60)
     print(f"Total files: {report['total_files']}")
-    print(f"\nBy category:")
+    print("\nBy category:")
     for cat, count in report["categories"].items():
         print(f"  {cat}: {count}")
-    print(f"\nKeyword references:")
+    print("\nKeyword references:")
     for group, data in report["keyword_references"].items():
         print(f"  {group}: {data['count']} files")
     print(f"\nUsage guides found: {len(report['usage_guides_found'])}")

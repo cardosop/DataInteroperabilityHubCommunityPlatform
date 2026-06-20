@@ -14,11 +14,10 @@ Orchestrates dataset version creation process, including:
 - Audit logging
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
 from django.db import transaction
-from django.utils import timezone
 
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.datasets.business_rules import DatasetsBusinessRules
@@ -169,8 +168,8 @@ class VersionCreationWorkflow:
 
     @staticmethod
     def _detect_schema_changes_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Detect schema changes between parent version and new dataset.
 
@@ -298,8 +297,8 @@ class VersionCreationWorkflow:
 
     @staticmethod
     def _calculate_semantic_version_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Calculate semantic version based on schema changes.
 
@@ -366,8 +365,8 @@ class VersionCreationWorkflow:
     @staticmethod
     @transaction.atomic
     def _create_version_record_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create version record with version history tracking.
 
@@ -497,8 +496,8 @@ class VersionCreationWorkflow:
     @staticmethod
     @transaction.atomic
     def _store_version_snapshot_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Store version snapshot (optional).
 
@@ -529,8 +528,8 @@ class VersionCreationWorkflow:
                 "state": {"snapshot_stored": False},
             }
 
-        from hub.apps.tenants.models import Tenant
         from hub.apps.datasets.time_travel import TimeTravelQuery
+        from hub.apps.tenants.models import Tenant
 
         tenant_id = input_data.get("tenant_id") or instance.tenant_id
         tenant = Tenant.objects.get(id=tenant_id)
@@ -539,9 +538,7 @@ class VersionCreationWorkflow:
         # Route through TimeTravelQuery.create_snapshot so the
         # workflow inherits the same validation surface (Phase 260.6.B.R1
         # GAP-A): INCREMENTAL → NotImplementedError, unknown → ValueError.
-        snapshot = TimeTravelQuery.create_snapshot(
-            dataset, snapshot_type=snapshot_type
-        )
+        snapshot = TimeTravelQuery.create_snapshot(dataset, snapshot_type=snapshot_type)
 
         logger.info(
             "Version snapshot stored",
@@ -560,8 +557,8 @@ class VersionCreationWorkflow:
 
     @staticmethod
     def _update_version_history_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Update version history (track schema evolution).
 
@@ -653,8 +650,8 @@ class VersionCreationWorkflow:
 
     @staticmethod
     def _calculate_version_diff_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Calculate version diff between parent and new version.
 
@@ -745,8 +742,8 @@ class VersionCreationWorkflow:
 
     @staticmethod
     def _update_lineage_references_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Update lineage references for the new version.
 
@@ -792,8 +789,8 @@ class VersionCreationWorkflow:
 
     @staticmethod
     def _index_for_search_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Index dataset version for search.
 
@@ -841,8 +838,8 @@ class VersionCreationWorkflow:
 
     @staticmethod
     def _send_notifications_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Send notifications about version creation.
 
@@ -904,8 +901,8 @@ class VersionCreationWorkflow:
 
     @staticmethod
     def _audit_logging_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create audit log entry for version creation.
 
@@ -978,8 +975,8 @@ class VersionCreationWorkflow:
     @staticmethod
     @transaction.atomic
     def _rollback_version_record_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback version record creation (revert version history fields)"""
         dataset_id = instance.state_data.get("dataset_id")
 
@@ -1024,8 +1021,8 @@ class VersionCreationWorkflow:
     @staticmethod
     @transaction.atomic
     def _rollback_version_snapshot_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback version snapshot (delete snapshot)"""
         snapshot_id = instance.state_data.get("snapshot_id")
 
@@ -1057,8 +1054,8 @@ class VersionCreationWorkflow:
     @staticmethod
     @transaction.atomic
     def _rollback_indexing_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback search indexing (delete search index)"""
         search_index_id = instance.state_data.get("search_index_id")
 
@@ -1089,19 +1086,19 @@ class VersionCreationWorkflow:
         cls,
         tenant_id: str,
         dataset_id: str,
-        parent_version_id: Optional[str] = None,
-        semantic_version: Optional[str] = None,
-        version_tags: Optional[List[str]] = None,
-        snapshot_metadata: Optional[Dict[str, Any]] = None,
+        parent_version_id: str | None = None,
+        semantic_version: str | None = None,
+        version_tags: list[str] | None = None,
+        snapshot_metadata: dict[str, Any] | None = None,
         store_snapshot: bool = False,
         snapshot_type: str = "FULL",
         is_current: bool = True,
         send_notifications: bool = True,
         include_data_diff: bool = True,
-        triggered_by_id: Optional[str] = None,
-        engine: Optional[WorkflowEngine] = None,
-        registry: Optional[WorkflowRegistry] = None,
-    ) -> Dict[str, Any]:
+        triggered_by_id: str | None = None,
+        engine: WorkflowEngine | None = None,
+        registry: WorkflowRegistry | None = None,
+    ) -> dict[str, Any]:
         """
         Execute version creation workflow.
 

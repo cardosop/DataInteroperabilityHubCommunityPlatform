@@ -3,9 +3,9 @@
 Validates that SLO targets are defined for critical endpoints
 and that baseline data exists for regression comparison.
 """
+
 import json
 import os
-import pytest
 
 # SLO definitions — p95 targets in milliseconds
 SLO_TARGETS = {

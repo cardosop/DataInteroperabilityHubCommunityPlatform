@@ -3,22 +3,25 @@ Transformation Models
 
 Models for data transformation pipelines.
 """
+
 import uuid
-from typing import Dict, Any, Optional, List
-from django.db import models
+from typing import Any
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.db import models
 from django.utils import timezone
 
 from hub.apps.integrations.encryption import (
+    EncryptionError,
     decrypt_json_field,
     encrypt_json_field,
-    EncryptionError,
 )
 
 
 class PipelineStatus(models.TextChoices):
     """Pipeline status enumeration"""
+
     DRAFT = "DRAFT", "Draft"
     ACTIVE = "ACTIVE", "Active"
     INACTIVE = "INACTIVE", "Inactive"
@@ -27,15 +30,19 @@ class PipelineStatus(models.TextChoices):
 
 class ExecutionStatus(models.TextChoices):
     """Pipeline execution status enumeration"""
+
     PENDING = "PENDING", "Pending"
     RUNNING = "RUNNING", "Running"
     COMPLETED = "COMPLETED", "Completed"
     FAILED = "FAILED", "Failed"
     CANCELLED = "CANCELLED", "Cancelled"
+    PENDING_DEPENDENCY = "PENDING_DEPENDENCY", "Pending Dependency"
+    SKIPPED_UPSTREAM_FAILED = "SKIPPED_UPSTREAM_FAILED", "Skipped (Upstream Failed)"
 
 
 class ExecutionMode(models.TextChoices):
     """Pipeline execution mode enumeration"""
+
     SYNC = "SYNC", "Synchronous"
     ASYNC = "ASYNC", "Asynchronous"
     SCHEDULED = "SCHEDULED", "Scheduled"
@@ -53,17 +60,18 @@ class TransformationPipeline(models.Model):
     The pipeline_definition field stores the complete pipeline configuration
     as JSON, including nodes, connections, transformations, and execution logic.
     """
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
         editable=False,
-        help_text="Unique identifier for the pipeline"
+        help_text="Unique identifier for the pipeline",
     )
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="transformation_pipelines",
-        help_text="Tenant this pipeline belongs to"
+        help_text="Tenant this pipeline belongs to",
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -71,16 +79,14 @@ class TransformationPipeline(models.Model):
         related_name="created_transformation_pipelines",
         null=True,
         blank=True,
-        help_text="User who created the pipeline"
+        help_text="User who created the pipeline",
     )
     name = models.CharField(
         max_length=255,
-        help_text="Pipeline name (e.g., 'Customer Data Enrichment', 'Sales Aggregation')"
+        help_text="Pipeline name (e.g., 'Customer Data Enrichment', 'Sales Aggregation')",
     )
     description = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Pipeline description and purpose"
+        null=True, blank=True, help_text="Pipeline description and purpose"
     )
     pipeline_definition = models.JSONField(
         help_text="Complete pipeline definition (JSON format) including nodes, connections, transformations"
@@ -88,26 +94,20 @@ class TransformationPipeline(models.Model):
     version = models.CharField(
         max_length=50,
         default="1.0.0",
-        help_text="Pipeline version (semantic versioning: major.minor.patch)"
+        help_text="Pipeline version (semantic versioning: major.minor.patch)",
     )
     status = models.CharField(
         max_length=20,
         choices=PipelineStatus.choices,
         default=PipelineStatus.DRAFT,
-        help_text="Pipeline status: DRAFT, ACTIVE, INACTIVE, ARCHIVED"
+        help_text="Pipeline status: DRAFT, ACTIVE, INACTIVE, ARCHIVED",
     )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        help_text="When the pipeline was created"
-    )
-    updated_at = models.DateTimeField(
-        auto_now=True,
-        help_text="When the pipeline was last updated"
-    )
+    created_at = models.DateTimeField(auto_now_add=True, help_text="When the pipeline was created")
+    updated_at = models.DateTimeField(auto_now=True, help_text="When the pipeline was last updated")
     metadata = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Additional metadata (tags, categories, source/target assets, etc.)"
+        help_text="Additional metadata (tags, categories, source/target assets, etc.)",
     )
 
     # ── dbt-native fields (Phase 285.9) ──────────────────────────────
@@ -144,8 +144,7 @@ class TransformationPipeline(models.Model):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["tenant", "name", "version"],
-                name="unique_pipeline_name_version_per_tenant"
+                fields=["tenant", "name", "version"], name="unique_pipeline_name_version_per_tenant"
             )
         ]
 
@@ -167,9 +166,9 @@ class TransformationPipeline(models.Model):
 
         # Validate pipeline_definition is a dictionary
         if not isinstance(self.pipeline_definition, dict):
-            raise ValidationError({
-                "pipeline_definition": "Pipeline definition must be a JSON object"
-            })
+            raise ValidationError(
+                {"pipeline_definition": "Pipeline definition must be a JSON object"}
+            )
 
         # Skip structural validation if already encrypted
         if "_encrypted" in self.pipeline_definition:
@@ -179,45 +178,39 @@ class TransformationPipeline(models.Model):
         required_fields = ["version", "steps"]
         for field in required_fields:
             if field not in self.pipeline_definition:
-                raise ValidationError({
-                    "pipeline_definition": f"Pipeline definition must contain '{field}' field"
-                })
+                raise ValidationError(
+                    {"pipeline_definition": f"Pipeline definition must contain '{field}' field"}
+                )
 
         # Validate version format (basic semantic versioning check)
         version_str = self.pipeline_definition.get("version", "")
         if not isinstance(version_str, str) or not version_str:
-            raise ValidationError({
-                "pipeline_definition": "Pipeline definition 'version' must be a non-empty string"
-            })
+            raise ValidationError(
+                {"pipeline_definition": "Pipeline definition 'version' must be a non-empty string"}
+            )
 
         # Validate steps is a list
         steps = self.pipeline_definition.get("steps", [])
         if not isinstance(steps, list):
-            raise ValidationError({
-                "pipeline_definition": "Pipeline definition 'steps' must be a list"
-            })
+            raise ValidationError(
+                {"pipeline_definition": "Pipeline definition 'steps' must be a list"}
+            )
 
         if len(steps) == 0:
-            raise ValidationError({
-                "pipeline_definition": "Pipeline definition must have at least one step"
-            })
+            raise ValidationError(
+                {"pipeline_definition": "Pipeline definition must have at least one step"}
+            )
 
         # Validate each step has required fields
         for i, step in enumerate(steps):
             if not isinstance(step, dict):
-                raise ValidationError({
-                    "pipeline_definition": f"Step {i} must be a JSON object"
-                })
+                raise ValidationError({"pipeline_definition": f"Step {i} must be a JSON object"})
 
             if "name" not in step:
-                raise ValidationError({
-                    "pipeline_definition": f"Step {i} must have a 'name' field"
-                })
+                raise ValidationError({"pipeline_definition": f"Step {i} must have a 'name' field"})
 
             if "type" not in step:
-                raise ValidationError({
-                    "pipeline_definition": f"Step {i} must have a 'type' field"
-                })
+                raise ValidationError({"pipeline_definition": f"Step {i} must have a 'type' field"})
 
     def save(self, *args, **kwargs):
         """
@@ -235,16 +228,12 @@ class TransformationPipeline(models.Model):
             and not self.pipeline_definition.get("_encrypted")
         ):
             try:
-                encrypted = encrypt_json_field(
-                    self.pipeline_definition
-                )
+                encrypted = encrypt_json_field(self.pipeline_definition)
                 self.pipeline_definition = {
                     "_encrypted": encrypted,
                 }
             except EncryptionError as e:
-                raise ValidationError(
-                    {"pipeline_definition": f"Failed to encrypt: {e}"}
-                ) from e
+                raise ValidationError({"pipeline_definition": f"Failed to encrypt: {e}"}) from e
 
         super().save(*args, **kwargs)
 
@@ -260,9 +249,7 @@ class TransformationPipeline(models.Model):
             return {}
         if isinstance(self.pipeline_definition, dict):
             if "_encrypted" in self.pipeline_definition:
-                return decrypt_json_field(
-                    self.pipeline_definition["_encrypted"]
-                )
+                return decrypt_json_field(self.pipeline_definition["_encrypted"])
             return self.pipeline_definition
         return {}
 
@@ -282,18 +269,18 @@ class TransformationPipeline(models.Model):
         """Activate the pipeline"""
         if self.status == PipelineStatus.DRAFT:
             self.status = PipelineStatus.ACTIVE
-            self.save(update_fields=['status', 'updated_at'])
+            self.save(update_fields=["status", "updated_at"])
 
     def deactivate(self):
         """Deactivate the pipeline"""
         if self.status == PipelineStatus.ACTIVE:
             self.status = PipelineStatus.INACTIVE
-            self.save(update_fields=['status', 'updated_at'])
+            self.save(update_fields=["status", "updated_at"])
 
     def archive(self):
         """Archive the pipeline"""
         self.status = PipelineStatus.ARCHIVED
-        self.save(update_fields=['status', 'updated_at'])
+        self.save(update_fields=["status", "updated_at"])
 
     def get_step_count(self) -> int:
         """Get the number of steps in the pipeline"""
@@ -309,6 +296,7 @@ class TransformationPipeline(models.Model):
 
 class NodeType(models.TextChoices):
     """Transformation node type enumeration"""
+
     FILTER = "filter", "Filter"
     JOIN = "join", "Join"
     AGGREGATE = "aggregate", "Aggregate"
@@ -336,43 +324,38 @@ class TransformationNode(models.Model):
         created_at: Timestamp when the node was created
         updated_at: Timestamp when the node was last updated
     """
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
         editable=False,
-        help_text="Unique identifier for the node"
+        help_text="Unique identifier for the node",
     )
     pipeline = models.ForeignKey(
         TransformationPipeline,
         on_delete=models.CASCADE,
         related_name="transformation_nodes",
-        help_text="Pipeline this node belongs to"
+        help_text="Pipeline this node belongs to",
     )
     node_type = models.CharField(
         max_length=50,
-        help_text="Type of transformation node (filter, join, aggregate, transform, output)"
+        help_text="Type of transformation node (filter, join, aggregate, transform, output)",
     )
     node_config = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Node configuration (JSON format) - filter expressions, join keys, aggregation functions, etc."
+        help_text="Node configuration (JSON format) - filter expressions, join keys, aggregation functions, etc.",
     )
     position = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Visual position coordinates (JSON format: {'x': number, 'y': number})"
+        help_text="Visual position coordinates (JSON format: {'x': number, 'y': number})",
     )
     order = models.IntegerField(
         help_text="Execution order within the pipeline (1-based, lower numbers execute first)"
     )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        help_text="When the node was created"
-    )
-    updated_at = models.DateTimeField(
-        auto_now=True,
-        help_text="When the node was last updated"
-    )
+    created_at = models.DateTimeField(auto_now_add=True, help_text="When the node was created")
+    updated_at = models.DateTimeField(auto_now=True, help_text="When the node was last updated")
 
     class Meta:
         db_table = "transformation_nodes"
@@ -399,32 +382,22 @@ class TransformationNode(models.Model):
 
         # Validate node_type is not empty
         if not self.node_type or not self.node_type.strip():
-            raise ValidationError({
-                "node_type": "Node type cannot be empty"
-            })
+            raise ValidationError({"node_type": "Node type cannot be empty"})
 
         # Validate node_config is a dictionary
         if not isinstance(self.node_config, dict):
-            raise ValidationError({
-                "node_config": "Node configuration must be a JSON object"
-            })
+            raise ValidationError({"node_config": "Node configuration must be a JSON object"})
 
         # Validate position is a dictionary
         if not isinstance(self.position, dict):
-            raise ValidationError({
-                "position": "Position must be a JSON object"
-            })
+            raise ValidationError({"position": "Position must be a JSON object"})
 
         # Validate order is non-negative
         if self.order is None:
-            raise ValidationError({
-                "order": "Order is required"
-            })
+            raise ValidationError({"order": "Order is required"})
 
         if self.order < 0:
-            raise ValidationError({
-                "order": "Order must be non-negative"
-            })
+            raise ValidationError({"order": "Order must be non-negative"})
 
     def save(self, *args, **kwargs):
         """
@@ -445,9 +418,7 @@ class TransformationNode(models.Model):
                 encrypted = encrypt_json_field(self.node_config)
                 self.node_config = {"_encrypted": encrypted}
             except EncryptionError as e:
-                raise ValidationError(
-                    {"node_config": f"Failed to encrypt: {e}"}
-                ) from e
+                raise ValidationError({"node_config": f"Failed to encrypt: {e}"}) from e
 
         super().save(*args, **kwargs)
 
@@ -463,9 +434,7 @@ class TransformationNode(models.Model):
             return {}
         if isinstance(self.node_config, dict):
             if "_encrypted" in self.node_config:
-                return decrypt_json_field(
-                    self.node_config["_encrypted"]
-                )
+                return decrypt_json_field(self.node_config["_encrypted"])
             return self.node_config
         return {}
 
@@ -480,45 +449,42 @@ class PipelineExecution(models.Model):
     Each execution represents a single run of a transformation pipeline
     that transforms data from a source asset to a result asset.
     """
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
         editable=False,
-        help_text="Unique identifier for the execution"
+        help_text="Unique identifier for the execution",
     )
     pipeline = models.ForeignKey(
         TransformationPipeline,
         on_delete=models.CASCADE,
         related_name="executions",
-        help_text="Transformation pipeline that was executed"
+        help_text="Transformation pipeline that was executed",
     )
     asset = models.ForeignKey(
         "assets.Asset",
         on_delete=models.CASCADE,
         related_name="transformation_executions",
-        help_text="Source asset that was transformed"
+        help_text="Source asset that was transformed",
     )
     execution_mode = models.CharField(
         max_length=20,
         choices=ExecutionMode.choices,
         default=ExecutionMode.MANUAL,
-        help_text="Execution mode: SYNC, ASYNC, SCHEDULED, MANUAL, AUTOMATED"
+        help_text="Execution mode: SYNC, ASYNC, SCHEDULED, MANUAL, AUTOMATED",
     )
     status = models.CharField(
-        max_length=20,
+        max_length=50,
         choices=ExecutionStatus.choices,
         default=ExecutionStatus.PENDING,
-        help_text="Execution status: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED"
+        help_text="Execution status: PENDING, RUNNING, COMPLETED, FAILED, "
+        "CANCELLED, PENDING_DEPENDENCY, SKIPPED_UPSTREAM_FAILED, "
+        "COMPENSATED",
     )
-    started_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When the execution started"
-    )
+    started_at = models.DateTimeField(null=True, blank=True, help_text="When the execution started")
     completed_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When the execution completed"
+        null=True, blank=True, help_text="When the execution completed"
     )
     result_asset = models.ForeignKey(
         "assets.Asset",
@@ -526,7 +492,7 @@ class PipelineExecution(models.Model):
         related_name="transformation_result_executions",
         null=True,
         blank=True,
-        help_text="Result asset created by the transformation (null if execution failed or not yet completed)"
+        help_text="Result asset created by the transformation (null if execution failed or not yet completed)",
     )
     job = models.ForeignKey(
         "jobs.Job",
@@ -534,7 +500,7 @@ class PipelineExecution(models.Model):
         related_name="pipeline_executions",
         null=True,
         blank=True,
-        help_text="Job record for async execution (null for sync executions)"
+        help_text="Job record for async execution (null for sync executions)",
     )
     workflow_instance = models.ForeignKey(
         "orchestration.WorkflowInstance",
@@ -542,17 +508,17 @@ class PipelineExecution(models.Model):
         related_name="pipeline_executions",
         null=True,
         blank=True,
-        help_text="Workflow instance that orchestrates this execution (null if not using workflow)"
+        help_text="Workflow instance that orchestrates this execution (null if not using workflow)",
     )
     execution_log = models.JSONField(
         default=list,
         blank=True,
-        help_text="Execution log entries (JSON array of log messages, errors, warnings)"
+        help_text="Execution log entries (JSON array of log messages, errors, warnings)",
     )
     metrics = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Execution metrics (duration, throughput, items processed, etc.)"
+        help_text="Execution metrics (duration, throughput, items processed, etc.)",
     )
     idempotency_key = models.CharField(
         max_length=255,
@@ -560,7 +526,7 @@ class PipelineExecution(models.Model):
         blank=True,
         unique=True,
         db_index=True,
-        help_text="Idempotency key for retry safety (uses execution_id by default)"
+        help_text="Idempotency key for retry safety (uses execution_id by default)",
     )
     prefect_flow_run_id = models.CharField(
         max_length=255,
@@ -570,12 +536,10 @@ class PipelineExecution(models.Model):
         help_text="Prefect flow run ID for this execution. Set after Prefect flow run creation.",
     )
     created_at = models.DateTimeField(
-        auto_now_add=True,
-        help_text="When the execution record was created"
+        auto_now_add=True, help_text="When the execution record was created"
     )
     updated_at = models.DateTimeField(
-        auto_now=True,
-        help_text="When the execution record was last updated"
+        auto_now=True, help_text="When the execution record was last updated"
     )
 
     class Meta:
@@ -596,7 +560,7 @@ class PipelineExecution(models.Model):
             models.UniqueConstraint(
                 fields=["idempotency_key"],
                 condition=models.Q(idempotency_key__isnull=False),
-                name="unique_idempotency_key_when_set"
+                name="unique_idempotency_key_when_set",
             ),
         ]
 
@@ -614,28 +578,21 @@ class PipelineExecution(models.Model):
 
         # Validate execution_log is a list
         if not isinstance(self.execution_log, list):
-            raise ValidationError({
-                "execution_log": "Execution log must be a JSON array"
-            })
+            raise ValidationError({"execution_log": "Execution log must be a JSON array"})
 
         # Validate metrics is a dictionary
         if not isinstance(self.metrics, dict):
-            raise ValidationError({
-                "metrics": "Metrics must be a JSON object"
-            })
+            raise ValidationError({"metrics": "Metrics must be a JSON object"})
 
         # Validate completed_at is after started_at if both are set
-        if self.started_at and self.completed_at:
-            if self.completed_at < self.started_at:
-                raise ValidationError({
-                    "completed_at": "Completed at must be after started at"
-                })
+        if self.started_at and self.completed_at and self.completed_at < self.started_at:
+            raise ValidationError({"completed_at": "Completed at must be after started at"})
 
         # Validate result_asset is set when status is COMPLETED
         if self.status == ExecutionStatus.COMPLETED and not self.result_asset:
-            raise ValidationError({
-                "result_asset": "Result asset must be set when execution is completed"
-            })
+            raise ValidationError(
+                {"result_asset": "Result asset must be set when execution is completed"}
+            )
 
     def save(self, *args, **kwargs):
         """
@@ -666,11 +623,17 @@ class PipelineExecution(models.Model):
     def is_terminal(self) -> bool:
         """Check if execution is in a terminal state"""
         # Handle both enum values and string values
-        status_value = self.status.value if hasattr(self.status, 'value') else self.status
+        status_value = self.status.value if hasattr(self.status, "value") else self.status
         terminal_values = [
-            ExecutionStatus.COMPLETED.value if hasattr(ExecutionStatus.COMPLETED, 'value') else ExecutionStatus.COMPLETED,
-            ExecutionStatus.FAILED.value if hasattr(ExecutionStatus.FAILED, 'value') else ExecutionStatus.FAILED,
-            ExecutionStatus.CANCELLED.value if hasattr(ExecutionStatus.CANCELLED, 'value') else ExecutionStatus.CANCELLED
+            ExecutionStatus.COMPLETED.value
+            if hasattr(ExecutionStatus.COMPLETED, "value")
+            else ExecutionStatus.COMPLETED,
+            ExecutionStatus.FAILED.value
+            if hasattr(ExecutionStatus.FAILED, "value")
+            else ExecutionStatus.FAILED,
+            ExecutionStatus.CANCELLED.value
+            if hasattr(ExecutionStatus.CANCELLED, "value")
+            else ExecutionStatus.CANCELLED,
         ]
         return status_value in terminal_values
 
@@ -683,7 +646,7 @@ class PipelineExecution(models.Model):
         if self.status == ExecutionStatus.PENDING:
             self.status = ExecutionStatus.RUNNING
             self.started_at = timezone.now()
-            self.save(update_fields=['status', 'started_at', 'updated_at'])
+            self.save(update_fields=["status", "started_at", "updated_at"])
 
     def mark_completed(self, result_asset=None, metrics=None):
         """
@@ -703,7 +666,9 @@ class PipelineExecution(models.Model):
                     self.metrics.update(metrics)
                 else:
                     self.metrics = metrics
-            self.save(update_fields=['status', 'completed_at', 'result_asset', 'metrics', 'updated_at'])
+            self.save(
+                update_fields=["status", "completed_at", "result_asset", "metrics", "updated_at"]
+            )
 
     def mark_failed(self, error_message=None, execution_log_entry=None):
         """
@@ -723,31 +688,35 @@ class PipelineExecution(models.Model):
                     log_entry = {
                         "timestamp": timezone.now().isoformat(),
                         "level": "ERROR",
-                        "message": execution_log_entry
+                        "message": execution_log_entry,
                     }
                     self.execution_log.append(log_entry)
                 else:
-                    self.execution_log = [{
-                        "timestamp": timezone.now().isoformat(),
-                        "level": "ERROR",
-                        "message": execution_log_entry
-                    }]
+                    self.execution_log = [
+                        {
+                            "timestamp": timezone.now().isoformat(),
+                            "level": "ERROR",
+                            "message": execution_log_entry,
+                        }
+                    ]
             elif error_message:
                 if isinstance(self.execution_log, list):
                     log_entry = {
                         "timestamp": timezone.now().isoformat(),
                         "level": "ERROR",
-                        "message": error_message
+                        "message": error_message,
                     }
                     self.execution_log.append(log_entry)
                 else:
-                    self.execution_log = [{
-                        "timestamp": timezone.now().isoformat(),
-                        "level": "ERROR",
-                        "message": error_message
-                    }]
+                    self.execution_log = [
+                        {
+                            "timestamp": timezone.now().isoformat(),
+                            "level": "ERROR",
+                            "message": error_message,
+                        }
+                    ]
 
-            self.save(update_fields=['status', 'completed_at', 'execution_log', 'updated_at'])
+            self.save(update_fields=["status", "completed_at", "execution_log", "updated_at"])
 
     def mark_cancelled(self):
         """Mark execution as cancelled"""
@@ -755,7 +724,7 @@ class PipelineExecution(models.Model):
             self.status = ExecutionStatus.CANCELLED
             self.completed_at = timezone.now()
             self.add_log_entry("Execution cancelled", "INFO")
-            self.save(update_fields=['status', 'completed_at', 'execution_log', 'updated_at'])
+            self.save(update_fields=["status", "completed_at", "execution_log", "updated_at"])
 
     def sync_status_from_job(self):
         """
@@ -787,15 +756,21 @@ class PipelineExecution(models.Model):
                 return False
             # If both are terminal, allow sync to ensure consistency (but only if statuses match)
             # For example, if execution is COMPLETED and job is COMPLETED, no update needed
-            if (self.status == ExecutionStatus.COMPLETED and job_status == JobStatus.COMPLETED) or \
-               (self.status == ExecutionStatus.FAILED and job_status == JobStatus.FAILED) or \
-               (self.status == ExecutionStatus.CANCELLED and job_status == JobStatus.CANCELLED):
+            if (
+                (self.status == ExecutionStatus.COMPLETED and job_status == JobStatus.COMPLETED)
+                or (self.status == ExecutionStatus.FAILED and job_status == JobStatus.FAILED)
+                or (self.status == ExecutionStatus.CANCELLED and job_status == JobStatus.CANCELLED)
+            ):
                 return False  # Already in sync
 
         # Map job status to execution status
         if job_status == JobStatus.PENDING and self.status != ExecutionStatus.PENDING:
             # Job is pending, execution should be pending
-            if self.status not in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.CANCELLED]:
+            if self.status not in [
+                ExecutionStatus.COMPLETED,
+                ExecutionStatus.FAILED,
+                ExecutionStatus.CANCELLED,
+            ]:
                 self.status = ExecutionStatus.PENDING
                 updated = True
         elif job_status == JobStatus.RUNNING and self.status != ExecutionStatus.RUNNING:
@@ -834,7 +809,15 @@ class PipelineExecution(models.Model):
                 updated = True
 
         if updated:
-            self.save(update_fields=['status', 'started_at', 'completed_at', 'execution_log', 'updated_at'])
+            self.save(
+                update_fields=[
+                    "status",
+                    "started_at",
+                    "completed_at",
+                    "execution_log",
+                    "updated_at",
+                ]
+            )
 
         return updated
 
@@ -852,10 +835,10 @@ class PipelineExecution(models.Model):
         log_entry = {
             "timestamp": timezone.now().isoformat(),
             "level": level.upper(),
-            "message": message
+            "message": message,
         }
         self.execution_log.append(log_entry)
-        self.save(update_fields=['execution_log', 'updated_at'])
+        self.save(update_fields=["execution_log", "updated_at"])
 
     def get_duration_seconds(self) -> float:
         """
@@ -879,7 +862,7 @@ class PipelineExecution(models.Model):
             self.metrics = {}
 
         self.metrics.update(kwargs)
-        self.save(update_fields=['metrics', 'updated_at'])
+        self.save(update_fields=["metrics", "updated_at"])
 
     def get_workflow_instance(self):
         """
@@ -898,7 +881,7 @@ class PipelineExecution(models.Model):
             workflow_instance: WorkflowInstance instance
         """
         self.workflow_instance = workflow_instance
-        self.save(update_fields=['workflow_instance', 'updated_at'])
+        self.save(update_fields=["workflow_instance", "updated_at"])
 
     def sync_status_from_workflow(self):
         """
@@ -924,12 +907,28 @@ class PipelineExecution(models.Model):
 
         # Don't update if execution is already in a terminal state and workflow is not terminal
         if self.is_terminal():
-            if workflow_status not in [WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.CANCELLED, WorkflowStatus.ROLLED_BACK]:
+            if workflow_status not in [
+                WorkflowStatus.COMPLETED,
+                WorkflowStatus.FAILED,
+                WorkflowStatus.CANCELLED,
+                WorkflowStatus.ROLLED_BACK,
+            ]:
                 return False
             # If both are terminal, allow sync to ensure consistency
-            if (self.status == ExecutionStatus.COMPLETED and workflow_status == WorkflowStatus.COMPLETED) or \
-               (self.status == ExecutionStatus.FAILED and workflow_status in [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK]) or \
-               (self.status == ExecutionStatus.CANCELLED and workflow_status == WorkflowStatus.CANCELLED):
+            if (
+                (
+                    self.status == ExecutionStatus.COMPLETED
+                    and workflow_status == WorkflowStatus.COMPLETED
+                )
+                or (
+                    self.status == ExecutionStatus.FAILED
+                    and workflow_status in [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK]
+                )
+                or (
+                    self.status == ExecutionStatus.CANCELLED
+                    and workflow_status == WorkflowStatus.CANCELLED
+                )
+            ):
                 return False  # Already in sync
 
         # Map workflow status to execution status
@@ -939,14 +938,20 @@ class PipelineExecution(models.Model):
                 if not self.started_at:
                     self.started_at = timezone.now()
                 updated = True
-        elif workflow_status == WorkflowStatus.COMPLETED and self.status != ExecutionStatus.COMPLETED:
+        elif (
+            workflow_status == WorkflowStatus.COMPLETED and self.status != ExecutionStatus.COMPLETED
+        ):
             if self.status in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
                 self.status = ExecutionStatus.COMPLETED
                 if not self.completed_at:
                     self.completed_at = timezone.now()
                 # Get result_asset_id from workflow state_data if available
-                if self.workflow_instance.state_data and "result_asset_id" in self.workflow_instance.state_data:
+                if (
+                    self.workflow_instance.state_data
+                    and "result_asset_id" in self.workflow_instance.state_data
+                ):
                     from hub.apps.assets.models import Asset
+
                     try:
                         result_asset_id = self.workflow_instance.state_data["result_asset_id"]
                         if result_asset_id:
@@ -963,27 +968,39 @@ class PipelineExecution(models.Model):
                 error_msg = self.workflow_instance.error_message or "Workflow execution failed"
                 self.add_log_entry(f"Workflow failed: {error_msg}", "ERROR")
                 updated = True
-        elif workflow_status == WorkflowStatus.ROLLED_BACK and self.status != ExecutionStatus.FAILED:
+        elif (
+            workflow_status == WorkflowStatus.ROLLED_BACK and self.status != ExecutionStatus.FAILED
+        ):
             if self.status in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
                 self.status = ExecutionStatus.FAILED
                 if not self.completed_at:
                     self.completed_at = timezone.now()
                 self.add_log_entry("Workflow rolled back", "ERROR")
                 updated = True
-        elif workflow_status == WorkflowStatus.CANCELLED and self.status != ExecutionStatus.CANCELLED:
-            if self.status in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
-                self.status = ExecutionStatus.CANCELLED
-                if not self.completed_at:
-                    self.completed_at = timezone.now()
-                self.add_log_entry("Execution cancelled via workflow cancellation", "INFO")
-                updated = True
+        elif (
+            workflow_status == WorkflowStatus.CANCELLED and self.status != ExecutionStatus.CANCELLED
+        ) and self.status in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
+            self.status = ExecutionStatus.CANCELLED
+            if not self.completed_at:
+                self.completed_at = timezone.now()
+            self.add_log_entry("Execution cancelled via workflow cancellation", "INFO")
+            updated = True
 
         if updated:
-            self.save(update_fields=['status', 'started_at', 'completed_at', 'result_asset', 'execution_log', 'updated_at'])
+            self.save(
+                update_fields=[
+                    "status",
+                    "started_at",
+                    "completed_at",
+                    "result_asset",
+                    "execution_log",
+                    "updated_at",
+                ]
+            )
 
         return updated
 
-    def get_workflow_progress(self) -> Optional[float]:
+    def get_workflow_progress(self) -> float | None:
         """
         Get workflow execution progress percentage.
 
@@ -993,14 +1010,13 @@ class PipelineExecution(models.Model):
         if not self.workflow_instance:
             return None
 
-        from hub.apps.orchestration.models import WorkflowInstance
         from hub.apps.orchestration.workflow_engine import WorkflowEngine
 
         engine = WorkflowEngine()
         progress = engine._calculate_progress(self.workflow_instance)
         return progress
 
-    def get_workflow_state(self) -> Optional[Dict[str, Any]]:
+    def get_workflow_state(self) -> dict[str, Any] | None:
         """
         Get workflow state data.
 
@@ -1015,6 +1031,7 @@ class PipelineExecution(models.Model):
 
 class WranglingOperationType(models.TextChoices):
     """Wrangling operation type enumeration"""
+
     FILTER = "FILTER", "Filter"
     SORT = "SORT", "Sort"
     TRANSFORM = "TRANSFORM", "Transform"
@@ -1041,17 +1058,18 @@ class WranglingSession(models.Model):
     Represents an interactive data wrangling session where users can
     perform operations on data with undo/redo support.
     """
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
         editable=False,
-        help_text="Unique identifier for the wrangling session"
+        help_text="Unique identifier for the wrangling session",
     )
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="wrangling_sessions",
-        help_text="Tenant this session belongs to"
+        help_text="Tenant this session belongs to",
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -1059,73 +1077,51 @@ class WranglingSession(models.Model):
         related_name="created_wrangling_sessions",
         null=True,
         blank=True,
-        help_text="User who created the session"
+        help_text="User who created the session",
     )
     asset = models.ForeignKey(
         "assets.Asset",
         on_delete=models.CASCADE,
         related_name="wrangling_sessions",
-        help_text="Source asset being wrangled"
+        help_text="Source asset being wrangled",
     )
-    name = models.CharField(
-        max_length=255,
-        help_text="Session name"
-    )
-    description = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Session description"
-    )
+    name = models.CharField(max_length=255, help_text="Session name")
+    description = models.TextField(null=True, blank=True, help_text="Session description")
     # Current state snapshot (JSON representation of current data state)
     current_state = models.JSONField(
-        null=True,
-        blank=True,
-        help_text="Current state snapshot after all operations"
+        null=True, blank=True, help_text="Current state snapshot after all operations"
     )
     # Operation history (list of operations with undo/redo support)
     operation_history = models.JSONField(
-        default=list,
-        help_text="List of operations performed in this session"
+        default=list, help_text="List of operations performed in this session"
     )
     # Current position in history (for undo/redo)
     history_position = models.IntegerField(
-        default=-1,
-        help_text="Current position in operation history (-1 = at end)"
+        default=-1, help_text="Current position in operation history (-1 = at end)"
     )
     # Generated wrangling script
     wrangling_script = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Generated script representation of operations"
+        null=True, blank=True, help_text="Generated script representation of operations"
     )
     # Metadata
     metadata = models.JSONField(
-        null=True,
-        blank=True,
-        default=dict,
-        help_text="Additional metadata"
+        null=True, blank=True, default=dict, help_text="Additional metadata"
     )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        help_text="When the session was created"
-    )
-    updated_at = models.DateTimeField(
-        auto_now=True,
-        help_text="When the session was last updated"
-    )
+    created_at = models.DateTimeField(auto_now_add=True, help_text="When the session was created")
+    updated_at = models.DateTimeField(auto_now=True, help_text="When the session was last updated")
 
     class Meta:
-        db_table = 'wrangling_sessions'
+        db_table = "wrangling_sessions"
         indexes = [
-            models.Index(fields=['tenant', 'asset']),
-            models.Index(fields=['created_by', 'created_at']),
+            models.Index(fields=["tenant", "asset"]),
+            models.Index(fields=["created_by", "created_at"]),
         ]
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
 
     def __str__(self):
         return f"Wrangling Session: {self.name} ({self.id})"
 
-    def add_operation(self, operation: Dict[str, Any]) -> int:
+    def add_operation(self, operation: dict[str, Any]) -> int:
         """
         Add an operation to the history.
 
@@ -1140,17 +1136,17 @@ class WranglingSession(models.Model):
 
         # If we're not at the end of history, truncate future operations (redo is lost)
         if self.history_position < len(self.operation_history) - 1:
-            self.operation_history = self.operation_history[:self.history_position + 1]
+            self.operation_history = self.operation_history[: self.history_position + 1]
 
         # Add operation
         operation_with_metadata = {
             **operation,
             "timestamp": timezone.now().isoformat(),
-            "index": len(self.operation_history)
+            "index": len(self.operation_history),
         }
         self.operation_history.append(operation_with_metadata)
         self.history_position = len(self.operation_history) - 1
-        self.save(update_fields=['operation_history', 'history_position', 'updated_at'])
+        self.save(update_fields=["operation_history", "history_position", "updated_at"])
 
         return self.history_position
 
@@ -1161,11 +1157,11 @@ class WranglingSession(models.Model):
     def can_redo(self) -> bool:
         """Check if redo is possible"""
         return (
-            isinstance(self.operation_history, list) and
-            self.history_position < len(self.operation_history) - 1
+            isinstance(self.operation_history, list)
+            and self.history_position < len(self.operation_history) - 1
         )
 
-    def undo(self) -> Optional[Dict[str, Any]]:
+    def undo(self) -> dict[str, Any] | None:
         """
         Undo the last operation.
 
@@ -1177,11 +1173,11 @@ class WranglingSession(models.Model):
 
         undone_operation = self.operation_history[self.history_position]
         self.history_position -= 1
-        self.save(update_fields=['history_position', 'updated_at'])
+        self.save(update_fields=["history_position", "updated_at"])
 
         return undone_operation
 
-    def redo(self) -> Optional[Dict[str, Any]]:
+    def redo(self) -> dict[str, Any] | None:
         """
         Redo the next operation.
 
@@ -1193,11 +1189,11 @@ class WranglingSession(models.Model):
 
         self.history_position += 1
         redone_operation = self.operation_history[self.history_position]
-        self.save(update_fields=['history_position', 'updated_at'])
+        self.save(update_fields=["history_position", "updated_at"])
 
         return redone_operation
 
-    def get_applied_operations(self) -> List[Dict[str, Any]]:
+    def get_applied_operations(self) -> list[dict[str, Any]]:
         """
         Get all operations that are currently applied (up to history_position).
 
@@ -1207,7 +1203,7 @@ class WranglingSession(models.Model):
         if not isinstance(self.operation_history, list):
             return []
 
-        return self.operation_history[:self.history_position + 1]
+        return self.operation_history[: self.history_position + 1]
 
     def generate_script(self, script_format: str = "python") -> str:
         """
@@ -1227,13 +1223,20 @@ class WranglingSession(models.Model):
             return self._generate_sql_script(applied_ops)
         elif script_format == "json":
             import json
+
             return json.dumps(applied_ops, indent=2)
         else:
             raise ValueError(f"Unsupported script format: {script_format}")
 
-    def _generate_python_script(self, operations: List[Dict[str, Any]]) -> str:
+    def _generate_python_script(self, operations: list[dict[str, Any]]) -> str:
         """Generate Python script from operations"""
-        lines = ["# Data Wrangling Script", "import pandas as pd", "", "df = pd.read_csv('input.csv')  # Load your data", ""]
+        lines = [
+            "# Data Wrangling Script",
+            "import pandas as pd",
+            "",
+            "df = pd.read_csv('input.csv')  # Load your data",
+            "",
+        ]
 
         for op in operations:
             op_type = op.get("type")
@@ -1263,7 +1266,7 @@ class WranglingSession(models.Model):
         lines.append("df.to_csv('output.csv', index=False)  # Save result")
         return "\n".join(lines)
 
-    def _generate_sql_script(self, operations: List[Dict[str, Any]]) -> str:
+    def _generate_sql_script(self, operations: list[dict[str, Any]]) -> str:
         """Generate SQL script from operations"""
         # Simplified SQL generation - would need more complex logic for full SQL
         lines = ["-- Data Wrangling SQL Script", "SELECT * FROM input_table"]
@@ -1290,51 +1293,40 @@ class WranglingOperation(models.Model):
 
     Represents a single data wrangling operation with its parameters and result.
     """
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
         editable=False,
-        help_text="Unique identifier for the operation"
+        help_text="Unique identifier for the operation",
     )
     session = models.ForeignKey(
         WranglingSession,
         on_delete=models.CASCADE,
         related_name="operations",
-        help_text="Wrangling session this operation belongs to"
+        help_text="Wrangling session this operation belongs to",
     )
     operation_type = models.CharField(
-        max_length=50,
-        choices=WranglingOperationType.choices,
-        help_text="Type of operation"
+        max_length=50, choices=WranglingOperationType.choices, help_text="Type of operation"
     )
-    parameters = models.JSONField(
-        help_text="Operation parameters (operation-specific)"
-    )
+    parameters = models.JSONField(help_text="Operation parameters (operation-specific)")
     # Result snapshot (optional, for large results we might not store)
     result_snapshot = models.JSONField(
-        null=True,
-        blank=True,
-        help_text="Result snapshot after operation (optional)"
+        null=True, blank=True, help_text="Result snapshot after operation (optional)"
     )
     # Metadata
     metadata = models.JSONField(
-        null=True,
-        blank=True,
-        default=dict,
-        help_text="Additional operation metadata"
+        null=True, blank=True, default=dict, help_text="Additional operation metadata"
     )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        help_text="When the operation was created"
-    )
+    created_at = models.DateTimeField(auto_now_add=True, help_text="When the operation was created")
 
     class Meta:
-        db_table = 'wrangling_operations'
+        db_table = "wrangling_operations"
         indexes = [
-            models.Index(fields=['session', 'created_at']),
-            models.Index(fields=['operation_type']),
+            models.Index(fields=["session", "created_at"]),
+            models.Index(fields=["operation_type"]),
         ]
-        ordering = ['created_at']
+        ordering = ["created_at"]
 
     def __str__(self):
         return f"{self.get_operation_type_display()}: {self.id}"
@@ -1346,23 +1338,21 @@ class PreviewResult(models.Model):
 
     Stores preview results for transformation pipelines to enable retrieval by preview_id.
     """
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
         editable=False,
-        help_text="Unique identifier for the preview result"
+        help_text="Unique identifier for the preview result",
     )
     preview_id = models.CharField(
-        max_length=255,
-        unique=True,
-        db_index=True,
-        help_text="Preview ID (hash-based identifier)"
+        max_length=255, unique=True, db_index=True, help_text="Preview ID (hash-based identifier)"
     )
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="preview_results",
-        help_text="Tenant this preview belongs to"
+        help_text="Tenant this preview belongs to",
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -1370,19 +1360,19 @@ class PreviewResult(models.Model):
         related_name="created_preview_results",
         null=True,
         blank=True,
-        help_text="User who created the preview"
+        help_text="User who created the preview",
     )
     pipeline = models.ForeignKey(
         TransformationPipeline,
         on_delete=models.CASCADE,
         related_name="preview_results",
-        help_text="Pipeline that was previewed"
+        help_text="Pipeline that was previewed",
     )
     asset = models.ForeignKey(
         "assets.Asset",
         on_delete=models.CASCADE,
         related_name="preview_results",
-        help_text="Source asset that was previewed"
+        help_text="Source asset that was previewed",
     )
     # Preview result data
     preview_data = models.JSONField(
@@ -1390,35 +1380,29 @@ class PreviewResult(models.Model):
     )
     # Cache key for reference
     cache_key = models.CharField(
-        max_length=255,
-        db_index=True,
-        help_text="Cache key used to store the preview result"
+        max_length=255, db_index=True, help_text="Cache key used to store the preview result"
     )
     # Metadata
-    sample_size = models.IntegerField(
-        help_text="Number of rows sampled"
-    )
+    sample_size = models.IntegerField(help_text="Number of rows sampled")
     sampling_method = models.CharField(
-        max_length=50,
-        help_text="Sampling method used (first_n, random)"
+        max_length=50, help_text="Sampling method used (first_n, random)"
     )
     generated_at = models.DateTimeField(
-        auto_now_add=True,
-        help_text="When the preview was generated"
+        auto_now_add=True, help_text="When the preview was generated"
     )
     expires_at = models.DateTimeField(
         help_text="When the preview expires (typically 1 hour after generation)"
     )
 
     class Meta:
-        db_table = 'preview_results'
-        ordering = ['-generated_at']
+        db_table = "preview_results"
+        ordering = ["-generated_at"]
         indexes = [
-            models.Index(fields=['preview_id']),
-            models.Index(fields=['tenant', 'generated_at']),
-            models.Index(fields=['pipeline', 'generated_at']),
-            models.Index(fields=['asset', 'generated_at']),
-            models.Index(fields=['expires_at']),
+            models.Index(fields=["preview_id"]),
+            models.Index(fields=["tenant", "generated_at"]),
+            models.Index(fields=["pipeline", "generated_at"]),
+            models.Index(fields=["asset", "generated_at"]),
+            models.Index(fields=["expires_at"]),
         ]
 
     def __str__(self):
@@ -1427,5 +1411,5 @@ class PreviewResult(models.Model):
     def is_expired(self) -> bool:
         """Check if preview has expired"""
         from django.utils import timezone
-        return timezone.now() > self.expires_at
 
+        return timezone.now() > self.expires_at

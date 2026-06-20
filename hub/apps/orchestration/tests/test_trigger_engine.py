@@ -1,10 +1,10 @@
 """
 285.11.3.4 — Tests for PipelineTriggerEngine.
 """
-import pytest
 
 import uuid
 
+import pytest
 from django.test import TestCase
 
 from hub.apps.orchestration.models import (
@@ -22,16 +22,25 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 def _make_tenant(flag=True):
     from hub.apps.tenants.models import Tenant
+
     slug = f"t-{uuid.uuid4().hex[:8]}"
     return Tenant.objects.create(
-        name=f"Test-{slug}", slug=slug, status="ACTIVE",
+        name=f"Test-{slug}",
+        slug=slug,
+        status="ACTIVE",
         pipeline_dependency_enabled=flag,
     )
 
 
-def _make_dep(tenant, upstream_type=PipelineType.DQ, upstream_id=None,
-              downstream_type=PipelineType.TRANSFORMATION, downstream_id=None,
-              dependency_type=DependencyType.TRIGGER, **kwargs):
+def _make_dep(
+    tenant,
+    upstream_type=PipelineType.DQ,
+    upstream_id=None,
+    downstream_type=PipelineType.TRANSFORMATION,
+    downstream_id=None,
+    dependency_type=DependencyType.TRIGGER,
+    **kwargs,
+):
     return PipelineDependency.objects.create(
         tenant=tenant,
         pipeline_type=upstream_type,
@@ -48,7 +57,6 @@ def _make_dep(tenant, upstream_type=PipelineType.DQ, upstream_id=None,
 
 @pytest.mark.integration
 class TestTriggerEngine(TestCase):
-
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -61,15 +69,20 @@ class TestTriggerEngine(TestCase):
         tenant = _make_tenant()
         upstream_id = str(uuid.uuid4())
         downstream_id = str(uuid.uuid4())
-        _make_dep(tenant, upstream_id=upstream_id,
-                  downstream_type=PipelineType.TRANSFORMATION,
-                  downstream_id=downstream_id,
-                  dependency_type=DependencyType.TRIGGER)
+        _make_dep(
+            tenant,
+            upstream_id=upstream_id,
+            downstream_type=PipelineType.TRANSFORMATION,
+            downstream_id=downstream_id,
+            dependency_type=DependencyType.TRIGGER,
+        )
 
         # Should not raise.
         _on_pipeline_terminal(
-            str(tenant.id), PipelineType.DQ,
-            upstream_id, "SUCCEEDED",
+            str(tenant.id),
+            PipelineType.DQ,
+            upstream_id,
+            "SUCCEEDED",
         )
 
     @pytest.mark.integration
@@ -78,13 +91,18 @@ class TestTriggerEngine(TestCase):
         tenant = _make_tenant()
         upstream_id = str(uuid.uuid4())
         downstream_id = str(uuid.uuid4())
-        _make_dep(tenant, upstream_id=upstream_id,
-                  downstream_type=PipelineType.TRANSFORMATION,
-                  downstream_id=downstream_id)
+        _make_dep(
+            tenant,
+            upstream_id=upstream_id,
+            downstream_type=PipelineType.TRANSFORMATION,
+            downstream_id=downstream_id,
+        )
 
         _on_pipeline_terminal(
-            str(tenant.id), PipelineType.DQ,
-            upstream_id, "FAILED",
+            str(tenant.id),
+            PipelineType.DQ,
+            upstream_id,
+            "FAILED",
         )
 
     @pytest.mark.integration
@@ -93,14 +111,19 @@ class TestTriggerEngine(TestCase):
         tenant = _make_tenant()
         upstream_id = str(uuid.uuid4())
         downstream_id = str(uuid.uuid4())
-        _make_dep(tenant, upstream_id=upstream_id,
-                  downstream_type=PipelineType.TRANSFORMATION,
-                  downstream_id=downstream_id)
+        _make_dep(
+            tenant,
+            upstream_id=upstream_id,
+            downstream_type=PipelineType.TRANSFORMATION,
+            downstream_id=downstream_id,
+        )
 
         # This should be no-op — status RUNNING is not terminal.
         _on_pipeline_terminal(
-            str(tenant.id), PipelineType.DQ,
-            upstream_id, "RUNNING",
+            str(tenant.id),
+            PipelineType.DQ,
+            upstream_id,
+            "RUNNING",
         )
 
     @pytest.mark.integration
@@ -111,16 +134,26 @@ class TestTriggerEngine(TestCase):
         d1 = str(uuid.uuid4())
         d2 = str(uuid.uuid4())
 
-        _make_dep(tenant, upstream_id=upstream_id,
-                  downstream_type=PipelineType.TRANSFORMATION,
-                  downstream_id=d1, priority=10)
-        _make_dep(tenant, upstream_id=upstream_id,
-                  downstream_type=PipelineType.COMPLIANCE,
-                  downstream_id=d2, priority=5)
+        _make_dep(
+            tenant,
+            upstream_id=upstream_id,
+            downstream_type=PipelineType.TRANSFORMATION,
+            downstream_id=d1,
+            priority=10,
+        )
+        _make_dep(
+            tenant,
+            upstream_id=upstream_id,
+            downstream_type=PipelineType.COMPLIANCE,
+            downstream_id=d2,
+            priority=5,
+        )
 
         _on_pipeline_terminal(
-            str(tenant.id), PipelineType.DQ,
-            upstream_id, "SUCCEEDED",
+            str(tenant.id),
+            PipelineType.DQ,
+            upstream_id,
+            "SUCCEEDED",
         )
 
     @pytest.mark.integration
@@ -131,16 +164,28 @@ class TestTriggerEngine(TestCase):
         b_id = str(uuid.uuid4())
         c_id = str(uuid.uuid4())
 
-        _make_dep(tenant, upstream_type=PipelineType.DQ, upstream_id=a_id,
-                  downstream_type=PipelineType.TRANSFORMATION,
-                  downstream_id=b_id, dependency_type=DependencyType.TRIGGER)
-        _make_dep(tenant, upstream_type=PipelineType.TRANSFORMATION, upstream_id=b_id,
-                  downstream_type=PipelineType.COMPLIANCE,
-                  downstream_id=c_id, dependency_type=DependencyType.TRIGGER)
+        _make_dep(
+            tenant,
+            upstream_type=PipelineType.DQ,
+            upstream_id=a_id,
+            downstream_type=PipelineType.TRANSFORMATION,
+            downstream_id=b_id,
+            dependency_type=DependencyType.TRIGGER,
+        )
+        _make_dep(
+            tenant,
+            upstream_type=PipelineType.TRANSFORMATION,
+            upstream_id=b_id,
+            downstream_type=PipelineType.COMPLIANCE,
+            downstream_id=c_id,
+            dependency_type=DependencyType.TRIGGER,
+        )
 
         _on_pipeline_terminal(
-            str(tenant.id), PipelineType.DQ,
-            a_id, "SUCCEEDED",
+            str(tenant.id),
+            PipelineType.DQ,
+            a_id,
+            "SUCCEEDED",
         )
 
     @pytest.mark.integration
@@ -150,7 +195,10 @@ class TestTriggerEngine(TestCase):
         for ptype in PipelineType.values:
             pid = str(uuid.uuid4())
             _on_pipeline_terminal(
-                str(tenant.id), ptype, pid, "SUCCEEDED",
+                str(tenant.id),
+                ptype,
+                pid,
+                "SUCCEEDED",
             )
 
     @pytest.mark.integration
@@ -159,14 +207,20 @@ class TestTriggerEngine(TestCase):
         tenant = _make_tenant()
         upstream_id = str(uuid.uuid4())
         downstream_id = str(uuid.uuid4())
-        _make_dep(tenant, upstream_type=PipelineType.DQ, upstream_id=upstream_id,
-                  downstream_type=PipelineType.COMPLIANCE,
-                  downstream_id=downstream_id,
-                  dependency_type=DependencyType.TRIGGER)
+        _make_dep(
+            tenant,
+            upstream_type=PipelineType.DQ,
+            upstream_id=upstream_id,
+            downstream_type=PipelineType.COMPLIANCE,
+            downstream_id=downstream_id,
+            dependency_type=DependencyType.TRIGGER,
+        )
 
         _on_pipeline_terminal(
-            str(tenant.id), PipelineType.DQ,
-            upstream_id, "SUCCEEDED",
+            str(tenant.id),
+            PipelineType.DQ,
+            upstream_id,
+            "SUCCEEDED",
         )
 
     @pytest.mark.integration
@@ -175,12 +229,18 @@ class TestTriggerEngine(TestCase):
         tenant = _make_tenant()
         upstream_id = str(uuid.uuid4())
         downstream_id = str(uuid.uuid4())
-        _make_dep(tenant, upstream_type=PipelineType.COMPLIANCE, upstream_id=upstream_id,
-                  downstream_type=PipelineType.TRANSFORMATION,
-                  downstream_id=downstream_id,
-                  dependency_type=DependencyType.TRIGGER)
+        _make_dep(
+            tenant,
+            upstream_type=PipelineType.COMPLIANCE,
+            upstream_id=upstream_id,
+            downstream_type=PipelineType.TRANSFORMATION,
+            downstream_id=downstream_id,
+            dependency_type=DependencyType.TRIGGER,
+        )
 
         _on_pipeline_terminal(
-            str(tenant.id), PipelineType.COMPLIANCE,
-            upstream_id, "SUCCEEDED",
+            str(tenant.id),
+            PipelineType.COMPLIANCE,
+            upstream_id,
+            "SUCCEEDED",
         )

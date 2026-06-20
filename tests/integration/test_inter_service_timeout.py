@@ -31,11 +31,11 @@ class TestServiceTimeoutBehavior:
         ]:
             response = client.get(endpoint)
             # Should return an error, but not a raw 500 crash
-            assert response.status_code != 0, \
-                f"Request should not hang indefinitely for {endpoint}"
+            assert response.status_code != 0, f"Request should not hang indefinitely for {endpoint}"
             # Acceptable: 200 (cached/offline), 502 (bad gateway), 503 (unavailable), 404
-            assert response.status_code in (200, 404, 502, 503), \
+            assert response.status_code in (200, 404, 502, 503), (
                 f"Expected 200/404/502/503 for {endpoint} with unreachable service, got {response.status_code}"
+            )
 
     @pytest.mark.django_db
     def test_api_root_available_without_services(self):
@@ -43,10 +43,11 @@ class TestServiceTimeoutBehavior:
         client = APIClient()
         response = client.get("/api/v1/")
         if response.status_code >= 500:
-            pytest.skip("Backend unavailable")
+            pytest.skip("Backend unavailable")  # noqa: skip-in-body — runtime service dependency
         # Root endpoint should work without any downstream services
-        assert response.status_code in (200, 301, 302), \
+        assert response.status_code in (200, 301, 302), (
             f"API root should be available, got {response.status_code}"
+        )
 
     @pytest.mark.django_db
     def test_health_endpoint_reflects_service_status(self):
@@ -54,8 +55,9 @@ class TestServiceTimeoutBehavior:
         client = APIClient()
         response = client.get("/api/v1/health/")
         # Health endpoint may return 200 (healthy) or 503 (degraded)
-        assert response.status_code in (200, 503, 404), \
+        assert response.status_code in (200, 503, 404), (
             f"Health check should return 200/503/404, got {response.status_code}"
+        )
 
 
 @pytest.mark.integration
@@ -67,15 +69,15 @@ class TestRetryAndCircuitBreaker:
     def test_api_calls_timeout_not_indefinite(self):
         """API calls to unresponsive endpoints must timeout, not hang."""
         import time
+
         client = APIClient()
 
         start = time.time()
-        response = client.get("/api/v1/")
+        client.get("/api/v1/")
         elapsed = time.time() - start
 
         # Response should come back within a reasonable time (not > 30s)
-        assert elapsed < 30, \
-            f"API root request took {elapsed:.1f}s, should complete in < 30s"
+        assert elapsed < 30, f"API root request took {elapsed:.1f}s, should complete in < 30s"
 
     @pytest.mark.django_db
     def test_service_unavailable_messages_are_clear(self):
@@ -86,13 +88,8 @@ class TestRetryAndCircuitBreaker:
             try:
                 data = response.json()
                 # Should have some error description
-                has_error = (
-                    "detail" in data
-                    or "error" in data
-                    or "message" in data
-                )
-                assert has_error, \
-                    f"Service unavailable response should have error detail: {data}"
+                has_error = "detail" in data or "error" in data or "message" in data
+                assert has_error, f"Service unavailable response should have error detail: {data}"
             except Exception:
                 pass  # Non-JSON response is acceptable for 502/503
 
@@ -106,9 +103,10 @@ class TestRetryAndCircuitBreaker:
         for endpoint in ["/api/v1/", "/api/v1/assets/"]:
             response = client.get(endpoint)
             if response.status_code >= 500:
-                pytest.skip(f"Backend unavailable for {endpoint}")
-            assert response.status_code not in (500, 502, 503, 504), \
+                pytest.skip(f"Backend unavailable for {endpoint}")  # noqa: skip-in-body — runtime service dependency
+            assert response.status_code not in (500, 502, 503, 504), (
                 f"Core endpoint {endpoint} should not fail due to unrelated service outage"
+            )
 
 
 @pytest.mark.integration
@@ -130,8 +128,9 @@ class TestGracefulDegradation:
             response = client.get(endpoint)
             if response.status_code >= 500:
                 continue
-            assert response.status_code in (200, 301, 302, 404), \
+            assert response.status_code in (200, 301, 302, 404), (
                 f"Read endpoint {endpoint} should be available, got {response.status_code}"
+            )
 
     @pytest.mark.django_db
     def test_unauthenticated_requests_get_401_not_500(self):
@@ -144,5 +143,6 @@ class TestGracefulDegradation:
             content_type="application/json",
         )
         # Should get 401 (Unauthorized) or 403 (Forbidden), not 500
-        assert response.status_code in (401, 403, 400, 415), \
+        assert response.status_code in (401, 403, 400, 415), (
             f"Unauthenticated POST should return 401/403/400/415, got {response.status_code}"
+        )

@@ -10,11 +10,12 @@ import os
 # This tells settings.py to use the production database for SDK tests
 os.environ["USE_PRODUCTION_DB_FOR_SDK_TESTS"] = "1"
 
+import contextlib
+
 import pytest
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 from tests.e2e.conftest import TenantFactory
 
@@ -33,7 +34,6 @@ def pytest_configure(config):
     # This is critical: pytest-django's --create-db flag forces DB creation,
     # but we need to use the existing production database
     try:
-        import pytest_django
         from pytest_django import fixtures
 
         # Store original django_db_setup if not already stored
@@ -77,11 +77,9 @@ def configure_sdk_test_database():
     This ensures the API service can see test data.
     CRITICAL: This must be called before Django sets up the test database.
     """
-    import os
 
     # This will be called in setUpClass before super().setUpClass()
     # which triggers database setup
-    pass
 
 
 def get_api_base_url() -> str:
@@ -145,7 +143,6 @@ class SDKTestBase(TestCase):
     def _fixture_teardown(cls):
         """Override to skip database flush for SDK tests"""
         # Don't flush the production database - we clean up manually
-        pass
 
     def tearDown(self):
         """Clean up test data after each test"""
@@ -153,16 +150,12 @@ class SDKTestBase(TestCase):
         # Delete in reverse order of creation (user, then tenant)
         try:
             if hasattr(self, "user") and self.user:
-                try:
+                with contextlib.suppress(Exception):
                     self.user.delete()
-                except Exception:
-                    pass
 
             if hasattr(self, "tenant") and self.tenant:
-                try:
+                with contextlib.suppress(Exception):
                     self.tenant.delete()
-                except Exception:
-                    pass
         except Exception:
             # Ignore cleanup errors to prevent hanging
             pass
@@ -378,7 +371,7 @@ class SDKTestBase(TestCase):
             async with httpx.AsyncClient(timeout=timeout_config) as client:
                 # Verify API is accessible first
                 try:
-                    health_check = await client.get(f"{self.api_base_url}/health/", timeout=5.0)
+                    await client.get(f"{self.api_base_url}/health/", timeout=5.0)
                 except Exception:
                     # Health check failed, but continue with login attempt
                     pass

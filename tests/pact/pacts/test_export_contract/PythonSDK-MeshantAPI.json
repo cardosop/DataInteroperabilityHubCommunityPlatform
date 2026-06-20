@@ -1,0 +1,83 @@
+{
+  "consumer": {
+    "name": "PythonSDK"
+  },
+  "interactions": [
+    {
+      "description": "export contract as ODCS",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a contract exists"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/contracts/123e4567-e89b-12d3-a456-426614174000/export/",
+        "query": {
+          "format": [
+            "odcs"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "content": "...",
+            "filename": "contract.odcs.yaml",
+            "format": "ODCS"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.content": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.filename": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.format": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pactRust": {
+      "ffi": "0.5.4",
+      "models": "1.3.11"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    }
+  },
+  "provider": {
+    "name": "MeshantAPI"
+  }
+}

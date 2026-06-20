@@ -17,11 +17,6 @@ import uuid
 from django.db import transaction
 from rest_framework import status
 
-from hub.apps.contracts.linking_validation import (
-    validate_odcs_to_odps_link,
-    validate_odps_to_odcs_link,
-    validate_referential_integrity,
-)
 from hub.apps.contracts.management.commands.migrate_contracts_to_odps import (
     Command as MigrateCommand,
 )
@@ -33,7 +28,7 @@ from hub.apps.contracts.models import (
     OriginalFormat,
     OriginalSpecType,
 )
-from hub.apps.contracts.normalization import normalize_contract, parse_contract
+from hub.apps.contracts.normalization import normalize_contract
 from hub.apps.contracts.spec_detection import detect_spec_type
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
@@ -249,8 +244,8 @@ class PostMigrationValidationE2EComprehensiveTest(ContractsAPITestBase):
             detected_spec_type,
             detected_spec_version,
             norm_status,
-            norm_errors,
-            norm_warnings,
+            _norm_errors,
+            _norm_warnings,
         ) = normalize_contract(raw_contract=odcs_raw, format="JSON")
 
         # Should succeed
@@ -400,7 +395,7 @@ class PostMigrationValidationE2EComprehensiveTest(ContractsAPITestBase):
         odcs_raw = json.dumps(odcs_data)
         odps_raw = json.dumps(odps_data)
 
-        odcs_contract = self.contract_service.create_contract(
+        self.contract_service.create_contract(
             original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
         )
 
@@ -652,7 +647,7 @@ class PostMigrationValidationE2EComprehensiveTest(ContractsAPITestBase):
                     result = report.validation_results[0]
                     if result.is_migrated:
                         # Check if data loss is detected
-                        data_comparison = result.data_comparison
+                        pass
                         # Note: Marketplace section removal might be detected
                         # depending on validator implementation
 

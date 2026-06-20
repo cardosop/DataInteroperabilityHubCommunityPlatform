@@ -9,12 +9,13 @@ Tests end-to-end cache size monitoring:
 
 All tests use real implementations (no mocks/stubs).
 """
-import json
-import os
-from pathlib import Path
-from django.test import TestCase, override_settings
 
-from hub.apps.contracts.ref_resolver import RefResolver, DEFAULT_CACHE_MAX_ENTRIES
+import json
+from pathlib import Path
+
+from django.test import TestCase
+
+from hub.apps.contracts.ref_resolver import DEFAULT_CACHE_MAX_ENTRIES, RefResolver
 from hub.apps.observability.otel_metrics import (
     odps_ref_cache_size,
     odps_ref_cache_size_limit,
@@ -67,11 +68,17 @@ class CacheSizeMonitoringIntegrationTest(TestCase):
         """Test that cache size alert is configured correctly."""
         # Path from test file: tests/integration/contracts/test_cache_size_monitoring.py
         # Go up to workspace root: /app
-        alerts_file = Path(__file__).parent.parent.parent.parent / "monitoring" / "prometheus" / "alerts" / "odps-alerts.yml"
+        alerts_file = (
+            Path(__file__).parent.parent.parent.parent
+            / "monitoring"
+            / "prometheus"
+            / "alerts"
+            / "odps-alerts.yml"
+        )
 
         self.assertTrue(alerts_file.exists(), f"ODPS alerts file should exist at {alerts_file}")
 
-        with open(alerts_file, 'r') as f:
+        with open(alerts_file) as f:
             alerts_content = f.read()
 
         # Verify alert exists
@@ -82,17 +89,28 @@ class CacheSizeMonitoringIntegrationTest(TestCase):
 
         # Verify alert checks cache size vs limit
         self.assertIn("odps_ref_cache_size", alerts_content, "Alert should use cache size metric")
-        self.assertIn("odps_ref_cache_size_limit", alerts_content, "Alert should use cache size limit metric")
+        self.assertIn(
+            "odps_ref_cache_size_limit", alerts_content, "Alert should use cache size limit metric"
+        )
 
     def test_cache_size_dashboard_exists(self):
         """Test that cache size dashboard panels exist."""
         # Path from test file: tests/integration/contracts/test_cache_size_monitoring.py
         # Go up to workspace root: /app
-        dashboard_file = Path(__file__).parent.parent.parent.parent / "monitoring" / "grafana" / "dashboards" / "odps-ref-resolution-performance.json"
+        dashboard_file = (
+            Path(__file__).parent.parent.parent.parent
+            / "monitoring"
+            / "grafana"
+            / "dashboards"
+            / "odps-ref-resolution-performance.json"
+        )
 
-        self.assertTrue(dashboard_file.exists(), f"ODPS ref resolution dashboard should exist at {dashboard_file}")
+        self.assertTrue(
+            dashboard_file.exists(),
+            f"ODPS ref resolution dashboard should exist at {dashboard_file}",
+        )
 
-        with open(dashboard_file, 'r') as f:
+        with open(dashboard_file) as f:
             dashboard = json.load(f)
 
         # Verify dashboard structure
@@ -104,25 +122,41 @@ class CacheSizeMonitoringIntegrationTest(TestCase):
         panel_titles = [panel.get("title", "") for panel in panels]
 
         # Verify cache size panels exist
-        self.assertIn("Cache Size Over Time", panel_titles, "Cache size over time panel should exist")
-        self.assertIn("Cache Size by Ref Type", panel_titles, "Cache size by ref type panel should exist")
+        self.assertIn(
+            "Cache Size Over Time", panel_titles, "Cache size over time panel should exist"
+        )
+        self.assertIn(
+            "Cache Size by Ref Type", panel_titles, "Cache size by ref type panel should exist"
+        )
         self.assertIn("Cache Size vs Limit", panel_titles, "Cache size vs limit panel should exist")
 
     def test_cache_size_dashboard_panel_queries(self):
         """Test that cache size dashboard panels have correct Prometheus queries."""
         # Path from test file: tests/integration/contracts/test_cache_size_monitoring.py
         # Go up to workspace root: /app
-        dashboard_file = Path(__file__).parent.parent.parent.parent / "monitoring" / "grafana" / "dashboards" / "odps-ref-resolution-performance.json"
+        dashboard_file = (
+            Path(__file__).parent.parent.parent.parent
+            / "monitoring"
+            / "grafana"
+            / "dashboards"
+            / "odps-ref-resolution-performance.json"
+        )
 
-        with open(dashboard_file, 'r') as f:
+        with open(dashboard_file) as f:
             dashboard = json.load(f)
 
         panels = dashboard["dashboard"]["panels"]
 
         # Find cache size panels
-        cache_size_panel = next((p for p in panels if p.get("title") == "Cache Size Over Time"), None)
-        cache_size_by_type_panel = next((p for p in panels if p.get("title") == "Cache Size by Ref Type"), None)
-        cache_size_vs_limit_panel = next((p for p in panels if p.get("title") == "Cache Size vs Limit"), None)
+        cache_size_panel = next(
+            (p for p in panels if p.get("title") == "Cache Size Over Time"), None
+        )
+        cache_size_by_type_panel = next(
+            (p for p in panels if p.get("title") == "Cache Size by Ref Type"), None
+        )
+        cache_size_vs_limit_panel = next(
+            (p for p in panels if p.get("title") == "Cache Size vs Limit"), None
+        )
 
         # Verify cache size over time panel
         self.assertIsNotNone(cache_size_panel, "Cache size over time panel should exist")
@@ -158,18 +192,21 @@ class CacheSizeMonitoringIntegrationTest(TestCase):
         """Test that cache size dashboard panel queries use valid Prometheus syntax."""
         # Path from test file: tests/integration/contracts/test_cache_size_monitoring.py
         # Go up to workspace root: /app
-        dashboard_file = Path(__file__).parent.parent.parent.parent / "monitoring" / "grafana" / "dashboards" / "odps-ref-resolution-performance.json"
+        dashboard_file = (
+            Path(__file__).parent.parent.parent.parent
+            / "monitoring"
+            / "grafana"
+            / "dashboards"
+            / "odps-ref-resolution-performance.json"
+        )
 
-        with open(dashboard_file, 'r') as f:
+        with open(dashboard_file) as f:
             dashboard = json.load(f)
 
         panels = dashboard["dashboard"]["panels"]
 
         # Find cache size panels
-        cache_size_panels = [
-            p for p in panels
-            if "Cache Size" in p.get("title", "")
-        ]
+        cache_size_panels = [p for p in panels if "Cache Size" in p.get("title", "")]
 
         for panel in cache_size_panels:
             if "targets" not in panel:
@@ -184,7 +221,7 @@ class CacheSizeMonitoringIntegrationTest(TestCase):
                 # Should contain metric name
                 self.assertTrue(
                     "odps_ref_cache_size" in expr or "odps_ref_cache_size_limit" in expr,
-                    f"Panel '{panel.get('title')}' query should contain cache size metric"
+                    f"Panel '{panel.get('title')}' query should contain cache size metric",
                 )
 
                 # Should have proper label filters if used
@@ -192,16 +229,22 @@ class CacheSizeMonitoringIntegrationTest(TestCase):
                     self.assertIn(
                         'ref_type="external"',
                         expr,
-                        f"Panel '{panel.get('title')}' should filter by ref_type='external'"
+                        f"Panel '{panel.get('title')}' should filter by ref_type='external'",
                     )
 
     def test_cache_size_alert_prometheus_syntax(self):
         """Test that cache size alert uses valid Prometheus syntax."""
         # Path from test file: tests/integration/contracts/test_cache_size_monitoring.py
         # Go up to workspace root: /app
-        alerts_file = Path(__file__).parent.parent.parent.parent / "monitoring" / "prometheus" / "alerts" / "odps-alerts.yml"
+        alerts_file = (
+            Path(__file__).parent.parent.parent.parent
+            / "monitoring"
+            / "prometheus"
+            / "alerts"
+            / "odps-alerts.yml"
+        )
 
-        with open(alerts_file, 'r') as f:
+        with open(alerts_file) as f:
             alerts_content = f.read()
 
         # Find ODPSHighCacheSize alert
@@ -213,9 +256,8 @@ class CacheSizeMonitoringIntegrationTest(TestCase):
         self.assertNotEqual(expr_start, -1, "Alert should have expr field")
 
         # Verify expression contains cache size metrics
-        self.assertIn("odps_ref_cache_size", alerts_content[expr_start:expr_start+500])
-        self.assertIn("odps_ref_cache_size_limit", alerts_content[expr_start:expr_start+500])
+        self.assertIn("odps_ref_cache_size", alerts_content[expr_start : expr_start + 500])
+        self.assertIn("odps_ref_cache_size_limit", alerts_content[expr_start : expr_start + 500])
 
         # Verify expression checks for >90% threshold
-        self.assertIn("0.90", alerts_content[expr_start:expr_start+500])
-
+        self.assertIn("0.90", alerts_content[expr_start : expr_start + 500])

@@ -3,7 +3,9 @@
 
 Covers the full breach workflow: create → notify → SLA tracking → resolution.
 """
+
 from typing import Any, Dict, List, Optional
+
 from .client import DataHubClient
 
 
@@ -37,7 +39,9 @@ class BreachAPI:
             notification_deadline: ISO-8601 statutory deadline override.
         """
         payload: Dict[str, Any] = {
-            "title": title, "description": description, "sla_level": sla_level,
+            "title": title,
+            "description": description,
+            "sla_level": sla_level,
         }
         if affected_data_categories:
             payload["affected_data_categories"] = affected_data_categories
@@ -73,7 +77,10 @@ class BreachAPI:
     # ── Update status ────────────────────────────────────────────────
 
     async def update_status(
-        self, incident_id: str, status: str, resolution_note: str = "",
+        self,
+        incident_id: str,
+        status: str,
+        resolution_note: str = "",
     ) -> Dict[str, Any]:
         """Update the status of a breach incident.
 
@@ -91,7 +98,10 @@ class BreachAPI:
     # ── Notifications ────────────────────────────────────────────────
 
     async def list_notifications(
-        self, incident_id: str, page: int = 1, page_size: int = 20,
+        self,
+        incident_id: str,
+        page: int = 1,
+        page_size: int = 20,
     ) -> Dict[str, Any]:
         """List notifications sent for a breach incident."""
         return await self.client.get(
@@ -100,7 +110,9 @@ class BreachAPI:
         )
 
     async def send_notification(
-        self, notification_id: str, outbound_reference: str,
+        self,
+        notification_id: str,
+        outbound_reference: str,
     ) -> Dict[str, Any]:
         """Mark a breach notification as sent.
 

@@ -24,9 +24,8 @@ from rest_framework.test import APIClient
 
 from hub.apps.billing.models import Invoice, Subscription, SubscriptionStatus
 from hub.apps.tenants.models import Tenant, TenantPlan, TenantStatus
-from hub.apps.users.models import Role, User, UserRole, UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 pytestmark = [
     pytest.mark.django_db,
@@ -51,7 +50,6 @@ class BillingAPIsComprehensiveTest(TestCase):
         rollback instead which provides isolation without flushing.
         """
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     """Comprehensive billing API integration tests"""
 
@@ -334,7 +332,7 @@ class BillingAPIsComprehensiveTest(TestCase):
         # Try to create an asset (should be blocked)
         import uuid
 
-        from hub.apps.assets.models import Asset, AssetStatus
+        from hub.apps.assets.models import AssetStatus
 
         unique_key = f"test-asset-{str(uuid.uuid4())[:8]}"
         response = self.client.post(

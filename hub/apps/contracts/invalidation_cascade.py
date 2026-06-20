@@ -4,9 +4,10 @@ Linked-asset warnings when a contract becomes INVALID (Phase 205).
 Does not change asset lifecycle status; only merges
 ``metadata_json.contract_warnings``.
 """
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any
 
 from django.utils import timezone
 
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
 
 
 def maybe_apply_invalidation_after_validation(
-    contract: "Contract",
+    contract: Contract,
     *,
     actor_user=None,
     request=None,
@@ -34,12 +35,10 @@ def maybe_apply_invalidation_after_validation(
         vs = vs.value
     if str(vs) != str(ValidationStatus.INVALID):
         return
-    apply_linked_contract_invalidation_warnings(
-        contract, actor_user=actor_user, request=request
-    )
+    apply_linked_contract_invalidation_warnings(contract, actor_user=actor_user, request=request)
 
 
-def persist_contract_validation_job_result(job_obj: Any, result: Dict[str, Any]) -> None:
+def persist_contract_validation_job_result(job_obj: Any, result: dict[str, Any]) -> None:
     """
     After a successful CONTRACT_VALIDATION RQ job, copy CLI outcome onto Contract.
 
@@ -89,11 +88,11 @@ def persist_contract_validation_job_result(job_obj: Any, result: Dict[str, Any])
 
 
 def apply_linked_contract_invalidation_warnings(
-    contract: "Contract",
+    contract: Contract,
     *,
     actor_user=None,
     request=None,
-) -> List[str]:
+) -> list[str]:
     """
     For each asset linked to *contract*, append a warning entry and emit audit.
 
@@ -103,14 +102,14 @@ def apply_linked_contract_invalidation_warnings(
     from hub.apps.assets.models import Asset
 
     now_iso = timezone.now().isoformat()
-    warning_entry: Dict[str, Any] = {
+    warning_entry: dict[str, Any] = {
         "contract_id": str(contract.id),
         "warning": "LINKED_CONTRACT_INVALID",
         "invalidated_at": now_iso,
     }
 
     qs = Asset.objects.filter(contracts__id=contract.id).distinct()
-    affected: List[str] = []
+    affected: list[str] = []
 
     for asset in qs.iterator(chunk_size=50):
         affected.append(str(asset.id))
@@ -118,9 +117,7 @@ def apply_linked_contract_invalidation_warnings(
         meta = raw_meta if isinstance(raw_meta, dict) else {}
         raw_cw = meta.get("contract_warnings") or []
         warnings = [w for w in raw_cw if isinstance(w, dict)]
-        warnings = [
-            w for w in warnings if w.get("contract_id") != str(contract.id)
-        ]
+        warnings = [w for w in warnings if w.get("contract_id") != str(contract.id)]
         warnings.append(warning_entry)
         merged = {**meta, "contract_warnings": warnings}
         Asset.objects.filter(pk=asset.pk).update(metadata_json=merged)

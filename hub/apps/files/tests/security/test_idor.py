@@ -21,7 +21,6 @@ patterns as ``tests/security/base_idor.py`` and DQ IDOR suites. No mocks.
 """
 
 from __future__ import annotations
-import pytest
 
 import uuid
 
@@ -32,15 +31,14 @@ from django.test.client import Client
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from hub.apps.assets.models import Asset
 from hub.apps.audit import event_types
 from hub.apps.audit.models import AuditEvent
-from hub.apps.assets.models import Asset
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.tests.test_base import _ensure_tenant_has_active_subscription
 from hub.apps.tenants.models import KYCStatus
 from hub.apps.users.models import Role, UserRole, UserStatus, UserTenantMembership
-
 from tests.security.base_idor import IDORTestBase
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -177,7 +175,8 @@ class FileEndpointIDORSuite(IDORTestBase):
             status=UserStatus.ACTIVE,
         )
         UserTenantMembership.objects.get_or_create(
-            user=auditor_user, tenant=self.tenant_b,
+            user=auditor_user,
+            tenant=self.tenant_b,
         )
         auditor_role, _ = Role.objects.get_or_create(
             tenant=self.tenant_b,
@@ -221,8 +220,7 @@ class FileEndpointIDORSuite(IDORTestBase):
                 self.assertEqual(
                     response.status_code,
                     status.HTTP_400_BAD_REQUEST,
-                    f"Malformed UUID path must yield 400, got "
-                    f"{response.status_code} for {path}",
+                    f"Malformed UUID path must yield 400, got {response.status_code} for {path}",
                 )
                 payload = getattr(response, "data", None)
                 text = str(payload).lower()

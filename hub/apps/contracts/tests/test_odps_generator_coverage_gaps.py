@@ -121,19 +121,11 @@ class ODPSGeneratorCoverageGapsTest(TestCase):
 
             result = format_odps_as_yaml(hub_contract)
             self.assertIsInstance(result, str)
-        except (ImportError, AttributeError) as e:
+        except (ImportError, AttributeError):
             # YAML formatting may not be available (optional feature)
             # This is acceptable - test passes if JSON works
             pass
-        except Exception as e:
-            # Log unexpected errors but don't fail test
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.debug(
-                "Unexpected error testing YAML formatting",
-                extra={"error_type": type(e).__name__},
-            )
+        # No broad except — unexpected exceptions must fail the test
 
     def test_generate_odps_assembly_edge_cases(self):
         """Test assembly edge cases (lines 621, 623, 625, 715)."""
@@ -412,7 +404,6 @@ class ODPSGeneratorCoverageGapsTest(TestCase):
 
     def test_format_odps_as_yaml_serialization_error(self):
         """Test YAML serialization error handling (line 1221)."""
-        import yaml
 
         from hub.apps.contracts.odps_generator import format_odps_as_yaml
 
@@ -505,19 +496,11 @@ class ODPSGeneratorCoverageGapsTest(TestCase):
 
             result = format_odps_as_yaml(odps_doc)
             self.assertIsInstance(result, str)
-        except (ImportError, AttributeError) as e:
+        except (ImportError, AttributeError):
             # YAML formatting may not be available (optional feature)
             # This is acceptable - test passes if JSON works
             pass
-        except Exception as e:
-            # Log unexpected errors but don't fail test
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.debug(
-                "Unexpected error testing YAML formatting",
-                extra={"error_type": type(e).__name__},
-            )
+        # No broad except — unexpected exceptions must fail the test
 
     def test_generate_odps_handles_unicode_characters(self):
         """Test that generation handles unicode characters correctly."""

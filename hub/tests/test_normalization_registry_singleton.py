@@ -7,13 +7,15 @@ historical multi-instance bug caused by importlib.util.spec_from_file_location.
 """
 
 from hub.apps.contracts.normalization import (
+    _NORMALIZER_REGISTRY,
     get_normalizer,
     register_normalizer,
-    _NORMALIZER_REGISTRY,
+)
+from hub.apps.contracts.normalization_engine import (
+    _NORMALIZER_REGISTRY as reg2,
 )
 from hub.apps.contracts.normalization_engine import (
     get_normalizer as ge,
-    _NORMALIZER_REGISTRY as reg2,
 )
 
 

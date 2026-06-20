@@ -6,11 +6,11 @@ Same doctrine as Phase 215's ``_mvp_gates_sync`` and Phase 216.X.8's
 ``_parse_bool_env_drift``. No shared module (D129), so we enforce identity
 via this ast-level comparison.
 """
+
 from __future__ import annotations
 
 import ast
 from pathlib import Path
-
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _CLI_PATH = _REPO_ROOT / "cli" / "tests" / "_persona_provisioning.py"

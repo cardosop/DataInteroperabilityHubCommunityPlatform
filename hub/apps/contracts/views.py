@@ -14,10 +14,8 @@ from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
 )
-from rest_framework import permissions
 
 from .models import Contract, NormalizationStatus, OriginalSpecType
-from .pagination import ContractPageNumberPagination
 from .serializers import (
     ContractCreateSerializer,
     ContractSerializer,
@@ -467,6 +465,7 @@ class ContractViewSet(
         except Exception as sort_err:
             from django.core.exceptions import FieldError
             from rest_framework.exceptions import ValidationError as DRFValidationError
+
             if isinstance(sort_err, FieldError):
                 raise DRFValidationError(
                     detail={"ordering": str(sort_err)},
@@ -507,9 +506,8 @@ class ContractViewSet(
         search_term = query_params.get("search")
         if search_term and search_term.strip():
             term = search_term.strip()
-            search_q = (
-                Q(hub_contract_json__info__name__icontains=term)
-                | Q(hub_contract_json__info__title__icontains=term)
+            search_q = Q(hub_contract_json__info__name__icontains=term) | Q(
+                hub_contract_json__info__title__icontains=term
             )
             queryset = queryset.filter(search_q)
 
@@ -581,9 +579,8 @@ class ContractViewSet(
                     elif owner_email:
                         if email_match:
                             contract_ids.append(contract.id)
-                    elif owner_name:
-                        if name_match:
-                            contract_ids.append(contract.id)
+                    elif owner_name and name_match:
+                        contract_ids.append(contract.id)
             except Exception as e:
                 # Log the error for debugging but don't fail silently
                 import logging
@@ -697,8 +694,10 @@ class ContractViewSet(
         if server_url:
             server_url_lower = server_url.lower()
             contract_ids = [
-                c.id for c in queryset
-                if c.hub_contract_json and any(
+                c.id
+                for c in queryset
+                if c.hub_contract_json
+                and any(
                     server_url_lower in str(s.get("url", "")).lower()
                     for s in c.hub_contract_json.get("servers", [])
                     if isinstance(s, dict)
@@ -875,9 +874,7 @@ class ContractViewSet(
 
         for field in order_fields:
             field_name = field.lstrip("-")  # Remove leading minus for comparison
-            if field in sort_mapping:
-                ordering_list.append(sort_mapping[field])
-            elif field.startswith("-") and field[1:] in sort_mapping:
+            if field in sort_mapping or (field.startswith("-") and field[1:] in sort_mapping):
                 ordering_list.append(sort_mapping[field])
             elif field_name in valid_db_fields:
                 # Allow valid database fields

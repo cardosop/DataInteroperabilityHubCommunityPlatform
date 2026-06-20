@@ -5,8 +5,8 @@ Provides feature flag management for enabling/disabling business rules
 validation in workflows with support for gradual rollout and per-workflow
 configuration.
 """
+
 import logging
-from typing import Dict, Optional
 
 from django.conf import settings
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class WorkflowBusinessRulesFeatureFlags:
     """
     Feature flags for workflow business rules validation.
-    
+
     Supports:
     - Global enable/disable
     - Gradual rollout (percentage-based)
@@ -29,56 +29,56 @@ class WorkflowBusinessRulesFeatureFlags:
         # Global feature flag
         self.enabled_globally = getattr(
             settings,
-            'ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION',
-            True  # Default: enabled
+            "ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION",
+            True,  # Default: enabled
         )
 
         # Gradual rollout percentage (0-100)
         self.rollout_percentage = getattr(
             settings,
-            'WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE',
-            100  # Default: 100% (full rollout)
+            "WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE",
+            100,  # Default: 100% (full rollout)
         )
 
         # Per-workflow configuration
         # Format: {"workflow_name": True/False}
         self.workflow_config = getattr(
             settings,
-            'WORKFLOW_BUSINESS_RULES_VALIDATION_WORKFLOWS',
-            {}  # Default: empty (use global/rollout settings)
+            "WORKFLOW_BUSINESS_RULES_VALIDATION_WORKFLOWS",
+            {},  # Default: empty (use global/rollout settings)
         )
 
         # Disabled workflows (explicitly disabled)
         self.disabled_workflows = getattr(
             settings,
-            'WORKFLOW_BUSINESS_RULES_VALIDATION_DISABLED_WORKFLOWS',
-            []  # Default: empty list
+            "WORKFLOW_BUSINESS_RULES_VALIDATION_DISABLED_WORKFLOWS",
+            [],  # Default: empty list
         )
 
         # Enabled workflows (explicitly enabled, overrides rollout)
         self.enabled_workflows = getattr(
             settings,
-            'WORKFLOW_BUSINESS_RULES_VALIDATION_ENABLED_WORKFLOWS',
-            []  # Default: empty list
+            "WORKFLOW_BUSINESS_RULES_VALIDATION_ENABLED_WORKFLOWS",
+            [],  # Default: empty list
         )
 
         # Per-tenant configuration (optional)
         # Format: {"tenant_id": True/False}
         self.tenant_config = getattr(
             settings,
-            'WORKFLOW_BUSINESS_RULES_VALIDATION_TENANTS',
-            {}  # Default: empty (use global/rollout settings)
+            "WORKFLOW_BUSINESS_RULES_VALIDATION_TENANTS",
+            {},  # Default: empty (use global/rollout settings)
         )
 
     def is_enabled(
         self,
         workflow_name: str,
-        tenant_id: Optional[str] = None,
-        workflow_instance_id: Optional[str] = None
+        tenant_id: str | None = None,
+        workflow_instance_id: str | None = None,
     ) -> bool:
         """
         Check if business rules validation is enabled for a workflow.
-        
+
         Priority order:
         1. Per-workflow explicit enable/disable
         2. Per-tenant enable/disable (if tenant_id provided)
@@ -86,12 +86,12 @@ class WorkflowBusinessRulesFeatureFlags:
         4. Enabled workflows list (overrides rollout)
         5. Gradual rollout percentage
         6. Global enable/disable
-        
+
         Args:
             workflow_name: Name of the workflow
             tenant_id: Optional tenant ID for tenant-specific configuration
             workflow_instance_id: Optional workflow instance ID for consistent rollout
-            
+
         Returns:
             True if validation is enabled, False otherwise
         """
@@ -110,10 +110,7 @@ class WorkflowBusinessRulesFeatureFlags:
             logger.debug(
                 f"Workflow business rules validation {status} "
                 f"for workflow {workflow_name} (per-workflow config)",
-                extra={
-                    "workflow_name": workflow_name,
-                    "tenant_id": tenant_id
-                }
+                extra={"workflow_name": workflow_name, "tenant_id": tenant_id},
             )
             return enabled
 
@@ -122,10 +119,7 @@ class WorkflowBusinessRulesFeatureFlags:
             logger.debug(
                 f"Workflow business rules validation disabled "
                 f"for workflow {workflow_name} (disabled workflows list)",
-                extra={
-                    "workflow_name": workflow_name,
-                    "tenant_id": tenant_id
-                }
+                extra={"workflow_name": workflow_name, "tenant_id": tenant_id},
             )
             return False
 
@@ -134,10 +128,7 @@ class WorkflowBusinessRulesFeatureFlags:
             logger.debug(
                 f"Workflow business rules validation enabled "
                 f"for workflow {workflow_name} (enabled workflows list)",
-                extra={
-                    "workflow_name": workflow_name,
-                    "tenant_id": tenant_id
-                }
+                extra={"workflow_name": workflow_name, "tenant_id": tenant_id},
             )
             return True
 
@@ -148,10 +139,7 @@ class WorkflowBusinessRulesFeatureFlags:
             logger.debug(
                 f"Workflow business rules validation {status} "
                 f"for tenant {tenant_id} (per-tenant config)",
-                extra={
-                    "workflow_name": workflow_name,
-                    "tenant_id": tenant_id
-                }
+                extra={"workflow_name": workflow_name, "tenant_id": tenant_id},
             )
             return enabled
 
@@ -177,8 +165,8 @@ class WorkflowBusinessRulesFeatureFlags:
                     "workflow_name": workflow_name,
                     "tenant_id": tenant_id,
                     "rollout_percentage": self.rollout_percentage,
-                    "hash_value": hash_value
-                }
+                    "hash_value": hash_value,
+                },
             )
             return bool(enabled)
 
@@ -186,27 +174,21 @@ class WorkflowBusinessRulesFeatureFlags:
         if not self.enabled_globally:
             logger.debug(
                 "Workflow business rules validation disabled globally",
-                extra={
-                    "workflow_name": workflow_name,
-                    "tenant_id": tenant_id
-                }
+                extra={"workflow_name": workflow_name, "tenant_id": tenant_id},
             )
             return False
 
         # 7. Default: enabled (global flag is True and rollout is 100%)
         logger.debug(
             "Workflow business rules validation enabled (default)",
-            extra={
-                "workflow_name": workflow_name,
-                "tenant_id": tenant_id
-            }
+            extra={"workflow_name": workflow_name, "tenant_id": tenant_id},
         )
         return True
 
-    def get_config_summary(self) -> Dict[str, any]:  # noqa: ANN401
+    def get_config_summary(self) -> dict[str, any]:
         """
         Get summary of current feature flag configuration.
-        
+
         Returns:
             Dictionary with configuration summary
         """
@@ -228,7 +210,7 @@ _feature_flags_settings_hash = None
 def reset_feature_flags():
     """
     Reset feature flags singleton (useful for testing).
-    
+
     This function should be called in test teardown or between test cases
     that change settings to ensure fresh instances.
     """
@@ -240,35 +222,30 @@ def reset_feature_flags():
 def _get_settings_hash() -> int:
     """Get hash of current settings for feature flags."""
     import json
+
     # Get settings values directly
-    enabled_globally = getattr(
-        settings, 'ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION', True
-    )
+    enabled_globally = getattr(settings, "ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION", True)
     rollout_percentage = getattr(
-        settings, 'WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE', 100
+        settings, "WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE", 100
     )
-    workflow_config = getattr(
-        settings, 'WORKFLOW_BUSINESS_RULES_VALIDATION_WORKFLOWS', {}
-    )
+    workflow_config = getattr(settings, "WORKFLOW_BUSINESS_RULES_VALIDATION_WORKFLOWS", {})
     disabled_workflows = getattr(
-        settings, 'WORKFLOW_BUSINESS_RULES_VALIDATION_DISABLED_WORKFLOWS', []
+        settings, "WORKFLOW_BUSINESS_RULES_VALIDATION_DISABLED_WORKFLOWS", []
     )
     enabled_workflows = getattr(
-        settings, 'WORKFLOW_BUSINESS_RULES_VALIDATION_ENABLED_WORKFLOWS', []
+        settings, "WORKFLOW_BUSINESS_RULES_VALIDATION_ENABLED_WORKFLOWS", []
     )
-    tenant_config = getattr(
-        settings, 'WORKFLOW_BUSINESS_RULES_VALIDATION_TENANTS', {}
-    )
-    
+    tenant_config = getattr(settings, "WORKFLOW_BUSINESS_RULES_VALIDATION_TENANTS", {})
+
     # Create hash from all settings values
     # Convert dicts/lists to sorted JSON strings for consistent hashing
     settings_tuple = (
         enabled_globally,
         rollout_percentage,
-        json.dumps(workflow_config, sort_keys=True) if workflow_config else '{}',
-        json.dumps(sorted(disabled_workflows), sort_keys=True) if disabled_workflows else '[]',
-        json.dumps(sorted(enabled_workflows), sort_keys=True) if enabled_workflows else '[]',
-        json.dumps(tenant_config, sort_keys=True) if tenant_config else '{}',
+        json.dumps(workflow_config, sort_keys=True) if workflow_config else "{}",
+        json.dumps(sorted(disabled_workflows), sort_keys=True) if disabled_workflows else "[]",
+        json.dumps(sorted(enabled_workflows), sort_keys=True) if enabled_workflows else "[]",
+        json.dumps(tenant_config, sort_keys=True) if tenant_config else "{}",
     )
     return hash(settings_tuple)
 
@@ -276,10 +253,10 @@ def _get_settings_hash() -> int:
 def get_feature_flags() -> WorkflowBusinessRulesFeatureFlags:
     """
     Get global feature flags instance (singleton with settings change detection).
-    
+
     The singleton is recreated when settings change to ensure tests work correctly
     with override_settings.
-    
+
     Returns:
         WorkflowBusinessRulesFeatureFlags instance
     """
@@ -292,9 +269,7 @@ def get_feature_flags() -> WorkflowBusinessRulesFeatureFlags:
 
 
 def is_business_rules_validation_enabled(
-    workflow_name: str,
-    tenant_id: Optional[str] = None,
-    workflow_instance_id: Optional[str] = None
+    workflow_name: str, tenant_id: str | None = None, workflow_instance_id: str | None = None
 ) -> bool:
     """
     Convenience function to check if business rules validation is enabled.
@@ -308,9 +283,7 @@ def is_business_rules_validation_enabled(
         True if validation is enabled, False otherwise
     """
     return get_feature_flags().is_enabled(
-        workflow_name=workflow_name,
-        tenant_id=tenant_id,
-        workflow_instance_id=workflow_instance_id
+        workflow_name=workflow_name, tenant_id=tenant_id, workflow_instance_id=workflow_instance_id
     )
 
 

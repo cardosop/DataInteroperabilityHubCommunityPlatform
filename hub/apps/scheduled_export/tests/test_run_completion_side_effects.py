@@ -18,7 +18,6 @@ from rest_framework.test import APIClient
 
 from hub.apps.audit.models import AuditEvent
 from hub.apps.auth.models import APIKey
-from hub.apps.scheduled_export.cost_tracking import CostTrackingManager
 from hub.apps.scheduled_export.internal_auth import SCOPE_SCHEDULED_EXPORT_INTERNAL
 from hub.apps.scheduled_export.models import (
     DestinationType,

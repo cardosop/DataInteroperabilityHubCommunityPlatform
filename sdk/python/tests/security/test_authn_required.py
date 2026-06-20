@@ -10,8 +10,8 @@ Verifies that unauthenticated requests to protected endpoints return
 """
 
 import requests
-from tests.use_cases._api_helpers import api_base_url, api_unauthenticated_get
 
+from tests.use_cases._api_helpers import api_base_url, api_unauthenticated_get
 
 # Representative protected endpoints that every MVP deployment must have.
 PROTECTED_ENDPOINTS = [

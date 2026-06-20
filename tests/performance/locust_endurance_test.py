@@ -26,7 +26,6 @@ except ImportError:
     pytestmark = pytest.mark.skip(reason="locust not installed - install with: pip install locust")
 
 if LOCUST_AVAILABLE:
-    import os
     import random
 
     # Import shared helpers
@@ -77,10 +76,9 @@ if LOCUST_AVAILABLE:
             self.request_count += 1
 
             # Periodically check for performance degradation
-            if self.request_count % 100 == 0:
-                if response.elapsed.total_seconds() > 2.0:
-                    # Log slow response but don't fail (endurance test)
-                    print(f"Warning: Slow response detected: {response.elapsed.total_seconds()}s")
+            if self.request_count % 100 == 0 and response.elapsed.total_seconds() > 2.0:
+                # Log slow response but don't fail (endurance test)
+                print(f"Warning: Slow response detected: {response.elapsed.total_seconds()}s")
 
         @task(5)
         def endurance_get_contract(self):
@@ -92,7 +90,7 @@ if LOCUST_AVAILABLE:
 
             contract_id = random.choice(self.contract_ids)
 
-            response = self.client.get(
+            self.client.get(
                 f"/api/v1/contracts/{contract_id}/",
                 headers=self.headers,
                 name="endurance_get_contract",
@@ -137,7 +135,7 @@ if LOCUST_AVAILABLE:
                 "page_size": random.choice([10, 20]),
             }
 
-            response = self.client.get(
+            self.client.get(
                 "/api/v1/assets/",
                 headers=self.headers,
                 params=params,
@@ -173,7 +171,7 @@ if LOCUST_AVAILABLE:
         @task(2)
         def endurance_get_job_status(self):
             """Sustained job status checking."""
-            response = self.client.get(
+            self.client.get(
                 "/api/v1/jobs/",
                 headers=self.headers,
                 params={"page_size": 10},
@@ -184,7 +182,7 @@ if LOCUST_AVAILABLE:
         @task(1)
         def endurance_health_check(self):
             """Periodic health checks to monitor system state."""
-            response = self.client.get("/health", name="endurance_health_check")
+            self.client.get("/health", name="endurance_health_check")
             self.request_count += 1
 
     class EnduranceTestMemoryMonitor(FastHttpUser):
@@ -209,11 +207,11 @@ if LOCUST_AVAILABLE:
         def monitor_system_health(self):
             """Monitor system health metrics."""
             # Check health endpoint
-            health_response = self.client.get("/health", name="endurance_health_check")
+            self.client.get("/health", name="endurance_health_check")
 
             # Check API metrics if available
             try:
-                metrics_response = self.client.get(
+                self.client.get(
                     "/api/v1/observability/metrics/",
                     headers=self.headers,
                     name="endurance_metrics_check",
@@ -225,4 +223,4 @@ if LOCUST_AVAILABLE:
             # Log elapsed time periodically
             elapsed = time.time() - self.start_time
             if int(elapsed) % 3600 == 0:  # Every hour
-                print(f"Endurance test running for {elapsed/3600:.1f} hours")
+                print(f"Endurance test running for {elapsed / 3600:.1f} hours")

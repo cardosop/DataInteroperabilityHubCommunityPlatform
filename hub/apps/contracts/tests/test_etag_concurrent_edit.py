@@ -10,6 +10,7 @@ Uses :class:`ContractsAPITransactionTestBase` so the middleware
 prerequisites (TENANT_ADMIN role, active subscription, etc.) are
 already satisfied by the existing test scaffold.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,9 +32,7 @@ def _ok_odcs_payload() -> str:
             "name": "ok",
             "version": "1.0.1",
             "status": "active",
-            "schema": [
-                {"name": "m", "fields": [{"name": "id", "type": "string"}]}
-            ],
+            "schema": [{"name": "m", "fields": [{"name": "id", "type": "string"}]}],
         }
     )
 
@@ -50,9 +49,7 @@ class ETagOnRetrieveTest(ContractsAPITransactionTestBase):
             original_format=OriginalFormat.JSON,
             original_raw="{}",
             hub_contract_json={
-                "models": [
-                    {"name": "m", "fields": [{"name": "id", "data_type": "string"}]}
-                ],
+                "models": [{"name": "m", "fields": [{"name": "id", "data_type": "string"}]}],
                 "schema": {"fields": [{"name": "id", "data_type": "string"}]},
             },
             normalization_status="NORMALIZED_OK",
@@ -86,9 +83,7 @@ class IfMatchOnUpdateTest(ContractsAPITransactionTestBase):
             original_format=OriginalFormat.JSON,
             original_raw="{}",
             hub_contract_json={
-                "models": [
-                    {"name": "m", "fields": [{"name": "id", "data_type": "string"}]}
-                ],
+                "models": [{"name": "m", "fields": [{"name": "id", "data_type": "string"}]}],
                 "schema": {"fields": [{"name": "id", "data_type": "string"}]},
             },
             normalization_status="NORMALIZED_OK",
@@ -112,7 +107,8 @@ class IfMatchOnUpdateTest(ContractsAPITransactionTestBase):
             HTTP_IF_MATCH=etag,
         )
         self.assertEqual(
-            response.status_code, 200,
+            response.status_code,
+            200,
             f"Fresh ETag should succeed; got {response.status_code}: {response.data}",
         )
         self.assertIn("ETag", response, "PATCH success must carry fresh ETag")
@@ -132,7 +128,8 @@ class IfMatchOnUpdateTest(ContractsAPITransactionTestBase):
             HTTP_IF_MATCH=stale_etag,
         )
         self.assertEqual(
-            response.status_code, status.HTTP_412_PRECONDITION_FAILED,
+            response.status_code,
+            status.HTTP_412_PRECONDITION_FAILED,
             f"Stale If-Match must return 412; got {response.status_code}: {response.data}",
         )
         self.assertEqual(response.data["code"], "PRECONDITION_FAILED")
@@ -155,7 +152,8 @@ class IfMatchOnUpdateTest(ContractsAPITransactionTestBase):
             format="json",
         )
         self.assertEqual(
-            response.status_code, 200,
+            response.status_code,
+            200,
             f"PATCH without If-Match must still succeed; got {response.data}",
         )
 
@@ -181,9 +179,9 @@ class IfMatchOnUpdateTest(ContractsAPITransactionTestBase):
         second = self.client.get(f"/api/v1/contracts/{contract.id}/")
         etag_after = second["ETag"]
         self.assertNotEqual(
-            etag_before, etag_after,
-            f"ETag must mutate after a write; before={etag_before!r} "
-            f"after={etag_after!r}",
+            etag_before,
+            etag_after,
+            f"ETag must mutate after a write; before={etag_before!r} after={etag_after!r}",
         )
 
     def test_full_concurrent_edit_simulation(self):
@@ -198,7 +196,8 @@ class IfMatchOnUpdateTest(ContractsAPITransactionTestBase):
         etag_a = a_get["ETag"]
         etag_b = b_get["ETag"]
         self.assertEqual(
-            etag_a, etag_b,
+            etag_a,
+            etag_b,
             "Two reads of an unmodified row must yield the same ETag",
         )
 
@@ -227,9 +226,9 @@ class IfMatchOnUpdateTest(ContractsAPITransactionTestBase):
             HTTP_IF_MATCH=etag_b,
         )
         self.assertEqual(
-            b_patch.status_code, status.HTTP_412_PRECONDITION_FAILED,
-            f"Stale writer must be rejected; got {b_patch.status_code}: "
-            f"{b_patch.data}",
+            b_patch.status_code,
+            status.HTTP_412_PRECONDITION_FAILED,
+            f"Stale writer must be rejected; got {b_patch.status_code}: {b_patch.data}",
         )
         # The 412 carries the server's CURRENT etag so B can recover
         # with one extra GET, not a full re-fetch loop.

@@ -61,6 +61,7 @@ Optional env vars
     Jitter between drives (default: 25). Helps gunicorn distribute new
     TCP connections across workers via the OS accept queue.
 """
+
 from __future__ import annotations
 
 import os
@@ -68,11 +69,9 @@ import random
 import re
 import time
 import uuid
-from typing import Optional
 
 import pytest
 import requests
-
 
 METRICS_PATH = "/metrics/"
 SEMANTIC_INGEST_PATH = "/api/v1/semantic/rdf/ingest"
@@ -90,29 +89,29 @@ COUNTER_NAME = "cross_tenant_denied_total"
 # splitting `{{` / `}}` across an f-string boundary silently produces a
 # different regex than intended.
 _COUNTER_LINE_RE = re.compile(
-    r'^' + re.escape(COUNTER_NAME) + r'\{[^}]*'
+    r"^" + re.escape(COUNTER_NAME) + r"\{[^}]*"
     r'endpoint="semantic\.ingest_rdf"'
-    r'[^}]*\}\s+'
-    r'(?P<value>[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*$',
+    r"[^}]*\}\s+"
+    r"(?P<value>[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*$",
     re.MULTILINE,
 )
 # Match the family-wide HELP/TYPE lines so we can tell "metric exists but
 # value=0 on this worker" from "metric not registered at all".
 _FAMILY_HEADER_RE = re.compile(
-    r'^# (?:HELP|TYPE) ' + re.escape(COUNTER_NAME) + r'\b',
+    r"^# (?:HELP|TYPE) " + re.escape(COUNTER_NAME) + r"\b",
     re.MULTILINE,
 )
 # Match ANY label combination of the counter — used as a debug signal so
 # the test failure message can say "the family exists, but no row has
 # our endpoint label".
 _ANY_COUNTER_LINE_RE = re.compile(
-    r'^' + re.escape(COUNTER_NAME) + r'\{[^}]*\}\s+'
-    r'(?P<value>[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*$',
+    r"^" + re.escape(COUNTER_NAME) + r"\{[^}]*\}\s+"
+    r"(?P<value>[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*$",
     re.MULTILINE,
 )
 
 
-def _scrape_metrics(base_url: str, timeout: int) -> Optional[str]:
+def _scrape_metrics(base_url: str, timeout: int) -> str | None:
     """Single ``/metrics/`` scrape with a fresh TCP connection.
 
     Returns the response body text on 200, ``None`` on transient 5xx /
@@ -138,8 +137,7 @@ def _max_counter_value(body: str) -> float:
             value = float(match.group("value"))
         except ValueError:
             continue
-        if value > max_value:
-            max_value = value
+        max_value = max(max_value, value)
     return max_value
 
 
@@ -166,8 +164,7 @@ def _read_counter_max(base_url: str, timeout: int) -> tuple[float, dict]:
                 value = float(match.group("value"))
             except ValueError:
                 continue
-            if value > any_label_max:
-                any_label_max = value
+            any_label_max = max(any_label_max, value)
         observed.append(_max_counter_value(body))
 
     diagnostics = {
@@ -184,7 +181,7 @@ def _resolve_tenant_id(
     base_url: str,
     session: requests.Session,
     timeout: int,
-) -> Optional[str]:
+) -> str | None:
     resp = session.get(f"{base_url}{AUTH_ME_PATH}", timeout=timeout)
     if resp.status_code != 200:
         return None
@@ -238,11 +235,9 @@ class TestPhase260CrossTenantDenialMetric:
         authenticated_session: requests.Session,
         timeout: int,
     ) -> None:
-        own_tenant_id = _resolve_tenant_id(
-            base_url, authenticated_session, timeout
-        )
+        own_tenant_id = _resolve_tenant_id(base_url, authenticated_session, timeout)
         if not own_tenant_id:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
                 "Could not resolve smoke admin tenant via /auth/me/ — "
                 "cannot construct a cross-tenant probe."
             )
@@ -257,19 +252,16 @@ class TestPhase260CrossTenantDenialMetric:
             foreign_tenant_id = str(uuid.uuid4())
             assert foreign_tenant_id != str(own_tenant_id)
 
-            resp = _drive_one_probe(
-                base_url, auth_token, timeout, foreign_tenant_id
-            )
+            resp = _drive_one_probe(base_url, auth_token, timeout, foreign_tenant_id)
             status_codes.append(resp.status_code)
 
             if resp.status_code == 404:
-                pytest.skip(
+                pytest.skip(  # noqa: skip-in-body — runtime service dependency
                     f"{SEMANTIC_INGEST_PATH} not exposed in this environment — "
                     "smoke needs the semantic.ingest_rdf cross-tenant gate live."
                 )
             assert resp.status_code == 403, (
-                f"Cross-tenant probe #{i} expected 403, got "
-                f"{resp.status_code}: {resp.text[:300]}"
+                f"Cross-tenant probe #{i} expected 403, got {resp.status_code}: {resp.text[:300]}"
             )
             payload = resp.json()
             denial_code = payload.get("code")
@@ -282,10 +274,8 @@ class TestPhase260CrossTenantDenialMetric:
             # don't all hit the same worker via OS-level accept-queue
             # locality.
             if DRIVE_JITTER_MS > 0 and i + 1 < METRIC_DRIVE_ITERATIONS:
-                sleep_seconds = (
-                    DRIVE_JITTER_MS + random.randint(0, DRIVE_JITTER_MS)
-                ) / 1000.0
-                time.sleep(sleep_seconds)
+                sleep_seconds = (DRIVE_JITTER_MS + random.randint(0, DRIVE_JITTER_MS)) / 1000.0
+                time.sleep(sleep_seconds)  # noqa: sleep-needed — polling loop
 
         after, after_diag = _read_counter_max(base_url, timeout)
 

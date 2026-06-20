@@ -7,22 +7,22 @@ Tests for Mesh Domain Management API methods.
 
 Tests domain CRUD operations with comprehensive error handling.
 """
-import os
-import pytest
-import uuid
 import asyncio
-from typing import Optional
-from unittest.mock import AsyncMock, MagicMock
+import uuid
+from unittest.mock import AsyncMock
+
+import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig, MeshAPI
 from datahub_interoperability.errors import (
-    ValidationError,
-    NotFoundError,
     ConflictError,
+    NotFoundError,
+    ValidationError,
 )
 from tests._sdk_test_helpers import (
-    check_api_available,
     create_real_api_config,
 )
+import contextlib
 
 # File-specific tenant parameters
 _DOMAINS_TENANT_SLUG = "mesh-domains-sdk-test-tenant"
@@ -33,6 +33,7 @@ _DOMAINS_EXTRA_TENANT_SETUP = "tenant.data_mesh_enabled = True; tenant.save()"
 
 
 # ── Unit-test fixtures (no API calls) ───────────────────────────────
+
 
 @pytest.fixture
 def config():
@@ -61,6 +62,7 @@ def mesh_api(client):
 
 # ── Integration-test fixtures (real API) ────────────────────────────
 
+
 @pytest.fixture(scope="module")
 def real_api_config():
     """Fixture for real API configuration (module-scoped)."""
@@ -76,13 +78,13 @@ def real_api_config():
 @pytest.fixture
 async def real_client(real_api_config):
     """Create SDK client with real API configuration."""
-    import asyncio
     async with DataHubClient(real_api_config) as client:
         yield client
         await asyncio.sleep(0.1)  # Reduce server load between tests
 
 
 # Unit Tests - Method Structure and Parameters
+
 
 @pytest.mark.asyncio
 async def test_create_domain_method_structure(mesh_api, client):
@@ -95,9 +97,7 @@ async def test_create_domain_method_structure(mesh_api, client):
     client.post = AsyncMock(return_value=expected_response)
 
     result = await mesh_api.create_domain(
-        name="test-domain",
-        description="Test description",
-        status="ACTIVE"
+        name="test-domain", description="Test description", status="ACTIVE"
     )
 
     assert result == expected_response
@@ -290,15 +290,14 @@ async def test_delete_domain_method_structure(mesh_api, client):
 
 # Integration Tests - Real API
 
+
 @pytest.mark.asyncio
 async def test_create_domain_integration(real_client):
     """Test creating domain with real API"""
     domain_name = f"test-domain-{uuid.uuid4().hex[:8]}"
 
     domain = await real_client.mesh.create_domain(
-        name=domain_name,
-        description="Test domain for SDK integration tests",
-        status="ACTIVE"
+        name=domain_name, description="Test domain for SDK integration tests", status="ACTIVE"
     )
 
     assert domain is not None
@@ -324,7 +323,7 @@ async def test_create_domain_with_all_fields_integration(real_client):
         boundaries={"data_source": "test"},
         capabilities={"processing": True},
         resource_quota={"storage_gb": 100},
-        status="ACTIVE"
+        status="ACTIVE",
     )
 
     assert domain is not None
@@ -335,10 +334,8 @@ async def test_create_domain_with_all_fields_integration(real_client):
     assert domain.get("resource_quota") is not None
 
     # Cleanup
-    try:
+    with contextlib.suppress(Exception):
         await real_client.mesh.delete_domain(domain["id"])
-    except Exception:
-        pass
 
 
 @pytest.mark.asyncio
@@ -347,8 +344,7 @@ async def test_list_domains_integration(real_client):
     # Create a test domain first
     domain_name = f"test-list-{uuid.uuid4().hex[:8]}"
     created_domain = await real_client.mesh.create_domain(
-        name=domain_name,
-        description="Test domain for listing"
+        name=domain_name, description="Test domain for listing"
     )
 
     try:
@@ -365,10 +361,8 @@ async def test_list_domains_integration(real_client):
         assert created_domain["id"] in domain_ids
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await real_client.mesh.delete_domain(created_domain["id"])
-        except Exception:
-            pass
 
 
 @pytest.mark.asyncio
@@ -413,8 +407,7 @@ async def test_get_domain_integration(real_client):
     """Test getting domain by ID with real API"""
     domain_name = f"test-get-{uuid.uuid4().hex[:8]}"
     created_domain = await real_client.mesh.create_domain(
-        name=domain_name,
-        description="Test domain for get"
+        name=domain_name, description="Test domain for get"
     )
 
     try:
@@ -427,10 +420,8 @@ async def test_get_domain_integration(real_client):
         assert domain["description"] == "Test domain for get"
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await real_client.mesh.delete_domain(created_domain["id"])
-        except Exception:
-            pass
 
 
 @pytest.mark.asyncio
@@ -447,8 +438,7 @@ async def test_update_domain_integration(real_client):
     """Test updating domain with real API"""
     domain_name = f"test-update-{uuid.uuid4().hex[:8]}"
     created_domain = await real_client.mesh.create_domain(
-        name=domain_name,
-        description="Original description"
+        name=domain_name, description="Original description"
     )
 
     try:
@@ -457,7 +447,7 @@ async def test_update_domain_integration(real_client):
             created_domain["id"],
             name=f"{domain_name}-updated",
             description="Updated description",
-            status="INACTIVE"
+            status="INACTIVE",
         )
 
         assert updated_domain is not None
@@ -466,10 +456,8 @@ async def test_update_domain_integration(real_client):
         assert updated_domain["status"] == "INACTIVE"
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await real_client.mesh.delete_domain(created_domain["id"])
-        except Exception:
-            pass
 
 
 @pytest.mark.asyncio
@@ -524,8 +512,5 @@ async def test_create_domain_duplicate_name_integration(real_client):
             await real_client.mesh.create_domain(name=domain_name)
     finally:
         # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await real_client.mesh.delete_domain(created_domain["id"])
-        except Exception:
-            pass
-

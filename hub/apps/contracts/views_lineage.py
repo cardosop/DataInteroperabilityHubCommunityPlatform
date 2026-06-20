@@ -6,6 +6,8 @@ Lineage-related actions for contract viewsets.
 SAVING CHECKPOINT: This module contains all lineage-related actions.
 """
 
+import contextlib
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter,
@@ -22,11 +24,11 @@ from hub.apps.core.services.base import NotFoundError
 from .lineage_service import LineageService
 from .views_helpers import _get_tenant_id_from_request
 
-
 # ===========================================================================
 # Phase 228 F5 (REQ-LIN-F5-001 / DoD-G6 + DoD-G7) — observability helpers
 # for the time-travel surface.
 # ===========================================================================
+
 
 def _record_time_travel_metric(*, query_type: str) -> None:
     """Emit ``lineage_time_travel_queries_total{type}`` per
@@ -36,12 +38,16 @@ def _record_time_travel_metric(*, query_type: str) -> None:
         from hub.apps.observability.metrics import (
             lineage_time_travel_queries_total,
         )
-    except Exception:  # noqa: BLE001 — metrics module optional at import.
+    except ImportError:
         return
     try:
         lineage_time_travel_queries_total.labels(type=query_type).inc()
-    except Exception:  # noqa: BLE001 — best-effort.
-        pass
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Failed to record time-travel metric type=%s", query_type,
+            exc_info=True,
+        )
 
 
 def _emit_snapshot_audit(
@@ -61,11 +67,12 @@ def _emit_snapshot_audit(
     can answer "who looked at lineage at what historical point in
     time, and how did they specify it"."""
     try:
+        from django.contrib.auth import get_user_model
+
         from hub.apps.audit.models import LINEAGE_SNAPSHOT_QUERIED
         from hub.apps.audit.utils import create_audit_event
         from hub.apps.tenants.models import Tenant
-        from django.contrib.auth import get_user_model
-    except Exception:  # noqa: BLE001 — audit optional at import.
+    except ImportError:
         return
     try:
         tenant = None
@@ -85,8 +92,12 @@ def _emit_snapshot_audit(
                 "source": source,
             },
         )
-    except Exception:  # noqa: BLE001 — best-effort.
-        pass
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Failed to emit LINEAGE_SNAPSHOT_QUERIED audit contract_id=%s source=%s",
+            contract_id, source, exc_info=True,
+        )
 
 
 class ContractLineageMixin:
@@ -335,25 +346,29 @@ class ContractLineageMixin:
         ),
         parameters=[
             OpenApiParameter(
-                name="from", type=OpenApiTypes.STR,
+                name="from",
+                type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
                 description="ISO-8601 timestamp for the older anchor.",
                 required=False,
             ),
             OpenApiParameter(
-                name="to", type=OpenApiTypes.STR,
+                name="to",
+                type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
                 description="ISO-8601 timestamp for the newer anchor; defaults to NOW().",
                 required=False,
             ),
             OpenApiParameter(
-                name="from_version", type=OpenApiTypes.INT,
+                name="from_version",
+                type=OpenApiTypes.INT,
                 location=OpenApiParameter.QUERY,
                 description="Contract version int → resolves to its created_at.",
                 required=False,
             ),
             OpenApiParameter(
-                name="to_version", type=OpenApiTypes.INT,
+                name="to_version",
+                type=OpenApiTypes.INT,
                 location=OpenApiParameter.QUERY,
                 description="Contract version int → resolves to its created_at.",
                 required=False,
@@ -375,6 +390,7 @@ class ContractLineageMixin:
     def get_lineage_diff(self, request, id=None):
         """``GET /api/v1/contracts/{id}/lineage/diff/?from=&to=``."""
         from datetime import datetime as _dt
+
         from django.utils import timezone as _tz
         from django.utils.dateparse import parse_datetime
 
@@ -395,10 +411,12 @@ class ContractLineageMixin:
                 parsed = parse_datetime(ts_param)
                 if parsed is None:
                     return Response(
-                        {"error": {
-                            "code": "INVALID_ANCHOR",
-                            "message": f"could not parse {ts_param!r} as ISO-8601",
-                        }},
+                        {
+                            "error": {
+                                "code": "INVALID_ANCHOR",
+                                "message": f"could not parse {ts_param!r} as ISO-8601",
+                            }
+                        },
                         status=400,
                     )
                 return parsed, "timestamp"
@@ -407,25 +425,30 @@ class ContractLineageMixin:
                     version_int = int(version_param)
                 except (TypeError, ValueError):
                     return Response(
-                        {"error": {
-                            "code": "INVALID_VERSION",
-                            "message": "version must be an integer",
-                        }},
+                        {
+                            "error": {
+                                "code": "INVALID_VERSION",
+                                "message": "version must be an integer",
+                            }
+                        },
                         status=400,
                     )
                 anchor = (
                     Contract.objects.filter(
-                        tenant_id=tenant_id, version=version_int,
+                        tenant_id=tenant_id,
+                        version=version_int,
                     )
                     .order_by("created_at")
                     .first()
                 )
                 if anchor is None:
                     return Response(
-                        {"error": {
-                            "code": "VERSION_NOT_FOUND",
-                            "message": f"No contract version {version_int} for tenant",
-                        }},
+                        {
+                            "error": {
+                                "code": "VERSION_NOT_FOUND",
+                                "message": f"No contract version {version_int} for tenant",
+                            }
+                        },
                         status=404,
                     )
                 return anchor.created_at, "version"
@@ -453,10 +476,12 @@ class ContractLineageMixin:
 
         if from_ts is None:
             return Response(
-                {"error": {
-                    "code": "MISSING_FROM_ANCHOR",
-                    "message": "either ?from=<ISO8601> or ?from_version=<int> is required",
-                }},
+                {
+                    "error": {
+                        "code": "MISSING_FROM_ANCHOR",
+                        "message": "either ?from=<ISO8601> or ?from_version=<int> is required",
+                    }
+                },
                 status=400,
             )
 
@@ -466,8 +491,9 @@ class ContractLineageMixin:
         svc = LineageService(tenant_id=tenant_id, user_id=user_id)
 
         def _snapshot(at: _dt) -> list:
-            return svc._edges_at(contract_id, as_of=at, direction="incoming") + \
-                   svc._edges_at(contract_id, as_of=at, direction="outgoing")
+            return svc._edges_at(contract_id, as_of=at, direction="incoming") + svc._edges_at(
+                contract_id, as_of=at, direction="outgoing"
+            )
 
         left = _snapshot(from_ts)
         right = _snapshot(to_ts)
@@ -604,11 +630,11 @@ class ContractLineageMixin:
         # the response carries the per-field nodes + links derived
         # from ``LineageEdge.source_field`` / ``target_field`` so the
         # F2 frontend editor can render them.
-        include_fields_raw = request.query_params.get(
-            "include_fields", "false"
-        )
+        include_fields_raw = request.query_params.get("include_fields", "false")
         include_fields = str(include_fields_raw).lower() in (
-            "true", "1", "yes",
+            "true",
+            "1",
+            "yes",
         )
 
         # Initialize LineageService with tenant_id and user_id
@@ -632,6 +658,7 @@ class ContractLineageMixin:
         #   4. Emit metric `lineage_time_travel_queries_total{type}`.
         #   5. Emit audit event `LINEAGE_SNAPSHOT_QUERIED`.
         from datetime import datetime as _dt
+
         from django.utils.dateparse import parse_datetime
 
         as_of_param = request.query_params.get("as_of")
@@ -640,10 +667,12 @@ class ContractLineageMixin:
         # Spec rule 1 — mutual exclusivity.
         if as_of_param and version_param:
             return Response(
-                {"error": {
-                    "code": "AS_OF_AND_VERSION_MUTUALLY_EXCLUSIVE",
-                    "message": "Provide either ?as_of= or ?version=, not both.",
-                }},
+                {
+                    "error": {
+                        "code": "AS_OF_AND_VERSION_MUTUALLY_EXCLUSIVE",
+                        "message": "Provide either ?as_of= or ?version=, not both.",
+                    }
+                },
                 status=400,
             )
 
@@ -653,8 +682,10 @@ class ContractLineageMixin:
         # promote the call. Lets ops run 5 internal canary tenants,
         # then 50%, then 100% via Helm value flips alone.
         from hub.apps.api.capabilities import is_capability_enabled_for_tenant
+
         snapshots_enabled = is_capability_enabled_for_tenant(
-            "lineage.snapshots", tenant_id,
+            "lineage.snapshots",
+            tenant_id,
         )
 
         as_of_cutoff: _dt | None = None
@@ -669,10 +700,12 @@ class ContractLineageMixin:
             parsed = parse_datetime(as_of_param)
             if parsed is None:
                 return Response(
-                    {"error": {
-                        "code": "INVALID_AS_OF",
-                        "message": "as_of must be ISO 8601 (e.g. 2026-04-30T12:00:00Z)",
-                    }},
+                    {
+                        "error": {
+                            "code": "INVALID_AS_OF",
+                            "message": "as_of must be ISO 8601 (e.g. 2026-04-30T12:00:00Z)",
+                        }
+                    },
                     status=400,
                 )
             as_of_cutoff = parsed
@@ -682,25 +715,29 @@ class ContractLineageMixin:
                 version_int = int(version_param)
             except (TypeError, ValueError):
                 return Response(
-                    {"error": {"code": "INVALID_VERSION",
-                               "message": "version must be an integer"}},
+                    {"error": {"code": "INVALID_VERSION", "message": "version must be an integer"}},
                     status=400,
                 )
             from hub.apps.contracts.models import Contract
+
             anchor = Contract.objects.filter(
-                tenant_id=tenant_id, version=version_int,
+                tenant_id=tenant_id,
+                version=version_int,
                 id=contract_id,
             ).first()
             if anchor is None:
                 anchor = Contract.objects.filter(
-                    tenant_id=tenant_id, version=version_int,
+                    tenant_id=tenant_id,
+                    version=version_int,
                 ).first()
             if anchor is None:
                 return Response(
-                    {"error": {
-                        "code": "VERSION_NOT_FOUND",
-                        "message": f"No contract version {version_int} for tenant",
-                    }},
+                    {
+                        "error": {
+                            "code": "VERSION_NOT_FOUND",
+                            "message": f"No contract version {version_int} for tenant",
+                        }
+                    },
                     status=404,
                 )
             as_of_cutoff = anchor.created_at
@@ -720,7 +757,9 @@ class ContractLineageMixin:
             )
 
         result = lineage_service.get_lineage_visualization(
-            contract_id=contract_id, format=format_type, max_depth=max_depth,
+            contract_id=contract_id,
+            format=format_type,
+            max_depth=max_depth,
             as_of=as_of_cutoff,
         )
 
@@ -741,8 +780,7 @@ class ContractLineageMixin:
             field_links: list = []
             seen_field_ids: set = set()
             for row in (
-                LineageEdge.objects
-                .filter(tenant_id=tenant_id, valid_to__isnull=True)
+                LineageEdge.objects.filter(tenant_id=tenant_id, valid_to__isnull=True)
                 .filter(
                     # Edges anchored to this contract on either side.
                     __import__("django.db.models", fromlist=["Q"]).Q(
@@ -755,10 +793,7 @@ class ContractLineageMixin:
                 .iterator(chunk_size=200)
             ):
                 for side in ("source", "target"):
-                    cid = (
-                        row.source_contract_id if side == "source"
-                        else row.target_contract_id
-                    )
+                    cid = row.source_contract_id if side == "source" else row.target_contract_id
                     model = row.source_model if side == "source" else row.target_model
                     field = row.source_field if side == "source" else row.target_field
                     if not (cid and field):
@@ -767,25 +802,33 @@ class ContractLineageMixin:
                     if fid in seen_field_ids:
                         continue
                     seen_field_ids.add(fid)
-                    field_nodes.append({
-                        "id": fid,
-                        "type": "field",
-                        "label": f"{model}.{field}" if model else field,
-                        "contract_id": str(cid),
-                    })
-                if (row.source_contract_id and row.source_field
-                        and row.target_contract_id and row.target_field):
-                    field_links.append({
-                        "source": (
-                            f"field:{row.source_contract_id}:"
-                            f"{row.source_model}.{row.source_field}"
-                        ),
-                        "target": (
-                            f"field:{row.target_contract_id}:"
-                            f"{row.target_model}.{row.target_field}"
-                        ),
-                        "edge_type": row.edge_type,
-                    })
+                    field_nodes.append(
+                        {
+                            "id": fid,
+                            "type": "field",
+                            "label": f"{model}.{field}" if model else field,
+                            "contract_id": str(cid),
+                        }
+                    )
+                if (
+                    row.source_contract_id
+                    and row.source_field
+                    and row.target_contract_id
+                    and row.target_field
+                ):
+                    field_links.append(
+                        {
+                            "source": (
+                                f"field:{row.source_contract_id}:"
+                                f"{row.source_model}.{row.source_field}"
+                            ),
+                            "target": (
+                                f"field:{row.target_contract_id}:"
+                                f"{row.target_model}.{row.target_field}"
+                            ),
+                            "edge_type": row.edge_type,
+                        }
+                    )
             result.setdefault("field_nodes", []).extend(field_nodes)
             result.setdefault("field_links", []).extend(field_links)
 

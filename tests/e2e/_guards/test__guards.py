@@ -25,13 +25,16 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 # --------------------------------------------------------------- assert_audit_event
 
+
 class TestAssertAuditEvent:
     """Synchronous variant — the one used by ~200 call-sites in PR 6a-6e."""
 
     @staticmethod
-    def _create_event(tenant, *, action="ASSET_CREATED", resource_type="asset",
-                      resource_id=None, result="SUCCESS"):
+    def _create_event(
+        tenant, *, action="ASSET_CREATED", resource_type="asset", resource_id=None, result="SUCCESS"
+    ):
         from hub.apps.audit.models import AuditEvent
+
         return AuditEvent.objects.create(
             tenant_id=tenant.id,
             action=action,
@@ -43,19 +46,19 @@ class TestAssertAuditEvent:
     def test_passes_when_matching_event_exists(self):
         from tests.e2e._guards import assert_audit_event
         from tests.factories import TenantFactory
+
         tenant = TenantFactory()
         event = self._create_event(tenant)
         # Must not raise
-        assert_audit_event(tenant, event.action, event.resource_type,
-                           event.resource_id)
+        assert_audit_event(tenant, event.action, event.resource_type, event.resource_id)
 
     def test_raises_when_no_event_exists(self):
         from tests.e2e._guards import assert_audit_event
         from tests.factories import TenantFactory
+
         tenant = TenantFactory()
         with pytest.raises(AssertionError) as exc:
-            assert_audit_event(tenant, "ASSET_CREATED", "asset",
-                               resource_id=str(uuid.uuid4()))
+            assert_audit_event(tenant, "ASSET_CREATED", "asset", resource_id=str(uuid.uuid4()))
         # Diagnostic must name what was expected and mention the tenant
         assert "Expected audit event not found" in str(exc.value)
         assert "ASSET_CREATED" in str(exc.value)
@@ -65,6 +68,7 @@ class TestAssertAuditEvent:
         """Cross-tenant leakage must NOT falsely satisfy an assertion."""
         from tests.e2e._guards import assert_audit_event
         from tests.factories import TenantFactory
+
         tenant_a = TenantFactory()
         tenant_b = TenantFactory()
         self._create_event(tenant_a, action="ASSET_CREATED")
@@ -74,6 +78,7 @@ class TestAssertAuditEvent:
     def test_raises_when_result_differs(self):
         from tests.e2e._guards import assert_audit_event
         from tests.factories import TenantFactory
+
         tenant = TenantFactory()
         self._create_event(tenant, action="ASSET_DELETED", result="FAILURE")
         with pytest.raises(AssertionError):
@@ -83,6 +88,7 @@ class TestAssertAuditEvent:
     def test_passes_when_result_explicitly_failure(self):
         from tests.e2e._guards import assert_audit_event
         from tests.factories import TenantFactory
+
         tenant = TenantFactory()
         self._create_event(tenant, action="ASSET_DELETED", result="FAILURE")
         # When caller explicitly asks for FAILURE, it must match
@@ -91,6 +97,7 @@ class TestAssertAuditEvent:
     def test_diagnostic_lists_recent_events_for_scoped_tenant(self):
         from tests.e2e._guards import assert_audit_event
         from tests.factories import TenantFactory
+
         tenant = TenantFactory()
         # Seed three unrelated events so the diagnostic has content to show.
         for i in range(3):
@@ -107,8 +114,10 @@ class TestAssertAuditEvent:
         """Login/logout events have no resource_id; passing None must match."""
         from tests.e2e._guards import assert_audit_event
         from tests.factories import TenantFactory
+
         tenant = TenantFactory()
         from hub.apps.audit.models import AuditEvent
+
         AuditEvent.objects.create(
             tenant_id=tenant.id,
             action="LOGIN",
@@ -121,13 +130,15 @@ class TestAssertAuditEvent:
 
 # ---------------------------------------------------- assert_audit_event_eventually
 
+
 class TestAssertAuditEventEventually:
     """Polling variant — for async-produced events."""
 
     def test_passes_immediately_when_event_already_exists(self):
+        from hub.apps.audit.models import AuditEvent
         from tests.e2e._guards import assert_audit_event_eventually
         from tests.factories import TenantFactory
-        from hub.apps.audit.models import AuditEvent
+
         tenant = TenantFactory()
         AuditEvent.objects.create(
             tenant_id=tenant.id,
@@ -138,33 +149,40 @@ class TestAssertAuditEventEventually:
         )
         t0 = time.monotonic()
         assert_audit_event_eventually(
-            tenant, "COMPLIANCE_RUN_COMPLETED", "compliance_run",
-            timeout=5.0, poll_interval=0.5,
+            tenant,
+            "COMPLIANCE_RUN_COMPLETED",
+            "compliance_run",
+            timeout=5.0,
+            poll_interval=0.5,
         )
         # Should return well under a single poll interval
-        assert time.monotonic() - t0 < 1.0, \
+        assert time.monotonic() - t0 < 1.0, (
             "Eventually-variant should return fast when event is present"
+        )
 
     def test_raises_after_timeout_when_no_event(self):
         from tests.e2e._guards import assert_audit_event_eventually
         from tests.factories import TenantFactory
+
         tenant = TenantFactory()
         t0 = time.monotonic()
         with pytest.raises(AssertionError) as exc:
             assert_audit_event_eventually(
-                tenant, "NEVER_WRITTEN", "nothing",
-                timeout=0.5, poll_interval=0.1,
+                tenant,
+                "NEVER_WRITTEN",
+                "nothing",
+                timeout=0.5,
+                poll_interval=0.1,
             )
         elapsed = time.monotonic() - t0
-        assert 0.4 <= elapsed <= 2.0, (
-            f"Expected ~0.5s poll window, got {elapsed:.2f}s"
-        )
+        assert 0.4 <= elapsed <= 2.0, f"Expected ~0.5s poll window, got {elapsed:.2f}s"
         assert "after polling" in str(exc.value)
         assert "0.5s" in str(exc.value) or "0.5 s" in str(exc.value)
 
     def test_rejects_nonpositive_timeout(self):
         from tests.e2e._guards import assert_audit_event_eventually
         from tests.factories import TenantFactory
+
         tenant = TenantFactory()
         with pytest.raises(ValueError):
             assert_audit_event_eventually(tenant, "X", "y", timeout=0)
@@ -172,14 +190,20 @@ class TestAssertAuditEventEventually:
     def test_rejects_nonpositive_poll_interval(self):
         from tests.e2e._guards import assert_audit_event_eventually
         from tests.factories import TenantFactory
+
         tenant = TenantFactory()
         with pytest.raises(ValueError):
             assert_audit_event_eventually(
-                tenant, "X", "y", timeout=1.0, poll_interval=0,
+                tenant,
+                "X",
+                "y",
+                timeout=1.0,
+                poll_interval=0,
             )
 
 
 # --------------------------------------------------------------------- two_tenants
+
 
 class TestTwoTenantsFixture:
     """Exercises the fixture itself and the tenant-isolation guarantee."""
@@ -203,6 +227,7 @@ class TestTwoTenantsFixture:
 
 # ------------------------------------------------------- captured_server_errors
 
+
 class TestCapturedServerErrorsLogic:
     """Pure-function tests for the PR 4 autouse fixture.
 
@@ -217,14 +242,22 @@ class TestCapturedServerErrorsLogic:
     @staticmethod
     def _make_record(name, level, message):
         import logging
+
         return logging.LogRecord(
-            name=name, level=level, pathname="x", lineno=1,
-            msg=message, args=(), exc_info=None,
+            name=name,
+            level=level,
+            pathname="x",
+            lineno=1,
+            msg=message,
+            args=(),
+            exc_info=None,
         )
 
     def test_detect_ignores_non_error_levels(self):
         import logging
+
         from tests.e2e._guards import detect_offending_records
+
         records = [
             self._make_record("django", logging.INFO, "info line"),
             self._make_record("django", logging.WARNING, "warn line"),
@@ -234,28 +267,34 @@ class TestCapturedServerErrorsLogic:
 
     def test_detect_surfaces_django_error(self):
         import logging
+
         from tests.e2e._guards import detect_offending_records
+
         rec = self._make_record("django.request", logging.ERROR, "uh oh")
         assert detect_offending_records([rec]) == [rec]
 
     def test_detect_surfaces_hub_error(self):
         import logging
+
         from tests.e2e._guards import detect_offending_records
-        rec = self._make_record(
-            "hub.apps.audit.signals", logging.ERROR, "signal blew up"
-        )
+
+        rec = self._make_record("hub.apps.audit.signals", logging.ERROR, "signal blew up")
         assert detect_offending_records([rec]) == [rec]
 
     def test_detect_surfaces_rest_framework_error(self):
         import logging
+
         from tests.e2e._guards import detect_offending_records
+
         rec = self._make_record("rest_framework.exceptions", logging.ERROR, "nope")
         assert detect_offending_records([rec]) == [rec]
 
     def test_detect_ignores_third_party_logger(self):
         """Loggers outside the watched prefixes must not trigger the guard."""
         import logging
+
         from tests.e2e._guards import detect_offending_records
+
         records = [
             self._make_record("celery.worker", logging.ERROR, "retry"),
             self._make_record("urllib3", logging.ERROR, "pool exhausted"),
@@ -265,19 +304,24 @@ class TestCapturedServerErrorsLogic:
 
     def test_detect_surfaces_critical_not_only_error(self):
         import logging
+
         from tests.e2e._guards import detect_offending_records
+
         rec = self._make_record("django", logging.CRITICAL, "oom")
         assert detect_offending_records([rec]) == [rec]
 
     def test_format_diagnostic_empty(self):
         from tests.e2e._guards import format_diagnostic
+
         assert format_diagnostic([]) == (
             "Watched Django/DRF loggers emitted 0 ERROR record(s):\n(no records)"
         )
 
     def test_format_diagnostic_includes_logger_and_level(self):
         import logging
+
         from tests.e2e._guards import format_diagnostic
+
         rec = self._make_record("django.db", logging.ERROR, "bad query")
         out = format_diagnostic([rec])
         assert "django.db[ERROR]: bad query" in out
@@ -285,11 +329,10 @@ class TestCapturedServerErrorsLogic:
 
     def test_format_diagnostic_truncates_with_tail_count(self):
         import logging
+
         from tests.e2e._guards import format_diagnostic
-        records = [
-            self._make_record("django", logging.ERROR, f"err-{i}")
-            for i in range(15)
-        ]
+
+        records = [self._make_record("django", logging.ERROR, f"err-{i}") for i in range(15)]
         out = format_diagnostic(records, max_records=5)
         # first 5 shown, remaining 10 counted
         assert "err-0" in out
@@ -299,22 +342,21 @@ class TestCapturedServerErrorsLogic:
 
     def test_is_strict_mode_default_is_false(self, monkeypatch):
         from tests.e2e._guards import is_strict_mode
+
         monkeypatch.delenv("CAPTURED_SERVER_ERRORS_STRICT", raising=False)
         assert is_strict_mode() is False
 
-    @pytest.mark.parametrize(
-        "value", ["1", "true", "yes", "on", "TRUE", "Yes"]
-    )
+    @pytest.mark.parametrize("value", ["1", "true", "yes", "on", "TRUE", "Yes"])
     def test_is_strict_mode_truthy(self, monkeypatch, value):
         from tests.e2e._guards import is_strict_mode
+
         monkeypatch.setenv("CAPTURED_SERVER_ERRORS_STRICT", value)
         assert is_strict_mode() is True
 
-    @pytest.mark.parametrize(
-        "value", ["0", "false", "no", "off", "", "garbage"]
-    )
+    @pytest.mark.parametrize("value", ["0", "false", "no", "off", "", "garbage"])
     def test_is_strict_mode_falsy(self, monkeypatch, value):
         from tests.e2e._guards import is_strict_mode
+
         monkeypatch.setenv("CAPTURED_SERVER_ERRORS_STRICT", value)
         assert is_strict_mode() is False
 
@@ -332,6 +374,7 @@ class TestCapturedServerErrorsMarkerOptOut:
     @pytest.mark.allow_server_errors
     def test_marker_tolerates_logged_error(self, caplog):
         import logging
+
         logger = logging.getLogger("hub.apps.audit.signals")
         logger.error("deliberate error for the allow_server_errors test")
         # Fixture-teardown assertion is the real test — if it raised or

@@ -3,25 +3,26 @@ Job Views
 
 REST API views for job management.
 """
+
+import structlog
 from django.db import transaction
 from django.utils import timezone
-from rest_framework import viewsets, status, permissions
+from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.exceptions import ValidationError, NotFound
+from rest_framework.exceptions import ValidationError
 from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.response import Response
 
+from hub.apps.audit.utils import create_audit_event
 from hub.apps.tenants.request_tenant import get_request_tenant_id
+
 from .models import FailedJobDLQ, Job, JobStatus, JobType
 from .serializers import (
     FailedJobDLQSerializer,
-    JobSerializer,
     JobCreateSerializer,
-    JobCancelSerializer,
+    JobSerializer,
 )
 from .utils import create_job, get_queue_for_job_type
-from hub.apps.audit.utils import create_audit_event
-import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -32,14 +33,15 @@ class JobViewSet(viewsets.ModelViewSet):
 
     Tenant-scoped: users can only see/manage jobs in their tenant.
     """
+
     queryset = Job.objects.all()
     serializer_class = JobSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
     filter_backends = [OrderingFilter, SearchFilter]
-    search_fields = ['type', 'status', 'resource_type']
-    ordering_fields = ['created_at', 'started_at', 'completed_at']
-    ordering = ['-created_at']
+    search_fields = ["type", "status", "resource_type"]
+    ordering_fields = ["created_at", "started_at", "completed_at"]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
         """Filter queryset based on user permissions (Phase 16: central helper)."""
@@ -51,6 +53,7 @@ class JobViewSet(viewsets.ModelViewSet):
         if not tenant_id_str:
             return Job.objects.none()
         import uuid
+
         try:
             tenant_id = uuid.UUID(tenant_id_str)
         except (ValueError, TypeError):
@@ -73,17 +76,19 @@ class JobViewSet(viewsets.ModelViewSet):
         serializer = JobCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        job_type = serializer.validated_data['type']
-        resource_type = serializer.validated_data['resource_type']
-        resource_id = serializer.validated_data['resource_id']
-        details_json = serializer.validated_data.get('details_json')
+        job_type = serializer.validated_data["type"]
+        resource_type = serializer.validated_data["resource_type"]
+        resource_id = serializer.validated_data["resource_id"]
+        details_json = serializer.validated_data.get("details_json")
 
         # Get tenant from user
-        tenant = request.user.tenant if hasattr(request.user, 'tenant') and request.user.tenant else None
+        tenant = (
+            request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
+        )
         if not tenant:
             return Response(
-                {'error': 'User must belong to a tenant to create jobs'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "User must belong to a tenant to create jobs"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Determine queue based on job type
@@ -98,23 +103,23 @@ class JobViewSet(viewsets.ModelViewSet):
                 tenant=tenant,
                 user=request.user,
                 details_json=details_json,
-                queue_name=queue_name
+                queue_name=queue_name,
             )
         except ValidationError as e:
             # Job creation rejected due to tenant limits
             return Response(
                 {
-                    'error': {
-                        'code': 'JOB_RATE_LIMITED',
-                        'message': str(e),
-                        'http_status': status.HTTP_429_TOO_MANY_REQUESTS,
-                        'details': {
-                            'reason': 'tenant_job_limits_exceeded',
-                            'tenant_id': str(tenant.id)
-                        }
+                    "error": {
+                        "code": "JOB_RATE_LIMITED",
+                        "message": str(e),
+                        "http_status": status.HTTP_429_TOO_MANY_REQUESTS,
+                        "details": {
+                            "reason": "tenant_job_limits_exceeded",
+                            "tenant_id": str(tenant.id),
+                        },
                     }
                 },
-                status=status.HTTP_429_TOO_MANY_REQUESTS
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
             )
 
         # Log audit event
@@ -125,20 +130,17 @@ class JobViewSet(viewsets.ModelViewSet):
             tenant=tenant,
             resource_id=str(job.id),
             details={
-                'job_type': job_type,
-                'resource_type': resource_type,
-                'resource_id': str(resource_id)
+                "job_type": job_type,
+                "resource_type": resource_type,
+                "resource_id": str(resource_id),
             },
-            request=request
+            request=request,
         )
 
-        return Response(
-            JobSerializer(job).data,
-            status=status.HTTP_201_CREATED
-        )
+        return Response(JobSerializer(job).data, status=status.HTTP_201_CREATED)
 
     @transaction.atomic
-    @action(detail=True, methods=['post'], url_path='cancel')
+    @action(detail=True, methods=["post"], url_path="cancel")
     def cancel(self, request, id=None):
         """
         Cancel a job.
@@ -152,8 +154,8 @@ class JobViewSet(viewsets.ModelViewSet):
 
         if not job.can_cancel():
             return Response(
-                {'error': f'Job cannot be cancelled (current status: {job.status})'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": f"Job cannot be cancelled (current status: {job.status})"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Store previous status for audit logging
@@ -165,12 +167,14 @@ class JobViewSet(viewsets.ModelViewSet):
         # If job was running, release tenant concurrency slot
         if previous_status == JobStatus.RUNNING and job.tenant:
             from hub.apps.jobs.utils import decrement_tenant_job_counter
+
             decrement_tenant_job_counter(str(job.tenant.id), "running")
 
         # Sync ComplianceRun when COMPLIANCE_RUN job is cancelled
         if job.type == JobType.COMPLIANCE_RUN:
             try:
                 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
+
                 compliance_run = ComplianceRun.objects.filter(job=job).first()
                 if compliance_run:
                     compliance_run.status = ComplianceRunStatus.FAILED
@@ -191,6 +195,7 @@ class JobViewSet(viewsets.ModelViewSet):
                     )
             except Exception as e:
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(
                     "Failed to sync compliance run status after job cancellation: %s",
@@ -202,20 +207,19 @@ class JobViewSet(viewsets.ModelViewSet):
         if job.type == JobType.VIRTUAL_QUERY_EXECUTION:
             try:
                 from hub.apps.virtualization.models import QueryExecution
+
                 execution = QueryExecution.objects.filter(job=job).first()
                 if execution:
                     execution.sync_status_from_job()
             except Exception as e:
                 # Log but don't fail job cancellation if execution sync fails
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(
                     f"Failed to sync query execution status after job cancellation: {e}",
-                    extra={
-                        "job_id": str(job.id),
-                        "error": str(e)
-                    },
-                    exc_info=True
+                    extra={"job_id": str(job.id), "error": str(e)},
+                    exc_info=True,
                 )
 
         # Log audit event
@@ -225,29 +229,23 @@ class JobViewSet(viewsets.ModelViewSet):
             actor_user=request.user,
             tenant=job.tenant,
             resource_id=str(job.id),
-            details={
-                'job_type': job.type,
-                'previous_status': previous_status
-            },
-            request=request
+            details={"job_type": job.type, "previous_status": previous_status},
+            request=request,
         )
 
-        return Response(
-            JobSerializer(job).data,
-            status=status.HTTP_200_OK
-        )
+        return Response(JobSerializer(job).data, status=status.HTTP_200_OK)
 
     def list(self, request, *args, **kwargs):
         """List jobs with filtering (tenant-scoped)"""
         queryset = self.get_queryset()
 
         # Filter by type if provided
-        job_type = request.query_params.get('type')
+        job_type = request.query_params.get("type")
         if job_type:
             queryset = queryset.filter(type=job_type)
 
         # Filter by status if provided
-        job_status = request.query_params.get('status')
+        job_status = request.query_params.get("status")
         if job_status:
             queryset = queryset.filter(status=job_status)
 
@@ -272,14 +270,15 @@ class FailedJobDLQViewSet(viewsets.ReadOnlyModelViewSet):
     Provides list, detail, retry (re-enqueue), and purge actions.
     Restricted to platform admins.
     """
+
     queryset = FailedJobDLQ.objects.all()
     serializer_class = FailedJobDLQSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
     filter_backends = [OrderingFilter, SearchFilter]
-    search_fields = ['queue', 'func_name', 'error_message']
-    ordering_fields = ['created_at', 'resolved_at']
-    ordering = ['-created_at']
+    search_fields = ["queue", "func_name", "error_message"]
+    ordering_fields = ["created_at", "resolved_at"]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
         """Tenant-scoped; platform admins see all."""
@@ -291,6 +290,7 @@ class FailedJobDLQViewSet(viewsets.ReadOnlyModelViewSet):
             if not tenant_id_str:
                 return FailedJobDLQ.objects.none()
             import uuid as _uuid
+
             try:
                 tid = _uuid.UUID(tenant_id_str)
             except (ValueError, TypeError):
@@ -298,14 +298,14 @@ class FailedJobDLQViewSet(viewsets.ReadOnlyModelViewSet):
             qs = FailedJobDLQ.objects.filter(tenant_id=tid)
 
         # Filter: ?resolved=false shows unresolved only
-        resolved_param = self.request.query_params.get('resolved')
-        if resolved_param == 'false':
+        resolved_param = self.request.query_params.get("resolved")
+        if resolved_param == "false":
             qs = qs.filter(resolved_at__isnull=True)
-        elif resolved_param == 'true':
+        elif resolved_param == "true":
             qs = qs.filter(resolved_at__isnull=False)
         return qs
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def retry(self, request, id=None):
         """
         Re-enqueue a DLQ entry as a new PENDING job.
@@ -347,16 +347,24 @@ class FailedJobDLQViewSet(viewsets.ReadOnlyModelViewSet):
             job_obj.details_json = {}
         job_obj.details_json["dlq_retry"] = True
         job_obj.details_json["dlq_entry_id"] = str(entry.id)
-        job_obj.save(update_fields=[
-            "status", "started_at", "completed_at",
-            "error_message", "details_json", "updated_at",
-        ])
+        job_obj.save(
+            update_fields=[
+                "status",
+                "started_at",
+                "completed_at",
+                "error_message",
+                "details_json",
+                "updated_at",
+            ]
+        )
 
         # Enqueue the job
         from .tasks_base import process_job
         from .utils import get_job_timeout
+
         queue_name = get_queue_for_job_type(job_type)
         from django_rq import get_queue
+
         queue = get_queue(queue_name)
         queue.enqueue(
             process_job,
@@ -368,9 +376,13 @@ class FailedJobDLQViewSet(viewsets.ReadOnlyModelViewSet):
         # Update DLQ entry
         entry.retry_count += 1
         entry.resolved_at = timezone.now()
-        entry.save(update_fields=[
-            "retry_count", "resolved_at", "updated_at",
-        ])
+        entry.save(
+            update_fields=[
+                "retry_count",
+                "resolved_at",
+                "updated_at",
+            ]
+        )
 
         logger.info(
             "dlq_entry_retried",
@@ -384,7 +396,7 @@ class FailedJobDLQViewSet(viewsets.ReadOnlyModelViewSet):
             status=status.HTTP_200_OK,
         )
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=["post"])
     def purge_resolved(self, request):
         """
         Delete all resolved DLQ entries.
@@ -392,8 +404,7 @@ class FailedJobDLQViewSet(viewsets.ReadOnlyModelViewSet):
         POST /dlq/purge_resolved/
         """
         user = request.user
-        if not (hasattr(user, "is_platform_admin")
-                and user.is_platform_admin):
+        if not (hasattr(user, "is_platform_admin") and user.is_platform_admin):
             return Response(
                 {"error": "Platform admin required"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -408,4 +419,3 @@ class FailedJobDLQViewSet(viewsets.ReadOnlyModelViewSet):
             {"status": "purged", "count": count},
             status=status.HTTP_200_OK,
         )
-

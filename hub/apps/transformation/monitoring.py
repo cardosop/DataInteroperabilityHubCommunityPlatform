@@ -3,9 +3,9 @@ Transformation Pipeline Monitoring
 
 Provides metrics collection and distributed tracing for transformation pipelines.
 """
+
 import logging
 import time
-from typing import Optional, Dict, Any
 from contextlib import contextmanager
 
 try:
@@ -13,14 +13,6 @@ try:
 except ImportError:
     trace = None
 
-from hub.apps.observability.otel_metrics import (
-    transformation_runs_total,
-    transformation_duration_seconds,
-    transformation_rows_processed,
-    transformation_errors_total,
-    transformation_memory_bytes,
-    transformation_queue_depth,
-)
 
 try:
     from hub.apps.observability.otel_config import get_tracer
@@ -43,18 +35,14 @@ def record_pipeline_created(tenant_id: str) -> None:
         tenant_id: Tenant ID
     """
     try:
-        transformation_pipeline_created_total.labels(
-            tenant_id=tenant_id
-        ).inc()
+        transformation_pipeline_created_total.labels(tenant_id=tenant_id).inc()
     except Exception as e:
         logger.warning(f"Failed to record pipeline created metric: {e}")
 
 
 @contextmanager
 def record_pipeline_execution(
-    tenant_id: str,
-    pipeline_id: Optional[str] = None,
-    status: str = "unknown"
+    tenant_id: str, pipeline_id: str | None = None, status: str = "unknown"
 ):
     """
     Context manager to record pipeline execution duration, success rate, and tracing.
@@ -68,8 +56,14 @@ def record_pipeline_execution(
         None
     """
     # Use span instrumentation helper for proper span management
-    from hub.apps.observability.span_instrumentation import create_span, add_span_attributes, set_span_status, record_span_exception
     from opentelemetry.trace import StatusCode
+
+    from hub.apps.observability.span_instrumentation import (
+        add_span_attributes,
+        create_span,
+        record_span_exception,
+        set_span_status,
+    )
 
     start_time = time.time()
     span_context = None
@@ -82,8 +76,8 @@ def record_pipeline_execution(
             attributes={
                 "tenant_id": tenant_id,
                 "pipeline_id": pipeline_id or "unknown",
-                "status": status
-            }
+                "status": status,
+            },
         )
         span = span_context.__enter__()
     except Exception as e:
@@ -97,8 +91,7 @@ def record_pipeline_execution(
         # Record duration
         try:
             transformation_pipeline_execution_duration_seconds.labels(
-                status=status,
-                tenant_id=tenant_id
+                status=status, tenant_id=tenant_id
             ).observe(execution_time)
         except Exception as e:
             logger.warning(f"Failed to record execution duration metric: {e}")
@@ -106,19 +99,18 @@ def record_pipeline_execution(
         # Update success rate (1.0 for success, 0.0 for failure)
         success_value = 1.0 if status == "COMPLETED" else 0.0
         try:
-            transformation_pipeline_execution_success_rate.labels(
-                tenant_id=tenant_id
-            ).set(success_value)
+            transformation_pipeline_execution_success_rate.labels(tenant_id=tenant_id).set(
+                success_value
+            )
         except Exception as e:
             logger.warning(f"Failed to record success rate metric: {e}")
 
         # Update span attributes
         if span:
             try:
-                add_span_attributes({
-                    "execution.duration_seconds": execution_time,
-                    "execution.status": status
-                })
+                add_span_attributes(
+                    {"execution.duration_seconds": execution_time, "execution.status": status}
+                )
                 set_span_status(StatusCode.OK)
             except Exception as e:
                 logger.debug(f"Failed to update span attributes: {e}")
@@ -128,23 +120,22 @@ def record_pipeline_execution(
         # Record failed execution
         try:
             transformation_pipeline_execution_duration_seconds.labels(
-                status="FAILED",
-                tenant_id=tenant_id
+                status="FAILED", tenant_id=tenant_id
             ).observe(execution_time)
-            transformation_pipeline_execution_success_rate.labels(
-                tenant_id=tenant_id
-            ).set(0.0)
+            transformation_pipeline_execution_success_rate.labels(tenant_id=tenant_id).set(0.0)
         except Exception as e2:
             logger.warning(f"Failed to record failed execution metric: {e2}")
 
         # Update span with error
         if span:
             try:
-                add_span_attributes({
-                    "execution.duration_seconds": execution_time,
-                    "execution.status": "FAILED",
-                    "error": str(e)
-                })
+                add_span_attributes(
+                    {
+                        "execution.duration_seconds": execution_time,
+                        "execution.status": "FAILED",
+                        "error": str(e),
+                    }
+                )
                 record_span_exception(e)
                 set_span_status(StatusCode.ERROR)
             except Exception as e2:
@@ -172,8 +163,7 @@ def update_queue_depth(tenant_id: str, status: str, count: int) -> None:
     """
     try:
         transformation_pipeline_execution_queue_depth.labels(
-            status=status,
-            tenant_id=tenant_id
+            status=status, tenant_id=tenant_id
         ).set(count)
     except Exception as e:
         logger.warning(f"Failed to update queue depth metric: {e}")
@@ -195,28 +185,24 @@ def record_preview_generation(tenant_id: str):
         yield
         duration = time.time() - start_time
         try:
-            transformation_preview_generation_duration_seconds.labels(
-                tenant_id=tenant_id
-            ).observe(duration)
+            transformation_preview_generation_duration_seconds.labels(tenant_id=tenant_id).observe(
+                duration
+            )
         except Exception as e:
             logger.warning(f"Failed to record preview generation duration: {e}")
-    except Exception as e:
+    except Exception:
         duration = time.time() - start_time
         # Still record duration even on failure
         try:
-            transformation_preview_generation_duration_seconds.labels(
-                tenant_id=tenant_id
-            ).observe(duration)
+            transformation_preview_generation_duration_seconds.labels(tenant_id=tenant_id).observe(
+                duration
+            )
         except Exception as e2:
             logger.warning(f"Failed to record preview generation duration: {e2}")
         raise
 
 
-def record_wrangling_operation(
-    tenant_id: str,
-    operation_type: str,
-    status: str
-) -> None:
+def record_wrangling_operation(tenant_id: str, operation_type: str, status: str) -> None:
     """
     Record a wrangling operation.
 
@@ -227,10 +213,7 @@ def record_wrangling_operation(
     """
     try:
         transformation_wrangling_operations_total.labels(
-            operation_type=operation_type,
-            status=status,
-            tenant_id=tenant_id
+            operation_type=operation_type, status=status, tenant_id=tenant_id
         ).inc()
     except Exception as e:
         logger.warning(f"Failed to record wrangling operation metric: {e}")
-

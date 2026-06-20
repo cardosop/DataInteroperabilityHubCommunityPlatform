@@ -17,6 +17,7 @@ Usage::
     python hub/manage.py backfill_enterprise_limits --confirm
     python hub/manage.py backfill_enterprise_limits --apply
 """
+
 import logging
 
 from django.core.management.base import BaseCommand
@@ -70,27 +71,23 @@ class Command(BaseCommand):
             return
 
         enterprise_plans = TenantPlan.objects.filter(
-            is_active=True, tier="ENTERPRISE", category=PlanCategory.BASE,
+            is_active=True,
+            tier="ENTERPRISE",
+            category=PlanCategory.BASE,
         )
         if not enterprise_plans.exists():
             self.stdout.write("No active Enterprise plans found.")
             return
 
         for plan in enterprise_plans:
-            if plan.limits_json and all(
-                v is not None for v in plan.limits_json.values()
-            ):
-                self.stdout.write(
-                    f"Plan '{plan.slug}' already has concrete limits — skipping."
-                )
+            if plan.limits_json and all(v is not None for v in plan.limits_json.values()):
+                self.stdout.write(f"Plan '{plan.slug}' already has concrete limits — skipping.")
                 continue
 
             tenants = Tenant.objects.filter(plan=plan)
             tenant_count = tenants.count()
 
-            self.stdout.write(
-                f"\nPlan: {plan.name} (slug={plan.slug}) — {tenant_count} tenant(s)"
-            )
+            self.stdout.write(f"\nPlan: {plan.name} (slug={plan.slug}) — {tenant_count} tenant(s)")
 
             if dry_run:
                 self._do_dry_run(plan, tenants)
@@ -100,17 +97,11 @@ class Command(BaseCommand):
                 self._do_apply(plan, tenants)
 
     def _do_dry_run(self, plan, tenants):
-        self.stdout.write(
-            self.style.WARNING("  DRY RUN — would backfill limits:")
-        )
+        self.stdout.write(self.style.WARNING("  DRY RUN — would backfill limits:"))
         for key, val in _ENTERPRISE_DEFAULT_CAPS.items():
             current = plan.limits_json.get(key) if plan.limits_json else None
-            self.stdout.write(
-                f"    {key}: {current} → {val}"
-            )
-        self.stdout.write(
-            f"  {tenants.count()} tenant(s) would be affected."
-        )
+            self.stdout.write(f"    {key}: {current} → {val}")
+        self.stdout.write(f"  {tenants.count()} tenant(s) would be affected.")
 
     def _do_confirm(self, plan, tenants):
         self.stdout.write("  Flagging tenants for 30-day notice window...")
@@ -118,18 +109,18 @@ class Command(BaseCommand):
         for tenant in tenants.iterator():
             try:
                 from hub.apps.tenants.notifications import notify_enterprise_backfill
+
                 notify_enterprise_backfill(
-                    tenant, plan.name, backfill_count=tenants.count(),
+                    tenant,
+                    plan.name,
+                    backfill_count=tenants.count(),
                 )
                 notified += 1
             except Exception as exc:
-                self.stderr.write(
-                    f"    Failed to notify tenant {tenant.slug}: {exc}"
-                )
+                self.stderr.write(f"    Failed to notify tenant {tenant.slug}: {exc}")
         self.stdout.write(
             self.style.SUCCESS(
-                f"  Notified {notified} tenant(s). "
-                f"Run --apply after 30 days to set concrete caps."
+                f"  Notified {notified} tenant(s). Run --apply after 30 days to set concrete caps."
             )
         )
 

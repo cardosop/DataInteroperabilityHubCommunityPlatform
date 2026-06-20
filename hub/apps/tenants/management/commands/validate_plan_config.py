@@ -10,6 +10,7 @@ Checks:
 
 CI exit: 0 on PASS, 1 on any violation.
 """
+
 from django.core.management.base import BaseCommand
 
 from hub.apps.tenants.feature_flag_registry import REGISTRY
@@ -63,15 +64,11 @@ class Command(BaseCommand):
         if strict:
             for plan in TenantPlan.objects.filter(is_active=True):
                 if plan.order < 0:
-                    errors.append(
-                        f"Plan '{plan.slug}' has negative order={plan.order}."
-                    )
+                    errors.append(f"Plan '{plan.slug}' has negative order={plan.order}.")
 
         if errors:
             self.stderr.write(
-                self.style.ERROR(
-                    f"validate_plan_config FAILED: {len(errors)} violation(s)."
-                )
+                self.style.ERROR(f"validate_plan_config FAILED: {len(errors)} violation(s).")
             )
             for err in errors:
                 self.stderr.write(f"  - {err}")

@@ -1,10 +1,10 @@
 """Unit tests for ``datahub lineage-subscriptions`` commands (283.5.14)."""
+
 import json
+from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
-from unittest.mock import Mock
-
 from datahub_cli.main import cli
 
 
@@ -45,23 +45,44 @@ class TestLineageSubscriptionsList:
 class TestLineageSubscriptionsCreate:
     @pytest.mark.unit
     def test_create_table(self, runner, mock_api):
-        mock_api.post.return_value = {"id": "sub-new", "resource_type": "asset", "resource_id": "r1"}
-        result = runner.invoke(cli, ["lineage-subscriptions", "create", "--resource-type", "asset", "--resource-id", "r1"])
+        mock_api.post.return_value = {
+            "id": "sub-new",
+            "resource_type": "asset",
+            "resource_id": "r1",
+        }
+        result = runner.invoke(
+            cli,
+            ["lineage-subscriptions", "create", "--resource-type", "asset", "--resource-id", "r1"],
+        )
         assert result.exit_code == 0
         assert "sub-new" in result.output
 
     @pytest.mark.unit
     def test_create_json(self, runner, mock_api):
         mock_api.post.return_value = {"id": "sub-new"}
-        result = runner.invoke(cli, ["lineage-subscriptions", "create", "--resource-type", "asset",
-                                     "--resource-id", "r1", "--format", "json"])
+        result = runner.invoke(
+            cli,
+            [
+                "lineage-subscriptions",
+                "create",
+                "--resource-type",
+                "asset",
+                "--resource-id",
+                "r1",
+                "--format",
+                "json",
+            ],
+        )
         assert result.exit_code == 0
         assert json.loads(result.output)["id"] == "sub-new"
 
     @pytest.mark.unit
     def test_create_api_error(self, runner, mock_api):
         mock_api.post.side_effect = Exception("resource not found")
-        result = runner.invoke(cli, ["lineage-subscriptions", "create", "--resource-type", "asset", "--resource-id", "x"])
+        result = runner.invoke(
+            cli,
+            ["lineage-subscriptions", "create", "--resource-type", "asset", "--resource-id", "x"],
+        )
         assert result.exit_code != 0
 
 

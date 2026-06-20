@@ -15,22 +15,26 @@ To run these tests:
 3. Set API key: export DATAHUB_API_KEY=your-api-key
 4. Run: pytest tests/integration/test_odps_commands.py -v
 """
-import pytest
-import requests
+
 import json
 import os
-import uuid
 import subprocess
 import time
+import uuid
+
+import pytest
+import requests
 from click.testing import CliRunner
-from datahub_cli.main import cli
 from datahub_cli.config import config
+from datahub_cli.main import cli
 
 
 def _check_api_available():
     """Check if API service is available"""
     try:
-        response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2)
+        response = requests.get(
+            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
+        )
         return response.status_code < 600  # Any HTTP response means API is up
     except Exception:
         return False
@@ -54,10 +58,10 @@ class TestODPSCommandsRealAPI:
 
         # Try to get API key from environment, config, or create one
         api_key = (
-            os.environ.get('DATAHUB_API_KEY') or
-            os.environ.get('TEST_API_KEY') or
-            config.get_api_key() or
-            self._create_test_api_key()
+            os.environ.get("DATAHUB_API_KEY")
+            or os.environ.get("TEST_API_KEY")
+            or config.get_api_key()
+            or self._create_test_api_key()
         )
 
         if not api_key:
@@ -116,24 +120,32 @@ print(api_key_value)
 """
         try:
             result = subprocess.run(
-                ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'manage.py', 'shell'],
+                ["docker", "compose", "exec", "-T", "api-service", "python", "manage.py", "shell"],
+                check=False,
                 input=django_shell_script,
                 text=True,
                 capture_output=True,
                 timeout=30,
-                cwd='/home/ph/Desktop/DataInteroperabilityHub'
+                cwd="/home/ph/Desktop/DataInteroperabilityHub",
             )
 
             if result.returncode == 0:
                 # Extract API key from output (should be the last line)
-                output_lines = result.stdout.strip().split('\n')
+                output_lines = result.stdout.strip().split("\n")
                 for line in reversed(output_lines):
                     line = line.strip()
                     # API keys are typically long (40+ characters), alphanumeric with possible dashes/underscores
                     if line and len(line) > 20:  # API keys are typically long
                         # Additional validation: check if it looks like an API key
-                        cleaned = line.replace('-', '').replace('_', '')
-                        if cleaned.isalnum() and ' ' not in line and ':' not in line and '"' not in line and '{' not in line and '}' not in line:
+                        cleaned = line.replace("-", "").replace("_", "")
+                        if (
+                            cleaned.isalnum()
+                            and " " not in line
+                            and ":" not in line
+                            and '"' not in line
+                            and "{" not in line
+                            and "}" not in line
+                        ):
                             return line
         except Exception:
             pass
@@ -145,143 +157,139 @@ print(api_key_value)
         Returns the contract ID.
         """
         contract_data = {
-            "original_raw": json.dumps({
-                "schema": "https://opendataproducts.org/schema/v4.1",
-                "version": "4.1",
-                "product": {
-                    "details": {
-                        "en": {
-                            "productID": f"test-product-{uuid.uuid4().hex[:8]}",
-                            "name": "Comprehensive Test Product",
-                            "description": "A comprehensive test product with all ODPS features",
-                            "productVersion": "1.0.0",
-                            "category": "Data Product",
-                            "tags": ["test", "integration", "odps"]
+            "original_raw": json.dumps(
+                {
+                    "schema": "https://opendataproducts.org/schema/v4.1",
+                    "version": "4.1",
+                    "product": {
+                        "details": {
+                            "en": {
+                                "productID": f"test-product-{uuid.uuid4().hex[:8]}",
+                                "name": "Comprehensive Test Product",
+                                "description": "A comprehensive test product with all ODPS features",
+                                "productVersion": "1.0.0",
+                                "category": "Data Product",
+                                "tags": ["test", "integration", "odps"],
+                            },
+                            "fi": {
+                                "productID": f"test-product-{uuid.uuid4().hex[:8]}",
+                                "name": "Kattava Testituote",
+                                "description": "Kattava testituote kaikilla ODPS-ominaisuuksilla",
+                            },
                         },
-                        "fi": {
-                            "productID": f"test-product-{uuid.uuid4().hex[:8]}",
-                            "name": "Kattava Testituote",
-                            "description": "Kattava testituote kaikilla ODPS-ominaisuuksilla"
-                        }
-                    },
-                    "productStrategy": {
-                        "objectives": [
+                        "productStrategy": {
+                            "objectives": [
+                                {
+                                    "name": "Increase market share",
+                                    "description": "Target 15% market share by end of year",
+                                }
+                            ],
+                            "strategicAlignment": [
+                                {
+                                    "name": "Digital transformation",
+                                    "description": "Align with company digital transformation goals",
+                                }
+                            ],
+                            "productKPIs": [
+                                {
+                                    "name": "User adoption",
+                                    "targetValue": "5000",
+                                    "unit": "users",
+                                    "description": "Monthly active users",
+                                }
+                            ],
+                            "targetAudience": {"type": "enterprise", "size": "large"},
+                            "valueProposition": {
+                                "key": "cost reduction",
+                                "benefit": "Reduce operational costs by 30%",
+                            },
+                        },
+                        "pricing": {
+                            "plans": [
+                                {
+                                    "planID": "basic",
+                                    "name": "Basic Plan",
+                                    "description": "Basic access plan",
+                                    "price": 99.99,
+                                    "currency": "USD",
+                                    "billingPeriod": "monthly",
+                                    "billingUnit": "subscription",
+                                    "isDefault": True,
+                                    "features": ["api_access", "basic_support"],
+                                },
+                                {
+                                    "planID": "premium",
+                                    "name": "Premium Plan",
+                                    "description": "Premium access plan with all features",
+                                    "price": 299.99,
+                                    "currency": "USD",
+                                    "billingPeriod": "monthly",
+                                    "billingUnit": "subscription",
+                                    "isDefault": False,
+                                    "features": [
+                                        "api_access",
+                                        "premium_support",
+                                        "priority_access",
+                                    ],
+                                },
+                            ]
+                        },
+                        "accessMethods": [
                             {
-                                "name": "Increase market share",
-                                "description": "Target 15% market share by end of year"
+                                "methodID": "api",
+                                "type": "REST API",
+                                "name": "REST API Access",
+                                "description": "Access via REST API",
+                                "endpoint": "https://api.example.com/v1/data",
+                                "url": "https://api.example.com/v1/data",
+                                "authenticationType": "api_key",
+                                "authenticationConfig": {"apiKeyHeader": "X-API-Key"},
+                                "rateLimit": {"requests": 1000, "period": "hour"},
+                                "format": "json",
+                                "maxSize": "10MB",
+                                "version": "1.0",
+                            },
+                            {
+                                "methodID": "s3",
+                                "type": "S3",
+                                "name": "S3 Access",
+                                "description": "Access via S3 bucket",
+                                "url": "s3://bucket/data",
+                                "authenticationType": "aws_credentials",
+                                "format": "parquet",
+                                "maxSize": "1GB",
+                            },
+                        ],
+                        "paymentGateways": [
+                            {
+                                "gatewayID": "stripe",
+                                "name": "Stripe",
+                                "type": "stripe",
+                                "enabled": True,
+                                "config": {"publicKey": "pk_test_123"},
+                                "webhookUrl": "https://api.example.com/webhooks/stripe",
                             }
                         ],
-                        "strategicAlignment": [
-                            {
-                                "name": "Digital transformation",
-                                "description": "Align with company digital transformation goals"
+                        "contract": {
+                            "spec": {
+                                "apiVersion": "odcs/v3",
+                                "kind": "DataContract",
+                                "id": f"test-contract-{uuid.uuid4().hex[:8]}",
+                                "name": "Test Data Contract",
+                                "schema": {
+                                    "fields": [
+                                        {"name": "id", "type": "string"},
+                                        {"name": "value", "type": "number"},
+                                    ]
+                                },
                             }
-                        ],
-                        "productKPIs": [
-                            {
-                                "name": "User adoption",
-                                "targetValue": "5000",
-                                "unit": "users",
-                                "description": "Monthly active users"
-                            }
-                        ],
-                        "targetAudience": {
-                            "type": "enterprise",
-                            "size": "large"
                         },
-                        "valueProposition": {
-                            "key": "cost reduction",
-                            "benefit": "Reduce operational costs by 30%"
-                        }
                     },
-                    "pricing": {
-                        "plans": [
-                            {
-                                "planID": "basic",
-                                "name": "Basic Plan",
-                                "description": "Basic access plan",
-                                "price": 99.99,
-                                "currency": "USD",
-                                "billingPeriod": "monthly",
-                                "billingUnit": "subscription",
-                                "isDefault": True,
-                                "features": ["api_access", "basic_support"]
-                            },
-                            {
-                                "planID": "premium",
-                                "name": "Premium Plan",
-                                "description": "Premium access plan with all features",
-                                "price": 299.99,
-                                "currency": "USD",
-                                "billingPeriod": "monthly",
-                                "billingUnit": "subscription",
-                                "isDefault": False,
-                                "features": ["api_access", "premium_support", "priority_access"]
-                            }
-                        ]
-                    },
-                    "accessMethods": [
-                        {
-                            "methodID": "api",
-                            "type": "REST API",
-                            "name": "REST API Access",
-                            "description": "Access via REST API",
-                            "endpoint": "https://api.example.com/v1/data",
-                            "url": "https://api.example.com/v1/data",
-                            "authenticationType": "api_key",
-                            "authenticationConfig": {
-                                "apiKeyHeader": "X-API-Key"
-                            },
-                            "rateLimit": {
-                                "requests": 1000,
-                                "period": "hour"
-                            },
-                            "format": "json",
-                            "maxSize": "10MB",
-                            "version": "1.0"
-                        },
-                        {
-                            "methodID": "s3",
-                            "type": "S3",
-                            "name": "S3 Access",
-                            "description": "Access via S3 bucket",
-                            "url": "s3://bucket/data",
-                            "authenticationType": "aws_credentials",
-                            "format": "parquet",
-                            "maxSize": "1GB"
-                        }
-                    ],
-                    "paymentGateways": [
-                        {
-                            "gatewayID": "stripe",
-                            "name": "Stripe",
-                            "type": "stripe",
-                            "enabled": True,
-                            "config": {
-                                "publicKey": "pk_test_123"
-                            },
-                            "webhookUrl": "https://api.example.com/webhooks/stripe"
-                        }
-                    ],
-                    "contract": {
-                        "spec": {
-                            "apiVersion": "odcs/v3",
-                            "kind": "DataContract",
-                            "id": f"test-contract-{uuid.uuid4().hex[:8]}",
-                            "name": "Test Data Contract",
-                            "schema": {
-                                "fields": [
-                                    {"name": "id", "type": "string"},
-                                    {"name": "value", "type": "number"}
-                                ]
-                            }
-                        }
-                    }
                 }
-            }),
+            ),
             "original_format": "JSON",
             "original_spec_type": "ODPS",
-            "resolve_external_refs": True
+            "resolve_external_refs": True,
         }
 
         try:
@@ -289,26 +297,33 @@ print(api_key_value)
                 f"{api_base_url}/contracts/products/",
                 json=contract_data,
                 headers={"X-API-Key": api_key},
-                timeout=30
+                timeout=30,
             )
-            assert response.status_code in [200, 201], f"Failed to create contract: {response.status_code} - {response.text}"
+            assert response.status_code in [200, 201], (
+                f"Failed to create contract: {response.status_code} - {response.text}"
+            )
 
             contract_response = response.json()
             contract_id = contract_response.get("id")
             assert contract_id, "Failed to get contract ID from response."
 
             # Wait for normalization to complete
-            time.sleep(3)
+            time.sleep(3)  # noqa: sleep-needed — test timing requirement
 
             return contract_id
         except Exception as e:
-            pytest.skip(f"Failed to create test contract: {str(e)}")
+            pytest.skip(f"Failed to create test contract: {e!s}")
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_product_details_table_format(self, setup_config, api_available):
         """Test get-product-details command in table format"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         api_base_url = config.get_api_base_url()
         contract_id = self._create_comprehensive_odps_contract(api_base_url, self.api_key)
@@ -317,18 +332,25 @@ print(api_key_value)
             pytest.skip("Failed to create test contract. Check API service and permissions.")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id])
+        result = runner.invoke(cli, ["contracts", "get-product-details", contract_id])
 
         assert result.exit_code == 0, f"Command failed with output: {result.output}"
-        assert 'Product Details for Contract' in result.output
-        assert 'Comprehensive Test Product' in result.output or 'Kattava Testituote' in result.output
-        assert 'Language: en' in result.output
+        assert "Product Details for Contract" in result.output
+        assert (
+            "Comprehensive Test Product" in result.output or "Kattava Testituote" in result.output
+        )
+        assert "Language: en" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_product_details_json_format(self, setup_config, api_available):
         """Test get-product-details command in JSON format"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         api_base_url = config.get_api_base_url()
         contract_id = self._create_comprehensive_odps_contract(api_base_url, self.api_key)
@@ -337,18 +359,25 @@ print(api_key_value)
             pytest.skip("Failed to create test contract. Check API service and permissions.")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--format', 'json'])
+        result = runner.invoke(
+            cli, ["contracts", "get-product-details", contract_id, "--format", "json"]
+        )
 
         assert result.exit_code == 0
         output_data = json.loads(result.output)
         assert isinstance(output_data, dict)
-        assert 'productID' in output_data or 'name' in output_data
+        assert "productID" in output_data or "name" in output_data
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_product_details_multilingual(self, setup_config, api_available):
         """Test get-product-details command with different languages"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         api_base_url = config.get_api_base_url()
         contract_id = self._create_comprehensive_odps_contract(api_base_url, self.api_key)
@@ -359,20 +388,29 @@ print(api_key_value)
         runner = CliRunner()
 
         # Test English
-        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--lang', 'en'])
+        result = runner.invoke(
+            cli, ["contracts", "get-product-details", contract_id, "--lang", "en"]
+        )
         assert result.exit_code == 0
-        assert 'Comprehensive Test Product' in result.output
+        assert "Comprehensive Test Product" in result.output
 
         # Test Finnish
-        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--lang', 'fi'])
+        result = runner.invoke(
+            cli, ["contracts", "get-product-details", contract_id, "--lang", "fi"]
+        )
         assert result.exit_code == 0
-        assert 'Kattava Testituote' in result.output
+        assert "Kattava Testituote" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_product_strategy_table_format(self, setup_config, api_available):
         """Test get-product-strategy command in table format"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         api_base_url = config.get_api_base_url()
         contract_id = self._create_comprehensive_odps_contract(api_base_url, self.api_key)
@@ -381,17 +419,22 @@ print(api_key_value)
             pytest.skip("Failed to create test contract. Check API service and permissions.")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['contracts', 'get-product-strategy', contract_id])
+        result = runner.invoke(cli, ["contracts", "get-product-strategy", contract_id])
 
         assert result.exit_code == 0, f"Command failed with output: {result.output}"
-        assert 'Product Strategy for Contract' in result.output
-        assert 'Objectives' in result.output or 'objectives' in result.output.lower()
+        assert "Product Strategy for Contract" in result.output
+        assert "Objectives" in result.output or "objectives" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_product_strategy_json_format(self, setup_config, api_available):
         """Test get-product-strategy command in JSON format"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         api_base_url = config.get_api_base_url()
         contract_id = self._create_comprehensive_odps_contract(api_base_url, self.api_key)
@@ -400,17 +443,24 @@ print(api_key_value)
             pytest.skip("Failed to create test contract. Check API service and permissions.")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['contracts', 'get-product-strategy', contract_id, '--format', 'json'])
+        result = runner.invoke(
+            cli, ["contracts", "get-product-strategy", contract_id, "--format", "json"]
+        )
 
         assert result.exit_code == 0
         output_data = json.loads(result.output)
         assert isinstance(output_data, dict)
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_pricing_table_format(self, setup_config, api_available):
         """Test get-pricing command in table format"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         api_base_url = config.get_api_base_url()
         contract_id = self._create_comprehensive_odps_contract(api_base_url, self.api_key)
@@ -419,17 +469,22 @@ print(api_key_value)
             pytest.skip("Failed to create test contract. Check API service and permissions.")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['contracts', 'get-pricing', contract_id])
+        result = runner.invoke(cli, ["contracts", "get-pricing", contract_id])
 
         assert result.exit_code == 0, f"Command failed with output: {result.output}"
-        assert 'Pricing Plans' in result.output or 'pricing' in result.output.lower()
-        assert 'Basic Plan' in result.output or 'Premium Plan' in result.output
+        assert "Pricing Plans" in result.output or "pricing" in result.output.lower()
+        assert "Basic Plan" in result.output or "Premium Plan" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_pricing_json_format(self, setup_config, api_available):
         """Test get-pricing command in JSON format"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         api_base_url = config.get_api_base_url()
         contract_id = self._create_comprehensive_odps_contract(api_base_url, self.api_key)
@@ -438,18 +493,25 @@ print(api_key_value)
             pytest.skip("Failed to create test contract. Check API service and permissions.")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['contracts', 'get-pricing', contract_id, '--format', 'json'])
+        result = runner.invoke(cli, ["contracts", "get-pricing", contract_id, "--format", "json"])
 
         assert result.exit_code == 0
         output_data = json.loads(result.output)
         assert isinstance(output_data, dict)
-        assert 'pricing_plans' in output_data or 'pricingPlans' in output_data or len(output_data) > 0
+        assert (
+            "pricing_plans" in output_data or "pricingPlans" in output_data or len(output_data) > 0
+        )
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_access_methods_table_format(self, setup_config, api_available):
         """Test get-access-methods command in table format"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         api_base_url = config.get_api_base_url()
         contract_id = self._create_comprehensive_odps_contract(api_base_url, self.api_key)
@@ -458,17 +520,22 @@ print(api_key_value)
             pytest.skip("Failed to create test contract. Check API service and permissions.")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['contracts', 'get-access-methods', contract_id])
+        result = runner.invoke(cli, ["contracts", "get-access-methods", contract_id])
 
         assert result.exit_code == 0, f"Command failed with output: {result.output}"
-        assert 'Access Methods' in result.output or 'access' in result.output.lower()
-        assert 'REST API' in result.output or 'S3' in result.output
+        assert "Access Methods" in result.output or "access" in result.output.lower()
+        assert "REST API" in result.output or "S3" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_access_methods_json_format(self, setup_config, api_available):
         """Test get-access-methods command in JSON format"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         api_base_url = config.get_api_base_url()
         contract_id = self._create_comprehensive_odps_contract(api_base_url, self.api_key)
@@ -477,18 +544,29 @@ print(api_key_value)
             pytest.skip("Failed to create test contract. Check API service and permissions.")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['contracts', 'get-access-methods', contract_id, '--format', 'json'])
+        result = runner.invoke(
+            cli, ["contracts", "get-access-methods", contract_id, "--format", "json"]
+        )
 
         assert result.exit_code == 0
         output_data = json.loads(result.output)
         assert isinstance(output_data, dict)
-        assert 'access_methods' in output_data or 'accessMethods' in output_data or len(output_data) > 0
+        assert (
+            "access_methods" in output_data
+            or "accessMethods" in output_data
+            or len(output_data) > 0
+        )
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_payment_gateways_table_format(self, setup_config, api_available):
         """Test get-payment-gateways command in table format"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         api_base_url = config.get_api_base_url()
         contract_id = self._create_comprehensive_odps_contract(api_base_url, self.api_key)
@@ -497,17 +575,22 @@ print(api_key_value)
             pytest.skip("Failed to create test contract. Check API service and permissions.")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id])
+        result = runner.invoke(cli, ["contracts", "get-payment-gateways", contract_id])
 
         assert result.exit_code == 0, f"Command failed with output: {result.output}"
-        assert 'Payment Gateways' in result.output or 'payment' in result.output.lower()
-        assert 'Stripe' in result.output
+        assert "Payment Gateways" in result.output or "payment" in result.output.lower()
+        assert "Stripe" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_payment_gateways_json_format(self, setup_config, api_available):
         """Test get-payment-gateways command in JSON format"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         api_base_url = config.get_api_base_url()
         contract_id = self._create_comprehensive_odps_contract(api_base_url, self.api_key)
@@ -516,56 +599,80 @@ print(api_key_value)
             pytest.skip("Failed to create test contract. Check API service and permissions.")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id, '--format', 'json'])
+        result = runner.invoke(
+            cli, ["contracts", "get-payment-gateways", contract_id, "--format", "json"]
+        )
 
         assert result.exit_code == 0
         output_data = json.loads(result.output)
         assert isinstance(output_data, dict)
-        assert 'payment_gateways' in output_data or 'paymentGateways' in output_data or len(output_data) > 0
+        assert (
+            "payment_gateways" in output_data
+            or "paymentGateways" in output_data
+            or len(output_data) > 0
+        )
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
-    def test_all_odps_commands_error_handling_invalid_contract_id(self, setup_config, api_available):
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
+    def test_all_odps_commands_error_handling_invalid_contract_id(
+        self, setup_config, api_available
+    ):
         """Test error handling for all ODPS commands with invalid contract ID"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         runner = CliRunner()
-        invalid_id = 'invalid-contract-id'
+        invalid_id = "invalid-contract-id"
 
         # Test all commands with invalid contract ID
         commands = [
-            ['contracts', 'get-product-details', invalid_id],
-            ['contracts', 'get-product-strategy', invalid_id],
-            ['contracts', 'get-pricing', invalid_id],
-            ['contracts', 'get-access-methods', invalid_id],
-            ['contracts', 'get-payment-gateways', invalid_id],
+            ["contracts", "get-product-details", invalid_id],
+            ["contracts", "get-product-strategy", invalid_id],
+            ["contracts", "get-pricing", invalid_id],
+            ["contracts", "get-access-methods", invalid_id],
+            ["contracts", "get-payment-gateways", invalid_id],
         ]
 
         for cmd in commands:
             result = runner.invoke(cli, cmd)
-            assert result.exit_code != 0, f"Command {cmd} should have failed with invalid contract ID"
-            assert 'error' in result.output.lower() or 'invalid' in result.output.lower() or 'not found' in result.output.lower()
+            assert result.exit_code != 0, (
+                f"Command {cmd} should have failed with invalid contract ID"
+            )
+            assert (
+                "error" in result.output.lower()
+                or "invalid" in result.output.lower()
+                or "not found" in result.output.lower()
+            )
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_all_odps_commands_error_handling_non_odps_contract(self, setup_config, api_available):
         """Test error handling for all ODPS commands with non-ODPS contract"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         # Create a non-ODPS contract
         api_base_url = config.get_api_base_url()
         contract_data = {
-            "original_raw": json.dumps({
-                "apiVersion": "odcs/v3",
-                "kind": "DataContract",
-                "id": f"test-contract-{uuid.uuid4().hex[:8]}",
-                "name": "Test ODCS Contract",
-                "schema": {
-                    "fields": [{"name": "id", "type": "string"}]
+            "original_raw": json.dumps(
+                {
+                    "apiVersion": "odcs/v3",
+                    "kind": "DataContract",
+                    "id": f"test-contract-{uuid.uuid4().hex[:8]}",
+                    "name": "Test ODCS Contract",
+                    "schema": {"fields": [{"name": "id", "type": "string"}]},
                 }
-            }),
+            ),
             "original_format": "JSON",
-            "original_spec_type": "ODCS"
+            "original_spec_type": "ODCS",
         }
 
         try:
@@ -573,9 +680,11 @@ print(api_key_value)
                 f"{api_base_url}/contracts/",
                 json=contract_data,
                 headers={"X-API-Key": self.api_key},
-                timeout=30
+                timeout=30,
             )
-            assert response.status_code in [200, 201], f"Failed to create contract: {response.status_code} - {response.text}"
+            assert response.status_code in [200, 201], (
+                f"Failed to create contract: {response.status_code} - {response.text}"
+            )
 
             contract_response = response.json()
             contract_id = contract_response.get("id")
@@ -585,26 +694,37 @@ print(api_key_value)
 
             # Test all commands with non-ODPS contract
             commands = [
-                ['contracts', 'get-product-details', contract_id],
-                ['contracts', 'get-product-strategy', contract_id],
-                ['contracts', 'get-pricing', contract_id],
-                ['contracts', 'get-access-methods', contract_id],
-                ['contracts', 'get-payment-gateways', contract_id],
+                ["contracts", "get-product-details", contract_id],
+                ["contracts", "get-product-strategy", contract_id],
+                ["contracts", "get-pricing", contract_id],
+                ["contracts", "get-access-methods", contract_id],
+                ["contracts", "get-payment-gateways", contract_id],
             ]
 
             for cmd in commands:
                 result = runner.invoke(cli, cmd)
-                assert result.exit_code != 0, f"Command {cmd} should have failed with non-ODPS contract"
-                assert 'error' in result.output.lower() or 'odps' in result.output.lower() or 'not an odps' in result.output.lower()
+                assert result.exit_code != 0, (
+                    f"Command {cmd} should have failed with non-ODPS contract"
+                )
+                assert (
+                    "error" in result.output.lower()
+                    or "odps" in result.output.lower()
+                    or "not an odps" in result.output.lower()
+                )
 
         except Exception as e:
-            pytest.skip(f"Failed to create test contract: {str(e)}")
+            pytest.skip(f"Failed to create test contract: {e!s}")
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_product_details_error_handling_invalid_language(self, setup_config, api_available):
         """Test error handling for get-product-details with invalid language code"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         api_base_url = config.get_api_base_url()
         contract_id = self._create_comprehensive_odps_contract(api_base_url, self.api_key)
@@ -613,16 +733,23 @@ print(api_key_value)
             pytest.skip("Failed to create test contract. Check API service and permissions.")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--lang', 'invalid'])
+        result = runner.invoke(
+            cli, ["contracts", "get-product-details", contract_id, "--lang", "invalid"]
+        )
 
         assert result.exit_code != 0
-        assert 'language code' in result.output.lower() or 'invalid' in result.output.lower()
+        assert "language code" in result.output.lower() or "invalid" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_all_commands_output_formatting_consistency(self, setup_config, api_available):
         """Test that all ODPS commands support both table and JSON output formats consistently"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         api_base_url = config.get_api_base_url()
         contract_id = self._create_comprehensive_odps_contract(api_base_url, self.api_key)
@@ -634,52 +761,67 @@ print(api_key_value)
 
         # Test all commands with both formats
         commands = [
-            ['contracts', 'get-product-details', contract_id],
-            ['contracts', 'get-product-strategy', contract_id],
-            ['contracts', 'get-pricing', contract_id],
-            ['contracts', 'get-access-methods', contract_id],
-            ['contracts', 'get-payment-gateways', contract_id],
+            ["contracts", "get-product-details", contract_id],
+            ["contracts", "get-product-strategy", contract_id],
+            ["contracts", "get-pricing", contract_id],
+            ["contracts", "get-access-methods", contract_id],
+            ["contracts", "get-payment-gateways", contract_id],
         ]
 
         for cmd in commands:
             # Test table format (default)
             result_table = runner.invoke(cli, cmd)
-            assert result_table.exit_code == 0, f"Command {cmd} failed in table format: {result_table.output}"
-            assert len(result_table.output) > 0, f"Command {cmd} produced empty output in table format"
+            assert result_table.exit_code == 0, (
+                f"Command {cmd} failed in table format: {result_table.output}"
+            )
+            assert len(result_table.output) > 0, (
+                f"Command {cmd} produced empty output in table format"
+            )
 
             # Test JSON format
-            cmd_json = cmd + ['--format', 'json']
+            cmd_json = cmd + ["--format", "json"]
             result_json = runner.invoke(cli, cmd_json)
-            assert result_json.exit_code == 0, f"Command {cmd_json} failed in JSON format: {result_json.output}"
+            assert result_json.exit_code == 0, (
+                f"Command {cmd_json} failed in JSON format: {result_json.output}"
+            )
             try:
                 output_data = json.loads(result_json.output)
-                assert isinstance(output_data, (dict, list)), f"Command {cmd_json} did not produce valid JSON"
+                assert isinstance(output_data, (dict, list)), (
+                    f"Command {cmd_json} did not produce valid JSON"
+                )
             except json.JSONDecodeError:
                 pytest.fail(f"Command {cmd_json} did not produce valid JSON: {result_json.output}")
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_all_odps_commands_with_empty_data(self, setup_config, api_available):
         """Test all ODPS commands with contract that has minimal data"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         # Create ODPS contract with minimal data
         api_base_url = config.get_api_base_url()
         contract_data = {
-            "original_raw": json.dumps({
-                "schema": "https://opendataproducts.org/schema/v4.1",
-                "version": "4.1",
-                "product": {
-                    "details": {
-                        "en": {
-                            "productID": f"minimal-product-{uuid.uuid4().hex[:8]}",
-                            "name": "Minimal Product"
+            "original_raw": json.dumps(
+                {
+                    "schema": "https://opendataproducts.org/schema/v4.1",
+                    "version": "4.1",
+                    "product": {
+                        "details": {
+                            "en": {
+                                "productID": f"minimal-product-{uuid.uuid4().hex[:8]}",
+                                "name": "Minimal Product",
+                            }
                         }
-                    }
+                    },
                 }
-            }),
+            ),
             "original_format": "JSON",
-            "original_spec_type": "ODPS"
+            "original_spec_type": "ODPS",
         }
 
         try:
@@ -688,7 +830,7 @@ print(api_key_value)
                 f"{api_base_url}/contracts/products/",
                 json=contract_data,
                 headers={"X-API-Key": self.api_key},
-                timeout=30
+                timeout=30,
             )
 
             # If workflow fails, try creating directly via contracts endpoint
@@ -697,41 +839,44 @@ print(api_key_value)
                 contract_data_direct = {
                     "original_raw": contract_data["original_raw"],
                     "original_format": contract_data["original_format"],
-                    "original_spec_type": contract_data["original_spec_type"]
+                    "original_spec_type": contract_data["original_spec_type"],
                 }
                 response = requests.post(
                     f"{api_base_url}/contracts/",
                     json=contract_data_direct,
                     headers={"X-API-Key": self.api_key},
-                    timeout=30
+                    timeout=30,
                 )
 
             if response.status_code not in [200, 201]:
-                pytest.skip(f"Failed to create minimal contract: {response.status_code} - {response.text}")
+                pytest.skip(
+                    f"Failed to create minimal contract: {response.status_code} - {response.text}"
+                )
 
             contract_response = response.json()
             contract_id = contract_response.get("id")
             if not contract_id:
                 pytest.skip("Failed to get contract ID from response.")
 
-            time.sleep(3)
+            time.sleep(3)  # noqa: sleep-needed — test timing requirement
 
             runner = CliRunner()
 
             # Test all commands - they should handle empty data gracefully
             commands = [
-                ['contracts', 'get-product-details', contract_id],
-                ['contracts', 'get-product-strategy', contract_id],
-                ['contracts', 'get-pricing', contract_id],
-                ['contracts', 'get-access-methods', contract_id],
-                ['contracts', 'get-payment-gateways', contract_id],
+                ["contracts", "get-product-details", contract_id],
+                ["contracts", "get-product-strategy", contract_id],
+                ["contracts", "get-pricing", contract_id],
+                ["contracts", "get-access-methods", contract_id],
+                ["contracts", "get-payment-gateways", contract_id],
             ]
 
             for cmd in commands:
                 result = runner.invoke(cli, cmd)
                 # Commands should succeed but may indicate no data available
-                assert result.exit_code == 0, f"Command {cmd} failed with minimal data: {result.output}"
+                assert result.exit_code == 0, (
+                    f"Command {cmd} failed with minimal data: {result.output}"
+                )
 
         except Exception as e:
-            pytest.skip(f"Failed to create test contract: {str(e)}")
-
+            pytest.skip(f"Failed to create test contract: {e!s}")

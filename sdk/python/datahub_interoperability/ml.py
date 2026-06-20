@@ -4,16 +4,17 @@ ML Model Registry, Training, and Inference operations for DataHub SDK.
 Provides high-level methods for managing ML models, training jobs, and inference deployments
 with ODH (Open Data Hub) integration.
 """
-import re
+
 import uuid
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
+
 from .client import DataHubClient
 from .errors import (
-    DataHubError,
-    ValidationError,
-    NotFoundError,
     ConflictError,
+    DataHubError,
+    NotFoundError,
     ServerError,
+    ValidationError,
 )
 
 
@@ -97,13 +98,21 @@ class ODHIntegrationAPI:
         if not isinstance(model_type, str):
             raise ValidationError(
                 "model_type must be a string",
-                details={"field": "model_type", "expected": "string", "actual": type(model_type).__name__},
+                details={
+                    "field": "model_type",
+                    "expected": "string",
+                    "actual": type(model_type).__name__,
+                },
             )
 
         if model_type.upper() not in valid_types:
             raise ValidationError(
                 f"model_type must be one of: {', '.join(valid_types)}",
-                details={"field": "model_type", "expected": f"one of: {', '.join(valid_types)}", "actual": model_type},
+                details={
+                    "field": "model_type",
+                    "expected": f"one of: {', '.join(valid_types)}",
+                    "actual": model_type,
+                },
             )
 
     def _validate_model_status(self, status: Optional[str]) -> None:
@@ -130,7 +139,11 @@ class ODHIntegrationAPI:
         if status.upper() not in valid_statuses:
             raise ValidationError(
                 f"status must be one of: {', '.join(valid_statuses)}",
-                details={"field": "status", "expected": f"one of: {', '.join(valid_statuses)}", "actual": status},
+                details={
+                    "field": "status",
+                    "expected": f"one of: {', '.join(valid_statuses)}",
+                    "actual": status,
+                },
             )
 
     async def list_models(
@@ -325,7 +338,9 @@ class ODHIntegrationAPI:
             data["status"] = status.upper()
 
         if not data:
-            raise ValidationError("At least one field (asset_id, contract_id, status) must be provided for update")
+            raise ValidationError(
+                "At least one field (asset_id, contract_id, status) must be provided for update"
+            )
 
         try:
             response = await self.client.patch(f"ml/models/{model_id}/", data=data)
@@ -415,7 +430,9 @@ class ODHIntegrationAPI:
         self._validate_uuid(asset_id, "asset_id")
 
         try:
-            response = await self.client.post(f"ml/models/{model_id}/link-asset/", data={"asset_id": asset_id})
+            response = await self.client.post(
+                f"ml/models/{model_id}/link-asset/", data={"asset_id": asset_id}
+            )
             if isinstance(response, dict):
                 return response
             else:
@@ -427,7 +444,9 @@ class ODHIntegrationAPI:
                 raise
             raise ServerError(f"Failed to link model to asset: {str(e)}")
 
-    async def link_model_to_dataset(self, model_id: str, dataset_id: str, role: str) -> Dict[str, Any]:
+    async def link_model_to_dataset(
+        self, model_id: str, dataset_id: str, role: str
+    ) -> Dict[str, Any]:
         """
         Link model to dataset.
 
@@ -451,19 +470,26 @@ class ODHIntegrationAPI:
         if not isinstance(role, str) or role.upper() not in valid_roles:
             raise ValidationError(
                 f"role must be one of: {', '.join(valid_roles)}",
-                details={"field": "role", "expected": f"one of: {', '.join(valid_roles)}", "actual": role},
+                details={
+                    "field": "role",
+                    "expected": f"one of: {', '.join(valid_roles)}",
+                    "actual": role,
+                },
             )
 
         try:
             response = await self.client.post(
-                f"ml/models/{model_id}/link-dataset/", data={"dataset_id": dataset_id, "role": role.upper()}
+                f"ml/models/{model_id}/link-dataset/",
+                data={"dataset_id": dataset_id, "role": role.upper()},
             )
             if isinstance(response, dict):
                 return response
             else:
                 raise ServerError("Invalid response format from API")
         except NotFoundError:
-            raise NotFoundError(f"Model with id {model_id} or dataset with id {dataset_id} not found")
+            raise NotFoundError(
+                f"Model with id {model_id} or dataset with id {dataset_id} not found"
+            )
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
@@ -486,7 +512,9 @@ class ODHIntegrationAPI:
     async def rollback_deployment(self, model_id: str, version: str) -> dict:
         return await self.client.post(f"ml/models/{model_id}/rollback/", data={"version": version})
 
-    async def publish_to_marketplace(self, model_id: str, pricing_model: str = "REQUEST_APPROVAL") -> dict:
+    async def publish_to_marketplace(
+        self, model_id: str, pricing_model: str = "REQUEST_APPROVAL"
+    ) -> dict:
         return await self.client.post(
             f"ml/models/{model_id}/marketplace-publish/",
             data={"pricing_model": pricing_model},
@@ -561,7 +589,9 @@ class TrainingAPI:
             else:
                 raise ServerError("Invalid response format from API")
         except NotFoundError:
-            raise NotFoundError(f"Model with id {model_id} or dataset with id {dataset_id} not found")
+            raise NotFoundError(
+                f"Model with id {model_id} or dataset with id {dataset_id} not found"
+            )
         except Exception as e:
             if isinstance(e, (ValidationError, NotFoundError, ConflictError, ServerError)):
                 raise
@@ -736,7 +766,9 @@ class InferenceAPI:
         except (ValueError, TypeError):
             raise ValidationError(f"{param_name} must be a valid UUID")
 
-    async def deploy_model(self, model_id: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def deploy_model(
+        self, model_id: str, config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Deploy a model for inference.
 

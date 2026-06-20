@@ -15,11 +15,12 @@ from datetime import timedelta
 import pytest
 
 pytestmark = pytest.mark.slow
+import uuid
+
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.test import override_settings
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.auth.jwt_utils import JWTTokenGenerator
@@ -28,7 +29,6 @@ from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 from .conftest import E2ETestBase
-import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
 UserModel = get_user_model()
@@ -122,7 +122,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
         plaintext_key = APIKey.generate_key()
         key_hash = APIKey.hash_key(plaintext_key)
 
-        expired_key = APIKey.objects.create(
+        APIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
             key_hash=key_hash,
@@ -235,7 +235,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
         access_token = JWTTokenGenerator.generate_access_token(self.user)
 
         # Wait for token to expire
-        time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+        time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
@@ -333,7 +333,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
         refresh_token_str = RefreshToken.generate_token()
         refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
 
-        expired_token = RefreshToken.objects.create(
+        RefreshToken.objects.create(
             user=self.user,
             token_hash=refresh_token_hash,
             expires_at=timezone.now() - timedelta(days=1),  # Expired yesterday
@@ -420,7 +420,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Wait for token to expire
-        time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+        time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
         # Try to use expired token (should fail)
         response = self.client.get("/api/v1/assets/")
@@ -674,7 +674,8 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
         # Platform admin should access admin-only endpoint
         admin_response = self.client.get("/api/v1/tenants/")
         self.assertEqual(
-            admin_response.status_code, status.HTTP_200_OK,
+            admin_response.status_code,
+            status.HTTP_200_OK,
         )
 
         # Verify a regular user CANNOT access the same endpoint
@@ -701,7 +702,9 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
 
         # Create another tenant and user
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {uuid.uuid4().hex[:8]}", slug=f"other-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         other_user = User.objects.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
@@ -739,7 +742,9 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
 
         # Create another tenant and user
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {uuid.uuid4().hex[:8]}", slug=f"other-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         other_user = User.objects.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
@@ -779,7 +784,9 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
 
         # Create another tenant and user
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {uuid.uuid4().hex[:8]}", slug=f"other-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         other_user = User.objects.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
@@ -817,7 +824,9 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
 
         # Create another tenant and user
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {uuid.uuid4().hex[:8]}", slug=f"other-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         other_user = User.objects.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
@@ -921,7 +930,7 @@ class ErrorScenariosE2ETest(E2ETestBase):
         access_token = JWTTokenGenerator.generate_access_token(self.user)
 
         # Wait for token to expire
-        time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+        time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
         response = self.client.get("/api/v1/assets/")
@@ -989,7 +998,9 @@ class ErrorScenariosE2ETest(E2ETestBase):
 
         # Create another tenant and user
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {uuid.uuid4().hex[:8]}", slug=f"other-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         other_user = User.objects.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
@@ -1045,8 +1056,7 @@ class ErrorScenariosE2ETest(E2ETestBase):
         self.assertIn(
             write_response.status_code,
             [status.HTTP_201_CREATED, status.HTTP_403_FORBIDDEN],
-            "Asset creation may succeed (scopes not enforced) "
-            "or be blocked",
+            "Asset creation may succeed (scopes not enforced) or be blocked",
         )
 
     # ========== Token Validation Error Tests ==========

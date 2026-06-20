@@ -15,6 +15,7 @@ Tests use real implementations (no mocks/stubs) and follow TDD principles.
 
 import json
 import time
+import uuid
 
 import pytest
 import yaml
@@ -32,7 +33,6 @@ from hub.apps.contracts.odcs_generator import generate_odcs_from_hubcontract
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase, ContractsTestBase
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -221,11 +221,7 @@ class ODCSExportIntegrationTest(ContractsAPITestBase):
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
 
-        # Should return 400 or 500 with error details (implementation returns 400 for missing data)
-        self.assertIn(
-            response.status_code,
-            [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR],
-        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("error", response.data)
 
     def test_export_performance_under_2s(self):
@@ -235,7 +231,7 @@ class ODCSExportIntegrationTest(ContractsAPITestBase):
         durations = []
         iterations = 10  # Run multiple iterations to get p95
 
-        for i in range(iterations):
+        for _i in range(iterations):
             start_time = time.time()
             response = self.client.get(
                 f"/api/v1/contracts/{self.contract_without_original.id}/export/",
@@ -322,7 +318,7 @@ class ODCSDownloadIntegrationTest(ContractsAPITestBase):
                 self.assertIn("Content-Disposition", response)
                 self.assertIn("attachment", response["Content-Disposition"])
 
-                data = response.data
+                data = json.loads(response.content)
                 self.assertEqual(data["apiVersion"], f"odcs.io/v{version}")
                 self.assertEqual(data["kind"], "DataContract")
                 self.assertEqual(data["id"], "test-contract-integration")
@@ -362,7 +358,7 @@ class ODCSDownloadIntegrationTest(ContractsAPITestBase):
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
         self.assertEqual(response_json.status_code, status.HTTP_200_OK)
-        data_json = response_json.data
+        data_json = json.loads(response_json.content)
 
         # Download as YAML
         response_yaml = self.client.get(
@@ -398,7 +394,7 @@ class ODCSDownloadIntegrationTest(ContractsAPITestBase):
         durations = []
         iterations = 10  # Run multiple iterations to get p95
 
-        for i in range(iterations):
+        for _i in range(iterations):
             start_time = time.time()
             response = self.client.get(
                 f"/api/v1/contracts/{self.contract_without_original.id}/download/",
@@ -539,7 +535,7 @@ class ODCSRoundTripIntegrationTest(ContractsAPITestBase):
 
                 # Step 2: Normalize ODCS → HubContract
                 odcs_json = json.dumps(original_odcs)
-                hub_contract_dict, spec_type, spec_version, norm_status, errors, warnings = (
+                hub_contract_dict, _spec_type, _spec_version, norm_status, errors, _warnings = (
                     normalize_contract(raw_contract=odcs_json, format="json", spec_type="ODCS")
                 )
 
@@ -609,7 +605,7 @@ class ODCSRoundTripIntegrationTest(ContractsAPITestBase):
 
         # Normalize ODCS → HubContract
         odcs_json = json.dumps(original_odcs)
-        hub_contract_dict, spec_type, spec_version, norm_status, errors, warnings = (
+        hub_contract_dict, _spec_type, _spec_version, norm_status, _errors, _warnings = (
             normalize_contract(raw_contract=odcs_json, format="json", spec_type="ODCS")
         )
 
@@ -640,7 +636,7 @@ class ODCSRoundTripIntegrationTest(ContractsAPITestBase):
 
         # Normalize ODCS 3.0.2 → HubContract
         odcs_json = json.dumps(original_odcs_v302)
-        hub_contract_dict, spec_type, spec_version, norm_status, errors, warnings = (
+        hub_contract_dict, _spec_type, _spec_version, _norm_status, _errors, _warnings = (
             normalize_contract(raw_contract=odcs_json, format="json", spec_type="ODCS")
         )
 

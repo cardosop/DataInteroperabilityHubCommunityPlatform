@@ -1,6 +1,7 @@
 """
 Unit tests for job creation and processing.
 """
+
 import uuid
 
 import pytest
@@ -9,12 +10,11 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.jobs.models import Job, JobPriority, JobStatus, JobType
+from hub.apps.jobs.models import Job, JobStatus, JobType
+from hub.apps.jobs.tests.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.jobs.utils import create_job, get_job_timeout, get_queue_for_job_type
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
-
-from hub.apps.jobs.tests.billing_support import ensure_tenant_has_active_subscription
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -28,7 +28,10 @@ class JobCreationProcessingTest(TestCase):
         self.client = APIClient()
 
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -296,7 +299,10 @@ class JobCreationProcessingTest(TestCase):
         # Create another tenant and job
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         other_job = Job.objects.create(
             tenant=other_tenant,
@@ -331,8 +337,6 @@ class JobCreationProcessingTest(TestCase):
         """Test error handling when tenant job limits are exceeded"""
         from rest_framework.exceptions import ValidationError
 
-        from hub.apps.jobs.utils import check_tenant_job_limits
-
         # Mock tenant limits to be exceeded
         # Note: This tests the error path, actual limit checking is tested elsewhere
         resource_id = uuid.uuid4()
@@ -352,12 +356,17 @@ class JobCreationProcessingTest(TestCase):
             self.assertIsNotNone(job)
         except ValidationError as e:
             # Expected if limits exceeded
-            self.assertIn("limit", str(e).lower() or "rate", str(e).lower())
+            err = str(e).lower()
+            self.assertTrue(
+                any(kw in err for kw in ("limit", "rate")),
+                f"Expected 'limit' or 'rate' in error: {e}",
+            )
 
     def test_create_job_invalid_resource_id_error(self):
         """Test error handling with invalid resource_id format"""
         # create_job expects UUID string, but we'll test with invalid format
         from django.core.exceptions import ValidationError
+
         try:
             job = create_job(
                 job_type=JobType.DQ_RUN,
@@ -369,14 +378,20 @@ class JobCreationProcessingTest(TestCase):
             # If job created, it means UUID validation happens elsewhere (acceptable)
             self.assertIsNotNone(job)
         except (ValueError, TypeError, ValidationError) as e:
-            # Expected if UUID validation fails
-            self.assertIsNotNone(e)
+            # Expected if UUID validation fails — verify the error message
+            # contains relevant keywords.
+            err = str(e).lower()
+            self.assertTrue(
+                any(kw in err for kw in ("uuid", "invalid", "format")),
+                f"Exception message should mention UUID/invalid/format: {e}",
+            )
 
     def test_create_job_missing_required_fields_error(self):
         """Test error handling with missing required fields"""
         # Missing job_type - should raise TypeError for missing required argument
         # or ValidationError if type field is None
         from django.core.exceptions import ValidationError
+
         try:
             create_job(
                 resource_type="DATASET",
@@ -387,9 +402,13 @@ class JobCreationProcessingTest(TestCase):
             # If no exception, check that type is required at DB level
             # This test verifies that missing type is caught somewhere in the flow
             self.fail("Expected TypeError or ValidationError for missing job_type")
-        except (TypeError, ValueError, ValidationError, Exception) as e:
+        except Exception as e:
             # Expected - missing required field should raise an error
-            self.assertIsNotNone(e)
+            err = str(e).lower()
+            self.assertTrue(
+                any(kw in err for kw in ("required", "missing", "type", "field")),
+                f"Exception message should mention missing/required: {e}",
+            )
 
     def test_create_job_api_validation_error(self):
         """Test API error handling for invalid job creation request"""

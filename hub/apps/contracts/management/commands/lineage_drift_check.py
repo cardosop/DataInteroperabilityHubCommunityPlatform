@@ -34,6 +34,7 @@ Usage::
     # Permissive (debug-only — accept up to 5%):
     python manage.py lineage_drift_check --tolerance=0.05
 """
+
 from __future__ import annotations
 
 import datetime as _dt
@@ -41,7 +42,6 @@ import json
 from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
-
 
 DEFAULT_TOLERANCE = 0.001  # ±0.1%
 
@@ -72,8 +72,8 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
 
     def handle(self, *_args, **options):
-        from hub.apps.contracts.models import Contract, LineageEdge
         from hub.apps.contracts.lineage_sync import _desired_edge_set
+        from hub.apps.contracts.models import Contract, LineageEdge
 
         tenant_id: str | None = options.get("tenant")
         tolerance: float = options["tolerance"]
@@ -106,7 +106,7 @@ class Command(BaseCommand):
             "delta_abs": abs(json_entries - edges_open),
             "delta_pct": round(delta_pct * 100, 4),
             "tolerance_pct": round(tolerance * 100, 4),
-            "checked_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+            "checked_at": _dt.datetime.now(_dt.UTC).isoformat(),
         }
         self.stdout.write(json.dumps(report, sort_keys=True))
 

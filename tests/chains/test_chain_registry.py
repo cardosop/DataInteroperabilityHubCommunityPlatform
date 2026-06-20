@@ -4,13 +4,14 @@ Phase 274.7.10 — per-chain tests (4 cases each).
 Tests that all 5 registered chains are valid, executable, and
 produce the expected audit event shape.
 """
+
 from __future__ import annotations
 
 import pytest
 from django.test import TestCase
 
-from hub.apps.core.business_rules.chains import execute_chain, get_chain
-from hub.apps.core.business_rules.base import RuleExecutionContext, ValidationResult
+from hub.apps.core.business_rules.base import RuleExecutionContext
+from hub.apps.core.business_rules.chains import get_chain
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -42,8 +43,10 @@ class TestChainRegistry(TestCase):
 
     def test_all_chains_have_steps(self):
         for name in [
-            "contract.publish", "asset.activate",
-            "marketplace.listing.publish", "governance.approval.advance",
+            "contract.publish",
+            "asset.activate",
+            "marketplace.listing.publish",
+            "governance.approval.advance",
             "semantic.query.execute",
         ]:
             chain = get_chain(name)
@@ -57,7 +60,7 @@ class TestChainHappyPath(TestCase):
     def test_contract_publish_chain_registered(self):
         chain = get_chain("contract.publish")
         assert chain is not None
-        ctx = RuleExecutionContext(tenant_id="t1", user_id="u1")
+        RuleExecutionContext(tenant_id="t1", user_id="u1")
         # Chain requires transaction — test registration only.
         assert chain.name == "contract.publish"
 

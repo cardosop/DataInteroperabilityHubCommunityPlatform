@@ -11,12 +11,11 @@ test exercises the *real* boto3 list_objects_v2 paginator + page
 shape — no DIY mocks of S3-listing semantics that could drift from
 production behaviour.
 """
+
 from __future__ import annotations
 
-import importlib
 import io
 import os
-import sys
 import uuid
 
 import pytest
@@ -26,7 +25,7 @@ from django.test import TransactionTestCase, override_settings
 # moto is in requirements-dev.txt; skip cleanly on environments that
 # don't have it (CI does).
 moto = pytest.importorskip("moto")
-import boto3  # noqa: E402 — after moto import per moto's docs
+import boto3
 
 
 def _bucket_name() -> str:
@@ -53,6 +52,7 @@ class CollectDqS3MetricsTests(TransactionTestCase):
 
     def setUp(self):
         from moto import mock_aws
+
         # Use mock_aws as a context manager that activates for the
         # whole TestCase. The boto3 client created inside the mock
         # is also seen by the command (because the command uses the
@@ -83,11 +83,11 @@ class CollectDqS3MetricsTests(TransactionTestCase):
     @staticmethod
     def _gauge_value(tenant_id: str) -> float:
         from services.shared.metrics import dq_s3_payload_bytes_total
+
         try:
-            sample = (
-                dq_s3_payload_bytes_total.labels(
-                    service="hub", tenant_id=tenant_id,
-                )
+            sample = dq_s3_payload_bytes_total.labels(
+                service="hub",
+                tenant_id=tenant_id,
             )
             # prometheus_client Gauge stores its current value at ._value
             return float(sample._value.get())

@@ -11,7 +11,6 @@ Tests for webhook payload validation, including:
 import uuid
 
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
@@ -22,7 +21,6 @@ from hub.apps.webhooks.models import (
     WebhookDelivery,
     WebhookEventType,
 )
-from hub.apps.webhooks.service import WebhookDeliveryService
 
 
 class WebhookPayloadValidationTest(TestCase):
@@ -328,37 +326,45 @@ class WebhookPayloadValidationIntegrationTest(TestCase):
         self.assertIn("delivery", validated_items)
         # Payload should be validated as part of delivery validation
 
-    def test_validate_payload_integration_with_service(self):
-        """Test payload validation integration with WebhookDeliveryService"""
-        # Create a valid payload that would be used by the service
-        event_data = {
-            "asset_id": "123e4567-e89b-12d3-a456-426614174000",
-            "asset_name": "Test Asset",
-            "status": "ACTIVE",
-        }
-
-        # Build payload as the service would
-        payload = {
-            "event_type": WebhookEventType.ASSET_CREATED,
-            "resource_type": "ASSET",
-            "resource_id": "123e4567-e89b-12d3-a456-426614174000",
-            "timestamp": timezone.now().isoformat(),
-            "data": event_data,
-        }
-
-        # Validate payload using business rules
-        result = self.business_rules._validate_payload(payload)
-        self.assertTrue(result.is_valid)
-
-        # Verify payload can be serialized (as service would do)
+    def test_validate_payload_boundary_at_max_size(self):
+        """Payload exactly at MAX_PAYLOAD_SIZE passes; MAX_PAYLOAD_SIZE+1 fails."""
         import json
 
-        payload_json = json.dumps(payload, sort_keys=True)
-        self.assertIsNotNone(payload_json)
+        # Build a payload that is precisely MAX_PAYLOAD_SIZE bytes when serialized.
+        base = {
+            "event_type": "asset.created",
+            "resource_type": "ASSET",
+            "resource_id": "123e4567-e89b-12d3-a456-426614174000",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "data": {},
+        }
+        base_size = len(json.dumps(base, sort_keys=True).encode("utf-8"))
+        # Pad the data field to hit exactly MAX_PAYLOAD_SIZE.
+        padding_needed = MAX_PAYLOAD_SIZE - base_size - 2  # account for {}
+        base["data"] = {"pad": "x" * max(0, padding_needed)}
+        payload_json = json.dumps(base, sort_keys=True)
+        actual_size = len(payload_json.encode("utf-8"))
 
-        # Verify payload size is within limits
-        payload_size = len(payload_json.encode("utf-8"))
-        self.assertLess(payload_size, MAX_PAYLOAD_SIZE)
+        # Slight adjustment: if we overshot, trim.
+        if actual_size > MAX_PAYLOAD_SIZE:
+            trim = actual_size - MAX_PAYLOAD_SIZE
+            base["data"] = {"pad": "x" * max(0, padding_needed - trim)}
+            payload_json = json.dumps(base, sort_keys=True)
+            actual_size = len(payload_json.encode("utf-8"))
+
+        payload = json.loads(payload_json)
+
+        # At exactly MAX_PAYLOAD_SIZE, validation passes.
+        result_valid = self.business_rules._validate_payload(payload)
+        self.assertTrue(result_valid.is_valid)
+
+        # At MAX_PAYLOAD_SIZE + 1, validation fails.
+        base["data"] = {"pad": "x" * (max(0, padding_needed) + 1)}
+        oversize_json = json.dumps(base, sort_keys=True)
+        oversize_payload = json.loads(oversize_json)
+        result_invalid = self.business_rules._validate_payload(oversize_payload)
+        self.assertFalse(result_invalid.is_valid)
+        self.assertGreater(len(result_invalid.errors), 0)
 
     def test_validate_payload_error_handling_invalid_structure_returns_false(self):
         """Error handling: _validate_payload with non-dict returns is_valid False and expected errors."""
@@ -382,22 +388,17 @@ class WebhookPayloadValidationIntegrationTest(TestCase):
         self.assertGreater(len(result.errors), 0)
         self.assertIn("payload_size_validation", result.details)
 
-    def test_validate_payload_tdd_result_structure(self):
-        """TDD: _validate_payload result has is_valid, errors, details, and expected detail keys."""
+    def test_validate_payload_missing_required_field_event_type(self):
+        """Payload missing the 'event_type' key returns is_valid=False."""
         payload = {
-            "event_type": "asset.created",
             "resource_type": "ASSET",
             "resource_id": "123e4567-e89b-12d3-a456-426614174000",
             "timestamp": "2024-01-01T00:00:00Z",
-            "data": {"key": "value"},
+            "data": {},
         }
         result = self.business_rules._validate_payload(payload)
-        self.assertTrue(hasattr(result, "is_valid"))
-        self.assertTrue(hasattr(result, "errors"))
-        self.assertTrue(hasattr(result, "details"))
-        self.assertIsInstance(result.errors, list)
-        self.assertIsInstance(result.details, dict)
-        self.assertTrue(result.is_valid)
-        self.assertIn("payload_size_validation", result.details)
-        self.assertIn("payload_structure_validation", result.details)
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
         self.assertIn("payload_content_validation", result.details)
+        self.assertIn("missing_fields", result.details)
+        self.assertIn("event_type", result.details["missing_fields"])

@@ -29,14 +29,15 @@ CI wiring
 Invoked from ``code-quality.yml`` as a fast check (~50ms). Add new
 allowed paths to ``ALLOWED_PATHS`` only after architectural review.
 """
+
 from __future__ import annotations
 
 import ast
 import re
 import sys
 import tokenize
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, List, Set, Tuple
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -49,14 +50,14 @@ TARGET_DIRS = [
 # directly. The ONLY currently-permitted path is the RefResolver itself,
 # which centralises SSRF defence — every other caller MUST go through
 # ``RefResolver.resolve()``.
-ALLOWED_PATHS: List[Path] = [
+ALLOWED_PATHS: list[Path] = [
     PROJECT_ROOT / "hub" / "apps" / "contracts" / "ref_resolver.py",
 ]
 
 # Patterns flagged as SSRF-unsafe in normaliser code paths. Each tuple
 # is (regex, human-readable description). Patterns are conservative —
 # they target the call surface, not arbitrary string mentions.
-PROHIBITED_PATTERNS: List[Tuple[re.Pattern[str], str]] = [
+PROHIBITED_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(r"\brequests\.(get|post|put|delete|patch|head|request)\b"),
         "direct `requests.*` call — use RefResolver.resolve() instead",
@@ -98,13 +99,13 @@ def _is_allowed(path: Path) -> bool:
     return any(path == allowed for allowed in ALLOWED_PATHS)
 
 
-def _string_and_comment_lines(text: str) -> Set[int]:
+def _string_and_comment_lines(text: str) -> set[int]:
     """Return line numbers occupied by string-literal or comment tokens.
 
     Includes triple-quoted docstrings. We skip these so the lint can
     discuss `requests.get` in narrative without false positives.
     """
-    skip: Set[int] = set()
+    skip: set[int] = set()
     try:
         tokens = list(tokenize.generate_tokens(iter(text.splitlines(keepends=True)).__next__))
     except (tokenize.TokenizeError, IndentationError, SyntaxError):
@@ -121,7 +122,7 @@ def _string_and_comment_lines(text: str) -> Set[int]:
 
 
 def lint() -> int:
-    violations: List[Tuple[Path, int, str, str]] = []
+    violations: list[tuple[Path, int, str, str]] = []
 
     for path in _iter_python_files(TARGET_DIRS):
         if _is_allowed(path):

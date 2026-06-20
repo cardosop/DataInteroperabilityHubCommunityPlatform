@@ -234,17 +234,21 @@ interface ApiAuth {
  * after navigation.
  */
 async function syncPageWithApiAuth(page: Page, apiAuth: ApiAuth): Promise<void> {
+  // Defense-in-depth: clear any cookies before injecting new ones.  Prevents
+  // stale storageState cookies from surviving when apiAuth.refresh_token is
+  // empty (rate-limit fallback, backend edge case) or when the fast-path
+  // inherits a storageState cookie that was already rotated by a prior test.
+  await page.context().clearCookies().catch(() => {});
+  // Phase 11.1: only access_token + user go to localStorage.  refresh_token
+  // lives exclusively in the httpOnly cookie below — writing it to localStorage
+  // leaks a shared value across tests and triggers replay detection.
   await page.evaluate(
-    ({ access_token, refresh_token, user: u }) => {
+    ({ access_token, user: u }) => {
       localStorage.setItem('access_token', access_token);
-      if (refresh_token) {
-        localStorage.setItem('refresh_token', refresh_token);
-      }
       localStorage.setItem('user', JSON.stringify(u));
     },
     {
       access_token: apiAuth.access_token,
-      refresh_token: apiAuth.refresh_token,
       user: apiAuth.user,
     }
   );
@@ -378,11 +382,49 @@ function isRetryable500(err: unknown): boolean {
  * 13 flaky → 2.8 h / 70 flaky / 5 hard fails. Fix the rate-limit pressure at
  * the auth-level (e.g. ensure_e2e_auth_rate_limits seeding) instead.
  */
+
+/**
+ * Short-lived cache for access tokens (NEVER refresh_tokens).
+ *
+ * Under sequential E2E load, 200 tests calling loginViaApi independently
+ * saturate the auth endpoint, causing deadlocks, rate-limiting, and
+ * cumulative timeout-budget exhaustion.  Caching for 30 s means the
+ * first call in a window pays the login cost; subsequent calls reuse
+ * the access_token without an HTTP round-trip.
+ *
+ * refresh_token is NEVER cached — it is single-use (Phase 11.1 replay
+ * detection).  Tests get their own refresh_token cookie from the first
+ * fresh login in each cache window, injected via syncPageWithApiAuth.
+ */
+const _LOGIN_CACHE = new Map<string, { apiAuth: ApiAuth; ts: number }>();
+const _LOGIN_CACHE_TTL_MS = 30_000;
+
 export async function loginViaApi(
   email: string,
   password: string,
-  options?: { connectionRetryCount?: number }
+  options?: { connectionRetryCount?: number; forceFresh?: boolean }
 ): Promise<ApiAuth> {
+  // Serve from cache when available, not expired, and JWT has ≥120s of
+  // remaining life.  refresh_token is always stripped from cached results.
+  if (!options?.forceFresh) {
+    const cached = _LOGIN_CACHE.get(email);
+    if (cached && Date.now() - cached.ts < _LOGIN_CACHE_TTL_MS) {
+      try {
+        const parts = cached.apiAuth.access_token.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(
+            Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString()
+          ) as { exp?: number };
+          if (payload.exp && payload.exp * 1000 > Date.now() + 120_000) {
+            return { ...cached.apiAuth, refresh_token: '' };
+          }
+        }
+      } catch {
+        _LOGIN_CACHE.delete(email); // Malformed JWT — evict
+      }
+    }
+  }
+
   const connectionRetryCount = options?.connectionRetryCount ?? 0;
   const basesToTry = [API_BASE];
   const alt = getAlternateApiBase(API_BASE);
@@ -396,6 +438,7 @@ export async function loginViaApi(
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),
+          signal: AbortSignal.timeout(30_000),
         });
         if (loginRes.status === 429) {
           // Rate-limited: backoff and retry instead of failing immediately.
@@ -456,14 +499,20 @@ export async function loginViaApi(
         });
         if (meRes.ok) {
           const user = (await meRes.json()) as ApiAuth['user'];
-          return { access_token, refresh_token, user };
+          const result: ApiAuth = { access_token, refresh_token, user };
+          // Cache access_token + user (NEVER refresh_token) to reduce
+          // login pressure across sequential tests.
+          _LOGIN_CACHE.set(email, { apiAuth: { ...result, refresh_token: '' }, ts: Date.now() });
+          return result;
         }
         if (meRes.status === 429 || meRes.status >= 500) {
-          return {
+          const result: ApiAuth = {
             access_token,
             refresh_token,
             user: userFromAccessToken(access_token),
           };
+          _LOGIN_CACHE.set(email, { apiAuth: { ...result, refresh_token: '' }, ts: Date.now() });
+          return result;
         }
         throw new Error(`API /auth/me/ failed: ${meRes.status}`);
       } catch (err) {
@@ -794,7 +843,11 @@ export async function loginUser(
       // and align the refresh cookie. Partial updates (access only) left stale refresh data and
       // caused redirect-to-login during client-side navigation under load.
       try {
-        const apiAuth = await loginViaApi(user.email, user.password);
+        // forceFresh: bypass the 30s cache so every test gets a unique
+        // refresh_token cookie.  The cache returns refresh_token: '' so no
+        // cookie is injected; without it the apiClient 401 interceptor can't
+        // recover from a transient /auth/me/ 401 during async tryFetchUser.
+        const apiAuth = await loginViaApi(user.email, user.password, { forceFresh: true });
         await syncPageWithApiAuth(page, apiAuth);
         // Reload so authStore.initialize() picks up storage + cookie consistently.
         //
@@ -1160,11 +1213,8 @@ export async function loginUser(
     try {
       const apiAuth = await loginViaApi(user.email, user.password);
       await page.evaluate(
-        ({ access_token, refresh_token }) => {
+        ({ access_token }) => {
           localStorage.setItem('access_token', access_token);
-          if (refresh_token) {
-            localStorage.setItem('refresh_token', refresh_token);
-          }
         },
         apiAuth
       );
@@ -1172,6 +1222,94 @@ export async function loginUser(
       // intentional: auth fixture has explicit retry budgets for the well-known transient failures (rate-limit 429, login-race); the surrounding code surfaces final failure via explicit assertions.
       // API login failed — auth may break on next page.goto() but don't block
       // the current test; the UI login already succeeded.
+    }
+  }
+
+  // Verify the auth store has finished initializing and is stable.
+  // .app-sidebar being visible means the store synchronously hydrated
+  // (isAuthenticated=true from localStorage user), but the async
+  // tryFetchUser → /auth/me/ call in the auth store's initialize()
+  // may still be running.  If that call returns 401 after we return,
+  // the page silently redirects to /login on the test's first page.goto
+  // and fails with "element not found".
+  //
+  // Poll for up to 15s for the store to reach a stable state (user in
+  // localStorage AND not on /login).  If it never stabilizes, do one
+  // fresh-login retry.  Only throw if the retry also fails.
+  const STORE_POLL_COUNT = 30;  // 30 × 500ms = 15s
+  let storeReady = false;
+  for (let poll = 0; poll < STORE_POLL_COUNT; poll++) {
+    try {
+      storeReady = await page.evaluate(() => {
+        const hasUser = !!localStorage.getItem('user');
+        const notOnLogin = !window.location.pathname.startsWith('/login');
+        // Verify the app shell actually rendered — not just that we're
+        // not on /login.  RootRoute at / with !isAuthenticated renders
+        // <LandingPage /> which has user in localStorage AND URL=/,
+        // passing a naive "hasUser && notOnLogin" check but lacking
+        // .app-header / .app-sidebar elements.  Tests expecting the
+        // dashboard fail with "element not found" timeouts.
+        const hasAppShell = !!document.querySelector(
+          '.app-sidebar, .app-header, [data-testid="app-header"]'
+        );
+        return hasUser && notOnLogin && hasAppShell;
+      });
+    } catch {
+      // page.evaluate may fail transiently during navigation
+    }
+    if (!storeReady) { await page.waitForTimeout(500); continue; }
+
+    // DOM check passed — now verify the access_token actually works for
+    // API calls.  The auth store's async tryFetchUser may still be running;
+    // if it returns 401 after we return, the apiClient's hard redirect
+    // silently moves the page to /login and the test assertion fails with
+    // "element not found".  Making a real /auth/me/ call from the browser
+    // proves the token is functional RIGHT NOW.
+    try {
+      const apiOk = await page.evaluate(async () => {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), 10_000);
+        try {
+          const token = localStorage.getItem('access_token');
+          if (!token) return false;
+          const resp = await fetch('/api/v1/auth/me/', {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal,
+          });
+          return resp.ok;
+        } catch {
+          return false;
+        } finally {
+          clearTimeout(t);
+        }
+      });
+      if (apiOk) break; // Both DOM and API checks passed
+    } catch {
+      // page.evaluate may fail transiently
+    }
+    await page.waitForTimeout(500);
+  }
+  if (!storeReady) {
+    // Auth store never stabilized — retry with force-fresh login
+    const freshAuth = await loginViaApi(user.email, user.password);
+    await syncPageWithApiAuth(page, freshAuth);
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 20_000 });
+    await page.locator('.app-sidebar, .app-header, [data-testid="app-header"]')
+      .first().waitFor({ state: 'visible', timeout: 20_000 });
+    if (page.url().includes('/login')) {
+      throw new Error(
+        'loginUser: Auth state did not stabilize. ' +
+        'Page redirected to /login after fresh-login retry. ' +
+        'The backend /auth/me/ endpoint may be unhealthy.'
+      );
+    }
+    if (page.url().includes('/403')) {
+      throw new Error(
+        'loginUser: Auth state did not stabilize. ' +
+        'Page redirected to /403 — the test user lacks required roles ' +
+        'for the current route. Use a different persona (e.g. getComplianceOfficerUser, ' +
+        'getTenantAdminUser) for role-gated routes.'
+      );
     }
   }
 }

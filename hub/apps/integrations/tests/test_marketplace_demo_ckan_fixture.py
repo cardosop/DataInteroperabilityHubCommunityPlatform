@@ -4,17 +4,18 @@ Phase 23 — Marketplace demo.ckan.org fixture tests.
 Tests that use get_or_create_demo_ckan_federated_asset fixture for marketplace
 and virtualization flows. Uses real PULL from demo.ckan.org — no mocks or stubs.
 """
+
 import unittest
+import uuid
+
 import pytest
 from django.test import TestCase
 
-from hub.apps.assets.models import Asset, AssetSourceType
-from hub.apps.integrations.models import MarketplaceConnection
+from hub.apps.assets.models import AssetSourceType
 from hub.apps.integrations.tests.utils.marketplace_fixtures import (
     get_or_create_demo_ckan_federated_asset,
 )
-from hub.apps.tenants.models import Tenant, KYCStatus
-import uuid
+from hub.apps.tenants.models import KYCStatus, Tenant
 
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
@@ -23,6 +24,7 @@ def _demo_ckan_reachable() -> bool:
     """Check if demo.ckan.org is reachable."""
     try:
         import httpx
+
         r = httpx.get("https://demo.ckan.org/api/3/action/status_show", timeout=10)
         return r.status_code == 200 and r.json().get("success") is True
     except Exception:
@@ -41,8 +43,8 @@ class MarketplaceDemoCkanFixtureTest(TestCase):
         # Reset CKAN circuit breaker so prior test failures don't
         # leave it OPEN for this test (get_or_create_demo_ckan_federated_asset
         # calls CKAN connector operations internally).
-        from hub.apps.core.resilience.circuit_breaker import \
-            reset_circuit_breaker_by_name
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+
         reset_circuit_breaker_by_name("ckan-connector")
         # Disconnect semantic signals to prevent timeouts
         from django.db.models.signals import post_save
@@ -74,7 +76,7 @@ class MarketplaceDemoCkanFixtureTest(TestCase):
             status=UserStatus.ACTIVE,
         )
 
-    @pytest.mark.real_virtualization_e2e
+    @pytest.mark.virtualization
     def test_get_or_create_demo_ckan_federated_asset_creates_asset(self):
         """
         23.2 Marketplace: get_or_create_demo_ckan_federated_asset creates federated asset.
@@ -98,7 +100,7 @@ class MarketplaceDemoCkanFixtureTest(TestCase):
         )
         self.assertEqual(connection.name, "Demo CKAN E2E Connection")
 
-    @pytest.mark.real_virtualization_e2e
+    @pytest.mark.virtualization
     def test_get_or_create_demo_ckan_federated_asset_reuses_existing(self):
         """
         23.2 Marketplace: get_or_create returns same asset on second call (get_or_create).

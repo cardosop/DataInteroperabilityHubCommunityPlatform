@@ -13,10 +13,10 @@ from tests._persona_provisioning import provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import api_get, api_post
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _owner_creds():
     return provision_persona("data_product_owner")
@@ -119,6 +119,5 @@ def test_search_marketplace():
     results = _extract_results(search_resp.json())
     names = [r.get("name", "") for r in results]
     assert any(unique in n for n in names), (
-        f"Search for '{unique}' did not return the created listing. "
-        f"Got names: {names}"
+        f"Search for '{unique}' did not return the created listing. Got names: {names}"
     )

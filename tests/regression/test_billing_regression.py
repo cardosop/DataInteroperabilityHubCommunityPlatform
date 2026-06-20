@@ -5,6 +5,8 @@ Per UPDATE_PLAN_MISSING_COVERAGE_5_6_1 §1.2 (P2) and REGRESSION_REVIEW_PHASE_5_
 Uses real APIClient and real DB; no mocks/stubs. Skip or accept 404 when billing not configured.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -13,7 +15,6 @@ from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
-import uuid
 
 User = get_user_model()
 pytestmark = pytest.mark.django_db(transaction=True)

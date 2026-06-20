@@ -4,14 +4,16 @@ Integration tests for TenantService event publishing.
 Tests event publishing using real TenantService and EventBus (no mocks/stubs).
 All tests use real services and models following engineering best practices.
 """
-from django.test import TestCase, override_settings
-from django.utils import timezone
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus, TenantConfig
-from hub.apps.users.models import User, UserStatus
-from hub.apps.tenants.services import TenantService
-from hub.apps.core.services.base import ValidationError
-from hub.apps.core.events.models import Event
+
 import uuid
+
+from django.test import TestCase, override_settings
+
+from hub.apps.core.events.models import Event
+from hub.apps.core.services.base import ValidationError
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantConfig, TenantStatus
+from hub.apps.tenants.services import TenantService
+from hub.apps.users.models import User, UserStatus
 
 
 @override_settings(
@@ -29,20 +31,18 @@ class TenantServiceEventPublishingTest(TestCase):
             password="testpass123",
             tenant=None,  # Platform admin has no tenant
             status=UserStatus.ACTIVE,
-            is_platform_admin=True
+            is_platform_admin=True,
         )
 
         self.service = TenantService(
             tenant_id=None,  # Platform admin operations
-            user_id=str(self.platform_admin.id)
+            user_id=str(self.platform_admin.id),
         )
 
     def test_create_tenant_publishes_created_event(self):
         """Test that create_tenant() publishes tenant.created event."""
         tenant = self.service.create_tenant(
-            name="New Tenant",
-            slug="new-tenant",
-            region="us-east-1"
+            name="New Tenant", slug="new-tenant", region="us-east-1"
         )
 
         # Verify tenant was created
@@ -53,10 +53,7 @@ class TenantServiceEventPublishingTest(TestCase):
         self.assertEqual(tenant.kyc_status, KYCStatus.UNVERIFIED)
 
         # Verify event was published
-        events = Event.objects.filter(
-            event_type="tenant.created",
-            data__tenant_id=str(tenant.id)
-        )
+        events = Event.objects.filter(event_type="tenant.created", data__tenant_id=str(tenant.id))
         self.assertEqual(events.count(), 1)
 
         event = events.first()
@@ -80,14 +77,12 @@ class TenantServiceEventPublishingTest(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.UNVERIFIED
+            kyc_status=KYCStatus.UNVERIFIED,
         )
 
         # Update tenant
         updated_tenant = self.service.update_tenant(
-            tenant_id=str(tenant.id),
-            name="Updated Tenant",
-            kyc_status=KYCStatus.VERIFIED
+            tenant_id=str(tenant.id), name="Updated Tenant", kyc_status=KYCStatus.VERIFIED
         )
 
         # Verify tenant was updated
@@ -95,10 +90,7 @@ class TenantServiceEventPublishingTest(TestCase):
         self.assertEqual(updated_tenant.kyc_status, KYCStatus.VERIFIED)
 
         # Verify event was published
-        events = Event.objects.filter(
-            event_type="tenant.updated",
-            data__tenant_id=str(tenant.id)
-        )
+        events = Event.objects.filter(event_type="tenant.updated", data__tenant_id=str(tenant.id))
         self.assertEqual(events.count(), 1)
 
         event = events.first()
@@ -119,20 +111,17 @@ class TenantServiceEventPublishingTest(TestCase):
         tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE
+            status=TenantStatus.ACTIVE,
         )
 
         # Update tenant with same values
-        updated_tenant = self.service.update_tenant(
+        self.service.update_tenant(
             tenant_id=str(tenant.id),
-            name=tenant.name  # Same value — no change expected
+            name=tenant.name,  # Same value — no change expected
         )
 
         # Verify no event was published
-        events = Event.objects.filter(
-            event_type="tenant.updated",
-            data__tenant_id=str(tenant.id)
-        )
+        events = Event.objects.filter(event_type="tenant.updated", data__tenant_id=str(tenant.id))
         self.assertEqual(events.count(), 0)
 
     def test_delete_tenant_publishes_deleted_event(self):
@@ -141,13 +130,12 @@ class TenantServiceEventPublishingTest(TestCase):
         tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE
+            status=TenantStatus.ACTIVE,
         )
 
         # Delete tenant
         deleted_tenant = self.service.delete_tenant(
-            tenant_id=str(tenant.id),
-            reason="Test deletion"
+            tenant_id=str(tenant.id), reason="Test deletion"
         )
 
         # Verify tenant was deleted
@@ -155,10 +143,7 @@ class TenantServiceEventPublishingTest(TestCase):
         self.assertIsNotNone(deleted_tenant.deleted_at)
 
         # Verify event was published
-        events = Event.objects.filter(
-            event_type="tenant.deleted",
-            data__tenant_id=str(tenant.id)
-        )
+        events = Event.objects.filter(event_type="tenant.deleted", data__tenant_id=str(tenant.id))
         self.assertEqual(events.count(), 1)
 
         event = events.first()
@@ -173,22 +158,17 @@ class TenantServiceEventPublishingTest(TestCase):
         tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE
+            status=TenantStatus.ACTIVE,
         )
 
         # Delete tenant without reason
-        deleted_tenant = self.service.delete_tenant(
-            tenant_id=str(tenant.id)
-        )
+        deleted_tenant = self.service.delete_tenant(tenant_id=str(tenant.id))
 
         # Verify tenant was deleted
         self.assertEqual(deleted_tenant.status, TenantStatus.DELETED)
 
         # Verify event was published
-        events = Event.objects.filter(
-            event_type="tenant.deleted",
-            data__tenant_id=str(tenant.id)
-        )
+        events = Event.objects.filter(event_type="tenant.deleted", data__tenant_id=str(tenant.id))
         self.assertEqual(events.count(), 1)
 
         event = events.first()
@@ -202,17 +182,17 @@ class TenantServiceEventPublishingTest(TestCase):
         tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE
+            status=TenantStatus.ACTIVE,
         )
 
         # Create tenant config
-        config = TenantConfig.objects.create(tenant=tenant)
+        TenantConfig.objects.create(tenant=tenant)
 
         # Update config with quota changes
         updated_config = self.service.update_tenant_config(
             tenant_id=str(tenant.id),
             max_file_size_bytes=10485760,  # 10MB
-            max_job_concurrency=10
+            max_job_concurrency=10,
         )
 
         # Verify config was updated
@@ -221,16 +201,13 @@ class TenantServiceEventPublishingTest(TestCase):
 
         # Verify quota changed events were published
         events = Event.objects.filter(
-            event_type="tenant.quota.changed",
-            data__tenant_id=str(tenant.id)
+            event_type="tenant.quota.changed", data__tenant_id=str(tenant.id)
         ).order_by("timestamp")
 
         self.assertEqual(events.count(), 2)
 
         # Check file size quota event
-        file_size_event = events.filter(
-            data__quota_field="max_file_size_bytes"
-        ).first()
+        file_size_event = events.filter(data__quota_field="max_file_size_bytes").first()
         self.assertIsNotNone(file_size_event)
         self.assertEqual(file_size_event.data["quota_type"], "file_size")
         self.assertEqual(file_size_event.data["quota_field"], "max_file_size_bytes")
@@ -238,9 +215,7 @@ class TenantServiceEventPublishingTest(TestCase):
         self.assertEqual(file_size_event.data["new_value"], 10485760)
 
         # Check job concurrency quota event
-        job_concurrency_event = events.filter(
-            data__quota_field="max_job_concurrency"
-        ).first()
+        job_concurrency_event = events.filter(data__quota_field="max_job_concurrency").first()
         self.assertIsNotNone(job_concurrency_event)
         self.assertEqual(job_concurrency_event.data["quota_type"], "job_concurrency")
         self.assertEqual(job_concurrency_event.data["quota_field"], "max_job_concurrency")
@@ -253,19 +228,15 @@ class TenantServiceEventPublishingTest(TestCase):
         tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE
+            status=TenantStatus.ACTIVE,
         )
 
         # Create tenant config
-        config = TenantConfig.objects.create(
-            tenant=tenant,
-            allowed_compliance_regimes=["GDPR"]
-        )
+        TenantConfig.objects.create(tenant=tenant, allowed_compliance_regimes=["GDPR"])
 
         # Update config with compliance regimes change
         updated_config = self.service.update_tenant_config(
-            tenant_id=str(tenant.id),
-            allowed_compliance_regimes=["GDPR", "LGPD", "CCPA"]
+            tenant_id=str(tenant.id), allowed_compliance_regimes=["GDPR", "LGPD", "CCPA"]
         )
 
         # Verify config was updated
@@ -275,7 +246,7 @@ class TenantServiceEventPublishingTest(TestCase):
         events = Event.objects.filter(
             event_type="tenant.quota.changed",
             data__tenant_id=str(tenant.id),
-            data__quota_field="allowed_compliance_regimes"
+            data__quota_field="allowed_compliance_regimes",
         )
         self.assertEqual(events.count(), 1)
 
@@ -291,23 +262,19 @@ class TenantServiceEventPublishingTest(TestCase):
         tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE
+            status=TenantStatus.ACTIVE,
         )
 
         # Create tenant config
-        config = TenantConfig.objects.create(
-            tenant=tenant,
-            rate_limits={"api": {"burst_per_10s": 10}}
-        )
+        TenantConfig.objects.create(tenant=tenant, rate_limits={"api": {"burst_per_10s": 10}})
 
         # Update config with rate limits change
         new_rate_limits = {
             "api": {"burst_per_10s": 20, "sustained_per_min": 100},
-            "upload": {"burst_per_10s": 5}
+            "upload": {"burst_per_10s": 5},
         }
         updated_config = self.service.update_tenant_config(
-            tenant_id=str(tenant.id),
-            rate_limits=new_rate_limits
+            tenant_id=str(tenant.id), rate_limits=new_rate_limits
         )
 
         # Verify config was updated
@@ -317,7 +284,7 @@ class TenantServiceEventPublishingTest(TestCase):
         events = Event.objects.filter(
             event_type="tenant.quota.changed",
             data__tenant_id=str(tenant.id),
-            data__quota_field="rate_limits"
+            data__quota_field="rate_limits",
         )
         self.assertEqual(events.count(), 1)
 
@@ -333,25 +300,21 @@ class TenantServiceEventPublishingTest(TestCase):
         tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE
+            status=TenantStatus.ACTIVE,
         )
 
         # Create tenant config
-        config = TenantConfig.objects.create(
-            tenant=tenant,
-            max_file_size_bytes=10485760
-        )
+        TenantConfig.objects.create(tenant=tenant, max_file_size_bytes=10485760)
 
         # Update config with same value
-        updated_config = self.service.update_tenant_config(
+        self.service.update_tenant_config(
             tenant_id=str(tenant.id),
-            max_file_size_bytes=10485760  # Same value
+            max_file_size_bytes=10485760,  # Same value
         )
 
         # Verify no quota changed events were published
         events = Event.objects.filter(
-            event_type="tenant.quota.changed",
-            data__tenant_id=str(tenant.id)
+            event_type="tenant.quota.changed", data__tenant_id=str(tenant.id)
         )
         self.assertEqual(events.count(), 0)
 
@@ -361,7 +324,7 @@ class TenantServiceEventPublishingTest(TestCase):
         tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE
+            status=TenantStatus.ACTIVE,
         )
         self.service.delete_tenant(tenant_id=str(tenant.id))
 
@@ -375,31 +338,24 @@ class TenantServiceEventPublishingTest(TestCase):
         tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE
+            status=TenantStatus.ACTIVE,
         )
         user = User.objects.create_user(
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create service with tenant and user
-        service = TenantService(
-            tenant_id=str(tenant.id),
-            user_id=str(user.id)
-        )
+        service = TenantService(tenant_id=str(tenant.id), user_id=str(user.id))
 
         # Create a new tenant (this will use service's tenant_id/user_id for event source)
-        new_tenant = service.create_tenant(
-            name="New Tenant",
-            slug="new-tenant"
-        )
+        new_tenant = service.create_tenant(name="New Tenant", slug="new-tenant")
 
         # Verify event has correct tenant_id and user_id
         events = Event.objects.filter(
-            event_type="tenant.created",
-            data__tenant_id=str(new_tenant.id)
+            event_type="tenant.created", data__tenant_id=str(new_tenant.id)
         )
         self.assertEqual(events.count(), 1)
 
@@ -411,10 +367,7 @@ class TenantServiceEventPublishingTest(TestCase):
 
     def test_create_tenant_with_minimal_data(self):
         """Test creating tenant with minimal required data."""
-        tenant = self.service.create_tenant(
-            name="Minimal Tenant",
-            slug="minimal-tenant"
-        )
+        tenant = self.service.create_tenant(name="Minimal Tenant", slug="minimal-tenant")
 
         # Verify tenant was created
         self.assertIsNotNone(tenant.id)
@@ -423,14 +376,10 @@ class TenantServiceEventPublishingTest(TestCase):
         self.assertIsNone(tenant.region)
 
         # Verify event was published
-        events = Event.objects.filter(
-            event_type="tenant.created",
-            data__tenant_id=str(tenant.id)
-        )
+        events = Event.objects.filter(event_type="tenant.created", data__tenant_id=str(tenant.id))
         self.assertEqual(events.count(), 1)
 
         event = events.first()
         self.assertEqual(event.data["name"], tenant.name)
         self.assertEqual(event.data["slug"], tenant.slug)
         self.assertIsNone(event.data.get("region"))
-

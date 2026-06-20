@@ -42,17 +42,15 @@ except Exception:
     # Patch failed, but tests should still run
     pass
 
+import contextlib
 import json
 from io import StringIO
 
 import httpx
-import redis
-from django.conf import settings
 from django.core.management import call_command
 from django.test import TestCase, TransactionTestCase, override_settings
 
 from hub.apps.contracts.config.odps_refs_config import ODPSRefsConfig
-from hub.apps.contracts.odps_errors import ODPSRefResolutionError
 from hub.apps.contracts.odps_rate_limiting import check_rate_limit
 from hub.apps.contracts.ref_resolver import (
     REDIS_CACHE_ACCESS_PREFIX,
@@ -66,8 +64,6 @@ from hub.apps.contracts.ref_warming import (
     warm_cache_on_startup,
     warm_ref_cache,
 )
-
-
 from hub.apps.contracts.tests.test_base import get_real_redis_client_or_none
 
 
@@ -77,6 +73,7 @@ class RefWarmingTestBase(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         import uuid as _uuid
+
         self.tenant_id = f"test-tenant-{_uuid.uuid4().hex[:8]}"
         self.config = ODPSRefsConfig()
         self.config._config_data = {
@@ -104,6 +101,7 @@ class RefWarmingTestBaseWithRedis(TransactionTestCase):
         """Set up test fixtures."""
         super().setUp()
         import uuid as _uuid
+
         self.tenant_id = f"test-tenant-{_uuid.uuid4().hex[:8]}"
         self.config = ODPSRefsConfig()
         self.config._config_data = {
@@ -119,9 +117,13 @@ class RefWarmingTestBaseWithRedis(TransactionTestCase):
         # Clear cache + rate-limit keys before each test so ``--keepdb``
         # Redis state from prior batch runs doesn't pollute this one.
         try:
-            for prefix in (REDIS_CACHE_PREFIX, REDIS_CACHE_INDEX_PREFIX,
-                           REDIS_CACHE_STATS_PREFIX, REDIS_CACHE_ACCESS_PREFIX,
-                           "odps_ref_rate_limit:"):
+            for prefix in (
+                REDIS_CACHE_PREFIX,
+                REDIS_CACHE_INDEX_PREFIX,
+                REDIS_CACHE_STATS_PREFIX,
+                REDIS_CACHE_ACCESS_PREFIX,
+                "odps_ref_rate_limit:",
+            ):
                 keys = self.redis_client.keys(f"{prefix}*")
                 if keys:
                     self.redis_client.delete(*keys)
@@ -161,7 +163,6 @@ class RefWarmingTestBaseWithRedis(TransactionTestCase):
         without the performance penalty and timeout risk.
         """
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
 
 class GetFrequentlyAccessedRefsTest(RefWarmingTestBase):
@@ -217,8 +218,7 @@ class GetFrequentlyAccessedRefsTestWithRedis(RefWarmingTestBaseWithRedis):
         refs = get_frequently_accessed_refs(limit=100)
 
         # We seeded exactly 2 URLs above — both must be present
-        self.assertEqual(len(refs), 2,
-            f"Expected exactly 2 refs, got {len(refs)}: {refs}")
+        self.assertEqual(len(refs), 2, f"Expected exactly 2 refs, got {len(refs)}: {refs}")
         self.assertIn(url1, refs, "url1 must be in frequently accessed refs")
         self.assertIn(url2, refs, "url2 must be in frequently accessed refs")
 
@@ -251,12 +251,11 @@ class GetFrequentlyAccessedRefsTestWithRedis(RefWarmingTestBaseWithRedis):
         refs = get_frequently_accessed_refs(limit=100, min_access_count=5)
 
         # url1 has count=10 (>=5), url2 has count=3 (<5) — only url1 must be present
-        self.assertEqual(len(refs), 1,
-            f"Expected exactly 1 ref (min_access_count=5), got {len(refs)}: {refs}")
-        self.assertIn(url1, refs,
-            "url1 (count=10) must be present with min_access_count=5")
-        self.assertNotIn(url2, refs,
-            "url2 (count=3) must be excluded by min_access_count=5 filter")
+        self.assertEqual(
+            len(refs), 1, f"Expected exactly 1 ref (min_access_count=5), got {len(refs)}: {refs}"
+        )
+        self.assertIn(url1, refs, "url1 (count=10) must be present with min_access_count=5")
+        self.assertNotIn(url2, refs, "url2 (count=3) must be excluded by min_access_count=5 filter")
 
     def test_get_frequently_accessed_refs_limit(self):
         """
@@ -280,8 +279,7 @@ class GetFrequentlyAccessedRefsTestWithRedis(RefWarmingTestBaseWithRedis):
         refs = get_frequently_accessed_refs(limit=10)
 
         # We created 20 refs — limit=10 must return exactly 10
-        self.assertEqual(len(refs), 10,
-            f"Expected exactly 10 refs (limit=10), got {len(refs)}")
+        self.assertEqual(len(refs), 10, f"Expected exactly 10 refs (limit=10), got {len(refs)}")
 
 
 class WarmRefCacheTest(RefWarmingTestBase):
@@ -311,7 +309,7 @@ class WarmRefCacheTestWithRedis(RefWarmingTestBaseWithRedis):
         if not redis_client:
             self.skipTest("Redis not available for cache warming tests")
 
-        is_allowed, error = check_rate_limit(
+        is_allowed, _error = check_rate_limit(
             tenant_id=self.tenant_id,
             user_id="test-user",
             redis_client=redis_client,
@@ -319,7 +317,7 @@ class WarmRefCacheTestWithRedis(RefWarmingTestBaseWithRedis):
         if not is_allowed:
             self.skipTest("Rate limit exceeded - skipping test")
 
-        resolver = RefResolver(config=self.config, tenant_id=self.tenant_id, enable_caching=True)
+        RefResolver(config=self.config, tenant_id=self.tenant_id, enable_caching=True)
 
         # Use real Redis (no mock)
         # Store cached data in real Redis
@@ -344,8 +342,11 @@ class WarmRefCacheTestWithRedis(RefWarmingTestBaseWithRedis):
         # skipped >= 0 is vacuously true; the contract is that a pre-cached
         # URL is recognised and counted as skipped, not as warmed or failed.
         self.assertEqual(result["total"], 1)
-        self.assertGreater(result.get("skipped", 0), 0,
-            "Pre-cached URL must be counted as skipped; got %s" % result)
+        self.assertGreater(
+            result.get("skipped", 0),
+            0,
+            "Pre-cached URL must be counted as skipped; got %s" % result,
+        )
 
     def test_warm_ref_cache_partial_failure(self):
         """Test warming with some failures using MockTransport.
@@ -361,7 +362,7 @@ class WarmRefCacheTestWithRedis(RefWarmingTestBaseWithRedis):
             self.skipTest("Redis not available for cache warming tests")
 
         user_id = f"test-user-pf-{_uuid.uuid4().hex[:8]}"
-        is_allowed, error = check_rate_limit(
+        is_allowed, _error = check_rate_limit(
             tenant_id=self.tenant_id,
             user_id=user_id,
             redis_client=redis_client,
@@ -468,8 +469,7 @@ class WarmRefCacheTestWithRedis(RefWarmingTestBaseWithRedis):
 
             # Should process all 25 refs — some warmed, some may fail
             self.assertEqual(result["total"], 25)
-            self.assertGreater(result["warmed"], 0,
-                "Batch processing must warm at least some refs")
+            self.assertGreater(result["warmed"], 0, "Batch processing must warm at least some refs")
         finally:
             resolver.resolve_external = original_resolve
 
@@ -545,8 +545,7 @@ class WarmCacheManagementCommandTest(RefWarmingTestBaseWithRedis):
         # Command executed and produced output — must contain "Filtered" or URL count
         self.assertGreater(len(output), 0, "Command output must not be empty")
         self.assertIsInstance(output, str)
-        self.assertIn("Filtered", output,
-            "Command output must indicate pattern-based filtering")
+        self.assertIn("Filtered", output, "Command output must indicate pattern-based filtering")
 
     def test_command_no_refs_found(self):
         """
@@ -580,6 +579,7 @@ class AutomaticCacheWarmingTest(RefWarmingTestBaseWithRedis):
         self.redis_client.zadd(access_set_key, {url_hash1.encode("utf-8"): 10.0})
 
         from django.test import override_settings
+
         with override_settings(
             ODPS_CACHE_WARMING_ENABLED=True,
             ODPS_CACHE_WARMING_STARTUP_ENABLED=True,
@@ -591,6 +591,7 @@ class AutomaticCacheWarmingTest(RefWarmingTestBaseWithRedis):
     def test_warm_cache_on_startup_disabled(self):
         """When cache warming is disabled, the function returns immediately."""
         from django.test import override_settings
+
         with override_settings(
             ODPS_CACHE_WARMING_ENABLED=False,
             ODPS_CACHE_WARMING_STARTUP_ENABLED=True,
@@ -725,10 +726,8 @@ class AutomaticCacheWarmingTestWithRedis(RefWarmingTestBaseWithRedis):
         access_set_key = f"{REDIS_CACHE_ACCESS_PREFIX}all"
 
         # Delete any prior access data for these hashes so we get clean baselines
-        try:
+        with contextlib.suppress(Exception):
             self.redis_client.zrem(access_set_key, internal_hash_bytes, external_hash_bytes)
-        except Exception:
-            pass
 
         # Internal ref resolution must NOT track external access
         document = {"definitions": {"Email": {"type": "string"}}}
@@ -736,8 +735,10 @@ class AutomaticCacheWarmingTestWithRedis(RefWarmingTestBaseWithRedis):
         resolver.resolve_internal("#/definitions/Email", document)
 
         internal_score = self.redis_client.zscore(access_set_key, internal_hash_bytes)
-        self.assertIsNone(internal_score,
-            f"Internal ref '{internal_url}' must NOT be tracked in '{access_set_key}'")
+        self.assertIsNone(
+            internal_score,
+            f"Internal ref '{internal_url}' must NOT be tracked in '{access_set_key}'",
+        )
 
         # External ref resolution MUST track access — use httpx_transport to exercise
         # the real resolve_external which calls _track_ref_access internally.
@@ -756,9 +757,11 @@ class AutomaticCacheWarmingTestWithRedis(RefWarmingTestBaseWithRedis):
         ext_resolver.resolve_external(external_url)
 
         external_score = self.redis_client.zscore(access_set_key, external_hash_bytes)
-        self.assertIsNotNone(external_score,
+        self.assertIsNotNone(
+            external_score,
             f"External ref '{external_url}' must be tracked in '{access_set_key}'; "
-            f"url_hash={external_hash}")
+            f"url_hash={external_hash}",
+        )
 
 
 @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
@@ -781,7 +784,7 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
         if not redis_client:
             self.skipTest("Redis not available for cache warming tests")
 
-        is_allowed, error = check_rate_limit(
+        is_allowed, _error = check_rate_limit(
             tenant_id=self.tenant_id,
             user_id="test-user",
             redis_client=redis_client,
@@ -857,10 +860,12 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
     def test_get_frequently_accessed_refs_with_none_limit(self):
         """get_frequently_accessed_refs with None limit returns empty list."""
         refs = get_frequently_accessed_refs(limit=None)  # type: ignore[misc]  # test: edge-case type exercise
-        self.assertIsInstance(refs, list,
-            "get_frequently_accessed_refs must return a list for None limit")
-        self.assertEqual(len(refs), 0,
-            "get_frequently_accessed_refs must return empty list for None limit")
+        self.assertIsInstance(
+            refs, list, "get_frequently_accessed_refs must return a list for None limit"
+        )
+        self.assertEqual(
+            len(refs), 0, "get_frequently_accessed_refs must return empty list for None limit"
+        )
 
     def test_get_frequently_accessed_refs_with_zero_limit(self):
         """Test get_frequently_accessed_refs with zero limit."""
@@ -872,10 +877,12 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
     def test_get_frequently_accessed_refs_with_negative_limit(self):
         """get_frequently_accessed_refs with negative limit returns empty list."""
         refs = get_frequently_accessed_refs(limit=-1)
-        self.assertIsInstance(refs, list,
-            "get_frequently_accessed_refs must return a list for negative limit")
-        self.assertEqual(len(refs), 0,
-            "get_frequently_accessed_refs must return empty list for negative limit")
+        self.assertIsInstance(
+            refs, list, "get_frequently_accessed_refs must return a list for negative limit"
+        )
+        self.assertEqual(
+            len(refs), 0, "get_frequently_accessed_refs must return empty list for negative limit"
+        )
 
     def test_get_frequently_accessed_refs_with_very_large_limit(self):
         """Test get_frequently_accessed_refs with very large limit."""
@@ -912,11 +919,10 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
         """Test warm_ref_cache with large URL list (reduced for CI)."""
         # 10000 URLs hits real network and times out at 60s.
         # Use 10 URLs — enough to verify batch handling.
-        large_url_list = [
-            f"https://example.com/schema{i}.json" for i in range(10)
-        ]
+        large_url_list = [f"https://example.com/schema{i}.json" for i in range(10)]
         result = warm_ref_cache(
-            large_url_list, tenant_id=self.tenant_id,
+            large_url_list,
+            tenant_id=self.tenant_id,
         )
         self.assertIsInstance(result, dict)
         self.assertEqual(result["total"], 10)
@@ -949,10 +955,10 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
         result = warm_ref_cache(
             ["https://example.com/schema.json"], tenant_id=self.tenant_id, batch_size=-1
         )
-        self.assertIsInstance(result, dict,
-            "warm_ref_cache must return a dict for negative batch_size")
-        self.assertGreaterEqual(result.get("total", 0), 0,
-            "total must be non-negative")
+        self.assertIsInstance(
+            result, dict, "warm_ref_cache must return a dict for negative batch_size"
+        )
+        self.assertGreaterEqual(result.get("total", 0), 0, "total must be non-negative")
 
     def test_warm_ref_cache_with_very_large_batch_size(self):
         """Test warm_ref_cache with very large batch size."""

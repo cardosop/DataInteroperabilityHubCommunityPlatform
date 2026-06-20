@@ -7,11 +7,10 @@ and validates their accuracy.
 """
 
 import json
-import pytest
-import tempfile
-from pathlib import Path
-from typing import Dict, List, Any
 import sys
+from pathlib import Path
+
+import pytest
 
 # Add scripts directory to path
 project_root = Path(__file__).parent.parent.parent
@@ -19,8 +18,6 @@ sys.path.insert(0, str(project_root / "scripts"))
 
 from check_postman_collections import (
     PostmanCollectionChecker,
-    PostmanRequest,
-    CollectionValidationResult,
 )
 
 
@@ -38,7 +35,7 @@ class TestPostmanCollectionChecker:
             "info": {
                 "name": "Test API Collection",
                 "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-                "_postman_id": "test-collection-id"
+                "_postman_id": "test-collection-id",
             },
             "item": [
                 {
@@ -51,9 +48,9 @@ class TestPostmanCollectionChecker:
                                 "url": {
                                     "raw": "{{base_url}}/api/v1/contracts/",
                                     "host": ["{{base_url}}"],
-                                    "path": ["api", "v1", "contracts", ""]
-                                }
-                            }
+                                    "path": ["api", "v1", "contracts", ""],
+                                },
+                            },
                         },
                         {
                             "name": "Create Contract",
@@ -62,11 +59,11 @@ class TestPostmanCollectionChecker:
                                 "url": {
                                     "raw": "{{base_url}}/api/v1/contracts/",
                                     "host": ["{{base_url}}"],
-                                    "path": ["api", "v1", "contracts", ""]
-                                }
-                            }
-                        }
-                    ]
+                                    "path": ["api", "v1", "contracts", ""],
+                                },
+                            },
+                        },
+                    ],
                 },
                 {
                     "name": "Assets",
@@ -78,16 +75,14 @@ class TestPostmanCollectionChecker:
                                 "url": {
                                     "raw": "{{base_url}}/api/v1/assets/123",
                                     "host": ["{{base_url}}"],
-                                    "path": ["api", "v1", "assets", "123"]
-                                }
-                            }
+                                    "path": ["api", "v1", "assets", "123"],
+                                },
+                            },
                         }
-                    ]
-                }
+                    ],
+                },
             ],
-            "variable": [
-                {"key": "base_url", "value": "http://localhost:8000", "type": "string"}
-            ]
+            "variable": [{"key": "base_url", "value": "http://localhost:8000", "type": "string"}],
         }
         (collections_dir / "valid_collection.json").write_text(
             json.dumps(valid_collection, indent=2)
@@ -97,7 +92,7 @@ class TestPostmanCollectionChecker:
         invalid_collection = {
             "info": {
                 "name": "Invalid Collection",
-                "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+                "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
             },
             "item": [
                 {
@@ -107,20 +102,18 @@ class TestPostmanCollectionChecker:
                         "url": {
                             "raw": "{{base_url}}/api/v1/nonexistent/",
                             "host": ["{{base_url}}"],
-                            "path": ["api", "v1", "nonexistent", ""]
-                        }
-                    }
+                            "path": ["api", "v1", "nonexistent", ""],
+                        },
+                    },
                 }
-            ]
+            ],
         }
         (collections_dir / "invalid_collection.json").write_text(
             json.dumps(invalid_collection, indent=2)
         )
 
         # Create invalid JSON file (not a Postman collection)
-        (collections_dir / "not_a_collection.json").write_text(
-            '{"not": "a postman collection"}'
-        )
+        (collections_dir / "not_a_collection.json").write_text('{"not": "a postman collection"}')
 
         return collections_dir
 
@@ -130,24 +123,21 @@ class TestPostmanCollectionChecker:
         inventory_file = tmp_path / "endpoint-inventory.json"
         inventory_data = {
             "inventory": {
-                "summary": {
-                    "total_endpoints": 2,
-                    "total_services": 1
-                },
+                "summary": {"total_endpoints": 2, "total_services": 1},
                 "endpoints": [
                     {
                         "type": "path",
                         "full_path": "/api/v1/contracts/",
                         "methods": ["GET", "POST"],
-                        "service": "contracts"
+                        "service": "contracts",
                     },
                     {
                         "type": "path",
                         "full_path": "/api/v1/assets/",
                         "methods": ["GET"],
-                        "service": "assets"
-                    }
-                ]
+                        "service": "assets",
+                    },
+                ],
             }
         }
         inventory_file.write_text(json.dumps(inventory_data, indent=2))
@@ -156,8 +146,7 @@ class TestPostmanCollectionChecker:
     def test_checker_initialization(self, temp_collections_dir, endpoint_inventory):
         """Test checker initialization"""
         checker = PostmanCollectionChecker(
-            collections_dir=str(temp_collections_dir),
-            endpoint_inventory_file=endpoint_inventory
+            collections_dir=str(temp_collections_dir), endpoint_inventory_file=endpoint_inventory
         )
 
         assert checker.collections_dir == Path(temp_collections_dir)
@@ -167,22 +156,20 @@ class TestPostmanCollectionChecker:
     def test_find_collection_files(self, temp_collections_dir, endpoint_inventory):
         """Test finding Postman collection files"""
         checker = PostmanCollectionChecker(
-            collections_dir=str(temp_collections_dir),
-            endpoint_inventory_file=endpoint_inventory
+            collections_dir=str(temp_collections_dir), endpoint_inventory_file=endpoint_inventory
         )
 
         collections = checker.find_collection_files()
 
         assert len(collections) >= 2  # At least valid and invalid collections
-        collection_files = [c['file'] for c in collections]
-        assert any('valid_collection.json' in f for f in collection_files)
-        assert any('invalid_collection.json' in f for f in collection_files)
+        collection_files = [c["file"] for c in collections]
+        assert any("valid_collection.json" in f for f in collection_files)
+        assert any("invalid_collection.json" in f for f in collection_files)
 
     def test_parse_postman_collection(self, temp_collections_dir, endpoint_inventory):
         """Test parsing Postman collection"""
         checker = PostmanCollectionChecker(
-            collections_dir=str(temp_collections_dir),
-            endpoint_inventory_file=endpoint_inventory
+            collections_dir=str(temp_collections_dir), endpoint_inventory_file=endpoint_inventory
         )
 
         valid_file = temp_collections_dir / "valid_collection.json"
@@ -190,43 +177,40 @@ class TestPostmanCollectionChecker:
 
         assert len(requests) > 0
         # Should have requests from Contracts and Assets folders
-        assert any('contracts' in r.endpoint.lower() for r in requests)
-        assert any('assets' in r.endpoint.lower() for r in requests)
+        assert any("contracts" in r.endpoint.lower() for r in requests)
+        assert any("assets" in r.endpoint.lower() for r in requests)
 
     def test_extract_endpoints_from_collections(self, temp_collections_dir, endpoint_inventory):
         """Test extracting endpoints from collections"""
         checker = PostmanCollectionChecker(
-            collections_dir=str(temp_collections_dir),
-            endpoint_inventory_file=endpoint_inventory
+            collections_dir=str(temp_collections_dir), endpoint_inventory_file=endpoint_inventory
         )
 
         endpoints = checker.extract_endpoints_from_collections()
 
         assert len(endpoints) > 0
         # Should find /api/v1/contracts/
-        contracts_endpoints = [e for e in endpoints if '/api/v1/contracts/' in e['endpoint']]
+        contracts_endpoints = [e for e in endpoints if "/api/v1/contracts/" in e["endpoint"]]
         assert len(contracts_endpoints) > 0
 
     def test_validate_endpoint_exists(self, temp_collections_dir, endpoint_inventory):
         """Test endpoint existence validation"""
         checker = PostmanCollectionChecker(
-            collections_dir=str(temp_collections_dir),
-            endpoint_inventory_file=endpoint_inventory
+            collections_dir=str(temp_collections_dir), endpoint_inventory_file=endpoint_inventory
         )
 
         # Valid endpoint
         result_valid = checker.validate_endpoint_exists("/api/v1/contracts/", "GET")
-        assert result_valid['is_valid'] is True
+        assert result_valid["is_valid"] is True
 
         # Invalid endpoint
         result_invalid = checker.validate_endpoint_exists("/api/v1/nonexistent/", "GET")
-        assert result_invalid['is_valid'] is False
+        assert result_invalid["is_valid"] is False
 
     def test_validate_collection(self, temp_collections_dir, endpoint_inventory):
         """Test collection validation"""
         checker = PostmanCollectionChecker(
-            collections_dir=str(temp_collections_dir),
-            endpoint_inventory_file=endpoint_inventory
+            collections_dir=str(temp_collections_dir), endpoint_inventory_file=endpoint_inventory
         )
 
         valid_file = temp_collections_dir / "valid_collection.json"
@@ -239,22 +223,20 @@ class TestPostmanCollectionChecker:
     def test_validate_all_collections(self, temp_collections_dir, endpoint_inventory):
         """Test comprehensive validation of all collections"""
         checker = PostmanCollectionChecker(
-            collections_dir=str(temp_collections_dir),
-            endpoint_inventory_file=endpoint_inventory
+            collections_dir=str(temp_collections_dir), endpoint_inventory_file=endpoint_inventory
         )
 
         results = checker.validate_all_collections()
 
-        assert 'summary' in results
-        assert 'collections' in results
-        assert results['summary']['total_collections'] > 0
-        assert results['summary']['total_requests'] > 0
+        assert "summary" in results
+        assert "collections" in results
+        assert results["summary"]["total_collections"] > 0
+        assert results["summary"]["total_requests"] > 0
 
     def test_generate_report(self, temp_collections_dir, endpoint_inventory, tmp_path):
         """Test report generation"""
         checker = PostmanCollectionChecker(
-            collections_dir=str(temp_collections_dir),
-            endpoint_inventory_file=endpoint_inventory
+            collections_dir=str(temp_collections_dir), endpoint_inventory_file=endpoint_inventory
         )
 
         results = checker.validate_all_collections()
@@ -263,8 +245,8 @@ class TestPostmanCollectionChecker:
 
         assert report_file.exists()
         report_data = json.loads(report_file.read_text())
-        assert 'summary' in report_data
-        assert 'collections' in report_data
+        assert "summary" in report_data
+        assert "collections" in report_data
 
     def test_empty_directory(self, tmp_path, endpoint_inventory):
         """Test behavior with empty directory"""
@@ -272,29 +254,27 @@ class TestPostmanCollectionChecker:
         empty_dir.mkdir()
 
         checker = PostmanCollectionChecker(
-            collections_dir=str(empty_dir),
-            endpoint_inventory_file=endpoint_inventory
+            collections_dir=str(empty_dir), endpoint_inventory_file=endpoint_inventory
         )
 
         collections = checker.find_collection_files()
         assert len(collections) == 0
 
         results = checker.validate_all_collections()
-        assert results['summary']['total_collections'] == 0
+        assert results["summary"]["total_collections"] == 0
 
     def test_missing_inventory_file(self, temp_collections_dir):
         """Test behavior with missing inventory file"""
         with pytest.raises(FileNotFoundError):
             PostmanCollectionChecker(
                 collections_dir=str(temp_collections_dir),
-                endpoint_inventory_file="nonexistent.json"
+                endpoint_inventory_file="nonexistent.json",
             )
 
     def test_invalid_json_file(self, temp_collections_dir, endpoint_inventory):
         """Test handling of invalid JSON files"""
         checker = PostmanCollectionChecker(
-            collections_dir=str(temp_collections_dir),
-            endpoint_inventory_file=endpoint_inventory
+            collections_dir=str(temp_collections_dir), endpoint_inventory_file=endpoint_inventory
         )
 
         # Create invalid JSON
@@ -309,8 +289,7 @@ class TestPostmanCollectionChecker:
     def test_endpoint_normalization(self, temp_collections_dir, endpoint_inventory):
         """Test endpoint path normalization"""
         checker = PostmanCollectionChecker(
-            collections_dir=str(temp_collections_dir),
-            endpoint_inventory_file=endpoint_inventory
+            collections_dir=str(temp_collections_dir), endpoint_inventory_file=endpoint_inventory
         )
 
         # Test various endpoint formats
@@ -325,4 +304,3 @@ class TestPostmanCollectionChecker:
         for input_endpoint, expected_normalized in test_cases:
             normalized = checker.normalize_endpoint(input_endpoint)
             assert normalized == expected_normalized or normalized.startswith("/api/v1/")
-

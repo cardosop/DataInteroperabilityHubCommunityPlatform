@@ -40,13 +40,13 @@ the documented stub policy in ``test_worker_services_validation_parity.py``):
    by a post-save signal, not None until a separate cron runs). This
    pins the production-code fix at its surface contract.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
-from typing import Tuple
 from unittest.mock import patch
 
+import pytest
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from hypothesis import HealthCheck, given, settings
@@ -55,7 +55,7 @@ from hypothesis import strategies as st
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.versioning import VersionHistoryManager
-from hub.apps.files.models import File, FileStatus, FileScanStatus
+from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.scheduled_ingestion.models import (
     ScheduledIngestion,
     ScheduledIngestionRun,
@@ -78,7 +78,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 # ---------------------------------------------------------------------------
 
 
-def _seed_tenant_user_si() -> Tuple[Tenant, User, ScheduledIngestion]:
+def _seed_tenant_user_si() -> tuple[Tenant, User, ScheduledIngestion]:
     uid = uuid.uuid4().hex[:8]
     tenant = Tenant.objects.create(
         name=f"VerMono-{uid}",
@@ -171,16 +171,18 @@ class TriggerScheduleRunTwiceTest(TestCase):
         VersionHistoryManager. Pins the EXACT contract from the
         260.7.C.1 task spec.
         """
-        tenant, user, si = _seed_tenant_user_si()
+        _tenant, user, si = _seed_tenant_user_si()
 
         with _stub_s3_save_file():
             ds1_id = _run_one_ingestion(
-                si, user,
+                si,
+                user,
                 csv_content=b"id,name\n1,alpha\n2,beta\n",
                 file_path="data/run-1.csv",
             )
             ds2_id = _run_one_ingestion(
-                si, user,
+                si,
+                user,
                 csv_content=b"id,name\n3,gamma\n4,delta\n",
                 file_path="data/run-2.csv",
             )
@@ -240,18 +242,27 @@ class TriggerScheduleRunTwiceTest(TestCase):
 
         with _stub_s3_save_file():
             ds1_id = _run_one_ingestion(
-                si, user, b"a,b\n1,2\n", "data/r1.csv",
+                si,
+                user,
+                b"a,b\n1,2\n",
+                "data/r1.csv",
             )
-            ds2_id = _run_one_ingestion(
-                si, user, b"a,b\n3,4\n", "data/r2.csv",
+            _run_one_ingestion(
+                si,
+                user,
+                b"a,b\n3,4\n",
+                "data/r2.csv",
             )
 
         asset_id = Dataset.objects.get(id=ds1_id).asset_id
         current_count = Dataset.objects.filter(
-            tenant=tenant, asset_id=asset_id, is_current=True,
+            tenant=tenant,
+            asset_id=asset_id,
+            is_current=True,
         ).count()
         self.assertEqual(
-            current_count, 1,
+            current_count,
+            1,
             f"exactly one Dataset per (tenant, asset) must have is_current=True; got {current_count}",
         )
 
@@ -361,7 +372,11 @@ class VersionHistoryManagerArchivedAtUnitTest(TestCase):
         before_call = timezone.now()
         asset = _seed_asset(self.tenant, self.user)
         parent = _seed_dataset_for_asset(
-            self.tenant, self.user, asset, version=1, file_name="parent.csv",
+            self.tenant,
+            self.user,
+            asset,
+            version=1,
+            file_name="parent.csv",
         )
         VersionHistoryManager.create_version(parent, is_current=True)
 
@@ -381,11 +396,17 @@ class VersionHistoryManagerArchivedAtUnitTest(TestCase):
         # AND stamp parent.archived_at = now(). This is the gap
         # 260.7.C.1 fixed.
         child = _seed_dataset_for_asset(
-            self.tenant, self.user, asset, version=2, file_name="child.csv",
+            self.tenant,
+            self.user,
+            asset,
+            version=2,
+            file_name="child.csv",
         )
 
         VersionHistoryManager.create_version(
-            child, parent_version=parent, is_current=True,
+            child,
+            parent_version=parent,
+            is_current=True,
         )
 
         parent.refresh_from_db()
@@ -429,18 +450,28 @@ class VersionHistoryManagerArchivedAtUnitTest(TestCase):
         """
         asset = _seed_asset(self.tenant, self.user)
         v1 = _seed_dataset_for_asset(
-            self.tenant, self.user, asset, version=1, file_name="solo.csv",
+            self.tenant,
+            self.user,
+            asset,
+            version=1,
+            file_name="solo.csv",
         )
         VersionHistoryManager.create_version(v1, is_current=True)
 
         # Now create v2 with is_current=False. The bulk update is
         # gated on ``if is_current and dataset.asset:`` — must skip.
         v2 = _seed_dataset_for_asset(
-            self.tenant, self.user, asset, version=2, file_name="not-current.csv",
+            self.tenant,
+            self.user,
+            asset,
+            version=2,
+            file_name="not-current.csv",
         )
 
         VersionHistoryManager.create_version(
-            v2, parent_version=v1, is_current=False,
+            v2,
+            parent_version=v1,
+            is_current=False,
         )
 
         v1.refresh_from_db()
@@ -494,7 +525,8 @@ def test_property_versions_monotonic_per_asset(n):
         with _stub_s3_save_file():
             for k in range(1, n + 1):
                 ds_id = _run_one_ingestion(
-                    si, user,
+                    si,
+                    user,
                     csv_content=f"id,name\n{k},row{k}\n".encode(),
                     file_path=f"data/run-{k}.csv",
                 )
@@ -513,7 +545,7 @@ def test_property_versions_monotonic_per_asset(n):
         # Invariant 1: version sequence is exactly [1..n] with no gaps.
         versions = [row[1] for row in ordered]
         assert versions == list(range(1, n + 1)), (
-            f"versions for N={n} must be {list(range(1, n+1))!r}, got {versions!r}"
+            f"versions for N={n} must be {list(range(1, n + 1))!r}, got {versions!r}"
         )
 
         # Invariant 2: exactly one is_current=True, and it's the LAST.
@@ -527,9 +559,7 @@ def test_property_versions_monotonic_per_asset(n):
 
         # Invariant 3: every prior version (1..n-1) has archived_at NOT NULL.
         priors = [row for row in ordered if not row[2]]
-        assert len(priors) == n - 1, (
-            f"N={n}: {n-1} prior versions expected, got {len(priors)}"
-        )
+        assert len(priors) == n - 1, f"N={n}: {n - 1} prior versions expected, got {len(priors)}"
         for prior_id, prior_version, _, prior_archived_at in priors:
             assert prior_archived_at is not None, (
                 f"N={n}: prior version {prior_version} (id={prior_id}) "

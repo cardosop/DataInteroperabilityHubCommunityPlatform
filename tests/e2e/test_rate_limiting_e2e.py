@@ -10,6 +10,7 @@ Covers:
 
 Uses REAL services (no mocks).
 """
+
 import json
 import time
 import uuid
@@ -19,15 +20,15 @@ from django.contrib.auth import get_user_model
 from django.test import override_settings
 from rest_framework import status
 
-from hub.apps.tenants.models import Tenant
 from hub.apps.auth.models import APIKey
 from hub.apps.rate_limiting.utils import (
-    TimeWindow,
     EndpointCategory,
+    TimeWindow,
     generate_rate_limit_key,
 )
-from tests.factories import TenantConfigFactory
+from hub.apps.tenants.models import Tenant
 from tests.e2e.conftest import E2ETestBase
+from tests.factories import TenantConfigFactory
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -61,6 +62,7 @@ class RateLimitingE2ETest(E2ETestBase):
         # has no forced-auth baggage so the JWT bearer token is
         # processed by TenantScopingMiddleware correctly.
         from rest_framework.test import APIClient
+
         self.client = APIClient()
         self._authenticate_with_jwt(self.user)
 
@@ -73,6 +75,7 @@ class RateLimitingE2ETest(E2ETestBase):
         during process_request, so rate limit keys are built correctly.
         """
         from hub.apps.auth.jwt_utils import JWTTokenGenerator
+
         access_token = JWTTokenGenerator.generate_access_token(user)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
@@ -85,26 +88,26 @@ class RateLimitingE2ETest(E2ETestBase):
         TenantConfigFactory.create_tenant_config(
             tenant=self.tenant,
             rate_limits={
-                'catalog_read': {
-                    '10': 5,
+                "catalog_read": {
+                    "10": 5,
                 },
             },
         )
 
-        endpoint = '/api/v1/assets/'
+        endpoint = "/api/v1/assets/"
         successful_requests = 0
         rate_limited_requests = 0
 
-        for i in range(10):
+        for _i in range(10):
             response = self.client.get(endpoint)
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 rate_limited_requests += 1
                 data = json.loads(response.content)
                 self.assertEqual(
-                    data['error']['code'],
-                    'RATE_LIMIT_EXCEEDED',
+                    data["error"]["code"],
+                    "RATE_LIMIT_EXCEEDED",
                 )
-                self.assertIn('Retry-After', response.headers)
+                self.assertIn("Retry-After", response.headers)
             elif response.status_code in (
                 status.HTTP_200_OK,
                 status.HTTP_404_NOT_FOUND,
@@ -112,18 +115,19 @@ class RateLimitingE2ETest(E2ETestBase):
                 successful_requests += 1
 
         self.assertGreater(
-            successful_requests, 0,
+            successful_requests,
+            0,
             "Some requests should succeed before rate limit",
         )
         self.assertGreater(
-            rate_limited_requests, 0,
-            "No requests were rate limited - "
-            "rate limiting may not be working",
+            rate_limited_requests,
+            0,
+            "No requests were rate limited - rate limiting may not be working",
         )
 
         # Wait for window to expire
         # INTENTIONAL: e2e test waiting for real window
-        time.sleep(11)
+        time.sleep(11)  # noqa: sleep-needed — INTENTIONAL
 
         response = self.client.get(endpoint)
         self.assertIn(
@@ -140,17 +144,17 @@ class RateLimitingE2ETest(E2ETestBase):
         TenantConfigFactory.create_tenant_config(
             tenant=self.tenant,
             rate_limits={
-                'catalog_read': {
-                    '60': 10,
+                "catalog_read": {
+                    "60": 10,
                 },
             },
         )
 
-        endpoint = '/api/v1/assets/'
+        endpoint = "/api/v1/assets/"
         successful_requests = 0
         rate_limited_requests = 0
 
-        for i in range(15):
+        for _i in range(15):
             response = self.client.get(endpoint)
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 rate_limited_requests += 1
@@ -160,16 +164,17 @@ class RateLimitingE2ETest(E2ETestBase):
             ):
                 successful_requests += 1
             # INTENTIONAL: test-specific timing
-            time.sleep(0.1)
+            time.sleep(0.1)  # noqa: sleep-needed — INTENTIONAL
 
         self.assertGreater(
-            successful_requests, 0,
+            successful_requests,
+            0,
             "Some requests should succeed before rate limit",
         )
         self.assertGreater(
-            rate_limited_requests, 0,
-            "No requests were rate limited - "
-            "sustained rate limiting may not be working",
+            rate_limited_requests,
+            0,
+            "No requests were rate limited - sustained rate limiting may not be working",
         )
 
     def test_daily_cap_enforcement(self):
@@ -177,17 +182,17 @@ class RateLimitingE2ETest(E2ETestBase):
         TenantConfigFactory.create_tenant_config(
             tenant=self.tenant,
             rate_limits={
-                'catalog_read': {
-                    '86400': 10,
+                "catalog_read": {
+                    "86400": 10,
                 },
             },
         )
 
-        endpoint = '/api/v1/assets/'
+        endpoint = "/api/v1/assets/"
         successful_requests = 0
         rate_limited_requests = 0
 
-        for i in range(15):
+        for _i in range(15):
             response = self.client.get(endpoint)
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 rate_limited_requests += 1
@@ -197,16 +202,17 @@ class RateLimitingE2ETest(E2ETestBase):
             ):
                 successful_requests += 1
             # INTENTIONAL: e2e test polling real services
-            time.sleep(0.1)
+            time.sleep(0.1)  # noqa: sleep-needed — INTENTIONAL
 
         self.assertGreater(
-            successful_requests, 0,
+            successful_requests,
+            0,
             "Some requests should succeed before daily cap",
         )
         self.assertGreater(
-            rate_limited_requests, 0,
-            "No requests were rate limited - "
-            "daily cap may not be working",
+            rate_limited_requests,
+            0,
+            "No requests were rate limited - daily cap may not be working",
         )
 
     # ------------------------------------------------------------------
@@ -220,52 +226,52 @@ class RateLimitingE2ETest(E2ETestBase):
         validation) before the rate limiter runs, so we
         verify headers on the GET listing instead.
         """
-        response = self.client.get('/api/v1/dq/runs/')
+        response = self.client.get("/api/v1/dq/runs/")
 
         self.assertIn(
-            'X-RateLimit-Limit', response.headers,
-            "Rate limit headers should be present "
-            "for DQ runs listing endpoint",
+            "X-RateLimit-Limit",
+            response.headers,
+            "Rate limit headers should be present for DQ runs listing endpoint",
         )
-        limit = int(response.headers['X-RateLimit-Limit'])
+        limit = int(response.headers["X-RateLimit-Limit"])
         self.assertGreater(limit, 0)
 
     def test_per_endpoint_category_compliance_run(self):
         """Test compliance run listing has rate limit headers."""
         response = self.client.get(
-            '/api/v1/compliance/runs/',
+            "/api/v1/compliance/runs/",
         )
 
         self.assertIn(
-            'X-RateLimit-Limit', response.headers,
-            "Rate limit headers should be present "
-            "for compliance runs listing endpoint",
+            "X-RateLimit-Limit",
+            response.headers,
+            "Rate limit headers should be present for compliance runs listing endpoint",
         )
-        limit = int(response.headers['X-RateLimit-Limit'])
+        limit = int(response.headers["X-RateLimit-Limit"])
         self.assertGreater(limit, 0)
 
     def test_per_endpoint_category_file_upload(self):
         """Test file listing has rate limit headers."""
-        response = self.client.get('/api/v1/files/')
+        response = self.client.get("/api/v1/files/")
 
         self.assertIn(
-            'X-RateLimit-Limit', response.headers,
-            "Rate limit headers should be present "
-            "for files listing endpoint",
+            "X-RateLimit-Limit",
+            response.headers,
+            "Rate limit headers should be present for files listing endpoint",
         )
-        limit = int(response.headers['X-RateLimit-Limit'])
+        limit = int(response.headers["X-RateLimit-Limit"])
         self.assertGreater(limit, 0)
 
     def test_per_endpoint_category_catalog_read(self):
         """Test catalog read endpoint has rate limit headers"""
-        response = self.client.get('/api/v1/assets/')
+        response = self.client.get("/api/v1/assets/")
 
         self.assertIn(
-            'X-RateLimit-Limit', response.headers,
-            "Rate limit headers should be present "
-            "for catalog read endpoint",
+            "X-RateLimit-Limit",
+            response.headers,
+            "Rate limit headers should be present for catalog read endpoint",
         )
-        limit = int(response.headers['X-RateLimit-Limit'])
+        limit = int(response.headers["X-RateLimit-Limit"])
         self.assertGreater(limit, 0)
 
     # ------------------------------------------------------------------
@@ -277,20 +283,20 @@ class RateLimitingE2ETest(E2ETestBase):
         TenantConfigFactory.create_tenant_config(
             tenant=self.tenant,
             rate_limits={
-                'catalog_read': {
-                    '60': 100,
+                "catalog_read": {
+                    "60": 100,
                 },
             },
         )
 
-        response = self.client.get('/api/v1/assets/')
+        response = self.client.get("/api/v1/assets/")
 
         self.assertIn(
-            'X-RateLimit-Limit', response.headers,
-            "Rate limit headers should be present "
-            "after tenant config override",
+            "X-RateLimit-Limit",
+            response.headers,
+            "Rate limit headers should be present after tenant config override",
         )
-        limit = int(response.headers['X-RateLimit-Limit'])
+        limit = int(response.headers["X-RateLimit-Limit"])
         self.assertGreater(limit, 0)
 
     def test_tenant_config_platform_maximum_enforced(self):
@@ -307,24 +313,24 @@ class RateLimitingE2ETest(E2ETestBase):
         TenantConfigFactory.create_tenant_config(
             tenant=self.tenant,
             rate_limits={
-                'catalog_read': {
-                    '60': platform_max + 1000,
+                "catalog_read": {
+                    "60": platform_max + 1000,
                 },
             },
         )
 
-        response = self.client.get('/api/v1/assets/')
+        response = self.client.get("/api/v1/assets/")
 
         self.assertIn(
-            'X-RateLimit-Limit', response.headers,
-            "Rate limit headers should be present "
-            "when platform maximum is enforced",
+            "X-RateLimit-Limit",
+            response.headers,
+            "Rate limit headers should be present when platform maximum is enforced",
         )
-        limit = int(response.headers['X-RateLimit-Limit'])
+        limit = int(response.headers["X-RateLimit-Limit"])
         self.assertLessEqual(
-            limit, platform_max,
-            f"Limit {limit} should not exceed "
-            f"platform maximum {platform_max}",
+            limit,
+            platform_max,
+            f"Limit {limit} should not exceed platform maximum {platform_max}",
         )
 
     # ------------------------------------------------------------------
@@ -340,13 +346,13 @@ class RateLimitingE2ETest(E2ETestBase):
         (i.e. the counter decreased by the total number of requests).
         """
         user2 = User.objects.create_user(
-            email='user2@example.com',
-            password='testpass123',
+            email="user2@example.com",
+            password="testpass123",
             tenant=self.tenant,
-            status='ACTIVE',
+            status="ACTIVE",
         )
 
-        endpoint = '/api/v1/assets/'
+        endpoint = "/api/v1/assets/"
 
         # User 1
         response1 = self.client.get(endpoint)
@@ -355,12 +361,12 @@ class RateLimitingE2ETest(E2ETestBase):
             (status.HTTP_200_OK, status.HTTP_404_NOT_FOUND),
         )
         self.assertIn(
-            'X-RateLimit-Remaining', response1.headers,
-            "Rate limit remaining header must be "
-            "present for user 1",
+            "X-RateLimit-Remaining",
+            response1.headers,
+            "Rate limit remaining header must be present for user 1",
         )
         remaining1 = int(
-            response1.headers['X-RateLimit-Remaining'],
+            response1.headers["X-RateLimit-Remaining"],
         )
 
         # User 2 (same tenant -- shares the tenant rate limit pool)
@@ -371,12 +377,12 @@ class RateLimitingE2ETest(E2ETestBase):
             (status.HTTP_200_OK, status.HTTP_404_NOT_FOUND),
         )
         self.assertIn(
-            'X-RateLimit-Remaining', response2.headers,
-            "Rate limit remaining header must be "
-            "present for user 2",
+            "X-RateLimit-Remaining",
+            response2.headers,
+            "Rate limit remaining header must be present for user 2",
         )
         remaining2 = int(
-            response2.headers['X-RateLimit-Remaining'],
+            response2.headers["X-RateLimit-Remaining"],
         )
 
         self.assertGreaterEqual(remaining1, 0)
@@ -384,7 +390,8 @@ class RateLimitingE2ETest(E2ETestBase):
         # Same tenant: user 2's remaining should be one less than user 1's
         # because user 1 already consumed one request from the shared pool.
         self.assertLess(
-            remaining2, remaining1,
+            remaining2,
+            remaining1,
             "User 2 (same tenant) should see a reduced remaining "
             "count after user 1 consumed a request",
         )
@@ -394,14 +401,14 @@ class RateLimitingE2ETest(E2ETestBase):
         api_key1 = APIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
-            key_hash='test-hash-1',
-            name='Test API Key 1',
+            key_hash="test-hash-1",
+            name="Test API Key 1",
         )
         api_key2 = APIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
-            key_hash='test-hash-2',
-            name='Test API Key 2',
+            key_hash="test-hash-2",
+            name="Test API Key 2",
         )
 
         # Verify cache keys are distinct per API key
@@ -424,39 +431,39 @@ class RateLimitingE2ETest(E2ETestBase):
 
         # Verify via actual requests that headers are present and
         # the counter decrements (both users share the same tenant pool).
-        endpoint = '/api/v1/assets/'
+        endpoint = "/api/v1/assets/"
         response1 = self.client.get(endpoint)
         self.assertIn(
-            'X-RateLimit-Remaining', response1.headers,
-            "Rate limit remaining must be present "
-            "for first user",
+            "X-RateLimit-Remaining",
+            response1.headers,
+            "Rate limit remaining must be present for first user",
         )
         remaining1 = int(
-            response1.headers['X-RateLimit-Remaining'],
+            response1.headers["X-RateLimit-Remaining"],
         )
 
         user2 = User.objects.create_user(
-            email='apikey-test-user2@example.com',
-            password='testpass123',
+            email="apikey-test-user2@example.com",
+            password="testpass123",
             tenant=self.tenant,
-            status='ACTIVE',
+            status="ACTIVE",
         )
         self._authenticate_with_jwt(user2)
         response2 = self.client.get(endpoint)
         self.assertIn(
-            'X-RateLimit-Remaining', response2.headers,
-            "Rate limit remaining must be present "
-            "for second user",
+            "X-RateLimit-Remaining",
+            response2.headers,
+            "Rate limit remaining must be present for second user",
         )
         remaining2 = int(
-            response2.headers['X-RateLimit-Remaining'],
+            response2.headers["X-RateLimit-Remaining"],
         )
 
         # Both users share the same tenant, so remaining should decrease
         self.assertLess(
-            remaining2, remaining1,
-            "Second request (same tenant) should have "
-            "lower remaining than first request",
+            remaining2,
+            remaining1,
+            "Second request (same tenant) should have lower remaining than first request",
         )
 
     # ------------------------------------------------------------------
@@ -465,24 +472,27 @@ class RateLimitingE2ETest(E2ETestBase):
 
     def test_rate_limit_headers_present(self):
         """Test that rate limit headers are present in responses"""
-        response = self.client.get('/api/v1/assets/')
+        response = self.client.get("/api/v1/assets/")
 
         self.assertIn(
-            'X-RateLimit-Limit', response.headers,
+            "X-RateLimit-Limit",
+            response.headers,
             "X-RateLimit-Limit header should be present",
         )
         self.assertIn(
-            'X-RateLimit-Remaining', response.headers,
+            "X-RateLimit-Remaining",
+            response.headers,
             "X-RateLimit-Remaining header should be present",
         )
         self.assertIn(
-            'X-RateLimit-Reset', response.headers,
+            "X-RateLimit-Reset",
+            response.headers,
             "X-RateLimit-Reset header should be present",
         )
 
-        limit = int(response.headers['X-RateLimit-Limit'])
-        remaining = int(response.headers['X-RateLimit-Remaining'])
-        reset = int(response.headers['X-RateLimit-Reset'])
+        limit = int(response.headers["X-RateLimit-Limit"])
+        remaining = int(response.headers["X-RateLimit-Remaining"])
+        reset = int(response.headers["X-RateLimit-Reset"])
 
         self.assertGreater(limit, 0)
         self.assertGreaterEqual(remaining, 0)
@@ -491,28 +501,31 @@ class RateLimitingE2ETest(E2ETestBase):
 
     def test_rate_limit_remaining_decreases(self):
         """Test that remaining counter strictly decreases"""
-        endpoint = '/api/v1/assets/'
+        endpoint = "/api/v1/assets/"
         remaining_values = []
 
-        for i in range(5):
+        for _i in range(5):
             response = self.client.get(endpoint)
             self.assertIn(
-                'X-RateLimit-Remaining', response.headers,
+                "X-RateLimit-Remaining",
+                response.headers,
                 "X-RateLimit-Remaining header must be present",
             )
             remaining = int(
-                response.headers['X-RateLimit-Remaining'],
+                response.headers["X-RateLimit-Remaining"],
             )
             remaining_values.append(remaining)
             # INTENTIONAL: e2e test polling real services
-            time.sleep(0.1)
+            time.sleep(0.1)  # noqa: sleep-needed — INTENTIONAL
 
         self.assertGreater(
-            len(remaining_values), 1,
+            len(remaining_values),
+            1,
             "Should have multiple remaining readings",
         )
         self.assertLess(
-            remaining_values[-1], remaining_values[0],
+            remaining_values[-1],
+            remaining_values[0],
             "Rate limit remaining should strictly decrease: "
             f"first={remaining_values[0]}, "
             f"last={remaining_values[-1]}",
@@ -520,89 +533,98 @@ class RateLimitingE2ETest(E2ETestBase):
 
     def test_rate_limit_reset_time_accuracy(self):
         """Test that reset time is in the future"""
-        response = self.client.get('/api/v1/assets/')
+        response = self.client.get("/api/v1/assets/")
 
         self.assertIn(
-            'X-RateLimit-Reset', response.headers,
+            "X-RateLimit-Reset",
+            response.headers,
             "X-RateLimit-Reset header must be present",
         )
-        reset_time = int(response.headers['X-RateLimit-Reset'])
+        reset_time = int(response.headers["X-RateLimit-Reset"])
         current_time = int(time.time())
 
         self.assertGreaterEqual(
-            reset_time, current_time,
+            reset_time,
+            current_time,
             "Reset time should be in the future",
         )
 
     def test_rate_limit_header_accuracy(self):
         """Test that rate limit headers are accurate"""
-        endpoint = '/api/v1/assets/'
+        endpoint = "/api/v1/assets/"
 
         response1 = self.client.get(endpoint)
         self.assertIn(
-            'X-RateLimit-Limit', response1.headers,
+            "X-RateLimit-Limit",
+            response1.headers,
             "X-RateLimit-Limit must be present",
         )
         self.assertIn(
-            'X-RateLimit-Remaining', response1.headers,
+            "X-RateLimit-Remaining",
+            response1.headers,
             "X-RateLimit-Remaining must be present",
         )
 
-        limit1 = int(response1.headers['X-RateLimit-Limit'])
+        limit1 = int(response1.headers["X-RateLimit-Limit"])
         remaining1 = int(
-            response1.headers['X-RateLimit-Remaining'],
+            response1.headers["X-RateLimit-Remaining"],
         )
 
         response2 = self.client.get(endpoint)
         self.assertIn(
-            'X-RateLimit-Limit', response2.headers,
-            "X-RateLimit-Limit must be present "
-            "on second request",
+            "X-RateLimit-Limit",
+            response2.headers,
+            "X-RateLimit-Limit must be present on second request",
         )
         self.assertIn(
-            'X-RateLimit-Remaining', response2.headers,
-            "X-RateLimit-Remaining must be present "
-            "on second request",
+            "X-RateLimit-Remaining",
+            response2.headers,
+            "X-RateLimit-Remaining must be present on second request",
         )
 
-        limit2 = int(response2.headers['X-RateLimit-Limit'])
+        limit2 = int(response2.headers["X-RateLimit-Limit"])
         remaining2 = int(
-            response2.headers['X-RateLimit-Remaining'],
+            response2.headers["X-RateLimit-Remaining"],
         )
 
         self.assertEqual(
-            limit1, limit2,
+            limit1,
+            limit2,
             "Rate limit should be consistent across requests",
         )
         self.assertLess(
-            remaining2, remaining1,
-            "Remaining should strictly decrease "
-            "after a second request",
+            remaining2,
+            remaining1,
+            "Remaining should strictly decrease after a second request",
         )
         self.assertLessEqual(
-            remaining2, limit2,
+            remaining2,
+            limit2,
             "Remaining should not exceed limit",
         )
 
     def test_rate_limit_category_header(self):
         """Test category-specific headers for API endpoints"""
-        response = self.client.get('/api/v1/assets/')
+        response = self.client.get("/api/v1/assets/")
 
         self.assertIn(
-            'X-RateLimit-Category', response.headers,
-            "X-RateLimit-Category header must be present "
-            "for DQ run endpoint",
+            "X-RateLimit-Category",
+            response.headers,
+            "X-RateLimit-Category header must be present for DQ run endpoint",
         )
-        category = response.headers['X-RateLimit-Category']
-        self.assertIn(category, [
-            EndpointCategory.DQ_RUN,
-            EndpointCategory.COMPLIANCE_RUN,
-            EndpointCategory.FILE_UPLOAD,
-            EndpointCategory.FILE_DOWNLOAD,
-            EndpointCategory.CONTRACT_VALIDATION,
-            EndpointCategory.CATALOG_READ,
-            EndpointCategory.SPARQL_QUERY,
-        ])
+        category = response.headers["X-RateLimit-Category"]
+        self.assertIn(
+            category,
+            [
+                EndpointCategory.DQ_RUN,
+                EndpointCategory.COMPLIANCE_RUN,
+                EndpointCategory.FILE_UPLOAD,
+                EndpointCategory.FILE_DOWNLOAD,
+                EndpointCategory.CONTRACT_VALIDATION,
+                EndpointCategory.CATALOG_READ,
+                EndpointCategory.SPARQL_QUERY,
+            ],
+        )
 
     # ------------------------------------------------------------------
     # Retry-After / error format
@@ -613,40 +635,42 @@ class RateLimitingE2ETest(E2ETestBase):
         TenantConfigFactory.create_tenant_config(
             tenant=self.tenant,
             rate_limits={
-                'catalog_read': {
-                    '10': 2,
+                "catalog_read": {
+                    "10": 2,
                 },
             },
         )
 
-        endpoint = '/api/v1/assets/'
+        endpoint = "/api/v1/assets/"
         rate_limited_response = None
-        for i in range(10):
+        for _i in range(10):
             response = self.client.get(endpoint)
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 rate_limited_response = response
                 break
             # INTENTIONAL: e2e test polling real services
-            time.sleep(0.1)
+            time.sleep(0.1)  # noqa: sleep-needed — INTENTIONAL
 
         self.assertIsNotNone(
             rate_limited_response,
-            "Rate limit should trigger with limit=2 "
-            "and 10 requests",
+            "Rate limit should trigger with limit=2 and 10 requests",
         )
         self.assertIn(
-            'Retry-After', rate_limited_response.headers,
+            "Retry-After",
+            rate_limited_response.headers,
             "Retry-After header must be present on 429",
         )
         retry_after = int(
-            rate_limited_response.headers['Retry-After'],
+            rate_limited_response.headers["Retry-After"],
         )
         self.assertGreater(
-            retry_after, 0,
+            retry_after,
+            0,
             "Retry-After should be positive",
         )
         self.assertLessEqual(
-            retry_after, 10,
+            retry_after,
+            10,
             "Retry-After should be within window (10s)",
         )
 
@@ -655,37 +679,36 @@ class RateLimitingE2ETest(E2ETestBase):
         TenantConfigFactory.create_tenant_config(
             tenant=self.tenant,
             rate_limits={
-                'catalog_read': {
-                    '10': 2,
+                "catalog_read": {
+                    "10": 2,
                 },
             },
         )
 
-        endpoint = '/api/v1/assets/'
+        endpoint = "/api/v1/assets/"
         rate_limited_response = None
-        for i in range(10):
+        for _i in range(10):
             response = self.client.get(endpoint)
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 rate_limited_response = response
                 break
             # INTENTIONAL: e2e test polling real services
-            time.sleep(0.1)
+            time.sleep(0.1)  # noqa: sleep-needed — INTENTIONAL
 
         self.assertIsNotNone(
             rate_limited_response,
-            "Rate limit should trigger with limit=2 "
-            "and 10 requests",
+            "Rate limit should trigger with limit=2 and 10 requests",
         )
 
         data = json.loads(rate_limited_response.content)
-        self.assertIn('error', data)
-        error = data['error']
-        self.assertEqual(error['code'], 'RATE_LIMIT_EXCEEDED')
-        self.assertIn('message', error)
-        self.assertEqual(error['http_status'], 429)
-        self.assertIn('request_id', error)
-        self.assertIn('timestamp', error)
-        self.assertIn('details', error)
+        self.assertIn("error", data)
+        error = data["error"]
+        self.assertEqual(error["code"], "RATE_LIMIT_EXCEEDED")
+        self.assertIn("message", error)
+        self.assertEqual(error["http_status"], 429)
+        self.assertIn("request_id", error)
+        self.assertIn("timestamp", error)
+        self.assertIn("details", error)
 
     # ------------------------------------------------------------------
     # Edge cases
@@ -696,15 +719,15 @@ class RateLimitingE2ETest(E2ETestBase):
         TenantConfigFactory.create_tenant_config(
             tenant=self.tenant,
             rate_limits={
-                'catalog_read': {
-                    '10': 5,
+                "catalog_read": {
+                    "10": 5,
                 },
             },
         )
 
-        endpoint = '/api/v1/assets/'
+        endpoint = "/api/v1/assets/"
 
-        for i in range(5):
+        for _i in range(5):
             response = self.client.get(endpoint)
             self.assertIn(
                 response.status_code,
@@ -715,25 +738,24 @@ class RateLimitingE2ETest(E2ETestBase):
                 ),
             )
             # INTENTIONAL: e2e test polling real services
-            time.sleep(0.1)
+            time.sleep(0.1)  # noqa: sleep-needed — INTENTIONAL
 
         # Wait until just before window boundary
         # INTENTIONAL: e2e test waiting for real window
-        time.sleep(9)
+        time.sleep(9)  # noqa: sleep-needed — INTENTIONAL
 
         rate_limited = False
-        for i in range(3):
+        for _i in range(3):
             response = self.client.get(endpoint)
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 rate_limited = True
                 break
             # INTENTIONAL: e2e test polling real services
-            time.sleep(0.1)
+            time.sleep(0.1)  # noqa: sleep-needed — INTENTIONAL
 
         self.assertTrue(
             rate_limited,
-            "Sliding window should still rate-limit "
-            "requests near the window boundary",
+            "Sliding window should still rate-limit requests near the window boundary",
         )
 
     def test_rate_limit_concurrent_requests(self):
@@ -746,13 +768,13 @@ class RateLimitingE2ETest(E2ETestBase):
         TenantConfigFactory.create_tenant_config(
             tenant=self.tenant,
             rate_limits={
-                'catalog_read': {
-                    '10': 3,
+                "catalog_read": {
+                    "10": 3,
                 },
             },
         )
 
-        endpoint = '/api/v1/assets/'
+        endpoint = "/api/v1/assets/"
         responses = []
 
         for _ in range(10):
@@ -770,28 +792,26 @@ class RateLimitingE2ETest(E2ETestBase):
                 ),
             )
 
-        rate_limited = [
-            r for r in responses
-            if r.status_code
-            == status.HTTP_429_TOO_MANY_REQUESTS
-        ]
+        rate_limited = [r for r in responses if r.status_code == status.HTTP_429_TOO_MANY_REQUESTS]
         self.assertGreater(
-            len(rate_limited), 0,
-            "At least one request should be "
-            "rate-limited with a limit of 3",
+            len(rate_limited),
+            0,
+            "At least one request should be rate-limited with a limit of 3",
         )
 
     def test_rate_limit_all_windows_checked(self):
         """Test that rate limit headers are present (all windows)"""
-        response = self.client.get('/api/v1/assets/')
+        response = self.client.get("/api/v1/assets/")
 
         self.assertIn(
-            'X-RateLimit-Limit', response.headers,
+            "X-RateLimit-Limit",
+            response.headers,
             "Rate limit headers must be present",
         )
-        limit = int(response.headers['X-RateLimit-Limit'])
+        limit = int(response.headers["X-RateLimit-Limit"])
         self.assertGreater(
-            limit, 0,
+            limit,
+            0,
             "Rate limit value should be positive",
         )
 
@@ -803,18 +823,18 @@ class RateLimitingE2ETest(E2ETestBase):
 
         _suffix = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f'Other Tenant {_suffix}',
-            slug=f'other-tenant-{_suffix}',
+            name=f"Other Tenant {_suffix}",
+            slug=f"other-tenant-{_suffix}",
         )
         ensure_tenant_has_active_subscription(other_tenant)
         other_user = User.objects.create_user(
-            email=f'other-{_suffix}@example.com',
-            password='testpass123',
+            email=f"other-{_suffix}@example.com",
+            password="testpass123",
             tenant=other_tenant,
-            status='ACTIVE',
+            status="ACTIVE",
         )
 
-        endpoint = '/api/v1/assets/'
+        endpoint = "/api/v1/assets/"
 
         # Tenant 1
         response1 = self.client.get(endpoint)
@@ -823,12 +843,12 @@ class RateLimitingE2ETest(E2ETestBase):
             (status.HTTP_200_OK, status.HTTP_404_NOT_FOUND),
         )
         self.assertIn(
-            'X-RateLimit-Remaining', response1.headers,
-            "Rate limit remaining must be present "
-            "for tenant 1",
+            "X-RateLimit-Remaining",
+            response1.headers,
+            "Rate limit remaining must be present for tenant 1",
         )
         remaining1 = int(
-            response1.headers['X-RateLimit-Remaining'],
+            response1.headers["X-RateLimit-Remaining"],
         )
 
         # Tenant 2 (different tenant -- independent rate limit pool)
@@ -839,18 +859,18 @@ class RateLimitingE2ETest(E2ETestBase):
             (status.HTTP_200_OK, status.HTTP_404_NOT_FOUND),
         )
         self.assertIn(
-            'X-RateLimit-Remaining', response2.headers,
-            "Rate limit remaining must be present "
-            "for tenant 2",
+            "X-RateLimit-Remaining",
+            response2.headers,
+            "Rate limit remaining must be present for tenant 2",
         )
         remaining2 = int(
-            response2.headers['X-RateLimit-Remaining'],
+            response2.headers["X-RateLimit-Remaining"],
         )
 
         self.assertGreaterEqual(remaining1, 0)
         self.assertGreaterEqual(remaining2, 0)
         self.assertGreaterEqual(
-            remaining2, remaining1,
-            "Tenant 2 should have independent (fresh) "
-            "rate limit, not reduced by tenant 1",
+            remaining2,
+            remaining1,
+            "Tenant 2 should have independent (fresh) rate limit, not reduced by tenant 1",
         )

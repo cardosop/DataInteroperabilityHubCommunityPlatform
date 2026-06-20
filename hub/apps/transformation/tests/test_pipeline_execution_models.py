@@ -1,22 +1,24 @@
 """
 Unit tests for PipelineExecution model.
 """
+
 import uuid
-from django.test import TestCase
-from django.core.exceptions import ValidationError
-from django.contrib.auth import get_user_model
-from django.utils import timezone
 from datetime import timedelta
 
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.test import TestCase
+from django.utils import timezone
+
+from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.tenants.models import Tenant
 from hub.apps.transformation.models import (
-    TransformationPipeline,
+    ExecutionMode,
+    ExecutionStatus,
     PipelineExecution,
     PipelineStatus,
-    ExecutionStatus,
-    ExecutionMode
+    TransformationPipeline,
 )
-from hub.apps.tenants.models import Tenant
-from hub.apps.assets.models import Asset, AssetStatus
 
 User = get_user_model()
 
@@ -27,45 +29,27 @@ class PipelineExecutionModelTest(TestCase):
     def setUp(self):
         """Set up per-test fixtures."""
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
-            email=f"test-{uid}@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
         self.valid_pipeline_definition = {
             "version": "1.0.0",
-            "steps": [
-                {
-                    "name": "step1",
-                    "type": "task",
-                    "task": "extract_data",
-                    "input": {}
-                }
-            ]
+            "steps": [{"name": "step1", "type": "task", "task": "extract_data", "input": {}}],
         }
         self.pipeline = TransformationPipeline.objects.create(
             tenant=self.tenant,
             created_by=self.user,
             name=f"Test Pipeline {uuid.uuid4().hex[:8]}",
             pipeline_definition=self.valid_pipeline_definition,
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
         self.source_asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="source-asset",
-            name="Source Asset",
-            status=AssetStatus.ACTIVE
+            tenant=self.tenant, key="source-asset", name="Source Asset", status=AssetStatus.ACTIVE
         )
         self.result_asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="result-asset",
-            name="Result Asset",
-            status=AssetStatus.ACTIVE
+            tenant=self.tenant, key="result-asset", name="Result Asset", status=AssetStatus.ACTIVE
         )
 
     def test_create_execution(self):
@@ -74,7 +58,7 @@ class PipelineExecutionModelTest(TestCase):
             pipeline=self.pipeline,
             asset=self.source_asset,
             execution_mode=ExecutionMode.MANUAL,
-            status=ExecutionStatus.PENDING
+            status=ExecutionStatus.PENDING,
         )
 
         self.assertIsNotNone(execution.id)
@@ -89,9 +73,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_str_representation(self):
         """Test execution string representation."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset,
-            status=ExecutionStatus.RUNNING
+            pipeline=self.pipeline, asset=self.source_asset, status=ExecutionStatus.RUNNING
         )
 
         expected_str = f"Execution of {self.pipeline.name} on {self.source_asset.name} ({ExecutionStatus.RUNNING})"
@@ -100,8 +82,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_default_status(self):
         """Test execution defaults to PENDING status."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset
+            pipeline=self.pipeline, asset=self.source_asset
         )
 
         self.assertEqual(execution.status, ExecutionStatus.PENDING)
@@ -109,8 +90,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_default_mode(self):
         """Test execution defaults to MANUAL mode."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset
+            pipeline=self.pipeline, asset=self.source_asset
         )
 
         self.assertEqual(execution.execution_mode, ExecutionMode.MANUAL)
@@ -118,8 +98,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_default_log(self):
         """Test execution has default empty execution log."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset
+            pipeline=self.pipeline, asset=self.source_asset
         )
 
         self.assertEqual(execution.execution_log, [])
@@ -127,8 +106,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_default_metrics(self):
         """Test execution has default empty metrics."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset
+            pipeline=self.pipeline, asset=self.source_asset
         )
 
         self.assertEqual(execution.metrics, {})
@@ -136,9 +114,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_validation_invalid_log_not_list(self):
         """Test execution validation fails when log is not a list."""
         execution = PipelineExecution(
-            pipeline=self.pipeline,
-            asset=self.source_asset,
-            execution_log="not a list"
+            pipeline=self.pipeline, asset=self.source_asset, execution_log="not a list"
         )
 
         with self.assertRaises(ValidationError):
@@ -147,9 +123,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_validation_invalid_metrics_not_dict(self):
         """Test execution validation fails when metrics is not a dict."""
         execution = PipelineExecution(
-            pipeline=self.pipeline,
-            asset=self.source_asset,
-            metrics="not a dict"
+            pipeline=self.pipeline, asset=self.source_asset, metrics="not a dict"
         )
 
         with self.assertRaises(ValidationError):
@@ -162,7 +136,7 @@ class PipelineExecutionModelTest(TestCase):
             pipeline=self.pipeline,
             asset=self.source_asset,
             started_at=now,
-            completed_at=now - timedelta(seconds=10)
+            completed_at=now - timedelta(seconds=10),
         )
 
         with self.assertRaises(ValidationError):
@@ -174,7 +148,7 @@ class PipelineExecutionModelTest(TestCase):
             pipeline=self.pipeline,
             asset=self.source_asset,
             status=ExecutionStatus.COMPLETED,
-            result_asset=None
+            result_asset=None,
         )
 
         with self.assertRaises(ValidationError):
@@ -183,9 +157,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_is_pending(self):
         """Test is_pending method."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset,
-            status=ExecutionStatus.PENDING
+            pipeline=self.pipeline, asset=self.source_asset, status=ExecutionStatus.PENDING
         )
 
         self.assertTrue(execution.is_pending())
@@ -195,9 +167,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_is_running(self):
         """Test is_running method."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset,
-            status=ExecutionStatus.RUNNING
+            pipeline=self.pipeline, asset=self.source_asset, status=ExecutionStatus.RUNNING
         )
 
         self.assertTrue(execution.is_running())
@@ -210,7 +180,7 @@ class PipelineExecutionModelTest(TestCase):
             pipeline=self.pipeline,
             asset=self.source_asset,
             status=ExecutionStatus.COMPLETED,
-            result_asset=self.result_asset
+            result_asset=self.result_asset,
         )
 
         self.assertTrue(execution.is_completed())
@@ -220,9 +190,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_is_failed(self):
         """Test is_failed method."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset,
-            status=ExecutionStatus.FAILED
+            pipeline=self.pipeline, asset=self.source_asset, status=ExecutionStatus.FAILED
         )
 
         self.assertTrue(execution.is_failed())
@@ -235,7 +203,7 @@ class PipelineExecutionModelTest(TestCase):
             pipeline=self.pipeline,
             asset=self.source_asset,
             status=ExecutionStatus.COMPLETED,
-            result_asset=self.result_asset
+            result_asset=self.result_asset,
         )
 
         self.assertTrue(execution.is_terminal())
@@ -255,9 +223,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_can_cancel(self):
         """Test can_cancel method."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset,
-            status=ExecutionStatus.PENDING
+            pipeline=self.pipeline, asset=self.source_asset, status=ExecutionStatus.PENDING
         )
 
         self.assertTrue(execution.can_cancel())
@@ -274,9 +240,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_mark_started(self):
         """Test mark_started method."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset,
-            status=ExecutionStatus.PENDING
+            pipeline=self.pipeline, asset=self.source_asset, status=ExecutionStatus.PENDING
         )
 
         execution.mark_started()
@@ -293,14 +257,10 @@ class PipelineExecutionModelTest(TestCase):
             pipeline=self.pipeline,
             asset=self.source_asset,
             status=ExecutionStatus.RUNNING,
-            started_at=timezone.now()
+            started_at=timezone.now(),
         )
 
-        metrics = {
-            "items_processed": 100,
-            "duration_seconds": 5.5,
-            "throughput": 18.18
-        }
+        metrics = {"items_processed": 100, "duration_seconds": 5.5, "throughput": 18.18}
 
         execution.mark_completed(result_asset=self.result_asset, metrics=metrics)
 
@@ -318,7 +278,7 @@ class PipelineExecutionModelTest(TestCase):
             pipeline=self.pipeline,
             asset=self.source_asset,
             status=ExecutionStatus.RUNNING,
-            started_at=timezone.now()
+            started_at=timezone.now(),
         )
 
         error_message = "Transformation failed: Invalid data format"
@@ -338,7 +298,7 @@ class PipelineExecutionModelTest(TestCase):
             pipeline=self.pipeline,
             asset=self.source_asset,
             status=ExecutionStatus.RUNNING,
-            started_at=timezone.now()
+            started_at=timezone.now(),
         )
 
         log_entry = "Pipeline step failed: connection timeout"
@@ -354,7 +314,7 @@ class PipelineExecutionModelTest(TestCase):
             pipeline=self.pipeline,
             asset=self.source_asset,
             status=ExecutionStatus.RUNNING,
-            started_at=timezone.now()
+            started_at=timezone.now(),
         )
 
         execution.mark_cancelled()
@@ -367,8 +327,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_add_log_entry(self):
         """Test add_log_entry method."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset
+            pipeline=self.pipeline, asset=self.source_asset
         )
 
         execution.add_log_entry("Pipeline started", "INFO")
@@ -392,7 +351,7 @@ class PipelineExecutionModelTest(TestCase):
             pipeline=self.pipeline,
             asset=self.source_asset,
             started_at=started,
-            completed_at=completed
+            completed_at=completed,
         )
 
         self.assertEqual(execution.get_duration_seconds(), 10.0)
@@ -408,15 +367,10 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_update_metrics(self):
         """Test update_metrics method."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset
+            pipeline=self.pipeline, asset=self.source_asset
         )
 
-        execution.update_metrics(
-            items_processed=100,
-            duration_seconds=5.5,
-            throughput=18.18
-        )
+        execution.update_metrics(items_processed=100, duration_seconds=5.5, throughput=18.18)
 
         self.assertEqual(execution.metrics["items_processed"], 100)
         self.assertEqual(execution.metrics["duration_seconds"], 5.5)
@@ -433,14 +387,13 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_log_can_store_multiple_entries(self):
         """Test execution log can store multiple log entries."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset
+            pipeline=self.pipeline, asset=self.source_asset
         )
 
         log_entries = [
             {"timestamp": "2025-01-01T10:00:00Z", "level": "INFO", "message": "Started"},
             {"timestamp": "2025-01-01T10:00:05Z", "level": "INFO", "message": "Processing"},
-            {"timestamp": "2025-01-01T10:00:10Z", "level": "INFO", "message": "Completed"}
+            {"timestamp": "2025-01-01T10:00:10Z", "level": "INFO", "message": "Completed"},
         ]
 
         execution.execution_log = log_entries
@@ -452,8 +405,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_metrics_can_store_arbitrary_data(self):
         """Test metrics field can store arbitrary JSON data."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset
+            pipeline=self.pipeline, asset=self.source_asset
         )
 
         metrics = {
@@ -462,7 +414,7 @@ class PipelineExecutionModelTest(TestCase):
             "items_failed": 5,
             "throughput": 95.24,
             "memory_usage_mb": 512,
-            "cpu_usage_percent": 75.5
+            "cpu_usage_percent": 75.5,
         }
 
         execution.metrics = metrics
@@ -475,8 +427,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_created_at_auto_set(self):
         """Test created_at is automatically set."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset
+            pipeline=self.pipeline, asset=self.source_asset
         )
 
         self.assertIsNotNone(execution.created_at)
@@ -484,8 +435,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_updated_at_auto_set(self):
         """Test updated_at is automatically set and updated."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset
+            pipeline=self.pipeline, asset=self.source_asset
         )
 
         original_updated_at = execution.updated_at
@@ -502,19 +452,13 @@ class PipelineExecutionModelTest(TestCase):
         now = timezone.now()
         # Create executions with different timestamps
         execution1 = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset,
-            started_at=now - timedelta(hours=3)
+            pipeline=self.pipeline, asset=self.source_asset, started_at=now - timedelta(hours=3)
         )
         execution2 = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset,
-            started_at=now - timedelta(hours=2)
+            pipeline=self.pipeline, asset=self.source_asset, started_at=now - timedelta(hours=2)
         )
         execution3 = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset,
-            started_at=now - timedelta(hours=1)
+            pipeline=self.pipeline, asset=self.source_asset, started_at=now - timedelta(hours=1)
         )
 
         # Query ordered by -started_at, -created_at (most recent first)
@@ -537,8 +481,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_foreign_key_to_pipeline(self):
         """Test foreign key relationship to TransformationPipeline."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset
+            pipeline=self.pipeline, asset=self.source_asset
         )
 
         # Test reverse relationship
@@ -553,8 +496,7 @@ class PipelineExecutionModelTest(TestCase):
     def test_execution_foreign_key_to_asset(self):
         """Test foreign key relationship to Asset."""
         execution = PipelineExecution.objects.create(
-            pipeline=self.pipeline,
-            asset=self.source_asset
+            pipeline=self.pipeline, asset=self.source_asset
         )
 
         # Test reverse relationship
@@ -572,7 +514,7 @@ class PipelineExecutionModelTest(TestCase):
             pipeline=self.pipeline,
             asset=self.source_asset,
             result_asset=self.result_asset,
-            status=ExecutionStatus.COMPLETED
+            status=ExecutionStatus.COMPLETED,
         )
 
         # Test reverse relationship

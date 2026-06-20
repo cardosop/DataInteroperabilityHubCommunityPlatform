@@ -23,19 +23,19 @@ Usage::
     python manage.py archive_lineage_edges --before=2025-05-01 --dry-run
     python manage.py archive_lineage_edges --before=2024-05-01 --target=s3
 """
+
 from __future__ import annotations
 
 import gzip
 import io
 import json
 import logging
-from datetime import date as _date, datetime, time, timezone as _tz
+from datetime import UTC, datetime, time
+from datetime import date as _date
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django.utils import timezone
-
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +55,9 @@ def _parse_cutoff(value: str) -> datetime:
             d = _date.fromisoformat(value)
             parsed = datetime.combine(d, time.min)
         except ValueError as exc:
-            raise CommandError(
-                f"--before must be ISO date or datetime; got {value!r}"
-            ) from exc
+            raise CommandError(f"--before must be ISO date or datetime; got {value!r}") from exc
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=_tz.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed
 
 
@@ -72,10 +70,8 @@ def _s3_put_object(*, bucket: str, key: str, body: bytes) -> str:
     can roll back the export-mark write."""
     try:
         import boto3  # local import — keeps the module-load cheap.
-    except Exception as exc:  # noqa: BLE001 — boto3 optional in dev.
-        raise CommandError(
-            "boto3 is not installed; cannot --target=s3"
-        ) from exc
+    except Exception as exc:
+        raise CommandError("boto3 is not installed; cannot --target=s3") from exc
     region = getattr(settings, "AWS_REGION", "us-east-1")
     client = boto3.client("s3", region_name=region)
     client.put_object(
@@ -126,8 +122,7 @@ class Command(BaseCommand):
             "--bucket",
             default=None,
             help=(
-                "S3 bucket override; default reads "
-                "settings.LINEAGE_ARCHIVE_S3_BUCKET (per env)."
+                "S3 bucket override; default reads settings.LINEAGE_ARCHIVE_S3_BUCKET (per env)."
             ),
         )
 
@@ -154,13 +149,18 @@ class Command(BaseCommand):
         candidate_count = candidates_qs.count()
 
         if dry_run:
-            self.stdout.write(json.dumps({
-                "phase": "228.F5.6",
-                "dry_run": True,
-                "before": cutoff.isoformat(),
-                "target": "archive",
-                "candidates": candidate_count,
-            }, sort_keys=True))
+            self.stdout.write(
+                json.dumps(
+                    {
+                        "phase": "228.F5.6",
+                        "dry_run": True,
+                        "before": cutoff.isoformat(),
+                        "target": "archive",
+                        "candidates": candidate_count,
+                    },
+                    sort_keys=True,
+                )
+            )
             return
 
         moved = 0
@@ -170,7 +170,8 @@ class Command(BaseCommand):
             with transaction.atomic():
                 batch_ids = list(
                     candidates_qs.order_by("valid_to").values_list(
-                        "pk", flat=True,
+                        "pk",
+                        flat=True,
                     )[:batch_size]
                 )
                 if not batch_ids:
@@ -207,14 +208,19 @@ class Command(BaseCommand):
                 LineageEdge.objects.filter(pk__in=batch_ids).delete()
                 moved += len(rows)
 
-        self.stdout.write(json.dumps({
-            "phase": "228.F5.6",
-            "dry_run": False,
-            "before": cutoff.isoformat(),
-            "target": "archive",
-            "candidates": candidate_count,
-            "moved": moved,
-        }, sort_keys=True))
+        self.stdout.write(
+            json.dumps(
+                {
+                    "phase": "228.F5.6",
+                    "dry_run": False,
+                    "before": cutoff.isoformat(),
+                    "target": "archive",
+                    "candidates": candidate_count,
+                    "moved": moved,
+                },
+                sort_keys=True,
+            )
+        )
         logger.info(
             "lineage_archive_complete",
             extra={
@@ -234,7 +240,9 @@ class Command(BaseCommand):
         batch_size: int = options["batch_size"]
         dry_run: bool = options["dry_run"]
         bucket = options.get("bucket") or getattr(
-            settings, "LINEAGE_ARCHIVE_S3_BUCKET", None,
+            settings,
+            "LINEAGE_ARCHIVE_S3_BUCKET",
+            None,
         )
 
         if not dry_run and not bucket:
@@ -252,22 +260,25 @@ class Command(BaseCommand):
         candidate_count = candidates_qs.count()
 
         if dry_run:
-            self.stdout.write(json.dumps({
-                "phase": "228.F5.6",
-                "dry_run": True,
-                "before": cutoff.isoformat(),
-                "target": "s3",
-                "candidates": candidate_count,
-            }, sort_keys=True))
+            self.stdout.write(
+                json.dumps(
+                    {
+                        "phase": "228.F5.6",
+                        "dry_run": True,
+                        "before": cutoff.isoformat(),
+                        "target": "s3",
+                        "candidates": candidate_count,
+                    },
+                    sort_keys=True,
+                )
+            )
             return
 
         exported = 0
         bundles_uploaded = 0
         while True:
             with transaction.atomic():
-                batch = list(
-                    candidates_qs.order_by("valid_to")[:batch_size]
-                )
+                batch = list(candidates_qs.order_by("valid_to")[:batch_size])
                 if not batch:
                     break
 
@@ -278,23 +289,34 @@ class Command(BaseCommand):
                 buf = io.BytesIO()
                 with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
                     for row in batch:
-                        line = json.dumps({
-                            "id": str(row.id),
-                            "original_edge_id": str(row.original_edge_id),
-                            "tenant_id": str(row.tenant_id),
-                            "source_contract": str(row.source_contract_id) if row.source_contract_id else None,
-                            "target_contract": str(row.target_contract_id) if row.target_contract_id else None,
-                            "source_model": row.source_model,
-                            "source_field": row.source_field,
-                            "target_model": row.target_model,
-                            "target_field": row.target_field,
-                            "edge_type": row.edge_type,
-                            "transformation_ref": row.transformation_ref,
-                            "job_ref": row.job_ref,
-                            "valid_from": row.valid_from.isoformat() if row.valid_from else None,
-                            "valid_to": row.valid_to.isoformat() if row.valid_to else None,
-                            "archived_at": row.archived_at.isoformat() if row.archived_at else None,
-                        }, sort_keys=True)
+                        line = json.dumps(
+                            {
+                                "id": str(row.id),
+                                "original_edge_id": str(row.original_edge_id),
+                                "tenant_id": str(row.tenant_id),
+                                "source_contract": str(row.source_contract_id)
+                                if row.source_contract_id
+                                else None,
+                                "target_contract": str(row.target_contract_id)
+                                if row.target_contract_id
+                                else None,
+                                "source_model": row.source_model,
+                                "source_field": row.source_field,
+                                "target_model": row.target_model,
+                                "target_field": row.target_field,
+                                "edge_type": row.edge_type,
+                                "transformation_ref": row.transformation_ref,
+                                "job_ref": row.job_ref,
+                                "valid_from": row.valid_from.isoformat()
+                                if row.valid_from
+                                else None,
+                                "valid_to": row.valid_to.isoformat() if row.valid_to else None,
+                                "archived_at": row.archived_at.isoformat()
+                                if row.archived_at
+                                else None,
+                            },
+                            sort_keys=True,
+                        )
                         gz.write(line.encode("utf-8") + b"\n")
                 body = buf.getvalue()
 
@@ -302,11 +324,9 @@ class Command(BaseCommand):
                 # prefix supports lifecycle rules ("everything under
                 # 2024/ moves to Deep Archive on 2031-01-01").
                 from uuid import uuid4
-                key = (
-                    f"{cutoff.year:04d}/{cutoff.month:02d}/"
-                    f"lineage-archive-{uuid4().hex}.jsonl.gz"
-                )
-                uri = _s3_put_object(bucket=bucket, key=key, body=body)
+
+                key = f"{cutoff.year:04d}/{cutoff.month:02d}/lineage-archive-{uuid4().hex}.jsonl.gz"
+                _s3_put_object(bucket=bucket, key=key, body=body)
                 bundles_uploaded += 1
 
                 # Spec REQ-LIN-F5-004 scenario "Archive to S3":
@@ -324,15 +344,20 @@ class Command(BaseCommand):
                 ).delete()
                 exported += len(batch)
 
-        self.stdout.write(json.dumps({
-            "phase": "228.F5.6",
-            "dry_run": False,
-            "before": cutoff.isoformat(),
-            "target": "s3",
-            "candidates": candidate_count,
-            "exported": exported,
-            "bundles_uploaded": bundles_uploaded,
-        }, sort_keys=True))
+        self.stdout.write(
+            json.dumps(
+                {
+                    "phase": "228.F5.6",
+                    "dry_run": False,
+                    "before": cutoff.isoformat(),
+                    "target": "s3",
+                    "candidates": candidate_count,
+                    "exported": exported,
+                    "bundles_uploaded": bundles_uploaded,
+                },
+                sort_keys=True,
+            )
+        )
         logger.info(
             "lineage_archive_s3_complete",
             extra={

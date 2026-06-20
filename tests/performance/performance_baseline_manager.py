@@ -18,7 +18,7 @@ import statistics
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -36,7 +36,7 @@ class BaselineMetric:
     p99: float
     sample_count: int
     unit: str = "ms"
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -48,17 +48,17 @@ class PerformanceBaseline:
     version: str
     created_at: datetime
     environment: str
-    metrics: List[BaselineMetric]
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metrics: list[BaselineMetric]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         data = asdict(self)
         data["created_at"] = self.created_at.isoformat()
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "PerformanceBaseline":
+    def from_dict(cls, data: dict[str, Any]) -> "PerformanceBaseline":
         """Create from dictionary."""
         data["created_at"] = datetime.fromisoformat(data["created_at"])
         metrics = [BaselineMetric(**m) for m in data["metrics"]]
@@ -69,7 +69,7 @@ class PerformanceBaseline:
 class PerformanceBaselineManager:
     """Manages performance baselines."""
 
-    def __init__(self, baseline_dir: Optional[Path] = None):
+    def __init__(self, baseline_dir: Path | None = None):
         """
         Initialize baseline manager.
 
@@ -81,7 +81,7 @@ class PerformanceBaselineManager:
         self.baseline_dir = Path(baseline_dir)
         self.baseline_dir.mkdir(parents=True, exist_ok=True)
 
-    def calculate_metrics(self, values: List[float]) -> BaselineMetric:
+    def calculate_metrics(self, values: list[float]) -> BaselineMetric:
         """
         Calculate statistical metrics from a list of values.
 
@@ -114,10 +114,10 @@ class PerformanceBaselineManager:
         self,
         test_name: str,
         test_type: str,
-        metrics_data: Dict[str, List[float]],
-        version: Optional[str] = None,
-        environment: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metrics_data: dict[str, list[float]],
+        version: str | None = None,
+        environment: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> PerformanceBaseline:
         """
         Create a performance baseline from test results.
@@ -185,7 +185,7 @@ class PerformanceBaselineManager:
         Returns:
             PerformanceBaseline object
         """
-        with open(filepath, "r") as f:
+        with open(filepath) as f:
             data = json.load(f)
 
         return PerformanceBaseline.from_dict(data)
@@ -193,10 +193,10 @@ class PerformanceBaselineManager:
     def find_baseline(
         self,
         test_name: str,
-        test_type: Optional[str] = None,
-        version: Optional[str] = None,
-        environment: Optional[str] = None,
-    ) -> Optional[PerformanceBaseline]:
+        test_type: str | None = None,
+        version: str | None = None,
+        environment: str | None = None,
+    ) -> PerformanceBaseline | None:
         """
         Find baseline matching criteria.
 
@@ -249,7 +249,7 @@ class PerformanceBaselineManager:
         baseline1: PerformanceBaseline,
         baseline2: PerformanceBaseline,
         regression_threshold: float = 0.10,  # 10% regression threshold
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Compare two baselines and detect regressions.
 
@@ -328,7 +328,7 @@ class PerformanceBaselineManager:
 
         return comparison
 
-    def export_comparison_report(self, comparison: Dict[str, Any], output_path: Path) -> Path:
+    def export_comparison_report(self, comparison: dict[str, Any], output_path: Path) -> Path:
         """
         Export comparison report to JSON file.
 

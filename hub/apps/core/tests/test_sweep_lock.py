@@ -1,6 +1,8 @@
 """
 Phase 277.B.074 — sweep lock tests.
 """
+
+import contextlib
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -40,9 +42,7 @@ class TestSweepLockDecorator:
         """Normal path: lock acquired, function runs, lock released."""
         call_count = 0
 
-        with patch(
-            "hub.apps.core.redis_pools.get_redis_cache_client"
-        ) as mock_redis_factory:
+        with patch("hub.apps.core.redis_pools.get_redis_cache_client") as mock_redis_factory:
             fake_redis = MagicMock()
             # SET NX returns True → acquired
             fake_redis.set.return_value = True
@@ -71,9 +71,7 @@ class TestSweepLockDecorator:
 
     def test_decorator_raises_when_lock_held(self):
         """If lock cannot be acquired, SweepLockHeldError is raised."""
-        with patch(
-            "hub.apps.core.redis_pools.get_redis_cache_client"
-        ) as mock_redis_factory:
+        with patch("hub.apps.core.redis_pools.get_redis_cache_client") as mock_redis_factory:
             fake_redis = MagicMock()
             fake_redis.set.return_value = False  # Lock held by another
             mock_redis_factory.return_value = fake_redis
@@ -89,9 +87,7 @@ class TestSweepLockDecorator:
         """The wrapped function must not execute when lock is unavailable."""
         ran = False
 
-        with patch(
-            "hub.apps.core.redis_pools.get_redis_cache_client"
-        ) as mock_redis_factory:
+        with patch("hub.apps.core.redis_pools.get_redis_cache_client") as mock_redis_factory:
             fake_redis = MagicMock()
             fake_redis.set.return_value = False
             mock_redis_factory.return_value = fake_redis
@@ -101,10 +97,8 @@ class TestSweepLockDecorator:
                 nonlocal ran
                 ran = True
 
-            try:
+            with contextlib.suppress(SweepLockHeldError):
                 should_not_run()
-            except SweepLockHeldError:
-                pass
 
         assert not ran
 
@@ -114,7 +108,6 @@ class TestSweepLockDecorator:
         @sweep_lock("metadata-sweep", ttl_seconds=42, description="Metadata test")
         def documented():
             """Docstring here."""
-            pass
 
         assert documented.__name__ == "documented"
         assert documented.__doc__ == "Docstring here."
@@ -123,9 +116,7 @@ class TestSweepLockDecorator:
 
     def test_lock_released_even_on_exception(self):
         """Lock is released in finally block even if function raises."""
-        with patch(
-            "hub.apps.core.redis_pools.get_redis_cache_client"
-        ) as mock_redis_factory:
+        with patch("hub.apps.core.redis_pools.get_redis_cache_client") as mock_redis_factory:
             fake_redis = MagicMock()
             fake_redis.set.return_value = True
             fake_redis.eval.return_value = 1

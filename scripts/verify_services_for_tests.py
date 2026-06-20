@@ -4,26 +4,28 @@ Verify that all required services are running before tests.
 
 This script checks if all microservices are healthy and available.
 """
-import sys
+
 import os
+import sys
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Set Django settings
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hub.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 
 # Initialize Django
 import django
+
 django.setup()
 
 from hub.apps.testing.service_utils import check_service_health
 
 services = {
-    'COMPLIANCE_SERVICE_URL': 'http://localhost:8082',
-    'DQ_SERVICE_URL': 'http://localhost:8083',
-    'DATACONTRACT_SERVICE_URL': 'http://localhost:8080',
-    'SEMANTIC_SERVICE_URL': 'http://localhost:8081'
+    "COMPLIANCE_SERVICE_URL": "http://localhost:8082",
+    "DQ_SERVICE_URL": "http://localhost:8083",
+    "DATACONTRACT_SERVICE_URL": "http://localhost:8080",
+    "SEMANTIC_SERVICE_URL": "http://localhost:8081",
 }
 
 missing = []
@@ -37,9 +39,11 @@ if missing:
     for service in missing:
         print(f"  - {service}", file=sys.stderr)
     print("\nPlease start services with:", file=sys.stderr)
-    print("  docker-compose up -d compliance-service dq-service datacontract-service semantic-service", file=sys.stderr)
+    print(
+        "  docker-compose up -d compliance-service dq-service datacontract-service semantic-service",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 print("✓ All required services are available")
 sys.exit(0)
-

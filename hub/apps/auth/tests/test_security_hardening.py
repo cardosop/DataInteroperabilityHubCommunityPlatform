@@ -9,17 +9,14 @@ Phase 3A — B4: Logout race condition (select_for_update)
 All tests use real DB state and real auth flows (no mocks).
 """
 
-import hashlib
 import uuid
 from datetime import timedelta
 
 import pytest
-from django.conf import settings
-from django.core.cache import cache
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.core.cache import cache
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
-from rest_framework import status as http_status
 from rest_framework.test import APIClient
 
 from hub.apps.auth.models import RefreshToken
@@ -118,7 +115,7 @@ class ReplayDetectionGracePeriodTest(TransactionTestCase):
         token_old_raw = RefreshToken.generate_token()
         token_new_raw = RefreshToken.generate_token()
 
-        token_old = RefreshToken.objects.create(
+        RefreshToken.objects.create(
             user=self.user,
             token_hash=RefreshToken.hash_token(token_old_raw),
             family_id=family_id,
@@ -142,18 +139,20 @@ class ReplayDetectionGracePeriodTest(TransactionTestCase):
             format="json",
         )
 
-        self.assertEqual(resp.status_code, 200, f"Expected 200, got {resp.status_code}: {resp.data}")
+        self.assertEqual(
+            resp.status_code, 200, f"Expected 200, got {resp.status_code}: {resp.data}"
+        )
         self.assertIn("access_token", resp.data)
 
         # token_new should now be revoked (it was rotated from)
         token_new.refresh_from_db()
-        self.assertIsNotNone(token_new.revoked_at, "token_new should be revoked after grace rotation")
+        self.assertIsNotNone(
+            token_new.revoked_at, "token_new should be revoked after grace rotation"
+        )
 
         # A new seq=2 token should exist in the same family
         latest = (
-            RefreshToken.objects.filter(family_id=family_id)
-            .order_by("-sequence_number")
-            .first()
+            RefreshToken.objects.filter(family_id=family_id).order_by("-sequence_number").first()
         )
         self.assertEqual(latest.sequence_number, 2)
         self.assertIsNone(latest.revoked_at, "Latest token should be active")
@@ -167,7 +166,7 @@ class ReplayDetectionGracePeriodTest(TransactionTestCase):
         token_old_raw = RefreshToken.generate_token()
         token_new_raw = RefreshToken.generate_token()
 
-        token_old = RefreshToken.objects.create(
+        RefreshToken.objects.create(
             user=self.user,
             token_hash=RefreshToken.hash_token(token_old_raw),
             family_id=family_id,
@@ -194,7 +193,9 @@ class ReplayDetectionGracePeriodTest(TransactionTestCase):
             format="json",
         )
 
-        self.assertEqual(resp.status_code, 401, f"Expected 401, got {resp.status_code}: {resp.data}")
+        self.assertEqual(
+            resp.status_code, 401, f"Expected 401, got {resp.status_code}: {resp.data}"
+        )
 
         # Entire family should be revoked
         token_new.refresh_from_db()
@@ -276,7 +277,9 @@ class RefreshRateLimitTest(TransactionTestCase):
                 format="json",
             )
             # Some may fail with 400 (invalid token from rotation), but none should be 429
-            self.assertNotEqual(resp.status_code, 429, f"Request {i+1} should not be rate-limited")
+            self.assertNotEqual(
+                resp.status_code, 429, f"Request {i + 1} should not be rate-limited"
+            )
 
         # 6th request should be rate-limited
         resp = self.client.post(
@@ -383,7 +386,9 @@ class CookiePrecedenceTest(TransactionTestCase):
         )
 
         # Should succeed (body token used, not stale cookie)
-        self.assertEqual(resp.status_code, 200, f"Expected 200, got {resp.status_code}: {resp.data}")
+        self.assertEqual(
+            resp.status_code, 200, f"Expected 200, got {resp.status_code}: {resp.data}"
+        )
 
     @override_settings(USE_HTTPONLY_AUTH_COOKIES=True)
     def test_cookie_mode_prefers_cookie(self):
@@ -404,7 +409,9 @@ class CookiePrecedenceTest(TransactionTestCase):
             format="json",
         )
 
-        self.assertEqual(resp.status_code, 200, f"Expected 200, got {resp.status_code}: {resp.data}")
+        self.assertEqual(
+            resp.status_code, 200, f"Expected 200, got {resp.status_code}: {resp.data}"
+        )
 
 
 # ======================================================================

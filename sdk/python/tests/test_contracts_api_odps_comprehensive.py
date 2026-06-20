@@ -14,21 +14,22 @@ To run these tests:
 2. Set API key: export TEST_API_KEY=your-api-key
 3. Run: pytest tests/test_contracts_api_odps_comprehensive.py -v
 """
-import os
-import pytest
-import json
-import tempfile
-import uuid
+
 import asyncio
+import json
+import os
 import time
-from pathlib import Path
-from typing import Dict, Any, Optional
+import uuid
+from typing import Any, Dict, Optional
+
+import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
-    ODPSValidationError,
+    NotFoundError,
     ODPSExportError,
     ODPSLinkingError,
-    NotFoundError,
+    ODPSValidationError,
 )
 
 
@@ -36,7 +37,7 @@ async def poll_workflow_status(
     client: DataHubClient,
     workflow_instance_id: str,
     timeout: int = 300,  # 5 minutes default for comprehensive tests
-    poll_interval: int = 3  # Poll every 3 seconds
+    poll_interval: int = 3,  # Poll every 3 seconds
 ) -> Dict[str, Any]:
     """
     Poll workflow status until completion or timeout.
@@ -58,14 +59,20 @@ async def poll_workflow_status(
 
     while time.time() - start_time < timeout:
         try:
-            status_response = await client.get(f"contracts/products/workflows/{workflow_instance_id}/status/")
+            status_response = await client.get(
+                f"contracts/products/workflows/{workflow_instance_id}/status/"
+            )
 
             status = status_response.get("status", "").upper()
 
             if status == "COMPLETED":
                 return status_response
             elif status == "FAILED":
-                error_msg = status_response.get("message") or status_response.get("error") or "Workflow failed"
+                error_msg = (
+                    status_response.get("message")
+                    or status_response.get("error")
+                    or "Workflow failed"
+                )
                 raise ValueError(f"Workflow failed: {error_msg}")
             elif status in ["RUNNING", "PENDING"]:
                 # Continue polling
@@ -82,10 +89,18 @@ async def poll_workflow_status(
         except Exception as e:
             # Handle network errors, timeouts, and connection issues gracefully
             error_str = str(e).lower()
-            if any(keyword in error_str for keyword in [
-                "timeout", "not found", "network", "connection",
-                "disconnected", "read error", "remote protocol"
-            ]):
+            if any(
+                keyword in error_str
+                for keyword in [
+                    "timeout",
+                    "not found",
+                    "network",
+                    "connection",
+                    "disconnected",
+                    "read error",
+                    "remote protocol",
+                ]
+            ):
                 # Retry on transient errors
                 await asyncio.sleep(poll_interval)
                 continue
@@ -102,9 +117,7 @@ async def poll_workflow_status(
 
 
 async def handle_async_workflow_response(
-    client: DataHubClient,
-    result: Dict[str, Any],
-    timeout: int = 120
+    client: DataHubClient, result: Dict[str, Any], timeout: int = 120
 ) -> Dict[str, Any]:
     """
     Handle async workflow response by polling for completion if needed.
@@ -136,24 +149,27 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     always receive a working credential.
     """
     from tests.conftest import get_api_key
+
     return get_api_key()
 
 
 @pytest.fixture
 def real_api_config():
     """Fixture for real API configuration"""
-    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8001/api/v1')
+    api_base_url = os.environ.get("API_BASE_URL", "http://localhost:8001/api/v1")
     api_key = setup_authentication_for_sdk_tests(api_base_url)
 
     if not api_key:
-        pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+        pytest.skip(
+            "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+        )
 
     # Use longer timeout for comprehensive tests (60 seconds) to handle slow operations
     # like linking, semantic mapping, etc.
     return DataHubClientConfig(
         base_url=api_base_url,
         api_token=api_key,
-        timeout=60.0  # 60 seconds for comprehensive tests
+        timeout=60.0,  # 60 seconds for comprehensive tests
     )
 
 
@@ -164,7 +180,7 @@ def create_valid_odps_json(
     include_strategy: bool = False,
     languages: list = None,
     odcs_contract_id: str = None,
-    odcs_contract_name: str = None
+    odcs_contract_name: str = None,
 ) -> str:
     """Create a valid ODPS JSON document with various options"""
     if product_id is None:
@@ -176,9 +192,7 @@ def create_valid_odps_json(
     odps = {
         "schema": "https://opendataproducts.org/schema/v4.1",
         "version": "4.1",
-        "product": {
-            "details": {}
-        }
+        "product": {"details": {}},
     }
 
     # Add product details for each language
@@ -186,7 +200,7 @@ def create_valid_odps_json(
         odps["product"]["details"][lang] = {
             "productID": product_id,
             "name": f"Test Product {product_id} ({lang})",
-            "description": f"Test product created via Python SDK comprehensive test: {product_id} ({lang})"
+            "description": f"Test product created via Python SDK comprehensive test: {product_id} ({lang})",
         }
 
     # Add contract spec if requested
@@ -203,18 +217,10 @@ def create_valid_odps_json(
                 "version": "1.0.0",
                 "schema": {
                     "fields": [
-                        {
-                            "name": "id",
-                            "type": "string",
-                            "nullable": False
-                        },
-                        {
-                            "name": "name",
-                            "type": "string",
-                            "nullable": False
-                        }
+                        {"name": "id", "type": "string", "nullable": False},
+                        {"name": "name", "type": "string", "nullable": False},
                     ]
-                }
+                },
             }
         }
 
@@ -227,7 +233,7 @@ def create_valid_odps_json(
                     "name": "Basic Plan",
                     "price": 9.99,
                     "currency": "USD",
-                    "billingPeriod": "monthly"
+                    "billingPeriod": "monthly",
                 },
                 {
                     "planID": "premium",
@@ -235,55 +241,43 @@ def create_valid_odps_json(
                     "price": 49.99,
                     "currency": "USD",
                     "billingPeriod": "monthly",
-                    "isDefault": True
-                }
+                    "isDefault": True,
+                },
             ],
             "accessMethods": {
                 "api": {
                     "type": "REST API",
                     "endpoint": f"https://api.example.com/v1/products/{product_id}",
-                    "protocol": "HTTPS"
+                    "protocol": "HTTPS",
                 },
                 "download": {
                     "type": "File Download",
-                    "url": f"https://download.example.com/{product_id}.zip"
-                }
+                    "url": f"https://download.example.com/{product_id}.zip",
+                },
             },
             "paymentGateways": {
                 "stripe": {
                     "enabled": True,
                     "mode": "test",
                     "publicKey": "pk_test_example",
-                    "supportedCurrencies": ["USD", "EUR"]
+                    "supportedCurrencies": ["USD", "EUR"],
                 },
-                "paypal": {
-                    "enabled": True,
-                    "provider": "PayPal"
-                }
-            }
+                "paypal": {"enabled": True, "provider": "PayPal"},
+            },
         }
 
     # Add product strategy if requested
     if include_strategy:
         odps["product"]["productStrategy"] = {
-            "objectives": [
-                "Increase data product adoption",
-                "Improve data quality metrics"
-            ],
+            "objectives": ["Increase data product adoption", "Improve data quality metrics"],
             "strategicAlignment": [
                 "Company-wide data strategy",
-                "Digital transformation initiative"
+                "Digital transformation initiative",
             ],
             "productKPIs": [
-                {
-                    "name": "Monthly Active Users",
-                    "target": 1000
-                },
-                {
-                    "name": "Data Quality Score",
-                    "target": 95
-                }
-            ]
+                {"name": "Monthly Active Users", "target": 1000},
+                {"name": "Data Quality Score", "target": 95},
+            ],
         }
 
     return json.dumps(odps, indent=2)
@@ -321,7 +315,7 @@ class TestContractsAPIODPSComprehensive:
                 original_format="JSON",
                 odps_version="4.1",
                 resolve_external_refs=True,
-                asset_id=None  # Explicitly test None
+                asset_id=None,  # Explicitly test None
             )
 
             # Handle async workflow if needed (5 minute timeout for comprehensive tests)
@@ -334,7 +328,9 @@ class TestContractsAPIODPSComprehensive:
             assert "odps_contract" in result or "id" in result
             if "odps_contract" in result:
                 assert "odcs_contract" in result, "Product-First flow should return ODCS contract"
-                assert "workflow_instance_id" in result or "id" in result.get("odps_contract", {}), "Product-First flow should return workflow_instance_id or contract ID"
+                assert "workflow_instance_id" in result or "id" in result.get(
+                    "odps_contract", {}
+                ), "Product-First flow should return workflow_instance_id or contract ID"
         except (TimeoutError, ValueError) as e:
             error_str = str(e).lower()
             if "timeout" in error_str:
@@ -352,9 +348,9 @@ class TestContractsAPIODPSComprehensive:
     async def test_create_odps_product_first_flow_yaml_format(self, real_api_config):
         """Test create_odps() with Product-First flow using YAML format"""
         client = DataHubClient(real_api_config)
-        odps_json = create_valid_odps_json("product-first-yaml")
+        create_valid_odps_json("product-first-yaml")
         # Convert to YAML (simplified - in real scenario would use yaml library)
-        odps_yaml = f"""schema: https://opendataproducts.org/schema/v4.1
+        odps_yaml = """schema: https://opendataproducts.org/schema/v4.1
 version: "4.1"
 product:
   details:
@@ -379,7 +375,7 @@ product:
                 original_raw=odps_yaml,
                 extract_odcs=True,
                 original_format="YAML",
-                odps_version="4.1"
+                odps_version="4.1",
             )
 
             # Handle async workflow if needed
@@ -406,7 +402,7 @@ product:
             result = await client.contracts.create_odps(
                 original_raw=odps_content,
                 extract_odcs=True,
-                original_format=None  # Auto-detect
+                original_format=None,  # Auto-detect
             )
 
             # Handle async workflow if needed
@@ -436,7 +432,7 @@ product:
                 original_raw=odps_content,
                 extract_odcs=True,
                 original_format="JSON",
-                asset_id=None  # Test with None first
+                asset_id=None,  # Test with None first
             )
 
             # Handle async workflow if needed
@@ -472,8 +468,7 @@ product:
   }}
 }}"""
         odcs_result = await client.contracts.create(
-            original_raw=odcs_content,
-            original_format="JSON"
+            original_raw=odcs_content, original_format="JSON"
         )
         odcs_id = odcs_result["id"]
 
@@ -482,7 +477,7 @@ product:
             "link-flow-all-params",
             include_contract=True,
             odcs_contract_id=odcs_contract_id,
-            odcs_contract_name=odcs_contract_name
+            odcs_contract_name=odcs_contract_name,
         )
 
         try:
@@ -491,7 +486,7 @@ product:
                 link_odcs_id=odcs_id,
                 original_format="JSON",
                 odps_version="4.1",
-                resolve_external_refs=True
+                resolve_external_refs=True,
             )
 
             # Handle async workflow if needed
@@ -502,7 +497,7 @@ product:
                     pytest.skip(f"Workflow execution failed: {result.get('error')}")
 
             assert "id" in result or "odps_contract" in result
-            odps_id = result.get("id") or result.get("odps_contract", {}).get("id")
+            result.get("id") or result.get("odps_contract", {}).get("id")
 
             # Verify link exists
             linked = await client.contracts.get_linked_contracts(odcs_id)
@@ -513,7 +508,9 @@ product:
                 # When using link_odcs_id with ODPS that has contract spec matching the ODCS,
                 # the system may extract ODCS first, creating a link before we can link manually
                 # This is expected behavior - the test validates the link flow, so we can skip
-                pytest.skip(f"Circular reference detected (ODPS contract spec matches ODCS, expected): {e}")
+                pytest.skip(
+                    f"Circular reference detected (ODPS contract spec matches ODCS, expected): {e}"
+                )
             raise
         except Exception as e:
             error_str = str(e).lower()
@@ -532,10 +529,13 @@ product:
                 original_raw=odps_content,
                 extract_odcs=True,
                 link_odcs_id="some-id",
-                original_format="JSON"
+                original_format="JSON",
             )
 
-        assert "extract_odcs" in str(exc_info.value).lower() or "mutually" in str(exc_info.value).lower()
+        assert (
+            "extract_odcs" in str(exc_info.value).lower()
+            or "mutually" in str(exc_info.value).lower()
+        )
 
     @pytest.mark.asyncio
     async def test_create_odps_error_neither_option_provided(self, real_api_config):
@@ -546,11 +546,14 @@ product:
         with pytest.raises(ODPSValidationError) as exc_info:
             await client.contracts.create_odps(
                 original_raw=odps_content,
-                original_format="JSON"
+                original_format="JSON",
                 # Missing both extract_odcs and link_odcs_id
             )
 
-        assert "extract_odcs" in str(exc_info.value).lower() or "link_odcs_id" in str(exc_info.value).lower()
+        assert (
+            "extract_odcs" in str(exc_info.value).lower()
+            or "link_odcs_id" in str(exc_info.value).lower()
+        )
 
     # ========== export_odps() Comprehensive Tests ==========
 
@@ -562,9 +565,7 @@ product:
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             # Handle async workflow if needed
@@ -578,10 +579,7 @@ product:
             if not odps_id:
                 pytest.skip("Could not create ODPS contract for export test")
 
-            export_result = await client.contracts.export_odps(
-                contract_id=odps_id,
-                format="json"
-            )
+            export_result = await client.contracts.export_odps(contract_id=odps_id, format="json")
 
             assert export_result is not None
             if isinstance(export_result, str):
@@ -589,7 +587,7 @@ product:
             else:
                 export_data = export_result
 
-            assert 'schema' in export_data or 'product' in export_data or 'version' in export_data
+            assert "schema" in export_data or "product" in export_data or "version" in export_data
         except Exception as e:
             error_str = str(e).lower()
             if "workflow" in error_str or "product creation failed" in error_str:
@@ -604,9 +602,7 @@ product:
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             # Handle async workflow if needed
@@ -620,10 +616,7 @@ product:
             if not odps_id:
                 pytest.skip("Could not create ODPS contract for export test")
 
-            export_result = await client.contracts.export_odps(
-                contract_id=odps_id,
-                format="yaml"
-            )
+            export_result = await client.contracts.export_odps(contract_id=odps_id, format="yaml")
 
             assert export_result is not None
             assert isinstance(export_result, dict)
@@ -642,9 +635,7 @@ product:
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             # Handle async workflow if needed
@@ -659,9 +650,7 @@ product:
                 pytest.skip("Could not create ODPS contract for export test")
 
             export_result = await client.contracts.export_odps(
-                contract_id=odps_id,
-                format="json",
-                version="4.1"
+                contract_id=odps_id, format="json", version="4.1"
             )
 
             assert export_result is not None
@@ -678,10 +667,7 @@ product:
         invalid_id = "00000000-0000-0000-0000-000000000000"
 
         with pytest.raises((NotFoundError, ODPSExportError)):
-            await client.contracts.export_odps(
-                contract_id=invalid_id,
-                format="json"
-            )
+            await client.contracts.export_odps(contract_id=invalid_id, format="json")
 
     @pytest.mark.asyncio
     async def test_export_odps_error_invalid_format(self, real_api_config):
@@ -691,9 +677,7 @@ product:
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             # Handle async workflow if needed
@@ -708,10 +692,7 @@ product:
                 pytest.skip("Could not create ODPS contract for error test")
 
             with pytest.raises(ODPSValidationError):
-                await client.contracts.export_odps(
-                    contract_id=odps_id,
-                    format="invalid_format"
-                )
+                await client.contracts.export_odps(contract_id=odps_id, format="invalid_format")
         except Exception as e:
             error_str = str(e).lower()
             if "workflow" in error_str or "product creation failed" in error_str:
@@ -728,9 +709,7 @@ product:
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             # Handle async workflow if needed
@@ -745,8 +724,7 @@ product:
                 pytest.skip("Could not create ODPS contract for download test")
 
             download_result = await client.contracts.download_odps(
-                contract_id=odps_id,
-                format="json"
+                contract_id=odps_id, format="json"
             )
 
             assert download_result is not None
@@ -754,8 +732,12 @@ product:
             assert len(download_result) > 0
 
             # Verify content is valid JSON
-            downloaded_json = json.loads(download_result.decode('utf-8'))
-            assert 'schema' in downloaded_json or 'product' in downloaded_json or 'version' in downloaded_json
+            downloaded_json = json.loads(download_result.decode("utf-8"))
+            assert (
+                "schema" in downloaded_json
+                or "product" in downloaded_json
+                or "version" in downloaded_json
+            )
         except Exception as e:
             error_str = str(e).lower()
             if "workflow" in error_str or "product creation failed" in error_str:
@@ -770,9 +752,7 @@ product:
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             # Handle async workflow if needed
@@ -787,8 +767,7 @@ product:
                 pytest.skip("Could not create ODPS contract for download test")
 
             download_result = await client.contracts.download_odps(
-                contract_id=odps_id,
-                format="yaml"
+                contract_id=odps_id, format="yaml"
             )
 
             assert download_result is not None
@@ -796,8 +775,8 @@ product:
             assert len(download_result) > 0
 
             # Verify content contains YAML markers
-            content = download_result.decode('utf-8')
-            assert 'schema:' in content or 'product:' in content or 'version:' in content
+            content = download_result.decode("utf-8")
+            assert "schema:" in content or "product:" in content or "version:" in content
         except Exception as e:
             error_str = str(e).lower()
             if "workflow" in error_str or "product creation failed" in error_str:
@@ -812,9 +791,7 @@ product:
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             # Handle async workflow if needed
@@ -829,9 +806,7 @@ product:
                 pytest.skip("Could not create ODPS contract for download test")
 
             download_result = await client.contracts.download_odps(
-                contract_id=odps_id,
-                format="json",
-                version="4.1"
+                contract_id=odps_id, format="json", version="4.1"
             )
 
             assert download_result is not None
@@ -850,10 +825,7 @@ product:
         invalid_id = "00000000-0000-0000-0000-000000000000"
 
         with pytest.raises((NotFoundError, ODPSExportError)):
-            await client.contracts.download_odps(
-                contract_id=invalid_id,
-                format="json"
-            )
+            await client.contracts.download_odps(contract_id=invalid_id, format="json")
 
     # ========== link_odps_to_odcs() Comprehensive Tests ==========
 
@@ -874,8 +846,7 @@ product:
   }
 }"""
         odcs_result = await client.contracts.create(
-            original_raw=odcs_content,
-            original_format="JSON"
+            original_raw=odcs_content, original_format="JSON"
         )
         odcs_id = odcs_result["id"]
 
@@ -885,7 +856,7 @@ product:
             "link-existing-odps",
             odcs_contract_id="link-existing-odcs",
             odcs_contract_name="Link Existing ODCS",
-            include_contract=True  # Include contract spec in ODPS
+            include_contract=True,  # Include contract spec in ODPS
         )
         try:
             # Create ODPS and link it directly to the existing ODCS using link_odcs_id
@@ -894,7 +865,7 @@ product:
                 original_raw=odps_content,
                 extract_odcs=False,  # Don't extract - we're linking to existing ODCS
                 link_odcs_id=odcs_id,  # Link to the existing ODCS we created
-                original_format="JSON"
+                original_format="JSON",
             )
 
             # Handle async workflow if needed
@@ -937,8 +908,7 @@ product:
   }}
 }}"""
         odcs_result = await client.contracts.create(
-            original_raw=odcs_content,
-            original_format="JSON"
+            original_raw=odcs_content, original_format="JSON"
         )
         odcs_id = odcs_result["id"]
 
@@ -948,7 +918,7 @@ product:
             "link-create-odps",
             include_contract=True,
             odcs_contract_id=odcs_contract_id,
-            odcs_contract_name="Link Create ODCS"
+            odcs_contract_name="Link Create ODCS",
         )
 
         try:
@@ -957,7 +927,7 @@ product:
                 odcs_contract_id=odcs_id,
                 odps_raw=odps_content,
                 odps_format="JSON",
-                resolve_external_refs=True
+                resolve_external_refs=True,
             )
 
             assert link_result is not None
@@ -989,8 +959,7 @@ product:
   }
 }"""
         odcs_result = await client.contracts.create(
-            original_raw=odcs_content,
-            original_format="JSON"
+            original_raw=odcs_content, original_format="JSON"
         )
         odcs_id = odcs_result["id"]
 
@@ -1021,8 +990,7 @@ product:
   }}
 }}"""
         odcs_result = await client.contracts.create(
-            original_raw=odcs_content,
-            original_format="JSON"
+            original_raw=odcs_content, original_format="JSON"
         )
         odcs_id = odcs_result["id"]
 
@@ -1031,13 +999,11 @@ product:
             "unlink-test-odps",
             include_contract=True,
             odcs_contract_id=odcs_contract_id,
-            odcs_contract_name=odcs_contract_name
+            odcs_contract_name=odcs_contract_name,
         )
         try:
             link_result = await client.contracts.link_odps_to_odcs(
-                odcs_contract_id=odcs_id,
-                odps_raw=odps_content,
-                odps_format="JSON"
+                odcs_contract_id=odcs_id, odps_raw=odps_content, odps_format="JSON"
             )
 
             if isinstance(link_result, dict) and "error" in link_result:
@@ -1082,8 +1048,7 @@ product:
   }}
 }}"""
         odcs_result = await client.contracts.create(
-            original_raw=odcs_content,
-            original_format="JSON"
+            original_raw=odcs_content, original_format="JSON"
         )
         odcs_id = odcs_result["id"]
 
@@ -1092,13 +1057,11 @@ product:
             "linked-odps-perspective",
             include_contract=True,
             odcs_contract_id=odcs_contract_id,
-            odcs_contract_name=odcs_contract_name
+            odcs_contract_name=odcs_contract_name,
         )
         try:
             link_result = await client.contracts.link_odps_to_odcs(
-                odcs_contract_id=odcs_id,
-                odps_raw=odps_content,
-                odps_format="JSON"
+                odcs_contract_id=odcs_id, odps_raw=odps_content, odps_format="JSON"
             )
 
             if isinstance(link_result, dict) and "error" in link_result:
@@ -1113,8 +1076,12 @@ product:
             linked_from_odps = await client.contracts.get_linked_contracts(odps_id)
             assert linked_from_odps is not None
             # Should show ODCS link
-            assert "odcs_link" in str(linked_from_odps) or odcs_id in str(linked_from_odps) or \
-                   "links" in linked_from_odps or "Link" in str(linked_from_odps)
+            assert (
+                "odcs_link" in str(linked_from_odps)
+                or odcs_id in str(linked_from_odps)
+                or "links" in linked_from_odps
+                or "Link" in str(linked_from_odps)
+            )
         except Exception as e:
             error_str = str(e).lower()
             if "workflow" in error_str or "product creation failed" in error_str:
@@ -1140,8 +1107,7 @@ product:
   }}
 }}"""
         odcs_result = await client.contracts.create(
-            original_raw=odcs_content,
-            original_format="JSON"
+            original_raw=odcs_content, original_format="JSON"
         )
         odcs_id = odcs_result["id"]
 
@@ -1150,13 +1116,11 @@ product:
             "linked-odcs-perspective-2",
             include_contract=True,
             odcs_contract_id=odcs_contract_id,
-            odcs_contract_name=odcs_contract_name
+            odcs_contract_name=odcs_contract_name,
         )
         try:
             link_result = await client.contracts.link_odps_to_odcs(
-                odcs_contract_id=odcs_id,
-                odps_raw=odps_content,
-                odps_format="JSON"
+                odcs_contract_id=odcs_id, odps_raw=odps_content, odps_format="JSON"
             )
 
             if isinstance(link_result, dict) and "error" in link_result:
@@ -1171,8 +1135,12 @@ product:
             linked_from_odcs = await client.contracts.get_linked_contracts(odcs_id)
             assert linked_from_odcs is not None
             # Should show ODPS link
-            assert "odps_link" in str(linked_from_odcs) or odps_id in str(linked_from_odcs) or \
-                   "links" in linked_from_odcs or "ODPS" in str(linked_from_odcs)
+            assert (
+                "odps_link" in str(linked_from_odcs)
+                or odps_id in str(linked_from_odcs)
+                or "links" in linked_from_odcs
+                or "ODPS" in str(linked_from_odcs)
+            )
         except Exception as e:
             error_str = str(e).lower()
             if "workflow" in error_str or "product creation failed" in error_str:
@@ -1196,8 +1164,7 @@ product:
   }
 }"""
         odcs_result = await client.contracts.create(
-            original_raw=odcs_content,
-            original_format="JSON"
+            original_raw=odcs_content, original_format="JSON"
         )
         odcs_id = odcs_result["id"]
 
@@ -1215,9 +1182,7 @@ product:
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             # Handle async workflow if needed
@@ -1254,9 +1219,7 @@ product:
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             # Handle async workflow if needed
@@ -1290,9 +1253,7 @@ product:
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             # Handle async workflow if needed
@@ -1326,9 +1287,7 @@ product:
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             # Handle async workflow if needed
@@ -1358,13 +1317,13 @@ product:
     async def test_get_product_details_all_languages(self, real_api_config):
         """Test get_product_details() helper method with all languages"""
         client = DataHubClient(real_api_config)
-        odps_content = create_valid_odps_json("helper-product-details", languages=["en", "fi", "de"])
+        odps_content = create_valid_odps_json(
+            "helper-product-details", languages=["en", "fi", "de"]
+        )
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             # Handle async workflow if needed
@@ -1414,9 +1373,7 @@ product:
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             # Handle async workflow if needed
@@ -1447,8 +1404,7 @@ product:
   }
 }"""
             odcs_result = await client.contracts.create(
-                original_raw=odcs_content,
-                original_format="JSON"
+                original_raw=odcs_content, original_format="JSON"
             )
             odcs_contract = await client.contracts.get(odcs_result["id"])
             is_odps_odcs = client.contracts.is_odps_contract(odcs_contract)
@@ -1470,7 +1426,7 @@ product:
                 original_raw=odps_content,
                 extract_odcs=True,
                 original_format="JSON",
-                odps_version="4.1"
+                odps_version="4.1",
             )
 
             # Handle async workflow if needed
@@ -1501,8 +1457,7 @@ product:
   }
 }"""
             odcs_result = await client.contracts.create(
-                original_raw=odcs_content,
-                original_format="JSON"
+                original_raw=odcs_content, original_format="JSON"
             )
             odcs_contract = await client.contracts.get(odcs_result["id"])
             version_odcs = client.contracts.get_odps_version(odcs_contract)
@@ -1523,9 +1478,7 @@ product:
 
         try:
             create_result = await client.contracts.create_odps(
-                original_raw=odps_content,
-                extract_odcs=True,
-                original_format="JSON"
+                original_raw=odps_content, extract_odcs=True, original_format="JSON"
             )
 
             if isinstance(create_result, dict) and "error" in create_result:
@@ -1558,7 +1511,7 @@ product:
                 original_raw=odps_content,
                 extract_odcs=True,
                 original_format="JSON",
-                odps_version="4.1"
+                odps_version="4.1",
             )
 
             if isinstance(create_result, dict) and "error" in create_result:
@@ -1600,8 +1553,7 @@ product:
   }}
 }}"""
         odcs_result = await client.contracts.create(
-            original_raw=odcs_content,
-            original_format="JSON"
+            original_raw=odcs_content, original_format="JSON"
         )
         odcs_id = odcs_result["id"]
 
@@ -1610,13 +1562,11 @@ product:
             "filter-has-link-odps",
             include_contract=True,
             odcs_contract_id=odcs_contract_id,
-            odcs_contract_name=odcs_contract_name
+            odcs_contract_name=odcs_contract_name,
         )
         try:
             link_result = await client.contracts.link_odps_to_odcs(
-                odcs_contract_id=odcs_id,
-                odps_raw=odps_content,
-                odps_format="JSON"
+                odcs_contract_id=odcs_id, odps_raw=odps_content, odps_format="JSON"
             )
 
             # Handle async workflow if needed
@@ -1656,7 +1606,7 @@ product:
                 original_raw=odps_content,
                 extract_odcs=True,
                 original_format="JSON",
-                odps_version="4.1"
+                odps_version="4.1",
             )
 
             if isinstance(create_result, dict) and "error" in create_result:
@@ -1665,10 +1615,7 @@ product:
 
             # Combine multiple filters
             result = await client.contracts.list(
-                spec_type="ODPS",
-                odps_version="4.1",
-                page=1,
-                page_size=10
+                spec_type="ODPS", odps_version="4.1", page=1, page_size=10
             )
 
             assert "results" in result

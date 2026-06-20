@@ -37,7 +37,9 @@ Options
 * ``--skip-job-row`` — do not persist a ``Job`` observability row
   (local smoke tests).
 """
+
 from __future__ import annotations
+
 import uuid
 
 from django.core.management.base import BaseCommand, CommandError
@@ -67,10 +69,7 @@ class Command(BaseCommand):
             "--age-days",
             type=int,
             default=DEFAULT_AGE_THRESHOLD_DAYS,
-            help=(
-                f"Grace window (days since archived_at). Default: "
-                f"{DEFAULT_AGE_THRESHOLD_DAYS}."
-            ),
+            help=(f"Grace window (days since archived_at). Default: {DEFAULT_AGE_THRESHOLD_DAYS}."),
         )
         parser.add_argument(
             "--tenant-id",
@@ -121,9 +120,7 @@ class Command(BaseCommand):
                 tenant_id=tenant_arg,
                 age_threshold_days=age_days,
             )
-            self.stdout.write(
-                self.style.SUCCESS(f"Audit permanent-delete sweep: {summary}")
-            )
+            self.stdout.write(self.style.SUCCESS(f"Audit permanent-delete sweep: {summary}"))
             if job_row is not None:
                 job_row.mark_completed(result_json={"summary": summary})
         except Exception as exc:

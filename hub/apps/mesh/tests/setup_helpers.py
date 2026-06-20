@@ -23,11 +23,11 @@ Usage::
             )
             setup_mesh_test_environment(self.tenant)
 """
+
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
 from django.contrib.auth import get_user_model
 
@@ -79,7 +79,7 @@ def create_mesh_test_tenant(
 
 def create_mesh_test_users(
     tenant: Tenant,
-) -> Tuple[User, User]:
+) -> tuple[User, User]:
     """
     Create an admin user (with TENANT_ADMIN role) and a regular user
     (no role) for *tenant*.  Returns (admin_user, regular_user).
@@ -115,7 +115,7 @@ def create_mesh_test_api_keys(
     tenant: Tenant,
     admin_user: User,
     regular_user: User,
-) -> Tuple[APIKey, APIKey]:
+) -> tuple[APIKey, APIKey]:
     """
     Create admin-scoped (mesh:write + mesh:read) and user-scoped
     (mesh:read) API keys.  ``_plaintext_key`` is attached to each

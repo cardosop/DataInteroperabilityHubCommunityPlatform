@@ -6,16 +6,15 @@ and permission-based unredaction (no mocks of Django ORM or auth backends).
 """
 
 import pytest
+from rest_framework import status
 
-from hub.apps.datasets.tests.test_base import DatasetsAPITestBase
 from hub.apps.datasets.sample_pii_redaction import (
     SAMPLE_PII_REPLACEMENT,
     redact_sample_cell,
     redact_sample_rows,
 )
+from hub.apps.datasets.tests.test_base import DatasetsAPITestBase
 from hub.apps.users.models import Role, UserRole
-from rest_framework import status
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -111,10 +110,10 @@ def test_redact_sample_cell_column_name_hint_redacts_strings(field_name):
 @pytest.mark.parametrize(
     "value",
     [
-        123456789,                # int
-        123456789.0,              # float
-        True,                     # bool
-        ["123-45-6789"],          # list
+        123456789,  # int
+        123456789.0,  # float
+        True,  # bool
+        ["123-45-6789"],  # list
         {"nested": "123-45-6789"},
     ],
 )
@@ -257,7 +256,9 @@ class SamplePIIRedactionAPITest(DatasetsAPITestBase):
         self.tenant.redact_sample_pii_in_ui = True
         self.tenant.save(update_fields=["redact_sample_pii_in_ui", "updated_at"])
         url = f"/api/v1/datasets/{self.dataset.id}/sample/?include_pii=true"
-        data = self.client.get(url).json()
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
         self.assertFalse(data["viewer_may_include_pii"])
         self.assertFalse(data["include_pii_effective"])
         self.assertEqual(data["sample_data"][0]["email"], SAMPLE_PII_REPLACEMENT)

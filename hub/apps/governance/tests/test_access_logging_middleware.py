@@ -5,10 +5,10 @@ Tests that AccessLoggingMiddleware correctly logs API requests for audit,
 extracts resources from paths, maps methods to actions, and maps status
 codes to results.
 """
-import uuid
-from unittest.mock import patch, MagicMock
 
-import pytest
+import uuid
+from unittest.mock import MagicMock, patch
+
 from django.http import HttpRequest, HttpResponse
 from django.test import TestCase
 
@@ -21,8 +21,9 @@ class AccessLoggingMiddlewareUnitTest(TestCase):
     def setUp(self):
         self.middleware = AccessLoggingMiddleware(get_response=lambda r: r)
 
-    def _make_request(self, path, method="GET", tenant_id=None,
-                      user=None, xff=None, remote_addr="10.0.0.1"):
+    def _make_request(
+        self, path, method="GET", tenant_id=None, user=None, xff=None, remote_addr="10.0.0.1"
+    ):
         request = HttpRequest()
         request.method = method
         request.path = path
@@ -123,13 +124,15 @@ class AccessLoggingMiddlewareUnitTest(TestCase):
 
     def test_client_ip_from_x_forwarded_for_first_hop(self):
         request = self._make_request(
-            "/api/v1/x/", xff="1.2.3.4, 5.6.7.8",
+            "/api/v1/x/",
+            xff="1.2.3.4, 5.6.7.8",
         )
         assert self.middleware._get_client_ip(request) == "1.2.3.4"
 
     def test_client_ip_fallback_to_remote_addr(self):
         request = self._make_request(
-            "/api/v1/x/", remote_addr="9.8.7.6",
+            "/api/v1/x/",
+            remote_addr="9.8.7.6",
         )
         assert self.middleware._get_client_ip(request) == "9.8.7.6"
 
@@ -143,7 +146,8 @@ class AccessLoggingMiddlewareUnitTest(TestCase):
         uid = str(uuid.uuid4())
         tid = str(uuid.uuid4())
         request = self._make_request(
-            f"/api/v1/contracts/{uid}/", tenant_id=tid,
+            f"/api/v1/contracts/{uid}/",
+            tenant_id=tid,
         )
         response = HttpResponse(status=200)
         self.middleware.process_response(request, response)
@@ -161,7 +165,8 @@ class AccessLoggingMiddlewareUnitTest(TestCase):
     def test_non_api_path_skipped(self, mock_log):
         """Non-API paths are not logged."""
         request = self._make_request(
-            "/health/", tenant_id=str(uuid.uuid4()),
+            "/health/",
+            tenant_id=str(uuid.uuid4()),
         )
         response = HttpResponse(status=200)
         self.middleware.process_response(request, response)

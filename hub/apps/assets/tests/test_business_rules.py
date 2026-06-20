@@ -5,7 +5,6 @@ Comprehensive tests without mocks/stubs, following engineering best practices.
 """
 
 import uuid
-from typing import Any
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -134,6 +133,7 @@ class AssetsBusinessRulesValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        super().setUp()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
@@ -321,9 +321,7 @@ class AssetsBusinessRulesValidationTest(TestCase):
             tenant=self.tenant, created_by=self.user, status=AssetStatus.DRAFT
         )
 
-        rules = AssetsBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        rules = AssetsBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         result = rules.validate(
             context=None,
             asset=asset,
@@ -341,6 +339,7 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        super().setUp()
         _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {_uid}", slug=f"test-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
@@ -430,6 +429,25 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
 
+    def test_status_transition_draft_to_retired_allowed(self):
+        """DRAFT → RETIRED is allowed for soft-delete via DELETE endpoint.
+
+        The model's Asset.VALID_TRANSITIONS rejects this transition,
+        but the service layer's delete_asset() uses .update() which
+        bypasses full_clean().  The business rules gate is the
+        authoritative check for the DELETE code path, so it
+        intentionally allows DRAFT→RETIRED."""
+        asset = AssetFactory.create_asset(
+            tenant=self.tenant, created_by=self.user, status=AssetStatus.DRAFT
+        )
+
+        result = self.rules._validate_status_transition(
+            asset, old_status=AssetStatus.DRAFT, new_status=AssetStatus.RETIRED
+        )
+
+        self.assertTrue(result.is_valid)
+        self.assertEqual(len(result.errors), 0)
+
     def test_status_transition_no_change(self):
         """Test no status change (should be valid)"""
         asset = AssetFactory.create_asset(
@@ -463,7 +481,7 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
         )
 
         # Create valid contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -512,7 +530,7 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
         )
 
         # Create contract with invalid validation status
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -548,7 +566,7 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
         )
 
         # Create contract with invalid normalization status
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -590,7 +608,7 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
         )
 
         # Create valid contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -612,7 +630,7 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
             content_type="text/csv",
             storage_path="/test/test.csv",
         )
-        dataset = Dataset.objects.create(tenant=self.tenant, asset=asset, file=file, format="CSV")
+        Dataset.objects.create(tenant=self.tenant, asset=asset, file=file, format="CSV")
 
         result = self.rules._validate_activation_requirements(asset)
 
@@ -642,7 +660,7 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
         )
 
         # Create valid contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -664,7 +682,7 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
             content_type="text/csv",
             storage_path="/test/test.csv",
         )
-        dataset = Dataset.objects.create(tenant=self.tenant, asset=asset, file=file, format="CSV")
+        Dataset.objects.create(tenant=self.tenant, asset=asset, file=file, format="CSV")
 
         result = self.rules._validate_activation_requirements(asset)
 
@@ -694,7 +712,7 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
         )
 
         # Create valid contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -716,7 +734,7 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
             content_type="text/csv",
             storage_path="/test/test.csv",
         )
-        dataset = Dataset.objects.create(tenant=self.tenant, asset=asset, file=file, format="CSV")
+        Dataset.objects.create(tenant=self.tenant, asset=asset, file=file, format="CSV")
 
         result = self.rules._validate_activation_requirements(asset)
 
@@ -731,7 +749,8 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.INTERNAL,
+            # visibility is a derived @property (Phase 250.3.B) — omit
+            # the deprecated kwarg; ACTIVE → INTERNAL automatically.
         )
 
         result = self.rules._validate_visibility_change(
@@ -750,7 +769,8 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             status=AssetStatus.DRAFT,
-            visibility=AssetVisibility.INTERNAL,
+            # visibility is a derived @property (Phase 250.3.B) — omit
+            # the deprecated kwarg; DRAFT → INTERNAL automatically.
         )
 
         result = self.rules._validate_visibility_change(
@@ -769,8 +789,9 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
         asset = AssetFactory.create_asset(
             tenant=self.tenant,
             created_by=self.user,
-            status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.PUBLIC,
+            status=AssetStatus.PUBLIC,
+            # visibility is a derived @property (Phase 250.3.B) —
+            # use status=PUBLIC to make the asset publicly visible.
         )
 
         result = self.rules._validate_visibility_change(
@@ -787,7 +808,9 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
     def test_visibility_change_no_change(self):
         """Test visibility change with no change (should be valid)"""
         asset = AssetFactory.create_asset(
-            tenant=self.tenant, created_by=self.user, visibility=AssetVisibility.INTERNAL
+            tenant=self.tenant, created_by=self.user,
+            # visibility is a derived @property (Phase 250.3.B) — omit
+            # the deprecated kwarg; DRAFT (default) → INTERNAL automatically.
         )
 
         result = self.rules._validate_visibility_change(
@@ -821,9 +844,7 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
         )
 
         # Create active listing
-        listing = Listing.objects.create(
-            tenant=self.tenant, asset=asset, status=ListingStatus.PUBLISHED
-        )
+        Listing.objects.create(tenant=self.tenant, asset=asset, status=ListingStatus.PUBLISHED)
 
         result = self.rules._validate_retirement_requirements(asset)
 
@@ -847,13 +868,14 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             status=AssetStatus.DRAFT,
-            visibility=AssetVisibility.INTERNAL,
+            # visibility is a derived @property (Phase 250.3.B) —
+            # DRAFT → INTERNAL automatically. Omit the deprecated kwarg.
             dq_status=DQStatus.PASS,
             compliance_status=ComplianceStatus.PASS,
         )
 
         # Create valid contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -914,6 +936,7 @@ class AssetsBusinessRulesLifecycleIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        super().setUp()
         _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {_uid}", slug=f"test-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
@@ -945,7 +968,7 @@ class AssetsBusinessRulesLifecycleIntegrationTest(TestCase):
         )
 
         # Create valid contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -994,6 +1017,7 @@ class AssetsBusinessRulesContractAttachmentValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        super().setUp()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
@@ -1310,7 +1334,7 @@ class AssetsBusinessRulesContractAttachmentValidationTest(TestCase):
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
 
         # Create existing contract with version 1
-        existing_contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             version=1,
@@ -1361,7 +1385,7 @@ class AssetsBusinessRulesContractAttachmentValidationTest(TestCase):
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
 
         # Create existing contract with version 2
-        existing_contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             version=2,
@@ -1413,7 +1437,7 @@ class AssetsBusinessRulesContractAttachmentValidationTest(TestCase):
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.user)
 
         # Create existing contract with version 2
-        existing_contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             version=2,
@@ -1622,6 +1646,7 @@ class AssetsBusinessRulesContractAttachmentIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        super().setUp()
         _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {_uid}", slug=f"test-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
@@ -1641,11 +1666,7 @@ class AssetsBusinessRulesContractAttachmentIntegrationTest(TestCase):
         import json
 
         from hub.apps.contracts.models import (
-            Contract,
-            ContractStatus,
             NormalizationStatus,
-            OriginalFormat,
-            OriginalSpecType,
             ValidationStatus,
         )
 
@@ -1698,7 +1719,8 @@ class AssetsBusinessRulesContractAttachmentIntegrationTest(TestCase):
                 f"must fail attachment validation; got is_valid=True",
             )
             self.assertGreater(
-                len(result.errors), 0,
+                len(result.errors),
+                0,
                 f"Validation must produce errors for normalization_status="
                 f"{contract.normalization_status}",
             )
@@ -1715,11 +1737,7 @@ class AssetsBusinessRulesContractAttachmentIntegrationTest(TestCase):
         import json
 
         from hub.apps.contracts.models import (
-            Contract,
-            ContractStatus,
             NormalizationStatus,
-            OriginalFormat,
-            OriginalSpecType,
             ValidationStatus,
         )
 
@@ -1761,8 +1779,6 @@ class AssetsBusinessRulesContractAttachmentIntegrationTest(TestCase):
         import json
 
         from hub.apps.contracts.models import (
-            Contract,
-            ContractStatus,
             NormalizationStatus,
             ValidationStatus,
         )
@@ -1804,6 +1820,7 @@ class AssetsBusinessRulesHealthScoreTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        super().setUp()
         _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {_uid}", slug=f"test-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
@@ -2203,7 +2220,7 @@ class AssetsBusinessRulesHealthScoreTest(TestCase):
             },
         }
 
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             original_raw=json.dumps(odcs_contract),
@@ -2236,7 +2253,7 @@ class AssetsBusinessRulesHealthScoreTest(TestCase):
         )
 
         # Calculate health score via service
-        calculated_score = AssetHealthScoreService.calculate_health_score(asset)
+        AssetHealthScoreService.calculate_health_score(asset)
         asset.refresh_from_db()
 
         # Validate thresholds
@@ -2304,7 +2321,6 @@ class AssetsBusinessRulesHealthScoreTest(TestCase):
         # validate() must handle an unrecognised validation_type gracefully —
         # returning a result (with no matched validations), never raising.
         result = self.rules.validate(context, validation_type="INVALID_TYPE")
-        self.assertIsNotNone(result)
         # An unknown validation_type is not a hard error — no rules match,
         # so the result is valid (no violations found) but with no matched
         # checks recorded.
@@ -2321,9 +2337,13 @@ class AssetsBusinessRulesHealthScoreTest(TestCase):
             asset=asset, target_status=AssetStatus.ACTIVE, raise_on_error=False
         )
 
-        # Should handle zero score gracefully
-        self.assertIsNotNone(result)
+        # Zero health score should fail the activation threshold
+        self.assertFalse(result.is_valid)
         self.assertIn("threshold_checks", result.details)
+        self.assertFalse(
+            result.details["threshold_checks"]["meets_active_threshold"],
+            "Zero health score must not meet activation threshold",
+        )
 
     def test_validate_health_score_thresholds_edge_case_max_score(self):
         """Test health score threshold validation with max score (edge case)"""
@@ -2335,8 +2355,8 @@ class AssetsBusinessRulesHealthScoreTest(TestCase):
             asset=asset, target_status=AssetStatus.ACTIVE, raise_on_error=False
         )
 
-        # Should handle max score gracefully
-        self.assertIsNotNone(result)
+        # Max health score should pass all thresholds
+        self.assertTrue(result.is_valid)
         self.assertIn("threshold_checks", result.details)
 
     def test_status_transition_edge_case_same_status(self):
@@ -2360,8 +2380,8 @@ class AssetsBusinessRulesHealthScoreTest(TestCase):
             new_status=AssetStatus.DRAFT,  # Same as current
         )
 
-        # Should handle same status transition gracefully
-        self.assertIsNotNone(result)
+        # Same-status transition must be valid (no-op transitions are allowed)
+        self.assertTrue(result.is_valid)
 
     def test_activation_requirements_edge_case_multiple_contracts(self):
         """Test activation requirements with multiple contracts (edge case)"""
@@ -2377,7 +2397,7 @@ class AssetsBusinessRulesHealthScoreTest(TestCase):
             ValidationStatus,
         )
 
-        contract1 = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -2392,7 +2412,7 @@ class AssetsBusinessRulesHealthScoreTest(TestCase):
             created_by=self.user,
         )
 
-        contract2 = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             version=2,  # Per-asset version; unique on (tenant, asset, version)
@@ -2425,3 +2445,217 @@ class AssetsBusinessRulesHealthScoreTest(TestCase):
 
         # Should handle multiple contracts gracefully
         self.assertIsNotNone(result)
+
+
+# ---------------------------------------------------------------------------
+# Structure validation negative-path coverage
+# ---------------------------------------------------------------------------
+
+
+class AssetsBusinessRulesStructureValidationTest(TestCase):
+    """Test _validate_asset_structure negative paths."""
+
+    def setUp(self):
+        super().setUp()
+        _uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {_uid}", slug=f"test-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
+        )
+        self.user = User.objects.create_user(
+            email=f"test-{_uid}@example.com", password="testpass123", tenant=self.tenant
+        )
+        self.rules = AssetsBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+
+    def _create_asset_with_clean_bypass(self, **overrides):
+        """Create an asset, then bypass model-level clean() to set
+        fields that Django would normally reject at the model layer
+        (e.g. empty key/name). This exercises the business-rules
+        defence-in-depth checks."""
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key=f"temp-{uuid.uuid4().hex[:6]}",
+            name="Temp",
+            status=AssetStatus.DRAFT,
+            created_by=self.user,
+        )
+        if overrides:
+            Asset.objects.filter(pk=asset.pk).update(**overrides)
+            asset.refresh_from_db()
+        return asset
+
+    def test_validate_structure_empty_key(self):
+        """Structure validation rejects assets with empty key."""
+        asset = self._create_asset_with_clean_bypass(key="")
+
+        result = self.rules.validate(
+            AssetsRuleExecutionContext(
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                asset=asset,
+                tenant=self.tenant,
+                user=self.user,
+            ),
+            validation_type="structure",
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertIn("Asset key is required", result.errors)
+
+    def test_validate_structure_no_name(self):
+        """Structure validation rejects assets with no name."""
+        asset = self._create_asset_with_clean_bypass(name="")
+
+        result = self.rules.validate(
+            AssetsRuleExecutionContext(
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                asset=asset,
+                tenant=self.tenant,
+                user=self.user,
+            ),
+            validation_type="structure",
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertIn("Asset name is required", result.errors)
+
+    def test_validate_structure_fully_valid(self):
+        """Structure validation passes for a valid asset."""
+        asset = AssetFactory.create_asset(
+            tenant=self.tenant, created_by=self.user, status=AssetStatus.DRAFT,
+            key="valid-key", name="Valid Asset",
+        )
+
+        result = self.rules.validate(
+            AssetsRuleExecutionContext(
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                asset=asset,
+                tenant=self.tenant,
+                user=self.user,
+            ),
+            validation_type="structure",
+        )
+
+        self.assertTrue(result.is_valid)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.details["asset_key"], "valid-key")
+        self.assertEqual(result.details["asset_name"], "Valid Asset")
+
+# ---------------------------------------------------------------------------
+# AssetActivationRule.validate_activation() coverage
+# ---------------------------------------------------------------------------
+
+
+class AssetActivationRuleTest(TestCase):
+    """Test AssetActivationRule.validate_activation()."""
+
+    def setUp(self):
+        super().setUp()
+        _uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {_uid}", slug=f"test-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
+        )
+        self.user = User.objects.create_user(
+            email=f"test-{_uid}@example.com", password="testpass123", tenant=self.tenant
+        )
+
+    def test_validate_activation_no_compliance_run(self):
+        """No ComplianceRun → blocker COMPLIANCE_SCAN_PENDING."""
+        from hub.apps.assets.business_rules import AssetActivationRule
+
+        asset = AssetFactory.create_asset(
+            tenant=self.tenant, created_by=self.user, status=AssetStatus.DRAFT
+        )
+
+        result = AssetActivationRule.validate_activation(asset)
+        self.assertFalse(result["can_activate"])
+        self.assertEqual(result["blocker_code"], "COMPLIANCE_SCAN_PENDING")
+
+    def _ensure_tenant_config(self):
+        """Create a TenantConfig if it doesn't exist (required by
+        AssetActivationRule.validate_activation)."""
+        from hub.apps.tenants.models import TenantConfig
+        if not TenantConfig.objects.filter(tenant=self.tenant).exists():
+            TenantConfig.objects.create(tenant=self.tenant)
+
+    def test_validate_activation_success(self):
+        """SUCCEEDED run + allowed_to_store + TenantConfig → can_activate=True."""
+        from hub.apps.assets.business_rules import AssetActivationRule
+        from hub.apps.compliance.models import ComplianceRun
+
+        self._ensure_tenant_config()
+        asset = AssetFactory.create_asset(
+            tenant=self.tenant, created_by=self.user, status=AssetStatus.DRAFT
+        )
+
+        ComplianceRun.objects.create(
+            tenant=self.tenant, asset=asset,
+            status="SUCCEEDED", risk_level="LOW", allowed_to_store=True,
+        )
+
+        result = AssetActivationRule.validate_activation(asset)
+        self.assertTrue(result["can_activate"])
+        self.assertIsNone(result["blocker_code"])
+
+    def test_validate_activation_not_allowed_to_store(self):
+        """allowed_to_store=False → blocker COMPLIANCE_NOT_ALLOWED_TO_STORE."""
+        from hub.apps.assets.business_rules import AssetActivationRule
+        from hub.apps.compliance.models import ComplianceRun
+
+        self._ensure_tenant_config()
+        asset = AssetFactory.create_asset(
+            tenant=self.tenant, created_by=self.user, status=AssetStatus.DRAFT
+        )
+
+        ComplianceRun.objects.create(
+            tenant=self.tenant, asset=asset,
+            status="SUCCEEDED", risk_level="LOW", allowed_to_store=False,
+        )
+
+        result = AssetActivationRule.validate_activation(asset)
+        self.assertFalse(result["can_activate"])
+        self.assertEqual(result["blocker_code"], "COMPLIANCE_NOT_ALLOWED_TO_STORE")
+
+    def test_validate_activation_failed_run(self):
+        """FAILED ComplianceRun → blocker COMPLIANCE_SCAN_FAILED."""
+        from hub.apps.assets.business_rules import AssetActivationRule
+        from hub.apps.compliance.models import ComplianceRun
+
+        self._ensure_tenant_config()
+        asset = AssetFactory.create_asset(
+            tenant=self.tenant, created_by=self.user, status=AssetStatus.DRAFT
+        )
+
+        ComplianceRun.objects.create(
+            tenant=self.tenant, asset=asset,
+            status="FAILED", risk_level="HIGH", allowed_to_store=True,
+        )
+
+        result = AssetActivationRule.validate_activation(asset)
+        self.assertFalse(result["can_activate"])
+        self.assertEqual(result["blocker_code"], "COMPLIANCE_SCAN_FAILED")
+
+    def test_validate_activation_threshold_exceeded(self):
+        """CRITICAL risk + HIGH threshold → blocker COMPLIANCE_THRESHOLD_EXCEEDED."""
+        from hub.apps.assets.business_rules import AssetActivationRule
+        from hub.apps.compliance.models import ComplianceRun
+        from hub.apps.tenants.models import TenantConfig
+
+        # Set threshold to HIGH — CRITICAL risk exceeds it
+        TenantConfig.objects.update_or_create(
+            tenant=self.tenant,
+            defaults={"compliance_risk_threshold": "HIGH"},
+        )
+        asset = AssetFactory.create_asset(
+            tenant=self.tenant, created_by=self.user, status=AssetStatus.DRAFT
+        )
+
+        ComplianceRun.objects.create(
+            tenant=self.tenant, asset=asset,
+            status="SUCCEEDED", risk_level="CRITICAL", allowed_to_store=True,
+        )
+
+        result = AssetActivationRule.validate_activation(asset)
+        self.assertFalse(result["can_activate"])
+        self.assertEqual(result["blocker_code"], "COMPLIANCE_THRESHOLD_EXCEEDED")

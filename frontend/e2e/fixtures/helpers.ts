@@ -27,13 +27,14 @@ export async function injectTokensBeforeGotoForUser(page: Page, user?: TestUser)
   try {
     const u = user ?? (await getTestUser());
     const apiAuth = await loginViaApi(u.email, u.password);
+    // Phase 11.1: only access_token + user go to localStorage — refresh_token
+    // lives exclusively in the httpOnly cookie below.
     await page.evaluate(
-      ({ access_token, refresh_token, usr }) => {
+      ({ access_token, usr }) => {
         localStorage.setItem('access_token', access_token);
-        if (refresh_token) localStorage.setItem('refresh_token', refresh_token);
         localStorage.setItem('user', JSON.stringify(usr));
       },
-      { access_token: apiAuth.access_token, refresh_token: apiAuth.refresh_token, usr: apiAuth.user }
+      { access_token: apiAuth.access_token, usr: apiAuth.user }
     );
     if (apiAuth.refresh_token) {
       const pageUrl = page.url();

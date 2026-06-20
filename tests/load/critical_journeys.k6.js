@@ -13,6 +13,18 @@
  *   9. Governance approval (access request → approve → verify)
  *  10. Webhook delivery (register webhook → trigger → verify delivery log)
  *
+ * Journey ID mapping (for traceability to docs/USER_JOURNEYS.md):
+ *   1. Login                → JOURNEY-AUTH-002
+ *   2. Asset CRUD           → JOURNEY-DPO-001
+ *   3. Contract workflow    → JOURNEY-DE-001
+ *   4. Marketplace listing  → JOURNEY-DC-001
+ *   5. Search               → JOURNEY-DC-004
+ *   6. SPARQL               → JOURNEY-DE-005
+ *   7. File upload          → JOURNEY-DE-015
+ *   8. Compliance scan      → JOURNEY-CPO-001
+ *   9. Governance approval  → JOURNEY-CPO-006
+ *  10. Webhook delivery     → JOURNEY-DEV-004
+ *
  * Run:
  *   k6 run --env BASE_URL=https://api.stagingmeshant-internal.example.com \
  *          --env AUTH_EMAIL=<staging-email> \

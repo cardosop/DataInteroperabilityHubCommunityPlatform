@@ -19,19 +19,16 @@ Workflow Steps:
 11. semantic_mapping: Map ODPS to RDF (async job)
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import structlog
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.utils import timezone
 
-from hub.apps.audit.utils import create_audit_event
 from hub.apps.contracts.business_rules import (
     ContractsBusinessRules,
     ODPSBusinessRules,
     ODPSLinkingRules,
-    ODPSRuleExecutionContext,
 )
 from hub.apps.contracts.linking_validation import LinkingValidationError, validate_linking
 from hub.apps.contracts.models import (
@@ -57,7 +54,6 @@ from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.search.indexing import SearchIndexer
-from hub.apps.semantic.utils import map_contract_to_semantic
 from hub.apps.tenants.models import Tenant
 
 logger = structlog.get_logger(__name__)
@@ -240,8 +236,8 @@ class ProductCreationWorkflow:
 
     @staticmethod
     def _parse_odps_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Parse ODPS document, validate schema, detect version.
 
@@ -282,7 +278,7 @@ class ProductCreationWorkflow:
             # Validate ODPS document structure using business rules
             business_rules = ODPSBusinessRules(
                 tenant_id=str(tenant_id) if tenant_id else None,
-                user_id=str(user_id) if user_id else None
+                user_id=str(user_id) if user_id else None,
             )
 
             # Validate ODPS structure before schema validation
@@ -302,7 +298,9 @@ class ProductCreationWorkflow:
                 )
 
             # Validate ODPS version compatibility
-            version_result = business_rules.validate_odps_version(odps_doc, required_version=odps_version)
+            version_result = business_rules.validate_odps_version(
+                odps_doc, required_version=odps_version
+            )
             if not version_result.is_valid:
                 error_messages = version_result.errors
                 raise ODPSValidationError(
@@ -386,7 +384,7 @@ class ProductCreationWorkflow:
         except Exception as e:
             # Wrap unexpected errors
             raise ODPSValidationError(
-                message=f"Failed to parse ODPS document: {str(e)}",
+                message=f"Failed to parse ODPS document: {e!s}",
                 error_code=ODPSValidationError.ERROR_CODE_SCHEMA_VALIDATION_FAILED,
                 context={"parse_error": str(e)},
                 cause=e,
@@ -394,8 +392,8 @@ class ProductCreationWorkflow:
 
     @staticmethod
     def _resolve_refs_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Resolve $ref references (internal, local, external).
 
@@ -458,7 +456,7 @@ class ProductCreationWorkflow:
                 )
 
                 # Resolve all $ref references
-                original_doc, resolved_doc = resolver.resolve_all_refs(
+                _original_doc, resolved_doc = resolver.resolve_all_refs(
                     document=odps_doc,
                     preserve_original=True,
                     external_ref_handling=ExternalRefHandling(external_ref_handling),
@@ -536,7 +534,7 @@ class ProductCreationWorkflow:
                 else:
                     # Non-transient error or max retries reached
                     raise ODPSRefResolutionError(
-                        message=f"Failed to resolve $ref references after {attempt + 1} attempts: {str(e)}",
+                        message=f"Failed to resolve $ref references after {attempt + 1} attempts: {e!s}",
                         ref_path=getattr(e, "ref_path", "/"),
                         ref_type=getattr(e, "ref_type", "unknown"),
                         context={
@@ -550,7 +548,7 @@ class ProductCreationWorkflow:
             except Exception as e:
                 # Wrap unexpected errors
                 raise ODPSRefResolutionError(
-                    message=f"Failed to resolve $ref references: {str(e)}",
+                    message=f"Failed to resolve $ref references: {e!s}",
                     ref_path="/",
                     ref_type="unknown",
                     context={"ref_path": "/", "ref_type": "unknown", "attempts": attempt + 1},
@@ -568,8 +566,8 @@ class ProductCreationWorkflow:
 
     @staticmethod
     def _extract_contract_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Extract ODCS from product.contract (required).
 
@@ -690,7 +688,7 @@ class ProductCreationWorkflow:
         except Exception as e:
             # Wrap unexpected errors
             raise ODPSValidationError(
-                message=f"Failed to extract ODCS contract: {str(e)}",
+                message=f"Failed to extract ODCS contract: {e!s}",
                 error_code=ODPSValidationError.ERROR_CODE_INVALID_VALUE,
                 context={"extraction_error": str(e)},
                 cause=e,
@@ -698,8 +696,8 @@ class ProductCreationWorkflow:
 
     @staticmethod
     def _validate_odcs_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Validate extracted ODCS contract.
 
@@ -719,7 +717,11 @@ class ProductCreationWorkflow:
         try:
             # Get tenant_id and user_id for business rules
             tenant_id = instance.state_data.get("tenant_id") or input_data.get("tenant_id")
-            user_id = instance.state_data.get("user_id") or input_data.get("user_id") or getattr(instance, "created_by_id", None)
+            user_id = (
+                instance.state_data.get("user_id")
+                or input_data.get("user_id")
+                or getattr(instance, "created_by_id", None)
+            )
 
             # Convert ODCS contract dict to string for validation
             import json
@@ -727,27 +729,31 @@ class ProductCreationWorkflow:
             odcs_raw = json.dumps(odcs_contract)
 
             # Validate ODCS contract using ContractsBusinessRules
-            contracts_rules = ContractsBusinessRules(
+            ContractsBusinessRules(
                 tenant_id=str(tenant_id) if tenant_id else None,
-                user_id=str(user_id) if user_id else None
+                user_id=str(user_id) if user_id else None,
             )
 
             # Basic validation: check required ODCS fields
             if not odcs_contract.get("id"):
                 raise ValueError("ODCS_VALIDATION_ERROR: ODCS contract missing required field: id")
             if not odcs_contract.get("name"):
-                raise ValueError("ODCS_VALIDATION_ERROR: ODCS contract missing required field: name")
+                raise ValueError(
+                    "ODCS_VALIDATION_ERROR: ODCS contract missing required field: name"
+                )
             if not odcs_contract.get("schema"):
-                raise ValueError("ODCS_VALIDATION_ERROR: ODCS contract missing required field: schema")
+                raise ValueError(
+                    "ODCS_VALIDATION_ERROR: ODCS contract missing required field: schema"
+                )
 
             # Validate ODCS contract using normalize_contract (which validates)
             (
-                hub_contract,
+                _hub_contract,
                 detected_spec_type,
                 detected_spec_version,
                 norm_status,
                 norm_errors,
-                norm_warnings,
+                _norm_warnings,
             ) = normalize_contract(raw_contract=odcs_raw, format="JSON", spec_type="ODCS")
 
             if norm_status == NormalizationStatus.NORMALIZATION_FAILED:
@@ -778,12 +784,12 @@ class ProductCreationWorkflow:
             }
         except Exception as e:
             # Wrap errors
-            raise ValueError(f"ODCS_VALIDATION_ERROR: {str(e)}") from e
+            raise ValueError(f"ODCS_VALIDATION_ERROR: {e!s}") from e
 
     @staticmethod
     def _normalize_odcs_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Normalize ODCS → HubContract (technical).
 
@@ -851,12 +857,12 @@ class ProductCreationWorkflow:
             }
         except Exception as e:
             # Wrap errors
-            raise ValueError(f"ODCS_NORMALIZATION_ERROR: {str(e)}") from e
+            raise ValueError(f"ODCS_NORMALIZATION_ERROR: {e!s}") from e
 
     @staticmethod
     def _normalize_odps_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Normalize ODPS → HubContract (marketplace).
 
@@ -1001,7 +1007,7 @@ class ProductCreationWorkflow:
         except Exception as e:
             # Wrap unexpected errors
             raise ODPSNormalizationError(
-                message=f"Failed to normalize ODPS document: {str(e)}",
+                message=f"Failed to normalize ODPS document: {e!s}",
                 error_code="ODPS_NORMALIZATION_ERROR",
                 context={"mapping_errors": [str(e)]},
                 cause=e,
@@ -1009,8 +1015,8 @@ class ProductCreationWorkflow:
 
     @staticmethod
     def _create_odcs_contract_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create ODCS contract record.
 
@@ -1034,7 +1040,7 @@ class ProductCreationWorkflow:
         asset_id = instance.state_data.get("asset_id")
         odcs_contract = instance.state_data.get("odcs_contract")
         odcs_hub_contract = instance.state_data.get("odcs_hub_contract")
-        detected_spec_type = instance.state_data.get("detected_spec_type", "ODCS")
+        instance.state_data.get("detected_spec_type", "ODCS")
         detected_spec_version = instance.state_data.get("detected_spec_version", "3.0.2")
         odcs_normalization_status = instance.state_data.get("odcs_normalization_status")
         odcs_normalization_errors = instance.state_data.get("odcs_normalization_errors", [])
@@ -1085,7 +1091,7 @@ class ProductCreationWorkflow:
         # Validate contract before creation using ContractsBusinessRules
         contracts_rules = ContractsBusinessRules(
             tenant_id=str(tenant_id) if tenant_id else None,
-            user_id=str(user_id) if user_id else None
+            user_id=str(user_id) if user_id else None,
         )
 
         # Prepare contract data for validation
@@ -1142,7 +1148,7 @@ class ProductCreationWorkflow:
                 error=str(e),
                 exc_info=True,
             )
-            raise ValueError(f"ODCS_CONTRACT_CREATION_ERROR: Database error: {str(e)}") from e
+            raise ValueError(f"ODCS_CONTRACT_CREATION_ERROR: Database error: {e!s}") from e
 
         logger.info(
             "ODCS contract record created",
@@ -1158,8 +1164,8 @@ class ProductCreationWorkflow:
 
     @staticmethod
     def _create_odps_contract_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create ODPS contract record.
 
@@ -1235,7 +1241,7 @@ class ProductCreationWorkflow:
         # Validate contract before creation using ContractsBusinessRules and ODPSBusinessRules
         contracts_rules = ContractsBusinessRules(
             tenant_id=str(tenant_id) if tenant_id else None,
-            user_id=str(user_id) if user_id else None
+            user_id=str(user_id) if user_id else None,
         )
 
         # Prepare contract data for validation
@@ -1268,7 +1274,7 @@ class ProductCreationWorkflow:
         # Validate ODPS-specific contract structure using ODPSBusinessRules
         odps_rules = ODPSBusinessRules(
             tenant_id=str(tenant_id) if tenant_id else None,
-            user_id=str(user_id) if user_id else None
+            user_id=str(user_id) if user_id else None,
         )
 
         # Create a temporary contract object for ODPS-specific validation (not saved yet)
@@ -1333,7 +1339,7 @@ class ProductCreationWorkflow:
                 error=str(e),
                 exc_info=True,
             )
-            raise ValueError(f"ODPS_CONTRACT_CREATION_ERROR: Database error: {str(e)}") from e
+            raise ValueError(f"ODPS_CONTRACT_CREATION_ERROR: Database error: {e!s}") from e
 
         logger.info(
             "ODPS contract record created",
@@ -1384,8 +1390,8 @@ class ProductCreationWorkflow:
 
     @staticmethod
     def _link_contracts_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Establish bidirectional link (ODPS ↔ ODCS).
 
@@ -1446,13 +1452,12 @@ class ProductCreationWorkflow:
             # Validate linking using ODPSLinkingRules before calling validate_linking
             linking_rules = ODPSLinkingRules(
                 tenant_id=str(tenant_id) if tenant_id else None,
-                user_id=str(user_id) if user_id else None
+                user_id=str(user_id) if user_id else None,
             )
 
             # Validate all linking rules (link existence, circular references, referential integrity)
             linking_validation_result = linking_rules.validate_all_linking_rules(
-                odps_contract=odps_contract,
-                odcs_contract=odcs_contract
+                odps_contract=odps_contract, odcs_contract=odcs_contract
             )
 
             if not linking_validation_result.is_valid:
@@ -1619,7 +1624,7 @@ class ProductCreationWorkflow:
                     current_phase="validation",
                     validation_passed=False,
                     validation_errors=[str(e)],
-                    status_message=f"Linking validation failed: {str(e)}",
+                    status_message=f"Linking validation failed: {e!s}",
                     tenant_id=str(tenant_id) if tenant_id else None,
                     user_id=str(user_id) if user_id else None,
                 )
@@ -1633,7 +1638,7 @@ class ProductCreationWorkflow:
                 send_odps_linking_status_email.delay(
                     odps_contract_id=odps_contract_id,
                     status="failed",
-                    status_message=f"Linking validation failed: {str(e)}",
+                    status_message=f"Linking validation failed: {e!s}",
                     odcs_contract_id=odcs_contract_id,
                     progress_percentage=50.0,
                     current_phase="validation",
@@ -1655,11 +1660,11 @@ class ProductCreationWorkflow:
             raise
         except Contract.DoesNotExist as e:
             raise ODPSLinkingError(
-                message=f"Contract not found: {str(e)}", error_code="ODPS_LINKING_ERROR"
+                message=f"Contract not found: {e!s}", error_code="ODPS_LINKING_ERROR"
             ) from e
         except Exception as e:
             raise ODPSLinkingError(
-                message=f"Failed to link contracts: {str(e)}",
+                message=f"Failed to link contracts: {e!s}",
                 error_code="ODPS_LINKING_ERROR",
                 context={
                     "odps_contract_id": odps_contract_id,
@@ -1669,8 +1674,8 @@ class ProductCreationWorkflow:
 
     @staticmethod
     def _link_data_file_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Optional: Link data file (create Asset).
 
@@ -1824,12 +1829,12 @@ class ProductCreationWorkflow:
                 error=str(e),
                 exc_info=True,
             )
-            raise ValueError(f"ASSET_CREATION_ERROR: Failed to create asset: {str(e)}") from e
+            raise ValueError(f"ASSET_CREATION_ERROR: Failed to create asset: {e!s}") from e
 
     @staticmethod
     def _index_for_search_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Index for search (ODPS product + ODCS technical).
 
@@ -1854,7 +1859,7 @@ class ProductCreationWorkflow:
 
         indexed_contracts = []
 
-        def index_single_contract(contract_id: str, contract_type: str) -> Optional[Dict[str, Any]]:
+        def index_single_contract(contract_id: str, contract_type: str) -> dict[str, Any] | None:
             """Index a single contract with optimized database query."""
             try:
                 # Optimize database query with select_related
@@ -1912,8 +1917,8 @@ class ProductCreationWorkflow:
 
     @staticmethod
     def _semantic_mapping_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Map ODPS to RDF (async job).
 
@@ -1928,10 +1933,7 @@ class ProductCreationWorkflow:
         Returns:
             Task output with semantic mapping results
         """
-        import concurrent.futures
-        import signal
         import sys
-        from typing import Optional, Tuple
 
         odps_contract_id = instance.state_data.get("odps_contract_id") or input_data.get(
             "odps_contract_id"
@@ -2079,24 +2081,24 @@ class ProductCreationWorkflow:
 
     @staticmethod
     def _rollback_normalize_odcs_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback ODCS normalization (no-op, normalization is stateless)"""
         logger.info("ODCS normalization rollback (no-op)", workflow_instance_id=str(instance.id))
         return {"rolled_back": True}
 
     @staticmethod
     def _rollback_normalize_odps_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback ODPS normalization (no-op, normalization is stateless)"""
         logger.info("ODPS normalization rollback (no-op)", workflow_instance_id=str(instance.id))
         return {"rolled_back": True}
 
     @staticmethod
     def _rollback_odcs_contract_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback ODCS contract creation (delete contract)"""
         odcs_contract_id = instance.state_data.get("odcs_contract_id")
 
@@ -2120,8 +2122,8 @@ class ProductCreationWorkflow:
 
     @staticmethod
     def _rollback_odps_contract_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback ODPS contract creation (delete contract)"""
         odps_contract_id = instance.state_data.get("odps_contract_id")
 
@@ -2145,8 +2147,8 @@ class ProductCreationWorkflow:
 
     @staticmethod
     def _rollback_link_contracts_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback contract linking (remove links)"""
         odps_contract_id = instance.state_data.get("odps_contract_id")
         odcs_contract_id = instance.state_data.get("odcs_contract_id")
@@ -2157,12 +2159,9 @@ class ProductCreationWorkflow:
                 if (
                     odps_contract.hub_contract_json
                     and "extensions" in odps_contract.hub_contract_json
-                ):
-                    if "x_odps" in odps_contract.hub_contract_json["extensions"]:
-                        odps_contract.hub_contract_json["extensions"]["x_odps"].pop(
-                            "odcs_link", None
-                        )
-                        odps_contract.save(update_fields=["hub_contract_json"])
+                ) and "x_odps" in odps_contract.hub_contract_json["extensions"]:
+                    odps_contract.hub_contract_json["extensions"]["x_odps"].pop("odcs_link", None)
+                    odps_contract.save(update_fields=["hub_contract_json"])
             except Contract.DoesNotExist:
                 pass
 
@@ -2172,12 +2171,9 @@ class ProductCreationWorkflow:
                 if (
                     odcs_contract.hub_contract_json
                     and "extensions" in odcs_contract.hub_contract_json
-                ):
-                    if "x_odps" in odcs_contract.hub_contract_json["extensions"]:
-                        odcs_contract.hub_contract_json["extensions"]["x_odps"].pop(
-                            "odps_link", None
-                        )
-                        odcs_contract.save(update_fields=["hub_contract_json"])
+                ) and "x_odps" in odcs_contract.hub_contract_json["extensions"]:
+                    odcs_contract.hub_contract_json["extensions"]["x_odps"].pop("odps_link", None)
+                    odcs_contract.save(update_fields=["hub_contract_json"])
             except Contract.DoesNotExist:
                 pass
 
@@ -2187,8 +2183,8 @@ class ProductCreationWorkflow:
 
     @staticmethod
     def _rollback_link_data_file_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback asset creation (delete asset and unlink contracts)"""
         asset_id = instance.state_data.get("asset_id")
         odps_contract_id = instance.state_data.get("odps_contract_id")
@@ -2241,11 +2237,11 @@ class ProductCreationWorkflow:
         original_format: str,
         tenant_id: str,
         user_id: str,
-        asset_id: Optional[str] = None,
+        asset_id: str | None = None,
         resolve_external_refs: bool = True,
-        engine: Optional[WorkflowEngine] = None,
-        registry: Optional[WorkflowRegistry] = None,
-    ) -> Dict[str, Any]:
+        engine: WorkflowEngine | None = None,
+        registry: WorkflowRegistry | None = None,
+    ) -> dict[str, Any]:
         """
         Start product creation workflow asynchronously (Product-First flow).
 
@@ -2540,7 +2536,7 @@ class ProductCreationWorkflow:
                         instance = WorkflowInstance.objects.get(id=workflow_instance_id)
                         if not instance.is_terminal():
                             instance.mark_failed(
-                                error_message=f"Background execution failed: {str(e)}",
+                                error_message=f"Background execution failed: {e!s}",
                                 error_details={"exception_type": type(e).__name__},
                             )
                     except Exception as update_error:
@@ -2686,7 +2682,7 @@ class ProductCreationWorkflow:
         return result
 
     @classmethod
-    def execute_get_result(cls, workflow_instance_id: str) -> Dict[str, Any]:
+    def execute_get_result(cls, workflow_instance_id: str) -> dict[str, Any]:
         """
         Get result of product creation workflow after completion.
 
@@ -2727,7 +2723,7 @@ class ProductCreationWorkflow:
                 "progress_percentage": progress_percentage,
                 "current_step_name": current_step_name,
             }
-        
+
         # Handle PENDING/DRAFT status (workflow hasn't started yet)
         if workflow_instance.status in [WorkflowStatus.DRAFT]:
             return {
@@ -2761,7 +2757,7 @@ class ProductCreationWorkflow:
             odps_contract = Contract.objects.get(id=odps_contract_id)
             odcs_contract = Contract.objects.get(id=odcs_contract_id)
         except Contract.DoesNotExist as e:
-            raise ValueError(f"Contract not found after workflow completion: {str(e)}")
+            raise ValueError(f"Contract not found after workflow completion: {e!s}")
 
         logger.info(
             "Product creation workflow completed successfully",
@@ -2785,11 +2781,11 @@ class ProductCreationWorkflow:
         original_format: str,
         tenant_id: str,
         user_id: str,
-        asset_id: Optional[str] = None,
+        asset_id: str | None = None,
         resolve_external_refs: bool = True,
-        engine: Optional[WorkflowEngine] = None,
-        registry: Optional[WorkflowRegistry] = None,
-    ) -> Dict[str, Any]:
+        engine: WorkflowEngine | None = None,
+        registry: WorkflowRegistry | None = None,
+    ) -> dict[str, Any]:
         """
         Execute product creation workflow synchronously (Product-First flow).
 
@@ -2889,7 +2885,7 @@ class ProductCreationWorkflow:
             odps_contract = Contract.objects.get(id=odps_contract_id)
             odcs_contract = Contract.objects.get(id=odcs_contract_id)
         except Contract.DoesNotExist as e:
-            raise ValueError(f"Contract not found after workflow completion: {str(e)}")
+            raise ValueError(f"Contract not found after workflow completion: {e!s}")
 
         logger.info(
             "Product creation workflow completed successfully",

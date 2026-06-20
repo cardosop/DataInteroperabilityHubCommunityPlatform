@@ -20,7 +20,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-
 # Path from this file (sdk/python/tests/security/) to the repo root.
 # parents[3] = sdk/  ← wrong (legacy bug masked by pip-audit-not-installed skip)
 # parents[4] = repo root
@@ -123,8 +122,7 @@ def _run_pip_audit(target_dir: Path) -> tuple[int, str]:
         python_exe = Path(sys.executable)
 
     result = subprocess.run(
-        [str(python_exe), "-m", "pip_audit",
-         "--strict", "--desc", "--format", "columns"],
+        [str(python_exe), "-m", "pip_audit", "--strict", "--desc", "--format", "columns"],
         capture_output=True,
         text=True,
         timeout=120,
@@ -185,6 +183,7 @@ def test_hub_no_high_critical_cves():
 # Shared result checker
 # ---------------------------------------------------------------------------
 
+
 def _check_pip_audit_result(rc: int, output: str, label: str) -> None:
     """Validate pip-audit output, surfacing errors and warnings."""
     output_upper = output.upper()
@@ -198,28 +197,25 @@ def _check_pip_audit_result(rc: int, output: str, label: str) -> None:
         )
 
     # MEDIUM / LOW findings — emit a warning so they're visible in CI
-    if rc != 0:
-        if "MEDIUM" in output_upper or "LOW" in output_upper:
-            import warnings
-            warnings.warn(
-                f"{label}: pip-audit found MEDIUM/LOW vulnerabilities:\n"
-                f"{output[:1000]}"
-            )
+    if rc != 0 and ("MEDIUM" in output_upper or "LOW" in output_upper):
+        import warnings
+
+        warnings.warn(f"{label}: pip-audit found MEDIUM/LOW vulnerabilities:\n{output[:1000]}")
 
     # HIGH / CRITICAL findings — hard failure
     if rc != 0 and ("HIGH" in output_upper or "CRITICAL" in output_upper):
-        pytest.fail(
-            f"{label} dependencies have HIGH/CRITICAL CVEs:\n{output}"
-        )
+        pytest.fail(f"{label} dependencies have HIGH/CRITICAL CVEs:\n{output}")
 
 
 # ---------------------------------------------------------------------------
 # Temp-venv cleanup at session end
 # ---------------------------------------------------------------------------
 
+
 def pytest_sessionfinish(session):  # noqa: ARG001
     """Clean up any pip-audit temp venvs left behind by this module."""
     import shutil as _shutil
+
     if _pip_audit_venv is not None and _pip_audit_venv.exists():
         # Only clean up venvs in temp directories (safety check)
         if "pip-audit-venv-" in str(_pip_audit_venv):

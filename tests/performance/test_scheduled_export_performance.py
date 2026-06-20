@@ -17,7 +17,7 @@ import uuid
 import pytest
 
 pytestmark = pytest.mark.slow
-from django.test import TestCase, TransactionTestCase
+from django.test import TransactionTestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -123,7 +123,6 @@ class ScheduledExportPerformanceTest(TransactionTestCase):
     def _fixture_teardown(cls):
         """Override to skip database flush for performance tests."""
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def test_export_run_creation_performance(self):
         """Test performance of export run creation"""
@@ -131,7 +130,7 @@ class ScheduledExportPerformanceTest(TransactionTestCase):
         start_time = time.time()
 
         runs = []
-        for i in range(10):
+        for _i in range(10):
             run = ScheduledExportRun.objects.create(
                 scheduled_export=self.export,
                 tenant=self.tenant,
@@ -150,7 +149,7 @@ class ScheduledExportPerformanceTest(TransactionTestCase):
     def test_export_run_listing_performance(self):
         """Test performance of listing export runs"""
         # Create multiple runs
-        for i in range(50):
+        for _i in range(50):
             ScheduledExportRun.objects.create(
                 scheduled_export=self.export,
                 tenant=self.tenant,

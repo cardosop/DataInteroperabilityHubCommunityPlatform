@@ -18,9 +18,8 @@ The classifier is intentionally LOW-by-default so that future edge
 types added without a mapping entry don't accidentally page
 everyone — they fall into LOW until the mapping is extended.
 """
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from hub.apps.contracts.lineage_severity import (
     ContractDiff,
@@ -57,7 +56,6 @@ def _edge(
 
 
 class TestCritical:
-
     def test_field_removed_with_downstream_dependents_is_critical(self):
         # A field referenced by another contract was deleted from
         # the source contract.  This is the canonical breaking
@@ -93,9 +91,11 @@ class TestCritical:
             downstream_field_dependencies={},
         )
         result = classify(diff, contract_diff)
-        # Must NOT be CRITICAL since no downstream depends on the
-        # removed field AND no derivation was REMOVED (only added).
-        assert result != Severity.CRITICAL
+        # Field removed with no downstream dependents + derivation ADDED
+        # → HIGH (not CRITICAL — no one depends on the removed field).
+        assert result == Severity.HIGH, (
+            f"Expected HIGH, got {result}"
+        )
 
     # REQ-LIN-F3-004 spec scenario "Removed derivation edge classified
     # CRITICAL" — pinned exactly per spec.
@@ -107,7 +107,9 @@ class TestCritical:
             downstream_field_dependencies={},
         )
         contract_diff = ContractDiff(
-            removed_fields=[], added_fields=[], modified_fields=[],
+            removed_fields=[],
+            added_fields=[],
+            modified_fields=[],
         )
         assert classify(diff, contract_diff) == Severity.CRITICAL
 
@@ -118,7 +120,6 @@ class TestCritical:
 
 
 class TestHigh:
-
     def test_transformation_ref_change_is_high(self):
         # A transformation_ref change means the semantic of the
         # column-level mapping changed — downstream consumers may
@@ -135,7 +136,9 @@ class TestHigh:
             downstream_field_dependencies={},
         )
         contract_diff = ContractDiff(
-            removed_fields=[], added_fields=[], modified_fields=[],
+            removed_fields=[],
+            added_fields=[],
+            modified_fields=[],
         )
         assert classify(diff, contract_diff) == Severity.HIGH
 
@@ -150,7 +153,9 @@ class TestHigh:
             downstream_field_dependencies={},
         )
         contract_diff = ContractDiff(
-            removed_fields=[], added_fields=[], modified_fields=[],
+            removed_fields=[],
+            added_fields=[],
+            modified_fields=[],
         )
         assert classify(diff, contract_diff) == Severity.HIGH
 
@@ -164,7 +169,6 @@ class TestHigh:
 
 
 class TestMedium:
-
     def test_job_ref_only_change_is_medium(self):
         old = _edge(edge_type="derivation", job_ref="job-v1")
         new = _edge(edge_type="derivation", job_ref="job-v2")
@@ -177,7 +181,9 @@ class TestMedium:
             downstream_field_dependencies={},
         )
         contract_diff = ContractDiff(
-            removed_fields=[], added_fields=[], modified_fields=[],
+            removed_fields=[],
+            added_fields=[],
+            modified_fields=[],
         )
         assert classify(diff, contract_diff) == Severity.MEDIUM
 
@@ -188,7 +194,6 @@ class TestMedium:
 
 
 class TestLow:
-
     def test_reference_only_added_is_low(self):
         diff = LineageDiff(
             added=[_edge(edge_type="reference")],
@@ -197,7 +202,9 @@ class TestLow:
             downstream_field_dependencies={},
         )
         contract_diff = ContractDiff(
-            removed_fields=[], added_fields=[], modified_fields=[],
+            removed_fields=[],
+            added_fields=[],
+            modified_fields=[],
         )
         assert classify(diff, contract_diff) == Severity.LOW
 
@@ -209,17 +216,23 @@ class TestLow:
             downstream_field_dependencies={},
         )
         contract_diff = ContractDiff(
-            removed_fields=[], added_fields=[], modified_fields=[],
+            removed_fields=[],
+            added_fields=[],
+            modified_fields=[],
         )
         assert classify(diff, contract_diff) == Severity.LOW
 
     def test_no_change_is_low(self):
         diff = LineageDiff(
-            added=[], removed=[], modified=[],
+            added=[],
+            removed=[],
+            modified=[],
             downstream_field_dependencies={},
         )
         contract_diff = ContractDiff(
-            removed_fields=[], added_fields=[], modified_fields=[],
+            removed_fields=[],
+            added_fields=[],
+            modified_fields=[],
         )
         assert classify(diff, contract_diff) == Severity.LOW
 
@@ -230,7 +243,6 @@ class TestLow:
 
 
 class TestPrecedence:
-
     def test_critical_beats_high_when_both_apply(self):
         # Field-removed-with-dependents (CRITICAL) AND a transformation
         # change in the same diff — CRITICAL must win.
@@ -248,7 +260,8 @@ class TestPrecedence:
         )
         contract_diff = ContractDiff(
             removed_fields=[("orders", "customer_id")],
-            added_fields=[], modified_fields=[],
+            added_fields=[],
+            modified_fields=[],
         )
         assert classify(diff, contract_diff) == Severity.CRITICAL
 
@@ -260,17 +273,18 @@ class TestPrecedence:
         old2 = _edge(edge_type="derivation", job_ref="j1")
         new2 = _edge(edge_type="derivation", job_ref="j2")
         diff = LineageDiff(
-            added=[], removed=[],
+            added=[],
+            removed=[],
             modified=[
-                LineageEdgeDelta(before=old1, after=new1,
-                                 fields_changed=["transformation_ref"]),
-                LineageEdgeDelta(before=old2, after=new2,
-                                 fields_changed=["job_ref"]),
+                LineageEdgeDelta(before=old1, after=new1, fields_changed=["transformation_ref"]),
+                LineageEdgeDelta(before=old2, after=new2, fields_changed=["job_ref"]),
             ],
             downstream_field_dependencies={},
         )
         contract_diff = ContractDiff(
-            removed_fields=[], added_fields=[], modified_fields=[],
+            removed_fields=[],
+            added_fields=[],
+            modified_fields=[],
         )
         assert classify(diff, contract_diff) == Severity.HIGH
 
@@ -281,15 +295,17 @@ class TestPrecedence:
 
 
 class TestDeterminism:
-
     def test_same_input_yields_same_output(self):
         diff = LineageDiff(
             added=[_edge(edge_type="derivation")],
-            removed=[], modified=[],
+            removed=[],
+            modified=[],
             downstream_field_dependencies={},
         )
         contract_diff = ContractDiff(
-            removed_fields=[], added_fields=[], modified_fields=[],
+            removed_fields=[],
+            added_fields=[],
+            modified_fields=[],
         )
         first = classify(diff, contract_diff)
         second = classify(diff, contract_diff)

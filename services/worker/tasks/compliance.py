@@ -47,16 +47,18 @@ Enqueue example (from hub Django code)::
         failure_ttl=86400,
     )
 """
+
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import logging
 import os
 import re
 import time
 from io import BytesIO
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +68,9 @@ logger = logging.getLogger(__name__)
 # static-analysis tools and readers encounter definitions before first use.
 # ---------------------------------------------------------------------------
 
-_SANITIZE_CARD_RE = re.compile(
-    r"\b\d{4}[\s\-]*\d{4}[\s\-]*\d{4}[\s\-]*\d{4}\b"
-)
+_SANITIZE_CARD_RE = re.compile(r"\b\d{4}[\s\-]*\d{4}[\s\-]*\d{4}[\s\-]*\d{4}\b")
 _SANITIZE_SSN_RE = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
-_SANITIZE_EMAIL_RE = re.compile(
-    r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"
-)
+_SANITIZE_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 
 
 def _sanitise_error(msg: str) -> str:
@@ -108,7 +106,7 @@ def _get_redis_client() -> Any:
     The client does NOT decode responses; json.dumps str is encoded to bytes
     transparently by redis-py on SET.
     """
-    import redis  # noqa: PLC0415
+    import redis
 
     for env_var in ("REDIS_QUEUE_URL", "RQ_REDIS_URL", "REDIS_URL"):
         url = os.environ.get(env_var)
@@ -121,10 +119,10 @@ def _get_redis_client() -> Any:
 
     # Fall back to Django-RQ connection pool — avoids duplicating config.
     try:
-        from django_rq import get_connection  # noqa: PLC0415
+        from django_rq import get_connection
 
         return get_connection("job_default")
-    except Exception:  # noqa: BLE001
+    except Exception:
         raise RuntimeError(
             "No Redis URL found. Set REDIS_QUEUE_URL, RQ_REDIS_URL, or "
             "REDIS_URL, or configure RQ_QUEUES in Django settings."
@@ -134,7 +132,7 @@ def _get_redis_client() -> Any:
 def _write_result(
     redis_client: Any,
     job_id: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
 ) -> None:
     """Serialise *payload* to JSON and SET with TTL in Redis."""
     try:
@@ -143,7 +141,7 @@ def _write_result(
             json.dumps(payload, default=str),
             ex=RESULT_TTL_SECONDS,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         # Never let a result-write failure mask the original job outcome.
         logger.error(
             "compliance_scan_job result_write_failed job_id=%s error=%s",
@@ -159,8 +157,8 @@ def _write_result(
 
 def compliance_scan_job(
     job_id: str,
-    payload: Dict[str, Any],
-) -> Dict[str, Any]:
+    payload: dict[str, Any],
+) -> dict[str, Any]:
     """
     RQ task: run the full compliance scan pipeline in-process.
 
@@ -208,15 +206,15 @@ def compliance_scan_job(
     # that is intentionally runtime-only.
     # ------------------------------------------------------------------
     try:
-        from compliance_engine import (  # type: ignore[import-not-found]
-            PIIDetector,
-            RiskCalculator,
-            PolicyEngine,
-            PolicyDecision,
-            ComplianceReport,
-        )
         from audit_logger import (  # type: ignore[import-not-found]
             AuditLogger,
+        )
+        from compliance_engine import (  # type: ignore[import-not-found]
+            ComplianceReport,
+            PIIDetector,
+            PolicyDecision,
+            PolicyEngine,
+            RiskCalculator,
         )
     except ImportError as exc:
         logger.error(
@@ -238,7 +236,7 @@ def compliance_scan_job(
         buf = BytesIO(raw_bytes)
         file_format = payload.get("file_format", "csv").lower()
 
-        import pandas as pd  # type: ignore[import-untyped]  # noqa: PLC0415
+        import pandas as pd  # type: ignore[import-untyped]
 
         if file_format == "csv":
             df = pd.read_csv(buf)
@@ -249,28 +247,19 @@ def compliance_scan_job(
         elif file_format == "parquet":
             df = pd.read_parquet(buf)
         else:
-            raise ValueError(
-                "Unsupported file_format in compliance job payload: "
-                f"{file_format!r}"
-            )
+            raise ValueError(f"Unsupported file_format in compliance job payload: {file_format!r}")
 
         # ------------------------------------------------------------------
         # 2. Extract optional scan parameters
         # ------------------------------------------------------------------
-        categories_list: Optional[List[str]] = payload.get(
-            "targeted_categories"
-        )
-        regulations_list: Optional[List[str]] = payload.get(
-            "applicable_regulations"
-        )
-        legal_basis: Optional[str] = payload.get("legal_basis")
+        categories_list: list[str] | None = payload.get("targeted_categories")
+        regulations_list: list[str] | None = payload.get("applicable_regulations")
+        legal_basis: str | None = payload.get("legal_basis")
 
-        retention: Optional[int] = None
+        retention: int | None = None
         if payload.get("retention_seconds") is not None:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 retention = int(payload["retention_seconds"])
-            except (ValueError, TypeError):
-                pass
 
         # ------------------------------------------------------------------
         # 3. Run the compliance pipeline synchronously
@@ -280,14 +269,10 @@ def compliance_scan_job(
         policy = PolicyEngine()
         report_gen = ComplianceReport()
 
-        findings = detector.detect_pii(
-            df, target_categories=categories_list
-        )
+        findings = detector.detect_pii(df, target_categories=categories_list)
         risk_score = risk_calc.calculate_risk_score(findings)
         risk_level = risk_calc.determine_risk_level(risk_score)
-        decision: PolicyDecision = policy.evaluate(
-            findings, risk_score, total_rows=len(df)
-        )
+        decision: PolicyDecision = policy.evaluate(findings, risk_score, total_rows=len(df))
 
         scan_duration = time.time() - start_time
 
@@ -312,11 +297,7 @@ def compliance_scan_job(
         # ------------------------------------------------------------------
         # 4. Emit audit record
         # ------------------------------------------------------------------
-        _risk_level_str = (
-            risk_level.value
-            if hasattr(risk_level, "value")
-            else str(risk_level)
-        )
+        _risk_level_str = risk_level.value if hasattr(risk_level, "value") else str(risk_level)
         AuditLogger().log_scan(
             correlation_id=payload.get("correlation_id") or "",
             tenant_id=payload.get("tenant_id") or "unknown",
@@ -326,9 +307,7 @@ def compliance_scan_job(
             rows_scanned=len(df),
             columns_scanned=len(df.columns),
             risk_level=_risk_level_str,
-            regulations_triggered=(
-                report.get("applicable_regulations") or []
-            ),
+            regulations_triggered=(report.get("applicable_regulations") or []),
             allowed=decision.allowed,
             duration_ms=int(scan_duration * 1000),
         )
@@ -347,17 +326,16 @@ def compliance_scan_job(
         )
 
         logger.info(
-            "compliance_scan_job completed job_id=%s duration_ms=%d "
-            "risk_level=%s allowed=%s",
+            "compliance_scan_job completed job_id=%s duration_ms=%d risk_level=%s allowed=%s",
             job_id,
             int(scan_duration * 1000),
             _risk_level_str,
             decision.allowed,
         )
 
-        return cast(Dict[str, Any], report)
+        return cast("dict[str, Any]", report)
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         scan_duration = time.time() - start_time
         # Sanitise exception message before storing — never log raw PII.
         error_msg = _sanitise_error(str(exc))
@@ -371,8 +349,7 @@ def compliance_scan_job(
             },
         )
         logger.error(
-            "compliance_scan_job failed job_id=%s duration_ms=%d "
-            "error=%s",
+            "compliance_scan_job failed job_id=%s duration_ms=%d error=%s",
             job_id,
             int(scan_duration * 1000),
             error_msg,

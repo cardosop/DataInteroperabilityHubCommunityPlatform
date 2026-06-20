@@ -8,10 +8,11 @@ provider-specific endpoints:
   - GET /auth/sso/saml/login-url/   (SAML initiation)
   - POST /auth/sso/saml/callback/   (SAML callback)
 """
-import pytest
-import requests
+
 from urllib.parse import parse_qs, urlparse
 
+import pytest
+import requests
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_base_url
 
@@ -39,13 +40,9 @@ def test_sso_initiation_returns_redirect():
         headers={"Authorization": f"Bearer {creds.api_key}"},
         timeout=15,
     )
-    assert me_resp.status_code == 200, (
-        f"/auth/me/ failed: {me_resp.status_code}"
-    )
+    assert me_resp.status_code == 200, f"/auth/me/ failed: {me_resp.status_code}"
     tenant_id = me_resp.json().get("tenant") or me_resp.json().get("tenant_id")  # noqa: PHASE216-STATIC-ID
-    assert tenant_id, (
-        f"No tenant_id in /auth/me/ response: {me_resp.json()}"
-    )
+    assert tenant_id, f"No tenant_id in /auth/me/ response: {me_resp.json()}"
 
     resp = requests.get(
         f"{base}/auth/sso/oidc/login-url/",
@@ -70,29 +67,18 @@ def test_sso_initiation_returns_redirect():
     if resp.status_code == 302:
         location = resp.headers.get("Location", "")
         assert location, "302 redirect has no Location header"
-        assert "http" in location.lower(), (
-            f"Redirect Location is not a URL: {location}"
-        )
+        assert "http" in location.lower(), f"Redirect Location is not a URL: {location}"
     elif resp.status_code == 200:
         body = resp.json()
         redirect_url = (
-            body.get("redirect_url")
-            or body.get("authorization_url")
-            or body.get("login_url")
+            body.get("redirect_url") or body.get("authorization_url") or body.get("login_url")
         )
-        assert redirect_url, (
-            f"200 response missing redirect/authorization URL: {body}"
-        )
+        assert redirect_url, f"200 response missing redirect/authorization URL: {body}"
         parsed = urlparse(redirect_url)
         query = parse_qs(parsed.query)
-        assert query.get("state"), (
-            f"OIDC login URL missing state query parameter: {redirect_url}"
-        )
+        assert query.get("state"), f"OIDC login URL missing state query parameter: {redirect_url}"
     else:
-        pytest.fail(
-            f"SSO initiation returned unexpected "
-            f"{resp.status_code}: {resp.text[:300]}"
-        )
+        pytest.fail(f"SSO initiation returned unexpected {resp.status_code}: {resp.text[:300]}")
 
 
 def test_sso_initiation_unknown_provider_returns_error():
@@ -108,8 +94,7 @@ def test_sso_initiation_unknown_provider_returns_error():
 
     # Unknown provider path → 404 from the router
     assert resp.status_code in (400, 404, 422), (
-        f"Unknown SSO provider returned {resp.status_code}, "
-        f"expected 400/404/422: {resp.text[:300]}"
+        f"Unknown SSO provider returned {resp.status_code}, expected 400/404/422: {resp.text[:300]}"
     )
 
 

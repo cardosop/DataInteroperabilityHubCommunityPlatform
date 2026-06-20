@@ -29,17 +29,18 @@ Auth: ``IsAuthenticated``.  No tenant-scope filter here — the
 client receives events for the current ``request.user`` only;
 backend events are routed by ``user_id``.
 """
+
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import time
-from typing import Iterator, Optional
+from collections.abc import Iterator
 
 from django.http import StreamingHttpResponse
 from rest_framework import permissions
 from rest_framework.views import APIView
-
 
 logger = logging.getLogger(__name__)
 
@@ -107,10 +108,8 @@ def _event_stream(user_id: str) -> Iterator[bytes]:
     except Exception as exc:  # pragma: no cover — defensive
         logger.warning("notification_stream_error user_id=%s err=%s", user_id, exc)
     finally:
-        try:
+        with contextlib.suppress(Exception):
             pubsub.close()
-        except Exception:
-            pass
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +137,7 @@ def _try_get_pubsub(user_id: str):
         return None
 
 
-def _decode_payload(raw) -> Optional[dict]:
+def _decode_payload(raw) -> dict | None:
     if raw is None:
         return None
     if isinstance(raw, bytes):
@@ -155,4 +154,4 @@ def _is_for_user(payload: dict, user_id: str) -> bool:
 
 def _format_event(*, event_type: str, data: dict) -> bytes:
     body = json.dumps(data, separators=(",", ":"))
-    return f"event: {event_type}\ndata: {body}\n\n".encode("utf-8")
+    return f"event: {event_type}\ndata: {body}\n\n".encode()

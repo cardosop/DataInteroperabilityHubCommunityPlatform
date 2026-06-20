@@ -4,24 +4,25 @@ ODPS Webhook Payload Validators
 Provides comprehensive validation for ODPS webhook payloads,
 ensuring payloads conform to expected structure and content.
 """
+
 import json
-from typing import Any, Dict, Optional, List
+from typing import Any
+
 from hub.apps.webhooks.models import WebhookEventType
 from hub.apps.webhooks.odps_webhook_errors import (
     ODPSWebhookPayloadError,
     ODPSWebhookValidationError,
 )
 
-
 # Maximum payload size in bytes (1MB)
 MAX_PAYLOAD_SIZE = 1024 * 1024
 
 
 def validate_odps_webhook_payload(
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     event_type: str,
-    tenant_id: Optional[str] = None,
-    webhook_id: Optional[str] = None,
+    tenant_id: str | None = None,
+    webhook_id: str | None = None,
 ) -> None:
     """
     Validate ODPS webhook payload structure and content.
@@ -72,7 +73,7 @@ def validate_odps_webhook_payload(
     # Validate payload size
     try:
         payload_json = json.dumps(payload, sort_keys=True)
-        payload_size = len(payload_json.encode('utf-8'))
+        payload_size = len(payload_json.encode("utf-8"))
         if payload_size > MAX_PAYLOAD_SIZE:
             raise ODPSWebhookPayloadError(
                 message=f"Payload size ({payload_size} bytes) exceeds maximum ({MAX_PAYLOAD_SIZE} bytes)",
@@ -86,7 +87,7 @@ def validate_odps_webhook_payload(
             )
     except (TypeError, ValueError) as e:
         raise ODPSWebhookPayloadError(
-            message=f"Failed to serialize payload for size validation: {str(e)}",
+            message=f"Failed to serialize payload for size validation: {e!s}",
             error_code=ODPSWebhookPayloadError.ERROR_CODE_INVALID_PAYLOAD_STRUCTURE,
             user_message="Webhook payload cannot be serialized",
             tenant_id=tenant_id,
@@ -188,10 +189,10 @@ def validate_odps_webhook_payload(
 
 
 def validate_odps_event_data(
-    event_data: Dict[str, Any],
+    event_data: dict[str, Any],
     event_type: str,
-    tenant_id: Optional[str] = None,
-    webhook_id: Optional[str] = None,
+    tenant_id: str | None = None,
+    webhook_id: str | None = None,
 ) -> None:
     """
     Validate ODPS event data based on event type.
@@ -240,9 +241,9 @@ def validate_odps_event_data(
 
 
 def _validate_odps_created_data(
-    event_data: Dict[str, Any],
-    tenant_id: Optional[str],
-    webhook_id: Optional[str],
+    event_data: dict[str, Any],
+    tenant_id: str | None,
+    webhook_id: str | None,
     event_type: str,
 ) -> None:
     """Validate data for odps.created event"""
@@ -262,43 +263,41 @@ def _validate_odps_created_data(
 
 
 def _validate_odps_updated_data(
-    event_data: Dict[str, Any],
-    tenant_id: Optional[str],
-    webhook_id: Optional[str],
+    event_data: dict[str, Any],
+    tenant_id: str | None,
+    webhook_id: str | None,
     event_type: str,
 ) -> None:
     """Validate data for odps.updated event"""
     # changes field is typically present for ODPS updated events
-    if "changes" in event_data:
-        if not isinstance(event_data["changes"], dict):
-            raise ODPSWebhookPayloadError(
-                message="changes must be a dictionary",
-                error_code=ODPSWebhookPayloadError.ERROR_CODE_INVALID_FIELD_TYPE,
-                user_message="ODPS updated event data: changes must be a JSON object",
-                tenant_id=tenant_id,
-                webhook_id=webhook_id,
-                event_type=event_type,
-                field_path="data.changes",
-                expected="dict",
-                actual=type(event_data["changes"]).__name__,
-            )
+    if "changes" in event_data and not isinstance(event_data["changes"], dict):
+        raise ODPSWebhookPayloadError(
+            message="changes must be a dictionary",
+            error_code=ODPSWebhookPayloadError.ERROR_CODE_INVALID_FIELD_TYPE,
+            user_message="ODPS updated event data: changes must be a JSON object",
+            tenant_id=tenant_id,
+            webhook_id=webhook_id,
+            event_type=event_type,
+            field_path="data.changes",
+            expected="dict",
+            actual=type(event_data["changes"]).__name__,
+        )
 
 
 def _validate_odps_deleted_data(
-    event_data: Dict[str, Any],
-    tenant_id: Optional[str],
-    webhook_id: Optional[str],
+    event_data: dict[str, Any],
+    tenant_id: str | None,
+    webhook_id: str | None,
     event_type: str,
 ) -> None:
     """Validate data for odps.deleted event"""
     # No specific required fields for deleted events
-    pass
 
 
 def _validate_odps_normalized_data(
-    event_data: Dict[str, Any],
-    tenant_id: Optional[str],
-    webhook_id: Optional[str],
+    event_data: dict[str, Any],
+    tenant_id: str | None,
+    webhook_id: str | None,
     event_type: str,
 ) -> None:
     """Validate data for odps.normalized event"""
@@ -318,9 +317,9 @@ def _validate_odps_normalized_data(
 
 
 def _validate_odps_linked_data(
-    event_data: Dict[str, Any],
-    tenant_id: Optional[str],
-    webhook_id: Optional[str],
+    event_data: dict[str, Any],
+    tenant_id: str | None,
+    webhook_id: str | None,
     event_type: str,
 ) -> None:
     """Validate data for odps.linked event"""
@@ -341,9 +340,9 @@ def _validate_odps_linked_data(
 
 
 def _validate_odps_unlinked_data(
-    event_data: Dict[str, Any],
-    tenant_id: Optional[str],
-    webhook_id: Optional[str],
+    event_data: dict[str, Any],
+    tenant_id: str | None,
+    webhook_id: str | None,
     event_type: str,
 ) -> None:
     """Validate data for odps.unlinked event"""
@@ -364,9 +363,9 @@ def _validate_odps_unlinked_data(
 
 
 def _validate_odps_export_data(
-    event_data: Dict[str, Any],
-    tenant_id: Optional[str],
-    webhook_id: Optional[str],
+    event_data: dict[str, Any],
+    tenant_id: str | None,
+    webhook_id: str | None,
     event_type: str,
 ) -> None:
     """Validate data for ODPS export events"""
@@ -398,4 +397,3 @@ def _validate_odps_export_data(
                 expected="str or dict",
                 actual=type(event_data["error"]).__name__,
             )
-

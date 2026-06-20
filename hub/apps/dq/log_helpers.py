@@ -50,10 +50,10 @@ have well-known key names like ``row_samples``, ``sample_value``,
 key-based redaction is cheaper than value-pattern matching at
 log-emission time on the Hub critical path.
 """
+
 from __future__ import annotations
 
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Phase 240.5.F.2 — redacted-key inventory.
@@ -73,23 +73,25 @@ from typing import Any
 #
 # Adding a key: append it here AND extend
 # ``test_log_helpers.py::TestRedact::test_strips_known_pii_bearing_keys``.
-_REDACTED_KEYS: frozenset[str] = frozenset({
-    # ── customer row content (top-priority redaction) ──
-    "row_samples",         # sampled rows from the input dataset
-    "sample_value",        # per-issue sample value (e.g. a failing cell's literal value)
-    "sample_data_json",    # a dataset's sample-data blob
-    "file_content",        # base64-encoded file body
-    # ── generic raw-content bags (be conservative) ──
-    "body",                # raw HTTP body
-    "raw_data",            # generic raw-data bag
-    "data",                # generic data bag
-    # ── persisted blobs that aggregate the above ──
-    "details_json",        # DQRun.details_json — contains row samples,
-                           # check details, anomaly detail bags, ML
-                           # backstage metadata.  Already persisted in
-                           # the DB; no log-side use case justifies
-                           # the PII surface area.
-})
+_REDACTED_KEYS: frozenset[str] = frozenset(
+    {
+        # ── customer row content (top-priority redaction) ──
+        "row_samples",  # sampled rows from the input dataset
+        "sample_value",  # per-issue sample value (e.g. a failing cell's literal value)
+        "sample_data_json",  # a dataset's sample-data blob
+        "file_content",  # base64-encoded file body
+        # ── generic raw-content bags (be conservative) ──
+        "body",  # raw HTTP body
+        "raw_data",  # generic raw-data bag
+        "data",  # generic data bag
+        # ── persisted blobs that aggregate the above ──
+        "details_json",  # DQRun.details_json — contains row samples,
+        # check details, anomaly detail bags, ML
+        # backstage metadata.  Already persisted in
+        # the DB; no log-side use case justifies
+        # the PII surface area.
+    }
+)
 
 
 def _redact(obj: Any) -> Any:
@@ -120,11 +122,7 @@ def _redact(obj: Any) -> Any:
         )
     """
     if isinstance(obj, dict):
-        return {
-            k: _redact(v)
-            for k, v in obj.items()
-            if k not in _REDACTED_KEYS
-        }
+        return {k: _redact(v) for k, v in obj.items() if k not in _REDACTED_KEYS}
     if isinstance(obj, list):
         return [_redact(item) for item in obj]
     if isinstance(obj, tuple):
@@ -132,4 +130,4 @@ def _redact(obj: Any) -> Any:
     return obj
 
 
-__all__ = ["_redact", "_REDACTED_KEYS"]
+__all__ = ["_REDACTED_KEYS", "_redact"]

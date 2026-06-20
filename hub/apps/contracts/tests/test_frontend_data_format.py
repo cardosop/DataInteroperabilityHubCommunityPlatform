@@ -11,7 +11,6 @@ Tests verify:
 import json
 import re
 import uuid
-from datetime import datetime
 
 from rest_framework import status
 
@@ -115,7 +114,7 @@ class FrontendDataFormatTest(ContractsAPITestBase):
         )
 
         for field in date_fields:
-            if field in data and data[field]:
+            if data.get(field):
                 date_value = str(data[field])
                 # Should match ISO 8601 pattern or contain T separator
                 self.assertTrue(
@@ -219,6 +218,7 @@ class FrontendDataFormatTest(ContractsAPITestBase):
         """Test API responses handle null values properly"""
         # Create contract with some null/None fields
         from hub.apps.assets.models import Asset, AssetStatus
+
         null_asset = Asset.objects.create(
             tenant=self.tenant, key="null-test-asset", name="Null Asset", status=AssetStatus.ACTIVE
         )
@@ -272,7 +272,10 @@ class FrontendDataFormatTest(ContractsAPITestBase):
         odps_with_unicode["product"]["details"]["en"]["name"] = "Test 产品 🚀"
 
         unicode_asset = Asset.objects.create(
-            tenant=self.tenant, key="unicode-test-asset", name="Unicode Asset", status=AssetStatus.ACTIVE
+            tenant=self.tenant,
+            key="unicode-test-asset",
+            name="Unicode Asset",
+            status=AssetStatus.ACTIVE,
         )
         contract_unicode = Contract.objects.create(
             tenant=self.tenant,
@@ -300,12 +303,15 @@ class FrontendDataFormatTest(ContractsAPITestBase):
         """Test API responses handle special characters in data"""
         # Create contract with special characters
         odps_with_special = self.valid_odps.copy()
-        odps_with_special["product"]["details"]["en"][
-            "name"
-        ] = "Test & Product <script>alert('xss')</script>"
+        odps_with_special["product"]["details"]["en"]["name"] = (
+            "Test & Product <script>alert('xss')</script>"
+        )
 
         special_asset = Asset.objects.create(
-            tenant=self.tenant, key="special-test-asset", name="Special Asset", status=AssetStatus.ACTIVE
+            tenant=self.tenant,
+            key="special-test-asset",
+            name="Special Asset",
+            status=AssetStatus.ACTIVE,
         )
         contract_special = Contract.objects.create(
             tenant=self.tenant,
@@ -331,9 +337,13 @@ class FrontendDataFormatTest(ContractsAPITestBase):
         """Test API list responses have pagination structure"""
         # Create multiple contracts — each needs its own asset
         from hub.apps.assets.models import Asset, AssetStatus
+
         for i in range(5):
             page_asset = Asset.objects.create(
-                tenant=self.tenant, key=f"page-asset-{i}", name=f"Page {i}", status=AssetStatus.ACTIVE
+                tenant=self.tenant,
+                key=f"page-asset-{i}",
+                name=f"Page {i}",
+                status=AssetStatus.ACTIVE,
             )
             Contract.objects.create(
                 tenant=self.tenant,

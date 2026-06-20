@@ -355,8 +355,7 @@ class ODCSGeneratorV3_0_0RoundTripTest(TestCase):
 
         # Normalize to HubContract
         norm_result = self.normalizer.normalize(original_odcs, spec_version="3.0.0")
-        # Status can be NORMALIZED_OK or NORMALIZED_WITH_WARNINGS
-        self.assertIn(norm_result.status.value, ["NORMALIZED_OK", "NORMALIZED_WITH_WARNINGS"])
+        self.assertEqual(norm_result.status.value, "NORMALIZED_OK")
         self.assertIsNotNone(
             norm_result.hub_contract, f"Normalization failed with errors: {norm_result.errors}"
         )
@@ -391,8 +390,7 @@ class ODCSGeneratorV3_0_0RoundTripTest(TestCase):
 
         # Normalize to HubContract
         norm_result = self.normalizer.normalize(original_odcs, spec_version="3.0.0")
-        # Status can be NORMALIZED_OK or NORMALIZED_WITH_WARNINGS
-        self.assertIn(norm_result.status.value, ["NORMALIZED_OK", "NORMALIZED_WITH_WARNINGS"])
+        self.assertEqual(norm_result.status.value, "NORMALIZED_OK")
         self.assertIsNotNone(
             norm_result.hub_contract, f"Normalization failed with errors: {norm_result.errors}"
         )
@@ -446,10 +444,12 @@ class ODCSGeneratorV3_0_0RoundTripTest(TestCase):
         result = self.generator.generate_odcs_from_hubcontract(hub_contract)
         self.assertIn("name", result)
         self.assertEqual(result["name"], "Test Product")
-        self.assertIn("description", result,
-            "Large description must be present in output")
-        self.assertEqual(result["description"], large_description,
-            "Large description value must be preserved exactly")
+        self.assertIn("description", result, "Large description must be present in output")
+        self.assertEqual(
+            result["description"],
+            large_description,
+            "Large description value must be preserved exactly",
+        )
 
     def test_generation_handles_none_values(self):
         """Test that generation handles None values correctly."""
@@ -464,8 +464,9 @@ class ODCSGeneratorV3_0_0RoundTripTest(TestCase):
         self.assertIsNotNone(result)
         self.assertIn("name", result)
         self.assertEqual(result["name"], "Test Product")
-        self.assertNotIn("description", result,
-            "None description field must be omitted from output")
+        self.assertNotIn(
+            "description", result, "None description field must be omitted from output"
+        )
 
     def test_generation_handles_nested_structures(self):
         """Test that generation handles nested structures correctly."""
@@ -483,8 +484,11 @@ class ODCSGeneratorV3_0_0RoundTripTest(TestCase):
         # Verify the generator doesn't crash and preserves known fields.
         self.assertIsNotNone(result)
         self.assertIn("name", result)
-        self.assertEqual(result["name"], "Test Product",
-            "Name must be correctly extracted from deeply nested hub_contract info")
+        self.assertEqual(
+            result["name"],
+            "Test Product",
+            "Name must be correctly extracted from deeply nested hub_contract info",
+        )
         self.assertIn("apiVersion", result)
         self.assertIn("kind", result)
         self.assertEqual(result["kind"], "DataContract")

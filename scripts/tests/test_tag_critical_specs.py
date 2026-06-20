@@ -44,14 +44,13 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "tag_critical_specs.cjs"
 
 
 def _has_node() -> bool:
     try:
-        res = subprocess.run(["node", "--version"], capture_output=True, timeout=10)
+        res = subprocess.run(["node", "--version"], check=False, capture_output=True, timeout=10)
         return res.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
@@ -70,7 +69,7 @@ def _node_eval(expr: str) -> str:
         "-e",
         f"const m = require('{SCRIPT}'); process.stdout.write(JSON.stringify({expr}));",
     ]
-    res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    res = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=15)
     assert res.returncode == 0, f"node failed: {res.stderr}"
     return res.stdout
 
@@ -93,10 +92,11 @@ def _run_cli(
         cmd.append(f"--deprecated={','.join(deprecated)}")
     if write:
         cmd.append("--write")
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    return subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=30)
 
 
 # ----------------------------- parseCriticalIds --------------------------
+
 
 def test_parseCriticalIds_extracts_uc_and_journey_separately() -> None:
     yaml_source = """\
@@ -137,6 +137,7 @@ def test_parseCriticalIds_empty_input_returns_empty_lists() -> None:
 
 # ------------------------------- findCriticalRefs ------------------------
 
+
 def test_findCriticalRefs_matches_word_boundary_only() -> None:
     """`UC-AUTH-001` MUST NOT match `UC-AUTH-0011`. Critical for stable counts."""
     src = "test.describe('UC-AUTH-001', () => {}); // also UC-AUTH-0011 unrelated"
@@ -159,6 +160,7 @@ def test_findCriticalRefs_returns_empty_on_no_match() -> None:
 
 
 # ------------------------------- hasTag / injectTag ----------------------
+
 
 def test_hasTag_detects_existing_tag_in_describe_title() -> None:
     src = "test.describe('JOURNEY-AUTH-001 @critical', () => {});"
@@ -199,14 +201,10 @@ def test_injectTag_noop_when_no_describe_block() -> None:
 
 # --------------------------------- CLI integration ------------------------
 
+
 def _seed_yaml(tmpdir: Path) -> Path:
     f = tmpdir / "critical.yaml"
-    f.write_text(
-        "critical_use_cases:\n"
-        "  - UC-AUTH-001\n"
-        "critical_journeys:\n"
-        "  - JOURNEY-AUTH-001\n"
-    )
+    f.write_text("critical_use_cases:\n  - UC-AUTH-001\ncritical_journeys:\n  - JOURNEY-AUTH-001\n")
     return f
 
 
@@ -219,11 +217,11 @@ def test_cli_check_mode_passes_when_all_specs_tagged(tmp_path: Path) -> None:
         "test.describe('JOURNEY-AUTH-001 @critical', () => {});\n"
     )
     (root / "phase2-catalog-journey.spec.ts").write_text(
-        "import { test } from '@playwright/test';\n"
-        "test.describe('phase2 @deprecated', () => {});\n"
+        "import { test } from '@playwright/test';\ntest.describe('phase2 @deprecated', () => {});\n"
     )
     res = _run_cli(
-        root, yaml_path,
+        root,
+        yaml_path,
         deprecated=["phase2-catalog-journey.spec.ts"],
     )
     assert res.returncode == 0, res.stderr
@@ -275,11 +273,11 @@ def test_cli_write_mode_marks_deprecated_phase_files(tmp_path: Path) -> None:
     root.mkdir()
     spec = root / "phase3-quality-gates.spec.ts"
     spec.write_text(
-        "import { test } from '@playwright/test';\n"
-        "test.describe('phase3 quality', () => {});\n"
+        "import { test } from '@playwright/test';\ntest.describe('phase3 quality', () => {});\n"
     )
     res = _run_cli(
-        root, yaml_path,
+        root,
+        yaml_path,
         deprecated=["phase3-quality-gates.spec.ts"],
         write=True,
     )
@@ -302,7 +300,8 @@ def test_cli_deprecated_spec_is_not_also_tagged_critical(tmp_path: Path) -> None
         "test.describe('phase7.5 gap closure', () => {});\n"
     )
     res = _run_cli(
-        root, yaml_path,
+        root,
+        yaml_path,
         deprecated=["phase7.5-features-gap-closure.spec.ts"],
         write=True,
     )
@@ -323,8 +322,7 @@ def test_cli_skips_fixtures_and_setup_dirs(tmp_path: Path) -> None:
     fixtures = root / "fixtures"
     fixtures.mkdir(parents=True)
     (fixtures / "helpers.spec.ts").write_text(
-        "// JOURNEY-AUTH-001 helper used by all auth specs\n"
-        "test.describe('helpers', () => {});\n"
+        "// JOURNEY-AUTH-001 helper used by all auth specs\ntest.describe('helpers', () => {});\n"
     )
     res = _run_cli(root, yaml_path)
     payload = json.loads(res.stdout)
@@ -342,7 +340,8 @@ def test_cli_skips_stub_files_without_describe_blocks(tmp_path: Path) -> None:
     stub = root / "phase7.5-features-gap-closure.spec.ts"
     stub.write_text("/** stub — split per E3 */\nexport {};\n")
     res = _run_cli(
-        root, yaml_path,
+        root,
+        yaml_path,
         deprecated=["phase7.5-features-gap-closure.spec.ts"],
     )
     assert res.returncode == 0, res.stderr

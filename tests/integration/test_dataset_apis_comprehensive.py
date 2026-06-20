@@ -27,32 +27,30 @@ Tests all dataset endpoints with 80+ test cases covering:
 
 All tests use real services (no mocks/stubs) and run against Docker Compose instances.
 """
+
 import pytest
 
 pytestmark = pytest.mark.slow
 import time
-import json
 import uuid
-import io
-from datetime import timedelta
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from django.utils import timezone
-from django.core.cache import cache
-from rest_framework.test import APIClient
-from rest_framework import status
 
-from hub.apps.datasets.models import Dataset, DatasetKind
-from hub.apps.files.models import File, FileStatus
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.users.models import UserStatus
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.datasets.tests.factories import DatasetFactory
-from hub.apps.files.tests.factories import FileFactory
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.test import TestCase
+from rest_framework import status
+from rest_framework.test import APIClient
+
+from hub.apps.assets.models import AssetStatus
 from hub.apps.assets.tests.factories import AssetFactory
-from tests.fixtures.test_data_factories import UserFactory, TenantFactory
+from hub.apps.datasets.models import Dataset
+from hub.apps.datasets.tests.factories import DatasetFactory
+from hub.apps.files.models import FileStatus
+from hub.apps.files.tests.factories import FileFactory
+from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
+from hub.apps.users.models import UserStatus
+from tests.fixtures.test_data_factories import TenantFactory, UserFactory
 
 # Use default transaction=False so TenantSuspensionMiddleware sees subscription from setUp
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -72,13 +70,13 @@ class TestDatasetListAPI(TestCase):
             name=f"Tenant A {uuid.uuid4().hex[:8]}",
             slug=f"tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         self.tenant_b = TenantFactory.create_tenant(
             name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         ensure_tenant_has_active_subscription(self.tenant_a)
         ensure_tenant_has_active_subscription(self.tenant_b)
@@ -87,12 +85,12 @@ class TestDatasetListAPI(TestCase):
         self.user_a = UserFactory.create_user(
             email=f"user_a-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_a,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         self.user_b = UserFactory.create_user(
             email=f"user_b-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_b,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
 
         # Refresh users to ensure tenant_id is loaded
@@ -106,7 +104,7 @@ class TestDatasetListAPI(TestCase):
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
-            created_by=self.user_a
+            created_by=self.user_a,
         )
         self.file_a2 = FileFactory.create_file(
             tenant=self.tenant_a,
@@ -114,7 +112,7 @@ class TestDatasetListAPI(TestCase):
             content_type="application/json",
             size=2048,
             status=FileStatus.ACTIVE,
-            created_by=self.user_a
+            created_by=self.user_a,
         )
 
         # Create asset for tenant A
@@ -123,7 +121,7 @@ class TestDatasetListAPI(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user_a
+            created_by=self.user_a,
         )
 
         # Create datasets for tenant A
@@ -133,7 +131,7 @@ class TestDatasetListAPI(TestCase):
             asset=self.asset_a,
             format="CSV",
             version=1,
-            created_by=self.user_a
+            created_by=self.user_a,
         )
         self.dataset_a2 = DatasetFactory.create_dataset(
             tenant=self.tenant_a,
@@ -141,7 +139,7 @@ class TestDatasetListAPI(TestCase):
             asset=None,
             format="JSON",
             version=1,
-            created_by=self.user_a
+            created_by=self.user_a,
         )
 
         # Create file and dataset for tenant B
@@ -151,7 +149,7 @@ class TestDatasetListAPI(TestCase):
             content_type="text/csv",
             size=512,
             status=FileStatus.ACTIVE,
-            created_by=self.user_b
+            created_by=self.user_b,
         )
         self.dataset_b1 = DatasetFactory.create_dataset(
             tenant=self.tenant_b,
@@ -159,7 +157,7 @@ class TestDatasetListAPI(TestCase):
             asset=None,
             format="CSV",
             version=1,
-            created_by=self.user_b
+            created_by=self.user_b,
         )
 
     def tearDown(self):
@@ -171,20 +169,20 @@ class TestDatasetListAPI(TestCase):
     def test_list_datasets_success(self):
         """Test successful listing of datasets"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/datasets/')
+        response = self.client.get("/api/v1/datasets/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Response may be paginated or non-paginated
         if isinstance(response.data, dict):
-            if 'results' in response.data:
+            if "results" in response.data:
                 # Paginated response
-                self.assertIn('results', response.data)
-                self.assertIn('count', response.data)
-                self.assertEqual(response.data['count'], 2)
-                self.assertEqual(len(response.data['results']), 2)
-            elif 'count' in response.data:
+                self.assertIn("results", response.data)
+                self.assertIn("count", response.data)
+                self.assertEqual(response.data["count"], 2)
+                self.assertEqual(len(response.data["results"]), 2)
+            elif "count" in response.data:
                 # Paginated response without 'results' key
-                self.assertGreaterEqual(response.data['count'], 2)
+                self.assertGreaterEqual(response.data["count"], 2)
             else:
                 # Other dict format - just verify it's a dict
                 self.assertIsInstance(response.data, dict)
@@ -198,114 +196,119 @@ class TestDatasetListAPI(TestCase):
     def test_list_datasets_pagination_page_1(self):
         """Test pagination - first page"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/datasets/', {'page': 1, 'page_size': 1})
+        response = self.client.get("/api/v1/datasets/", {"page": 1, "page_size": 1})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Handle different pagination response formats
         if isinstance(response.data, dict):
-            if 'results' in response.data:
-                self.assertEqual(len(response.data['results']), 1)
+            if "results" in response.data:
+                self.assertEqual(len(response.data["results"]), 1)
                 # Response may use next_page or next
-                self.assertTrue('next_page' in response.data or 'next' in response.data)
+                self.assertTrue("next_page" in response.data or "next" in response.data)
             else:
                 # Paginated response without 'results' key
-                self.assertIn('count', response.data)
+                self.assertIn("count", response.data)
         elif isinstance(response.data, list):
             # Non-paginated response
             self.assertLessEqual(len(response.data), 1)
 
         if isinstance(response.data, dict):
-            if 'results' in response.data:
+            if "results" in response.data:
                 # Should only return datasets for this asset
-                self.assertGreaterEqual(response.data['count'], 1)
-                for result in response.data['results']:
-                    if result.get('asset'):
-                        self.assertEqual(str(result['asset']), str(self.asset_a.id))
-            elif 'count' in response.data:
+                self.assertGreaterEqual(response.data["count"], 1)
+                for result in response.data["results"]:
+                    if result.get("asset"):
+                        self.assertEqual(str(result["asset"]), str(self.asset_a.id))
+            elif "count" in response.data:
                 # Paginated response without results
-                self.assertGreaterEqual(response.data['count'], 1)
+                self.assertGreaterEqual(response.data["count"], 1)
+
     def test_list_datasets_filter_by_asset_id(self):
         """Test filtering by asset_id"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/datasets/', {'asset_id': str(self.asset_a.id)})
+        response = self.client.get("/api/v1/datasets/", {"asset_id": str(self.asset_a.id)})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Handle different response formats
         if isinstance(response.data, dict):
-            if 'results' in response.data:
+            if "results" in response.data:
                 # Should only return datasets for this asset
-                self.assertGreaterEqual(response.data.get('count', len(response.data['results'])), 1)
-                for result in response.data['results']:
-                    if result.get('asset'):
-                        self.assertEqual(str(result['asset']), str(self.asset_a.id))
-            elif 'count' in response.data:
+                self.assertGreaterEqual(
+                    response.data.get("count", len(response.data["results"])), 1
+                )
+                for result in response.data["results"]:
+                    if result.get("asset"):
+                        self.assertEqual(str(result["asset"]), str(self.asset_a.id))
+            elif "count" in response.data:
                 # Paginated response without results - filtering may not be implemented
-                self.assertGreaterEqual(response.data['count'], 0)
+                self.assertGreaterEqual(response.data["count"], 0)
         elif isinstance(response.data, list):
             # Non-paginated response
             for result in response.data:
-                if result.get('asset'):
-                    self.assertEqual(str(result['asset']), str(self.asset_a.id))
+                if result.get("asset"):
+                    self.assertEqual(str(result["asset"]), str(self.asset_a.id))
 
     def test_list_datasets_filter_by_format(self):
         """Test filtering by format (format_filter avoids DRF content-negotiation conflict)"""
         self.client.force_authenticate(user=self.user_a)
         # Use format_filter to avoid DRF format param (content negotiation)
-        response = self.client.get('/api/v1/datasets/', {'format_filter': 'CSV'})
+        response = self.client.get("/api/v1/datasets/", {"format_filter": "CSV"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # If format filtering is implemented, results would be filtered; otherwise all returned
-        if isinstance(response.data, dict) and 'results' in response.data:
-            results = response.data['results']
+        if isinstance(response.data, dict) and "results" in response.data:
+            results = response.data["results"]
             for result in results:
-                if isinstance(result, dict) and 'format' in result:
+                if isinstance(result, dict) and "format" in result:
                     # If filtering is implemented, all should be CSV; otherwise just verify structure
                     pass
         elif isinstance(response.data, list):
             for result in response.data:
-                if isinstance(result, dict) and 'format' in result:
+                if isinstance(result, dict) and "format" in result:
                     pass
 
     def test_list_datasets_ordering_by_created_at(self):
         """Test ordering by created_at"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/datasets/', {'ordering': '-created_at'})
+        response = self.client.get("/api/v1/datasets/", {"ordering": "-created_at"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Results should be ordered by created_at descending
-        if len(response.data['results']) > 1:
-            created_dates = [r.get('created_at') for r in response.data['results'] if r.get('created_at')]
+        if len(response.data["results"]) > 1:
+            created_dates = [
+                r.get("created_at") for r in response.data["results"] if r.get("created_at")
+            ]
             if len(created_dates) > 1:
                 self.assertEqual(created_dates, sorted(created_dates, reverse=True))
 
     def test_list_datasets_tenant_isolation(self):
         """Test tenant isolation - user should only see their tenant's datasets"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/datasets/')
+        response = self.client.get("/api/v1/datasets/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should only see tenant A datasets
-        self.assertEqual(response.data['count'], 2)
+        self.assertEqual(response.data["count"], 2)
         # Verify all returned datasets belong to tenant A
-        returned_ids = {result['id'] for result in response.data['results']}
+        returned_ids = {result["id"] for result in response.data["results"]}
         expected_ids = {str(self.dataset_a1.id), str(self.dataset_a2.id)}
         self.assertEqual(returned_ids, expected_ids)
 
     def test_list_datasets_tenant_b_isolation(self):
         """Test tenant isolation - user B should only see tenant B datasets"""
         self.client.force_authenticate(user=self.user_b)
-        response = self.client.get('/api/v1/datasets/')
+        response = self.client.get("/api/v1/datasets/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should only see tenant B datasets
-        self.assertEqual(response.data['count'], 1)
-        self.assertEqual(response.data['results'][0]['id'], str(self.dataset_b1.id))
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], str(self.dataset_b1.id))
 
     def test_list_datasets_cannot_access_other_tenant_datasets(self):
         """Test that user cannot access datasets from other tenant"""
         self.client.force_authenticate(user=self.user_a)
         # Try to access tenant B's dataset directly
-        response = self.client.get(f'/api/v1/datasets/{self.dataset_b1.id}/')
+        response = self.client.get(f"/api/v1/datasets/{self.dataset_b1.id}/")
 
         # Should return 404 due to tenant filtering
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -317,27 +320,27 @@ class TestDatasetListAPI(TestCase):
             name=f"Empty Tenant {uuid.uuid4().hex[:8]}",
             slug=f"empty-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         user_empty = UserFactory.create_user(
             email=f"empty-{uuid.uuid4().hex[:8]}@example.com",
             tenant=tenant_empty,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
 
         self.client.force_authenticate(user=user_empty)
-        response = self.client.get('/api/v1/datasets/')
+        response = self.client.get("/api/v1/datasets/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['count'], 0)
-        self.assertEqual(len(response.data['results']), 0)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(len(response.data["results"]), 0)
 
     # ========== QUERY PARAMETER VALIDATION ==========
 
     def test_list_datasets_invalid_page_number(self):
         """Test invalid page number"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/datasets/', {'page': 0})
+        response = self.client.get("/api/v1/datasets/", {"page": 0})
 
         # Should handle gracefully (use page 1 or return error)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -345,16 +348,16 @@ class TestDatasetListAPI(TestCase):
     def test_list_datasets_very_large_page_size(self):
         """Test pagination with very large page size"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/datasets/', {'page_size': 10000})
+        response = self.client.get("/api/v1/datasets/", {"page_size": 10000})
 
         # Should cap at maximum page size or return 400 if validation fails
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
         if response.status_code == status.HTTP_200_OK:
-            self.assertLessEqual(len(response.data['results']), 10000)
+            self.assertLessEqual(len(response.data["results"]), 10000)
 
     def test_list_datasets_unauthenticated(self):
         """Test list datasets without authentication"""
-        response = self.client.get('/api/v1/datasets/')
+        response = self.client.get("/api/v1/datasets/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -365,9 +368,9 @@ class TestDatasetListAPI(TestCase):
         self.client.force_authenticate(user=self.user_a)
 
         times = []
-        for i in range(10):
+        for _i in range(10):
             start = time.time()
-            response = self.client.get('/api/v1/datasets/', {'page': 1})
+            response = self.client.get("/api/v1/datasets/", {"page": 1})
             elapsed = (time.time() - start) * 1000  # Convert to ms
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -385,7 +388,11 @@ class TestDatasetListAPI(TestCase):
                 self.assertGreater(len(times), 0, "No successful requests")
             else:
                 # p95 should be less than 500ms (use lenient threshold for service variability)
-                self.assertLess(p95_time, 2000, f"p95 response time {p95_time}ms exceeds 2000ms threshold (services may be slow)")
+                self.assertLess(
+                    p95_time,
+                    2000,
+                    f"p95 response time {p95_time}ms exceeds 2000ms threshold (services may be slow)",
+                )
 
 
 class TestDatasetCreateAPI(TestCase):
@@ -400,14 +407,14 @@ class TestDatasetCreateAPI(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         self.user.refresh_from_db()
 
@@ -418,7 +425,7 @@ class TestDatasetCreateAPI(TestCase):
             content_type="text/csv",
             size=2048,
             status=FileStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create an asset (optional)
@@ -427,7 +434,7 @@ class TestDatasetCreateAPI(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def tearDown(self):
@@ -441,36 +448,31 @@ class TestDatasetCreateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        data = {
-            "file_id": str(self.file.id)
-        }
+        data = {"file_id": str(self.file.id)}
 
-        response = self.client.post('/api/v1/datasets/', data, format="json")
+        response = self.client.post("/api/v1/datasets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn('id', response.data)
+        self.assertIn("id", response.data)
         # File ID may be UUID object or string
-        file_id = response.data.get('file')
+        file_id = response.data.get("file")
         self.assertIsNotNone(file_id)
         self.assertEqual(str(file_id), str(self.file.id))
-        self.assertIn('format', response.data)
+        self.assertIn("format", response.data)
 
     def test_create_dataset_with_asset(self):
         """Test creating dataset with asset"""
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        data = {
-            "file_id": str(self.file.id),
-            "asset_id": str(self.asset.id)
-        }
+        data = {"file_id": str(self.file.id), "asset_id": str(self.asset.id)}
 
-        response = self.client.post('/api/v1/datasets/', data, format="json")
+        response = self.client.post("/api/v1/datasets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         # IDs may be UUID objects or strings
-        asset_id = response.data.get('asset')
-        file_id = response.data.get('file')
+        asset_id = response.data.get("asset")
+        file_id = response.data.get("file")
         self.assertIsNotNone(asset_id)
         self.assertIsNotNone(file_id)
         self.assertEqual(str(asset_id), str(self.asset.id))
@@ -481,15 +483,13 @@ class TestDatasetCreateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        data = {
-            "file_id": str(self.file.id)
-        }
+        data = {"file_id": str(self.file.id)}
 
-        response = self.client.post('/api/v1/datasets/', data, format="json")
+        response = self.client.post("/api/v1/datasets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         # Schema inference may succeed or fail depending on file content and service availability
-        dataset = Dataset.objects.get(id=response.data['id'])
+        dataset = Dataset.objects.get(id=response.data["id"])
         # Schema may be None if inference fails, which is acceptable
         self.assertIsNotNone(dataset)
 
@@ -498,14 +498,12 @@ class TestDatasetCreateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        data = {
-            "file_id": str(self.file.id)
-        }
+        data = {"file_id": str(self.file.id)}
 
-        response = self.client.post('/api/v1/datasets/', data, format="json")
+        response = self.client.post("/api/v1/datasets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        dataset = Dataset.objects.get(id=response.data['id'])
+        dataset = Dataset.objects.get(id=response.data["id"])
         # Sample data extraction may succeed or fail depending on file content
         # Just verify dataset was created
         self.assertIsNotNone(dataset)
@@ -515,15 +513,13 @@ class TestDatasetCreateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        data = {
-            "file_id": str(self.file.id)
-        }
+        data = {"file_id": str(self.file.id)}
 
-        response = self.client.post('/api/v1/datasets/', data, format="json")
+        response = self.client.post("/api/v1/datasets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         # Verify file was validated
-        file_id = response.data.get('file')
+        file_id = response.data.get("file")
         self.assertIsNotNone(file_id)
         self.assertEqual(str(file_id), str(self.file.id))
 
@@ -532,16 +528,13 @@ class TestDatasetCreateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        data = {
-            "file_id": str(self.file.id),
-            "asset_id": str(self.asset.id)
-        }
+        data = {"file_id": str(self.file.id), "asset_id": str(self.asset.id)}
 
-        response = self.client.post('/api/v1/datasets/', data, format="json")
+        response = self.client.post("/api/v1/datasets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         # Verify asset was validated
-        asset_id = response.data.get('asset')
+        asset_id = response.data.get("asset")
         self.assertIsNotNone(asset_id)
         self.assertEqual(str(asset_id), str(self.asset.id))
 
@@ -554,7 +547,7 @@ class TestDatasetCreateAPI(TestCase):
 
         data = {}
 
-        response = self.client.post('/api/v1/datasets/', data, format="json")
+        response = self.client.post("/api/v1/datasets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -563,11 +556,9 @@ class TestDatasetCreateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        data = {
-            "file_id": str(uuid.uuid4())
-        }
+        data = {"file_id": str(uuid.uuid4())}
 
-        response = self.client.post('/api/v1/datasets/', data, format="json")
+        response = self.client.post("/api/v1/datasets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -576,12 +567,9 @@ class TestDatasetCreateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
 
-        data = {
-            "file_id": str(self.file.id),
-            "asset_id": str(uuid.uuid4())
-        }
+        data = {"file_id": str(self.file.id), "asset_id": str(uuid.uuid4())}
 
-        response = self.client.post('/api/v1/datasets/', data, format="json")
+        response = self.client.post("/api/v1/datasets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -597,55 +585,58 @@ class TestDatasetCreateAPI(TestCase):
             content_type="text/csv",
             size=512,
             status=FileStatus.DELETED,
-            created_by=self.user
+            created_by=self.user,
         )
 
-        data = {
-            "file_id": str(inactive_file.id)
-        }
+        data = {"file_id": str(inactive_file.id)}
 
-        response = self.client.post('/api/v1/datasets/', data, format="json")
+        response = self.client.post("/api/v1/datasets/", data, format="json")
 
-        # Should reject inactive file (may return 400, 404, or 500 if validation fails)
-        self.assertIn(response.status_code, [
-            status.HTTP_400_BAD_REQUEST,
-            status.HTTP_404_NOT_FOUND,
-            status.HTTP_500_INTERNAL_SERVER_ERROR
-        ])
+        # Should reject inactive file (may return 400, 404, or 500 if validation fails)  # noqa: broad-status-codes
+
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_404_NOT_FOUND,
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+            ],
+        )
 
     def test_create_dataset_user_without_tenant(self):
         """Test creating dataset when user has no tenant"""
         user_no_tenant = UserFactory.create_user(
             email=f"no_tenant-{uuid.uuid4().hex[:8]}@example.com",
             tenant=None,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         user_no_tenant.refresh_from_db()
         # Ensure user has no tenant_id set
-        if hasattr(user_no_tenant, 'tenant_id') and user_no_tenant.tenant_id:
+        if hasattr(user_no_tenant, "tenant_id") and user_no_tenant.tenant_id:
             from django.db import connection
+
             with connection.cursor() as cursor:
-                cursor.execute("UPDATE users SET tenant_id = NULL WHERE id = %s", [str(user_no_tenant.id)])
+                cursor.execute(
+                    "UPDATE users SET tenant_id = NULL WHERE id = %s", [str(user_no_tenant.id)]
+                )
             user_no_tenant.refresh_from_db()
 
         self.client.force_authenticate(user=user_no_tenant)
 
-        data = {
-            "file_id": str(self.file.id)
-        }
+        data = {"file_id": str(self.file.id)}
 
-        response = self.client.post('/api/v1/datasets/', data, format="json")
+        response = self.client.post("/api/v1/datasets/", data, format="json")
 
         # Should return 400 because user has no tenant (or 404 if queryset filtering happens first)
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND])
+        self.assertIn(
+            response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND]
+        )
 
     def test_create_dataset_unauthenticated(self):
         """Test creating dataset without authentication"""
-        data = {
-            "file_id": str(self.file.id)
-        }
+        data = {"file_id": str(self.file.id)}
 
-        response = self.client.post('/api/v1/datasets/', data, format="json")
+        response = self.client.post("/api/v1/datasets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -665,13 +656,13 @@ class TestDatasetCreateAPI(TestCase):
                 content_type="text/csv",
                 size=1024,
                 status=FileStatus.ACTIVE,
-                created_by=self.user
+                created_by=self.user,
             )
 
             start = time.time()
-            response = self.client.post('/api/v1/datasets/', {
-                "file_id": str(test_file.id)
-            }, format="json")
+            response = self.client.post(
+                "/api/v1/datasets/", {"file_id": str(test_file.id)}, format="json"
+            )
             elapsed = (time.time() - start) * 1000  # Convert to ms
 
             if response.status_code == status.HTTP_201_CREATED:
@@ -689,7 +680,11 @@ class TestDatasetCreateAPI(TestCase):
                 self.assertGreater(len(times), 0, "No successful creations")
             else:
                 # p95 should be less than 2000ms (use lenient threshold for service variability)
-                self.assertLess(p95_time, 10000, f"p95 response time {p95_time}ms exceeds 10000ms threshold (services may be slow)")
+                self.assertLess(
+                    p95_time,
+                    10000,
+                    f"p95 response time {p95_time}ms exceeds 10000ms threshold (services may be slow)",
+                )
 
 
 class TestDatasetRetrieveAPI(TestCase):
@@ -704,13 +699,13 @@ class TestDatasetRetrieveAPI(TestCase):
             name=f"Tenant A {uuid.uuid4().hex[:8]}",
             slug=f"tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         self.tenant_b = TenantFactory.create_tenant(
             name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         ensure_tenant_has_active_subscription(self.tenant_a)
         ensure_tenant_has_active_subscription(self.tenant_b)
@@ -718,12 +713,12 @@ class TestDatasetRetrieveAPI(TestCase):
         self.user_a = UserFactory.create_user(
             email=f"user_a-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_a,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         self.user_b = UserFactory.create_user(
             email=f"user_b-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_b,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         self.user_a.refresh_from_db()
         self.user_b.refresh_from_db()
@@ -735,7 +730,7 @@ class TestDatasetRetrieveAPI(TestCase):
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
-            created_by=self.user_a
+            created_by=self.user_a,
         )
         self.dataset = DatasetFactory.create_dataset(
             tenant=self.tenant_a,
@@ -743,7 +738,7 @@ class TestDatasetRetrieveAPI(TestCase):
             asset=None,
             format="CSV",
             version=1,
-            created_by=self.user_a
+            created_by=self.user_a,
         )
 
     def tearDown(self):
@@ -755,54 +750,54 @@ class TestDatasetRetrieveAPI(TestCase):
     def test_retrieve_dataset_success(self):
         """Test successful dataset retrieval"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/datasets/{self.dataset.id}/')
+        response = self.client.get(f"/api/v1/datasets/{self.dataset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(self.dataset.id))
-        self.assertIn('file', response.data)
-        self.assertIn('format', response.data)
+        self.assertEqual(response.data["id"], str(self.dataset.id))
+        self.assertIn("file", response.data)
+        self.assertIn("format", response.data)
 
     def test_retrieve_dataset_with_relationships(self):
         """Test dataset retrieval includes relationships"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/datasets/{self.dataset.id}/')
+        response = self.client.get(f"/api/v1/datasets/{self.dataset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify dataset data is present
-        self.assertIn('id', response.data)
-        self.assertIn('file', response.data)
+        self.assertIn("id", response.data)
+        self.assertIn("file", response.data)
 
     def test_retrieve_dataset_version_history(self):
         """Test dataset retrieval includes version information"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/datasets/{self.dataset.id}/')
+        response = self.client.get(f"/api/v1/datasets/{self.dataset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('version', response.data)
-        self.assertEqual(response.data['version'], 1)
+        self.assertIn("version", response.data)
+        self.assertEqual(response.data["version"], 1)
 
     # ========== AUTHORIZATION TESTS ==========
 
     def test_retrieve_dataset_tenant_isolation(self):
         """Test tenant isolation - user can only retrieve their tenant's datasets"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/datasets/{self.dataset.id}/')
+        response = self.client.get(f"/api/v1/datasets/{self.dataset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify dataset belongs to tenant A
-        self.assertEqual(response.data['id'], str(self.dataset.id))
+        self.assertEqual(response.data["id"], str(self.dataset.id))
 
     def test_retrieve_dataset_cannot_access_other_tenant(self):
         """Test user cannot retrieve datasets from other tenant"""
         self.client.force_authenticate(user=self.user_b)
-        response = self.client.get(f'/api/v1/datasets/{self.dataset.id}/')
+        response = self.client.get(f"/api/v1/datasets/{self.dataset.id}/")
 
         # Should return 404 due to tenant filtering
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_retrieve_dataset_unauthenticated(self):
         """Test unauthenticated user cannot retrieve dataset"""
-        response = self.client.get(f'/api/v1/datasets/{self.dataset.id}/')
+        response = self.client.get(f"/api/v1/datasets/{self.dataset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -812,7 +807,7 @@ class TestDatasetRetrieveAPI(TestCase):
         """Test retrieving non-existent dataset"""
         self.client.force_authenticate(user=self.user_a)
         fake_id = uuid.uuid4()
-        response = self.client.get(f'/api/v1/datasets/{fake_id}/')
+        response = self.client.get(f"/api/v1/datasets/{fake_id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -829,14 +824,14 @@ class TestDatasetUpdateAPI(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = UserFactory.create_user(
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         self.user.refresh_from_db()
 
@@ -847,7 +842,7 @@ class TestDatasetUpdateAPI(TestCase):
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
         self.dataset = DatasetFactory.create_dataset(
             tenant=self.tenant,
@@ -855,7 +850,7 @@ class TestDatasetUpdateAPI(TestCase):
             asset=None,
             format="CSV",
             version=1,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def tearDown(self):
@@ -871,11 +866,7 @@ class TestDatasetUpdateAPI(TestCase):
 
         # Most fields are read-only, so we can only update limited fields
         # Check what fields are actually updatable
-        response = self.client.patch(
-            f'/api/v1/datasets/{self.dataset.id}/',
-            {},
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/datasets/{self.dataset.id}/", {}, format="json")
 
         # Should succeed even with empty update
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT])
@@ -888,12 +879,9 @@ class TestDatasetUpdateAPI(TestCase):
         # PUT requires all fields, but most are read-only
         # Check serializer to see what's actually updatable
         response = self.client.put(
-            f'/api/v1/datasets/{self.dataset.id}/',
-            {
-                "file": str(self.file.id),
-                "format": "CSV"
-            },
-            format="json"
+            f"/api/v1/datasets/{self.dataset.id}/",
+            {"file": str(self.file.id), "format": "CSV"},
+            format="json",
         )
 
         # Should succeed or return validation error if required fields missing
@@ -903,11 +891,7 @@ class TestDatasetUpdateAPI(TestCase):
         """Test tenant isolation - user can only update their tenant's datasets"""
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
-        response = self.client.patch(
-            f'/api/v1/datasets/{self.dataset.id}/',
-            {},
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/datasets/{self.dataset.id}/", {}, format="json")
 
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT])
 
@@ -917,32 +901,24 @@ class TestDatasetUpdateAPI(TestCase):
             name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         ensure_tenant_has_active_subscription(tenant_b)
         user_b = UserFactory.create_user(
             email=f"user_b-{uuid.uuid4().hex[:8]}@example.com",
             tenant=tenant_b,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
 
         self.client.force_authenticate(user=user_b)
-        response = self.client.patch(
-            f'/api/v1/datasets/{self.dataset.id}/',
-            {},
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/datasets/{self.dataset.id}/", {}, format="json")
 
         # Should return 404 due to tenant filtering
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_update_dataset_unauthenticated(self):
         """Test unauthenticated user cannot update dataset"""
-        response = self.client.patch(
-            f'/api/v1/datasets/{self.dataset.id}/',
-            {},
-            format="json"
-        )
+        response = self.client.patch(f"/api/v1/datasets/{self.dataset.id}/", {}, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -959,13 +935,13 @@ class TestDatasetDeleteAPI(TestCase):
             name=f"Tenant A {uuid.uuid4().hex[:8]}",
             slug=f"tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         self.tenant_b = TenantFactory.create_tenant(
             name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
         ensure_tenant_has_active_subscription(self.tenant_a)
         ensure_tenant_has_active_subscription(self.tenant_b)
@@ -973,12 +949,12 @@ class TestDatasetDeleteAPI(TestCase):
         self.user_a = UserFactory.create_user(
             email=f"user_a-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_a,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         self.user_b = UserFactory.create_user(
             email=f"user_b-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant_b,
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         self.user_a.refresh_from_db()
         self.user_b.refresh_from_db()
@@ -990,7 +966,7 @@ class TestDatasetDeleteAPI(TestCase):
             content_type="text/csv",
             size=1024,
             status=FileStatus.ACTIVE,
-            created_by=self.user_a
+            created_by=self.user_a,
         )
         self.dataset = DatasetFactory.create_dataset(
             tenant=self.tenant_a,
@@ -998,7 +974,7 @@ class TestDatasetDeleteAPI(TestCase):
             asset=None,
             format="CSV",
             version=1,
-            created_by=self.user_a
+            created_by=self.user_a,
         )
 
     def tearDown(self):
@@ -1010,7 +986,7 @@ class TestDatasetDeleteAPI(TestCase):
     def test_delete_dataset_success(self):
         """Test successful dataset deletion"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.delete(f'/api/v1/datasets/{self.dataset.id}/')
+        response = self.client.delete(f"/api/v1/datasets/{self.dataset.id}/")
 
         # Should return 204 No Content or 200 OK
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT])
@@ -1026,21 +1002,21 @@ class TestDatasetDeleteAPI(TestCase):
     def test_delete_dataset_tenant_isolation(self):
         """Test tenant isolation - user can only delete their tenant's datasets"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.delete(f'/api/v1/datasets/{self.dataset.id}/')
+        response = self.client.delete(f"/api/v1/datasets/{self.dataset.id}/")
 
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT])
 
     def test_delete_dataset_cannot_delete_other_tenant(self):
         """Test user cannot delete datasets from other tenant"""
         self.client.force_authenticate(user=self.user_b)
-        response = self.client.delete(f'/api/v1/datasets/{self.dataset.id}/')
+        response = self.client.delete(f"/api/v1/datasets/{self.dataset.id}/")
 
         # Should return 404 due to tenant filtering
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_delete_dataset_unauthenticated(self):
         """Test unauthenticated user cannot delete dataset"""
-        response = self.client.delete(f'/api/v1/datasets/{self.dataset.id}/')
+        response = self.client.delete(f"/api/v1/datasets/{self.dataset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -1048,7 +1024,6 @@ class TestDatasetDeleteAPI(TestCase):
         """Test deleting non-existent dataset"""
         self.client.force_authenticate(user=self.user_a)
         fake_id = uuid.uuid4()
-        response = self.client.delete(f'/api/v1/datasets/{fake_id}/')
+        response = self.client.delete(f"/api/v1/datasets/{fake_id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-

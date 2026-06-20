@@ -181,6 +181,7 @@ def test_script_json_includes_scenario_coverage():
             str(REPO_ROOT / "scripts" / "report_uc_journey_test_coverage.py"),
             "--json",
         ],
+        check=False,
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -193,11 +194,15 @@ def test_script_json_includes_scenario_coverage():
     assert "use_cases" in sc
     assert "user_journeys" in sc
     # Each entry is id -> {success, failure, edge}
-    for uc_id, cov in list(sc["use_cases"].items())[:3]:
+    for _uc_id, cov in list(sc["use_cases"].items())[:3]:
         assert isinstance(cov, dict)
         assert "success" in cov and "failure" in cov and "edge" in cov
-        assert isinstance(cov["success"], bool) and isinstance(cov["failure"], bool) and isinstance(cov["edge"], bool)
-    for j_id, cov in list(sc["user_journeys"].items())[:3]:
+        assert (
+            isinstance(cov["success"], bool)
+            and isinstance(cov["failure"], bool)
+            and isinstance(cov["edge"], bool)
+        )
+    for _j_id, cov in list(sc["user_journeys"].items())[:3]:
         assert isinstance(cov, dict)
         assert "success" in cov and "failure" in cov and "edge" in cov
 
@@ -209,6 +214,7 @@ def test_script_markdown_includes_scenario_column():
             sys.executable,
             str(REPO_ROOT / "scripts" / "report_uc_journey_test_coverage.py"),
         ],
+        check=False,
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -232,6 +238,7 @@ def test_script_ci_mode_produces_json_artifact(tmp_path):
             "--output",
             str(out_file),
         ],
+        check=False,
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -266,7 +273,7 @@ def test_run_ci_mode_includes_scenario_coverage_when_provided():
     journey_scenario = {
         "JOURNEY-AUTH-001": {"success": True, "failure": True, "edge": True},
     }
-    exit_code, result = run_ci_mode(
+    _exit_code, result = run_ci_mode(
         root=REPO_ROOT,
         uc_ids=list(uc_to_files),
         journey_ids=list(journey_to_files),
@@ -295,6 +302,7 @@ def test_script_ci_mode_exit_zero_or_one():
             str(REPO_ROOT / "scripts" / "report_uc_journey_test_coverage.py"),
             "--ci-mode",
         ],
+        check=False,
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -400,12 +408,7 @@ def test_strip_gap_blocks_gap_at_eof_terminates_cleanly():
     sys.path.insert(0, str(REPO_ROOT))
     from scripts.report_uc_journey_test_coverage import strip_gap_blocks
 
-    content = (
-        "/**\n"
-        " * Use cases covered: UC-Y-001\n"
-        " * Coverage gap:\n"
-        " *   - UC-Y-002\n"
-    )
+    content = "/**\n * Use cases covered: UC-Y-001\n * Coverage gap:\n *   - UC-Y-002\n"
     out = strip_gap_blocks(content)
     assert "UC-Y-001" in out
     assert "UC-Y-002" not in out
@@ -450,9 +453,7 @@ def test_find_references_in_file_excludes_gap_listed_ids(tmp_path):
         "test('x', () => {});\n",
         encoding="utf-8",
     )
-    found = find_references_in_file(
-        spec, ["UC-TRANS-001", "UC-TRANS-002", "UC-TRANS-003"]
-    )
+    found = find_references_in_file(spec, ["UC-TRANS-001", "UC-TRANS-002", "UC-TRANS-003"])
     assert "UC-TRANS-001" in found
     assert "UC-TRANS-002" not in found, (
         "Regression: substring matcher attributed gap-listed UC-TRANS-002 as covered. "
@@ -480,9 +481,7 @@ def test_strip_gap_blocks_realworld_d4_specs_eliminate_false_positives():
     ]
     for spec in specs:
         assert spec.is_file(), f"D4 anchor spec missing: {spec}"
-        found = find_references_in_file(
-            spec, ["UC-TRANS-001", "UC-TRANS-002", "UC-TRANS-003"]
-        )
+        found = find_references_in_file(spec, ["UC-TRANS-001", "UC-TRANS-002", "UC-TRANS-003"])
         assert "UC-TRANS-001" in found, f"{spec.name} should attribute UC-TRANS-001"
         assert "UC-TRANS-002" not in found, (
             f"{spec.name} false-attributes UC-TRANS-002 as covered — Phase 226.D4 closure violated"

@@ -8,10 +8,12 @@ Client for delivering webhooks with circuit breaker and retry logic.
 - Used for delivering webhooks to external endpoints
 - Provides retry logic, circuit breaker, and distributed tracing
 """
+
+import time
+from typing import Any
+
 import httpx
 import structlog
-import time
-from typing import Dict, Any, Optional, Tuple
 from django.conf import settings
 
 from hub.apps.core.resilience.circuit_breaker import (
@@ -50,7 +52,7 @@ class WebhookDeliveryClient:
             failure_threshold=5,
             timeout_seconds=60,
             success_threshold=2,
-            redis_client=get_redis_client()
+            redis_client=get_redis_client(),
         )
 
     def _request_with_retry(
@@ -81,10 +83,10 @@ class WebhookDeliveryClient:
         trace_headers = get_trace_headers()
         if trace_headers:
             # Merge trace headers into existing headers
-            if 'headers' in kwargs:
-                kwargs['headers'].update(trace_headers)
+            if "headers" in kwargs:
+                kwargs["headers"].update(trace_headers)
             else:
-                kwargs['headers'] = trace_headers
+                kwargs["headers"] = trace_headers
 
         # Retry logic with exponential backoff
         for attempt in range(self.max_retries + 1):
@@ -96,7 +98,7 @@ class WebhookDeliveryClient:
                     )
                 )
                 if response.status_code >= 500 and attempt < self.max_retries:
-                    delay = self.backoff_factor * (2 ** attempt)
+                    delay = self.backoff_factor * (2**attempt)
                     logger.warning(
                         "webhook_delivery_http_retry",
                         status_code=response.status_code,
@@ -118,7 +120,7 @@ class WebhookDeliveryClient:
             except httpx.RequestError as e:
                 # Retry on network errors
                 if attempt < self.max_retries:
-                    delay = self.backoff_factor * (2 ** attempt)
+                    delay = self.backoff_factor * (2**attempt)
                     logger.warning(
                         "webhook_delivery_network_retry",
                         error=str(e),
@@ -134,12 +136,12 @@ class WebhookDeliveryClient:
     def deliver_webhook(
         self,
         url: str,
-        payload: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None,
-        data: Optional[str] = None,
+        payload: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        data: str | None = None,
         *,
         follow_redirects: bool = True,
-    ) -> Tuple[int, str]:
+    ) -> tuple[int, str]:
         """
         Deliver webhook with retry and circuit breaker protection.
 
@@ -159,17 +161,17 @@ class WebhookDeliveryClient:
             httpx.HTTPStatusError: On HTTP errors
             httpx.RequestError: On network errors
         """
-        request_kwargs: Dict[str, Any] = {
-            'headers': headers or {},
+        request_kwargs: dict[str, Any] = {
+            "headers": headers or {},
         }
 
         # Use data if provided, otherwise use json payload
         if data is not None:
-            request_kwargs['content'] = data
-            if 'headers' in request_kwargs:
-                request_kwargs['headers']['Content-Type'] = 'application/json'
+            request_kwargs["content"] = data
+            if "headers" in request_kwargs:
+                request_kwargs["headers"]["Content-Type"] = "application/json"
         elif payload is not None:
-            request_kwargs['json'] = payload
+            request_kwargs["json"] = payload
         else:
             raise ValueError("Either 'payload' or 'data' must be provided")
 
@@ -185,9 +187,9 @@ class WebhookDeliveryClient:
     def deliver_webhook_with_response(
         self,
         url: str,
-        payload: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None,
-        data: Optional[str] = None,
+        payload: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        data: str | None = None,
         *,
         follow_redirects: bool = False,
     ) -> httpx.Response:
@@ -213,16 +215,16 @@ class WebhookDeliveryClient:
             httpx.HTTPStatusError: On HTTP errors (when follow_redirects=True)
             httpx.RequestError: On network errors
         """
-        request_kwargs: Dict[str, Any] = {
-            'headers': headers or {},
+        request_kwargs: dict[str, Any] = {
+            "headers": headers or {},
         }
 
         if data is not None:
-            request_kwargs['content'] = data
-            if 'headers' in request_kwargs:
-                request_kwargs['headers']['Content-Type'] = 'application/json'
+            request_kwargs["content"] = data
+            if "headers" in request_kwargs:
+                request_kwargs["headers"]["Content-Type"] = "application/json"
         elif payload is not None:
-            request_kwargs['json'] = payload
+            request_kwargs["json"] = payload
         else:
             raise ValueError("Either 'payload' or 'data' must be provided")
 
@@ -230,7 +232,7 @@ class WebhookDeliveryClient:
             "POST", url, follow_redirects=follow_redirects, **request_kwargs
         )
 
-    def health_check(self) -> Tuple[bool, str]:
+    def health_check(self) -> tuple[bool, str]:
         """
         Health check for webhook delivery client.
 
@@ -240,14 +242,14 @@ class WebhookDeliveryClient:
         try:
             # Check circuit breaker state (if available)
             # Note: Circuit breaker state is internal, but we can check if it exists
-            if hasattr(self._circuit_breaker, '_state'):
+            if hasattr(self._circuit_breaker, "_state"):
                 # Internal state check - circuit breaker is working
                 return True, "Webhook delivery client is healthy"
 
             return True, "Webhook delivery client is healthy"
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
             logger.error("webhook_client_health_check_failed", error=str(e))
-            return False, f"Health check error: {str(e)}"
+            return False, f"Health check error: {e!s}"
 
     def close(self):
         """
@@ -256,10 +258,10 @@ class WebhookDeliveryClient:
         Should be called when the client is no longer needed to properly
         close underlying socket connections.
         """
-        if hasattr(self, 'client') and self.client is not None:
+        if hasattr(self, "client") and self.client is not None:
             try:
                 self.client.close()
-            except Exception as e:
+            except OSError as e:
                 logger.debug("webhook_client_close_error", error=str(e))
 
     def __del__(self):
@@ -278,5 +280,3 @@ class WebhookDeliveryClient:
         """Context manager exit - ensures client is closed."""
         self.close()
         return False
-
-

@@ -5,6 +5,22 @@
 line-length = 100
 target-version = "py311"
 
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "build",
+    "dist",
+    "migrations",
+    "node_modules",
+    "backups",
+    "cli/build",
+]
+
 [lint]
 select = [
     "E",   # pycodestyle errors
@@ -28,6 +44,8 @@ ignore = [
     "PLR0913", # too many arguments
     "PLR2004", # magic value used in comparison
     "TRY003", # avoid specifying long messages outside the exception class
+    "PLC0415", # lazy imports inside functions (Django pattern to avoid circular imports)
+    "E402",  # module-level imports after django.setup() (Django initialization pattern)
 ]
 
 [lint.isort]
@@ -37,4 +55,6 @@ known-first-party = ["hub"]
 "__init__.py" = ["F401"]  # unused imports in __init__.py
 "tests/**/*.py" = ["PLR2004", "S101"]  # allow magic numbers and asserts in tests
 "hub/apps/**/migrations/*.py" = ["ALL"]  # ignore migrations
+"scripts/check_doc_journey_marker_sync.py" = ["PLR0912", "PLR0915"]  # CLI tool — multi-check runner
+"scripts/check_doc_uc_marker_sync.py" = ["PLR0912", "PLR0915"]  # CLI tool — same pattern
 

@@ -29,6 +29,7 @@ Optional:
     SMOKE_COMPLIANCE_POLL_TIMEOUT     Max seconds to wait (default: 60)
     SMOKE_COMPLIANCE_POLL_INTERVAL    Seconds between polls (default: 5)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -52,23 +53,24 @@ _FAILURE_STATES = frozenset({"failed", "error", "errored", "cancelled", "cancele
 _TERMINAL_STATES = _SUCCESS_STATES | _FAILURE_STATES
 
 # Compliance API paths (relative to base_url)
-_FILES_INIT_PATH    = "/api/v1/files/init/"
+_FILES_INIT_PATH = "/api/v1/files/init/"
 _FILES_COMPLETE_TPL = "/api/v1/files/{file_id}/complete/"
-_FILES_DELETE_TPL   = "/api/v1/files/{file_id}/"
-_RUNS_PATH          = "/api/v1/compliance/runs/"
-_RUN_DETAIL_TPL     = "/api/v1/compliance/runs/{run_id}/"
+_FILES_DELETE_TPL = "/api/v1/files/{file_id}/"
+_RUNS_PATH = "/api/v1/compliance/runs/"
+_RUN_DETAIL_TPL = "/api/v1/compliance/runs/{run_id}/"
 
 # CSV with email (triggers GDPR) + national_id_cn (triggers PIPL_CN)
 _TEST_CSV = (
-    "email,national_id_cn,name\n"
-    "alice@example.com,110101199001011234,Alice\n"
-    "bob@example.com,310115198505152345,Bob\n"
-).encode()
+    b"email,national_id_cn,name\n"
+    b"alice@example.com,110101199001011234,Alice\n"
+    b"bob@example.com,310115198505152345,Bob\n"
+)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -99,21 +101,17 @@ def _poll_run(
             timeout=timeout,
         )
         assert resp.status_code == 200, (
-            f"Polling compliance run {run_id} returned "
-            f"{resp.status_code}: {resp.text[:400]}"
+            f"Polling compliance run {run_id} returned {resp.status_code}: {resp.text[:400]}"
         )
         last_data = resp.json()
         last_status = str(last_data.get("status", "unknown")).lower()
 
         elapsed = poll_timeout - (deadline - time.monotonic())
-        print(
-            f"  compliance_run_id={run_id} status={last_status} "
-            f"(elapsed={elapsed:.1f}s)"
-        )
+        print(f"  compliance_run_id={run_id} status={last_status} (elapsed={elapsed:.1f}s)")
 
         if last_status in _TERMINAL_STATES:
             break
-        time.sleep(poll_interval)  # INTENTIONAL: test-specific delay
+        time.sleep(poll_interval)  # noqa: sleep-needed  # INTENTIONAL: test-specific delay
     else:
         pytest.fail(
             f"Compliance run {run_id} did not reach a terminal state within "
@@ -139,6 +137,7 @@ def _poll_run(
 # ---------------------------------------------------------------------------
 # Smoke test class
 # ---------------------------------------------------------------------------
+
 
 class TestCompliancePipelineV2:
     """
@@ -178,13 +177,12 @@ class TestCompliancePipelineV2:
                 timeout=timeout,
             )
             if init_resp.status_code == 404:
-                pytest.skip(
+                pytest.skip(  # noqa: skip-in-body — runtime service dependency
                     f"Files init endpoint not found at {_FILES_INIT_PATH} — "
                     "check SMOKE_BASE_URL and API routing."
                 )
             assert init_resp.status_code in (200, 201), (
-                f"File init failed ({init_resp.status_code}): "
-                f"{init_resp.text[:400]}"
+                f"File init failed ({init_resp.status_code}): {init_resp.text[:400]}"
             )
 
             init_data = init_resp.json()
@@ -207,7 +205,9 @@ class TestCompliancePipelineV2:
                 put_resp = upload_session.post(
                     upload_url,
                     data=fields,
-                    files={"file": ("smoke-compliance-test.csv", io.BytesIO(_TEST_CSV), "text/csv")},
+                    files={
+                        "file": ("smoke-compliance-test.csv", io.BytesIO(_TEST_CSV), "text/csv")
+                    },
                     timeout=timeout,
                 )
             else:
@@ -220,8 +220,7 @@ class TestCompliancePipelineV2:
                 )
 
             assert put_resp.status_code in (200, 204), (
-                f"S3 presigned upload failed ({put_resp.status_code}): "
-                f"{put_resp.text[:400]}"
+                f"S3 presigned upload failed ({put_resp.status_code}): {put_resp.text[:400]}"
             )
             print(f"  File uploaded to S3 ({csv_size} bytes, status={put_resp.status_code})")
 
@@ -234,8 +233,7 @@ class TestCompliancePipelineV2:
                 timeout=timeout,
             )
             assert complete_resp.status_code in (200, 201), (
-                f"File complete failed ({complete_resp.status_code}): "
-                f"{complete_resp.text[:400]}"
+                f"File complete failed ({complete_resp.status_code}): {complete_resp.text[:400]}"
             )
             print(f"  File marked ACTIVE (status={complete_resp.status_code})")
 
@@ -257,23 +255,18 @@ class TestCompliancePipelineV2:
                 timeout=timeout,
             )
             if run_resp.status_code == 404:
-                pytest.skip(
-                    f"Compliance runs endpoint not found at {_RUNS_PATH} — "
-                    "check SMOKE_BASE_URL."
+                pytest.skip(  # noqa: skip-in-body — runtime service dependency
+                    f"Compliance runs endpoint not found at {_RUNS_PATH} — check SMOKE_BASE_URL."
                 )
             assert run_resp.status_code in (200, 201, 202), (
-                f"Compliance run create failed ({run_resp.status_code}): "
-                f"{run_resp.text[:500]}"
+                f"Compliance run create failed ({run_resp.status_code}): {run_resp.text[:500]}"
             )
 
             run_data = run_resp.json()
             run_id = run_data.get("id")
             assert run_id, f"No run id in create response: {run_data}"
             initial_status = run_data.get("status", "unknown")
-            print(
-                f"  Compliance run created: run_id={run_id} "
-                f"initial_status={initial_status}"
-            )
+            print(f"  Compliance run created: run_id={run_id} initial_status={initial_status}")
 
             # ----------------------------------------------------------------
             # Step 5: Poll until SUCCEEDED (or FAILED, or timeout)
@@ -318,8 +311,7 @@ class TestCompliancePipelineV2:
                 "PIPL_CN with destination_jurisdiction=US should produce this alert."
             )
             assert isinstance(cross_border_alert, dict), (
-                f"Expected cross_border_alert to be a dict, "
-                f"got {type(cross_border_alert).__name__}"
+                f"Expected cross_border_alert to be a dict, got {type(cross_border_alert).__name__}"
             )
             assert cross_border_alert.get("applicable") is True, (
                 "Expected cross_border_alert.applicable == True. "
@@ -354,10 +346,7 @@ class TestCompliancePipelineV2:
                         f"{base_url}{_RUN_DETAIL_TPL.format(run_id=run_id)}",
                         timeout=timeout,
                     )
-                    print(
-                        f"\n  Cleanup: DELETE compliance run {run_id} "
-                        f"→ {del_resp.status_code}"
-                    )
+                    print(f"\n  Cleanup: DELETE compliance run {run_id} → {del_resp.status_code}")
                 except Exception as exc:
                     print(f"\n  Cleanup warning: could not delete run {run_id}: {exc}")
 
@@ -367,9 +356,6 @@ class TestCompliancePipelineV2:
                         f"{base_url}{_FILES_DELETE_TPL.format(file_id=file_id)}",
                         timeout=timeout,
                     )
-                    print(
-                        f"  Cleanup: DELETE file {file_id} "
-                        f"→ {del_resp.status_code}"
-                    )
+                    print(f"  Cleanup: DELETE file {file_id} → {del_resp.status_code}")
                 except Exception as exc:
                     print(f"  Cleanup warning: could not delete file {file_id}: {exc}")

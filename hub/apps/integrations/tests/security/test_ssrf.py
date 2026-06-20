@@ -62,6 +62,7 @@ TDD doctrine
   predetermined ``rdata`` objects — ``dnspython`` is the
   external boundary, the right level for unit testing.
 """
+
 from __future__ import annotations
 
 import time
@@ -69,7 +70,6 @@ import uuid
 
 import pytest
 from django.core.exceptions import ValidationError as DjangoValidationError
-
 
 # ---------------------------------------------------------------------------
 # Parameterised attack URLs — Phase 250.5.B.4 (14 vectors)
@@ -147,11 +147,18 @@ class TestSSRFGuardRejectsAttackVectors:
 class TestSSRFGuardAcceptsValidUrls:
     """A valid public-internet URL passes validation."""
 
-    @pytest.mark.parametrize("safe_url", [
-        "https://api.example.com/",
-        "http://raw.githubusercontent.com/owner/repo/main/file.csv",
-        "https://data.gov/dataset/123/download.parquet",
-    ])
+    @pytest.mark.parametrize(
+        "safe_url",
+        [
+            # api.example.com is RFC 2606 reserved — will NEVER resolve.
+            # Use github.com instead: a well-known public hostname that
+            # resolves consistently from any network with internet access
+            # and won't be mistaken for an SSRF-blocked IP range.
+            "https://github.com/",
+            "http://raw.githubusercontent.com/owner/repo/main/file.csv",
+            "https://data.gov/dataset/123/download.parquet",
+        ],
+    )
     def test_safe_url_passes(self, safe_url):
         """Real DNS lookup against well-known public hostnames.
         Skipped if DNS is unavailable (CI offline runners)."""
@@ -159,14 +166,34 @@ class TestSSRFGuardAcceptsValidUrls:
             SSRFGuard,
             SSRFViolationError,
         )
+
         try:
             SSRFGuard.validate(safe_url)
         except SSRFViolationError as exc:
             # If DNS is unavailable in the runner, treat the test
             # as a skip rather than a fail.
             if "could not be resolved" in str(exc) or "timed out" in str(exc):
-                pytest.skip(f"DNS unavailable: {exc}")
+                pytest.skip(f"DNS unavailable: {exc}")  # noqa: skip-in-body — runtime service dependency
             raise
+
+    @pytest.mark.parametrize(
+        "safe_ip_url",
+        [
+            "https://8.8.8.8/healthcheck",
+            "https://1.1.1.1/path",
+        ],
+    )
+    def test_safe_ip_literal_passes_no_dns(self, safe_ip_url):
+        """Public IP literals pass validation WITHOUT any DNS lookup.
+
+        Complements ``test_safe_url_passes`` which depends on live DNS.
+        IP-literal URLs are the lower-bound validation path — no
+        resolver call is made — so they exercise a different code
+        branch and never skip on DNS availability.
+        """
+        from hub.apps.security.url_validators import SSRFGuard
+
+        SSRFGuard.validate(safe_ip_url)  # Must not raise
 
 
 # ---------------------------------------------------------------------------
@@ -182,10 +209,9 @@ class TestSSRFGuardAllowlist:
 
     def test_allowlist_bypasses_rfc1918_block(self):
         """A normally-blocked RFC1918 host on the allowlist passes."""
-        from hub.apps.security.url_validators import SSRFGuard
-
         # Without allowlist: blocked.
-        from hub.apps.security.url_validators import SSRFViolationError
+        from hub.apps.security.url_validators import SSRFGuard, SSRFViolationError
+
         with pytest.raises(SSRFViolationError):
             SSRFGuard.validate("http://10.0.0.50/data")
 
@@ -204,6 +230,7 @@ class TestSSRFGuardAllowlist:
             SSRFGuard,
             SSRFViolationError,
         )
+
         with pytest.raises(SSRFViolationError):
             SSRFGuard.validate(
                 "file:///etc/passwd",
@@ -223,6 +250,7 @@ class TestSSRFGuardAllowlist:
             SSRFGuard,
             SSRFViolationError,
         )
+
         # "evil-example.com.attacker.com" is NOT exactly "example.com"
         # — the allowlist should not match.
         with pytest.raises(SSRFViolationError):
@@ -247,6 +275,7 @@ class TestExternalResourceReferenceSSRFIntegration:
     def _seed_asset(self):
         from hub.apps.assets.models import Asset, AssetStatus
         from hub.apps.tenants.models import Tenant
+
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
             name=f"SSRF-{uid}",
@@ -262,12 +291,15 @@ class TestExternalResourceReferenceSSRFIntegration:
         )
         return asset
 
-    @pytest.mark.parametrize("attack_url", [
-        "http://127.0.0.1/data.csv",
-        "http://10.0.0.1/data.csv",
-        "http://169.254.169.254/latest/meta-data/",
-        "file:///etc/passwd",
-    ])
+    @pytest.mark.parametrize(
+        "attack_url",
+        [
+            "http://127.0.0.1/data.csv",
+            "http://10.0.0.1/data.csv",
+            "http://169.254.169.254/latest/meta-data/",
+            "file:///etc/passwd",
+        ],
+    )
     def test_clean_rejects_attack_url(self, attack_url):
         from hub.apps.assets.models import ExternalResourceReference
 
@@ -305,11 +337,11 @@ class TestExternalResourceReferenceSSRFIntegration:
         except DjangoValidationError as exc:
             msg = str(exc)
             if "could not be resolved" in msg or "timed out" in msg:
-                pytest.skip(f"DNS unavailable: {msg}")
+                pytest.skip(f"DNS unavailable: {msg}")  # noqa: skip-in-body — runtime service dependency
             raise
         except SSRFViolationError as exc:
             if "could not be resolved" in str(exc) or "timed out" in str(exc):
-                pytest.skip(f"DNS unavailable: {exc}")
+                pytest.skip(f"DNS unavailable: {exc}")  # noqa: skip-in-body — runtime service dependency
             raise
 
 
@@ -340,6 +372,7 @@ class TestSSRFGuardDnspythonRevalidate:
         """Simulate a hostname that resolves to 127.0.0.1 at
         worker time. The guard MUST raise."""
         import dns.resolver
+
         from hub.apps.security.url_validators import (
             SSRFGuard,
             SSRFViolationError,
@@ -367,6 +400,7 @@ class TestSSRFGuardDnspythonRevalidate:
     def test_revalidate_passes_for_public_ip(self, monkeypatch):
         """Hostname that resolves to a public IP passes."""
         import dns.resolver
+
         from hub.apps.security.url_validators import SSRFGuard
 
         class _FakeAnswer:
@@ -388,6 +422,7 @@ class TestSSRFGuardDnspythonRevalidate:
         """A hostname whose A-record is RFC1918 but is on the
         allowlist passes."""
         import dns.resolver
+
         from hub.apps.security.url_validators import SSRFGuard
 
         class _FakeAnswer:
@@ -403,11 +438,13 @@ class TestSSRFGuardDnspythonRevalidate:
         monkeypatch.setattr(dns.resolver, "resolve", _fake_resolve)
         # Without allowlist: rejected.
         from hub.apps.security.url_validators import SSRFViolationError
+
         with pytest.raises(SSRFViolationError):
             SSRFGuard.revalidate_resolved_ip("partner.corp")
         # With allowlist: passes.
         SSRFGuard.revalidate_resolved_ip(
-            "partner.corp", allowlist=["partner.corp"],
+            "partner.corp",
+            allowlist=["partner.corp"],
         )
 
 
@@ -458,5 +495,5 @@ class TestSSRFGuardSLOBudget:
         # development / CI ceiling.
         assert p95 < 0.025, (
             f"SSRFGuard.validate p95 budget exceeded: "
-            f"{p95*1000:.2f}ms > 25ms (production SLO 5ms)"
+            f"{p95 * 1000:.2f}ms > 25ms (production SLO 5ms)"
         )

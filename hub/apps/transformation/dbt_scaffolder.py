@@ -9,8 +9,10 @@ Supports both HubContract canonical keys (``data_type``, ``nullable``,
 ``is_not_null``) for seamless interop between code-first and
 contract-first flows.
 """
+
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+
+from typing import Any
 
 
 class DbtModelScaffolder:
@@ -27,13 +29,13 @@ class DbtModelScaffolder:
 
     def scaffold_all(
         self,
-        contract: Dict[str, Any],
+        contract: dict[str, Any],
         project_name: str = "dbt_project",
         source_name: str = "raw",
-        table_name: Optional[str] = None,
+        table_name: str | None = None,
         profile: str = "meshant_dbt",
         materialized: str = "table",
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """Generate all three dbt scaffold files from a HubContract.
 
         Args:
@@ -61,9 +63,9 @@ class DbtModelScaffolder:
 
     @staticmethod
     def _generate_sql(
-        contract: Dict[str, Any],
+        contract: dict[str, Any],
         source_name: str = "raw",
-        table_name: Optional[str] = None,
+        table_name: str | None = None,
     ) -> str:
         """Generate a dbt model ``.sql`` file with SELECT + CAST.
 
@@ -73,8 +75,8 @@ class DbtModelScaffolder:
         emitted as bare ``source.<col>`` references.
         """
         schema = contract.get("schema", {})
-        fields: List[Dict[str, Any]] = schema.get("fields", [])
-        primary_keys: List[str] = schema.get("primary_key", [])
+        fields: list[dict[str, Any]] = schema.get("fields", [])
+        primary_keys: list[str] = schema.get("primary_key", [])
         title = contract.get("info", {}).get("title", "model")
         effective_table = table_name or title
 
@@ -89,26 +91,20 @@ class DbtModelScaffolder:
         non_pk_fields = [f for f in fields if f.get("name") not in primary_keys]
         ordered = pk_fields + non_pk_fields
 
-        lines: List[str] = []
+        lines: list[str] = []
         for f in ordered:
             name = f.get("name", "unknown")
             dtype = f.get("data_type") or f.get("type")
             if dtype:
-                lines.append(
-                    f"    CAST(source.{name} AS {dtype}) AS {name}"
-                )
+                lines.append(f"    CAST(source.{name} AS {dtype}) AS {name}")
             else:
                 lines.append(f"    source.{name}")
 
         columns = ",\n".join(lines)
-        return (
-            f"SELECT\n"
-            f"{columns}\n"
-            f"FROM {{{{ source('{source_name}', '{effective_table}') }}}}\n"
-        )
+        return f"SELECT\n{columns}\nFROM {{{{ source('{source_name}', '{effective_table}') }}}}\n"
 
     @staticmethod
-    def _generate_yaml(contract: Dict[str, Any]) -> str:
+    def _generate_yaml(contract: dict[str, Any]) -> str:
         """Generate a dbt model ``.yml`` schema file with columns,
         descriptions, and tests.
 
@@ -120,19 +116,19 @@ class DbtModelScaffolder:
         import yaml
 
         schema = contract.get("schema", {})
-        fields: List[Dict[str, Any]] = schema.get("fields", [])
+        fields: list[dict[str, Any]] = schema.get("fields", [])
         info = contract.get("info", {})
         title = info.get("title", "model")
         description = info.get("description", "")
 
-        columns: List[Dict[str, Any]] = []
+        columns: list[dict[str, Any]] = []
         for f in fields:
-            col: Dict[str, Any] = {
+            col: dict[str, Any] = {
                 "name": f.get("name", "unknown"),
                 "description": f.get("description", ""),
             }
 
-            tests: List[Any] = []
+            tests: list[Any] = []
             is_pk = f.get("is_primary_key", False)
             is_unique = f.get("is_unique", False)
             is_not_null = f.get("is_not_null", False)
@@ -140,16 +136,13 @@ class DbtModelScaffolder:
 
             if is_pk or is_unique:
                 tests.append("unique")
-            if is_pk or is_not_null or not nullable:
-                if "not_null" not in tests:
-                    tests.append("not_null")
+            if (is_pk or is_not_null or not nullable) and "not_null" not in tests:
+                tests.append("not_null")
 
             # enum → accepted_values test
             enum_values = f.get("enum")
             if enum_values:
-                tests.append({
-                    "accepted_values": {"values": list(enum_values)}
-                })
+                tests.append({"accepted_values": {"values": list(enum_values)}})
 
             col["tests"] = tests
             columns.append(col)

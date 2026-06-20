@@ -8,7 +8,6 @@ import uuid
 from datetime import timedelta
 
 from django.db import transaction
-from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -18,7 +17,6 @@ from rest_framework.response import Response
 from hub.apps.api.standards.pagination import StandardPageNumberPagination
 from hub.apps.audit.utils import log_user_operation
 from hub.apps.auth.utils import sha256_hex
-from hub.apps.tenants.models import Tenant
 
 from .models import Role, User, UserRole, UserStatus
 from .serializers import (
@@ -443,6 +441,7 @@ class UserViewSet(viewsets.ModelViewSet):
         # stale roles for up to 5 minutes, causing spurious 403s on role-gated
         # routes like /audit after an AUDITOR role is assigned.
         from django.core.cache import cache
+
         cache.delete(f"user:me:{user.id}")
 
         # Log audit event

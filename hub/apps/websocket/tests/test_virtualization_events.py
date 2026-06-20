@@ -8,23 +8,17 @@ These tests verify:
 - Virtualization-specific resource ID filtering
 - Query execution progress events real-time updates
 """
-import uuid
-from datetime import datetime, timedelta, timezone as dt_timezone
-from unittest.mock import AsyncMock, MagicMock, patch
-from hub.apps.websocket.tests.test_base import AsyncWebSocketTransactionTestCase
-from django.utils import timezone as django_timezone
-from asgiref.sync import sync_to_async
 
-from hub.apps.websocket.consumers.event_consumer import EventConsumer
-from hub.apps.websocket.protocol import (
-    WebSocketMessage,
-    WebSocketMessageType,
-    SubscribeMessage,
-)
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User
+import uuid
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from asgiref.sync import sync_to_async
+from django.utils import timezone as django_timezone
+
 from hub.apps.core.events.models import Event as EventModel
-from hub.apps.core.events.bus import get_event_bus
+from hub.apps.websocket.consumers.event_consumer import EventConsumer
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTransactionTestCase
 
 
 class EventConsumerVirtualizationEventTest(AsyncWebSocketTransactionTestCase):
@@ -40,34 +34,21 @@ class EventConsumerVirtualizationEventTest(AsyncWebSocketTransactionTestCase):
 
     def _create_consumer(self, user=None, tenant=None):
         """Create EventConsumer instance for testing."""
-        consumer = EventConsumer()
-        consumer.scope = {
-            "user": user or self.user,
-            "tenant": tenant or self.tenant
-        }
-        consumer.channel_name = "test_channel"
-        consumer.channel_layer = None
-        consumer.send_json_message = AsyncMock()
-        consumer.send = AsyncMock()
-        consumer.close = AsyncMock()
-        consumer.last_activity = datetime.now(dt_timezone.utc)
-        consumer._connection_closed = False
-        consumer.replay_enabled = True
-        consumer.replay_window_seconds = 3600
-        consumer.last_event_timestamps = {}
-        return consumer
+        return self.create_test_consumer(user=user, tenant=tenant)
 
     async def test_virtualization_event_type_filtering_exact_match(self):
         """Test that exact virtualization event types are matched."""
         consumer = self._create_consumer()
         consumer.subscribed_event_types = {
             "virtualization.dataset.created",
-            "virtualization.query.execution.started"
+            "virtualization.query.execution.started",
         }
 
         # Test exact match
         self.assertTrue(consumer._is_event_type_subscribed("virtualization.dataset.created"))
-        self.assertTrue(consumer._is_event_type_subscribed("virtualization.query.execution.started"))
+        self.assertTrue(
+            consumer._is_event_type_subscribed("virtualization.query.execution.started")
+        )
         self.assertFalse(consumer._is_event_type_subscribed("virtualization.dataset.updated"))
         self.assertFalse(consumer._is_event_type_subscribed("odps.created"))
 
@@ -78,9 +59,15 @@ class EventConsumerVirtualizationEventTest(AsyncWebSocketTransactionTestCase):
 
         # Test wildcard matching
         self.assertTrue(consumer._is_event_type_subscribed("virtualization.dataset.created"))
-        self.assertTrue(consumer._is_event_type_subscribed("virtualization.query.execution.started"))
-        self.assertTrue(consumer._is_event_type_subscribed("virtualization.query.execution.progress"))
-        self.assertTrue(consumer._is_event_type_subscribed("virtualization.query.execution.completed"))
+        self.assertTrue(
+            consumer._is_event_type_subscribed("virtualization.query.execution.started")
+        )
+        self.assertTrue(
+            consumer._is_event_type_subscribed("virtualization.query.execution.progress")
+        )
+        self.assertTrue(
+            consumer._is_event_type_subscribed("virtualization.query.execution.completed")
+        )
         self.assertFalse(consumer._is_event_type_subscribed("odps.created"))
 
     async def test_virtualization_event_type_filtering_nested_pattern(self):
@@ -89,9 +76,15 @@ class EventConsumerVirtualizationEventTest(AsyncWebSocketTransactionTestCase):
         consumer.subscribed_event_types = {"virtualization.query.*"}
 
         # Test nested pattern matching
-        self.assertTrue(consumer._is_event_type_subscribed("virtualization.query.execution.started"))
-        self.assertTrue(consumer._is_event_type_subscribed("virtualization.query.execution.progress"))
-        self.assertTrue(consumer._is_event_type_subscribed("virtualization.query.execution.completed"))
+        self.assertTrue(
+            consumer._is_event_type_subscribed("virtualization.query.execution.started")
+        )
+        self.assertTrue(
+            consumer._is_event_type_subscribed("virtualization.query.execution.progress")
+        )
+        self.assertTrue(
+            consumer._is_event_type_subscribed("virtualization.query.execution.completed")
+        )
         self.assertFalse(consumer._is_event_type_subscribed("virtualization.dataset.created"))
 
     async def test_virtualization_event_resource_id_filtering(self):
@@ -107,7 +100,7 @@ class EventConsumerVirtualizationEventTest(AsyncWebSocketTransactionTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "virtualization.dataset.created",
             "source": {"tenant_id": str(self.tenant.id)},
-            "data": {"virtual_dataset_id": virtual_dataset_id}
+            "data": {"virtual_dataset_id": virtual_dataset_id},
         }
         consumer.filters = {"virtual_dataset_id": virtual_dataset_id}
         self.assertTrue(consumer._should_send_event(event1, event1["source"]))
@@ -119,8 +112,8 @@ class EventConsumerVirtualizationEventTest(AsyncWebSocketTransactionTestCase):
             "source": {"tenant_id": str(self.tenant.id)},
             "data": {
                 "query_execution_id": query_execution_id,
-                "virtual_dataset_id": virtual_dataset_id
-            }
+                "virtual_dataset_id": virtual_dataset_id,
+            },
         }
         consumer.filters = {"query_execution_id": query_execution_id}
         self.assertTrue(consumer._should_send_event(event2, event2["source"]))
@@ -148,20 +141,18 @@ class EventConsumerVirtualizationEventTest(AsyncWebSocketTransactionTestCase):
             "data": {
                 "query_execution_id": str(uuid.uuid4()),
                 "virtual_dataset_id": str(uuid.uuid4()),
-                "progress_percent": 50.0
+                "progress_percent": 50.0,
             },
-            "metadata": {}
+            "metadata": {},
         }
 
         # Mock deduplication to return False (not duplicate)
-        from hub.apps.core.events.deduplication import (
-            generate_deduplication_key,
-            check_event_duplicate,
-            store_event_id,
-        )
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate') as mock_check:
+
+        with patch(
+            "hub.apps.websocket.consumers.event_consumer.check_event_duplicate"
+        ) as mock_check:
             mock_check.return_value = (False, None)
-            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id') as mock_store:
+            with patch("hub.apps.websocket.consumers.event_consumer.store_event_id") as mock_store:
                 await consumer.send_event(event)
                 # Verify event was sent
                 consumer.send_json_message.assert_called_once()
@@ -183,11 +174,8 @@ class EventConsumerVirtualizationEventTest(AsyncWebSocketTransactionTestCase):
                 tenant_id=self.tenant.id,
                 source_service="virtualization_service",
                 event_version="1.0.0",
-                data={
-                    "virtual_dataset_id": str(uuid.uuid4()),
-                    "name": "Test Dataset"
-                },
-                timestamp=django_timezone.now() - timedelta(minutes=30)
+                data={"virtual_dataset_id": str(uuid.uuid4()), "name": "Test Dataset"},
+                timestamp=django_timezone.now() - timedelta(minutes=30),
             )
 
             event2 = EventModel.objects.create(
@@ -199,22 +187,24 @@ class EventConsumerVirtualizationEventTest(AsyncWebSocketTransactionTestCase):
                 data={
                     "query_execution_id": str(uuid.uuid4()),
                     "virtual_dataset_id": str(uuid.uuid4()),
-                    "progress_percent": 75.0
+                    "progress_percent": 75.0,
                 },
-                timestamp=django_timezone.now() - timedelta(minutes=15)
+                timestamp=django_timezone.now() - timedelta(minutes=15),
             )
             return event1, event2
 
-        event1, event2 = await sync_to_async(_create_events)()
+        _event1, _event2 = await sync_to_async(_create_events)()
 
         # Mock Redis client for deduplication
         mock_redis = MagicMock()
         consumer._get_deduplication_redis_client = MagicMock(return_value=mock_redis)
 
         # Mock deduplication to return False (not duplicate) for replay
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate') as mock_check:
+        with patch(
+            "hub.apps.websocket.consumers.event_consumer.check_event_duplicate"
+        ) as mock_check:
             mock_check.return_value = (False, None)
-            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
+            with patch("hub.apps.websocket.consumers.event_consumer.store_event_id"):
                 # Trigger replay
                 await consumer._replay_missed_virtualization_events()
 
@@ -240,9 +230,9 @@ class EventConsumerVirtualizationEventTest(AsyncWebSocketTransactionTestCase):
             "data": {
                 "query_execution_id": query_execution_id,
                 "virtual_dataset_id": str(uuid.uuid4()),
-                "progress_percent": 50.0
+                "progress_percent": 50.0,
             },
-            "metadata": {}
+            "metadata": {},
         }
 
         # Test with matching query_execution_id filter
@@ -252,4 +242,3 @@ class EventConsumerVirtualizationEventTest(AsyncWebSocketTransactionTestCase):
         # Test with non-matching query_execution_id filter
         consumer.filters = {"query_execution_id": other_execution_id}
         self.assertFalse(consumer._should_send_event(event, event["source"]))
-

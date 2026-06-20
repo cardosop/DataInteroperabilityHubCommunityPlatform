@@ -9,15 +9,13 @@ from datetime import timedelta
 import pytest
 
 pytestmark = pytest.mark.slow
+import uuid
+
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from hub.apps.assets.health_score import AssetHealthScoreService
-from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus, DQStatus
-from hub.apps.assets.popularity import AssetPopularityService
-from hub.apps.assets.recommendations import AssetRecommendationService
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
+from hub.apps.assets.models import AssetStatus, ComplianceStatus, DQStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
 from hub.apps.files.models import File, FileStatus
@@ -26,9 +24,7 @@ from hub.apps.search.models import SearchAnalytics
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
-
 from tests.e2e.conftest import get_response_data
-import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
@@ -42,9 +38,9 @@ class AssetRecommendationsE2ETest(TestCase):
         from django.db.models.signals import post_save
 
         try:
-            from hub.apps.semantic.signals import asset_saved, contract_saved
             from hub.apps.assets.models import Asset
             from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
 
             post_save.disconnect(contract_saved, sender=Contract)
             post_save.disconnect(asset_saved, sender=Asset)
@@ -52,7 +48,10 @@ class AssetRecommendationsE2ETest(TestCase):
             pass
 
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -113,7 +112,7 @@ class AssetRecommendationsE2ETest(TestCase):
 
         # Step 3: Verify recommendations
         self.assertEqual(response.status_code, 200)
-        recommendations = (get_response_data(response) or {})
+        recommendations = get_response_data(response) or {}
 
         self.assertIsInstance(recommendations, list)
         self.assertGreater(len(recommendations), 0)
@@ -135,9 +134,9 @@ class AssetPopularityE2ETest(TestCase):
         from django.db.models.signals import post_save
 
         try:
-            from hub.apps.semantic.signals import asset_saved, contract_saved
             from hub.apps.assets.models import Asset
             from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
 
             post_save.disconnect(contract_saved, sender=Contract)
             post_save.disconnect(asset_saved, sender=Asset)
@@ -145,7 +144,10 @@ class AssetPopularityE2ETest(TestCase):
             pass
 
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
@@ -209,9 +211,9 @@ class AssetHealthScoreE2ETest(TestCase):
         from django.db.models.signals import post_save
 
         try:
-            from hub.apps.semantic.signals import asset_saved, contract_saved
             from hub.apps.assets.models import Asset
             from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
 
             # Disconnect signals to prevent semantic service calls during tests
             post_save.disconnect(contract_saved, sender=Contract)
@@ -221,7 +223,10 @@ class AssetHealthScoreE2ETest(TestCase):
             pass
 
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(

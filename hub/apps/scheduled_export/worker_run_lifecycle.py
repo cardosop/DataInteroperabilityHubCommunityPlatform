@@ -10,7 +10,6 @@ execution so that failures can be retried by the retry_failed_side_effects CronJ
 
 import logging
 from types import SimpleNamespace
-from typing import List
 
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
@@ -23,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 
 def apply_run_completion_side_effects(
-    run: ScheduledExportRun, new_status: str,
+    run: ScheduledExportRun,
+    new_status: str,
 ) -> None:
     """
     Apply side effects when run is PATCHed to COMPLETED or FAILED.
@@ -47,23 +47,25 @@ def apply_run_completion_side_effects(
         "new_status": new_status,
     }
 
-    effect_types: List[str] = [
+    effect_types: list[str] = [
         SideEffectType.NOTIFICATION,
         SideEffectType.AUDIT_EVENT,
     ]
     if new_status == "COMPLETED":
         effect_types.insert(0, SideEffectType.COST_TRACKING)
 
-    side_effects = SideEffect.objects.bulk_create([
-        SideEffect(
-            run_content_type=run_ct,
-            run_object_id=run.pk,
-            effect_type=et,
-            status=SideEffectStatus.PENDING,
-            context_json=context,
-        )
-        for et in effect_types
-    ])
+    side_effects = SideEffect.objects.bulk_create(
+        [
+            SideEffect(
+                run_content_type=run_ct,
+                run_object_id=run.pk,
+                effect_type=et,
+                status=SideEffectStatus.PENDING,
+                context_json=context,
+            )
+            for et in effect_types
+        ]
+    )
 
     # ── 3. Process each immediately ───────────────────────────────────
     for se in side_effects:
@@ -88,23 +90,34 @@ def execute_side_effect(se: SideEffect) -> None:
             _execute_notification(run_id, new_status)
         elif se.effect_type == SideEffectType.AUDIT_EVENT:
             _execute_audit_event(
-                run_id, new_status, scheduled_export_id,
+                run_id,
+                new_status,
+                scheduled_export_id,
             )
 
         se.status = SideEffectStatus.COMPLETED
         se.completed_at = timezone.now()
         se.error_message = None
-        se.save(update_fields=[
-            "status", "completed_at", "error_message",
-            "attempt_count", "updated_at",
-        ])
+        se.save(
+            update_fields=[
+                "status",
+                "completed_at",
+                "error_message",
+                "attempt_count",
+                "updated_at",
+            ]
+        )
     except Exception as exc:
         se.status = SideEffectStatus.FAILED
         se.error_message = str(exc)[:2000]
-        se.save(update_fields=[
-            "status", "error_message",
-            "attempt_count", "updated_at",
-        ])
+        se.save(
+            update_fields=[
+                "status",
+                "error_message",
+                "attempt_count",
+                "updated_at",
+            ]
+        )
         logger.warning(
             "Side effect %s failed: run_object_id=%s error=%s",
             se.effect_type,
@@ -116,6 +129,7 @@ def execute_side_effect(se: SideEffect) -> None:
             from hub.apps.observability.otel_metrics import (
                 side_effect_failures_total,
             )
+
             side_effect_failures_total.labels(
                 effect_type=se.effect_type,
             ).inc()
@@ -128,11 +142,13 @@ def execute_side_effect(se: SideEffect) -> None:
 
 def _execute_cost_tracking(run_id: str) -> None:
     from .cost_tracking import CostTrackingManager
+
     CostTrackingManager.calculate_run_costs(run_id)
 
 
 def _execute_notification(run_id: str, new_status: str) -> None:
     from .models import ScheduledExportRun
+
     run = ScheduledExportRun.objects.select_related(
         "scheduled_export",
     ).get(pk=run_id)
@@ -140,9 +156,12 @@ def _execute_notification(run_id: str, new_status: str) -> None:
 
 
 def _execute_audit_event(
-    run_id: str, new_status: str, scheduled_export_id: str,
+    run_id: str,
+    new_status: str,
+    scheduled_export_id: str,
 ) -> None:
     from hub.apps.audit.utils import create_audit_event
+
     from .models import ScheduledExportRun
 
     run = ScheduledExportRun.objects.select_related(
@@ -172,21 +191,19 @@ def _update_parent_export(
 ) -> None:
     scheduled_export.last_run_at = run.completed_at or timezone.now()
     scheduled_export.last_run_status = new_status
-    scheduled_export.next_run_at = (
-        scheduled_export._calculate_next_run_at()
-    )
+    scheduled_export.next_run_at = scheduled_export._calculate_next_run_at()
 
-    if (
-        new_status == "COMPLETED"
-        and scheduled_export.status == ScheduledExportStatus.ERROR
-    ):
+    if new_status == "COMPLETED" and scheduled_export.status == ScheduledExportStatus.ERROR:
         scheduled_export.status = ScheduledExportStatus.ACTIVE
 
     if new_status == "FAILED":
         scheduled_export.status = ScheduledExportStatus.ERROR
 
     update_fields = [
-        "next_run_at", "last_run_at", "last_run_status", "updated_at",
+        "next_run_at",
+        "last_run_at",
+        "last_run_status",
+        "updated_at",
     ]
     if new_status in ("COMPLETED", "FAILED"):
         update_fields.append("status")
@@ -197,7 +214,8 @@ def _update_parent_export(
 
 
 def _send_completion_or_failure_notification(
-    run: ScheduledExportRun, status: str,
+    run: ScheduledExportRun,
+    status: str,
 ) -> None:
     """Send completion or failure notification if configured."""
     scheduled_export = run.scheduled_export
@@ -216,9 +234,7 @@ def _send_completion_or_failure_notification(
     user_for_template = SimpleNamespace(display_name="")
 
     if status == "COMPLETED":
-        subject = (
-            f"Scheduled Export Completed: {scheduled_export.name}"
-        )
+        subject = f"Scheduled Export Completed: {scheduled_export.name}"
         result_summary = (
             f"Scheduled export '{scheduled_export.name}' completed.\n"
             f"Items exported: {run.items_exported}, "
@@ -236,13 +252,9 @@ def _send_completion_or_failure_notification(
             "job_url": None,
         }
     else:
-        subject = (
-            f"Scheduled Export Failed: {scheduled_export.name}"
-        )
+        subject = f"Scheduled Export Failed: {scheduled_export.name}"
         error_message = (
-            run.result_json.get("error_message", "Unknown")
-            if run.result_json
-            else "Unknown"
+            run.result_json.get("error_message", "Unknown") if run.result_json else "Unknown"
         )
         email_type = EmailType.JOB_FAILURE
         template_name = "notifications/emails/job_failure.html"
@@ -262,11 +274,7 @@ def _send_completion_or_failure_notification(
             subject=subject,
             template_name=template_name,
             context=context,
-            tenant_id=(
-                str(scheduled_export.tenant_id)
-                if scheduled_export.tenant_id
-                else None
-            ),
+            tenant_id=(str(scheduled_export.tenant_id) if scheduled_export.tenant_id else None),
             user_id=None,
         )
     logger.info(

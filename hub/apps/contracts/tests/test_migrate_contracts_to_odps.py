@@ -25,7 +25,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract, OriginalFormat, OriginalSpecType
+from hub.apps.contracts.models import Contract, OriginalSpecType
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
@@ -99,9 +99,9 @@ class MigrateContractsToODPSTestBase(ContractsTestBase):
                     hub_contract["extensions"] = {}
                 if "x_odps" not in hub_contract["extensions"]:
                     hub_contract["extensions"]["x_odps"] = {}
-                hub_contract["extensions"]["x_odps"][
-                    "odps_link"
-                ] = "00000000-0000-0000-0000-000000000000"
+                hub_contract["extensions"]["x_odps"]["odps_link"] = (
+                    "00000000-0000-0000-0000-000000000000"
+                )
 
             contract.hub_contract_json = hub_contract
             contract.save(update_fields=["hub_contract_json"])
@@ -146,7 +146,7 @@ class FindEligibleContractsTest(MigrateContractsToODPSTestBase):
         """Test skipping contracts without marketplace metadata through public API."""
         # Arrange
         # Create contract without marketplace data
-        contract = self._create_odcs_contract_with_marketplace()
+        self._create_odcs_contract_with_marketplace()
 
         # Act
         # Find eligible contracts through public API - call_command() internally calls _find_eligible_contracts()
@@ -414,7 +414,7 @@ class MigrateContractTest(MigrateContractsToODPSTestBase):
             stdout=out,
         )
 
-        output = out.getvalue()
+        out.getvalue()
         # Command should skip the contract (already has ODPS link)
         # Note: The exact output message depends on command implementation
         # Verify that no additional ODPS contract was created

@@ -13,16 +13,19 @@ Usage:
     # Warm cache for refs
     result = warm_ref_cache(refs)
 """
-import time
-from typing import List, Dict, Any, Optional
-import structlog
 
+import time
+from typing import Any
+
+import structlog
 from django.conf import settings
-from hub.apps.contracts.ref_resolver import RefResolver, REDIS_CACHE_ACCESS_PREFIX
+
 from hub.apps.contracts.odps_errors import ODPSRefResolutionError
+from hub.apps.contracts.ref_resolver import REDIS_CACHE_ACCESS_PREFIX, RefResolver
 
 try:
     import redis
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
@@ -31,18 +34,15 @@ except ImportError:
 logger = structlog.get_logger(__name__)
 
 
-def _get_redis_client() -> Optional[Any]:
+def _get_redis_client() -> Any | None:
     """Get Redis client for cache warming."""
     if not REDIS_AVAILABLE:
         return None
 
     try:
-        redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
+        redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
         client = redis.from_url(
-            redis_url,
-            decode_responses=False,
-            socket_connect_timeout=5,
-            socket_timeout=5
+            redis_url, decode_responses=False, socket_connect_timeout=5, socket_timeout=5
         )
         client.ping()
         return client
@@ -50,16 +50,14 @@ def _get_redis_client() -> Optional[Any]:
         logger.warning(
             "ref_warming_redis_unavailable",
             error=str(e),
-            message="Redis unavailable for cache warming"
+            message="Redis unavailable for cache warming",
         )
         return None
 
 
 def get_frequently_accessed_refs(
-    limit: int = 100,
-    min_access_count: int = 1,
-    tenant_id: Optional[str] = None
-) -> List[str]:
+    limit: int = 100, min_access_count: int = 1, tenant_id: str | None = None
+) -> list[str]:
     """
     Get list of frequently accessed external $ref URLs.
 
@@ -76,8 +74,7 @@ def get_frequently_accessed_refs(
     redis_client = _get_redis_client()
     if not redis_client:
         logger.warning(
-            "ref_warming_no_redis",
-            message="Redis unavailable, cannot get frequently accessed refs"
+            "ref_warming_no_redis", message="Redis unavailable, cannot get frequently accessed refs"
         )
         return []
 
@@ -93,7 +90,7 @@ def get_frequently_accessed_refs(
             access_set_key,
             0,
             (effective_limit * 2) - 1,  # Get more to account for filtering
-            withscores=True
+            withscores=True,
         )
 
         ref_urls = []
@@ -104,7 +101,7 @@ def get_frequently_accessed_refs(
 
             # Decode URL hash
             if isinstance(url_hash_bytes, bytes):
-                url_hash = url_hash_bytes.decode('utf-8')
+                url_hash = url_hash_bytes.decode("utf-8")
             else:
                 url_hash = url_hash_bytes
 
@@ -113,7 +110,7 @@ def get_frequently_accessed_refs(
             url_bytes = redis_client.get(url_mapping_key)
 
             if url_bytes:
-                ref_url = url_bytes.decode('utf-8')
+                ref_url = url_bytes.decode("utf-8")
                 ref_urls.append(ref_url)
 
                 # Stop when we have enough refs
@@ -124,7 +121,7 @@ def get_frequently_accessed_refs(
                 logger.debug(
                     "ref_warming_url_mapping_missing",
                     url_hash=url_hash,
-                    message="URL mapping missing for hash"
+                    message="URL mapping missing for hash",
                 )
 
         logger.info(
@@ -132,7 +129,7 @@ def get_frequently_accessed_refs(
             count=len(ref_urls),
             limit=limit,
             min_access_count=min_access_count,
-            message=f"Found {len(ref_urls)} frequently accessed refs"
+            message=f"Found {len(ref_urls)} frequently accessed refs",
         )
 
         return ref_urls
@@ -141,18 +138,18 @@ def get_frequently_accessed_refs(
         logger.warning(
             "ref_warming_get_refs_failed",
             error=str(e),
-            message="Failed to get frequently accessed refs"
+            message="Failed to get frequently accessed refs",
         )
         return []
 
 
 def warm_ref_cache(
-    ref_urls: List[str],
-    tenant_id: Optional[str] = None,
+    ref_urls: list[str],
+    tenant_id: str | None = None,
     batch_size: int = 10,
     *,
-    resolver: Optional[RefResolver] = None,
-) -> Dict[str, Any]:
+    resolver: RefResolver | None = None,
+) -> dict[str, Any]:
     """
     Warm cache for list of external $ref URLs.
 
@@ -176,18 +173,15 @@ def warm_ref_cache(
     """
     start_time = time.time()
     result = {
-        'total': len(ref_urls),
-        'warmed': 0,
-        'skipped': 0,
-        'failed': 0,
-        'duration_seconds': 0.0
+        "total": len(ref_urls),
+        "warmed": 0,
+        "skipped": 0,
+        "failed": 0,
+        "duration_seconds": 0.0,
     }
 
     if not ref_urls:
-        logger.info(
-            "ref_warming_no_refs",
-            message="No refs to warm"
-        )
+        logger.info("ref_warming_no_refs", message="No refs to warm")
         return result
 
     logger.info(
@@ -195,7 +189,7 @@ def warm_ref_cache(
         total_refs=len(ref_urls),
         batch_size=batch_size,
         tenant_id=tenant_id,
-        message=f"Starting cache warming for {len(ref_urls)} refs"
+        message=f"Starting cache warming for {len(ref_urls)} refs",
     )
 
     # Resolver: caller may inject (e.g. tests with transport-bound resolve_external);
@@ -208,7 +202,7 @@ def warm_ref_cache(
 
     # Process refs in batches
     for i in range(0, len(ref_urls), batch_size):
-        batch = ref_urls[i:i + batch_size]
+        batch = ref_urls[i : i + batch_size]
         batch_num = (i // batch_size) + 1
         total_batches = (len(ref_urls) + batch_size - 1) // batch_size
 
@@ -217,7 +211,7 @@ def warm_ref_cache(
             batch_num=batch_num,
             total_batches=total_batches,
             batch_size=len(batch),
-            message=f"Processing batch {batch_num}/{total_batches}"
+            message=f"Processing batch {batch_num}/{total_batches}",
         )
 
         for ref_url in batch:
@@ -225,47 +219,45 @@ def warm_ref_cache(
                 # Check if already cached
                 cached = resolver._get_from_cache(ref_url)
                 if cached is not None:
-                    result['skipped'] += 1
+                    result["skipped"] += 1
                     logger.debug(
                         "ref_warming_skipped",
                         ref_url=ref_url,
-                        message="Ref already cached, skipping"
+                        message="Ref already cached, skipping",
                     )
                     continue
 
                 # Resolve and cache ref
                 resolved = resolver.resolve_external(ref_url)
                 if resolved:
-                    result['warmed'] += 1
+                    result["warmed"] += 1
                     logger.debug(
-                        "ref_warming_success",
-                        ref_url=ref_url,
-                        message="Successfully warmed ref"
+                        "ref_warming_success", ref_url=ref_url, message="Successfully warmed ref"
                     )
                 else:
-                    result['failed'] += 1
+                    result["failed"] += 1
                     logger.warning(
                         "ref_warming_failed",
                         ref_url=ref_url,
-                        message="Failed to resolve ref (returned None)"
+                        message="Failed to resolve ref (returned None)",
                     )
 
             except ODPSRefResolutionError as e:
-                result['failed'] += 1
+                result["failed"] += 1
                 logger.warning(
                     "ref_warming_resolution_error",
                     ref_url=ref_url,
                     error=str(e),
                     error_code=e.error_code,
-                    message="Ref resolution error during warming"
+                    message="Ref resolution error during warming",
                 )
             except Exception as e:
-                result['failed'] += 1
+                result["failed"] += 1
                 logger.warning(
                     "ref_warming_unexpected_error",
                     ref_url=ref_url,
                     error=str(e),
-                    message="Unexpected error during cache warming"
+                    message="Unexpected error during cache warming",
                 )
 
         # Log progress every batch
@@ -274,24 +266,24 @@ def warm_ref_cache(
                 "ref_warming_progress",
                 batch_num=batch_num,
                 total_batches=total_batches,
-                warmed=result['warmed'],
-                skipped=result['skipped'],
-                failed=result['failed'],
-                message=f"Cache warming progress: {batch_num}/{total_batches} batches"
+                warmed=result["warmed"],
+                skipped=result["skipped"],
+                failed=result["failed"],
+                message=f"Cache warming progress: {batch_num}/{total_batches} batches",
             )
 
     duration = time.time() - start_time
-    result['duration_seconds'] = duration
+    result["duration_seconds"] = duration
 
     logger.info(
         "ref_warming_complete",
-        total=result['total'],
-        warmed=result['warmed'],
-        skipped=result['skipped'],
-        failed=result['failed'],
+        total=result["total"],
+        warmed=result["warmed"],
+        skipped=result["skipped"],
+        failed=result["failed"],
         duration_seconds=duration,
         tenant_id=tenant_id,
-        message=f"Cache warming complete: {result['warmed']} warmed, {result['skipped']} skipped, {result['failed']} failed"
+        message=f"Cache warming complete: {result['warmed']} warmed, {result['skipped']} skipped, {result['failed']} failed",
     )
 
     return result
@@ -304,15 +296,12 @@ def warm_cache_on_startup() -> None:
     Called from AppConfig.ready() to pre-populate cache with frequently accessed refs.
     Runs asynchronously to avoid blocking application startup.
     """
-    warming_enabled = getattr(settings, 'ODPS_CACHE_WARMING_ENABLED', True)
-    startup_enabled = getattr(settings, 'ODPS_CACHE_WARMING_STARTUP_ENABLED', True)
-    startup_limit = getattr(settings, 'ODPS_CACHE_WARMING_STARTUP_LIMIT', 100)
+    warming_enabled = getattr(settings, "ODPS_CACHE_WARMING_ENABLED", True)
+    startup_enabled = getattr(settings, "ODPS_CACHE_WARMING_STARTUP_ENABLED", True)
+    startup_limit = getattr(settings, "ODPS_CACHE_WARMING_STARTUP_LIMIT", 100)
 
     if not warming_enabled or not startup_enabled:
-        logger.debug(
-            "ref_warming_startup_disabled",
-            message="Cache warming disabled in settings"
-        )
+        logger.debug("ref_warming_startup_disabled", message="Cache warming disabled in settings")
         return
 
     # Run in background thread to avoid blocking startup
@@ -323,7 +312,7 @@ def warm_cache_on_startup() -> None:
             logger.info(
                 "ref_warming_startup_start",
                 limit=startup_limit,
-                message="Starting startup cache warming"
+                message="Starting startup cache warming",
             )
 
             # Get frequently accessed refs
@@ -334,22 +323,22 @@ def warm_cache_on_startup() -> None:
                 result = warm_ref_cache(refs)
                 logger.info(
                     "ref_warming_startup_complete",
-                    warmed=result['warmed'],
-                    skipped=result['skipped'],
-                    failed=result['failed'],
-                    duration_seconds=result['duration_seconds'],
-                    message="Startup cache warming complete"
+                    warmed=result["warmed"],
+                    skipped=result["skipped"],
+                    failed=result["failed"],
+                    duration_seconds=result["duration_seconds"],
+                    message="Startup cache warming complete",
                 )
             else:
                 logger.info(
                     "ref_warming_startup_no_refs",
-                    message="No frequently accessed refs found for startup warming"
+                    message="No frequently accessed refs found for startup warming",
                 )
         except Exception as e:
             logger.warning(
                 "ref_warming_startup_error",
                 error=str(e),
-                message="Error during startup cache warming"
+                message="Error during startup cache warming",
             )
 
     # Start background thread
@@ -357,6 +346,5 @@ def warm_cache_on_startup() -> None:
     thread.start()
     logger.info(
         "ref_warming_startup_thread_started",
-        message="Started background thread for startup cache warming"
+        message="Started background thread for startup cache warming",
     )
-

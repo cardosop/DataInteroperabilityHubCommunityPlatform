@@ -6,22 +6,20 @@ and omission of tombstone scheduling columns.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone as dt_timezone
-from typing import Any, Optional
 
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+import structlog
 from django.db import transaction
 from django.utils import timezone
 
-import structlog
-
-from hub.apps.audit.utils import create_audit_event
 from hub.apps.audit import event_types as _audit_et
-
+from hub.apps.audit.utils import create_audit_event
 from hub.apps.governance.dsar_retention_block import resource_blocked_by_open_dsar_restriction
 from hub.apps.governance.models import RetentionPolicy, RetentionPolicyType
 from hub.apps.governance.retention import RetentionPolicyEnforcer
-
 
 logger = structlog.get_logger(__name__)
 
@@ -40,12 +38,12 @@ def quarterly_period_bounds(year: int, quarter: int) -> tuple[datetime, datetime
     if quarter not in (1, 2, 3, 4):
         raise ValueError("quarter must be 1..4")
     start_month = {1: 1, 2: 4, 3: 7, 4: 10}[quarter]
-    start = datetime(year, start_month, 1, tzinfo=dt_timezone.utc)
+    start = datetime(year, start_month, 1, tzinfo=UTC)
     if quarter == 4:
-        end = datetime(year + 1, 1, 1, tzinfo=dt_timezone.utc)
+        end = datetime(year + 1, 1, 1, tzinfo=UTC)
     else:
         end_month = start_month + 3
-        end = datetime(year, end_month, 1, tzinfo=dt_timezone.utc)
+        end = datetime(year, end_month, 1, tzinfo=UTC)
     # inclusive catalogue uses [start, end) for timestamp __gte/__lt filtering
     return start, end
 
@@ -130,9 +128,7 @@ def retention_enforcement_dashboard(*, tenant_id: str) -> dict[str, Any]:
     audit_qs = AuditEventRetentionPolicy.objects.filter(tenant_id=tenant_id)
     audit_total = audit_qs.count()
     audit_enabled = audit_qs.filter(enabled=True).count()
-    audit_regulation_driven = audit_qs.filter(enabled=True).exclude(
-        regulation_keys=[]
-    ).count()
+    audit_regulation_driven = audit_qs.filter(enabled=True).exclude(regulation_keys=[]).count()
 
     return {
         "tenant_id": tenant_id,
@@ -156,7 +152,7 @@ class RetentionAutoEnforcerSweep:
     @staticmethod
     @transaction.atomic
     def enforce_policy_row(
-        policy: RetentionPolicy, *, dry_run: bool, now: Optional[datetime] = None
+        policy: RetentionPolicy, *, dry_run: bool, now: datetime | None = None
     ) -> dict[str, Any]:
         now = now or timezone.now()
         out: dict[str, Any] = {
@@ -204,7 +200,11 @@ class RetentionAutoEnforcerSweep:
         expiry = resource.created_at + timedelta(days=policy.retention_period_days)
 
         # Phase B — honour scheduled hard-delete after tombstone grace
-        if policy.tombstoned_at and policy.hard_delete_scheduled_at and now >= policy.hard_delete_scheduled_at:
+        if (
+            policy.tombstoned_at
+            and policy.hard_delete_scheduled_at
+            and now >= policy.hard_delete_scheduled_at
+        ):
             out["phase"] = "hard_delete"
             if dry_run:
                 out["skipped"] = True
@@ -336,7 +336,9 @@ class RetentionAutoEnforcerSweep:
 
                 for policy in qs:
                     summary["policies_considered"] += 1
-                    snap = RetentionAutoEnforcerSweep.enforce_policy_row(policy, dry_run=dry_run, now=now)
+                    snap = RetentionAutoEnforcerSweep.enforce_policy_row(
+                        policy, dry_run=dry_run, now=now
+                    )
                     detail = snap.get("detail") or ""
                     if detail == "resource_tombstoned":
                         summary["tombstones"] += 1

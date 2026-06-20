@@ -16,9 +16,9 @@ maintenance hazard: they bind the code to undocumented Prefect internals that
 can move or be removed without notice.  The correct approach is to pass values
 via environment variables or the official Prefect client constructor.
 """
+
 import ast
 import pathlib
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -85,7 +85,8 @@ class TestNoPrefectMonkeyPatches:
     def test_no_prefect_flow_runs_patches(self):
         """No assignments to prefect.flow_runs.* are permitted."""
         violations = [
-            v for v in _find_monkey_patches(_HUB_ROOT)
+            v
+            for v in _find_monkey_patches(_HUB_ROOT)
             if v.split(": ", 1)[-1].startswith("prefect.flow_runs.")
         ]
         assert not violations, (
@@ -96,7 +97,8 @@ class TestNoPrefectMonkeyPatches:
     def test_no_prefect_deployments_patches(self):
         """No assignments to prefect.deployments.* are permitted."""
         violations = [
-            v for v in _find_monkey_patches(_HUB_ROOT)
+            v
+            for v in _find_monkey_patches(_HUB_ROOT)
             if v.split(": ", 1)[-1].startswith("prefect.deployments.")
         ]
         assert not violations, (
@@ -107,7 +109,8 @@ class TestNoPrefectMonkeyPatches:
     def test_no_prefect_workers_patches(self):
         """No assignments to prefect.workers.* are permitted."""
         violations = [
-            v for v in _find_monkey_patches(_HUB_ROOT)
+            v
+            for v in _find_monkey_patches(_HUB_ROOT)
             if v.split(": ", 1)[-1].startswith("prefect.workers.")
         ]
         assert not violations, (
@@ -118,7 +121,8 @@ class TestNoPrefectMonkeyPatches:
     def test_no_prefect_settings_patches(self):
         """No assignments to prefect.settings.* are permitted."""
         violations = [
-            v for v in _find_monkey_patches(_HUB_ROOT)
+            v
+            for v in _find_monkey_patches(_HUB_ROOT)
             if v.split(": ", 1)[-1].startswith("prefect.settings.")
         ]
         assert not violations, (
@@ -131,6 +135,5 @@ class TestNoPrefectMonkeyPatches:
         violations = _find_monkey_patches(_HUB_ROOT)
         assert not violations, (
             "Prefect internal monkey-patches detected "
-            "(arch-improvements-01 Phase 6 requires removal):\n"
-            + "\n".join(violations)
+            "(arch-improvements-01 Phase 6 requires removal):\n" + "\n".join(violations)
         )

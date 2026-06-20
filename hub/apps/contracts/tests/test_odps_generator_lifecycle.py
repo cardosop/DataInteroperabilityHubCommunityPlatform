@@ -593,10 +593,16 @@ class ODPSGeneratorLifecycleCombinedMappingTest(SimpleTestCase):
         self.assertIn("product", result)
 
         # SLA and status must be absent when lifecycle section is not provided.
-        self.assertNotIn("SLA", result["product"],
-            "SLA section must be absent when no lifecycle data is provided")
-        self.assertNotIn("status", result["product"]["details"]["en"],
-            "Status must be absent from product details when no lifecycle data is provided")
+        self.assertNotIn(
+            "SLA",
+            result["product"],
+            "SLA section must be absent when no lifecycle data is provided",
+        )
+        self.assertNotIn(
+            "status",
+            result["product"]["details"]["en"],
+            "Status must be absent from product details when no lifecycle data is provided",
+        )
 
     def test_lifecycle_with_invalid_lifecycle_type(self):
         """
@@ -705,8 +711,11 @@ class ODPSGeneratorLifecycleIntegrationTest(SimpleTestCase):
         self.assertIn("product", result)
         self.assertIn("details", result["product"])
         self.assertIn("en", result["product"]["details"])
-        self.assertIn("status", result["product"]["details"]["en"],
-            "Status must be present in product details for lifecycle generation")
+        self.assertIn(
+            "status",
+            result["product"]["details"]["en"],
+            "Status must be present in product details for lifecycle generation",
+        )
         self.assertEqual(result["product"]["details"]["en"]["status"], "活跃")
 
     def test_lifecycle_generation_handles_special_characters(self):
@@ -731,18 +740,18 @@ class ODPSGeneratorLifecycleIntegrationTest(SimpleTestCase):
         result = generate_odps_from_hubcontract(hub_contract)
 
         # Verify special characters are preserved in SLA dimensions.
-        self.assertIn("SLA", result["product"],
-            "SLA section must be present for lifecycle special-char generation")
+        self.assertIn(
+            "SLA",
+            result["product"],
+            "SLA section must be present for lifecycle special-char generation",
+        )
         sla = result["product"]["SLA"]
         self.assertIn("declarative", sla)
         self.assertIn("dimensions", sla["declarative"])
         dimensions = sla["declarative"]["dimensions"]
-        self.assertIn("availability", dimensions,
-            "Availability dimension must be present in SLA")
+        self.assertIn("availability", dimensions, "Availability dimension must be present in SLA")
         self.assertIn("description", dimensions["availability"])
-        self.assertEqual(
-            dimensions["availability"]["description"], "High <availability> & more"
-        )
+        self.assertEqual(dimensions["availability"]["description"], "High <availability> & more")
 
     def test_lifecycle_generation_handles_very_large_documents(self):
         """Test that lifecycle generation handles very large documents correctly."""
@@ -807,15 +816,19 @@ class ODPSGeneratorLifecycleIntegrationTest(SimpleTestCase):
         result = generate_odps_from_hubcontract(hub_contract)
 
         # Verify nested structure is preserved in SLA dimensions.
-        self.assertIn("SLA", result["product"],
-            "SLA section must be present for lifecycle nested-structure generation")
+        self.assertIn(
+            "SLA",
+            result["product"],
+            "SLA section must be present for lifecycle nested-structure generation",
+        )
         sla = result["product"]["SLA"]
         self.assertIn("declarative", sla)
         self.assertIn("dimensions", sla["declarative"])
         dimensions = sla["declarative"]["dimensions"]
         self.assertIn("availability", dimensions)
-        self.assertIn("nested", dimensions["availability"],
-            "nested data must be preserved in SLA dimensions")
+        self.assertIn(
+            "nested", dimensions["availability"], "nested data must be preserved in SLA dimensions"
+        )
         self.assertIn(
             "level1",
             dimensions["availability"]["nested"],

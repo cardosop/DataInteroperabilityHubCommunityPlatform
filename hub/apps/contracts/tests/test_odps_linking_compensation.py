@@ -17,19 +17,13 @@ All tests use real implementations (no mocks/stubs) and verify:
 import json
 
 import pytest
-from django.test import TestCase
 
 from hub.apps.contracts.models import (
     Contract,
-    ContractStatus,
-    NormalizationStatus,
-    OriginalFormat,
     OriginalSpecType,
 )
 from hub.apps.contracts.odps_linking_compensation import ODPSLinkingCompensation, ODPSLinkingState
 from hub.apps.contracts.tests.test_base import ContractsTestBase
-from hub.apps.core.services.base import ValidationError
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -523,7 +517,7 @@ class ODPSLinkingCompensationComprehensiveTest(ODPSLinkingCompensationTestBase):
                         "description": "测试描述",
                     }
                 },
-                "dataSchema": {"fields": []},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
             },
         }
 
@@ -563,7 +557,7 @@ class ODPSLinkingCompensationComprehensiveTest(ODPSLinkingCompensationTestBase):
                         "description": "Test <description> & more",
                     }
                 },
-                "dataSchema": {"fields": []},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
             },
         }
 
@@ -604,7 +598,7 @@ class ODPSLinkingCompensationComprehensiveTest(ODPSLinkingCompensationTestBase):
                         "description": large_description,
                     }
                 },
-                "dataSchema": {"fields": []},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
             },
         }
 
@@ -644,7 +638,7 @@ class ODPSLinkingCompensationComprehensiveTest(ODPSLinkingCompensationTestBase):
                         # description omitted - None is not allowed by schema
                     }
                 },
-                "dataSchema": {"fields": []},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
             },
         }
 
@@ -684,7 +678,7 @@ class ODPSLinkingCompensationComprehensiveTest(ODPSLinkingCompensationTestBase):
                         "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
                     }
                 },
-                "dataSchema": {"fields": []},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
             },
         }
 

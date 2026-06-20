@@ -8,17 +8,15 @@ across multiple operations and event types.
 import uuid
 
 from django.db import connection, connections
-from django.db.utils import InterfaceError as DjangoInterfaceError, OperationalError
-from django.test import TestCase, TransactionTestCase, override_settings
-from django.utils import timezone
+from django.db.utils import InterfaceError as DjangoInterfaceError
+from django.db.utils import OperationalError
+from django.test import TransactionTestCase, override_settings
 
 from hub.apps.assets.models import Asset
 from hub.apps.core.events.models import Event
 from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
 from hub.apps.integrations.event_publishers import MarketplaceEventPublisher
 from hub.apps.integrations.models import (
-    MarketplaceConnection,
-    MarketplaceMapping,
     MarketplaceSyncJob,
 )
 from hub.apps.integrations.services import MarketplaceIntegrationService
@@ -37,7 +35,7 @@ def _ensure_db_connection():
     try:
         connections.close_all()
         connection.ensure_connection()
-    except Exception:
+    except (DjangoInterfaceError, OperationalError):
         pass
 
 
@@ -45,11 +43,11 @@ def _ensure_db_connection_for_teardown():
     """Ensure connection for tearDown/flush without closing first (avoid breaking active connection)."""
     try:
         connection.ensure_connection()
-    except Exception:
+    except (DjangoInterfaceError, OperationalError):
         try:
             connections.close_all()
             connection.ensure_connection()
-        except Exception:
+        except (DjangoInterfaceError, OperationalError):
             pass
 
 
@@ -71,7 +69,6 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
 
     def _fixture_teardown(self):
         """Skip TRUNCATE CASCADE to avoid timeout."""
-        pass
 
     def setUp(self):
         """Set up test fixtures; retry once on connection closed."""
@@ -98,12 +95,6 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
             except (DjangoInterfaceError, OperationalError) as e:
                 last_error = e
                 if _is_connection_closed_error(e):
-                    _ensure_db_connection()
-                    continue
-                raise
-            except Exception as e:
-                if _is_connection_closed_error(e):
-                    last_error = e
                     _ensure_db_connection()
                     continue
                 raise
@@ -151,7 +142,7 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
         except (ImportError, AttributeError):
             pass
 
-    def test_complete_connection_lifecycle_with_events(self):
+    def test_complete_connection_lifecycle_manual_publishing(self):
         """Test complete connection lifecycle with all event types."""
         # Create connection
         connection = self.service.create_connection(
@@ -219,7 +210,7 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
         deleted_event = Event.objects.get(event_id=event_id)
         self.assertEqual(deleted_event.event_type, "marketplace.connection.deleted")
 
-    def test_complete_sync_workflow_with_events(self):
+    def test_complete_sync_workflow_manual_publishing(self):
         """Test complete sync workflow with all sync event types."""
         # Create connection
         connection = self.service.create_connection(
@@ -275,7 +266,7 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
         self.assertEqual(completed_event.data["items_synced"], 25)
         self.assertEqual(completed_event.data["items_failed"], 0)
 
-    def test_complete_sync_failure_workflow(self):
+    def test_complete_sync_failure_manual_publishing(self):
         """Test complete sync failure workflow."""
         # Create connection
         connection = self.service.create_connection(
@@ -329,7 +320,7 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
         self.assertEqual(failed_event.event_type, "marketplace.sync.failed")
         self.assertEqual(failed_event.data["error_message"], "Network timeout")
 
-    def test_complete_mapping_lifecycle_with_events(self):
+    def test_complete_mapping_lifecycle_manual_publishing(self):
         """Test complete mapping lifecycle with all mapping event types."""
         # Create connection
         connection = self.service.create_connection(
@@ -342,7 +333,10 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
 
         # Create asset
         asset = Asset.objects.create(
-            tenant=self.tenant, created_by=self.user, name=f"E2E Test Asset {self._suffix}", source_type="FEDERATED"
+            tenant=self.tenant,
+            created_by=self.user,
+            name=f"E2E Test Asset {self._suffix}",
+            source_type="FEDERATED",
         )
 
         # Create mapping
@@ -546,7 +540,8 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
             config=self.config,
         )
 
-        # Publisher allows None tenant_id (uses default or event bus default)
+        # Publisher allows None tenant_id — it should fall back to the
+        # publisher's default tenant_id (set during __init__).
         event_id = self.publisher.publish_connection_created(
             connection_id=str(connection.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
@@ -557,6 +552,11 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
         self.assertIsNotNone(event_id)
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(event.event_type, "marketplace.connection.created")
+        # Verify fallback: None tenant_id should resolve to publisher default
+        self.assertEqual(
+            str(event.tenant_id), str(self.tenant.id),
+            msg="None tenant_id should fall back to publisher's default tenant_id",
+        )
 
     def test_event_publishing_with_invalid_sync_job_id(self):
         """Test event publishing with non-existent sync job ID.

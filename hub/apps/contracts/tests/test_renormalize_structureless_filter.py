@@ -12,6 +12,7 @@ shape end-to-end. They share a fixture pattern with the existing tests
 under ``hub/apps/contracts/tests/`` so the new flags compose with the
 existing ``--dry-run`` / ``--tenant-id`` flags.
 """
+
 import json
 from io import StringIO
 
@@ -21,8 +22,12 @@ from django.test import TestCase
 
 
 def _create_tenant(name: str = "Wave 0 Co"):
+    import uuid
     from hub.apps.tenants.models import Tenant
-    return Tenant.objects.create(name=name, slug=name.lower().replace(" ", "-"))
+
+    uid = uuid.uuid4().hex[:8]
+    base = name.lower().replace(" ", "-")
+    return Tenant.objects.create(name=f"{name}-{uid}", slug=f"{base}-{uid}")
 
 
 def _create_contract(
@@ -40,6 +45,7 @@ def _create_contract(
     so each test can express the exact structure it needs.
     """
     from hub.apps.contracts.models import Contract
+
     return Contract.objects.create(
         tenant=tenant,
         original_spec_type=spec_type,
@@ -54,6 +60,16 @@ def _create_contract(
 @pytest.mark.django_db(transaction=True)
 class FilterStructurelessTests(TestCase):
     """Cover the predicate composition with the existing dry-run flag."""
+
+    def setUp(self):
+        """Purge contracts from previous --reuse-db runs.
+
+        Only contracts are purged — deleting tenants would require
+        cascading through restricted User FKs from infrastructure
+        accounts, which is unsafe during test setup.
+        """
+        from hub.apps.contracts.models import Contract
+        Contract.objects.all().delete()
 
     def test_filter_structureless_dry_run_emits_jsonl_to_stdout(self):
         tenant = _create_tenant()
@@ -84,7 +100,8 @@ class FilterStructurelessTests(TestCase):
         # Find lines that look like JSON objects (header / footer lines
         # are plain prose for human readability).
         json_lines = [
-            ln for ln in out.getvalue().splitlines()
+            ln
+            for ln in out.getvalue().splitlines()
             if ln.startswith("{") and ln.rstrip().endswith("}")
         ]
 
@@ -121,13 +138,8 @@ class FilterStructurelessTests(TestCase):
             stdout=out,
         )
 
-        json_lines = [
-            ln for ln in out.getvalue().splitlines()
-            if ln.startswith("{")
-        ]
-        assert json_lines == [], (
-            "Normal contracts must not appear in the structureless report"
-        )
+        json_lines = [ln for ln in out.getvalue().splitlines() if ln.startswith("{")]
+        assert json_lines == [], "Normal contracts must not appear in the structureless report"
 
     def test_filter_structureless_classifies_odps_outputports(self):
         tenant = _create_tenant("Wave 0 ODPS")
@@ -154,10 +166,7 @@ class FilterStructurelessTests(TestCase):
             stdout=out,
         )
 
-        json_lines = [
-            ln for ln in out.getvalue().splitlines()
-            if ln.startswith("{")
-        ]
+        json_lines = [ln for ln in out.getvalue().splitlines() if ln.startswith("{")]
         assert len(json_lines) == 1
         record = json.loads(json_lines[0])
         assert record["contract_id"] == str(odps.id)
@@ -166,9 +175,7 @@ class FilterStructurelessTests(TestCase):
     def test_filter_structureless_respects_tenant_id_scope(self):
         tenant_a = _create_tenant("Tenant A")
         tenant_b = _create_tenant("Tenant B")
-        in_scope = _create_contract(
-            tenant_a, hub_contract_json={"models": []}
-        )
+        in_scope = _create_contract(tenant_a, hub_contract_json={"models": []})
         _create_contract(tenant_b, hub_contract_json={"models": []})
 
         out = StringIO()
@@ -182,13 +189,8 @@ class FilterStructurelessTests(TestCase):
             stdout=out,
         )
 
-        json_lines = [
-            ln for ln in out.getvalue().splitlines()
-            if ln.startswith("{")
-        ]
-        assert len(json_lines) == 1, (
-            "Only Tenant A's contracts should appear when --tenant-id=A"
-        )
+        json_lines = [ln for ln in out.getvalue().splitlines() if ln.startswith("{")]
+        assert len(json_lines) == 1, "Only Tenant A's contracts should appear when --tenant-id=A"
         record = json.loads(json_lines[0])
         assert record["contract_id"] == str(in_scope.id)
 
@@ -198,6 +200,16 @@ class OutputJsonContractTests(TestCase):
     """Validate the JSONL row contract — every operator-required field
     must be present and JSON-parseable.
     """
+
+    def setUp(self):
+        """Purge contracts from previous --reuse-db runs.
+
+        Only contracts are purged — deleting tenants would require
+        cascading through restricted User FKs from infrastructure
+        accounts, which is unsafe during test setup.
+        """
+        from hub.apps.contracts.models import Contract
+        Contract.objects.all().delete()
 
     REQUIRED_FIELDS = {
         "contract_id",
@@ -224,10 +236,7 @@ class OutputJsonContractTests(TestCase):
             stdout=out,
         )
 
-        json_lines = [
-            ln for ln in out.getvalue().splitlines()
-            if ln.startswith("{")
-        ]
+        json_lines = [ln for ln in out.getvalue().splitlines() if ln.startswith("{")]
         assert json_lines, "Expected at least one JSONL row"
         record = json.loads(json_lines[0])
         missing = self.REQUIRED_FIELDS - set(record)
@@ -251,10 +260,7 @@ class OutputJsonContractTests(TestCase):
             stdout=out,
         )
 
-        json_lines = [
-            ln for ln in out.getvalue().splitlines()
-            if ln.startswith("{")
-        ]
+        json_lines = [ln for ln in out.getvalue().splitlines() if ln.startswith("{")]
         record = json.loads(json_lines[0])
         # The contract has 1 model entry but 0 fields — both are
         # surfaced so the operator can understand "why structureless".

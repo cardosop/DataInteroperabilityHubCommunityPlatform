@@ -28,11 +28,13 @@ class WorkflowAutoRetryTest(TestCase):
             name="test-workflow",
             version="1.0.0",
             dsl_yaml="version: '1.0.0'\nsteps:\n- name: s1\n  type: task\n  task: noop",
-            dsl_json={"version": "1.0.0", "steps": [{"name": "s1", "type": "task", "task": "noop"}]},
+            dsl_json={
+                "version": "1.0.0",
+                "steps": [{"name": "s1", "type": "task", "task": "noop"}],
+            },
         )
 
-    def _create_instance(self, status, retry_count=0, max_retries=3,
-                         minutes_ago=30):
+    def _create_instance(self, status, retry_count=0, max_retries=3, minutes_ago=30):
         instance = WorkflowInstance.objects.create(
             workflow_definition=self.definition,
             workflow_name="test-workflow",
@@ -50,7 +52,9 @@ class WorkflowAutoRetryTest(TestCase):
     def test_failed_workflow_retried_when_under_max_retries(self):
         """FAILED + retry_count < max_retries → status DRAFT, retry_count+1."""
         instance = self._create_instance(
-            WorkflowStatus.FAILED, retry_count=0, max_retries=3,
+            WorkflowStatus.FAILED,
+            retry_count=0,
+            max_retries=3,
         )
         out = StringIO()
         call_command("recover_failed_workflows", stdout=out)
@@ -62,7 +66,9 @@ class WorkflowAutoRetryTest(TestCase):
     def test_failed_workflow_not_retried_when_at_max(self):
         """retry_count == max_retries → status unchanged."""
         instance = self._create_instance(
-            WorkflowStatus.FAILED, retry_count=3, max_retries=3,
+            WorkflowStatus.FAILED,
+            retry_count=3,
+            max_retries=3,
         )
         out = StringIO()
         call_command("recover_failed_workflows", stdout=out)
@@ -75,7 +81,8 @@ class WorkflowAutoRetryTest(TestCase):
         """COMPENSATION_INCOMPLETE with no failed step → rolled back."""
         instance = self._create_instance(
             WorkflowStatus.COMPENSATION_INCOMPLETE,
-            retry_count=0, max_retries=3,
+            retry_count=0,
+            max_retries=3,
         )
         # Set error_details and re-backdate updated_at (save resets auto_now)
         WorkflowInstance.objects.filter(id=instance.id).update(
@@ -94,7 +101,9 @@ class WorkflowAutoRetryTest(TestCase):
     def test_recently_failed_workflow_skipped(self):
         """updated_at < 15 min ago → skipped (cooldown)."""
         instance = self._create_instance(
-            WorkflowStatus.FAILED, retry_count=0, max_retries=3,
+            WorkflowStatus.FAILED,
+            retry_count=0,
+            max_retries=3,
             minutes_ago=5,  # Only 5 min ago — within cooldown
         )
         out = StringIO()

@@ -4,6 +4,7 @@ Usage:
     python manage.py show_jwt_key_info
     python manage.py show_jwt_key_info --verbose
 """
+
 import hashlib
 
 from django.conf import settings
@@ -15,8 +16,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--verbose", action="store_true", default=False,
-            help="Show additional key details."
+            "--verbose", action="store_true", default=False, help="Show additional key details."
         )
 
     def handle(self, *args, **options):
@@ -33,7 +33,7 @@ class Command(BaseCommand):
             jwt_key.encode() if isinstance(jwt_key, str) else jwt_key
         ).hexdigest()[:16]
 
-        self.stdout.write(f"JWT signing key configured: yes")
+        self.stdout.write("JWT signing key configured: yes")
         self.stdout.write(f"Key length: {key_len} bytes")
         self.stdout.write(f"Key fingerprint (first 16 hex): {key_hash}")
 

@@ -10,6 +10,7 @@ exposed by ``DQQualityViewSet``. The ViewSet itself is also dual-mounted
 under the deprecated ``/api/v1/quality/*`` prefix in ``hub/apps/api/urls.py``;
 that wrapper emits ``Sunset``/``Deprecation``/``Link`` response headers.
 """
+
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 

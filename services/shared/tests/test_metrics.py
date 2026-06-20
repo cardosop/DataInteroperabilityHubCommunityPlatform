@@ -5,8 +5,8 @@ Validates that counters/histograms are registered, can be
 incremented, and that get_metrics_response() returns valid
 Prometheus exposition format.
 """
-from prometheus_client import REGISTRY
 
+from prometheus_client import REGISTRY
 
 # ── Counter / histogram registration ────────────────────────────
 
@@ -68,12 +68,17 @@ def test_shacl_violations_counter_increments():
     """shacl_violations_total can be incremented."""
     from shared.metrics import shacl_violations_total
 
-    before = REGISTRY.get_sample_value(
-        "shacl_violations_total",
-        {"service": "test", "severity": "warning", "shape": "x"},
-    ) or 0.0
+    before = (
+        REGISTRY.get_sample_value(
+            "shacl_violations_total",
+            {"service": "test", "severity": "warning", "shape": "x"},
+        )
+        or 0.0
+    )
     shacl_violations_total.labels(
-        service="test", severity="warning", shape="x",
+        service="test",
+        severity="warning",
+        shape="x",
     ).inc()
     after = REGISTRY.get_sample_value(
         "shacl_violations_total",
@@ -88,10 +93,13 @@ def test_tenant_isolation_violations_counter():
         tenant_isolation_violations_total,
     )
 
-    before = REGISTRY.get_sample_value(
-        "tenant_isolation_violations_total",
-        {"service": "test"},
-    ) or 0.0
+    before = (
+        REGISTRY.get_sample_value(
+            "tenant_isolation_violations_total",
+            {"service": "test"},
+        )
+        or 0.0
+    )
     tenant_isolation_violations_total.labels(
         service="test",
     ).inc()
@@ -106,10 +114,13 @@ def test_semantic_cache_hit_counter():
     """semantic_cache_hit_total increments."""
     from shared.metrics import semantic_cache_hit_total
 
-    before = REGISTRY.get_sample_value(
-        "semantic_cache_hit_total",
-        {"service": "test"},
-    ) or 0.0
+    before = (
+        REGISTRY.get_sample_value(
+            "semantic_cache_hit_total",
+            {"service": "test"},
+        )
+        or 0.0
+    )
     semantic_cache_hit_total.labels(service="test").inc()
     after = REGISTRY.get_sample_value(
         "semantic_cache_hit_total",
@@ -127,10 +138,14 @@ def test_safe_counter_deduplication():
     from shared.metrics import _safe_counter
 
     c1 = _safe_counter(
-        "test_dedup_counter", "test", ["label_a"],
+        "test_dedup_counter",
+        "test",
+        ["label_a"],
     )
     c2 = _safe_counter(
-        "test_dedup_counter", "test", ["label_a"],
+        "test_dedup_counter",
+        "test",
+        ["label_a"],
     )
     assert c1 is c2
 
@@ -141,10 +156,14 @@ def test_safe_histogram_deduplication():
     from shared.metrics import _safe_histogram
 
     h1 = _safe_histogram(
-        "test_dedup_histogram", "test", ["label_a"],
+        "test_dedup_histogram",
+        "test",
+        ["label_a"],
     )
     h2 = _safe_histogram(
-        "test_dedup_histogram", "test", ["label_a"],
+        "test_dedup_histogram",
+        "test",
+        ["label_a"],
     )
     assert h1 is h2
 
@@ -210,19 +229,23 @@ def test_normalize_route_replaces_multiple_ids():
 async def test_track_request_metrics_records_success():
     """track_request_metrics decorator records counter and histogram
     for a successful request."""
-    from unittest.mock import AsyncMock, MagicMock
-    from shared.metrics import track_request_metrics, http_requests_total
+    from unittest.mock import MagicMock
+
+    from shared.metrics import track_request_metrics
 
     # Snapshot before
-    before = REGISTRY.get_sample_value(
-        "http_requests_total",
-        {
-            "service": "test-svc",
-            "method": "GET",
-            "route": "/api/test",
-            "status_class": "2xx",
-        },
-    ) or 0.0
+    before = (
+        REGISTRY.get_sample_value(
+            "http_requests_total",
+            {
+                "service": "test-svc",
+                "method": "GET",
+                "route": "/api/test",
+                "status_class": "2xx",
+            },
+        )
+        or 0.0
+    )
 
     # Create a mock request
     mock_request = MagicMock()
@@ -255,19 +278,24 @@ async def test_track_request_metrics_records_success():
 async def test_track_request_metrics_records_errors():
     """track_request_metrics decorator records error metrics and
     re-raises the exception."""
-    import pytest
     from unittest.mock import MagicMock
-    from shared.metrics import track_request_metrics, http_errors_total
 
-    before = REGISTRY.get_sample_value(
-        "http_errors_total",
-        {
-            "service": "test-err-svc",
-            "method": "POST",
-            "route": "/api/fail",
-            "status_code": "500",
-        },
-    ) or 0.0
+    import pytest
+
+    from shared.metrics import track_request_metrics
+
+    before = (
+        REGISTRY.get_sample_value(
+            "http_errors_total",
+            {
+                "service": "test-err-svc",
+                "method": "POST",
+                "route": "/api/fail",
+                "status_code": "500",
+            },
+        )
+        or 0.0
+    )
 
     mock_request = MagicMock()
     mock_request.method = "POST"

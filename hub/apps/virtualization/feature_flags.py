@@ -3,6 +3,7 @@
 
 Gates the Virtual Dataset ViewSet on ``Tenant.virtualization_enabled``.
 """
+
 from __future__ import annotations
 
 from rest_framework.response import Response

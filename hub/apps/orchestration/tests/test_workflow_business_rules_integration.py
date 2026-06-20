@@ -9,17 +9,19 @@ Comprehensive integration tests for:
 All tests follow TDD principles, use real implementations (no mocks/stubs),
 and fix root causes rather than workarounds.
 """
-import uuid
 
+import contextlib
 import json
+import uuid
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
+from hub.apps.contracts.models import OriginalSpecType
 from hub.apps.files.models import File
 from hub.apps.orchestration.models import StepStatus, WorkflowInstance, WorkflowStatus
+from hub.apps.orchestration.business_rules import OrchestrationBusinessRules
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.workflow_engine import WorkflowEngine, WorkflowExecutionError
 from hub.apps.orchestration.workflows.asset_creation import AssetCreationWorkflow
@@ -59,18 +61,17 @@ class WorkflowBusinessRulesIntegrationTestBase(TestCase):
         super().setUp()
 
         # Ensure database connection is valid
-        from django.db import connection
+        from django.db import OperationalError, InterfaceError, connection
 
         try:
             connection.ensure_connection()
-        except Exception:
-            # If connection fails, Django will handle it on first use
+        except (OperationalError, InterfaceError):
+            # Django will handle on first use
             pass
 
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
         # Use unique tenant name/slug to avoid conflicts with --reuse-db
-        import uuid
 
         unique_id = str(uuid.uuid4())[:8]
         self.tenant = Tenant.objects.create(
@@ -168,8 +169,8 @@ class TestProductCreationWorkflowBusinessRulesIntegration(WorkflowBusinessRulesI
         ProductCreationWorkflow.register_workflow(self.registry)
         ProductCreationWorkflow.register_tasks(self.engine)
 
-    def test_successful_workflow_execution(self):
-        """Test successful ProductCreationWorkflow execution (4.2.1.1)"""
+    def test_successful_workflow_creation_and_setup(self):
+        """Test ProductCreationWorkflow instance creation and business rules setup (4.2.1.1)."""
         # Create valid ODPS document using helper method
         odps_raw = self.create_valid_odps_document()
 
@@ -182,7 +183,7 @@ class TestProductCreationWorkflowBusinessRulesIntegration(WorkflowBusinessRulesI
         )
 
         # Verify business rules are available and can be instantiated
-        self.assertIsNotNone(business_rules)
+        self.assertIsInstance(business_rules, OrchestrationBusinessRules)
 
         # Create workflow instance to verify business rules integration
         workflow_instance = self.engine.create_instance(
@@ -218,7 +219,7 @@ class TestProductCreationWorkflowBusinessRulesIntegration(WorkflowBusinessRulesI
         # 3. Workflow engine uses business rules during step execution (tested in unit tests)
         # We skip validate_workflow_state call here to avoid potential timeouts
         # The actual validation integration is tested in unit tests
-        self.assertIsNotNone(business_rules)
+        self.assertIsInstance(business_rules, OrchestrationBusinessRules)
         self.assertIsNotNone(workflow_instance)
         # Verify workflow has steps (already checked via prefetch above)
         # Business rules validation happens during step execution (tested in unit tests)
@@ -285,7 +286,7 @@ class TestProductCreationWorkflowBusinessRulesIntegration(WorkflowBusinessRulesI
         # Verify business rules integration: business rules are used in workflow tasks
         # The invalid ODCS contract will be caught during extract_contract or validate_odcs steps
         # (This is verified by the fact that business rules are called during workflow execution)
-        self.assertIsNotNone(business_rules)
+        self.assertIsInstance(business_rules, ODPSBusinessRules)
         self.assertIsNotNone(structure_result)
 
     def test_error_handling_workflow_rollback(self):
@@ -336,17 +337,20 @@ class TestProductCreationWorkflowBusinessRulesIntegration(WorkflowBusinessRulesI
             first_step.error_message = "Test error"
             first_step.save()
 
-            # Try to continue execution - should handle error
+            # Try to continue execution — should fail due to invalid state.
+            # The engine raises an exception on invalid transitions; the test
+            # verifies the resulting workflow status below.
             try:
                 self.engine.execute_instance(str(workflow_instance.id))
             except Exception:
-                pass  # Expected to fail
+                pass  # Expected failure on invalid state transition
 
             # Verify workflow is in failed or rolled back state
             workflow_instance.refresh_from_db()
             self.assertIn(
                 workflow_instance.status,
-                [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK, WorkflowStatus.COMPLETED],
+                [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK],
+                f"Expected FAILED or ROLLED_BACK after error, got {workflow_instance.status}"
             )
 
 
@@ -366,8 +370,8 @@ class TestContractCreationWorkflowBusinessRulesIntegration(
         ContractCreationWorkflow.register_workflow(self.registry)
         ContractCreationWorkflow.register_tasks(self.engine)
 
-    def test_successful_workflow_execution(self):
-        """Test successful ContractCreationWorkflow execution (4.2.2.1)"""
+    def test_successful_workflow_creation_and_setup(self):
+        """Test ContractCreationWorkflow instance creation and business rules setup (4.2.2.1)."""
         # Create valid ODCS contract
         odcs_raw = self.create_valid_odcs_contract()
 
@@ -414,7 +418,7 @@ class TestContractCreationWorkflowBusinessRulesIntegration(
         # 3. Workflow engine uses business rules during step execution (tested in unit tests)
         # We skip validate_workflow_state call here to avoid potential timeouts
         # The actual validation integration is tested in unit tests
-        self.assertIsNotNone(business_rules)
+        self.assertIsInstance(business_rules, OrchestrationBusinessRules)
         self.assertIsNotNone(workflow_instance)
         # Verify workflow has steps (already checked via prefetch above)
         # Business rules validation happens during step execution (tested in unit tests)
@@ -552,17 +556,20 @@ class TestContractCreationWorkflowBusinessRulesIntegration(
             first_step.error_message = "Test error"
             first_step.save()
 
-            # Try to continue execution - should handle error
+            # Try to continue execution — should fail due to invalid state.
+            # The engine raises an exception on invalid transitions; the test
+            # verifies the resulting workflow status below.
             try:
                 self.engine.execute_instance(str(workflow_instance.id))
             except Exception:
-                pass  # Expected to fail
+                pass  # Expected failure on invalid state transition
 
             # Verify workflow is in failed or rolled back state
             workflow_instance.refresh_from_db()
             self.assertIn(
                 workflow_instance.status,
-                [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK, WorkflowStatus.COMPLETED],
+                [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK],
+                f"Expected FAILED or ROLLED_BACK after error, got {workflow_instance.status}"
             )
 
 
@@ -583,8 +590,8 @@ class TestAssetCreationWorkflowBusinessRulesIntegration(WorkflowBusinessRulesInt
         AssetCreationWorkflow.register_workflow(self.registry)
         AssetCreationWorkflow.register_tasks(self.engine)
 
-    def test_successful_workflow_execution(self):
-        """Test successful AssetCreationWorkflow execution (4.2.3)"""
+    def test_successful_workflow_creation_and_setup(self):
+        """Test AssetCreationWorkflow instance creation and business rules setup (4.2.3)."""
         # Verify business rules integration by checking that workflows
         # use business rules during validation
         from hub.apps.orchestration.business_rules import OrchestrationBusinessRules
@@ -594,7 +601,7 @@ class TestAssetCreationWorkflowBusinessRulesIntegration(WorkflowBusinessRulesInt
         )
 
         # Verify business rules are available and can be instantiated
-        self.assertIsNotNone(business_rules)
+        self.assertIsInstance(business_rules, OrchestrationBusinessRules)
 
         # Create workflow instance to verify business rules integration
         asset_key = f"test-asset-{self.user.id}"
@@ -631,7 +638,7 @@ class TestAssetCreationWorkflowBusinessRulesIntegration(WorkflowBusinessRulesInt
         # 3. Workflow engine uses business rules during step execution (tested in unit tests)
         # We skip validate_workflow_state call here to avoid potential timeouts
         # The actual validation integration is tested in unit tests
-        self.assertIsNotNone(business_rules)
+        self.assertIsInstance(business_rules, OrchestrationBusinessRules)
         self.assertIsNotNone(workflow_instance)
         # Verify workflow has steps (already checked via prefetch above)
         # Business rules validation happens during step execution (tested in unit tests)
@@ -689,8 +696,8 @@ class TestDatasetCreationWorkflowBusinessRulesIntegration(WorkflowBusinessRulesI
         DatasetCreationWorkflow.register_workflow(self.registry)
         DatasetCreationWorkflow.register_tasks(self.engine)
 
-    def test_successful_workflow_execution(self):
-        """Test successful DatasetCreationWorkflow execution (4.2.3)"""
+    def test_successful_workflow_creation_and_setup(self):
+        """Test DatasetCreationWorkflow instance creation and business rules setup (4.2.3)."""
         # Verify business rules integration by checking that workflows
         # use business rules during validation
         from hub.apps.orchestration.business_rules import OrchestrationBusinessRules
@@ -700,7 +707,7 @@ class TestDatasetCreationWorkflowBusinessRulesIntegration(WorkflowBusinessRulesI
         )
 
         # Verify business rules are available and can be instantiated
-        self.assertIsNotNone(business_rules)
+        self.assertIsInstance(business_rules, OrchestrationBusinessRules)
 
         # Create file with ACTIVE status for workflow input
         from hub.apps.files.models import FileStatus
@@ -748,7 +755,7 @@ class TestDatasetCreationWorkflowBusinessRulesIntegration(WorkflowBusinessRulesI
         # 3. Workflow engine uses business rules during step execution (tested in unit tests)
         # We skip validate_workflow_state call here to avoid potential timeouts
         # The actual validation integration is tested in unit tests
-        self.assertIsNotNone(business_rules)
+        self.assertIsInstance(business_rules, OrchestrationBusinessRules)
         self.assertIsNotNone(workflow_instance)
         # Verify workflow has steps (already checked via prefetch above)
         # Business rules validation happens during step execution (tested in unit tests)
@@ -756,7 +763,6 @@ class TestDatasetCreationWorkflowBusinessRulesIntegration(WorkflowBusinessRulesI
     def test_validation_integration(self):
         """Test validation integration (4.2.3)"""
         # Try to create dataset with non-existent asset (use valid UUID format)
-        import uuid
 
         non_existent_asset_id = str(uuid.uuid4())
         non_existent_file_id = str(uuid.uuid4())
@@ -796,7 +802,6 @@ class TestDatasetCreationWorkflowBusinessRulesIntegration(WorkflowBusinessRulesI
         )
 
         # Try to create dataset without file (use valid UUID format)
-        import uuid
 
         non_existent_file_id = str(uuid.uuid4())
 
@@ -836,8 +841,8 @@ class TestMarketplacePublicationWorkflowBusinessRulesIntegration(
         MarketplacePublicationWorkflow.register_workflow(self.registry)
         MarketplacePublicationWorkflow.register_tasks(self.engine)
 
-    def test_successful_workflow_execution(self):
-        """Test successful MarketplacePublicationWorkflow execution (4.2.3)"""
+    def test_successful_workflow_creation_and_setup(self):
+        """Test MarketplacePublicationWorkflow instance creation and business rules setup (4.2.3)."""
         # Verify business rules integration by checking that workflows
         # use business rules during validation
         from hub.apps.orchestration.business_rules import OrchestrationBusinessRules
@@ -847,7 +852,7 @@ class TestMarketplacePublicationWorkflowBusinessRulesIntegration(
         )
 
         # Verify business rules are available and can be instantiated
-        self.assertIsNotNone(business_rules)
+        self.assertIsInstance(business_rules, OrchestrationBusinessRules)
 
         # Create asset for workflow input
         asset = Asset.objects.create(
@@ -891,7 +896,7 @@ class TestMarketplacePublicationWorkflowBusinessRulesIntegration(
         # 3. Workflow engine uses business rules during step execution (tested in unit tests)
         # We skip validate_workflow_state call here to avoid potential timeouts
         # The actual validation integration is tested in unit tests
-        self.assertIsNotNone(business_rules)
+        self.assertIsInstance(business_rules, OrchestrationBusinessRules)
         self.assertIsNotNone(workflow_instance)
         # Verify workflow has steps (already checked via prefetch above)
         # Business rules validation happens during step execution (tested in unit tests)
@@ -899,7 +904,6 @@ class TestMarketplacePublicationWorkflowBusinessRulesIntegration(
     def test_validation_integration(self):
         """Test validation integration (4.2.3)"""
         # Try to publish non-existent asset (use valid UUID format)
-        import uuid
 
         non_existent_asset_id = str(uuid.uuid4())
 
@@ -936,9 +940,9 @@ class TestMarketplacePublicationWorkflowBusinessRulesIntegration(
             created_by=self.user,
         )
 
-        # Try to publish asset without contract (may fail validation)
-        # Note: Marketplace publication may require ODPS contract
-        # This test verifies error handling when requirements are not met
+        # Verify marketplace publication error handling when contract may be required.
+        # If the workflow succeeds, the asset was published; if it fails, we verify
+        # the failure is due to unsatisfied preconditions (not a code bug).
         try:
             MarketplacePublicationWorkflow.execute(
                 tenant_id=str(self.tenant.id),
@@ -947,8 +951,11 @@ class TestMarketplacePublicationWorkflowBusinessRulesIntegration(
                 engine=self.engine,
                 registry=self.registry,
             )
+        except (KeyError, AttributeError, TypeError, RuntimeError) as e:
+            self.fail(f"Unexpected code error during marketplace publication: {e}")
         except Exception:
-            # Expected to fail if ODPS contract is required
+            # Expected to fail if ODPS contract or other preconditions unmet
+            # (raises ValueError from workflow engine). No crash = handled.
             pass
 
 
@@ -989,9 +996,13 @@ class WorkflowBusinessRulesIntegrationEdgeCasesTest(WorkflowBusinessRulesIntegra
             )
             self.assertIsNotNone(instance)
             self.assertEqual(instance.workflow_name, "product_creation")
+        except (ValueError, KeyError, AttributeError, TypeError) as e:
+            self.fail(f"Unexpected code error creating oversized-content instance: {e}")
         except Exception as e:
-            # Accept validation failure for oversized content
+            # Expected validation failure for oversized content.
+            # Verify the error message is present and meaningful.
             self.assertIsNotNone(str(e))
+            self.assertGreater(len(str(e)), 0)
 
     def test_product_creation_with_special_characters_in_product_id(self):
         """Product creation workflow handles special characters in productID (edge case)."""
@@ -1051,10 +1062,8 @@ class WorkflowBusinessRulesIntegrationErrorHandlingTest(WorkflowBusinessRulesInt
             # If instance is created, execution should fail at parse step
             if instance:
                 self.engine.start_instance(str(instance.id))
-                try:
+                with contextlib.suppress(WorkflowExecutionError, ValueError, TypeError):
                     self.engine.execute_instance(str(instance.id))
-                except (WorkflowExecutionError, ValueError, TypeError):
-                    pass
                 instance.refresh_from_db()
                 self.assertIn(
                     instance.status,
@@ -1079,6 +1088,9 @@ class WorkflowBusinessRulesIntegrationErrorHandlingTest(WorkflowBusinessRulesInt
                 created_by_id=str(self.user.id),
             )
             self.assertIsNotNone(instance)
+        except (KeyError, AttributeError, TypeError, RuntimeError) as e:
+            self.fail(f"Unexpected code error creating instance without required keys: {e}")
         except Exception:
-            # Acceptable if create_instance enforces required keys
+            # Expected if create_instance enforces required input keys
+            # (raises ValueError from workflow engine).
             pass

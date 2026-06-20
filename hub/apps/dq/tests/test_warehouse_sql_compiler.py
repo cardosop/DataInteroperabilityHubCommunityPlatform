@@ -1,14 +1,14 @@
 """
 285.10.1.2 — Tests for DQWarehouseSQLCompiler and ContractQualityRulesExtractor.
 """
+
 import pytest
 
 from hub.apps.dq.warehouse_sql_compiler import (
     CompiledCheck,
-    DQWarehouseSQLCompiler,
     ContractQualityRulesExtractor,
+    DQWarehouseSQLCompiler,
 )
-
 
 # ── CompiledCheck tests ───────────────────────────────────────────────
 
@@ -81,7 +81,13 @@ class TestCompileUnique:
 class TestCompileAcceptedValues:
     @pytest.mark.unit
     def test_accepted_values_check(self):
-        checks = [{"type": "accepted_values", "column": "status", "values": ["ACTIVE", "INACTIVE", "PENDING"]}]
+        checks = [
+            {
+                "type": "accepted_values",
+                "column": "status",
+                "values": ["ACTIVE", "INACTIVE", "PENDING"],
+            }
+        ]
         result = DQWarehouseSQLCompiler.compile(checks, "snowflake", "DB.S.T")
         assert result[0].check_type == "accepted_values"
         assert "NOT IN" in result[0].sql
@@ -235,7 +241,9 @@ class TestContractQualityRulesExtractor:
             },
         }
         checks = ContractQualityRulesExtractor.get_warehouse_check_definitions(contract)
-        assert len(checks) >= 5  # not_null(id), unique(id), not_null(email), accepted_values(status), freshness, row_count
+        assert (
+            len(checks) >= 5
+        )  # not_null(id), unique(id), not_null(email), accepted_values(status), freshness, row_count
 
         not_null_checks = [c for c in checks if c["type"] == "not_null"]
         assert len(not_null_checks) >= 2

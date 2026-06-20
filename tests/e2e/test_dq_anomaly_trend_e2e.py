@@ -3,30 +3,32 @@ E2E tests for DQ Anomaly Detection and Trend Analysis
 
 End-to-end tests for complete workflows including anomaly detection and trend analysis.
 """
+
 import pytest
 
 pytestmark = pytest.mark.slow
-from django.test import TestCase
-from django.utils import timezone
+import uuid
 from datetime import timedelta
 
-from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine, DQAnomaly, DQAnomalySeverity, DQTrend
-from hub.apps.dq.anomaly_detection import AnomalyDetector
-from hub.apps.dq.trend_analysis import TrendAnalyzer
-from hub.apps.jobs.models import Job, JobStatus, JobType
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus, Role, UserRole
+from django.test import TestCase
+from django.utils import timezone
+
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
+from hub.apps.dq.anomaly_detection import AnomalyDetector
+from hub.apps.dq.models import DQAnomaly, DQAnomalySeverity, DQEngine, DQRun, DQRunStatus, DQTrend
+from hub.apps.dq.trend_analysis import TrendAnalyzer
 from hub.apps.files.models import File, FileStatus
-import uuid
+from hub.apps.jobs.models import Job, JobStatus, JobType
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
 
 class DQAnomalyDetectionE2ETest(TestCase):
     """E2E tests for DQ anomaly detection"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
@@ -37,6 +39,7 @@ class DQAnomalyDetectionE2ETest(TestCase):
             kyc_status=KYCStatus.VERIFIED,
         )
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
         ensure_tenant_has_active_subscription(self.tenant)
 
         self.user = User.objects.create_user(
@@ -52,15 +55,15 @@ class DQAnomalyDetectionE2ETest(TestCase):
             defaults={"description": "Tenant Administrator"},
         )
         UserRole.objects.get_or_create(user=self.user, role=tenant_admin_role)
-        
+
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         self.file = File.objects.create(
             tenant=self.tenant,
             name="test.csv",
@@ -69,9 +72,9 @@ class DQAnomalyDetectionE2ETest(TestCase):
             status=FileStatus.ACTIVE,
             storage_path="test/test.csv",
             content_sha256="abc123",
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         self.dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -79,9 +82,9 @@ class DQAnomalyDetectionE2ETest(TestCase):
             schema_json={"fields": [{"name": "col1", "type": "string"}]},
             format="CSV",
             version=1,
-            created_by=self.user
+            created_by=self.user,
         )
-    
+
     def test_complete_anomaly_detection_workflow(self):
         """
         Test complete anomaly detection workflow:
@@ -98,9 +101,9 @@ class DQAnomalyDetectionE2ETest(TestCase):
                 resource_type="DQ_RUN",
                 resource_id=self.dataset.id,
                 status=JobStatus.COMPLETED,
-                created_by=self.user
+                created_by=self.user,
             )
-            
+
             DQRun.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
@@ -111,9 +114,9 @@ class DQAnomalyDetectionE2ETest(TestCase):
                 status=DQRunStatus.SUCCEEDED,
                 overall_status="PASS",
                 quality_score=90.0,
-                completed_at=timezone.now() - timedelta(days=20-i)
+                completed_at=timezone.now() - timedelta(days=20 - i),
             )
-        
+
         # Step 2: Create anomalous DQ run
         job = Job.objects.create(
             tenant=self.tenant,
@@ -121,9 +124,9 @@ class DQAnomalyDetectionE2ETest(TestCase):
             resource_type="DQ_RUN",
             resource_id=self.dataset.id,
             status=JobStatus.COMPLETED,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         anomalous_run = DQRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -134,67 +137,69 @@ class DQAnomalyDetectionE2ETest(TestCase):
             status=DQRunStatus.SUCCEEDED,
             overall_status="PASS",
             quality_score=30.0,  # Extreme anomaly
-            completed_at=timezone.now()
+            completed_at=timezone.now(),
         )
-        
+
         # Step 3: Detect anomalies
         anomalies = AnomalyDetector.detect_anomalies(anomalous_run)
-        
+
         # Step 4: Save and verify anomalies
         for anomaly in anomalies:
             anomaly.save()
-        
-        saved_anomalies = DQAnomaly.objects.filter(
-            tenant=self.tenant,
-            asset=self.asset
-        )
+
+        saved_anomalies = DQAnomaly.objects.filter(tenant=self.tenant, asset=self.asset)
         self.assertGreater(saved_anomalies.count(), 0)
-        
+
         # Verify anomaly details
         anomaly = saved_anomalies.first()
         self.assertEqual(anomaly.metric_type, "quality_score")
         # Expected value should approximate the baseline mean (~90.0)
         self.assertIsNotNone(anomaly.expected_value)
-        self.assertGreater(anomaly.expected_value, 50.0,
-                           "Expected value should reflect baseline (~90), not be near 0")
+        self.assertGreater(
+            anomaly.expected_value,
+            50.0,
+            "Expected value should reflect baseline (~90), not be near 0",
+        )
         self.assertEqual(anomaly.actual_value, 30.0)
         # Deviation should be negative (actual < expected)
         self.assertIsNotNone(anomaly.deviation)
-        self.assertLess(anomaly.deviation, 0,
-                        "Deviation should be negative when actual < expected")
+        self.assertLess(anomaly.deviation, 0, "Deviation should be negative when actual < expected")
         # Severity should be HIGH or CRITICAL for a 60-point drop
         self.assertIsNotNone(anomaly.severity)
-        self.assertIn(anomaly.severity, ["HIGH", "CRITICAL", DQAnomalySeverity.HIGH, DQAnomalySeverity.CRITICAL],
-                       "A 60-point quality drop should be HIGH or CRITICAL severity")
+        self.assertIn(
+            anomaly.severity,
+            ["HIGH", "CRITICAL", DQAnomalySeverity.HIGH, DQAnomalySeverity.CRITICAL],
+            "A 60-point quality drop should be HIGH or CRITICAL severity",
+        )
 
 
 class DQTrendAnalysisE2ETest(TestCase):
     """E2E tests for DQ trend analysis"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
-        
+
         self.user = User.objects.create_user(
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        
+
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         self.file = File.objects.create(
             tenant=self.tenant,
             name="test.csv",
@@ -203,9 +208,9 @@ class DQTrendAnalysisE2ETest(TestCase):
             status=FileStatus.ACTIVE,
             storage_path="test/test.csv",
             content_sha256="abc123",
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         self.dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -213,9 +218,9 @@ class DQTrendAnalysisE2ETest(TestCase):
             schema_json={"fields": [{"name": "col1", "type": "string"}]},
             format="CSV",
             version=1,
-            created_by=self.user
+            created_by=self.user,
         )
-    
+
     def test_complete_trend_analysis_workflow(self):
         """
         Test complete trend analysis workflow:
@@ -232,9 +237,9 @@ class DQTrendAnalysisE2ETest(TestCase):
                 resource_type="DQ_RUN",
                 resource_id=self.dataset.id,
                 status=JobStatus.COMPLETED,
-                created_by=self.user
+                created_by=self.user,
             )
-            
+
             DQRun.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
@@ -245,29 +250,26 @@ class DQTrendAnalysisE2ETest(TestCase):
                 status=DQRunStatus.SUCCEEDED,
                 overall_status="PASS",
                 quality_score=70.0 + (i * 1.0),  # Improving trend
-                completed_at=timezone.now() - timedelta(days=30-i)
+                completed_at=timezone.now() - timedelta(days=30 - i),
             )
-        
+
         # Step 2: Calculate trends
         trends = TrendAnalyzer.calculate_trend(
             asset_id=str(self.asset.id),
             tenant_id=str(self.tenant.id),
             period_type="DAILY",
-            periods=30
+            periods=30,
         )
-        
+
         # Step 3: Save trends
         for trend in trends:
             trend.save()
-        
-        saved_trends = DQTrend.objects.filter(
-            tenant=self.tenant,
-            asset=self.asset
-        )
+
+        saved_trends = DQTrend.objects.filter(tenant=self.tenant, asset=self.asset)
         self.assertGreater(saved_trends.count(), 0)
 
         # Verify trend data reflects the improving quality scores (70 → 99)
-        first_trend = saved_trends.order_by('period_start').first()
+        first_trend = saved_trends.order_by("period_start").first()
         self.assertIsNotNone(first_trend.metric_type)
         self.assertIsNotNone(first_trend.current_value)
 
@@ -287,6 +289,4 @@ class DQTrendAnalysisE2ETest(TestCase):
         self.assertGreater(len(chart_viz["datasets"]), 0)
         # Datasets should contain actual data points
         first_dataset = chart_viz["datasets"][0]
-        self.assertIn("data", first_dataset,
-                       "Chart dataset should have a 'data' key with values")
-
+        self.assertIn("data", first_dataset, "Chart dataset should have a 'data' key with values")

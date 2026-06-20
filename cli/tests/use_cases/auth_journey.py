@@ -13,10 +13,10 @@ import requests
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_base_url, api_get, api_login
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _provision_analyst():
     """Provision a data_analyst persona for auth tests."""
@@ -49,9 +49,7 @@ def test_auth_me_returns_user():
     if resp.status_code == 404:
         pytest.skip("/auth/me/ endpoint not found (404)")
 
-    assert resp.status_code == 200, (
-        f"/auth/me/ returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"/auth/me/ returned {resp.status_code}: {resp.text[:500]}"
 
     body = resp.json()
     # Must contain at least an email or user id
@@ -70,14 +68,10 @@ def test_auth_login_endpoint():
     if resp.status_code == 404:
         pytest.skip("/auth/login/ endpoint not found (404)")
 
-    assert resp.status_code == 200, (
-        f"/auth/login/ returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"/auth/login/ returned {resp.status_code}: {resp.text[:500]}"
 
     body = resp.json()
-    assert "access_token" in body, (
-        f"Login response missing access_token. Keys: {list(body.keys())}"
-    )
+    assert "access_token" in body, f"Login response missing access_token. Keys: {list(body.keys())}"
     assert isinstance(body["access_token"], str) and len(body["access_token"]) > 10
 
 
@@ -90,9 +84,7 @@ def test_auth_logout_endpoint():
     login_resp = api_login(email, PERSONA_PASSWORD)
     if login_resp.status_code == 404:
         pytest.skip("/auth/login/ endpoint not found (404)")
-    assert login_resp.status_code == 200, (
-        f"Pre-logout login failed: {login_resp.status_code}"
-    )
+    assert login_resp.status_code == 200, f"Pre-logout login failed: {login_resp.status_code}"
     access = login_resp.json()["access_token"]
 
     base = api_base_url()
@@ -107,8 +99,7 @@ def test_auth_logout_endpoint():
         pytest.skip("/auth/logout/ endpoint not found (404)")
 
     assert logout_resp.status_code in (200, 204), (
-        f"/auth/logout/ returned {logout_resp.status_code}: "
-        f"{logout_resp.text[:300]}"
+        f"/auth/logout/ returned {logout_resp.status_code}: {logout_resp.text[:300]}"
     )
 
     # After logout, /auth/me/ should reject the token

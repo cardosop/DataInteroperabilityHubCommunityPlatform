@@ -12,23 +12,21 @@ All validation methods follow engineering best practices:
 - Comprehensive error messages with context
 - Follow DRY, SOLID, and clean code principles
 """
+
 import logging
 import re
-from typing import Dict, Any, Optional, List, Set
 from dataclasses import dataclass
+from typing import Any
 
-from django.core.exceptions import ValidationError as DjangoValidationError
-
+from hub.apps.assets.models import Asset
 from hub.apps.core.business_rules.base import (
     BusinessRules,
     RuleExecutionContext,
     ValidationResult,
 )
 from hub.apps.core.business_rules.registry import register_rule
-from hub.apps.virtualization.models import VirtualDataset, QueryType, QueryExecutionMode
-from hub.apps.assets.models import Asset
-from hub.apps.datasets.models import Dataset
 from hub.apps.core.services.base import ValidationError
+from hub.apps.virtualization.models import QueryExecutionMode, QueryType, VirtualDataset
 
 logger = logging.getLogger(__name__)
 
@@ -42,16 +40,23 @@ class VirtualizationRuleExecutionContext(RuleExecutionContext):
     - virtual_dataset: The virtual dataset being validated
     - query: Optional query string being validated
     """
-    virtual_dataset: Optional[VirtualDataset] = None
-    query: Optional[str] = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    virtual_dataset: VirtualDataset | None = None
+    query: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert context to dictionary for caching/logging."""
         base_dict = super().to_dict()
-        base_dict.update({
-            'virtual_dataset_id': str(self.virtual_dataset.id) if self.virtual_dataset else None,
-            'query_preview': self.query[:100] + "..." if self.query and len(self.query) > 100 else self.query,
-        })
+        base_dict.update(
+            {
+                "virtual_dataset_id": str(self.virtual_dataset.id)
+                if self.virtual_dataset
+                else None,
+                "query_preview": self.query[:100] + "..."
+                if self.query and len(self.query) > 100
+                else self.query,
+            }
+        )
         return base_dict
 
 
@@ -60,7 +65,6 @@ class VirtualizationRuleExecutionContext(RuleExecutionContext):
     description="Validates virtual dataset query syntax, schema alignment, and source compatibility",
     tags=["virtualization", "dataset", "validation"],
     priority=10,
-
     openspec_ref="specs/virtualization-business-rules/spec.md",
 )
 class VirtualizationBusinessRules(BusinessRules):
@@ -78,33 +82,70 @@ class VirtualizationBusinessRules(BusinessRules):
 
     # SQL forbidden keywords (write operations)
     SQL_FORBIDDEN_KEYWORDS = [
-        'DROP', 'DELETE', 'TRUNCATE', 'ALTER', 'CREATE TABLE',
-        'CREATE DATABASE', 'CREATE SCHEMA', 'DROP TABLE', 'DROP DATABASE'
+        "DROP",
+        "DELETE",
+        "TRUNCATE",
+        "ALTER",
+        "CREATE TABLE",
+        "CREATE DATABASE",
+        "CREATE SCHEMA",
+        "DROP TABLE",
+        "DROP DATABASE",
     ]
 
     # SQL required keywords (at least one must be present)
-    SQL_REQUIRED_KEYWORDS = ['SELECT', 'WITH', 'INSERT', 'UPDATE']
+    SQL_REQUIRED_KEYWORDS = ["SELECT", "WITH", "INSERT", "UPDATE"]
 
     # SPARQL forbidden keywords (write operations)
-    SPARQL_FORBIDDEN_KEYWORDS = ['INSERT', 'DELETE', 'DROP', 'CREATE', 'LOAD', 'CLEAR']
+    SPARQL_FORBIDDEN_KEYWORDS = ["INSERT", "DELETE", "DROP", "CREATE", "LOAD", "CLEAR"]
 
     # SPARQL required keywords (at least one must be present)
-    SPARQL_REQUIRED_KEYWORDS = ['SELECT', 'CONSTRUCT', 'ASK', 'DESCRIBE', 'PREFIX']
+    SPARQL_REQUIRED_KEYWORDS = ["SELECT", "CONSTRUCT", "ASK", "DESCRIBE", "PREFIX"]
 
     # Supported source types (odps_contract: ODPS product/contract as source; no external connector)
     SUPPORTED_SOURCE_TYPES = [
-        'postgresql', 'mysql', 'sqlserver', 'mssql', 'odbc',
-        'sparql', 'rest', 'graphql', 's3', 'minio',
-        'federated_asset', 'external_resource', 'odps_contract'
+        "postgresql",
+        "mysql",
+        "sqlserver",
+        "mssql",
+        "odbc",
+        "sparql",
+        "rest",
+        "graphql",
+        "s3",
+        "minio",
+        "federated_asset",
+        "external_resource",
+        "odps_contract",
     ]
 
     # Source type compatibility with query types
     QUERY_TYPE_SOURCE_COMPATIBILITY = {
-        QueryType.SQL: ['postgresql', 'mysql', 'sqlserver', 'mssql', 'odbc', 'federated_asset', 'external_resource'],
-        QueryType.SPARQL: ['sparql', 'federated_asset'],
-        QueryType.REST: ['rest', 'federated_asset', 'external_resource', 'odps_contract'],
-        QueryType.GRAPHQL: ['graphql', 'federated_asset'],
-        QueryType.FEDERATED: ['postgresql', 'mysql', 'sqlserver', 'mssql', 'odbc', 'sparql', 'rest', 'graphql', 'federated_asset', 'external_resource', 'odps_contract']
+        QueryType.SQL: [
+            "postgresql",
+            "mysql",
+            "sqlserver",
+            "mssql",
+            "odbc",
+            "federated_asset",
+            "external_resource",
+        ],
+        QueryType.SPARQL: ["sparql", "federated_asset"],
+        QueryType.REST: ["rest", "federated_asset", "external_resource", "odps_contract"],
+        QueryType.GRAPHQL: ["graphql", "federated_asset"],
+        QueryType.FEDERATED: [
+            "postgresql",
+            "mysql",
+            "sqlserver",
+            "mssql",
+            "odbc",
+            "sparql",
+            "rest",
+            "graphql",
+            "federated_asset",
+            "external_resource",
+            "odps_contract",
+        ],
     }
 
     def get_rule_name(self) -> str:
@@ -112,10 +153,7 @@ class VirtualizationBusinessRules(BusinessRules):
         return "VirtualizationBusinessRules"
 
     def validate(
-        self,
-        context: Optional[RuleExecutionContext] = None,
-        *args,
-        **kwargs
+        self, context: RuleExecutionContext | None = None, *args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -143,35 +181,41 @@ class VirtualizationBusinessRules(BusinessRules):
             query = context.query
         else:
             # Try to get from kwargs first
-            virtual_dataset = kwargs.get('virtual_dataset')
-            query = kwargs.get('query')
+            virtual_dataset = kwargs.get("virtual_dataset")
+            query = kwargs.get("query")
 
             # If not in kwargs, try to get from context.metadata or context.resource
             if not virtual_dataset:
-                if context and hasattr(context, 'resource') and isinstance(context.resource, VirtualDataset):
+                if (
+                    context
+                    and hasattr(context, "resource")
+                    and isinstance(context.resource, VirtualDataset)
+                ):
                     virtual_dataset = context.resource
-                elif context and hasattr(context, 'metadata') and isinstance(context.metadata, dict):
-                    virtual_dataset = context.metadata.get('virtual_dataset')
-                    query = query or context.metadata.get('query')
+                elif (
+                    context and hasattr(context, "metadata") and isinstance(context.metadata, dict)
+                ):
+                    virtual_dataset = context.metadata.get("virtual_dataset")
+                    query = query or context.metadata.get("query")
 
         if not virtual_dataset:
             return ValidationResult(
                 is_valid=False,
                 errors=["Virtual dataset is required for validation"],
-                details={"validation_type": kwargs.get('validation_type', 'all')}
+                details={"validation_type": kwargs.get("validation_type", "all")},
             )
 
-        validation_type = kwargs.get('validation_type', 'all')
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        validation_type = kwargs.get("validation_type", "all")
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "dataset_id": str(virtual_dataset.id) if getattr(virtual_dataset, "id", None) else None,
-            "dataset_name": virtual_dataset.name if hasattr(virtual_dataset, 'name') else None,
+            "dataset_name": virtual_dataset.name if hasattr(virtual_dataset, "name") else None,
             "validation_type": validation_type,
         }
 
         # Structure: name required and non-empty (applies to create and update)
-        name_val = getattr(virtual_dataset, 'name', None)
+        name_val = getattr(virtual_dataset, "name", None)
         if not name_val or not str(name_val).strip():
             errors.append("Name is required and cannot be empty")
             details["name_valid"] = False
@@ -179,7 +223,7 @@ class VirtualizationBusinessRules(BusinessRules):
             details["name_valid"] = True
 
         # Perform validation based on type
-        if validation_type in ('query_syntax', 'query_mapping', 'all'):
+        if validation_type in ("query_syntax", "query_mapping", "all"):
             query_to_validate = query or virtual_dataset.query
             if query_to_validate:
                 # Use query_mapping validation which includes syntax validation
@@ -189,27 +233,29 @@ class VirtualizationBusinessRules(BusinessRules):
                     warnings.extend(query_result.warnings)
                     details["query_mapping"] = query_result.details
 
-        if validation_type in ('schema_alignment', 'schema', 'all'):
-            schema_result = self.validate_virtual_dataset_schema(virtual_dataset, raise_on_error=False)
+        if validation_type in ("schema_alignment", "schema", "all"):
+            schema_result = self.validate_virtual_dataset_schema(
+                virtual_dataset, raise_on_error=False
+            )
             if not schema_result.is_valid:
                 errors.extend(schema_result.errors)
                 warnings.extend(schema_result.warnings)
                 details["schema"] = schema_result.details
 
-        if validation_type in ('source_compatibility', 'source_configuration', 'all'):
+        if validation_type in ("source_compatibility", "source_configuration", "all"):
             # Use source_configuration validation which includes compatibility checks
-            source_result = self.validate_source_configuration(virtual_dataset, raise_on_error=False)
+            source_result = self.validate_source_configuration(
+                virtual_dataset, raise_on_error=False
+            )
             if not source_result.is_valid:
                 errors.extend(source_result.errors)
                 warnings.extend(source_result.warnings)
                 details["source_configuration"] = source_result.details
 
-        if validation_type in ('caching_configuration', 'cache', 'all'):
-            cache_config = kwargs.get('cache_config')
+        if validation_type in ("caching_configuration", "cache", "all"):
+            cache_config = kwargs.get("cache_config")
             cache_result = self.validate_caching_configuration(
-                virtual_dataset,
-                cache_config=cache_config,
-                raise_on_error=False
+                virtual_dataset, cache_config=cache_config, raise_on_error=False
             )
             if not cache_result.is_valid:
                 errors.extend(cache_result.errors)
@@ -218,17 +264,11 @@ class VirtualizationBusinessRules(BusinessRules):
 
         is_valid = len(errors) == 0
         return ValidationResult(
-            is_valid=is_valid,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=is_valid, errors=errors, warnings=warnings, details=details
         )
 
     def validate_query_syntax(
-        self,
-        query: str,
-        query_type: QueryType,
-        raise_on_error: bool = False
+        self, query: str, query_type: QueryType, raise_on_error: bool = False
     ) -> ValidationResult:
         """
         Validate query syntax for the given query type.
@@ -250,12 +290,12 @@ class VirtualizationBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "query_type": query_type,
             "query_length": len(query) if query else 0,
-            "validation_checks": {}
+            "validation_checks": {},
         }
 
         # Validate query is not empty
@@ -267,16 +307,13 @@ class VirtualizationBusinessRules(BusinessRules):
 
         if errors:
             result = ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
             if raise_on_error:
                 raise ValidationError(
                     f"Query syntax validation failed: {errors[0]}",
                     code="INVALID_QUERY_SYNTAX",
-                    details=details
+                    details=details,
                 )
             return result
 
@@ -317,30 +354,24 @@ class VirtualizationBusinessRules(BusinessRules):
             details["validation_checks"]["query_type_supported"] = False
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
             raise ValidationError(
                 f"Query syntax validation failed: {', '.join(errors)}",
                 code="INVALID_QUERY_SYNTAX",
-                details=details
+                details=details,
             )
 
         return result
 
     def _validate_sql_syntax(
-        self,
-        query: str,
-        query_upper: str,
-        details: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, query: str, query_upper: str, details: dict[str, Any]
+    ) -> dict[str, Any]:
         """Validate SQL query syntax"""
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
         validation_checks = details.get("validation_checks", {})
 
         # Check for forbidden keywords
@@ -368,8 +399,8 @@ class VirtualizationBusinessRules(BusinessRules):
             validation_checks["unbounded_select"] = True
 
         # Check for basic SQL structure (parentheses balance)
-        open_parens = query.count('(')
-        close_parens = query.count(')')
+        open_parens = query.count("(")
+        close_parens = query.count(")")
         if open_parens != close_parens:
             errors.append(
                 f"Unbalanced parentheses in SQL query (opening: {open_parens}, closing: {close_parens})"
@@ -388,21 +419,14 @@ class VirtualizationBusinessRules(BusinessRules):
 
         details["validation_checks"] = validation_checks
 
-        return {
-            "errors": errors,
-            "warnings": warnings,
-            "details": details
-        }
+        return {"errors": errors, "warnings": warnings, "details": details}
 
     def _validate_sparql_syntax(
-        self,
-        query: str,
-        query_upper: str,
-        details: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, query: str, query_upper: str, details: dict[str, Any]
+    ) -> dict[str, Any]:
         """Validate SPARQL query syntax"""
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
         validation_checks = details.get("validation_checks", {})
 
         # Check for forbidden keywords
@@ -415,7 +439,9 @@ class VirtualizationBusinessRules(BusinessRules):
             validation_checks["forbidden_keywords"] = True
 
         # Check for required keywords
-        has_required_keyword = any(keyword in query_upper for keyword in self.SPARQL_REQUIRED_KEYWORDS)
+        has_required_keyword = any(
+            keyword in query_upper for keyword in self.SPARQL_REQUIRED_KEYWORDS
+        )
         if not has_required_keyword:
             errors.append(
                 f"SPARQL query must contain at least one of: {', '.join(self.SPARQL_REQUIRED_KEYWORDS)}"
@@ -432,8 +458,8 @@ class VirtualizationBusinessRules(BusinessRules):
             validation_checks["has_triple_patterns"] = False
 
         # Check for balanced braces
-        open_braces = query.count('{')
-        close_braces = query.count('}')
+        open_braces = query.count("{")
+        close_braces = query.count("}")
         if open_braces != close_braces:
             errors.append(
                 f"Unbalanced braces in SPARQL query (opening: {open_braces}, closing: {close_braces})"
@@ -444,16 +470,10 @@ class VirtualizationBusinessRules(BusinessRules):
 
         details["validation_checks"] = validation_checks
 
-        return {
-            "errors": errors,
-            "warnings": warnings,
-            "details": details
-        }
+        return {"errors": errors, "warnings": warnings, "details": details}
 
     def validate_source_configuration(
-        self,
-        virtual_dataset: VirtualDataset,
-        raise_on_error: bool = False
+        self, virtual_dataset: VirtualDataset, raise_on_error: bool = False
     ) -> ValidationResult:
         """
         Validate source configuration (valid sources, accessible).
@@ -476,13 +496,13 @@ class VirtualizationBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "dataset_id": str(virtual_dataset.id),
             "dataset_name": virtual_dataset.name,
             "query_type": virtual_dataset.query_type,
-            "source_configuration_checks": {}
+            "source_configuration_checks": {},
         }
 
         sources = virtual_dataset.get_sources() or []
@@ -493,25 +513,19 @@ class VirtualizationBusinessRules(BusinessRules):
             if query_type == QueryType.SPARQL:
                 details["source_configuration_checks"]["sources_required"] = False
                 return ValidationResult(
-                    is_valid=True,
-                    errors=errors,
-                    warnings=warnings,
-                    details=details
+                    is_valid=True, errors=errors, warnings=warnings, details=details
                 )
             else:
                 errors.append(f"Sources are required for {query_type} queries")
                 details["source_configuration_checks"]["sources_required"] = False
                 result = ValidationResult(
-                    is_valid=False,
-                    errors=errors,
-                    warnings=warnings,
-                    details=details
+                    is_valid=False, errors=errors, warnings=warnings, details=details
                 )
                 if raise_on_error:
                     raise ValidationError(
                         f"Source configuration validation failed: {errors[0]}",
                         code="INVALID_SOURCE_CONFIGURATION",
-                        details=details
+                        details=details,
                     )
                 return result
 
@@ -558,20 +572,26 @@ class VirtualizationBusinessRules(BusinessRules):
             errors.extend(source_errors)
 
             # Check source accessibility
-            accessibility_result = self._validate_source_accessibility(source_config, i, source_type)
+            accessibility_result = self._validate_source_accessibility(
+                source_config, i, source_type
+            )
             if not accessibility_result["accessible"]:
                 errors.extend(accessibility_result["errors"])
                 warnings.extend(accessibility_result["warnings"])
             else:
                 warnings.extend(accessibility_result["warnings"])
-            details["source_configuration_checks"][f"source_{i}_accessible"] = accessibility_result["accessible"]
-            details["source_configuration_checks"][f"source_{i}_accessibility_details"] = accessibility_result["details"]
+            details["source_configuration_checks"][f"source_{i}_accessible"] = accessibility_result[
+                "accessible"
+            ]
+            details["source_configuration_checks"][f"source_{i}_accessibility_details"] = (
+                accessibility_result["details"]
+            )
 
             # Check asset-based source access
             asset_id = source_config.get("asset_id")
             if asset_id:
                 try:
-                    asset = Asset.objects.select_related('tenant').get(id=asset_id)
+                    asset = Asset.objects.select_related("tenant").get(id=asset_id)
                     details["source_configuration_checks"][f"source_{i}_asset_exists"] = True
 
                     # Check cross-tenant access if applicable
@@ -582,7 +602,7 @@ class VirtualizationBusinessRules(BusinessRules):
                         has_access, error_code, _ = check_entitlement(
                             consumer_tenant_id=self.tenant_id,
                             asset_id=str(asset_id),
-                            provider_tenant_id=str(asset.tenant_id)
+                            provider_tenant_id=str(asset.tenant_id),
                         )
 
                         if not has_access:
@@ -590,41 +610,41 @@ class VirtualizationBusinessRules(BusinessRules):
                                 f"Source at index {i} references asset from different tenant without entitlement. "
                                 f"Asset: {asset.name} (tenant: {asset.tenant.name}), Error code: {error_code}"
                             )
-                            details["source_configuration_checks"][f"source_{i}_cross_tenant_access"] = False
+                            details["source_configuration_checks"][
+                                f"source_{i}_cross_tenant_access"
+                            ] = False
                         else:
-                            details["source_configuration_checks"][f"source_{i}_cross_tenant_access"] = True
+                            details["source_configuration_checks"][
+                                f"source_{i}_cross_tenant_access"
+                            ] = True
                     else:
-                        details["source_configuration_checks"][f"source_{i}_cross_tenant_access"] = True
+                        details["source_configuration_checks"][
+                            f"source_{i}_cross_tenant_access"
+                        ] = True
 
                 except Asset.DoesNotExist:
                     errors.append(f"Source at index {i} references non-existent asset: {asset_id}")
                     details["source_configuration_checks"][f"source_{i}_asset_exists"] = False
                 except Exception as e:
-                    warnings.append(f"Failed to validate asset access for source {i}: {str(e)}")
+                    warnings.append(f"Failed to validate asset access for source {i}: {e!s}")
                     details["source_configuration_checks"][f"source_{i}_asset_validation"] = False
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
             raise ValidationError(
                 f"Source configuration validation failed: {', '.join(errors)}",
                 code="INVALID_SOURCE_CONFIGURATION",
-                details=details
+                details=details,
             )
 
         return result
 
     def _validate_source_accessibility(
-        self,
-        source_config: Dict[str, Any],
-        source_index: int,
-        source_type: str
-    ) -> Dict[str, Any]:
+        self, source_config: dict[str, Any], source_index: int, source_type: str
+    ) -> dict[str, Any]:
         """
         Validate source accessibility (can be connected to).
 
@@ -636,17 +656,14 @@ class VirtualizationBusinessRules(BusinessRules):
         Returns:
             Dictionary with accessibility status, errors, warnings, and details
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            "source_type": source_type,
-            "source_index": source_index
-        }
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"source_type": source_type, "source_index": source_index}
 
         # For database sources, check if connection details are complete
-        if source_type in ['postgresql', 'mysql', 'sqlserver', 'mssql']:
+        if source_type in ["postgresql", "mysql", "sqlserver", "mssql"]:
             # Check required connection fields
-            required_fields = ['host', 'database']
+            required_fields = ["host", "database"]
             missing_fields = [f for f in required_fields if f not in source_config]
             if missing_fields:
                 errors.append(
@@ -659,11 +676,11 @@ class VirtualizationBusinessRules(BusinessRules):
 
             # Check if credentials are provided (either in config or via asset)
             has_credentials = (
-                'username' in source_config or
-                'user' in source_config or
-                'password' in source_config or
-                'connection_string' in source_config or
-                source_config.get('asset_id') is not None
+                "username" in source_config
+                or "user" in source_config
+                or "password" in source_config
+                or "connection_string" in source_config
+                or source_config.get("asset_id") is not None
             )
             if not has_credentials:
                 warnings.append(
@@ -675,11 +692,11 @@ class VirtualizationBusinessRules(BusinessRules):
                 details["has_credentials"] = True
 
             # Validate host format (basic check)
-            host = source_config.get('host', '')
+            host = source_config.get("host", "")
             if host:
                 # Basic host validation (IP or hostname)
-                ip_pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
-                hostname_pattern = r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
+                ip_pattern = r"^(\d{1,3}\.){3}\d{1,3}$"
+                hostname_pattern = r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$"
                 if not (re.match(ip_pattern, host) or re.match(hostname_pattern, host)):
                     warnings.append(
                         f"Source at index {source_index} has invalid host format: {host}"
@@ -689,9 +706,9 @@ class VirtualizationBusinessRules(BusinessRules):
                     details["host_format_valid"] = True
 
         # For ODBC sources, check connection_string or host+database
-        elif source_type == 'odbc':
-            has_connection_string = bool(source_config.get('connection_string'))
-            has_host_db = 'host' in source_config and 'database' in source_config
+        elif source_type == "odbc":
+            has_connection_string = bool(source_config.get("connection_string"))
+            has_host_db = "host" in source_config and "database" in source_config
             if not has_connection_string and not has_host_db:
                 errors.append(
                     f"Source at index {source_index} (type: {source_type}) "
@@ -701,10 +718,11 @@ class VirtualizationBusinessRules(BusinessRules):
             else:
                 details["connection_fields_complete"] = True
             has_credentials = (
-                'connection_string' in source_config or
-                'username' in source_config or 'user' in source_config or
-                'password' in source_config or
-                source_config.get('asset_id') is not None
+                "connection_string" in source_config
+                or "username" in source_config
+                or "user" in source_config
+                or "password" in source_config
+                or source_config.get("asset_id") is not None
             )
             details["has_credentials"] = has_credentials
             if not has_credentials:
@@ -714,15 +732,16 @@ class VirtualizationBusinessRules(BusinessRules):
                 )
 
         # For REST sources, validate URL format
-        elif source_type == 'rest':
+        elif source_type == "rest":
             url = (
-                source_config.get('url')
-                or source_config.get('endpoint')
-                or source_config.get('base_url', '')
+                source_config.get("url")
+                or source_config.get("endpoint")
+                or source_config.get("base_url", "")
             )
             if url:
                 try:
                     from urllib.parse import urlparse
+
                     parsed = urlparse(url)
                     if not parsed.scheme or not parsed.netloc:
                         errors.append(
@@ -733,7 +752,7 @@ class VirtualizationBusinessRules(BusinessRules):
                     else:
                         details["url_format_valid"] = True
                         # Check if scheme is supported
-                        supported_schemes = ['http', 'https']
+                        supported_schemes = ["http", "https"]
                         if parsed.scheme.lower() not in supported_schemes:
                             warnings.append(
                                 f"Source at index {source_index} uses unsupported URL scheme: {parsed.scheme}"
@@ -742,17 +761,16 @@ class VirtualizationBusinessRules(BusinessRules):
                         else:
                             details["url_scheme_supported"] = True
                 except Exception as e:
-                    warnings.append(
-                        f"Failed to validate URL for source {source_index}: {str(e)}"
-                    )
+                    warnings.append(f"Failed to validate URL for source {source_index}: {e!s}")
                     details["url_format_valid"] = False
 
         # For GraphQL sources, validate endpoint
-        elif source_type == 'graphql':
-            endpoint = source_config.get('endpoint') or source_config.get('url', '')
+        elif source_type == "graphql":
+            endpoint = source_config.get("endpoint") or source_config.get("url", "")
             if endpoint:
                 try:
                     from urllib.parse import urlparse
+
                     parsed = urlparse(endpoint)
                     if not parsed.scheme or not parsed.netloc:
                         errors.append(
@@ -763,14 +781,12 @@ class VirtualizationBusinessRules(BusinessRules):
                     else:
                         details["endpoint_format_valid"] = True
                 except Exception as e:
-                    warnings.append(
-                        f"Failed to validate endpoint for source {source_index}: {str(e)}"
-                    )
+                    warnings.append(f"Failed to validate endpoint for source {source_index}: {e!s}")
                     details["endpoint_format_valid"] = False
 
         # For S3/MinIO sources, validate bucket name
-        elif source_type in ['s3', 'minio']:
-            bucket = source_config.get('bucket', '')
+        elif source_type in ["s3", "minio"]:
+            bucket = source_config.get("bucket", "")
             if bucket:
                 # S3 bucket name validation rules
                 # Bucket names must be lowercase, 3-63 characters, and follow naming rules
@@ -789,13 +805,13 @@ class VirtualizationBusinessRules(BusinessRules):
                         f"has invalid bucket name length: {bucket} (must be 3-63 characters)"
                     )
                     details["bucket_name_valid"] = False
-                elif not re.match(r'^[a-z0-9][a-z0-9\-\.]*[a-z0-9]$', bucket_lower):
+                elif not re.match(r"^[a-z0-9][a-z0-9\-\.]*[a-z0-9]$", bucket_lower):
                     errors.append(
                         f"Source at index {source_index} (type: {source_type}) "
                         f"has invalid bucket name format: {bucket}"
                     )
                     details["bucket_name_valid"] = False
-                elif '..' in bucket or bucket.startswith('.') or bucket.endswith('.'):
+                elif ".." in bucket or bucket.startswith(".") or bucket.endswith("."):
                     errors.append(
                         f"Source at index {source_index} (type: {source_type}) "
                         f"has invalid bucket name: {bucket} (cannot contain consecutive dots or start/end with dot)"
@@ -809,13 +825,11 @@ class VirtualizationBusinessRules(BusinessRules):
             "accessible": accessible,
             "errors": errors,
             "warnings": warnings,
-            "details": details
+            "details": details,
         }
 
     def validate_query_mapping(
-        self,
-        virtual_dataset: VirtualDataset,
-        raise_on_error: bool = False
+        self, virtual_dataset: VirtualDataset, raise_on_error: bool = False
     ) -> ValidationResult:
         """
         Validate query mapping (valid query syntax, supported languages).
@@ -836,13 +850,13 @@ class VirtualizationBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "dataset_id": str(virtual_dataset.id),
             "dataset_name": virtual_dataset.name,
             "query_type": virtual_dataset.query_type,
-            "query_mapping_checks": {}
+            "query_mapping_checks": {},
         }
 
         query = virtual_dataset.query
@@ -853,16 +867,13 @@ class VirtualizationBusinessRules(BusinessRules):
             errors.append("Query cannot be empty")
             details["query_mapping_checks"]["query_not_empty"] = False
             result = ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
             if raise_on_error:
                 raise ValidationError(
                     f"Query mapping validation failed: {errors[0]}",
                     code="INVALID_QUERY_MAPPING",
-                    details=details
+                    details=details,
                 )
             return result
 
@@ -881,9 +892,7 @@ class VirtualizationBusinessRules(BusinessRules):
 
         # Validate query syntax using existing method
         query_syntax_result = self.validate_query_syntax(
-            query=query,
-            query_type=query_type,
-            raise_on_error=False
+            query=query, query_type=query_type, raise_on_error=False
         )
 
         if not query_syntax_result.is_valid:
@@ -893,7 +902,9 @@ class VirtualizationBusinessRules(BusinessRules):
             details["query_mapping_checks"]["query_syntax_valid"] = True
 
         warnings.extend(query_syntax_result.warnings)
-        details["query_mapping_checks"].update(query_syntax_result.details.get("validation_checks", {}))
+        details["query_mapping_checks"].update(
+            query_syntax_result.details.get("validation_checks", {})
+        )
 
         # Check query language support
         language_support_result = self._validate_query_language_support(query, query_type)
@@ -906,26 +917,19 @@ class VirtualizationBusinessRules(BusinessRules):
         details["query_mapping_checks"].update(language_support_result["details"])
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
             raise ValidationError(
                 f"Query mapping validation failed: {', '.join(errors)}",
                 code="INVALID_QUERY_MAPPING",
-                details=details
+                details=details,
             )
 
         return result
 
-    def _validate_query_language_support(
-        self,
-        query: str,
-        query_type: QueryType
-    ) -> Dict[str, Any]:
+    def _validate_query_language_support(self, query: str, query_type: QueryType) -> dict[str, Any]:
         """
         Validate query language support.
 
@@ -936,31 +940,35 @@ class VirtualizationBusinessRules(BusinessRules):
         Returns:
             Dictionary with language support status, errors, warnings, and details
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {}
 
         # Supported SQL dialects
-        sql_dialects = ['postgresql', 'mysql', 'sqlserver', 'mssql', 'sqlite', 'standard']
+        sql_dialects = ["postgresql", "mysql", "sqlserver", "mssql", "sqlite", "standard"]
         # Supported SPARQL versions
-        sparql_versions = ['1.0', '1.1']
+        sparql_versions = ["1.0", "1.1"]
 
         if query_type == QueryType.SQL:
             # Check for dialect-specific syntax
             query_upper = query.upper()
             # PostgreSQL-specific features
-            if 'ILIKE' in query_upper or '::' in query:
+            if "ILIKE" in query_upper or "::" in query:
                 details["detected_dialect"] = "postgresql"
                 details["dialect_supported"] = True
             # MySQL-specific features
-            elif 'LIMIT' in query_upper and 'OFFSET' not in query_upper and query_upper.count('LIMIT') == 1:
+            elif (
+                "LIMIT" in query_upper
+                and "OFFSET" not in query_upper
+                and query_upper.count("LIMIT") == 1
+            ):
                 # MySQL uses LIMIT without OFFSET differently
-                limit_match = re.search(r'LIMIT\s+(\d+)\s*,\s*(\d+)', query_upper)
+                limit_match = re.search(r"LIMIT\s+(\d+)\s*,\s*(\d+)", query_upper)
                 if limit_match:
                     details["detected_dialect"] = "mysql"
                     details["dialect_supported"] = True
             # SQL Server-specific features
-            elif 'TOP' in query_upper or 'WITH (NOLOCK)' in query_upper:
+            elif "TOP" in query_upper or "WITH (NOLOCK)" in query_upper:
                 details["detected_dialect"] = "sqlserver"
                 details["dialect_supported"] = True
             else:
@@ -972,9 +980,9 @@ class VirtualizationBusinessRules(BusinessRules):
         elif query_type == QueryType.SPARQL:
             # Check SPARQL version indicators
             query_upper = query.upper()
-            if 'PREFIX' in query_upper or 'SELECT' in query_upper:
+            if "PREFIX" in query_upper or "SELECT" in query_upper:
                 # SPARQL 1.1 features
-                if 'VALUES' in query_upper or 'BIND' in query_upper or 'SERVICE' in query_upper:
+                if "VALUES" in query_upper or "BIND" in query_upper or "SERVICE" in query_upper:
                     details["detected_version"] = "1.1"
                 else:
                     details["detected_version"] = "1.0"
@@ -1003,14 +1011,14 @@ class VirtualizationBusinessRules(BusinessRules):
             "supported": len(errors) == 0,
             "errors": errors,
             "warnings": warnings,
-            "details": details
+            "details": details,
         }
 
     def validate_caching_configuration(
         self,
         virtual_dataset: VirtualDataset,
-        cache_config: Optional[Dict[str, Any]] = None,
-        raise_on_error: bool = False
+        cache_config: dict[str, Any] | None = None,
+        raise_on_error: bool = False,
     ) -> ValidationResult:
         """
         Validate caching configuration (valid TTL, cache keys).
@@ -1032,12 +1040,12 @@ class VirtualizationBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "dataset_id": str(virtual_dataset.id),
             "dataset_name": virtual_dataset.name,
-            "caching_configuration_checks": {}
+            "caching_configuration_checks": {},
         }
 
         # Use provided cache_config or default
@@ -1054,23 +1062,16 @@ class VirtualizationBusinessRules(BusinessRules):
         if not cache_enabled:
             details["caching_configuration_checks"]["validation_skipped"] = True
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
         # Validate cache TTL using ResultBusinessRules
         from hub.apps.virtualization.business_rules import ResultBusinessRules
-        result_rules = ResultBusinessRules(
-            tenant_id=self.tenant_id,
-            user_id=self.user_id
-        )
+
+        result_rules = ResultBusinessRules(tenant_id=self.tenant_id, user_id=self.user_id)
 
         cache_ttl_result = result_rules.validate_result_caching(
-            cache_enabled=True,
-            cache_ttl=cache_ttl,
-            raise_on_error=False
+            cache_enabled=True, cache_ttl=cache_ttl, raise_on_error=False
         )
 
         if not cache_ttl_result.is_valid:
@@ -1078,7 +1079,9 @@ class VirtualizationBusinessRules(BusinessRules):
             details["caching_configuration_checks"]["ttl_valid"] = False
         else:
             details["caching_configuration_checks"]["ttl_valid"] = True
-            details["caching_configuration_checks"]["validated_ttl"] = cache_ttl_result.details.get("validated_cache_ttl")
+            details["caching_configuration_checks"]["validated_ttl"] = cache_ttl_result.details.get(
+                "validated_cache_ttl"
+            )
 
         warnings.extend(cache_ttl_result.warnings)
 
@@ -1108,9 +1111,12 @@ class VirtualizationBusinessRules(BusinessRules):
         else:
             # Generate and validate cache key
             from hub.apps.virtualization.services import VirtualizationService
+
             service = VirtualizationService(
-                tenant_id=str(virtual_dataset.tenant_id) if virtual_dataset.tenant else self.tenant_id,
-                user_id=self.user_id
+                tenant_id=str(virtual_dataset.tenant_id)
+                if virtual_dataset.tenant
+                else self.tenant_id,
+                user_id=self.user_id,
             )
             generated_key = service._get_query_cache_key(virtual_dataset, {})
             key_result = self._validate_cache_key(generated_key, virtual_dataset)
@@ -1123,25 +1129,19 @@ class VirtualizationBusinessRules(BusinessRules):
             details["caching_configuration_checks"]["generated_key"] = generated_key
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
             raise ValidationError(
                 f"Caching configuration validation failed: {', '.join(errors)}",
                 code="INVALID_CACHING_CONFIGURATION",
-                details=details
+                details=details,
             )
 
         return result
 
-    def _validate_cache_key_prefix(
-        self,
-        key_prefix: str
-    ) -> Dict[str, Any]:
+    def _validate_cache_key_prefix(self, key_prefix: str) -> dict[str, Any]:
         """
         Validate cache key prefix format.
 
@@ -1151,9 +1151,9 @@ class VirtualizationBusinessRules(BusinessRules):
         Returns:
             Dictionary with validation status, errors, warnings, and details
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {}
 
         # Cache key prefix should be alphanumeric with colons and underscores
         # Max length: 100 characters
@@ -1166,17 +1166,17 @@ class VirtualizationBusinessRules(BusinessRules):
             details["length_valid"] = True
 
         # Check format (alphanumeric, colons, underscores, hyphens)
-        if not re.match(r'^[a-zA-Z0-9:_\-]+$', key_prefix):
+        if not re.match(r"^[a-zA-Z0-9:_\-]+$", key_prefix):
             errors.append(
-                f"Cache key prefix contains invalid characters. "
-                f"Allowed: alphanumeric, colons, underscores, hyphens"
+                "Cache key prefix contains invalid characters. "
+                "Allowed: alphanumeric, colons, underscores, hyphens"
             )
             details["format_valid"] = False
         else:
             details["format_valid"] = True
 
         # Check it doesn't start with a colon
-        if key_prefix.startswith(':') or key_prefix.endswith(':'):
+        if key_prefix.startswith(":") or key_prefix.endswith(":"):
             warnings.append("Cache key prefix should not start or end with colon")
             details["colon_position_valid"] = False
         else:
@@ -1186,14 +1186,12 @@ class VirtualizationBusinessRules(BusinessRules):
             "valid": len(errors) == 0,
             "errors": errors,
             "warnings": warnings,
-            "details": details
+            "details": details,
         }
 
     def _validate_cache_key(
-        self,
-        cache_key: str,
-        virtual_dataset: VirtualDataset
-    ) -> Dict[str, Any]:
+        self, cache_key: str, virtual_dataset: VirtualDataset
+    ) -> dict[str, Any]:
         """
         Validate cache key format and structure.
 
@@ -1204,20 +1202,15 @@ class VirtualizationBusinessRules(BusinessRules):
         Returns:
             Dictionary with validation status, errors, warnings, and details
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {}
 
         # Cache key should not be empty
         if not cache_key or not cache_key.strip():
             errors.append("Cache key cannot be empty")
             details["key_not_empty"] = False
-            return {
-                "valid": False,
-                "errors": errors,
-                "warnings": warnings,
-                "details": details
-            }
+            return {"valid": False, "errors": errors, "warnings": warnings, "details": details}
 
         details["key_not_empty"] = True
         details["key_length"] = len(cache_key)
@@ -1234,15 +1227,13 @@ class VirtualizationBusinessRules(BusinessRules):
         # Check format (should contain dataset ID or reference)
         dataset_id_str = str(virtual_dataset.id)
         if dataset_id_str not in cache_key:
-            warnings.append(
-                "Cache key does not contain dataset ID - may cause cache collisions"
-            )
+            warnings.append("Cache key does not contain dataset ID - may cause cache collisions")
             details["contains_dataset_id"] = False
         else:
             details["contains_dataset_id"] = True
 
         # Check for invalid characters (spaces, special chars that might cause issues)
-        if re.search(r'[^\w:\-\.]', cache_key):
+        if re.search(r"[^\w:\-\.]", cache_key):
             warnings.append(
                 "Cache key contains potentially problematic characters. "
                 "Consider using only alphanumeric, colons, hyphens, and dots"
@@ -1252,7 +1243,7 @@ class VirtualizationBusinessRules(BusinessRules):
             details["format_valid"] = True
 
         # Check key structure (should have prefix:dataset_id:hash pattern)
-        parts = cache_key.split(':')
+        parts = cache_key.split(":")
         if len(parts) < 2:
             warnings.append(
                 "Cache key structure may not follow recommended pattern (prefix:dataset_id:hash)"
@@ -1266,13 +1257,11 @@ class VirtualizationBusinessRules(BusinessRules):
             "valid": len(errors) == 0,
             "errors": errors,
             "warnings": warnings,
-            "details": details
+            "details": details,
         }
 
     def validate_virtual_dataset_schema(
-        self,
-        virtual_dataset: VirtualDataset,
-        raise_on_error: bool = False
+        self, virtual_dataset: VirtualDataset, raise_on_error: bool = False
     ) -> ValidationResult:
         """
         Validate virtual dataset schema.
@@ -1298,9 +1287,7 @@ class VirtualizationBusinessRules(BusinessRules):
         return self.validate_schema_alignment(virtual_dataset, raise_on_error)
 
     def validate_schema_alignment(
-        self,
-        virtual_dataset: VirtualDataset,
-        raise_on_error: bool = False
+        self, virtual_dataset: VirtualDataset, raise_on_error: bool = False
     ) -> ValidationResult:
         """
         Validate schema alignment between query and output schema.
@@ -1321,13 +1308,13 @@ class VirtualizationBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "dataset_id": str(virtual_dataset.id),
             "dataset_name": virtual_dataset.name,
             "query_type": virtual_dataset.query_type,
-            "schema_alignment_checks": {}
+            "schema_alignment_checks": {},
         }
 
         schema = virtual_dataset.schema or {}
@@ -1339,10 +1326,7 @@ class VirtualizationBusinessRules(BusinessRules):
             details["schema_alignment_checks"]["schema_provided"] = False
             warnings.append("No schema provided - schema alignment cannot be validated")
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
         details["schema_alignment_checks"]["schema_provided"] = True
@@ -1356,16 +1340,13 @@ class VirtualizationBusinessRules(BusinessRules):
 
         if errors:
             result = ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
             if raise_on_error:
                 raise ValidationError(
                     f"Schema alignment validation failed: {errors[0]}",
                     code="INVALID_SCHEMA_ALIGNMENT",
-                    details=details
+                    details=details,
                 )
             return result
 
@@ -1397,9 +1378,8 @@ class VirtualizationBusinessRules(BusinessRules):
 
             # Validate each field
             for field_name, field_def in schema.items():
-                if isinstance(field_def, dict):
-                    if "type" not in field_def:
-                        warnings.append(f"Schema field '{field_name}' should have a 'type' property")
+                if isinstance(field_def, dict) and "type" not in field_def:
+                    warnings.append(f"Schema field '{field_name}' should have a 'type' property")
         else:
             # Unknown schema format - warn but don't error
             warnings.append("Schema format not recognized - using custom format")
@@ -1417,7 +1397,9 @@ class VirtualizationBusinessRules(BusinessRules):
                     # If schema has fields, check alignment
                     schema_fields = []
                     if "fields" in schema:
-                        schema_fields = [f.get("name") for f in schema["fields"] if isinstance(f, dict)]
+                        schema_fields = [
+                            f.get("name") for f in schema["fields"] if isinstance(f, dict)
+                        ]
                     elif schema:
                         schema_fields = [k for k, v in schema.items() if isinstance(v, dict)]
 
@@ -1446,22 +1428,19 @@ class VirtualizationBusinessRules(BusinessRules):
                 details["schema_alignment_checks"]["query_columns_extracted"] = False
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
             raise ValidationError(
                 f"Schema alignment validation failed: {', '.join(errors)}",
                 code="INVALID_SCHEMA_ALIGNMENT",
-                details=details
+                details=details,
             )
 
         return result
 
-    def _extract_sql_columns(self, query: str) -> List[str]:
+    def _extract_sql_columns(self, query: str) -> list[str]:
         """
         Extract column names from SQL SELECT query.
 
@@ -1478,32 +1457,34 @@ class VirtualizationBusinessRules(BusinessRules):
         query_upper = query.upper()
 
         # Find SELECT clause
-        select_match = re.search(r'\bSELECT\s+(.+?)\s+FROM\b', query_upper, re.IGNORECASE | re.DOTALL)
+        select_match = re.search(
+            r"\bSELECT\s+(.+?)\s+FROM\b", query_upper, re.IGNORECASE | re.DOTALL
+        )
         if not select_match:
             return columns
 
         select_clause = select_match.group(1).strip()
 
         # Handle SELECT *
-        if select_clause.strip() == '*':
-            return ['*']
+        if select_clause.strip() == "*":
+            return ["*"]
 
         # Split by comma, handling nested parentheses
         current_column = ""
         paren_depth = 0
         for char in select_clause:
-            if char == '(':
+            if char == "(":
                 paren_depth += 1
                 current_column += char
-            elif char == ')':
+            elif char == ")":
                 paren_depth -= 1
                 current_column += char
-            elif char == ',' and paren_depth == 0:
+            elif char == "," and paren_depth == 0:
                 # End of column
                 col = current_column.strip()
                 if col:
                     # Extract column name (handle AS aliases)
-                    col_match = re.search(r'(\w+)(?:\s+AS\s+\w+)?$', col, re.IGNORECASE)
+                    col_match = re.search(r"(\w+)(?:\s+AS\s+\w+)?$", col, re.IGNORECASE)
                     if col_match:
                         columns.append(col_match.group(1).lower())
                 current_column = ""
@@ -1513,16 +1494,14 @@ class VirtualizationBusinessRules(BusinessRules):
         # Add last column
         if current_column.strip():
             col = current_column.strip()
-            col_match = re.search(r'(\w+)(?:\s+AS\s+\w+)?$', col, re.IGNORECASE)
+            col_match = re.search(r"(\w+)(?:\s+AS\s+\w+)?$", col, re.IGNORECASE)
             if col_match:
                 columns.append(col_match.group(1).lower())
 
         return columns
 
     def validate_source_compatibility(
-        self,
-        virtual_dataset: VirtualDataset,
-        raise_on_error: bool = False
+        self, virtual_dataset: VirtualDataset, raise_on_error: bool = False
     ) -> ValidationResult:
         """
         Validate source compatibility with query type and each other.
@@ -1543,13 +1522,13 @@ class VirtualizationBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "dataset_id": str(virtual_dataset.id),
             "dataset_name": virtual_dataset.name,
             "query_type": virtual_dataset.query_type,
-            "source_compatibility_checks": {}
+            "source_compatibility_checks": {},
         }
 
         sources = virtual_dataset.get_sources() or []
@@ -1560,25 +1539,19 @@ class VirtualizationBusinessRules(BusinessRules):
             if query_type == QueryType.SPARQL:
                 details["source_compatibility_checks"]["sources_required"] = False
                 return ValidationResult(
-                    is_valid=True,
-                    errors=errors,
-                    warnings=warnings,
-                    details=details
+                    is_valid=True, errors=errors, warnings=warnings, details=details
                 )
             else:
                 errors.append(f"Sources are required for {query_type} queries")
                 details["source_compatibility_checks"]["sources_required"] = False
                 result = ValidationResult(
-                    is_valid=False,
-                    errors=errors,
-                    warnings=warnings,
-                    details=details
+                    is_valid=False, errors=errors, warnings=warnings, details=details
                 )
                 if raise_on_error:
                     raise ValidationError(
                         f"Source compatibility validation failed: {errors[0]}",
                         code="INVALID_SOURCE_COMPATIBILITY",
-                        details=details
+                        details=details,
                     )
                 return result
 
@@ -1618,7 +1591,7 @@ class VirtualizationBusinessRules(BusinessRules):
             asset_id = source_config.get("asset_id")
             if asset_id:
                 try:
-                    asset = Asset.objects.select_related('tenant').get(id=asset_id)
+                    asset = Asset.objects.select_related("tenant").get(id=asset_id)
                     details["source_compatibility_checks"][f"source_{i}_asset_exists"] = True
 
                     # Check cross-tenant access if applicable
@@ -1629,7 +1602,7 @@ class VirtualizationBusinessRules(BusinessRules):
                         has_access, error_code, _ = check_entitlement(
                             consumer_tenant_id=self.tenant_id,
                             asset_id=str(asset_id),
-                            provider_tenant_id=str(asset.tenant_id)
+                            provider_tenant_id=str(asset.tenant_id),
                         )
 
                         if not has_access:
@@ -1637,41 +1610,41 @@ class VirtualizationBusinessRules(BusinessRules):
                                 f"Source at index {i} references asset from different tenant without entitlement. "
                                 f"Error code: {error_code}"
                             )
-                            details["source_compatibility_checks"][f"source_{i}_cross_tenant_access"] = False
+                            details["source_compatibility_checks"][
+                                f"source_{i}_cross_tenant_access"
+                            ] = False
                         else:
-                            details["source_compatibility_checks"][f"source_{i}_cross_tenant_access"] = True
+                            details["source_compatibility_checks"][
+                                f"source_{i}_cross_tenant_access"
+                            ] = True
                     else:
-                        details["source_compatibility_checks"][f"source_{i}_cross_tenant_access"] = True
+                        details["source_compatibility_checks"][
+                            f"source_{i}_cross_tenant_access"
+                        ] = True
 
                 except Asset.DoesNotExist:
                     errors.append(f"Source at index {i} references non-existent asset: {asset_id}")
                     details["source_compatibility_checks"][f"source_{i}_asset_exists"] = False
                 except Exception as e:
-                    warnings.append(f"Failed to validate asset access for source {i}: {str(e)}")
+                    warnings.append(f"Failed to validate asset access for source {i}: {e!s}")
                     details["source_compatibility_checks"][f"source_{i}_asset_validation"] = False
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
             raise ValidationError(
                 f"Source compatibility validation failed: {', '.join(errors)}",
                 code="INVALID_SOURCE_COMPATIBILITY",
-                details=details
+                details=details,
             )
 
         return result
 
     def _validate_source_config(
-        self,
-        source_config: Dict[str, Any],
-        source_index: int,
-        source_type: str
-    ) -> List[str]:
+        self, source_config: dict[str, Any], source_index: int, source_type: str
+    ) -> list[str]:
         """
         Validate source configuration based on source type.
 
@@ -1699,8 +1672,8 @@ class VirtualizationBusinessRules(BusinessRules):
             return self._validate_external_resource_source_config(source_config, source_index)
 
         # Database sources require connection details
-        if source_type in ['postgresql', 'mysql', 'sqlserver', 'mssql']:
-            required_fields = ['host', 'database']
+        if source_type in ["postgresql", "mysql", "sqlserver", "mssql"]:
+            required_fields = ["host", "database"]
             for field in required_fields:
                 if field not in source_config:
                     errors.append(
@@ -1709,9 +1682,9 @@ class VirtualizationBusinessRules(BusinessRules):
                     )
 
         # ODBC sources require connection_string OR (host + database)
-        elif source_type == 'odbc':
-            has_connection_string = bool(source_config.get('connection_string'))
-            has_host_db = 'host' in source_config and 'database' in source_config
+        elif source_type == "odbc":
+            has_connection_string = bool(source_config.get("connection_string"))
+            has_host_db = "host" in source_config and "database" in source_config
             if not has_connection_string and not has_host_db:
                 errors.append(
                     f"Source at index {source_index} (type: {source_type}) "
@@ -1719,11 +1692,11 @@ class VirtualizationBusinessRules(BusinessRules):
                 )
 
         # REST sources require URL (base_url, url, or endpoint)
-        elif source_type == 'rest':
+        elif source_type == "rest":
             if (
-                'url' not in source_config
-                and 'endpoint' not in source_config
-                and 'base_url' not in source_config
+                "url" not in source_config
+                and "endpoint" not in source_config
+                and "base_url" not in source_config
             ):
                 errors.append(
                     f"Source at index {source_index} (type: {source_type}) "
@@ -1731,28 +1704,25 @@ class VirtualizationBusinessRules(BusinessRules):
                 )
 
         # GraphQL sources require endpoint
-        elif source_type == 'graphql':
-            if 'endpoint' not in source_config and 'url' not in source_config:
+        elif source_type == "graphql":
+            if "endpoint" not in source_config and "url" not in source_config:
                 errors.append(
                     f"Source at index {source_index} (type: {source_type}) "
                     f"must have 'endpoint' or 'url' field"
                 )
 
         # S3/MinIO sources require bucket
-        elif source_type in ['s3', 'minio']:
-            if 'bucket' not in source_config:
+        elif source_type in ["s3", "minio"]:
+            if "bucket" not in source_config:
                 errors.append(
-                    f"Source at index {source_index} (type: {source_type}) "
-                    f"must have 'bucket' field"
+                    f"Source at index {source_index} (type: {source_type}) must have 'bucket' field"
                 )
 
         return errors
 
     def _validate_federated_asset_source_config(
-        self,
-        source_config: Dict[str, Any],
-        source_index: int
-    ) -> List[str]:
+        self, source_config: dict[str, Any], source_index: int
+    ) -> list[str]:
         """
         Validate federated asset source configuration.
 
@@ -1763,14 +1733,17 @@ class VirtualizationBusinessRules(BusinessRules):
         Returns:
             List of error messages
         """
-        from hub.apps.assets.models import Asset, AssetSourceType
         import uuid
+
+        from hub.apps.assets.models import Asset, AssetSourceType
 
         errors = []
 
         asset_id = source_config.get("asset_id")
         if not asset_id:
-            errors.append(f"Federated asset source at index {source_index} must have 'asset_id' field")
+            errors.append(
+                f"Federated asset source at index {source_index} must have 'asset_id' field"
+            )
             return errors
 
         # Validate asset_id is a valid UUID
@@ -1782,9 +1755,11 @@ class VirtualizationBusinessRules(BusinessRules):
 
         # Get asset
         try:
-            asset = Asset.objects.select_related('tenant').get(id=asset_uuid)
+            asset = Asset.objects.select_related("tenant").get(id=asset_uuid)
         except Asset.DoesNotExist:
-            errors.append(f"Federated asset source at index {source_index} references non-existent asset: {asset_id}")
+            errors.append(
+                f"Federated asset source at index {source_index} references non-existent asset: {asset_id}"
+            )
             return errors
 
         # Validate asset is FEDERATED type
@@ -1802,10 +1777,8 @@ class VirtualizationBusinessRules(BusinessRules):
         return errors
 
     def _validate_external_resource_source_config(
-        self,
-        source_config: Dict[str, Any],
-        source_index: int
-    ) -> List[str]:
+        self, source_config: dict[str, Any], source_index: int
+    ) -> list[str]:
         """
         Validate external resource source configuration.
 
@@ -1816,8 +1789,9 @@ class VirtualizationBusinessRules(BusinessRules):
         Returns:
             List of error messages
         """
-        from hub.apps.assets.models import Asset, AssetSourceType, ExternalResourceReference
         import uuid
+
+        from hub.apps.assets.models import Asset, AssetSourceType, ExternalResourceReference
 
         errors = []
 
@@ -1825,10 +1799,14 @@ class VirtualizationBusinessRules(BusinessRules):
         asset_id = source_config.get("asset_id")
 
         if not resource_id:
-            errors.append(f"External resource source at index {source_index} must have 'resource_id' field")
+            errors.append(
+                f"External resource source at index {source_index} must have 'resource_id' field"
+            )
 
         if not asset_id:
-            errors.append(f"External resource source at index {source_index} must have 'asset_id' field")
+            errors.append(
+                f"External resource source at index {source_index} must have 'asset_id' field"
+            )
 
         if not resource_id or not asset_id:
             return errors  # Return early if required fields are missing
@@ -1842,9 +1820,11 @@ class VirtualizationBusinessRules(BusinessRules):
 
         # Get asset
         try:
-            asset = Asset.objects.select_related('tenant').get(id=asset_uuid)
+            asset = Asset.objects.select_related("tenant").get(id=asset_uuid)
         except Asset.DoesNotExist:
-            errors.append(f"External resource source at index {source_index} references non-existent asset: {asset_id}")
+            errors.append(
+                f"External resource source at index {source_index} references non-existent asset: {asset_id}"
+            )
             return errors
 
         # Validate asset is FEDERATED type
@@ -1856,10 +1836,7 @@ class VirtualizationBusinessRules(BusinessRules):
 
         # Validate external resource exists and belongs to asset
         try:
-            external_resource = ExternalResourceReference.objects.get(
-                asset=asset,
-                resource_id=str(resource_id)
-            )
+            ExternalResourceReference.objects.get(asset=asset, resource_id=str(resource_id))
         except ExternalResourceReference.DoesNotExist:
             errors.append(
                 f"External resource '{resource_id}' not found for asset {asset_id} at source index {source_index}"
@@ -1868,9 +1845,7 @@ class VirtualizationBusinessRules(BusinessRules):
         return errors
 
     def validate_cross_source_compatibility(
-        self,
-        virtual_dataset: VirtualDataset,
-        raise_on_error: bool = False
+        self, virtual_dataset: VirtualDataset, raise_on_error: bool = False
     ) -> ValidationResult:
         """
         Validate cross-source compatibility for virtual datasets with multiple sources.
@@ -1893,13 +1868,13 @@ class VirtualizationBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "dataset_id": str(virtual_dataset.id),
             "dataset_name": virtual_dataset.name,
             "query_type": virtual_dataset.query_type,
-            "cross_source_checks": {}
+            "cross_source_checks": {},
         }
 
         sources = virtual_dataset.get_sources() or []
@@ -1911,18 +1886,15 @@ class VirtualizationBusinessRules(BusinessRules):
                 "No sources or single source - cross-source validation not applicable"
             )
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
         details["cross_source_checks"]["source_count"] = len(sources)
         details["cross_source_checks"]["skipped"] = False
 
         # Collect schemas from all sources
-        source_schemas: List[Dict[str, Any]] = []
-        source_assets: List[Optional[Asset]] = []
+        source_schemas: list[dict[str, Any]] = []
+        source_assets: list[Asset | None] = []
 
         for i, source_config in enumerate(sources):
             if not isinstance(source_config, dict):
@@ -1936,11 +1908,11 @@ class VirtualizationBusinessRules(BusinessRules):
             # Try to get schema from asset if asset_id is provided
             if asset_id:
                 try:
-                    source_asset = Asset.objects.select_related('tenant').get(id=asset_id)
+                    source_asset = Asset.objects.select_related("tenant").get(id=asset_id)
                     source_assets.append(source_asset)
 
                     # Get latest dataset schema
-                    latest_dataset = source_asset.datasets.order_by('-version').first()
+                    latest_dataset = source_asset.datasets.order_by("-version").first()
                     if latest_dataset and latest_dataset.schema_json:
                         source_schema = latest_dataset.schema_json
                 except Asset.DoesNotExist:
@@ -1948,7 +1920,7 @@ class VirtualizationBusinessRules(BusinessRules):
                     source_assets.append(None)
                     continue
                 except Exception as e:
-                    warnings.append(f"Failed to retrieve schema for source {i}: {str(e)}")
+                    warnings.append(f"Failed to retrieve schema for source {i}: {e!s}")
                     source_assets.append(source_asset)
                     continue
             else:
@@ -1961,18 +1933,14 @@ class VirtualizationBusinessRules(BusinessRules):
             source_schemas.append(source_schema if source_schema is not None else {})
 
         # Validate cross-tenant access permissions for all sources
-        cross_tenant_errors = self._validate_cross_tenant_source_access(
-            source_assets,
-            sources
-        )
+        cross_tenant_errors = self._validate_cross_tenant_source_access(source_assets, sources)
         errors.extend(cross_tenant_errors)
         details["cross_source_checks"]["cross_tenant_access_valid"] = len(cross_tenant_errors) == 0
 
         # Validate schema alignment across sources
         if source_schemas and all(s is not None for s in source_schemas):
             alignment_result = self._validate_schema_alignment_across_sources(
-                source_schemas,
-                sources
+                source_schemas, sources
             )
             errors.extend(alignment_result["errors"])
             warnings.extend(alignment_result["warnings"])
@@ -1981,34 +1949,28 @@ class VirtualizationBusinessRules(BusinessRules):
         # Validate data type compatibility across sources
         if source_schemas and all(s is not None for s in source_schemas):
             type_compat_result = self._validate_data_type_compatibility_across_sources(
-                source_schemas,
-                sources
+                source_schemas, sources
             )
             errors.extend(type_compat_result["errors"])
             warnings.extend(type_compat_result["warnings"])
             details["cross_source_checks"].update(type_compat_result["details"])
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
             raise ValidationError(
                 f"Cross-source compatibility validation failed: {', '.join(errors)}",
                 code="INVALID_CROSS_SOURCE_COMPATIBILITY",
-                details=details
+                details=details,
             )
 
         return result
 
     def _validate_cross_tenant_source_access(
-        self,
-        source_assets: List[Optional[Asset]],
-        sources: List[Dict[str, Any]]
-    ) -> List[str]:
+        self, source_assets: list[Asset | None], sources: list[dict[str, Any]]
+    ) -> list[str]:
         """
         Validate cross-tenant source access permissions for all sources.
 
@@ -2019,13 +1981,13 @@ class VirtualizationBusinessRules(BusinessRules):
         Returns:
             List of error messages
         """
-        errors: List[str] = []
+        errors: list[str] = []
 
         if not self.tenant_id:
             # No tenant context - skip cross-tenant validation
             return errors
 
-        for i, (source_asset, source_config) in enumerate(zip(source_assets, sources)):
+        for i, (source_asset, _source_config) in enumerate(zip(source_assets, sources)):
             if not source_asset:
                 continue  # Skip if no asset
 
@@ -2037,7 +1999,7 @@ class VirtualizationBusinessRules(BusinessRules):
                 has_access, error_code, _ = check_entitlement(
                     consumer_tenant_id=self.tenant_id,
                     asset_id=str(source_asset.id),
-                    provider_tenant_id=str(source_asset.tenant_id)
+                    provider_tenant_id=str(source_asset.tenant_id),
                 )
 
                 if not has_access:
@@ -2050,10 +2012,8 @@ class VirtualizationBusinessRules(BusinessRules):
         return errors
 
     def _validate_schema_alignment_across_sources(
-        self,
-        source_schemas: List[Dict[str, Any]],
-        sources: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, source_schemas: list[dict[str, Any]], sources: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """
         Validate schema alignment across multiple sources.
 
@@ -2066,15 +2026,12 @@ class VirtualizationBusinessRules(BusinessRules):
         Returns:
             Dictionary with errors, warnings, and details
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            "schema_alignment_valid": True,
-            "source_schemas": []
-        }
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"schema_alignment_valid": True, "source_schemas": []}
 
         # Extract field names from each schema
-        source_fields: List[Set[str]] = []
+        source_fields: list[set[str]] = []
 
         for i, schema in enumerate(source_schemas):
             if not schema:
@@ -2093,20 +2050,14 @@ class VirtualizationBusinessRules(BusinessRules):
                         fields.add(field_name)
 
             source_fields.append(fields)
-            details["source_schemas"].append({
-                "source_index": i,
-                "field_count": len(fields),
-                "fields": list(fields)
-            })
+            details["source_schemas"].append(
+                {"source_index": i, "field_count": len(fields), "fields": list(fields)}
+            )
 
         # Compare field names across sources
         if len(source_fields) < 2:
             details["schema_alignment_valid"] = True
-            return {
-                "errors": errors,
-                "warnings": warnings,
-                "details": details
-            }
+            return {"errors": errors, "warnings": warnings, "details": details}
 
         # Find common fields and differences
         common_fields = set.intersection(*source_fields) if source_fields else set()
@@ -2141,17 +2092,11 @@ class VirtualizationBusinessRules(BusinessRules):
 
         details["schema_alignment_valid"] = len(errors) == 0
 
-        return {
-            "errors": errors,
-            "warnings": warnings,
-            "details": details
-        }
+        return {"errors": errors, "warnings": warnings, "details": details}
 
     def _validate_data_type_compatibility_across_sources(
-        self,
-        source_schemas: List[Dict[str, Any]],
-        sources: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, source_schemas: list[dict[str, Any]], sources: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """
         Validate data type compatibility across multiple sources.
 
@@ -2164,15 +2109,15 @@ class VirtualizationBusinessRules(BusinessRules):
         Returns:
             Dictionary with errors, warnings, and details
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "type_compatibility_valid": True,
-            "type_compatibility_issues": []
+            "type_compatibility_issues": [],
         }
 
         # Extract field types from each schema
-        source_field_types: List[Dict[str, str]] = []
+        source_field_types: list[dict[str, str]] = []
 
         for i, schema in enumerate(source_schemas):
             if not schema:
@@ -2198,11 +2143,7 @@ class VirtualizationBusinessRules(BusinessRules):
         # Compare types for common fields
         if len(source_field_types) < 2:
             details["type_compatibility_valid"] = True
-            return {
-                "errors": errors,
-                "warnings": warnings,
-                "details": details
-            }
+            return {"errors": errors, "warnings": warnings, "details": details}
 
         # Find all field names across all sources
         all_field_names = set()
@@ -2227,12 +2168,14 @@ class VirtualizationBusinessRules(BusinessRules):
 
                 # Check if all types are compatible
                 if not self._are_types_compatible(normalized_types):
-                    type_issues.append({
-                        "field": field_name,
-                        "types": types_found,
-                        "sources": sources_with_field,
-                        "normalized_types": normalized_types
-                    })
+                    type_issues.append(
+                        {
+                            "field": field_name,
+                            "types": types_found,
+                            "sources": sources_with_field,
+                            "normalized_types": normalized_types,
+                        }
+                    )
                     warnings.append(
                         f"Field '{field_name}' has incompatible types across sources: "
                         f"{dict(zip(sources_with_field, types_found))}"
@@ -2241,11 +2184,7 @@ class VirtualizationBusinessRules(BusinessRules):
         details["type_compatibility_issues"] = type_issues
         details["type_compatibility_valid"] = len(type_issues) == 0
 
-        return {
-            "errors": errors,
-            "warnings": warnings,
-            "details": details
-        }
+        return {"errors": errors, "warnings": warnings, "details": details}
 
     def _normalize_type(self, field_type: str) -> str:
         """
@@ -2285,7 +2224,7 @@ class VirtualizationBusinessRules(BusinessRules):
         # Default to string for unknown types
         return "string"
 
-    def _are_types_compatible(self, types: List[str]) -> bool:
+    def _are_types_compatible(self, types: list[str]) -> bool:
         """
         Check if a list of types are compatible with each other.
 
@@ -2302,11 +2241,8 @@ class VirtualizationBusinessRules(BusinessRules):
             return True  # All same type
 
         # Define compatibility groups
-        integer_group = {"integer"}
         float_group = {"integer", "float"}  # Integer can be promoted to float
         string_group = {"string"}
-        boolean_group = {"boolean"}
-        datetime_group = {"datetime"}
 
         # Check if all types belong to compatible groups
         type_set = set(types)
@@ -2328,8 +2264,8 @@ class VirtualizationBusinessRules(BusinessRules):
     def validate_cross_tenant_access(
         self,
         virtual_dataset: VirtualDataset,
-        query: Optional[str] = None,
-        raise_on_error: bool = False
+        query: str | None = None,
+        raise_on_error: bool = False,
     ) -> ValidationResult:
         """
         Validate cross-tenant access permissions for virtualization operations.
@@ -2355,29 +2291,26 @@ class VirtualizationBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "dataset_id": str(virtual_dataset.id),
             "dataset_name": virtual_dataset.name,
             "tenant_id": str(virtual_dataset.tenant_id) if virtual_dataset.tenant else None,
-            "cross_tenant_access_checks": {}
+            "cross_tenant_access_checks": {},
         }
 
         if not self.tenant_id:
             errors.append("tenant_id is required for cross-tenant access validation")
             details["cross_tenant_access_checks"]["tenant_id_provided"] = False
             result = ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
             if raise_on_error:
                 raise ValidationError(
                     "tenant_id is required for cross-tenant access validation",
                     code="MISSING_TENANT_ID",
-                    details=details
+                    details=details,
                 )
             return result
 
@@ -2385,16 +2318,13 @@ class VirtualizationBusinessRules(BusinessRules):
             errors.append("user_id is required for cross-tenant access validation")
             details["cross_tenant_access_checks"]["user_id_provided"] = False
             result = ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
             if raise_on_error:
                 raise ValidationError(
                     "user_id is required for cross-tenant access validation",
                     code="MISSING_USER_ID",
-                    details=details
+                    details=details,
                 )
             return result
 
@@ -2407,10 +2337,7 @@ class VirtualizationBusinessRules(BusinessRules):
             # No sources - validation passes (sources are optional for some query types)
             details["cross_tenant_access_checks"]["sources_provided"] = False
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
         details["cross_tenant_access_checks"]["source_count"] = len(sources)
@@ -2418,9 +2345,7 @@ class VirtualizationBusinessRules(BusinessRules):
 
         # 1. Validate cross-tenant source access permissions
         source_access_errors = self._validate_cross_tenant_source_access_with_governance(
-            sources=sources,
-            tenant_id=self.tenant_id,
-            user_id=self.user_id
+            sources=sources, tenant_id=self.tenant_id, user_id=self.user_id
         )
         if source_access_errors:
             errors.extend(source_access_errors)
@@ -2435,7 +2360,7 @@ class VirtualizationBusinessRules(BusinessRules):
                 virtual_dataset=virtual_dataset,
                 query=query_to_validate,
                 tenant_id=self.tenant_id,
-                user_id=self.user_id
+                user_id=self.user_id,
             )
             if not query_auth_result["authorized"]:
                 errors.extend(query_auth_result["errors"])
@@ -2443,16 +2368,16 @@ class VirtualizationBusinessRules(BusinessRules):
             else:
                 details["cross_tenant_access_checks"]["query_execution_authorized"] = True
             warnings.extend(query_auth_result["warnings"])
-            details["cross_tenant_access_checks"]["query_authorization_details"] = query_auth_result["details"]
+            details["cross_tenant_access_checks"]["query_authorization_details"] = (
+                query_auth_result["details"]
+            )
         else:
             details["cross_tenant_access_checks"]["query_execution_authorized"] = None
             warnings.append("No query provided for execution authorization check")
 
         # 3. Validate result data filtering (tenant isolation)
         result_filtering_result = self._validate_result_data_filtering(
-            virtual_dataset=virtual_dataset,
-            tenant_id=self.tenant_id,
-            user_id=self.user_id
+            virtual_dataset=virtual_dataset, tenant_id=self.tenant_id, user_id=self.user_id
         )
         if not result_filtering_result["valid"]:
             errors.extend(result_filtering_result["errors"])
@@ -2460,31 +2385,27 @@ class VirtualizationBusinessRules(BusinessRules):
         else:
             details["cross_tenant_access_checks"]["result_filtering_valid"] = True
         warnings.extend(result_filtering_result["warnings"])
-        details["cross_tenant_access_checks"]["result_filtering_details"] = result_filtering_result["details"]
+        details["cross_tenant_access_checks"]["result_filtering_details"] = result_filtering_result[
+            "details"
+        ]
 
         is_valid = len(errors) == 0
         result = ValidationResult(
-            is_valid=is_valid,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=is_valid, errors=errors, warnings=warnings, details=details
         )
 
         if not is_valid and raise_on_error:
             raise ValidationError(
                 f"Cross-tenant access validation failed: {', '.join(errors)}",
                 code="CROSS_TENANT_ACCESS_DENIED",
-                details=details
+                details=details,
             )
 
         return result
 
     def _validate_cross_tenant_source_access_with_governance(
-        self,
-        sources: List[Dict[str, Any]],
-        tenant_id: str,
-        user_id: str
-    ) -> List[str]:
+        self, sources: list[dict[str, Any]], tenant_id: str, user_id: str
+    ) -> list[str]:
         """
         Validate cross-tenant source access permissions using GovernanceService.
 
@@ -2501,17 +2422,14 @@ class VirtualizationBusinessRules(BusinessRules):
         Returns:
             List of error messages
         """
-        errors: List[str] = []
+        errors: list[str] = []
 
         try:
-            from hub.apps.governance.abac import ABACEngine
             from hub.apps.assets.models import Asset
+            from hub.apps.governance.abac import ABACEngine
             from hub.apps.governance.services import GovernanceService
 
-            governance_service = GovernanceService(
-                tenant_id=tenant_id,
-                user_id=user_id
-            )
+            GovernanceService(tenant_id=tenant_id, user_id=user_id)
 
             for i, source_config in enumerate(sources):
                 asset_id = source_config.get("asset_id")
@@ -2521,9 +2439,7 @@ class VirtualizationBusinessRules(BusinessRules):
                 try:
                     asset = Asset.objects.get(id=asset_id)
                 except Asset.DoesNotExist:
-                    errors.append(
-                        f"Source at index {i} references non-existent asset: {asset_id}"
-                    )
+                    errors.append(f"Source at index {i} references non-existent asset: {asset_id}")
                     continue
 
                 # Check if asset is from different tenant
@@ -2537,7 +2453,7 @@ class VirtualizationBusinessRules(BusinessRules):
                         tenant_id=tenant_id,
                         resource_type="ASSET",
                         resource_id=str(asset.id),
-                        access_type="READ"
+                        access_type="READ",
                     )
 
                     if not abac_result.allowed:
@@ -2547,7 +2463,7 @@ class VirtualizationBusinessRules(BusinessRules):
                         has_entitlement, error_code, _ = check_entitlement(
                             consumer_tenant_id=tenant_id,
                             asset_id=str(asset.id),
-                            provider_tenant_id=source_tenant_id
+                            provider_tenant_id=source_tenant_id,
                         )
 
                         if not has_entitlement:
@@ -2562,12 +2478,9 @@ class VirtualizationBusinessRules(BusinessRules):
                                 f"Asset {asset.id} has entitlement but ABAC policy denied access. "
                                 f"Entitlement takes precedence."
                             )
-                    else:
-                        # ABAC allowed - check if masking is required
-                        if abac_result.masking_required:
-                            logger.info(
-                                f"Asset {asset.id} access allowed but data masking required"
-                            )
+                    # ABAC allowed - check if masking is required
+                    elif abac_result.masking_required:
+                        logger.info(f"Asset {asset.id} access allowed but data masking required")
 
                 else:
                     # Same tenant - check ABAC for consistency
@@ -2577,7 +2490,7 @@ class VirtualizationBusinessRules(BusinessRules):
                         tenant_id=tenant_id,
                         resource_type="ASSET",
                         resource_id=str(asset.id),
-                        access_type="READ"
+                        access_type="READ",
                     )
 
                     # Only error if ABAC explicitly denied (policy exists and denies)
@@ -2592,21 +2505,15 @@ class VirtualizationBusinessRules(BusinessRules):
         except Exception as e:
             logger.error(
                 f"Failed to validate cross-tenant source access via GovernanceService: {e}",
-                exc_info=True
+                exc_info=True,
             )
-            errors.append(
-                f"Failed to validate cross-tenant source access: {str(e)}"
-            )
+            errors.append(f"Failed to validate cross-tenant source access: {e!s}")
 
         return errors
 
     def _validate_query_execution_authorization(
-        self,
-        virtual_dataset: VirtualDataset,
-        query: str,
-        tenant_id: str,
-        user_id: str
-    ) -> Dict[str, Any]:
+        self, virtual_dataset: VirtualDataset, query: str, tenant_id: str, user_id: str
+    ) -> dict[str, Any]:
         """
         Validate query execution authorization.
 
@@ -2624,17 +2531,17 @@ class VirtualizationBusinessRules(BusinessRules):
         Returns:
             Dictionary with authorization status, errors, warnings, and details
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "authorized": True,
             "query_length": len(query),
-            "query_type": virtual_dataset.query_type
+            "query_type": virtual_dataset.query_type,
         }
 
         try:
-            from hub.apps.users.models import User
             from hub.apps.governance.abac import ABACEngine
+            from hub.apps.users.models import User
 
             # Get user
             try:
@@ -2645,21 +2552,33 @@ class VirtualizationBusinessRules(BusinessRules):
                     "authorized": False,
                     "errors": errors,
                     "warnings": warnings,
-                    "details": details
+                    "details": details,
                 }
 
             # Check if user has required role for query execution
             # Users need at least DATA_VIEWER role to execute queries
-            has_data_viewer = user.has_role("DATA_VIEWER") or user.has_role("DATA_ANALYST") or user.has_role("TENANT_ADMIN")
+            has_data_viewer = (
+                user.has_role("DATA_VIEWER")
+                or user.has_role("DATA_ANALYST")
+                or user.has_role("TENANT_ADMIN")
+            )
             if not has_data_viewer and not user.is_platform_admin:
                 errors.append(
                     f"User {user.email} does not have required role (DATA_VIEWER, DATA_ANALYST, or TENANT_ADMIN) "
                     f"for query execution"
                 )
                 details["authorized"] = False
-                details["user_roles"] = [ur.role.name for ur in user.user_roles.all()] if hasattr(user, "user_roles") else []
+                details["user_roles"] = (
+                    [ur.role.name for ur in user.user_roles.all()]
+                    if hasattr(user, "user_roles")
+                    else []
+                )
             else:
-                details["user_roles"] = [ur.role.name for ur in user.user_roles.all()] if hasattr(user, "user_roles") else []
+                details["user_roles"] = (
+                    [ur.role.name for ur in user.user_roles.all()]
+                    if hasattr(user, "user_roles")
+                    else []
+                )
                 details["has_required_role"] = True
 
             # Check ABAC policy for virtual dataset access
@@ -2672,7 +2591,7 @@ class VirtualizationBusinessRules(BusinessRules):
                         tenant_id=tenant_id,
                         resource_type="VIRTUAL_DATASET",
                         resource_id=str(virtual_dataset.id),
-                        access_type="READ"
+                        access_type="READ",
                     )
 
                     if not abac_result.allowed and abac_result.policy:
@@ -2701,13 +2620,13 @@ class VirtualizationBusinessRules(BusinessRules):
                 "JOIN": query_upper.count("JOIN"),
                 "UNION": query_upper.count("UNION"),
                 "SUBQUERY": query_upper.count("SELECT") - 1,
-                "CTE": query_upper.count("WITH")
+                "CTE": query_upper.count("WITH"),
             }
 
             total_complexity = sum(complexity_indicators.values())
             details["query_complexity"] = {
                 "total_score": total_complexity,
-                "indicators": complexity_indicators
+                "indicators": complexity_indicators,
             }
 
             if total_complexity > 10:
@@ -2717,26 +2636,20 @@ class VirtualizationBusinessRules(BusinessRules):
                 )
 
         except Exception as e:
-            logger.error(
-                f"Failed to validate query execution authorization: {e}",
-                exc_info=True
-            )
-            errors.append(f"Failed to validate query execution authorization: {str(e)}")
+            logger.error(f"Failed to validate query execution authorization: {e}", exc_info=True)
+            errors.append(f"Failed to validate query execution authorization: {e!s}")
             details["authorized"] = False
 
         return {
             "authorized": len(errors) == 0,
             "errors": errors,
             "warnings": warnings,
-            "details": details
+            "details": details,
         }
 
     def _validate_result_data_filtering(
-        self,
-        virtual_dataset: VirtualDataset,
-        tenant_id: str,
-        user_id: str
-    ) -> Dict[str, Any]:
+        self, virtual_dataset: VirtualDataset, tenant_id: str, user_id: str
+    ) -> dict[str, Any]:
         """
         Validate result data filtering for tenant isolation.
 
@@ -2754,12 +2667,9 @@ class VirtualizationBusinessRules(BusinessRules):
         Returns:
             Dictionary with validation status, errors, warnings, and details
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            "valid": True,
-            "tenant_isolation_checks": {}
-        }
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"valid": True, "tenant_isolation_checks": {}}
 
         try:
             from hub.apps.governance.abac import ABACEngine
@@ -2772,19 +2682,24 @@ class VirtualizationBusinessRules(BusinessRules):
                 asset_id = source_config.get("asset_id")
                 if asset_id:
                     from hub.apps.assets.models import Asset
+
                     try:
                         asset = Asset.objects.get(id=asset_id)
                         if str(asset.tenant_id) != tenant_id:
-                            cross_tenant_sources.append({
-                                "source_index": i,
-                                "asset_id": str(asset.id),
-                                "asset_name": asset.name,
-                                "source_tenant_id": str(asset.tenant_id)
-                            })
+                            cross_tenant_sources.append(
+                                {
+                                    "source_index": i,
+                                    "asset_id": str(asset.id),
+                                    "asset_name": asset.name,
+                                    "source_tenant_id": str(asset.tenant_id),
+                                }
+                            )
                     except Asset.DoesNotExist:
                         pass
 
-            details["tenant_isolation_checks"]["cross_tenant_source_count"] = len(cross_tenant_sources)
+            details["tenant_isolation_checks"]["cross_tenant_source_count"] = len(
+                cross_tenant_sources
+            )
             details["tenant_isolation_checks"]["cross_tenant_sources"] = cross_tenant_sources
 
             if cross_tenant_sources:
@@ -2823,7 +2738,7 @@ class VirtualizationBusinessRules(BusinessRules):
                         tenant_id=tenant_id,
                         resource_type="ASSET",
                         resource_id=asset_id,
-                        access_type="READ"
+                        access_type="READ",
                     )
 
                     if abac_result.masking_required:
@@ -2832,9 +2747,9 @@ class VirtualizationBusinessRules(BusinessRules):
                             f"from tenant {source_tenant_id}"
                         )
                         details["tenant_isolation_checks"]["masking_required"] = True
-                        details["tenant_isolation_checks"]["masking_assets"] = details["tenant_isolation_checks"].get(
-                            "masking_assets", []
-                        ) + [asset_id]
+                        details["tenant_isolation_checks"]["masking_assets"] = details[
+                            "tenant_isolation_checks"
+                        ].get("masking_assets", []) + [asset_id]
 
             else:
                 # No cross-tenant sources - tenant isolation is naturally enforced
@@ -2848,28 +2763,25 @@ class VirtualizationBusinessRules(BusinessRules):
                     f"validation context tenant ({tenant_id}). Ensure proper cross-tenant permissions."
                 )
                 details["tenant_isolation_checks"]["tenant_mismatch"] = True
-                details["tenant_isolation_checks"]["virtual_dataset_tenant_id"] = str(virtual_dataset.tenant_id)
+                details["tenant_isolation_checks"]["virtual_dataset_tenant_id"] = str(
+                    virtual_dataset.tenant_id
+                )
                 details["tenant_isolation_checks"]["context_tenant_id"] = tenant_id
 
         except Exception as e:
-            logger.error(
-                f"Failed to validate result data filtering: {e}",
-                exc_info=True
-            )
-            errors.append(f"Failed to validate result data filtering: {str(e)}")
+            logger.error(f"Failed to validate result data filtering: {e}", exc_info=True)
+            errors.append(f"Failed to validate result data filtering: {e!s}")
             details["valid"] = False
 
         return {
             "valid": len(errors) == 0,
             "errors": errors,
             "warnings": warnings,
-            "details": details
+            "details": details,
         }
 
     def validate_query_language_compatibility(
-        self,
-        virtual_dataset: VirtualDataset,
-        raise_on_error: bool = False
+        self, virtual_dataset: VirtualDataset, raise_on_error: bool = False
     ) -> ValidationResult:
         """
         Validate query language compatibility with source types.
@@ -2889,13 +2801,13 @@ class VirtualizationBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "dataset_id": str(virtual_dataset.id),
             "dataset_name": virtual_dataset.name,
             "query_type": virtual_dataset.query_type,
-            "query_language_checks": {}
+            "query_language_checks": {},
         }
 
         sources = virtual_dataset.get_sources() or []
@@ -2911,17 +2823,14 @@ class VirtualizationBusinessRules(BusinessRules):
             details["query_language_checks"]["skipped"] = True
             details["query_language_checks"]["reason"] = "No sources provided"
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
         details["query_language_checks"]["skipped"] = False
         details["query_language_checks"]["source_count"] = len(sources)
 
         # Check each source's language compatibility
-        source_languages: List[str] = []
+        source_languages: list[str] = []
         for i, source_config in enumerate(sources):
             if not isinstance(source_config, dict):
                 errors.append(f"Source configuration at index {i} must be an object")
@@ -2961,7 +2870,7 @@ class VirtualizationBusinessRules(BusinessRules):
 
             has_sql = any(lang in sql_languages for lang in unique_languages)
             has_sparql = any(lang in sparql_languages for lang in unique_languages)
-            has_rest = any(lang in rest_languages for lang in unique_languages)
+            any(lang in rest_languages for lang in unique_languages)
 
             if has_sql and has_sparql:
                 warnings.append(
@@ -2981,17 +2890,14 @@ class VirtualizationBusinessRules(BusinessRules):
                 details["query_language_checks"]["multiple_languages"] = False
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
             raise ValidationError(
                 f"Query language compatibility validation failed: {', '.join(errors)}",
                 code="INVALID_QUERY_LANGUAGE_COMPATIBILITY",
-                details=details
+                details=details,
             )
 
         return result
@@ -3009,23 +2915,31 @@ class VirtualizationBusinessRules(BusinessRules):
         source_type_lower = source_type.lower()
 
         # SQL-based sources
-        if source_type_lower in ['postgresql', 'mysql', 'sqlserver', 'mssql', 'oracle', 'sqlite', 'odbc']:
+        if source_type_lower in [
+            "postgresql",
+            "mysql",
+            "sqlserver",
+            "mssql",
+            "oracle",
+            "sqlite",
+            "odbc",
+        ]:
             return "sql"
 
         # SPARQL sources
-        if source_type_lower == 'sparql':
+        if source_type_lower == "sparql":
             return "sparql"
 
         # REST sources
-        if source_type_lower == 'rest':
+        if source_type_lower == "rest":
             return "rest"
 
         # GraphQL sources
-        if source_type_lower == 'graphql':
+        if source_type_lower == "graphql":
             return "graphql"
 
         # File-based sources (S3, MinIO) don't have a query language
-        if source_type_lower in ['s3', 'minio', 'gcs', 'azure_blob']:
+        if source_type_lower in ["s3", "minio", "gcs", "azure_blob"]:
             return "file"
 
         # Default to unknown
@@ -3035,7 +2949,7 @@ class VirtualizationBusinessRules(BusinessRules):
         self,
         virtual_dataset: VirtualDataset,
         test_connectivity: bool = True,
-        raise_on_error: bool = False
+        raise_on_error: bool = False,
     ) -> ValidationResult:
         """
         Validate source connections (test actual connectivity).
@@ -3057,13 +2971,13 @@ class VirtualizationBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "dataset_id": str(virtual_dataset.id),
             "dataset_name": virtual_dataset.name,
             "test_connectivity": test_connectivity,
-            "connection_checks": {}
+            "connection_checks": {},
         }
 
         sources = virtual_dataset.get_sources() or []
@@ -3072,10 +2986,7 @@ class VirtualizationBusinessRules(BusinessRules):
             details["connection_checks"]["skipped"] = True
             details["connection_checks"]["reason"] = "No sources provided"
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
         details["connection_checks"]["skipped"] = False
@@ -3100,17 +3011,14 @@ class VirtualizationBusinessRules(BusinessRules):
                 details["connection_checks"][f"source_{i}_config_valid"] = len(config_errors) == 0
 
             result = ValidationResult(
-                is_valid=len(errors) == 0,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
             )
 
             if not result.is_valid and raise_on_error:
                 raise ValidationError(
                     f"Source connection validation failed: {', '.join(errors)}",
                     code="INVALID_SOURCE_CONNECTION",
-                    details=details
+                    details=details,
                 )
 
             return result
@@ -3148,7 +3056,9 @@ class VirtualizationBusinessRules(BusinessRules):
                     f"{connection_result.get('error', 'Unknown error')}"
                 )
                 details["connection_checks"][f"source_{i}_connection_test"] = False
-                details["connection_checks"][f"source_{i}_connection_error"] = connection_result.get("error")
+                details["connection_checks"][f"source_{i}_connection_error"] = (
+                    connection_result.get("error")
+                )
             else:
                 details["connection_checks"][f"source_{i}_connection_test"] = True
                 if connection_result.get("warning"):
@@ -3157,27 +3067,21 @@ class VirtualizationBusinessRules(BusinessRules):
                     )
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
             raise ValidationError(
                 f"Source connection validation failed: {', '.join(errors)}",
                 code="INVALID_SOURCE_CONNECTION",
-                details=details
+                details=details,
             )
 
         return result
 
     def _test_source_connection(
-        self,
-        source_config: Dict[str, Any],
-        source_index: int,
-        source_type: str
-    ) -> Dict[str, Any]:
+        self, source_config: dict[str, Any], source_index: int, source_type: str
+    ) -> dict[str, Any]:
         """
         Test connection to a source using connector factory.
 
@@ -3191,11 +3095,11 @@ class VirtualizationBusinessRules(BusinessRules):
         """
         try:
             # Try to import connector factory
-            import sys
             import os
+            import sys
+
             connector_path = os.path.join(
-                os.path.dirname(__file__),
-                '../../../services/prefect-integration'
+                os.path.dirname(__file__), "../../../services/prefect-integration"
             )
             sys.path.insert(0, connector_path)
 
@@ -3205,7 +3109,7 @@ class VirtualizationBusinessRules(BusinessRules):
                 # Connector factory not available - return warning
                 return {
                     "success": True,  # Don't fail if connector factory unavailable
-                    "warning": "Connector factory not available - connection test skipped"
+                    "warning": "Connector factory not available - connection test skipped",
                 }
 
             # Map source type to connector type
@@ -3213,15 +3117,15 @@ class VirtualizationBusinessRules(BusinessRules):
             if not connector_type:
                 return {
                     "success": True,  # Don't fail for unsupported types
-                    "warning": f"Source type '{source_type}' does not support connection testing"
+                    "warning": f"Source type '{source_type}' does not support connection testing",
                 }
 
             # Get connector and test connection
             connector = SourceConnectorFactory.get_connector(connector_type)
-            if not hasattr(connector, 'test_connection'):
+            if not hasattr(connector, "test_connection"):
                 return {
                     "success": True,  # Don't fail if method not available
-                    "warning": f"Connector for type '{source_type}' does not support connection testing"
+                    "warning": f"Connector for type '{source_type}' does not support connection testing",
                 }
 
             # Test connection with timeout protection
@@ -3232,7 +3136,7 @@ class VirtualizationBusinessRules(BusinessRules):
 
             # Set timeout (Unix only)
             timeout_set = False
-            if hasattr(signal, 'SIGALRM'):
+            if hasattr(signal, "SIGALRM"):
                 signal.signal(signal.SIGALRM, timeout_handler)
                 signal.alarm(10)  # 10 second timeout
                 timeout_set = True
@@ -3247,41 +3151,32 @@ class VirtualizationBusinessRules(BusinessRules):
                     if success:
                         return {"success": True}
                     else:
-                        return {
-                            "success": False,
-                            "error": error or "Connection test failed"
-                        }
+                        return {"success": False, "error": error or "Connection test failed"}
                 elif isinstance(test_result, bool):
                     if test_result:
                         return {"success": True}
                     else:
-                        return {
-                            "success": False,
-                            "error": "Connection test returned False"
-                        }
+                        return {"success": False, "error": "Connection test returned False"}
                 else:
                     return {
                         "success": False,
-                        "error": f"Unexpected return type from test_connection: {type(test_result)}"
+                        "error": f"Unexpected return type from test_connection: {type(test_result)}",
                     }
             finally:
-                if timeout_set and hasattr(signal, 'SIGALRM'):
+                if timeout_set and hasattr(signal, "SIGALRM"):
                     signal.alarm(0)  # Cancel timeout
 
         except TimeoutError as e:
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
         except Exception as e:
             # Don't fail validation on connection errors - return as warning
             # This allows validation to proceed even if connections are temporarily unavailable
             return {
                 "success": True,  # Don't fail validation
-                "warning": f"Connection test failed: {str(e)}"
+                "warning": f"Connection test failed: {e!s}",
             }
 
-    def _map_source_type_to_connector_type(self, source_type: str) -> Optional[str]:
+    def _map_source_type_to_connector_type(self, source_type: str) -> str | None:
         """
         Map source type to connector factory type.
 
@@ -3294,31 +3189,39 @@ class VirtualizationBusinessRules(BusinessRules):
         source_type_lower = source_type.lower()
 
         # Database sources map to DATABASE connector
-        if source_type_lower in ['postgresql', 'mysql', 'sqlserver', 'mssql', 'oracle', 'sqlite', 'odbc']:
+        if source_type_lower in [
+            "postgresql",
+            "mysql",
+            "sqlserver",
+            "mssql",
+            "oracle",
+            "sqlite",
+            "odbc",
+        ]:
             return "DATABASE"
 
         # REST/HTTP sources
-        if source_type_lower in ['rest', 'http', 'https']:
+        if source_type_lower in ["rest", "http", "https"]:
             return "HTTP"
 
         # S3 sources
-        if source_type_lower == 's3':
+        if source_type_lower == "s3":
             return "S3"
 
         # GCS sources
-        if source_type_lower == 'gcs':
+        if source_type_lower == "gcs":
             return "GCS"
 
         # Azure Blob sources
-        if source_type_lower in ['azure_blob', 'azureblob']:
+        if source_type_lower in ["azure_blob", "azureblob"]:
             return "AZURE_BLOB"
 
         # FTP sources
-        if source_type_lower in ['ftp', 'sftp']:
+        if source_type_lower in ["ftp", "sftp"]:
             return source_type_lower.upper()
 
         # SPARQL and GraphQL don't have connectors yet
-        if source_type_lower in ['sparql', 'graphql']:
+        if source_type_lower in ["sparql", "graphql"]:
             return None
 
         return None
@@ -3352,18 +3255,24 @@ class QueryExecutionBusinessRules(BusinessRules):
     DEFAULT_ASYNC_TIMEOUT = 3600  # 1 hour for ASYNC
 
     # Query complexity indicators
-    COMPLEX_KEYWORDS = ['JOIN', 'UNION', 'GROUP BY', 'ORDER BY', 'HAVING', 'SUBQUERY', 'WITH', 'RECURSIVE']
-    FEDERATED_INDICATORS = ['SERVICE', 'SILENT', 'BIND', 'VALUES']
+    COMPLEX_KEYWORDS = [
+        "JOIN",
+        "UNION",
+        "GROUP BY",
+        "ORDER BY",
+        "HAVING",
+        "SUBQUERY",
+        "WITH",
+        "RECURSIVE",
+    ]
+    FEDERATED_INDICATORS = ["SERVICE", "SILENT", "BIND", "VALUES"]
 
     def get_rule_name(self) -> str:
         """Return the rule name for metrics and logging."""
         return "QueryExecutionBusinessRules"
 
     def validate(
-        self,
-        context: Optional[RuleExecutionContext] = None,
-        *args,
-        **kwargs
+        self, context: RuleExecutionContext | None = None, *args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -3384,65 +3293,63 @@ class QueryExecutionBusinessRules(BusinessRules):
         Returns:
             ValidationResult with validation status and details
         """
-        virtual_dataset = kwargs.get('virtual_dataset')
-        if context and hasattr(context, 'resource') and isinstance(context.resource, VirtualDataset):
+        virtual_dataset = kwargs.get("virtual_dataset")
+        if (
+            context
+            and hasattr(context, "resource")
+            and isinstance(context.resource, VirtualDataset)
+        ):
             virtual_dataset = context.resource
-        elif context and hasattr(context, 'metadata') and isinstance(context.metadata, dict):
-            virtual_dataset = virtual_dataset or context.metadata.get('virtual_dataset')
+        elif context and hasattr(context, "metadata") and isinstance(context.metadata, dict):
+            virtual_dataset = virtual_dataset or context.metadata.get("virtual_dataset")
 
-        validation_type = kwargs.get('validation_type', 'all')
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        validation_type = kwargs.get("validation_type", "all")
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "validation_type": validation_type,
         }
 
         if virtual_dataset:
             details["dataset_id"] = str(virtual_dataset.id) if virtual_dataset.id else None
-            details["dataset_name"] = virtual_dataset.name if hasattr(virtual_dataset, 'name') else None
+            details["dataset_name"] = (
+                virtual_dataset.name if hasattr(virtual_dataset, "name") else None
+            )
 
         # Perform validation based on type
-        if validation_type in ('timeout', 'all'):
-            timeout_seconds = kwargs.get('timeout_seconds')
-            execution_mode = kwargs.get('execution_mode')
+        if validation_type in ("timeout", "all"):
+            timeout_seconds = kwargs.get("timeout_seconds")
+            execution_mode = kwargs.get("execution_mode")
             timeout_result = self.validate_timeout(
-                timeout_seconds=timeout_seconds,
-                execution_mode=execution_mode,
-                raise_on_error=False
+                timeout_seconds=timeout_seconds, execution_mode=execution_mode, raise_on_error=False
             )
             if not timeout_result.is_valid:
                 errors.extend(timeout_result.errors)
                 warnings.extend(timeout_result.warnings)
                 details["timeout"] = timeout_result.details
 
-        if validation_type in ('execution_mode', 'all') and virtual_dataset:
+        if validation_type in ("execution_mode", "all") and virtual_dataset:
             # Execution mode selection doesn't return ValidationResult, so we just validate it works
             try:
                 execution_mode = self.select_execution_mode(
                     virtual_dataset=virtual_dataset,
-                    parameters=kwargs.get('parameters'),
-                    force_async=kwargs.get('force_async', False),
-                    estimated_result_size=kwargs.get('estimated_result_size'),
-                    raise_on_error=False
+                    parameters=kwargs.get("parameters"),
+                    force_async=kwargs.get("force_async", False),
+                    estimated_result_size=kwargs.get("estimated_result_size"),
+                    raise_on_error=False,
                 )
                 details["execution_mode"] = execution_mode
             except Exception as e:
-                errors.append(f"Execution mode selection failed: {str(e)}")
+                errors.append(f"Execution mode selection failed: {e!s}")
                 details["execution_mode_error"] = str(e)
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def optimize_query(
-        self,
-        query: str,
-        query_type: QueryType,
-        raise_on_error: bool = False
-    ) -> Dict[str, Any]:
+        self, query: str, query_type: QueryType, raise_on_error: bool = False
+    ) -> dict[str, Any]:
         """
         Optimize query for better performance.
 
@@ -3468,13 +3375,13 @@ class QueryExecutionBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and optimization fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        optimizations_applied: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        optimizations_applied: list[str] = []
+        details: dict[str, Any] = {
             "original_query_length": len(query),
             "query_type": query_type,
-            "optimization_checks": {}
+            "optimization_checks": {},
         }
 
         if not query or not query.strip():
@@ -3489,13 +3396,13 @@ class QueryExecutionBusinessRules(BusinessRules):
                 "optimizations_applied": optimizations_applied,
                 "warnings": warnings,
                 "errors": errors,
-                "details": details
+                "details": details,
             }
             if raise_on_error:
                 raise ValidationError(
                     f"Query optimization failed: {errors[0]}",
                     code="QUERY_OPTIMIZATION_FAILED",
-                    details=details
+                    details=details,
                 )
             return result_dict
 
@@ -3521,7 +3428,8 @@ class QueryExecutionBusinessRules(BusinessRules):
             # For other query types, apply basic optimizations
             # Remove excessive whitespace
             import re
-            optimized_query = re.sub(r'\s+', ' ', query.strip())
+
+            optimized_query = re.sub(r"\s+", " ", query.strip())
             if optimized_query != query:
                 optimizations_applied.append("Removed excessive whitespace")
             details["optimization_checks"]["basic_optimization"] = True
@@ -3534,18 +3442,15 @@ class QueryExecutionBusinessRules(BusinessRules):
             "optimizations_applied": optimizations_applied,
             "warnings": warnings,
             "errors": errors,
-            "details": details
+            "details": details,
         }
 
     def _optimize_sql_query(
-        self,
-        query: str,
-        query_upper: str,
-        details: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, query: str, query_upper: str, details: dict[str, Any]
+    ) -> dict[str, Any]:
         """Optimize SQL query"""
-        optimizations_applied: List[str] = []
-        warnings: List[str] = []
+        optimizations_applied: list[str] = []
+        warnings: list[str] = []
         optimized_query = query
 
         # Check for SELECT * without LIMIT
@@ -3559,15 +3464,16 @@ class QueryExecutionBusinessRules(BusinessRules):
 
         # Remove excessive whitespace (preserve structure)
         import re
+
         # Normalize whitespace but preserve newlines in multi-line queries
-        if '\n' in query:
-            lines = query.split('\n')
-            normalized_lines = [re.sub(r'\s+', ' ', line.strip()) for line in lines if line.strip()]
-            optimized_query = '\n'.join(normalized_lines)
+        if "\n" in query:
+            lines = query.split("\n")
+            normalized_lines = [re.sub(r"\s+", " ", line.strip()) for line in lines if line.strip()]
+            optimized_query = "\n".join(normalized_lines)
             if optimized_query != query:
                 optimizations_applied.append("Normalized whitespace in multi-line query")
         else:
-            optimized_query = re.sub(r'\s+', ' ', query.strip())
+            optimized_query = re.sub(r"\s+", " ", query.strip())
             if optimized_query != query:
                 optimizations_applied.append("Normalized whitespace")
 
@@ -3584,10 +3490,12 @@ class QueryExecutionBusinessRules(BusinessRules):
         # Check for potential index usage
         if "WHERE" in query_upper:
             # Look for equality conditions that could benefit from indexes
-            equality_pattern = re.compile(r'WHERE\s+(\w+)\s*=\s*', re.IGNORECASE)
+            equality_pattern = re.compile(r"WHERE\s+(\w+)\s*=\s*", re.IGNORECASE)
             if equality_pattern.search(query):
                 details["optimization_checks"]["has_equality_conditions"] = True
-                optimizations_applied.append("Query has equality conditions suitable for index usage")
+                optimizations_applied.append(
+                    "Query has equality conditions suitable for index usage"
+                )
             else:
                 details["optimization_checks"]["has_equality_conditions"] = False
 
@@ -3595,30 +3503,28 @@ class QueryExecutionBusinessRules(BusinessRules):
             "optimized_query": optimized_query,
             "optimizations_applied": optimizations_applied,
             "warnings": warnings,
-            "details": details
+            "details": details,
         }
 
     def _optimize_sparql_query(
-        self,
-        query: str,
-        query_upper: str,
-        details: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, query: str, query_upper: str, details: dict[str, Any]
+    ) -> dict[str, Any]:
         """Optimize SPARQL query"""
-        optimizations_applied: List[str] = []
-        warnings: List[str] = []
+        optimizations_applied: list[str] = []
+        warnings: list[str] = []
         optimized_query = query
 
         # Normalize whitespace
         import re
-        if '\n' in query:
-            lines = query.split('\n')
-            normalized_lines = [re.sub(r'\s+', ' ', line.strip()) for line in lines if line.strip()]
-            optimized_query = '\n'.join(normalized_lines)
+
+        if "\n" in query:
+            lines = query.split("\n")
+            normalized_lines = [re.sub(r"\s+", " ", line.strip()) for line in lines if line.strip()]
+            optimized_query = "\n".join(normalized_lines)
             if optimized_query != query:
                 optimizations_applied.append("Normalized whitespace in SPARQL query")
         else:
-            optimized_query = re.sub(r'\s+', ' ', query.strip())
+            optimized_query = re.sub(r"\s+", " ", query.strip())
             if optimized_query != query:
                 optimizations_applied.append("Normalized whitespace")
 
@@ -3643,16 +3549,16 @@ class QueryExecutionBusinessRules(BusinessRules):
             "optimized_query": optimized_query,
             "optimizations_applied": optimizations_applied,
             "warnings": warnings,
-            "details": details
+            "details": details,
         }
 
     def select_execution_mode(
         self,
         virtual_dataset: VirtualDataset,
-        parameters: Optional[Dict[str, Any]] = None,
+        parameters: dict[str, Any] | None = None,
         force_async: bool = False,
-        estimated_result_size: Optional[int] = None,
-        raise_on_error: bool = False
+        estimated_result_size: int | None = None,
+        raise_on_error: bool = False,
     ) -> QueryExecutionMode:
         """
         Select execution mode (SYNC or ASYNC) based on query characteristics.
@@ -3679,11 +3585,10 @@ class QueryExecutionBusinessRules(BusinessRules):
         """
         from hub.apps.virtualization.models import QueryExecutionMode
 
-        errors: List[str] = []
-        details: Dict[str, Any] = {
+        details: dict[str, Any] = {
             "dataset_id": str(virtual_dataset.id),
             "query_type": virtual_dataset.query_type,
-            "selection_criteria": {}
+            "selection_criteria": {},
         }
 
         if force_async:
@@ -3730,10 +3635,17 @@ class QueryExecutionBusinessRules(BusinessRules):
         # - SYNC: Simple query, single source, small result, not complex
         # - ASYNC: Complex query, multiple sources, large result, federated
 
-        if (is_simple_query and is_single_source and not is_complex and
-            not is_federated and is_small_result):
+        if (
+            is_simple_query
+            and is_single_source
+            and not is_complex
+            and not is_federated
+            and is_small_result
+        ):
             details["selection_criteria"]["selected_mode"] = "SYNC"
-            details["selection_criteria"]["reason"] = "Simple query with single source and small result"
+            details["selection_criteria"]["reason"] = (
+                "Simple query with single source and small result"
+            )
             return QueryExecutionMode.SYNC  # type: ignore[return-value]  # enum member returned; mypy sees function return as str
 
         # Default to ASYNC for complex queries
@@ -3753,9 +3665,9 @@ class QueryExecutionBusinessRules(BusinessRules):
 
     def validate_timeout(
         self,
-        timeout_seconds: Optional[int] = None,
-        execution_mode: Optional[QueryExecutionMode] = None,
-        raise_on_error: bool = False
+        timeout_seconds: int | None = None,
+        execution_mode: QueryExecutionMode | None = None,
+        raise_on_error: bool = False,
     ) -> ValidationResult:
         """
         Validate timeout configuration for query execution.
@@ -3778,11 +3690,9 @@ class QueryExecutionBusinessRules(BusinessRules):
         """
         from hub.apps.virtualization.models import QueryExecutionMode
 
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            "timeout_validation_checks": {}
-        }
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"timeout_validation_checks": {}}
 
         # Determine default timeout based on execution mode
         if timeout_seconds is None:
@@ -3798,7 +3708,9 @@ class QueryExecutionBusinessRules(BusinessRules):
                 # Default to SYNC timeout if mode is unknown
                 validated_timeout = self.DEFAULT_SYNC_TIMEOUT
                 details["timeout_validation_checks"]["default_applied"] = True
-                details["timeout_validation_checks"]["default_reason"] = "Unknown mode, using SYNC default"
+                details["timeout_validation_checks"]["default_reason"] = (
+                    "Unknown mode, using SYNC default"
+                )
                 warnings.append(
                     f"Execution mode not specified, using default timeout for SYNC mode ({validated_timeout}s)"
                 )
@@ -3854,17 +3766,14 @@ class QueryExecutionBusinessRules(BusinessRules):
         details["validated_timeout"] = validated_timeout
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
             raise ValidationError(
                 f"Timeout validation failed: {', '.join(errors)}",
                 code="INVALID_TIMEOUT",
-                details=details
+                details=details,
             )
 
         return result
@@ -3907,10 +3816,7 @@ class ResultBusinessRules(BusinessRules):
         return "ResultBusinessRules"
 
     def validate(
-        self,
-        context: Optional[RuleExecutionContext] = None,
-        *args,
-        **kwargs
+        self, context: RuleExecutionContext | None = None, *args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -3935,33 +3841,33 @@ class ResultBusinessRules(BusinessRules):
         Returns:
             ValidationResult with validation status and details
         """
-        validation_type = kwargs.get('validation_type', 'all')
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        validation_type = kwargs.get("validation_type", "all")
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "validation_type": validation_type,
         }
 
         # Perform validation based on type
-        if validation_type in ('caching', 'all'):
+        if validation_type in ("caching", "all"):
             cache_result = self.validate_result_caching(
-                cache_enabled=kwargs.get('cache_enabled', True),
-                cache_ttl=kwargs.get('cache_ttl'),
-                result_size=kwargs.get('result_size'),
-                raise_on_error=False
+                cache_enabled=kwargs.get("cache_enabled", True),
+                cache_ttl=kwargs.get("cache_ttl"),
+                result_size=kwargs.get("result_size"),
+                raise_on_error=False,
             )
             if not cache_result.is_valid:
                 errors.extend(cache_result.errors)
                 warnings.extend(cache_result.warnings)
                 details["caching"] = cache_result.details
 
-        if validation_type in ('pagination', 'all'):
+        if validation_type in ("pagination", "all"):
             pagination_result = self.validate_pagination(
-                page=kwargs.get('page'),
-                page_size=kwargs.get('page_size'),
-                offset=kwargs.get('offset'),
-                limit=kwargs.get('limit'),
-                raise_on_error=False
+                page=kwargs.get("page"),
+                page_size=kwargs.get("page_size"),
+                offset=kwargs.get("offset"),
+                limit=kwargs.get("limit"),
+                raise_on_error=False,
             )
             if not pagination_result.is_valid:
                 errors.extend(pagination_result.errors)
@@ -3969,18 +3875,15 @@ class ResultBusinessRules(BusinessRules):
                 details["pagination"] = pagination_result.details
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def validate_result_caching(
         self,
         cache_enabled: bool = True,
-        cache_ttl: Optional[int] = None,
-        result_size: Optional[int] = None,
-        raise_on_error: bool = False
+        cache_ttl: int | None = None,
+        result_size: int | None = None,
+        raise_on_error: bool = False,
     ) -> ValidationResult:
         """
         Validate result caching configuration.
@@ -4002,21 +3905,16 @@ class ResultBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            "cache_validation_checks": {}
-        }
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"cache_validation_checks": {}}
 
         details["cache_validation_checks"]["cache_enabled"] = cache_enabled
 
         if not cache_enabled:
             details["cache_validation_checks"]["validation_skipped"] = True
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
         # Determine default TTL if not provided
@@ -4078,28 +3976,25 @@ class ResultBusinessRules(BusinessRules):
         details["validated_cache_ttl"] = validated_ttl
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
             raise ValidationError(
                 f"Result caching validation failed: {', '.join(errors)}",
                 code="INVALID_CACHE_CONFIG",
-                details=details
+                details=details,
             )
 
         return result
 
     def validate_pagination(
         self,
-        page: Optional[int] = None,
-        page_size: Optional[int] = None,
-        offset: Optional[int] = None,
-        limit: Optional[int] = None,
-        raise_on_error: bool = False
+        page: int | None = None,
+        page_size: int | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+        raise_on_error: bool = False,
     ) -> ValidationResult:
         """
         Validate pagination parameters.
@@ -4125,11 +4020,9 @@ class ResultBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            "pagination_validation_checks": {}
-        }
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"pagination_validation_checks": {}}
 
         # Check for mutually exclusive parameters
         if page is not None and offset is not None:
@@ -4164,25 +4057,24 @@ class ResultBusinessRules(BusinessRules):
             if page_size is None:
                 validated_page_size = self.DEFAULT_PAGE_SIZE
                 details["pagination_validation_checks"]["default_page_size_applied"] = True
+            elif page_size < self.MIN_PAGE_SIZE:
+                errors.append(
+                    f"Page size ({page_size}) is below minimum ({self.MIN_PAGE_SIZE}). "
+                    f"Minimum page size is {self.MIN_PAGE_SIZE}."
+                )
+                details["pagination_validation_checks"]["page_size_valid"] = False
+                validated_page_size = self.MIN_PAGE_SIZE
+                warnings.append(f"Page size auto-corrected to minimum: {validated_page_size}")
+            elif page_size > self.MAX_PAGE_SIZE:
+                errors.append(
+                    f"Page size ({page_size}) exceeds maximum ({self.MAX_PAGE_SIZE}). "
+                    f"Maximum page size is {self.MAX_PAGE_SIZE}."
+                )
+                details["pagination_validation_checks"]["page_size_valid"] = False
+                validated_page_size = self.MAX_PAGE_SIZE
+                warnings.append(f"Page size auto-corrected to maximum: {validated_page_size}")
             else:
-                if page_size < self.MIN_PAGE_SIZE:
-                    errors.append(
-                        f"Page size ({page_size}) is below minimum ({self.MIN_PAGE_SIZE}). "
-                        f"Minimum page size is {self.MIN_PAGE_SIZE}."
-                    )
-                    details["pagination_validation_checks"]["page_size_valid"] = False
-                    validated_page_size = self.MIN_PAGE_SIZE
-                    warnings.append(f"Page size auto-corrected to minimum: {validated_page_size}")
-                elif page_size > self.MAX_PAGE_SIZE:
-                    errors.append(
-                        f"Page size ({page_size}) exceeds maximum ({self.MAX_PAGE_SIZE}). "
-                        f"Maximum page size is {self.MAX_PAGE_SIZE}."
-                    )
-                    details["pagination_validation_checks"]["page_size_valid"] = False
-                    validated_page_size = self.MAX_PAGE_SIZE
-                    warnings.append(f"Page size auto-corrected to maximum: {validated_page_size}")
-                else:
-                    details["pagination_validation_checks"]["page_size_valid"] = True
+                details["pagination_validation_checks"]["page_size_valid"] = True
 
         # Validate offset-based pagination
         elif offset is not None:
@@ -4202,25 +4094,24 @@ class ResultBusinessRules(BusinessRules):
             if limit is None:
                 validated_limit = self.DEFAULT_LIMIT
                 details["pagination_validation_checks"]["default_limit_applied"] = True
+            elif limit < self.MIN_LIMIT:
+                errors.append(
+                    f"Limit ({limit}) is below minimum ({self.MIN_LIMIT}). "
+                    f"Minimum limit is {self.MIN_LIMIT}."
+                )
+                details["pagination_validation_checks"]["limit_valid"] = False
+                validated_limit = self.MIN_LIMIT
+                warnings.append(f"Limit auto-corrected to minimum: {validated_limit}")
+            elif limit > self.MAX_LIMIT:
+                errors.append(
+                    f"Limit ({limit}) exceeds maximum ({self.MAX_LIMIT}). "
+                    f"Maximum limit is {self.MAX_LIMIT}."
+                )
+                details["pagination_validation_checks"]["limit_valid"] = False
+                validated_limit = self.MAX_LIMIT
+                warnings.append(f"Limit auto-corrected to maximum: {validated_limit}")
             else:
-                if limit < self.MIN_LIMIT:
-                    errors.append(
-                        f"Limit ({limit}) is below minimum ({self.MIN_LIMIT}). "
-                        f"Minimum limit is {self.MIN_LIMIT}."
-                    )
-                    details["pagination_validation_checks"]["limit_valid"] = False
-                    validated_limit = self.MIN_LIMIT
-                    warnings.append(f"Limit auto-corrected to minimum: {validated_limit}")
-                elif limit > self.MAX_LIMIT:
-                    errors.append(
-                        f"Limit ({limit}) exceeds maximum ({self.MAX_LIMIT}). "
-                        f"Maximum limit is {self.MAX_LIMIT}."
-                    )
-                    details["pagination_validation_checks"]["limit_valid"] = False
-                    validated_limit = self.MAX_LIMIT
-                    warnings.append(f"Limit auto-corrected to maximum: {validated_limit}")
-                else:
-                    details["pagination_validation_checks"]["limit_valid"] = True
+                details["pagination_validation_checks"]["limit_valid"] = True
 
         # No pagination specified - apply defaults
         else:
@@ -4229,16 +4120,15 @@ class ResultBusinessRules(BusinessRules):
             if limit is None:
                 validated_limit = self.DEFAULT_LIMIT
                 details["pagination_validation_checks"]["default_limit_applied"] = True
+            # Validate provided limit
+            elif limit < self.MIN_LIMIT:
+                validated_limit = self.MIN_LIMIT
+                warnings.append(f"Limit auto-corrected to minimum: {validated_limit}")
+            elif limit > self.MAX_LIMIT:
+                validated_limit = self.MAX_LIMIT
+                warnings.append(f"Limit auto-corrected to maximum: {validated_limit}")
             else:
-                # Validate provided limit
-                if limit < self.MIN_LIMIT:
-                    validated_limit = self.MIN_LIMIT
-                    warnings.append(f"Limit auto-corrected to minimum: {validated_limit}")
-                elif limit > self.MAX_LIMIT:
-                    validated_limit = self.MAX_LIMIT
-                    warnings.append(f"Limit auto-corrected to maximum: {validated_limit}")
-                else:
-                    validated_limit = limit
+                validated_limit = limit
 
         details["pagination_validation_checks"]["validated_page"] = validated_page
         details["pagination_validation_checks"]["validated_page_size"] = validated_page_size
@@ -4252,18 +4142,14 @@ class ResultBusinessRules(BusinessRules):
         details["validated_limit"] = validated_limit
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
             raise ValidationError(
                 f"Pagination validation failed: {', '.join(errors)}",
                 code="INVALID_PAGINATION",
-                details=details
+                details=details,
             )
 
         return result
-

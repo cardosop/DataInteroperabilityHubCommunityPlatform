@@ -21,9 +21,8 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import AssetStatus
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import (
-ensure_tenant_has_active_subscription,
+    ensure_tenant_has_active_subscription,
 )
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     AssetFactory,
@@ -46,7 +45,8 @@ pytestmark = [
 
 
 class AdvancedObservabilityTestBase(
-    TestCase, TestDatabaseIsolationMixin,
+    TestCase,
+    TestDatabaseIsolationMixin,
 ):
     """Base test class for Advanced Observability new use cases."""
 
@@ -79,7 +79,8 @@ class AdvancedObservabilityTestBase(
             email=f"dpo-{uid}@example.com",
         )
         UserRole.objects.get_or_create(
-            user=self.dpo_user, role=self.data_provider_role,
+            user=self.dpo_user,
+            role=self.data_provider_role,
         )
 
         self.admin_user = UserFactory.create_user(
@@ -87,7 +88,8 @@ class AdvancedObservabilityTestBase(
             email=f"admin-{uid}@example.com",
         )
         UserRole.objects.get_or_create(
-            user=self.admin_user, role=self.tenant_admin_role,
+            user=self.admin_user,
+            role=self.tenant_admin_role,
         )
 
         self.asset = AssetFactory.create_asset(
@@ -121,16 +123,14 @@ class UCOBSADV001MonitorReliabilityScoresTest(
         # health_score can be None for fresh assets with no DQ runs
         if body["health_score"] is not None:
             self.assertIsInstance(
-                body["health_score"], (int, float),
+                body["health_score"],
+                (int, float),
             )
 
     def test_health_score_with_breakdown(self):
         """GET with breakdown=true -> includes component breakdown."""
         self.client.force_authenticate(user=self.dpo_user)
-        url = (
-            f"/api/v1/assets/{self.asset.id}"
-            f"/health-score/?breakdown=true"
-        )
+        url = f"/api/v1/assets/{self.asset.id}/health-score/?breakdown=true"
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         body = response.json()
@@ -142,10 +142,7 @@ class UCOBSADV001MonitorReliabilityScoresTest(
     def test_health_score_with_recalculate(self):
         """GET with recalculate=true -> forces fresh computation."""
         self.client.force_authenticate(user=self.dpo_user)
-        url = (
-            f"/api/v1/assets/{self.asset.id}"
-            f"/health-score/?recalculate=true"
-        )
+        url = f"/api/v1/assets/{self.asset.id}/health-score/?recalculate=true"
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         body = response.json()
@@ -158,7 +155,8 @@ class UCOBSADV001MonitorReliabilityScoresTest(
         url = f"/api/v1/assets/{fake_id}/health-score/"
         response = self.client.get(url)
         self.assertEqual(
-            response.status_code, status.HTTP_404_NOT_FOUND,
+            response.status_code,
+            status.HTTP_404_NOT_FOUND,
         )
 
     def test_health_score_unauthorized(self):
@@ -272,9 +270,7 @@ class UCOBSADV003SetUpPredictiveAlertsTest(
         self.assertIn(
             response.status_code,
             [status.HTTP_201_CREATED, status.HTTP_200_OK],
-            f"Webhook create returned "
-            f"{response.status_code}: "
-            f"{getattr(response, 'data', '')}",
+            f"Webhook create returned {response.status_code}: {getattr(response, 'data', '')}",
         )
         body = response.json()
         self.assertIn("id", body)

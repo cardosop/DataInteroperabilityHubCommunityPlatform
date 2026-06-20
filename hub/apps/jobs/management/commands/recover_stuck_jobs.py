@@ -17,6 +17,8 @@ Phase 25.8.2 — Orphaned PENDING jobs:
 
 Designed to run every 15 minutes via a Kubernetes CronJob.
 """
+
+import contextlib
 from datetime import timedelta
 
 import structlog
@@ -96,9 +98,7 @@ class Command(BaseCommand):
             )
             return 0
 
-        self.stdout.write(
-            f"Found {count} stuck RUNNING job(s) (> {threshold_minutes} min)."
-        )
+        self.stdout.write(f"Found {count} stuck RUNNING job(s) (> {threshold_minutes} min).")
 
         if dry_run:
             for job_obj in stuck_jobs:
@@ -215,9 +215,7 @@ class Command(BaseCommand):
                     DeadLetterQueueManager,
                 )
 
-                DeadLetterQueueManager.sync_from_ingestion_state(
-                    str(job_obj.resource_id)
-                )
+                DeadLetterQueueManager.sync_from_ingestion_state(str(job_obj.resource_id))
             except Exception as dlq_exc:
                 logger.warning(
                     "recover_stuck_dlq_sync_failed",
@@ -250,9 +248,7 @@ class Command(BaseCommand):
         # Use the longest timeout as a coarse DB-level filter so we never
         # load thousands of recent PENDING jobs into memory.  The per-type
         # check below further narrows the set.
-        max_timeout = max(
-            (get_job_timeout(jt) for jt in JobType), default=3600
-        )
+        max_timeout = max((get_job_timeout(jt) for jt in JobType), default=3600)
         coarse_cutoff = now - timedelta(seconds=max_timeout + grace_seconds)
 
         orphan_candidates = (
@@ -329,7 +325,7 @@ class Command(BaseCommand):
                 created_at=job_obj.created_at.isoformat(),
             )
 
-            try:
+            with contextlib.suppress(Exception):
                 create_audit_event(
                     resource_type="JOB",
                     action="JOB_RECOVERED",
@@ -342,8 +338,6 @@ class Command(BaseCommand):
                         "created_at": job_obj.created_at.isoformat(),
                     },
                 )
-            except Exception:
-                pass
 
             recovered += 1
 
@@ -454,9 +448,15 @@ class Command(BaseCommand):
             result["error_code"] = "PREFECT_SUBMISSION_ORPHAN"
             job_obj.result_json = result
             job_obj.completed_at = timezone.now()
-            job_obj.save(update_fields=[
-                "status", "error_message", "result_json", "completed_at", "updated_at",
-            ])
+            job_obj.save(
+                update_fields=[
+                    "status",
+                    "error_message",
+                    "result_json",
+                    "completed_at",
+                    "updated_at",
+                ]
+            )
 
             logger.info(
                 "prefect_orphan_marked_failed",

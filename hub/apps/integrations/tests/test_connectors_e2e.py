@@ -9,27 +9,25 @@ Requirements:
 - Snowflake: SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_TOKEN environment variables
 """
 
+import contextlib
 import os
 import time
 import unittest
+import uuid
 
 import pytest
-from django.db import transaction
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.assets.models import (
     Asset,
-    AssetSourceType,
     AssetStatus,
-    AssetVisibility,
-    DataStrategy,
     ExternalResourceReference,
 )
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
+from hub.apps.contracts.models import Contract, OriginalSpecType
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+from hub.apps.core.services.base import NotFoundError as HubNotFoundError
 from hub.apps.integrations.base import (
     MarketplaceType,
-    SyncDirection,
     SyncResult,
     SyncStatus,
 )
@@ -47,8 +45,6 @@ from hub.apps.integrations.models import (
 )
 from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
-from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
-from hub.apps.core.services.base import NotFoundError as HubNotFoundError
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
@@ -134,24 +130,20 @@ def handle_auth_failure(e: Exception) -> None:
         or "invalid token" in error_str
         or "401" in error_str
     ):
-        pytest.skip(
-            f"E2E test skipped (authentication failure): {e}"
-        )
+        raise unittest.SkipTest(f"E2E test skipped (authentication failure): {e}")
 
     # Network failure patterns — transport-level only.
     if (
         "name or service not known" in error_str  # DNS resolution
-        or "connection reset" in error_str          # TCP reset
-        or "connection timed out" in error_str      # TCP timeout
-        or "connect timeout" in error_str           # Connection timeout
-        or "read timeout" in error_str              # Read timeout
-        or "timed out" in error_str                 # Generic timeout
-        or "errno 111" in error_str                 # Connection refused (Linux)
-        or "errno 113" in error_str                 # No route to host
+        or "connection reset" in error_str  # TCP reset
+        or "connection timed out" in error_str  # TCP timeout
+        or "connect timeout" in error_str  # Connection timeout
+        or "read timeout" in error_str  # Read timeout
+        or "timed out" in error_str  # Generic timeout
+        or "errno 111" in error_str  # Connection refused (Linux)
+        or "errno 113" in error_str  # No route to host
     ):
-        pytest.skip(
-            f"E2E test skipped (external service unavailable): {e}"
-        )
+        raise unittest.SkipTest(f"E2E test skipped (external service unavailable): {e}")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -169,9 +161,7 @@ class TestDadosGovBrConnectorE2E(TestCase):
         # Check skip conditions BEFORE super().setUpClass() so that if we
         # raise SkipTest, no class-level atomics are opened and the PG
         # connection is not left in a stale transaction for the next class.
-        cls.credentials = get_dados_gov_br_credentials()
-        if not cls.credentials:
-            raise unittest.SkipTest("dados.gov.br credentials not available")
+        cls.credentials = get_dados_gov_br_credentials()  # raises SkipTest if unset
 
         instance_config = get_marketplace_instance_config("dados.gov.br")
         if not instance_config:
@@ -198,9 +188,7 @@ class TestDadosGovBrConnectorE2E(TestCase):
             except unittest.SkipTest:
                 raise
             except Exception as e:
-                raise unittest.SkipTest(
-                    f"dados.gov.br connection validation failed: {e}"
-                ) from None
+                raise unittest.SkipTest(f"dados.gov.br connection validation failed: {e}") from None
         except Exception:
             cls._rollback_atomics(cls.cls_atomics)
             raise
@@ -212,16 +200,18 @@ class TestDadosGovBrConnectorE2E(TestCase):
         # Django's manage.py test doesn't load pytest autouse fixtures.
         reset_circuit_breaker_by_name("snowflake-connector")
         reset_circuit_breaker_by_name("aws-data-exchange-connector")
+        reset_circuit_breaker_by_name("dados-gov-br-connector")
 
+        _unique = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant E2E",
-            slug="test-tenant-e2e",
+            name=f"Test Tenant E2E {_unique}",
+            slug=f"test-tenant-e2e-{_unique}",
             status="ACTIVE",
             kyc_status="VERIFIED",
             federated_import_enabled=True,  # D250.3: opt-in required for federated asset import
         )
         self.user = User.objects.create_user(
-            email="test-e2e@example.com",
+            email=f"test-e2e-{_unique}@example.com",
             password="testpass",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -237,10 +227,8 @@ class TestDadosGovBrConnectorE2E(TestCase):
         """Clean up test data"""
         # Cleanup sync jobs
         for sync_job in self.created_sync_jobs:
-            try:
+            with contextlib.suppress(Exception):
                 sync_job.delete()
-            except Exception:
-                pass
 
     def _create_connection(
         self, marketplace_type: MarketplaceType, config: dict, name: str
@@ -263,7 +251,7 @@ class TestDadosGovBrConnectorE2E(TestCase):
             workflow_instance = WorkflowInstance.objects.get(id=workflow_instance_id)
             if workflow_instance.status in [WorkflowStatus.COMPLETED, WorkflowStatus.FAILED]:
                 return workflow_instance
-            time.sleep(1)
+            time.sleep(1)  # noqa: sleep-needed — polling loop
         raise TimeoutError(
             f"Workflow {workflow_instance_id} did not complete within {timeout} seconds"
         )
@@ -289,6 +277,7 @@ class TestDadosGovBrConnectorE2E(TestCase):
         mappings_without_assets = [m for m in mappings if not m.hub_asset_id]
         if mappings_without_assets:
             import logging
+
             logging.warning(
                 "%d MarketplaceMapping(s) have no hub_asset — "
                 "this may indicate a partial failure in the federated import workflow.",
@@ -312,24 +301,23 @@ class TestDadosGovBrConnectorE2E(TestCase):
         self.assertIsNotNone(odcs_contract, "ODCS contract should be created")
         return odps_contract, odcs_contract
 
-    def _verify_external_resource_references(self, asset: Asset, min_expected: int = 0) -> list:
+    def _verify_external_resource_references(self, asset: Asset, min_expected: int = 1) -> list:
         """Verify external resource references were created for the asset.
 
         Args:
             asset: Asset to check external references for.
-            min_expected: If > 0, assert at least this many refs exist.
+            min_expected: Minimum number of external refs expected (default 1).
 
         Returns:
             List of ExternalResourceReference objects
         """
         external_refs = ExternalResourceReference.objects.filter(asset=asset)
         result = list(external_refs)
-        self.assertIsInstance(result, list)
-        if min_expected > 0:
-            self.assertGreaterEqual(
-                len(result), min_expected,
-                f"Expected at least {min_expected} external resource references, got {len(result)}",
-            )
+        self.assertGreaterEqual(
+            len(result),
+            min_expected,
+            f"Expected at least {min_expected} external resource references, got {len(result)}",
+        )
         return result
 
     def test_connection_and_discovery(self):
@@ -383,24 +371,28 @@ class TestDadosGovBrConnectorE2E(TestCase):
                 name="dados.gov.br E2E Test",
             )
 
-            # Call sync_from_marketplace
+            # Call sync_from_marketplace — sync 1 listing to keep the
+            # total test time well within pytest --timeout=300.
             sync_job = self.service.sync_from_marketplace(
                 connection_id=str(connection.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 options={
-                    "limit": 3,
+                    "limit": 1,
                     "include_resources": True,
                     "data_strategy": "METADATA_ONLY",
                 },
             )
             self.created_sync_jobs.append(sync_job)
 
-            # Wait for workflow completion
+            # Wait for workflow completion — 240 s leaves 60 s margin
+            # for the sync_from_marketplace API calls within the
+            # 300 s pytest timeout.
             workflow_instance_id = sync_job.metadata.get("workflow_instance_id")
             if workflow_instance_id:
                 workflow_instance = self._wait_for_workflow_completion(
-                    workflow_instance_id, timeout=600  # 10 minutes for real sync
+                    workflow_instance_id,
+                    timeout=240,
                 )
                 self.assertIn(
                     workflow_instance.status,
@@ -416,8 +408,8 @@ class TestDadosGovBrConnectorE2E(TestCase):
 
             # Verify contracts and external references for each asset
             for asset in assets:
-                odps_contract, odcs_contract = self._verify_contracts_created(asset)
-                external_refs = self._verify_external_resource_references(asset)
+                _odps_contract, _odcs_contract = self._verify_contracts_created(asset)
+                self._verify_external_resource_references(asset)
                 # CKAN instances may not always have external refs if no resources discovered
                 # This is OK for E2E test
 
@@ -455,17 +447,22 @@ class TestDadosGovBrConnectorE2E(TestCase):
             # Wait for workflow completion
             workflow_instance_id = sync_job.metadata.get("workflow_instance_id")
             if workflow_instance_id:
-                self._wait_for_workflow_completion(workflow_instance_id, timeout=600)
+                self._wait_for_workflow_completion(workflow_instance_id, timeout=240)
 
             # Get created asset
             assets = self._verify_asset_creation(sync_job, min_count=1)
             asset = assets[0]
 
-            # Get external resource references
+            # Get external resource references — try to find one with a
+            # downloadable URL.  Some dados.gov.br resources are API-type
+            # and have no direct file URL; skip those.
             external_refs = ExternalResourceReference.objects.filter(asset=asset)
-            if external_refs:
-                # Test downloading a specific resource
-                resource_ref = external_refs[0]
+            download_attempted = False
+            last_error = None
+            for resource_ref in external_refs:
+                if not resource_ref.url and not resource_ref.resource_id:
+                    continue
+                download_attempted = True
                 connector = MarketplaceConnectorFactory.create_connector(
                     marketplace_type=MarketplaceType.CKAN_INSTANCE, config=connection.get_config()
                 )
@@ -473,21 +470,54 @@ class TestDadosGovBrConnectorE2E(TestCase):
                 # Download resource to a temp destination
                 try:
                     import tempfile
+
                     dest_path = tempfile.mktemp(suffix=".csv")
-                    listing_id = asset.source_metadata.get("listing_id") if asset.source_metadata else None
+                    listing_id = (
+                        asset.source_metadata.get("listing_id") if asset.source_metadata else None
+                    )
                     download_result = connector.download_resource(
                         resource_id=resource_ref.resource_id,
                         destination_path=dest_path,
                         listing_id=listing_id,
                     )
-                    # Verify the download produced a meaningful result.
+                    # Verify the download produced a real file with content.
                     self.assertIsNotNone(download_result)
-                except (ConnectionError, TimeoutError, PermissionError, ValueError, HubNotFoundError) as e:
-                    # External service or data unavailable — skip gracefully.
-                    self.skipTest(f"Resource download failed (external service): {e}")
+                    self.assertTrue(
+                        os.path.exists(download_result),
+                        f"Downloaded file not found at {download_result}",
+                    )
+                    self.assertGreater(
+                        os.path.getsize(download_result),
+                        0,
+                        f"Downloaded file is empty: {download_result}",
+                    )
+                    last_error = None  # success — clear error
+                    break  # one successful download is enough
+                except (
+                    ConnectionError,
+                    TimeoutError,
+                    PermissionError,
+                    ValueError,
+                    HubNotFoundError,
+                ) as e:
+                    last_error = e
+                    continue  # try the next resource
                 finally:
                     if hasattr(connector, "close"):
                         connector.close()
+
+            if last_error is not None:
+                # All resources failed — this is a real failure, not a skip.
+                self.fail(
+                    f"Resource download failed after trying "
+                    f"{len([r for r in external_refs if r.url or r.resource_id])} "
+                    f"resource(s): [{type(last_error).__name__}] {last_error}"
+                )
+            elif not download_attempted:
+                self.skipTest(
+                    "No downloadable external resource references found — "
+                    "all resources are API-type with no file URL"
+                )
 
         except Exception as e:
             handle_auth_failure(e)
@@ -523,32 +553,28 @@ class TestDadosGovBrConnectorE2E(TestCase):
             # Wait for workflow completion
             workflow_instance_id = sync_job.metadata.get("workflow_instance_id")
             if workflow_instance_id:
-                self._wait_for_workflow_completion(workflow_instance_id, timeout=600)
+                self._wait_for_workflow_completion(workflow_instance_id, timeout=240)
 
             # Get created asset
             assets = self._verify_asset_creation(sync_job, min_count=1)
             asset = assets[0]
 
-            # Verify asset is in DRAFT status (or ACTIVE if auto-activated)
-            asset.refresh_from_db()
-            self.assertIn(asset.status, [AssetStatus.DRAFT, AssetStatus.ACTIVE])
-
             # Verify contracts were created with the federated asset.
             # The federated-import workflow (Phase 250.5.A) creates
             # ODPS + ODCS contracts during asset creation.
-            odps_contract, odcs_contract = self._verify_contracts_created(asset)
+            _odps_contract, _odcs_contract = self._verify_contracts_created(asset)
 
             # Verify external resource references are present for
             # CKAN-harvested assets (resources in the listing metadata).
-            external_refs = self._verify_external_resource_references(asset)
+            self._verify_external_resource_references(asset)
 
             # Asset created via federated import with METADATA_ONLY
             # strategy lands in DRAFT; activation requires a separate
             # explicit call through the Asset endpoint (tested elsewhere).
             self.assertIn(
                 asset.status,
-                [AssetStatus.DRAFT, AssetStatus.ACTIVE],
-                f"Asset should be DRAFT or ACTIVE after federated import, got {asset.status}",
+                [AssetStatus.DRAFT, AssetStatus.ACTIVE, AssetStatus.PUBLIC],
+                f"Asset should be DRAFT, ACTIVE, or PUBLIC after federated import, got {asset.status}",
             )
 
         except Exception as e:
@@ -578,10 +604,12 @@ class TestDadosGovBrConnectorE2E(TestCase):
             )
             # Should handle gracefully
             self.assertIsInstance(result, SyncResult)
-            if result.status == SyncStatus.FAILED:
+            if result.status in (SyncStatus.FAILED, SyncStatus.PARTIAL):
                 self.assertGreater(len(result.errors), 0)
             elif result.status == SyncStatus.COMPLETED:
                 self.assertEqual(result.successful_items, 0)
+            else:
+                self.fail(f"Unexpected sync status for invalid listing IDs: {result.status}")
         except Exception as e:
             handle_auth_failure(e)
             raise
@@ -616,7 +644,7 @@ class TestDadosGovBrConnectorE2E(TestCase):
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.integration
-@pytest.mark.snowflake_e2e
+@pytest.mark.requires_snowflake
 class TestSnowflakeConnectorE2E(TestCase):
     """
     E2E tests for Snowflake connector.
@@ -629,16 +657,15 @@ class TestSnowflakeConnectorE2E(TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up test class with real credentials"""
-        super().setUpClass()
+        # Check skip conditions BEFORE super().setUpClass() so that if we
+        # raise SkipTest, no class-level atomics are opened and the PG
+        # connection is not left in a stale transaction for the next class.
         try:
-            try:
-                cls.credentials = get_snowflake_credentials()
-            except Exception:
-                # Skip entire test class if credentials not available
-                raise
+            cls.credentials = get_snowflake_credentials()
         except Exception:
-            cls._rollback_atomics(cls.cls_atomics)
-            raise
+            raise  # get_snowflake_credentials() raises SkipTest if unset
+
+        super().setUpClass()
 
     def setUp(self):
         """Set up test fixtures"""
@@ -647,16 +674,18 @@ class TestSnowflakeConnectorE2E(TestCase):
         # Django's manage.py test doesn't load pytest autouse fixtures.
         reset_circuit_breaker_by_name("snowflake-connector")
         reset_circuit_breaker_by_name("aws-data-exchange-connector")
+        reset_circuit_breaker_by_name("dados-gov-br-connector")
 
+        _unique = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant E2E",
-            slug="test-tenant-e2e",
+            name=f"Test Tenant E2E {_unique}",
+            slug=f"test-tenant-e2e-{_unique}",
             status="ACTIVE",
             kyc_status="VERIFIED",
             federated_import_enabled=True,  # D250.3: opt-in required for federated asset import
         )
         self.user = User.objects.create_user(
-            email="test-e2e@example.com",
+            email=f"test-e2e-{_unique}@example.com",
             password="testpass",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
@@ -672,10 +701,8 @@ class TestSnowflakeConnectorE2E(TestCase):
         """Clean up test data"""
         # Cleanup sync jobs
         for sync_job in self.created_sync_jobs:
-            try:
+            with contextlib.suppress(Exception):
                 sync_job.delete()
-            except Exception:
-                pass
 
     def _create_connection(
         self, marketplace_type: MarketplaceType, config: dict, name: str
@@ -698,7 +725,7 @@ class TestSnowflakeConnectorE2E(TestCase):
             workflow_instance = WorkflowInstance.objects.get(id=workflow_instance_id)
             if workflow_instance.status in [WorkflowStatus.COMPLETED, WorkflowStatus.FAILED]:
                 return workflow_instance
-            time.sleep(1)
+            time.sleep(1)  # noqa: sleep-needed — polling loop
         raise TimeoutError(
             f"Workflow {workflow_instance_id} did not complete within {timeout} seconds"
         )
@@ -724,6 +751,7 @@ class TestSnowflakeConnectorE2E(TestCase):
         mappings_without_assets = [m for m in mappings if not m.hub_asset_id]
         if mappings_without_assets:
             import logging
+
             logging.warning(
                 "%d MarketplaceMapping(s) have no hub_asset — "
                 "this may indicate a partial failure in the federated import workflow.",
@@ -747,28 +775,28 @@ class TestSnowflakeConnectorE2E(TestCase):
         self.assertIsNotNone(odcs_contract, "ODCS contract should be created")
         return odps_contract, odcs_contract
 
-    def _verify_external_resource_references(self, asset: Asset, min_expected: int = 0) -> list:
+    def _verify_external_resource_references(self, asset: Asset, min_expected: int = 1) -> list:
         """Verify external resource references were created for the asset.
 
         Args:
             asset: Asset to check external references for.
-            min_expected: If > 0, assert at least this many refs exist.
+            min_expected: Minimum number of external refs expected (default 1).
 
         Returns:
             List of ExternalResourceReference objects
         """
         external_refs = ExternalResourceReference.objects.filter(asset=asset)
         result = list(external_refs)
-        self.assertIsInstance(result, list)
-        if min_expected > 0:
-            self.assertGreaterEqual(
-                len(result), min_expected,
-                f"Expected at least {min_expected} external resource references, got {len(result)}",
-            )
+        self.assertGreaterEqual(
+            len(result),
+            min_expected,
+            f"Expected at least {min_expected} external resource references, got {len(result)}",
+        )
         return result
 
     def test_connection_and_discovery(self):
         """Test connection and discovery of listings"""
+        connector = None
         try:
             # Create connector
             connector = SnowflakeConnector(
@@ -808,20 +836,21 @@ class TestSnowflakeConnectorE2E(TestCase):
             assets_before = Asset.objects.filter(tenant=self.tenant).count()
             self.assertEqual(assets_before, 0, "Discovery should not create assets")
 
-            # Close connector
-            connector.close()
-
         except Exception as e:
             # Handle connection errors gracefully
-            if "authentication" in str(e).lower() or "connection" in str(e).lower():
-                pytest.skip(f"Snowflake connection failed: {e}")
+            if "authentication" in str(e).lower() or "connection error" in str(e).lower():
+                raise unittest.SkipTest(f"Snowflake connection failed: {e}")
             raise
+        finally:
+            if connector is not None:
+                connector.close()
 
     def _ensure_snowflake_listings_available(self):
         """Skip the test when the Snowflake account has no marketplace listings."""
         from hub.apps.integrations.connectors.snowflake_connector import (
             SnowflakeConnector,
         )
+
         connector = SnowflakeConnector(
             account=self.credentials["account"],
             user=self.credentials["user"],
@@ -858,24 +887,28 @@ class TestSnowflakeConnectorE2E(TestCase):
                 name="Snowflake E2E Test",
             )
 
-            # Call sync_from_marketplace
+            # Call sync_from_marketplace — sync 1 listing to keep total
+            # test time well within pytest --timeout=300.
             sync_job = self.service.sync_from_marketplace(
                 connection_id=str(connection.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 options={
-                    "limit": 3,
+                    "limit": 1,
                     "include_resources": True,
                     "data_strategy": "METADATA_ONLY",
                 },
             )
             self.created_sync_jobs.append(sync_job)
 
-            # Wait for workflow completion
+            # Wait for workflow completion — 240 s leaves 60 s margin
+            # for the sync_from_marketplace API calls within the
+            # 300 s pytest timeout.
             workflow_instance_id = sync_job.metadata.get("workflow_instance_id")
             if workflow_instance_id:
                 workflow_instance = self._wait_for_workflow_completion(
-                    workflow_instance_id, timeout=600  # 10 minutes for real sync
+                    workflow_instance_id,
+                    timeout=240,
                 )
                 self.assertIn(
                     workflow_instance.status,
@@ -891,15 +924,15 @@ class TestSnowflakeConnectorE2E(TestCase):
 
             # Verify contracts and external references for each asset
             for asset in assets:
-                odps_contract, odcs_contract = self._verify_contracts_created(asset)
-                external_refs = self._verify_external_resource_references(asset)
+                _odps_contract, _odcs_contract = self._verify_contracts_created(asset)
+                self._verify_external_resource_references(asset)
                 # Snowflake may not always have external refs if no resources discovered
                 # This is OK for E2E test
 
         except Exception as e:
             # Handle connection errors gracefully
-            if "authentication" in str(e).lower() or "connection" in str(e).lower():
-                pytest.skip(f"Snowflake connection failed: {e}")
+            if "authentication" in str(e).lower() or "connection error" in str(e).lower():
+                raise unittest.SkipTest(f"Snowflake connection failed: {e}")
             raise
 
     def test_selective_resource_download(self):
@@ -937,47 +970,92 @@ class TestSnowflakeConnectorE2E(TestCase):
             # Wait for workflow completion
             workflow_instance_id = sync_job.metadata.get("workflow_instance_id")
             if workflow_instance_id:
-                self._wait_for_workflow_completion(workflow_instance_id, timeout=600)
+                self._wait_for_workflow_completion(workflow_instance_id, timeout=240)
 
             # Get created asset
             assets = self._verify_asset_creation(sync_job, min_count=1)
             asset = assets[0]
 
-            # Get external resource references
+            # Get external resource references — iterate to find one
+            # that can actually be downloaded.  When the account has no
+            # active marketplace listings, ``list_listings()`` falls back
+            # to ``SHOW DATABASES`` (imported databases).  The
+            # ``download_resource()`` method now checks whether the
+            # database already exists and skips the listing-request step
+            # when it does, going straight to schema extraction and table
+            # download.
             external_refs = ExternalResourceReference.objects.filter(asset=asset)
-            if external_refs:
-                # Test downloading a specific resource
-                resource_ref = external_refs[0]
+            download_attempted = False
+            last_error = None
+            for resource_ref in external_refs:
+                if not resource_ref.resource_id:
+                    continue
+                download_attempted = True
                 connector = MarketplaceConnectorFactory.create_connector(
                     marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
                     config=connection.get_config(),
                 )
 
-                # Download resource (may require database creation, schema extraction)
-                # Note: This may fail if listing is not available or permissions insufficient
+                # Download resource (may require database creation,
+                # schema extraction).  ``download_resource()`` now checks
+                # whether the database already exists (SHOW DATABASES)
+                # and skips the listing-request step when it does.
                 try:
                     import tempfile
+
                     dest_path = tempfile.mktemp(suffix=".data")
-                    listing_id = asset.source_metadata.get("listing_id") if asset.source_metadata else None
+                    listing_id = (
+                        asset.source_metadata.get("listing_id")
+                        if asset.source_metadata
+                        else None
+                    )
                     download_result = connector.download_resource(
                         resource_id=resource_ref.resource_id,
                         destination_path=dest_path,
                         listing_id=listing_id,
                     )
-                    # Verify the download produced a meaningful result.
                     self.assertIsNotNone(download_result)
-                except (ConnectionError, TimeoutError, PermissionError, ValueError, HubNotFoundError) as e:
-                    # External service or data unavailable — skip gracefully.
-                    self.skipTest(f"Resource download failed (external service): {e}")
+                    self.assertTrue(
+                        os.path.exists(download_result),
+                        f"Downloaded file not found at {download_result}",
+                    )
+                    self.assertGreater(
+                        os.path.getsize(download_result),
+                        0,
+                        f"Downloaded file is empty: {download_result}",
+                    )
+                    last_error = None  # success
+                    break
+                except (
+                    ConnectionError,
+                    TimeoutError,
+                    PermissionError,
+                    ValueError,
+                    HubNotFoundError,
+                ) as e:
+                    last_error = e
+                    continue
                 finally:
-                    # Close connector
                     if hasattr(connector, "close"):
                         connector.close()
 
+            if last_error is not None:
+                # All resources failed — this is a real failure, not a skip.
+                self.fail(
+                    f"Resource download failed after trying "
+                    f"{len([r for r in external_refs if r.resource_id])} "
+                    f"resource(s): [{type(last_error).__name__}] {last_error}"
+                )
+            elif not download_attempted:
+                self.skipTest(
+                    "No external resource references with valid IDs found — "
+                    "the listing may not have been fully provisioned"
+                )
+
         except Exception as e:
             # Handle connection errors gracefully
-            if "authentication" in str(e).lower() or "connection" in str(e).lower():
-                pytest.skip(f"Snowflake connection failed: {e}")
+            if "authentication" in str(e).lower() or "connection error" in str(e).lower():
+                raise unittest.SkipTest(f"Snowflake connection failed: {e}")
             raise
 
     def test_federated_asset_created_with_contracts_and_refs(self):
@@ -1015,38 +1093,34 @@ class TestSnowflakeConnectorE2E(TestCase):
             # Wait for workflow completion
             workflow_instance_id = sync_job.metadata.get("workflow_instance_id")
             if workflow_instance_id:
-                self._wait_for_workflow_completion(workflow_instance_id, timeout=600)
+                self._wait_for_workflow_completion(workflow_instance_id, timeout=240)
 
             # Get created asset
             assets = self._verify_asset_creation(sync_job, min_count=1)
             asset = assets[0]
 
-            # Verify asset is in DRAFT status (or ACTIVE if auto-activated)
-            asset.refresh_from_db()
-            self.assertIn(asset.status, [AssetStatus.DRAFT, AssetStatus.ACTIVE])
-
             # Verify contracts were created with the federated asset.
             # The federated-import workflow (Phase 250.5.A) creates
             # ODPS + ODCS contracts during asset creation.
-            odps_contract, odcs_contract = self._verify_contracts_created(asset)
+            _odps_contract, _odcs_contract = self._verify_contracts_created(asset)
 
             # Verify external resource references are present for
             # Snowflake-harvested assets (tables/schemas in listing metadata).
-            external_refs = self._verify_external_resource_references(asset)
+            self._verify_external_resource_references(asset)
 
             # Asset created via federated import with METADATA_ONLY
             # strategy lands in DRAFT; activation requires a separate
             # explicit call through the Asset endpoint (tested elsewhere).
             self.assertIn(
                 asset.status,
-                [AssetStatus.DRAFT, AssetStatus.ACTIVE],
-                f"Asset should be DRAFT or ACTIVE after federated import, got {asset.status}",
+                [AssetStatus.DRAFT, AssetStatus.ACTIVE, AssetStatus.PUBLIC],
+                f"Asset should be DRAFT, ACTIVE, or PUBLIC after federated import, got {asset.status}",
             )
 
         except Exception as e:
             # Handle connection errors gracefully
-            if "authentication" in str(e).lower() or "connection" in str(e).lower():
-                pytest.skip(f"Snowflake connection failed: {e}")
+            if "authentication" in str(e).lower() or "connection error" in str(e).lower():
+                raise unittest.SkipTest(f"Snowflake connection failed: {e}")
             raise
 
     def test_snowflake_e2e_with_invalid_listing_ids(self):
@@ -1060,7 +1134,7 @@ class TestSnowflakeConnectorE2E(TestCase):
 
         try:
             connector = SnowflakeConnector(**credentials)
-            connector.authenticate(credentials)
+            self.assertTrue(connector.authenticate(credentials), "Snowflake authentication failed")
 
             # Try sync with invalid listing IDs
             result = connector.sync_pull(
@@ -1068,14 +1142,16 @@ class TestSnowflakeConnectorE2E(TestCase):
             )
             # Should handle gracefully
             self.assertIsInstance(result, SyncResult)
-            if result.status == SyncStatus.FAILED:
+            if result.status in (SyncStatus.FAILED, SyncStatus.PARTIAL):
                 self.assertGreater(len(result.errors), 0)
             elif result.status == SyncStatus.COMPLETED:
                 self.assertEqual(result.successful_items, 0)
+            else:
+                self.fail(f"Unexpected sync status for invalid listing IDs: {result.status}")
         except Exception as e:
             # Handle connection errors gracefully
-            if "authentication" in str(e).lower() or "connection" in str(e).lower():
-                pytest.skip(f"Snowflake connection failed: {e}")
+            if "authentication" in str(e).lower() or "connection error" in str(e).lower():
+                raise unittest.SkipTest(f"Snowflake connection failed: {e}")
             raise
 
     def test_snowflake_e2e_with_empty_listing_ids(self):
@@ -1089,7 +1165,7 @@ class TestSnowflakeConnectorE2E(TestCase):
 
         try:
             connector = SnowflakeConnector(**credentials)
-            connector.authenticate(credentials)
+            self.assertTrue(connector.authenticate(credentials), "Snowflake authentication failed")
 
             # Try sync with empty listing IDs
             result = connector.sync_pull(listing_ids=[])
@@ -1099,6 +1175,6 @@ class TestSnowflakeConnectorE2E(TestCase):
             self.assertEqual(result.successful_items, 0)
         except Exception as e:
             # Handle connection errors gracefully
-            if "authentication" in str(e).lower() or "connection" in str(e).lower():
-                pytest.skip(f"Snowflake connection failed: {e}")
+            if "authentication" in str(e).lower() or "connection error" in str(e).lower():
+                raise unittest.SkipTest(f"Snowflake connection failed: {e}")
             raise

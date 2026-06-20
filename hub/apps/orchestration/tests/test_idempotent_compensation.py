@@ -25,7 +25,10 @@ class IdempotentCompensationTest(TestCase):
             name="test-workflow",
             version="1.0.0",
             dsl_yaml="version: '1.0.0'\nsteps:\n- name: s1\n  type: task\n  task: noop",
-            dsl_json={"version": "1.0.0", "steps": [{"name": "s1", "type": "task", "task": "noop"}]},
+            dsl_json={
+                "version": "1.0.0",
+                "steps": [{"name": "s1", "type": "task", "task": "noop"}],
+            },
         )
         self.instance = WorkflowInstance.objects.create(
             workflow_definition=self.definition,

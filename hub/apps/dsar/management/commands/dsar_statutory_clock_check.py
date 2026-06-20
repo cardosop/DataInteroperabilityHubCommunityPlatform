@@ -1,6 +1,7 @@
 """Daily statutory-clock scanner for DSAR pipeline (Kubernetes CronJob / RQ feeder)."""
 
 from __future__ import annotations
+
 import uuid
 
 from django.core.management.base import BaseCommand

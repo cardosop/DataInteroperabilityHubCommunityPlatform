@@ -31,6 +31,7 @@ Default churn parameters are calibrated to staging telemetry
                                     the lineage-sync handler)
    - Monthly net growth: ~300 rows / tenant
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,7 +39,6 @@ import json
 import os
 import sys
 from typing import Any
-
 
 GROWTH_THRESHOLD = 1.5
 """REQ-LIN-F5-005 — invariant ceiling. After 90 days of churn at the
@@ -59,6 +59,7 @@ def _maybe_setup_django() -> None:
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
         try:
             import django
+
             django.setup()
         except Exception:
             pass
@@ -92,9 +93,7 @@ def project_90_day_growth(
     projected_total_3y = starting_total + (daily_total_growth * 365 * 3)
 
     growth_factor_90d = (
-        projected_total_90d / projected_open_90d
-        if projected_open_90d > 0
-        else float("inf")
+        projected_total_90d / projected_open_90d if projected_open_90d > 0 else float("inf")
     )
 
     return {
@@ -182,11 +181,17 @@ def run_stress_mode(args: argparse.Namespace) -> int:
     from django.utils import timezone
 
     if os.environ.get("ENVIRONMENT", "").lower() == "production":
-        print(json.dumps({
-            "phase": "228.F5.8",
-            "mode": "stress",
-            "error": "stress mode is forbidden on production",
-        }, sort_keys=True, indent=2))
+        print(
+            json.dumps(
+                {
+                    "phase": "228.F5.8",
+                    "mode": "stress",
+                    "error": "stress mode is forbidden on production",
+                },
+                sort_keys=True,
+                indent=2,
+            )
+        )
         return 2
 
     from hub.apps.contracts.models import LineageEdge
@@ -194,11 +199,17 @@ def run_stress_mode(args: argparse.Namespace) -> int:
 
     tenant = Tenant.objects.first()
     if tenant is None:
-        print(json.dumps({
-            "phase": "228.F5.8",
-            "mode": "stress",
-            "error": "no tenant available — staging DB is empty?",
-        }, sort_keys=True, indent=2))
+        print(
+            json.dumps(
+                {
+                    "phase": "228.F5.8",
+                    "mode": "stress",
+                    "error": "no tenant available — staging DB is empty?",
+                },
+                sort_keys=True,
+                indent=2,
+            )
+        )
         return 2
 
     starting_open, starting_total = measure_current_state()
@@ -210,14 +221,16 @@ def run_stress_mode(args: argparse.Namespace) -> int:
             # Insert SIMULATION_DAYS * open_per_day rows then close
             # SIMULATION_DAYS * close_per_day rows.
             for d in range(args.days):
-                day_open = LineageEdge.objects.bulk_create([
-                    LineageEdge(
-                        tenant=tenant,
-                        edge_type="reference",
-                        created_by_run="capacity_stress",
-                    )
-                    for _ in range(args.open_rate)
-                ])
+                day_open = LineageEdge.objects.bulk_create(
+                    [
+                        LineageEdge(
+                            tenant=tenant,
+                            edge_type="reference",
+                            created_by_run="capacity_stress",
+                        )
+                        for _ in range(args.open_rate)
+                    ]
+                )
                 inserted += len(day_open)
 
                 # Close ``close_per_day`` rows — pick from the freshly
@@ -231,35 +244,44 @@ def run_stress_mode(args: argparse.Namespace) -> int:
                     closed += len(close_ids)
 
             after_open, after_total = measure_current_state()
-            growth_factor = (
-                round(after_total / after_open, 4)
-                if after_open > 0 else float("inf")
-            )
+            growth_factor = round(after_total / after_open, 4) if after_open > 0 else float("inf")
             invariant_ok = growth_factor <= GROWTH_THRESHOLD or after_open == 0
 
-            print(json.dumps({
-                "phase": "228.F5.8",
-                "mode": "stress",
-                "starting_total": starting_total,
-                "starting_open": starting_open,
-                "inserted": inserted,
-                "closed": closed,
-                "after_total": after_total,
-                "after_open": after_open,
-                "growth_factor": growth_factor,
-                "growth_threshold": GROWTH_THRESHOLD,
-                "invariant_ok": invariant_ok,
-            }, sort_keys=True, indent=2))
+            print(
+                json.dumps(
+                    {
+                        "phase": "228.F5.8",
+                        "mode": "stress",
+                        "starting_total": starting_total,
+                        "starting_open": starting_open,
+                        "inserted": inserted,
+                        "closed": closed,
+                        "after_total": after_total,
+                        "after_open": after_open,
+                        "growth_factor": growth_factor,
+                        "growth_threshold": GROWTH_THRESHOLD,
+                        "invariant_ok": invariant_ok,
+                    },
+                    sort_keys=True,
+                    indent=2,
+                )
+            )
 
             # Always roll back so the DB is left untouched.
             transaction.set_rollback(True)
             return 0 if invariant_ok else 2
     except Exception as exc:
-        print(json.dumps({
-            "phase": "228.F5.8",
-            "mode": "stress",
-            "error": str(exc),
-        }, sort_keys=True, indent=2))
+        print(
+            json.dumps(
+                {
+                    "phase": "228.F5.8",
+                    "mode": "stress",
+                    "error": str(exc),
+                },
+                sort_keys=True,
+                indent=2,
+            )
+        )
         return 2
 
 

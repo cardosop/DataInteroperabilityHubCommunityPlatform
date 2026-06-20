@@ -1,11 +1,13 @@
 """Archive immutable breach delivery proofs (Phase 232.3.10 / D232.15 Object Lock hook)."""
 
 from __future__ import annotations
+
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone as dt_timezone
-from typing import Any, Mapping
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import structlog
 from django.conf import settings
@@ -56,7 +58,7 @@ def _try_put_object_lock(
         aws_secret_access_key=getattr(settings, "AWS_SECRET_ACCESS_KEY", None),
         **extra,
     )
-    until = datetime.now(tz=dt_timezone.utc) + timedelta(days=retention_days)
+    until = datetime.now(tz=UTC) + timedelta(days=retention_days)
     kwargs: dict[str, Any] = {
         "Bucket": bucket,
         "Key": key,
@@ -101,7 +103,9 @@ def archive_breach_notification_proof(
     bucket = getattr(settings, "AWS_STORAGE_BUCKET_NAME", "") or ""
 
     if use_s3 and bucket and retention > 0:
-        version_id = _try_put_object_lock(bucket=bucket, key=key, body=raw, retention_days=retention)
+        version_id = _try_put_object_lock(
+            bucket=bucket, key=key, body=raw, retention_days=retention
+        )
         if version_id:
             return ProofArchiveResult(sha256_hex=digest, storage_path=key, s3_version_id=version_id)
 

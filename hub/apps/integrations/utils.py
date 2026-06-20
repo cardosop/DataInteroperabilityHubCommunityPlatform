@@ -5,14 +5,16 @@ Provides utility functions for marketplace connector implementations,
 including configuration validation, metadata normalization, datetime parsing,
 and ID sanitization.
 """
+
 import re
 import time
-from typing import Dict, Any, Optional, List
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
+from typing import Any
+
 from dateutil import parser as date_parser
 
-from hub.apps.integrations.base import MarketplaceType
 from hub.apps.core.services.base import ServiceError
+from hub.apps.integrations.base import MarketplaceType
 
 
 class MarketplaceError(ServiceError):
@@ -42,13 +44,13 @@ class MarketplaceError(ServiceError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
         http_status: int = 500,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        marketplace_type: Optional[MarketplaceType] = None,
-        cause: Optional[Exception] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        marketplace_type: MarketplaceType | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize MarketplaceError.
@@ -86,7 +88,7 @@ class MarketplaceError(ServiceError):
         if marketplace_type:
             self.details["marketplace_type"] = marketplace_type.value
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert error to dictionary for API responses and logging.
 
@@ -145,14 +147,14 @@ class MarketplaceConnectionError(MarketplaceError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        endpoint: Optional[str] = None,
-        timeout: Optional[float] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        marketplace_type: Optional[MarketplaceType] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
+        endpoint: str | None = None,
+        timeout: float | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        marketplace_type: MarketplaceType | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize MarketplaceConnectionError.
@@ -207,13 +209,13 @@ class MarketplaceAuthenticationError(MarketplaceError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        credential_type: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        marketplace_type: Optional[MarketplaceType] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
+        credential_type: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        marketplace_type: MarketplaceType | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize MarketplaceAuthenticationError.
@@ -265,16 +267,16 @@ class MarketplaceSyncError(MarketplaceError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        sync_direction: Optional[str] = None,
-        sync_job_id: Optional[str] = None,
-        items_processed: Optional[int] = None,
-        items_failed: Optional[int] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        marketplace_type: Optional[MarketplaceType] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
+        sync_direction: str | None = None,
+        sync_job_id: str | None = None,
+        items_processed: int | None = None,
+        items_failed: int | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        marketplace_type: MarketplaceType | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize MarketplaceSyncError.
@@ -320,10 +322,10 @@ class MarketplaceSyncError(MarketplaceError):
 
 
 def validate_marketplace_config(
-    config: Dict[str, Any],
-    required_fields: Optional[List[str]] = None,
-    marketplace_type: Optional[MarketplaceType] = None
-) -> Dict[str, Any]:
+    config: dict[str, Any],
+    required_fields: list[str] | None = None,
+    marketplace_type: MarketplaceType | None = None,
+) -> dict[str, Any]:
     """
     Validate marketplace connector configuration.
 
@@ -353,7 +355,7 @@ def validate_marketplace_config(
             "Marketplace configuration must be a dictionary",
             error_code=MarketplaceError.ERROR_CODE_INVALID_CONFIG,
             marketplace_type=marketplace_type,
-            details={"config_type": type(config).__name__}
+            details={"config_type": type(config).__name__},
         )
 
     if required_fields is None:
@@ -371,10 +373,7 @@ def validate_marketplace_config(
             f"Marketplace configuration missing required fields: {', '.join(missing_fields)}",
             error_code=MarketplaceError.ERROR_CODE_INVALID_CONFIG,
             marketplace_type=marketplace_type,
-            details={
-                "missing_fields": missing_fields,
-                "provided_fields": list(config.keys())
-            }
+            details={"missing_fields": missing_fields, "provided_fields": list(config.keys())},
         )
 
     # Validate field types (common validations)
@@ -383,7 +382,7 @@ def validate_marketplace_config(
             "Marketplace configuration 'endpoint' must be a string",
             error_code=MarketplaceError.ERROR_CODE_INVALID_CONFIG,
             marketplace_type=marketplace_type,
-            details={"field": "endpoint", "type": type(config["endpoint"]).__name__}
+            details={"field": "endpoint", "type": type(config["endpoint"]).__name__},
         )
 
     if "api_key" in config and not isinstance(config["api_key"], str):
@@ -391,7 +390,7 @@ def validate_marketplace_config(
             "Marketplace configuration 'api_key' must be a string",
             error_code=MarketplaceError.ERROR_CODE_INVALID_CONFIG,
             marketplace_type=marketplace_type,
-            details={"field": "api_key", "type": type(config["api_key"]).__name__}
+            details={"field": "api_key", "type": type(config["api_key"]).__name__},
         )
 
     if "timeout" in config:
@@ -401,7 +400,7 @@ def validate_marketplace_config(
                 "Marketplace configuration 'timeout' must be a positive number",
                 error_code=MarketplaceError.ERROR_CODE_INVALID_CONFIG,
                 marketplace_type=marketplace_type,
-                details={"field": "timeout", "value": timeout}
+                details={"field": "timeout", "value": timeout},
             )
 
     # Return a shallow copy to avoid callers mutating the original config
@@ -409,9 +408,8 @@ def validate_marketplace_config(
 
 
 def normalize_marketplace_metadata(
-    metadata: Dict[str, Any],
-    marketplace_type: Optional[MarketplaceType] = None
-) -> Dict[str, Any]:
+    metadata: dict[str, Any], marketplace_type: MarketplaceType | None = None
+) -> dict[str, Any]:
     """
     Normalize marketplace metadata to a standard format.
 
@@ -463,13 +461,19 @@ def normalize_marketplace_metadata(
     for normalized_key, possible_keys in field_mappings.items():
         for possible_key in possible_keys:
             if possible_key.lower() in metadata_lower:
-                value = metadata[possible_key] if possible_key in metadata else metadata_lower[possible_key.lower()]
+                value = (
+                    metadata[possible_key]
+                    if possible_key in metadata
+                    else metadata_lower[possible_key.lower()]
+                )
 
                 # Handle list/tags normalization
                 if normalized_key == "tags":
                     if isinstance(value, str):
                         # Split comma-separated tags
-                        normalized[normalized_key] = [tag.strip() for tag in value.split(",") if tag.strip()]
+                        normalized[normalized_key] = [
+                            tag.strip() for tag in value.split(",") if tag.strip()
+                        ]
                     elif isinstance(value, list):
                         normalized[normalized_key] = [str(tag).strip() for tag in value if tag]
                     else:
@@ -481,18 +485,21 @@ def normalize_marketplace_metadata(
     # Copy any remaining fields that weren't mapped
     for key, value in metadata.items():
         key_lower = key.lower()
-        if key_lower not in [k.lower() for k in normalized.keys()]:
+        if key_lower not in [k.lower() for k in normalized]:
             # Only copy if it's not already normalized
-            if not any(key_lower == mapped_key.lower() for mapped_keys in field_mappings.values() for mapped_key in mapped_keys):
+            if not any(
+                key_lower == mapped_key.lower()
+                for mapped_keys in field_mappings.values()
+                for mapped_key in mapped_keys
+            ):
                 normalized[key] = value
 
     return normalized
 
 
 def parse_marketplace_datetime(
-    datetime_str: Optional[str],
-    default_timezone: Optional[timezone] = None
-) -> Optional[datetime]:
+    datetime_str: str | None, default_timezone: timezone | None = None
+) -> datetime | None:
     """
     Parse datetime string from marketplace metadata.
 
@@ -523,7 +530,7 @@ def parse_marketplace_datetime(
         return None
 
     if default_timezone is None:
-        default_timezone = timezone.utc
+        default_timezone = UTC
 
     try:
         # Try using dateutil parser (handles most formats)
@@ -538,15 +545,15 @@ def parse_marketplace_datetime(
         # Try manual parsing for common formats
         try:
             # Try ISO format
-            if 'T' in datetime_str or '+' in datetime_str or datetime_str.endswith('Z'):
+            if "T" in datetime_str or "+" in datetime_str or datetime_str.endswith("Z"):
                 # ISO 8601 format
-                if datetime_str.endswith('Z'):
-                    datetime_str = datetime_str[:-1] + '+00:00'
-                parsed_dt = datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
+                if datetime_str.endswith("Z"):
+                    datetime_str = datetime_str[:-1] + "+00:00"
+                parsed_dt = datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
                 return parsed_dt
 
             # Try common date formats
-            for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%Y/%m/%d %H:%M:%S', '%Y/%m/%d']:
+            for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y/%m/%d %H:%M:%S", "%Y/%m/%d"]:
                 try:
                     parsed_dt = datetime.strptime(datetime_str, fmt)
                     return parsed_dt.replace(tzinfo=default_timezone)
@@ -557,21 +564,19 @@ def parse_marketplace_datetime(
             raise MarketplaceError(
                 f"Unable to parse datetime string: {datetime_str}",
                 error_code=MarketplaceError.ERROR_CODE_INVALID_CONFIG,
-                details={"datetime_string": datetime_str, "error": str(e)}
+                details={"datetime_string": datetime_str, "error": str(e)},
             )
         except Exception as parse_error:
             raise MarketplaceError(
                 f"Unable to parse datetime string: {datetime_str}",
                 error_code=MarketplaceError.ERROR_CODE_INVALID_CONFIG,
                 details={"datetime_string": datetime_str, "error": str(parse_error)},
-                cause=e
+                cause=e,
             )
 
 
 def sanitize_marketplace_id(
-    marketplace_id: str,
-    max_length: int = 255,
-    allow_unicode: bool = False
+    marketplace_id: str, max_length: int = 255, allow_unicode: bool = False
 ) -> str:
     """
     Sanitize marketplace ID to ensure it's safe for use in the system.
@@ -599,7 +604,7 @@ def sanitize_marketplace_id(
         raise MarketplaceError(
             "Marketplace ID must be a string",
             error_code=MarketplaceError.ERROR_CODE_INVALID_CONFIG,
-            details={"marketplace_id_type": type(marketplace_id).__name__}
+            details={"marketplace_id_type": type(marketplace_id).__name__},
         )
 
     # Strip whitespace
@@ -609,43 +614,42 @@ def sanitize_marketplace_id(
         raise MarketplaceError(
             "Marketplace ID cannot be empty",
             error_code=MarketplaceError.ERROR_CODE_INVALID_CONFIG,
-            details={"original_id": marketplace_id}
+            details={"original_id": marketplace_id},
         )
 
     # Replace whitespace with underscores
-    sanitized = re.sub(r'\s+', '_', sanitized)
+    sanitized = re.sub(r"\s+", "_", sanitized)
 
     # Remove or replace unsafe characters
     if allow_unicode:
         # Allow Unicode letters, numbers, underscores, hyphens, dots
-        sanitized = re.sub(r'[^\w\-._]', '', sanitized, flags=re.UNICODE)
+        sanitized = re.sub(r"[^\w\-._]", "", sanitized, flags=re.UNICODE)
     else:
         # Only allow ASCII letters, numbers, underscores, hyphens, dots
-        sanitized = re.sub(r'[^a-zA-Z0-9_\-.]', '', sanitized)
+        sanitized = re.sub(r"[^a-zA-Z0-9_\-.]", "", sanitized)
 
     # Remove consecutive underscores
-    sanitized = re.sub(r'_+', '_', sanitized)
+    sanitized = re.sub(r"_+", "_", sanitized)
 
     # Remove leading/trailing underscores, hyphens, dots
-    sanitized = sanitized.strip('_-.')
+    sanitized = sanitized.strip("_-.")
 
     if not sanitized:
         raise MarketplaceError(
             "Marketplace ID is empty after sanitization",
             error_code=MarketplaceError.ERROR_CODE_INVALID_CONFIG,
-            details={"original_id": marketplace_id}
+            details={"original_id": marketplace_id},
         )
 
     # Enforce max length
     if len(sanitized) > max_length:
-        sanitized = sanitized[:max_length].rstrip('_-.')
+        sanitized = sanitized[:max_length].rstrip("_-.")
 
     if not sanitized:
         raise MarketplaceError(
             f"Marketplace ID is empty after length truncation (max_length={max_length})",
             error_code=MarketplaceError.ERROR_CODE_INVALID_CONFIG,
-            details={"original_id": marketplace_id, "max_length": max_length}
+            details={"original_id": marketplace_id, "max_length": max_length},
         )
 
     return sanitized
-

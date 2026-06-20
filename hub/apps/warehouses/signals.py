@@ -3,6 +3,7 @@ Phase 275.E.3k — Warehouse connectivity signal handlers.
 
 Wires search indexing + audit events for LIVE_QUERY asset lifecycle.
 """
+
 from __future__ import annotations
 
 import logging
@@ -23,6 +24,7 @@ def index_live_query_asset_on_save(sender, instance, **kwargs):
 
     try:
         from hub.apps.search.indexing import SearchIndexer
+
         SearchIndexer.index_asset(instance)
         logger.debug(
             "search_index_live_query_asset",

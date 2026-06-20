@@ -5,6 +5,7 @@ Generic ``FormDraft`` model for auto-saving in-progress forms (DPIA wizard,
 contract creation, asset onboarding, breach incident reporting) so users
 can resume where they left off across sessions.
 """
+
 from __future__ import annotations
 
 import uuid

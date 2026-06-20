@@ -3,6 +3,7 @@ Unit tests for virtualization source_config_utils.
 
 Tests credential masking for API responses.
 """
+
 import pytest
 from django.test import TestCase
 

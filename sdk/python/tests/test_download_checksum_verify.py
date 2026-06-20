@@ -34,7 +34,6 @@ from datahub_interoperability.download_verify import (
     verify_blob,
 )
 
-
 ABC_SHA256 = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
@@ -153,12 +152,8 @@ class FakeFilesAPI:
         self.calls.append(("get_download_url", (file_id,), {}))
         return dict(self.download_payload)
 
-    async def report_checksum_mismatch(
-        self, file_id: str, actual_sha256: str
-    ) -> dict:
-        self.calls.append(
-            ("report_checksum_mismatch", (file_id, actual_sha256), {})
-        )
+    async def report_checksum_mismatch(self, file_id: str, actual_sha256: str) -> dict:
+        self.calls.append(("report_checksum_mismatch", (file_id, actual_sha256), {}))
         if self.report_raises is not None:
             raise self.report_raises
         return self.report_response

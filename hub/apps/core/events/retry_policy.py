@@ -10,18 +10,22 @@ Features:
 - Per-event-type retry policies
 - Jitter support for retry delays
 """
-from typing import Dict, Any, Optional, Callable
-import time
+
 import random
+import time
+from collections.abc import Callable
+from enum import Enum
+from typing import Any
+
 import structlog
 from django.conf import settings
-from enum import Enum
 
 logger = structlog.get_logger(__name__)
 
 
 class RetryStrategy(Enum):
     """Retry strategy types."""
+
     EXPONENTIAL = "exponential"
     LINEAR = "linear"
     FIXED = "fixed"
@@ -49,7 +53,7 @@ class RetryPolicy:
         max_delay: float = 300.0,
         multiplier: float = 2.0,
         jitter: bool = True,
-        jitter_range: float = 0.1
+        jitter_range: float = 0.1,
     ):
         """
         Initialize retry policy.
@@ -85,7 +89,7 @@ class RetryPolicy:
             return self.base_delay
 
         if self.strategy == RetryStrategy.EXPONENTIAL:
-            delay = self.base_delay * (self.multiplier ** retry_count)
+            delay = self.base_delay * (self.multiplier**retry_count)
         elif self.strategy == RetryStrategy.LINEAR:
             delay = self.base_delay * (1 + retry_count * self.multiplier)
         else:  # FIXED
@@ -101,7 +105,7 @@ class RetryPolicy:
 
         return delay
 
-    def should_retry(self, retry_count: int, error: Optional[Exception] = None) -> bool:
+    def should_retry(self, retry_count: int, error: Exception | None = None) -> bool:
         """
         Determine if retry should be attempted.
 
@@ -120,10 +124,10 @@ class RetryPolicy:
             # Don't retry on certain error types
             error_type = type(error).__name__
             non_retryable_errors = [
-                'ValidationError',
-                'PermissionDenied',
-                'AuthenticationFailed',
-                'NotFound',
+                "ValidationError",
+                "PermissionDenied",
+                "AuthenticationFailed",
+                "NotFound",
             ]
             if any(non_retryable in error_type for non_retryable in non_retryable_errors):
                 return False
@@ -133,17 +137,17 @@ class RetryPolicy:
 
 # Default retry policy
 DEFAULT_RETRY_POLICY = RetryPolicy(
-    max_retries=getattr(settings, 'EVENT_BUS_MAX_RETRIES', 3),
+    max_retries=getattr(settings, "EVENT_BUS_MAX_RETRIES", 3),
     strategy=RetryStrategy.EXPONENTIAL,
     base_delay=1.0,
     max_delay=300.0,
     multiplier=2.0,
     jitter=True,
-    jitter_range=0.1
+    jitter_range=0.1,
 )
 
 # Per-event-type retry policies (can be configured in settings)
-EVENT_TYPE_RETRY_POLICIES: Dict[str, RetryPolicy] = {}
+EVENT_TYPE_RETRY_POLICIES: dict[str, RetryPolicy] = {}
 
 
 def get_retry_policy(event_type: str) -> RetryPolicy:
@@ -162,7 +166,7 @@ def get_retry_policy(event_type: str) -> RetryPolicy:
 
     # Check for pattern-based policies
     for pattern, policy in EVENT_TYPE_RETRY_POLICIES.items():
-        if '*' in pattern:
+        if "*" in pattern:
             # Simple wildcard matching
             prefix = pattern[:-1]
             if event_type.startswith(prefix):
@@ -185,16 +189,11 @@ def configure_event_type_policy(event_type: str, policy: RetryPolicy) -> None:
         "retry_policy_configured",
         event_type=event_type,
         max_retries=policy.max_retries,
-        strategy=policy.strategy.value
+        strategy=policy.strategy.value,
     )
 
 
-def retry_with_policy(
-    func: Callable,
-    event_type: str,
-    *args,
-    **kwargs
-) -> Any:
+def retry_with_policy(func: Callable, event_type: str, *args, **kwargs) -> Any:
     """
     Execute function with retry policy.
 
@@ -212,13 +211,11 @@ def retry_with_policy(
     """
     policy = get_retry_policy(event_type)
     retry_count = 0
-    last_error = None
 
     while True:
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            last_error = e
             retry_count += 1
 
             if not policy.should_retry(retry_count, e):
@@ -227,7 +224,7 @@ def retry_with_policy(
                     event_type=event_type,
                     retry_count=retry_count,
                     max_retries=policy.max_retries,
-                    error=str(e)
+                    error=str(e),
                 )
                 raise
 
@@ -238,8 +235,7 @@ def retry_with_policy(
                 retry_count=retry_count,
                 max_retries=policy.max_retries,
                 delay=delay,
-                error=str(e)
+                error=str(e),
             )
 
             time.sleep(delay)
-

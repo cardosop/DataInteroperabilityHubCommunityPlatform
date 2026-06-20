@@ -4,22 +4,20 @@ Phase 216.1.10 — unit tests for _persona_provisioning.py internals.
 Tests validate the caching, cache-key generation, and credential
 dataclass WITHOUT hitting any backend.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import time
-from pathlib import Path
 from unittest.mock import patch
 
 from tests._persona_provisioning import (
     PersonaCredentials,
     _cache_key,
-    _cache_path,
     _read_cache,
     _write_cache,
     _xdist_worker_id,
-    _CACHE_DIR,
 )
 
 
@@ -59,8 +57,11 @@ def test_write_and_read_cache(tmp_path):
     with patch("tests._persona_provisioning._CACHE_DIR", tmp_path):
         key = "test-key-abc"
         creds = PersonaCredentials(
-            api_key="ak", user_id="u1", tenant_id="t1",
-            refresh_token="rt", role="visitor",
+            api_key="ak",
+            user_id="u1",
+            tenant_id="t1",
+            refresh_token="rt",
+            role="visitor",
         )
         _write_cache(key, creds)
         loaded = _read_cache(key)
@@ -78,8 +79,11 @@ def test_read_cache_expired(tmp_path):
     with patch("tests._persona_provisioning._CACHE_DIR", tmp_path):
         key = "expired"
         creds = PersonaCredentials(
-            api_key="ak", user_id="u1", tenant_id="t1",
-            refresh_token="rt", role="visitor",
+            api_key="ak",
+            user_id="u1",
+            tenant_id="t1",
+            refresh_token="rt",
+            role="visitor",
         )
         _write_cache(key, creds)
         # Backdate the timestamp by 2 hours

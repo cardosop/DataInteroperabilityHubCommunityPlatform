@@ -9,36 +9,19 @@ Tests verify:
 5. Rate limit reset behavior
 """
 
-import uuid
-import json
 import time
-from datetime import datetime, timedelta
+import uuid
 
 from django.core.cache import cache
 from django.test import override_settings
-from rest_framework import status
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import (
-    Contract,
-    ContractStatus,
-    NormalizationStatus,
-    OriginalFormat,
-    OriginalSpecType,
-)
-from hub.apps.contracts.odps_rate_limiting import (
-    RATE_LIMIT_GLOBAL,
-    RATE_LIMIT_PER_TENANT,
-    RATE_LIMIT_PER_USER,
-    RATE_LIMIT_WINDOW,
-)
 from hub.apps.contracts.odps_rate_limiting import check_rate_limit as check_odps_ref_rate_limit
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
-from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers, RateLimitResult
+from hub.apps.rate_limiting.service import RateLimitResult, get_rate_limit_headers
 from hub.apps.rate_limiting.utils import EndpointCategory, TimeWindow
 from hub.apps.tenants.models import KYCStatus, Tenant
-from hub.apps.users.models import Role, User, UserRole, UserStatus
-from rest_framework.test import APIClient
+from hub.apps.users.models import Role, User, UserRole
 
 
 class RateLimitingValidationTest(ContractsAPITestBase):
@@ -56,7 +39,8 @@ class RateLimitingValidationTest(ContractsAPITestBase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-        import uuid; uid = uuid.uuid4().hex[:8]
+
+        uid = uuid.uuid4().hex[:8]
         # Update tenant/user names for clarity
         self.tenant.name = f"Rate Limit Test {uid}"
         self.tenant.slug = f"rate-limit-test-{uid}"
@@ -122,13 +106,13 @@ class RateLimitingValidationTest(ContractsAPITestBase):
 
         # Make a few requests within limit
         success_count = 0
-        for i in range(min(tenant_limit, 5)):  # Limit to 5 for test speed
-            allowed, count, reset_time = sliding_window_check(
+        for _i in range(min(tenant_limit, 5)):  # Limit to 5 for test speed
+            allowed, _count, _reset_time = sliding_window_check(
                 key, tenant_limit, TimeWindow.SUSTAINED
             )
             if allowed:
                 success_count += 1
-            time.sleep(0.1)  # INTENTIONAL: delay between rate limit requests to test sliding window
+            time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: delay between rate limit requests to test sliding window
 
         # Verify we can make at least some requests
         self.assertGreater(
@@ -157,11 +141,13 @@ class RateLimitingValidationTest(ContractsAPITestBase):
 
         # Make a few requests within limit
         success_count = 0
-        for i in range(min(user_limit, 5)):  # Limit to 5 for test speed
-            allowed, count, reset_time = sliding_window_check(key, user_limit, TimeWindow.SUSTAINED)
+        for _i in range(min(user_limit, 5)):  # Limit to 5 for test speed
+            allowed, _count, _reset_time = sliding_window_check(
+                key, user_limit, TimeWindow.SUSTAINED
+            )
             if allowed:
                 success_count += 1
-            time.sleep(0.1)  # INTENTIONAL: delay between rate limit requests to test sliding window
+            time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: delay between rate limit requests to test sliding window
 
         # Verify we can make at least some requests
         self.assertGreater(
@@ -173,12 +159,11 @@ class RateLimitingValidationTest(ContractsAPITestBase):
         from hub.apps.contracts.ref_resolver import RefResolver
 
         # Create resolver
-        resolver = RefResolver(tenant_id=str(self.tenant.id), user_id=str(self.admin_user.id))
+        RefResolver(tenant_id=str(self.tenant.id), user_id=str(self.admin_user.id))
 
         # Test that rate limit checking is called
         # Note: We can't easily test actual external fetches without network,
         # but we can verify the rate limit check is in place
-        test_url = "https://example.com/schema.json"
 
         # Check rate limit before attempting fetch
         is_allowed, error = check_odps_ref_rate_limit(
@@ -221,9 +206,7 @@ class RateLimitingValidationTest(ContractsAPITestBase):
                 self.assertEqual(
                     response.status_code, 429, "Should return 429 when rate limit exceeded"
                 )
-                self.assertIn(
-                    "error", response.data, "Should include error in response"
-                )
+                self.assertIn("error", response.data, "Should include error in response")
 
     def test_rate_limit_reset_behavior(self):
         """Test rate limit reset behavior"""
@@ -246,12 +229,12 @@ class RateLimitingValidationTest(ContractsAPITestBase):
         # Make requests up to limit
         for i in range(min(limit, 5)):  # Limit to 5 for test speed
             allowed, count, reset_time = sliding_window_check(key, limit, TimeWindow.SUSTAINED)
-            self.assertTrue(allowed, f"Request {i+1} should be allowed within limit")
-            time.sleep(0.1)  # INTENTIONAL: delay between rate limit requests to test sliding window
+            self.assertTrue(allowed, f"Request {i + 1} should be allowed within limit")
+            time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: delay between rate limit requests to test sliding window
 
         # Verify reset time is in the future
         current_time = int(time.time())
-        allowed, count, reset_time = sliding_window_check(key, limit, TimeWindow.SUSTAINED)
+        allowed, _count, reset_time = sliding_window_check(key, limit, TimeWindow.SUSTAINED)
         self.assertGreater(reset_time, current_time, "Reset time should be in the future")
 
         # Verify reset time is within window
@@ -273,6 +256,7 @@ class RateLimitingValidationTest(ContractsAPITestBase):
         )
 
         from django.test import RequestFactory
+
         factory = RequestFactory()
         request = factory.get("/api/v1/contracts/")
 
@@ -343,8 +327,8 @@ class RateLimitingValidationTest(ContractsAPITestBase):
 
         # Exceed limit
         limit = 1
-        allowed1, count1, reset_time1 = sliding_window_check(key, limit, TimeWindow.BURST)
-        allowed2, count2, reset_time2 = sliding_window_check(key, limit, TimeWindow.BURST)
+        allowed1, _count1, _reset_time1 = sliding_window_check(key, limit, TimeWindow.BURST)
+        allowed2, count2, _reset_time2 = sliding_window_check(key, limit, TimeWindow.BURST)
 
         # First request should be allowed, second may be blocked
         self.assertTrue(allowed1, "First request should be allowed")
@@ -363,7 +347,7 @@ class RateLimitingValidationTest(ContractsAPITestBase):
         )
 
         current_time = int(time.time())
-        allowed, count, reset_time = sliding_window_check(key, 100, TimeWindow.SUSTAINED)
+        _allowed, _count, reset_time = sliding_window_check(key, 100, TimeWindow.SUSTAINED)
 
         # Reset time should be in the future
         self.assertGreaterEqual(reset_time, current_time, "Reset time should be >= current time")

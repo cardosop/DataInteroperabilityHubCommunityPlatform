@@ -11,7 +11,7 @@ Orchestrates data quality check execution, including:
 - Storing results
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
 from django.db import transaction
@@ -25,12 +25,7 @@ from hub.apps.datasets.models import Dataset
 from hub.apps.dq.alerting import DQAlertingService
 from hub.apps.dq.anomaly_detection import AnomalyDetector
 from hub.apps.dq.business_rules import DQBusinessRules
-from hub.apps.dq.contract_integration import ContractQualityRulesExtractor
 from hub.apps.dq.models import (
-    DQAlertChannel,
-    DQAlertingRule,
-    DQAnomaly,
-    DQAnomalySeverity,
     DQEngine,
     DQRun,
     DQRunStatus,
@@ -39,10 +34,8 @@ from hub.apps.dq.scorecards import DQScorecardService
 from hub.apps.dq.service_client import DQServiceClient
 from hub.apps.files.models import File as FileModel
 from hub.apps.files.storage import S3StorageClient
-from hub.apps.jobs.models import Job, JobStatus, JobType
+from hub.apps.jobs.models import JobType
 from hub.apps.jobs.utils import create_job, get_job_timeout
-from hub.apps.notifications.models import EmailType
-from hub.apps.notifications.tasks import send_email_async
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
@@ -139,8 +132,8 @@ class DataQualityCheckWorkflow:
 
     @staticmethod
     def _create_dq_run_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create DQ run record.
 
@@ -272,8 +265,8 @@ class DataQualityCheckWorkflow:
 
     @staticmethod
     def _load_contract_and_dataset_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Load contract and dataset for DQ check.
 
@@ -349,8 +342,8 @@ class DataQualityCheckWorkflow:
 
     @staticmethod
     def _execute_quality_rules_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Execute quality rules on dataset.
 
@@ -365,7 +358,7 @@ class DataQualityCheckWorkflow:
         dq_run_id = instance.state_data.get("dq_run_id")
         contract_id = instance.state_data.get("contract_id")
         file_format = instance.state_data.get("file_format")
-        file_content_size = instance.state_data.get("file_content_size")
+        instance.state_data.get("file_content_size")
 
         if not dq_run_id:
             raise ValueError("dq_run_id is required")
@@ -408,9 +401,7 @@ class DataQualityCheckWorkflow:
         # Validate DQ run execution using DQBusinessRules before executing
         from django.contrib.auth import get_user_model
 
-        from hub.apps.tenants.models import Tenant
-
-        User = get_user_model()
+        get_user_model()
 
         tenant = dq_run.tenant
         user = instance.created_by
@@ -482,8 +473,8 @@ class DataQualityCheckWorkflow:
 
     @staticmethod
     def _calculate_quality_scores_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Calculate quality scores from DQ results.
 
@@ -544,8 +535,8 @@ class DataQualityCheckWorkflow:
 
     @staticmethod
     def _detect_anomalies_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Detect anomalies in quality metrics.
 
@@ -558,7 +549,7 @@ class DataQualityCheckWorkflow:
             Task output with detected anomalies
         """
         dq_run_id = instance.state_data.get("dq_run_id")
-        quality_score = instance.state_data.get("overall_score", 0.0)
+        instance.state_data.get("overall_score", 0.0)
 
         if not dq_run_id:
             raise ValueError("dq_run_id is required")
@@ -607,8 +598,8 @@ class DataQualityCheckWorkflow:
 
     @staticmethod
     def _generate_alerts_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Generate alerts if thresholds exceeded.
 
@@ -621,7 +612,7 @@ class DataQualityCheckWorkflow:
             Task output with alert details
         """
         dq_run_id = instance.state_data.get("dq_run_id")
-        quality_score = instance.state_data.get("overall_score", 0.0)
+        instance.state_data.get("overall_score", 0.0)
         anomalies = instance.state_data.get("anomalies", [])
 
         if not dq_run_id:
@@ -670,8 +661,8 @@ class DataQualityCheckWorkflow:
 
     @staticmethod
     def _update_quality_metrics_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Update quality metrics (scorecards, trends).
 
@@ -721,8 +712,8 @@ class DataQualityCheckWorkflow:
 
     @staticmethod
     def _store_results_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Store DQ results in database.
 
@@ -822,8 +813,8 @@ class DataQualityCheckWorkflow:
 
     @staticmethod
     def _audit_logging_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create audit log entry for DQ check.
 
@@ -879,14 +870,14 @@ class DataQualityCheckWorkflow:
     def execute(
         cls,
         tenant_id: str,
-        asset_id: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        file_id: Optional[str] = None,
+        asset_id: str | None = None,
+        dataset_id: str | None = None,
+        file_id: str | None = None,
         profile_key: str = "intake_basic_gx",
-        triggered_by_id: Optional[str] = None,
-        engine: Optional[WorkflowEngine] = None,
-        registry: Optional[WorkflowRegistry] = None,
-    ) -> Dict[str, Any]:
+        triggered_by_id: str | None = None,
+        engine: WorkflowEngine | None = None,
+        registry: WorkflowRegistry | None = None,
+    ) -> dict[str, Any]:
         """
         Execute data quality check workflow.
 

@@ -1,8 +1,9 @@
 """285.14.3.3 — Verify RLS policy coverage for compliance app."""
-import pytest
+
 import os
 import re
 
+import pytest
 from django.test import TestCase
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -28,6 +29,7 @@ def _migration_texts(app_dir):
 class ComplianceRLSPolicyTests(TestCase):
     def setUp(self):
         import hub.apps.compliance
+
         app_dir = os.path.dirname(hub.apps.compliance.__file__)
         self.migrations = _migration_texts(app_dir)
 
@@ -36,7 +38,8 @@ class ComplianceRLSPolicyTests(TestCase):
         all_content = "\n".join(self.migrations.values())
         assert re.search(
             r"CREATE\s+POLICY\s+\S+\s+ON\s+compliance_runs",
-            all_content, re.IGNORECASE,
+            all_content,
+            re.IGNORECASE,
         ), "ComplianceRun model missing RLS policy"
 
     @pytest.mark.integration
@@ -45,7 +48,8 @@ class ComplianceRLSPolicyTests(TestCase):
         for table in _COMPLIANCE_MODELS:
             assert re.search(
                 rf"CREATE\s+POLICY\s+\S+\s+ON\s+{table}",
-                all_content, re.IGNORECASE,
+                all_content,
+                re.IGNORECASE,
             ), f"{table} RLS policy not found"
 
     @pytest.mark.integration

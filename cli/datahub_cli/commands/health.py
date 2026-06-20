@@ -16,7 +16,6 @@ from ..api_client import api_client
 @click.group()
 def health():
     """Health check commands"""
-    pass
 
 
 @health.command("check")
@@ -37,8 +36,9 @@ def check_health(output_format: str):
         # The health endpoint lives at the server root, outside the API
         # prefix.  Use raw ``requests`` to avoid the base_url prefix that
         # ``api_client._request`` applies.
-        import requests as _requests
         from urllib.parse import urlparse
+
+        import requests as _requests
 
         base = api_client._get_base_url()
         parsed = urlparse(base)

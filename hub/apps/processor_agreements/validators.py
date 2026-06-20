@@ -1,9 +1,9 @@
 """SSRF + agreement-type validation (Phase 232.6.4 / 232.6.9)."""
 
 from __future__ import annotations
+
 import re
 from typing import Any
-from urllib.parse import urlparse
 
 from django.core.exceptions import ValidationError
 
@@ -110,9 +110,7 @@ def normalize_subprocessors_declared(raw: Any) -> list[dict[str, Any]]:
             )
         name = str(item.get("name") or "").strip()
         if not name:
-            raise ValidationError(
-                f"sub_processors_declared[{i}].name is required."
-            )
+            raise ValidationError(f"sub_processors_declared[{i}].name is required.")
         row = {"name": name}
         if item.get("details"):
             row["details"] = str(item["details"])[:2000]

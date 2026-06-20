@@ -10,16 +10,7 @@ Tests verify:
 
 import json
 
-from rest_framework import status
-
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import (
-    Contract,
-    ContractStatus,
-    NormalizationStatus,
-    OriginalFormat,
-    OriginalSpecType,
-)
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.users.models import Role, UserRole
 
@@ -68,13 +59,6 @@ class RealTimeUpdatesTest(ContractsAPITestBase):
 
         # Check that event types follow a consistent pattern
         # Events should be in format: resource.action (e.g., "contract.created")
-        expected_event_patterns = [
-            "contract.created",
-            "contract.updated",
-            "contract.deleted",
-            "odps.created",
-            "odps.updated",
-        ]
 
         # Verify event system exists and can publish events
         # This is a structural test - actual WebSocket testing would require
@@ -95,7 +79,7 @@ class RealTimeUpdatesTest(ContractsAPITestBase):
 
         from hub.apps.core.events.publisher import EventPublisher
 
-        publisher = EventPublisher(
+        EventPublisher(
             service_name="test_service", tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 

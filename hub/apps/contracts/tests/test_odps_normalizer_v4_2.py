@@ -40,6 +40,7 @@ class ODPSNormalizerV4_2StructureTest(TestCase):
 
     def test_inherits_from_v4_1(self):
         from hub.apps.contracts.normalization.odps_normalizer_v4_1 import ODPSNormalizerV4_1
+
         self.assertIsInstance(self.normalizer, ODPSNormalizerV4_1)
 
     def test_has_spec_type_odps(self):
@@ -87,14 +88,16 @@ class ODPSNormalizerV4_2PaymentGatewaysTest(TestCase):
         self.normalizer = ODPSNormalizerV4_2()
 
     def test_payment_gateways_mapped(self):
-        data = _minimal_v42(extra_product={
-            "marketplace": {
-                "paymentGateways": [
-                    {"currency": "USD", "provider": "Stripe", "enabled": True},
-                    {"currency": "EUR", "provider": "PayPal"},
-                ],
-            },
-        })
+        data = _minimal_v42(
+            extra_product={
+                "marketplace": {
+                    "paymentGateways": [
+                        {"currency": "USD", "provider": "Stripe", "enabled": True},
+                        {"currency": "EUR", "provider": "PayPal"},
+                    ],
+                },
+            }
+        )
         result = self.normalizer.normalize(data)
         self.assertIn(result.status, _OK_STATUSES)
         gws = result.hub_contract.get("pricing", {}).get("payment_gateways", [])
@@ -113,9 +116,11 @@ class ODPSNormalizerV4_2PaymentGatewaysTest(TestCase):
         self.assertIsNotNone(result.hub_contract)
 
     def test_empty_payment_gateways_list(self):
-        data = _minimal_v42(extra_product={
-            "marketplace": {"paymentGateways": []},
-        })
+        data = _minimal_v42(
+            extra_product={
+                "marketplace": {"paymentGateways": []},
+            }
+        )
         result = self.normalizer.normalize(data)
         self.assertIn(result.status, _OK_STATUSES)
 
@@ -127,14 +132,16 @@ class ODPSNormalizerV4_2ProductStrategyKPITest(TestCase):
         self.normalizer = ODPSNormalizerV4_2()
 
     def test_kpi_target_unit_mapped(self):
-        data = _minimal_v42(extra_product={
-            "productStrategy": {
-                "kpi": [
-                    {"name": "DAU", "target": 10000, "unit": "users/day"},
-                    {"name": "Latency", "target": 50, "unit": "ms"},
-                ],
-            },
-        })
+        data = _minimal_v42(
+            extra_product={
+                "productStrategy": {
+                    "kpi": [
+                        {"name": "DAU", "target": 10000, "unit": "users/day"},
+                        {"name": "Latency", "target": 50, "unit": "ms"},
+                    ],
+                },
+            }
+        )
         result = self.normalizer.normalize(data)
         self.assertIn(result.status, _OK_STATUSES)
         kpis = result.hub_contract.get("strategy", {}).get("kpis", [])
@@ -151,9 +158,11 @@ class ODPSNormalizerV4_2ProductStrategyKPITest(TestCase):
         self.assertIn(result.status, _OK_STATUSES)
 
     def test_empty_kpi_list(self):
-        data = _minimal_v42(extra_product={
-            "productStrategy": {"kpi": []},
-        })
+        data = _minimal_v42(
+            extra_product={
+                "productStrategy": {"kpi": []},
+            }
+        )
         result = self.normalizer.normalize(data)
         self.assertIn(result.status, _OK_STATUSES)
 
@@ -163,6 +172,7 @@ class ODPSNormalizerV4_2RegistryTest(TestCase):
 
     def test_get_normalizer_returns_v4_2(self):
         from hub.apps.contracts.normalization_engine import get_normalizer
+
         normalizer = get_normalizer("ODPS", "4.2", {})
         self.assertIsNotNone(normalizer, "No normalizer found for ODPS 4.2")
         self.assertIsInstance(normalizer, ODPSNormalizerV4_2)

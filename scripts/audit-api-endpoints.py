@@ -18,16 +18,16 @@ Options:
     --verbose           Verbose output
     --help              Show this help message
 """
-import os
-import sys
-import re
-import json
-import ast
+
 import argparse
-from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
+import ast
+import json
+import os
+import re
+import sys
 from collections import defaultdict
-import importlib.util
+from pathlib import Path
+from typing import Any
 
 
 class URLPatternParser:
@@ -39,10 +39,10 @@ class URLPatternParser:
     def parse_pattern(
         self,
         pattern: Any,
-        base_path: str = '/api/v1',
-        prefix: str = '',
-        service_name: str = '',
-    ) -> Optional[Dict[str, Any]]:
+        base_path: str = "/api/v1",
+        prefix: str = "",
+        service_name: str = "",
+    ) -> dict[str, Any] | None:
         """
         Parse a Django URL pattern.
 
@@ -58,13 +58,13 @@ class URLPatternParser:
         pattern_type = type(pattern).__name__
 
         # Check for URLResolver first (include patterns)
-        if pattern_type == 'URLResolver' or hasattr(pattern, 'urlconf_name'):
+        if pattern_type == "URLResolver" or hasattr(pattern, "urlconf_name"):
             # Handle include() patterns
             return self._parse_include_pattern(pattern, base_path, prefix, service_name)
-        elif pattern_type == 'URLPattern':
+        elif pattern_type == "URLPattern":
             # Handle path() patterns
             return self._parse_path_pattern(pattern, base_path, prefix, service_name)
-        elif hasattr(pattern, 'pattern') and hasattr(pattern, 'callback'):
+        elif hasattr(pattern, "pattern") and hasattr(pattern, "callback"):
             # Handle re_path() patterns or other patterns with pattern and callback
             return self._parse_re_path_pattern(pattern, base_path, prefix, service_name)
         else:
@@ -76,46 +76,46 @@ class URLPatternParser:
         base_path: str,
         prefix: str,
         service_name: str,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Parse path() pattern"""
         try:
             pattern_str = str(pattern.pattern)
             callback = pattern.callback
-            name = pattern.name or ''
+            name = pattern.name or ""
 
             # Build full path
             # prefix already includes base_path and accumulated path (e.g., "/api/v1/auth/")
             # pattern_str is the endpoint pattern (e.g., "login/")
             # Just combine prefix + pattern_str (don't add base_path again)
             if prefix:
-                prefix_clean = prefix.rstrip('/')
-                pattern_clean = pattern_str.lstrip('/')
+                prefix_clean = prefix.rstrip("/")
+                pattern_clean = pattern_str.lstrip("/")
                 if pattern_clean:
-                    full_path = prefix_clean + '/' + pattern_clean
+                    full_path = prefix_clean + "/" + pattern_clean
                 else:
                     full_path = prefix_clean
             else:
                 # No prefix, use base_path + pattern_str
-                full_path = base_path.rstrip('/') + '/' + pattern_str.lstrip('/')
+                full_path = base_path.rstrip("/") + "/" + pattern_str.lstrip("/")
 
-            full_path = re.sub(r'/+', '/', full_path)  # Normalize slashes
+            full_path = re.sub(r"/+", "/", full_path)  # Normalize slashes
             # Keep trailing slash for consistency with Django URL patterns
-            if pattern_str.endswith('/') and not full_path.endswith('/'):
-                full_path += '/'
+            if pattern_str.endswith("/") and not full_path.endswith("/"):
+                full_path += "/"
 
             # Determine HTTP methods from callback
             methods = self._get_http_methods(callback)
 
             return {
-                'type': 'path',
-                'pattern': pattern_str,
-                'full_path': full_path,
-                'name': name,
-                'service': service_name,
-                'methods': methods,
-                'callback': self._get_callback_name(callback),
+                "type": "path",
+                "pattern": pattern_str,
+                "full_path": full_path,
+                "name": name,
+                "service": service_name,
+                "methods": methods,
+                "callback": self._get_callback_name(callback),
             }
-        except Exception as e:
+        except Exception:
             return None
 
     def _parse_re_path_pattern(
@@ -124,12 +124,12 @@ class URLPatternParser:
         base_path: str,
         prefix: str,
         service_name: str,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Parse re_path() pattern"""
         try:
             pattern_str = str(pattern.pattern)
             callback = pattern.callback
-            name = pattern.name or ''
+            name = pattern.name or ""
 
             # Build full path (simplified regex pattern)
             simplified_pattern = self._simplify_regex_pattern(pattern_str)
@@ -137,34 +137,34 @@ class URLPatternParser:
             # simplified_pattern is the endpoint pattern
             if prefix:
                 # Prefix already includes base_path, so just append simplified_pattern
-                prefix_clean = prefix.rstrip('/')
-                pattern_clean = simplified_pattern.lstrip('/')
+                prefix_clean = prefix.rstrip("/")
+                pattern_clean = simplified_pattern.lstrip("/")
                 if pattern_clean:
-                    full_path = prefix_clean + '/' + pattern_clean
+                    full_path = prefix_clean + "/" + pattern_clean
                 else:
                     full_path = prefix_clean
             else:
                 # No prefix, use base_path + simplified_pattern
-                full_path = base_path.rstrip('/') + '/' + simplified_pattern.lstrip('/')
+                full_path = base_path.rstrip("/") + "/" + simplified_pattern.lstrip("/")
 
-            full_path = re.sub(r'/+', '/', full_path)
+            full_path = re.sub(r"/+", "/", full_path)
             # Keep trailing slash for consistency
-            if pattern_str.endswith('/') and not full_path.endswith('/'):
-                full_path += '/'
+            if pattern_str.endswith("/") and not full_path.endswith("/"):
+                full_path += "/"
 
             methods = self._get_http_methods(callback)
 
             return {
-                'type': 're_path',
-                'pattern': pattern_str,
-                'simplified_pattern': simplified_pattern,
-                'full_path': full_path,
-                'name': name,
-                'service': service_name,
-                'methods': methods,
-                'callback': self._get_callback_name(callback),
+                "type": "re_path",
+                "pattern": pattern_str,
+                "simplified_pattern": simplified_pattern,
+                "full_path": full_path,
+                "name": name,
+                "service": service_name,
+                "methods": methods,
+                "callback": self._get_callback_name(callback),
             }
-        except Exception as e:
+        except Exception:
             return None
 
     def _parse_include_pattern(
@@ -173,7 +173,7 @@ class URLPatternParser:
         base_path: str,
         prefix: str,
         service_name: str,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Parse include() pattern"""
         try:
             # Get included URL module
@@ -181,76 +181,78 @@ class URLPatternParser:
             url_patterns = pattern.url_patterns
 
             # Extract prefix from pattern
-            include_prefix = str(pattern.pattern) if hasattr(pattern, 'pattern') else ''
+            include_prefix = str(pattern.pattern) if hasattr(pattern, "pattern") else ""
 
             # Combine prefixes
-            new_prefix = prefix.rstrip('/') + '/' + include_prefix.lstrip('/')
-            new_prefix = re.sub(r'/+', '/', new_prefix).rstrip('/') + '/'
+            new_prefix = prefix.rstrip("/") + "/" + include_prefix.lstrip("/")
+            new_prefix = re.sub(r"/+", "/", new_prefix).rstrip("/") + "/"
 
             # Extract service name from module path
             if not service_name and isinstance(urlconf, str):
                 # Extract service name from module path (e.g., 'hub.apps.auth.urls' -> 'auth')
-                parts = urlconf.split('.')
-                if len(parts) >= 3 and parts[-2] in ['apps', 'api']:
-                    service_name = parts[-3] if parts[-2] == 'apps' else parts[-1].replace('urls', '')
+                parts = urlconf.split(".")
+                if len(parts) >= 3 and parts[-2] in ["apps", "api"]:
+                    service_name = (
+                        parts[-3] if parts[-2] == "apps" else parts[-1].replace("urls", "")
+                    )
 
             # Recursively parse included patterns
             endpoints = []
             for sub_pattern in url_patterns:
                 result = self.parse_pattern(sub_pattern, base_path, new_prefix, service_name)
                 if result:
-                    if result.get('type') == 'include':
+                    if result.get("type") == "include":
                         # Handle nested includes
-                        endpoints.extend(result.get('endpoints', []))
+                        endpoints.extend(result.get("endpoints", []))
                     else:
                         endpoints.append(result)
 
             return {
-                'type': 'include',
-                'module': str(urlconf),
-                'prefix': new_prefix,
-                'service': service_name,
-                'endpoints': endpoints,
+                "type": "include",
+                "module": str(urlconf),
+                "prefix": new_prefix,
+                "service": service_name,
+                "endpoints": endpoints,
             }
-        except Exception as e:
+        except Exception:
             return None
 
     def _simplify_regex_pattern(self, pattern: str) -> str:
         """Simplify regex pattern for display"""
         # Remove regex anchors and convert named groups
         simplified = pattern
-        simplified = simplified.replace('^', '').replace('$', '')
-        simplified = re.sub(r'\(\?P<(\w+)>[^)]+\)', r'<\1>', simplified)
-        simplified = re.sub(r'\([^)]*\)', '<id>', simplified)
+        simplified = simplified.replace("^", "").replace("$", "")
+        simplified = re.sub(r"\(\?P<(\w+)>[^)]+\)", r"<\1>", simplified)
+        simplified = re.sub(r"\([^)]*\)", "<id>", simplified)
         return simplified
 
-    def _get_http_methods(self, callback: Any) -> List[str]:
+    def _get_http_methods(self, callback: Any) -> list[str]:
         """Extract HTTP methods from callback"""
-        methods = ['GET']  # Default
+        methods = ["GET"]  # Default
 
-        if hasattr(callback, 'actions'):
+        if hasattr(callback, "actions"):
             # ViewSet with actions
             actions = callback.actions
             if isinstance(actions, dict):
                 methods = list(actions.keys())
-        elif hasattr(callback, 'http_method_names'):
+        elif hasattr(callback, "http_method_names"):
             # Generic view
-            methods = [m.upper() for m in callback.http_method_names if m.upper() != 'OPTIONS']
-        elif hasattr(callback, 'cls'):
+            methods = [m.upper() for m in callback.http_method_names if m.upper() != "OPTIONS"]
+        elif hasattr(callback, "cls"):
             # ViewSet class
             viewset = callback.cls
-            if hasattr(viewset, 'http_method_names'):
-                methods = [m.upper() for m in viewset.http_method_names if m.upper() != 'OPTIONS']
+            if hasattr(viewset, "http_method_names"):
+                methods = [m.upper() for m in viewset.http_method_names if m.upper() != "OPTIONS"]
 
-        return methods if methods else ['GET']
+        return methods if methods else ["GET"]
 
     def _get_callback_name(self, callback: Any) -> str:
         """Get callback name for identification"""
-        if hasattr(callback, '__name__'):
+        if hasattr(callback, "__name__"):
             return callback.__name__
-        elif hasattr(callback, 'cls'):
+        elif hasattr(callback, "cls"):
             return callback.cls.__name__
-        elif hasattr(callback, '__class__'):
+        elif hasattr(callback, "__class__"):
             return callback.__class__.__name__
         return str(callback)
 
@@ -261,7 +263,7 @@ class ServiceMountPointMapper:
     def __init__(self):
         self.mount_points = {}
 
-    def map_from_file(self, urls_file: str) -> Dict[str, str]:
+    def map_from_file(self, urls_file: str) -> dict[str, str]:
         """
         Map service mount points from urls.py file.
 
@@ -275,7 +277,7 @@ class ServiceMountPointMapper:
             return {}
 
         try:
-            with open(urls_file, 'r', encoding='utf-8') as f:
+            with open(urls_file, encoding="utf-8") as f:
                 content = f.read()
 
             # Parse AST to extract path() and include() patterns
@@ -284,9 +286,9 @@ class ServiceMountPointMapper:
             for node in ast.walk(tree):
                 if isinstance(node, ast.Call):
                     # Check for path() calls
-                    if isinstance(node.func, ast.Name) and node.func.id == 'path':
+                    if isinstance(node.func, ast.Name) and node.func.id == "path":
                         self._extract_path_mapping(node)
-                    elif isinstance(node.func, ast.Name) and node.func.id == 'include':
+                    elif isinstance(node.func, ast.Name) and node.func.id == "include":
                         self._extract_include_mapping(node)
 
         except Exception as e:
@@ -307,16 +309,16 @@ class ServiceMountPointMapper:
             # Second arg might be include()
             include_node = node.args[1]
             if isinstance(include_node, ast.Call):
-                if isinstance(include_node.func, ast.Name) and include_node.func.id == 'include':
+                if isinstance(include_node.func, ast.Name) and include_node.func.id == "include":
                     if len(include_node.args) > 0:
                         module_node = include_node.args[0]
-                        if isinstance(module_node, ast.Constant):
-                            module = module_node.value
-                        elif isinstance(module_node, ast.Str):
+                        if isinstance(module_node, ast.Constant) or isinstance(
+                            module_node, ast.Str
+                        ):
                             module = module_node.value
 
                         # Extract service name from prefix
-                        service_name = prefix.rstrip('/').split('/')[-1] if prefix else ''
+                        service_name = prefix.rstrip("/").split("/")[-1] if prefix else ""
                         if service_name:
                             self.mount_points[service_name] = module
 
@@ -324,18 +326,16 @@ class ServiceMountPointMapper:
         """Extract include() mappings"""
         if len(node.args) > 0:
             module_node = node.args[0]
-            if isinstance(module_node, ast.Constant):
-                module = module_node.value
-            elif isinstance(module_node, ast.Str):
+            if isinstance(module_node, ast.Constant) or isinstance(module_node, ast.Str):
                 module = module_node.value
 
             # Extract service name from module path
             if isinstance(module, str):
-                parts = module.split('.')
+                parts = module.split(".")
                 if len(parts) >= 3:
                     # Extract service name (e.g., 'hub.apps.auth.urls' -> 'auth')
-                    if 'apps' in parts:
-                        idx = parts.index('apps')
+                    if "apps" in parts:
+                        idx = parts.index("apps")
                         if idx + 1 < len(parts):
                             service_name = parts[idx + 1]
                             self.mount_points[service_name] = module
@@ -344,7 +344,7 @@ class ServiceMountPointMapper:
 class DuplicateServiceNameDetector:
     """Detect duplicate service names and paths"""
 
-    def detect(self, endpoints: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def detect(self, endpoints: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Detect duplicate endpoints.
 
@@ -359,24 +359,26 @@ class DuplicateServiceNameDetector:
         # Group by path
         path_groups = defaultdict(list)
         for endpoint in endpoints:
-            path = endpoint.get('full_path', '')
+            path = endpoint.get("full_path", "")
             if path:
                 path_groups[path].append(endpoint)
 
         # Find duplicates
         for path, endpoint_list in path_groups.items():
             if len(endpoint_list) > 1:
-                duplicates.append({
-                    'type': 'duplicate_path',
-                    'path': path,
-                    'count': len(endpoint_list),
-                    'endpoints': endpoint_list,
-                })
+                duplicates.append(
+                    {
+                        "type": "duplicate_path",
+                        "path": path,
+                        "count": len(endpoint_list),
+                        "endpoints": endpoint_list,
+                    }
+                )
 
         # Group by name
         name_groups = defaultdict(list)
         for endpoint in endpoints:
-            name = endpoint.get('name', '')
+            name = endpoint.get("name", "")
             if name:
                 name_groups[name].append(endpoint)
 
@@ -384,14 +386,16 @@ class DuplicateServiceNameDetector:
         for name, endpoint_list in name_groups.items():
             if len(endpoint_list) > 1:
                 # Check if they're actually different endpoints
-                paths = set(e.get('full_path', '') for e in endpoint_list)
+                paths = set(e.get("full_path", "") for e in endpoint_list)
                 if len(paths) > 1:
-                    duplicates.append({
-                        'type': 'duplicate_name',
-                        'name': name,
-                        'count': len(endpoint_list),
-                        'endpoints': endpoint_list,
-                    })
+                    duplicates.append(
+                        {
+                            "type": "duplicate_name",
+                            "name": name,
+                            "count": len(endpoint_list),
+                            "endpoints": endpoint_list,
+                        }
+                    )
 
         return duplicates
 
@@ -399,7 +403,7 @@ class DuplicateServiceNameDetector:
 class InconsistentNamingPatternDetector:
     """Detect inconsistent naming patterns"""
 
-    def detect(self, endpoints: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def detect(self, endpoints: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Detect inconsistent naming patterns.
 
@@ -414,7 +418,7 @@ class InconsistentNamingPatternDetector:
         # Group by service
         service_groups = defaultdict(list)
         for endpoint in endpoints:
-            service = endpoint.get('service', '')
+            service = endpoint.get("service", "")
             if service:
                 service_groups[service].append(endpoint)
 
@@ -423,10 +427,10 @@ class InconsistentNamingPatternDetector:
             # Check name prefix consistency
             name_prefixes = {}
             for endpoint in service_endpoints:
-                name = endpoint.get('name', '')
+                name = endpoint.get("name", "")
                 if name:
                     # Extract prefix (e.g., 'auth-login' -> 'auth')
-                    parts = name.split('-')
+                    parts = name.split("-")
                     if len(parts) > 1:
                         prefix = parts[0]
                         if prefix not in name_prefixes:
@@ -435,20 +439,22 @@ class InconsistentNamingPatternDetector:
 
             # If multiple prefixes exist, flag inconsistency
             if len(name_prefixes) > 1:
-                inconsistencies.append({
-                    'type': 'inconsistent_name_prefix',
-                    'service': service,
-                    'prefixes': list(name_prefixes.keys()),
-                    'endpoints': service_endpoints,
-                })
+                inconsistencies.append(
+                    {
+                        "type": "inconsistent_name_prefix",
+                        "service": service,
+                        "prefixes": list(name_prefixes.keys()),
+                        "endpoints": service_endpoints,
+                    }
+                )
 
             # Check path naming consistency
             path_patterns = {}
             for endpoint in service_endpoints:
-                path = endpoint.get('full_path', '')
+                path = endpoint.get("full_path", "")
                 if path:
                     # Extract pattern (e.g., '/api/v1/auth/login/' -> 'login')
-                    parts = path.rstrip('/').split('/')
+                    parts = path.rstrip("/").split("/")
                     if len(parts) > 0:
                         last_part = parts[-1]
                         if last_part not in path_patterns:
@@ -463,9 +469,9 @@ class EndpointInventoryGenerator:
 
     def generate(
         self,
-        endpoints: List[Dict[str, Any]],
-        group_by: str = 'service',
-    ) -> Dict[str, Any]:
+        endpoints: list[dict[str, Any]],
+        group_by: str = "service",
+    ) -> dict[str, Any]:
         """
         Generate endpoint inventory.
 
@@ -477,27 +483,27 @@ class EndpointInventoryGenerator:
             Inventory dictionary
         """
         inventory = {
-            'summary': {
-                'total_endpoints': len(endpoints),
-                'total_services': len(set(e.get('service', '') for e in endpoints)),
+            "summary": {
+                "total_endpoints": len(endpoints),
+                "total_services": len(set(e.get("service", "") for e in endpoints)),
             },
-            'endpoints': endpoints,
+            "endpoints": endpoints,
         }
 
         # Group endpoints
-        if group_by == 'service':
+        if group_by == "service":
             grouped = defaultdict(list)
             for endpoint in endpoints:
-                service = endpoint.get('service', 'unknown')
+                service = endpoint.get("service", "unknown")
                 grouped[service].append(endpoint)
-            inventory['by_service'] = dict(grouped)
-        elif group_by == 'method':
+            inventory["by_service"] = dict(grouped)
+        elif group_by == "method":
             grouped = defaultdict(list)
             for endpoint in endpoints:
-                methods = endpoint.get('methods', ['GET'])
+                methods = endpoint.get("methods", ["GET"])
                 for method in methods:
                     grouped[method].append(endpoint)
-            inventory['by_method'] = dict(grouped)
+            inventory["by_method"] = dict(grouped)
 
         return inventory
 
@@ -515,10 +521,10 @@ class EndpointAuditor:
     def audit(
         self,
         urls_file: str,
-        base_path: str = '/api/v1',
+        base_path: str = "/api/v1",
         check_duplicates: bool = True,
         check_naming: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Perform full endpoint audit.
 
@@ -538,7 +544,7 @@ class EndpointAuditor:
         try:
             # Set up Django environment
             django_setup_done = False
-            if 'DJANGO_SETTINGS_MODULE' not in os.environ:
+            if "DJANGO_SETTINGS_MODULE" not in os.environ:
                 # Find project root - urls_file is hub/apps/api/urls.py
                 # Resolve to absolute path first
                 urls_path = Path(urls_file)
@@ -565,7 +571,9 @@ class EndpointAuditor:
                     # For /app/hub/apps, we check /app/hub/apps/hub - doesn't exist
                     # For /app/hub, we check /app/hub/hub - doesn't exist
                     # For /app, we check /app/hub - EXISTS!
-                    if (current / 'hub').is_dir() and (current / 'hub' / 'apps' / 'api' / 'urls.py').exists():
+                    if (current / "hub").is_dir() and (
+                        current / "hub" / "apps" / "api" / "urls.py"
+                    ).exists():
                         project_root = current
                         break
                     current = current.parent
@@ -574,20 +582,20 @@ class EndpointAuditor:
                 if not project_root:
                     # Fallback: use current working directory
                     cwd = Path.cwd()
-                    if (cwd / 'hub' / 'apps' / 'api' / 'urls.py').exists():
+                    if (cwd / "hub" / "apps" / "api" / "urls.py").exists():
                         project_root = cwd
                     else:
                         # Last resort: assume /app (Docker environment)
-                        project_root = Path('/app')
+                        project_root = Path("/app")
 
                 # Ensure project_root is absolute and exists
                 project_root = project_root.resolve()
-                if not (project_root / 'hub' / 'apps' / 'api' / 'urls.py').exists():
+                if not (project_root / "hub" / "apps" / "api" / "urls.py").exists():
                     # Final fallback: try /app
-                    if Path('/app/hub/apps/api/urls.py').exists():
-                        project_root = Path('/app')
+                    if Path("/app/hub/apps/api/urls.py").exists():
+                        project_root = Path("/app")
 
-                os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hub.settings')
+                os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
                 # Add project root to Python path (must be first, before any other paths)
                 project_root_str = str(project_root.resolve())
                 # Remove from path if already there, then insert at beginning
@@ -598,12 +606,12 @@ class EndpointAuditor:
                 django_setup_done = True
 
             import django
+
             if not django_setup_done or not django.apps.apps.ready:
                 django.setup()
 
             # Import URL configuration
             from django.urls import get_resolver
-            from django.conf import settings
 
             # Get resolver for the API URLs
             resolver = get_resolver()
@@ -611,26 +619,31 @@ class EndpointAuditor:
             # Find API v1 resolver
             api_resolver = None
             for pattern in resolver.url_patterns:
-                if hasattr(pattern, 'pattern') and 'api/v1' in str(pattern.pattern):
-                    if hasattr(pattern, 'url_patterns'):
+                if hasattr(pattern, "pattern") and "api/v1" in str(pattern.pattern):
+                    if hasattr(pattern, "url_patterns"):
                         api_resolver = pattern
                         break
 
             # Parse all URL patterns
             # Start with prefix that includes base_path
-            initial_prefix = base_path.rstrip('/') + '/'
+            initial_prefix = base_path.rstrip("/") + "/"
             all_endpoints = []
             if api_resolver:
-                self._parse_resolver(api_resolver, base_path, initial_prefix, all_endpoints, mount_points)
+                self._parse_resolver(
+                    api_resolver, base_path, initial_prefix, all_endpoints, mount_points
+                )
             else:
                 # Fallback: parse all patterns
-                self._parse_resolver(resolver, base_path, initial_prefix, all_endpoints, mount_points)
+                self._parse_resolver(
+                    resolver, base_path, initial_prefix, all_endpoints, mount_points
+                )
 
         except Exception as e:
             print(f"Error loading Django URLs: {e}", file=sys.stderr)
             import traceback
+
             traceback.print_exc()
-            return {'error': str(e), 'endpoints': []}
+            return {"error": str(e), "endpoints": []}
 
         # Generate inventory
         inventory = self.inventory_generator.generate(all_endpoints)
@@ -638,14 +651,14 @@ class EndpointAuditor:
         # Detect issues
         issues = {}
         if check_duplicates:
-            issues['duplicates'] = self.duplicate_detector.detect(all_endpoints)
+            issues["duplicates"] = self.duplicate_detector.detect(all_endpoints)
         if check_naming:
-            issues['naming_inconsistencies'] = self.naming_detector.detect(all_endpoints)
+            issues["naming_inconsistencies"] = self.naming_detector.detect(all_endpoints)
 
         return {
-            'inventory': inventory,
-            'issues': issues,
-            'mount_points': mount_points,
+            "inventory": inventory,
+            "issues": issues,
+            "mount_points": mount_points,
         }
 
     def _parse_resolver(
@@ -653,17 +666,17 @@ class EndpointAuditor:
         resolver: Any,
         base_path: str,
         prefix: str,
-        endpoints: List[Dict[str, Any]],
-        mount_points: Dict[str, str],
+        endpoints: list[dict[str, Any]],
+        mount_points: dict[str, str],
     ):
         """Recursively parse URL resolver"""
-        if not hasattr(resolver, 'url_patterns'):
+        if not hasattr(resolver, "url_patterns"):
             return
 
         for pattern in resolver.url_patterns:
             # Determine service name from mount points
-            service_name = ''
-            urlconf_name = getattr(pattern, 'urlconf_name', None)
+            service_name = ""
+            urlconf_name = getattr(pattern, "urlconf_name", None)
             if urlconf_name and isinstance(urlconf_name, str):
                 module = str(urlconf_name)
                 # Find matching mount point
@@ -673,47 +686,51 @@ class EndpointAuditor:
                         break
                 # Also try to extract from module path
                 if not service_name:
-                    parts = module.split('.')
-                    if len(parts) >= 3 and 'apps' in parts:
-                        idx = parts.index('apps')
+                    parts = module.split(".")
+                    if len(parts) >= 3 and "apps" in parts:
+                        idx = parts.index("apps")
                         if idx + 1 < len(parts):
                             service_name = parts[idx + 1]
 
             # If we still don't have a service name, try to infer from prefix
             if not service_name and prefix:
                 # Extract service from prefix (e.g., "/api/v1/auth/" -> "auth")
-                parts = prefix.rstrip('/').split('/')
+                parts = prefix.rstrip("/").split("/")
                 if len(parts) >= 3 and parts[-1]:  # parts[-1] is the service name
                     service_name = parts[-1]
 
             # Check if this is an include pattern (URLResolver) or a direct pattern (URLPattern)
-            if hasattr(pattern, 'urlconf_name'):
+            if hasattr(pattern, "urlconf_name"):
                 # This is a URLResolver (include pattern) - it contributes to the prefix
                 urlconf_name = pattern.urlconf_name
 
                 # Skip if urlconf_name is not a string (some resolvers have lists or other types)
                 if not isinstance(urlconf_name, str):
                     # Try to get url_patterns directly if available
-                    if hasattr(pattern, 'url_patterns'):
+                    if hasattr(pattern, "url_patterns"):
                         # This resolver already has its patterns loaded
-                        pattern_prefix = ''
-                        if hasattr(pattern, 'pattern'):
+                        pattern_prefix = ""
+                        if hasattr(pattern, "pattern"):
                             pattern_prefix = str(pattern.pattern)
-                            pattern_prefix = pattern_prefix.replace('^', '').replace('$', '')
+                            pattern_prefix = pattern_prefix.replace("^", "").replace("$", "")
 
                         # Build new prefix
                         if pattern_prefix:
-                            prefix_clean = prefix.rstrip('/') if prefix else ''
-                            pattern_clean = pattern_prefix.lstrip('/')
+                            prefix_clean = prefix.rstrip("/") if prefix else ""
+                            pattern_clean = pattern_prefix.lstrip("/")
                             if prefix_clean:
-                                new_prefix = prefix_clean + '/' + pattern_clean
+                                new_prefix = prefix_clean + "/" + pattern_clean
                             else:
                                 new_prefix = pattern_clean
-                            new_prefix = re.sub(r'/+', '/', new_prefix)
-                            if not new_prefix.endswith('/'):
-                                new_prefix += '/'
+                            new_prefix = re.sub(r"/+", "/", new_prefix)
+                            if not new_prefix.endswith("/"):
+                                new_prefix += "/"
                         else:
-                            new_prefix = prefix if prefix.endswith('/') else (prefix + '/' if prefix else '/')
+                            new_prefix = (
+                                prefix
+                                if prefix.endswith("/")
+                                else (prefix + "/" if prefix else "/")
+                            )
 
                         # Parse the patterns directly
                         self._parse_resolver(
@@ -725,30 +742,33 @@ class EndpointAuditor:
                         )
                     continue
 
-                pattern_prefix = ''
-                if hasattr(pattern, 'pattern'):
+                pattern_prefix = ""
+                if hasattr(pattern, "pattern"):
                     pattern_prefix = str(pattern.pattern)
                     # Remove regex anchors
-                    pattern_prefix = pattern_prefix.replace('^', '').replace('$', '')
+                    pattern_prefix = pattern_prefix.replace("^", "").replace("$", "")
 
                 # Build new prefix by combining current prefix with pattern_prefix
                 # Example: prefix="/api/v1/", pattern_prefix="auth/" -> new_prefix="/api/v1/auth/"
                 if pattern_prefix:
-                    prefix_clean = prefix.rstrip('/') if prefix else ''
-                    pattern_clean = pattern_prefix.lstrip('/')
+                    prefix_clean = prefix.rstrip("/") if prefix else ""
+                    pattern_clean = pattern_prefix.lstrip("/")
                     if prefix_clean:
-                        new_prefix = prefix_clean + '/' + pattern_clean
+                        new_prefix = prefix_clean + "/" + pattern_clean
                     else:
                         new_prefix = pattern_clean
-                    new_prefix = re.sub(r'/+', '/', new_prefix)
-                    if not new_prefix.endswith('/'):
-                        new_prefix += '/'
+                    new_prefix = re.sub(r"/+", "/", new_prefix)
+                    if not new_prefix.endswith("/"):
+                        new_prefix += "/"
                 else:
-                    new_prefix = prefix if prefix.endswith('/') else (prefix + '/' if prefix else '/')
+                    new_prefix = (
+                        prefix if prefix.endswith("/") else (prefix + "/" if prefix else "/")
+                    )
 
                 # Recursively parse included patterns with new prefix
                 try:
                     from django.urls import get_resolver
+
                     included_resolver = get_resolver(urlconf_name)
                     self._parse_resolver(
                         included_resolver,
@@ -759,77 +779,80 @@ class EndpointAuditor:
                     )
                 except Exception as e:
                     # Log error but continue - some includes might fail
-                    if hasattr(self, '_verbose') and self._verbose:
+                    if hasattr(self, "_verbose") and self._verbose:
                         print(f"Warning: Failed to parse {urlconf_name}: {e}", file=sys.stderr)
-                    pass
             else:
                 # This is a URLPattern (direct endpoint) - use current prefix as-is
                 # The pattern's own pattern_str will be appended in _parse_path_pattern
                 result = self.parser.parse_pattern(pattern, base_path, prefix, service_name)
-                if result and result.get('type') != 'include':
+                if result and result.get("type") != "include":
                     endpoints.append(result)
 
-    def output_json(self, data: Dict[str, Any]) -> str:
+    def output_json(self, data: dict[str, Any]) -> str:
         """Output data as JSON"""
         return json.dumps(data, indent=2, default=str)
 
-    def output_markdown(self, data: Dict[str, Any]) -> str:
+    def output_markdown(self, data: dict[str, Any]) -> str:
         """Output data as Markdown"""
-        lines = ['# API Endpoint Audit Report\n']
+        lines = ["# API Endpoint Audit Report\n"]
 
         # Summary
-        inventory = data.get('inventory', {})
-        summary = inventory.get('summary', {})
-        lines.append('## Summary\n')
+        inventory = data.get("inventory", {})
+        summary = inventory.get("summary", {})
+        lines.append("## Summary\n")
         lines.append(f"- Total Endpoints: {summary.get('total_endpoints', 0)}")
         lines.append(f"- Total Services: {summary.get('total_services', 0)}\n")
 
         # Issues
-        issues = data.get('issues', {})
+        issues = data.get("issues", {})
         if issues:
-            lines.append('## Issues\n')
+            lines.append("## Issues\n")
 
-            duplicates = issues.get('duplicates', [])
+            duplicates = issues.get("duplicates", [])
             if duplicates:
-                lines.append('### Duplicate Endpoints\n')
+                lines.append("### Duplicate Endpoints\n")
                 for dup in duplicates:
-                    lines.append(f"- **{dup.get('type', 'unknown')}**: {dup.get('path', dup.get('name', ''))}")
+                    lines.append(
+                        f"- **{dup.get('type', 'unknown')}**: {dup.get('path', dup.get('name', ''))}"
+                    )
                     lines.append(f"  - Count: {dup.get('count', 0)}")
 
-            naming = issues.get('naming_inconsistencies', [])
+            naming = issues.get("naming_inconsistencies", [])
             if naming:
-                lines.append('### Naming Inconsistencies\n')
+                lines.append("### Naming Inconsistencies\n")
                 for inc in naming:
-                    lines.append(f"- **{inc.get('type', 'unknown')}**: Service '{inc.get('service', '')}'")
-                    if 'prefixes' in inc:
+                    lines.append(
+                        f"- **{inc.get('type', 'unknown')}**: Service '{inc.get('service', '')}'"
+                    )
+                    if "prefixes" in inc:
                         lines.append(f"  - Prefixes: {', '.join(inc['prefixes'])}")
 
         # Endpoints by service
-        by_service = inventory.get('by_service', {})
+        by_service = inventory.get("by_service", {})
         if by_service:
-            lines.append('\n## Endpoints by Service\n')
+            lines.append("\n## Endpoints by Service\n")
             for service, service_endpoints in sorted(by_service.items()):
-                lines.append(f'### {service.title()}\n')
+                lines.append(f"### {service.title()}\n")
                 for endpoint in service_endpoints:
-                    path = endpoint.get('full_path', endpoint.get('pattern', ''))
-                    name = endpoint.get('name', '')
-                    methods = ', '.join(endpoint.get('methods', ['GET']))
+                    path = endpoint.get("full_path", endpoint.get("pattern", ""))
+                    name = endpoint.get("name", "")
+                    methods = ", ".join(endpoint.get("methods", ["GET"]))
                     lines.append(f"- `{methods}` {path}")
                     if name:
                         lines.append(f"  - Name: `{name}`")
-                lines.append('')
+                lines.append("")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
 
-def find_urls_file() -> Optional[str]:
+def find_urls_file() -> str | None:
     """Find hub/apps/api/urls.py file"""
     # Try multiple possible locations
     possible_paths = [
-        'hub/apps/api/urls.py',
-        '../hub/apps/api/urls.py',
-        '../../hub/apps/api/urls.py',
-        Path(__file__).parent.parent / 'hub' / 'apps' / 'api' / 'urls.py',
+        "hub/apps/api/urls.py",
+        "../hub/apps/api/urls.py",
+        "../../hub/apps/api/urls.py",
+        Path(__file__).parent.parent / "hub" / "apps" / "api" / "urls.py",
     ]
 
     for path in possible_paths:
@@ -843,57 +866,57 @@ def find_urls_file() -> Optional[str]:
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(
-        description='Audit Django REST Framework API endpoints',
+        description="Audit Django REST Framework API endpoints",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
 
     parser.add_argument(
-        '--urls-file',
+        "--urls-file",
         type=str,
         default=None,
-        help='Path to hub/apps/api/urls.py (default: auto-detect)',
+        help="Path to hub/apps/api/urls.py (default: auto-detect)",
     )
     parser.add_argument(
-        '--output-format',
-        choices=['json', 'markdown'],
-        default='markdown',
-        help='Output format (default: markdown)',
+        "--output-format",
+        choices=["json", "markdown"],
+        default="markdown",
+        help="Output format (default: markdown)",
     )
     parser.add_argument(
-        '--output-file',
+        "--output-file",
         type=str,
         default=None,
-        help='Output file path (default: stdout)',
+        help="Output file path (default: stdout)",
     )
     parser.add_argument(
-        '--check-duplicates',
-        action='store_true',
+        "--check-duplicates",
+        action="store_true",
         default=True,
-        help='Check for duplicate endpoints (default: True)',
+        help="Check for duplicate endpoints (default: True)",
     )
     parser.add_argument(
-        '--no-check-duplicates',
-        dest='check_duplicates',
-        action='store_false',
-        help='Disable duplicate checking',
+        "--no-check-duplicates",
+        dest="check_duplicates",
+        action="store_false",
+        help="Disable duplicate checking",
     )
     parser.add_argument(
-        '--check-naming',
-        action='store_true',
+        "--check-naming",
+        action="store_true",
         default=True,
-        help='Check for inconsistent naming patterns (default: True)',
+        help="Check for inconsistent naming patterns (default: True)",
     )
     parser.add_argument(
-        '--no-check-naming',
-        dest='check_naming',
-        action='store_false',
-        help='Disable naming consistency checking',
+        "--no-check-naming",
+        dest="check_naming",
+        action="store_false",
+        help="Disable naming consistency checking",
     )
     parser.add_argument(
-        '--verbose',
-        action='store_true',
-        help='Verbose output',
+        "--verbose",
+        action="store_true",
+        help="Verbose output",
     )
 
     args = parser.parse_args()
@@ -921,18 +944,19 @@ def main():
         print(f"Error during audit: {e}", file=sys.stderr)
         if args.verbose:
             import traceback
+
             traceback.print_exc()
         sys.exit(1)
 
     # Generate output
-    if args.output_format == 'json':
+    if args.output_format == "json":
         output = auditor.output_json(results)
     else:
         output = auditor.output_markdown(results)
 
     # Write output
     if args.output_file:
-        with open(args.output_file, 'w', encoding='utf-8') as f:
+        with open(args.output_file, "w", encoding="utf-8") as f:
             f.write(output)
         if args.verbose:
             print(f"Output written to {args.output_file}", file=sys.stderr)
@@ -940,6 +964,5 @@ def main():
         print(output)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

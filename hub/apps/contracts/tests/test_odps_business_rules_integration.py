@@ -22,14 +22,9 @@ from hub.apps.contracts.business_rules import (
     ODPSRuleExecutionContext,
 )
 from hub.apps.contracts.models import (
-    Contract,
-    ContractStatus,
-    OriginalFormat,
     OriginalSpecType,
 )
-from hub.apps.contracts.services import ContractService
 from hub.apps.contracts.tests.test_base import ContractsTestBase
-from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.core.business_rules.registry import get_registry
 
 
@@ -439,17 +434,10 @@ class ODPSBusinessRulesRegistryIntegrationTest(ContractsTestBase):
             metadata={"odps_doc": odps_doc},
         )
 
-        # Execute via registry
-        results = self.registry.execute_rules(
-            rule_names=["odps_validation"],
-            context=context,
-            odps_doc=odps_doc,
-            validation_type="structure",
-        )
-
-        self.assertIn("odps_validation", results)
-        result = results["odps_validation"]
-        self.assertTrue(result.is_valid, f"Registry execution failed: {result.errors}")
+        # Execute rule directly (Phase 274.6: execute_rules removed, use direct rule API)
+        rule = ODPSBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        result = rule.validate_odps_structure(odps_doc)
+        self.assertTrue(result.is_valid, f"Structure validation failed: {result.errors}")
 
 
 class ODPSNormalizationRulesContractServiceIntegrationTest(ContractsTestBase):
@@ -616,20 +604,10 @@ class ODPSNormalizationRulesContractServiceIntegrationTest(ContractsTestBase):
             original_spec_type=OriginalSpecType.ODCS.value,
         )
 
-        # Execute via registry
-        context = ODPSRuleExecutionContext(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id), contract=contract
-        )
-
-        results = self.registry.execute_rules(
-            rule_names=["odps_normalization_validation"],
-            context=context,
-            validation_type="eligibility",
-        )
-
-        self.assertIn("odps_normalization_validation", results)
-        result = results["odps_normalization_validation"]
-        self.assertTrue(result.is_valid, f"Registry execution failed: {result.errors}")
+        # Execute rule directly (Phase 274.6: execute_rules removed, use direct rule API)
+        rule = ODPSNormalizationRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        result = rule.validate_normalization_eligibility(contract)
+        self.assertTrue(result.is_valid, f"Normalization eligibility validation failed: {result.errors}")
 
     def test_business_rules_handle_unicode_characters(self):
         """Test that business rules handle unicode characters correctly."""

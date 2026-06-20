@@ -5,12 +5,11 @@ Called by the scheduled ingestion workflow and service layer when
 ``tenant.data_movement_enabled`` is True.  Replaces the legacy
 ``SourceConnectorFactory`` path with the dlt unified pipeline.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
-
-from django.utils import timezone
+from typing import Any
 
 from hub.apps.scheduled_ingestion.models import ScheduledIngestion
 from hub.data_movement.dlt_credentials import resolve_credentials
@@ -22,7 +21,7 @@ from hub.data_movement.dlt_pipeline import (
 logger = logging.getLogger(__name__)
 
 
-def execute_dlt_ingestion(scheduled_ingestion_id: str) -> Dict[str, Any]:
+def execute_dlt_ingestion(scheduled_ingestion_id: str) -> dict[str, Any]:
     """Execute a scheduled ingestion via the dlt DataMovementPipeline.
 
     Returns a dict matching the existing workflow output shape so callers
@@ -35,13 +34,11 @@ def execute_dlt_ingestion(scheduled_ingestion_id: str) -> Dict[str, Any]:
             "error_message": str | None,
         }
     """
-    obj = ScheduledIngestion.objects.select_related("tenant").get(
-        id=scheduled_ingestion_id
-    )
+    obj = ScheduledIngestion.objects.select_related("tenant").get(id=scheduled_ingestion_id)
 
     # ---- resolve credentials -----------------------------------------------
     creds = resolve_credentials(obj.credential_ref) if obj.credential_ref else {}
-    source_config = obj.get_source_config() if hasattr(obj, "get_source_config") else (obj.source_config or {})
+    (obj.get_source_config() if hasattr(obj, "get_source_config") else (obj.source_config or {}))
 
     # ---- create pipeline ----------------------------------------------------
     pipeline = create_ingestion_pipeline(

@@ -4,9 +4,8 @@ Phase 277.4.7 — Error response contract tests.
 Verifies Phase 274 error codes match StandardResponseFormatter shape:
 {error: {code, message, http_status, request_id, details}}.
 """
-from __future__ import annotations
 
-import uuid
+from __future__ import annotations
 
 import pytest
 from django.test import TestCase
@@ -21,8 +20,10 @@ class TestErrorResponseContract(TestCase):
 
     def _assert_envelope(self, code, message, http_status, details=None):
         resp = format_error_response(
-            error_code=code, message=message,
-            http_status=http_status, details=details,
+            error_code=code,
+            message=message,
+            http_status=http_status,
+            details=details,
         )
         data = resp.data
         assert "error" in data, f"Missing 'error' key in {data}"

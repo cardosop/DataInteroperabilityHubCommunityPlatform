@@ -7,32 +7,33 @@ Targets from Testing_Strategy.md §8.1.4:
 - Sustained ingress throughput of at least 50 MB/s aggregate
 - P95 latency ≤ 500ms for init/complete endpoints
 """
+
 import pytest
 
 # Skip if locust is not installed
 try:
-    from locust import HttpUser, task, between, events
+    from locust import HttpUser, between, events, task
     from locust.contrib.fasthttp import FastHttpUser
+
     LOCUST_AVAILABLE = True
 except ImportError:
     LOCUST_AVAILABLE = False
     pytestmark = pytest.mark.skip(reason="locust not installed")
 
     # Skip entire module if locust not available
-    pass
     pytestmark = pytest.mark.skip(reason="locust not installed")
 
 if LOCUST_AVAILABLE:
     import os
-    import time
     import random
-    import requests
-    import boto3
-    from botocore.config import Config
-    from botocore.exceptions import ClientError
-
     import sys
+    import time
     from pathlib import Path
+
+    import boto3
+    import requests
+    from botocore.config import Config
+
     project_root = Path(__file__).resolve().parent.parent.parent
     sys.path.insert(0, str(project_root))
     from tests.performance.helpers import PerformanceTestHelper
@@ -48,10 +49,10 @@ if LOCUST_AVAILABLE:
             self.helper = PerformanceTestHelper(base_url=self.host)
             self.test_data = self.helper.create_test_tenant_and_user(
                 tenant_name=f"perf-tenant-{random.randint(1000, 9999)}",
-                user_email=f"perf-user-{random.randint(1000, 9999)}@example.com"
+                user_email=f"perf-user-{random.randint(1000, 9999)}@example.com",
             )
-            self.headers = self.test_data['headers']
-            self.access_token = self.test_data['access_token']
+            self.headers = self.test_data["headers"]
+            self.access_token = self.test_data["access_token"]
             self.uploaded_files = []
 
             # Initialize S3 client for direct uploads
@@ -61,18 +62,18 @@ if LOCUST_AVAILABLE:
             """Initialize S3 client for direct uploads"""
             try:
                 # Get S3 settings from environment or use defaults
-                s3_endpoint = os.getenv('S3_ENDPOINT_URL', 'http://localhost:9000')
-                s3_access_key = os.getenv('AWS_ACCESS_KEY_ID', 'minio')
-                s3_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY', 'minio123')
+                s3_endpoint = os.getenv("S3_ENDPOINT_URL", "http://localhost:9000")
+                s3_access_key = os.getenv("AWS_ACCESS_KEY_ID", "minio")
+                s3_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "minio123")
 
                 self.s3_client = boto3.client(
-                    's3',
+                    "s3",
                     endpoint_url=s3_endpoint,
                     aws_access_key_id=s3_access_key,
                     aws_secret_access_key=s3_secret_key,
-                    config=Config(signature_version='s3v4')
+                    config=Config(signature_version="s3v4"),
                 )
-                self.s3_bucket = os.getenv('S3_BUCKET_NAME', 'hub-files')
+                self.s3_bucket = os.getenv("S3_BUCKET_NAME", "hub-files")
             except Exception as e:
                 print(f"Warning: Could not initialize S3 client: {e}")
                 self.s3_client = None
@@ -103,11 +104,11 @@ if LOCUST_AVAILABLE:
                 f"/api/v1/files/{file_id}/download",
                 headers=self.headers,
                 name="/api/v1/files/{id}/download",
-                catch_response=True
+                catch_response=True,
             ) as response:
                 if response.status_code == 200:
                     data = response.json()
-                    download_url = data.get('download_url')
+                    download_url = data.get("download_url")
                     if download_url:
                         # Download the file
                         download_start = time.time()
@@ -122,7 +123,7 @@ if LOCUST_AVAILABLE:
                                 name="file_download_transfer",
                                 response_time=download_time,
                                 response_length=len(download_response.content),
-                                exception=None
+                                exception=None,
                             )
                         else:
                             response.failure(f"Download failed: {download_response.status_code}")
@@ -143,20 +144,22 @@ if LOCUST_AVAILABLE:
             # Step 1: Initialize upload
             init_start = time.time()
             init_data = {
-                'name': file_name,
-                'content_type': 'text/csv',
-                'size_bytes': size_mb * 1024 * 1024
+                "name": file_name,
+                "content_type": "text/csv",
+                "size_bytes": size_mb * 1024 * 1024,
             }
 
             if use_chunked:
-                init_data['chunk_count'] = max(1, (size_mb * 1024 * 1024) // (10 * 1024 * 1024))  # 10MB chunks
+                init_data["chunk_count"] = max(
+                    1, (size_mb * 1024 * 1024) // (10 * 1024 * 1024)
+                )  # 10MB chunks
 
             with self.client.post(
                 "/api/v1/files/init",
                 json=init_data,
                 headers=self.headers,
                 name="/api/v1/files/init",
-                catch_response=True
+                catch_response=True,
             ) as init_response:
                 init_time = (time.time() - init_start) * 1000  # ms
 
@@ -165,8 +168,8 @@ if LOCUST_AVAILABLE:
                     return
 
                 init_data_resp = init_response.json()
-                file_id = init_data_resp.get('id')
-                upload_url = init_data_resp.get('upload_url')
+                file_id = init_data_resp.get("id")
+                upload_url = init_data_resp.get("upload_url")
 
                 if not upload_url:
                     init_response.failure("No upload URL in response")
@@ -181,7 +184,7 @@ if LOCUST_AVAILABLE:
                         name="file_upload_init_slow",
                         response_time=init_time,
                         response_length=0,
-                        exception=None
+                        exception=None,
                     )
 
             # Step 2: Upload file data directly to S3
@@ -193,24 +196,21 @@ if LOCUST_AVAILABLE:
                     # Extract key from upload URL or use file_id
                     key = f"files/{file_id}/{file_name}"
                     self.s3_client.put_object(
-                        Bucket=self.s3_bucket,
-                        Key=key,
-                        Body=test_data,
-                        ContentType='text/csv'
+                        Bucket=self.s3_bucket, Key=key, Body=test_data, ContentType="text/csv"
                     )
                 else:
                     # Fallback: use pre-signed URL
                     upload_response = requests.put(
                         upload_url,
                         data=test_data,
-                        headers={'Content-Type': 'text/csv'},
-                        timeout=300
+                        headers={"Content-Type": "text/csv"},
+                        timeout=300,
                     )
                     if upload_response.status_code not in [200, 204]:
                         raise Exception(f"Upload failed: {upload_response.status_code}")
 
                 upload_time = (time.time() - upload_start) * 1000  # ms
-                upload_throughput_mbps = (size_mb * 8) / (upload_time / 1000) if upload_time > 0 else 0
+                ((size_mb * 8) / (upload_time / 1000) if upload_time > 0 else 0)
 
                 # Track upload throughput
                 events.request.fire(
@@ -218,7 +218,7 @@ if LOCUST_AVAILABLE:
                     name="file_upload_transfer",
                     response_time=upload_time,
                     response_length=len(test_data),
-                    exception=None
+                    exception=None,
                 )
 
             except Exception as e:
@@ -227,7 +227,7 @@ if LOCUST_AVAILABLE:
                     name="file_upload_transfer",
                     response_time=0,
                     response_length=0,
-                    exception=e
+                    exception=e,
                 )
                 return
 
@@ -238,7 +238,7 @@ if LOCUST_AVAILABLE:
                 json={},
                 headers=self.headers,
                 name="/api/v1/files/{id}/complete",
-                catch_response=True
+                catch_response=True,
             ) as complete_response:
                 complete_time = (time.time() - complete_start) * 1000  # ms
 
@@ -253,9 +253,7 @@ if LOCUST_AVAILABLE:
                             name="file_upload_complete_slow",
                             response_time=complete_time,
                             response_length=0,
-                            exception=None
+                            exception=None,
                         )
                 else:
                     complete_response.failure(f"Complete failed: {complete_response.status_code}")
-
-    

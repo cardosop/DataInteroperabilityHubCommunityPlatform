@@ -38,7 +38,9 @@ every PLATFORM_ADMIN out of feature-flag flips precisely when ops
 visibility (which often requires flag flips to inspect / canary) is
 most needed.
 """
+
 from __future__ import annotations
+
 import logging
 from datetime import datetime
 from typing import Any
@@ -144,9 +146,7 @@ def check_flag_flip_rate_limit(*, actor) -> tuple[bool, int, int, str]:
         # If we're already at :00:00, next_hour is exactly now — bump.
         from datetime import timedelta as _td
 
-        retry_after_seconds = int(
-            ((next_hour + _td(hours=1)) - now).total_seconds()
-        )
+        retry_after_seconds = int(((next_hour + _td(hours=1)) - now).total_seconds())
         return False, observed, max(1, retry_after_seconds), bucket
 
     return True, observed, 0, bucket

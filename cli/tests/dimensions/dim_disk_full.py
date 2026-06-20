@@ -10,6 +10,7 @@ writing downloaded content — raises OSError/IOError, not silent
 truncation or an unhandled exception.
 """
 
+
 def test_write_to_readonly_dir_raises_os_error(tmp_path):
     """Writing to a read-only directory must raise a permission error."""
     readonly_dir = tmp_path / "readonly"

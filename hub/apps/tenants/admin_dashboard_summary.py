@@ -38,11 +38,14 @@ columns. Every query uses the ``admin`` BYPASSRLS connection alias
 the same pattern Phase 235.1 / 235.2 / 235.3 use). The cache key is
 NOT tenant-scoped because the dashboard itself is global.
 """
+
 from __future__ import annotations
+
 import logging
 import time
+from collections.abc import Callable
 from datetime import timedelta
-from typing import Any, Callable
+from typing import Any
 
 from django.core.cache import cache
 from django.db.models import Count, Q
@@ -96,9 +99,7 @@ def _aggregate_tenants() -> dict[str, Any]:
         suspended=Count("id", filter=Q(status=TenantStatus.SUSPENDED)),
         deleted=Count("id", filter=Q(status=TenantStatus.DELETED)),
         legal_hold=Count("id", filter=Q(legal_hold=True)),
-        scheduled_for_deletion=Count(
-            "id", filter=Q(scheduled_for_deletion_at__isnull=False)
-        ),
+        scheduled_for_deletion=Count("id", filter=Q(scheduled_for_deletion_at__isnull=False)),
     )
     return {
         "total": counts["total"],
@@ -130,15 +131,15 @@ def _aggregate_webhooks(*, since_24h) -> dict[str, Any]:
         paused=Count("id", filter=Q(status=WebhookStatus.PAUSED)),
         disabled=Count("id", filter=Q(status=WebhookStatus.DISABLED)),
     )
-    dh = WebhookDelivery.objects.using("admin").filter(
-        created_at__gte=since_24h
-    ).aggregate(
-        success=Count("id", filter=Q(status=DeliveryStatus.SUCCESS)),
-        failed=Count("id", filter=Q(status=DeliveryStatus.FAILED)),
-        dead_letter=Count("id", filter=Q(status=DeliveryStatus.DEAD_LETTER)),
-        rate_limited=Count(
-            "id", filter=Q(status=DeliveryStatus.RATE_LIMITED)
-        ),
+    dh = (
+        WebhookDelivery.objects.using("admin")
+        .filter(created_at__gte=since_24h)
+        .aggregate(
+            success=Count("id", filter=Q(status=DeliveryStatus.SUCCESS)),
+            failed=Count("id", filter=Q(status=DeliveryStatus.FAILED)),
+            dead_letter=Count("id", filter=Q(status=DeliveryStatus.DEAD_LETTER)),
+            rate_limited=Count("id", filter=Q(status=DeliveryStatus.RATE_LIMITED)),
+        )
     )
     return {
         "total": sub_counts["total"],
@@ -170,9 +171,7 @@ def _aggregate_audit(*, since_24h) -> dict[str, Any]:
     qs = AuditEvent.objects.using("admin")
     last_24h = qs.filter(timestamp__gte=since_24h).aggregate(
         events_last_24h=Count("id"),
-        integrity_mismatch_count=Count(
-            "id", filter=Q(action=_audit_et.AUDIT_INTEGRITY_MISMATCH)
-        ),
+        integrity_mismatch_count=Count("id", filter=Q(action=_audit_et.AUDIT_INTEGRITY_MISMATCH)),
     )
     latest_verified = (
         qs.filter(action=_audit_et.AUDIT_INTEGRITY_VERIFIED)
@@ -183,9 +182,7 @@ def _aggregate_audit(*, since_24h) -> dict[str, Any]:
     return {
         "events_last_24h": last_24h["events_last_24h"],
         "integrity_mismatch_count": last_24h["integrity_mismatch_count"],
-        "integrity_verified_at": (
-            latest_verified.isoformat() if latest_verified else None
-        ),
+        "integrity_verified_at": (latest_verified.isoformat() if latest_verified else None),
     }
 
 
@@ -245,13 +242,14 @@ def _aggregate_billing() -> dict[str, Any]:
             SubscriptionStatus.TRIAL,
         ],
     )
-    plan_distribution = active_subs.values("plan__tier").annotate(
-        count=Count("id"),
-    ).order_by("plan__tier")
-    by_tier = {
-        row["plan__tier"]: row["count"]
-        for row in plan_distribution
-    }
+    plan_distribution = (
+        active_subs.values("plan__tier")
+        .annotate(
+            count=Count("id"),
+        )
+        .order_by("plan__tier")
+    )
+    by_tier = {row["plan__tier"]: row["count"] for row in plan_distribution}
 
     return {
         **status_counts,
@@ -276,15 +274,9 @@ def _aggregate_governance() -> dict[str, Any]:
     from hub.apps.governance.models import AccessRequest, AccessRequestStatus
 
     counts = AccessRequest.objects.using("admin").aggregate(
-        open_access_requests=Count(
-            "id", filter=Q(status=AccessRequestStatus.PENDING)
-        ),
-        approved_access_requests=Count(
-            "id", filter=Q(status=AccessRequestStatus.APPROVED)
-        ),
-        rejected_access_requests=Count(
-            "id", filter=Q(status=AccessRequestStatus.REJECTED)
-        ),
+        open_access_requests=Count("id", filter=Q(status=AccessRequestStatus.PENDING)),
+        approved_access_requests=Count("id", filter=Q(status=AccessRequestStatus.APPROVED)),
+        rejected_access_requests=Count("id", filter=Q(status=AccessRequestStatus.REJECTED)),
     )
     return counts
 
@@ -352,15 +344,9 @@ def build_dashboard_summary() -> dict[str, Any]:
         "generated_at": now.isoformat(),
         "cache_ttl_seconds": CACHE_TTL_SECONDS,
         "tenants": _run_widget("tenants", _aggregate_tenants),
-        "webhooks": _run_widget(
-            "webhooks", lambda: _aggregate_webhooks(since_24h=since_24h)
-        ),
-        "audit": _run_widget(
-            "audit", lambda: _aggregate_audit(since_24h=since_24h)
-        ),
-        "compliance": _run_widget(
-            "compliance", lambda: _aggregate_compliance(since_24h=since_24h)
-        ),
+        "webhooks": _run_widget("webhooks", lambda: _aggregate_webhooks(since_24h=since_24h)),
+        "audit": _run_widget("audit", lambda: _aggregate_audit(since_24h=since_24h)),
+        "compliance": _run_widget("compliance", lambda: _aggregate_compliance(since_24h=since_24h)),
         "billing": _run_widget("billing", _aggregate_billing),
         "governance": _run_widget("governance", _aggregate_governance),
     }
@@ -396,7 +382,7 @@ class AdminDashboardSummaryView(APIView):
             "re-aggregation. The ``cache_hit`` field discriminates "
             "between a fresh aggregator run and a cache replay. Per-"
             "widget error isolation: a single failing aggregator "
-            "returns ``{\"widget_error\": true}`` for that widget while "
+            'returns ``{"widget_error": true}`` for that widget while '
             "the other five render real data."
         ),
         parameters=[
@@ -429,16 +415,23 @@ class AdminDashboardSummaryView(APIView):
                             "cache_ttl_seconds": 300,
                             "cache_hit": False,
                             "tenants": {
-                                "total": 42, "active": 38, "suspended": 1,
-                                "deleted": 3, "legal_hold": 1,
+                                "total": 42,
+                                "active": 38,
+                                "suspended": 1,
+                                "deleted": 3,
+                                "legal_hold": 1,
                                 "scheduled_for_deletion": 2,
                             },
                             "webhooks": {
-                                "total": 18, "active": 15, "paused": 2,
+                                "total": 18,
+                                "active": 15,
+                                "paused": 2,
                                 "disabled": 1,
                                 "delivery_health_last_24h": {
-                                    "success": 1023, "failed": 4,
-                                    "dead_letter": 1, "rate_limited": 0,
+                                    "success": 1023,
+                                    "failed": 4,
+                                    "dead_letter": 1,
+                                    "rate_limited": 0,
                                 },
                             },
                             "audit": {
@@ -447,13 +440,18 @@ class AdminDashboardSummaryView(APIView):
                                 "integrity_verified_at": "2026-05-11T09:30:00Z",
                             },
                             "compliance": {
-                                "pending": 2, "running": 1,
+                                "pending": 2,
+                                "running": 1,
                                 "succeeded_last_24h": 47,
                                 "failed_last_24h": 0,
                             },
                             "billing": {
-                                "active": 35, "past_due": 1, "canceled": 3,
-                                "trial": 2, "incomplete": 0, "unpaid": 0,
+                                "active": 35,
+                                "past_due": 1,
+                                "canceled": 3,
+                                "trial": 2,
+                                "incomplete": 0,
+                                "unpaid": 0,
                                 "plan_distribution": {
                                     "by_tier": {"FREE": 10, "PRO": 20, "ENTERPRISE": 7},
                                     "total_active": 37,
@@ -481,9 +479,7 @@ class AdminDashboardSummaryView(APIView):
         tags=["Admin"],
     )
     def get(self, request):
-        force_refresh = (
-            str(request.query_params.get("refresh", "")).lower() == "true"
-        )
+        force_refresh = str(request.query_params.get("refresh", "")).lower() == "true"
         actor_id = (
             str(request.user.id)
             if getattr(request, "user", None) and request.user.is_authenticated
@@ -502,9 +498,7 @@ class AdminDashboardSummaryView(APIView):
             self._record_cache_metric(outcome="hit")
             response = dict(cached_payload)
             response["cache_hit"] = True
-            return self._with_cache_headers(
-                Response(response, status=status.HTTP_200_OK)
-            )
+            return self._with_cache_headers(Response(response, status=status.HTTP_200_OK))
 
         # Cache MISS or forced refresh — aggregate + cache the result.
         # Phase 235.5 audit-fix Gap 4 — telemetry: emit aggregator
@@ -536,9 +530,7 @@ class AdminDashboardSummaryView(APIView):
         self._record_duration_metric(aggregate_duration_seconds)
         response = dict(payload)
         response["cache_hit"] = False
-        return self._with_cache_headers(
-            Response(response, status=status.HTTP_200_OK)
-        )
+        return self._with_cache_headers(Response(response, status=status.HTTP_200_OK))
 
     @staticmethod
     def _record_cache_metric(*, outcome: str) -> None:

@@ -11,18 +11,18 @@ Validates:
 
 Does NOT mock — validates real configuration and code.
 """
+
 import os
-import re
 import subprocess
+
 import pytest
 import yaml
 
-PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..")
-)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
+
 
 def _exists(path):
     return os.path.exists(os.path.join(PROJECT_ROOT, path))
@@ -30,12 +30,14 @@ def _exists(path):
 
 # ── 280.B.2.4.1 — Probe module integrity ─────────────────────────────────
 
+
 class TestSyntheticProbeModule:
     """Validate the synthetic_probes.py module is correctly structured."""
 
     def test_module_imports_cleanly(self):
         """Module must import without errors."""
         import hub.apps.health.synthetic_probes as sp
+
         assert hasattr(sp, "SyntheticProbe")
         assert hasattr(sp, "ProbeResult")
         assert hasattr(sp, "ProbeRunSummary")
@@ -45,11 +47,13 @@ class TestSyntheticProbeModule:
     def test_critical_probe_names_defined(self):
         """CRITICAL_PROBE_NAMES must contain exactly the 4 required probes."""
         from hub.apps.health.synthetic_probes import CRITICAL_PROBE_NAMES
+
         assert set(CRITICAL_PROBE_NAMES) == {"login", "asset_list", "search", "health"}
 
     def test_probe_result_dataclass(self):
         """ProbeResult must have required fields."""
         from hub.apps.health.synthetic_probes import ProbeResult
+
         r = ProbeResult(probe_name="test", success=True, latency_ms=42.0)
         assert r.probe_name == "test"
         assert r.success is True
@@ -59,7 +63,8 @@ class TestSyntheticProbeModule:
 
     def test_probe_run_summary_failure_rate(self):
         """ProbeRunSummary must calculate failure rate correctly."""
-        from hub.apps.health.synthetic_probes import ProbeRunSummary, ProbeResult
+        from hub.apps.health.synthetic_probes import ProbeResult, ProbeRunSummary
+
         results = [
             ProbeResult(probe_name="a", success=True, latency_ms=10),
             ProbeResult(probe_name="b", success=False, latency_ms=20),
@@ -67,19 +72,24 @@ class TestSyntheticProbeModule:
             ProbeResult(probe_name="d", success=True, latency_ms=40),
         ]
         summary = ProbeRunSummary(
-            total_probes=4, passed=3, failed=1, results=results,
+            total_probes=4,
+            passed=3,
+            failed=1,
+            results=results,
         )
         assert summary.failure_rate == 0.25
 
     def test_create_probes_returns_all_four(self):
         """create_probes must return exactly 4 probes."""
         from hub.apps.health.synthetic_probes import create_probes
+
         probes = create_probes("http://localhost:8000")
         assert set(probes.keys()) == {"login", "asset_list", "search", "health"}
 
     def test_probe_configuration(self):
         """Each probe must have correct method, path, expected status."""
         from hub.apps.health.synthetic_probes import create_probes
+
         probes = create_probes("http://localhost:8000")
 
         # Health probe
@@ -109,14 +119,18 @@ class TestSyntheticProbeModule:
     def test_probe_base_url_normalized(self):
         """Base URL trailing slash must be stripped."""
         from hub.apps.health.synthetic_probes import SyntheticProbe
+
         p = SyntheticProbe(
-            name="test", method="GET", url_path="/health",
+            name="test",
+            method="GET",
+            url_path="/health",
             base_url="http://localhost:8000/",
         )
         assert p.base_url == "http://localhost:8000"
 
 
 # ── 280.B.2.4.2 — Management command ─────────────────────────────────────
+
 
 class TestSyntheticProbeManagementCommand:
     """Validate the run_synthetic_probes management command."""
@@ -128,32 +142,40 @@ class TestSyntheticProbeManagementCommand:
     def test_command_is_valid_django_command(self):
         """Command must be a valid Django BaseCommand subclass."""
         import importlib
-        mod = importlib.import_module(
-            "hub.apps.health.management.commands.run_synthetic_probes"
-        )
+
+        mod = importlib.import_module("hub.apps.health.management.commands.run_synthetic_probes")
         from django.core.management.base import BaseCommand
+
         assert hasattr(mod, "Command")
         assert issubclass(mod.Command, BaseCommand)
 
     def test_command_has_expected_arguments(self):
         """Command must expose --base-url, --interval, --iterations, --probes."""
         import importlib
-        mod = importlib.import_module(
-            "hub.apps.health.management.commands.run_synthetic_probes"
-        )
+
+        mod = importlib.import_module("hub.apps.health.management.commands.run_synthetic_probes")
         # Check the add_arguments method parses correctly
         from argparse import ArgumentParser
+
         parser = ArgumentParser()
         cmd = mod.Command()
         cmd.add_arguments(parser)
         actions = {a.dest for a in parser._actions}
-        expected = {"base_url", "interval", "iterations", "probes",
-                     "auth_email", "auth_password", "help"}
+        expected = {
+            "base_url",
+            "interval",
+            "iterations",
+            "probes",
+            "auth_email",
+            "auth_password",
+            "help",
+        }
         for arg in expected:
             assert arg in actions, f"Missing argument: {arg}"
 
 
 # ── 280.B.2.4.3 — Prometheus alert rules ─────────────────────────────────
+
 
 class TestSyntheticProbeAlertRules:
     """Validate synthetic-probes.yml alert rules are syntactically correct."""
@@ -190,9 +212,7 @@ class TestSyntheticProbeAlertRules:
         """Aggregate alert must fire at >0.01 (1%) failure rate."""
         with open(os.path.join(PROJECT_ROOT, self.ALERT_FILE)) as f:
             content = f.read()
-        assert "0.01" in content, (
-            "Aggregate alert threshold must be 0.01 (1%)"
-        )
+        assert "0.01" in content, "Aggregate alert threshold must be 0.01 (1%)"
 
     def test_each_per_probe_alert_has_for_5m(self):
         """Each per-probe alert must have for: 5m to meet acceptance criteria."""
@@ -200,10 +220,12 @@ class TestSyntheticProbeAlertRules:
             data = yaml.safe_load(f.read())
 
         for rule in data["groups"][0]["rules"]:
-            if rule.get("alert", "").startswith("SyntheticProbe") and rule["alert"] != "SyntheticProbeFailureRateHigh" and rule["alert"] != "SyntheticProbeLatencyHigh":
-                assert rule.get("for") == "5m", (
-                    f"Alert {rule['alert']} must have for: 5m"
-                )
+            if (
+                rule.get("alert", "").startswith("SyntheticProbe")
+                and rule["alert"] != "SyntheticProbeFailureRateHigh"
+                and rule["alert"] != "SyntheticProbeLatencyHigh"
+            ):
+                assert rule.get("for") == "5m", f"Alert {rule['alert']} must have for: 5m"
 
     def test_all_alerts_have_runbook_url(self):
         """Every alert must have a runbook_url annotation."""
@@ -231,6 +253,7 @@ class TestSyntheticProbeAlertRules:
 
 # ── 280.B.2.4.4 — Synthetic firing tests ─────────────────────────────────
 
+
 class TestSyntheticProbeFiringTests:
     """Validate synthetic firing tests pass via promtool."""
 
@@ -243,9 +266,7 @@ class TestSyntheticProbeFiringTests:
         with open(os.path.join(PROJECT_ROOT, self.FIRING_FILE)) as f:
             data = yaml.safe_load(f.read())
         assert "tests" in data
-        assert len(data["tests"]) >= 4, (
-            f"Expected >=4 test scenarios, got {len(data['tests'])}"
-        )
+        assert len(data["tests"]) >= 4, f"Expected >=4 test scenarios, got {len(data['tests'])}"
 
     def test_each_test_has_name_and_input_series(self):
         with open(os.path.join(PROJECT_ROOT, self.FIRING_FILE)) as f:
@@ -260,16 +281,16 @@ class TestSyntheticProbeFiringTests:
         """Run promtool test rules on the firing test file."""
         promtool = _find_promtool()
         if promtool is None:
-            pytest.skip("promtool not found in PATH")
+            pytest.skip("promtool not found in PATH")  # noqa: skip-in-body — runtime service dependency
 
         result = subprocess.run(
-            [promtool, "test", "rules",
-             os.path.join(PROJECT_ROOT, self.FIRING_FILE)],
-            capture_output=True, text=True,
+            [promtool, "test", "rules", os.path.join(PROJECT_ROOT, self.FIRING_FILE)],
+            check=False,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, (
-            f"promtool test rules failed:\nSTDOUT: {result.stdout}\n"
-            f"STDERR: {result.stderr}"
+            f"promtool test rules failed:\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
         )
 
     def test_firing_test_covers_all_four_probes(self):
@@ -278,9 +299,7 @@ class TestSyntheticProbeFiringTests:
             content = f.read()
 
         for probe in ("login", "asset_list", "search", "health"):
-            assert probe in content, (
-                f"Firing test must reference probe '{probe}'"
-            )
+            assert probe in content, f"Firing test must reference probe '{probe}'"
 
     def test_failure_rate_1_percent_scenario_exists(self):
         """Must test the exact 1% threshold boundary."""
@@ -295,7 +314,10 @@ class TestSyntheticProbeFiringTests:
 def _find_promtool():
     """Find promtool binary in PATH. Returns path or None."""
     result = subprocess.run(
-        ["which", "promtool"], capture_output=True, text=True,
+        ["which", "promtool"],
+        check=False,
+        capture_output=True,
+        text=True,
     )
     if result.returncode == 0:
         return result.stdout.strip()

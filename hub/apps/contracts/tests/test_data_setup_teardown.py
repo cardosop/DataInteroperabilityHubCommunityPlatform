@@ -20,20 +20,18 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.db import connection, transaction
-from django.test import TestCase, TransactionTestCase
+from django.db import transaction
+from django.test import TestCase
 
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
+from hub.apps.contracts.models import OriginalSpecType
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-from hub.apps.users.models import UserStatus
 from tests.fixtures.test_data_factories import (
     AssetFactory,
     ContractFactory,
     TenantFactory,
     UserFactory,
 )
-from tests.utils.test_data_management import TestDataManager, cleanup_test_data
+from tests.utils.test_data_management import TestDataManager
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -132,10 +130,9 @@ class TestDataCleanupTest(TestCase):
             contract = ContractFactory.create_contract(tenant=tenant, asset=asset)
             self.test_data_manager.created_objects["contracts"].append(contract)
 
-        # Get counts before cleanup
-        tenant_id = tenant.id
-        asset_ids = [a.id for a in self.test_data_manager.created_objects["assets"]]
-        contract_ids = [c.id for c in self.test_data_manager.created_objects["contracts"]]
+        # Verify objects were created before cleanup
+        self.assertGreater(len(self.test_data_manager.created_objects["assets"]), 0)
+        self.assertGreater(len(self.test_data_manager.created_objects["contracts"]), 0)
 
         # Perform cleanup
         self.test_data_manager.cleanup()
@@ -167,18 +164,16 @@ class TestDataCleanupTest(TestCase):
 
         try:
             # Create test data with dependencies
-            tenant = self.test_data_manager.create_complete_tenant_data(asset_count=2, contract_count=2)
+            self.test_data_manager.create_complete_tenant_data(asset_count=2, contract_count=2)
         except Exception as exc:
             self.skipTest(f"Data creation failed due to stale DB state (--reuse-db): {exc}")
-
-        tenant_id = tenant.id
 
         # Perform cleanup — wrap in savepoint so a constraint error
         # during delete does not poison the outer TestCase atomic block.
         try:
             with db_tx.atomic():
                 self.test_data_manager.cleanup()
-        except Exception:
+        except (DatabaseError, IntegrityError):
             # Cleanup may fail under --reuse-db due to stale FK refs;
             # the test verifies tracking state, not DB deletion (TestCase
             # rolls back the entire transaction anyway).
@@ -205,9 +200,7 @@ class TestDataCleanupTest(TestCase):
     def test_cleanup_is_idempotent(self):
         """Test that cleanup is idempotent (can be called multiple times)."""
         # Create test data
-        tenant = self.test_data_manager.create_tenant_with_users()
-
-        tenant_id = tenant.id
+        self.test_data_manager.create_tenant_with_users()
 
         # Perform cleanup multiple times
         self.test_data_manager.cleanup()
@@ -253,10 +246,9 @@ class TestDataIsolationTest(TestCase):
         """Test that tests are isolated from each other."""
         # Create test data in this test
         tenant1 = TenantFactory.create_tenant(name=f"Isolation Test Tenant {uuid.uuid4().hex[:8]}")
-        contract1 = ContractFactory.create_contract(tenant=tenant1)
+        ContractFactory.create_contract(tenant=tenant1)
 
         tenant1_id = tenant1.id
-        contract1_id = contract1.id
 
         # Verify data exists
         self.assertTrue(
@@ -351,7 +343,7 @@ class TestDataSetupPerformanceTest(TestCase):
         user = users[0]
         assets = [AssetFactory.create_asset(tenant=tenant, created_by=user) for _ in range(3)]
         # Use different assets to avoid unique constraint violations
-        contracts = [
+        [
             ContractFactory.create_contract(tenant=tenant, asset=assets[i % len(assets)])
             for i in range(3)
         ]
@@ -411,7 +403,7 @@ class TestDataSetupPerformanceTest(TestCase):
         """Test that cleanup performance is acceptable."""
         # Create test data
         test_data_manager = TestDataManager()
-        tenant = test_data_manager.create_complete_tenant_data(asset_count=5, contract_count=5)
+        test_data_manager.create_complete_tenant_data(asset_count=5, contract_count=5)
 
         # Measure cleanup time
         start_time = time.time()
@@ -437,13 +429,9 @@ class TestDataSetupPerformanceTest(TestCase):
         """Test that fixtures handle special characters correctly."""
         special_name = "Test Tenant & Co. (Special)"
         uid = uuid.uuid4().hex[:8]
-        tenant = TenantFactory.create_tenant(
-            name=special_name, slug=f"test-special-{uid}"
-        )
+        tenant = TenantFactory.create_tenant(name=special_name, slug=f"test-special-{uid}")
 
-        self.assertEqual(
-            tenant.name, special_name, "Special characters should be handled"
-        )
+        self.assertEqual(tenant.name, special_name, "Special characters should be handled")
         self.assertTrue(tenant.pk, "Tenant should have primary key")
 
     def test_fixtures_handle_empty_optional_fields(self):
@@ -485,9 +473,7 @@ class TestDataSetupPerformanceTest(TestCase):
         try:
             test_data_manager.cleanup()
         except Exception as e:
-            self.fail(
-                f"Cleanup should handle deleted objects gracefully: {e}"
-            )
+            self.fail(f"Cleanup should handle deleted objects gracefully: {e}")
 
     def test_fixtures_handle_very_long_strings(self):
         """Test that fixtures reject strings exceeding DB column max_length."""
@@ -553,7 +539,7 @@ class TestDataSetupPerformanceTest(TestCase):
     def test_cleanup_handles_circular_dependencies(self):
         """Test that cleanup handles circular dependencies correctly."""
         test_data_manager = TestDataManager()
-        tenant = test_data_manager.create_complete_tenant_data(asset_count=2, contract_count=2)
+        test_data_manager.create_complete_tenant_data(asset_count=2, contract_count=2)
 
         # Cleanup should handle dependencies correctly
         try:

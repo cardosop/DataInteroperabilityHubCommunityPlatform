@@ -22,8 +22,8 @@ in the unit suite. The internal contracts under test
 (``BusinessRules.execute``, ``RuleChain.execute``, the canonical
 attribute shape) all run for real.
 """
+
 from __future__ import annotations
-import pytest
 
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
@@ -34,7 +34,6 @@ from django.test import TestCase
 from hub.apps.core.business_rules.base import (
     BusinessRules,
     BusinessRulesObservabilityMixin,
-    RuleExecutionContext,
     ValidationResult,
 )
 from hub.apps.core.business_rules.chains import RuleChain
@@ -104,9 +103,7 @@ class TestEmitObservabilityIsOnBaseClass(TestCase):
         # The check is that the mixin doesn't define the method in its
         # own __dict__ (inherited from object is fine; methods on the
         # MRO above object via the base class are also fine).
-        own_method = BusinessRulesObservabilityMixin.__dict__.get(
-            "_emit_observability"
-        )
+        own_method = BusinessRulesObservabilityMixin.__dict__.get("_emit_observability")
         self.assertIsNone(
             own_method,
             "Legacy mixin must not redefine _emit_observability; the "
@@ -125,9 +122,7 @@ class TestEmitObservabilityIsCalledFromExecute(TestCase):
     validation outcome — passing, failing-by-assertion, or
     failing-by-exception."""
 
-    @patch(
-        "hub.apps.core.business_rules.base.BusinessRules._emit_observability"
-    )
+    @patch("hub.apps.core.business_rules.base.BusinessRules._emit_observability")
     @pytest.mark.integration
     def test_hook_called_on_pass(self, mock_emit):
         _AlwaysValidRule().execute()
@@ -135,9 +130,7 @@ class TestEmitObservabilityIsCalledFromExecute(TestCase):
         passed_result = mock_emit.call_args[0][0]
         self.assertTrue(passed_result.is_valid)
 
-    @patch(
-        "hub.apps.core.business_rules.base.BusinessRules._emit_observability"
-    )
+    @patch("hub.apps.core.business_rules.base.BusinessRules._emit_observability")
     @pytest.mark.integration
     def test_hook_called_on_business_failure(self, mock_emit):
         _AlwaysInvalidRule().execute()
@@ -146,9 +139,7 @@ class TestEmitObservabilityIsCalledFromExecute(TestCase):
         self.assertFalse(passed_result.is_valid)
         self.assertEqual(passed_result.errors, ["business assertion failed"])
 
-    @patch(
-        "hub.apps.core.business_rules.base.BusinessRules._emit_observability"
-    )
+    @patch("hub.apps.core.business_rules.base.BusinessRules._emit_observability")
     @pytest.mark.integration
     def test_hook_called_on_exception_path(self, mock_emit):
         _RaisingRule().execute()
@@ -158,9 +149,7 @@ class TestEmitObservabilityIsCalledFromExecute(TestCase):
         # The synthesized error result carries the exception type as
         # detail metadata — assert the shape so dashboards keying off
         # ``details.exception_type`` keep working.
-        self.assertEqual(
-            passed_result.details.get("exception_type"), "RuntimeError"
-        )
+        self.assertEqual(passed_result.details.get("exception_type"), "RuntimeError")
 
 
 @pytest.mark.integration
@@ -168,9 +157,7 @@ class TestEmitObservabilityIncrementsFailureCounter(TestCase):
     """The default hook implementation must increment the canonical
     Prometheus failure counter on ``is_valid=False`` results."""
 
-    @patch(
-        "hub.apps.observability.otel_metrics.business_rule_validation_failures_total"
-    )
+    @patch("hub.apps.observability.otel_metrics.business_rule_validation_failures_total")
     @pytest.mark.integration
     def test_counter_inc_on_business_failure(self, mock_counter):
         _AlwaysInvalidRule().execute()
@@ -180,9 +167,7 @@ class TestEmitObservabilityIncrementsFailureCounter(TestCase):
             "Failure counter must be incremented when is_valid=False",
         )
 
-    @patch(
-        "hub.apps.observability.otel_metrics.business_rule_validation_failures_total"
-    )
+    @patch("hub.apps.observability.otel_metrics.business_rule_validation_failures_total")
     @pytest.mark.integration
     def test_counter_inc_on_exception_path(self, mock_counter):
         _RaisingRule().execute()
@@ -191,9 +176,7 @@ class TestEmitObservabilityIncrementsFailureCounter(TestCase):
             "Failure counter must also fire when validate_* raises",
         )
 
-    @patch(
-        "hub.apps.observability.otel_metrics.business_rule_validation_failures_total"
-    )
+    @patch("hub.apps.observability.otel_metrics.business_rule_validation_failures_total")
     @pytest.mark.integration
     def test_counter_not_inc_on_pass(self, mock_counter):
         _AlwaysValidRule().execute()
@@ -311,9 +294,7 @@ class TestRuleChainOpensParentSpan(TestCase):
         self.assertEqual(attr_calls["business_rule_chain.errors_count"], 0)
         # duration_ms is timing-dependent; assert presence + type only.
         self.assertIn("business_rule_chain.duration_ms", attr_calls)
-        self.assertIsInstance(
-            attr_calls["business_rule_chain.duration_ms"], float
-        )
+        self.assertIsInstance(attr_calls["business_rule_chain.duration_ms"], float)
 
     @patch("hub.apps.core.business_rules.chains._otel_get_tracer")
     @patch("hub.apps.core.business_rules.chains._OTEL_AVAILABLE", True)
@@ -324,9 +305,7 @@ class TestRuleChainOpensParentSpan(TestCase):
 
         chain = RuleChain(name="test.fail_chain", requires_transaction=False)
         chain.steps = [
-            lambda ctx, **kw: ValidationResult(
-                is_valid=False, errors=["nope"]
-            ),
+            lambda ctx, **kw: ValidationResult(is_valid=False, errors=["nope"]),
         ]
         chain.steps[0].__name__ = "always_fail"
 

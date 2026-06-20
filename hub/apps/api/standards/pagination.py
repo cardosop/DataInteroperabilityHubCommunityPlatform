@@ -6,13 +6,10 @@ Provides cursor-based and page-based pagination for all API endpoints.
 
 import base64
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from django.core.paginator import InvalidPage, Paginator
 from django.db.models import QuerySet
-from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import CursorPagination, PageNumberPagination
-from rest_framework.request import Request
 from rest_framework.response import Response
 
 
@@ -121,7 +118,9 @@ class StandardPageNumberPagination(PageNumberPagination):
                 "has_next": self.page.has_next(),
                 "has_previous": self.page.has_previous(),
                 "next_page": self.page.next_page_number() if self.page.has_next() else None,
-                "previous_page": self.page.previous_page_number() if self.page.has_previous() else None,
+                "previous_page": self.page.previous_page_number()
+                if self.page.has_previous()
+                else None,
                 "next": self.get_next_link(),
                 "previous": self.get_previous_link(),
                 "results": data,
@@ -129,7 +128,7 @@ class StandardPageNumberPagination(PageNumberPagination):
         )
 
 
-def get_pagination_params(request) -> Dict[str, Any]:
+def get_pagination_params(request) -> dict[str, Any]:
     """
     Extract and validate pagination parameters from request.
 
@@ -178,10 +177,10 @@ def get_pagination_params(request) -> Dict[str, Any]:
 
 
 def validate_pagination_params(
-    page: Optional[int] = None,
-    page_size: Optional[int] = None,
-    cursor: Optional[str] = None,
-) -> Tuple[bool, Optional[str]]:
+    page: int | None = None,
+    page_size: int | None = None,
+    cursor: str | None = None,
+) -> tuple[bool, str | None]:
     """
     Validate pagination parameters.
 
@@ -194,9 +193,8 @@ def validate_pagination_params(
         Tuple of (is_valid, error_message)
     """
     # Validate page
-    if page is not None:
-        if page < 1:
-            return False, "Page number must be >= 1"
+    if page is not None and page < 1:
+        return False, "Page number must be >= 1"
 
     # Validate page_size
     if page_size is not None:
@@ -222,9 +220,9 @@ def _encode_value(value) -> str:
 def paginate_queryset_cursor(
     queryset: QuerySet,
     page_size: int = 50,
-    cursor: Optional[str] = None,
+    cursor: str | None = None,
     ordering: str = "-created_at",
-) -> Tuple[QuerySet, Optional[str], Optional[str]]:
+) -> tuple[QuerySet, str | None, str | None]:
     """
     Paginate queryset using cursor-based pagination.
 
@@ -261,12 +259,14 @@ def paginate_queryset_cursor(
             # (reversed for ascending)
             if descending:
                 from django.db.models import Q
+
                 queryset = queryset.filter(
                     Q(**{f"{field}__lt": field_val})
                     | Q(**{f"{field}": field_val, "pk__lt": pk_val})
                 )
             else:
                 from django.db.models import Q
+
                 queryset = queryset.filter(
                     Q(**{f"{field}__gt": field_val})
                     | Q(**{f"{field}": field_val, "pk__gt": pk_val})

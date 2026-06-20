@@ -12,9 +12,9 @@ Usage:
   python scripts/audit_sdk_vs_api.py --json          # JSON for CI
   python scripts/audit_sdk_vs_api.py --summary       # counts only
 """
+
 import ast
 import json
-import os
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -24,6 +24,7 @@ SDK_DIR = PROJECT_ROOT / "sdk" / "python" / "datahub_interoperability"
 HUB_URLS_DIR = PROJECT_ROOT / "hub"
 
 # ── Extract SDK public methods ────────────────────────────────────────────
+
 
 def extract_sdk_methods() -> dict[str, set[str]]:
     """Return {module_name: {method_name, ...}} for the SDK."""
@@ -49,6 +50,7 @@ def extract_sdk_methods() -> dict[str, set[str]]:
 
 # ── Extract API endpoints from Django URL patterns ────────────────────────
 
+
 def extract_api_endpoints() -> dict[str, set[str]]:
     """Return {prefix: {endpoint_pattern, ...}} for the backend API."""
     endpoints = defaultdict(set)
@@ -65,6 +67,7 @@ def extract_api_endpoints() -> dict[str, set[str]]:
         # Extract path patterns from urlpatterns
         # Match: path("prefix/", ...) or re_path(r"prefix/", ...)
         import re
+
         for m in re.finditer(
             r'(?:path|re_path)\s*\(\s*["\']([^"\']+)["\']',
             content,
@@ -80,6 +83,7 @@ def extract_api_endpoints() -> dict[str, set[str]]:
 
 
 # ── Extract API endpoints from URL conf hub/urls.py ───────────────────────
+
 
 def extract_api_prefixes() -> dict[str, list[str]]:
     """Return {prefix: [endpoint, ...]} from the root URL configuration."""
@@ -149,7 +153,7 @@ def run_gap_analysis() -> dict:
     api_modules = set(api_endpoints.keys())
 
     modules_only_api = api_modules - sdk_modules
-    modules_only_sdk = sdk_modules - api_modules
+    sdk_modules - api_modules
     modules_shared = sdk_modules & api_modules
 
     for module in sorted(modules_only_api):
@@ -203,8 +207,10 @@ def print_report(results: dict) -> None:
     for module, info in sorted(results["per_module"].items()):
         bar = "█" * max(1, int(info.get("gap_pct", 0) / 5))
         status = info["status"]
-        print(f"    {module:25s} SDK={info['sdk_methods']:3d}  API={info['api_endpoints']:3d}  "
-              f"gap={info['gap_pct']:5.1f}%  {bar}  [{status}]")
+        print(
+            f"    {module:25s} SDK={info['sdk_methods']:3d}  API={info['api_endpoints']:3d}  "
+            f"gap={info['gap_pct']:5.1f}%  {bar}  [{status}]"
+        )
 
     print(f"\n  SDK-covered modules: {', '.join(results['sdk_modules_list'])}")
 
@@ -216,8 +222,10 @@ def main():
         print(json.dumps(results, indent=2, default=str))
     elif "--summary" in sys.argv:
         s = results["summary"]
-        print(f"sdk={s['total_sdk_methods']} api={s['total_api_endpoints']} "
-              f"no_sdk={s['modules_without_sdk']}")
+        print(
+            f"sdk={s['total_sdk_methods']} api={s['total_api_endpoints']} "
+            f"no_sdk={s['modules_without_sdk']}"
+        )
     else:
         print_report(results)
 

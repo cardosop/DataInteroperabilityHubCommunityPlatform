@@ -10,6 +10,7 @@ The aggregator opens the JSONL file directly rather than re-querying
 the DB so the report reflects the *captured* state at the moment of
 diagnosis, not whatever drift has happened since.
 """
+
 from __future__ import annotations
 
 import json
@@ -78,9 +79,9 @@ class Command(BaseCommand):
                     obj = json.loads(stripped)
                 except json.JSONDecodeError:
                     malformed += 1
-                    self.stderr.write(self.style.WARNING(
-                        f"  [warn] skipping malformed line {lineno}"
-                    ))
+                    self.stderr.write(
+                        self.style.WARNING(f"  [warn] skipping malformed line {lineno}")
+                    )
                     continue
                 if not isinstance(obj, dict) or "contract_id" not in obj:
                     # Not a structureless row — skip.
@@ -103,9 +104,7 @@ class Command(BaseCommand):
         by_classification: Counter[str] = Counter(
             row.get("classification") or "unknown" for row in rows
         )
-        by_spec_type: Counter[str] = Counter(
-            row.get("spec_type") or "unknown" for row in rows
-        )
+        by_spec_type: Counter[str] = Counter(row.get("spec_type") or "unknown" for row in rows)
         by_tenant: defaultdict[str | None, list[dict[str, Any]]] = defaultdict(list)
         for row in rows:
             by_tenant[row.get("tenant_id")].append(row)
@@ -113,9 +112,7 @@ class Command(BaseCommand):
         # Resolve tenant names in one query for speed and to surface
         # tenants that no longer exist (escalation).
         tenant_ids = [tid for tid in by_tenant if tid]
-        tenant_lookup = {
-            str(t.id): t for t in Tenant.objects.filter(id__in=tenant_ids)
-        }
+        tenant_lookup = {str(t.id): t for t in Tenant.objects.filter(id__in=tenant_ids)}
 
         # Identify tenants without admins so the dispatcher (227.0.3)
         # operator can escalate before sending notifications.
@@ -159,19 +156,17 @@ class Command(BaseCommand):
         lines.append("|---|---|---|---|")
         # Sort tenants by descending contract count for triage priority.
         tenant_buckets = sorted(
-            by_tenant.items(), key=lambda kv: len(kv[1]), reverse=True,
+            by_tenant.items(),
+            key=lambda kv: len(kv[1]),
+            reverse=True,
         )
         for tid, contracts in tenant_buckets:
             tenant_name = self._tenant_label(tid, tenant_lookup)
             tenant_id_str = tid or "(null)"
-            classifications = Counter(
-                c.get("classification") or "unknown" for c in contracts
-            )
+            classifications = Counter(c.get("classification") or "unknown" for c in contracts)
             top_class, top_count = classifications.most_common(1)[0]
             top_label = f"`{top_class}` ({top_count})"
-            lines.append(
-                f"| {tenant_name} | `{tenant_id_str}` | {len(contracts)} | {top_label} |"
-            )
+            lines.append(f"| {tenant_name} | `{tenant_id_str}` | {len(contracts)} | {top_label} |")
         lines.append("")
 
         if no_admin_tenants:
@@ -201,9 +196,7 @@ class Command(BaseCommand):
         )
         lines.append("")
         lines.append("```bash")
-        lines.append(
-            "python manage.py wave0_send_structureless_notifications \\"
-        )
+        lines.append("python manage.py wave0_send_structureless_notifications \\")
         lines.append("    --input <jsonl-path> \\")
         lines.append("    --deadline 2026-05-14 \\")
         lines.append("    --dry-run")

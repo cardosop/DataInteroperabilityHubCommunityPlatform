@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """307.3 — Automated tenant isolation verification. Nightly CI job."""
-import os, sys, json, uuid
+
+import json
+import os
+import sys
+import uuid
 from urllib.request import Request, urlopen
 
 API_BASE = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
 
+
 def create_tenant(name_prefix):
     """Create tenant via admin API. In production, uses PLATFORM_ADMIN credentials."""
     return {"id": str(uuid.uuid4()), "slug": f"{name_prefix.lower()}-{uuid.uuid4().hex[:8]}"}
+
 
 def check_isolation(ta, tb):
     """Verify tenant B cannot see tenant A's data."""
@@ -24,11 +30,15 @@ def check_isolation(ta, tb):
             req.add_header("X-Tenant-Id", tb["id"])
             try:
                 with urlopen(req, timeout=10) as resp:
-                    results.append({"url": url, "status": resp.status, "isolated": resp.status in (403, 404)})
+                    results.append(
+                        {"url": url, "status": resp.status, "isolated": resp.status in (403, 404)}
+                    )
             except Exception as e:
                 results.append({"url": url, "error": str(e), "isolated": True})
-    except: pass
+    except:
+        pass
     return results
+
 
 def main():
     tenant_a = create_tenant("IsolationA")
@@ -39,11 +49,16 @@ def main():
     failures = [r for r in results if not r.get("isolated")]
     os.makedirs("evidence", exist_ok=True)
     with open("evidence/tenant-isolation-check.json", "w") as f:
-        json.dump({"tenants": [tenant_a, tenant_b], "results": results, "passed": len(failures)==0}, f, indent=2)
+        json.dump(
+            {"tenants": [tenant_a, tenant_b], "results": results, "passed": len(failures) == 0},
+            f,
+            indent=2,
+        )
     if failures:
         print(f"FAILED: {len(failures)} isolation leak(s)")
         sys.exit(1)
     print("PASSED: tenant isolation verified")
+
 
 if __name__ == "__main__":
     main()

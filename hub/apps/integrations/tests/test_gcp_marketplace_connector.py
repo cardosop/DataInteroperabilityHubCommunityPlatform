@@ -9,9 +9,7 @@ Tests the GCPMarketplaceConnector implementation including:
 - Circuit breaker integration
 """
 
-from typing import Any, Dict
-from unittest.mock import MagicMock, Mock, patch
-
+from unittest.mock import Mock, patch
 
 # Optional Google Cloud imports - skip tests if not available
 try:
@@ -35,12 +33,12 @@ pytestmark = pytest.mark.skipif(
 
 from django.test import TestCase
 
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.core.services.base import ConnectionError, NotFoundError, PermissionError
 from hub.apps.integrations.base import (
     MarketplaceType,
     SyncDirection,
 )
-from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
 
 
@@ -207,7 +205,8 @@ class TestGCPMarketplaceConnectorCredentials(TestCase):
     def test_get_credentials_invalid_json_type(self, mock_from_sa_info):
         """Test _get_credentials() raises ValueError for invalid credentials_json type"""
         connector = GCPMarketplaceConnector(
-            project_id="test-project", credentials_json="invalid-string"  # Should be dict
+            project_id="test-project",
+            credentials_json="invalid-string",  # Should be dict
         )
 
         with self.assertRaises(ValueError) as cm:
@@ -565,7 +564,11 @@ class TestGCPMarketplaceConnectorConnectionTest(TestCase):
         with self.assertRaises(ConnectionError) as cm:
             connector.test_connection()
         # Error message should indicate transient error after retries
-        self.assertIn("Transient error", str(cm.exception) or "GCP project" in str(cm.exception))
+        err = str(cm.exception)
+        self.assertTrue(
+            "Transient error" in err or "GCP project" in err,
+            f"Expected transient/GCP error, got: {err}",
+        )
 
     @patch("hub.apps.integrations.connectors.gcp_marketplace_connector.bigquery.Client")
     @patch(

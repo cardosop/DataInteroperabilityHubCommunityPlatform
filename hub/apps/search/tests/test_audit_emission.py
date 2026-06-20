@@ -6,6 +6,7 @@ Covers:
 - Throttled request creates SEARCH_RATE_LIMIT_EXCEEDED row
 - Tenant scoping: tenant A's audit row not visible to tenant B query
 """
+
 from __future__ import annotations
 
 import uuid
@@ -13,7 +14,6 @@ from unittest.mock import patch
 
 import pytest
 from django.test import TestCase, override_settings
-from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.audit.event_types import SEARCH_PERFORMED, SEARCH_RATE_LIMIT_EXCEEDED
@@ -27,15 +27,19 @@ pytestmark = pytest.mark.django_db(transaction=True)
 def _mk_tenant(name="AE"):
     uid = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
-        name=f"{name}-{uid}", slug=f"ae-{uid}",
-        status="ACTIVE", kyc_status="UNVERIFIED",
+        name=f"{name}-{uid}",
+        slug=f"ae-{uid}",
+        status="ACTIVE",
+        kyc_status="UNVERIFIED",
     )
 
 
 def _mk_user(tenant, email_pfx="user"):
     return User.objects.create_user(
         email=f"{email_pfx}-{uuid.uuid4().hex[:8]}@meshant.test",
-        password="testpass", tenant=tenant, status=UserStatus.ACTIVE,
+        password="testpass",
+        tenant=tenant,
+        status=UserStatus.ACTIVE,
     )
 
 
@@ -122,10 +126,12 @@ class TestSearchAuditTenantScoping(TestCase):
         self.client_b.get("/api/search/?q=beta")
 
         audits_a = AuditEvent.objects.filter(
-            action=SEARCH_PERFORMED, tenant_id=self.tenant_a.pk,
+            action=SEARCH_PERFORMED,
+            tenant_id=self.tenant_a.pk,
         )
         audits_b = AuditEvent.objects.filter(
-            action=SEARCH_PERFORMED, tenant_id=self.tenant_b.pk,
+            action=SEARCH_PERFORMED,
+            tenant_id=self.tenant_b.pk,
         )
         assert audits_a.count() == 1
         assert audits_b.count() == 1

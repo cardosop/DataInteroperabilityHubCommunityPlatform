@@ -8,7 +8,6 @@ All names/slugs use uuid suffixes to avoid UniqueViolation under --keepdb.
 import uuid
 
 import pytest
-from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.test import TestCase
 from django.utils import timezone
@@ -21,6 +20,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 def _make_tenant(**overrides):
     """Create a Tenant with a unique name/slug. Avoids collision under --keepdb."""
     from django.db import connection
+
     # Recover from InFailedSqlTransaction left by a previous test's teardown
     if connection.needs_rollback:
         connection.rollback()
@@ -222,6 +222,7 @@ class TenantModelTest(TestCase):
     def test_can_publish_to_marketplace_kyc_expired(self):
         """Tenant with expired KYC cannot publish to marketplace."""
         from datetime import timedelta
+
         tenant = _make_tenant()
         tenant.kyc_status = KYCStatus.VERIFIED
         tenant.status = TenantStatus.ACTIVE
@@ -233,6 +234,7 @@ class TenantModelTest(TestCase):
     def test_can_publish_to_marketplace_kyc_not_expired(self):
         """Tenant with non-expired KYC can publish to marketplace."""
         from datetime import timedelta
+
         tenant = _make_tenant()
         tenant.kyc_status = KYCStatus.VERIFIED
         tenant.status = TenantStatus.ACTIVE
@@ -262,7 +264,7 @@ class TenantPlanModelTest(TestCase):
 
     def test_plan_get_limit(self):
         """Test get_limit method"""
-        uid = uuid.uuid4().hex[:8]
+        uuid.uuid4().hex[:8]
         plan, _ = TenantPlan.objects.get_or_create(
             slug="pro",
             defaults={
@@ -297,33 +299,32 @@ class TenantPlanModelTest(TestCase):
         """Failure: duplicate plan slug raises IntegrityError."""
         uid = uuid.uuid4().hex[:8]
         TenantPlan(
-            name=f"Plan 1 {uid}", slug=f"test-plan-{uid}",
-            tier=PlanTier.FREE, limits_json={}
+            name=f"Plan 1 {uid}", slug=f"test-plan-{uid}", tier=PlanTier.FREE, limits_json={}
         ).save()
         with self.assertRaises(IntegrityError):
             TenantPlan(
-                name=f"Plan 2 {uid}", slug=f"test-plan-{uid}",
-                tier=PlanTier.PRO, limits_json={}
+                name=f"Plan 2 {uid}", slug=f"test-plan-{uid}", tier=PlanTier.PRO, limits_json={}
             ).save()
 
     def test_plan_name_uniqueness_failure(self):
         """Failure: duplicate plan name raises IntegrityError."""
         uid = uuid.uuid4().hex[:8]
         TenantPlan(
-            name=f"Test Plan {uid}", slug=f"test-1-{uid}",
-            tier=PlanTier.FREE, limits_json={}
+            name=f"Test Plan {uid}", slug=f"test-1-{uid}", tier=PlanTier.FREE, limits_json={}
         ).save()
         with self.assertRaises(IntegrityError):
             TenantPlan(
-                name=f"Test Plan {uid}", slug=f"test-2-{uid}",
-                tier=PlanTier.PRO, limits_json={}
+                name=f"Test Plan {uid}", slug=f"test-2-{uid}", tier=PlanTier.PRO, limits_json={}
             ).save()
 
     def test_plan_get_limit_edge_case_default(self):
         """Edge case: get_limit with missing key returns default when provided."""
         uid = uuid.uuid4().hex[:8]
         plan = TenantPlan.objects.create(
-            name=f"Edge {uid}", slug=f"edge-{uid}", tier=PlanTier.FREE, limits_json={"max_assets": 5}
+            name=f"Edge {uid}",
+            slug=f"edge-{uid}",
+            tier=PlanTier.FREE,
+            limits_json={"max_assets": 5},
         )
         self.assertIsNone(plan.get_limit("unknown"))
         self.assertEqual(plan.get_limit("unknown", default=99), 99)

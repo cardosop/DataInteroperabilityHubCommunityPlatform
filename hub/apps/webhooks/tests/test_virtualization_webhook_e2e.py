@@ -14,8 +14,8 @@ import uuid
 
 import pytest
 
-pytestmark = pytest.mark.slow
-from django.test import TestCase, TransactionTestCase, override_settings
+pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True)]
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.core.events.models import Event
@@ -32,7 +32,6 @@ from hub.apps.webhooks.models import (
 )
 from hub.apps.webhooks.virtualization_event_subscriber import get_virtualization_event_subscriber
 
-pytestmark = pytest.mark.django_db(transaction=True)
 
 
 @override_settings(WEBHOOK_ASYNC_DELIVERY=False)

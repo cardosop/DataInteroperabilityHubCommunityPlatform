@@ -22,25 +22,24 @@ This test suite provides comprehensive, engineering-grade validation of:
 All tests follow TDD principles, use real implementations (no mocks/stubs),
 and fix root causes rather than workarounds.
 """
+
 import time
 import uuid
-from typing import Dict, Any, List
-from django.test import TestCase, override_settings
-from django.contrib.auth import get_user_model
-from django.utils import timezone
+from typing import Any
 
+from django.contrib.auth import get_user_model
+from django.test import TestCase, override_settings
+
+from hub.apps.core.events.models import Event
 from hub.apps.orchestration.models import (
+    StepStatus,
     WorkflowDefinition,
     WorkflowInstance,
-    WorkflowStep,
     WorkflowStatus,
-    StepStatus,
 )
 from hub.apps.orchestration.workflow_engine import WorkflowEngine, WorkflowExecutionError
-from hub.apps.orchestration.compensation import WorkflowCompensation
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
-from hub.apps.core.events.models import Event
 
 User = get_user_model()
 
@@ -56,18 +55,22 @@ class WorkflowComprehensiveValidationTestBase(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Register test tasks
         def success_task(input_data, instance, step):
             """Task that always succeeds"""
-            return {"result": "success", "step": step.step_name, "data": input_data.get("value", "default")}
+            return {
+                "result": "success",
+                "step": step.step_name,
+                "data": input_data.get("value", "default"),
+            }
 
         def failing_task(input_data, instance, step):
             """Task that always fails"""
@@ -80,7 +83,7 @@ class WorkflowComprehensiveValidationTestBase(TestCase):
             return {
                 "result": "success",
                 "accumulated": new_value,
-                "state": {"accumulated": new_value, "step": step.step_name}
+                "state": {"accumulated": new_value, "step": step.step_name},
             }
 
         def compensation_task(input_data, instance, step):
@@ -89,17 +92,13 @@ class WorkflowComprehensiveValidationTestBase(TestCase):
             return {
                 "result": "success",
                 "resource_id": resource_id,
-                "state": {"created_resources": [resource_id]}
+                "state": {"created_resources": [resource_id]},
             }
 
         def compensation_handler(input_data, instance, step):
             """Compensation handler for compensation_task"""
             resource_id = step.output_data.get("resource_id")
-            return {
-                "status": "compensated",
-                "resource_id": resource_id,
-                "action": "deleted"
-            }
+            return {"status": "compensated", "resource_id": resource_id, "action": "deleted"}
 
         self.engine.register_task("success_task", success_task)
         self.engine.register_task("failing_task", failing_task)
@@ -108,19 +107,13 @@ class WorkflowComprehensiveValidationTestBase(TestCase):
         self.engine.register_task("compensation_handler", compensation_handler)
 
     def create_workflow_definition(
-        self,
-        name: str,
-        steps: List[Dict[str, Any]],
-        version: str = "1.0.0"
+        self, name: str, steps: list[dict[str, Any]], version: str = "1.0.0"
     ) -> WorkflowDefinition:
         """Helper to create a workflow definition"""
         return WorkflowDefinition.objects.create(
             name=name,
             version=version,
-            dsl_json={
-                "version": version,
-                "steps": steps
-            },
+            dsl_json={"version": version, "steps": steps},
             is_active=True,
         )
 
@@ -136,13 +129,13 @@ class WorkflowStateVerificationTest(WorkflowComprehensiveValidationTestBase):
     def test_workflow_state_is_correctly_tracked(self):
         """Test that workflow state is correctly tracked throughout execution"""
         # Create workflow with state-accumulating steps
-        workflow_def = self.create_workflow_definition(
+        self.create_workflow_definition(
             name="state_tracking_workflow",
             steps=[
                 {"name": "step1", "type": "task", "task": "state_accumulating_task"},
                 {"name": "step2", "type": "task", "task": "state_accumulating_task"},
                 {"name": "step3", "type": "task", "task": "state_accumulating_task"},
-            ]
+            ],
         )
 
         instance = self.engine.create_instance(
@@ -180,7 +173,7 @@ class WorkflowStateVerificationTest(WorkflowComprehensiveValidationTestBase):
     def test_workflow_progress_is_accurately_calculated(self):
         """Test that workflow progress is accurately calculated"""
         # Create workflow with 5 steps
-        workflow_def = self.create_workflow_definition(
+        self.create_workflow_definition(
             name="progress_calculation_workflow",
             steps=[
                 {"name": "step1", "type": "task", "task": "success_task"},
@@ -188,7 +181,7 @@ class WorkflowStateVerificationTest(WorkflowComprehensiveValidationTestBase):
                 {"name": "step3", "type": "task", "task": "success_task"},
                 {"name": "step4", "type": "task", "task": "success_task"},
                 {"name": "step5", "type": "task", "task": "success_task"},
-            ]
+            ],
         )
 
         instance = self.engine.create_instance(
@@ -220,12 +213,12 @@ class WorkflowStateVerificationTest(WorkflowComprehensiveValidationTestBase):
     def test_workflow_events_are_published_at_correct_times(self):
         """Test that workflow events are published at correct times"""
         # Create simple workflow
-        workflow_def = self.create_workflow_definition(
+        self.create_workflow_definition(
             name="event_timing_workflow",
             steps=[
                 {"name": "step1", "type": "task", "task": "success_task"},
                 {"name": "step2", "type": "task", "task": "success_task"},
-            ]
+            ],
         )
 
         instance = self.engine.create_instance(
@@ -240,63 +233,62 @@ class WorkflowStateVerificationTest(WorkflowComprehensiveValidationTestBase):
 
         # Start workflow
         instance = self.engine.start_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Verify workflow.started event was published
         started_events = Event.objects.filter(
-            event_type="workflow.started",
-            data__workflow_instance_id=str(instance.id)
+            event_type="workflow.started", data__workflow_instance_id=str(instance.id)
         )
         self.assertGreater(started_events.count(), 0, "workflow.started event should be published")
 
         # Execute workflow
         instance = self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Refresh to get latest state
         instance.refresh_from_db()
 
         # Verify workflow.completed event was published
         completed_events = Event.objects.filter(
-            event_type="workflow.completed",
-            data__workflow_instance_id=str(instance.id)
+            event_type="workflow.completed", data__workflow_instance_id=str(instance.id)
         )
-        self.assertGreater(completed_events.count(), 0, "workflow.completed event should be published")
+        self.assertGreater(
+            completed_events.count(), 0, "workflow.completed event should be published"
+        )
 
         # Verify step events were published
         step_started_events = Event.objects.filter(
-            event_type="workflow.step.started",
-            data__workflow_instance_id=str(instance.id)
+            event_type="workflow.step.started", data__workflow_instance_id=str(instance.id)
         )
-        self.assertGreaterEqual(step_started_events.count(), 2, "workflow.step.started events should be published")
+        self.assertGreaterEqual(
+            step_started_events.count(), 2, "workflow.step.started events should be published"
+        )
 
         step_completed_events = Event.objects.filter(
-            event_type="workflow.step.completed",
-            data__workflow_instance_id=str(instance.id)
+            event_type="workflow.step.completed", data__workflow_instance_id=str(instance.id)
         )
-        self.assertGreaterEqual(step_completed_events.count(), 2, "workflow.step.completed events should be published")
+        self.assertGreaterEqual(
+            step_completed_events.count(), 2, "workflow.step.completed events should be published"
+        )
 
     def test_workflow_compensation_logic_works_correctly(self):
         """Test that workflow compensation logic works correctly"""
         # Create workflow with compensation
-        workflow_def = self.create_workflow_definition(
+        self.create_workflow_definition(
             name="compensation_workflow",
             steps=[
                 {
                     "name": "step1",
                     "type": "task",
                     "task": "compensation_task",
-                    "compensation": {
-                        "type": "task",
-                        "task": "compensation_handler"
-                    }
+                    "compensation": {"type": "task", "task": "compensation_handler"},
                 },
                 {
                     "name": "step2",
                     "type": "task",
                     "task": "failing_task",  # This will fail
                 },
-            ]
+            ],
         )
 
         instance = self.engine.create_instance(
@@ -316,13 +308,16 @@ class WorkflowStateVerificationTest(WorkflowComprehensiveValidationTestBase):
             pass  # Expected to fail
 
         # Wait for compensation to complete
-        time.sleep(0.2)  # INTENTIONAL: brief yield for async workflow execution
+        time.sleep(0.2)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async workflow execution
 
         # Refresh to get latest state
         instance.refresh_from_db()
 
         # Verify workflow is in ROLLED_BACK or FAILED state
-        self.assertIn(instance.status, [WorkflowStatus.ROLLED_BACK, WorkflowStatus.FAILED, WorkflowStatus.ROLLING_BACK])
+        self.assertIn(
+            instance.status,
+            [WorkflowStatus.ROLLED_BACK, WorkflowStatus.FAILED, WorkflowStatus.ROLLING_BACK],
+        )
 
         # Verify step1 was compensated
         step1 = instance.steps.get(step_index=0)
@@ -347,13 +342,17 @@ class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase):
     def test_workflow_handles_step_failures_correctly(self):
         """Test that workflow handles step failures correctly"""
         # Create workflow with a failing step
-        workflow_def = self.create_workflow_definition(
+        self.create_workflow_definition(
             name="failure_handling_workflow",
             steps=[
                 {"name": "step1", "type": "task", "task": "success_task"},
                 {"name": "step2", "type": "task", "task": "failing_task"},  # This will fail
-                {"name": "step3", "type": "task", "task": "success_task"},  # This should not execute
-            ]
+                {
+                    "name": "step3",
+                    "type": "task",
+                    "task": "success_task",
+                },  # This should not execute
+            ],
         )
 
         instance = self.engine.create_instance(
@@ -376,7 +375,10 @@ class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase):
         instance.refresh_from_db()
 
         # Verify workflow is in FAILED or ROLLED_BACK state
-        self.assertIn(instance.status, [WorkflowStatus.FAILED, WorkflowStatus.ROLLING_BACK, WorkflowStatus.ROLLED_BACK])
+        self.assertIn(
+            instance.status,
+            [WorkflowStatus.FAILED, WorkflowStatus.ROLLING_BACK, WorkflowStatus.ROLLED_BACK],
+        )
 
         # Verify step1 completed
         step1 = instance.steps.get(step_index=0)
@@ -394,33 +396,27 @@ class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase):
     def test_workflow_compensation_logic_executes_on_failure(self):
         """Test that workflow compensation logic executes on failure"""
         # Create workflow with compensation
-        workflow_def = self.create_workflow_definition(
+        self.create_workflow_definition(
             name="compensation_on_failure_workflow",
             steps=[
                 {
                     "name": "step1",
                     "type": "task",
                     "task": "compensation_task",
-                    "compensation": {
-                        "type": "task",
-                        "task": "compensation_handler"
-                    }
+                    "compensation": {"type": "task", "task": "compensation_handler"},
                 },
                 {
                     "name": "step2",
                     "type": "task",
                     "task": "compensation_task",
-                    "compensation": {
-                        "type": "task",
-                        "task": "compensation_handler"
-                    }
+                    "compensation": {"type": "task", "task": "compensation_handler"},
                 },
                 {
                     "name": "step3",
                     "type": "task",
                     "task": "failing_task",  # This will fail
                 },
-            ]
+            ],
         )
 
         instance = self.engine.create_instance(
@@ -440,13 +436,16 @@ class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase):
             pass  # Expected to fail
 
         # Wait a bit for compensation to complete
-        time.sleep(0.3)  # INTENTIONAL: brief yield for async workflow execution
+        time.sleep(0.3)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async workflow execution
 
         # Refresh to get latest state (outside transaction)
         instance = WorkflowInstance.objects.get(id=instance.id)
 
         # Verify workflow is in ROLLED_BACK or FAILED state
-        self.assertIn(instance.status, [WorkflowStatus.ROLLED_BACK, WorkflowStatus.FAILED, WorkflowStatus.ROLLING_BACK])
+        self.assertIn(
+            instance.status,
+            [WorkflowStatus.ROLLED_BACK, WorkflowStatus.FAILED, WorkflowStatus.ROLLING_BACK],
+        )
 
         # If rollback succeeded, verify compensation was executed
         if instance.status == WorkflowStatus.ROLLED_BACK:
@@ -461,24 +460,21 @@ class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase):
     def test_workflow_rollback_works_correctly(self):
         """Test that workflow rollback works correctly"""
         # Create workflow with compensation
-        workflow_def = self.create_workflow_definition(
+        self.create_workflow_definition(
             name="rollback_workflow",
             steps=[
                 {
                     "name": "step1",
                     "type": "task",
                     "task": "compensation_task",
-                    "compensation": {
-                        "type": "task",
-                        "task": "compensation_handler"
-                    }
+                    "compensation": {"type": "task", "task": "compensation_handler"},
                 },
                 {
                     "name": "step2",
                     "type": "task",
                     "task": "failing_task",  # This will fail
                 },
-            ]
+            ],
         )
 
         instance = self.engine.create_instance(
@@ -498,7 +494,7 @@ class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase):
             pass  # Expected to fail
 
         # Wait for rollback to complete
-        time.sleep(0.3)  # INTENTIONAL: brief yield for async workflow execution
+        time.sleep(0.3)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async workflow execution
 
         # Refresh to get latest state (outside transaction)
         instance = WorkflowInstance.objects.get(id=instance.id)
@@ -512,8 +508,8 @@ class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase):
             self.assertIsNotNone(instance.error_details)
             self.assertIn("compensation_results", str(instance.error_details))
 
-    def test_workflow_retry_logic_works_correctly(self):
-        """Test that workflow retry logic works correctly"""
+    def test_workflow_task_is_called_at_least_once(self):
+        """Test that workflow task function is called (structural check — step-level retry config needs separate test)."""
         # Track retry attempts
         retry_count = {"value": 0}
 
@@ -529,11 +525,11 @@ class WorkflowFailureScenariosTest(WorkflowComprehensiveValidationTestBase):
         # Create workflow with a simple task that will be retried at the step level
         # Note: The retry step type retries internally, so we'll use a simpler approach
         # Create workflow with a task that fails, then verify retry logic at step level
-        workflow_def = self.create_workflow_definition(
+        self.create_workflow_definition(
             name="retry_workflow",
             steps=[
                 {"name": "step1", "type": "task", "task": "retryable_task"},
-            ]
+            ],
         )
 
         instance = self.engine.create_instance(
@@ -578,13 +574,13 @@ class WorkflowEventOrderingTest(WorkflowComprehensiveValidationTestBase):
     def test_workflow_events_are_published_in_correct_order(self):
         """Test that workflow events are published in correct order"""
         # Create workflow with multiple steps
-        workflow_def = self.create_workflow_definition(
+        self.create_workflow_definition(
             name="event_ordering_workflow",
             steps=[
                 {"name": "step1", "type": "task", "task": "success_task"},
                 {"name": "step2", "type": "task", "task": "success_task"},
                 {"name": "step3", "type": "task", "task": "success_task"},
-            ]
+            ],
         )
 
         # Clear any existing events before creating instance
@@ -596,20 +592,20 @@ class WorkflowEventOrderingTest(WorkflowComprehensiveValidationTestBase):
             tenant_id=str(self.tenant.id),
             created_by_id=str(self.user.id),
         )
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Start workflow
         instance = self.engine.start_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Execute workflow
         instance = self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Get all workflow events for this instance, ordered by timestamp
-        events = Event.objects.filter(
-            data__workflow_instance_id=str(instance.id)
-        ).order_by("timestamp")
+        events = Event.objects.filter(data__workflow_instance_id=str(instance.id)).order_by(
+            "timestamp"
+        )
 
         # Verify event order
         event_types = [e.event_type for e in events]
@@ -631,21 +627,36 @@ class WorkflowEventOrderingTest(WorkflowComprehensiveValidationTestBase):
         started_index = event_types.index("workflow.started")
 
         # Step events should come after started
-        step_started_indices = [i for i, et in enumerate(event_types) if et == "workflow.step.started"]
-        step_completed_indices = [i for i, et in enumerate(event_types) if et == "workflow.step.completed"]
+        step_started_indices = [
+            i for i, et in enumerate(event_types) if et == "workflow.step.started"
+        ]
+        [i for i, et in enumerate(event_types) if et == "workflow.step.completed"]
 
         if step_started_indices:
             self.assertGreater(min(step_started_indices), started_index)
 
         # Step completed should come after step started
         for step_idx in range(3):
-            step_started_events = [e for e in events if e.event_type == "workflow.step.started" and e.data.get("step_index") == step_idx]
-            step_completed_events = [e for e in events if e.event_type == "workflow.step.completed" and e.data.get("step_index") == step_idx]
+            step_started_events = [
+                e
+                for e in events
+                if e.event_type == "workflow.step.started" and e.data.get("step_index") == step_idx
+            ]
+            step_completed_events = [
+                e
+                for e in events
+                if e.event_type == "workflow.step.completed"
+                and e.data.get("step_index") == step_idx
+            ]
 
             if step_started_events and step_completed_events:
                 started_time = step_started_events[0].timestamp
                 completed_time = step_completed_events[0].timestamp
-                self.assertLessEqual(started_time, completed_time, f"Step {step_idx} started should come before completed")
+                self.assertLessEqual(
+                    started_time,
+                    completed_time,
+                    f"Step {step_idx} started should come before completed",
+                )
 
         # workflow.completed should come last
         self.assertIn("workflow.completed", event_types)
@@ -655,13 +666,13 @@ class WorkflowEventOrderingTest(WorkflowComprehensiveValidationTestBase):
     def test_workflow_step_events_include_progress_percentage(self):
         """Test that workflow step events include progress_percentage"""
         # Create workflow with multiple steps
-        workflow_def = self.create_workflow_definition(
+        self.create_workflow_definition(
             name="progress_event_workflow",
             steps=[
                 {"name": "step1", "type": "task", "task": "success_task"},
                 {"name": "step2", "type": "task", "task": "success_task"},
                 {"name": "step3", "type": "task", "task": "success_task"},
-            ]
+            ],
         )
 
         instance = self.engine.create_instance(
@@ -676,21 +687,19 @@ class WorkflowEventOrderingTest(WorkflowComprehensiveValidationTestBase):
 
         # Start workflow
         instance = self.engine.start_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Execute workflow
         instance = self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Get step events
         step_started_events = Event.objects.filter(
-            event_type="workflow.step.started",
-            data__workflow_instance_id=str(instance.id)
+            event_type="workflow.step.started", data__workflow_instance_id=str(instance.id)
         ).order_by("timestamp")
 
         step_completed_events = Event.objects.filter(
-            event_type="workflow.step.completed",
-            data__workflow_instance_id=str(instance.id)
+            event_type="workflow.step.completed", data__workflow_instance_id=str(instance.id)
         ).order_by("timestamp")
 
         # Verify step.started events include progress_percentage
@@ -714,17 +723,19 @@ class WorkflowEventOrderingTest(WorkflowComprehensiveValidationTestBase):
             progress_values = [e.data["progress_percentage"] for e in step_completed_events]
             # Progress should be non-decreasing
             for i in range(1, len(progress_values)):
-                self.assertLessEqual(progress_values[i-1], progress_values[i], "Progress should be non-decreasing")
+                self.assertLessEqual(
+                    progress_values[i - 1], progress_values[i], "Progress should be non-decreasing"
+                )
 
     def test_workflow_completion_events_are_published(self):
         """Test that workflow completion events are published"""
         # Create workflow
-        workflow_def = self.create_workflow_definition(
+        self.create_workflow_definition(
             name="completion_event_workflow",
             steps=[
                 {"name": "step1", "type": "task", "task": "success_task"},
                 {"name": "step2", "type": "task", "task": "success_task"},
-            ]
+            ],
         )
 
         instance = self.engine.create_instance(
@@ -739,21 +750,22 @@ class WorkflowEventOrderingTest(WorkflowComprehensiveValidationTestBase):
 
         # Start workflow
         instance = self.engine.start_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Execute workflow
         instance = self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Refresh to get latest state
         instance.refresh_from_db()
 
         # Verify workflow.completed event was published
         completed_events = Event.objects.filter(
-            event_type="workflow.completed",
-            data__workflow_instance_id=str(instance.id)
+            event_type="workflow.completed", data__workflow_instance_id=str(instance.id)
         )
-        self.assertGreater(completed_events.count(), 0, "workflow.completed event should be published")
+        self.assertGreater(
+            completed_events.count(), 0, "workflow.completed event should be published"
+        )
 
         # Verify event contains required fields
         completed_event = completed_events.first()

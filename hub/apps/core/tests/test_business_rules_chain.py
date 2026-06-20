@@ -5,13 +5,13 @@ Tests chain registration, execution, atomic context, rule ordering,
 dependency validation, health endpoint, semgrep guard compliance,
 and per-tenant enablement.
 """
-from __future__ import annotations
-import pytest
 
+from __future__ import annotations
+
+import pytest
 from django.test import TestCase
 
 from hub.apps.core.business_rules.chain_registry import (
-    execute_chain,
     get_chain,
     register_chain,
 )
@@ -23,8 +23,13 @@ class BusinessRulesChainTests(TestCase):
     @pytest.mark.integration
     def test_chains_are_registered(self):
         """All 5 standard chains should be registered."""
-        chains = ["contract.publish", "asset.activate", "marketplace.listing.publish",
-                   "governance.approval.advance", "semantic.query.execute"]
+        chains = [
+            "contract.publish",
+            "asset.activate",
+            "marketplace.listing.publish",
+            "governance.approval.advance",
+            "semantic.query.execute",
+        ]
         for name in chains:
             chain = get_chain(name)
             self.assertIsNotNone(chain, f"Chain '{name}' should be registered")
@@ -51,8 +56,7 @@ class BusinessRulesChainTests(TestCase):
         self.assertIn("steps", result)
         self.assertIn("duration_ms", result)
         self.assertIn("errors", result)
-        self.assertGreater(len(result["steps"]), 0,
-                           "Chain should have executed at least one step")
+        self.assertGreater(len(result["steps"]), 0, "Chain should have executed at least one step")
         self.assertIsInstance(result["duration_ms"], (int, float))
 
     @pytest.mark.integration
@@ -63,13 +67,16 @@ class BusinessRulesChainTests(TestCase):
         process-wide registry.
         """
         import uuid
+
         unique_name = f"test-chain-{uuid.uuid4().hex[:8]}"
 
         @register_chain(unique_name)
         def _first():
             from hub.apps.core.business_rules.base import ValidationResult
+
             def _s(ctx, **kw):
                 return ValidationResult(is_valid=True)
+
             return [_s]
 
         first = get_chain(unique_name)
@@ -80,23 +87,26 @@ class BusinessRulesChainTests(TestCase):
         @register_chain(unique_name)
         def _second():
             from hub.apps.core.business_rules.base import ValidationResult
+
             def _s1(ctx, **kw):
                 return ValidationResult(is_valid=True)
+
             def _s2(ctx, **kw):
                 return ValidationResult(is_valid=True)
+
             return [_s1, _s2]
 
         second = get_chain(unique_name)
         self.assertIsNotNone(second)
-        self.assertEqual(len(second.steps), 2,
-                         "Re-registration should replace step list")
+        self.assertEqual(len(second.steps), 2, "Re-registration should replace step list")
 
     @pytest.mark.integration
     def test_chain_registry_imports_cleanly(self):
         """Chain registry module should import without errors."""
         from hub.apps.core.business_rules import chain_registry
-        self.assertTrue(hasattr(chain_registry, 'execute_chain'))
-        self.assertTrue(hasattr(chain_registry, 'get_chain'))
+
+        self.assertTrue(hasattr(chain_registry, "execute_chain"))
+        self.assertTrue(hasattr(chain_registry, "get_chain"))
 
     @pytest.mark.integration
     def test_chain_names_follow_convention(self):
@@ -104,12 +114,12 @@ class BusinessRulesChainTests(TestCase):
         for name in ["contract.publish", "asset.activate"]:
             parts = name.split(".")
             self.assertGreaterEqual(len(parts), 2, f"Chain '{name}' should have at least 2 parts")
-            self.assertTrue(all(p.islower() for p in parts),
-                            f"Chain '{name}' should be lowercase")
+            self.assertTrue(all(p.islower() for p in parts), f"Chain '{name}' should be lowercase")
 
     @pytest.mark.integration
     def test_registry_module_structure(self):
         """Chain registry should export expected functions."""
         import hub.apps.core.business_rules.chain_registry as cr
+
         for attr in ["execute_chain", "get_chain", "register_chain"]:
             self.assertTrue(hasattr(cr, attr), f"chain_registry should export {attr}")

@@ -14,12 +14,14 @@ Key Features:
 - Graceful handling of missing optional fields
 - YAML and JSON output formatting
 """
-import structlog
-import uuid
+
 import time
+import uuid
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
+
+import structlog
 
 from hub.apps.contracts.odcs_errors import ODCSExportError, ODCSGenerationError
 
@@ -28,6 +30,7 @@ logger = structlog.get_logger(__name__)
 # Try to import yaml, but make it optional
 try:
     import yaml
+
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
@@ -58,10 +61,8 @@ class ODCSGeneratorBase(ABC):
 
     @abstractmethod
     def generate_odcs_from_hubcontract(
-        self,
-        hub_contract: Dict[str, Any],
-        target_version: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, hub_contract: dict[str, Any], target_version: str | None = None
+    ) -> dict[str, Any]:
         """
         Generate ODCS document from HubContract format.
 
@@ -81,12 +82,9 @@ class ODCSGeneratorBase(ABC):
                 - expected: Expected type or value
                 - actual: Actual type or value that caused the error
         """
-        pass
 
     def validate_hub_contract_structure(
-        self,
-        hub_contract: Dict[str, Any],
-        field_path: str = "/"
+        self, hub_contract: dict[str, Any], field_path: str = "/"
     ) -> None:
         """
         Validate HubContract structure.
@@ -197,11 +195,7 @@ class ODCSGeneratorBase(ABC):
         )
 
     def validate_field_type(
-        self,
-        value: Any,
-        expected_type: type,
-        field_path: str,
-        allow_none: bool = False
+        self, value: Any, expected_type: type, field_path: str, allow_none: bool = False
     ) -> None:
         """
         Validate field type with detailed error context.
@@ -240,10 +234,7 @@ class ODCSGeneratorBase(ABC):
             )
 
     def log_generation_start(
-        self,
-        contract_id: str,
-        name: str,
-        target_version: Optional[str] = None
+        self, contract_id: str, name: str, target_version: str | None = None
     ) -> None:
         """
         Log generation start with structured logging.
@@ -262,10 +253,7 @@ class ODCSGeneratorBase(ABC):
         )
 
     def log_generation_complete(
-        self,
-        contract_id: str,
-        name: str,
-        target_version: Optional[str] = None
+        self, contract_id: str, name: str, target_version: str | None = None
     ) -> None:
         """
         Log generation completion with structured logging.
@@ -284,10 +272,7 @@ class ODCSGeneratorBase(ABC):
         )
 
     def log_generation_error(
-        self,
-        error: Exception,
-        contract_id: Optional[str] = None,
-        field_path: Optional[str] = None
+        self, error: Exception, contract_id: str | None = None, field_path: str | None = None
     ) -> None:
         """
         Log generation error with structured logging.
@@ -339,10 +324,8 @@ class ODCSGeneratorV2_2_2(ODCSGeneratorBase):
         self.target_version = "2.2.2"
 
     def generate_odcs_from_hubcontract(
-        self,
-        hub_contract: Dict[str, Any],
-        target_version: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, hub_contract: dict[str, Any], target_version: str | None = None
+    ) -> dict[str, Any]:
         """
         Generate ODCS 2.2.2 document from HubContract format.
 
@@ -375,11 +358,13 @@ class ODCSGeneratorV2_2_2(ODCSGeneratorBase):
             }
 
             # Map basic info fields
-            if "description" in info and info["description"]:
-                self.validate_field_type(info["description"], str, "/info/description", allow_none=False)
+            if info.get("description"):
+                self.validate_field_type(
+                    info["description"], str, "/info/description", allow_none=False
+                )
                 odcs_doc["description"] = info["description"]
 
-            if "version" in info and info["version"]:
+            if info.get("version"):
                 self.validate_field_type(info["version"], str, "/info/version", allow_none=False)
                 odcs_doc["version"] = info["version"]
 
@@ -411,7 +396,7 @@ class ODCSGeneratorV2_2_2(ODCSGeneratorBase):
             # Wrap unexpected errors
             self.log_generation_error(e, hub_contract.get("id"))
             raise ODCSGenerationError(
-                message=f"Unexpected error generating ODCS 2.2.2 document: {str(e)}",
+                message=f"Unexpected error generating ODCS 2.2.2 document: {e!s}",
                 error_code=ODCSGenerationError.ERROR_CODE_GENERATION_FAILED,
                 context={
                     "field_path": "/",
@@ -421,7 +406,9 @@ class ODCSGeneratorV2_2_2(ODCSGeneratorBase):
                 cause=e,
             ) from e
 
-    def _map_schema_section_v2_2_2(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_schema_section_v2_2_2(
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
+    ) -> None:
         """
         Map HubContract schema section to ODCS 2.2.2 format.
 
@@ -477,7 +464,9 @@ class ODCSGeneratorV2_2_2(ODCSGeneratorBase):
         primary_key = schema.get("primary_key")
         if primary_key:
             if isinstance(primary_key, list):
-                odcs_schema["primary_key"] = primary_key if len(primary_key) > 1 else primary_key[0] if primary_key else None
+                odcs_schema["primary_key"] = (
+                    primary_key if len(primary_key) > 1 else primary_key[0] if primary_key else None
+                )
             elif isinstance(primary_key, str):
                 odcs_schema["primary_key"] = primary_key
 
@@ -494,7 +483,9 @@ class ODCSGeneratorV2_2_2(ODCSGeneratorBase):
         if odcs_schema:
             odcs_doc["schema"] = odcs_schema
 
-    def _map_quality_section_v2_2_2(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_quality_section_v2_2_2(
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
+    ) -> None:
         """
         Map HubContract quality section to ODCS 2.2.2 format.
 
@@ -539,7 +530,9 @@ class ODCSGeneratorV2_2_2(ODCSGeneratorBase):
         if odcs_quality:
             odcs_doc["quality"] = odcs_quality
 
-    def _map_lifecycle_section_v2_2_2(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_lifecycle_section_v2_2_2(
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
+    ) -> None:
         """
         Map HubContract lifecycle section to ODCS 2.2.2 format.
 
@@ -575,13 +568,15 @@ class ODCSGeneratorV2_2_2(ODCSGeneratorBase):
             self.logger.warning(
                 "odcs_v2_2_2_lifecycle_features_omitted",
                 features=three_x_features,
-                message=f"ODCS 3.x lifecycle features omitted in 2.2.2: {', '.join(three_x_features)}"
+                message=f"ODCS 3.x lifecycle features omitted in 2.2.2: {', '.join(three_x_features)}",
             )
 
         if odcs_lifecycle:
             odcs_doc["lifecycle"] = odcs_lifecycle
 
-    def _map_marketplace_section_v2_2_2(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_marketplace_section_v2_2_2(
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
+    ) -> None:
         """
         Map HubContract marketplace section to ODCS 2.2.2 format.
 
@@ -619,14 +614,16 @@ class ODCSGeneratorV2_2_2(ODCSGeneratorBase):
             self.logger.warning(
                 "odcs_v2_2_2_marketplace_features_omitted",
                 features=three_x_features,
-                message=f"ODCS 3.x marketplace features omitted in 2.2.2: {', '.join(three_x_features)}"
+                message=f"ODCS 3.x marketplace features omitted in 2.2.2: {', '.join(three_x_features)}",
             )
 
         # Only add marketplace section if it has content (unlikely for 2.2.2)
         if odcs_marketplace:
             odcs_doc["marketplace"] = odcs_marketplace
 
-    def _map_privacy_compliance_section_v2_2_2(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_privacy_compliance_section_v2_2_2(
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
+    ) -> None:
         """
         Map HubContract privacy_compliance section to ODCS 2.2.2 format.
 
@@ -662,13 +659,13 @@ class ODCSGeneratorV2_2_2(ODCSGeneratorBase):
             self.logger.warning(
                 "odcs_v2_2_2_privacy_features_omitted",
                 features=three_x_features,
-                message=f"ODCS 3.x privacy compliance features omitted in 2.2.2: {', '.join(three_x_features)}"
+                message=f"ODCS 3.x privacy compliance features omitted in 2.2.2: {', '.join(three_x_features)}",
             )
 
         if odcs_privacy:
             odcs_doc["privacy_compliance"] = odcs_privacy
 
-    def _map_info_section(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_info_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """
         Map HubContract info section to ODCS format.
 
@@ -739,10 +736,8 @@ class ODCSGeneratorV3_0_1(ODCSGeneratorBase):
         self.target_version = "3.0.1"
 
     def generate_odcs_from_hubcontract(
-        self,
-        hub_contract: Dict[str, Any],
-        target_version: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, hub_contract: dict[str, Any], target_version: str | None = None
+    ) -> dict[str, Any]:
         """
         Generate ODCS 3.0.1 document from HubContract format.
 
@@ -775,11 +770,13 @@ class ODCSGeneratorV3_0_1(ODCSGeneratorBase):
             }
 
             # Map basic info fields
-            if "description" in info and info["description"]:
-                self.validate_field_type(info["description"], str, "/info/description", allow_none=False)
+            if info.get("description"):
+                self.validate_field_type(
+                    info["description"], str, "/info/description", allow_none=False
+                )
                 odcs_doc["description"] = info["description"]
 
-            if "version" in info and info["version"]:
+            if info.get("version"):
                 self.validate_field_type(info["version"], str, "/info/version", allow_none=False)
                 odcs_doc["version"] = info["version"]
 
@@ -811,7 +808,7 @@ class ODCSGeneratorV3_0_1(ODCSGeneratorBase):
             # Wrap unexpected errors
             self.log_generation_error(e, hub_contract.get("id"))
             raise ODCSGenerationError(
-                message=f"Unexpected error generating ODCS 3.0.1 document: {str(e)}",
+                message=f"Unexpected error generating ODCS 3.0.1 document: {e!s}",
                 error_code=ODCSGenerationError.ERROR_CODE_GENERATION_FAILED,
                 context={
                     "field_path": "/",
@@ -821,7 +818,9 @@ class ODCSGeneratorV3_0_1(ODCSGeneratorBase):
                 cause=e,
             ) from e
 
-    def _map_schema_section_v3_0_1(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_schema_section_v3_0_1(
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
+    ) -> None:
         """
         Map HubContract schema section to ODCS 3.0.1 format.
 
@@ -877,7 +876,9 @@ class ODCSGeneratorV3_0_1(ODCSGeneratorBase):
         primary_key = schema.get("primary_key")
         if primary_key:
             if isinstance(primary_key, list):
-                odcs_schema["primary_key"] = primary_key if len(primary_key) > 1 else primary_key[0] if primary_key else None
+                odcs_schema["primary_key"] = (
+                    primary_key if len(primary_key) > 1 else primary_key[0] if primary_key else None
+                )
             elif isinstance(primary_key, str):
                 odcs_schema["primary_key"] = primary_key
 
@@ -894,7 +895,9 @@ class ODCSGeneratorV3_0_1(ODCSGeneratorBase):
         if odcs_schema:
             odcs_doc["schema"] = odcs_schema
 
-    def _map_lifecycle_section_v3_0_1(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_lifecycle_section_v3_0_1(
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
+    ) -> None:
         """
         Map HubContract lifecycle section to ODCS 3.0.1 format.
 
@@ -940,13 +943,15 @@ class ODCSGeneratorV3_0_1(ODCSGeneratorBase):
             self.logger.warning(
                 "odcs_v3_0_1_enhanced_lifecycle_features_omitted",
                 features=enhanced_features,
-                message=f"ODCS 3.0.2+ enhanced lifecycle features omitted: {', '.join(enhanced_features)}"
+                message=f"ODCS 3.0.2+ enhanced lifecycle features omitted: {', '.join(enhanced_features)}",
             )
 
         if odcs_lifecycle:
             odcs_doc["lifecycle"] = odcs_lifecycle
 
-    def _map_marketplace_section_v3_0_1(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_marketplace_section_v3_0_1(
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
+    ) -> None:
         """
         Map HubContract marketplace section to ODCS 3.0.1 format.
 
@@ -992,13 +997,13 @@ class ODCSGeneratorV3_0_1(ODCSGeneratorBase):
             self.logger.warning(
                 "odcs_v3_0_1_enhanced_marketplace_features_omitted",
                 features=enhanced_features,
-                message=f"ODCS 3.0.2+ enhanced marketplace features omitted: {', '.join(enhanced_features)}"
+                message=f"ODCS 3.0.2+ enhanced marketplace features omitted: {', '.join(enhanced_features)}",
             )
 
         if odcs_marketplace:
             odcs_doc["marketplace"] = odcs_marketplace
 
-    def _map_info_section(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_info_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """
         Map HubContract info section to ODCS format.
 
@@ -1035,7 +1040,7 @@ class ODCSGeneratorV3_0_1(ODCSGeneratorBase):
                 odcs_doc["info"] = {}
             odcs_doc["info"]["tags"] = tags
 
-    def _map_quality_section(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_quality_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """
         Map HubContract quality section to ODCS format.
 
@@ -1078,7 +1083,9 @@ class ODCSGeneratorV3_0_1(ODCSGeneratorBase):
         if odcs_quality:
             odcs_doc["quality"] = odcs_quality
 
-    def _map_privacy_compliance_section(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_privacy_compliance_section(
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
+    ) -> None:
         """
         Map HubContract privacy_compliance section to ODCS format.
 
@@ -1098,7 +1105,9 @@ class ODCSGeneratorV3_0_1(ODCSGeneratorBase):
 
         # Map personal_data_categories
         if "personal_data_categories" in privacy_compliance:
-            odcs_privacy["personal_data_categories"] = privacy_compliance["personal_data_categories"]
+            odcs_privacy["personal_data_categories"] = privacy_compliance[
+                "personal_data_categories"
+            ]
 
         # Map jurisdictions
         if "jurisdictions" in privacy_compliance:
@@ -1145,10 +1154,8 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
     """
 
     def generate_odcs_from_hubcontract(
-        self,
-        hub_contract: Dict[str, Any],
-        target_version: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, hub_contract: dict[str, Any], target_version: str | None = None
+    ) -> dict[str, Any]:
         """
         Generate ODCS 3.0.2 document from HubContract format.
 
@@ -1185,11 +1192,13 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
             }
 
             # Map basic info fields
-            if "description" in info and info["description"]:
-                self.validate_field_type(info["description"], str, "/info/description", allow_none=False)
+            if info.get("description"):
+                self.validate_field_type(
+                    info["description"], str, "/info/description", allow_none=False
+                )
                 odcs_doc["description"] = info["description"]
 
-            if "version" in info and info["version"]:
+            if info.get("version"):
                 self.validate_field_type(info["version"], str, "/info/version", allow_none=False)
                 odcs_doc["version"] = info["version"]
 
@@ -1227,7 +1236,7 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
             # Wrap unexpected errors
             self.log_generation_error(e, contract_id=hub_contract.get("id"))
             raise ODCSGenerationError(
-                message=f"Unexpected error generating ODCS 3.0.2 document: {str(e)}",
+                message=f"Unexpected error generating ODCS 3.0.2 document: {e!s}",
                 error_code=ODCSGenerationError.ERROR_CODE_GENERATION_FAILED,
                 context={
                     "field_path": "/",
@@ -1237,11 +1246,7 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
                 cause=e,
             ) from e
 
-    def _map_info_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
-    ) -> None:
+    def _map_info_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """Map HubContract info section to ODCS info section."""
         info = hub_contract.get("info", {})
         if not isinstance(info, dict):
@@ -1252,7 +1257,7 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
             odcs_doc["info"] = {}
 
         # Map owners
-        if "owners" in info and info["owners"]:
+        if info.get("owners"):
             owners = info["owners"]
             self.validate_field_type(owners, list, "/info/owners", allow_none=False)
             odcs_owners = []
@@ -1260,10 +1265,14 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
                 if isinstance(owner, dict):
                     odcs_owner = {}
                     if "name" in owner:
-                        self.validate_field_type(owner["name"], str, f"/info/owners/{i}/name", allow_none=False)
+                        self.validate_field_type(
+                            owner["name"], str, f"/info/owners/{i}/name", allow_none=False
+                        )
                         odcs_owner["name"] = owner["name"]
                     if "email" in owner:
-                        self.validate_field_type(owner["email"], str, f"/info/owners/{i}/email", allow_none=True)
+                        self.validate_field_type(
+                            owner["email"], str, f"/info/owners/{i}/email", allow_none=True
+                        )
                         odcs_owner["email"] = owner["email"]
                     if odcs_owner:  # Only add if has at least name or email
                         odcs_owners.append(odcs_owner)
@@ -1274,7 +1283,7 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
                 odcs_doc["info"]["owners"] = odcs_owners
 
         # Map tags
-        if "tags" in info and info["tags"]:
+        if info.get("tags"):
             tags = info["tags"]
             self.validate_field_type(tags, list, "/info/tags", allow_none=False)
             # Validate all tags are strings
@@ -1295,11 +1304,7 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
         if not odcs_doc["info"]:
             del odcs_doc["info"]
 
-    def _map_schema_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
-    ) -> None:
+    def _map_schema_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """Map HubContract schema/models section to ODCS schema section."""
         # Check for models[] first (canonical structure)
         models = hub_contract.get("models")
@@ -1323,10 +1328,8 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
                 odcs_doc["schema"] = odcs_schema
 
     def _map_model_to_odcs_schema(
-        self,
-        model: Dict[str, Any],
-        field_path: str
-    ) -> Optional[Dict[str, Any]]:
+        self, model: dict[str, Any], field_path: str
+    ) -> dict[str, Any] | None:
         """Map HubContract model entry to ODCS schema entry."""
         if not isinstance(model, dict):
             return None
@@ -1339,23 +1342,31 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
             odcs_schema["name"] = model["name"]
 
         # Map description
-        if "description" in model and model["description"]:
-            self.validate_field_type(model["description"], str, f"{field_path}/description", allow_none=True)
+        if model.get("description"):
+            self.validate_field_type(
+                model["description"], str, f"{field_path}/description", allow_none=True
+            )
             odcs_schema["description"] = model["description"]
 
         # Map logical_type and physical_type
         if "logical_type" in model:
-            self.validate_field_type(model["logical_type"], str, f"{field_path}/logical_type", allow_none=True)
+            self.validate_field_type(
+                model["logical_type"], str, f"{field_path}/logical_type", allow_none=True
+            )
             odcs_schema["logicalType"] = model["logical_type"]
         if "physical_type" in model:
-            self.validate_field_type(model["physical_type"], str, f"{field_path}/physical_type", allow_none=True)
+            self.validate_field_type(
+                model["physical_type"], str, f"{field_path}/physical_type", allow_none=True
+            )
             odcs_schema["physicalType"] = model["physical_type"]
         if "physical_name" in model:
-            self.validate_field_type(model["physical_name"], str, f"{field_path}/physical_name", allow_none=True)
+            self.validate_field_type(
+                model["physical_name"], str, f"{field_path}/physical_name", allow_none=True
+            )
             odcs_schema["physicalName"] = model["physical_name"]
 
         # Map fields
-        if "fields" in model and model["fields"]:
+        if model.get("fields"):
             fields = model["fields"]
             self.validate_field_type(fields, list, f"{field_path}/fields", allow_none=False)
             odcs_fields = []
@@ -1368,7 +1379,7 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
                 odcs_schema["fields"] = odcs_fields
 
         # Map primary_key
-        if "primary_key" in model and model["primary_key"]:
+        if model.get("primary_key"):
             primary_key = model["primary_key"]
             if isinstance(primary_key, list):
                 odcs_schema["primaryKey"] = primary_key if len(primary_key) > 1 else primary_key[0]
@@ -1376,13 +1387,15 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
                 odcs_schema["primaryKey"] = primary_key
 
         # Map unique_constraints
-        if "unique_constraints" in model and model["unique_constraints"]:
+        if model.get("unique_constraints"):
             unique_constraints = model["unique_constraints"]
-            self.validate_field_type(unique_constraints, list, f"{field_path}/unique_constraints", allow_none=False)
+            self.validate_field_type(
+                unique_constraints, list, f"{field_path}/unique_constraints", allow_none=False
+            )
             odcs_schema["uniqueConstraints"] = unique_constraints
 
         # Map indexes
-        if "indexes" in model and model["indexes"]:
+        if model.get("indexes"):
             indexes = model["indexes"]
             self.validate_field_type(indexes, list, f"{field_path}/indexes", allow_none=False)
             odcs_schema["indexes"] = indexes
@@ -1390,10 +1403,8 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
         return odcs_schema if odcs_schema else None
 
     def _map_schema_to_odcs_schema(
-        self,
-        schema: Dict[str, Any],
-        field_path: str
-    ) -> Optional[Dict[str, Any]]:
+        self, schema: dict[str, Any], field_path: str
+    ) -> dict[str, Any] | None:
         """Map HubContract schema object to ODCS schema object."""
         if not isinstance(schema, dict):
             return None
@@ -1401,7 +1412,7 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
         odcs_schema = {}
 
         # Map fields
-        if "fields" in schema and schema["fields"]:
+        if schema.get("fields"):
             fields = schema["fields"]
             self.validate_field_type(fields, list, f"{field_path}/fields", allow_none=False)
             odcs_fields = []
@@ -1414,7 +1425,7 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
                 odcs_schema["fields"] = odcs_fields
 
         # Map primary_key
-        if "primary_key" in schema and schema["primary_key"]:
+        if schema.get("primary_key"):
             primary_key = schema["primary_key"]
             if isinstance(primary_key, list):
                 odcs_schema["primaryKey"] = primary_key if len(primary_key) > 1 else primary_key[0]
@@ -1422,13 +1433,15 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
                 odcs_schema["primaryKey"] = primary_key
 
         # Map unique_constraints
-        if "unique_constraints" in schema and schema["unique_constraints"]:
+        if schema.get("unique_constraints"):
             unique_constraints = schema["unique_constraints"]
-            self.validate_field_type(unique_constraints, list, f"{field_path}/unique_constraints", allow_none=False)
+            self.validate_field_type(
+                unique_constraints, list, f"{field_path}/unique_constraints", allow_none=False
+            )
             odcs_schema["uniqueConstraints"] = unique_constraints
 
         # Map indexes
-        if "indexes" in schema and schema["indexes"]:
+        if schema.get("indexes"):
             indexes = schema["indexes"]
             self.validate_field_type(indexes, list, f"{field_path}/indexes", allow_none=False)
             odcs_schema["indexes"] = indexes
@@ -1436,10 +1449,8 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
         return odcs_schema if odcs_schema else None
 
     def _map_field_to_odcs_field(
-        self,
-        field: Dict[str, Any],
-        field_path: str
-    ) -> Optional[Dict[str, Any]]:
+        self, field: dict[str, Any], field_path: str
+    ) -> dict[str, Any] | None:
         """Map HubContract field to ODCS field."""
         if not isinstance(field, dict):
             return None
@@ -1468,12 +1479,16 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
 
         # Optional: nullable
         if "nullable" in field:
-            self.validate_field_type(field["nullable"], bool, f"{field_path}/nullable", allow_none=True)
+            self.validate_field_type(
+                field["nullable"], bool, f"{field_path}/nullable", allow_none=True
+            )
             odcs_field["nullable"] = field["nullable"]
 
         # Optional: description
-        if "description" in field and field["description"]:
-            self.validate_field_type(field["description"], str, f"{field_path}/description", allow_none=True)
+        if field.get("description"):
+            self.validate_field_type(
+                field["description"], str, f"{field_path}/description", allow_none=True
+            )
             odcs_field["description"] = field["description"]
 
         # Optional: format, pattern, enum, default
@@ -1494,11 +1509,7 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
 
         return odcs_field
 
-    def _map_quality_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
-    ) -> None:
+    def _map_quality_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """Map HubContract quality section to ODCS quality section."""
         quality = hub_contract.get("quality")
         if not quality or not isinstance(quality, dict):
@@ -1507,12 +1518,14 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
         odcs_quality = {}
 
         # Map default_profile_key
-        if "default_profile_key" in quality and quality["default_profile_key"]:
-            self.validate_field_type(quality["default_profile_key"], str, "/quality/default_profile_key", allow_none=True)
+        if quality.get("default_profile_key"):
+            self.validate_field_type(
+                quality["default_profile_key"], str, "/quality/default_profile_key", allow_none=True
+            )
             odcs_quality["default_profile_key"] = quality["default_profile_key"]
 
         # Map rules
-        if "rules" in quality and quality["rules"]:
+        if quality.get("rules"):
             rules = quality["rules"]
             self.validate_field_type(rules, list, "/quality/rules", allow_none=False)
             odcs_rules = []
@@ -1528,10 +1541,8 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
             odcs_doc["quality"] = odcs_quality
 
     def _map_quality_rule_to_odcs(
-        self,
-        rule: Dict[str, Any],
-        field_path: str
-    ) -> Optional[Dict[str, Any]]:
+        self, rule: dict[str, Any], field_path: str
+    ) -> dict[str, Any] | None:
         """Map HubContract quality rule to ODCS quality rule."""
         if not isinstance(rule, dict):
             return None
@@ -1539,16 +1550,27 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
         odcs_rule = {}
 
         # Map common rule fields
-        for field in ["id", "rule_id", "name", "dimension", "type", "rule", "expression", "severity", "threshold", "target", "unit", "description"]:
+        for field in [
+            "id",
+            "rule_id",
+            "name",
+            "dimension",
+            "type",
+            "rule",
+            "expression",
+            "severity",
+            "threshold",
+            "target",
+            "unit",
+            "description",
+        ]:
             if field in rule and rule[field] is not None:
                 odcs_rule[field] = rule[field]
 
         return odcs_rule if odcs_rule else None
 
     def _map_lifecycle_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
     ) -> None:
         """Map HubContract lifecycle section to ODCS lifecycle section."""
         lifecycle = hub_contract.get("lifecycle")
@@ -1558,18 +1580,18 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
         odcs_lifecycle = {}
 
         # Map data_source
-        if "data_source" in lifecycle and lifecycle["data_source"]:
-            if isinstance(lifecycle["data_source"], str):
-                odcs_lifecycle["data_source"] = lifecycle["data_source"]
-            elif isinstance(lifecycle["data_source"], dict):
+        if lifecycle.get("data_source"):
+            if isinstance(lifecycle["data_source"], str) or isinstance(
+                lifecycle["data_source"], dict
+            ):
                 odcs_lifecycle["data_source"] = lifecycle["data_source"]
 
         # Map refresh_cadence
-        if "refresh_cadence" in lifecycle and lifecycle["refresh_cadence"]:
+        if lifecycle.get("refresh_cadence"):
             odcs_lifecycle["refresh_cadence"] = lifecycle["refresh_cadence"]
 
         # Map slas
-        if "slas" in lifecycle and lifecycle["slas"]:
+        if lifecycle.get("slas"):
             slas = lifecycle["slas"]
             if isinstance(slas, dict):
                 odcs_lifecycle["slas"] = slas
@@ -1578,9 +1600,7 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
             odcs_doc["lifecycle"] = odcs_lifecycle
 
     def _map_servicelevels_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
     ) -> None:
         """Map HubContract servicelevels section to ODCS slaProperties."""
         servicelevels = hub_contract.get("servicelevels")
@@ -1596,10 +1616,14 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
 
             # Map property name
             if "name" in servicelevel:
-                self.validate_field_type(servicelevel["name"], str, f"/servicelevels/{i}/name", allow_none=False)
+                self.validate_field_type(
+                    servicelevel["name"], str, f"/servicelevels/{i}/name", allow_none=False
+                )
                 sla_property["property"] = servicelevel["name"]
             elif "property" in servicelevel:
-                self.validate_field_type(servicelevel["property"], str, f"/servicelevels/{i}/property", allow_none=False)
+                self.validate_field_type(
+                    servicelevel["property"], str, f"/servicelevels/{i}/property", allow_none=False
+                )
                 sla_property["property"] = servicelevel["property"]
 
             # Map target
@@ -1608,12 +1632,19 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
 
             # Map unit
             if "unit" in servicelevel:
-                self.validate_field_type(servicelevel["unit"], str, f"/servicelevels/{i}/unit", allow_none=True)
+                self.validate_field_type(
+                    servicelevel["unit"], str, f"/servicelevels/{i}/unit", allow_none=True
+                )
                 sla_property["unit"] = servicelevel["unit"]
 
             # Map description
             if "description" in servicelevel:
-                self.validate_field_type(servicelevel["description"], str, f"/servicelevels/{i}/description", allow_none=True)
+                self.validate_field_type(
+                    servicelevel["description"],
+                    str,
+                    f"/servicelevels/{i}/description",
+                    allow_none=True,
+                )
                 sla_property["description"] = servicelevel["description"]
 
             if sla_property:
@@ -1622,11 +1653,7 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
         if odcs_sla_properties:
             odcs_doc["slaProperties"] = odcs_sla_properties
 
-    def _map_lineage_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
-    ) -> None:
+    def _map_lineage_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """Map HubContract lineage section to ODCS transformSourceObjects and transformLogic."""
         lineage = hub_contract.get("lineage")
         if not lineage:
@@ -1637,7 +1664,7 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
             entries = lineage.get("entries", [])
             if entries and isinstance(entries, list):
                 transform_source_objects = []
-                for i, entry in enumerate(entries):
+                for _i, entry in enumerate(entries):
                     if isinstance(entry, dict):
                         source_obj = {}
                         # Map contract reference
@@ -1663,9 +1690,7 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
                 odcs_doc["transformLogic"] = lineage["description"]
 
     def _map_marketplace_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
     ) -> None:
         """Map HubContract marketplace section to ODCS marketplace section."""
         marketplace = hub_contract.get("marketplace")
@@ -1675,12 +1700,14 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
         odcs_marketplace = {}
 
         # Map license_summary
-        if "license_summary" in marketplace and marketplace["license_summary"]:
-            self.validate_field_type(marketplace["license_summary"], str, "/marketplace/license_summary", allow_none=True)
+        if marketplace.get("license_summary"):
+            self.validate_field_type(
+                marketplace["license_summary"], str, "/marketplace/license_summary", allow_none=True
+            )
             odcs_marketplace["license_summary"] = marketplace["license_summary"]
 
         # Map intended_use
-        if "intended_use" in marketplace and marketplace["intended_use"]:
+        if marketplace.get("intended_use"):
             intended_use = marketplace["intended_use"]
             if isinstance(intended_use, list):
                 odcs_marketplace["intended_use"] = intended_use
@@ -1688,7 +1715,7 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
                 odcs_marketplace["intended_use"] = [intended_use]
 
         # Map restricted_use
-        if "restricted_use" in marketplace and marketplace["restricted_use"]:
+        if marketplace.get("restricted_use"):
             restricted_use = marketplace["restricted_use"]
             if isinstance(restricted_use, list):
                 odcs_marketplace["restricted_use"] = restricted_use
@@ -1699,9 +1726,7 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
             odcs_doc["marketplace"] = odcs_marketplace
 
     def _map_privacy_compliance_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
     ) -> None:
         """Map HubContract privacy_compliance section to ODCS privacy_compliance section."""
         privacy_compliance = hub_contract.get("privacy_compliance")
@@ -1711,7 +1736,13 @@ class ODCSGeneratorV3_0_2(ODCSGeneratorBase):
         odcs_privacy_compliance = {}
 
         # Map all privacy_compliance fields
-        for field in ["contains_personal_data", "personal_data_categories", "jurisdictions", "legal_bases", "retention_policy"]:
+        for field in [
+            "contains_personal_data",
+            "personal_data_categories",
+            "jurisdictions",
+            "legal_bases",
+            "retention_policy",
+        ]:
             if field in privacy_compliance and privacy_compliance[field] is not None:
                 odcs_privacy_compliance[field] = privacy_compliance[field]
 
@@ -1745,10 +1776,8 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
     """
 
     def generate_odcs_from_hubcontract(
-        self,
-        hub_contract: Dict[str, Any],
-        target_version: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, hub_contract: dict[str, Any], target_version: str | None = None
+    ) -> dict[str, Any]:
         """
         Generate ODCS 3.0.0 document from HubContract format.
 
@@ -1785,11 +1814,13 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
             }
 
             # Map basic info fields
-            if "description" in info and info["description"]:
-                self.validate_field_type(info["description"], str, "/info/description", allow_none=False)
+            if info.get("description"):
+                self.validate_field_type(
+                    info["description"], str, "/info/description", allow_none=False
+                )
                 odcs_doc["description"] = info["description"]
 
-            if "version" in info and info["version"]:
+            if info.get("version"):
                 self.validate_field_type(info["version"], str, "/info/version", allow_none=False)
                 odcs_doc["version"] = info["version"]
 
@@ -1827,7 +1858,7 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
             # Wrap unexpected errors
             self.log_generation_error(e, contract_id=hub_contract.get("id"))
             raise ODCSGenerationError(
-                message=f"Unexpected error generating ODCS 3.0.0 document: {str(e)}",
+                message=f"Unexpected error generating ODCS 3.0.0 document: {e!s}",
                 error_code=ODCSGenerationError.ERROR_CODE_GENERATION_FAILED,
                 context={
                     "field_path": "/",
@@ -1837,11 +1868,7 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
                 cause=e,
             ) from e
 
-    def _map_info_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
-    ) -> None:
+    def _map_info_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """Map HubContract info section to ODCS info section."""
         info = hub_contract.get("info", {})
         if not isinstance(info, dict):
@@ -1852,7 +1879,7 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
             odcs_doc["info"] = {}
 
         # Map owners
-        if "owners" in info and info["owners"]:
+        if info.get("owners"):
             owners = info["owners"]
             self.validate_field_type(owners, list, "/info/owners", allow_none=False)
             odcs_owners = []
@@ -1860,10 +1887,14 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
                 if isinstance(owner, dict):
                     odcs_owner = {}
                     if "name" in owner:
-                        self.validate_field_type(owner["name"], str, f"/info/owners/{i}/name", allow_none=False)
+                        self.validate_field_type(
+                            owner["name"], str, f"/info/owners/{i}/name", allow_none=False
+                        )
                         odcs_owner["name"] = owner["name"]
                     if "email" in owner:
-                        self.validate_field_type(owner["email"], str, f"/info/owners/{i}/email", allow_none=True)
+                        self.validate_field_type(
+                            owner["email"], str, f"/info/owners/{i}/email", allow_none=True
+                        )
                         odcs_owner["email"] = owner["email"]
                     if odcs_owner:  # Only add if has at least name or email
                         odcs_owners.append(odcs_owner)
@@ -1874,7 +1905,7 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
                 odcs_doc["info"]["owners"] = odcs_owners
 
         # Map tags
-        if "tags" in info and info["tags"]:
+        if info.get("tags"):
             tags = info["tags"]
             self.validate_field_type(tags, list, "/info/tags", allow_none=False)
             # Validate all tags are strings
@@ -1896,11 +1927,7 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
         if not odcs_doc["info"]:
             del odcs_doc["info"]
 
-    def _map_schema_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
-    ) -> None:
+    def _map_schema_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """Map HubContract schema/models section to ODCS schema section."""
         # Check for models[] first (canonical structure)
         models = hub_contract.get("models")
@@ -1924,10 +1951,8 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
                 odcs_doc["schema"] = odcs_schema
 
     def _map_model_to_odcs_schema(
-        self,
-        model: Dict[str, Any],
-        field_path: str
-    ) -> Optional[Dict[str, Any]]:
+        self, model: dict[str, Any], field_path: str
+    ) -> dict[str, Any] | None:
         """Map HubContract model entry to ODCS schema entry."""
         if not isinstance(model, dict):
             return None
@@ -1940,23 +1965,31 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
             odcs_schema["name"] = model["name"]
 
         # Map description
-        if "description" in model and model["description"]:
-            self.validate_field_type(model["description"], str, f"{field_path}/description", allow_none=True)
+        if model.get("description"):
+            self.validate_field_type(
+                model["description"], str, f"{field_path}/description", allow_none=True
+            )
             odcs_schema["description"] = model["description"]
 
         # Map logical_type and physical_type (if supported in 3.0.0)
         if "logical_type" in model:
-            self.validate_field_type(model["logical_type"], str, f"{field_path}/logical_type", allow_none=True)
+            self.validate_field_type(
+                model["logical_type"], str, f"{field_path}/logical_type", allow_none=True
+            )
             odcs_schema["logicalType"] = model["logical_type"]
         if "physical_type" in model:
-            self.validate_field_type(model["physical_type"], str, f"{field_path}/physical_type", allow_none=True)
+            self.validate_field_type(
+                model["physical_type"], str, f"{field_path}/physical_type", allow_none=True
+            )
             odcs_schema["physicalType"] = model["physical_type"]
         if "physical_name" in model:
-            self.validate_field_type(model["physical_name"], str, f"{field_path}/physical_name", allow_none=True)
+            self.validate_field_type(
+                model["physical_name"], str, f"{field_path}/physical_name", allow_none=True
+            )
             odcs_schema["physicalName"] = model["physical_name"]
 
         # Map fields
-        if "fields" in model and model["fields"]:
+        if model.get("fields"):
             fields = model["fields"]
             self.validate_field_type(fields, list, f"{field_path}/fields", allow_none=False)
             odcs_fields = []
@@ -1969,7 +2002,7 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
                 odcs_schema["fields"] = odcs_fields
 
         # Map primary_key
-        if "primary_key" in model and model["primary_key"]:
+        if model.get("primary_key"):
             primary_key = model["primary_key"]
             if isinstance(primary_key, list):
                 odcs_schema["primaryKey"] = primary_key if len(primary_key) > 1 else primary_key[0]
@@ -1977,13 +2010,15 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
                 odcs_schema["primaryKey"] = primary_key
 
         # Map unique_constraints
-        if "unique_constraints" in model and model["unique_constraints"]:
+        if model.get("unique_constraints"):
             unique_constraints = model["unique_constraints"]
-            self.validate_field_type(unique_constraints, list, f"{field_path}/unique_constraints", allow_none=False)
+            self.validate_field_type(
+                unique_constraints, list, f"{field_path}/unique_constraints", allow_none=False
+            )
             odcs_schema["uniqueConstraints"] = unique_constraints
 
         # Map indexes
-        if "indexes" in model and model["indexes"]:
+        if model.get("indexes"):
             indexes = model["indexes"]
             self.validate_field_type(indexes, list, f"{field_path}/indexes", allow_none=False)
             odcs_schema["indexes"] = indexes
@@ -1991,10 +2026,8 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
         return odcs_schema if odcs_schema else None
 
     def _map_schema_to_odcs_schema(
-        self,
-        schema: Dict[str, Any],
-        field_path: str
-    ) -> Optional[Dict[str, Any]]:
+        self, schema: dict[str, Any], field_path: str
+    ) -> dict[str, Any] | None:
         """Map HubContract schema object to ODCS schema object."""
         if not isinstance(schema, dict):
             return None
@@ -2002,7 +2035,7 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
         odcs_schema = {}
 
         # Map fields
-        if "fields" in schema and schema["fields"]:
+        if schema.get("fields"):
             fields = schema["fields"]
             self.validate_field_type(fields, list, f"{field_path}/fields", allow_none=False)
             odcs_fields = []
@@ -2015,7 +2048,7 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
                 odcs_schema["fields"] = odcs_fields
 
         # Map primary_key
-        if "primary_key" in schema and schema["primary_key"]:
+        if schema.get("primary_key"):
             primary_key = schema["primary_key"]
             if isinstance(primary_key, list):
                 odcs_schema["primaryKey"] = primary_key if len(primary_key) > 1 else primary_key[0]
@@ -2023,13 +2056,15 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
                 odcs_schema["primaryKey"] = primary_key
 
         # Map unique_constraints
-        if "unique_constraints" in schema and schema["unique_constraints"]:
+        if schema.get("unique_constraints"):
             unique_constraints = schema["unique_constraints"]
-            self.validate_field_type(unique_constraints, list, f"{field_path}/unique_constraints", allow_none=False)
+            self.validate_field_type(
+                unique_constraints, list, f"{field_path}/unique_constraints", allow_none=False
+            )
             odcs_schema["uniqueConstraints"] = unique_constraints
 
         # Map indexes
-        if "indexes" in schema and schema["indexes"]:
+        if schema.get("indexes"):
             indexes = schema["indexes"]
             self.validate_field_type(indexes, list, f"{field_path}/indexes", allow_none=False)
             odcs_schema["indexes"] = indexes
@@ -2037,10 +2072,8 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
         return odcs_schema if odcs_schema else None
 
     def _map_field_to_odcs_field(
-        self,
-        field: Dict[str, Any],
-        field_path: str
-    ) -> Optional[Dict[str, Any]]:
+        self, field: dict[str, Any], field_path: str
+    ) -> dict[str, Any] | None:
         """Map HubContract field to ODCS field."""
         if not isinstance(field, dict):
             return None
@@ -2069,12 +2102,16 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
 
         # Optional: nullable
         if "nullable" in field:
-            self.validate_field_type(field["nullable"], bool, f"{field_path}/nullable", allow_none=True)
+            self.validate_field_type(
+                field["nullable"], bool, f"{field_path}/nullable", allow_none=True
+            )
             odcs_field["nullable"] = field["nullable"]
 
         # Optional: description
-        if "description" in field and field["description"]:
-            self.validate_field_type(field["description"], str, f"{field_path}/description", allow_none=True)
+        if field.get("description"):
+            self.validate_field_type(
+                field["description"], str, f"{field_path}/description", allow_none=True
+            )
             odcs_field["description"] = field["description"]
 
         # Optional: format, pattern, enum, default
@@ -2095,11 +2132,7 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
 
         return odcs_field
 
-    def _map_quality_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
-    ) -> None:
+    def _map_quality_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """Map HubContract quality section to ODCS quality section."""
         quality = hub_contract.get("quality")
         if not quality or not isinstance(quality, dict):
@@ -2108,12 +2141,14 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
         odcs_quality = {}
 
         # Map default_profile_key
-        if "default_profile_key" in quality and quality["default_profile_key"]:
-            self.validate_field_type(quality["default_profile_key"], str, "/quality/default_profile_key", allow_none=True)
+        if quality.get("default_profile_key"):
+            self.validate_field_type(
+                quality["default_profile_key"], str, "/quality/default_profile_key", allow_none=True
+            )
             odcs_quality["default_profile_key"] = quality["default_profile_key"]
 
         # Map rules
-        if "rules" in quality and quality["rules"]:
+        if quality.get("rules"):
             rules = quality["rules"]
             self.validate_field_type(rules, list, "/quality/rules", allow_none=False)
             odcs_rules = []
@@ -2129,10 +2164,8 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
             odcs_doc["quality"] = odcs_quality
 
     def _map_quality_rule_to_odcs(
-        self,
-        rule: Dict[str, Any],
-        field_path: str
-    ) -> Optional[Dict[str, Any]]:
+        self, rule: dict[str, Any], field_path: str
+    ) -> dict[str, Any] | None:
         """Map HubContract quality rule to ODCS quality rule."""
         if not isinstance(rule, dict):
             return None
@@ -2140,16 +2173,27 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
         odcs_rule = {}
 
         # Map common rule fields
-        for field in ["id", "rule_id", "name", "dimension", "type", "rule", "expression", "severity", "threshold", "target", "unit", "description"]:
+        for field in [
+            "id",
+            "rule_id",
+            "name",
+            "dimension",
+            "type",
+            "rule",
+            "expression",
+            "severity",
+            "threshold",
+            "target",
+            "unit",
+            "description",
+        ]:
             if field in rule and rule[field] is not None:
                 odcs_rule[field] = rule[field]
 
         return odcs_rule if odcs_rule else None
 
     def _map_lifecycle_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
     ) -> None:
         """Map HubContract lifecycle section to ODCS lifecycle section."""
         lifecycle = hub_contract.get("lifecycle")
@@ -2159,18 +2203,18 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
         odcs_lifecycle = {}
 
         # Map data_source
-        if "data_source" in lifecycle and lifecycle["data_source"]:
-            if isinstance(lifecycle["data_source"], str):
-                odcs_lifecycle["data_source"] = lifecycle["data_source"]
-            elif isinstance(lifecycle["data_source"], dict):
+        if lifecycle.get("data_source"):
+            if isinstance(lifecycle["data_source"], str) or isinstance(
+                lifecycle["data_source"], dict
+            ):
                 odcs_lifecycle["data_source"] = lifecycle["data_source"]
 
         # Map refresh_cadence
-        if "refresh_cadence" in lifecycle and lifecycle["refresh_cadence"]:
+        if lifecycle.get("refresh_cadence"):
             odcs_lifecycle["refresh_cadence"] = lifecycle["refresh_cadence"]
 
         # Map slas
-        if "slas" in lifecycle and lifecycle["slas"]:
+        if lifecycle.get("slas"):
             slas = lifecycle["slas"]
             if isinstance(slas, dict):
                 odcs_lifecycle["slas"] = slas
@@ -2179,9 +2223,7 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
             odcs_doc["lifecycle"] = odcs_lifecycle
 
     def _map_servicelevels_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
     ) -> None:
         """Map HubContract servicelevels section to ODCS slaProperties."""
         servicelevels = hub_contract.get("servicelevels")
@@ -2197,10 +2239,14 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
 
             # Map property name
             if "name" in servicelevel:
-                self.validate_field_type(servicelevel["name"], str, f"/servicelevels/{i}/name", allow_none=False)
+                self.validate_field_type(
+                    servicelevel["name"], str, f"/servicelevels/{i}/name", allow_none=False
+                )
                 sla_property["property"] = servicelevel["name"]
             elif "property" in servicelevel:
-                self.validate_field_type(servicelevel["property"], str, f"/servicelevels/{i}/property", allow_none=False)
+                self.validate_field_type(
+                    servicelevel["property"], str, f"/servicelevels/{i}/property", allow_none=False
+                )
                 sla_property["property"] = servicelevel["property"]
 
             # Map target
@@ -2209,12 +2255,19 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
 
             # Map unit
             if "unit" in servicelevel:
-                self.validate_field_type(servicelevel["unit"], str, f"/servicelevels/{i}/unit", allow_none=True)
+                self.validate_field_type(
+                    servicelevel["unit"], str, f"/servicelevels/{i}/unit", allow_none=True
+                )
                 sla_property["unit"] = servicelevel["unit"]
 
             # Map description
             if "description" in servicelevel:
-                self.validate_field_type(servicelevel["description"], str, f"/servicelevels/{i}/description", allow_none=True)
+                self.validate_field_type(
+                    servicelevel["description"],
+                    str,
+                    f"/servicelevels/{i}/description",
+                    allow_none=True,
+                )
                 sla_property["description"] = servicelevel["description"]
 
             if sla_property:
@@ -2223,11 +2276,7 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
         if odcs_sla_properties:
             odcs_doc["slaProperties"] = odcs_sla_properties
 
-    def _map_lineage_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
-    ) -> None:
+    def _map_lineage_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """Map HubContract lineage section to ODCS transformSourceObjects and transformLogic."""
         lineage = hub_contract.get("lineage")
         if not lineage:
@@ -2238,7 +2287,7 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
             entries = lineage.get("entries", [])
             if entries and isinstance(entries, list):
                 transform_source_objects = []
-                for i, entry in enumerate(entries):
+                for _i, entry in enumerate(entries):
                     if isinstance(entry, dict):
                         source_obj = {}
                         # Map contract reference
@@ -2264,9 +2313,7 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
                 odcs_doc["transformLogic"] = lineage["description"]
 
     def _map_marketplace_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
     ) -> None:
         """Map HubContract marketplace section to ODCS marketplace section."""
         marketplace = hub_contract.get("marketplace")
@@ -2276,12 +2323,14 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
         odcs_marketplace = {}
 
         # Map license_summary
-        if "license_summary" in marketplace and marketplace["license_summary"]:
-            self.validate_field_type(marketplace["license_summary"], str, "/marketplace/license_summary", allow_none=True)
+        if marketplace.get("license_summary"):
+            self.validate_field_type(
+                marketplace["license_summary"], str, "/marketplace/license_summary", allow_none=True
+            )
             odcs_marketplace["license_summary"] = marketplace["license_summary"]
 
         # Map intended_use
-        if "intended_use" in marketplace and marketplace["intended_use"]:
+        if marketplace.get("intended_use"):
             intended_use = marketplace["intended_use"]
             if isinstance(intended_use, list):
                 odcs_marketplace["intended_use"] = intended_use
@@ -2289,7 +2338,7 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
                 odcs_marketplace["intended_use"] = [intended_use]
 
         # Map restricted_use
-        if "restricted_use" in marketplace and marketplace["restricted_use"]:
+        if marketplace.get("restricted_use"):
             restricted_use = marketplace["restricted_use"]
             if isinstance(restricted_use, list):
                 odcs_marketplace["restricted_use"] = restricted_use
@@ -2300,9 +2349,7 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
             odcs_doc["marketplace"] = odcs_marketplace
 
     def _map_privacy_compliance_section(
-        self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any]
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
     ) -> None:
         """Map HubContract privacy_compliance section to ODCS privacy_compliance section."""
         privacy_compliance = hub_contract.get("privacy_compliance")
@@ -2312,7 +2359,13 @@ class ODCSGeneratorV3_0_0(ODCSGeneratorBase):
         odcs_privacy_compliance = {}
 
         # Map all privacy_compliance fields
-        for field in ["contains_personal_data", "personal_data_categories", "jurisdictions", "legal_bases", "retention_policy"]:
+        for field in [
+            "contains_personal_data",
+            "personal_data_categories",
+            "jurisdictions",
+            "legal_bases",
+            "retention_policy",
+        ]:
             if field in privacy_compliance and privacy_compliance[field] is not None:
                 odcs_privacy_compliance[field] = privacy_compliance[field]
 
@@ -2353,10 +2406,8 @@ class ODCSGeneratorV3_0_0_Preview(ODCSGeneratorBase):
         self.target_version = "3.0.0-preview"
 
     def generate_odcs_from_hubcontract(
-        self,
-        hub_contract: Dict[str, Any],
-        target_version: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, hub_contract: dict[str, Any], target_version: str | None = None
+    ) -> dict[str, Any]:
         """
         Generate ODCS 3.0.0-preview document from HubContract format.
 
@@ -2389,11 +2440,13 @@ class ODCSGeneratorV3_0_0_Preview(ODCSGeneratorBase):
             }
 
             # Map basic info fields
-            if "description" in info and info["description"]:
-                self.validate_field_type(info["description"], str, "/info/description", allow_none=False)
+            if info.get("description"):
+                self.validate_field_type(
+                    info["description"], str, "/info/description", allow_none=False
+                )
                 odcs_doc["description"] = info["description"]
 
-            if "version" in info and info["version"]:
+            if info.get("version"):
                 self.validate_field_type(info["version"], str, "/info/version", allow_none=False)
                 odcs_doc["version"] = info["version"]
 
@@ -2425,7 +2478,7 @@ class ODCSGeneratorV3_0_0_Preview(ODCSGeneratorBase):
             # Wrap unexpected errors
             self.log_generation_error(e, hub_contract.get("id"))
             raise ODCSGenerationError(
-                message=f"Unexpected error generating ODCS 3.0.0-preview document: {str(e)}",
+                message=f"Unexpected error generating ODCS 3.0.0-preview document: {e!s}",
                 error_code=ODCSGenerationError.ERROR_CODE_GENERATION_FAILED,
                 context={
                     "field_path": "/",
@@ -2435,7 +2488,7 @@ class ODCSGeneratorV3_0_0_Preview(ODCSGeneratorBase):
                 cause=e,
             ) from e
 
-    def _map_info_section(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_info_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """
         Map HubContract info section to ODCS format.
 
@@ -2479,7 +2532,9 @@ class ODCSGeneratorV3_0_0_Preview(ODCSGeneratorBase):
         if not odcs_doc["info"]:
             del odcs_doc["info"]
 
-    def _map_schema_section_v3_0_0_preview(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_schema_section_v3_0_0_preview(
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
+    ) -> None:
         """
         Map HubContract schema section to ODCS 3.0.0-preview format.
 
@@ -2535,7 +2590,9 @@ class ODCSGeneratorV3_0_0_Preview(ODCSGeneratorBase):
         primary_key = schema.get("primary_key")
         if primary_key:
             if isinstance(primary_key, list):
-                odcs_schema["primaryKey"] = primary_key if len(primary_key) > 1 else primary_key[0] if primary_key else None
+                odcs_schema["primaryKey"] = (
+                    primary_key if len(primary_key) > 1 else primary_key[0] if primary_key else None
+                )
             elif isinstance(primary_key, str):
                 odcs_schema["primaryKey"] = primary_key
 
@@ -2552,7 +2609,7 @@ class ODCSGeneratorV3_0_0_Preview(ODCSGeneratorBase):
         if odcs_schema:
             odcs_doc["schema"] = odcs_schema
 
-    def _map_quality_section(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_quality_section(self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]) -> None:
         """
         Map HubContract quality section to ODCS format.
 
@@ -2595,7 +2652,9 @@ class ODCSGeneratorV3_0_0_Preview(ODCSGeneratorBase):
         if odcs_quality:
             odcs_doc["quality"] = odcs_quality
 
-    def _map_lifecycle_section_v3_0_0_preview(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_lifecycle_section_v3_0_0_preview(
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
+    ) -> None:
         """
         Map HubContract lifecycle section to ODCS 3.0.0-preview format.
 
@@ -2641,13 +2700,15 @@ class ODCSGeneratorV3_0_0_Preview(ODCSGeneratorBase):
             self.logger.warning(
                 "odcs_v3_0_0_preview_enhanced_lifecycle_features_omitted",
                 features=enhanced_features,
-                message=f"ODCS 3.0.1+ enhanced lifecycle features omitted: {', '.join(enhanced_features)}"
+                message=f"ODCS 3.0.1+ enhanced lifecycle features omitted: {', '.join(enhanced_features)}",
             )
 
         if odcs_lifecycle:
             odcs_doc["lifecycle"] = odcs_lifecycle
 
-    def _map_marketplace_section_v3_0_0_preview(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_marketplace_section_v3_0_0_preview(
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
+    ) -> None:
         """
         Map HubContract marketplace section to ODCS 3.0.0-preview format.
 
@@ -2693,13 +2754,15 @@ class ODCSGeneratorV3_0_0_Preview(ODCSGeneratorBase):
             self.logger.warning(
                 "odcs_v3_0_0_preview_enhanced_marketplace_features_omitted",
                 features=enhanced_features,
-                message=f"ODCS 3.0.1+ enhanced marketplace features omitted: {', '.join(enhanced_features)}"
+                message=f"ODCS 3.0.1+ enhanced marketplace features omitted: {', '.join(enhanced_features)}",
             )
 
         if odcs_marketplace:
             odcs_doc["marketplace"] = odcs_marketplace
 
-    def _map_privacy_compliance_section_v3_0_0_preview(self, hub_contract: Dict[str, Any], odcs_doc: Dict[str, Any]) -> None:
+    def _map_privacy_compliance_section_v3_0_0_preview(
+        self, hub_contract: dict[str, Any], odcs_doc: dict[str, Any]
+    ) -> None:
         """
         Map HubContract privacy_compliance section to ODCS 3.0.0-preview format.
 
@@ -2721,7 +2784,9 @@ class ODCSGeneratorV3_0_0_Preview(ODCSGeneratorBase):
 
         # Map personal_data_categories
         if "personal_data_categories" in privacy_compliance:
-            odcs_privacy["personal_data_categories"] = privacy_compliance["personal_data_categories"]
+            odcs_privacy["personal_data_categories"] = privacy_compliance[
+                "personal_data_categories"
+            ]
 
         # Map jurisdictions
         if "jurisdictions" in privacy_compliance:
@@ -2751,7 +2816,7 @@ class ODCSGeneratorV3_0_0_Preview(ODCSGeneratorBase):
 # ============================================================================
 
 # Registry for ODCS generators by version
-_ODCS_GENERATOR_REGISTRY: Dict[str, ODCSGeneratorBase] = {}
+_ODCS_GENERATOR_REGISTRY: dict[str, ODCSGeneratorBase] = {}
 
 # Latest ODCS version (used as fallback)
 # Default export version — kept at 3.0.2 for backward compatibility.
@@ -2773,15 +2838,12 @@ def register_odcs_generator(version: str, generator: ODCSGeneratorBase) -> None:
         )
     _ODCS_GENERATOR_REGISTRY[version] = generator
     logger.debug(
-        "odcs_generator_registered",
-        version=version,
-        generator_class=generator.__class__.__name__
+        "odcs_generator_registered", version=version, generator_class=generator.__class__.__name__
     )
 
 
 def get_odcs_generator(
-    version: Optional[str] = None,
-    hub_contract: Optional[Dict[str, Any]] = None
+    version: str | None = None, hub_contract: dict[str, Any] | None = None
 ) -> ODCSGeneratorBase:
     """
     Get ODCS generator for the specified version.
@@ -2813,7 +2875,7 @@ def get_odcs_generator(
         logger.warning(
             "odcs_version_not_provided_using_fallback",
             fallback_version=detected_version,
-            message="No ODCS version specified, using latest version as fallback"
+            message="No ODCS version specified, using latest version as fallback",
         )
 
     # Normalize version string (handle variations like "3.0.0-preview")
@@ -2826,7 +2888,7 @@ def get_odcs_generator(
         logger.debug(
             "odcs_generator_found",
             version=normalized_version,
-            generator_class=generator.__class__.__name__
+            generator_class=generator.__class__.__name__,
         )
         return generator
 
@@ -2836,7 +2898,7 @@ def get_odcs_generator(
             "odcs_generator_not_found_using_fallback",
             requested_version=normalized_version,
             fallback_version=_LATEST_ODCS_VERSION,
-            message=f"Generator for ODCS version '{normalized_version}' not found, using latest version '{_LATEST_ODCS_VERSION}' as fallback"
+            message=f"Generator for ODCS version '{normalized_version}' not found, using latest version '{_LATEST_ODCS_VERSION}' as fallback",
         )
         generator = _ODCS_GENERATOR_REGISTRY.get(_LATEST_ODCS_VERSION)
 
@@ -2855,7 +2917,7 @@ def get_odcs_generator(
     return generator
 
 
-def _detect_version_from_hubcontract(hub_contract: Dict[str, Any]) -> Optional[str]:
+def _detect_version_from_hubcontract(hub_contract: dict[str, Any]) -> str | None:
     """
     Detect ODCS version from HubContract metadata.
 
@@ -2925,7 +2987,7 @@ def _normalize_version_string(version: str) -> str:
     return version
 
 
-def get_supported_odcs_versions() -> List[str]:
+def get_supported_odcs_versions() -> list[str]:
     """
     Get list of supported ODCS versions.
 
@@ -2938,6 +3000,7 @@ def get_supported_odcs_versions() -> List[str]:
 # =========================================================================
 # Phase 26.4.1 — ODCS 3.1.0 Generator
 # =========================================================================
+
 
 class ODCSGeneratorV3_1_0(ODCSGeneratorV3_0_2):
     """
@@ -2954,15 +3017,16 @@ class ODCSGeneratorV3_1_0(ODCSGeneratorV3_0_2):
 
     def generate_odcs_from_hubcontract(
         self,
-        hub_contract: Dict[str, Any],
-        target_version: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        hub_contract: dict[str, Any],
+        target_version: str | None = None,
+    ) -> dict[str, Any]:
         if target_version is None:
             target_version = "3.1.0"
 
         # Generate base v3.0.2 document
         odcs_doc = super().generate_odcs_from_hubcontract(
-            hub_contract, target_version=target_version,
+            hub_contract,
+            target_version=target_version,
         )
 
         # Ensure apiVersion uses consistent format
@@ -2987,8 +3051,8 @@ class ODCSGeneratorV3_1_0(ODCSGeneratorV3_0_2):
 
     def _map_team_v31(
         self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any],
+        hub_contract: dict[str, Any],
+        odcs_doc: dict[str, Any],
     ) -> None:
         """Map info.owners → team.members (object structure)."""
         # Remove array-style team if base generator added it
@@ -3003,7 +3067,7 @@ class ODCSGeneratorV3_1_0(ODCSGeneratorV3_0_2):
             for t in team_list:
                 if not isinstance(t, dict):
                     continue
-                member: Dict[str, Any] = {}
+                member: dict[str, Any] = {}
                 if "member" in t or "name" in t:
                     member["name"] = t.get("name") or t.get("member")
                 if "email" in t:
@@ -3033,8 +3097,8 @@ class ODCSGeneratorV3_1_0(ODCSGeneratorV3_0_2):
 
     def _map_v31_schema_extensions(
         self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any],
+        hub_contract: dict[str, Any],
+        odcs_doc: dict[str, Any],
     ) -> None:
         """Add relationships[], element_id, logicalType to schema."""
         models = hub_contract.get("models", [])
@@ -3078,7 +3142,7 @@ class ODCSGeneratorV3_1_0(ODCSGeneratorV3_0_2):
                 for r in rels:
                     if not isinstance(r, dict):
                         continue
-                    odcs_rel: Dict[str, Any] = {}
+                    odcs_rel: dict[str, Any] = {}
                     if r.get("id"):
                         odcs_rel["id"] = r["id"]
                     if r.get("name"):
@@ -3123,13 +3187,16 @@ class ODCSGeneratorV3_1_0(ODCSGeneratorV3_0_2):
 
     def _map_v31_quality_library(
         self,
-        hub_contract: Dict[str, Any],
-        odcs_doc: Dict[str, Any],
+        hub_contract: dict[str, Any],
+        odcs_doc: dict[str, Any],
     ) -> None:
         """Map quality rules with v3.1.0 library types."""
         _LIB_TYPES = {
-            "rowCount", "nullValues", "invalidValues",
-            "duplicateValues", "missingValues",
+            "rowCount",
+            "nullValues",
+            "invalidValues",
+            "duplicateValues",
+            "missingValues",
         }
         quality = hub_contract.get("quality", {})
         if not isinstance(quality, dict):
@@ -3147,7 +3214,7 @@ class ODCSGeneratorV3_1_0(ODCSGeneratorV3_0_2):
             odcs_quality["library"] = library_entries
 
     @staticmethod
-    def _strip_sla_default_element(odcs_doc: Dict[str, Any]) -> None:
+    def _strip_sla_default_element(odcs_doc: dict[str, Any]) -> None:
         """Remove deprecated slaDefaultElement from SLA entries."""
         for sl in odcs_doc.get("slaProperties", []):
             if isinstance(sl, dict):
@@ -3166,7 +3233,7 @@ def _initialize_generator_registry() -> None:
     logger.info(
         "odcs_generator_registry_initialized",
         versions=list(_ODCS_GENERATOR_REGISTRY.keys()),
-        count=len(_ODCS_GENERATOR_REGISTRY)
+        count=len(_ODCS_GENERATOR_REGISTRY),
     )
 
 
@@ -3175,10 +3242,8 @@ _initialize_generator_registry()
 
 
 def generate_odcs_from_hubcontract(
-    hub_contract: Dict[str, Any],
-    target_version: Optional[str] = None,
-    tenant_id: Optional[str] = None
-) -> Dict[str, Any]:
+    hub_contract: dict[str, Any], target_version: str | None = None, tenant_id: str | None = None
+) -> dict[str, Any]:
     """
     Generate ODCS document from HubContract format.
 
@@ -3212,7 +3277,6 @@ def generate_odcs_from_hubcontract(
     effective_tenant_id = tenant_id or "unknown"
     detected_version = target_version
     final_version = None
-    status = "success"
 
     # Validate input type first
     if not isinstance(hub_contract, dict):
@@ -3235,7 +3299,9 @@ def generate_odcs_from_hubcontract(
             final_version = _normalize_version_string(target_version)
         else:
             detected = _detect_version_from_hubcontract(hub_contract)
-            final_version = _normalize_version_string(detected) if detected else _LATEST_ODCS_VERSION
+            final_version = (
+                _normalize_version_string(detected) if detected else _LATEST_ODCS_VERSION
+            )
 
         # Log generation start
         logger.info(
@@ -3243,11 +3309,13 @@ def generate_odcs_from_hubcontract(
             contract_id=hub_contract.get("id"),
             target_version=final_version,
             detected_version=detected_version,
-            tenant_id=effective_tenant_id
+            tenant_id=effective_tenant_id,
         )
 
         # Use generator to create ODCS document
-        odcs_doc = generator.generate_odcs_from_hubcontract(hub_contract, target_version=target_version)
+        odcs_doc = generator.generate_odcs_from_hubcontract(
+            hub_contract, target_version=target_version
+        )
 
         # Calculate duration
         duration = time.time() - start_time
@@ -3255,19 +3323,16 @@ def generate_odcs_from_hubcontract(
         # Record success metrics
         try:
             from hub.apps.observability.otel_metrics import (
-                odcs_generation_total,
                 odcs_generation_duration_seconds,
                 odcs_generation_success_rate,
+                odcs_generation_total,
             )
+
             odcs_generation_total.labels(
-                status="success",
-                version=final_version,
-                tenant_id=effective_tenant_id
+                status="success", version=final_version, tenant_id=effective_tenant_id
             ).inc()
             odcs_generation_duration_seconds.labels(
-                status="success",
-                version=final_version,
-                tenant_id=effective_tenant_id
+                status="success", version=final_version, tenant_id=effective_tenant_id
             ).observe(duration)
             odcs_generation_success_rate.labels(tenant_id=effective_tenant_id).set(1.0)
         except Exception as metrics_err:
@@ -3282,7 +3347,7 @@ def generate_odcs_from_hubcontract(
             contract_id=hub_contract.get("id"),
             version=final_version,
             duration_seconds=duration,
-            tenant_id=effective_tenant_id
+            tenant_id=effective_tenant_id,
         )
 
         return odcs_doc
@@ -3290,24 +3355,20 @@ def generate_odcs_from_hubcontract(
     except ODCSGenerationError as e:
         # Calculate duration for failed generation
         duration = time.time() - start_time
-        status = "failure"
 
         # Record failure metrics
         try:
             from hub.apps.observability.otel_metrics import (
-                odcs_generation_total,
                 odcs_generation_duration_seconds,
                 odcs_generation_success_rate,
+                odcs_generation_total,
             )
+
             odcs_generation_total.labels(
-                status="failure",
-                version=final_version or "unknown",
-                tenant_id=effective_tenant_id
+                status="failure", version=final_version or "unknown", tenant_id=effective_tenant_id
             ).inc()
             odcs_generation_duration_seconds.labels(
-                status="failure",
-                version=final_version or "unknown",
-                tenant_id=effective_tenant_id
+                status="failure", version=final_version or "unknown", tenant_id=effective_tenant_id
             ).observe(duration)
             odcs_generation_success_rate.labels(tenant_id=effective_tenant_id).set(0.0)
         except Exception as metrics_err:
@@ -3322,10 +3383,10 @@ def generate_odcs_from_hubcontract(
             contract_id=hub_contract.get("id"),
             version=final_version,
             duration_seconds=duration,
-            error_code=getattr(e, 'error_code', 'UNKNOWN'),
+            error_code=getattr(e, "error_code", "UNKNOWN"),
             error_message=str(e),
             tenant_id=effective_tenant_id,
-            exc_info=True
+            exc_info=True,
         )
 
         # Re-raise ODCS errors as-is
@@ -3334,24 +3395,20 @@ def generate_odcs_from_hubcontract(
     except Exception as e:
         # Calculate duration for unexpected errors
         duration = time.time() - start_time
-        status = "failure"
 
         # Record failure metrics
         try:
             from hub.apps.observability.otel_metrics import (
-                odcs_generation_total,
                 odcs_generation_duration_seconds,
                 odcs_generation_success_rate,
+                odcs_generation_total,
             )
+
             odcs_generation_total.labels(
-                status="failure",
-                version=final_version or "unknown",
-                tenant_id=effective_tenant_id
+                status="failure", version=final_version or "unknown", tenant_id=effective_tenant_id
             ).inc()
             odcs_generation_duration_seconds.labels(
-                status="failure",
-                version=final_version or "unknown",
-                tenant_id=effective_tenant_id
+                status="failure", version=final_version or "unknown", tenant_id=effective_tenant_id
             ).observe(duration)
             odcs_generation_success_rate.labels(tenant_id=effective_tenant_id).set(0.0)
         except Exception as metrics_err:
@@ -3371,7 +3428,7 @@ def generate_odcs_from_hubcontract(
             exc_info=True,
         )
         raise ODCSGenerationError(
-            message=f"Unexpected error generating ODCS document: {str(e)}",
+            message=f"Unexpected error generating ODCS document: {e!s}",
             error_code=ODCSGenerationError.ERROR_CODE_GENERATION_FAILED,
             context={
                 "field_path": "/",
@@ -3383,9 +3440,8 @@ def generate_odcs_from_hubcontract(
 
 
 def _legacy_generate_odcs_from_hubcontract(
-    hub_contract: Dict[str, Any],
-    target_version: str = "3.0.2"
-) -> Dict[str, Any]:
+    hub_contract: dict[str, Any], target_version: str = "3.0.2"
+) -> dict[str, Any]:
     """
     Legacy implementation (kept for reference, not used).
 
@@ -3540,7 +3596,7 @@ def _legacy_generate_odcs_from_hubcontract(
             exc_info=True,
         )
         raise ODCSGenerationError(
-            message=f"Unexpected error generating ODCS document: {str(e)}",
+            message=f"Unexpected error generating ODCS document: {e!s}",
             error_code=ODCSGenerationError.ERROR_CODE_GENERATION_FAILED,
             context={
                 "field_path": "/",
@@ -3552,13 +3608,13 @@ def _legacy_generate_odcs_from_hubcontract(
 
 
 def generate_odcs_from_schema(
-    inferred_schema: Dict[str, Any],
-    contract_id: Optional[str] = None,
-    contract_name: Optional[str] = None,
-    contract_description: Optional[str] = None,
+    inferred_schema: dict[str, Any],
+    contract_id: str | None = None,
+    contract_name: str | None = None,
+    contract_description: str | None = None,
     contract_version: str = "1.0.0",
-    odcs_version: str = "3.0.2"
-) -> Dict[str, Any]:
+    odcs_version: str = "3.0.2",
+) -> dict[str, Any]:
     """
     Generate ODCS contract from inferred schema.
 
@@ -3617,7 +3673,7 @@ def generate_odcs_from_schema(
         # Build ODCS contract
         # Normalize odcs_version format (remove 'v' prefix if present)
         normalized_odcs_version = odcs_version
-        if normalized_odcs_version.startswith('v') or normalized_odcs_version.startswith('V'):
+        if normalized_odcs_version.startswith("v") or normalized_odcs_version.startswith("V"):
             normalized_odcs_version = normalized_odcs_version[1:]
 
         odcs_contract = {
@@ -3625,7 +3681,7 @@ def generate_odcs_from_schema(
             "kind": "DataContract",
             "id": contract_id,
             "name": contract_name,
-            "version": contract_version
+            "version": contract_version,
         }
 
         # Add description if provided
@@ -3684,10 +3740,7 @@ def generate_odcs_from_schema(
                 )
 
             # Map inferred field to ODCS field format
-            odcs_field = {
-                "name": field_name,
-                "type": field.get("data_type", "string")
-            }
+            odcs_field = {"name": field_name, "type": field.get("data_type", "string")}
 
             # Add optional properties
             if "nullable" in field:
@@ -3714,19 +3767,26 @@ def generate_odcs_from_schema(
             schema_fields.append(odcs_field)
 
             # Check for primary key flag
-            if field.get("is_primary_key") or field_name in inferred_schema.get("primary_key_candidates", []):
-                if field_name not in primary_key:
-                    primary_key.append(field_name)
+            if (
+                field.get("is_primary_key")
+                or field_name in inferred_schema.get("primary_key_candidates", [])
+            ) and field_name not in primary_key:
+                primary_key.append(field_name)
 
             # Check for unique constraint flag
-            if field.get("is_unique") or field_name in inferred_schema.get("unique_constraint_candidates", []):
-                if field_name not in [uc[0] if isinstance(uc, list) and len(uc) > 0 else uc for uc in unique_constraints]:
-                    unique_constraints.append([field_name])
+            if (
+                field.get("is_unique")
+                or field_name in inferred_schema.get("unique_constraint_candidates", [])
+            ) and field_name not in [
+                uc[0] if isinstance(uc, list) and len(uc) > 0 else uc for uc in unique_constraints
+            ]:
+                unique_constraints.append([field_name])
 
             # Check for index flag
-            if field.get("is_indexed"):
-                if field_name not in [idx[0] if isinstance(idx, list) and len(idx) > 0 else idx for idx in indexes]:
-                    indexes.append([field_name])
+            if field.get("is_indexed") and field_name not in [
+                idx[0] if isinstance(idx, list) and len(idx) > 0 else idx for idx in indexes
+            ]:
+                indexes.append([field_name])
 
         # Add primary key from candidates if not already set
         primary_key_candidates = inferred_schema.get("primary_key_candidates", [])
@@ -3737,7 +3797,9 @@ def generate_odcs_from_schema(
         # Add unique constraints from candidates if not already set
         unique_constraint_candidates = inferred_schema.get("unique_constraint_candidates", [])
         for uc_candidate in unique_constraint_candidates:
-            if uc_candidate not in [uc[0] if isinstance(uc, list) and len(uc) > 0 else uc for uc in unique_constraints]:
+            if uc_candidate not in [
+                uc[0] if isinstance(uc, list) and len(uc) > 0 else uc for uc in unique_constraints
+            ]:
                 unique_constraints.append([uc_candidate])
 
         # Add indexes from recommendations if not already set
@@ -3745,13 +3807,13 @@ def generate_odcs_from_schema(
         for idx_rec in index_recommendations:
             if isinstance(idx_rec, dict):
                 field_name = idx_rec.get("field")
-                if field_name and field_name not in [idx[0] if isinstance(idx, list) and len(idx) > 0 else idx for idx in indexes]:
+                if field_name and field_name not in [
+                    idx[0] if isinstance(idx, list) and len(idx) > 0 else idx for idx in indexes
+                ]:
                     indexes.append([field_name])
 
         # Build schema object
-        schema = {
-            "fields": schema_fields
-        }
+        schema = {"fields": schema_fields}
 
         if primary_key:
             schema["primary_key"] = primary_key if len(primary_key) > 1 else primary_key[0]
@@ -3766,9 +3828,9 @@ def generate_odcs_from_schema(
 
         # Add metadata
         odcs_contract["metadata"] = {
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "generated_from": "inferred_schema",
-            "row_count_estimated": inferred_schema.get("row_count_estimated")
+            "row_count_estimated": inferred_schema.get("row_count_estimated"),
         }
 
         logger.info(
@@ -3777,7 +3839,7 @@ def generate_odcs_from_schema(
             fields_count=len(schema_fields),
             primary_key=str(primary_key),
             unique_constraints_count=len(unique_constraints),
-            indexes_count=len(indexes)
+            indexes_count=len(indexes),
         )
 
         return odcs_contract
@@ -3794,7 +3856,7 @@ def generate_odcs_from_schema(
             exc_info=True,
         )
         raise ODCSGenerationError(
-            message=f"Unexpected error generating ODCS from schema: {str(e)}",
+            message=f"Unexpected error generating ODCS from schema: {e!s}",
             error_code=ODCSGenerationError.ERROR_CODE_GENERATION_FAILED,
             context={
                 "field_path": "/",
@@ -3803,4 +3865,3 @@ def generate_odcs_from_schema(
             },
             cause=e,
         ) from e
-

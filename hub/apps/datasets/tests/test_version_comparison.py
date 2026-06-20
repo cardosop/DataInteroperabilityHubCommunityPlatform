@@ -3,6 +3,7 @@ Unit tests for Version Comparison
 
 Tests for schema diff visualization, data diff, and side-by-side comparison.
 """
+
 import uuid
 
 import pytest
@@ -10,7 +11,8 @@ import pytest
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.tests.test_base import DatasetsTestBase
-from hub.apps.datasets.version_comparison import CompatibilityLevel, VersionComparisonService
+from hub.apps.datasets.schema_evolution import CompatibilityLevel
+from hub.apps.datasets.version_comparison import VersionComparisonService
 from hub.apps.datasets.versioning import VersionHistoryManager
 from hub.apps.files.models import File, FileStatus
 
@@ -200,6 +202,30 @@ class VersionComparisonServiceTest(DatasetsTestBase):
         self.assertEqual(comparison.data_diff.row_count_diff, 100)
         self.assertEqual(comparison.data_diff.row_count_percent_change, 100.0)
         self.assertTrue(comparison.data_diff.sample_data_diff["samples_changed"])
+
+    def test_compare_versions_without_data_diff(self):
+        """compare_versions with include_data_diff=False skips data diff."""
+        v1 = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=self.file,
+            schema_json={"fields": [{"name": "col1", "data_type": "string"}]},
+            row_count=100, format="CSV", version=1, created_by=self.user,
+        )
+        file2 = File.objects.create(
+            tenant=self.tenant, name="v2.csv", content_type="text/csv",
+            size=2000, status=FileStatus.ACTIVE, storage_path="t/v2.csv",
+            content_sha256="abc", created_by=self.user,
+        )
+        v2 = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=file2,
+            schema_json={"fields": [{"name": "col1", "data_type": "integer"}]},
+            row_count=200, format="CSV", version=2, created_by=self.user,
+        )
+
+        comparison = VersionComparisonService.compare_versions(
+            v1, v2, include_data_diff=False
+        )
+        self.assertIsNone(comparison.data_diff)
+        self.assertIsNotNone(comparison.schema_diff)
 
     def test_side_by_side_comparison(self):
         """Test side-by-side comparison generation"""
@@ -416,7 +442,6 @@ class VersionComparisonServiceTest(DatasetsTestBase):
 
     def test_version_comparison_failure_nonexistent_versions(self):
         """Test version comparison with non-existent versions (failure scenario)"""
-        import uuid
 
         fake_v1 = Dataset(id=uuid.uuid4(), tenant=self.tenant, asset=self.asset, file=self.file)
         fake_v2 = Dataset(id=uuid.uuid4(), tenant=self.tenant, asset=self.asset, file=self.file)
@@ -424,8 +449,9 @@ class VersionComparisonServiceTest(DatasetsTestBase):
         # Non-existent (unsaved) versions — compare_versions returns a
         # VersionComparison without raising (graceful degradation).
         comparison = VersionComparisonService.compare_versions(fake_v1, fake_v2)
-        self.assertIsNotNone(comparison,
-            "compare_versions must return a result even for non-persisted datasets")
+        self.assertIsNotNone(
+            comparison, "compare_versions must return a result even for non-persisted datasets"
+        )
 
     def test_version_comparison_failure_same_version(self):
         """Test version comparison with same version (failure scenario)"""
@@ -557,7 +583,7 @@ class VersionComparisonServiceTest(DatasetsTestBase):
         )
 
         comparison = VersionComparisonService.compare_versions(v1, v2)
-        self.assertIsNotNone(comparison,
-            "compare_versions must return a comparison for valid persisted datasets")
-        self.assertIsNotNone(comparison.schema_diff,
-            "comparison must have a schema_diff attribute")
+        self.assertIsNotNone(
+            comparison, "compare_versions must return a comparison for valid persisted datasets"
+        )
+        self.assertIsNotNone(comparison.schema_diff, "comparison must have a schema_diff attribute")

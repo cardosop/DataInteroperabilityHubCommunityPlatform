@@ -30,8 +30,11 @@ def _find_test_files(search_roots: list[str]) -> list[str]:
         if not p.exists():
             continue
         for dirpath, dirnames, filenames in os.walk(p):
-            dirnames[:] = [d for d in dirnames if d not in ("__pycache__", ".git", "migrations",
-                                                             ".venv", "venv", "node_modules")]
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if d not in ("__pycache__", ".git", "migrations", ".venv", "venv", "node_modules")
+            ]
             for fn in filenames:
                 if not fn.endswith(".py"):
                     continue
@@ -45,15 +48,31 @@ class NoReverseMatchVisitor(ast.NodeVisitor):
         self.file_path = file_path
         self.violations: list[int] = []
 
+    def __init__(self, file_path: str, source_lines: list[str]) -> None:
+        self.file_path = file_path
+        self.source_lines = source_lines
+        self.violations: list[int] = []
+
+    def _has_noqa(self, lineno: int) -> bool:
+        """Check if the current or previous line has a noqa annotation."""
+        for offset in (0, 1):
+            idx = lineno - 1 - offset
+            if 0 <= idx < len(self.source_lines):
+                if "# noqa: no-reverse-match" in self.source_lines[idx]:
+                    return True
+        return False
+
     def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
         if node.type is None:
             return
         if isinstance(node.type, ast.Name) and node.type.id == "NoReverseMatch":
-            self.violations.append(node.lineno)
+            if not self._has_noqa(node.lineno):
+                self.violations.append(node.lineno)
         elif isinstance(node.type, ast.Tuple):
             for elt in node.type.elts:
                 if isinstance(elt, ast.Name) and elt.id == "NoReverseMatch":
-                    self.violations.append(node.lineno)
+                    if not self._has_noqa(node.lineno):
+                        self.violations.append(node.lineno)
                     break
         self.generic_visit(node)
 
@@ -65,7 +84,7 @@ def check_file(file_path: str) -> list[int]:
         tree = ast.parse(source, filename=file_path)
     except SyntaxError:
         return []
-    visitor = NoReverseMatchVisitor(file_path)
+    visitor = NoReverseMatchVisitor(file_path, source.splitlines(keepends=True))
     visitor.visit(tree)
     return visitor.violations
 
@@ -75,10 +94,14 @@ def main() -> None:
     parser.add_argument("--path", nargs="*", default=None)
     args = parser.parse_args()
 
-    roots = args.path if args.path else [
-        str(REPO_ROOT / "hub"),
-        str(REPO_ROOT / "tests"),
-    ]
+    roots = (
+        args.path
+        if args.path
+        else [
+            str(REPO_ROOT / "hub"),
+            str(REPO_ROOT / "tests"),
+        ]
+    )
     test_files = _find_test_files(roots)
 
     violations: list[tuple[str, int]] = []

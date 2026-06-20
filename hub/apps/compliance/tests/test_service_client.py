@@ -29,6 +29,7 @@ class ComplianceServiceClientTest(TestCase):
         from hub.apps.core.resilience.service_breakers import (
             reset_shared_circuit_breakers_for_service,
         )
+
         # Reset the module-level shared circuit breaker BEFORE creating
         # the client.  Other tests in the suite can open the breaker;
         # the health-check test must always start with CLOSED state.
@@ -173,6 +174,8 @@ class ComplianceServiceClientTest(TestCase):
             timeout=self.client.client.timeout,
         )
 
+        took_response_path = False
+        took_exception_path = False
         try:
             result = self.client.scan_file(
                 file_content=b"id,name\n1,Test", file_format="csv", scan_mode="internal"
@@ -184,15 +187,24 @@ class ComplianceServiceClientTest(TestCase):
                 result.get("allowed_to_store", True),
                 "Fallback response must be fail-closed (allowed_to_store=False)",
             )
+            took_response_path = True
         except (ConnectionError, OSError, httpx.RequestError):
-            # Raising on connection failure is also valid graceful handling
-            pass
+            # Raising on connection failure is also valid graceful handling.
+            # Verifying: any unexpected exception would escape this handler
+            # and fail the test.
+            took_exception_path = True
         finally:
             self.client.client = original_client
             self.client.base_url = original_base_url
 
+        self.assertTrue(
+            took_response_path or took_exception_path,
+            "Expected either a fail-closed dict response or a connection exception",
+        )
+
     def test_scan_file_handles_invalid_file_format(self):
-        """Test scan_file handles invalid file format gracefully"""
+        """Test scan_file handles invalid file format gracefully —
+        either returns an error dict or raises HTTPStatusError."""
         try:
             is_healthy, _ = self.client.health_check()
             if not is_healthy:
@@ -201,15 +213,23 @@ class ComplianceServiceClientTest(TestCase):
             self.skipTest("Compliance service not available - skipping test")
 
         # Test with invalid format
+        took_dict_path = False
+        took_exception_path = False
         try:
             result = self.client.scan_file(
                 file_content=b"invalid content", file_format="invalid_format", scan_mode="internal"
             )
             # Service may accept or reject - both are valid
             self.assertIsInstance(result, dict)
+            took_dict_path = True
         except httpx.HTTPStatusError:
             # Expected if format not supported — the service may 400/422
-            pass
+            took_exception_path = True
+
+        self.assertTrue(
+            took_dict_path or took_exception_path,
+            "Expected either a dict response or an HTTPStatusError for invalid format",
+        )
 
     # ========== EDGE CASES ==========
 

@@ -12,10 +12,11 @@ Per-dialect functions for regex and date arithmetic:
 Also provides ``ContractQualityRulesExtractor`` for extracting check
 definitions from HubContract JSON.
 """
-from __future__ import annotations
-from dataclasses import dataclass
-from typing import Any, Dict, List
 
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
 
 # ── 285.10.1.2.1 — CompiledCheck ─────────────────────────────────────
 
@@ -35,13 +36,13 @@ class CompiledCheck:
 
 # ── Per-dialect function mappings ─────────────────────────────────────
 
-_REGEX_FN: Dict[str, str] = {
+_REGEX_FN: dict[str, str] = {
     "SNOWFLAKE": "REGEXP_LIKE({col}, '{pattern}')",
     "BIGQUERY": "REGEXP_CONTAINS({col}, r'{pattern}')",
     "DATABRICKS": "{col} RLIKE '{pattern}'",
 }
 
-_DATE_SUB_FN: Dict[str, str] = {
+_DATE_SUB_FN: dict[str, str] = {
     "SNOWFLAKE": "DATEADD(hour, -{hours}, CURRENT_TIMESTAMP())",
     "BIGQUERY": "DATE_SUB(CURRENT_TIMESTAMP(), INTERVAL {hours} HOUR)",
     "DATABRICKS": "CURRENT_TIMESTAMP() - INTERVAL {hours} HOURS",
@@ -67,10 +68,10 @@ class DQWarehouseSQLCompiler:
 
     @staticmethod
     def compile(
-        check_definitions: List[Dict[str, Any]],
+        check_definitions: list[dict[str, Any]],
         warehouse_type: str,
         table_fqn: str,
-    ) -> List[CompiledCheck]:
+    ) -> list[CompiledCheck]:
         """Compile a list of check definitions into ``CompiledCheck``
         objects with warehouse-specific SQL.
 
@@ -84,14 +85,14 @@ class DQWarehouseSQLCompiler:
             List of ``CompiledCheck`` (unknown check types skipped).
         """
         wt = warehouse_type.upper()
-        compiled: List[CompiledCheck] = []
+        compiled: list[CompiledCheck] = []
 
         for i, check in enumerate(check_definitions):
             check_type = check.get("type", "")
             if check_type not in DQWarehouseSQLCompiler._SUPPORTED_CHECKS:
                 continue
 
-            column = check.get("column", "")
+            check.get("column", "")
             compiler_fn = _CHECK_COMPILERS.get(check_type)
             if compiler_fn is None:
                 continue
@@ -106,9 +107,7 @@ class DQWarehouseSQLCompiler:
 # ── Per-check compiler functions ──────────────────────────────────────
 
 
-def _compile_not_null(
-    check: Dict[str, Any], wt: str, table: str, idx: int
-) -> CompiledCheck:
+def _compile_not_null(check: dict[str, Any], wt: str, table: str, idx: int) -> CompiledCheck:
     col = check["column"]
     name = f"not_null_{col}_{idx}"
     return CompiledCheck(
@@ -122,9 +121,7 @@ def _compile_not_null(
     )
 
 
-def _compile_unique(
-    check: Dict[str, Any], wt: str, table: str, idx: int
-) -> CompiledCheck:
+def _compile_unique(check: dict[str, Any], wt: str, table: str, idx: int) -> CompiledCheck:
     col = check["column"]
     name = f"unique_{col}_{idx}"
     return CompiledCheck(
@@ -132,8 +129,7 @@ def _compile_unique(
         check_type="unique",
         column_name=col,
         sql=(
-            f"SELECT {col}, COUNT(*) AS dup_count FROM {table} "
-            f"GROUP BY {col} HAVING COUNT(*) > 1"
+            f"SELECT {col}, COUNT(*) AS dup_count FROM {table} GROUP BY {col} HAVING COUNT(*) > 1"
         ),
         result_key="dup_count",
         pass_condition="result == 0",
@@ -141,9 +137,7 @@ def _compile_unique(
     )
 
 
-def _compile_accepted_values(
-    check: Dict[str, Any], wt: str, table: str, idx: int
-) -> CompiledCheck:
+def _compile_accepted_values(check: dict[str, Any], wt: str, table: str, idx: int) -> CompiledCheck:
     col = check["column"]
     values = check.get("values", [])
     quoted = ", ".join(f"'{v}'" for v in values)
@@ -162,11 +156,9 @@ def _compile_accepted_values(
     )
 
 
-def _compile_range(
-    check: Dict[str, Any], wt: str, table: str, idx: int
-) -> CompiledCheck:
+def _compile_range(check: dict[str, Any], wt: str, table: str, idx: int) -> CompiledCheck:
     col = check["column"]
-    conditions: List[str] = []
+    conditions: list[str] = []
     if "min" in check:
         conditions.append(f"{col} < {check['min']}")
     if "max" in check:
@@ -185,22 +177,17 @@ def _compile_range(
     )
 
 
-def _compile_regex(
-    check: Dict[str, Any], wt: str, table: str, idx: int
-) -> CompiledCheck:
+def _compile_regex(check: dict[str, Any], wt: str, table: str, idx: int) -> CompiledCheck:
     col = check["column"]
     pattern = check.get("pattern", ".*")
-    regex_fn = _REGEX_FN.get(wt, _REGEX_FN["SNOWFLAKE"]).format(
-        col=col, pattern=pattern
-    )
+    regex_fn = _REGEX_FN.get(wt, _REGEX_FN["SNOWFLAKE"]).format(col=col, pattern=pattern)
     name = f"regex_{col}_{idx}"
     return CompiledCheck(
         check_name=name,
         check_type="regex",
         column_name=col,
         sql=(
-            f"SELECT COUNT(*) AS regex_fail FROM {table} "
-            f"WHERE {col} IS NOT NULL AND NOT {regex_fn}"
+            f"SELECT COUNT(*) AS regex_fail FROM {table} WHERE {col} IS NOT NULL AND NOT {regex_fn}"
         ),
         result_key="regex_fail",
         pass_condition="result == 0",
@@ -208,9 +195,7 @@ def _compile_regex(
     )
 
 
-def _compile_freshness(
-    check: Dict[str, Any], wt: str, table: str, idx: int
-) -> CompiledCheck:
+def _compile_freshness(check: dict[str, Any], wt: str, table: str, idx: int) -> CompiledCheck:
     col = check.get("column", "updated_at")
     hours = check.get("max_age_hours", 24)
     date_fn = _DATE_SUB_FN.get(wt, _DATE_SUB_FN["SNOWFLAKE"]).format(hours=hours)
@@ -219,19 +204,14 @@ def _compile_freshness(
         check_name=name,
         check_type="freshness",
         column_name=col,
-        sql=(
-            f"SELECT COUNT(*) AS stale_count FROM {table} "
-            f"WHERE {col} < {date_fn}"
-        ),
+        sql=(f"SELECT COUNT(*) AS stale_count FROM {table} WHERE {col} < {date_fn}"),
         result_key="stale_count",
         pass_condition="result == 0",
         warehouse_type=wt,
     )
 
 
-def _compile_row_count(
-    check: Dict[str, Any], wt: str, table: str, idx: int
-) -> CompiledCheck:
+def _compile_row_count(check: dict[str, Any], wt: str, table: str, idx: int) -> CompiledCheck:
     min_rows = check.get("min", 0)
     max_rows = check.get("max")
     name = f"row_count_{idx}"
@@ -244,8 +224,7 @@ def _compile_row_count(
         check_type="row_count",
         column_name="",
         sql=(
-            f"WITH _rc AS (SELECT COUNT(*) AS cnt FROM {table}) "
-            f"SELECT cnt FROM _rc WHERE {where}"
+            f"WITH _rc AS (SELECT COUNT(*) AS cnt FROM {table}) SELECT cnt FROM _rc WHERE {where}"
         ),
         result_key="row_count",
         pass_condition="result == 0",
@@ -253,9 +232,7 @@ def _compile_row_count(
     )
 
 
-def _compile_column_stats(
-    check: Dict[str, Any], wt: str, table: str, idx: int
-) -> CompiledCheck:
+def _compile_column_stats(check: dict[str, Any], wt: str, table: str, idx: int) -> CompiledCheck:
     col = check["column"]
     name = f"column_stats_{col}_{idx}"
     return CompiledCheck(
@@ -274,7 +251,7 @@ def _compile_column_stats(
 
 
 # Registry of check compilers
-_CHECK_COMPILERS: Dict[str, Any] = {
+_CHECK_COMPILERS: dict[str, Any] = {
     "not_null": _compile_not_null,
     "unique": _compile_unique,
     "accepted_values": _compile_accepted_values,
@@ -294,8 +271,8 @@ class ContractQualityRulesExtractor:
 
     @staticmethod
     def get_warehouse_check_definitions(
-        contract: Dict[str, Any],
-    ) -> List[Dict[str, Any]]:
+        contract: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         """Extract check definitions consumable by ``DQWarehouseSQLCompiler``.
 
         Sources:
@@ -303,7 +280,7 @@ class ContractQualityRulesExtractor:
             ``is_unique`` → unique check, ``enum`` → accepted_values check
           - ``quality.rules[]`` → type + column + params dicts
         """
-        checks: List[Dict[str, Any]] = []
+        checks: list[dict[str, Any]] = []
 
         if not isinstance(contract, dict):
             return checks
@@ -325,11 +302,13 @@ class ContractQualityRulesExtractor:
                         checks.append({"type": "unique", "column": col})
                     enum_vals = f.get("enum")
                     if enum_vals and isinstance(enum_vals, list):
-                        checks.append({
-                            "type": "accepted_values",
-                            "column": col,
-                            "values": enum_vals,
-                        })
+                        checks.append(
+                            {
+                                "type": "accepted_values",
+                                "column": col,
+                                "values": enum_vals,
+                            }
+                        )
 
         # From quality rules
         quality = contract.get("quality", {})
@@ -344,7 +323,7 @@ class ContractQualityRulesExtractor:
                         continue
                     col = rule.get("column", "")
                     params = rule.get("params", {}) or {}
-                    entry: Dict[str, Any] = {"type": rule_type}
+                    entry: dict[str, Any] = {"type": rule_type}
                     if col:
                         entry["column"] = col
                     entry.update(params)

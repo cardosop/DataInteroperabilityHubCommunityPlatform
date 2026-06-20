@@ -8,6 +8,7 @@ import uuid
 import warnings
 
 from django.db import models
+from django.db.utils import DatabaseError
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib.postgres.search import SearchVectorField
@@ -407,11 +408,22 @@ class Asset(models.Model):
                     ),
                 },
             )
-        except Exception as audit_exc:  # noqa: BLE001
-            # Audit emission is best-effort. The deprecation warning
-            # above is the load-bearing signal — losing the audit row
-            # to a transient outage doesn't break callers.
+        except (OSError, ConnectionError, TimeoutError) as audit_exc:
+            # Transient infrastructure failure — audit emission is
+            # best-effort. The deprecation warning above is the
+            # load-bearing signal.
             _logger.warning(
+                "asset_visibility_deprecation_audit_emit_failed",
+                extra={
+                    "asset_id": str(self.pk) if self.pk else None,
+                    "error": str(audit_exc),
+                },
+            )
+        except DatabaseError as audit_exc:
+            # Database error during audit emission — still best-effort
+            # (don't crash the setter), but log at ERROR so it surfaces
+            # in Sentry/DataDog for engineering investigation.
+            _logger.error(
                 "asset_visibility_deprecation_audit_emit_failed",
                 extra={
                     "asset_id": str(self.pk) if self.pk else None,
@@ -502,6 +514,7 @@ class Asset(models.Model):
                         spec_type=active_contract.original_spec_type,
                         spec_version=active_contract.original_spec_version,
                         contract_id=str(active_contract.id),
+                        warnings=active_contract.normalization_warnings or [],
                     )
                 except _ServiceValidationError as exc:
                     # Translate the typed ValidationError into Django's so
@@ -592,6 +605,7 @@ class Asset(models.Model):
                     spec_type=active_contract.original_spec_type,
                     spec_version=active_contract.original_spec_version,
                     contract_id=str(active_contract.id),
+                    warnings=active_contract.normalization_warnings or [],
                 )
                 for err in floor_errors:
                     subcode = err.get("subcode", "STRUCTURELESS")

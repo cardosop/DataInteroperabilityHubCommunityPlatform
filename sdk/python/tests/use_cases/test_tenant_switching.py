@@ -19,7 +19,8 @@ resource operations respect the active tenant context.
 """
 
 import requests
-from tests._persona_provisioning import provision_persona, PersonaCredentials
+
+from tests._persona_provisioning import PersonaCredentials, provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import api_base_url
 
@@ -36,14 +37,19 @@ def _safe_provision(role: str):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _e2e_token() -> str:
     """Return the E2E shared secret for /test/ensure-e2e-* endpoints."""
     import os as _os
+
     return _os.environ.get("E2E_TEST_SECRET", "e2e-test-secret-for-local-dev")
 
 
 def _auth_headers(
-    token: str, tenant_id: str | None = None, *, e2e: bool = False,
+    token: str,
+    tenant_id: str | None = None,
+    *,
+    e2e: bool = False,
 ) -> dict:
     headers = {"Authorization": f"Bearer {token}"}
     if tenant_id:
@@ -69,6 +75,7 @@ def _setup_two_tenants(creds: PersonaCredentials):
         # ── Validate token before first attempt ────────────────────
         if attempt == 0:
             import requests as _r
+
             base = api_base_url()
             validate_resp = _r.get(
                 f"{base}/auth/me/",
@@ -78,16 +85,22 @@ def _setup_two_tenants(creds: PersonaCredentials):
             if validate_resp.status_code != 200:
                 # Token is stale — purge cache, re-provision, and fall
                 # through with fresh credentials.
+                import glob as _glob
+                import pathlib as _pl
+
                 from tests._persona_provisioning import _CACHE_DIR as _cdir
-                import glob as _glob, pathlib as _pl
+
                 for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
                     _pl.Path(_f).unlink(missing_ok=True)
                 current = _safe_provision(role)
 
         # ── Purge cache + re-provision on subsequent attempts ──────
         if attempt > 0:
+            import glob as _glob
+            import pathlib as _pl
+
             from tests._persona_provisioning import _CACHE_DIR as _cdir
-            import glob as _glob, pathlib as _pl
+
             for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
                 _pl.Path(_f).unlink(missing_ok=True)
             current = _safe_provision(role)
@@ -116,8 +129,11 @@ def _setup_two_tenants(creds: PersonaCredentials):
         # 401 / 403 (token invalidated) — purge cache + re-provision
         # on this attempt rather than waiting for next iteration.
         if resp.status_code in (401, 403) and attempt < 2:
+            import glob as _glob
+            import pathlib as _pl
+
             from tests._persona_provisioning import _CACHE_DIR as _cdir
-            import glob as _glob, pathlib as _pl
+
             for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
                 _pl.Path(_f).unlink(missing_ok=True)
             fresh = _safe_provision(role)
@@ -131,11 +147,15 @@ def _setup_two_tenants(creds: PersonaCredentials):
     # If we exhausted all retries, try one last-resort fresh login
     # with a longer backoff (rate-limiting may have cooled down).
     import time as _time
+
     _time.sleep(3)
     try:
+        import glob as _glob
+        import pathlib as _pl
+
         from tests._persona_provisioning import _CACHE_DIR as _cdir
         from tests._persona_provisioning import _provision_via_login
-        import glob as _glob, pathlib as _pl
+
         for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
             _pl.Path(_f).unlink(missing_ok=True)
         last_creds = _provision_via_login(role, None)
@@ -169,6 +189,7 @@ def _provision_with_retry(role: str, max_attempts: int = 4) -> "PersonaCredentia
     See ``test_invitation_accept._provision_with_retry`` — identical pattern.
     """
     import time as _t
+
     for attempt in range(max_attempts):
         try:
             return provision_persona(role)  # noqa: PHASE216-STATIC-ID
@@ -177,7 +198,7 @@ def _provision_with_retry(role: str, max_attempts: int = 4) -> "PersonaCredentia
             if "Skip" not in skip_type and "Skipped" not in skip_type:
                 raise
             if attempt < max_attempts - 1:
-                _t.sleep(2 ** attempt)
+                _t.sleep(2**attempt)
                 continue
             raise
 
@@ -208,19 +229,15 @@ def test_switch_tenant_header_changes_context():
         pytest.skip("/auth/me/tenants/ endpoint not deployed (404)")
 
     assert tenants_resp.status_code == 200, (
-        f"/auth/me/tenants/ returned {tenants_resp.status_code}: "
-        f"{tenants_resp.text[:300]}"
+        f"/auth/me/tenants/ returned {tenants_resp.status_code}: {tenants_resp.text[:300]}"
     )
     tenants_body = tenants_resp.json()
     tenant_list = (
-        tenants_body
-        if isinstance(tenants_body, list)
-        else tenants_body.get("results", [])
+        tenants_body if isinstance(tenants_body, list) else tenants_body.get("results", [])
     )
     tenant_ids = [str(t.get("id")) for t in tenant_list]
     assert tenant_a in tenant_ids, (
-        f"User's tenant list does not contain primary tenant "
-        f"{tenant_a}. Tenant list: {tenant_ids}"
+        f"User's tenant list does not contain primary tenant {tenant_a}. Tenant list: {tenant_ids}"
     )
 
     # Step 2: Create asset in tenant A context
@@ -236,13 +253,9 @@ def test_switch_tenant_header_changes_context():
         timeout=15,
     )
     assert create_resp.status_code in (200, 201), (
-        f"Asset creation in tenant A failed: "
-        f"{create_resp.status_code}: {create_resp.text[:300]}"
+        f"Asset creation in tenant A failed: {create_resp.status_code}: {create_resp.text[:300]}"
     )
-    asset_id = (
-        create_resp.json().get("id")
-        or create_resp.json().get("key")
-    )
+    asset_id = create_resp.json().get("id") or create_resp.json().get("key")
 
     # Step 3: Verify asset is NOT visible in tenant B
     get_resp = requests.get(
@@ -293,17 +306,14 @@ def test_no_tenant_header_uses_default():
     )
 
     assert resp.status_code == 200, (
-        f"/auth/me/ without X-Tenant-Id returned "
-        f"{resp.status_code}: {resp.text[:300]}"
+        f"/auth/me/ without X-Tenant-Id returned {resp.status_code}: {resp.text[:300]}"
     )
 
     body = resp.json()
     returned_tenant_id = body.get("tenant_id") or (
         body.get("tenant", {}).get("id") if isinstance(body.get("tenant"), dict) else None
     )
-    assert returned_tenant_id is not None, (
-        f"/auth/me/ response has no tenant information: {body}"
-    )
+    assert returned_tenant_id is not None, f"/auth/me/ response has no tenant information: {body}"
     assert str(returned_tenant_id) == str(creds.tenant_id), (
         f"/auth/me/ default tenant {returned_tenant_id} does not match "
         f"expected home tenant {creds.tenant_id}"
@@ -330,6 +340,5 @@ def test_tenant_header_with_empty_value_returns_error():
     # silently ignored (200).  Must NOT cause a 500 or any other
     # unexpected response.
     assert resp.status_code in (200, 400), (
-        f"Empty X-Tenant-Id returned unexpected "
-        f"{resp.status_code}: {resp.text[:300]}"
+        f"Empty X-Tenant-Id returned unexpected {resp.status_code}: {resp.text[:300]}"
     )

@@ -4,18 +4,21 @@ Error Handling Tests — 278.AA.18
 Tests the SDK error handling for: API errors (422, 409, 429),
 network errors, response parsing edge cases, and error code mapping.
 """
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
+import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
+    ConflictError,
     DataHubError,
-    ValidationError,
-    UnauthorizedError,
+    NetworkError,
     NotFoundError,
     RateLimitError,
-    NetworkError,
-    ConflictError,
+    UnauthorizedError,
+    ValidationError,
     parse_error,
 )
 
@@ -36,6 +39,7 @@ async def client(config):
 
 
 # ── API error parsing ──────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_parses_422_validation_error(client):
@@ -108,6 +112,7 @@ async def test_parses_429_rate_limit(client):
 
 # ── Network error parsing ──────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_handles_connection_error(client):
     err = httpx.ConnectError("DNS resolution failed for api.example.com")
@@ -130,6 +135,7 @@ async def test_handles_timeout_error(client):
 
 
 # ── Error response edge cases ──────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_handles_malformed_error_response(client):
@@ -164,6 +170,7 @@ async def test_handles_empty_error_body(client):
 
 
 # ── Error code mapping ─────────────────────────────────────────────────
+
 
 def test_parse_error_validation():
     body = {"error": {"code": "VALIDATION_ERROR", "message": "Bad input", "http_status": 400}}

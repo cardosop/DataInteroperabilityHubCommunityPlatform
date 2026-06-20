@@ -18,6 +18,7 @@ the channel_config supplies a ``hmac_secret`` — this matches the
 project-wide webhook delivery convention used in
 ``hub.apps.webhooks.service_client``.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -26,11 +27,10 @@ import json
 import logging
 import re
 import uuid
-from typing import Any, Dict, Tuple
+from typing import Any
 
 from ..log_helpers import _redact
 from .base import AlertDeliveryError, BaseAlertClient, DeliveryResult
-
 
 logger = logging.getLogger(__name__)
 
@@ -50,15 +50,13 @@ class WebhookAlertClient(BaseAlertClient):
 
     channel = "WEBHOOK"
 
-    def _deliver(self, rule, payload: Dict[str, Any]) -> DeliveryResult:
+    def _deliver(self, rule, payload: dict[str, Any]) -> DeliveryResult:
         import requests  # lazy import — see slack_client
 
         config = rule.get_channel_config() or {}
         webhook_url = config.get("url") or config.get("webhook_url")
         if not webhook_url:
-            raise AlertDeliveryError(
-                f"WEBHOOK channel config has no url (rule {rule.id})"
-            )
+            raise AlertDeliveryError(f"WEBHOOK channel config has no url (rule {rule.id})")
 
         body = json.dumps(payload, default=str, sort_keys=True).encode("utf-8")
         headers = _build_headers(config, body)
@@ -99,8 +97,7 @@ class WebhookAlertClient(BaseAlertClient):
         # 4xx → caller payload / config bug; don't waste retry budget.
         if 400 <= response.status_code < 500:
             raise AlertDeliveryError(
-                f"webhook rejected "
-                f"(status={response.status_code}, body={response.text[:200]})"
+                f"webhook rejected (status={response.status_code}, body={response.text[:200]})"
             )
 
         # 5xx → transient.
@@ -116,7 +113,7 @@ class WebhookAlertClient(BaseAlertClient):
 # ---------------------------------------------------------------------------
 
 
-def _build_headers(config: Dict[str, Any], body_bytes: bytes) -> Dict[str, str]:
+def _build_headers(config: dict[str, Any], body_bytes: bytes) -> dict[str, str]:
     """Build the outgoing header set: defaults + tenant-supplied + sig.
 
     Order of precedence (last wins):
@@ -172,7 +169,7 @@ def _build_headers(config: Dict[str, Any], body_bytes: bytes) -> Dict[str, str]:
     return headers
 
 
-def _compute_hmac(secret: str, body_bytes: bytes) -> Tuple[str, str]:
+def _compute_hmac(secret: str, body_bytes: bytes) -> tuple[str, str]:
     """Compute the (signature, timestamp) tuple used by webhook receivers.
 
     Format mirrors the project-wide webhook signing convention
@@ -182,8 +179,10 @@ def _compute_hmac(secret: str, body_bytes: bytes) -> Tuple[str, str]:
     import time
 
     ts = str(int(time.time()))
-    payload = f"{ts}.".encode("utf-8") + body_bytes
+    payload = f"{ts}.".encode() + body_bytes
     digest = hmac.new(
-        secret.encode("utf-8"), payload, hashlib.sha256,
+        secret.encode("utf-8"),
+        payload,
+        hashlib.sha256,
     ).hexdigest()
     return f"sha256={digest}", ts

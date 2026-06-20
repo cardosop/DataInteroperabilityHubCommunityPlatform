@@ -1,6 +1,7 @@
 """DSAR ORM models — separate from ``governance.AccessRequest`` (dataset access)."""
 
 from __future__ import annotations
+
 import hashlib
 import secrets
 import uuid
@@ -78,7 +79,9 @@ class DSARRequest(models.Model):
         default=list,
         help_text="Applicable regime keys (uppercase strings), ordered by applicability.",
     )
-    subject_email = models.EmailField(help_text="Requester email (may differ from authenticated user)")
+    subject_email = models.EmailField(
+        help_text="Requester email (may differ from authenticated user)"
+    )
     subject_name = models.CharField(max_length=255, blank=True, default="")
     subject_timezone = models.CharField(
         max_length=64,

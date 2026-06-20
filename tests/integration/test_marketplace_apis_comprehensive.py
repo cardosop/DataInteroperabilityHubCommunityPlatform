@@ -17,22 +17,28 @@ import pytest
 pytestmark = pytest.mark.slow
 import time
 import uuid
-from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel, Order, OrderStatus, Entitlement
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import UserStatus
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.assets.models import AssetStatus
 from hub.apps.audit.models import AuditEvent
-from tests.fixtures.test_data_factories import TenantFactory, AssetFactoryEnhanced, ListingFactory
+from hub.apps.marketplace.models import (
+    Entitlement,
+    Listing,
+    ListingStatus,
+    Order,
+    OrderStatus,
+    PricingModel,
+)
+from hub.apps.tenants.models import KYCStatus, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
+from hub.apps.users.models import UserStatus
+from tests.fixtures.test_data_factories import AssetFactoryEnhanced, ListingFactory, TenantFactory
 
 # Use regular django_db marker - TestCase handles transactions efficiently
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -101,7 +107,11 @@ class TestMarketplaceListListingsAPI(TestCase):
         response = self.client.get("/api/v1/marketplace/listings/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        listings_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        listings_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(listings_list, list)
         self.assertEqual(len(listings_list), 0)
 
@@ -110,14 +120,18 @@ class TestMarketplaceListListingsAPI(TestCase):
         response = self.client.get("/api/v1/marketplace/listings/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        listings_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        listings_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(listings_list, list)
         self.assertGreaterEqual(len(listings_list), 2)
 
     def test_list_listings_success_pagination(self):
         """Test pagination for listings"""
         # Create more listings for pagination
-        for i in range(5):
+        for _i in range(5):
             ListingFactory.create_listing(
                 tenant=self.tenant,
                 status=ListingStatus.PUBLISHED,
@@ -126,7 +140,11 @@ class TestMarketplaceListListingsAPI(TestCase):
         response = self.client.get("/api/v1/marketplace/listings/?page=1&page_size=3")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        listings_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        listings_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(listings_list, list)
         self.assertLessEqual(len(listings_list), 3)
 
@@ -137,7 +155,11 @@ class TestMarketplaceListListingsAPI(TestCase):
         response = self.client.get("/api/v1/marketplace/listings/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        listings_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        listings_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(listings_list, list)
         # Verify listings are returned (status filtering may not be implemented)
         self.assertGreaterEqual(len(listings_list), 0)
@@ -147,10 +169,22 @@ class TestMarketplaceListListingsAPI(TestCase):
         response = self.client.get("/api/v1/marketplace/listings/?search=Listing 1")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        listings_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        listings_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(listings_list, list)
         # Should find listing1
-        titles = [l.get("title") or (l.get("metadata_json", {}).get("title") if isinstance(l.get("metadata_json"), dict) else None) for l in listings_list]
+        titles = [
+            l.get("title")
+            or (
+                l.get("metadata_json", {}).get("title")
+                if isinstance(l.get("metadata_json"), dict)
+                else None
+            )
+            for l in listings_list
+        ]
         self.assertTrue(any("Listing 1" in str(t) for t in titles if t))
 
     def test_list_listings_success_filter_by_domain(self):
@@ -158,10 +192,18 @@ class TestMarketplaceListListingsAPI(TestCase):
         response = self.client.get("/api/v1/marketplace/listings/?domain=finance")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        listings_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        listings_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(listings_list, list)
         for listing_data in listings_list:
-            domain = listing_data.get("domain") or (listing_data.get("metadata_json", {}).get("domain") if isinstance(listing_data.get("metadata_json"), dict) else None)
+            domain = listing_data.get("domain") or (
+                listing_data.get("metadata_json", {}).get("domain")
+                if isinstance(listing_data.get("metadata_json"), dict)
+                else None
+            )
             self.assertEqual(domain, "finance")
 
     def test_list_listings_success_ordering(self):
@@ -169,7 +211,11 @@ class TestMarketplaceListListingsAPI(TestCase):
         response = self.client.get("/api/v1/marketplace/listings/?sort=recency")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        listings_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        listings_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(listings_list, list)
         # Verify ordering parameter is accepted
         self.assertGreaterEqual(len(listings_list), 0)
@@ -183,7 +229,11 @@ class TestMarketplaceListListingsAPI(TestCase):
         # Should return empty list or 400, depending on implementation
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
         if response.status_code == status.HTTP_200_OK:
-            listings_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+            listings_list = (
+                response.data.get("results", response.data)
+                if isinstance(response.data, dict)
+                else response.data
+            )
             self.assertIsInstance(listings_list, list)
 
     # ========== PERFORMANCE TESTS ==========
@@ -217,7 +267,11 @@ class TestMarketplaceListListingsAPI(TestCase):
         response = self.client.get("/api/v1/marketplace/listings/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        listings_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        listings_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(listings_list, list)
         # Should only see listings from self.tenant
         for listing_data in listings_list:
@@ -454,7 +508,9 @@ class TestMarketplaceCreateListingAPI(TestCase):
         )
 
         # API returns 404 for non-existent asset or 400 for validation error
-        self.assertIn(response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_400_BAD_REQUEST])
+        self.assertIn(
+            response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_400_BAD_REQUEST]
+        )
         # Verify error message indicates asset not found (api_error_response uses "detail")
         if response.status_code == status.HTTP_404_NOT_FOUND:
             err_msg = str(response.data.get("detail", response.data.get("error", ""))).lower()
@@ -485,7 +541,7 @@ class TestMarketplaceCreateListingAPI(TestCase):
         # Check for either "ACTIVE" or "active" in error message
         self.assertTrue(
             "ACTIVE" in error_msg or "active" in error_msg or "only" in error_msg.lower(),
-            f"Error message should mention ACTIVE assets: {error_msg}"
+            f"Error message should mention ACTIVE assets: {error_msg}",
         )
 
     def test_create_listing_error_unverified_kyc(self):
@@ -787,7 +843,7 @@ class TestMarketplaceGetListingAPI(TestCase):
         # Second request (should use cache)
         start_time = time.time()
         response2 = self.client.get(f"/api/v1/marketplace/listings/{self.listing.id}/")
-        elapsed_time = (time.time() - start_time) * 1000
+        (time.time() - start_time) * 1000
 
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
         self.assertEqual(response1.data["id"], response2.data["id"])
@@ -1060,4 +1116,3 @@ class TestMarketplacePurchaseListingAPI(TestCase):
         # Auto-approved orders should be fulfilled
         self.assertEqual(order.status, OrderStatus.FULFILLED.value)
         self.assertIsNotNone(order.fulfilled_at)
-

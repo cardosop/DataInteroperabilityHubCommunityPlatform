@@ -7,17 +7,20 @@ Comprehensive tests for scheduled sync functionality including:
 - E2E tests for scheduled sync execution
 """
 
+import contextlib
+import logging
 import uuid
 from datetime import timedelta
 
 import pytest
+from django.db.models.signals import post_save
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset
 from hub.apps.audit.models import AuditEvent
 from hub.apps.core.services.base import ConflictError, NotFoundError, ValidationError
-from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
+from hub.apps.integrations.base import MarketplaceType, SyncDirection
 from hub.apps.integrations.models import (
     MarketplaceConnection,
     MarketplaceSyncJob,
@@ -27,12 +30,54 @@ from hub.apps.integrations.models import (
 )
 from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.integrations.tasks import process_scheduled_syncs
-from hub.apps.jobs.models import Job, JobStatus, JobType
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
 from tests.fixtures.test_data_factories import TenantFactory, UserFactory
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+_logger = logging.getLogger("hub.apps.integrations.tests.scheduled_sync")
+
+
+def _disconnect_semantic_signals():
+    """Disconnect semantic service post_save signals to prevent timeouts
+    during integration tests that create many Asset/Contract rows.
+
+    Logs a debug message on failure rather than silently swallowing the
+    exception so that signal import refactors surface in test output.
+    """
+    from django.db.models.signals import post_save as _ps
+
+    try:
+        from hub.apps.assets.models import Asset as _Asset
+        from hub.apps.contracts.models import Contract as _Contract
+        from hub.apps.semantic.signals import asset_saved, contract_saved
+
+        _ps.disconnect(contract_saved, sender=_Contract)
+        _ps.disconnect(asset_saved, sender=_Asset)
+    except (ImportError, AttributeError) as exc:
+        _logger.debug("Cannot disconnect semantic signals (may already be disconnected): %s", exc)
+    except Exception:
+        _logger.warning("Unexpected error disconnecting semantic signals", exc_info=True)
+
+
+def _reconnect_semantic_signals():
+    """Reconnect semantic service post_save signals after integration tests.
+
+    Logs a debug message on failure rather than silently swallowing the
+    exception so that signal import refactors surface in test output.
+    """
+    from django.db.models.signals import post_save as _ps
+
+    try:
+        from hub.apps.assets.models import Asset as _Asset
+        from hub.apps.contracts.models import Contract as _Contract
+        from hub.apps.semantic.signals import asset_saved, contract_saved
+
+        _ps.connect(contract_saved, sender=_Contract, weak=False)
+        _ps.connect(asset_saved, sender=_Asset, weak=False)
+    except (ImportError, AttributeError) as exc:
+        _logger.debug("Cannot reconnect semantic signals (may not be available): %s", exc)
+    except Exception:
+        _logger.warning("Unexpected error reconnecting semantic signals", exc_info=True)
 
 
 class ScheduledSyncServiceUnitTest(TestCase):
@@ -40,18 +85,7 @@ class ScheduledSyncServiceUnitTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        # CRITICAL: Disconnect semantic service signals to prevent timeouts
-        from django.db.models.signals import post_save
-
-        try:
-            from hub.apps.assets.models import Asset
-            from hub.apps.contracts.models import Contract
-            from hub.apps.semantic.signals import asset_saved, contract_saved
-
-            post_save.disconnect(contract_saved, sender=Contract)
-            post_save.disconnect(asset_saved, sender=Asset)
-        except (ImportError, AttributeError):
-            pass
+        _disconnect_semantic_signals()
         self.tenant = TenantFactory.create_tenant()
         self.user = UserFactory.create_user(tenant=self.tenant)
         self.service = MarketplaceIntegrationService(
@@ -83,7 +117,7 @@ class ScheduledSyncServiceUnitTest(TestCase):
         )
 
         # Verify scheduled sync was created
-        self.assertIsNotNone(scheduled_sync.id)
+        self.assertTrue(scheduled_sync.id, "Scheduled sync should have a non-empty id after save")
         self.assertEqual(scheduled_sync.name, "Daily Sync Test")
         self.assertEqual(scheduled_sync.direction, SyncDirection.PUSH.value)
         self.assertEqual(scheduled_sync.schedule_type, ScheduleType.DAILY.value)
@@ -293,8 +327,6 @@ class ScheduledSyncServiceUnitTest(TestCase):
     @override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False)
     def test_schedule_sync_creates_audit_event(self):
         """Test that schedule_sync emits SCHEDULED_SYNC_CREATED audit event."""
-        import time
-
         schedule_config = {"time": "02:00"}
         scheduled_sync = self.service.schedule_sync(
             connection_id=str(self.connection.id),
@@ -307,16 +339,15 @@ class ScheduledSyncServiceUnitTest(TestCase):
             sync_options={"asset_ids": ["asset-1"]},
         )
 
-        # Audit event is created synchronously in service; brief pause for DB flush
-        time.sleep(0.05)  # INTENTIONAL: test-specific timing requirement
+        # Audit event is created synchronously (EVENT_BUS_ASYNC_PERSISTENCE=False).
         audit_events = AuditEvent.objects.filter(
             resource_type="SCHEDULED_MARKETPLACE_SYNC",
             action="SCHEDULED_SYNC_CREATED",
             resource_id=str(scheduled_sync.id),
         )
-        self.assertEqual(audit_events.count(), 1)
+        self.assertEqual(audit_events.count(), 1,
+            "Expected exactly one SCHEDULED_SYNC_CREATED audit event")
         audit_event = audit_events.first()
-        self.assertIsNotNone(audit_event)
         self.assertEqual(audit_event.actor_user, self.user)
         self.assertEqual(audit_event.tenant, self.tenant)
         self.assertEqual(audit_event.result, "SUCCESS")
@@ -341,15 +372,15 @@ class ScheduledSyncServiceUnitTest(TestCase):
             scheduled_sync_id=scheduled_sync_id, tenant_id=str(self.tenant.id)
         )
 
-        time.sleep(0.05)  # INTENTIONAL: test-specific timing requirement
+        time.sleep(0.05)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
         audit_events = AuditEvent.objects.filter(
             resource_type="SCHEDULED_MARKETPLACE_SYNC",
             action="SCHEDULED_SYNC_DELETED",
             resource_id=scheduled_sync_id,
         )
-        self.assertEqual(audit_events.count(), 1)
+        self.assertEqual(audit_events.count(), 1,
+            "Expected exactly one SCHEDULED_SYNC_CREATED audit event")
         audit_event = audit_events.first()
-        self.assertIsNotNone(audit_event)
         self.assertEqual(audit_event.actor_user, self.user)
         self.assertEqual(audit_event.tenant, self.tenant)
         self.assertEqual(audit_event.result, "SUCCESS")
@@ -383,23 +414,17 @@ class ScheduledSyncServiceUnitTest(TestCase):
             self.assertEqual(scheduled_sync.next_run_at.minute, 30)
 
 
-class ScheduledSyncSchedulerIntegrationTest(TestCase):
-    """Integration tests for scheduled sync with scheduler"""
+class ScheduledSyncSchedulerWithStubConnectorTest(TestCase):
+    """Tests for scheduled sync scheduler integration.
+
+    Uses a TestMarketplaceConnector stub registered in the factory
+    to exercise the full scheduling pipeline (schedule → process →
+    sync job creation) without external marketplace dependencies.
+    """
 
     def setUp(self):
         """Set up test fixtures"""
-        # CRITICAL: Disconnect semantic service signals to prevent timeouts
-        from django.db.models.signals import post_save
-
-        try:
-            from hub.apps.assets.models import Asset
-            from hub.apps.contracts.models import Contract
-            from hub.apps.semantic.signals import asset_saved, contract_saved
-
-            post_save.disconnect(contract_saved, sender=Contract)
-            post_save.disconnect(asset_saved, sender=Asset)
-        except (ImportError, AttributeError):
-            pass
+        _disconnect_semantic_signals()
 
         # Clean up any scheduled syncs left by prior test classes
         # (transaction=True means Django TestCase doesn't roll back between classes)
@@ -432,24 +457,12 @@ class ScheduledSyncSchedulerIntegrationTest(TestCase):
         """Clean up after tests"""
         from hub.apps.integrations.factory import MarketplaceConnectorFactory
 
-        try:
+        with contextlib.suppress(ValueError):
             MarketplaceConnectorFactory.unregister_connector(
                 MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
             )
-        except ValueError:
-            pass
-        """Reconnect signals after test"""
-        from django.db.models.signals import post_save
-
-        try:
-            from hub.apps.assets.models import Asset
-            from hub.apps.contracts.models import Contract
-            from hub.apps.semantic.signals import asset_saved, contract_saved
-
-            post_save.connect(contract_saved, sender=Contract, weak=False)
-            post_save.connect(asset_saved, sender=Asset, weak=False)
-        except (ImportError, AttributeError):
-            pass
+        # Reconnect semantic signals after test
+        _reconnect_semantic_signals()
 
     def test_process_scheduled_syncs_triggers_due_sync(self):
         """Test that process_scheduled_syncs triggers due syncs"""
@@ -611,23 +624,17 @@ class ScheduledSyncSchedulerIntegrationTest(TestCase):
         self.assertEqual(result["errors"][0]["scheduled_sync_id"], str(scheduled_sync.id))
 
 
-class ScheduledSyncE2ETest(TestCase):
-    """End-to-end tests for scheduled sync execution"""
+class ScheduledSyncStubConnectorEndToEndTest(TestCase):
+    """End-to-end tests for scheduled sync execution using a stub connector.
+
+    Uses a TestMarketplaceConnector stub to verify the full scheduled
+    sync lifecycle: schedule → due-detection → process → sync job
+    creation → next_run_at update.  No real marketplace API calls.
+    """
 
     def setUp(self):
         """Set up test fixtures"""
-        # CRITICAL: Disconnect semantic service signals to prevent timeouts
-        from django.db.models.signals import post_save
-
-        try:
-            from hub.apps.assets.models import Asset
-            from hub.apps.contracts.models import Contract
-            from hub.apps.semantic.signals import asset_saved, contract_saved
-
-            post_save.disconnect(contract_saved, sender=Contract)
-            post_save.disconnect(asset_saved, sender=Asset)
-        except (ImportError, AttributeError):
-            pass
+        _disconnect_semantic_signals()
 
         # Clean up any scheduled syncs left by prior test classes
         # (transaction=True means Django TestCase doesn't roll back between classes)
@@ -660,24 +667,12 @@ class ScheduledSyncE2ETest(TestCase):
         """Clean up after tests"""
         from hub.apps.integrations.factory import MarketplaceConnectorFactory
 
-        try:
+        with contextlib.suppress(ValueError):
             MarketplaceConnectorFactory.unregister_connector(
                 MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
             )
-        except ValueError:
-            pass
-        """Reconnect signals after test"""
-        from django.db.models.signals import post_save
-
-        try:
-            from hub.apps.assets.models import Asset
-            from hub.apps.contracts.models import Contract
-            from hub.apps.semantic.signals import asset_saved, contract_saved
-
-            post_save.connect(contract_saved, sender=Contract, weak=False)
-            post_save.connect(asset_saved, sender=Asset, weak=False)
-        except (ImportError, AttributeError):
-            pass
+        # Reconnect semantic signals after test
+        _reconnect_semantic_signals()
 
     def test_scheduled_sync_e2e_push(self):
         """Test end-to-end scheduled sync execution for PUSH"""

@@ -16,23 +16,28 @@ isolation via X-Tenant-Id header switching.
 """
 
 import requests
-from tests._persona_provisioning import provision_persona, PersonaCredentials
+
+from tests._persona_provisioning import PersonaCredentials, provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import api_base_url
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _e2e_token() -> str:
     """Return the E2E shared secret for /test/ensure-e2e-* endpoints."""
     import os as _os
+
     return _os.environ.get("E2E_TEST_SECRET", "e2e-test-secret-for-local-dev")
 
 
 def _auth_headers(
-    token: str, tenant_id: str | None = None, *, e2e: bool = False,
+    token: str,
+    tenant_id: str | None = None,
+    *,
+    e2e: bool = False,
 ) -> dict:
     headers = {"Authorization": f"Bearer {token}"}
     if tenant_id:
@@ -69,36 +74,31 @@ def _setup_two_tenants(creds: PersonaCredentials):
             secondary = body.get("secondary_tenant_id")
 
             if not primary or not secondary:
-                pytest.skip(
-                    f"Tenant setup did not return two tenant IDs: {body}"
-                )
+                pytest.skip(f"Tenant setup did not return two tenant IDs: {body}")
             if primary == secondary:
                 pytest.skip(
-                    "Primary and secondary tenants are the same "
-                    "-- isolation test not possible"
+                    "Primary and secondary tenants are the same -- isolation test not possible"
                 )
             return primary, secondary
 
         if resp.status_code == 404:
-            pytest.skip(
-                "E2E tenant-switch-setup helper not available (404)"
-            )
+            pytest.skip("E2E tenant-switch-setup helper not available (404)")
 
         # Any non-404, non-200 error — force fresh persona login
         # (bypass cache) and retry once.
         if attempt == 0:
+            import glob as _glob
+            import pathlib as _pl
+
             from tests._persona_provisioning import _CACHE_DIR as _cdir
-            import glob as _glob, pathlib as _pl
+
             role = current_creds.role
             for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
                 _pl.Path(_f).unlink(missing_ok=True)
             current_creds = provision_persona(role)
             continue
 
-        pytest.skip(
-            f"E2E tenant-switch-setup returned "
-            f"{resp.status_code}: {resp.text[:200]}"
-        )
+        pytest.skip(f"E2E tenant-switch-setup returned {resp.status_code}: {resp.text[:200]}")
 
     pytest.skip("E2E tenant-switch-setup failed after retry")
 
@@ -129,14 +129,11 @@ def test_asset_invisible_across_tenants():
         timeout=15,
     )
     assert create_resp.status_code in (200, 201), (
-        f"Asset creation in tenant A failed: "
-        f"{create_resp.status_code}: {create_resp.text[:300]}"
+        f"Asset creation in tenant A failed: {create_resp.status_code}: {create_resp.text[:300]}"
     )
     asset_body = create_resp.json()
     asset_id = asset_body.get("id") or asset_body.get("key")
-    assert asset_id, (
-        f"Asset creation response missing id: {asset_body}"
-    )
+    assert asset_id, f"Asset creation response missing id: {asset_body}"
 
     # Try to read the asset from tenant B context
     get_resp = requests.get(
@@ -181,23 +178,14 @@ def test_asset_list_does_not_leak_across_tenants():
         timeout=15,
     )
     assert list_resp.status_code == 200, (
-        f"Asset listing in tenant B returned "
-        f"{list_resp.status_code}"
+        f"Asset listing in tenant B returned {list_resp.status_code}"
     )
 
     list_body = list_resp.json()
-    results = (
-        list_body
-        if isinstance(list_body, list)
-        else list_body.get("results", [])
-    )
-    leaked_names = [
-        a.get("name") for a in results
-        if a.get("name") == unique_name
-    ]
+    results = list_body if isinstance(list_body, list) else list_body.get("results", [])
+    leaked_names = [a.get("name") for a in results if a.get("name") == unique_name]
     assert len(leaked_names) == 0, (
-        f"Asset '{unique_name}' from tenant A leaked into "
-        f"tenant B listing!"
+        f"Asset '{unique_name}' from tenant A leaked into tenant B listing!"
     )
 
 
@@ -213,6 +201,7 @@ def test_contract_invisible_across_tenants():
     # Open Data Contract Standard document with ``schema.fields[]`` so the
     # structural-floor check passes.
     import json as _json
+
     contract_name = fresh_id("iso-contract")
     odcs_doc = {
         "apiVersion": "odcs/v3",
@@ -247,14 +236,11 @@ def test_contract_invisible_across_tenants():
         pytest.skip("Contracts endpoint not available")
 
     assert create_resp.status_code in (200, 201), (
-        f"Contract creation failed: {create_resp.status_code}: "
-        f"{create_resp.text[:300]}"
+        f"Contract creation failed: {create_resp.status_code}: {create_resp.text[:300]}"
     )
     contract_body = create_resp.json()
     contract_id = contract_body.get("id")
-    assert contract_id, (
-        f"Contract response missing id: {contract_body}"
-    )
+    assert contract_id, f"Contract response missing id: {contract_body}"
 
     # Try to read from tenant B
     get_resp = requests.get(
@@ -312,14 +298,11 @@ def test_compliance_run_invisible_across_tenants():
         pytest.skip("Compliance runs endpoint not available")
 
     assert run_resp.status_code in (200, 201, 202), (
-        f"Compliance run creation failed: "
-        f"{run_resp.status_code}: {run_resp.text[:300]}"
+        f"Compliance run creation failed: {run_resp.status_code}: {run_resp.text[:300]}"
     )
     run_body = run_resp.json()
     run_id = run_body.get("id") or run_body.get("run_id")
-    assert run_id, (
-        f"Compliance run response missing id: {run_body}"
-    )
+    assert run_id, f"Compliance run response missing id: {run_body}"
 
     # Try to read from tenant B
     get_resp = requests.get(

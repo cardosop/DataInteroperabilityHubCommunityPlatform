@@ -33,9 +33,7 @@ User = get_user_model()
 
 
 def _grant(user, tenant, name):
-    role, _ = Role.objects.get_or_create(
-        tenant=tenant, name=name, defaults={"description": name}
-    )
+    role, _ = Role.objects.get_or_create(tenant=tenant, name=name, defaults={"description": name})
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
 
 
@@ -131,12 +129,16 @@ class ResourceActivityScopingTest(TestCase):
         another tenant exists — return an empty feed rather than a 403 that
         leaks existence."""
         other_tenant = Tenant.objects.create(
-            name="Other", slug=f"other-{uuid.uuid4().hex[:8]}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name="Other",
+            slug=f"other-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         other_user = User.objects.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
-            password="testpass123", tenant=other_tenant, status=UserStatus.ACTIVE,
+            password="testpass123",
+            tenant=other_tenant,
+            status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=other_user)
         resp = self.client.get(self._url())
@@ -162,9 +164,7 @@ class ResourceActivityScopingTest(TestCase):
     def test_response_is_sanitized(self):
         self.client.force_authenticate(user=self.creator)
         resp = self.client.get(self._url())
-        match = next(
-            ev for ev in resp.data["results"] if ev["id"] == str(self.ev_create.id)
-        )
+        match = next(ev for ev in resp.data["results"] if ev["id"] == str(self.ev_create.id))
         details = match["details"]
         self.assertNotIn("ip_address", details)
         self.assertNotIn("_private", details)
@@ -185,20 +185,27 @@ class ResourceOwnershipInvolvementTest(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Owner T", slug=f"own-{uuid.uuid4().hex[:8]}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name="Owner T",
+            slug=f"own-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         self.owner = User.objects.create_user(
             email=f"own-{uuid.uuid4().hex[:8]}@example.com",
-            password="testpass123", tenant=self.tenant, status=UserStatus.ACTIVE,
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.stranger = User.objects.create_user(
             email=f"str-{uuid.uuid4().hex[:8]}@example.com",
-            password="testpass123", tenant=self.tenant, status=UserStatus.ACTIVE,
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
         # Real Asset row with created_by=owner but an event actor=stranger.
         from hub.apps.assets.models import Asset
+
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key=f"asset-{uuid.uuid4().hex[:8]}",
@@ -217,10 +224,7 @@ class ResourceOwnershipInvolvementTest(TestCase):
         )
 
     def _url(self):
-        return (
-            f"{RESOURCE_ACTIVITY_URL}"
-            f"?resource_type=ASSET&resource_id={self.asset.id}"
-        )
+        return f"{RESOURCE_ACTIVITY_URL}?resource_type=ASSET&resource_id={self.asset.id}"
 
     def test_owner_sees_activity_even_without_being_actor(self):
         self.client.force_authenticate(user=self.owner)
@@ -250,10 +254,7 @@ class ResourceOwnershipInvolvementTest(TestCase):
             created_by=self.owner,
         )
         self.client.force_authenticate(user=self.owner)
-        url = (
-            f"{RESOURCE_ACTIVITY_URL}"
-            f"?resource_type=ASSET&resource_id={empty_asset.id}"
-        )
+        url = f"{RESOURCE_ACTIVITY_URL}?resource_type=ASSET&resource_id={empty_asset.id}"
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.data["results"], [])
@@ -265,12 +266,15 @@ class OwnershipRegistryCoverageTest(TestCase):
 
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name="Reg T", slug=f"reg-{uuid.uuid4().hex[:8]}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name="Reg T",
+            slug=f"reg-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         self.buyer = User.objects.create_user(
             email=f"buyer-{uuid.uuid4().hex[:8]}@example.com",
-            password="testpass123", tenant=self.tenant,
+            password="testpass123",
+            tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
 
@@ -296,18 +300,25 @@ class PlatformAdminRoleGateTest(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="PA Gate", slug=f"pa-{uuid.uuid4().hex[:8]}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name="PA Gate",
+            slug=f"pa-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         self.pa_named = User.objects.create_user(
             email=f"pa-named-{uuid.uuid4().hex[:8]}@example.com",
-            password="testpass123", tenant=self.tenant, status=UserStatus.ACTIVE,
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         _grant(self.pa_named, self.tenant, "PLATFORM_ADMIN")
         create_audit_event(
-            resource_type="ASSET", action="CREATED",
-            actor_user=self.pa_named, tenant=self.tenant,
-            resource_id=str(uuid.uuid4()), details={},
+            resource_type="ASSET",
+            action="CREATED",
+            actor_user=self.pa_named,
+            tenant=self.tenant,
+            resource_id=str(uuid.uuid4()),
+            details={},
         )
 
     def test_named_platform_admin_role_can_list_raw_audit(self):

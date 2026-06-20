@@ -1,13 +1,13 @@
 """Phase 232.0 — canonical role catalog (D232.13)."""
 
-import pytest
 import importlib
 
+import pytest
 from django.test import SimpleTestCase
 
 from hub.apps.users.role_catalog import (
-    STANDARD_TENANT_ROLE_NAMES,
     STANDARD_TENANT_ROLE_DEFINITIONS,
+    STANDARD_TENANT_ROLE_NAMES,
 )
 
 

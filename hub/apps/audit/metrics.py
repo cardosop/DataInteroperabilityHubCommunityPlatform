@@ -79,10 +79,12 @@ Helpers
   but the module-level counters here are the simplest stable
   introspection surface.
 """
+
 from __future__ import annotations
+
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator
 
 from hub.apps.observability.otel_metrics import _CounterWrapper, _HistogramWrapper
 
@@ -94,7 +96,17 @@ from hub.apps.observability.otel_metrics import _CounterWrapper, _HistogramWrapp
 # the 5s boundary aligns with the slow-query alert threshold, and the
 # 10s tail catches GIN-bloat / lock-wait pathological cases.
 _AUDIT_SEARCH_BUCKETS = (
-    0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
+    10.0,
 )
 
 # Merkle snapshot pipeline runs the hash tree build + sign + S3 PUT
@@ -102,7 +114,17 @@ _AUDIT_SEARCH_BUCKETS = (
 # aligns with the slow-snapshot alert; the 120s tail catches S3
 # Object-Lock PUT latency excursions.
 _AUDIT_MERKLE_BUCKETS = (
-    0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
+    10.0,
+    30.0,
+    60.0,
+    120.0,
 )
 
 
@@ -214,9 +236,7 @@ def time_search_query(*, tenant_id: str) -> Iterator[None]:
     try:
         yield
     finally:
-        observe_search_duration(
-            seconds=time.perf_counter() - start, tenant_id=tenant_id
-        )
+        observe_search_duration(seconds=time.perf_counter() - start, tenant_id=tenant_id)
 
 
 # ---------------------------------------------------------------------------
@@ -252,9 +272,9 @@ def time_merkle_snapshot(*, tenant_id: str) -> Iterator[None]:
     try:
         yield
     finally:
-        audit_merkle_snapshot_duration_seconds.labels(
-            tenant_id=tenant_id
-        ).observe(time.perf_counter() - start)
+        audit_merkle_snapshot_duration_seconds.labels(tenant_id=tenant_id).observe(
+            time.perf_counter() - start
+        )
         _merkle_snapshot_observation_count += 1
 
 
@@ -282,9 +302,9 @@ def observe_retention_purged(
     # ``_LabeledMetric.inc(amount)`` is the wrapper's "add to counter by
     # amount" surface — the underlying OTel counter's ``add(N)`` is
     # called inside (see hub/apps/observability/otel_metrics.py line 229).
-    audit_retention_purged_total.labels(
-        tenant_id=tenant_id, dry_run=str(dry_run).lower()
-    ).inc(int(deleted_count))
+    audit_retention_purged_total.labels(tenant_id=tenant_id, dry_run=str(dry_run).lower()).inc(
+        int(deleted_count)
+    )
     _retention_purged_observation_count += 1
 
 

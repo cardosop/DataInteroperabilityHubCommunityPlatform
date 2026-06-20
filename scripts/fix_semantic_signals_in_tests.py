@@ -5,7 +5,7 @@ Script to add semantic signal disconnection to test files.
 This script adds signal disconnection in setUp() and reconnection in tearDown()
 to all test files that create Asset/Contract objects but don't already have it.
 """
-import os
+
 import re
 from pathlib import Path
 
@@ -39,7 +39,7 @@ TEARDOWN_CODE = """    def tearDown(self):
 
 def needs_signal_fix(file_path):
     """Check if file needs signal disconnection fix"""
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content = f.read()
 
     # Check if file creates Asset/Contract objects
@@ -150,7 +150,7 @@ def fix_test_file(file_path):
     """Fix a single test file"""
     print(f"Processing: {file_path}")
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content = f.read()
 
     original_content = content

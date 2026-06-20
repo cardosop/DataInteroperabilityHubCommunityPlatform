@@ -12,10 +12,10 @@ calls against the staging environment.
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_get, api_put
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _provision_analyst():
     return provision_persona("data_analyst")
@@ -36,14 +36,10 @@ def test_get_current_user_profile():
     if resp.status_code == 404:
         pytest.skip("User profile endpoint not found (404)")
 
-    assert resp.status_code == 200, (
-        f"User profile returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"User profile returned {resp.status_code}: {resp.text[:500]}"
 
     body = resp.json()
-    assert "id" in body or "user_id" in body, (
-        f"User profile missing id. Keys: {list(body.keys())}"
-    )
+    assert "id" in body or "user_id" in body, f"User profile missing id. Keys: {list(body.keys())}"
 
 
 def test_user_has_email_and_roles():
@@ -56,28 +52,18 @@ def test_user_has_email_and_roles():
     if resp.status_code == 404:
         pytest.skip("User profile endpoint not found (404)")
 
-    assert resp.status_code == 200, (
-        f"User profile returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"User profile returned {resp.status_code}: {resp.text[:500]}"
 
     body = resp.json()
-    assert "email" in body, (
-        f"User profile missing 'email'. Keys: {list(body.keys())}"
-    )
+    assert "email" in body, f"User profile missing 'email'. Keys: {list(body.keys())}"
     assert isinstance(body["email"], str) and "@" in body["email"], (
         f"Email field is not a valid email: {body.get('email')}"
     )
 
     # Roles may be a list or a single string field
-    has_roles = (
-        "roles" in body
-        or "role" in body
-        or "groups" in body
-        or "permissions" in body
-    )
+    has_roles = "roles" in body or "role" in body or "groups" in body or "permissions" in body
     assert has_roles, (
-        f"User profile missing role/roles/groups/permissions. "
-        f"Keys: {list(body.keys())}"
+        f"User profile missing role/roles/groups/permissions. Keys: {list(body.keys())}"
     )
 
 
@@ -106,8 +92,7 @@ def test_update_user_profile():
         pytest.skip("PUT /users/me/ not allowed (405) — update may use PATCH")
 
     assert update_resp.status_code in (200, 204), (
-        f"Profile update returned {update_resp.status_code}: "
-        f"{update_resp.text[:500]}"
+        f"Profile update returned {update_resp.status_code}: {update_resp.text[:500]}"
     )
 
     # Verify update took effect

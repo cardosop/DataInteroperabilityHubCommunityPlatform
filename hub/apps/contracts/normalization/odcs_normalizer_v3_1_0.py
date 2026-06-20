@@ -8,9 +8,11 @@ Implements ODCSNormalizerBase with 3.1.0-specific handling for breaking changes:
 - exclusiveMaximum/exclusiveMinimum changed from boolean (draft-07) to numeric (draft-2019)
 - slaDefaultElement removed (deprecated since v3.0.2)
 """
+
 import re
+from typing import Any
+
 import structlog
-from typing import Dict, Any, List
 
 from hub.apps.contracts.normalization.odcs_normalizer_base import ODCSNormalizerBase
 
@@ -81,8 +83,8 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
 
     def _map_field_logical_type_options(
         self,
-        logical_type_options: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        logical_type_options: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Map ``logicalTypeOptions`` with v3.1.0 semantics:
         - exclusiveMaximum/exclusiveMinimum: bool → numeric
@@ -104,9 +106,9 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
 
     def _map_version_specific_fields(
         self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
+        odcs_contract: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
         spec_version: str,
     ) -> None:
         """
@@ -129,12 +131,16 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
         """
         # --- 1. exclusiveMaximum / exclusiveMinimum in logicalTypeOptions ---
         self._apply_exclusive_bounds_to_models(
-            hub_contract, odcs_contract, warnings,
+            hub_contract,
+            odcs_contract,
+            warnings,
         )
 
         # --- 2. slaDefaultElement removal ---
         self._strip_sla_default_element(
-            odcs_contract, hub_contract, warnings,
+            odcs_contract,
+            hub_contract,
+            warnings,
         )
 
         # --- 3. relationships (ODCS v3.1.0) ---
@@ -161,16 +167,16 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
 
     def _apply_exclusive_bounds_to_models(
         self,
-        hub_contract: Dict[str, Any],
-        odcs_contract: Dict[str, Any],
-        warnings: List[str],
+        hub_contract: dict[str, Any],
+        odcs_contract: dict[str, Any],
+        warnings: list[str],
     ) -> None:
         """
         Walk schema fields in the *original* ODCS contract and patch
         ``logicalTypeOptions`` in the already-mapped HubContract models/schema.
         """
         # Build a quick lookup: field_name → logicalTypeOptions from the source
-        lto_by_field: Dict[str, Dict[str, Any]] = {}
+        lto_by_field: dict[str, dict[str, Any]] = {}
         for schema_entry in self._iter_odcs_schema_entries(odcs_contract):
             for field in schema_entry.get("fields", []):
                 if not isinstance(field, dict):
@@ -202,12 +208,10 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
                 continue
             fname = hf.get("name", "")
             if fname in lto_by_field:
-                hf["logicalTypeOptions"] = self._map_field_logical_type_options(
-                    lto_by_field[fname]
-                )
+                hf["logicalTypeOptions"] = self._map_field_logical_type_options(lto_by_field[fname])
 
     @staticmethod
-    def _iter_odcs_schema_entries(odcs_contract: Dict[str, Any]):
+    def _iter_odcs_schema_entries(odcs_contract: dict[str, Any]):
         """Yield each schema dict from the ODCS contract (list or single)."""
         schema = odcs_contract.get("schema")
         if isinstance(schema, list):
@@ -219,9 +223,9 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
 
     def _strip_sla_default_element(
         self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
+        odcs_contract: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
     ) -> None:
         """
         Undo the base normalizer's ``slaDefaultElement`` → ``element``
@@ -240,7 +244,7 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
         warned = False
 
         # Build lookup: SLA name → whether source also had real "element"
-        sla_has_real_element: Dict[str, bool] = {}
+        sla_has_real_element: dict[str, bool] = {}
         for source_key in ("slaProperties", "lifecycle"):
             source = odcs_contract.get(source_key)
             if source_key == "lifecycle" and isinstance(source, dict):
@@ -253,14 +257,11 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
                 if "slaDefaultElement" in entry:
                     if not warned:
                         warnings.append(
-                            "Field 'slaDefaultElement' is removed "
-                            "in ODCS v3.1.0; ignored"
+                            "Field 'slaDefaultElement' is removed in ODCS v3.1.0; ignored"
                         )
                         warned = True
                     sla_name = entry.get("name", "")
-                    sla_has_real_element[sla_name] = (
-                        "element" in entry
-                    )
+                    sla_has_real_element[sla_name] = "element" in entry
 
         if not warned:
             return
@@ -274,9 +275,8 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
 
             # If source had slaDefaultElement but NOT a real "element",
             # remove the element the base injected.
-            if sl_name in sla_has_real_element:
-                if not sla_has_real_element[sl_name]:
-                    sl.pop("element", None)
+            if sl_name in sla_has_real_element and not sla_has_real_element[sl_name]:
+                sl.pop("element", None)
 
             # Clean slaDefaultElement from extensions if it leaked
             ext = sl.get("extensions")
@@ -290,21 +290,30 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
     # ------------------------------------------------------------------
 
     # v3.1.0 new server types (for documentation / validation)
-    _V31_SERVER_TYPES = frozenset({
-        "HiveServer", "ImpalaServer", "ActianZenServer",
-    })
+    _V31_SERVER_TYPES = frozenset(
+        {
+            "HiveServer",
+            "ImpalaServer",
+            "ActianZenServer",
+        }
+    )
 
     # v3.1.0 built-in quality metric types
-    _V31_QUALITY_METRIC_TYPES = frozenset({
-        "rowCount", "nullValues", "invalidValues",
-        "duplicateValues", "missingValues",
-    })
+    _V31_QUALITY_METRIC_TYPES = frozenset(
+        {
+            "rowCount",
+            "nullValues",
+            "invalidValues",
+            "duplicateValues",
+            "missingValues",
+        }
+    )
 
     def _map_relationships(
         self,
-        odcs: Dict[str, Any],
-        hub: Dict[str, Any],
-        warnings: List[str],
+        odcs: dict[str, Any],
+        hub: dict[str, Any],
+        warnings: list[str],
     ) -> None:
         """Map ODCS v3.1.0 relationships[] on schema objects."""
         for schema_entry in self._iter_odcs_schema_entries(odcs):
@@ -316,25 +325,28 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
             for r in rels_raw:
                 if not isinstance(r, dict):
                     continue
-                mapped.append({
-                    "id": r.get("id"),
-                    "name": r.get("name"),
-                    "type": r.get("type"),
-                    "source": r.get("source", []),
-                    "target_contract": r.get(
-                        "targetContract",
-                    ),
-                    "target_model": r.get(
-                        "targetModel",
-                    ),
-                    "target_properties": r.get(
-                        "targetProperties", [],
-                    ),
-                    "description": r.get("description"),
-                    "custom_properties": r.get(
-                        "customProperties",
-                    ),
-                })
+                mapped.append(
+                    {
+                        "id": r.get("id"),
+                        "name": r.get("name"),
+                        "type": r.get("type"),
+                        "source": r.get("source", []),
+                        "target_contract": r.get(
+                            "targetContract",
+                        ),
+                        "target_model": r.get(
+                            "targetModel",
+                        ),
+                        "target_properties": r.get(
+                            "targetProperties",
+                            [],
+                        ),
+                        "description": r.get("description"),
+                        "custom_properties": r.get(
+                            "customProperties",
+                        ),
+                    }
+                )
             if not mapped:
                 continue
             # Attach to matching hub model
@@ -346,13 +358,14 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
                     break
             # Also attach to schema level
             hub.setdefault("schema", {}).setdefault(
-                "relationships", [],
+                "relationships",
+                [],
             ).extend(mapped)
 
     def _map_element_ids(
         self,
-        odcs: Dict[str, Any],
-        hub: Dict[str, Any],
+        odcs: dict[str, Any],
+        hub: dict[str, Any],
     ) -> None:
         """Map ODCS v3.1.0 ``id`` on objects/properties
         to ``element_id``."""
@@ -360,7 +373,7 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
             obj_name = schema_entry.get("name", "")
             obj_id = schema_entry.get("id")
             # Build field-level id lookup
-            field_ids: Dict[str, str] = {}
+            field_ids: dict[str, str] = {}
             for f in schema_entry.get("fields", []):
                 if isinstance(f, dict) and "id" in f:
                     fname = f.get("name", "")
@@ -388,9 +401,9 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
 
     def _map_quality_library(
         self,
-        odcs: Dict[str, Any],
-        hub: Dict[str, Any],
-        warnings: List[str],
+        odcs: dict[str, Any],
+        hub: dict[str, Any],
+        warnings: list[str],
     ) -> None:
         """Map ODCS v3.1.0 quality.library metric entries."""
         quality = odcs.get("quality")
@@ -400,13 +413,14 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
         if not isinstance(library, list):
             return
         rules = hub.setdefault(
-            "quality", {},
+            "quality",
+            {},
         ).setdefault("rules", [])
         for entry in library:
             if not isinstance(entry, dict):
                 continue
             metric_type = entry.get("type", "")
-            rule: Dict[str, Any] = {
+            rule: dict[str, Any] = {
                 "type": metric_type,
             }
             if "name" in entry:
@@ -424,7 +438,8 @@ class ODCSNormalizerV3_1_0(ODCSNormalizerBase):
             rules.append(rule)
 
     def _map_logical_types(
-        self, hub: Dict[str, Any],
+        self,
+        hub: dict[str, Any],
     ) -> None:
         """Promote logicalType for timestamp/time fields
         in both models[].fields[] and schema.fields[]."""

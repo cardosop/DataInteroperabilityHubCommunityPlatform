@@ -8,6 +8,7 @@ The database stores SHA-256(plaintext) hex digest for lookup and invalidation on
 72 hours from ``email_verification_sent_at``. A random ``nonce`` ensures distinct hashes when
 multiple tokens are issued in the same wall-clock second.
 """
+
 from __future__ import annotations
 
 import base64
@@ -25,7 +26,7 @@ from hub.apps.auth.utils import sha256_hex
 
 def _verification_hmac_hex(email: str, user_id: str, issued_ts: int, nonce: str) -> str:
     # Task: HMAC-SHA256(SECRET_KEY, email+user_id+...) — issued_ts + nonce keep resends unique.
-    msg = f"{email}{user_id}{issued_ts}{nonce}".encode("utf-8")
+    msg = f"{email}{user_id}{issued_ts}{nonce}".encode()
     key = settings.SECRET_KEY.encode("utf-8")
     return hmac.new(key, msg, hashlib.sha256).hexdigest()
 

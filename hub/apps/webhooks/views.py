@@ -5,27 +5,39 @@ REST API views for webhook management.
 """
 
 import logging
-import requests
+import secrets
+
 from django.db import transaction
 from django.utils import timezone
 
-logger = logging.getLogger(__name__)
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from django.contrib.auth import get_user_model
+
 from hub.apps.api.standards.pagination import StandardPageNumberPagination
 from hub.apps.audit.utils import create_audit_event
-from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import NotFoundError
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
+from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.tenants.request_tenant import get_request_tenant_id
 
-from .models import DeliveryStatus, Webhook, WebhookDelivery, WebhookEventType, WebhookStatus
+from .encryption import encrypt_secret
+from .models import (
+    Webhook,
+    WebhookDelivery,
+    WebhookEventType,
+    WebhookSigningKey,
+    WebhookSigningKeyStatus,
+    WebhookStatus,
+)
 from .serializers import WebhookDeliverySerializer, WebhookSerializer
 from .service import WebhookDeliveryService
 from .webhook_service import WebhookService
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_tenant_id(request):
@@ -36,9 +48,6 @@ def _resolve_tenant_id(request):
     user = getattr(request, "user", None)
     if not user or not getattr(user, "is_authenticated", False):
         return None
-    from django.contrib.auth import get_user_model
-
-    from hub.apps.tenants.models import Tenant, TenantStatus
 
     User = get_user_model()
     default_tenant, _ = Tenant.objects.get_or_create(
@@ -198,11 +207,6 @@ class WebhookViewSet(viewsets.ModelViewSet):
         window is full.  Also rotates the legacy ``webhook.secret`` so
         pre-backfill subscribers continue to work.
         """
-        import secrets
-
-        from .encryption import encrypt_secret
-        from .models import WebhookSigningKey, WebhookSigningKeyStatus
-
         webhook = self.get_object()
 
         # ── Tenant-scoping guard ──────────────────────────────────

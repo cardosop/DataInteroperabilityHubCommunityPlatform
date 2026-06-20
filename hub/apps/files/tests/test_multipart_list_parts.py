@@ -13,12 +13,12 @@ trips.
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
+import contextlib
 import uuid
 from typing import cast
 
+import pytest
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -27,9 +27,8 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.files.tests.test_base import FilesAPITestBase
 from hub.apps.files.views import FileViewSet
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-from hub.apps.users.models import UserStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -44,7 +43,7 @@ class _StorageProbe:
             self.client = S3StorageClient()
             self.client._ensure_bucket_exists()
             self.available = True
-        except Exception:  # pragma: no cover — env-conditional
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover — env-conditional
             self.available = False
 
 
@@ -81,12 +80,10 @@ class MultipartListPartsContractTest(FilesAPITestBase):
     def _abort(self, file_obj: File, upload_id: str) -> None:
         if self._probe.client is None:
             return
-        try:
+        with contextlib.suppress(Exception):
             self._probe.client.abort_multipart_upload(
                 key=file_obj.storage_path, upload_id=upload_id
             )
-        except Exception:
-            pass
 
     @pytest.mark.integration
     def test_list_parts_returns_empty_parts_before_any_chunk_uploaded(self) -> None:
@@ -221,11 +218,9 @@ class MultipartListPartsThrottleWiringTest(TestCase):
     def test_parts_action_is_a_get_only_action(self) -> None:
         view = FileViewSet()
         view.action = "parts"
-        actions = getattr(view, "_get_action_methods", lambda: None)()  # type: ignore[arg-type]  # test: reflective callable access
+        getattr(view, "_get_action_methods", lambda: None)()  # type: ignore[arg-type]  # test: reflective callable access
         # Smoke: action attribute exists and is callable.
-        assert callable(getattr(view, "parts", None)), (
-            "FileViewSet.parts action must be defined"
-        )
+        assert callable(getattr(view, "parts", None)), "FileViewSet.parts action must be defined"
 
 
 class MultipartListPartsRateLimitTest(TestCase):

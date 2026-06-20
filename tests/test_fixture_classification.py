@@ -11,6 +11,7 @@ in integration tests).
 
 Phase D follow-up per 274.14.4 — the rename sweep is deferrable.
 """
+
 from __future__ import annotations
 
 import ast
@@ -28,7 +29,7 @@ _HUB_APPS_ROOT = Path(__file__).resolve().parents[1] / "hub" / "apps"
 def _find_conftest_files() -> list[Path]:
     """Return all conftest.py files under hub/apps/."""
     conftests = []
-    for root, dirs, files in os.walk(_HUB_APPS_ROOT):
+    for root, _dirs, files in os.walk(_HUB_APPS_ROOT):
         if "conftest.py" in files:
             conftests.append(Path(root) / "conftest.py")
     return sorted(conftests)

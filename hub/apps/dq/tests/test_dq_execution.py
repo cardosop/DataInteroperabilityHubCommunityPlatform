@@ -6,13 +6,11 @@ S3StorageClient uses real S3/MinIO with skipTest if unavailable.
 DQServiceClient uses httpx.MockTransport to verify endpoint construction (test utility, not mock).
 """
 
-import uuid
+import contextlib
 
 import httpx
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus, DQStatus
 from hub.apps.datasets.models import Dataset
@@ -22,7 +20,6 @@ from hub.apps.dq.tests.test_base import DQTestBase
 from hub.apps.dq.views import execute_dq_run
 from hub.apps.files.models import File, FileStatus
 from hub.apps.files.storage import S3StorageClient
-from hub.apps.jobs.models import Job, JobStatus, JobType
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -50,7 +47,7 @@ class DQExecutionTest(DQTestBase):
             )
             # Update file storage_path to match what was actually saved
             self.file.storage_path = storage_path
-            self.file.save(update_fields=['storage_path'])
+            self.file.save(update_fields=["storage_path"])
             self.storage_available = True
         except Exception:
             # Storage may not be available - tests will handle gracefully
@@ -188,11 +185,15 @@ class DQExecutionTest(DQTestBase):
         test_client = DQServiceClient()
         transport = httpx.MockTransport(handler)
         test_client.client = httpx.Client(transport=transport, base_url=test_client.base_url)
-        
+
         # Disable caching for this test to ensure fresh results
-        from django.core.cache import cache
         import hashlib
-        cache_key = f"dq:run:{hashlib.sha256(b'id,name\n1,Test\n2,Sample').hexdigest()}:intake_basic_gx"
+
+        from django.core.cache import cache
+
+        cache_key = (
+            f"dq:run:{hashlib.sha256(b'id,name\n1,Test\n2,Sample').hexdigest()}:intake_basic_gx"
+        )
         cache.delete(cache_key)  # Clear any cached result
 
         # Temporarily replace DQServiceClient in views module
@@ -205,11 +206,13 @@ class DQExecutionTest(DQTestBase):
             # Execute DQ run with caching disabled
             # Patch the run_dq call to disable caching
             original_run_dq = test_client.run_dq
+
             def run_dq_no_cache(*args, **kwargs):
-                kwargs['use_cache'] = False
+                kwargs["use_cache"] = False
                 return original_run_dq(*args, **kwargs)
+
             test_client.run_dq = run_dq_no_cache
-            
+
             # Execute DQ run
             execute_dq_run(str(dq_run.id))
         finally:
@@ -248,17 +251,21 @@ class DQExecutionTest(DQTestBase):
         test_client = DQServiceClient()
         transport = httpx.MockTransport(handler)
         test_client.client = httpx.Client(transport=transport, base_url=test_client.base_url)
-        
+
         # Disable caching and circuit breaker fallback for this test
-        from django.core.cache import cache
         import hashlib
+
+        from django.core.cache import cache
+
         cache_key = f"dq:run:{hashlib.sha256(b'').hexdigest()}:intake_basic_gx"
         cache.delete(cache_key)  # Clear any cached result
-        
+
         # Temporarily disable circuit breaker fallback by patching it
         original_call = test_client._circuit_breaker.call
+
         def call_without_fallback(func, fallback=None):
             return func()
+
         test_client._circuit_breaker.call = call_without_fallback
 
         # Temporarily replace DQServiceClient in views module
@@ -317,17 +324,16 @@ class DQExecutionTest(DQTestBase):
         test_client = DQServiceClient()
         transport = httpx.MockTransport(failing_handler)
         test_client.client = httpx.Client(
-            transport=transport, base_url=test_client.base_url,
+            transport=transport,
+            base_url=test_client.base_url,
         )
 
         # Open the breaker by exhausting failure threshold.
         for _ in range(breaker.failure_threshold + 1):
-            try:
+            with contextlib.suppress(Exception):
                 test_client._circuit_breaker.call(
                     lambda: test_client.client.get("/health"),
                 )
-            except Exception:
-                pass
 
         self.assertEqual(breaker.get_state(), CircuitBreakerState.OPEN)
 
@@ -411,7 +417,10 @@ class DQExecutionTest(DQTestBase):
 
         # Verify DQ run was marked as failed
         dq_run.refresh_from_db()
-        self.assertEqual(dq_run.status, DQRunStatus.FAILED,
+        self.assertEqual(
+            dq_run.status,
+            DQRunStatus.FAILED,
             "execute_dq_run must set FAILED when storage is unavailable; "
-            "PENDING means the error handler never ran")
+            "PENDING means the error handler never ran",
+        )
         self.assertIn("error", dq_run.details_json)

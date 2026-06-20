@@ -15,13 +15,13 @@ header. Per Slack docs, partial / malformed payloads return 400 +
 text body. 5xx is the retry signal. Network errors / timeouts also
 return ``success=False`` so the dispatcher schedules an RQ retry.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from .base import AlertDeliveryError, BaseAlertClient, DeliveryResult
-
 
 logger = logging.getLogger(__name__)
 
@@ -40,16 +40,14 @@ class SlackAlertClient(BaseAlertClient):
 
     channel = "SLACK"
 
-    def _deliver(self, rule, payload: Dict[str, Any]) -> DeliveryResult:
+    def _deliver(self, rule, payload: dict[str, Any]) -> DeliveryResult:
         # Lazy import: keeps `requests` out of Django app-config import path.
         import requests
 
         config = rule.get_channel_config() or {}
         webhook_url = config.get("webhook_url")
         if not webhook_url:
-            raise AlertDeliveryError(
-                f"SLACK channel config has no webhook_url (rule {rule.id})"
-            )
+            raise AlertDeliveryError(f"SLACK channel config has no webhook_url (rule {rule.id})")
 
         body = _build_block_kit_message(rule, payload)
 
@@ -81,11 +79,7 @@ class SlackAlertClient(BaseAlertClient):
             # Slack doesn't return a stable message id for incoming
             # webhooks; fall back to the response text (typically "ok")
             # so callers always have *some* delivery_id token to log.
-            delivery_id = (
-                response.headers.get("X-Slack-Req-Id")
-                or response.text.strip()
-                or "ok"
-            )
+            delivery_id = response.headers.get("X-Slack-Req-Id") or response.text.strip() or "ok"
             return DeliveryResult(
                 success=True,
                 delivery_id=delivery_id,
@@ -107,7 +101,7 @@ class SlackAlertClient(BaseAlertClient):
         )
 
 
-def _build_block_kit_message(rule, payload: Dict[str, Any]) -> Dict[str, Any]:
+def _build_block_kit_message(rule, payload: dict[str, Any]) -> dict[str, Any]:
     """Assemble a Block Kit message for the alert payload.
 
     Kept deterministic so tests can byte-compare against a snapshot —
@@ -137,9 +131,7 @@ def _build_block_kit_message(rule, payload: Dict[str, Any]) -> Dict[str, Any]:
                     },
                     {
                         "type": "mrkdwn",
-                        "text": (
-                            f"*Metric*\n{payload.get('metric_type', '')}"
-                        ),
+                        "text": (f"*Metric*\n{payload.get('metric_type', '')}"),
                     },
                     {
                         "type": "mrkdwn",

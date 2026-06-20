@@ -40,11 +40,7 @@ class Command(BaseCommand):
         from django.conf import settings
 
         if getattr(settings, "MVP_MODE", False):
-            self.stdout.write(
-                self.style.WARNING(
-                    "MVP_MODE enabled — skipping Prefect purge."
-                )
-            )
+            self.stdout.write(self.style.WARNING("MVP_MODE enabled — skipping Prefect purge."))
             return
 
         dry_run = options["dry_run"]
@@ -72,7 +68,9 @@ class Command(BaseCommand):
         ).exclude(prefect_deployment_id="")
 
         return self._purge_queryset(
-            orphans, "scheduled_ingestion", dry_run,
+            orphans,
+            "scheduled_ingestion",
+            dry_run,
         )
 
     def _purge_exports(self, dry_run: bool) -> int:
@@ -87,7 +85,9 @@ class Command(BaseCommand):
         ).exclude(prefect_deployment_id="")
 
         return self._purge_queryset(
-            orphans, "scheduled_export", dry_run,
+            orphans,
+            "scheduled_export",
+            dry_run,
         )
 
     def _purge_queryset(self, queryset, resource_type: str, dry_run: bool) -> int:
@@ -96,15 +96,13 @@ class Command(BaseCommand):
             return 0
 
         self.stdout.write(
-            f"Found {count} orphan {resource_type} record(s) "
-            f"with pending Prefect deployments."
+            f"Found {count} orphan {resource_type} record(s) with pending Prefect deployments."
         )
 
         if dry_run:
             for record in queryset:
                 self.stdout.write(
-                    f"  [DRY-RUN] {record.id}  "
-                    f"deployment={record.prefect_deployment_id}"
+                    f"  [DRY-RUN] {record.id}  deployment={record.prefect_deployment_id}"
                 )
             return 0
 

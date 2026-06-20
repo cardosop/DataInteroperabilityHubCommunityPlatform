@@ -15,7 +15,6 @@ from ..api_client import api_client
 @click.group()
 def observability():
     """Observability and monitoring commands"""
-    pass
 
 
 @observability.command("freshness")
@@ -110,7 +109,6 @@ def sla(sla_type: str, output_format: str):
 @observability.group()
 def incidents():
     """Incident monitoring commands"""
-    pass
 
 
 @incidents.command("list")

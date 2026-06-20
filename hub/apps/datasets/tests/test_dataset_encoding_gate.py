@@ -23,12 +23,13 @@ Three layers:
 All tests skip gracefully when MinIO is unavailable, matching the
 260.4 / 260.5 family pattern.
 """
+
 from __future__ import annotations
-import pytest
 
 import os
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase
 from rest_framework import status
@@ -42,21 +43,9 @@ from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 
+from hub.apps.datasets.tests.conftest import extract_error_code
+
 User = get_user_model()
-
-
-def _extract_error_code(body):
-    """Phase 260.5.C.R1 GAP-D — defensive extraction across the
-    flat (``api_error_response``) and nested
-    (``custom_exception_handler``) error envelopes the codebase
-    uses. Tests assert the LOGICAL error code regardless of
-    envelope shape."""
-    if not isinstance(body, dict):
-        return None
-    nested = body.get("error")
-    if isinstance(nested, dict) and nested.get("code"):
-        return nested.get("code")
-    return body.get("code")
 
 
 class _DatasetEncodingTestMixin:
@@ -124,9 +113,7 @@ class _DatasetEncodingTestMixin:
         )
 
 
-class DatasetCreateEncodingServiceLayerTest(
-    _DatasetEncodingTestMixin, TransactionTestCase
-):
+class DatasetCreateEncodingServiceLayerTest(_DatasetEncodingTestMixin, TransactionTestCase):
     """Phase 260.5.D — service-layer assertions on the encoding gate."""
 
     @pytest.mark.integration
@@ -139,10 +126,8 @@ class DatasetCreateEncodingServiceLayerTest(
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
 
-        body = "id,name,note\n1,Alice,café\n2,Bob,müller\n".encode("utf-8")
-        f = self._make_active_file(
-            body=body, name="utf8.csv", content_type="text/csv"
-        )
+        body = "id,name,note\n1,Alice,café\n2,Bob,müller\n".encode()
+        f = self._make_active_file(body=body, name="utf8.csv", content_type="text/csv")
 
         ds = self.service.create_dataset(
             tenant_id=str(self.tenant.id),
@@ -162,9 +147,7 @@ class DatasetCreateEncodingServiceLayerTest(
             self.skipTest("S3/MinIO storage not available")
 
         body = os.urandom(2000)
-        f = self._make_active_file(
-            body=body, name="garbage.csv", content_type="text/csv"
-        )
+        f = self._make_active_file(body=body, name="garbage.csv", content_type="text/csv")
 
         with self.assertRaises(ServiceValidationError) as ctx:
             self.service.create_dataset(
@@ -228,9 +211,7 @@ class DatasetCreateEncodingServiceLayerTest(
         )
 
 
-class DatasetCreateEncodingAPILayerTest(
-    _DatasetEncodingTestMixin, TransactionTestCase
-):
+class DatasetCreateEncodingAPILayerTest(_DatasetEncodingTestMixin, TransactionTestCase):
     """Phase 260.5.D.2 acceptance: 400 with FILE_ENCODING_UNSUPPORTED
     over the wire."""
 
@@ -240,9 +221,7 @@ class DatasetCreateEncodingAPILayerTest(
             self.skipTest("S3/MinIO storage not available")
 
         body = os.urandom(2000)
-        f = self._make_active_file(
-            body=body, name="bad.csv", content_type="text/csv"
-        )
+        f = self._make_active_file(body=body, name="bad.csv", content_type="text/csv")
 
         response = self.client.post(
             "/api/v1/datasets/",
@@ -254,7 +233,7 @@ class DatasetCreateEncodingAPILayerTest(
             status.HTTP_400_BAD_REQUEST,
             f"Expected 400; got body={response.data!r}",
         )
-        code = _extract_error_code(response.data)
+        code = extract_error_code(response.data)
         self.assertEqual(
             code,
             "FILE_ENCODING_UNSUPPORTED",
@@ -267,10 +246,8 @@ class DatasetCreateEncodingAPILayerTest(
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
 
-        body = "id,amount\n1,10\n2,20\n".encode("utf-8")
-        f = self._make_active_file(
-            body=body, name="ok.csv", content_type="text/csv"
-        )
+        body = b"id,amount\n1,10\n2,20\n"
+        f = self._make_active_file(body=body, name="ok.csv", content_type="text/csv")
 
         response = self.client.post(
             "/api/v1/datasets/",
@@ -405,9 +382,7 @@ class DatasetRefreshEncodingGateAPITest(TransactionTestCase):
         ds = self._seed_dataset_with_file(body=b"id,name\n1,alice\n2,bob\n")
         # Overwrite the underlying object with garbage AT THE SAME
         # storage_path.
-        self.storage_client.upload_file(
-            ds.file.storage_path, os.urandom(2000), "text/csv"
-        )
+        self.storage_client.upload_file(ds.file.storage_path, os.urandom(2000), "text/csv")
 
         response = self.client.post(
             f"/api/v1/datasets/{ds.id}/refresh/",
@@ -419,7 +394,7 @@ class DatasetRefreshEncodingGateAPITest(TransactionTestCase):
             status.HTTP_400_BAD_REQUEST,
             f"Refresh did not 400 on bad encoding; body={response.data!r}",
         )
-        code = _extract_error_code(response.data)
+        code = extract_error_code(response.data)
         self.assertEqual(
             code,
             "FILE_ENCODING_UNSUPPORTED",
@@ -428,7 +403,8 @@ class DatasetRefreshEncodingGateAPITest(TransactionTestCase):
 
     @pytest.mark.integration
     def test_refresh_returns_200_when_file_is_clean_utf8(self):
-        # Regression guard: the gate must NOT block a clean refresh.
+        # Regression guard: the gate must NOT block a clean refresh,
+        # and the schema must be re-inferred from the file content.
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
         ds = self._seed_dataset_with_file(body=b"id,name\n1,alice\n")
@@ -443,3 +419,9 @@ class DatasetRefreshEncodingGateAPITest(TransactionTestCase):
             status.HTTP_200_OK,
             f"Clean UTF-8 refresh was rejected: body={response.data!r}",
         )
+        # The refresh endpoint wraps the updated dataset under the
+        # "dataset" key alongside "schema_drift" and "schema_changed".
+        self.assertIn("dataset", response.data,
+                      "Refresh response must include dataset key")
+        self.assertIn("schema_json", response.data["dataset"],
+                      "Refreshed dataset must include re-inferred schema_json")

@@ -7,6 +7,7 @@ Validates fixes for:
 - Bug 8: columns_with_pii using wrong field name
 - Bug 9: Remediation checking short names instead of PIICategory values
 """
+
 import uuid
 
 import pytest
@@ -26,6 +27,7 @@ from hub.apps.users.models import UserStatus
 pytestmark = pytest.mark.django_db(transaction=True)
 
 from django.contrib.auth import get_user_model
+
 User = get_user_model()
 
 
@@ -158,10 +160,38 @@ class ResultsEndpointRegressionTest(TestCase):
         """Score breakdown correctly counts PII columns using 'categories' key."""
         run = self._create_run(
             column_findings_json=[
-                {"column": "email", "categories": ["PII_DIRECT_EMAIL"], "match_ratio": 0.9, "confidence": "HIGH", "sample_matches": 90, "total_sampled": 100},
-                {"column": "name", "categories": [], "match_ratio": 0.0, "confidence": "LOW", "sample_matches": 0, "total_sampled": 100},
-                {"column": "phone", "categories": ["PII_DIRECT_PHONE"], "match_ratio": 0.6, "confidence": "MEDIUM", "sample_matches": 60, "total_sampled": 100},
-                {"column": "id", "categories": [], "match_ratio": 0.0, "confidence": "LOW", "sample_matches": 0, "total_sampled": 100},
+                {
+                    "column": "email",
+                    "categories": ["PII_DIRECT_EMAIL"],
+                    "match_ratio": 0.9,
+                    "confidence": "HIGH",
+                    "sample_matches": 90,
+                    "total_sampled": 100,
+                },
+                {
+                    "column": "name",
+                    "categories": [],
+                    "match_ratio": 0.0,
+                    "confidence": "LOW",
+                    "sample_matches": 0,
+                    "total_sampled": 100,
+                },
+                {
+                    "column": "phone",
+                    "categories": ["PII_DIRECT_PHONE"],
+                    "match_ratio": 0.6,
+                    "confidence": "MEDIUM",
+                    "sample_matches": 60,
+                    "total_sampled": 100,
+                },
+                {
+                    "column": "id",
+                    "categories": [],
+                    "match_ratio": 0.0,
+                    "confidence": "LOW",
+                    "sample_matches": 0,
+                    "total_sampled": 100,
+                },
             ]
         )
         resp = self.client.get(f"/api/v1/compliance/runs/{run.id}/results/")
@@ -175,8 +205,22 @@ class ResultsEndpointRegressionTest(TestCase):
         """Compliance score < 100 when PII columns exist."""
         run = self._create_run(
             column_findings_json=[
-                {"column": "email", "categories": ["PII_DIRECT_EMAIL"], "match_ratio": 0.9, "confidence": "HIGH", "sample_matches": 90, "total_sampled": 100},
-                {"column": "name", "categories": [], "match_ratio": 0.0, "confidence": "LOW", "sample_matches": 0, "total_sampled": 100},
+                {
+                    "column": "email",
+                    "categories": ["PII_DIRECT_EMAIL"],
+                    "match_ratio": 0.9,
+                    "confidence": "HIGH",
+                    "sample_matches": 90,
+                    "total_sampled": 100,
+                },
+                {
+                    "column": "name",
+                    "categories": [],
+                    "match_ratio": 0.0,
+                    "confidence": "LOW",
+                    "sample_matches": 0,
+                    "total_sampled": 100,
+                },
             ]
         )
         resp = self.client.get(f"/api/v1/compliance/runs/{run.id}/results/")
@@ -210,7 +254,7 @@ class ResultsEndpointRegressionTest(TestCase):
         recs = resp.data["risk_assessment"]["recommendations"]
         self.assertTrue(
             any("policy violation" in r.lower() or "policy fail" in r.lower() for r in recs),
-            f"Expected policy-violation recommendation, got: {recs}"
+            f"Expected policy-violation recommendation, got: {recs}",
         )
 
     # ----------------------------------------------------------------
@@ -221,7 +265,14 @@ class ResultsEndpointRegressionTest(TestCase):
         """Remediation generated for PII_DIRECT_EMAIL (not 'EMAIL')."""
         run = self._create_run(
             column_findings_json=[
-                {"column": "email", "categories": ["PII_DIRECT_EMAIL"], "match_ratio": 0.9, "confidence": "HIGH", "sample_matches": 90, "total_sampled": 100},
+                {
+                    "column": "email",
+                    "categories": ["PII_DIRECT_EMAIL"],
+                    "match_ratio": 0.9,
+                    "confidence": "HIGH",
+                    "sample_matches": 90,
+                    "total_sampled": 100,
+                },
             ]
         )
         resp = self.client.get(f"/api/v1/compliance/runs/{run.id}/results/")
@@ -233,20 +284,37 @@ class ResultsEndpointRegressionTest(TestCase):
         """Remediation generated for PAYMENT_CARD (not 'CREDIT_CARD')."""
         run = self._create_run(
             column_findings_json=[
-                {"column": "card", "categories": ["PAYMENT_CARD"], "match_ratio": 0.8, "confidence": "HIGH", "sample_matches": 80, "total_sampled": 100},
+                {
+                    "column": "card",
+                    "categories": ["PAYMENT_CARD"],
+                    "match_ratio": 0.8,
+                    "confidence": "HIGH",
+                    "sample_matches": 80,
+                    "total_sampled": 100,
+                },
             ]
         )
         resp = self.client.get(f"/api/v1/compliance/runs/{run.id}/results/")
         suggestions = resp.data["remediation_suggestions"]
         self.assertGreater(len(suggestions), 0)
-        self.assertEqual(suggestions[0]["pii_type"], "PAYMENT_CARD",
-            "Remediation must identify the PII type as PAYMENT_CARD")
+        self.assertEqual(
+            suggestions[0]["pii_type"],
+            "PAYMENT_CARD",
+            "Remediation must identify the PII type as PAYMENT_CARD",
+        )
 
     def test_no_remediation_for_location(self):
         """No remediation for LOCATION_PRECISE (not in known remediation list)."""
         run = self._create_run(
             column_findings_json=[
-                {"column": "coords", "categories": ["LOCATION_PRECISE"], "match_ratio": 0.7, "confidence": "HIGH", "sample_matches": 70, "total_sampled": 100},
+                {
+                    "column": "coords",
+                    "categories": ["LOCATION_PRECISE"],
+                    "match_ratio": 0.7,
+                    "confidence": "HIGH",
+                    "sample_matches": 70,
+                    "total_sampled": 100,
+                },
             ]
         )
         resp = self.client.get(f"/api/v1/compliance/runs/{run.id}/results/")

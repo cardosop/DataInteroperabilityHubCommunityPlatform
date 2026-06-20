@@ -111,8 +111,10 @@ def verify_blob(content: bytes, expected: Optional[str]) -> VerifyResult:
     """
     if expected is None:
         return VerifyResult(status="skipped", expected=None, actual=None, reason="no-expected-hash")
-    if not isinstance(expected, str) or len(expected) != _SHA256_HEX_LEN or not all(
-        c in "0123456789abcdefABCDEF" for c in expected
+    if (
+        not isinstance(expected, str)
+        or len(expected) != _SHA256_HEX_LEN
+        or not all(c in "0123456789abcdefABCDEF" for c in expected)
     ):
         return VerifyResult(
             status="skipped", expected=None, actual=None, reason="malformed-expected-hash"

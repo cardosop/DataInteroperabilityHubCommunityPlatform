@@ -21,10 +21,9 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import AssetStatus
-from hub.apps.governance.models import RetentionPolicy, RetentionPolicyType, RetentionAction
+from hub.apps.governance.models import RetentionAction, RetentionPolicy, RetentionPolicyType
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     AssetFactory,
@@ -135,10 +134,7 @@ class UCGOVADV001ConfigureAutomatedComplianceTest(AdvancedGovernanceNewUseCasesT
         response = self.client.get(self.COMPLIANCE_RUNS_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.data
-        results = (
-            data.get("results", data)
-            if isinstance(data, dict) else data
-        )
+        results = data.get("results", data) if isinstance(data, dict) else data
         self.assertIsInstance(results, list)
 
     def test_create_compliance_run_invalid_data_returns_400(self):
@@ -172,8 +168,11 @@ class UCGOVADV002SetUpGDPRRightToBeForgottenTest(AdvancedGovernanceNewUseCasesTe
         self._auth()
         # POST to the request-erasure action — no payload required
         response = self.client.post(
-            self.ERASURE_REQUEST_ACTION_URL, {}, format="json",
-        )
+            self.ERASURE_REQUEST_ACTION_URL,
+            {},
+            format="json",
+        )  # noqa: broad-status-codes
+
         self.assertIn(
             response.status_code,
             [
@@ -181,8 +180,7 @@ class UCGOVADV002SetUpGDPRRightToBeForgottenTest(AdvancedGovernanceNewUseCasesTe
                 status.HTTP_201_CREATED,
                 status.HTTP_202_ACCEPTED,
             ],
-            f"Erasure request returned {response.status_code}: "
-            f"{getattr(response, 'data', '')}",
+            f"Erasure request returned {response.status_code}: {getattr(response, 'data', '')}",
         )
         self.assertIsNotNone(response.data)
 
@@ -192,10 +190,7 @@ class UCGOVADV002SetUpGDPRRightToBeForgottenTest(AdvancedGovernanceNewUseCasesTe
         response = self.client.get(self.ERASURE_REQUESTS_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.data
-        results = (
-            data.get("results", data)
-            if isinstance(data, dict) else data
-        )
+        results = data.get("results", data) if isinstance(data, dict) else data
         self.assertIsInstance(results, list)
 
     def test_erasure_request_unauthorized_returns_401(self):
@@ -225,10 +220,7 @@ class UCGOVADV003ManageConsentTrackingTest(AdvancedGovernanceNewUseCasesTestBase
         response = self.client.get(self.ACCESS_REQUESTS_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.data
-        results = (
-            data.get("results", data)
-            if isinstance(data, dict) else data
-        )
+        results = data.get("results", data) if isinstance(data, dict) else data
         self.assertIsInstance(results, list)
 
     def test_create_access_request(self):
@@ -240,13 +232,14 @@ class UCGOVADV003ManageConsentTrackingTest(AdvancedGovernanceNewUseCasesTestBase
             "requested_access_type": "READ",
         }
         response = self.client.post(
-            self.ACCESS_REQUESTS_URL, data, format="json",
+            self.ACCESS_REQUESTS_URL,
+            data,
+            format="json",
         )
         self.assertIn(
             response.status_code,
             [status.HTTP_200_OK, status.HTTP_201_CREATED],
-            f"Access request returned {response.status_code}: "
-            f"{getattr(response, 'data', '')}",
+            f"Access request returned {response.status_code}: {getattr(response, 'data', '')}",
         )
         self.assertIn("id", response.data)
 
@@ -291,10 +284,7 @@ class UCGOVADV004ConfigureAutomatedRetentionTest(AdvancedGovernanceNewUseCasesTe
         response = self.client.get(self.RETENTION_POLICIES_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.data
-        results = (
-            data.get("results", data)
-            if isinstance(data, dict) else data
-        )
+        results = data.get("results", data) if isinstance(data, dict) else data
         self.assertIsInstance(results, list)
 
     def test_create_retention_policy_missing_period_returns_400(self):
@@ -307,7 +297,9 @@ class UCGOVADV004ConfigureAutomatedRetentionTest(AdvancedGovernanceNewUseCasesTe
             # missing retention_period_days — must be rejected
         }
         response = self.client.post(
-            self.RETENTION_POLICIES_URL, data, format="json",
+            self.RETENTION_POLICIES_URL,
+            data,
+            format="json",
         )
         self.assertEqual(
             response.status_code,

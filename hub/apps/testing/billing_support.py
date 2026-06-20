@@ -195,7 +195,8 @@ def ensure_e2e_tenant_ready(tenant: Tenant) -> None:
     # so we must use .update() after creation to force ML_AI.
     ml_sub = (
         Subscription.objects.filter(
-            tenant=tenant, category=PlanCategory.ML_AI,
+            tenant=tenant,
+            category=PlanCategory.ML_AI,
         )
         .order_by("-created_at")
         .first()

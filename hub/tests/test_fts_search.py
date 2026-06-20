@@ -15,6 +15,7 @@ Focus:
 All tests use real JWT tokens (no force_authenticate) following the pattern
 established in test_tenant_isolation.py.
 """
+
 import uuid
 
 import pytest
@@ -29,10 +30,10 @@ from hub.apps.search.indexing import SearchIndexer
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_tenant(suffix: str = "") -> Tenant:
     s = suffix or uuid.uuid4().hex[:8]
@@ -81,6 +82,7 @@ _SEARCH_URL = "/api/v1/search/search/"
 # Tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.django_db
 @override_settings(JWT_ALGORITHM="HS256")
 class TestFTSSearchReturnsResults(TestCase):
@@ -91,10 +93,12 @@ class TestFTSSearchReturnsResults(TestCase):
     def setUp(self):
         # Disconnect noisy async signals to keep tests fast and deterministic
         from django.db.models.signals import post_save
+
         try:
             from hub.apps.assets.signals import rebuild_asset_search_vector
             from hub.apps.contracts.models import Contract
             from hub.apps.semantic.signals import asset_saved, contract_saved
+
             post_save.disconnect(contract_saved, sender=Contract)
             post_save.disconnect(asset_saved, sender=Asset)
             post_save.disconnect(rebuild_asset_search_vector, sender=Asset)
@@ -109,7 +113,8 @@ class TestFTSSearchReturnsResults(TestCase):
         # separate FTS token.  CamelCase like "ZephyrDataProductUnique" would be
         # tokenised as a single word, making prefix queries fail.
         self.asset = _make_asset(
-            self.tenant, self.user,
+            self.tenant,
+            self.user,
             name="Zephyr Data Product",
             key_suffix="zephyr",
         )
@@ -175,10 +180,12 @@ class TestFTSCrossTenantIsolation(TestCase):
 
     def setUp(self):
         from django.db.models.signals import post_save
+
         try:
             from hub.apps.assets.signals import rebuild_asset_search_vector
             from hub.apps.contracts.models import Contract
             from hub.apps.semantic.signals import asset_saved, contract_saved
+
             post_save.disconnect(contract_saved, sender=Contract)
             post_save.disconnect(asset_saved, sender=Asset)
             post_save.disconnect(rebuild_asset_search_vector, sender=Asset)
@@ -192,7 +199,8 @@ class TestFTSCrossTenantIsolation(TestCase):
         self.tenant_a = _make_tenant("iso-a")
         self.user_a = _make_user(self.tenant_a)
         self.asset_a = _make_asset(
-            self.tenant_a, self.user_a,
+            self.tenant_a,
+            self.user_a,
             name="Confidential Alpha Dataset",
             key_suffix="alpha",
         )
@@ -235,10 +243,7 @@ class TestFTSCrossTenantIsolation(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         data = resp.data
         results = data.get("results", data) if isinstance(data, dict) else data
-        ids = {
-            str(r.get("id", r.get("resource_id", "")))
-            for r in (results or [])
-        }
+        ids = {str(r.get("id", r.get("resource_id", ""))) for r in (results or [])}
         self.assertNotIn(
             str(self.asset_a.id),
             ids,
@@ -295,10 +300,12 @@ class TestFTSQueryCount(TestCase):
 
     def setUp(self):
         from django.db.models.signals import post_save
+
         try:
             from hub.apps.assets.signals import rebuild_asset_search_vector
             from hub.apps.contracts.models import Contract
             from hub.apps.semantic.signals import asset_saved, contract_saved
+
             post_save.disconnect(contract_saved, sender=Contract)
             post_save.disconnect(asset_saved, sender=Asset)
             post_save.disconnect(rebuild_asset_search_vector, sender=Asset)
@@ -312,7 +319,8 @@ class TestFTSQueryCount(TestCase):
         # Seed 5 assets and index them all
         for i in range(5):
             asset = _make_asset(
-                self.tenant, self.user,
+                self.tenant,
+                self.user,
                 name=f"QueryCountAsset{i}",
                 key_suffix=f"qc{i}",
             )

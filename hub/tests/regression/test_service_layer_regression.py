@@ -190,6 +190,7 @@ class ErrorResponseShapeRegressionTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         import uuid as _uuid
+
         suffix = _uuid.uuid4().hex[:8]
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
@@ -220,7 +221,7 @@ class ErrorResponseShapeRegressionTest(TestCase):
         response = self.client.post(
             "/api/v1/scheduled-ingestions/",
             {
-                "name": "",          # Invalid: empty name
+                "name": "",  # Invalid: empty name
                 "source_type": "INVALID_TYPE",
             },
             format="json",
@@ -260,7 +261,7 @@ class ErrorResponseShapeRegressionTest(TestCase):
             {
                 "name": "Test Ingestion",
                 "source_type": "S3",
-                "source_config": {},   # Invalid: missing required fields
+                "source_config": {},  # Invalid: missing required fields
                 "schedule_type": "DAILY",
                 "schedule_config": {},
                 "file_pattern": ".*",
@@ -288,16 +289,12 @@ class ErrorResponseShapeRegressionTest(TestCase):
         is_structured = (
             "error" in data
             and isinstance(data["error"], dict)
-            and {"code", "message", "http_status"}.issubset(
-                data["error"].keys()
-            )
+            and {"code", "message", "http_status"}.issubset(data["error"].keys())
         )
         is_drf = "detail" in data or "non_field_errors" in data
 
         # DRF field-level errors: dict where every value is a list
-        is_drf_field_errors = all(
-            isinstance(v, list) for v in data.values()
-        ) if data else False
+        is_drf_field_errors = all(isinstance(v, list) for v in data.values()) if data else False
 
         self.assertTrue(
             is_structured or is_drf or is_drf_field_errors,
@@ -314,7 +311,8 @@ class ErrorResponseShapeRegressionTest(TestCase):
         required = ["code", "message", "http_status"]
         for field in required:
             self.assertIn(
-                field, error,
+                field,
+                error,
                 f"Structured error envelope must contain '{field}'",
             )
         self.assertIsInstance(error["code"], str)
@@ -338,6 +336,7 @@ class ServiceLayerConsistencyRegressionTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         import uuid as _uuid
+
         suffix = _uuid.uuid4().hex[:8]
         self.client = APIClient()
         self.tenant = Tenant.objects.create(

@@ -1,6 +1,7 @@
 """
 283.5.12 — Developer portal CLI commands.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,15 +14,14 @@ from ..api_client import api_client
 @click.group()
 def developer():
     """Developer portal: plugins, API keys, SDK, docs"""
-    pass
 
 
 # ── Plugins ─────────────────────────────────────────────────────────────────
 
+
 @developer.group("plugins")
 def plugins():
     """Manage developer plugins"""
-    pass
 
 
 @plugins.command("list")
@@ -33,7 +33,7 @@ def list_plugins():
         click.echo("No plugins found.")
         return
     for r in results:
-        click.echo(f"{r.get('id','')}  {r.get('name','')}")
+        click.echo(f"{r.get('id', '')}  {r.get('name', '')}")
 
 
 @plugins.command("create")
@@ -68,10 +68,10 @@ def delete_plugin(plugin_id):
 
 # ── API Keys ────────────────────────────────────────────────────────────────
 
+
 @developer.group("api-keys")
 def api_keys():
     """Manage API keys"""
-    pass
 
 
 @api_keys.command("list")
@@ -83,7 +83,7 @@ def list_api_keys():
         click.echo("No API keys found.")
         return
     for r in results:
-        click.echo(f"{r.get('id','')}  {r.get('name','')}  {r.get('created_at','')}")
+        click.echo(f"{r.get('id', '')}  {r.get('name', '')}  {r.get('created_at', '')}")
 
 
 @api_keys.command("create")
@@ -105,6 +105,7 @@ def revoke_api_key(key_id):
 
 
 # ── SDK / Docs / Portal ─────────────────────────────────────────────────────
+
 
 @developer.command("sdk")
 def get_sdk():

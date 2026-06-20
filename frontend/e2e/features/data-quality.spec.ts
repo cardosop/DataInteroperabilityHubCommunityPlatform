@@ -245,15 +245,16 @@ test.describe('Feature: Data Quality', () => {
       // refresh cookie so the auth store hydrates a coherent session on
       // navigation, regardless of what the poll loop left behind.
       const freshAuth = await loginViaApi(user.email, user.password);
+      // Phase 11.1: only access_token + user go to localStorage.  refresh_token
+      // lives in the httpOnly cookie below — localStorage copies trigger replay
+      // detection across sequential tests.
       await page.evaluate(
-        ({ access_token, refresh_token, usr }) => {
+        ({ access_token, usr }) => {
           localStorage.setItem('access_token', access_token);
-          if (refresh_token) localStorage.setItem('refresh_token', refresh_token);
           localStorage.setItem('user', JSON.stringify(usr));
         },
         {
           access_token: freshAuth.access_token,
-          refresh_token: freshAuth.refresh_token,
           usr: freshAuth.user,
         }
       );

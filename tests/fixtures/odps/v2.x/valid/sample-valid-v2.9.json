@@ -16,6 +16,11 @@
     },
     "contract": {
       "contractURL": "https://example.com/contracts/sample-product-v2.9"
+    },
+    "dataSchema": {
+      "fields": [
+        {"name": "id", "type": "string"}
+      ]
     }
   }
 }

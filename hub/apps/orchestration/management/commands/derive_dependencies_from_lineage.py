@@ -9,7 +9,9 @@ Deduplicates on the scope tuple (tenant, pipeline_type, pipeline_id,
 dependency_type, downstream_pipeline_type, downstream_pipeline_id)
 via ``UniqueConstraint``.
 """
+
 from __future__ import annotations
+
 import structlog
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -58,9 +60,7 @@ class Command(BaseCommand):
             tenant_ids = [str(target_tenant_id)]
         else:
             tenant_ids = [
-                str(tid)
-                for tid in Tenant.objects.order_by("id")
-                .values_list("id", flat=True)
+                str(tid) for tid in Tenant.objects.order_by("id").values_list("id", flat=True)
             ]
 
         total_created = 0
@@ -70,14 +70,10 @@ class Command(BaseCommand):
                 total_created += created
 
         if total_created == 0:
-            self.stdout.write(
-                self.style.SUCCESS("No new pipeline dependencies derived.")
-            )
+            self.stdout.write(self.style.SUCCESS("No new pipeline dependencies derived."))
         else:
             self.stdout.write(
-                self.style.SUCCESS(
-                    f"Derived {total_created} new pipeline dependency(ies)."
-                )
+                self.style.SUCCESS(f"Derived {total_created} new pipeline dependency(ies).")
             )
 
     def _derive_for_tenant(self, tenant_id: str, dry_run: bool) -> int:
@@ -95,23 +91,19 @@ class Command(BaseCommand):
         # for the same model/field, create a DATA dependency.
         for edge in edges:
             source_type = _EDGE_TYPE_TO_PIPELINE_TYPE.get(
-                edge.edge_type, None,
+                edge.edge_type,
+                None,
             )
             target_type = _EDGE_TYPE_TO_PIPELINE_TYPE.get(
-                edge.edge_type, None,
+                edge.edge_type,
+                None,
             )
             # Only auto-derive for known edge→pipeline mappings.
             if source_type is None or target_type is None:
                 continue
 
-            source_id = (
-                str(edge.source_contract.id)
-                if edge.source_contract else None
-            )
-            target_id = (
-                str(edge.target_contract.id)
-                if edge.target_contract else None
-            )
+            source_id = str(edge.source_contract.id) if edge.source_contract else None
+            target_id = str(edge.target_contract.id) if edge.target_contract else None
             if source_id is None or target_id is None:
                 continue
             if source_id == target_id:

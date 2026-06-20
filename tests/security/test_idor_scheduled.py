@@ -14,9 +14,9 @@ from hub.apps.scheduled_export.models import (
     ScheduledExportStatus,
 )
 from hub.apps.scheduled_ingestion.models import (
-    ScheduleType,
     ScheduledIngestion,
     ScheduledIngestionStatus,
+    ScheduleType,
     SourceType,
 )
 

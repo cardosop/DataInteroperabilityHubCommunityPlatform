@@ -17,6 +17,7 @@ All three follow the Django ``AUTH_PASSWORD_VALIDATORS`` interface so
 they are automatically invoked by ``django.contrib.auth.authenticate``
 and any code path that calls ``validate_password()``.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -26,16 +27,13 @@ from pathlib import Path
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
-
 # ---------------------------------------------------------------------------
 # Common-password deny-list loader
 # ---------------------------------------------------------------------------
 
 _COMMON_PASSWORDS: set[str] | None = None
 
-_COMMON_PASSWORDS_FILE = (
-    Path(__file__).resolve().parent / "common_passwords.txt"
-)
+_COMMON_PASSWORDS_FILE = Path(__file__).resolve().parent / "common_passwords.txt"
 
 
 def _load_common_passwords() -> set[str]:
@@ -58,13 +56,12 @@ def _load_common_passwords() -> set[str]:
     # Django 6.0 removed the ``common_passwords`` module; CommonPasswordValidator
     # now reads directly from a gzipped file shipped alongside the module.
     import gzip
+
     from django.contrib.auth.password_validation import CommonPasswordValidator
 
     _validator = CommonPasswordValidator()
     try:
-        with gzip.open(
-            str(_validator.DEFAULT_PASSWORD_LIST_PATH), "rt", encoding="utf-8"
-        ) as _f:
+        with gzip.open(str(_validator.DEFAULT_PASSWORD_LIST_PATH), "rt", encoding="utf-8") as _f:
             passwords.update({x.strip() for x in _f})
     except (OSError, gzip.BadGzipFile):
         pass  # File missing or corrupt; use only the custom deny-list
@@ -97,8 +94,10 @@ class PasswordComplexityValidator:
 
         if len(password) < self.min_length:
             errors.append(
-                _(f"This password is too short. It must contain at least "
-                  f"{self.min_length} characters.")
+                _(
+                    f"This password is too short. It must contain at least "
+                    f"{self.min_length} characters."
+                )
             )
 
         if not re.search(r"[A-Z]", password):
@@ -141,9 +140,7 @@ class CommonPasswordDenyListValidator:
             )
 
     def get_help_text(self):
-        return _(
-            "Your password must not be a commonly used password."
-        )
+        return _("Your password must not be a commonly used password.")
 
 
 class HaveIBeenPwnedValidator:
@@ -173,6 +170,7 @@ class HaveIBeenPwnedValidator:
         # external HIBP API call without mocking.  Tests that specifically
         # exercise this validator can override via @override_settings.
         from django.conf import settings as _django_settings
+
         if not getattr(_django_settings, "HIBP_VALIDATOR_ENABLED", True):
             return
 
@@ -180,8 +178,8 @@ class HaveIBeenPwnedValidator:
         prefix, suffix = sha1[:5], sha1[5:]
 
         try:
-            import urllib.request
             import urllib.error
+            import urllib.request
 
             req = urllib.request.Request(
                 self.API_URL.format(prefix=prefix),

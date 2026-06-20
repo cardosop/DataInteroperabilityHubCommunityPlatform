@@ -9,7 +9,6 @@ Verifies that a long-running operation that spans a token expiry
 boundary can recover via refresh and complete successfully.
 """
 
-import time
 import requests
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_base_url, api_get
@@ -26,9 +25,7 @@ def test_refresh_token_yields_new_access_token():
     )
     if resp.status_code == 404:
         pytest.skip("Refresh endpoint not available")
-    assert resp.status_code == 200, (
-        f"Refresh failed: {resp.status_code} {resp.text[:200]}"
-    )
+    assert resp.status_code == 200, f"Refresh failed: {resp.status_code} {resp.text[:200]}"
     data = resp.json()
     new_token = data.get("access_token")
     assert new_token, "Refresh response missing access_token"
@@ -79,9 +76,7 @@ def test_old_token_still_works_after_refresh():
     # Old token should still work (grace period)
     me_resp = api_get("/auth/me/", creds)
     # 200 = grace period working. 401 = immediate invalidation (also acceptable).
-    assert me_resp.status_code in (200, 401), (
-        f"Old token after refresh: {me_resp.status_code}"
-    )
+    assert me_resp.status_code in (200, 401), f"Old token after refresh: {me_resp.status_code}"
 
 
 def test_refresh_with_invalid_token_returns_401():
@@ -93,6 +88,4 @@ def test_refresh_with_invalid_token_returns_401():
     )
     if resp.status_code == 404:
         pytest.skip("Refresh endpoint not available")
-    assert resp.status_code == 401, (
-        f"Refresh with invalid token: {resp.status_code}"
-    )
+    assert resp.status_code == 401, f"Refresh with invalid token: {resp.status_code}"

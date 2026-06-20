@@ -3,6 +3,7 @@ Performance tests for Lineage API (contract lineage).
 
 Measures lineage visualization endpoint latency. Uses real implementations - no mocks or stubs.
 """
+
 import json
 
 import pytest

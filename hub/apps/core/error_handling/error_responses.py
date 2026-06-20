@@ -3,9 +3,10 @@ Standardized Error Responses
 
 Provides comprehensive error response formatting and standardization.
 """
+
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from django.utils import timezone
 from rest_framework import status
@@ -21,7 +22,7 @@ from hub.apps.api.standards.error_codes import (
 class ErrorResponse:
     """
     Standardized error response structure.
-    
+
     All error responses follow this format:
     {
         "error": {
@@ -34,19 +35,19 @@ class ErrorResponse:
         }
     }
     """
-    
+
     def __init__(
         self,
         code: str,
         message: str,
         http_status: int = status.HTTP_400_BAD_REQUEST,
-        details: Optional[Dict[str, Any]] = None,
-        request_id: Optional[str] = None,
-        timestamp: Optional[datetime] = None,
+        details: dict[str, Any] | None = None,
+        request_id: str | None = None,
+        timestamp: datetime | None = None,
     ):
         """
         Initialize error response.
-        
+
         Args:
             code: Machine-readable error code
             message: Human-readable error message
@@ -61,8 +62,8 @@ class ErrorResponse:
         self.details = details or {}
         self.request_id = request_id or str(uuid.uuid4())
         self.timestamp = timestamp or timezone.now()
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "error": {
@@ -74,7 +75,7 @@ class ErrorResponse:
                 **({"details": self.details} if self.details else {}),
             }
         }
-    
+
     def to_response(self) -> Response:
         """Convert to DRF Response."""
         return Response(self.to_dict(), status=self.http_status)
@@ -82,71 +83,74 @@ class ErrorResponse:
 
 class ErrorResponseBuilder:
     """Builder for creating standardized error responses."""
-    
+
     def __init__(self):
         """Initialize builder."""
-        self._code: Optional[str] = None
-        self._message: Optional[str] = None
+        self._code: str | None = None
+        self._message: str | None = None
         self._http_status: int = status.HTTP_400_BAD_REQUEST
-        self._details: Dict[str, Any] = {}
-        self._request_id: Optional[str] = None
-        self._timestamp: Optional[datetime] = None
-    
+        self._details: dict[str, Any] = {}
+        self._request_id: str | None = None
+        self._timestamp: datetime | None = None
+
     def code(self, code: str) -> "ErrorResponseBuilder":
         """Set error code."""
         self._code = code
         return self
-    
+
     def message(self, message: str) -> "ErrorResponseBuilder":
         """Set error message."""
         self._message = message
         return self
-    
+
     def http_status(self, http_status: int) -> "ErrorResponseBuilder":
         """Set HTTP status code."""
         self._http_status = http_status
         return self
-    
-    def details(self, details: Dict[str, Any]) -> "ErrorResponseBuilder":
+
+    def details(self, details: dict[str, Any]) -> "ErrorResponseBuilder":
         """Set error details."""
         self._details = details
         return self
-    
+
     def add_detail(self, key: str, value: Any) -> "ErrorResponseBuilder":
         """Add a detail field."""
         self._details[key] = value
         return self
-    
-    def field_error(self, field: str, message: str, code: str = "VALIDATION_ERROR") -> "ErrorResponseBuilder":
+
+    def field_error(
+        self, field: str, message: str, code: str = "VALIDATION_ERROR"
+    ) -> "ErrorResponseBuilder":
         """Add a field-level error."""
         if "field_errors" not in self._details:
             self._details["field_errors"] = []
-        self._details["field_errors"].append({
-            "field": field,
-            "message": message,
-            "code": code,
-        })
+        self._details["field_errors"].append(
+            {
+                "field": field,
+                "message": message,
+                "code": code,
+            }
+        )
         return self
-    
+
     def request_id(self, request_id: str) -> "ErrorResponseBuilder":
         """Set request ID."""
         self._request_id = request_id
         return self
-    
+
     def timestamp(self, timestamp: datetime) -> "ErrorResponseBuilder":
         """Set timestamp."""
         self._timestamp = timestamp
         return self
-    
+
     def build(self) -> ErrorResponse:
         """Build error response."""
         if not self._code:
             # Auto-determine code from HTTP status
             self._code = StandardErrorCodes.STATUS_TO_CODE.get(
-                self._http_status,
-                StandardErrorCodes.INTERNAL_ERROR
+                self._http_status, StandardErrorCodes.INTERNAL_ERROR
             )
-        
+
         if not self._message:
             # Auto-determine message from HTTP status
             default_messages = {
@@ -158,11 +162,8 @@ class ErrorResponseBuilder:
                 status.HTTP_429_TOO_MANY_REQUESTS: "Rate limit exceeded",
                 status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal server error",
             }
-            self._message = default_messages.get(
-                self._http_status,
-                "An error occurred"
-            )
-        
+            self._message = default_messages.get(self._http_status, "An error occurred")
+
         return ErrorResponse(
             code=self._code,
             message=self._message,
@@ -174,16 +175,16 @@ class ErrorResponseBuilder:
 
 
 def format_error_response(
-    exception: Optional[Exception] = None,
-    code: Optional[str] = None,
-    message: Optional[str] = None,
+    exception: Exception | None = None,
+    code: str | None = None,
+    message: str | None = None,
     http_status: int = status.HTTP_400_BAD_REQUEST,
-    details: Optional[Dict[str, Any]] = None,
-    request_id: Optional[str] = None,
+    details: dict[str, Any] | None = None,
+    request_id: str | None = None,
 ) -> Response:
     """
     Format a standardized error response.
-    
+
     Args:
         exception: Exception instance (optional)
         code: Error code (optional, auto-determined if not provided)
@@ -191,7 +192,7 @@ def format_error_response(
         http_status: HTTP status code
         details: Error details (optional)
         request_id: Request ID (optional)
-        
+
     Returns:
         Formatted error Response
     """
@@ -201,7 +202,7 @@ def format_error_response(
             code = get_error_code(exception, http_status)
         if not message:
             message = get_error_message(exception, http_status)
-    
+
     builder = ErrorResponseBuilder()
     if code:
         builder.code(code)
@@ -212,7 +213,6 @@ def format_error_response(
         builder.details(details)
     if request_id:
         builder.request_id(request_id)
-    
+
     error_response = builder.build()
     return error_response.to_response()
-

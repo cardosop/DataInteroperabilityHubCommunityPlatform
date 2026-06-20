@@ -17,8 +17,8 @@ This module intentionally has zero runtime imports beyond ``__future__``
 so it can be loaded in any context (signal handler, migration, RQ task)
 without dragging in Django app-config side-effects.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 # ---------------------------------------------------------------------------
 # Resource-type constants
@@ -895,7 +895,9 @@ SCHEDULED_INGESTION_EMPTY_DATA_WARN: str = "SCHEDULED_INGESTION_EMPTY_DATA_WARN"
 #: (list — same redaction), ``audience`` (``"TENANT_ADMIN"``).
 #:
 #: ``result`` is ``"FAILURE"``.
-SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED: str = "SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED"
+SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED: str = (
+    "SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED"
+)
 
 #: Phase 270.A.3 — fired by the marketplace order-create endpoint
 #: when a CROSS-TENANT FREE_AUTO_APPROVE order auto-creates an
@@ -1175,9 +1177,7 @@ ACCESS_REQUEST_BLOCKED_COMPLIANCE: str = "ACCESS_REQUEST_BLOCKED_COMPLIANCE"
 #: Phase 272.2 — fired when a PLATFORM_ADMIN overrides the compliance
 #: gate via ``force_approve=true``. ``details_json`` carries:
 #: ``access_request_id``, ``compliance_run_id`` (nullable).
-ACCESS_REQUEST_COMPLIANCE_GATE_OVERRIDDEN: str = (
-    "ACCESS_REQUEST_COMPLIANCE_GATE_OVERRIDDEN"
-)
+ACCESS_REQUEST_COMPLIANCE_GATE_OVERRIDDEN: str = "ACCESS_REQUEST_COMPLIANCE_GATE_OVERRIDDEN"
 
 #: Phase 272.3 — fired every time ABACEngine.evaluate_access() is called
 #: during approval. ``details_json`` carries: ``decision`` (PERMIT/DENY),

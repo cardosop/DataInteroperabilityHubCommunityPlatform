@@ -4,9 +4,10 @@
 Uses bulk ORM update (no mocks): legacy inconsistency via ``.update()``,
 which bypasses ``save()`` and File ``pre_delete``.
 """
-from __future__ import annotations
-import pytest
 
+from __future__ import annotations
+
+import pytest
 
 from hub.apps.datasets.models import Dataset, DatasetStatus
 from hub.apps.datasets.retirement import backfill_orphan_active_datasets_qs

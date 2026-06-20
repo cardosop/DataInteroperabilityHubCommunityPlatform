@@ -44,15 +44,20 @@ Subcode taxonomy
 * ``STRUCTURELESS_GENERIC`` — non-ODPS/ODCS spec_type or unrecognised
   shape; ops investigation needed.
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional
+from collections.abc import Iterable
+from typing import Any
+
+import logging
 
 from django.conf import settings
+from django.db import DatabaseError, OperationalError
 
-from hub.apps.contracts.structureless import is_payload_structureless
 from hub.apps.core.services.base import ValidationError
 
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Public constants — exported so tests + frontend can import them
@@ -80,7 +85,7 @@ PLACEHOLDER_CONTRACT_ID = "{contract_id}"
 # ---------------------------------------------------------------------------
 
 
-def _count_models_with_fields(payload: Dict[str, Any]) -> int:
+def _count_models_with_fields(payload: dict[str, Any]) -> int:
     """Count models that have at least one field — i.e., contributing
     structure. ``models=[{"fields":[]}]`` counts as 0."""
     models = payload.get("models") or []
@@ -93,7 +98,7 @@ def _count_models_with_fields(payload: Dict[str, Any]) -> int:
     )
 
 
-def _schema_fields_count(payload: Dict[str, Any]) -> int:
+def _schema_fields_count(payload: dict[str, Any]) -> int:
     """Count top-level ``schema.fields`` entries."""
     schema_block = payload.get("schema") or {}
     if not isinstance(schema_block, dict):
@@ -105,7 +110,7 @@ def _schema_fields_count(payload: Dict[str, Any]) -> int:
 
 
 def _normalisation_warnings_indicate_cycle(
-    warnings: Optional[Iterable[str]],
+    warnings: Iterable[str] | None,
 ) -> bool:
     """Detect Phase 227.L1.7 cyclic-ports warning in the warning list."""
     if not warnings:
@@ -114,10 +119,10 @@ def _normalisation_warnings_indicate_cycle(
 
 
 def _classify(
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     *,
-    spec_type: Optional[str],
-    warnings: Optional[Iterable[str]],
+    spec_type: str | None,
+    warnings: Iterable[str] | None,
 ) -> str:
     """Pick the subcode that best explains why the payload is structureless."""
     spec = (spec_type or "").upper()
@@ -156,8 +161,7 @@ _HINT_BY_SUBCODE = {
         "circular contractId reference, then retry."
     ),
     SUBCODE_GENERIC: (
-        "Contract has no resolvable structure. Add models or schema "
-        "fields and retry."
+        "Contract has no resolvable structure. Add models or schema fields and retry."
     ),
 }
 
@@ -167,7 +171,7 @@ _HINT_BY_SUBCODE = {
 # ---------------------------------------------------------------------------
 
 
-def _resolve_remediation_url(contract_id: Optional[str]) -> str:
+def _resolve_remediation_url(contract_id: str | None) -> str:
     """Return the Schema-editor deep link for the offending contract."""
     template = getattr(
         settings,
@@ -179,14 +183,14 @@ def _resolve_remediation_url(contract_id: Optional[str]) -> str:
 
 
 def enforce_structural_floor(
-    hub_contract: Optional[Dict[str, Any]],
+    hub_contract: dict[str, Any] | None,
     *,
-    spec_type: Optional[str],
-    spec_version: Optional[str],
-    warnings: Optional[Iterable[str]] = None,
-    contract_id: Optional[str] = None,
-    tenant_id: Optional[str] = None,
-    source: Optional[str] = None,
+    spec_type: str | None,
+    spec_version: str | None,
+    warnings: Iterable[str] | None = None,
+    contract_id: str | None = None,
+    tenant_id: str | None = None,
+    source: str | None = None,
 ) -> None:
     """Raise ``ValidationError(code="STRUCTURELESS_CONTRACT")`` if the
     payload violates the structural floor; otherwise return ``None``.
@@ -208,6 +212,7 @@ def enforce_structural_floor(
         spec_version=spec_version or "",
         contract_id=contract_id or "",
         tenant_id=tenant_id or "",
+        warnings=warnings,
     )
 
     if result.is_valid:
@@ -219,7 +224,7 @@ def enforce_structural_floor(
     remediation_url = _resolve_remediation_url(contract_id)
 
     payload = hub_contract if isinstance(hub_contract, dict) else {}
-    details: Dict[str, Any] = {
+    details: dict[str, Any] = {
         "subcode": subcode,
         "models_count": _count_models_with_fields(payload),
         "schema_fields_count": _schema_fields_count(payload),
@@ -257,12 +262,12 @@ def _emit_floor_violation_observability(
     *,
     code: str,
     subcode: str,
-    spec_type: Optional[str],
-    spec_version: Optional[str],
-    contract_id: Optional[str],
-    tenant_id: Optional[str],
+    spec_type: str | None,
+    spec_version: str | None,
+    contract_id: str | None,
+    tenant_id: str | None,
     source: str,
-    details: Dict[str, Any],
+    details: dict[str, Any],
 ) -> None:
     """Phase 227 Wave 1 (227.L7.1, L7.3, L7.4) — emit metrics + log +
     audit event for a Layer-3 floor violation.
@@ -275,21 +280,23 @@ def _emit_floor_violation_observability(
     # can correlate "Layer-3 failures" with "structureless source".
     try:
         from hub.apps.contracts.normalization_metrics import (
-            record_validation_failed,
             record_structureless,
+            record_validation_failed,
         )
-        record_validation_failed(
-            code=code, subcode=subcode, spec_type=spec_type
-        )
+
+        record_validation_failed(code=code, subcode=subcode, spec_type=spec_type)
         record_structureless(spec_type=spec_type, source=source)
-    except Exception:
-        # Metrics outage MUST NOT block the raise.
+    except ImportError:
+        # Metrics module not installed — non-fatal.
         pass
+    except Exception:
+        logger.warning("structural_floor_metrics_failed", exc_info=True)
 
     # L7.4 — structured WARN log. Carries the four required fields:
     # contract_id, spec_type, tenant_id, subcode.
     try:
         import structlog
+
         log = structlog.get_logger(__name__)
         log.warning(
             "structural_floor_violation",
@@ -302,9 +309,11 @@ def _emit_floor_violation_observability(
             models_count=details.get("models_count"),
             schema_fields_count=details.get("schema_fields_count"),
         )
-    except Exception:
-        # structlog import / emit failure MUST NOT block the raise.
+    except ImportError:
+        # structlog not installed — non-fatal.
         pass
+    except Exception:
+        logger.warning("structural_floor_log_emit_failed", exc_info=True)
 
     # L7.3 — audit event. We use the unredacted details + label
     # values; ``create_audit_event`` runs ``redact_pii`` internally
@@ -318,7 +327,7 @@ def _emit_floor_violation_observability(
         if tenant_id:
             try:
                 tenant_obj = Tenant.objects.filter(id=tenant_id).first()
-            except Exception:
+            except (DatabaseError, OperationalError):
                 tenant_obj = None
 
         create_audit_event(
@@ -338,20 +347,21 @@ def _emit_floor_violation_observability(
                 "source": source,
             },
         )
-    except Exception:
-        # Audit-event failure MUST NOT block the raise. The L7.4 log
-        # already carries the same information for ops.
+    except ImportError:
+        # Audit app not installed — non-fatal.
         pass
+    except Exception:
+        logger.warning("structural_floor_audit_failed", exc_info=True)
 
 
 def collect_structural_floor_errors(
-    hub_contract: Optional[Dict[str, Any]],
+    hub_contract: dict[str, Any] | None,
     *,
-    spec_type: Optional[str],
-    spec_version: Optional[str],
-    warnings: Optional[Iterable[str]] = None,
-    contract_id: Optional[str] = None,
-) -> List[Dict[str, Any]]:
+    spec_type: str | None,
+    spec_version: str | None,
+    warnings: Iterable[str] | None = None,
+    contract_id: str | None = None,
+) -> list[dict[str, Any]]:
     """Non-raising sibling — returns a list of error-detail dicts.
 
     Phase 274.4: Delegates to StructuralFloorRule directly (avoids
@@ -364,6 +374,7 @@ def collect_structural_floor_errors(
         spec_type=spec_type or "",
         spec_version=spec_version or "",
         contract_id=contract_id or "",
+        warnings=warnings,
     )
 
     if result.is_valid:
@@ -371,9 +382,11 @@ def collect_structural_floor_errors(
 
     subcode = result.details.get("subcode", SUBCODE_GENERIC)
     remediation_url = _resolve_remediation_url(contract_id or None)
-    return [{
-        "code": ERROR_CODE,
-        "message": result.errors[0] if result.errors else "",
-        "subcode": subcode,
-        "remediation_url": remediation_url,
-    }]
+    return [
+        {
+            "code": ERROR_CODE,
+            "message": result.errors[0] if result.errors else "",
+            "subcode": subcode,
+            "remediation_url": remediation_url,
+        }
+    ]

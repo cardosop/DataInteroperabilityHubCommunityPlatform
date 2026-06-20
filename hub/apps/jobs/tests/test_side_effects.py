@@ -14,7 +14,7 @@ from io import StringIO
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.jobs.models import SideEffect, SideEffectStatus, SideEffectType
@@ -22,6 +22,7 @@ from hub.apps.jobs.models import SideEffect, SideEffectStatus, SideEffectType
 
 def _ensure_tenant():
     from hub.apps.tenants.models import Tenant
+
     tenant, _ = Tenant.objects.get_or_create(
         name="side-effect-test",
         defaults={"slug": "side-effect-test"},
@@ -47,12 +48,21 @@ def _create_ingestion_and_run(tenant, *, run_status="RUNNING"):
                 prefect_work_pool_name, deployment_sync_status)
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             [
-                str(si_id), str(tenant.id),
-                f"test-{uuid.uuid4().hex[:8]}", "HTTP",
+                str(si_id),
+                str(tenant.id),
+                f"test-{uuid.uuid4().hex[:8]}",
+                "HTTP",
                 '{"url":"https://example.com/data.csv","send_notifications":false}',
-                "DAILY", '{"cron":"0 0 * * *","timezone":"UTC"}',
-                "ACTIVE", 0, now, now, False, False,
-                "default", "PENDING",
+                "DAILY",
+                '{"cron":"0 0 * * *","timezone":"UTC"}',
+                "ACTIVE",
+                0,
+                now,
+                now,
+                False,
+                False,
+                "default",
+                "PENDING",
             ],
         )
         c.execute(
@@ -62,13 +72,22 @@ def _create_ingestion_and_run(tenant, *, run_status="RUNNING"):
                 dlq_sync_status, created_at, updated_at)
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             [
-                str(run_id), str(si_id), run_status, now,
-                0, 0, 0, 0, "PENDING",
-                now, now,
+                str(run_id),
+                str(si_id),
+                run_status,
+                now,
+                0,
+                0,
+                0,
+                0,
+                "PENDING",
+                now,
+                now,
             ],
         )
 
     from hub.apps.scheduled_ingestion.models import ScheduledIngestionRun
+
     return ScheduledIngestionRun.objects.select_related("scheduled_ingestion").get(pk=run_id)
 
 

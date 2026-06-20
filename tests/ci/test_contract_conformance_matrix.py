@@ -8,7 +8,7 @@ ODCS v3.1.0.
 Run in CI via:
     pytest tests/ci/test_contract_conformance_matrix.py -v
 """
-import os
+
 import sys
 from pathlib import Path
 from unittest import TestCase
@@ -65,44 +65,35 @@ class ODCSConformanceMatrixTest(TestCase):
 
     def _normalize(self, contract_data: dict, version: str):
         from hub.apps.contracts.normalization import normalize_contract
+
         raw = yaml.dump(contract_data)
-        hub, spec_type, spec_version, status, errors, warnings = (
-            normalize_contract(raw, format="YAML", spec_type="ODCS")
+        hub, _spec_type, _spec_version, status, errors, warnings = normalize_contract(
+            raw, format="YAML", spec_type="ODCS"
         )
         return hub, status, errors, warnings
 
     def test_v310_normalizes_ok(self):
-        hub, status, errors, _ = self._normalize(
-            _make_odcs_contract("3.1.0"), "3.1.0"
-        )
+        hub, status, errors, _ = self._normalize(_make_odcs_contract("3.1.0"), "3.1.0")
         assert hub is not None, f"v3.1.0 failed: {errors}"
         assert "FAILED" not in str(status), f"v3.1.0: {status} — {errors}"
 
     def test_v302_normalizes_ok(self):
-        hub, status, errors, _ = self._normalize(
-            _make_odcs_contract("3.0.2"), "3.0.2"
-        )
+        hub, status, errors, _ = self._normalize(_make_odcs_contract("3.0.2"), "3.0.2")
         assert hub is not None, f"v3.0.2 failed: {errors}"
         assert "FAILED" not in str(status), f"v3.0.2: {status} — {errors}"
 
     def test_v301_normalizes_ok(self):
-        hub, status, errors, _ = self._normalize(
-            _make_odcs_contract("3.0.1"), "3.0.1"
-        )
+        hub, status, errors, _ = self._normalize(_make_odcs_contract("3.0.1"), "3.0.1")
         assert hub is not None, f"v3.0.1 failed: {errors}"
         assert "FAILED" not in str(status), f"v3.0.1: {status} — {errors}"
 
     def test_v300_normalizes_ok(self):
-        hub, status, errors, _ = self._normalize(
-            _make_odcs_contract("3.0.0"), "3.0.0"
-        )
+        hub, status, errors, _ = self._normalize(_make_odcs_contract("3.0.0"), "3.0.0")
         assert hub is not None, f"v3.0.0 failed: {errors}"
         assert "FAILED" not in str(status), f"v3.0.0: {status} — {errors}"
 
     def test_v222_normalizes_ok(self):
-        hub, status, errors, _ = self._normalize(
-            _make_odcs_contract("2.2.2"), "2.2.2"
-        )
+        hub, status, errors, _ = self._normalize(_make_odcs_contract("2.2.2"), "2.2.2")
         assert hub is not None, f"v2.2.2 failed: {errors}"
         assert "FAILED" not in str(status), f"v2.2.2: {status} — {errors}"
 
@@ -111,24 +102,25 @@ class ODCSConformanceMatrixTest(TestCase):
 # 26.16.1 — ODPS / Bitol Conformance
 # ======================================================================
 
+
 class ODPSBitolConformanceTest(TestCase):
     """Normalize a Bitol ODPS fixture."""
 
     def test_bitol_v100_normalizes_ok(self):
         from hub.apps.contracts.normalization import normalize_contract
+
         raw = _load_fixture("odps_bitol_v1_0_0_minimal.yaml")
-        hub, spec_type, spec_version, status, errors, warnings = (
-            normalize_contract(raw, format="YAML", spec_type="ODPS")
+        hub, _spec_type, _spec_version, status, errors, _warnings = normalize_contract(
+            raw, format="YAML", spec_type="ODPS"
         )
         assert hub is not None, f"bitol-1.0.0 failed: {errors}"
-        assert "FAILED" not in str(status), (
-            f"bitol-1.0.0: {status} — {errors}"
-        )
+        assert "FAILED" not in str(status), f"bitol-1.0.0: {status} — {errors}"
 
 
 # ======================================================================
 # 26.16.2 — Round-trip export validation
 # ======================================================================
+
 
 class ODCSv310RoundTripTest(TestCase):
     """Normalize → export → re-normalize and compare."""
@@ -141,9 +133,7 @@ class ODCSv310RoundTripTest(TestCase):
         from hub.apps.contracts.normalization import normalize_contract
 
         raw = _load_fixture("odcs_v3_1_0_with_relationships.yaml")
-        hub1, _, _, status1, errors1, _ = normalize_contract(
-            raw, format="YAML", spec_type="ODCS"
-        )
+        hub1, _, _, _status1, errors1, _ = normalize_contract(raw, format="YAML", spec_type="ODCS")
         assert hub1 is not None, f"First normalize failed: {errors1}"
 
         # Check relationships exist in first pass
@@ -152,28 +142,23 @@ class ODCSv310RoundTripTest(TestCase):
         for m in models:
             if isinstance(m, dict):
                 rels.extend(m.get("relationships", []))
-        assert len(rels) > 0, (
-            "First normalize should produce relationships"
-        )
+        assert len(rels) > 0, "First normalize should produce relationships"
 
     def test_v310_fixture_has_team_and_owners(self):
         """Fixture with team.members should produce info.owners."""
         from hub.apps.contracts.normalization import normalize_contract
 
         raw = _load_fixture("odcs_v3_1_0_with_relationships.yaml")
-        hub, _, _, _, errors, _ = normalize_contract(
-            raw, format="YAML", spec_type="ODCS"
-        )
+        hub, _, _, _, errors, _ = normalize_contract(raw, format="YAML", spec_type="ODCS")
         assert hub is not None, f"Normalize failed: {errors}"
         owners = hub.get("info", {}).get("owners", [])
-        assert len(owners) >= 1, (
-            f"Expected owners from team.members, got: {owners}"
-        )
+        assert len(owners) >= 1, f"Expected owners from team.members, got: {owners}"
 
 
 # ======================================================================
 # 26.16.3 — Version boundary tests (deterministic, no hypothesis)
 # ======================================================================
+
 
 class VersionBoundaryRegressionTest(TestCase):
     """
@@ -182,37 +167,41 @@ class VersionBoundaryRegressionTest(TestCase):
     """
 
     def test_v310_normalizer_selected_for_3_1_0(self):
+        from hub.apps.contracts.models import OriginalSpecType
         from hub.apps.contracts.normalization import get_normalizer
         from hub.apps.contracts.normalization.odcs_normalizer_v3_1_0 import (
             ODCSNormalizerV3_1_0,
         )
-        from hub.apps.contracts.models import OriginalSpecType
+
         n = get_normalizer(OriginalSpecType.ODCS, "3.1.0", {})
         assert isinstance(n, ODCSNormalizerV3_1_0)
 
     def test_v302_normalizer_selected_for_3_0_2(self):
+        from hub.apps.contracts.models import OriginalSpecType
         from hub.apps.contracts.normalization import get_normalizer
         from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import (
             ODCSNormalizerV3_0_2,
         )
-        from hub.apps.contracts.models import OriginalSpecType
+
         n = get_normalizer(OriginalSpecType.ODCS, "3.0.2", {})
         assert isinstance(n, ODCSNormalizerV3_0_2)
 
     def test_unknown_3x_falls_back_to_v310(self):
+        from hub.apps.contracts.models import OriginalSpecType
         from hub.apps.contracts.normalization import get_normalizer
         from hub.apps.contracts.normalization.odcs_normalizer_v3_1_0 import (
             ODCSNormalizerV3_1_0,
         )
-        from hub.apps.contracts.models import OriginalSpecType
+
         n = get_normalizer(OriginalSpecType.ODCS, "3.99.0", {})
         assert isinstance(n, ODCSNormalizerV3_1_0)
 
     def test_bitol_normalizer_selected(self):
+        from hub.apps.contracts.models import OriginalSpecType
         from hub.apps.contracts.normalization import get_normalizer
         from hub.apps.contracts.normalization.odps_normalizer_bitol_v1 import (
             ODPSBitolNormalizerV1_0_0,
         )
-        from hub.apps.contracts.models import OriginalSpecType
+
         n = get_normalizer(OriginalSpecType.ODPS, "bitol-1.0.0", {})
         assert isinstance(n, ODPSBitolNormalizerV1_0_0)

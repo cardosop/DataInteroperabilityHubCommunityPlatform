@@ -20,6 +20,7 @@ The diff is the load-bearing operation behind F5.3
 ``GET /lineage/diff/?from=&to=``; this file pins it before the
 endpoint wiring.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -109,9 +110,7 @@ class TestComputeDiffPureFunction:
         result = compute_diff(left=[old], right=[new])
         assert len(result["added"]) == 1
         assert len(result["removed"]) == 1
-        assert result["modified"] == [], (
-            "Spec REQ-LIN-F5-002: modified is always empty."
-        )
+        assert result["modified"] == [], "Spec REQ-LIN-F5-002: modified is always empty."
         assert result["added"][0]["transformation_ref"] == "v2"
         assert result["removed"][0]["transformation_ref"] == "v1"
 
@@ -135,9 +134,7 @@ class TestComputeDiffPureFunction:
         ]
         result = compute_diff(left=[], right=right)
         targets = [e["target_contract"] for e in result["added"]]
-        assert targets == ["B", "M", "Z"], (
-            f"added must be sorted by (src,tgt,...); got {targets}"
-        )
+        assert targets == ["B", "M", "Z"], f"added must be sorted by (src,tgt,...); got {targets}"
 
     def test_iterable_inputs_consumed_once(self):
         """The function must accept generators (one-shot iterables) —
@@ -200,8 +197,7 @@ class TestComputeDiffPureFunction:
             ([], []),
             ([_make_edge()], []),
             ([], [_make_edge()]),
-            ([_make_edge(transformation_ref="a")],
-             [_make_edge(transformation_ref="b")]),
+            ([_make_edge(transformation_ref="a")], [_make_edge(transformation_ref="b")]),
         ):
             result = compute_diff(left=left, right=right)
             assert "modified" in result
@@ -227,7 +223,8 @@ from django.utils import timezone
 def _create_tenant_with_subscription():
     from hub.apps.billing.models import Subscription, SubscriptionStatus
     from hub.apps.billing.tests.plan_fixtures import (
-        create_unique_tenant, get_pro_plan,
+        create_unique_tenant,
+        get_pro_plan,
     )
 
     plan = get_pro_plan()
@@ -249,6 +246,7 @@ def _create_tenant_with_subscription():
 
 def _create_contract_real(tenant, *, version=1):
     from hub.apps.contracts.models import Contract
+
     return Contract.objects.create(
         tenant=tenant,
         version=version,
@@ -271,9 +269,11 @@ def _create_contract_real(tenant, *, version=1):
 
 def _create_user_for_tenant(tenant):
     from django.contrib.auth import get_user_model
+
     User = get_user_model()
     return User.objects.create(
-        email=f"diff-user-{_uuid.uuid4().hex[:6]}@x", tenant=tenant,
+        email=f"diff-user-{_uuid.uuid4().hex[:6]}@x",
+        tenant=tenant,
     )
 
 
@@ -282,8 +282,9 @@ class TestLineageDiffEndpoint(TransactionTestCase):
     """Pin the diff API surface — request shape, response shape, errors."""
 
     def test_diff_returns_added_when_edge_opens_after_from(self):
-        from hub.apps.contracts.models import LineageEdge
         from rest_framework.test import APIClient
+
+        from hub.apps.contracts.models import LineageEdge
 
         tenant = _create_tenant_with_subscription()
         user = _create_user_for_tenant(tenant)
@@ -294,8 +295,10 @@ class TestLineageDiffEndpoint(TransactionTestCase):
         from_cutoff = timezone.now() - timedelta(hours=2)
         opened_at = timezone.now() - timedelta(hours=1)
         e = LineageEdge.objects.create(
-            tenant=tenant, source_contract=upstream,
-            target_contract=target, edge_type="reference",
+            tenant=tenant,
+            source_contract=upstream,
+            target_contract=target,
+            edge_type="reference",
         )
         LineageEdge.objects.filter(pk=e.pk).update(valid_from=opened_at)
 
@@ -311,8 +314,9 @@ class TestLineageDiffEndpoint(TransactionTestCase):
         assert data["summary"]["added"] >= 1, data["summary"]
 
     def test_diff_returns_removed_when_edge_closes_in_window(self):
-        from hub.apps.contracts.models import LineageEdge
         from rest_framework.test import APIClient
+
+        from hub.apps.contracts.models import LineageEdge
 
         tenant = _create_tenant_with_subscription()
         user = _create_user_for_tenant(tenant)
@@ -322,8 +326,10 @@ class TestLineageDiffEndpoint(TransactionTestCase):
         from_cutoff = timezone.now() - timedelta(hours=2)
         closed_at = timezone.now() - timedelta(minutes=30)
         e = LineageEdge.objects.create(
-            tenant=tenant, source_contract=upstream,
-            target_contract=target, edge_type="derivation",
+            tenant=tenant,
+            source_contract=upstream,
+            target_contract=target,
+            edge_type="derivation",
         )
         LineageEdge.objects.filter(pk=e.pk).update(
             valid_from=from_cutoff - timedelta(hours=1),
@@ -371,8 +377,9 @@ class TestLineageDiffEndpoint(TransactionTestCase):
         when ``from`` and ``to`` are identical, all buckets
         (added/removed/modified) are empty + summary counts are zero
         for those buckets. Existing edges show up as ``unchanged``."""
-        from hub.apps.contracts.models import LineageEdge
         from rest_framework.test import APIClient
+
+        from hub.apps.contracts.models import LineageEdge
 
         tenant = _create_tenant_with_subscription()
         user = _create_user_for_tenant(tenant)
@@ -380,8 +387,10 @@ class TestLineageDiffEndpoint(TransactionTestCase):
         upstream = _create_contract_real(tenant)
         # Stable open edge that exists at any cutoff in [now-1h, now].
         LineageEdge.objects.create(
-            tenant=tenant, source_contract=upstream,
-            target_contract=target, edge_type="reference",
+            tenant=tenant,
+            source_contract=upstream,
+            target_contract=target,
+            edge_type="reference",
         )
 
         client = APIClient()
@@ -393,16 +402,15 @@ class TestLineageDiffEndpoint(TransactionTestCase):
         data = resp.json()
         assert data["added"] == []
         assert data["removed"] == []
-        assert data["modified"] == [], (
-            "spec REQ-LIN-F5-002: ``modified`` is always empty list"
-        )
+        assert data["modified"] == [], "spec REQ-LIN-F5-002: ``modified`` is always empty list"
         assert data["summary"]["added"] == 0
         assert data["summary"]["removed"] == 0
         assert data["summary"]["modified"] == 0
 
     def test_diff_with_version_anchors_resolves_created_at(self):
-        from hub.apps.contracts.models import Contract
         from rest_framework.test import APIClient
+
+        from hub.apps.contracts.models import Contract
 
         tenant = _create_tenant_with_subscription()
         user = _create_user_for_tenant(tenant)

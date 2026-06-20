@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fix uid placement - move uid= line out of Tenant.objects.create() calls."""
+
 import os
-import re
 import subprocess
 
 
@@ -9,7 +9,10 @@ def find_broken_files():
     """Find files where uid= is inside a create() call."""
     r = subprocess.run(
         ["grep", "-rln", "uid = uuid.uuid4", "hub/apps/", "--include=*.py"],
-        capture_output=True, text=True, cwd="/app"
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd="/app",
     )
     return [f for f in r.stdout.strip().split("\n") if f]
 

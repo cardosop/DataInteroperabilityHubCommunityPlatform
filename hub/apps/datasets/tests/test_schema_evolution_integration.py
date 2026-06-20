@@ -3,16 +3,17 @@ Integration tests for Schema Evolution Tracking
 
 Tests for schema evolution in the context of dataset creation and version management.
 """
+
 import uuid
 
 import pytest
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.datasets.models import Dataset, SchemaVersion
-from hub.apps.files.models import File, FileStatus
+from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.schema_evolution import CompatibilityLevel, SchemaEvolutionTracker
 from hub.apps.datasets.tests.test_base import DatasetsTestBase
 from hub.apps.datasets.versioning import VersionHistoryManager
+from hub.apps.files.models import File, FileStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -258,13 +259,12 @@ class SchemaEvolutionIntegrationTest(DatasetsTestBase):
         VersionHistoryManager.create_version(parent, semantic_version="1.0.0", is_current=False)
 
         # Should track schema evolution
-        self.assertIsNotNone(parent)
+        self.assertIsNotNone(parent.schema_version)
 
     # ========== FAILURE SCENARIOS ==========
 
     def test_schema_evolution_integration_failure_nonexistent_parent(self):
         """Test schema evolution integration with non-existent parent (failure scenario)"""
-        import uuid
 
         fake_parent_id = uuid.uuid4()
         fake_parent = Dataset(
@@ -281,14 +281,11 @@ class SchemaEvolutionIntegrationTest(DatasetsTestBase):
             created_by=self.user,
         )
 
-        # Non-existent parent must either return None or raise
-        try:
-            schema_version = SchemaEvolutionTracker.track_schema_version(
+        # Non-existent parent raises an exception
+        with self.assertRaises(Exception):
+            SchemaEvolutionTracker.track_schema_version(
                 child, parent_dataset=fake_parent
             )
-            self.assertIsNone(schema_version)
-        except Exception:
-            pass
 
     # ========== EDGE CASES ==========
 
@@ -331,7 +328,7 @@ class SchemaEvolutionIntegrationTest(DatasetsTestBase):
         self.assertIsNotNone(schema_version)
         # Verify it was created successfully
         self.assertEqual(schema_version.dataset, child)
-        self.assertEqual(schema_version.compatibility_level, "FULLY_COMPATIBLE")
+        self.assertEqual(schema_version.compatibility_level, CompatibilityLevel.FULLY_COMPATIBLE.value)
 
     # ========== ERROR HANDLING ==========
 
@@ -358,11 +355,9 @@ class SchemaEvolutionIntegrationTest(DatasetsTestBase):
         )
 
         # Should handle errors gracefully - track_schema_version always returns a SchemaVersion
-        schema_version = SchemaEvolutionTracker.track_schema_version(
-            child, parent_dataset=parent
-        )
+        schema_version = SchemaEvolutionTracker.track_schema_version(child, parent_dataset=parent)
         # Should return a valid schema version without raising exceptions
         self.assertIsNotNone(schema_version)
         self.assertEqual(schema_version.dataset, child)
         # Both schemas are empty, so should be fully compatible
-        self.assertEqual(schema_version.compatibility_level, "FULLY_COMPATIBLE")
+        self.assertEqual(schema_version.compatibility_level, CompatibilityLevel.FULLY_COMPATIBLE.value)

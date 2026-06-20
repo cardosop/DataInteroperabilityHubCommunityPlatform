@@ -676,8 +676,11 @@ class ODPSGeneratorMarketplaceCombinedMappingTest(SimpleTestCase):
         self.assertIn("product", result)
 
         # Verify marketplace section is not present when not provided.
-        self.assertNotIn("marketplace", result["product"],
-            "Marketplace section must be absent when no marketplace data is provided")
+        self.assertNotIn(
+            "marketplace",
+            result["product"],
+            "Marketplace section must be absent when no marketplace data is provided",
+        )
 
         # Verify license is not present (optional)
         self.assertNotIn("license", result)
@@ -891,10 +894,11 @@ class ODPSGeneratorMarketplaceIntegrationTest(SimpleTestCase):
         self.assertIn("product", result)
         self.assertIn("marketplace", result["product"])
         self.assertIn("pricingPlans", result["product"]["marketplace"])
-        self.assertGreater(len(result["product"]["marketplace"]["pricingPlans"]), 0,
-            "pricingPlans must not be empty for nested structure test")
+        self.assertGreater(
+            len(result["product"]["marketplace"]["pricingPlans"]),
+            0,
+            "pricingPlans must not be empty for nested structure test",
+        )
         plan = result["product"]["marketplace"]["pricingPlans"][0]
-        self.assertIn("nested", plan,
-            "Nested data must be preserved in pricing plan")
-        self.assertIn("level1", plan["nested"],
-            "Nested structures should be preserved")
+        self.assertIn("nested", plan, "Nested data must be preserved in pricing plan")
+        self.assertIn("level1", plan["nested"], "Nested structures should be preserved")

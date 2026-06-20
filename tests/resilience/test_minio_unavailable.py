@@ -1,6 +1,9 @@
 """Phase 107: MinIO/S3 unavailable — circuit opens at threshold."""
+
 import uuid
+
 from django.test import TestCase
+
 from hub.apps.core.resilience.circuit_breaker import CircuitBreaker, CircuitBreakerState
 
 

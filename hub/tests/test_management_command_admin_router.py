@@ -1,6 +1,8 @@
 import pytest
 
-from hub.db_router import ManagementCommandAdminRouter  # type: ignore[attr-defined]  # test: edge-case type exercise
+from hub.db_router import (
+    ManagementCommandAdminRouter,  # type: ignore[attr-defined]  # test: edge-case type exercise
+)
 
 
 class _Meta:
@@ -43,9 +45,7 @@ def test_router_routes_reads_and_writes_to_admin_in_command_mode(
 
 
 def test_router_noop_when_alias_missing(settings, monkeypatch, router):
-    settings.DATABASES = {
-        k: v for k, v in settings.DATABASES.items() if k != "admin"
-    }
+    settings.DATABASES = {k: v for k, v in settings.DATABASES.items() if k != "admin"}
     monkeypatch.setenv("HUB_USE_ADMIN_DB_FOR_COMMANDS", "1")
     monkeypatch.setenv("HUB_COMMAND_DB_ALIAS", "admin")
     assert router.db_for_read(_Model) is None

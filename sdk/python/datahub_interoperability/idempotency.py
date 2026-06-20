@@ -13,6 +13,7 @@ SDK's :class:`AssetsAPI` calls into here when sending
 ``POST /assets/data-first/`` so users get correct deduplication for
 free without having to compute the hash themselves.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -20,7 +21,6 @@ import json
 import re
 import uuid
 from typing import Union
-
 
 __all__ = [
     "compose_idempotency_key",
@@ -57,12 +57,8 @@ def canonical_body_bytes(
     if isinstance(body, str):
         return body.encode("utf-8")
     if isinstance(body, (dict, list)):
-        return json.dumps(
-            body, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
-    raise TypeError(
-        f"unsupported body type for canonical_body_bytes: {type(body)!r}"
-    )
+        return json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    raise TypeError(f"unsupported body type for canonical_body_bytes: {type(body)!r}")
 
 
 def compose_idempotency_key(
@@ -108,7 +104,5 @@ def compose_idempotency_key(
     # non-hex digest the server would reject the key with 400; we
     # surface that as a TypeError on the client side instead.
     if not _SHA256_HEX_RE.match(sha):
-        raise TypeError(
-            f"hashlib.sha256 produced a non-hex digest: {sha!r}"
-        )
+        raise TypeError(f"hashlib.sha256 produced a non-hex digest: {sha!r}")
     return key

@@ -6,6 +6,7 @@ can exhaustively parametrize without HTTP, mock, or fixture machinery.
 
 Phase 215.2 — see openspec/changes/preprod01/specs/cli-sdk-mvp-awareness/spec.md
 """
+
 from __future__ import annotations
 
 from typing import Optional, Tuple
@@ -15,7 +16,6 @@ from ._mvp_gates import (
     MVP_GATED_FEATURE_NAMES,
     MVP_GATED_PREFIXES,
 )
-
 
 _API_V1_PREFIX = "/api/v1/"
 
@@ -43,9 +43,7 @@ def detect_mvp_gated_feature(path: str) -> Optional[Tuple[str, str]]:
     if not matches:
         return None
     prefix = max(matches, key=lambda p: (len(p), p))
-    feature = MVP_GATED_FEATURE_NAMES.get(
-        prefix, prefix.rstrip("/").replace("-", " ").title()
-    )
+    feature = MVP_GATED_FEATURE_NAMES.get(prefix, prefix.rstrip("/").replace("-", " ").title())
     return (prefix, feature)
 
 

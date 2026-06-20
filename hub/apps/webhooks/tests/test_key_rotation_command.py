@@ -4,18 +4,18 @@ Phase 44 (44.8) — Webhook Encryption Key Rotation Command Tests
 Tests the rotate_webhook_encryption_key management command.
 """
 
-import pytest
-from django.core.management import call_command
-from django.test import TestCase, override_settings
 from io import StringIO
 
+import pytest
+from django.core.management import call_command
+from django.test import TestCase
+
 from hub.apps.webhooks.management.commands.rotate_webhook_encryption_key import (
-    _make_fernet,
     _decrypt_with_key,
     _encrypt_with_key,
+    _make_fernet,
 )
 from hub.apps.webhooks.models import Webhook, WebhookStatus
-
 
 OLD_KEY = "old-encryption-key-for-testing"
 NEW_KEY = "new-encryption-key-for-testing"
@@ -61,6 +61,7 @@ class KeyRotationCommandTest(TestCase):
             "rotate_webhook_encryption_key",
             f"--old-key={OLD_KEY}",
             f"--new-key={NEW_KEY}",
+            f"--tenant-id={wh_pairs[0][0].tenant_id}",
             stdout=out,
         )
 
@@ -69,12 +70,11 @@ class KeyRotationCommandTest(TestCase):
             decrypted = _decrypt_with_key(wh.secret, new_fernet)
             self.assertEqual(decrypted, original_plaintext)
 
-        self.assertIn("3 rotated", out.getvalue())
+        self.assertIn("Rotation complete: 3 rotated, 0 failed.", out.getvalue())
 
     def test_dry_run_does_not_save(self):
         """--dry-run verifies decrypt but does not change secrets."""
         wh_pairs = self._create_webhooks(2)
-        old_fernet = _make_fernet(OLD_KEY)
 
         # Record original secrets
         original_secrets = {str(wh.id): wh.secret for wh, _ in wh_pairs}
@@ -84,6 +84,7 @@ class KeyRotationCommandTest(TestCase):
             "rotate_webhook_encryption_key",
             f"--old-key={OLD_KEY}",
             f"--new-key={NEW_KEY}",
+            f"--tenant-id={wh_pairs[0][0].tenant_id}",
             "--dry-run",
             stdout=out,
         )

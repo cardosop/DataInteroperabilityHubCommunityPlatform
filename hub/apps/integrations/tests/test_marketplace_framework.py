@@ -21,7 +21,6 @@ from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.factory import MarketplaceConnectorFactory
 from hub.apps.integrations.models import (
     MarketplaceConnection,
-    MarketplaceMapping,
 )
 from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.tenants.models import KYCStatus, Tenant
@@ -38,7 +37,6 @@ class MarketplaceFrameworkTest(TestCase):
 
     def _fixture_teardown(self):
         """Skip TRUNCATE CASCADE to avoid timeout."""
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -56,6 +54,7 @@ class MarketplaceFrameworkTest(TestCase):
             pass
 
         import uuid as _uuid
+
         _suffix = _uuid.uuid4().hex[:8]
         self._suffix = _suffix
         self.tenant = Tenant.objects.create(

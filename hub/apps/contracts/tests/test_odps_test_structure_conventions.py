@@ -8,10 +8,10 @@ This test verifies that all ODPS test files follow the defined structure and con
 
 Uses real file system inspection (no mocks/stubs).
 """
-import re
+
 import ast
 from pathlib import Path
-from typing import List, Tuple, Dict
+
 from django.test import TestCase
 
 
@@ -37,11 +37,11 @@ class ODPSTestStructureConventionsTest(TestCase):
         for test_file in test_files:
             self.assertTrue(
                 test_file.name.startswith("test_odps_"),
-                f"ODPS test file '{test_file.name}' does not follow naming convention 'test_odps_*.py'"
+                f"ODPS test file '{test_file.name}' does not follow naming convention 'test_odps_*.py'",
             )
             self.assertTrue(
                 test_file.name.endswith(".py"),
-                f"ODPS test file '{test_file.name}' does not have .py extension"
+                f"ODPS test file '{test_file.name}' does not have .py extension",
             )
 
     def test_all_odps_test_files_have_test_classes(self):
@@ -53,26 +53,22 @@ class ODPSTestStructureConventionsTest(TestCase):
         test_files = list(self.tests_dir.glob("test_odps_*.py"))
 
         for test_file in test_files:
-            with open(test_file, 'r', encoding='utf-8') as f:
+            with open(test_file, encoding="utf-8") as f:
                 content = f.read()
                 tree = ast.parse(content, filename=str(test_file))
 
                 # Find all class definitions
-                classes = [
-                    node.name for node in ast.walk(tree)
-                    if isinstance(node, ast.ClassDef)
-                ]
+                classes = [node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
 
                 # Check if at least one class is a test class
                 test_classes = [
-                    cls for cls in classes
-                    if cls.startswith("Test") or cls.endswith("Test")
+                    cls for cls in classes if cls.startswith("Test") or cls.endswith("Test")
                 ]
 
                 self.assertGreater(
                     len(test_classes),
                     0,
-                    f"ODPS test file '{test_file.name}' does not contain any test class (Test* or *Test)"
+                    f"ODPS test file '{test_file.name}' does not contain any test class (Test* or *Test)",
                 )
 
     def test_all_odps_test_methods_follow_naming_convention(self):
@@ -86,7 +82,7 @@ class ODPSTestStructureConventionsTest(TestCase):
         violations = []
 
         for test_file in test_files:
-            with open(test_file, 'r', encoding='utf-8') as f:
+            with open(test_file, encoding="utf-8") as f:
                 content = f.read()
                 tree = ast.parse(content, filename=str(test_file))
 
@@ -105,8 +101,8 @@ class ODPSTestStructureConventionsTest(TestCase):
 
         if violations:
             self.fail(
-                f"Found {len(violations)} test method naming violations:\n" +
-                "\n".join(f"  - {v}" for v in violations)
+                f"Found {len(violations)} test method naming violations:\n"
+                + "\n".join(f"  - {v}" for v in violations)
             )
 
     def test_odps_fixtures_directory_exists(self):
@@ -117,11 +113,11 @@ class ODPSTestStructureConventionsTest(TestCase):
         """
         self.assertTrue(
             self.fixtures_dir.exists(),
-            f"ODPS fixtures directory does not exist: {self.fixtures_dir}"
+            f"ODPS fixtures directory does not exist: {self.fixtures_dir}",
         )
         self.assertTrue(
             self.fixtures_dir.is_dir(),
-            f"ODPS fixtures path is not a directory: {self.fixtures_dir}"
+            f"ODPS fixtures path is not a directory: {self.fixtures_dir}",
         )
 
     def test_odps_fixtures_organized_by_version(self):
@@ -136,11 +132,11 @@ class ODPSTestStructureConventionsTest(TestCase):
             version_dir = self.fixtures_dir / version
             self.assertTrue(
                 version_dir.exists(),
-                f"ODPS fixtures version directory does not exist: {version_dir}"
+                f"ODPS fixtures version directory does not exist: {version_dir}",
             )
             self.assertTrue(
                 version_dir.is_dir(),
-                f"ODPS fixtures version path is not a directory: {version_dir}"
+                f"ODPS fixtures version path is not a directory: {version_dir}",
             )
 
     def test_odps_fixtures_have_valid_structure(self):
@@ -159,7 +155,7 @@ class ODPSTestStructureConventionsTest(TestCase):
                 if scenario_dir.exists():
                     self.assertTrue(
                         scenario_dir.is_dir(),
-                        f"ODPS fixtures scenario path is not a directory: {scenario_dir}"
+                        f"ODPS fixtures scenario path is not a directory: {scenario_dir}",
                     )
 
     def test_odps_fixtures_naming_convention(self):
@@ -177,7 +173,10 @@ class ODPSTestStructureConventionsTest(TestCase):
         for fixture_file in self.fixtures_dir.rglob("*.yaml"):
             if fixture_file.name not in ["__init__.py"]:
                 # YAML files should follow naming convention
-                if not any(keyword in fixture_file.name.lower() for keyword in ["odps", "sample", "invalid", "ref"]):
+                if not any(
+                    keyword in fixture_file.name.lower()
+                    for keyword in ["odps", "sample", "invalid", "ref"]
+                ):
                     violations.append(
                         f"Fixture file '{fixture_file.relative_to(self.fixtures_dir)}' "
                         f"does not follow naming convention"
@@ -186,7 +185,10 @@ class ODPSTestStructureConventionsTest(TestCase):
         for fixture_file in self.fixtures_dir.rglob("*.json"):
             if fixture_file.name not in ["__init__.py"]:
                 # JSON files should follow naming convention
-                if not any(keyword in fixture_file.name.lower() for keyword in ["odps", "sample", "invalid", "ref", "malicious"]):
+                if not any(
+                    keyword in fixture_file.name.lower()
+                    for keyword in ["odps", "sample", "invalid", "ref", "malicious"]
+                ):
                     violations.append(
                         f"Fixture file '{fixture_file.relative_to(self.fixtures_dir)}' "
                         f"does not follow naming convention"
@@ -194,7 +196,9 @@ class ODPSTestStructureConventionsTest(TestCase):
 
         # Only warn, don't fail (naming is flexible)
         if violations:
-            print(f"\nWarning: Found {len(violations)} fixture files that may not follow naming convention:")
+            print(
+                f"\nWarning: Found {len(violations)} fixture files that may not follow naming convention:"
+            )
             for v in violations[:10]:  # Show first 10
                 print(f"  - {v}")
 
@@ -208,7 +212,7 @@ class ODPSTestStructureConventionsTest(TestCase):
         violations = []
 
         for test_file in test_files:
-            with open(test_file, 'r', encoding='utf-8') as f:
+            with open(test_file, encoding="utf-8") as f:
                 content = f.read()
 
                 # Check if file references fixtures directory
@@ -222,7 +226,9 @@ class ODPSTestStructureConventionsTest(TestCase):
 
         # Only warn, don't fail (some tests may use inline fixtures)
         if violations:
-            print(f"\nInfo: Found {len(violations)} test files that may reference fixtures incorrectly:")
+            print(
+                f"\nInfo: Found {len(violations)} test files that may reference fixtures incorrectly:"
+            )
             for v in violations[:5]:  # Show first 5
                 print(f"  - {v}")
 
@@ -236,7 +242,7 @@ class ODPSTestStructureConventionsTest(TestCase):
         test_methods = []
 
         for test_file in test_files:
-            with open(test_file, 'r', encoding='utf-8') as f:
+            with open(test_file, encoding="utf-8") as f:
                 content = f.read()
                 tree = ast.parse(content, filename=str(test_file))
 
@@ -245,26 +251,27 @@ class ODPSTestStructureConventionsTest(TestCase):
                         if node.name.startswith("test_"):
                             test_methods.append(f"{test_file.name}::{node.name}")
 
-        fixture_files = list(self.fixtures_dir.rglob("*.yaml")) + list(self.fixtures_dir.rglob("*.json"))
+        fixture_files = list(self.fixtures_dir.rglob("*.yaml")) + list(
+            self.fixtures_dir.rglob("*.json")
+        )
         fixture_files = [f for f in fixture_files if f.name != "__init__.py"]
 
         print("\n" + "=" * 80)
         print("ODPS Test Structure and Conventions Summary")
         print("=" * 80)
         print(f"\nTest Files: {len(test_files)}")
-        print(f"  Pattern: test_odps_*.py")
+        print("  Pattern: test_odps_*.py")
         for tf in sorted(test_files)[:10]:  # Show first 10
             print(f"  - {tf.name}")
         if len(test_files) > 10:
             print(f"  ... and {len(test_files) - 10} more")
 
         print(f"\nTest Methods: {len(test_methods)}")
-        print(f"  Pattern: test_<functionality>_<scenario>_<expected_result>")
+        print("  Pattern: test_<functionality>_<scenario>_<expected_result>")
 
         print(f"\nFixture Files: {len(fixture_files)}")
-        print(f"  Location: tests/fixtures/odps/")
-        print(f"  Organization: By version (v4.1, v4.0, v3.x, v2.x, v1.x)")
-        print(f"  Organization: By scenario (valid, invalid, with_refs, marketplace, multilingual)")
+        print("  Location: tests/fixtures/odps/")
+        print("  Organization: By version (v4.1, v4.0, v3.x, v2.x, v1.x)")
+        print("  Organization: By scenario (valid, invalid, with_refs, marketplace, multilingual)")
 
         print("\n" + "=" * 80)
-

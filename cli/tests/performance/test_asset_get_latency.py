@@ -11,10 +11,11 @@ and CLI output formatting. Skips if no backend is reachable.
 """
 
 import time
+
 from tests._persona_provisioning import provision_persona
-from tests.use_cases._api_helpers import api_get, api_post
-from tests.fixtures.test_data import fresh_id
 from tests.fixtures.perf_record import build_perf_record, write_perf_record
+from tests.fixtures.test_data import fresh_id
+from tests.use_cases._api_helpers import api_get, api_post
 
 BUDGET_MS = 2000.0
 ITERATIONS = 5
@@ -24,10 +25,14 @@ ITERATIONS = 5
 def asset_id():
     """Create a test asset and return its id."""
     creds = provision_persona("data_engineer")
-    resp = api_post("/assets/", creds, json={
-        "name": fresh_id("perf-asset"),
-        "key": fresh_id("perf-key"),
-    })
+    resp = api_post(
+        "/assets/",
+        creds,
+        json={
+            "name": fresh_id("perf-asset"),
+            "key": fresh_id("perf-key"),
+        },
+    )
     if resp.status_code not in (200, 201):
         pytest.skip(f"Could not create test asset: {resp.status_code}")
     return resp.json()["id"]
@@ -45,9 +50,7 @@ def test_asset_get_under_budget(asset_id, creds):
         start = time.perf_counter()
         resp = api_get(f"/assets/{asset_id}/", creds)
         elapsed_ms = (time.perf_counter() - start) * 1000
-        assert resp.status_code == 200, (
-            f"GET /assets/{asset_id}/ returned {resp.status_code}"
-        )
+        assert resp.status_code == 200, f"GET /assets/{asset_id}/ returned {resp.status_code}"
         measurements.append(elapsed_ms)
 
     record = build_perf_record(

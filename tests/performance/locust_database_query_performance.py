@@ -21,7 +21,6 @@ except ImportError:
     pytestmark = pytest.mark.skip(reason="locust not installed")
 
     # Skip entire module if locust not available
-    pass
     pytestmark = pytest.mark.skip(reason="locust not installed")
 
 if LOCUST_AVAILABLE:
@@ -29,9 +28,6 @@ if LOCUST_AVAILABLE:
     import sys
     import time
     from pathlib import Path
-
-    from django.db import connection
-    from django.test.utils import override_settings
 
     project_root = Path(__file__).resolve().parent.parent.parent
     sys.path.insert(0, str(project_root))

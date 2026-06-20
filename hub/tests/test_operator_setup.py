@@ -8,11 +8,11 @@ Proves:
 4. K.4: Prefect configuration present in helm values
 5. K.5: Vault + ExternalSecret templates exist
 """
+
 import os
 
 import pytest
 from django.test import TestCase
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -82,8 +82,11 @@ class CapabilityDegradationTest(TestCase):
     def test_covers_all_critical_dependencies(self):
         c = _read("docs/capability-degradation.md")
         for dep in (
-            "PostgreSQL", "Redis", "MinIO",
-            "Fuseki", "Compliance Service",
+            "PostgreSQL",
+            "Redis",
+            "MinIO",
+            "Fuseki",
+            "Compliance Service",
             "Prefect",
         ):
             self.assertIn(dep, c, f"Must document {dep}")
@@ -95,7 +98,8 @@ class CapabilityDegradationTest(TestCase):
     def test_linked_from_operations(self):
         c = _read("docs/OPERATIONS.md")
         self.assertIn(
-            "capability-degradation.md", c,
+            "capability-degradation.md",
+            c,
             "OPERATIONS.md must link to degradation guide",
         )
 
@@ -119,16 +123,10 @@ class HelmDataPlaneTest(TestCase):
 
     def test_external_secret_templates_exist(self):
         self.assertTrue(
-            _exists(
-                "helm/templates/externalsecrets/"
-                "external-secret.yaml"
-            ),
+            _exists("helm/templates/externalsecrets/external-secret.yaml"),
         )
         self.assertTrue(
-            _exists(
-                "helm/templates/externalsecrets/"
-                "secret-store.yaml"
-            ),
+            _exists("helm/templates/externalsecrets/secret-store.yaml"),
         )
 
 
@@ -162,16 +160,14 @@ class VaultESOTest(TestCase):
 
     def test_external_secret_syncs_django_secrets(self):
         t = _read(
-            "helm/templates/externalsecrets/"
-            "external-secret.yaml",
+            "helm/templates/externalsecrets/external-secret.yaml",
         )
         self.assertIn("SECRET_KEY", t)
         self.assertIn("JWT_SECRET_KEY", t)
 
     def test_external_secret_syncs_postgres(self):
         t = _read(
-            "helm/templates/externalsecrets/"
-            "external-secret.yaml",
+            "helm/templates/externalsecrets/external-secret.yaml",
         )
         self.assertIn("POSTGRES_PASSWORD", t)
 

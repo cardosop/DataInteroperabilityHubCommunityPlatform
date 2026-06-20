@@ -13,6 +13,7 @@ drift test fails CI on any divergence.
 
 Phase 215.1 — see openspec/changes/preprod01/specs/cli-sdk-mvp-awareness/spec.md
 """
+
 from __future__ import annotations
 
 from typing import Final
@@ -24,21 +25,23 @@ from typing import Final
 #   hub/apps/api/mvp_mode.py::MVP_GATED_RELATIVE_PREFIXES
 #
 # Drift is enforced by cli/tests/test_mvp_gates_drift_sync.py.
-MVP_GATED_RELATIVE_PREFIXES: Final[frozenset[str]] = frozenset({
-    "mesh/",
-    "virtualization/",
-    "integrations/",
-    "baas/",
-    "ml/",
-    "ai/",
-    "transformation/",
-    "social/",
-    "scheduled-ingestions/",
-    "scheduled-exports/",
-    "developer/",
-    "dpia/",
-    "ropa/",
-})
+MVP_GATED_RELATIVE_PREFIXES: Final[frozenset[str]] = frozenset(
+    {
+        "mesh/",
+        "virtualization/",
+        "integrations/",
+        "baas/",
+        "ml/",
+        "ai/",
+        "transformation/",
+        "social/",
+        "scheduled-ingestions/",
+        "scheduled-exports/",
+        "developer/",
+        "dpia/",
+        "ropa/",
+    }
+)
 
 
 # Stable, machine-readable error code. Programmatic consumers SHOULD branch on

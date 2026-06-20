@@ -3,32 +3,35 @@ Dead Letter Queue Processor
 
 Handles retry logic for events in the dead letter queue with exponential backoff.
 """
+
 import time
-from typing import Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import timedelta
+from typing import Any
+
+import structlog
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
-from django.conf import settings
-import structlog
 
-from .bus import get_event_bus, EventBusError
-from .models import DeadLetterQueue
+from .bus import EventBusError, get_event_bus
 from .metrics import (
-    event_dlq_replayed_total,
     event_dlq_processing_duration_seconds,
+    event_dlq_replayed_total,
     get_tenant_id,
-    get_error_type,
 )
+from .models import DeadLetterQueue
 
 logger = structlog.get_logger(__name__)
 
 # Default retry configuration
-DEFAULT_MAX_RETRIES = getattr(settings, 'DLQ_MAX_RETRIES', 5)
-DEFAULT_BASE_DELAY_SECONDS = getattr(settings, 'DLQ_BASE_DELAY_SECONDS', 60)  # 1 minute
-DEFAULT_MAX_DELAY_SECONDS = getattr(settings, 'DLQ_MAX_DELAY_SECONDS', 3600)  # 1 hour
+DEFAULT_MAX_RETRIES = getattr(settings, "DLQ_MAX_RETRIES", 5)
+DEFAULT_BASE_DELAY_SECONDS = getattr(settings, "DLQ_BASE_DELAY_SECONDS", 60)  # 1 minute
+DEFAULT_MAX_DELAY_SECONDS = getattr(settings, "DLQ_MAX_DELAY_SECONDS", 3600)  # 1 hour
 
 
-def calculate_retry_delay(retry_count: int, base_delay: Optional[float] = None, max_delay: Optional[float] = None) -> float:
+def calculate_retry_delay(
+    retry_count: int, base_delay: float | None = None, max_delay: float | None = None
+) -> float:
     """
     Calculate exponential backoff delay for retry.
 
@@ -46,13 +49,13 @@ def calculate_retry_delay(retry_count: int, base_delay: Optional[float] = None, 
         max_delay = DEFAULT_MAX_DELAY_SECONDS
 
     # Exponential backoff: base_delay * 2^retry_count
-    delay = base_delay * (2 ** retry_count)
+    delay = base_delay * (2**retry_count)
 
     # Cap at max_delay
     return min(delay, max_delay)
 
 
-def should_retry_dlq_entry(dlq_entry: DeadLetterQueue, max_retries: Optional[int] = None) -> bool:
+def should_retry_dlq_entry(dlq_entry: DeadLetterQueue, max_retries: int | None = None) -> bool:
     """
     Check if a DLQ entry should be retried.
 
@@ -86,10 +89,8 @@ def should_retry_dlq_entry(dlq_entry: DeadLetterQueue, max_retries: Optional[int
 
 
 def retry_dlq_entry(
-    dlq_entry_id: str,
-    user_id: Optional[str] = None,
-    max_retries: Optional[int] = None
-) -> Tuple[bool, Optional[str]]:
+    dlq_entry_id: str, user_id: str | None = None, max_retries: int | None = None
+) -> tuple[bool, str | None]:
     """
     Retry processing a DLQ entry by republishing the event.
 
@@ -154,7 +155,7 @@ def retry_dlq_entry(
                     correlation_id=correlation_id,
                     causation_id=causation_id,
                     tags=tags,
-                    event_version=event_version
+                    event_version=event_version,
                 )
 
                 # Update DLQ entry
@@ -162,7 +163,7 @@ def retry_dlq_entry(
                 dlq_entry.last_attempt_at = timezone.now()
                 if user_id:
                     dlq_entry.resolved_by = user_id
-                dlq_entry.save(update_fields=['retry_count', 'last_attempt_at', 'resolved_by'])
+                dlq_entry.save(update_fields=["retry_count", "last_attempt_at", "resolved_by"])
 
                 # Record metrics
                 tenant_label = get_tenant_id(tenant_id)
@@ -170,14 +171,14 @@ def retry_dlq_entry(
                     event_type=event_type,
                     subscriber_name=dlq_entry.subscriber,
                     status="success",
-                    tenant_id=tenant_label
+                    tenant_id=tenant_label,
                 ).inc()
 
                 processing_duration = time.time() - start_time
                 event_dlq_processing_duration_seconds.labels(
                     event_type=event_type,
                     subscriber_name=dlq_entry.subscriber,
-                    tenant_id=tenant_label
+                    tenant_id=tenant_label,
                 ).observe(processing_duration)
 
                 logger.info(
@@ -186,20 +187,20 @@ def retry_dlq_entry(
                     event_type=event_type,
                     subscriber=dlq_entry.subscriber,
                     retry_count=dlq_entry.retry_count,
-                    tenant_id=tenant_id
+                    tenant_id=tenant_id,
                 )
 
                 return True, None
 
             except EventBusError as e:
-                error_msg = f"Failed to republish event: {str(e)}"
+                error_msg = f"Failed to republish event: {e!s}"
                 logger.error(
                     "dlq_entry_retry_failed",
                     dlq_entry_id=str(dlq_entry_id),
                     event_type=event_type,
                     subscriber=dlq_entry.subscriber,
                     error=str(e),
-                    exc_info=True
+                    exc_info=True,
                 )
 
                 # Update DLQ entry with failure
@@ -208,7 +209,9 @@ def retry_dlq_entry(
                 dlq_entry.error_message = error_msg
                 if user_id:
                     dlq_entry.resolved_by = user_id
-                dlq_entry.save(update_fields=['retry_count', 'last_attempt_at', 'error_message', 'resolved_by'])
+                dlq_entry.save(
+                    update_fields=["retry_count", "last_attempt_at", "error_message", "resolved_by"]
+                )
 
                 # Record metrics
                 tenant_label = get_tenant_id(tenant_id)
@@ -216,14 +219,14 @@ def retry_dlq_entry(
                     event_type=event_type,
                     subscriber_name=dlq_entry.subscriber,
                     status="failed",
-                    tenant_id=tenant_label
+                    tenant_id=tenant_label,
                 ).inc()
 
                 processing_duration = time.time() - start_time
                 event_dlq_processing_duration_seconds.labels(
                     event_type=event_type,
                     subscriber_name=dlq_entry.subscriber,
-                    tenant_id=tenant_label
+                    tenant_id=tenant_label,
                 ).observe(processing_duration)
 
                 return False, error_msg
@@ -232,19 +235,14 @@ def retry_dlq_entry(
         return False, "DLQ entry not found"
     except Exception as e:
         logger.error(
-            "dlq_entry_retry_error",
-            dlq_entry_id=str(dlq_entry_id),
-            error=str(e),
-            exc_info=True
+            "dlq_entry_retry_error", dlq_entry_id=str(dlq_entry_id), error=str(e), exc_info=True
         )
-        return False, f"Unexpected error: {str(e)}"
+        return False, f"Unexpected error: {e!s}"
 
 
 def resolve_dlq_entry(
-    dlq_entry_id: str,
-    user_id: Optional[str] = None,
-    resolution_notes: Optional[str] = None
-) -> Tuple[bool, Optional[str]]:
+    dlq_entry_id: str, user_id: str | None = None, resolution_notes: str | None = None
+) -> tuple[bool, str | None]:
     """
     Resolve a DLQ entry (mark as resolved without retrying).
 
@@ -271,15 +269,15 @@ def resolve_dlq_entry(
                 # Store resolution notes in error_details
                 if not dlq_entry.error_details:
                     dlq_entry.error_details = {}
-                dlq_entry.error_details['resolution_notes'] = resolution_notes
-            dlq_entry.save(update_fields=['resolved_at', 'resolved_by', 'error_details'])
+                dlq_entry.error_details["resolution_notes"] = resolution_notes
+            dlq_entry.save(update_fields=["resolved_at", "resolved_by", "error_details"])
 
             logger.info(
                 "dlq_entry_resolved",
                 dlq_entry_id=str(dlq_entry_id),
                 event_type=dlq_entry.event_type,
                 subscriber=dlq_entry.subscriber,
-                user_id=user_id
+                user_id=user_id,
             )
 
             return True, None
@@ -288,21 +286,18 @@ def resolve_dlq_entry(
         return False, "DLQ entry not found"
     except Exception as e:
         logger.error(
-            "dlq_entry_resolve_error",
-            dlq_entry_id=str(dlq_entry_id),
-            error=str(e),
-            exc_info=True
+            "dlq_entry_resolve_error", dlq_entry_id=str(dlq_entry_id), error=str(e), exc_info=True
         )
-        return False, f"Unexpected error: {str(e)}"
+        return False, f"Unexpected error: {e!s}"
 
 
 def process_dlq_entries(
-    event_type: Optional[str] = None,
-    subscriber: Optional[str] = None,
+    event_type: str | None = None,
+    subscriber: str | None = None,
     max_entries: int = 100,
-    max_retries: Optional[int] = None,
-    dry_run: bool = False
-) -> Dict[str, Any]:
+    max_retries: int | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
     """
     Process multiple DLQ entries automatically.
 
@@ -329,58 +324,54 @@ def process_dlq_entries(
         queryset = queryset.filter(subscriber=subscriber)
 
     # Order by oldest first (oldest failures should be retried first)
-    queryset = queryset.order_by('created_at')
+    queryset = queryset.order_by("created_at")
 
     # Get entries to process
     entries = list(queryset[:max_entries])
 
     results = {
-        'total_found': len(entries),
-        'processed': 0,
-        'succeeded': 0,
-        'failed': 0,
-        'skipped': 0,
-        'errors': []
+        "total_found": len(entries),
+        "processed": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "skipped": 0,
+        "errors": [],
     }
 
     for entry in entries:
         if not should_retry_dlq_entry(entry, max_retries):
-            results['skipped'] += 1
+            results["skipped"] += 1
             continue
 
         if dry_run:
-            results['processed'] += 1
+            results["processed"] += 1
             logger.debug(
                 "dlq_entry_dry_run",
                 dlq_entry_id=str(entry.id),
                 event_type=entry.event_type,
-                subscriber=entry.subscriber
+                subscriber=entry.subscriber,
             )
             continue
 
         # Retry entry
         success, error_msg = retry_dlq_entry(str(entry.id), max_retries=max_retries)
 
-        results['processed'] += 1
+        results["processed"] += 1
         if success:
-            results['succeeded'] += 1
+            results["succeeded"] += 1
         else:
-            results['failed'] += 1
+            results["failed"] += 1
             if error_msg:
-                results['errors'].append({
-                    'dlq_entry_id': str(entry.id),
-                    'error': error_msg
-                })
+                results["errors"].append({"dlq_entry_id": str(entry.id), "error": error_msg})
 
     logger.info(
         "dlq_entries_processed",
-        total_found=results['total_found'],
-        processed=results['processed'],
-        succeeded=results['succeeded'],
-        failed=results['failed'],
-        skipped=results['skipped'],
-        dry_run=dry_run
+        total_found=results["total_found"],
+        processed=results["processed"],
+        succeeded=results["succeeded"],
+        failed=results["failed"],
+        skipped=results["skipped"],
+        dry_run=dry_run,
     )
 
     return results
-

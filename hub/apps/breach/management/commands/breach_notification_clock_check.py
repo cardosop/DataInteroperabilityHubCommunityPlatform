@@ -13,9 +13,7 @@ from hub.apps.jobs.models import Job, JobPriority, JobStatus, JobType
 
 
 class Command(BaseCommand):
-    help = (
-        "Evaluate breach supervisory-notification deadlines — warn / alert / escalate (Phase 232.3.7)."
-    )
+    help = "Evaluate breach supervisory-notification deadlines — warn / alert / escalate (Phase 232.3.7)."
 
     def add_arguments(self, parser):
         parser.add_argument(

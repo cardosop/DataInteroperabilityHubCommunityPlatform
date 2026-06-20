@@ -27,6 +27,7 @@ The patches use ``mock.patch`` at the import-site
 ``hub.apps.contracts.lineage_sync.send_openlineage_event_async`` so a
 future refactor that bypasses the helper fails this suite by name.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -84,11 +85,15 @@ class TestOutboundEmissionOnAdd(TransactionTestCase):
 
     def setUp(self):
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         connection.close()
         connection.savepoint_ids = []
@@ -120,8 +125,7 @@ class TestOutboundEmissionOnAdd(TransactionTestCase):
 
         # Exactly one dispatch for the single added edge.
         assert dispatch.call_count == 1, (
-            f"expected 1 outbound dispatch for the 1 added edge; "
-            f"got {dispatch.call_count}"
+            f"expected 1 outbound dispatch for the 1 added edge; got {dispatch.call_count}"
         )
         # Inspect payload — the event should validate against the
         # embedded OpenLineage 2.0.0 schema.
@@ -131,8 +135,7 @@ class TestOutboundEmissionOnAdd(TransactionTestCase):
 
         kwargs = dispatch.call_args.kwargs
         assert "event" in kwargs, (
-            "dispatch must be called with keyword arg ``event``; got "
-            f"{dispatch.call_args}"
+            f"dispatch must be called with keyword arg ``event``; got {dispatch.call_args}"
         )
         event = kwargs["event"]
         validate_openlineage_event(event)
@@ -177,11 +180,15 @@ class TestOutboundEmissionOnRemove(TransactionTestCase):
 
     def setUp(self):
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         connection.close()
         connection.savepoint_ids = []
@@ -211,8 +218,7 @@ class TestOutboundEmissionOnRemove(TransactionTestCase):
             # The initial create fired one dispatch; reset the mock so
             # we can attribute the next assertion to the close alone.
             assert dispatch.call_count == 1, (
-                f"setup expected 1 dispatch from the initial add; "
-                f"got {dispatch.call_count}"
+                f"setup expected 1 dispatch from the initial add; got {dispatch.call_count}"
             )
             dispatch.reset_mock()
 
@@ -222,8 +228,7 @@ class TestOutboundEmissionOnRemove(TransactionTestCase):
             target.save()
 
             assert dispatch.call_count == 1, (
-                f"expected 1 dispatch for the 1 closed edge; "
-                f"got {dispatch.call_count}"
+                f"expected 1 dispatch for the 1 closed edge; got {dispatch.call_count}"
             )
 
 
@@ -235,11 +240,15 @@ class TestCapabilityFlagGatesDispatch(TransactionTestCase):
 
     def setUp(self):
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         connection.close()
         connection.savepoint_ids = []
@@ -272,15 +281,12 @@ class TestCapabilityFlagGatesDispatch(TransactionTestCase):
 
         # No dispatch — but the edge row was still written.
         assert dispatch.call_count == 0, (
-            f"capability OFF must skip dispatch; got "
-            f"{dispatch.call_count} calls"
+            f"capability OFF must skip dispatch; got {dispatch.call_count} calls"
         )
         edge_count = LineageEdge.objects.filter(
             target_contract=target, valid_to__isnull=True
         ).count()
-        assert edge_count == 1, (
-            f"capability OFF must NOT block edge write; got {edge_count}"
-        )
+        assert edge_count == 1, f"capability OFF must NOT block edge write; got {edge_count}"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -292,11 +298,15 @@ class TestDispatchFailureDoesNotRollback(TransactionTestCase):
 
     def setUp(self):
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         connection.close()
         connection.savepoint_ids = []
@@ -315,9 +325,7 @@ class TestDispatchFailureDoesNotRollback(TransactionTestCase):
             # The production code dispatches via ``.delay()``; force
             # that path to raise to simulate a Marquez outage / RQ
             # connection failure.
-            dispatch_target.delay.side_effect = RuntimeError(
-                "Marquez unreachable"
-            )
+            dispatch_target.delay.side_effect = RuntimeError("Marquez unreachable")
             target = _create_contract(
                 tenant,
                 lineage_entries=[
@@ -334,8 +342,7 @@ class TestDispatchFailureDoesNotRollback(TransactionTestCase):
             target_contract=target, valid_to__isnull=True
         ).count()
         assert edge_count == 1, (
-            f"dispatch failure must not roll back edge write; "
-            f"got {edge_count} edges"
+            f"dispatch failure must not roll back edge write; got {edge_count} edges"
         )
 
 
@@ -347,11 +354,15 @@ class TestNoopDoesNotEmit(TransactionTestCase):
 
     def setUp(self):
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         connection.close()
         connection.savepoint_ids = []

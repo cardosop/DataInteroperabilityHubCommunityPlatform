@@ -25,11 +25,10 @@ class TestContentNegotiation:
             HTTP_ACCEPT="application/json",
         )
         if response.status_code >= 500:
-            pytest.skip("Backend unavailable")
+            pytest.skip("Backend unavailable")  # noqa: skip-in-body — runtime service dependency
         if response.status_code == 200 and response.content:
             ct = response.get("Content-Type", "")
-            assert "application/json" in ct, \
-                f"Expected JSON Content-Type, got: {ct}"
+            assert "application/json" in ct, f"Expected JSON Content-Type, got: {ct}"
 
     @pytest.mark.django_db
     def test_accept_wildcard_returns_json(self):
@@ -40,11 +39,12 @@ class TestContentNegotiation:
             HTTP_ACCEPT="*/*",
         )
         if response.status_code >= 500:
-            pytest.skip("Backend unavailable")
+            pytest.skip("Backend unavailable")  # noqa: skip-in-body — runtime service dependency
         if response.status_code == 200 and response.content:
             ct = response.get("Content-Type", "")
-            assert "application/json" in ct or "text/html" in ct, \
+            assert "application/json" in ct or "text/html" in ct, (
                 f"Expected JSON or HTML Content-Type, got: {ct}"
+            )
 
 
 @pytest.mark.integration
@@ -60,8 +60,9 @@ class TestAPIVersionHeaders:
             "/api/v1/assets/",
             HTTP_X_API_VERSION="1.0",
         )
-        assert response.status_code not in (406, 501), \
+        assert response.status_code not in (406, 501), (
             f"X-API-Version header should not cause 406/501, got {response.status_code}"
+        )
 
     @pytest.mark.django_db
     def test_accept_version_accepted(self):
@@ -71,8 +72,9 @@ class TestAPIVersionHeaders:
             "/api/v1/assets/",
             HTTP_ACCEPT_VERSION="1.0",
         )
-        assert response.status_code not in (406, 501), \
+        assert response.status_code not in (406, 501), (
             f"Accept-Version header should not cause 406/501, got {response.status_code}"
+        )
 
 
 @pytest.mark.integration
@@ -86,10 +88,11 @@ class TestOpenAPISchema:
         client = APIClient()
         response = client.get("/api/v1/openapi.json")
         if response.status_code >= 500:
-            pytest.skip("Backend unavailable")
+            pytest.skip("Backend unavailable")  # noqa: skip-in-body — runtime service dependency
 
-        assert response.status_code == 200, \
+        assert response.status_code == 200, (
             f"OpenAPI schema should return 200, got {response.status_code}"
+        )
 
         data = response.json()
         assert "openapi" in data, f"Missing 'openapi' version: {list(data.keys())[:5]}"
@@ -103,16 +106,16 @@ class TestOpenAPISchema:
         client = APIClient()
         response = client.get("/api/v1/openapi.json")
         if response.status_code != 200:
-            pytest.skip("OpenAPI schema unavailable")
+            pytest.skip("OpenAPI schema unavailable")  # noqa: skip-in-body — runtime service dependency
 
         data = response.json()
         paths = data.get("paths", {})
         # Key paths should be documented
         expected_prefixes = ["/api/v1/assets", "/api/v1/contracts", "/api/v1/datasets"]
-        found = [p for p in expected_prefixes
-                 if any(k.startswith(p) for k in paths)]
-        assert len(found) > 0, \
+        found = [p for p in expected_prefixes if any(k.startswith(p) for k in paths)]
+        assert len(found) > 0, (
             f"No expected endpoints found in OpenAPI schema. Paths: {list(paths.keys())[:10]}"
+        )
 
     @pytest.mark.django_db
     def test_openapi_yaml_returns_yaml(self):
@@ -122,8 +125,9 @@ class TestOpenAPISchema:
         if response.status_code == 200:
             ct = response.get("Content-Type", "")
             content = response.content.decode(errors="replace")[:100]
-            assert "openapi" in content.lower() or "application" in ct.lower(), \
+            assert "openapi" in content.lower() or "application" in ct.lower(), (
                 f"YAML endpoint should return valid content, got: {content[:80]}"
+            )
 
 
 @pytest.mark.integration
@@ -137,6 +141,7 @@ class TestAPIDeprecationHeaders:
         client = APIClient()
         response = client.get("/api/v1/")
         if response.status_code >= 500:
-            pytest.skip("Backend unavailable")
-        assert response.status_code in (200, 301, 302), \
+            pytest.skip("Backend unavailable")  # noqa: skip-in-body — runtime service dependency
+        assert response.status_code in (200, 301, 302), (
             f"API root should return 200/301/302, got {response.status_code}"
+        )

@@ -5,23 +5,17 @@ Comprehensive tests with real DB, no mocks.
 """
 
 import uuid
-from decimal import Decimal
 
 import pytest
 from django.test import TestCase
 from django.utils import timezone
-from rest_framework import status
 
 from hub.apps.assets.models import Asset
 from hub.apps.audit.models import AuditEvent
-from hub.apps.contracts.models import Contract
-from hub.apps.datasets.models import Dataset
-from hub.apps.files.models import File, FileStatus
 from hub.apps.scheduled_export.business_rules import ScheduledExportBusinessRules
 from hub.apps.scheduled_export.models import (
     DestinationType,
     ScheduledExport,
-    ScheduledExportRun,
     ScheduledExportRunStatus,
     ScheduledExportStatus,
 )
@@ -74,7 +68,6 @@ class ScheduledExportServiceTest(TestCase):
             source_scope={"asset_ids": [str(asset.id)]},
         )
 
-        self.assertIsNotNone(export.id)
         self.assertEqual(export.name, "Test Export")
         self.assertEqual(export.destination_type, DestinationType.S3)
         self.assertEqual(export.status, ScheduledExportStatus.ACTIVE)
@@ -190,13 +183,14 @@ class ScheduledExportServiceTest(TestCase):
         # next_run_at must exist and be recalculated (at hour=2)
         self.assertIsNotNone(updated_export.next_run_at)
         self.assertEqual(
-            updated_export.next_run_at.hour, 2,
-            f"next_run_at should be at 02:00 UTC per new cron, "
-            f"got {updated_export.next_run_at}",
+            updated_export.next_run_at.hour,
+            2,
+            f"next_run_at should be at 02:00 UTC per new cron, got {updated_export.next_run_at}",
         )
         # Must differ from original (which was midnight cron)
         self.assertNotEqual(
-            updated_export.next_run_at, original_next_run_at,
+            updated_export.next_run_at,
+            original_next_run_at,
             "next_run_at should change when schedule changes",
         )
 
@@ -225,7 +219,6 @@ class ScheduledExportServiceTest(TestCase):
             prefect_flow_run_id="prefect-123",
         )
 
-        self.assertIsNotNone(run.id)
         self.assertEqual(run.status, ScheduledExportRunStatus.RUNNING)
         self.assertEqual(run.prefect_flow_run_id, "prefect-123")
 

@@ -12,10 +12,10 @@ by id, and verifying job objects include a status field.
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_get
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _admin_creds():
     return provision_persona("platform_admin")
@@ -52,9 +52,7 @@ def test_list_jobs():
     resp, path = _list_jobs(creds)
     _skip_if_not_found(resp, "List orchestration jobs")
 
-    assert resp.status_code == 200, (
-        f"GET {path} returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"GET {path} returned {resp.status_code}: {resp.text[:500]}"
     body = resp.json()
     if isinstance(body, dict):
         assert "results" in body or "items" in body or "data" in body, (
@@ -84,8 +82,7 @@ def test_get_job_by_id():
 
     get_resp = api_get(f"{base_path}{job_id}/", creds)
     assert get_resp.status_code == 200, (
-        f"GET {base_path}{job_id}/ returned {get_resp.status_code}: "
-        f"{get_resp.text[:500]}"
+        f"GET {base_path}{job_id}/ returned {get_resp.status_code}: {get_resp.text[:500]}"
     )
     body = get_resp.json()
     returned_id = body.get("id") or body.get("job_id") or body.get("run_id")
@@ -108,9 +105,6 @@ def test_job_has_status_field():
     job = jobs[0]
     keys_lower = {k.lower() for k in job.keys()}
     has_status = any(
-        k in keys_lower
-        for k in ("status", "state", "job_status", "run_status", "execution_status")
+        k in keys_lower for k in ("status", "state", "job_status", "run_status", "execution_status")
     )
-    assert has_status, (
-        f"Orchestration job missing status field: {list(job.keys())}"
-    )
+    assert has_status, f"Orchestration job missing status field: {list(job.keys())}"

@@ -19,7 +19,6 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.audit.models import AuditEvent
@@ -92,7 +91,7 @@ class DataPortabilityServiceTest(TestCase):
         self.assertIsNotNone(job.id)
         self.assertEqual(job.user, self.user)
         self.assertEqual(job.tenant, self.tenant)
-        self.assertIn(job.status, [DataExportStatus.PENDING, DataExportStatus.COMPLETED])
+        # Status is validated by test_create_export_job_processes_job below
 
     def test_create_export_job_creates_job_in_db(self):
         """Test that export job is persisted to database"""
@@ -173,12 +172,10 @@ class DataPortabilityServiceTest(TestCase):
 
         job = self.service.create_export_job(user_id=str(self.user.id))
 
-        # Job should be processed (status could be COMPLETED or FAILED)
+        # Storage is guaranteed available here (test skips otherwise);
+        # the job should go PENDING → PROCESSING → COMPLETED synchronously.
         job.refresh_from_db()
-        self.assertIn(
-            job.status,
-            [DataExportStatus.COMPLETED, DataExportStatus.FAILED, DataExportStatus.PROCESSING],
-        )
+        self.assertEqual(job.status, DataExportStatus.COMPLETED)
 
     # ========== COLLECT USER DATA TESTS ==========
 
@@ -306,6 +303,7 @@ class DataPortabilityServiceTest(TestCase):
         # bulk_create is safe here because we're creating new records (append-only
         # invariant is preserved) and the test only needs the count to exceed 1000.
         from hub.apps.audit.models import AuditEvent as AuditEventModel
+
         events = [
             AuditEventModel(
                 resource_type="ASSET",
@@ -500,9 +498,11 @@ class ErasureServiceTest(TestCase):
         self.assertEqual(final_count, initial_count + 1)
 
         # Self-requested: actor_user = target user; no initiated_by/source
-        event = AuditEvent.objects.filter(
-            resource_type="ERASURE_REQUEST", action="ERASURE_REQUESTED"
-        ).order_by("-timestamp").first()
+        event = (
+            AuditEvent.objects.filter(resource_type="ERASURE_REQUEST", action="ERASURE_REQUESTED")
+            .order_by("-timestamp")
+            .first()
+        )
         self.assertIsNotNone(event)
         assert event is not None
         self.assertEqual(event.actor_user_id, self.user.id)
@@ -521,14 +521,14 @@ class ErasureServiceTest(TestCase):
         )
         target_user = self.user  # Different from platform_admin
 
-        service = ErasureService(
-            tenant_id=str(self.tenant.id), user_id=str(platform_admin.id)
-        )
+        service = ErasureService(tenant_id=str(self.tenant.id), user_id=str(platform_admin.id))
         service.create_request(user_id=str(target_user.id))
 
-        event = AuditEvent.objects.filter(
-            resource_type="ERASURE_REQUEST", action="ERASURE_REQUESTED"
-        ).order_by("-timestamp").first()
+        event = (
+            AuditEvent.objects.filter(resource_type="ERASURE_REQUEST", action="ERASURE_REQUESTED")
+            .order_by("-timestamp")
+            .first()
+        )
 
         self.assertIsNotNone(event)
         assert event is not None
@@ -677,17 +677,14 @@ class ErasureServiceTest(TestCase):
         # Phase 2 of audit erasure nulls ``actor_user_id`` on rows where the
         # actor IS the target user — filter by ``resource_id`` alone since
         # ``actor_user`` is intentionally NULL after erasure.
-        audit_event = AuditEvent.objects.filter(
-            resource_id=test_resource_id
-        ).first()
-        self.assertIsNotNone(audit_event, "Test audit event should still exist after erasure; resource_id=%s" % test_resource_id)
+        audit_event = AuditEvent.objects.filter(resource_id=test_resource_id).first()
+        self.assertIsNotNone(
+            audit_event,
+            "Test audit event should still exist after erasure; resource_id=%s" % test_resource_id,
+        )
         self.assertIsInstance(audit_event.details_json, dict)
-        self.assertEqual(
-            audit_event.details_json["user_email"], "deleted@deleted.local"
-        )
-        self.assertEqual(
-            audit_event.details_json["actor_email"], "deleted@deleted.local"
-        )
+        self.assertEqual(audit_event.details_json["user_email"], "deleted@deleted.local")
+        self.assertEqual(audit_event.details_json["actor_email"], "deleted@deleted.local")
 
     def test_execute_erasure_records_retention_exceptions(self):
         """Test that execute_erasure records retention exceptions"""

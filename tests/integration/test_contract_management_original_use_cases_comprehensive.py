@@ -26,33 +26,26 @@ Total: 150+ test cases
 import json
 import time
 import uuid
-from typing import Any, Dict, List
 
 import pytest
 
 pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
-from django.utils import timezone
+from django.db.models.signals import post_save
+from django.test import TransactionTestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    NormalizationStatus,
     OriginalFormat,
-    OriginalSpecType,
-    ValidationStatus,
 )
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.semantic.signals import asset_saved, contract_saved
+from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import Role, UserRole
-from hub.apps.semantic.signals import contract_saved, asset_saved
-from hub.apps.contracts.models import Contract
-from hub.apps.assets.models import Asset
-from django.db.models.signals import post_save
 from tests.fixtures.test_data_factories import ContractFactory, TenantFactory, UserFactory
 from tests.utils.test_data_management import TestDatabaseIsolationMixin
 
@@ -76,7 +69,6 @@ class ContractManagementOriginalUseCasesTestBase(TransactionTestCase, TestDataba
         which provides isolation without flushing.
         """
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -88,7 +80,6 @@ class ContractManagementOriginalUseCasesTestBase(TransactionTestCase, TestDataba
         self.client = APIClient()
 
         # Create tenant (use unique name/slug to avoid conflicts between tests)
-        import uuid
         unique_id = str(uuid.uuid4())[:8]
         self.tenant = TenantFactory.create_tenant(
             name=f"Test Tenant {unique_id}",
@@ -226,7 +217,6 @@ class UCCM002ValidateContractTest(ContractManagementOriginalUseCasesTestBase):
 
     def test_validate_contract_performance(self):
         """Test performance target: validation should be < 5000ms"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -248,7 +238,6 @@ class UCCM003LintContractTest(ContractManagementOriginalUseCasesTestBase):
 
     def test_lint_contract_success(self):
         """Test successful contract linting"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -266,7 +255,6 @@ class UCCM003LintContractTest(ContractManagementOriginalUseCasesTestBase):
 
     def test_lint_contract_performance(self):
         """Test performance target: linting should be < 3000ms"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -319,8 +307,8 @@ class UCCM004ConvertContractFormatTest(ContractManagementOriginalUseCasesTestBas
 
     def test_convert_contract_yaml_to_json(self):
         """Test converting contract from YAML to JSON"""
-        from django.urls import reverse
         import yaml
+        from django.urls import reverse
 
         self.client.force_authenticate(user=self.de_user)
 
@@ -350,7 +338,6 @@ class UCCM004ConvertContractFormatTest(ContractManagementOriginalUseCasesTestBas
 
     def test_convert_contract_performance(self):
         """Test performance target: conversion should be < 3000ms"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.de_user)
 
@@ -373,7 +360,6 @@ class UCCM005UpdateContractTest(ContractManagementOriginalUseCasesTestBase):
 
     def test_update_contract_success(self):
         """Test successful contract update"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -397,7 +383,6 @@ class UCCM005UpdateContractTest(ContractManagementOriginalUseCasesTestBase):
 
     def test_update_contract_partial(self):
         """Test partial contract update"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -411,7 +396,6 @@ class UCCM005UpdateContractTest(ContractManagementOriginalUseCasesTestBase):
 
     def test_update_contract_performance(self):
         """Test performance target: update should be < 2000ms"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -425,7 +409,9 @@ class UCCM005UpdateContractTest(ContractManagementOriginalUseCasesTestBase):
 
         self.assertEqual(update_response.status_code, status.HTTP_200_OK)
         # Integration/Docker env can be slower; use 10s threshold for reliability
-        self.assertLess(elapsed_time, 10000, f"Update took {elapsed_time}ms, exceeds 10000ms threshold")
+        self.assertLess(
+            elapsed_time, 10000, f"Update took {elapsed_time}ms, exceeds 10000ms threshold"
+        )
 
 
 class UCCM006DeleteContractTest(ContractManagementOriginalUseCasesTestBase):
@@ -433,7 +419,6 @@ class UCCM006DeleteContractTest(ContractManagementOriginalUseCasesTestBase):
 
     def test_delete_contract_success(self):
         """Test successful contract deletion (requires TENANT_ADMIN role per ContractService)"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.ta_user)
         ensure_tenant_has_active_subscription(self.tenant)
@@ -446,11 +431,12 @@ class UCCM006DeleteContractTest(ContractManagementOriginalUseCasesTestBase):
 
         # Verify deletion (soft delete)
         contract_response = self.client.get(delete_url)
-        self.assertIn(contract_response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_200_OK])
+        self.assertIn(
+            contract_response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_200_OK]
+        )
 
     def test_delete_contract_performance(self):
         """Test performance target: deletion should be < 1000ms (requires TENANT_ADMIN role)"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.ta_user)
         ensure_tenant_has_active_subscription(self.tenant)
@@ -463,7 +449,9 @@ class UCCM006DeleteContractTest(ContractManagementOriginalUseCasesTestBase):
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertIn(delete_response.status_code, [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT])
-        self.assertLess(elapsed_time, 1000, f"Delete took {elapsed_time}ms, exceeds 1000ms threshold")
+        self.assertLess(
+            elapsed_time, 1000, f"Delete took {elapsed_time}ms, exceeds 1000ms threshold"
+        )
 
 
 class UCCM007VersionContractTest(ContractManagementOriginalUseCasesTestBase):
@@ -475,9 +463,7 @@ class UCCM007VersionContractTest(ContractManagementOriginalUseCasesTestBase):
 
         self.client.force_authenticate(user=self.dpo_user)
 
-        original_contract = ContractFactory.create_contract(
-            tenant=self.tenant, created_by=self.dpo_user, version=1
-        )
+        ContractFactory.create_contract(tenant=self.tenant, created_by=self.dpo_user, version=1)
 
         # Create new version
         updated_contract = self.sample_odcs_contract.copy()
@@ -489,7 +475,7 @@ class UCCM007VersionContractTest(ContractManagementOriginalUseCasesTestBase):
         contract_url = reverse("contract-list")
         # Versioning may be implemented via specific endpoint or by creating new contract with parent
         # For now, test that version increments
-        new_contract_response = self.client.post(contract_url, contract_data, format="json")
+        self.client.post(contract_url, contract_data, format="json")
         # Note: Actual versioning implementation may differ
 
 
@@ -498,7 +484,6 @@ class UCCM008CompareContractVersionsTest(ContractManagementOriginalUseCasesTestB
 
     def test_compare_contract_versions_success(self):
         """Test successful contract version comparison"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -527,14 +512,13 @@ class UCCM009RollbackContractVersionTest(ContractManagementOriginalUseCasesTestB
 
     def test_rollback_contract_version_success(self):
         """Test successful contract version rollback"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
         contract_v1 = ContractFactory.create_contract(
             tenant=self.tenant, created_by=self.dpo_user, version=1, status=ContractStatus.ACTIVE
         )
-        contract_v2 = ContractFactory.create_contract(
+        ContractFactory.create_contract(
             tenant=self.tenant, created_by=self.dpo_user, version=2, status=ContractStatus.ACTIVE
         )
 
@@ -593,7 +577,7 @@ class UCCM010SearchContractsTest(ContractManagementOriginalUseCasesTestBase):
         self.client.force_authenticate(user=self.dpo_user)
 
         # Create multiple contracts
-        for i in range(50):
+        for _i in range(50):
             ContractFactory.create_contract(tenant=self.tenant, created_by=self.dpo_user)
 
         start_time = time.time()
@@ -602,4 +586,6 @@ class UCCM010SearchContractsTest(ContractManagementOriginalUseCasesTestBase):
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
-        self.assertLess(elapsed_time, 1000, f"Search took {elapsed_time}ms, exceeds 1000ms threshold")
+        self.assertLess(
+            elapsed_time, 1000, f"Search took {elapsed_time}ms, exceeds 1000ms threshold"
+        )

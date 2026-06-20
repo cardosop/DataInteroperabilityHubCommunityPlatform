@@ -4,6 +4,7 @@ Phase 26 — Regression tests for ODCS v3.1.0 normalization & export.
 Pure-Python static validation (no Django, no running services).
 Run: pytest hub/tests/test_phase26.py -v --noconftest -p no:django
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -21,28 +22,19 @@ def _read(rel: str) -> str:
 # Normalizer registry
 # ===================================================================
 
-class TestNormalizerRegistry:
 
+class TestNormalizerRegistry:
     def test_odcs_v310_normalizer_registered(self):
         """v3.1.0 normalizer file exists and declares the class."""
-        src = _read(
-            "hub/apps/contracts/normalization/"
-            "odcs_normalizer_v3_1_0.py"
-        )
+        src = _read("hub/apps/contracts/normalization/odcs_normalizer_v3_1_0.py")
         assert "class ODCSNormalizerV3_1_0" in src
 
     def test_odcs_v310_fallback_no_longer_triggers(self):
         """The v3.1.0 normalizer has _supports_version
         matching '3.1.0', so the v3.0.2 normalizer won't
         handle it."""
-        src302 = _read(
-            "hub/apps/contracts/normalization/"
-            "odcs_normalizer_v3_0_2.py"
-        )
-        src310 = _read(
-            "hub/apps/contracts/normalization/"
-            "odcs_normalizer_v3_1_0.py"
-        )
+        src302 = _read("hub/apps/contracts/normalization/odcs_normalizer_v3_0_2.py")
+        src310 = _read("hub/apps/contracts/normalization/odcs_normalizer_v3_1_0.py")
         # v3.0.2 must NOT match "3.1.0"
         assert '"3.1.0"' not in src302 or "supports" not in src302
         # v3.1.0 MUST match "3.1.0"
@@ -53,8 +45,8 @@ class TestNormalizerRegistry:
 # Typed models — relationships / element_id
 # ===================================================================
 
-class TestTypedModels:
 
+class TestTypedModels:
     def test_relationship_class_defined(self):
         src = _read("hub/apps/contracts/typed_models.py")
         assert "class HubContractRelationship" in src
@@ -92,14 +84,11 @@ class TestTypedModels:
 # v3.1.0 normalizer — version-specific mappings
 # ===================================================================
 
-class TestV310Normalizer:
 
+class TestV310Normalizer:
     @pytest.fixture()
     def src(self):
-        return _read(
-            "hub/apps/contracts/normalization/"
-            "odcs_normalizer_v3_1_0.py"
-        )
+        return _read("hub/apps/contracts/normalization/odcs_normalizer_v3_1_0.py")
 
     def test_map_relationships_method(self, src):
         assert "def _map_relationships(" in src
@@ -130,8 +119,11 @@ class TestV310Normalizer:
 
     def test_v31_quality_metric_types(self, src):
         for metric in (
-            "rowCount", "nullValues", "invalidValues",
-            "duplicateValues", "missingValues",
+            "rowCount",
+            "nullValues",
+            "invalidValues",
+            "duplicateValues",
+            "missingValues",
         ):
             assert metric in src
 
@@ -140,8 +132,8 @@ class TestV310Normalizer:
 # Generator — v3.1.0 export
 # ===================================================================
 
-class TestV310Generator:
 
+class TestV310Generator:
     @pytest.fixture()
     def src(self):
         return _read("hub/apps/contracts/odcs_generator.py")
@@ -177,7 +169,7 @@ class TestV310Generator:
 
     def test_element_id_exported_as_id(self, src):
         body = self._v310_body(src)
-        assert 'element_id' in body
+        assert "element_id" in body
         assert '"id"' in body
 
     def test_api_version_format(self, src):
@@ -196,8 +188,8 @@ class TestV310Generator:
 # Export view — downgrade warnings
 # ===================================================================
 
-class TestExportDowngradeWarnings:
 
+class TestExportDowngradeWarnings:
     @pytest.fixture()
     def src(self):
         return _read("hub/apps/contracts/views_export.py")
@@ -223,13 +215,10 @@ class TestExportDowngradeWarnings:
 # Version detection — short format support
 # ===================================================================
 
-class TestVersionDetection:
 
+class TestVersionDetection:
     def test_short_api_version_detected(self):
-        src = _read(
-            "hub/apps/contracts/normalization/"
-            "odcs_normalizer_base.py"
-        )
+        src = _read("hub/apps/contracts/normalization/odcs_normalizer_base.py")
         idx = src.find("def _detect_odcs_version")
         next_def = src.find("\n    def ", idx + 1)
         body = src[idx:next_def] if next_def != -1 else src[idx:]
@@ -241,102 +230,84 @@ class TestVersionDetection:
 # Migration exists
 # ===================================================================
 
-class TestMigration:
 
+class TestMigration:
     def test_temp_index_migration_exists(self):
         path = (
-            REPO / "hub" / "apps" / "contracts" / "migrations"
+            REPO
+            / "hub"
+            / "apps"
+            / "contracts"
+            / "migrations"
             / "0016_add_temp_spec_version_index.py"
         )
         assert path.exists()
 
     def test_temp_index_adds_index(self):
-        src = _read(
-            "hub/apps/contracts/migrations/"
-            "0016_add_temp_spec_version_index.py"
-        )
+        src = _read("hub/apps/contracts/migrations/0016_add_temp_spec_version_index.py")
         assert "AddIndex" in src
         assert "tmp_spec_ver_idx" in src
 
     def test_backfill_migration_exists(self):
         path = (
-            REPO / "hub" / "apps" / "contracts" / "migrations"
+            REPO
+            / "hub"
+            / "apps"
+            / "contracts"
+            / "migrations"
             / "0017_hubcontract_v3_1_0_backfill.py"
         )
         assert path.exists()
 
     def test_backfill_is_data_only(self):
-        src = _read(
-            "hub/apps/contracts/migrations/"
-            "0017_hubcontract_v3_1_0_backfill.py"
-        )
+        src = _read("hub/apps/contracts/migrations/0017_hubcontract_v3_1_0_backfill.py")
         assert "RunPython" in src
         assert "AddField" not in src
         assert "RemoveField" not in src
 
     def test_backfill_has_batching(self):
-        src = _read(
-            "hub/apps/contracts/migrations/"
-            "0017_hubcontract_v3_1_0_backfill.py"
-        )
+        src = _read("hub/apps/contracts/migrations/0017_hubcontract_v3_1_0_backfill.py")
         assert "BATCH_SIZE" in src
         assert "batch_num" in src or "batch" in src
 
     def test_backfill_has_error_isolation(self):
-        src = _read(
-            "hub/apps/contracts/migrations/"
-            "0017_hubcontract_v3_1_0_backfill.py"
-        )
+        src = _read("hub/apps/contracts/migrations/0017_hubcontract_v3_1_0_backfill.py")
         assert "NORMALIZATION_FAILED" in src
         assert "normalization_errors" in src
 
     def test_backfill_is_idempotent(self):
         """Backfill collects IDs upfront for stable iteration."""
-        src = _read(
-            "hub/apps/contracts/migrations/"
-            "0017_hubcontract_v3_1_0_backfill.py"
-        )
+        src = _read("hub/apps/contracts/migrations/0017_hubcontract_v3_1_0_backfill.py")
         # Must collect IDs upfront to avoid offset-drift
         assert "values_list" in src
         assert "contract_ids" in src or "batch_ids" in src
 
     def test_backfill_has_audit_log(self):
-        src = _read(
-            "hub/apps/contracts/migrations/"
-            "0017_hubcontract_v3_1_0_backfill.py"
-        )
+        src = _read("hub/apps/contracts/migrations/0017_hubcontract_v3_1_0_backfill.py")
         assert "phase26_v310_backfill" in src
         assert "json.dumps" in src or "json" in src
 
     def test_cleanup_index_migration_exists(self):
         path = (
-            REPO / "hub" / "apps" / "contracts" / "migrations"
+            REPO
+            / "hub"
+            / "apps"
+            / "contracts"
+            / "migrations"
             / "0018_remove_temp_spec_version_index.py"
         )
         assert path.exists()
 
     def test_cleanup_removes_index(self):
-        src = _read(
-            "hub/apps/contracts/migrations/"
-            "0018_remove_temp_spec_version_index.py"
-        )
+        src = _read("hub/apps/contracts/migrations/0018_remove_temp_spec_version_index.py")
         assert "RemoveIndex" in src
         assert "tmp_spec_ver_idx" in src
 
     def test_migration_dependency_chain(self):
         """0016 → 0017 → 0018 dependency chain."""
-        src16 = _read(
-            "hub/apps/contracts/migrations/"
-            "0016_add_temp_spec_version_index.py"
-        )
-        src17 = _read(
-            "hub/apps/contracts/migrations/"
-            "0017_hubcontract_v3_1_0_backfill.py"
-        )
-        src18 = _read(
-            "hub/apps/contracts/migrations/"
-            "0018_remove_temp_spec_version_index.py"
-        )
+        src16 = _read("hub/apps/contracts/migrations/0016_add_temp_spec_version_index.py")
+        src17 = _read("hub/apps/contracts/migrations/0017_hubcontract_v3_1_0_backfill.py")
+        src18 = _read("hub/apps/contracts/migrations/0018_remove_temp_spec_version_index.py")
         assert "0015_normalise_regulation_keys" in src16
         assert "0016_add_temp_spec_version_index" in src17
         assert "0017_hubcontract_v3_1_0_backfill" in src18
@@ -346,8 +317,8 @@ class TestMigration:
 # Semantic — relationship ontology + mapper
 # ===================================================================
 
-class TestSemanticRelationships:
 
+class TestSemanticRelationships:
     def test_ontology_has_relationship_class(self):
         src = _read("services/semantic-service/ontology.py")
         assert "HUB_Relationship" in src

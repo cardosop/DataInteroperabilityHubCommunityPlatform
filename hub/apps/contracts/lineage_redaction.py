@@ -20,12 +20,12 @@ Spec rules (REQ-LIN-X-005):
 Patterns are compiled lazily + cached per-(tuple-of-patterns) so a
 busy serialization path doesn't pay regex-compile cost per edge.
 """
+
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Sequence
 from functools import lru_cache
-from typing import Iterable, Sequence
-
 
 REDACTED_PLACEHOLDER = "[REDACTED]"
 

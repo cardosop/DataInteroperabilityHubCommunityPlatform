@@ -18,23 +18,16 @@ also doubles as a forensic-replay aid: a security reviewer can run
 this one test to confirm the threat-model artefact is structurally
 complete before signing off.
 """
+
 from __future__ import annotations
 
 import pathlib
 
 import pytest
 
-
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-THREAT_MODEL_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "security"
-    / "threat-model-asset-creation-federated.md"
-)
-PEN_TEST_SCOPE_PATH = (
-    REPO_ROOT / "docs" / "security" / "pen-test-scope-p5.md"
-)
+THREAT_MODEL_PATH = REPO_ROOT / "docs" / "security" / "threat-model-asset-creation-federated.md"
+PEN_TEST_SCOPE_PATH = REPO_ROOT / "docs" / "security" / "pen-test-scope-p5.md"
 
 
 # ---------------------------------------------------------------------------
@@ -111,11 +104,7 @@ class TestThreatModelStructure:
         # dated entry. The structural test doesn't enforce signed —
         # that's the human reviewer's job — but does enforce that the
         # state is explicitly captured.
-        assert (
-            "PENDING" in body
-            or "2026-" in body
-            or "Status:" in body
-        )
+        assert "PENDING" in body or "2026-" in body or "Status:" in body
 
 
 # ---------------------------------------------------------------------------
@@ -145,9 +134,7 @@ class TestPenTestScopeStructure:
     )
     def test_pen_test_scope_covers_surface(self, surface):
         body = PEN_TEST_SCOPE_PATH.read_text(encoding="utf-8")
-        assert surface.lower() in body.lower(), (
-            f"Pen-test scope missing coverage of '{surface}'"
-        )
+        assert surface.lower() in body.lower(), f"Pen-test scope missing coverage of '{surface}'"
 
     def test_pen_test_scope_lists_concrete_test_cases(self):
         """The scope doc MUST list concrete test cases (not just a

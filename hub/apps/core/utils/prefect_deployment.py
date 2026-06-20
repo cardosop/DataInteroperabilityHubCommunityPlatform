@@ -19,9 +19,7 @@ def _build_headers() -> dict:
     headers = {"Content-Type": "application/json"}
     from django.conf import settings
 
-    internal_key = getattr(settings, "INTERNAL_API_KEY", "") or os.getenv(
-        "INTERNAL_API_KEY", ""
-    )
+    internal_key = getattr(settings, "INTERNAL_API_KEY", "") or os.getenv("INTERNAL_API_KEY", "")
     if internal_key:
         headers["X-Internal-Api-Key"] = internal_key
     return headers

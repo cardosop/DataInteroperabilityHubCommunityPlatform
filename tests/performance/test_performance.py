@@ -11,28 +11,22 @@ import time
 import pytest
 
 pytestmark = pytest.mark.slow
+import contextlib
+import uuid
+
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from rest_framework.test import APIClient
 
-from hub.apps.contracts.models import Contract, NormalizationStatus
 from hub.apps.contracts.normalization import normalize_contract
 from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
-from hub.apps.jobs.models import Job, JobStatus, JobType
-from hub.apps.jobs.tasks import process_job
+from hub.apps.jobs.models import JobStatus, JobType
 from hub.apps.notifications.models import EmailType
 from hub.apps.notifications.tasks import send_email_async
-from hub.apps.observability.otel_metrics import (
-    http_request_duration_seconds,
-    http_requests_total,
-)
 from hub.apps.rate_limiting.service import check_rate_limit
 from hub.apps.rate_limiting.utils import TimeWindow, generate_rate_limit_key, sliding_window_check
-from hub.apps.semantic.models import SemanticResource
 from hub.apps.semantic.utils import map_contract_to_semantic
-from hub.apps.tenants.models import Tenant
 from tests.factories import JobFactory, TenantFactory
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -54,7 +48,9 @@ class RateLimitPerformanceTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
@@ -69,7 +65,7 @@ class RateLimitPerformanceTest(TestCase):
 
         # Measure latency for 100 checks
         latencies = []
-        for i in range(100):
+        for _i in range(100):
             start_time = time.perf_counter()
             check_rate_limit(request)
             end_time = time.perf_counter()
@@ -97,7 +93,7 @@ class RateLimitPerformanceTest(TestCase):
 
         # Measure latency for 100 checks
         latencies = []
-        for i in range(100):
+        for _i in range(100):
             start_time = time.perf_counter()
             sliding_window_check(key, 100, TimeWindow.BURST)
             end_time = time.perf_counter()
@@ -117,14 +113,16 @@ class JobProcessingPerformanceTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
     def test_job_processing_throughput(self):
         """Test job processing throughput (jobs per second)"""
         # Create multiple jobs
         jobs = []
-        for i in range(10):
+        for _i in range(10):
             job = JobFactory.create_job(
                 tenant=self.tenant,
                 created_by=self.user,
@@ -141,7 +139,7 @@ class JobProcessingPerformanceTest(TestCase):
             # Update job status to simulate processing
             job.status = JobStatus.RUNNING
             job.save()
-            time.sleep(0.01)  # INTENTIONAL: test-specific delay  # Simulate processing time
+            time.sleep(0.01)  # noqa: sleep-needed  # INTENTIONAL: test-specific delay  # Simulate processing time
             job.status = JobStatus.COMPLETED
             job.save()
 
@@ -160,9 +158,9 @@ class JobProcessingPerformanceTest(TestCase):
         """Test job creation latency"""
         latencies = []
 
-        for i in range(50):
+        for _i in range(50):
             start_time = time.perf_counter()
-            job = JobFactory.create_job(
+            JobFactory.create_job(
                 tenant=self.tenant,
                 created_by=self.user,
                 type=JobType.DQ_RUN,
@@ -185,7 +183,9 @@ class EmailSendingPerformanceTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
     def test_email_sending_throughput(self):
@@ -225,7 +225,7 @@ class EmailSendingPerformanceTest(TestCase):
 
         for i in range(10):
             start_time = time.perf_counter()
-            try:
+            with contextlib.suppress(Exception):
                 send_email_async(
                     email_type=EmailType.USER_INVITATION,
                     to_email=f"test{i}@example.com",
@@ -235,8 +235,6 @@ class EmailSendingPerformanceTest(TestCase):
                     tenant_id=str(self.tenant.id),
                     user_id=str(self.user.id),
                 )
-            except Exception:
-                pass
             end_time = time.perf_counter()
             latencies.append((end_time - start_time) * 1000)  # Convert to ms
 
@@ -269,9 +267,9 @@ class CLIPerformanceTest(TestCase):
 
         # Measure latency for config get command
         latencies = []
-        for i in range(20):
+        for _i in range(20):
             start_time = time.perf_counter()
-            result = runner.invoke(cli, ["config", "get"])
+            runner.invoke(cli, ["config", "get"])
             end_time = time.perf_counter()
             latencies.append((end_time - start_time) * 1000)  # Convert to ms
 
@@ -290,9 +288,9 @@ class CLIPerformanceTest(TestCase):
 
         # Measure latency
         latencies = []
-        for i in range(10):
+        for _i in range(10):
             start_time = time.perf_counter()
-            result = runner.invoke(cli, ["assets", "list", "--format", "json"])
+            runner.invoke(cli, ["assets", "list", "--format", "json"])
             end_time = time.perf_counter()
             latencies.append((end_time - start_time) * 1000)  # Convert to ms
 
@@ -310,7 +308,9 @@ class NormalizationPerformanceTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
     def test_normalization_performance_1000_fields(self):
@@ -341,7 +341,7 @@ class NormalizationPerformanceTest(TestCase):
             )
 
             # Normalize contract - normalize_contract expects raw_contract string and format
-            normalized = normalize_contract(
+            normalize_contract(
                 raw_contract=contract.original_raw,
                 format=contract.original_format.lower() if contract.original_format else "json",
             )
@@ -351,7 +351,7 @@ class NormalizationPerformanceTest(TestCase):
 
             # Should complete in <5 seconds
             self.assertLess(duration, 5.0, f"Normalization took {duration:.2f}s, should be <5s")
-        except Exception as e:
+        except Exception:
             # Normalization might fail for very large contracts
             # That's acceptable for performance testing
             pass
@@ -368,7 +368,7 @@ class NormalizationPerformanceTest(TestCase):
         )
 
         # Normalize contract - normalize_contract expects raw_contract string and format
-        normalized = normalize_contract(
+        normalize_contract(
             raw_contract=contract.original_raw,
             format=contract.original_format.lower() if contract.original_format else "json",
         )
@@ -392,13 +392,15 @@ class RDFMappingPerformanceTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
     def test_rdf_mapping_performance_complete_contract(self):
         """Test that RDF mapping completes in <10 seconds for complete contract"""
         # Create complete contract with all sections
-        hub_contract = ContractFactoryEnhanced.create_hub_contract_json()
+        ContractFactoryEnhanced.create_hub_contract_json()
 
         contract = ContractFactoryEnhanced.create_contract_with_all_sections(
             tenant=self.tenant, created_by=self.user
@@ -408,14 +410,14 @@ class RDFMappingPerformanceTest(TestCase):
         start_time = time.perf_counter()
 
         try:
-            semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
+            map_contract_to_semantic(contract, tenant=self.tenant)
 
             end_time = time.perf_counter()
             duration = end_time - start_time
 
             # Should complete in <10 seconds
             self.assertLess(duration, 10.0, f"RDF mapping took {duration:.2f}s, should be <10s")
-        except Exception as e:
+        except Exception:
             # RDF mapping might fail if semantic service unavailable
             # That's acceptable for performance testing
             pass
@@ -439,14 +441,14 @@ class RDFMappingPerformanceTest(TestCase):
         start_time = time.perf_counter()
 
         try:
-            semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
+            map_contract_to_semantic(contract, tenant=self.tenant)
 
             end_time = time.perf_counter()
             duration = end_time - start_time
 
             # Should complete in reasonable time (<30 seconds for large contract)
             self.assertLess(duration, 30.0, f"RDF mapping took {duration:.2f}s")
-        except Exception as e:
+        except Exception:
             # RDF mapping might fail if semantic service unavailable
             pass
 
@@ -458,7 +460,9 @@ class APIPerformanceTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
@@ -472,7 +476,7 @@ class APIPerformanceTest(TestCase):
 
         # Measure retrieval latency
         latencies = []
-        for i in range(20):
+        for _i in range(20):
             start_time = time.perf_counter()
             response = self.client.get(f"/api/v1/contracts/{contract.id}/")
             end_time = time.perf_counter()
@@ -495,14 +499,14 @@ class APIPerformanceTest(TestCase):
     def test_api_contract_list_latency(self):
         """Test API contract list latency"""
         # Create multiple contracts
-        for i in range(10):
+        for _i in range(10):
             ContractFactoryEnhanced.create_contract_with_all_sections(
                 tenant=self.tenant, created_by=self.user
             )
 
         # Measure list latency
         latencies = []
-        for i in range(10):
+        for _i in range(10):
             start_time = time.perf_counter()
             response = self.client.get("/api/v1/contracts/")
             end_time = time.perf_counter()
@@ -525,7 +529,9 @@ class SPARQLPerformanceTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
     def test_sparql_query_performance_standard_vocabularies(self):
@@ -556,7 +562,7 @@ class SPARQLPerformanceTest(TestCase):
                 start_time = time.perf_counter()
 
                 try:
-                    result = client.query_sparql(query, tenant=self.tenant)
+                    client.query_sparql(query, tenant=self.tenant)
 
                     end_time = time.perf_counter()
                     duration = end_time - start_time
@@ -580,7 +586,9 @@ class LargeContractHandlingTest(TestCase):
         """Set up test data"""
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
-            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"perf_test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
     def test_large_contract_1000_fields_all_sections(self):
@@ -628,7 +636,7 @@ class LargeContractHandlingTest(TestCase):
             )
 
             # Normalize (same signature as other tests: raw_contract string and format)
-            normalized = normalize_contract(
+            normalize_contract(
                 raw_contract=contract.original_raw,
                 format=contract.original_format.lower() if contract.original_format else "json",
             )
@@ -638,7 +646,7 @@ class LargeContractHandlingTest(TestCase):
 
             # Should handle large contracts (<30 seconds)
             self.assertLess(duration, 30.0, f"Large contract handling took {duration:.2f}s")
-        except Exception as e:
+        except Exception:
             # Large contracts might fail validation
             # That's acceptable for performance testing
             pass
@@ -659,7 +667,7 @@ class MetricsCollectionOverheadTest(TestCase):
         # by measuring response times for health endpoint requests
 
         latencies = []
-        for i in range(100):
+        for _i in range(100):
             start_time = time.perf_counter()
             self.client.get("/health/")
             end_time = time.perf_counter()
@@ -683,12 +691,12 @@ class MetricsCollectionOverheadTest(TestCase):
     def test_metrics_endpoint_performance(self):
         """Test that metrics endpoint responds quickly"""
         # Generate some metrics
-        for i in range(10):
+        for _i in range(10):
             self.client.get("/health/")
 
         # Measure metrics endpoint latency
         latencies = []
-        for i in range(20):
+        for _i in range(20):
             start_time = time.perf_counter()
             response = self.client.get("/metrics/")
             end_time = time.perf_counter()
@@ -724,14 +732,14 @@ class TracingSamplingImpactTest(TestCase):
         # Test without tracing
         with override_settings(OPENTELEMETRY_ENABLED=False):
             start_time = time.perf_counter()
-            for i in range(iterations):
+            for _i in range(iterations):
                 self.client.get("/health/")
             end_time_without_tracing = time.perf_counter() - start_time
 
         # Test with tracing (if enabled)
         with override_settings(OPENTELEMETRY_ENABLED=True):
             start_time = time.perf_counter()
-            for i in range(iterations):
+            for _i in range(iterations):
                 self.client.get("/health/")
             end_time_with_tracing = time.perf_counter() - start_time
 
@@ -744,7 +752,7 @@ class TracingSamplingImpactTest(TestCase):
 
         # Should be <6% overhead (tracing is sampled; 6% allows for CI variance)
         self.assertLess(
-            overhead_ratio, 0.06, f"Tracing overhead is {overhead_ratio*100:.2f}%, should be <6%"
+            overhead_ratio, 0.06, f"Tracing overhead is {overhead_ratio * 100:.2f}%, should be <6%"
         )
 
     def test_tracing_sampling_rate_impact(self):

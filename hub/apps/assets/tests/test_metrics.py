@@ -4,6 +4,9 @@ Phase 277.B.051 — Asset operations counter metrics tests.
 Validates that ``asset_operations_total`` increments correctly for
 each CRUD + lifecycle action with the correct labels.
 """
+
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -19,12 +22,16 @@ class AssetOperationsCounterTests(TestCase):
     """Test that asset_operations_total increments with correct labels."""
 
     def setUp(self):
+        _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Metrics Tenant", slug="metrics-tenant", status=TenantStatus.ACTIVE,
+            name=f"Metrics Tenant {_uid}",
+            slug=f"metrics-tenant-{_uid}",
+            status=TenantStatus.ACTIVE,
         )
         self.tenant_id = str(self.tenant.id)
         self.user = User.objects.create_user(
-            email="metrics@test.com", password="testpass",
+            email=f"metrics-{_uid}@test.com",
+            password="testpass",
         )
 
     # ── Counter structure ─────────────────────────────────────────
@@ -78,7 +85,9 @@ class AssetOperationsCounterTests(TestCase):
     def test_tenant_id_isolation(self):
         """Different tenant IDs produce independent counter values."""
         t2 = Tenant.objects.create(
-            name="Metrics Tenant 2", slug="metrics-tenant-2", status=TenantStatus.ACTIVE,
+            name="Metrics Tenant 2",
+            slug="metrics-tenant-2",
+            status=TenantStatus.ACTIVE,
         )
         t1_before = asset_operations_total.labels(
             operation="create", tenant_id=self.tenant_id, status="success"
@@ -127,3 +136,54 @@ class AssetOperationsCounterTests(TestCase):
         _emit_asset_operation("create", "nonexistent-tenant", "success")
         # Edge-case: empty tenant_id.
         _emit_asset_operation("delete", "", "success")
+
+    def test_emit_asset_operation_increments_counter(self):
+        """_emit_asset_operation calls asset_operations_total.inc()
+        with the correct attribute dict mapping operation, tenant_id,
+        and status label keys."""
+        from unittest.mock import patch
+
+        from hub.apps.assets.views import _emit_asset_operation
+
+        with patch.object(
+            asset_operations_total, "inc", wraps=asset_operations_total.inc
+        ) as mock_inc:
+            _emit_asset_operation("create", self.tenant_id, "success")
+
+        mock_inc.assert_called_once()
+        call_kwargs = mock_inc.call_args.kwargs
+        self.assertEqual(
+            call_kwargs.get("attributes"),
+            {
+                "operation": "create",
+                "tenant_id": self.tenant_id,
+                "status": "success",
+            },
+            "_emit_asset_operation must pass the correct attribute "
+            "dict to asset_operations_total.inc().",
+        )
+
+    def test_emit_asset_operation_maps_status_labels_correctly(self):
+        """_emit_asset_operation with each status label passes the
+        correct attributes to asset_operations_total.inc()."""
+        from unittest.mock import patch
+
+        from hub.apps.assets.views import _emit_asset_operation
+
+        for status_label in (
+            "validation_error",
+            "permission_denied",
+            "conflict",
+        ):
+            with patch.object(
+                asset_operations_total, "inc", wraps=asset_operations_total.inc
+            ) as mock_inc:
+                _emit_asset_operation("update", self.tenant_id, status_label)
+
+            mock_inc.assert_called_once()
+            self.assertEqual(
+                mock_inc.call_args.kwargs["attributes"]["status"],
+                status_label,
+                f"status={status_label}: attribute must be passed "
+                "to asset_operations_total.inc().",
+            )

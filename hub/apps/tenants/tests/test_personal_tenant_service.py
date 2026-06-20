@@ -4,12 +4,14 @@ Unit tests for PersonalTenantService (hub.apps.tenants.services).
 Tests create_personal_tenant_for_user with real DB. No mocks/stubs.
 """
 
+import uuid
+
 import pytest
 from django.core.management import call_command
-from django.db import transaction
 from django.test import TestCase, override_settings
 
 from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.core.events.models import Event
 from hub.apps.core.services.base import NotFoundError
 from hub.apps.tenants.models import (
     KYCStatus,
@@ -19,10 +21,8 @@ from hub.apps.tenants.models import (
     TenantPlan,
     TenantStatus,
 )
-from hub.apps.core.events.models import Event
 from hub.apps.tenants.services import PersonalTenantService
 from hub.apps.users.models import Role
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -67,6 +67,7 @@ class PersonalTenantServiceTest(TestCase):
     def test_creates_tenant_config(self):
         """Success: TenantConfig is created with platform defaults."""
         from hub.apps.tenants.validators import get_platform_defaults
+
         defaults = get_platform_defaults()
 
         service = PersonalTenantService()
@@ -107,7 +108,7 @@ class PersonalTenantServiceTest(TestCase):
             display_name="Eve",
         )
         self.assertTrue(tenant.slug.startswith("personal-"))
-        suffix = tenant.slug[len("personal-"):]
+        suffix = tenant.slug[len("personal-") :]
         self.assertEqual(len(suffix), 8)
         hex_chars = "0123456789abcdef"
         self.assertTrue(
@@ -130,7 +131,6 @@ class PersonalTenantServiceTest(TestCase):
     def test_free_plan_missing_raises_clear_error(self):
         """Failure: when no FREE plan exists, service raises NotFoundError."""
         from unittest.mock import patch
-        from hub.apps.tenants.models import TenantPlan
 
         # Bypass the conftest auto-seed patch by making the real
         # TenantPlan.objects.get raise DoesNotExist for slug="free".
@@ -140,14 +140,18 @@ class PersonalTenantServiceTest(TestCase):
             return TenantPlan.objects.filter(**kwargs).get()
 
         service = PersonalTenantService()
-        with patch.object(
-            type(TenantPlan.objects), "get", fake_get,
+        with (
+            patch.object(
+                type(TenantPlan.objects),
+                "get",
+                fake_get,
+            ),
+            self.assertRaises(NotFoundError) as cm,
         ):
-            with self.assertRaises(NotFoundError) as cm:
-                service.create_personal_tenant_for_user(
-                    email=f"no-plan-{uuid.uuid4().hex[:8]}@x.com",
-                    display_name="NoPlan",
-                )
+            service.create_personal_tenant_for_user(
+                email=f"no-plan-{uuid.uuid4().hex[:8]}@x.com",
+                display_name="NoPlan",
+            )
         self.assertIn(
             "free",
             str(cm.exception).lower(),

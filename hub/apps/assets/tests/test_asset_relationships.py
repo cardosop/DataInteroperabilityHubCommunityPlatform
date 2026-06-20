@@ -53,7 +53,10 @@ class AssetRelationshipsTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         # Active subscription required so TenantSuspensionMiddleware allows writes (PATCH/POST).
         ensure_tenant_has_active_subscription(self.tenant)
@@ -189,16 +192,14 @@ class AssetRelationshipsTest(TestCase):
         dataset.refresh_from_db()
         self.assertEqual(dataset.version, 1)
 
-    def test_attach_multiple_datasets_to_asset_returns_correct_versions(self):
-        """Test attaching multiple datasets to an asset returns correct versions"""
+    def test_attach_dataset_to_asset_returns_200(self):
+        """Attaching a dataset to an asset returns HTTP 200."""
         self.client.force_authenticate(user=self.user)
 
-        # Create asset
         asset = Asset.objects.create(
             tenant=self.tenant, key="test-asset", name="Test Asset", created_by=self.user
         )
 
-        # Create files
         file1 = File.objects.create(
             tenant=self.tenant,
             name="test1.csv",
@@ -209,26 +210,10 @@ class AssetRelationshipsTest(TestCase):
             created_by=self.user,
         )
 
-        file2 = File.objects.create(
-            tenant=self.tenant,
-            name="test2.csv",
-            content_type="text/csv",
-            size=2048,
-            storage_path="test/path/file2.csv",
-            status=FileStatus.ACTIVE,
-            created_by=self.user,
-        )
-
-        # Create datasets
         dataset1 = Dataset.objects.create(
             tenant=self.tenant, file=file1, format="CSV", created_by=self.user
         )
 
-        dataset2 = Dataset.objects.create(
-            tenant=self.tenant, file=file2, format="CSV", created_by=self.user
-        )
-
-        # Attach first dataset
         response1 = self.client.post(
             f"/api/v1/assets/{asset.id}/datasets/", {"dataset_id": str(dataset1.id)}, format="json"
         )
@@ -401,10 +386,13 @@ class AssetRelationshipsTest(TestCase):
             f"/api/v1/assets/{asset.id}/datasets/", {"dataset_id": str(dataset2.id)}, format="json"
         )
 
-        # Verify both datasets are attached with correct versions
+        # Verify both datasets are attached with correct versions and asset FK
         dataset1.refresh_from_db()
         dataset2.refresh_from_db()
         self.assertEqual(dataset1.asset, asset)
+        self.assertEqual(dataset2.asset, asset)
+        self.assertEqual(dataset1.version, 1)
+        self.assertEqual(dataset2.version, 2)
 
     def test_attach_multiple_datasets_to_asset_sets_second_dataset_asset(self):
         """Test attaching multiple datasets sets second dataset asset."""
@@ -725,7 +713,7 @@ class AssetRelationshipsTest(TestCase):
         )
 
         # Create valid contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -758,7 +746,7 @@ class AssetRelationshipsTest(TestCase):
         )
 
         # Create invalid contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.DRAFT,
@@ -840,7 +828,7 @@ class AssetRelationshipsTest(TestCase):
             ).first()
             if semantic_resource:
                 break
-            time.sleep(0.05)
+            time.sleep(0.05)  # noqa: sleep-needed — polling loop
 
         self.assertIsNotNone(
             semantic_resource,
@@ -909,7 +897,10 @@ class AssetRelationshipsTest(TestCase):
         # Create another tenant and dataset
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         other_file = File.objects.create(
@@ -987,7 +978,10 @@ class AssetRelationshipsTest(TestCase):
         # Create another tenant and contract
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         other_contract = Contract.objects.create(
@@ -1161,9 +1155,7 @@ class AssetListContractFilterTest(TestCase):
 
     def test_contract_id_filter_returns_only_linked_assets(self):
         self.client.force_authenticate(user=self.user)
-        response = self.client.get(
-            f"/api/v1/assets/?contract_id={self.contract.id}"
-        )
+        response = self.client.get(f"/api/v1/assets/?contract_id={self.contract.id}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         ids = [row["id"] for row in response.data["results"]]
         self.assertIn(str(self.asset_linked.id), ids)
@@ -1209,9 +1201,7 @@ class AssetListContractFilterTest(TestCase):
             status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=other_user)
-        response = self.client.get(
-            f"/api/v1/assets/?contract_id={self.contract.id}"
-        )
+        response = self.client.get(f"/api/v1/assets/?contract_id={self.contract.id}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # The contract exists but belongs to a different tenant — no leak.
         self.assertEqual(len(response.data["results"]), 0)

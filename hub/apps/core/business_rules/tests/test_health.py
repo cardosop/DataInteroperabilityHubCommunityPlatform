@@ -1,17 +1,17 @@
 """
 Phase 274.16.12 — /health/business-rules endpoint test.
 """
+
 from __future__ import annotations
-import pytest
 
 import pytest
 from django.test import TestCase
 
 from hub.apps.core.business_rules.health import (
-    mark_rule_degraded,
-    get_degraded_rules,
     clear_degraded_rules,
+    get_degraded_rules,
     health_check,
+    mark_rule_degraded,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)

@@ -20,7 +20,9 @@ _K8S_BASES = discover_k8s_bases()
 _K8S_BASE_IDS = [name for name, _ in _K8S_BASES]
 
 
-def _referenced_configmaps_and_secrets(manifests: list[dict]) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
+def _referenced_configmaps_and_secrets(
+    manifests: list[dict],
+) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
     """Extract (name, namespace) of ConfigMaps and Secrets referenced by Pod templates (containers + initContainers)."""
     configmaps = set()
     secrets = set()
@@ -62,8 +64,7 @@ def kustomize_available_check():
     """Skip entire module if kustomize/kubectl is not available."""
     if not kustomize_available():
         pytest.skip(
-            "kustomize or kubectl kustomize not available; "
-            "install to run Kubernetes manifest tests"
+            "kustomize or kubectl kustomize not available; install to run Kubernetes manifest tests"
         )
 
 
@@ -101,7 +102,9 @@ class TestKubernetesConfig:
             )
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
-    def test_configmaps_have_data_or_binary_data(self, service_name, base_path, kustomize_available_check):
+    def test_configmaps_have_data_or_binary_data(
+        self, service_name, base_path, kustomize_available_check
+    ):
         """ConfigMaps have data or binaryData (or are used only as optional)."""
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
@@ -112,7 +115,9 @@ class TestKubernetesConfig:
             )
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
-    def test_secrets_have_data_or_string_data_or_external(self, service_name, base_path, kustomize_available_check):
+    def test_secrets_have_data_or_string_data_or_external(
+        self, service_name, base_path, kustomize_available_check
+    ):
         """Secrets have data, stringData, or are external (no assertion for external)."""
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
@@ -127,7 +132,9 @@ class TestKubernetesConfig:
             )
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
-    def test_pvc_referenced_by_workloads_exist(self, service_name, base_path, kustomize_available_check):
+    def test_pvc_referenced_by_workloads_exist(
+        self, service_name, base_path, kustomize_available_check
+    ):
         """PersistentVolumeClaims referenced by workload volumes exist in the same build."""
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)

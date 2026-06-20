@@ -12,15 +12,13 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from hub.apps.assets.models import Asset, AssetStatus, DQStatus, ComplianceStatus
+from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    NormalizationStatus,
     OriginalFormat,
     OriginalSpecType,
-    ValidationStatus,
 )
 from hub.apps.datasets.models import Dataset
 from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus

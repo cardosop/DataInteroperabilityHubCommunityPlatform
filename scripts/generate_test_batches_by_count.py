@@ -40,6 +40,7 @@ def collect_node_ids(repo_root: Path, paths: list[str], env: dict) -> list[str]:
     try:
         r = subprocess.run(
             cmd,
+            check=False,
             capture_output=True,
             text=True,
             timeout=300,
@@ -47,7 +48,10 @@ def collect_node_ids(repo_root: Path, paths: list[str], env: dict) -> list[str]:
             env=env,
         )
     except subprocess.TimeoutExpired:
-        print("Error: pytest --collect-only timed out (300s). Narrow --paths or run in container.", file=sys.stderr)
+        print(
+            "Error: pytest --collect-only timed out (300s). Narrow --paths or run in container.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     # Parse: lines containing "::" and test-like names (test_ or Test)
@@ -69,6 +73,7 @@ def collect_node_ids(repo_root: Path, paths: list[str], env: dict) -> list[str]:
             try:
                 r2 = subprocess.run(
                     [sys.executable, "-m", "pytest", p, "--collect-only", "-q", "--no-header"],
+                    check=False,
                     capture_output=True,
                     text=True,
                     timeout=180,
@@ -86,9 +91,15 @@ def collect_node_ids(repo_root: Path, paths: list[str], env: dict) -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate test batches by test count (100-200 per batch).")
-    parser.add_argument("--size", type=int, default=150, help="Target number of tests per batch (default 150).")
-    parser.add_argument("--output-dir", type=str, default="test_batches", help="Output directory for batch files.")
+    parser = argparse.ArgumentParser(
+        description="Generate test batches by test count (100-200 per batch)."
+    )
+    parser.add_argument(
+        "--size", type=int, default=150, help="Target number of tests per batch (default 150)."
+    )
+    parser.add_argument(
+        "--output-dir", type=str, default="test_batches", help="Output directory for batch files."
+    )
     parser.add_argument(
         "--paths",
         type=str,
@@ -108,7 +119,10 @@ def main() -> int:
 
     node_ids = collect_node_ids(repo_root, args.paths, env)
     if not node_ids:
-        print("Warning: No test node IDs collected. Check paths and DJANGO_SETTINGS_MODULE.", file=sys.stderr)
+        print(
+            "Warning: No test node IDs collected. Check paths and DJANGO_SETTINGS_MODULE.",
+            file=sys.stderr,
+        )
         return 1
 
     total = len(node_ids)

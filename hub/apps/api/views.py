@@ -7,20 +7,18 @@ Views for API documentation and OpenAPI schema generation.
 import functools
 import hmac
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import drf_spectacular.renderers
-import yaml
-from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from django.conf import settings
+from drf_spectacular.utils import extend_schema, inline_serializer
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
-from rest_framework import serializers, status
-from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework import serializers
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-
-from django.conf import settings
 
 from hub.apps.api.throttles import VersionDiscoveryRateThrottle
 from hub.apps.users.management.commands.ensure_e2e_user_roles import (
@@ -104,7 +102,6 @@ class OpenAPISchemaView(SpectacularAPIView):
     def get(self, request, *args, **kwargs):
         """Return JSON format schema with validation and enhancement"""
         import structlog
-
         from drf_spectacular.generators import SchemaGenerator
 
         from .openapi_enhancement import OpenAPISpecEnhancer
@@ -124,11 +121,15 @@ class OpenAPISchemaView(SpectacularAPIView):
                 "info": {"title": getattr(settings, "APP_NAME", "Meshant"), "version": "1.0"},
                 "paths": {
                     "/api/v1/auth/register/": {"post": {"operationId": "auth_register_create"}},
-                    "/api/v1/auth/password-reset/": {"post": {"operationId": "auth_password_reset_create"}},
+                    "/api/v1/auth/password-reset/": {
+                        "post": {"operationId": "auth_password_reset_create"}
+                    },
                     "/api/v1/auth/password-reset/confirm/": {
                         "post": {"operationId": "auth_password_reset_confirm_create"}
                     },
-                    "/api/v1/auth/verify-email/": {"post": {"operationId": "auth_verify_email_create"}},
+                    "/api/v1/auth/verify-email/": {
+                        "post": {"operationId": "auth_verify_email_create"}
+                    },
                     "/api/v1/auth/resend-verification/": {
                         "post": {"operationId": "auth_resend_verification_create"}
                     },
@@ -175,7 +176,6 @@ class OpenAPIYAMLView(SpectacularAPIView):
     def get(self, request, *args, **kwargs):
         """Return YAML format schema with validation and enhancement"""
         import structlog
-
         from drf_spectacular.generators import SchemaGenerator
 
         from .openapi_enhancement import OpenAPISpecEnhancer
@@ -194,11 +194,15 @@ class OpenAPIYAMLView(SpectacularAPIView):
                 "info": {"title": getattr(settings, "APP_NAME", "Meshant"), "version": "1.0"},
                 "paths": {
                     "/api/v1/auth/register/": {"post": {"operationId": "auth_register_create"}},
-                    "/api/v1/auth/password-reset/": {"post": {"operationId": "auth_password_reset_create"}},
+                    "/api/v1/auth/password-reset/": {
+                        "post": {"operationId": "auth_password_reset_create"}
+                    },
                     "/api/v1/auth/password-reset/confirm/": {
                         "post": {"operationId": "auth_password_reset_confirm_create"}
                     },
-                    "/api/v1/auth/verify-email/": {"post": {"operationId": "auth_verify_email_create"}},
+                    "/api/v1/auth/verify-email/": {
+                        "post": {"operationId": "auth_verify_email_create"}
+                    },
                     "/api/v1/auth/resend-verification/": {
                         "post": {"operationId": "auth_resend_verification_create"}
                     },
@@ -291,6 +295,7 @@ class APIInfoSerializer(serializers.Serializer):
 
 # Phase 228 (REQ-LIN-006, 228.0.18) — capability discovery endpoint.
 
+
 @extend_schema(
     responses={
         200: inline_serializer(
@@ -356,23 +361,27 @@ def api_info(request):
     # listing them would create dead links and leak URL structure.
     docs = {"openapi_yaml": "/api/v1/openapi.yaml"}
     if settings.ENVIRONMENT != "production":
-        docs.update({
-            "openapi": "/api-docs/openapi.json",
-            "swagger": "/api-docs/",
-            "redoc": "/api-docs/redoc/",
-        })
+        docs.update(
+            {
+                "openapi": "/api-docs/openapi.json",
+                "swagger": "/api-docs/",
+                "redoc": "/api-docs/redoc/",
+            }
+        )
 
     # Collect deprecated endpoints for the version discovery response.
     deprecated = []
-    for key, dep in sorted(APIVersionManager.DEPRECATED_ENDPOINTS.items()):
-        deprecated.append({
-            "path": dep.path,
-            "method": dep.method,
-            "deprecated_since": dep.deprecated_since,
-            "sunset_date": dep.sunset_date,
-            "replacement": dep.replacement,
-            "migration_guide": dep.migration_guide,
-        })
+    for _key, dep in sorted(APIVersionManager.DEPRECATED_ENDPOINTS.items()):
+        deprecated.append(
+            {
+                "path": dep.path,
+                "method": dep.method,
+                "deprecated_since": dep.deprecated_since,
+                "sunset_date": dep.sunset_date,
+                "replacement": dep.replacement,
+                "migration_guide": dep.migration_guide,
+            }
+        )
 
     return Response(
         {
@@ -414,6 +423,7 @@ def api_info(request):
             },
         }
     )
+
 
 # Apply throttle class via the view_class so DRF's WrappedAPIView picks it up.
 # Setting throttle_classes on the handler directly does NOT propagate to the
@@ -464,6 +474,7 @@ def ensure_e2e_invitation_token(request):
     """
     import uuid
     from datetime import timedelta
+
     from django.utils import timezone
 
     from hub.apps.users.models import User, UserStatus
@@ -473,9 +484,7 @@ def ensure_e2e_invitation_token(request):
     # this endpoint must remain a 404. Without staging, E2E tests against
     # https://stagingmeshant-internal.example.com cannot prime tenant subscriptions and any
     # write call (asset/dataset/contract POST) gets a 403 from billing middleware.
-    if not (
-        getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG
-    ):
+    if not (getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG):
         raise NotFound("Resource not found")
     if request.user.email not in E2E_EMAILS:
         raise NotFound("Resource not found")
@@ -530,9 +539,7 @@ def ensure_e2e_subscription(request):
     # this endpoint must remain a 404. Without staging, E2E tests against
     # https://stagingmeshant-internal.example.com cannot prime tenant subscriptions and any
     # write call (asset/dataset/contract POST) gets a 403 from billing middleware.
-    if not (
-        getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG
-    ):
+    if not (getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG):
         raise NotFound("Resource not found")
     if request.user.email not in E2E_EMAILS:
         raise NotFound("Resource not found")
@@ -560,6 +567,7 @@ def ensure_e2e_tenant_switch_setup(request):
     duplicate tenants or violate the membership unique constraint.
     """
     import uuid
+
     from django.db import IntegrityError, transaction
 
     from hub.apps.tenants.models import Tenant
@@ -571,9 +579,7 @@ def ensure_e2e_tenant_switch_setup(request):
     # this endpoint must remain a 404. Without staging, E2E tests against
     # https://stagingmeshant-internal.example.com cannot prime tenant subscriptions and any
     # write call (asset/dataset/contract POST) gets a 403 from billing middleware.
-    if not (
-        getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG
-    ):
+    if not (getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG):
         raise NotFound("Resource not found")
     if request.user.email not in E2E_EMAILS:
         raise NotFound("Resource not found")
@@ -604,8 +610,7 @@ def ensure_e2e_tenant_switch_setup(request):
             .order_by("created_at")
         )
         active_memberships = [
-            m for m in memberships
-            if m.tenant_id is not None and m.tenant.deleted_at is None
+            m for m in memberships if m.tenant_id is not None and m.tenant.deleted_at is None
         ]
 
         # Find a secondary tenant that differs from the primary.
@@ -670,16 +675,14 @@ def ensure_e2e_free_plan_tenant(request):
     """
     import uuid
     from datetime import timedelta
+
     from django.utils import timezone as _tz
 
-    from hub.apps.tenants.models import Tenant
+    from hub.apps.tenants.models import Tenant, TenantPlan
     from hub.apps.users.services import UserTenantMembershipService
-    from hub.apps.tenants.models import TenantPlan
 
     # ── Safety gates ─────────────────────────────────────────────────
-    if not (
-        getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG
-    ):
+    if not (getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG):
         raise NotFound("Resource not found")
     if request.user.email not in E2E_EMAILS:
         raise NotFound("Resource not found")
@@ -693,9 +696,11 @@ def ensure_e2e_free_plan_tenant(request):
 
     # ── Return existing free-plan tenant if user already has one ─────
     from hub.apps.users.models import UserTenantMembership
+
     existing = (
-        UserTenantMembership.objects
-        .filter(user=request.user, tenant__slug__startswith="e2e-free-plan-")
+        UserTenantMembership.objects.filter(
+            user=request.user, tenant__slug__startswith="e2e-free-plan-"
+        )
         .select_related("tenant")
         .order_by("created_at")
         .first()
@@ -725,6 +730,7 @@ def ensure_e2e_free_plan_tenant(request):
     # then override the plan to the standard Free plan so quota
     # enforcement is testable.
     from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
     ensure_tenant_has_active_subscription(tenant)
 
     # Override: the helper assigns e2e-unlimited; we need the Free plan
@@ -769,9 +775,7 @@ def ensure_e2e_users(request):
     )
     from hub.apps.users.models import Role, User, UserRole, UserStatus
 
-    if not (
-        getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG
-    ):
+    if not (getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG):
         raise NotFound("Resource not found")
 
     target_email = request.data.get("email") if request.data else None
@@ -815,7 +819,7 @@ def ensure_e2e_users(request):
             tenant_slug = spec.get("tenant_slug", "default")
             tenant = tenant_cache.get(tenant_slug, tenant_cache["default"])
 
-            user, created = User.objects.get_or_create(
+            user, _created = User.objects.get_or_create(
                 email=email,
                 defaults={
                     "tenant": tenant,
@@ -833,15 +837,13 @@ def ensure_e2e_users(request):
             # Ensure email verified
             if not getattr(user, "email_verified", False):
                 from django.utils import timezone as _tz
+
                 user.email_verified = True
                 user.email_verified_at = _tz.now()
                 user.save(update_fields=["email_verified", "email_verified_at"])
 
             # Ensure correct tenant
-            if tenant_slug == "consumer" and user.tenant_id != tenant.id:
-                user.tenant = tenant
-                user.save(update_fields=["tenant"])
-            elif not user.tenant_id:
+            if (tenant_slug == "consumer" and user.tenant_id != tenant.id) or not user.tenant_id:
                 user.tenant = tenant
                 user.save(update_fields=["tenant"])
 
@@ -859,6 +861,7 @@ def ensure_e2e_users(request):
             user_tenant = user.tenant or tenant
             if user_tenant:
                 from hub.apps.users.services import UserTenantMembershipService
+
                 UserTenantMembershipService().add_membership(
                     user,
                     user_tenant,
@@ -874,14 +877,18 @@ def ensure_e2e_users(request):
                     },
                 )
                 UserRole.objects.get_or_create(
-                    user=user, tenant=role.tenant, role=role,
+                    user=user,
+                    tenant=role.tenant,
+                    role=role,
                 )
 
             # Ensure tenant has a plan
             if user_tenant and not user_tenant.plan:
                 from hub.apps.tenants.models import TenantPlan
+
                 free_plan = TenantPlan.objects.filter(
-                    slug="free", is_active=True,
+                    slug="free",
+                    is_active=True,
                 ).first()
                 if free_plan:
                     user_tenant.plan = free_plan
@@ -936,15 +943,14 @@ def reset_e2e_auth_rate_limits(request):
     """
     from django.conf import settings
 
-    if not (
-        getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG
-    ):
+    if not (getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG):
         raise NotFound("Resource not found")
 
     try:
+        import redis
+
         from hub.apps.core.redis_pools import get_redis_cache_pool
         from hub.apps.rate_limiting.utils import EndpointCategory
-        import redis
 
         pool = get_redis_cache_pool()
         client = redis.Redis(connection_pool=pool, decode_responses=True)
@@ -997,14 +1003,9 @@ def raise_500(request):
     """
     from django.conf import settings
 
-    if not (
-        getattr(settings, "ENVIRONMENT", "") in ("test", "staging")
-        or settings.DEBUG
-    ):
+    if not (getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG):
         raise NotFound("Resource not found")
 
     # Deliberate unhandled exception — this is the whole point of the
     # endpoint.  The 500 handler must sanitise the response.
-    raise RuntimeError(
-        "Deliberate 500 raised by /test/raise-500/ for E2E error-redaction tests"
-    )
+    raise RuntimeError("Deliberate 500 raised by /test/raise-500/ for E2E error-redaction tests")

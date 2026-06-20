@@ -5,19 +5,20 @@ Tests all ODPS event payload structures, validation, and end-to-end delivery
 without mocks or stubs. Verifies payloads match schemas and are correctly
 structured for event bus delivery.
 """
+
 import uuid
-from datetime import datetime, timezone
-from django.test import TestCase, override_settings
+from datetime import UTC, datetime
+
 from django.contrib.auth import get_user_model
+from django.test import TestCase, override_settings
 
 from hub.apps.core.events.event_types import (
+    CURRENT_EVENT_VERSION,
     get_event_schema,
     validate_event_data,
-    get_all_event_types,
-    CURRENT_EVENT_VERSION,
 )
-from hub.apps.core.events.service_publishers import ODPSEventPublisher
 from hub.apps.core.events.schema import EventSchema
+from hub.apps.core.events.service_publishers import ODPSEventPublisher
 
 User = get_user_model()
 
@@ -103,7 +104,7 @@ class ODPSEventPayloadsUnitTest(TestCase):
         """Test odps.deleted event payload structure."""
         payload = {
             "contract_id": str(uuid.uuid4()),
-            "deleted_at": datetime.now(timezone.utc).isoformat(),
+            "deleted_at": datetime.now(UTC).isoformat(),
             "reason": "User requested deletion",
         }
 
@@ -342,8 +343,8 @@ class ODPSEventPayloadsIntegrationTest(TestCase):
         self.user_id = str(uuid.uuid4())
         # Create publisher and set attributes dynamically
         self.publisher = ODPSEventPublisher()
-        setattr(self.publisher, 'tenant_id', self.tenant_id)
-        setattr(self.publisher, 'user_id', self.user_id)
+        self.publisher.tenant_id = self.tenant_id
+        self.publisher.user_id = self.user_id
         # Update event publisher with tenant/user context
         self.publisher._event_publisher.tenant_id = self.tenant_id
         self.publisher._event_publisher.user_id = self.user_id
@@ -363,6 +364,7 @@ class ODPSEventPayloadsIntegrationTest(TestCase):
 
         # Verify event was published
         from hub.apps.core.events.models import Event
+
         event = Event.objects.get(event_id=event_id)
 
         # Verify event structure
@@ -392,6 +394,7 @@ class ODPSEventPayloadsIntegrationTest(TestCase):
 
         # Verify event was published
         from hub.apps.core.events.models import Event
+
         event = Event.objects.get(event_id=event_id)
 
         self.assertEqual(event.event_type, "odps.updated")
@@ -416,6 +419,7 @@ class ODPSEventPayloadsIntegrationTest(TestCase):
 
         # Verify event was published
         from hub.apps.core.events.models import Event
+
         event = Event.objects.get(event_id=event_id)
 
         self.assertEqual(event.event_type, "odps.deleted")
@@ -441,6 +445,7 @@ class ODPSEventPayloadsIntegrationTest(TestCase):
 
         # Verify event was published
         from hub.apps.core.events.models import Event
+
         event = Event.objects.get(event_id=event_id)
 
         self.assertEqual(event.event_type, "odps.normalized")
@@ -467,6 +472,7 @@ class ODPSEventPayloadsIntegrationTest(TestCase):
 
         # Verify event was published
         from hub.apps.core.events.models import Event
+
         event = Event.objects.get(event_id=event_id)
 
         self.assertEqual(event.event_type, "odps.linked")
@@ -492,6 +498,7 @@ class ODPSEventPayloadsIntegrationTest(TestCase):
 
         # Verify event was published
         from hub.apps.core.events.models import Event
+
         event = Event.objects.get(event_id=event_id)
 
         self.assertEqual(event.event_type, "odps.unlinked")
@@ -519,6 +526,7 @@ class ODPSEventPayloadsIntegrationTest(TestCase):
 
         # Verify event was published
         from hub.apps.core.events.models import Event
+
         event = Event.objects.get(event_id=event_id)
 
         self.assertEqual(event.event_type, "odps.export.started")
@@ -549,6 +557,7 @@ class ODPSEventPayloadsIntegrationTest(TestCase):
 
         # Verify event was published
         from hub.apps.core.events.models import Event
+
         event = Event.objects.get(event_id=event_id)
 
         self.assertEqual(event.event_type, "odps.export.completed")
@@ -578,6 +587,7 @@ class ODPSEventPayloadsIntegrationTest(TestCase):
 
         # Verify event was published
         from hub.apps.core.events.models import Event
+
         event = Event.objects.get(event_id=event_id)
 
         self.assertEqual(event.event_type, "odps.export.failed")
@@ -678,9 +688,7 @@ class ODPSEventPayloadsIntegrationTest(TestCase):
             )
 
             # Validate event data specifically
-            is_data_valid, data_error = validate_event_data(
-                test_case["event_type"], event["data"]
-            )
+            is_data_valid, data_error = validate_event_data(test_case["event_type"], event["data"])
             self.assertTrue(
                 is_data_valid,
                 f"Event data validation failed for {test_case['event_type']}: {data_error}",
@@ -693,4 +701,3 @@ class ODPSEventPayloadsIntegrationTest(TestCase):
             self.assertIn("timestamp", event)
             self.assertIn("source", event)
             self.assertIn("data", event)
-

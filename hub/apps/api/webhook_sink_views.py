@@ -58,9 +58,9 @@ from rest_framework.decorators import (
 )
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
 
 from hub.apps.api.e2e_gating import is_e2e_environment, verify_e2e_token
-from rest_framework.response import Response
 
 logger = logging.getLogger(__name__)
 
@@ -117,10 +117,10 @@ def _verify_read_token(request: Any) -> bool:
 @extend_schema(exclude=True, tags=["API"])
 @api_view(["POST", "GET", "DELETE"])
 @authentication_classes([])  # The sink mimics an external webhook receiver:
-                              # do NOT try to authenticate the inbound token,
-                              # since real outbound webhook deliveries don't
-                              # carry a hub Bearer credential. The read path
-                              # is gated by ``?token=`` against E2E_TEST_SECRET.
+# do NOT try to authenticate the inbound token,
+# since real outbound webhook deliveries don't
+# carry a hub Bearer credential. The read path
+# is gated by ``?token=`` against E2E_TEST_SECRET.
 @permission_classes([AllowAny])
 def webhook_sink(request, sink_id: str):
     """E2E webhook sink — record / read / clear inbound deliveries.

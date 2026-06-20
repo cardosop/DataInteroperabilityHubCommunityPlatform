@@ -8,10 +8,11 @@ Comprehensive tests for file business rules validation following engineering bes
 - Follow DRY, SOLID, and clean code principles
 """
 
+import uuid
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from hub.apps.core.business_rules.base import RuleExecutionContext
 from hub.apps.core.business_rules.registry import get_registry
 from hub.apps.files.business_rules import (
     FilesBusinessRules,
@@ -21,7 +22,6 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.files.tests.test_base import FilesTestBase
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import UserStatus
-import uuid
 
 User = get_user_model()
 
@@ -177,7 +177,9 @@ class FileSizeValidationTest(FileUploadValidationTest):
     def test_validate_file_size_valid_browser(self):
         """Test file size validation for valid browser upload"""
         result = self.rules._validate_file_size(
-            file_size=50 * 1024 * 1024, upload_method="browser", tenant=self.tenant  # 50MB
+            file_size=50 * 1024 * 1024,
+            upload_method="browser",
+            tenant=self.tenant,  # 50MB
         )
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
@@ -186,7 +188,9 @@ class FileSizeValidationTest(FileUploadValidationTest):
     def test_validate_file_size_valid_sdk(self):
         """Test file size validation for valid SDK upload"""
         result = self.rules._validate_file_size(
-            file_size=2 * 1024 * 1024 * 1024, upload_method="sdk", tenant=self.tenant  # 2GB
+            file_size=2 * 1024 * 1024 * 1024,
+            upload_method="sdk",
+            tenant=self.tenant,  # 2GB
         )
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
@@ -258,7 +262,8 @@ class FileSizeValidationTest(FileUploadValidationTest):
             status=FileStatus.ACTIVE,
         )
         result = self.rules._validate_tenant_quota(
-            file_size=int(quota_limit * 0.1), tenant=self.tenant  # Try to add 10% more
+            file_size=int(quota_limit * 0.1),
+            tenant=self.tenant,  # Try to add 10% more
         )
         # Quota at 95% + 10% more must trigger governance validation
         self.assertIn("governance_service_validation", result.details)
@@ -266,8 +271,7 @@ class FileSizeValidationTest(FileUploadValidationTest):
         if validation_status == "passed":
             self.assertTrue(result.is_valid)
         elif validation_status == "failed":
-            self.assertFalse(result.is_valid,
-                "Quota-exceeding validation must be invalid")
+            self.assertFalse(result.is_valid, "Quota-exceeding validation must be invalid")
             self.assertTrue(len(result.errors) > 0 or len(result.warnings) > 0)
         else:
             self.fail(f"Unexpected governance validation status: {validation_status}")
@@ -394,16 +398,16 @@ class FileContentValidationTest(FileUploadValidationTest):
             tenant=self.tenant,
         )
         # Valid CSV content must be valid with zero errors
-        self.assertTrue(result.is_valid,
-            "Valid CSV content must be valid")
-        self.assertEqual(len(result.errors), 0,
-            "Valid CSV content must have zero errors")
+        self.assertTrue(result.is_valid, "Valid CSV content must be valid")
+        self.assertEqual(len(result.errors), 0, "Valid CSV content must have zero errors")
 
     def test_validate_file_content_missing(self):
         """Test file content validation with missing content"""
         # Use type: ignore to allow None for testing
         result = self.rules._validate_file_content(
-            file_content=None, filename="data.csv", content_type="text/csv"  # type: ignore[misc]  # test: edge-case type exercise
+            file_content=None,
+            filename="data.csv",
+            content_type="text/csv",  # type: ignore[misc]  # test: edge-case type exercise
         )
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -421,8 +425,14 @@ class FileContentValidationTest(FileUploadValidationTest):
         self.assertTrue(result.is_valid)
         self.assertGreater(len(result.warnings), 0)
 
-    def test_validate_file_content_compliance_scan_unavailable(self):
-        """Test file content validation when compliance service unavailable"""
+    def test_validate_file_content_compliance_check_invocation(self):
+        """Test file content validation invokes compliance checks.
+
+        Note: does not simulate compliance-service unavailability; the method
+        validates that content passes basic structural checks under normal
+        conditions. Separate fault-injection tests should cover the unavailable
+        path with a controlled compliance-service stub.
+        """
         csv_content = b"name,age\nJohn,30"
         result = self.rules._validate_file_content(
             file_content=csv_content,
@@ -550,9 +560,10 @@ class FilesBusinessRulesAccessValidationTest(FilesTestBase):
     def test_validate_file_read_access_same_tenant(self):
         """Test read access validation for same-tenant user"""
         result = self.rules.validate_file_read_access(self.file, user=self.user)
-        # Same tenant should allow access (ABAC may deny, but tenant isolation passes)
+        # Same-tenant access should be valid (tenant isolation passes; ABAC
+        # may deny by policy but the structural check itself is sound).
+        self.assertTrue(result.is_valid)
         self.assertTrue(result.details["tenant_isolation_valid"])
-        # Access may be denied by ABAC if no policy exists, but tenant check passes
         self.assertIn("tenant_isolation", result.details)
         self.assertIn("abac_policy_checked", result.details)
         self.assertTrue(result.details["abac_policy_checked"])
@@ -581,7 +592,7 @@ class FilesBusinessRulesAccessValidationTest(FilesTestBase):
     def test_validate_file_write_access_same_tenant(self):
         """Test write access validation for same-tenant user"""
         result = self.rules.validate_file_write_access(self.file, user=self.user)
-        # Same tenant should allow access (ABAC may deny, but tenant isolation passes)
+        self.assertTrue(result.is_valid)
         self.assertTrue(result.details["tenant_isolation_valid"])
         self.assertIn("abac_policy_checked", result.details)
         self.assertTrue(result.details["abac_policy_checked"])
@@ -612,7 +623,7 @@ class FilesBusinessRulesAccessValidationTest(FilesTestBase):
         from hub.apps.governance.models import AccessRequest, AccessRequestStatus
 
         # Create approved access request
-        access_request = AccessRequest.objects.create(
+        AccessRequest.objects.create(
             tenant=self.tenant,
             requested_by=self.user,
             file=self.file,
@@ -624,10 +635,9 @@ class FilesBusinessRulesAccessValidationTest(FilesTestBase):
         )
 
         result = self.rules.validate_file_read_access(self.file, user=self.user)
-        # Should have access via approved request
+        self.assertTrue(result.is_valid)
         self.assertIn("access_request_checked", result.details)
         self.assertTrue(result.details["access_request_checked"])
-        # Access may still be denied if ABAC denies, but access request is checked
         self.assertIn("access_request", result.details)
         self.assertTrue(result.details["access_request"]["has_approved_request"])
 
@@ -638,7 +648,7 @@ class FilesBusinessRulesAccessValidationTest(FilesTestBase):
         from hub.apps.governance.models import AccessRequest, AccessRequestStatus
 
         # Create approved access request
-        access_request = AccessRequest.objects.create(
+        AccessRequest.objects.create(
             tenant=self.tenant,
             requested_by=self.user,
             file=self.file,
@@ -650,7 +660,7 @@ class FilesBusinessRulesAccessValidationTest(FilesTestBase):
         )
 
         result = self.rules.validate_file_write_access(self.file, user=self.user)
-        # Should have access via approved request
+        self.assertTrue(result.is_valid)
         self.assertIn("access_request_checked", result.details)
         self.assertTrue(result.details["access_request_checked"])
         self.assertIn("access_request", result.details)
@@ -665,7 +675,7 @@ class FilesBusinessRulesAccessValidationTest(FilesTestBase):
         from hub.apps.governance.models import AccessRequest, AccessRequestStatus
 
         # Create expired access request
-        access_request = AccessRequest.objects.create(
+        AccessRequest.objects.create(
             tenant=self.tenant,
             requested_by=self.user,
             file=self.file,
@@ -756,7 +766,6 @@ class FilesBusinessRulesAccessValidationTest(FilesTestBase):
 
     def test_validate_abac_access_integration(self):
         """Test ABAC access validation integration"""
-        from hub.apps.governance.abac import ABACEngine
 
         result = self.rules._validate_abac_access(self.file, self.user, "READ")
         # Should return PolicyEvaluationResult
@@ -789,7 +798,7 @@ class FilesBusinessRulesAccessValidationTest(FilesTestBase):
         """Test access request validation with pending request"""
         from hub.apps.governance.models import AccessRequest, AccessRequestStatus
 
-        access_request = AccessRequest.objects.create(
+        AccessRequest.objects.create(
             tenant=self.tenant,
             requested_by=self.user,
             file=self.file,
@@ -810,7 +819,7 @@ class FilesBusinessRulesAccessValidationTest(FilesTestBase):
         from hub.apps.governance.models import AccessRequest, AccessRequestStatus
 
         # Create READ access request but check for WRITE
-        access_request = AccessRequest.objects.create(
+        AccessRequest.objects.create(
             tenant=self.tenant,
             requested_by=self.user,
             file=self.file,
@@ -851,14 +860,14 @@ class FilesBusinessRulesAccessValidationIntegrationTest(FilesTestBase):
         from hub.apps.governance.models import AccessRequestStatus
         from hub.apps.governance.services import GovernanceService
 
-        service = GovernanceService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        GovernanceService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         # Create access request using service
         # Note: The service uses workflow orchestration which may require additional setup
         # For this test, we'll create access request directly and test validation
         from hub.apps.governance.models import AccessRequest
 
-        access_request = AccessRequest.objects.create(
+        AccessRequest.objects.create(
             tenant=self.tenant,
             requested_by=self.user,
             file=self.file,
@@ -882,7 +891,7 @@ class FilesBusinessRulesAccessValidationIntegrationTest(FilesTestBase):
         from hub.apps.governance.models import AccessPolicy
 
         # Create ABAC policy
-        policy = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Integration Test Policy",
             description="Test policy for integration",
@@ -1013,8 +1022,7 @@ class FilesBusinessRulesStorageQuotaValidationTest(FilesTestBase):
         # and verify the logic works correctly
         result = self.rules._validate_file_count_quota(tenant=self.tenant, file=file)
         # Under normal conditions (1 file, default 10000 limit), must be valid
-        self.assertTrue(result.is_valid,
-            "Single file must be under count quota limit")
+        self.assertTrue(result.is_valid, "Single file must be under count quota limit")
         self.assertIn("current_file_count", result.details)
         self.assertIn("projected_file_count", result.details)
 
@@ -1024,8 +1032,7 @@ class FilesBusinessRulesStorageQuotaValidationTest(FilesTestBase):
         # For testing, we'll verify the warning logic works
         result = self.rules._validate_file_count_quota(tenant=self.tenant, file=None)
         # Must be valid with usage_percentage present
-        self.assertTrue(result.is_valid,
-            "File count quota check must be valid with 0-1 files")
+        self.assertTrue(result.is_valid, "File count quota check must be valid with 0-1 files")
         self.assertIn("usage_percentage", result.details)
         self.assertIn("file_count_quota_valid", result.details)
         if result.details.get("file_count_warning", False):
@@ -1065,7 +1072,6 @@ class FilesBusinessRulesStorageQuotaValidationTest(FilesTestBase):
 
     def test_validate_storage_quota_integration_with_governance_service(self):
         """Test storage quota validation integration with GovernanceService"""
-        from hub.apps.governance.services import GovernanceService
 
         file_size = 1024 * 1024 * 100  # 100 MB
         result = self.rules._validate_storage_quota(file_size=file_size, tenant=self.tenant)
@@ -1087,9 +1093,16 @@ class FilesBusinessRulesStorageQuotaValidationTest(FilesTestBase):
         expected_gb = current_usage_bytes / (1024**3)
         self.assertAlmostEqual(current_usage_gb, expected_gb, places=2)
 
-    def test_validate_storage_quota_governance_service_error_handling(self):
-        """Test storage quota validation handles GovernanceService errors gracefully"""
-        # This test verifies that if GovernanceService fails, we still get useful information
+    def test_validate_storage_quota_governance_service_details_populated(self):
+        """Test storage quota validation includes governance-service metadata.
+
+        Under normal conditions the governance service returns a status and
+        the validation result carries governance_service_validation in its
+        details. This test does NOT inject a fault — it validates the
+        details-envelope contract. Fault-injection coverage for governance-
+        service failures belongs in a dedicated error-path test.
+        """
+        # Verify governance service metadata is present in the result
         file_size = 1024 * 1024 * 100  # 100 MB
         result = self.rules._validate_storage_quota(file_size=file_size, tenant=self.tenant)
 

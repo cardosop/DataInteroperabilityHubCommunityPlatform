@@ -19,7 +19,10 @@ Schedule (cron):
   0 3 * * *  python manage.py enforce_retention --execute
   (daily at 03:00 UTC)
 """
+
 from __future__ import annotations
+
+import contextlib
 import logging
 import sys
 import time
@@ -98,32 +101,33 @@ except Exception:
 
 def _emit_metric(category: str, action: str, count: int = 1) -> None:
     if _retention_counter is not None:
-        try:
+        with contextlib.suppress(Exception):
             _retention_counter.labels(category=category, action=action).inc(count)
-        except Exception:
-            pass
 
 
 def _emit_last_run_timestamp() -> None:
     if _retention_last_run is not None:
-        try:
+        with contextlib.suppress(Exception):
             _retention_last_run.set(time.time())
-        except Exception:
-            pass
 
 
 class Command(BaseCommand):
     help = "Enforce data retention schedule (281.B.4.6)"
 
     def add_arguments(self, parser):
-        parser.add_argument("--dry-run", action="store_true", default=True,
-                            help="Report what would be deleted (default)")
-        parser.add_argument("--execute", action="store_true", default=False,
-                            help="Actually delete expired data")
-        parser.add_argument("--category", default=None,
-                            help="Restrict to single category")
-        parser.add_argument("--older-than", type=int, default=None,
-                            help="Override retention period (days)")
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            default=True,
+            help="Report what would be deleted (default)",
+        )
+        parser.add_argument(
+            "--execute", action="store_true", default=False, help="Actually delete expired data"
+        )
+        parser.add_argument("--category", default=None, help="Restrict to single category")
+        parser.add_argument(
+            "--older-than", type=int, default=None, help="Override retention period (days)"
+        )
 
     def handle(self, **options):
         dry_run = not options["execute"]
@@ -142,8 +146,7 @@ class Command(BaseCommand):
 
         if category_filter and category_filter not in RETENTION_PERIODS:
             self.stderr.write(
-                f"Unknown category: {category_filter}. "
-                f"Valid: {sorted(RETENTION_PERIODS.keys())}"
+                f"Unknown category: {category_filter}. Valid: {sorted(RETENTION_PERIODS.keys())}"
             )
             sys.exit(1)
 
@@ -156,6 +159,7 @@ class Command(BaseCommand):
 
             # Build queryset dynamically (Django model import)
             from django.apps import apps
+
             app_label, model_name = cfg["model"].split(".")
             model = apps.get_model(app_label, model_name)
 
@@ -166,7 +170,9 @@ class Command(BaseCommand):
             total_overdue += count
 
             if count == 0:
-                self.stdout.write(f"  {cfg['description']}: 0 records past {retention_days}d retention")
+                self.stdout.write(
+                    f"  {cfg['description']}: 0 records past {retention_days}d retention"
+                )
                 continue
 
             if dry_run:

@@ -6,10 +6,11 @@ Snowflake/BigQuery/Databricks/Athena. Each warehouse can override
 with a native loader (Snowpipe, BQ load jobs, COPY INTO, CTAS)
 behind the same WriteAdapter interface.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class WriteAdapter(ABC):
@@ -24,11 +25,11 @@ class WriteAdapter(ABC):
     def write_rows(
         self,
         table_name: str,
-        rows: List[Dict[str, Any]],
-        schema: Optional[List[Dict[str, str]]] = None,
+        rows: list[dict[str, Any]],
+        schema: list[dict[str, str]] | None = None,
         *,
         mode: str = "append",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Write rows to the target warehouse table.
 
         Returns a dict with ``{rows_written, status, load_id}``.
@@ -38,7 +39,7 @@ class WriteAdapter(ABC):
         """
 
     @abstractmethod
-    def create_table(self, table_name: str, schema: List[Dict[str, str]]) -> None:
+    def create_table(self, table_name: str, schema: list[dict[str, str]]) -> None:
         """Create the target table with the given schema."""
 
 
@@ -56,11 +57,11 @@ class DltAdapter(WriteAdapter):
     def write_rows(
         self,
         table_name: str,
-        rows: List[Dict[str, Any]],
-        schema: Optional[List[Dict[str, str]]] = None,
+        rows: list[dict[str, Any]],
+        schema: list[dict[str, str]] | None = None,
         *,
         mode: str = "append",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Delegate to dlt.pipeline().run()."""
         try:
             import dlt
@@ -78,10 +79,14 @@ class DltAdapter(WriteAdapter):
                 "load_id": getattr(info, "load_id", ""),
             }
         except ImportError:
-            return {"rows_written": 0, "status": "error", "load_id": "", "error": "dlt not installed"}
+            return {
+                "rows_written": 0,
+                "status": "error",
+                "load_id": "",
+                "error": "dlt not installed",
+            }
         except Exception as exc:
             return {"rows_written": 0, "status": "error", "load_id": "", "error": str(exc)}
 
-    def create_table(self, table_name: str, schema: List[Dict[str, str]]) -> None:
+    def create_table(self, table_name: str, schema: list[dict[str, str]]) -> None:
         """dlt handles table creation during first write."""
-        pass

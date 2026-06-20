@@ -47,7 +47,10 @@ if LOCUST_AVAILABLE:
         for i in range(depth):
             if i == depth - 1:
                 # Leaf node - no more refs
-                definitions[f"level_{i}"] = {"type": "string", "description": f"Leaf node at depth {i}"}
+                definitions[f"level_{i}"] = {
+                    "type": "string",
+                    "description": f"Leaf node at depth {i}",
+                }
             else:
                 # Reference to next level
                 definitions[f"level_{i}"] = {"$ref": f"#/definitions/level_{i + 1}"}
@@ -74,7 +77,7 @@ if LOCUST_AVAILABLE:
                     }
                 },
             },
-            "definitions": definitions  # Definitions must be at root level of ODPS document
+            "definitions": definitions,  # Definitions must be at root level of ODPS document
         }
 
         return base_doc
@@ -248,7 +251,7 @@ if LOCUST_AVAILABLE:
                         response.failure(f"Unexpected status: {response.status_code}")
             except Exception as e:
                 # If document creation fails (e.g., too large), mark as failure
-                response.failure(f"Document creation failed: {str(e)}")
+                response.failure(f"Document creation failed: {e!s}")
 
         @task(2)
         def test_concurrent_ref_resolution(self):

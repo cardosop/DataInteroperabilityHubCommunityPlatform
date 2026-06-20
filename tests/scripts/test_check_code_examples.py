@@ -7,12 +7,10 @@ and validates their accuracy.
 """
 
 import json
-import pytest
-import tempfile
-import ast
-from pathlib import Path
-from typing import Dict, List, Any
 import sys
+from pathlib import Path
+
+import pytest
 
 # Add scripts directory to path
 project_root = Path(__file__).parent.parent.parent
@@ -20,8 +18,6 @@ sys.path.insert(0, str(project_root / "scripts"))
 
 from check_code_examples import (
     CodeExampleChecker,
-    CodeExample,
-    ExampleValidationResult,
 )
 
 
@@ -111,24 +107,21 @@ response = requests.get(url  # Missing closing parenthesis
         inventory_file = tmp_path / "endpoint-inventory.json"
         inventory_data = {
             "inventory": {
-                "summary": {
-                    "total_endpoints": 2,
-                    "total_services": 1
-                },
+                "summary": {"total_endpoints": 2, "total_services": 1},
                 "endpoints": [
                     {
                         "type": "path",
                         "full_path": "/api/v1/contracts/",
                         "methods": ["GET", "POST"],
-                        "service": "contracts"
+                        "service": "contracts",
                     },
                     {
                         "type": "path",
                         "full_path": "/api/v1/assets/",
                         "methods": ["GET"],
-                        "service": "assets"
-                    }
-                ]
+                        "service": "assets",
+                    },
+                ],
             }
         }
         inventory_file.write_text(json.dumps(inventory_data, indent=2))
@@ -140,7 +133,7 @@ response = requests.get(url  # Missing closing parenthesis
         checker = CodeExampleChecker(
             docs_dir=str(docs_dir),
             examples_dir=str(examples_dir),
-            endpoint_inventory_file=endpoint_inventory
+            endpoint_inventory_file=endpoint_inventory,
         )
 
         assert checker.docs_dir == Path(docs_dir)
@@ -154,21 +147,21 @@ response = requests.get(url  # Missing closing parenthesis
         checker = CodeExampleChecker(
             docs_dir=str(docs_dir),
             examples_dir=str(examples_dir),
-            endpoint_inventory_file=endpoint_inventory
+            endpoint_inventory_file=endpoint_inventory,
         )
 
         examples = checker.find_code_examples()
 
         assert len(examples) > 0
-        markdown_examples = [e for e in examples if e.source_file.endswith('.md')]
+        markdown_examples = [e for e in examples if e.source_file.endswith(".md")]
         assert len(markdown_examples) >= 3  # At least Python, Bash, HTTP examples
 
         # Check Python example found
-        python_examples = [e for e in markdown_examples if e.language == 'python']
+        python_examples = [e for e in markdown_examples if e.language == "python"]
         assert len(python_examples) > 0
 
         # Check Bash example found
-        bash_examples = [e for e in markdown_examples if e.language == 'bash']
+        bash_examples = [e for e in markdown_examples if e.language == "bash"]
         assert len(bash_examples) > 0
 
     def test_find_code_examples_in_python_files(self, temp_docs_dir, endpoint_inventory):
@@ -177,12 +170,12 @@ response = requests.get(url  # Missing closing parenthesis
         checker = CodeExampleChecker(
             docs_dir=str(docs_dir),
             examples_dir=str(examples_dir),
-            endpoint_inventory_file=endpoint_inventory
+            endpoint_inventory_file=endpoint_inventory,
         )
 
         examples = checker.find_code_examples()
 
-        python_file_examples = [e for e in examples if e.source_file.endswith('.py')]
+        python_file_examples = [e for e in examples if e.source_file.endswith(".py")]
         assert len(python_file_examples) >= 3  # valid_example, invalid_example, syntax_error
 
     def test_extract_endpoints_from_examples(self, temp_docs_dir, endpoint_inventory):
@@ -191,7 +184,7 @@ response = requests.get(url  # Missing closing parenthesis
         checker = CodeExampleChecker(
             docs_dir=str(docs_dir),
             examples_dir=str(examples_dir),
-            endpoint_inventory_file=endpoint_inventory
+            endpoint_inventory_file=endpoint_inventory,
         )
 
         examples = checker.find_code_examples()
@@ -199,7 +192,7 @@ response = requests.get(url  # Missing closing parenthesis
 
         assert len(endpoints) > 0
         # Should find /api/v1/contracts/ multiple times
-        contracts_endpoints = [e for e in endpoints if '/api/v1/contracts/' in e['endpoint']]
+        contracts_endpoints = [e for e in endpoints if "/api/v1/contracts/" in e["endpoint"]]
         assert len(contracts_endpoints) > 0
 
     def test_validate_python_syntax(self, temp_docs_dir, endpoint_inventory):
@@ -208,14 +201,14 @@ response = requests.get(url  # Missing closing parenthesis
         checker = CodeExampleChecker(
             docs_dir=str(docs_dir),
             examples_dir=str(examples_dir),
-            endpoint_inventory_file=endpoint_inventory
+            endpoint_inventory_file=endpoint_inventory,
         )
 
         examples = checker.find_code_examples()
-        python_examples = [e for e in examples if e.language == 'python']
+        python_examples = [e for e in examples if e.language == "python"]
 
-        valid_example = [e for e in python_examples if 'valid_example' in e.source_file][0]
-        invalid_example = [e for e in python_examples if 'syntax_error' in e.source_file][0]
+        valid_example = [e for e in python_examples if "valid_example" in e.source_file][0]
+        invalid_example = [e for e in python_examples if "syntax_error" in e.source_file][0]
 
         # Valid Python should pass
         result_valid = checker.validate_python_syntax(valid_example)
@@ -224,7 +217,10 @@ response = requests.get(url  # Missing closing parenthesis
         # Invalid Python should fail
         result_invalid = checker.validate_python_syntax(invalid_example)
         assert result_invalid.is_valid is False
-        assert 'syntax' in result_invalid.errors[0].lower() or 'invalid' in result_invalid.errors[0].lower()
+        assert (
+            "syntax" in result_invalid.errors[0].lower()
+            or "invalid" in result_invalid.errors[0].lower()
+        )
 
     def test_validate_endpoint_exists(self, temp_docs_dir, endpoint_inventory):
         """Test endpoint existence validation"""
@@ -232,22 +228,27 @@ response = requests.get(url  # Missing closing parenthesis
         checker = CodeExampleChecker(
             docs_dir=str(docs_dir),
             examples_dir=str(examples_dir),
-            endpoint_inventory_file=endpoint_inventory
+            endpoint_inventory_file=endpoint_inventory,
         )
 
         examples = checker.find_code_examples()
         endpoints = checker.extract_endpoints_from_examples(examples)
 
         # Valid endpoint
-        valid_endpoints = [e for e in endpoints if '/api/v1/contracts/' in e['endpoint']]
+        valid_endpoints = [e for e in endpoints if "/api/v1/contracts/" in e["endpoint"]]
         if valid_endpoints:
-            result_valid = checker.validate_endpoint_exists(valid_endpoints[0]['endpoint'])
+            result_valid = checker.validate_endpoint_exists(valid_endpoints[0]["endpoint"])
             assert result_valid.is_valid is True
 
         # Invalid endpoint
-        invalid_endpoints = [e for e in endpoints if '/api/v1/nonexistent/' in e['endpoint'] or '/api/v1/invalid-endpoint/' in e['endpoint']]
+        invalid_endpoints = [
+            e
+            for e in endpoints
+            if "/api/v1/nonexistent/" in e["endpoint"]
+            or "/api/v1/invalid-endpoint/" in e["endpoint"]
+        ]
         if invalid_endpoints:
-            result_invalid = checker.validate_endpoint_exists(invalid_endpoints[0]['endpoint'])
+            result_invalid = checker.validate_endpoint_exists(invalid_endpoints[0]["endpoint"])
             assert result_invalid.is_valid is False
 
     def test_is_our_api_endpoint(self, temp_docs_dir, endpoint_inventory):
@@ -256,7 +257,7 @@ response = requests.get(url  # Missing closing parenthesis
         checker = CodeExampleChecker(
             docs_dir=str(docs_dir),
             examples_dir=str(examples_dir),
-            endpoint_inventory_file=endpoint_inventory
+            endpoint_inventory_file=endpoint_inventory,
         )
 
         # Our API endpoints
@@ -273,18 +274,18 @@ response = requests.get(url  # Missing closing parenthesis
         checker = CodeExampleChecker(
             docs_dir=str(docs_dir),
             examples_dir=str(examples_dir),
-            endpoint_inventory_file=endpoint_inventory
+            endpoint_inventory_file=endpoint_inventory,
         )
 
         results = checker.validate_all_examples()
 
-        assert 'summary' in results
-        assert 'examples' in results
-        assert results['summary']['total_examples'] > 0
-        assert results['summary']['total_endpoints_found'] > 0
+        assert "summary" in results
+        assert "examples" in results
+        assert results["summary"]["total_examples"] > 0
+        assert results["summary"]["total_endpoints_found"] > 0
 
         # Should have validation results for each example
-        assert len(results['examples']) == results['summary']['total_examples']
+        assert len(results["examples"]) == results["summary"]["total_examples"]
 
     def test_generate_report(self, temp_docs_dir, endpoint_inventory, tmp_path):
         """Test report generation"""
@@ -292,7 +293,7 @@ response = requests.get(url  # Missing closing parenthesis
         checker = CodeExampleChecker(
             docs_dir=str(docs_dir),
             examples_dir=str(examples_dir),
-            endpoint_inventory_file=endpoint_inventory
+            endpoint_inventory_file=endpoint_inventory,
         )
 
         results = checker.validate_all_examples()
@@ -301,8 +302,8 @@ response = requests.get(url  # Missing closing parenthesis
 
         assert report_file.exists()
         report_data = json.loads(report_file.read_text())
-        assert 'summary' in report_data
-        assert 'examples' in report_data
+        assert "summary" in report_data
+        assert "examples" in report_data
 
     def test_empty_directories(self, tmp_path, endpoint_inventory):
         """Test behavior with empty directories"""
@@ -314,14 +315,14 @@ response = requests.get(url  # Missing closing parenthesis
         checker = CodeExampleChecker(
             docs_dir=str(empty_docs),
             examples_dir=str(empty_examples),
-            endpoint_inventory_file=endpoint_inventory
+            endpoint_inventory_file=endpoint_inventory,
         )
 
         examples = checker.find_code_examples()
         assert len(examples) == 0
 
         results = checker.validate_all_examples()
-        assert results['summary']['total_examples'] == 0
+        assert results["summary"]["total_examples"] == 0
 
     def test_missing_inventory_file(self, temp_docs_dir):
         """Test behavior with missing inventory file"""
@@ -331,7 +332,7 @@ response = requests.get(url  # Missing closing parenthesis
             CodeExampleChecker(
                 docs_dir=str(docs_dir),
                 examples_dir=str(examples_dir),
-                endpoint_inventory_file="nonexistent.json"
+                endpoint_inventory_file="nonexistent.json",
             )
 
     def test_endpoint_normalization(self, temp_docs_dir, endpoint_inventory):
@@ -340,7 +341,7 @@ response = requests.get(url  # Missing closing parenthesis
         checker = CodeExampleChecker(
             docs_dir=str(docs_dir),
             examples_dir=str(examples_dir),
-            endpoint_inventory_file=endpoint_inventory
+            endpoint_inventory_file=endpoint_inventory,
         )
 
         # Test various endpoint formats
@@ -355,4 +356,3 @@ response = requests.get(url  # Missing closing parenthesis
         for input_endpoint, expected_normalized in test_cases:
             normalized = checker.normalize_endpoint(input_endpoint)
             assert normalized == expected_normalized or normalized.startswith("/api/v1/")
-

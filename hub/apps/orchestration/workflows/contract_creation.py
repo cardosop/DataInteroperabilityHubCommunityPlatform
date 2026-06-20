@@ -4,22 +4,26 @@ Contract Creation Workflow
 Orchestrates the contract creation process with proper error handling,
 retry logic, and compensation.
 """
-import structlog
-from typing import Dict, Any, Optional
-from django.db import transaction
-from django.utils import timezone
 
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
-from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
+from typing import Any
+
+import structlog
+from django.db import transaction
+
+from hub.apps.audit.utils import create_audit_event
 from hub.apps.contracts.business_rules import ContractsBusinessRules
-from hub.apps.contracts.models import Contract, ContractStatus, NormalizationStatus, OriginalSpecType
+from hub.apps.contracts.models import (
+    Contract,
+    ContractStatus,
+    NormalizationStatus,
+    OriginalSpecType,
+)
 from hub.apps.contracts.normalization import normalize_contract, validate_hubcontract_schema
+from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
+from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.search.indexing import SearchIndexer
 from hub.apps.semantic.utils import map_contract_to_semantic
-from hub.apps.audit.utils import create_audit_event
-from hub.apps.notifications.tasks import send_email_async
-from hub.apps.notifications.models import EmailType
 
 logger = structlog.get_logger(__name__)
 
@@ -56,7 +60,7 @@ class ContractCreationWorkflow:
                 {
                     "name": "validate_input",
                     "type": "task",
-                    "task": "contract_creation.validate_input"
+                    "task": "contract_creation.validate_input",
                 },
                 {
                     "name": "normalize_contract",
@@ -64,8 +68,8 @@ class ContractCreationWorkflow:
                     "task": "contract_creation.normalize_contract",
                     "compensation": {
                         "type": "task",
-                        "task": "contract_creation.rollback_normalization"
-                    }
+                        "task": "contract_creation.rollback_normalization",
+                    },
                 },
                 {
                     "name": "validate_hubcontract",
@@ -73,8 +77,8 @@ class ContractCreationWorkflow:
                     "task": "contract_creation.validate_hubcontract",
                     "compensation": {
                         "type": "task",
-                        "task": "contract_creation.rollback_validation"
-                    }
+                        "task": "contract_creation.rollback_validation",
+                    },
                 },
                 {
                     "name": "create_contract_record",
@@ -82,8 +86,8 @@ class ContractCreationWorkflow:
                     "task": "contract_creation.create_contract_record",
                     "compensation": {
                         "type": "task",
-                        "task": "contract_creation.rollback_contract_record"
-                    }
+                        "task": "contract_creation.rollback_contract_record",
+                    },
                 },
                 {
                     "name": "link_odps",
@@ -91,8 +95,8 @@ class ContractCreationWorkflow:
                     "task": "contract_creation.link_odps",
                     "compensation": {
                         "type": "task",
-                        "task": "contract_creation.rollback_odps_linking"
-                    }
+                        "task": "contract_creation.rollback_odps_linking",
+                    },
                 },
                 {
                     "name": "link_data_file",
@@ -100,43 +104,38 @@ class ContractCreationWorkflow:
                     "task": "contract_creation.link_data_file",
                     "compensation": {
                         "type": "task",
-                        "task": "contract_creation.rollback_link_data_file"
-                    }
+                        "task": "contract_creation.rollback_link_data_file",
+                    },
                 },
                 {
                     "name": "index_for_search",
                     "type": "task",
                     "task": "contract_creation.index_for_search",
-                    "compensation": {
-                        "type": "task",
-                        "task": "contract_creation.rollback_indexing"
-                    }
+                    "compensation": {"type": "task", "task": "contract_creation.rollback_indexing"},
                 },
                 {
                     "name": "generate_semantic_mapping",
                     "type": "task",
-                    "task": "contract_creation.generate_semantic_mapping"
+                    "task": "contract_creation.generate_semantic_mapping",
                 },
                 {
                     "name": "send_notifications",
                     "type": "task",
-                    "task": "contract_creation.send_notifications"
+                    "task": "contract_creation.send_notifications",
                 },
                 {
                     "name": "audit_logging",
                     "type": "task",
-                    "task": "contract_creation.audit_logging"
-                }
+                    "task": "contract_creation.audit_logging",
+                },
             ],
-            "compensation": {
-                "enabled": True
-            }
+            "compensation": {"enabled": True},
         }
 
         registry.register_workflow(
             workflow_name=cls.WORKFLOW_NAME,
             dsl_json=workflow_dsl,
-            description="Orchestrates contract creation with validation, normalization, indexing, and notifications"
+            description="Orchestrates contract creation with validation, normalization, indexing, and notifications",
         )
 
     @classmethod
@@ -149,10 +148,16 @@ class ContractCreationWorkflow:
         """
         engine.register_task("contract_creation.validate_input", cls._validate_input_task)
         engine.register_task("contract_creation.normalize_contract", cls._normalize_contract_task)
-        engine.register_task("contract_creation.validate_hubcontract", cls._validate_hubcontract_task)
-        engine.register_task("contract_creation.create_contract_record", cls._create_contract_record_task)
+        engine.register_task(
+            "contract_creation.validate_hubcontract", cls._validate_hubcontract_task
+        )
+        engine.register_task(
+            "contract_creation.create_contract_record", cls._create_contract_record_task
+        )
         engine.register_task("contract_creation.index_for_search", cls._index_for_search_task)
-        engine.register_task("contract_creation.generate_semantic_mapping", cls._generate_semantic_mapping_task)
+        engine.register_task(
+            "contract_creation.generate_semantic_mapping", cls._generate_semantic_mapping_task
+        )
         engine.register_task("contract_creation.send_notifications", cls._send_notifications_task)
         engine.register_task("contract_creation.audit_logging", cls._audit_logging_task)
 
@@ -161,15 +166,25 @@ class ContractCreationWorkflow:
         engine.register_task("contract_creation.link_data_file", cls._link_data_file_task)
 
         # Compensation tasks
-        engine.register_task("contract_creation.rollback_normalization", cls._rollback_normalization_task)
+        engine.register_task(
+            "contract_creation.rollback_normalization", cls._rollback_normalization_task
+        )
         engine.register_task("contract_creation.rollback_validation", cls._rollback_validation_task)
-        engine.register_task("contract_creation.rollback_contract_record", cls._rollback_contract_record_task)
-        engine.register_task("contract_creation.rollback_odps_linking", cls._rollback_odps_linking_task)
-        engine.register_task("contract_creation.rollback_link_data_file", cls._rollback_link_data_file_task)
+        engine.register_task(
+            "contract_creation.rollback_contract_record", cls._rollback_contract_record_task
+        )
+        engine.register_task(
+            "contract_creation.rollback_odps_linking", cls._rollback_odps_linking_task
+        )
+        engine.register_task(
+            "contract_creation.rollback_link_data_file", cls._rollback_link_data_file_task
+        )
         engine.register_task("contract_creation.rollback_indexing", cls._rollback_indexing_task)
 
     @staticmethod
-    def _validate_input_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _validate_input_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Validate input contract data.
 
@@ -201,7 +216,7 @@ class ContractCreationWorkflow:
         # Validate contract creation using ContractsBusinessRules
         contracts_rules = ContractsBusinessRules(
             tenant_id=str(tenant_id) if tenant_id else None,
-            user_id=str(user_id) if user_id else None
+            user_id=str(user_id) if user_id else None,
         )
 
         # Prepare contract data for validation
@@ -216,9 +231,7 @@ class ContractCreationWorkflow:
         contract_validation_result = contracts_rules.validate_contract_creation(contract_data)
         if not contract_validation_result.is_valid:
             error_messages = contract_validation_result.errors
-            raise ValueError(
-                f"Contract input validation failed: {'; '.join(error_messages)}"
-            )
+            raise ValueError(f"Contract input validation failed: {'; '.join(error_messages)}")
 
         # Log validation warnings if any
         if contract_validation_result.warnings:
@@ -233,7 +246,7 @@ class ContractCreationWorkflow:
             "Contract input validated",
             workflow_instance_id=str(instance.id),
             tenant_id=tenant_id,
-            format=original_format
+            format=original_format,
         )
 
         return {
@@ -241,11 +254,13 @@ class ContractCreationWorkflow:
             "original_raw": original_raw,
             "original_format": original_format,
             "tenant_id": tenant_id,
-            "user_id": user_id
+            "user_id": user_id,
         }
 
     @staticmethod
-    def _normalize_contract_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _normalize_contract_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Normalize contract (ODCS → HubContract).
 
@@ -262,29 +277,42 @@ class ContractCreationWorkflow:
         original_spec_type = input_data.get("original_spec_type")
 
         # Normalize contract
-        hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
-            raw_contract=original_raw,
-            format=original_format,
-            spec_type=original_spec_type
+        (
+            hub_contract,
+            detected_spec_type,
+            detected_spec_version,
+            norm_status,
+            norm_errors,
+            norm_warnings,
+        ) = normalize_contract(
+            raw_contract=original_raw, format=original_format, spec_type=original_spec_type
         )
 
         # Check for critical errors (parsing errors or any normalization failure)
         if norm_status == NormalizationStatus.NORMALIZATION_FAILED:
             if norm_errors:
                 parsing_errors = [
-                    e for e in norm_errors
-                    if any(keyword in e.lower() for keyword in [
-                        'parsing failed', 'jsondecodeerror', 'yamlerror',
-                        'failed to normalize contract'
-                    ])
+                    e
+                    for e in norm_errors
+                    if any(
+                        keyword in e.lower()
+                        for keyword in [
+                            "parsing failed",
+                            "jsondecodeerror",
+                            "yamlerror",
+                            "failed to normalize contract",
+                        ]
+                    )
                 ]
 
                 if parsing_errors:
-                    error_code = 'INVALID_SPEC_FORMAT'
+                    error_code = "INVALID_SPEC_FORMAT"
                     raise ValueError(f"{error_code}: {norm_errors[0]}")
                 else:
                     # Generic normalization failure
-                    raise ValueError(f"INVALID_SPEC_FORMAT: {norm_errors[0] if norm_errors else 'Contract normalization failed'}")
+                    raise ValueError(
+                        f"INVALID_SPEC_FORMAT: {norm_errors[0] if norm_errors else 'Contract normalization failed'}"
+                    )
             else:
                 # Normalization failed but no error messages (shouldn't happen, but handle gracefully)
                 raise ValueError("INVALID_SPEC_FORMAT: Contract normalization failed")
@@ -294,7 +322,7 @@ class ContractCreationWorkflow:
             workflow_instance_id=str(instance.id),
             spec_type=detected_spec_type,
             spec_version=detected_spec_version,
-            status=norm_status.value
+            status=norm_status.value,
         )
 
         return {
@@ -308,12 +336,14 @@ class ContractCreationWorkflow:
                 "hub_contract": hub_contract,  # Also store in state for subsequent steps
                 "detected_spec_type": detected_spec_type,
                 "detected_spec_version": detected_spec_version,
-                "normalization_status": norm_status.value
-            }
+                "normalization_status": norm_status.value,
+            },
         }
 
     @staticmethod
-    def _validate_hubcontract_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _validate_hubcontract_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Validate HubContract schema.
 
@@ -329,10 +359,7 @@ class ContractCreationWorkflow:
 
         if not hub_contract:
             # If normalization failed, skip validation
-            return {
-                "validation_skipped": True,
-                "reason": "No hub_contract to validate"
-            }
+            return {"validation_skipped": True, "reason": "No hub_contract to validate"}
 
         # Validate HubContract schema
         is_valid, validation_errors = validate_hubcontract_schema(hub_contract)
@@ -342,23 +369,18 @@ class ContractCreationWorkflow:
             return {
                 "validation_passed": False,
                 "validation_errors": validation_errors,
-                "normalization_status": NormalizationStatus.NORMALIZATION_FAILED.value
+                "normalization_status": NormalizationStatus.NORMALIZATION_FAILED.value,
             }
 
-        logger.info(
-            "HubContract validated",
-            workflow_instance_id=str(instance.id),
-            valid=True
-        )
+        logger.info("HubContract validated", workflow_instance_id=str(instance.id), valid=True)
 
-        return {
-            "validation_passed": True,
-            "validation_errors": []
-        }
+        return {"validation_passed": True, "validation_errors": []}
 
     @staticmethod
     @transaction.atomic
-    def _create_contract_record_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _create_contract_record_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create contract record in database.
 
@@ -370,8 +392,9 @@ class ContractCreationWorkflow:
         Returns:
             Task output with contract ID
         """
-        from hub.apps.tenants.models import Tenant
         from django.contrib.auth import get_user_model
+
+        from hub.apps.tenants.models import Tenant
 
         User = get_user_model()
 
@@ -380,15 +403,31 @@ class ContractCreationWorkflow:
         user_id = instance.state_data.get("user_id") or input_data.get("user_id")
         asset_id = instance.state_data.get("asset_id") or input_data.get("asset_id")
         original_raw = instance.state_data.get("original_raw") or input_data.get("original_raw")
-        original_format = instance.state_data.get("original_format") or input_data.get("original_format")
-        original_spec_type = instance.state_data.get("original_spec_type") or input_data.get("original_spec_type")
-        detected_spec_type = instance.state_data.get("detected_spec_type") or input_data.get("detected_spec_type")
-        detected_spec_version = instance.state_data.get("detected_spec_version") or input_data.get("detected_spec_version")
+        original_format = instance.state_data.get("original_format") or input_data.get(
+            "original_format"
+        )
+        original_spec_type = instance.state_data.get("original_spec_type") or input_data.get(
+            "original_spec_type"
+        )
+        detected_spec_type = instance.state_data.get("detected_spec_type") or input_data.get(
+            "detected_spec_type"
+        )
+        detected_spec_version = instance.state_data.get("detected_spec_version") or input_data.get(
+            "detected_spec_version"
+        )
         hub_contract = instance.state_data.get("hub_contract") or input_data.get("hub_contract")
-        normalization_status_str = instance.state_data.get("normalization_status") or input_data.get("normalization_status")
-        normalization_errors = instance.state_data.get("normalization_errors", []) or input_data.get("normalization_errors", [])
-        normalization_warnings = instance.state_data.get("normalization_warnings", []) or input_data.get("normalization_warnings", [])
-        validation_errors = instance.state_data.get("validation_errors", []) or input_data.get("validation_errors", [])
+        normalization_status_str = instance.state_data.get(
+            "normalization_status"
+        ) or input_data.get("normalization_status")
+        normalization_errors = instance.state_data.get(
+            "normalization_errors", []
+        ) or input_data.get("normalization_errors", [])
+        normalization_warnings = instance.state_data.get(
+            "normalization_warnings", []
+        ) or input_data.get("normalization_warnings", [])
+        validation_errors = instance.state_data.get("validation_errors", []) or input_data.get(
+            "validation_errors", []
+        )
 
         # Get tenant and user
         tenant = Tenant.objects.get(id=tenant_id)
@@ -398,15 +437,15 @@ class ContractCreationWorkflow:
         asset = None
         if asset_id:
             from hub.apps.assets.models import Asset
+
             asset = Asset.objects.get(id=asset_id, tenant=tenant)
 
         # Calculate version
         version = 1
         if asset:
-            latest_contract = Contract.objects.filter(
-                tenant=tenant,
-                asset=asset
-            ).order_by('-version').first()
+            latest_contract = (
+                Contract.objects.filter(tenant=tenant, asset=asset).order_by("-version").first()
+            )
             if latest_contract:
                 version = latest_contract.version + 1
 
@@ -422,10 +461,18 @@ class ContractCreationWorkflow:
                 final_norm_status = NormalizationStatus(normalization_status_str)
             except (ValueError, TypeError):
                 # If it's not a valid status, default based on hub_contract presence
-                final_norm_status = NormalizationStatus.NORMALIZED_OK if hub_contract else NormalizationStatus.NORMALIZATION_FAILED
+                final_norm_status = (
+                    NormalizationStatus.NORMALIZED_OK
+                    if hub_contract
+                    else NormalizationStatus.NORMALIZATION_FAILED
+                )
         else:
             # Default based on hub_contract presence
-            final_norm_status = NormalizationStatus.NORMALIZED_OK if hub_contract else NormalizationStatus.NORMALIZATION_FAILED
+            final_norm_status = (
+                NormalizationStatus.NORMALIZED_OK
+                if hub_contract
+                else NormalizationStatus.NORMALIZATION_FAILED
+            )
 
         if validation_errors and len(validation_errors) > 0:
             final_norm_status = NormalizationStatus.NORMALIZATION_FAILED
@@ -435,7 +482,7 @@ class ContractCreationWorkflow:
         # Validate contract before creation using ContractsBusinessRules
         contracts_rules = ContractsBusinessRules(
             tenant_id=str(tenant_id) if tenant_id else None,
-            user_id=str(user_id) if user_id else None
+            user_id=str(user_id) if user_id else None,
         )
 
         # Prepare contract data for validation
@@ -452,9 +499,7 @@ class ContractCreationWorkflow:
         contract_creation_result = contracts_rules.validate_contract_creation(contract_data)
         if not contract_creation_result.is_valid:
             error_messages = contract_creation_result.errors
-            raise ValueError(
-                f"Contract creation validation failed: {'; '.join(error_messages)}"
-            )
+            raise ValueError(f"Contract creation validation failed: {'; '.join(error_messages)}")
 
         # Log validation warnings if any
         if contract_creation_result.warnings:
@@ -470,10 +515,9 @@ class ContractCreationWorkflow:
             existing_contracts = Contract.objects.filter(tenant=tenant, asset=asset)
             if existing_contracts.exists():
                 # Validate contract update
-                latest_contract = existing_contracts.order_by('-version').first()
+                latest_contract = existing_contracts.order_by("-version").first()
                 contract_update_result = contracts_rules.validate_contract_update(
-                    contract=latest_contract,
-                    contract_data=contract_data
+                    contract=latest_contract, contract_data=contract_data
                 )
                 if not contract_update_result.is_valid:
                     error_messages = contract_update_result.errors
@@ -505,28 +549,25 @@ class ContractCreationWorkflow:
             normalization_status=final_norm_status,
             normalization_errors=normalization_errors,
             normalization_warnings=normalization_warnings,
-            created_by=user
+            created_by=user,
         )
 
         logger.info(
             "Contract record created",
             workflow_instance_id=str(instance.id),
             contract_id=str(contract.id),
-            tenant_id=tenant_id
+            tenant_id=tenant_id,
         )
 
         # Store contract_id in state for subsequent steps
         # Return contract_id both at top level and in state for subsequent steps
-        return {
-            "contract_id": str(contract.id),
-            "state": {
-                "contract_id": str(contract.id)
-            }
-        }
+        return {"contract_id": str(contract.id), "state": {"contract_id": str(contract.id)}}
 
     @staticmethod
     @transaction.atomic
-    def _link_data_file_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _link_data_file_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Optional: Link data file (create Asset).
 
@@ -538,9 +579,10 @@ class ContractCreationWorkflow:
         Returns:
             Task output with asset_id (if created)
         """
-        from hub.apps.tenants.models import Tenant
-        from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility
         from django.contrib.auth import get_user_model
+
+        from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility
+        from hub.apps.tenants.models import Tenant
 
         User = get_user_model()
 
@@ -560,12 +602,9 @@ class ContractCreationWorkflow:
         if not file_id:
             logger.info(
                 "Skipping data file linking: file_id not provided",
-                workflow_instance_id=str(instance.id)
+                workflow_instance_id=str(instance.id),
             )
-            return {
-                "skipped": True,
-                "reason": "file_id not provided"
-            }
+            return {"skipped": True, "reason": "file_id not provided"}
 
         if not contract_id:
             raise ValueError("contract_id is required for data file linking")
@@ -589,7 +628,9 @@ class ContractCreationWorkflow:
                 # Fallback to contract's creator
                 user = contract.created_by
                 if not user:
-                    raise ValueError("user_id is required for asset creation (not available from contract)")
+                    raise ValueError(
+                        "user_id is required for asset creation (not available from contract)"
+                    )
 
             # Verify contract belongs to tenant (already retrieved above)
             if contract.tenant != tenant:
@@ -597,18 +638,16 @@ class ContractCreationWorkflow:
 
             # Get file
             from hub.apps.files.models import File
+
             try:
                 file_obj = File.objects.get(id=file_id, tenant=tenant)
             except File.DoesNotExist:
                 logger.warning(
                     "File not found for asset creation",
                     workflow_instance_id=str(instance.id),
-                    file_id=file_id
+                    file_id=file_id,
                 )
-                return {
-                    "skipped": True,
-                    "reason": f"File not found: {file_id}"
-                }
+                return {"skipped": True, "reason": f"File not found: {file_id}"}
 
             # Generate asset key and name if not provided
             if not asset_key:
@@ -622,12 +661,9 @@ class ContractCreationWorkflow:
                 logger.warning(
                     "Asset with key already exists, skipping creation",
                     workflow_instance_id=str(instance.id),
-                    asset_key=asset_key
+                    asset_key=asset_key,
                 )
-                return {
-                    "skipped": True,
-                    "reason": f"Asset with key already exists: {asset_key}"
-                }
+                return {"skipped": True, "reason": f"Asset with key already exists: {asset_key}"}
 
             # Create asset
             asset = Asset.objects.create(
@@ -638,23 +674,25 @@ class ContractCreationWorkflow:
                 domain=asset_domain,
                 status=AssetStatus.DRAFT,
                 visibility=AssetVisibility.INTERNAL,
-                created_by=user
+                created_by=user,
             )
 
             # Link contract to asset
             contract.asset = asset
 
             # Get next version for asset
-            latest_contract = Contract.objects.filter(
-                tenant=tenant,
-                asset=asset
-            ).exclude(id=contract_id).order_by('-version').first()
+            latest_contract = (
+                Contract.objects.filter(tenant=tenant, asset=asset)
+                .exclude(id=contract_id)
+                .order_by("-version")
+                .first()
+            )
             if latest_contract:
                 contract.version = latest_contract.version + 1
             else:
                 contract.version = 1
 
-            contract.save(update_fields=['asset', 'version'])
+            contract.save(update_fields=["asset", "version"])
 
             # If ODPS contract is linked, also link it to asset
             odps_contract_id = instance.state_data.get("odps_contract_id")
@@ -663,20 +701,22 @@ class ContractCreationWorkflow:
                     odps_contract = Contract.objects.get(id=odps_contract_id, tenant=tenant)
                     odps_contract.asset = asset
                     # Update version if needed
-                    latest_contract = Contract.objects.filter(
-                        tenant=tenant,
-                        asset=asset
-                    ).exclude(id=odps_contract_id).order_by('-version').first()
+                    latest_contract = (
+                        Contract.objects.filter(tenant=tenant, asset=asset)
+                        .exclude(id=odps_contract_id)
+                        .order_by("-version")
+                        .first()
+                    )
                     if latest_contract:
                         odps_contract.version = latest_contract.version + 1
                     else:
                         odps_contract.version = 1
-                    odps_contract.save(update_fields=['asset', 'version'])
+                    odps_contract.save(update_fields=["asset", "version"])
                 except Contract.DoesNotExist:
                     logger.warning(
                         "ODPS contract not found for asset linking",
                         workflow_instance_id=str(instance.id),
-                        odps_contract_id=odps_contract_id
+                        odps_contract_id=odps_contract_id,
                     )
 
             logger.info(
@@ -684,15 +724,13 @@ class ContractCreationWorkflow:
                 workflow_instance_id=str(instance.id),
                 asset_id=str(asset.id),
                 contract_id=contract_id,
-                file_id=file_id
+                file_id=file_id,
             )
 
             return {
                 "asset_id": str(asset.id),
                 "asset_key": asset_key,
-                "state": {
-                    "asset_id": str(asset.id)
-                }
+                "state": {"asset_id": str(asset.id)},
             }
         except Exception as e:
             # Database error - transaction will rollback automatically
@@ -702,13 +740,15 @@ class ContractCreationWorkflow:
                 file_id=file_id,
                 contract_id=contract_id,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
-            raise ValueError(f"ASSET_CREATION_ERROR: Failed to create asset: {str(e)}") from e
+            raise ValueError(f"ASSET_CREATION_ERROR: Failed to create asset: {e!s}") from e
 
     @staticmethod
     @transaction.atomic
-    def _index_for_search_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _index_for_search_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Index contract for search (ODCS technical + ODPS marketplace if linked).
 
@@ -733,17 +773,19 @@ class ContractCreationWorkflow:
         try:
             contract = Contract.objects.get(id=contract_id)
             search_index = SearchIndexer.index_contract(contract)
-            indexed_contracts.append({
-                "contract_id": contract_id,
-                "contract_type": "ODCS",
-                "search_index_id": str(search_index.id)
-            })
+            indexed_contracts.append(
+                {
+                    "contract_id": contract_id,
+                    "contract_type": "ODCS",
+                    "search_index_id": str(search_index.id),
+                }
+            )
         except Exception as e:
             logger.warning(
                 "Failed to index ODCS contract (non-critical)",
                 workflow_instance_id=str(instance.id),
                 contract_id=contract_id,
-                error=str(e)
+                error=str(e),
             )
 
         # Index ODPS contract (marketplace) if linked
@@ -751,32 +793,33 @@ class ContractCreationWorkflow:
             try:
                 odps_contract = Contract.objects.get(id=odps_contract_id)
                 search_index = SearchIndexer.index_contract(odps_contract)
-                indexed_contracts.append({
-                    "contract_id": odps_contract_id,
-                    "contract_type": "ODPS",
-                    "search_index_id": str(search_index.id)
-                })
+                indexed_contracts.append(
+                    {
+                        "contract_id": odps_contract_id,
+                        "contract_type": "ODPS",
+                        "search_index_id": str(search_index.id),
+                    }
+                )
             except Exception as e:
                 logger.warning(
                     "Failed to index ODPS contract (non-critical)",
                     workflow_instance_id=str(instance.id),
                     odps_contract_id=odps_contract_id,
-                    error=str(e)
+                    error=str(e),
                 )
 
         logger.info(
             "Contracts indexed for search",
             workflow_instance_id=str(instance.id),
-            indexed_count=len(indexed_contracts)
+            indexed_count=len(indexed_contracts),
         )
 
-        return {
-            "indexed": True,
-            "indexed_contracts": indexed_contracts
-        }
+        return {"indexed": True, "indexed_contracts": indexed_contracts}
 
     @staticmethod
-    def _generate_semantic_mapping_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _generate_semantic_mapping_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Generate semantic mapping (RDF) for contract (ODCS technical + ODPS marketplace if linked).
 
@@ -806,28 +849,28 @@ class ContractCreationWorkflow:
                 logger.info(
                     "ODCS semantic mapping skipped (no hub_contract_json)",
                     workflow_instance_id=str(instance.id),
-                    contract_id=contract_id
+                    contract_id=contract_id,
                 )
             else:
                 semantic_resource = map_contract_to_semantic(
-                    contract=contract,
-                    tenant=contract.tenant,
-                    use_cache=False
+                    contract=contract, tenant=contract.tenant, use_cache=False
                 )
 
                 if semantic_resource:
-                    mapped_contracts.append({
-                        "contract_id": contract_id,
-                        "contract_type": "ODCS",
-                        "semantic_resource_id": str(semantic_resource.id),
-                        "uri": semantic_resource.uri
-                    })
+                    mapped_contracts.append(
+                        {
+                            "contract_id": contract_id,
+                            "contract_type": "ODCS",
+                            "semantic_resource_id": str(semantic_resource.id),
+                            "uri": semantic_resource.uri,
+                        }
+                    )
         except Exception as e:
             logger.warning(
                 "Failed to map ODCS contract to RDF (non-critical)",
                 workflow_instance_id=str(instance.id),
                 contract_id=contract_id,
-                error=str(e)
+                error=str(e),
             )
 
         # Map ODPS contract to RDF (marketplace) if linked
@@ -836,38 +879,40 @@ class ContractCreationWorkflow:
                 odps_contract = Contract.objects.get(id=odps_contract_id)
                 if odps_contract.hub_contract_json:
                     semantic_resource = map_contract_to_semantic(
-                        contract=odps_contract,
-                        tenant=odps_contract.tenant,
-                        use_cache=False
+                        contract=odps_contract, tenant=odps_contract.tenant, use_cache=False
                     )
                     if semantic_resource:
-                        mapped_contracts.append({
-                            "contract_id": odps_contract_id,
-                            "contract_type": "ODPS",
-                            "semantic_resource_id": str(semantic_resource.id),
-                            "uri": semantic_resource.uri
-                        })
+                        mapped_contracts.append(
+                            {
+                                "contract_id": odps_contract_id,
+                                "contract_type": "ODPS",
+                                "semantic_resource_id": str(semantic_resource.id),
+                                "uri": semantic_resource.uri,
+                            }
+                        )
             except Exception as e:
                 logger.warning(
                     "Failed to map ODPS contract to RDF (non-critical)",
                     workflow_instance_id=str(instance.id),
                     odps_contract_id=odps_contract_id,
-                    error=str(e)
+                    error=str(e),
                 )
 
         logger.info(
             "Contracts mapped to RDF",
             workflow_instance_id=str(instance.id),
-            mapped_count=len(mapped_contracts)
+            mapped_count=len(mapped_contracts),
         )
 
         return {
             "semantic_mapping_generated": len(mapped_contracts) > 0,
-            "mapped_contracts": mapped_contracts
+            "mapped_contracts": mapped_contracts,
         }
 
     @staticmethod
-    def _send_notifications_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _send_notifications_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Send notifications about contract creation.
 
@@ -882,21 +927,19 @@ class ContractCreationWorkflow:
         # Get contract_id from state_data (set by previous step)
         contract_id = instance.state_data.get("contract_id") or input_data.get("contract_id")
         user_id = input_data.get("user_id")
-        tenant_id = input_data.get("tenant_id")
+        input_data.get("tenant_id")
 
         if not contract_id or not user_id:
             logger.warning(
                 "Notifications skipped (missing contract_id or user_id)",
-                workflow_instance_id=str(instance.id)
+                workflow_instance_id=str(instance.id),
             )
-            return {
-                "notifications_sent": False,
-                "reason": "Missing required data"
-            }
+            return {"notifications_sent": False, "reason": "Missing required data"}
 
         # Get contract and user
         contract = Contract.objects.get(id=contract_id)
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         user = User.objects.get(id=user_id)
 
@@ -904,9 +947,9 @@ class ContractCreationWorkflow:
         try:
             contract_title = "Untitled Contract"
             if contract.hub_contract_json and isinstance(contract.hub_contract_json, dict):
-                info = contract.hub_contract_json.get('info', {})
+                info = contract.hub_contract_json.get("info", {})
                 if isinstance(info, dict):
-                    contract_title = info.get('title', 'Untitled Contract')
+                    contract_title = info.get("title", "Untitled Contract")
 
             logger.info(
                 "Contract creation notification logged",
@@ -914,29 +957,25 @@ class ContractCreationWorkflow:
                 contract_id=contract_id,
                 user_id=user_id,
                 contract_title=contract_title,
-                user_email=user.email
+                user_email=user.email,
             )
 
-            return {
-                "notifications_sent": True,
-                "notification_type": "logged"
-            }
+            return {"notifications_sent": True, "notification_type": "logged"}
         except Exception as e:
             logger.error(
                 "Failed to log contract creation notification",
                 workflow_instance_id=str(instance.id),
                 contract_id=contract_id,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
             # Don't fail workflow on notification errors
-            return {
-                "notifications_sent": False,
-                "error": str(e)
-            }
+            return {"notifications_sent": False, "error": str(e)}
 
     @staticmethod
-    def _audit_logging_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _audit_logging_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create audit log entry for contract creation.
 
@@ -952,20 +991,28 @@ class ContractCreationWorkflow:
         contract_id = instance.state_data.get("contract_id") or input_data.get("contract_id")
         user_id = input_data.get("user_id")
         tenant_id = input_data.get("tenant_id")
-        detected_spec_type = instance.state_data.get("detected_spec_type") or input_data.get("detected_spec_type")
-        detected_spec_version = instance.state_data.get("detected_spec_version") or input_data.get("detected_spec_version")
-        normalization_status = instance.state_data.get("normalization_status") or input_data.get("normalization_status")
+        detected_spec_type = instance.state_data.get("detected_spec_type") or input_data.get(
+            "detected_spec_type"
+        )
+        detected_spec_version = instance.state_data.get("detected_spec_version") or input_data.get(
+            "detected_spec_version"
+        )
+        normalization_status = instance.state_data.get("normalization_status") or input_data.get(
+            "normalization_status"
+        )
         asset_id = input_data.get("asset_id")
 
         if not contract_id or not user_id or not tenant_id:
             raise ValueError("contract_id, user_id, and tenant_id are required for audit logging")
 
         # Get contract, user, and tenant
-        contract = Contract.objects.get(id=contract_id)
+        Contract.objects.get(id=contract_id)
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         user = User.objects.get(id=user_id)
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.get(id=tenant_id)
 
         # Create audit event
@@ -976,47 +1023,45 @@ class ContractCreationWorkflow:
             tenant=tenant,
             resource_id=contract_id,
             details={
-                'original_spec_type': detected_spec_type,
-                'original_spec_version': detected_spec_version,
-                'normalization_status': normalization_status,
-                'asset_id': asset_id
+                "original_spec_type": detected_spec_type,
+                "original_spec_version": detected_spec_version,
+                "normalization_status": normalization_status,
+                "asset_id": asset_id,
             },
-            request=None  # No request object in workflow context
+            request=None,  # No request object in workflow context
         )
 
         logger.info(
             "Audit log created for contract creation",
             workflow_instance_id=str(instance.id),
-            contract_id=contract_id
+            contract_id=contract_id,
         )
 
-        return {
-            "audit_logged": True
-        }
+        return {"audit_logged": True}
 
     # Compensation tasks
 
     @staticmethod
-    def _rollback_normalization_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _rollback_normalization_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback normalization (no-op, normalization is stateless)"""
-        logger.info(
-            "Normalization rollback (no-op)",
-            workflow_instance_id=str(instance.id)
-        )
+        logger.info("Normalization rollback (no-op)", workflow_instance_id=str(instance.id))
         return {"rolled_back": True}
 
     @staticmethod
-    def _rollback_validation_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _rollback_validation_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback validation (no-op, validation is stateless)"""
-        logger.info(
-            "Validation rollback (no-op)",
-            workflow_instance_id=str(instance.id)
-        )
+        logger.info("Validation rollback (no-op)", workflow_instance_id=str(instance.id))
         return {"rolled_back": True}
 
     @staticmethod
     @transaction.atomic
-    def _rollback_contract_record_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _rollback_contract_record_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback contract record creation (delete contract)"""
         contract_id = input_data.get("contract_id")
 
@@ -1027,20 +1072,22 @@ class ContractCreationWorkflow:
                 logger.info(
                     "Contract record rolled back (deleted)",
                     workflow_instance_id=str(instance.id),
-                    contract_id=contract_id
+                    contract_id=contract_id,
                 )
             except Contract.DoesNotExist:
                 logger.warning(
                     "Contract record not found for rollback",
                     workflow_instance_id=str(instance.id),
-                    contract_id=contract_id
+                    contract_id=contract_id,
                 )
 
         return {"rolled_back": True}
 
     @staticmethod
     @transaction.atomic
-    def _link_odps_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _link_odps_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Link ODPS contract (optional step for marketplace).
 
@@ -1057,13 +1104,14 @@ class ContractCreationWorkflow:
         Returns:
             Task output with ODPS contract ID and linking results
         """
-        from hub.apps.contracts.odps_parser import ODPSParser
-        from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
-        from hub.apps.contracts.linking_validation import validate_linking
-        from hub.apps.contracts.models import OriginalSpecType, OriginalFormat
-        from hub.apps.contracts.normalization import parse_contract
-        from hub.apps.contracts.odps_version_detection import detect_odps_version
         from django.contrib.auth import get_user_model
+
+        from hub.apps.contracts.linking_validation import validate_linking
+        from hub.apps.contracts.models import OriginalFormat
+        from hub.apps.contracts.normalization import parse_contract
+        from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
+        from hub.apps.contracts.odps_parser import ODPSParser
+        from hub.apps.contracts.odps_version_detection import detect_odps_version
 
         User = get_user_model()
 
@@ -1079,12 +1127,9 @@ class ContractCreationWorkflow:
             logger.info(
                 "ODPS linking skipped (no action specified)",
                 workflow_instance_id=str(instance.id),
-                contract_id=contract_id
+                contract_id=contract_id,
             )
-            return {
-                "odps_linking_skipped": True,
-                "reason": "No ODPS action specified"
-            }
+            return {"odps_linking_skipped": True, "reason": "No ODPS action specified"}
 
         # Get contract and related data
         contract = Contract.objects.get(id=contract_id)
@@ -1120,6 +1165,7 @@ class ContractCreationWorkflow:
 
                 # Normalize ODPS to HubContract
                 from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+
                 normalizer = ODPSNormalizer()
                 normalization_result = normalizer.normalize(odps_doc, spec_version=odps_version)
                 hub_contract_from_odps = normalization_result.hub_contract
@@ -1132,14 +1178,16 @@ class ContractCreationWorkflow:
                     status=ContractStatus.DRAFT,
                     original_spec_type=OriginalSpecType.ODPS,
                     original_spec_version=odps_version,
-                    original_format=OriginalFormat.JSON if odps_format.upper() == "JSON" else OriginalFormat.YAML,
+                    original_format=OriginalFormat.JSON
+                    if odps_format.upper() == "JSON"
+                    else OriginalFormat.YAML,
                     original_raw=odps_raw,
                     hub_contract_version="1.0.0",
                     hub_contract_json=hub_contract_from_odps,
                     normalization_status=NormalizationStatus.NORMALIZED_OK,
                     normalization_errors=[],
                     normalization_warnings=[],
-                    created_by=user
+                    created_by=user,
                 )
                 odps_contract_id = str(odps_contract.id)
 
@@ -1147,7 +1195,7 @@ class ContractCreationWorkflow:
                     "ODPS contract created from upload",
                     workflow_instance_id=str(instance.id),
                     contract_id=contract_id,
-                    odps_contract_id=odps_contract_id
+                    odps_contract_id=odps_contract_id,
                 )
 
             elif odps_action == "generate":
@@ -1176,6 +1224,7 @@ class ContractCreationWorkflow:
 
                 # Format as JSON for storage
                 import json
+
                 odps_raw = json.dumps(odps_doc, indent=2)
 
                 # Create ODPS contract record
@@ -1193,7 +1242,7 @@ class ContractCreationWorkflow:
                     normalization_status=NormalizationStatus.NORMALIZED_OK,
                     normalization_errors=[],
                     normalization_warnings=[],
-                    created_by=user
+                    created_by=user,
                 )
                 odps_contract_id = str(odps_contract.id)
 
@@ -1201,7 +1250,7 @@ class ContractCreationWorkflow:
                     "ODPS contract generated from HubContract",
                     workflow_instance_id=str(instance.id),
                     contract_id=contract_id,
-                    odps_contract_id=odps_contract_id
+                    odps_contract_id=odps_contract_id,
                 )
 
             elif odps_action == "link":
@@ -1211,10 +1260,10 @@ class ContractCreationWorkflow:
                     raise ValueError("odps_contract_id is required for ODPS linking")
 
                 # Validate linking (existence, compatibility, circular references)
-                odps_contract, odcs_contract = validate_linking(
+                odps_contract, _odcs_contract = validate_linking(
                     odps_contract_id=existing_odps_contract_id,
                     odcs_contract_id=contract_id,
-                    tenant_id=tenant_id
+                    tenant_id=tenant_id,
                 )
                 odps_contract_id = str(odps_contract.id)
 
@@ -1222,7 +1271,7 @@ class ContractCreationWorkflow:
                     "ODPS contract validated for linking",
                     workflow_instance_id=str(instance.id),
                     contract_id=contract_id,
-                    odps_contract_id=odps_contract_id
+                    odps_contract_id=odps_contract_id,
                 )
 
             # Establish bidirectional link
@@ -1249,16 +1298,14 @@ class ContractCreationWorkflow:
                 workflow_instance_id=str(instance.id),
                 contract_id=contract_id,
                 odps_contract_id=odps_contract_id,
-                action=odps_action
+                action=odps_action,
             )
 
             return {
                 "odps_linked": True,
                 "odps_contract_id": odps_contract_id,
                 "action": odps_action,
-                "state": {
-                    "odps_contract_id": odps_contract_id
-                }
+                "state": {"odps_contract_id": odps_contract_id},
             }
 
         except Exception as e:
@@ -1268,13 +1315,15 @@ class ContractCreationWorkflow:
                 contract_id=contract_id,
                 action=odps_action,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
-            raise ValueError(f"ODPS linking failed: {str(e)}")
+            raise ValueError(f"ODPS linking failed: {e!s}")
 
     @staticmethod
     @transaction.atomic
-    def _rollback_odps_linking_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _rollback_odps_linking_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback ODPS linking (remove links and delete created ODPS contract if needed)"""
         contract_id = input_data.get("contract_id")
         odps_contract_id = input_data.get("odps_contract_id")
@@ -1296,7 +1345,10 @@ class ContractCreationWorkflow:
             try:
                 odps_contract = Contract.objects.get(id=odps_contract_id)
                 # Remove ODCS link from ODPS contract
-                if odps_contract.hub_contract_json and "extensions" in odps_contract.hub_contract_json:
+                if (
+                    odps_contract.hub_contract_json
+                    and "extensions" in odps_contract.hub_contract_json
+                ):
                     x_odps = odps_contract.hub_contract_json["extensions"].get("x_odps", {})
                     if "odcs_link" in x_odps:
                         del x_odps["odcs_link"]
@@ -1308,7 +1360,7 @@ class ContractCreationWorkflow:
                     logger.info(
                         "ODPS contract rolled back (deleted)",
                         workflow_instance_id=str(instance.id),
-                        odps_contract_id=odps_contract_id
+                        odps_contract_id=odps_contract_id,
                     )
             except Contract.DoesNotExist:
                 pass
@@ -1317,14 +1369,16 @@ class ContractCreationWorkflow:
             "ODPS linking rolled back",
             workflow_instance_id=str(instance.id),
             contract_id=contract_id,
-            odps_contract_id=odps_contract_id
+            odps_contract_id=odps_contract_id,
         )
 
         return {"rolled_back": True}
 
     @staticmethod
     @transaction.atomic
-    def _rollback_link_data_file_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _rollback_link_data_file_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback asset creation (delete asset and unlink contracts)"""
         asset_id = instance.state_data.get("asset_id")
         contract_id = instance.state_data.get("contract_id")
@@ -1333,6 +1387,7 @@ class ContractCreationWorkflow:
         if asset_id:
             try:
                 from hub.apps.assets.models import Asset
+
                 asset = Asset.objects.get(id=asset_id)
 
                 # Unlink contracts from asset
@@ -1340,7 +1395,7 @@ class ContractCreationWorkflow:
                     try:
                         contract = Contract.objects.get(id=contract_id)
                         contract.asset = None
-                        contract.save(update_fields=['asset'])
+                        contract.save(update_fields=["asset"])
                     except Contract.DoesNotExist:
                         pass
 
@@ -1348,7 +1403,7 @@ class ContractCreationWorkflow:
                     try:
                         odps_contract = Contract.objects.get(id=odps_contract_id)
                         odps_contract.asset = None
-                        odps_contract.save(update_fields=['asset'])
+                        odps_contract.save(update_fields=["asset"])
                     except Contract.DoesNotExist:
                         pass
 
@@ -1358,20 +1413,22 @@ class ContractCreationWorkflow:
                 logger.info(
                     "Asset rolled back (deleted)",
                     workflow_instance_id=str(instance.id),
-                    asset_id=asset_id
+                    asset_id=asset_id,
                 )
             except Asset.DoesNotExist:
                 logger.warning(
                     "Asset not found for rollback",
                     workflow_instance_id=str(instance.id),
-                    asset_id=asset_id
+                    asset_id=asset_id,
                 )
 
         return {"rolled_back": True}
 
     @staticmethod
     @transaction.atomic
-    def _rollback_indexing_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
+    def _rollback_indexing_task(
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """Rollback search indexing (delete search indices)"""
         indexed_contracts = input_data.get("indexed_contracts", [])
 
@@ -1380,19 +1437,20 @@ class ContractCreationWorkflow:
             if search_index_id:
                 try:
                     from hub.apps.search.models import SearchIndex
+
                     search_index = SearchIndex.objects.get(id=search_index_id)
                     search_index.delete()
                     logger.info(
                         "Search index rolled back (deleted)",
                         workflow_instance_id=str(instance.id),
-                        search_index_id=search_index_id
+                        search_index_id=search_index_id,
                     )
                 except Exception as e:
                     logger.warning(
                         "Search index rollback failed",
                         workflow_instance_id=str(instance.id),
                         search_index_id=search_index_id,
-                        error=str(e)
+                        error=str(e),
                     )
 
         return {"rolled_back": True}
@@ -1405,19 +1463,19 @@ class ContractCreationWorkflow:
         original_format: str,
         tenant_id: str,
         user_id: str,
-        asset_id: Optional[str] = None,
-        original_spec_type: Optional[str] = None,
-        odps_action: Optional[str] = None,
-        odps_raw: Optional[str] = None,
-        odps_format: Optional[str] = None,
-        odps_contract_id: Optional[str] = None,
-        file_id: Optional[str] = None,
-        asset_key: Optional[str] = None,
-        asset_name: Optional[str] = None,
-        asset_description: Optional[str] = None,
-        asset_domain: Optional[str] = None,
-        engine: Optional[WorkflowEngine] = None,
-        registry: Optional[WorkflowRegistry] = None
+        asset_id: str | None = None,
+        original_spec_type: str | None = None,
+        odps_action: str | None = None,
+        odps_raw: str | None = None,
+        odps_format: str | None = None,
+        odps_contract_id: str | None = None,
+        file_id: str | None = None,
+        asset_key: str | None = None,
+        asset_name: str | None = None,
+        asset_description: str | None = None,
+        asset_domain: str | None = None,
+        engine: WorkflowEngine | None = None,
+        registry: WorkflowRegistry | None = None,
     ) -> Contract:
         """
         Execute contract creation workflow.
@@ -1458,7 +1516,8 @@ class ContractCreationWorkflow:
 
         # Prepare workflow input (omit None values so dict.get() defaults fire correctly)
         workflow_input = {
-            k: v for k, v in {
+            k: v
+            for k, v in {
                 "original_raw": original_raw,
                 "original_format": original_format,
                 "tenant_id": tenant_id,
@@ -1474,7 +1533,8 @@ class ContractCreationWorkflow:
                 "asset_name": asset_name,
                 "asset_description": asset_description,
                 "asset_domain": asset_domain,
-            }.items() if v is not None
+            }.items()
+            if v is not None
         }
 
         # Create workflow instance
@@ -1482,7 +1542,7 @@ class ContractCreationWorkflow:
             workflow_name=cls.WORKFLOW_NAME,
             input_data=workflow_input,
             tenant_id=tenant_id,
-            created_by_id=user_id
+            created_by_id=user_id,
         )
 
         # Start and execute workflow
@@ -1506,7 +1566,7 @@ class ContractCreationWorkflow:
             logger.info(
                 "Contract creation workflow completed",
                 workflow_instance_id=str(workflow_instance.id),
-                contract_id=contract_id
+                contract_id=contract_id,
             )
             return contract
         elif workflow_instance.status == WorkflowStatus.FAILED:
@@ -1526,4 +1586,3 @@ class ContractCreationWorkflow:
                 f"Workflow ended in unexpected state: {workflow_instance.status}. "
                 f"Error: {workflow_instance.error_message or 'Unknown error'}"
             )
-

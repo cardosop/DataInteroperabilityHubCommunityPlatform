@@ -11,11 +11,12 @@ Tests cover:
 All tests use real cache connections - no mocks or stubs.
 """
 
-import json
+import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from rest_framework.test import APIClient
 
 from hub.apps.assets.caching import (
@@ -31,9 +32,10 @@ from hub.apps.assets.caching import (
     invalidate_asset_detail_cache,
     invalidate_asset_list_cache,
 )
-from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility
+from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import Tenant
-import uuid
+
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class TestAssetCachingUtilities(TestCase):
@@ -176,41 +178,93 @@ class TestAssetCachingUtilities(TestCase):
         cached = get_cached_asset_detail(asset_id)
         self.assertIsNone(cached)
 
+    # ── Cache invalidation end-to-end ──────────────────────────────
+
+    def test_cache_asset_list_then_invalidate_list(self):
+        """Caching a list entry then invalidating the list cache for
+        that tenant must make the entry unretrievable."""
+        tenant_id = "e8a7b6c5-d4e3-f2a1-b0c9-d8e7f6a5b4c3"
+        filters_hash = "abc123"
+        results = [{"id": "1", "name": "Asset 1"}]
+        total_count = 1
+
+        cache_asset_list(tenant_id, filters_hash, results, total_count)
+        # Verify it was stored.
+        self.assertIsNotNone(get_cached_asset_list(tenant_id, filters_hash))
+
+        invalidate_asset_list_cache(tenant_id)
+
+        # After invalidation the entry must be gone.
+        self.assertIsNone(
+            get_cached_asset_list(tenant_id, filters_hash),
+            "After invalidate_asset_list_cache, the previously "
+            "cached entry must be removed and get must return None.",
+        )
+
+    def test_invalidate_asset_caches_invalidates_both(self):
+        """invalidate_asset_caches must remove both detail and list
+        cache entries for the given asset/tenant."""
+        asset_id = "a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6"
+        tenant_id = "f1e2d3c4-b5a6-9780-1234-567890abcdef"
+        filters_hash = "test123"
+        asset_data = {"id": asset_id, "name": "Test"}
+        list_results = [{"id": asset_id, "name": "Test"}]
+
+        # Store both.
+        cache_asset_detail(asset_id, asset_data)
+        cache_asset_list(tenant_id, filters_hash, list_results, 1)
+        self.assertIsNotNone(get_cached_asset_detail(asset_id))
+        self.assertIsNotNone(get_cached_asset_list(tenant_id, filters_hash))
+
+        invalidate_asset_caches(asset_id, tenant_id)
+
+        # Both must be gone.
+        self.assertIsNone(
+            get_cached_asset_detail(asset_id),
+            "invalidate_asset_caches must remove the detail cache.",
+        )
+        self.assertIsNone(
+            get_cached_asset_list(tenant_id, filters_hash),
+            "invalidate_asset_caches must remove the list cache.",
+        )
+
     # ========== ERROR HANDLING ==========
 
     def test_cache_asset_list_invalid_tenant_id(self):
-        """Test caching with invalid tenant_id (error handling)"""
+        """cache_asset_list with falsy tenant_id skips caching and returns
+        early without raising — the function logs a warning and returns."""
         invalid_tenant_id = None
         filters_hash = "abc123"
         results = [{"id": "1"}]
         total_count = 1
 
-        # Caching with None tenant_id should either store with a None-based key
-        # (and return None on retrieval) or raise TypeError/ValueError
-        try:
-            cache_asset_list(invalid_tenant_id, filters_hash, results, total_count)
-        except (TypeError, ValueError):
-            return  # Raising on None tenant_id is acceptable behaviour
+        # Should not raise — the function early-exits on falsy tenant_id.
+        cache_asset_list(invalid_tenant_id, filters_hash, results, total_count)
 
-        # If it didn't raise, retrieval for None tenant must return None
+        # Retrieval for None tenant must return None (nothing was cached).
         cached = get_cached_asset_list(invalid_tenant_id, filters_hash)
-        self.assertIsNone(cached)
+        self.assertIsNone(
+            cached,
+            "get_cached_asset_list with a None tenant_id must return "
+            "None — no entry should have been stored.",
+        )
 
     def test_cache_asset_detail_invalid_asset_id(self):
-        """Test caching with invalid asset_id (error handling)"""
+        """cache_asset_detail with falsy asset_id skips caching and returns
+        early without raising — the function logs a warning and returns."""
         invalid_asset_id = None
         asset_data = {"id": None, "name": "Test"}
 
-        # Caching with None asset_id should either store with a None-based key
-        # (and return None on retrieval) or raise TypeError/ValueError
-        try:
-            cache_asset_detail(invalid_asset_id, asset_data)
-        except (TypeError, ValueError):
-            return  # Raising on None asset_id is acceptable behaviour
+        # Should not raise — the function early-exits on falsy asset_id.
+        cache_asset_detail(invalid_asset_id, asset_data)
 
-        # If it didn't raise, retrieval for None asset must return None
+        # Retrieval for None asset must return None (nothing was cached).
         cached = get_cached_asset_detail(invalid_asset_id)
-        self.assertIsNone(cached)
+        self.assertIsNone(
+            cached,
+            "get_cached_asset_detail with a None asset_id must return "
+            "None — no entry should have been stored.",
+        )
 
     def test_get_cached_asset_list_cache_error_handling(self):
         """Test error handling when cache retrieval fails"""
@@ -230,29 +284,46 @@ class TestAssetCachingUtilities(TestCase):
         self.assertIsNone(cached)
 
     def test_invalidate_asset_detail_cache_nonexistent(self):
-        """Test invalidating non-existent cache entry (error handling)"""
+        """Invalidating a cache key that doesn't exist must not raise.
+        After invalidation the key still doesn't exist (idempotent)."""
         fake_asset_id = "00000000-0000-0000-0000-000000000000"
 
-        # Should handle gracefully (no error)
-        try:
-            invalidate_asset_detail_cache(fake_asset_id)
-            # Should not raise exception
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("invalidate_asset_detail_cache should handle non-existent entries gracefully")
+        # Must not raise.
+        invalidate_asset_detail_cache(fake_asset_id)
 
-    def test_invalidate_asset_caches_database_error_handling(self):
-        """Test error handling when cache invalidation fails"""
+        # The key still does not exist (and no side-effect created one).
+        cached = get_cached_asset_detail(fake_asset_id)
+        self.assertIsNone(
+            cached,
+            "After invalidating a non-existent key, the key must "
+            "still not exist in cache.",
+        )
+
+    def test_invalidate_asset_caches_handles_empty_cache_gracefully(self):
+        """invalidating caches for a non-existent asset must not raise.
+        Both detail and list cache queries return None afterward."""
         asset_id = "123e4567-e89b-12d3-a456-426614174000"
         tenant_id = "123e4567-e89b-12d3-a456-426614174001"
 
-        # Should handle errors gracefully
-        try:
-            invalidate_asset_caches(asset_id, tenant_id)
-            # Should not raise exception
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("invalidate_asset_caches should handle errors gracefully")
+        # Must not raise.
+        invalidate_asset_caches(asset_id, tenant_id)
+
+        # Neither cache has entries for this asset.
+        detail = get_cached_asset_detail(asset_id)
+        self.assertIsNone(
+            detail,
+            "After invalidate_asset_caches, the detail cache for "
+            "a non-existent asset must still be empty.",
+        )
+        # List cache also remains empty for this tenant.
+        from hub.apps.assets.caching import hash_filters
+
+        list_entry = get_cached_asset_list(tenant_id, hash_filters({"dummy": "1"}))
+        self.assertIsNone(
+            list_entry,
+            "After invalidate_asset_caches, the list cache for "
+            "a non-existent tenant/asset must still be empty.",
+        )
 
 
 class TestAssetCachingIntegration(TestCase):
@@ -286,13 +357,14 @@ class TestAssetCachingIntegration(TestCase):
         )
         ensure_user_has_data_provider_role(self.user)
 
-        # Create test assets (use DRAFT status to avoid validation requirements)
+        # Create test assets (use DRAFT status to avoid validation requirements).
+        # visibility is a derived @property as of Phase 250.3.B (D250.4);
+        # DRAFT → INTERNAL. Do NOT pass the legacy visibility kwarg.
         self.asset1 = Asset.objects.create(
             tenant=self.tenant,
             key="asset-1",
             name="Asset 1",
             status=AssetStatus.DRAFT,
-            visibility=AssetVisibility.INTERNAL,
             created_by=self.user,
         )
 
@@ -301,7 +373,6 @@ class TestAssetCachingIntegration(TestCase):
             key="asset-2",
             name="Asset 2",
             status=AssetStatus.DRAFT,
-            visibility=AssetVisibility.INTERNAL,
             created_by=self.user,
         )
 
@@ -338,13 +409,19 @@ class TestAssetCachingIntegration(TestCase):
         self.assertEqual(len(results1), len(results2))
 
     def test_list_view_cache_invalidation_on_create_creates_asset(self):
-        """Test creating asset triggers cache invalidation."""
+        """Creating an asset via POST persists the asset and invalidates
+        the list cache, so a subsequent GET reflects the new asset."""
         response = self.client.post(
             "/api/v1/assets/",
             {"key": "asset-3", "name": "Asset 3", "domain": "marketing"},
             format="json",
         )
         self.assertEqual(response.status_code, 201)
+        # Verify the asset actually exists in the API.
+        asset_id = response.json()["id"]
+        detail = self.client.get(f"/api/v1/assets/{asset_id}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["key"], "asset-3")
 
     def test_list_view_cache_invalidation_on_create_updates_count(self):
         """Test list cache invalidation updates count after asset creation."""
@@ -363,7 +440,8 @@ class TestAssetCachingIntegration(TestCase):
         self.assertGreater(count2, count1)
 
     def test_list_view_cache_invalidation_on_update_updates_asset(self):
-        """Test updating asset triggers cache invalidation."""
+        """PATCHing an asset updates its fields and invalidates the list
+        cache so a subsequent list reflects the change."""
         self.asset1.refresh_from_db()
 
         response = self.client.patch(
@@ -372,6 +450,8 @@ class TestAssetCachingIntegration(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 200)
+        # Verify the update is reflected in the response body.
+        self.assertEqual(response.json()["name"], "Updated Asset 1")
 
     def test_list_view_cache_invalidation_on_update_updates_database(self):
         """Test asset update persists to database."""
@@ -387,9 +467,13 @@ class TestAssetCachingIntegration(TestCase):
         self.assertEqual(self.asset1.name, "Updated Asset 1")
 
     def test_list_view_cache_invalidation_on_delete_deletes_asset(self):
-        """Test deleting asset triggers cache invalidation."""
+        """DELETE returns 204 and the asset transitions to RETIRED status
+        (soft-delete), which invalidates both list and detail caches."""
         response = self.client.delete(f"/api/v1/assets/{self.asset1.id}/")
         self.assertEqual(response.status_code, 204)
+        # Verify the asset is now RETIRED via the detail endpoint.
+        detail = self.client.get(f"/api/v1/assets/{self.asset1.id}/")
+        self.assertEqual(detail.json()["status"], AssetStatus.RETIRED)
 
     def test_list_view_cache_invalidation_on_delete_updates_count(self):
         """Test list cache invalidation updates count after asset deletion."""
@@ -430,19 +514,10 @@ class TestAssetCachingIntegration(TestCase):
 
         self.assertEqual(name1, name2)
 
-    def test_detail_view_cache_invalidation_on_update_updates_asset(self):
-        """Test updating asset triggers detail cache invalidation."""
-        self.asset1.refresh_from_db()
-
-        response = self.client.patch(
-            f"/api/v1/assets/{self.asset1.id}/",
-            {"name": "Updated Name", "version": self.asset1.version},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 200)
-
     def test_detail_view_cache_invalidation_on_update_reflects_changes(self):
-        """Test detail cache invalidation reflects updated asset name."""
+        """After PATCHing an asset name, the detail endpoint returns the
+        new name — proving the detail cache was invalidated and the fresh
+        row was read from the database."""
         response1 = self.client.get(f"/api/v1/assets/{self.asset1.id}/")
         name1 = response1.json()["name"]
 
@@ -459,35 +534,61 @@ class TestAssetCachingIntegration(TestCase):
         self.assertNotEqual(name1, name2)
         self.assertEqual(name2, "Updated Name")
 
-    def test_detail_view_cache_invalidation_on_delete_deletes_asset(self):
-        """Test deleting asset triggers detail cache invalidation."""
-        response = self.client.delete(f"/api/v1/assets/{self.asset1.id}/")
-        self.assertEqual(response.status_code, 204)
-
     def test_detail_view_cache_invalidation_on_delete_sets_retired_status(self):
-        """Test detail cache invalidation reflects RETIRED status after deletion."""
+        """After DELETE, the detail endpoint returns status=RETIRED —
+        the stale cached ACTIVE/DRAFT data was evicted and the fresh DB
+        state is served."""
         self.client.delete(f"/api/v1/assets/{self.asset1.id}/")
 
         response = self.client.get(f"/api/v1/assets/{self.asset1.id}/")
-        status = response.json()["status"]
-
-        self.assertEqual(status, AssetStatus.RETIRED)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["status"],
+            AssetStatus.RETIRED,
+            "After soft-delete the detail endpoint must return "
+            "status=RETIRED — the cache must have been invalidated "
+            "by the delete operation.",
+        )
 
     def test_list_view_with_domain_filter_returns_200(self):
-        """Test list view with domain filter returns 200 status."""
+        """Filtering by domain=marketing returns only marketing assets."""
+        # Create a marketing-domain asset so the filter returns results.
+        Asset.objects.create(
+            tenant=self.tenant,
+            key="asset-marketing-2",
+            name="Marketing Asset 2",
+            domain="marketing",
+            status=AssetStatus.DRAFT,
+            created_by=self.user,
+        )
+
         response = self.client.get("/api/v1/assets/?domain=marketing")
         self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertGreater(
+            len(data.get("results", [])),
+            0,
+            "Domain filter must return at least the marketing asset "
+            "just created.",
+        )
+        for asset in data["results"]:
+            self.assertEqual(
+                asset.get("domain"),
+                "marketing",
+                "Every asset returned under ?domain=marketing must "
+                "have domain='marketing'.",
+            )
 
     def test_list_view_different_filters_use_different_cache_entries(self):
         """Test different filters use different cache entries."""
-        # Create an asset with domain=marketing so filtered vs unfiltered results differ
+        # Create an asset with domain=marketing so filtered vs unfiltered results differ.
+        # visibility derives from status per D250.4 — do NOT pass legacy kwarg.
         Asset.objects.create(
             tenant=self.tenant,
             key="asset-marketing",
             name="Marketing Asset",
             domain="marketing",
             status=AssetStatus.DRAFT,
-            visibility=AssetVisibility.INTERNAL,
             created_by=self.user,
         )
 

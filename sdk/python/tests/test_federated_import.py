@@ -1,6 +1,8 @@
 """Unit tests for FederatedImportAPI (284.A.3)."""
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from datahub_interoperability.client import DataHubClient
 from datahub_interoperability.federated_import import FederatedImportAPI
@@ -88,9 +90,7 @@ class TestGetImportStatus:
         }
         result = await api.get_import_status("job-1")
         assert result["status"] == "RUNNING"
-        mock_client.get.assert_called_once_with(
-            "integrations/federated-import/imports/job-1/"
-        )
+        mock_client.get.assert_called_once_with("integrations/federated-import/imports/job-1/")
 
 
 class TestCancelImport:

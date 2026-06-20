@@ -4,9 +4,10 @@ Unit tests for FileViewSet.
 Comprehensive tests for FileViewSet endpoints without mocks/stubs.
 Uses real S3StorageClient with graceful handling when storage unavailable.
 """
-import uuid
 
+import contextlib
 import hashlib
+import uuid
 
 import pytest
 from django.test import override_settings
@@ -36,7 +37,7 @@ class FileViewSetTest(FilesAPITestBase):
             storage_client = S3StorageClient()
             storage_client._ensure_bucket_exists()
             self.storage_available = True
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover — S3 probe
             self.storage_available = False
 
     def test_list_files_success_returns_200(self):
@@ -115,6 +116,7 @@ class FileViewSetTest(FilesAPITestBase):
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
         import uuid
+
         data = {
             "name": f"vu-{uuid.uuid4().hex[:8]}.csv",
             "content_type": "text/csv",
@@ -275,6 +277,7 @@ class FileViewSetTest(FilesAPITestBase):
             self.skipTest("S3/MinIO storage not available")
 
         import uuid
+
         from django.core.files.base import ContentFile
 
         fid = uuid.uuid4()
@@ -307,12 +310,14 @@ class FileViewSetTest(FilesAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         error_msg = response.data.get("error", "")
-        self.assertIn("mismatch", error_msg.lower(),
-            f"Expected 'mismatch' in error, got: {response.data}")
+        self.assertIn(
+            "mismatch", error_msg.lower(), f"Expected 'mismatch' in error, got: {response.data}"
+        )
         # File status must remain PENDING (not ACTIVATED with wrong hash)
         pending_file.refresh_from_db()
-        self.assertEqual(pending_file.status, FileStatus.PENDING,
-            "File must stay PENDING after hash mismatch")
+        self.assertEqual(
+            pending_file.status, FileStatus.PENDING, "File must stay PENDING after hash mismatch"
+        )
 
     def test_complete_upload_already_completed_returns_409(self):
         """Second completion attempt must return 409 CONFLICT."""
@@ -320,6 +325,7 @@ class FileViewSetTest(FilesAPITestBase):
             self.skipTest("S3/MinIO storage not available")
 
         import uuid
+
         from django.core.files.base import ContentFile
 
         fid = uuid.uuid4()
@@ -345,13 +351,11 @@ class FileViewSetTest(FilesAPITestBase):
         data = {"content_sha256": content_sha256}
 
         # First call → 200 + ACTIVE
-        resp1 = self.client.post(
-            f"/api/v1/files/{pending_file.id}/complete/", data, format="json")
+        resp1 = self.client.post(f"/api/v1/files/{pending_file.id}/complete/", data, format="json")
         self.assertEqual(resp1.status_code, status.HTTP_200_OK)
 
         # Second call → 409 CONFLICT (already completed)
-        resp2 = self.client.post(
-            f"/api/v1/files/{pending_file.id}/complete/", data, format="json")
+        resp2 = self.client.post(f"/api/v1/files/{pending_file.id}/complete/", data, format="json")
         self.assertEqual(resp2.status_code, status.HTTP_409_CONFLICT)
         self.assertIn("already completed", str(resp2.data.get("error", "")).lower())
 
@@ -359,9 +363,10 @@ class FileViewSetTest(FilesAPITestBase):
         """Upload still completes when the storage-existence check fails
         (silent degradation path in views.py:339-368)."""
         # Use an unreachable endpoint to trigger the storage-check fallback.
+        import uuid
+
         from django.test import override_settings
 
-        import uuid
         fid = uuid.uuid4()
         test_content = b"graceful-degradation"
         correct_hash = hashlib.sha256(test_content).hexdigest()
@@ -382,11 +387,15 @@ class FileViewSetTest(FilesAPITestBase):
             AWS_STORAGE_BUCKET_NAME="unreachable-bucket",
         ):
             response = self.client.post(
-                f"/api/v1/files/{pending_file.id}/complete/", data, format="json")
+                f"/api/v1/files/{pending_file.id}/complete/", data, format="json"
+            )
 
         # The view must still return 200 — silent degradation path
-        self.assertEqual(response.status_code, status.HTTP_200_OK,
-            f"Graceful degradation must return 200; got {response.status_code}: {response.data}")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            f"Graceful degradation must return 200; got {response.status_code}: {response.data}",
+        )
         pending_file.refresh_from_db()
         self.assertEqual(pending_file.status, FileStatus.ACTIVE)
         self.assertEqual(pending_file.content_sha256, correct_hash)
@@ -467,12 +476,10 @@ class FileViewSetTest(FilesAPITestBase):
         self.assertIn("expires_in", response.data)
 
         # Clean up
-        try:
+        with contextlib.suppress(Exception):
             storage_client.abort_multipart_upload(
                 key=uploading_file.storage_path, upload_id=upload_id
             )
-        except Exception:
-            pass
 
     def test_init_chunk_upload_file_not_uploading(self):
         """Test initializing chunk upload for non-uploading file returns 400."""

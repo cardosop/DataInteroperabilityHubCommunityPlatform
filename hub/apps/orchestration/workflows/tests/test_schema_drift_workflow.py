@@ -26,6 +26,7 @@ full data-first endpoint stack. The endpoint-level e2e is covered
 by the existing ``test_data_first_*`` suites once they're augmented
 with the new ``result_summary`` shape.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -53,7 +54,6 @@ from hub.apps.orchestration.workflows.asset_creation import (
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -167,18 +167,24 @@ class SchemaDriftWorkflowMismatchTest(TestCase):
     def test_structural_drift_emits_audit_with_fail_severity(self):
         tenant, user, file_obj = _seed()
         asset = Asset.objects.create(
-            tenant=tenant, key=f"a-{uuid.uuid4().hex[:6]}", name="A",
+            tenant=tenant,
+            key=f"a-{uuid.uuid4().hex[:6]}",
+            name="A",
             status=AssetStatus.DRAFT,
         )
         contract = _seed_contract_with_schema(
-            tenant, user,
+            tenant,
+            user,
             fields=[
                 {"name": "id", "type": "integer"},
                 {"name": "email", "type": "string"},  # missing in dataset
             ],
         )
         dataset = _seed_dataset_with_schema(
-            tenant, user, file_obj, asset,
+            tenant,
+            user,
+            file_obj,
+            asset,
             fields=[
                 {"name": "id", "data_type": "string"},  # type mismatch (incompatible)
                 # ``email`` missing → triggers structural FAIL
@@ -231,15 +237,21 @@ class SchemaDriftWorkflowMismatchTest(TestCase):
     def test_extra_only_drift_emits_audit_with_warn_severity(self):
         tenant, user, file_obj = _seed()
         asset = Asset.objects.create(
-            tenant=tenant, key=f"a-{uuid.uuid4().hex[:6]}", name="A",
+            tenant=tenant,
+            key=f"a-{uuid.uuid4().hex[:6]}",
+            name="A",
             status=AssetStatus.DRAFT,
         )
         contract = _seed_contract_with_schema(
-            tenant, user,
+            tenant,
+            user,
             fields=[{"name": "id", "type": "integer"}],
         )
         dataset = _seed_dataset_with_schema(
-            tenant, user, file_obj, asset,
+            tenant,
+            user,
+            file_obj,
+            asset,
             fields=[
                 {"name": "id", "data_type": "integer"},
                 {"name": "extra_audit_ts", "data_type": "timestamp"},
@@ -248,7 +260,9 @@ class SchemaDriftWorkflowMismatchTest(TestCase):
         instance = _seed_workflow_instance(tenant, user, asset, contract, dataset)
 
         result = AssetCreationWorkflow._compare_schema_against_contract_task(
-            input_data={}, instance=instance, step=None,
+            input_data={},
+            instance=instance,
+            step=None,
         )
 
         drift = result["schema_drift"]
@@ -270,18 +284,24 @@ class SchemaDriftWorkflowAlignedTest(TestCase):
     def test_aligned_schemas_emit_no_audit(self):
         tenant, user, file_obj = _seed()
         asset = Asset.objects.create(
-            tenant=tenant, key=f"a-{uuid.uuid4().hex[:6]}", name="A",
+            tenant=tenant,
+            key=f"a-{uuid.uuid4().hex[:6]}",
+            name="A",
             status=AssetStatus.DRAFT,
         )
         contract = _seed_contract_with_schema(
-            tenant, user,
+            tenant,
+            user,
             fields=[
                 {"name": "id", "type": "integer"},
                 {"name": "email", "type": "string"},
             ],
         )
         dataset = _seed_dataset_with_schema(
-            tenant, user, file_obj, asset,
+            tenant,
+            user,
+            file_obj,
+            asset,
             fields=[
                 {"name": "id", "data_type": "integer"},
                 {"name": "email", "data_type": "string"},
@@ -289,11 +309,14 @@ class SchemaDriftWorkflowAlignedTest(TestCase):
         )
         instance = _seed_workflow_instance(tenant, user, asset, contract, dataset)
         before = AuditEvent.objects.filter(
-            action=audit_event_types.ASSET_SCHEMA_DRIFT_DETECTED, tenant=tenant,
+            action=audit_event_types.ASSET_SCHEMA_DRIFT_DETECTED,
+            tenant=tenant,
         ).count()
 
         result = AssetCreationWorkflow._compare_schema_against_contract_task(
-            input_data={}, instance=instance, step=None,
+            input_data={},
+            instance=instance,
+            step=None,
         )
 
         drift = result["schema_drift"]
@@ -306,7 +329,8 @@ class SchemaDriftWorkflowAlignedTest(TestCase):
         assert instance.state_data["schema_drift"] == drift
         # No audit on a clean diff.
         after = AuditEvent.objects.filter(
-            action=audit_event_types.ASSET_SCHEMA_DRIFT_DETECTED, tenant=tenant,
+            action=audit_event_types.ASSET_SCHEMA_DRIFT_DETECTED,
+            tenant=tenant,
         ).count()
         assert after == before
 
@@ -318,11 +342,15 @@ class SchemaDriftWorkflowMissingInputsTest(TestCase):
     def test_missing_dataset_id_skips_cleanly(self):
         tenant, user, _file = _seed()
         asset = Asset.objects.create(
-            tenant=tenant, key=f"a-{uuid.uuid4().hex[:6]}", name="A",
+            tenant=tenant,
+            key=f"a-{uuid.uuid4().hex[:6]}",
+            name="A",
             status=AssetStatus.DRAFT,
         )
         contract = _seed_contract_with_schema(
-            tenant, user, fields=[{"name": "id", "type": "integer"}],
+            tenant,
+            user,
+            fields=[{"name": "id", "type": "integer"}],
         )
         # Build the instance state WITHOUT dataset_id
         from hub.apps.orchestration.models import WorkflowDefinition, WorkflowStatus
@@ -353,7 +381,9 @@ class SchemaDriftWorkflowMissingInputsTest(TestCase):
         )
 
         result = AssetCreationWorkflow._compare_schema_against_contract_task(
-            input_data={}, instance=instance, step=None,
+            input_data={},
+            instance=instance,
+            step=None,
         )
 
         drift = result["schema_drift"]
@@ -361,9 +391,13 @@ class SchemaDriftWorkflowMissingInputsTest(TestCase):
         assert drift["severity"] == "NONE"
         assert drift.get("skipped") is True
         # No audit event for the skipped path.
-        assert AuditEvent.objects.filter(
-            action=audit_event_types.ASSET_SCHEMA_DRIFT_DETECTED, tenant=tenant,
-        ).count() == 0
+        assert (
+            AuditEvent.objects.filter(
+                action=audit_event_types.ASSET_SCHEMA_DRIFT_DETECTED,
+                tenant=tenant,
+            ).count()
+            == 0
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -389,18 +423,24 @@ class SchemaDriftWorkflowAuditFailureBestEffortTest(TestCase):
 
         tenant, user, file_obj = _seed()
         asset = Asset.objects.create(
-            tenant=tenant, key=f"a-{uuid.uuid4().hex[:6]}", name="A",
+            tenant=tenant,
+            key=f"a-{uuid.uuid4().hex[:6]}",
+            name="A",
             status=AssetStatus.DRAFT,
         )
         contract = _seed_contract_with_schema(
-            tenant, user,
+            tenant,
+            user,
             fields=[
                 {"name": "id", "type": "integer"},
                 {"name": "email", "type": "string"},
             ],
         )
         dataset = _seed_dataset_with_schema(
-            tenant, user, file_obj, asset,
+            tenant,
+            user,
+            file_obj,
+            asset,
             fields=[{"name": "id", "data_type": "string"}],  # FAIL drift
         )
         instance = _seed_workflow_instance(tenant, user, asset, contract, dataset)
@@ -416,7 +456,9 @@ class SchemaDriftWorkflowAuditFailureBestEffortTest(TestCase):
             side_effect=RuntimeError("audit DB unreachable"),
         ):
             result = AssetCreationWorkflow._compare_schema_against_contract_task(
-                input_data={}, instance=instance, step=None,
+                input_data={},
+                instance=instance,
+                step=None,
             )
 
         # Workflow returned the drift envelope (no re-raise).
@@ -430,6 +472,10 @@ class SchemaDriftWorkflowAuditFailureBestEffortTest(TestCase):
         assert instance.state_data["schema_drift"] == drift
 
         # No audit row was emitted (the patched helper raised).
-        assert AuditEvent.objects.filter(
-            action=audit_event_types.ASSET_SCHEMA_DRIFT_DETECTED, tenant=tenant,
-        ).count() == 0
+        assert (
+            AuditEvent.objects.filter(
+                action=audit_event_types.ASSET_SCHEMA_DRIFT_DETECTED,
+                tenant=tenant,
+            ).count()
+            == 0
+        )

@@ -1,15 +1,14 @@
 """
 Unit tests for contract product details endpoint.
 """
-import uuid
 
 import json
+import uuid
 
 from rest_framework import status
 
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
-
 
 
 class ContractProductDetailsViewTest(ContractsAPITestBase):
@@ -178,8 +177,6 @@ class ContractProductDetailsViewTest(ContractsAPITestBase):
     def test_get_product_details_contract_not_found(self):
         """Test getting product details from non-existent contract"""
         self.client.force_authenticate(user=self.user)
-
-        import uuid
 
         non_existent_id = uuid.uuid4()
 

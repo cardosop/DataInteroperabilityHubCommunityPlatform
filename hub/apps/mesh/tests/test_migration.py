@@ -6,15 +6,17 @@ rollback operations are defined in the migration files (without
 actually running destructive rollbacks that cause deadlocks in the
 shared test database).
 """
+
 import importlib
+import uuid
 
 import pytest
+from django.db import connection
+from django.db import migrations as mig_module
 from django.test import TestCase
-from django.db import connection, migrations as mig_module
 
-from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.mesh.models import DataMeshDomain, DomainStatus
-import uuid
+from hub.apps.tenants.models import KYCStatus, Tenant
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -42,7 +44,8 @@ class DataMeshDomainMigrationTest(TestCase):
             """)
             table_exists = cursor.fetchone()[0]
             self.assertTrue(
-                table_exists, "Table should exist after migration",
+                table_exists,
+                "Table should exist after migration",
             )
 
     def test_migration_forward_creates_model(self):
@@ -65,30 +68,38 @@ class DataMeshDomainMigrationTest(TestCase):
                 WHERE table_name = 'data_mesh_domains'
                 ORDER BY column_name;
             """)
-            columns = {
-                row[0]: (row[1], row[2])
-                for row in cursor.fetchall()
-            }
+            columns = {row[0]: (row[1], row[2]) for row in cursor.fetchall()}
 
             for col in (
-                "id", "tenant_id", "name", "description",
-                "owner_id", "boundaries", "capabilities",
-                "resource_quota", "resource_usage", "status",
-                "created_at", "updated_at",
+                "id",
+                "tenant_id",
+                "name",
+                "description",
+                "owner_id",
+                "boundaries",
+                "capabilities",
+                "resource_quota",
+                "resource_usage",
+                "status",
+                "created_at",
+                "updated_at",
             ):
                 self.assertIn(col, columns)
 
             self.assertEqual(columns["id"][0], "uuid")
             self.assertEqual(
-                columns["name"][0], "character varying",
+                columns["name"][0],
+                "character varying",
             )
             self.assertEqual(columns["boundaries"][0], "jsonb")
             self.assertEqual(columns["capabilities"][0], "jsonb")
             self.assertEqual(
-                columns["resource_quota"][0], "jsonb",
+                columns["resource_quota"][0],
+                "jsonb",
             )
             self.assertEqual(
-                columns["resource_usage"][0], "jsonb",
+                columns["resource_usage"][0],
+                "jsonb",
             )
 
     def test_migration_indexes_exist(self):
@@ -118,9 +129,7 @@ class DataMeshDomainMigrationTest(TestCase):
                 GROUP BY i.indexname
                 ORDER BY i.indexname;
             """)
-            indexes = {
-                row[0]: row[1] for row in cursor.fetchall()
-            }
+            indexes = {row[0]: row[1] for row in cursor.fetchall()}
 
             found_tenant = False
             found_owner = False
@@ -128,19 +137,19 @@ class DataMeshDomainMigrationTest(TestCase):
             found_created_at = False
 
             for index_name, column_names in indexes.items():
-                if 'pkey' in index_name:
+                if "pkey" in index_name:
                     continue
-                if 'unique' in index_name:
+                if "unique" in index_name:
                     continue
                 for col_name in column_names:
                     col = col_name.lower()
-                    if 'tenant' in col:
+                    if "tenant" in col:
                         found_tenant = True
-                    if 'owner' in col:
+                    if "owner" in col:
                         found_owner = True
-                    if col == 'status':
+                    if col == "status":
                         found_status = True
-                    if col == 'created_at':
+                    if col == "created_at":
                         found_created_at = True
 
             msg = f"Found indexes: {indexes}"
@@ -158,15 +167,11 @@ class DataMeshDomainMigrationTest(TestCase):
                 WHERE table_name = 'data_mesh_domains'
                 ORDER BY constraint_name;
             """)
-            constraints = {
-                row[0]: row[1] for row in cursor.fetchall()
-            }
-            unique_found = any(
-                "unique_domain_name_per_tenant" in n.lower()
-                for n in constraints
-            )
+            constraints = {row[0]: row[1] for row in cursor.fetchall()}
+            unique_found = any("unique_domain_name_per_tenant" in n.lower() for n in constraints)
             self.assertTrue(
-                unique_found, "Unique constraint should exist",
+                unique_found,
+                "Unique constraint should exist",
             )
 
     def test_migration_rollback_is_reversible(self):
@@ -182,19 +187,17 @@ class DataMeshDomainMigrationTest(TestCase):
             "hub.apps.mesh.migrations.0001_initial",
         )
         mig = m0001.Migration
-        create_ops = [
-            op for op in mig.operations
-            if isinstance(op, mig_module.CreateModel)
-        ]
+        create_ops = [op for op in mig.operations if isinstance(op, mig_module.CreateModel)]
         self.assertGreater(
-            len(create_ops), 0,
+            len(create_ops),
+            0,
             "Migration should have CreateModel operations",
         )
         # CreateModel is auto-reversible in Django; verify
         # none of the operations are marked non-reversible.
         for op in mig.operations:
             self.assertTrue(
-                getattr(op, 'reversible', True),
+                getattr(op, "reversible", True),
                 f"Operation {op} should be reversible",
             )
 
@@ -222,18 +225,16 @@ class DataMeshDomainMigrationTest(TestCase):
             foreign_keys = cursor.fetchall()
 
             tenant_fk = any(
-                "tenant" in r[2].lower()
-                and "tenants" in r[3].lower()
-                for r in foreign_keys
+                "tenant" in r[2].lower() and "tenants" in r[3].lower() for r in foreign_keys
             )
             self.assertTrue(
-                tenant_fk, "Tenant foreign key should exist",
+                tenant_fk,
+                "Tenant foreign key should exist",
             )
-            owner_fk = any(
-                "owner" in r[2].lower() for r in foreign_keys
-            )
+            owner_fk = any("owner" in r[2].lower() for r in foreign_keys)
             self.assertTrue(
-                owner_fk, "Owner foreign key should exist",
+                owner_fk,
+                "Owner foreign key should exist",
             )
 
     def test_migration_data_persistence(self):
@@ -256,20 +257,25 @@ class DataMeshDomainMigrationTest(TestCase):
 
         domain.refresh_from_db()
         self.assertEqual(
-            domain.name, "Persistence Test Domain",
+            domain.name,
+            "Persistence Test Domain",
         )
         self.assertEqual(domain.description, "Test description")
         self.assertEqual(
-            domain.boundaries, {"data_products": ["product1"]},
+            domain.boundaries,
+            {"data_products": ["product1"]},
         )
         self.assertEqual(
-            domain.capabilities, {"apis": ["api1"]},
+            domain.capabilities,
+            {"apis": ["api1"]},
         )
         self.assertEqual(
-            domain.resource_quota, {"storage_gb": 1000},
+            domain.resource_quota,
+            {"storage_gb": 1000},
         )
         self.assertEqual(
-            domain.resource_usage, {"storage_gb": 500},
+            domain.resource_usage,
+            {"storage_gb": 500},
         )
         self.assertEqual(domain.status, DomainStatus.ACTIVE)
 
@@ -289,6 +295,7 @@ class PolicyApplicationComplianceReportMigrationTest(TestCase):
             kyc_status=KYCStatus.VERIFIED,
         )
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
@@ -301,6 +308,7 @@ class PolicyApplicationComplianceReportMigrationTest(TestCase):
             owner=self.user,
         )
         from hub.apps.governance.models import AccessPolicy
+
         self.policy = AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Test Policy",
@@ -309,8 +317,11 @@ class PolicyApplicationComplianceReportMigrationTest(TestCase):
             created_by=self.user,
         )
         from hub.apps.assets.models import (
-            Asset, AssetStatus, AssetVisibility,
+            Asset,
+            AssetStatus,
+            AssetVisibility,
         )
+
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key=f"test-asset-{uid}",
@@ -347,8 +358,10 @@ class PolicyApplicationComplianceReportMigrationTest(TestCase):
     def test_migration_forward_creates_policy_application_model(self):
         """Test creating PolicyApplication instances."""
         from hub.apps.mesh.models import (
-            PolicyApplication, PolicyApplicationStatus,
+            PolicyApplication,
+            PolicyApplicationStatus,
         )
+
         application = PolicyApplication.objects.create(
             domain=self.domain,
             policy=self.policy,
@@ -359,14 +372,17 @@ class PolicyApplicationComplianceReportMigrationTest(TestCase):
         self.assertEqual(application.domain, self.domain)
         self.assertEqual(application.policy, self.policy)
         self.assertEqual(
-            application.status, PolicyApplicationStatus.APPLIED,
+            application.status,
+            PolicyApplicationStatus.APPLIED,
         )
 
     def test_migration_forward_creates_compliance_report_model(self):
         """Test creating ComplianceReport instances."""
         from hub.apps.mesh.models import (
-            ComplianceReport, MeshComplianceStatus,
+            ComplianceReport,
+            MeshComplianceStatus,
         )
+
         report = ComplianceReport.objects.create(
             domain=self.domain,
             asset=self.asset,
@@ -389,14 +405,17 @@ class PolicyApplicationComplianceReportMigrationTest(TestCase):
                 WHERE table_name = 'policy_applications'
                 ORDER BY column_name;
             """)
-            columns = {
-                row[0]: (row[1], row[2])
-                for row in cursor.fetchall()
-            }
+            columns = {row[0]: (row[1], row[2]) for row in cursor.fetchall()}
             for col in (
-                "id", "domain_id", "policy_id",
-                "applied_by_id", "overrides", "status",
-                "applied_at", "created_at", "updated_at",
+                "id",
+                "domain_id",
+                "policy_id",
+                "applied_by_id",
+                "overrides",
+                "status",
+                "applied_at",
+                "created_at",
+                "updated_at",
             ):
                 self.assertIn(col, columns)
             self.assertEqual(columns["id"][0], "uuid")
@@ -411,14 +430,16 @@ class PolicyApplicationComplianceReportMigrationTest(TestCase):
                 WHERE table_name = 'mesh_compliance_reports'
                 ORDER BY column_name;
             """)
-            columns = {
-                row[0]: (row[1], row[2])
-                for row in cursor.fetchall()
-            }
+            columns = {row[0]: (row[1], row[2]) for row in cursor.fetchall()}
             for col in (
-                "id", "domain_id", "asset_id",
-                "compliance_status", "violations",
-                "generated_at", "created_at", "updated_at",
+                "id",
+                "domain_id",
+                "asset_id",
+                "compliance_status",
+                "violations",
+                "generated_at",
+                "created_at",
+                "updated_at",
             ):
                 self.assertIn(col, columns)
             self.assertEqual(columns["id"][0], "uuid")
@@ -451,23 +472,21 @@ class PolicyApplicationComplianceReportMigrationTest(TestCase):
                 GROUP BY i.indexname
                 ORDER BY i.indexname;
             """)
-            indexes = {
-                row[0]: row[1] for row in cursor.fetchall()
-            }
+            indexes = {row[0]: row[1] for row in cursor.fetchall()}
             found_domain = False
             found_policy = False
             found_status = False
 
             for idx_name, col_names in indexes.items():
-                if 'pkey' in idx_name or 'unique' in idx_name:
+                if "pkey" in idx_name or "unique" in idx_name:
                     continue
                 for col in col_names:
                     c = col.lower()
-                    if 'domain' in c:
+                    if "domain" in c:
                         found_domain = True
-                    if 'policy' in c:
+                    if "policy" in c:
                         found_policy = True
-                    if c == 'status':
+                    if c == "status":
                         found_status = True
 
             msg = f"Found indexes: {indexes}"
@@ -502,23 +521,21 @@ class PolicyApplicationComplianceReportMigrationTest(TestCase):
                 GROUP BY i.indexname
                 ORDER BY i.indexname;
             """)
-            indexes = {
-                row[0]: row[1] for row in cursor.fetchall()
-            }
+            indexes = {row[0]: row[1] for row in cursor.fetchall()}
             found_domain = False
             found_asset = False
             found_compliance = False
 
             for idx_name, col_names in indexes.items():
-                if 'pkey' in idx_name or 'unique' in idx_name:
+                if "pkey" in idx_name or "unique" in idx_name:
                     continue
                 for col in col_names:
                     c = col.lower()
-                    if 'domain' in c:
+                    if "domain" in c:
                         found_domain = True
-                    if 'asset' in c:
+                    if "asset" in c:
                         found_asset = True
-                    if 'compliance_status' in c:
+                    if "compliance_status" in c:
                         found_compliance = True
 
             msg = f"Found indexes: {indexes}"
@@ -534,21 +551,17 @@ class PolicyApplicationComplianceReportMigrationTest(TestCase):
         operations to confirm all are auto-reversible CreateModel.
         """
         m0002 = importlib.import_module(
-            "hub.apps.mesh.migrations"
-            ".0002_compliancereport_policyapplication",
+            "hub.apps.mesh.migrations.0002_compliancereport_policyapplication",
         )
         mig = m0002.Migration
-        create_ops = [
-            op for op in mig.operations
-            if isinstance(op, mig_module.CreateModel)
-        ]
+        create_ops = [op for op in mig.operations if isinstance(op, mig_module.CreateModel)]
         self.assertEqual(
-            len(create_ops), 2,
-            "Migration should have 2 CreateModel operations "
-            "(PolicyApplication, ComplianceReport)",
+            len(create_ops),
+            2,
+            "Migration should have 2 CreateModel operations (PolicyApplication, ComplianceReport)",
         )
         for op in mig.operations:
             self.assertTrue(
-                getattr(op, 'reversible', True),
+                getattr(op, "reversible", True),
                 f"Operation {op} should be reversible",
             )

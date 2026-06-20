@@ -5,12 +5,11 @@ Tests Swagger-based connector for dados.gov.br implementing DataMarketplaceConne
 Follows TDD approach - tests written before implementation.
 """
 
-from typing import Any, Dict, List
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import patch
 
 import pytest
 
-from hub.apps.core.services.base import NotFoundError
+from hub.apps.core.services.base import ConnectionError, NotFoundError
 from hub.apps.integrations.base import (
     MarketplaceListing,
     MarketplaceResource,
@@ -137,9 +136,9 @@ class TestDadosGovBrConnector:
         connector = DadosGovBrConnector(base_url="https://dados.gov.br", jwt_token="test-token")
 
         with patch.object(connector.client, "search_datasets") as mock_search:
-            mock_search.side_effect = Exception("Connection failed")
+            mock_search.side_effect = ConnectionError("Connection failed")
 
-            with pytest.raises(Exception):
+            with pytest.raises(ConnectionError):
                 connector.test_connection()
 
     def test_swagger_dataset_to_listing_mapping(self):

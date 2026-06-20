@@ -7,15 +7,15 @@ Service layer for data portability and erasure operations.
 import io
 import json
 import zipfile
-from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from datetime import timedelta
+from typing import Any
 
 import structlog
 from django.conf import settings
-from django.db import transaction, IntegrityError
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
+from hub.apps.core.services.base import BaseService, ValidationError
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.gdpr.models import (
     DataExportJob,
@@ -52,7 +52,7 @@ class DataPortabilityService(BaseService):
 
     service_name = "data_portability_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize DataPortabilityService.
 
@@ -97,6 +97,18 @@ class DataPortabilityService(BaseService):
                 user=user, tenant=user.tenant, status=DataExportStatus.PENDING
             )
 
+            # Log audit event — export requested
+            from hub.apps.audit.utils import create_audit_event
+
+            create_audit_event(
+                resource_type="DATA_EXPORT",
+                action="DATA_EXPORT_CREATED",
+                tenant=user.tenant,
+                actor_user=user,
+                resource_id=str(job.id),
+                details={"user_id": str(user.id)},
+            )
+
             # Process job asynchronously (in production, use Celery/django-rq)
             # For now, process synchronously
             try:
@@ -113,6 +125,16 @@ class DataPortabilityService(BaseService):
                 job.status = DataExportStatus.FAILED
                 job.error_message = str(e)
                 job.save()
+
+                # Log audit event — export failed
+                create_audit_event(
+                    resource_type="DATA_EXPORT",
+                    action="DATA_EXPORT_COMPLETED",
+                    tenant=user.tenant,
+                    actor_user=None,  # System action
+                    resource_id=str(job.id),
+                    details={"user_id": str(user.id), "result": "FAILURE", "error": str(e)},
+                )
 
             return job
 
@@ -158,6 +180,22 @@ class DataPortabilityService(BaseService):
                 message=f"Data export job {job.id} completed successfully",
             )
 
+            # Log audit event — export completed successfully
+            from hub.apps.audit.utils import create_audit_event
+
+            create_audit_event(
+                resource_type="DATA_EXPORT",
+                action="DATA_EXPORT_COMPLETED",
+                tenant=job.tenant,
+                actor_user=None,  # System action
+                resource_id=str(job.id),
+                details={
+                    "user_id": str(job.user.id),
+                    "result": "SUCCESS",
+                    "storage_path": storage_path,
+                },
+            )
+
         except Exception as e:
             logger.error(
                 "data_export_job_processing_failed",
@@ -171,7 +209,7 @@ class DataPortabilityService(BaseService):
             job.save()
             raise
 
-    def _collect_user_data(self, user) -> Dict[str, Any]:
+    def _collect_user_data(self, user) -> dict[str, Any]:
         """
         Collect all user data for export.
 
@@ -277,9 +315,7 @@ class DataPortabilityService(BaseService):
                     "storage_path": file_row.storage_path,
                     "tenant_id": str(file_row.tenant_id),
                     "created_at": (
-                        file_row.created_at.isoformat()
-                        if file_row.created_at
-                        else None
+                        file_row.created_at.isoformat() if file_row.created_at else None
                     ),
                 }
             )
@@ -301,46 +337,80 @@ class DataPortabilityService(BaseService):
                 }
             )
 
-
         # Phase 277.B.013a — marketplace orders
         try:
             from hub.apps.marketplace.models import Order
+
             orders = Order.objects.filter(tenant=user.tenant, created_by=user)
             for o in orders:
-                data["marketplace_orders"].append({"id": str(o.id), "status": o.status, "created_at": o.created_at.isoformat() if o.created_at else None})
+                data["marketplace_orders"].append(
+                    {
+                        "id": str(o.id),
+                        "status": o.status,
+                        "created_at": o.created_at.isoformat() if o.created_at else None,
+                    }
+                )
         except Exception:
             logger.exception("gdpr_export_orders_failed")
 
         # Phase 277.B.013a — payment transactions
         try:
             from hub.apps.marketplace.models import PaymentTransaction
-            txs = PaymentTransaction.objects.filter(order__tenant=user.tenant, order__created_by=user)
+
+            txs = PaymentTransaction.objects.filter(
+                order__tenant=user.tenant, order__created_by=user
+            )
             for tx in txs:
-                data["payment_transactions"].append({"id": str(tx.id), "status": getattr(tx, "status", "UNKNOWN"), "amount_cents": getattr(tx, "amount_cents", None), "created_at": tx.created_at.isoformat() if tx.created_at else None})
+                data["payment_transactions"].append(
+                    {
+                        "id": str(tx.id),
+                        "status": getattr(tx, "status", "UNKNOWN"),
+                        "amount_cents": getattr(tx, "amount_cents", None),
+                        "created_at": tx.created_at.isoformat() if tx.created_at else None,
+                    }
+                )
         except Exception:
             logger.exception("gdpr_export_payments_failed")
 
         # Phase 277.B.013a — webhook deliveries
         try:
             from hub.apps.webhooks.models import WebhookDelivery
-            deliveries = WebhookDelivery.objects.filter(webhook__tenant=user.tenant).order_by("-created_at")[:100]
+
+            deliveries = WebhookDelivery.objects.filter(webhook__tenant=user.tenant).order_by(
+                "-created_at"
+            )[:100]
             for d in deliveries:
-                data["webhook_deliveries"].append({"id": str(d.id), "event_type": getattr(d, "event_type", ""), "status": getattr(d, "status", "UNKNOWN"), "created_at": d.created_at.isoformat() if d.created_at else None})
+                data["webhook_deliveries"].append(
+                    {
+                        "id": str(d.id),
+                        "event_type": getattr(d, "event_type", ""),
+                        "status": getattr(d, "status", "UNKNOWN"),
+                        "created_at": d.created_at.isoformat() if d.created_at else None,
+                    }
+                )
         except Exception:
             logger.exception("gdpr_export_webhooks_failed")
 
         # Phase 277.B.013a — consent records
         try:
             from hub.apps.consent.models import ConsentRecord
+
             consents = ConsentRecord.objects.filter(tenant=user.tenant, user=user)
             for c in consents:
-                data["consent_records"].append({"id": str(c.id), "purpose": getattr(c, "purpose", ""), "granted": getattr(c, "granted", True), "created_at": c.created_at.isoformat() if c.created_at else None})
+                data["consent_records"].append(
+                    {
+                        "id": str(c.id),
+                        "purpose": getattr(c, "purpose", ""),
+                        "granted": getattr(c, "granted", True),
+                        "created_at": c.created_at.isoformat() if c.created_at else None,
+                    }
+                )
         except Exception:
             logger.exception("gdpr_export_consents_failed")
 
         return data
 
-    def _build_archive(self, data: Dict[str, Any], user) -> bytes:
+    def _build_archive(self, data: dict[str, Any], user) -> bytes:
         """
         Build ZIP archive from user data.
 
@@ -392,11 +462,11 @@ for privacy and storage reasons. Contact support if you need file contents.
         storage_path = f"data-exports/{job.user.tenant.id}/{job.id}/export.zip"
 
         # Upload to storage
-        import boto3
-        from botocore.config import Config
-
         import os
         import sys
+
+        import boto3
+        from botocore.config import Config
 
         _is_test = (
             "pytest" in sys.modules
@@ -463,7 +533,7 @@ class ErasureService(BaseService):
 
     service_name = "erasure_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize ErasureService.
 
@@ -587,7 +657,9 @@ class ErasureService(BaseService):
                     # re-execution where the email is already in the
                     # deleted-{uuid}@deleted.local format, which would
                     # trigger a duplicate-key violation on users_email_key)
-                    if not user.email.startswith("deleted-") or not user.email.endswith("@deleted.local"):
+                    if not user.email.startswith("deleted-") or not user.email.endswith(
+                        "@deleted.local"
+                    ):
                         user.email = f"deleted-{user.id}@deleted.local"
                         anonymized_fields.append("email")
                     user.display_name = "Deleted User"
@@ -624,9 +696,7 @@ class ErasureService(BaseService):
                         except Exception:
                             pass
                     if session_keys_to_delete:
-                        Session.objects.filter(
-                            session_key__in=session_keys_to_delete
-                        ).delete()
+                        Session.objects.filter(session_key__in=session_keys_to_delete).delete()
                     deleted_resources.append("sessions")
 
                     # Revoke API keys
@@ -663,8 +733,7 @@ class ErasureService(BaseService):
                     )
                     redacted_name = f"asset-of-deleted-user-{user.id}"
                     redacted_description = (
-                        "PII redacted per GDPR Article 17 "
-                        "right-to-erasure (Phase 250.5.F.5)."
+                        "PII redacted per GDPR Article 17 right-to-erasure (Phase 250.5.F.5)."
                     )
                     asset_count = 0
                     for asset in user_assets.iterator(chunk_size=200):
@@ -690,9 +759,7 @@ class ErasureService(BaseService):
                         "gdpr_redacted": True,
                         "reason": "article_17_erasure",
                     }
-                    comp_updated = ComplianceRun.objects.filter(
-                        job__created_by=user
-                    ).update(
+                    comp_updated = ComplianceRun.objects.filter(job__created_by=user).update(
                         column_findings_json=[],
                         detected_categories_json={},
                         regulation_mapping_json=_COMPLIANCE_ERASURE_PLACEHOLDER,
@@ -712,9 +779,7 @@ class ErasureService(BaseService):
                     from hub.apps.marketplace.models import Listing
 
                     _LISTING_TITLE = "Deleted User Listing"
-                    _LISTING_DESC = (
-                        "PII redacted per GDPR Article 17 right-to-erasure."
-                    )
+                    _LISTING_DESC = "PII redacted per GDPR Article 17 right-to-erasure."
                     listing_count = 0
                     for listing in Listing.objects.filter(
                         created_by=user,
@@ -723,8 +788,10 @@ class ErasureService(BaseService):
                         current_meta["title"] = _LISTING_TITLE
                         current_meta["description"] = _LISTING_DESC
                         for pii_key in (
-                            "contact_email", "contact_name",
-                            "support_email", "author_name",
+                            "contact_email",
+                            "contact_name",
+                            "support_email",
+                            "author_name",
                         ):
                             if pii_key in current_meta:
                                 current_meta[pii_key] = "redacted@deleted.local"
@@ -732,7 +799,9 @@ class ErasureService(BaseService):
                         listing.created_by = None
                         listing.save(
                             update_fields=[
-                                "metadata_json", "created_by", "updated_at",
+                                "metadata_json",
+                                "created_by",
+                                "updated_at",
                             ],
                         )
                         listing_count += 1
@@ -820,7 +889,7 @@ class ErasureService(BaseService):
         )
 
 
-def export_user_data(user_id: str) -> Dict[str, Any]:
+def export_user_data(user_id: str) -> dict[str, Any]:
     """
     GDPR Article 20 — return the same envelope as ``DataExportJob`` / ``user_data.json``.
 

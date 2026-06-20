@@ -22,15 +22,14 @@ The test is deliberately a regression suite — it would FAIL if a future
 change reintroduces ``yaml.load`` somewhere under
 ``hub.apps.contracts``.
 """
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import List
 
 import pytest
 import yaml
-
 
 CONTRACTS_PACKAGE = Path(__file__).resolve().parent.parent
 # Files that legitimately mention ``yaml.load`` in narrative
@@ -42,7 +41,7 @@ ALLOWLIST: tuple[str, ...] = (
 )
 
 
-def _scan_for_unsafe_yaml_load() -> List[tuple[Path, int, str]]:
+def _scan_for_unsafe_yaml_load() -> list[tuple[Path, int, str]]:
     """Return every line in ``hub.apps.contracts`` that calls
     ``yaml.load(`` *without* ``Loader=yaml.SafeLoader``.
 
@@ -51,7 +50,7 @@ def _scan_for_unsafe_yaml_load() -> List[tuple[Path, int, str]]:
     """
     unsafe = re.compile(r"\byaml\.load\s*\(")
     safe_loader = re.compile(r"Loader\s*=\s*yaml\.SafeLoader")
-    findings: List[tuple[Path, int, str]] = []
+    findings: list[tuple[Path, int, str]] = []
     for py in CONTRACTS_PACKAGE.rglob("*.py"):
         rel = py.relative_to(CONTRACTS_PACKAGE).as_posix()
         if any(rel.endswith(skip) for skip in ALLOWLIST):
@@ -80,9 +79,8 @@ def test_no_unsafe_yaml_load_in_contracts_package():
     ``Loader=yaml.SafeLoader`` argument).
     """
     findings = _scan_for_unsafe_yaml_load()
-    assert findings == [], (
-        "Unsafe ``yaml.load`` call detected (RCE risk):\n"
-        + "\n".join(f"  {p}:{n}: {line}" for (p, n, line) in findings)
+    assert findings == [], "Unsafe ``yaml.load`` call detected (RCE risk):\n" + "\n".join(
+        f"  {p}:{n}: {line}" for (p, n, line) in findings
     )
 
 
@@ -170,16 +168,18 @@ def _build_yaml_safety_e2e_class():
                 format="json",
             )
             self.assertGreaterEqual(
-                response.status_code, 400,
+                response.status_code,
+                400,
                 f"Malicious YAML must be rejected with 4xx; got "
                 f"{response.status_code}: {getattr(response, 'data', None)}",
             )
             self.assertLess(response.status_code, 500)
             self.assertEqual(
-                Contract.objects.count(), before,
-                "Malicious YAML caused a Contract row to be persisted — "
-                "the parse path is unsafe.",
+                Contract.objects.count(),
+                before,
+                "Malicious YAML caused a Contract row to be persisted — the parse path is unsafe.",
             )
+
         _test.__name__ = f"test_rejects_{label}"
         _test.__doc__ = (
             f"End-to-end: ``{label}`` MUST be rejected with 4xx and MUST NOT "

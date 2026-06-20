@@ -6,13 +6,13 @@ Implements DataMarketplaceConnector interface with Swagger-based API calls.
 """
 
 import logging
-from django.utils import timezone
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import urljoin
 
 import httpx
 from django.conf import settings
+from django.utils import timezone
 
 # dateutil for Brazilian date format parsing
 try:
@@ -63,7 +63,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
     """
 
     def __init__(
-        self, base_url: str, jwt_token: Optional[str] = None, swagger_spec_url: Optional[str] = None
+        self, base_url: str, jwt_token: str | None = None, swagger_spec_url: str | None = None
     ):
         """
         Initialize dados.gov.br Swagger connector.
@@ -82,12 +82,16 @@ class DadosGovBrConnector(DataMarketplaceConnector):
         self.jwt_token = jwt_token
         self.swagger_spec_url = swagger_spec_url or f"{self.base_url}/v3/api-docs"
 
-        # Initialize Swagger API client
-        self.client = DadosGovBrAPIClient(base_url=self.base_url, jwt_token=self.jwt_token)
-
-        # Load Swagger specification if URL provided
-        if self.swagger_spec_url:
-            self.client.load_swagger_spec(self.swagger_spec_url)
+        # Initialize Swagger API client.
+        # The Swagger spec URL is stored for lazy loading — it will be fetched
+        # on first use (via get_endpoint_path) rather than eagerly during
+        # __init__.  This avoids a 10 s HTTP timeout when the external
+        # dados.gov.br API is unreachable (e.g. in CI / offline test runs).
+        self.client = DadosGovBrAPIClient(
+            base_url=self.base_url,
+            jwt_token=self.jwt_token,
+            swagger_spec_url=self.swagger_spec_url,
+        )
 
         # HTTP client configuration
         self.timeout = getattr(settings, "CKAN_CONNECTOR_TIMEOUT", 30)
@@ -112,7 +116,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
         return MarketplaceType.CKAN_INSTANCE  # Keep same type for compatibility
 
     @property
-    def supported_sync_directions(self) -> List[SyncDirection]:
+    def supported_sync_directions(self) -> list[SyncDirection]:
         """
         Get the list of sync directions supported by this connector.
 
@@ -121,7 +125,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
         """
         return [SyncDirection.PULL]
 
-    def authenticate(self, credentials: Dict[str, Any]) -> bool:
+    def authenticate(self, credentials: dict[str, Any]) -> bool:
         """
         Authenticate with dados.gov.br using provided credentials.
 
@@ -152,10 +156,12 @@ class DadosGovBrConnector(DataMarketplaceConnector):
         base_url = credentials.get("base_url")
         if base_url:
             self.base_url = base_url.rstrip("/")
-            # Recreate client with new base URL
-            self.client = DadosGovBrAPIClient(base_url=self.base_url, jwt_token=self.jwt_token)
-            if self.swagger_spec_url:
-                self.client.load_swagger_spec(self.swagger_spec_url)
+            # Recreate client with new base URL; swagger spec loads lazily
+            self.client = DadosGovBrAPIClient(
+                base_url=self.base_url,
+                jwt_token=self.jwt_token,
+                swagger_spec_url=self.swagger_spec_url,
+            )
 
         # Test authentication by calling search endpoint
         try:
@@ -203,10 +209,10 @@ class DadosGovBrConnector(DataMarketplaceConnector):
 
     def list_listings(
         self,
-        filters: Optional[Dict[str, Any]] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[MarketplaceListing]:
+        filters: dict[str, Any] | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[MarketplaceListing]:
         """
         List available datasets from dados.gov.br.
 
@@ -291,7 +297,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
                     continue
 
                 try:
-                    dataset_data: Dict[str, Any] = dataset_item
+                    dataset_data: dict[str, Any] = dataset_item
                     listing = self._swagger_dataset_to_listing(dataset_data)
                     listings.append(listing)
                 except Exception as e:
@@ -326,7 +332,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
             # Handle different response structures:
             # CKAN format: {'success': True, 'result': {...}}
             # dados.gov.br format: May be direct object or different structure
-            dataset_data: Optional[Dict[str, Any]] = None
+            dataset_data: dict[str, Any] | None = None
             if isinstance(response_data, dict):
                 if response_data.get("success") and response_data.get("result"):
                     # CKAN-style response
@@ -362,7 +368,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
         except httpx.RequestError as e:
             raise ConnectionError(f"Unable to connect to dados.gov.br: {e}") from e
 
-    def list_resources(self, listing_id: str) -> List[MarketplaceResource]:
+    def list_resources(self, listing_id: str) -> list[MarketplaceResource]:
         """
         List resources associated with a dataset.
 
@@ -413,7 +419,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
 
         return resources
 
-    def _swagger_dataset_to_listing(self, dataset_data: Dict[str, Any]) -> MarketplaceListing:
+    def _swagger_dataset_to_listing(self, dataset_data: dict[str, Any]) -> MarketplaceListing:
         """
         Map Swagger API dataset response to MarketplaceListing.
 
@@ -482,7 +488,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
         created_at = None
         updated_at = None
 
-        def _parse_brazilian_date(date_str: Optional[str]) -> Optional[datetime]:
+        def _parse_brazilian_date(date_str: str | None) -> datetime | None:
             """Parse Brazilian date format (DD/MM/YYYY HH:MM:SS) or ISO format."""
             if not date_str:
                 return None
@@ -612,7 +618,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
         )
 
     def _swagger_resource_to_marketplace_resource(
-        self, resource_data: Dict[str, Any]
+        self, resource_data: dict[str, Any]
     ) -> MarketplaceResource:
         """
         Map Swagger API resource response to MarketplaceResource.
@@ -648,7 +654,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
             resource_data.get("link")
             or resource_data.get("url")
             or resource_data.get("url_recurso")
-            or ""
+            or None
         )
 
         # === FORMAT ===
@@ -659,7 +665,15 @@ class DadosGovBrConnector(DataMarketplaceConnector):
         size_bytes = resource_data.get("tamanho") or resource_data.get("size")
 
         # === RESOURCE TYPE ===
-        resource_type = "FILE" if url else "API"
+        # Use the API's authoritative ``tipo`` field when present;
+        # fall back to the URL-presence heuristic for backward compatibility.
+        tipo = resource_data.get("tipo")
+        if tipo:
+            resource_type = str(tipo).upper()
+        elif url:
+            resource_type = "FILE"
+        else:
+            resource_type = "API"
 
         # === TIMESTAMPS ===
         # Created (dataCatalogacao is primary in Portuguese)
@@ -804,9 +818,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
             # Get resource details — use dataset-scoped lookup when
             # listing_id is available, since the Swagger API nests
             # resources inside datasets.
-            response_data = self.client.get_resource(
-                resource_id, dataset_id=listing_id
-            )
+            response_data = self.client.get_resource(resource_id, dataset_id=listing_id)
 
             if not response_data.get("success"):
                 error_msg = response_data.get("error", {}).get("message", "Unknown error")
@@ -818,9 +830,15 @@ class DadosGovBrConnector(DataMarketplaceConnector):
             if not resource_data:
                 raise NotFoundError(f"Resource '{resource_id}' not found in dados.gov.br")
 
-            resource_url = resource_data.get("url")
+            resource_url = (
+                resource_data.get("link")
+                or resource_data.get("url")
+                or resource_data.get("url_recurso")
+            )
             if not resource_url:
-                raise ValueError(f"Resource '{resource_id}' has no URL")
+                raise ValueError(
+                    f"Resource '{resource_id}' has no downloadable URL in dados.gov.br"
+                )
 
             # Download resource using httpx
             import os
@@ -845,39 +863,26 @@ class DadosGovBrConnector(DataMarketplaceConnector):
             logger.info(f"Downloaded resource '{resource_id}' to {destination_path}")
             return destination_path
 
-        except Exception as e:
-            # Check if it's an httpx error
-            if "httpx" in str(type(e).__module__):
-                if hasattr(e, "response") and e.response.status_code == 404:
-                    raise NotFoundError(
-                        f"Resource '{resource_id}' not found in dados.gov.br"
-                    ) from e
-                raise ConnectionError(f"dados.gov.br API error: {e}") from e
-            # Re-raise if it's already a known exception type
-            if isinstance(
-                e, (NotFoundError, PermissionError, ConnectionError, IOError, ValueError)
-            ):
-                raise
-            raise ConnectionError(f"Unexpected error downloading resource: {e}") from e
+        except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                raise NotFoundError(f"Resource '{resource_id}' not found in dados.gov.br") from e
+                raise NotFoundError(
+                    f"Resource '{resource_id}' not found in dados.gov.br"
+                ) from e
             raise ConnectionError(f"dados.gov.br API error: {e}") from e
         except httpx.RequestError as e:
             raise ConnectionError(f"Unable to connect to dados.gov.br: {e}") from e
-        except IOError:
+        except OSError:
+            raise
+        except (NotFoundError, PermissionError, ConnectionError, OSError, ValueError):
             raise
         except Exception as e:
-            if isinstance(
-                e, (NotFoundError, PermissionError, ConnectionError, IOError, ValueError)
-            ):
-                raise
             raise ConnectionError(f"Unexpected error downloading resource: {e}") from e
 
     def sync_pull(
         self,
-        listing_ids: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        options: Optional[Dict[str, Any]] = None,
+        listing_ids: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
     ) -> SyncResult:
         """
         Pull (harvest) datasets from dados.gov.br to Hub.
@@ -1030,7 +1035,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
                 completed_at=timezone.now(),
             )
 
-    def sync_push(self, hub_asset_ids: List[str], force_update: bool = False) -> SyncResult:
+    def sync_push(self, hub_asset_ids: list[str], force_update: bool = False) -> SyncResult:
         """
         Push Hub assets to dados.gov.br.
 
@@ -1053,7 +1058,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
         )
 
     def map_to_hub_asset(
-        self, listing: MarketplaceListing, sync_job_id: Optional[str] = None
+        self, listing: MarketplaceListing, sync_job_id: str | None = None
     ) -> MarketplaceAssetMapping:
         """
         Map a dados.gov.br dataset to a Hub asset representation.
@@ -1085,19 +1090,19 @@ class DadosGovBrConnector(DataMarketplaceConnector):
             elif isinstance(org, str):
                 domain = org
 
-        # === STATUS & VISIBILITY ===
+        # === STATUS (visibility is derived from status per D250.4) ===
         status = "DRAFT"
-        visibility = "INTERNAL"
 
         visibilidade = swagger_dataset.get("visibilidade", "").upper()
         if visibilidade == "PUBLICA":
-            visibility = "PUBLIC"
             # Check if dataset has resources and is updated
             atualizado = swagger_dataset.get("atualizado", "").upper()
             if atualizado == "ATUALIZADO" and listing.resources:
-                status = "ACTIVE"
+                status = "PUBLIC"  # D250.4: PUBLIC status → PUBLIC visibility
+            else:
+                status = "DRAFT"  # no resources / not updated → INTERNAL visibility
         elif visibilidade == "PRIVADA":
-            visibility = "INTERNAL"
+            status = "DRAFT"  # INTERNAL visibility
 
         # Check deprecated flag
         if swagger_dataset.get("descontinuado", False):
@@ -1112,13 +1117,13 @@ class DadosGovBrConnector(DataMarketplaceConnector):
             ]
 
         # === BUILD ASSET DATA ===
-        asset_data: Dict[str, Any] = {
+        # ``visibility`` is not set — derived from ``status`` per D250.4.
+        asset_data: dict[str, Any] = {
             "name": listing.title,
             "description": listing.description or "",
             "key": f"dados-gov-br-{listing.marketplace_id}",
             "tags": tags,
             "status": status,
-            "visibility": visibility,
         }
 
         if domain:
@@ -1137,7 +1142,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
                 logger.warning(f"Failed to get resources for listing {listing.marketplace_id}: {e}")
 
         # === BUILD SOURCE METADATA ===
-        source_metadata: Dict[str, Any] = {
+        source_metadata: dict[str, Any] = {
             "marketplace_type": MarketplaceType.CKAN_INSTANCE.value,
             "marketplace_id": "dados.gov.br",
             "listing_id": listing.marketplace_id,
@@ -1238,7 +1243,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
         )
 
     def map_from_hub_asset(
-        self, hub_asset: Any, sync_job_id: Optional[str] = None
+        self, hub_asset: Any, sync_job_id: str | None = None
     ) -> MarketplaceListing:
         """
         Map a Hub asset to a dados.gov.br dataset representation.

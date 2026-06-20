@@ -4,9 +4,9 @@ Unit tests for NormalizationService.
 Tests cover all service methods with 100% coverage target.
 All tests use real implementations (no mocks/stubs).
 """
-import uuid
 
 import json
+import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -52,7 +52,7 @@ class NormalizationServiceTest(ContractsTestBase):
         }"""
         format = "JSON"
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = (
+        hub_contract, spec_type, _spec_version, status, _errors, _warnings = (
             self.service.normalize_contract(
                 raw_contract=raw_contract, format=format, tenant_id=str(self.tenant.id)
             )
@@ -73,7 +73,7 @@ class NormalizationServiceTest(ContractsTestBase):
 
         # May normalize successfully or fail, but should not have DCS-specific error
         try:
-            hub_contract, spec_type, spec_version, status, errors, warnings = (
+            hub_contract, spec_type, _spec_version, _status, errors, _warnings = (
                 self.service.normalize_contract(
                     raw_contract=raw_contract, format=format, tenant_id=str(self.tenant.id)
                 )
@@ -97,8 +97,9 @@ class NormalizationServiceTest(ContractsTestBase):
             # are now caught by enforce_structural_floor before generic
             # NORMALIZATION_FAILED is returned).
             self.assertEqual(e.code, "STRUCTURELESS_CONTRACT")
-            self.assertIn("subcode", e.details,
-                "Structural-floor error details must include a subcode")
+            self.assertIn(
+                "subcode", e.details, "Structural-floor error details must include a subcode"
+            )
 
     def test_validate_hubcontract_success(self):
         """Test successful HubContract validation"""
@@ -131,7 +132,7 @@ schema:
 """
         format = "YAML"
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = (
+        hub_contract, spec_type, _spec_version, status, _errors, _warnings = (
             self.service.normalize_contract(
                 raw_contract=raw_contract, format=format, tenant_id=str(self.tenant.id)
             )
@@ -149,7 +150,7 @@ schema:
 
         # Should handle malformed JSON gracefully
         try:
-            hub_contract, spec_type, spec_version, status, errors, warnings = (
+            _hub_contract, _spec_type, _spec_version, status, errors, _warnings = (
                 self.service.normalize_contract(
                     raw_contract=raw_contract, format=format, tenant_id=str(self.tenant.id)
                 )
@@ -168,7 +169,7 @@ schema:
 
         # Should handle empty string gracefully
         try:
-            hub_contract, spec_type, spec_version, status, errors, warnings = (
+            _hub_contract, _spec_type, _spec_version, status, errors, _warnings = (
                 self.service.normalize_contract(
                     raw_contract=raw_contract, format=format, tenant_id=str(self.tenant.id)
                 )
@@ -205,7 +206,7 @@ schema:
         )
         format = "JSON"
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = (
+        hub_contract, spec_type, _spec_version, _status, _errors, _warnings = (
             self.service.normalize_contract(
                 raw_contract=raw_contract,
                 format=format,
@@ -234,9 +235,11 @@ schema:
 
         # Create another tenant
         _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = (
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = (
             self.service.normalize_contract(
                 raw_contract=raw_contract,
                 format=format,
@@ -268,7 +271,7 @@ schema:
             email=f"other-{_uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = (
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = (
             self.service.normalize_contract(
                 raw_contract=raw_contract,
                 format=format,
@@ -298,7 +301,7 @@ schema:
         format = "JSON"
         contract_id = str(uuid.uuid4())
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = (
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = (
             self.service.normalize_contract(
                 raw_contract=raw_contract,
                 format=format,
@@ -327,7 +330,7 @@ schema:
         )
         format = "JSON"
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = (
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = (
             self.service.normalize_contract(
                 raw_contract=raw_contract, format=format, tenant_id=str(self.tenant.id)
             )
@@ -423,14 +426,11 @@ schema:
         raw_contract = json.dumps(large_contract)
         format = "JSON"
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = (
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = (
             self.service.normalize_contract(
                 raw_contract=raw_contract, format=format, tenant_id=str(self.tenant.id)
             )
         )
 
-        # Should handle large contract gracefully
+        # Should handle large contract without crashing
         self.assertIsNotNone(status)
-        # May succeed or fail depending on size limits
-        if hub_contract:
-            self.assertIsNotNone(hub_contract)

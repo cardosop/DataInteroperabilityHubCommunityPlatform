@@ -1,6 +1,7 @@
 """
 File operations for DataHub SDK.
 """
+
 from typing import Any, Dict, Optional
 
 from .client import DataHubClient
@@ -24,7 +25,9 @@ class FilesAPI:
         return await self.client.post("files/init/", data=data)
 
     async def complete_upload(
-        self, file_id: str, content_sha256: Optional[str] = None,
+        self,
+        file_id: str,
+        content_sha256: Optional[str] = None,
     ) -> Dict[str, Any]:
         data: Dict[str, Any] = {}
         if content_sha256:

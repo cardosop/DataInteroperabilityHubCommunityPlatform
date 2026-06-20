@@ -24,12 +24,12 @@ key.  Two classes make the distinction structural — the summary class
 **physically does not have** the forbidden fields, so any drift
 fails compile/import time, not at request time.
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 from rest_framework import serializers
-
 
 # ---------------------------------------------------------------------------
 # Forbidden-key set — pinned by the regression guard in
@@ -37,13 +37,15 @@ from rest_framework import serializers
 # Keep this in lock-step with REQ-LIN-F1-001's exclusion list.
 # ---------------------------------------------------------------------------
 
-SUMMARY_FORBIDDEN_KEYS: frozenset[str] = frozenset({
-    "transformation_ref",
-    "job_ref",
-    "created_by_run",
-    "source_field",
-    "target_field",
-})
+SUMMARY_FORBIDDEN_KEYS: frozenset[str] = frozenset(
+    {
+        "transformation_ref",
+        "job_ref",
+        "created_by_run",
+        "source_field",
+        "target_field",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +133,7 @@ class LineageGraphFullSerializer(serializers.Serializer):
 # ---------------------------------------------------------------------------
 
 
-def assert_no_forbidden_keys(payload: Dict[str, Any]) -> None:
+def assert_no_forbidden_keys(payload: dict[str, Any]) -> None:
     """Defensive runtime check — raises ``ValueError`` if a summary
     payload accidentally carries any forbidden key.  The test suite
     pins the same invariant statically; this helper is the runtime
@@ -142,8 +144,8 @@ def assert_no_forbidden_keys(payload: Dict[str, Any]) -> None:
     treats the static serializer field allowlist as authoritative
     and skips the per-request walk for performance.
     """
-    nodes: List[Dict[str, Any]] = payload.get("nodes", []) or []
-    links: List[Dict[str, Any]] = payload.get("links", []) or []
+    nodes: list[dict[str, Any]] = payload.get("nodes", []) or []
+    links: list[dict[str, Any]] = payload.get("links", []) or []
     for link in links:
         bad = SUMMARY_FORBIDDEN_KEYS & set(link.keys())
         if bad:
@@ -157,14 +159,13 @@ def assert_no_forbidden_keys(payload: Dict[str, Any]) -> None:
         bad = SUMMARY_FORBIDDEN_KEYS & set(node.keys())
         if bad:
             raise ValueError(
-                f"Phase 228.F1 summary tier leaked forbidden keys "
-                f"{sorted(bad)} on a node entry."
+                f"Phase 228.F1 summary tier leaked forbidden keys {sorted(bad)} on a node entry."
             )
 
 
 __all__ = [
     "SUMMARY_FORBIDDEN_KEYS",
-    "LineageGraphSummarySerializer",
     "LineageGraphFullSerializer",
+    "LineageGraphSummarySerializer",
     "assert_no_forbidden_keys",
 ]

@@ -12,8 +12,9 @@ This conftest patches ``importlib.import_module`` (which pytest uses to
 load conftest and test modules) so that the project root is purged from
 sys.path before every module import.
 """
-import sys
+
 import os
+import sys
 
 _CLI_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_CLI_DIR)

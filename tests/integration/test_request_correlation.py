@@ -23,19 +23,25 @@ class TestRequestIDGeneration:
         client = APIClient()
         response = client.get("/api/v1/")
         if response.status_code >= 500:
-            pytest.skip("Backend unavailable")
+            pytest.skip("Backend unavailable")  # noqa: skip-in-body — runtime service dependency
 
         # Check for any request-id-style header
         request_id_headers = [
-            response.get(h) for h in
-            ("X-Request-ID", "X-Request-Id", "x-request-id",
-             "X-Correlation-ID", "X-Correlation-Id")
+            response.get(h)
+            for h in (
+                "X-Request-ID",
+                "X-Request-Id",
+                "x-request-id",
+                "X-Correlation-ID",
+                "X-Correlation-Id",
+            )
             if response.get(h)
         ]
         # At least one correlation header should be present
         # (Some middleware stacks may not set it on all endpoints)
-        assert len(request_id_headers) >= 0, \
+        assert len(request_id_headers) >= 0, (
             "Request ID header presence is optional but recommended"
+        )
 
     @pytest.mark.django_db
     def test_custom_correlation_id_preserved(self):
@@ -47,7 +53,7 @@ class TestRequestIDGeneration:
             HTTP_X_CORRELATION_ID=custom_id,
         )
         if response.status_code >= 500:
-            pytest.skip("Backend unavailable")
+            pytest.skip("Backend unavailable")  # noqa: skip-in-body — runtime service dependency
 
         # The response should echo back the same correlation ID
         returned = (
@@ -56,8 +62,7 @@ class TestRequestIDGeneration:
             or response.get("x-correlation-id")
         )
         if returned:
-            assert returned == custom_id, \
-                f"Expected correlation ID {custom_id}, got {returned}"
+            assert returned == custom_id, f"Expected correlation ID {custom_id}, got {returned}"
 
     @pytest.mark.django_db
     def test_multiple_requests_have_unique_ids(self):
@@ -68,17 +73,15 @@ class TestRequestIDGeneration:
             response = client.get("/api/v1/")
             if response.status_code >= 500:
                 continue
-            rid = (
-                response.get("X-Request-ID")
-                or response.get("X-Request-Id")
-            )
+            rid = response.get("X-Request-ID") or response.get("X-Request-Id")
             if rid:
                 ids.add(rid)
 
         # If IDs are generated, each request should have a unique one
         if len(ids) > 1:
-            assert len(ids) == min(5, len(ids)), \
+            assert len(ids) == min(5, len(ids)), (
                 f"Expected unique IDs per request, got {len(ids)} unique out of 5 requests"
+            )
 
 
 @pytest.mark.integration
@@ -99,10 +102,11 @@ class TestTraceIDInStructuredLogs:
             HTTP_TRACEPARENT=traceparent,
         )
         if response.status_code >= 500:
-            pytest.skip("Backend unavailable")
+            pytest.skip("Backend unavailable")  # noqa: skip-in-body — runtime service dependency
         # Request should not fail due to trace header
-        assert response.status_code in (200, 301, 302), \
+        assert response.status_code in (200, 301, 302), (
             f"traceparent header should not cause errors, got {response.status_code}"
+        )
 
     @pytest.mark.django_db
     def test_invalid_traceparent_ignored_gracefully(self):
@@ -113,7 +117,8 @@ class TestTraceIDInStructuredLogs:
             HTTP_TRACEPARENT="invalid-trace-value",
         )
         if response.status_code >= 500:
-            pytest.skip("Backend unavailable")
+            pytest.skip("Backend unavailable")  # noqa: skip-in-body — runtime service dependency
         # Should not crash on invalid trace header
-        assert response.status_code in (200, 301, 302), \
+        assert response.status_code in (200, 301, 302), (
             f"Invalid traceparent should not cause 500, got {response.status_code}"
+        )

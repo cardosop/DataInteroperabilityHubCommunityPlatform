@@ -13,12 +13,12 @@ This script checks:
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+
 
 def check_method_exists(module, method_name, expected_signature_hints=None):
     """Check if a method exists in a module"""
@@ -34,6 +34,7 @@ def check_method_exists(module, method_name, expected_signature_hints=None):
     print(f"✓ Method {method_name} exists")
     return True
 
+
 def check_test_file_exists(test_file_path):
     """Check if test file exists"""
     if not test_file_path.exists():
@@ -43,16 +44,18 @@ def check_test_file_exists(test_file_path):
     print(f"✓ Test file exists: {test_file_path}")
     return True
 
+
 def validate_imports():
     """Validate that all required imports work"""
     print("\n=== Validating Imports ===")
     try:
         from hub.apps.integrations.business_rules import (
             MarketplaceIntegrationBusinessRules,
-            validate_connection_config,
             validate_connection_access,
+            validate_connection_config,
             validate_connection_test,
         )
+
         print("❌ Methods should not be imported directly - they are instance methods")
         return False
     except ImportError:
@@ -60,6 +63,7 @@ def validate_imports():
 
     try:
         from hub.apps.integrations.business_rules import MarketplaceIntegrationBusinessRules
+
         print("✓ MarketplaceIntegrationBusinessRules imports successfully")
     except ImportError as e:
         print(f"❌ Failed to import MarketplaceIntegrationBusinessRules: {e}")
@@ -67,6 +71,7 @@ def validate_imports():
 
     try:
         from hub.apps.integrations.models import MarketplaceConnection
+
         print("✓ MarketplaceConnection imports successfully")
     except ImportError as e:
         print(f"❌ Failed to import MarketplaceConnection: {e}")
@@ -74,6 +79,7 @@ def validate_imports():
 
     try:
         from hub.apps.integrations.base import MarketplaceType
+
         print("✓ MarketplaceType imports successfully")
     except ImportError as e:
         print(f"❌ Failed to import MarketplaceType: {e}")
@@ -81,12 +87,14 @@ def validate_imports():
 
     try:
         from hub.apps.core.business_rules.base import ValidationResult
+
         print("✓ ValidationResult imports successfully")
     except ImportError as e:
         print(f"❌ Failed to import ValidationResult: {e}")
         return False
 
     return True
+
 
 def validate_methods():
     """Validate that all required methods exist"""
@@ -95,9 +103,9 @@ def validate_methods():
         from hub.apps.integrations.business_rules import MarketplaceIntegrationBusinessRules
 
         methods_to_check = [
-            'validate_connection_config',
-            'validate_connection_access',
-            'validate_connection_test',
+            "validate_connection_config",
+            "validate_connection_access",
+            "validate_connection_test",
         ]
 
         all_exist = True
@@ -110,13 +118,24 @@ def validate_methods():
         print(f"❌ Error validating methods: {e}")
         return False
 
+
 def validate_test_files():
     """Validate that test files exist"""
     print("\n=== Validating Test Files ===")
 
     test_files = [
-        PROJECT_ROOT / "hub" / "apps" / "integrations" / "tests" / "test_connection_validation_rules.py",
-        PROJECT_ROOT / "hub" / "apps" / "integrations" / "tests" / "test_connection_validation_integration.py",
+        PROJECT_ROOT
+        / "hub"
+        / "apps"
+        / "integrations"
+        / "tests"
+        / "test_connection_validation_rules.py",
+        PROJECT_ROOT
+        / "hub"
+        / "apps"
+        / "integrations"
+        / "tests"
+        / "test_connection_validation_integration.py",
     ]
 
     all_exist = True
@@ -126,37 +145,52 @@ def validate_test_files():
 
     return all_exist
 
+
 def validate_method_signatures():
     """Validate method signatures are correct"""
     print("\n=== Validating Method Signatures ===")
     try:
         import inspect
+
         from hub.apps.integrations.business_rules import MarketplaceIntegrationBusinessRules
 
         # Check validate_connection_config signature
         sig = inspect.signature(MarketplaceIntegrationBusinessRules.validate_connection_config)
         params = list(sig.parameters.keys())
-        expected_params = ['self', 'marketplace_type', 'config', 'connection_name', 'tenant_id', 'connection_id']
+        expected_params = [
+            "self",
+            "marketplace_type",
+            "config",
+            "connection_name",
+            "tenant_id",
+            "connection_id",
+        ]
         if params != expected_params:
-            print(f"❌ validate_connection_config signature mismatch. Expected: {expected_params}, Got: {params}")
+            print(
+                f"❌ validate_connection_config signature mismatch. Expected: {expected_params}, Got: {params}"
+            )
             return False
         print("✓ validate_connection_config signature is correct")
 
         # Check validate_connection_access signature
         sig = inspect.signature(MarketplaceIntegrationBusinessRules.validate_connection_access)
         params = list(sig.parameters.keys())
-        expected_params = ['self', 'user_id', 'tenant_id']
+        expected_params = ["self", "user_id", "tenant_id"]
         if params != expected_params:
-            print(f"❌ validate_connection_access signature mismatch. Expected: {expected_params}, Got: {params}")
+            print(
+                f"❌ validate_connection_access signature mismatch. Expected: {expected_params}, Got: {params}"
+            )
             return False
         print("✓ validate_connection_access signature is correct")
 
         # Check validate_connection_test signature
         sig = inspect.signature(MarketplaceIntegrationBusinessRules.validate_connection_test)
         params = list(sig.parameters.keys())
-        expected_params = ['self', 'connection', 'test_results']
+        expected_params = ["self", "connection", "test_results"]
         if params != expected_params:
-            print(f"❌ validate_connection_test signature mismatch. Expected: {expected_params}, Got: {params}")
+            print(
+                f"❌ validate_connection_test signature mismatch. Expected: {expected_params}, Got: {params}"
+            )
             return False
         print("✓ validate_connection_test signature is correct")
 
@@ -164,8 +198,10 @@ def validate_method_signatures():
     except Exception as e:
         print(f"❌ Error validating signatures: {e}")
         import traceback
+
         traceback.print_exc()
         return False
+
 
 def main():
     """Main validation function"""
@@ -204,13 +240,17 @@ def main():
     if all_passed:
         print("\n✅ All validations passed!")
         print("\nTo run the tests:")
-        print("  docker compose exec web python manage.py test hub.apps.integrations.tests.test_connection_validation_rules")
-        print("  docker compose exec web python manage.py test hub.apps.integrations.tests.test_connection_validation_integration")
+        print(
+            "  docker compose exec web python manage.py test hub.apps.integrations.tests.test_connection_validation_rules"
+        )
+        print(
+            "  docker compose exec web python manage.py test hub.apps.integrations.tests.test_connection_validation_integration"
+        )
         return 0
     else:
         print("\n❌ Some validations failed. Please fix the issues above.")
         return 1
 
+
 if __name__ == "__main__":
     sys.exit(main())
-

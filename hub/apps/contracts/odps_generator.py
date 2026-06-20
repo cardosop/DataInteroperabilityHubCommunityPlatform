@@ -14,10 +14,13 @@ Key Features:
 - Graceful handling of missing optional fields
 - YAML and JSON output formatting (Task 2.1.8)
 """
-import structlog
-import re
+
+import contextlib
 import json
-from typing import Dict, Any, Optional
+import re
+from typing import Any
+
+import structlog
 
 from hub.apps.contracts.odps_errors import ODPSExportError
 
@@ -26,6 +29,7 @@ logger = structlog.get_logger(__name__)
 # Try to import yaml, but make it optional
 try:
     import yaml
+
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
@@ -33,11 +37,11 @@ except ImportError:
 
 
 def generate_odps_from_hubcontract(
-    hub_contract: Dict[str, Any],
+    hub_contract: dict[str, Any],
     target_version: str = "4.1",
-    original_odcs_contract: Optional[Dict[str, Any]] = None,
-    original_odcs_url: Optional[str] = None
-) -> Dict[str, Any]:
+    original_odcs_contract: dict[str, Any] | None = None,
+    original_odcs_url: str | None = None,
+) -> dict[str, Any]:
     """
     Generate ODPS document from HubContract format.
 
@@ -152,9 +156,7 @@ def generate_odps_from_hubcontract(
         odps_doc = {
             "schema": f"https://opendataproducts.org/schema/v{target_version}",
             "version": target_version,
-            "product": {
-                "details": {}
-            }
+            "product": {"details": {}},
         }
 
         # Map HubContract info to ODPS product.details
@@ -289,9 +291,7 @@ def generate_odps_from_hubcontract(
 
                 # Only add dataHolder if we have at least one field
                 if data_holder:
-                    odps_doc["dataHolder"] = {
-                        language: data_holder
-                    }
+                    odps_doc["dataHolder"] = {language: data_holder}
 
         # Map marketplace section if available
         marketplace = hub_contract.get("marketplace")
@@ -372,7 +372,11 @@ def generate_odps_from_hubcontract(
             restricted_use = marketplace.get("restricted_use")
             intended_use = marketplace.get("intended_use")
 
-            if license_summary is not None or restricted_use is not None or intended_use is not None:
+            if (
+                license_summary is not None
+                or restricted_use is not None
+                or intended_use is not None
+            ):
                 license_obj = {}
 
                 if license_summary is not None:
@@ -415,9 +419,7 @@ def generate_odps_from_hubcontract(
                     license_obj["rights"] = intended_use
 
                 if license_obj:
-                    odps_doc["license"] = {
-                        language: license_obj
-                    }
+                    odps_doc["license"] = {language: license_obj}
 
         # Map contract section (Task 2.1.3)
         # Generate ODCS from HubContract (if original ODCS available)
@@ -438,14 +440,12 @@ def generate_odps_from_hubcontract(
             # Embed inline as product.contract.spec
             if "product" not in odps_doc:
                 odps_doc["product"] = {}
-            odps_doc["product"]["contract"] = {
-                "spec": original_odcs_contract
-            }
+            odps_doc["product"]["contract"] = {"spec": original_odcs_contract}
 
             logger.debug(
                 "odps_contract_embedded_inline",
                 product_id=product_id,
-                message="ODCS contract embedded inline as product.contract.spec"
+                message="ODCS contract embedded inline as product.contract.spec",
             )
         elif original_odcs_url is not None:
             # Validate original_odcs_url is a string
@@ -475,15 +475,13 @@ def generate_odps_from_hubcontract(
             # Reference as product.contract.contractURL
             if "product" not in odps_doc:
                 odps_doc["product"] = {}
-            odps_doc["product"]["contract"] = {
-                "contractURL": original_odcs_url
-            }
+            odps_doc["product"]["contract"] = {"contractURL": original_odcs_url}
 
             logger.debug(
                 "odps_contract_referenced_url",
                 product_id=product_id,
                 contract_url=original_odcs_url,
-                message="ODCS contract referenced as product.contract.contractURL"
+                message="ODCS contract referenced as product.contract.contractURL",
             )
         # If neither is provided, product.contract section is omitted (optional in ODPS)
 
@@ -665,9 +663,7 @@ def generate_odps_from_hubcontract(
                         dimension_name = sla_key
 
                     # Add to dimensions dict
-                    sla_dimensions[dimension_name] = {
-                        "target": float(sla_value)
-                    }
+                    sla_dimensions[dimension_name] = {"target": float(sla_value)}
 
             # Then, collect from lifecycle.x_odps.sla_dimensions[] (all SLA dimensions with full data)
             if x_odps is not None and isinstance(x_odps, dict):
@@ -735,22 +731,18 @@ def generate_odps_from_hubcontract(
                                 )
                             # Use the full dimension data (overwrites if already in sla_dimensions from lifecycle.slas)
                             sla_dimensions[dimension_name] = dimension_data
-                        else:
-                            # If no data, create minimal structure with target from lifecycle.slas if available
-                            if dimension_name not in sla_dimensions:
-                                # Try to get from lifecycle.slas
-                                if slas is not None and isinstance(slas, dict):
-                                    sla_value = slas.get(dimension_name)
-                                    if sla_value is not None:
-                                        sla_dimensions[dimension_name] = {
-                                            "target": float(sla_value)
-                                        }
-                                    else:
-                                        # Map latency_ms_p95 to latency if needed
-                                        if dimension_name == "latency" and "latency_ms_p95" in slas:
-                                            sla_dimensions[dimension_name] = {
-                                                "target": float(slas["latency_ms_p95"])
-                                            }
+                        # If no data, create minimal structure with target from lifecycle.slas if available
+                        elif dimension_name not in sla_dimensions:
+                            # Try to get from lifecycle.slas
+                            if slas is not None and isinstance(slas, dict):
+                                sla_value = slas.get(dimension_name)
+                                if sla_value is not None:
+                                    sla_dimensions[dimension_name] = {"target": float(sla_value)}
+                                # Map latency_ms_p95 to latency if needed
+                                elif dimension_name == "latency" and "latency_ms_p95" in slas:
+                                    sla_dimensions[dimension_name] = {
+                                        "target": float(slas["latency_ms_p95"])
+                                    }
 
             # Add product.SLA.declarative if we have any dimensions
             if sla_dimensions:
@@ -758,15 +750,13 @@ def generate_odps_from_hubcontract(
                     odps_doc["product"] = {}
                 if "SLA" not in odps_doc["product"]:
                     odps_doc["product"]["SLA"] = {}
-                odps_doc["product"]["SLA"]["declarative"] = {
-                    "dimensions": sla_dimensions
-                }
+                odps_doc["product"]["SLA"]["declarative"] = {"dimensions": sla_dimensions}
 
                 logger.debug(
                     "odps_lifecycle_sla_mapped",
                     product_id=product_id,
                     dimension_count=len(sla_dimensions),
-                    message="SLA dimensions mapped to product.SLA.declarative"
+                    message="SLA dimensions mapped to product.SLA.declarative",
                 )
 
         # Map product strategy section (Task 2.1.7, ODPS 4.1+ only)
@@ -911,7 +901,7 @@ def generate_odps_from_hubcontract(
                         has_objectives="objectives" in odps_product_strategy,
                         has_strategic_alignment="strategicAlignment" in odps_product_strategy,
                         has_product_kpis="productKPIs" in odps_product_strategy,
-                        message="Product strategy mapped to productStrategy"
+                        message="Product strategy mapped to productStrategy",
                     )
 
         logger.debug(
@@ -920,8 +910,10 @@ def generate_odps_from_hubcontract(
             target_version=target_version,
             has_contract=original_odcs_contract is not None or original_odcs_url is not None,
             has_lifecycle=lifecycle is not None,
-            has_product_strategy=target_version == "4.1" and product_strategy is not None if 'product_strategy' in locals() else False,
-            message="ODPS document generated successfully"
+            has_product_strategy=target_version == "4.1" and product_strategy is not None
+            if "product_strategy" in locals()
+            else False,
+            message="ODPS document generated successfully",
         )
 
         return odps_doc
@@ -932,7 +924,7 @@ def generate_odps_from_hubcontract(
     except Exception as e:
         # Wrap unexpected errors in ODPSExportError
         raise ODPSExportError(
-            message=f"Unexpected error during ODPS generation: {str(e)}",
+            message=f"Unexpected error during ODPS generation: {e!s}",
             error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
             context={
                 "error_type": type(e).__name__,
@@ -942,9 +934,7 @@ def generate_odps_from_hubcontract(
         ) from e
 
 
-def _generate_dimension_from_rule(
-    rule: Dict[str, Any]
-) -> Optional[Dict[str, Any]]:
+def _generate_dimension_from_rule(rule: dict[str, Any]) -> dict[str, Any] | None:
     """
     Generate an ODPS declarative dimension from a HubContract quality rule.
 
@@ -957,7 +947,7 @@ def _generate_dimension_from_rule(
         Dimension data dictionary or None if generation fails
     """
     try:
-        dimension_data: Dict[str, Any] = {}
+        dimension_data: dict[str, Any] = {}
 
         # Extract rule ID (rule_id or id)
         rule_id = rule.get("rule_id") or rule.get("id") or rule.get("dimension")
@@ -1013,15 +1003,14 @@ def _generate_dimension_from_rule(
             "failed_to_generate_dimension_from_rule",
             rule=rule,
             error=str(e),
-            message="Failed to generate dimension from rule"
+            message="Failed to generate dimension from rule",
         )
         return None
 
 
 def _parse_expression_to_objectives(
-    expression: str,
-    unit: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+    expression: str, unit: str | None = None
+) -> dict[str, Any] | None:
     """
     Parse a rule expression back to objectives dictionary.
 
@@ -1044,9 +1033,9 @@ def _parse_expression_to_objectives(
             # Remove unit from end of expression
             unit_suffix = f" {unit}"
             if expr.endswith(unit_suffix):
-                expr = expr[:-len(unit_suffix)].strip()
+                expr = expr[: -len(unit_suffix)].strip()
 
-        objectives: Dict[str, Any] = {}
+        objectives: dict[str, Any] = {}
 
         # Parse patterns like ">= 0.95", "<= 0.99", "== 0.98"
         # Match patterns: >= value, <= value, == value, BETWEEN value1 AND value2
@@ -1056,22 +1045,16 @@ def _parse_expression_to_objectives(
         between_match = re.search(r"BETWEEN\s+([\d.]+)\s+AND\s+([\d.]+)", expr, re.IGNORECASE)
 
         if min_match:
-            try:
+            with contextlib.suppress(ValueError, AttributeError):
                 objectives["min"] = float(min_match.group(1))
-            except (ValueError, AttributeError):
-                pass
 
         if max_match:
-            try:
+            with contextlib.suppress(ValueError, AttributeError):
                 objectives["max"] = float(max_match.group(1))
-            except (ValueError, AttributeError):
-                pass
 
         if target_match:
-            try:
+            with contextlib.suppress(ValueError, AttributeError):
                 objectives["target"] = float(target_match.group(1))
-            except (ValueError, AttributeError):
-                pass
 
         if between_match:
             try:
@@ -1101,15 +1084,13 @@ def _parse_expression_to_objectives(
             expression=expression,
             unit=unit,
             error=str(e),
-            message="Failed to parse expression to objectives"
+            message="Failed to parse expression to objectives",
         )
         return None
 
 
 def format_odps_as_json(
-    odps_doc: Dict[str, Any],
-    indent: int = 2,
-    ensure_ascii: bool = False
+    odps_doc: dict[str, Any], indent: int = 2, ensure_ascii: bool = False
 ) -> str:
     """
     Format ODPS document as JSON string (Task 2.1.8).
@@ -1142,7 +1123,7 @@ def format_odps_as_json(
     except TypeError as e:
         # Handle non-serializable objects
         raise ODPSExportError(
-            message=f"Failed to serialize ODPS document to JSON: {str(e)}",
+            message=f"Failed to serialize ODPS document to JSON: {e!s}",
             error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
             context={
                 "field_path": "/",
@@ -1154,7 +1135,7 @@ def format_odps_as_json(
     except Exception as e:
         # Wrap unexpected errors
         raise ODPSExportError(
-            message=f"Unexpected error formatting ODPS document as JSON: {str(e)}",
+            message=f"Unexpected error formatting ODPS document as JSON: {e!s}",
             error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
             context={
                 "field_path": "/",
@@ -1166,11 +1147,11 @@ def format_odps_as_json(
 
 
 def format_odps_as_yaml(
-    odps_doc: Dict[str, Any],
+    odps_doc: dict[str, Any],
     default_flow_style: bool = False,
     allow_unicode: bool = True,
     sort_keys: bool = False,
-    _yaml_available: Optional[bool] = None,
+    _yaml_available: bool | None = None,
 ) -> str:
     """
     Format ODPS document as YAML string (Task 2.1.8).
@@ -1217,13 +1198,13 @@ def format_odps_as_yaml(
             odps_doc,
             default_flow_style=default_flow_style,
             allow_unicode=allow_unicode,
-            sort_keys=sort_keys
+            sort_keys=sort_keys,
         )
 
     except yaml.YAMLError as e:
         # Handle YAML serialization errors
         raise ODPSExportError(
-            message=f"Failed to serialize ODPS document to YAML: {str(e)}",
+            message=f"Failed to serialize ODPS document to YAML: {e!s}",
             error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
             context={
                 "field_path": "/",
@@ -1235,7 +1216,7 @@ def format_odps_as_yaml(
     except Exception as e:
         # Wrap unexpected errors
         raise ODPSExportError(
-            message=f"Unexpected error formatting ODPS document as YAML: {str(e)}",
+            message=f"Unexpected error formatting ODPS document as YAML: {e!s}",
             error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
             context={
                 "field_path": "/",
@@ -1244,4 +1225,3 @@ def format_odps_as_yaml(
             },
             cause=e,
         ) from e
-

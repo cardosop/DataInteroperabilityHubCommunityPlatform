@@ -18,7 +18,6 @@ Usage:
     locust -f tests/performance/locustfile.py FileUploadDownloadUser --host=http://localhost:8000
 """
 
-import os
 import sys
 from pathlib import Path
 

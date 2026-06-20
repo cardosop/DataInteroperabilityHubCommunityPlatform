@@ -19,6 +19,7 @@ from hub.apps.auth.models import LoginAttempt
 from hub.apps.auth.views import (
     _account_lockout_cache_key,
     _check_account_lockout,
+    _record_login_attempt,
 )
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
@@ -52,7 +53,7 @@ class DBBackedLockoutTest(TestCase):
             format="json",
         )
 
-    @override_settings(LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
     def test_cache_eviction_mid_window_still_enforces_lockout_from_db(self):
         for _ in range(3):
             response = self._post_login("wrong-password")
@@ -70,7 +71,7 @@ class DBBackedLockoutTest(TestCase):
             str(getattr(locked_response, "data", {}).get("detail", "")),
         )
 
-    @override_settings(LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=1)
+    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=1)
     def test_successful_login_after_window_expiry_clears_lockout(self):
         for _ in range(3):
             response = self._post_login("wrong-password")
@@ -107,7 +108,7 @@ class DBBackedLockoutTest(TestCase):
             status.HTTP_400_BAD_REQUEST,
         )
 
-    @override_settings(LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
     def test_db_query_executes_only_on_cache_miss(self):
         LoginAttempt.objects.create(
             email=self.user.email,
@@ -120,17 +121,104 @@ class DBBackedLockoutTest(TestCase):
         with CaptureQueriesContext(connection) as cold_queries:
             self.assertTrue(_check_account_lockout(self.user.email))
         cold_lockout_queries = [
-            q["sql"]
-            for q in cold_queries.captured_queries
-            if "login_attempts" in q["sql"]
+            q["sql"] for q in cold_queries.captured_queries if "login_attempts" in q["sql"]
         ]
         self.assertGreaterEqual(len(cold_lockout_queries), 1)
 
         with CaptureQueriesContext(connection) as warm_queries:
             self.assertTrue(_check_account_lockout(self.user.email))
         warm_lockout_queries = [
-            q["sql"]
-            for q in warm_queries.captured_queries
-            if "login_attempts" in q["sql"]
+            q["sql"] for q in warm_queries.captured_queries if "login_attempts" in q["sql"]
         ]
         self.assertEqual(len(warm_lockout_queries), 0)
+
+
+class ProgressiveBackoffStateMachineTest(TestCase):
+    """Unit tests for the progressive backoff state machine in
+    ``_record_login_attempt`` (277.B.066).
+
+    Tests the state transitions:
+      - failed_login_count increments on each failure
+      - reaching LOGIN_MAX_ATTEMPTS triggers lockout (lockout_level + locked_until)
+      - second lockout doubles the window
+      - successful login resets all state
+      - counter resets after lockout is triggered
+    """
+
+    def setUp(self):
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"ProgBackoff {uid}",
+            slug=f"progbackoff-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        self.user = User.objects.create_user(
+            email=f"progbackoff-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+
+    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    def test_first_failed_login_increments_counter(self):
+        _record_login_attempt(self.user.email, "127.0.0.1", success=False, user=self.user)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.failed_login_count, 1)
+        self.assertEqual(self.user.lockout_level, 0)
+        self.assertIsNone(self.user.locked_until)
+
+    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    def test_third_failed_login_triggers_lockout(self):
+        for _ in range(3):
+            _record_login_attempt(self.user.email, "127.0.0.1", success=False, user=self.user)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.lockout_level, 1)
+        self.assertIsNotNone(self.user.locked_until)
+        self.assertGreater(self.user.locked_until, timezone.now())
+
+    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    def test_second_lockout_doubles_window(self):
+        # First lockout
+        for _ in range(3):
+            _record_login_attempt(self.user.email, "127.0.0.1", success=False, user=self.user)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.lockout_level, 1)
+        first_lockout = self.user.locked_until
+
+        # Clear lockout to simulate expiry
+        self.user.locked_until = None
+        self.user.failed_login_count = 0
+        self.user.save(update_fields=["locked_until", "failed_login_count"])
+
+        # Second lockout — window should roughly double
+        for _ in range(3):
+            _record_login_attempt(self.user.email, "127.0.0.1", success=False, user=self.user)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.lockout_level, 2)
+        expected_window_s = 15 * 2 * 60  # base * 2^(level-1) → 30 min
+        actual_window_s = (self.user.locked_until - timezone.now()).total_seconds()
+        self.assertAlmostEqual(actual_window_s, expected_window_s, delta=5)
+
+    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    def test_successful_login_resets_state(self):
+        # Trigger some failures
+        for _ in range(2):
+            _record_login_attempt(self.user.email, "127.0.0.1", success=False, user=self.user)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.failed_login_count, 2)
+
+        # Successful login must reset everything
+        _record_login_attempt(self.user.email, "127.0.0.1", success=True, user=self.user)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.failed_login_count, 0)
+        self.assertEqual(self.user.lockout_level, 0)
+        self.assertIsNone(self.user.locked_until)
+
+    @override_settings(RATE_LIMIT_ENABLED=True, LOGIN_MAX_ATTEMPTS=3, LOGIN_LOCKOUT_WINDOW_MINUTES=15)
+    def test_failed_counter_resets_after_lockout_triggered(self):
+        for _ in range(3):
+            _record_login_attempt(self.user.email, "127.0.0.1", success=False, user=self.user)
+        self.user.refresh_from_db()
+        # After lockout is triggered, failed_login_count must be reset to 0
+        self.assertEqual(self.user.failed_login_count, 0)

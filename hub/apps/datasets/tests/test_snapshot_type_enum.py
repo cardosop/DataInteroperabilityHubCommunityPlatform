@@ -18,11 +18,12 @@ helper's behaviour:
 
 These tests pin the new contract layer-by-layer.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
@@ -130,7 +131,7 @@ class SnapshotTypeEnumMembershipTest(TestCase):
         # depends on FULL being the default for callers that
         # don't pass ``snapshot_type`` explicitly.
         field = DatasetSnapshot._meta.get_field("snapshot_type")
-        self.assertEqual(field.default, "FULL")
+        self.assertEqual(field.default, SnapshotType.FULL.value)
 
 
 class SnapshotTypeMetadataOnlyTest(_SnapshotTestBase):
@@ -145,7 +146,7 @@ class SnapshotTypeMetadataOnlyTest(_SnapshotTestBase):
             self.dataset,
             snapshot_type=SnapshotType.METADATA_ONLY.value,
         )
-        self.assertEqual(snapshot.snapshot_type, "METADATA_ONLY")
+        self.assertEqual(snapshot.snapshot_type, SnapshotType.METADATA_ONLY.value)
         # Documented fields per ``time_travel.create_snapshot``'s
         # METADATA_ONLY branch.
         for field in (
@@ -188,7 +189,7 @@ class SnapshotTypeMetadataOnlyTest(_SnapshotTestBase):
             self.dataset,
             snapshot_type=SnapshotType.METADATA_ONLY,
         )
-        self.assertEqual(snapshot.snapshot_type, "METADATA_ONLY")
+        self.assertEqual(snapshot.snapshot_type, SnapshotType.METADATA_ONLY.value)
 
 
 class SnapshotTypeIncrementalNotImplementedTest(_SnapshotTestBase):
@@ -235,7 +236,8 @@ class SnapshotTypeIncrementalNotImplementedTest(_SnapshotTestBase):
             )
         after = DatasetSnapshot.objects.filter(dataset=self.dataset).count()
         self.assertEqual(
-            after, before,
+            after,
+            before,
             "INCREMENTAL must NOT persist a snapshot row",
         )
 
@@ -289,7 +291,8 @@ class RestoreFromSnapshotRequiresFullTest(_SnapshotTestBase):
         # Regression guard — the FULL path MUST continue to
         # work. The R1 check applies only to non-FULL types.
         snapshot = TimeTravelQuery.create_snapshot(
-            self.dataset, snapshot_type=SnapshotType.FULL,
+            self.dataset,
+            snapshot_type=SnapshotType.FULL,
         )
         restored = TimeTravelQuery.restore_from_snapshot(snapshot)
         self.assertIsNotNone(restored)
@@ -298,7 +301,8 @@ class RestoreFromSnapshotRequiresFullTest(_SnapshotTestBase):
     @pytest.mark.integration
     def test_restore_from_schema_only_raises_value_error(self):
         snapshot = TimeTravelQuery.create_snapshot(
-            self.dataset, snapshot_type=SnapshotType.SCHEMA_ONLY,
+            self.dataset,
+            snapshot_type=SnapshotType.SCHEMA_ONLY,
         )
         with self.assertRaises(ValueError) as ctx:
             TimeTravelQuery.restore_from_snapshot(snapshot)
@@ -309,7 +313,8 @@ class RestoreFromSnapshotRequiresFullTest(_SnapshotTestBase):
     @pytest.mark.integration
     def test_restore_from_metadata_only_raises_value_error(self):
         snapshot = TimeTravelQuery.create_snapshot(
-            self.dataset, snapshot_type=SnapshotType.METADATA_ONLY,
+            self.dataset,
+            snapshot_type=SnapshotType.METADATA_ONLY,
         )
         with self.assertRaises(ValueError) as ctx:
             TimeTravelQuery.restore_from_snapshot(snapshot)
@@ -324,7 +329,8 @@ class RestoreFromSnapshotRequiresFullTest(_SnapshotTestBase):
         # chain (rejected restore that nonetheless created a
         # version-incremented row).
         snapshot = TimeTravelQuery.create_snapshot(
-            self.dataset, snapshot_type=SnapshotType.METADATA_ONLY,
+            self.dataset,
+            snapshot_type=SnapshotType.METADATA_ONLY,
         )
         before = Dataset.objects.filter(asset=self.asset).count()
         with self.assertRaises(ValueError):
@@ -363,7 +369,7 @@ class WorkflowSnapshotCreationGoesThroughHelperTest(_SnapshotTestBase):
         # required fields are ``name`` (str), ``version`` (str), and
         # ``dsl_json`` (dict with at least one step) — see
         # ``hub.apps.orchestration.models.WorkflowDefinition.clean``.
-        from hub.apps.orchestration.models import WorkflowInstance, WorkflowDefinition
+        from hub.apps.orchestration.models import WorkflowDefinition, WorkflowInstance
 
         defn = WorkflowDefinition.objects.create(
             name=f"snap-test-{uuid.uuid4().hex[:8]}",
@@ -375,8 +381,11 @@ class WorkflowSnapshotCreationGoesThroughHelperTest(_SnapshotTestBase):
             created_by=self.user,
         )
         return WorkflowInstance.objects.create(
-            workflow_definition=defn, tenant=self.tenant,
-            input_data={}, state_data={}, created_by=self.user,
+            workflow_definition=defn,
+            tenant=self.tenant,
+            input_data={},
+            state_data={},
+            created_by=self.user,
         )
 
     @pytest.mark.integration
@@ -427,7 +436,7 @@ class WorkflowSnapshotCreationGoesThroughHelperTest(_SnapshotTestBase):
         )
         self.assertTrue(result["snapshot_stored"])
         snapshot = DatasetSnapshot.objects.get(id=result["snapshot_id"])
-        self.assertEqual(snapshot.snapshot_type, "METADATA_ONLY")
+        self.assertEqual(snapshot.snapshot_type, SnapshotType.METADATA_ONLY.value)
         # Payload matches the helper's METADATA_ONLY shape (no
         # schema_json / sample_data_json).
         self.assertNotIn("schema_json", snapshot.snapshot_data)

@@ -25,6 +25,7 @@ and persisting the timestamp). This module pins the PURE FUNCTIONS
 in ``hub.apps.tenants.onboarding`` so a future refactor can verify
 the helpers behave correctly outside of the Django signal cascade.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -41,7 +42,6 @@ from hub.apps.tenants.onboarding import (
     mark_onboarding_complete_if_ready,
 )
 from hub.apps.users.models import Role, User, UserRole, UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -88,9 +88,7 @@ def _grant_tenant_admin(tenant: Tenant) -> User:
     return user
 
 
-def _grant_subscription(
-    tenant: Tenant, *, status: str = SubscriptionStatus.ACTIVE
-) -> Subscription:
+def _grant_subscription(tenant: Tenant, *, status: str = SubscriptionStatus.ACTIVE) -> Subscription:
     """Create a real Subscription row in the requested status.
 
     Uses the existing ``TenantPlan`` if one exists or seeds a

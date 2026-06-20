@@ -15,7 +15,9 @@ cache backend is unavailable (Redis down, connection refused, etc.),
 request).  This is intentional "fail-open" behaviour for rate
 limiting — a cache outage must never block legitimate traffic.
 """
+
 import logging
+
 from rest_framework.throttling import SimpleRateThrottle
 
 logger = logging.getLogger(__name__)
@@ -25,8 +27,12 @@ def _emit_throttle_hit_metric(app: str, view: str, scope: str, tenant_id: str) -
     """Best-effort emission of throttle_hit_total on 429 responses."""
     try:
         from hub.apps.core.metrics import throttle_hit_total
+
         throttle_hit_total.labels(
-            app=app, view=view, scope=scope, tenant_id=tenant_id,
+            app=app,
+            view=view,
+            scope=scope,
+            tenant_id=tenant_id,
         ).inc()
     except Exception:
         pass
@@ -44,6 +50,7 @@ def _resolve_app_and_view(view) -> tuple:
 
 class TenantScopedThrottle(SimpleRateThrottle):
     """30/min per tenant in production; relaxed to 5000/min in E2E/test envs."""
+
     scope = "tenant_scoped"
 
     def get_rate(self):
@@ -90,6 +97,7 @@ class TenantScopedThrottle(SimpleRateThrottle):
     def get_cache_key(self, request, view):
         try:
             from hub.apps.tenants.request_tenant import get_request_tenant
+
             _tid, _ = get_request_tenant(request)
             return f"throttle_{self.scope}_{_tid}" if _tid else None
         except Exception:
@@ -99,6 +107,7 @@ class TenantScopedThrottle(SimpleRateThrottle):
         """285.14.11.V.7 — emit throttle_hit_total on 429."""
         try:
             from hub.apps.tenants.request_tenant import get_request_tenant_id
+
             tenant_id = get_request_tenant_id(request) or "unknown"
         except Exception:
             tenant_id = "unknown"
@@ -109,6 +118,7 @@ class TenantScopedThrottle(SimpleRateThrottle):
 
 class AnonTenantThrottle(SimpleRateThrottle):
     """60/min for anonymous/unauth requests; relaxed in E2E/test envs."""
+
     scope = "anon_tenant"
 
     def get_rate(self):
@@ -139,6 +149,7 @@ class AnonTenantThrottle(SimpleRateThrottle):
             return None  # only throttle anonymous
         try:
             from hub.apps.tenants.request_tenant import get_request_tenant
+
             _tid, _ = get_request_tenant(request)
             return f"throttle_{self.scope}_{_tid}" if _tid else self.get_ident(request)
         except Exception:
@@ -148,6 +159,7 @@ class AnonTenantThrottle(SimpleRateThrottle):
         """285.14.11.V.7 — emit throttle_hit_total on 429."""
         try:
             from hub.apps.tenants.request_tenant import get_request_tenant_id
+
             tenant_id = get_request_tenant_id(request) or "unknown"
         except Exception:
             tenant_id = "unknown"

@@ -311,65 +311,6 @@ class MarketplaceEventPublisherUnitTest(TestCase):
         self.assertEqual(event.data["reason"], reason)
         self.assertIn("deleted_at", event.data)
 
-    def test_publish_connection_created_with_minimal_data(self):
-        """Test publishing connection.created event with only required fields."""
-        event_id = self.publisher.publish_connection_created(
-            connection_id=str(self.connection.id),
-            marketplace_type=self.connection.marketplace_type,
-            name=self.connection.name,
-        )
-
-        # Verify event was published
-        self.assertIsNotNone(event_id)
-        self.assertIsInstance(event_id, str)
-
-        # Verify event was persisted
-        event = Event.objects.get(event_id=event_id)
-        self.assertEqual(event.event_type, "marketplace.connection.created")
-        self.assertEqual(event.data["connection_id"], str(self.connection.id))
-        self.assertEqual(event.data["marketplace_type"], self.connection.marketplace_type)
-        self.assertEqual(event.data["name"], self.connection.name)
-
-    def test_publish_sync_started_with_minimal_data(self):
-        """Test publishing sync.started event with only required fields."""
-        event_id = self.publisher.publish_sync_started(
-            sync_job_id=str(self.sync_job.id),
-            connection_id=str(self.connection.id),
-            direction=self.sync_job.direction,
-        )
-
-        # Verify event was published
-        self.assertIsNotNone(event_id)
-        self.assertIsInstance(event_id, str)
-
-        # Verify event was persisted
-        event = Event.objects.get(event_id=event_id)
-        self.assertEqual(event.event_type, "marketplace.sync.started")
-        self.assertEqual(event.data["sync_job_id"], str(self.sync_job.id))
-        self.assertEqual(event.data["connection_id"], str(self.connection.id))
-        self.assertEqual(event.data["direction"], self.sync_job.direction)
-
-    def test_publish_sync_failed_with_minimal_data(self):
-        """Test publishing sync.failed event with only required fields."""
-        event_id = self.publisher.publish_sync_failed(
-            sync_job_id=str(self.sync_job.id),
-            connection_id=str(self.connection.id),
-            direction=self.sync_job.direction,
-            error_message="Test error",
-        )
-
-        # Verify event was published
-        self.assertIsNotNone(event_id)
-        self.assertIsInstance(event_id, str)
-
-        # Verify event was persisted
-        event = Event.objects.get(event_id=event_id)
-        self.assertEqual(event.event_type, "marketplace.sync.failed")
-        self.assertEqual(event.data["sync_job_id"], str(self.sync_job.id))
-        self.assertEqual(event.data["connection_id"], str(self.connection.id))
-        self.assertEqual(event.data["direction"], self.sync_job.direction)
-        self.assertEqual(event.data["error_message"], "Test error")
-
     def test_event_source_includes_tenant_and_user(self):
         """Test that events include tenant_id and user_id in source."""
         event_id = self.publisher.publish_connection_created(

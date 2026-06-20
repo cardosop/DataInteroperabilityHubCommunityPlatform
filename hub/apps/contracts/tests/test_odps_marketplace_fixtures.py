@@ -5,8 +5,10 @@ Tests verify that all ODPS marketplace test fixtures are valid ODPS documents
 that pass schema validation. This ensures marketplace metadata is correctly
 structured and can be used for testing marketplace functionality.
 """
+
 try:
     import pytest
+
     pytestmark = pytest.mark.django_db
 except ImportError:
     # pytest not available, using Django test runner
@@ -15,14 +17,17 @@ except ImportError:
 
 import json
 from pathlib import Path
+
 from django.test import TestCase
 
 try:
     import jsonschema
-    from jsonschema import validate, Draft202012Validator, ValidationError
+    from jsonschema import Draft202012Validator, ValidationError, validate
+
     JSONSCHEMA_AVAILABLE = True
 except ImportError:
     JSONSCHEMA_AVAILABLE = False
+
     # Create mock classes for when jsonschema is not available
     class ValidationError(Exception):
         pass
@@ -48,18 +53,18 @@ class ODPSMarketplaceFixturesTest(TestCase):
 
         # Load ODPS 4.1 schema
         self.schema_path = self.schemas_dir / "v4.1" / "odps-schema.json"
-        with open(self.schema_path, 'r', encoding='utf-8') as f:
+        with open(self.schema_path, encoding="utf-8") as f:
             self.schema = json.load(f)
 
     def test_marketplace_fixtures_directory_exists(self):
         """Test that marketplace fixtures directory exists"""
         self.assertTrue(
             self.marketplace_fixtures_dir.exists(),
-            f"Marketplace fixtures directory should exist at: {self.marketplace_fixtures_dir}"
+            f"Marketplace fixtures directory should exist at: {self.marketplace_fixtures_dir}",
         )
         self.assertTrue(
             self.marketplace_fixtures_dir.is_dir(),
-            f"Marketplace fixtures should be a directory: {self.marketplace_fixtures_dir}"
+            f"Marketplace fixtures should be a directory: {self.marketplace_fixtures_dir}",
         )
 
     def test_pricing_plans_sample_is_valid(self):
@@ -70,7 +75,7 @@ class ODPSMarketplaceFixturesTest(TestCase):
         fixture_path = self.marketplace_fixtures_dir / "sample-pricing-plans-v4.1.json"
         self.assertTrue(fixture_path.exists(), f"Fixture should exist: {fixture_path}")
 
-        with open(fixture_path, 'r', encoding='utf-8') as f:
+        with open(fixture_path, encoding="utf-8") as f:
             odps_doc = json.load(f)
 
         # Validate against schema
@@ -87,7 +92,7 @@ class ODPSMarketplaceFixturesTest(TestCase):
         self.assertGreater(
             len(odps_doc["product"]["marketplace"]["pricingPlans"]),
             0,
-            "Should have at least one pricing plan"
+            "Should have at least one pricing plan",
         )
 
     def test_access_methods_sample_is_valid(self):
@@ -98,7 +103,7 @@ class ODPSMarketplaceFixturesTest(TestCase):
         fixture_path = self.marketplace_fixtures_dir / "sample-access-methods-v4.1.json"
         self.assertTrue(fixture_path.exists(), f"Fixture should exist: {fixture_path}")
 
-        with open(fixture_path, 'r', encoding='utf-8') as f:
+        with open(fixture_path, encoding="utf-8") as f:
             odps_doc = json.load(f)
 
         # Validate against schema
@@ -115,7 +120,7 @@ class ODPSMarketplaceFixturesTest(TestCase):
         self.assertGreater(
             len(odps_doc["product"]["marketplace"]["accessMethods"]),
             0,
-            "Should have at least one access method"
+            "Should have at least one access method",
         )
 
     def test_payment_gateways_sample_is_valid(self):
@@ -126,7 +131,7 @@ class ODPSMarketplaceFixturesTest(TestCase):
         fixture_path = self.marketplace_fixtures_dir / "sample-payment-gateways-v4.1.json"
         self.assertTrue(fixture_path.exists(), f"Fixture should exist: {fixture_path}")
 
-        with open(fixture_path, 'r', encoding='utf-8') as f:
+        with open(fixture_path, encoding="utf-8") as f:
             odps_doc = json.load(f)
 
         # Validate against schema
@@ -143,7 +148,7 @@ class ODPSMarketplaceFixturesTest(TestCase):
         self.assertGreater(
             len(odps_doc["product"]["marketplace"]["paymentGateways"]),
             0,
-            "Should have at least one payment gateway"
+            "Should have at least one payment gateway",
         )
 
     def test_complete_marketplace_sample_is_valid(self):
@@ -154,7 +159,7 @@ class ODPSMarketplaceFixturesTest(TestCase):
         fixture_path = self.marketplace_fixtures_dir / "sample-complete-marketplace-v4.1.json"
         self.assertTrue(fixture_path.exists(), f"Fixture should exist: {fixture_path}")
 
-        with open(fixture_path, 'r', encoding='utf-8') as f:
+        with open(fixture_path, encoding="utf-8") as f:
             odps_doc = json.load(f)
 
         # Validate against schema
@@ -190,36 +195,30 @@ class ODPSMarketplaceFixturesTest(TestCase):
         self.assertGreater(
             len(marketplace_files),
             0,
-            f"Should have at least one marketplace fixture file in {self.marketplace_fixtures_dir}"
+            f"Should have at least one marketplace fixture file in {self.marketplace_fixtures_dir}",
         )
 
         validation_errors = []
         for fixture_path in marketplace_files:
             with self.subTest(fixture=fixture_path.name):
                 try:
-                    with open(fixture_path, 'r', encoding='utf-8') as f:
+                    with open(fixture_path, encoding="utf-8") as f:
                         odps_doc = json.load(f)
 
                     # Validate against schema
                     try:
                         validate(instance=odps_doc, schema=self.schema)
                     except ValidationError as e:
-                        validation_errors.append(
-                            f"{fixture_path.name}: Validation failed: {e}"
-                        )
+                        validation_errors.append(f"{fixture_path.name}: Validation failed: {e}")
                 except json.JSONDecodeError as e:
-                    validation_errors.append(
-                        f"{fixture_path.name}: Invalid JSON: {e}"
-                    )
+                    validation_errors.append(f"{fixture_path.name}: Invalid JSON: {e}")
                 except Exception as e:
-                    validation_errors.append(
-                        f"{fixture_path.name}: Unexpected error: {e}"
-                    )
+                    validation_errors.append(f"{fixture_path.name}: Unexpected error: {e}")
 
         # All marketplace fixtures should be valid
         if validation_errors:
             self.fail(
-                f"Some marketplace fixtures are not valid ODPS:\n"
+                "Some marketplace fixtures are not valid ODPS:\n"
                 + "\n".join(f"  - {msg}" for msg in validation_errors)
             )
 
@@ -229,7 +228,7 @@ class ODPSMarketplaceFixturesTest(TestCase):
         if not fixture_path.exists():
             self.skipTest("Pricing plans fixture not found")
 
-        with open(fixture_path, 'r', encoding='utf-8') as f:
+        with open(fixture_path, encoding="utf-8") as f:
             odps_doc = json.load(f)
 
         pricing_plans = odps_doc["product"]["marketplace"]["pricingPlans"]
@@ -242,7 +241,7 @@ class ODPSMarketplaceFixturesTest(TestCase):
                 # Price or pricingModel should be present
                 self.assertTrue(
                     "price" in plan or "pricingModel" in plan,
-                    "Pricing plan should have price or pricingModel"
+                    "Pricing plan should have price or pricingModel",
                 )
 
     def test_access_methods_have_required_structure(self):
@@ -251,7 +250,7 @@ class ODPSMarketplaceFixturesTest(TestCase):
         if not fixture_path.exists():
             self.skipTest("Access methods fixture not found")
 
-        with open(fixture_path, 'r', encoding='utf-8') as f:
+        with open(fixture_path, encoding="utf-8") as f:
             odps_doc = json.load(f)
 
         access_methods = odps_doc["product"]["marketplace"]["accessMethods"]
@@ -263,14 +262,16 @@ class ODPSMarketplaceFixturesTest(TestCase):
         # Common access methods should have endpoint or url
         for method_name, method_config in access_methods.items():
             with self.subTest(method=method_name):
-                self.assertIsInstance(method_config, dict, f"Access method {method_name} should be an object")
+                self.assertIsInstance(
+                    method_config, dict, f"Access method {method_name} should be an object"
+                )
                 # Most methods should have endpoint, url, or similar
                 has_access_point = any(
                     key in method_config for key in ["endpoint", "url", "host", "bucket"]
                 )
                 self.assertTrue(
                     has_access_point,
-                    f"Access method {method_name} should have endpoint, url, host, or bucket"
+                    f"Access method {method_name} should have endpoint, url, host, or bucket",
                 )
 
     def test_payment_gateways_have_required_structure(self):
@@ -279,7 +280,7 @@ class ODPSMarketplaceFixturesTest(TestCase):
         if not fixture_path.exists():
             self.skipTest("Payment gateways fixture not found")
 
-        with open(fixture_path, 'r', encoding='utf-8') as f:
+        with open(fixture_path, encoding="utf-8") as f:
             odps_doc = json.load(f)
 
         payment_gateways = odps_doc["product"]["marketplace"]["paymentGateways"]
@@ -291,6 +292,11 @@ class ODPSMarketplaceFixturesTest(TestCase):
         # Each gateway should have enabled flag
         for gateway_name, gateway_config in payment_gateways.items():
             with self.subTest(gateway=gateway_name):
-                self.assertIsInstance(gateway_config, dict, f"Payment gateway {gateway_name} should be an object")
-                self.assertIn("enabled", gateway_config, f"Payment gateway {gateway_name} should have enabled flag")
-
+                self.assertIsInstance(
+                    gateway_config, dict, f"Payment gateway {gateway_name} should be an object"
+                )
+                self.assertIn(
+                    "enabled",
+                    gateway_config,
+                    f"Payment gateway {gateway_name} should have enabled flag",
+                )

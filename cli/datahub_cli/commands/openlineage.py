@@ -1,6 +1,7 @@
 """
 283.5.13 — OpenLineage CLI commands.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,7 +14,6 @@ from ..api_client import api_client
 @click.group()
 def openlineage():
     """OpenLineage API key and status management"""
-    pass
 
 
 @openlineage.command("keys")
@@ -25,7 +25,7 @@ def list_keys():
         click.echo("No OpenLineage keys found.")
         return
     for r in results:
-        click.echo(f"{r.get('id','')}  {r.get('name','')}  {r.get('created_at','')}")
+        click.echo(f"{r.get('id', '')}  {r.get('name', '')}  {r.get('created_at', '')}")
 
 
 @openlineage.command("create-key")

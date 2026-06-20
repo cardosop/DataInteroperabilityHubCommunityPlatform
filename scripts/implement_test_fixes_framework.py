@@ -18,15 +18,14 @@ Usage:
 import argparse
 import json
 from pathlib import Path
-from typing import Dict, List
 
 # Load review report
 REVIEW_REPORT = "test_review_report.json"
 
 
-def load_review_report() -> Dict:
+def load_review_report() -> dict:
     """Load the review report"""
-    with open(REVIEW_REPORT, "r") as f:
+    with open(REVIEW_REPORT) as f:
         return json.load(f)
 
 
@@ -138,11 +137,11 @@ def create_missing_test_file(app_name: str, test_file_name: str, source_file: st
         return False
 
     # Read source file to understand what to test
-    source_content = source_path.read_text()
+    source_path.read_text()
 
     # Generate basic test file structure
     test_content = f'''"""
-Comprehensive unit tests for {source_file.replace('_', ' ').replace('.py', '')}.
+Comprehensive unit tests for {source_file.replace("_", " ").replace(".py", "")}.
 
 Tests cover:
 - Success scenarios
@@ -166,8 +165,8 @@ from hub.apps.users.models import User, UserStatus
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-class {test_file_name.replace('test_', '').replace('.py', '').title().replace('_', '')}Test(TestCase):
-    """Test {source_file.replace('_', ' ').replace('.py', '')}"""
+class {test_file_name.replace("test_", "").replace(".py", "").title().replace("_", "")}Test(TestCase):
+    """Test {source_file.replace("_", " ").replace(".py", "")}"""
 
     def setUp(self):
         """Set up test fixtures"""

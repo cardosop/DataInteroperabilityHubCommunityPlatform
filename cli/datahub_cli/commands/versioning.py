@@ -16,6 +16,7 @@ Resource type mapping (CLI → backend):
   - assets     → asset (not yet supported by backend — versioning is
                   dataset/contract-scoped; asset versioning TBD)
 """
+
 from __future__ import annotations
 
 import json
@@ -52,7 +53,6 @@ def _version_detail_url(version_id: str) -> str:
 @click.group()
 def versioning():
     """Dataset, contract, and asset version management"""
-    pass
 
 
 @versioning.command("list")
@@ -97,7 +97,7 @@ def list_versions(resource_type: str, resource_id: str, page: int, page_size: in
                     vnum = v.get("version", v.get("version_number", "?"))
                     vcreated = v.get("created_at", "?")
                     vstatus = v.get("status", "?")
-                    click.echo(f"{vid:<38} {str(vnum):>8} {str(vcreated):<26} {str(vstatus):<14}")
+                    click.echo(f"{vid:<38} {vnum!s:>8} {vcreated!s:<26} {vstatus!s:<14}")
                 else:
                     click.echo(str(v))
         else:
@@ -140,9 +140,7 @@ def get_version(resource_type: str, version_id: str, as_json: bool):
 @click.argument("version1_id")
 @click.argument("version2_id")
 @click.option("--json", "as_json", is_flag=True, help="Emit raw JSON")
-def diff_versions(
-    resource_type: str, version1_id: str, version2_id: str, as_json: bool
-):
+def diff_versions(resource_type: str, version1_id: str, version2_id: str, as_json: bool):
     """Compare two versions and show differences.
 
     \b
@@ -178,7 +176,9 @@ def diff_versions(
         elif isinstance(changes, dict):
             for field, detail in changes.items():
                 if isinstance(detail, dict):
-                    click.echo(f"  [{field}]  {detail.get('old', '?')}  →  {detail.get('new', '?')}")
+                    click.echo(
+                        f"  [{field}]  {detail.get('old', '?')}  →  {detail.get('new', '?')}"
+                    )
                 else:
                     click.echo(f"  [{field}]  {detail}")
         else:

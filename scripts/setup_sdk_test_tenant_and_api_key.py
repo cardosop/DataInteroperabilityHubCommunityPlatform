@@ -8,6 +8,7 @@ This script should be run inside the Docker container where Django is available:
 Or via manage.py shell:
   python manage.py shell < scripts/setup_sdk_test_tenant_and_api_key.py
 """
+
 import os
 import sys
 
@@ -15,13 +16,15 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Set up Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hub.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 import django
+
 django.setup()
 
-from hub.apps.users.models import User
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.auth.models import APIKey
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.users.models import User
+
 
 def main():
     print("Setting up SDK test tenant and API key...")
@@ -29,11 +32,10 @@ def main():
     # Step 1: Get or create test user
     print("1. Getting/creating test user...")
     user, created = User.objects.get_or_create(
-        email='sdk-test@example.com',
-        defaults={'display_name': 'SDK Test User', 'status': 'ACTIVE'}
+        email="sdk-test@example.com", defaults={"display_name": "SDK Test User", "status": "ACTIVE"}
     )
     if created:
-        user.set_password('TestPass123!')
+        user.set_password("TestPass123!")
         user.save()
         print(f"   ✓ Created user: {user.email}")
     else:
@@ -42,13 +44,13 @@ def main():
     # Step 2: Get or create tenant
     print("2. Getting/creating tenant...")
     tenant, created = Tenant.objects.get_or_create(
-        slug='sdk-test-tenant',
+        slug="sdk-test-tenant",
         defaults={
-            'name': 'SDK Test Tenant',
-            'status': TenantStatus.ACTIVE,
-            'kyc_status': KYCStatus.UNVERIFIED,
-            'region': 'us-east-1'
-        }
+            "name": "SDK Test Tenant",
+            "status": TenantStatus.ACTIVE,
+            "kyc_status": KYCStatus.UNVERIFIED,
+            "region": "us-east-1",
+        },
     )
     if created:
         print(f"   ✓ Created tenant: {tenant.name} (ID: {tenant.id})")
@@ -60,13 +62,13 @@ def main():
     if user.tenant != tenant:
         user.tenant = tenant
         user.save()
-        print(f"   ✓ Assigned user to tenant")
+        print("   ✓ Assigned user to tenant")
     else:
-        print(f"   ✓ User already assigned to tenant")
+        print("   ✓ User already assigned to tenant")
 
     # Step 4: Delete existing API key if it exists (we can't retrieve the original key)
     print("4. Creating API key...")
-    existing_key = APIKey.objects.filter(user=user, name='SDK Test API Key').first()
+    existing_key = APIKey.objects.filter(user=user, name="SDK Test API Key").first()
     if existing_key:
         print("   Removing existing API key (cannot retrieve original key)...")
         existing_key.delete()
@@ -75,25 +77,26 @@ def main():
     api_key_value = APIKey.generate_key()
     api_key_hash = APIKey.hash_key(api_key_value)
 
-    api_key_obj = APIKey.objects.create(
+    APIKey.objects.create(
         tenant=tenant,
         user=user,
-        name='SDK Test API Key',
+        name="SDK Test API Key",
         key_hash=api_key_hash,
         scopes=[],
-        expires_at=None
+        expires_at=None,
     )
 
-    print(f"   ✓ Created API key")
-    print(f"\n{'='*60}")
+    print("   ✓ Created API key")
+    print(f"\n{'=' * 60}")
     print("TEST_API_KEY for use in tests:")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(api_key_value)
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print("\nTo use this in tests, run:")
     print(f"export TEST_API_KEY='{api_key_value}'")
 
     return api_key_value
+
 
 if __name__ == "__main__":
     try:
@@ -102,6 +105,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n✗ Error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
-

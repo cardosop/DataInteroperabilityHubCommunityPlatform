@@ -23,11 +23,11 @@ dq-service enforces them — the spec's rolling-deploy contract is
 
 import hashlib
 import hmac
-import structlog
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import httpx
+import structlog
 from django.conf import settings
 from django.core.cache import cache
 
@@ -120,10 +120,14 @@ class DQServiceClient:
         # confirms 100% of inbound requests carry the headers
         # before enforcement flips on.
         payload_secret = getattr(
-            settings, "DQ_SERVICE_INTERNAL_PAYLOAD_SECRET", "",
+            settings,
+            "DQ_SERVICE_INTERNAL_PAYLOAD_SECRET",
+            "",
         )
         prepared_request = self.client.build_request(
-            method, endpoint, **kwargs,
+            method,
+            endpoint,
+            **kwargs,
         )
         if payload_secret:
             timestamp = str(int(time.time()))
@@ -145,7 +149,7 @@ class DQServiceClient:
                     logger.warning(
                         "dq_service_http_retry",
                         status_code=e.response.status_code,
-                        delay=self.backoff_factor * (2 ** attempt),
+                        delay=self.backoff_factor * (2**attempt),
                         attempt=attempt + 1,
                     )
                     sleep_with_jitter(attempt, self.backoff_factor)
@@ -171,7 +175,7 @@ class DQServiceClient:
                     logger.warning(
                         "dq_service_network_retry",
                         error=str(e),
-                        delay=self.backoff_factor * (2 ** attempt),
+                        delay=self.backoff_factor * (2**attempt),
                         attempt=attempt + 1,
                     )
                     sleep_with_jitter(attempt, self.backoff_factor)
@@ -188,7 +192,7 @@ class DQServiceClient:
                 raise
         raise Exception("Max retries exceeded for DQ service.")
 
-    def health_check(self, timeout: float = 5.0) -> Tuple[bool, str]:
+    def health_check(self, timeout: float = 5.0) -> tuple[bool, str]:
         """Checks the health of the DQ service. Uses short timeout to avoid blocking when service is unreachable."""
         try:
             response = self._request_with_retry("GET", "/health", timeout=timeout)
@@ -207,9 +211,9 @@ class DQServiceClient:
         file_format: str,
         profile_key: str = "intake_basic_gx",
         use_cache: bool = True,
-        contract: Optional[Any] = None,
-        tenant_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        contract: Any | None = None,
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Run DQ checks on file content.
 
@@ -242,16 +246,16 @@ class DQServiceClient:
                     from hub.apps.dq.contract_integration import (
                         ContractQualityRulesExtractor,
                     )
+
                     rules = ContractQualityRulesExtractor.get_contract_quality_checks(contract)
                     if rules:
                         import json as _json
+
                         rules_str = _json.dumps(
                             [str(r) for r in rules if r is not None],
                             sort_keys=True,
                         )
-                        custom_checks_hash = hashlib.sha256(
-                            rules_str.encode()
-                        ).hexdigest()[:16]
+                        custom_checks_hash = hashlib.sha256(rules_str.encode()).hexdigest()[:16]
                 except Exception:
                     pass
             # Phase 240.3.D audit-fix — incorporate resolved threshold
@@ -274,7 +278,7 @@ class DQServiceClient:
                 return cached_result
 
         # Define fallback response
-        def fallback_response(*args, **kwargs) -> Dict[str, Any]:
+        def fallback_response(*args, **kwargs) -> dict[str, Any]:
             """Fallback response when circuit breaker is open or service fails."""
             return {
                 "overall_status": "UNKNOWN",
@@ -287,7 +291,7 @@ class DQServiceClient:
             }
 
         # Execute with circuit breaker protection
-        def execute_dq_check() -> Dict[str, Any]:
+        def execute_dq_check() -> dict[str, Any]:
             """Execute DQ check operation."""
             # Extract quality rules from contract if provided (GAP-8.2.1)
             custom_checks = None
@@ -344,10 +348,12 @@ class DQServiceClient:
             # introspection (test capture, OTel header extraction)
             # always sees a valid mapping. Reuses the up-front
             # resolution (cache key already incorporated above).
-            request_headers: Dict[str, str] = dict(threshold_headers)
+            request_headers: dict[str, str] = dict(threshold_headers)
             response = self._request_with_retry(
-                "POST", "/run",
-                files=files, data=data,
+                "POST",
+                "/run",
+                files=files,
+                data=data,
                 headers=request_headers,
                 timeout=run_timeout,
             )
@@ -375,7 +381,7 @@ class DQServiceClient:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_tenant_threshold_headers(tenant_id: Optional[str]) -> Dict[str, str]:
+def _resolve_tenant_threshold_headers(tenant_id: str | None) -> dict[str, str]:
     """Resolve per-tenant DQ thresholds → ``X-Tenant-Threshold-*`` headers.
 
     Returns an empty dict when:
@@ -399,20 +405,27 @@ def _resolve_tenant_threshold_headers(tenant_id: Optional[str]) -> Dict[str, str
     try:
         from hub.apps.tenants.models import Tenant
 
-        tenant = Tenant.objects.filter(pk=tenant_id).only(
-            "id", "dq_input_max_bytes", "dq_sampling_threshold_rows",
-        ).first()
+        tenant = (
+            Tenant.objects.filter(pk=tenant_id)
+            .only(
+                "id",
+                "dq_input_max_bytes",
+                "dq_sampling_threshold_rows",
+            )
+            .first()
+        )
         if tenant is None:
             return {}
-        headers: Dict[str, str] = {}
+        headers: dict[str, str] = {}
         if tenant.dq_input_max_bytes is not None:
             headers["X-Tenant-Threshold-Bytes"] = str(int(tenant.dq_input_max_bytes))
         if tenant.dq_sampling_threshold_rows is not None:
             headers["X-Tenant-Threshold-Rows"] = str(int(tenant.dq_sampling_threshold_rows))
         return headers
-    except Exception as exc:  # noqa: BLE001 — best-effort, never crash run
+    except Exception as exc:
         logger.warning(
             "dq_threshold_resolve_failed",
-            tenant_id=tenant_id, error=str(exc),
+            tenant_id=tenant_id,
+            error=str(exc),
         )
         return {}

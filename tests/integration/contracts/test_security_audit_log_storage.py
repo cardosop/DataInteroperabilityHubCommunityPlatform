@@ -3,17 +3,18 @@ Integration tests for security audit log storage.
 
 Tests database persistence and querying of security audit logs.
 """
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from django.utils import timezone
-from datetime import timedelta
+
 import uuid
+from datetime import timedelta
+
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from django.utils import timezone
 
 from hub.apps.contracts.models import SecurityAuditLog
 from hub.apps.contracts.odps_security_logging import (
-    SecurityLogger,
     SecurityEventType,
-    SecuritySeverity,
+    SecurityLogger,
 )
 from tests.factories import TenantFactory, UserFactory
 
@@ -42,14 +43,14 @@ class SecurityAuditLogStorageIntegrationTest(TestCase):
         )
 
         # Try to update (should raise ValueError)
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(ValueError):
             log.description = "Updated description"
             log.save()
 
         self.assertIn("immutable", str(cm.exception).lower())
 
         # Try to delete (should raise ValueError)
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(ValueError):
             log.delete()
 
         self.assertIn("immutable", str(cm.exception).lower())
@@ -88,8 +89,7 @@ class SecurityAuditLogStorageIntegrationTest(TestCase):
 
         # Query by tenant and event_type (should use composite index)
         tenant1_external = SecurityAuditLog.objects.filter(
-            tenant=self.tenant1,
-            event_type=SecurityEventType.EXTERNAL_REF_FETCH.value
+            tenant=self.tenant1, event_type=SecurityEventType.EXTERNAL_REF_FETCH.value
         )
         self.assertEqual(tenant1_external.count(), 1)
 
@@ -298,7 +298,7 @@ class SecurityAuditLogStorageIntegrationTest(TestCase):
         logs = SecurityAuditLog.objects.filter(
             tenant=self.tenant1,
             user=self.user1,
-        ).order_by('timestamp')
+        ).order_by("timestamp")
 
         self.assertEqual(logs.count(), 4)
         self.assertEqual(logs[0].event_type, SecurityEventType.CACHE_MISS.value)

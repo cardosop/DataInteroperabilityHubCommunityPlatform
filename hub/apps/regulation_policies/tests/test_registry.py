@@ -1,10 +1,9 @@
 """Phase 232.0 — regulation_policies registry (YAML + statutory defaults)."""
 
-import pytest
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import UTC, datetime, timedelta
 
+import pytest
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.regulation_policies.registry import (
     compute_dsar_ack_deadline_utc,
@@ -12,7 +11,6 @@ from hub.apps.regulation_policies.registry import (
     data_retention_period_days_for_regime_keys,
     dsar_statutory_clock_matrix,
     get_authority_by_id,
-    idv_defaults,
     load_regulation_authorities,
     retention_defaults,
     statutory_deadlines_for,
@@ -60,7 +58,7 @@ class RegulationPoliciesRegistryTests(TestCase):
     def test_compute_dsar_deadlines_ordering(self):
         # Django 5+ removed ``django.utils.timezone.utc``; stdlib
         # ``datetime.timezone.utc`` is the replacement.
-        submitted = datetime(2026, 5, 1, 12, 0, tzinfo=dt_timezone.utc)
+        submitted = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
         ack = compute_dsar_ack_deadline_utc(submitted, ("LGPD", "GDPR"))
         fulfil = compute_dsar_fulfilment_deadline_utc(submitted, ("LGPD", "GDPR"))
         self.assertLess(ack, submitted + timedelta(days=7))

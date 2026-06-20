@@ -12,10 +12,10 @@ which runs every 5 minutes.  The 5-minute cadence is half the alert's
 30-minute ``for:`` window so the alert sees enough samples to confirm
 a sustained breach.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import List
 
 from django.core.management.base import BaseCommand
 
@@ -25,13 +25,12 @@ logger = logging.getLogger(__name__)
 # alert-redeliver path (Phase 240.1.A.5) lives; ``job_default`` is
 # where the synchronous DQ-run dispatcher hands off long-running
 # work.  Adding a queue is one-line — append the name here.
-DEFAULT_DQ_QUEUES: List[str] = ["job_default", "job_low"]
+DEFAULT_DQ_QUEUES: list[str] = ["job_default", "job_low"]
 
 
 class Command(BaseCommand):
     help = (
-        "Sample RQ queue depth for the DQ-bearing queues and update "
-        "the dq_async_queue_depth gauge."
+        "Sample RQ queue depth for the DQ-bearing queues and update the dq_async_queue_depth gauge."
     )
 
     def add_arguments(self, parser):
@@ -39,10 +38,7 @@ class Command(BaseCommand):
             "--queues",
             nargs="+",
             default=None,
-            help=(
-                "Queue names to sample.  Defaults to "
-                "['job_default', 'job_low']."
-            ),
+            help=("Queue names to sample.  Defaults to ['job_default', 'job_low']."),
         )
 
     def handle(self, *args, **opts):
@@ -51,17 +47,21 @@ class Command(BaseCommand):
         try:
             from django_rq import get_queue
         except ImportError:  # pragma: no cover — django_rq is a hard dep
-            self.stdout.write(self.style.ERROR(
-                "django_rq not installed; cannot sample queue depth.",
-            ))
+            self.stdout.write(
+                self.style.ERROR(
+                    "django_rq not installed; cannot sample queue depth.",
+                )
+            )
             return
 
         try:
             from services.shared.metrics import dq_async_queue_depth
         except ImportError:
-            self.stdout.write(self.style.ERROR(
-                "services.shared.metrics not importable.",
-            ))
+            self.stdout.write(
+                self.style.ERROR(
+                    "services.shared.metrics not importable.",
+                )
+            )
             return
 
         total = 0
@@ -71,19 +71,20 @@ class Command(BaseCommand):
                 q = get_queue(qname)
                 # rq.Queue.count is the pending-job count.
                 depth = int(q.count)
-            except Exception as exc:  # noqa: BLE001 — fail-soft per-queue
+            except Exception as exc:
                 logger.warning(
                     "sample_dq_queue_depth_queue_failed queue=%s error=%s",
-                    qname, exc,
+                    qname,
+                    exc,
                 )
                 continue
             per_queue[qname] = depth
             total += depth
             dq_async_queue_depth.labels(
-                service="hub", queue=qname,
+                service="hub",
+                queue=qname,
             ).set(depth)
 
-        self.stdout.write(self.style.SUCCESS(
-            f"Sampled DQ queue depth: total={total}, "
-            f"per-queue={per_queue}"
-        ))
+        self.stdout.write(
+            self.style.SUCCESS(f"Sampled DQ queue depth: total={total}, per-queue={per_queue}")
+        )

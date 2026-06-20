@@ -8,7 +8,6 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.test import TestCase
 
 from hub.apps.assets.models import Asset
@@ -102,25 +101,19 @@ class DomainSerializerTest(TestCase):
 
     def test_validate_name_not_empty(self):
         """Test name validation - empty name"""
-        serializer = DomainSerializer(
-            self.domain, data={"name": ""}, partial=True
-        )
+        serializer = DomainSerializer(self.domain, data={"name": ""}, partial=True)
         self.assertFalse(serializer.is_valid())
         self.assertIn("name", serializer.errors)
 
     def test_validate_name_whitespace_only(self):
         """Test name validation - whitespace only"""
-        serializer = DomainSerializer(
-            self.domain, data={"name": "   "}, partial=True
-        )
+        serializer = DomainSerializer(self.domain, data={"name": "   "}, partial=True)
         self.assertFalse(serializer.is_valid())
         self.assertIn("name", serializer.errors)
 
     def test_validate_name_strips_whitespace(self):
         """Test name validation - strips whitespace"""
-        serializer = DomainSerializer(
-            self.domain, data={"name": "  Test Domain  "}, partial=True
-        )
+        serializer = DomainSerializer(self.domain, data={"name": "  Test Domain  "}, partial=True)
         self.assertTrue(serializer.is_valid())
         self.assertEqual(serializer.validated_data["name"], "Test Domain")
 
@@ -263,9 +256,7 @@ class DomainCreateSerializerTest(TestCase):
         self.assertTrue(serializer.is_valid())
         self.assertEqual(serializer.validated_data["name"], "New Domain")
         self.assertEqual(serializer.validated_data["description"], "New domain description")
-        self.assertEqual(
-            str(serializer.validated_data["owner_id"]), str(self.user.id)
-        )
+        self.assertEqual(str(serializer.validated_data["owner_id"]), str(self.user.id))
 
     def test_serialize_minimal_data(self):
         """Test serialization with minimal required data"""
@@ -425,9 +416,7 @@ class TransferOwnershipSerializerTest(TestCase):
         """Test serialization with valid owner ID"""
         serializer = TransferOwnershipSerializer(data={"new_owner_id": str(self.user.id)})
         self.assertTrue(serializer.is_valid())
-        self.assertEqual(
-            str(serializer.validated_data["new_owner_id"]), str(self.user.id)
-        )
+        self.assertEqual(str(serializer.validated_data["new_owner_id"]), str(self.user.id))
 
     def test_serialize_none_owner_id(self):
         """Test serialization with None owner ID (remove owner)"""
@@ -544,9 +533,7 @@ class ApplyPolicySerializerTest(TestCase):
             data={"policy_id": policy_id, "overrides": {"priority": 50}}
         )
         self.assertTrue(serializer.is_valid())
-        self.assertEqual(
-            str(serializer.validated_data["policy_id"]), policy_id
-        )
+        self.assertEqual(str(serializer.validated_data["policy_id"]), policy_id)
         self.assertEqual(serializer.validated_data["overrides"], {"priority": 50})
 
     def test_serialize_without_overrides(self):
@@ -554,9 +541,7 @@ class ApplyPolicySerializerTest(TestCase):
         policy_id = str(uuid.uuid4())
         serializer = ApplyPolicySerializer(data={"policy_id": policy_id})
         self.assertTrue(serializer.is_valid())
-        self.assertEqual(
-            str(serializer.validated_data["policy_id"]), policy_id
-        )
+        self.assertEqual(str(serializer.validated_data["policy_id"]), policy_id)
         self.assertEqual(serializer.validated_data.get("overrides"), {})
 
     def test_validate_overrides_dict(self):
@@ -710,9 +695,7 @@ class CheckComplianceSerializerTest(TestCase):
         asset_id = str(uuid.uuid4())
         serializer = CheckComplianceSerializer(data={"asset_id": asset_id})
         self.assertTrue(serializer.is_valid())
-        self.assertEqual(
-            str(serializer.validated_data["asset_id"]), asset_id
-        )
+        self.assertEqual(str(serializer.validated_data["asset_id"]), asset_id)
 
     def test_serialize_without_asset_id(self):
         """Test serialization without asset ID"""
@@ -816,7 +799,6 @@ class TopologySerializersTest(TestCase):
 
     def test_topology_node_serializer(self):
         """Test TopologyNodeSerializer"""
-        from datetime import datetime
 
         from django.utils import timezone
 
@@ -849,7 +831,6 @@ class TopologySerializersTest(TestCase):
 
     def test_topology_metadata_serializer(self):
         """Test TopologyMetadataSerializer"""
-        from datetime import datetime
 
         from django.utils import timezone
 
@@ -877,7 +858,6 @@ class TopologySerializersTest(TestCase):
 
     def test_topology_serializer(self):
         """Test TopologySerializer"""
-        from datetime import datetime
 
         from django.utils import timezone
 
@@ -967,7 +947,6 @@ class DomainAnalyticsSerializerTest(TestCase):
 
     def test_serialize_domain_analytics(self):
         """Test serialization of domain analytics"""
-        from datetime import datetime
 
         from django.utils import timezone
 
@@ -997,7 +976,6 @@ class DomainAnalyticsSerializerTest(TestCase):
 
     def test_serialize_with_null_values(self):
         """Test serialization with null values"""
-        from datetime import datetime
 
         from django.utils import timezone
 

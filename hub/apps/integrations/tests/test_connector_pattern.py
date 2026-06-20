@@ -14,20 +14,23 @@ Tests verify:
 - download_resource() handles on-demand downloads
 - Connector workflow integration
 
-No mocks/stubs - uses real connector implementations.
+Uses real connector instances with mocked external API calls (list_listings,
+list_resources, HTTP clients).  Internal business logic is never mocked —
+only the network boundary (httpx, connector API methods) is patched so tests
+run without external service dependencies.
 """
 
-import uuid
-import unittest
+import logging
 import os
+import unittest
+import uuid
 from unittest.mock import Mock, patch
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.db import transaction
 from django.test import TestCase
 
-from hub.apps.assets.models import Asset, AssetSourceType, AssetStatus
+from hub.apps.assets.models import Asset, AssetSourceType
 from hub.apps.contracts.models import Contract
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File
@@ -53,18 +56,21 @@ User = get_user_model()
 
 
 def _get_dados_gov_br_jwt_token():
-    """Return JWT token for DadosGovBr connector; skip test if not set."""
-    token = os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY")
-    if not token:
-        raise unittest.SkipTest(
-            "DADOS_GOV_BR_API_KEY or CKAN_DADOS_GOV_BR_API_KEY required for DadosGovBr "
-            "connector pattern tests"
-        )
-    return token
+    """Return JWT token for DadosGovBr connector.
+
+    Returns an empty string when no env var is set.  All DadosGovBr
+    API calls in the pattern tests are mocked via ``patch.object()``;
+    the token is only needed for the connector constructor (which
+    accepts an empty string).  Silently skipping when the env var
+    was missing caused 8 tests to never run in CI.
+    """
+    return os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY") or ""
 
 
 # Use pytest.mark.django_db without transaction to avoid foreign key constraint issues
 pytestmark = pytest.mark.django_db(transaction=True)
+
+_logger = logging.getLogger("hub.apps.integrations.tests.connector_pattern")
 
 
 class TestConnectorPatternBase(TestCase):
@@ -74,6 +80,7 @@ class TestConnectorPatternBase(TestCase):
         """Set up test fixtures"""
         # Reset circuit breakers so prior test failures don't leave them OPEN
         from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+
         reset_circuit_breaker_by_name("ckan-connector")
 
         # Create test tenant
@@ -130,10 +137,9 @@ class TestSyncPullDoesNotCreateAssets(TestConnectorPatternBase):
 
         # Verify sync_pull returned SyncResult
         self.assertIsInstance(result, SyncResult)
-        # When listings are provided, mappings should be in metadata
-        if result.successful_items > 0:
-            self.assertIn("mappings", result.metadata)
-            self.assertIsInstance(result.metadata["mappings"], list)
+        self.assertIn("mappings", result.metadata,
+            "sync_pull() result must contain 'mappings' key in metadata")
+        self.assertIsInstance(result.metadata["mappings"], list)
 
         # Verify no assets were created
         final_counts = self.get_initial_counts()
@@ -161,9 +167,7 @@ class TestSyncPullDoesNotCreateAssets(TestConnectorPatternBase):
     def test_dados_gov_br_sync_pull_does_not_create_assets(self):
         """Test DadosGovBr connector sync_pull() does not create assets"""
         token = _get_dados_gov_br_jwt_token()
-        connector = DadosGovBrConnector(
-            base_url="https://dados.gov.br", jwt_token=token
-        )
+        connector = DadosGovBrConnector(base_url="https://dados.gov.br", jwt_token=token)
 
         # Get initial counts
         initial_counts = self.get_initial_counts()
@@ -264,48 +268,48 @@ class TestSyncPullReturnsMappingsOnly(TestConnectorPatternBase):
 
         # Verify SyncResult structure
         self.assertIsInstance(result, SyncResult)
-        # When listings are provided, mappings should be in metadata
-        if result.successful_items > 0:
-            self.assertIn("mappings", result.metadata)
-            mappings = result.metadata["mappings"]
-            self.assertIsInstance(mappings, list)
+        # sync_pull with a sample listing MUST produce at least one mapping.
+        # A zero here means the connector silently skipped the listing —
+        # that's a regression, not a valid skip.
+        self.assertGreater(
+            result.successful_items, 0,
+            "Expected at least one successful item from sync_pull with a sample listing"
+        )
+        self.assertIn("mappings", result.metadata)
+        mappings = result.metadata["mappings"]
+        self.assertIsInstance(mappings, list)
+        self.assertGreater(len(mappings), 0, "Expected non-empty mappings list")
 
-            # Verify mappings format
-            # CKAN connector returns list of dicts with 'listing_id' and 'mapping' keys
-            if mappings:
-                mapping_item = mappings[0]
-                # CKAN connector wraps mappings in dict with 'listing_id' and 'mapping'
-                if isinstance(mapping_item, dict) and "mapping" in mapping_item:
-                    mapping = mapping_item["mapping"]
-                    # Mapping can be dict or MarketplaceAssetMapping object
-                    if isinstance(mapping, dict):
-                        self.assertIn("asset_data", mapping)
-                        self.assertIn("source_type", mapping)
-                    elif isinstance(mapping, MarketplaceAssetMapping):
-                        self.assertIsNotNone(mapping.asset_data)
-                        self.assertIsNotNone(mapping.source_type)
-                elif isinstance(mapping_item, dict):
-                    # Direct dict format
-                    self.assertIn("asset_data", mapping_item)
-                    self.assertIn("source_type", mapping_item)
-                elif isinstance(mapping_item, MarketplaceAssetMapping):
-                    # Direct MarketplaceAssetMapping object
-                    self.assertIsNotNone(mapping_item.asset_data)
-                    self.assertIsNotNone(mapping_item.source_type)
+        # Verify mappings format.
+        mapping_item = mappings[0]
+        if isinstance(mapping_item, dict) and "mapping" in mapping_item:
+            mapping = mapping_item["mapping"]
+            if isinstance(mapping, dict):
+                self.assertIn("asset_data", mapping)
+                self.assertIn("source_type", mapping)
+            else:
+                self.assertIsInstance(mapping, MarketplaceAssetMapping)
+                self.assertIsNotNone(mapping.asset_data)
+                self.assertIsNotNone(mapping.source_type)
+        elif isinstance(mapping_item, dict):
+            self.assertIn("asset_data", mapping_item)
+            self.assertIn("source_type", mapping_item)
+        else:
+            self.assertIsInstance(mapping_item, MarketplaceAssetMapping)
+            self.assertIsNotNone(mapping_item.asset_data)
+            self.assertIsNotNone(mapping_item.source_type)
 
-        # Verify no asset IDs or contract IDs in return value
-        result_str = str(result)
-        # Asset IDs are UUIDs, Contract IDs are UUIDs - verify they're not in the result
-        # We check that the result doesn't contain asset or contract creation logic
-        self.assertNotIn("asset_id", result_str.lower())
-        self.assertNotIn("contract_id", result_str.lower())
+        # Verify no asset or contract creation in the SyncResult metadata.
+        # Check the actual data structure, not the string representation.
+        self.assertNotIn("asset_id", result.metadata,
+            "sync_pull() metadata must not contain asset_id (would indicate asset creation)")
+        self.assertNotIn("contract_id", result.metadata,
+            "sync_pull() metadata must not contain contract_id (would indicate contract creation)")
 
     def test_dados_gov_br_sync_pull_returns_mappings_only(self):
         """Test DadosGovBr connector sync_pull() returns mappings only"""
         token = _get_dados_gov_br_jwt_token()
-        connector = DadosGovBrConnector(
-            base_url="https://dados.gov.br", jwt_token=token
-        )
+        connector = DadosGovBrConnector(base_url="https://dados.gov.br", jwt_token=token)
 
         # Create sample listing (DadosGovBr uses CKAN_INSTANCE type)
         sample_listing = MarketplaceListing(
@@ -321,24 +325,24 @@ class TestSyncPullReturnsMappingsOnly(TestConnectorPatternBase):
 
         # Verify SyncResult structure
         self.assertIsInstance(result, SyncResult)
-        # When listings are provided, mappings should be in metadata
-        if result.successful_items > 0:
-            self.assertIn("mappings", result.metadata)
-            mappings = result.metadata["mappings"]
-            self.assertIsInstance(mappings, list)
+        self.assertGreater(result.successful_items, 0,
+            "Expected at least one successful item from sync_pull")
+        self.assertIn("mappings", result.metadata)
+        mappings = result.metadata["mappings"]
+        self.assertIsInstance(mappings, list)
+        self.assertGreater(len(mappings), 0, "Expected non-empty mappings list")
 
-            # Verify mappings format (DadosGovBr returns MarketplaceAssetMapping objects, not dicts)
-            if mappings:
-                mapping = mappings[0]
-                # Mapping can be dict or MarketplaceAssetMapping object
-                if isinstance(mapping, dict):
-                    self.assertIn("asset_data", mapping)
-                    self.assertIn("source_type", mapping)
-                    self.assertIn("source_metadata", mapping)
-                elif isinstance(mapping, MarketplaceAssetMapping):
-                    self.assertIsNotNone(mapping.asset_data)
-                    self.assertIsNotNone(mapping.source_type)
-                    self.assertIsNotNone(mapping.source_metadata)
+        # Verify mappings format (DadosGovBr returns MarketplaceAssetMapping objects)
+        mapping = mappings[0]
+        if isinstance(mapping, dict):
+            self.assertIn("asset_data", mapping)
+            self.assertIn("source_type", mapping)
+            self.assertIn("source_metadata", mapping)
+        else:
+            self.assertIsInstance(mapping, MarketplaceAssetMapping)
+            self.assertIsNotNone(mapping.asset_data)
+            self.assertIsNotNone(mapping.source_type)
+            self.assertIsNotNone(mapping.source_metadata)
 
     def test_snowflake_sync_pull_returns_mappings_only(self):
         """Test Snowflake connector sync_pull() returns mappings only"""
@@ -401,7 +405,7 @@ class TestSyncPullDoesNotDownloadData(TestConnectorPatternBase):
 
         with patch.object(connector, "list_listings", return_value=[sample_listing]):
             with patch.object(connector, "list_resources", return_value=[]):
-                result = connector.sync_pull()
+                connector.sync_pull()
 
         # Verify download_resource was NOT called
         self.assertFalse(
@@ -424,9 +428,7 @@ class TestSyncPullDoesNotDownloadData(TestConnectorPatternBase):
     def test_dados_gov_br_sync_pull_does_not_download_data(self):
         """Test DadosGovBr connector sync_pull() does not download data"""
         token = _get_dados_gov_br_jwt_token()
-        connector = DadosGovBrConnector(
-            base_url="https://dados.gov.br", jwt_token=token
-        )
+        connector = DadosGovBrConnector(base_url="https://dados.gov.br", jwt_token=token)
 
         # Track if download_resource is called
         download_called = {"called": False}
@@ -448,7 +450,7 @@ class TestSyncPullDoesNotDownloadData(TestConnectorPatternBase):
 
         with patch.object(connector, "list_listings", return_value=[sample_listing]):
             with patch.object(connector, "list_resources", return_value=[]):
-                result = connector.sync_pull()
+                connector.sync_pull()
 
         # Verify download_resource was NOT called
         self.assertFalse(
@@ -479,7 +481,7 @@ class TestSyncPullDoesNotDownloadData(TestConnectorPatternBase):
 
         with patch.object(connector, "list_listings", return_value=[sample_listing]):
             with patch.object(connector, "list_resources", return_value=[]):
-                result = connector.sync_pull()
+                connector.sync_pull()
 
         # Verify download_resource was NOT called
         self.assertFalse(
@@ -536,21 +538,25 @@ class TestMapToHubAssetReturnsMarketplaceAssetMapping(TestConnectorPatternBase):
     def test_dados_gov_br_map_to_hub_asset_returns_marketplace_asset_mapping(self):
         """Test DadosGovBr connector map_to_hub_asset() returns MarketplaceAssetMapping"""
         token = _get_dados_gov_br_jwt_token()
-        connector = DadosGovBrConnector(
-            base_url="https://dados.gov.br", jwt_token=token
-        )
+        connector = DadosGovBrConnector(base_url="https://dados.gov.br", jwt_token=token)
 
-        # Create sample listing (DadosGovBr uses CKAN_INSTANCE type)
+        # Create sample listing (DadosGovBr uses CKAN_INSTANCE type).
+        # Pre-populate resources=[] so map_to_hub_asset does NOT fall
+        # through to self.list_resources() which makes a real HTTP API
+        # call to dados.gov.br.
         listing = MarketplaceListing(
             marketplace_id="test-dataset",
             marketplace_type=MarketplaceType.CKAN_INSTANCE,
             title="Test Dataset",
             description="Test description",
+            resources=[],
         )
 
-        # Mock client methods to avoid actual API calls
+        # Mock client.get_dataset AND list_resources to prevent any
+        # accidental outbound API calls (defence in depth).
         with patch.object(connector.client, "get_dataset", return_value={}):
-            mapping = connector.map_to_hub_asset(listing)
+            with patch.object(connector, "list_resources", return_value=[]):
+                mapping = connector.map_to_hub_asset(listing)
 
         # Verify mapping is MarketplaceAssetMapping
         self.assertIsInstance(mapping, MarketplaceAssetMapping)
@@ -636,9 +642,7 @@ class TestMapToHubAssetIncludesExternalResources(TestConnectorPatternBase):
     def test_dados_gov_br_map_to_hub_asset_includes_external_resources(self):
         """Test DadosGovBr connector map_to_hub_asset() includes external resources"""
         token = _get_dados_gov_br_jwt_token()
-        connector = DadosGovBrConnector(
-            base_url="https://dados.gov.br", jwt_token=token
-        )
+        connector = DadosGovBrConnector(base_url="https://dados.gov.br", jwt_token=token)
 
         # Create sample listing with resources
         resource = MarketplaceResource(
@@ -656,9 +660,12 @@ class TestMapToHubAssetIncludesExternalResources(TestConnectorPatternBase):
             resources=[resource],
         )
 
-        # Mock client methods to avoid actual API calls
+        # Mock client.get_dataset AND list_resources (defence in depth —
+        # even though listing.resources is non-empty, a future refactor
+        # could bypass the early return and hit the real API).
         with patch.object(connector.client, "get_dataset", return_value={}):
-            mapping = connector.map_to_hub_asset(listing)
+            with patch.object(connector, "list_resources", return_value=[resource]):
+                mapping = connector.map_to_hub_asset(listing)
 
         # Verify resources are included
         self.assertIsNotNone(mapping.resources)
@@ -764,9 +771,7 @@ class TestDownloadResourceHandlesOnDemandDownloads(TestConnectorPatternBase):
     def test_dados_gov_br_download_resource_handles_on_demand_downloads(self):
         """Test DadosGovBr connector download_resource() handles on-demand downloads"""
         token = _get_dados_gov_br_jwt_token()
-        connector = DadosGovBrConnector(
-            base_url="https://dados.gov.br", jwt_token=token
-        )
+        connector = DadosGovBrConnector(base_url="https://dados.gov.br", jwt_token=token)
 
         # Mock the actual download to avoid external API calls
         import os
@@ -981,15 +986,18 @@ class TestConnectorWorkflowIntegration(TestConnectorPatternBase):
                     MarketplaceConnectorFactory.register_connector(
                         MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, original
                     )
-            except ValueError:
-                pass
+            except ValueError as exc:
+                _logger.debug(
+                    "Cleanup: could not unregister/re-register SNOWFLAKE connector: %s",
+                    exc,
+                )
 
     def test_workflow_calls_create_federated_asset_with_contracts(self):
         """Test that workflow calls create_federated_asset_with_contracts() for asset creation"""
         from hub.apps.integrations.services import MarketplaceIntegrationService
 
         # Create marketplace connection
-        connection = MarketplaceConnection.objects.create(
+        MarketplaceConnection.objects.create(
             tenant=self.tenant,
             name="Test Connection",
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
@@ -1004,7 +1012,7 @@ class TestConnectorWorkflowIntegration(TestConnectorPatternBase):
 
         # Verify that create_federated_asset_with_contracts exists and is callable
         self.assertTrue(hasattr(service, "create_federated_asset_with_contracts"))
-        self.assertTrue(callable(getattr(service, "create_federated_asset_with_contracts")))
+        self.assertTrue(callable(service.create_federated_asset_with_contracts))
 
         # Verify method signature accepts MarketplaceAssetMapping
         import inspect
@@ -1022,7 +1030,7 @@ class TestConnectorWorkflowIntegration(TestConnectorPatternBase):
         from hub.apps.integrations.services import MarketplaceIntegrationService
 
         # Create marketplace connection
-        connection = MarketplaceConnection.objects.create(
+        MarketplaceConnection.objects.create(
             tenant=self.tenant,
             name="Test Connection Error",
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,

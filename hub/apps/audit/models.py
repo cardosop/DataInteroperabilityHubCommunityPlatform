@@ -3,7 +3,11 @@ Audit Logging Models
 
 Immutable audit event logging for compliance and security.
 """
+
 import uuid
+
+from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVectorField
@@ -11,10 +15,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models, transaction
 from django.db.models.expressions import RawSQL
-from django.contrib.auth import get_user_model
-from django.conf import settings
 from django.utils import timezone
-
 
 # Phase 234.6 — GENERATED-column expression for ``details_json_tsvector``.
 # Pinned here as a module-level constant so the model field and the
@@ -49,7 +50,7 @@ class ActiveAuditEventManager(models.Manager):
 class AuditEvent(models.Model):
     """
     Audit Event model for immutable audit logging.
-    
+
     All critical actions are logged as audit events for compliance and security.
     Events are append-only and cannot be modified or deleted.
 
@@ -60,6 +61,7 @@ class AuditEvent(models.Model):
     # site to opt in; model-layer enforcement ensures immutability
     # without per-caller ceremony. (BR6 / D274.11)
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",
@@ -67,7 +69,7 @@ class AuditEvent(models.Model):
         related_name="audit_events",
         null=True,
         blank=True,
-        help_text="Tenant this event belongs to (null for platform-level events)"
+        help_text="Tenant this event belongs to (null for platform-level events)",
     )
     actor_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -75,20 +77,17 @@ class AuditEvent(models.Model):
         related_name="audited_actions",
         null=True,
         blank=True,
-        help_text="User who performed the action (null for system events)"
+        help_text="User who performed the action (null for system events)",
     )
     resource_type = models.CharField(
-        max_length=50,
-        help_text="Type of resource (e.g., TENANT, USER, CONTRACT, ASSET, AUTH)"
+        max_length=50, help_text="Type of resource (e.g., TENANT, USER, CONTRACT, ASSET, AUTH)"
     )
     resource_id = models.UUIDField(
-        null=True,
-        blank=True,
-        help_text="ID of the resource (null for resource-less events)"
+        null=True, blank=True, help_text="ID of the resource (null for resource-less events)"
     )
     action = models.CharField(
         max_length=100,
-        help_text="Action performed (e.g., CREATED, UPDATED, DELETED, LOGIN, LOGOUT)"
+        help_text="Action performed (e.g., CREATED, UPDATED, DELETED, LOGIN, LOGOUT)",
     )
     result = models.CharField(
         max_length=20,
@@ -98,11 +97,10 @@ class AuditEvent(models.Model):
             ("WARNING", "Warning"),
         ],
         default="SUCCESS",
-        help_text="Result of the action"
+        help_text="Result of the action",
     )
     details_json = models.JSONField(
-        default=dict,
-        help_text="Additional details as JSON (no PII allowed)"
+        default=dict, help_text="Additional details as JSON (no PII allowed)"
     )
     full_details_json = models.JSONField(
         null=True,
@@ -215,7 +213,10 @@ class AuditEvent(models.Model):
     # Nullable: events created outside a trace span (management commands,
     # tests, background workers without OTel) store None.
     trace_id = models.UUIDField(
-        null=True, blank=True, db_index=True, default=None,
+        null=True,
+        blank=True,
+        db_index=True,
+        default=None,
         help_text="OTel trace_id for cross-system audit/trace/log correlation.",
     )
 
@@ -322,7 +323,9 @@ class AuditEvent(models.Model):
                     .order_by("-chain_sequence")
                 )
                 prev = prev_qs.first()
-                self.chain_sequence = (prev.chain_sequence + 1) if (prev and prev.chain_sequence) else 1
+                self.chain_sequence = (
+                    (prev.chain_sequence + 1) if (prev and prev.chain_sequence) else 1
+                )
                 self.prev_chain_hash = prev.chain_hash if prev else None
 
                 # Stamp the timestamp explicitly — ``auto_now_add`` was
@@ -345,7 +348,7 @@ class AuditEvent(models.Model):
         if not self.timestamp:
             self.timestamp = timezone.now()
         super().save(*args, **kwargs)
-    
+
     def delete(self, *args, **kwargs):
         """Override delete to prevent deletion"""
         raise ValueError("Audit events are immutable and cannot be deleted")
@@ -697,7 +700,7 @@ class AuditEventRetentionPolicy(models.Model):
         default=list,
         blank=True,
         help_text=(
-            "Uppercase regime tokens (e.g. ``[\"GDPR\", \"UK_GDPR\"]``). "
+            'Uppercase regime tokens (e.g. ``["GDPR", "UK_GDPR"]``). '
             "When non-empty, ``retention_days`` is derived from "
             "``data_retention_period_days_for_regime_keys`` — the same "
             "registry Phase 232.7 ``RetentionPolicy`` consults — so "
@@ -771,7 +774,9 @@ class AuditEventRetentionPolicy(models.Model):
         # Case-normalise + dedupe regulation_keys (mirrors registry input
         # contract) BEFORE the registry lookup. Stored value is the
         # canonical uppercase + sorted form for stable diffs/audits.
-        keys = sorted({str(k).upper().strip() for k in (self.regulation_keys or []) if str(k).strip()})
+        keys = sorted(
+            {str(k).upper().strip() for k in (self.regulation_keys or []) if str(k).strip()}
+        )
         self.regulation_keys = list(keys)
 
         if keys:
@@ -834,4 +839,3 @@ def resolve_retention_days_for_event_type(
     if row and row["retention_days"]:
         return int(row["retention_days"])
     return int(default_days)
-

@@ -9,13 +9,11 @@ Tests the base class functionality including:
 - Error handling
 """
 
-from typing import Any, Dict
 from unittest import TestCase
 
 import pytest
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
-from hub.apps.contracts.normalization import NormalizationResult
 from hub.apps.contracts.normalization.odcs_normalizer_base import ODCSNormalizerBase
 
 
@@ -44,7 +42,7 @@ class ODCSNormalizerBaseStructureTest(TestCase):
     def test_spec_type_is_odcs(self):
         """Test that spec_type is set to ODCS."""
         normalizer = ConcreteODCSNormalizer()
-        self.assertEqual(normalizer.spec_type , OriginalSpecType.ODCS)
+        self.assertEqual(normalizer.spec_type, OriginalSpecType.ODCS)
 
 
 class ODCSNormalizerBaseSupportsTest(TestCase):
@@ -96,8 +94,8 @@ class ODCSNormalizerBaseNormalizeTest(TestCase):
         self.assertTrue(hasattr(result, "spec_version"))
         self.assertTrue(hasattr(result, "coverage"))
 
-        self.assertEqual(result.spec_type , OriginalSpecType.ODCS)
-        self.assertEqual(result.spec_version , "3.0.2")
+        self.assertEqual(result.spec_type, OriginalSpecType.ODCS)
+        self.assertEqual(result.spec_version, "3.0.2")
         self.assertIsInstance(result.errors, list)
         self.assertIsInstance(result.warnings, list)
 
@@ -115,7 +113,7 @@ class ODCSNormalizerBaseNormalizeTest(TestCase):
 
         result = normalizer.normalize(contract_data, spec_version=None)
 
-        self.assertEqual(result.spec_version , "3.0.2")
+        self.assertEqual(result.spec_version, "3.0.2")
 
     def test_normalize_fails_for_unsupported_version(self):
         """Test that normalize() fails gracefully for unsupported versions."""
@@ -130,9 +128,11 @@ class ODCSNormalizerBaseNormalizeTest(TestCase):
 
         result = normalizer.normalize(contract_data, spec_version="3.0.1")
 
-        self.assertEqual(result.status , NormalizationStatus.NORMALIZATION_FAILED)
-        self.assertGreater(len(result.errors) , 0)
-        self.assertTrue("does not support" in result.errors[0].lower() or "not support" in result.errors[0].lower())
+        self.assertEqual(result.status, NormalizationStatus.NORMALIZATION_FAILED)
+        self.assertGreater(len(result.errors), 0)
+        self.assertTrue(
+            "does not support" in result.errors[0].lower()
+        )
 
     def test_normalize_validates_contract_data_is_dict(self):
         """Test that normalize() validates contract_data is a dictionary."""
@@ -140,8 +140,8 @@ class ODCSNormalizerBaseNormalizeTest(TestCase):
 
         result = normalizer.normalize("not a dict", spec_version="3.0.2")
 
-        self.assertEqual(result.status , NormalizationStatus.NORMALIZATION_FAILED)
-        self.assertGreater(len(result.errors) , 0)
+        self.assertEqual(result.status, NormalizationStatus.NORMALIZATION_FAILED)
+        self.assertGreater(len(result.errors), 0)
         self.assertIn("dictionary", result.errors[0].lower())
 
     def test_normalize_handles_missing_required_fields(self):
@@ -158,7 +158,7 @@ class ODCSNormalizerBaseNormalizeTest(TestCase):
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
         # Should have errors for missing required fields
-        self.assertGreater(len(result.errors) , 0)
+        self.assertGreater(len(result.errors), 0)
         self.assertTrue(any("name" in error.lower() for error in result.errors))
         self.assertTrue(any("fields" in error.lower() for error in result.errors))
 
@@ -198,7 +198,7 @@ class ODCSNormalizerBaseHelperMethodsTest(TestCase):
         # Test through public API - normalize() internally calls _detect_odcs_version()
         result = normalizer.normalize(contract_data, spec_version=None)
 
-        self.assertEqual(result.spec_version , "3.0.2")
+        self.assertEqual(result.spec_version, "3.0.2")
 
     def test_detect_odcs_version_from_version_field(self):
         """Test that normalize() detects version from version field through public API."""
@@ -216,7 +216,7 @@ class ODCSNormalizerBaseHelperMethodsTest(TestCase):
         result = normalizer.normalize(contract_data, spec_version=None)
         # Version detection should work, but normalization will fail because 3.0.1 is not supported
         # The version detection happens before version support check
-        self.assertEqual(result.status , NormalizationStatus.NORMALIZATION_FAILED)
+        self.assertEqual(result.status, NormalizationStatus.NORMALIZATION_FAILED)
 
     def test_detect_odcs_version_defaults_to_3_0_2(self):
         """Test that normalize() defaults to 3.0.2 if version cannot be detected through public API."""
@@ -231,7 +231,7 @@ class ODCSNormalizerBaseHelperMethodsTest(TestCase):
         # and defaults to 3.0.2 if version cannot be detected
         result = normalizer.normalize(contract_data, spec_version=None)
 
-        self.assertEqual(result.spec_version , "3.0.2")
+        self.assertEqual(result.spec_version, "3.0.2")
 
     def test_map_version_specific_fields_default_implementation(self):
         """Test that _map_version_specific_fields has a default no-op implementation through public API."""
@@ -340,8 +340,8 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
         self.assertIn("owners", result.hub_contract["info"])
         self.assertIn("tags", result.hub_contract["info"])
         # Owners are normalized from strings to HubContractOwner format
-        self.assertEqual(result.hub_contract["info"]["owners"] , [{"name": "owner2"}])
-        self.assertEqual(result.hub_contract["info"]["tags"] , ["tag2"])
+        self.assertEqual(result.hub_contract["info"]["owners"], [{"name": "owner2"}])
+        self.assertEqual(result.hub_contract["info"]["tags"], ["tag2"])
 
     def test_normalize_schema(self):
         """Test _normalize_schema method through public API."""
@@ -360,7 +360,7 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
         # Should have models and schema derived
         self.assertIsNotNone(result.hub_contract)
         self.assertIn("models", result.hub_contract)
-        self.assertGreater(len(result.hub_contract["models"]) , 0)
+        self.assertGreater(len(result.hub_contract["models"]), 0)
         self.assertIn("fields", result.hub_contract["schema"])
 
     def test_normalize_quality(self):
@@ -380,7 +380,7 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
 
         self.assertIsNotNone(result.hub_contract)
         self.assertIn("quality", result.hub_contract)
-        self.assertEqual(result.hub_contract["quality"]["default_profile_key"] , "profile1")
+        self.assertEqual(result.hub_contract["quality"]["default_profile_key"], "profile1")
 
     def test_normalize_privacy_compliance(self):
         """Test _normalize_privacy_compliance method through public API."""
@@ -421,7 +421,7 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
 
         self.assertIsNotNone(result.hub_contract)
         self.assertIn("lifecycle", result.hub_contract)
-        self.assertEqual(result.hub_contract["lifecycle"]["data_source"] , "database")
+        self.assertEqual(result.hub_contract["lifecycle"]["data_source"], "database")
 
     def test_validate_required_fields(self):
         """Test _validate_required_fields method through public API."""
@@ -442,11 +442,8 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
         # Should have validation errors for missing required fields
-        self.assertGreater(len(result.errors) , 0)
-        # Check that errors mention missing required fields
-        error_messages = " ".join(result.errors).lower()
-        # Note: The exact error messages depend on implementation
-        # But validation should catch missing required fields
+        self.assertGreater(len(result.errors), 0)
+        # Validation should catch missing required fields.
         self.assertEqual(result.status, NormalizationStatus.NORMALIZATION_FAILED)
         self.assertGreater(len(result.errors), 0)
 

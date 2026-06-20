@@ -2,20 +2,19 @@
 Integration tests for workflow execution.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from hub.apps.orchestration.models import (
     StepStatus,
-    WorkflowDefinition,
-    WorkflowInstance,
     WorkflowStatus,
 )
-from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.orchestration.registry import WorkflowRegistry, reset_workflow_definition_cache
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.tenants.models import KYCStatus, Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -28,13 +27,19 @@ class WorkflowIntegrationTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
+        # Prevent stale cache entries from previous test classes
+        # whose transactions were rolled back.
+        reset_workflow_definition_cache()
 
         # Register a test task
         def test_task(input_data, instance, step):
@@ -53,9 +58,7 @@ class WorkflowIntegrationTest(TestCase):
             ],
         }
 
-        workflow_def = self.registry.register_workflow(
-            workflow_name="test_workflow", dsl_json=dsl_json
-        )
+        self.registry.register_workflow(workflow_name="test_workflow", dsl_json=dsl_json)
 
         # Create workflow instance
         instance = self.engine.create_instance(
@@ -127,13 +130,17 @@ class WorkflowIntegrationEdgeCasesTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
+        reset_workflow_definition_cache()
 
         def test_task(input_data, instance, step):
             return {"result": "success", "input": input_data}
@@ -190,13 +197,17 @@ class WorkflowIntegrationErrorHandlingTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
+        reset_workflow_definition_cache()
 
     def test_workflow_with_nonexistent_task(self):
         """Test workflow execution with nonexistent task"""

@@ -17,6 +17,7 @@ partner needs to fetch the new key from
 Backwards-compat is a follow-up — the spec mandates rotation but
 not key-overlap; that's a separate ticket.
 """
+
 from __future__ import annotations
 
 import logging
@@ -28,7 +29,6 @@ from django.utils import timezone
 from hub.apps.semantic.ldn_signature import generate_keypair
 from hub.apps.semantic.models import LdnTenantSigningKey
 from hub.apps.tenants.models import Tenant
-
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +66,9 @@ class Command(BaseCommand):
             self._rotate_for_tenant(tenant)
             count += 1
 
-        self.stdout.write(self.style.SUCCESS(
-            f"Rotated {count} tenant LDN keys (dry_run={dry_run})."
-        ))
+        self.stdout.write(
+            self.style.SUCCESS(f"Rotated {count} tenant LDN keys (dry_run={dry_run}).")
+        )
 
     def _rotate_for_tenant(self, tenant) -> None:
         priv_pem, pub_pem = generate_keypair(key_type="rsa")
@@ -88,9 +88,14 @@ class Command(BaseCommand):
                 existing.key_id = f"meshant:tenant:{tenant.id}:ldn:v{existing.version}"
                 existing.public_key_pem = pub_pem
                 existing.rotated_at = timezone.now()
-                existing.save(update_fields=[
-                    "version", "key_id", "public_key_pem", "rotated_at",
-                ])
+                existing.save(
+                    update_fields=[
+                        "version",
+                        "key_id",
+                        "public_key_pem",
+                        "rotated_at",
+                    ]
+                )
 
         # Push the private PEM to External Secrets. This is the
         # boundary; failing here leaves the DB at v(N) but the
@@ -100,10 +105,12 @@ class Command(BaseCommand):
         # mid-rotation and can re-run.
         try:
             self._publish_private_key(tenant_id=str(tenant.id), private_pem=priv_pem)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.error(
                 "ldn_key_rotation_secrets_publish_failed tenant_id=%s error=%s",
-                tenant.id, exc, exc_info=True,
+                tenant.id,
+                exc,
+                exc_info=True,
             )
             raise
 
@@ -122,8 +129,8 @@ class Command(BaseCommand):
         also reads, so a dev rotate-then-sign round-trip works
         without an AWS backend.
         """
-        import os
         import json as _json
+        import os
 
         secret_id = f"ldn-signing-key/{tenant_id}"
         secret_body = _json.dumps({"private_pem": private_pem})
@@ -146,6 +153,7 @@ class Command(BaseCommand):
                 "ldn_key_rotation_secrets_backend_unavailable tenant_id=%s "
                 "error=%s — falling back to env-var. Wire ExternalSecrets "
                 "before production rollout.",
-                tenant_id, exc,
+                tenant_id,
+                exc,
             )
             os.environ[f"LDN_SIGNING_KEY__{tenant_id}"] = private_pem

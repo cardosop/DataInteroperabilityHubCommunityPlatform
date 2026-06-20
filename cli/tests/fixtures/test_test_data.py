@@ -5,19 +5,18 @@ Covers ``fresh_id``, ``unique_port``, and the xdist-worker-id helper.
 No mocks, no stubs — exercises the real OS port allocation, real env
 vars, and the real uuid generator.
 """
+
 from __future__ import annotations
 
 import socket
 
 import pytest
-
 from tests.fixtures.test_data import (
     _xdist_worker_id,
     fresh_id,
     reset_unique_port_pool_for_tests,
     unique_port,
 )
-
 
 # ---------------------------------------------------------------------------
 # fresh_id

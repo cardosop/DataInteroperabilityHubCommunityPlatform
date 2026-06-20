@@ -1,13 +1,16 @@
 """Phase 98: Auth bypass prevention tests."""
+
 import uuid
-import pytest
+
 import jwt
-from django.test import TestCase
+import pytest
 from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.test import TestCase
 from rest_framework.test import APIClient
+
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus, UserTenantMembership
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
@@ -20,7 +23,8 @@ class AuthBypassTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Auth Test {uid}", slug=f"auth-test-{uid}",
+            name=f"Auth Test {uid}",
+            slug=f"auth-test-{uid}",
         )
         self.user = User.objects.create_user(
             email=f"auth-{uid}@example.com",
@@ -29,7 +33,8 @@ class AuthBypassTest(TestCase):
             status=UserStatus.ACTIVE,
         )
         UserTenantMembership.objects.get_or_create(
-            user=self.user, tenant=self.tenant,
+            user=self.user,
+            tenant=self.tenant,
         )
         self.client = APIClient()
 
@@ -58,6 +63,7 @@ class AuthBypassTest(TestCase):
     def test_expired_jwt_returns_401(self):
         """Expired JWT must be rejected."""
         import time
+
         expired = jwt.encode(
             {"user_id": str(self.user.id), "exp": int(time.time()) - 3600},
             settings.JWT_SECRET_KEY,

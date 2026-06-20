@@ -10,21 +10,18 @@ Tests:
 - Bottleneck identification
 """
 
-import time
-import threading
 import statistics
+import threading
+import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Dict, Any, Optional
 from collections import defaultdict, deque
+from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from django.db import transaction
 
-from hub.apps.core.events.bus import EventBus, get_event_bus
-from hub.apps.core.events.models import Event, EventSubscription
-from hub.apps.tenants.models import Tenant
+from hub.apps.core.events.bus import get_event_bus
+from hub.apps.core.events.models import Event
 from tests.factories import TenantFactory, UserFactory
 
 User = get_user_model()
@@ -41,14 +38,16 @@ class EventBusPerformanceTest(TestCase):
         self.received_events = []
         self.received_lock = threading.Lock()
 
-    def _event_handler(self, event: Dict[str, Any]):
+    def _event_handler(self, event: dict[str, Any]):
         """Simple event handler that records received events"""
         with self.received_lock:
-            self.received_events.append({
-                'event_id': event.get('event_id'),
-                'event_type': event.get('event_type'),
-                'timestamp': time.time()
-            })
+            self.received_events.append(
+                {
+                    "event_id": event.get("event_id"),
+                    "event_type": event.get("event_type"),
+                    "timestamp": time.time(),
+                }
+            )
 
     def test_publish_throughput(self):
         """Test event publishing throughput (events per second)"""
@@ -59,13 +58,12 @@ class EventBusPerformanceTest(TestCase):
         # Measure publish throughput
         start_time = time.time()
         event_ids = []
-        import uuid
         for i in range(num_events):
             event_id = self.event_bus.publish(
                 event_type=event_type,
                 data={"contract_id": str(uuid.uuid4()), "index": i, "test": "throughput"},
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
             event_ids.append(event_id)
 
@@ -82,21 +80,22 @@ class EventBusPerformanceTest(TestCase):
         print(f"Average latency: {(elapsed_time / num_events) * 1000:.2f}ms")
 
         # Assert minimum throughput (adjust based on requirements)
-        self.assertGreater(throughput, 100, f"Throughput {throughput:.2f} events/sec below minimum 100 events/sec")
+        self.assertGreater(
+            throughput, 100, f"Throughput {throughput:.2f} events/sec below minimum 100 events/sec"
+        )
 
     def test_publish_latency(self):
         """Test individual event publishing latency"""
         num_events = 100
         event_type = "contract.created"
         latencies = []
-        import uuid
 
         for i in range(num_events):
             start = time.time()
             self.event_bus.publish(
                 event_type=event_type,
                 data={"contract_id": str(uuid.uuid4()), "index": i, "test": "latency"},
-                tenant_id=str(self.tenant.id)
+                tenant_id=str(self.tenant.id),
             )
             latency = (time.time() - start) * 1000  # Convert to milliseconds
             latencies.append(latency)
@@ -109,7 +108,7 @@ class EventBusPerformanceTest(TestCase):
         min_latency = min(latencies)
         max_latency = max(latencies)
 
-        print(f"\nPublish Latency Statistics:")
+        print("\nPublish Latency Statistics:")
         print(f"  Average: {avg_latency:.2f}ms")
         print(f"  P50 (median): {p50_latency:.2f}ms")
         print(f"  P95: {p95_latency:.2f}ms")
@@ -118,24 +117,29 @@ class EventBusPerformanceTest(TestCase):
         print(f"  Max: {max_latency:.2f}ms")
 
         # Assert reasonable latency (adjust based on requirements)
-        self.assertLess(avg_latency, 100, f"Average latency {avg_latency:.2f}ms exceeds 100ms threshold")
-        self.assertLess(p95_latency, 200, f"P95 latency {p95_latency:.2f}ms exceeds 200ms threshold")
+        self.assertLess(
+            avg_latency, 100, f"Average latency {avg_latency:.2f}ms exceeds 100ms threshold"
+        )
+        self.assertLess(
+            p95_latency, 200, f"P95 latency {p95_latency:.2f}ms exceeds 200ms threshold"
+        )
 
     def test_persistence_performance(self):
         """Test PostgreSQL persistence performance"""
         num_events = 500
         event_type = "contract.created"
-        import uuid
 
         # Use synchronous persistence for accurate performance measurement
-        with override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False, EVENT_BUS_WRITE_BEHIND_ENABLED=False):
+        with override_settings(
+            EVENT_BUS_ASYNC_PERSISTENCE=False, EVENT_BUS_WRITE_BEHIND_ENABLED=False
+        ):
             # Measure persistence time
             start_time = time.time()
             for i in range(num_events):
                 self.event_bus.publish(
                     event_type=event_type,
                     data={"contract_id": str(uuid.uuid4()), "index": i, "test": "persistence"},
-                    tenant_id=str(self.tenant.id)
+                    tenant_id=str(self.tenant.id),
                 )
 
             elapsed_time = time.time() - start_time
@@ -147,22 +151,27 @@ class EventBusPerformanceTest(TestCase):
             # Allow for service unavailability - if persisted_count is less, that's acceptable
             # The test verifies performance, not exact persistence count
             if persisted_count < num_events:
-                self.skipTest(f"Event bus may be unavailable (persisted {persisted_count}/{num_events} events)")
+                self.skipTest(
+                    f"Event bus may be unavailable (persisted {persisted_count}/{num_events} events)"
+                )
             self.assertEqual(persisted_count, num_events)
 
-        print(f"\nPersistence Performance:")
+        print("\nPersistence Performance:")
         print(f"  Throughput: {persistence_throughput:.2f} events/sec")
         print(f"  Total time: {elapsed_time:.2f}s")
         print(f"  Persisted events: {persisted_count}")
 
         # Assert minimum persistence throughput
-        self.assertGreater(persistence_throughput, 50, f"Persistence throughput {persistence_throughput:.2f} events/sec below minimum 50 events/sec")
+        self.assertGreater(
+            persistence_throughput,
+            50,
+            f"Persistence throughput {persistence_throughput:.2f} events/sec below minimum 50 events/sec",
+        )
 
     def test_redis_pubsub_performance(self):
         """Test Redis Pub/Sub performance characteristics"""
         num_events = 200
         event_type = "contract.created"
-        import uuid
 
         # Measure Redis publish latency (without persistence)
         redis_latencies = []
@@ -172,7 +181,7 @@ class EventBusPerformanceTest(TestCase):
                 self.event_bus.publish(
                     event_type=event_type,
                     data={"contract_id": str(uuid.uuid4()), "index": i, "test": "redis"},
-                    tenant_id=str(self.tenant.id)
+                    tenant_id=str(self.tenant.id),
                 )
                 latency = (time.time() - start) * 1000
                 redis_latencies.append(latency)
@@ -180,14 +189,16 @@ class EventBusPerformanceTest(TestCase):
         avg_redis_latency = statistics.mean(redis_latencies)
         p95_redis_latency = self._percentile(redis_latencies, 95)
 
-        print(f"\nRedis Pub/Sub Performance:")
+        print("\nRedis Pub/Sub Performance:")
         print(f"  Average latency: {avg_redis_latency:.2f}ms")
         print(f"  P95 latency: {p95_redis_latency:.2f}ms")
 
         # Redis Pub/Sub should be very fast
-        self.assertLess(avg_redis_latency, 10, f"Redis latency {avg_redis_latency:.2f}ms exceeds 10ms threshold")
+        self.assertLess(
+            avg_redis_latency, 10, f"Redis latency {avg_redis_latency:.2f}ms exceeds 10ms threshold"
+        )
 
-    def _percentile(self, data: List[float], percentile: float) -> float:
+    def _percentile(self, data: list[float], percentile: float) -> float:
         """Calculate percentile value"""
         sorted_data = sorted(data)
         index = (percentile / 100) * (len(sorted_data) - 1)
@@ -212,12 +223,13 @@ class EventBusLoadTest(TestCase):
 
     def _subscriber_handler(self, subscriber_id: str):
         """Create a handler for a specific subscriber"""
-        def handler(event: Dict[str, Any]):
+
+        def handler(event: dict[str, Any]):
             with self.results_lock:
-                self.subscriber_results[subscriber_id].append({
-                    'event_id': event.get('event_id'),
-                    'received_at': time.time()
-                })
+                self.subscriber_results[subscriber_id].append(
+                    {"event_id": event.get("event_id"), "received_at": time.time()}
+                )
+
         return handler
 
     def test_concurrent_subscribers(self):
@@ -225,7 +237,6 @@ class EventBusLoadTest(TestCase):
         num_subscribers = 10
         events_per_subscriber = 50
         event_type = "contract.created"
-        import uuid
 
         # Register multiple subscribers
         subscribers = []
@@ -233,9 +244,7 @@ class EventBusLoadTest(TestCase):
             subscriber_id = f"subscriber_{i}"
             handler = self._subscriber_handler(subscriber_id)
             self.event_bus.subscribe(
-                subscriber_name=subscriber_id,
-                event_type_pattern=event_type,
-                handler=handler
+                subscriber_name=subscriber_id, event_type_pattern=event_type, handler=handler
             )
             subscribers.append(subscriber_id)
 
@@ -252,10 +261,11 @@ class EventBusLoadTest(TestCase):
             pubsub.get_message(timeout=0.1)
             while not stop_event.is_set():
                 message = pubsub.get_message(timeout=0.1)
-                if message and message['type'] == 'message':
+                if message and message["type"] == "message":
                     import json
+
                     try:
-                        event = json.loads(message['data'])
+                        event = json.loads(message["data"])
                         handler(event)
                     except (json.JSONDecodeError, KeyError):
                         pass  # Skip invalid messages
@@ -266,17 +276,17 @@ class EventBusLoadTest(TestCase):
             threads.append(thread)
 
         # Publish events
-        time.sleep(0.5)  # Give subscribers time to start  # INTENTIONAL: test-specific timing
+        time.sleep(0.5)  # noqa: sleep-needed  # Give subscribers time to start  # INTENTIONAL: test-specific timing
         start_time = time.time()
         for i in range(events_per_subscriber):
             self.event_bus.publish(
                 event_type=event_type,
                 data={"contract_id": str(uuid.uuid4()), "index": i, "test": "concurrent"},
-                tenant_id=str(self.tenant.id)
+                tenant_id=str(self.tenant.id),
             )
 
         # Wait for events to be received
-        time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+        time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
         # Stop listening
         stop_event.set()
@@ -289,7 +299,7 @@ class EventBusLoadTest(TestCase):
         total_received = sum(len(events) for events in self.subscriber_results.values())
         expected_total = num_subscribers * events_per_subscriber
 
-        print(f"\nConcurrent Subscribers Test:")
+        print("\nConcurrent Subscribers Test:")
         print(f"  Subscribers: {num_subscribers}")
         print(f"  Events per subscriber: {events_per_subscriber}")
         print(f"  Expected total events: {expected_total}")
@@ -303,7 +313,7 @@ class EventBusLoadTest(TestCase):
             self.assertGreater(
                 received_count,
                 events_per_subscriber * 0.9,  # Allow 10% loss
-                f"Subscriber {subscriber_id} received only {received_count}/{events_per_subscriber} events"
+                f"Subscriber {subscriber_id} received only {received_count}/{events_per_subscriber} events",
             )
 
     def test_subscriber_scalability(self):
@@ -311,7 +321,6 @@ class EventBusLoadTest(TestCase):
         subscriber_counts = [1, 5, 10, 20]
         events_per_test = 100
         event_type = "contract.created"
-        import uuid
         results = []
 
         for num_subscribers in subscriber_counts:
@@ -323,9 +332,7 @@ class EventBusLoadTest(TestCase):
                 subscriber_id = f"subscriber_{num_subscribers}_{i}"
                 handler = self._subscriber_handler(subscriber_id)
                 self.event_bus.subscribe(
-                    subscriber_name=subscriber_id,
-                    event_type_pattern=event_type,
-                    handler=handler
+                    subscriber_name=subscriber_id, event_type_pattern=event_type, handler=handler
                 )
                 subscribers.append(subscriber_id)
 
@@ -335,41 +342,47 @@ class EventBusLoadTest(TestCase):
                 self.event_bus.publish(
                     event_type=event_type,
                     data={"contract_id": str(uuid.uuid4()), "index": i, "test": "scalability"},
-                    tenant_id=str(self.tenant.id)
+                    tenant_id=str(self.tenant.id),
                 )
             publish_time = time.time() - start_time
 
             # Wait for delivery
-            time.sleep(1)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(1)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
             # Calculate metrics
             total_received = sum(len(events) for events in self.subscriber_results.values())
             expected_total = num_subscribers * events_per_test
             delivery_rate = (total_received / expected_total) * 100 if expected_total > 0 else 0
 
-            results.append({
-                'subscribers': num_subscribers,
-                'publish_time': publish_time,
-                'delivery_rate': delivery_rate,
-                'throughput': events_per_test / publish_time
-            })
+            results.append(
+                {
+                    "subscribers": num_subscribers,
+                    "publish_time": publish_time,
+                    "delivery_rate": delivery_rate,
+                    "throughput": events_per_test / publish_time,
+                }
+            )
 
-            print(f"\nSubscribers: {num_subscribers}, Publish time: {publish_time:.2f}s, "
-                  f"Delivery rate: {delivery_rate:.2f}%, Throughput: {events_per_test / publish_time:.2f} events/sec")
+            print(
+                f"\nSubscribers: {num_subscribers}, Publish time: {publish_time:.2f}s, "
+                f"Delivery rate: {delivery_rate:.2f}%, Throughput: {events_per_test / publish_time:.2f} events/sec"
+            )
 
         # Verify scalability (throughput shouldn't degrade significantly)
-        throughputs = [r['throughput'] for r in results]
+        throughputs = [r["throughput"] for r in results]
         max_throughput = max(throughputs)
         min_throughput = min(throughputs)
         degradation = ((max_throughput - min_throughput) / max_throughput) * 100
 
-        print(f"\nScalability Analysis:")
+        print("\nScalability Analysis:")
         print(f"  Max throughput: {max_throughput:.2f} events/sec")
         print(f"  Min throughput: {min_throughput:.2f} events/sec")
         print(f"  Degradation: {degradation:.2f}%")
 
         # Allow up to 50% degradation with 20 subscribers
-        self.assertLess(degradation, 50, f"Throughput degradation {degradation:.2f}% exceeds 50% threshold")
+        self.assertLess(
+            degradation, 50, f"Throughput degradation {degradation:.2f}% exceeds 50% threshold"
+        )
 
 
 class EventBusStressTest(TestCase):
@@ -388,10 +401,11 @@ class EventBusStressTest(TestCase):
         num_events = 10000
         event_type = "contract.created"
         batch_size = 1000
-        import uuid
 
         # Use synchronous persistence for accurate testing
-        with override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False, EVENT_BUS_WRITE_BEHIND_ENABLED=False):
+        with override_settings(
+            EVENT_BUS_ASYNC_PERSISTENCE=False, EVENT_BUS_WRITE_BEHIND_ENABLED=False
+        ):
             # Measure performance in batches
             batch_times = []
             errors = []
@@ -407,8 +421,13 @@ class EventBusStressTest(TestCase):
                     try:
                         self.event_bus.publish(
                             event_type=event_type,
-                            data={"contract_id": str(uuid.uuid4()), "index": i, "batch": batch_num, "test": "high_volume"},
-                            tenant_id=str(self.tenant.id)
+                            data={
+                                "contract_id": str(uuid.uuid4()),
+                                "index": i,
+                                "batch": batch_num,
+                                "test": "high_volume",
+                            },
+                            tenant_id=str(self.tenant.id),
                         )
                     except Exception as e:
                         batch_errors += 1
@@ -418,8 +437,10 @@ class EventBusStressTest(TestCase):
                 batch_times.append(batch_time)
                 batch_throughput = (batch_end - batch_start) / batch_time
 
-                print(f"Batch {batch_num}: {batch_end - batch_start} events in {batch_time:.2f}s "
-                      f"({batch_throughput:.2f} events/sec), Errors: {batch_errors}")
+                print(
+                    f"Batch {batch_num}: {batch_end - batch_start} events in {batch_time:.2f}s "
+                    f"({batch_throughput:.2f} events/sec), Errors: {batch_errors}"
+                )
 
             # Calculate overall statistics
             total_time = sum(batch_times)
@@ -428,7 +449,7 @@ class EventBusStressTest(TestCase):
             max_batch_time = max(batch_times)
             error_rate = (len(errors) / num_events) * 100
 
-            print(f"\nHigh Volume Stress Test Results:")
+            print("\nHigh Volume Stress Test Results:")
             print(f"  Total events: {num_events}")
             print(f"  Total time: {total_time:.2f}s")
             print(f"  Overall throughput: {overall_throughput:.2f} events/sec")
@@ -442,14 +463,17 @@ class EventBusStressTest(TestCase):
 
             # Assertions
             self.assertLess(error_rate, 1, f"Error rate {error_rate:.2f}% exceeds 1% threshold")
-            self.assertGreater(persisted_count, num_events * 0.99, f"Only {persisted_count}/{num_events} events persisted")
+            self.assertGreater(
+                persisted_count,
+                num_events * 0.99,
+                f"Only {persisted_count}/{num_events} events persisted",
+            )
 
     def test_sustained_load(self):
         """Test event bus under sustained load"""
         duration_seconds = 30
         target_rate = 100  # events per second
         event_type = "contract.created"
-        import uuid
 
         start_time = time.time()
         event_count = 0
@@ -468,8 +492,12 @@ class EventBusStressTest(TestCase):
                     publish_start = time.time()
                     self.event_bus.publish(
                         event_type=event_type,
-                        data={"contract_id": str(uuid.uuid4()), "index": event_count, "test": "sustained"},
-                        tenant_id=str(self.tenant.id)
+                        data={
+                            "contract_id": str(uuid.uuid4()),
+                            "index": event_count,
+                            "test": "sustained",
+                        },
+                        tenant_id=str(self.tenant.id),
                     )
                     latency = (time.time() - publish_start) * 1000
                     latencies.append(latency)
@@ -481,7 +509,7 @@ class EventBusStressTest(TestCase):
             # Sleep to maintain target rate
             batch_time = time.time() - batch_start
             sleep_time = max(0, 1.0 - batch_time)
-            time.sleep(sleep_time)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(sleep_time)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
         elapsed_time = time.time() - start_time
         actual_rate = event_count / elapsed_time
@@ -495,7 +523,7 @@ class EventBusStressTest(TestCase):
         else:
             avg_latency = p95_latency = p99_latency = 0
 
-        print(f"\nSustained Load Test Results:")
+        print("\nSustained Load Test Results:")
         print(f"  Duration: {elapsed_time:.2f}s")
         print(f"  Events published: {event_count}")
         print(f"  Target rate: {target_rate} events/sec")
@@ -506,14 +534,17 @@ class EventBusStressTest(TestCase):
         print(f"  P99 latency: {p99_latency:.2f}ms")
 
         # Assertions
-        self.assertGreater(actual_rate, target_rate * 0.8, f"Actual rate {actual_rate:.2f} events/sec below 80% of target")
+        self.assertGreater(
+            actual_rate,
+            target_rate * 0.8,
+            f"Actual rate {actual_rate:.2f} events/sec below 80% of target",
+        )
         self.assertLess(error_rate, 1, f"Error rate {error_rate:.2f}% exceeds 1% threshold")
 
     def test_burst_traffic(self):
         """Test event bus handling burst traffic"""
         burst_sizes = [100, 500, 1000, 2000]
         event_type = "contract.created"
-        import uuid
         results = []
 
         for burst_size in burst_sizes:
@@ -525,31 +556,44 @@ class EventBusStressTest(TestCase):
                 try:
                     self.event_bus.publish(
                         event_type=event_type,
-                        data={"contract_id": str(uuid.uuid4()), "index": i, "burst_size": burst_size, "test": "burst"},
-                        tenant_id=str(self.tenant.id)
+                        data={
+                            "contract_id": str(uuid.uuid4()),
+                            "index": i,
+                            "burst_size": burst_size,
+                            "test": "burst",
+                        },
+                        tenant_id=str(self.tenant.id),
                     )
-                except Exception as e:
+                except Exception:
                     errors += 1
 
             elapsed_time = time.time() - start_time
             throughput = burst_size / elapsed_time
             error_rate = (errors / burst_size) * 100
 
-            results.append({
-                'burst_size': burst_size,
-                'time': elapsed_time,
-                'throughput': throughput,
-                'error_rate': error_rate
-            })
+            results.append(
+                {
+                    "burst_size": burst_size,
+                    "time": elapsed_time,
+                    "throughput": throughput,
+                    "error_rate": error_rate,
+                }
+            )
 
-            print(f"\nBurst Size: {burst_size}, Time: {elapsed_time:.2f}s, "
-                  f"Throughput: {throughput:.2f} events/sec, Error rate: {error_rate:.2f}%")
+            print(
+                f"\nBurst Size: {burst_size}, Time: {elapsed_time:.2f}s, "
+                f"Throughput: {throughput:.2f} events/sec, Error rate: {error_rate:.2f}%"
+            )
 
         # Verify burst handling
         for result in results:
-            self.assertLess(result['error_rate'], 5, f"Burst size {result['burst_size']} error rate {result['error_rate']:.2f}% exceeds 5%")
+            self.assertLess(
+                result["error_rate"],
+                5,
+                f"Burst size {result['burst_size']} error rate {result['error_rate']:.2f}% exceeds 5%",
+            )
 
-    def _percentile(self, data: List[float], percentile: float) -> float:
+    def _percentile(self, data: list[float], percentile: float) -> float:
         """Calculate percentile value"""
         if not data:
             return 0
@@ -576,7 +620,6 @@ class EventBusBottleneckAnalysisTest(TestCase):
         """Compare overhead of persistence vs Pub/Sub only"""
         num_events = 500
         event_type = "contract.created"
-        import uuid
 
         # Test with persistence
         start_with_persistence = time.time()
@@ -584,7 +627,7 @@ class EventBusBottleneckAnalysisTest(TestCase):
             self.event_bus.publish(
                 event_type=event_type,
                 data={"contract_id": str(uuid.uuid4()), "index": i, "test": "with_persistence"},
-                tenant_id=str(self.tenant.id)
+                tenant_id=str(self.tenant.id),
             )
         time_with_persistence = time.time() - start_with_persistence
 
@@ -594,15 +637,19 @@ class EventBusBottleneckAnalysisTest(TestCase):
             for i in range(num_events):
                 self.event_bus.publish(
                     event_type=event_type,
-                    data={"contract_id": str(uuid.uuid4()), "index": i, "test": "without_persistence"},
-                    tenant_id=str(self.tenant.id)
+                    data={
+                        "contract_id": str(uuid.uuid4()),
+                        "index": i,
+                        "test": "without_persistence",
+                    },
+                    tenant_id=str(self.tenant.id),
                 )
             time_without_persistence = time.time() - start_without_persistence
 
         persistence_overhead = time_with_persistence - time_without_persistence
         overhead_percentage = (persistence_overhead / time_with_persistence) * 100
 
-        print(f"\nPersistence Overhead Analysis:")
+        print("\nPersistence Overhead Analysis:")
         print(f"  With persistence: {time_with_persistence:.2f}s")
         print(f"  Without persistence: {time_without_persistence:.2f}s")
         print(f"  Overhead: {persistence_overhead:.2f}s ({overhead_percentage:.2f}%)")
@@ -615,44 +662,46 @@ class EventBusBottleneckAnalysisTest(TestCase):
         event_sizes = [100, 1000, 10000, 100000]  # bytes
         events_per_size = 100
         event_type = "contract.created"
-        import uuid
         results = []
 
         for size_bytes in event_sizes:
             # Create payload of approximately the target size
             # Note: contract.created requires contract_id, so we add extra data
             extra_data_size = max(0, size_bytes - 100)  # Reserve space for contract_id
-            payload = {"contract_id": str(uuid.uuid4()), "extra_data": "x" * (extra_data_size // 2)} if extra_data_size > 0 else {"contract_id": str(uuid.uuid4())}
+            payload = (
+                {"contract_id": str(uuid.uuid4()), "extra_data": "x" * (extra_data_size // 2)}
+                if extra_data_size > 0
+                else {"contract_id": str(uuid.uuid4())}
+            )
 
             start_time = time.time()
             for i in range(events_per_size):
                 self.event_bus.publish(
                     event_type=event_type,
                     data={"index": i, "size": size_bytes, **payload},
-                    tenant_id=str(self.tenant.id)
+                    tenant_id=str(self.tenant.id),
                 )
             elapsed_time = time.time() - start_time
             throughput = events_per_size / elapsed_time
 
-            results.append({
-                'size_bytes': size_bytes,
-                'time': elapsed_time,
-                'throughput': throughput
-            })
+            results.append(
+                {"size_bytes": size_bytes, "time": elapsed_time, "throughput": throughput}
+            )
 
-            print(f"\nEvent Size: {size_bytes} bytes, Time: {elapsed_time:.2f}s, "
-                  f"Throughput: {throughput:.2f} events/sec")
+            print(
+                f"\nEvent Size: {size_bytes} bytes, Time: {elapsed_time:.2f}s, "
+                f"Throughput: {throughput:.2f} events/sec"
+            )
 
         # Document size impact
-        throughputs = [r['throughput'] for r in results]
+        throughputs = [r["throughput"] for r in results]
         max_throughput = max(throughputs)
         min_throughput = min(throughputs)
         degradation = ((max_throughput - min_throughput) / max_throughput) * 100
 
-        print(f"\nSize Impact Analysis:")
+        print("\nSize Impact Analysis:")
         print(f"  Max throughput: {max_throughput:.2f} events/sec")
         print(f"  Min throughput: {min_throughput:.2f} events/sec")
         print(f"  Degradation: {degradation:.2f}%")
 
         self.assertIsNotNone(degradation)
-

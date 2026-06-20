@@ -6,7 +6,6 @@ Uses real hub API - no mocks/stubs.
 """
 
 import json
-from typing import Optional
 
 import click
 
@@ -16,7 +15,6 @@ from ..api_client import api_client
 @click.group()
 def webhooks():
     """Webhook management commands"""
-    pass
 
 
 @webhooks.command("list")
@@ -30,7 +28,7 @@ def webhooks():
     default="table",
     help="Output format",
 )
-def list_webhooks(status: Optional[str], limit: int, offset: int, output_format: str):
+def list_webhooks(status: str | None, limit: int, offset: int, output_format: str):
     """List webhooks"""
     params = {"limit": limit, "offset": offset}
     if status:
@@ -69,11 +67,7 @@ def list_webhooks(status: Optional[str], limit: int, offset: int, output_format:
                     else ""
                 )
                 click.echo(
-                    f"{webhook_id:<40} "
-                    f"{name:<30} "
-                    f"{url:<50} "
-                    f"{status_val:<15} "
-                    f"{event_types:<20}"
+                    f"{webhook_id:<40} {name:<30} {url:<50} {status_val:<15} {event_types:<20}"
                 )
     except click.ClickException:
         raise
@@ -182,12 +176,12 @@ def create_webhook(
 )
 def update_webhook(
     webhook_id: str,
-    name: Optional[str],
-    url: Optional[str],
-    secret: Optional[str],
-    event_types: Optional[str],
-    status: Optional[str],
-    max_retries: Optional[int],
+    name: str | None,
+    url: str | None,
+    secret: str | None,
+    event_types: str | None,
+    status: str | None,
+    max_retries: int | None,
     output_format: str,
 ):
     """Update webhook"""

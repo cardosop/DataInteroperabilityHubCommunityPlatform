@@ -11,7 +11,9 @@ This module handles format conversion between YAML and JSON formats while
 preserving the data structure. Note that YAML comments cannot be preserved
 when converting to JSON, as JSON does not support comments.
 """
+
 import json
+
 import structlog
 
 from hub.apps.contracts.odps_errors import ODPSExportError
@@ -21,17 +23,14 @@ logger = structlog.get_logger(__name__)
 # Try to import yaml, but make it optional
 try:
     import yaml
+
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
     yaml = None
 
 
-def convert_yaml_to_json(
-    yaml_content: str,
-    indent: int = 2,
-    ensure_ascii: bool = False
-) -> str:
+def convert_yaml_to_json(yaml_content: str, indent: int = 2, ensure_ascii: bool = False) -> str:
     """
     Convert YAML content to JSON format (Task 2.2.3).
 
@@ -128,7 +127,7 @@ def convert_yaml_to_json(
     except yaml.YAMLError as e:
         # Handle YAML parsing errors
         raise ODPSExportError(
-            message=f"Failed to parse YAML content: {str(e)}",
+            message=f"Failed to parse YAML content: {e!s}",
             error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
             context={
                 "field_path": "/",
@@ -141,7 +140,7 @@ def convert_yaml_to_json(
     except TypeError as e:
         # Handle non-serializable objects
         raise ODPSExportError(
-            message=f"Failed to serialize YAML data to JSON: {str(e)}",
+            message=f"Failed to serialize YAML data to JSON: {e!s}",
             error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
             context={
                 "field_path": "/",
@@ -160,7 +159,7 @@ def convert_yaml_to_json(
             exc_info=True,
         )
         raise ODPSExportError(
-            message=f"Unexpected error converting YAML to JSON: {str(e)}",
+            message=f"Unexpected error converting YAML to JSON: {e!s}",
             error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
             context={
                 "field_path": "/",
@@ -176,7 +175,7 @@ def convert_json_to_yaml(
     json_content: str,
     default_flow_style: bool = False,
     allow_unicode: bool = True,
-    sort_keys: bool = False
+    sort_keys: bool = False,
 ) -> str:
     """
     Convert JSON content to YAML format (Task 2.2.3).
@@ -266,7 +265,7 @@ def convert_json_to_yaml(
             json_data,
             default_flow_style=default_flow_style,
             allow_unicode=allow_unicode,
-            sort_keys=sort_keys
+            sort_keys=sort_keys,
         )
 
         logger.debug(
@@ -280,7 +279,7 @@ def convert_json_to_yaml(
     except json.JSONDecodeError as e:
         # Handle JSON parsing errors
         raise ODPSExportError(
-            message=f"Failed to parse JSON content: {str(e)}",
+            message=f"Failed to parse JSON content: {e!s}",
             error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
             context={
                 "field_path": "/",
@@ -295,7 +294,7 @@ def convert_json_to_yaml(
     except yaml.YAMLError as e:
         # Handle YAML serialization errors
         raise ODPSExportError(
-            message=f"Failed to serialize JSON data to YAML: {str(e)}",
+            message=f"Failed to serialize JSON data to YAML: {e!s}",
             error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
             context={
                 "field_path": "/",
@@ -314,7 +313,7 @@ def convert_json_to_yaml(
             exc_info=True,
         )
         raise ODPSExportError(
-            message=f"Unexpected error converting JSON to YAML: {str(e)}",
+            message=f"Unexpected error converting JSON to YAML: {e!s}",
             error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,
             context={
                 "field_path": "/",
@@ -324,4 +323,3 @@ def convert_json_to_yaml(
             },
             cause=e,
         ) from e
-

@@ -158,7 +158,11 @@ class Command(BaseCommand):
         with transaction.atomic():
             default_tenant, created = Tenant.objects.get_or_create(
                 slug="default",
-                defaults={"name": "Default Tenant", "status": TenantStatus.ACTIVE, "ml_enabled": True},
+                defaults={
+                    "name": "Default Tenant",
+                    "status": TenantStatus.ACTIVE,
+                    "ml_enabled": True,
+                },
             )
             if created and not dry_run:
                 self.stdout.write(self.style.SUCCESS("Created default tenant."))
@@ -213,7 +217,9 @@ class Command(BaseCommand):
                     user.tenant = tenant
                     user.save(update_fields=["tenant"])
                     self.stdout.write(
-                        self.style.SUCCESS(f"Assigned tenant {tenant.slug} to {email} (was missing)")
+                        self.style.SUCCESS(
+                            f"Assigned tenant {tenant.slug} to {email} (was missing)"
+                        )
                     )
                 # Migrate consumer to separate tenant if they were in default (for marketplace tests)
                 if (
@@ -225,7 +231,9 @@ class Command(BaseCommand):
                     user.tenant = consumer_tenant
                     user.save(update_fields=["tenant"])
                     self.stdout.write(
-                        self.style.SUCCESS(f"Migrated {email} to consumer tenant for marketplace tests")
+                        self.style.SUCCESS(
+                            f"Migrated {email} to consumer tenant for marketplace tests"
+                        )
                     )
                 if user_created and not dry_run:
                     user.set_password(password)
@@ -249,18 +257,19 @@ class Command(BaseCommand):
                 if not dry_run and not getattr(user, "email_verified", False):
                     user.email_verified = True
                     from django.utils import timezone as _tz
+
                     user.email_verified_at = _tz.now()
                     user.save(update_fields=["email_verified", "email_verified_at"])
-                    self.stdout.write(
-                        self.style.SUCCESS(f"Marked {email} as email-verified")
-                    )
+                    self.stdout.write(self.style.SUCCESS(f"Marked {email} as email-verified"))
 
                 # Update is_platform_admin if changed
                 if not dry_run and user.is_platform_admin != is_platform_admin:
                     user.is_platform_admin = is_platform_admin
                     user.save(update_fields=["is_platform_admin"])
                     self.stdout.write(
-                        self.style.SUCCESS(f"Updated is_platform_admin={is_platform_admin} for {email}")
+                        self.style.SUCCESS(
+                            f"Updated is_platform_admin={is_platform_admin} for {email}"
+                        )
                     )
 
                 # Assign roles
@@ -278,7 +287,9 @@ class Command(BaseCommand):
                     )
                     if role_created and not dry_run:
                         self.stdout.write(
-                            self.style.SUCCESS(f"Created role {role_name} for tenant {user_tenant.slug}")
+                            self.style.SUCCESS(
+                                f"Created role {role_name} for tenant {user_tenant.slug}"
+                            )
                         )
                     if not dry_run:
                         _, ur_created = UserRole.objects.get_or_create(
@@ -288,9 +299,8 @@ class Command(BaseCommand):
                             self.stdout.write(
                                 self.style.SUCCESS(f"Assigned {role_name} to {email}")
                             )
-                    else:
-                        if not UserRole.objects.filter(user=user, role=role).exists():
-                            self.stdout.write(f"[dry-run] Would assign {role_name} to {email}")
+                    elif not UserRole.objects.filter(user=user, role=role).exists():
+                        self.stdout.write(f"[dry-run] Would assign {role_name} to {email}")
 
                 # Ensure tenant has a plan assigned (required for plan limit checks)
                 if not dry_run and user_tenant:

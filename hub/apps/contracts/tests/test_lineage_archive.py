@@ -17,6 +17,7 @@ Pins:
   ``original_edge_id`` field on the archive row preserves the old PK
   for restore-to-hot operations.
 """
+
 from __future__ import annotations
 
 import json
@@ -33,17 +34,22 @@ from django.utils import timezone
 
 def _create_tenant():
     from hub.apps.tenants.models import Tenant
+
     suffix = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
-        name=f"LA Co {suffix}", slug=f"la-co-{suffix}",
+        name=f"LA Co {suffix}",
+        slug=f"la-co-{suffix}",
     )
 
 
 def _create_contract(tenant):
     from hub.apps.contracts.models import Contract
+
     return Contract.objects.create(
-        tenant=tenant, version=1,
-        original_spec_type="ODCS", original_spec_version="3.0.2",
+        tenant=tenant,
+        version=1,
+        original_spec_type="ODCS",
+        original_spec_version="3.0.2",
         original_format="YAML",
         original_raw=(
             "kind: DataContract\napiVersion: v3.0.2\nid: c\nname: c\n"
@@ -64,11 +70,14 @@ def _create_closed_edge(tenant, src, tgt, *, valid_from, valid_to):
     from hub.apps.contracts.models import LineageEdge
 
     e = LineageEdge.objects.create(
-        tenant=tenant, source_contract=src, target_contract=tgt,
+        tenant=tenant,
+        source_contract=src,
+        target_contract=tgt,
         edge_type="derivation",
     )
     LineageEdge.objects.filter(pk=e.pk).update(
-        valid_from=valid_from, valid_to=valid_to,
+        valid_from=valid_from,
+        valid_to=valid_to,
     )
     e.refresh_from_db()
     return e
@@ -77,8 +86,11 @@ def _create_closed_edge(tenant, src, tgt, *, valid_from, valid_to):
 def _create_open_edge(tenant, src, tgt):
     """Open current edge: valid_to is NULL."""
     from hub.apps.contracts.models import LineageEdge
+
     return LineageEdge.objects.create(
-        tenant=tenant, source_contract=src, target_contract=tgt,
+        tenant=tenant,
+        source_contract=src,
+        target_contract=tgt,
         edge_type="reference",
     )
 
@@ -98,7 +110,9 @@ class TestArchiveLineageEdgesDefaultTarget(TransactionTestCase):
         # Two-year-old closed edge — eligible for archival.
         old_close = timezone.now() - timedelta(days=730)
         old_edge = _create_closed_edge(
-            tenant, src, tgt,
+            tenant,
+            src,
+            tgt,
             valid_from=old_close - timedelta(days=10),
             valid_to=old_close,
         )
@@ -142,9 +156,12 @@ class TestArchiveLineageEdgesDefaultTarget(TransactionTestCase):
         )
 
         assert LineageEdge.objects.filter(pk=open_edge.pk).exists()
-        assert LineageEdgeArchive.objects.filter(
-            original_edge_id=open_edge.pk,
-        ).count() == 0
+        assert (
+            LineageEdgeArchive.objects.filter(
+                original_edge_id=open_edge.pk,
+            ).count()
+            == 0
+        )
 
     def test_idempotent_rerun(self):
         from hub.apps.contracts.models import LineageEdgeArchive
@@ -154,7 +171,9 @@ class TestArchiveLineageEdgesDefaultTarget(TransactionTestCase):
         tgt = _create_contract(tenant)
         old_close = timezone.now() - timedelta(days=730)
         edge = _create_closed_edge(
-            tenant, src, tgt,
+            tenant,
+            src,
+            tgt,
             valid_from=old_close - timedelta(days=10),
             valid_to=old_close,
         )
@@ -168,9 +187,12 @@ class TestArchiveLineageEdgesDefaultTarget(TransactionTestCase):
             )
 
         # Exactly one archive row, even after two runs.
-        assert LineageEdgeArchive.objects.filter(
-            original_edge_id=edge.pk,
-        ).count() == 1
+        assert (
+            LineageEdgeArchive.objects.filter(
+                original_edge_id=edge.pk,
+            ).count()
+            == 1
+        )
 
     def test_recently_closed_rows_NOT_archived(self):
         """A row closed inside the hot window (e.g. 30 days ago) MUST
@@ -182,7 +204,9 @@ class TestArchiveLineageEdgesDefaultTarget(TransactionTestCase):
         tgt = _create_contract(tenant)
         recent_close = timezone.now() - timedelta(days=30)
         edge = _create_closed_edge(
-            tenant, src, tgt,
+            tenant,
+            src,
+            tgt,
             valid_from=recent_close - timedelta(days=1),
             valid_to=recent_close,
         )
@@ -206,7 +230,9 @@ class TestArchiveLineageEdgesDefaultTarget(TransactionTestCase):
         tgt = _create_contract(tenant)
         old_close = timezone.now() - timedelta(days=730)
         edge = _create_closed_edge(
-            tenant, src, tgt,
+            tenant,
+            src,
+            tgt,
             valid_from=old_close - timedelta(days=10),
             valid_to=old_close,
         )
@@ -225,9 +251,12 @@ class TestArchiveLineageEdgesDefaultTarget(TransactionTestCase):
 
         # No mutation.
         assert LineageEdge.objects.filter(pk=edge.pk).exists()
-        assert LineageEdgeArchive.objects.filter(
-            original_edge_id=edge.pk,
-        ).count() == 0
+        assert (
+            LineageEdgeArchive.objects.filter(
+                original_edge_id=edge.pk,
+            ).count()
+            == 0
+        )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -236,6 +265,11 @@ class TestArchiveLineageEdgesS3Target(TransactionTestCase):
     archive row per spec REQ-LIN-F5-004 (the S3 object becomes the
     canonical record). The S3 client is patched at the boundary
     (``_s3_put_object``); the rest of the pipeline is real."""
+
+    def setUp(self):
+        """Purge any archive rows left by a previous --reuse-db run."""
+        from hub.apps.contracts.models import LineageEdgeArchive
+        LineageEdgeArchive.objects.all().delete()
 
     def test_target_s3_exports_then_deletes_archive_row(self):
         """Spec REQ-LIN-F5-004 / DoD-G4 — successful S3 PUT removes
@@ -247,7 +281,9 @@ class TestArchiveLineageEdgesS3Target(TransactionTestCase):
         tgt = _create_contract(tenant)
         old_close = timezone.now() - timedelta(days=900)
         edge = _create_closed_edge(
-            tenant, src, tgt,
+            tenant,
+            src,
+            tgt,
             valid_from=old_close - timedelta(days=30),
             valid_to=old_close,
         )
@@ -274,7 +310,7 @@ class TestArchiveLineageEdgesS3Target(TransactionTestCase):
                 "--bucket=meshant-test-lineage-archive",
                 stdout=StringIO(),
             )
-            put_obj.assert_called()
+            put_obj.assert_called_once()
 
         # Spec REQ-LIN-F5-004 scenario "Archive to S3" requires the
         # row be REMOVED from LineageEdgeArchive after a successful
@@ -298,7 +334,9 @@ class TestArchiveLineageEdgesS3Target(TransactionTestCase):
         tgt = _create_contract(tenant)
         old_close = timezone.now() - timedelta(days=900)
         _create_closed_edge(
-            tenant, src, tgt,
+            tenant,
+            src,
+            tgt,
             valid_from=old_close - timedelta(days=30),
             valid_to=old_close,
         )

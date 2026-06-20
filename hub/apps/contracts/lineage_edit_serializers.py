@@ -26,9 +26,8 @@ client to compute the diff before send — fragile when the user
 opens two editor tabs and one tab's view goes stale.  Full-state
 PATCH + ETag (REQ-LIN-F2-002) is the simpler concurrency model.
 """
-from __future__ import annotations
 
-from typing import List
+from __future__ import annotations
 
 from rest_framework import serializers
 
@@ -39,16 +38,28 @@ class LineageEdgeInputSerializer(serializers.Serializer):
     source_contract = serializers.UUIDField(allow_null=True, required=False)
     target_contract = serializers.UUIDField(allow_null=True, required=False)
     source_model = serializers.CharField(
-        max_length=255, allow_blank=True, required=False, default="",
+        max_length=255,
+        allow_blank=True,
+        required=False,
+        default="",
     )
     source_field = serializers.CharField(
-        max_length=255, allow_blank=True, required=False, default="",
+        max_length=255,
+        allow_blank=True,
+        required=False,
+        default="",
     )
     target_model = serializers.CharField(
-        max_length=255, allow_blank=True, required=False, default="",
+        max_length=255,
+        allow_blank=True,
+        required=False,
+        default="",
     )
     target_field = serializers.CharField(
-        max_length=255, allow_blank=True, required=False, default="",
+        max_length=255,
+        allow_blank=True,
+        required=False,
+        default="",
     )
     edge_type = serializers.ChoiceField(
         choices=[
@@ -61,10 +72,16 @@ class LineageEdgeInputSerializer(serializers.Serializer):
         default="reference",
     )
     transformation_ref = serializers.CharField(
-        max_length=512, allow_blank=True, required=False, default="",
+        max_length=512,
+        allow_blank=True,
+        required=False,
+        default="",
     )
     job_ref = serializers.CharField(
-        max_length=512, allow_blank=True, required=False, default="",
+        max_length=512,
+        allow_blank=True,
+        required=False,
+        default="",
     )
 
     def validate(self, attrs):
@@ -95,7 +112,7 @@ class LineageEditPatchSerializer(serializers.Serializer):
 
     edges = LineageEdgeInputSerializer(many=True)
 
-    def validate_edges(self, value: List[dict]) -> List[dict]:
+    def validate_edges(self, value: list[dict]) -> list[dict]:
         if len(value) > F2_MAX_EDGES_PER_PATCH:
             # The view layer turns ValidationError(code=...) into a
             # 413; default DRF behaviour returns 400.  We surface a
@@ -114,7 +131,7 @@ class LineageEditPatchSerializer(serializers.Serializer):
 
 
 __all__ = [
+    "F2_MAX_EDGES_PER_PATCH",
     "LineageEdgeInputSerializer",
     "LineageEditPatchSerializer",
-    "F2_MAX_EDGES_PER_PATCH",
 ]

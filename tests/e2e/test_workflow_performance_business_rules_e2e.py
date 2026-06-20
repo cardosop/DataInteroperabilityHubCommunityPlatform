@@ -52,7 +52,7 @@ class TestWorkflowPerformanceBusinessRulesE2E(WorkflowE2ETestBase):
 
     def _register_test_task(self):
         def test_task(input_data, instance: WorkflowInstance, step):
-            time.sleep(0.001)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(0.001)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
             return {"result": "success", "input": input_data}
 
         self.workflow_engine.task_registry["test_task"] = test_task
@@ -118,8 +118,8 @@ class TestWorkflowPerformanceBusinessRulesE2E(WorkflowE2ETestBase):
             20.0,
             f"Per-step validation overhead ({per_step_overhead_ms:.1f}ms) "
             f"should be <20ms/step ({num_steps} steps, "
-            f"total overhead={abs_overhead*1000:.1f}ms, "
-            f"avg_without={avg_without*1000:.1f}ms, avg_with={avg_with*1000:.1f}ms)",
+            f"total overhead={abs_overhead * 1000:.1f}ms, "
+            f"avg_without={avg_without * 1000:.1f}ms, avg_with={avg_with * 1000:.1f}ms)",
         )
 
     def test_e2e_validation_duration_typically_under_10ms(self):

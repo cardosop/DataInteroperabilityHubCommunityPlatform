@@ -17,7 +17,7 @@ Actual API paths:
 
 import requests as _requests
 
-from tests._persona_provisioning import provision_persona, PersonaCredentials
+from tests._persona_provisioning import PersonaCredentials, provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import (
     api_base_url,
@@ -25,14 +25,15 @@ from tests.use_cases._api_helpers import (
     api_unauthenticated_post,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _e2e_token() -> str:
     """Return the E2E shared secret for /test/ensure-e2e-* endpoints."""
     import os as _os
+
     return _os.environ.get("E2E_TEST_SECRET", "e2e-test-secret-for-local-dev")
 
 
@@ -83,8 +84,11 @@ def _get_e2e_invitation_token(
             if validate_resp.status_code != 200:
                 # Token is stale — purge cache, re-provision, and fall
                 # through to attempt > 0 path below.
+                import glob as _glob
+                import pathlib as _pl
+
                 from tests._persona_provisioning import _CACHE_DIR as _cdir
-                import glob as _glob, pathlib as _pl
+
                 for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
                     _pl.Path(_f).unlink(missing_ok=True)
                 current = _safe_provision(role)
@@ -93,8 +97,11 @@ def _get_e2e_invitation_token(
 
         # ── Purge cache + re-provision on subsequent attempts ──────
         if attempt > 0:
+            import glob as _glob
+            import pathlib as _pl
+
             from tests._persona_provisioning import _CACHE_DIR as _cdir
-            import glob as _glob, pathlib as _pl
+
             for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
                 _pl.Path(_f).unlink(missing_ok=True)
             current = _safe_provision(role)
@@ -121,8 +128,11 @@ def _get_e2e_invitation_token(
         # 401 / TOKEN_INVALIDATED — purge cache + re-provision on
         # this attempt (don't wait for the next iteration).
         if resp.status_code in (401, 403) and attempt < 2:
+            import glob as _glob
+            import pathlib as _pl
+
             from tests._persona_provisioning import _CACHE_DIR as _cdir
-            import glob as _glob, pathlib as _pl
+
             for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
                 _pl.Path(_f).unlink(missing_ok=True)
             fresh = _safe_provision(role)
@@ -137,11 +147,15 @@ def _get_e2e_invitation_token(
     # If we exhausted all retries, try one last-resort fresh login
     # with a longer backoff (rate-limiting may have cooled down).
     import time as _time
+
     _time.sleep(3)
     try:
+        import glob as _glob
+        import pathlib as _pl
+
         from tests._persona_provisioning import _CACHE_DIR as _cdir
         from tests._persona_provisioning import _provision_via_login
-        import glob as _glob, pathlib as _pl
+
         for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
             _pl.Path(_f).unlink(missing_ok=True)
         last_creds = _provision_via_login(role, None)
@@ -180,6 +194,7 @@ def _provision_with_retry(role: str, max_attempts: int = 4) -> "PersonaCredentia
     has a chance to recover rather than being skipped outright.
     """
     import time as _t
+
     for attempt in range(max_attempts):
         try:
             return provision_persona(role)  # noqa: PHASE216-STATIC-ID
@@ -189,7 +204,7 @@ def _provision_with_retry(role: str, max_attempts: int = 4) -> "PersonaCredentia
             if "Skip" not in skip_type and "Skipped" not in skip_type:
                 raise
             if attempt < max_attempts - 1:
-                _t.sleep(2 ** attempt)  # 1s, 2s, 4s, 8s
+                _t.sleep(2**attempt)  # 1s, 2s, 4s, 8s
                 continue
             raise
 
@@ -212,24 +227,19 @@ def test_tenant_admin_invites_user():
     )
 
     if resp.status_code == 404:
-        pytest.skip(
-            "Invitation endpoint not implemented yet (404)"
-        )
+        pytest.skip("Invitation endpoint not implemented yet (404)")
 
     # 500 (deadlock, etc.) and 429 (rate-limit) are auto-retried by
     # api_post — only assert non-retryable errors here.
     assert resp.status_code in (200, 201), (
-        f"Invitation creation returned {resp.status_code}: "
-        f"{resp.text[:500]}"
+        f"Invitation creation returned {resp.status_code}: {resp.text[:500]}"
     )
     body = resp.json()
     assert "id" in body, f"Invitation response missing id: {body}"
     assert "email" in body, f"Invitation response missing email: {body}"
     # The invited user must have INVITED status (not ACTIVE, not null).
     status_value = body.get("status")
-    assert status_value is not None, (
-        f"Invitation response missing status field: {body}"
-    )
+    assert status_value is not None, f"Invitation response missing status field: {body}"
     # Accept "INVITED" or its lower/upper variants.
     assert "invited" in str(status_value).lower(), (
         f"Invited user status is not INVITED: {status_value}"
@@ -251,10 +261,7 @@ def test_invited_user_accepts():
     # Step 1: Get invitation token via E2E helper
     token = _get_e2e_invitation_token(admin_creds)
     if token is None:
-        pytest.skip(
-            "E2E invitation-token helper not available "
-            "(404 or missing token)"
-        )
+        pytest.skip("E2E invitation-token helper not available (404 or missing token)")
 
     # Step 2: Accept the invitation (unauthenticated)
     accept_resp = api_unauthenticated_post(
@@ -267,20 +274,15 @@ def test_invited_user_accepts():
     )
 
     if accept_resp.status_code == 404:
-        pytest.skip(
-            "accept-invitation endpoint not implemented (404)"
-        )
+        pytest.skip("accept-invitation endpoint not implemented (404)")
 
     assert accept_resp.status_code in (200, 201), (
-        f"Invitation accept returned {accept_resp.status_code}: "
-        f"{accept_resp.text[:500]}"
+        f"Invitation accept returned {accept_resp.status_code}: {accept_resp.text[:500]}"
     )
 
     # Step 3: Response should contain access tokens
     body = accept_resp.json()
-    assert "access_token" in body, (
-        f"Accept response missing access_token: {body}"
-    )
+    assert "access_token" in body, f"Accept response missing access_token: {body}"
 
 
 def test_invitation_already_accepted_returns_conflict():
@@ -291,9 +293,7 @@ def test_invitation_already_accepted_returns_conflict():
 
     token = _get_e2e_invitation_token(admin_creds)
     if token is None:
-        pytest.skip(
-            "E2E invitation-token helper not available"
-        )
+        pytest.skip("E2E invitation-token helper not available")
 
     accept_payload = {
         "token": token,
@@ -308,13 +308,10 @@ def test_invitation_already_accepted_returns_conflict():
     )
 
     if first_resp.status_code == 404:
-        pytest.skip(
-            "accept-invitation endpoint not implemented (404)"
-        )
+        pytest.skip("accept-invitation endpoint not implemented (404)")
 
     assert first_resp.status_code in (200, 201), (
-        f"First accept failed: {first_resp.status_code}: "
-        f"{first_resp.text[:300]}"
+        f"First accept failed: {first_resp.status_code}: {first_resp.text[:300]}"
     )
 
     # Second accept with same token — should fail
@@ -347,9 +344,7 @@ def test_non_admin_cannot_create_invitation():
     )
 
     if resp.status_code == 404:
-        pytest.skip(
-            "Invitation endpoint not implemented yet (404)"
-        )
+        pytest.skip("Invitation endpoint not implemented yet (404)")
 
     assert resp.status_code in (403, 401), (
         f"Non-admin invitation creation returned "

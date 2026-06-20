@@ -8,27 +8,29 @@ Tests verify:
 4. Error handling
 5. Compensation logic
 """
+
 try:
     import pytest
+
     pytestmark = pytest.mark.django_db
 except ImportError:
     pytest = None
     pytestmark = None
 
-from django.test import TestCase
-from django.contrib.auth import get_user_model
+import uuid
 
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
-from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.models import WorkflowDefinition, WorkflowInstance, WorkflowStatus
-from hub.apps.orchestration.workflows.model_training import ModelTrainingWorkflow
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File
-from hub.apps.ml.models import MLModel, ModelStatus, ModelType
-import uuid
+from hub.apps.orchestration.models import WorkflowDefinition, WorkflowStatus
+from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflows.model_training import ModelTrainingWorkflow
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import UserStatus
 
 User = get_user_model()
 
@@ -47,17 +49,14 @@ class ModelTrainingWorkflowDefinitionTest(TestCase):
 
     def test_register_workflow_creates_definition(self):
         """Test that register_workflow creates workflow definition"""
-        # Count existing definitions
-        initial_count = WorkflowDefinition.objects.filter(
-            name=ModelTrainingWorkflow.WORKFLOW_NAME
-        ).count()
-
         ModelTrainingWorkflow.register_workflow(self.registry)
 
         # Verify workflow definition exists (may already exist from previous test)
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=ModelTrainingWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=ModelTrainingWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         self.assertIsNotNone(workflow_def, "Workflow definition should be created")
         self.assertEqual(workflow_def.name, ModelTrainingWorkflow.WORKFLOW_NAME)
@@ -68,9 +67,11 @@ class ModelTrainingWorkflowDefinitionTest(TestCase):
         """Test that workflow DSL has all required steps"""
         ModelTrainingWorkflow.register_workflow(self.registry)
 
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=ModelTrainingWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=ModelTrainingWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         self.assertIsNotNone(workflow_def, "Workflow definition should exist")
         dsl = workflow_def.dsl_json
@@ -91,11 +92,13 @@ class ModelTrainingWorkflowDefinitionTest(TestCase):
             "register_model",
             "link_model_to_asset",
             "update_semantic_layer",
-            "complete"
+            "complete",
         ]
 
         for required_step in required_steps:
-            self.assertIn(required_step, step_names, f"Step '{required_step}' should be in workflow")
+            self.assertIn(
+                required_step, step_names, f"Step '{required_step}' should be in workflow"
+            )
 
     def test_register_tasks_registers_all_tasks(self):
         """Test that register_tasks registers all workflow tasks"""
@@ -110,11 +113,13 @@ class ModelTrainingWorkflowDefinitionTest(TestCase):
             "model_training.register_model",
             "model_training.link_model_to_asset",
             "model_training.update_semantic_layer",
-            "model_training.complete"
+            "model_training.complete",
         ]
 
         for task_name in required_tasks:
-            self.assertIn(task_name, self.engine.task_registry, f"Task '{task_name}' should be registered")
+            self.assertIn(
+                task_name, self.engine.task_registry, f"Task '{task_name}' should be registered"
+            )
 
     def test_register_tasks_registers_compensation_tasks(self):
         """Test that register_tasks registers compensation tasks"""
@@ -123,11 +128,15 @@ class ModelTrainingWorkflowDefinitionTest(TestCase):
         # Verify compensation tasks are registered
         compensation_tasks = [
             "model_training.rollback_training_job",
-            "model_training.rollback_model_linking"
+            "model_training.rollback_model_linking",
         ]
 
         for task_name in compensation_tasks:
-            self.assertIn(task_name, self.engine.task_registry, f"Compensation task '{task_name}' should be registered")
+            self.assertIn(
+                task_name,
+                self.engine.task_registry,
+                f"Compensation task '{task_name}' should be registered",
+            )
 
 
 class ModelTrainingWorkflowStepExecutionTest(TestCase):
@@ -137,7 +146,8 @@ class ModelTrainingWorkflowStepExecutionTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         # Create ML plan with sufficient limits so workflow steps pass plan checks
-        from hub.apps.tenants.models import TenantPlan, PlanCategory, PlanTier
+        from hub.apps.tenants.models import PlanCategory, PlanTier, TenantPlan
+
         self.ml_plan, _ = TenantPlan.objects.get_or_create(
             slug="ml-test-workflow",
             defaults={
@@ -173,7 +183,7 @@ class ModelTrainingWorkflowStepExecutionTest(TestCase):
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
@@ -188,7 +198,7 @@ class ModelTrainingWorkflowStepExecutionTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create test file
@@ -198,7 +208,7 @@ class ModelTrainingWorkflowStepExecutionTest(TestCase):
             size=1024,
             content_type="text/csv",
             storage_path="test/test.csv",
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create test dataset
@@ -211,9 +221,9 @@ class ModelTrainingWorkflowStepExecutionTest(TestCase):
             schema_json={
                 "fields": [
                     {"name": "feature1", "type": "float", "nullable": False},
-                    {"name": "feature2", "type": "float", "nullable": False}
+                    {"name": "feature2", "type": "float", "nullable": False},
                 ]
-            }
+            },
         )
 
         # Training configuration
@@ -221,14 +231,8 @@ class ModelTrainingWorkflowStepExecutionTest(TestCase):
             "model_type": "CLASSIFICATION",
             "model_name": "test-model",
             "description": "Test model",
-            "hyperparameters": {
-                "learning_rate": 0.001,
-                "epochs": 10
-            },
-            "resources": {
-                "cpu": "2",
-                "memory": "4Gi"
-            }
+            "hyperparameters": {"learning_rate": 0.001, "epochs": 10},
+            "resources": {"cpu": "2", "memory": "4Gi"},
         }
 
     def test_workflow_execution_creates_instance(self):
@@ -238,14 +242,14 @@ class ModelTrainingWorkflowStepExecutionTest(TestCase):
             "dataset_id": str(self.dataset.id),
             "training_config": self.training_config,
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
 
         instance = self.engine.create_instance(
             workflow_name=ModelTrainingWorkflow.WORKFLOW_NAME,
             input_data=workflow_input,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         self.assertIsNotNone(instance)
@@ -264,7 +268,7 @@ class ModelTrainingWorkflowStepExecutionTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 engine=self.engine,
-                registry=self.registry
+                registry=self.registry,
             )
 
             self.assertTrue(result.get("success"))
@@ -289,7 +293,7 @@ class ModelTrainingWorkflowStepExecutionTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 engine=self.engine,
-                registry=self.registry
+                registry=self.registry,
             )
 
     def test_workflow_handles_missing_dataset(self):
@@ -302,7 +306,7 @@ class ModelTrainingWorkflowStepExecutionTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 engine=self.engine,
-                registry=self.registry
+                registry=self.registry,
             )
 
 
@@ -312,7 +316,8 @@ class ModelTrainingWorkflowIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
-        from hub.apps.tenants.models import TenantPlan, PlanCategory, PlanTier
+        from hub.apps.tenants.models import PlanCategory, PlanTier, TenantPlan
+
         ml_plan, _ = TenantPlan.objects.get_or_create(
             slug="ml-test-workflow",
             defaults={
@@ -348,7 +353,7 @@ class ModelTrainingWorkflowIntegrationTest(TestCase):
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create test asset
@@ -357,7 +362,7 @@ class ModelTrainingWorkflowIntegrationTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create test file
@@ -367,7 +372,7 @@ class ModelTrainingWorkflowIntegrationTest(TestCase):
             size=1024,
             content_type="text/csv",
             storage_path="test/test.csv",
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create test dataset
@@ -380,9 +385,9 @@ class ModelTrainingWorkflowIntegrationTest(TestCase):
             schema_json={
                 "fields": [
                     {"name": "feature1", "type": "float", "nullable": False},
-                    {"name": "feature2", "type": "float", "nullable": False}
+                    {"name": "feature2", "type": "float", "nullable": False},
                 ]
-            }
+            },
         )
 
         # Training configuration
@@ -390,10 +395,7 @@ class ModelTrainingWorkflowIntegrationTest(TestCase):
             "model_type": "CLASSIFICATION",
             "model_name": "test-model",
             "description": "Test model",
-            "hyperparameters": {
-                "learning_rate": 0.001,
-                "epochs": 10
-            }
+            "hyperparameters": {"learning_rate": 0.001, "epochs": 10},
         }
 
     def test_service_integration_with_workflow(self):
@@ -401,8 +403,7 @@ class ModelTrainingWorkflowIntegrationTest(TestCase):
         from hub.apps.ml.services import ModelRegistryBridgeService
 
         service = ModelRegistryBridgeService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Test training with workflow
@@ -412,7 +413,7 @@ class ModelTrainingWorkflowIntegrationTest(TestCase):
                 dataset_id=str(self.dataset.id),
                 training_config=self.training_config,
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
             self.assertIn("success", result)

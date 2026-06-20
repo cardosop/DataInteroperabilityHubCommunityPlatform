@@ -7,16 +7,17 @@ All create/update/destroy/version creation go through this service and invoke
 DatasetsBusinessRules before performing mutations.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
-from django.conf import settings
 from django.db import transaction
 
 from hub.apps.audit.utils import create_audit_event
-from hub.apps.core.transaction_safe import run_side_effect
+
+logger = structlog.get_logger(__name__)
 from hub.apps.core.events.service_publishers import DatasetEventPublisher
 from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
+from hub.apps.core.transaction_safe import run_side_effect
 from hub.apps.datasets.business_rules import DatasetsBusinessRules
 from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.schema_inference import (
@@ -24,8 +25,8 @@ from hub.apps.datasets.schema_inference import (
     infer_schema_with_encoding_gate,
 )
 from hub.apps.datasets.versioning_service import VersioningService
-from hub.apps.files.models import File, FileScanStatus, FileStatus
-from hub.apps.files.storage import S3StorageClient, StorageObjectNotFoundError
+from hub.apps.files.models import File, FileScanStatus
+from hub.apps.files.storage import StorageObjectNotFoundError
 
 logger = structlog.get_logger(__name__)
 
@@ -46,6 +47,7 @@ def _generate_mock_file_content(file_obj: File, file_format: str) -> bytes:
     "random bytes could not be parsed".
     """
     import logging as _log
+
     _log.getLogger(__name__).debug(
         "dataset_mock_file_content",
         extra={"file_id": str(file_obj.id), "file_format": file_format},
@@ -58,12 +60,16 @@ def _generate_mock_file_content(file_obj: File, file_format: str) -> bytes:
         return b'[{"id": "1", "name": "test_row"}]'
     if fm == "PARQUET":
         try:
-            import pandas as pd, io
+            import io
+
+            import pandas as pd
+
             df = pd.DataFrame({"id": ["1"], "name": ["test_row"]})
             buf = io.BytesIO()
             df.to_parquet(buf, index=False)
             return buf.getvalue()
-        except Exception:
+        except ImportError:
+            # pandas not installed — fall back to CSV mock content.
             return b"id,name\n1,test_row\n"
     return b"id,name\n1,test_row\n"
 
@@ -84,17 +90,20 @@ def extract_sample_data_from_storage(file_obj, file_format: str):
 
     try:
         from hub.apps.files.storage import S3StorageClient
+
         storage = S3StorageClient()
         key = file_obj.storage_path
         if not storage.file_exists(key):
             return None
         file_content = storage.get_file_content(key)
-    except Exception:
+    except (OSError, ConnectionError, TimeoutError) as exc:
+        logger.warning("Failed to read file from S3 storage: %s", exc)
         return None
 
     try:
         return extract_sample_data(file_content, file_format)
-    except Exception:
+    except (ValueError, TypeError) as exc:
+        logger.warning("Failed to extract sample data: %s", exc)
         return None
 
 
@@ -115,8 +124,8 @@ class DatasetService(BaseService, DatasetEventPublisher):
         tenant_id: str,
         user_id: str,
         file_id: str,
-        asset_id: Optional[str] = None,
-        file_handle_purpose: Optional[str] = None,
+        asset_id: str | None = None,
+        file_handle_purpose: str | None = None,
     ) -> Dataset:
         """
         Create a dataset from a file with schema inference.
@@ -152,8 +161,8 @@ class DatasetService(BaseService, DatasetEventPublisher):
         tenant_id: str,
         user_id: str,
         file_id: str,
-        asset_id: Optional[str] = None,
-        file_handle_purpose: Optional[str] = None,
+        asset_id: str | None = None,
+        file_handle_purpose: str | None = None,
     ) -> Dataset:
         """Internal implementation of dataset creation."""
         # Get file
@@ -179,19 +188,16 @@ class DatasetService(BaseService, DatasetEventPublisher):
         scan_status = getattr(file_obj, "scan_status", None)
         if scan_status == FileScanStatus.INFECTED:
             raise ValidationError(
-                "Cannot create a dataset from a file flagged as infected "
-                "by malware scanning.",
+                "Cannot create a dataset from a file flagged as infected by malware scanning.",
                 code="FILE_INFECTED",
                 details={"file_id": file_id, "scan_status": scan_status},
                 http_status=403,
             )
-        if (
-            scan_status == FileScanStatus.PENDING_SCAN
-            and getattr(dj_settings, "CLAMAV_ENABLED", True)
+        if scan_status == FileScanStatus.PENDING_SCAN and getattr(
+            dj_settings, "CLAMAV_ENABLED", True
         ):
             raise ValidationError(
-                "Cannot create a dataset while the source file is "
-                "pending malware scan.",
+                "Cannot create a dataset while the source file is pending malware scan.",
                 code="FILE_SCAN_PENDING",
                 details={"file_id": file_id, "scan_status": scan_status},
                 http_status=403,
@@ -251,6 +257,7 @@ class DatasetService(BaseService, DatasetEventPublisher):
         file_content = None
         try:
             from hub.apps.files.storage import S3StorageClient
+
             storage = S3StorageClient()
 
             key = file_obj.storage_path
@@ -261,28 +268,25 @@ class DatasetService(BaseService, DatasetEventPublisher):
                 if storage.file_exists(key):
                     file_content = storage.get_file_content(
                         key,
-                        max_bytes=plan.bytes_to_read
-                        if plan.mode == InferenceMode.SAMPLE
-                        else None,
+                        max_bytes=plan.bytes_to_read if plan.mode == InferenceMode.SAMPLE else None,
                     )
                     # Sample mode: truncate to last clean newline so the
                     # parser sees only complete rows.
                     if plan.mode == InferenceMode.SAMPLE and file_content:
-                        file_content = truncate_to_clean_boundary(
-                            file_content, file_format
-                        )
+                        file_content = truncate_to_clean_boundary(file_content, file_format)
                 else:
                     file_content = _generate_mock_file_content(file_obj, file_format)
             except StorageObjectNotFoundError:
                 file_content = _generate_mock_file_content(file_obj, file_format)
 
-        except Exception as e:
+        except (OSError, ConnectionError, TimeoutError) as e:
             # If S3 connection fails entirely, try to generate mock content
             try:
                 file_content = _generate_mock_file_content(file_obj, file_format)
-            except Exception as mock_error:
+            except ImportError as mock_error:
                 raise ValidationError(
-                    f"Failed to download file from storage: {str(e)}. Mock content generation also failed: {str(mock_error)}"
+                    f"Failed to download file from storage: {e!s}. "
+                    f"Mock content generation also failed (missing dependency): {mock_error!s}"
                 )
 
         # Infer schema via the canonical gated entry point (Phase 260.5.D.R1).
@@ -293,9 +297,9 @@ class DatasetService(BaseService, DatasetEventPublisher):
             schema_json = infer_schema_with_encoding_gate(file_content, file_format)
         except ValidationError:
             raise
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError) as e:
             raise ValidationError(
-                f"Schema inference failed: {str(e)}",
+                f"Schema inference failed: {e!s}",
                 details={"file_format": file_format, "error": str(e)},
             )
 
@@ -314,7 +318,7 @@ class DatasetService(BaseService, DatasetEventPublisher):
         # Extract sample data
         try:
             sample_data_json = extract_sample_data(file_content, file_format)
-        except Exception as e:
+        except (ValueError, TypeError):
             # Sample extraction failure is not critical
             sample_data_json = []
 
@@ -372,7 +376,8 @@ class DatasetService(BaseService, DatasetEventPublisher):
         from hub.apps.tenants.services import PlanLimitService
 
         plan_limit_service = PlanLimitService(
-            tenant_id=tenant_id, user_id=user_id,
+            tenant_id=tenant_id,
+            user_id=user_id,
         )
         plan_limit_service.check_limit(
             tenant_id=tenant_id,
@@ -461,7 +466,7 @@ class DatasetService(BaseService, DatasetEventPublisher):
 
         return dataset
 
-    def get_dataset(self, dataset_id: str, tenant_id: Optional[str] = None) -> Dataset:
+    def get_dataset(self, dataset_id: str, tenant_id: str | None = None) -> Dataset:
         """
         Get dataset by ID.
 
@@ -489,7 +494,7 @@ class DatasetService(BaseService, DatasetEventPublisher):
 
     @transaction.atomic
     def update_dataset(
-        self, dataset_id: str, tenant_id: str, user_id: Optional[str] = None, **kwargs
+        self, dataset_id: str, tenant_id: str, user_id: str | None = None, **kwargs
     ) -> Dataset:
         """
         Update a dataset. Runs DatasetsBusinessRules (structure) before mutation.
@@ -563,7 +568,7 @@ class DatasetService(BaseService, DatasetEventPublisher):
         self,
         dataset_id: str,
         tenant_id: str,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
     ) -> None:
         """
         Delete a dataset. Runs DatasetsBusinessRules.validate_version_deletion before mutation.
@@ -635,11 +640,11 @@ class DatasetService(BaseService, DatasetEventPublisher):
         self,
         source_dataset_id: str,
         tenant_id: str,
-        user_id: Optional[str] = None,
-        semantic_version: Optional[str] = None,
-        version_tags: Optional[List[str]] = None,
-        snapshot_metadata: Optional[Dict[str, Any]] = None,
-        schema_json: Optional[Dict[str, Any]] = None,
+        user_id: str | None = None,
+        semantic_version: str | None = None,
+        version_tags: list[str] | None = None,
+        snapshot_metadata: dict[str, Any] | None = None,
+        schema_json: dict[str, Any] | None = None,
     ) -> Dataset:
         """
         Create a new dataset version (new row) from an existing dataset.
@@ -679,9 +684,7 @@ class DatasetService(BaseService, DatasetEventPublisher):
             # Phase 260.5.I — re-derive sample_data from file bytes
             # instead of blindly copying the parent cache. Fall back
             # to parent's value when the file is unreachable.
-            fresh_sample = extract_sample_data_from_storage(
-                parent.file, parent.format
-            )
+            fresh_sample = extract_sample_data_from_storage(parent.file, parent.format)
             if fresh_sample is not None:
                 sample_data = fresh_sample
             else:

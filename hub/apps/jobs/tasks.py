@@ -43,17 +43,17 @@ from .tasks_odps import (
 )
 
 __all__ = [
-    "process_job",
-    "check_job_timeouts",
-    "_execute_job_logic",
     "_execute_compliance_run_job",
     "_execute_contract_migration_job",
     "_execute_contract_validation_job",
-    "_execute_semantic_mapping_job",
     "_execute_dq_run_job",
+    "_execute_job_logic",
     "_execute_odps_export_job",
     "_execute_odps_linking_job",
     "_execute_odps_normalization_job",
     "_execute_odps_ref_resolution_job",
     "_execute_odps_semantic_mapping_job",
+    "_execute_semantic_mapping_job",
+    "check_job_timeouts",
+    "process_job",
 ]

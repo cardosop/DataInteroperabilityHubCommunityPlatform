@@ -5,17 +5,14 @@ Handles file discovery, filtering, downloading, and dataset creation for schedul
 """
 
 import os
-import re
 import sys
 import tempfile
-from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.utils import timezone
 
 
 # Import source connectors from Prefect Integration Service (lazy import to avoid import-time failures)
@@ -35,8 +32,9 @@ def _get_source_connector_factory():
 
 
 # Import Django models
+import contextlib
+
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.files.storage import S3StorageClient
@@ -53,8 +51,8 @@ class ScheduledIngestionProcessor:
     def __init__(
         self,
         scheduled_ingestion: ScheduledIngestion,
-        connector_factory: Optional[Any] = None,
-        dq_client: Optional[Any] = None,
+        connector_factory: Any | None = None,
+        dq_client: Any | None = None,
     ):
         """
         Initialize processor.
@@ -77,7 +75,7 @@ class ScheduledIngestionProcessor:
         self._connector_factory = connector_factory
         self._dq_client = dq_client
 
-    def process(self) -> Dict[str, Any]:
+    def process(self) -> dict[str, Any]:
         """
         Process scheduled ingestion using workflow engine.
 
@@ -164,7 +162,7 @@ class ScheduledIngestionProcessor:
             )
             raise
 
-    def _discover_files(self) -> List[str]:
+    def _discover_files(self) -> list[str]:
         """
         Discover files from source using connector.
 
@@ -175,7 +173,9 @@ class ScheduledIngestionProcessor:
             factory = self._connector_factory or _get_source_connector_factory()
             if factory is None:
                 raise ConnectorNotAvailableError(
-                    self.source_type, role="source", message="connector not registered (factory unavailable)"
+                    self.source_type,
+                    role="source",
+                    message="connector not registered (factory unavailable)",
                 )
             try:
                 connector = factory.get_connector(self.source_type)
@@ -197,9 +197,9 @@ class ScheduledIngestionProcessor:
                 error=str(e),
                 exc_info=True,
             )
-            raise ConnectionError(f"Failed to discover files: {str(e)}") from e
+            raise ConnectionError(f"Failed to discover files: {e!s}") from e
 
-    def _filter_files(self, files: List[str]) -> List[str]:
+    def _filter_files(self, files: list[str]) -> list[str]:
         """
         Filter files based on incremental state and configuration.
 
@@ -219,7 +219,9 @@ class ScheduledIngestionProcessor:
         factory = self._connector_factory or _get_source_connector_factory()
         if factory is None:
             raise ConnectorNotAvailableError(
-                self.source_type, role="source", message="connector not registered (factory unavailable)"
+                self.source_type,
+                role="source",
+                message="connector not registered (factory unavailable)",
             )
         try:
             connector = factory.get_connector(self.source_type)
@@ -295,7 +297,7 @@ class ScheduledIngestionProcessor:
         else:
             return "UNKNOWN_ERROR"
 
-    def _process_file(self, file_path: str) -> Optional[Dataset]:
+    def _process_file(self, file_path: str) -> Dataset | None:
         """
         Process a single file: download, create File record, create Dataset.
 
@@ -312,7 +314,9 @@ class ScheduledIngestionProcessor:
                 factory = self._connector_factory or _get_source_connector_factory()
                 if factory is None:
                     raise ConnectorNotAvailableError(
-                        self.source_type, role="source", message="connector not registered (factory unavailable)"
+                        self.source_type,
+                        role="source",
+                        message="connector not registered (factory unavailable)",
                     )
                 try:
                     connector = factory.get_connector(self.source_type)
@@ -415,10 +419,8 @@ class ScheduledIngestionProcessor:
             finally:
                 # Clean up temporary file
                 if temp_file and os.path.exists(temp_path):
-                    try:
+                    with contextlib.suppress(Exception):
                         os.unlink(temp_path)
-                    except Exception:
-                        pass
 
     def _create_asset(self) -> Asset:
         """
@@ -427,7 +429,7 @@ class ScheduledIngestionProcessor:
         Returns:
             Created Asset instance
         """
-        from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility
+        from hub.apps.assets.models import Asset, AssetStatus
 
         asset_name = self.scheduled_ingestion.name
         asset_key = f"scheduled-ingestion-{self.scheduled_ingestion.id}"
@@ -445,7 +447,6 @@ class ScheduledIngestionProcessor:
             description=self.scheduled_ingestion.description
             or f"Asset created from scheduled ingestion {self.scheduled_ingestion.name}",
             status=AssetStatus.DRAFT,
-            visibility=AssetVisibility.INTERNAL,
             created_by=self.scheduled_ingestion.created_by,
         )
 
@@ -477,7 +478,7 @@ class ScheduledIngestionProcessor:
         # Default: don't run DQ check (can be enabled per ingestion)
         return False
 
-    def _run_dq_check(self, file_content: bytes, file_format: str) -> Optional[Dict[str, Any]]:
+    def _run_dq_check(self, file_content: bytes, file_format: str) -> dict[str, Any] | None:
         """
         Run DQ check on file content before dataset creation.
 
@@ -543,10 +544,10 @@ class ScheduledIngestionProcessor:
             # For now, we'll fail in strict mode if DQ is enabled
             source_config = self.source_config or {}
             if source_config.get("dq_strict_mode", True):
-                raise ValueError(f"DQ check failed: {str(e)}")
+                raise ValueError(f"DQ check failed: {e!s}")
             return None
 
-    def _is_dq_result_valid(self, dq_result: Dict[str, Any]) -> bool:
+    def _is_dq_result_valid(self, dq_result: dict[str, Any]) -> bool:
         """
         Check if DQ result is valid (passes quality thresholds).
 
@@ -590,7 +591,7 @@ class ScheduledIngestionProcessor:
 
         return True
 
-    def _format_dq_failure_message(self, dq_result: Dict[str, Any]) -> str:
+    def _format_dq_failure_message(self, dq_result: dict[str, Any]) -> str:
         """
         Format DQ failure message for error reporting.
 
@@ -626,9 +627,9 @@ class ScheduledIngestionProcessor:
     def _create_dataset(
         self,
         file_obj: File,
-        asset: Optional[Asset] = None,
+        asset: Asset | None = None,
         file_format: str = "CSV",
-        dq_result: Optional[Dict[str, Any]] = None,
+        dq_result: dict[str, Any] | None = None,
     ) -> Dataset:
         """
         Create dataset from file.

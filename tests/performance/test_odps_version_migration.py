@@ -16,14 +16,9 @@ Targets:
 
 import json
 import time
-from typing import Any, Dict, List
 
-import pytest
 from django.test import TestCase
 
-from hub.apps.contracts.management.commands.migrate_contracts_to_odps import (
-    Command as MigrateCommand,
-)
 from hub.apps.contracts.models import Contract
 from hub.apps.contracts.services import ODPSService
 from hub.apps.tenants.models import Tenant
@@ -129,22 +124,18 @@ class ODPSVersionMigrationTestBase(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         import uuid
-        
+
         # Create test tenant and user with unique names to avoid conflicts
         unique_id = str(uuid.uuid4())[:8]
         tenant_name = f"Migration Test Tenant {unique_id}"
         tenant_slug = f"migration-test-{unique_id}"
-        
+
         # Try to get existing tenant or create new one
         self.tenant, created = Tenant.objects.get_or_create(
             slug=tenant_slug,
-            defaults={
-                "name": tenant_name,
-                "status": "ACTIVE",
-                "kyc_status": "VERIFIED"
-            }
+            defaults={"name": tenant_name, "status": "ACTIVE", "kyc_status": "VERIFIED"},
         )
-        
+
         # If tenant already exists, update name to be unique
         if not created:
             self.tenant.name = tenant_name
@@ -157,13 +148,13 @@ class ODPSVersionMigrationTestBase(TestCase):
                 "password": "test-password-123",
                 "tenant": self.tenant,
                 "status": UserStatus.ACTIVE,
-            }
+            },
         )
         self.odps_service = ODPSService()
 
     def tearDown(self):
         """Clean up test data"""
-        if hasattr(self, 'tenant'):
+        if hasattr(self, "tenant"):
             try:
                 Contract.objects.filter(tenant=self.tenant).delete()
             except Exception:
@@ -173,7 +164,6 @@ class ODPSVersionMigrationTestBase(TestCase):
     def _fixture_teardown(cls):
         """Override to skip database flush for migration tests."""
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
 
 class TestODPSVersionMigration(ODPSVersionMigrationTestBase):
@@ -182,7 +172,7 @@ class TestODPSVersionMigration(ODPSVersionMigrationTestBase):
     def test_migration_from_3_x_to_4_1(self):
         """Test migration from ODPS 3.x to 4.1"""
         # Create ODPS 3.x contract
-        odps_3x_doc = create_odps_3_x_document()
+        create_odps_3_x_document()
 
         # Note: Actual migration would depend on migration command implementation
         # This is a placeholder test structure

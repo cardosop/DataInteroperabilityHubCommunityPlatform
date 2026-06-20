@@ -15,11 +15,8 @@ Uses real services (no mocks).
 """
 
 import pytest
-
 from django.contrib.auth import get_user_model
-from django.test import TestCase
 from rest_framework import status
-from rest_framework.test import APIClient
 
 from hub.apps.contracts.models import (
     Contract,
@@ -27,11 +24,8 @@ from hub.apps.contracts.models import (
     OriginalFormat,
     OriginalSpecType,
 )
-from hub.apps.jobs.models import Job, JobStatus, JobType
-from hub.apps.semantic.models import SemanticResource
+from hub.apps.jobs.models import JobStatus, JobType
 from hub.apps.semantic.utils import map_contract_to_semantic
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus
 from tests.e2e.conftest import (
     E2ETestBase,
     get_api_base_url,
@@ -41,7 +35,7 @@ from tests.e2e.conftest import (
     get_semantic_service_url,
     get_worker_service_url,
 )
-from tests.factories import TenantConfigFactory, TenantFactory
+from tests.factories import TenantConfigFactory
 
 pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 User = get_user_model()
@@ -120,7 +114,7 @@ class CrossCapabilityE2ETest(E2ETestBase):
             got_rate_limited = False
             has_rate_limit_headers = False
 
-            for i in range(10):
+            for _i in range(10):
                 response = self.client.get("/api/v1/contracts/")
                 if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                     got_rate_limited = True
@@ -157,7 +151,7 @@ class CrossCapabilityE2ETest(E2ETestBase):
         from hub.apps.contracts.normalization import normalize_contract
 
         # Normalize contract
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, norm_status, _errors, _warnings = normalize_contract(
             raw_contract=odcs_contract, format="JSON"
         )
 
@@ -181,9 +175,7 @@ class CrossCapabilityE2ETest(E2ETestBase):
 
         # Semantic mapping must return a result; skip if service unavailable
         if semantic_resource is None:
-            self.skipTest(
-                "Semantic service unavailable - map_contract_to_semantic returned None"
-            )
+            self.skipTest("Semantic service unavailable - map_contract_to_semantic returned None")
         self.assertIsNotNone(semantic_resource)
         self.assertEqual(semantic_resource.resource_type, "CONTRACT")
 
@@ -364,7 +356,8 @@ class CrossCapabilityE2ETest(E2ETestBase):
         email_field = next((f for f in fields if f.get("name") == "email"), None)
         self.assertIsNotNone(email_field, "Schema inference should detect 'email' field")
         self.assertEqual(
-            email_field.get("semantic_type"), "EMAIL",
+            email_field.get("semantic_type"),
+            "EMAIL",
             "Schema inference should detect EMAIL semantic type from field name and data",
         )
 
@@ -377,12 +370,17 @@ class CrossCapabilityE2ETest(E2ETestBase):
             "hub_contract_version": 1,
             "id": "test-inferred",
             "info": {"name": "Inferred Schema Contract"},
-            "schema": {"fields": [
-                {"name": f["name"], "data_type": f["data_type"],
-                 **({"semantic_type": f["semantic_type"]} if "semantic_type" in f else {}),
-                 **({"format": f["format"]} if "format" in f else {})}
-                for f in fields
-            ]},
+            "schema": {
+                "fields": [
+                    {
+                        "name": f["name"],
+                        "data_type": f["data_type"],
+                        **({"semantic_type": f["semantic_type"]} if "semantic_type" in f else {}),
+                        **({"format": f["format"]} if "format" in f else {}),
+                    }
+                    for f in fields
+                ]
+            },
         }
 
         contract = Contract.objects.create(
@@ -405,11 +403,10 @@ class CrossCapabilityE2ETest(E2ETestBase):
         """Test that job completion triggers email notification"""
         import uuid
 
-        from django.conf import settings
         from django.test import override_settings
 
         from hub.apps.jobs.utils import create_job
-        from hub.apps.notifications.models import EmailDelivery, EmailDeliveryStatus, EmailType
+        from hub.apps.notifications.models import EmailDelivery, EmailType
         from hub.apps.notifications.tasks import send_job_completion_email
 
         # Enable job notifications for this test
@@ -481,7 +478,7 @@ class CrossCapabilityE2ETest(E2ETestBase):
         )
 
         client = APIClient()
-        with self.assertRaises(ClickException) as cm:
+        with self.assertRaises(ClickException):
             client._handle_response(response)
         self.assertIsNotNone(str(cm.exception))
 
@@ -490,7 +487,6 @@ class CrossCapabilityE2ETest(E2ETestBase):
         import os
 
         import requests
-        from django.conf import settings
 
         # List of services that should expose metrics
         services = {
@@ -532,8 +528,7 @@ class CrossCapabilityE2ETest(E2ETestBase):
         # At least one service must be reachable for the test to be meaningful
         if not reachable_services:
             self.skipTest(
-                f"No services reachable for monitoring test. "
-                f"Unreachable: {unreachable_services}"
+                f"No services reachable for monitoring test. Unreachable: {unreachable_services}"
             )
 
         # Verify Prometheus configuration includes all services (unconditional)
@@ -543,7 +538,7 @@ class CrossCapabilityE2ETest(E2ETestBase):
             f"Prometheus config file not found at {prometheus_config_path}",
         )
 
-        with open(prometheus_config_path, "r") as f:
+        with open(prometheus_config_path) as f:
             config_content = f.read()
 
         # Verify all services are in Prometheus config

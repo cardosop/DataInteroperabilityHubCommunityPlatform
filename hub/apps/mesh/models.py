@@ -3,10 +3,12 @@ Data Mesh Models
 
 Models for data mesh domains, federated governance, and mesh topology.
 """
+
 import uuid
-from django.db import models
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.db import models
 from django.utils import timezone
 
 
@@ -17,6 +19,7 @@ def default_empty_dict():
 
 class DomainStatus(models.TextChoices):
     """Data mesh domain status enumeration"""
+
     ACTIVE = "ACTIVE", "Active"
     INACTIVE = "INACTIVE", "Inactive"
     ARCHIVED = "ARCHIVED", "Archived"
@@ -44,55 +47,49 @@ class DataMeshDomain(models.Model):
         created_at: Timestamp when domain was created
         updated_at: Timestamp when domain was last updated
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="mesh_domains",
-        help_text="Tenant this domain belongs to"
+        help_text="Tenant this domain belongs to",
     )
-    name = models.CharField(
-        max_length=255,
-        help_text="Domain name (unique per tenant)"
-    )
-    description = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Domain description"
-    )
+    name = models.CharField(max_length=255, help_text="Domain name (unique per tenant)")
+    description = models.TextField(null=True, blank=True, help_text="Domain description")
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         related_name="owned_mesh_domains",
         null=True,
         blank=True,
-        help_text="User who owns this domain"
+        help_text="User who owns this domain",
     )
     boundaries = models.JSONField(
         default=default_empty_dict,
         blank=True,
-        help_text="Domain boundaries as JSON (data products, schemas, access patterns, etc.)"
+        help_text="Domain boundaries as JSON (data products, schemas, access patterns, etc.)",
     )
     capabilities = models.JSONField(
         default=default_empty_dict,
         blank=True,
-        help_text="Domain capabilities as JSON (APIs, services, data products, etc.)"
+        help_text="Domain capabilities as JSON (APIs, services, data products, etc.)",
     )
     resource_quota = models.JSONField(
         default=default_empty_dict,
         blank=True,
-        help_text="Resource quotas as JSON (storage_gb, compute_hours, api_calls_per_day, etc.)"
+        help_text="Resource quotas as JSON (storage_gb, compute_hours, api_calls_per_day, etc.)",
     )
     resource_usage = models.JSONField(
         default=default_empty_dict,
         blank=True,
-        help_text="Current resource usage as JSON (storage_gb_used, compute_hours_used, etc.)"
+        help_text="Current resource usage as JSON (storage_gb_used, compute_hours_used, etc.)",
     )
     status = models.CharField(
         max_length=20,
         choices=DomainStatus.choices,
         default=DomainStatus.ACTIVE,
-        help_text="Domain status: ACTIVE, INACTIVE, or ARCHIVED"
+        help_text="Domain status: ACTIVE, INACTIVE, or ARCHIVED",
     )
     workflow_instance = models.ForeignKey(
         "orchestration.WorkflowInstance",
@@ -100,7 +97,7 @@ class DataMeshDomain(models.Model):
         related_name="created_domains",
         null=True,
         blank=True,
-        help_text="Workflow instance that created this domain"
+        help_text="Workflow instance that created this domain",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -116,10 +113,7 @@ class DataMeshDomain(models.Model):
             models.Index(fields=["workflow_instance"]),
         ]
         constraints = [
-            models.UniqueConstraint(
-                fields=["tenant", "name"],
-                name="unique_domain_name_per_tenant"
-            )
+            models.UniqueConstraint(fields=["tenant", "name"], name="unique_domain_name_per_tenant")
         ]
 
     def __str__(self):
@@ -229,6 +223,7 @@ class DataMeshDomain(models.Model):
 
 class PolicyApplicationStatus(models.TextChoices):
     """Policy application status enumeration"""
+
     PENDING = "PENDING", "Pending"
     APPLIED = "APPLIED", "Applied"
     FAILED = "FAILED", "Failed"
@@ -252,12 +247,13 @@ class PolicyApplication(models.Model):
         status: Application status (PENDING, APPLIED, FAILED, REVOKED)
         applied_at: Timestamp when policy was applied
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     domain = models.ForeignKey(
         "mesh.DataMeshDomain",
         on_delete=models.CASCADE,
         related_name="policy_applications",
-        help_text="Domain this policy is applied to"
+        help_text="Domain this policy is applied to",
     )
     policy = models.ForeignKey(
         "governance.AccessPolicy",
@@ -265,7 +261,7 @@ class PolicyApplication(models.Model):
         related_name="mesh_domain_applications",
         null=True,
         blank=True,
-        help_text="Policy being applied (nullable if policy is deleted)"
+        help_text="Policy being applied (nullable if policy is deleted)",
     )
     applied_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -273,23 +269,21 @@ class PolicyApplication(models.Model):
         related_name="applied_mesh_policies",
         null=True,
         blank=True,
-        help_text="User who applied this policy"
+        help_text="User who applied this policy",
     )
     overrides = models.JSONField(
         default=default_empty_dict,
         blank=True,
-        help_text="Policy overrides as JSON (conditions, effect, priority, etc.)"
+        help_text="Policy overrides as JSON (conditions, effect, priority, etc.)",
     )
     status = models.CharField(
         max_length=20,
         choices=PolicyApplicationStatus.choices,
         default=PolicyApplicationStatus.PENDING,
-        help_text="Application status: PENDING, APPLIED, FAILED, or REVOKED"
+        help_text="Application status: PENDING, APPLIED, FAILED, or REVOKED",
     )
     applied_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Timestamp when policy was applied"
+        null=True, blank=True, help_text="Timestamp when policy was applied"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -322,9 +316,7 @@ class PolicyApplication(models.Model):
 
         # Validate policy and domain belong to same tenant if both exist
         if self.policy and self.domain and self.policy.tenant != self.domain.tenant:
-            raise ValidationError(
-                {"policy": "Policy must belong to the same tenant as the domain"}
-            )
+            raise ValidationError({"policy": "Policy must belong to the same tenant as the domain"})
 
         # Validate applied_by belongs to same tenant as domain if provided
         if self.applied_by and self.domain and self.applied_by.tenant != self.domain.tenant:
@@ -367,6 +359,7 @@ class PolicyApplication(models.Model):
 
 class MeshComplianceStatus(models.TextChoices):
     """Compliance status enumeration for mesh domain compliance reports"""
+
     COMPLIANT = "COMPLIANT", "Compliant"
     NON_COMPLIANT = "NON_COMPLIANT", "Non-Compliant"
     PARTIAL = "PARTIAL", "Partially Compliant"
@@ -389,12 +382,13 @@ class ComplianceReport(models.Model):
         violations: JSONB field storing violation details
         generated_at: Timestamp when report was generated
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     domain = models.ForeignKey(
         "mesh.DataMeshDomain",
         on_delete=models.CASCADE,
         related_name="compliance_reports",
-        help_text="Domain this compliance report is for"
+        help_text="Domain this compliance report is for",
     )
     asset = models.ForeignKey(
         "assets.Asset",
@@ -402,22 +396,21 @@ class ComplianceReport(models.Model):
         related_name="mesh_compliance_reports",
         null=True,
         blank=True,
-        help_text="Asset this compliance report is for (optional, for asset-specific reports)"
+        help_text="Asset this compliance report is for (optional, for asset-specific reports)",
     )
     compliance_status = models.CharField(
         max_length=20,
         choices=MeshComplianceStatus.choices,
         default=MeshComplianceStatus.UNKNOWN,
-        help_text="Compliance status: COMPLIANT, NON_COMPLIANT, PARTIAL, or UNKNOWN"
+        help_text="Compliance status: COMPLIANT, NON_COMPLIANT, PARTIAL, or UNKNOWN",
     )
     violations = models.JSONField(
         default=default_empty_dict,
         blank=True,
-        help_text="Violations as JSON (list of violation objects with type, severity, description, etc.)"
+        help_text="Violations as JSON (list of violation objects with type, severity, description, etc.)",
     )
     generated_at = models.DateTimeField(
-        auto_now_add=True,
-        help_text="Timestamp when report was generated"
+        auto_now_add=True, help_text="Timestamp when report was generated"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -450,9 +443,7 @@ class ComplianceReport(models.Model):
 
         # Validate asset belongs to same tenant as domain if provided
         if self.asset and self.domain and self.asset.tenant != self.domain.tenant:
-            raise ValidationError(
-                {"asset": "Asset must belong to the same tenant as the domain"}
-            )
+            raise ValidationError({"asset": "Asset must belong to the same tenant as the domain"})
 
     def save(self, *args, **kwargs):
         """
@@ -508,4 +499,3 @@ class ComplianceReport(models.Model):
             return self.violations.get("count", 0)
 
         return 0
-

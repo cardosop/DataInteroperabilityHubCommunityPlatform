@@ -23,7 +23,6 @@ from hub.apps.contracts.models import (
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 
 
-
 class ContractViewFilteringTest(ContractsAPITestBase):
     """Test contract view filtering (GAP-9.2.2)"""
 

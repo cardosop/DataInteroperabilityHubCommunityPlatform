@@ -20,6 +20,7 @@ The command must be:
 * **Structured output** — JSON to stdout so the operator's wrapper
   script can archive it as an artefact.
 """
+
 from __future__ import annotations
 
 import json
@@ -33,12 +34,14 @@ from django.test import TransactionTestCase
 
 def _create_tenant():
     from hub.apps.tenants.models import Tenant
+
     suffix = uuid.uuid4().hex[:8]
     return Tenant.objects.create(name=f"Drift Co {suffix}", slug=f"drift-{suffix}")
 
 
 def _create_contract(tenant, *, lineage_entries=None):
     from hub.apps.contracts.models import Contract
+
     hub_contract = {
         "models": [{"name": "m", "fields": [{"name": "id", "type": "string"}]}],
         "schema": {"fields": []},
@@ -149,8 +152,7 @@ class TestDriftDetected(TransactionTestCase):
 
         out, code = _run(f"--tenant={tenant.id}", "--tolerance=0.001")
         assert code != 0, (
-            "DRIFT must produce non-zero exit so CI / cron can branch; "
-            f"got code={code}"
+            f"DRIFT must produce non-zero exit so CI / cron can branch; got code={code}"
         )
         report = TestEmptyScope._parse_report(out)
         assert report["status"] == "DRIFT"

@@ -9,6 +9,7 @@ Covers:
 * Tenant isolation (tenant A cannot see tenant B's comments)
 * Comment list renders chronologically
 """
+
 from __future__ import annotations
 
 import uuid
@@ -16,7 +17,6 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -101,7 +101,9 @@ class TestCommentPersistsWithApprove(TestCase):
         # Give approver TENANT_ADMIN role so they can approve.
         self.asset = _create_asset(self.tenant, self.requester)
         self.access_request = _create_access_request(
-            self.tenant, self.requester, self.asset,
+            self.tenant,
+            self.requester,
+            self.asset,
         )
         _make_admin(self.tenant, self.approver)
         self.client.force_authenticate(user=self.approver)
@@ -149,7 +151,9 @@ class TestCommentPersistsWithReject(TestCase):
         self.rejecter = _create_user(self.tenant, "rejecter")
         self.asset = _create_asset(self.tenant, self.requester)
         self.access_request = _create_access_request(
-            self.tenant, self.requester, self.asset,
+            self.tenant,
+            self.requester,
+            self.asset,
         )
         _make_admin(self.tenant, self.rejecter)
         self.client.force_authenticate(user=self.rejecter)
@@ -159,7 +163,10 @@ class TestCommentPersistsWithReject(TestCase):
 
         resp = self.client.post(
             f"/api/v1/governance/access-requests/{self.access_request.id}/reject/",
-            data={"reason": "Insufficient justification", "comments": "Please provide more detail."},
+            data={
+                "reason": "Insufficient justification",
+                "comments": "Please provide more detail.",
+            },
             format="json",
         )
         assert resp.status_code == 200, resp.content
@@ -186,7 +193,9 @@ class TestStandaloneComment(TestCase):
         self.user = _create_user(self.tenant, "commenter")
         self.asset = _create_asset(self.tenant, self.user)
         self.access_request = _create_access_request(
-            self.tenant, self.user, self.asset,
+            self.tenant,
+            self.user,
+            self.asset,
         )
         self.client.force_authenticate(user=self.user)
 
@@ -271,9 +280,7 @@ class TestStandaloneComment(TestCase):
             f"Expected 400 for missing body field, got {resp.status_code}: {resp.content}"
         )
         error_text = str(resp.data).lower()
-        assert "body" in error_text, (
-            f"Error response should mention 'body', got: {resp.content}"
-        )
+        assert "body" in error_text, f"Error response should mention 'body', got: {resp.content}"
 
     def test_standalone_comment_malformed_json(self):
         """POST to comments endpoint with malformed JSON returns 400."""

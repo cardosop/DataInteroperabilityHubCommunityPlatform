@@ -3,9 +3,18 @@ Data Mesh Serializers
 
 DRF serializers for Data Mesh API endpoints.
 """
-from rest_framework import serializers
+
 from django.contrib.auth import get_user_model
-from .models import DataMeshDomain, DomainStatus, PolicyApplication, PolicyApplicationStatus, ComplianceReport, MeshComplianceStatus
+from rest_framework import serializers
+
+from .models import (
+    ComplianceReport,
+    DataMeshDomain,
+    DomainStatus,
+    MeshComplianceStatus,
+    PolicyApplication,
+    PolicyApplicationStatus,
+)
 
 User = get_user_model()
 
@@ -13,9 +22,9 @@ User = get_user_model()
 class DomainSerializer(serializers.ModelSerializer):
     """Serializer for DataMeshDomain model"""
 
-    owner = serializers.UUIDField(source='owner.id', read_only=True, allow_null=True)
-    owner_email = serializers.EmailField(source='owner.email', read_only=True, allow_null=True)
-    tenant_name = serializers.CharField(source='tenant.name', read_only=True)
+    owner = serializers.UUIDField(source="owner.id", read_only=True, allow_null=True)
+    owner_email = serializers.EmailField(source="owner.email", read_only=True, allow_null=True)
+    tenant_name = serializers.CharField(source="tenant.name", read_only=True)
     status = serializers.ChoiceField(choices=DomainStatus.choices)
     boundaries = serializers.JSONField(required=False, allow_null=True)
     capabilities = serializers.JSONField(required=False, allow_null=True)
@@ -24,22 +33,29 @@ class DomainSerializer(serializers.ModelSerializer):
     class Meta:
         model = DataMeshDomain
         fields = [
-            'id',
-            'name',
-            'description',
-            'owner',
-            'owner_email',
-            'tenant',
-            'tenant_name',
-            'boundaries',
-            'capabilities',
-            'resource_quota',
-            'resource_usage',
-            'status',
-            'created_at',
-            'updated_at',
+            "id",
+            "name",
+            "description",
+            "owner",
+            "owner_email",
+            "tenant",
+            "tenant_name",
+            "boundaries",
+            "capabilities",
+            "resource_quota",
+            "resource_usage",
+            "status",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'tenant', 'tenant_name', 'owner_email']
+        read_only_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "tenant",
+            "tenant_name",
+            "owner_email",
+        ]
 
     def validate_name(self, value):
         """Validate domain name"""
@@ -75,42 +91,25 @@ class DomainSerializer(serializers.ModelSerializer):
 class DomainCreateSerializer(serializers.Serializer):
     """Serializer for domain creation"""
 
-    name = serializers.CharField(
-        max_length=255,
-        help_text="Domain name (unique per tenant)"
-    )
+    name = serializers.CharField(max_length=255, help_text="Domain name (unique per tenant)")
     description = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        allow_null=True,
-        help_text="Domain description"
+        required=False, allow_blank=True, allow_null=True, help_text="Domain description"
     )
-    owner_id = serializers.UUIDField(
-        required=False,
-        allow_null=True,
-        help_text="Owner user ID"
-    )
+    owner_id = serializers.UUIDField(required=False, allow_null=True, help_text="Owner user ID")
     boundaries = serializers.DictField(
-        required=False,
-        allow_empty=True,
-        allow_null=True,
-        help_text="Domain boundaries as JSON"
+        required=False, allow_empty=True, allow_null=True, help_text="Domain boundaries as JSON"
     )
     capabilities = serializers.DictField(
-        required=False,
-        allow_empty=True,
-        help_text="Domain capabilities as JSON"
+        required=False, allow_empty=True, help_text="Domain capabilities as JSON"
     )
     resource_quota = serializers.DictField(
-        required=False,
-        allow_empty=True,
-        help_text="Resource quotas as JSON"
+        required=False, allow_empty=True, help_text="Resource quotas as JSON"
     )
     status = serializers.ChoiceField(
         choices=DomainStatus.choices,
         required=False,
         default=DomainStatus.ACTIVE,
-        help_text="Domain status"
+        help_text="Domain status",
     )
 
     def validate_name(self, value):
@@ -137,38 +136,23 @@ class DomainUpdateSerializer(serializers.Serializer):
         max_length=255,
         required=False,
         allow_blank=True,
-        help_text="Domain name (empty/whitespace rejected by service layer)"
+        help_text="Domain name (empty/whitespace rejected by service layer)",
     )
     description = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        allow_null=True,
-        help_text="Domain description"
+        required=False, allow_blank=True, allow_null=True, help_text="Domain description"
     )
-    owner_id = serializers.UUIDField(
-        required=False,
-        allow_null=True,
-        help_text="Owner user ID"
-    )
+    owner_id = serializers.UUIDField(required=False, allow_null=True, help_text="Owner user ID")
     boundaries = serializers.DictField(
-        required=False,
-        allow_empty=True,
-        help_text="Domain boundaries as JSON"
+        required=False, allow_empty=True, help_text="Domain boundaries as JSON"
     )
     capabilities = serializers.DictField(
-        required=False,
-        allow_empty=True,
-        help_text="Domain capabilities as JSON"
+        required=False, allow_empty=True, help_text="Domain capabilities as JSON"
     )
     resource_quota = serializers.DictField(
-        required=False,
-        allow_empty=True,
-        help_text="Resource quotas as JSON"
+        required=False, allow_empty=True, help_text="Resource quotas as JSON"
     )
     status = serializers.ChoiceField(
-        choices=DomainStatus.choices,
-        required=False,
-        help_text="Domain status"
+        choices=DomainStatus.choices, required=False, help_text="Domain status"
     )
 
     def validate_name(self, value):
@@ -192,9 +176,7 @@ class TransferOwnershipSerializer(serializers.Serializer):
     """Serializer for ownership transfer"""
 
     new_owner_id = serializers.UUIDField(
-        required=False,
-        allow_null=True,
-        help_text="New owner user ID (null to remove owner)"
+        required=False, allow_null=True, help_text="New owner user ID (null to remove owner)"
     )
 
     def validate_new_owner_id(self, value):
@@ -244,57 +226,57 @@ class DomainAnalyticsSerializer(serializers.Serializer):
 class PolicyApplicationSerializer(serializers.ModelSerializer):
     """Serializer for PolicyApplication model"""
 
-    policy_id = serializers.UUIDField(source='policy.id', read_only=True, allow_null=True)
-    policy_name = serializers.CharField(source='policy.name', read_only=True, allow_null=True)
-    applied_by_id = serializers.UUIDField(source='applied_by.id', read_only=True, allow_null=True)
-    applied_by_email = serializers.EmailField(source='applied_by.email', read_only=True, allow_null=True)
-    domain_id = serializers.UUIDField(source='domain.id', read_only=True)
-    domain_name = serializers.CharField(source='domain.name', read_only=True)
+    policy_id = serializers.UUIDField(source="policy.id", read_only=True, allow_null=True)
+    policy_name = serializers.CharField(source="policy.name", read_only=True, allow_null=True)
+    applied_by_id = serializers.UUIDField(source="applied_by.id", read_only=True, allow_null=True)
+    applied_by_email = serializers.EmailField(
+        source="applied_by.email", read_only=True, allow_null=True
+    )
+    domain_id = serializers.UUIDField(source="domain.id", read_only=True)
+    domain_name = serializers.CharField(source="domain.name", read_only=True)
     status = serializers.ChoiceField(choices=PolicyApplicationStatus.choices)
 
     class Meta:
         model = PolicyApplication
         fields = [
-            'id',
-            'domain_id',
-            'domain_name',
-            'policy_id',
-            'policy_name',
-            'applied_by_id',
-            'applied_by_email',
-            'overrides',
-            'status',
-            'applied_at',
-            'created_at',
-            'updated_at',
+            "id",
+            "domain_id",
+            "domain_name",
+            "policy_id",
+            "policy_name",
+            "applied_by_id",
+            "applied_by_email",
+            "overrides",
+            "status",
+            "applied_at",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = [
-            'id',
-            'domain_id',
-            'domain_name',
-            'policy_id',
-            'policy_name',
-            'applied_by_id',
-            'applied_by_email',
-            'status',
-            'applied_at',
-            'created_at',
-            'updated_at',
+            "id",
+            "domain_id",
+            "domain_name",
+            "policy_id",
+            "policy_name",
+            "applied_by_id",
+            "applied_by_email",
+            "status",
+            "applied_at",
+            "created_at",
+            "updated_at",
         ]
 
 
 class ApplyPolicySerializer(serializers.Serializer):
     """Serializer for applying a policy to a domain"""
 
-    policy_id = serializers.UUIDField(
-        help_text="Policy ID to apply to the domain"
-    )
+    policy_id = serializers.UUIDField(help_text="Policy ID to apply to the domain")
     overrides = serializers.DictField(
         required=False,
         allow_null=True,
         allow_empty=True,
         default=dict,
-        help_text="Policy overrides as JSON (conditions, effect, priority, etc.)"
+        help_text="Policy overrides as JSON (conditions, effect, priority, etc.)",
     )
 
     def validate_overrides(self, value):
@@ -307,48 +289,48 @@ class ApplyPolicySerializer(serializers.Serializer):
 class ComplianceReportSerializer(serializers.ModelSerializer):
     """Serializer for ComplianceReport model"""
 
-    domain_id = serializers.UUIDField(source='domain.id', read_only=True)
-    domain_name = serializers.CharField(source='domain.name', read_only=True)
-    asset_id = serializers.UUIDField(source='asset.id', read_only=True, allow_null=True)
-    asset_name = serializers.CharField(source='asset.name', read_only=True, allow_null=True)
+    domain_id = serializers.UUIDField(source="domain.id", read_only=True)
+    domain_name = serializers.CharField(source="domain.name", read_only=True)
+    asset_id = serializers.UUIDField(source="asset.id", read_only=True, allow_null=True)
+    asset_name = serializers.CharField(source="asset.name", read_only=True, allow_null=True)
     compliance_status = serializers.ChoiceField(choices=MeshComplianceStatus.choices)
     violation_count = serializers.SerializerMethodField()
 
     class Meta:
         model = ComplianceReport
         fields = [
-            'id',
-            'domain_id',
-            'domain_name',
-            'asset_id',
-            'asset_name',
-            'compliance_status',
-            'violations',
-            'violation_count',
-            'generated_at',
-            'created_at',
-            'updated_at',
+            "id",
+            "domain_id",
+            "domain_name",
+            "asset_id",
+            "asset_name",
+            "compliance_status",
+            "violations",
+            "violation_count",
+            "generated_at",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = [
-            'id',
-            'domain_id',
-            'domain_name',
-            'asset_id',
-            'asset_name',
-            'compliance_status',
-            'violations',
-            'violation_count',
-            'generated_at',
-            'created_at',
-            'updated_at',
+            "id",
+            "domain_id",
+            "domain_name",
+            "asset_id",
+            "asset_name",
+            "compliance_status",
+            "violations",
+            "violation_count",
+            "generated_at",
+            "created_at",
+            "updated_at",
         ]
 
     def get_violation_count(self, obj):
         """Get violation count from violations dict"""
         if obj.violations and isinstance(obj.violations, dict):
             # Violations can be stored as a list in 'items' key or as a dict
-            if 'items' in obj.violations and isinstance(obj.violations['items'], list):
-                return len(obj.violations['items'])
+            if "items" in obj.violations and isinstance(obj.violations["items"], list):
+                return len(obj.violations["items"])
             # If violations is a dict with keys, count them
             if isinstance(obj.violations, dict):
                 return len([k for k, v in obj.violations.items() if v])
@@ -361,29 +343,20 @@ class CheckComplianceSerializer(serializers.Serializer):
     asset_id = serializers.UUIDField(
         required=False,
         allow_null=True,
-        help_text="Optional asset ID for asset-specific compliance check"
+        help_text="Optional asset ID for asset-specific compliance check",
     )
 
 
 class HealthMetricsSerializer(serializers.Serializer):
     """Serializer for domain health metrics"""
 
-    health_score = serializers.IntegerField(
-        help_text="Health score (0-100)"
-    )
-    policy_count = serializers.IntegerField(
-        help_text="Number of applied policies"
-    )
+    health_score = serializers.IntegerField(help_text="Health score (0-100)")
+    policy_count = serializers.IntegerField(help_text="Number of applied policies")
     compliance_status = serializers.ChoiceField(
-        choices=MeshComplianceStatus.choices,
-        help_text="Compliance status"
+        choices=MeshComplianceStatus.choices, help_text="Compliance status"
     )
-    violation_count = serializers.IntegerField(
-        help_text="Number of violations"
-    )
-    is_active = serializers.BooleanField(
-        help_text="Whether domain is active"
-    )
+    violation_count = serializers.IntegerField(help_text="Number of violations")
+    is_active = serializers.BooleanField(help_text="Whether domain is active")
 
 
 class TopologyNodeSerializer(serializers.Serializer):
@@ -392,26 +365,15 @@ class TopologyNodeSerializer(serializers.Serializer):
     id = serializers.UUIDField(help_text="Domain ID")
     name = serializers.CharField(help_text="Domain name")
     description = serializers.CharField(
-        required=False,
-        allow_null=True,
-        allow_blank=True,
-        help_text="Domain description"
+        required=False, allow_null=True, allow_blank=True, help_text="Domain description"
     )
     status = serializers.CharField(help_text="Domain status")
-    owner_id = serializers.UUIDField(
-        required=False,
-        allow_null=True,
-        help_text="Owner user ID"
-    )
+    owner_id = serializers.UUIDField(required=False, allow_null=True, help_text="Owner user ID")
     created_at = serializers.DateTimeField(
-        required=False,
-        allow_null=True,
-        help_text="Domain creation timestamp"
+        required=False, allow_null=True, help_text="Domain creation timestamp"
     )
     health_metrics = HealthMetricsSerializer(
-        required=False,
-        allow_null=True,
-        help_text="Health metrics (if include_health_metrics=true)"
+        required=False, allow_null=True, help_text="Health metrics (if include_health_metrics=true)"
     )
 
 
@@ -440,8 +402,7 @@ class TopologySummarySerializer(serializers.Serializer):
     active_domains = serializers.IntegerField(help_text="Number of active domains")
     total_relationships = serializers.IntegerField(help_text="Total number of relationships")
     average_health_score = serializers.FloatField(
-        allow_null=True,
-        help_text="Average health score across all domains"
+        allow_null=True, help_text="Average health score across all domains"
     )
 
 
@@ -458,10 +419,7 @@ class DomainTopologySerializer(serializers.Serializer):
     """Serializer for single domain topology view"""
 
     domain = TopologyNodeSerializer(help_text="Domain node")
-    relationships = TopologyEdgeSerializer(
-        many=True,
-        help_text="Relationships for this domain"
-    )
+    relationships = TopologyEdgeSerializer(many=True, help_text="Relationships for this domain")
     health_metrics = HealthMetricsSerializer(help_text="Domain health metrics")
 
 
@@ -469,8 +427,7 @@ class MeshHealthSerializer(serializers.Serializer):
     """Serializer for mesh health response"""
 
     overall_health_score = serializers.FloatField(
-        allow_null=True,
-        help_text="Overall mesh health score (0-100)"
+        allow_null=True, help_text="Overall mesh health score (0-100)"
     )
     total_domains = serializers.IntegerField(help_text="Total number of domains")
     active_domains = serializers.IntegerField(help_text="Number of active domains")
@@ -480,21 +437,13 @@ class MeshHealthSerializer(serializers.Serializer):
         help_text="Number of domains with violations"
     )
     domain_health = serializers.ListField(
-        child=serializers.DictField(),
-        help_text="Health metrics per domain"
+        child=serializers.DictField(), help_text="Health metrics per domain"
     )
 
 
 class DomainRelationshipSerializer(serializers.Serializer):
     """Serializer for domain relationships response"""
 
-    relationships = TopologyEdgeSerializer(
-        many=True,
-        help_text="List of domain relationships"
-    )
+    relationships = TopologyEdgeSerializer(many=True, help_text="List of domain relationships")
     total_count = serializers.IntegerField(help_text="Total number of relationships")
-    relationship_types = serializers.DictField(
-        help_text="Count of relationships by type"
-    )
-
-
+    relationship_types = serializers.DictField(help_text="Count of relationships by type")

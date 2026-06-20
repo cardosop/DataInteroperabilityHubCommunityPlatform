@@ -21,6 +21,7 @@ residue (or lack thereof) so W4.2 / W4.3 / dashboards can consume it.
 These tests exercise real ``Contract`` rows + the canonical
 ``is_structureless`` predicate (no mocks of internal code).
 """
+
 from __future__ import annotations
 
 import io
@@ -36,6 +37,7 @@ from django.test import TestCase
 
 def _create_tenant(slug_prefix: str = "w41"):
     from hub.apps.tenants.models import Tenant
+
     suffix = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
         name=f"{slug_prefix}-{suffix}",
@@ -50,6 +52,7 @@ def _create_contract(tenant, *, hub_contract_json, status=None):
         OriginalFormat,
         OriginalSpecType,
     )
+
     return Contract.objects.create(
         tenant=tenant,
         version=1,
@@ -181,7 +184,8 @@ class ClassifyResidueFunctionTests(TestCase):
         result = classify_tenants_by_residue(active_only=True)
         ids = {row["tenant_id"] for row in result}
         self.assertNotIn(
-            str(tenant.id), ids,
+            str(tenant.id),
+            ids,
             "Tenants with zero ACTIVE contracts must be excluded under "
             "active_only=True — they have no rollout work, so surfacing "
             "them as 'clean' inflates the W4 dashboard population.",
@@ -214,7 +218,6 @@ class ClassifyResidueFunctionTests(TestCase):
 
 @pytest.mark.django_db(transaction=True)
 class ClassifyResidueCommandTests(TestCase):
-
     def test_emits_jsonl_with_per_tenant_rows(self):
         clean = _create_tenant("clean-cli")
         _create_contract(clean, hub_contract_json=_HC_OK)
@@ -223,10 +226,13 @@ class ClassifyResidueCommandTests(TestCase):
 
         out = io.StringIO()
         call_command(
-            "wave4_classify_residue", "--output=json", stdout=out,
+            "wave4_classify_residue",
+            "--output=json",
+            stdout=out,
         )
         json_lines = [
-            line for line in out.getvalue().splitlines()
+            line
+            for line in out.getvalue().splitlines()
             if line.startswith("{") and line.rstrip().endswith("}")
         ]
         records = [json.loads(line) for line in json_lines]
@@ -238,7 +244,8 @@ class ClassifyResidueCommandTests(TestCase):
         self.assertIn(str(residue.id), by_tenant)
         self.assertEqual(by_tenant[str(residue.id)]["cohort"], "residue")
         self.assertEqual(
-            by_tenant[str(residue.id)]["residue_count"], 1,
+            by_tenant[str(residue.id)]["residue_count"],
+            1,
         )
 
     def test_human_summary_shows_cohort_counts(self):
@@ -250,16 +257,16 @@ class ClassifyResidueCommandTests(TestCase):
 
         out = io.StringIO()
         call_command(
-            "wave4_classify_residue", "--output=human", stdout=out,
+            "wave4_classify_residue",
+            "--output=human",
+            stdout=out,
         )
         text = out.getvalue()
         # Cohort counts grow with accumulated ``--keepdb`` state from prior
         # batch runs.  Verify the format (clean=N, residue=M) without exact values.
-        import re
-        self.assertRegex(text, r"clean=\d+",
-            "Human-readable output must include clean=<count>")
-        self.assertRegex(text, r"residue=\d+",
-            "Human-readable output must include residue=<count>")
+
+        self.assertRegex(text, r"clean=\d+", "Human-readable output must include clean=<count>")
+        self.assertRegex(text, r"residue=\d+", "Human-readable output must include residue=<count>")
 
     def test_audit_output_writes_jsonl_artefact(self):
         clean = _create_tenant("clean-art")
@@ -278,10 +285,7 @@ class ClassifyResidueCommandTests(TestCase):
         )
 
         self.assertTrue(path.exists())
-        rows = [
-            json.loads(line) for line in path.read_text().splitlines()
-            if line.strip()
-        ]
+        rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
         ids = {r["tenant_id"] for r in rows}
         self.assertIn(str(clean.id), ids)
         self.assertIn(str(residue.id), ids)
@@ -299,10 +303,13 @@ class ClassifyResidueCommandTests(TestCase):
         out = io.StringIO()
         call_command(
             "wave4_classify_residue",
-            "--output=json", "--only-residue", stdout=out,
+            "--output=json",
+            "--only-residue",
+            stdout=out,
         )
         json_lines = [
-            line for line in out.getvalue().splitlines()
+            line
+            for line in out.getvalue().splitlines()
             if line.startswith("{") and line.rstrip().endswith("}")
         ]
         records = [json.loads(line) for line in json_lines]

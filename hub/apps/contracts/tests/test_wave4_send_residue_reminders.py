@@ -22,6 +22,7 @@ Pins the engineering invariants the driver promises:
 No mocks of internal code; ``send_email_async`` is patched at the
 helper-module's path, the canonical convention.
 """
+
 from __future__ import annotations
 
 import datetime as _dt
@@ -39,7 +40,6 @@ from django.core.management.base import CommandError
 from django.test import TestCase
 from django.utils import timezone
 
-
 # ---------------------------------------------------------------------------
 # Fixture helpers
 # ---------------------------------------------------------------------------
@@ -47,6 +47,7 @@ from django.utils import timezone
 
 def _create_tenant(slug_prefix: str = "w42d", *, status: str = "ACTIVE"):
     from hub.apps.tenants.models import Tenant
+
     suffix = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
         name=f"{slug_prefix}-{suffix}",
@@ -62,6 +63,7 @@ def _create_contract(tenant, *, hub_contract_json):
         OriginalFormat,
         OriginalSpecType,
     )
+
     return Contract.objects.create(
         tenant=tenant,
         version=1,
@@ -78,12 +80,14 @@ def _create_contract(tenant, *, hub_contract_json):
 
 def _create_admin(email: str, tenant):
     from django.contrib.auth import get_user_model
+
     User = get_user_model()
     return User.objects.create(email=email, tenant=tenant)
 
 
 def _grant_tenant_admin(user, tenant):
     from hub.apps.users.models import Role, UserRole
+
     role, _ = Role.objects.get_or_create(tenant=tenant, name="TENANT_ADMIN")
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
 
@@ -92,6 +96,7 @@ def _record_reminded(tenant, *, when=None):
     """Write a SCHEMA_EDITOR_RESIDUE_REMINDED audit row, optionally
     backdated.  Mirrors the W2.4-AUDIT-1 fixture pattern."""
     from hub.apps.audit.models import AuditEvent
+
     event = AuditEvent.objects.create(
         tenant=tenant,
         action="SCHEMA_EDITOR_RESIDUE_REMINDED",
@@ -124,7 +129,6 @@ def _future_deadline(days: int = 30) -> str:
 
 @pytest.mark.django_db(transaction=True)
 class ArgumentValidationTests(TestCase):
-
     def test_past_deadline_rejected(self):
         past = (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
         with self.assertRaises(CommandError):
@@ -166,18 +170,20 @@ class Wave4ReminderActiveOnlyScopeTests(TestCase):
     broken."""
 
     def test_active_only_skips_tenant_with_only_draft_residue(self):
+        from hub.apps.contracts.models import ContractStatus
         from hub.apps.contracts.notifications import (
             schema_editor_residue_reminder as helper_mod,
         )
-        from hub.apps.contracts.models import ContractStatus
 
         tenant = _create_tenant("draft-only-r")
         _create_contract(
-            tenant, hub_contract_json=_HC_STRUCTURELESS,
+            tenant,
+            hub_contract_json=_HC_STRUCTURELESS,
         )
         # The default factory creates DRAFT contracts; that's exactly
         # what we want here.  Verify the assumption.
         from hub.apps.contracts.models import Contract
+
         first = Contract.objects.filter(tenant=tenant).first()
         self.assertTrue(first is not None, "fixture must have created a contract")
         self.assertEqual(first.status, ContractStatus.DRAFT)
@@ -197,20 +203,21 @@ class Wave4ReminderActiveOnlyScopeTests(TestCase):
                 stdout=io.StringIO(),
             )
         self.assertEqual(
-            sent, [],
+            sent,
+            [],
             "Under --include-active-only, a tenant whose only residue "
             "is a DRAFT contract must not be emailed.",
         )
 
     def test_active_only_still_emails_tenant_with_active_residue(self):
-        from hub.apps.contracts.notifications import (
-            schema_editor_residue_reminder as helper_mod,
-        )
         from hub.apps.contracts.models import (
             Contract,
             ContractStatus,
             OriginalFormat,
             OriginalSpecType,
+        )
+        from hub.apps.contracts.notifications import (
+            schema_editor_residue_reminder as helper_mod,
         )
 
         tenant = _create_tenant("active-residue")
@@ -228,7 +235,8 @@ class Wave4ReminderActiveOnlyScopeTests(TestCase):
             status=ContractStatus.ACTIVE,
         )
         _grant_tenant_admin(
-            _create_admin("active@example.com", tenant), tenant,
+            _create_admin("active@example.com", tenant),
+            tenant,
         )
 
         sent: list[str] = []
@@ -249,7 +257,6 @@ class Wave4ReminderActiveOnlyScopeTests(TestCase):
 
 @pytest.mark.django_db(transaction=True)
 class Wave4ReminderScopeTests(TestCase):
-
     def test_default_scope_only_emails_residue_tenants(self):
         from hub.apps.contracts.notifications import (
             schema_editor_residue_reminder as helper_mod,
@@ -312,7 +319,6 @@ class Wave4ReminderScopeTests(TestCase):
 
 @pytest.mark.django_db(transaction=True)
 class Wave4ReminderIdempotencyTests(TestCase):
-
     def test_recent_reminded_audit_row_skips_re_send(self):
         from hub.apps.contracts.notifications import (
             schema_editor_residue_reminder as helper_mod,
@@ -403,7 +409,8 @@ class Wave4ReminderIdempotencyTests(TestCase):
         ).count()
 
         with patch.object(
-            helper_mod, "send_email_async",
+            helper_mod,
+            "send_email_async",
             return_value={"success": True, "delivery_id": "x"},
         ):
             call_command(
@@ -433,7 +440,8 @@ class Wave4ReminderIdempotencyTests(TestCase):
         _grant_tenant_admin(_create_admin("af@example.com", tenant), tenant)
 
         with patch.object(
-            helper_mod, "send_email_async",
+            helper_mod,
+            "send_email_async",
             side_effect=RuntimeError("simulated SES outage"),
         ):
             call_command(
@@ -460,7 +468,6 @@ class Wave4ReminderIdempotencyTests(TestCase):
 
 @pytest.mark.django_db(transaction=True)
 class Wave4ReminderSafetyTests(TestCase):
-
     def test_drift_guard_excludes_remediated_contracts_from_email_body(self):
         """A contract remediated between classification and dispatch
         must not appear in the reminder body.
@@ -478,10 +485,10 @@ class Wave4ReminderSafetyTests(TestCase):
         from hub.apps.contracts.management.commands import (
             wave4_classify_residue,
         )
+        from hub.apps.contracts.models import Contract
         from hub.apps.contracts.notifications import (
             schema_editor_residue_reminder as helper_mod,
         )
-        from hub.apps.contracts.models import Contract
 
         tenant = _create_tenant("drift")
         c_still = _create_contract(tenant, hub_contract_json=_HC_STRUCTURELESS)
@@ -499,7 +506,8 @@ class Wave4ReminderSafetyTests(TestCase):
                     "cohort": "residue",
                     "residue_count": 2,
                     "residue_contract_ids": [
-                        str(c_still.id), str(c_was_residue.id),
+                        str(c_still.id),
+                        str(c_was_residue.id),
                     ],
                 }
             ]
@@ -517,12 +525,17 @@ class Wave4ReminderSafetyTests(TestCase):
             captured.append(kwargs)
             return {"success": True, "delivery_id": "x"}
 
-        with patch.object(
-            wave4_classify_residue,
-            "classify_tenants_by_residue",
-            side_effect=_patched_classify,
-        ), patch.object(
-            helper_mod, "send_email_async", side_effect=_capture,
+        with (
+            patch.object(
+                wave4_classify_residue,
+                "classify_tenants_by_residue",
+                side_effect=_patched_classify,
+            ),
+            patch.object(
+                helper_mod,
+                "send_email_async",
+                side_effect=_capture,
+            ),
         ):
             call_command(
                 "wave4_send_residue_reminders",
@@ -553,10 +566,10 @@ class Wave4ReminderSafetyTests(TestCase):
         from hub.apps.contracts.management.commands import (
             wave4_classify_residue,
         )
+        from hub.apps.contracts.models import Contract
         from hub.apps.contracts.notifications import (
             schema_editor_residue_reminder as helper_mod,
         )
-        from hub.apps.contracts.models import Contract
 
         tenant = _create_tenant("all-fixed")
         c1 = _create_contract(tenant, hub_contract_json=_HC_STRUCTURELESS)
@@ -584,12 +597,17 @@ class Wave4ReminderSafetyTests(TestCase):
             return {"success": True, "delivery_id": "x"}
 
         out = io.StringIO()
-        with patch.object(
-            wave4_classify_residue,
-            "classify_tenants_by_residue",
-            side_effect=_patched_classify,
-        ), patch.object(
-            helper_mod, "send_email_async", side_effect=_capture,
+        with (
+            patch.object(
+                wave4_classify_residue,
+                "classify_tenants_by_residue",
+                side_effect=_patched_classify,
+            ),
+            patch.object(
+                helper_mod,
+                "send_email_async",
+                side_effect=_capture,
+            ),
         ):
             call_command(
                 "wave4_send_residue_reminders",
@@ -673,7 +691,8 @@ class Wave4ReminderSafetyTests(TestCase):
         path = tmpdir / "wave4-audit.jsonl"
 
         with patch.object(
-            helper_mod, "send_email_async",
+            helper_mod,
+            "send_email_async",
             return_value={"success": True, "delivery_id": "x"},
         ):
             call_command(
@@ -684,10 +703,7 @@ class Wave4ReminderSafetyTests(TestCase):
             )
 
         self.assertTrue(path.exists())
-        rows = [
-            json.loads(line) for line in path.read_text().splitlines()
-            if line.strip()
-        ]
+        rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["to_email"], "au@example.com")
         self.assertEqual(rows[0]["tenant_id"], str(tenant.id))

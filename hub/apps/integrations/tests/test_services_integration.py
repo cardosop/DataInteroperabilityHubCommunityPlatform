@@ -8,11 +8,11 @@ Tests with real database and event publishing to verify:
 - Database transactions work correctly
 """
 
+import contextlib
 import uuid
+
 import pytest
 from django.test import TestCase, override_settings
-from django.utils import timezone
-from tests.utils.wait_helpers import wait_for_event_persistence
 
 from hub.apps.assets.models import Asset, AssetSourceType
 from hub.apps.audit.models import AuditEvent
@@ -35,10 +35,10 @@ from hub.apps.integrations.models import (
     MarketplaceSyncJob,
 )
 from hub.apps.integrations.services import MarketplaceIntegrationService
-from hub.apps.jobs.models import Job, JobStatus, JobType
+from hub.apps.jobs.models import JobStatus, JobType
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-import uuid
+from tests.utils.wait_helpers import wait_for_event_persistence
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -167,20 +167,14 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
     def tearDown(self):
         """Clean up test connectors"""
         # Unregister test connectors
-        try:
+        with contextlib.suppress(ValueError):
             MarketplaceConnectorFactory.unregister_connector(
                 MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
             )
-        except ValueError:
-            pass
-        try:
+        with contextlib.suppress(ValueError):
             MarketplaceConnectorFactory.unregister_connector(MarketplaceType.AWS_DATA_EXCHANGE)
-        except ValueError:
-            pass
-        try:
+        with contextlib.suppress(ValueError):
             MarketplaceConnectorFactory.unregister_connector(MarketplaceType.DATABRICKS_MARKETPLACE)
-        except ValueError:
-            pass
         """Reconnect signals after test"""
         from django.db.models.signals import post_save
 
@@ -197,7 +191,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
     def test_create_connection_creates_audit_log(self):
         """Test that connection creation creates audit log"""
         # Count initial audit events
-        initial_count = AuditEvent.objects.filter(resource_type="MARKETPLACE_CONNECTION").count()
+        AuditEvent.objects.filter(resource_type="MARKETPLACE_CONNECTION").count()
 
         # Create connection
         connection = self.service.create_connection(
@@ -398,7 +392,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         # Test connection with real connector
         # Note: Connector may not be available in test environment
         try:
-            result = self.service.test_connection(
+            self.service.test_connection(
                 connection_id=str(connection.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
@@ -434,7 +428,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         # Test connection with real connector
         # Note: Connector may not be available in test environment
         try:
-            result = self.service.test_connection(
+            self.service.test_connection(
                 connection_id=str(connection.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
@@ -475,7 +469,8 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
 
         # Verify no audit log was created for this tenant's failed operation
         audit_events = AuditEvent.objects.filter(
-            resource_type="MARKETPLACE_CONNECTION", action="CONNECTION_CREATED",
+            resource_type="MARKETPLACE_CONNECTION",
+            action="CONNECTION_CREATED",
             tenant=self.tenant,
         )
         # Should have no events for this failed operation
@@ -484,9 +479,13 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
     def test_tenant_isolation(self):
         """Test that connections are isolated by tenant"""
         # Create second tenant
-        tenant2 = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
+        tenant2 = Tenant.objects.create(
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
+        )
         user2 = User.objects.create_user(
-            email=f"test2-{uuid.uuid4().hex[:8]}@example.com", tenant=tenant2, status=UserStatus.ACTIVE
+            email=f"test2-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=tenant2,
+            status=UserStatus.ACTIVE,
         )
 
         # Create connection for tenant 1
@@ -539,15 +538,9 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         )
 
         # Use real asset UUIDs so workflow validate_assets step succeeds (Asset.id is UUID)
-        asset1 = Asset.objects.create(
-            tenant=self.tenant, key="sync-asset-1", name="Sync Asset 1"
-        )
-        asset2 = Asset.objects.create(
-            tenant=self.tenant, key="sync-asset-2", name="Sync Asset 2"
-        )
-        asset3 = Asset.objects.create(
-            tenant=self.tenant, key="sync-asset-3", name="Sync Asset 3"
-        )
+        asset1 = Asset.objects.create(tenant=self.tenant, key="sync-asset-1", name="Sync Asset 1")
+        asset2 = Asset.objects.create(tenant=self.tenant, key="sync-asset-2", name="Sync Asset 2")
+        asset3 = Asset.objects.create(tenant=self.tenant, key="sync-asset-3", name="Sync Asset 3")
         asset_ids = [str(asset1.id), str(asset2.id), str(asset3.id)]
 
         sync_job = self.service.sync_assets_to_marketplace(
@@ -573,6 +566,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertNotEqual(wf_id, "", "workflow_instance_id must not be empty")
         # Must be a valid UUID string (36 chars with hyphens)
         import uuid as _uuid
+
         try:
             _uuid.UUID(wf_id)
         except (ValueError, AttributeError):
@@ -643,6 +637,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertIsNotNone(wf_id, "workflow_instance_id must not be None")
         self.assertNotEqual(wf_id, "", "workflow_instance_id must not be empty")
         import uuid as _uuid
+
         try:
             _uuid.UUID(wf_id)
         except (ValueError, AttributeError):
@@ -721,7 +716,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
             direction=SyncDirection.PUSH.value,
             status=SyncStatus.PENDING.value,
         )
-        sync_job2 = MarketplaceSyncJob.objects.create(
+        MarketplaceSyncJob.objects.create(
             tenant=self.tenant,
             connection=connection2,
             direction=SyncDirection.PULL.value,
@@ -867,9 +862,13 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
     def test_sync_job_tenant_isolation(self):
         """Test that sync jobs are isolated by tenant."""
         # Create second tenant
-        tenant2 = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
-        user2 = User.objects.create_user(
-            email=f"test2-{uuid.uuid4().hex[:8]}@example.com", tenant=tenant2, status=UserStatus.ACTIVE
+        tenant2 = Tenant.objects.create(
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
+        )
+        User.objects.create_user(
+            email=f"test2-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=tenant2,
+            status=UserStatus.ACTIVE,
         )
 
         connection1 = self.service.create_connection(
@@ -1028,7 +1027,7 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
             hub_asset_id=str(asset1.id),
             external_listing_id="listing-1",
         )
-        mapping2 = self.service.create_mapping(
+        self.service.create_mapping(
             connection_id=str(connection2.id),
             hub_asset_id=str(asset2.id),
             external_listing_id="listing-2",
@@ -1174,9 +1173,13 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
     def test_mapping_tenant_isolation(self):
         """Test that mappings are isolated by tenant."""
         # Create second tenant
-        tenant2 = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
-        user2 = User.objects.create_user(
-            email=f"test2-{uuid.uuid4().hex[:8]}@example.com", tenant=tenant2, status=UserStatus.ACTIVE
+        tenant2 = Tenant.objects.create(
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
+        )
+        User.objects.create_user(
+            email=f"test2-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=tenant2,
+            status=UserStatus.ACTIVE,
         )
 
         connection1 = self.service.create_connection(

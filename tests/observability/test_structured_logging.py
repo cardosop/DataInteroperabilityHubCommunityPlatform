@@ -9,7 +9,6 @@ Tests are file-based — they verify logging configuration patterns
 rather than testing live log output.
 """
 
-import json
 from pathlib import Path
 
 import pytest
@@ -70,23 +69,20 @@ class TestStructlogConfiguration:
                 continue
             main_file = main_files[0]
             findings = self._check_logging_config(main_file)
-            has_logging = (
-                findings["has_structlog"]
-                or findings["has_json_formatter"]
-            )
-            assert has_logging, \
-                f"{svc}/{main_file.name} should configure structlog or JSON logging"
+            has_logging = findings["has_structlog"] or findings["has_json_formatter"]
+            assert has_logging, f"{svc}/{main_file.name} should configure structlog or JSON logging"
 
     def test_hub_settings_configure_structlog(self):
         """Django settings should configure django-structlog."""
         settings_file = HUB_DIR / "settings.py"
         if not settings_file.exists():
-            pytest.skip("hub/settings.py not found")
+            pytest.skip("hub/settings.py not found")  # noqa: skip-in-body — runtime service dependency
 
         content = settings_file.read_text()
         has_structlog = "django_structlog" in content or "structlog" in content
-        assert has_structlog, \
+        assert has_structlog, (
             "Django settings should configure django-structlog for structured logging"
+        )
 
 
 @pytest.mark.unit
@@ -98,13 +94,14 @@ class TestRequiredLogFields:
         """Hub logging config includes timestamp, level, event, service fields."""
         settings_file = HUB_DIR / "settings.py"
         if not settings_file.exists():
-            pytest.skip("hub/settings.py not found")
+            pytest.skip("hub/settings.py not found")  # noqa: skip-in-body — runtime service dependency
 
         content = settings_file.read_text()
         fields_found = {f for f in _REQUIRED_LOG_FIELDS if f in content}
         # At minimum, the logging processor chain should reference these concepts
-        assert len(fields_found) >= 2, \
+        assert len(fields_found) >= 2, (
             f"Expected at least 2 of {_REQUIRED_LOG_FIELDS} in settings, found {fields_found}"
+        )
 
     def test_service_logging_includes_timestamp(self):
         """All service loggers include timestamp in output."""

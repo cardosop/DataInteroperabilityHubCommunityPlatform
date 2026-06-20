@@ -1,6 +1,7 @@
 """
 Asset operations for DataHub SDK.
 """
+
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
@@ -144,9 +145,7 @@ class AssetsAPI:
         # explicitly here and pass as ``content`` rather than
         # ``json``.
         canonical_bytes = canonical_body_bytes(body)
-        effective_key = idempotency_key or compose_idempotency_key(
-            tenant_uuid, canonical_bytes
-        )
+        effective_key = idempotency_key or compose_idempotency_key(tenant_uuid, canonical_bytes)
 
         response = await self.client.request(
             "POST",

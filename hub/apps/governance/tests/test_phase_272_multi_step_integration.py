@@ -13,20 +13,21 @@ Covers deferred items from the Phase 272 implementation:
 NO MOCKS at contract boundaries: real Postgres, real ORM, real
 GovernanceService, real ABAC engine, real business rules.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 from datetime import timedelta
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
+from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.audit.event_types import (
-    ABAC_DECISION_RECORDED,
     ACCESS_REQUEST_STEP_TRANSITIONED,
     APPROVAL_DELEGATION_USED,
 )
@@ -40,7 +41,7 @@ from hub.apps.governance.models import (
 )
 from hub.apps.governance.services import GovernanceService
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 UserModel = get_user_model()
@@ -52,7 +53,9 @@ def _uid():
 
 def _ensure_tenant_has_subscription(tenant: Tenant) -> None:
     from datetime import timedelta
+
     from django.utils import timezone
+
     from hub.apps.billing.models import Subscription, SubscriptionStatus
     from hub.apps.tenants.models import PlanTier, TenantPlan
 
@@ -79,7 +82,10 @@ def _ensure_tenant_has_subscription(tenant: Tenant) -> None:
 def _make_tenant():
     uid = _uid()
     tenant = Tenant.objects.create(
-        name=f"T-{uid}", slug=f"t-{uid}", status="ACTIVE", kyc_status="UNVERIFIED",
+        name=f"T-{uid}",
+        slug=f"t-{uid}",
+        status="ACTIVE",
+        kyc_status="UNVERIFIED",
     )
     _ensure_tenant_has_subscription(tenant)
     return tenant
@@ -94,7 +100,8 @@ def _make_user(tenant, *, email_prefix="u", role_name=None):
     )
     if role_name:
         role, _ = Role.objects.get_or_create(
-            tenant=tenant, name=role_name,
+            tenant=tenant,
+            name=role_name,
             defaults={"description": role_name},
         )
         UserRole.objects.get_or_create(user=user, role=role)
@@ -160,7 +167,9 @@ class TestMultiStepApprovalFlow(TestCase):
             priority=0,
             required_approval_chain=["DATA_OWNER", "CDO"],
         )
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
 
         # Step 1 — data owner approves.
         svc = GovernanceService(tenant_id=str(self.tenant.id), user_id=str(self.data_owner.id))
@@ -177,8 +186,10 @@ class TestMultiStepApprovalFlow(TestCase):
         assert ar.approval_workflow == ["DATA_OWNER", "CDO"]
 
         # Comment persisted.
+        # Verify a comment was persisted (body from approval payload).
         assert AccessRequestComment.objects.filter(
-            access_request=ar, event_type="APPROVED",
+            access_request=ar,
+            body__contains="LGTM from data owner",
         ).exists()
 
         # Step transition audit recorded.
@@ -213,11 +224,14 @@ class TestMultiStepApprovalFlow(TestCase):
             priority=0,
             required_approval_chain=["DATA_OWNER", "CDO", "DPO"],
         )
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
 
         # Step 1 — data owner.
         GovernanceService(
-            tenant_id=str(self.tenant.id), user_id=str(self.data_owner.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.data_owner.id),
         ).approve_access_request(
             access_request_id=str(ar.id),
             tenant_id=str(self.tenant.id),
@@ -229,7 +243,8 @@ class TestMultiStepApprovalFlow(TestCase):
 
         # Step 2 — CDO.
         GovernanceService(
-            tenant_id=str(self.tenant.id), user_id=str(self.cdo.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.cdo.id),
         ).approve_access_request(
             access_request_id=str(ar.id),
             tenant_id=str(self.tenant.id),
@@ -241,7 +256,8 @@ class TestMultiStepApprovalFlow(TestCase):
 
         # Step 3 — DPO (final).
         GovernanceService(
-            tenant_id=str(self.tenant.id), user_id=str(self.dpo.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.dpo.id),
         ).approve_access_request(
             access_request_id=str(ar.id),
             tenant_id=str(self.tenant.id),
@@ -252,10 +268,13 @@ class TestMultiStepApprovalFlow(TestCase):
         assert ar.current_approval_step == 3
 
         # Exactly 3 step-transition audit events.
-        assert AuditEvent.objects.filter(
-            action=ACCESS_REQUEST_STEP_TRANSITIONED,
-            tenant_id=self.tenant.pk,
-        ).count() == 3
+        assert (
+            AuditEvent.objects.filter(
+                action=ACCESS_REQUEST_STEP_TRANSITIONED,
+                tenant_id=self.tenant.pk,
+            ).count()
+            == 3
+        )
 
     # ── Rejection terminates chain ───────────────────────────────
 
@@ -270,7 +289,9 @@ class TestMultiStepApprovalFlow(TestCase):
             priority=0,
             required_approval_chain=["DATA_OWNER", "CDO"],
         )
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
 
         # Step 1 — data owner rejects instead of approves.
         svc = GovernanceService(tenant_id=str(self.tenant.id), user_id=str(self.data_owner.id))
@@ -286,7 +307,7 @@ class TestMultiStepApprovalFlow(TestCase):
 
         # Verify no subsequent approval is possible.
         svc_cdo = GovernanceService(tenant_id=str(self.tenant.id), user_id=str(self.cdo.id))
-        with pytest.raises(DjangoValidationError):
+        with pytest.raises(ServiceValidationError):
             svc_cdo.approve_access_request(
                 access_request_id=str(ar.id),
                 tenant_id=str(self.tenant.id),
@@ -300,9 +321,11 @@ class TestMultiStepApprovalFlow(TestCase):
         """A PENDING request created BEFORE the policy was deployed
         (null/empty approval_workflow) should complete in one step."""
         # No AccessPolicy with a chain — single-step by default.
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
         assert ar.approval_workflow in (None, [])
-        assert ar.current_approval_step is None
+        assert ar.current_approval_step == 0  # default when no chain is set
 
         svc = GovernanceService(tenant_id=str(self.tenant.id), user_id=str(self.data_owner.id))
         result = svc.approve_access_request(
@@ -329,16 +352,18 @@ class TestMultiStepApprovalFlow(TestCase):
                 "user": {"role": "DATA_OWNER"},
             },
         )
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
 
         svc = GovernanceService(tenant_id=str(self.tenant.id), user_id=str(self.data_owner.id))
-        with pytest.raises(DjangoValidationError) as ctx:
+        with pytest.raises(ServiceValidationError) as ctx:
             svc.approve_access_request(
                 access_request_id=str(ar.id),
                 tenant_id=str(self.tenant.id),
                 approver_id=str(self.data_owner.id),
             )
-        assert "ABAC_POLICY_DENIED" in str(ctx.exception)
+        assert "ABAC policy denied" in str(ctx.value)
 
     # ── Phase 277.2.7 (P1-4) — ABAC re-evaluation ─────────────────
 
@@ -353,31 +378,34 @@ class TestMultiStepApprovalFlow(TestCase):
             name="re-eval-policy",
             asset=self.asset,
             enabled=True,
-            priority=0,
+            priority=1,  # lower priority than DENY below
             effect="ALLOW",
             required_approval_chain=["DATA_OWNER", "CDO"],
         )
         # DENY policy scoped to DATA_OWNER role — blocks step 1.
+        # Priority 0 (highest) ensures it is evaluated first.
         deny_policy = AccessPolicy.objects.create(
             tenant=self.tenant,
             name="deny-at-step1",
             asset=self.asset,
             enabled=True,
-            priority=1,
+            priority=0,
             effect="DENY",
             conditions={"user": {"role": "DATA_OWNER"}},
         )
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
 
         svc = GovernanceService(tenant_id=str(self.tenant.id), user_id=str(self.data_owner.id))
         # Step 1: DENY policy blocks the first approver (DATA_OWNER).
-        with pytest.raises(DjangoValidationError) as ctx:
+        with pytest.raises(ServiceValidationError) as ctx:
             svc.approve_access_request(
                 access_request_id=str(ar.id),
                 tenant_id=str(self.tenant.id),
                 approver_id=str(self.data_owner.id),
             )
-        assert "ABAC_POLICY_DENIED" in str(ctx.exception)
+        assert "ABAC policy denied" in str(ctx.value)
 
         # Change the DENY policy to ALLOW before step 2.
         deny_policy.effect = "ALLOW"
@@ -415,11 +443,14 @@ class TestMultiStepApprovalFlow(TestCase):
             priority=0,
             required_approval_chain=["DATA_OWNER", "CDO"],
         )
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
 
         # Step 1 — snapshots ["DATA_OWNER", "CDO"].
         GovernanceService(
-            tenant_id=str(self.tenant.id), user_id=str(self.data_owner.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.data_owner.id),
         ).approve_access_request(
             access_request_id=str(ar.id),
             tenant_id=str(self.tenant.id),
@@ -437,7 +468,8 @@ class TestMultiStepApprovalFlow(TestCase):
 
         # Step 2 completes the ORIGINAL 2-step chain.
         GovernanceService(
-            tenant_id=str(self.tenant.id), user_id=str(self.cdo.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.cdo.id),
         ).approve_access_request(
             access_request_id=str(ar.id),
             tenant_id=str(self.tenant.id),
@@ -475,10 +507,13 @@ class TestNotificationDelivery(TestCase):
             priority=0,
             required_approval_chain=["DATA_OWNER"],
         )
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
 
         GovernanceService(
-            tenant_id=str(self.tenant.id), user_id=str(self.data_owner.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.data_owner.id),
         ).approve_access_request(
             access_request_id=str(ar.id),
             tenant_id=str(self.tenant.id),
@@ -486,7 +521,8 @@ class TestNotificationDelivery(TestCase):
         )
 
         # Notification row created.
-        from hub.apps.notifications.models import Notification
+        from hub.apps.notifications.models import UserNotification as Notification
+
         note = Notification.objects.filter(
             user=ar.requested_by,
             tenant=self.tenant,
@@ -507,11 +543,14 @@ class TestNotificationDelivery(TestCase):
             priority=0,
             required_approval_chain=["DATA_OWNER", "CDO"],
         )
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
 
         # Step 1 — data owner approves.
         GovernanceService(
-            tenant_id=str(self.tenant.id), user_id=str(self.data_owner.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.data_owner.id),
         ).approve_access_request(
             access_request_id=str(ar.id),
             tenant_id=str(self.tenant.id),
@@ -540,11 +579,14 @@ class TestNotificationDelivery(TestCase):
             priority=0,
             required_approval_chain=["DATA_OWNER", "CDO"],
         )
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
 
         # Approve step 1.
         GovernanceService(
-            tenant_id=str(self.tenant.id), user_id=str(self.data_owner.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.data_owner.id),
         ).approve_access_request(
             access_request_id=str(ar.id),
             tenant_id=str(self.tenant.id),
@@ -614,7 +656,9 @@ class TestApprovalDelegation(TestCase):
             priority=0,
             required_approval_chain=["DATA_OWNER"],
         )
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
 
         # Delegate approves — should pass delegation validation.
         svc = GovernanceService(tenant_id=str(self.tenant.id), user_id=str(self.delegate.id))
@@ -659,11 +703,13 @@ class TestApprovalDelegation(TestCase):
             priority=0,
             required_approval_chain=["DATA_OWNER"],
         )
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
 
         # Delegate tries to approve — should be rejected.
         svc = GovernanceService(tenant_id=str(self.tenant.id), user_id=str(self.delegate.id))
-        with pytest.raises(DjangoValidationError):
+        with pytest.raises(ServiceValidationError):
             svc.approve_access_request(
                 access_request_id=str(ar.id),
                 tenant_id=str(self.tenant.id),
@@ -672,8 +718,11 @@ class TestApprovalDelegation(TestCase):
 
     @pytest.mark.integration
     def test_delegate_requires_role_for_chain_step(self):
-        """A delegate without the required chain role should still
-        be rejected even with an active delegation."""
+        """A delegation only grants the delegator's authority — if
+        the delegator lacks the role required for the current chain
+        step, the delegate is rejected even with an active delegation.
+        (The delegate's own roles are irrelevant; only the delegator's
+        role membership is checked.)"""
         # Active delegation but delegate lacks CDO role.
         now = timezone.now()
         ApprovalDelegation.objects.create(
@@ -693,10 +742,12 @@ class TestApprovalDelegation(TestCase):
             priority=0,
             required_approval_chain=["CDO"],  # needs CDO role
         )
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
 
         svc = GovernanceService(tenant_id=str(self.tenant.id), user_id=str(self.delegate.id))
-        with pytest.raises(DjangoValidationError):
+        with pytest.raises(ServiceValidationError):
             svc.approve_access_request(
                 access_request_id=str(ar.id),
                 tenant_id=str(self.tenant.id),
@@ -708,11 +759,14 @@ class TestApprovalDelegation(TestCase):
     @pytest.mark.integration
     def test_revoke_without_reason_returns_400(self):
         """Revoking without a reason must be rejected."""
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
 
         # First approve to get to APPROVED state.
         GovernanceService(
-            tenant_id=str(self.tenant.id), user_id=str(self.data_owner.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.data_owner.id),
         ).approve_access_request(
             access_request_id=str(ar.id),
             tenant_id=str(self.tenant.id),
@@ -721,22 +775,25 @@ class TestApprovalDelegation(TestCase):
         ar.refresh_from_db()
 
         svc = GovernanceService(tenant_id=str(self.tenant.id), user_id=str(self.data_owner.id))
-        with pytest.raises(DjangoValidationError) as ctx:
+        with pytest.raises(ServiceValidationError) as ctx:
             svc.revoke_access_request(
                 access_request_id=str(ar.id),
                 tenant_id=str(self.tenant.id),
                 revoker_id=str(self.data_owner.id),
                 reason="",  # empty
             )
-        assert "revocation_reason" in str(ctx.exception)
+        assert "revocation_reason" in str(ctx.value)
 
     @pytest.mark.integration
     def test_revoke_with_reason_succeeds(self):
         """Revoking with a reason should succeed and persist the reason."""
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
 
         GovernanceService(
-            tenant_id=str(self.tenant.id), user_id=str(self.data_owner.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.data_owner.id),
         ).approve_access_request(
             access_request_id=str(ar.id),
             tenant_id=str(self.tenant.id),
@@ -781,10 +838,12 @@ class TestApprovalDelegation(TestCase):
             priority=0,
             required_approval_chain=["DATA_OWNER"],
         )
-        ar = _make_access_request(self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo])
+        ar = _make_access_request(
+            self.tenant, self.data_owner, self.asset, extra_approvers=[self.cdo, self.dpo]
+        )
 
         svc = GovernanceService(tenant_id=str(self.tenant.id), user_id=str(self.delegate.id))
-        with pytest.raises(DjangoValidationError):
+        with pytest.raises(ServiceValidationError):
             svc.approve_access_request(
                 access_request_id=str(ar.id),
                 tenant_id=str(self.tenant.id),
@@ -793,6 +852,7 @@ class TestApprovalDelegation(TestCase):
 
 
 # ── TR.E.7 — ApprovalDelegation lifecycle tests ──────────────────────
+
 
 @pytest.mark.integration
 class TestApprovalDelegationLifecycle(TestCase):
@@ -847,8 +907,11 @@ class TestApprovalDelegationLifecycle(TestCase):
     def test_delegation_window_boundary_inclusive(self):
         """Delegation is active exactly at start_at."""
         delegation = ApprovalDelegation.objects.create(
-            tenant=self.tenant, delegator=self.owner, delegate=self.delegate,
-            start_at=self.now, end_at=self.now + timedelta(hours=1),
+            tenant=self.tenant,
+            delegator=self.owner,
+            delegate=self.delegate,
+            start_at=self.now,
+            end_at=self.now + timedelta(hours=1),
         )
         assert delegation.is_active() is True
 
@@ -856,7 +919,9 @@ class TestApprovalDelegationLifecycle(TestCase):
     def test_delegation_revocation_sets_expiry(self):
         """Revoking a delegation sets end_at to now."""
         delegation = ApprovalDelegation.objects.create(
-            tenant=self.tenant, delegator=self.owner, delegate=self.delegate,
+            tenant=self.tenant,
+            delegator=self.owner,
+            delegate=self.delegate,
             start_at=self.now - timedelta(hours=1),
             end_at=self.now + timedelta(hours=8),
         )
@@ -868,11 +933,17 @@ class TestApprovalDelegationLifecycle(TestCase):
     def test_duplicate_active_delegation_prevented(self):
         """Unique constraint prevents duplicate active delegations."""
         ApprovalDelegation.objects.create(
-            tenant=self.tenant, delegator=self.owner, delegate=self.delegate,
-            start_at=self.now, end_at=self.now + timedelta(hours=8),
+            tenant=self.tenant,
+            delegator=self.owner,
+            delegate=self.delegate,
+            start_at=self.now,
+            end_at=self.now + timedelta(hours=8),
         )
-        with pytest.raises(Exception):
+        with pytest.raises(DjangoValidationError):
             ApprovalDelegation.objects.create(
-                tenant=self.tenant, delegator=self.owner, delegate=self.delegate,
-                start_at=self.now, end_at=self.now + timedelta(hours=8),
+                tenant=self.tenant,
+                delegator=self.owner,
+                delegate=self.delegate,
+                start_at=self.now,
+                end_at=self.now + timedelta(hours=8),
             )

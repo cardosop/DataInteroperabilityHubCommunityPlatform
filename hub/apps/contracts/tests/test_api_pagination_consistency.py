@@ -15,6 +15,7 @@ import json
 import uuid
 
 from rest_framework import status
+from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import (
@@ -27,7 +28,6 @@ from hub.apps.contracts.models import (
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import Role, User, UserRole, UserStatus
-from rest_framework.test import APIClient
 
 
 class APIPaginationConsistencyTest(ContractsAPITestBase):

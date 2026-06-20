@@ -28,13 +28,13 @@ Capability flag: ``lineage.change_notifications``.  When OFF, all
 endpoints return 404 so the surface is hidden completely
 (consistent with the F1/F2 pattern).
 """
+
 from __future__ import annotations
 
 from rest_framework import permissions, status, viewsets
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.response import Response
-
 from rest_framework.pagination import CursorPagination
+from rest_framework.response import Response
 
 from hub.apps.api.capabilities import is_capability_enabled
 from hub.apps.contracts.lineage_subscription_serializers import (
@@ -42,7 +42,6 @@ from hub.apps.contracts.lineage_subscription_serializers import (
     LineageSubscriptionSerializer,
 )
 from hub.apps.contracts.models import Contract, LineageSubscription
-
 
 PER_USER_SUBSCRIPTION_CAP = 100
 
@@ -79,19 +78,23 @@ class LineageSubscriptionPagination(CursorPagination):
             if raw is not None:
                 try:
                     return _positive_int(
-                        raw, strict=True, cutoff=self.max_page_size,
+                        raw,
+                        strict=True,
+                        cutoff=self.max_page_size,
                     )
                 except (KeyError, ValueError):
                     pass
         return self.page_size
 
     def get_paginated_response(self, data):
-        return Response({
-            "next_cursor": self.get_next_link(),
-            "previous_cursor": self.get_previous_link(),
-            "page_size": self.get_page_size(self.request),
-            "results": data,
-        })
+        return Response(
+            {
+                "next_cursor": self.get_next_link(),
+                "previous_cursor": self.get_previous_link(),
+                "page_size": self.get_page_size(self.request),
+                "results": data,
+            }
+        )
 
 
 class LineageSubscriptionViewSet(viewsets.ModelViewSet):
@@ -109,6 +112,7 @@ class LineageSubscriptionViewSet(viewsets.ModelViewSet):
         super().initial(request, *args, **kwargs)
         if not is_capability_enabled("lineage.change_notifications"):
             from rest_framework.exceptions import NotFound
+
             raise NotFound("lineage.change_notifications capability is disabled.")
 
     # ----- Queryset -----
@@ -118,8 +122,7 @@ class LineageSubscriptionViewSet(viewsets.ModelViewSet):
         # subscriptions even with a guessed id.
         user = self.request.user
         return (
-            LineageSubscription.objects
-            .filter(user=user)
+            LineageSubscription.objects.filter(user=user)
             .select_related("source_contract", "source_asset")
             .order_by("-created_at")
         )
@@ -146,8 +149,7 @@ class LineageSubscriptionViewSet(viewsets.ModelViewSet):
                 {
                     "code": "SUBSCRIPTION_CAP_EXCEEDED",
                     "detail": (
-                        f"Per-user subscription cap of "
-                        f"{PER_USER_SUBSCRIPTION_CAP} reached."
+                        f"Per-user subscription cap of {PER_USER_SUBSCRIPTION_CAP} reached."
                     ),
                     "cap": PER_USER_SUBSCRIPTION_CAP,
                 },
@@ -222,12 +224,12 @@ class LineageSubscriptionViewSet(viewsets.ModelViewSet):
             # to same-tenant for v1.)
             if str(contract.tenant_id) != str(user_tenant_id):
                 raise PermissionDenied(
-                    "Cross-tenant subscription sources are not "
-                    "permitted in F3 v1.",
+                    "Cross-tenant subscription sources are not permitted in F3 v1.",
                 )
 
         if source_asset_id:
             from hub.apps.assets.models import Asset
+
             try:
                 asset = Asset.objects.get(id=source_asset_id)
             except Asset.DoesNotExist:
@@ -236,6 +238,5 @@ class LineageSubscriptionViewSet(viewsets.ModelViewSet):
                 )
             if str(asset.tenant_id) != str(user_tenant_id):
                 raise PermissionDenied(
-                    "Cross-tenant subscription sources are not "
-                    "permitted in F3 v1.",
+                    "Cross-tenant subscription sources are not permitted in F3 v1.",
                 )

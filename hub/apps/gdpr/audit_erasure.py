@@ -13,7 +13,9 @@ Phase 2: rows where another actor logged the target's id in JSON keys —
 scrub only those id keys (and matching ``user_email`` when it equals the
 target's email).
 """
+
 from __future__ import annotations
+
 import logging
 import uuid
 from typing import Any
@@ -99,10 +101,7 @@ def _merge_detail_scrub(
     # audit-create time (``foo@example.com`` →
     # ``fo***@example.com``), so the exact-match guard alone never
     # fires for those rows and PII leaks through erasure.
-    if "user_email" in d and (
-        (user_email and str(d.get("user_email")) == user_email)
-        or ch2
-    ):
+    if "user_email" in d and ((user_email and str(d.get("user_email")) == user_email) or ch2):
         d["user_email"] = _PII_SENTINEL
         changed = True
 
@@ -114,10 +113,7 @@ def _merge_detail_scrub(
         if apply_pii_scrub:
             fd, ch5 = _redact_pii_keys_in_mapping(fd)
             changed |= ch5
-        if "user_email" in fd and (
-            (user_email and str(fd.get("user_email")) == user_email)
-            or ch4
-        ):
+        if "user_email" in fd and ((user_email and str(fd.get("user_email")) == user_email) or ch4):
             fd["user_email"] = _PII_SENTINEL
             changed = True
         fd_out = fd
@@ -169,11 +165,7 @@ def scrub_audit_events_for_gdpr_user_target(*, user) -> int:
         jq |= Q(**{f"details_json__{key}": uid_str})
         jq |= Q(**{f"full_details_json__{key}": uid_str})
 
-    qs_other = (
-        AuditEvent.all_objects.filter(jq)
-        .exclude(actor_user_id=user.id)
-        .distinct()
-    )
+    qs_other = AuditEvent.all_objects.filter(jq).exclude(actor_user_id=user.id).distinct()
     for event in qs_other.iterator(chunk_size=200):
         d, fd, changed = _merge_detail_scrub(
             event.details_json,

@@ -30,7 +30,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.assets.models import AssetStatus
 from hub.apps.assets.tests.factories import AssetFactory
 from hub.apps.contracts.models import (
     Contract,
@@ -53,9 +53,7 @@ from hub.apps.orchestration.workflows.marketplace_publication import (
 )
 from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.tenants.models import KYCStatus
-from tests.e2e.conftest import E2ETestBase
 from tests.e2e.workflow_e2e_base import WorkflowE2ETestBase
-from tests.factories import TenantFactory, UserFactory
 
 
 def _minimal_odcs_raw():
@@ -607,11 +605,12 @@ class TestAllDataProductOwnerJourneysThatUseWorkflowsE2E(WorkflowE2ETestBase):
         }
         for name, cls in expected_workflows.items():
             self.assertEqual(
-                cls.WORKFLOW_NAME, name,
+                cls.WORKFLOW_NAME,
+                name,
                 f"{cls.__name__}.WORKFLOW_NAME must be '{name}'",
             )
             self.assertTrue(
-                hasattr(cls, 'register_workflow'),
+                hasattr(cls, "register_workflow"),
                 f"{cls.__name__} must have register_workflow method",
             )
 
@@ -633,6 +632,7 @@ class TestAllDataEngineerJourneysThatUseWorkflowsE2E(WorkflowE2ETestBase):
         }
         for name, cls in expected_workflows.items():
             self.assertEqual(
-                cls.WORKFLOW_NAME, name,
+                cls.WORKFLOW_NAME,
+                name,
                 f"{cls.__name__}.WORKFLOW_NAME must be '{name}'",
             )

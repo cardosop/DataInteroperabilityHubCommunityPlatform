@@ -15,12 +15,13 @@ Fallback order (standardized):
 
 All multi-tenant list/detail views MUST filter by this tenant; see docs/TENANT_ISOLATION.md.
 """
-from typing import Optional, Tuple
+
+from typing import Optional
 
 from django.http import HttpRequest
 
 
-def get_request_tenant_id(request: HttpRequest) -> Optional[str]:
+def get_request_tenant_id(request: HttpRequest) -> str | None:
     """
     Get current tenant ID for the request (Phase 16 contract).
 
@@ -63,7 +64,7 @@ def get_request_tenant_id(request: HttpRequest) -> Optional[str]:
         db_user = User.objects.only("tenant_id").get(id=user.id)
         if db_user.tenant_id:
             return str(db_user.tenant_id)
-    except (User.DoesNotExist, Exception):
+    except User.DoesNotExist:
         pass
 
     # 4. user.tenant_id
@@ -77,7 +78,7 @@ def get_request_tenant_id(request: HttpRequest) -> Optional[str]:
     return None
 
 
-def get_request_tenant(request: HttpRequest) -> Tuple[Optional[str], Optional["Tenant"]]:
+def get_request_tenant(request: HttpRequest) -> tuple[str | None, Optional["Tenant"]]:
     """
     Get current tenant instance for the request (Phase 16 contract).
 
@@ -134,10 +135,9 @@ class tenant_context:
 
     def __enter__(self):
         from django.db import connection
+
         with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT current_setting('app.current_tenant_id', true)"
-            )
+            cursor.execute("SELECT current_setting('app.current_tenant_id', true)")
             row = cursor.fetchone()
             self._previous = row[0] if row and row[0] else None
             cursor.execute(
@@ -147,6 +147,7 @@ class tenant_context:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         from django.db import connection
+
         with connection.cursor() as cursor:
             if self._previous:
                 cursor.execute(
@@ -168,9 +169,7 @@ class tenant_context:
                 # current (possibly implicit) transaction ends, which
                 # matches the documented contract that this context
                 # manager is scoped to the caller's transaction.
-                cursor.execute(
-                    "SELECT set_config('app.current_tenant_id', NULL, true)"
-                )
+                cursor.execute("SELECT set_config('app.current_tenant_id', NULL, true)")
         return False  # do not suppress exceptions
 
 
@@ -195,5 +194,7 @@ def with_tenant_context(tenant_id):
         def wrapper(*args, **kwargs):
             with tenant_context(tenant_id):
                 return func(*args, **kwargs)
+
         return wrapper
+
     return decorator

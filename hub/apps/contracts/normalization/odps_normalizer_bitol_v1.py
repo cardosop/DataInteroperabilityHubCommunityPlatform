@@ -11,9 +11,11 @@ Key differences from pre-Bitol ODPS:
   ``authoritativeDefinitions``, and ``contractId`` fields
 - Schema URL: bitol-io.github.io/open-data-product-standard/v1.0.0
 """
+
 import re
+from typing import Any
+
 import structlog
-from typing import Dict, Any, List, Optional
 
 from hub.apps.contracts.normalization.odps_normalizer_base import (
     ODPSNormalizerBase,
@@ -63,9 +65,9 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
 
     def _map_version_specific_fields(
         self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
+        contract_data: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
         spec_version: str,
     ) -> None:
         """
@@ -98,8 +100,8 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
 
     @staticmethod
     def _audit_schema_url(
-        contract_data: Dict[str, Any],
-        warnings: List[str],
+        contract_data: dict[str, Any],
+        warnings: list[str],
     ) -> None:
         """
         Log a security event if the schema URL points to an unexpected
@@ -111,6 +113,7 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
             return
         try:
             from urllib.parse import urlparse
+
             parsed = urlparse(schema_url)
             host = (parsed.hostname or "").lower()
             if host and host != _EXPECTED_BITOL_DOMAIN:
@@ -121,6 +124,7 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
                         SecuritySeverity,
                         get_security_logger,
                     )
+
                     sec_logger = get_security_logger()
                     sec_logger.log_security_violation(
                         event_type=SecurityEventType.SECURITY_VIOLATION,
@@ -150,9 +154,9 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
 
     def _map_bitol_team(
         self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
+        contract_data: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
     ) -> None:
         """
         Map Bitol ODPS ``team`` object to HubContract info.owners + team.
@@ -177,18 +181,17 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
         from hub.apps.contracts.normalization.odcs_normalizer_base import (
             ODCSNormalizerBase,
         )
+
         parsed = ODCSNormalizerBase._parse_team_v31(team_raw)
 
         if not parsed:
-            warnings.append(
-                "Bitol ODPS team object has no valid members"
-            )
+            warnings.append("Bitol ODPS team object has no valid members")
             return
 
         # Populate info.owners
         owners = []
         for m in parsed:
-            owner: Dict[str, Any] = {}
+            owner: dict[str, Any] = {}
             if "name" in m:
                 owner["name"] = m["name"]
             if "email" in m:
@@ -207,9 +210,9 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
 
     def _map_output_ports(
         self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
+        contract_data: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
     ) -> None:
         """
         Phase 227 Wave 1 — port METADATA only.
@@ -246,15 +249,16 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
 
         if mapped_ports:
             x_odps = hub_contract.setdefault(
-                "extensions", {},
+                "extensions",
+                {},
             ).setdefault("x_odps", {})
             x_odps["output_ports"] = mapped_ports
 
     def _map_input_ports(
         self,
-        contract_data: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
+        contract_data: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
     ) -> None:
         """Bitol ``inputPorts`` METADATA only.
 
@@ -277,14 +281,16 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
 
         if mapped_ports:
             x_odps = hub_contract.setdefault(
-                "extensions", {},
+                "extensions",
+                {},
             ).setdefault("x_odps", {})
             x_odps["input_ports"] = mapped_ports
 
     @staticmethod
     def _get_ports(
-        contract_data: Dict[str, Any], port_key: str,
-    ) -> Optional[list]:
+        contract_data: dict[str, Any],
+        port_key: str,
+    ) -> list | None:
         """
         Extract ports from contract data.
 
@@ -301,9 +307,9 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
         return None
 
     @staticmethod
-    def _map_single_port(port: Dict[str, Any]) -> Dict[str, Any]:
+    def _map_single_port(port: dict[str, Any]) -> dict[str, Any]:
         """Map a single port dict to normalised form."""
-        mapped: Dict[str, Any] = {}
+        mapped: dict[str, Any] = {}
 
         # Core fields
         for key in ("name", "description", "version"):
@@ -334,8 +340,13 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
 
         # Preserve any extra fields
         known = {
-            "name", "description", "version", "contractId",
-            "customProperties", "tags", "authoritativeDefinitions",
+            "name",
+            "description",
+            "version",
+            "contractId",
+            "customProperties",
+            "tags",
+            "authoritativeDefinitions",
         }
         for k, v in port.items():
             if k not in known and k not in mapped:

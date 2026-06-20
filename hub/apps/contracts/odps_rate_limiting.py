@@ -11,9 +11,10 @@ Rate limiting is enforced at three levels:
 
 Uses sliding window algorithm with Redis sorted sets for accurate rate limiting.
 """
+
 import time
-from typing import Optional, Tuple, Dict, Any
-from datetime import datetime, timedelta
+from typing import Any
+
 import structlog
 
 # Import ODPSRefResolutionError from the error hierarchy
@@ -22,6 +23,7 @@ from hub.apps.observability.otel_metrics import odps_rate_limit_violations_total
 
 try:
     import redis
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
@@ -31,8 +33,8 @@ logger = structlog.get_logger(__name__)
 
 # Rate limit constants
 RATE_LIMIT_PER_TENANT = 100  # requests per hour
-RATE_LIMIT_PER_USER = 50     # requests per hour
-RATE_LIMIT_GLOBAL = 1000     # requests per hour
+RATE_LIMIT_PER_USER = 50  # requests per hour
+RATE_LIMIT_GLOBAL = 1000  # requests per hour
 
 # Time window: 1 hour in seconds
 RATE_LIMIT_WINDOW = 3600  # 1 hour
@@ -44,10 +46,10 @@ REDIS_KEY_PREFIX_GLOBAL = "odps_ref_rate_limit:global"
 
 
 def generate_rate_limit_key(
-    tenant_id: Optional[str] = None,
-    user_id: Optional[str] = None,
+    tenant_id: str | None = None,
+    user_id: str | None = None,
     level: str = "tenant",
-    timestamp: Optional[int] = None,
+    timestamp: int | None = None,
 ) -> str:
     """
     Generate Redis key for ODPS $ref rate limiting.
@@ -102,7 +104,9 @@ def generate_rate_limit_key(
             raise ValueError("user_id is required for user-level rate limiting")
         return f"{REDIS_KEY_PREFIX_USER}:{tenant_id}:{user_id}:{current_hour}"
     else:
-        raise ValueError(f"Invalid rate limit level: {level}. Must be 'tenant', 'user', or 'global'")
+        raise ValueError(
+            f"Invalid rate limit level: {level}. Must be 'tenant', 'user', or 'global'"
+        )
 
 
 def get_rate_limit(level: str) -> int:
@@ -129,10 +133,8 @@ def get_rate_limit(level: str) -> int:
 
 
 def check_rate_limit(
-    tenant_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    redis_client: Optional[Any] = None
-) -> Tuple[bool, Optional[ODPSRefResolutionError]]:
+    tenant_id: str | None = None, user_id: str | None = None, redis_client: Any | None = None
+) -> tuple[bool, ODPSRefResolutionError | None]:
     """
     Check if ODPS $ref resolution request is within rate limits.
 
@@ -180,8 +182,11 @@ def check_rate_limit(
     if redis_client is None:
         try:
             from django.conf import settings
-            redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
-            redis_client = redis.from_url(redis_url, decode_responses=False, socket_connect_timeout=0.1)
+
+            redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
+            redis_client = redis.from_url(
+                redis_url, decode_responses=False, socket_connect_timeout=0.1
+            )
         except Exception as e:
             logger.warning("rate_limit_redis_connection_error", error=str(e))
             # Fail open if Redis is unavailable
@@ -202,28 +207,33 @@ def check_rate_limit(
             error = ODPSRefResolutionError(
                 message=f"Global ODPS $ref resolution rate limit exceeded: {count}/{global_limit} requests per hour. Please retry after {retry_after_minutes} minute(s) (at {reset_time})",
                 retry_after=reset_time,
-                error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED
+                error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED,
             )
             logger.warning(
                 "odps_ref_rate_limit_exceeded",
                 level="global",
                 count=count,
                 limit=global_limit,
-                reset_time=reset_time
+                reset_time=reset_time,
             )
             # Track rate limit violation metrics
             try:
-                odps_rate_limit_violations_total.labels(level="global", tenant_id=tenant_id or 'unknown', user_id='').inc()
+                odps_rate_limit_violations_total.labels(
+                    level="global", tenant_id=tenant_id or "unknown", user_id=""
+                ).inc()
             except Exception as metrics_err:
                 logger.debug(
                     "odps_rate_limit_metrics_failed",
-                    extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err), "level": "global"},
+                    extra={
+                        "error_type": type(metrics_err).__name__,
+                        "error": str(metrics_err),
+                        "level": "global",
+                    },
                 )
             return False, error
     except Exception as e:
         logger.warning("rate_limit_check_error", level="global", error=str(e))
         # Fail open on errors
-        pass
 
     # Check tenant limit (skip when no tenant context, e.g. ref resolution in CI/CLI)
     if has_tenant and tenant_id:
@@ -240,7 +250,7 @@ def check_rate_limit(
                     message=f"Tenant ODPS $ref resolution rate limit exceeded: {count}/{tenant_limit} requests per hour. Please retry after {retry_after_minutes} minute(s) (at {reset_time})",
                     retry_after=reset_time,
                     error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED,
-                    tenant_id=tenant_id
+                    tenant_id=tenant_id,
                 )
                 logger.warning(
                     "odps_ref_rate_limit_exceeded",
@@ -248,21 +258,26 @@ def check_rate_limit(
                     tenant_id=tenant_id,
                     count=count,
                     limit=tenant_limit,
-                    reset_time=reset_time
+                    reset_time=reset_time,
                 )
                 # Track rate limit violation metrics
                 try:
-                    odps_rate_limit_violations_total.labels(level="tenant", tenant_id=tenant_id, user_id='').inc()
+                    odps_rate_limit_violations_total.labels(
+                        level="tenant", tenant_id=tenant_id, user_id=""
+                    ).inc()
                 except Exception as metrics_err:
                     logger.debug(
                         "odps_rate_limit_metrics_failed",
-                        extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err), "level": "tenant"},
+                        extra={
+                            "error_type": type(metrics_err).__name__,
+                            "error": str(metrics_err),
+                            "level": "tenant",
+                        },
                     )
                 return False, error
         except Exception as e:
             logger.warning("rate_limit_check_error", level="tenant", error=str(e))
             # Fail open on errors
-            pass
 
     # Check user limit
     if has_tenant and tenant_id and user_id:
@@ -280,7 +295,7 @@ def check_rate_limit(
                     retry_after=reset_time,
                     error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED,
                     tenant_id=tenant_id,
-                    user_id=user_id
+                    user_id=user_id,
                 )
                 logger.warning(
                     "odps_ref_rate_limit_exceeded",
@@ -289,32 +304,34 @@ def check_rate_limit(
                     user_id=user_id,
                     count=count,
                     limit=user_limit,
-                    reset_time=reset_time
+                    reset_time=reset_time,
                 )
                 # Track rate limit violation metrics
                 try:
-                    odps_rate_limit_violations_total.labels(level="user", tenant_id=tenant_id, user_id=user_id or '').inc()
+                    odps_rate_limit_violations_total.labels(
+                        level="user", tenant_id=tenant_id, user_id=user_id or ""
+                    ).inc()
                 except Exception as metrics_err:
                     logger.debug(
                         "odps_rate_limit_metrics_failed",
-                        extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err), "level": "user"},
+                        extra={
+                            "error_type": type(metrics_err).__name__,
+                            "error": str(metrics_err),
+                            "level": "user",
+                        },
                     )
                 return False, error
         except Exception as e:
             logger.warning("rate_limit_check_error", level="user", error=str(e))
             # Fail open on errors
-            pass
 
     # All checks passed
     return True, None
 
 
 def _check_single_limit(
-    redis_client: Any,
-    key: str,
-    limit: int,
-    current_time: float
-) -> Tuple[bool, int, int]:
+    redis_client: Any, key: str, limit: int, current_time: float
+) -> tuple[bool, int, int]:
     """
     Check a single rate limit using sliding window algorithm.
 
@@ -380,10 +397,8 @@ def _check_single_limit(
 
 
 def get_rate_limit_info(
-    tenant_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    redis_client: Optional[Any] = None
-) -> Dict[str, Any]:
+    tenant_id: str | None = None, user_id: str | None = None, redis_client: Any | None = None
+) -> dict[str, Any]:
     """
     Get rate limit information without incrementing counters.
 
@@ -407,10 +422,16 @@ def get_rate_limit_info(
     if redis_client is None:
         try:
             from django.conf import settings
-            redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
-            redis_client = redis.from_url(redis_url, decode_responses=False, socket_connect_timeout=0.1)
+
+            redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
+            redis_client = redis.from_url(
+                redis_url, decode_responses=False, socket_connect_timeout=0.1
+            )
         except Exception as e:
-            logger.warning("rate_limit_info_redis_connection_error", extra={"error_type": type(e).__name__, "error": str(e)})
+            logger.warning(
+                "rate_limit_info_redis_connection_error",
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
             return {}
 
     current_time = time.time()
@@ -423,7 +444,9 @@ def get_rate_limit_info(
         global_info = _get_limit_info(redis_client, global_key, global_limit, current_time)
         result["global"] = global_info
     except Exception as e:
-        logger.debug("rate_limit_info_global_failed", extra={"error_type": type(e).__name__, "error": str(e)})
+        logger.debug(
+            "rate_limit_info_global_failed", extra={"error_type": type(e).__name__, "error": str(e)}
+        )
 
     # Get tenant limit info
     if tenant_id:
@@ -433,7 +456,10 @@ def get_rate_limit_info(
             tenant_info = _get_limit_info(redis_client, tenant_key, tenant_limit, current_time)
             result["tenant"] = tenant_info
         except Exception as e:
-            logger.debug("rate_limit_info_tenant_failed", extra={"error_type": type(e).__name__, "error": str(e)})
+            logger.debug(
+                "rate_limit_info_tenant_failed",
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
     # Get user limit info
     if tenant_id and user_id:
@@ -443,17 +469,15 @@ def get_rate_limit_info(
             user_info = _get_limit_info(redis_client, user_key, user_limit, current_time)
             result["user"] = user_info
         except Exception as e:
-            logger.debug("rate_limit_info_user_failed", extra={"error_type": type(e).__name__, "error": str(e)})
+            logger.debug(
+                "rate_limit_info_user_failed",
+                extra={"error_type": type(e).__name__, "error": str(e)},
+            )
 
     return result
 
 
-def _get_limit_info(
-    redis_client: Any,
-    key: str,
-    limit: int,
-    current_time: float
-) -> Dict[str, int]:
+def _get_limit_info(redis_client: Any, key: str, limit: int, current_time: float) -> dict[str, int]:
     """
     Get rate limit information for a single limit.
 
@@ -487,14 +511,16 @@ def _get_limit_info(
             "count": count,
             "limit": limit,
             "remaining": max(0, limit - count),
-            "reset_time": reset_time
+            "reset_time": reset_time,
         }
     except Exception as e:
-        logger.debug("rate_limit_get_limit_info_failed", extra={"error_type": type(e).__name__, "error": str(e), "key": key})
+        logger.debug(
+            "rate_limit_get_limit_info_failed",
+            extra={"error_type": type(e).__name__, "error": str(e), "key": key},
+        )
         return {
             "count": 0,
             "limit": limit,
             "remaining": limit,
-            "reset_time": int(current_time + RATE_LIMIT_WINDOW)
+            "reset_time": int(current_time + RATE_LIMIT_WINDOW),
         }
-

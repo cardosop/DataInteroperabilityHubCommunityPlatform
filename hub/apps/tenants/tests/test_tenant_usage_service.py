@@ -7,6 +7,7 @@ calculate_usage_summary() is tested indirectly via the API endpoint
 tests (test_me_usage.py) due to complex period-boundary get_or_create
 logic in the service.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -32,7 +33,8 @@ class GetCurrentUsageTests(TestCase):
             status=TenantStatus.ACTIVE,
         )
         self.service = TenantUsageService(
-            tenant_id=str(self.tenant.id), user_id=None,
+            tenant_id=str(self.tenant.id),
+            user_id=None,
         )
 
     def test_returns_dictionary_with_correct_keys(self):
@@ -52,7 +54,8 @@ class GetCurrentUsageTests(TestCase):
         for key, val in result.items():
             if key.endswith("_usage"):
                 self.assertIsInstance(
-                    val, int,
+                    val,
+                    int,
                     f"Usage key '{key}' should be int, got {type(val).__name__}",
                 )
 

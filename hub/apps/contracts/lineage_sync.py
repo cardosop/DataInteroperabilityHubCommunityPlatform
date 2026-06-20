@@ -41,13 +41,13 @@ The handler is registered via ``apps.py:ContractsConfig.ready()`` so it
 auto-attaches when Django boots; the wiring is independent of any
 import-order concern.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Iterable
-
-from django.db import transaction
-from django.db.models.functions import Now
+from collections.abc import Callable as _Callable
+from collections.abc import Iterable
+from typing import Any
 
 # Module-level import so tests can patch
 # ``hub.apps.contracts.lineage_sync.send_openlineage_event_async`` at the
@@ -55,14 +55,15 @@ from django.db.models.functions import Now
 # integrations app is not installed (vendored deployments), the helper
 # resolves to ``None`` and ``_emit_outbound_openlineage_events`` becomes
 # a no-op.
-from typing import Optional as _Optional, Callable as _Callable
+from django.db import transaction
+from django.db.models.functions import Now
 
-send_openlineage_event_async: _Optional[_Callable[..., object]] = None
+send_openlineage_event_async: _Callable[..., object] | None = None
 try:
     from hub.apps.integrations.openlineage.tasks import (
         send_openlineage_event_async,
     )
-except Exception:  # noqa: BLE001 — integrations app is optional at import.
+except Exception:
     pass  # typed as Optional above; stays None when import fails
 
 logger = logging.getLogger(__name__)
@@ -96,14 +97,14 @@ def record_edge_write(*, operation: str, tenant_id: str | None = None) -> None:
         from hub.apps.observability.metrics import (
             lineage_edge_writes_total,
         )
-    except Exception:  # noqa: BLE001 — metric module optional at import time
+    except Exception:
         return
     try:
         labels: dict[str, str] = {"operation": operation}
         if tenant_id:
             labels["tenant_id"] = str(tenant_id)
         lineage_edge_writes_total.labels(**labels).inc()
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:
         logger.debug(
             "lineage_edge_write_metric_emit_failed",
             extra={"operation": operation, "tenant_id": tenant_id},
@@ -283,7 +284,7 @@ def _emit_edge_audit_events(
             LINEAGE_EDGE_DELETED,
         )
         from hub.apps.audit.utils import create_audit_event
-    except Exception:  # noqa: BLE001 — audit module optional at import time.
+    except Exception:
         return
 
     tenant = getattr(contract, "tenant", None)
@@ -299,7 +300,7 @@ def _emit_edge_audit_events(
                 resource_id=str(edge_id),
                 details={"contract_id": contract_id, "via": "lineage_sync"},
             )
-        except Exception as exc:  # noqa: BLE001 — best-effort
+        except Exception as exc:
             logger.warning(
                 "lineage_edge_created_audit_failed",
                 extra={"edge_id": str(edge_id), "error": str(exc)},
@@ -315,7 +316,7 @@ def _emit_edge_audit_events(
                 resource_id=str(row.pk) if hasattr(row, "pk") else None,
                 details={"contract_id": contract_id, "via": "lineage_sync"},
             )
-        except Exception as exc:  # noqa: BLE001 — best-effort
+        except Exception as exc:
             logger.warning(
                 "lineage_edge_deleted_audit_failed",
                 extra={
@@ -375,7 +376,7 @@ def _emit_outbound_openlineage_events(
     # Capability-flag check — no dispatch when OFF.
     try:
         from hub.apps.api.capabilities import is_capability_enabled
-    except Exception:  # noqa: BLE001 — capabilities module optional at import.
+    except Exception:
         return
     if not is_capability_enabled("lineage.openlineage_export"):
         return
@@ -388,7 +389,7 @@ def _emit_outbound_openlineage_events(
         from hub.apps.integrations.openlineage.translator import (
             meshant_edge_to_openlineage,
         )
-    except Exception:  # noqa: BLE001 — translator/model optional at import.
+    except Exception:
         return
 
     producer = getattr(
@@ -402,7 +403,7 @@ def _emit_outbound_openlineage_events(
     def _dispatch(edge_dict: dict) -> None:
         try:
             event = meshant_edge_to_openlineage(edge_dict, producer=producer)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "openlineage_translate_failed",
                 extra={
@@ -425,7 +426,7 @@ def _emit_outbound_openlineage_events(
                 target_url=target_url,
                 tenant_id=tenant_id,
             )
-        except Exception as exc:  # noqa: BLE001 — fail-soft per contract.
+        except Exception as exc:
             logger.warning(
                 "openlineage_dispatch_failed",
                 extra={
@@ -465,16 +466,8 @@ def _lineage_edge_to_dict(row: Any) -> dict:
         "edge_type": getattr(row, "edge_type", "") or "reference",
         "transformation_ref": getattr(row, "transformation_ref", "") or "",
         "job_ref": getattr(row, "job_ref", "") or "",
-        "valid_from": (
-            row.valid_from.isoformat()
-            if getattr(row, "valid_from", None)
-            else None
-        ),
-        "valid_to": (
-            row.valid_to.isoformat()
-            if getattr(row, "valid_to", None)
-            else None
-        ),
+        "valid_from": (row.valid_from.isoformat() if getattr(row, "valid_from", None) else None),
+        "valid_to": (row.valid_to.isoformat() if getattr(row, "valid_to", None) else None),
     }
 
 
@@ -492,7 +485,9 @@ def _sync_contract_edges(contract: Any) -> None:
     to_remove = [current_map[k] for k in to_remove_keys]
 
     add_count, remove_count = _apply_diff(
-        contract, to_add=to_add, to_remove=to_remove,
+        contract,
+        to_add=to_add,
+        to_remove=to_remove,
     )
 
     tenant_id = str(getattr(contract, "tenant_id", "")) or None
@@ -549,15 +544,15 @@ def register_signals() -> None:
 
 
 __all__ = [
-    "on_contract_post_save",
-    "record_edge_write",
-    "register_signals",
-    "send_openlineage_event_async",
     "_apply_diff",
-    "_desired_edge_set",
     "_current_edge_set",
+    "_desired_edge_set",
     "_emit_edge_audit_events",
     "_emit_outbound_openlineage_events",
     "_lineage_edge_to_dict",
     "_sync_contract_edges",
+    "on_contract_post_save",
+    "record_edge_write",
+    "register_signals",
+    "send_openlineage_event_async",
 ]

@@ -12,33 +12,33 @@ Features:
 - Stores request/response in Redis if new key
 - Handles concurrent requests with same key (lock mechanism)
 """
+
 import json
 import time
-from typing import Callable, Optional
+from collections.abc import Callable
 
-import structlog
 import redis
+import structlog
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
 from .idempotency_utils import (
-    validate_idempotency_key,
-    normalize_idempotency_key,
-    get_redis_client,
+    IdempotencyKeyFormatError,
+    acquire_lock,
     build_idempotency_key,
     build_lock_key,
-    hash_request_body,
-    serialize_response,
-    deserialize_response,
-    store_idempotency_record,
-    get_idempotency_record,
     check_idempotency_key_expired,
-    acquire_lock,
-    release_lock,
-    get_idempotency_ttl,
-    should_process_idempotency,
+    deserialize_response,
     get_endpoint_pattern,
-    IdempotencyKeyFormatError,
+    get_idempotency_record,
+    get_idempotency_ttl,
+    get_redis_client,
+    hash_request_body,
+    normalize_idempotency_key,
+    release_lock,
+    serialize_response,
+    should_process_idempotency,
+    store_idempotency_record,
 )
 
 logger = structlog.get_logger(__name__)
@@ -67,7 +67,7 @@ class IdempotencyMiddleware(MiddlewareMixin):
         self._redis_client = None
 
     @property
-    def redis_client(self) -> Optional[redis.Redis]:
+    def redis_client(self) -> redis.Redis | None:
         """
         Get Redis client with lazy initialization.
 
@@ -81,12 +81,12 @@ class IdempotencyMiddleware(MiddlewareMixin):
                 logger.warning(
                     "idempotency_redis_unavailable",
                     error=str(e),
-                    message="Idempotency middleware will fail open"
+                    message="Idempotency middleware will fail open",
                 )
                 return None
         return self._redis_client
 
-    def process_request(self, request: HttpRequest) -> Optional[HttpResponse]:
+    def process_request(self, request: HttpRequest) -> HttpResponse | None:
         """
         Process request for idempotency.
 
@@ -101,7 +101,7 @@ class IdempotencyMiddleware(MiddlewareMixin):
             return None
 
         # Get idempotency key from header
-        idempotency_key = request.headers.get('Idempotency-Key')
+        idempotency_key = request.headers.get("Idempotency-Key")
         if not idempotency_key:
             return None
 
@@ -109,20 +109,16 @@ class IdempotencyMiddleware(MiddlewareMixin):
         try:
             normalized_key = normalize_idempotency_key(idempotency_key)
         except IdempotencyKeyFormatError as e:
-            logger.warning(
-                "idempotency_key_invalid",
-                key=idempotency_key,
-                error=str(e)
-            )
+            logger.warning("idempotency_key_invalid", key=idempotency_key, error=str(e))
             return JsonResponse(
                 {
-                    'error': {
-                        'code': 'INVALID_IDEMPOTENCY_KEY',
-                        'message': str(e),
-                        'http_status': 400
+                    "error": {
+                        "code": "INVALID_IDEMPOTENCY_KEY",
+                        "message": str(e),
+                        "http_status": 400,
                     }
                 },
-                status=400
+                status=400,
             )
 
         # Get Redis client
@@ -132,21 +128,18 @@ class IdempotencyMiddleware(MiddlewareMixin):
             logger.warning(
                 "idempotency_redis_unavailable",
                 error="Failed to connect to Redis",
-                message="Idempotency middleware will fail open - processing request without idempotency check"
+                message="Idempotency middleware will fail open - processing request without idempotency check",
             )
             return None
 
         # Build Redis keys
         tenant_id = None
-        if hasattr(request, 'tenant') and request.tenant:
+        if hasattr(request, "tenant") and request.tenant:
             tenant_id = str(request.tenant.id)
 
         endpoint = get_endpoint_pattern(request.path)
         redis_key = build_idempotency_key(
-            normalized_key,
-            endpoint,
-            request.method,
-            tenant_id=tenant_id
+            normalized_key, endpoint, request.method, tenant_id=tenant_id
         )
         lock_key = build_lock_key(redis_key)
 
@@ -159,7 +152,7 @@ class IdempotencyMiddleware(MiddlewareMixin):
                 "idempotency_redis_error",
                 error=str(e),
                 redis_key=redis_key,
-                message="Redis operation failed - processing request without idempotency check"
+                message="Redis operation failed - processing request without idempotency check",
             )
             return None
 
@@ -172,21 +165,21 @@ class IdempotencyMiddleware(MiddlewareMixin):
                         "idempotency_key_expired",
                         idempotency_key=normalized_key,
                         endpoint=endpoint,
-                        method=request.method
+                        method=request.method,
                     )
                     return JsonResponse(
                         {
-                            'error': {
-                                'code': 'IDEMPOTENCY_KEY_EXPIRED',
-                                'message': (
-                                    'Idempotency key has expired. '
-                                    'The cached response is no longer available. '
-                                    'Use a new idempotency key to retry the request.'
+                            "error": {
+                                "code": "IDEMPOTENCY_KEY_EXPIRED",
+                                "message": (
+                                    "Idempotency key has expired. "
+                                    "The cached response is no longer available. "
+                                    "Use a new idempotency key to retry the request."
                                 ),
-                                'http_status': 410
+                                "http_status": 410,
                             }
                         },
-                        status=410
+                        status=410,
                     )
             except redis.RedisError as e:
                 # Redis operation failed - fail open
@@ -194,7 +187,7 @@ class IdempotencyMiddleware(MiddlewareMixin):
                     "idempotency_redis_error",
                     error=str(e),
                     redis_key=redis_key,
-                    message="Redis TTL check failed - processing request without idempotency check"
+                    message="Redis TTL check failed - processing request without idempotency check",
                 )
                 # Continue processing as new request
 
@@ -202,27 +195,27 @@ class IdempotencyMiddleware(MiddlewareMixin):
             # Verify request body matches (idempotency key + same body = same response)
             request_hash = hash_request_body(self._get_request_body(request))
 
-            if record.get('request_hash') == request_hash:
+            if record.get("request_hash") == request_hash:
                 # Return cached response
                 logger.info(
                     "idempotency_cache_hit",
                     idempotency_key=normalized_key,
                     endpoint=endpoint,
-                    method=request.method
+                    method=request.method,
                 )
 
-                cached_response = record.get('response', {})
+                cached_response = record.get("response", {})
                 status_code, body, headers = deserialize_response(cached_response)
 
                 response = JsonResponse(body, status=status_code)
 
                 # Add idempotency headers
-                response['Idempotency-Key'] = normalized_key
-                response['Idempotency-Replayed'] = 'true'
+                response["Idempotency-Key"] = normalized_key
+                response["Idempotency-Replayed"] = "true"
 
                 # Add cached headers
                 for header_name, header_value in headers.items():
-                    if header_name.lower() not in ('content-type', 'content-length'):
+                    if header_name.lower() not in ("content-type", "content-length"):
                         response[header_name] = header_value
 
                 return response
@@ -233,23 +226,23 @@ class IdempotencyMiddleware(MiddlewareMixin):
                     idempotency_key=normalized_key,
                     endpoint=endpoint,
                     method=request.method,
-                    message="Request body does not match cached request"
+                    message="Request body does not match cached request",
                 )
                 response = JsonResponse(
                     {
-                        'error': {
-                            'code': 'IDEMPOTENCY_CONFLICT',
-                            'message': (
-                                'Idempotency key already used with different request body. '
-                                'Use a different key or ensure request body matches.'
+                        "error": {
+                            "code": "IDEMPOTENCY_CONFLICT",
+                            "message": (
+                                "Idempotency key already used with different request body. "
+                                "Use a different key or ensure request body matches."
                             ),
-                            'http_status': 409
+                            "http_status": 409,
                         }
                     },
-                    status=409
+                    status=409,
                 )
                 # Add Idempotency-Key header even for conflict errors
-                response['Idempotency-Key'] = normalized_key
+                response["Idempotency-Key"] = normalized_key
                 return response
 
         # No existing record - acquire lock for concurrent requests
@@ -257,11 +250,7 @@ class IdempotencyMiddleware(MiddlewareMixin):
 
         if not lock_acquired:
             # Another request is processing - wait and check again
-            logger.info(
-                "idempotency_lock_wait",
-                idempotency_key=normalized_key,
-                endpoint=endpoint
-            )
+            logger.info("idempotency_lock_wait", idempotency_key=normalized_key, endpoint=endpoint)
 
             # Wait a bit and check again
             time.sleep(0.5)
@@ -269,12 +258,12 @@ class IdempotencyMiddleware(MiddlewareMixin):
 
             if record:
                 # Other request completed - return cached response
-                cached_response = record.get('response', {})
+                cached_response = record.get("response", {})
                 status_code, body, headers = deserialize_response(cached_response)
 
                 response = JsonResponse(body, status=status_code)
-                response['Idempotency-Key'] = normalized_key
-                response['Idempotency-Replayed'] = 'true'
+                response["Idempotency-Key"] = normalized_key
+                response["Idempotency-Replayed"] = "true"
 
                 return response
 
@@ -286,11 +275,7 @@ class IdempotencyMiddleware(MiddlewareMixin):
         # Process request normally
         return None
 
-    def process_response(
-        self,
-        request: HttpRequest,
-        response: HttpResponse
-    ) -> HttpResponse:
+    def process_response(self, request: HttpRequest, response: HttpResponse) -> HttpResponse:
         """
         Process response to cache idempotency result.
 
@@ -302,12 +287,12 @@ class IdempotencyMiddleware(MiddlewareMixin):
             HTTP response with idempotency headers
         """
         # Check if this request was processed for idempotency
-        if not hasattr(request, '_idempotency_redis_key'):
+        if not hasattr(request, "_idempotency_redis_key"):
             return response
 
         redis_key = request._idempotency_redis_key
         idempotency_key = request._idempotency_key
-        lock_key = getattr(request, '_idempotency_lock_key', None)
+        lock_key = getattr(request, "_idempotency_lock_key", None)
 
         # Get Redis client
         redis_client = self.redis_client
@@ -327,11 +312,7 @@ class IdempotencyMiddleware(MiddlewareMixin):
                 ttl = get_idempotency_ttl()
                 try:
                     store_idempotency_record(
-                        redis_client,
-                        redis_key,
-                        request_hash,
-                        response_data,
-                        ttl=ttl
+                        redis_client, redis_key, request_hash, response_data, ttl=ttl
                     )
 
                     logger.info(
@@ -340,7 +321,7 @@ class IdempotencyMiddleware(MiddlewareMixin):
                         endpoint=request.path,
                         method=request.method,
                         status_code=response.status_code,
-                        ttl=ttl
+                        ttl=ttl,
                     )
                 except redis.RedisError as e:
                     # Redis storage failed - log but don't fail request
@@ -349,11 +330,11 @@ class IdempotencyMiddleware(MiddlewareMixin):
                         error=str(e),
                         idempotency_key=idempotency_key,
                         redis_key=redis_key,
-                        message="Failed to store idempotency record - request processed but not cached"
+                        message="Failed to store idempotency record - request processed but not cached",
                     )
 
             # Add idempotency headers
-            response['Idempotency-Key'] = idempotency_key
+            response["Idempotency-Key"] = idempotency_key
 
         except Exception as e:
             logger.error(
@@ -361,7 +342,7 @@ class IdempotencyMiddleware(MiddlewareMixin):
                 error=str(e),
                 idempotency_key=idempotency_key,
                 redis_key=redis_key,
-                message="Unexpected error during idempotency storage"
+                message="Unexpected error during idempotency storage",
             )
             # Don't fail the request if caching fails
 
@@ -371,11 +352,7 @@ class IdempotencyMiddleware(MiddlewareMixin):
                 try:
                     release_lock(redis_client, lock_key)
                 except Exception as e:
-                    logger.error(
-                        "idempotency_lock_release_error",
-                        error=str(e),
-                        lock_key=lock_key
-                    )
+                    logger.error("idempotency_lock_release_error", error=str(e), lock_key=lock_key)
 
         return response
 
@@ -390,15 +367,14 @@ class IdempotencyMiddleware(MiddlewareMixin):
             Request body (dict, list, or string)
         """
         # Try to get parsed body from DRF (DRF Request objects have .data)
-        if hasattr(request, 'data'):
+        if hasattr(request, "data"):
             return request.data
 
         # Fallback to raw body (for plain Django requests)
-        if hasattr(request, 'body') and request.body:
+        if hasattr(request, "body") and request.body:
             try:
-                return json.loads(request.body.decode('utf-8'))
+                return json.loads(request.body.decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError):
-                return request.body.decode('utf-8', errors='replace')
+                return request.body.decode("utf-8", errors="replace")
 
         return None
-

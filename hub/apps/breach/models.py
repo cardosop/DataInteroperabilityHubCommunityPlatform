@@ -1,12 +1,12 @@
 """Phase 232.3 — personal data breach incidents and supervisory notifications."""
 
 from __future__ import annotations
-import uuid
 
-from django.utils import timezone
+import uuid
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class BreachIncidentStatus(models.TextChoices):

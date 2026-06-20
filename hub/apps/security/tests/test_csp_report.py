@@ -7,9 +7,9 @@ page scripts run) and always returns 204 No Content.
 """
 
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from django.test import TestCase, RequestFactory
+from django.test import RequestFactory, TestCase
 
 from hub.apps.security.views import csp_report_view
 

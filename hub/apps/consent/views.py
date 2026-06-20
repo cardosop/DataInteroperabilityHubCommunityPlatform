@@ -1,17 +1,16 @@
 """REST API for consent purposes, records, and DPO dashboard."""
 
 from __future__ import annotations
-import structlog
+
 from typing import cast
 
+import structlog
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
 
 from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.utils import create_audit_event
-from hub.apps.core.responses import handle_service_exception
-from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.consent.models import ConsentPurpose, ConsentRecord
 from hub.apps.consent.permissions import IsTenantAdmin, IsTenantAdminOrDPO, IsTenantScoped
 from hub.apps.consent.serializers import (
@@ -22,6 +21,8 @@ from hub.apps.consent.serializers import (
 )
 from hub.apps.consent.services import ConsentService, dashboard_summary
 from hub.apps.consent.throttles import ConsentDashboardThrottle, ConsentUserThrottle
+from hub.apps.core.responses import handle_service_exception
+from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.tenants.request_tenant import tenant_context
 from hub.apps.users.models import User, UserRole
 
@@ -78,9 +79,20 @@ class ConsentPurposeViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         # 277.B.086 — detect substance-changing fields and auto-bump version
         _SUBSTANCE_FIELDS = frozenset({"name", "description", "retention_days", "iab_purpose_id"})
-        before = {f: getattr(serializer.instance, f) for f in ("name", "description", "is_active", "retention_days", "iab_purpose_id", "version")}
+        before = {
+            f: getattr(serializer.instance, f)
+            for f in (
+                "name",
+                "description",
+                "is_active",
+                "retention_days",
+                "iab_purpose_id",
+                "version",
+            )
+        }
         substance_changed = any(
-            serializer.validated_data.get(f, getattr(serializer.instance, f)) != getattr(serializer.instance, f)
+            serializer.validated_data.get(f, getattr(serializer.instance, f))
+            != getattr(serializer.instance, f)
             for f in _SUBSTANCE_FIELDS
             if f in serializer.validated_data or hasattr(serializer.instance, f)
         )
@@ -97,7 +109,7 @@ class ConsentPurposeViewSet(viewsets.ModelViewSet):
         create_audit_event(
             resource_type="CONSENT_PURPOSE",
             action=audit_event_types.CONSENT_PURPOSE_CHANGED,
-            actor_user=cast(User, user),
+            actor_user=cast("User", user),
             tenant=tenant,
             resource_id=str(after.id),
             details={
@@ -126,7 +138,7 @@ class ConsentPurposeViewSet(viewsets.ModelViewSet):
         create_audit_event(
             resource_type="CONSENT_PURPOSE",
             action=audit_event_types.CONSENT_PURPOSE_CHANGED,
-            actor_user=cast(User, user),
+            actor_user=cast("User", user),
             tenant=inst.tenant,
             resource_id=str(inst.id),
             details={
@@ -177,27 +189,23 @@ class ConsentRecordViewSet(viewsets.ModelViewSet):
             return Response({"error": "Tenant required"}, status=status.HTTP_400_BAD_REQUEST)
         ser = ConsentRecordCreateSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        data = cast(dict[str, object], ser.validated_data)
-        purpose = ConsentPurpose.objects.filter(
-            id=data["purpose_id"], tenant=tenant
-        ).first()
+        data = cast("dict[str, object]", ser.validated_data)
+        purpose = ConsentPurpose.objects.filter(id=data["purpose_id"], tenant=tenant).first()
         if not purpose:
             return Response({"error": "Purpose not found"}, status=status.HTTP_404_NOT_FOUND)
         if not purpose.is_active:
             return Response({"error": "Purpose is not active"}, status=status.HTTP_400_BAD_REQUEST)
         payload_raw = data.get("payload")
-        payload: dict[str, object] = (
-            dict(payload_raw) if isinstance(payload_raw, dict) else {}
-        )
+        payload: dict[str, object] = dict(payload_raw) if isinstance(payload_raw, dict) else {}
         user = request.user
         assert user.is_authenticated
         try:
             record = ConsentService().grant(
                 tenant=tenant,
-                user=cast(User, user),
+                user=cast("User", user),
                 purpose=purpose,
                 payload=payload,
-                actor_user=cast(User, user),
+                actor_user=cast("User", user),
                 request=request,
             )
         except ServiceValidationError as e:
@@ -219,18 +227,16 @@ class ConsentRecordViewSet(viewsets.ModelViewSet):
             )
         ser = ConsentRecordUpdateSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        data = cast(dict[str, object], ser.validated_data)
+        data = cast("dict[str, object]", ser.validated_data)
         payload_raw = data.get("payload")
-        payload: dict[str, object] = (
-            dict(payload_raw) if isinstance(payload_raw, dict) else {}
-        )
+        payload: dict[str, object] = dict(payload_raw) if isinstance(payload_raw, dict) else {}
         try:
             updated = ConsentService().grant(
                 tenant=tenant,
                 user=record.user,
                 purpose=record.purpose,
                 payload=payload,
-                actor_user=cast(User, user),
+                actor_user=cast("User", user),
                 request=request,
             )
         except ServiceValidationError as e:
@@ -249,7 +255,7 @@ class ConsentRecordViewSet(viewsets.ModelViewSet):
             ConsentService().revoke(
                 tenant=tenant,
                 record=record,
-                actor_user=cast(User, user),
+                actor_user=cast("User", user),
                 request=request,
             )
         except ServiceValidationError as e:

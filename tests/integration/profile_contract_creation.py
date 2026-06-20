@@ -3,6 +3,7 @@ Profile contract creation to identify bottlenecks.
 
 Runs as a pytest test so database access is properly enabled during collection.
 """
+
 import time
 import traceback
 
@@ -79,9 +80,7 @@ def _run_profiling():
         "id": "orders",
         "info": {
             "title": "Customer Orders",
-            "owners": [
-                {"name": "Data Platform Team", "email": "dataplatform@example.com"}
-            ],
+            "owners": [{"name": "Data Platform Team", "email": "dataplatform@example.com"}],
             "tags": ["analytics", "sales"],
         },
         "schema": {

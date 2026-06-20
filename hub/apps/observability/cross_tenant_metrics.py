@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class _DeniedCounter(Protocol):
-    def labels(self, **kwargs) -> "_DeniedCounter": ...
+    def labels(self, **kwargs) -> _DeniedCounter: ...
 
     def inc(self) -> None: ...
 
@@ -29,6 +29,7 @@ try:
         ["endpoint", "reason"],
     )
 except Exception:  # pragma: no cover - defensive fallback
+
     class _CounterStub:
         def labels(self, **kwargs):  # noqa: ARG002
             return self
@@ -65,11 +66,7 @@ def cross_tenant_denied(
             False,
         ):
             actor_user = None
-        tenant = (
-            getattr(actor_user, "tenant", None)
-            if actor_user is not None
-            else None
-        )
+        tenant = getattr(actor_user, "tenant", None) if actor_user is not None else None
 
         create_audit_event(
             resource_type="AUTH",
@@ -106,8 +103,7 @@ def cross_tenant_denied(
         )
 
     logger.warning(
-        "cross_tenant_denied endpoint=%s reason=%s "
-        "requested_tenant_id=%s actual_tenant_id=%s",
+        "cross_tenant_denied endpoint=%s reason=%s requested_tenant_id=%s actual_tenant_id=%s",
         endpoint,
         reason,
         requested,

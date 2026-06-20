@@ -1,5 +1,5 @@
-
 import pytest
+
 from hub.apps.core.management.admin_db import (
     MANAGEMENT_DB_ALIAS_ENV,
     MANAGEMENT_DB_MODE_ENV,
@@ -16,9 +16,7 @@ def test_prepare_manage_argv_sets_admin_mode_for_migrate():
 
 @pytest.mark.unit
 def test_prepare_manage_argv_keeps_explicit_database():
-    argv, enable_admin = prepare_manage_argv(
-        ["manage.py", "migrate", "--database=default"]
-    )
+    argv, enable_admin = prepare_manage_argv(["manage.py", "migrate", "--database=default"])
     assert enable_admin is True
     assert argv.count("--database") == 0
     assert "--database=default" in argv

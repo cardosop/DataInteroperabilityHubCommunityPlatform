@@ -6,14 +6,14 @@ Real factories (not mocks) for creating test data for ScheduledIngestion models.
 NOTE: These factories are placeholders for future scheduled ingestion models.
 They will be updated when the scheduled ingestion models are created in Phase 5.
 """
-import uuid
-from typing import Optional, Dict, Any
+
+from typing import Any
+
 from django.contrib.auth import get_user_model
 from django.utils import timezone
-from datetime import timedelta
 
-from hub.apps.tenants.models import Tenant
 from hub.apps.assets.models import Asset
+from hub.apps.tenants.models import Tenant
 
 User = get_user_model()
 
@@ -21,10 +21,10 @@ User = get_user_model()
 class ScheduledIngestionFactory:
     """
     Factory for creating ScheduledIngestion instances.
-    
+
     NOTE: This is a placeholder factory. The actual ScheduledIngestion model
     will be created in Phase 5. This factory will be updated at that time.
-    
+
     Expected model structure (from design.md):
     - id: UUID
     - tenant: ForeignKey to Tenant
@@ -42,25 +42,25 @@ class ScheduledIngestionFactory:
     - created_at: DateTime
     - updated_at: DateTime
     """
-    
+
     @staticmethod
     def create_scheduled_ingestion(
         tenant: Tenant,
-        asset: Optional[Asset] = None,
-        name: Optional[str] = None,
+        asset: Asset | None = None,
+        name: str | None = None,
         source_type: str = "S3",
-        source_config: Optional[Dict[str, Any]] = None,
+        source_config: dict[str, Any] | None = None,
         schedule: str = "0 0 * * *",  # Daily at midnight
         file_pattern: str = "*.csv",
         status: str = "ACTIVE",
-        created_by: Optional[User] = None,
-        **kwargs
+        created_by: User | None = None,
+        **kwargs,
     ):
         """
         Create a ScheduledIngestion instance.
-        
+
         NOTE: This is a placeholder. Will be implemented when ScheduledIngestion model exists.
-        
+
         Args:
             tenant: Tenant instance
             asset: Asset instance (optional)
@@ -72,24 +72,23 @@ class ScheduledIngestionFactory:
             status: Status (ACTIVE, PAUSED, ERROR)
             created_by: User who created the scheduled ingestion
             **kwargs: Additional fields
-            
+
         Returns:
             ScheduledIngestion instance (when model exists)
         """
         # Placeholder - will be implemented when model exists
         raise NotImplementedError(
-            "ScheduledIngestion model not yet created. "
-            "This factory will be implemented in Phase 5."
+            "ScheduledIngestion model not yet created. This factory will be implemented in Phase 5."
         )
 
 
 class ScheduledIngestionRunFactory:
     """
     Factory for creating ScheduledIngestionRun instances.
-    
+
     NOTE: This is a placeholder factory. The actual ScheduledIngestionRun model
     will be created in Phase 5. This factory will be updated at that time.
-    
+
     Expected model structure (from design.md):
     - id: UUID
     - scheduled_ingestion: ForeignKey to ScheduledIngestion
@@ -103,26 +102,26 @@ class ScheduledIngestionRunFactory:
     - details_json: JSONField
     - error_message: TextField (optional)
     """
-    
+
     @staticmethod
     def create_scheduled_ingestion_run(
         scheduled_ingestion=None,
         status: str = "COMPLETED",
-        started_at: Optional[timezone.datetime] = None,
-        finished_at: Optional[timezone.datetime] = None,
+        started_at: timezone.datetime | None = None,
+        finished_at: timezone.datetime | None = None,
         files_found: int = 10,
         files_processed: int = 10,
         files_failed: int = 0,
-        prefect_flow_run_id: Optional[str] = None,
-        details_json: Optional[Dict[str, Any]] = None,
-        error_message: Optional[str] = None,
-        **kwargs
+        prefect_flow_run_id: str | None = None,
+        details_json: dict[str, Any] | None = None,
+        error_message: str | None = None,
+        **kwargs,
     ):
         """
         Create a ScheduledIngestionRun instance.
-        
+
         NOTE: This is a placeholder. Will be implemented when ScheduledIngestionRun model exists.
-        
+
         Args:
             scheduled_ingestion: ScheduledIngestion instance
             status: Run status
@@ -135,7 +134,7 @@ class ScheduledIngestionRunFactory:
             details_json: Run details JSON
             error_message: Error message if failed
             **kwargs: Additional fields
-            
+
         Returns:
             ScheduledIngestionRun instance (when model exists)
         """
@@ -144,4 +143,3 @@ class ScheduledIngestionRunFactory:
             "ScheduledIngestionRun model not yet created. "
             "This factory will be implemented in Phase 5."
         )
-

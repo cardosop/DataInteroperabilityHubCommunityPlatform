@@ -1,4 +1,5 @@
 """Tests for data_movement management commands."""
+
 from io import StringIO
 
 import pytest
@@ -20,9 +21,7 @@ class TestMigrateCredentialsToRefs:
             stdout=out,
             stderr=err,
         )
-        assert err.getvalue() == "", (
-            f"stderr should be empty on dry-run; got {err.getvalue()!r}"
-        )
+        assert err.getvalue() == "", f"stderr should be empty on dry-run; got {err.getvalue()!r}"
 
     def test_dry_run_with_tenant_filter(self, scheduled_ingestion, tenant):
         """--dry-run --tenant-id scopes to one tenant."""
@@ -80,9 +79,7 @@ class TestCleanupDltStateTables:
             f"stderr should be empty with --min-age-days; got {err.getvalue()!r}"
         )
         output = out.getvalue()
-        assert len(output) > 0, (
-            "stdout should produce output with --min-age-days"
-        )
+        assert len(output) > 0, "stdout should produce output with --min-age-days"
 
     def test_no_flags_produces_error(self):
         """Missing --dry-run/--execute prints error."""

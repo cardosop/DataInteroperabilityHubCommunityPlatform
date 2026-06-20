@@ -6,6 +6,7 @@ Meshant API is reachable. e2e tests run a real CLI against a real backend
 and have no business failing on dev boxes that don't run docker compose.
 Set ``MESHANT_FORCE_INTEGRATION=1`` to bypass.
 """
+
 import os
 
 import pytest
@@ -62,12 +63,17 @@ def pytest_collection_modifyitems(config, items):  # noqa: ARG001
 # on a local test stack.  We scope it to the CLASS rather than each
 # function so we pay that cost ~17 times instead of ~130 times.
 
+
 @pytest.fixture(scope="class", autouse=True)
 def _refresh_test_token_if_stale():
     """Auto-validate token before each test class; refresh if invalid."""
-    from tests.conftest import get_api_key, _token_valid
+    from tests.conftest import _token_valid, get_api_key
 
-    token = os.environ.get("DATAHUB_API_TOKEN") or os.environ.get("TEST_API_KEY") or os.environ.get("DATAHUB_API_KEY")
+    token = (
+        os.environ.get("DATAHUB_API_TOKEN")
+        or os.environ.get("TEST_API_KEY")
+        or os.environ.get("DATAHUB_API_KEY")
+    )
     if token and not _token_valid(token):
         # Token is stale — force fresh login and update all env vars.
         # Pop auto-provisioning cache keys so get_api_key() performs a
@@ -96,6 +102,7 @@ def _refresh_test_token_if_stale():
 # passwords are correct and subsequent provision_persona calls won't
 # need mid-suite self-heal.
 
+
 @pytest.fixture(scope="session", autouse=True)
 def _proactively_heal_e2e_users():
     """Ensure critical E2E users have correct passwords before test suite."""
@@ -113,12 +120,12 @@ def _proactively_heal_e2e_users():
         return  # API not available — tests will skip via collection hook
 
     for email in (
-        "e2e_admin@example.com",         # used by invitation + tenant-switch tests
-        "e2e_dmo@example.com",           # used by quota + marketplace tests
-        "e2e_auditor@example.com",       # used by authz enforcement tests
+        "e2e_admin@example.com",  # used by invitation + tenant-switch tests
+        "e2e_dmo@example.com",  # used by quota + marketplace tests
+        "e2e_auditor@example.com",  # used by authz enforcement tests
     ):
         try:
-            resp = _rq.post(
+            _rq.post(
                 f"{base}/test/ensure-e2e-users/",
                 json={"email": email},
                 headers={"X-E2E-Token": e2e_secret},

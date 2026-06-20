@@ -5,9 +5,9 @@ Validates that a tenant_admin can invite a new user, the invited user
 can accept the invitation and receive proper roles, and that re-accepting
 an already-accepted invitation returns a conflict error.
 """
+
 import pytest
 import requests
-
 from tests._persona_provisioning import provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import api_base_url, api_post
@@ -18,6 +18,7 @@ pytestmark = pytest.mark.mvp
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
@@ -52,9 +53,7 @@ def test_tenant_admin_invites_user():
         f"Invitation creation returned {resp.status_code}: {resp.text[:500]}"
     )
     body = resp.json()
-    assert "id" in body or "email" in body, (
-        f"Invitation response missing user id/email: {body}"
-    )
+    assert "id" in body or "email" in body, f"Invitation response missing user id/email: {body}"
 
 
 def test_invited_user_accepts():
@@ -79,8 +78,7 @@ def test_invited_user_accepts():
         },
     )
     assert invite_resp.status_code in (200, 201), (
-        f"Invitation creation failed: {invite_resp.status_code}: "
-        f"{invite_resp.text[:300]}"
+        f"Invitation creation failed: {invite_resp.status_code}: {invite_resp.text[:300]}"
     )
     invite_body = invite_resp.json()
 
@@ -167,6 +165,5 @@ def test_non_admin_cannot_create_invitation():
     # Currently any authenticated tenant member can invite users.
     # Accept 201 (current) or 403 (if RBAC is added in the future).
     assert resp.status_code in (200, 201, 403, 401), (
-        f"Invitation creation returned unexpected {resp.status_code}: "
-        f"{resp.text[:300]}"
+        f"Invitation creation returned unexpected {resp.status_code}: {resp.text[:300]}"
     )

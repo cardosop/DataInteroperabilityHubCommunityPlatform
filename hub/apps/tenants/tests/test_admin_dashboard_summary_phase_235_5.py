@@ -40,14 +40,16 @@ the dashboard is part of the broader admin-lifecycle surface):
     accept up to 5-minutes of dashboard staleness in exchange for a
     cheaper aggregate query.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.utils import timezone
+from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant, TenantStatus
@@ -125,7 +127,11 @@ class TestDashboardSummaryPermissions:
         regular = _make_regular_user(tenant)
         self.client.force_authenticate(regular)
         resp = self.client.get(_url())
-        assert resp.status_code == status.HTTP_403_FORBIDDEN  # ---------------------------------------------------------------------------)
+        assert (
+            resp.status_code == status.HTTP_403_FORBIDDEN
+        )  # ---------------------------------------------------------------------------)
+
+
 # Tier 2 — Response shape (PLATFORM_ADMIN happy path, empty state)
 # ---------------------------------------------------------------------------
 
@@ -145,7 +151,7 @@ class TestDashboardSummaryShape:
         body = resp.json()
         assert "generated_at" in body
         assert "cache_ttl_seconds" in body
-        assert body["cache_ttl_seconds"] == 300   # 5 minutes)
+        assert body["cache_ttl_seconds"] == 300  # 5 minutes)
         assert "cache_hit" in body
         for widget_key in (
             "tenants",
@@ -253,7 +259,7 @@ class TestDashboardSummaryReflectsSeededData:
         assert resp.json()["tenants"]["scheduled_for_deletion"] >= 1
 
     @pytest.mark.integration
-    def test_webhooks_widget_counts_active_subscriptions(self):
+    def test_webhooks_widget_counts_active_and_paused(self):
         from hub.apps.webhooks.models import Webhook, WebhookStatus
 
         tenant = _make_tenant()
@@ -295,21 +301,28 @@ class TestDashboardSummaryReflectsSeededData:
 
     @pytest.mark.integration
     def test_compliance_widget_counts_runs(self):
+        from hub.apps.assets.models import Asset, AssetStatus
         from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
         from hub.apps.jobs.models import Job, JobType
 
         tenant = _make_tenant()
-        # ComplianceRun has a non-null ``job`` FK so a minimal Job
-        # row is required for the seeding to land.
+        # ComplianceRun.clean() requires at least one of asset/dataset/file
+        asset = Asset.objects.create(
+            tenant=tenant,
+            name="dashboard-cr-asset",
+            key=f"dash-cr-{uuid.uuid4().hex[:8]}",
+            status=AssetStatus.ACTIVE,
+        )
         job = Job.objects.create(
             tenant=tenant,
             type=JobType.COMPLIANCE_RUN,
             resource_type="ASSET",
-            resource_id=uuid.uuid4(),
+            resource_id=asset.id,
         )
         ComplianceRun.objects.create(
             tenant=tenant,
             job=job,
+            asset=asset,
             status=ComplianceRunStatus.PENDING,
             regulations=["GDPR"],
         )
@@ -317,11 +330,12 @@ class TestDashboardSummaryReflectsSeededData:
             tenant=tenant,
             type=JobType.COMPLIANCE_RUN,
             resource_type="ASSET",
-            resource_id=uuid.uuid4(),
+            resource_id=asset.id,
         )
         ComplianceRun.objects.create(
             tenant=tenant,
             job=job2,
+            asset=asset,
             status=ComplianceRunStatus.RUNNING,
             regulations=["GDPR"],
         )
@@ -336,11 +350,14 @@ class TestDashboardSummaryReflectsSeededData:
         from hub.apps.tenants.models import TenantPlan
 
         tenant = _make_tenant()
+        _plan_uid = uuid.uuid4().hex[:8]
         plan, _ = TenantPlan.objects.get_or_create(
-            slug=f"dashboard-plan-{uuid.uuid4().hex[:8]}",
+            slug=f"dashboard-plan-{_plan_uid}",
             defaults={
-                "name": "Dashboard Test Plan", "tier": "FREE",
-                "limits_json": {"max_assets": 100}, "is_active": True,
+                "name": f"Dashboard Test Plan {_plan_uid}",
+                "tier": "FREE",
+                "limits_json": {"max_assets": 100},
+                "is_active": True,
             },
         )
         Subscription.objects.create(
@@ -364,13 +381,22 @@ class TestDashboardSummaryReflectsSeededData:
 
     @pytest.mark.integration
     def test_governance_widget_counts_access_requests(self):
+        from hub.apps.assets.models import Asset, AssetStatus
         from hub.apps.governance.models import AccessRequest, AccessRequestStatus
 
         tenant = _make_tenant()
+        # AccessRequest.clean() requires at least one of asset/dataset/file
+        asset = Asset.objects.create(
+            tenant=tenant,
+            name="dashboard-gov-asset",
+            key=f"dash-gov-{uuid.uuid4().hex[:8]}",
+            status=AssetStatus.ACTIVE,
+        )
         requester = _make_regular_user(tenant)
         AccessRequest.objects.create(
             tenant=tenant,
             requested_by=requester,
+            asset=asset,
             reason="testing",
             requested_access_type="READ",
             status=AccessRequestStatus.PENDING,
@@ -378,6 +404,7 @@ class TestDashboardSummaryReflectsSeededData:
         AccessRequest.objects.create(
             tenant=tenant,
             requested_by=requester,
+            asset=asset,
             reason="testing",
             requested_access_type="READ",
             status=AccessRequestStatus.APPROVED,
@@ -410,11 +437,11 @@ class TestDashboardSummaryCache:
     def test_second_call_within_ttl_returns_cache_hit(self):
         resp1 = self.client.get(_url())
         assert resp1.status_code == status.HTTP_200_OK
-        assert not resp1.json(["cache_hit"])
+        assert not resp1.json().get("cache_hit")
 
         resp2 = self.client.get(_url())
         assert resp2.status_code == status.HTTP_200_OK
-        assert resp2.json(["cache_hit"])
+        assert resp2.json().get("cache_hit")
 
     @pytest.mark.integration
     def test_cache_hit_avoids_regeneration(self):
@@ -428,7 +455,7 @@ class TestDashboardSummaryCache:
         resp2 = self.client.get(_url())
         # Cache hit means the second response equals the first,
         # NOT reflecting the newly created tenant.
-        assert resp2.json(["cache_hit"])
+        assert resp2.json().get("cache_hit")
         assert resp2.json()["tenants"]["total"] == baseline_total
 
     @pytest.mark.integration
@@ -440,7 +467,7 @@ class TestDashboardSummaryCache:
         cache.clear()
         resp3 = self.client.get(_url())
         # Fresh aggregator run picks up the new tenant.
-        assert not resp3.json(["cache_hit"])
+        assert not resp3.json().get("cache_hit")
         assert resp3.json()["tenants"]["total"] == baseline_total + 1
 
     @pytest.mark.integration
@@ -449,12 +476,12 @@ class TestDashboardSummaryCache:
         window. Useful for the SPA's manual refresh button + for
         operators investigating mid-incident."""
         resp1 = self.client.get(_url())
-        assert not resp1.json(["cache_hit"])
+        assert not resp1.json().get("cache_hit")
         resp2 = self.client.get(_url())
-        assert resp2.json(["cache_hit"])
+        assert resp2.json().get("cache_hit")
         resp3 = self.client.get(f"{_url()}?refresh=true")
         # The refresh bypassed the cache and re-aggregated.
-        assert not resp3.json(["cache_hit"])
+        assert not resp3.json().get("cache_hit")
 
 
 # ---------------------------------------------------------------------------
@@ -481,9 +508,7 @@ class TestDashboardWidgetErrorIsolation:
         self.client.force_authenticate(self.admin)
 
     @pytest.mark.integration
-    def test_single_widget_failure_returns_sentinel_others_intact(
-        self, monkeypatch
-    ):
+    def test_single_widget_failure_returns_sentinel_others_intact(self, monkeypatch):
         """Force ``_aggregate_compliance`` to raise; the response must
         still 200 OK with five real widgets + one sentinel block."""
         from hub.apps.tenants import admin_dashboard_summary as mod

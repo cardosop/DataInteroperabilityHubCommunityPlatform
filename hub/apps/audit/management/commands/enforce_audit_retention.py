@@ -11,6 +11,7 @@ Usage:
     python manage.py enforce_audit_retention --dry-run
     python manage.py enforce_audit_retention --batch-size 10000
 """
+
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -40,17 +41,16 @@ class Command(BaseCommand):
         retention_windows = {
             "business_rules": 30,
             "general": 90,
-            "compliance": 2555,   # 7 years
+            "compliance": 2555,  # 7 years
             "security": 2555,
             "billing": 2555,
         }
 
-        self.stdout.write(
-            f"enforce_audit_retention: dry_run={dry_run} batch_size={batch_size}"
-        )
+        self.stdout.write(f"enforce_audit_retention: dry_run={dry_run} batch_size={batch_size}")
+
+        from datetime import timedelta
 
         from hub.apps.audit.models import AuditEvent
-        from datetime import timedelta
 
         total_deleted = 0
         for category, days in retention_windows.items():
@@ -63,16 +63,12 @@ class Command(BaseCommand):
             if count == 0:
                 continue
 
-            self.stdout.write(
-                f"  {category}: {count} events past {days}d retention"
-            )
+            self.stdout.write(f"  {category}: {count} events past {days}d retention")
 
             if not dry_run:
                 # Delete in batches to avoid long-running transactions
                 while True:
-                    ids = list(
-                        qs.values_list("pk", flat=True)[:batch_size]
-                    )
+                    ids = list(qs.values_list("pk", flat=True)[:batch_size])
                     if not ids:
                         break
                     deleted, _ = AuditEvent.objects.filter(

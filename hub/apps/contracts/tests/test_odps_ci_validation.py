@@ -15,10 +15,8 @@ All tests use real implementations (no mocks/stubs).
 """
 
 import json
-import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List
 
 try:
     import pytest
@@ -48,7 +46,7 @@ from hub.apps.contracts.odps_schema import (
     get_available_odps_versions,
     load_odps_schema,
 )
-from hub.apps.contracts.ref_resolver import ExternalRefHandling, RefMode
+from hub.apps.contracts.ref_resolver import ExternalRefHandling
 from hub.apps.contracts.ref_resolver import RefResolver as ODPSRefResolver
 
 
@@ -72,7 +70,7 @@ class ODPSSchemaCIValidationTest(TestCase):
             schema_path = self.schemas_dir / f"v{version}" / self.schema_filename
             with self.subTest(version=version):
                 try:
-                    with open(schema_path, "r", encoding="utf-8") as f:
+                    with open(schema_path, encoding="utf-8") as f:
                         schema_data = json.load(f)
 
                     # Validate schema itself is valid JSON Schema
@@ -87,7 +85,7 @@ class ODPSSchemaCIValidationTest(TestCase):
                     errors.append(f"Version {version}: Unexpected error - {e}")
 
         if errors:
-            self.fail(f"Schema validation errors:\n" + "\n".join(f"  - {e}" for e in errors))
+            self.fail("Schema validation errors:\n" + "\n".join(f"  - {e}" for e in errors))
 
     def test_schema_files_match_odps_spec_versions(self):
         """Validate that schema files match ODPS spec versions"""
@@ -116,7 +114,7 @@ class ODPSSchemaCIValidationTest(TestCase):
             schema_path = self.schemas_dir / f"v{version}" / self.schema_filename
             with self.subTest(version=version):
                 try:
-                    with open(schema_path, "r", encoding="utf-8") as f:
+                    with open(schema_path, encoding="utf-8") as f:
                         schema_data = json.load(f)
 
                     # Check $id field contains version (with v prefix)
@@ -150,7 +148,7 @@ class ODPSSchemaCIValidationTest(TestCase):
                     errors.append(f"Version {version}: Error checking version match - {e}")
 
         if errors:
-            self.fail(f"Schema version matching errors:\n" + "\n".join(f"  - {e}" for e in errors))
+            self.fail("Schema version matching errors:\n" + "\n".join(f"  - {e}" for e in errors))
 
     def test_schema_loading_all_versions(self):
         """Test schema loading for all versions (4.1, 4.0, 3.x, 2.x, 1.x)"""
@@ -175,7 +173,7 @@ class ODPSSchemaCIValidationTest(TestCase):
                     errors.append(f"Version {version}: Error loading schema - {e}")
 
         if errors:
-            self.fail(f"Schema loading errors:\n" + "\n".join(f"  - {e}" for e in errors))
+            self.fail("Schema loading errors:\n" + "\n".join(f"  - {e}" for e in errors))
 
     def test_odps_document_validation_all_versions(self):
         """Test ODPS document validation against schemas for all versions"""
@@ -253,7 +251,7 @@ class ODPSSchemaCIValidationTest(TestCase):
 
         errors = []
         for version in self.required_versions:
-            schema_path = self.schemas_dir / f"v{version}" / self.schema_filename
+            self.schemas_dir / f"v{version}" / self.schema_filename
             sample_doc = sample_documents.get(version, {})
 
             if not sample_doc:
@@ -279,7 +277,7 @@ class ODPSSchemaCIValidationTest(TestCase):
                     errors.append(f"Version {version}: Unexpected error - {e}")
 
         if errors:
-            self.fail(f"Document validation errors:\n" + "\n".join(f"  - {e}" for e in errors))
+            self.fail("Document validation errors:\n" + "\n".join(f"  - {e}" for e in errors))
 
     def test_ref_resolution_internal(self):
         """Test $ref resolution for internal references"""
@@ -301,7 +299,7 @@ class ODPSSchemaCIValidationTest(TestCase):
 
         try:
             resolver = ODPSRefResolver()
-            original, resolved = resolver.resolve_all_refs(
+            _original, resolved = resolver.resolve_all_refs(
                 document_with_internal_ref,
                 preserve_original=True,
                 external_ref_handling=ExternalRefHandling.DISABLE,
@@ -349,7 +347,7 @@ class ODPSSchemaCIValidationTest(TestCase):
 
             try:
                 resolver = ODPSRefResolver(base_path=temp_path)
-                original, resolved = resolver.resolve_all_refs(
+                _original, resolved = resolver.resolve_all_refs(
                     document_with_local_ref,
                     preserve_original=True,
                     external_ref_handling=ExternalRefHandling.DISABLE,
@@ -363,11 +361,11 @@ class ODPSSchemaCIValidationTest(TestCase):
                     "productID", product_details, "Resolved content should contain productID"
                 )
 
-            except ODPSRefResolutionError as e:
+            except ODPSRefResolutionError:
                 # Local ref resolution might fail if security restrictions are in place
                 # This is acceptable - we just verify the mechanism exists
                 pass
-            except Exception as e:
+            except Exception:
                 # Other errors are acceptable for local refs in CI (may require file system access)
                 pass
 
@@ -397,7 +395,7 @@ class ODPSSchemaCIValidationTest(TestCase):
                 )
 
             # Test with external refs removed (should remove $ref)
-            original, resolved = resolver.resolve_all_refs(
+            _original, resolved = resolver.resolve_all_refs(
                 document_with_external_ref,
                 preserve_original=True,
                 external_ref_handling=ExternalRefHandling.REMOVE,
@@ -409,7 +407,7 @@ class ODPSSchemaCIValidationTest(TestCase):
                 "$ref", product_details, "External $ref should be removed when REMOVE mode is used"
             )
 
-        except Exception as e:
+        except Exception:
             # External ref resolution may fail in CI due to network restrictions
             # This is acceptable - we verify the mechanism exists
             pass
@@ -420,19 +418,6 @@ class ODPSSchemaCIValidationTest(TestCase):
             self.skipTest("jsonschema library not available - required for compatibility testing")
 
         # Create a minimal ODPS document that should work across versions
-        minimal_document = {
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product-1",
-                        "name": "Test Product",
-                        "description": "A test product",
-                    }
-                }
-            },
-        }
 
         # Test that newer versions can validate older-style documents
         # (This is a simplified test - full backward compatibility would require
@@ -449,7 +434,7 @@ class ODPSSchemaCIValidationTest(TestCase):
                     errors.append(f"Version {version}: Compatibility check failed - {e}")
 
         if errors:
-            self.fail(f"Backward compatibility errors:\n" + "\n".join(f"  - {e}" for e in errors))
+            self.fail("Backward compatibility errors:\n" + "\n".join(f"  - {e}" for e in errors))
 
     def test_schema_files_required_structure(self):
         """Test that all schema files have required JSON Schema structure"""
@@ -460,7 +445,7 @@ class ODPSSchemaCIValidationTest(TestCase):
             schema_path = self.schemas_dir / f"v{version}" / self.schema_filename
             with self.subTest(version=version):
                 try:
-                    with open(schema_path, "r", encoding="utf-8") as f:
+                    with open(schema_path, encoding="utf-8") as f:
                         schema_data = json.load(f)
 
                     # Check required fields
@@ -477,7 +462,7 @@ class ODPSSchemaCIValidationTest(TestCase):
                     errors.append(f"Version {version}: Error checking structure - {e}")
 
         if errors:
-            self.fail(f"Schema structure errors:\n" + "\n".join(f"  - {e}" for e in errors))
+            self.fail("Schema structure errors:\n" + "\n".join(f"  - {e}" for e in errors))
 
     def test_schema_validation_with_odps_parser(self):
         """Test schema validation using ODPSParser for all versions"""
@@ -513,7 +498,7 @@ class ODPSSchemaCIValidationTest(TestCase):
                     errors.append(f"Version {version}: Unexpected error - {e}")
 
         if errors:
-            self.fail(f"ODPSParser validation errors:\n" + "\n".join(f"  - {e}" for e in errors))
+            self.fail("ODPSParser validation errors:\n" + "\n".join(f"  - {e}" for e in errors))
 
     def test_all_schemas_can_be_loaded_and_validated(self):
         """Comprehensive test: Load and validate all schemas"""
@@ -549,7 +534,7 @@ class ODPSSchemaCIValidationTest(TestCase):
                     errors.append(f"Version {version}: Unexpected error - {e}")
 
         if errors:
-            self.fail(f"Comprehensive validation errors:\n" + "\n".join(f"  - {e}" for e in errors))
+            self.fail("Comprehensive validation errors:\n" + "\n".join(f"  - {e}" for e in errors))
 
     # Edge cases and error handling tests
     def test_schema_loading_with_invalid_version(self):
@@ -603,8 +588,9 @@ class ODPSSchemaCIValidationTest(TestCase):
     def test_odps_parser_validation_with_none_document(self):
         """Test ODPSParser validation with None document."""
         try:
-            is_valid, validation_errors = ODPSParser.validate(
-                odps_document=None, version="4.1"  # type: ignore[misc]  # test: edge-case type exercise
+            is_valid, _validation_errors = ODPSParser.validate(
+                odps_document=None,
+                version="4.1",  # type: ignore[misc]  # test: edge-case type exercise
             )
             # Should return False for None document
             self.assertFalse(is_valid)
@@ -637,7 +623,7 @@ class ODPSSchemaCIValidationTest(TestCase):
 
         try:
             resolver = ODPSRefResolver()
-            original, resolved = resolver.resolve_all_refs(
+            _original, resolved = resolver.resolve_all_refs(
                 document_with_malformed_ref,
                 preserve_original=True,
                 external_ref_handling=ExternalRefHandling.REMOVE,
@@ -652,7 +638,7 @@ class ODPSSchemaCIValidationTest(TestCase):
         """Test $ref resolution with None document."""
         try:
             resolver = ODPSRefResolver()
-            original, resolved = resolver.resolve_all_refs(
+            _original, resolved = resolver.resolve_all_refs(
                 None,  # type: ignore[misc]  # test: edge-case type exercise
                 preserve_original=True,
                 external_ref_handling=ExternalRefHandling.DISABLE,
@@ -669,7 +655,7 @@ class ODPSSchemaCIValidationTest(TestCase):
 
         try:
             resolver = ODPSRefResolver()
-            original, resolved = resolver.resolve_all_refs(
+            _original, resolved = resolver.resolve_all_refs(
                 empty_doc,
                 preserve_original=True,
                 external_ref_handling=ExternalRefHandling.DISABLE,

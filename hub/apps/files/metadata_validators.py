@@ -39,12 +39,14 @@ Empty / null
 between admit and reject is "size > MAX" not "size >= MAX" —
 exactly 64 KB is admitted as the documented hard cap.
 """
+
 from __future__ import annotations
+
 import json
-from typing import Any, Mapping, Optional
+from collections.abc import Mapping
+from typing import Any
 
 from hub.apps.core.services.base import ValidationError
-
 
 # Spec-mandated cap. Operators can override by replacing the
 # constant in a derived module if needed; production should not
@@ -54,7 +56,7 @@ from hub.apps.core.services.base import ValidationError
 MAX_METADATA_JSON_BYTES: int = 64 * 1024  # 64 KB
 
 
-def metadata_json_size_bytes(metadata: Optional[Mapping[str, Any]]) -> int:
+def metadata_json_size_bytes(metadata: Mapping[str, Any] | None) -> int:
     """Return the canonical JSON-serialized byte count of *metadata*.
 
     Mirrors the byte budget the user would consume on the wire if
@@ -77,7 +79,7 @@ def metadata_json_size_bytes(metadata: Optional[Mapping[str, Any]]) -> int:
 
 
 def validate_metadata_json_size(
-    metadata: Optional[Mapping[str, Any]],
+    metadata: Mapping[str, Any] | None,
     *,
     field_name: str = "metadata_json",
 ) -> None:

@@ -12,7 +12,7 @@ exception or a cryptic stack trace.
 
 import json
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import requests
 from tests.fixtures.test_data import unique_port

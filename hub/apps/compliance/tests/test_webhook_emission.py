@@ -5,13 +5,12 @@ Real HTTP receivers (TestWebhookServer), real ORM, no mocks of webhook or signal
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import json
 import uuid
 from urllib.parse import quote
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
@@ -53,9 +52,6 @@ class BuildComplianceWebhookDataTest(TransactionTestCase):
     """Scrubs PII-rich fields — only contracted keys appear."""
 
     reset_sequences = False
-
-    def _fixture_teardown(self):
-        pass
 
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
@@ -184,7 +180,9 @@ class ComplianceCompletedWebhookSignalTest(TestCase):
     @pytest.mark.integration
     def test_succeeded_transition_delivers_scrubbed_compliance_completed(self):
         tenant, user, run = self._make_run_pending()
-        before_audit = AuditEvent.objects.filter(action=audit_event_types.COMPLIANCE_WEBHOOK_FIRED).count()
+        before_audit = AuditEvent.objects.filter(
+            action=audit_event_types.COMPLIANCE_WEBHOOK_FIRED
+        ).count()
         with TestWebhookServer(response_status=200) as server:
             Webhook.objects.create(
                 tenant=tenant,
@@ -216,7 +214,9 @@ class ComplianceCompletedWebhookSignalTest(TestCase):
 
         run.refresh_from_db()
         self.assertIsNotNone(run.webhook_fired_at)
-        after_audit = AuditEvent.objects.filter(action=audit_event_types.COMPLIANCE_WEBHOOK_FIRED).count()
+        after_audit = AuditEvent.objects.filter(
+            action=audit_event_types.COMPLIANCE_WEBHOOK_FIRED
+        ).count()
         self.assertEqual(after_audit, before_audit + 1)
 
     @pytest.mark.integration
@@ -415,6 +415,14 @@ class PublishComplianceCheckCompletedDirectTest(TestCase):
             self.assertEqual(len(received), 1)
             outer = json.loads(received[0]["body"])
             self.assertEqual(outer["data"]["run_id"], str(run.id))
+            # Verify the DB re-read populated stub-null fields.
+            self.assertEqual(
+                outer["data"]["risk_level"], RiskLevel.LOW.value,
+            )
+            self.assertEqual(
+                outer["data"]["terminal_status"],
+                ComplianceRunStatus.SUCCEEDED,
+            )
 
 
 @override_settings(COMPLIANCE_WEBHOOK_REPORT_BASE_URL="http://testserver/api/v1/compliance")
@@ -423,9 +431,6 @@ class ComplianceReportSummaryAnonymousTest(TransactionTestCase):
     """Signed URL returns the same scrubbed summary bundle (GET, no JWT)."""
 
     reset_sequences = False
-
-    def _fixture_teardown(self):
-        pass
 
     @pytest.mark.integration
     def test_report_summary_endpoint_returns_scrub_json(self):

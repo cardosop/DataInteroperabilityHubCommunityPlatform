@@ -10,8 +10,9 @@ body — so chunked uploads cannot force buffering before rejection.
 """
 
 from __future__ import annotations
+
 import re
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from django.http import HttpRequest
 
@@ -23,16 +24,14 @@ _DATA_FIRST_PATH_RE = re.compile(r"^/api/v[0-9]+/assets/data-first/?$")
 def is_data_first_post(request: HttpRequest) -> bool:
     """True when this request targets the data-first asset-creation endpoint."""
     path = request.path or ""
-    return bool(
-        request.method == "POST" and _DATA_FIRST_PATH_RE.match(path)
-    )
+    return bool(request.method == "POST" and _DATA_FIRST_PATH_RE.match(path))
 
 
 def evaluate_data_first_body_headers(
     *,
-    content_length_raw: Optional[str],
+    content_length_raw: str | None,
     transfer_encoding: str,
-) -> Optional[Tuple[int, dict[str, Any]]]:
+) -> tuple[int, dict[str, Any]] | None:
     """Apply Length Required / bad CL / payload-too-large rules.
 
     Returns ``(http_status, json_serializable_dict)`` when the request must be

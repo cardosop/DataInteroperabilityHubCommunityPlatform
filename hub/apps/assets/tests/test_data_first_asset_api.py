@@ -76,6 +76,7 @@ class DataFirstAssetAPITestBase(TestCase):
         from hub.apps.core.resilience.service_breakers import (
             reset_shared_circuit_breakers_for_service,
         )
+
         # The data-first workflow triggers compliance scans.  Earlier
         # test suites (compliance polling tests) can leave the shared
         # circuit breaker OPEN, which causes every compliance API call
@@ -113,7 +114,7 @@ class DataFirstAssetAPITestBase(TestCase):
             content_type="text/csv",
             size=len(csv_content),
             status=FileStatus.ACTIVE,
-            storage_path=f"{str(tenant.id)}/{uuid.uuid4()}/test_data.csv",
+            storage_path=f"{tenant.id!s}/{uuid.uuid4()}/test_data.csv",
             created_by=user,
         )
 
@@ -143,9 +144,10 @@ class DataFirstAssetAPITestBase(TestCase):
                 "S3 upload failed in _create_active_file — falling back to synthetic path. "
                 "Tests relying on this fallback may not exercise real storage behaviour. "
                 "tenant=%s file=%s",
-                tenant.id, file_obj.id,
+                tenant.id,
+                file_obj.id,
             )
-            file_obj.storage_path = f"{str(tenant.id)}/{str(file_obj.id)}/test_data.csv"
+            file_obj.storage_path = f"{tenant.id!s}/{file_obj.id!s}/test_data.csv"
             file_obj.save(update_fields=["storage_path"])
         return file_obj
 

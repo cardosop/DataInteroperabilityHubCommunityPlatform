@@ -12,9 +12,9 @@ without being translated to ``ValidationError``).
 """
 
 from __future__ import annotations
+
 import errno
 import logging
-from typing import Optional
 
 from botocore.exceptions import ClientError
 from tenacity import (
@@ -51,6 +51,7 @@ def _emit_retry_metric(retry_state) -> None:
             "dataset_inference_retry_metric_emit_failed",
             extra={"error": str(exc)},
         )
+
 
 _RETRYABLE_BOTOCODES = frozenset(
     {
@@ -90,7 +91,7 @@ class FileMissingInStorageError(Exception):
     """Permanent missing-object — not retried."""
 
 
-def _unwrap_client_error(exc: BaseException) -> Optional[ClientError]:
+def _unwrap_client_error(exc: BaseException) -> ClientError | None:
     """Return the underlying ``ClientError`` if *exc* is one or
     wraps one, else ``None``.
 
@@ -122,7 +123,7 @@ def _attempt_get_content(
     storage: object,
     storage_path: str,
     *,
-    max_bytes: Optional[int] = None,
+    max_bytes: int | None = None,
 ) -> bytes:
     """Fetch object bytes, optionally limited to a byte prefix.
 
@@ -194,7 +195,7 @@ def fetch_file_content_for_dataset_schema_retrying(
     *,
     storage: object,
     storage_path: str,
-    max_bytes: Optional[int] = None,
+    max_bytes: int | None = None,
 ) -> bytes:
     """GET object bytes from ``S3StorageClient`` with bounded exponential backoff.
 
@@ -216,7 +217,7 @@ def fetch_file_content_for_dataset_schema_safe(
     *,
     storage: object,
     storage_path: str,
-    max_bytes: Optional[int] = None,
+    max_bytes: int | None = None,
 ) -> bytes:
     """
     Dataset creation path helper — translates transport failures into ``ValidationError``

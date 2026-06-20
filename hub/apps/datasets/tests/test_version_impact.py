@@ -3,6 +3,7 @@ Unit tests for Version Impact Analysis
 
 Tests for analyzing impact of dataset version changes on assets and downstream systems.
 """
+
 import uuid
 
 import pytest
@@ -60,7 +61,7 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
     def test_analyze_impact_with_contract(self):
         """Test impact analysis with contract"""
         # Create contract for asset
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             version=1,
@@ -139,7 +140,7 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
     def test_analyze_impact_summary(self):
         """Test impact analysis summary"""
         # Create dataset with contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             version=1,
@@ -243,7 +244,6 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
 
     def test_version_impact_failure_nonexistent_dataset(self):
         """Test version impact analysis with non-existent dataset (failure scenario)"""
-        import uuid
 
         fake_dataset_id = str(uuid.uuid4())
 
@@ -252,10 +252,12 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
         # Non-existent dataset — the analyzer returns a dict with an error
         # key rather than raising.
         result = analyzer.analyze_impact(fake_dataset_id)
-        self.assertIsNotNone(result,
-            "analyze_impact must return a result dict for non-existent dataset_id")
-        self.assertIn("error", result,
-            "analyze_impact must include an 'error' key for non-existent dataset")
+        self.assertIsNotNone(
+            result, "analyze_impact must return a result dict for non-existent dataset_id"
+        )
+        self.assertIn(
+            "error", result, "analyze_impact must include an 'error' key for non-existent dataset"
+        )
 
     def test_version_impact_failure_invalid_dataset_id(self):
         """Test version impact analysis with invalid dataset_id (failure scenario)"""
@@ -264,7 +266,7 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
         # Should handle invalid dataset_id gracefully - Django's UUIDField raises ValidationError
         with self.assertRaises(DjangoValidationError) as cm:
             analyzer.analyze_impact("invalid-id")
-        
+
         # Django's UUIDField validation error should be raised
         self.assertIn("not a valid UUID", str(cm.exception))
 
@@ -310,7 +312,7 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
     # ========== ERROR HANDLING ==========
 
     def test_analyze_impact_valid_dataset(self):
-        """Test error handling in version impact analysis"""
+        """Test analyze_impact on a valid persisted dataset."""
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -324,5 +326,30 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
         analyzer = VersionImpactAnalyzer()
 
         result = analyzer.analyze_impact(str(dataset.id))
-        self.assertIsNotNone(result,
-            "analyze_impact must return a result for a valid persisted dataset")
+        self.assertIsNotNone(
+            result, "analyze_impact must return a result for a valid persisted dataset"
+        )
+
+    def test_analyze_impact_with_tenant_id_filter(self):
+        """analyze_impact with tenant_id respects tenant boundaries."""
+        from hub.apps.tenants.models import KYCStatus, Tenant
+        from hub.apps.datasets.version_impact import VersionImpactAnalyzer
+
+        dataset = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=self.file,
+            format="CSV", schema_json={"fields": [{"name": "id", "type": "integer"}]},
+            version=1, created_by=self.user,
+        )
+
+        other = Tenant.objects.create(
+            name=f"Other {uuid.uuid4().hex[:8]}",
+            slug=f"other-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
+        )
+        analyzer = VersionImpactAnalyzer()
+        result = analyzer.analyze_impact(
+            dataset_id=str(dataset.id), tenant_id=str(other.id)
+        )
+        # Cross-tenant query should return empty or error result
+        self.assertIsNotNone(result)
+        self.assertIsInstance(result, dict)

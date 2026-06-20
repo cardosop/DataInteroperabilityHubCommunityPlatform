@@ -26,18 +26,19 @@ To run these tests:
 3. Run: pytest sdk/python/tests/test_baas_sdk_comprehensive.py -v -m integration
 """
 import os
-import sys
-import pytest
-import uuid
 import subprocess
-import asyncio
+import sys
+import uuid
 from typing import Optional
-from datahub_interoperability import DataHubClient, DataHubClientConfig, BaaSAPI
+
+import pytest
+
+from datahub_interoperability import BaaSAPI, DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
-    BaaSValidationError,
     BaaSError,
-    NotFoundError,
+    BaaSValidationError,
     ForbiddenError,
+    NotFoundError,
 )
 
 
@@ -62,6 +63,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     # Method 2: Use canonical conftest helper
     try:
         from tests.conftest import get_api_key
+
         canonical = get_api_key()
         if canonical:
             return canonical
@@ -69,7 +71,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         pass
 
     # Method 3: Environment variables (last resort)
-    api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
+    api_key = os.environ.get("TEST_API_KEY") or os.environ.get("DATAHUB_API_KEY")
     if api_key:
         return api_key
 
@@ -159,8 +161,8 @@ try:
     from hub.apps.tenants.models import TenantPlan
     plan = TenantPlan.objects.first()
     if plan:
-        Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
-        Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+        Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={"plan": plan, 'status': SubscriptionStatus.ACTIVE})
+        Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={"plan": plan, 'status': SubscriptionStatus.ACTIVE})
 
     print('API_KEY_START', file=sys.stdout, flush=True)
     print(api_key_value, file=sys.stdout, flush=True)
@@ -171,29 +173,48 @@ except Exception as e:
     traceback.print_exc(file=sys.stderr)
 """
         result = subprocess.run(
-                        ['docker', 'compose', '-f', 'docker-compose.test.yml', 'exec', '-T', 'api-service-test', 'python', 'hub/manage.py', 'shell'],
+            [
+                "docker",
+                "compose",
+                "-f",
+                "docker-compose.test.yml",
+                "exec",
+                "-T",
+                "api-service-test",
+                "python",
+                "hub/manage.py",
+                "shell",
+            ],
             input=django_shell_script,
             text=True,
             capture_output=True,
             timeout=30,
-            cwd='/home/ph/Desktop/DataInteroperabilityHub'
+            cwd="/home/ph/Desktop/DataInteroperabilityHub",
         )
         if result.returncode == 0:
             # Parse output - Django logs to stderr, actual output to stdout
             # Look for API_KEY_START marker and extract the key
-            combined_output = result.stdout + '\n' + result.stderr if result.stderr else result.stdout
-            output_lines = combined_output.strip().split('\n')
+            combined_output = (
+                result.stdout + "\n" + result.stderr if result.stderr else result.stdout
+            )
+            output_lines = combined_output.strip().split("\n")
 
             in_api_key = False
             api_key = None
             for line in output_lines:
                 line = line.strip()
-                if line == 'API_KEY_START':
+                if line == "API_KEY_START":
                     in_api_key = True
                     continue
-                elif line == 'API_KEY_END':
+                elif line == "API_KEY_END":
                     break
-                elif in_api_key and line and len(line) > 20 and not line.startswith('{') and not line.startswith('"timestamp"'):
+                elif (
+                    in_api_key
+                    and line
+                    and len(line) > 20
+                    and not line.startswith("{")
+                    and not line.startswith('"timestamp"')
+                ):
                     # Skip JSON log lines and extract the API key
                     api_key = line
                     break
@@ -207,6 +228,7 @@ except Exception as e:
     except Exception as e:
         print(f"Error creating API key: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc(file=sys.stderr)
     return None
 
@@ -214,11 +236,13 @@ except Exception as e:
 @pytest.fixture
 def real_api_config():
     """Fixture for real API configuration"""
-    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8001/api/v1')
+    api_base_url = os.environ.get("API_BASE_URL", "http://localhost:8001/api/v1")
     api_key = setup_authentication_for_sdk_tests(api_base_url)
 
     if not api_key:
-        pytest.skip("No API key available for testing. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+        pytest.skip(
+            "No API key available for testing. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+        )
 
     config = DataHubClientConfig(
         base_url=api_base_url,
@@ -251,11 +275,10 @@ class TestBaaSSDKComprehensive:
 
     async def test_create_api_key_all_tiers(self, baas_api):
         """Test creating API keys with all tiers"""
-        for tier in ['FREE', 'PRO', 'ENTERPRISE']:
+        for tier in ["FREE", "PRO", "ENTERPRISE"]:
             unique_id = uuid.uuid4().hex[:8]
             result = await baas_api.create_api_key(
-                name=f"SDK Test Key {tier} {unique_id}",
-                tier=tier
+                name=f"SDK Test Key {tier} {unique_id}", tier=tier
             )
             assert result is not None
             assert "id" in result
@@ -268,11 +291,10 @@ class TestBaaSSDKComprehensive:
         unique_id = uuid.uuid4().hex[:8]
         # Use a date in the future (1 year from now)
         from datetime import datetime, timedelta
+
         future_date = (datetime.utcnow() + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%SZ")
         result = await baas_api.create_api_key(
-            name=f"SDK Expiring Key {unique_id}",
-            tier="FREE",
-            expires_at=future_date
+            name=f"SDK Expiring Key {unique_id}", tier="FREE", expires_at=future_date
         )
         assert result is not None
         assert "expires_at" in result
@@ -298,7 +320,7 @@ class TestBaaSSDKComprehensive:
         assert isinstance(result, list)
 
         # With tier filter
-        for tier in ['FREE', 'PRO', 'ENTERPRISE']:
+        for tier in ["FREE", "PRO", "ENTERPRISE"]:
             result = await baas_api.list_api_keys(tier=tier)
             assert isinstance(result, list)
 
@@ -330,10 +352,7 @@ class TestBaaSSDKComprehensive:
         """Test getting API key"""
         # Create a key first
         unique_id = uuid.uuid4().hex[:8]
-        created = await baas_api.create_api_key(
-            name=f"SDK Get Test Key {unique_id}",
-            tier="FREE"
-        )
+        created = await baas_api.create_api_key(name=f"SDK Get Test Key {unique_id}", tier="FREE")
         api_key_id = created["id"]
 
         # Get it
@@ -364,25 +383,18 @@ class TestBaaSSDKComprehensive:
         # Create a key first
         unique_id = uuid.uuid4().hex[:8]
         created = await baas_api.create_api_key(
-            name=f"SDK Update Test Key {unique_id}",
-            tier="FREE"
+            name=f"SDK Update Test Key {unique_id}", tier="FREE"
         )
         api_key_id = created["id"]
 
         # Update name
-        result = await baas_api.update_api_key(
-            api_key_id,
-            name=f"SDK Updated Name {unique_id}"
-        )
+        result = await baas_api.update_api_key(api_key_id, name=f"SDK Updated Name {unique_id}")
         assert result is not None
         assert result["name"] == f"SDK Updated Name {unique_id}"
 
         # Update expiration
         future_date = "2025-12-31T23:59:59Z"
-        result = await baas_api.update_api_key(
-            api_key_id,
-            expires_at=future_date
-        )
+        result = await baas_api.update_api_key(api_key_id, expires_at=future_date)
         assert result is not None
         assert "expires_at" in result
 
@@ -391,8 +403,7 @@ class TestBaaSSDKComprehensive:
         # Create a key first
         unique_id = uuid.uuid4().hex[:8]
         created = await baas_api.create_api_key(
-            name=f"SDK Validation Test Key {unique_id}",
-            tier="FREE"
+            name=f"SDK Validation Test Key {unique_id}", tier="FREE"
         )
         api_key_id = created["id"]
 
@@ -417,8 +428,7 @@ class TestBaaSSDKComprehensive:
         # Create a key first
         unique_id = uuid.uuid4().hex[:8]
         created = await baas_api.create_api_key(
-            name=f"SDK Revoke Test Key {unique_id}",
-            tier="FREE"
+            name=f"SDK Revoke Test Key {unique_id}", tier="FREE"
         )
         api_key_id = created["id"]
 
@@ -429,12 +439,8 @@ class TestBaaSSDKComprehensive:
         revoked = False
         try:
             result = await baas_api.get_api_key(api_key_id)
-            assert "revoked_at" in result, (
-                "Revoked API key returned without 'revoked_at' field."
-            )
-            assert result["revoked_at"] is not None, (
-                "Revoked API key has revoked_at=None."
-            )
+            assert "revoked_at" in result, "Revoked API key returned without 'revoked_at' field."
+            assert result["revoked_at"] is not None, "Revoked API key has revoked_at=None."
             revoked = True
         except NotFoundError:
             revoked = True
@@ -463,8 +469,7 @@ class TestBaaSSDKComprehensive:
         # Create a key for filtering
         unique_id = uuid.uuid4().hex[:8]
         created = await baas_api.create_api_key(
-            name=f"SDK Usage Filter Key {unique_id}",
-            tier="FREE"
+            name=f"SDK Usage Filter Key {unique_id}", tier="FREE"
         )
         api_key_id = created["id"]
 
@@ -475,8 +480,7 @@ class TestBaaSSDKComprehensive:
 
         # With date range
         result = await baas_api.get_usage_stats(
-            start_date="2024-01-01T00:00:00Z",
-            end_date="2024-12-31T23:59:59Z"
+            start_date="2024-01-01T00:00:00Z", end_date="2024-12-31T23:59:59Z"
         )
         assert result is not None
         assert isinstance(result, dict)
@@ -500,8 +504,7 @@ class TestBaaSSDKComprehensive:
         # Create a key for filtering
         unique_id = uuid.uuid4().hex[:8]
         created = await baas_api.create_api_key(
-            name=f"SDK Endpoint Filter Key {unique_id}",
-            tier="FREE"
+            name=f"SDK Endpoint Filter Key {unique_id}", tier="FREE"
         )
         api_key_id = created["id"]
 
@@ -509,7 +512,7 @@ class TestBaaSSDKComprehensive:
         result = await baas_api.get_usage_by_endpoint(
             api_key_id=api_key_id,
             start_date="2024-01-01T00:00:00Z",
-            end_date="2024-12-31T23:59:59Z"
+            end_date="2024-12-31T23:59:59Z",
         )
         assert isinstance(result, list)
 
@@ -532,13 +535,14 @@ class TestBaaSSDKComprehensive:
 
             # With date range
             result = await baas_api.get_usage_by_tenant(
-                start_date="2024-01-01T00:00:00Z",
-                end_date="2024-12-31T23:59:59Z"
+                start_date="2024-01-01T00:00:00Z", end_date="2024-12-31T23:59:59Z"
             )
             assert isinstance(result, list)
         except (ForbiddenError, BaaSError) as e:
             # Expected if user is not admin
-            if isinstance(e, ForbiddenError) or ("platform administrator" in str(e) or "admin" in str(e).lower()):
+            if isinstance(e, ForbiddenError) or (
+                "platform administrator" in str(e) or "admin" in str(e).lower()
+            ):
                 pytest.skip("User is not platform admin, cannot test by-tenant endpoint")
             else:
                 raise
@@ -553,10 +557,7 @@ class TestBaaSSDKComprehensive:
         """Test checking quota"""
         # Create a key
         unique_id = uuid.uuid4().hex[:8]
-        created = await baas_api.create_api_key(
-            name=f"SDK Quota Test Key {unique_id}",
-            tier="FREE"
-        )
+        created = await baas_api.create_api_key(name=f"SDK Quota Test Key {unique_id}", tier="FREE")
         api_key_id = created["id"]
 
         try:
@@ -565,7 +566,7 @@ class TestBaaSSDKComprehensive:
             assert isinstance(result, dict)
         except (NotFoundError, BaaSError) as e:
             # Quota endpoint might not exist yet (404) or other error
-            if isinstance(e, NotFoundError) or (isinstance(e, BaaSError) and '404' in str(e)):
+            if isinstance(e, NotFoundError) or (isinstance(e, BaaSError) and "404" in str(e)):
                 pytest.skip("Quota endpoint not available")
             else:
                 raise
@@ -589,6 +590,7 @@ class TestBaaSSDKComprehensive:
         result = await baas_api.get_api_docs(format="json")
         assert isinstance(result, str)
         import json
+
         parsed = json.loads(result)
         assert isinstance(parsed, dict)
 

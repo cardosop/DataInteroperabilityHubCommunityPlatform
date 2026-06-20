@@ -50,7 +50,9 @@ class AssetScopeEnforcementTest(TestCase):
             status=UserStatus.ACTIVE,
         )
         UserRole.objects.create(
-            user=self.consumer, tenant=self.tenant, role=self.consumer_role,
+            user=self.consumer,
+            tenant=self.tenant,
+            role=self.consumer_role,
         )
 
         # DATA_PROVIDER role — has assets:read AND assets:write
@@ -66,7 +68,9 @@ class AssetScopeEnforcementTest(TestCase):
             status=UserStatus.ACTIVE,
         )
         UserRole.objects.create(
-            user=self.provider, tenant=self.tenant, role=self.provider_role,
+            user=self.provider,
+            tenant=self.tenant,
+            role=self.provider_role,
         )
 
         self.consumer_client = APIClient()
@@ -110,11 +114,9 @@ class AssetScopeEnforcementTest(TestCase):
         self.assertEqual(
             resp.status_code,
             status.HTTP_201_CREATED,
-            f"DATA_PROVIDER must be able to create assets; "
-            f"got {resp.status_code}: {resp.data}",
+            f"DATA_PROVIDER must be able to create assets; got {resp.status_code}: {resp.data}",
         )
-        self.assertIn("id", resp.data,
-            "Created asset response must include the asset id")
+        self.assertIn("id", resp.data, "Created asset response must include the asset id")
 
     # ---- Write operations (PUT/PATCH/DELETE) ----
 
@@ -197,6 +199,7 @@ class AssetScopeEnforcementTest(TestCase):
         We add the role in-band so the flag is the only variable.
         """
         from hub.apps.testing.role_support import ensure_user_has_data_provider_role
+
         ensure_user_has_data_provider_role(self.consumer)
         try:
             resp = self.consumer_client.post(
@@ -205,8 +208,15 @@ class AssetScopeEnforcementTest(TestCase):
                 format="json",
                 **self.tenant_header,
             )
-            # Should NOT be 403 (legacy permissive mode for JWT scopes)
-            self.assertNotEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+            # Legacy permissive mode — DATA_CONSUMER with DATA_PROVIDER
+            # role must successfully create an asset (not just "not 403").
+            self.assertIn(
+                resp.status_code,
+                (status.HTTP_200_OK, status.HTTP_201_CREATED),
+                f"Expected 200/201 in legacy mode, got {resp.status_code}: "
+                f"{getattr(resp, 'data', '')}",
+            )
+            self.assertIsNotNone(resp.data.get("id"), "Response must include asset id")
         finally:
             UserRole.objects.filter(
                 user=self.consumer, role=self.provider_role, tenant=self.tenant

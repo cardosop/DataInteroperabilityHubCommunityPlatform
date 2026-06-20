@@ -92,10 +92,13 @@ introduced by this sweep are reported as informational ``erasure_gap``
 entries (not ``prev_link_mismatch`` tamper signals) per the
 234.1 × 232.2 × 234.4 cross-spec contract.
 """
+
 from __future__ import annotations
+
 import uuid
+from collections.abc import Iterable
 from datetime import timedelta
-from typing import Any, Iterable
+from typing import Any
 
 import structlog
 from django.db import transaction
@@ -145,9 +148,7 @@ def _tenant_has_active_legal_hold(tenant_id: uuid.UUID | str | None) -> bool:
     from hub.apps.governance.models import RetentionPolicy
 
     now = timezone.now()
-    qs = RetentionPolicy.objects.using(_ADMIN).filter(
-        tenant_id=tenant_id, legal_hold=True
-    )
+    qs = RetentionPolicy.objects.using(_ADMIN).filter(tenant_id=tenant_id, legal_hold=True)
     for policy in qs.iterator():
         if policy.legal_hold_expires_at is None or policy.legal_hold_expires_at > now:
             return True
@@ -272,9 +273,7 @@ def _chunked_hard_delete(
     for start in range(0, len(ids), _DELETE_CHUNK_SIZE):
         chunk = ids[start : start + _DELETE_CHUNK_SIZE]
         deleted, _per_model = (
-            AuditEvent.all_objects.using(_ADMIN)
-            .filter(tenant_id=tenant_id, id__in=chunk)
-            .delete()
+            AuditEvent.all_objects.using(_ADMIN).filter(tenant_id=tenant_id, id__in=chunk).delete()
         )
         total += int(deleted or 0)
     return total
@@ -319,9 +318,7 @@ def _sweep_one_tenant(
     # First pass: classify each candidate. We collect IDs before the
     # delete so the meta-audit emission knows the exact set and so we
     # can chunk the delete deterministically.
-    for row in candidate_qs.values("id", "resource_type", "resource_id").iterator(
-        chunk_size=500
-    ):
+    for row in candidate_qs.values("id", "resource_type", "resource_id").iterator(chunk_size=500):
         if _row_blocked_by_dsar(
             tenant_id=tenant_id,
             resource_type=row.get("resource_type"),
@@ -355,9 +352,7 @@ def _sweep_one_tenant(
 
         actually_deleted = 0
         if not dry_run and deleted_ids:
-            actually_deleted = _chunked_hard_delete(
-                tenant_id=tenant_id, ids=deleted_ids
-            )
+            actually_deleted = _chunked_hard_delete(tenant_id=tenant_id, ids=deleted_ids)
 
     # Phase 234.7.2 — emit ``audit_retention_purged_total`` counter.
     # Increment by ``deleted_count`` (NOT 1-per-call) so the rate query

@@ -9,8 +9,10 @@ Tests verify that malicious ODPS sample files:
 
 These tests ensure that security validation mechanisms work correctly.
 """
+
 try:
     import pytest
+
     pytestmark = pytest.mark.django_db(transaction=True)
 except ImportError:
     # pytest not available, using Django test runner
@@ -20,6 +22,7 @@ except ImportError:
 import json
 import re
 from pathlib import Path
+
 from django.test import TestCase
 
 
@@ -30,7 +33,9 @@ class ODPSMaliciousSamplesTest(TestCase):
         """Set up test fixtures"""
         # Get the base directory for tests
         self.base_dir = Path(__file__).parent.parent.parent
-        self.malicious_dir = self.base_dir / "tests" / "fixtures" / "odps" / "security" / "malicious"
+        self.malicious_dir = (
+            self.base_dir / "tests" / "fixtures" / "odps" / "security" / "malicious"
+        )
 
         # Security patterns to detect
         self.path_traversal_patterns = [
@@ -97,12 +102,11 @@ class ODPSMaliciousSamplesTest(TestCase):
         file_path = self.malicious_dir / "path-traversal-attempt.json"
 
         self.assertTrue(
-            file_path.exists(),
-            f"Path traversal attack file should exist at: {file_path}"
+            file_path.exists(), f"Path traversal attack file should exist at: {file_path}"
         )
 
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding="utf-8") as f:
                 data = json.load(f)
             self.assertIsInstance(data, dict, "File should contain a JSON object")
         except json.JSONDecodeError as e:
@@ -112,7 +116,7 @@ class ODPSMaliciousSamplesTest(TestCase):
         """Test that path traversal file contains path traversal attack patterns"""
         file_path = self.malicious_dir / "path-traversal-attempt.json"
 
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Convert entire JSON to string for pattern matching
@@ -125,8 +129,9 @@ class ODPSMaliciousSamplesTest(TestCase):
                 found_patterns.append(pattern)
 
         self.assertGreater(
-            len(found_patterns), 0,
-            f"Path traversal file should contain path traversal patterns. Found: {found_patterns}"
+            len(found_patterns),
+            0,
+            f"Path traversal file should contain path traversal patterns. Found: {found_patterns}",
         )
 
         # Specifically check contractURL field
@@ -137,12 +142,9 @@ class ODPSMaliciousSamplesTest(TestCase):
         """Test that malicious URL file exists and contains javascript: URL"""
         file_path = self.malicious_dir / "malicious-url-javascript.json"
 
-        self.assertTrue(
-            file_path.exists(),
-            f"Malicious URL file should exist at: {file_path}"
-        )
+        self.assertTrue(file_path.exists(), f"Malicious URL file should exist at: {file_path}")
 
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Check for javascript: URLs
@@ -150,8 +152,9 @@ class ODPSMaliciousSamplesTest(TestCase):
         matches = self._find_patterns_in_value(data, self.malicious_url_patterns)
 
         self.assertGreater(
-            len(matches), 0,
-            f"Malicious URL file should contain javascript: or other malicious URL patterns. Found: {matches}"
+            len(matches),
+            0,
+            f"Malicious URL file should contain javascript: or other malicious URL patterns. Found: {matches}",
         )
 
         # Specifically verify javascript: pattern exists
@@ -161,12 +164,9 @@ class ODPSMaliciousSamplesTest(TestCase):
         """Test that XXE attempt file exists and contains XXE attack patterns"""
         file_path = self.malicious_dir / "xxe-attempt.json"
 
-        self.assertTrue(
-            file_path.exists(),
-            f"XXE attempt file should exist at: {file_path}"
-        )
+        self.assertTrue(file_path.exists(), f"XXE attempt file should exist at: {file_path}")
 
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Check for XXE patterns
@@ -174,8 +174,7 @@ class ODPSMaliciousSamplesTest(TestCase):
         matches = self._find_patterns_in_value(data, self.xxe_patterns)
 
         self.assertGreater(
-            len(matches), 0,
-            f"XXE attempt file should contain XXE patterns. Found: {matches}"
+            len(matches), 0, f"XXE attempt file should contain XXE patterns. Found: {matches}"
         )
 
         # Check for file:// URL (common in XXE)
@@ -185,20 +184,18 @@ class ODPSMaliciousSamplesTest(TestCase):
         """Test that script injection file exists and contains script injection patterns"""
         file_path = self.malicious_dir / "script-injection-attempt.json"
 
-        self.assertTrue(
-            file_path.exists(),
-            f"Script injection file should exist at: {file_path}"
-        )
+        self.assertTrue(file_path.exists(), f"Script injection file should exist at: {file_path}")
 
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Check for script injection patterns
         matches = self._find_patterns_in_value(data, self.script_injection_patterns)
 
         self.assertGreater(
-            len(matches), 0,
-            f"Script injection file should contain script injection patterns. Found: {matches}"
+            len(matches),
+            0,
+            f"Script injection file should contain script injection patterns. Found: {matches}",
         )
 
         # Specifically check for <script> tags
@@ -219,15 +216,14 @@ class ODPSMaliciousSamplesTest(TestCase):
         for filename in malicious_files:
             file_path = self.malicious_dir / filename
             with self.subTest(file=filename):
-                self.assertTrue(
-                    file_path.exists(),
-                    f"Malicious file should exist: {file_path}"
-                )
+                self.assertTrue(file_path.exists(), f"Malicious file should exist: {file_path}")
 
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
+                    with open(file_path, encoding="utf-8") as f:
                         data = json.load(f)
-                    self.assertIsInstance(data, dict, f"File {filename} should contain a JSON object")
+                    self.assertIsInstance(
+                        data, dict, f"File {filename} should contain a JSON object"
+                    )
                 except json.JSONDecodeError as e:
                     self.fail(f"Malicious file {filename} is not valid JSON: {e}")
 
@@ -245,57 +241,59 @@ class ODPSMaliciousSamplesTest(TestCase):
         for filename in malicious_files:
             file_path = self.malicious_dir / filename
             with self.subTest(file=filename):
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, encoding="utf-8") as f:
                     data = json.load(f)
 
                 # Check for security note (either _security_note or in description)
                 has_note = (
-                    "_security_note" in data or
-                    "intentionally malicious" in json.dumps(data).lower() or
-                    "security testing" in json.dumps(data).lower()
+                    "_security_note" in data
+                    or "intentionally malicious" in json.dumps(data).lower()
+                    or "security testing" in json.dumps(data).lower()
                 )
 
                 self.assertTrue(
                     has_note,
-                    f"Malicious file {filename} should contain a security note indicating it is intentionally malicious"
+                    f"Malicious file {filename} should contain a security note indicating it is intentionally malicious",
                 )
 
     def test_path_traversal_multiple_contains_multiple_attack_vectors(self):
         """Test that path traversal multiple file contains multiple attack vectors"""
         file_path = self.malicious_dir / "path-traversal-multiple.json"
 
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
 
         json_str = json.dumps(data)
 
         # Count path traversal patterns
-        pattern_count = sum(1 for pattern in self.path_traversal_patterns
-                          if re.search(pattern, json_str, re.IGNORECASE))
+        pattern_count = sum(
+            1
+            for pattern in self.path_traversal_patterns
+            if re.search(pattern, json_str, re.IGNORECASE)
+        )
 
         self.assertGreaterEqual(
-            pattern_count, 2,
-            f"Path traversal multiple file should contain multiple path traversal patterns. Found: {pattern_count}"
+            pattern_count,
+            2,
+            f"Path traversal multiple file should contain multiple path traversal patterns. Found: {pattern_count}",
         )
 
     def test_command_injection_file_contains_command_patterns(self):
         """Test that command injection file contains command injection patterns"""
         file_path = self.malicious_dir / "command-injection-attempt.json"
 
-        self.assertTrue(
-            file_path.exists(),
-            f"Command injection file should exist at: {file_path}"
-        )
+        self.assertTrue(file_path.exists(), f"Command injection file should exist at: {file_path}")
 
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Check for command injection patterns
         matches = self._find_patterns_in_value(data, self.command_injection_patterns)
 
         self.assertGreater(
-            len(matches), 0,
-            f"Command injection file should contain command injection patterns. Found: {matches}"
+            len(matches),
+            0,
+            f"Command injection file should contain command injection patterns. Found: {matches}",
         )
 
     def test_malicious_files_are_detected_by_security_validator(self):
@@ -311,16 +309,17 @@ class ODPSMaliciousSamplesTest(TestCase):
         for filename, expected_patterns in malicious_files.items():
             file_path = self.malicious_dir / filename
             with self.subTest(file=filename):
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, encoding="utf-8") as f:
                     data = json.load(f)
 
                 # Check for expected attack patterns
                 matches = self._find_patterns_in_value(data, expected_patterns)
 
                 self.assertGreater(
-                    len(matches), 0,
+                    len(matches),
+                    0,
                     f"Malicious file {filename} should be detected by security validator. "
-                    f"Expected patterns: {expected_patterns}, Found: {matches}"
+                    f"Expected patterns: {expected_patterns}, Found: {matches}",
                 )
 
     def test_malicious_files_have_proper_structure(self):
@@ -335,13 +334,15 @@ class ODPSMaliciousSamplesTest(TestCase):
         for filename in malicious_files:
             file_path = self.malicious_dir / filename
             with self.subTest(file=filename):
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, encoding="utf-8") as f:
                     data = json.load(f)
 
                 # Check basic ODPS structure
                 self.assertIn("schema", data, f"File {filename} should have 'schema' field")
                 self.assertIn("version", data, f"File {filename} should have 'version' field")
                 self.assertIn("product", data, f"File {filename} should have 'product' field")
-                self.assertIn("details", data.get("product", {}),
-                             f"File {filename} should have 'product.details' field")
-
+                self.assertIn(
+                    "details",
+                    data.get("product", {}),
+                    f"File {filename} should have 'product.details' field",
+                )

@@ -3,17 +3,20 @@ User Serializers
 
 DRF serializers for User and Role API.
 """
-from rest_framework import serializers
+
 from django.contrib.auth import get_user_model
+from rest_framework import serializers
+
 from hub.apps.auth.utils import sha256_hex
-from .models import User, Role, UserRole, UserStatus
+
+from .models import Role, User, UserRole, UserStatus
 
 User = get_user_model()
 
 
 class RoleSerializer(serializers.ModelSerializer):
     """Serializer for Role model"""
-    
+
     class Meta:
         model = Role
         fields = ["id", "tenant", "name", "description", "created_at", "updated_at"]
@@ -22,9 +25,10 @@ class RoleSerializer(serializers.ModelSerializer):
 
 class UserRoleSerializer(serializers.ModelSerializer):
     """Serializer for UserRole join table"""
+
     role = RoleSerializer(read_only=True)
     role_id = serializers.UUIDField(write_only=True)
-    
+
     class Meta:
         model = UserRole
         fields = ["id", "user", "role", "role_id", "created_at"]
@@ -33,6 +37,7 @@ class UserRoleSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for User model"""
+
     status = serializers.ChoiceField(choices=UserStatus.choices, read_only=True)
     roles = serializers.SerializerMethodField()
     tenant_name = serializers.CharField(source="tenant.name", read_only=True, allow_null=True)
@@ -49,16 +54,10 @@ class UserSerializer(serializers.ModelSerializer):
             "is_platform_admin",
             "roles",
             "created_at",
-            "updated_at"
+            "updated_at",
         ]
-        read_only_fields = [
-            "id",
-            "status",
-            "is_platform_admin",
-            "created_at",
-            "updated_at"
-        ]
-    
+        read_only_fields = ["id", "status", "is_platform_admin", "created_at", "updated_at"]
+
     def get_roles(self, obj):
         """Get user's role names (strings) for display in admin/list views."""
         user_roles = UserRole.objects.filter(user=obj).select_related("role")
@@ -67,17 +66,16 @@ class UserSerializer(serializers.ModelSerializer):
 
 class UserCreateSerializer(serializers.ModelSerializer):
     """Serializer for user creation"""
+
     role_ids = serializers.ListField(
         child=serializers.UUIDField(),
         required=False,
-        help_text="List of role IDs to assign to the user"
+        help_text="List of role IDs to assign to the user",
     )
     send_invitation = serializers.BooleanField(
-        required=False,
-        default=True,
-        help_text="Whether to send an invitation email to the user"
+        required=False, default=True, help_text="Whether to send an invitation email to the user"
     )
-    
+
     class Meta:
         model = User
         fields = [
@@ -88,9 +86,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
             "role_ids",
             "send_invitation",
         ]
-        extra_kwargs = {
-            "password": {"write_only": True, "required": False}
-        }
+        extra_kwargs = {"password": {"write_only": True, "required": False}}
 
     def create(self, validated_data):
         """Create user with optional role assignment"""
@@ -106,36 +102,35 @@ class UserCreateSerializer(serializers.ModelSerializer):
             validated_data["status"] = UserStatus.INVITED
         else:
             validated_data["status"] = UserStatus.ACTIVE
-        
+
         # Create user
         user = User.objects.create_user(
             email=validated_data["email"],
             password=password,
             tenant=validated_data.get("tenant"),
-            display_name=validated_data.get("display_name")
+            display_name=validated_data.get("display_name"),
         )
         user.status = validated_data["status"]
         user.save()
-        
+
         # Assign roles
         if role_ids:
             roles = Role.objects.filter(id__in=role_ids, tenant=user.tenant)
             for role in roles:
-                UserRole.objects.get_or_create(
-                    user=user, tenant=role.tenant, role=role
-                )
-        
+                UserRole.objects.get_or_create(user=user, tenant=role.tenant, role=role)
+
         # Generate invitation token if needed (11.3: store SHA-256 hash)
         if send_invitation:
-            from django.utils import timezone
-            from datetime import timedelta
             import uuid
+            from datetime import timedelta
+
+            from django.utils import timezone
 
             _plaintext = str(uuid.uuid4())
             user.invitation_token = sha256_hex(_plaintext)
             user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
             user.save(update_fields=["invitation_token", "invitation_token_expires_at"])
-        
+
         return user
 
 
@@ -181,17 +176,18 @@ class UserUpdateSerializer(serializers.ModelSerializer):
 
 class UserInviteSerializer(serializers.Serializer):
     """Serializer for user invitation"""
+
     email = serializers.EmailField()
     display_name = serializers.CharField(required=False, allow_blank=True)
     role_ids = serializers.ListField(
         child=serializers.UUIDField(),
         required=False,
-        help_text="List of role IDs to assign to the user"
+        help_text="List of role IDs to assign to the user",
     )
 
 
 class UserRoleAssignmentSerializer(serializers.Serializer):
     """Serializer for role assignment/removal"""
+
     role_id = serializers.UUIDField()
     action = serializers.ChoiceField(choices=["assign", "remove"])
-

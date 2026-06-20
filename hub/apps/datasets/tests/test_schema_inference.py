@@ -43,6 +43,18 @@ class SchemaInferenceTest(TestCase):
         delimiter = detect_delimiter(content)
         self.assertEqual(delimiter, "\t")
 
+    def test_detect_delimiter_pipe(self):
+        """Test delimiter detection for pipe-separated CSV"""
+        content = b"name|age|city\nJohn|30|NYC\nJane|25|LA"
+        delimiter = detect_delimiter(content)
+        self.assertEqual(delimiter, "|")
+
+    def test_detect_delimiter_fallback_to_comma(self):
+        """Test delimiter detection falls back to comma when no delimiter found"""
+        content = b"singlecolumn\nvalue1\nvalue2"
+        delimiter = detect_delimiter(content)
+        self.assertEqual(delimiter, ",")
+
     def test_infer_type_integer(self):
         """Test type inference for integer values"""
         values = [1, 2, 3, 4, 5]
@@ -77,6 +89,12 @@ class SchemaInferenceTest(TestCase):
         type_info = infer_type_from_values(values)
         self.assertEqual(type_info["data_type"], "integer")
         self.assertTrue(type_info["nullable"])
+
+    def test_infer_type_datetime(self):
+        """Test type inference for datetime (ISO 8601) values"""
+        values = ["2024-01-15", "2024-02-20", "2024-03-10"]
+        type_info = infer_type_from_values(values)
+        self.assertEqual(type_info["data_type"], "datetime")
 
     def test_infer_schema_from_csv_simple(self):
         """Test schema inference from simple CSV"""
@@ -478,8 +496,7 @@ Jane;25;LA"""
         schema = infer_schema_from_csv(csv_content, sample_size=10)
         self.assertIsNotNone(schema)
         self.assertIn("fields", schema)
-        self.assertGreater(len(schema["fields"]), 0,
-            "Schema must contain at least one field")
+        self.assertGreater(len(schema["fields"]), 0, "Schema must contain at least one field")
 
     def test_detect_delimiter_detects_comma(self):
         """detect_delimiter returns the correct delimiter for comma-separated content."""
@@ -493,7 +510,7 @@ Jane;25;LA"""
 
     def test_detect_encoding_utf8(self):
         """UTF-8 bytes are detected as utf-8."""
-        content = "Hello, 世界".encode("utf-8")
+        content = "Hello, 世界".encode()
         encoding = detect_encoding(content)
         self.assertEqual(encoding, "utf-8")
 
@@ -502,8 +519,11 @@ Jane;25;LA"""
         # 0xFF is invalid UTF-8 but valid latin-1
         content = b"Hello\xffWorld"
         encoding = detect_encoding(content)
-        self.assertIn(encoding, ("latin-1", "windows-1252"),
-            f"Expected latin-1 or windows-1252 fallback, got: {encoding}")
+        self.assertIn(
+            encoding,
+            ("latin-1", "windows-1252"),
+            f"Expected latin-1 or windows-1252 fallback, got: {encoding}",
+        )
 
     def test_detect_encoding_empty_content(self):
         """Empty bytes must return utf-8 (the default)."""
@@ -516,8 +536,9 @@ Jane;25;LA"""
     def test_infer_schema_from_parquet_success(self):
         """Minimal Parquet file returns well-formed schema."""
         try:
-            import pandas as pd
             import io
+
+            import pandas as pd
         except ImportError:
             self.skipTest("pandas not available for Parquet schema inference")
 
@@ -534,11 +555,67 @@ Jane;25;LA"""
         self.assertIn("inference_metadata", schema)
 
     def test_infer_schema_from_parquet_raises_import_error_when_pandas_missing(self):
-        """When pandas is not available, parquet inference raises ImportError."""
-        try:
-            import pandas as _pd  # noqa: F401
-            self.skipTest("pandas is available; cannot test missing-pandas path")
-        except ImportError:
-            pass
-        with self.assertRaises(ImportError):
-            infer_schema_from_parquet(b"fake-parquet-bytes")
+        """When pandas is unavailable, parquet inference raises ImportError.
+
+        Uses a surgical ``PANDAS_AVAILABLE = False`` override rather than
+        trying to uninstall pandas (which would break other tests). This
+        is the canonical pattern for testing ImportError guard clauses on
+        optional dependencies — it exercises the real production code path
+        without side effects on the runtime environment.
+        """
+        from unittest.mock import patch
+
+        from hub.apps.datasets.schema_inference import infer_schema_from_parquet
+
+        with patch("hub.apps.datasets.schema_inference.PANDAS_AVAILABLE", False):
+            with self.assertRaises(ImportError):
+                infer_schema_from_parquet(b"fake-parquet-bytes")
+
+    # ── infer_schema_with_encoding_gate ─────────────────────────────
+
+    def test_infer_schema_with_encoding_gate_csv(self):
+        """encoding gate routes CSV content correctly."""
+        from hub.apps.datasets.schema_inference import infer_schema_with_encoding_gate
+
+        csv_content = b"name,age\nAlice,30\nBob,25"
+        result = infer_schema_with_encoding_gate(
+            file_content=csv_content,
+            file_format="CSV",
+        )
+        self.assertIsNotNone(result)
+        self.assertIn("fields", result)
+
+    def test_infer_schema_with_encoding_gate_json(self):
+        """encoding gate routes JSON content correctly."""
+        from hub.apps.datasets.schema_inference import infer_schema_with_encoding_gate
+
+        json_content = b'[{"name":"Alice","age":30},{"name":"Bob","age":25}]'
+        result = infer_schema_with_encoding_gate(
+            file_content=json_content,
+            file_format="JSON",
+        )
+        self.assertIsNotNone(result)
+        self.assertIn("fields", result)
+
+    def test_infer_schema_with_encoding_gate_unsupported_format(self):
+        """encoding gate raises ValidationError for unsupported format."""
+        from hub.apps.core.services.base import ValidationError
+        from hub.apps.datasets.schema_inference import infer_schema_with_encoding_gate
+
+        with self.assertRaises(ValidationError):
+            infer_schema_with_encoding_gate(
+                file_content=b"fake",
+                file_format="UNSUPPORTED",
+            )
+
+    # ── infer_schema_from_excel ──────────────────────────────────────
+
+    def test_infer_schema_from_excel_valid(self):
+        """infer_schema_from_excel is callable and raises ImportError without pandas."""
+        from hub.apps.datasets.schema_inference import infer_schema_from_excel
+
+        # Verify the function is importable and callable
+        from unittest.mock import patch
+        with patch("hub.apps.datasets.schema_inference.PANDAS_AVAILABLE", False):
+            with self.assertRaises(ImportError):
+                infer_schema_from_excel(b"fake-excel-bytes-not-real")

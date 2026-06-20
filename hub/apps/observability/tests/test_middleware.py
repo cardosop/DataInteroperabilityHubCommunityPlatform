@@ -12,7 +12,6 @@ from django.test import RequestFactory, TestCase
 
 from hub.apps.observability.middleware import MetricsMiddleware
 from hub.apps.observability.otel_metrics import (
-    get_status_class,
     http_errors_total,
     http_request_duration_seconds,
     http_requests_total,
@@ -70,7 +69,7 @@ class MetricsMiddlewareTest(TestCase):
             # Metrics should have labels method
             self.assertTrue(hasattr(http_requests_total, "labels"))
             self.assertTrue(hasattr(http_request_duration_seconds, "labels"))
-        except Exception as e:
+        except Exception:
             # Should handle gracefully if OpenTelemetry not available
             # This test verifies middleware doesn't crash
             pass
@@ -89,7 +88,7 @@ class MetricsMiddlewareTest(TestCase):
             # Verify error metrics exist
             self.assertIsNotNone(http_errors_total)
             self.assertTrue(hasattr(http_errors_total, "labels"))
-        except Exception as e:
+        except Exception:
             # Should handle gracefully if OpenTelemetry not available
             pass
 
@@ -142,7 +141,7 @@ class MetricsMiddlewareTest(TestCase):
 
             # Verify metrics exist
             self.assertIsNotNone(http_request_duration_seconds)
-        except Exception as e:
+        except Exception:
             # Should handle gracefully if OpenTelemetry not available
             pass
 

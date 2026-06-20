@@ -1,21 +1,21 @@
 """
 Unit tests for Job Priority Queue functionality.
 """
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from django_rq import get_queue
+
 import uuid
 
-from hub.apps.jobs.models import Job, JobType, JobStatus, JobPriority
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from django_rq import get_queue
+
+from hub.apps.jobs.models import Job, JobPriority, JobStatus, JobType
 from hub.apps.jobs.utils import (
     create_job,
     get_job_priority,
     get_queue_for_priority,
-    get_queue_for_job_type
 )
-from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant
-
+from hub.apps.users.models import UserStatus
 
 User = get_user_model()
 
@@ -29,18 +29,18 @@ class JobPriorityQueueTest(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
     def tearDown(self):
         """Clean up queues after tests"""
-        for queue_name in ['job_critical', 'job_default', 'job_low']:
+        for queue_name in ["job_critical", "job_default", "job_low"]:
             try:
                 queue = get_queue(queue_name)
                 queue.empty()
@@ -74,18 +74,18 @@ class JobPriorityQueueTest(TestCase):
 
     def test_get_queue_for_priority(self):
         """Test queue name mapping for priorities"""
-        self.assertEqual(get_queue_for_priority(JobPriority.HIGH), 'job_critical')
-        self.assertEqual(get_queue_for_priority(JobPriority.NORMAL), 'job_default')
-        self.assertEqual(get_queue_for_priority(JobPriority.LOW), 'job_low')
+        self.assertEqual(get_queue_for_priority(JobPriority.HIGH), "job_critical")
+        self.assertEqual(get_queue_for_priority(JobPriority.NORMAL), "job_default")
+        self.assertEqual(get_queue_for_priority(JobPriority.LOW), "job_low")
         # Unknown priority defaults to job_default
-        self.assertEqual(get_queue_for_priority("UNKNOWN"), 'job_default')
+        self.assertEqual(get_queue_for_priority("UNKNOWN"), "job_default")
 
     def test_create_job_with_explicit_priority(self):
         """Test job creation with explicit priority"""
         resource_id = uuid.uuid4()
 
         # Clear queue before test
-        queue = get_queue('job_low')
+        queue = get_queue("job_low")
         queue.empty()
 
         job = create_job(
@@ -94,7 +94,7 @@ class JobPriorityQueueTest(TestCase):
             resource_id=str(resource_id),
             tenant=self.tenant,
             user=self.user,
-            priority=JobPriority.LOW  # Override default HIGH priority
+            priority=JobPriority.LOW,  # Override default HIGH priority
         )
 
         self.assertIsNotNone(job.id)
@@ -103,20 +103,20 @@ class JobPriorityQueueTest(TestCase):
 
         # Verify queue mapping: LOW priority maps to job_low (job may already be
         # processed by a worker in shared test env, so we assert mapping only)
-        self.assertEqual(get_queue_for_priority(JobPriority.LOW), 'job_low')
-        queue = get_queue('job_low')
+        self.assertEqual(get_queue_for_priority(JobPriority.LOW), "job_low")
+        queue = get_queue("job_low")
         self.assertGreaterEqual(queue.count, 0)
 
     def test_create_job_with_priority_from_rules(self):
         """Test job creation with priority determined from job type rules"""
-        resource_id = uuid.uuid4()
+        uuid.uuid4()
 
         # Clear queues before test
-        high_queue = get_queue('job_critical')
+        high_queue = get_queue("job_critical")
         high_queue.empty()
-        normal_queue = get_queue('job_default')
+        normal_queue = get_queue("job_default")
         normal_queue.empty()
-        low_queue = get_queue('job_low')
+        low_queue = get_queue("job_low")
         low_queue.empty()
 
         # HIGH priority job (DQ_RUN)
@@ -125,10 +125,10 @@ class JobPriorityQueueTest(TestCase):
             resource_type="DATASET",
             resource_id=str(uuid.uuid4()),
             tenant=self.tenant,
-            user=self.user
+            user=self.user,
         )
         self.assertEqual(high_job.priority, JobPriority.HIGH)
-        self.assertEqual(get_queue_for_priority(JobPriority.HIGH), 'job_critical')
+        self.assertEqual(get_queue_for_priority(JobPriority.HIGH), "job_critical")
 
         # NORMAL priority job (SEMANTIC_MAPPING)
         normal_job = create_job(
@@ -136,10 +136,10 @@ class JobPriorityQueueTest(TestCase):
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4()),
             tenant=self.tenant,
-            user=self.user
+            user=self.user,
         )
         self.assertEqual(normal_job.priority, JobPriority.NORMAL)
-        self.assertEqual(get_queue_for_priority(JobPriority.NORMAL), 'job_default')
+        self.assertEqual(get_queue_for_priority(JobPriority.NORMAL), "job_default")
 
         # LOW priority job (CONTRACT_VALIDATION)
         low_job = create_job(
@@ -147,10 +147,10 @@ class JobPriorityQueueTest(TestCase):
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4()),
             tenant=self.tenant,
-            user=self.user
+            user=self.user,
         )
         self.assertEqual(low_job.priority, JobPriority.LOW)
-        self.assertEqual(get_queue_for_priority(JobPriority.LOW), 'job_low')
+        self.assertEqual(get_queue_for_priority(JobPriority.LOW), "job_low")
 
     def test_create_job_priority_field_in_model(self):
         """Test that priority field is stored in Job model"""
@@ -161,7 +161,7 @@ class JobPriorityQueueTest(TestCase):
             priority=JobPriority.HIGH,
             resource_type="DATASET",
             resource_id=uuid.uuid4(),
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.assertEqual(job.priority, JobPriority.HIGH)
@@ -178,7 +178,7 @@ class JobPriorityQueueTest(TestCase):
             status=JobStatus.PENDING,
             resource_type="DATASET",
             resource_id=uuid.uuid4(),
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Default priority should be NORMAL
@@ -187,7 +187,7 @@ class JobPriorityQueueTest(TestCase):
     def test_priority_queue_enqueue_logic(self):
         """Test that jobs are enqueued to correct queue based on priority"""
         # Clear all queues
-        for queue_name in ['job_critical', 'job_default', 'job_low']:
+        for queue_name in ["job_critical", "job_default", "job_low"]:
             queue = get_queue(queue_name)
             queue.empty()
 
@@ -198,7 +198,7 @@ class JobPriorityQueueTest(TestCase):
             resource_id=str(uuid.uuid4()),
             tenant=self.tenant,
             user=self.user,
-            priority=JobPriority.HIGH
+            priority=JobPriority.HIGH,
         )
 
         normal_job = create_job(
@@ -207,7 +207,7 @@ class JobPriorityQueueTest(TestCase):
             resource_id=str(uuid.uuid4()),
             tenant=self.tenant,
             user=self.user,
-            priority=JobPriority.NORMAL
+            priority=JobPriority.NORMAL,
         )
 
         low_job = create_job(
@@ -216,20 +216,20 @@ class JobPriorityQueueTest(TestCase):
             resource_id=str(uuid.uuid4()),
             tenant=self.tenant,
             user=self.user,
-            priority=JobPriority.LOW
+            priority=JobPriority.LOW,
         )
 
         # Verify job priorities and queue mapping (worker may drain queues in shared env)
         self.assertEqual(high_job.priority, JobPriority.HIGH)
         self.assertEqual(normal_job.priority, JobPriority.NORMAL)
         self.assertEqual(low_job.priority, JobPriority.LOW)
-        self.assertEqual(get_queue_for_priority(JobPriority.HIGH), 'job_critical')
-        self.assertEqual(get_queue_for_priority(JobPriority.NORMAL), 'job_default')
-        self.assertEqual(get_queue_for_priority(JobPriority.LOW), 'job_low')
+        self.assertEqual(get_queue_for_priority(JobPriority.HIGH), "job_critical")
+        self.assertEqual(get_queue_for_priority(JobPriority.NORMAL), "job_default")
+        self.assertEqual(get_queue_for_priority(JobPriority.LOW), "job_low")
 
-        high_queue = get_queue('job_critical')
-        normal_queue = get_queue('job_default')
-        low_queue = get_queue('job_low')
+        high_queue = get_queue("job_critical")
+        normal_queue = get_queue("job_default")
+        low_queue = get_queue("job_low")
         # When worker is running, jobs may be consumed; stale jobs from
         # previous --reuse-db runs may also be in the queue. Check that
         # our job exists anywhere in the queue (not necessarily first).
@@ -252,13 +252,13 @@ class JobPriorityQueueTest(TestCase):
             resource_id=str(uuid.uuid4()),
             tenant=self.tenant,
             user=self.user,
-            priority=JobPriority.LOW
+            priority=JobPriority.LOW,
         )
 
         self.assertEqual(job.priority, JobPriority.LOW)
 
         # Verify queue mapping for LOW (job may already be processed in shared env)
-        self.assertEqual(get_queue_for_priority(JobPriority.LOW), 'job_low')
+        self.assertEqual(get_queue_for_priority(JobPriority.LOW), "job_low")
 
     def test_priority_indexes(self):
         """Test that priority indexes exist for efficient queries"""
@@ -269,7 +269,7 @@ class JobPriorityQueueTest(TestCase):
             status=JobStatus.PENDING,
             priority=JobPriority.HIGH,
             resource_type="DATASET",
-            resource_id=uuid.uuid4()
+            resource_id=uuid.uuid4(),
         )
 
         normal_job = Job.objects.create(
@@ -278,7 +278,7 @@ class JobPriorityQueueTest(TestCase):
             status=JobStatus.PENDING,
             priority=JobPriority.NORMAL,
             resource_type="CONTRACT",
-            resource_id=uuid.uuid4()
+            resource_id=uuid.uuid4(),
         )
 
         # Query by priority (should use index)
@@ -287,17 +287,11 @@ class JobPriorityQueueTest(TestCase):
         self.assertNotIn(normal_job, high_jobs)
 
         # Query by priority and status (should use composite index)
-        pending_high_jobs = Job.objects.filter(
-            priority=JobPriority.HIGH,
-            status=JobStatus.PENDING
-        )
+        pending_high_jobs = Job.objects.filter(priority=JobPriority.HIGH, status=JobStatus.PENDING)
         self.assertIn(high_job, pending_high_jobs)
 
         # Query by tenant, priority, and status (should use composite index)
         tenant_high_pending = Job.objects.filter(
-            tenant=self.tenant,
-            priority=JobPriority.HIGH,
-            status=JobStatus.PENDING
+            tenant=self.tenant, priority=JobPriority.HIGH, status=JobStatus.PENDING
         )
         self.assertIn(high_job, tenant_high_pending)
-

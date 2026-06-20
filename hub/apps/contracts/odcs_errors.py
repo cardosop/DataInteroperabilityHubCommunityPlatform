@@ -17,9 +17,11 @@ All errors include:
 - recoverable: Whether the error can be recovered from
 - recovery_strategy: Suggested recovery strategy
 """
+
 import time
-from typing import Optional, Dict, Any
 from enum import Enum
+from typing import Any
+
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -27,6 +29,7 @@ logger = structlog.get_logger(__name__)
 
 class RecoveryStrategy(str, Enum):
     """Error recovery strategies"""
+
     RETRY = "retry"
     FALLBACK = "fallback"
     COMPENSATION = "compensation"
@@ -62,14 +65,14 @@ class ODCSError(Exception):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        user_message: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
+        error_code: str | None = None,
+        user_message: str | None = None,
+        context: dict[str, Any] | None = None,
         recoverable: bool = False,
-        recovery_strategy: Optional[RecoveryStrategy] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        recovery_strategy: RecoveryStrategy | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize ODCS error.
@@ -104,7 +107,7 @@ class ODCSError(Exception):
             self.context["cause_type"] = type(cause).__name__
             self.context["cause_message"] = str(cause)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert error to dictionary for API responses and logging.
 
@@ -167,14 +170,14 @@ class ODCSValidationError(ODCSError):
         self,
         message: str,
         error_code: str = None,
-        user_message: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        field_path: Optional[str] = None,
-        expected: Optional[Any] = None,
-        actual: Optional[Any] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        user_message: str | None = None,
+        context: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize ODCS validation error.
@@ -232,15 +235,15 @@ class ODCSGenerationError(ODCSError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        user_message: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        field_path: Optional[str] = None,
-        source_path: Optional[str] = None,
-        target_path: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        user_message: str | None = None,
+        context: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        source_path: str | None = None,
+        target_path: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize ODCS generation error.
@@ -298,14 +301,14 @@ class ODCSExportError(ODCSError):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        user_message: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        export_format: Optional[str] = None,
-        file_path: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        cause: Optional[Exception] = None,
+        error_code: str | None = None,
+        user_message: str | None = None,
+        context: dict[str, Any] | None = None,
+        export_format: str | None = None,
+        file_path: str | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        cause: Exception | None = None,
     ):
         """
         Initialize ODCS export error.
@@ -343,4 +346,3 @@ class ODCSExportError(ODCSError):
             user_id=user_id,
             cause=cause,
         )
-

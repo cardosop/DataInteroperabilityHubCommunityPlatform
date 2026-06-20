@@ -1,6 +1,7 @@
 """High-risk processing indicators that trigger DPIA obligations (GDPR Art 35 style)."""
 
 from __future__ import annotations
+
 from hub.apps.assets.models import Asset
 
 # Normalised substring hints — not a legal determination; drives workflow flags only.

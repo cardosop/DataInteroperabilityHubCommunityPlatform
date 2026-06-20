@@ -15,8 +15,6 @@ from hub.apps.core.events.models import Event
 from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
 from hub.apps.integrations.event_publishers import MarketplaceEventPublisher
 from hub.apps.integrations.models import (
-    MarketplaceConnection,
-    MarketplaceMapping,
     MarketplaceSyncJob,
 )
 from hub.apps.integrations.services import MarketplaceIntegrationService
@@ -115,7 +113,12 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
 
         # Now test our MarketplaceEventPublisher methods
         # Update connection and publish event
-        changes = {"name": {"old": f"Integration Test Connection {self._suffix}", "new": "Updated Connection"}}
+        changes = {
+            "name": {
+                "old": f"Integration Test Connection {self._suffix}",
+                "new": "Updated Connection",
+            }
+        }
         event_id = self.publisher.publish_connection_updated(
             connection_id=str(connection.id),
             changes=changes,
@@ -215,7 +218,10 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
 
         # Create asset
         asset = Asset.objects.create(
-            tenant=self.tenant, created_by=self.user, name=f"Test Asset {self._suffix}", source_type="FEDERATED"
+            tenant=self.tenant,
+            created_by=self.user,
+            name=f"Test Asset {self._suffix}",
+            source_type="FEDERATED",
         )
 
         # Create mapping using service
@@ -311,26 +317,24 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
         self.assertEqual(event.data["error_message"], error_message)
         self.assertEqual(event.data["error_details"], error_details)
 
-    def test_event_deduplication_works(self):
-        """Test that event deduplication works correctly."""
-        from django.conf import settings
+    def test_event_deduplication_when_redis_available(self):
+        """Test that deduplication returns same event ID for duplicate publishes.
 
+        Requires Redis.  Skips if Redis is unavailable so the test provides
+        a clear signal — a skip means "can't verify", not "verified OK."
+        """
         from hub.apps.core.events.deduplication import get_redis_client
 
-        # Check if Redis is available for deduplication
+        # Require Redis for this test
+        redis_client = get_redis_client()
+        if redis_client is None:
+            raise unittest.SkipTest("Redis client not available for deduplication test")
         try:
-            redis_client = get_redis_client()
-            if redis_client:
-                redis_client.ping()
-                redis_available = True
-            else:
-                redis_available = False
-        except Exception:
-            # Redis unavailable - deduplication will be skipped (fail-open)
-            redis_available = False
+            redis_client.ping()
+        except (OSError, TimeoutError):
+            raise unittest.SkipTest("Redis not reachable for deduplication test")
 
-        # Use a unique connection_id per test run to avoid deduplication
-        # collisions with events cached in Redis from previous runs.
+        # Use a unique connection_id to avoid collisions with stale Redis keys
         unique_conn_id = f"test-connection-{uuid.uuid4().hex[:8]}"
 
         # Publish same event twice
@@ -350,44 +354,71 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             user_id=str(self.user.id),
         )
 
-        if redis_available:
-            # When Redis is available, deduplication should work
-            # Verify both calls return the same event ID (deduplication)
-            self.assertEqual(
-                event_id_1,
-                event_id_2,
-                "Event deduplication should return same event ID when Redis is available",
-            )
+        # Deduplication should return the same event ID
+        self.assertEqual(
+            event_id_1, event_id_2,
+            "Event deduplication should return same event ID when Redis is available",
+        )
 
-            # Verify only one event exists in database
-            events = Event.objects.filter(event_id=event_id_1)
-            self.assertEqual(
-                events.count(), 1, "Only one event should exist when deduplication works"
-            )
-        else:
-            # When Redis is unavailable, deduplication is skipped (fail-open behavior)
-            # Events will be published separately, which is expected behavior
-            # Verify both events were published successfully
-            self.assertIsNotNone(
-                event_id_1, "First event should be published even when Redis is unavailable"
-            )
-            self.assertIsNotNone(
-                event_id_2, "Second event should be published even when Redis is unavailable"
-            )
+        # Only one event should exist in the database
+        events = Event.objects.filter(event_id=event_id_1)
+        self.assertEqual(
+            events.count(), 1,
+            "Only one event should exist when deduplication works",
+        )
 
-            # Both events should exist in database (deduplication skipped)
-            events = Event.objects.filter(event_id__in=[event_id_1, event_id_2])
-            self.assertEqual(
-                events.count(), 2, "Both events should exist when deduplication is unavailable"
-            )
+    def test_event_deduplication_fail_open_without_redis(self):
+        """Test that events are still published when deduplication is unavailable.
+
+        This verifies the fail-open behaviour: Redis unavailability must not
+        block event publishing.
+        """
+        unique_conn_id = f"test-connection-{uuid.uuid4().hex[:8]}"
+
+        event_id_1 = self.publisher.publish_connection_created(
+            connection_id=unique_conn_id,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Test Connection",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        event_id_2 = self.publisher.publish_connection_created(
+            connection_id=unique_conn_id,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Test Connection",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        # Both events should have been published successfully
+        self.assertIsNotNone(event_id_1)
+        self.assertIsNotNone(event_id_2)
+
+        # Both (or one, if Redis happens to be available) should exist in DB
+        events = Event.objects.filter(event_id__in=[event_id_1, event_id_2])
+        self.assertIn(
+            events.count(), [1, 2],
+            "Events should be persisted regardless of deduplication availability",
+        )
 
     def test_publish_connection_created_with_missing_required_fields(self):
         """Test error handling when publishing connection.created event with missing fields"""
-        # Test with None connection_id
+        # Test with None connection_id — should raise ValueError
         with self.assertRaises((ValueError, TypeError)):
             self.publisher.publish_connection_created(
                 connection_id=None,  # type: ignore[arg-type]  # test: edge-case type exercise
                 marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+                name="Test Connection",
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+            )
+
+        # Test with None marketplace_type — should also raise ValueError
+        with self.assertRaises(ValueError):
+            self.publisher.publish_connection_created(
+                connection_id=str(uuid.uuid4()),
+                marketplace_type=None,  # type: ignore[arg-type]  # test: edge-case type exercise
                 name="Test Connection",
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
@@ -475,6 +506,11 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
         self.assertIsNotNone(event_id)
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(event.event_type, "marketplace.connection.created")
+        # Verify fallback: None tenant_id should resolve to publisher default
+        self.assertEqual(
+            str(event.tenant_id), str(self.tenant.id),
+            msg="None tenant_id should fall back to publisher's default tenant_id",
+        )
 
     def test_event_publisher_handles_missing_user_id(self):
         """Test error handling when user_id is missing"""
@@ -486,7 +522,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             config=self.config,
         )
 
-        # Should handle missing user_id gracefully (may use publisher's user_id)
+        # Should handle missing user_id gracefully — falls back to publisher default
         event_id = self.publisher.publish_connection_created(
             connection_id=str(connection.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
@@ -495,10 +531,14 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             user_id=None,  # Missing user_id
         )
 
-        # Event should still be published (publisher has user_id from initialization)
         self.assertIsNotNone(event_id)
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(event.event_type, "marketplace.connection.created")
+        # Verify fallback: None user_id should resolve to publisher default
+        self.assertEqual(
+            str(event.user_id), str(self.user.id),
+            msg="None user_id should fall back to publisher's default user_id",
+        )
 
     def test_event_publisher_handles_large_payload(self):
         """Test error handling when event payload is very large"""

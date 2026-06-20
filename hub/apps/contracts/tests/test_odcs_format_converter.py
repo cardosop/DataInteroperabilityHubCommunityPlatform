@@ -549,7 +549,7 @@ class ODCSFormatYAMLTest(TestCase):
         # This test will only work if PyYAML is actually not available
         # In most cases, PyYAML will be available, so we'll test the error message
         # by checking the error handling logic
-        pass  # Covered by implementation error handling
+        # Covered by implementation error handling
 
 
 class ODCSFormatRoundTripTest(TestCase):
@@ -618,7 +618,7 @@ class ODCSFormatRoundTripTest(TestCase):
 
         # Format as JSON
         json_result = format_odcs_as_json(odcs_doc, ensure_ascii=False)
-        json_parsed = json.loads(json_result)
+        json.loads(json_result)
 
         # Format as YAML
         yaml_result = format_odcs_as_yaml(odcs_doc, allow_unicode=True)
@@ -654,7 +654,7 @@ class ODCSFormatRoundTripTest(TestCase):
 
         # Format as JSON
         json_result = format_odcs_as_json(odcs_doc)
-        json_parsed = json.loads(json_result)
+        json.loads(json_result)
 
         # Format as YAML
         yaml_result = format_odcs_as_yaml(odcs_doc)

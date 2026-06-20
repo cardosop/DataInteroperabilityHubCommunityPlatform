@@ -19,15 +19,11 @@ import json
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.assets.services import AssetService
 from hub.apps.contracts.models import (
-    Contract,
-    ContractStatus,
-    NormalizationStatus,
-    OriginalFormat,
     OriginalSpecType,
 )
-from hub.apps.contracts.services import ContractService, ODPSService
+from hub.apps.contracts.services import ContractService
 from hub.apps.contracts.tests.test_base import ContractsTestBase
-from hub.apps.core.services.base import NotFoundError, ValidationError
+from hub.apps.core.services.base import ValidationError
 from hub.apps.marketplace.services import MarketplaceService
 from hub.apps.semantic.utils import map_odps_contract_to_semantic_via_service
 

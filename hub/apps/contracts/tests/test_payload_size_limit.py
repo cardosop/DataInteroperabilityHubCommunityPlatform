@@ -17,6 +17,7 @@ Tests use the existing ``ContractsAPITransactionTestBase`` so the
 TENANT_ADMIN role + active subscription middleware prerequisites are
 satisfied. No mocks of internal code paths.
 """
+
 from __future__ import annotations
 
 import json
@@ -42,9 +43,7 @@ def _build_padded_odcs(target_size_bytes: int) -> str:
         "version": "1.0.0",
         "status": "active",
         "info": {"description": ""},
-        "schema": [
-            {"name": "rows", "fields": [{"name": "id", "type": "string"}]}
-        ],
+        "schema": [{"name": "rows", "fields": [{"name": "id", "type": "string"}]}],
     }
     base_size = len(json.dumps(base))
     padding = max(0, target_size_bytes - base_size)
@@ -136,7 +135,8 @@ class PayloadSizeLimitAlternateWritePathsTest(ContractsAPITransactionTestBase):
             format="json",
         )
         self.assertEqual(
-            response.status_code, status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            response.status_code,
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             f"validate-draft must enforce the cap; got {response.status_code}",
         )
         self.assertEqual(response.data.get("code"), "PAYLOAD_TOO_LARGE")
@@ -149,7 +149,8 @@ class PayloadSizeLimitAlternateWritePathsTest(ContractsAPITransactionTestBase):
             format="json",
         )
         self.assertEqual(
-            response.status_code, status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            response.status_code,
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             f"products endpoint must enforce the cap; got {response.status_code}",
         )
         self.assertEqual(response.data.get("code"), "PAYLOAD_TOO_LARGE")
@@ -159,7 +160,13 @@ class PayloadSizeLimitUpdateTest(ContractsAPITransactionTestBase):
     """``PATCH /api/v1/contracts/{id}/`` enforces the same cap."""
 
     def _create_ok_contract(self):
-        from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
+        from hub.apps.contracts.models import (
+            Contract,
+            ContractStatus,
+            OriginalFormat,
+            OriginalSpecType,
+        )
+
         return Contract.objects.create(
             tenant=self.tenant,
             version=1,
@@ -168,9 +175,7 @@ class PayloadSizeLimitUpdateTest(ContractsAPITransactionTestBase):
             original_format=OriginalFormat.JSON,
             original_raw="{}",
             hub_contract_json={
-                "models": [
-                    {"name": "m", "fields": [{"name": "id", "data_type": "string"}]}
-                ],
+                "models": [{"name": "m", "fields": [{"name": "id", "data_type": "string"}]}],
                 "schema": {"fields": [{"name": "id", "data_type": "string"}]},
             },
             normalization_status="NORMALIZED_OK",

@@ -17,6 +17,7 @@ Coverage:
 No mocks of internal code.  Real DB rows for tenants, users,
 contracts, subscriptions.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -30,7 +31,6 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -53,7 +53,7 @@ def _make_tenant(slug_prefix: str = "f3") -> Tenant:
     return tenant
 
 
-def _make_user(tenant: Tenant) -> "User":  # type: ignore[name-defined]  # test: edge-case type exercise
+def _make_user(tenant: Tenant) -> User:  # type: ignore[name-defined]  # test: edge-case type exercise
     suffix = uuid.uuid4().hex[:8]
     return User.objects.create_user(
         email=f"u-{suffix}@example.com",
@@ -70,6 +70,7 @@ def _make_contract(tenant: Tenant, name: str = "c"):
         OriginalFormat,
         OriginalSpecType,
     )
+
     asset = Asset.objects.create(
         tenant=tenant,
         key=f"asset-{uuid.uuid4().hex[:6]}",
@@ -127,6 +128,7 @@ class LineageSubscriptionDBConstraintTests(TestCase):
 
     def test_db_check_constraint_rejects_both_sources_set(self):
         from django.db import IntegrityError, transaction
+
         from hub.apps.contracts.models import LineageSubscription
 
         tenant = _make_tenant("dbck")
@@ -140,32 +142,31 @@ class LineageSubscriptionDBConstraintTests(TestCase):
         )
         # Both FKs set — must raise IntegrityError on .save() per the
         # CheckConstraint(name="lineage_sub_xor_source").
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                LineageSubscription.objects.create(
-                    user=user,
-                    source_contract=c,
-                    source_asset=a,
-                    severity_threshold="HIGH",
-                )
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            LineageSubscription.objects.create(
+                user=user,
+                source_contract=c,
+                source_asset=a,
+                severity_threshold="HIGH",
+            )
 
     def test_db_check_constraint_rejects_neither_source_set(self):
         """The XOR constraint also rejects the both-NULL case so the
         dispatcher's 'subscription keyed on (contract OR asset)' walk
         has no ambiguous rows."""
         from django.db import IntegrityError, transaction
+
         from hub.apps.contracts.models import LineageSubscription
 
         tenant = _make_tenant("dbck-empty")
         user = _make_user(tenant)
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                LineageSubscription.objects.create(
-                    user=user,
-                    source_contract=None,
-                    source_asset=None,
-                    severity_threshold="HIGH",
-                )
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            LineageSubscription.objects.create(
+                user=user,
+                source_contract=None,
+                source_asset=None,
+                severity_threshold="HIGH",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +175,6 @@ class LineageSubscriptionDBConstraintTests(TestCase):
 
 
 class LineageSubscriptionCreateTests(TestCase):
-
     def test_create_subscription_to_own_contract(self):
         tenant = _make_tenant()
         user = _make_user(tenant)
@@ -254,7 +254,8 @@ class LineageSubscriptionCreateTests(TestCase):
         second = _client(user).post(URL, data=body, format="json")
         self.assertEqual(second.status_code, 409, second.content)
         self.assertEqual(
-            second.json().get("code"), "SUBSCRIPTION_ALREADY_EXISTS",
+            second.json().get("code"),
+            "SUBSCRIPTION_ALREADY_EXISTS",
         )
 
     def test_per_user_cap_enforced_at_101st(self):
@@ -268,15 +269,18 @@ class LineageSubscriptionCreateTests(TestCase):
         # Bulk-seed N existing subscriptions cheaply (skip the API
         # round-trip — we just need to count).
         contracts = [
-            _make_contract(tenant, name=f"cap-{i}")
-            for i in range(PER_USER_SUBSCRIPTION_CAP)
+            _make_contract(tenant, name=f"cap-{i}") for i in range(PER_USER_SUBSCRIPTION_CAP)
         ]
-        LineageSubscription.objects.bulk_create([
-            LineageSubscription(
-                user=user, source_contract=c, severity_threshold="HIGH",
-            )
-            for c in contracts
-        ])
+        LineageSubscription.objects.bulk_create(
+            [
+                LineageSubscription(
+                    user=user,
+                    source_contract=c,
+                    severity_threshold="HIGH",
+                )
+                for c in contracts
+            ]
+        )
 
         # The 101st create attempt must be rejected.
         c_extra = _make_contract(tenant, name="cap-extra")
@@ -297,7 +301,6 @@ class LineageSubscriptionCreateTests(TestCase):
 
 
 class LineageSubscriptionListTests(TestCase):
-
     def test_list_only_returns_own_subscriptions(self):
         from hub.apps.contracts.models import LineageSubscription
 
@@ -322,15 +325,17 @@ class LineageSubscriptionListTests(TestCase):
 
         tenant = _make_tenant("limit")
         user = _make_user(tenant)
-        contracts = [
-            _make_contract(tenant, name=f"lim-{i}") for i in range(10)
-        ]
-        LineageSubscription.objects.bulk_create([
-            LineageSubscription(
-                user=user, source_contract=c, severity_threshold="HIGH",
-            )
-            for c in contracts
-        ])
+        contracts = [_make_contract(tenant, name=f"lim-{i}") for i in range(10)]
+        LineageSubscription.objects.bulk_create(
+            [
+                LineageSubscription(
+                    user=user,
+                    source_contract=c,
+                    severity_threshold="HIGH",
+                )
+                for c in contracts
+            ]
+        )
         response = _client(user).get(f"{URL}?limit=3")
         self.assertEqual(response.status_code, 200, response.content)
         body = response.json()
@@ -351,15 +356,17 @@ class LineageSubscriptionListTests(TestCase):
         tenant = _make_tenant("pag")
         user = _make_user(tenant)
         # Create 75 contracts so we have 75 distinct sources.
-        contracts = [
-            _make_contract(tenant, name=f"pag-{i}") for i in range(75)
-        ]
-        LineageSubscription.objects.bulk_create([
-            LineageSubscription(
-                user=user, source_contract=c, severity_threshold="HIGH",
-            )
-            for c in contracts
-        ])
+        contracts = [_make_contract(tenant, name=f"pag-{i}") for i in range(75)]
+        LineageSubscription.objects.bulk_create(
+            [
+                LineageSubscription(
+                    user=user,
+                    source_contract=c,
+                    severity_threshold="HIGH",
+                )
+                for c in contracts
+            ]
+        )
 
         first = _client(user).get(f"{URL}?page_size=50")
         self.assertEqual(first.status_code, 200, first.content)
@@ -374,6 +381,7 @@ class LineageSubscriptionListTests(TestCase):
         # cursor=<value> query param when present, otherwise treat
         # the whole string as the cursor value.
         from urllib.parse import parse_qs, quote, urlparse
+
         ncv = first_body["next_cursor"]
         parsed = urlparse(ncv)
         if parsed.query and "cursor=" in parsed.query:
@@ -393,7 +401,8 @@ class LineageSubscriptionListTests(TestCase):
         user_b = _make_user(tenant)
         c = _make_contract(tenant)
         sub = LineageSubscription.objects.create(
-            user=user_b, source_contract=c,
+            user=user_b,
+            source_contract=c,
         )
         response = _client(user_a).get(f"{URL}{sub.id}/")
         self.assertEqual(response.status_code, 404)
@@ -405,7 +414,6 @@ class LineageSubscriptionListTests(TestCase):
 
 
 class LineageSubscriptionMutationTests(TestCase):
-
     def test_patch_severity_threshold(self):
         from hub.apps.contracts.models import LineageSubscription
 
@@ -413,7 +421,9 @@ class LineageSubscriptionMutationTests(TestCase):
         user = _make_user(tenant)
         c = _make_contract(tenant)
         sub = LineageSubscription.objects.create(
-            user=user, source_contract=c, severity_threshold="HIGH",
+            user=user,
+            source_contract=c,
+            severity_threshold="HIGH",
         )
         response = _client(user).patch(
             f"{URL}{sub.id}/",
@@ -440,9 +450,9 @@ class LineageSubscriptionMutationTests(TestCase):
             format="json",
         )
         # PATCH serializer only exposes severity + channel fields, so
-        # the source_contract field is silently ignored.  The row
-        # should retain the original FK.
-        self.assertIn(response.status_code, (200, 400))
+        # the source_contract field is silently ignored (HTTP 200).
+        # The row must retain the original FK.
+        self.assertEqual(response.status_code, 200)
         sub.refresh_from_db()
         self.assertEqual(str(sub.source_contract_id), str(c1.id))
 

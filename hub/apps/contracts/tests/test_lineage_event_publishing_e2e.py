@@ -29,6 +29,7 @@ class LineageEventPublishingE2ETest(ContractsAPITestBase):
 
         # Reset event bus singleton so override_settings takes effect
         import hub.apps.core.events.bus as _bus_mod
+
         _bus_mod._event_bus = None
 
         # Create a test contract with lineage
@@ -209,11 +210,14 @@ class LineageEventPublishingE2ETest(ContractsAPITestBase):
         self.assertIn("changes", event.data)
         self.assertEqual(event.source_service, "lineage_service")
 
-    def test_e2e_get_lineage_visualization_publishes_event(self):
-        """Test that GET /api/v1/contracts/{id}/lineage/visualization/ publishes lineage.updated event."""
-        # Note: Visualization doesn't directly publish events, but it uses LineageService
-        # which may trigger lineage operations. For now, we'll test that the endpoint works.
-        # If visualization needs event publishing, it should be added to LineageService.get_lineage_visualization()
+    def test_e2e_get_lineage_visualization_returns_200(self):
+        """GET /api/v1/contracts/{id}/lineage/visualization/ returns 200 with valid shape.
+
+        Note: Visualization does not directly publish events.  Event
+        publishing is tested in the service-layer tests.  If visualization
+        event publishing is added to LineageService.get_lineage_visualization(),
+        this test should be updated to include event-count assertions.
+        """
 
         response = self.client.get(
             f"/api/v1/contracts/{self.test_contract.id}/lineage/visualization/?format=json"
@@ -221,6 +225,8 @@ class LineageEventPublishingE2ETest(ContractsAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsInstance(response.data, dict)
+        self.assertIn("nodes", response.data)
+        self.assertIn("links", response.data)
 
     def test_e2e_get_impact_analysis_publishes_event(self):
         """Test that GET /api/v1/contracts/{id}/impact-analysis/ publishes lineage.updated event."""
@@ -235,12 +241,8 @@ class LineageEventPublishingE2ETest(ContractsAPITestBase):
         event_count_after = Event.objects.filter(event_type="lineage.updated").count()
         self.assertGreaterEqual(event_count_after, event_count_before)
 
-        event = (
-            Event.objects.filter(event_type="lineage.updated").order_by("-timestamp").first()
-        )
-        self.assertIsNotNone(
-            event, "Impact analysis endpoint must publish a lineage.updated event"
-        )
+        event = Event.objects.filter(event_type="lineage.updated").order_by("-timestamp").first()
+        self.assertIsNotNone(event, "Impact analysis endpoint must publish a lineage.updated event")
         self.assertEqual(event.data["contract_id"], str(self.test_contract.id))
         self.assertEqual(event.data["lineage_type"], "impact_analysis")
         self.assertEqual(event.source_service, "lineage_service")

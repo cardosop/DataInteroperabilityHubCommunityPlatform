@@ -20,8 +20,6 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract
 from hub.apps.scheduled_ingestion.models import (
     ScheduledIngestion,
     ScheduledIngestionRun,
@@ -191,10 +189,10 @@ class ScheduledIngestionViewSetTest(TestCase):
 
     def test_list_scheduled_ingestions(self):
         """Test listing scheduled ingestions (paginated or list)."""
-        ingestion1 = ScheduledIngestion.objects.create(
+        ScheduledIngestion.objects.create(
             **_scheduled_ingestion_kwargs(self.tenant, self.user, name="Ingestion 1")
         )
-        ingestion2 = ScheduledIngestion.objects.create(
+        ScheduledIngestion.objects.create(
             **_scheduled_ingestion_kwargs(
                 self.tenant,
                 self.user,
@@ -270,13 +268,13 @@ class ScheduledIngestionViewSetTest(TestCase):
             **_scheduled_ingestion_kwargs(self.tenant, self.user)
         )
 
-        run1 = ScheduledIngestionRun.objects.create(
+        ScheduledIngestionRun.objects.create(
             scheduled_ingestion=ingestion,
             status=ScheduledIngestionRunStatus.COMPLETED,
             started_at=timezone.now() - timedelta(hours=2),
             completed_at=timezone.now() - timedelta(hours=1),
         )
-        run2 = ScheduledIngestionRun.objects.create(
+        ScheduledIngestionRun.objects.create(
             scheduled_ingestion=ingestion,
             status=ScheduledIngestionRunStatus.FAILED,
             started_at=timezone.now() - timedelta(hours=1),
@@ -325,7 +323,7 @@ class ScheduledIngestionViewSetTest(TestCase):
         Uses in-process HTTP server (no mocks) to verify view behavior.
         """
         flow_run_id = uuid.uuid4()
-        base_url, server, thread = _start_fake_prefect_trigger_server(flow_run_id)
+        base_url, server, _thread = _start_fake_prefect_trigger_server(flow_run_id)
         ingestion = ScheduledIngestion.objects.create(
             tenant=self.tenant,
             name="Test Ingestion",
@@ -366,7 +364,7 @@ class ScheduledIngestionViewSetTest(TestCase):
         from django_rq import get_queue
 
         flow_run_id = uuid.uuid4()
-        base_url, server, thread = _start_fake_prefect_trigger_server(flow_run_id)
+        base_url, server, _thread = _start_fake_prefect_trigger_server(flow_run_id)
         ingestion = ScheduledIngestion.objects.create(
             tenant=self.tenant,
             name="Trigger No RQ Test",
@@ -531,18 +529,18 @@ class ScheduledIngestionViewSetTest(TestCase):
     # --- Error handling ---
 
     def test_dashboard_requires_tenant(self):
-        """Dashboard returns 400 when tenant cannot be resolved."""
+        """Dashboard rejects anonymous requests — 401 (auth gate) or 400 (tenant required)."""
         self.client.force_authenticate(user=None)
         self.client.credentials()
-        # Anonymous or no-tenant user: tenant resolution may return None
         response = self.client.get("/api/v1/scheduled-ingestions/dashboard/")
-        # 401 (unauthenticated), 403 (forbidden), or 400 (tenant required)
+        # Middleware ordering determines whether authentication or tenant
+        # resolution fires first.  Both outcomes mean the endpoint is
+        # correctly gated.
         self.assertIn(
             response.status_code,
             (
                 status.HTTP_400_BAD_REQUEST,
                 status.HTTP_401_UNAUTHORIZED,
-                status.HTTP_403_FORBIDDEN,
             ),
             response.data,
         )
@@ -684,17 +682,13 @@ class ScheduledIngestionViewSetTest(TestCase):
 
             self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
             self.assertIn("error", response.data)
-            self.assertEqual(
-                response.data["error"], "prefect_deployment_delete_failed"
-            )
+            self.assertEqual(response.data["error"], "prefect_deployment_delete_failed")
 
             # Verify the record still exists (soft-deleted)
             si.refresh_from_db()
             self.assertEqual(si.status, ScheduledIngestionStatus.DELETED)
             # prefect_deployment_id should be preserved (not cleared)
-            self.assertEqual(
-                str(si.prefect_deployment_id), "dep-to-delete-123"
-            )
+            self.assertEqual(str(si.prefect_deployment_id), "dep-to-delete-123")
         finally:
             server.shutdown()
             if prev is not None:

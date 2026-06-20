@@ -3,24 +3,26 @@ Tests for Contract Creation Workflow
 
 Comprehensive unit, integration, and E2E tests for contract creation workflow.
 """
+
 import json
 import uuid
-import pytest
 from unittest.mock import patch
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from django.db import transaction, models
 
-from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
-from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus, StepStatus
+import pytest
+from django.contrib.auth import get_user_model
+from django.db import models, transaction
+from django.test import TestCase
+
+from hub.apps.audit.models import AuditEvent
 from hub.apps.contracts.models import Contract, ContractStatus, NormalizationStatus
-from hub.apps.tenants.models import Tenant
+from hub.apps.core.events.models import Event
+from hub.apps.orchestration.models import StepStatus, WorkflowInstance, WorkflowStatus
+from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
 from hub.apps.search.models import SearchIndex
 from hub.apps.semantic.models import SemanticResource
-from hub.apps.audit.models import AuditEvent
-from hub.apps.core.events.models import Event
+from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 User = get_user_model()
@@ -39,12 +41,10 @@ class ContractCreationWorkflowUnitTest(TestCase):
             name=f"Test Tenant Unit {unique_id}",
             slug=f"test-tenant-unit-{unique_id}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
-            email=f"test-unit-{unique_id}@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email=f"test-unit-{unique_id}@example.com", password="testpass123", tenant=self.tenant
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
@@ -62,19 +62,14 @@ class ContractCreationWorkflowUnitTest(TestCase):
             "version": "3.0.2",
             "description": "Test contract description",
             "schema": {
-                "fields": [
-                    {"name": "email", "type": "string"},
-                    {"name": "name", "type": "string"}
-                ]
+                "fields": [{"name": "email", "type": "string"}, {"name": "name", "type": "string"}]
             },
             "info": {
                 "name": "Test Contract",
                 "description": "Test contract description",
                 "version": "3.0.2",
-                "owners": [
-                    {"name": "John Doe", "email": "john@example.com"}
-                ]
-            }
+                "owners": [{"name": "John Doe", "email": "john@example.com"}],
+            },
         }
 
     def test_validate_input_task_success(self):
@@ -86,15 +81,13 @@ class ContractCreationWorkflowUnitTest(TestCase):
                 "original_raw": json.dumps(self.sample_contract),
                 "original_format": "JSON",
                 "tenant_id": str(self.tenant.id),
-                "user_id": str(self.user.id)
+                "user_id": str(self.user.id),
             },
-            status=WorkflowStatus.RUNNING
+            status=WorkflowStatus.RUNNING,
         )
 
         step = instance.steps.create(
-            step_name="validate_input",
-            step_index=0,
-            status=StepStatus.PENDING
+            step_name="validate_input", step_index=0, status=StepStatus.PENDING
         )
 
         task_func = self.engine.task_registry.get("contract_creation.validate_input")
@@ -113,13 +106,11 @@ class ContractCreationWorkflowUnitTest(TestCase):
                 "original_raw": json.dumps(self.sample_contract),
                 # Missing original_format, tenant_id, user_id
             },
-            status=WorkflowStatus.RUNNING
+            status=WorkflowStatus.RUNNING,
         )
 
         step = instance.steps.create(
-            step_name="validate_input",
-            step_index=0,
-            status=StepStatus.PENDING
+            step_name="validate_input", step_index=0, status=StepStatus.PENDING
         )
 
         task_func = self.engine.task_registry.get("contract_creation.validate_input")
@@ -138,15 +129,13 @@ class ContractCreationWorkflowUnitTest(TestCase):
                 "original_raw": json.dumps(self.sample_contract),
                 "original_format": "JSON",
                 "tenant_id": str(self.tenant.id),
-                "user_id": str(self.user.id)
+                "user_id": str(self.user.id),
             },
-            status=WorkflowStatus.RUNNING
+            status=WorkflowStatus.RUNNING,
         )
 
         step = instance.steps.create(
-            step_name="normalize_contract",
-            step_index=1,
-            status=StepStatus.PENDING
+            step_name="normalize_contract", step_index=1, status=StepStatus.PENDING
         )
 
         # Set validated input in state
@@ -154,7 +143,7 @@ class ContractCreationWorkflowUnitTest(TestCase):
             "original_raw": json.dumps(self.sample_contract),
             "original_format": "JSON",
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
         instance.save()
 
@@ -171,7 +160,7 @@ class ContractCreationWorkflowUnitTest(TestCase):
         # due to missing required fields. Without 'name' field, it fails validation.
         dcs_contract = {
             "dataContractSpecification": "1.0.0",
-            "id": "test-contract"
+            "id": "test-contract",
             # Missing 'name' field - will cause normalization failure
         }
 
@@ -182,22 +171,20 @@ class ContractCreationWorkflowUnitTest(TestCase):
                 "original_raw": json.dumps(dcs_contract),
                 "original_format": "JSON",
                 "tenant_id": str(self.tenant.id),
-                "user_id": str(self.user.id)
+                "user_id": str(self.user.id),
             },
-            status=WorkflowStatus.RUNNING
+            status=WorkflowStatus.RUNNING,
         )
 
         step = instance.steps.create(
-            step_name="normalize_contract",
-            step_index=1,
-            status=StepStatus.PENDING
+            step_name="normalize_contract", step_index=1, status=StepStatus.PENDING
         )
 
         instance.state_data = {
             "original_raw": json.dumps(dcs_contract),
             "original_format": "JSON",
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
         instance.save()
 
@@ -215,18 +202,18 @@ class ContractCreationWorkflowUnitTest(TestCase):
         # Check that error message contains at least one relevant keyword (case-insensitive)
         error_lower = error_message.lower()
         has_relevant_keyword = (
-            "product.details" in error_lower or
-            "product/details" in error_lower or
-            "language" in error_lower or
-            "required" in error_lower or
-            "name" in error_lower or
-            "normalization" in error_lower or
-            "missing" in error_lower or
-            "odpsnormalizationerror" in error_lower
+            "product.details" in error_lower
+            or "product/details" in error_lower
+            or "language" in error_lower
+            or "required" in error_lower
+            or "name" in error_lower
+            or "normalization" in error_lower
+            or "missing" in error_lower
+            or "odpsnormalizationerror" in error_lower
         )
         self.assertTrue(
             has_relevant_keyword,
-            f"Error message should contain relevant keyword, got: {error_message}"
+            f"Error message should contain relevant keyword, got: {error_message}",
         )
 
     def test_create_contract_record_task_success(self):
@@ -238,15 +225,13 @@ class ContractCreationWorkflowUnitTest(TestCase):
                 "original_raw": json.dumps(self.sample_contract),
                 "original_format": "JSON",
                 "tenant_id": str(self.tenant.id),
-                "user_id": str(self.user.id)
+                "user_id": str(self.user.id),
             },
-            status=WorkflowStatus.RUNNING
+            status=WorkflowStatus.RUNNING,
         )
 
         step = instance.steps.create(
-            step_name="create_contract_record",
-            step_index=3,
-            status=StepStatus.PENDING
+            step_name="create_contract_record", step_index=3, status=StepStatus.PENDING
         )
 
         # Set normalized contract in state
@@ -261,7 +246,7 @@ class ContractCreationWorkflowUnitTest(TestCase):
             "normalization_status": NormalizationStatus.NORMALIZED_OK.value,
             "normalization_errors": [],
             "normalization_warnings": [],
-            "validation_errors": []
+            "validation_errors": [],
         }
         instance.save()
 
@@ -286,9 +271,9 @@ class ContractCreationWorkflowUnitTest(TestCase):
                 "original_raw": json.dumps(self.sample_contract),
                 "original_format": "JSON",
                 "tenant_id": str(self.tenant.id),
-                "user_id": str(self.user.id)
+                "user_id": str(self.user.id),
             },
-            status=WorkflowStatus.RUNNING
+            status=WorkflowStatus.RUNNING,
         )
 
         # Create contract first
@@ -301,20 +286,13 @@ class ContractCreationWorkflowUnitTest(TestCase):
             hub_contract_json={"id": "test-contract", "info": {"name": "Test"}},
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
-        instance.state_data = {
-            "contract_id": str(contract.id),
-            "user_id": str(self.user.id)
-        }
+        instance.state_data = {"contract_id": str(contract.id), "user_id": str(self.user.id)}
         instance.save()
 
-        step = instance.steps.create(
-            step_name="link_odps",
-            step_index=4,
-            status=StepStatus.PENDING
-        )
+        step = instance.steps.create(step_name="link_odps", step_index=4, status=StepStatus.PENDING)
 
         task_func = self.engine.task_registry.get("contract_creation.link_odps")
         result = task_func(instance.state_data, instance, step)
@@ -332,9 +310,9 @@ class ContractCreationWorkflowUnitTest(TestCase):
                 "original_format": "JSON",
                 "tenant_id": str(self.tenant.id),
                 "user_id": str(self.user.id),
-                "odps_action": "generate"
+                "odps_action": "generate",
             },
-            status=WorkflowStatus.RUNNING
+            status=WorkflowStatus.RUNNING,
         )
 
         # Create contract with marketplace data for ODPS generation
@@ -343,15 +321,10 @@ class ContractCreationWorkflowUnitTest(TestCase):
             "info": {
                 "name": "Test Contract",
                 "description": "Test description",
-                "version": "1.0.0"
+                "version": "1.0.0",
             },
-            "schema": {
-                "fields": [{"name": "id", "type": "string"}]
-            },
-            "marketplace": {
-                "license_summary": "Test license",
-                "intended_use": ["analytics"]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+            "marketplace": {"license_summary": "Test license", "intended_use": ["analytics"]},
         }
 
         contract = Contract.objects.create(
@@ -363,21 +336,17 @@ class ContractCreationWorkflowUnitTest(TestCase):
             hub_contract_json=hub_contract,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         instance.state_data = {
             "contract_id": str(contract.id),
             "user_id": str(self.user.id),
-            "odps_action": "generate"
+            "odps_action": "generate",
         }
         instance.save()
 
-        step = instance.steps.create(
-            step_name="link_odps",
-            step_index=4,
-            status=StepStatus.PENDING
-        )
+        step = instance.steps.create(step_name="link_odps", step_index=4, status=StepStatus.PENDING)
 
         task_func = self.engine.task_registry.get("contract_creation.link_odps")
 
@@ -398,15 +367,14 @@ class ContractCreationWorkflowUnitTest(TestCase):
         self.assertIn("x_odps", contract.hub_contract_json["extensions"])
         self.assertEqual(
             contract.hub_contract_json["extensions"]["x_odps"]["odps_link"],
-            result["odps_contract_id"]
+            result["odps_contract_id"],
         )
 
         odps_contract.refresh_from_db()
         self.assertIn("extensions", odps_contract.hub_contract_json)
         self.assertIn("x_odps", odps_contract.hub_contract_json["extensions"])
         self.assertEqual(
-            odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"],
-            str(contract.id)
+            odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"], str(contract.id)
         )
 
     def test_link_odps_task_link_existing(self):
@@ -419,9 +387,9 @@ class ContractCreationWorkflowUnitTest(TestCase):
                 "original_format": "JSON",
                 "tenant_id": str(self.tenant.id),
                 "user_id": str(self.user.id),
-                "odps_action": "link"
+                "odps_action": "link",
             },
-            status=WorkflowStatus.RUNNING
+            status=WorkflowStatus.RUNNING,
         )
 
         # Create ODCS contract
@@ -434,7 +402,7 @@ class ContractCreationWorkflowUnitTest(TestCase):
             hub_contract_json={"id": "test-contract", "info": {"name": "Test"}},
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create existing ODPS contract
@@ -447,22 +415,18 @@ class ContractCreationWorkflowUnitTest(TestCase):
             hub_contract_json={"id": "test-product", "info": {"name": "Test Product"}},
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         instance.state_data = {
             "contract_id": str(contract.id),
             "user_id": str(self.user.id),
             "odps_action": "link",
-            "odps_contract_id": str(odps_contract.id)
+            "odps_contract_id": str(odps_contract.id),
         }
         instance.save()
 
-        step = instance.steps.create(
-            step_name="link_odps",
-            step_index=4,
-            status=StepStatus.PENDING
-        )
+        step = instance.steps.create(step_name="link_odps", step_index=4, status=StepStatus.PENDING)
 
         task_func = self.engine.task_registry.get("contract_creation.link_odps")
 
@@ -477,16 +441,14 @@ class ContractCreationWorkflowUnitTest(TestCase):
         self.assertIn("extensions", contract.hub_contract_json)
         self.assertIn("x_odps", contract.hub_contract_json["extensions"])
         self.assertEqual(
-            contract.hub_contract_json["extensions"]["x_odps"]["odps_link"],
-            str(odps_contract.id)
+            contract.hub_contract_json["extensions"]["x_odps"]["odps_link"], str(odps_contract.id)
         )
 
         odps_contract.refresh_from_db()
         self.assertIn("extensions", odps_contract.hub_contract_json)
         self.assertIn("x_odps", odps_contract.hub_contract_json["extensions"])
         self.assertEqual(
-            odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"],
-            str(contract.id)
+            odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"], str(contract.id)
         )
 
     def test_link_odps_task_upload(self):
@@ -499,9 +461,9 @@ class ContractCreationWorkflowUnitTest(TestCase):
                 "original_format": "JSON",
                 "tenant_id": str(self.tenant.id),
                 "user_id": str(self.user.id),
-                "odps_action": "upload"
+                "odps_action": "upload",
             },
-            status=WorkflowStatus.RUNNING
+            status=WorkflowStatus.RUNNING,
         )
 
         # Create ODCS contract first
@@ -514,7 +476,7 @@ class ContractCreationWorkflowUnitTest(TestCase):
             hub_contract_json={"id": "test-contract", "info": {"name": "Test"}},
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create valid ODPS document
@@ -526,10 +488,10 @@ class ContractCreationWorkflowUnitTest(TestCase):
                     "en": {
                         "productID": "test-product",
                         "name": "Test Product",
-                        "description": "Test product description"
+                        "description": "Test product description",
                     }
                 }
-            }
+            },
         }
 
         instance.state_data = {
@@ -537,15 +499,11 @@ class ContractCreationWorkflowUnitTest(TestCase):
             "user_id": str(self.user.id),
             "odps_action": "upload",
             "odps_raw": json.dumps(odps_doc),
-            "odps_format": "JSON"
+            "odps_format": "JSON",
         }
         instance.save()
 
-        step = instance.steps.create(
-            step_name="link_odps",
-            step_index=4,
-            status=StepStatus.PENDING
-        )
+        step = instance.steps.create(step_name="link_odps", step_index=4, status=StepStatus.PENDING)
 
         task_func = self.engine.task_registry.get("contract_creation.link_odps")
 
@@ -566,15 +524,14 @@ class ContractCreationWorkflowUnitTest(TestCase):
         self.assertIn("x_odps", contract.hub_contract_json["extensions"])
         self.assertEqual(
             contract.hub_contract_json["extensions"]["x_odps"]["odps_link"],
-            result["odps_contract_id"]
+            result["odps_contract_id"],
         )
 
         odps_contract.refresh_from_db()
         self.assertIn("extensions", odps_contract.hub_contract_json)
         self.assertIn("x_odps", odps_contract.hub_contract_json["extensions"])
         self.assertEqual(
-            odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"],
-            str(contract.id)
+            odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"], str(contract.id)
         )
 
 
@@ -588,12 +545,12 @@ class ContractCreationWorkflowIntegrationTest(TestCase):
             name=f"Test Tenant Integration {unique_id}",
             slug=f"test-tenant-integration-{unique_id}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"test-integration-{unique_id}@example.com",
             password="testpass123",
-            tenant=self.tenant
+            tenant=self.tenant,
         )
 
         self.sample_contract = {
@@ -604,19 +561,14 @@ class ContractCreationWorkflowIntegrationTest(TestCase):
             "version": "3.0.2",
             "description": "Test contract description",
             "schema": {
-                "fields": [
-                    {"name": "email", "type": "string"},
-                    {"name": "name", "type": "string"}
-                ]
+                "fields": [{"name": "email", "type": "string"}, {"name": "name", "type": "string"}]
             },
             "info": {
                 "name": "Test Contract",
                 "description": "Test contract description",
                 "version": "3.0.2",
-                "owners": [
-                    {"name": "John Doe", "email": "john@example.com"}
-                ]
-            }
+                "owners": [{"name": "John Doe", "email": "john@example.com"}],
+            },
         }
 
     def test_full_workflow_execution_success(self):
@@ -632,7 +584,7 @@ class ContractCreationWorkflowIntegrationTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Verify contract was created
@@ -644,9 +596,7 @@ class ContractCreationWorkflowIntegrationTest(TestCase):
 
         # Verify search index was created
         search_index = SearchIndex.objects.filter(
-            tenant=self.tenant,
-            resource_type="CONTRACT",
-            resource_id=contract.id
+            tenant=self.tenant, resource_type="CONTRACT", resource_id=contract.id
         ).first()
         self.assertIsNotNone(search_index)
 
@@ -655,7 +605,7 @@ class ContractCreationWorkflowIntegrationTest(TestCase):
             tenant=self.tenant,
             resource_type="CONTRACT",
             action="CONTRACT_CREATED",
-            resource_id=str(contract.id)
+            resource_id=str(contract.id),
         ).first()
         self.assertIsNotNone(audit_event)
 
@@ -675,18 +625,14 @@ class ContractCreationWorkflowIntegrationTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 engine=engine,
-                registry=registry
+                registry=registry,
             )
 
     def test_workflow_execution_with_asset(self):
         """Test workflow execution with asset association"""
         from hub.apps.assets.models import Asset
 
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            name="Test Asset",
-            created_by=self.user
-        )
+        asset = Asset.objects.create(tenant=self.tenant, name="Test Asset", created_by=self.user)
 
         engine = WorkflowEngine()
         registry = WorkflowRegistry()
@@ -700,7 +646,7 @@ class ContractCreationWorkflowIntegrationTest(TestCase):
             user_id=str(self.user.id),
             asset_id=str(asset.id),
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         self.assertEqual(contract.asset, asset)
@@ -721,7 +667,7 @@ class ContractCreationWorkflowIntegrationTest(TestCase):
                 tenant_id="00000000-0000-0000-0000-000000000000",  # Invalid UUID
                 user_id=str(self.user.id),
                 engine=engine,
-                registry=registry
+                registry=registry,
             )
 
         # Verify no contract was created
@@ -747,17 +693,14 @@ class ContractCreationWorkflowIntegrationTest(TestCase):
                 "info": {
                     "name": self.sample_contract["name"],
                     "description": self.sample_contract["description"],
-                    "version": self.sample_contract["version"]
+                    "version": self.sample_contract["version"],
                 },
                 "schema": self.sample_contract["schema"],
-                "marketplace": {
-                    "license_summary": "Test license",
-                    "intended_use": ["analytics"]
-                }
+                "marketplace": {"license_summary": "Test license", "intended_use": ["analytics"]},
             },
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Verify contract was created
@@ -765,7 +708,7 @@ class ContractCreationWorkflowIntegrationTest(TestCase):
         self.assertIsNotNone(contract.hub_contract_json)
 
         # Now execute ODPS linking step manually
-        from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus, StepStatus
+        from hub.apps.orchestration.models import StepStatus
 
         # Create a new workflow instance for ODPS linking
         workflow_instance = engine.create_instance(
@@ -773,28 +716,26 @@ class ContractCreationWorkflowIntegrationTest(TestCase):
             input_data={
                 "contract_id": str(contract.id),
                 "user_id": str(self.user.id),
-                "odps_action": "generate"
+                "odps_action": "generate",
             },
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         workflow_instance.state_data = {
             "contract_id": str(contract.id),
             "user_id": str(self.user.id),
-            "odps_action": "generate"
+            "odps_action": "generate",
         }
         workflow_instance.save()
 
         # Get the highest step index to avoid conflicts
-        max_step_index = workflow_instance.steps.aggregate(
-            max_index=models.Max('step_index')
-        )['max_index'] or -1
+        max_step_index = (
+            workflow_instance.steps.aggregate(max_index=models.Max("step_index"))["max_index"] or -1
+        )
 
         step = workflow_instance.steps.create(
-            step_name="link_odps",
-            step_index=max_step_index + 1,
-            status=StepStatus.PENDING
+            step_name="link_odps", step_index=max_step_index + 1, status=StepStatus.PENDING
         )
 
         task_func = engine.task_registry.get("contract_creation.link_odps")
@@ -826,12 +767,10 @@ class ContractCreationWorkflowE2ETest(TestCase):
             name=f"Test Tenant E2E {unique_id}",
             slug=f"test-tenant-e2e-{unique_id}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
-            email=f"test-e2e-{unique_id}@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email=f"test-e2e-{unique_id}@example.com", password="testpass123", tenant=self.tenant
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
@@ -846,17 +785,15 @@ class ContractCreationWorkflowE2ETest(TestCase):
                 "fields": [
                     {"name": "id", "type": "string"},
                     {"name": "name", "type": "string"},
-                    {"name": "price", "type": "number"}
+                    {"name": "price", "type": "number"},
                 ]
             },
             "info": {
                 "name": "E2E Test Contract",
                 "description": "E2E test contract description",
                 "version": "3.0.2",
-                "owners": [
-                    {"name": "Jane Doe", "email": "jane@example.com"}
-                ]
-            }
+                "owners": [{"name": "Jane Doe", "email": "jane@example.com"}],
+            },
         }
 
     def test_contract_creation_via_viewset(self):
@@ -867,28 +804,23 @@ class ContractCreationWorkflowE2ETest(TestCase):
         client.force_authenticate(user=self.user)
 
         response = client.post(
-            '/api/v1/contracts/',
-            {
-                'original_raw': json.dumps(self.sample_contract),
-                'original_format': 'JSON'
-            },
-            format='json'
+            "/api/v1/contracts/",
+            {"original_raw": json.dumps(self.sample_contract), "original_format": "JSON"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, 201)
 
         # Verify contract was created
         contract_data = response.json()
-        contract = Contract.objects.get(id=contract_data['id'])
+        contract = Contract.objects.get(id=contract_data["id"])
         self.assertEqual(contract.tenant, self.tenant)
         self.assertEqual(contract.created_by, self.user)
         self.assertIsNotNone(contract.hub_contract_json)
 
         # Verify search index was created
         search_index = SearchIndex.objects.filter(
-            tenant=self.tenant,
-            resource_type="CONTRACT",
-            resource_id=contract.id
+            tenant=self.tenant, resource_type="CONTRACT", resource_id=contract.id
         ).first()
         self.assertIsNotNone(search_index)
 
@@ -897,7 +829,7 @@ class ContractCreationWorkflowE2ETest(TestCase):
             tenant=self.tenant,
             resource_type="CONTRACT",
             action="CONTRACT_CREATED",
-            resource_id=str(contract.id)
+            resource_id=str(contract.id),
         ).first()
         self.assertIsNotNone(audit_event)
 
@@ -909,12 +841,9 @@ class ContractCreationWorkflowE2ETest(TestCase):
         client.force_authenticate(user=self.user)
 
         response = client.post(
-            '/api/v1/contracts/',
-            {
-                'original_raw': json.dumps(self.sample_contract),
-                'original_format': 'INVALID_FORMAT'
-            },
-            format='json'
+            "/api/v1/contracts/",
+            {"original_raw": json.dumps(self.sample_contract), "original_format": "INVALID_FORMAT"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, 400)
@@ -928,30 +857,34 @@ class ContractCreationWorkflowE2ETest(TestCase):
         dcs_contract = {
             "dataContractSpecification": "1.0.0",
             "id": "test-contract",
-            "name": "Test Contract"  # Add name field to avoid early validation failure
+            "name": "Test Contract",  # Add name field to avoid early validation failure
         }
 
         client = APIClient()
         client.force_authenticate(user=self.user)
 
         response = client.post(
-            '/api/v1/contracts/',
-            {
-                'original_raw': json.dumps(dcs_contract),
-                'original_format': 'JSON'
-            },
-            format='json'
+            "/api/v1/contracts/",
+            {"original_raw": json.dumps(dcs_contract), "original_format": "JSON"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, 400)
         response_data = response.json()
         # DCS contracts fail normalization with NORMALIZATION_FAILED or INVALID_SPEC_FORMAT
         # Error code is no longer DCS_NOT_SUPPORTED
-        error_code = response_data.get('details', {}).get('code', '') or response_data.get('code', '')
+        error_code = response_data.get("details", {}).get("code", "") or response_data.get(
+            "code", ""
+        )
         self.assertIn(
             error_code,
-            ['NORMALIZATION_FAILED', 'INVALID_SPEC_FORMAT', 'VALIDATION_ERROR', 'STRUCTURELESS_CONTRACT'],
-            f"Expected NORMALIZATION_FAILED, INVALID_SPEC_FORMAT, VALIDATION_ERROR, or STRUCTURELESS_CONTRACT, got: {error_code}"
+            [
+                "NORMALIZATION_FAILED",
+                "INVALID_SPEC_FORMAT",
+                "VALIDATION_ERROR",
+                "STRUCTURELESS_CONTRACT",
+            ],
+            f"Expected NORMALIZATION_FAILED, INVALID_SPEC_FORMAT, VALIDATION_ERROR, or STRUCTURELESS_CONTRACT, got: {error_code}",
         )
 
 
@@ -965,12 +898,12 @@ class ContractCreationWorkflowStepEventsTest(TestCase):
             name=f"Test Tenant Step Events {unique_id}",
             slug=f"test-tenant-step-events-{unique_id}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"test-step-events-{unique_id}@example.com",
             password="testpass123",
-            tenant=self.tenant
+            tenant=self.tenant,
         )
 
         self.sample_contract = {
@@ -981,19 +914,14 @@ class ContractCreationWorkflowStepEventsTest(TestCase):
             "version": "3.0.2",
             "description": "Test contract description",
             "schema": {
-                "fields": [
-                    {"name": "email", "type": "string"},
-                    {"name": "name", "type": "string"}
-                ]
+                "fields": [{"name": "email", "type": "string"}, {"name": "name", "type": "string"}]
             },
             "info": {
                 "name": "Test Contract",
                 "description": "Test contract description",
                 "version": "3.0.2",
-                "owners": [
-                    {"name": "John Doe", "email": "john@example.com"}
-                ]
-            }
+                "owners": [{"name": "John Doe", "email": "john@example.com"}],
+            },
         }
 
     def test_contract_creation_workflow_receives_step_events(self):
@@ -1010,7 +938,7 @@ class ContractCreationWorkflowStepEventsTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Verify contract was created
@@ -1018,38 +946,48 @@ class ContractCreationWorkflowStepEventsTest(TestCase):
 
         # Get workflow instance to find its ID
         workflow_instances = WorkflowInstance.objects.filter(
-            workflow_name=ContractCreationWorkflow.WORKFLOW_NAME,
-            tenant=self.tenant
-        ).order_by('-created_at')
+            workflow_name=ContractCreationWorkflow.WORKFLOW_NAME, tenant=self.tenant
+        ).order_by("-created_at")
         self.assertEqual(workflow_instances.count(), 1)
         workflow_instance = workflow_instances.first()
 
         # Query actual events from database (no mocks - real event persistence)
         step_started_events = Event.objects.filter(
-            event_type="workflow.step.started",
-            data__workflow_instance_id=str(workflow_instance.id)
-        ).order_by('created_at')
+            event_type="workflow.step.started", data__workflow_instance_id=str(workflow_instance.id)
+        ).order_by("created_at")
 
         step_completed_events = Event.objects.filter(
             event_type="workflow.step.completed",
-            data__workflow_instance_id=str(workflow_instance.id)
-        ).order_by('created_at')
+            data__workflow_instance_id=str(workflow_instance.id),
+        ).order_by("created_at")
 
         # ContractCreationWorkflow has 8 steps, so we should have 8 started and 8 completed events
-        self.assertGreaterEqual(step_started_events.count(), 8,
-                               f"Expected at least 8 step.started events, got {step_started_events.count()}")
-        self.assertGreaterEqual(step_completed_events.count(), 8,
-                               f"Expected at least 8 step.completed events, got {step_completed_events.count()}")
+        self.assertGreaterEqual(
+            step_started_events.count(),
+            8,
+            f"Expected at least 8 step.started events, got {step_started_events.count()}",
+        )
+        self.assertGreaterEqual(
+            step_completed_events.count(),
+            8,
+            f"Expected at least 8 step.completed events, got {step_completed_events.count()}",
+        )
 
         # Collect event data
         step_started_data = [event.data for event in step_started_events]
         step_completed_data = [event.data for event in step_completed_events]
 
         # ContractCreationWorkflow has 8 steps, so we should have 8 started and 8 completed events
-        self.assertGreaterEqual(len(step_started_events), 8,
-                               f"Expected at least 8 step.started events, got {len(step_started_events)}")
-        self.assertGreaterEqual(len(step_completed_events), 8,
-                               f"Expected at least 8 step.completed events, got {len(step_completed_events)}")
+        self.assertGreaterEqual(
+            len(step_started_events),
+            8,
+            f"Expected at least 8 step.started events, got {len(step_started_events)}",
+        )
+        self.assertGreaterEqual(
+            len(step_completed_events),
+            8,
+            f"Expected at least 8 step.completed events, got {len(step_completed_events)}",
+        )
 
         # Verify each step event has required metadata
         for event_data in step_started_data:
@@ -1085,20 +1023,30 @@ class ContractCreationWorkflowStepEventsTest(TestCase):
             "index_for_search",
             "generate_semantic_mapping",
             "send_notifications",
-            "audit_logging"
+            "audit_logging",
         ]
 
         actual_step_names = [event_data["step_name"] for event_data in step_started_data]
         for expected_name in expected_step_names:
-            self.assertIn(expected_name, actual_step_names,
-                         f"Expected step '{expected_name}' not found in step events")
+            self.assertIn(
+                expected_name,
+                actual_step_names,
+                f"Expected step '{expected_name}' not found in step events",
+            )
 
         # Verify progress increases or stays the same as steps progress
-        started_progresses = sorted([e["progress_percentage"] for e in step_started_data],
-                                   key=lambda x: step_started_data[[e["progress_percentage"] for e in step_started_data].index(x)]["step_index"])
+        started_progresses = sorted(
+            [e["progress_percentage"] for e in step_started_data],
+            key=lambda x: step_started_data[
+                [e["progress_percentage"] for e in step_started_data].index(x)
+            ]["step_index"],
+        )
         for i in range(1, len(started_progresses)):
-            self.assertGreaterEqual(started_progresses[i], started_progresses[i-1] - 1.0,
-                                  "Progress should generally increase or stay the same")
+            self.assertGreaterEqual(
+                started_progresses[i],
+                started_progresses[i - 1] - 1.0,
+                "Progress should generally increase or stay the same",
+            )
 
     def test_contract_creation_workflow_step_events_no_breaking_changes(self):
         """Regression test: Verify workflow execution still works correctly with step events"""
@@ -1115,7 +1063,7 @@ class ContractCreationWorkflowStepEventsTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Verify contract was created successfully (no breaking changes)
@@ -1127,9 +1075,7 @@ class ContractCreationWorkflowStepEventsTest(TestCase):
 
         # Verify search index was created
         search_index = SearchIndex.objects.filter(
-            tenant=self.tenant,
-            resource_type="CONTRACT",
-            resource_id=contract.id
+            tenant=self.tenant, resource_type="CONTRACT", resource_id=contract.id
         ).first()
         self.assertIsNotNone(search_index)
 
@@ -1138,14 +1084,13 @@ class ContractCreationWorkflowStepEventsTest(TestCase):
             tenant=self.tenant,
             resource_type="CONTRACT",
             action="CONTRACT_CREATED",
-            resource_id=str(contract.id)
+            resource_id=str(contract.id),
         ).first()
         self.assertIsNotNone(audit_event)
 
         # Verify workflow instance completed successfully
         workflow_instances = WorkflowInstance.objects.filter(
-            workflow_name=ContractCreationWorkflow.WORKFLOW_NAME,
-            tenant=self.tenant
+            workflow_name=ContractCreationWorkflow.WORKFLOW_NAME, tenant=self.tenant
         )
         self.assertEqual(workflow_instances.count(), 1)
         workflow_instance = workflow_instances.first()
@@ -1166,12 +1111,12 @@ class ContractCreationWorkflowTechnicalFirstE2ETest(TestCase):
             name=f"Test Tenant Technical First {unique_id}",
             slug=f"test-tenant-technical-first-{unique_id}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"test-technical-first-{unique_id}@example.com",
             password="testpass123",
-            tenant=self.tenant
+            tenant=self.tenant,
         )
 
         # Sample ODCS contract (all versions: 3.0.2+, 2.2.2)
@@ -1186,14 +1131,10 @@ class ContractCreationWorkflowTechnicalFirstE2ETest(TestCase):
                 "fields": [
                     {"name": "id", "type": "string", "nullable": False},
                     {"name": "name", "type": "string", "nullable": False},
-                    {"name": "price", "type": "number", "nullable": True}
+                    {"name": "price", "type": "number", "nullable": True},
                 ]
             },
-            "info": {
-                "owners": [
-                    {"name": "Technical Owner", "email": "technical@example.com"}
-                ]
-            }
+            "info": {"owners": [{"name": "Technical Owner", "email": "technical@example.com"}]},
         }
 
         self.odcs_contract_v2_2_2 = {
@@ -1204,11 +1145,8 @@ class ContractCreationWorkflowTechnicalFirstE2ETest(TestCase):
             "version": "1.0.0",
             "description": "ODCS v2.2.2 contract for Technical-First flow E2E test",
             "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"},
-                    {"name": "name", "type": "string"}
-                ]
-            }
+                "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+            },
         }
 
         # Sample ODPS contract for linking
@@ -1220,26 +1158,19 @@ class ContractCreationWorkflowTechnicalFirstE2ETest(TestCase):
                     "en": {
                         "name": "Technical-First Product",
                         "description": "Product for Technical-First flow",
-                        "productVersion": "1.0.0"
+                        "productVersion": "1.0.0",
                     }
                 },
-                "contract": {
-                    "spec": self.odcs_contract_v3_0_2
-                },
-                "dataQuality": {
-                    "declarative": []
-                },
-                "SLA": {
-                    "declarative": []
-                },
-                "pricingPlans": {
-                    "declarative": []
-                }
-            }
+                "contract": {"spec": self.odcs_contract_v3_0_2},
+                "dataQuality": {"declarative": []},
+                "SLA": {"declarative": []},
+                "pricingPlans": {"declarative": []},
+            },
         }
 
         # Create test file for data file linking
         from hub.apps.files.models import File, FileStatus
+
         self.test_file = File.objects.create(
             tenant=self.tenant,
             name="test_data.csv",
@@ -1247,7 +1178,7 @@ class ContractCreationWorkflowTechnicalFirstE2ETest(TestCase):
             size=1024,
             content_type="text/csv",
             status=FileStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_technical_first_flow_basic(self):
@@ -1264,7 +1195,7 @@ class ContractCreationWorkflowTechnicalFirstE2ETest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Verify Step 1: ODCS contract validated (all versions: 3.0.2+, 2.2.2)
@@ -1297,7 +1228,7 @@ class ContractCreationWorkflowTechnicalFirstE2ETest(TestCase):
             user_id=str(self.user.id),
             odps_action="generate",
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Verify ODCS contract created
@@ -1306,7 +1237,9 @@ class ContractCreationWorkflowTechnicalFirstE2ETest(TestCase):
 
         # Verify Step 4: ODPS linked (optional)
         # Verify Step 5: ODPS Contract created and linked
-        odps_contract_id = contract.hub_contract_json.get("extensions", {}).get("x_odps", {}).get("odps_link")
+        odps_contract_id = (
+            contract.hub_contract_json.get("extensions", {}).get("x_odps", {}).get("odps_link")
+        )
         self.assertIsNotNone(odps_contract_id, "ODPS contract should be linked")
 
         odps_contract = Contract.objects.get(id=odps_contract_id)
@@ -1315,8 +1248,10 @@ class ContractCreationWorkflowTechnicalFirstE2ETest(TestCase):
 
         # Verify bidirectional linking
         self.assertEqual(
-            odps_contract.hub_contract_json.get("extensions", {}).get("x_odps", {}).get("odcs_link"),
-            str(contract.id)
+            odps_contract.hub_contract_json.get("extensions", {})
+            .get("x_odps", {})
+            .get("odcs_link"),
+            str(contract.id),
         )
 
     def test_technical_first_flow_with_data_file(self):
@@ -1336,7 +1271,7 @@ class ContractCreationWorkflowTechnicalFirstE2ETest(TestCase):
             asset_key="technical-first-asset",
             asset_name="Technical-First Asset",
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Verify ODCS contract created
@@ -1344,6 +1279,7 @@ class ContractCreationWorkflowTechnicalFirstE2ETest(TestCase):
 
         # Verify Step 6: Data file linked (Asset created)
         from hub.apps.assets.models import Asset
+
         asset = Asset.objects.filter(tenant=self.tenant, key="technical-first-asset").first()
         self.assertIsNotNone(asset, "Asset should be created")
         self.assertEqual(asset.name, "Technical-First Asset")
@@ -1367,7 +1303,7 @@ class ContractCreationWorkflowTechnicalFirstE2ETest(TestCase):
             asset_key="complete-technical-first-asset",
             asset_name="Complete Technical-First Asset",
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Verify all steps completed
@@ -1377,47 +1313,44 @@ class ContractCreationWorkflowTechnicalFirstE2ETest(TestCase):
         self.assertIsNotNone(contract.hub_contract_json)
 
         # Step 4-5: ODPS linked and created
-        odps_contract_id = contract.hub_contract_json.get("extensions", {}).get("x_odps", {}).get("odps_link")
+        odps_contract_id = (
+            contract.hub_contract_json.get("extensions", {}).get("x_odps", {}).get("odps_link")
+        )
         self.assertIsNotNone(odps_contract_id)
         odps_contract = Contract.objects.get(id=odps_contract_id)
         self.assertEqual(odps_contract.original_spec_type, "ODPS")
 
         # Step 6: Asset created and linked
         from hub.apps.assets.models import Asset
-        asset = Asset.objects.filter(tenant=self.tenant, key="complete-technical-first-asset").first()
+
+        asset = Asset.objects.filter(
+            tenant=self.tenant, key="complete-technical-first-asset"
+        ).first()
         self.assertIsNotNone(asset)
         self.assertEqual(contract.asset, asset)
         self.assertEqual(odps_contract.asset, asset)
 
         # Step 7: Indexed for search (ODCS technical + ODPS marketplace)
         odcs_search_index = SearchIndex.objects.filter(
-            tenant=self.tenant,
-            resource_type="CONTRACT",
-            resource_id=contract.id
+            tenant=self.tenant, resource_type="CONTRACT", resource_id=contract.id
         ).first()
         self.assertIsNotNone(odcs_search_index, "ODCS contract should be indexed")
 
         odps_search_index = SearchIndex.objects.filter(
-            tenant=self.tenant,
-            resource_type="CONTRACT",
-            resource_id=odps_contract.id
+            tenant=self.tenant, resource_type="CONTRACT", resource_id=odps_contract.id
         ).first()
         self.assertIsNotNone(odps_search_index, "ODPS contract should be indexed")
 
         # Step 8: Semantic mapping (ODCS technical + ODPS marketplace)
         odcs_semantic = SemanticResource.objects.filter(
-            tenant=self.tenant,
-            resource_type="CONTRACT",
-            resource_id=contract.id
+            tenant=self.tenant, resource_type="CONTRACT", resource_id=contract.id
         ).first()
         # Semantic mapping may be skipped if service unavailable, so we check if it exists
         if odcs_semantic:
             self.assertIsNotNone(odcs_semantic.uri)
 
         odps_semantic = SemanticResource.objects.filter(
-            tenant=self.tenant,
-            resource_type="CONTRACT",
-            resource_id=odps_contract.id
+            tenant=self.tenant, resource_type="CONTRACT", resource_id=odps_contract.id
         ).first()
         if odps_semantic:
             self.assertIsNotNone(odps_semantic.uri)
@@ -1436,7 +1369,7 @@ class ContractCreationWorkflowTechnicalFirstE2ETest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Verify ODCS v2.2.2 contract validated and normalized
@@ -1457,12 +1390,12 @@ class ContractCreationWorkflowODPSLinkingTest(TestCase):
             name=f"Test Tenant ODPS Linking {unique_id}",
             slug=f"test-tenant-odps-linking-{unique_id}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"test-odps-linking-{unique_id}@example.com",
             password="testpass123",
-            tenant=self.tenant
+            tenant=self.tenant,
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
@@ -1478,28 +1411,19 @@ class ContractCreationWorkflowODPSLinkingTest(TestCase):
             "version": "1.0.0",
             "description": "Test contract description",
             "schema": {
-                "fields": [
-                    {"name": "email", "type": "string"},
-                    {"name": "name", "type": "string"}
-                ]
+                "fields": [{"name": "email", "type": "string"}, {"name": "name", "type": "string"}]
             },
-            "info": {
-                "owners": [
-                    {"name": "John Doe", "email": "john@example.com"}
-                ]
-            },
-            "marketplace": {
-                "license_summary": "Test license",
-                "intended_use": ["analytics"]
-            }
+            "info": {"owners": [{"name": "John Doe", "email": "john@example.com"}]},
+            "marketplace": {"license_summary": "Test license", "intended_use": ["analytics"]},
         }
 
     def test_link_odps_step_event_publishing(self):
         """Test that link_odps step publishes workflow.step.started and workflow.step.completed events"""
-        from unittest.mock import patch
         import uuid
 
-        with patch("hub.apps.core.events.service_publishers.EventPublisher.publish") as mock_publish:
+        with patch(
+            "hub.apps.core.events.service_publishers.EventPublisher.publish"
+        ) as mock_publish:
             mock_publish.return_value = str(uuid.uuid4())
 
             # Execute workflow with ODPS generation
@@ -1511,23 +1435,29 @@ class ContractCreationWorkflowODPSLinkingTest(TestCase):
                 user_id=str(self.user.id),
                 odps_action="generate",
                 engine=self.engine,
-                registry=self.registry
+                registry=self.registry,
             )
 
             # Verify link_odps step events were published
             step_started_calls = [
-                call for call in mock_publish.call_args_list
+                call
+                for call in mock_publish.call_args_list
                 if call[1]["event_type"] == "workflow.step.started"
                 and call[1]["data"]["step_name"] == "link_odps"
             ]
             step_completed_calls = [
-                call for call in mock_publish.call_args_list
+                call
+                for call in mock_publish.call_args_list
                 if call[1]["event_type"] == "workflow.step.completed"
                 and call[1]["data"]["step_name"] == "link_odps"
             ]
 
-            self.assertEqual(len(step_started_calls), 1, "link_odps step.started event should be published")
-            self.assertEqual(len(step_completed_calls), 1, "link_odps step.completed event should be published")
+            self.assertEqual(
+                len(step_started_calls), 1, "link_odps step.started event should be published"
+            )
+            self.assertEqual(
+                len(step_completed_calls), 1, "link_odps step.completed event should be published"
+            )
 
             # Verify event data structure
             started_call = step_started_calls[0]
@@ -1557,14 +1487,14 @@ class ContractCreationWorkflowODPSLinkingTest(TestCase):
                 "info": {
                     "name": self.sample_contract["name"],
                     "description": self.sample_contract["description"],
-                    "version": self.sample_contract["version"]
+                    "version": self.sample_contract["version"],
                 },
                 "schema": self.sample_contract["schema"],
-                "marketplace": self.sample_contract["marketplace"]
+                "marketplace": self.sample_contract["marketplace"],
             },
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create workflow instance
@@ -1575,30 +1505,29 @@ class ContractCreationWorkflowODPSLinkingTest(TestCase):
                 "original_format": "JSON",
                 "tenant_id": str(self.tenant.id),
                 "user_id": str(self.user.id),
-                "odps_action": "generate"
+                "odps_action": "generate",
             },
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         instance.state_data = {
             "contract_id": str(contract.id),
             "user_id": str(self.user.id),
-            "odps_action": "generate"
+            "odps_action": "generate",
         }
         instance.save()
 
         # Execute link_odps step manually
-        from hub.apps.orchestration.models import WorkflowStep, StepStatus
+        from hub.apps.orchestration.models import StepStatus
+
         # Get the link_odps step from the workflow instance (it was created when instance was created)
         step = instance.steps.filter(step_name="link_odps").first()
         if not step:
             # If step doesn't exist, create it with the next available index
-            max_index = instance.steps.aggregate(models.Max('step_index'))['step_index__max'] or -1
+            max_index = instance.steps.aggregate(models.Max("step_index"))["step_index__max"] or -1
             step = instance.steps.create(
-                step_name="link_odps",
-                step_index=max_index + 1,
-                status=StepStatus.PENDING
+                step_name="link_odps", step_index=max_index + 1, status=StepStatus.PENDING
             )
 
         task_func = self.engine.task_registry.get("contract_creation.link_odps")
@@ -1609,15 +1538,14 @@ class ContractCreationWorkflowODPSLinkingTest(TestCase):
         # Verify ODPS contract was created and linked
         self.assertTrue(result.get("odps_linked"))
         odps_contract_id = result["odps_contract_id"]
-        odps_contract = Contract.objects.get(id=odps_contract_id)
+        Contract.objects.get(id=odps_contract_id)
 
         # Verify bidirectional link exists
         contract.refresh_from_db()
         self.assertIn("extensions", contract.hub_contract_json)
         self.assertIn("x_odps", contract.hub_contract_json["extensions"])
         self.assertEqual(
-            contract.hub_contract_json["extensions"]["x_odps"]["odps_link"],
-            odps_contract_id
+            contract.hub_contract_json["extensions"]["x_odps"]["odps_link"], odps_contract_id
         )
 
         # Now test compensation
@@ -1625,7 +1553,7 @@ class ContractCreationWorkflowODPSLinkingTest(TestCase):
         compensation_input = {
             "contract_id": str(contract.id),
             "odps_contract_id": odps_contract_id,
-            "odps_action": "generate"
+            "odps_action": "generate",
         }
 
         with transaction.atomic():
@@ -1655,11 +1583,11 @@ class ContractCreationWorkflowODPSLinkingTest(TestCase):
             original_raw=json.dumps(self.sample_contract),
             hub_contract_json={
                 "id": self.sample_contract["id"],
-                "info": {"name": self.sample_contract["name"]}
+                "info": {"name": self.sample_contract["name"]},
             },
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create existing ODPS contract
@@ -1672,7 +1600,7 @@ class ContractCreationWorkflowODPSLinkingTest(TestCase):
             hub_contract_json={"id": "test-product", "info": {"name": "Test Product"}},
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create workflow instance
@@ -1684,31 +1612,30 @@ class ContractCreationWorkflowODPSLinkingTest(TestCase):
                 "tenant_id": str(self.tenant.id),
                 "user_id": str(self.user.id),
                 "odps_action": "link",
-                "odps_contract_id": str(odps_contract.id)
+                "odps_contract_id": str(odps_contract.id),
             },
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         instance.state_data = {
             "contract_id": str(contract.id),
             "user_id": str(self.user.id),
             "odps_action": "link",
-            "odps_contract_id": str(odps_contract.id)
+            "odps_contract_id": str(odps_contract.id),
         }
         instance.save()
 
         # Execute link_odps step
-        from hub.apps.orchestration.models import WorkflowStep, StepStatus
+        from hub.apps.orchestration.models import StepStatus
+
         # Get the link_odps step from the workflow instance (it was created when instance was created)
         step = instance.steps.filter(step_name="link_odps").first()
         if not step:
             # If step doesn't exist, create it with the next available index
-            max_index = instance.steps.aggregate(models.Max('step_index'))['step_index__max'] or -1
+            max_index = instance.steps.aggregate(models.Max("step_index"))["step_index__max"] or -1
             step = instance.steps.create(
-                step_name="link_odps",
-                step_index=max_index + 1,
-                status=StepStatus.PENDING
+                step_name="link_odps", step_index=max_index + 1, status=StepStatus.PENDING
             )
 
         task_func = self.engine.task_registry.get("contract_creation.link_odps")
@@ -1724,7 +1651,7 @@ class ContractCreationWorkflowODPSLinkingTest(TestCase):
         compensation_input = {
             "contract_id": str(contract.id),
             "odps_contract_id": str(odps_contract.id),
-            "odps_action": "link"  # Existing contract, should not be deleted
+            "odps_action": "link",  # Existing contract, should not be deleted
         }
 
         with transaction.atomic():
@@ -1758,7 +1685,7 @@ class ContractCreationWorkflowODPSLinkingTest(TestCase):
             user_id=str(self.user.id),
             odps_action="generate",
             engine=self.engine,
-            registry=self.registry
+            registry=self.registry,
         )
 
         # Verify ODCS contract created
@@ -1766,7 +1693,9 @@ class ContractCreationWorkflowODPSLinkingTest(TestCase):
         self.assertEqual(contract.original_spec_type, "ODCS")
 
         # Verify ODPS contract was created and linked
-        odps_contract_id = contract.hub_contract_json.get("extensions", {}).get("x_odps", {}).get("odps_link")
+        odps_contract_id = (
+            contract.hub_contract_json.get("extensions", {}).get("x_odps", {}).get("odps_link")
+        )
         self.assertIsNotNone(odps_contract_id, "ODPS contract should be linked")
 
         odps_contract = Contract.objects.get(id=odps_contract_id)
@@ -1775,22 +1704,19 @@ class ContractCreationWorkflowODPSLinkingTest(TestCase):
 
         # Verify bidirectional linking
         self.assertEqual(
-            odps_contract.hub_contract_json.get("extensions", {}).get("x_odps", {}).get("odcs_link"),
-            str(contract.id)
+            odps_contract.hub_contract_json.get("extensions", {})
+            .get("x_odps", {})
+            .get("odcs_link"),
+            str(contract.id),
         )
 
         # Verify both contracts are indexed
         odcs_search_index = SearchIndex.objects.filter(
-            tenant=self.tenant,
-            resource_type="CONTRACT",
-            resource_id=contract.id
+            tenant=self.tenant, resource_type="CONTRACT", resource_id=contract.id
         ).first()
         self.assertIsNotNone(odcs_search_index, "ODCS contract should be indexed")
 
         odps_search_index = SearchIndex.objects.filter(
-            tenant=self.tenant,
-            resource_type="CONTRACT",
-            resource_id=odps_contract.id
+            tenant=self.tenant, resource_type="CONTRACT", resource_id=odps_contract.id
         ).first()
         self.assertIsNotNone(odps_search_index, "ODPS contract should be indexed")
-

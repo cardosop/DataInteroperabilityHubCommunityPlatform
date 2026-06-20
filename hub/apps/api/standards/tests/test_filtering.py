@@ -1,6 +1,7 @@
 """
 Comprehensive tests for standardized filtering.
 """
+
 import uuid
 from unittest.mock import Mock
 
@@ -30,8 +31,12 @@ class TestStandardFilterBackend(TestCase):
     def test_filter_queryset_no_params(self):
         """Test filtering with no parameters."""
         _uid = uuid.uuid4().hex[:8]
-        User.objects.create_user(email=f"filter-noparam-1-{_uid}@example.com", password="testpass123")
-        User.objects.create_user(email=f"filter-noparam-2-{_uid}@example.com", password="testpass123")
+        User.objects.create_user(
+            email=f"filter-noparam-1-{_uid}@example.com", password="testpass123"
+        )
+        User.objects.create_user(
+            email=f"filter-noparam-2-{_uid}@example.com", password="testpass123"
+        )
 
         request = self.factory.get("/api/v1/users/")
         drf_request = Request(request)
@@ -88,9 +93,7 @@ class TestFilterHelpers(TestCase):
 
     def test_parse_filter_params_drf_request(self):
         """Test parsing filter params from DRF request."""
-        request = self.factory.get(
-            "/api/v1/resources/?status=active&name__contains=test&page=1"
-        )
+        request = self.factory.get("/api/v1/resources/?status=active&name__contains=test&page=1")
         drf_request = Request(request)
 
         params = parse_filter_params(drf_request)
@@ -183,8 +186,12 @@ class TestFilterHelpers(TestCase):
     def test_apply_filters_isnull_operator(self):
         """Test applying 'isnull' operator filter."""
         _uid = uuid.uuid4().hex[:8]
-        User.objects.create_user(email=f"filter-isnull-1-{_uid}@example.com", password="testpass123")
-        User.objects.create_user(email=f"filter-isnull-2-{_uid}@example.com", password="testpass123")
+        User.objects.create_user(
+            email=f"filter-isnull-1-{_uid}@example.com", password="testpass123"
+        )
+        User.objects.create_user(
+            email=f"filter-isnull-2-{_uid}@example.com", password="testpass123"
+        )
 
         queryset = User.objects.filter(email__contains=_uid)
         filter_params = {"email__isnull": "false"}
@@ -196,7 +203,9 @@ class TestFilterHelpers(TestCase):
     def test_apply_filters_empty_value(self):
         """Test applying filters with empty value (should be skipped)."""
         _uid = uuid.uuid4().hex[:8]
-        User.objects.create_user(email=f"filter-emptyval-1-{_uid}@example.com", password="testpass123")
+        User.objects.create_user(
+            email=f"filter-emptyval-1-{_uid}@example.com", password="testpass123"
+        )
 
         queryset = User.objects.filter(email__contains=_uid)
         filter_params = {"email": ""}

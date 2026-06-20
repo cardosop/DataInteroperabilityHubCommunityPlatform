@@ -26,12 +26,13 @@ Alert fires when:
     rate(synthetic_probe_success_total[5m] + synthetic_probe_failures_total[5m])
     > 0.01   (1% failure rate) for 5 minutes.
 """
+
 from __future__ import annotations
+
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional, List, Dict
+from datetime import UTC, datetime
 
 import requests
 import structlog
@@ -43,11 +44,12 @@ logger = structlog.get_logger(__name__)
 
 try:
     from hub.apps.observability.otel_metrics import Counter, Gauge
+
     _METRICS_AVAILABLE = True
 except ImportError:
     _METRICS_AVAILABLE = False
     Counter = None  # type: ignore[assignment]
-    Gauge = None    # type: ignore[assignment]
+    Gauge = None  # type: ignore[assignment]
 
 _probe_failures: dict = {}
 _probe_successes: dict = {}
@@ -86,9 +88,8 @@ def _record_probe_metrics(probe_name: str, success: bool, latency_ms: float) -> 
             _probe_successes.get(probe_name, lambda: None)  # no-op if missing
             if probe_name in _probe_successes:
                 _probe_successes[probe_name].labels(**labels).inc()
-        else:
-            if probe_name in _probe_failures:
-                _probe_failures[probe_name].labels(**labels).inc()
+        elif probe_name in _probe_failures:
+            _probe_failures[probe_name].labels(**labels).inc()
         if probe_name in _probe_latency_gauge:
             _probe_latency_gauge[probe_name].labels(**labels).set(latency_ms)
     except Exception:
@@ -102,15 +103,16 @@ class ProbeResult:
     probe_name: str
     success: bool
     latency_ms: float
-    status_code: Optional[int] = None
-    error_message: Optional[str] = None
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    status_code: int | None = None
+    error_message: str | None = None
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     request_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     # Response body captured for auth token extraction (avoids double-request)
-    response_body: Optional[dict] = None
+    response_body: dict | None = None
 
 
 # ── Probe runner ──────────────────────────────────────────────────────────
+
 
 class SyntheticProbe:
     """A single black-box probe that hits an API endpoint and records metrics."""
@@ -122,9 +124,9 @@ class SyntheticProbe:
         url_path: str,
         base_url: str,
         expected_status: int = 200,
-        request_body: Optional[dict] = None,
-        auth_token: Optional[str] = None,
-        extra_headers: Optional[dict] = None,
+        request_body: dict | None = None,
+        auth_token: str | None = None,
+        extra_headers: dict | None = None,
         timeout: float = 10.0,
         retries: int = 1,
     ):
@@ -146,7 +148,7 @@ class SyntheticProbe:
         elapsed_ms = 0.0
         response_body = None
 
-        for attempt in range(self.retries + 1):
+        for _attempt in range(self.retries + 1):
             start = time.monotonic()
             try:
                 headers = {
@@ -161,45 +163,55 @@ class SyntheticProbe:
 
                 if self.method == "GET":
                     resp = requests.get(
-                        url, headers=headers, timeout=self.timeout,
+                        url,
+                        headers=headers,
+                        timeout=self.timeout,
                     )
                 elif self.method == "POST":
                     resp = requests.post(
-                        url, json=self.request_body, headers=headers,
+                        url,
+                        json=self.request_body,
+                        headers=headers,
                         timeout=self.timeout,
                     )
                 elif self.method == "HEAD":
                     resp = requests.head(
-                        url, headers=headers, timeout=self.timeout,
+                        url,
+                        headers=headers,
+                        timeout=self.timeout,
                     )
                 else:
-                    return self._finalize(ProbeResult(
-                        probe_name=self.name,
-                        success=False,
-                        latency_ms=(time.monotonic() - start) * 1000,
-                        error_message=f"Unsupported method: {self.method}",
-                    ))
+                    return self._finalize(
+                        ProbeResult(
+                            probe_name=self.name,
+                            success=False,
+                            latency_ms=(time.monotonic() - start) * 1000,
+                            error_message=f"Unsupported method: {self.method}",
+                        )
+                    )
 
                 elapsed_ms = (time.monotonic() - start) * 1000
                 last_status = resp.status_code
 
                 # Capture JSON body on success for token extraction
                 try:
-                    if resp.status_code == 200 and resp.headers.get(
-                        "Content-Type", ""
-                    ).startswith("application/json"):
+                    if resp.status_code == 200 and resp.headers.get("Content-Type", "").startswith(
+                        "application/json"
+                    ):
                         response_body = resp.json()
                 except Exception:
                     response_body = None
 
                 if resp.status_code == self.expected_status:
-                    return self._finalize(ProbeResult(
-                        probe_name=self.name,
-                        success=True,
-                        latency_ms=elapsed_ms,
-                        status_code=resp.status_code,
-                        response_body=response_body,
-                    ))
+                    return self._finalize(
+                        ProbeResult(
+                            probe_name=self.name,
+                            success=True,
+                            latency_ms=elapsed_ms,
+                            status_code=resp.status_code,
+                            response_body=response_body,
+                        )
+                    )
                 else:
                     last_error = (
                         f"Expected {self.expected_status}, "
@@ -220,13 +232,15 @@ class SyntheticProbe:
                 last_error = f"Unexpected error: {e}"
                 break
 
-        return self._finalize(ProbeResult(
-            probe_name=self.name,
-            success=False,
-            latency_ms=elapsed_ms,
-            status_code=last_status,
-            error_message=last_error,
-        ))
+        return self._finalize(
+            ProbeResult(
+                probe_name=self.name,
+                success=False,
+                latency_ms=elapsed_ms,
+                status_code=last_status,
+                error_message=last_error,
+            )
+        )
 
     def _finalize(self, result: ProbeResult) -> ProbeResult:
         """Record metrics and return the result."""
@@ -242,9 +256,9 @@ CRITICAL_PROBE_NAMES = ["login", "asset_list", "search", "health"]
 
 def create_probes(
     base_url: str,
-    auth_email: Optional[str] = None,
-    auth_password: Optional[str] = None,
-) -> Dict[str, SyntheticProbe]:
+    auth_email: str | None = None,
+    auth_password: str | None = None,
+) -> dict[str, SyntheticProbe]:
     """Create the set of 4 critical synthetic probes.
 
     If auth_email/auth_password are provided, the login probe uses them
@@ -302,6 +316,7 @@ def create_probes(
 
 # ── Probe runner (orchestrates all probes in a cycle) ─────────────────────
 
+
 @dataclass
 class ProbeRunSummary:
     """Aggregated results from one cycle of all probes."""
@@ -310,7 +325,7 @@ class ProbeRunSummary:
     total_probes: int
     passed: int
     failed: int
-    results: List[ProbeResult]
+    results: list[ProbeResult]
 
     @property
     def failure_rate(self) -> float:
@@ -320,8 +335,8 @@ class ProbeRunSummary:
 
 
 def run_all_probes(
-    probes: Dict[str, SyntheticProbe],
-    auth_token: Optional[str] = None,
+    probes: dict[str, SyntheticProbe],
+    auth_token: str | None = None,
 ) -> ProbeRunSummary:
     """Run all probes and return aggregated results.
 
@@ -351,7 +366,7 @@ def run_all_probes(
     failed = len(results) - passed
 
     return ProbeRunSummary(
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         total_probes=len(results),
         passed=passed,
         failed=failed,

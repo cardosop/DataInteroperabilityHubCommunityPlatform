@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.observability.data_slas import DataSLAMonitor
-from hub.apps.observability.models import DataObservabilityMetric, DataSLA
+from hub.apps.observability.models import DataObservabilityMetric
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
 

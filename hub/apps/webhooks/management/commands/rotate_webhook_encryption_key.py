@@ -26,7 +26,7 @@ def _decrypt_with_key(value: str, fernet: Fernet) -> str:
     """Decrypt a v1:-prefixed secret using the given Fernet instance."""
     if not value.startswith(_PREFIX):
         return value  # legacy plaintext
-    return fernet.decrypt(value[len(_PREFIX):].encode()).decode()
+    return fernet.decrypt(value[len(_PREFIX) :].encode()).decode()
 
 
 def _encrypt_with_key(plaintext: str, fernet: Fernet) -> str:
@@ -48,11 +48,16 @@ class Command(BaseCommand):
         parser.add_argument(
             "--dry-run", action="store_true", help="Verify decryption succeeds without saving"
         )
+        parser.add_argument(
+            "--tenant-id",
+            help="Scope rotation to a single tenant (UUID). When omitted, all tenants are processed.",
+        )
 
     def handle(self, *args, **options):
         old_key = options["old_key"]
         new_key = options["new_key"]
         dry_run = options["dry_run"]
+        tenant_id = options.get("tenant_id")
 
         if old_key == new_key:
             raise CommandError("Old key and new key must be different.")
@@ -60,12 +65,16 @@ class Command(BaseCommand):
         old_fernet = _make_fernet(old_key)
         new_fernet = _make_fernet(new_key)
 
-        total = Webhook.objects.count()
+        queryset = Webhook.objects.all()
+        if tenant_id:
+            queryset = queryset.filter(tenant_id=tenant_id)
+
+        total = queryset.count()
         self.stdout.write(f"Found {total} webhook(s) to process.")
 
         if dry_run:
             # Verify decrypt on up to first 5
-            sample = Webhook.objects.all()[:5]
+            sample = queryset[:5]
             for wh in sample:
                 try:
                     plaintext = _decrypt_with_key(wh.secret, old_fernet)
@@ -73,9 +82,7 @@ class Command(BaseCommand):
                         self.style.SUCCESS(f"  ✓ {wh.id}: decrypt OK (len={len(plaintext)})")
                     )
                 except (InvalidToken, ValueError) as e:
-                    self.stdout.write(
-                        self.style.ERROR(f"  ✗ {wh.id}: decrypt FAILED — {e}")
-                    )
+                    self.stdout.write(self.style.ERROR(f"  ✗ {wh.id}: decrypt FAILED — {e}"))
             self.stdout.write(f"\nDry run complete. {total} webhook(s) would be rotated.")
             return
 
@@ -83,7 +90,7 @@ class Command(BaseCommand):
         rotated = 0
         failed = 0
 
-        webhooks = Webhook.objects.all().order_by("id")
+        webhooks = queryset.order_by("id")
         batch = []
 
         for wh in webhooks.iterator(chunk_size=BATCH_SIZE):

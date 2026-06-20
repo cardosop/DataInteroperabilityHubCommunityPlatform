@@ -7,6 +7,7 @@ exposes a stable list-or-null contract to the SPA.
 """
 
 from __future__ import annotations
+
 from typing import Any
 
 

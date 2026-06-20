@@ -19,20 +19,23 @@ To run these tests:
 3. Set API key: export DATAHUB_API_KEY=your-api-key
 4. Run: pytest tests/integration/test_baas_docs_real_api.py -v
 """
-import pytest
 import json
 import os
 import subprocess
+
+import pytest
 import requests
 from click.testing import CliRunner
-from datahub_cli.main import cli
 from datahub_cli.config import config
+from datahub_cli.main import cli
 
 
 def _check_api_available():
     """Check if API service is available"""
     try:
-        response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2)
+        response = requests.get(
+            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
+        )
         return response.status_code < 600  # Any HTTP response means API is up
     except Exception:
         return False
@@ -60,10 +63,10 @@ class TestBaaSDocsIntegration:
 
         # Try to get API key from environment, config, or create one
         api_key = (
-            os.environ.get('DATAHUB_API_KEY') or
-            os.environ.get('TEST_API_KEY') or
-            config.get_api_key() or
-            self._create_test_api_key()
+            os.environ.get("DATAHUB_API_KEY")
+            or os.environ.get("TEST_API_KEY")
+            or config.get_api_key()
+            or self._create_test_api_key()
         )
 
         if not api_key:
@@ -130,17 +133,27 @@ print(api_key_value)
 """
         try:
             result = subprocess.run(
-                ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'hub/manage.py', 'shell'],
+                [
+                    "docker",
+                    "compose",
+                    "exec",
+                    "-T",
+                    "api-service",
+                    "python",
+                    "hub/manage.py",
+                    "shell",
+                ],
+                check=False,
                 input=django_shell_script,
                 text=True,
                 capture_output=True,
                 timeout=30,
-                cwd='/home/ph/Desktop/DataInteroperabilityHub'
+                cwd="/home/ph/Desktop/DataInteroperabilityHub",
             )
 
             if result.returncode == 0:
                 # Extract API key from output (should be the last line)
-                output_lines = result.stdout.strip().split('\n')
+                output_lines = result.stdout.strip().split("\n")
                 for line in reversed(output_lines):
                     line = line.strip()
                     if line and len(line) > 20:  # API keys are typically long
@@ -150,237 +163,269 @@ print(api_key_value)
 
         return None
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_docs_command_group_exists(self):
         """Test that docs command group is registered"""
         runner = CliRunner()
-        result = runner.invoke(cli, ['baas', 'docs', '--help'])
+        result = runner.invoke(cli, ["baas", "docs", "--help"])
 
         assert result.exit_code == 0
-        assert 'Developer portal documentation commands' in result.output
+        assert "Developer portal documentation commands" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_docs_show_default_format(self):
         """Test showing API documentation in default (HTML) format"""
-        if not hasattr(self, 'api_key') or not self.api_key:
-            pytest.skip("API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists.")
+        if not hasattr(self, "api_key") or not self.api_key:
+            pytest.skip(
+                "API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists."
+            )
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['baas', 'docs', 'show'])
+        result = runner.invoke(cli, ["baas", "docs", "show"])
 
         assert result.exit_code == 0
-        assert 'API Documentation' in result.output or 'Meshant' in result.output
-        assert '<html>' in result.output or '<!DOCTYPE html>' in result.output
-        assert 'OpenAPI' in result.output or 'openapi' in result.output.lower()
+        assert "API Documentation" in result.output or "Meshant" in result.output
+        assert "<html>" in result.output or "<!DOCTYPE html>" in result.output
+        assert "OpenAPI" in result.output or "openapi" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_docs_show_json_format(self):
         """Test showing API documentation in JSON format"""
-        if not hasattr(self, 'api_key') or not self.api_key:
-            pytest.skip("API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists.")
+        if not hasattr(self, "api_key") or not self.api_key:
+            pytest.skip(
+                "API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists."
+            )
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            'baas', 'docs', 'show',
-            '--format', 'json'
-        ])
+        result = runner.invoke(cli, ["baas", "docs", "show", "--format", "json"])
 
         assert result.exit_code == 0
         # Parse JSON output
         output_data = json.loads(result.output)
-        assert 'title' in output_data
-        assert 'version' in output_data
-        assert 'endpoints' in output_data
-        assert 'authentication' in output_data
-        assert 'rate_limiting' in output_data
-        assert 'resources' in output_data
+        assert "title" in output_data
+        assert "version" in output_data
+        assert "endpoints" in output_data
+        assert "authentication" in output_data
+        assert "rate_limiting" in output_data
+        assert "resources" in output_data
         # Verify endpoint structure
-        assert 'openapi_schema' in output_data['endpoints']
-        assert 'sdks' in output_data['endpoints']
+        assert "openapi_schema" in output_data["endpoints"]
+        assert "sdks" in output_data["endpoints"]
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_docs_show_html_format(self):
         """Test showing API documentation in HTML format"""
-        if not hasattr(self, 'api_key') or not self.api_key:
-            pytest.skip("API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists.")
+        if not hasattr(self, "api_key") or not self.api_key:
+            pytest.skip(
+                "API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists."
+            )
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            'baas', 'docs', 'show',
-            '--format', 'html'
-        ])
+        result = runner.invoke(cli, ["baas", "docs", "show", "--format", "html"])
 
         assert result.exit_code == 0
-        assert '<html>' in result.output or '<!DOCTYPE html>' in result.output
-        assert 'API Documentation' in result.output or 'Meshant' in result.output
-        assert 'OpenAPI' in result.output or 'openapi' in result.output.lower()
+        assert "<html>" in result.output or "<!DOCTYPE html>" in result.output
+        assert "API Documentation" in result.output or "Meshant" in result.output
+        assert "OpenAPI" in result.output or "openapi" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_docs_show_markdown_format(self):
         """Test showing API documentation in Markdown format"""
-        if not hasattr(self, 'api_key') or not self.api_key:
-            pytest.skip("API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists.")
+        if not hasattr(self, "api_key") or not self.api_key:
+            pytest.skip(
+                "API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists."
+            )
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            'baas', 'docs', 'show',
-            '--format', 'markdown'
-        ])
+        result = runner.invoke(cli, ["baas", "docs", "show", "--format", "markdown"])
 
         assert result.exit_code == 0
-        assert '#' in result.output  # Markdown headers
-        assert 'API Documentation' in result.output or 'Meshant' in result.output
-        assert 'OpenAPI' in result.output or 'openapi' in result.output.lower()
-        assert '##' in result.output  # Sub-headers
+        assert "#" in result.output  # Markdown headers
+        assert "API Documentation" in result.output or "Meshant" in result.output
+        assert "OpenAPI" in result.output or "openapi" in result.output.lower()
+        assert "##" in result.output  # Sub-headers
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_docs_openapi_json_format(self):
         """Test showing OpenAPI schema in JSON format"""
-        if not hasattr(self, 'api_key') or not self.api_key:
-            pytest.skip("API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists.")
+        if not hasattr(self, "api_key") or not self.api_key:
+            pytest.skip(
+                "API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists."
+            )
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            'baas', 'docs', 'openapi',
-            '--format', 'json'
-        ])
+        result = runner.invoke(cli, ["baas", "docs", "openapi", "--format", "json"])
 
         assert result.exit_code == 0
         # Parse JSON output
         output_data = json.loads(result.output)
-        assert 'openapi' in output_data
-        assert 'info' in output_data
-        assert 'paths' in output_data
+        assert "openapi" in output_data
+        assert "info" in output_data
+        assert "paths" in output_data
         # Verify it's a valid OpenAPI schema
-        assert output_data['openapi'].startswith('3.')
+        assert output_data["openapi"].startswith("3.")
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_docs_openapi_default_format(self):
         """Test showing OpenAPI schema in default (JSON) format"""
-        if not hasattr(self, 'api_key') or not self.api_key:
-            pytest.skip("API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists.")
+        if not hasattr(self, "api_key") or not self.api_key:
+            pytest.skip(
+                "API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists."
+            )
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['baas', 'docs', 'openapi'])
+        result = runner.invoke(cli, ["baas", "docs", "openapi"])
 
         assert result.exit_code == 0
         # Parse JSON output
         output_data = json.loads(result.output)
-        assert 'openapi' in output_data
-        assert 'info' in output_data
-        assert 'paths' in output_data
+        assert "openapi" in output_data
+        assert "info" in output_data
+        assert "paths" in output_data
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_docs_openapi_yaml_format(self):
         """Test showing OpenAPI schema in YAML format"""
-        if not hasattr(self, 'api_key') or not self.api_key:
-            pytest.skip("API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists.")
+        if not hasattr(self, "api_key") or not self.api_key:
+            pytest.skip(
+                "API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists."
+            )
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            'baas', 'docs', 'openapi',
-            '--format', 'yaml'
-        ])
+        result = runner.invoke(cli, ["baas", "docs", "openapi", "--format", "yaml"])
 
         # YAML format may require PyYAML, so we check for either success or appropriate error
         if result.exit_code == 0:
             # If successful, verify it's YAML format
-            assert 'openapi:' in result.output or 'openapi: ' in result.output
-            assert 'info:' in result.output
-            assert 'paths:' in result.output
+            assert "openapi:" in result.output or "openapi: " in result.output
+            assert "info:" in result.output
+            assert "paths:" in result.output
         else:
             # If it fails, it should be because PyYAML is not available
-            assert 'PyYAML' in result.output or 'yaml' in result.output.lower()
+            assert "PyYAML" in result.output or "yaml" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_docs_sdks_default_format(self):
         """Test showing SDK links in default (table) format"""
-        if not hasattr(self, 'api_key') or not self.api_key:
-            pytest.skip("API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists.")
+        if not hasattr(self, "api_key") or not self.api_key:
+            pytest.skip(
+                "API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists."
+            )
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['baas', 'docs', 'sdks'])
+        result = runner.invoke(cli, ["baas", "docs", "sdks"])
 
         assert result.exit_code == 0
-        assert 'Language' in result.output or 'SDK' in result.output
-        assert 'Python' in result.output or 'python' in result.output.lower()
-        assert 'JavaScript' in result.output or 'javascript' in result.output.lower()
+        assert "Language" in result.output or "SDK" in result.output
+        assert "Python" in result.output or "python" in result.output.lower()
+        assert "JavaScript" in result.output or "javascript" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_docs_sdks_table_format(self):
         """Test showing SDK links in table format"""
-        if not hasattr(self, 'api_key') or not self.api_key:
-            pytest.skip("API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists.")
+        if not hasattr(self, "api_key") or not self.api_key:
+            pytest.skip(
+                "API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists."
+            )
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            'baas', 'docs', 'sdks',
-            '--format', 'table'
-        ])
+        result = runner.invoke(cli, ["baas", "docs", "sdks", "--format", "table"])
 
         assert result.exit_code == 0
-        assert 'Language' in result.output or 'SDK' in result.output
-        assert 'Python' in result.output or 'python' in result.output.lower()
-        assert 'JavaScript' in result.output or 'javascript' in result.output.lower()
+        assert "Language" in result.output or "SDK" in result.output
+        assert "Python" in result.output or "python" in result.output.lower()
+        assert "JavaScript" in result.output or "javascript" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_docs_sdks_json_format(self):
         """Test showing SDK links in JSON format"""
-        if not hasattr(self, 'api_key') or not self.api_key:
-            pytest.skip("API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists.")
+        if not hasattr(self, "api_key") or not self.api_key:
+            pytest.skip(
+                "API key not available. Set DATAHUB_API_KEY environment variable or ensure test user exists."
+            )
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            'baas', 'docs', 'sdks',
-            '--format', 'json'
-        ])
+        result = runner.invoke(cli, ["baas", "docs", "sdks", "--format", "json"])
 
         assert result.exit_code == 0
         # Parse JSON output
         output_data = json.loads(result.output)
         assert isinstance(output_data, dict)
         # Verify SDK structure
-        assert 'python' in output_data or 'javascript' in output_data
+        assert "python" in output_data or "javascript" in output_data
         # Check SDK fields
-        sdk_key = 'python' if 'python' in output_data else 'javascript'
+        sdk_key = "python" if "python" in output_data else "javascript"
         sdk_info = output_data[sdk_key]
-        assert 'name' in sdk_info
-        assert 'language' in sdk_info
-        assert 'download_url' in sdk_info
-        assert 'install_command' in sdk_info
+        assert "name" in sdk_info
+        assert "language" in sdk_info
+        assert "download_url" in sdk_info
+        assert "install_command" in sdk_info
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_docs_show_invalid_format(self):
         """Test that invalid format option is rejected"""
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            'baas', 'docs', 'show',
-            '--format', 'invalid'
-        ])
+        result = runner.invoke(cli, ["baas", "docs", "show", "--format", "invalid"])
 
         assert result.exit_code != 0
-        assert 'Invalid value' in result.output or 'invalid choice' in result.output.lower()
+        assert "Invalid value" in result.output or "invalid choice" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_docs_openapi_invalid_format(self):
         """Test that invalid format option is rejected"""
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            'baas', 'docs', 'openapi',
-            '--format', 'invalid'
-        ])
+        result = runner.invoke(cli, ["baas", "docs", "openapi", "--format", "invalid"])
 
         assert result.exit_code != 0
-        assert 'Invalid value' in result.output or 'invalid choice' in result.output.lower()
+        assert "Invalid value" in result.output or "invalid choice" in result.output.lower()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_docs_sdks_invalid_format(self):
         """Test that invalid format option is rejected"""
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            'baas', 'docs', 'sdks',
-            '--format', 'invalid'
-        ])
+        result = runner.invoke(cli, ["baas", "docs", "sdks", "--format", "invalid"])
 
         assert result.exit_code != 0
-        assert 'Invalid value' in result.output or 'invalid choice' in result.output.lower()
+        assert "Invalid value" in result.output or "invalid choice" in result.output.lower()

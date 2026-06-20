@@ -6,6 +6,7 @@ callers already own the happy path — they should not fail just because
 the inbox write is flaky (disk full, DB rollback edge, etc.). Errors are
 logged and swallowed so the primary business flow still succeeds.
 """
+
 from __future__ import annotations
 
 import logging
@@ -47,15 +48,15 @@ def _coerce_category(value: str | NotificationCategory) -> str:
 
 def create_user_notification(
     *,
-    user: "User",
-    tenant: "Tenant",
+    user: User,
+    tenant: Tenant,
     title: str,
     message: str,
     notification_type: str | NotificationType = NotificationType.INFO,
     category: str | NotificationCategory = NotificationCategory.SYSTEM,
     resource_type: str | None = None,
     resource_id: str | UUID | None = None,
-    audit_event: "AuditEvent | None" = None,
+    audit_event: AuditEvent | None = None,
     **_ignored: Any,
 ) -> UserNotification | None:
     """Persist a notification; returns the row, or ``None`` on failure.
@@ -96,7 +97,7 @@ def create_user_notification(
             resource_type=resource_type,
             resource_id=resource_id,
         )
-    except Exception:  # noqa: BLE001 — see module docstring
+    except Exception:
         logger.exception(
             "create_user_notification failed",
             extra={
@@ -122,11 +123,7 @@ def create_user_notification(
             "category": notification.category,
             "notification_type": notification.notification_type,
             "title": notification.title,
-            "resource_id": (
-                str(notification.resource_id)
-                if notification.resource_id
-                else None
-            ),
+            "resource_id": (str(notification.resource_id) if notification.resource_id else None),
         }
         # Only include resource_type when it has a string value to
         # satisfy the event schema (resource_type: string, not nullable).
@@ -139,7 +136,7 @@ def create_user_notification(
             user_id=recipient_id,
             skip_deduplication=True,
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.warning(
             "notification.created event publish failed",
             extra={"notification_id": str(notification.id)},

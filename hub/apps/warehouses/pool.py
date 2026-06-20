@@ -4,13 +4,15 @@ Phase 275.E — Per-tenant warehouse connection pool.
 Manages a bounded pool of warehouse connector instances keyed by
 (tenant_id, warehouse_type).  Enforces max connections and idle timeout.
 """
+
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .exceptions import WarehouseConnectionError
 
@@ -36,14 +38,17 @@ class WarehouseConnectionPool:
     ):
         self._max = max_connections
         self._idle_timeout = idle_timeout_s
-        self._pool: Dict[str, PoolEntry] = OrderedDict()
+        self._pool: dict[str, PoolEntry] = OrderedDict()
         self._lock = threading.RLock()
 
     def _key(self, tenant_id: str, warehouse_type: str) -> str:
         return f"{tenant_id}:{warehouse_type}"
 
     def acquire(
-        self, tenant_id: str, warehouse_type: str, factory,
+        self,
+        tenant_id: str,
+        warehouse_type: str,
+        factory,
     ) -> Any:
         """Get or create a connector for *tenant_id*/*warehouse_type*.
 
@@ -54,14 +59,13 @@ class WarehouseConnectionPool:
             # Purge expired idle entries.
             now = time.monotonic()
             expired = [
-                k for k, e in self._pool.items()
+                k
+                for k, e in self._pool.items()
                 if not e.in_use and (now - e.last_used) > self._idle_timeout
             ]
             for k in expired:
-                try:
+                with contextlib.suppress(Exception):
                     self._pool[k].connector.close()
-                except Exception:
-                    pass
                 del self._pool[k]
 
             # Return existing idle connector.
@@ -88,10 +92,8 @@ class WarehouseConnectionPool:
                 if not idle_keys:
                     break
                 oldest = idle_keys[0]
-                try:
+                with contextlib.suppress(Exception):
                     self._pool[oldest].connector.close()
-                except Exception:
-                    pass
                 del self._pool[oldest]
 
             return connector
@@ -106,7 +108,7 @@ class WarehouseConnectionPool:
 
 
 # Module-level singleton.
-_pool: Optional[WarehouseConnectionPool] = None
+_pool: WarehouseConnectionPool | None = None
 
 
 def get_connection_pool() -> WarehouseConnectionPool:

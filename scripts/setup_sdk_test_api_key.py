@@ -8,13 +8,16 @@ This script:
 3. Creates an API key for the user
 4. Prints the API key for use in tests
 """
-import requests
-import sys
+
 import os
+import sys
+
+import requests
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api/v1")
 TEST_USER_EMAIL = os.getenv("TEST_USER_EMAIL", "sdk-test@example.com")
 TEST_USER_PASSWORD = os.getenv("TEST_USER_PASSWORD", "TestPass123!")
+
 
 def main():
     print("Setting up SDK test API key...")
@@ -24,7 +27,7 @@ def main():
     login_response = requests.post(
         f"{API_BASE_URL}/auth/login/",
         json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD},
-        timeout=10
+        timeout=10,
     )
 
     if login_response.status_code != 200:
@@ -42,11 +45,7 @@ def main():
 
     # Step 2: Check if user has a tenant
     print("2. Checking user tenant...")
-    user_info_response = requests.get(
-        f"{API_BASE_URL}/auth/me/",
-        headers=headers,
-        timeout=10
-    )
+    user_info_response = requests.get(f"{API_BASE_URL}/auth/me/", headers=headers, timeout=10)
 
     if user_info_response.status_code == 200:
         user_data = user_info_response.json()
@@ -70,7 +69,7 @@ def main():
         f"{API_BASE_URL}/auth/api-keys/",
         json={"name": "SDK Test API Key"},
         headers=headers,
-        timeout=10
+        timeout=10,
     )
 
     if api_key_response.status_code == 201:
@@ -78,11 +77,11 @@ def main():
         api_key = api_key_data.get("api_key")
         if api_key:
             print("   ✓ API key created successfully")
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print("TEST_API_KEY for use in tests:")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
             print(api_key)
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
             print("\nTo use this in tests, run:")
             print(f"export TEST_API_KEY='{api_key}'")
             return api_key
@@ -95,6 +94,7 @@ def main():
         print(f"   Response: {api_key_response.text[:200]}")
         sys.exit(1)
 
+
 if __name__ == "__main__":
     try:
         api_key = main()
@@ -102,6 +102,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n✗ Error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
-

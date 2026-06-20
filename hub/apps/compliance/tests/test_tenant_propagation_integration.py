@@ -87,7 +87,7 @@ class TenantPropagationIntegrationTest(TestCase):
                 return
             except Exception:
                 if attempt < max_attempts - 1:
-                    time.sleep(delay_seconds)  # INTENTIONAL: test-specific timing requirement
+                    time.sleep(delay_seconds)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
                     continue
                 self.storage_available = False
 
@@ -122,6 +122,7 @@ class TenantPropagationIntegrationTest(TestCase):
         # the poll task inline to let the result settle to a terminal state.
         if compliance_run.status == ComplianceRunStatus.QUEUED:
             from hub.apps.compliance.tasks import poll_compliance_job
+
             for _attempt in range(30):
                 poll_compliance_job(compliance_run.id)
                 compliance_run.refresh_from_db()
@@ -130,7 +131,7 @@ class TenantPropagationIntegrationTest(TestCase):
                     ComplianceRunStatus.FAILED,
                 ):
                     break
-                time.sleep(2)  # INTENTIONAL: test-specific timing requirement
+                time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
 
         # The compliance scan runs asynchronously via a dedicated RQ worker
         # (compliance-rq-worker-test).  In the test environment that worker
@@ -170,7 +171,9 @@ class TenantPropagationIntegrationTest(TestCase):
         except Exception as e:
             self.skipTest(f"Cannot reach compliance-service metrics: {e}")
 
-        self.assertEqual(response.status_code, 200, "compliance-service /metrics should be reachable")
+        self.assertEqual(
+            response.status_code, 200, "compliance-service /metrics should be reachable"
+        )
         metrics_text = response.text
         tenant_uuid = str(self.tenant.id)
         # Prometheus format: compliance_runs_total{...,tenant_id="<uuid>"} ...

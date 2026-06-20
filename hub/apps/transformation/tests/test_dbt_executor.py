@@ -5,15 +5,14 @@ Tests profile resolution, dbt command execution, and log capture.
 Uses the sample_dbt_project fixture and real file I/O (no mocks for
 filesystem operations).
 """
-import pytest
 
 import json
 import os
 import uuid
-
-import yaml
-
 from pathlib import Path
+
+import pytest
+import yaml
 
 # ── Fixture paths ─────────────────────────────────────────────────────
 
@@ -158,9 +157,7 @@ class TestProfileResolution:
     @pytest.mark.unit
     def test_profile_name_uses_tenant_slug_pipeline_id(self, tmp_path):
         """Profile name follows meshant_{tenant_slug}_{pipeline_id} convention."""
-        executor = _make_executor(
-            tmp_path, tenant_slug="acmecorp", pipeline_id="pipe-abc-123"
-        )
+        executor = _make_executor(tmp_path, tenant_slug="acmecorp", pipeline_id="pipe-abc-123")
         assert executor.profile_name == "meshant_acmecorp_pipe-abc-123"
 
     @pytest.mark.unit

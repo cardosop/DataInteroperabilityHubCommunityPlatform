@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -30,11 +29,13 @@ SCRIPTS_DIR = REPO_ROOT / "scripts"
 # V0 — Foundation
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _check_normalization_registry_singleton() -> tuple[str, str]:
     """Verify single _NORMALIZER_REGISTRY instance."""
     try:
         from hub.apps.contracts.normalization import _NORMALIZER_REGISTRY as reg1
         from hub.apps.contracts.normalization_engine import _NORMALIZER_REGISTRY as reg2
+
         if reg1 is reg2:
             return "PASS", "Single registry instance — normalization.py re-exports from engine"
         return "FAIL", "Multiple _NORMALIZER_REGISTRY instances detected"
@@ -69,7 +70,8 @@ def _check_prefect_importable() -> tuple[str, str]:
     """Verify Prefect 3.x is installed and importable."""
     try:
         import prefect
-        version = prefect.__version__ if hasattr(prefect, '__version__') else "unknown"
+
+        version = prefect.__version__ if hasattr(prefect, "__version__") else "unknown"
         if version.startswith("2."):
             return "FAIL", f"Prefect 2.x ({version}) — need 3.x"
         return "PASS", f"Prefect {version} importable"
@@ -77,7 +79,10 @@ def _check_prefect_importable() -> tuple[str, str]:
         # Try from services dir
         svc = REPO_ROOT / "services" / "prefect-integration"
         if svc.exists():
-            return "SKIP", "Prefect not importable outside Docker; verified in prefect-integration service container"
+            return (
+                "SKIP",
+                "Prefect not importable outside Docker; verified in prefect-integration service container",
+            )
         return "FAIL", "Prefect not installed"
 
 
@@ -93,10 +98,16 @@ def _check_no_importerror_for_deleted_modules() -> tuple[str, str]:
         try:
             result = subprocess.run(
                 ["grep", "-rn", pattern, "hub/", "tests/", "services/", "cli/"],
-                capture_output=True, cwd=str(REPO_ROOT), timeout=30,
+                check=False,
+                capture_output=True,
+                cwd=str(REPO_ROOT),
+                timeout=30,
             )
             if result.stdout and b".py:" in result.stdout:
-                return "FAIL", f"Import of deleted module '{deleted_mod}' found; use '{replacement}'"
+                return (
+                    "FAIL",
+                    f"Import of deleted module '{deleted_mod}' found; use '{replacement}'",
+                )
         except Exception:
             pass
     return "PASS", "No imports of deleted modules (hub.middleware, conftest_prefect)"
@@ -105,6 +116,7 @@ def _check_no_importerror_for_deleted_modules() -> tuple[str, str]:
 # ═══════════════════════════════════════════════════════════════════════════
 # V6 — Security
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _check_no_secrets_in_code() -> tuple[str, str]:
     """Quick scan for hardcoded secret patterns."""
@@ -119,11 +131,16 @@ def _check_no_secrets_in_code() -> tuple[str, str]:
         try:
             result = subprocess.run(
                 ["grep", "-rn", pat, "hub/", "--include=*.py"],
-                capture_output=True, cwd=str(REPO_ROOT), timeout=30,
+                check=False,
+                capture_output=True,
+                cwd=str(REPO_ROOT),
+                timeout=30,
             )
             if result.stdout:
                 lines = result.stdout.decode().split("\n")
-                non_test = [l for l in lines if "/tests/" not in l and "test_" not in l and l.strip()]
+                non_test = [
+                    l for l in lines if "/tests/" not in l and "test_" not in l and l.strip()
+                ]
                 if non_test:
                     violations.append(f"{desc}: {non_test[0][:100]}")
         except Exception:
@@ -136,6 +153,7 @@ def _check_no_secrets_in_code() -> tuple[str, str]:
 # ═══════════════════════════════════════════════════════════════════════════
 # V9 — Test quality
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _check_factories_use_faker() -> tuple[str, str]:
     """Verify factories use Faker, not hardcoded data."""
@@ -153,12 +171,16 @@ def _check_factories_use_faker() -> tuple[str, str]:
 # V11 — API quality
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _check_marker_consistency_strict() -> tuple[str, str]:
     """Verify marker consistency — blocking mode for pre-staging."""
     try:
         result = subprocess.run(
             [sys.executable, str(SCRIPTS_DIR / "check_marker_consistency.py")],
-            capture_output=True, timeout=30, cwd=str(REPO_ROOT),
+            check=False,
+            capture_output=True,
+            timeout=30,
+            cwd=str(REPO_ROOT),
         )
         if result.returncode == 0:
             return "PASS", "Marker consistency check passed"
@@ -170,15 +192,20 @@ def _check_marker_consistency_strict() -> tuple[str, str]:
 
 # ── Gates that check automatically ──────────────────────────────────────
 
+
 def _run_all_automated_checks() -> list[tuple[str, str, str, str]]:
     """Run all automated gates. Returns [(vgate, name, status, detail), ...]."""
     results = []
 
     # V0 — Foundation
-    results.append(("V0.3.reg", "Normalization registry singleton", *_check_normalization_registry_singleton()))
+    results.append(
+        ("V0.3.reg", "Normalization registry singleton", *_check_normalization_registry_singleton())
+    )
     results.append(("V0.3.hack", "Zero importlib hacks", *_check_zero_importlib_hacks()))
     results.append(("V0.4", "Prefect 3.x importable", *_check_prefect_importable()))
-    results.append(("V0.7", "No deleted module imports", *_check_no_importerror_for_deleted_modules()))
+    results.append(
+        ("V0.7", "No deleted module imports", *_check_no_importerror_for_deleted_modules())
+    )
 
     # V4 — CLI/SDK
     v41_status, v41_detail = _check_marker_consistency_strict()
@@ -201,6 +228,7 @@ _PASS = "\033[32mPASS\033[0m"
 _FAIL = "\033[31mFAIL\033[0m"
 _SKIP = "\033[33mSKIP\033[0m"
 
+
 def _status_color(status: str) -> str:
     if status == "PASS":
         return _PASS
@@ -212,10 +240,10 @@ def _status_color(status: str) -> str:
 def generate_report(results: list, fmt: str = "text") -> str:
     """Generate gate report in text or JSON."""
     if fmt == "json":
-        return json.dumps([
-            {"vgate": vg, "name": nm, "status": st, "detail": dt}
-            for vg, nm, st, dt in results
-        ], indent=2)
+        return json.dumps(
+            [{"vgate": vg, "name": nm, "status": st, "detail": dt} for vg, nm, st, dt in results],
+            indent=2,
+        )
 
     lines = []
     lines.append("=" * 72)
@@ -235,10 +263,12 @@ def generate_report(results: list, fmt: str = "text") -> str:
         lines.append(f"{vgate:<12} {_status_color(status):<16} {name:<30} {detail[:60]}")
 
     lines.append("-" * 72)
-    lines.append(f"PASS: {pass_count}  FAIL: {fail_count}  SKIP: {skip_count}  TOTAL: {len(results)}")
+    lines.append(
+        f"PASS: {pass_count}  FAIL: {fail_count}  SKIP: {skip_count}  TOTAL: {len(results)}"
+    )
 
     # Manual gates reminder
-    lines.append(f"\nManual verification gates (run in Docker/CI environment):")
+    lines.append("\nManual verification gates (run in Docker/CI environment):")
     manual = [
         "V0.1 — pytest hub/apps/ --create-db -q (requires Docker)",
         "V0.2 — npx tsc --noEmit + npm run build (requires frontend/)",
@@ -278,15 +308,14 @@ def generate_report(results: list, fmt: str = "text") -> str:
 # CLI
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Pre-Staging Gate Checklist (Phase 312.19)"
-    )
+    parser = argparse.ArgumentParser(description="Pre-Staging Gate Checklist (Phase 312.19)")
     parser.add_argument("--gate", help="Run a specific gate (e.g., V0)")
-    parser.add_argument("--strict", action="store_true",
-                        help="Treat SKIP as FAIL (CI blocking mode)")
-    parser.add_argument("--json", action="store_true",
-                        help="JSON output for CI artifacts")
+    parser.add_argument(
+        "--strict", action="store_true", help="Treat SKIP as FAIL (CI blocking mode)"
+    )
+    parser.add_argument("--json", action="store_true", help="JSON output for CI artifacts")
     args = parser.parse_args()
 
     print("Running pre-staging gate checks...", file=sys.stderr)

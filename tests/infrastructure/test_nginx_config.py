@@ -3,21 +3,17 @@
 Validates security headers, CSP, and configuration structure.
 Does NOT require nginx to be running — parses config files directly.
 """
+
 import base64
 import hashlib
 import os
 import re
+
 import pytest
 
-NGINX_CONF = os.path.join(
-    os.path.dirname(__file__), "..", "..", "frontend", "nginx.conf"
-)
-NGINX_TEST_CONF = os.path.join(
-    os.path.dirname(__file__), "..", "..", "frontend", "nginx.test.conf"
-)
-INDEX_HTML = os.path.join(
-    os.path.dirname(__file__), "..", "..", "frontend", "index.html"
-)
+NGINX_CONF = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "nginx.conf")
+NGINX_TEST_CONF = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "nginx.test.conf")
+INDEX_HTML = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "index.html")
 
 
 @pytest.fixture
@@ -78,24 +74,17 @@ class TestNginxSecurityHeaders:
         BLOCKED at runtime. This test asserts no such entries are present.
         """
         # Find the CSP value (between the first pair of " after Content-Security-Policy)
-        m = re.search(
-            r'Content-Security-Policy\s+"([^"]+)"', nginx_config
-        )
+        m = re.search(r'Content-Security-Policy\s+"([^"]+)"', nginx_config)
         assert m, "Could not locate Content-Security-Policy value in nginx.conf"
         csp = m.group(1)
         # Look for host tokens with two `*.` segments — that's the invalid form.
-        offenders = [
-            tok for tok in csp.split()
-            if tok.count("*.") >= 2
-        ]
+        offenders = [tok for tok in csp.split() if tok.count("*.") >= 2]
         assert not offenders, (
             f"CSP contains hosts with >1 wildcard segment (silently dropped by browsers): "
             f"{offenders}. Use one wildcard at the leftmost position, or enumerate regions."
         )
 
-    def test_csp_script_src_hash_matches_inline_pre_hydration_script(
-        self, nginx_config
-    ):
+    def test_csp_script_src_hash_matches_inline_pre_hydration_script(self, nginx_config):
         """The synchronous pre-hydration theme script in frontend/index.html
         MUST stay inline (so the theme is applied BEFORE CSS parses — otherwise
         dark-mode users see a light flash on every navigation). CSP covers it
@@ -112,9 +101,7 @@ class TestNginxSecurityHeaders:
         # without a src= or type=module attribute. If more such blocks are
         # added in the future, each needs its own hash; we surface that by
         # matching all inline scripts and computing a hash for each.
-        inline_blocks = re.findall(
-            r"<script>(.*?)</script>", html, flags=re.DOTALL
-        )
+        inline_blocks = re.findall(r"<script>(.*?)</script>", html, flags=re.DOTALL)
         assert inline_blocks, (
             "No inline <script>...</script> blocks found in index.html — "
             "if the pre-hydration theme script was moved, delete the sha256 "

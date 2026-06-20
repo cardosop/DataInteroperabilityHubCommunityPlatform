@@ -6,12 +6,12 @@ Meshant API is reachable. e2e tests run a real CLI against a real backend
 and have no business failing on dev boxes that don't run docker compose.
 Set ``MESHANT_FORCE_INTEGRATION=1`` to bypass.
 """
+
 import os
 
 import pytest
 import requests
 from click.testing import CliRunner
-
 from datahub_cli.config import Config
 
 _api_test_port = os.environ.get("API_TEST_PORT", "8000")
@@ -64,6 +64,7 @@ def unique_key(prefix: str = "test") -> str:
     (no underscores, no double hyphens, no trailing hyphens).
     """
     import uuid
+
     # Strip trailing hyphens from prefix to avoid double-hyphen
     clean = prefix.rstrip("-").lower()
     return f"{clean}-{uuid.uuid4().hex[:8]}"
@@ -100,10 +101,12 @@ def temp_config_dir(tmp_path, monkeypatch):
 @pytest.fixture
 def temp_file(tmp_path):
     """Factory fixture: create a temporary file with given extension and content."""
+
     def _create_file(extension, content):
         file_path = tmp_path / f"test{extension}"
         file_path.write_text(content)
         return str(file_path), content
+
     return _create_file
 
 
@@ -137,6 +140,7 @@ def _setup_cli_auth(api_base_url: str, config: Config) -> bool:
     # --- Method 2: persona provisioning (handles 429, cache, self-heal) ---
     try:
         from tests._persona_provisioning import provision_persona
+
         creds = provision_persona("data_engineer")
         if creds and creds.api_key:
             _cached_access_token = creds.api_key
@@ -167,8 +171,6 @@ def authenticated_config(temp_config_dir, api_base_url):
             "Set TEST_API_KEY or TEST_USER_EMAIL/TEST_USER_PASSWORD, "
             "or ensure pre-seeded E2E accounts exist."
         )
-        pytest.skip(
-            f"Could not set up CLI authentication for E2E test. {reason}"
-        )
+        pytest.skip(f"Could not set up CLI authentication for E2E test. {reason}")
 
     return cfg

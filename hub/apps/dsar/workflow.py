@@ -1,7 +1,6 @@
 """DSAR lifecycle and statutory deadline assignment (Phase 232.2)."""
 
 from __future__ import annotations
-from typing import Optional
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -10,8 +9,8 @@ from django.utils import timezone
 
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.dsar.models import (
-    DSARStatus,
     DSARRequest,
+    DSARStatus,
     DSARVerificationMethod,
 )
 from hub.apps.dsar.webhook_emission import publish_dsar_event
@@ -99,7 +98,7 @@ def transition_status(
     dsar: DSARRequest,
     new_status: str,
     *,
-    actor_user: Optional[User] = None,
+    actor_user: User | None = None,
     notes: str = "",
 ) -> DSARRequest:
     prev = dsar.status
@@ -157,7 +156,7 @@ def set_legal_hold(
     *,
     active: bool,
     reason: str,
-    actor_user: Optional[User],
+    actor_user: User | None,
 ) -> DSARRequest:
     prior_logged = dsar.sla_suspended_event_logged
     first_suspend = active and not prior_logged

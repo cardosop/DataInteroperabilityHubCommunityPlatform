@@ -3,10 +3,10 @@ Integration tests for Version Impact Analysis
 
 Tests for impact analysis in the context of complete workflows.
 """
+
 import uuid
 
 import pytest
-from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
@@ -36,7 +36,7 @@ class VersionImpactIntegrationTest(DatasetsAPITestBase):
     def test_version_impact_analysis_workflow(self):
         """Test complete version impact analysis workflow"""
         # Create contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             version=1,
@@ -98,18 +98,14 @@ class VersionImpactIntegrationTest(DatasetsAPITestBase):
 
     def test_version_impact_integration_failure_nonexistent_dataset(self):
         """Test version impact integration with non-existent dataset (failure scenario)"""
-        import uuid
 
         fake_dataset_id = str(uuid.uuid4())
 
         analyzer = VersionImpactAnalyzer()
 
-        # Non-existent dataset must either return None or raise
-        try:
-            result = analyzer.analyze_impact(fake_dataset_id)
-            self.assertIsNone(result)
-        except Exception:
-            pass
+        # Non-existent dataset returns error in result dict
+        result = analyzer.analyze_impact(fake_dataset_id)
+        self.assertIn("error", result)
 
     # ========== EDGE CASES ==========
 
@@ -152,7 +148,7 @@ class VersionImpactIntegrationTest(DatasetsAPITestBase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_version_impact_integration_error_handling(self):
+    def test_version_impact_integration_create_succeeds(self):
         """Test error handling in version impact integration"""
         dataset = Dataset.objects.create(
             tenant=self.tenant,

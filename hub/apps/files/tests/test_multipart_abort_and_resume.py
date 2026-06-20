@@ -58,12 +58,13 @@ S3 boundary: REAL MinIO (or skip if unreachable, same pattern as
 multipart upload IS the contract under test, and a mock would
 defeat the point.
 """
+
 from __future__ import annotations
-import pytest
 
 import hashlib
 import uuid
 
+import pytest
 from rest_framework import status
 
 from hub.apps.files.models import File, FileStatus
@@ -80,6 +81,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 PART_SIZE = 5 * 1024 * 1024  # 5 MiB
 TOTAL_PARTS = 6
 TOTAL_SIZE = PART_SIZE * TOTAL_PARTS  # 30 MiB
+
 
 # Deterministic part bodies so the SHA-256 is reproducible.
 def _make_part(part_number: int) -> bytes:
@@ -102,7 +104,7 @@ class MultipartAbortAndResumeTest(FilesAPITestBase):
             self.storage_client = S3StorageClient()
             self.storage_client._ensure_bucket_exists()
             self.storage_available = True
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover — S3 probe
             self.storage_available = False
 
     def _full_content(self) -> bytes:
@@ -132,14 +134,19 @@ class MultipartAbortAndResumeTest(FilesAPITestBase):
             },
         )
         upload_id = self.storage_client.initiate_multipart_upload(
-            key=storage_path, content_type="text/csv",
+            key=storage_path,
+            content_type="text/csv",
         )
         file_obj.metadata_json["multipart_upload_id"] = upload_id
         file_obj.save(update_fields=["metadata_json"])
         return file_obj, storage_path, upload_id
 
     def _upload_part_real(
-        self, *, storage_path: str, upload_id: str, part_number: int,
+        self,
+        *,
+        storage_path: str,
+        upload_id: str,
+        part_number: int,
     ) -> str:
         """Upload one part to real S3; return the ETag the server
         responded with. Real ETag = real bytes hashed by S3 — any
@@ -182,7 +189,8 @@ class MultipartAbortAndResumeTest(FilesAPITestBase):
             # production: browser tab closes, network drops, etc.)
             file_obj.refresh_from_db()
             self.assertEqual(
-                file_obj.status, FileStatus.UPLOADING,
+                file_obj.status,
+                FileStatus.UPLOADING,
                 "post-abort: File row must STAY in UPLOADING (the abort "
                 "is client-side; server state is intact)",
             )
@@ -197,14 +205,16 @@ class MultipartAbortAndResumeTest(FilesAPITestBase):
                 f"/api/v1/files/{file_obj.id}/parts/",
             )
             self.assertEqual(
-                resume_resp.status_code, status.HTTP_200_OK,
+                resume_resp.status_code,
+                status.HTTP_200_OK,
                 f"resume: GET /parts/ must return 200; got "
                 f"{resume_resp.status_code} {resume_resp.data!r}",
             )
             self.assertEqual(resume_resp.data["upload_id"], upload_id)
             parts_listed = resume_resp.data["parts"]
             self.assertEqual(
-                len(parts_listed), 3,
+                len(parts_listed),
+                3,
                 f"resume: S3 must report exactly 3 parts; got "
                 f"{len(parts_listed)}: {parts_listed!r}",
             )
@@ -215,7 +225,8 @@ class MultipartAbortAndResumeTest(FilesAPITestBase):
             for listed in parts_listed:
                 pn = listed["part_number"]
                 self.assertIn(
-                    pn, etags,
+                    pn,
+                    etags,
                     f"S3 lists part_number={pn} we did not upload",
                 )
                 # ETag from list_parts should match the upload_part
@@ -235,7 +246,8 @@ class MultipartAbortAndResumeTest(FilesAPITestBase):
                     part_number=part_number,
                 )
             self.assertEqual(
-                len(etags), 6,
+                len(etags),
+                6,
                 "post-resume: all 6 parts must be uploaded",
             )
 
@@ -244,17 +256,15 @@ class MultipartAbortAndResumeTest(FilesAPITestBase):
             # FULL file content (not a per-part hash) per the
             # production complete contract.
             full_sha256 = hashlib.sha256(self._full_content()).hexdigest()
-            parts_payload = [
-                {"ETag": etags[n], "PartNumber": n}
-                for n in range(1, TOTAL_PARTS + 1)
-            ]
+            parts_payload = [{"ETag": etags[n], "PartNumber": n} for n in range(1, TOTAL_PARTS + 1)]
             complete_resp = self.client.post(
                 f"/api/v1/files/{file_obj.id}/complete/",
                 {"content_sha256": full_sha256, "parts": parts_payload},
                 format="json",
             )
             self.assertEqual(
-                complete_resp.status_code, status.HTTP_200_OK,
+                complete_resp.status_code,
+                status.HTTP_200_OK,
                 f"complete: 6-part assembly must succeed; got "
                 f"{complete_resp.status_code} {getattr(complete_resp, 'data', '')!r}",
             )
@@ -263,7 +273,8 @@ class MultipartAbortAndResumeTest(FilesAPITestBase):
             # content_sha256 stored.
             file_obj.refresh_from_db()
             self.assertEqual(
-                file_obj.status, FileStatus.ACTIVE,
+                file_obj.status,
+                FileStatus.ACTIVE,
                 "post-complete: File status MUST flip ACTIVE",
             )
             self.assertEqual(file_obj.size, TOTAL_SIZE)
@@ -288,7 +299,8 @@ class MultipartAbortAndResumeTest(FilesAPITestBase):
             # uploads. The complete-success path already cleaned up.
             try:
                 self.storage_client.abort_multipart_upload(
-                    key=storage_path, upload_id=upload_id,
+                    key=storage_path,
+                    upload_id=upload_id,
                 )
             except Exception:
                 # Already completed (or aborted) — fine.
@@ -351,7 +363,8 @@ class MultipartAbortAndResumeTest(FilesAPITestBase):
         # Now ``GET /parts/`` MUST return 409 — multipart is done.
         resume_resp = self.client.get(f"/api/v1/files/{file_obj.id}/parts/")
         self.assertEqual(
-            resume_resp.status_code, status.HTTP_409_CONFLICT,
+            resume_resp.status_code,
+            status.HTTP_409_CONFLICT,
             "post-complete: GET /parts/ MUST return 409 so frontend "
             "can clear stale checkpoints (regardless of WHICH 409 "
             "typed code — the HTTP status is the contract)",

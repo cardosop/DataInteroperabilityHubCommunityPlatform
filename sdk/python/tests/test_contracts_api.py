@@ -14,13 +14,11 @@ from datahub_interoperability.client import DataHubClient
 from datahub_interoperability.config import DataHubClientConfig
 from datahub_interoperability.contracts import ContractsAPI
 from datahub_interoperability.errors import (
-    ODPSValidationError,
-    ODPSExportError,
-    ODPSLinkingError,
-    ODCSValidationError,
-    ODCSExportError,
     NotFoundError,
-    ValidationError,
+    ODCSExportError,
+    ODCSValidationError,
+    ODPSExportError,
+    ODPSValidationError,
 )
 
 
@@ -454,13 +452,16 @@ async def test_create_odps_neither_option_error(contracts_api):
     """Test that providing neither extract_odcs nor link_odcs_id raises ODPSValidationError."""
     odps_content = '{"schema": "https://opendataproducts.org/schema/v4.1", "version": "4.1", "product": {"details": {"en": {"productID": "test"}}}}'
 
-    with pytest.raises(ODPSValidationError, match="Must specify either extract_odcs=True or link_odcs_id"):
+    with pytest.raises(
+        ODPSValidationError, match="Must specify either extract_odcs=True or link_odcs_id"
+    ):
         await contracts_api.create_odps(
             original_raw=odps_content,
         )
 
 
 # ODPS helper method tests
+
 
 def test_is_odps_contract_true(contracts_api):
     """Test is_odps_contract returns True for ODPS contract."""
@@ -865,7 +866,7 @@ def test_get_product_details_from_hub_contract(contracts_api):
                 "name": "Test Product",
                 "description": "A test product description",
                 "version": "1.0.0",
-            }
+            },
         },
     }
     result = contracts_api.get_product_details(contract, lang="en")
@@ -886,7 +887,7 @@ def test_get_product_details_invalid_json(contracts_api):
             "id": "test-product-id",
             "info": {
                 "name": "Test Product",
-            }
+            },
         },
     }
     result = contracts_api.get_product_details(contract, lang="en")
@@ -943,6 +944,7 @@ def test_get_product_details_default_language(contracts_api):
 
 
 # ODPS filtering tests
+
 
 @pytest.mark.asyncio
 async def test_list_contracts_with_spec_type_filter(contracts_api, client):
@@ -1097,19 +1099,13 @@ async def test_export_odps_json(contracts_api, client):
     expected_response = {
         "schema": "https://opendataproducts.org/schema/v4.1",
         "version": "4.1",
-        "product": {
-            "details": {
-                "en": {
-                    "productID": "test-product",
-                    "name": "Test Product"
-                }
-            }
-        }
+        "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
     }
 
     # Mock the request method to return a response with JSON content
-    from unittest.mock import MagicMock, PropertyMock
     import json
+    from unittest.mock import PropertyMock
+
     mock_response = MagicMock()
     mock_response.headers = {"Content-Type": "application/json"}
     # Set text as a property so it's accessible
@@ -1124,7 +1120,7 @@ async def test_export_odps_json(contracts_api, client):
     client.request.assert_called_once_with(
         "GET",
         f"contracts/{contract_id}/export/",
-        params={"format": "odps", "output_format": "json"}
+        params={"format": "odps", "output_format": "json"},
     )
 
 
@@ -1135,7 +1131,6 @@ async def test_export_odps_yaml(contracts_api, client):
     yaml_content = "schema: https://opendataproducts.org/schema/v4.1\nversion: '4.1'"
 
     # Mock the request method to return a response with YAML content
-    from unittest.mock import MagicMock
     mock_response = MagicMock()
     mock_response.headers = {"Content-Type": "application/x-yaml"}
     mock_response.text = yaml_content
@@ -1148,7 +1143,7 @@ async def test_export_odps_yaml(contracts_api, client):
     client.request.assert_called_once_with(
         "GET",
         f"contracts/{contract_id}/export/",
-        params={"format": "odps", "output_format": "yaml"}
+        params={"format": "odps", "output_format": "yaml"},
     )
 
 
@@ -1159,11 +1154,12 @@ async def test_export_odps_with_version(contracts_api, client):
     expected_response = {
         "schema": "https://opendataproducts.org/schema/v4.2",
         "version": "4.2",
-        "product": {"details": {}}
+        "product": {"details": {}},
     }
 
-    from unittest.mock import MagicMock, PropertyMock
     import json
+    from unittest.mock import PropertyMock
+
     mock_response = MagicMock()
     mock_response.headers = {"Content-Type": "application/json"}
     # Set text as a property so it's accessible
@@ -1178,7 +1174,7 @@ async def test_export_odps_with_version(contracts_api, client):
     client.request.assert_called_once_with(
         "GET",
         f"contracts/{contract_id}/export/",
-        params={"format": "odps", "output_format": "json", "version": "4.2"}
+        params={"format": "odps", "output_format": "json", "version": "4.2"},
     )
 
 
@@ -1197,7 +1193,6 @@ async def test_download_odps_json(contracts_api, client):
     contract_id = "123e4567-e89b-12d3-a456-426614174000"
     expected_content = b'{"schema": "https://opendataproducts.org/schema/v4.1", "version": "4.1"}'
 
-    from unittest.mock import MagicMock
     mock_response = MagicMock()
     mock_response.content = expected_content
 
@@ -1209,7 +1204,7 @@ async def test_download_odps_json(contracts_api, client):
     client.request.assert_called_once_with(
         "GET",
         f"contracts/{contract_id}/download/",
-        params={"format": "odps", "output_format": "json"}
+        params={"format": "odps", "output_format": "json"},
     )
 
 
@@ -1219,7 +1214,6 @@ async def test_download_odps_yaml(contracts_api, client):
     contract_id = "123e4567-e89b-12d3-a456-426614174000"
     expected_content = b"schema: https://opendataproducts.org/schema/v4.1\nversion: '4.1'"
 
-    from unittest.mock import MagicMock
     mock_response = MagicMock()
     mock_response.content = expected_content
 
@@ -1231,7 +1225,7 @@ async def test_download_odps_yaml(contracts_api, client):
     client.request.assert_called_once_with(
         "GET",
         f"contracts/{contract_id}/download/",
-        params={"format": "odps", "output_format": "yaml"}
+        params={"format": "odps", "output_format": "yaml"},
     )
 
 
@@ -1241,7 +1235,6 @@ async def test_download_odps_with_version(contracts_api, client):
     contract_id = "123e4567-e89b-12d3-a456-426614174000"
     expected_content = b'{"schema": "https://opendataproducts.org/schema/v4.2", "version": "4.2"}'
 
-    from unittest.mock import MagicMock
     mock_response = MagicMock()
     mock_response.content = expected_content
 
@@ -1253,7 +1246,7 @@ async def test_download_odps_with_version(contracts_api, client):
     client.request.assert_called_once_with(
         "GET",
         f"contracts/{contract_id}/download/",
-        params={"format": "odps", "output_format": "json", "version": "4.2"}
+        params={"format": "odps", "output_format": "json", "version": "4.2"},
     )
 
 
@@ -1268,13 +1261,17 @@ async def test_download_odps_invalid_format(contracts_api):
 
 # ODPS Error Handling and Validation Tests
 
+
 @pytest.mark.asyncio
 async def test_export_odps_invalid_contract_id_empty(contracts_api):
     """Test that empty contract_id raises ODPSValidationError."""
     with pytest.raises(ODPSValidationError) as exc_info:
         await contracts_api.export_odps("", format="json")
     assert exc_info.value.code == "REQUIRED_FIELD_MISSING"
-    assert "contract_id" in exc_info.value.message.lower() or "required" in exc_info.value.message.lower()
+    assert (
+        "contract_id" in exc_info.value.message.lower()
+        or "required" in exc_info.value.message.lower()
+    )
 
 
 @pytest.mark.asyncio
@@ -1299,7 +1296,9 @@ async def test_export_odps_invalid_contract_id_type(contracts_api):
 async def test_export_odps_invalid_version_format(contracts_api):
     """Test that invalid version format raises ODPSValidationError."""
     with pytest.raises(ODPSValidationError) as exc_info:
-        await contracts_api.export_odps("123e4567-e89b-12d3-a456-426614174000", version="invalid", format="json")
+        await contracts_api.export_odps(
+            "123e4567-e89b-12d3-a456-426614174000", version="invalid", format="json"
+        )
     assert exc_info.value.code == "INVALID_VALUE"
     assert "version" in exc_info.value.message.lower() or "format" in exc_info.value.message.lower()
 
@@ -1308,7 +1307,9 @@ async def test_export_odps_invalid_version_format(contracts_api):
 async def test_export_odps_invalid_version_type(contracts_api):
     """Test that non-string version raises ODPSValidationError."""
     with pytest.raises(ODPSValidationError) as exc_info:
-        await contracts_api.export_odps("123e4567-e89b-12d3-a456-426614174000", version=4.1, format="json")  # type: ignore
+        await contracts_api.export_odps(
+            "123e4567-e89b-12d3-a456-426614174000", version=4.1, format="json"
+        )  # type: ignore
     assert exc_info.value.code == "INVALID_DATA_TYPE"
 
 
@@ -1326,7 +1327,10 @@ async def test_create_odps_invalid_content_empty(contracts_api):
     with pytest.raises(ODPSValidationError) as exc_info:
         await contracts_api.create_odps("", extract_odcs=True)
     assert exc_info.value.code == "REQUIRED_FIELD_MISSING"
-    assert "original_raw" in exc_info.value.message.lower() or "required" in exc_info.value.message.lower()
+    assert (
+        "original_raw" in exc_info.value.message.lower()
+        or "required" in exc_info.value.message.lower()
+    )
 
 
 @pytest.mark.asyncio
@@ -1381,7 +1385,10 @@ async def test_link_odps_to_odcs_neither_provided(contracts_api):
             odcs_contract_id="123e4567-e89b-12d3-a456-426614174000",
         )
     assert exc_info.value.code == "REQUIRED_FIELD_MISSING"
-    assert "odps_contract_id" in exc_info.value.message.lower() or "odps_raw" in exc_info.value.message.lower()
+    assert (
+        "odps_contract_id" in exc_info.value.message.lower()
+        or "odps_raw" in exc_info.value.message.lower()
+    )
 
 
 @pytest.mark.asyncio
@@ -1397,14 +1404,14 @@ async def test_export_odps_api_error_mapping(contracts_api, client):
     """Test that API errors are properly mapped to ODPS errors."""
     contract_id = "123e4567-e89b-12d3-a456-426614174000"
 
-    from datahub_interoperability.errors import ODPSExportError
-
-    client.request = AsyncMock(side_effect=ODPSExportError(
-        "Failed to generate ODPS export",
-        error_code="ODPS_EXPORT_ERROR",
-        http_status=500,
-        details={"context": {"field_path": "/product/details"}},
-    ))
+    client.request = AsyncMock(
+        side_effect=ODPSExportError(
+            "Failed to generate ODPS export",
+            error_code="ODPS_EXPORT_ERROR",
+            http_status=500,
+            details={"context": {"field_path": "/product/details"}},
+        )
+    )
 
     with pytest.raises(ODPSExportError) as exc_info:
         await contracts_api.export_odps(contract_id, format="json")
@@ -1417,7 +1424,7 @@ async def test_export_odps_not_found_error(contracts_api, client):
     """Test that 404 errors are properly handled."""
     contract_id = "123e4567-e89b-12d3-a456-426614174000"
 
-    from datahub_interoperability.errors import NotFoundError, ODPSError
+    from datahub_interoperability.errors import ODPSError
 
     client.request = AsyncMock(side_effect=NotFoundError("Contract not found"))
 
@@ -1427,6 +1434,7 @@ async def test_export_odps_not_found_error(contracts_api, client):
 
 
 # ODCS Export Tests
+
 
 @pytest.mark.asyncio
 async def test_export_odcs_json(contracts_api, client):
@@ -1440,8 +1448,9 @@ async def test_export_odcs_json(contracts_api, client):
         "version": "1.0.0",
     }
 
-    from unittest.mock import MagicMock, PropertyMock
     import json
+    from unittest.mock import PropertyMock
+
     mock_response = MagicMock()
     mock_response.headers = {"Content-Type": "application/json"}
     # Set text as a property so it's accessible
@@ -1456,7 +1465,7 @@ async def test_export_odcs_json(contracts_api, client):
     client.request.assert_called_once_with(
         "GET",
         f"contracts/{contract_id}/export/",
-        params={"format": "odcs", "output_format": "json"}
+        params={"format": "odcs", "output_format": "json"},
     )
 
 
@@ -1466,7 +1475,6 @@ async def test_export_odcs_yaml(contracts_api, client):
     contract_id = "123e4567-e89b-12d3-a456-426614174000"
     yaml_content = "apiVersion: odcs.io/v3.0.2\nkind: DataContract\nid: test-contract"
 
-    from unittest.mock import MagicMock
     mock_response = MagicMock()
     mock_response.headers = {"Content-Type": "application/x-yaml"}
     mock_response.text = yaml_content
@@ -1479,7 +1487,7 @@ async def test_export_odcs_yaml(contracts_api, client):
     client.request.assert_called_once_with(
         "GET",
         f"contracts/{contract_id}/export/",
-        params={"format": "odcs", "output_format": "yaml"}
+        params={"format": "odcs", "output_format": "yaml"},
     )
 
 
@@ -1493,8 +1501,9 @@ async def test_export_odcs_with_version(contracts_api, client):
         "id": "test-contract",
     }
 
-    from unittest.mock import MagicMock, PropertyMock
     import json
+    from unittest.mock import PropertyMock
+
     mock_response = MagicMock()
     mock_response.headers = {"Content-Type": "application/json"}
     # Set text as a property so it's accessible
@@ -1509,7 +1518,7 @@ async def test_export_odcs_with_version(contracts_api, client):
     client.request.assert_called_once_with(
         "GET",
         f"contracts/{contract_id}/export/",
-        params={"format": "odcs", "output_format": "json", "version": "3.0.2"}
+        params={"format": "odcs", "output_format": "json", "version": "3.0.2"},
     )
 
 
@@ -1528,7 +1537,10 @@ async def test_export_odcs_invalid_contract_id_empty(contracts_api):
     with pytest.raises(ODCSValidationError) as exc_info:
         await contracts_api.export_odcs("", format="json")
     assert exc_info.value.code == "REQUIRED_FIELD_MISSING"
-    assert "contract_id" in exc_info.value.message.lower() or "required" in exc_info.value.message.lower()
+    assert (
+        "contract_id" in exc_info.value.message.lower()
+        or "required" in exc_info.value.message.lower()
+    )
 
 
 @pytest.mark.asyncio
@@ -1553,7 +1565,9 @@ async def test_export_odcs_invalid_contract_id_type(contracts_api):
 async def test_export_odcs_invalid_version_format(contracts_api):
     """Test that invalid version format raises ODCSValidationError."""
     with pytest.raises(ODCSValidationError) as exc_info:
-        await contracts_api.export_odcs("123e4567-e89b-12d3-a456-426614174000", version="invalid", format="json")
+        await contracts_api.export_odcs(
+            "123e4567-e89b-12d3-a456-426614174000", version="invalid", format="json"
+        )
     assert exc_info.value.code == "INVALID_VALUE"
     assert "version" in exc_info.value.message.lower() or "format" in exc_info.value.message.lower()
 
@@ -1562,7 +1576,9 @@ async def test_export_odcs_invalid_version_format(contracts_api):
 async def test_export_odcs_invalid_version_type(contracts_api):
     """Test that non-string version raises ODCSValidationError."""
     with pytest.raises(ODCSValidationError) as exc_info:
-        await contracts_api.export_odcs("123e4567-e89b-12d3-a456-426614174000", version=3.02, format="json")  # type: ignore
+        await contracts_api.export_odcs(
+            "123e4567-e89b-12d3-a456-426614174000", version=3.02, format="json"
+        )  # type: ignore
     assert exc_info.value.code == "INVALID_DATA_TYPE"
 
 
@@ -1570,9 +1586,14 @@ async def test_export_odcs_invalid_version_type(contracts_api):
 async def test_export_odcs_unsupported_version(contracts_api):
     """Test that unsupported version raises ODCSValidationError."""
     with pytest.raises(ODCSValidationError) as exc_info:
-        await contracts_api.export_odcs("123e4567-e89b-12d3-a456-426614174000", version="99.99.99", format="json")
+        await contracts_api.export_odcs(
+            "123e4567-e89b-12d3-a456-426614174000", version="99.99.99", format="json"
+        )
     assert exc_info.value.code == "INVALID_VALUE"
-    assert "not supported" in exc_info.value.message.lower() or "supported" in exc_info.value.message.lower()
+    assert (
+        "not supported" in exc_info.value.message.lower()
+        or "supported" in exc_info.value.message.lower()
+    )
 
 
 @pytest.mark.parametrize("version", ["3.0.2", "3.0.1", "3.0.0", "3.0.0-preview", "2.2.2"])
@@ -1586,8 +1607,9 @@ async def test_export_odcs_valid_versions(contracts_api, client, version):
         "id": "test-contract",
     }
 
-    from unittest.mock import MagicMock, PropertyMock
     import json
+    from unittest.mock import PropertyMock
+
     mock_response = MagicMock()
     mock_response.headers = {"Content-Type": "application/json"}
     # Set text as a property so it's accessible
@@ -1602,7 +1624,7 @@ async def test_export_odcs_valid_versions(contracts_api, client, version):
     client.request.assert_called_once_with(
         "GET",
         f"contracts/{contract_id}/export/",
-        params={"format": "odcs", "output_format": "json", "version": version}
+        params={"format": "odcs", "output_format": "json", "version": version},
     )
 
 
@@ -1624,7 +1646,7 @@ async def test_export_odcs_not_found_error(contracts_api, client):
     """Test that 404 errors are properly handled."""
     contract_id = "123e4567-e89b-12d3-a456-426614174000"
 
-    from datahub_interoperability.errors import NotFoundError, ODCSError
+    from datahub_interoperability.errors import ODCSError
 
     client.request = AsyncMock(side_effect=NotFoundError("Contract not found"))
 
@@ -1650,12 +1672,14 @@ async def test_export_odcs_network_error(contracts_api, client):
 async def test_export_odcs_json_double_encoded(contracts_api, client):
     """Test that double-encoded JSON responses are handled correctly."""
     import json
+
     contract_id = "123e4567-e89b-12d3-a456-426614174000"
     # Simulate double-encoded JSON (API returns JSON string containing JSON)
     inner_json = {"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract", "id": "test-contract"}
     double_encoded = json.dumps(json.dumps(inner_json))
 
-    from unittest.mock import MagicMock, PropertyMock
+    from unittest.mock import PropertyMock
+
     mock_response = MagicMock()
     mock_response.headers = {"Content-Type": "application/json"}
     type(mock_response).text = PropertyMock(return_value=double_encoded)
@@ -1669,7 +1693,7 @@ async def test_export_odcs_json_double_encoded(contracts_api, client):
     client.request.assert_called_once_with(
         "GET",
         f"contracts/{contract_id}/export/",
-        params={"format": "odcs", "output_format": "json"}
+        params={"format": "odcs", "output_format": "json"},
     )
 
 
@@ -1679,7 +1703,6 @@ async def test_export_odcs_yaml_content_type_detection(contracts_api, client):
     contract_id = "123e4567-e89b-12d3-a456-426614174000"
     yaml_content = "apiVersion: odcs.io/v3.0.2\nkind: DataContract\nid: test-contract"
 
-    from unittest.mock import MagicMock
     mock_response = MagicMock()
     # Content-Type indicates YAML — should be detected regardless of format param
     mock_response.headers = {"Content-Type": "application/x-yaml; charset=utf-8"}
@@ -1703,8 +1726,8 @@ async def test_export_odcs_json_content_type_variations(contracts_api, client):
         "id": "test-contract",
     }
 
-    from unittest.mock import MagicMock, PropertyMock
     import json
+    from unittest.mock import PropertyMock
 
     # Test different Content-Type variations
     content_types = [

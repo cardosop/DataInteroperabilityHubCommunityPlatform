@@ -1,6 +1,7 @@
 """
 283.5.10 — Capability listing CLI commands.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,7 +14,6 @@ from ..api_client import api_client
 @click.group()
 def capabilities():
     """List tenant capabilities and feature flags"""
-    pass
 
 
 @capabilities.command("list")

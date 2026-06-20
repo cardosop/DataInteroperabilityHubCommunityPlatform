@@ -14,12 +14,12 @@ Usage:
   python scripts/check_slo_burn.py           # check all SLOs
   python scripts/check_slo_burn.py --slo availability  # check specific SLO
 """
+
+import json
 import os
 import sys
-import json
-from datetime import datetime, timezone
-from urllib.request import Request, urlopen
 from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus:9090")
 PROMETHEUS_TOKEN = os.environ.get("PROMETHEUS_TOKEN", "")
@@ -31,23 +31,19 @@ SLOS = {
             'sum(increase(http_requests_total{status=~"5..",path!~"/health/.*"}[30d]))'
             ' / sum(increase(http_requests_total{path!~"/health/.*"}[30d]))'
         ),
-        "target": 0.005,   # 99.5% availability → 0.5% error budget
+        "target": 0.005,  # 99.5% availability → 0.5% error budget
         "burn_threshold": 0.10,  # >10% of budget consumed
     },
     "search_latency": {
         "query": (
-            'histogram_quantile(0.95, rate(search_request_duration_seconds_bucket[30d]))'
-            ' / 0.5'
+            "histogram_quantile(0.95, rate(search_request_duration_seconds_bucket[30d])) / 0.5"
         ),
-        "target": 1.0,     # p95 < 500ms
+        "target": 1.0,  # p95 < 500ms
         "burn_threshold": 0.10,
     },
     "sparql_latency": {
-        "query": (
-            'histogram_quantile(0.95, rate(sparql_execution_seconds_bucket[30d]))'
-            ' / 2.0'
-        ),
-        "target": 1.0,     # p95 < 2s
+        "query": ("histogram_quantile(0.95, rate(sparql_execution_seconds_bucket[30d])) / 2.0"),
+        "target": 1.0,  # p95 < 2s
         "burn_threshold": 0.10,
     },
 }

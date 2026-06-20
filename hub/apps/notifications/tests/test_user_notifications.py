@@ -3,6 +3,7 @@
 Covers the model, utility helper, and all four REST endpoints end-to-end
 using the real ORM + DRF stack — no mocks.
 """
+
 import uuid
 
 import pytest
@@ -104,15 +105,11 @@ class UserNotificationUtilTest(TestCase):
 
     def test_returns_none_when_user_missing(self):
         self.assertIsNone(
-            create_user_notification(
-                user=None, tenant=self.tenant, title="t", message="m"
-            )
+            create_user_notification(user=None, tenant=self.tenant, title="t", message="m")
         )
 
     def test_mark_read_is_idempotent(self):
-        row = create_user_notification(
-            user=self.user, tenant=self.tenant, title="t", message="m"
-        )
+        row = create_user_notification(user=self.user, tenant=self.tenant, title="t", message="m")
         row.mark_read()
         ts = row.read_at
         row.mark_read()  # second call must not bump read_at
@@ -223,9 +220,7 @@ class UserNotificationViewSetTest(TestCase):
         response = self.client.post(self.URL_READ_ALL)
         self.assertEqual(response.status_code, http_status.HTTP_200_OK)
         self.assertEqual(response.data["updated"], 2)
-        self.assertEqual(
-            UserNotification.objects.filter(user=self.user, read=False).count(), 0
-        )
+        self.assertEqual(UserNotification.objects.filter(user=self.user, read=False).count(), 0)
 
     def test_mark_all_read_does_not_touch_other_users(self):
         mine = self._mk(read=False)

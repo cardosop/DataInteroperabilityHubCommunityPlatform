@@ -20,9 +20,10 @@ with explicit overrides, and by the circuit_breaker_guard() decorator.
 Do NOT tune thresholds below the minimum safe values — false opens cause
 cascading failures that are worse than slow responses.
 """
+
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 
 @dataclass(frozen=True)
@@ -52,7 +53,7 @@ class CircuitBreakerThreshold:
 #   timeout_seconds    >= 30 (below 30 = no time for backend to recover)
 #   success_threshold  >= 1  (must probe at least once)
 
-PRODUCTION_THRESHOLDS: Dict[str, CircuitBreakerThreshold] = {
+PRODUCTION_THRESHOLDS: dict[str, CircuitBreakerThreshold] = {
     # ── Compliance service ────────────────────────────────────────────
     "compliance-service": CircuitBreakerThreshold(
         service_name="compliance-service",
@@ -68,7 +69,6 @@ PRODUCTION_THRESHOLDS: Dict[str, CircuitBreakerThreshold] = {
         ),
         exercised_by_journey="compliance-scan",
     ),
-
     # ── DQ service ────────────────────────────────────────────────────
     "dq-service": CircuitBreakerThreshold(
         service_name="dq-service",
@@ -83,7 +83,6 @@ PRODUCTION_THRESHOLDS: Dict[str, CircuitBreakerThreshold] = {
         ),
         exercised_by_journey="compliance-scan",  # DQ is often triggered by compliance
     ),
-
     # ── Semantic / Fuseki ─────────────────────────────────────────────
     "semantic-service": CircuitBreakerThreshold(
         service_name="semantic-service",
@@ -98,7 +97,6 @@ PRODUCTION_THRESHOLDS: Dict[str, CircuitBreakerThreshold] = {
         ),
         exercised_by_journey="sparql",
     ),
-
     # ── Search service ────────────────────────────────────────────────
     "search-service": CircuitBreakerThreshold(
         service_name="search-service",
@@ -114,7 +112,6 @@ PRODUCTION_THRESHOLDS: Dict[str, CircuitBreakerThreshold] = {
         ),
         exercised_by_journey="search",
     ),
-
     # ── Webhook delivery ──────────────────────────────────────────────
     "webhook-delivery": CircuitBreakerThreshold(
         service_name="webhook-delivery",
@@ -131,7 +128,6 @@ PRODUCTION_THRESHOLDS: Dict[str, CircuitBreakerThreshold] = {
         ),
         exercised_by_journey="webhook",
     ),
-
     # ── External: Stripe / billing ────────────────────────────────────
     "stripe_api": CircuitBreakerThreshold(
         service_name="stripe_api",
@@ -147,7 +143,6 @@ PRODUCTION_THRESHOLDS: Dict[str, CircuitBreakerThreshold] = {
         ),
         exercised_by_journey="governance",  # billing is governance-adjacent
     ),
-
     # ── External: Email provider ──────────────────────────────────────
     "email_provider": CircuitBreakerThreshold(
         service_name="email_provider",
@@ -161,7 +156,6 @@ PRODUCTION_THRESHOLDS: Dict[str, CircuitBreakerThreshold] = {
         ),
         exercised_by_journey="webhook",  # webhook notifications use email
     ),
-
     # ── File upload / S3 presigned URL ────────────────────────────────
     "file-upload-s3": CircuitBreakerThreshold(
         service_name="file-upload-s3",
@@ -177,7 +171,6 @@ PRODUCTION_THRESHOLDS: Dict[str, CircuitBreakerThreshold] = {
         ),
         exercised_by_journey="file-upload",
     ),
-
     # ── Asset service ─────────────────────────────────────────────────
     "asset-service": CircuitBreakerThreshold(
         service_name="asset-service",
@@ -193,7 +186,6 @@ PRODUCTION_THRESHOLDS: Dict[str, CircuitBreakerThreshold] = {
         ),
         exercised_by_journey="asset-crud",
     ),
-
     # ── Contract service ──────────────────────────────────────────────
     "contract-service": CircuitBreakerThreshold(
         service_name="contract-service",
@@ -208,7 +200,6 @@ PRODUCTION_THRESHOLDS: Dict[str, CircuitBreakerThreshold] = {
         ),
         exercised_by_journey="contract-workflow",
     ),
-
     # ── Marketplace ───────────────────────────────────────────────────
     "marketplace-service": CircuitBreakerThreshold(
         service_name="marketplace-service",
@@ -223,7 +214,6 @@ PRODUCTION_THRESHOLDS: Dict[str, CircuitBreakerThreshold] = {
         ),
         exercised_by_journey="marketplace",
     ),
-
     # ── Governance ────────────────────────────────────────────────────
     "governance-service": CircuitBreakerThreshold(
         service_name="governance-service",
@@ -241,7 +231,7 @@ PRODUCTION_THRESHOLDS: Dict[str, CircuitBreakerThreshold] = {
 }
 
 
-def get_threshold(service_name: str) -> Optional[CircuitBreakerThreshold]:
+def get_threshold(service_name: str) -> CircuitBreakerThreshold | None:
     """Return the production threshold for *service_name*, or None."""
     return PRODUCTION_THRESHOLDS.get(service_name)
 
@@ -273,8 +263,7 @@ def validate_threshold(t: CircuitBreakerThreshold) -> list[str]:
         )
     if t.success_threshold < 1:
         violations.append(
-            f"{t.service_name}: success_threshold={t.success_threshold} "
-            f"must be at least 1"
+            f"{t.service_name}: success_threshold={t.success_threshold} must be at least 1"
         )
     return violations
 
@@ -282,12 +271,13 @@ def validate_threshold(t: CircuitBreakerThreshold) -> list[str]:
 def validate_all_thresholds() -> list[str]:
     """Validate all production thresholds. Returns list of all violations."""
     all_violations = []
-    for svc_name, threshold in PRODUCTION_THRESHOLDS.items():
+    for _svc_name, threshold in PRODUCTION_THRESHOLDS.items():
         all_violations.extend(validate_threshold(threshold))
     return all_violations
 
 
 # ── Thresholds as JSON-serializable dict (for health endpoint / debugging) ──
+
 
 def thresholds_as_dict() -> dict:
     """Return all thresholds as a dict suitable for JSON serialization."""

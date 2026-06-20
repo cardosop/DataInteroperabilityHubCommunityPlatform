@@ -13,8 +13,7 @@ All tests use real implementations (no mocks/stubs) and verify metrics are colle
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
-from hub.apps.contracts.normalization.odcs_normalizer_base import ODCSNormalizerBase
+from hub.apps.contracts.models import NormalizationStatus
 from hub.apps.contracts.normalization.odcs_normalizer_default import ODCSNormalizerDefault
 from hub.apps.contracts.normalization.odcs_normalizer_v2_2_2 import ODCSNormalizerV2_2_2
 from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0 import ODCSNormalizerV3_0_0

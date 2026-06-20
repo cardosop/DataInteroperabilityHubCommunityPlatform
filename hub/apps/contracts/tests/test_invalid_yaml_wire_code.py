@@ -28,6 +28,7 @@ These tests pin the wire-level contract end-to-end:
   (``"---"``) does NOT trigger ``INVALID_YAML`` — that's the
   structural-floor's job.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -100,8 +101,7 @@ class TestNormalizeContractMarksInvalidYAMLInErrors:
         assert hub_contract is None
         assert status.value == "NORMALIZATION_FAILED" or str(status) == "NORMALIZATION_FAILED"
         assert any(
-            isinstance(err, str) and err.startswith(INVALID_YAML_ERROR_PREFIX)
-            for err in errors
+            isinstance(err, str) and err.startswith(INVALID_YAML_ERROR_PREFIX) for err in errors
         ), f"expected ``{INVALID_YAML_ERROR_PREFIX}`` prefix in {errors!r}"
 
     def test_well_formed_but_unknown_spec_does_not_yield_invalid_yaml_prefix(self):
@@ -111,8 +111,7 @@ class TestNormalizeContractMarksInvalidYAMLInErrors:
         result = normalize_contract(ok, "YAML")
         _, _, _, _, errors, _ = result
         assert not any(
-            isinstance(err, str) and err.startswith(INVALID_YAML_ERROR_PREFIX)
-            for err in errors
+            isinstance(err, str) and err.startswith(INVALID_YAML_ERROR_PREFIX) for err in errors
         )
 
 
@@ -127,6 +126,7 @@ class TestContractServiceEmitsInvalidYAMLWireCode(TestCase):
 
     def _service(self, tenant):
         from hub.apps.contracts.services import ContractService
+
         return ContractService(tenant_id=str(tenant.id))
 
     def test_malformed_yaml_raises_invalid_yaml_not_normalization_failed(self):

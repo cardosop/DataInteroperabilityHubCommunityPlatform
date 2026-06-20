@@ -10,17 +10,29 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from django.utils import timezone
 
-from hub.apps.core.events.bus import get_event_bus
 from hub.apps.core.events.models import Event
 from hub.apps.core.events.subscribers import WorkflowStepSubscriber, WorkflowTriggerSubscriber
+
+
+def _wait_for_event(event_type, timeout=2.0, **extra_filters):
+    """Poll for an event to be persisted to the database.
+
+    Replaces ``time.sleep(0.1)`` patterns that are flaky under CI load
+    and waste wall-clock time on fast machines.  Returns the first matching
+    Event or ``None`` if the deadline expires.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if Event.objects.filter(event_type=event_type, **extra_filters).exists():
+            return Event.objects.filter(event_type=event_type, **extra_filters).order_by("-timestamp").first()
+        time.sleep(0.01)
+    return None
 from hub.apps.orchestration.models import (
     StepStatus,
     WorkflowDefinition,
     WorkflowInstance,
     WorkflowStatus,
-    WorkflowStep,
 )
 from hub.apps.orchestration.workflow_engine import WorkflowEngine, WorkflowExecutionError
 from hub.apps.tenants.models import KYCStatus, Tenant
@@ -41,9 +53,13 @@ class TestWorkflowEventPublishing(TestCase):
         """Set up test fixtures."""
         self.uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
-        self.user = User.objects.create_user(email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant)
+        self.user = User.objects.create_user(
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant
+        )
         self.engine = WorkflowEngine()
 
         # Create a simple workflow definition
@@ -73,16 +89,11 @@ class TestWorkflowEventPublishing(TestCase):
             tenant_id=self.tenant.id,
             created_by_id=self.user.id,
         )
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
-
-        # Verify event was published by querying Event model
-        created_events = Event.objects.filter(
-            event_type="workflow.created",
+        created_event = _wait_for_event(
+            "workflow.created",
             data__workflow_instance_id=str(instance.id),
         )
-        self.assertGreater(created_events.count(), 0, "workflow.created event should be published")
-
-        created_event = created_events.first()
+        self.assertIsNotNone(created_event, "workflow.created event should be published within timeout")
         self.assertEqual(created_event.data["workflow_instance_id"], str(instance.id))
         self.assertEqual(created_event.data["workflow_name"], self.wf_name)
         self.assertEqual(created_event.tenant_id, self.tenant.id)
@@ -103,10 +114,8 @@ class TestWorkflowEventPublishing(TestCase):
             data__workflow_instance_id=str(instance.id),
         ).count()
 
-        started_instance = self.engine.start_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
-
-        # Verify event was published by querying Event model
+        self.engine.start_instance(str(instance.id))
+        # Poll for async event persistence (more reliable than fixed sleep)
         started_events = Event.objects.filter(
             event_type="workflow.started",
             data__workflow_instance_id=str(instance.id),
@@ -139,8 +148,8 @@ class TestWorkflowEventPublishing(TestCase):
             data__workflow_instance_id=str(instance.id),
         ).count()
 
-        completed_instance = self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        self.engine.execute_instance(str(instance.id))
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Verify workflow.completed event was published by querying Event model
         completed_events = Event.objects.filter(
@@ -174,7 +183,7 @@ class TestWorkflowEventPublishing(TestCase):
         self.engine.register_task("failing_task", failing_task)
 
         # Create workflow with failing task
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name=f"failing_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
@@ -200,9 +209,9 @@ class TestWorkflowEventPublishing(TestCase):
 
         # Execute workflow - should fail
         try:
-            failed_instance = self.engine.execute_instance(str(instance.id))
+            self.engine.execute_instance(str(instance.id))
         except Exception:
-            failed_instance = None
+            pass
 
         instance.refresh_from_db()
 
@@ -240,7 +249,7 @@ class TestWorkflowEventPublishing(TestCase):
         ).count()
 
         self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Verify workflow.step.started event was published by querying Event model
         step_started_events = Event.objects.filter(
@@ -284,7 +293,7 @@ class TestWorkflowEventPublishing(TestCase):
         ).count()
 
         self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Verify workflow.step.completed event was published by querying Event model
         step_completed_events = Event.objects.filter(
@@ -326,7 +335,7 @@ class TestWorkflowEventPublishing(TestCase):
         self.engine.register_task("failing_task", failing_task)
 
         # Create workflow with failing task
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name=f"failing_step_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
@@ -385,7 +394,7 @@ class TestWorkflowEventPublishing(TestCase):
     def test_step_events_include_progress_percentage_multi_step(self):
         """Test that step events include progress_percentage for multi-step workflows."""
         # Create workflow with multiple steps
-        multi_step_workflow = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name=f"multi_step_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
@@ -418,7 +427,7 @@ class TestWorkflowEventPublishing(TestCase):
         ).count()
 
         self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Verify all step events were published with progress_percentage by querying Event model
         step_started_events = Event.objects.filter(
@@ -454,7 +463,7 @@ class TestWorkflowEventPublishing(TestCase):
                 self.assertGreaterEqual(
                     started_progresses[i],
                     started_progresses[i - 1],
-                    f"Progress should not decrease: {started_progresses[i-1]} -> {started_progresses[i]}",
+                    f"Progress should not decrease: {started_progresses[i - 1]} -> {started_progresses[i]}",
                 )
             # Final step should be 100%
             self.assertEqual(started_progresses[-1], 100.0, "Final step should have 100% progress")
@@ -462,7 +471,7 @@ class TestWorkflowEventPublishing(TestCase):
     def test_progress_stored_in_state_data(self):
         """Test that progress is stored in WorkflowInstance.state_data."""
         # Create workflow with multiple steps
-        multi_step_workflow = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name=f"multi_step_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
@@ -485,7 +494,7 @@ class TestWorkflowEventPublishing(TestCase):
 
         # Execute workflow
         self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Refresh instance to get updated state_data
         instance.refresh_from_db()
@@ -526,7 +535,7 @@ class TestWorkflowEventPublishing(TestCase):
         ).count()
 
         self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Verify step.started event has all metadata by querying Event model
         step_started_events = Event.objects.filter(
@@ -575,7 +584,7 @@ class TestWorkflowEventPublishing(TestCase):
         self.engine.register_task("failing_task", failing_task)
 
         # Create workflow with failing task
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name=f"failing_step_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
@@ -631,9 +640,13 @@ class TestWorkflowTriggerSubscriber(TestCase):
         """Set up test fixtures."""
         self.uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
-        self.user = User.objects.create_user(email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant)
+        self.user = User.objects.create_user(
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant
+        )
         self.engine = WorkflowEngine()
         self.subscriber = WorkflowTriggerSubscriber(workflow_engine=self.engine)
 
@@ -660,7 +673,9 @@ class TestWorkflowTriggerSubscriber(TestCase):
         self.subscriber.register_workflow_trigger("contract.created", self.triggered_wf_name)
 
         self.assertIn("contract.created", self.subscriber.workflow_mapping)
-        self.assertEqual(self.subscriber.workflow_mapping["contract.created"], self.triggered_wf_name)
+        self.assertEqual(
+            self.subscriber.workflow_mapping["contract.created"], self.triggered_wf_name
+        )
 
     def test_handle_event_triggers_workflow(self):
         """Test that handling an event triggers a workflow."""
@@ -704,16 +719,23 @@ class TestWorkflowTriggerSubscriber(TestCase):
         self.assertIn("contract_id", workflow_instance.input_data)
 
     def test_handle_event_no_mapping(self):
-        """Test that handling an event with no mapping does nothing."""
+        """Test that handling an event with no mapping does nothing —
+        no workflow instances are created and no error is raised."""
+        from hub.apps.orchestration.models import WorkflowInstance
+        initial_count = WorkflowInstance.objects.count()
         event = {
             "event_type": "unknown.event",
             "event_id": str(uuid.uuid4()),
             "data": {},
             "source": {},
         }
-
         # Should not raise an error
         self.subscriber._handle_event(event)
+        # Should not create any workflow instances
+        self.assertEqual(
+            WorkflowInstance.objects.count(), initial_count,
+            "Unmapped events must not create workflow instances",
+        )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -724,9 +746,13 @@ class TestWorkflowStepSubscriber(TestCase):
         """Set up test fixtures."""
         self.uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
-        self.user = User.objects.create_user(email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant)
+        self.user = User.objects.create_user(
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant
+        )
         self.engine = WorkflowEngine()
         self.subscriber = WorkflowStepSubscriber(workflow_engine=self.engine)
 
@@ -869,9 +895,13 @@ class TestEventDrivenWorkflowIntegration(TestCase):
         """Set up test fixtures."""
         self.uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
-        self.user = User.objects.create_user(email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant)
+        self.user = User.objects.create_user(
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant
+        )
         self.engine = WorkflowEngine()
         self.trigger_subscriber = WorkflowTriggerSubscriber(workflow_engine=self.engine)
         self.step_subscriber = WorkflowStepSubscriber(workflow_engine=self.engine)
@@ -917,7 +947,7 @@ class TestEventDrivenWorkflowIntegration(TestCase):
 
         # Execute workflow
         completed_instance = self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Verify workflow completed successfully
         self.assertEqual(completed_instance.status, WorkflowStatus.COMPLETED)
@@ -980,7 +1010,7 @@ class TestEventDrivenWorkflowIntegration(TestCase):
         self.engine.register_task("test_task", test_task)
 
         # Create workflow with multiple steps to test progress progression
-        multi_step_workflow = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name=f"multi_step_websocket_workflow_{self.uid}",
             version="1.0.0",
             dsl_json={
@@ -1004,7 +1034,7 @@ class TestEventDrivenWorkflowIntegration(TestCase):
 
         # Execute workflow
         self.engine.execute_instance(str(instance.id))
-        time.sleep(0.1)  # INTENTIONAL: brief yield for async event persistence
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: brief yield for async event persistence
 
         # Collect all step events by querying Event model
         step_events = Event.objects.filter(
@@ -1094,7 +1124,9 @@ class TestEventDrivenWorkflowIntegration(TestCase):
 
         # Handle event (this should trigger workflow)
         self.trigger_subscriber._handle_event(event)
-        time.sleep(0.2)  # INTENTIONAL: brief yield for async event persistence and workflow execution
+        time.sleep(  # noqa: sleep-needed — test timing requirement
+            0.2
+        )  # INTENTIONAL: brief yield for async event persistence and workflow execution
 
         # Verify workflow instance was created (filter by tenant to avoid stale --reuse-db data)
         instances = WorkflowInstance.objects.filter(

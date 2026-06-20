@@ -6,19 +6,19 @@ Provides enhanced caching capabilities for contracts:
 - Cache warming for frequently accessed contracts
 - Cache hit/miss metrics
 """
-import time
-from typing import Any, Dict, List, Optional, Set
 
-import structlog
+from typing import Any
+
 import redis
+import structlog
 from django.conf import settings
 from django.core.cache import cache as django_cache
 
 from hub.apps.contracts.caching import (
-    cache_contract,
-    get_contract_cache_key,
-    get_cached_contract,
     CACHE_TTL_CONTRACT,
+    cache_contract,
+    get_cached_contract,
+    get_contract_cache_key,
 )
 from hub.apps.contracts.models import Contract
 from hub.apps.core.caching.cache import (
@@ -32,20 +32,17 @@ from hub.apps.observability.otel_metrics import (
 logger = structlog.get_logger(__name__)
 
 
-def get_redis_client() -> Optional[redis.Redis]:
+def get_redis_client() -> redis.Redis | None:
     """
     Get Redis client for cache tag operations.
 
     Returns:
         Redis client instance or None if unavailable
     """
-    redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
+    redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
     try:
         client = redis.from_url(
-            redis_url,
-            decode_responses=True,
-            socket_connect_timeout=5,
-            socket_timeout=5
+            redis_url, decode_responses=True, socket_connect_timeout=5, socket_timeout=5
         )
         # Test connection
         client.ping()
@@ -55,7 +52,7 @@ def get_redis_client() -> Optional[redis.Redis]:
             "contract_cache_redis_unavailable",
             error=str(e),
             redis_url=redis_url,
-            message="Cache tags will use Django cache backend only"
+            message="Cache tags will use Django cache backend only",
         )
         return None
 
@@ -88,9 +85,9 @@ def _get_contract_tags_key(contract_id: str) -> str:
 
 def cache_contract_with_tags(
     contract_id: str,
-    contract_data: Dict[str, Any],
-    tags: Optional[List[str]] = None,
-    ttl: Optional[int] = None
+    contract_data: dict[str, Any],
+    tags: list[str] | None = None,
+    ttl: int | None = None,
 ) -> None:
     """
     Cache contract data with tags for efficient invalidation.
@@ -107,7 +104,7 @@ def cache_contract_with_tags(
             "contract_cache_tag_skipped_empty_id",
             contract_id=contract_id,
             tags=tags,
-            message="Skipping cache tagging: contract_id is None or empty"
+            message="Skipping cache tagging: contract_id is None or empty",
         )
         return
 
@@ -122,11 +119,7 @@ def cache_contract_with_tags(
             try:
                 # Store tags for this contract
                 tags_key = _get_contract_tags_key(contract_id)
-                redis_client.setex(
-                    tags_key,
-                    cache_ttl,
-                    ",".join(tags)
-                )
+                redis_client.setex(tags_key, cache_ttl, ",".join(tags))
 
                 # Add contract ID to each tag's set
                 for tag in tags:
@@ -140,7 +133,7 @@ def cache_contract_with_tags(
                     "contract_cache_tagged",
                     contract_id=contract_id,
                     tags=tags,
-                    message="Cached contract with tags"
+                    message="Cached contract with tags",
                 )
             except Exception as e:
                 logger.warning(
@@ -148,7 +141,7 @@ def cache_contract_with_tags(
                     contract_id=contract_id,
                     tags=tags,
                     error=str(e),
-                    message="Failed to store cache tags, contract still cached"
+                    message="Failed to store cache tags, contract still cached",
                 )
         else:
             # Fallback: store tags in Django cache (limited pattern support)
@@ -158,13 +151,11 @@ def cache_contract_with_tags(
                 "contract_cache_tagged_fallback",
                 contract_id=contract_id,
                 tags=tags,
-                message="Cached contract with tags (Django cache fallback)"
+                message="Cached contract with tags (Django cache fallback)",
             )
 
 
-def get_cached_contract_with_metrics(
-    contract_id: str
-) -> Optional[Dict[str, Any]]:
+def get_cached_contract_with_metrics(contract_id: str) -> dict[str, Any] | None:
     """
     Get cached contract data and record metrics.
 
@@ -183,30 +174,30 @@ def get_cached_contract_with_metrics(
     if cached_data is not None:
         # Cache hit
         try:
-            cache_hits_total.labels(cache_key_prefix='contract').inc()
+            cache_hits_total.labels(cache_key_prefix="contract").inc()
         except Exception as e:
             logger.warning(
                 "contract_cache_metrics_error",
                 contract_id=contract_id,
                 error=str(e),
-                message="Failed to record cache hit metric"
+                message="Failed to record cache hit metric",
             )
         return cached_data
     else:
         # Cache miss
         try:
-            cache_misses_total.labels(cache_key_prefix='contract').inc()
+            cache_misses_total.labels(cache_key_prefix="contract").inc()
         except Exception as e:
             logger.warning(
                 "contract_cache_metrics_error",
                 contract_id=contract_id,
                 error=str(e),
-                message="Failed to record cache miss metric"
+                message="Failed to record cache miss metric",
             )
         return None
 
 
-def invalidate_contract_cache_by_tags(tags: List[str]) -> int:
+def invalidate_contract_cache_by_tags(tags: list[str]) -> int:
     """
     Invalidate contract cache by tags.
 
@@ -223,7 +214,7 @@ def invalidate_contract_cache_by_tags(tags: List[str]) -> int:
         logger.debug(
             "contract_cache_invalidate_skipped",
             tags=tags,
-            message="Skipping tag-based invalidation: tags is None or empty"
+            message="Skipping tag-based invalidation: tags is None or empty",
         )
         return 0
 
@@ -233,7 +224,7 @@ def invalidate_contract_cache_by_tags(tags: List[str]) -> int:
     if redis_client:
         try:
             # Collect all contract IDs that match any of the tags
-            contract_ids_to_invalidate: Set[str] = set()
+            contract_ids_to_invalidate: set[str] = set()
 
             for tag in tags:
                 tag_key = _get_tag_key(tag)
@@ -260,21 +251,21 @@ def invalidate_contract_cache_by_tags(tags: List[str]) -> int:
                 "contract_cache_invalidated_by_tags",
                 tags=tags,
                 invalidated_count=invalidated_count,
-                message="Invalidated contracts by tags"
+                message="Invalidated contracts by tags",
             )
         except Exception as e:
             logger.warning(
                 "contract_cache_invalidation_error",
                 tags=tags,
                 error=str(e),
-                message="Failed to invalidate contracts by tags"
+                message="Failed to invalidate contracts by tags",
             )
     else:
         # Fallback: use pattern-based invalidation
         # This is less efficient but works without Redis
         for tag in tags:
             # Try to invalidate by pattern (limited support with LocMemCache)
-            pattern = f"contract:*"  # Would need tag info in key for better pattern
+            pattern = "contract:*"  # Would need tag info in key for better pattern
             invalidated = invalidate_cache_pattern(pattern)
             invalidated_count += invalidated
 
@@ -282,16 +273,14 @@ def invalidate_contract_cache_by_tags(tags: List[str]) -> int:
             "contract_cache_invalidated_by_tags_fallback",
             tags=tags,
             invalidated_count=invalidated_count,
-            message="Invalidated contracts by tags (fallback method)"
+            message="Invalidated contracts by tags (fallback method)",
         )
 
     return invalidated_count
 
 
 def warm_frequently_accessed_contracts(
-    tenant_id: Optional[str] = None,
-    limit: int = 100,
-    min_access_count: int = 5
+    tenant_id: str | None = None, limit: int = 100, min_access_count: int = 5
 ) -> int:
     """
     Warm cache with frequently accessed contracts.
@@ -308,23 +297,22 @@ def warm_frequently_accessed_contracts(
     """
     # Guard: clamp limit to non-negative. Django querysets raise
     # "Negative indexing is not supported." on negative slice stops.
-    if limit < 0:
-        limit = 0
+    limit = max(limit, 0)
 
     try:
         # Query frequently accessed contracts
         # Note: This assumes there's an access tracking mechanism
         # For now, we'll use recently updated contracts as a proxy
-        queryset = Contract.objects.filter(
-            hub_contract_json__isnull=False
-        ).select_related('tenant', 'asset')
+        queryset = Contract.objects.filter(hub_contract_json__isnull=False).select_related(
+            "tenant", "asset"
+        )
 
         if tenant_id:
             queryset = queryset.filter(tenant_id=tenant_id)
 
         # Order by updated_at (recently updated = likely accessed)
         # In production, you'd use actual access tracking
-        contracts = queryset.order_by('-updated_at')[:limit]
+        contracts = queryset.order_by("-updated_at")[:limit]
 
         warmed_count = 0
         for contract in contracts:
@@ -333,24 +321,22 @@ def warm_frequently_accessed_contracts(
                 tags = []
                 if contract.tenant_id:
                     tags.append(f"tenant:{contract.tenant_id}")
-                if hasattr(contract, 'created_by') and contract.created_by:
+                if hasattr(contract, "created_by") and contract.created_by:
                     tags.append(f"owner:{contract.created_by.id}")
                 if contract.status:
                     tags.append(f"status:{contract.status}")
 
                 # Cache contract with tags
                 contract_data = {
-                    'id': str(contract.id),
-                    'hub_contract_json': contract.hub_contract_json,
-                    'status': contract.status,
-                    'normalization_status': contract.normalization_status,
-                    'tenant_id': str(contract.tenant_id) if contract.tenant_id else None,
+                    "id": str(contract.id),
+                    "hub_contract_json": contract.hub_contract_json,
+                    "status": contract.status,
+                    "normalization_status": contract.normalization_status,
+                    "tenant_id": str(contract.tenant_id) if contract.tenant_id else None,
                 }
 
                 cache_contract_with_tags(
-                    str(contract.id),
-                    contract_data,
-                    tags=tags if tags else None
+                    str(contract.id), contract_data, tags=tags if tags else None
                 )
 
                 warmed_count += 1
@@ -359,7 +345,7 @@ def warm_frequently_accessed_contracts(
                     "contract_cache_warming_error",
                     contract_id=str(contract.id),
                     error=str(e),
-                    message="Failed to warm cache for contract"
+                    message="Failed to warm cache for contract",
                 )
                 continue
 
@@ -368,7 +354,7 @@ def warm_frequently_accessed_contracts(
             tenant_id=tenant_id,
             warmed_count=warmed_count,
             limit=limit,
-            message="Warmed cache for frequently accessed contracts"
+            message="Warmed cache for frequently accessed contracts",
         )
 
         return warmed_count
@@ -377,12 +363,12 @@ def warm_frequently_accessed_contracts(
             "contract_cache_warming_failed",
             tenant_id=tenant_id,
             error=str(e),
-            message="Failed to warm contract cache"
+            message="Failed to warm contract cache",
         )
         return 0
 
 
-def get_contract_cache_metrics() -> Dict[str, Any]:
+def get_contract_cache_metrics() -> dict[str, Any]:
     """
     Get contract cache metrics.
 
@@ -393,31 +379,18 @@ def get_contract_cache_metrics() -> Dict[str, Any]:
         - hit_rate: Cache hit rate (hits / (hits + misses))
     """
     try:
-        hits_metric = cache_hits_total.labels(cache_key_prefix='contract')
-        misses_metric = cache_misses_total.labels(cache_key_prefix='contract')
+        hits_metric = cache_hits_total.labels(cache_key_prefix="contract")
+        misses_metric = cache_misses_total.labels(cache_key_prefix="contract")
 
-        hits = hits_metric._value.get() if hasattr(hits_metric, '_value') else 0
-        misses = misses_metric._value.get() if hasattr(misses_metric, '_value') else 0
+        hits = hits_metric._value.get() if hasattr(hits_metric, "_value") else 0
+        misses = misses_metric._value.get() if hasattr(misses_metric, "_value") else 0
 
         total = hits + misses
         hit_rate = hits / total if total > 0 else 0.0
 
-        return {
-            'hits': hits,
-            'misses': misses,
-            'total': total,
-            'hit_rate': hit_rate
-        }
+        return {"hits": hits, "misses": misses, "total": total, "hit_rate": hit_rate}
     except Exception as e:
         logger.warning(
-            "contract_cache_metrics_error",
-            error=str(e),
-            message="Failed to get cache metrics"
+            "contract_cache_metrics_error", error=str(e), message="Failed to get cache metrics"
         )
-        return {
-            'hits': 0,
-            'misses': 0,
-            'total': 0,
-            'hit_rate': 0.0
-        }
-
+        return {"hits": 0, "misses": 0, "total": 0, "hit_rate": 0.0}

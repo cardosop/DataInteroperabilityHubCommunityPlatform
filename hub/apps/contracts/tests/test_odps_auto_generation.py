@@ -13,7 +13,6 @@ Tests verify:
 
 import json
 
-from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 
@@ -85,7 +84,9 @@ class ODPSAutoGenerationTest(ContractsTestBase):
         )
 
         # Auto-generate ODPS
-        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(
+            odcs_contract_id=str(odcs_contract.id)
+        )
 
         # Verify ODPS contract was created
         self.assertIsNotNone(odps_contract)
@@ -196,14 +197,20 @@ class ODPSAutoGenerationTest(ContractsTestBase):
 
         # Auto-generate (should return existing)
         # ContractService already provided by ContractsTestBase
-        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(
+            odcs_contract_id=str(odcs_contract.id)
+        )
 
         # Verify it returns the existing ODPS
         self.assertEqual(odps_contract.id, existing_odps.id)
         self.assertEqual(odps_contract.original_spec_type, OriginalSpecType.ODPS)
 
-    def test_auto_generate_focuses_on_marketplace_aspects(self):
-        """Test that auto-generation focuses on marketplace, not technical aspects"""
+    def test_auto_generate_includes_marketplace_and_technical_aspects(self):
+        """Test that auto-generation includes both marketplace and technical sections.
+
+        ODPS output includes marketplace (pricing, access, payment) alongside
+        technical aspects (SLA, dataQuality) that are mapped from the HubContract.
+        """
         # Create ODCS contract with both marketplace and technical sections
         hub_contract = self.odcs_hub_contract.copy()
         hub_contract["quality"] = {
@@ -231,7 +238,9 @@ class ODPSAutoGenerationTest(ContractsTestBase):
         )
 
         # Auto-generate ODPS
-        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(
+            odcs_contract_id=str(odcs_contract.id)
+        )
 
         # Verify ODPS document
         odps_doc = json.loads(odps_contract.original_raw)
@@ -239,22 +248,16 @@ class ODPSAutoGenerationTest(ContractsTestBase):
         # Verify marketplace aspects are included
         self.assertIn("product", odps_doc)
         self.assertIn("marketplace", odps_doc["product"])
+        self.assertTrue(
+            "pricingPlans" in odps_doc["product"]["marketplace"]
+            or "accessMethods" in odps_doc["product"]["marketplace"]
+            or "paymentGateways" in odps_doc["product"]["marketplace"]
+        )
         self.assertIn("license", odps_doc)
 
-        # Verify technical aspects (quality/SLA) are NOT in ODPS
-        # (They remain in HubContract, ODPS focuses on marketplace)
-        # Note: Some technical aspects may be mapped to ODPS structure,
-        # but the focus should be on marketplace
-        self.assertIn("product", odps_doc)
-        # Marketplace should be present
-        if "marketplace" in odps_doc["product"]:
-            marketplace = odps_doc["product"]["marketplace"]
-            # Should have marketplace fields
-            self.assertTrue(
-                "pricingPlans" in marketplace
-                or "accessMethods" in marketplace
-                or "paymentGateways" in marketplace
-            )
+        # Verify technical aspects are also present (mapped from HubContract)
+        self.assertIn("dataQuality", odps_doc["product"])
+        self.assertIn("SLA", odps_doc["product"])
 
     def test_auto_generate_with_minimal_marketplace_data(self):
         """Test auto-generation with minimal marketplace data"""
@@ -278,7 +281,9 @@ class ODPSAutoGenerationTest(ContractsTestBase):
         )
 
         # Auto-generate ODPS
-        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(
+            odcs_contract_id=str(odcs_contract.id)
+        )
 
         # Verify ODPS was created even with minimal data
         self.assertIsNotNone(odps_contract)
@@ -320,7 +325,9 @@ class ODPSAutoGenerationTest(ContractsTestBase):
         from hub.apps.core.services.base import ValidationError
 
         with self.assertRaises(ValidationError) as context:
-            self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odps_contract.id))
+            self.contract_service.auto_generate_odps_for_odcs(
+                odcs_contract_id=str(odps_contract.id)
+            )
 
         self.assertIn("not an ODCS contract", str(context.exception))
 
@@ -343,7 +350,9 @@ class ODPSAutoGenerationTest(ContractsTestBase):
         from hub.apps.core.services.base import ValidationError
 
         with self.assertRaises(ValidationError) as context:
-            self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+            self.contract_service.auto_generate_odps_for_odcs(
+                odcs_contract_id=str(odcs_contract.id)
+            )
 
         self.assertIn("has no hub_contract_json", str(context.exception))
 
@@ -355,9 +364,9 @@ class ODPSAutoGenerationTest(ContractsTestBase):
             hub_contract["extensions"] = {}
         if "x_odps" not in hub_contract["extensions"]:
             hub_contract["extensions"]["x_odps"] = {}
-        hub_contract["extensions"]["x_odps"][
-            "odps_link"
-        ] = "00000000-0000-0000-0000-000000000000"  # Non-existent ID
+        hub_contract["extensions"]["x_odps"]["odps_link"] = (
+            "00000000-0000-0000-0000-000000000000"  # Non-existent ID
+        )
 
         odcs_contract = Contract.objects.create(
             tenant=self.tenant,
@@ -373,7 +382,9 @@ class ODPSAutoGenerationTest(ContractsTestBase):
 
         # Auto-generate (should remove invalid link and create new ODPS)
         # ContractService already provided by ContractsTestBase
-        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(
+            odcs_contract_id=str(odcs_contract.id)
+        )
 
         # Verify new ODPS was created
         self.assertIsNotNone(odps_contract)
@@ -402,7 +413,9 @@ class ODPSAutoGenerationTest(ContractsTestBase):
         )
 
         # Auto-generate ODPS
-        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(
+            odcs_contract_id=str(odcs_contract.id)
+        )
 
         # Verify ODPS document includes original ODCS contract
         odps_doc = json.loads(odps_contract.original_raw)
@@ -444,7 +457,9 @@ class ODPSAutoGenerationTest(ContractsTestBase):
         )
 
         # ContractService already provided by ContractsTestBase
-        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(
+            odcs_contract_id=str(odcs_contract.id)
+        )
 
         # Should handle unicode characters
         self.assertIsNotNone(odps_contract)
@@ -483,7 +498,9 @@ class ODPSAutoGenerationTest(ContractsTestBase):
         )
 
         # ContractService already provided by ContractsTestBase
-        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(
+            odcs_contract_id=str(odcs_contract.id)
+        )
 
         # Should handle special characters
         self.assertIsNotNone(odps_contract)
@@ -525,7 +542,9 @@ class ODPSAutoGenerationTest(ContractsTestBase):
         )
 
         # ContractService already provided by ContractsTestBase
-        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(
+            odcs_contract_id=str(odcs_contract.id)
+        )
 
         # Should handle very large documents
         self.assertIsNotNone(odps_contract)
@@ -563,7 +582,9 @@ class ODPSAutoGenerationTest(ContractsTestBase):
         )
 
         # ContractService already provided by ContractsTestBase
-        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(
+            odcs_contract_id=str(odcs_contract.id)
+        )
 
         # Should handle None values gracefully
         self.assertIsNotNone(odps_contract)
@@ -619,7 +640,9 @@ class ODPSAutoGenerationTest(ContractsTestBase):
         )
 
         # ContractService already provided by ContractsTestBase
-        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(
+            odcs_contract_id=str(odcs_contract.id)
+        )
 
         # Should handle nested structures
         self.assertIsNotNone(odps_contract)

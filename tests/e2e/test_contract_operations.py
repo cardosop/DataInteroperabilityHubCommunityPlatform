@@ -16,13 +16,9 @@ Covers:
 Uses REAL services (DataContract CLI, no mocks).
 """
 
-import hashlib
-
 import pytest
-from django.test import TestCase
 from rest_framework import status
 
-from hub.apps.audit.models import AuditEvent
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
@@ -162,8 +158,11 @@ schema:
 
         # Verify all returned contracts belong to the filtered asset
         for contract_item in data.get("results", []):
-            self.assertEqual(str(contract_item.get("asset_id", contract_item.get("asset"))), str(asset_id),
-                "Filter should only return contracts for the specified asset")
+            self.assertEqual(
+                str(contract_item.get("asset_id", contract_item.get("asset"))),
+                str(asset_id),
+                "Filter should only return contracts for the specified asset",
+            )
 
     def test_get_contract_details(self):
         """Test retrieving contract details"""
@@ -224,7 +223,7 @@ schema:
         )
 
         # Validate contract (sync)
-        validate_response = self.validate_contract(contract_id, async_mode=False)
+        self.validate_contract(contract_id, async_mode=False)
 
         # Verify validation occurred
         contract = Contract.objects.get(id=contract_id)
@@ -263,7 +262,7 @@ schema:
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
         data = get_response_data(response) or {}
         if response.status_code == status.HTTP_202_ACCEPTED:
-            self.assertIn('job_id', data, "Async validation should return a job_id")
+            self.assertIn("job_id", data, "Async validation should return a job_id")
             job_id = data["job_id"]
 
             # Wait for job completion
@@ -285,15 +284,20 @@ schema:
         )
 
         # Validate contract
-        validate_response = self.validate_contract(contract_id, async_mode=False)
+        self.validate_contract(contract_id, async_mode=False)
 
         # Verify validation failed or returned warnings
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
         # After validation of invalid contract, status should be INVALID
-        self.assertEqual(contract.validation_status, ValidationStatus.INVALID,
-            f"Invalid contract should have INVALID validation_status, got {contract.validation_status}")
-        self.assertIsNotNone(contract.validation_errors, "Invalid contract should have validation errors")
+        self.assertEqual(
+            contract.validation_status,
+            ValidationStatus.INVALID,
+            f"Invalid contract should have INVALID validation_status, got {contract.validation_status}",
+        )
+        self.assertIsNotNone(
+            contract.validation_errors, "Invalid contract should have validation errors"
+        )
 
     def test_lint_contract_success(self):
         """Test contract linting"""
@@ -342,11 +346,11 @@ schema:
 
         # Convert endpoint may not be fully implemented
         if response.status_code == status.HTTP_400_BAD_REQUEST:
-            pytest.skip(f"Convert endpoint not available (400 Bad Request)")
+            pytest.skip("Convert endpoint not available (400 Bad Request)")  # noqa: skip-in-body — runtime service dependency
         elif response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR:
             # Service error - fail the test as service should be available
             self.fail(
-                f"Convert endpoint returned 500 Internal Server Error - service should be available"
+                "Convert endpoint returned 500 Internal Server Error - service should be available"
             )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -387,11 +391,11 @@ schema:
 
         # Convert endpoint may not be fully implemented
         if response.status_code == status.HTTP_400_BAD_REQUEST:
-            pytest.skip(f"Convert endpoint not available (400 Bad Request)")
+            pytest.skip("Convert endpoint not available (400 Bad Request)")  # noqa: skip-in-body — runtime service dependency
         elif response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR:
             # Service error - fail the test as service should be available
             self.fail(
-                f"Convert endpoint returned 500 Internal Server Error - service should be available"
+                "Convert endpoint returned 500 Internal Server Error - service should be available"
             )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -408,7 +412,7 @@ schema:
         )
 
         # Prepare contract for activation (includes normalization)
-        success = self.prepare_contract_for_activation(contract_id)
+        self.prepare_contract_for_activation(contract_id)
 
         # Verify normalization occurred
         contract = Contract.objects.get(id=contract_id)
@@ -530,8 +534,11 @@ schema:
             f"/api/v1/contracts/{contract_id}/", {"status": ContractStatus.ACTIVE}, format="json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK,
-            f"Status transition to ACTIVE should succeed, got {response.status_code}: {get_response_data(response)}")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            f"Status transition to ACTIVE should succeed, got {response.status_code}: {get_response_data(response)}",
+        )
         contract.refresh_from_db()
         self.assertEqual(contract.status, ContractStatus.ACTIVE)
 
@@ -556,7 +563,7 @@ schema:
         )
 
         # First validation
-        validate_response1 = self.validate_contract(contract_id, async_mode=False)
+        self.validate_contract(contract_id, async_mode=False)
 
         # Service is available, validation should have completed
         contract = Contract.objects.get(id=contract_id)
@@ -566,7 +573,7 @@ schema:
         )
 
         # Second validation (should use cache if same content)
-        validate_response2 = self.validate_contract(contract_id, async_mode=False)
+        self.validate_contract(contract_id, async_mode=False)
 
         # Both should succeed
         contract2 = Contract.objects.get(id=contract_id)
@@ -576,5 +583,8 @@ schema:
         )
 
         # Both validations should return same status (caching consistency)
-        self.assertEqual(contract.validation_status, contract2.validation_status,
-            "Cached validation should return same status")
+        self.assertEqual(
+            contract.validation_status,
+            contract2.validation_status,
+            "Cached validation should return same status",
+        )

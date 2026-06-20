@@ -10,10 +10,10 @@ This file is large (>2000 lines) and contains three major methods:
 3. generate_odps (lines ~1400-2000): Generate ODPS document from HubContract
 """
 
+import contextlib
 import time
 
 import structlog
-from django.http import Http404, HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter,
@@ -74,13 +74,14 @@ class ContractExportMixin:
                 name="version",
                 type=OpenApiTypes.STR,
                 enum=[
-                    "2.2.2", "3.0.0", "3.0.1", "3.0.2",
-                    "3.1.0", "bitol-1.0.0",
+                    "2.2.2",
+                    "3.0.0",
+                    "3.0.1",
+                    "3.0.2",
+                    "3.1.0",
+                    "bitol-1.0.0",
                 ],
-                description=(
-                    "Target spec version "
-                    "(default: original spec version)"
-                ),
+                description=("Target spec version (default: original spec version)"),
             ),
         ],
         responses={
@@ -133,7 +134,6 @@ class ContractExportMixin:
         try:
             # get_object() may raise Http404 - let it propagate to be handled by DRF's exception handler
             import logging
-            import os
 
             from django.http import Http404
 
@@ -163,10 +163,8 @@ class ContractExportMixin:
                 import uuid
 
                 if isinstance(self.request.tenant_id, str):
-                    try:
+                    with contextlib.suppress(ValueError, TypeError):
                         self.request.tenant_id = uuid.UUID(self.request.tenant_id)
-                    except (ValueError, TypeError):
-                        pass
 
             # ROOT CAUSE FIX: Try get_object() first (proper tenant filtering)
             # If it fails, use manual retrieval as fallback for robustness
@@ -206,10 +204,8 @@ class ContractExportMixin:
                             if isinstance(tenant_id, str):
                                 tenant_id = uuid.UUID(tenant_id)
                             if isinstance(contract_id, str):
-                                try:
+                                with contextlib.suppress(ValueError, TypeError):
                                     contract_id = uuid.UUID(contract_id)
-                                except (ValueError, TypeError):
-                                    pass
 
                             contract = Contract.objects.get(id=contract_id, tenant_id=tenant_id)
                         except (Contract.DoesNotExist, ValueError, TypeError):
@@ -295,13 +291,8 @@ class ContractExportMixin:
                 # present in the exported dict.  The ODPS normalizer
                 # stores version as a separate DB column, not inside
                 # hub_contract_json, so the export must merge it back.
-                if (
-                    contract.hub_contract_version
-                    and "hub_contract_version" not in contract_data
-                ):
-                    contract_data["hub_contract_version"] = (
-                        contract.hub_contract_version
-                    )
+                if contract.hub_contract_version and "hub_contract_version" not in contract_data:
+                    contract_data["hub_contract_version"] = contract.hub_contract_version
 
                 # Format output
                 if output_format == "yaml":
@@ -316,7 +307,7 @@ class ContractExportMixin:
                         return HttpResponse(output, content_type="application/x-yaml")
                     except Exception as e:
                         return Response(
-                            {"error": f"Failed to format as YAML: {str(e)}"},
+                            {"error": f"Failed to format as YAML: {e!s}"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         )
                 else:  # json
@@ -348,10 +339,13 @@ class ContractExportMixin:
                         except Exception as metrics_err:
                             logger.debug(
                                 "odcs_export_metrics_failed",
-                                extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                                extra={
+                                    "error_type": type(metrics_err).__name__,
+                                    "error": str(metrics_err),
+                                },
                             )
                         return Response(
-                            {"error": f"Invalid ODCS version: {str(e)}"},
+                            {"error": f"Invalid ODCS version: {e!s}"},
                             status=status.HTTP_400_BAD_REQUEST,
                         )
 
@@ -407,7 +401,7 @@ class ContractExportMixin:
                         except Exception as e:
                             # If parsing fails, fall through to generation
                             logger.warning(
-                                f"Failed to parse original ODCS contract: {str(e)}, will generate instead"
+                                f"Failed to parse original ODCS contract: {e!s}, will generate instead"
                             )
 
                     # Generate from HubContract if original not used
@@ -426,7 +420,10 @@ class ContractExportMixin:
                             except Exception as metrics_err:
                                 logger.debug(
                                     "odcs_export_metrics_failed",
-                                    extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                                    extra={
+                                        "error_type": type(metrics_err).__name__,
+                                        "error": str(metrics_err),
+                                    },
                                 )
                             return Response(
                                 {
@@ -460,11 +457,14 @@ class ContractExportMixin:
                             except Exception as metrics_err:
                                 logger.debug(
                                     "odcs_export_metrics_failed",
-                                    extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                                    extra={
+                                        "error_type": type(metrics_err).__name__,
+                                        "error": str(metrics_err),
+                                    },
                                 )
                             return Response(
                                 {
-                                    "error": f"Failed to generate ODCS document: {str(e)}",
+                                    "error": f"Failed to generate ODCS document: {e!s}",
                                     "details": getattr(e, "context", {}),
                                 },
                                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -481,11 +481,14 @@ class ContractExportMixin:
                             except Exception as metrics_err:
                                 logger.debug(
                                     "odcs_export_metrics_failed",
-                                    extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                                    extra={
+                                        "error_type": type(metrics_err).__name__,
+                                        "error": str(metrics_err),
+                                    },
                                 )
-                            logger.error(f"Failed to generate ODCS export: {str(e)}", exc_info=True)
+                            logger.error(f"Failed to generate ODCS export: {e!s}", exc_info=True)
                             return Response(
-                                {"error": f"Failed to generate ODCS export: {str(e)}"},
+                                {"error": f"Failed to generate ODCS export: {e!s}"},
                                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             )
 
@@ -503,7 +506,10 @@ class ContractExportMixin:
                         except Exception as metrics_err:
                             logger.debug(
                                 "odcs_export_metrics_failed",
-                                extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                                extra={
+                                    "error_type": type(metrics_err).__name__,
+                                    "error": str(metrics_err),
+                                },
                             )
                         return Response(
                             {"error": "Failed to generate ODCS document: document is None"},
@@ -529,11 +535,14 @@ class ContractExportMixin:
                         except Exception as metrics_err:
                             logger.debug(
                                 "odcs_export_metrics_failed",
-                                extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                                extra={
+                                    "error_type": type(metrics_err).__name__,
+                                    "error": str(metrics_err),
+                                },
                             )
                         return Response(
                             {
-                                "error": f"Failed to format ODCS document: {str(e)}",
+                                "error": f"Failed to format ODCS document: {e!s}",
                                 "details": getattr(e, "context", {}),
                             },
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -550,11 +559,14 @@ class ContractExportMixin:
                         except Exception as metrics_err:
                             logger.debug(
                                 "odcs_export_metrics_failed",
-                                extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                                extra={
+                                    "error_type": type(metrics_err).__name__,
+                                    "error": str(metrics_err),
+                                },
                             )
-                        logger.error(f"Failed to format ODCS export: {str(e)}", exc_info=True)
+                        logger.error(f"Failed to format ODCS export: {e!s}", exc_info=True)
                         return Response(
-                            {"error": f"Failed to format ODCS export: {str(e)}"},
+                            {"error": f"Failed to format ODCS export: {e!s}"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         )
 
@@ -588,14 +600,22 @@ class ContractExportMixin:
                     except Exception as metrics_err:
                         logger.debug(
                             "odcs_export_metrics_failed",
-                            extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                            extra={
+                                "error_type": type(metrics_err).__name__,
+                                "error": str(metrics_err),
+                            },
                         )
 
                     # Phase 26.4.4: Downgrade warning headers
                     downgrade_warnings = []
-                    orig_ver = getattr(
-                        contract, "original_spec_version", None,
-                    ) or ""
+                    orig_ver = (
+                        getattr(
+                            contract,
+                            "original_spec_version",
+                            None,
+                        )
+                        or ""
+                    )
 
                     def _ver_tuple(v: str):
                         """Parse '3.1.0' → (3, 1, 0) for safe comparison."""
@@ -609,21 +629,20 @@ class ContractExportMixin:
                         and orig_ver
                         and odcs_version != orig_ver
                         and _ver_tuple(orig_ver) > _ver_tuple(odcs_version)
-                    ):
-                        if orig_ver.startswith("3.1"):
-                            if odcs_version.startswith("2."):
-                                downgrade_warnings = [
-                                    "relationships_dropped",
-                                    "ids_dropped",
-                                    "team_format_changed",
-                                    "quality_library_dropped",
-                                ]
-                            elif odcs_version.startswith("3.0"):
-                                downgrade_warnings = [
-                                    "relationships_dropped",
-                                    "ids_dropped",
-                                    "team_format_changed",
-                                ]
+                    ) and orig_ver.startswith("3.1"):
+                        if odcs_version.startswith("2."):
+                            downgrade_warnings = [
+                                "relationships_dropped",
+                                "ids_dropped",
+                                "team_format_changed",
+                                "quality_library_dropped",
+                            ]
+                        elif odcs_version.startswith("3.0"):
+                            downgrade_warnings = [
+                                "relationships_dropped",
+                                "ids_dropped",
+                                "team_format_changed",
+                            ]
 
                     # Return response
                     if output_format == "yaml":
@@ -641,14 +660,12 @@ class ContractExportMixin:
                         resp["X-Export-Downgrade-Warnings"] = ",".join(downgrade_warnings)
 
                     # 26.17: Unified export counter with downgrade tracking
-                    try:
+                    with contextlib.suppress(Exception):
                         contract_export_total.labels(
                             status="success",
                             downgrade="true" if downgrade_warnings else "false",
                             tenant_id=tenant_id,
                         ).inc()
-                    except Exception:
-                        pass
 
                     return resp
 
@@ -664,11 +681,14 @@ class ContractExportMixin:
                     except Exception as metrics_err:
                         logger.debug(
                             "odcs_export_metrics_failed",
-                            extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                            extra={
+                                "error_type": type(metrics_err).__name__,
+                                "error": str(metrics_err),
+                            },
                         )
-                    logger.error(f"ODCS export endpoint error: {str(e)}", exc_info=True)
+                    logger.error(f"ODCS export endpoint error: {e!s}", exc_info=True)
                     return Response(
-                        {"error": f"ODCS export failed: {str(e)}"},
+                        {"error": f"ODCS export failed: {e!s}"},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     )
 
@@ -710,7 +730,10 @@ class ContractExportMixin:
                         except Exception as parse_err:
                             logger.debug(
                                 "odcs_export_parse_original_failed",
-                                extra={"error_type": type(parse_err).__name__, "error": str(parse_err)},
+                                extra={
+                                    "error_type": type(parse_err).__name__,
+                                    "error": str(parse_err),
+                                },
                             )
 
                     # Generate ODPS document
@@ -752,14 +775,12 @@ class ContractExportMixin:
                     ).inc()
 
                     # 26.17: Unified export counter (ODPS has no downgrade)
-                    try:
+                    with contextlib.suppress(Exception):
                         contract_export_total.labels(
                             status="success",
                             downgrade="false",
                             tenant_id=tenant_id,
                         ).inc()
-                    except Exception:
-                        pass
 
                     return Response(output, content_type=content_type)
 
@@ -767,7 +788,7 @@ class ContractExportMixin:
                     import logging
 
                     logger = logging.getLogger(__name__)
-                    logger.error(f"Failed to generate ODPS export: {str(e)}", exc_info=True)
+                    logger.error(f"Failed to generate ODPS export: {e!s}", exc_info=True)
 
                     # Record export failure (Task 6.6.4)
                     try:
@@ -779,11 +800,14 @@ class ContractExportMixin:
                     except Exception as metrics_err:
                         logger.debug(
                             "odcs_export_metrics_failed",
-                            extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                            extra={
+                                "error_type": type(metrics_err).__name__,
+                                "error": str(metrics_err),
+                            },
                         )
 
                     return Response(
-                        {"error": f"Failed to generate ODPS export: {str(e)}"},
+                        {"error": f"Failed to generate ODPS export: {e!s}"},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     )
 
@@ -795,9 +819,9 @@ class ContractExportMixin:
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.error(f"Export endpoint error: {str(e)}", exc_info=True)
+            logger.error(f"Export endpoint error: {e!s}", exc_info=True)
             return Response(
-                {"error": f"Export failed: {str(e)}"},
+                {"error": f"Export failed: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         finally:
@@ -875,7 +899,6 @@ class ContractExportMixin:
             ),
         },
     )
-
     # SAVING CHECKPOINT: End of export_contract method (~680 lines).
     # Starting download_contract method (~680-1200 lines).
 
@@ -1014,7 +1037,7 @@ class ContractExportMixin:
                         return response
                     except Exception as e:
                         return Response(
-                            {"error": f"Failed to format as YAML: {str(e)}"},
+                            {"error": f"Failed to format as YAML: {e!s}"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         )
                 else:  # json
@@ -1041,7 +1064,7 @@ class ContractExportMixin:
                         validate_odcs_version(odcs_version)
                     except Exception as e:
                         return Response(
-                            {"error": f"Invalid ODCS version: {str(e)}"},
+                            {"error": f"Invalid ODCS version: {e!s}"},
                             status=status.HTTP_400_BAD_REQUEST,
                         )
 
@@ -1099,7 +1122,7 @@ class ContractExportMixin:
 
                             logger = logging.getLogger(__name__)
                             logger.warning(
-                                f"Failed to parse original ODCS contract: {str(e)}, will generate instead"
+                                f"Failed to parse original ODCS contract: {e!s}, will generate instead"
                             )
 
                     # Generate from HubContract if original not used
@@ -1128,7 +1151,7 @@ class ContractExportMixin:
                         except ODCSGenerationError as e:
                             return Response(
                                 {
-                                    "error": f"Failed to generate ODCS document: {str(e)}",
+                                    "error": f"Failed to generate ODCS document: {e!s}",
                                     "details": getattr(e, "context", {}),
                                 },
                                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1137,11 +1160,9 @@ class ContractExportMixin:
                             import logging
 
                             logger = logging.getLogger(__name__)
-                            logger.error(
-                                f"Failed to generate ODCS download: {str(e)}", exc_info=True
-                            )
+                            logger.error(f"Failed to generate ODCS download: {e!s}", exc_info=True)
                             return Response(
-                                {"error": f"Failed to generate ODCS download: {str(e)}"},
+                                {"error": f"Failed to generate ODCS download: {e!s}"},
                                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             )
 
@@ -1168,7 +1189,7 @@ class ContractExportMixin:
                     except ODCSExportError as e:
                         return Response(
                             {
-                                "error": f"Failed to format ODCS document: {str(e)}",
+                                "error": f"Failed to format ODCS document: {e!s}",
                                 "details": getattr(e, "context", {}),
                             },
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1177,9 +1198,9 @@ class ContractExportMixin:
                         import logging
 
                         logger = logging.getLogger(__name__)
-                        logger.error(f"Failed to format ODCS download: {str(e)}", exc_info=True)
+                        logger.error(f"Failed to format ODCS download: {e!s}", exc_info=True)
                         return Response(
-                            {"error": f"Failed to format ODCS download: {str(e)}"},
+                            {"error": f"Failed to format ODCS download: {e!s}"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         )
 
@@ -1213,18 +1234,19 @@ class ContractExportMixin:
                     except Exception as metrics_err:
                         logger.debug(
                             "odcs_export_metrics_failed",
-                            extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
+                            extra={
+                                "error_type": type(metrics_err).__name__,
+                                "error": str(metrics_err),
+                            },
                         )
 
                     # 26.17: Unified export counter for downloads
-                    try:
+                    with contextlib.suppress(Exception):
                         contract_export_total.labels(
                             status="success",
                             downgrade="false",
                             tenant_id=tenant_id,
                         ).inc()
-                    except Exception:
-                        pass
 
                     # Return response with Content-Disposition header
                     response = HttpResponse(output, content_type=content_type)
@@ -1235,9 +1257,9 @@ class ContractExportMixin:
                     import logging
 
                     logger = logging.getLogger(__name__)
-                    logger.error(f"ODCS download endpoint error: {str(e)}", exc_info=True)
+                    logger.error(f"ODCS download endpoint error: {e!s}", exc_info=True)
                     return Response(
-                        {"error": f"ODCS download failed: {str(e)}"},
+                        {"error": f"ODCS download failed: {e!s}"},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     )
 
@@ -1298,7 +1320,7 @@ class ContractExportMixin:
                         return response
                 except Exception as e:
                     return Response(
-                        {"error": f"Failed to generate ODPS format: {str(e)}"},
+                        {"error": f"Failed to generate ODPS format: {e!s}"},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     )
 
@@ -1310,9 +1332,9 @@ class ContractExportMixin:
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.error(f"Download endpoint error: {str(e)}", exc_info=True)
+            logger.error(f"Download endpoint error: {e!s}", exc_info=True)
             return Response(
-                {"error": f"Download failed: {str(e)}"},
+                {"error": f"Download failed: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         finally:
@@ -1389,7 +1411,6 @@ class ContractExportMixin:
         },
         tags=["Contracts", "ODPS"],
     )
-
     # SAVING CHECKPOINT: End of download_contract method (~1200 lines).
     # Starting generate_odps method (~1200-1426 lines).
 
@@ -1457,7 +1478,6 @@ class ContractExportMixin:
             # Import ODPS generator functions
             from hub.apps.contracts.odps_errors import ODPSExportError
             from hub.apps.contracts.odps_generator import (
-                format_odps_as_json,
                 format_odps_as_yaml,
                 generate_odps_from_hubcontract,
             )
@@ -1479,7 +1499,7 @@ class ContractExportMixin:
 
                     logger = logging.getLogger(__name__)
                     logger.warning(
-                        f"Failed to parse original ODCS contract for embedding: {str(e)}",
+                        f"Failed to parse original ODCS contract for embedding: {e!s}",
                         exc_info=True,
                     )
 
@@ -1506,9 +1526,9 @@ class ContractExportMixin:
                 import logging
 
                 logger = logging.getLogger(__name__)
-                logger.error(f"Failed to generate ODPS document: {str(e)}", exc_info=True)
+                logger.error(f"Failed to generate ODPS document: {e!s}", exc_info=True)
                 return Response(
-                    {"error": f"Failed to generate ODPS document: {str(e)}"},
+                    {"error": f"Failed to generate ODPS document: {e!s}"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -1554,8 +1574,8 @@ class ContractExportMixin:
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.error(f"Generate ODPS endpoint error: {str(e)}", exc_info=True)
+            logger.error(f"Generate ODPS endpoint error: {e!s}", exc_info=True)
             return Response(
-                {"error": f"Generate ODPS failed: {str(e)}"},
+                {"error": f"Generate ODPS failed: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

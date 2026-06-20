@@ -27,9 +27,7 @@ class ArchiveOldAuditEventsTest(TestCase):
 
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Tenant {uid}", slug=f"tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Tenant {uid}", slug=f"tenant-{uid}")
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
@@ -72,7 +70,7 @@ class ArchiveOldAuditEventsTest(TestCase):
     def test_archives_old_events(self):
         """Events older than retention period are marked archived."""
         old = self._create_event(age_days=4 * 365)  # 4 years old
-        recent = self._create_event(age_days=30)     # 30 days old
+        recent = self._create_event(age_days=30)  # 30 days old
 
         self._run("--retention-years=3")
 
@@ -104,9 +102,7 @@ class ArchiveOldAuditEventsTest(TestCase):
         # data, other tenants may have eligible events.  We assert that NONE
         # of the events belonging to THIS tenant were archived.
         self.assertFalse(
-            AuditEvent.all_objects.filter(
-                is_archived=True, tenant=self.tenant
-            ).exists(),
+            AuditEvent.all_objects.filter(is_archived=True, tenant=self.tenant).exists(),
             f"Expected no archived events for test tenant, got: {out}",
         )
 
@@ -118,7 +114,7 @@ class ArchiveOldAuditEventsTest(TestCase):
             is_archived=True, archived_at=timezone.now()
         )
 
-        out, _ = self._run("--retention-years=3")
+        _out, _ = self._run("--retention-years=3")
         # The command runs across ALL tenants; other tenants' data may be
         # eligible.  Assert that the already-archived event for THIS tenant
         # was not re-processed (still has its original archived_at).
@@ -135,9 +131,7 @@ class ArchiveOldAuditEventsTest(TestCase):
         # Use all_objects because default manager excludes archived events.
         # Scope to this test's tenant to avoid counting events from other
         # tests when using --reuse-db.
-        archived_count = AuditEvent.all_objects.filter(
-            is_archived=True, tenant=self.tenant
-        ).count()
+        archived_count = AuditEvent.all_objects.filter(is_archived=True, tenant=self.tenant).count()
         self.assertEqual(archived_count, 5)
         # Should see multiple batch messages
         self.assertGreater(out.count("Archived batch"), 1)

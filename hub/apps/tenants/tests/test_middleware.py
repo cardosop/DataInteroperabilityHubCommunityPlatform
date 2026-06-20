@@ -1,20 +1,23 @@
 """
 Unit tests for tenant middleware.
 """
-import pytest
-from django.test import TestCase, RequestFactory
-from django.http import HttpResponse, JsonResponse
-from unittest.mock import Mock
-from hub.apps.tenants.models import Tenant, TenantStatus
-from hub.apps.tenants.middleware import TenantSuspensionMiddleware
+
 import uuid
+from unittest.mock import Mock
 
+import pytest
+from django.http import HttpResponse, JsonResponse
+from django.test import RequestFactory, TestCase
 
+from hub.apps.tenants.middleware import TenantSuspensionMiddleware
+from hub.apps.tenants.models import Tenant, TenantStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
 class TenantSuspensionMiddlewareTest(TestCase):
     """Test TenantSuspensionMiddleware"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         self.factory = RequestFactory()
@@ -24,8 +27,9 @@ class TenantSuspensionMiddlewareTest(TestCase):
         self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         # Ensure tenant has an active subscription (required by Phase 25.2.4 subscription check)
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
         ensure_tenant_has_active_subscription(self.tenant)
-    
+
     def test_suspended_tenant_blocks_writes(self):
         """Test that suspended tenant blocks write operations with meaningful error."""
         self.tenant.suspend()
@@ -40,52 +44,53 @@ class TenantSuspensionMiddlewareTest(TestCase):
         self.assertEqual(response.status_code, 403)
         # Verify response body contains actionable error info
         import json
+
         body = json.loads(response.content)
         self.assertIn("error", body, "403 response must include 'error' field")
         self.assertIn("suspended", body["error"].lower(), "Error should mention suspension")
-    
+
     def test_suspended_tenant_allows_reads(self):
         """Test that suspended tenant allows read operations"""
         self.tenant.suspend()
-        
+
         request = self.factory.get("/api/assets/")
         request.tenant = self.tenant
-        
+
         response = self.middleware.process_request(request)
-        
+
         self.assertIsNone(response)  # Middleware allows request to continue
-    
+
     def test_deleted_tenant_blocks_all(self):
         """Test that deleted tenant blocks all operations"""
         self.tenant.soft_delete()
-        
+
         request = self.factory.get("/api/assets/")
         request.tenant = self.tenant
-        
+
         response = self.middleware.process_request(request)
-        
+
         self.assertIsNotNone(response)
         self.assertIsInstance(response, JsonResponse)
         self.assertEqual(response.status_code, 403)
-    
+
     def test_active_tenant_allows_all(self):
         """Test that active tenant allows all operations"""
         request = self.factory.post("/api/assets/")
         request.tenant = self.tenant
-        
+
         response = self.middleware.process_request(request)
-        
+
         self.assertIsNone(response)  # Middleware allows request to continue
-    
+
     def test_allowed_paths_bypass_middleware(self):
         """Test that allowed paths bypass middleware"""
         self.tenant.suspend()
-        
+
         request = self.factory.post("/health/")
         request.tenant = self.tenant
-        
+
         response = self.middleware.process_request(request)
-        
+
         self.assertIsNone(response)  # Health check is allowed
 
     def test_auth_paths_bypass_middleware(self):
@@ -95,28 +100,34 @@ class TenantSuspensionMiddlewareTest(TestCase):
         request.tenant = self.tenant
         request.tenant_id = str(self.tenant.id)
         response = self.middleware.process_request(request)
-        self.assertIsNone(response, "Auth paths must be allowed regardless of subscription/suspension")
+        self.assertIsNone(
+            response, "Auth paths must be allowed regardless of subscription/suspension"
+        )
 
     def test_auth_sessions_revoke_bypass_middleware(self):
         """Test that POST /api/v1/auth/sessions/<id>/revoke/ bypasses subscription check."""
         self.tenant.suspend()
-        request = self.factory.post("/api/v1/auth/sessions/00000000-0000-0000-0000-000000000001/revoke/")
+        request = self.factory.post(
+            "/api/v1/auth/sessions/00000000-0000-0000-0000-000000000001/revoke/"
+        )
         request.tenant = self.tenant
         request.tenant_id = str(self.tenant.id)
         response = self.middleware.process_request(request)
-        self.assertIsNone(response, "Session revoke must be allowed regardless of subscription/suspension")
-    
+        self.assertIsNone(
+            response, "Session revoke must be allowed regardless of subscription/suspension"
+        )
+
     def test_middleware_is_callable(self):
         """Test that middleware is callable (Django 6 pattern)"""
         request = self.factory.get("/api/v1/assets/")
         request.tenant = self.tenant
-        
+
         response = self.middleware(request)
-        
+
         self.assertIsNotNone(response)
         self.assertIsInstance(response, HttpResponse)
         self.get_response.assert_called_once()
-    
+
     def test_middleware_performance(self):
         """Test middleware performance (should be fast)"""
         import time
@@ -131,7 +142,8 @@ class TenantSuspensionMiddlewareTest(TestCase):
 
         # 2s budget avoids flakes on slow CI machines
         self.assertLess(
-            elapsed, 2.0,
+            elapsed,
+            2.0,
             f"Middleware too slow: {elapsed:.3f}s for 100 requests",
         )
 
@@ -139,6 +151,7 @@ class TenantSuspensionMiddlewareTest(TestCase):
     def test_no_subscription_blocks_writes(self):
         """Middleware blocks writes when tenant has no subscription."""
         from hub.apps.billing.models import Subscription
+
         Subscription.objects.filter(tenant=self.tenant).delete()
 
         request = self.factory.post("/api/v1/assets/")
@@ -147,16 +160,19 @@ class TenantSuspensionMiddlewareTest(TestCase):
         response = self.middleware.process_request(request)
 
         self.assertIsNotNone(
-            response, "Should block writes without subscription",
+            response,
+            "Should block writes without subscription",
         )
         self.assertEqual(response.status_code, 403)
         import json
+
         body = json.loads(response.content)
         self.assertEqual(body["code"], "subscription_inactive")
 
     def test_no_subscription_allows_reads(self):
         """Middleware allows reads when tenant has no subscription."""
         from hub.apps.billing.models import Subscription
+
         Subscription.objects.filter(tenant=self.tenant).delete()
 
         request = self.factory.get("/api/v1/assets/")
@@ -168,6 +184,7 @@ class TenantSuspensionMiddlewareTest(TestCase):
     def test_past_due_subscription_blocks_writes(self):
         """Middleware blocks writes for PAST_DUE subscription."""
         from hub.apps.billing.models import Subscription, SubscriptionStatus
+
         sub = Subscription.objects.filter(tenant=self.tenant).first()
         if sub:
             sub.status = SubscriptionStatus.PAST_DUE
@@ -184,12 +201,14 @@ class TenantSuspensionMiddlewareTest(TestCase):
         )
         self.assertEqual(response.status_code, 403)
         import json
+
         body = json.loads(response.content)
         self.assertEqual(body["code"], "subscription_inactive")
 
     def test_canceled_subscription_blocks_writes(self):
         """Middleware blocks writes for CANCELED subscription."""
         from hub.apps.billing.models import Subscription, SubscriptionStatus
+
         sub = Subscription.objects.filter(tenant=self.tenant).first()
         if sub:
             sub.status = SubscriptionStatus.CANCELED
@@ -214,14 +233,17 @@ class TenantSuspensionMiddlewareTest(TestCase):
 
         response = self.middleware.process_request(request)
         self.assertIsNone(
-            response, "Active subscription should allow writes",
+            response,
+            "Active subscription should allow writes",
         )
 
     # ── H11+H10+H13: Middleware tenant resolution via __call__ ───
     def test_call_resolves_tenant_from_user(self):
         """__call__ resolves tenant from authenticated user object."""
         from django.contrib.auth import get_user_model
+
         from hub.apps.users.models import UserStatus
+
         User = get_user_model()
 
         uid = uuid.uuid4().hex[:8]
@@ -293,10 +315,12 @@ class TenantSuspensionMiddlewareExtendedTests(TestCase):
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
+
         ensure_tenant_has_active_subscription(self.tenant)
         # Prime the cache with a blocked status.
         cache_key = f"tenant_sub_check:{self.tenant.id}"
         from django.core.cache import cache as _cache
+
         _cache.set(cache_key, "PAST_DUE", 30)
 
         request = self.factory.post("/api/v1/assets/")
@@ -310,9 +334,11 @@ class TenantSuspensionMiddlewareExtendedTests(TestCase):
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
+
         ensure_tenant_has_active_subscription(self.tenant)
         cache_key = f"tenant_sub_check:{self.tenant.id}"
         from django.core.cache import cache as _cache
+
         _cache.set(cache_key, "ACTIVE", 30)
 
         request = self.factory.post("/api/v1/assets/")
@@ -329,4 +355,3 @@ class TenantSuspensionMiddlewareExtendedTests(TestCase):
         request.tenant_id = str(self.tenant.id)
         response = self.middleware.process_request(request)
         self.assertIsNone(response)
-

@@ -12,10 +12,10 @@ Run with (no Django settings load — these tests are pure Python):
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _run_guard_code(env_vars: dict) -> None:
     """
@@ -32,27 +32,15 @@ def _run_guard_code(env_vars: dict) -> None:
 
     ENVIRONMENT = env_vars.get("ENVIRONMENT", "development")
     SECRET_KEY = env_vars.get("SECRET_KEY", _DEV_SECRET_KEY)
-    JWT_SECRET_KEY = env_vars.get(
-        "JWT_SECRET_KEY", _DEV_JWT_SECRET_KEY
-    )
+    JWT_SECRET_KEY = env_vars.get("JWT_SECRET_KEY", _DEV_JWT_SECRET_KEY)
     ENCRYPTION_KEY = env_vars.get("ENCRYPTION_KEY", _DEV_ENCRYPTION_KEY)
 
-    REDIS_URL = env_vars.get(
-        "REDIS_URL", "redis://localhost:6379/0"
-    )
-    REDIS_CACHE_URL = env_vars.get(
-        "REDIS_CACHE_URL", "redis://localhost:6379/0"
-    )
-    REDIS_QUEUE_URL = env_vars.get(
-        "REDIS_QUEUE_URL", "redis://localhost:6380/0"
-    )
-    REDIS_EVENTS_URL = env_vars.get(
-        "REDIS_EVENTS_URL", "redis://localhost:6381/0"
-    )
-    REDIS_CHANNELS_URL = env_vars.get(
-        "REDIS_CHANNELS_URL", "redis://localhost:6382/0"
-    )
-    BAAS_REDIS_URL = env_vars.get("BAAS_REDIS_URL", None)
+    REDIS_URL = env_vars.get("REDIS_URL", "redis://localhost:6379/0")
+    REDIS_CACHE_URL = env_vars.get("REDIS_CACHE_URL", "redis://localhost:6379/0")
+    REDIS_QUEUE_URL = env_vars.get("REDIS_QUEUE_URL", "redis://localhost:6380/0")
+    REDIS_EVENTS_URL = env_vars.get("REDIS_EVENTS_URL", "redis://localhost:6381/0")
+    REDIS_CHANNELS_URL = env_vars.get("REDIS_CHANNELS_URL", "redis://localhost:6382/0")
+    BAAS_REDIS_URL = env_vars.get("BAAS_REDIS_URL")
 
     if ENVIRONMENT == "production":
         # SECRET_KEY guard
@@ -118,9 +106,7 @@ def _safe_env() -> dict:
         "ENVIRONMENT": "production",
         "SECRET_KEY": "safe-secret-key-for-test-" + "x" * 30,
         "JWT_SECRET_KEY": "safe-jwt-key-for-test-" + "x" * 30,
-        "ENCRYPTION_KEY": (
-            "c2FmZS1lbmNyeXB0aW9uLWtleS1mb3ItdGVzdC0xMjM="
-        ),
+        "ENCRYPTION_KEY": ("c2FmZS1lbmNyeXB0aW9uLWtleS1mb3ItdGVzdC0xMjM="),
         "REDIS_URL": "redis://:password@redis:6379/0",
         "REDIS_CACHE_URL": "redis://:password@redis-cache:6379/0",
         "REDIS_QUEUE_URL": "redis://:password@redis-queue:6379/0",
@@ -132,6 +118,7 @@ def _safe_env() -> dict:
 # ---------------------------------------------------------------------------
 # ENCRYPTION_KEY guard
 # ---------------------------------------------------------------------------
+
 
 class TestEncryptionKeyGuard:
     """Guard: ENCRYPTION_KEY must not be missing or equal to the dev default."""
@@ -150,9 +137,7 @@ class TestEncryptionKeyGuard:
 
     def test_valid_key_passes_in_production(self):
         env = _safe_env()
-        env["ENCRYPTION_KEY"] = (
-            "c2FmZS1lbmNyeXB0aW9uLWtleS1mb3ItdGVzdC0xMjM="
-        )
+        env["ENCRYPTION_KEY"] = "c2FmZS1lbmNyeXB0aW9uLWtleS1mb3ItdGVzdC0xMjM="
         _run_guard_code(env)  # should not raise
 
     def test_dev_default_allowed_outside_production(self):
@@ -171,6 +156,7 @@ class TestEncryptionKeyGuard:
 # ---------------------------------------------------------------------------
 # SECRET_KEY guard (existing behaviour — regression)
 # ---------------------------------------------------------------------------
+
 
 class TestSecretKeyGuard:
     """Regression: existing SECRET_KEY guard still fires correctly."""
@@ -191,6 +177,7 @@ class TestSecretKeyGuard:
 # JWT_SECRET_KEY guard (existing behaviour — regression)
 # ---------------------------------------------------------------------------
 
+
 class TestJwtSecretKeyGuard:
     """Regression: existing JWT_SECRET_KEY guard still fires correctly."""
 
@@ -210,41 +197,51 @@ class TestJwtSecretKeyGuard:
 # Redis URL guards
 # ---------------------------------------------------------------------------
 
+
 class TestRedisUrlGuard:
     """All Redis URLs must include non-empty credentials in production."""
 
-    @pytest.mark.parametrize("redis_var", [
-        "REDIS_URL",
-        "REDIS_CACHE_URL",
-        "REDIS_QUEUE_URL",
-        "REDIS_EVENTS_URL",
-        "REDIS_CHANNELS_URL",
-    ])
+    @pytest.mark.parametrize(
+        "redis_var",
+        [
+            "REDIS_URL",
+            "REDIS_CACHE_URL",
+            "REDIS_QUEUE_URL",
+            "REDIS_EVENTS_URL",
+            "REDIS_CHANNELS_URL",
+        ],
+    )
     def test_unauthenticated_url_raises(self, redis_var: str):
         env = _safe_env()
         env[redis_var] = "redis://redis:6379/0"  # no '@'
         with pytest.raises(ImproperlyConfigured, match=redis_var):
             _run_guard_code(env)
 
-    @pytest.mark.parametrize("redis_var", [
-        "REDIS_URL",
-        "REDIS_CACHE_URL",
-        "REDIS_QUEUE_URL",
-        "REDIS_EVENTS_URL",
-        "REDIS_CHANNELS_URL",
-    ])
+    @pytest.mark.parametrize(
+        "redis_var",
+        [
+            "REDIS_URL",
+            "REDIS_CACHE_URL",
+            "REDIS_QUEUE_URL",
+            "REDIS_EVENTS_URL",
+            "REDIS_CHANNELS_URL",
+        ],
+    )
     def test_authenticated_url_passes(self, redis_var: str):
         env = _safe_env()
         env[redis_var] = "redis://:strongpassword@redis:6379/0"
         _run_guard_code(env)
 
-    @pytest.mark.parametrize("redis_var", [
-        "REDIS_URL",
-        "REDIS_CACHE_URL",
-        "REDIS_QUEUE_URL",
-        "REDIS_EVENTS_URL",
-        "REDIS_CHANNELS_URL",
-    ])
+    @pytest.mark.parametrize(
+        "redis_var",
+        [
+            "REDIS_URL",
+            "REDIS_CACHE_URL",
+            "REDIS_QUEUE_URL",
+            "REDIS_EVENTS_URL",
+            "REDIS_CHANNELS_URL",
+        ],
+    )
     def test_empty_password_url_raises(self, redis_var: str):
         """redis://:@host is structurally valid but has an empty password."""
         env = _safe_env()
@@ -256,9 +253,7 @@ class TestRedisUrlGuard:
         """BAAS_REDIS_URL must also carry credentials when set."""
         env = _safe_env()
         env["BAAS_REDIS_URL"] = "redis://baas-redis:6379/0"
-        with pytest.raises(
-            ImproperlyConfigured, match="BAAS_REDIS_URL"
-        ):
+        with pytest.raises(ImproperlyConfigured, match="BAAS_REDIS_URL"):
             _run_guard_code(env)
 
     def test_baas_redis_empty_password_raises(self):
@@ -283,9 +278,7 @@ class TestRedisUrlGuard:
     def test_error_message_mentions_format(self):
         env = _safe_env()
         env["REDIS_URL"] = "redis://redis:6379/0"
-        with pytest.raises(
-            ImproperlyConfigured, match="redis://:password@"
-        ):
+        with pytest.raises(ImproperlyConfigured, match="redis://:password@"):
             _run_guard_code(env)
 
     def test_unauthenticated_redis_allowed_in_development(self):
@@ -302,6 +295,7 @@ class TestRedisUrlGuard:
 # ---------------------------------------------------------------------------
 # PostgreSQL SSL (settings-level flag, not guard — behavioural test)
 # ---------------------------------------------------------------------------
+
 
 class TestPostgresSslOption:
     """Verify that sslmode=require is applied to DB options in production."""
@@ -323,9 +317,7 @@ class TestPostgresSslOption:
                 "sslmode": "require",
             }
             sslmode_applied = db_options.get("sslmode") == "require"
-        assert sslmode_applied, (
-            "sslmode=require must be set in production DB OPTIONS"
-        )
+        assert sslmode_applied, "sslmode=require must be set in production DB OPTIONS"
 
     def test_sslmode_absent_in_development(self):
         ENVIRONMENT = "development"
@@ -370,6 +362,7 @@ class TestPostgresSslOption:
 # Helper: extended guard logic added in Phase 8
 # ---------------------------------------------------------------------------
 
+
 def _run_extended_guard_code(env_vars: dict) -> dict:
     """
     Replicate the Phase-8 guard logic from settings.py in isolation.
@@ -385,16 +378,20 @@ def _run_extended_guard_code(env_vars: dict) -> dict:
     DEBUG = env_vars.get("DEBUG", False)
     USE_S3 = env_vars.get("USE_S3", False)
     AWS_SECRET_ACCESS_KEY = env_vars.get("AWS_SECRET_ACCESS_KEY", "")
-    CORS_ALLOWED_ORIGINS = env_vars.get("CORS_ALLOWED_ORIGINS", None)
+    CORS_ALLOWED_ORIGINS = env_vars.get("CORS_ALLOWED_ORIGINS")
 
     # Replicate _cors_defaults logic
     if CORS_ALLOWED_ORIGINS is None:
-        _cors_defaults = [] if ENVIRONMENT == "production" else [
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://localhost:5184",
-            "http://localhost:8000",
-        ]
+        _cors_defaults = (
+            []
+            if ENVIRONMENT == "production"
+            else [
+                "http://localhost:3000",
+                "http://localhost:5173",
+                "http://localhost:5184",
+                "http://localhost:8000",
+            ]
+        )
         CORS_ALLOWED_ORIGINS = _cors_defaults
 
     # Defaults (non-production)
@@ -407,8 +404,7 @@ def _run_extended_guard_code(env_vars: dict) -> dict:
     if ENVIRONMENT == "production":
         if DEBUG:
             raise IC(
-                "DEBUG must be False in production. "
-                "Set DEBUG=False in env. See docs/SECURITY.md."
+                "DEBUG must be False in production. Set DEBUG=False in env. See docs/SECURITY.md."
             )
         if USE_S3 and not AWS_SECRET_ACCESS_KEY:
             raise IC(
@@ -450,6 +446,7 @@ def _safe_extended_env() -> dict:
 # ---------------------------------------------------------------------------
 # Phase-8 guard tests
 # ---------------------------------------------------------------------------
+
 
 class TestDebugGuard:
     """DEBUG must be False in production."""
@@ -537,10 +534,9 @@ class TestCorsAllowedOriginsGuard:
         env["ENVIRONMENT"] = "development"
         env.pop("CORS_ALLOWED_ORIGINS", None)
         result = _run_extended_guard_code(env)
-        assert any(
-            "localhost" in origin
-            for origin in result["CORS_ALLOWED_ORIGINS"]
-        ), "Dev CORS defaults should include localhost origins"
+        assert any("localhost" in origin for origin in result["CORS_ALLOWED_ORIGINS"]), (
+            "Dev CORS defaults should include localhost origins"
+        )
 
     def test_cors_port_3011_not_in_dev_defaults(self):
         """Grafana port 3011 must have been removed from dev defaults."""
@@ -564,9 +560,7 @@ class TestProductionCookieSettings:
 
     def test_csrf_cookie_secure_in_production(self):
         result = _run_extended_guard_code(_safe_extended_env())
-        assert result["CSRF_COOKIE_SECURE"] is True, (
-            "CSRF_COOKIE_SECURE must be True in production"
-        )
+        assert result["CSRF_COOKIE_SECURE"] is True, "CSRF_COOKIE_SECURE must be True in production"
 
     def test_session_cookie_secure_false_in_development(self):
         env = _safe_extended_env()
@@ -586,9 +580,7 @@ class TestProductionHstsSettings:
 
     def test_hsts_seconds_nonzero_in_production(self):
         result = _run_extended_guard_code(_safe_extended_env())
-        assert result["SECURE_HSTS_SECONDS"] > 0, (
-            "SECURE_HSTS_SECONDS must be > 0 in production"
-        )
+        assert result["SECURE_HSTS_SECONDS"] > 0, "SECURE_HSTS_SECONDS must be > 0 in production"
 
     def test_hsts_include_subdomains_in_production(self):
         result = _run_extended_guard_code(_safe_extended_env())
@@ -609,6 +601,7 @@ class TestProductionHstsSettings:
 # Structural checks against the actual MIDDLEWARE list and settings module
 # ---------------------------------------------------------------------------
 
+
 class TestMiddlewareOrdering:
     """SecurityMiddleware[0], CorsMiddleware[1], CSPMiddleware[2]."""
 
@@ -618,6 +611,7 @@ class TestMiddlewareOrdering:
         # so this is safe and avoids re-importing the full settings module
         # (which would re-run the PostgreSQL connectivity check).
         import sys
+
         mod_name = "hub.settings"
         if mod_name in sys.modules:
             return sys.modules[mod_name].MIDDLEWARE
@@ -626,9 +620,11 @@ class TestMiddlewareOrdering:
         # This branch is only reached when running the test in true isolation
         # (e.g. pytest -p no:django) without a prior django.setup().
         import os
+
         settings_file = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "hub", "settings.py",
+            "hub",
+            "settings.py",
         )
         middleware: list[str] = []
         in_middleware = False
@@ -643,7 +639,9 @@ class TestMiddlewareOrdering:
                         break
                     # Extract quoted middleware path strings
                     if stripped.startswith('"') or stripped.startswith("'"):
-                        entry = stripped.split('"')[1] if '"' in stripped else stripped.split("'")[1]
+                        entry = (
+                            stripped.split('"')[1] if '"' in stripped else stripped.split("'")[1]
+                        )
                         middleware.append(entry)
         return middleware
 
@@ -661,9 +659,7 @@ class TestMiddlewareOrdering:
 
     def test_csp_middleware_present_in_stack(self):
         mw = self._get_middleware()
-        assert "csp.middleware.CSPMiddleware" in mw, (
-            "CSPMiddleware must be present in MIDDLEWARE"
-        )
+        assert "csp.middleware.CSPMiddleware" in mw, "CSPMiddleware must be present in MIDDLEWARE"
 
     def test_csp_middleware_is_third(self):
         mw = self._get_middleware()
@@ -684,6 +680,7 @@ class TestStaticUrlNotOverridden:
     @staticmethod
     def _settings_source() -> str:
         import os
+
         settings_file = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
             "hub",
@@ -695,16 +692,19 @@ class TestStaticUrlNotOverridden:
     def test_static_url_not_overridden_when_s3_enabled(self):
         """STATIC_URL = '/static/' must only appear inside the else (non-S3) branch."""
         import re
+
         source = self._settings_source()
 
         # Find every occurrence of the bare assignment.
         # We look for lines that assign "/static/" unconditionally — i.e. NOT
         # preceded by an indented ``else`` block from the ``if USE_S3:`` branch.
-        matches = list(re.finditer(
-            r'^\s*STATIC_URL\s*=\s*["\']\/static\/["\']',
-            source,
-            re.MULTILINE,
-        ))
+        matches = list(
+            re.finditer(
+                r'^\s*STATIC_URL\s*=\s*["\']\/static\/["\']',
+                source,
+                re.MULTILINE,
+            )
+        )
         assert len(matches) == 1, (
             f"Expected exactly 1 occurrence of STATIC_URL = '/static/' "
             f"(inside the non-S3 else branch), found {len(matches)}.  "
@@ -716,7 +716,7 @@ class TestStaticUrlNotOverridden:
         # that the line is indented (i.e. inside a conditional block).
         match = matches[0]
         line_start = source.rfind("\n", 0, match.start()) + 1
-        line_text = source[line_start: match.end()]
+        line_text = source[line_start : match.end()]
         assert line_text.startswith("    "), (
             "STATIC_URL = '/static/' must be inside an indented (else) block, "
             f"but found it at the top level: {line_text!r}"
@@ -732,6 +732,7 @@ class TestStaticUrlNotOverridden:
 # Phase 221.2.1 — Django admin path restriction
 # ---------------------------------------------------------------------------
 
+
 class TestAdminUrlGate:
     """Phase 221.2.1: /admin/ must be absent from URL patterns in production.
 
@@ -743,15 +744,14 @@ class TestAdminUrlGate:
     @staticmethod
     def _admin_patterns(patterns):
         """Return URL patterns whose route matches 'admin/'."""
-        return [
-            p for p in patterns
-            if hasattr(p, 'pattern') and 'admin' in str(p.pattern)
-        ]
+        return [p for p in patterns if hasattr(p, "pattern") and "admin" in str(p.pattern)]
 
     def test_admin_absent_in_production(self):
         from django.test import override_settings
-        with override_settings(ENVIRONMENT='production'):
+
+        with override_settings(ENVIRONMENT="production"):
             from hub.urls import _build_urlpatterns
+
             patterns = _build_urlpatterns()
             hits = self._admin_patterns(patterns)
             assert len(hits) == 0, (
@@ -761,53 +761,57 @@ class TestAdminUrlGate:
 
     def test_admin_present_in_development(self):
         from django.test import override_settings
-        with override_settings(ENVIRONMENT='development'):
+
+        with override_settings(ENVIRONMENT="development"):
             from hub.urls import _build_urlpatterns
+
             patterns = _build_urlpatterns()
             hits = self._admin_patterns(patterns)
-            assert len(hits) == 1, (
-                "Admin URL must be registered in development"
-            )
+            assert len(hits) == 1, "Admin URL must be registered in development"
 
     def test_admin_absent_in_staging(self):
         """Track A PR 1: staging is publicly reachable, so admin must
         disappear there too. Access via `kubectl port-forward` if needed.
         """
         from django.test import override_settings
-        with override_settings(ENVIRONMENT='staging'):
+
+        with override_settings(ENVIRONMENT="staging"):
             from hub.urls import _build_urlpatterns
+
             patterns = _build_urlpatterns()
             hits = self._admin_patterns(patterns)
             assert len(hits) == 0, (
-                "Admin URL must NOT be registered in staging "
-                "(same treatment as production)"
+                "Admin URL must NOT be registered in staging (same treatment as production)"
             )
 
     def test_admin_present_in_test(self):
         """Test environment must have admin available for admin-related tests."""
         from django.test import override_settings
-        with override_settings(ENVIRONMENT='test'):
+
+        with override_settings(ENVIRONMENT="test"):
             from hub.urls import _build_urlpatterns
+
             patterns = _build_urlpatterns()
             hits = self._admin_patterns(patterns)
-            assert len(hits) == 1, (
-                "Admin URL must be registered in test environment"
-            )
+            assert len(hits) == 1, "Admin URL must be registered in test environment"
 
     def test_admin_url_resolves_to_django_admin(self):
         """When admin is registered, verify it wires up to django.contrib.admin."""
         from django.test import override_settings
-        with override_settings(ENVIRONMENT='development'):
+
+        with override_settings(ENVIRONMENT="development"):
             from hub.urls import _build_urlpatterns
+
             patterns = _build_urlpatterns()
             hits = self._admin_patterns(patterns)
             assert len(hits) == 1
-            assert str(hits[0].pattern) == 'admin/'
+            assert str(hits[0].pattern) == "admin/"
 
 
 # ---------------------------------------------------------------------------
 # Phase 221.5 — Cookie security: __Secure- prefix & SameSite=Strict
 # ---------------------------------------------------------------------------
+
 
 class TestRefreshCookieSecurePrefix:
     """Phase 221.5.1: REFRESH_COOKIE_NAME must use __Secure- prefix
@@ -823,36 +827,23 @@ class TestRefreshCookieSecurePrefix:
 
     def test_production_uses_secure_prefix(self):
         from django.test import override_settings
-        with override_settings(ENVIRONMENT='production'):
+
+        with override_settings(ENVIRONMENT="production"):
             # Re-evaluate the default the way settings.py does
             env = "production"
             default = (
-                "__Secure-refresh_token"
-                if env in ("production", "staging")
-                else "refresh_token"
+                "__Secure-refresh_token" if env in ("production", "staging") else "refresh_token"
             )
-            assert default.startswith("__Secure-"), (
-                "Production default must use __Secure- prefix"
-            )
+            assert default.startswith("__Secure-"), "Production default must use __Secure- prefix"
 
     def test_staging_uses_secure_prefix(self):
         env = "staging"
-        default = (
-            "__Secure-refresh_token"
-            if env in ("production", "staging")
-            else "refresh_token"
-        )
-        assert default.startswith("__Secure-"), (
-            "Staging default must use __Secure- prefix"
-        )
+        default = "__Secure-refresh_token" if env in ("production", "staging") else "refresh_token"
+        assert default.startswith("__Secure-"), "Staging default must use __Secure- prefix"
 
     def test_development_uses_plain_name(self):
         env = "development"
-        default = (
-            "__Secure-refresh_token"
-            if env in ("production", "staging")
-            else "refresh_token"
-        )
+        default = "__Secure-refresh_token" if env in ("production", "staging") else "refresh_token"
         assert not default.startswith("__Secure-"), (
             "Development default must NOT use __Secure- prefix "
             "(browsers drop __Secure- cookies without Secure attribute)"
@@ -863,18 +854,17 @@ class TestRefreshCookieSecurePrefix:
         """The live settings.REFRESH_COOKIE_NAME must match the
         environment-appropriate default (test env = development)."""
         from django.conf import settings
+
         cookie_name = getattr(settings, "REFRESH_COOKIE_NAME", "")
         env = getattr(settings, "ENVIRONMENT", "development")
         if env in ("production", "staging"):
             assert cookie_name.startswith("__Secure-"), (
-                f"REFRESH_COOKIE_NAME must start with __Secure- "
-                f"in {env}, got: {cookie_name}"
+                f"REFRESH_COOKIE_NAME must start with __Secure- in {env}, got: {cookie_name}"
             )
         else:
             # Development/test — plain name
             assert cookie_name == "refresh_token", (
-                f"REFRESH_COOKIE_NAME must be 'refresh_token' "
-                f"in {env}, got: {cookie_name}"
+                f"REFRESH_COOKIE_NAME must be 'refresh_token' in {env}, got: {cookie_name}"
             )
 
 
@@ -889,25 +879,25 @@ class TestSessionCookieSameSiteStrict:
     def test_session_cookie_samesite_is_strict(self):
         """Default must be Strict (not Lax)."""
         from django.conf import settings
+
         value = getattr(settings, "SESSION_COOKIE_SAMESITE", "Lax")
         assert value == "Strict", (
-            f"SESSION_COOKIE_SAMESITE must default to 'Strict', "
-            f"got: {value!r}"
+            f"SESSION_COOKIE_SAMESITE must default to 'Strict', got: {value!r}"
         )
 
     def test_csrf_cookie_samesite_stays_lax(self):
         """CSRF cookie must remain Lax — Strict would cause CSRF validation
         failures on the first navigation from an external site."""
         from django.conf import settings
+
         value = getattr(settings, "CSRF_COOKIE_SAMESITE", "Lax")
-        assert value == "Lax", (
-            f"CSRF_COOKIE_SAMESITE must remain 'Lax', got: {value!r}"
-        )
+        assert value == "Lax", f"CSRF_COOKIE_SAMESITE must remain 'Lax', got: {value!r}"
 
 
 # ---------------------------------------------------------------------------
 # Phase 221.6 — Bandit configuration: no blanket skips for security rules
 # ---------------------------------------------------------------------------
+
 
 class TestBanditConfigNoB601Skip:
     """Phase 221.6: B601 (paramiko_calls) must NOT be globally skipped.
@@ -921,33 +911,29 @@ class TestBanditConfigNoB601Skip:
     @staticmethod
     def _repo_root():
         import os
-        return os.path.dirname(
-            os.path.dirname(os.path.dirname(__file__))
-        )
 
+        return os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+
+@pytest.mark.skipif(not os.path.exists(path), reason=".bandit.yaml not found")
     def test_bandit_yaml_does_not_skip_b601(self):
         """`.bandit.yaml` must not list B601 in skips."""
         import os
+
         import yaml
 
         path = os.path.join(self._repo_root(), ".bandit.yaml")
-        if not os.path.exists(path):
-            pytest.skip(".bandit.yaml not found")
         with open(path) as f:
             cfg = yaml.safe_load(f)
         skips = cfg.get("skips", [])
-        assert "B601" not in skips, (
-            f"B601 must not be in .bandit.yaml skips: {skips}"
-        )
+        assert "B601" not in skips, f"B601 must not be in .bandit.yaml skips: {skips}"
 
+@pytest.mark.skipif(not os.path.exists(path), reason=".bandit not found")
     def test_bandit_ini_does_not_skip_b601(self):
         """`.bandit` INI config must not list B601 in skips."""
         import configparser
         import os
 
         path = os.path.join(self._repo_root(), ".bandit")
-        if not os.path.exists(path):
-            pytest.skip(".bandit not found")
         cp = configparser.ConfigParser()
         read_files = cp.read(path)
         assert read_files, (
@@ -955,16 +941,14 @@ class TestBanditConfigNoB601Skip:
             f"ConfigParser.read() returned empty list"
         )
         raw = cp.get("bandit", "skips", fallback="")
-        skips = [s.strip().strip('"').strip("'")
-                 for s in raw.strip("[]").split(",") if s.strip()]
-        assert "B601" not in skips, (
-            f"B601 must not be in .bandit skips: {skips}"
-        )
+        skips = [s.strip().strip('"').strip("'") for s in raw.strip("[]").split(",") if s.strip()]
+        assert "B601" not in skips, f"B601 must not be in .bandit skips: {skips}"
 
 
 # ---------------------------------------------------------------------------
 # Phase 221.4.1 — OpenAPI / Swagger / ReDoc restriction
 # ---------------------------------------------------------------------------
+
 
 class TestApiDocsUrlGate:
     """Phase 221.4.1: /api-docs/ must be absent from URL patterns in production.
@@ -978,20 +962,21 @@ class TestApiDocsUrlGate:
     capability discovery.
     """
 
-    _API_DOCS_ROUTES = {'api-docs/openapi.json', 'api-docs/', 'api-docs/redoc/'}
+    _API_DOCS_ROUTES = {"api-docs/openapi.json", "api-docs/", "api-docs/redoc/"}
 
     @staticmethod
     def _api_docs_patterns(patterns):
         """Return URL patterns whose route starts with 'api-docs'."""
         return [
-            p for p in patterns
-            if hasattr(p, 'pattern') and str(p.pattern).startswith('api-docs')
+            p for p in patterns if hasattr(p, "pattern") and str(p.pattern).startswith("api-docs")
         ]
 
     def test_api_docs_absent_in_production(self):
         from django.test import override_settings
-        with override_settings(ENVIRONMENT='production'):
+
+        with override_settings(ENVIRONMENT="production"):
             from hub.urls import _build_urlpatterns
+
             patterns = _build_urlpatterns()
             hits = self._api_docs_patterns(patterns)
             assert len(hits) == 0, (
@@ -1001,8 +986,10 @@ class TestApiDocsUrlGate:
 
     def test_api_docs_present_in_development(self):
         from django.test import override_settings
-        with override_settings(ENVIRONMENT='development'):
+
+        with override_settings(ENVIRONMENT="development"):
             from hub.urls import _build_urlpatterns
+
             patterns = _build_urlpatterns()
             hits = self._api_docs_patterns(patterns)
             routes = {str(p.pattern) for p in hits}
@@ -1016,8 +1003,10 @@ class TestApiDocsUrlGate:
         so gate them out the same way as production.
         """
         from django.test import override_settings
-        with override_settings(ENVIRONMENT='staging'):
+
+        with override_settings(ENVIRONMENT="staging"):
             from hub.urls import _build_urlpatterns
+
             patterns = _build_urlpatterns()
             hits = self._api_docs_patterns(patterns)
             assert len(hits) == 0, (
@@ -1029,14 +1018,13 @@ class TestApiDocsUrlGate:
         """The /api/v1/openapi.json endpoint must remain available
         regardless of environment — the frontend needs it pre-auth."""
         from django.test import override_settings
-        with override_settings(ENVIRONMENT='production'):
+
+        with override_settings(ENVIRONMENT="production"):
             from hub.urls import _build_urlpatterns
+
             patterns = _build_urlpatterns()
             # /api/v1/ is an include, so just verify it's still registered
-            api_v1 = [
-                p for p in patterns
-                if hasattr(p, 'pattern') and str(p.pattern) == 'api/v1/'
-            ]
+            api_v1 = [p for p in patterns if hasattr(p, "pattern") and str(p.pattern) == "api/v1/"]
             assert len(api_v1) == 1, (
                 "/api/v1/ must remain registered in production "
                 "(contains /api/v1/openapi.json for frontend capability discovery)"
@@ -1048,6 +1036,7 @@ class TestThreadPatchNotInSettingsModule:
 
     def test_thread_patch_not_in_settings_module(self):
         import os
+
         settings_file = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
             "hub",

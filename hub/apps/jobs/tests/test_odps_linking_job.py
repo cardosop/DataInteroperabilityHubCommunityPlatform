@@ -7,29 +7,25 @@ error handling, progress tracking, and event publishing.
 These tests use REAL implementations (no mocks/stubs) to validate the
 complete job execution path.
 """
-import pytest
+
 import json
-from django.test import TestCase
-from django.utils import timezone
-from django.db import transaction
 import uuid
 
-from hub.apps.jobs.models import Job, JobType, JobStatus
-from hub.apps.jobs.tasks import (
-    _execute_odps_linking_job,
-    process_job
-)
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
+import pytest
+from django.test import TestCase
+
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    OriginalSpecType,
+    NormalizationStatus,
     OriginalFormat,
-    NormalizationStatus
+    OriginalSpecType,
 )
 from hub.apps.contracts.normalization import normalize_contract
-
+from hub.apps.jobs.models import Job, JobStatus, JobType
+from hub.apps.jobs.tasks import _execute_odps_linking_job, process_job
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -41,6 +37,7 @@ class ODPSLinkingJobTest(TestCase):
         """Set up test fixtures"""
         # Clear cache to ensure clean state
         from django.core.cache import cache
+
         cache.clear()
 
         # Create tenant
@@ -49,7 +46,7 @@ class ODPSLinkingJobTest(TestCase):
             name=f"Test Tenant {uid}",
             slug=f"test-tenant-{uid}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -57,7 +54,7 @@ class ODPSLinkingJobTest(TestCase):
             email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create ODCS contract data
@@ -66,11 +63,7 @@ class ODPSLinkingJobTest(TestCase):
             "kind": "DataContract",
             "id": "test-odcs-contract",
             "name": "Test ODCS Contract",
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string", "required": True}
-                ]
-            }
+            "schema": {"fields": [{"name": "field1", "type": "string", "required": True}]},
         }
 
         # Create ODPS contract data
@@ -82,13 +75,11 @@ class ODPSLinkingJobTest(TestCase):
                     "en": {
                         "productID": "test-product",
                         "name": "Test Product",
-                        "description": "Test product description"
+                        "description": "Test product description",
                     }
                 },
-                "contract": {
-                    "spec": self.odcs_contract_data
-                }
-            }
+                "contract": {"spec": self.odcs_contract_data},
+            },
         }
 
         # Create and normalize ODCS contract
@@ -99,17 +90,18 @@ class ODPSLinkingJobTest(TestCase):
             original_format=OriginalFormat.JSON,
             original_raw=json.dumps(self.odcs_contract_data),
             status=ContractStatus.DRAFT,
-            normalization_status=NormalizationStatus.NOT_NORMALIZED
+            normalization_status=NormalizationStatus.NOT_NORMALIZED,
         )
 
         # Normalize ODCS contract
         hub_contract, _, _, norm_status, norm_errors, norm_warnings = normalize_contract(
-            raw_contract=json.dumps(self.odcs_contract_data),
-            format="json",
-            spec_type="ODCS"
+            raw_contract=json.dumps(self.odcs_contract_data), format="json", spec_type="ODCS"
         )
         # Ensure normalization succeeded
-        if norm_status not in [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]:
+        if norm_status not in [
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+        ]:
             raise AssertionError(
                 f"ODCS contract normalization failed: status={norm_status}, "
                 f"errors={norm_errors}, warnings={norm_warnings}"
@@ -126,17 +118,18 @@ class ODPSLinkingJobTest(TestCase):
             original_format=OriginalFormat.JSON,
             original_raw=json.dumps(self.odps_contract_data),
             status=ContractStatus.DRAFT,
-            normalization_status=NormalizationStatus.NOT_NORMALIZED
+            normalization_status=NormalizationStatus.NOT_NORMALIZED,
         )
 
         # Normalize ODPS contract
         hub_contract, _, _, norm_status, norm_errors, norm_warnings = normalize_contract(
-            raw_contract=json.dumps(self.odps_contract_data),
-            format="json",
-            spec_type="ODPS"
+            raw_contract=json.dumps(self.odps_contract_data), format="json", spec_type="ODPS"
         )
         # Ensure normalization succeeded
-        if norm_status not in [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]:
+        if norm_status not in [
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+        ]:
             raise AssertionError(
                 f"ODPS contract normalization failed: status={norm_status}, "
                 f"errors={norm_errors}, warnings={norm_warnings}"
@@ -154,14 +147,15 @@ class ODPSLinkingJobTest(TestCase):
             resource_id=self.odps_contract.id,
             created_by=self.user,
             details_json={
-                'odps_contract_id': str(self.odps_contract.id),
-                'odcs_contract_id': str(self.odcs_contract.id)
-            }
+                "odps_contract_id": str(self.odps_contract.id),
+                "odcs_contract_id": str(self.odcs_contract.id),
+            },
         )
 
     def tearDown(self):
         """Clean up after tests"""
         from django.core.cache import cache
+
         cache.clear()
 
     def test_execute_odps_linking_job_success(self):
@@ -170,12 +164,12 @@ class ODPSLinkingJobTest(TestCase):
         result = _execute_odps_linking_job(self.job)
 
         # Verify result
-        self.assertEqual(result['status'], 'completed')
-        self.assertEqual(result['odps_contract_id'], str(self.odps_contract.id))
-        self.assertEqual(result['odcs_contract_id'], str(self.odcs_contract.id))
-        self.assertEqual(result['link_type'], 'bidirectional')
-        self.assertIsInstance(result['duration_ms'], int)
-        self.assertGreater(result['duration_ms'], 0)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["odps_contract_id"], str(self.odps_contract.id))
+        self.assertEqual(result["odcs_contract_id"], str(self.odcs_contract.id))
+        self.assertEqual(result["link_type"], "bidirectional")
+        self.assertIsInstance(result["duration_ms"], int)
+        self.assertGreater(result["duration_ms"], 0)
 
         # Verify contracts were linked
         self.odps_contract.refresh_from_db()
@@ -199,8 +193,8 @@ class ODPSLinkingJobTest(TestCase):
 
         # Verify progress tracking
         self.job.refresh_from_db()
-        self.assertEqual(self.job.details_json['progress_percentage'], 100.0)
-        self.assertEqual(self.job.details_json['current_phase'], 'completed')
+        self.assertEqual(self.job.details_json["progress_percentage"], 100.0)
+        self.assertEqual(self.job.details_json["current_phase"], "completed")
 
     def test_execute_odps_linking_job_missing_odps_contract_id(self):
         """Test ODPS linking job fails when ODPS contract ID is missing"""
@@ -215,9 +209,9 @@ class ODPSLinkingJobTest(TestCase):
             resource_id=fake_contract_id,  # Use fake ID that won't match odcs_contract_id
             created_by=self.user,
             details_json={
-                'odcs_contract_id': str(self.odcs_contract.id)
+                "odcs_contract_id": str(self.odcs_contract.id)
                 # Missing odps_contract_id
-            }
+            },
         )
 
         # Execute job - should fail with ValueError because fake_contract_id doesn't exist
@@ -228,10 +222,10 @@ class ODPSLinkingJobTest(TestCase):
         # The error could be either "ODPS contract ID is required" or "ODPS contract not found"
         error_msg = str(context.exception)
         self.assertTrue(
-            "ODPS contract ID is required" in error_msg or
-            "not found" in error_msg or
-            "ODPS contract" in error_msg,
-            f"Unexpected error message: {error_msg}"
+            "ODPS contract ID is required" in error_msg
+            or "not found" in error_msg
+            or "ODPS contract" in error_msg,
+            f"Unexpected error message: {error_msg}",
         )
 
     def test_execute_odps_linking_job_missing_odcs_contract_id(self):
@@ -245,9 +239,9 @@ class ODPSLinkingJobTest(TestCase):
             resource_id=self.odps_contract.id,
             created_by=self.user,
             details_json={
-                'odps_contract_id': str(self.odps_contract.id)
+                "odps_contract_id": str(self.odps_contract.id)
                 # Missing odcs_contract_id
-            }
+            },
         )
 
         # Execute job - should fail with ValueError
@@ -268,9 +262,9 @@ class ODPSLinkingJobTest(TestCase):
             resource_id=self.odps_contract.id,
             created_by=self.user,
             details_json={
-                'odps_contract_id': fake_odps_id,
-                'odcs_contract_id': str(self.odcs_contract.id)
-            }
+                "odps_contract_id": fake_odps_id,
+                "odcs_contract_id": str(self.odcs_contract.id),
+            },
         )
 
         # Execute job - should fail with ValueError
@@ -292,9 +286,9 @@ class ODPSLinkingJobTest(TestCase):
             resource_id=self.odps_contract.id,
             created_by=self.user,
             details_json={
-                'odps_contract_id': str(self.odps_contract.id),
-                'odcs_contract_id': fake_odcs_id
-            }
+                "odps_contract_id": str(self.odps_contract.id),
+                "odcs_contract_id": fake_odcs_id,
+            },
         )
 
         # Execute job - should fail with ValueError
@@ -314,7 +308,7 @@ class ODPSLinkingJobTest(TestCase):
             original_format=OriginalFormat.JSON,
             original_raw=json.dumps(self.odps_contract_data),
             status=ContractStatus.DRAFT,
-            normalization_status=NormalizationStatus.NOT_NORMALIZED
+            normalization_status=NormalizationStatus.NOT_NORMALIZED,
             # Missing hub_contract_json
         )
 
@@ -327,9 +321,9 @@ class ODPSLinkingJobTest(TestCase):
             resource_id=unnormalized_odps.id,
             created_by=self.user,
             details_json={
-                'odps_contract_id': str(unnormalized_odps.id),
-                'odcs_contract_id': str(self.odcs_contract.id)
-            }
+                "odps_contract_id": str(unnormalized_odps.id),
+                "odcs_contract_id": str(self.odcs_contract.id),
+            },
         )
 
         # Execute job - should fail with ValueError (validation error)
@@ -349,9 +343,9 @@ class ODPSLinkingJobTest(TestCase):
             resource_id=self.odcs_contract.id,
             created_by=self.user,
             details_json={
-                'odps_contract_id': str(self.odcs_contract.id),  # Wrong: should be ODPS
-                'odcs_contract_id': str(self.odcs_contract.id)
-            }
+                "odps_contract_id": str(self.odcs_contract.id),  # Wrong: should be ODPS
+                "odcs_contract_id": str(self.odcs_contract.id),
+            },
         )
 
         # Execute job - should fail with ValueError (validation error)
@@ -363,32 +357,33 @@ class ODPSLinkingJobTest(TestCase):
     def test_execute_odps_linking_job_progress_tracking(self):
         """Test ODPS linking job tracks progress correctly"""
         # Execute job
-        result = _execute_odps_linking_job(self.job)
+        _execute_odps_linking_job(self.job)
 
         # Verify progress was tracked
         self.job.refresh_from_db()
         details = self.job.details_json
 
         # Check progress phases
-        self.assertIn('progress_percentage', details)
-        self.assertIn('current_phase', details)
-        self.assertIn('status_message', details)
+        self.assertIn("progress_percentage", details)
+        self.assertIn("current_phase", details)
+        self.assertIn("status_message", details)
 
         # Verify final progress
-        self.assertEqual(details['progress_percentage'], 100.0)
-        self.assertEqual(details['current_phase'], 'completed')
-        self.assertIn('completed', details['status_message'].lower())
+        self.assertEqual(details["progress_percentage"], 100.0)
+        self.assertEqual(details["current_phase"], "completed")
+        self.assertIn("completed", details["status_message"].lower())
 
     def test_execute_odps_linking_job_already_linked(self):
         """Test ODPS linking job handles already linked contracts"""
         # First, link contracts
         from hub.apps.contracts.services import ContractService
+
         service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         service.link_odps_to_odcs(
             odcs_contract_id=str(self.odcs_contract.id),
             odps_contract_id=str(self.odps_contract.id),
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Create new job to link again
@@ -400,17 +395,17 @@ class ODPSLinkingJobTest(TestCase):
             resource_id=self.odps_contract.id,
             created_by=self.user,
             details_json={
-                'odps_contract_id': str(self.odps_contract.id),
-                'odcs_contract_id': str(self.odcs_contract.id)
-            }
+                "odps_contract_id": str(self.odps_contract.id),
+                "odcs_contract_id": str(self.odcs_contract.id),
+            },
         )
 
         # Execute job - should succeed (idempotent operation)
         result = _execute_odps_linking_job(job)
 
         # Verify result
-        self.assertEqual(result['status'], 'completed')
-        self.assertEqual(result['link_type'], 'bidirectional')
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["link_type"], "bidirectional")
 
     def test_process_job_with_odps_linking(self):
         """Test process_job function with ODPS_LINKING job type"""
@@ -421,7 +416,7 @@ class ODPSLinkingJobTest(TestCase):
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, JobStatus.COMPLETED)
         self.assertIsNotNone(self.job.result_json)
-        self.assertEqual(self.job.result_json['status'], 'completed')
+        self.assertEqual(self.job.result_json["status"], "completed")
 
         # Verify contracts were linked
         self.odps_contract.refresh_from_db()
@@ -442,7 +437,7 @@ class ODPSLinkingJobTest(TestCase):
             name=f"Other Tenant {_uid}",
             slug=f"other-tenant-{_uid}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
 
         # Create ODCS contract in other tenant
@@ -453,17 +448,18 @@ class ODPSLinkingJobTest(TestCase):
             original_format=OriginalFormat.JSON,
             original_raw=json.dumps(self.odcs_contract_data),
             status=ContractStatus.DRAFT,
-            normalization_status=NormalizationStatus.NOT_NORMALIZED
+            normalization_status=NormalizationStatus.NOT_NORMALIZED,
         )
 
         # Normalize other ODCS contract
         hub_contract, _, _, norm_status, norm_errors, norm_warnings = normalize_contract(
-            raw_contract=json.dumps(self.odcs_contract_data),
-            format="json",
-            spec_type="ODCS"
+            raw_contract=json.dumps(self.odcs_contract_data), format="json", spec_type="ODCS"
         )
         # Ensure normalization succeeded
-        if norm_status not in [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]:
+        if norm_status not in [
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+        ]:
             raise AssertionError(
                 f"ODCS contract normalization failed: status={norm_status}, "
                 f"errors={norm_errors}, warnings={norm_warnings}"
@@ -481,9 +477,9 @@ class ODPSLinkingJobTest(TestCase):
             resource_id=self.odps_contract.id,
             created_by=self.user,
             details_json={
-                'odps_contract_id': str(self.odps_contract.id),
-                'odcs_contract_id': str(other_odcs.id)
-            }
+                "odps_contract_id": str(self.odps_contract.id),
+                "odcs_contract_id": str(other_odcs.id),
+            },
         )
 
         # Execute job - should fail with ValueError (validation error)
@@ -493,13 +489,13 @@ class ODPSLinkingJobTest(TestCase):
         self.assertIn("validation failed", str(context.exception).lower())
 
 
-
 class ODPSLinkingJobIntegrationTest(TestCase):
     """Integration tests for ODPS linking job execution"""
 
     def setUp(self):
         """Set up test fixtures"""
         from django.core.cache import cache
+
         cache.clear()
 
         # Create tenant
@@ -507,7 +503,7 @@ class ODPSLinkingJobIntegrationTest(TestCase):
             name="Integration Test Tenant",
             slug="integration-test-tenant",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -515,7 +511,7 @@ class ODPSLinkingJobIntegrationTest(TestCase):
             email=f"integration-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create ODCS contract data
@@ -527,9 +523,9 @@ class ODPSLinkingJobIntegrationTest(TestCase):
             "schema": {
                 "fields": [
                     {"name": "id", "type": "string", "required": True},
-                    {"name": "value", "type": "number", "required": False}
+                    {"name": "value", "type": "number", "required": False},
                 ]
-            }
+            },
         }
 
         # Create ODPS contract data
@@ -541,13 +537,11 @@ class ODPSLinkingJobIntegrationTest(TestCase):
                     "en": {
                         "productID": "integration-test-product",
                         "name": "Integration Test Product",
-                        "description": "Integration test product description"
+                        "description": "Integration test product description",
                     }
                 },
-                "contract": {
-                    "spec": self.odcs_contract_data
-                }
-            }
+                "contract": {"spec": self.odcs_contract_data},
+            },
         }
 
         # Create and normalize ODCS contract
@@ -558,17 +552,18 @@ class ODPSLinkingJobIntegrationTest(TestCase):
             original_format=OriginalFormat.JSON,
             original_raw=json.dumps(self.odcs_contract_data),
             status=ContractStatus.DRAFT,
-            normalization_status=NormalizationStatus.NOT_NORMALIZED
+            normalization_status=NormalizationStatus.NOT_NORMALIZED,
         )
 
         # Normalize ODCS contract
         hub_contract, _, _, norm_status, norm_errors, norm_warnings = normalize_contract(
-            raw_contract=json.dumps(self.odcs_contract_data),
-            format="json",
-            spec_type="ODCS"
+            raw_contract=json.dumps(self.odcs_contract_data), format="json", spec_type="ODCS"
         )
         # Ensure normalization succeeded
-        if norm_status not in [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]:
+        if norm_status not in [
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+        ]:
             raise AssertionError(
                 f"ODCS contract normalization failed: status={norm_status}, "
                 f"errors={norm_errors}, warnings={norm_warnings}"
@@ -585,17 +580,18 @@ class ODPSLinkingJobIntegrationTest(TestCase):
             original_format=OriginalFormat.JSON,
             original_raw=json.dumps(self.odps_contract_data),
             status=ContractStatus.DRAFT,
-            normalization_status=NormalizationStatus.NOT_NORMALIZED
+            normalization_status=NormalizationStatus.NOT_NORMALIZED,
         )
 
         # Normalize ODPS contract
         hub_contract, _, _, norm_status, norm_errors, norm_warnings = normalize_contract(
-            raw_contract=json.dumps(self.odps_contract_data),
-            format="json",
-            spec_type="ODPS"
+            raw_contract=json.dumps(self.odps_contract_data), format="json", spec_type="ODPS"
         )
         # Ensure normalization succeeded
-        if norm_status not in [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]:
+        if norm_status not in [
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+        ]:
             raise AssertionError(
                 f"ODPS contract normalization failed: status={norm_status}, "
                 f"errors={norm_errors}, warnings={norm_warnings}"
@@ -607,6 +603,7 @@ class ODPSLinkingJobIntegrationTest(TestCase):
     def tearDown(self):
         """Clean up after tests"""
         from django.core.cache import cache
+
         cache.clear()
 
     def test_odps_linking_job_full_execution(self):
@@ -621,9 +618,9 @@ class ODPSLinkingJobIntegrationTest(TestCase):
             created_by=self.user,
             timeout_seconds=300,
             details_json={
-                'odps_contract_id': str(self.odps_contract.id),
-                'odcs_contract_id': str(self.odcs_contract.id)
-            }
+                "odps_contract_id": str(self.odps_contract.id),
+                "odcs_contract_id": str(self.odcs_contract.id),
+            },
         )
 
         # Verify initial state
@@ -648,8 +645,8 @@ class ODPSLinkingJobIntegrationTest(TestCase):
         self.assertIsNotNone(job.started_at)
         self.assertIsNotNone(job.completed_at)
         self.assertIsNotNone(job.result_json)
-        self.assertEqual(job.result_json.get('status'), 'completed')
-        self.assertEqual(job.result_json.get('link_type'), 'bidirectional')
+        self.assertEqual(job.result_json.get("status"), "completed")
+        self.assertEqual(job.result_json.get("link_type"), "bidirectional")
 
         # Verify contracts were linked
         self.odps_contract.refresh_from_db()
@@ -672,12 +669,12 @@ class ODPSLinkingJobIntegrationTest(TestCase):
         self.assertEqual(str(odcs_to_odps_link), str(self.odps_contract.id))
 
         # Verify progress tracking
-        self.assertIn('progress_percentage', job.details_json)
-        self.assertEqual(job.details_json['progress_percentage'], 100.0)
-        self.assertEqual(job.details_json['current_phase'], 'completed')
+        self.assertIn("progress_percentage", job.details_json)
+        self.assertEqual(job.details_json["progress_percentage"], 100.0)
+        self.assertEqual(job.details_json["current_phase"], "completed")
 
-    def test_odps_linking_job_with_event_publishing(self):
-        """Test ODPS linking job publishes events correctly"""
+    def test_odps_linking_job_completes_successfully(self):
+        """Test ODPS linking job completes successfully (events are async)."""
         # Create job
         job = Job.objects.create(
             tenant=self.tenant,
@@ -688,9 +685,9 @@ class ODPSLinkingJobIntegrationTest(TestCase):
             created_by=self.user,
             timeout_seconds=300,
             details_json={
-                'odps_contract_id': str(self.odps_contract.id),
-                'odcs_contract_id': str(self.odcs_contract.id)
-            }
+                "odps_contract_id": str(self.odps_contract.id),
+                "odcs_contract_id": str(self.odcs_contract.id),
+            },
         )
 
         # Process job

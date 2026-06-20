@@ -13,7 +13,6 @@ All tests use real services (no mocks/stubs) and run against Docker Compose inst
 """
 
 import hashlib
-import json
 import time
 import uuid
 from datetime import timedelta
@@ -31,14 +30,11 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.audit.models import AuditEvent
 from hub.apps.auth.jwt_utils import JWTTokenGenerator
 from hub.apps.auth.models import APIKey, RefreshToken
-from hub.apps.core.events.models import Event
-from hub.apps.notifications.models import EmailDelivery, EmailType
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.users.models import UserStatus
-from tests.fixtures.test_data_factories import TenantFactory, UserFactory
+from tests.fixtures.test_data_factories import TenantFactory
 
 # Use regular django_db marker - TestCase handles transactions efficiently
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -197,7 +193,9 @@ class TestAuthRegisterAPI(TestCase):
     def test_register_inactive_tenant(self):
         """Test registration with inactive tenant fails"""
         inactive_tenant = TenantFactory.create_tenant(
-            name=f"Inactive Tenant {uuid.uuid4().hex[:8]}", slug=f"inactive-tenant-{uuid.uuid4().hex[:8]}", status=TenantStatus.SUSPENDED.value
+            name=f"Inactive Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"inactive-tenant-{uuid.uuid4().hex[:8]}",
+            status=TenantStatus.SUSPENDED.value,
         )
 
         response = self.client.post(
@@ -264,7 +262,7 @@ class TestAuthRegisterAPI(TestCase):
                 response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_201_CREATED]
             )
             # Verify no SQL injection occurred by checking user count
-            user_count = User.objects.count()
+            User.objects.count()
             # If user was created, verify it was created safely
             if response.status_code == status.HTTP_201_CREATED:
                 user = User.objects.get(email=attempt)
@@ -554,7 +552,7 @@ class TestAuthMeAPI(TestCase):
         # Clear user-specific cache keys
         if hasattr(self, "user") and hasattr(self.user, "id"):
             cache.delete(f"user:me:{self.user.id}")
-            cache.delete(f"user:me:{str(self.user.id)}")
+            cache.delete(f"user:me:{self.user.id!s}")
 
     # ========== SUCCESS SCENARIOS ==========
 
@@ -789,7 +787,7 @@ class TestAuthMeAPI(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
         times = []
-        for i in range(20):
+        for _i in range(20):
             start_time = time.time()
             response = self.client.get("/api/v1/auth/me/")
             elapsed = (time.time() - start_time) * 1000
@@ -830,7 +828,7 @@ class TestAuthMeAPI(TestCase):
         # Second request (should be cached)
         start_time = time.time()
         response2 = self.client.get("/api/v1/auth/me/")
-        elapsed = (time.time() - start_time) * 1000
+        (time.time() - start_time) * 1000
 
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
         # Cached response should be faster (though not guaranteed in test environment)
@@ -959,7 +957,7 @@ class TestAuthLoginAPI(TestCase):
         # Clear user-specific cache keys that might be cached
         if hasattr(self.user, "id"):
             cache.delete(f"user:me:{self.user.id}")
-            cache.delete(f"user:me:{str(self.user.id)}")
+            cache.delete(f"user:me:{self.user.id!s}")
 
     # ========== SUCCESS SCENARIOS ==========
 
@@ -1065,7 +1063,7 @@ class TestAuthLoginAPI(TestCase):
     def test_login_brute_force_protection(self):
         """Test brute force protection on login"""
         # Make multiple failed login attempts
-        for i in range(10):
+        for _i in range(10):
             response = self.client.post(
                 "/api/v1/auth/login/",
                 {"email": self.user.email, "password": "wrongpassword"},
@@ -1181,7 +1179,7 @@ class TestAuthLogoutAPI(TestCase):
         # Clear user-specific cache keys
         if hasattr(self, "user") and hasattr(self.user, "id"):
             cache.delete(f"user:me:{self.user.id}")
-            cache.delete(f"user:me:{str(self.user.id)}")
+            cache.delete(f"user:me:{self.user.id!s}")
 
     # ========== SUCCESS SCENARIOS ==========
 
@@ -1222,7 +1220,7 @@ class TestAuthLogoutAPI(TestCase):
         """Test logout cleans up all sessions"""
         # Login multiple times to create multiple refresh tokens
         refresh_tokens = []
-        for i in range(3):
+        for _i in range(3):
             login_response = self.client.post(
                 "/api/v1/auth/login/",
                 {"email": self.user.email, "password": "testpass123"},
@@ -1344,7 +1342,7 @@ class TestAuthRefreshAPI(TestCase):
         # Clear user-specific cache keys that might be cached
         if hasattr(self.user, "id"):
             cache.delete(f"user:me:{self.user.id}")
-            cache.delete(f"user:me:{str(self.user.id)}")
+            cache.delete(f"user:me:{self.user.id!s}")
 
     # ========== SUCCESS SCENARIOS ==========
 
@@ -1421,7 +1419,7 @@ class TestAuthRefreshAPI(TestCase):
         # Create expired refresh token
         expired_token_str = RefreshToken.generate_token()
         expired_token_hash = RefreshToken.hash_token(expired_token_str)
-        expired_token_obj = RefreshToken.objects.create(
+        RefreshToken.objects.create(
             user=self.user,
             token_hash=expired_token_hash,
             expires_at=timezone.now() - timedelta(hours=1),  # Expired

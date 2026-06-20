@@ -16,15 +16,15 @@ Usage
     python scripts/check_ga_gate_scores.py --json     # JSON output for CI
     python scripts/check_ga_gate_scores.py --strict   # require ≥95 per flag (future target)
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
-
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
@@ -32,6 +32,7 @@ sys.path.insert(0, str(_REPO_ROOT))
 
 def _load_registry():
     import importlib.util
+
     spec = importlib.util.spec_from_file_location(
         "feature_flag_registry",
         _REPO_ROOT / "hub" / "apps" / "tenants" / "feature_flag_registry.py",
@@ -109,18 +110,22 @@ def _check(registry, min_score: int = 70) -> tuple[list[dict], float, bool]:
     for name in sorted(ga_names):
         score = GA_SCORES.get(name)
         if score is None:
-            rows.append({
-                "name": name,
-                "score": None,
-                "classification": "UNSCORED",
-                "error": "missing from GA_SCORES — update check_ga_gate_scores.py",
-            })
+            rows.append(
+                {
+                    "name": name,
+                    "score": None,
+                    "classification": "UNSCORED",
+                    "error": "missing from GA_SCORES — update check_ga_gate_scores.py",
+                }
+            )
             continue
-        rows.append({
-            "name": name,
-            "score": score,
-            "classification": _classify(score, min_score),
-        })
+        rows.append(
+            {
+                "name": name,
+                "score": score,
+                "classification": _classify(score, min_score),
+            }
+        )
 
     scored = [r for r in rows if r["score"] is not None]
     mean = sum(r["score"] for r in scored) / len(scored) if scored else 0.0
@@ -134,7 +139,7 @@ def _check(registry, min_score: int = 70) -> tuple[list[dict], float, bool]:
 
 def _format_human(rows: list[dict], mean: float) -> str:
     lines: list[str] = []
-    lines.append(f"GA Gate Score Check — {datetime.now(tz=timezone.utc).isoformat()}")
+    lines.append(f"GA Gate Score Check — {datetime.now(tz=UTC).isoformat()}")
     lines.append(f"Mean score: {mean:.1f}")
     lines.append("")
     lines.append(f"{'FLAG':<50} {'SCORE':>6} {'STATUS':<10}")
@@ -164,18 +169,17 @@ def _format_human(rows: list[dict], mean: float) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="283.6.6 — GA gate score regression check."
-    )
+    parser = argparse.ArgumentParser(description="283.6.6 — GA gate score regression check.")
+    parser.add_argument("--json", action="store_true", help="Emit JSON instead of human-readable.")
     parser.add_argument(
-        "--json", action="store_true", help="Emit JSON instead of human-readable."
-    )
-    parser.add_argument(
-        "--strict", action="store_true",
+        "--strict",
+        action="store_true",
         help="Require ≥95 per flag (future target; default is ≥70).",
     )
     parser.add_argument(
-        "--min-score", type=int, default=70,
+        "--min-score",
+        type=int,
+        default=70,
         help="Minimum acceptable score (default: 70).",
     )
     args = parser.parse_args()
@@ -186,7 +190,7 @@ def main() -> int:
 
     if args.json:
         output = {
-            "checked_at": datetime.now(tz=timezone.utc).isoformat(),
+            "checked_at": datetime.now(tz=UTC).isoformat(),
             "mean_score": round(mean, 1),
             "min_threshold": min_score,
             "all_pass": all_pass,

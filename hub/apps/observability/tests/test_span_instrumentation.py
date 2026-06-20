@@ -13,7 +13,6 @@ Comprehensive tests without mocks/stubs, following engineering best practices an
 import time
 
 from django.contrib.auth import get_user_model
-from django.db import connection
 from django.http import HttpRequest, HttpResponse
 from django.test import TestCase, override_settings
 
@@ -104,7 +103,7 @@ class SpanInstrumentationTest(TestCase):
         try:
             add_span_attributes(attributes)
             # If successful, attributes were added (if span exists)
-            pass  # No exception raised — operation succeeded
+            # No exception raised — operation succeeded
         except Exception as e:
             # Should not raise exception - function handles None gracefully
             if not OPENTELEMETRY_AVAILABLE:
@@ -125,7 +124,7 @@ class SpanInstrumentationTest(TestCase):
                 # Should execute without exception
                 pass
             # If successful, span was created (if OpenTelemetry available)
-            pass  # No exception raised — operation succeeded
+            # No exception raised — operation succeeded
         except Exception as e:
             # Should handle gracefully if OpenTelemetry not available
             if not OPENTELEMETRY_AVAILABLE:
@@ -191,7 +190,6 @@ class SpanMiddlewareTest(TestCase):
             request._span_start_time = time.time() - 0.1
             # Span may be set by process_request if OpenTelemetry available
             # For this test, we'll test the response handling
-            pass
 
         response = HttpResponse(status=200)
 
@@ -204,7 +202,6 @@ class SpanMiddlewareTest(TestCase):
     @override_settings(OPENTELEMETRY_ENABLED=True)
     def test_process_exception(self):
         """Test process_exception records exception with real implementation."""
-        from hub.apps.observability.middleware.span_middleware import OPENTELEMETRY_AVAILABLE
 
         request = HttpRequest()
         request.method = "GET"

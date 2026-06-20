@@ -41,7 +41,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 SKIP_EVENTS_DIR_NAME = "test-results"
 SKIP_EVENTS_FILE_NAME = "skip-events.jsonl"
@@ -125,7 +125,7 @@ def record_skip(*, nodeid: str, reason: str, file: str | None = None) -> None:
         "test": nodeid,
         "reason": reason,
         "file": file,
-        "when": datetime.now(timezone.utc).isoformat(),
+        "when": datetime.now(UTC).isoformat(),
     }
     with path.open("a", encoding="utf-8") as fp:
         fp.write(json.dumps(entry) + "\n")

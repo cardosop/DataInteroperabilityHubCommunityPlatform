@@ -2,9 +2,9 @@
 """
 Run business rules tests individually to identify specific failures.
 """
-import sys
-import subprocess
+
 import os
+import subprocess
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -53,9 +53,9 @@ for test_file in test_files:
     # test_file is already relative to PROJECT_ROOT
     django_path = test_file.replace("/", ".").replace(".py", "")
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Testing: {django_path}")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
 
     cmd = [
         str(VENV_PYTHON),
@@ -69,6 +69,7 @@ for test_file in test_files:
     try:
         result = subprocess.run(
             cmd,
+            check=False,
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             text=True,
@@ -88,20 +89,19 @@ for test_file in test_files:
         print(f"⏱️  TIMEOUT: {django_path}")
         results["timeout"].append(test_file)
 
-print(f"\n{'='*80}")
+print(f"\n{'=' * 80}")
 print("SUMMARY")
-print(f"{'='*80}")
+print(f"{'=' * 80}")
 print(f"Passed: {len(results['passed'])}/{len(test_files)}")
 print(f"Failed: {len(results['failed'])}/{len(test_files)}")
 print(f"Timeout: {len(results['timeout'])}/{len(test_files)}")
 
 if results["failed"]:
-    print(f"\nFailed tests:")
+    print("\nFailed tests:")
     for f in results["failed"]:
         print(f"  - {f}")
 
 if results["timeout"]:
-    print(f"\nTimeout tests:")
+    print("\nTimeout tests:")
     for f in results["timeout"]:
         print(f"  - {f}")
-

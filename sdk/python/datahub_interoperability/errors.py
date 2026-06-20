@@ -4,7 +4,6 @@ SDK Error Classes
 Typed exceptions for API errors matching the standard error envelope.
 """
 
-from datetime import datetime
 from typing import Any, Dict, Optional
 
 
@@ -679,9 +678,8 @@ def _error_for_status(
         # DRF emits: "Request was throttled. Expected available in N seconds."
         if retry_after is None:
             import re as _re
-            _match = _re.search(
-                r"Expected available in (\d+)\s*seconds?", message or ""
-            )
+
+            _match = _re.search(r"Expected available in (\d+)\s*seconds?", message or "")
             if _match:
                 retry_after = int(_match.group(1))
         if retry_after is not None:
@@ -722,12 +720,14 @@ def parse_error(
     # ── Normalise raw types ──────────────────────────────────────────
     if isinstance(response_data, str):
         return ServerError(
-            f"Unexpected error: {response_data}", "UNEXPECTED_ERROR",
+            f"Unexpected error: {response_data}",
+            "UNEXPECTED_ERROR",
             http_status or 500,
         )
     if not isinstance(response_data, dict):
         return ServerError(
-            f"Unexpected error: {response_data}", "UNEXPECTED_ERROR",
+            f"Unexpected error: {response_data}",
+            "UNEXPECTED_ERROR",
             http_status or 500,
         )
 
@@ -739,9 +739,7 @@ def parse_error(
         # If the caller passed the real HTTP status, use it; otherwise
         # try the body, falling back to 500.
         effective_status = (
-            http_status
-            if http_status is not None
-            else response_data.get("http_status", 500)
+            http_status if http_status is not None else response_data.get("http_status", 500)
         )
         error_code = response_data.get("error_code", None)
         extracted = _extract_error_detail(detail)
@@ -749,8 +747,7 @@ def parse_error(
             "error": {
                 "message": extracted.get("message", str(detail)),
                 "code": (
-                    str(error_code) if error_code is not None
-                    else extracted.get("code", "ERROR")
+                    str(error_code) if error_code is not None else extracted.get("code", "ERROR")
                 ),
                 "http_status": effective_status,
             }
@@ -777,29 +774,33 @@ def parse_error(
         # Route through the same status → error-class mapping used for
         # dict errors, so a 403 string error becomes ForbiddenError
         # rather than a misleading ServerError.
-        return _error_for_status(effective_status, error, "UNKNOWN_ERROR", None, None, response_data, None)
+        return _error_for_status(
+            effective_status, error, "UNKNOWN_ERROR", None, None, response_data, None
+        )
 
     if not isinstance(error, dict):
         return ServerError(
-            f"Unexpected error format: {error}", "UNKNOWN_ERROR",
+            f"Unexpected error format: {error}",
+            "UNKNOWN_ERROR",
             http_status or 500,
         )
 
     # When caller provides the real HTTP status, it wins over the body.
     code = error.get("code", "UNKNOWN_ERROR")
-    resolved_http_status = (
-        http_status
-        if http_status is not None
-        else error.get("http_status", 500)
-    )
+    resolved_http_status = http_status if http_status is not None else error.get("http_status", 500)
     message = error.get("message", "An error occurred")
     request_id = error.get("request_id")
     timestamp = error.get("timestamp")
     details = error.get("details")
 
     return _error_for_status(
-        resolved_http_status, message, code, request_id, timestamp,
-        response_data, details,
+        resolved_http_status,
+        message,
+        code,
+        request_id,
+        timestamp,
+        response_data,
+        details,
     )
 
 
@@ -1500,58 +1501,72 @@ class BillingError(DataHubError):
     def __init__(self, msg, code="BILLING_ERROR", status=400, rid=None, details=None):
         super().__init__(msg, code, status, rid, details=details)
 
+
 class BillingValidationError(BillingError):
     def __init__(self, msg, rid=None, details=None):
         super().__init__(msg, "BILLING_VALIDATION_ERROR", 400, rid, details)
+
 
 class DowngradeLimitExceededError(BillingError):
     def __init__(self, msg, rid=None, details=None):
         super().__init__(msg, "DOWNGRADE_LIMIT_EXCEEDED", 400, rid, details)
 
+
 class TransformationError(DataHubError):
     def __init__(self, msg, code="TRANSFORMATION_ERROR", status=400, rid=None, details=None):
         super().__init__(msg, code, status, rid, details=details)
+
 
 class TransformationValidationError(TransformationError):
     def __init__(self, msg, rid=None, details=None):
         super().__init__(msg, "TRANSFORMATION_VALIDATION_ERROR", 400, rid, details)
 
+
 class ComplianceError(DataHubError):
     def __init__(self, msg, code="COMPLIANCE_ERROR", status=400, rid=None, details=None):
         super().__init__(msg, code, status, rid, details=details)
+
 
 class ComplianceValidationError(ComplianceError):
     def __init__(self, msg, rid=None, details=None):
         super().__init__(msg, "COMPLIANCE_VALIDATION_ERROR", 400, rid, details)
 
+
 class SemanticError(DataHubError):
     def __init__(self, msg, code="SEMANTIC_ERROR", status=400, rid=None, details=None):
         super().__init__(msg, code, status, rid, details=details)
+
 
 class SPARQLError(SemanticError):
     def __init__(self, msg, rid=None, details=None):
         super().__init__(msg, "SPARQL_ERROR", 400, rid, details)
 
+
 class SHACLValidationError(SemanticError):
     def __init__(self, msg, rid=None, details=None):
         super().__init__(msg, "SHACL_VALIDATION_ERROR", 400, rid, details)
+
 
 class WorkflowError(DataHubError):
     def __init__(self, msg, code="WORKFLOW_ERROR", status=400, rid=None, details=None):
         super().__init__(msg, code, status, rid, details=details)
 
+
 class DLQError(DataHubError):
     def __init__(self, msg, code="DLQ_ERROR", status=500, rid=None, details=None):
         super().__init__(msg, code, status, rid, details=details)
+
 
 class EntitlementRequiredError(ForbiddenError):
     def __init__(self, msg="Entitlement required", rid=None):
         super().__init__(msg, rid)
         self.code = "ENTITLEMENT_REQUIRED"
 
+
 class CircuitBreakerOpenError(ServerError):
     def __init__(self, msg="Circuit breaker open", rid=None):
         super().__init__(msg, "CIRCUIT_BREAKER_OPEN", 503, rid)
+
 
 class ModelDeploymentError(DataHubError):
     def __init__(self, msg, code="MODEL_DEPLOYMENT_ERROR", status=400, rid=None, details=None):

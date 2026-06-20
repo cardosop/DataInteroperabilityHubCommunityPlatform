@@ -12,19 +12,19 @@ Usage:
     python scripts/lint_factory_coverage.py --blocking
     python scripts/lint_factory_coverage.py --json
 """
+
 from __future__ import annotations
 
 import argparse
 import ast
 import json
 import re
-import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 FACTORIES_FILE = "tests/factories.py"
 APPS_DIR = "hub/apps"
-BLOCKING_DATE = datetime(2026, 6, 21, tzinfo=timezone.utc)
+BLOCKING_DATE = datetime(2026, 6, 21, tzinfo=UTC)
 
 
 def _is_django_model(node: ast.ClassDef) -> bool:
@@ -95,7 +95,7 @@ def _find_factory_classes(factories_file: Path) -> set[str]:
         factory_name = match.group(1)
         # Find the model line in the class body
         start = match.end()
-        body = content[start:start + 500]
+        body = content[start : start + 500]
         model_match = re.search(r"model\s*=\s*(\w+)", body)
         if model_match:
             factories.add(model_match.group(1))
@@ -118,34 +118,42 @@ def run_lint(
     factory_models = _find_factory_classes(factories_file)
 
     uncovered = {
-        name: app for name, app in tenant_models.items()
+        name: app
+        for name, app in tenant_models.items()
         if name not in factory_models
         and name not in ("User", "Tenant")  # User handled by get_user_model()
     }
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     is_blocking = blocking or now >= BLOCKING_DATE
 
     if json_output:
-        print(json.dumps({
-            "status": "fail" if (uncovered and is_blocking) else ("warn" if uncovered else "ok"),
-            "total_models": len(tenant_models),
-            "with_factories": len(factory_models),
-            "uncovered": len(uncovered),
-            "blocking": is_blocking,
-            "uncovered_models": [
-                {"model": name, "app": app} for name, app in sorted(uncovered.items())
-            ],
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "status": "fail"
+                    if (uncovered and is_blocking)
+                    else ("warn" if uncovered else "ok"),
+                    "total_models": len(tenant_models),
+                    "with_factories": len(factory_models),
+                    "uncovered": len(uncovered),
+                    "blocking": is_blocking,
+                    "uncovered_models": [
+                        {"model": name, "app": app} for name, app in sorted(uncovered.items())
+                    ],
+                },
+                indent=2,
+            )
+        )
     else:
-        print(f"Factory Coverage Check")
+        print("Factory Coverage Check")
         print(f"  Tenant-scoped models: {len(tenant_models)}")
         print(f"  With factory classes: {len(factory_models)}")
         print(f"  Uncovered: {len(uncovered)}")
         mode = "BLOCKING" if is_blocking else "INFORMATIONAL"
         print(f"  Mode: {mode} (until {BLOCKING_DATE.strftime('%Y-%m-%d')})")
         if uncovered:
-            print(f"\n  Models without factories:")
+            print("\n  Models without factories:")
             for name, app in sorted(uncovered.items()):
                 print(f"    - {name} ({app})")
 

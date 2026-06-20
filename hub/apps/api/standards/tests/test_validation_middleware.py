@@ -1,10 +1,11 @@
 """
 Comprehensive tests for API validation middleware.
 """
+
 import json
 
-from django.http import HttpRequest, JsonResponse
-from django.test import TestCase, RequestFactory
+from django.http import JsonResponse
+from django.test import RequestFactory, TestCase
 from rest_framework import status
 
 from hub.apps.api.standards.error_codes import StandardErrorCodes
@@ -77,9 +78,7 @@ class TestAPIValidationMiddleware(TestCase):
 
     def test_process_request_post_with_empty_body(self):
         """Test middleware allows POST with empty body."""
-        request = self.factory.post(
-            "/api/v1/resources/", data="", content_type="application/json"
-        )
+        request = self.factory.post("/api/v1/resources/", data="", content_type="application/json")
 
         response = self.middleware.process_request(request)
 
@@ -213,9 +212,7 @@ class TestAPIValidationMiddleware(TestCase):
 
     def test_validate_query_params_valid_order_by(self):
         """Test that the 'order_by' query parameter alias is accepted."""
-        request = self.factory.get(
-            "/api/v1/resources/?order_by=-created_at,name"
-        )
+        request = self.factory.get("/api/v1/resources/?order_by=-created_at,name")
         response = self.middleware._validate_query_params(request)
         self.assertIsNone(
             response,

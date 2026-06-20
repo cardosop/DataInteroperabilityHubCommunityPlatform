@@ -62,14 +62,14 @@ Pre-commit + CI integration:
 * ``.github/workflows/ci.yml`` mirrors the same check (so a pre-commit
   bypass via ``--no-verify`` is still caught at PR review time).
 """
+
 from __future__ import annotations
 
 import ast
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List
-
 
 # ---------------------------------------------------------------------------
 # Source of truth: the keys we forbid as raw extras.
@@ -81,22 +81,33 @@ from typing import Iterable, List
 # ``hub/apps/dq/tests/test_log_helpers.py::TestLintRuleParity``.
 # ---------------------------------------------------------------------------
 
-_FORBIDDEN_KEYS: frozenset[str] = frozenset({
-    "row_samples",
-    "sample_value",
-    "sample_data_json",
-    "file_content",
-    "body",
-    "raw_data",
-    "data",
-    "details_json",
-})
+_FORBIDDEN_KEYS: frozenset[str] = frozenset(
+    {
+        "row_samples",
+        "sample_value",
+        "sample_data_json",
+        "file_content",
+        "body",
+        "raw_data",
+        "data",
+        "details_json",
+    }
+)
 
 # Names of attributes on `logger` that the rule treats as "log call".
-_LOGGER_METHODS: frozenset[str] = frozenset({
-    "debug", "info", "warning", "warn", "error",
-    "exception", "critical", "fatal", "log",
-})
+_LOGGER_METHODS: frozenset[str] = frozenset(
+    {
+        "debug",
+        "info",
+        "warning",
+        "warn",
+        "error",
+        "exception",
+        "critical",
+        "fatal",
+        "log",
+    }
+)
 
 # Default scan paths when invoked with no args.
 #
@@ -210,7 +221,7 @@ def _dict_has_forbidden_key(node: ast.AST) -> tuple[str, ...]:
     return tuple(sorted(found))
 
 
-def scan_file(path: Path) -> List[Offence]:
+def scan_file(path: Path) -> list[Offence]:
     """Walk ``path``'s AST, return all unwrapped logger calls whose
     ``extra=`` dict literal contains a forbidden key."""
     src = path.read_text()
@@ -231,13 +242,15 @@ def scan_file(path: Path) -> List[Offence]:
                 continue
             keys = _dict_has_forbidden_key(value)
             if keys:
-                offences.append(Offence(
-                    file=str(path),
-                    line=node.lineno,
-                    col=node.col_offset,
-                    method=method,
-                    forbidden_keys=keys,
-                ))
+                offences.append(
+                    Offence(
+                        file=str(path),
+                        line=node.lineno,
+                        col=node.col_offset,
+                        method=method,
+                        forbidden_keys=keys,
+                    )
+                )
     return offences
 
 

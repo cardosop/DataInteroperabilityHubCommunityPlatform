@@ -101,8 +101,7 @@ class ODCSVersionDetectionTest(TestCase):
         """Test version detection with empty apiVersion."""
         contract_data = {"apiVersion": "", "kind": "DataContract"}
         version = detect_odcs_version(contract_data)
-        # Should fallback to version field or return unknown
-        self.assertIsNotNone(version)
+        self.assertEqual(version, "unknown")
 
     def test_detect_version_with_none_api_version(self):
         """Test version detection with None apiVersion."""
@@ -130,14 +129,14 @@ class ODCSVersionDetectionTest(TestCase):
         contract_data = {"kind": "DataContract", "version": 3.0}
         version = detect_odcs_version(contract_data)
         # Should handle numeric version
-        self.assertIsNotNone(version)
+        self.assertEqual(version, "3.0.0")
 
     def test_detect_version_with_integer_version_field(self):
         """Test version detection with integer version field."""
         contract_data = {"kind": "DataContract", "version": 3}
         version = detect_odcs_version(contract_data)
         # Should handle integer version
-        self.assertIsNotNone(version)
+        self.assertEqual(version, "3.0.0")
 
     def test_detect_version_with_invalid_type_version_field(self):
         """Test version detection with invalid type version field."""
@@ -221,7 +220,7 @@ class ODCSVersionDetectionTest(TestCase):
         contract_data = {"apiVersion": "odcs.io/v3.0.0-preview", "kind": "DataContract"}
         version = detect_odcs_version(contract_data)
         # May handle preview versions or return unknown
-        self.assertIsNotNone(version)
+        self.assertEqual(version, "3.0.0-preview")
 
     def test_detect_version_handles_very_large_documents(self):
         """Test that version detection handles very large documents correctly."""
@@ -234,7 +233,7 @@ class ODCSVersionDetectionTest(TestCase):
 
         # Should handle large documents gracefully
         version = detect_odcs_version(contract_data)
-        self.assertIsNotNone(version)
+        self.assertEqual(version, "3.0.2")
 
     def test_detect_version_handles_nested_structures(self):
         """Test that version detection handles nested structures correctly."""
@@ -246,4 +245,4 @@ class ODCSVersionDetectionTest(TestCase):
 
         # Should handle nested structures
         version = detect_odcs_version(contract_data)
-        self.assertIsNotNone(version)
+        self.assertEqual(version, "3.0.2")

@@ -10,7 +10,7 @@ from datetime import timedelta
 import pytest
 
 pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True)]
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpResponse
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
@@ -20,7 +20,6 @@ from hub.apps.api.versioning import (
     APIVersionMiddleware,
     DeprecatedEndpoint,
 )
-
 
 
 class APIVersionTest(TestCase):
@@ -613,7 +612,6 @@ class APIVersionMiddlewareTest(TestCase):
         self.assertEqual(response.status_code, 400)
 
         # Check response content
-        import json
 
         content = response.data
         self.assertEqual(content["error"]["code"], "UNSUPPORTED_API_VERSION")

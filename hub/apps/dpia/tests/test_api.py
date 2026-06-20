@@ -1,11 +1,10 @@
 """REST API for DPIA — real DB and middleware-style tenant resolution via user.tenant."""
 
 from __future__ import annotations
-import pytest
 
-import pytest
 import uuid
 
+import pytest
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -76,9 +75,7 @@ class DpiaApiTests(TestCase):
     def test_feature_disabled_blocks_create(self):
         self.tenant.compliance_dpia_enabled = False
         self.tenant.save(update_fields=["compliance_dpia_enabled"])
-        res = self.client.post(
-            "/api/v1/dpia/records/", {"title": "Blocked"}, format="json"
-        )
+        res = self.client.post("/api/v1/dpia/records/", {"title": "Blocked"}, format="json")
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
     @pytest.mark.integration

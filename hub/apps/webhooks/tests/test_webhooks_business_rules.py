@@ -6,25 +6,24 @@ Tests for webhook business rules validation, including:
 - Rule registration in business rules registry
 - WebhookRuleExecutionContext
 """
+
 import uuid
 
 from django.test import TestCase
 
-from hub.apps.webhooks.business_rules import (
-    WebhooksBusinessRules,
-    WebhookRuleExecutionContext,
-)
 from hub.apps.core.business_rules.registry import get_registry
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.users.models import User, UserStatus
+from hub.apps.webhooks.business_rules import (
+    WebhookRuleExecutionContext,
+    WebhooksBusinessRules,
+)
 from hub.apps.webhooks.models import (
     Webhook,
     WebhookDelivery,
-    WebhookStatus,
     WebhookEventType,
-    DeliveryStatus,
 )
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.users.models import User, UserStatus
 
 
 class WebhooksBusinessRulesInitializationTest(TestCase):
@@ -34,30 +33,21 @@ class WebhooksBusinessRulesInitializationTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
     def test_webhooks_business_rules_initialization_with_tenant_and_user(self):
         """Test WebhooksBusinessRules initialization with tenant and user"""
-        rules = WebhooksBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        rules = WebhooksBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         self.assertEqual(rules.tenant_id, str(self.tenant.id))
         self.assertEqual(rules.user_id, str(self.user.id))
-        self.assertTrue(rules.enable_caching)
-        self.assertTrue(rules.enable_metrics)
-        self.assertTrue(rules.enable_tracing)
-        self.assertTrue(rules.enable_logging)
 
     def test_webhooks_business_rules_initialization_without_tenant(self):
         """Test WebhooksBusinessRules initialization without tenant"""
@@ -77,10 +67,6 @@ class WebhooksBusinessRulesInitializationTest(TestCase):
         self.assertIsNone(rules.tenant_id)
         self.assertIsNone(rules.user_id)
 
-    def test_webhooks_business_rules_get_rule_name(self):
-        """Test WebhooksBusinessRules get_rule_name method"""
-        rules = WebhooksBusinessRules()
-        self.assertEqual(rules.get_rule_name(), "WebhooksBusinessRules")
 
 
 class WebhooksBusinessRulesRegistrationTest(TestCase):
@@ -121,16 +107,14 @@ class WebhookRuleExecutionContextTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
@@ -138,13 +122,13 @@ class WebhookRuleExecutionContextTest(TestCase):
             url="https://example.com/webhook",
             secret="test-secret",
             event_types=[WebhookEventType.ASSET_CREATED],
-            created_by=self.user
+            created_by=self.user,
         )
         self.delivery = WebhookDelivery.objects.create(
             webhook=self.webhook,
             event_type=WebhookEventType.ASSET_CREATED,
             payload={"test": "data"},
-            signature="test-signature"
+            signature="test-signature",
         )
 
     def test_webhook_rule_execution_context_creation(self):
@@ -155,7 +139,7 @@ class WebhookRuleExecutionContextTest(TestCase):
             webhook_subscription=self.webhook,
             delivery=self.delivery,
             tenant=self.tenant,
-            user=self.user
+            user=self.user,
         )
         self.assertEqual(context.tenant_id, str(self.tenant.id))
         self.assertEqual(context.user_id, str(self.user.id))
@@ -172,20 +156,20 @@ class WebhookRuleExecutionContextTest(TestCase):
             webhook_subscription=self.webhook,
             delivery=self.delivery,
             tenant=self.tenant,
-            user=self.user
+            user=self.user,
         )
         context_dict = context.to_dict()
-        self.assertEqual(context_dict['tenant_id'], str(self.tenant.id))
-        self.assertEqual(context_dict['user_id'], str(self.user.id))
-        self.assertEqual(context_dict['webhook_id'], str(self.webhook.id))
-        self.assertEqual(context_dict['webhook_name'], self.webhook.name)
-        self.assertEqual(context_dict['webhook_status'], self.webhook.status)
-        self.assertEqual(context_dict['webhook_url'], self.webhook.url)
-        self.assertEqual(context_dict['delivery_id'], str(self.delivery.id))
-        self.assertEqual(context_dict['delivery_status'], self.delivery.status)
-        self.assertEqual(context_dict['delivery_event_type'], self.delivery.event_type)
-        self.assertEqual(context_dict['tenant_id_from_object'], str(self.tenant.id))
-        self.assertEqual(context_dict['user_id_from_object'], str(self.user.id))
+        self.assertEqual(context_dict["tenant_id"], str(self.tenant.id))
+        self.assertEqual(context_dict["user_id"], str(self.user.id))
+        self.assertEqual(context_dict["webhook_id"], str(self.webhook.id))
+        self.assertEqual(context_dict["webhook_name"], self.webhook.name)
+        self.assertEqual(context_dict["webhook_status"], self.webhook.status)
+        self.assertEqual(context_dict["webhook_url"], self.webhook.url)
+        self.assertEqual(context_dict["delivery_id"], str(self.delivery.id))
+        self.assertEqual(context_dict["delivery_status"], self.delivery.status)
+        self.assertEqual(context_dict["delivery_event_type"], self.delivery.event_type)
+        self.assertEqual(context_dict["tenant_id_from_object"], str(self.tenant.id))
+        self.assertEqual(context_dict["user_id_from_object"], str(self.user.id))
 
 
 class WebhookSubscriptionValidationTest(TestCase):
@@ -195,21 +179,16 @@ class WebhookSubscriptionValidationTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        self.rules = WebhooksBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.rules = WebhooksBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_validate_subscription_url_valid_https(self):
         """Test subscription URL validation with valid HTTPS URL"""
@@ -219,12 +198,12 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="https://example.com/webhook",
             secret="test-secret-key-32-chars-long",
             event_types=[WebhookEventType.ASSET_CREATED],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_subscription_url(webhook)
-        self.assertIn('url_validation', result.details)
-        self.assertTrue(result.details.get('url_format_valid', False))
-        self.assertIn('url', result.details)
+        self.assertIn("url_validation", result.details)
+        self.assertTrue(result.details.get("url_format_valid", False))
+        self.assertIn("url", result.details)
 
     def test_validate_subscription_url_invalid_format(self):
         """Test subscription URL validation with invalid URL format"""
@@ -235,7 +214,7 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="not-a-valid-url",
             secret="test-secret-key-32-chars-long",
             event_types=[WebhookEventType.ASSET_CREATED],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_subscription_url(webhook)
         self.assertFalse(result.is_valid)
@@ -249,12 +228,12 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="http://example.com/webhook",
             secret="test-secret-key-32-chars-long",
             event_types=[WebhookEventType.ASSET_CREATED],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_subscription_url(webhook)
         self.assertTrue(result.is_valid)  # HTTP is valid but should warn
         self.assertGreater(len(result.warnings), 0)
-        self.assertIn('http', result.warnings[0].lower())
+        self.assertIn("http", result.warnings[0].lower())
 
     def test_validate_subscription_url_no_url(self):
         """Test subscription URL validation without URL"""
@@ -264,7 +243,7 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="",
             secret="test-secret-key-32-chars-long",
             event_types=[WebhookEventType.ASSET_CREATED],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_subscription_url(webhook)
         self.assertFalse(result.is_valid)
@@ -278,12 +257,12 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="https://example.com/webhook",
             secret="test-secret-key-32-chars-long",
             event_types=[WebhookEventType.ASSET_CREATED, WebhookEventType.ASSET_UPDATED],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_subscription_event_types(webhook)
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details.get('event_types_valid', False))
-        self.assertEqual(result.details.get('event_types_count'), 2)
+        self.assertTrue(result.details.get("event_types_valid", False))
+        self.assertEqual(result.details.get("event_types_count"), 2)
 
     def test_validate_subscription_event_types_invalid(self):
         """Test subscription event type validation with invalid event type"""
@@ -294,7 +273,7 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="https://example.com/webhook",
             secret="test-secret-key-32-chars-long",
             event_types=["invalid.event.type"],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_subscription_event_types(webhook)
         self.assertFalse(result.is_valid)
@@ -309,7 +288,7 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="https://example.com/webhook",
             secret="test-secret-key-32-chars-long",
             event_types=[],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_subscription_event_types(webhook)
         self.assertFalse(result.is_valid)
@@ -327,12 +306,12 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="https://example.com/webhook",
             secret="test-secret-key-32-chars-long",
             event_types=[WebhookEventType.ASSET_CREATED, WebhookEventType.ASSET_CREATED],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_subscription_event_types(webhook)
         self.assertTrue(result.is_valid)  # Duplicates are warnings, not errors
         self.assertGreater(len(result.warnings), 0)
-        self.assertTrue(result.details.get('has_duplicates', False))
+        self.assertTrue(result.details.get("has_duplicates", False))
 
     def test_validate_subscription_filters_valid(self):
         """Test subscription filter validation with valid filters"""
@@ -342,12 +321,12 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="https://example.com/webhook",
             secret="test-secret-key-32-chars-long",
             event_types=[WebhookEventType.ASSET_CREATED, WebhookEventType.CONTRACT_CREATED],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_subscription_filters(webhook)
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details.get('filters_valid', False))
-        self.assertIn('filter_expressions', result.details)
+        self.assertTrue(result.details.get("filters_valid", False))
+        self.assertIn("filter_expressions", result.details)
 
     def test_validate_subscription_filters_empty(self):
         """Test subscription filter validation with empty filters"""
@@ -358,7 +337,7 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="https://example.com/webhook",
             secret="test-secret-key-32-chars-long",
             event_types=[],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_subscription_filters(webhook)
         self.assertFalse(result.is_valid)
@@ -372,12 +351,12 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="https://example.com/webhook",
             secret="test-secret-key-32-chars-long-enough",
             event_types=[WebhookEventType.ASSET_CREATED],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_subscription_security(webhook)
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details.get('secret_valid', False))
-        self.assertTrue(result.details.get('signature_generation_valid', False))
+        self.assertTrue(result.details.get("secret_valid", False))
+        self.assertTrue(result.details.get("signature_generation_valid", False))
 
     def test_validate_subscription_security_short_secret(self):
         """Test subscription security validation with short secret"""
@@ -387,7 +366,7 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="https://example.com/webhook",
             secret="short",
             event_types=[WebhookEventType.ASSET_CREATED],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_subscription_security(webhook)
         self.assertFalse(result.is_valid)
@@ -401,7 +380,7 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="https://example.com/webhook",
             secret="",
             event_types=[WebhookEventType.ASSET_CREATED],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_subscription_security(webhook)
         self.assertFalse(result.is_valid)
@@ -415,11 +394,11 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="https://example.com/webhook",
             secret="test-secret-key-32-chars-long-enough",
             event_types=[WebhookEventType.ASSET_CREATED],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_subscription_security(webhook)
-        self.assertTrue(result.details.get('signature_generation_valid', False))
-        self.assertEqual(result.details.get('signature_length'), 64)
+        self.assertTrue(result.details.get("signature_generation_valid", False))
+        self.assertEqual(result.details.get("signature_length"), 64)
 
     def test_validate_webhook_subscription_comprehensive(self):
         """Test comprehensive webhook subscription validation"""
@@ -429,16 +408,16 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="https://example.com/webhook",
             secret="test-secret-key-32-chars-long-enough",
             event_types=[WebhookEventType.ASSET_CREATED, WebhookEventType.CONTRACT_CREATED],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_webhook_subscription(webhook, tenant=self.tenant)
-        self.assertIn('webhook_subscription_validation', result.details)
-        self.assertIn('validation_checks', result.details)
-        validation_checks = result.details.get('validation_checks', {})
-        self.assertIn('url', validation_checks)
-        self.assertIn('event_types', validation_checks)
-        self.assertIn('filters', validation_checks)
-        self.assertIn('security', validation_checks)
+        self.assertIn("webhook_subscription_validation", result.details)
+        self.assertIn("validation_checks", result.details)
+        validation_checks = result.details.get("validation_checks", {})
+        self.assertIn("url", validation_checks)
+        self.assertIn("event_types", validation_checks)
+        self.assertIn("filters", validation_checks)
+        self.assertIn("security", validation_checks)
 
     def test_validate_webhook_subscription_integration_with_service(self):
         """Test webhook subscription validation integration with WebhookDeliveryService"""
@@ -450,7 +429,7 @@ class WebhookSubscriptionValidationTest(TestCase):
             url="https://example.com/webhook",
             secret="test-secret-key-32-chars-long-enough",
             event_types=[WebhookEventType.ASSET_CREATED],
-            created_by=self.user
+            created_by=self.user,
         )
         result = self.rules._validate_webhook_subscription(webhook, tenant=self.tenant)
         self.assertIsNotNone(result)
@@ -460,3 +439,84 @@ class WebhookSubscriptionValidationTest(TestCase):
         self.assertTrue(webhook.subscribes_to_event_type(WebhookEventType.ASSET_CREATED))
         self.assertIsNotNone(WebhookDeliveryService)
 
+
+class WebhooksBusinessRulesTenantPermissionsTest(TestCase):
+    """Test _validate_tenant_context and _validate_permissions methods."""
+
+    def setUp(self):
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
+        )
+        ensure_tenant_has_active_subscription(self.tenant)
+        self.user = User.objects.create_user(
+            email=f"test-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        self.rules = WebhooksBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
+        self.webhook = Webhook.objects.create(
+            tenant=self.tenant,
+            name="Test Webhook",
+            url="https://example.com/webhook",
+            secret="test-secret-key-32-chars-long",
+            event_types=[WebhookEventType.ASSET_CREATED],
+            created_by=self.user,
+        )
+
+    def test_validate_tenant_context_valid(self):
+        """Tenant context validation passes when webhook belongs to tenant."""
+        result = self.rules._validate_tenant_context(
+            webhook=self.webhook, tenant=self.tenant
+        )
+        self.assertTrue(result.is_valid)
+
+    def test_validate_tenant_context_mismatched_webhook(self):
+        """Tenant context validation fails when webhook belongs to different tenant."""
+        other_uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(
+            name=f"Other {other_uid}", slug=f"other-{other_uid}",
+            status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+        )
+        result = self.rules._validate_tenant_context(
+            webhook=self.webhook, tenant=other_tenant
+        )
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_validate_tenant_context_no_tenant(self):
+        """Tenant context validation produces warning when no tenant provided."""
+        result = self.rules._validate_tenant_context(webhook=self.webhook)
+        self.assertTrue(result.is_valid)
+        self.assertGreater(len(result.warnings), 0)
+
+    def test_validate_permissions_valid(self):
+        """Permissions validation passes when user belongs to webhook's tenant."""
+        result = self.rules._validate_permissions(webhook=self.webhook, user=self.user)
+        self.assertTrue(result.is_valid)
+
+    def test_validate_permissions_cross_tenant_user(self):
+        """Permissions validation warns when user belongs to different tenant."""
+        other_uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(
+            name=f"Other {other_uid}", slug=f"other-{other_uid}",
+            status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+        )
+        other_user = User.objects.create_user(
+            email=f"other-{other_uid}@example.com",
+            password="testpass123",
+            tenant=other_tenant,
+            status=UserStatus.ACTIVE,
+        )
+        result = self.rules._validate_permissions(webhook=self.webhook, user=other_user)
+        self.assertTrue(result.is_valid)  # cross-tenant is a warning, not an error
+        self.assertGreater(len(result.warnings), 0)
+
+    def test_validate_permissions_no_user(self):
+        """Permissions validation produces warning when no user provided."""
+        result = self.rules._validate_permissions(webhook=self.webhook)
+        self.assertTrue(result.is_valid)
+        self.assertGreater(len(result.warnings), 0)

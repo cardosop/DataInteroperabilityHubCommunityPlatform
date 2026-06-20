@@ -5,38 +5,34 @@ Tests webhook delivery, event filtering, and error handling using real HTTP serv
 without mocks or stubs. All tests use actual HTTP requests to verify end-to-end behavior.
 """
 
+import builtins
+import contextlib
 import json
-import uuid
-import time
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Dict, Any, List, Optional
-from queue import Queue
-from urllib.parse import urlparse
+import time
+import uuid
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from queue import Empty, Queue
+from typing import Any
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
+from hub.apps.core.events.publisher import EventPublisher
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.users.models import UserStatus
 from hub.apps.webhooks.models import (
+    DeliveryStatus,
     Webhook,
     WebhookDelivery,
     WebhookEventType,
     WebhookStatus,
-    DeliveryStatus,
 )
+from hub.apps.webhooks.odps_event_subscriber import get_odps_event_subscriber
 from hub.apps.webhooks.service import WebhookDeliveryService
-from hub.apps.webhooks.odps_event_subscriber import ODPSEventSubscriber, get_odps_event_subscriber
-from hub.apps.webhooks.odps_webhook_errors import (
-    ODPSWebhookValidationError,
-    ODPSWebhookPayloadError,
-)
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.users.models import UserStatus
-from hub.apps.core.events.publisher import EventPublisher
-from hub.apps.core.events.bus import get_event_bus
 from tests.utils.wait_helpers import wait_for_event_persistence
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -50,8 +46,14 @@ class WebhookReceiverHandler(BaseHTTPRequestHandler):
     Stores received requests in a queue for test verification.
     """
 
-    def __init__(self, request_queue: Queue, response_status: int = 200,
-                 response_delay: float = 0.0, *args, **kwargs):
+    def __init__(
+        self,
+        request_queue: Queue,
+        response_status: int = 200,
+        response_delay: float = 0.0,
+        *args,
+        **kwargs,
+    ):
         """
         Initialize handler.
 
@@ -68,19 +70,19 @@ class WebhookReceiverHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         """Handle POST requests (webhook deliveries)."""
         # Read request body
-        content_length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(content_length) if content_length > 0 else b''
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length) if content_length > 0 else b""
 
         # Parse headers
         headers = dict(self.headers)
 
         # Store request for verification
         request_data = {
-            'path': self.path,
-            'method': 'POST',
-            'headers': headers,
-            'body': body.decode('utf-8') if body else '',
-            'timestamp': timezone.now().isoformat(),
+            "path": self.path,
+            "method": "POST",
+            "headers": headers,
+            "body": body.decode("utf-8") if body else "",
+            "timestamp": timezone.now().isoformat(),
         }
         self.request_queue.put(request_data)
 
@@ -88,20 +90,19 @@ class WebhookReceiverHandler(BaseHTTPRequestHandler):
         if self.response_delay > 0:
             remaining = self.response_delay
             while remaining > 0:
-                time.sleep(min(remaining, 0.5))  # INTENTIONAL: simulates slow webhook receiver
+                time.sleep(min(remaining, 0.5))  # noqa: sleep-needed  # INTENTIONAL: simulates slow webhook receiver
                 remaining -= 0.5
 
         # Send response
         self.send_response(self.response_status)
-        self.send_header('Content-Type', 'application/json')
+        self.send_header("Content-Type", "application/json")
         self.end_headers()
 
-        response_body = json.dumps({'status': 'received'})
-        self.wfile.write(response_body.encode('utf-8'))
+        response_body = json.dumps({"status": "received"})
+        self.wfile.write(response_body.encode("utf-8"))
 
     def log_message(self, format, *args):
         """Suppress server logs during tests."""
-        pass
 
 
 class TestWebhookServer:
@@ -117,8 +118,7 @@ class TestWebhookServer:
     """
     """
 
-    def __init__(self, port: int = 0, response_status: int = 200,
-                 response_delay: float = 0.0):
+    def __init__(self, port: int = 0, response_status: int = 200, response_delay: float = 0.0):
         """
         Initialize test webhook server.
 
@@ -131,25 +131,24 @@ class TestWebhookServer:
         self.response_status = response_status
         self.response_delay = response_delay
         self.request_queue: Queue = Queue()
-        self.server: Optional[HTTPServer] = None
-        self.thread: Optional[threading.Thread] = None
+        self.server: HTTPServer | None = None
+        self.thread: threading.Thread | None = None
 
     def start(self):
         """Start the HTTP server."""
+
         def handler_factory(*args, **kwargs):
             return WebhookReceiverHandler(
-                self.request_queue,
-                self.response_status,
-                self.response_delay,
-                *args,
-                **kwargs
+                self.request_queue, self.response_status, self.response_delay, *args, **kwargs
             )
 
         self.server = HTTPServer(("localhost", self.port), handler_factory)
         self.server.timeout = 1  # Don't block on individual requests
         self.port = self.server.server_address[1]
         self._shutting_down = False
-        self.thread = threading.Thread(target=self.server.serve_forever, name="webhook-test-server", daemon=True)
+        self.thread = threading.Thread(
+            target=self.server.serve_forever, name="webhook-test-server", daemon=True
+        )
         self.thread.start()
 
     def stop(self):
@@ -160,10 +159,8 @@ class TestWebhookServer:
             shutdown_thread = threading.Thread(target=self.server.shutdown, daemon=True)
             shutdown_thread.start()
             shutdown_thread.join(timeout=5)  # Wait max 5s for clean shutdown
-            try:
+            with contextlib.suppress(Exception):
                 self.server.server_close()
-            except Exception:
-                pass
             self.server = None
             self.thread = None
 
@@ -175,7 +172,7 @@ class TestWebhookServer:
         """Return number of requests in queue without consuming. Use for wait conditions."""
         return self.request_queue.qsize()
 
-    def get_received_requests(self, timeout: float = 5.0) -> List[Dict[str, Any]]:
+    def get_received_requests(self, timeout: float = 5.0) -> list[dict[str, Any]]:
         """
         Get all received requests (consumes from queue).
 
@@ -192,7 +189,7 @@ class TestWebhookServer:
             try:
                 request = self.request_queue.get(timeout=0.1)
                 requests.append(request)
-            except Exception:
+            except Empty:
                 if time.time() - start_time >= timeout:
                     break
 
@@ -201,10 +198,8 @@ class TestWebhookServer:
     def clear_requests(self):
         """Clear all received requests."""
         while not self.request_queue.empty():
-            try:
+            with contextlib.suppress(builtins.BaseException):
                 self.request_queue.get_nowait()
-            except:
-                pass
 
     def __enter__(self):
         self.start()
@@ -229,7 +224,6 @@ class ODPSWebhookIntegrationTest(TransactionTestCase):
 
     def _fixture_teardown(self):
         """Skip TRUNCATE CASCADE to avoid timeout."""
-        pass
 
     def setUp(self):
         """Set up test fixtures."""
@@ -316,25 +310,25 @@ class ODPSWebhookIntegrationTest(TransactionTestCase):
             self.assertEqual(len(received_requests), 1, "Webhook should be delivered")
 
             request = received_requests[0]
-            self.assertEqual(request['method'], 'POST')
+            self.assertEqual(request["method"], "POST")
 
             # Verify payload structure
-            payload = json.loads(request['body'])
-            self.assertEqual(payload['event_type'], WebhookEventType.ODPS_CREATED)
-            self.assertEqual(payload['resource_type'], "ODPS")
-            self.assertEqual(payload['resource_id'], contract_id)
-            self.assertEqual(payload['data'], event_data)
-            self.assertIn('timestamp', payload)
+            payload = json.loads(request["body"])
+            self.assertEqual(payload["event_type"], WebhookEventType.ODPS_CREATED)
+            self.assertEqual(payload["resource_type"], "ODPS")
+            self.assertEqual(payload["resource_id"], contract_id)
+            self.assertEqual(payload["data"], event_data)
+            self.assertIn("timestamp", payload)
 
             # Verify headers
-            headers = request['headers']
-            self.assertIn('X-Webhook-Signature', headers)
-            self.assertIn('X-Webhook-Event-Type', headers)
-            self.assertEqual(headers['X-Webhook-Event-Type'], WebhookEventType.ODPS_CREATED)
-            self.assertEqual(headers['Content-Type'], 'application/json')
+            headers = request["headers"]
+            self.assertIn("X-Webhook-Signature", headers)
+            self.assertIn("X-Webhook-Event-Type", headers)
+            self.assertEqual(headers["X-Webhook-Event-Type"], WebhookEventType.ODPS_CREATED)
+            self.assertEqual(headers["Content-Type"], "application/json")
 
             # Verify signature matches
-            signature = headers['X-Webhook-Signature']
+            signature = headers["X-Webhook-Signature"]
             self.assertEqual(signature, delivery.signature)
 
     def test_odps_webhook_event_filtering(self):
@@ -347,10 +341,11 @@ class ODPSWebhookIntegrationTest(TransactionTestCase):
         - Webhooks subscribed to different events don't receive unrelated deliveries
         """
         # Start multiple webhook receiver servers
-        with TestWebhookServer() as server1, \
-             TestWebhookServer() as server2, \
-             TestWebhookServer() as server3:
-
+        with (
+            TestWebhookServer() as server1,
+            TestWebhookServer() as server2,
+            TestWebhookServer() as server3,
+        ):
             # Create webhook subscribed to ODPS_CREATED
             webhook1 = Webhook.objects.create(
                 tenant=self.tenant,
@@ -687,7 +682,7 @@ class ODPSWebhookIntegrationTest(TransactionTestCase):
             publisher = EventPublisher(
                 service_name="contract_service",
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
             # Publish ODPS event
@@ -700,7 +695,7 @@ class ODPSWebhookIntegrationTest(TransactionTestCase):
                     "status": "ACTIVE",
                     "odps_version": "4.1",
                     "original_format": "JSON",
-                }
+                },
             )
 
             self.assertIsNotNone(event_id, "Event should be published")
@@ -721,7 +716,7 @@ class ODPSWebhookIntegrationTest(TransactionTestCase):
                     "service": "contract_service",
                     "tenant_id": str(self.tenant.id),
                     "user_id": str(self.user.id),
-                }
+                },
             }
 
             # Handle event (this triggers webhook delivery)
@@ -743,9 +738,9 @@ class ODPSWebhookIntegrationTest(TransactionTestCase):
             self.assertEqual(len(received_requests), 1, "Webhook should be received")
 
             request = received_requests[0]
-            payload = json.loads(request['body'])
-            self.assertEqual(payload['event_type'], "odps.created")
-            self.assertEqual(payload['data']['contract_id'], contract_id)
+            payload = json.loads(request["body"])
+            self.assertEqual(payload["event_type"], "odps.created")
+            self.assertEqual(payload["data"]["contract_id"], contract_id)
 
     def test_odps_webhook_all_event_types(self):
         """
@@ -806,8 +801,7 @@ class ODPSWebhookIntegrationTest(TransactionTestCase):
 
                 # Verify delivery
                 delivery = WebhookDelivery.objects.filter(
-                    webhook=webhook,
-                    event_type=event_type
+                    webhook=webhook, event_type=event_type
                 ).first()
                 self.assertIsNotNone(delivery, f"Delivery should exist for {event_type}")
                 self.assertEqual(delivery.event_type, event_type)
@@ -870,4 +864,3 @@ class ODPSWebhookIntegrationTest(TransactionTestCase):
 
             inactive_deliveries = WebhookDelivery.objects.filter(webhook=inactive_webhook)
             self.assertEqual(inactive_deliveries.count(), 0)
-

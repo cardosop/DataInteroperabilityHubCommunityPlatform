@@ -6,7 +6,6 @@ Uses real hub API — no mocks/stubs.
 """
 
 import json
-from typing import Optional
 
 import click
 
@@ -16,7 +15,6 @@ from ..api_client import api_client
 @click.group()
 def users():
     """User management commands"""
-    pass
 
 
 @users.command("list")
@@ -37,7 +35,8 @@ def list_users(limit: int, offset: int, output_format: str):
         results = (
             data.get("results", [])
             if isinstance(data, dict)
-            else data if isinstance(data, list)
+            else data
+            if isinstance(data, list)
             else []
         )
 
@@ -47,9 +46,7 @@ def list_users(limit: int, offset: int, output_format: str):
             if not results:
                 click.echo("No users found.")
                 return
-            click.echo(
-                f"{'ID':<38} {'Name':<25} {'Email':<35} {'Roles':<30}"
-            )
+            click.echo(f"{'ID':<38} {'Name':<25} {'Email':<35} {'Roles':<30}")
             click.echo("-" * 128)
             for user in results:
                 if not isinstance(user, dict):
@@ -116,7 +113,7 @@ def get_user(user_id: str, output_format: str):
 )
 def invite_user(
     email: str,
-    name: Optional[str],
+    name: str | None,
     roles: tuple[str, ...],
     output_format: str,
 ):

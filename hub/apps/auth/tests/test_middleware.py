@@ -39,19 +39,13 @@ class TenantScopingMiddlewareTest(TestCase):
             email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
-    def test_middleware_is_callable_returns_response(self):
-        """Test that middleware is callable and returns response."""
+    def test_middleware_is_callable_returns_http_response(self):
+        """Test that middleware is callable and returns an HttpResponse."""
         request = self.factory.get("/api/v1/assets/")
         response = self.middleware(request)
 
-        self.assertIsNotNone(response)
-
-    def test_middleware_returns_http_response(self):
-        """Test that middleware returns HttpResponse."""
-        request = self.factory.get("/api/v1/assets/")
-        response = self.middleware(request)
-
-        self.assertIsInstance(response, HttpResponse)
+        self.assertIsNotNone(response, "Middleware __call__ must return a response")
+        self.assertIsInstance(response, HttpResponse, "Middleware must return an HttpResponse")
 
     def test_middleware_calls_get_response(self):
         """Test that middleware calls get_response."""
@@ -144,7 +138,7 @@ class TenantScopingMiddlewareTest(TestCase):
             # If middleware returned a response, it should not be a 500
             self.assertNotEqual(result.status_code, 500)
         # Verify the request object is still usable (not corrupted)
-        self.assertTrue(hasattr(request, 'META'))
+        self.assertTrue(hasattr(request, "META"))
 
     def test_preserves_existing_tenant_id(self):
         """Test that middleware preserves existing tenant_id."""

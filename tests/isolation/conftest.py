@@ -6,6 +6,7 @@ authenticated APIClient using real JWT tokens. Every test module
 in this directory uses these fixtures so that isolation is tested
 at the authentication layer, not just ORM filtering.
 """
+
 import uuid
 
 import pytest

@@ -48,14 +48,13 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "assert_waitfortimeout_budget.cjs"
 
 
 def _has_node() -> bool:
     try:
-        res = subprocess.run(["node", "--version"], capture_output=True, timeout=10)
+        res = subprocess.run(["node", "--version"], check=False, capture_output=True, timeout=10)
         return res.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
@@ -83,7 +82,7 @@ def _run(
         cmd.append(f"--budget={budget}")
     if extra_args:
         cmd.extend(extra_args)
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    return subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=120)
 
 
 def _write_spec(tmpdir: Path, name: str, body: str) -> Path:
@@ -192,9 +191,7 @@ def test_counts_helpers_ts_outside_spec_glob(tmp_path: Path):
     _write_spec(
         tmp_path / "fixtures",
         "helpers.ts",
-        "export async function flake(page) {\n"
-        "  await page.waitForTimeout(2000);\n"
-        "}\n",
+        "export async function flake(page) {\n  await page.waitForTimeout(2000);\n}\n",
     )
     res = _run(tmp_path, budget=10)
     payload = json.loads(res.stdout)
@@ -227,7 +224,7 @@ def test_excludes_node_modules_and_test_results(tmp_path: Path):
 
 def test_exclude_glob_argument(tmp_path: Path):
     _write_spec(
-        tmp_path / "phase8-hardening.spec.ts".rsplit("/", 1)[0] or tmp_path,
+        tmp_path / ["phase8-hardening.spec.ts"][0] or tmp_path,
         "phase8-hardening.spec.ts",
         "import { test } from '@playwright/test';\n"
         "test('a', async ({ page }) => { await page.waitForTimeout(1); });\n",
@@ -275,6 +272,7 @@ def test_budget_file_used_when_no_cli_budget(tmp_path: Path):
             f"--budget-file={budget_file}",
             "--json",
         ],
+        check=False,
         capture_output=True,
         text=True,
         timeout=120,
@@ -297,6 +295,7 @@ def test_pure_logic_count_export():
     )
     res = subprocess.run(
         ["node", "-e", code, str(SCRIPT)],
+        check=False,
         capture_output=True,
         text=True,
         timeout=30,

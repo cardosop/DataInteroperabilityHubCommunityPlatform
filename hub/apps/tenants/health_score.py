@@ -17,12 +17,11 @@ Formula (weighted sum, normalised 0-100):
   health = (login_freq * 25) + (feature_adoption * 30) + (recency * 20)
            - (error_rate * 15) - (support_tickets * 10)
 """
-from __future__ import annotations
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Optional
 
-from django.utils import timezone as dj_timezone
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 # ── Weights ─────────────────────────────────────────────────────────────────
 
@@ -34,7 +33,7 @@ WEIGHTS = {
     "support_tickets": -10,
 }
 
-RISK_THRESHOLD_CS_ALERT = 50   # Health <50 → customer success alert
+RISK_THRESHOLD_CS_ALERT = 50  # Health <50 → customer success alert
 RISK_THRESHOLD_ESCALATION = 30  # Health <30 → escalation to account manager
 
 
@@ -48,11 +47,11 @@ class TenantHealthSnapshot:
     persona_slug: str
 
     # Raw metrics
-    login_frequency: float = 0.0      # logins/user/week normalised 0-1
-    error_rate: float = 0.0            # error rate 0-1 (0=no errors)
-    support_tickets: int = 0           # open tickets
-    feature_adoption: float = 0.0      # % of features used 0-1
-    recency: float = 0.0               # 1.0=today, decays to 0 at 30 days
+    login_frequency: float = 0.0  # logins/user/week normalised 0-1
+    error_rate: float = 0.0  # error rate 0-1 (0=no errors)
+    support_tickets: int = 0  # open tickets
+    feature_adoption: float = 0.0  # % of features used 0-1
+    recency: float = 0.0  # 1.0=today, decays to 0 at 30 days
     days_since_last_login: int = 30
 
     # Composite
@@ -60,7 +59,7 @@ class TenantHealthSnapshot:
     risk_level: str = "healthy"  # healthy, at_risk, critical
 
     # Metadata
-    calculated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    calculated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self):
         if self.health_score == 0.0:
@@ -86,6 +85,7 @@ class TenantHealthSnapshot:
 
 
 # ── Metric collectors ───────────────────────────────────────────────────────
+
 
 def _normalise_login_frequency(logins_per_user_per_week: float) -> float:
     """Normalise: 5+ = 1.0, 0 = 0.0"""
@@ -129,6 +129,7 @@ def compute_health_score(
 
 
 # ── Batch health report ─────────────────────────────────────────────────────
+
 
 @dataclass
 class HealthReport:

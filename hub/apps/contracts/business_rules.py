@@ -17,7 +17,9 @@ All validation methods follow engineering best practices:
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any
+
+import structlog
 
 from hub.apps.contracts.linking_validation import (
     LinkingValidationError,
@@ -30,7 +32,13 @@ from hub.apps.contracts.linking_validation import (
 from hub.apps.contracts.linking_validation import (
     validate_referential_integrity as _validate_referential_integrity,
 )
-from hub.apps.contracts.models import Contract, OriginalSpecType, ContractStatus, OriginalFormat, NormalizationStatus
+from hub.apps.contracts.models import (
+    Contract,
+    ContractStatus,
+    NormalizationStatus,
+    OriginalFormat,
+    OriginalSpecType,
+)
 from hub.apps.contracts.normalization import get_normalizer, parse_contract
 from hub.apps.contracts.odps_version_detection import detect_odps_version
 from hub.apps.core.business_rules.base import (
@@ -40,23 +48,27 @@ from hub.apps.core.business_rules.base import (
 )
 from hub.apps.core.business_rules.registry import register_rule
 
-if TYPE_CHECKING:
-    from hub.apps.tenants.models import Tenant
-    from hub.apps.users.models import User
-
-import structlog
-
 logger = structlog.get_logger(__name__)
 
 # Pre-Bitol ODPS (Niilahti et al.): 1.x–4.x; Bitol/LF ODPS: bitol-0.9.0, bitol-1.0.0
 SUPPORTED_ODPS_VERSIONS = [
-    "bitol-1.0.0", "bitol-0.9.0",
-    "4.2", "4.1", "4.0", "3.x", "2.x", "1.x",
+    "bitol-1.0.0",
+    "bitol-0.9.0",
+    "4.2",
+    "4.1",
+    "4.0",
+    "3.x",
+    "2.x",
+    "1.x",
 ]
 
 # Supported ODCS versions
 SUPPORTED_ODCS_VERSIONS = [
-    "2.2.2", "3.0.0", "3.0.1", "3.0.2", "3.1.0",
+    "2.2.2",
+    "3.0.0",
+    "3.0.1",
+    "3.0.2",
+    "3.1.0",
 ]
 
 
@@ -71,11 +83,11 @@ class ODPSRuleExecutionContext(RuleExecutionContext):
     - odcs_contract: Optional linked ODCS contract
     """
 
-    contract: Optional[Contract] = None
-    odps_doc: Optional[Dict[str, Any]] = None
-    odcs_contract: Optional[Contract] = None
+    contract: Contract | None = None
+    odps_doc: dict[str, Any] | None = None
+    odcs_contract: Contract | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert context to dictionary for caching/logging."""
         base_dict = super().to_dict()
         base_dict.update(
@@ -94,7 +106,6 @@ class ODPSRuleExecutionContext(RuleExecutionContext):
     description="Validates ODPS document structure, version compatibility, and ODPS-ODCS linking rules",
     tags=["odps", "contracts", "validation"],
     priority=10,
-
     openspec_ref="specs/contracts-business-rules/spec.md",
 )
 class ODPSBusinessRules(BusinessRules):
@@ -119,7 +130,7 @@ class ODPSBusinessRules(BusinessRules):
         return "ODPSBusinessRules"
 
     def validate(
-        self, context: Optional[RuleExecutionContext] = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -256,7 +267,7 @@ class ODPSBusinessRules(BusinessRules):
         )
 
     def validate_odps_structure(
-        self, odps_doc: Dict[str, Any], strict: bool = False
+        self, odps_doc: dict[str, Any], strict: bool = False
     ) -> ValidationResult:
         """
         Validate ODPS document structure.
@@ -279,8 +290,8 @@ class ODPSBusinessRules(BusinessRules):
             >>> if not result.is_valid:
             ...     print(f"Validation failed: {result.errors}")
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         if not isinstance(odps_doc, dict):
             errors.append("ODPS document must be a dictionary/object")
@@ -335,51 +346,46 @@ class ODPSBusinessRules(BusinessRules):
                         errors.append(f"ODPS 'product.details.{lang_code}.name' is required")
 
         # Validate product.dataSchema (not required when contract carries inline spec or resolvable reference)
-        contract_obj = product.get("contract") if isinstance(product.get("contract"), dict) else None
+        contract_obj = (
+            product.get("contract") if isinstance(product.get("contract"), dict) else None
+        )
         has_embedded_spec = bool(contract_obj and "spec" in contract_obj)
         has_resolvable_contract = bool(
-            contract_obj
-            and (
-                "$ref" in contract_obj
-                or contract_obj.get("contractURL")
-            )
+            contract_obj and ("$ref" in contract_obj or contract_obj.get("contractURL"))
         )
         if "dataSchema" not in product:
             if not has_embedded_spec and not has_resolvable_contract:
-                errors.append("ODPS 'product.dataSchema' field is required when no embedded contract")
+                errors.append(
+                    "ODPS 'product.dataSchema' field is required when no embedded contract"
+                )
             else:
                 warnings.append("ODPS 'product.dataSchema' field is recommended")
         else:
             data_schema = product["dataSchema"]
             if not isinstance(data_schema, dict):
                 errors.append("ODPS 'product.dataSchema' must be an object")
+            # Validate dataSchema.fields (required)
+            elif "fields" not in data_schema:
+                errors.append("ODPS 'product.dataSchema.fields' is required")
             else:
-                # Validate dataSchema.fields (required)
-                if "fields" not in data_schema:
-                    errors.append("ODPS 'product.dataSchema.fields' is required")
+                fields = data_schema["fields"]
+                if not isinstance(fields, list):
+                    errors.append("ODPS 'product.dataSchema.fields' must be an array")
+                elif len(fields) == 0:
+                    warnings.append("ODPS 'product.dataSchema.fields' is empty")
                 else:
-                    fields = data_schema["fields"]
-                    if not isinstance(fields, list):
-                        errors.append("ODPS 'product.dataSchema.fields' must be an array")
-                    elif len(fields) == 0:
-                        warnings.append("ODPS 'product.dataSchema.fields' is empty")
-                    else:
-                        # Validate each field
-                        for i, field in enumerate(fields):
-                            if not isinstance(field, dict):
-                                errors.append(
-                                    f"ODPS 'product.dataSchema.fields[{i}]' must be an object"
-                                )
-                                continue
+                    # Validate each field
+                    for i, field in enumerate(fields):
+                        if not isinstance(field, dict):
+                            errors.append(
+                                f"ODPS 'product.dataSchema.fields[{i}]' must be an object"
+                            )
+                            continue
 
-                            if "name" not in field:
-                                errors.append(
-                                    f"ODPS 'product.dataSchema.fields[{i}].name' is required"
-                                )
-                            if "type" not in field:
-                                errors.append(
-                                    f"ODPS 'product.dataSchema.fields[{i}].type' is required"
-                                )
+                        if "name" not in field:
+                            errors.append(f"ODPS 'product.dataSchema.fields[{i}].name' is required")
+                        if "type" not in field:
+                            errors.append(f"ODPS 'product.dataSchema.fields[{i}].type' is required")
 
         # Validate product.contract (optional, but if present must be valid)
         if "contract" in product:
@@ -402,23 +408,20 @@ class ODPSBusinessRules(BusinessRules):
             marketplace = product["marketplace"]
             if not isinstance(marketplace, dict):
                 errors.append("ODPS 'product.marketplace' must be an object")
-            else:
-                # Validate marketplace structure if strict mode
-                if strict:
-                    # In strict mode, validate marketplace fields
-                    if "pricingPlans" in marketplace:
-                        pricing_plans = marketplace["pricingPlans"]
-                        if not isinstance(pricing_plans, list):
-                            errors.append(
-                                "ODPS 'product.marketplace.pricingPlans' must be an array"
-                            )
+            # Validate marketplace structure if strict mode
+            elif strict:
+                # In strict mode, validate marketplace fields
+                if "pricingPlans" in marketplace:
+                    pricing_plans = marketplace["pricingPlans"]
+                    if not isinstance(pricing_plans, list):
+                        errors.append("ODPS 'product.marketplace.pricingPlans' must be an array")
 
         is_valid = len(errors) == 0
 
         return ValidationResult(is_valid=is_valid, errors=errors, warnings=warnings)
 
     def validate_odps_version(
-        self, odps_doc: Dict[str, Any], required_version: Optional[str] = None
+        self, odps_doc: dict[str, Any], required_version: str | None = None
     ) -> ValidationResult:
         """
         Validate ODPS version.
@@ -441,8 +444,8 @@ class ODPSBusinessRules(BusinessRules):
             >>> if not result.is_valid:
             ...     print(f"Version validation failed: {result.errors}")
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         if not isinstance(odps_doc, dict):
             errors.append("ODPS document must be a dictionary/object")
@@ -452,7 +455,7 @@ class ODPSBusinessRules(BusinessRules):
         try:
             detected_version = detect_odps_version(odps_doc)
         except Exception as e:
-            errors.append(f"Failed to detect ODPS version: {str(e)}")
+            errors.append(f"Failed to detect ODPS version: {e!s}")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
         if detected_version == "unknown":
@@ -469,7 +472,7 @@ class ODPSBusinessRules(BusinessRules):
             # bitol version shares the same major.minor prefix.
             # e.g. "bitol-1.0.1" matches "bitol-1.0.0".
             if detected_version.startswith("bitol-"):
-                bitol_ver = detected_version[len("bitol-"):]
+                bitol_ver = detected_version[len("bitol-") :]
                 parts = bitol_ver.split(".")
                 if len(parts) >= 2:
                     prefix = f"bitol-{parts[0]}.{parts[1]}."
@@ -480,11 +483,7 @@ class ODPSBusinessRules(BusinessRules):
 
             # Pre-Bitol: fuzzy matching (e.g., "3.9" → "3.x")
             if not is_supported:
-                major_version = (
-                    detected_version.split(".")[0]
-                    if "." in detected_version
-                    else None
-                )
+                major_version = detected_version.split(".")[0] if "." in detected_version else None
                 if major_version:
                     for supported in SUPPORTED_ODPS_VERSIONS:
                         if (
@@ -528,7 +527,7 @@ class ODPSBusinessRules(BusinessRules):
         return ValidationResult(is_valid=True, errors=errors, warnings=warnings)
 
     def validate_odps_linking(
-        self, odps_contract_id: str, odcs_contract_id: str, tenant_id: Optional[str] = None
+        self, odps_contract_id: str, odcs_contract_id: str, tenant_id: str | None = None
     ) -> ValidationResult:
         """
         Validate ODPS-ODCS linking rules.
@@ -561,8 +560,8 @@ class ODPSBusinessRules(BusinessRules):
             >>> if not result.is_valid:
             ...     print(f"Linking validation failed: {result.errors}")
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         # Validate contract IDs
         if not odps_contract_id:
@@ -614,7 +613,7 @@ class ODPSBusinessRules(BusinessRules):
         except Exception as e:
             # Unexpected error
             logger.warning(f"Validation error during ODPS linking: {e}")
-            errors.append(f"Unexpected error during linking validation: {str(e)}")
+            errors.append(f"Unexpected error during linking validation: {e!s}")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
     def validate_odps_contract(self, contract: Contract, strict: bool = False) -> ValidationResult:
@@ -634,8 +633,8 @@ class ODPSBusinessRules(BusinessRules):
         Returns:
             ValidationResult with validation status, errors, and warnings
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         if contract is None:
             errors.append("Contract must not be None")
@@ -711,7 +710,6 @@ class ODPSBusinessRules(BusinessRules):
     description="Validates ODPS-ODCS linking rules including link existence, circular references, and referential integrity",
     tags=["odps", "linking", "validation"],
     priority=10,
-
     openspec_ref="specs/contracts-business-rules/spec.md",
 )
 class ODPSLinkingRules(BusinessRules):
@@ -739,7 +737,7 @@ class ODPSLinkingRules(BusinessRules):
         return "ODPSLinkingRules"
 
     def validate(
-        self, context: Optional[RuleExecutionContext] = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -846,8 +844,8 @@ class ODPSLinkingRules(BusinessRules):
             >>> elif result.errors:
             ...     print(f"Link validation failed: {result.errors}")
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         # Handle None contract
         if odps_contract is None:
@@ -885,7 +883,7 @@ class ODPSLinkingRules(BusinessRules):
             # can cause Django ORM ValidationErrors that are the caller's
             # fault, not a system fault.  Log at WARNING.
             logger.warning(f"Validation error in ODPS → ODCS link: {e}")
-            errors.append(f"Unexpected error during validation: {str(e)}")
+            errors.append(f"Unexpected error during validation: {e!s}")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
     def validate_circular_references(
@@ -913,8 +911,8 @@ class ODPSLinkingRules(BusinessRules):
             >>> if not result.is_valid:
             ...     print(f"Circular reference detected: {result.errors}")
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         # Validate contract IDs
         if not odps_contract_id:
@@ -951,7 +949,7 @@ class ODPSLinkingRules(BusinessRules):
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
         except Exception as e:
             logger.warning(f"Validation error in circular references: {e}")
-            errors.append(f"Unexpected error during validation: {str(e)}")
+            errors.append(f"Unexpected error during validation: {e!s}")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
     def validate_referential_integrity(self, contract: Contract) -> ValidationResult:
@@ -973,8 +971,8 @@ class ODPSLinkingRules(BusinessRules):
             >>> if not result.is_valid:
             ...     print(f"Referential integrity violation: {result.errors}")
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         # Handle None contract
         if contract is None:
@@ -1004,11 +1002,11 @@ class ODPSLinkingRules(BusinessRules):
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
         except Exception as e:
             logger.warning(f"Validation error in referential integrity: {e}")
-            errors.append(f"Unexpected error during validation: {str(e)}")
+            errors.append(f"Unexpected error during validation: {e!s}")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
     def validate_all_linking_rules(
-        self, odps_contract: Contract, odcs_contract: Optional[Contract] = None
+        self, odps_contract: Contract, odcs_contract: Contract | None = None
     ) -> ValidationResult:
         """
         Comprehensive validation of all linking rules for an ODPS contract.
@@ -1072,7 +1070,7 @@ class ODPSExportRules(BusinessRules):
         return "ODPSExportRules"
 
     def validate(
-        self, context: Optional[RuleExecutionContext] = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -1192,8 +1190,8 @@ class ODPSExportRules(BusinessRules):
             >>> if result.is_valid:
             ...     print("Format is valid")
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         if not output_format:
             errors.append("Output format is required")
@@ -1202,7 +1200,7 @@ class ODPSExportRules(BusinessRules):
         output_format_lower = output_format.lower()
 
         if output_format_lower not in ["json", "yaml"]:
-            errors.append(f"Invalid output format: {output_format}. " "Must be 'json' or 'yaml'")
+            errors.append(f"Invalid output format: {output_format}. Must be 'json' or 'yaml'")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
         # Check YAML availability if YAML format requested
@@ -1239,13 +1237,13 @@ class ODPSExportRules(BusinessRules):
             >>> if not result.is_valid:
             ...     print(f"Data incomplete: {result.errors}")
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         # Validate contract has hub_contract_json
         if not contract.hub_contract_json:
             errors.append(
-                f"Contract {contract.id} has no hub_contract_json. " "Cannot export as ODPS format."
+                f"Contract {contract.id} has no hub_contract_json. Cannot export as ODPS format."
             )
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
@@ -1303,7 +1301,7 @@ class ODPSExportRules(BusinessRules):
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
     def validate_fidelity(
-        self, contract: Contract, exported_odps: Dict[str, Any], output_format: str = "json"
+        self, contract: Contract, exported_odps: dict[str, Any], output_format: str = "json"
     ) -> ValidationResult:
         """
         Validate export fidelity (round-trip consistency).
@@ -1327,8 +1325,8 @@ class ODPSExportRules(BusinessRules):
             >>> if not result.is_valid:
             ...     print(f"Fidelity issues: {result.errors}")
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         # Validate exported_odps is a dictionary
         if not isinstance(exported_odps, dict):
@@ -1354,7 +1352,7 @@ class ODPSExportRules(BusinessRules):
         product = exported_odps.get("product")
         if not isinstance(product, dict):
             errors.append(
-                f"Exported ODPS 'product' must be a dictionary, " f"got {type(product).__name__}"
+                f"Exported ODPS 'product' must be a dictionary, got {type(product).__name__}"
             )
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
@@ -1425,7 +1423,6 @@ class ODPSExportRules(BusinessRules):
     description="Validates contract lifecycle operations: creation, update, deletion, and version compatibility validation",
     tags=["contracts", "lifecycle", "validation"],
     priority=10,
-
     openspec_ref="specs/contracts-business-rules/spec.md",
 )
 class ContractsBusinessRules(BusinessRules):
@@ -1450,7 +1447,7 @@ class ContractsBusinessRules(BusinessRules):
         return "ContractsBusinessRules"
 
     def validate(
-        self, context: Optional[RuleExecutionContext] = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -1518,9 +1515,7 @@ class ContractsBusinessRules(BusinessRules):
 
         return result
 
-    def validate_contract_creation(
-        self, contract_data: Dict[str, Any]
-    ) -> ValidationResult:
+    def validate_contract_creation(self, contract_data: dict[str, Any]) -> ValidationResult:
         """
         Validate contract creation (valid contract structure).
 
@@ -1537,20 +1532,24 @@ class ContractsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with validation status and details
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "validation_type": "contract_creation",
             "contract_data_provided": contract_data is not None,
         }
 
         if not contract_data:
             errors.append("Contract data must be provided")
-            return ValidationResult(is_valid=False, errors=errors, warnings=warnings, details=details)
+            return ValidationResult(
+                is_valid=False, errors=errors, warnings=warnings, details=details
+            )
 
         if not isinstance(contract_data, dict):
             errors.append(f"Contract data must be a dictionary, got {type(contract_data).__name__}")
-            return ValidationResult(is_valid=False, errors=errors, warnings=warnings, details=details)
+            return ValidationResult(
+                is_valid=False, errors=errors, warnings=warnings, details=details
+            )
 
         # Validate required fields
         required_fields = ["tenant_id", "original_raw", "original_format", "original_spec_type"]
@@ -1558,7 +1557,11 @@ class ContractsBusinessRules(BusinessRules):
         for field in required_fields:
             if field not in contract_data:
                 missing_fields.append(field)
-            elif field == "original_raw" and isinstance(contract_data[field], str) and not contract_data[field].strip():
+            elif (
+                field == "original_raw"
+                and isinstance(contract_data[field], str)
+                and not contract_data[field].strip()
+            ):
                 # Empty string is treated as missing
                 missing_fields.append(field)
             elif not contract_data[field]:
@@ -1575,6 +1578,7 @@ class ContractsBusinessRules(BusinessRules):
         if tenant_id:
             try:
                 from hub.apps.tenants.models import Tenant
+
                 tenant = Tenant.objects.get(id=tenant_id)
                 details["tenant_exists"] = True
                 details["tenant_id"] = str(tenant.id)
@@ -1582,7 +1586,7 @@ class ContractsBusinessRules(BusinessRules):
                 errors.append(f"Tenant with ID '{tenant_id}' does not exist")
                 details["tenant_exists"] = False
             except Exception as e:
-                errors.append(f"Error validating tenant: {str(e)}")
+                errors.append(f"Error validating tenant: {e!s}")
                 details["tenant_exists"] = False
 
         # Validate asset_id exists (if provided)
@@ -1590,6 +1594,7 @@ class ContractsBusinessRules(BusinessRules):
         if asset_id:
             try:
                 from hub.apps.assets.models import Asset
+
                 asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
                 details["asset_exists"] = True
                 details["asset_id"] = str(asset.id)
@@ -1597,7 +1602,7 @@ class ContractsBusinessRules(BusinessRules):
                 errors.append(f"Asset with ID '{asset_id}' does not exist for tenant '{tenant_id}'")
                 details["asset_exists"] = False
             except Exception as e:
-                errors.append(f"Error validating asset: {str(e)}")
+                errors.append(f"Error validating asset: {e!s}")
                 details["asset_exists"] = False
         else:
             details["asset_exists"] = None  # Not provided
@@ -1641,14 +1646,16 @@ class ContractsBusinessRules(BusinessRules):
                 try:
                     if original_format == "JSON":
                         import json
+
                         json.loads(original_raw)
                         details["original_raw_parseable"] = True
                     elif original_format == "YAML":
                         import yaml
+
                         yaml.safe_load(original_raw)
                         details["original_raw_parseable"] = True
                 except Exception as e:
-                    warnings.append(f"Could not parse original_raw: {str(e)}")
+                    warnings.append(f"Could not parse original_raw: {e!s}")
                     details["original_raw_parseable"] = False
         else:
             details["original_raw_valid"] = False
@@ -1669,8 +1676,7 @@ class ContractsBusinessRules(BusinessRules):
             valid_statuses = [choice[0] for choice in ContractStatus.choices]
             if status not in valid_statuses:
                 errors.append(
-                    f"Invalid status '{status}'. "
-                    f"Valid statuses are: {', '.join(valid_statuses)}"
+                    f"Invalid status '{status}'. Valid statuses are: {', '.join(valid_statuses)}"
                 )
                 details["status_valid"] = False
             else:
@@ -1679,10 +1685,12 @@ class ContractsBusinessRules(BusinessRules):
         details["is_valid"] = len(errors) == 0
         details["has_warnings"] = len(warnings) > 0
 
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details)
+        return ValidationResult(
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
+        )
 
     def validate_contract_update(
-        self, contract: Contract, contract_data: Optional[Dict[str, Any]] = None
+        self, contract: Contract, contract_data: dict[str, Any] | None = None
     ) -> ValidationResult:
         """
         Validate contract update (can update contract).
@@ -1701,16 +1709,18 @@ class ContractsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with validation status and details
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "validation_type": "contract_update",
             "contract_id": str(contract.id) if contract else None,
         }
 
         if not contract:
             errors.append("Contract must be provided")
-            return ValidationResult(is_valid=False, errors=errors, warnings=warnings, details=details)
+            return ValidationResult(
+                is_valid=False, errors=errors, warnings=warnings, details=details
+            )
 
         details["contract_exists"] = True
         details["current_status"] = contract.status
@@ -1796,25 +1806,28 @@ class ContractsBusinessRules(BusinessRules):
             elif new_version == current_version:
                 warnings.append(f"Version unchanged ({current_version})")
                 details["version_change_valid"] = True
-            else:
-                # Check if version already exists for this asset
-                if contract.asset_id:
-                    existing_contract = Contract.objects.filter(
+            # Check if version already exists for this asset
+            elif contract.asset_id:
+                existing_contract = (
+                    Contract.objects.filter(
                         tenant_id=contract.tenant_id,
                         asset_id=contract.asset_id,
-                        version=new_version
-                    ).exclude(id=contract.id).first()
+                        version=new_version,
+                    )
+                    .exclude(id=contract.id)
+                    .first()
+                )
 
-                    if existing_contract:
-                        errors.append(
-                            f"Version {new_version} already exists for asset {contract.asset_id}. "
-                            f"Existing contract: {existing_contract.id}"
-                        )
-                        details["version_change_valid"] = False
-                    else:
-                        details["version_change_valid"] = True
+                if existing_contract:
+                    errors.append(
+                        f"Version {new_version} already exists for asset {contract.asset_id}. "
+                        f"Existing contract: {existing_contract.id}"
+                    )
+                    details["version_change_valid"] = False
                 else:
                     details["version_change_valid"] = True
+            else:
+                details["version_change_valid"] = True
 
         # Validate original_raw update (if provided)
         if contract_data and "original_raw" in contract_data:
@@ -1829,17 +1842,21 @@ class ContractsBusinessRules(BusinessRules):
                     try:
                         if original_format == "JSON":
                             import json
+
                             json.loads(original_raw)
                         elif original_format == "YAML":
                             import yaml
+
                             yaml.safe_load(original_raw)
                     except Exception as e:
-                        warnings.append(f"Could not parse original_raw: {str(e)}")
+                        warnings.append(f"Could not parse original_raw: {e!s}")
 
         details["is_valid"] = len(errors) == 0
         details["has_warnings"] = len(warnings) > 0
 
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details)
+        return ValidationResult(
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
+        )
 
     def validate_contract_deletion(self, contract: Contract) -> ValidationResult:
         """
@@ -1857,16 +1874,18 @@ class ContractsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with validation status and details
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "validation_type": "contract_deletion",
             "contract_id": str(contract.id) if contract else None,
         }
 
         if not contract:
             errors.append("Contract must be provided")
-            return ValidationResult(is_valid=False, errors=errors, warnings=warnings, details=details)
+            return ValidationResult(
+                is_valid=False, errors=errors, warnings=warnings, details=details
+            )
 
         details["contract_exists"] = True
         details["contract_status"] = contract.status
@@ -1888,6 +1907,7 @@ class ContractsBusinessRules(BusinessRules):
         # Check if contract is referenced by scheduled ingestions
         try:
             from hub.apps.scheduled_ingestion.models import ScheduledIngestion
+
             scheduled_ingestions = ScheduledIngestion.objects.filter(contract_id=contract.id)
             ingestion_count = scheduled_ingestions.count()
 
@@ -1903,7 +1923,7 @@ class ContractsBusinessRules(BusinessRules):
                 details["referenced_by_scheduled_ingestions"] = False
                 details["scheduled_ingestion_count"] = 0
         except Exception as e:
-            warnings.append(f"Could not check scheduled ingestion references: {str(e)}")
+            warnings.append(f"Could not check scheduled ingestion references: {e!s}")
             details["referenced_by_scheduled_ingestions"] = None
 
         # Check if contract is referenced by other contracts (ODPS-ODCS links)
@@ -1911,7 +1931,7 @@ class ContractsBusinessRules(BusinessRules):
             # Check if this contract is linked from ODPS contracts
             odps_contracts_linking = Contract.objects.filter(
                 original_spec_type=OriginalSpecType.ODPS,
-                hub_contract_json__extensions__x_odps__odcs_link=str(contract.id)
+                hub_contract_json__extensions__x_odps__odcs_link=str(contract.id),
             ).exclude(id=contract.id)
 
             odps_link_count = odps_contracts_linking.count()
@@ -1935,7 +1955,7 @@ class ContractsBusinessRules(BusinessRules):
 
                 if odcs_link:
                     try:
-                        linked_contract = Contract.objects.get(id=odcs_link)
+                        Contract.objects.get(id=odcs_link)
                         warnings.append(
                             f"Contract {contract.id} links to contract {odcs_link}. "
                             "Deleting this contract will break the link."
@@ -1949,14 +1969,13 @@ class ContractsBusinessRules(BusinessRules):
                         details["links_to_contract"] = str(odcs_link)
                         details["linked_contract_exists"] = False
         except Exception as e:
-            warnings.append(f"Could not check contract references: {str(e)}")
+            warnings.append(f"Could not check contract references: {e!s}")
             details["referenced_by_odps_contracts"] = None
 
         # Warn if contract is ACTIVE
         if contract.status == ContractStatus.ACTIVE:
             warnings.append(
-                f"Contract {contract.id} is ACTIVE. "
-                "Consider retiring it before deletion."
+                f"Contract {contract.id} is ACTIVE. Consider retiring it before deletion."
             )
             details["is_active"] = True
         else:
@@ -1966,7 +1985,9 @@ class ContractsBusinessRules(BusinessRules):
         details["is_valid"] = len(errors) == 0
         details["has_warnings"] = len(warnings) > 0
 
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details)
+        return ValidationResult(
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
+        )
 
     def validate_contract_version(self, contract: Contract) -> ValidationResult:
         """
@@ -1984,16 +2005,18 @@ class ContractsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with validation status and details
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "validation_type": "contract_version",
             "contract_id": str(contract.id) if contract else None,
         }
 
         if not contract:
             errors.append("Contract must be provided")
-            return ValidationResult(is_valid=False, errors=errors, warnings=warnings, details=details)
+            return ValidationResult(
+                is_valid=False, errors=errors, warnings=warnings, details=details
+            )
 
         details["contract_exists"] = True
         details["contract_version"] = contract.version
@@ -2001,9 +2024,7 @@ class ContractsBusinessRules(BusinessRules):
 
         # Validate version is positive integer
         if not isinstance(contract.version, int) or contract.version < 1:
-            errors.append(
-                f"Contract version must be a positive integer, got {contract.version}"
-            )
+            errors.append(f"Contract version must be a positive integer, got {contract.version}")
             details["version_format_valid"] = False
         else:
             details["version_format_valid"] = True
@@ -2014,7 +2035,7 @@ class ContractsBusinessRules(BusinessRules):
                 conflicting_contracts = Contract.objects.filter(
                     tenant_id=contract.tenant_id,
                     asset_id=contract.asset_id,
-                    version=contract.version
+                    version=contract.version,
                 ).exclude(id=contract.id)
 
                 conflict_count = conflicting_contracts.count()
@@ -2031,10 +2052,13 @@ class ContractsBusinessRules(BusinessRules):
                     details["conflict_count"] = 0
 
                 # Check version sequence (warn if gaps exist)
-                other_contracts = Contract.objects.filter(
-                    tenant_id=contract.tenant_id,
-                    asset_id=contract.asset_id
-                ).exclude(id=contract.id).order_by("version")
+                other_contracts = (
+                    Contract.objects.filter(
+                        tenant_id=contract.tenant_id, asset_id=contract.asset_id
+                    )
+                    .exclude(id=contract.id)
+                    .order_by("version")
+                )
 
                 if other_contracts.exists():
                     versions = [c.version for c in other_contracts]
@@ -2049,7 +2073,7 @@ class ContractsBusinessRules(BusinessRules):
                     else:
                         details["version_gap_detected"] = False
             except Exception as e:
-                warnings.append(f"Could not check version conflicts: {str(e)}")
+                warnings.append(f"Could not check version conflicts: {e!s}")
                 details["version_conflict"] = None
         else:
             details["version_conflict"] = None
@@ -2071,7 +2095,9 @@ class ContractsBusinessRules(BusinessRules):
         details["is_valid"] = len(errors) == 0
         details["has_warnings"] = len(warnings) > 0
 
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details)
+        return ValidationResult(
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
+        )
 
 
 @register_rule(
@@ -2100,7 +2126,7 @@ class ODPSNormalizationRules(BusinessRules):
     def validate(
         self,
         context: ODPSRuleExecutionContext,
-        validation_type: Optional[str] = None,
+        validation_type: str | None = None,
     ) -> ValidationResult:
         """
         Validate contract normalization based on validation_type.
@@ -2123,9 +2149,9 @@ class ODPSNormalizationRules(BusinessRules):
                 warnings=[],
             )
 
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {}
 
         # Determine which validations to perform
         if validation_type is None or validation_type == "all":
@@ -2175,16 +2201,18 @@ class ODPSNormalizationRules(BusinessRules):
         Returns:
             ValidationResult with eligibility check results
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "contract_id": str(contract.id),
             "is_eligible": False,
         }
 
         # Check original_raw exists
         if not contract.original_raw:
-            errors.append("Contract must have original_raw content to be eligible for normalization")
+            errors.append(
+                "Contract must have original_raw content to be eligible for normalization"
+            )
             details["has_original_raw"] = False
         else:
             details["has_original_raw"] = True
@@ -2192,7 +2220,9 @@ class ODPSNormalizationRules(BusinessRules):
 
         # Check original_format is valid
         if not contract.original_format:
-            errors.append("Contract must have original_format (JSON or YAML) to be eligible for normalization")
+            errors.append(
+                "Contract must have original_format (JSON or YAML) to be eligible for normalization"
+            )
             details["has_original_format"] = False
         elif contract.original_format not in [OriginalFormat.JSON, OriginalFormat.YAML]:
             errors.append(
@@ -2206,7 +2236,9 @@ class ODPSNormalizationRules(BusinessRules):
 
         # Check original_spec_type is valid
         if not contract.original_spec_type:
-            errors.append("Contract must have original_spec_type (ODCS or ODPS) to be eligible for normalization")
+            errors.append(
+                "Contract must have original_spec_type (ODCS or ODPS) to be eligible for normalization"
+            )
             details["has_original_spec_type"] = False
         elif contract.original_spec_type not in [OriginalSpecType.ODCS, OriginalSpecType.ODPS]:
             errors.append(
@@ -2248,7 +2280,7 @@ class ODPSNormalizationRules(BusinessRules):
                     details["normalizer_type"] = type(normalizer).__name__
             except Exception as e:
                 errors.append(
-                    f"Error checking normalizer availability: {str(e)}. "
+                    f"Error checking normalizer availability: {e!s}. "
                     "Contract eligibility cannot be determined."
                 )
                 details["normalizer_check_error"] = str(e)
@@ -2280,9 +2312,9 @@ class ODPSNormalizationRules(BusinessRules):
         Returns:
             ValidationResult with normalization status validation results
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "contract_id": str(contract.id),
             "normalization_status": contract.normalization_status,
         }
@@ -2357,7 +2389,9 @@ class ODPSNormalizationRules(BusinessRules):
                     details["has_warnings"] = True
                     details["warning_count"] = len(contract.normalization_warnings)
                     if isinstance(contract.normalization_warnings, list):
-                        details["warnings"] = contract.normalization_warnings[:5]  # First 5 warnings
+                        details["warnings"] = contract.normalization_warnings[
+                            :5
+                        ]  # First 5 warnings
                 else:
                     warnings.append(
                         "Contract has normalization_status=NORMALIZED_WITH_WARNINGS "
@@ -2403,9 +2437,9 @@ class ODPSNormalizationRules(BusinessRules):
         Returns:
             ValidationResult with fidelity validation results
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "contract_id": str(contract.id),
             "fidelity_check": "not_performed",
         }
@@ -2447,7 +2481,7 @@ class ODPSNormalizationRules(BusinessRules):
         try:
             original_data = parse_contract(contract.original_raw, contract.original_format)
         except Exception as e:
-            errors.append(f"Failed to parse original contract: {str(e)}")
+            errors.append(f"Failed to parse original contract: {e!s}")
             details["fidelity_check"] = "failed_parse_original"
             return ValidationResult(
                 is_valid=False,
@@ -2565,7 +2599,13 @@ class ODPSNormalizationRules(BusinessRules):
             details["has_extensions"] = False
 
         # Summary
-        details["fidelity_score"] = "high" if len(errors) == 0 and len(warnings) == 0 else "medium" if len(errors) == 0 else "low"
+        details["fidelity_score"] = (
+            "high"
+            if len(errors) == 0 and len(warnings) == 0
+            else "medium"
+            if len(errors) == 0
+            else "low"
+        )
 
         return ValidationResult(
             is_valid=len(errors) == 0,
@@ -2591,26 +2631,24 @@ class StructuralFloorRule:
         spec_version: str,
         contract_id: str = "",
         tenant_id: str = "",
+        warnings: "Iterable[str] | None" = None,
     ) -> "ValidationResult":
         from hub.apps.contracts.structural_floor import (
             _classify,
             _count_models_with_fields,
             _schema_fields_count,
-            SUBCODE_GENERIC,
-            is_payload_structureless,
         )
+        from hub.apps.contracts.structureless import is_payload_structureless
         from hub.apps.core.business_rules.base import ValidationResult
 
         if not is_payload_structureless(hub_contract):
             return ValidationResult(is_valid=True)
 
         payload = hub_contract if isinstance(hub_contract, dict) else {}
-        subcode = _classify(payload, spec_type=spec_type, warnings=None)
+        subcode = _classify(payload, spec_type=spec_type, warnings=warnings)
         return ValidationResult(
             is_valid=False,
-            errors=[
-                f"Contract failed structural-floor invariant ({subcode})."
-            ],
+            errors=[f"Contract failed structural-floor invariant ({subcode})."],
             details={
                 "subcode": subcode,
                 "models_count": _count_models_with_fields(payload),

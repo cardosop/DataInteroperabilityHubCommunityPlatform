@@ -25,12 +25,11 @@ upload flow writes it via ``FileCompleteSerializer``.
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import uuid
 from typing import cast
 
+import pytest
 from django.core.cache import cache
 from django.test import TestCase
 from rest_framework import status
@@ -41,9 +40,8 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.tests.test_base import FilesAPITestBase
 from hub.apps.files.views import FileViewSet
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-from hub.apps.users.models import UserStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -62,9 +60,7 @@ class FileDownloadResponseSurfaceTest(FilesAPITestBase):
         self.file.content_sha256 = EXPECTED_SHA
         self.file.scan_status = FileScanStatus.CLEAN
         self.file.status = FileStatus.ACTIVE
-        self.file.save(
-            update_fields=["content_sha256", "scan_status", "status", "updated_at"]
-        )
+        self.file.save(update_fields=["content_sha256", "scan_status", "status", "updated_at"])
 
     @pytest.mark.integration
     def test_download_response_includes_content_sha256(self) -> None:
@@ -104,9 +100,7 @@ class FileDownloadChecksumMismatchEndpointTest(FilesAPITestBase):
         self.file.content_sha256 = EXPECTED_SHA
         self.file.status = FileStatus.ACTIVE
         self.file.scan_status = FileScanStatus.CLEAN
-        self.file.save(
-            update_fields=["content_sha256", "status", "scan_status", "updated_at"]
-        )
+        self.file.save(update_fields=["content_sha256", "status", "scan_status", "updated_at"])
 
     def _post_mismatch(self, file_id: object, actual_sha: str) -> object:
         return self.client.post(
@@ -226,12 +220,12 @@ class ChecksumMismatchThrottleWiringTest(TestCase):
         )
 
         for t in throttles:
-            assert not isinstance(
-                t, FileInitUserThrottle
-            ), "checksum-mismatch must not inherit init upload caps"
-            assert not isinstance(
-                t, FileInitTenantThrottle
-            ), "checksum-mismatch must not inherit init upload caps"
+            assert not isinstance(t, FileInitUserThrottle), (
+                "checksum-mismatch must not inherit init upload caps"
+            )
+            assert not isinstance(t, FileInitTenantThrottle), (
+                "checksum-mismatch must not inherit init upload caps"
+            )
         assert callable(getattr(view, "download_checksum_mismatch", None)), (
             "FileViewSet.download_checksum_mismatch action must be defined"
         )

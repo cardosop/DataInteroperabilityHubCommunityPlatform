@@ -18,6 +18,7 @@ in CI on every PR touching the consent subsystem and produces a
 structured outcome record that ``scripts/run_tabletop_rehearsal.py``
 folds into the per-run tabletop ledger row.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -38,9 +39,7 @@ from hub.apps.consent.services import ConsentService
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserRole, UserStatus
-
 from tests.integration.tabletop_rehearsal._harness import ScenarioRecorder
-
 
 User = get_user_model()
 
@@ -96,12 +95,8 @@ class S6ConsentRevocationPropagationRehearsal(TestCase):
             display_name="Rehearsal Subject",
             status=UserStatus.ACTIVE,
         )
-        admin_role = Role.objects.create(
-            tenant=self.tenant, name="TENANT_ADMIN", description=""
-        )
-        UserRole.objects.create(
-            user=self.user, tenant=self.tenant, role=admin_role
-        )
+        admin_role = Role.objects.create(tenant=self.tenant, name="TENANT_ADMIN", description="")
+        UserRole.objects.create(user=self.user, tenant=self.tenant, role=admin_role)
 
         self.purpose = ConsentPurpose.objects.create(
             tenant=self.tenant,
@@ -137,7 +132,8 @@ class S6ConsentRevocationPropagationRehearsal(TestCase):
                 HTTP_X_TENANT_ID=str(self.tenant.id),
             )
             self.assertEqual(
-                grant_resp.status_code, status.HTTP_201_CREATED,
+                grant_resp.status_code,
+                status.HTTP_201_CREATED,
                 f"Grant failed: {grant_resp.content[:300]!r}",
             )
             record_id = grant_resp.data["id"]
@@ -161,9 +157,7 @@ class S6ConsentRevocationPropagationRehearsal(TestCase):
             self.assertEqual(grant_audit_count, 1, "expected exactly one CONSENT_GRANTED")
 
             # --- 2. Revoke: subject withdraws consent. --------------
-            revoke_url = (
-                f"/api/v1/governance/consent-records/{record_id}/revoke/"
-            )
+            revoke_url = f"/api/v1/governance/consent-records/{record_id}/revoke/"
             revoke_resp = self.client.post(
                 revoke_url,
                 {},
@@ -173,8 +167,7 @@ class S6ConsentRevocationPropagationRehearsal(TestCase):
             self.assertIn(
                 revoke_resp.status_code,
                 (status.HTTP_200_OK, status.HTTP_204_NO_CONTENT),
-                f"Revoke failed: {revoke_resp.status_code} "
-                f"{revoke_resp.content[:300]!r}",
+                f"Revoke failed: {revoke_resp.status_code} {revoke_resp.content[:300]!r}",
             )
 
             # --- 3. Verify post-conditions ---------------------------
@@ -200,7 +193,8 @@ class S6ConsentRevocationPropagationRehearsal(TestCase):
                 resource_id=str(record_id),
             )
             self.assertEqual(
-                revoke_audits.count(), 1,
+                revoke_audits.count(),
+                1,
                 "expected exactly one CONSENT_REVOKED audit event",
             )
             rec.add_artefact(

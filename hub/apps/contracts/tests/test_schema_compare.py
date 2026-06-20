@@ -34,10 +34,10 @@ Both schema shapes are accepted:
 The service normalises both to a canonical internal representation
 before diffing so the algorithm is shape-agnostic.
 """
+
 from __future__ import annotations
 
 import pytest
-
 
 pytestmark = [pytest.mark.unit]
 
@@ -68,7 +68,6 @@ def _inferred_schema(*fields: dict) -> dict:
 
 
 class TestSchemaDriftResultShape:
-
     def test_imports_cleanly(self):
         from hub.apps.contracts.services.schema_compare import SchemaDriftResult  # noqa: F401
 
@@ -96,6 +95,7 @@ class TestSchemaDriftResultShape:
         """Two equivalent SchemaDriftResults serialise to byte-identical
         JSON dicts so the workflow's state_data hash stays stable."""
         import json
+
         from hub.apps.contracts.services.schema_compare import SchemaDriftResult
 
         a = SchemaDriftResult(
@@ -110,9 +110,7 @@ class TestSchemaDriftResultShape:
             type_mismatches=[],
             structural_incompatibility=True,
         )
-        assert json.dumps(a.to_dict(), sort_keys=True) == json.dumps(
-            b.to_dict(), sort_keys=True
-        )
+        assert json.dumps(a.to_dict(), sort_keys=True) == json.dumps(b.to_dict(), sort_keys=True)
 
 
 # ---------------------------------------------------------------------------
@@ -352,22 +350,11 @@ class TestPerformance:
 
         from hub.apps.contracts.services.schema_compare import SchemaCompareService
 
-        contract = _contract_schema(
-            *[
-                {"name": f"col_{i}", "type": "string"}
-                for i in range(100)
-            ]
-        )
+        contract = _contract_schema(*[{"name": f"col_{i}", "type": "string"} for i in range(100)])
         # Half the fields renamed → forces a real diff (not a no-op).
         inferred = _inferred_schema(
-            *[
-                {"name": f"col_{i}", "data_type": "string"}
-                for i in range(50)
-            ],
-            *[
-                {"name": f"renamed_{i}", "data_type": "string"}
-                for i in range(50)
-            ],
+            *[{"name": f"col_{i}", "data_type": "string"} for i in range(50)],
+            *[{"name": f"renamed_{i}", "data_type": "string"} for i in range(50)],
         )
 
         runs = []

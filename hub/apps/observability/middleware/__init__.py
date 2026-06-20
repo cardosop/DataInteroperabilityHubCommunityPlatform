@@ -1,6 +1,7 @@
 """
 Observability Middleware Package
 """
+
 import re
 import time
 
@@ -40,7 +41,7 @@ class MetricsMiddleware:
 
     def process_response(self, request, response):
         """Record request metrics"""
-        if not hasattr(request, '_metrics_start_time'):
+        if not hasattr(request, "_metrics_start_time"):
             return response
 
         # Calculate duration
@@ -57,25 +58,15 @@ class MetricsMiddleware:
         status_class = get_status_class(status_code)
 
         # Record metrics
-        http_requests_total.labels(
-            method=method,
-            route=route,
-            status_class=status_class
-        ).inc()
+        http_requests_total.labels(method=method, route=route, status_class=status_class).inc()
 
         http_request_duration_seconds.labels(
-            method=method,
-            route=route,
-            status_class=status_class
+            method=method, route=route, status_class=status_class
         ).observe(duration)
 
         # Record errors
         if status_code >= 400:
-            http_errors_total.labels(
-                method=method,
-                route=route,
-                status_code=status_code
-            ).inc()
+            http_errors_total.labels(method=method, route=route, status_code=status_code).inc()
 
         return response
 
@@ -90,10 +81,15 @@ class MetricsMiddleware:
             Normalized route
         """
         # Replace UUIDs with {id}
-        route = re.sub(r'/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', '/{id}', route, flags=re.IGNORECASE)
+        route = re.sub(
+            r"/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            "/{id}",
+            route,
+            flags=re.IGNORECASE,
+        )
         # Replace numeric IDs with {id}
-        route = re.sub(r'/\d+', '/{id}', route)
+        route = re.sub(r"/\d+", "/{id}", route)
         return route
 
 
-__all__ = ['MetricsMiddleware']
+__all__ = ["MetricsMiddleware"]

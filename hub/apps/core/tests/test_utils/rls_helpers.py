@@ -4,11 +4,11 @@
 Provides reusable primitives for verifying Row-Level Security policies
 are correctly enforced across all tenant-scoped models.
 """
+
 from __future__ import annotations
-import pytest
 
 from contextlib import contextmanager
-from typing import Any, Type
+from typing import Any
 from uuid import UUID
 
 from django.db import connection, models, transaction
@@ -28,22 +28,17 @@ def set_tenant_context(tenant_id: str | UUID):
     and does not leak across test boundaries.
     """
     tenant_id_str = str(tenant_id)
-    with transaction.atomic():
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT current_setting('app.current_tenant_id', true)")
-            previous = cursor.fetchone()[0] or None
-            try:
-                cursor.execute(
-                    "SET LOCAL app.current_tenant_id = %s", [tenant_id_str]
-                )
-                yield
-            finally:
-                if previous:
-                    cursor.execute(
-                        "SET LOCAL app.current_tenant_id = %s", [previous]
-                    )
-                else:
-                    cursor.execute("SET LOCAL app.current_tenant_id = DEFAULT")
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute("SELECT current_setting('app.current_tenant_id', true)")
+        previous = cursor.fetchone()[0] or None
+        try:
+            cursor.execute("SET LOCAL app.current_tenant_id = %s", [tenant_id_str])
+            yield
+        finally:
+            if previous:
+                cursor.execute("SET LOCAL app.current_tenant_id = %s", [previous])
+            else:
+                cursor.execute("SET LOCAL app.current_tenant_id = DEFAULT")
 
 
 def clear_tenant_context():
@@ -54,15 +49,14 @@ def clear_tenant_context():
     so ``SET LOCAL`` has a transaction scope even under autocommit.
     """
     try:
-        with transaction.atomic():
-            with connection.cursor() as cursor:
-                cursor.execute("SET LOCAL app.current_tenant_id = DEFAULT")
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute("SET LOCAL app.current_tenant_id = DEFAULT")
     except Exception:
         pass
 
 
 def assert_tenant_isolation(
-    model_class: Type[models.Model],
+    model_class: type[models.Model],
     creating_tenant_id: str | UUID,
     accessing_tenant_id: str | UUID,
     creation_kwargs: dict[str, Any] | None = None,

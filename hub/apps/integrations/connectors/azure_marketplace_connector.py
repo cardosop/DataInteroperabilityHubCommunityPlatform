@@ -8,14 +8,16 @@ Uses real HTTP; config: base_url, api_key (X-API-Key), api_version.
 API: https://learn.microsoft.com/en-us/rest/api/marketplacecatalog/dataplane/
 Auth: X-API-Key header (https://aka.ms/DiscoveryAPI/keys)
 """
+
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import quote
 
 import httpx
 
 from hub.apps.assets.models import AssetSourceType
+from hub.apps.core.services.base import ConnectionError, NotFoundError
 from hub.apps.integrations.base import (
     DataMarketplaceConnector,
     MarketplaceAssetMapping,
@@ -26,7 +28,6 @@ from hub.apps.integrations.base import (
     SyncResult,
     SyncStatus,
 )
-from hub.apps.core.services.base import ConnectionError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +46,10 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
-        api_key: Optional[str] = None,
-        api_version: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        api_version: str | None = None,
+        config: dict[str, Any] | None = None,
         **kwargs,
     ):
         """
@@ -69,7 +70,7 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
         self._api_key = api_key or ""
         self._api_version = api_version or DEFAULT_API_VERSION
         self._timeout = 30
-        self._client: Optional[httpx.Client] = None
+        self._client: httpx.Client | None = None
 
     def _get_client(self) -> httpx.Client:
         if self._client is None:
@@ -97,10 +98,10 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
         return MarketplaceType.AZURE_MARKETPLACE
 
     @property
-    def supported_sync_directions(self) -> List[SyncDirection]:
+    def supported_sync_directions(self) -> list[SyncDirection]:
         return [SyncDirection.PULL]
 
-    def authenticate(self, credentials: Dict[str, Any]) -> bool:
+    def authenticate(self, credentials: dict[str, Any]) -> bool:
         if not credentials:
             raise ValueError("Credentials dictionary is required")
         api_key = credentials.get("api_key") or credentials.get("X-API-Key")
@@ -116,7 +117,7 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
         try:
             client = self._get_client()
             r = client.get(
-                f"/products",
+                "/products",
                 params={"api-version": self._api_version, "$top": 1},
             )
             if r.status_code == 401:
@@ -132,12 +133,12 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
 
     def list_listings(
         self,
-        filters: Optional[Dict[str, Any]] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[MarketplaceListing]:
+        filters: dict[str, Any] | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[MarketplaceListing]:
         filters = filters or {}
-        params: Dict[str, Any] = {"api-version": self._api_version}
+        params: dict[str, Any] = {"api-version": self._api_version}
         if limit is not None and limit > 0:
             params["$top"] = min(limit, 100)
         if offset is not None and offset > 0:
@@ -157,14 +158,12 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 return []
-            raise ConnectionError(
-                f"Azure Marketplace list products failed: {e}"
-            ) from e
+            raise ConnectionError(f"Azure Marketplace list products failed: {e}") from e
         except httpx.RequestError as e:
             raise ConnectionError(f"Azure Marketplace list products failed: {e}") from e
 
         value = data.get("value") or []
-        listings: List[MarketplaceListing] = []
+        listings: list[MarketplaceListing] = []
         for p in value:
             try:
                 listings.append(self._product_to_listing(p))
@@ -192,15 +191,11 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise NotFoundError(f"Product not found: {listing_id}") from e
-            raise ConnectionError(
-                f"Azure Marketplace get product failed: {e}"
-            ) from e
+            raise ConnectionError(f"Azure Marketplace get product failed: {e}") from e
         except httpx.RequestError as e:
-            raise ConnectionError(
-                f"Azure Marketplace get product failed: {e}"
-            ) from e
+            raise ConnectionError(f"Azure Marketplace get product failed: {e}") from e
 
-    def _product_to_listing(self, p: Dict[str, Any]) -> MarketplaceListing:
+    def _product_to_listing(self, p: dict[str, Any]) -> MarketplaceListing:
         uid = p.get("uniqueProductId") or p.get("productId") or ""
         if not uid:
             raise ValueError("Product missing uniqueProductId/productId")
@@ -209,14 +204,12 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
         modified = p.get("lastModifiedDateTime")
         try:
             updated_at = (
-                datetime.fromisoformat(modified.replace("Z", "+00:00"))
-                if modified
-                else None
+                datetime.fromisoformat(modified.replace("Z", "+00:00")) if modified else None
             )
-        except Exception:
+        except (ValueError, TypeError, OverflowError, AttributeError):
             updated_at = None
         plans = p.get("plans") or []
-        resources: List[MarketplaceResource] = []
+        resources: list[MarketplaceResource] = []
         for i, plan in enumerate(plans):
             if not isinstance(plan, dict):
                 continue
@@ -254,9 +247,9 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
             else None,
         )
 
-    def list_resources(self, listing_id: str) -> List[MarketplaceResource]:
+    def list_resources(self, listing_id: str) -> list[MarketplaceResource]:
         listing = self.get_listing(listing_id)
-        resources: List[MarketplaceResource] = []
+        resources: list[MarketplaceResource] = []
         plans = (listing.metadata or {}).get("plans") or []
         for i, plan in enumerate(plans):
             if not isinstance(plan, dict):
@@ -279,9 +272,7 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
             "use Partner Center to publish."
         )
 
-    def update_listing(
-        self, listing_id: str, listing: MarketplaceListing
-    ) -> MarketplaceListing:
+    def update_listing(self, listing_id: str, listing: MarketplaceListing) -> MarketplaceListing:
         raise NotImplementedError(
             "Azure Marketplace connector does not support push (update_listing); "
             "use Partner Center to update."
@@ -304,11 +295,11 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
     def map_to_hub_asset(
         self,
         listing: MarketplaceListing,
-        sync_job_id: Optional[str] = None,
+        sync_job_id: str | None = None,
     ) -> MarketplaceAssetMapping:
         from django.utils import timezone
 
-        source_metadata: Dict[str, Any] = {
+        source_metadata: dict[str, Any] = {
             "marketplace_type": MarketplaceType.AZURE_MARKETPLACE.value,
             "marketplace_id": listing.marketplace_id,
             "listing_id": listing.marketplace_id,
@@ -318,7 +309,7 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
         if sync_job_id:
             source_metadata["sync_job_id"] = sync_job_id
 
-        odps_metadata: Optional[Dict[str, Any]] = None
+        odps_metadata: dict[str, Any] | None = None
         if listing.metadata:
             sp = listing.metadata.get("startingPrice")
             if isinstance(sp, dict):
@@ -334,7 +325,7 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
                     "payment_gateways": {},
                 }
 
-        resources: List[MarketplaceResource] = []
+        resources: list[MarketplaceResource] = []
         for res in listing.resources:
             resources.append(
                 MarketplaceResource(
@@ -363,9 +354,9 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
 
     def map_from_hub_asset(
         self,
-        asset_data: Dict[str, Any],
-        odps_metadata: Optional[Dict[str, Any]] = None,
-        odcs_metadata: Optional[Dict[str, Any]] = None,
+        asset_data: dict[str, Any],
+        odps_metadata: dict[str, Any] | None = None,
+        odcs_metadata: dict[str, Any] | None = None,
     ) -> MarketplaceListing:
         raise NotImplementedError(
             "Azure Marketplace connector does not support push (map_from_hub_asset); "
@@ -374,8 +365,8 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
 
     def sync_push(
         self,
-        asset_ids: List[str],
-        options: Optional[Dict[str, Any]] = None,
+        asset_ids: list[str],
+        options: dict[str, Any] | None = None,
     ) -> SyncResult:
         raise NotImplementedError(
             "Azure Marketplace connector does not support push (sync_push); "
@@ -384,17 +375,17 @@ class AzureMarketplaceConnector(DataMarketplaceConnector):
 
     def sync_pull(
         self,
-        listing_ids: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        options: Optional[Dict[str, Any]] = None,
+        listing_ids: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
     ) -> SyncResult:
         from django.utils import timezone
 
         started_at = timezone.now()
         options = options or {}
         limit = options.get("limit")
-        mappings: List[MarketplaceAssetMapping] = []
-        errors: List[str] = []
+        mappings: list[MarketplaceAssetMapping] = []
+        errors: list[str] = []
 
         try:
             if listing_ids:

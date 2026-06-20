@@ -7,87 +7,87 @@ Usage:
     python manage.py harvest_ckan --instance dados.gov.br --dry-run
 """
 
+from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django.contrib.auth import get_user_model
 
-from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob
-from hub.apps.integrations.services import MarketplaceIntegrationService
-from hub.apps.integrations.base import MarketplaceType, SyncDirection
+from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.config.marketplace_instances import get_marketplace_instance_config
+from hub.apps.integrations.models import MarketplaceConnection
+from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.tenants.models import Tenant
 
 User = get_user_model()
 
 
 class Command(BaseCommand):
-    help = 'Harvest data from CKAN instances (e.g., dados.gov.br) into Hub'
+    help = "Harvest data from CKAN instances (e.g., dados.gov.br) into Hub"
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--instance',
+            "--instance",
             type=str,
             required=True,
-            help='CKAN instance name (e.g., dados.gov.br, demo.ckan.org)',
+            help="CKAN instance name (e.g., dados.gov.br, demo.ckan.org)",
         )
         parser.add_argument(
-            '--tenant',
+            "--tenant",
             type=str,
-            help='Tenant slug or ID (defaults to first tenant)',
+            help="Tenant slug or ID (defaults to first tenant)",
         )
         parser.add_argument(
-            '--user',
+            "--user",
             type=str,
-            help='User email or ID (defaults to first user)',
+            help="User email or ID (defaults to first user)",
         )
         parser.add_argument(
-            '--limit',
+            "--limit",
             type=int,
             default=10,
-            help='Maximum number of datasets to harvest (default: 10)',
+            help="Maximum number of datasets to harvest (default: 10)",
         )
         parser.add_argument(
-            '--organization',
+            "--organization",
             type=str,
-            help='Filter by organization name',
+            help="Filter by organization name",
         )
         parser.add_argument(
-            '--tags',
+            "--tags",
             type=str,
-            help='Filter by tags (comma-separated)',
+            help="Filter by tags (comma-separated)",
         )
         parser.add_argument(
-            '--query',
+            "--query",
             type=str,
-            help='Search query string',
+            help="Search query string",
         )
         parser.add_argument(
-            '--dry-run',
-            action='store_true',
-            help='Simulate harvest without creating assets',
+            "--dry-run",
+            action="store_true",
+            help="Simulate harvest without creating assets",
         )
         parser.add_argument(
-            '--no-resources',
-            action='store_true',
-            help='Skip downloading resources',
+            "--no-resources",
+            action="store_true",
+            help="Skip downloading resources",
         )
         parser.add_argument(
-            '--connection-name',
+            "--connection-name",
             type=str,
-            help='Custom connection name (defaults to instance name)',
+            help="Custom connection name (defaults to instance name)",
         )
 
     def handle(self, *args, **options):
-        instance_name = options['instance']
-        tenant_spec = options.get('tenant')
-        user_spec = options.get('user')
-        limit = options['limit']
-        organization = options.get('organization')
-        tags = options.get('tags')
-        query = options.get('query')
-        dry_run = options['dry_run']
-        include_resources = not options['no_resources']
-        connection_name = options.get('connection_name') or instance_name
+        instance_name = options["instance"]
+        tenant_spec = options.get("tenant")
+        user_spec = options.get("user")
+        limit = options["limit"]
+        organization = options.get("organization")
+        tags = options.get("tags")
+        query = options.get("query")
+        dry_run = options["dry_run"]
+        include_resources = not options["no_resources"]
+        connection_name = options.get("connection_name") or instance_name
 
         # Validate instance exists
         instance_config = get_marketplace_instance_config(instance_name)
@@ -97,9 +97,7 @@ class Command(BaseCommand):
                 f"Available instances: dados.gov.br, demo.ckan.org, data.gov"
             )
 
-        self.stdout.write(
-            self.style.SUCCESS(f"✓ Found CKAN instance: {instance_name}")
-        )
+        self.stdout.write(self.style.SUCCESS(f"✓ Found CKAN instance: {instance_name}"))
         self.stdout.write(f"  Base URL: {instance_config.base_url}")
         self.stdout.write(f"  Country: {instance_config.country or 'N/A'}")
         self.stdout.write(f"  Language: {instance_config.language or 'N/A'}")
@@ -151,20 +149,20 @@ class Command(BaseCommand):
                 marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
                 name=connection_name,
                 defaults={
-                    'config': {
-                        'instance_id': instance_name,
-                        'api_key': instance_config.get_api_key(),
+                    "config": {
+                        "instance_id": instance_name,
+                        "api_key": instance_config.get_api_key(),
                     },
-                    'is_active': True,
-                }
+                    "is_active": True,
+                },
             )
 
             # Update config if connection already exists
             if not created:
                 config = connection.get_config()
-                config['instance_id'] = instance_name
+                config["instance_id"] = instance_name
                 if instance_config.get_api_key():
-                    config['api_key'] = instance_config.get_api_key()
+                    config["api_key"] = instance_config.get_api_key()
                 connection.set_config(config)
                 connection.is_active = True
                 connection.save()
@@ -177,58 +175,53 @@ class Command(BaseCommand):
         # Build filters
         filters = {}
         if organization:
-            filters['organization'] = organization
+            filters["organization"] = organization
         if tags:
-            filters['tags'] = [tag.strip() for tag in tags.split(',')]
+            filters["tags"] = [tag.strip() for tag in tags.split(",")]
         if query:
-            filters['q'] = query
+            filters["q"] = query
 
         if filters:
             self.stdout.write(f"  Filters: {filters}")
 
         # Build options
         options_dict = {
-            'limit': limit,
-            'create_assets': not dry_run,
-            'include_resources': include_resources,
-            'dry_run': dry_run,
+            "limit": limit,
+            "create_assets": not dry_run,
+            "include_resources": include_resources,
+            "dry_run": dry_run,
         }
 
         if dry_run:
-            self.stdout.write(
-                self.style.WARNING("⚠ DRY RUN MODE - No assets will be created")
-            )
+            self.stdout.write(self.style.WARNING("⚠ DRY RUN MODE - No assets will be created"))
 
         # Create service instance
         service = MarketplaceIntegrationService(
-            tenant_id=str(tenant.id),
-            user_id=str(user.id),
-            request_id=None
+            tenant_id=str(tenant.id), user_id=str(user.id), request_id=None
         )
 
         # Test connection first (skip if dry-run and connection fails - allow workflow to handle errors)
         self.stdout.write("\nTesting connection...")
         try:
             from hub.apps.integrations.factory import MarketplaceConnectorFactory
+
             connector = MarketplaceConnectorFactory.create_connector(
-                marketplace_type=MarketplaceType.CKAN_INSTANCE,
-                config=connection.get_config()
+                marketplace_type=MarketplaceType.CKAN_INSTANCE, config=connection.get_config()
             )
 
             if connector.test_connection():
                 self.stdout.write(
                     self.style.SUCCESS(f"✓ Connection to {instance_config.base_url} verified")
                 )
-            else:
-                if dry_run:
-                    self.stdout.write(
-                        self.style.WARNING(
-                            f"⚠ Connection test failed, but continuing in dry-run mode. "
-                            f"Actual harvest may fail if connection is not available."
-                        )
+            elif dry_run:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "⚠ Connection test failed, but continuing in dry-run mode. "
+                        "Actual harvest may fail if connection is not available."
                     )
-                else:
-                    raise CommandError("Connection test failed")
+                )
+            else:
+                raise CommandError("Connection test failed")
         except Exception as e:
             if dry_run:
                 self.stdout.write(
@@ -250,12 +243,10 @@ class Command(BaseCommand):
                 listing_ids=None,  # Harvest all matching filters
                 filters=filters,
                 options=options_dict,
-                request=None
+                request=None,
             )
 
-            self.stdout.write(
-                self.style.SUCCESS(f"\n✓ Sync job created successfully!")
-            )
+            self.stdout.write(self.style.SUCCESS("\n✓ Sync job created successfully!"))
             self.stdout.write(f"  Job ID: {sync_job.id}")
             self.stdout.write(f"  Status: {sync_job.status}")
             self.stdout.write(f"  Direction: {sync_job.direction}")
@@ -267,18 +258,15 @@ class Command(BaseCommand):
                 )
             else:
                 self.stdout.write(
-                    self.style.SUCCESS(
-                        "\n✓ The sync job will be processed asynchronously."
-                    )
+                    self.style.SUCCESS("\n✓ The sync job will be processed asynchronously.")
                 )
                 self.stdout.write(
                     f"  Check status: python manage.py shell -c "
                     f"'from hub.apps.integrations.models import MarketplaceSyncJob; "
-                    f"job = MarketplaceSyncJob.objects.get(id=\"{sync_job.id}\"); "
-                    f"print(f\"Status: {{job.status}}, Synced: {{job.items_synced}}, "
+                    f'job = MarketplaceSyncJob.objects.get(id="{sync_job.id}"); '
+                    f'print(f"Status: {{job.status}}, Synced: {{job.items_synced}}, '
                     f"Failed: {{job.items_failed}}\")'"
                 )
 
         except Exception as e:
             raise CommandError(f"Failed to create sync job: {e}")
-

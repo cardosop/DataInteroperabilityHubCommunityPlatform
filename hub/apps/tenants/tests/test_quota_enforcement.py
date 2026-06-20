@@ -9,6 +9,7 @@ scenarios.
 All tests call ``PlanLimitService.check_limit()`` directly with real DB
 resources — no mocks at the enforcement boundary.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -20,7 +21,7 @@ from django.test import TestCase
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.core.services.base import ValidationError
 from hub.apps.files.models import File, FileStatus
-from hub.apps.tenants.models import Tenant, TenantPlan, PlanTier
+from hub.apps.tenants.models import PlanTier, Tenant, TenantPlan
 from hub.apps.tenants.services import PlanLimitService
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -54,7 +55,8 @@ class QuotaEnforcementTests(TestCase):
             plan=self.plan,
         )
         self.service = PlanLimitService(
-            tenant_id=str(self.tenant.id), user_id=None,
+            tenant_id=str(self.tenant.id),
+            user_id=None,
         )
 
     # ── Storage GB conversion ──────────────────────────────────────────
@@ -72,11 +74,12 @@ class QuotaEnforcementTests(TestCase):
                 status=FileStatus.ACTIVE,
             )
 
-        with transaction.atomic():
-            with pytest.raises(ValidationError) as exc_info:
-                self.service.check_limit(
-                    str(self.tenant.id), "max_storage_gb", delta=0,
-                )
+        with transaction.atomic(), pytest.raises(ValidationError) as exc_info:
+            self.service.check_limit(
+                str(self.tenant.id),
+                "max_storage_gb",
+                delta=0,
+            )
         self.assertEqual(exc_info.value.code, "plan_limit_exceeded")
         details = exc_info.value.details
         self.assertEqual(details["limit_key"], "max_storage_gb")
@@ -98,7 +101,9 @@ class QuotaEnforcementTests(TestCase):
 
         with transaction.atomic():
             result = self.service.check_limit(
-                str(self.tenant.id), "max_storage_gb", delta=0,
+                str(self.tenant.id),
+                "max_storage_gb",
+                delta=0,
             )
         self.assertTrue(result["allowed"])
         self.assertGreaterEqual(result["remaining"], 0)
@@ -109,11 +114,12 @@ class QuotaEnforcementTests(TestCase):
         """Tenant without ml_plan has max=0 for ML limit keys."""
         self.assertIsNone(self.tenant.ml_plan)
 
-        with transaction.atomic():
-            with pytest.raises(ValidationError) as exc_info:
-                self.service.check_limit(
-                    str(self.tenant.id), "max_ml_models", delta=1,
-                )
+        with transaction.atomic(), pytest.raises(ValidationError) as exc_info:
+            self.service.check_limit(
+                str(self.tenant.id),
+                "max_ml_models",
+                delta=1,
+            )
         self.assertEqual(exc_info.value.code, "plan_limit_exceeded")
         details = exc_info.value.details
         self.assertEqual(details["limit_key"], "max_ml_models")
@@ -134,7 +140,9 @@ class QuotaEnforcementTests(TestCase):
 
         with transaction.atomic():
             result = self.service.check_limit(
-                str(self.tenant.id), "max_ml_models", delta=1,
+                str(self.tenant.id),
+                "max_ml_models",
+                delta=1,
             )
         self.assertTrue(result["allowed"])
         self.assertEqual(result["max"], 50)
@@ -154,11 +162,12 @@ class QuotaEnforcementTests(TestCase):
                 status=AssetStatus.ACTIVE,
             )
 
-        with transaction.atomic():
-            with pytest.raises(ValidationError) as exc_info:
-                self.service.check_limit(
-                    str(self.tenant.id), "max_assets", delta=3,
-                )
+        with transaction.atomic(), pytest.raises(ValidationError) as exc_info:
+            self.service.check_limit(
+                str(self.tenant.id),
+                "max_assets",
+                delta=3,
+            )
         details = exc_info.value.details
         self.assertEqual(details["limit_key"], "max_assets")
         self.assertEqual(details["max"], 10)
@@ -173,10 +182,11 @@ class QuotaEnforcementTests(TestCase):
         self.plan.limits_json["max_assets"] = 0
         self.plan.save(update_fields=["limits_json"])
 
-        with transaction.atomic():
-            with pytest.raises(ValidationError) as exc_info:
-                self.service.check_limit(
-                    str(self.tenant.id), "max_assets", delta=1,
-                )
+        with transaction.atomic(), pytest.raises(ValidationError) as exc_info:
+            self.service.check_limit(
+                str(self.tenant.id),
+                "max_assets",
+                delta=1,
+            )
         self.assertEqual(exc_info.value.code, "plan_limit_exceeded")
         self.assertEqual(exc_info.value.details["max"], 0)

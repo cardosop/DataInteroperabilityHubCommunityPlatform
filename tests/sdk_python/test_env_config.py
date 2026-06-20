@@ -6,7 +6,6 @@ for Python SDK tests, including API URL detection and service health checks.
 """
 
 import os
-from typing import Optional
 
 
 def get_test_api_url() -> str:

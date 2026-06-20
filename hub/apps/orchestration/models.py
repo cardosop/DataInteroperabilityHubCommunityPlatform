@@ -5,7 +5,7 @@ PostgreSQL models for workflow state persistence, versioning, and execution trac
 """
 
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -239,9 +239,15 @@ class WorkflowInstance(models.Model):
             models.CheckConstraint(
                 condition=models.Q(
                     status__in=[
-                        "DRAFT", "RUNNING", "COMPLETED", "FAILED",
-                        "CANCELLED", "PAUSED", "ROLLING_BACK",
-                        "ROLLED_BACK", "COMPENSATION_INCOMPLETE",
+                        "DRAFT",
+                        "RUNNING",
+                        "COMPLETED",
+                        "FAILED",
+                        "CANCELLED",
+                        "PAUSED",
+                        "ROLLING_BACK",
+                        "ROLLED_BACK",
+                        "COMPENSATION_INCOMPLETE",
                     ]
                 ),
                 name="workflow_instance_status_valid",
@@ -296,7 +302,7 @@ class WorkflowInstance(models.Model):
                 self.state_data["current_step_name"] = "unknown"
         self.save(update_fields=["status", "started_at", "state_data", "updated_at"])
 
-    def mark_completed(self, output_data: Optional[Dict[str, Any]] = None):
+    def mark_completed(self, output_data: dict[str, Any] | None = None):
         """Mark workflow as completed"""
         self.status = WorkflowStatus.COMPLETED
         self.completed_at = timezone.now()
@@ -304,7 +310,7 @@ class WorkflowInstance(models.Model):
             self.output_data = output_data
         self.save(update_fields=["status", "completed_at", "output_data", "updated_at"])
 
-    def mark_failed(self, error_message: str, error_details: Optional[Dict[str, Any]] = None):
+    def mark_failed(self, error_message: str, error_details: dict[str, Any] | None = None):
         """Mark workflow as failed"""
         self.status = WorkflowStatus.FAILED
         self.completed_at = timezone.now()
@@ -412,7 +418,7 @@ class WorkflowStep(models.Model):
         self.started_at = timezone.now()
         self.save(update_fields=["status", "started_at", "updated_at"])
 
-    def mark_completed(self, output_data: Optional[Dict[str, Any]] = None):
+    def mark_completed(self, output_data: dict[str, Any] | None = None):
         """Mark step as completed"""
         self.status = StepStatus.COMPLETED
         self.completed_at = timezone.now()
@@ -420,7 +426,7 @@ class WorkflowStep(models.Model):
             self.output_data = output_data
         self.save(update_fields=["status", "completed_at", "output_data", "updated_at"])
 
-    def mark_failed(self, error_message: str, error_details: Optional[Dict[str, Any]] = None):
+    def mark_failed(self, error_message: str, error_details: dict[str, Any] | None = None):
         """Mark step as failed"""
         self.status = StepStatus.FAILED
         self.completed_at = timezone.now()
@@ -431,14 +437,14 @@ class WorkflowStep(models.Model):
             update_fields=["status", "completed_at", "error_message", "error_details", "updated_at"]
         )
 
-    def mark_compensated(self, compensation_data: Optional[Dict[str, Any]] = None):
+    def mark_compensated(self, compensation_data: dict[str, Any] | None = None):
         """Mark step as compensated (rolled back)"""
         self.status = StepStatus.COMPENSATED
         if compensation_data is not None:
             self.compensation_data = compensation_data
         self.save(update_fields=["status", "compensation_data", "updated_at"])
 
-    def mark_skipped(self, reason: Optional[str] = None):
+    def mark_skipped(self, reason: str | None = None):
         """Mark step as skipped (condition evaluated to False)"""
         self.status = StepStatus.SKIPPED
         self.completed_at = timezone.now()

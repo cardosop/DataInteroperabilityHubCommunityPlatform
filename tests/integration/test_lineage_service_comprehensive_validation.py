@@ -14,18 +14,14 @@ Tests follow TDD approach and fix root causes.
 
 import json
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pytest
-
-pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
 
 # Import signals to disable them in tests (root cause fix for semantic service timeouts)
 from django.db.models.signals import post_save
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.impact_analysis import ImpactAnalyzer
@@ -40,15 +36,19 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.semantic.signals import asset_saved, contract_saved
-from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from tests.factories import TenantFactory, UserFactory
 from tests.fixtures.test_data_factories import (
     AssetFactoryEnhanced,
-    ContractFactory,
 )
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.slow,
+    pytest.mark.uc("UC-MKT-LINEAGE-001"),
+    pytest.mark.uc("UC-MKT-LINEAGE-002"),
+    pytest.mark.uc("UC-LIN-FIELD-EDIT-001"),
+]
 User = get_user_model()
 
 
@@ -70,7 +70,6 @@ class ContractLineageTest(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
-        pass
 
     def setUp(self):
         """Set up test data"""
@@ -108,8 +107,8 @@ class ContractLineageTest(TestCase):
     def _create_contract_with_lineage(
         self,
         name: str,
-        lineage_contracts: List[Dict[str, Any]],
-        lineage_entries: List[Dict[str, Any]],
+        lineage_contracts: list[dict[str, Any]],
+        lineage_entries: list[dict[str, Any]],
     ) -> Contract:
         """Create a contract with specified lineage data"""
         asset = AssetFactoryEnhanced.create_asset(
@@ -314,7 +313,6 @@ class FieldLineageTest(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
-        pass
 
     def setUp(self):
         """Set up test data"""
@@ -334,7 +332,9 @@ class FieldLineageTest(TestCase):
             try:
                 if attempt > 0:
                     connection.close()
-                    time.sleep(retry_delay * (2**attempt))  # INTENTIONAL: e2e/integration test polling real services
+                    time.sleep(  # noqa: sleep-needed — polling loop
+                        retry_delay * (2**attempt)
+                    )  # INTENTIONAL: e2e/integration test polling real services
 
                 self.tenant = TenantFactory.create_tenant()
                 self.user = UserFactory.create_user(tenant=self.tenant, status=UserStatus.ACTIVE)
@@ -342,7 +342,7 @@ class FieldLineageTest(TestCase):
                     tenant_id=str(self.tenant.id), user_id=str(self.user.id)
                 )
                 break
-            except Exception as e:
+            except Exception:
                 if attempt == max_retries - 1:
                     raise
                 continue
@@ -394,7 +394,7 @@ class FieldLineageTest(TestCase):
         )
 
     def _create_contract_with_field_lineage(
-        self, name: str, model_name: str, fields: List[Dict[str, Any]]
+        self, name: str, model_name: str, fields: list[dict[str, Any]]
     ) -> Contract:
         """Create a contract with field-level lineage"""
         asset = AssetFactoryEnhanced.create_asset(
@@ -593,7 +593,6 @@ class HierarchicalLineageTest(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
-        pass
 
     def setUp(self):
         """Set up test data with hierarchical lineage"""
@@ -613,7 +612,9 @@ class HierarchicalLineageTest(TestCase):
             try:
                 if attempt > 0:
                     connection.close()
-                    time.sleep(retry_delay * (2**attempt))  # INTENTIONAL: e2e/integration test polling real services
+                    time.sleep(  # noqa: sleep-needed — polling loop
+                        retry_delay * (2**attempt)
+                    )  # INTENTIONAL: e2e/integration test polling real services
 
                 self.tenant = TenantFactory.create_tenant()
                 self.user = UserFactory.create_user(tenant=self.tenant, status=UserStatus.ACTIVE)
@@ -621,7 +622,7 @@ class HierarchicalLineageTest(TestCase):
                     tenant_id=str(self.tenant.id), user_id=str(self.user.id)
                 )
                 break
-            except Exception as e:
+            except Exception:
                 if attempt == max_retries - 1:
                     raise
                 continue
@@ -669,8 +670,8 @@ class HierarchicalLineageTest(TestCase):
         name: str,
         model_name: str,
         field_name: str,
-        upstream_contracts: List[Dict[str, Any]],
-        upstream_fields: Optional[List[Dict[str, Any]]] = None,
+        upstream_contracts: list[dict[str, Any]],
+        upstream_fields: list[dict[str, Any]] | None = None,
     ) -> Contract:
         """Create a contract with hierarchical lineage"""
         asset = AssetFactoryEnhanced.create_asset(
@@ -840,7 +841,7 @@ class HierarchicalLineageTest(TestCase):
             tenant_id=str(self.tenant.id),
             use_cache=True,
         )
-        first_query_time = time.time() - start_time
+        time.time() - start_time
 
         # Second query (with cache)
         start_time = time.time()
@@ -849,7 +850,7 @@ class HierarchicalLineageTest(TestCase):
             tenant_id=str(self.tenant.id),
             use_cache=True,
         )
-        second_query_time = time.time() - start_time
+        time.time() - start_time
 
         # Cached query should be faster (or at least not slower)
         # Note: In test environment, cache might not be significantly faster
@@ -914,7 +915,6 @@ class LineageImpactAnalysisTest(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
-        pass
 
     def setUp(self):
         """Set up test data for impact analysis"""
@@ -975,7 +975,7 @@ class LineageImpactAnalysisTest(TestCase):
         name: str,
         model_name: str,
         field_name: str,
-        depends_on: Optional[Dict[str, str]] = None,
+        depends_on: dict[str, str] | None = None,
     ) -> Contract:
         """Create a contract for impact analysis testing"""
         asset = AssetFactoryEnhanced.create_asset(
@@ -1200,7 +1200,6 @@ class LineageODPSIntegrationTest(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
-        pass
 
     def setUp(self):
         """Set up test data with ODPS-ODCS integration"""
@@ -1220,7 +1219,9 @@ class LineageODPSIntegrationTest(TestCase):
             try:
                 if attempt > 0:
                     connection.close()
-                    time.sleep(retry_delay * (2**attempt))  # INTENTIONAL: e2e/integration test polling real services
+                    time.sleep(  # noqa: sleep-needed — polling loop
+                        retry_delay * (2**attempt)
+                    )  # INTENTIONAL: e2e/integration test polling real services
 
                 self.tenant = TenantFactory.create_tenant()
                 self.user = UserFactory.create_user(tenant=self.tenant, status=UserStatus.ACTIVE)
@@ -1228,7 +1229,7 @@ class LineageODPSIntegrationTest(TestCase):
                     tenant_id=str(self.tenant.id), user_id=str(self.user.id)
                 )
                 break
-            except Exception as e:
+            except Exception:
                 if attempt == max_retries - 1:
                     raise
                 continue
@@ -1278,7 +1279,7 @@ class LineageODPSIntegrationTest(TestCase):
         name: str,
         model_name: str,
         field_name: str,
-        depends_on: Optional[Dict[str, str]] = None,
+        depends_on: dict[str, str] | None = None,
     ) -> Contract:
         """Create an ODCS contract"""
         asset = AssetFactoryEnhanced.create_asset(
@@ -1347,7 +1348,7 @@ class LineageODPSIntegrationTest(TestCase):
         return contract
 
     def _create_odps_contract(
-        self, name: str, product_id: str, linked_odcs_id: Optional[str] = None
+        self, name: str, product_id: str, linked_odcs_id: str | None = None
     ) -> Contract:
         """Create an ODPS contract linked to ODCS"""
         asset = AssetFactoryEnhanced.create_asset(

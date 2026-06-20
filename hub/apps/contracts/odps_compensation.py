@@ -4,14 +4,16 @@ ODPS Creation Compensation
 Implements compensation logic for ODPS creation operations.
 Handles rollback, cleanup, and state restoration when ODPS creation fails.
 """
+
 import logging
-from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
+from typing import Any
+
 from django.db import transaction
 from django.utils import timezone
 
-from hub.apps.contracts.models import Contract, ContractStatus
 from hub.apps.assets.models import Asset
+from hub.apps.contracts.models import Contract
 from hub.apps.core.services.base import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -20,10 +22,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ODPSCreationState:
     """State snapshot for ODPS creation compensation."""
-    contract_id: Optional[str] = None
-    asset_id: Optional[str] = None
-    asset_previous_version: Optional[int] = None
-    events_published: Optional[List[str]] = None  # List of event IDs published
+
+    contract_id: str | None = None
+    asset_id: str | None = None
+    asset_previous_version: int | None = None
+    events_published: list[str] | None = None  # List of event IDs published
 
     def __post_init__(self):
         if self.events_published is None:
@@ -39,7 +42,7 @@ class ODPSCreationCompensation:
     is restored to its previous condition.
     """
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize ODPS creation compensation handler.
 
@@ -52,10 +55,8 @@ class ODPSCreationCompensation:
 
     @transaction.atomic
     def rollback_created_contract(
-        self,
-        contract_id: str,
-        state: Optional[ODPSCreationState] = None
-    ) -> Dict[str, Any]:
+        self, contract_id: str, state: ODPSCreationState | None = None
+    ) -> dict[str, Any]:
         """
         Rollback created contract by deleting it.
 
@@ -84,7 +85,7 @@ class ODPSCreationCompensation:
                 return {
                     "status": "skipped",
                     "reason": "contract_not_found",
-                    "contract_id": contract_id
+                    "contract_id": contract_id,
                 }
 
             # Store contract details for logging
@@ -92,38 +93,34 @@ class ODPSCreationCompensation:
                 "contract_id": str(contract.id),
                 "status": contract.status,
                 "asset_id": str(contract.asset.id) if contract.asset else None,
-                "odps_version": contract.original_spec_version
+                "odps_version": contract.original_spec_version,
             }
 
             # Delete contract
             contract.delete()
 
-            logger.info(
-                f"ODPS contract successfully rolled back: {contract_details}"
-            )
+            logger.info(f"ODPS contract successfully rolled back: {contract_details}")
 
             return {
                 "status": "success",
                 "contract_id": contract_id,
-                "contract_details": contract_details
+                "contract_details": contract_details,
             }
 
         except Exception as e:
             logger.exception(
-                f"Failed to rollback ODPS contract: contract_id={contract_id}, error={str(e)}"
+                f"Failed to rollback ODPS contract: contract_id={contract_id}, error={e!s}"
             )
             raise ValidationError(
-                message=f"Failed to rollback ODPS contract {contract_id}: {str(e)}",
+                message=f"Failed to rollback ODPS contract {contract_id}: {e!s}",
                 code="ODPS_ROLLBACK_FAILED",
-                details={"contract_id": contract_id, "error": str(e)}
+                details={"contract_id": contract_id, "error": str(e)},
             ) from e
 
     @transaction.atomic
     def cleanup_resources(
-        self,
-        state: ODPSCreationState,
-        publish_compensation_events: bool = True
-    ) -> Dict[str, Any]:
+        self, state: ODPSCreationState, publish_compensation_events: bool = True
+    ) -> dict[str, Any]:
         """
         Cleanup resources created during ODPS creation.
 
@@ -144,22 +141,16 @@ class ODPSCreationCompensation:
             f"asset_id={state.asset_id}, events_count={len(state.events_published) if state.events_published else 0}"
         )
 
-        cleanup_results = {
-            "status": "success",
-            "resources_cleaned": [],
-            "events_published": []
-        }
+        cleanup_results = {"status": "success", "resources_cleaned": [], "events_published": []}
 
         # Publish compensation events if enabled
         if publish_compensation_events and state.contract_id:
             try:
-                from hub.apps.core.events.service_publishers import ODPSEventPublisher
                 from hub.apps.core.events.publisher import EventPublisher
+                from hub.apps.core.events.service_publishers import ODPSEventPublisher
 
                 event_publisher = EventPublisher(
-                    service_name="odps_service",
-                    tenant_id=self.tenant_id,
-                    user_id=self.user_id
+                    service_name="odps_service", tenant_id=self.tenant_id, user_id=self.user_id
                 )
 
                 odps_event_publisher = ODPSEventPublisher()
@@ -176,7 +167,7 @@ class ODPSCreationCompensation:
 
             except Exception as e:
                 logger.warning(
-                    f"Failed to publish compensation event (non-critical): contract_id={state.contract_id}, error={str(e)}"
+                    f"Failed to publish compensation event (non-critical): contract_id={state.contract_id}, error={e!s}"
                 )
                 # Non-critical, continue cleanup
 
@@ -190,10 +181,7 @@ class ODPSCreationCompensation:
         return cleanup_results
 
     @transaction.atomic
-    def restore_previous_state(
-        self,
-        state: ODPSCreationState
-    ) -> Dict[str, Any]:
+    def restore_previous_state(self, state: ODPSCreationState) -> dict[str, Any]:
         """
         Restore previous state before ODPS creation.
 
@@ -211,10 +199,7 @@ class ODPSCreationCompensation:
             f"Starting previous state restoration: contract_id={state.contract_id}, asset_id={state.asset_id}"
         )
 
-        restoration_results = {
-            "status": "success",
-            "restored_items": []
-        }
+        restoration_results = {"status": "success", "restored_items": []}
 
         # Restore asset version if it was modified
         if state.asset_id and state.asset_previous_version is not None:
@@ -231,10 +216,10 @@ class ODPSCreationCompensation:
                 )
 
                 # If asset has a version field and it was incremented, restore it
-                if hasattr(asset, 'version') and asset.version is not None:
+                if hasattr(asset, "version") and asset.version is not None:
                     if asset.version > state.asset_previous_version:
                         asset.version = state.asset_previous_version
-                        asset.save(update_fields=['version', 'updated_at'])
+                        asset.save(update_fields=["version", "updated_at"])
                         restoration_results["restored_items"].append("asset_version")
                         logger.info(
                             f"Asset version restored successfully: asset_id={state.asset_id}, "
@@ -242,12 +227,10 @@ class ODPSCreationCompensation:
                         )
 
             except Asset.DoesNotExist:
-                logger.warning(
-                    f"Asset not found for state restoration: asset_id={state.asset_id}"
-                )
+                logger.warning(f"Asset not found for state restoration: asset_id={state.asset_id}")
             except Exception as e:
                 logger.warning(
-                    f"Failed to restore asset state (non-critical): asset_id={state.asset_id}, error={str(e)}"
+                    f"Failed to restore asset state (non-critical): asset_id={state.asset_id}, error={e!s}"
                 )
                 # Non-critical, continue restoration
 
@@ -265,8 +248,8 @@ class ODPSCreationCompensation:
         rollback_contract: bool = True,
         cleanup_resources: bool = True,
         restore_state: bool = True,
-        publish_compensation_events: bool = True
-    ) -> Dict[str, Any]:
+        publish_compensation_events: bool = True,
+    ) -> dict[str, Any]:
         """
         Comprehensive compensation for ODPS creation failure.
 
@@ -292,48 +275,38 @@ class ODPSCreationCompensation:
         compensation_result = {
             "status": "success",
             "timestamp": timezone.now().isoformat(),
-            "state": {
-                "contract_id": state.contract_id,
-                "asset_id": state.asset_id
-            },
-            "operations": {}
+            "state": {"contract_id": state.contract_id, "asset_id": state.asset_id},
+            "operations": {},
         }
 
         # Rollback created contract
         if rollback_contract and state.contract_id:
             try:
                 rollback_result = self.rollback_created_contract(
-                    contract_id=state.contract_id,
-                    state=state
+                    contract_id=state.contract_id, state=state
                 )
                 compensation_result["operations"]["rollback"] = rollback_result
             except Exception as e:
                 logger.exception(
-                    f"Rollback failed during compensation: contract_id={state.contract_id}, error={str(e)}"
+                    f"Rollback failed during compensation: contract_id={state.contract_id}, error={e!s}"
                 )
                 compensation_result["status"] = "partial_failure"
                 compensation_result["operations"]["rollback"] = {
                     "status": "failed",
-                    "error": str(e)
+                    "error": str(e),
                 }
 
         # Cleanup resources
         if cleanup_resources:
             try:
                 cleanup_result = self.cleanup_resources(
-                    state=state,
-                    publish_compensation_events=publish_compensation_events
+                    state=state, publish_compensation_events=publish_compensation_events
                 )
                 compensation_result["operations"]["cleanup"] = cleanup_result
             except Exception as e:
-                logger.exception(
-                    f"Cleanup failed during compensation: error={str(e)}"
-                )
+                logger.exception(f"Cleanup failed during compensation: error={e!s}")
                 compensation_result["status"] = "partial_failure"
-                compensation_result["operations"]["cleanup"] = {
-                    "status": "failed",
-                    "error": str(e)
-                }
+                compensation_result["operations"]["cleanup"] = {"status": "failed", "error": str(e)}
 
         # Restore previous state
         if restore_state:
@@ -341,14 +314,9 @@ class ODPSCreationCompensation:
                 restore_result = self.restore_previous_state(state=state)
                 compensation_result["operations"]["restore"] = restore_result
             except Exception as e:
-                logger.exception(
-                    f"State restoration failed during compensation: error={str(e)}"
-                )
+                logger.exception(f"State restoration failed during compensation: error={e!s}")
                 compensation_result["status"] = "partial_failure"
-                compensation_result["operations"]["restore"] = {
-                    "status": "failed",
-                    "error": str(e)
-                }
+                compensation_result["operations"]["restore"] = {"status": "failed", "error": str(e)}
 
         if compensation_result["status"] == "success":
             logger.info(
@@ -360,4 +328,3 @@ class ODPSCreationCompensation:
             )
 
         return compensation_result
-

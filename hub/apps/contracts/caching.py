@@ -6,18 +6,19 @@ Implements multi-level caching strategy for optimal performance.
 Enhanced caching features (tags, warming, metrics) are available in
 hub.apps.contracts.caching_enhanced module.
 """
-from typing import Any, Dict, List, Optional, Tuple
-from django.core.cache import cache
-from django.conf import settings
+
 import hashlib
 import json
+from typing import Any
 
+from django.conf import settings
+from django.core.cache import cache
 
 # Cache TTLs (in seconds)
-CACHE_TTL_CONTRACT = getattr(settings, 'CACHE_TTL_CONTRACT', 300)  # 5 minutes
-CACHE_TTL_LINEAGE = getattr(settings, 'CACHE_TTL_LINEAGE', 600)  # 10 minutes
-CACHE_TTL_QUERY_RESULT = getattr(settings, 'CACHE_TTL_QUERY_RESULT', 300)  # 5 minutes
-CACHE_TTL_LINEAGE_RESOLUTION = getattr(settings, 'CACHE_TTL_LINEAGE_RESOLUTION', 3600)  # 1 hour
+CACHE_TTL_CONTRACT = getattr(settings, "CACHE_TTL_CONTRACT", 300)  # 5 minutes
+CACHE_TTL_LINEAGE = getattr(settings, "CACHE_TTL_LINEAGE", 600)  # 10 minutes
+CACHE_TTL_QUERY_RESULT = getattr(settings, "CACHE_TTL_QUERY_RESULT", 300)  # 5 minutes
+CACHE_TTL_LINEAGE_RESOLUTION = getattr(settings, "CACHE_TTL_LINEAGE_RESOLUTION", 3600)  # 1 hour
 
 
 def get_contract_cache_key(contract_id: str) -> str:
@@ -25,7 +26,9 @@ def get_contract_cache_key(contract_id: str) -> str:
     return f"contract:{contract_id}"
 
 
-def get_lineage_cache_key(contract_id: str, model_name: Optional[str] = None, field_name: Optional[str] = None) -> str:
+def get_lineage_cache_key(
+    contract_id: str, model_name: str | None = None, field_name: str | None = None
+) -> str:
     """Generate cache key for lineage data."""
     if field_name:
         return f"lineage:{contract_id}:model:{model_name}:field:{field_name}"
@@ -35,7 +38,9 @@ def get_lineage_cache_key(contract_id: str, model_name: Optional[str] = None, fi
         return f"lineage:{contract_id}"
 
 
-def get_lineage_resolution_cache_key(namespace: str, name: str, model_name: Optional[str] = None, field: Optional[str] = None) -> str:
+def get_lineage_resolution_cache_key(
+    namespace: str, name: str, model_name: str | None = None, field: str | None = None
+) -> str:
     """Generate cache key for lineage reference resolution."""
     parts = [f"lineage:resolve:{namespace}:{name}"]
     if model_name:
@@ -45,7 +50,7 @@ def get_lineage_resolution_cache_key(namespace: str, name: str, model_name: Opti
     return ":".join(parts)
 
 
-def get_query_result_cache_key(query_params: Dict[str, Any], tenant_id: str) -> str:
+def get_query_result_cache_key(query_params: dict[str, Any], tenant_id: str) -> str:
     """Generate cache key for query results."""
     # Create deterministic key from query parameters
     sorted_params = sorted(query_params.items())
@@ -54,7 +59,7 @@ def get_query_result_cache_key(query_params: Dict[str, Any], tenant_id: str) -> 
     return f"query_result:{tenant_id}:{params_hash}"
 
 
-def cache_contract(contract_id: str, contract_data: Dict[str, Any], ttl: Optional[int] = None) -> None:
+def cache_contract(contract_id: str, contract_data: dict[str, Any], ttl: int | None = None) -> None:
     """
     Cache contract data.
 
@@ -68,7 +73,7 @@ def cache_contract(contract_id: str, contract_data: Dict[str, Any], ttl: Optiona
     cache.set(cache_key, contract_data, timeout=ttl)
 
 
-def get_cached_contract(contract_id: str) -> Optional[Dict[str, Any]]:
+def get_cached_contract(contract_id: str) -> dict[str, Any] | None:
     """
     Get cached contract data.
 
@@ -84,10 +89,10 @@ def get_cached_contract(contract_id: str) -> Optional[Dict[str, Any]]:
 
 def cache_lineage(
     contract_id: str,
-    lineage_data: Dict[str, Any],
-    model_name: Optional[str] = None,
-    field_name: Optional[str] = None,
-    ttl: Optional[int] = None
+    lineage_data: dict[str, Any],
+    model_name: str | None = None,
+    field_name: str | None = None,
+    ttl: int | None = None,
 ) -> None:
     """
     Cache lineage data.
@@ -105,10 +110,8 @@ def cache_lineage(
 
 
 def get_cached_lineage(
-    contract_id: str,
-    model_name: Optional[str] = None,
-    field_name: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+    contract_id: str, model_name: str | None = None, field_name: str | None = None
+) -> dict[str, Any] | None:
     """
     Get cached lineage data.
 
@@ -127,10 +130,10 @@ def get_cached_lineage(
 def cache_lineage_resolution(
     namespace: str,
     name: str,
-    resolution_result: Dict[str, Any],
-    model_name: Optional[str] = None,
-    field: Optional[str] = None,
-    ttl: Optional[int] = None
+    resolution_result: dict[str, Any],
+    model_name: str | None = None,
+    field: str | None = None,
+    ttl: int | None = None,
 ) -> None:
     """
     Cache lineage reference resolution result.
@@ -149,11 +152,8 @@ def cache_lineage_resolution(
 
 
 def get_cached_lineage_resolution(
-    namespace: str,
-    name: str,
-    model_name: Optional[str] = None,
-    field: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+    namespace: str, name: str, model_name: str | None = None, field: str | None = None
+) -> dict[str, Any] | None:
     """
     Get cached lineage reference resolution result.
 
@@ -171,11 +171,11 @@ def get_cached_lineage_resolution(
 
 
 def cache_query_result(
-    query_params: Dict[str, Any],
+    query_params: dict[str, Any],
     tenant_id: str,
-    results: List[Dict[str, Any]],
+    results: list[dict[str, Any]],
     total_count: int,
-    ttl: Optional[int] = None
+    ttl: int | None = None,
 ) -> None:
     """
     Cache query result.
@@ -189,17 +189,13 @@ def cache_query_result(
     """
     cache_key = get_query_result_cache_key(query_params, tenant_id)
     ttl = ttl or CACHE_TTL_QUERY_RESULT
-    cache_data = {
-        'results': results,
-        'total_count': total_count
-    }
+    cache_data = {"results": results, "total_count": total_count}
     cache.set(cache_key, cache_data, timeout=ttl)
 
 
 def get_cached_query_result(
-    query_params: Dict[str, Any],
-    tenant_id: str
-) -> Optional[Tuple[List[Dict[str, Any]], int]]:
+    query_params: dict[str, Any], tenant_id: str
+) -> tuple[list[dict[str, Any]], int] | None:
     """
     Get cached query result.
 
@@ -213,7 +209,7 @@ def get_cached_query_result(
     cache_key = get_query_result_cache_key(query_params, tenant_id)
     cached_data = cache.get(cache_key)
     if cached_data:
-        return cached_data.get('results'), cached_data.get('total_count')
+        return cached_data.get("results"), cached_data.get("total_count")
     return None
 
 
@@ -233,7 +229,9 @@ def invalidate_contract_cache(contract_id: str) -> None:
     # In production, use Redis with pattern deletion or maintain a cache key registry
 
 
-def invalidate_lineage_cache(contract_id: str, model_name: Optional[str] = None, field_name: Optional[str] = None) -> None:
+def invalidate_lineage_cache(
+    contract_id: str, model_name: str | None = None, field_name: str | None = None
+) -> None:
     """
     Invalidate lineage cache.
 
@@ -252,7 +250,7 @@ def invalidate_lineage_cache(contract_id: str, model_name: Optional[str] = None,
         pass
 
 
-def invalidate_query_result_cache(tenant_id: Optional[str] = None) -> None:
+def invalidate_query_result_cache(tenant_id: str | None = None) -> None:
     """
     Invalidate query result cache.
 
@@ -262,10 +260,9 @@ def invalidate_query_result_cache(tenant_id: Optional[str] = None) -> None:
     # In production, use Redis pattern deletion: query_result:{tenant_id}:*
     # For now, this is a placeholder
     # In Django cache, we'd need to maintain a registry of cache keys
-    pass
 
 
-def warm_contract_cache(contract_ids: List[str]) -> None:
+def warm_contract_cache(contract_ids: list[str]) -> None:
     """
     Warm cache with frequently accessed contracts.
 
@@ -274,22 +271,22 @@ def warm_contract_cache(contract_ids: List[str]) -> None:
     """
     from hub.apps.contracts.models import Contract
 
-    contracts = Contract.objects.filter(id__in=contract_ids).select_related('tenant', 'asset')
+    contracts = Contract.objects.filter(id__in=contract_ids).select_related("tenant", "asset")
 
     for contract in contracts:
         if contract.hub_contract_json:
             cache_contract(
                 str(contract.id),
                 {
-                    'id': str(contract.id),
-                    'hub_contract_json': contract.hub_contract_json,
-                    'status': contract.status,
-                    'normalization_status': contract.normalization_status,
-                }
+                    "id": str(contract.id),
+                    "hub_contract_json": contract.hub_contract_json,
+                    "status": contract.status,
+                    "normalization_status": contract.normalization_status,
+                },
             )
 
 
-def get_cache_stats() -> Dict[str, Any]:
+def get_cache_stats() -> dict[str, Any]:
     """
     Get cache statistics (if supported by cache backend).
 
@@ -299,7 +296,6 @@ def get_cache_stats() -> Dict[str, Any]:
     # This is a placeholder - actual implementation depends on cache backend
     # Redis supports INFO stats, Django cache doesn't have a standard API
     return {
-        'backend': getattr(settings, 'CACHES', {}).get('default', {}).get('BACKEND', 'unknown'),
-        'note': 'Cache statistics not available for this backend'
+        "backend": getattr(settings, "CACHES", {}).get("default", {}).get("BACKEND", "unknown"),
+        "note": "Cache statistics not available for this backend",
     }
-

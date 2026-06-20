@@ -9,16 +9,15 @@ Tests verify comprehensive audit logging for domain operations:
 
 All tests use real audit event creation (no mocks) to ensure integration.
 """
+
 import uuid
 
 from django.test import TestCase
 
-from hub.apps.mesh.services import DataMeshService
-from hub.apps.mesh.models import DataMeshDomain, DomainStatus
 from hub.apps.audit.models import AuditEvent
-from hub.apps.core.services.base import NotFoundError
-from hub.apps.users.models import User, UserStatus, Role, UserRole
+from hub.apps.mesh.services import DataMeshService
 from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 
 class DataMeshAuditLoggingTest(TestCase):
@@ -27,16 +26,13 @@ class DataMeshAuditLoggingTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
-            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.tenant_id = str(self.tenant.id)
 
         # Get or create roles
         self.tenant_admin_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="TENANT_ADMIN",
-            defaults={"description": "Tenant admin role"}
+            tenant=self.tenant, name="TENANT_ADMIN", defaults={"description": "Tenant admin role"}
         )
 
         # Create tenant admin user
@@ -44,25 +40,21 @@ class DataMeshAuditLoggingTest(TestCase):
             email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        UserRole.objects.create(
-            user=self.tenant_admin_user,
-            role=self.tenant_admin_role
-        )
+        UserRole.objects.create(user=self.tenant_admin_user, role=self.tenant_admin_role)
 
         # Create another user for ownership transfer test
         self.other_user = User.objects.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create service
         self.service = DataMeshService(
-            tenant_id=self.tenant_id,
-            user_id=str(self.tenant_admin_user.id)
+            tenant_id=self.tenant_id, user_id=str(self.tenant_admin_user.id)
         )
 
     def test_create_domain_creates_audit_event(self):
@@ -72,17 +64,17 @@ class DataMeshAuditLoggingTest(TestCase):
             name="Test Domain",
             description="Test domain description",
             owner_id=str(self.tenant_admin_user.id),
-            resource_quota={"storage_gb": 100}
+            resource_quota={"storage_gb": 100},
         )
 
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
-            resource_type="DATA_MESH_DOMAIN",
-            resource_id=str(domain.id),
-            action="DOMAIN_CREATED"
+            resource_type="DATA_MESH_DOMAIN", resource_id=str(domain.id), action="DOMAIN_CREATED"
         )
 
-        self.assertEqual(audit_events.count(), 1, "Should have exactly one DOMAIN_CREATED audit event")
+        self.assertEqual(
+            audit_events.count(), 1, "Should have exactly one DOMAIN_CREATED audit event"
+        )
 
         audit_event = audit_events.first()
         self.assertEqual(audit_event.resource_type, "DATA_MESH_DOMAIN")
@@ -104,25 +96,21 @@ class DataMeshAuditLoggingTest(TestCase):
     def test_update_domain_creates_audit_event(self):
         """Test that updating a domain creates an audit event with UPDATED action"""
         domain = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Test Domain",
-            description="Original description"
+            tenant_id=self.tenant_id, name="Test Domain", description="Original description"
         )
 
         # Update domain
-        updated_domain = self.service.update_domain(
+        self.service.update_domain(
             domain_id=str(domain.id),
             tenant_id=self.tenant_id,
             name="Updated Domain",
             description="Updated description",
-            status="INACTIVE"
+            status="INACTIVE",
         )
 
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
-            resource_type="DATA_MESH_DOMAIN",
-            resource_id=str(domain.id),
-            action="UPDATED"
+            resource_type="DATA_MESH_DOMAIN", resource_id=str(domain.id), action="UPDATED"
         )
 
         self.assertEqual(audit_events.count(), 1, "Should have exactly one UPDATED audit event")
@@ -149,26 +137,24 @@ class DataMeshAuditLoggingTest(TestCase):
     def test_update_domain_ownership_creates_ownership_transfer_audit_event(self):
         """Test that transferring ownership creates OWNERSHIP_TRANSFERRED audit event"""
         domain = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Test Domain",
-            owner_id=str(self.tenant_admin_user.id)
+            tenant_id=self.tenant_id, name="Test Domain", owner_id=str(self.tenant_admin_user.id)
         )
 
         # Transfer ownership
-        updated_domain = self.service.update_domain(
-            domain_id=str(domain.id),
-            tenant_id=self.tenant_id,
-            owner_id=str(self.other_user.id)
+        self.service.update_domain(
+            domain_id=str(domain.id), tenant_id=self.tenant_id, owner_id=str(self.other_user.id)
         )
 
         # Verify OWNERSHIP_TRANSFERRED audit event was created
         ownership_events = AuditEvent.objects.filter(
             resource_type="DATA_MESH_DOMAIN",
             resource_id=str(domain.id),
-            action="OWNERSHIP_TRANSFERRED"
+            action="OWNERSHIP_TRANSFERRED",
         )
 
-        self.assertEqual(ownership_events.count(), 1, "Should have exactly one OWNERSHIP_TRANSFERRED audit event")
+        self.assertEqual(
+            ownership_events.count(), 1, "Should have exactly one OWNERSHIP_TRANSFERRED audit event"
+        )
 
         ownership_event = ownership_events.first()
         self.assertEqual(ownership_event.resource_type, "DATA_MESH_DOMAIN")
@@ -189,34 +175,26 @@ class DataMeshAuditLoggingTest(TestCase):
 
         # Verify UPDATED audit event was also created
         updated_events = AuditEvent.objects.filter(
-            resource_type="DATA_MESH_DOMAIN",
-            resource_id=str(domain.id),
-            action="UPDATED"
+            resource_type="DATA_MESH_DOMAIN", resource_id=str(domain.id), action="UPDATED"
         )
         self.assertEqual(updated_events.count(), 1, "Should also have UPDATED audit event")
 
     def test_delete_domain_creates_audit_event(self):
         """Test that deleting a domain creates an audit event with DELETED action"""
         domain = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Test Domain",
-            owner_id=str(self.tenant_admin_user.id)
+            tenant_id=self.tenant_id, name="Test Domain", owner_id=str(self.tenant_admin_user.id)
         )
 
         domain_id_str = str(domain.id)
 
         # Delete domain
         self.service.delete_domain(
-            domain_id=domain_id_str,
-            tenant_id=self.tenant_id,
-            reason="Test deletion"
+            domain_id=domain_id_str, tenant_id=self.tenant_id, reason="Test deletion"
         )
 
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
-            resource_type="DATA_MESH_DOMAIN",
-            resource_id=domain_id_str,
-            action="DELETED"
+            resource_type="DATA_MESH_DOMAIN", resource_id=domain_id_str, action="DELETED"
         )
 
         self.assertEqual(audit_events.count(), 1, "Should have exactly one DELETED audit event")
@@ -240,16 +218,12 @@ class DataMeshAuditLoggingTest(TestCase):
     def test_audit_event_details_include_all_required_fields(self):
         """Test that audit events include domain_id, owner_id, and tenant_id in details_json"""
         domain = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Test Domain",
-            owner_id=str(self.tenant_admin_user.id)
+            tenant_id=self.tenant_id, name="Test Domain", owner_id=str(self.tenant_admin_user.id)
         )
 
         # Check DOMAIN_CREATED event
         created_event = AuditEvent.objects.filter(
-            resource_type="DATA_MESH_DOMAIN",
-            resource_id=str(domain.id),
-            action="DOMAIN_CREATED"
+            resource_type="DATA_MESH_DOMAIN", resource_id=str(domain.id), action="DOMAIN_CREATED"
         ).first()
 
         self.assertIsNotNone(created_event)
@@ -264,16 +238,12 @@ class DataMeshAuditLoggingTest(TestCase):
     def test_audit_event_created_without_owner(self):
         """Test that audit events are created correctly when domain has no owner"""
         domain = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Test Domain",
-            owner_id=None
+            tenant_id=self.tenant_id, name="Test Domain", owner_id=None
         )
 
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
-            resource_type="DATA_MESH_DOMAIN",
-            resource_id=str(domain.id),
-            action="DOMAIN_CREATED"
+            resource_type="DATA_MESH_DOMAIN", resource_id=str(domain.id), action="DOMAIN_CREATED"
         )
 
         self.assertEqual(audit_events.count(), 1)
@@ -284,30 +254,21 @@ class DataMeshAuditLoggingTest(TestCase):
 
     def test_multiple_updates_create_multiple_audit_events(self):
         """Test that multiple updates create multiple UPDATED audit events"""
-        domain = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Test Domain"
-        )
+        domain = self.service.create_domain(tenant_id=self.tenant_id, name="Test Domain")
 
         # First update
         self.service.update_domain(
-            domain_id=str(domain.id),
-            tenant_id=self.tenant_id,
-            name="Updated Name 1"
+            domain_id=str(domain.id), tenant_id=self.tenant_id, name="Updated Name 1"
         )
 
         # Second update
         self.service.update_domain(
-            domain_id=str(domain.id),
-            tenant_id=self.tenant_id,
-            description="Updated Description"
+            domain_id=str(domain.id), tenant_id=self.tenant_id, description="Updated Description"
         )
 
         # Verify multiple audit events were created
         audit_events = AuditEvent.objects.filter(
-            resource_type="DATA_MESH_DOMAIN",
-            resource_id=str(domain.id),
-            action="UPDATED"
+            resource_type="DATA_MESH_DOMAIN", resource_id=str(domain.id), action="UPDATED"
         ).order_by("timestamp")
 
         self.assertEqual(audit_events.count(), 2, "Should have two UPDATED audit events")
@@ -318,33 +279,25 @@ class DataMeshAuditLoggingTest(TestCase):
         domain = self.service.create_domain(
             tenant_id=self.tenant_id,
             name="Lifecycle Domain",
-            owner_id=str(self.tenant_admin_user.id)
+            owner_id=str(self.tenant_admin_user.id),
         )
 
         # Update domain
         self.service.update_domain(
-            domain_id=str(domain.id),
-            tenant_id=self.tenant_id,
-            name="Updated Lifecycle Domain"
+            domain_id=str(domain.id), tenant_id=self.tenant_id, name="Updated Lifecycle Domain"
         )
 
         # Transfer ownership
         self.service.update_domain(
-            domain_id=str(domain.id),
-            tenant_id=self.tenant_id,
-            owner_id=str(self.other_user.id)
+            domain_id=str(domain.id), tenant_id=self.tenant_id, owner_id=str(self.other_user.id)
         )
 
         # Delete domain
-        self.service.delete_domain(
-            domain_id=str(domain.id),
-            tenant_id=self.tenant_id
-        )
+        self.service.delete_domain(domain_id=str(domain.id), tenant_id=self.tenant_id)
 
         # Verify complete audit trail
         audit_events = AuditEvent.objects.filter(
-            resource_type="DATA_MESH_DOMAIN",
-            resource_id=str(domain.id)
+            resource_type="DATA_MESH_DOMAIN", resource_id=str(domain.id)
         ).order_by("timestamp")
 
         # Should have DOMAIN_CREATED, UPDATED (x2), OWNERSHIP_TRANSFERRED, DELETED
@@ -358,16 +311,11 @@ class DataMeshAuditLoggingTest(TestCase):
 
     def test_audit_event_actor_user_is_correct(self):
         """Test that audit events correctly record the actor user"""
-        domain = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Test Domain"
-        )
+        domain = self.service.create_domain(tenant_id=self.tenant_id, name="Test Domain")
 
         # Verify actor_user is set correctly
         audit_event = AuditEvent.objects.filter(
-            resource_type="DATA_MESH_DOMAIN",
-            resource_id=str(domain.id),
-            action="DOMAIN_CREATED"
+            resource_type="DATA_MESH_DOMAIN", resource_id=str(domain.id), action="DOMAIN_CREATED"
         ).first()
 
         self.assertIsNotNone(audit_event)
@@ -375,16 +323,11 @@ class DataMeshAuditLoggingTest(TestCase):
 
     def test_audit_event_tenant_is_correct(self):
         """Test that audit events correctly record the tenant"""
-        domain = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Test Domain"
-        )
+        domain = self.service.create_domain(tenant_id=self.tenant_id, name="Test Domain")
 
         # Verify tenant is set correctly
         audit_event = AuditEvent.objects.filter(
-            resource_type="DATA_MESH_DOMAIN",
-            resource_id=str(domain.id),
-            action="DOMAIN_CREATED"
+            resource_type="DATA_MESH_DOMAIN", resource_id=str(domain.id), action="DOMAIN_CREATED"
         ).first()
 
         self.assertIsNotNone(audit_event)
@@ -397,16 +340,13 @@ class DataMeshAuditLoggingIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
-            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.tenant_id = str(self.tenant.id)
 
         # Get or create roles
         self.tenant_admin_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="TENANT_ADMIN",
-            defaults={"description": "Tenant admin role"}
+            tenant=self.tenant, name="TENANT_ADMIN", defaults={"description": "Tenant admin role"}
         )
 
         # Create tenant admin user
@@ -414,17 +354,13 @@ class DataMeshAuditLoggingIntegrationTest(TestCase):
             email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        UserRole.objects.create(
-            user=self.tenant_admin_user,
-            role=self.tenant_admin_role
-        )
+        UserRole.objects.create(user=self.tenant_admin_user, role=self.tenant_admin_role)
 
         # Create service
         self.service = DataMeshService(
-            tenant_id=self.tenant_id,
-            user_id=str(self.tenant_admin_user.id)
+            tenant_id=self.tenant_id, user_id=str(self.tenant_admin_user.id)
         )
 
     def test_audit_logging_integration_with_real_audit_service(self):
@@ -434,14 +370,12 @@ class DataMeshAuditLoggingIntegrationTest(TestCase):
             tenant_id=self.tenant_id,
             name="Integration Test Domain",
             owner_id=str(self.tenant_admin_user.id),
-            resource_quota={"storage_gb": 200, "compute_hours": 50}
+            resource_quota={"storage_gb": 200, "compute_hours": 50},
         )
 
         # Verify audit event exists in database
         audit_event = AuditEvent.objects.get(
-            resource_type="DATA_MESH_DOMAIN",
-            resource_id=str(domain.id),
-            action="DOMAIN_CREATED"
+            resource_type="DATA_MESH_DOMAIN", resource_id=str(domain.id), action="DOMAIN_CREATED"
         )
 
         self.assertIsNotNone(audit_event)
@@ -458,23 +392,18 @@ class DataMeshAuditLoggingIntegrationTest(TestCase):
 
         # Verify audit event is queryable
         queried_events = AuditEvent.objects.filter(
-            tenant=self.tenant,
-            resource_type="DATA_MESH_DOMAIN",
-            action="DOMAIN_CREATED"
+            tenant=self.tenant, resource_type="DATA_MESH_DOMAIN", action="DOMAIN_CREATED"
         )
         self.assertEqual(queried_events.count(), 1)
 
     def test_audit_event_immutability(self):
         """Test that audit events are immutable (cannot be updated or deleted)"""
         domain = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Immutability Test Domain"
+            tenant_id=self.tenant_id, name="Immutability Test Domain"
         )
 
         audit_event = AuditEvent.objects.get(
-            resource_type="DATA_MESH_DOMAIN",
-            resource_id=str(domain.id),
-            action="DOMAIN_CREATED"
+            resource_type="DATA_MESH_DOMAIN", resource_id=str(domain.id), action="DOMAIN_CREATED"
         )
 
         # Try to update (should fail)
@@ -487,4 +416,3 @@ class DataMeshAuditLoggingIntegrationTest(TestCase):
         with self.assertRaises(ValueError) as cm:
             audit_event.delete()
         self.assertIn("immutable", str(cm.exception).lower())
-

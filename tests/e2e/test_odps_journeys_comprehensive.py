@@ -14,16 +14,12 @@ Journeys tested:
 All tests use REAL services (no mocks/stubs) and follow TDD approach.
 """
 
-import hashlib
 import json
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pytest
-
-pytestmark = pytest.mark.slow
-from django.test import TestCase
 from rest_framework import status
 
 from hub.apps.contracts.models import (
@@ -36,15 +32,18 @@ from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 
 from .conftest import E2ETestBase
-from .journey_tracker import JourneyStatus, JourneyTracker, StepStatus, get_journey_tracker
+from .journey_tracker import get_journey_tracker
 
 pytestmark = [
+    pytest.mark.slow,
     pytest.mark.uc_journey_persona,
     pytest.mark.django_db(transaction=True),
     pytest.mark.e2e,
     pytest.mark.journey("JOURNEY-ODPS-001"),
     pytest.mark.journey("JOURNEY-ODPS-002"),
+    pytest.mark.journey("JOURNEY-DPO-016"),  # Link ODPS to ODCS
     pytest.mark.journey("JOURNEY-ODPS-003"),
+    pytest.mark.journey("JOURNEY-DPO-017"),  # Export ODPS Product
     pytest.mark.journey("JOURNEY-ODPS-004"),
     pytest.mark.journey("JOURNEY-ODPS-005"),
 ]
@@ -187,7 +186,7 @@ class ODPSJourneyTestBase(E2ETestBase):
 
     def wait_for_workflow_completion(
         self, workflow_instance_id: str, max_wait_seconds: int = 30, check_interval: float = 0.5
-    ) -> Optional[WorkflowInstance]:
+    ) -> WorkflowInstance | None:
         """Wait for workflow to complete with shorter timeout for tests."""
         start_time = time.time()
         while time.time() - start_time < max_wait_seconds:
@@ -199,10 +198,14 @@ class ODPSJourneyTestBase(E2ETestBase):
                     WorkflowStatus.ROLLED_BACK,
                 ]:
                     return instance
-                time.sleep(check_interval)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(  # noqa: sleep-needed — polling loop
+                    check_interval
+                )  # INTENTIONAL: e2e/integration test polling real services
             except WorkflowInstance.DoesNotExist:
                 # Workflow instance might not exist yet or was cleaned up
-                time.sleep(check_interval)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(  # noqa: sleep-needed — polling loop
+                    check_interval
+                )  # INTENTIONAL: e2e/integration test polling real services
                 continue
 
         # Return the instance even if not completed (for test verification)
@@ -642,7 +645,7 @@ class JourneyODPS001ProductFirstFlowTest(ODPSJourneyTestBase):
             # Activate if in DRAFT
             if contract.status == ContractStatus.DRAFT:
                 # Check if contract can be activated
-                can_activate, reason = contract.can_activate()
+                can_activate, _reason = contract.can_activate()
                 if can_activate:
                     contract.status = ContractStatus.ACTIVE
                     contract.save(
@@ -1405,7 +1408,9 @@ class JourneyODPS004ODPSMarketplaceConfigTest(ODPSJourneyTestBase):
                         "description": "Product with full marketplace configuration",
                     }
                 },
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
+                "dataSchema": {
+                    "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+                },
                 "contract": {
                     "spec": {
                         "apiVersion": "odcs/v3",
@@ -1515,7 +1520,7 @@ class JourneyODPS004ODPSMarketplaceConfigTest(ODPSJourneyTestBase):
         self.assertIsInstance(payment_gateways, dict)
         # Payment gateways are optional, so just verify structure if present
         if payment_gateways:
-            for gateway_id, gateway_config in payment_gateways.items():
+            for _gateway_id, gateway_config in payment_gateways.items():
                 self.assertIsInstance(gateway_config, dict)
 
     def _verify_marketplace_listing_integration(self, odps_contract_id: str, asset_id: str):

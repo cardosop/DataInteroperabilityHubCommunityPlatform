@@ -5,6 +5,7 @@ Covers:
 - 60+1 requests → 429 with Retry-After
 - Per-tenant isolation (tenant A exhaustion does not affect tenant B)
 """
+
 from __future__ import annotations
 
 import uuid
@@ -12,10 +13,8 @@ from unittest.mock import patch
 
 import pytest
 from django.test import TestCase, override_settings
-from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
@@ -25,15 +24,19 @@ pytestmark = pytest.mark.django_db(transaction=True)
 def _mk_tenant(name="TL"):
     uid = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
-        name=f"{name}-{uid}", slug=f"tl-{uid}",
-        status="ACTIVE", kyc_status="UNVERIFIED",
+        name=f"{name}-{uid}",
+        slug=f"tl-{uid}",
+        status="ACTIVE",
+        kyc_status="UNVERIFIED",
     )
 
 
 def _mk_user(tenant, email_pfx="user"):
     return User.objects.create_user(
         email=f"{email_pfx}-{uuid.uuid4().hex[:8]}@meshant.test",
-        password="testpass", tenant=tenant, status=UserStatus.ACTIVE,
+        password="testpass",
+        tenant=tenant,
+        status=UserStatus.ACTIVE,
     )
 
 

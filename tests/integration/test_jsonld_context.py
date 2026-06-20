@@ -8,8 +8,8 @@ Uses real semantic service (no mocks - skips at runtime if service unavailable).
 import pytest
 from django.test import TestCase
 
-from hub.apps.semantic.service_client import SemanticServiceClient
 from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+from hub.apps.semantic.service_client import SemanticServiceClient
 
 
 def check_semantic_service_available():
@@ -24,7 +24,11 @@ def check_semantic_service_available():
 
 def _skip_if_circuit_breaker(context):
     """Skip test when semantic service returns circuit breaker (unavailable at runtime)."""
-    if isinstance(context, dict) and context.get("error") and "circuit breaker" in str(context.get("error", "")).lower():
+    if (
+        isinstance(context, dict)
+        and context.get("error")
+        and "circuit breaker" in str(context.get("error", "")).lower()
+    ):
         pytest.skip("Semantic service unavailable (circuit breaker open)")
 
 

@@ -5,8 +5,8 @@ Provides get_or_create_demo_ckan_federated_asset() for virtualization and
 marketplace tests that need a pre-created federated asset from demo.ckan.org.
 Uses real PULL from demo.ckan.org — no mocks or stubs.
 """
+
 import logging
-from typing import Tuple
 
 from django.db import transaction
 
@@ -36,7 +36,7 @@ def get_or_create_demo_ckan_federated_asset(
     user,
     listing_id: str = DEFAULT_LISTING_ID,
     connection_name: str = DEFAULT_CONNECTION_NAME,
-) -> Tuple[Asset, MarketplaceConnection]:
+) -> tuple[Asset, MarketplaceConnection]:
     """
     Get or create a federated asset from demo.ckan.org for the given tenant/user.
 

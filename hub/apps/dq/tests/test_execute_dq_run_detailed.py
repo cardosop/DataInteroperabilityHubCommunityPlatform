@@ -7,21 +7,19 @@ DQ status, and handles errors with fail-closed semantics.
 """
 
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
-from django.utils import timezone
+from django.test import override_settings
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.assets.models import DQStatus as AssetDQStatus
 from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
 from hub.apps.dq.tests.test_base import DQTestBase
 from hub.apps.dq.views import execute_dq_run
-from hub.apps.jobs.models import Job, JobStatus, JobType
+from hub.apps.jobs.models import JobType
 from hub.apps.jobs.utils import create_job
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -117,9 +115,7 @@ class TestExecuteDQRunDetailed(DQTestBase):
     @patch("hub.apps.dq.views.DQServiceClient")
     def test_asset_dq_status_updated_pass(self, MockClient, MockStorage):
         MockStorage.return_value.download_file.return_value = b"col1\n1\n"
-        MockClient.return_value.run_dq.return_value = self._mock_dq_result(
-            overall_status="PASS"
-        )
+        MockClient.return_value.run_dq.return_value = self._mock_dq_result(overall_status="PASS")
 
         run = self._create_dq_run()
         execute_dq_run(str(run.id))
@@ -151,9 +147,7 @@ class TestExecuteDQRunDetailed(DQTestBase):
     @patch("hub.apps.dq.views.DQServiceClient")
     def test_quality_score_clamped(self, MockClient, MockStorage):
         MockStorage.return_value.download_file.return_value = b"col1\n1\n"
-        MockClient.return_value.run_dq.return_value = self._mock_dq_result(
-            quality_score=150
-        )
+        MockClient.return_value.run_dq.return_value = self._mock_dq_result(quality_score=150)
 
         run = self._create_dq_run()
         execute_dq_run(str(run.id))
@@ -168,9 +162,7 @@ class TestExecuteDQRunDetailed(DQTestBase):
     @patch("hub.apps.dq.views.DQServiceClient")
     def test_quality_score_negative_clamped(self, MockClient, MockStorage):
         MockStorage.return_value.download_file.return_value = b"col1\n1\n"
-        MockClient.return_value.run_dq.return_value = self._mock_dq_result(
-            quality_score=-10
-        )
+        MockClient.return_value.run_dq.return_value = self._mock_dq_result(quality_score=-10)
 
         run = self._create_dq_run()
         execute_dq_run(str(run.id))

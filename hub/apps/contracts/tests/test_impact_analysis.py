@@ -4,6 +4,8 @@ Unit tests for Impact Analysis
 Tests for reverse lineage traversal, impact scoring, and impact calculation.
 """
 
+import uuid
+
 import pytest
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -11,7 +13,6 @@ from hub.apps.contracts.impact_analysis import ImpactAnalyzer, ImpactNode, Impac
 from hub.apps.contracts.models import Contract
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.tenants.models import Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -23,7 +24,9 @@ class ImpactAnalyzerTest(ContractsTestBase):
         """Set up test fixtures"""
         super().setUp()
 
-        import uuid; uid = uuid.uuid4().hex[:8]
+        import uuid
+
+        uid = uuid.uuid4().hex[:8]
         # Update tenant name/email for impact analysis tests
         self.tenant.name = f"Test Tenant {uid}"
         self.tenant.slug = f"test-tenant-{uid}"
@@ -102,8 +105,9 @@ class ImpactAnalyzerTest(ContractsTestBase):
 
         # Must detect cycles in cyclic graph
         self.assertIn("cycles_detected", result)
-        self.assertTrue(result["cycles_detected"],
-            "Cycles must be detected in a cyclic dependency graph")
+        self.assertTrue(
+            result["cycles_detected"], "Cycles must be detected in a cyclic dependency graph"
+        )
 
     def test_impact_scoring(self):
         """Test impact scoring calculation"""
@@ -182,7 +186,8 @@ class ImpactAnalyzerTest(ContractsTestBase):
 
         # Should not find contract from other tenant — must return error
         self.assertIn(
-            "error", result,
+            "error",
+            result,
             "Cross-tenant access should produce an error",
         )
         self.assertIsInstance(result["error"], str)
@@ -241,7 +246,8 @@ class ImpactAnalyzerTest(ContractsTestBase):
 
         # Invalid UUID should produce an error
         self.assertIn(
-            "error", result,
+            "error",
+            result,
             "Invalid contract_id format should produce an error",
         )
         self.assertIsInstance(result["error"], str)
@@ -315,7 +321,8 @@ class ImpactAnalyzerTest(ContractsTestBase):
             contract_id=fake_contract_id, tenant_id=str(self.tenant.id)
         )
         self.assertEqual(
-            criticality, "MEDIUM",
+            criticality,
+            "MEDIUM",
             "Non-existent contract must return the default criticality 'MEDIUM'",
         )
 

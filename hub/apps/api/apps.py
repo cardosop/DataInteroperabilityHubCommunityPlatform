@@ -3,9 +3,9 @@ API App Configuration
 
 Django app configuration for API app with URL pattern validation at startup.
 """
-from django.apps import AppConfig
+
 import structlog
-import sys
+from django.apps import AppConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -13,8 +13,8 @@ logger = structlog.get_logger(__name__)
 class ApiConfig(AppConfig):
     """Configuration for API app."""
 
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'hub.apps.api'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "hub.apps.api"
 
     def ready(self):
         """
@@ -42,10 +42,11 @@ class ApiConfig(AppConfig):
                         "url_pattern_validation_failed_at_startup",
                         errors=len(result.errors),
                         warnings=len(result.warnings),
-                        message="URL pattern validation found issues at startup"
+                        message="URL pattern validation found issues at startup",
                     )
                     # Log formatted errors for debugging
                     from hub.apps.api.utils.url_pattern_validator import URLPatternValidator
+
                     validator = URLPatternValidator()
                     error_message = validator.format_errors(result)
                     logger.error("url_pattern_validation_details", details=error_message)
@@ -53,7 +54,7 @@ class ApiConfig(AppConfig):
                     logger.info(
                         "url_pattern_validation_passed_at_startup",
                         total_patterns=result.total_patterns,
-                        message="URL pattern validation passed at startup"
+                        message="URL pattern validation passed at startup",
                     )
 
             except Exception as e:
@@ -61,7 +62,7 @@ class ApiConfig(AppConfig):
                 logger.warning(
                     "url_pattern_validation_deferred",
                     error=str(e),
-                    message="URL pattern validation deferred due to error"
+                    message="URL pattern validation deferred due to error",
                 )
 
     def _should_validate(self) -> bool:
@@ -71,7 +72,7 @@ class ApiConfig(AppConfig):
         Skip validation during migrations, tests, and other management commands.
         """
         from hub.apps.core.utils.test_mode import should_skip_initialization
-        
+
         # Skip during tests, migrations, and other management commands
         if should_skip_initialization():
             return False

@@ -15,8 +15,9 @@ DB mutations run inside ``tenant_context``.
 """
 
 from __future__ import annotations
+
 import logging
-from datetime import timedelta, timezone as dt_timezone
+from datetime import UTC, timedelta
 
 from django.db import transaction
 from django.utils import timezone
@@ -33,7 +34,7 @@ def _ensure_aware_for_compare(dt):
     if dt is None:
         return None
     if dt.tzinfo is None:
-        return timezone.make_aware(dt, timezone=dt_timezone.utc)
+        return timezone.make_aware(dt, timezone=UTC)
     return dt
 
 
@@ -83,34 +84,33 @@ def finalize_uploading_after_multipart_abandon(
 
     ts = timezone.now()
 
-    with tenant_context(tenant_id_str):
-        with transaction.atomic():
-            n = File.objects.filter(pk=file_row_id, status=FileStatus.UPLOADING).update(
-                status=FileStatus.DELETED.value,
-                deleted_at=ts,
-                updated_at=ts,
-            )
-            if n != 1:
-                return False
-            refreshed = File.objects.select_related("tenant").get(pk=file_row_id)
-            tenant = refreshed.tenant
-            create_audit_event(
-                resource_type="FILE",
-                action=audit_event_types.FILE_MULTIPART_ABANDONED,
-                actor_user=None,
-                tenant=tenant,
-                resource_id=str(file_row_id),
-                result="SUCCESS",
-                details={
-                    "file_id": str(file_row_id),
-                    "tenant_id": tenant_id_str,
-                    "storage_path": storage_path,
-                    "upload_id": upload_id,
-                    "abandon_source": abandon_source,
-                    "reason": "stale_multipart_abandonment",
-                    "timestamp": ts.isoformat(),
-                },
-            )
+    with tenant_context(tenant_id_str), transaction.atomic():
+        n = File.objects.filter(pk=file_row_id, status=FileStatus.UPLOADING).update(
+            status=FileStatus.DELETED.value,
+            deleted_at=ts,
+            updated_at=ts,
+        )
+        if n != 1:
+            return False
+        refreshed = File.objects.select_related("tenant").get(pk=file_row_id)
+        tenant = refreshed.tenant
+        create_audit_event(
+            resource_type="FILE",
+            action=audit_event_types.FILE_MULTIPART_ABANDONED,
+            actor_user=None,
+            tenant=tenant,
+            resource_id=str(file_row_id),
+            result="SUCCESS",
+            details={
+                "file_id": str(file_row_id),
+                "tenant_id": tenant_id_str,
+                "storage_path": storage_path,
+                "upload_id": upload_id,
+                "abandon_source": abandon_source,
+                "reason": "stale_multipart_abandonment",
+                "timestamp": ts.isoformat(),
+            },
+        )
     return True
 
 

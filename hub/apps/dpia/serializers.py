@@ -1,6 +1,7 @@
 """Serializers for DPIA API."""
 
 from __future__ import annotations
+
 from rest_framework import serializers
 
 from hub.apps.dpia.models import Dpia, DpiaStatus, ResidualRiskLevel
@@ -76,7 +77,9 @@ class DpiaReviewSerializer(serializers.Serializer):
             DpiaStatus.REQUIRES_CONSULTATION,
         ]
     )
-    risk_residual = serializers.ChoiceField(choices=[c[0] for c in ResidualRiskLevel.choices], required=False, allow_blank=True)
+    risk_residual = serializers.ChoiceField(
+        choices=[c[0] for c in ResidualRiskLevel.choices], required=False, allow_blank=True
+    )
     dpo_summary = serializers.CharField(required=False, allow_blank=True, default="")
 
 

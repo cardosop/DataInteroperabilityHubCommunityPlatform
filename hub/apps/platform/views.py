@@ -8,12 +8,11 @@ Unit tests: hub/apps/platform/tests/test_views.py (Gap #2, task 1.5).
 import logging
 
 from django.db import transaction
+from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-
-from drf_spectacular.utils import extend_schema
 
 from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import NotFoundError

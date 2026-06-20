@@ -9,12 +9,11 @@ Tests graceful degradation and ensures no regression in existing flows.
 Uses real services (no mocks/stubs).
 """
 
-import unittest
 import json
-import os
 import sys
+import unittest
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from django.test import TestCase
 
@@ -64,7 +63,7 @@ ODPS_VERSIONS = ["4.1", "4.0", "3.x", "2.x", "1.x"]
 ODCS_VERSIONS = ["3.0.2", "3.0.1", "3.0.0", "3.0.0-preview", "2.2.2"]
 
 
-def create_odps_contract(version: str, **overrides) -> Dict[str, Any]:
+def create_odps_contract(version: str, **overrides) -> dict[str, Any]:
     """
     Create a valid ODPS contract for a specific version.
 
@@ -111,7 +110,7 @@ def create_odps_contract(version: str, **overrides) -> Dict[str, Any]:
     return contract
 
 
-def create_odcs_contract(version: str, **overrides) -> Dict[str, Any]:
+def create_odcs_contract(version: str, **overrides) -> dict[str, Any]:
     """
     Create a valid ODCS contract for a specific version.
 
@@ -352,11 +351,10 @@ class TestODCSBackwardCompatibility(TestCase):
 
         for version in ODCS_VERSIONS:
             with self.subTest(version=version):
-
                 contract = create_odcs_contract(version)
                 contract_json = json.dumps(contract)
 
-                hub_contract, status, errors, warnings = normalize_contract(
+                hub_contract, status, errors, _warnings = normalize_contract(
                     contract_json, format="json"
                 )
 
@@ -376,22 +374,29 @@ class TestODCSBackwardCompatibility(TestCase):
                 )
 
                 # Verify core fields are present — handle both dict and object APIs
-                hc_id = hub_contract.get("id") if isinstance(hub_contract, dict) else getattr(hub_contract, "id", None)
+                hc_id = (
+                    hub_contract.get("id")
+                    if isinstance(hub_contract, dict)
+                    else getattr(hub_contract, "id", None)
+                )
                 self.assertEqual(
                     hc_id,
                     contract["id"],
                     f"HubContract should have correct 'id' for version {version}",
                 )
                 schema_def = (
-                    hub_contract.get("schema") if isinstance(hub_contract, dict)
-                    else getattr(hub_contract, "schema_definition", None) or getattr(hub_contract, "schema", None)
+                    hub_contract.get("schema")
+                    if isinstance(hub_contract, dict)
+                    else getattr(hub_contract, "schema_definition", None)
+                    or getattr(hub_contract, "schema", None)
                 )
                 self.assertIsNotNone(
                     schema_def,
                     f"HubContract should have 'schema' for version {version}",
                 )
                 fields = (
-                    schema_def.get("fields", []) if isinstance(schema_def, dict)
+                    schema_def.get("fields", [])
+                    if isinstance(schema_def, dict)
                     else getattr(schema_def, "fields", [])
                 )
                 self.assertGreater(
@@ -407,7 +412,6 @@ class TestODCSBackwardCompatibility(TestCase):
 
         for version in ODCS_VERSIONS:
             with self.subTest(version=version):
-
                 contract = create_odcs_contract(version)
 
                 # Add features that may not be supported in older versions
@@ -420,7 +424,7 @@ class TestODCSBackwardCompatibility(TestCase):
                 }
 
                 contract_json = json.dumps(contract)
-                hub_contract, status, errors, warnings = normalize_contract(
+                hub_contract, status, errors, _warnings = normalize_contract(
                     contract_json, format="json"
                 )
 
@@ -442,7 +446,6 @@ class TestODCSBackwardCompatibility(TestCase):
 
         for version in ODCS_VERSIONS:
             with self.subTest(version=version):
-
                 contract = create_odcs_contract(version)
                 # Only include required fields
                 minimal_contract = {
@@ -453,7 +456,7 @@ class TestODCSBackwardCompatibility(TestCase):
                 }
 
                 contract_json = json.dumps(minimal_contract)
-                hub_contract, status, errors, warnings = normalize_contract(
+                hub_contract, status, errors, _warnings = normalize_contract(
                     contract_json, format="json"
                 )
 
@@ -486,7 +489,7 @@ class TestCrossFormatBackwardCompatibility(TestCase):
 
         odcs_contract = create_odcs_contract("3.0.2")
         odcs_json = json.dumps(odcs_contract)
-        odcs_hub_contract, odcs_status, odcs_errors, odcs_warnings = normalize_contract(
+        odcs_hub_contract, _odcs_status, odcs_errors, _odcs_warnings = normalize_contract(
             odcs_json, format="json"
         )
 
@@ -530,12 +533,8 @@ class TestCrossFormatBackwardCompatibility(TestCase):
         if odps_result.hub_contract.get("extensions"):
             odps_extensions = odps_result.hub_contract["extensions"]
             self.assertTrue(
-                any(
-                    "customField" in str(v)
-                    for v in odps_extensions.values()
-                ),
-                "ODPS custom fields should be preserved in extensions: "
-                f"{odps_extensions}",
+                any("customField" in str(v) for v in odps_extensions.values()),
+                f"ODPS custom fields should be preserved in extensions: {odps_extensions}",
             )
 
         # ODCS: verify customField is preserved in the normalized output.
@@ -565,7 +564,7 @@ class TestNoRegressionExistingFlows(TestCase):
         }
 
         contract_json = json.dumps(contract)
-        hub_contract, status, errors, warnings = normalize_contract(contract_json, format="json")
+        hub_contract, _status, errors, _warnings = normalize_contract(contract_json, format="json")
 
         self.assertIsNotNone(
             hub_contract,
@@ -611,10 +610,9 @@ class TestNoRegressionExistingFlows(TestCase):
 
         for version in ODCS_VERSIONS:
             with self.subTest(version=version):
-
                 contract = create_odcs_contract(version, id=f"regression-test-{version}")
                 contract_json = json.dumps(contract)
-                hub_contract, status, errors, warnings = normalize_contract(
+                hub_contract, _status, errors, _warnings = normalize_contract(
                     contract_json, format="json"
                 )
 

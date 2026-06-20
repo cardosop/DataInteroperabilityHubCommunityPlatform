@@ -13,7 +13,6 @@ import uuid
 from django.conf import settings
 from django.core.cache import cache
 
-
 _STATE_TTL_SECONDS = 300
 _STATE_CACHE_PREFIX = "consume:state:"
 _STATE_USED_SUFFIX = ":used"
@@ -33,7 +32,7 @@ def _state_sig(
     issued_ts: str,
     ip_class: str,
 ) -> str:
-    message = f"{tenant_id}|{nonce}|{issued_ts}|{ip_class}".encode("utf-8")
+    message = f"{tenant_id}|{nonce}|{issued_ts}|{ip_class}".encode()
     key = settings.SECRET_KEY.encode("utf-8")
     return hmac.new(key, message, hashlib.sha256).hexdigest()
 
@@ -45,9 +44,7 @@ def issue_state(tenant_id: str, ip_class: str) -> str:
     nonce = uuid.uuid4().hex
     issued_ts = str(int(time.time()))
     sig = _state_sig(tenant_id, nonce, issued_ts, ip_class)
-    payload = (
-        f"{tenant_id}|{nonce}|{issued_ts}|{ip_class}|{sig}"
-    ).encode("utf-8")
+    payload = (f"{tenant_id}|{nonce}|{issued_ts}|{ip_class}|{sig}").encode()
     state = base64.urlsafe_b64encode(payload).decode("utf-8").rstrip("=")
     cache.set(
         f"{_STATE_CACHE_PREFIX}{nonce}",

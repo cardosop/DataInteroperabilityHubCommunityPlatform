@@ -9,11 +9,11 @@ Proves:
 5. M.5: Smoke tests exist for post-deploy verification
 6. M.6: OpenSpec archive workflow documented
 """
+
 import os
 
 import pytest
 from django.test import TestCase
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -47,7 +47,8 @@ class OpenSpecChangeTest(TestCase):
 
     def test_preprod01_has_specs(self):
         specs_dir = os.path.join(
-            _REPO_ROOT, "openspec/changes/preprod01/specs",
+            _REPO_ROOT,
+            "openspec/changes/preprod01/specs",
         )
         self.assertTrue(
             os.path.isdir(specs_dir),
@@ -143,8 +144,7 @@ class SmokeTestSuiteTest(TestCase):
 
     def test_smoke_has_health_test(self):
         self.assertTrue(
-            _exists("tests/smoke/test_api_health.py")
-            or _exists("tests/smoke/test_health.py"),
+            _exists("tests/smoke/test_api_health.py") or _exists("tests/smoke/test_health.py"),
         )
 
     def test_smoke_has_auth_test(self):
@@ -161,8 +161,7 @@ class ArchiveWorkflowTest(TestCase):
     def test_archive_command_documented(self):
         """Archive command must be documented somewhere."""
         self.assertTrue(
-            _exists(".cursor/commands/openspec-archive.md")
-            or _exists("docs/OPENSPEC_ARCHIVE.md"),
+            _exists(".cursor/commands/openspec-archive.md") or _exists("docs/OPENSPEC_ARCHIVE.md"),
             "OpenSpec archive workflow must be documented",
         )
 

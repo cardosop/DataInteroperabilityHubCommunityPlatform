@@ -77,6 +77,7 @@ class ContractODPSMixin:
         # path. Without this, large ODPS bodies could bypass the
         # contract-create cap by routing through /link-odps/.
         from .serializers import payload_size_envelope
+
         envelope = payload_size_envelope(request.data)
         if envelope is not None:
             return Response(envelope, status=413)
@@ -132,7 +133,7 @@ class ContractODPSMixin:
             import traceback
 
             logger = logging.getLogger(__name__)
-            logger.error(f"ODPS linking failed: {str(e)}\n{traceback.format_exc()}", exc_info=True)
+            logger.error(f"ODPS linking failed: {e!s}\n{traceback.format_exc()}", exc_info=True)
             return Response(
                 {
                     "error": "ODPS linking failed",
@@ -217,9 +218,7 @@ class ContractODPSMixin:
             import traceback
 
             logger = logging.getLogger(__name__)
-            logger.error(
-                f"ODPS unlinking failed: {str(e)}\n{traceback.format_exc()}", exc_info=True
-            )
+            logger.error(f"ODPS unlinking failed: {e!s}\n{traceback.format_exc()}", exc_info=True)
             return Response(
                 {
                     "error": "ODPS unlinking failed",
@@ -282,7 +281,7 @@ class ContractODPSMixin:
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.error(f"Failed to list links: {str(e)}", exc_info=True)
+            logger.error(f"Failed to list links: {e!s}", exc_info=True)
             return Response(
                 {
                     "error": "Failed to list links",

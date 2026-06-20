@@ -13,27 +13,22 @@ Tests verify comprehensive compliance checking and topology generation:
 
 All tests use real implementations (no mocks/stubs) to ensure integration.
 """
-import uuid
-import pytest
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from django.utils import timezone
-from datetime import timedelta
 
-from hub.apps.mesh.services import DataMeshService
+import uuid
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+
+from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus
+from hub.apps.core.services.base import NotFoundError, ValidationError
+from hub.apps.governance.models import AccessPolicy
 from hub.apps.mesh.models import (
-    DataMeshDomain,
-    DomainStatus,
-    PolicyApplication,
-    PolicyApplicationStatus,
-    ComplianceReport,
     MeshComplianceStatus,
 )
-from hub.apps.governance.models import AccessPolicy
-from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus
+from hub.apps.mesh.services import DataMeshService
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus, Role, UserRole
-from hub.apps.core.services.base import NotFoundError, ValidationError
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 UserModel = get_user_model()
@@ -45,17 +40,12 @@ class DataMeshComplianceCheckTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.tenant_id = str(self.tenant.id)
 
         # Get or create roles
         self.tenant_admin_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="TENANT_ADMIN",
-            defaults={"description": "Tenant admin role"}
+            tenant=self.tenant, name="TENANT_ADMIN", defaults={"description": "Tenant admin role"}
         )
 
         # Create tenant admin user
@@ -63,31 +53,26 @@ class DataMeshComplianceCheckTest(TestCase):
             email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        UserRole.objects.create(
-            user=self.tenant_admin_user,
-            role=self.tenant_admin_role
-        )
+        UserRole.objects.create(user=self.tenant_admin_user, role=self.tenant_admin_role)
 
         # Create service
         self.service = DataMeshService(
-            tenant_id=self.tenant_id,
-            user_id=str(self.tenant_admin_user.id)
+            tenant_id=self.tenant_id, user_id=str(self.tenant_admin_user.id)
         )
 
         # Create domain
         self.domain = self.service.create_domain(
             tenant_id=self.tenant_id,
             name="Test Domain",
-            description="Test domain for compliance checking"
+            description="Test domain for compliance checking",
         )
 
     def test_check_compliance_for_active_domain_with_no_policies(self):
         """Test compliance check for active domain with no policies"""
         report = self.service.check_compliance(
-            domain_id=str(self.domain.id),
-            tenant_id=self.tenant_id
+            domain_id=str(self.domain.id), tenant_id=self.tenant_id
         )
 
         self.assertIsNotNone(report)
@@ -100,14 +85,11 @@ class DataMeshComplianceCheckTest(TestCase):
         """Test compliance check for inactive domain"""
         # Update domain to inactive
         self.service.update_domain(
-            domain_id=str(self.domain.id),
-            tenant_id=self.tenant_id,
-            status="INACTIVE"
+            domain_id=str(self.domain.id), tenant_id=self.tenant_id, status="INACTIVE"
         )
 
         report = self.service.check_compliance(
-            domain_id=str(self.domain.id),
-            tenant_id=self.tenant_id
+            domain_id=str(self.domain.id), tenant_id=self.tenant_id
         )
 
         self.assertEqual(report.compliance_status, MeshComplianceStatus.NON_COMPLIANT)
@@ -125,20 +107,17 @@ class DataMeshComplianceCheckTest(TestCase):
             description="Test policy for compliance",
             enabled=True,
             conditions={},
-            effect="ALLOW"
+            effect="ALLOW",
         )
 
         # Apply policy to domain
-        policy_app = self.service.apply_policy(
-            domain_id=str(self.domain.id),
-            policy_id=str(policy.id),
-            tenant_id=self.tenant_id
+        self.service.apply_policy(
+            domain_id=str(self.domain.id), policy_id=str(policy.id), tenant_id=self.tenant_id
         )
 
         # Check compliance
         report = self.service.check_compliance(
-            domain_id=str(self.domain.id),
-            tenant_id=self.tenant_id
+            domain_id=str(self.domain.id), tenant_id=self.tenant_id
         )
 
         self.assertIsNotNone(report)
@@ -153,14 +132,12 @@ class DataMeshComplianceCheckTest(TestCase):
             description="Policy that will be disabled",
             enabled=True,
             conditions={},
-            effect="ALLOW"
+            effect="ALLOW",
         )
 
         # Apply policy to domain (must be enabled to apply)
         self.service.apply_policy(
-            domain_id=str(self.domain.id),
-            policy_id=str(policy.id),
-            tenant_id=self.tenant_id
+            domain_id=str(self.domain.id), policy_id=str(policy.id), tenant_id=self.tenant_id
         )
 
         # Disable the policy after application
@@ -169,8 +146,7 @@ class DataMeshComplianceCheckTest(TestCase):
 
         # Check compliance
         report = self.service.check_compliance(
-            domain_id=str(self.domain.id),
-            tenant_id=self.tenant_id
+            domain_id=str(self.domain.id), tenant_id=self.tenant_id
         )
 
         self.assertEqual(report.compliance_status, MeshComplianceStatus.PARTIAL)
@@ -187,14 +163,12 @@ class DataMeshComplianceCheckTest(TestCase):
             name="Test Asset",
             domain=self.domain.name,
             status=AssetStatus.ACTIVE,
-            compliance_status=ComplianceStatus.PASS
+            compliance_status=ComplianceStatus.PASS,
         )
 
         # Check compliance for asset
         report = self.service.check_compliance(
-            domain_id=str(self.domain.id),
-            tenant_id=self.tenant_id,
-            asset_id=str(asset.id)
+            domain_id=str(self.domain.id), tenant_id=self.tenant_id, asset_id=str(asset.id)
         )
 
         self.assertIsNotNone(report)
@@ -211,14 +185,12 @@ class DataMeshComplianceCheckTest(TestCase):
             name="Failed Asset",
             domain=self.domain.name,
             status=AssetStatus.ACTIVE,
-            compliance_status=ComplianceStatus.FAIL
+            compliance_status=ComplianceStatus.FAIL,
         )
 
         # Check compliance for asset
         report = self.service.check_compliance(
-            domain_id=str(self.domain.id),
-            tenant_id=self.tenant_id,
-            asset_id=str(asset.id)
+            domain_id=str(self.domain.id), tenant_id=self.tenant_id, asset_id=str(asset.id)
         )
 
         self.assertEqual(report.compliance_status, MeshComplianceStatus.NON_COMPLIANT)
@@ -235,7 +207,7 @@ class DataMeshComplianceCheckTest(TestCase):
             name="Asset 1",
             domain=self.domain.name,
             status=AssetStatus.ACTIVE,
-            compliance_status=ComplianceStatus.PASS
+            compliance_status=ComplianceStatus.PASS,
         )
         Asset.objects.create(
             tenant=self.tenant,
@@ -243,13 +215,12 @@ class DataMeshComplianceCheckTest(TestCase):
             name="Asset 2",
             domain=self.domain.name,
             status=AssetStatus.ACTIVE,
-            compliance_status=ComplianceStatus.FAIL
+            compliance_status=ComplianceStatus.FAIL,
         )
 
         # Check compliance (domain-level, no asset_id)
         report = self.service.check_compliance(
-            domain_id=str(self.domain.id),
-            tenant_id=self.tenant_id
+            domain_id=str(self.domain.id), tenant_id=self.tenant_id
         )
 
         self.assertEqual(report.compliance_status, MeshComplianceStatus.NON_COMPLIANT)
@@ -261,43 +232,35 @@ class DataMeshComplianceCheckTest(TestCase):
         """Test that check_compliance creates or updates compliance report"""
         # First check
         report1 = self.service.check_compliance(
-            domain_id=str(self.domain.id),
-            tenant_id=self.tenant_id
+            domain_id=str(self.domain.id), tenant_id=self.tenant_id
         )
 
         # Second check (should update existing report)
         report2 = self.service.check_compliance(
-            domain_id=str(self.domain.id),
-            tenant_id=self.tenant_id
+            domain_id=str(self.domain.id), tenant_id=self.tenant_id
         )
 
         self.assertEqual(report1.id, report2.id)  # Same report
-        self.assertGreaterEqual(
-            report2.generated_at,
-            report1.generated_at
-        )
+        self.assertGreaterEqual(report2.generated_at, report1.generated_at)
 
     def test_check_compliance_raises_not_found_for_invalid_domain(self):
         """Test that check_compliance raises NotFoundError for invalid domain"""
         import uuid
+
         invalid_domain_id = str(uuid.uuid4())
 
         with self.assertRaises(NotFoundError):
-            self.service.check_compliance(
-                domain_id=invalid_domain_id,
-                tenant_id=self.tenant_id
-            )
+            self.service.check_compliance(domain_id=invalid_domain_id, tenant_id=self.tenant_id)
 
     def test_check_compliance_raises_not_found_for_invalid_asset(self):
         """Test that check_compliance raises NotFoundError for invalid asset"""
         import uuid
+
         invalid_asset_id = str(uuid.uuid4())
 
         with self.assertRaises(NotFoundError):
             self.service.check_compliance(
-                domain_id=str(self.domain.id),
-                tenant_id=self.tenant_id,
-                asset_id=invalid_asset_id
+                domain_id=str(self.domain.id), tenant_id=self.tenant_id, asset_id=invalid_asset_id
             )
 
 
@@ -307,17 +270,12 @@ class DataMeshTopologyTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.tenant_id = str(self.tenant.id)
 
         # Get or create roles
         self.tenant_admin_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="TENANT_ADMIN",
-            defaults={"description": "Tenant admin role"}
+            tenant=self.tenant, name="TENANT_ADMIN", defaults={"description": "Tenant admin role"}
         )
 
         # Create tenant admin user
@@ -325,17 +283,13 @@ class DataMeshTopologyTest(TestCase):
             email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        UserRole.objects.create(
-            user=self.tenant_admin_user,
-            role=self.tenant_admin_role
-        )
+        UserRole.objects.create(user=self.tenant_admin_user, role=self.tenant_admin_role)
 
         # Create service
         self.service = DataMeshService(
-            tenant_id=self.tenant_id,
-            user_id=str(self.tenant_admin_user.id)
+            tenant_id=self.tenant_id, user_id=str(self.tenant_admin_user.id)
         )
 
     def test_get_topology_with_no_domains(self):
@@ -350,10 +304,7 @@ class DataMeshTopologyTest(TestCase):
 
     def test_get_topology_with_single_domain(self):
         """Test topology generation with single domain"""
-        domain = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Domain 1"
-        )
+        domain = self.service.create_domain(tenant_id=self.tenant_id, name="Domain 1")
 
         topology = self.service.get_topology(tenant_id=self.tenant_id)
 
@@ -366,18 +317,10 @@ class DataMeshTopologyTest(TestCase):
 
     def test_get_topology_with_multiple_domains(self):
         """Test topology generation with multiple domains"""
-        domain1 = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Domain 1"
-        )
-        domain2 = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Domain 2"
-        )
+        domain1 = self.service.create_domain(tenant_id=self.tenant_id, name="Domain 1")
+        domain2 = self.service.create_domain(tenant_id=self.tenant_id, name="Domain 2")
         domain3 = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Domain 3",
-            status="INACTIVE"
+            tenant_id=self.tenant_id, name="Domain 3", status="INACTIVE"
         )
 
         topology = self.service.get_topology(tenant_id=self.tenant_id)
@@ -394,15 +337,9 @@ class DataMeshTopologyTest(TestCase):
 
     def test_get_topology_includes_health_metrics(self):
         """Test that topology includes health metrics when requested"""
-        domain = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Domain with Metrics"
-        )
+        self.service.create_domain(tenant_id=self.tenant_id, name="Domain with Metrics")
 
-        topology = self.service.get_topology(
-            tenant_id=self.tenant_id,
-            include_health_metrics=True
-        )
+        topology = self.service.get_topology(tenant_id=self.tenant_id, include_health_metrics=True)
 
         self.assertEqual(len(topology["nodes"]), 1)
         node = topology["nodes"][0]
@@ -415,15 +352,9 @@ class DataMeshTopologyTest(TestCase):
 
     def test_get_topology_excludes_health_metrics(self):
         """Test that topology excludes health metrics when not requested"""
-        domain = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Domain without Metrics"
-        )
+        self.service.create_domain(tenant_id=self.tenant_id, name="Domain without Metrics")
 
-        topology = self.service.get_topology(
-            tenant_id=self.tenant_id,
-            include_health_metrics=False
-        )
+        topology = self.service.get_topology(tenant_id=self.tenant_id, include_health_metrics=False)
 
         self.assertEqual(len(topology["nodes"]), 1)
         node = topology["nodes"][0]
@@ -432,14 +363,8 @@ class DataMeshTopologyTest(TestCase):
     def test_get_topology_calculates_relationships(self):
         """Test that topology calculates relationships between domains"""
         # Create domains
-        domain1 = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Domain 1"
-        )
-        domain2 = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Domain 2"
-        )
+        domain1 = self.service.create_domain(tenant_id=self.tenant_id, name="Domain 1")
+        domain2 = self.service.create_domain(tenant_id=self.tenant_id, name="Domain 2")
 
         # Create a shared policy
         policy = AccessPolicy.objects.create(
@@ -448,19 +373,15 @@ class DataMeshTopologyTest(TestCase):
             description="Policy shared by domains",
             enabled=True,
             conditions={},
-            effect="ALLOW"
+            effect="ALLOW",
         )
 
         # Apply policy to both domains
         self.service.apply_policy(
-            domain_id=str(domain1.id),
-            policy_id=str(policy.id),
-            tenant_id=self.tenant_id
+            domain_id=str(domain1.id), policy_id=str(policy.id), tenant_id=self.tenant_id
         )
         self.service.apply_policy(
-            domain_id=str(domain2.id),
-            policy_id=str(policy.id),
-            tenant_id=self.tenant_id
+            domain_id=str(domain2.id), policy_id=str(policy.id), tenant_id=self.tenant_id
         )
 
         topology = self.service.get_topology(tenant_id=self.tenant_id)
@@ -471,14 +392,9 @@ class DataMeshTopologyTest(TestCase):
 
     def test_get_topology_includes_summary_statistics(self):
         """Test that topology includes summary statistics"""
+        self.service.create_domain(tenant_id=self.tenant_id, name="Active Domain")
         self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Active Domain"
-        )
-        self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Inactive Domain",
-            status="INACTIVE"
+            tenant_id=self.tenant_id, name="Inactive Domain", status="INACTIVE"
         )
 
         topology = self.service.get_topology(tenant_id=self.tenant_id)
@@ -514,17 +430,12 @@ class DataMeshComplianceTopologyIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.tenant_id = str(self.tenant.id)
 
         # Get or create roles
         self.tenant_admin_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="TENANT_ADMIN",
-            defaults={"description": "Tenant admin role"}
+            tenant=self.tenant, name="TENANT_ADMIN", defaults={"description": "Tenant admin role"}
         )
 
         # Create tenant admin user
@@ -532,26 +443,19 @@ class DataMeshComplianceTopologyIntegrationTest(TestCase):
             email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        UserRole.objects.create(
-            user=self.tenant_admin_user,
-            role=self.tenant_admin_role
-        )
+        UserRole.objects.create(user=self.tenant_admin_user, role=self.tenant_admin_role)
 
         # Create service
         self.service = DataMeshService(
-            tenant_id=self.tenant_id,
-            user_id=str(self.tenant_admin_user.id)
+            tenant_id=self.tenant_id, user_id=str(self.tenant_admin_user.id)
         )
 
     def test_compliance_check_updates_topology_health_metrics(self):
         """Test that compliance checks update topology health metrics"""
         # Create domain
-        domain = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Test Domain"
-        )
+        domain = self.service.create_domain(tenant_id=self.tenant_id, name="Test Domain")
 
         # Get initial topology
         topology1 = self.service.get_topology(tenant_id=self.tenant_id)
@@ -559,16 +463,11 @@ class DataMeshComplianceTopologyIntegrationTest(TestCase):
 
         # Create compliance issue (inactive domain)
         self.service.update_domain(
-            domain_id=str(domain.id),
-            tenant_id=self.tenant_id,
-            status="INACTIVE"
+            domain_id=str(domain.id), tenant_id=self.tenant_id, status="INACTIVE"
         )
 
         # Check compliance
-        self.service.check_compliance(
-            domain_id=str(domain.id),
-            tenant_id=self.tenant_id
-        )
+        self.service.check_compliance(domain_id=str(domain.id), tenant_id=self.tenant_id)
 
         # Get updated topology
         topology2 = self.service.get_topology(tenant_id=self.tenant_id)
@@ -580,24 +479,12 @@ class DataMeshComplianceTopologyIntegrationTest(TestCase):
     def test_complete_workflow_compliance_and_topology(self):
         """Test complete workflow: create domains, check compliance, get topology"""
         # Create multiple domains
-        domain1 = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Domain 1"
-        )
-        domain2 = self.service.create_domain(
-            tenant_id=self.tenant_id,
-            name="Domain 2"
-        )
+        domain1 = self.service.create_domain(tenant_id=self.tenant_id, name="Domain 1")
+        domain2 = self.service.create_domain(tenant_id=self.tenant_id, name="Domain 2")
 
         # Check compliance for both domains
-        report1 = self.service.check_compliance(
-            domain_id=str(domain1.id),
-            tenant_id=self.tenant_id
-        )
-        report2 = self.service.check_compliance(
-            domain_id=str(domain2.id),
-            tenant_id=self.tenant_id
-        )
+        report1 = self.service.check_compliance(domain_id=str(domain1.id), tenant_id=self.tenant_id)
+        report2 = self.service.check_compliance(domain_id=str(domain2.id), tenant_id=self.tenant_id)
 
         # Get topology
         topology = self.service.get_topology(tenant_id=self.tenant_id)
@@ -611,4 +498,3 @@ class DataMeshComplianceTopologyIntegrationTest(TestCase):
         # Verify compliance reports exist
         self.assertIsNotNone(report1)
         self.assertIsNotNone(report2)
-

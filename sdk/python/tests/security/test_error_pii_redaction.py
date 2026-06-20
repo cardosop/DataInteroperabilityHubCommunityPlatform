@@ -10,6 +10,7 @@ phone numbers, etc.) from the request or from other users.
 """
 
 import requests
+
 from tests.use_cases._api_helpers import api_base_url
 
 
@@ -17,9 +18,7 @@ def _assert_email_not_in_response(resp: requests.Response, email: str) -> None:
     """Assert *email* does not appear in the response body or headers."""
     body = resp.text.lower() if resp.text else ""
     email_lower = email.lower()
-    assert email_lower not in body, (
-        f"Response body contains the submitted email address {email!r}"
-    )
+    assert email_lower not in body, f"Response body contains the submitted email address {email!r}"
     # Check headers — emails can leak through Location, Set-Cookie, etc.
     for name, value in resp.headers.items():
         assert email_lower not in str(value).lower(), (
@@ -103,9 +102,7 @@ def test_validation_error_does_not_leak_other_users():
 
     # The body must not contain any email address (any '@').
     # No domain whitelist — any '@' in a 404 response is a leak.
-    assert "@" not in body, (
-        "User lookup error response contains an email-like string ('@')"
-    )
+    assert "@" not in body, "User lookup error response contains an email-like string ('@')"
 
 
 def test_500_errors_do_not_contain_stack_traces():
@@ -120,7 +117,6 @@ def test_500_errors_do_not_contain_stack_traces():
     intentionally renders the full debug page — that's expected
     and the test skips with a diagnostic note.
     """
-    import os
     from tests._persona_provisioning import _e2e_token
 
     resp = requests.get(
@@ -160,6 +156,4 @@ def test_500_errors_do_not_contain_stack_traces():
         "/usr/src/",
     ]
     for pattern in sensitive_patterns:
-        assert pattern not in body, (
-            f"500 response contains sensitive pattern {pattern!r}"
-        )
+        assert pattern not in body, f"500 response contains sensitive pattern {pattern!r}"

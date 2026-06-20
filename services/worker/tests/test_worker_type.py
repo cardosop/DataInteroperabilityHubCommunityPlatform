@@ -17,6 +17,7 @@ All Django sub-packages and ``services.worker.health`` are stubbed
 in ``sys.modules`` before the module is loaded so no DB/Redis is
 touched.
 """
+
 import importlib.util
 import logging
 import os
@@ -24,12 +25,10 @@ import sys
 import types
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-
 # -------------------------------------------------------------------
 # Module loader helper
 # -------------------------------------------------------------------
+
 
 def _make_django_mock() -> MagicMock:
     """MagicMock satisfying ``import django; django.setup()``."""
@@ -71,10 +70,13 @@ def _load_main_module(
     }
 
     spec_path = os.path.join(
-        os.path.dirname(__file__), "..", "main.py",
+        os.path.dirname(__file__),
+        "..",
+        "main.py",
     )
     spec = importlib.util.spec_from_file_location(
-        "_worker_main_under_test", spec_path,
+        "_worker_main_under_test",
+        spec_path,
     )
     assert spec is not None
     assert spec.loader is not None
@@ -87,10 +89,7 @@ def _load_main_module(
         env = dict(os.environ)
         if env_overrides is not None:
             env.update(env_overrides)
-        if (
-            env_overrides is None
-            or "WORKER_TYPE" not in env_overrides
-        ):
+        if env_overrides is None or "WORKER_TYPE" not in env_overrides:
             env.pop("WORKER_TYPE", None)
 
         with patch.dict(os.environ, env, clear=True):
@@ -115,10 +114,7 @@ def _run_main(env_overrides):
     runtime_env = dict(os.environ)
     if env_overrides is not None:
         runtime_env.update(env_overrides)
-    if (
-        env_overrides is None
-        or "WORKER_TYPE" not in env_overrides
-    ):
+    if env_overrides is None or "WORKER_TYPE" not in env_overrides:
         runtime_env.pop("WORKER_TYPE", None)
 
     with (
@@ -140,6 +136,7 @@ def _run_main(env_overrides):
 # Tests: static queue mapping contract
 # -------------------------------------------------------------------
 
+
 class TestWorkerTypeQueueMapping:
     """_WORKER_TYPE_QUEUES dict — static contract (no I/O)."""
 
@@ -152,13 +149,16 @@ class TestWorkerTypeQueueMapping:
     def test_light_maps_to_job_default_and_job_low(self):
         mod = _load_main_module()
         assert mod._WORKER_TYPE_QUEUES["light"] == [
-            "job_default", "job_low",
+            "job_default",
+            "job_low",
         ]
 
     def test_all_maps_to_all_three_queues(self):
         mod = _load_main_module()
         assert mod._WORKER_TYPE_QUEUES["all"] == [
-            "job_critical", "job_default", "job_low",
+            "job_critical",
+            "job_default",
+            "job_low",
         ]
 
 
@@ -166,12 +166,13 @@ class TestWorkerTypeQueueMapping:
 # Tests: WORKER_TYPE=heavy
 # -------------------------------------------------------------------
 
+
 class TestWorkerTypeHeavy:
     """WORKER_TYPE=heavy → rqworker with job_critical only."""
 
     def test_heavy_passes_rqworker_command(self):
         """call_command receives 'rqworker' as first arg."""
-        cmd, queues, _ = _run_main({"WORKER_TYPE": "heavy"})
+        cmd, _queues, _ = _run_main({"WORKER_TYPE": "heavy"})
         assert cmd == "rqworker"
 
     def test_heavy_only_joins_critical_queue(self):
@@ -188,24 +189,15 @@ class TestWorkerTypeHeavy:
         _, _, kwargs = _run_main({"WORKER_TYPE": "heavy"})
         assert kwargs.get("verbosity") == 1
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "WORKER_CONCURRENCY env var not yet "
-            "forwarded to call_command "
-            "(arch-improvements-01 Phase 4)."
-        ),
-    )
     def test_concurrency_env_forwarded(self):
         """WORKER_CONCURRENCY=8 must be forwarded."""
-        _, _, kwargs = _run_main({
-            "WORKER_TYPE": "heavy",
-            "WORKER_CONCURRENCY": "8",
-        })
-        concurrency_keys = {
-            k for k in kwargs
-            if "concur" in k or "worker" in k or "num" in k
-        }
+        _, _, kwargs = _run_main(
+            {
+                "WORKER_TYPE": "heavy",
+                "WORKER_CONCURRENCY": "8",
+            }
+        )
+        concurrency_keys = {k for k in kwargs if "concur" in k or "worker" in k or "num" in k}
         assert concurrency_keys
         for key in concurrency_keys:
             assert str(kwargs[key]) == "8"
@@ -214,6 +206,7 @@ class TestWorkerTypeHeavy:
 # -------------------------------------------------------------------
 # Tests: WORKER_TYPE=light
 # -------------------------------------------------------------------
+
 
 class TestWorkerTypeLight:
     """WORKER_TYPE=light → rqworker with default+low queues."""
@@ -235,6 +228,7 @@ class TestWorkerTypeLight:
 # -------------------------------------------------------------------
 # Tests: WORKER_TYPE=all / default / unknown
 # -------------------------------------------------------------------
+
 
 class TestWorkerTypeAllAndDefaults:
     """WORKER_TYPE=all → all queues; absent/unknown fall back."""
@@ -264,16 +258,9 @@ class TestWorkerTypeAllAndDefaults:
                 {"WORKER_TYPE": "bogus_unknown_value"},
             )
 
-        warnings = [
-            r.message for r in caplog.records
-            if r.levelno >= logging.WARNING
-        ]
-        assert any(
-            "bogus_unknown_value" in msg
-            for msg in warnings
-        ), (
-            "Unknown WORKER_TYPE must be logged. "
-            f"Got: {warnings}"
+        warnings = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
+        assert any("bogus_unknown_value" in msg for msg in warnings), (
+            f"Unknown WORKER_TYPE must be logged. Got: {warnings}"
         )
 
     def test_all_passes_rqworker_and_scheduler(self):
@@ -287,6 +274,7 @@ class TestWorkerTypeAllAndDefaults:
 # -------------------------------------------------------------------
 # Tests: sys.argv explicit queue override
 # -------------------------------------------------------------------
+
 
 class TestExplicitQueueArgs:
     """sys.argv queue args override WORKER_TYPE."""
@@ -304,7 +292,9 @@ class TestExplicitQueueArgs:
 
         with (
             patch.object(
-                mod, "call_command", fake_call_command,
+                mod,
+                "call_command",
+                fake_call_command,
             ),
             patch.object(mod, "start_health_check_server"),
             patch(
@@ -316,13 +306,15 @@ class TestExplicitQueueArgs:
                 ],
             ),
             patch.dict(
-                os.environ, {"WORKER_TYPE": "heavy"},
+                os.environ,
+                {"WORKER_TYPE": "heavy"},
             ),
         ):
             mod.main()
 
         assert captured["queues"] == [
-            "my_queue_a", "my_queue_b",
+            "my_queue_a",
+            "my_queue_b",
         ]
 
     def test_health_server_started_with_env_port(self):
@@ -335,7 +327,8 @@ class TestExplicitQueueArgs:
         with (
             patch.object(mod, "call_command"),
             patch.object(
-                mod, "start_health_check_server",
+                mod,
+                "start_health_check_server",
             ) as mock_health,
             patch("sys.argv", ["services/worker/main.py"]),
             patch.dict(

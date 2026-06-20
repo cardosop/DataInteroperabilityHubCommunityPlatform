@@ -36,6 +36,7 @@ except Exception:
     # Patch failed, but tests should still run
     pass
 
+import contextlib
 import uuid
 
 import pytest
@@ -45,7 +46,6 @@ from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.files.models import File, FileStatus
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.tenants.services import get_tenant_file_size_limit
@@ -68,10 +68,8 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        try:
+        with contextlib.suppress(TransactionManagementError):
             super().tearDownClass()
-        except TransactionManagementError:
-            pass
 
     # Disable automatic database flush to avoid foreign key constraint issues
     reset_sequences = False
@@ -86,7 +84,6 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
         which provides isolation without flushing.
         """
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     """Test File Upload integration with tenant configuration"""
 
@@ -97,16 +94,13 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
         # TransactionTestCase on the shared test DB.  Only touch
         # 'default' — other aliases raise DatabaseOperationForbidden.
         from django.db import connections
+
         conn = connections["default"]
-        try:
+        with contextlib.suppress(Exception):
             conn.close_if_unusable_or_obsolete()
-        except Exception:
-            pass
         if conn.connection is None or getattr(conn.connection, "closed", 1):
-            try:
+            with contextlib.suppress(Exception):
                 conn.close()
-            except Exception:
-                pass
             conn.connection = None
             conn.closed_in_transaction = False
             conn.needs_rollback = False
@@ -140,11 +134,13 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
 
         # Active subscription required for write operations
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
         ensure_tenant_has_active_subscription(self.tenant)
 
         # Create subscription so middleware doesn't block write ops
         from hub.apps.billing.models import Subscription, SubscriptionStatus
         from hub.apps.tenants.models import TenantPlan
+
         free_plan = TenantPlan.objects.filter(slug="free").first()
         if free_plan:
             Subscription.objects.get_or_create(
@@ -153,7 +149,7 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
                     "plan": free_plan,
                     "status": SubscriptionStatus.ACTIVE,
                     "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
-                }
+                },
             )
 
         self.platform_defaults = get_platform_defaults()
@@ -176,7 +172,8 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
 
         # Create tenant config with custom file size limit (5 GB)
         TenantConfig.objects.create(
-            tenant=self.tenant, max_file_size_bytes=5 * 1024 * 1024 * 1024  # 5 GB
+            tenant=self.tenant,
+            max_file_size_bytes=5 * 1024 * 1024 * 1024,  # 5 GB
         )
 
         self.client.force_authenticate(user=self.user)
@@ -203,7 +200,8 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
         """Test file upload fails when file size exceeds tenant limit"""
         # Create tenant config with custom file size limit (5 GB)
         TenantConfig.objects.create(
-            tenant=self.tenant, max_file_size_bytes=5 * 1024 * 1024 * 1024  # 5 GB
+            tenant=self.tenant,
+            max_file_size_bytes=5 * 1024 * 1024 * 1024,  # 5 GB
         )
 
         self.client.force_authenticate(user=self.user)
@@ -291,9 +289,7 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
             f"{response.status_code}: "
             f"{getattr(response, 'data', response.content)}",
         )
-        error_msg = str(
-            response.data.get("detail", response.data)
-        )
+        error_msg = str(response.data.get("detail", response.data))
         self.assertIn(
             "exceeds",
             error_msg.lower(),
@@ -304,7 +300,8 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
         """Test get_tenant_file_size_limit utility function"""
         # Test with tenant config
         TenantConfig.objects.create(
-            tenant=self.tenant, max_file_size_bytes=5 * 1024 * 1024 * 1024  # 5 GB
+            tenant=self.tenant,
+            max_file_size_bytes=5 * 1024 * 1024 * 1024,  # 5 GB
         )
 
         limit = get_tenant_file_size_limit(str(self.tenant.id))

@@ -21,14 +21,14 @@ Usage
     python scripts/check_stale_defaults.py --json       # JSON output for CI
     python scripts/check_stale_defaults.py --fix        # suggests fixes
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
@@ -36,6 +36,7 @@ sys.path.insert(0, str(_REPO_ROOT))
 
 def _load_registry():
     import importlib.util
+
     spec = importlib.util.spec_from_file_location(
         "feature_flag_registry",
         _REPO_ROOT / "hub" / "apps" / "tenants" / "feature_flag_registry.py",
@@ -45,12 +46,13 @@ def _load_registry():
     module = importlib.util.module_from_spec(spec)
     sys.modules["feature_flag_registry"] = module
     spec.loader.exec_module(module)
-    return module.REGISTRY
+    return module.REGISTRY, module.is_sensitive
 
 
 # ── Auto-justified conditions ──────────────────────────────────────────
 
-def _has_justification(flag) -> tuple[bool, str]:
+
+def _has_justification(flag, is_sensitive_func) -> tuple[bool, str]:
     """Return (justified: bool, reason: str)."""
     # DPO / Legal signoff required → automatically justified.
     if flag.requires_dpo_signoff:
@@ -60,9 +62,20 @@ def _has_justification(flag) -> tuple[bool, str]:
 
     # Documented justification via related_audit_report or description keywords.
     justification_markers = [
-        "sampling", "safer default", "opt-in", "opt in", "explicit opt",
-        "cost", "premium", "forensic", "power-user", "power user",
-        "DPO signoff", "Legal signoff", "ADR", "decision record",
+        "sampling",
+        "safer default",
+        "opt-in",
+        "opt in",
+        "explicit opt",
+        "cost",
+        "premium",
+        "forensic",
+        "power-user",
+        "power user",
+        "DPO signoff",
+        "Legal signoff",
+        "ADR",
+        "decision record",
     ]
     desc_lower = flag.description.lower()
     report = (flag.related_audit_report or "").lower()
@@ -73,30 +86,33 @@ def _has_justification(flag) -> tuple[bool, str]:
             return True, f"justification found in description/report: '{marker}'"
 
     # Sensitive flags → implicitly justified (two-person rule gates the flip).
-    if flag.sensitive:
-        return True, "sensitive=True (two-person rule gates the flip)"
+    # is_sensitive is a module-level function, not a flag attribute.
+    if is_sensitive_func(flag.name):
+        return True, "sensitive flag (two-person rule gates the flip)"
 
     return False, "no documented justification found"
 
 
-def _check(registry) -> tuple[list[dict], bool]:
+def _check(registry, is_sensitive_func) -> tuple[list[dict], bool]:
     """Return (rows, all_justified)."""
     rows: list[dict] = []
     ga_flags = [f for f in registry if f.stage == "GA" and not f.default_new_tenants]
 
     for flag in sorted(ga_flags, key=lambda f: f.name):
-        justified, reason = _has_justification(flag)
-        rows.append({
-            "name": flag.name,
-            "stage": flag.stage,
-            "default_new": flag.default_new_tenants,
-            "requires_dpo_signoff": flag.requires_dpo_signoff,
-            "requires_legal_signoff": flag.requires_legal_signoff,
-            "sensitive": flag.sensitive,
-            "justified": justified,
-            "reason": reason,
-            "owner_team": flag.owner_team,
-        })
+        justified, reason = _has_justification(flag, is_sensitive_func)
+        rows.append(
+            {
+                "name": flag.name,
+                "stage": flag.stage,
+                "default_new": flag.default_new_tenants,
+                "requires_dpo_signoff": flag.requires_dpo_signoff,
+                "requires_legal_signoff": flag.requires_legal_signoff,
+                "sensitive": is_sensitive_func(flag.name),
+                "justified": justified,
+                "reason": reason,
+                "owner_team": flag.owner_team,
+            }
+        )
 
     all_justified = all(r["justified"] for r in rows)
     return rows, all_justified
@@ -107,7 +123,7 @@ def _format_human(rows: list[dict]) -> str:
         return "✓ No GA flags with default_new=False. Nothing to check.\n"
 
     lines: list[str] = []
-    lines.append(f"Stale Default Check — {datetime.now(tz=timezone.utc).isoformat()}")
+    lines.append(f"Stale Default Check — {datetime.now(tz=UTC).isoformat()}")
     lines.append(f"Flags checked: {len(rows)} (GA flags with default_new=False)")
     lines.append("")
     lines.append(f"{'FLAG':<50} {'JUSTIFIED':<12} {'REASON'}")
@@ -135,24 +151,21 @@ def _format_human(rows: list[dict]) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="283.6.7 — stale default checker for GA flags."
-    )
+    parser = argparse.ArgumentParser(description="283.6.7 — stale default checker for GA flags.")
+    parser.add_argument("--json", action="store_true", help="Emit JSON instead of human-readable.")
     parser.add_argument(
-        "--json", action="store_true", help="Emit JSON instead of human-readable."
-    )
-    parser.add_argument(
-        "--fix", action="store_true",
+        "--fix",
+        action="store_true",
         help="Print suggested fixes for unjustified flags.",
     )
     args = parser.parse_args()
 
-    registry = _load_registry()
-    rows, all_justified = _check(registry)
+    registry, is_sensitive_func = _load_registry()
+    rows, all_justified = _check(registry, is_sensitive_func)
 
     if args.json:
         output = {
-            "checked_at": datetime.now(tz=timezone.utc).isoformat(),
+            "checked_at": datetime.now(tz=UTC).isoformat(),
             "all_justified": all_justified,
             "flags": rows,
         }
@@ -167,10 +180,18 @@ def main() -> int:
             print("\nSuggested fixes:")
             for r in unjustified:
                 print(f"  {r['name']}:")
-                print(f"    Option A: Set requires_dpo_signoff=True in registry (if privacy-related)")
-                print(f"    Option B: Set requires_legal_signoff=True in registry (if legal-related)")
-                print(f"    Option C: Add justification to flag description (e.g., 'opt-in premium feature')")
-                print(f"    Option D: Write ADR at docs/adr/{r['name']}-default.md and set related_audit_report")
+                print(
+                    "    Option A: Set requires_dpo_signoff=True in registry (if privacy-related)"
+                )
+                print(
+                    "    Option B: Set requires_legal_signoff=True in registry (if legal-related)"
+                )
+                print(
+                    "    Option C: Add justification to flag description (e.g., 'opt-in premium feature')"
+                )
+                print(
+                    f"    Option D: Write ADR at docs/adr/{r['name']}-default.md and set related_audit_report"
+                )
         else:
             print("\nNo fixes needed — all flags justified.")
 

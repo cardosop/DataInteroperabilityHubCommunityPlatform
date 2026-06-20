@@ -3,19 +3,22 @@ Unit tests for file serializers.
 
 Tests validate serializer behavior without mocks/stubs.
 """
+
 import uuid
 
 import pytest
 from django.test import TestCase
 
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import FileStatus
 from hub.apps.files.serializers import (
+    ChecksumMismatchSerializer,
     ChunkUploadInitSerializer,
     ChunkUploadResponseSerializer,
     FileCompleteSerializer,
     FileDownloadResponseSerializer,
     FileInitResponseSerializer,
     FileInitSerializer,
+    FileRenameSerializer,
     FileSerializer,
 )
 from hub.apps.files.tests.test_base import FilesTestBase
@@ -105,7 +108,6 @@ class FileInitResponseSerializerTest(FilesTestBase):
 
     def test_serializer_valid_data_simple_upload(self):
         """Test serializer with valid data for simple upload."""
-        import uuid
 
         data = {
             "file_id": uuid.uuid4(),
@@ -119,7 +121,6 @@ class FileInitResponseSerializerTest(FilesTestBase):
 
     def test_serializer_valid_data_multipart_upload(self):
         """Test serializer with valid data for multipart upload."""
-        import uuid
 
         data = {
             "file_id": uuid.uuid4(),
@@ -175,12 +176,15 @@ class FileCompleteSerializerTest(FilesTestBase):
         self.assertIn("content_sha256", serializer.errors)
 
     def test_serializer_accepts_any_sha256_string(self):
-        """Serializer accepts SHA-256 as string; format validation is in views."""
+        """SHA-256 format validation is delegated to the view layer.
+
+        The serializer is intentionally permissive — it accepts any string
+        so the view can produce a typed 400 error with the correct error code
+        rather than a generic DRF validation error.
+        """
         data = {"content_sha256": "invalid_hash"}
 
         serializer = FileCompleteSerializer(data=data)
-        # Note: Serializer doesn't validate format, but should accept any string
-        # Format validation happens in views
         self.assertTrue(serializer.is_valid())
 
 
@@ -210,7 +214,7 @@ class FileSerializerTest(FilesTestBase):
 
         serializer = FileSerializer(self.file, data=data, partial=True)
         # Read-only fields should be ignored
-        serializer.is_valid()
+        self.assertTrue(serializer.is_valid())
         # ID and status should remain unchanged
         self.assertEqual(serializer.instance.id, self.file.id)
 
@@ -286,3 +290,53 @@ class ChunkUploadResponseSerializerTest(FilesTestBase):
         self.assertTrue(serializer.is_valid())
         self.assertEqual(serializer.validated_data["upload_url"], data["upload_url"])
         self.assertEqual(serializer.validated_data["expires_in"], 3600)
+
+
+# ── Previously untested serializers ───────────────────────────────
+
+
+class ChecksumMismatchSerializerTest(TestCase):
+    """Unit tests for ChecksumMismatchSerializer."""
+
+    def test_valid_sha256_passes(self):
+        serializer = ChecksumMismatchSerializer(data={
+            "actual_sha256": "a" * 64,
+        })
+        self.assertTrue(serializer.is_valid(), f"Errors: {serializer.errors}")
+
+    def test_missing_actual_sha256_is_invalid(self):
+        serializer = ChecksumMismatchSerializer(data={})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("actual_sha256", serializer.errors)
+
+    def test_sha256_too_short_is_invalid(self):
+        serializer = ChecksumMismatchSerializer(data={
+            "actual_sha256": "a" * 32,
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("actual_sha256", serializer.errors)
+
+    def test_sha256_too_long_is_invalid(self):
+        serializer = ChecksumMismatchSerializer(data={
+            "actual_sha256": "a" * 65,
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("actual_sha256", serializer.errors)
+
+
+class FileRenameSerializerTest(TestCase):
+    """Unit tests for FileRenameSerializer."""
+
+    def test_valid_name_passes(self):
+        serializer = FileRenameSerializer(data={"name": "new-report.csv"})
+        self.assertTrue(serializer.is_valid(), f"Errors: {serializer.errors}")
+
+    def test_missing_name_is_invalid(self):
+        serializer = FileRenameSerializer(data={})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("name", serializer.errors)
+
+    def test_empty_name_is_invalid(self):
+        serializer = FileRenameSerializer(data={"name": ""})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("name", serializer.errors)

@@ -3,17 +3,18 @@
 import uuid
 Pytest configuration for E2E tests.
 """
-import sys
+
 import os
 import pathlib
+import sys
 
 # Register the dual-channel guard fixtures and hooks at module scope so
 # pytest picks them up for every test under tests/e2e/. See the guard
 # module docstrings for the advisory/strict-mode rationale.
-from tests.e2e._guards._captured_server_errors import (  # noqa: E402, F401
+from tests.e2e._guards._captured_server_errors import (  # noqa: F401
     captured_server_errors,
 )
-from tests.e2e._guards._skip_counter import (  # noqa: E402, F401
+from tests.e2e._guards._skip_counter import (  # noqa: F401
     pytest_runtest_logreport,
 )
 
@@ -49,9 +50,9 @@ try:
 except ImportError:
     pass  # tests package not on path (e.g. minimal env)
 
+import contextlib
 import os
 import sys
-from typing import Dict, Optional
 
 import pytest
 
@@ -142,11 +143,16 @@ else:
 if DJANGO_AVAILABLE:
     try:
         import django.db.backends.postgresql.operations as _pg_ops
+
         if not hasattr(_pg_ops.DatabaseOperations.sql_flush, "_patched_delete"):
 
             def _e2e_sql_flush(
-                self, style, tables, *,
-                reset_sequences=False, allow_cascade=False,
+                self,
+                style,
+                tables,
+                *,
+                reset_sequences=False,
+                allow_cascade=False,
             ):
                 if not tables:
                     return []
@@ -159,16 +165,10 @@ if DJANGO_AVAILABLE:
                 # DB user to have SUPERUSER or REPLICATION privileges
                 # (the test DB user typically does).  Falls back to
                 # SET CONSTRAINTS ALL DEFERRED if not.
-                sql.append(
-                    "SET session_replication_role = 'replica';"
-                )
+                sql.append("SET session_replication_role = 'replica';")
                 for table in tables:
-                    sql.append("DELETE FROM %s;" % (
-                        self.quote_name(table),
-                    ))
-                sql.append(
-                    "SET session_replication_role = 'origin';"
-                )
+                    sql.append("DELETE FROM %s;" % (self.quote_name(table),))
+                sql.append("SET session_replication_role = 'origin';")
                 if reset_sequences:
                     seqs = self.connection.introspection.sequence_list()
                     for si in seqs:
@@ -176,7 +176,8 @@ if DJANGO_AVAILABLE:
                             sql.append(
                                 "SELECT setval("
                                 "pg_get_serial_sequence('%s','%s')"
-                                ", 1, false);" % (
+                                ", 1, false);"
+                                % (
                                     self.quote_name(si["table"]),
                                     si["column"],
                                 )
@@ -191,8 +192,10 @@ if DJANGO_AVAILABLE:
         # crashing module import. ImportError covers missing optional
         # backends; AttributeError covers signature/rename drift.
         import logging as _logging
+
         _logging.getLogger(__name__).warning(
-            "Could not install _e2e_sql_flush patch: %s", exc,
+            "Could not install _e2e_sql_flush patch: %s",
+            exc,
         )
 
 # Staging port configuration (from docker-compose.staging.yml)
@@ -566,15 +569,14 @@ if DJANGO_AVAILABLE and TestCase:
                 cache.delete_pattern("rate_limit_cache:*")
             except (AttributeError, Exception):
                 # delete_pattern not available on all backends; full clear is safe in tests
-                try:
+                with contextlib.suppress(Exception):
                     cache.clear()
-                except Exception:
-                    pass
 
             # 2. Flush Redis sorted-set rate limit keys
             try:
-                from hub.apps.core.redis_pools import get_redis_cache_pool
                 import redis as _redis
+
+                from hub.apps.core.redis_pools import get_redis_cache_pool
 
                 pool = get_redis_cache_pool()
                 r = _redis.Redis(connection_pool=pool)
@@ -621,7 +623,7 @@ if DJANGO_AVAILABLE and TestCase:
             unique_suffix = str(uuid.uuid4())[:8]
             email = f"e2e_test_{unique_suffix}@example.com"
 
-            self.user, created = User.objects.get_or_create(
+            self.user, _created = User.objects.get_or_create(
                 email=email,
                 defaults={
                     "tenant": self.tenant,
@@ -698,7 +700,9 @@ if DJANGO_AVAILABLE and TestCase:
                         <{uri}> ?p ?o .
                     }}
                     """
-                    tenant_id = str(self.tenant.id) if hasattr(self, 'tenant') and self.tenant else None
+                    tenant_id = (
+                        str(self.tenant.id) if hasattr(self, "tenant") and self.tenant else None
+                    )
                     result = client.query_sparql(query, output_format="json", tenant_id=tenant_id)
 
                     if result and isinstance(result, dict):
@@ -709,15 +713,19 @@ if DJANGO_AVAILABLE and TestCase:
                             return len(bindings) > 0
 
                     if attempt < max_retries - 1:
-                        time.sleep(2**attempt)  # Exponential backoff  # INTENTIONAL: test-specific timing
+                        time.sleep(  # noqa: sleep-needed — polling loop
+                            2**attempt
+                        )  # Exponential backoff  # INTENTIONAL: test-specific timing
 
                 except Exception:
                     if attempt < max_retries - 1:
-                        time.sleep(2**attempt)  # INTENTIONAL: e2e/integration test polling real services
+                        time.sleep(  # noqa: sleep-needed — polling loop
+                            2**attempt
+                        )  # INTENTIONAL: e2e/integration test polling real services
 
             return False
 
-        def get_service_urls(self) -> Dict[str, str]:
+        def get_service_urls(self) -> dict[str, str]:
             """Get all service URLs as a dictionary"""
             return {
                 "api": self.api_base_url,
@@ -758,8 +766,6 @@ if DJANGO_AVAILABLE and TestCase:
             from django.urls import reverse
             from rest_framework import status
 
-            from hub.apps.assets.models import Asset
-
             url = reverse("asset-list")
             response = self.client.post(
                 url,
@@ -784,7 +790,7 @@ if DJANGO_AVAILABLE and TestCase:
 
             from rest_framework import status
 
-            from hub.apps.contracts.models import Contract, OriginalFormat
+            from hub.apps.contracts.models import OriginalFormat
 
             # Provide default original_raw if not provided
             # NOTE: apiVersion + kind are required for the DataContract service to
@@ -840,7 +846,7 @@ if DJANGO_AVAILABLE and TestCase:
                         contract_data["schema"] = {}
                     if "fields" not in contract_data.get("schema", {}):
                         # If models exist, extract fields from first model
-                        if "models" in contract_data and contract_data["models"]:
+                        if contract_data.get("models"):
                             first_model = contract_data["models"][0]
                             if "fields" in first_model:
                                 contract_data["schema"]["fields"] = first_model["fields"]
@@ -926,9 +932,7 @@ if DJANGO_AVAILABLE and TestCase:
             )
 
             if response.status_code != status.HTTP_201_CREATED:
-                error_data = get_response_data(response) or str(
-                    getattr(response, "content", b"")
-                )
+                error_data = get_response_data(response) or str(getattr(response, "content", b""))
                 raise Exception(
                     f"Failed to init file upload: {response.status_code} - {error_data}"
                 )
@@ -1097,7 +1101,9 @@ if DJANGO_AVAILABLE and TestCase:
                                 .get("details", {})
                                 .get("retry_after", retry_delay * (2**attempt))
                             )
-                            time.sleep(min(retry_after, 10))  # Cap at 10 seconds  # INTENTIONAL: test-specific timing
+                            time.sleep(  # noqa: sleep-needed — polling loop
+                                min(retry_after, 10)
+                            )  # Cap at 10 seconds  # INTENTIONAL: test-specific timing
                             continue
 
                     # For non-rate-limit errors, raise immediately
@@ -1247,7 +1253,7 @@ if DJANGO_AVAILABLE and TestCase:
 
                     if hasattr(tasks, "normalize_contract_task"):
                         tasks.normalize_contract_task.delay(contract_id)
-                        time.sleep(1)  # INTENTIONAL: e2e/integration test polling real services
+                        time.sleep(1)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
                 except (ImportError, AttributeError):
                     pass  # Tasks not available, will set manually
 
@@ -1262,6 +1268,7 @@ if DJANGO_AVAILABLE and TestCase:
                 ValidationStatus.WARNING_ONLY,
             ]:
                 import logging
+
                 _prep_logger = logging.getLogger(__name__)
                 _prep_logger.warning(
                     "prepare_contract: overriding validation_status from %s to VALID for contract %s (service unavailable)",
@@ -1287,6 +1294,7 @@ if DJANGO_AVAILABLE and TestCase:
                 NormalizationStatus.NORMALIZED_WITH_WARNINGS,
             ]:
                 import logging
+
                 _prep_logger = logging.getLogger(__name__)
                 _prep_logger.warning(
                     "prepare_contract: overriding normalization_status from %s to NORMALIZED_OK "
@@ -1386,7 +1394,10 @@ if DJANGO_AVAILABLE and TestCase:
             # non-deterministic when multiple ACTIVE contracts exist
             # (e.g. ODCS + ODPS), so every one must be acceptable.
             valid_statuses = {ValidationStatus.VALID, ValidationStatus.WARNING_ONLY}
-            norm_statuses = {NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS}
+            norm_statuses = {
+                NormalizationStatus.NORMALIZED_OK,
+                NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+            }
             for c in asset.contracts.all():
                 needs_save = False
                 if c.validation_status not in valid_statuses:
@@ -1414,7 +1425,7 @@ if DJANGO_AVAILABLE and TestCase:
 
                     if hasattr(tasks, "run_dq_check_task"):
                         tasks.run_dq_check_task.delay(asset_id)
-                        time.sleep(1)  # INTENTIONAL: e2e/integration test polling real services
+                        time.sleep(1)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
                 except (ImportError, AttributeError):
                     pass  # Tasks not available, will set manually
 
@@ -1425,7 +1436,7 @@ if DJANGO_AVAILABLE and TestCase:
 
                     if hasattr(tasks, "run_compliance_check_task"):
                         tasks.run_compliance_check_task.delay(asset_id)
-                        time.sleep(1)  # INTENTIONAL: e2e/integration test polling real services
+                        time.sleep(1)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
                 except (ImportError, AttributeError):
                     pass  # Tasks not available, will set manually
 
@@ -1438,12 +1449,15 @@ if DJANGO_AVAILABLE and TestCase:
             # not relevant to the journey being tested (ODPS linking,
             # contract-first, etc.).
             import logging
+
             _prep_logger = logging.getLogger(__name__)
 
             if asset.dq_status not in (DQStatus.PASS, DQStatus.WARN):
                 _prep_logger.warning(
                     "prepare_asset: overriding %s from %s to PASS for asset %s",
-                    "dq_status", asset.dq_status, asset_id,
+                    "dq_status",
+                    asset.dq_status,
+                    asset_id,
                 )
                 asset.dq_status = DQStatus.PASS
 
@@ -1453,7 +1467,9 @@ if DJANGO_AVAILABLE and TestCase:
             ):
                 _prep_logger.warning(
                     "prepare_asset: overriding %s from %s to PASS for asset %s",
-                    "compliance_status", asset.compliance_status, asset_id,
+                    "compliance_status",
+                    asset.compliance_status,
+                    asset_id,
                 )
                 asset.compliance_status = ComplianceStatus.PASS
 
@@ -1462,22 +1478,24 @@ if DJANGO_AVAILABLE and TestCase:
             # compliance service may have scanned synthetic test data
             # and set allowed_to_store=False; fix that here so the
             # activation check passes.
+            from django.db.models import Q
+
             from hub.apps.compliance.models import (
-                ComplianceRun,
                 ComplianceRunStatus,
             )
 
-            from django.db.models import Q
-
-            updated_rows = asset.compliance_runs.filter(
-                status=ComplianceRunStatus.SUCCEEDED,
-            ).filter(
-                Q(allowed_to_store=False) | Q(allowed_to_store__isnull=True)
-            ).update(allowed_to_store=True)
+            updated_rows = (
+                asset.compliance_runs.filter(
+                    status=ComplianceRunStatus.SUCCEEDED,
+                )
+                .filter(Q(allowed_to_store=False) | Q(allowed_to_store__isnull=True))
+                .update(allowed_to_store=True)
+            )
             if updated_rows:
                 _prep_logger.warning(
                     "prepare_asset: bulk-updated allowed_to_store=True on %d compliance runs for asset %s",
-                    updated_rows, asset_id,
+                    updated_rows,
+                    asset_id,
                 )
 
             asset.save()
@@ -1612,9 +1630,7 @@ if DJANGO_AVAILABLE and TestCase:
                     resource_id=str(resource_id), resource_type=resource_type
                 ).first()
                 if resource:
-                    self.assertIsNotNone(
-                        resource.status, "Semantic resource should have a status"
-                    )
+                    self.assertIsNotNone(resource.status, "Semantic resource should have a status")
             except ImportError:
                 # Semantic service app not installed — visible skip.
                 pytest.skip("Semantic service not importable")
@@ -1636,7 +1652,7 @@ if DJANGO_AVAILABLE and TestCase:
                         return job
                 except Job.DoesNotExist:
                     pass
-                time.sleep(1)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(1)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
             # Timeout - check final status
             job = Job.objects.get(id=job_id)
@@ -1722,7 +1738,7 @@ if DJANGO_AVAILABLE and TestCase:
             never fire.  This helper finds the Job associated with the run and
             executes it synchronously, matching what the RQ worker would do.
             """
-            from hub.apps.jobs.models import Job, JobType
+            from hub.apps.jobs.models import JobType
 
             run = run_model.objects.get(id=run_id)
             if not run.job_id:
@@ -1824,10 +1840,11 @@ if DJANGO_AVAILABLE and TestCase:
                 format="json",
             )
 
-            if response.status_code not in [http_status.HTTP_200_OK, http_status.HTTP_204_NO_CONTENT]:
-                error_data = get_response_data(response) or str(
-                    getattr(response, "content", b"")
-                )
+            if response.status_code not in [
+                http_status.HTTP_200_OK,
+                http_status.HTTP_204_NO_CONTENT,
+            ]:
+                error_data = get_response_data(response) or str(getattr(response, "content", b""))
                 raise Exception(
                     f"Failed to attach contract to asset: {response.status_code} - {error_data}"
                 )
@@ -1888,9 +1905,7 @@ if DJANGO_AVAILABLE and TestCase:
                     resource,
                     f"Semantic resource should exist for {resource_type}:{resource_id}",
                 )
-                if expected_triples_count is not None and hasattr(
-                    resource, "triples_count"
-                ):
+                if expected_triples_count is not None and hasattr(resource, "triples_count"):
                     self.assertEqual(
                         resource.triples_count,
                         expected_triples_count,
@@ -1978,7 +1993,7 @@ if DJANGO_AVAILABLE and TestCase:
                         return resource
                 except SemanticResource.DoesNotExist:
                     pass
-                time.sleep(1)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(1)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
                 # Safety check: if we've been waiting too long, break early
                 if time.time() - start_time > timeout:

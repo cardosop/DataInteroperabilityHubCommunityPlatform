@@ -10,7 +10,7 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, ComplianceStatus, DQStatus
+from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus, DQStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
@@ -44,16 +44,24 @@ class AssetCRUDTest(TestCase):
         )
         ensure_user_has_data_provider_role(self.user)
 
+    def _unique_key(self, prefix: str = "test-asset") -> str:
+        """Return a tenant-unique asset key for test isolation.
+
+        Using UUID-based keys prevents cascading UniqueViolation
+        failures if a prior test's transaction rollback fails.
+        """
+        return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
     def test_create_asset_returns_201(self):
         """Test creating an asset returns 201 status code"""
         self.client.force_authenticate(user=self.user)
 
+        test_key = self._unique_key()
         data = {
-            "key": "test-asset",
+            "key": test_key,
             "name": "Test Asset",
             "description": "Test description",
             "domain": "marketing",
-            "visibility": AssetVisibility.INTERNAL,
         }
 
         response = self.client.post("/api/v1/assets/", data, format="json")
@@ -64,12 +72,12 @@ class AssetCRUDTest(TestCase):
         """Test creating an asset returns response data with id."""
         self.client.force_authenticate(user=self.user)
 
+        test_key = self._unique_key()
         data = {
-            "key": "test-asset",
+            "key": test_key,
             "name": "Test Asset",
             "description": "Test description",
             "domain": "marketing",
-            "visibility": AssetVisibility.INTERNAL,
         }
 
         response = self.client.post("/api/v1/assets/", data, format="json")
@@ -80,28 +88,28 @@ class AssetCRUDTest(TestCase):
         """Test creating an asset returns response data with key."""
         self.client.force_authenticate(user=self.user)
 
+        test_key = self._unique_key()
         data = {
-            "key": "test-asset",
+            "key": test_key,
             "name": "Test Asset",
             "description": "Test description",
             "domain": "marketing",
-            "visibility": AssetVisibility.INTERNAL,
         }
 
         response = self.client.post("/api/v1/assets/", data, format="json")
 
-        self.assertEqual(response.data["key"], "test-asset")
+        self.assertEqual(response.data["key"], test_key)
 
     def test_create_asset_returns_correct_response_data_has_name(self):
         """Test creating an asset returns response data with name."""
         self.client.force_authenticate(user=self.user)
 
+        test_key = self._unique_key()
         data = {
-            "key": "test-asset",
+            "key": test_key,
             "name": "Test Asset",
             "description": "Test description",
             "domain": "marketing",
-            "visibility": AssetVisibility.INTERNAL,
         }
 
         response = self.client.post("/api/v1/assets/", data, format="json")
@@ -112,12 +120,12 @@ class AssetCRUDTest(TestCase):
         """Test creating an asset returns response data with version."""
         self.client.force_authenticate(user=self.user)
 
+        test_key = self._unique_key()
         data = {
-            "key": "test-asset",
+            "key": test_key,
             "name": "Test Asset",
             "description": "Test description",
             "domain": "marketing",
-            "visibility": AssetVisibility.INTERNAL,
         }
 
         response = self.client.post("/api/v1/assets/", data, format="json")
@@ -128,12 +136,12 @@ class AssetCRUDTest(TestCase):
         """Test creating an asset sets default status values"""
         self.client.force_authenticate(user=self.user)
 
+        test_key = self._unique_key()
         data = {
-            "key": "test-asset",
+            "key": test_key,
             "name": "Test Asset",
             "description": "Test description",
             "domain": "marketing",
-            "visibility": AssetVisibility.INTERNAL,
         }
 
         response = self.client.post("/api/v1/assets/", data, format="json")
@@ -146,12 +154,12 @@ class AssetCRUDTest(TestCase):
         """Test creating an asset sets tenant and created_by correctly"""
         self.client.force_authenticate(user=self.user)
 
+        test_key = self._unique_key()
         data = {
-            "key": "test-asset",
+            "key": test_key,
             "name": "Test Asset",
             "description": "Test description",
             "domain": "marketing",
-            "visibility": AssetVisibility.INTERNAL,
         }
 
         response = self.client.post("/api/v1/assets/", data, format="json")
@@ -167,12 +175,13 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # Create first asset
+        dup_key = self._unique_key("dup")
         Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="First Asset", created_by=self.user
+            tenant=self.tenant, key=dup_key, name="First Asset", created_by=self.user
         )
 
         # Try to create second asset with same key
-        data = {"key": "test-asset", "name": "Second Asset"}
+        data = {"key": dup_key, "name": "Second Asset"}
 
         response = self.client.post("/api/v1/assets/", data, format="json")
 
@@ -194,7 +203,7 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", created_by=self.user
+            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
         )
 
         response = self.client.get(f"/api/v1/assets/{asset.id}/")
@@ -206,13 +215,13 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", created_by=self.user
+            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
         )
 
         response = self.client.get(f"/api/v1/assets/{asset.id}/")
 
         self.assertEqual(response.data["id"], str(asset.id))
-        self.assertEqual(response.data["key"], "test-asset")
+        self.assertEqual(response.data["key"], asset.key)
         self.assertEqual(response.data["version"], 1)
 
     def test_update_asset_returns_200(self):
@@ -220,7 +229,7 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", created_by=self.user
+            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
         )
 
         data = {
@@ -238,7 +247,7 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", created_by=self.user
+            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
         )
 
         data = {
@@ -256,7 +265,7 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", created_by=self.user
+            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
         )
 
         data = {
@@ -275,7 +284,7 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", created_by=self.user
+            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
         )
         original_version = asset.version
 
@@ -295,7 +304,7 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", created_by=self.user
+            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
         )
 
         # Simulate concurrent update: increment version in database
@@ -321,7 +330,7 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", created_by=self.user
+            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
         )
 
         response = self.client.delete(f"/api/v1/assets/{asset.id}/")
@@ -333,7 +342,7 @@ class AssetCRUDTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", created_by=self.user
+            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
         )
 
         self.client.delete(f"/api/v1/assets/{asset.id}/")
@@ -458,7 +467,7 @@ class AssetCRUDTest(TestCase):
 
         # Create an asset
         Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", created_by=self.user
+            tenant=self.tenant, key=self._unique_key("test-asset"), name="Test Asset", created_by=self.user
         )
 
         # Filter by invalid status
@@ -509,24 +518,6 @@ class AssetCRUDTest(TestCase):
         asset_a_index = names.index("Asset A")
         asset_b_index = names.index("Asset B")
         # Descending: B should come before A
-        self.assertGreater(asset_a_index, asset_b_index)
-
-    def test_list_assets_ordering_descending_orders_correctly(self):
-        """Test ordering assets by name descending orders correctly."""
-        self.client.force_authenticate(user=self.user)
-
-        asset_a = Asset.objects.create(
-            tenant=self.tenant, key="asset-a", name="Asset A", created_by=self.user
-        )
-        asset_b = Asset.objects.create(
-            tenant=self.tenant, key="asset-b", name="Asset B", created_by=self.user
-        )
-
-        response = self.client.get("/api/v1/assets/?ordering=-name")
-        names = [a["name"] for a in response.data["results"]]
-        # Should be ordered by name descending (B before A)
-        asset_a_index = names.index("Asset A")
-        asset_b_index = names.index("Asset B")
         self.assertGreater(asset_a_index, asset_b_index)
 
     def test_list_assets_search(self):
@@ -639,7 +630,8 @@ class AssetCRUDTest(TestCase):
 
     def test_create_asset_unauthenticated(self):
         """Test creating asset without authentication (error handling)"""
-        data = {"key": "test-asset", "name": "Test Asset"}
+        test_key = self._unique_key()
+        data = {"key": test_key, "name": "Test Asset"}
 
         response = self.client.post("/api/v1/assets/", data, format="json")
 
@@ -661,7 +653,8 @@ class AssetCRUDTest(TestCase):
         """Test creating asset with invalid status value (error handling)"""
         self.client.force_authenticate(user=self.user)
 
-        data = {"key": "test-asset", "name": "Test Asset", "status": "INVALID_STATUS"}
+        test_key = self._unique_key()
+        data = {"key": test_key, "name": "Test Asset", "status": "INVALID_STATUS"}
 
         response = self.client.post("/api/v1/assets/", data, format="json")
 

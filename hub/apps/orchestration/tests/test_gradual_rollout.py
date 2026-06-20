@@ -8,6 +8,7 @@ Verifies:
 
 Uses real feature flags and override_settings; no mocks/stubs.
 """
+
 from django.test import TestCase
 from django.test.utils import override_settings
 
@@ -79,18 +80,10 @@ class TestPhase1TestWorkflowsOnly(GradualRolloutTestBase):
     def test_phase1_verify_behavior_via_feature_flags(self):
         """Verify behavior: only enabled list gets validation."""
         reset_feature_flags()
-        self.assertTrue(
-            is_business_rules_validation_enabled("model_training")
-        )
-        self.assertTrue(
-            is_business_rules_validation_enabled("data_quality_check")
-        )
-        self.assertFalse(
-            is_business_rules_validation_enabled("product_creation")
-        )
-        self.assertFalse(
-            is_business_rules_validation_enabled("contract_creation")
-        )
+        self.assertTrue(is_business_rules_validation_enabled("model_training"))
+        self.assertTrue(is_business_rules_validation_enabled("data_quality_check"))
+        self.assertFalse(is_business_rules_validation_enabled("product_creation"))
+        self.assertFalse(is_business_rules_validation_enabled("contract_creation"))
 
 
 class TestPhase2IncrementalProduction(GradualRolloutTestBase):
@@ -136,18 +129,10 @@ class TestPhase2IncrementalProduction(GradualRolloutTestBase):
     def test_incremental_via_per_workflow_config(self):
         """Per-workflow config can enable critical workflows incrementally."""
         reset_feature_flags()
-        self.assertTrue(
-            is_business_rules_validation_enabled("product_creation")
-        )
-        self.assertTrue(
-            is_business_rules_validation_enabled("contract_creation")
-        )
-        self.assertTrue(
-            is_business_rules_validation_enabled("model_training")
-        )
-        self.assertFalse(
-            is_business_rules_validation_enabled("asset_creation")
-        )
+        self.assertTrue(is_business_rules_validation_enabled("product_creation"))
+        self.assertTrue(is_business_rules_validation_enabled("contract_creation"))
+        self.assertTrue(is_business_rules_validation_enabled("model_training"))
+        self.assertFalse(is_business_rules_validation_enabled("asset_creation"))
 
 
 class TestPhase3FullRollout(GradualRolloutTestBase):
@@ -184,9 +169,7 @@ class TestPhase3FullRollout(GradualRolloutTestBase):
     def test_full_rollout_with_one_disabled(self):
         """Full rollout with one workflow explicitly disabled."""
         reset_feature_flags()
-        self.assertTrue(
-            is_business_rules_validation_enabled("product_creation")
-        )
+        self.assertTrue(is_business_rules_validation_enabled("product_creation"))
         self.assertFalse(
             is_business_rules_validation_enabled("model_inference"),
             "Explicitly disabled workflow must remain disabled",

@@ -7,6 +7,7 @@ hex key per tenant to ``CONSENT_SIGNING_KEYS_JSON`` (max 3 keys).
 """
 
 from __future__ import annotations
+
 from django.core.management.base import BaseCommand
 
 

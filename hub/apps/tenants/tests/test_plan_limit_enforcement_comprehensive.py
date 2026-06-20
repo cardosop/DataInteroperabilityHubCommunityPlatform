@@ -25,6 +25,7 @@ def _get_response_data(response):
         return response.data
     return json.loads(response.content)
 
+
 try:
     import django.db.backends.postgresql.operations as pg_operations
 
@@ -58,8 +59,8 @@ from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset
 from hub.apps.datasets.models import Dataset
-from hub.apps.scheduled_export.models import ScheduledExport, ScheduledExportRun
-from hub.apps.scheduled_ingestion.models import ScheduledIngestion, ScheduledIngestionRun
+from hub.apps.scheduled_export.models import ScheduledExport
+from hub.apps.scheduled_ingestion.models import ScheduledIngestion
 from hub.apps.tenants.models import PlanTier, Tenant, TenantPlan
 from hub.apps.tenants.services import PlanLimitService
 
@@ -72,6 +73,7 @@ class PlanLimitEnforcementComprehensiveTest(TestCase):
 
     Tests all resource types with real DB and real services.
     """
+
     reset_sequences = False
     serialized_rollback = False
 
@@ -84,7 +86,6 @@ class PlanLimitEnforcementComprehensiveTest(TestCase):
         WARNING: Do NOT refactor tests to share self.tenant across methods
         without restoring normal teardown — counts would accumulate.
         """
-        pass
 
     def setUp(self):
         """Set up test data"""
@@ -106,7 +107,10 @@ class PlanLimitEnforcementComprehensiveTest(TestCase):
 
         # Create tenant with limited plan
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", status="ACTIVE", plan=self.plan
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            plan=self.plan,
         )
 
         # Create user
@@ -120,6 +124,7 @@ class PlanLimitEnforcementComprehensiveTest(TestCase):
 
         # Active subscription required for write operations
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
         ensure_tenant_has_active_subscription(self.tenant)
 
         # Create API client and plan limit service
@@ -173,7 +178,8 @@ class PlanLimitEnforcementComprehensiveTest(TestCase):
         )
 
         self.assertEqual(
-            response.status_code, status.HTTP_403_FORBIDDEN,
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
             f"Expected 403 plan_limit_exceeded but got {response.status_code}: "
             f"{getattr(response, 'data', response.content)}",
         )
@@ -198,7 +204,7 @@ class PlanLimitEnforcementComprehensiveTest(TestCase):
             created_by=self.user,
         )
 
-        for i in range(2):
+        for _i in range(2):
             Dataset.objects.create(
                 tenant=self.tenant,
                 file=file_obj,

@@ -34,9 +34,13 @@ class MiddlewareIntegrationTest(TestCase):
         """Set up test fixtures"""
         self.factory = RequestFactory()
         self.client = Client()
-        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
+        )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
     def test_middleware_execution_order(self):
@@ -125,9 +129,13 @@ class MiddlewareIntegrationTest(TestCase):
 
     def test_middleware_tenant_isolation(self):
         """Test that middleware maintains tenant isolation"""
-        tenant2 = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
+        tenant2 = Tenant.objects.create(
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
+        )
         user2 = User.objects.create_user(
-            email=f"test2-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=tenant2
+            email=f"test2-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=tenant2,
         )
 
         tenant_scoping = TenantScopingMiddleware(_real_get_response)

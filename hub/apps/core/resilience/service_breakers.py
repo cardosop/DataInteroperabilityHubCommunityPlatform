@@ -4,15 +4,19 @@ Shared CircuitBreaker instances per external service (Phase 205).
 Ensures health checks, run/submit paths, and activation degradation logic observe the
 same OPEN/CLOSED state for a given service name.
 """
+
 from __future__ import annotations
 
 import threading
-from typing import Dict, Tuple
 
-from hub.apps.core.resilience.circuit_breaker import CircuitBreaker, CircuitBreakerState, get_redis_client
+from hub.apps.core.resilience.circuit_breaker import (
+    CircuitBreaker,
+    CircuitBreakerState,
+    get_redis_client,
+)
 
 _LOCK = threading.Lock()
-_STORE: Dict[Tuple[str, int, int, int], CircuitBreaker] = {}
+_STORE: dict[tuple[str, int, int, int], CircuitBreaker] = {}
 
 
 def get_shared_circuit_breaker(
@@ -40,6 +44,7 @@ def get_shared_circuit_breaker(
         from hub.apps.core.resilience.circuit_breaker_thresholds import (
             PRODUCTION_THRESHOLDS,
         )
+
         threshold = PRODUCTION_THRESHOLDS.get(service_name)
         if threshold is not None:
             failure_threshold = threshold.failure_threshold

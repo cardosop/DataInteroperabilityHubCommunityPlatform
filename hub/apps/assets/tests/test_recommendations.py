@@ -3,9 +3,8 @@ Unit tests for Asset Recommendations
 
 Tests for recommendation algorithms based on usage patterns, lineage, and user behavior.
 """
-import uuid
 
-from datetime import timedelta
+import uuid
 
 import pytest
 from django.test import TestCase
@@ -28,7 +27,10 @@ class AssetRecommendationServiceTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
@@ -100,8 +102,11 @@ class AssetRecommendationServiceTest(TestCase):
         self.assertGreater(len(recommendations), 0)
         # Usage-pattern recommendations should be sorted by score descending
         scores = [r["score"] for r in recommendations]
-        self.assertEqual(scores, sorted(scores, reverse=True),
-                         "usage-pattern recommendations must be sorted by score descending")
+        self.assertEqual(
+            scores,
+            sorted(scores, reverse=True),
+            "usage-pattern recommendations must be sorted by score descending",
+        )
 
     def test_get_recommendations_usage_patterns_sorted_by_score(self):
         """Test usage pattern-based recommendations are sorted by score descending."""
@@ -135,7 +140,7 @@ class AssetRecommendationServiceTest(TestCase):
     def test_get_recommendations_lineage(self):
         """Test lineage-based recommendations return target assets."""
         # Create contract with lineage pointing to a target contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset1,
             original_spec_type=OriginalSpecType.ODCS,
@@ -158,7 +163,7 @@ class AssetRecommendationServiceTest(TestCase):
             created_by=self.user,
         )
 
-        target_contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=target_asset,
             original_spec_type=OriginalSpecType.ODCS,
@@ -205,16 +210,19 @@ class AssetRecommendationServiceTest(TestCase):
             include_user_behavior=True,
         )
 
-        # Should find recommendations based on user behavior
+        # Should find recommendations based on user behavior.
         self.assertGreater(len(recommendations), 0)
-        # At least one recommendation should be scoped to the same tenant
+        # All returned recommendations must belong to the same tenant
+        # (tenant isolation — the user-behavior source must not leak
+        # assets from other tenants).
         recommended_ids = [r["asset_id"] for r in recommendations]
         tenant_asset_ids = set(
             str(a.id) for a in Asset.objects.filter(tenant=self.tenant)
         )
         self.assertTrue(
-            any(rid in tenant_asset_ids for rid in recommended_ids),
-            "Recommendations must include assets from the user's tenant",
+            all(rid in tenant_asset_ids for rid in recommended_ids),
+            "Every recommendation from user-behavior must belong "
+            "to the user's own tenant — no cross-tenant leakage.",
         )
 
     def test_get_recommendations_combined(self):
@@ -290,9 +298,7 @@ class AssetRecommendationServiceTest(TestCase):
         self.assertIsInstance(recommendations, list)
         self.assertGreater(len(recommendations), 0)
         # All returned assets must belong to the tenant
-        tenant_asset_ids = set(
-            str(a.id) for a in Asset.objects.filter(tenant=self.tenant)
-        )
+        tenant_asset_ids = set(str(a.id) for a in Asset.objects.filter(tenant=self.tenant))
         for rec in recommendations:
             self.assertIn(rec["asset_id"], tenant_asset_ids)
 
@@ -309,14 +315,16 @@ class AssetRecommendationServiceTest(TestCase):
         self.assertEqual(len(recommendations), 0)
 
     def test_get_recommendations_very_large_limit(self):
-        """Test recommendations with very large limit (edge case)"""
+        """With a limit larger than the available assets, the service
+        returns all recommendable assets (the limit is a ceiling, not
+        a floor)."""
         recommendations = AssetRecommendationService.get_recommendations(
             tenant_id=str(self.tenant.id), limit=999999
         )
 
-        # Should return available recommendations (limited by data)
         self.assertIsInstance(recommendations, list)
-        self.assertLessEqual(len(recommendations), 999999)
+        # Must return at least the assets we seeded (all 4 are recommendable).
+        self.assertGreaterEqual(len(recommendations), 4)
 
     def test_get_recommendations_no_assets(self):
         """Test recommendations when no assets exist (edge case)"""
@@ -363,6 +371,4 @@ class AssetRecommendationServiceTest(TestCase):
         the raw value through to the queryset.
         """
         with self.assertRaises(ValueError):
-            AssetRecommendationService.get_recommendations(
-                tenant_id=str(self.tenant.id), limit=-1
-            )
+            AssetRecommendationService.get_recommendations(tenant_id=str(self.tenant.id), limit=-1)

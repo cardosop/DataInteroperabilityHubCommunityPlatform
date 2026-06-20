@@ -13,18 +13,17 @@ connection (separate from the caller's default transaction).
 
 No mocks — real Postgres, real ORM, real transaction isolation.
 """
+
 from __future__ import annotations
 
-import os
 import uuid
-from unittest.mock import patch
 
 import pytest
-from django.db import transaction, connections
-from django.test import TestCase, override_settings
+from django.db import transaction
+from django.test import TestCase
 
 from hub.apps.audit.models import AuditEvent
-from hub.apps.core.business_rules.base import RuleExecutionContext, ValidationResult
+from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.core.business_rules.chains import RuleChain
 from hub.apps.tenants.models import Tenant
 
@@ -37,13 +36,16 @@ class TestChainAtomicity(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"CA-{uid}", slug=f"ca-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"CA-{uid}",
+            slug=f"ca-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
     def _step_write_audit(self, ctx, **kwargs):
         """Step 1: write an audit row inside the transaction."""
         from hub.apps.audit.utils import create_audit_event
+
         create_audit_event(
             resource_type="TEST",
             action="CHAIN_ATOMICITY_STEP_1",
@@ -116,8 +118,10 @@ class TestChainAuditDurability(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"CD-{uid}", slug=f"cd-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"CD-{uid}",
+            slug=f"cd-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
     def _step_pass(self, ctx, **kwargs):
@@ -190,11 +194,15 @@ class TestChainAuditDurability(TestCase):
             requires_transaction=False,  # skip transaction requirement for this test
         )
 
-        result = chain.execute(tenant_id=str(self.tenant.id))
+        chain.execute(tenant_id=str(self.tenant.id))
 
-        audit = AuditEvent.objects.filter(
-            action="RULE_CHAIN_COMPLETED",
-        ).order_by("-timestamp").first()
+        audit = (
+            AuditEvent.objects.filter(
+                action="RULE_CHAIN_COMPLETED",
+            )
+            .order_by("-timestamp")
+            .first()
+        )
         assert audit is not None
         assert audit.details_json.get("chain") == "test.shape"
         assert audit.details_json.get("outcome") == "PASS"

@@ -1,12 +1,11 @@
 """Periodic review sweep — RLS-disabled transaction local to connection."""
 
 from __future__ import annotations
-import pytest
 
-import pytest
 import uuid
 from datetime import timedelta
 
+import pytest
 from django.test import TestCase
 from django.utils import timezone
 

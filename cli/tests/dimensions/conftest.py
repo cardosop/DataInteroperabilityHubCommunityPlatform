@@ -6,6 +6,7 @@ Meshant API is reachable. e2e tests run a real CLI against a real backend
 and have no business failing on dev boxes that don't run docker compose.
 Set ``MESHANT_FORCE_INTEGRATION=1`` to bypass.
 """
+
 import os
 
 import pytest

@@ -11,12 +11,16 @@ Usage:
   DATAHUB_API_TOKEN=<token> \
   pytest cli/tests/use_cases/test_pa_admin_journey.py -v
 """
+
 import json
 import os
 import subprocess
-import sys
 
 import pytest
+
+pytestmark = [
+    pytest.mark.journey("JOURNEY-PA-001"),
+]
 
 DATAHUB_BASE_URL = os.environ.get("DATAHUB_BASE_URL", "")
 DATAHUB_CLI = os.environ.get("DATAHUB_CLI", "datahub")
@@ -27,6 +31,7 @@ def _backend_available():
     if not DATAHUB_BASE_URL:
         return False
     import urllib.request
+
     try:
         req = urllib.request.Request(
             f"{DATAHUB_BASE_URL.rstrip('/')}/health/",
@@ -50,7 +55,7 @@ def _cli(*args):
     env = {**os.environ, "DATAHUB_BASE_URL": DATAHUB_BASE_URL}
     if API_TOKEN:
         env["DATAHUB_API_TOKEN"] = API_TOKEN
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, env=env)
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=60, env=env)
     if result.returncode != 0:
         pytest.skip(f"CLI command failed (rc={result.returncode}): {result.stderr[:200]}")
     return json.loads(result.stdout)
@@ -64,7 +69,7 @@ class TestPAJourney:
     def test_cli_is_installed(self):
         """Verify datahub CLI is callable."""
         result = subprocess.run(
-            [DATAHUB_CLI, "--help"], capture_output=True, text=True, timeout=10
+            [DATAHUB_CLI, "--help"], check=False, capture_output=True, text=True, timeout=10
         )
         assert result.returncode == 0
 
@@ -82,4 +87,3 @@ class TestPAJourney:
         """CLI ``capabilities list`` returns valid response."""
         data = _cli("capabilities", "list")
         assert data is not None
-

@@ -1,6 +1,7 @@
 """HTTP surface for DSAR (public ingress + tenant handler console)."""
 
 from __future__ import annotations
+
 from datetime import timedelta
 
 from django.conf import settings as django_settings
@@ -112,9 +113,7 @@ class PublicDsarSubmitView(APIView):
                     or DSARVerificationMethod.EMAIL_OTP
                 ),
                 idempotency_key=idem_key,
-                extension_path_selected=ser.validated_data.get(
-                    "extension_path_selected", False
-                ),
+                extension_path_selected=ser.validated_data.get("extension_path_selected", False),
             )
         except DjangoValidationError as exc:
             err_list = getattr(exc, "error_list", None)
@@ -175,12 +174,8 @@ class PublicDsarStatusByTokenView(APIView):
                 "statutory_fulfil_deadline_utc": payload["statutory_fulfil_deadline_utc"],
                 "subject_timezone": sub_tz,
                 "regulator_timezone": reg_tz,
-                "statutory_fulfil_deadline_subject_local": _localized_fulfil_iso(
-                    row, sub_tz
-                ),
-                "statutory_fulfil_deadline_regulator_local": _localized_fulfil_iso(
-                    row, reg_tz
-                ),
+                "statutory_fulfil_deadline_subject_local": _localized_fulfil_iso(row, sub_tz),
+                "statutory_fulfil_deadline_regulator_local": _localized_fulfil_iso(row, reg_tz),
                 "legal_hold": payload["legal_hold"],
             },
             status=status.HTTP_200_OK,
@@ -222,9 +217,7 @@ class DSARRequestViewSet(viewsets.ModelViewSet):
     def reject(self, request, pk=None):
         row = self.get_object()
         reason = request.data.get("reason", "")
-        transition_status(
-            row, DSARStatus.CLOSED_REJECTED, actor_user=request.user, notes=reason
-        )
+        transition_status(row, DSARStatus.CLOSED_REJECTED, actor_user=request.user, notes=reason)
         row.refresh_from_db()
         return Response(DSARRequestSerializer(instance=row).data)
 

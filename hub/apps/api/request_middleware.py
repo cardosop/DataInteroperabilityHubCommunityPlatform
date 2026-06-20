@@ -4,14 +4,12 @@ API Middleware
 Middleware for request ID generation, rate limiting, and request validation.
 """
 
-import logging
-import time
 import uuid
 
 import structlog
 from django.core.cache import cache
-from rest_framework.response import Response
 from django.utils import timezone
+from rest_framework.response import Response
 
 logger = structlog.get_logger(__name__)
 
@@ -65,7 +63,6 @@ class RequestIDMiddleware:
         )
 
         # Add tenant_id and user_id if available (will be set later by auth middleware)
-        return None
 
     def process_response(self, request, response):
         """Echo the request ID under both header names.

@@ -13,6 +13,7 @@ Tests cover:
 All tests use real implementations - no mocks/stubs.
 """
 
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -21,18 +22,13 @@ from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.datasets.models import Dataset
-from hub.apps.observability.data_slas import DataSLAMonitor
 from hub.apps.observability.freshness import FreshnessMonitor
 from hub.apps.observability.incident_management import IncidentManager
 from hub.apps.observability.models import (
-    DataIncident,
-    DataObservabilityMetric,
     DataSLA,
     FreshnessSLA,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -341,7 +337,7 @@ class IncidentManagementBusinessRulesTest(TestCase):
         # Wait so resolution_time_seconds is at least 1 (int of fractional seconds can be 0)
         import time
 
-        time.sleep(1.1)  # INTENTIONAL: test-specific timing requirement
+        time.sleep(1.1)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
 
         resolved = IncidentManager.resolve_incident(
             incident_id=str(incident.id),

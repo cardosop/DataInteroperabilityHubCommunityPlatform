@@ -15,19 +15,20 @@ Test Pattern:
 4. Sudden drop back to normal
 5. Recovery period
 """
+
 import pytest
 
 # Skip if locust is not installed
 try:
     from locust import HttpUser, between, events, task
     from locust.contrib.fasthttp import FastHttpUser
+
     LOCUST_AVAILABLE = True
 except ImportError:
     LOCUST_AVAILABLE = False
     pytestmark = pytest.mark.skip(reason="locust not installed - install with: pip install locust")
 
 if LOCUST_AVAILABLE:
-    import os
     import random
 
     # Import shared helpers
@@ -167,7 +168,9 @@ if LOCUST_AVAILABLE:
         @task(1)
         def spike_health_check(self):
             """Health checks during spike to monitor system state."""
-            with self.client.get("/health", catch_response=True, name="spike_health_check") as response:
+            with self.client.get(
+                "/health", catch_response=True, name="spike_health_check"
+            ) as response:
                 if response.status_code == 200:
                     response.success()
                 else:

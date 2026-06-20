@@ -5,29 +5,29 @@ E2E tests for virtualization against real federated assets created from
 demo.ckan.org (PULL → federated asset → virtual dataset → execute query).
 No mocks or stubs; uses real CKAN API and real virtualization code paths.
 """
+
 import unittest
 import uuid
 
 import pytest
 
-pytestmark = pytest.mark.slow
-from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.test import TestCase
 
-from hub.apps.tenants.models import Tenant, KYCStatus, TenantPlan, PlanTier
 from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.core.services.base import ValidationError
+from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan
 from hub.apps.virtualization.models import (
-    VirtualDataset,
-    QueryType,
-    VirtualDatasetStatus,
-    QueryExecutionStatus,
     QueryExecutionMode,
+    QueryExecutionStatus,
+    QueryType,
+    VirtualDataset,
+    VirtualDatasetStatus,
 )
 from hub.apps.virtualization.services import VirtualizationService
-from hub.apps.core.services.base import ValidationError
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True)]
 User = get_user_model()
 
 # CKAN instances to try for CSV row-count test (21.2)
@@ -41,6 +41,7 @@ def _demo_ckan_reachable() -> bool:
     """Check if demo.ckan.org is reachable."""
     try:
         import httpx
+
         r = httpx.get("https://demo.ckan.org/api/3/action/status_show", timeout=10)
         return r.status_code == 200 and r.json().get("success") is True
     except Exception:
@@ -52,8 +53,8 @@ def _find_ckan_package_with_downloadable_csv():
     Find a CKAN package with a CSV resource that can be downloaded.
     Returns (base_url, listing_id, resource_id) or (None, None, None).
     """
-    from hub.apps.integrations.factory import MarketplaceConnectorFactory
     from hub.apps.integrations.base import MarketplaceType
+    from hub.apps.integrations.factory import MarketplaceConnectorFactory
 
     for base_url in CKAN_BASE_URLS:
         try:
@@ -72,8 +73,9 @@ def _find_ckan_package_with_downloadable_csv():
                         continue
                     # Try to download
                     try:
-                        import tempfile
                         import os
+                        import tempfile
+
                         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
                             tmp_path = tmp.name
                         try:
@@ -101,6 +103,7 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
 
     def setUp(self):
         from hub.apps.orchestration.registry import reset_workflow_definition_cache
+
         reset_workflow_definition_cache()
         _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
@@ -125,6 +128,7 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
 
         # Set up subscription/plan
         from django.utils import timezone
+
         plan, _ = TenantPlan.objects.get_or_create(
             slug="virtualization-test-plan",
             defaults={
@@ -164,7 +168,8 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
         cache.clear()
 
     @pytest.mark.integration
-    @pytest.mark.real_virtualization_e2e
+    @pytest.mark.virtualization
+    @pytest.mark.network
     def test_e2e_pull_from_demo_ckan_create_federated_asset_virtual_dataset_execute_query(self):
         """
         21.1 E2E: PULL from demo.ckan.org → create federated asset → create virtual dataset → execute query.
@@ -181,8 +186,8 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
         if not _demo_ckan_reachable():
             raise unittest.SkipTest("demo.ckan.org unreachable")
 
-        from hub.apps.integrations.factory import MarketplaceConnectorFactory
         from hub.apps.integrations.base import MarketplaceType
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
         from hub.apps.integrations.models import MarketplaceConnection
         from hub.apps.integrations.services import MarketplaceIntegrationService
 
@@ -265,9 +270,7 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
             f"Expected COMPLETED, got {execution.status}. Log: {getattr(execution, 'execution_log', '')}",
         )
 
-        result = self.virt_service.get_query_result(
-            execution_id=str(execution.id), format="json"
-        )
+        result = self.virt_service.get_query_result(execution_id=str(execution.id), format="json")
         self.assertIn("data", result)
         self.assertIsInstance(result["data"], list)
         self.assertGreaterEqual(len(result["data"]), 1)
@@ -275,7 +278,8 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
         self.assertGreaterEqual(result["total_count"], 1)
 
     @pytest.mark.integration
-    @pytest.mark.real_virtualization_e2e
+    @pytest.mark.virtualization
+    @pytest.mark.network
     def test_e2e_using_demo_ckan_fixture_virtual_dataset_execute_query(self):
         """
         23.2 Virtualization: Use get_or_create_demo_ckan_federated_asset fixture → virtual dataset → execute query.
@@ -331,9 +335,7 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
             f"Expected COMPLETED, got {execution.status}. Log: {getattr(execution, 'execution_log', '')}",
         )
 
-        result = self.virt_service.get_query_result(
-            execution_id=str(execution.id), format="json"
-        )
+        result = self.virt_service.get_query_result(execution_id=str(execution.id), format="json")
         self.assertIn("data", result)
         self.assertIsInstance(result["data"], list)
         self.assertGreaterEqual(len(result["data"]), 1)
@@ -341,7 +343,8 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
         self.assertGreaterEqual(result["total_count"], 1)
 
     @pytest.mark.integration
-    @pytest.mark.real_virtualization_e2e
+    @pytest.mark.virtualization
+    @pytest.mark.network
     def test_ckan_package_csv_row_count(self):
         """
         21.2 Use CKAN package with real CSV resource; assert row count in virtualization result.
@@ -357,6 +360,7 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
         # Check if CKAN is reachable before attempting the slow search
         try:
             import httpx
+
             resp = httpx.get(
                 "https://demo.ckan.org/api/3/action/status_show",
                 timeout=5,
@@ -373,8 +377,8 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
                 f"(tried: {', '.join(CKAN_BASE_URLS)})"
             )
 
-        from hub.apps.integrations.factory import MarketplaceConnectorFactory
         from hub.apps.integrations.base import MarketplaceType
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
         from hub.apps.integrations.models import MarketplaceConnection
         from hub.apps.integrations.services import MarketplaceIntegrationService
 
@@ -440,9 +444,7 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
         self.assertIsNotNone(execution)
         self.assertEqual(execution.status, QueryExecutionStatus.COMPLETED)
 
-        result = self.virt_service.get_query_result(
-            execution_id=str(execution.id), format="json"
-        )
+        result = self.virt_service.get_query_result(execution_id=str(execution.id), format="json")
         self.assertIn("total_count", result)
         self.assertGreater(
             result["total_count"],

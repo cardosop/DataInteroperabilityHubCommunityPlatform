@@ -6,16 +6,17 @@ Three-phase dry-run analysis before a pipeline deploy:
   2. Contract compatibility — schema matches input, no breaking drift.
   3. Downstream impact simulation — walks full graph, checks each downstream.
 """
+
 from __future__ import annotations
+
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .dependency_resolver import (
     CycleDetectedError,
     PipelineDependencyResolver,
 )
-from .drift_detector import ContractDriftDetector, DriftSeverity
-from .models import PipelineDependency
+from .drift_detector import ContractDriftDetector
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +32,8 @@ class DeployImpactAnalyzer:
         self,
         pipeline_type: str,
         pipeline_id: str,
-        contract_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        contract_id: str | None = None,
+    ) -> dict[str, Any]:
         """Run all three checks and return a deploy recommendation.
 
         Returns::
@@ -57,31 +58,25 @@ class DeployImpactAnalyzer:
         """
         checks = {
             "dependency_resolution": self._check_dependency_resolution(
-                pipeline_type, pipeline_id,
+                pipeline_type,
+                pipeline_id,
             ),
             "contract_compatibility": self._check_contract_compatibility(
-                pipeline_type, pipeline_id, contract_id,
+                pipeline_type,
+                pipeline_id,
+                contract_id,
             ),
             "downstream_impact": self._check_downstream_impact(
-                pipeline_type, pipeline_id,
+                pipeline_type,
+                pipeline_id,
             ),
         }
 
         # Derive recommendation from checks.
-        blocking = any(
-            c.get("status") == "BLOCKED"
-            for c in checks.values()
-            if isinstance(c, dict)
-        )
-        warnings = any(
-            c.get("status") == "WARNING"
-            for c in checks.values()
-            if isinstance(c, dict)
-        )
+        blocking = any(c.get("status") == "BLOCKED" for c in checks.values() if isinstance(c, dict))
+        warnings = any(c.get("status") == "WARNING" for c in checks.values() if isinstance(c, dict))
 
-        downstream_count = len(
-            self._resolver.resolve_downstream(pipeline_type, pipeline_id)
-        )
+        downstream_count = len(self._resolver.resolve_downstream(pipeline_type, pipeline_id))
         drift_check = checks.get("contract_compatibility", {}) or {}
         breaking = (drift_check.get("drift_report", {}) or {}).get("breaking_count", 0)
         warn_count = (drift_check.get("drift_report", {}) or {}).get("warning_count", 0)
@@ -111,8 +106,10 @@ class DeployImpactAnalyzer:
     # ── Check 1: Dependency resolution ─────────────────────────────
 
     def _check_dependency_resolution(
-        self, pipeline_type: str, pipeline_id: str,
-    ) -> Dict[str, Any]:
+        self,
+        pipeline_type: str,
+        pipeline_id: str,
+    ) -> dict[str, Any]:
         """Verify upstream deps exist and there are no cycles."""
         try:
             self._resolver.validate_no_cycles()
@@ -128,14 +125,19 @@ class DeployImpactAnalyzer:
         for dep in upstream:
             # Check the upstream pipeline still exists.
             from .trigger_engine import _get_pipeline_execution_status
+
             status = _get_pipeline_execution_status(
-                self.tenant_id, dep.pipeline_type, str(dep.pipeline_id),
+                self.tenant_id,
+                dep.pipeline_type,
+                str(dep.pipeline_id),
             )
             if status is None:
-                missing.append({
-                    "pipeline_type": dep.pipeline_type,
-                    "pipeline_id": str(dep.pipeline_id),
-                })
+                missing.append(
+                    {
+                        "pipeline_type": dep.pipeline_type,
+                        "pipeline_id": str(dep.pipeline_id),
+                    }
+                )
 
         if missing:
             return {
@@ -153,9 +155,11 @@ class DeployImpactAnalyzer:
     # ── Check 2: Contract compatibility ────────────────────────────
 
     def _check_contract_compatibility(
-        self, pipeline_type: str, pipeline_id: str,
-        contract_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        self,
+        pipeline_type: str,
+        pipeline_id: str,
+        contract_id: str | None = None,
+    ) -> dict[str, Any]:
         """Check for breaking contract drift against the source contract."""
         if not contract_id:
             # No contract specified — check cannot run.
@@ -165,7 +169,8 @@ class DeployImpactAnalyzer:
             from hub.apps.contracts.models import Contract
 
             contract = Contract.objects.filter(
-                tenant_id=self.tenant_id, id=contract_id,
+                tenant_id=self.tenant_id,
+                id=contract_id,
             ).first()
             if not contract:
                 return {
@@ -200,8 +205,10 @@ class DeployImpactAnalyzer:
     # ── Check 3: Downstream impact simulation ──────────────────────
 
     def _check_downstream_impact(
-        self, pipeline_type: str, pipeline_id: str,
-    ) -> Dict[str, Any]:
+        self,
+        pipeline_type: str,
+        pipeline_id: str,
+    ) -> dict[str, Any]:
         """Walk the full downstream graph and check each node."""
         downstream = self._resolver.resolve_downstream(pipeline_type, pipeline_id)
         if not downstream:
@@ -210,7 +217,9 @@ class DeployImpactAnalyzer:
         # Build the execution graph to detect structural issues.
         try:
             graph = self._resolver.build_execution_graph(
-                pipeline_type, pipeline_id, max_depth=10,
+                pipeline_type,
+                pipeline_id,
+                max_depth=10,
             )
         except Exception as exc:
             return {

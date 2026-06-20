@@ -1,15 +1,14 @@
 """Helpers for defaulting Django management commands to admin DB alias."""
 
 from __future__ import annotations
-from typing import Sequence
+
+from collections.abc import Sequence
 
 MANAGEMENT_DB_MODE_ENV = "HUB_USE_ADMIN_DB_FOR_COMMANDS"
 MANAGEMENT_DB_ALIAS_ENV = "HUB_COMMAND_DB_ALIAS"
 
 _ADMIN_DB_ALIAS = "admin"
-_RUNTIME_COMMANDS = frozenset(
-    {"runserver", "runserver_plus", "shell", "shell_plus", "test"}
-)
+_RUNTIME_COMMANDS = frozenset({"runserver", "runserver_plus", "shell", "shell_plus", "test"})
 _DATABASE_OPTION_COMMANDS = frozenset(
     {
         "migrate",
@@ -26,10 +25,7 @@ _DATABASE_OPTION_COMMANDS = frozenset(
 
 
 def _has_database_option(argv: Sequence[str]) -> bool:
-    return any(
-        arg == "--database" or arg.startswith("--database=")
-        for arg in argv
-    )
+    return any(arg == "--database" or arg.startswith("--database=") for arg in argv)
 
 
 def prepare_manage_argv(argv: Sequence[str]) -> tuple[list[str], bool]:

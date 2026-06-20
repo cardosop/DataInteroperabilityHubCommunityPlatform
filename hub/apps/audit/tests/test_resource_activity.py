@@ -6,6 +6,7 @@ Two concerns, one file:
  2. The new ``/api/v1/audit/audit-events/resource-activity/`` endpoint returns
     a tenant-scoped, sanitized per-resource feed to any authenticated user.
 """
+
 import uuid
 
 import pytest
@@ -14,7 +15,6 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.audit.models import AuditEvent
 from hub.apps.audit.serializers import (
     RESOURCE_ACTIVITY_FORBIDDEN_KEYS,
     sanitize_activity_details,
@@ -28,9 +28,7 @@ User = get_user_model()
 
 
 def _grant(user, tenant, name):
-    role, _ = Role.objects.get_or_create(
-        tenant=tenant, name=name, defaults={"description": name}
-    )
+    role, _ = Role.objects.get_or_create(tenant=tenant, name=name, defaults={"description": name})
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
     return role
 
@@ -140,12 +138,12 @@ class ResourceActivityEndpointTest(TestCase):
             resource_id=str(self.asset_id),
             details={
                 "name": "Asset",
-                "ip_address": "10.0.0.1",          # forbidden
-                "_internal_flag": True,             # underscore-prefixed
-                "request_id": "req-abc",            # forbidden
+                "ip_address": "10.0.0.1",  # forbidden
+                "_internal_flag": True,  # underscore-prefixed
+                "request_id": "req-abc",  # forbidden
                 "note": "user visible",
                 "nested": {
-                    "user_agent": "curl/7",          # forbidden in nested
+                    "user_agent": "curl/7",  # forbidden in nested
                     "visible": "yes",
                 },
             },
@@ -202,9 +200,7 @@ class ResourceActivityEndpointTest(TestCase):
     def test_details_are_sanitized_top_level(self):
         self.client.force_authenticate(user=self.user1)
         resp = self.client.get(self._url())
-        match1 = next(
-            ev for ev in resp.data["results"] if ev["id"] == str(self.ev_match1.id)
-        )
+        match1 = next(ev for ev in resp.data["results"] if ev["id"] == str(self.ev_match1.id))
         details = match1["details"]
         self.assertNotIn("ip_address", details)
         self.assertNotIn("request_id", details)
@@ -215,9 +211,7 @@ class ResourceActivityEndpointTest(TestCase):
     def test_details_are_sanitized_recursively(self):
         self.client.force_authenticate(user=self.user1)
         resp = self.client.get(self._url())
-        match1 = next(
-            ev for ev in resp.data["results"] if ev["id"] == str(self.ev_match1.id)
-        )
+        match1 = next(ev for ev in resp.data["results"] if ev["id"] == str(self.ev_match1.id))
         nested = match1["details"]["nested"]
         self.assertNotIn("user_agent", nested)
         self.assertEqual(nested["visible"], "yes")
@@ -225,9 +219,7 @@ class ResourceActivityEndpointTest(TestCase):
     def test_response_exposes_actor_display_name_not_raw_fk(self):
         self.client.force_authenticate(user=self.user1)
         resp = self.client.get(self._url())
-        match1 = next(
-            ev for ev in resp.data["results"] if ev["id"] == str(self.ev_match1.id)
-        )
+        match1 = next(ev for ev in resp.data["results"] if ev["id"] == str(self.ev_match1.id))
         self.assertIn("actor_display_name", match1)
         self.assertNotIn("actor_user", match1)
         self.assertNotIn("tenant", match1)
@@ -268,9 +260,7 @@ class SanitizeActivityDetailsTest(TestCase):
     """Unit tests for the pure ``sanitize_activity_details`` helper."""
 
     def test_strips_forbidden_top_level(self):
-        out = sanitize_activity_details(
-            {"ip_address": "x", "name": "ok", "token": "t"}
-        )
+        out = sanitize_activity_details({"ip_address": "x", "name": "ok", "token": "t"})
         self.assertEqual(out, {"name": "ok"})
 
     def test_strips_underscore_prefixed(self):

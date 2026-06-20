@@ -4,8 +4,8 @@ Unit tests for DatasetsBusinessRules access validation.
 Comprehensive tests for dataset access validation integrating with GovernanceService
 and ABACEngine, without mocks/stubs.
 """
-import uuid
 
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -13,13 +13,12 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
-from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.datasets.business_rules import DatasetsBusinessRules
 from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.tests.factories import DatasetFactory
 from hub.apps.datasets.tests.test_base import DatasetsTestBase
-from hub.apps.governance.abac import ABACEngine
 from hub.apps.files.models import File, FileStatus
+from hub.apps.governance.abac import ABACEngine
 from hub.apps.governance.models import AccessPolicy, AccessRequest, AccessRequestStatus
 from hub.apps.tenants.models import KYCStatus, Tenant
 
@@ -44,8 +43,9 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         result = self.rules.validate_dataset_read_access(dataset, user=self.user)
         # Same tenant should allow access (ABAC may deny, but tenant isolation passes)
         self.assertTrue(result.details["tenant_isolation_valid"])
-        self.assertTrue(result.is_valid,
-            "Same-tenant user must have read access; got is_valid=False")
+        self.assertTrue(
+            result.is_valid, "Same-tenant user must have read access; got is_valid=False"
+        )
 
     def test_validate_dataset_read_access_same_tenant_includes_tenant_isolation(self):
         """Test read access validation includes tenant_isolation in details"""
@@ -94,8 +94,9 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
             result.details["tenant_isolation_valid"]
         )  # Validation passes, but cross-tenant
         self.assertTrue(result.details["tenant_isolation"]["cross_tenant"])
-        self.assertFalse(result.is_valid,
-            "Cross-tenant user must NOT have read access; got is_valid=True")
+        self.assertFalse(
+            result.is_valid, "Cross-tenant user must NOT have read access; got is_valid=True"
+        )
         self.assertIn("abac_policy_checked", result.details)
 
     def test_validate_dataset_write_access_same_tenant(self):
@@ -130,8 +131,9 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         self.assertTrue(result.details["tenant_isolation_valid"])
         # Cross-tenant must NOT have access
         self.assertTrue(result.details["tenant_isolation"]["cross_tenant"])
-        self.assertFalse(result.is_valid,
-            "Cross-tenant user must NOT have read access; got is_valid=True")
+        self.assertFalse(
+            result.is_valid, "Cross-tenant user must NOT have read access; got is_valid=True"
+        )
         self.assertIn("abac_policy_checked", result.details)
 
     def test_validate_dataset_read_access_with_approved_request(self):
@@ -141,7 +143,7 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         )
 
         # Create approved access request
-        access_request = AccessRequest.objects.create(
+        AccessRequest.objects.create(
             tenant=self.tenant,
             requested_by=self.user,
             dataset=dataset,
@@ -166,7 +168,7 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         )
 
         # Create approved access request for WRITE
-        access_request = AccessRequest.objects.create(
+        AccessRequest.objects.create(
             tenant=self.tenant,
             requested_by=self.user,
             dataset=dataset,
@@ -184,14 +186,17 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         self.assertIn("access_request", result.details)
 
     def test_validate_dataset_read_access_with_expired_request(self):
-        """Test read access validation with expired access request"""
+        """Expired access request does NOT grant read access.
+
+        Creates an approved but expired access request and verifies
+        that the request is checked but does NOT confer access."""
         dataset = DatasetFactory.create_dataset(
             tenant=self.tenant, file=self.file, format="CSV", version=1
         )
 
         # Create expired approved access request
         expired_time = timezone.now() - timedelta(days=1)
-        access_request = AccessRequest.objects.create(
+        AccessRequest.objects.create(
             tenant=self.tenant,
             requested_by=self.user,
             dataset=dataset,
@@ -206,8 +211,13 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         result = self.rules.validate_dataset_read_access(dataset, user=self.user)
 
         self.assertIn("access_request_checked", result.details)
-        # Access request was evaluated; the result depends on ABAC policy
-        # configuration in the test environment.
+        # An expired request MUST NOT grant access.
+        # The details may carry "access_request_expired" or the
+        # access_request_granted flag may be False/absent.
+        self.assertFalse(
+            result.details.get("access_request_granted", False),
+            "Expired access request must NOT grant access",
+        )
 
     def test_validate_dataset_read_access_with_abac_policy(self):
         """Test read access validation with ABAC policy"""
@@ -216,7 +226,7 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         )
 
         # Create ABAC policy allowing READ access
-        policy = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Test Read Policy",
             description="Allow READ access for test user",
@@ -243,7 +253,7 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         )
 
         # Create ABAC policy allowing WRITE access
-        policy = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Test Write Policy",
             description="Allow WRITE access for test user",
@@ -263,14 +273,21 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         self.assertTrue(result.details["abac_policy_checked"])
         self.assertIn("abac_result", result.details)
 
-    def test_validate_dataset_read_access_with_deny_policy(self):
-        """Test read access validation with DENY ABAC policy"""
+    def test_abac_engine_consulted_for_read_access(self):
+        """ABAC engine is consulted when a DENY policy targets the dataset.
+
+        Creates a DENY policy, calls validate_dataset_read_access,
+        and verifies the ABAC engine was invoked.  Whether the DENY
+        policy actually blocks access depends on the full ABAC
+        evaluation context (user attributes, environment policies,
+        etc.) — the load-bearing invariant is that ABAC is in the
+        decision path, not bypassed."""
         dataset = DatasetFactory.create_dataset(
             tenant=self.tenant, file=self.file, format="CSV", version=1
         )
 
         # Create ABAC policy denying access
-        policy = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Test Deny Policy",
             description="Deny READ access for test user",
@@ -285,12 +302,8 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         )
 
         result = self.rules.validate_dataset_read_access(dataset, user=self.user)
-        # DENY policy should trigger ABAC evaluation.
         self.assertIn("abac_policy_checked", result.details)
         self.assertTrue(result.details["abac_policy_checked"])
-        # Note: the ABAC engine may evaluate policy conditions differently in
-        # the test environment; the key structural assertion is that ABAC was
-        # consulted for this request.
 
     def test_validate_tenant_isolation_same_tenant(self):
         """Test tenant isolation validation for same tenant"""
@@ -355,7 +368,7 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         )
 
         # Create pending access request
-        access_request = AccessRequest.objects.create(
+        AccessRequest.objects.create(
             tenant=self.tenant,
             requested_by=self.user,
             dataset=dataset,
@@ -377,7 +390,7 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
 
         # Create expired approved access request
         expired_time = timezone.now() - timedelta(days=1)
-        access_request = AccessRequest.objects.create(
+        AccessRequest.objects.create(
             tenant=self.tenant,
             requested_by=self.user,
             dataset=dataset,
@@ -403,7 +416,7 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
 
         # Create approved access request with future expiration
         future_time = timezone.now() + timedelta(days=1)
-        access_request = AccessRequest.objects.create(
+        AccessRequest.objects.create(
             tenant=self.tenant,
             requested_by=self.user,
             dataset=dataset,
@@ -427,7 +440,7 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         )
 
         # Create ABAC policy
-        policy = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Test Policy",
             description="Test ABAC policy",
@@ -460,16 +473,14 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         self.assertTrue(result.details["read_access_allowed"])
 
     def test_validate_permissions_write_no_user(self):
-        """Test write permissions validation without user"""
+        """Write validation without a user passes but denies write access."""
         dataset = DatasetFactory.create_dataset(
             tenant=self.tenant, file=self.file, format="CSV", version=1
         )
 
         result = self.rules._validate_permissions(dataset, user=None, access_type="WRITE")
-        # Write should require user
-        self.assertTrue(result.is_valid, "Validation must pass but warn about missing user")
-        self.assertFalse(result.details["write_access_allowed"])
-        self.assertTrue(result.is_valid)  # Validation passes but warns
+        self.assertTrue(result.is_valid,
+                        "Validation passes (not a hard error) but write access is denied")
         self.assertFalse(result.details["write_access_allowed"])
 
 
@@ -536,7 +547,7 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
         )
 
         # Create ABAC policy
-        policy = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Integration Test Policy",
             description="Test policy for integration",
@@ -579,9 +590,11 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
         # Must return a ValidationResult even for a non-persisted dataset
         # (the rules layer should not crash on unsaved objects).
         result = self.rules.validate_dataset_read_access(fake_dataset, user=self.user)
-        self.assertIsNotNone(result,
+        self.assertIsNotNone(
+            result,
             "validate_dataset_read_access must return a ValidationResult "
-            "even for non-existent datasets")
+            "even for non-existent datasets",
+        )
 
     def test_validate_dataset_write_access_failure_nonexistent_dataset(self):
         """Test write access validation with non-existent dataset returns result."""
@@ -591,9 +604,11 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
 
         # Must return a ValidationResult even for a non-persisted dataset.
         result = self.rules.validate_dataset_write_access(fake_dataset, user=self.user)
-        self.assertIsNotNone(result,
+        self.assertIsNotNone(
+            result,
             "validate_dataset_write_access must return a ValidationResult "
-            "even for non-existent datasets")
+            "even for non-existent datasets",
+        )
 
     # ========== EDGE CASES ==========
 
@@ -606,8 +621,9 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
         # validate_dataset_read_access accepts user=None and must return
         # a ValidationResult without raising.
         result = self.rules.validate_dataset_read_access(dataset, user=None)
-        self.assertIsNotNone(result,
-            "validate_dataset_read_access(user=None) must return a ValidationResult")
+        self.assertIsNotNone(
+            result, "validate_dataset_read_access(user=None) must return a ValidationResult"
+        )
 
     def test_validate_dataset_write_access_edge_case_none_user(self):
         """Test write access validation with None user (edge case)"""
@@ -618,8 +634,9 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
         # validate_dataset_write_access accepts user=None and must return
         # a ValidationResult without raising.
         result = self.rules.validate_dataset_write_access(dataset, user=None)
-        self.assertIsNotNone(result,
-            "validate_dataset_write_access(user=None) must return a ValidationResult")
+        self.assertIsNotNone(
+            result, "validate_dataset_write_access(user=None) must return a ValidationResult"
+        )
 
     def test_validate_dataset_read_access_edge_case_different_tenant(self):
         """Test read access validation with different tenant (edge case)"""
@@ -651,8 +668,7 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
         )
 
         result = self.rules.validate_dataset_read_access(dataset, user=self.user)
-        self.assertIsNotNone(result,
-            "validate_dataset_read_access must return a ValidationResult")
+        self.assertIsNotNone(result, "validate_dataset_read_access must return a ValidationResult")
 
     def test_validate_dataset_write_access_error_handling(self):
         """Test that write access validation handles persisted datasets without raising."""
@@ -661,5 +677,4 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
         )
 
         result = self.rules.validate_dataset_write_access(dataset, user=self.user)
-        self.assertIsNotNone(result,
-            "validate_dataset_write_access must return a ValidationResult")
+        self.assertIsNotNone(result, "validate_dataset_write_access must return a ValidationResult")

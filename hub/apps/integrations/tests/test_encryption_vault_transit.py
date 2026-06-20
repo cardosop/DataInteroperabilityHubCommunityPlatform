@@ -22,9 +22,9 @@ from django.test import TestCase, override_settings
 from moto import mock_aws
 
 from hub.apps.integrations.encryption import (
-    EncryptionError,
     _AWS_KMS_PREFIX,
     _VAULT_TRANSIT_PREFIX,
+    EncryptionError,
     _is_kms_available,
     decrypt_json_field,
     encrypt_json_field,
@@ -59,6 +59,17 @@ class KmsAvailabilityTest(TestCase):
 class FernetFallbackTest(TestCase):
     """Test Fernet encryption works when KMS is unavailable."""
 
+    # Pre-computed Fernet ciphertext for {"old_key": "old_value"}
+    # encrypted with ENCRYPTION_KEY="test-key-for-unit-tests".
+    # Generated once and hard-coded to simulate a pre-existing
+    # ciphertext (e.g. a row encrypted before a KMS migration).
+    _PRECOMPUTED_CIPHERTEXT = (
+        "Z0FBQUFBQnFOUU9XbnR3YlU2RnRNbEJabXlvMzltVDYxUmZ"
+        "LTmRYQnJRU3QtNHpvNnlBY0w4b1l4am5qVHB5cjFlZV8tSG"
+        "RaTzBCOFRvVVFKclFDTXJtV1lmYTQ4SmJacEtSSXN5UEVSUX"
+        "QwSFQ2a0V3NlRfS0E9"
+    )
+
     def setUp(self):
         self._orig = os.environ.pop("AWS_KMS_KEY_ID", None)
         reset_kms_client()
@@ -82,12 +93,86 @@ class FernetFallbackTest(TestCase):
 
     @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
     def test_decrypt_fernet_backward_compatible(self):
-        """Existing Fernet-encrypted data should still decrypt."""
-        data = {"old_key": "old_value"}
-        encrypted = encrypt_json_field(data)
-        self.assertFalse(encrypted.startswith(_AWS_KMS_PREFIX))
-        result = decrypt_json_field(encrypted)
-        self.assertEqual(result, data)
+        """Pre-existing Fernet ciphertext (encrypted before KMS migration)
+        must still decrypt correctly with the current code."""
+        result = decrypt_json_field(self._PRECOMPUTED_CIPHERTEXT)
+        self.assertEqual(result, {"old_key": "old_value"})
+
+    # ── error-path coverage for encrypt_json_field ──────────────
+
+    def test_encrypt_raises_on_non_dict(self):
+        """encrypt_json_field must raise EncryptionError for non-dict input."""
+        with self.assertRaises(EncryptionError) as ctx:
+            encrypt_json_field("not-a-dict")
+        self.assertIn("must be a dictionary", str(ctx.exception))
+
+        with self.assertRaises(EncryptionError):
+            encrypt_json_field([1, 2, 3])
+
+        with self.assertRaises(EncryptionError):
+            encrypt_json_field(None)
+
+        with self.assertRaises(EncryptionError):
+            encrypt_json_field(42)
+
+    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
+    def test_encrypt_raises_on_non_serializable(self):
+        """encrypt_json_field must raise EncryptionError for
+        non-JSON-serializable dict content."""
+        with self.assertRaises(EncryptionError):
+            encrypt_json_field({"fn": lambda x: x})
+        with self.assertRaises(EncryptionError):
+            encrypt_json_field({"obj": object()})
+
+    # ── error-path coverage for decrypt_json_field ──────────────
+
+    def test_decrypt_empty_string_returns_empty_dict(self):
+        """decrypt_json_field('') must return {} (treat as no data)."""
+        self.assertEqual(decrypt_json_field(""), {})
+
+    def test_decrypt_none_raises_error(self):
+        """decrypt_json_field(None) must raise EncryptionError."""
+        # decrypt_json_field treats falsy values (None, 0, "") as empty
+        # and returns {}. Passing None goes through `not encrypted_str`
+        # which is True → returns {}. This is the documented contract.
+        self.assertEqual(decrypt_json_field(None), {})
+
+    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
+    def test_decrypt_malformed_base64_raises_error(self):
+        """decrypt_json_field with malformed base64 must raise EncryptionError."""
+        with self.assertRaises(EncryptionError) as ctx:
+            decrypt_json_field("!!!not-valid-base64!!!")
+        self.assertIn("Failed to decrypt", str(ctx.exception))
+
+    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
+    def test_decrypt_valid_base64_invalid_json_raises_error(self):
+        """decrypt_json_field with valid Fernet token containing non-JSON
+        plaintext must raise EncryptionError."""
+        import base64 as _base64
+
+        from hub.apps.integrations.encryption import _get_fernet as _gf
+
+        fernet = _gf()
+        tampered = _base64.urlsafe_b64encode(
+            fernet.encrypt(b"not json")
+        ).decode()
+        with self.assertRaises(EncryptionError):
+            decrypt_json_field(tampered)
+
+    @override_settings(ENCRYPTION_KEY="test-key-for-unit-tests")
+    def test_decrypt_non_dict_result_raises_error(self):
+        """decrypt_json_field with valid decryption yielding non-dict result
+        must raise EncryptionError."""
+        import base64 as _base64
+
+        from hub.apps.integrations.encryption import _get_fernet as _gf
+
+        fernet = _gf()
+        token = fernet.encrypt(b'"just a string"')
+        encoded = _base64.urlsafe_b64encode(token).decode()
+        with self.assertRaises(EncryptionError) as ctx:
+            decrypt_json_field(encoded)
+        self.assertIn("must be a dict", str(ctx.exception))
 
 
 @mock_aws

@@ -1,10 +1,13 @@
 """Phase 110: GDPR right to be forgotten."""
+
 import uuid
+
+from django.contrib.auth import get_user_model
 from django.test import TestCase
+
+from hub.apps.gdpr.models import ErasureRequest, ErasureRequestStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
-from hub.apps.gdpr.models import ErasureRequest, ErasureRequestStatus
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
@@ -15,7 +18,8 @@ class RightToBeForgottenTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"GDPR {uid}", slug=f"gdpr-{uid}",
+            name=f"GDPR {uid}",
+            slug=f"gdpr-{uid}",
         )
         self.user = User.objects.create_user(
             email=f"gdpr-{uid}@example.com",

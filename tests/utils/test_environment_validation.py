@@ -8,16 +8,13 @@ Following TDD approach - tests are written first, then implementation.
 """
 
 import os
-import re
-from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
-import pytest
 
 
 class EnvironmentValidationError(Exception):
     """Raised when test environment validation fails"""
+
     __test__ = False  # Not a test class — utility exception
-    pass
 
 
 class EnvironmentValidator:
@@ -96,8 +93,8 @@ class EnvironmentValidator:
             strict: If True, fail on missing required variables. If False, warn only.
         """
         self.strict = strict
-        self.errors: List[str] = []
-        self.warnings: List[str] = []
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
         self._is_docker = self._detect_docker_environment()
         self._environment = os.getenv("ENVIRONMENT", "").lower()
 
@@ -118,7 +115,7 @@ class EnvironmentValidator:
 
         # Check if we're in a container by looking at cgroup
         try:
-            with open("/proc/self/cgroup", "r") as f:
+            with open("/proc/self/cgroup") as f:
                 content = f.read()
                 if "docker" in content or "containerd" in content:
                     return True
@@ -127,7 +124,7 @@ class EnvironmentValidator:
 
         return False
 
-    def _get_docker_service_url(self, var_name: str) -> Optional[str]:
+    def _get_docker_service_url(self, var_name: str) -> str | None:
         """
         Get Docker service URL for a given environment variable.
 
@@ -155,7 +152,7 @@ class EnvironmentValidator:
         # In Docker, services are accessible via service names
         return f"http://{service_name}:{port}"
 
-    def _get_effective_service_url(self, var_name: str) -> Optional[str]:
+    def _get_effective_service_url(self, var_name: str) -> str | None:
         """
         Get effective service URL, checking environment variable first,
         then falling back to Docker service URL if in Docker environment.
@@ -179,7 +176,7 @@ class EnvironmentValidator:
 
         return None
 
-    def validate_all(self) -> Tuple[bool, List[str], List[str]]:
+    def validate_all(self) -> tuple[bool, list[str], list[str]]:
         """
         Run all validation checks.
 
@@ -202,12 +199,22 @@ class EnvironmentValidator:
         # Critical vars (database, redis, auth) always cause validation to fail
         # Service URLs can be auto-detected in Docker, so they don't cause validation failure
         has_critical_missing = any(
-            "Missing required environment variables" in error or
-            any(var in error for var in self.REQUIRED_DATABASE_VARS + self.REQUIRED_REDIS_VARS + self.REQUIRED_AUTH_VARS)
+            "Missing required environment variables" in error
+            or any(
+                var in error
+                for var in self.REQUIRED_DATABASE_VARS
+                + self.REQUIRED_REDIS_VARS
+                + self.REQUIRED_AUTH_VARS
+            )
             for error in self.errors
         ) or any(
-            "Missing required environment variables" in warning or
-            any(var in warning for var in self.REQUIRED_DATABASE_VARS + self.REQUIRED_REDIS_VARS + self.REQUIRED_AUTH_VARS)
+            "Missing required environment variables" in warning
+            or any(
+                var in warning
+                for var in self.REQUIRED_DATABASE_VARS
+                + self.REQUIRED_REDIS_VARS
+                + self.REQUIRED_AUTH_VARS
+            )
             for warning in self.warnings
         )
 
@@ -219,9 +226,7 @@ class EnvironmentValidator:
         """Check that all required environment variables are set"""
         # Database and Redis vars are always required
         critical_vars = (
-            self.REQUIRED_DATABASE_VARS +
-            self.REQUIRED_REDIS_VARS +
-            self.REQUIRED_AUTH_VARS
+            self.REQUIRED_DATABASE_VARS + self.REQUIRED_REDIS_VARS + self.REQUIRED_AUTH_VARS
         )
 
         missing_critical = []
@@ -350,7 +355,7 @@ class EnvironmentValidator:
                         warning += f" (Docker auto-detection available: {docker_url})"
                 self.warnings.append(warning)
 
-    def validate_database_connectivity(self, timeout: int = 5) -> Tuple[bool, Optional[str]]:
+    def validate_database_connectivity(self, timeout: int = 5) -> tuple[bool, str | None]:
         """
         Validate database connectivity.
 
@@ -388,7 +393,7 @@ class EnvironmentValidator:
         except Exception as e:
             return False, str(e)
 
-    def validate_redis_connectivity(self, timeout: int = 5) -> Tuple[bool, Optional[str]]:
+    def validate_redis_connectivity(self, timeout: int = 5) -> tuple[bool, str | None]:
         """
         Validate Redis connectivity.
 
@@ -414,7 +419,7 @@ class EnvironmentValidator:
         except Exception as e:
             return False, str(e)
 
-    def get_service_url(self, var_name: str) -> Optional[str]:
+    def get_service_url(self, var_name: str) -> str | None:
         """
         Get service URL for a given variable name, with Docker auto-detection.
 
@@ -428,7 +433,7 @@ class EnvironmentValidator:
 
     def validate_service_connectivity(
         self, service_url: str, timeout: int = 5
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """
         Validate HTTP service connectivity.
 
@@ -508,7 +513,7 @@ class EnvironmentValidator:
                 self.warnings.append(error_msg)
 
 
-def validate_test_environment(strict: bool = True) -> Tuple[bool, List[str], List[str]]:
+def validate_test_environment(strict: bool = True) -> tuple[bool, list[str], list[str]]:
     """
     Convenience function to validate test environment.
 
@@ -536,4 +541,3 @@ def validate_test_environment(strict: bool = True) -> Tuple[bool, List[str], Lis
 # Backward compatibility aliases
 TestEnvironmentValidator = EnvironmentValidator
 TestEnvironmentValidationError = EnvironmentValidationError
-

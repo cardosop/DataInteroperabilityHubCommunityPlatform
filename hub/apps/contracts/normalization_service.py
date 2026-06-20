@@ -4,16 +4,14 @@ Normalization Service
 Service layer for contract normalization operations.
 Extracts normalization logic from normalization.py module.
 """
-from typing import Dict, Any, Optional, Tuple, List
 
-from hub.apps.core.services.base import BaseService, ValidationError
-from hub.apps.core.events.service_publishers import NormalizationEventPublisher
-from hub.apps.contracts.normalization import (
-    normalize_contract,
-    validate_hubcontract_schema
-)
+from typing import Any
+
 from hub.apps.contracts.models import NormalizationStatus
+from hub.apps.contracts.normalization import normalize_contract, validate_hubcontract_schema
 from hub.apps.contracts.normalization_metrics import record_all_normalization_metrics
+from hub.apps.core.events.service_publishers import NormalizationEventPublisher
+from hub.apps.core.services.base import BaseService, ValidationError
 
 
 class NormalizationService(BaseService, NormalizationEventPublisher):
@@ -28,7 +26,7 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
 
     service_name = "normalization_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None, **kwargs):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None, **kwargs):
         """Initialize NormalizationService with tenant and user context."""
         self.tenant_id = tenant_id
         self.user_id = user_id
@@ -41,12 +39,12 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
         self,
         raw_contract: str,
         format: str,
-        spec_type: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        contract_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        source: Optional[str] = None,
-    ) -> Tuple[Optional[Dict[str, Any]], str, str, NormalizationStatus, List[str], List[str]]:
+        spec_type: str | None = None,
+        tenant_id: str | None = None,
+        contract_id: str | None = None,
+        user_id: str | None = None,
+        source: str | None = None,
+    ) -> tuple[dict[str, Any] | None, str, str, NormalizationStatus, list[str], list[str]]:
         """
         Normalize a contract from ODCS to HubContract format.
 
@@ -82,21 +80,22 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                 user_id=effective_user_id,
                 source=source,
             ),
-            tenant_id=effective_tenant_id
+            tenant_id=effective_tenant_id,
         )
 
     def _normalize_contract_impl(
         self,
         raw_contract: str,
         format: str,
-        spec_type: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        contract_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        source: Optional[str] = None,
-    ) -> Tuple[Optional[Dict[str, Any]], str, str, NormalizationStatus, List[str], List[str]]:
+        spec_type: str | None = None,
+        tenant_id: str | None = None,
+        contract_id: str | None = None,
+        user_id: str | None = None,
+        source: str | None = None,
+    ) -> tuple[dict[str, Any] | None, str, str, NormalizationStatus, list[str], list[str]]:
         """Internal implementation of contract normalization."""
         import time
+
         start_time = time.time()
 
         # Determine normalization type from spec_type
@@ -113,27 +112,31 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                     spec_version=None,  # Will be detected during normalization
                     source_format=format,
                     tenant_id=tenant_id,
-                    user_id=user_id
+                    user_id=user_id,
                 )
             except Exception as e:
                 # Event publishing failure should not block normalization
                 import structlog
+
                 logger = structlog.get_logger(__name__)
                 logger.warning(
                     "normalization_event_publish_failed",
                     event_type="normalization.started",
                     contract_id=contract_id,
                     error=str(e),
-                    message="Failed to publish normalization.started event (non-critical)"
+                    message="Failed to publish normalization.started event (non-critical)",
                 )
 
         try:
             # Normalize contract
-            hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
-                raw_contract=raw_contract,
-                format=format,
-                spec_type=spec_type
-            )
+            (
+                hub_contract,
+                detected_spec_type,
+                detected_spec_version,
+                norm_status,
+                norm_errors,
+                norm_warnings,
+            ) = normalize_contract(raw_contract=raw_contract, format=format, spec_type=spec_type)
 
             # Phase 227 L10 audit-3 / W6 follow-up — surface the
             # catalog-promised ``INVALID_YAML`` wire code BEFORE the
@@ -146,6 +149,7 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
             from hub.apps.contracts.normalization_engine import (
                 INVALID_YAML_ERROR_PREFIX,
             )
+
             if any(
                 isinstance(err, str) and err.startswith(INVALID_YAML_ERROR_PREFIX)
                 for err in (norm_errors or [])
@@ -166,6 +170,7 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                         )
                     except Exception as exc:
                         import structlog
+
                         structlog.get_logger(__name__).warning(
                             "normalization_event_publish_failed",
                             event_type="normalization.failed",
@@ -187,6 +192,7 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
             from hub.apps.contracts.structural_floor import (
                 enforce_structural_floor,
             )
+
             try:
                 enforce_structural_floor(
                     hub_contract,
@@ -221,6 +227,7 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                         )
                     except Exception as exc:
                         import structlog
+
                         logger = structlog.get_logger(__name__)
                         logger.warning(
                             "normalization_event_publish_failed",
@@ -244,17 +251,18 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                             normalization_errors=norm_errors,
                             spec_version=detected_spec_version,
                             tenant_id=tenant_id,
-                            user_id=user_id
+                            user_id=user_id,
                         )
                     except Exception as e:
                         import structlog
+
                         logger = structlog.get_logger(__name__)
                         logger.warning(
                             "normalization_event_publish_failed",
                             event_type="normalization.failed",
                             contract_id=contract_id,
                             error=str(e),
-                            message="Failed to publish normalization.failed event (non-critical)"
+                            message="Failed to publish normalization.failed event (non-critical)",
                         )
 
                 # INVALID_YAML was already surfaced ahead of the
@@ -262,8 +270,8 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                 # anything that reaches here failed for a non-parse,
                 # non-structureless reason and is the generic case.
                 raise ValidationError(
-                    message='Contract normalization failed',
-                    details={'code': 'NORMALIZATION_FAILED', 'errors': norm_errors}
+                    message="Contract normalization failed",
+                    details={"code": "NORMALIZATION_FAILED", "errors": norm_errors},
                 )
 
             # Validate HubContract schema if normalization succeeded.
@@ -289,6 +297,7 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                             )
                         except Exception as exc:
                             import structlog
+
                             logger = structlog.get_logger(__name__)
                             logger.warning(
                                 "normalization_event_publish_failed",
@@ -327,9 +336,9 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
             if contract_id:
                 try:
                     # Convert NormalizationStatus enum to string value
-                    if hasattr(norm_status, 'value'):
+                    if hasattr(norm_status, "value"):
                         status_str = norm_status.value
-                    elif hasattr(norm_status, '__str__'):
+                    elif hasattr(norm_status, "__str__"):
                         status_str = str(norm_status)
                     else:
                         status_str = norm_status
@@ -342,20 +351,28 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                         duration_ms=int(duration_ms),
                         spec_version=detected_spec_version,
                         tenant_id=tenant_id,
-                        user_id=user_id
+                        user_id=user_id,
                     )
                 except Exception as e:
                     import structlog
+
                     logger = structlog.get_logger(__name__)
                     logger.warning(
                         "normalization_event_publish_failed",
                         event_type="normalization.completed",
                         contract_id=contract_id,
                         error=str(e),
-                        message="Failed to publish normalization.completed event (non-critical)"
+                        message="Failed to publish normalization.completed event (non-critical)",
                     )
 
-            return hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings
+            return (
+                hub_contract,
+                detected_spec_type,
+                detected_spec_version,
+                norm_status,
+                norm_errors,
+                norm_warnings,
+            )
 
         except ValidationError:
             # Re-raise validation errors (events already published above)
@@ -371,24 +388,22 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                         normalization_errors=None,
                         spec_version=None,
                         tenant_id=tenant_id,
-                        user_id=user_id
+                        user_id=user_id,
                     )
                 except Exception as event_error:
                     import structlog
+
                     logger = structlog.get_logger(__name__)
                     logger.warning(
                         "normalization_event_publish_failed",
                         event_type="normalization.failed",
                         contract_id=contract_id,
                         error=str(event_error),
-                        message="Failed to publish normalization.failed event (non-critical)"
+                        message="Failed to publish normalization.failed event (non-critical)",
                     )
             raise
 
-    def validate_hubcontract(
-        self,
-        hub_contract: Dict[str, Any]
-    ) -> Tuple[bool, List[str]]:
+    def validate_hubcontract(self, hub_contract: dict[str, Any]) -> tuple[bool, list[str]]:
         """
         Validate HubContract schema.
 
@@ -399,4 +414,3 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
             Tuple of (is_valid, validation_errors)
         """
         return validate_hubcontract_schema(hub_contract)
-

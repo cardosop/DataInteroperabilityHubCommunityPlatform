@@ -7,18 +7,20 @@ events, webhook POST, and in-app notifications.
 
 Deduplicates owner notifications: max 1 email per owner per hour.
 """
+
 from __future__ import annotations
+
+import contextlib
 import json
 import logging
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 from django.core.cache import cache
 
 from hub.apps.audit.utils import create_audit_event
 
 from .dependency_resolver import PipelineDependencyResolver
-from .models import PipelineDependency
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +41,7 @@ class PipelineIncidentPropagator:
         upstream_id: str,
         upstream_run_id: str,
         failure_reason: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Find downstream pipelines affected by an upstream failure
         and emit alerts.
 
@@ -81,13 +83,14 @@ class PipelineIncidentPropagator:
                 )
             except Exception as exc:
                 logger.warning(
-                    "incident_audit_failed", dep_id=str(dep.id), error=str(exc),
+                    "incident_audit_failed",
+                    dep_id=str(dep.id),
+                    error=str(exc),
                 )
 
             # Send webhook if configured.
             if dep.alert_webhook_url:
-                self._send_webhook(dep, upstream_type, upstream_id,
-                                   upstream_run_id, failure_reason)
+                self._send_webhook(dep, upstream_type, upstream_id, upstream_run_id, failure_reason)
                 webhook_sent += 1
 
         # Emit batch audit event.
@@ -136,16 +139,18 @@ class PipelineIncidentPropagator:
             return False
 
     def _mark_deduped(self, owner_key: str) -> None:
-        try:
+        with contextlib.suppress(Exception):
             cache.set(self._dedup_key(owner_key), 1, timeout=_DEDUP_TTL_SECONDS)
-        except Exception:
-            pass
 
     # ── Webhook ────────────────────────────────────────────────────
 
     @staticmethod
     def _send_webhook(
-        dep, upstream_type, upstream_id, upstream_run_id, failure_reason,
+        dep,
+        upstream_type,
+        upstream_id,
+        upstream_run_id,
+        failure_reason,
     ) -> None:
         try:
             import hashlib
@@ -155,24 +160,28 @@ class PipelineIncidentPropagator:
             import httpx
 
             secret = os.environ.get("INTERNAL_PAYLOAD_SECRET", "meshant-internal-default")
-            body = json.dumps({
-                "event": "PIPELINE_INCIDENT_DOWNSTREAM_ALERT",
-                "upstream_type": upstream_type,
-                "upstream_id": upstream_id,
-                "upstream_run_id": upstream_run_id,
-                "failure_reason": failure_reason[:500],
-                "downstream_type": dep.downstream_pipeline_type,
-                "downstream_id": str(dep.downstream_pipeline_id),
-                "recommended_action": (
-                    "Investigate upstream failure. "
-                    "Downstream pipeline will remain SKIPPED_UPSTREAM_FAILED "
-                    "until the upstream is resolved and re-triggered."
-                ),
-            }).encode("utf-8")
+            body = json.dumps(
+                {
+                    "event": "PIPELINE_INCIDENT_DOWNSTREAM_ALERT",
+                    "upstream_type": upstream_type,
+                    "upstream_id": upstream_id,
+                    "upstream_run_id": upstream_run_id,
+                    "failure_reason": failure_reason[:500],
+                    "downstream_type": dep.downstream_pipeline_type,
+                    "downstream_id": str(dep.downstream_pipeline_id),
+                    "recommended_action": (
+                        "Investigate upstream failure. "
+                        "Downstream pipeline will remain SKIPPED_UPSTREAM_FAILED "
+                        "until the upstream is resolved and re-triggered."
+                    ),
+                }
+            ).encode("utf-8")
             timestamp = str(int(time.time()))
             canonical = timestamp.encode("utf-8") + b"\n" + body
             signature = hmac.new(
-                secret.encode("utf-8"), canonical, hashlib.sha256,
+                secret.encode("utf-8"),
+                canonical,
+                hashlib.sha256,
             ).hexdigest()
 
             with httpx.Client(timeout=10.0) as client:
@@ -188,5 +197,7 @@ class PipelineIncidentPropagator:
                 )
         except Exception as exc:
             logger.warning(
-                "incident_webhook_failed", dep_id=str(dep.id), error=str(exc),
+                "incident_webhook_failed",
+                dep_id=str(dep.id),
+                error=str(exc),
             )

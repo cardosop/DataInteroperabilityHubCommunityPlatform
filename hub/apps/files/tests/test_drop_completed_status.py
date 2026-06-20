@@ -25,11 +25,12 @@ verify the POST-MIGRATION invariants:
   in ``pg_constraint`` so an engineer auditing the schema finds
   it.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, connection, transaction
 from django.test import TestCase
@@ -62,8 +63,12 @@ class FileStatusEnumTest(TestCase):
         # The post-260.6.A canonical set per ADR-DSF-006 / spec
         # ``InputDocs/Database_Schema.md`` §3.2.3.
         for member_name in (
-            "PENDING", "UPLOADING", "ACTIVE",
-            "FAILED", "DELETING", "DELETED",
+            "PENDING",
+            "UPLOADING",
+            "ACTIVE",
+            "FAILED",
+            "DELETING",
+            "DELETED",
         ):
             self.assertTrue(
                 hasattr(FileStatus, member_name),
@@ -79,8 +84,7 @@ class FileStatusEnumTest(TestCase):
         self.assertNotIn(
             "COMPLETED",
             choices_values,
-            f"FileStatus.choices still advertises COMPLETED; "
-            f"got {choices_values!r}",
+            f"FileStatus.choices still advertises COMPLETED; got {choices_values!r}",
         )
 
 
@@ -102,10 +106,7 @@ class FileStatusDbCheckConstraintTest(TestCase):
         when the constraint already exists.
         """
         with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT 1 FROM pg_constraint "
-                "WHERE conname = 'file_status_no_completed'"
-            )
+            cursor.execute("SELECT 1 FROM pg_constraint WHERE conname = 'file_status_no_completed'")
             if cursor.fetchone() is None:
                 cursor.execute(
                     "ALTER TABLE files "
@@ -151,8 +152,7 @@ class FileStatusDbCheckConstraintTest(TestCase):
         # catalog of CHECK constraints.
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT conname FROM pg_constraint "
-                "WHERE conname = 'file_status_no_completed'"
+                "SELECT conname FROM pg_constraint WHERE conname = 'file_status_no_completed'"
             )
             row = cursor.fetchone()
         self.assertIsNotNone(
@@ -176,14 +176,12 @@ class FileStatusDbCheckConstraintTest(TestCase):
         # runs in an INNER ``atomic()`` (a savepoint) that rolls back
         # cleanly without poisoning the outer block.
         f = self._make_file()
-        with self.assertRaises(IntegrityError) as ctx:
-            with transaction.atomic():
-                File.objects.filter(id=f.id).update(status="COMPLETED")
+        with self.assertRaises(IntegrityError) as ctx, transaction.atomic():
+            File.objects.filter(id=f.id).update(status="COMPLETED")
         self.assertIn(
             "file_status_no_completed",
             str(ctx.exception),
-            f"Expected constraint name in IntegrityError; got "
-            f"{ctx.exception!s}",
+            f"Expected constraint name in IntegrityError; got {ctx.exception!s}",
         )
         # Row was NOT updated — the DB rolled back the constraint-
         # violating write.
@@ -198,9 +196,9 @@ class FileStatusDbCheckConstraintTest(TestCase):
         # ``atomic()`` so the outer ``TestCase`` transaction stays
         # usable for the post-assertion ``filter().count()`` query.
         file_id = uuid.uuid4()
-        with self.assertRaises(IntegrityError) as ctx:
-            with transaction.atomic():
-                File.objects.bulk_create([
+        with self.assertRaises(IntegrityError) as ctx, transaction.atomic():
+            File.objects.bulk_create(
+                [
                     File(
                         id=file_id,
                         tenant=self.tenant,
@@ -212,7 +210,8 @@ class FileStatusDbCheckConstraintTest(TestCase):
                         storage_path=f"{self.tenant.id}/bulk.csv",
                         created_by=self.user,
                     )
-                ])
+                ]
+            )
         self.assertIn("file_status_no_completed", str(ctx.exception))
         # No row landed.
         self.assertEqual(

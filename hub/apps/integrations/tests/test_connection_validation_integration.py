@@ -11,6 +11,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from hub.apps.core.business_rules.base import ValidationResult
+from hub.apps.core.services.base import PermissionError
 from hub.apps.governance.services import GovernanceService
 from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.business_rules import MarketplaceIntegrationBusinessRules
@@ -53,10 +54,15 @@ class ConnectionValidationGovernanceIntegrationTest(TestCase):
 
     def test_validate_connection_access_with_governance_service_pattern(self):
         """
-        Test that validate_connection_access follows the same permission pattern
-        as GovernanceService.check_user_permissions_for_domain_creation
+        Test that validate_connection_access and GovernanceService both
+        allow TENANT_ADMIN users.
+
+        Note: These check DIFFERENT role sets:
+        - validate_connection_access: DATA_PROVIDER or TENANT_ADMIN
+        - check_user_permissions_for_domain_creation: TENANT_ADMIN only
+        They overlap for TENANT_ADMIN, which is what this test verifies.
         """
-        # Assign TENANT_ADMIN role (similar to domain creation requirement)
+        # Assign TENANT_ADMIN role (satisfies both methods)
         UserRole.objects.create(user=self.user, role=self.admin_role)
 
         result = self.rules.validate_connection_access(
@@ -69,26 +75,19 @@ class ConnectionValidationGovernanceIntegrationTest(TestCase):
         self.assertIn("has_permission", result.details)
         self.assertTrue(result.details["has_permission"])
 
-        # Verify GovernanceService would also allow this
+        # GovernanceService should also allow TENANT_ADMIN
         governance_service = GovernanceService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
-        # Should not raise PermissionError
-        try:
-            governance_service.check_user_permissions_for_domain_creation(
-                user_id=str(self.user.id), tenant_id=str(self.tenant.id)
-            )
-            permission_allowed = True
-        except Exception:
-            permission_allowed = False
-
-        # Our validation should match GovernanceService behavior
-        self.assertTrue(permission_allowed)
+        # Should not raise — let any unexpected exception propagate
+        governance_service.check_user_permissions_for_domain_creation(
+            user_id=str(self.user.id), tenant_id=str(self.tenant.id)
+        )
 
     def test_validate_connection_access_without_permission_governance_pattern(self):
         """
-        Test that validate_connection_access correctly identifies missing permissions
-        following GovernanceService pattern
+        Test that both validate_connection_access and GovernanceService
+        reject users with no roles assigned.
         """
         # User has no roles assigned
 
@@ -101,26 +100,19 @@ class ConnectionValidationGovernanceIntegrationTest(TestCase):
         self.assertGreater(len(result.errors), 0)
         self.assertTrue(any("required role" in err for err in result.errors))
 
-        # Verify GovernanceService would also reject this
+        # GovernanceService should raise PermissionError
         governance_service = GovernanceService(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
-        # Should raise PermissionError
-        try:
+        with self.assertRaises(PermissionError):
             governance_service.check_user_permissions_for_domain_creation(
                 user_id=str(self.user.id), tenant_id=str(self.tenant.id)
             )
-            permission_allowed = True
-        except Exception:
-            permission_allowed = False
-
-        # Our validation should match GovernanceService behavior
-        self.assertFalse(permission_allowed)
 
     def test_validate_connection_access_platform_admin_governance_pattern(self):
         """
-        Test that validate_connection_access correctly handles platform admins
-        following GovernanceService pattern
+        Test that both validate_connection_access and GovernanceService
+        allow platform admins regardless of tenant/role assignment.
         """
         platform_admin = User.objects.create_user(
             email=f"platform-{uuid.uuid4().hex[:8]}@example.com",
@@ -138,20 +130,41 @@ class ConnectionValidationGovernanceIntegrationTest(TestCase):
         self.assertIn("user_is_platform_admin", result.details)
         self.assertTrue(result.details["user_is_platform_admin"])
 
-        # Verify GovernanceService also allows platform admins
+        # GovernanceService should also allow platform admins
         governance_service = GovernanceService(
             tenant_id=str(self.tenant.id), user_id=str(platform_admin.id)
         )
-        # Should not raise PermissionError for platform admin
-        try:
-            governance_service.check_user_permissions_for_domain_creation(
-                user_id=str(platform_admin.id), tenant_id=str(self.tenant.id)
-            )
-            permission_allowed = True
-        except Exception:
-            permission_allowed = False
+        # Should not raise — let any unexpected exception propagate
+        governance_service.check_user_permissions_for_domain_creation(
+            user_id=str(platform_admin.id), tenant_id=str(self.tenant.id)
+        )
 
-        self.assertTrue(permission_allowed)
+    def test_access_and_domain_creation_differ_for_data_provider(self):
+        """
+        DATA_PROVIDER role grants marketplace connection access but does NOT
+        grant domain creation permission (which requires TENANT_ADMIN).
+
+        This test verifies the documented role difference between:
+        - validate_connection_access (DATA_PROVIDER or TENANT_ADMIN)
+        - check_user_permissions_for_domain_creation (TENANT_ADMIN only)
+        """
+        # User has DATA_PROVIDER role but NOT TENANT_ADMIN
+        UserRole.objects.create(user=self.user, role=self.provider_role)
+
+        # Connection access: DATA_PROVIDER is sufficient
+        result = self.rules.validate_connection_access(
+            user_id=str(self.user.id), tenant_id=str(self.tenant.id)
+        )
+        self.assertTrue(result.is_valid, msg=f"DATA_PROVIDER should have access: {result.errors}")
+
+        # Domain creation: DATA_PROVIDER alone is NOT sufficient
+        governance_service = GovernanceService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
+        with self.assertRaises(PermissionError):
+            governance_service.check_user_permissions_for_domain_creation(
+                user_id=str(self.user.id), tenant_id=str(self.tenant.id)
+            )
 
 
 class ConnectionValidationTenantServiceIntegrationTest(TestCase):
@@ -301,7 +314,8 @@ class ConnectionValidationTenantServiceIntegrationTest(TestCase):
     def test_validate_connection_access_with_none_values(self):
         """Test error handling when user_id or tenant_id is None"""
         result = self.rules.validate_connection_access(
-            user_id=None, tenant_id=str(self.tenant.id)  # type: ignore[arg-type]  # test: edge-case type exercise
+            user_id=None,
+            tenant_id=str(self.tenant.id),  # type: ignore[arg-type]  # test: edge-case type exercise
         )
 
         self.assertIsInstance(result, ValidationResult)
@@ -309,7 +323,8 @@ class ConnectionValidationTenantServiceIntegrationTest(TestCase):
         self.assertGreater(len(result.errors), 0)
 
         result = self.rules.validate_connection_access(
-            user_id=str(self.user.id), tenant_id=None  # type: ignore[arg-type]  # test: edge-case type exercise
+            user_id=str(self.user.id),
+            tenant_id=None,  # type: ignore[arg-type]  # test: edge-case type exercise
         )
 
         self.assertIsInstance(result, ValidationResult)

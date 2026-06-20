@@ -11,11 +11,9 @@ Tests:
 All tests use real implementations (no mocks/stubs).
 """
 
-import json
 import time
 import uuid
 
-from django.conf import settings
 from django.test import TestCase
 from django.utils import timezone
 
@@ -27,13 +25,13 @@ from hub.apps.core.events.acknowledgment import (
     mark_event_pending,
     mark_event_processing,
 )
-from hub.apps.core.events.bus import EventBus, get_event_bus
+from hub.apps.core.events.bus import get_event_bus
 from hub.apps.core.events.deduplication import (
     check_event_duplicate,
     generate_deduplication_key,
     store_event_id,
 )
-from hub.apps.core.events.models import DeadLetterQueue, Event
+from hub.apps.core.events.models import Event
 from hub.apps.core.events.persistence_tasks import persist_event_async
 from hub.apps.core.events.retry_policy import (
     RetryPolicy,
@@ -361,7 +359,7 @@ class EventBusReliabilityTest(TestCase):
         django_queue = get_queue("job_default")
 
         # Wait a bit for job to be queued
-        time.sleep(0.2)  # INTENTIONAL: e2e/integration test polling real services
+        time.sleep(0.2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
         # Check that job exists in queue (async persistence is working)
         job_count = len(django_queue.jobs)

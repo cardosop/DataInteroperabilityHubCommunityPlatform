@@ -85,7 +85,9 @@ class PasswordHistoryModelTest(TestCase):
         PasswordHistory.objects.create(user=user, password_hash="hash-B")
         PasswordHistory.objects.create(user=user, password_hash="hash-C")
         # Ordering ensures "last N entries" is a simple slice.
-        ordered = list(PasswordHistory.objects.filter(user=user).values_list("password_hash", flat=True))
+        ordered = list(
+            PasswordHistory.objects.filter(user=user).values_list("password_hash", flat=True)
+        )
         assert ordered == ["hash-C", "hash-B", "hash-A"]
 
     def test_unique_together_user_password_hash(self):

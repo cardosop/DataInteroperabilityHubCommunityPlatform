@@ -80,7 +80,7 @@ def _execute_virtual_query_job(job_obj: Job) -> dict:
     try:
         # Get execution details from job
         details = job_obj.details_json or {}
-        virtual_dataset_id = str(execution.virtual_dataset_id)
+        str(execution.virtual_dataset_id)
         timeout_seconds = details.get("timeout_seconds", 3600)
 
         # Initialize service
@@ -97,7 +97,7 @@ def _execute_virtual_query_job(job_obj: Job) -> dict:
             execution, execution.virtual_dataset, execution.parameters or {}, timeout_seconds
         )
 
-        execution.add_log_entry("INFO", f"Query execution completed successfully")
+        execution.add_log_entry("INFO", "Query execution completed successfully")
 
         # Sync execution status from job to ensure consistency
         execution.sync_status_from_job()

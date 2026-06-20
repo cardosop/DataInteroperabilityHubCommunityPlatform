@@ -5,7 +5,7 @@ GET  /api/v1/drafts/?resource_type=dpia&draft_key=create
 PUT  /api/v1/drafts/ — body: {resource_type, draft_key, data}
 DELETE /api/v1/drafts/?resource_type=dpia&draft_key=create
 """
-from django.db import IntegrityError
+
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
@@ -20,7 +20,12 @@ from hub.apps.tenants.request_tenant import get_request_tenant_id
     summary="Retrieve a form draft",
     parameters=[
         {"name": "resource_type", "required": True, "in_": "query", "schema": {"type": "string"}},
-        {"name": "draft_key", "required": False, "in_": "query", "schema": {"type": "string", "default": "default"}},
+        {
+            "name": "draft_key",
+            "required": False,
+            "in_": "query",
+            "schema": {"type": "string", "default": "default"},
+        },
     ],
     responses={
         200: OpenApiResponse(description="Draft data."),
@@ -49,13 +54,15 @@ def draft_retrieve(request):
             status=status.HTTP_200_OK,
         )
 
-    return Response({
-        "id": str(draft.id),
-        "resource_type": draft.resource_type,
-        "draft_key": draft.draft_key,
-        "data": draft.data,
-        "updated_at": draft.updated_at.isoformat(),
-    })
+    return Response(
+        {
+            "id": str(draft.id),
+            "resource_type": draft.resource_type,
+            "draft_key": draft.draft_key,
+            "data": draft.data,
+            "updated_at": draft.updated_at.isoformat(),
+        }
+    )
 
 
 @extend_schema(
@@ -117,7 +124,12 @@ def draft_save(request):
     summary="Delete a form draft",
     parameters=[
         {"name": "resource_type", "required": True, "in_": "query", "schema": {"type": "string"}},
-        {"name": "draft_key", "required": False, "in_": "query", "schema": {"type": "string", "default": "default"}},
+        {
+            "name": "draft_key",
+            "required": False,
+            "in_": "query",
+            "schema": {"type": "string", "default": "default"},
+        },
     ],
     responses={
         204: OpenApiResponse(description="Draft deleted."),

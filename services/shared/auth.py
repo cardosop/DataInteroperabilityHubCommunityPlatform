@@ -58,6 +58,7 @@ unsigned requests but still verifies the signature when present
 (so a passing signed request in soak mode validates the producer
 contract without coupling the rollout).
 """
+
 import hashlib
 import hmac
 import json
@@ -91,6 +92,38 @@ def _load_key_at_startup() -> str:
 # Validated and cached once at module import.
 # If the env var is absent the process exits here — before uvicorn binds.
 _INTERNAL_API_KEY: str = _load_key_at_startup()
+
+# Previous key for zero-downtime rotation (Phase 270.C.1 — dual-key overlap).
+# When non-empty, the middleware accepts BOTH the current key AND this key
+# for a 24 h overlap window.  After the window closes the old key is
+# removed from the ExternalSecret and this env var is unset, collapsing
+# back to single-key mode with no code change or restart needed.
+_INTERNAL_API_KEY_PREVIOUS: str = os.environ.get(
+    "INTERNAL_API_KEY_PREVIOUS",
+    "",
+)
+
+
+def _load_previous_expires_at_at_startup() -> int:
+    """Read ``INTERNAL_API_KEY_PREVIOUS_EXPIRES_AT`` at module import.
+
+    The rotation Lambda writes this as a Unix epoch (int) into the SM
+    SecretString.  Returns 0 when the env var is absent, empty, or
+    malformed — 0 is the "no expiry" sentinel (rollout-compatibility:
+    services that predate the expiry field accept the previous key
+    indefinitely until the next rotation populates the field).
+    """
+    raw = os.environ.get("INTERNAL_API_KEY_PREVIOUS_EXPIRES_AT", "")
+    if not raw:
+        return 0
+    try:
+        return int(raw.strip())
+    except (ValueError, TypeError):
+        return 0
+
+
+# Cached once at module import.  0 = no expiry / malformed.
+_INTERNAL_API_KEY_PREVIOUS_EXPIRES_AT: int = _load_previous_expires_at_at_startup()
 
 # Paths that must remain publicly reachable (no auth required).
 _PUBLIC_PATHS: frozenset[str] = frozenset({"/health", "/metrics", "/ready"})
@@ -135,9 +168,15 @@ def _enforcement_enabled() -> bool:
     Treats only the literal ``"true"`` (case-insensitive) as on.
     Any other value (``""``, ``"false"``, ``"0"``, missing) → off.
     """
-    return os.environ.get(
-        "DQ_REQUIRE_PAYLOAD_SIGNATURE", "false",
-    ).strip().lower() == "true"
+    return (
+        os.environ.get(
+            "DQ_REQUIRE_PAYLOAD_SIGNATURE",
+            "false",
+        )
+        .strip()
+        .lower()
+        == "true"
+    )
 
 
 def _compute_signature(body: bytes, timestamp: str, secret: str) -> str:
@@ -225,9 +264,7 @@ class InternalApiKeyMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._public_paths = _PUBLIC_PATHS | frozenset(extra_public_paths)
 
-    async def dispatch(
-        self, request: StarletteRequest, call_next
-    ) -> StarletteResponse:
+    async def dispatch(self, request: StarletteRequest, call_next) -> StarletteResponse:
         if request.url.path in self._public_paths:
             return await call_next(request)
 
@@ -235,18 +272,28 @@ class InternalApiKeyMiddleware(BaseHTTPMiddleware):
 
         if not key:
             return StarletteResponse(
-                content=json.dumps(
-                    {"detail": "X-Internal-Api-Key header is required"}
-                ),
+                content=json.dumps({"detail": "X-Internal-Api-Key header is required"}),
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 media_type="application/json",
                 headers={"WWW-Authenticate": "ApiKey"},
             )
 
-        if not hmac.compare_digest(
+        key_ok = hmac.compare_digest(
             key.encode("utf-8"),
             _INTERNAL_API_KEY.encode("utf-8"),
-        ):
+        )
+        if not key_ok and _INTERNAL_API_KEY_PREVIOUS:
+            # Honor the overlap-window expiry if set. 0 = no expiry
+            # (rollout-compatibility sentinel — accept indefinitely).
+            if (
+                _INTERNAL_API_KEY_PREVIOUS_EXPIRES_AT == 0
+                or time.time() < _INTERNAL_API_KEY_PREVIOUS_EXPIRES_AT
+            ):
+                key_ok = hmac.compare_digest(
+                    key.encode("utf-8"),
+                    _INTERNAL_API_KEY_PREVIOUS.encode("utf-8"),
+                )
+        if not key_ok:
             return StarletteResponse(
                 content=json.dumps({"detail": "Invalid API key"}),
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -268,13 +315,15 @@ class InternalApiKeyMiddleware(BaseHTTPMiddleware):
             # that ALSO happens to use an empty secret).
             if not _PAYLOAD_SECRET:
                 return StarletteResponse(
-                    content=json.dumps({
-                        "detail": (
-                            "DQ_SERVICE_INTERNAL_PAYLOAD_SECRET is "
-                            "required when DQ_REQUIRE_PAYLOAD_SIGNATURE="
-                            "true; service misconfigured."
-                        ),
-                    }),
+                    content=json.dumps(
+                        {
+                            "detail": (
+                                "DQ_SERVICE_INTERNAL_PAYLOAD_SECRET is "
+                                "required when DQ_REQUIRE_PAYLOAD_SIGNATURE="
+                                "true; service misconfigured."
+                            ),
+                        }
+                    ),
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     media_type="application/json",
                 )
@@ -325,15 +374,13 @@ class InternalApiKeyMiddleware(BaseHTTPMiddleware):
                     "more_body": False,
                 }
 
-            request._receive = _receive  # noqa: SLF001
+            request._receive = _receive
 
         return await call_next(request)
 
 
 async def require_internal_key(
-    x_internal_api_key: str | None = Header(
-        default=None, alias="X-Internal-Api-Key"
-    ),
+    x_internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key"),
 ) -> None:
     """
     FastAPI dependency that enforces internal API key authentication.

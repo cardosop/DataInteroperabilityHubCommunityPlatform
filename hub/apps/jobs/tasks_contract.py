@@ -43,7 +43,7 @@ def _execute_contract_validation_job(job_obj: Job) -> dict:
             group_errors_by_category,
             interpret_validation_status,
         )
-        from hub.apps.contracts.models import Contract, ValidationStatus
+        from hub.apps.contracts.models import Contract
 
         # Get contract
         try:
@@ -64,7 +64,7 @@ def _execute_contract_validation_job(job_obj: Job) -> dict:
         except ConnectionError:
             raise  # Re-raise connection errors
         except Exception as e:
-            raise ConnectionError(f"DataContract CLI service health check failed: {str(e)}")
+            raise ConnectionError(f"DataContract CLI service health check failed: {e!s}")
 
         # Validate contract
         try:
@@ -78,7 +78,7 @@ def _execute_contract_validation_job(job_obj: Job) -> dict:
         except Exception as e:
             if "timeout" in str(e).lower() or "timed out" in str(e).lower():
                 raise TimeoutError(f"Contract validation timed out after {SYNC_TIMEOUT} seconds")
-            raise ConnectionError(f"Contract validation service error: {str(e)}")
+            raise ConnectionError(f"Contract validation service error: {e!s}")
 
         # Interpret validation status
         validation_status, errors, warnings = interpret_validation_status(validation_result)
@@ -100,7 +100,7 @@ def _execute_contract_validation_job(job_obj: Job) -> dict:
         raise  # Re-raise specific errors
     except Exception as e:
         # Wrap other exceptions
-        raise Exception(f"Contract validation failed: {str(e)}") from e
+        raise Exception(f"Contract validation failed: {e!s}") from e
 
 
 def _execute_semantic_mapping_job(job_obj: Job) -> dict:
@@ -178,7 +178,7 @@ def _execute_semantic_mapping_job(job_obj: Job) -> dict:
         except ConnectionError:
             raise  # Re-raise connection errors
         except Exception as e:
-            raise ConnectionError(f"Semantic service health check failed: {str(e)}")
+            raise ConnectionError(f"Semantic service health check failed: {e!s}")
 
         # Execute mapping (resource already validated above)
         if resource_type == "CONTRACT":
@@ -205,7 +205,7 @@ def _execute_semantic_mapping_job(job_obj: Job) -> dict:
         raise  # Re-raise specific errors
     except Exception as e:
         # Wrap other exceptions
-        raise Exception(f"Semantic mapping failed: {str(e)}") from e
+        raise Exception(f"Semantic mapping failed: {e!s}") from e
 
 
 def _execute_contract_migration_job(job_obj: Job) -> dict:
@@ -240,7 +240,7 @@ def _execute_contract_migration_job(job_obj: Job) -> dict:
             raise ValueError(f"Contract {contract_id} not found")
 
         # Perform migration
-        migrated, hub_contract, warnings = ContractMigrationManager.migrate_on_write(contract)
+        migrated, _hub_contract, warnings = ContractMigrationManager.migrate_on_write(contract)
 
         if not migrated:
             return {
@@ -264,4 +264,4 @@ def _execute_contract_migration_job(job_obj: Job) -> dict:
         raise  # Re-raise validation errors
     except Exception as e:
         # Wrap other exceptions
-        raise Exception(f"Contract migration failed: {str(e)}") from e
+        raise Exception(f"Contract migration failed: {e!s}") from e

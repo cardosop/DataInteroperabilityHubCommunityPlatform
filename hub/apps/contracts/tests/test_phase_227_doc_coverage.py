@@ -12,13 +12,13 @@ These tests guard the documentation surface that ships with Phase 227:
   constant in :mod:`hub.apps.contracts.structural_floor`. This catches
   drift between the catalog and the runtime in either direction.
 """
+
 import re
 from pathlib import Path
 
 from django.test import SimpleTestCase
 
 from hub.apps.contracts import structural_floor
-
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
@@ -46,11 +46,7 @@ class Phase227DocsExistTest(SimpleTestCase):
     ]
 
     def test_phase_227_docs_present_on_disk(self):
-        missing = [
-            relpath
-            for relpath in self.REQUIRED_DOCS
-            if not (REPO_ROOT / relpath).exists()
-        ]
+        missing = [relpath for relpath in self.REQUIRED_DOCS if not (REPO_ROOT / relpath).exists()]
         self.assertEqual(
             missing,
             [],
@@ -71,12 +67,12 @@ class Phase227CrossReferencesResolveTest(SimpleTestCase):
     DOCS_TO_CHECK = [
         ("CHANGELOG.md", REPO_ROOT),
         ("docs/CONTRACTS.md", REPO_ROOT / "docs"),
-        ("docs/migration-guides/structureless-contracts-deprecation.md",
-         REPO_ROOT / "docs" / "migration-guides"),
-        ("docs/mvpdocs/reference/error-codes.md",
-         REPO_ROOT / "docs" / "mvpdocs" / "reference"),
-        ("docs/runbooks/structureless-contracts.md",
-         REPO_ROOT / "docs" / "runbooks"),
+        (
+            "docs/migration-guides/structureless-contracts-deprecation.md",
+            REPO_ROOT / "docs" / "migration-guides",
+        ),
+        ("docs/mvpdocs/reference/error-codes.md", REPO_ROOT / "docs" / "mvpdocs" / "reference"),
+        ("docs/runbooks/structureless-contracts.md", REPO_ROOT / "docs" / "runbooks"),
     ]
 
     def _resolve(self, base: Path, link: str) -> Path:
@@ -122,8 +118,7 @@ class Phase227ErrorCodeCatalogConsistencyTest(SimpleTestCase):
         self.assertEqual(
             missing,
             [],
-            "Subcodes emitted at runtime but not documented in error-codes.md: "
-            f"{missing}",
+            f"Subcodes emitted at runtime but not documented in error-codes.md: {missing}",
         )
 
     def test_every_runtime_subcode_in_contracts_doc(self):
@@ -131,8 +126,7 @@ class Phase227ErrorCodeCatalogConsistencyTest(SimpleTestCase):
         self.assertEqual(
             missing,
             [],
-            "Subcodes emitted at runtime but not documented in CONTRACTS.md: "
-            f"{missing}",
+            f"Subcodes emitted at runtime but not documented in CONTRACTS.md: {missing}",
         )
 
     def test_catalog_subcodes_match_runtime(self):
@@ -146,8 +140,7 @@ class Phase227ErrorCodeCatalogConsistencyTest(SimpleTestCase):
         self.assertEqual(
             unknown,
             set(),
-            "Catalog documents STRUCTURELESS_* identifiers with no runtime "
-            f"emitter: {unknown}",
+            f"Catalog documents STRUCTURELESS_* identifiers with no runtime emitter: {unknown}",
         )
 
     def test_top_level_error_code_documented(self):

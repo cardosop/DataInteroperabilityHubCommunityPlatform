@@ -3,11 +3,14 @@ Event Subscribers
 
 Convenience classes for subscribing to events.
 """
-from typing import Dict, Any, Callable, Optional
+
+from collections.abc import Callable
+from typing import Any
+
 import structlog
 from django.db import transaction
 
-from .bus import get_event_bus, EventBusError
+from .bus import EventBusError, get_event_bus
 from .models import EventSubscription
 
 logger = structlog.get_logger(__name__)
@@ -30,13 +33,13 @@ class EventSubscriber:
         """
         self.subscriber_name = subscriber_name
         self.event_bus = event_bus or get_event_bus()
-        self.handlers: Dict[str, Callable[[Dict[str, Any]], None]] = {}
+        self.handlers: dict[str, Callable[[dict[str, Any]], None]] = {}
 
     def subscribe(
         self,
         event_type_pattern: str,
-        handler: Callable[[Dict[str, Any]], None],
-        is_active: bool = True
+        handler: Callable[[dict[str, Any]], None],
+        is_active: bool = True,
     ) -> None:
         """
         Subscribe to events matching a pattern.
@@ -55,13 +58,13 @@ class EventSubscriber:
                 subscriber_name=self.subscriber_name,
                 event_type_pattern=event_type_pattern,
                 handler=self.handlers[event_type_pattern],
-                is_active=is_active
+                is_active=is_active,
             )
 
             logger.info(
                 "event_subscription_registered",
                 subscriber_name=self.subscriber_name,
-                event_type_pattern=event_type_pattern
+                event_type_pattern=event_type_pattern,
             )
         except (EventBusError, RuntimeError) as e:
             # Check if it's a database access error (common during test collection)
@@ -72,7 +75,7 @@ class EventSubscriber:
                     "deferred_event_subscription",
                     subscriber_name=self.subscriber_name,
                     event_type_pattern=event_type_pattern,
-                    reason="database_not_available"
+                    reason="database_not_available",
                 )
                 # Don't raise - registration will happen later when database is available
                 return
@@ -81,7 +84,7 @@ class EventSubscriber:
                 "event_subscription_failed",
                 subscriber_name=self.subscriber_name,
                 event_type_pattern=event_type_pattern,
-                error=str(e)
+                error=str(e),
             )
             raise
 
@@ -92,17 +95,16 @@ class EventSubscriber:
         This is a blocking call and should be run in a background thread/worker.
         """
         if not self.handlers:
-            logger.warning(
-                "no_handlers_registered",
-                subscriber_name=self.subscriber_name
-            )
+            logger.warning("no_handlers_registered", subscriber_name=self.subscriber_name)
             return
 
         # Use first handler as default (in production, use proper routing)
         default_handler = list(self.handlers.values())[0]
         self.event_bus.start_listening(self.subscriber_name, default_handler)
 
-    def _wrap_handler(self, handler: Callable[[Dict[str, Any]], None]) -> Callable[[Dict[str, Any]], None]:
+    def _wrap_handler(
+        self, handler: Callable[[dict[str, Any]], None]
+    ) -> Callable[[dict[str, Any]], None]:
         """
         Wrap handler with error handling and transaction management.
 
@@ -112,7 +114,8 @@ class EventSubscriber:
         Returns:
             Wrapped handler function
         """
-        def wrapped_handler(event: Dict[str, Any]) -> None:
+
+        def wrapped_handler(event: dict[str, Any]) -> None:
             try:
                 # Run handler in transaction
                 with transaction.atomic():
@@ -124,7 +127,7 @@ class EventSubscriber:
                     event_id=event.get("event_id"),
                     event_type=event.get("event_type"),
                     error=str(e),
-                    exc_info=True
+                    exc_info=True,
                 )
                 raise
 
@@ -139,8 +142,7 @@ class EventSubscriber:
         """
         try:
             EventSubscription.objects.filter(
-                subscriber_name=self.subscriber_name,
-                event_type_pattern=event_type_pattern
+                subscriber_name=self.subscriber_name, event_type_pattern=event_type_pattern
             ).update(is_active=False)
 
             if event_type_pattern in self.handlers:
@@ -149,14 +151,14 @@ class EventSubscriber:
             logger.info(
                 "event_subscription_removed",
                 subscriber_name=self.subscriber_name,
-                event_type_pattern=event_type_pattern
+                event_type_pattern=event_type_pattern,
             )
         except Exception as e:
             logger.error(
                 "event_unsubscribe_error",
                 subscriber_name=self.subscriber_name,
                 event_type_pattern=event_type_pattern,
-                error=str(e)
+                error=str(e),
             )
             raise
 
@@ -174,25 +176,25 @@ def event_subscriber(subscriber_name: str, event_type_pattern: str):
         subscriber_name: Subscriber identifier
         event_type_pattern: Event type pattern
     """
-    def decorator(func: Callable[[Dict[str, Any]], None]):
+
+    def decorator(func: Callable[[dict[str, Any]], None]):
         # Lazy registration - only register when database is available
         # This prevents errors during test collection when database access is blocked
         def _lazy_register():
             try:
                 # Check if we're in an async context and handle appropriately
                 import asyncio
-                from asgiref.sync import sync_to_async
 
                 try:
                     # Try to get the current event loop
-                    loop = asyncio.get_running_loop()
+                    asyncio.get_running_loop()
                     # We're in an async context - defer registration to avoid async/sync conflicts
                     # Registration will happen when the service starts up properly
                     logger.debug(
                         "deferred_event_subscription_async_context",
                         subscriber_name=subscriber_name,
                         event_type_pattern=event_type_pattern,
-                        reason="async_context_detected"
+                        reason="async_context_detected",
                     )
                     return
                 except RuntimeError:
@@ -206,18 +208,18 @@ def event_subscriber(subscriber_name: str, event_type_pattern: str):
                 # Registration will happen later when database is available
                 error_str = str(e)
                 is_db_error = (
-                    "Database access not allowed" in error_str or
-                    "django_db" in error_str or
-                    "relation" in error_str.lower() or
-                    "does not exist" in error_str.lower() or
-                    "connection refused" in error_str.lower() or
-                    "ProgrammingError" in str(type(e).__name__) or
-                    "OperationalError" in str(type(e).__name__)
+                    "Database access not allowed" in error_str
+                    or "django_db" in error_str
+                    or "relation" in error_str.lower()
+                    or "does not exist" in error_str.lower()
+                    or "connection refused" in error_str.lower()
+                    or "ProgrammingError" in str(type(e).__name__)
+                    or "OperationalError" in str(type(e).__name__)
                 )
                 is_async_error = (
-                    "async context" in error_str.lower() or
-                    "sync_to_async" in error_str.lower() or
-                    "async_to_sync" in error_str.lower()
+                    "async context" in error_str.lower()
+                    or "sync_to_async" in error_str.lower()
+                    or "async_to_sync" in error_str.lower()
                 )
                 if is_db_error or is_async_error:
                     logger.debug(
@@ -225,7 +227,7 @@ def event_subscriber(subscriber_name: str, event_type_pattern: str):
                         subscriber_name=subscriber_name,
                         event_type_pattern=event_type_pattern,
                         reason="database_not_available" if is_db_error else "async_context",
-                        error_type=type(e).__name__
+                        error_type=type(e).__name__,
                     )
                     # Don't raise - registration will happen later
                     return
@@ -240,18 +242,18 @@ def event_subscriber(subscriber_name: str, event_type_pattern: str):
             # If it's a database access error (table doesn't exist, connection refused, etc.), ignore it
             error_str = str(e)
             is_db_error = (
-                "Database access not allowed" in error_str or
-                "django_db" in error_str or
-                "relation" in error_str.lower() or
-                "does not exist" in error_str.lower() or
-                "connection refused" in error_str.lower() or
-                "ProgrammingError" in str(type(e).__name__) or
-                "OperationalError" in str(type(e).__name__)
+                "Database access not allowed" in error_str
+                or "django_db" in error_str
+                or "relation" in error_str.lower()
+                or "does not exist" in error_str.lower()
+                or "connection refused" in error_str.lower()
+                or "ProgrammingError" in str(type(e).__name__)
+                or "OperationalError" in str(type(e).__name__)
             )
             is_async_error = (
-                "async context" in error_str.lower() or
-                "sync_to_async" in error_str.lower() or
-                "async_to_sync" in error_str.lower()
+                "async context" in error_str.lower()
+                or "sync_to_async" in error_str.lower()
+                or "async_to_sync" in error_str.lower()
             )
             if not (is_db_error or is_async_error):
                 # Re-raise non-database/async errors
@@ -262,10 +264,9 @@ def event_subscriber(subscriber_name: str, event_type_pattern: str):
                 subscriber_name=subscriber_name,
                 event_type_pattern=event_type_pattern,
                 reason="database_not_ready",
-                error_type=type(e).__name__
+                error_type=type(e).__name__,
             )
-            pass
 
         return func
-    return decorator
 
+    return decorator

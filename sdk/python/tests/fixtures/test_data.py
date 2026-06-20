@@ -15,13 +15,13 @@ Provides:
 These primitives are deliberately small and side-effect-free so they can
 themselves be unit-tested without any backend dependency.
 """
+
 from __future__ import annotations
 
 import os
 import socket
 import threading
 import uuid
-from typing import Optional
 
 
 def _xdist_worker_id() -> str:
@@ -57,9 +57,7 @@ def fresh_id(prefix: str) -> str:
     if not prefix:
         raise ValueError("fresh_id prefix must be non-empty")
     if not all(c.isalnum() or c == "-" or c == "_" for c in prefix):
-        raise ValueError(
-            f"fresh_id prefix {prefix!r} must contain only [A-Za-z0-9_-]"
-        )
+        raise ValueError(f"fresh_id prefix {prefix!r} must contain only [A-Za-z0-9_-]")
     worker = _xdist_worker_id()
     suffix = uuid.uuid4().hex[:8]
     return f"{prefix}-{worker}-{suffix}"
@@ -92,9 +90,7 @@ def unique_port(host: str = "127.0.0.1") -> int:
             if port not in _ALLOCATED_PORTS:
                 _ALLOCATED_PORTS.add(port)
                 return port
-        raise RuntimeError(
-            "unique_port could not allocate a non-recycled port in 64 attempts"
-        )
+        raise RuntimeError("unique_port could not allocate a non-recycled port in 64 attempts")
 
 
 def reset_unique_port_pool_for_tests() -> None:

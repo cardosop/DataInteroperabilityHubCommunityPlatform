@@ -9,12 +9,13 @@ Covers:
 * Empty query raises ValueError before HTTP call.
 * HTTP error propagation — 400/403/408/429 surface via client error handling.
 """
+
 import pytest
 
 try:
     from unittest.mock import AsyncMock, Mock
 except ImportError:
-    from unittest.mock import Mock, AsyncMock  # type: ignore[no-redef]
+    from unittest.mock import AsyncMock, Mock  # type: ignore[no-redef]
 
 from datahub_interoperability.semantic import SemanticAPI
 
@@ -41,7 +42,8 @@ class TestExecuteGraphQLLd:
         }
         result = await api.execute_graphql_ld("{ assets { id name } }")
         mock_client.post.assert_called_once_with(
-            "semantic/graphql", data={"query": "{ assets { id name } }"},
+            "semantic/graphql",
+            data={"query": "{ assets { id name } }"},
         )
         assert result["data"]["assets"][0]["name"] == "Alpha"
 
@@ -54,7 +56,10 @@ class TestExecuteGraphQLLd:
         )
         mock_client.post.assert_called_once_with(
             "semantic/graphql",
-            data={"query": "query Q($id: ID!) { asset(id: $id) { id } }", "variables": {"id": "a1"}},
+            data={
+                "query": "query Q($id: ID!) { asset(id: $id) { id } }",
+                "variables": {"id": "a1"},
+            },
         )
         assert result["data"]["asset"]["id"] == "a1"
 
@@ -85,7 +90,8 @@ class TestExecuteGraphQLLd:
         }
         result = await api.execute_graphql_ld("{ datasets { id format } }")
         mock_client.post.assert_called_once_with(
-            "semantic/graphql", data={"query": "{ datasets { id format } }"},
+            "semantic/graphql",
+            data={"query": "{ datasets { id format } }"},
         )
         assert result["data"]["datasets"][0]["format"] == "CSV"
 

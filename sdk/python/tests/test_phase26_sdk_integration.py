@@ -6,9 +6,7 @@ Tests for new SDK methods: scheduled export, billing, tenants, GDPR.
 All tests use real backend API - no mocks/stubs.
 """
 
-import asyncio
 import os
-from typing import Any, Dict
 
 import pytest
 
@@ -34,6 +32,7 @@ def client():
     auto-provisioning, and transparent refresh.
     """
     from tests.conftest import get_api_key
+
     api_key = get_api_key()
     if not api_key:
         pytest.skip("DATAHUB_API_KEY not set")
@@ -75,7 +74,7 @@ class TestBillingSDK:
             # Expected when no subscription exists (404)
             error_msg = str(e).lower()
             assert "not found" in error_msg or "404" in error_msg or "no subscription" in error_msg
-        except Exception as e:
+        except Exception:
             # Other exceptions should be re-raised
             raise
 

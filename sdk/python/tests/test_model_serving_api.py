@@ -11,25 +11,20 @@ Comprehensive tests for ModelServingAPI class including:
 - E2E tests for complete workflows
 """
 import os
-import pytest
 import uuid
+
+import pytest
 
 from datahub_interoperability.client import DataHubClient
 from datahub_interoperability.config import DataHubClientConfig
-from datahub_interoperability.model_serving import ModelServingAPI
 from datahub_interoperability.errors import (
-    ValidationError,
     NotFoundError,
-    ConflictError,
     ServerError,
-    ModelServingError,
-    ModelServingValidationError,
-    ModelServingNotFoundError,
-    ModelServingDeploymentError,
-    ABTestError,
+    ValidationError,
 )
-
-from tests.conftest import is_api_available, get_api_key, default_api_base_url
+from datahub_interoperability.model_serving import ModelServingAPI
+from tests.conftest import default_api_base_url, get_api_key, is_api_available
+import contextlib
 
 
 def _reset_odh_circuit_breaker():
@@ -39,10 +34,13 @@ def _reset_odh_circuit_breaker():
     """
     import subprocess as _sp
 
-    try:
+    with contextlib.suppress(FileNotFoundError, _sp.TimeoutExpired, OSError):
         _sp.run(
             [
-                "docker", "exec", "hub-test-redis-cache", "redis-cli",
+                "docker",
+                "exec",
+                "hub-test-redis-cache",
+                "redis-cli",
                 "DEL",
                 "circuit_breaker:odh-inference-scheduler:state",
                 "circuit_breaker:odh-inference-scheduler:failure_count",
@@ -53,8 +51,6 @@ def _reset_odh_circuit_breaker():
             timeout=5,
             check=False,
         )
-    except (FileNotFoundError, _sp.TimeoutExpired, OSError):
-        pass
 
 
 @pytest.fixture
@@ -81,10 +77,7 @@ def model_serving_api(client):
 def real_api_config():
     """Create real API config for integration tests."""
     if not is_api_available():
-        pytest.skip(
-            "API service is not available. "
-            "Ensure Docker Compose services are running."
-        )
+        pytest.skip("API service is not available. Ensure Docker Compose services are running.")
 
     api_key = get_api_key()
     if not api_key:
@@ -93,10 +86,7 @@ def real_api_config():
             "environment variable, or ensure Docker Compose services are running."
         )
 
-    api_base_url = os.environ.get(
-        "API_BASE_URL",
-        f"{default_api_base_url()}/api/v1"
-    )
+    api_base_url = os.environ.get("API_BASE_URL", f"{default_api_base_url()}/api/v1")
 
     return DataHubClientConfig(
         base_url=api_base_url,
@@ -122,6 +112,7 @@ def real_model_serving_api(real_client):
 
 
 # Unit Tests - Validation Logic
+
 
 @pytest.mark.asyncio
 async def test_model_serving_api_initialization(model_serving_api, client):
@@ -228,6 +219,7 @@ async def test_validate_input_data_empty(model_serving_api):
 
 # Integration Tests - Real API Endpoints
 
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_deploy_model_as_api_integration(real_model_serving_api):
@@ -287,7 +279,9 @@ async def test_list_deployed_models_with_filters_integration(real_model_serving_
 
     # Test with status filter
     try:
-        result_with_status = await real_model_serving_api.list_deployed_models(status="READY", limit=5)
+        result_with_status = await real_model_serving_api.list_deployed_models(
+            status="READY", limit=5
+        )
     except ServerError as exc:
         _maybe_skip_odh_unavailable(exc)
         raise

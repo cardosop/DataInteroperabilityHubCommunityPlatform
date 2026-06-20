@@ -1,6 +1,7 @@
 """
 Phase 83.11 — check_services management command tests.
 """
+
 from io import StringIO
 from unittest.mock import patch
 
@@ -11,7 +12,6 @@ _CMD = "hub.apps.core.management.commands.check_services"
 
 
 class CheckServicesCommandTest(TestCase):
-
     @patch(f"{_CMD}.check_all_services")
     def test_all_healthy_exit_zero(self, mock_check):
         mock_check.return_value = {
@@ -46,7 +46,9 @@ class CheckServicesCommandTest(TestCase):
         mock_check.return_value = (True, None)
         out = StringIO()
         call_command(
-            "check_services", "--service=dq-service", stdout=out,
+            "check_services",
+            "--service=dq-service",
+            stdout=out,
         )
         mock_check.assert_called_once()
 
@@ -57,6 +59,8 @@ class CheckServicesCommandTest(TestCase):
         }
         out = StringIO()
         call_command(
-            "check_services", "--service=nonexistent", stdout=out,
+            "check_services",
+            "--service=nonexistent",
+            stdout=out,
         )
         assert "Unknown service" in out.getvalue()

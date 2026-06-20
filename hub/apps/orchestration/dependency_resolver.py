@@ -7,20 +7,20 @@ Results are cached per pipeline in Redis with a 5-min TTL;
 cache is skipped for fewer than 20 pipeline dependencies per
 tenant (the Redis round-trip costs more than a direct query).
 """
+
 from __future__ import annotations
+
+import contextlib
 import json
 import uuid
 from collections import defaultdict, deque
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import structlog
 from django.core.cache import cache
-from django.db.models import Q
 
 from .models import (
-    DependencyType,
     PipelineDependency,
-    PipelineType,
 )
 
 logger = structlog.get_logger(__name__)
@@ -50,7 +50,7 @@ class PipelineDependencyResolver:
         self,
         pipeline_type: str,
         pipeline_id: str,
-    ) -> List[PipelineDependency]:
+    ) -> list[PipelineDependency]:
         """Return all ACTIVE upstream dependencies for *pipeline*.
 
         An upstream dependency is any row where
@@ -63,15 +63,14 @@ class PipelineDependencyResolver:
                 downstream_pipeline_type=pipeline_type,
                 downstream_pipeline_id=pipeline_id,
                 is_active=True,
-            )
-            .order_by("-priority", "-created_at")
+            ).order_by("-priority", "-created_at")
         )
 
     def resolve_downstream(
         self,
         pipeline_type: str,
         pipeline_id: str,
-    ) -> List[PipelineDependency]:
+    ) -> list[PipelineDependency]:
         """Return all ACTIVE downstream dependencies for *pipeline*.
 
         A downstream dependency is any row where
@@ -83,15 +82,14 @@ class PipelineDependencyResolver:
                 pipeline_type=pipeline_type,
                 pipeline_id=pipeline_id,
                 is_active=True,
-            )
-            .order_by("-priority", "-created_at")
+            ).order_by("-priority", "-created_at")
         )
 
     def are_dependencies_met(
         self,
         pipeline_type: str,
         pipeline_id: str,
-        upstream_run_statuses: Dict[Tuple[str, str], str],
+        upstream_run_statuses: dict[tuple[str, str], str],
     ) -> bool:
         """Return True iff every ACTIVE upstream dependency has a
         terminal, successful upstream run status.
@@ -124,8 +122,8 @@ class PipelineDependencyResolver:
             is_active=True,
         )
         # Build adjacency list and in-degree count.
-        adj: Dict[str, List[str]] = defaultdict(list)
-        in_degree: Dict[str, int] = defaultdict(int)
+        adj: dict[str, list[str]] = defaultdict(list)
+        in_degree: dict[str, int] = defaultdict(int)
         nodes: set[str] = set()
 
         for dep in deps:
@@ -164,7 +162,7 @@ class PipelineDependencyResolver:
         pipeline_type: str,
         pipeline_id: str,
         max_depth: int = 10,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Return a topologically-sorted execution graph rooted at
         *pipeline*, walking upstream dependencies recursively.
 
@@ -190,13 +188,18 @@ class PipelineDependencyResolver:
         DESC at each level.
         """
         result = self._build_graph_cached(
-            pipeline_type, pipeline_id, max_depth,
+            pipeline_type,
+            pipeline_id,
+            max_depth,
         )
         if result is not None:
             return result
 
         graph = self._build_graph_recursive(
-            pipeline_type, pipeline_id, max_depth, visited=set(),
+            pipeline_type,
+            pipeline_id,
+            max_depth,
+            visited=set(),
         )
         # Propagate cycle state from subtrees.
         graph["cycle_free"] = self._all_subtrees_cycle_free(graph)
@@ -206,7 +209,7 @@ class PipelineDependencyResolver:
         return graph
 
     @staticmethod
-    def _all_subtrees_cycle_free(graph: Dict[str, Any]) -> bool:
+    def _all_subtrees_cycle_free(graph: dict[str, Any]) -> bool:
         """Recursively check every subtree for cycle-free status."""
         for child in graph.get("dependencies", []):
             if not child.get("cycle_free", True):
@@ -226,10 +229,11 @@ class PipelineDependencyResolver:
         pipeline_type: str,
         pipeline_id: str,
         max_depth: int,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         # Skip cache when the dependency set is small.
         count = PipelineDependency.objects.filter(
-            tenant_id=self.tenant_id, is_active=True,
+            tenant_id=self.tenant_id,
+            is_active=True,
         ).count()
         if count < _CACHE_SKIP_THRESHOLD:
             return None
@@ -246,7 +250,7 @@ class PipelineDependencyResolver:
         self,
         pipeline_type: str,
         pipeline_id: str,
-        graph: Dict[str, Any],
+        graph: dict[str, Any],
     ) -> None:
         key = self._cache_key(pipeline_type, pipeline_id)
         try:
@@ -260,7 +264,7 @@ class PipelineDependencyResolver:
         pipeline_id: str,
         max_depth: int,
         visited: set,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         node_key = _node_key(pipeline_type, pipeline_id)
         if node_key in visited:
             return {
@@ -271,7 +275,7 @@ class PipelineDependencyResolver:
         visited.add(node_key)
 
         upstream = self.resolve_upstream(pipeline_type, pipeline_id)
-        children: List[Dict[str, Any]] = []
+        children: list[dict[str, Any]] = []
         for dep in upstream:
             if max_depth > 0:
                 child = self._build_graph_recursive(
@@ -289,16 +293,18 @@ class PipelineDependencyResolver:
                     "dependencies": [],
                     "cycle_free": True,
                 }
-            children.append({
-                "pipeline": {
-                    "type": dep.pipeline_type,
-                    "id": str(dep.pipeline_id),
-                },
-                "dependency_type": dep.dependency_type,
-                "priority": dep.priority,
-                "is_active": dep.is_active,
-                "dependencies": child.get("dependencies", []),
-            })
+            children.append(
+                {
+                    "pipeline": {
+                        "type": dep.pipeline_type,
+                        "id": str(dep.pipeline_id),
+                    },
+                    "dependency_type": dep.dependency_type,
+                    "priority": dep.priority,
+                    "is_active": dep.is_active,
+                    "dependencies": child.get("dependencies", []),
+                }
+            )
 
         # Sort children: priority DESC, then by is_active (active first)
         children.sort(
@@ -319,11 +325,13 @@ def _node_key(pipeline_type: str, pipeline_id: uuid.UUID | str) -> str:
     return f"{pipeline_type}:{pipeline_id}"
 
 
-_TERMINAL_SUCCESS_STATUSES: frozenset[str] = frozenset({
-    "SUCCEEDED",
-    "COMPLETED",
-    "SUCCESS",
-})
+_TERMINAL_SUCCESS_STATUSES: frozenset[str] = frozenset(
+    {
+        "SUCCEEDED",
+        "COMPLETED",
+        "SUCCESS",
+    }
+)
 
 
 def invalidate_pipeline_dependency_cache(
@@ -341,10 +349,8 @@ def invalidate_pipeline_dependency_cache(
     """
     if pipeline_type and pipeline_id:
         key = f"pipeline_dep:{tenant_id}:{pipeline_type}:{pipeline_id}"
-        try:
+        with contextlib.suppress(Exception):
             cache.delete(key)
-        except Exception:
-            pass
         return
 
     # Wildcard invalidation — iterate keys matching prefix.

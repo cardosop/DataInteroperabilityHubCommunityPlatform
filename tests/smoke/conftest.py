@@ -17,14 +17,16 @@ Environment variables
     SMOKE_ADMIN_PASSWORD    Admin account password for authenticated tests
     SMOKE_TEST_TIMEOUT      HTTP request timeout in seconds (default: 30)
 """
+
 import os
+
 import pytest
 import requests
-
 
 # ---------------------------------------------------------------------------
 # CLI option — mirrors what the deploy workflow passes via --base-url
 # ---------------------------------------------------------------------------
+
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
@@ -38,6 +40,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 # ---------------------------------------------------------------------------
 # Core fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def base_url(request: pytest.FixtureRequest) -> str:
@@ -87,8 +90,9 @@ def admin_credentials() -> dict:
 
 
 @pytest.fixture(scope="session")
-def auth_token(base_url: str, api_session: requests.Session,
-               admin_credentials: dict, timeout: int) -> str:
+def auth_token(
+    base_url: str, api_session: requests.Session, admin_credentials: dict, timeout: int
+) -> str:
     """
     Authenticate once per session and return a JWT access token.
 
@@ -115,9 +119,11 @@ def authenticated_session(auth_token: str) -> requests.Session:
     Use this for all endpoints that require authentication.
     """
     session = requests.Session()
-    session.headers.update({
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {auth_token}",
-    })
+    session.headers.update(
+        {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {auth_token}",
+        }
+    )
     return session

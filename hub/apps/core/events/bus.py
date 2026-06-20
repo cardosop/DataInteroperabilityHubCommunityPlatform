@@ -3,66 +3,71 @@ Event Bus Implementation
 
 Redis-based event bus with PostgreSQL persistence, replay, and dead letter queue support.
 """
+
 from __future__ import annotations
 
 import json
-import redis
-import structlog
 import threading as _threading
 import time
 import uuid as _uuid
-from typing import Dict, Any, Optional, Callable, List
+from collections.abc import Callable
+from datetime import datetime
+from typing import Any
+
+import redis
+import structlog
 from django.conf import settings
 from django.db import transaction
 from django.db.utils import ProgrammingError
 from django.utils import timezone
-from datetime import datetime, timedelta
 
-from .schema import EventSchema
-from .event_types import validate_event_data, CURRENT_EVENT_VERSION
-from .models import Event, DeadLetterQueue, EventSubscription
-from .deduplication import (
-    generate_deduplication_key,
-    check_event_duplicate,
-    store_event_id,
-)
 from .acknowledgment import (
-    mark_event_pending,
-    mark_event_processing,
     acknowledge_event,
     cleanup_timeout_events,
+    mark_event_pending,
+    mark_event_processing,
 )
-from .retry_policy import get_retry_policy
-from .persistence_tasks import persist_event_async
-from .write_behind import get_write_behind_buffer
+from .deduplication import (
+    check_event_duplicate,
+    generate_deduplication_key,
+    store_event_id,
+)
+from .event_types import CURRENT_EVENT_VERSION, validate_event_data
 from .metrics import (
-    event_published_total,
-    event_publish_failed_total,
-    event_publish_duration_seconds,
-    event_publish_redis_latency_seconds,
-    event_persistence_duration_seconds,
-    event_consumed_total,
-    event_consume_failed_total,
-    event_processing_duration_seconds,
-    event_handler_retry_count,
-    event_dlq_size,
-    event_dlq_events_total,
-    event_subscriptions_active,
-    event_subscriptions_registered_total,
     event_bus_redis_connection_errors_total,
     event_bus_redis_publish_errors_total,
+    event_consume_failed_total,
+    event_consumed_total,
+    event_dlq_events_total,
+    event_dlq_size,
+    event_handler_retry_count,
     event_latency_seconds,
+    event_persistence_duration_seconds,
+    event_processing_duration_seconds,
+    event_publish_duration_seconds,
+    event_publish_failed_total,
+    event_publish_redis_latency_seconds,
+    event_published_total,
     event_queue_depth,
     event_retry_attempts_total,
-    get_tenant_id,
+    event_subscriptions_active,
+    event_subscriptions_registered_total,
     get_error_type,
+    get_tenant_id,
 )
+from .models import DeadLetterQueue, Event, EventSubscription
+from .persistence_tasks import persist_event_async
+from .retry_policy import get_retry_policy
+from .schema import EventSchema
+from .write_behind import get_write_behind_buffer
 
 # OpenTelemetry tracing
 try:
-    from hub.apps.observability.tracing import get_tracer
     from opentelemetry import trace
     from opentelemetry.trace import Status, StatusCode
+
+    from hub.apps.observability.tracing import get_tracer
+
     _tracer = get_tracer(__name__)
     _trace_available = True
 except ImportError:
@@ -75,7 +80,7 @@ except ImportError:
 logger = structlog.get_logger(__name__)
 
 
-def _validate_optional_uuid(value: Optional[str], field_name: str) -> None:
+def _validate_optional_uuid(value: str | None, field_name: str) -> None:
     """Raise ``ValueError`` if *value* is not a valid UUID or None/empty.
 
     This is called at the top of :meth:`EventBus.publish` so invalid
@@ -88,9 +93,7 @@ def _validate_optional_uuid(value: Optional[str], field_name: str) -> None:
     try:
         _uuid.UUID(value)
     except (ValueError, AttributeError):
-        raise ValueError(
-            f"{field_name} must be a valid UUID or None; got {value!r}"
-        ) from None
+        raise ValueError(f"{field_name} must be a valid UUID or None; got {value!r}") from None
 
 
 def _run_with_timeout(func, args=(), timeout_seconds=30):
@@ -127,9 +130,7 @@ def _run_with_timeout(func, args=(), timeout_seconds=30):
             timeout_seconds=timeout_seconds,
             thread_name=thread.name,
         )
-        raise TimeoutError(
-            f"Event handler timed out after {timeout_seconds}s"
-        )
+        raise TimeoutError(f"Event handler timed out after {timeout_seconds}s")
     if exception[0]:
         raise exception[0]
     return result[0]
@@ -137,17 +138,14 @@ def _run_with_timeout(func, args=(), timeout_seconds=30):
 
 class EventBusError(Exception):
     """Base exception for event bus errors."""
-    pass
 
 
 class EventPublishError(EventBusError):
     """Error publishing event."""
-    pass
 
 
 class EventSubscribeError(EventBusError):
     """Error subscribing to events."""
-    pass
 
 
 class EventBus:
@@ -163,7 +161,7 @@ class EventBus:
 
     def __init__(
         self,
-        redis_client: Optional[redis.Redis] = None,
+        redis_client: redis.Redis | None = None,
         *,
         force_sync_persistence: bool = False,
     ):
@@ -175,9 +173,9 @@ class EventBus:
             force_sync_persistence: If True, always persist synchronously (for tests).
         """
         self.redis_client = redis_client or self._create_redis_client()
-        self.channel_prefix = getattr(settings, 'EVENT_BUS_CHANNEL_PREFIX', 'events')
-        self.enable_persistence = getattr(settings, 'EVENT_BUS_ENABLE_PERSISTENCE', True)
-        self.max_retries = getattr(settings, 'EVENT_BUS_MAX_RETRIES', 3)
+        self.channel_prefix = getattr(settings, "EVENT_BUS_CHANNEL_PREFIX", "events")
+        self.enable_persistence = getattr(settings, "EVENT_BUS_ENABLE_PERSISTENCE", True)
+        self.max_retries = getattr(settings, "EVENT_BUS_MAX_RETRIES", 3)
         self.force_sync_persistence = force_sync_persistence
 
     def _create_redis_client(self) -> redis.Redis:
@@ -188,21 +186,18 @@ class EventBus:
         for backward compatibility. Uses connection pooling for better performance and resource management.
         """
         # Use REDIS_EVENTS_URL if available, fallback to REDIS_URL for backward compatibility
-        redis_url = getattr(settings, 'REDIS_EVENTS_URL', None)
+        redis_url = getattr(settings, "REDIS_EVENTS_URL", None)
         if redis_url is None:
-            redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6381/0')
-            logger.info(
-                "Using REDIS_URL as fallback for event bus",
-                redis_url=redis_url
-            )
+            redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6381/0")
+            logger.info("Using REDIS_URL as fallback for event bus", redis_url=redis_url)
 
         # Connection pool configuration
-        pool_size = getattr(settings, 'EVENT_BUS_REDIS_POOL_SIZE', 50)
-        max_connections = getattr(settings, 'EVENT_BUS_REDIS_MAX_CONNECTIONS', 100)
-        socket_timeout = getattr(settings, 'EVENT_BUS_REDIS_SOCKET_TIMEOUT', 5)
-        socket_connect_timeout = getattr(settings, 'EVENT_BUS_REDIS_SOCKET_CONNECT_TIMEOUT', 5)
-        retry_on_timeout = getattr(settings, 'EVENT_BUS_REDIS_RETRY_ON_TIMEOUT', True)
-        health_check_interval = getattr(settings, 'EVENT_BUS_REDIS_HEALTH_CHECK_INTERVAL', 30)
+        getattr(settings, "EVENT_BUS_REDIS_POOL_SIZE", 50)
+        max_connections = getattr(settings, "EVENT_BUS_REDIS_MAX_CONNECTIONS", 100)
+        socket_timeout = getattr(settings, "EVENT_BUS_REDIS_SOCKET_TIMEOUT", 5)
+        socket_connect_timeout = getattr(settings, "EVENT_BUS_REDIS_SOCKET_CONNECT_TIMEOUT", 5)
+        retry_on_timeout = getattr(settings, "EVENT_BUS_REDIS_RETRY_ON_TIMEOUT", True)
+        health_check_interval = getattr(settings, "EVENT_BUS_REDIS_HEALTH_CHECK_INTERVAL", 30)
 
         try:
             # Create connection pool
@@ -213,40 +208,35 @@ class EventBus:
                 socket_connect_timeout=socket_connect_timeout,
                 retry_on_timeout=retry_on_timeout,
                 health_check_interval=health_check_interval,
-                decode_responses=True
+                decode_responses=True,
             )
 
             # Create Redis client with connection pool
-            return redis.Redis(
-                connection_pool=pool,
-                decode_responses=True
-            )
+            return redis.Redis(connection_pool=pool, decode_responses=True)
         except Exception as e:
             error_type = get_error_type(None, e)
-            event_bus_redis_connection_errors_total.labels(
-                error_type=error_type
-            ).inc()
+            event_bus_redis_connection_errors_total.labels(error_type=error_type).inc()
             logger.error(
                 "redis_connection_error",
                 error=str(e),
                 error_type=error_type,
                 redis_url=redis_url,
-                exc_info=True
+                exc_info=True,
             )
             raise
 
     def publish(
         self,
         event_type: str,
-        data: Dict[str, Any],
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request_id: Optional[str] = None,
-        correlation_id: Optional[str] = None,
-        causation_id: Optional[str] = None,
-        tags: Optional[List[str]] = None,
+        data: dict[str, Any],
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
+        causation_id: str | None = None,
+        tags: list[str] | None = None,
         event_version: str = CURRENT_EVENT_VERSION,
-        service_name: Optional[str] = None
+        service_name: str | None = None,
     ) -> str:
         """
         Publish an event to the event bus.
@@ -285,12 +275,12 @@ class EventBus:
         span = None
         if _tracer:
             span = _tracer.start_span(
-                name=f"event_bus.publish",
+                name="event_bus.publish",
                 attributes={
                     "event.type": event_type,
                     "event.tenant_id": tenant_label,
                     "event.version": event_version,
-                }
+                },
             )
 
         try:
@@ -316,7 +306,7 @@ class EventBus:
                 causation_id=causation_id,
                 tags=tags,
                 event_version=event_version,
-                service_name=service_name
+                service_name=service_name,
             )
 
             # Validate event
@@ -340,9 +330,9 @@ class EventBus:
                     span.set_attribute("event.causation_id", causation_id)
 
             # Check persistence setting dynamically (for test overrides)
-            enable_persistence = getattr(settings, 'EVENT_BUS_ENABLE_PERSISTENCE', True)
-            use_async_persistence = getattr(settings, 'EVENT_BUS_ASYNC_PERSISTENCE', True)
-            use_write_behind = getattr(settings, 'EVENT_BUS_WRITE_BEHIND_ENABLED', False)
+            enable_persistence = getattr(settings, "EVENT_BUS_ENABLE_PERSISTENCE", True)
+            use_async_persistence = getattr(settings, "EVENT_BUS_ASYNC_PERSISTENCE", True)
+            use_write_behind = getattr(settings, "EVENT_BUS_WRITE_BEHIND_ENABLED", False)
 
             # Persist event to PostgreSQL (write-behind, async, or sync based on configuration)
             if enable_persistence:
@@ -353,16 +343,12 @@ class EventBus:
                         self._persist_event(event)
                         persist_duration = time.time() - persist_start
                         event_persistence_duration_seconds.labels(
-                            event_type=event_type,
-                            status="success",
-                            tenant_id=tenant_label
+                            event_type=event_type, status="success", tenant_id=tenant_label
                         ).observe(persist_duration)
                     except ProgrammingError as persist_error:
                         persist_duration = time.time() - persist_start
                         event_persistence_duration_seconds.labels(
-                            event_type=event_type,
-                            status="failed",
-                            tenant_id=tenant_label
+                            event_type=event_type, status="failed", tenant_id=tenant_label
                         ).observe(persist_duration)
                         err_str = str(persist_error)
                         if "does not exist" in err_str or "relation" in err_str.lower():
@@ -371,7 +357,7 @@ class EventBus:
                                 event_id=event_id,
                                 event_type=event_type,
                                 error=err_str,
-                                message="Events table missing; continuing without persistence"
+                                message="Events table missing; continuing without persistence",
                             )
                         else:
                             logger.error(
@@ -379,22 +365,20 @@ class EventBus:
                                 event_id=event_id,
                                 event_type=event_type,
                                 error=err_str,
-                                exc_info=True
+                                exc_info=True,
                             )
                             raise
                     except Exception as persist_error:
                         persist_duration = time.time() - persist_start
                         event_persistence_duration_seconds.labels(
-                            event_type=event_type,
-                            status="failed",
-                            tenant_id=tenant_label
+                            event_type=event_type, status="failed", tenant_id=tenant_label
                         ).observe(persist_duration)
                         logger.error(
                             "event_persistence_error",
                             event_id=event_id,
                             event_type=event_type,
                             error=str(persist_error),
-                            exc_info=True
+                            exc_info=True,
                         )
                         raise
                 elif use_write_behind:
@@ -406,7 +390,7 @@ class EventBus:
                             "event_persistence_buffered_write_behind",
                             event_id=event_id,
                             event_type=event_type,
-                            buffer_size=buffer.get_buffer_size()
+                            buffer_size=buffer.get_buffer_size(),
                         )
                     except Exception as write_behind_error:
                         # If write-behind fails, fall back to async persistence
@@ -415,14 +399,14 @@ class EventBus:
                             event_id=event_id,
                             event_type=event_type,
                             error=str(write_behind_error),
-                            message="Falling back to async persistence"
+                            message="Falling back to async persistence",
                         )
                         try:
                             persist_event_async.delay(event)
                             logger.debug(
                                 "event_persistence_queued_async",
                                 event_id=event_id,
-                                event_type=event_type
+                                event_type=event_type,
                             )
                         except Exception as persist_error:
                             # If async queue fails, fall back to sync persistence
@@ -431,23 +415,19 @@ class EventBus:
                                 event_id=event_id,
                                 event_type=event_type,
                                 error=str(persist_error),
-                                message="Falling back to synchronous persistence"
+                                message="Falling back to synchronous persistence",
                             )
                             persist_start = time.time()
                             try:
                                 self._persist_event(event)
                                 persist_duration = time.time() - persist_start
                                 event_persistence_duration_seconds.labels(
-                                    event_type=event_type,
-                                    status="success",
-                                    tenant_id=tenant_label
+                                    event_type=event_type, status="success", tenant_id=tenant_label
                                 ).observe(persist_duration)
                             except Exception as sync_persist_error:
                                 persist_duration = time.time() - persist_start
                                 event_persistence_duration_seconds.labels(
-                                    event_type=event_type,
-                                    status="failed",
-                                    tenant_id=tenant_label
+                                    event_type=event_type, status="failed", tenant_id=tenant_label
                                 ).observe(persist_duration)
                                 # Don't raise - allow event to be published even if persistence fails
                                 logger.error(
@@ -455,7 +435,7 @@ class EventBus:
                                     event_id=event_id,
                                     event_type=event_type,
                                     error=str(sync_persist_error),
-                                    exc_info=True
+                                    exc_info=True,
                                 )
                 elif use_async_persistence:
                     # Queue async persistence task (non-blocking)
@@ -464,7 +444,7 @@ class EventBus:
                         logger.debug(
                             "event_persistence_queued_async",
                             event_id=event_id,
-                            event_type=event_type
+                            event_type=event_type,
                         )
                     except Exception as persist_error:
                         # If async queue fails, fall back to sync persistence
@@ -473,23 +453,19 @@ class EventBus:
                             event_id=event_id,
                             event_type=event_type,
                             error=str(persist_error),
-                            message="Falling back to synchronous persistence"
+                            message="Falling back to synchronous persistence",
                         )
                         persist_start = time.time()
                         try:
                             self._persist_event(event)
                             persist_duration = time.time() - persist_start
                             event_persistence_duration_seconds.labels(
-                                event_type=event_type,
-                                status="success",
-                                tenant_id=tenant_label
+                                event_type=event_type, status="success", tenant_id=tenant_label
                             ).observe(persist_duration)
                         except Exception as sync_persist_error:
                             persist_duration = time.time() - persist_start
                             event_persistence_duration_seconds.labels(
-                                event_type=event_type,
-                                status="failed",
-                                tenant_id=tenant_label
+                                event_type=event_type, status="failed", tenant_id=tenant_label
                             ).observe(persist_duration)
                             # Don't raise - allow event to be published even if persistence fails
                             logger.error(
@@ -497,7 +473,7 @@ class EventBus:
                                 event_id=event_id,
                                 event_type=event_type,
                                 error=str(sync_persist_error),
-                                exc_info=True
+                                exc_info=True,
                             )
                 else:
                     # Synchronous persistence (original behavior)
@@ -506,23 +482,19 @@ class EventBus:
                         self._persist_event(event)
                         persist_duration = time.time() - persist_start
                         event_persistence_duration_seconds.labels(
-                            event_type=event_type,
-                            status="success",
-                            tenant_id=tenant_label
+                            event_type=event_type, status="success", tenant_id=tenant_label
                         ).observe(persist_duration)
                     except Exception as persist_error:
                         persist_duration = time.time() - persist_start
                         event_persistence_duration_seconds.labels(
-                            event_type=event_type,
-                            status="failed",
-                            tenant_id=tenant_label
+                            event_type=event_type, status="failed", tenant_id=tenant_label
                         ).observe(persist_duration)
                         logger.error(
                             "event_persistence_error",
                             event_id=event_id,
                             event_type=event_type,
                             error=str(persist_error),
-                            exc_info=True
+                            exc_info=True,
                         )
                         # Re-raise when persistence is enabled so callers (e.g. tests) see the error
                         if enable_persistence:
@@ -537,8 +509,7 @@ class EventBus:
                 self.redis_client.publish(channel, event_json)
                 redis_latency = time.time() - redis_start
                 event_publish_redis_latency_seconds.labels(
-                    event_type=event_type,
-                    tenant_id=tenant_label
+                    event_type=event_type, tenant_id=tenant_label
                 ).observe(redis_latency)
 
                 logger.info(
@@ -546,15 +517,13 @@ class EventBus:
                     event_id=event_id,
                     event_type=event_type,
                     channel=channel,
-                    tenant_id=tenant_id
+                    tenant_id=tenant_id,
                 )
             except Exception as e:
                 redis_latency = time.time() - redis_start
                 error_type = get_error_type(None, e)
                 event_bus_redis_publish_errors_total.labels(
-                    event_type=event_type,
-                    error_type=error_type,
-                    tenant_id=tenant_label
+                    event_type=event_type, error_type=error_type, tenant_id=tenant_label
                 ).inc()
 
                 # Redis publish failures are operational events — the system
@@ -564,7 +533,7 @@ class EventBus:
                     "event_publish_redis_error",
                     event_id=event_id,
                     event_type=event_type,
-                    error=str(e)
+                    error=str(e),
                 )
                 # If persistence is enabled, persist event even if Redis publish fails
                 # This ensures events are not lost when Redis is unavailable
@@ -579,14 +548,10 @@ class EventBus:
             # Record success metrics
             publish_duration = time.time() - start_time
             event_published_total.labels(
-                event_type=event_type,
-                status=status,
-                tenant_id=tenant_label
+                event_type=event_type, status=status, tenant_id=tenant_label
             ).inc()
             event_publish_duration_seconds.labels(
-                event_type=event_type,
-                status=status,
-                tenant_id=tenant_label
+                event_type=event_type, status=status, tenant_id=tenant_label
             ).observe(publish_duration)
 
             if span and _trace_available:
@@ -603,14 +568,10 @@ class EventBus:
 
             # Record failure metrics
             event_publish_failed_total.labels(
-                event_type=event_type,
-                error_type=error_type,
-                tenant_id=tenant_label
+                event_type=event_type, error_type=error_type, tenant_id=tenant_label
             ).inc()
             event_publish_duration_seconds.labels(
-                event_type=event_type,
-                status=status,
-                tenant_id=tenant_label
+                event_type=event_type, status=status, tenant_id=tenant_label
             ).observe(publish_duration)
 
             if span and _trace_available:
@@ -620,15 +581,10 @@ class EventBus:
                 span.record_exception(e)
                 span.end()
 
-            logger.error(
-                "event_publish_error",
-                event_type=event_type,
-                error=str(e),
-                exc_info=True
-            )
+            logger.error("event_publish_error", event_type=event_type, error=str(e), exc_info=True)
             raise EventPublishError(f"Failed to publish event: {e}") from e
 
-    def _persist_event(self, event: Dict[str, Any]) -> Event:
+    def _persist_event(self, event: dict[str, Any]) -> Event:
         """
         Persist event to PostgreSQL.
 
@@ -644,13 +600,13 @@ class EventBus:
                     event_id=event["event_id"],
                     event_type=event["event_type"],
                     event_version=event["event_version"],
-                    timestamp=datetime.fromisoformat(event["timestamp"].replace('Z', '+00:00')),
+                    timestamp=datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00")),
                     source_service=event["source"]["service"],
                     tenant_id=event["source"].get("tenant_id"),
                     user_id=event["source"].get("user_id"),
                     request_id=event["source"].get("request_id"),
                     data=event["data"],
-                    metadata=event.get("metadata", {})
+                    metadata=event.get("metadata", {}),
                 )
                 return event_obj
         except Exception as e:
@@ -658,10 +614,10 @@ class EventBus:
                 "event_persistence_error",
                 event_id=event.get("event_id"),
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
             # Re-raise if persistence is enabled (use runtime settings for test overrides)
-            enable_persistence = getattr(settings, 'EVENT_BUS_ENABLE_PERSISTENCE', True)
+            enable_persistence = getattr(settings, "EVENT_BUS_ENABLE_PERSISTENCE", True)
             if enable_persistence:
                 raise
 
@@ -669,8 +625,8 @@ class EventBus:
         self,
         subscriber_name: str,
         event_type_pattern: str,
-        handler: Callable[[Dict[str, Any]], None],
-        is_active: bool = True
+        handler: Callable[[dict[str, Any]], None],
+        is_active: bool = True,
     ) -> None:
         """
         Subscribe to events matching a pattern.
@@ -693,6 +649,7 @@ class EventBus:
         db_available = False
         try:
             from django.db import connection
+
             connection.ensure_connection()
             db_available = True
         except Exception:
@@ -702,10 +659,10 @@ class EventBus:
         try:
             # Register subscription in database (skip if database not available)
             if db_available:
-                subscription, created = EventSubscription.objects.update_or_create(
+                _subscription, created = EventSubscription.objects.update_or_create(
                     subscriber_name=subscriber_name,
                     event_type_pattern=event_type_pattern,
-                    defaults={"is_active": is_active}
+                    defaults={"is_active": is_active},
                 )
             else:
                 # Database not available - defer subscription registration
@@ -713,27 +670,25 @@ class EventBus:
                     "event_subscription_deferred",
                     subscriber_name=subscriber_name,
                     event_type_pattern=event_type_pattern,
-                    reason="database_not_available"
+                    reason="database_not_available",
                 )
-                created = False
 
             # Update metrics
             if is_active:
                 event_subscriptions_active.labels(
-                    event_type_pattern=event_type_pattern,
-                    subscriber_name=subscriber_name
+                    event_type_pattern=event_type_pattern, subscriber_name=subscriber_name
                 ).inc()
 
             event_subscriptions_registered_total.labels(
                 event_type_pattern=event_type_pattern,
                 subscriber_name=subscriber_name,
-                status=status
+                status=status,
             ).inc()
 
             logger.info(
                 "event_subscription_registered",
                 subscriber_name=subscriber_name,
-                event_type_pattern=event_type_pattern
+                event_type_pattern=event_type_pattern,
             )
 
         except Exception as e:
@@ -741,17 +696,17 @@ class EventBus:
             # Check if it's a database error (table doesn't exist, etc.)
             error_str = str(e)
             is_db_error = (
-                "relation" in error_str.lower() or
-                "does not exist" in error_str.lower() or
-                "connection refused" in error_str.lower() or
-                "ProgrammingError" in str(type(e).__name__) or
-                "OperationalError" in str(type(e).__name__)
+                "relation" in error_str.lower()
+                or "does not exist" in error_str.lower()
+                or "connection refused" in error_str.lower()
+                or "ProgrammingError" in str(type(e).__name__)
+                or "OperationalError" in str(type(e).__name__)
             )
             is_async_error = (
-                "async context" in error_str.lower() or
-                "sync_to_async" in error_str.lower() or
-                "async_to_sync" in error_str.lower() or
-                "cannot call this from an async context" in error_str.lower()
+                "async context" in error_str.lower()
+                or "sync_to_async" in error_str.lower()
+                or "async_to_sync" in error_str.lower()
+                or "cannot call this from an async context" in error_str.lower()
             )
 
             if is_db_error or is_async_error:
@@ -761,7 +716,7 @@ class EventBus:
                     subscriber_name=subscriber_name,
                     event_type_pattern=event_type_pattern,
                     reason="database_not_ready" if is_db_error else "async_context",
-                    error_type=type(e).__name__
+                    error_type=type(e).__name__,
                 )
                 # Don't raise - registration will happen later when migrations are applied or in sync context
                 return
@@ -770,7 +725,7 @@ class EventBus:
             event_subscriptions_registered_total.labels(
                 event_type_pattern=event_type_pattern,
                 subscriber_name=subscriber_name,
-                status=status
+                status=status,
             ).inc()
 
             # Other errors should be raised
@@ -779,14 +734,12 @@ class EventBus:
                 subscriber_name=subscriber_name,
                 event_type_pattern=event_type_pattern,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
             raise EventSubscribeError(f"Failed to subscribe: {e}") from e
 
     def start_listening(
-        self,
-        subscriber_name: str,
-        handler: Callable[[Dict[str, Any]], None]
+        self, subscriber_name: str, handler: Callable[[dict[str, Any]], None]
     ) -> None:
         """
         Start listening for events for a subscriber.
@@ -800,15 +753,11 @@ class EventBus:
         try:
             # Get active subscriptions for this subscriber
             subscriptions = EventSubscription.objects.filter(
-                subscriber_name=subscriber_name,
-                is_active=True
+                subscriber_name=subscriber_name, is_active=True
             )
 
             if not subscriptions.exists():
-                logger.warning(
-                    "no_active_subscriptions",
-                    subscriber_name=subscriber_name
-                )
+                logger.warning("no_active_subscriptions", subscriber_name=subscriber_name)
                 return
 
             # Create pubsub and subscribe to all channels
@@ -817,9 +766,9 @@ class EventBus:
             for subscription in subscriptions:
                 # Convert pattern to Redis pattern format
                 pattern = subscription.event_type_pattern
-                if '*' in pattern:
+                if "*" in pattern:
                     # Use pattern subscribe for wildcards
-                    redis_pattern = self._get_channel(pattern).replace('*', '*')
+                    redis_pattern = self._get_channel(pattern).replace("*", "*")
                     pubsub.psubscribe(redis_pattern)
                 else:
                     # Use regular subscribe for exact matches
@@ -828,9 +777,7 @@ class EventBus:
                 channels.append(self._get_channel(pattern))
 
             logger.info(
-                "event_listening_started",
-                subscriber_name=subscriber_name,
-                channels=channels
+                "event_listening_started", subscriber_name=subscriber_name, channels=channels
             )
 
             # Start listening (blocking)
@@ -841,7 +788,7 @@ class EventBus:
                 "event_listening_error",
                 subscriber_name=subscriber_name,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
             raise EventSubscribeError(f"Failed to start listening: {e}") from e
 
@@ -849,7 +796,7 @@ class EventBus:
         self,
         pubsub: redis.client.PubSub,
         subscriber_name: str,
-        handler: Callable[[Dict[str, Any]], None]
+        handler: Callable[[dict[str, Any]], None],
     ) -> None:
         """
         Listen for events and call handler.
@@ -874,7 +821,7 @@ class EventBus:
                                 event_id,
                                 subscriber_name,
                                 event_type,
-                                redis_client=self.redis_client
+                                redis_client=self.redis_client,
                             )
 
                             # Increment queue depth when event is marked pending
@@ -884,7 +831,7 @@ class EventBus:
                                 event_queue_depth.labels(
                                     event_type=event_type,
                                     subscriber_name=subscriber_name,
-                                    tenant_id=tenant_label
+                                    tenant_id=tenant_label,
                                 ).inc()
                             except Exception:
                                 pass  # Fail silently if metric update fails
@@ -918,7 +865,7 @@ class EventBus:
                         "event_handler_error",
                         subscriber_name=subscriber_name,
                         error=str(e),
-                        exc_info=True
+                        exc_info=True,
                     )
                     # Send to dead letter queue
                     try:
@@ -940,14 +887,13 @@ class EventBus:
         """
         try:
             subscriptions = EventSubscription.objects.filter(
-                subscriber_name=subscriber_name,
-                is_active=True
+                subscriber_name=subscriber_name, is_active=True
             )
 
             for subscription in subscriptions:
                 pattern = subscription.event_type_pattern
                 # Simple wildcard matching (supports * at end)
-                if pattern.endswith('*'):
+                if pattern.endswith("*"):
                     prefix = pattern[:-1]
                     if event_type.startswith(prefix):
                         return True
@@ -962,9 +908,9 @@ class EventBus:
     def _handle_event(
         self,
         subscriber_name: str,
-        event: Dict[str, Any],
-        handler: Callable[[Dict[str, Any]], None],
-        retry_count: int = 0
+        event: dict[str, Any],
+        handler: Callable[[dict[str, Any]], None],
+        retry_count: int = 0,
     ) -> None:
         """Handle event with iterative retry (Phase 93: replaces recursive call).
 
@@ -987,8 +933,7 @@ class EventBus:
         # Check deduplication before processing
         deduplication_key = generate_deduplication_key(event_type, event_data)
         is_duplicate, existing_event_id = check_event_duplicate(
-            deduplication_key,
-            redis_client=self.redis_client
+            deduplication_key, redis_client=self.redis_client
         )
 
         if is_duplicate:
@@ -1000,7 +945,7 @@ class EventBus:
                 event_type=event_type,
                 existing_event_id=existing_event_id,
                 deduplication_key=deduplication_key,
-                message=f"Event {event_id} already processed (existing: {existing_event_id}), skipping"
+                message=f"Event {event_id} already processed (existing: {existing_event_id}), skipping",
             )
 
             # Record metrics for skipped duplicate
@@ -1008,7 +953,7 @@ class EventBus:
                 event_type=event_type,
                 subscriber_name=subscriber_name,
                 status="duplicate_skipped",
-                tenant_id=tenant_label
+                tenant_id=tenant_label,
             ).inc()
 
             return  # Skip processing duplicate event
@@ -1017,14 +962,14 @@ class EventBus:
         span = None
         if _tracer:
             span = _tracer.start_span(
-                name=f"event_bus.handle",
+                name="event_bus.handle",
                 attributes={
                     "event.type": event_type,
                     "event.id": event_id or "unknown",
                     "event.subscriber": subscriber_name,
                     "event.tenant_id": tenant_label,
                     "event.retry_count": retry_count,
-                }
+                },
             )
             # Set parent span context from event if available
             metadata = event.get("metadata", {})
@@ -1034,7 +979,10 @@ class EventBus:
                 metadata = event.get("metadata", {})
                 if "traceparent" in metadata:
                     try:
-                        from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+                        from opentelemetry.trace.propagation.tracecontext import (
+                            TraceContextTextMapPropagator,
+                        )
+
                         carrier = {"traceparent": metadata["traceparent"]}
                         ctx = TraceContextTextMapPropagator().extract(carrier)
                         if ctx:
@@ -1057,7 +1005,7 @@ class EventBus:
                         from datetime import datetime
 
                         # Parse event timestamp
-                        event_timestamp_str_clean = event_timestamp_str.replace('Z', '+00:00')
+                        event_timestamp_str_clean = event_timestamp_str.replace("Z", "+00:00")
                         event_timestamp = datetime.fromisoformat(event_timestamp_str_clean)
 
                         # Get current time
@@ -1078,18 +1026,14 @@ class EventBus:
                             event_latency_seconds.labels(
                                 event_type=event_type,
                                 subscriber_name=subscriber_name,
-                                tenant_id=tenant_label
+                                tenant_id=tenant_label,
                             ).observe(latency_seconds)
                     except Exception as e:
                         logger.debug(
-                            "event_latency_calculation_failed",
-                            event_id=event_id,
-                            error=str(e)
+                            "event_latency_calculation_failed", event_id=event_id, error=str(e)
                         )
 
-                handler_timeout = getattr(
-                    settings, "EVENT_HANDLER_TIMEOUT_SECONDS", 30
-                )
+                handler_timeout = getattr(settings, "EVENT_HANDLER_TIMEOUT_SECONDS", 30)
                 _run_with_timeout(handler, args=(event,), timeout_seconds=handler_timeout)
                 processing_duration = time.time() - start_time
 
@@ -1100,7 +1044,7 @@ class EventBus:
                         subscriber_name,
                         event_type,
                         redis_client=self.redis_client,
-                        success=True
+                        success=True,
                     )
 
                     # Decrement queue depth when event is acknowledged
@@ -1108,7 +1052,7 @@ class EventBus:
                         event_queue_depth.labels(
                             event_type=event_type,
                             subscriber_name=subscriber_name,
-                            tenant_id=tenant_label
+                            tenant_id=tenant_label,
                         ).dec()
                     except Exception:
                         pass  # Fail silently if metric update fails
@@ -1118,20 +1062,20 @@ class EventBus:
                     event_type=event_type,
                     subscriber_name=subscriber_name,
                     status=status,
-                    tenant_id=tenant_label
+                    tenant_id=tenant_label,
                 ).inc()
                 event_processing_duration_seconds.labels(
                     event_type=event_type,
                     subscriber_name=subscriber_name,
                     status=status,
-                    tenant_id=tenant_label
+                    tenant_id=tenant_label,
                 ).observe(processing_duration)
 
                 if attempt > 0:
                     event_handler_retry_count.labels(
                         event_type=event_type,
                         subscriber_name=subscriber_name,
-                        tenant_id=tenant_label
+                        tenant_id=tenant_label,
                     ).observe(attempt)
 
                 if span and _trace_available:
@@ -1141,18 +1085,14 @@ class EventBus:
 
                 # Store event ID after successful processing for deduplication
                 if event_id:
-                    store_event_id(
-                        deduplication_key,
-                        event_id,
-                        redis_client=self.redis_client
-                    )
+                    store_event_id(deduplication_key, event_id, redis_client=self.redis_client)
 
                 logger.info(
                     "event_handled",
                     subscriber_name=subscriber_name,
                     event_id=event_id,
                     event_type=event_type,
-                    deduplication_key=deduplication_key
+                    deduplication_key=deduplication_key,
                 )
                 return  # success — exit loop
             except Exception as e:
@@ -1165,13 +1105,13 @@ class EventBus:
                     event_type=event_type,
                     subscriber_name=subscriber_name,
                     error_type=error_type,
-                    tenant_id=tenant_label
+                    tenant_id=tenant_label,
                 ).inc()
                 event_processing_duration_seconds.labels(
                     event_type=event_type,
                     subscriber_name=subscriber_name,
                     status=status,
-                    tenant_id=tenant_label
+                    tenant_id=tenant_label,
                 ).observe(processing_duration)
 
                 # Decrement queue depth on failure (event will be retried or sent to DLQ)
@@ -1180,7 +1120,7 @@ class EventBus:
                         event_queue_depth.labels(
                             event_type=event_type,
                             subscriber_name=subscriber_name,
-                            tenant_id=tenant_label
+                            tenant_id=tenant_label,
                         ).dec()
                     except Exception:
                         pass  # Fail silently if metric update fails
@@ -1192,7 +1132,7 @@ class EventBus:
                     event_type=event_type,
                     retry_count=attempt,
                     error=str(e),
-                    exc_info=True
+                    exc_info=True,
                 )
 
                 # Retry if policy allows
@@ -1201,14 +1141,14 @@ class EventBus:
                     event_handler_retry_count.labels(
                         event_type=event_type,
                         subscriber_name=subscriber_name,
-                        tenant_id=tenant_label
+                        tenant_id=tenant_label,
                     ).observe(attempt)
 
                     # Increment retry attempts counter
                     event_retry_attempts_total.labels(
                         event_type=event_type,
                         subscriber_name=subscriber_name,
-                        tenant_id=tenant_label
+                        tenant_id=tenant_label,
                     ).inc()
 
                     # Increment queue depth for retry
@@ -1216,7 +1156,7 @@ class EventBus:
                         event_queue_depth.labels(
                             event_type=event_type,
                             subscriber_name=subscriber_name,
-                            tenant_id=tenant_label
+                            tenant_id=tenant_label,
                         ).inc()
                     except Exception:
                         pass  # Fail silently if metric update fails
@@ -1239,7 +1179,7 @@ class EventBus:
                             subscriber_name,
                             event_type,
                             redis_client=self.redis_client,
-                            success=False
+                            success=False,
                         )
 
                     if span and _trace_available:
@@ -1255,10 +1195,10 @@ class EventBus:
     def _send_to_dlq(
         self,
         subscriber_name: str,
-        event: Dict[str, Any],
+        event: dict[str, Any],
         error_message: str,
         retry_count: int = 0,
-        error_details: Optional[Dict[str, Any]] = None
+        error_details: dict[str, Any] | None = None,
     ) -> None:
         """
         Send failed event to dead letter queue.
@@ -1282,7 +1222,7 @@ class EventBus:
                 subscriber=subscriber_name,
                 error_message=error_message,
                 error_details=error_details or {},
-                retry_count=retry_count
+                retry_count=retry_count,
             )
 
             # Update DLQ metrics
@@ -1290,20 +1230,16 @@ class EventBus:
                 event_type=event_type,
                 subscriber_name=subscriber_name,
                 error_type=error_type,
-                tenant_id=tenant_label
+                tenant_id=tenant_label,
             ).inc()
             event_dlq_size.labels(
-                event_type=event_type,
-                subscriber_name=subscriber_name,
-                tenant_id=tenant_label
+                event_type=event_type, subscriber_name=subscriber_name, tenant_id=tenant_label
             ).inc()
 
             # Decrement queue depth when event is sent to DLQ
             try:
                 event_queue_depth.labels(
-                    event_type=event_type,
-                    subscriber_name=subscriber_name,
-                    tenant_id=tenant_label
+                    event_type=event_type, subscriber_name=subscriber_name, tenant_id=tenant_label
                 ).dec()
             except Exception:
                 pass  # Fail silently if metric update fails
@@ -1313,7 +1249,7 @@ class EventBus:
                 subscriber_name=subscriber_name,
                 event_id=event.get("event_id"),
                 event_type=event_type,
-                retry_count=retry_count
+                retry_count=retry_count,
             )
         except Exception as e:
             logger.error(
@@ -1321,17 +1257,17 @@ class EventBus:
                 subscriber_name=subscriber_name,
                 event_id=event.get("event_id"),
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
 
     def replay_events(
         self,
-        event_type: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        limit: int = 1000
-    ) -> List[Dict[str, Any]]:
+        event_type: str | None = None,
+        tenant_id: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
         """
         Replay events from persistence store.
 
@@ -1360,7 +1296,7 @@ class EventBus:
             if end_time:
                 queryset = queryset.filter(timestamp__lte=end_time)
 
-            events = queryset.order_by('timestamp')[:limit]
+            events = queryset.order_by("timestamp")[:limit]
 
             result = []
             for event_obj in events:
@@ -1374,7 +1310,7 @@ class EventBus:
                         "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
                     },
                     "data": event_obj.data,
-                    "metadata": event_obj.metadata or {}
+                    "metadata": event_obj.metadata or {},
                 }
 
                 if event_obj.user_id:
@@ -1386,20 +1322,13 @@ class EventBus:
                 result.append(event)
 
             logger.info(
-                "events_replayed",
-                count=len(result),
-                event_type=event_type,
-                tenant_id=tenant_id
+                "events_replayed", count=len(result), event_type=event_type, tenant_id=tenant_id
             )
 
             return result
 
         except Exception as e:
-            logger.error(
-                "event_replay_error",
-                error=str(e),
-                exc_info=True
-            )
+            logger.error("event_replay_error", error=str(e), exc_info=True)
             raise EventBusError(f"Failed to replay events: {e}") from e
 
     def cleanup_acknowledgment_timeouts(self, subscriber_name: str) -> int:
@@ -1425,12 +1354,12 @@ class EventBus:
             Channel name
         """
         # Replace dots with colons for Redis channel naming
-        channel_name = event_type.replace('.', ':')
+        channel_name = event_type.replace(".", ":")
         return f"{self.channel_prefix}:{channel_name}"
 
 
 # Global event bus instance
-_event_bus: Optional[EventBus] = None
+_event_bus: EventBus | None = None
 
 
 def get_event_bus() -> EventBus:
@@ -1440,4 +1369,3 @@ def get_event_bus() -> EventBus:
         force_sync = getattr(settings, "EVENT_BUS_FORCE_SYNC_PERSISTENCE", False)
         _event_bus = EventBus(force_sync_persistence=force_sync)
     return _event_bus
-

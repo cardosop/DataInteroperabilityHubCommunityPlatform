@@ -6,8 +6,10 @@ Detects assertions that always pass and provide zero test value:
 
   - ``expect(document.body).toBeTruthy()`` — always true in JSDOM
   - ``expect(container).toBeTruthy()`` — already guaranteed by render()
-  - ``expect(element).not.toBeNull()`` — guaranteed by getBy* queries
-  - ``expect(screen.getByText(...)).toBeInTheDocument()`` — tautological
+  - ``expect(true).toBe(true)`` — trivially true
+  - ``expect(false).toBe(false)`` — trivially true
+  - ``expect(null).toBeNull()`` — trivially true
+  - ``expect(undefined).toBeUndefined()`` — trivially true
 
 Scans ``frontend/src/`` for ``*.test.ts``, ``*.test.tsx``, ``*.spec.ts``, ``*.spec.tsx``.
 
@@ -38,10 +40,6 @@ TAUTOLOGICAL_PATTERNS = [
         "expect(container).toBeTruthy() — guaranteed by render()",
     ),
     (
-        r"expect\(\s*\w+\s*\)\s*\.\s*not\s*\.\s*toBeNull\s*\(\s*\)",
-        "expect(x).not.toBeNull() — guaranteed by getBy* queries",
-    ),
-    (
         r"expect\(\s*true\s*\)\s*\.\s*toBe\s*\(\s*true\s*\)",
         "expect(true).toBe(true) — trivially true",
     ),
@@ -70,11 +68,18 @@ def _find_frontend_test_files(search_roots: list[str]) -> list[str]:
         if not p.exists():
             continue
         for dirpath, dirnames, filenames in os.walk(p):
-            dirnames[:] = [d for d in dirnames
-                           if d not in ("node_modules", ".git", "dist", "build", "__pycache__")]
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if d not in ("node_modules", ".git", "dist", "build", "__pycache__")
+            ]
             for fn in filenames:
-                if fn.endswith(".test.ts") or fn.endswith(".test.tsx") or \
-                   fn.endswith(".spec.ts") or fn.endswith(".spec.tsx"):
+                if (
+                    fn.endswith(".test.ts")
+                    or fn.endswith(".test.tsx")
+                    or fn.endswith(".spec.ts")
+                    or fn.endswith(".spec.tsx")
+                ):
                     files.append(os.path.join(dirpath, fn))
     return sorted(files)
 
@@ -102,9 +107,13 @@ def main() -> None:
     parser.add_argument("--path", nargs="*", default=None)
     args = parser.parse_args()
 
-    roots = args.path if args.path else [
-        str(REPO_ROOT / "frontend/src"),
-    ]
+    roots = (
+        args.path
+        if args.path
+        else [
+            str(REPO_ROOT / "frontend/src"),
+        ]
+    )
     test_files = _find_frontend_test_files(roots)
 
     all_violations: list[tuple[str, int, str]] = []

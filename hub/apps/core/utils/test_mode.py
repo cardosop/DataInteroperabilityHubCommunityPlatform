@@ -4,8 +4,9 @@ Utility to detect if Django is running in test mode.
 This helps optimize app initialization by deferring non-critical operations
 during test execution.
 """
-import sys
+
 import os
+import sys
 
 
 def is_test_mode() -> bool:
@@ -24,31 +25,32 @@ def is_test_mode() -> bool:
         True if running in test mode, False otherwise
     """
     # Check if pytest is loaded
-    if 'pytest' in sys.modules:
+    if "pytest" in sys.modules:
         return True
 
     # Check if unittest is loaded (Django test runner uses unittest)
-    if 'unittest' in sys.modules:
+    if "unittest" in sys.modules:
         # Check if we're actually running tests (not just importing unittest)
-        if any('test' in arg.lower() or 'pytest' in arg.lower() for arg in sys.argv):
+        if any("test" in arg.lower() or "pytest" in arg.lower() for arg in sys.argv):
             return True
 
     # Check command line arguments
-    if any(arg in sys.argv for arg in ['test', 'pytest']):
+    if any(arg in sys.argv for arg in ["test", "pytest"]):
         return True
 
     # Check pytest environment variable (set by pytest)
-    if os.getenv('PYTEST_CURRENT_TEST'):
+    if os.getenv("PYTEST_CURRENT_TEST"):
         return True
 
     # Check environment variable
-    if os.getenv('TESTING', '').lower() in ('1', 'true', 'yes'):
+    if os.getenv("TESTING", "").lower() in ("1", "true", "yes"):
         return True
 
     # Check Django's TESTING setting if available
     try:
         from django.conf import settings
-        if getattr(settings, 'TESTING', False):
+
+        if getattr(settings, "TESTING", False):
             return True
     except (ImportError, RuntimeError):
         # Django not configured yet or settings not loaded
@@ -70,7 +72,9 @@ def should_skip_initialization() -> bool:
         True if initialization should be skipped, False otherwise
     """
     # Skip during migrations
-    if any(cmd in sys.argv for cmd in ['migrate', 'makemigrations', 'sqlmigrate', 'showmigrations']):
+    if any(
+        cmd in sys.argv for cmd in ["migrate", "makemigrations", "sqlmigrate", "showmigrations"]
+    ):
         return True
 
     # Skip during test mode
@@ -78,7 +82,7 @@ def should_skip_initialization() -> bool:
         return True
 
     # Skip during collectstatic
-    if 'collectstatic' in sys.argv:
+    if "collectstatic" in sys.argv:
         return True
 
     return False

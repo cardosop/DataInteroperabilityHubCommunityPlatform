@@ -19,13 +19,13 @@ import json
 import os
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pytest
 from rest_framework import status
 
 from .conftest import E2ETestBase, get_response_data
-from .journey_tracker import JourneyStatus, JourneyTracker, StepStatus, get_journey_tracker
+from .journey_tracker import get_journey_tracker
 
 # Optional/experimental endpoints: skip if not implemented (Task 6.6.2)
 SKIP_ON_404_OPTIONAL = True
@@ -39,14 +39,63 @@ pytestmark = [
     pytest.mark.journey("JOURNEY-DPO-008"),
     pytest.mark.journey("JOURNEY-DE-007"),
     pytest.mark.journey("JOURNEY-CPO-006"),
+    pytest.mark.journey("JOURNEY-CPO-007"),
+    pytest.mark.journey("JOURNEY-CPO-008"),
+    pytest.mark.journey("JOURNEY-CPO-009"),
+    pytest.mark.journey("JOURNEY-CPO-010"),
     pytest.mark.journey("JOURNEY-DC-006"),
     pytest.mark.journey("JOURNEY-DC-014"),
     pytest.mark.journey("JOURNEY-DC-015"),
     pytest.mark.journey("JOURNEY-TA-005"),
+    pytest.mark.journey("JOURNEY-TA-008"),
     pytest.mark.journey("JOURNEY-DEV-005"),
     pytest.mark.journey("JOURNEY-AUD-004"),
     pytest.mark.uc("UC-DA-003"),
     pytest.mark.uc("UC-DA-004"),
+    pytest.mark.journey("JOURNEY-MPA-005"),
+    pytest.mark.journey("JOURNEY-AUD-006"),
+    pytest.mark.journey("JOURNEY-CM-002"),
+    pytest.mark.journey("JOURNEY-CM-003"),
+    pytest.mark.journey("JOURNEY-CM-004"),
+    pytest.mark.journey("JOURNEY-DA-002"),
+    pytest.mark.journey("JOURNEY-DA-003"),
+    pytest.mark.journey("JOURNEY-DA-004"),
+    pytest.mark.journey("JOURNEY-DC-008"),
+    pytest.mark.journey("JOURNEY-DC-009"),
+    pytest.mark.journey("JOURNEY-DC-010"),
+    pytest.mark.journey("JOURNEY-DC-011"),
+    pytest.mark.journey("JOURNEY-DC-012"),
+    pytest.mark.journey("JOURNEY-DC-013"),
+    pytest.mark.journey("JOURNEY-DE-008"),
+    pytest.mark.journey("JOURNEY-DE-009"),
+    pytest.mark.journey("JOURNEY-DE-010"),
+    pytest.mark.journey("JOURNEY-DE-011"),
+    pytest.mark.journey("JOURNEY-DE-012"),
+    pytest.mark.journey("JOURNEY-DE-013"),
+    pytest.mark.journey("JOURNEY-DEV-007"),
+    pytest.mark.journey("JOURNEY-DEV-008"),
+    pytest.mark.journey("JOURNEY-DEV-009"),
+    pytest.mark.journey("JOURNEY-DMO-001"),
+    pytest.mark.journey("JOURNEY-DMO-002"),
+    pytest.mark.journey("JOURNEY-DMO-003"),
+    pytest.mark.journey("JOURNEY-DMO-004"),
+    pytest.mark.journey("JOURNEY-DMO-005"),
+    pytest.mark.journey("JOURNEY-DPO-009"),
+    pytest.mark.journey("JOURNEY-DPO-010"),
+    pytest.mark.journey("JOURNEY-DPO-011"),
+    pytest.mark.journey("JOURNEY-DPO-012"),
+    pytest.mark.journey("JOURNEY-DPO-013"),
+    pytest.mark.journey("JOURNEY-DPO-014"),
+    pytest.mark.journey("JOURNEY-DS-001"),
+    pytest.mark.journey("JOURNEY-DS-002"),
+    pytest.mark.journey("JOURNEY-DS-003"),
+    pytest.mark.journey("JOURNEY-DS-004"),
+    pytest.mark.journey("JOURNEY-DS-005"),
+    pytest.mark.journey("JOURNEY-MPA-006"),
+    pytest.mark.journey("JOURNEY-MPA-007"),
+    pytest.mark.journey("JOURNEY-MPA-008"),
+    pytest.mark.journey("JOURNEY-MPA-009"),
+    pytest.mark.journey("JOURNEY-TA-006"),
 ]
 
 
@@ -120,7 +169,7 @@ class NewUserJourneyTestBase(E2ETestBase):
         self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content)
 
         # Create dataset
-        dataset_id = self.create_dataset(file_id, asset_id)
+        self.create_dataset(file_id, asset_id)
 
         # Prepare contract first (sets validation_status=VALID, normalization)
         contract_id = self.create_contract(asset_id)
@@ -151,14 +200,14 @@ class NewUserJourneyTestBase(E2ETestBase):
                 exec_status = data.get("status")
                 if exec_status in ["completed", "failed", "cancelled"]:
                     return data
-            time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
         return None
 
     def _call_api_safe(
         self,
         method: str,
         url: str,
-        data: Dict = None,
+        data: dict = None,
         expected_status: int = None,
         skip_on_404: bool = True,
     ):
@@ -339,9 +388,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
             )
 
             # Step 8: Validate contract
-            validation_result = self.execute_journey_step(
-                "Validate Contract", self.validate_contract, contract_id
-            )
+            self.execute_journey_step("Validate Contract", self.validate_contract, contract_id)
 
             # Step 9: Activate asset
             self.execute_journey_step(
@@ -421,7 +468,11 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                 "pipeline_definition": {
                     "version": "1.0",
                     "steps": [
-                        {"name": "filter_step", "type": "filter", "config": {"condition": "value > 100"}},
+                        {
+                            "name": "filter_step",
+                            "type": "filter",
+                            "config": {"condition": "value > 100"},
+                        },
                         {
                             "name": "transform_step",
                             "type": "transform",
@@ -443,18 +494,21 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
             )
 
             self.assertIn(
-                pipeline_response.status_code, [201, 400],
+                pipeline_response.status_code,
+                [201, 400],
                 f"Transformation pipeline creation returned unexpected {pipeline_response.status_code}",
             )
 
             pipeline_id = (
-                (get_response_data(pipeline_response) or {}).get("id") if pipeline_response.status_code == 201 else None
+                (get_response_data(pipeline_response) or {}).get("id")
+                if pipeline_response.status_code == 201
+                else None
             )
 
             # Step 4-5: Design pipeline and configure nodes (already in pipeline_data)
             if pipeline_id:
                 # Step 6: Validate pipeline
-                validation_response = self.execute_journey_step(
+                self.execute_journey_step(
                     "Validate Pipeline",
                     lambda: self._call_api_safe(
                         "POST",
@@ -466,7 +520,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                 )
 
                 # Step 7: Preview transformation results
-                preview_response = self.execute_journey_step(
+                self.execute_journey_step(
                     "Preview Transformation Results",
                     lambda: self._call_api_safe(
                         "POST",
@@ -550,7 +604,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
             asset_id = self.execute_journey_step("Create Asset", self._create_activated_asset)
 
             # Step 2: Create a rating for the asset
-            rating_response = self.execute_journey_step(
+            self.execute_journey_step(
                 "Create Rating",
                 lambda: self._call_api_safe(
                     "POST",
@@ -562,7 +616,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
             )
 
             # Step 3: Create a review for the asset
-            review_response = self.execute_journey_step(
+            self.execute_journey_step(
                 "Create Review",
                 lambda: self._call_api_safe(
                     "POST",
@@ -626,7 +680,9 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
         self.assertIsInstance(ratings_data, (dict, list), "Ratings should be dict or list")
         if isinstance(ratings_data, dict):
             self.assertTrue(
-                "results" in ratings_data or "ratings" in ratings_data or "average_rating" in ratings_data,
+                "results" in ratings_data
+                or "ratings" in ratings_data
+                or "average_rating" in ratings_data,
                 f"Ratings response should contain results/ratings/average_rating, got: {list(ratings_data.keys())}",
             )
 
@@ -684,13 +740,19 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
             listing_response = self._call_api_safe(
                 "POST",
                 "/api/v1/marketplace/listings/",
-                {"asset_id": str(asset_id), "title": "Test Asset Listing", "short_description": "Test listing for journey"},
+                {
+                    "asset_id": str(asset_id),
+                    "title": "Test Asset Listing",
+                    "short_description": "Test listing for journey",
+                },
                 expected_status=201,
                 skip_on_404=False,
             )
 
             listing_id = (
-                (get_response_data(listing_response) or {}).get("id") if listing_response.status_code == 201 else None
+                (get_response_data(listing_response) or {}).get("id")
+                if listing_response.status_code == 201
+                else None
             )
 
             # Try pricing endpoint (may not exist, handle gracefully)
@@ -720,7 +782,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
 
             # Step 6: Configure billing settings
             if pricing_response.status_code == 200:
-                billing_response = self.execute_journey_step(
+                self.execute_journey_step(
                     "Configure Billing Settings",
                     lambda: self._call_api_safe(
                         "PATCH",
@@ -778,14 +840,13 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
         )
 
         try:
-            asset_id = self.execute_journey_step(
-                "Create Asset", self._create_activated_asset
-            )
+            asset_id = self.execute_journey_step("Create Asset", self._create_activated_asset)
 
             # Create a steward user
             from hub.apps.users.models import UserStatus
+
             User = self.user.__class__
-            steward_user = User.objects.create_user(
+            User.objects.create_user(
                 email=f"steward-{uuid.uuid4().hex[:8]}@example.com",
                 password="testpass123",
                 tenant=self.tenant,
@@ -809,17 +870,14 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
             )
 
             if request_response.status_code == 201:
-                request_id = (
-                    get_response_data(request_response) or {}
-                ).get("id")
+                request_id = (get_response_data(request_response) or {}).get("id")
 
                 # Approve the access request
                 self.execute_journey_step(
                     "Approve Steward Access",
                     lambda: self._call_api_safe(
                         "POST",
-                        f"/api/v1/governance/access-requests/"
-                        f"{request_id}/approve/",
+                        f"/api/v1/governance/access-requests/{request_id}/approve/",
                         {},
                         expected_status=200,
                     ),
@@ -830,8 +888,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                     "Verify Steward Access",
                     lambda: self._call_api_safe(
                         "GET",
-                        f"/api/v1/governance/access-requests/"
-                        f"{request_id}/",
+                        f"/api/v1/governance/access-requests/{request_id}/",
                         expected_status=200,
                     ),
                 )
@@ -896,7 +953,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                     if create_response.status_code == 201:
                         community_id = (get_response_data(create_response) or {}).get("id")
                     else:
-                        pytest.skip("Community creation not available")
+                        pytest.skip("Community creation not available")  # noqa: skip-in-body — runtime service dependency
                         return
 
                 # Step 3: Join community
@@ -913,7 +970,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
 
                 # Step 4: Participate in discussions
                 if join_response.status_code in [200, 201]:
-                    discussion_response = self.execute_journey_step(
+                    self.execute_journey_step(
                         "Participate in Discussions",
                         lambda: self._call_api_safe(
                             "POST",
@@ -926,7 +983,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
 
                     # Step 5: Share assets in community
                     asset_id = self._create_activated_asset()
-                    share_response = self.execute_journey_step(
+                    self.execute_journey_step(
                         "Share Assets in Community",
                         lambda: self._call_api_safe(
                             "POST",
@@ -938,7 +995,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                     )
 
                     # Step 6: Access community knowledge base
-                    kb_response = self.execute_journey_step(
+                    self.execute_journey_step(
                         "Access Knowledge Base",
                         lambda: self._call_api_safe(
                             "GET",
@@ -988,7 +1045,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                 domain_id = (get_response_data(domain_response) or {}).get("id")
 
                 # Step 3: Define domain boundaries
-                boundaries_response = self.execute_journey_step(
+                self.execute_journey_step(
                     "Define Domain Boundaries",
                     lambda: self._call_api_safe(
                         "PATCH",
@@ -1000,7 +1057,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                 )
 
                 # Step 4: Assign domain ownership
-                ownership_response = self.execute_journey_step(
+                self.execute_journey_step(
                     "Assign Domain Ownership",
                     lambda: self._call_api_safe(
                         "PATCH",
@@ -1013,7 +1070,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
 
                 # Step 5: Configure domain-scoped assets
                 asset_id = self._create_activated_asset()
-                scope_response = self.execute_journey_step(
+                self.execute_journey_step(
                     "Configure Domain-Scoped Assets",
                     lambda: self._call_api_safe(
                         "POST",
@@ -1025,7 +1082,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                 )
 
                 # Step 6: Review domain analytics (GET-only endpoint)
-                analytics_response = self.execute_journey_step(
+                self.execute_journey_step(
                     "Review Domain Analytics",
                     lambda: self._call_api_safe(
                         "GET",
@@ -1098,7 +1155,7 @@ class Persona1DataProductOwnerNewJourneys(NewUserJourneyTestBase):
                     )
 
                 # Step 6: Monitor score trends
-                trends_response = self.execute_journey_step(
+                self.execute_journey_step(
                     "Monitor Score Trends",
                     lambda: self._call_api_safe(
                         "GET",
@@ -1176,7 +1233,8 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
             )
 
             self.assertIn(
-                pipeline_response.status_code, [201, 400],
+                pipeline_response.status_code,
+                [201, 400],
                 f"Transformation pipeline creation returned unexpected {pipeline_response.status_code}",
             )
 
@@ -1192,7 +1250,9 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     expected_status=200,
                     skip_on_404=False,
                 )
-                self.execute_journey_step("Validate Pipeline", lambda: get_response_data(validate_response))
+                self.execute_journey_step(
+                    "Validate Pipeline", lambda: get_response_data(validate_response)
+                )
 
                 test_response = self._call_api_safe(
                     "POST",
@@ -1213,13 +1273,14 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if execute_response.status_code == 202:
-                    self.execute_journey_step("Execute Pipeline", lambda: get_response_data(execute_response))
+                    self.execute_journey_step(
+                        "Execute Pipeline", lambda: get_response_data(execute_response)
+                    )
                     execution_id = (get_response_data(execute_response) or {}).get("execution_id")
                     if execution_id:
                         self.execute_journey_step(
                             "Monitor Execution", lambda: self._wait_for_execution(execution_id)
                         )
-
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertGreaterEqual(journey.completion_rate, 100.0)
@@ -1445,17 +1506,14 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
             )
 
             if create_response.status_code == 201:
-                conn_id = (
-                    get_response_data(create_response) or {}
-                ).get("id")
+                conn_id = (get_response_data(create_response) or {}).get("id")
 
                 # Test the connection
                 self.execute_journey_step(
                     "Test Connection",
                     lambda: self._call_api_safe(
                         "POST",
-                        f"/api/v1/integrations/marketplace/"
-                        f"connections/{conn_id}/test/",
+                        f"/api/v1/integrations/marketplace/connections/{conn_id}/test/",
                         {},
                         expected_status=200,
                     ),
@@ -1466,8 +1524,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     "Verify Connection",
                     lambda: self._call_api_safe(
                         "GET",
-                        f"/api/v1/integrations/marketplace/"
-                        f"connections/{conn_id}/",
+                        f"/api/v1/integrations/marketplace/connections/{conn_id}/",
                         expected_status=200,
                     ),
                 )
@@ -1521,9 +1578,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
             )
 
             if conn_response.status_code == 201:
-                conn_id = (
-                    get_response_data(conn_response) or {}
-                ).get("id")
+                conn_id = (get_response_data(conn_response) or {}).get("id")
 
                 # List existing field mappings (auto-created during sync)
                 self.execute_journey_step(
@@ -1541,7 +1596,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     "direction": "PUSH",
                     "asset_ids": [str(asset_id)],
                 }
-                sync_response = self.execute_journey_step(
+                self.execute_journey_step(
                     "Create Sync Job",
                     lambda: self._call_api_safe(
                         "POST",
@@ -1576,7 +1631,7 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
         )
 
         try:
-            plugin_data = {
+            {
                 "name": f"Custom Plugin {uuid.uuid4().hex[:8]}",
                 "type": "transformation",
                 "description": "Custom transformation plugin",
@@ -1607,7 +1662,9 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if test_response.status_code == 200:
-                    self.execute_journey_step("Test Plugin", lambda: get_response_data(test_response))
+                    self.execute_journey_step(
+                        "Test Plugin", lambda: get_response_data(test_response)
+                    )
                 validate_response = self._call_api_safe(
                     "POST",
                     f"/api/v1/developer/plugins/{plugin_id}/validate/",
@@ -1616,7 +1673,9 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if validate_response.status_code == 200:
-                    self.execute_journey_step("Validate Plugin", lambda: get_response_data(validate_response))
+                    self.execute_journey_step(
+                        "Validate Plugin", lambda: get_response_data(validate_response)
+                    )
                 publish_response = self._call_api_safe(
                     "POST",
                     f"/api/v1/developer/plugins/{plugin_id}/publish/",
@@ -1636,7 +1695,9 @@ class Persona2DataEngineerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if deploy_response.status_code == 200:
-                    self.execute_journey_step("Deploy Plugin", lambda: get_response_data(deploy_response))
+                    self.execute_journey_step(
+                        "Deploy Plugin", lambda: get_response_data(deploy_response)
+                    )
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 100.0)
 
@@ -1768,9 +1829,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
             )
 
             if run_response.status_code == 201:
-                run_id = (
-                    get_response_data(run_response) or {}
-                ).get("id")
+                run_id = (get_response_data(run_response) or {}).get("id")
 
                 # Review compliance results
                 self.execute_journey_step(
@@ -1783,16 +1842,16 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 )
 
             # Create a governance certification
-            from django.utils import timezone as tz
             from datetime import timedelta
+
+            from django.utils import timezone as tz
+
             cert_data = {
                 "user": str(self.user.id),
                 "asset": str(asset_id),
                 "certification_type": "ASSET_LEVEL",
                 "status": "PENDING",
-                "expires_at": (
-                    tz.now() + timedelta(days=365)
-                ).isoformat(),
+                "expires_at": (tz.now() + timedelta(days=365)).isoformat(),
             }
             self.execute_journey_step(
                 "Create Compliance Certification",
@@ -1814,9 +1873,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 ),
             )
 
-            journey.complete(
-                metadata={"asset_id": str(asset_id)}
-            )
+            journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertGreaterEqual(journey.completion_rate, 100.0)
 
         except Exception as e:
@@ -1862,17 +1919,14 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
             )
 
             if policy_response.status_code == 201:
-                policy_id = (
-                    get_response_data(policy_response) or {}
-                ).get("id")
+                policy_id = (get_response_data(policy_response) or {}).get("id")
 
                 # Verify policy details
                 self.execute_journey_step(
                     "Verify Deletion Policy",
                     lambda: self._call_api_safe(
                         "GET",
-                        f"/api/v1/governance/retention-policies/"
-                        f"{policy_id}/",
+                        f"/api/v1/governance/retention-policies/{policy_id}/",
                         expected_status=200,
                     ),
                 )
@@ -1902,9 +1956,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 ),
             )
 
-            journey.complete(
-                metadata={"asset_id": str(asset_id)}
-            )
+            journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertGreaterEqual(journey.completion_rate, 100.0)
 
         except Exception as e:
@@ -1940,7 +1992,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                 "reason": "Consent tracking E2E test",
                 "requested_access_type": "READ",
             }
-            consent_response = self.execute_journey_step(
+            self.execute_journey_step(
                 "Create Consent Record",
                 lambda: self._call_api_safe(
                     "POST",
@@ -1952,7 +2004,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
             )
 
             # Step 2 – List consent/access-request records
-            records_response = self.execute_journey_step(
+            self.execute_journey_step(
                 "View Consent Records",
                 lambda: self._call_api_safe(
                     "GET",
@@ -1963,7 +2015,7 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
             )
 
             # Step 3 – View consent analytics dashboard
-            analytics_response = self.execute_journey_step(
+            self.execute_journey_step(
                 "View Consent Analytics",
                 lambda: self._call_api_safe(
                     "GET",
@@ -2080,7 +2132,9 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
             if classification_response.status_code == 200:
                 self.execute_journey_step(
                     "Review Classifications",
-                    lambda: self._verify_classifications(get_response_data(classification_response)),
+                    lambda: self._verify_classifications(
+                        get_response_data(classification_response)
+                    ),
                 )
 
                 # All subsequent operations may not exist, handle gracefully
@@ -2103,7 +2157,9 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
                 )
                 if rules_response.status_code == 200:
-                    self.execute_journey_step("Update Rules", lambda: get_response_data(rules_response))
+                    self.execute_journey_step(
+                        "Update Rules", lambda: get_response_data(rules_response)
+                    )
                 report_response = self._call_api_safe(
                     "GET",
                     f"/api/v1/ai/classification/{asset_id}/report/",
@@ -2111,7 +2167,9 @@ class Persona3ComplianceOfficerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
                 )
                 if report_response.status_code == 200:
-                    self.execute_journey_step("Generate Report", lambda: get_response_data(report_response))
+                    self.execute_journey_step(
+                        "Generate Report", lambda: get_response_data(report_response)
+                    )
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertGreaterEqual(journey.completion_rate, 100.0)
 
@@ -2159,9 +2217,12 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                     "Review Query Interpretation",
                     lambda: self._verify_interpretation(get_response_data(search_response)),
                 )
-                self.execute_journey_step("Execute Query", lambda: get_response_data(search_response))
                 self.execute_journey_step(
-                    "Review Results", lambda: self._verify_search_results(get_response_data(search_response))
+                    "Execute Query", lambda: get_response_data(search_response)
+                )
+                self.execute_journey_step(
+                    "Review Results",
+                    lambda: self._verify_search_results(get_response_data(search_response)),
                 )
                 refine_response = self.execute_journey_step(
                     "Refine Query",
@@ -2184,7 +2245,9 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                         skip_on_404=False,
                     )
                     if save_response.status_code == 201:
-                        self.execute_journey_step("Save Query", lambda: get_response_data(save_response))
+                        self.execute_journey_step(
+                            "Save Query", lambda: get_response_data(save_response)
+                        )
 
             journey.complete()
             self.assertLess(journey.duration, 30.0)  # < 30 seconds
@@ -2195,7 +2258,9 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
 
     def _verify_interpretation(self, data):
         self.assertTrue(
-            "interpreted_query" in data or "interpretation" in data or "query_interpretation" in data,
+            "interpreted_query" in data
+            or "interpretation" in data
+            or "query_interpretation" in data,
             f"Search interpretation should have interpreted_query/interpretation/query_interpretation, got: {list(data.keys()) if isinstance(data, dict) else type(data)}",
         )
 
@@ -2241,7 +2306,8 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
             )
 
             self.assertIn(
-                pipeline_response.status_code, [201, 400],
+                pipeline_response.status_code,
+                [201, 400],
                 f"Transformation pipeline creation returned unexpected {pipeline_response.status_code}",
             )
 
@@ -2267,7 +2333,9 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                     expected_status=200,
                     skip_on_404=False,
                 )
-                self.execute_journey_step("Preview Results", lambda: get_response_data(preview_response))
+                self.execute_journey_step(
+                    "Preview Results", lambda: get_response_data(preview_response)
+                )
 
                 execute_response = self._call_api_safe(
                     "POST",
@@ -2277,7 +2345,9 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=False,
                 )
                 if execute_response.status_code == 202:
-                    self.execute_journey_step("Execute Pipeline", lambda: get_response_data(execute_response))
+                    self.execute_journey_step(
+                        "Execute Pipeline", lambda: get_response_data(execute_response)
+                    )
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertGreaterEqual(journey.completion_rate, 100.0)
@@ -2295,7 +2365,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
 
         try:
             asset_id = self.execute_journey_step("Navigate to Asset", self._create_activated_asset)
-            rating_response = self.execute_journey_step(
+            self.execute_journey_step(
                 "Rate Asset",
                 lambda: self._call_api_safe(
                     "POST",
@@ -2446,7 +2516,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                         "Build Query",
                         lambda: self._call_api_safe(
                             "POST",
-                            f"/api/v1/virtualization/queries/",
+                            "/api/v1/virtualization/queries/",
                             query_data,
                             expected_status=201,
                         ),
@@ -2503,10 +2573,11 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
 
         try:
             from django.utils import timezone as tz
-            from hub.apps.users.models import User, UserStatus
             from rest_framework.test import APIClient
-            from tests.factories import TenantFactory
+
             from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+            from hub.apps.users.models import User, UserStatus
+            from tests.factories import TenantFactory
 
             # Provider tenant: KYC-verified so it can publish listings
             self.tenant.kyc_status = "VERIFIED"
@@ -2519,7 +2590,11 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                 "Create Listing",
                 lambda: self.client.post(
                     "/api/v1/marketplace/listings/",
-                    {"asset_id": str(asset_id), "title": "Test", "short_description": "Test listing"},
+                    {
+                        "asset_id": str(asset_id),
+                        "title": "Test",
+                        "short_description": "Test listing",
+                    },
                     format="json",
                 ),
             )
@@ -2603,6 +2678,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
         try:
             # KYC verification is required to publish listings
             from django.utils import timezone as tz
+
             self.tenant.kyc_status = "VERIFIED"
             self.tenant.kyc_verified_at = tz.now()
             self.tenant.save(update_fields=["kyc_status", "kyc_verified_at"])
@@ -2614,7 +2690,11 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                 "View Listing",
                 lambda: self.client.post(
                     "/api/v1/marketplace/listings/",
-                    {"asset_id": str(asset_id), "title": "Test", "short_description": "Test listing"},
+                    {
+                        "asset_id": str(asset_id),
+                        "title": "Test",
+                        "short_description": "Test listing",
+                    },
                     format="json",
                 ),
             )
@@ -2651,7 +2731,8 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                         lambda: self._verify_quality_metrics(get_response_data(preview_response)),
                     )
                     self.execute_journey_step(
-                        "Review Schema", lambda: self._verify_schema(get_response_data(preview_response))
+                        "Review Schema",
+                        lambda: self._verify_schema(get_response_data(preview_response)),
                     )
 
             journey.complete(metadata={"asset_id": str(asset_id)})
@@ -2674,7 +2755,11 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
         )
 
     def _verify_schema(self, data):
-        self.assertIn("schema", data, f"Data should have schema field, got: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+        self.assertIn(
+            "schema",
+            data,
+            f"Data should have schema field, got: {list(data.keys()) if isinstance(data, dict) else type(data)}",
+        )
 
     def test_journey_dc_013_use_asset_recommendations(self):
         """JOURNEY-DC-013: Use Asset Recommendations"""
@@ -2732,7 +2817,9 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: ML feedback
                 )
                 if feedback_response.status_code == 201:
-                    self.execute_journey_step("Provide Feedback", lambda: get_response_data(feedback_response))
+                    self.execute_journey_step(
+                        "Provide Feedback", lambda: get_response_data(feedback_response)
+                    )
 
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 100.0)
@@ -2767,7 +2854,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
 
         try:
             # Step 1 – Execute semantic search
-            search_response = self.execute_journey_step(
+            self.execute_journey_step(
                 "Execute Semantic Search",
                 lambda: self._call_api_safe(
                     "GET",
@@ -2778,7 +2865,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
             )
 
             # Step 2 – List semantic resources (ODPS)
-            resources_response = self.execute_journey_step(
+            self.execute_journey_step(
                 "View ODPS Semantic Resources",
                 lambda: self._call_api_safe(
                     "GET",
@@ -2789,7 +2876,7 @@ class Persona4DataConsumerNewJourneys(NewUserJourneyTestBase):
             )
 
             # Step 3 – List contracts (ODPS products) via core API
-            contracts_response = self.execute_journey_step(
+            self.execute_journey_step(
                 "View ODPS Contracts",
                 lambda: self._call_api_safe(
                     "GET",
@@ -2979,16 +3066,16 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
             )
 
             # Step 2 -- Create a certification record
-            from django.utils import timezone as tz
             from datetime import timedelta
+
+            from django.utils import timezone as tz
+
             cert_payload = {
                 "user": str(self.user.id),
                 "asset": str(asset_id),
                 "certification_type": "ASSET_LEVEL",
                 "status": "PENDING",
-                "expires_at": (
-                    tz.now() + timedelta(days=365)
-                ).isoformat(),
+                "expires_at": (tz.now() + timedelta(days=365)).isoformat(),
             }
             self.execute_journey_step(
                 "Create Certification",
@@ -3032,7 +3119,9 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: analytics
             )
             if dashboard_response.status_code == 200:
-                self.execute_journey_step("View Cost Dashboard", lambda: get_response_data(dashboard_response))
+                self.execute_journey_step(
+                    "View Cost Dashboard", lambda: get_response_data(dashboard_response)
+                )
             breakdown_response = self._call_api_safe(
                 "GET",
                 "/api/v1/analytics/costs/breakdown/",
@@ -3040,7 +3129,9 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: analytics
             )
             if breakdown_response.status_code == 200:
-                self.execute_journey_step("View Cost Breakdown", lambda: get_response_data(breakdown_response))
+                self.execute_journey_step(
+                    "View Cost Breakdown", lambda: get_response_data(breakdown_response)
+                )
             by_asset_response = self._call_api_safe(
                 "GET",
                 "/api/v1/analytics/costs/by-asset/",
@@ -3048,7 +3139,9 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: analytics
             )
             if by_asset_response.status_code == 200:
-                self.execute_journey_step("Analyze Costs by Asset", lambda: get_response_data(by_asset_response))
+                self.execute_journey_step(
+                    "Analyze Costs by Asset", lambda: get_response_data(by_asset_response)
+                )
             recommendations_response = self._call_api_safe(
                 "GET",
                 "/api/v1/analytics/costs/recommendations/",
@@ -3057,7 +3150,8 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
             )
             if recommendations_response.status_code == 200:
                 self.execute_journey_step(
-                    "Review Optimization Recommendations", lambda: get_response_data(recommendations_response)
+                    "Review Optimization Recommendations",
+                    lambda: get_response_data(recommendations_response),
                 )
             trends_response = self._call_api_safe(
                 "GET",
@@ -3066,7 +3160,9 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: analytics
             )
             if trends_response.status_code == 200:
-                self.execute_journey_step("Monitor Cost Trends", lambda: get_response_data(trends_response))
+                self.execute_journey_step(
+                    "Monitor Cost Trends", lambda: get_response_data(trends_response)
+                )
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 100.0)
         except Exception as e:
@@ -3091,7 +3187,7 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
         )
         try:
             # Step 1: Browse available connector types
-            connectors_response = self.execute_journey_step(
+            self.execute_journey_step(
                 "Browse Available Connectors",
                 lambda: self._call_api_safe(
                     "GET",
@@ -3126,7 +3222,7 @@ class Persona5TenantAdminNewJourneys(NewUserJourneyTestBase):
                 connection_id = (get_response_data(create_response) or {}).get("id")
 
                 # Step 3: Test the connection
-                test_response = self.execute_journey_step(
+                self.execute_journey_step(
                     "Test Connection",
                     lambda: self._call_api_safe(
                         "POST",
@@ -3258,16 +3354,24 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if pricing_response.status_code == 200:
-                self.execute_journey_step("Configure Pricing Models", lambda: get_response_data(pricing_response))
+                self.execute_journey_step(
+                    "Configure Pricing Models", lambda: get_response_data(pricing_response)
+                )
             trust_response = self._call_api_safe(
                 "POST",
                 "/api/v1/marketplace/config/trust-signals/",
-                {"name": "journey_default", "kind": "badge", "config": {"description": "E2E default"}},
+                {
+                    "name": "journey_default",
+                    "kind": "badge",
+                    "config": {"description": "E2E default"},
+                },
                 expected_status=201,
                 skip_on_404=False,
             )
             if trust_response.status_code in (200, 201):
-                self.execute_journey_step("Configure Trust Signals", lambda: get_response_data(trust_response))
+                self.execute_journey_step(
+                    "Configure Trust Signals", lambda: get_response_data(trust_response)
+                )
             recommendations_response = self._call_api_safe(
                 "POST",
                 "/api/v1/marketplace/config/recommendations/",
@@ -3425,7 +3529,9 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if approve_response.status_code == 200:
-                self.execute_journey_step("Approve Plugin", lambda: get_response_data(approve_response))
+                self.execute_journey_step(
+                    "Approve Plugin", lambda: get_response_data(approve_response)
+                )
             usage_response = self._call_api_safe(
                 "GET",
                 "/api/v1/developer/plugins/marketplace/usage/",
@@ -3433,7 +3539,9 @@ class Persona6PlatformAdminNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: plugins
             )
             if usage_response.status_code == 200:
-                self.execute_journey_step("Monitor Plugin Usage", lambda: get_response_data(usage_response))
+                self.execute_journey_step(
+                    "Monitor Plugin Usage", lambda: get_response_data(usage_response)
+                )
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 100.0)
         except Exception as e:
@@ -3502,7 +3610,11 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
                 "Call Pipeline Creation API", lambda: get_response_data(create_response)
             )
 
-            pipeline_id = (get_response_data(create_response) or {}).get("id") if create_response.status_code == 201 else None
+            pipeline_id = (
+                (get_response_data(create_response) or {}).get("id")
+                if create_response.status_code == 201
+                else None
+            )
 
             if pipeline_id:
                 execute_response = self._call_api_safe(
@@ -3603,7 +3715,9 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
             )
             plugin_id = None
             if browse_response.status_code == 200:
-                self.execute_journey_step("Browse Plugins", lambda: get_response_data(browse_response))
+                self.execute_journey_step(
+                    "Browse Plugins", lambda: get_response_data(browse_response)
+                )
                 browse_data = get_response_data(browse_response) or {}
                 results = browse_data.get("results", browse_data)
                 if isinstance(results, list) and results:
@@ -3621,7 +3735,9 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: plugins
             )
             if install_response.status_code == 200:
-                self.execute_journey_step("Install Plugin", lambda: get_response_data(install_response))
+                self.execute_journey_step(
+                    "Install Plugin", lambda: get_response_data(install_response)
+                )
             if plugin_id:
                 execute_response = self._call_api_safe(
                     "POST",
@@ -3631,7 +3747,9 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
                     skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: plugins
                 )
                 if execute_response.status_code == 200:
-                    self.execute_journey_step("Use Plugin API", lambda: get_response_data(execute_response))
+                    self.execute_journey_step(
+                        "Use Plugin API", lambda: get_response_data(execute_response)
+                    )
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 100.0)
         except Exception as e:
@@ -3654,7 +3772,9 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: developer portal
             )
             if portal_response.status_code == 200:
-                self.execute_journey_step("Access Developer Portal", lambda: get_response_data(portal_response))
+                self.execute_journey_step(
+                    "Access Developer Portal", lambda: get_response_data(portal_response)
+                )
             docs_response = self._call_api_safe(
                 "GET",
                 "/api/v1/developer/documentation/",
@@ -3662,7 +3782,9 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: developer portal
             )
             if docs_response.status_code == 200:
-                self.execute_journey_step("View API Documentation", lambda: get_response_data(docs_response))
+                self.execute_journey_step(
+                    "View API Documentation", lambda: get_response_data(docs_response)
+                )
             key_response = self._call_api_safe(
                 "POST",
                 "/api/v1/developer/api-keys/",
@@ -3671,7 +3793,9 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: developer portal
             )
             if key_response.status_code == 201:
-                self.execute_journey_step("Generate API Key", lambda: get_response_data(key_response))
+                self.execute_journey_step(
+                    "Generate API Key", lambda: get_response_data(key_response)
+                )
             usage_response = self._call_api_safe(
                 "GET",
                 "/api/v1/developer/api-usage/",
@@ -3679,7 +3803,9 @@ class Persona7ExternalDeveloperNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: developer portal
             )
             if usage_response.status_code == 200:
-                self.execute_journey_step("Monitor API Usage", lambda: get_response_data(usage_response))
+                self.execute_journey_step(
+                    "Monitor API Usage", lambda: get_response_data(usage_response)
+                )
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 100.0)
         except Exception as e:
@@ -3749,7 +3875,9 @@ class Persona8AuditorNewJourneys(NewUserJourneyTestBase):
                 expected_status=200,
                 skip_on_404=False,
             )
-            self.execute_journey_step("View All Pipelines", lambda: get_response_data(pipelines_response))
+            self.execute_journey_step(
+                "View All Pipelines", lambda: get_response_data(pipelines_response)
+            )
 
             executions_response = self._call_api_safe(
                 "GET",
@@ -3770,7 +3898,9 @@ class Persona8AuditorNewJourneys(NewUserJourneyTestBase):
                 expected_status=200,
                 skip_on_404=False,
             )
-            self.execute_journey_step("Generate Audit Report", lambda: get_response_data(audit_response))
+            self.execute_journey_step(
+                "Generate Audit Report", lambda: get_response_data(audit_response)
+            )
 
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 100.0)
@@ -3792,7 +3922,9 @@ class Persona8AuditorNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
             )
             if ratings_response.status_code == 200:
-                self.execute_journey_step("View Ratings Activity", lambda: get_response_data(ratings_response))
+                self.execute_journey_step(
+                    "View Ratings Activity", lambda: get_response_data(ratings_response)
+                )
             reviews_response = self._call_api_safe(
                 "GET",
                 "/api/v1/social/reviews/audit/",
@@ -3800,7 +3932,9 @@ class Persona8AuditorNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
             )
             if reviews_response.status_code == 200:
-                self.execute_journey_step("View Reviews Activity", lambda: get_response_data(reviews_response))
+                self.execute_journey_step(
+                    "View Reviews Activity", lambda: get_response_data(reviews_response)
+                )
             community_response = self._call_api_safe(
                 "GET",
                 "/api/v1/social/communities/audit/",
@@ -3818,7 +3952,9 @@ class Persona8AuditorNewJourneys(NewUserJourneyTestBase):
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
             )
             if reports_response.status_code == 200:
-                self.execute_journey_step("Generate Activity Report", lambda: get_response_data(reports_response))
+                self.execute_journey_step(
+                    "Generate Activity Report", lambda: get_response_data(reports_response)
+                )
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 100.0)
         except Exception as e:
@@ -3914,7 +4050,9 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if deploy_response.status_code == 200:
-                self.execute_journey_step("Deploy Model", lambda: get_response_data(deploy_response))
+                self.execute_journey_step(
+                    "Deploy Model", lambda: get_response_data(deploy_response)
+                )
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 100.0)
         except Exception as e:
@@ -3937,7 +4075,9 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: AI
             )
             if model_response.status_code == 200:
-                self.execute_journey_step("View Current Model", lambda: get_response_data(model_response))
+                self.execute_journey_step(
+                    "View Current Model", lambda: get_response_data(model_response)
+                )
             tune_response = self._call_api_safe(
                 "POST",
                 "/api/v1/ai/recommendations/tune/",
@@ -3946,7 +4086,9 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if tune_response.status_code == 200:
-                self.execute_journey_step("Tune Parameters", lambda: get_response_data(tune_response))
+                self.execute_journey_step(
+                    "Tune Parameters", lambda: get_response_data(tune_response)
+                )
             test_response = self._call_api_safe(
                 "POST",
                 "/api/v1/ai/recommendations/test/",
@@ -3955,7 +4097,9 @@ class Persona9DataScientistJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if test_response.status_code == 200:
-                self.execute_journey_step("Test Tuned Model", lambda: get_response_data(test_response))
+                self.execute_journey_step(
+                    "Test Tuned Model", lambda: get_response_data(test_response)
+                )
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 100.0)
         except Exception as e:
@@ -4025,11 +4169,14 @@ class Persona10DataAnalystJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             self.assertIn(
-                pipeline_response.status_code, [201, 400],
+                pipeline_response.status_code,
+                [201, 400],
                 f"Transformation pipeline creation returned unexpected {pipeline_response.status_code}",
             )
             if pipeline_response.status_code == 201:
-                self.execute_journey_step("Create Pipeline", lambda: get_response_data(pipeline_response))
+                self.execute_journey_step(
+                    "Create Pipeline", lambda: get_response_data(pipeline_response)
+                )
 
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertGreaterEqual(journey.completion_rate, 100.0)
@@ -4153,7 +4300,9 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
                     skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
                 )
                 if members_response.status_code == 200:
-                    self.execute_journey_step("Manage Members", lambda: get_response_data(members_response))
+                    self.execute_journey_step(
+                        "Manage Members", lambda: get_response_data(members_response)
+                    )
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 100.0)
         except Exception as e:
@@ -4177,7 +4326,9 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
             )
             review_id = None
             if pending_response.status_code == 200:
-                self.execute_journey_step("View Pending Reviews", lambda: get_response_data(pending_response))
+                self.execute_journey_step(
+                    "View Pending Reviews", lambda: get_response_data(pending_response)
+                )
                 pending_data = get_response_data(pending_response) or {}
                 results = pending_data.get("results", [])
                 if results:
@@ -4192,7 +4343,9 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
                     skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
                 )
                 if approve_response.status_code == 200:
-                    self.execute_journey_step("Approve Review", lambda: get_response_data(approve_response))
+                    self.execute_journey_step(
+                        "Approve Review", lambda: get_response_data(approve_response)
+                    )
             else:
                 audit_response = self._call_api_safe(
                     "GET",
@@ -4201,7 +4354,9 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
                     skip_on_404=SKIP_ON_404_OPTIONAL,
                 )
                 if audit_response.status_code == 200:
-                    self.execute_journey_step("View Reviews Audit", lambda: get_response_data(audit_response))
+                    self.execute_journey_step(
+                        "View Reviews Audit", lambda: get_response_data(audit_response)
+                    )
                     audit_data = get_response_data(audit_response) or {}
                     results = audit_data.get("results", [])
                     if results:
@@ -4215,7 +4370,9 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
                         skip_on_404=SKIP_ON_404_OPTIONAL,
                     )
                     if approve_response.status_code == 200:
-                        self.execute_journey_step("Approve Review", lambda: get_response_data(approve_response))
+                        self.execute_journey_step(
+                            "Approve Review", lambda: get_response_data(approve_response)
+                        )
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 100.0)
         except Exception as e:
@@ -4235,9 +4392,7 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
             persona="Community Manager",
         )
         try:
-            asset_id = self.execute_journey_step(
-                "Select Asset", self._create_activated_asset
-            )
+            asset_id = self.execute_journey_step("Select Asset", self._create_activated_asset)
 
             access_data = {
                 "asset_id": str(asset_id),
@@ -4255,26 +4410,19 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
             )
 
             if req_response.status_code == 201:
-                req_id = (
-                    get_response_data(req_response) or {}
-                ).get("id")
+                req_id = (get_response_data(req_response) or {}).get("id")
                 self.execute_journey_step(
                     "Approve Steward Access",
                     lambda: self._call_api_safe(
                         "POST",
-                        f"/api/v1/governance/access-requests/"
-                        f"{req_id}/approve/",
+                        f"/api/v1/governance/access-requests/{req_id}/approve/",
                         {},
                         expected_status=200,
                     ),
                 )
 
-            journey.complete(
-                metadata={"asset_id": str(asset_id)}
-            )
-            self.assertGreaterEqual(
-                journey.completion_rate, 100.0
-            )
+            journey.complete(metadata={"asset_id": str(asset_id)})
+            self.assertGreaterEqual(journey.completion_rate, 100.0)
         except Exception as e:
             journey.fail(e)
             raise
@@ -4294,7 +4442,9 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
             )
             activity_id = None
             if feeds_response.status_code == 200:
-                self.execute_journey_step("View Activity Feeds", lambda: get_response_data(feeds_response))
+                self.execute_journey_step(
+                    "View Activity Feeds", lambda: get_response_data(feeds_response)
+                )
                 feeds_data = get_response_data(feeds_response) or {}
                 results = feeds_data.get("results", [])
                 if results:
@@ -4307,7 +4457,9 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
                 skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
             )
             if filter_response.status_code == 200:
-                self.execute_journey_step("Filter Activities", lambda: get_response_data(filter_response))
+                self.execute_journey_step(
+                    "Filter Activities", lambda: get_response_data(filter_response)
+                )
                 if not activity_id:
                     filter_data = get_response_data(filter_response) or {}
                     results = filter_data.get("results", [])
@@ -4322,7 +4474,9 @@ class Persona11CommunityManagerJourneys(NewUserJourneyTestBase):
                     skip_on_404=SKIP_ON_404_OPTIONAL,  # Optional: social
                 )
                 if moderate_response.status_code == 200:
-                    self.execute_journey_step("Moderate Activities", lambda: get_response_data(moderate_response))
+                    self.execute_journey_step(
+                        "Moderate Activities", lambda: get_response_data(moderate_response)
+                    )
             journey.complete()
             self.assertGreaterEqual(journey.completion_rate, 100.0)
         except Exception as e:
@@ -4376,7 +4530,7 @@ class Persona12DataMeshDomainOwnerJourneys(NewUserJourneyTestBase):
                 ),
             )
             if domain_response.status_code == 201:
-                domain_id = (get_response_data(domain_response) or {}).get("id")
+                (get_response_data(domain_response) or {}).get("id")
                 self.execute_journey_step(
                     "Configure Governance",
                     lambda: self._call_api_safe(
@@ -4443,7 +4597,9 @@ class Persona12DataMeshDomainOwnerJourneys(NewUserJourneyTestBase):
                 skip_on_404=False,
             )
             if transfer_response.status_code == 200:
-                self.execute_journey_step("Transfer Ownership", lambda: get_response_data(transfer_response))
+                self.execute_journey_step(
+                    "Transfer Ownership", lambda: get_response_data(transfer_response)
+                )
             journey.complete(metadata={"asset_id": str(asset_id)})
             self.assertGreaterEqual(journey.completion_rate, 100.0)
         except Exception as e:
@@ -4495,10 +4651,14 @@ class CPOJourneyFailureEdgeTests(NewUserJourneyTestBase):
     """Failure/edge tests for Compliance Officer journeys CPO-006..010"""
 
     def test_journey_cpo_006_failure_invalid_input(self):
-        response = self._call_api_safe("POST", "/api/v1/compliance/runs/", {}, expected_status=400, skip_on_404=False)
+        response = self._call_api_safe(
+            "POST", "/api/v1/compliance/runs/", {}, expected_status=400, skip_on_404=False
+        )
         self.assertIn(response.status_code, [400, 422])
         error_data = get_response_data(response)
-        self.assertTrue(error_data, "Expected error body for 400 response on /api/v1/compliance/runs/")
+        self.assertTrue(
+            error_data, "Expected error body for 400 response on /api/v1/compliance/runs/"
+        )
 
     def test_journey_cpo_006_failure_unauthenticated(self):
         self.client.logout()
@@ -4506,18 +4666,24 @@ class CPOJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_cpo_006_edge_nonexistent(self):
-        response = self._call_api_safe("GET", f"/api/v1/compliance/runs/{uuid.uuid4()}/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", f"/api/v1/compliance/runs/{uuid.uuid4()}/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 404)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
 
     def test_journey_cpo_007_failure_unauthenticated(self):
         self.client.logout()
-        response = self.client.post("/api/v1/users/me/erasure-requests/request-erasure/", {}, format="json")
+        response = self.client.post(
+            "/api/v1/users/me/erasure-requests/request-erasure/", {}, format="json"
+        )
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_cpo_007_edge_list_empty(self):
-        response = self._call_api_safe("GET", "/api/v1/users/me/erasure-requests/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", "/api/v1/users/me/erasure-requests/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 200)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4528,16 +4694,27 @@ class CPOJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_cpo_008_edge_empty_list(self):
-        response = self._call_api_safe("GET", "/api/v1/governance/access-requests/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", "/api/v1/governance/access-requests/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 200)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
 
     def test_journey_cpo_009_failure_invalid_input(self):
-        response = self._call_api_safe("POST", "/api/v1/governance/retention-policies/", {}, expected_status=400, skip_on_404=False)
+        response = self._call_api_safe(
+            "POST",
+            "/api/v1/governance/retention-policies/",
+            {},
+            expected_status=400,
+            skip_on_404=False,
+        )
         self.assertIn(response.status_code, [400, 422])
         error_data = get_response_data(response)
-        self.assertTrue(error_data, "Expected error body for 400 response on /api/v1/governance/retention-policies/")
+        self.assertTrue(
+            error_data,
+            "Expected error body for 400 response on /api/v1/governance/retention-policies/",
+        )
 
     def test_journey_cpo_009_failure_unauthenticated(self):
         self.client.logout()
@@ -4545,7 +4722,9 @@ class CPOJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_cpo_009_edge_nonexistent(self):
-        response = self._call_api_safe("GET", f"/api/v1/governance/retention-policies/{uuid.uuid4()}/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", f"/api/v1/governance/retention-policies/{uuid.uuid4()}/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 404)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4583,7 +4762,9 @@ class TAJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_ta_008_edge_empty_connectors(self):
-        response = self._call_api_safe("GET", "/api/v1/integrations/marketplace/connectors/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", "/api/v1/integrations/marketplace/connectors/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 200)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4598,7 +4779,9 @@ class MPAJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_mpa_005_edge_empty(self):
-        response = self._call_api_safe("GET", "/api/v1/integrations/marketplace/connectors/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", "/api/v1/integrations/marketplace/connectors/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 200)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4609,7 +4792,9 @@ class MPAJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_mpa_006_edge_empty(self):
-        response = self._call_api_safe("GET", "/api/v1/marketplace/config/trust-signals/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", "/api/v1/marketplace/config/trust-signals/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 200)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4659,7 +4844,9 @@ class DPOJourneyFailureEdgeTests(NewUserJourneyTestBase):
 
     def test_journey_dpo_007_edge_empty_result(self):
         # AI schema-matching: 200 (empty result) or 400 (invalid input)
-        response = self._call_api_safe("POST", "/api/v1/ai/schema-matching/", {"source": {}, "target": {}}, skip_on_404=True)
+        response = self._call_api_safe(
+            "POST", "/api/v1/ai/schema-matching/", {"source": {}, "target": {}}, skip_on_404=True
+        )
         self.assertIn(response.status_code, [200, 400])
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4671,9 +4858,7 @@ class DPOJourneyFailureEdgeTests(NewUserJourneyTestBase):
 
     def test_journey_dpo_009_edge_empty(self):
         # RatingViewSet requires query params; bare GET returns 400
-        response = self._call_api_safe(
-            "GET", "/api/v1/social/ratings/", skip_on_404=False
-        )
+        response = self._call_api_safe("GET", "/api/v1/social/ratings/", skip_on_404=False)
         self.assertIn(response.status_code, [200, 400])
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4684,7 +4869,9 @@ class DPOJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_dpo_010_edge_nonexistent(self):
-        response = self._call_api_safe("GET", f"/api/v1/marketplace/listings/{uuid.uuid4()}/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", f"/api/v1/marketplace/listings/{uuid.uuid4()}/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 404)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4717,7 +4904,9 @@ class DPOJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_dpo_013_edge_nonexistent(self):
-        response = self._call_api_safe("GET", f"/api/v1/mesh/domains/{uuid.uuid4()}/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", f"/api/v1/mesh/domains/{uuid.uuid4()}/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 404)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4728,7 +4917,9 @@ class DPOJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_dpo_014_edge_nonexistent(self):
-        response = self._call_api_safe("GET", f"/api/v1/assets/{uuid.uuid4()}/health-score/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", f"/api/v1/assets/{uuid.uuid4()}/health-score/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 404)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4744,7 +4935,9 @@ class DCJourneyFailureEdgeTests(NewUserJourneyTestBase):
 
     def test_journey_dc_006_edge_empty_query(self):
         # AI natural-language-search: 200 (empty results) or 400 (empty query rejected)
-        response = self._call_api_safe("POST", "/api/v1/ai/natural-language-search/", {"query": ""}, skip_on_404=True)
+        response = self._call_api_safe(
+            "POST", "/api/v1/ai/natural-language-search/", {"query": ""}, skip_on_404=True
+        )
         self.assertIn(response.status_code, [200, 400])
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4756,9 +4949,7 @@ class DCJourneyFailureEdgeTests(NewUserJourneyTestBase):
 
     def test_journey_dc_008_edge_empty(self):
         # ReviewViewSet requires query params; bare GET returns 400
-        response = self._call_api_safe(
-            "GET", "/api/v1/social/reviews/", skip_on_404=False
-        )
+        response = self._call_api_safe("GET", "/api/v1/social/reviews/", skip_on_404=False)
         self.assertIn(response.status_code, [200, 400])
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4769,7 +4960,9 @@ class DCJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_dc_009_edge_nonexistent(self):
-        response = self._call_api_safe("GET", f"/api/v1/social/communities/{uuid.uuid4()}/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", f"/api/v1/social/communities/{uuid.uuid4()}/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 404)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4802,7 +4995,9 @@ class DCJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_dc_012_edge_nonexistent(self):
-        response = self._call_api_safe("GET", f"/api/v1/marketplace/listings/{uuid.uuid4()}/preview/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", f"/api/v1/marketplace/listings/{uuid.uuid4()}/preview/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 404)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4836,7 +5031,9 @@ class DCJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_dc_015_edge_empty(self):
-        response = self._call_api_safe("GET", "/api/v1/marketplace/entitlements/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", "/api/v1/marketplace/entitlements/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 200)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4852,7 +5049,9 @@ class DEJourneyFailureEdgeTests(NewUserJourneyTestBase):
 
     def test_journey_de_008_edge_empty(self):
         # AI schema-matching: 200 (empty result) or 400 (invalid input)
-        response = self._call_api_safe("POST", "/api/v1/ai/schema-matching/", {"source": {}, "target": {}}, skip_on_404=True)
+        response = self._call_api_safe(
+            "POST", "/api/v1/ai/schema-matching/", {"source": {}, "target": {}}, skip_on_404=True
+        )
         self.assertIn(response.status_code, [200, 400])
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4874,7 +5073,9 @@ class DEJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_de_010_edge_empty(self):
-        response = self._call_api_safe("GET", "/api/v1/integrations/marketplace/connectors/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", "/api/v1/integrations/marketplace/connectors/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 200)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4885,7 +5086,9 @@ class DEJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_de_011_edge_empty(self):
-        response = self._call_api_safe("GET", "/api/v1/integrations/marketplace/sync/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", "/api/v1/integrations/marketplace/sync/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 200)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4909,7 +5112,9 @@ class DEJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_de_013_edge_nonexistent(self):
-        response = self._call_api_safe("GET", f"/api/v1/mesh/domains/{uuid.uuid4()}/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", f"/api/v1/mesh/domains/{uuid.uuid4()}/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 404)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4925,7 +5130,12 @@ class DSJourneyFailureEdgeTests(NewUserJourneyTestBase):
 
     def test_journey_ds_001_edge_empty(self):
         # AI natural-language-search: 200 (empty results) expected for valid query
-        response = self._call_api_safe("POST", "/api/v1/ai/natural-language-search/", {"query": "nonexistent xyz"}, skip_on_404=True)
+        response = self._call_api_safe(
+            "POST",
+            "/api/v1/ai/natural-language-search/",
+            {"query": "nonexistent xyz"},
+            skip_on_404=True,
+        )
         self.assertIn(response.status_code, [200, 400])
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4937,7 +5147,9 @@ class DSJourneyFailureEdgeTests(NewUserJourneyTestBase):
 
     def test_journey_ds_002_edge_empty(self):
         # AI schema-matching: 200 (empty result) or 400 (invalid input)
-        response = self._call_api_safe("POST", "/api/v1/ai/schema-matching/", {"source": {}, "target": {}}, skip_on_404=True)
+        response = self._call_api_safe(
+            "POST", "/api/v1/ai/schema-matching/", {"source": {}, "target": {}}, skip_on_404=True
+        )
         self.assertIn(response.status_code, [200, 400])
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -4983,7 +5195,9 @@ class DMOJourneyFailureEdgeTests(NewUserJourneyTestBase):
     """Failure/edge tests for Data Mesh Domain Owner journeys DMO-001..005"""
 
     def test_journey_dmo_001_failure_invalid(self):
-        response = self._call_api_safe("POST", "/api/v1/mesh/domains/", {}, expected_status=400, skip_on_404=False)
+        response = self._call_api_safe(
+            "POST", "/api/v1/mesh/domains/", {}, expected_status=400, skip_on_404=False
+        )
         self.assertIn(response.status_code, [400, 422])
         error_data = get_response_data(response)
         self.assertTrue(error_data, "Expected error body for 400 response on /api/v1/mesh/domains/")
@@ -5032,7 +5246,9 @@ class DMOJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_dmo_005_edge_nonexistent(self):
-        response = self._call_api_safe("GET", f"/api/v1/mesh/domains/{uuid.uuid4()}/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", f"/api/v1/mesh/domains/{uuid.uuid4()}/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 404)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -5097,7 +5313,9 @@ class DAJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_da_002_edge_empty(self):
-        response = self._call_api_safe("GET", "/api/v1/transformation/wrangling/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", "/api/v1/transformation/wrangling/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 200)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -5135,7 +5353,9 @@ class DEVJourneyFailureEdgeTests(NewUserJourneyTestBase):
 
     def test_journey_dev_005_edge_empty(self):
         # AI natural-language-search: 200 (empty results) or 400 (empty query rejected)
-        response = self._call_api_safe("POST", "/api/v1/ai/natural-language-search/", {"query": ""}, skip_on_404=True)
+        response = self._call_api_safe(
+            "POST", "/api/v1/ai/natural-language-search/", {"query": ""}, skip_on_404=True
+        )
         self.assertIn(response.status_code, [200, 400])
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")
@@ -5146,7 +5366,9 @@ class DEVJourneyFailureEdgeTests(NewUserJourneyTestBase):
         self.assertIn(response.status_code, [401, 403])
 
     def test_journey_dev_007_edge_empty(self):
-        response = self._call_api_safe("GET", "/api/v1/integrations/marketplace/connectors/", skip_on_404=False)
+        response = self._call_api_safe(
+            "GET", "/api/v1/integrations/marketplace/connectors/", skip_on_404=False
+        )
         self.assertEqual(response.status_code, 200)
         response_data = get_response_data(response)
         self.assertIsNotNone(response_data, "Edge case response should have a body")

@@ -8,6 +8,7 @@ Pins:
 * The audit-action constant ``LINEAGE_VIEWED_CROSS_REGION_CONSENTED``
   is in the registry tuple.
 """
+
 from __future__ import annotations
 
 
@@ -84,19 +85,21 @@ class TestResidencyPolicy:
 
 
 class TestConsentFromRequest:
-
     def _build(self, *, header=None, query=None):
         class _R:
             META = {}
             query_params = None
             GET = None
+
         r = _R()
         if header is not None:
             r.META = {"HTTP_X_LINEAGE_CROSS_REGION_CONSENT": header}
         if query is not None:
+
             class _Q(dict):
                 def get(self, k, d=None):
                     return super().get(k, d)
+
             q = _Q()
             q["cross_region_consent"] = query
             r.query_params = q
@@ -104,26 +107,29 @@ class TestConsentFromRequest:
 
     def test_header_true_yields_consent(self):
         from hub.apps.contracts.lineage_residency import consent_from_request
+
         assert consent_from_request(self._build(header="true")) is True
         assert consent_from_request(self._build(header="1")) is True
         assert consent_from_request(self._build(header="yes")) is True
 
     def test_header_false_yields_no_consent(self):
         from hub.apps.contracts.lineage_residency import consent_from_request
+
         assert consent_from_request(self._build(header="false")) is False
         assert consent_from_request(self._build(header="")) is False
 
     def test_query_fallback(self):
         from hub.apps.contracts.lineage_residency import consent_from_request
+
         assert consent_from_request(self._build(query="true")) is True
         assert consent_from_request(self._build(query="false")) is False
 
 
 class TestAuditConstantRegistered:
-
     def test_constant_in_audit_actions_tuple(self):
         from hub.apps.audit.models import (
             LINEAGE_AUDIT_ACTIONS,
             LINEAGE_VIEWED_CROSS_REGION_CONSENTED,
         )
+
         assert LINEAGE_VIEWED_CROSS_REGION_CONSENTED in LINEAGE_AUDIT_ACTIONS

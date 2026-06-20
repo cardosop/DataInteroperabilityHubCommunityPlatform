@@ -9,12 +9,10 @@ Generates comprehensive test execution reports including:
 - Security test reports
 - Coverage analysis by module and feature
 """
-import json
-import sys
-import xml.etree.ElementTree as ET
+
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class TestReportGenerator:
@@ -25,7 +23,7 @@ class TestReportGenerator:
         self.report_dir.mkdir(parents=True, exist_ok=True)
 
     def generate_execution_report(
-        self, results: Dict[str, Any], output_file: Optional[Path] = None
+        self, results: dict[str, Any], output_file: Path | None = None
     ) -> Path:
         """Generate comprehensive test execution report."""
         if output_file is None:
@@ -79,7 +77,7 @@ class TestReportGenerator:
         return output_file
 
     def generate_coverage_report(
-        self, coverage_data: Dict[str, Any], output_file: Optional[Path] = None
+        self, coverage_data: dict[str, Any], output_file: Path | None = None
     ) -> Path:
         """Generate test coverage report."""
         if output_file is None:
@@ -131,7 +129,7 @@ class TestReportGenerator:
         return output_file
 
     def generate_performance_report(
-        self, performance_data: Dict[str, Any], output_file: Optional[Path] = None
+        self, performance_data: dict[str, Any], output_file: Path | None = None
     ) -> Path:
         """Generate performance test report."""
         if output_file is None:
@@ -174,7 +172,7 @@ class TestReportGenerator:
         return output_file
 
     def generate_security_report(
-        self, security_data: Dict[str, Any], output_file: Optional[Path] = None
+        self, security_data: dict[str, Any], output_file: Path | None = None
     ) -> Path:
         """Generate security test report."""
         if output_file is None:
@@ -217,11 +215,11 @@ class TestReportGenerator:
 
     def generate_comprehensive_report(
         self,
-        execution_results: Dict[str, Any],
-        coverage_data: Optional[Dict[str, Any]] = None,
-        performance_data: Optional[Dict[str, Any]] = None,
-        security_data: Optional[Dict[str, Any]] = None,
-        output_file: Optional[Path] = None,
+        execution_results: dict[str, Any],
+        coverage_data: dict[str, Any] | None = None,
+        performance_data: dict[str, Any] | None = None,
+        security_data: dict[str, Any] | None = None,
+        output_file: Path | None = None,
     ) -> Path:
         """Generate comprehensive report combining all test reports."""
         if output_file is None:
@@ -238,7 +236,7 @@ class TestReportGenerator:
             f.write("1. TEST EXECUTION SUMMARY\n")
             f.write("=" * 80 + "\n")
             exec_report = self.generate_execution_report(execution_results)
-            with open(exec_report, "r") as exec_f:
+            with open(exec_report) as exec_f:
                 f.write(exec_f.read())
             f.write("\n\n")
 
@@ -247,7 +245,7 @@ class TestReportGenerator:
                 f.write("2. TEST COVERAGE REPORT\n")
                 f.write("=" * 80 + "\n")
                 cov_report = self.generate_coverage_report(coverage_data)
-                with open(cov_report, "r") as cov_f:
+                with open(cov_report) as cov_f:
                     f.write(cov_f.read())
                 f.write("\n\n")
 
@@ -256,7 +254,7 @@ class TestReportGenerator:
                 f.write("3. PERFORMANCE TEST REPORT\n")
                 f.write("=" * 80 + "\n")
                 perf_report = self.generate_performance_report(performance_data)
-                with open(perf_report, "r") as perf_f:
+                with open(perf_report) as perf_f:
                     f.write(perf_f.read())
                 f.write("\n\n")
 
@@ -265,7 +263,7 @@ class TestReportGenerator:
                 f.write("4. SECURITY TEST REPORT\n")
                 f.write("=" * 80 + "\n")
                 sec_report = self.generate_security_report(security_data)
-                with open(sec_report, "r") as sec_f:
+                with open(sec_report) as sec_f:
                     f.write(sec_f.read())
                 f.write("\n\n")
 
@@ -284,7 +282,7 @@ class CoverageAnalyzer:
         self.report_dir.mkdir(parents=True, exist_ok=True)
 
     def analyze_coverage_by_module(
-        self, coverage_data: Dict[str, Any], output_file: Optional[Path] = None
+        self, coverage_data: dict[str, Any], output_file: Path | None = None
     ) -> Path:
         """Analyze test coverage by module."""
         if output_file is None:
@@ -368,9 +366,9 @@ class CoverageAnalyzer:
 
     def analyze_coverage_by_feature(
         self,
-        coverage_data: Dict[str, Any],
-        feature_mapping: Optional[Dict[str, List[str]]] = None,
-        output_file: Optional[Path] = None,
+        coverage_data: dict[str, Any],
+        feature_mapping: dict[str, list[str]] | None = None,
+        output_file: Path | None = None,
     ) -> Path:
         """Analyze test coverage by feature."""
         if output_file is None:
@@ -461,9 +459,9 @@ class CoverageAnalyzer:
 
     def identify_coverage_gaps(
         self,
-        coverage_data: Dict[str, Any],
+        coverage_data: dict[str, Any],
         min_coverage_threshold: float = 80.0,
-        output_file: Optional[Path] = None,
+        output_file: Path | None = None,
     ) -> Path:
         """Identify coverage gaps."""
         if output_file is None:
@@ -514,7 +512,7 @@ class CoverageAnalyzer:
         return output_file
 
     def generate_coverage_recommendations(
-        self, coverage_data: Dict[str, Any], output_file: Optional[Path] = None
+        self, coverage_data: dict[str, Any], output_file: Path | None = None
     ) -> Path:
         """Generate coverage improvement recommendations."""
         if output_file is None:
@@ -591,7 +589,7 @@ class CoverageAnalyzer:
                     f.write("-" * 80 + "\n")
                     f.write(f"Description: {rec['description']}\n")
                     f.write(f"Action: {rec['action']}\n")
-                    f.write(f"\nAffected Files:\n")
+                    f.write("\nAffected Files:\n")
                     for file_path, coverage, missing in rec["files"]:
                         f.write(
                             f"  - {file_path} (Coverage: {coverage:.2f}%, Missing: {missing} lines)\n"

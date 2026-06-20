@@ -5,11 +5,12 @@ post_save / post_delete handlers that invalidate mesh-related caches.
 
 Best-effort: failures logged at WARNING, never propagate.
 """
+
 import logging
 
-from django.db.models.signals import post_save, post_delete
-from django.dispatch import receiver
 from django.core.cache import cache
+from django.db.models.signals import post_delete, post_save
+from django.dispatch import receiver
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +24,7 @@ def invalidate_mesh_cache_on_save(sender, instance, **kwargs):
     """Invalidate mesh domain and topology caches on save."""
     try:
         domain_id = str(instance.pk)
-        tenant_id = (
-            str(instance.tenant_id) if instance.tenant_id else None
-        )
+        tenant_id = str(instance.tenant_id) if instance.tenant_id else None
 
         # Invalidate domain detail cache
         cache.delete(f"{MESH_DOMAIN_CACHE_PREFIX}:{domain_id}")
@@ -51,9 +50,7 @@ def invalidate_mesh_cache_on_delete(sender, instance, **kwargs):
     """Invalidate mesh domain and topology caches on delete."""
     try:
         domain_id = str(instance.pk)
-        tenant_id = (
-            str(instance.tenant_id) if instance.tenant_id else None
-        )
+        tenant_id = str(instance.tenant_id) if instance.tenant_id else None
 
         cache.delete(f"{MESH_DOMAIN_CACHE_PREFIX}:{domain_id}")
         if tenant_id:

@@ -12,8 +12,8 @@ Tests verify:
 8. Cache header error handling
 """
 
-import uuid
 import json
+import uuid
 
 from rest_framework import status
 
@@ -46,7 +46,8 @@ class APICachingHeadersTest(ContractsAPITestBase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-        import uuid; uid = uuid.uuid4().hex[:8]
+
+        uid = uuid.uuid4().hex[:8]
         # Update tenant/user names for clarity
         self.tenant.name = f"Caching Test {uid}"
         self.tenant.slug = f"caching-test-{uid}"
@@ -148,11 +149,19 @@ class APICachingHeadersTest(ContractsAPITestBase):
         cache_control = response["Cache-Control"]
         self.assertIsNotNone(cache_control, "Cache-Control header should have a value")
         # Should contain recognized directives
-        known_directives = {"no-cache", "no-store", "must-revalidate", "private", "public", "max-age"}
+        known_directives = {
+            "no-cache",
+            "no-store",
+            "must-revalidate",
+            "private",
+            "public",
+            "max-age",
+        }
         directives = [d.strip().split("=")[0] for d in cache_control.split(",")]
         matching = [d for d in directives if d in known_directives]
         self.assertGreater(
-            len(matching), 0,
+            len(matching),
+            0,
             f"Cache-Control should contain recognized directives, got: {cache_control}",
         )
 
@@ -214,6 +223,11 @@ class APICachingHeadersTest(ContractsAPITestBase):
         response1 = self.client.get(f"/api/v1/contracts/{self.contract.id}/")
         initial_etag = response1.get("ETag")
         initial_last_modified = response1.get("Last-Modified")
+
+        # Ensure the update timestamp differs from the initial read
+        # (HTTP Last-Modified has second-level precision).
+        import time
+        time.sleep(1.1)
 
         # Update the contract
         updated_odps = {
@@ -301,13 +315,15 @@ class APICachingHeadersTest(ContractsAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK, "List endpoint should work")
 
         # List endpoints should have cache headers
-        self.assertIn("Cache-Control", response, "Cache-Control should be present for list endpoints")
+        self.assertIn(
+            "Cache-Control", response, "Cache-Control should be present for list endpoints"
+        )
 
     def test_cache_headers_consistency_across_requests(self):
         """Test cache headers consistency across multiple requests"""
         # Make multiple requests to same resource
         responses = []
-        for i in range(3):
+        for _i in range(3):
             response = self.client.get(f"/api/v1/contracts/{self.contract.id}/")
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             responses.append(response)
@@ -329,7 +345,6 @@ class APICachingHeadersTest(ContractsAPITestBase):
 
     def test_cache_headers_for_nonexistent_resource(self):
         """Test cache headers for nonexistent resource"""
-        import uuid
 
         fake_id = str(uuid.uuid4())
 
@@ -344,7 +359,7 @@ class APICachingHeadersTest(ContractsAPITestBase):
         """Test cache headers after resource deletion"""
         # Get initial ETag
         response1 = self.client.get(f"/api/v1/contracts/{self.contract.id}/")
-        initial_etag = response1.get("ETag")
+        response1.get("ETag")
 
         # Delete the contract
         response_delete = self.client.delete(f"/api/v1/contracts/{self.contract.id}/")

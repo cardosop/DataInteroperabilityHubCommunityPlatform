@@ -24,13 +24,14 @@ The signal is gated on ``settings.ENVIRONMENT == "test"`` so a
 production deploy can never silently rotate purposes — the rotation
 exists purely as a test-fixture convenience.
 """
+
 from __future__ import annotations
-import pytest
+
+import contextlib
 
 from django.conf import settings
 from django.core.exceptions import AppRegistryNotReady
 from django.db.models.signals import pre_save
-
 
 _SKIP_ROTATION_ATTR = "_skip_test_purpose_rotation"
 
@@ -98,7 +99,25 @@ def _connect_signal() -> None:
 # defensive (in case a future pytest-django version changes the
 # import order); if the app registry isn't ready the signal simply
 # stays disconnected for the session.
-try:
+with contextlib.suppress(AppRegistryNotReady):
     _connect_signal()
-except AppRegistryNotReady:
-    pass
+
+
+# ---------------------------------------------------------------------------
+# Shared test helpers
+# ---------------------------------------------------------------------------
+
+
+def extract_error_code(body: dict | None) -> str | None:
+    """Extract a typed error code from a DRF-envelope response body.
+
+    Handles both the nested ``{"error": {"code": "X"}}`` shape and the
+    flat ``{"code": "X"}`` shape.  Returns ``None`` when the body is
+    not a dict or neither shape is present.
+    """
+    if not isinstance(body, dict):
+        return None
+    nested = body.get("error")
+    if isinstance(nested, dict) and nested.get("code"):
+        return nested.get("code")
+    return body.get("code")

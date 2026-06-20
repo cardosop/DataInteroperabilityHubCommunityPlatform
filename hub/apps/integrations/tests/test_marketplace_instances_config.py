@@ -15,8 +15,7 @@ import os
 import warnings
 from unittest.mock import patch
 
-import pytest
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
 from hub.apps.integrations.config.marketplace_instances import (
     CKAN_INSTANCES,
@@ -174,7 +173,7 @@ class TestCKANInstancesRegistry(TestCase):
 
     def test_backward_compatibility_ckan_instances_alias(self):
         """Test that CKAN_INSTANCES alias still works (deprecated)"""
-        with warnings.catch_warnings(record=True) as w:
+        with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             # CKAN_INSTANCES should be the same object as MARKETPLACE_INSTANCES
             self.assertIs(CKAN_INSTANCES, MARKETPLACE_INSTANCES)

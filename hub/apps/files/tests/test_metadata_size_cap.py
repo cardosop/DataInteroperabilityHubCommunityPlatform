@@ -33,12 +33,13 @@ Threats this protects against:
   multi-MB metadata column would TOAST and slow ``SELECT *``
   queries (admin tooling, audit dumps, migrations).
 """
+
 from __future__ import annotations
-import pytest
 
 import json
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test import SimpleTestCase, TestCase
@@ -84,7 +85,7 @@ class MetadataJsonSizeBytesTest(SimpleTestCase):
         # Pinning the exact count makes drift in the serialisation
         # rule (ensure_ascii / sort_keys / indent) a build break.
         size = metadata_json_size_bytes({"k": "v"})
-        self.assertEqual(size, len('{"k": "v"}'.encode("utf-8")))
+        self.assertEqual(size, len(b'{"k": "v"}'))
 
     @pytest.mark.integration
     def test_non_ascii_uses_utf8_byte_count_not_escaped_form(self):
@@ -93,8 +94,10 @@ class MetadataJsonSizeBytesTest(SimpleTestCase):
         # (10 bytes). The user-visible byte count matches what
         # they'd put on the wire.
         result = metadata_json_size_bytes({"name": "café"})
-        self.assertEqual(result, len('{"name": "café"}'.encode("utf-8")))
-        self.assertNotIn(b"\\u00e9", json.dumps({"name": "café"}, ensure_ascii=False).encode("utf-8"))
+        self.assertEqual(result, len('{"name": "café"}'.encode()))
+        self.assertNotIn(
+            b"\\u00e9", json.dumps({"name": "café"}, ensure_ascii=False).encode("utf-8")
+        )
 
     @pytest.mark.integration
     def test_size_is_deterministic_under_key_reordering(self):
@@ -127,9 +130,7 @@ class ValidateMetadataJsonSizeTest(SimpleTestCase):
 
     @pytest.mark.integration
     def test_small_payload_admits(self):
-        validate_metadata_json_size(
-            {"upload_method": "browser", "chunk_size": 5_242_880}
-        )
+        validate_metadata_json_size({"upload_method": "browser", "chunk_size": 5_242_880})
 
     @pytest.mark.integration
     def test_payload_exactly_at_cap_admits(self):
@@ -154,9 +155,7 @@ class ValidateMetadataJsonSizeTest(SimpleTestCase):
         payload = {"data": "a" * filler_len}
         with self.assertRaises(ServiceValidationError) as ctx:
             validate_metadata_json_size(payload)
-        self.assertEqual(
-            getattr(ctx.exception, "code", None), "FILE_METADATA_TOO_LARGE"
-        )
+        self.assertEqual(getattr(ctx.exception, "code", None), "FILE_METADATA_TOO_LARGE")
         self.assertEqual(getattr(ctx.exception, "http_status", None), 400)
 
     @pytest.mark.integration
@@ -171,7 +170,8 @@ class ValidateMetadataJsonSizeTest(SimpleTestCase):
         # correctly), and a remediation hint.
         for field in ("field_name", "size_bytes", "max_bytes", "remediation"):
             self.assertIn(
-                field, details,
+                field,
+                details,
                 f"FILE_METADATA_TOO_LARGE details missing {field!r}; got {details!r}",
             )
         self.assertGreater(details["size_bytes"], MAX_METADATA_JSON_BYTES)
@@ -252,9 +252,7 @@ class FileSaveMetadataCapTest(TestCase):
         f = self._file(metadata_json=big)
         with self.assertRaises(ServiceValidationError) as ctx:
             f.save()
-        self.assertEqual(
-            getattr(ctx.exception, "code", None), "FILE_METADATA_TOO_LARGE"
-        )
+        self.assertEqual(getattr(ctx.exception, "code", None), "FILE_METADATA_TOO_LARGE")
         self.assertEqual(getattr(ctx.exception, "http_status", None), 400)
         # Row was NOT persisted — the validation fires BEFORE
         # super().save().
@@ -275,9 +273,7 @@ class FileSaveMetadataCapTest(TestCase):
         f.metadata_json = {"k" + str(i): "v" * 100 for i in range(1000)}
         with self.assertRaises(ServiceValidationError) as ctx:
             f.save()
-        self.assertEqual(
-            getattr(ctx.exception, "code", None), "FILE_METADATA_TOO_LARGE"
-        )
+        self.assertEqual(getattr(ctx.exception, "code", None), "FILE_METADATA_TOO_LARGE")
         # The persisted row still has the OLD metadata — the
         # rejected save did not partially commit.
         f.refresh_from_db()
@@ -302,9 +298,7 @@ class FileSaveMetadataCapTest(TestCase):
                 created_by=self.user,
                 metadata_json=big,
             )
-        self.assertEqual(
-            getattr(ctx.exception, "code", None), "FILE_METADATA_TOO_LARGE"
-        )
+        self.assertEqual(getattr(ctx.exception, "code", None), "FILE_METADATA_TOO_LARGE")
 
 
 # ---------------------------------------------------------------------------
@@ -337,8 +331,7 @@ class FileMetadataDbConstraintTest(TestCase):
         """
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT 1 FROM pg_constraint "
-                "WHERE conname = 'file_metadata_json_size_cap'"
+                "SELECT 1 FROM pg_constraint WHERE conname = 'file_metadata_json_size_cap'"
             )
             if cursor.fetchone() is None:
                 cursor.execute(
@@ -386,9 +379,9 @@ class FileMetadataDbConstraintTest(TestCase):
         # cleanly without poisoning the outer block.
         from django.db import IntegrityError, transaction
 
-        with self.assertRaises(IntegrityError) as ctx:
-            with transaction.atomic():
-                File.objects.bulk_create([
+        with self.assertRaises(IntegrityError) as ctx, transaction.atomic():
+            File.objects.bulk_create(
+                [
                     File(
                         tenant=self.tenant,
                         name="bulk.csv",
@@ -400,7 +393,8 @@ class FileMetadataDbConstraintTest(TestCase):
                         created_by=self.user,
                         metadata_json=self._oversize_metadata(),
                     )
-                ])
+                ]
+            )
         # The DB constraint message names itself — pin so a rename
         # doesn't drop coverage silently.
         self.assertIn(
@@ -439,11 +433,10 @@ class FileMetadataDbConstraintTest(TestCase):
         # poisons the outer block).
         from django.db import IntegrityError, transaction
 
-        with self.assertRaises(IntegrityError) as ctx:
-            with transaction.atomic():
-                File.objects.filter(id=f.id).update(
-                    metadata_json=self._oversize_metadata(),
-                )
+        with self.assertRaises(IntegrityError) as ctx, transaction.atomic():
+            File.objects.filter(id=f.id).update(
+                metadata_json=self._oversize_metadata(),
+            )
         self.assertIn("file_metadata_json_size_cap", str(ctx.exception))
         # Row's metadata is UNCHANGED (DB rolled back the
         # constraint-violating write).
@@ -461,19 +454,21 @@ class FileMetadataDbConstraintTest(TestCase):
         payload = {"data": "a" * filler_len}
         # Bypass the Python layer to test the DB layer in
         # isolation.
-        File.objects.bulk_create([
-            File(
-                tenant=self.tenant,
-                name="atcap.csv",
-                content_type="text/csv",
-                size=1024,
-                status=FileStatus.PENDING,
-                scan_status=FileScanStatus.PENDING_SCAN,
-                storage_path=f"{self.tenant.id}/atcap.csv",
-                created_by=self.user,
-                metadata_json=payload,
-            )
-        ])
+        File.objects.bulk_create(
+            [
+                File(
+                    tenant=self.tenant,
+                    name="atcap.csv",
+                    content_type="text/csv",
+                    size=1024,
+                    status=FileStatus.PENDING,
+                    scan_status=FileScanStatus.PENDING_SCAN,
+                    storage_path=f"{self.tenant.id}/atcap.csv",
+                    created_by=self.user,
+                    metadata_json=payload,
+                )
+            ]
+        )
         self.assertEqual(
             File.objects.filter(tenant=self.tenant, name="atcap.csv").count(),
             1,
@@ -506,8 +501,7 @@ class FileSerializerMetadataValidatorTest(SimpleTestCase):
         from hub.apps.files.metadata_validators import validate_metadata_json_size
 
         registered = (
-            FileSerializer.Meta.extra_kwargs.get("metadata_json", {}).get("validators")
-            or []
+            FileSerializer.Meta.extra_kwargs.get("metadata_json", {}).get("validators") or []
         )
         self.assertIn(
             validate_metadata_json_size,
@@ -527,7 +521,6 @@ class FileSerializerMetadataValidatorTest(SimpleTestCase):
     @pytest.mark.integration
     def test_validator_rejects_oversize_payload_with_drf_error(self):
         from hub.apps.core.services.base import ValidationError as CoreValidationError
-
         from hub.apps.files.metadata_validators import validate_metadata_json_size
 
         big = {"k" + str(i): "v" * 100 for i in range(1000)}

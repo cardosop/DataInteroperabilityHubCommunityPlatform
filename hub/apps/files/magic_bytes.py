@@ -4,7 +4,9 @@ Phase 260.2.B — declarative content-type ↔ magic-byte validation (server-sid
 Pure validation helpers (no I/O). Used by ``magic_byte_check_post_upload`` after
 ``S3StorageClient.download_range`` returns the object head.
 """
+
 from __future__ import annotations
+
 from hub.apps.core.services.base import ValidationError
 
 # Maximum bytes read from object storage for sniffing (spec: first 8 KiB).
@@ -83,10 +85,12 @@ def _validate_json_head(head: bytes, *, declared_mime: str) -> None:
         return
     if stripped[:1] not in (b"{", b"["):
         raise ValidationError(
-            "Declared application/json but first non-whitespace byte is not "
-            "'{' or '['.",
+            "Declared application/json but first non-whitespace byte is not '{' or '['.",
             code="FILE_FORMAT_MISMATCH",
-            details={"declared_content_type": declared_mime, "detected_signature": "json_invalid_start"},
+            details={
+                "declared_content_type": declared_mime,
+                "detected_signature": "json_invalid_start",
+            },
         )
 
 
@@ -99,8 +103,7 @@ def _validate_required_prefix(
 ) -> None:
     if len(head) < len(required) or head[: len(required)] != required:
         raise ValidationError(
-            f"Declared {declared_mime!r} but content does not start with "
-            f"expected magic ({label}).",
+            f"Declared {declared_mime!r} but content does not start with expected magic ({label}).",
             code="FILE_FORMAT_MISMATCH",
             details={
                 "declared_content_type": declared_mime,

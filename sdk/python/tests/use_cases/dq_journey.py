@@ -14,10 +14,10 @@ from tests._persona_provisioning import provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import api_get, api_post
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _admin_creds():
     return provision_persona("platform_admin")
@@ -77,9 +77,7 @@ def test_list_dq_runs():
     resp = api_get("/dq/runs/", creds)
     _skip_if_not_found(resp, "List DQ runs")
 
-    assert resp.status_code == 200, (
-        f"GET /dq/runs/ returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"GET /dq/runs/ returned {resp.status_code}: {resp.text[:500]}"
     body = resp.json()
     if isinstance(body, dict):
         assert "results" in body or "items" in body or "data" in body, (
@@ -97,8 +95,7 @@ def test_get_dq_run_by_id():
 
     get_resp = api_get(f"/dq/runs/{run_id}/", creds)
     assert get_resp.status_code == 200, (
-        f"GET /dq/runs/{run_id}/ returned {get_resp.status_code}: "
-        f"{get_resp.text[:500]}"
+        f"GET /dq/runs/{run_id}/ returned {get_resp.status_code}: {get_resp.text[:500]}"
     )
     body = get_resp.json()
     returned_id = body.get("id") or body.get("run_id")
@@ -118,12 +115,8 @@ def test_dq_run_has_status():
     body = get_resp.json()
 
     keys_lower = {k.lower() for k in body.keys()}
-    has_status = any(
-        k in keys_lower for k in ("status", "state", "run_status", "execution_status")
-    )
-    assert has_status, (
-        f"DQ run missing status field: {list(body.keys())}"
-    )
+    has_status = any(k in keys_lower for k in ("status", "state", "run_status", "execution_status"))
+    assert has_status, f"DQ run missing status field: {list(body.keys())}"
 
 
 def test_dq_run_lifecycle():
@@ -149,17 +142,11 @@ def test_dq_run_lifecycle():
     assert list_resp.status_code == 200
     runs = _extract_results(list_resp.json())
     run_ids = [str(r.get("id") or r.get("run_id")) for r in runs]
-    assert str(run_id) in run_ids, (
-        f"Created run {run_id} not found in list: {run_ids[:20]}"
-    )
+    assert str(run_id) in run_ids, f"Created run {run_id} not found in list: {run_ids[:20]}"
 
     # Get by id and verify status
     get_resp = api_get(f"/dq/runs/{run_id}/", creds)
     assert get_resp.status_code == 200
     run_body = get_resp.json()
-    status = (
-        run_body.get("status")
-        or run_body.get("state")
-        or run_body.get("run_status")
-    )
+    status = run_body.get("status") or run_body.get("state") or run_body.get("run_status")
     assert status is not None, f"Run has no status: {list(run_body.keys())}"

@@ -8,10 +8,12 @@ Key contract:
 - Always fetches the latest AWS SM version (no caching).
 - Rotated credentials fail fast with auth error (no retry for AccessDenied).
 """
+
 from __future__ import annotations
+
 import json
 import os
-from typing import Any, Dict
+from typing import Any
 
 import structlog
 
@@ -33,7 +35,7 @@ class CredentialResolverError(Exception):
 
 def resolve_warehouse_credentials(
     credential_ref: str, profile_name: str = _DBT_PROFILE_NAME
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Resolve warehouse credentials from AWS Secrets Manager and return
     a dbt ``profiles.yml`` dict.
 
@@ -73,7 +75,7 @@ def resolve_warehouse_credentials(
     return profile
 
 
-def resolve_git_credentials(credential_ref: str) -> Dict[str, str]:
+def resolve_git_credentials(credential_ref: str) -> dict[str, str]:
     """Resolve git credentials from AWS Secrets Manager.
 
     ``credential_ref`` must be an AWS Secrets Manager ARN.
@@ -116,7 +118,7 @@ def _build_client():
     return boto3.client("secretsmanager", region_name=region)
 
 
-def _fetch_secret(arn: str) -> Dict[str, Any]:
+def _fetch_secret(arn: str) -> dict[str, Any]:
     """Fetch and parse a JSON secret from AWS Secrets Manager.
 
     Always calls AWS SM directly — no in-process caching.
@@ -148,9 +150,7 @@ def _fetch_secret(arn: str) -> Dict[str, Any]:
             try:
                 result = json.loads(secret_string)
             except json.JSONDecodeError as exc:
-                raise CredentialResolverError(
-                    f"Invalid JSON in secret {arn}: {exc}"
-                ) from exc
+                raise CredentialResolverError(f"Invalid JSON in secret {arn}: {exc}") from exc
 
             logger.debug(
                 "credential_secret_fetched",
@@ -173,9 +173,7 @@ def _fetch_secret(arn: str) -> Dict[str, Any]:
                     arn_hash=hash(arn),
                     error_code=error_code,
                 )
-                raise CredentialResolverError(
-                    f"Access denied for secret {arn}: {message}"
-                ) from exc
+                raise CredentialResolverError(f"Access denied for secret {arn}: {message}") from exc
 
             # Not-found — no point retrying either.
             if error_code == "ResourceNotFoundException":
@@ -183,9 +181,7 @@ def _fetch_secret(arn: str) -> Dict[str, Any]:
                     "credential_secret_not_found",
                     arn_hash=hash(arn),
                 )
-                raise CredentialResolverError(
-                    f"Secret {arn} not found: {message}"
-                ) from exc
+                raise CredentialResolverError(f"Secret {arn} not found: {message}") from exc
 
             # Other ClientErrors (throttling, internal-error) — transient.
             last_exc = exc
@@ -248,21 +244,20 @@ def _fetch_secret(arn: str) -> Dict[str, Any]:
                 )
 
     raise CredentialResolverError(
-        f"Failed to resolve secret after {_RETRY_ATTEMPTS} attempts. "
-        f"Last error: {last_exc}"
+        f"Failed to resolve secret after {_RETRY_ATTEMPTS} attempts. Last error: {last_exc}"
     ) from last_exc
 
 
 # ── Internal: dbt profiles.yml builders ───────────────────────────────
 
-_WAREHOUSE_REQUIRED_FIELDS: Dict[str, tuple[str, ...]] = {
+_WAREHOUSE_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "snowflake": ("account", "user", "password"),
     "bigquery": ("project", "dataset", "keyfile"),
     "databricks": ("host", "http_path", "token"),
 }
 
 
-def _build_dbt_profile(secret: Dict[str, Any], profile_name: str) -> Dict[str, Any]:
+def _build_dbt_profile(secret: dict[str, Any], profile_name: str) -> dict[str, Any]:
     """Build a dbt profiles.yml dict from a parsed warehouse secret."""
     warehouse_type = secret.get("type", "").lower()
     if not warehouse_type:
@@ -305,7 +300,7 @@ def _build_dbt_profile(secret: Dict[str, Any], profile_name: str) -> Dict[str, A
     }
 
 
-def _snowflake_output(secret: Dict[str, Any]) -> Dict[str, Any]:
+def _snowflake_output(secret: dict[str, Any]) -> dict[str, Any]:
     return {
         "type": "snowflake",
         "account": secret["account"],
@@ -320,7 +315,7 @@ def _snowflake_output(secret: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _bigquery_output(secret: Dict[str, Any]) -> Dict[str, Any]:
+def _bigquery_output(secret: dict[str, Any]) -> dict[str, Any]:
     keyfile = secret["keyfile"]
     # dbt-bigquery: ``keyfile`` expects a file *path* (str), while
     # ``keyfile_json`` expects an inline dict.  Detect which form the
@@ -330,7 +325,7 @@ def _bigquery_output(secret: Dict[str, Any]) -> Dict[str, Any]:
     else:
         keyfield = "keyfile"
 
-    output: Dict[str, Any] = {
+    output: dict[str, Any] = {
         "type": "bigquery",
         "method": secret.get("method", "service-account"),
         "project": secret["project"],
@@ -346,7 +341,7 @@ def _bigquery_output(secret: Dict[str, Any]) -> Dict[str, Any]:
     return output
 
 
-def _databricks_output(secret: Dict[str, Any]) -> Dict[str, Any]:
+def _databricks_output(secret: dict[str, Any]) -> dict[str, Any]:
     return {
         "type": "databricks",
         "host": secret["host"],
@@ -361,13 +356,11 @@ def _databricks_output(secret: Dict[str, Any]) -> Dict[str, Any]:
 # ── Internal: git credential builder ──────────────────────────────────
 
 
-def _build_git_credential(secret: Dict[str, Any]) -> Dict[str, str]:
+def _build_git_credential(secret: dict[str, Any]) -> dict[str, str]:
     """Build a git credential dict from a parsed git secret."""
     token = secret.get("token")
     if not token:
-        raise CredentialResolverError(
-            "Git secret is missing required 'token' field."
-        )
+        raise CredentialResolverError("Git secret is missing required 'token' field.")
 
     provider = secret.get("provider", "github").lower()
     username = secret.get("username")

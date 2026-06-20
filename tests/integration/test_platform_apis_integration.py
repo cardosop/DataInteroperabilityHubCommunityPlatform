@@ -3,7 +3,8 @@ Integration tests for Platform APIs: tenants list/suspend/resume, usage, erasure
 
 Real APIClient; admin where required. No mocks/stubs. Plan 3.3.1.1 (P1).
 """
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
+
+import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -12,7 +13,6 @@ from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
-import uuid
 
 User = get_user_model()
 
@@ -99,14 +99,14 @@ class TestPlatformAPIsIntegration:
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
-        response = self.client.post(
-            f"/api/v1/platform/users/{regular_user.id}/request-erasure/"
-        )
+        response = self.client.post(f"/api/v1/platform/users/{regular_user.id}/request-erasure/")
         assert response.status_code == status.HTTP_201_CREATED
 
-        event = AuditEvent.objects.filter(
-            resource_type="ERASURE_REQUEST", action="ERASURE_REQUESTED"
-        ).order_by("-timestamp").first()
+        event = (
+            AuditEvent.objects.filter(resource_type="ERASURE_REQUEST", action="ERASURE_REQUESTED")
+            .order_by("-timestamp")
+            .first()
+        )
         assert event is not None
         assert event.actor_user_id == self.admin.id
         assert event.details_json.get("source") == "platform_admin"

@@ -5,6 +5,7 @@ Tests cover all service methods with 100% coverage target.
 """
 
 import uuid
+
 import pytest
 from django.test import TestCase
 
@@ -22,6 +23,7 @@ class AssetServiceTest(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        super().setUp()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
@@ -29,8 +31,8 @@ class AssetServiceTest(TestCase):
         )
         self.service = AssetService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
-    def test_create_asset_success_returns_asset(self):
-        """Test successful asset creation returns asset."""
+    def test_create_asset_success(self):
+        """Successful asset creation returns asset with correct fields."""
         asset = self.service.create_asset(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
@@ -41,44 +43,8 @@ class AssetServiceTest(TestCase):
         )
 
         self.assertIsNotNone(asset)
-
-    def test_create_asset_success_sets_key(self):
-        """Test successful asset creation sets key."""
-        asset = self.service.create_asset(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            key="test-asset",
-            name="Test Asset",
-            description="Test description",
-            domain="test-domain",
-        )
-
         self.assertEqual(asset.key, "test-asset")
-
-    def test_create_asset_success_sets_name(self):
-        """Test successful asset creation sets name."""
-        asset = self.service.create_asset(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            key="test-asset",
-            name="Test Asset",
-            description="Test description",
-            domain="test-domain",
-        )
-
         self.assertEqual(asset.name, "Test Asset")
-
-    def test_create_asset_success_sets_draft_status(self):
-        """Test successful asset creation sets DRAFT status."""
-        asset = self.service.create_asset(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            key="test-asset",
-            name="Test Asset",
-            description="Test description",
-            domain="test-domain",
-        )
-
         self.assertEqual(asset.status, AssetStatus.DRAFT)
 
     def test_create_asset_duplicate_key(self):
@@ -240,7 +206,9 @@ class AssetServiceTest(TestCase):
         """Test retrieving asset from wrong tenant (failure scenario)"""
         # Create another tenant and asset
         _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
         other_asset = Asset.objects.create(
             tenant=other_tenant, key="other-asset", name="Other Asset"
         )

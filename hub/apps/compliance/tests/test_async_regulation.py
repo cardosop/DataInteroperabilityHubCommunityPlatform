@@ -1,8 +1,11 @@
 """
-Phase 121E — Compliance Async & Regulation Tests
+Compliance model constants and field-integrity tests.
 
-Tests async compliance scanning and multi-jurisdiction support.
+Validates that ComplianceRun status choices, risk-level choices, and
+compliance-regime constants are defined correctly.  Async-scanning
+dispatch logic is tested in ``test_call_compliance_service.py``.
 """
+
 import uuid
 
 from django.test import TestCase
@@ -32,16 +35,23 @@ class TestComplianceAsyncScanning(TestCase):
         """New compliance run has PENDING status."""
         from hub.apps.assets.models import Asset
         from hub.apps.jobs.models import Job, JobType
+
         asset = Asset.objects.create(
-            name="comp-asset", key=f"comp-{uuid.uuid4().hex[:8]}",
-            tenant=self.tenant, created_by=self.user,
+            name="comp-asset",
+            key=f"comp-{uuid.uuid4().hex[:8]}",
+            tenant=self.tenant,
+            created_by=self.user,
         )
         job = Job.objects.create(
-            tenant=self.tenant, type=JobType.COMPLIANCE_RUN,
-            resource_type="ASSET", resource_id=str(asset.id),
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            resource_type="ASSET",
+            resource_id=str(asset.id),
         )
         run = ComplianceRun.objects.create(
-            tenant=self.tenant, asset=asset, job=job,
+            tenant=self.tenant,
+            asset=asset,
+            job=job,
             status=ComplianceRunStatus.PENDING,
         )
         self.assertEqual(run.status, ComplianceRunStatus.PENDING)
@@ -54,19 +64,26 @@ class TestComplianceAsyncScanning(TestCase):
 
     def test_compliance_run_has_risk_level(self):
         """Test ComplianceRun risk_level field stores and retrieves correctly."""
-        from hub.apps.compliance.models import RiskLevel
         from hub.apps.assets.models import Asset
+        from hub.apps.compliance.models import RiskLevel
         from hub.apps.jobs.models import Job, JobType
+
         asset = Asset.objects.create(
-            name="risk-asset", key=f"risk-{uuid.uuid4().hex[:8]}",
-            tenant=self.tenant, created_by=self.user,
+            name="risk-asset",
+            key=f"risk-{uuid.uuid4().hex[:8]}",
+            tenant=self.tenant,
+            created_by=self.user,
         )
         job = Job.objects.create(
-            tenant=self.tenant, type=JobType.COMPLIANCE_RUN,
-            resource_type="ASSET", resource_id=str(asset.id),
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            resource_type="ASSET",
+            resource_id=str(asset.id),
         )
         run = ComplianceRun.objects.create(
-            tenant=self.tenant, asset=asset, job=job,
+            tenant=self.tenant,
+            asset=asset,
+            job=job,
             status=ComplianceRunStatus.SUCCEEDED,
             risk_level=RiskLevel.HIGH,
         )

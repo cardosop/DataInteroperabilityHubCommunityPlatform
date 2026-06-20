@@ -17,6 +17,7 @@ External boundaries (S3, dq-service HTTP) are mocked at their
 boundaries; everything else (ORM, business rules, persistence) is
 real.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -32,7 +33,6 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -81,7 +81,6 @@ def _patched_client_returns(payload: dict):
 
 
 class ScanInMemoryHappyPathTest(TestCase):
-
     def test_returns_dq_run_persisted_with_pass(self):
         tenant, _user, file_obj = _seed_tenant_and_user()
         pass_payload = {
@@ -122,13 +121,16 @@ class ScanInMemoryHappyPathTest(TestCase):
         before_assets = Asset.objects.filter(tenant=tenant).count()
         before_datasets = Dataset.objects.filter(tenant=tenant).count()
 
-        with _patched_storage_returns(b"a,b\n1,2\n"), _patched_client_returns(
-            {
-                "overall_status": "PASS",
-                "quality_score": 100,
-                "checks": [],
-                "metadata": {},
-            }
+        with (
+            _patched_storage_returns(b"a,b\n1,2\n"),
+            _patched_client_returns(
+                {
+                    "overall_status": "PASS",
+                    "quality_score": 100,
+                    "checks": [],
+                    "metadata": {},
+                }
+            ),
         ):
             DQService.scan_inmemory(
                 file_id=str(file_obj.id),
@@ -141,7 +143,6 @@ class ScanInMemoryHappyPathTest(TestCase):
 
 
 class ScanInMemoryFailClosedTest(TestCase):
-
     def test_unknown_overall_status_persists_and_marks_failed_when_circuit_open(self):
         """The dq-service fallback returns ``UNKNOWN`` — that must persist as-is.
 
@@ -150,14 +151,17 @@ class ScanInMemoryFailClosedTest(TestCase):
         treats it as a fail-closed condition.
         """
         tenant, _user, file_obj = _seed_tenant_and_user()
-        with _patched_storage_returns(b"x"), _patched_client_returns(
-            {
-                "overall_status": "UNKNOWN",
-                "quality_score": 0.0,
-                "checks": [],
-                "engine_type": "UNKNOWN",
-                "metadata": {"error": "DQ service unavailable"},
-            }
+        with (
+            _patched_storage_returns(b"x"),
+            _patched_client_returns(
+                {
+                    "overall_status": "UNKNOWN",
+                    "quality_score": 0.0,
+                    "checks": [],
+                    "engine_type": "UNKNOWN",
+                    "metadata": {"error": "DQ service unavailable"},
+                }
+            ),
         ):
             run = DQService.scan_inmemory(
                 file_id=str(file_obj.id),
@@ -172,13 +176,16 @@ class ScanInMemoryFailClosedTest(TestCase):
 
     def test_explicit_fail_response_is_persisted(self):
         tenant, _user, file_obj = _seed_tenant_and_user()
-        with _patched_storage_returns(b"x"), _patched_client_returns(
-            {
-                "overall_status": "FAIL",
-                "quality_score": 12.0,
-                "checks": [{"name": "no_nulls", "status": "FAIL"}],
-                "metadata": {},
-            }
+        with (
+            _patched_storage_returns(b"x"),
+            _patched_client_returns(
+                {
+                    "overall_status": "FAIL",
+                    "quality_score": 12.0,
+                    "checks": [{"name": "no_nulls", "status": "FAIL"}],
+                    "metadata": {},
+                }
+            ),
         ):
             run = DQService.scan_inmemory(
                 file_id=str(file_obj.id),
@@ -192,12 +199,14 @@ class ScanInMemoryFailClosedTest(TestCase):
 
 
 class ScanInMemoryServiceFailureTest(TestCase):
-
     def test_service_exception_marks_run_failed(self):
         tenant, _user, file_obj = _seed_tenant_and_user()
-        with _patched_storage_returns(b"x"), patch(
-            "hub.apps.dq.service_client.DQServiceClient.run_dq",
-            side_effect=RuntimeError("dq microservice unreachable"),
+        with (
+            _patched_storage_returns(b"x"),
+            patch(
+                "hub.apps.dq.service_client.DQServiceClient.run_dq",
+                side_effect=RuntimeError("dq microservice unreachable"),
+            ),
         ):
             run = DQService.scan_inmemory(
                 file_id=str(file_obj.id),
@@ -216,7 +225,6 @@ class ScanInMemoryServiceFailureTest(TestCase):
 
 
 class ScanInMemoryArgumentValidationTest(TestCase):
-
     def test_unknown_file_id_raises_validation_error(self):
         tenant, _user, _file_obj = _seed_tenant_and_user()
         from hub.apps.core.services.base import ValidationError
@@ -229,7 +237,7 @@ class ScanInMemoryArgumentValidationTest(TestCase):
             )
 
     def test_file_belonging_to_different_tenant_is_rejected(self):
-        tenant_a, _user_a, file_a = _seed_tenant_and_user()
+        _tenant_a, _user_a, file_a = _seed_tenant_and_user()
         tenant_b, _user_b, _file_b = _seed_tenant_and_user()
         from hub.apps.core.services.base import ValidationError
 
@@ -246,8 +254,11 @@ class ScanInMemoryProfileKeyResolutionTest(TestCase):
 
     def test_explicit_profile_key_routes_to_great_expectations(self):
         tenant, _user, file_obj = _seed_tenant_and_user()
-        with _patched_storage_returns(b"x"), _patched_client_returns(
-            {"overall_status": "PASS", "quality_score": 100, "metadata": {}}
+        with (
+            _patched_storage_returns(b"x"),
+            _patched_client_returns(
+                {"overall_status": "PASS", "quality_score": 100, "metadata": {}}
+            ),
         ):
             run = DQService.scan_inmemory(
                 file_id=str(file_obj.id),
@@ -260,8 +271,11 @@ class ScanInMemoryProfileKeyResolutionTest(TestCase):
 
     def test_soda_profile_key_routes_to_soda(self):
         tenant, _user, file_obj = _seed_tenant_and_user()
-        with _patched_storage_returns(b"x"), _patched_client_returns(
-            {"overall_status": "PASS", "quality_score": 100, "metadata": {}}
+        with (
+            _patched_storage_returns(b"x"),
+            _patched_client_returns(
+                {"overall_status": "PASS", "quality_score": 100, "metadata": {}}
+            ),
         ):
             run = DQService.scan_inmemory(
                 file_id=str(file_obj.id),

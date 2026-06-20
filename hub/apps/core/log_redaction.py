@@ -3,17 +3,33 @@
 
 Strips PII-bearing keys from structlog event dicts before emission.
 """
+
 from __future__ import annotations
+
 import re
 from typing import Any
 
 # Keys whose values should be redacted from log output.
-_REDACTED_KEYS: frozenset[str] = frozenset({
-    "email", "password", "token", "secret", "api_key",
-    "credit_card", "ssn", "passport", "phone", "address",
-    "authorization", "cookie", "session_id",
-    "access_token", "refresh_token", "jwt",
-})
+_REDACTED_KEYS: frozenset[str] = frozenset(
+    {
+        "email",
+        "password",
+        "token",
+        "secret",
+        "api_key",
+        "credit_card",
+        "ssn",
+        "passport",
+        "phone",
+        "address",
+        "authorization",
+        "cookie",
+        "session_id",
+        "access_token",
+        "refresh_token",
+        "jwt",
+    }
+)
 
 # Regex patterns to redact from string values.
 _REDACT_PATTERNS: list[tuple[re.Pattern, str]] = [

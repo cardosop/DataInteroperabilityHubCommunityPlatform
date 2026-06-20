@@ -152,7 +152,10 @@ class TestLineageVisualization(ContractsTransactionTestBase):
         link_targets = {e["target"] for e in result["links"]}
         self.assertIn(str(consumer.id), link_targets)
         self.assertTrue(
-            any(e["source"] == str(provider.id) and e["target"] == str(consumer.id) for e in result["links"]),
+            any(
+                e["source"] == str(provider.id) and e["target"] == str(consumer.id)
+                for e in result["links"]
+            ),
             msg=f"Expected edge provider→consumer in links: {result['links']}",
         )
 
@@ -191,7 +194,10 @@ class TestLineageVisualization(ContractsTransactionTestBase):
         result = generate_lineage_json(core)
 
         self.assertTrue(
-            any(e["source"] == str(core.id) and e["target"] == str(dependent.id) for e in result["links"]),
+            any(
+                e["source"] == str(core.id) and e["target"] == str(dependent.id)
+                for e in result["links"]
+            ),
             msg=f"Expected edge core→dependent in links: {result['links']}",
         )
 
@@ -299,8 +305,9 @@ class TestLineageVisualization(ContractsTransactionTestBase):
         self.assertIn("links", result)
         # Should handle large graphs
         self.assertIsInstance(result["nodes"], list)
-        self.assertGreater(len(result["nodes"]), 0,
-            "Large lineage graph must produce at least one node")
+        self.assertGreater(
+            len(result["nodes"]), 0, "Large lineage graph must produce at least one node"
+        )
 
     def test_generate_lineage_dot_with_special_characters(self):
         """Test DOT format generation with special characters in names."""
@@ -404,12 +411,9 @@ class TestLineageVisualization(ContractsTransactionTestBase):
         Passing an unknown format must still produce valid JSON output.
         """
         result = generate_lineage_json(self.contract, format="invalid-format")
-        self.assertIsNotNone(result,
-            "Invalid format must not crash the visualization function")
-        self.assertIn("nodes", result,
-            "Result must contain 'nodes' even with invalid format")
-        self.assertIn("links", result,
-            "Result must contain 'links' even with invalid format")
+        self.assertIsNotNone(result, "Invalid format must not crash the visualization function")
+        self.assertIn("nodes", result, "Result must contain 'nodes' even with invalid format")
+        self.assertIn("links", result, "Result must contain 'links' even with invalid format")
 
     def test_generate_lineage_json_with_non_contract_raises_attribute_error(self):
         """Passing a plain object without ``hub_contract_json`` raises AttributeError.
@@ -417,6 +421,7 @@ class TestLineageVisualization(ContractsTransactionTestBase):
         The visualization functions expect a Contract-like object.  Passing
         something that lacks ``hub_contract_json`` exercises the error path.
         """
+
         class FakeObject:
             pass
 
@@ -429,29 +434,32 @@ class TestLineageVisualization(ContractsTransactionTestBase):
 
         # Every node must have id and type
         for node in result["nodes"]:
-            self.assertIn("id", node,
-                f"Node {node} must have 'id' property")
-            self.assertIn("type", node,
-                f"Node {node} must have 'type' property")
-            self.assertIsInstance(node["id"], str,
-                f"Node 'id' must be a string, got {type(node['id'])}")
-            self.assertIsInstance(node["type"], str,
-                f"Node 'type' must be a string, got {type(node['type'])}")
+            self.assertIn("id", node, f"Node {node} must have 'id' property")
+            self.assertIn("type", node, f"Node {node} must have 'type' property")
+            self.assertIsInstance(
+                node["id"], str, f"Node 'id' must be a string, got {type(node['id'])}"
+            )
+            self.assertIsInstance(
+                node["type"], str, f"Node 'type' must be a string, got {type(node['type'])}"
+            )
 
         # Every link must have source, target, and type
         for link in result["links"]:
-            self.assertIn("source", link,
-                f"Link {link} must have 'source' property")
-            self.assertIn("target", link,
-                f"Link {link} must have 'target' property")
-            self.assertIn("type", link,
-                f"Link {link} must have 'type' property")
+            self.assertIn("source", link, f"Link {link} must have 'source' property")
+            self.assertIn("target", link, f"Link {link} must have 'target' property")
+            self.assertIn("type", link, f"Link {link} must have 'type' property")
             self.assertIsInstance(link["source"], str)
             self.assertIsInstance(link["target"], str)
             self.assertIsInstance(link["type"], str)
             # Source and target must reference actual node ids
             node_ids = {n["id"] for n in result["nodes"]}
-            self.assertIn(link["source"], node_ids,
-                f"Link source '{link['source']}' must reference an existing node")
-            self.assertIn(link["target"], node_ids,
-                f"Link target '{link['target']}' must reference an existing node")
+            self.assertIn(
+                link["source"],
+                node_ids,
+                f"Link source '{link['source']}' must reference an existing node",
+            )
+            self.assertIn(
+                link["target"],
+                node_ids,
+                f"Link target '{link['target']}' must reference an existing node",
+            )

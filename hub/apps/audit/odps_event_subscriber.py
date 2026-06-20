@@ -7,14 +7,14 @@ Includes retry logic and dead letter queue handling.
 
 import time
 import traceback
-from typing import Dict, Any, Optional
+from typing import Any
+
 import structlog
-from django.utils import timezone
 from django.contrib.auth import get_user_model
 
-from hub.apps.core.events.subscriber import EventSubscriber
-from hub.apps.core.events.models import DeadLetterQueue
 from hub.apps.audit.utils import create_audit_event
+from hub.apps.core.events.models import DeadLetterQueue
+from hub.apps.core.events.subscriber import EventSubscriber
 from hub.apps.tenants.models import Tenant
 
 User = get_user_model()
@@ -37,18 +37,11 @@ class ODPSAuditSubscriber(EventSubscriber):
     def _register_handlers(self):
         """Register handlers for all ODPS event types."""
         # Subscribe to all ODPS events using wildcard pattern
-        self.subscribe(
-            event_type_pattern="odps.*",
-            handler=self._handle_odps_event,
-            is_active=True
-        )
+        self.subscribe(event_type_pattern="odps.*", handler=self._handle_odps_event, is_active=True)
 
-        logger.info(
-            "odps_audit_subscriber_initialized",
-            subscriber_name=self.subscriber_name
-        )
+        logger.info("odps_audit_subscriber_initialized", subscriber_name=self.subscriber_name)
 
-    def _handle_odps_event(self, event: Dict[str, Any]) -> None:
+    def _handle_odps_event(self, event: dict[str, Any]) -> None:
         """
         Handle ODPS event and create audit log entry with retry logic and DLQ handling.
 
@@ -66,17 +59,12 @@ class ODPSAuditSubscriber(EventSubscriber):
 
             if not tenant_id:
                 logger.warning(
-                    "odps_audit_missing_tenant_id",
-                    event_type=event_type,
-                    event_id=event_id
+                    "odps_audit_missing_tenant_id", event_type=event_type, event_id=event_id
                 )
                 return
 
             if not event_type:
-                logger.warning(
-                    "odps_audit_missing_event_type",
-                    event_id=event_id
-                )
+                logger.warning("odps_audit_missing_event_type", event_id=event_id)
                 return
 
             # Extract contract ID from event data
@@ -86,7 +74,7 @@ class ODPSAuditSubscriber(EventSubscriber):
                     "odps_audit_missing_contract_id",
                     event_type=event_type,
                     event_id=event_id,
-                    event_data_keys=list(event_data.keys())
+                    event_data_keys=list(event_data.keys()),
                 )
                 return
 
@@ -97,7 +85,7 @@ class ODPSAuditSubscriber(EventSubscriber):
                 contract_id=contract_id,
                 tenant_id=tenant_id,
                 user_id=user_id,
-                event_data=event_data
+                event_data=event_data,
             )
 
         except Exception as e:
@@ -106,21 +94,21 @@ class ODPSAuditSubscriber(EventSubscriber):
                 event_id=event_id,
                 event_type=event_type,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
             # Send to DLQ after handler-level error
             self._send_to_dlq(event, str(e), retry_count=0)
 
     def _create_audit_log_with_retry(
         self,
-        event: Dict[str, Any],
+        event: dict[str, Any],
         event_type: str,
         contract_id: str,
         tenant_id: str,
-        user_id: Optional[str],
-        event_data: Dict[str, Any],
+        user_id: str | None,
+        event_data: dict[str, Any],
         max_retries: int = 3,
-        base_delay: float = 1.0
+        base_delay: float = 1.0,
     ) -> None:
         """
         Create audit log entry with retry logic and DLQ handling.
@@ -151,7 +139,7 @@ class ODPSAuditSubscriber(EventSubscriber):
                         "odps_audit_tenant_not_found",
                         tenant_id=tenant_id,
                         event_type=event_type,
-                        event_id=event.get("event_id")
+                        event_id=event.get("event_id"),
                     )
                     return
 
@@ -165,7 +153,7 @@ class ODPSAuditSubscriber(EventSubscriber):
                             "odps_audit_user_not_found",
                             user_id=user_id,
                             event_type=event_type,
-                            event_id=event.get("event_id")
+                            event_id=event.get("event_id"),
                         )
                         # Continue without user - audit log can still be created
 
@@ -217,7 +205,7 @@ class ODPSAuditSubscriber(EventSubscriber):
                     tenant=tenant,
                     resource_id=contract_id,
                     result=result,
-                    details=audit_details
+                    details=audit_details,
                 )
 
                 # Log success on retry
@@ -229,7 +217,7 @@ class ODPSAuditSubscriber(EventSubscriber):
                         contract_id=contract_id,
                         tenant_id=tenant_id,
                         retry_count=retry_count,
-                        audit_event_id=str(audit_event.id)
+                        audit_event_id=str(audit_event.id),
                     )
                 else:
                     logger.info(
@@ -240,7 +228,7 @@ class ODPSAuditSubscriber(EventSubscriber):
                         tenant_id=tenant_id,
                         action=action,
                         result=result,
-                        audit_event_id=str(audit_event.id)
+                        audit_event_id=str(audit_event.id),
                     )
 
                 return  # Success
@@ -258,7 +246,7 @@ class ODPSAuditSubscriber(EventSubscriber):
                         contract_id=contract_id,
                         tenant_id=tenant_id,
                         error=str(e),
-                        error_type=type(e).__name__
+                        error_type=type(e).__name__,
                     )
                     self._send_to_dlq(event, str(e), retry_count=retry_count)
                     return
@@ -275,13 +263,13 @@ class ODPSAuditSubscriber(EventSubscriber):
                         retry_count=retry_count,
                         max_retries=max_retries,
                         error=str(e),
-                        error_type=type(e).__name__
+                        error_type=type(e).__name__,
                     )
                     self._send_to_dlq(event, str(e), retry_count=retry_count)
                     return
 
                 # Retry with exponential backoff
-                delay = base_delay * (2 ** retry_count)
+                delay = base_delay * (2**retry_count)
                 logger.warning(
                     "odps_audit_retry_attempt",
                     event_type=event_type,
@@ -292,7 +280,7 @@ class ODPSAuditSubscriber(EventSubscriber):
                     max_retries=max_retries,
                     delay=delay,
                     error=str(e),
-                    error_type=type(e).__name__
+                    error_type=type(e).__name__,
                 )
                 time.sleep(delay)
                 retry_count += 1
@@ -364,21 +352,38 @@ class ODPSAuditSubscriber(EventSubscriber):
 
         # Transient error indicators
         transient_keywords = [
-            'timeout', 'timed out', 'connection', 'unavailable', 'network',
-            'temporary', 'retry', 'service unavailable', '503', '502', '504',
-            'connection refused', 'connection reset', 'broken pipe',
-            'connection pool', 'socket', 'errno', 'database', 'lock',
-            'deadlock', 'serialization', 'transaction'
+            "timeout",
+            "timed out",
+            "connection",
+            "unavailable",
+            "network",
+            "temporary",
+            "retry",
+            "service unavailable",
+            "503",
+            "502",
+            "504",
+            "connection refused",
+            "connection reset",
+            "broken pipe",
+            "connection pool",
+            "socket",
+            "errno",
+            "database",
+            "lock",
+            "deadlock",
+            "serialization",
+            "transaction",
         ]
 
         # Non-retryable error types
         non_retryable_errors = [
-            'ValidationError',
-            'PermissionDenied',
-            'AuthenticationFailed',
-            'ValueError',
-            'TypeError',
-            'AttributeError',
+            "ValidationError",
+            "PermissionDenied",
+            "AuthenticationFailed",
+            "ValueError",
+            "TypeError",
+            "AttributeError",
         ]
 
         # Don't retry on non-retryable error types
@@ -388,12 +393,7 @@ class ODPSAuditSubscriber(EventSubscriber):
         # Check for transient keywords in error message
         return any(keyword in error_str for keyword in transient_keywords)
 
-    def _send_to_dlq(
-        self,
-        event: Dict[str, Any],
-        error_message: str,
-        retry_count: int = 0
-    ) -> None:
+    def _send_to_dlq(self, event: dict[str, Any], error_message: str, retry_count: int = 0) -> None:
         """
         Send failed event to dead letter queue.
 
@@ -412,9 +412,9 @@ class ODPSAuditSubscriber(EventSubscriber):
                 error_details={
                     "traceback": traceback.format_exc(),
                     "event_id": event.get("event_id"),
-                    "retry_count": retry_count
+                    "retry_count": retry_count,
                 },
-                retry_count=retry_count
+                retry_count=retry_count,
             )
             logger.warning(
                 "odps_audit_sent_to_dlq",
@@ -422,7 +422,7 @@ class ODPSAuditSubscriber(EventSubscriber):
                 event_id=event.get("event_id"),
                 subscriber=self.subscriber_name,
                 retry_count=retry_count,
-                error_message=error_message
+                error_message=error_message,
             )
         except Exception as dlq_error:
             # Log but don't raise - DLQ failure shouldn't break event processing
@@ -432,7 +432,7 @@ class ODPSAuditSubscriber(EventSubscriber):
                 event_id=event.get("event_id"),
                 subscriber=self.subscriber_name,
                 dlq_error=str(dlq_error),
-                exc_info=True
+                exc_info=True,
             )
 
 
@@ -464,9 +464,5 @@ def initialize_odps_audit_subscriber() -> ODPSAuditSubscriber:
         ODPSAuditSubscriber instance
     """
     subscriber = get_odps_audit_subscriber()
-    logger.info(
-        "odps_audit_subscriber_initialized",
-        subscriber_name=subscriber.subscriber_name
-    )
+    logger.info("odps_audit_subscriber_initialized", subscriber_name=subscriber.subscriber_name)
     return subscriber
-

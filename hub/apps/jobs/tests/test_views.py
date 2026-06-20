@@ -43,13 +43,19 @@ class JobViewSetTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create another tenant for isolation tests
         _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Active subscription required so TenantSuspensionMiddleware allows writes (POST/PATCH)
@@ -58,7 +64,9 @@ class JobViewSetTest(TestCase):
 
         # Create platform admin user
         self.platform_admin = User.objects.create_user(
-            email=f"admin-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", is_platform_admin=True
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            is_platform_admin=True,
         )
 
         # Create regular user
@@ -232,7 +240,6 @@ class JobViewSetTest(TestCase):
         """Test job creation when tenant rate limits are exceeded"""
         from django.core.cache import cache
 
-        from hub.apps.jobs.utils import increment_tenant_job_counter
         from hub.apps.tenants.services import get_tenant_job_limits
 
         self.client.force_authenticate(user=self.user)
@@ -242,7 +249,7 @@ class JobViewSetTest(TestCase):
         max_queued = limits.get("max_queued_jobs", 50)
 
         # Set queued counter to max to trigger rate limit
-        queued_key = f"job:tenant:{str(self.tenant.id)}:queued"
+        queued_key = f"job:tenant:{self.tenant.id!s}:queued"
         cache.set(queued_key, max_queued, timeout=3600)
 
         resource_id = uuid.uuid4()
@@ -460,7 +467,7 @@ class JobViewSetTest(TestCase):
         # Wait a bit to ensure different timestamps
         import time
 
-        time.sleep(0.1)  # INTENTIONAL: test-specific timing requirement
+        time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
         job2 = Job.objects.create(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
@@ -491,7 +498,7 @@ class JobViewSetTest(TestCase):
             resource_id=uuid.uuid4(),
             created_by=self.user,
         )
-        compliance_job = Job.objects.create(
+        Job.objects.create(
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
             status=JobStatus.PENDING,
@@ -812,8 +819,8 @@ class JobViewSetTest(TestCase):
             from hub.apps.virtualization.models import (
                 QueryExecution,
                 QueryExecutionStatus,
-                VirtualDataset,
                 QueryType,
+                VirtualDataset,
             )
 
             virtual_dataset = VirtualDataset.objects.create(
@@ -896,7 +903,7 @@ class JobViewSetTest(TestCase):
 
         # Create multiple jobs
         jobs = []
-        for i in range(15):
+        for _i in range(15):
             job = Job.objects.create(
                 tenant=self.tenant,
                 type=JobType.DQ_RUN,

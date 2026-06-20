@@ -116,9 +116,14 @@ class ScheduledIngestionProcessorTest(TestCase):
                 client.client.head_bucket(Bucket=client.bucket_name)
             except Exception as access_err:
                 from botocore.exceptions import ClientError
+
                 if isinstance(access_err, ClientError):
                     code = (access_err.response.get("Error") or {}).get("Code", "")
-                    if code in ("InvalidAccessKeyId", "AccessDenied") or access_err.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 403:
+                    if (
+                        code in ("InvalidAccessKeyId", "AccessDenied")
+                        or access_err.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+                        == 403
+                    ):
                         client = None
                     else:
                         raise
@@ -128,10 +133,17 @@ class ScheduledIngestionProcessorTest(TestCase):
         except Exception as e:
             err = str(e).lower()
             # Pointing at real AWS, or MinIO unreachable; skip storage-dependent tests
-            if "invalidaccesskeyid" in err or "access key" in err:
-                pass
-            elif "connection" in err or "could not connect" in err or "name resolution" in err:
-                pass
+            if (
+                "invalidaccesskeyid" in err
+                or "access key" in err
+                or "connection" in err
+                or "could not connect" in err
+                or "name resolution" in err
+            ):
+                logging.getLogger(__name__).warning(
+                    "MinIO storage unavailable — storage-dependent tests "
+                    "will be skipped: %s", e
+                )
             # any other exception: leave storage_client None
 
     def test_discover_files_success(self):

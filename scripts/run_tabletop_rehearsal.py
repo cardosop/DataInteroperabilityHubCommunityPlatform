@@ -19,6 +19,7 @@ a green rehearsal is a necessary-but-insufficient condition for the
 live run to even be scheduled. The DoD.7 closure block in the live
 ledger is signed only after the live exercise (humans, real seats).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,15 +28,12 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_OUT_DIR = Path(
-    os.environ.get("TABLETOP_REHEARSAL_OUT_DIR", "/tmp/tabletop_rehearsal")
-)
+DEFAULT_OUT_DIR = Path(os.environ.get("TABLETOP_REHEARSAL_OUT_DIR", "/tmp/tabletop_rehearsal"))
 DEFAULT_TEST_PATH = REPO_ROOT / "tests" / "integration" / "tabletop_rehearsal"
 
 EXPECTED_SCENARIO_IDS = ("S1", "S2", "S3", "S4", "S5", "S6", "S7")
@@ -45,12 +43,17 @@ def _run_pytest(out_dir: Path, test_path: Path, extra_args: list[str]) -> int:
     env = os.environ.copy()
     env["TABLETOP_REHEARSAL_OUT_DIR"] = str(out_dir)
     cmd = [
-        sys.executable, "-m", "pytest",
-        "-m", "tabletop_rehearsal",
-        "-q", "--no-header", "--tb=short",
+        sys.executable,
+        "-m",
+        "pytest",
+        "-m",
+        "tabletop_rehearsal",
+        "-q",
+        "--no-header",
+        "--tb=short",
         str(test_path),
     ] + list(extra_args)
-    result = subprocess.run(cmd, env=env, cwd=REPO_ROOT)
+    result = subprocess.run(cmd, check=False, env=env, cwd=REPO_ROOT)
     return result.returncode
 
 
@@ -62,11 +65,13 @@ def _collect_records(out_dir: Path) -> list[dict[str, Any]]:
         try:
             records.append(json.loads(path.read_text(encoding="utf-8")))
         except json.JSONDecodeError as exc:
-            records.append({
-                "scenario_id": path.stem,
-                "outcome": "fail",
-                "failure_note": f"unparseable JSON: {exc}",
-            })
+            records.append(
+                {
+                    "scenario_id": path.stem,
+                    "outcome": "fail",
+                    "failure_note": f"unparseable JSON: {exc}",
+                }
+            )
     return records
 
 
@@ -74,12 +79,14 @@ def _render_summary(records: list[dict[str, Any]]) -> str:
     lines: list[str] = []
     lines.append("# Phase 232.DoD.7 tabletop **rehearsal** summary")
     lines.append("")
-    lines.append(
-        f"Run at: {datetime.now(timezone.utc).isoformat()} (UTC)"
-    )
+    lines.append(f"Run at: {datetime.now(UTC).isoformat()} (UTC)")
     lines.append("")
-    lines.append("| Scenario | Title | Subsystems | Budget (min) | Duration (s) | Outcome | Notes |")
-    lines.append("|----------|-------|------------|--------------|--------------|---------|-------|")
+    lines.append(
+        "| Scenario | Title | Subsystems | Budget (min) | Duration (s) | Outcome | Notes |"
+    )
+    lines.append(
+        "|----------|-------|------------|--------------|--------------|---------|-------|"
+    )
 
     by_id = {r["scenario_id"]: r for r in records if "scenario_id" in r}
     for sid in EXPECTED_SCENARIO_IDS:
@@ -96,10 +103,7 @@ def _render_summary(records: list[dict[str, Any]]) -> str:
         dur = rec.get("duration_seconds", 0.0)
         outcome = rec.get("outcome", "fail")
         note = rec.get("failure_note") or "_—_"
-        lines.append(
-            f"| {sid} | {title} | {subs} | {budget} | "
-            f"{dur:.2f} | `{outcome}` | {note} |"
-        )
+        lines.append(f"| {sid} | {title} | {subs} | {budget} | {dur:.2f} | `{outcome}` | {note} |")
 
     aggregate = "green"
     for sid in EXPECTED_SCENARIO_IDS:

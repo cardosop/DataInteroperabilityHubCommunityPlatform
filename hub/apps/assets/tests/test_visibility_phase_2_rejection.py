@@ -42,6 +42,7 @@ Real Django ORM rows + real DRF APIClient + real AssetUpdateSerializer
 toggled via ``django.test.override_settings`` — a Django-supplied
 mechanism, NOT a mock of the application's settings reader.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -58,7 +59,6 @@ from hub.apps.testing.billing_support import ensure_tenant_has_active_subscripti
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
 
-
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
@@ -68,7 +68,7 @@ User = get_user_model()
 # ---------------------------------------------------------------------------
 
 
-def _seed_tenant_user_asset() -> tuple[Tenant, "User", Asset]:
+def _seed_tenant_user_asset() -> tuple[Tenant, User, Asset]:
     """Create a tenant + DATA_PROVIDER user + DRAFT asset for PATCH
     tests. Tenant is given an active subscription so the
     middleware allows writes."""
@@ -98,9 +98,7 @@ def _seed_tenant_user_asset() -> tuple[Tenant, "User", Asset]:
     return tenant, user, asset
 
 
-def _patch_visibility(
-    client: APIClient, asset: Asset, *, visibility: str, version: int = 1
-):
+def _patch_visibility(client: APIClient, asset: Asset, *, visibility: str, version: int = 1):
     """PATCH /assets/{id}/ with visibility in the body. Returns the
     HTTP response so the caller can assert status code + body."""
     return client.patch(
@@ -110,9 +108,7 @@ def _patch_visibility(
     )
 
 
-def _patch_name(
-    client: APIClient, asset: Asset, *, name: str, version: int = 1
-):
+def _patch_name(client: APIClient, asset: Asset, *, name: str, version: int = 1):
     """PATCH /assets/{id}/ with name (no visibility). Used to assert
     that non-visibility fields are unaffected by the rejection."""
     return client.patch(
@@ -143,20 +139,20 @@ class TestPhase2RejectionFlagOff(TestCase):
 
     def test_visibility_in_body_does_not_return_400_FIELD_REMOVED(self):
         response = _patch_visibility(
-            self.client, self.asset, visibility=AssetVisibility.PUBLIC,
+            self.client,
+            self.asset,
+            visibility=AssetVisibility.PUBLIC,
         )
-        # Whatever the response — 200 (current phase-0 accept) or
-        # 200-with-deprecation-log (phase-1 silent ignore once
-        # 250.3.B lands) — it MUST NOT be the 400 FIELD_REMOVED
-        # rejection. The audit-pin: with the flag OFF, the
-        # phase-2 rejection branch is unreachable.
-        if response.status_code == 400:
-            body = response.json() if response.content else {}
-            assert body.get("code") != "FIELD_REMOVED", (
-                "Phase-2 rejection MUST NOT fire when "
-                "ASSET_VISIBILITY_PHASE_2_REJECT_ENABLED is False; "
-                f"got 400 with code={body.get('code')!r}"
-            )
+        # With the flag OFF, the phase-2 rejection branch is
+        # unreachable. The PATCH must succeed (200) regardless of
+        # whether the visibility write is a no-op (phase-1 deprecation)
+        # or actually applied (pre-phase-1 legacy).
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            f"Expected 200 with flag OFF, got {response.status_code}: "
+            f"{getattr(response, 'data', '')}",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -177,11 +173,12 @@ class TestPhase2RejectionFlagOn(TestCase):
 
     def test_visibility_in_body_returns_400_FIELD_REMOVED(self):
         response = _patch_visibility(
-            self.client, self.asset, visibility=AssetVisibility.PUBLIC,
+            self.client,
+            self.asset,
+            visibility=AssetVisibility.PUBLIC,
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST, (
-            f"Expected 400, got {response.status_code}: "
-            f"{response.content!r}"
+            f"Expected 400, got {response.status_code}: {response.content!r}"
         )
         body = response.json()
         assert body.get("code") == "FIELD_REMOVED", (
@@ -192,7 +189,9 @@ class TestPhase2RejectionFlagOn(TestCase):
 
     def test_rejection_carries_structured_details(self):
         response = _patch_visibility(
-            self.client, self.asset, visibility=AssetVisibility.PUBLIC,
+            self.client,
+            self.asset,
+            visibility=AssetVisibility.PUBLIC,
         )
         body = response.json()
         details = body.get("details") or {}
@@ -205,9 +204,7 @@ class TestPhase2RejectionFlagOn(TestCase):
         # - alternative: the canonical replacement field/property
         assert details.get("field") == "visibility"
         assert details.get("phase") == "phase_2"
-        assert "reason" in details, (
-            f"details MUST include 'reason'; got {details!r}"
-        )
+        assert "reason" in details, f"details MUST include 'reason'; got {details!r}"
         assert "alternative" in details, (
             "details MUST include 'alternative' pointing the "
             "consumer to the canonical replacement (Asset.status "
@@ -217,7 +214,9 @@ class TestPhase2RejectionFlagOn(TestCase):
     def test_rejection_does_not_persist_visibility_change(self):
         original_visibility = self.asset.visibility
         _patch_visibility(
-            self.client, self.asset, visibility=AssetVisibility.PUBLIC,
+            self.client,
+            self.asset,
+            visibility=AssetVisibility.PUBLIC,
         )
         # Refresh from DB; the value must be unchanged because the
         # rejection fired BEFORE any DB write.
@@ -263,8 +262,7 @@ class TestPhase2RejectionFlagOn(TestCase):
         # — the rejection is atomic.
         self.asset.refresh_from_db()
         assert self.asset.name != "Renamed", (
-            "Atomic rejection: NO field is persisted when "
-            "visibility is present in the body."
+            "Atomic rejection: NO field is persisted when visibility is present in the body."
         )
 
     def test_explicit_null_visibility_also_rejected(self):
@@ -376,12 +374,8 @@ class TestMigrationTemplateExists(TestCase):
         # release cycles" — assert "three" + "release cycles"
         # separately to allow that idiomatic phrasing.
         assert "three" in content_lower
-        assert "release cycles" in content_lower, (
-            "Template MUST reference the release-cycle gate."
-        )
-        assert "phase 1" in content_lower, (
-            "Template MUST reference phase 1 prerequisite."
-        )
+        assert "release cycles" in content_lower, "Template MUST reference the release-cycle gate."
+        assert "phase 1" in content_lower, "Template MUST reference phase 1 prerequisite."
         # Phase-1 (250.3.B) already removed the field from Django
         # state via SeparateDatabaseAndState; phase-2's actual
         # operation is a database-only ``DROP COLUMN`` raw SQL,

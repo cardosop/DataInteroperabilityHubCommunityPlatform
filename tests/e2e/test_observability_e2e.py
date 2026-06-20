@@ -3,41 +3,39 @@ E2E tests for Data Observability
 
 End-to-end tests for complete observability workflows.
 """
+
 import pytest
 
 pytestmark = pytest.mark.slow
-from django.test import TestCase
-from django.urls import reverse
-from rest_framework.test import APIClient
-from rest_framework import status
-from django.utils import timezone
 from datetime import timedelta
 
-from hub.apps.observability.freshness import FreshnessMonitor
-from hub.apps.observability.volume import VolumeMonitor
-from hub.apps.observability.schema_drift import SchemaDriftDetector
-from hub.apps.datasets.models import Dataset
+from django.urls import reverse
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.test import APIClient
+
 from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
+from hub.apps.observability.freshness import FreshnessMonitor
+from hub.apps.observability.schema_drift import SchemaDriftDetector
+from hub.apps.observability.volume import VolumeMonitor
 
 from .conftest import E2ETestBase, get_response_data
-
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
 
 class ObservabilityE2ETest(E2ETestBase):
     """E2E tests for data observability"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-        
+
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
-        
+
         # E2ETestBase does not create an asset; observability tests need one for Dataset
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -46,7 +44,7 @@ class ObservabilityE2ETest(E2ETestBase):
             status=AssetStatus.DRAFT,
             created_by=self.user,
         )
-        
+
         self.file = File.objects.create(
             tenant=self.tenant,
             name="test.csv",
@@ -55,9 +53,9 @@ class ObservabilityE2ETest(E2ETestBase):
             status=FileStatus.ACTIVE,
             storage_path="test/test.csv",
             content_sha256="abc123",
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         # Dataset model has no 'name' field (metadata is in schema_json / asset)
         self.dataset = Dataset.objects.create(
             tenant=self.tenant,
@@ -66,14 +64,14 @@ class ObservabilityE2ETest(E2ETestBase):
             schema_json={
                 "fields": [
                     {"name": "email", "type": "string", "nullable": False},
-                    {"name": "name", "type": "string", "nullable": True}
+                    {"name": "name", "type": "string", "nullable": True},
                 ]
             },
             format="CSV",
             version=1,
-            created_by=self.user
+            created_by=self.user,
         )
-    
+
     def test_complete_observability_workflow(self):
         """Test complete observability workflow: freshness -> volume -> drift"""
         # Step 1: Record freshness metric
@@ -84,73 +82,73 @@ class ObservabilityE2ETest(E2ETestBase):
             freshness_sla="HOURLY",
             row_count=1000,
             size_bytes=50000,
-            schema_json=self.dataset.schema_json
+            schema_json=self.dataset.schema_json,
         )
-        
+
         self.assertIsNotNone(metric)
         self.assertFalse(metric.is_stale)  # 1 hour old, 1 hour SLA = not stale
-        
+
         # Step 2: Get freshness dashboard
-        url = reverse('observability-get-freshness-dashboard')
+        url = reverse("observability-get-freshness-dashboard")
         response = self.client.get(url)
 
         data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('results', data)
+        self.assertIn("results", data)
         # Verify results contain the recorded metric data
-        results = data['results']
+        results = data["results"]
         self.assertIsInstance(results, list)
-        self.assertGreater(len(results), 0, "Freshness dashboard should contain the recorded metric")
+        self.assertGreater(
+            len(results), 0, "Freshness dashboard should contain the recorded metric"
+        )
         first_result = results[0]
-        self.assertIn('dataset_id', first_result)
-        self.assertEqual(str(first_result['dataset_id']), str(self.dataset.id))
+        self.assertIn("dataset_id", first_result)
+        self.assertEqual(str(first_result["dataset_id"]), str(self.dataset.id))
 
         # Step 3: Aggregate volume trends
         VolumeMonitor.aggregate_daily_trends(
-            tenant_id=str(self.tenant.id),
-            dataset_id=str(self.dataset.id),
-            days=30
+            tenant_id=str(self.tenant.id), dataset_id=str(self.dataset.id), days=30
         )
 
         # Step 4: Get volume dashboard
-        url = reverse('observability-get-volume-dashboard')
-        response = self.client.get(url, {'period_type': 'DAILY'})
+        url = reverse("observability-get-volume-dashboard")
+        response = self.client.get(url, {"period_type": "DAILY"})
 
         data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('results', data)
-        self.assertIsInstance(data['results'], list)
+        self.assertIn("results", data)
+        self.assertIsInstance(data["results"], list)
 
         # Step 5: Detect schema drift
         new_schema = {
             "fields": [
                 {"name": "email", "type": "string", "nullable": False},
                 {"name": "name", "type": "string", "nullable": True},
-                {"name": "age", "type": "integer", "nullable": True}  # New field
+                {"name": "age", "type": "integer", "nullable": True},  # New field
             ]
         }
 
         drift = SchemaDriftDetector.detect_drift(
-            tenant_id=str(self.tenant.id),
-            dataset=self.dataset,
-            current_schema_json=new_schema
+            tenant_id=str(self.tenant.id), dataset=self.dataset, current_schema_json=new_schema
         )
 
         self.assertIsNotNone(drift)
         self.assertIn("age", drift.new_fields)
 
         # Step 6: Get schema drift dashboard
-        url = reverse('observability-get-schema-drift-dashboard')
+        url = reverse("observability-get-schema-drift-dashboard")
         response = self.client.get(url)
 
         data = get_response_data(response) or {}
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('results', data)
+        self.assertIn("results", data)
         # Verify drift results contain the detected drift
-        drift_results = data['results']
+        drift_results = data["results"]
         self.assertIsInstance(drift_results, list)
-        self.assertGreater(len(drift_results), 0, "Schema drift dashboard should contain the detected drift")
-    
+        self.assertGreater(
+            len(drift_results), 0, "Schema drift dashboard should contain the detected drift"
+        )
+
     def test_stale_data_detection_workflow(self):
         """Test stale data detection workflow"""
         # Record stale metric
@@ -158,25 +156,25 @@ class ObservabilityE2ETest(E2ETestBase):
             tenant_id=str(self.tenant.id),
             dataset=self.dataset,
             last_update_time=timezone.now() - timedelta(hours=2),
-            freshness_sla="HOURLY"  # 1 hour SLA, 2 hours old = stale
+            freshness_sla="HOURLY",  # 1 hour SLA, 2 hours old = stale
         )
-        
+
         # Detect stale data
         stale_data = FreshnessMonitor.detect_stale_data(
-            tenant_id=str(self.tenant.id),
-            dataset_id=str(self.dataset.id)
+            tenant_id=str(self.tenant.id), dataset_id=str(self.dataset.id)
         )
-        
+
         self.assertGreater(len(stale_data), 0)
         self.assertTrue(stale_data[0]["freshness_age_seconds"] > 3600)
         # Verify the stale data entry references the correct dataset
         self.assertEqual(
-            str(stale_data[0]["dataset_id"]), str(self.dataset.id),
+            str(stale_data[0]["dataset_id"]),
+            str(self.dataset.id),
             "Stale data entry must reference the recorded dataset",
         )
 
         # Get stale data via API
-        url = reverse('observability-get-stale-data')
+        url = reverse("observability-get-stale-data")
         response = self.client.get(url)
 
         data = get_response_data(response)
@@ -186,10 +184,11 @@ class ObservabilityE2ETest(E2ETestBase):
         # Verify the API response contains the stale dataset
         stale_dataset_ids = [str(entry.get("dataset_id")) for entry in data]
         self.assertIn(
-            str(self.dataset.id), stale_dataset_ids,
+            str(self.dataset.id),
+            stale_dataset_ids,
             "Stale data API response must include the recorded stale dataset",
         )
-    
+
     def test_volume_anomaly_detection_workflow(self):
         """Test volume anomaly detection workflow"""
         # Record normal metrics
@@ -198,28 +197,27 @@ class ObservabilityE2ETest(E2ETestBase):
                 tenant_id=str(self.tenant.id),
                 dataset=self.dataset,
                 row_count=1000 + i * 10,
-                size_bytes=50000 + i * 500
+                size_bytes=50000 + i * 500,
             )
-        
+
         # Record anomaly (spike)
         FreshnessMonitor.record_metric(
             tenant_id=str(self.tenant.id),
             dataset=self.dataset,
             row_count=50000,  # Large spike
-            size_bytes=2000000
+            size_bytes=2000000,
         )
-        
+
         # Aggregate trends
         trends = VolumeMonitor.aggregate_daily_trends(
-            tenant_id=str(self.tenant.id),
-            dataset_id=str(self.dataset.id),
-            days=30
+            tenant_id=str(self.tenant.id), dataset_id=str(self.dataset.id), days=30
         )
-        
+
         # Verify trends were aggregated
         self.assertIsInstance(trends, list)
         self.assertGreater(
-            len(trends), 0,
+            len(trends),
+            0,
             "Volume trends should be aggregated from metrics",
         )
 
@@ -230,10 +228,9 @@ class ObservabilityE2ETest(E2ETestBase):
         # establish a baseline, so we do NOT assert anomalies are
         # found -- only that the structure is correct.
         first_trend = trends[0]
-        self.assertTrue(hasattr(first_trend, 'is_anomaly'))
+        self.assertTrue(hasattr(first_trend, "is_anomaly"))
         self.assertTrue(
-            hasattr(first_trend, 'avg_row_count')
-            or hasattr(first_trend, 'row_count')
-            or hasattr(first_trend, 'total_row_count'),
+            hasattr(first_trend, "avg_row_count")
+            or hasattr(first_trend, "row_count")
+            or hasattr(first_trend, "total_row_count"),
         )
-

@@ -1,7 +1,6 @@
 """Phase 232.8 — compliance routes must be mounted under /api/v1/compliance/."""
 
 from __future__ import annotations
-import pytest
 
 import pytest
 from django.test import SimpleTestCase

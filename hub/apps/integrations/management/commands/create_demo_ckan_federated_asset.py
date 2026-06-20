@@ -9,15 +9,16 @@ Usage:
     python hub/manage.py create_demo_ckan_federated_asset --listing-id annakarenina --tenant my-tenant
     python hub/manage.py create_demo_ckan_federated_asset --listing-id annakarenina --output-json
 """
+
+from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django.contrib.auth import get_user_model
 
-from hub.apps.integrations.models import MarketplaceConnection
-from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.config.marketplace_instances import get_marketplace_instance_config
 from hub.apps.integrations.factory import MarketplaceConnectorFactory
+from hub.apps.integrations.models import MarketplaceConnection
+from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.tenants.models import Tenant
 
 User = get_user_model()
@@ -30,7 +31,6 @@ class Command(BaseCommand):
     help = (
         "PULL a specific listing from demo.ckan.org and create a federated asset synchronously. "
         "Used for tests and fixtures."
-
     )
 
     def add_arguments(self, parser):
@@ -164,7 +164,8 @@ class Command(BaseCommand):
 
         if output_json:
             self.stdout.write(
-                '{"asset_id": "%s", "listing_id": "%s", "asset_name": "%s"}' % (
+                '{"asset_id": "%s", "listing_id": "%s", "asset_name": "%s"}'
+                % (
                     str(asset.id),
                     listing_id,
                     (asset.name or "").replace('"', '\\"'),

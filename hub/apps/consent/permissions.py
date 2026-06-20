@@ -37,9 +37,7 @@ class IsDPO(BasePermission):
             return False
         if getattr(request.user, "is_platform_admin", False):
             return True
-        return UserRole.objects.filter(
-            user=request.user, tenant=tenant, role__name="DPO"
-        ).exists()
+        return UserRole.objects.filter(user=request.user, tenant=tenant, role__name="DPO").exists()
 
 
 class IsTenantAdminOrDPO(BasePermission):

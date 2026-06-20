@@ -4,8 +4,8 @@ Usage:
     python manage.py export_audit_trail --tenant <slug> --since 2025-01-01 --until 2025-12-31
     python manage.py export_audit_trail --tenant <slug> --format jsonl --output /tmp/audit.jsonl
 """
+
 import json
-import os
 
 from django.core.management.base import BaseCommand
 
@@ -14,26 +14,14 @@ class Command(BaseCommand):
     help = "Export audit trail events to JSON Lines for regulator/compliance use."
 
     def add_arguments(self, parser):
+        parser.add_argument("--tenant", type=str, required=True, help="Tenant slug or UUID.")
+        parser.add_argument("--since", type=str, default=None, help="Start date (ISO format).")
+        parser.add_argument("--until", type=str, default=None, help="End date (ISO format).")
         parser.add_argument(
-            "--tenant", type=str, required=True, help="Tenant slug or UUID."
+            "--format", type=str, default="jsonl", choices=["jsonl", "csv"], help="Output format."
         )
-        parser.add_argument(
-            "--since", type=str, default=None, help="Start date (ISO format)."
-        )
-        parser.add_argument(
-            "--until", type=str, default=None, help="End date (ISO format)."
-        )
-        parser.add_argument(
-            "--format", type=str, default="jsonl", choices=["jsonl", "csv"],
-            help="Output format."
-        )
-        parser.add_argument(
-            "--output", type=str, default=None, help="Output file path."
-        )
-        parser.add_argument(
-            "--batch-size", type=int, default=10000,
-            help="Events per batch."
-        )
+        parser.add_argument("--output", type=str, default=None, help="Output file path.")
+        parser.add_argument("--batch-size", type=int, default=10000, help="Events per batch.")
 
     def handle(self, *args, **options):
         tenant_slug = options["tenant"]
@@ -41,10 +29,10 @@ class Command(BaseCommand):
         fmt = options["format"]
         batch_size = options["batch_size"]
 
-        from hub.apps.tenants.models import Tenant
-        from hub.apps.audit.models import AuditEvent
-        from django.utils import timezone
         import uuid as _uuid
+
+        from hub.apps.audit.models import AuditEvent
+        from hub.apps.tenants.models import Tenant
 
         # Resolve tenant
         try:

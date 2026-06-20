@@ -1,13 +1,14 @@
 """
 Phase 277.B.072 — RQ task circuit breaker tests.
 """
+
+import contextlib
 from unittest.mock import patch
 
 import pytest
 
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
-    CircuitBreakerError,
     CircuitBreakerState,
 )
 from hub.apps.jobs.task_circuit_breaker import circuit_breaker_guard
@@ -32,9 +33,7 @@ class TestCircuitBreakerGuard:
 
     def test_guard_skips_when_circuit_open(self):
         """Function returns None without executing when circuit is open."""
-        breaker = CircuitBreaker(
-            "test_open_service", failure_threshold=1, timeout_seconds=999
-        )
+        breaker = CircuitBreaker("test_open_service", failure_threshold=1, timeout_seconds=999)
         # Manually open the circuit via internal state mutation
         breaker._set_state(CircuitBreakerState.OPEN)
 
@@ -55,14 +54,13 @@ class TestCircuitBreakerGuard:
 
     def test_guard_reports_failure_and_re_raises(self):
         """Exception in task → breaker records failure → exception re-raised."""
-        breaker = CircuitBreaker(
-            "test_fail_service", failure_threshold=3, timeout_seconds=10
-        )
+        breaker = CircuitBreaker("test_fail_service", failure_threshold=3, timeout_seconds=10)
 
         with patch(
             "hub.apps.jobs.task_circuit_breaker._get_breaker",
             return_value=breaker,
         ):
+
             @circuit_breaker_guard("test_fail_service")
             def failing_task():
                 raise ValueError("downstream error")
@@ -74,14 +72,13 @@ class TestCircuitBreakerGuard:
 
     def test_guard_reports_success(self):
         """Successful execution → breaker stays CLOSED with zero failures."""
-        breaker = CircuitBreaker(
-            "test_success_service", failure_threshold=3, timeout_seconds=10
-        )
+        breaker = CircuitBreaker("test_success_service", failure_threshold=3, timeout_seconds=10)
 
         with patch(
             "hub.apps.jobs.task_circuit_breaker._get_breaker",
             return_value=breaker,
         ):
+
             @circuit_breaker_guard("test_success_service")
             def ok_task():
                 return "fine"
@@ -94,23 +91,20 @@ class TestCircuitBreakerGuard:
 
     def test_guard_opens_after_threshold_failures(self):
         """Repeated failures trip the circuit open."""
-        breaker = CircuitBreaker(
-            "test_threshold_service", failure_threshold=2, timeout_seconds=999
-        )
+        breaker = CircuitBreaker("test_threshold_service", failure_threshold=2, timeout_seconds=999)
 
         with patch(
             "hub.apps.jobs.task_circuit_breaker._get_breaker",
             return_value=breaker,
         ):
+
             @circuit_breaker_guard("test_threshold_service", failure_threshold=2)
             def flaky_task():
                 raise RuntimeError("boom")
 
             for _ in range(2):
-                try:
+                with contextlib.suppress(RuntimeError):
                     flaky_task()
-                except RuntimeError:
-                    pass
 
             assert breaker.get_state() == CircuitBreakerState.OPEN
 
@@ -131,6 +125,7 @@ class TestCircuitBreakerGuard:
             "hub.apps.jobs.task_circuit_breaker._get_breaker",
             return_value=breaker,
         ):
+
             @circuit_breaker_guard(
                 "test_half_open_service",
                 failure_threshold=1,

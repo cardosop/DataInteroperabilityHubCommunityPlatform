@@ -12,29 +12,27 @@ Features:
 - Consistency validation
 - Graceful shutdown with flush
 """
-import time
+
 import threading
-import structlog
-from typing import Dict, Any, List, Optional
+import time
 from collections import deque
+from datetime import datetime
+from typing import Any
+
+import structlog
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
-from datetime import datetime, timedelta
-from django.conf import settings
 
 from .models import Event
-from .metrics import (
-    event_persistence_duration_seconds,
-    get_tenant_id,
-)
 
 logger = structlog.get_logger(__name__)
 
 # Configuration defaults
-DEFAULT_BUFFER_SIZE = getattr(settings, 'EVENT_BUS_WRITE_BEHIND_BUFFER_SIZE', 100)
-DEFAULT_FLUSH_INTERVAL_SECONDS = getattr(settings, 'EVENT_BUS_WRITE_BEHIND_FLUSH_INTERVAL', 5.0)
-DEFAULT_MAX_RETRIES = getattr(settings, 'EVENT_BUS_WRITE_BEHIND_MAX_RETRIES', 3)
-DEFAULT_RETRY_DELAY_SECONDS = getattr(settings, 'EVENT_BUS_WRITE_BEHIND_RETRY_DELAY', 1.0)
+DEFAULT_BUFFER_SIZE = getattr(settings, "EVENT_BUS_WRITE_BEHIND_BUFFER_SIZE", 100)
+DEFAULT_FLUSH_INTERVAL_SECONDS = getattr(settings, "EVENT_BUS_WRITE_BEHIND_FLUSH_INTERVAL", 5.0)
+DEFAULT_MAX_RETRIES = getattr(settings, "EVENT_BUS_WRITE_BEHIND_MAX_RETRIES", 3)
+DEFAULT_RETRY_DELAY_SECONDS = getattr(settings, "EVENT_BUS_WRITE_BEHIND_RETRY_DELAY", 1.0)
 
 
 class WriteBehindBuffer:
@@ -50,7 +48,7 @@ class WriteBehindBuffer:
         buffer_size: int = DEFAULT_BUFFER_SIZE,
         flush_interval_seconds: float = DEFAULT_FLUSH_INTERVAL_SECONDS,
         max_retries: int = DEFAULT_MAX_RETRIES,
-        retry_delay_seconds: float = DEFAULT_RETRY_DELAY_SECONDS
+        retry_delay_seconds: float = DEFAULT_RETRY_DELAY_SECONDS,
     ):
         """
         Initialize write-behind buffer.
@@ -69,7 +67,7 @@ class WriteBehindBuffer:
         self._buffer: deque = deque()  # unbounded; explicit size check below
         self._lock = threading.RLock()
         self._last_flush_time = time.time()
-        self._flush_thread: Optional[threading.Thread] = None
+        self._flush_thread: threading.Thread | None = None
         self._shutdown_event = threading.Event()
         self._is_running = False
 
@@ -77,7 +75,7 @@ class WriteBehindBuffer:
             "write_behind_buffer_initialized",
             buffer_size=buffer_size,
             flush_interval_seconds=flush_interval_seconds,
-            max_retries=max_retries
+            max_retries=max_retries,
         )
 
     def start(self):
@@ -89,9 +87,7 @@ class WriteBehindBuffer:
         self._is_running = True
         self._shutdown_event.clear()
         self._flush_thread = threading.Thread(
-            target=self._flush_loop,
-            name="WriteBehindFlushThread",
-            daemon=True
+            target=self._flush_loop, name="WriteBehindFlushThread", daemon=True
         )
         self._flush_thread.start()
         logger.info("write_behind_buffer_started")
@@ -117,7 +113,7 @@ class WriteBehindBuffer:
 
         logger.info("write_behind_buffer_stopped", flushed=flush)
 
-    def add_event(self, event_data: Dict[str, Any]) -> bool:
+    def add_event(self, event_data: dict[str, Any]) -> bool:
         """
         Add an event to the buffer.
 
@@ -129,7 +125,9 @@ class WriteBehindBuffer:
         """
         with self._lock:
             # Hard cap: drop event rather than OOM
-            max_buffer = getattr(settings, 'EVENT_BUS_WRITE_BEHIND_MAX_BUFFER', self.buffer_size * 10)
+            max_buffer = getattr(
+                settings, "EVENT_BUS_WRITE_BEHIND_MAX_BUFFER", self.buffer_size * 10
+            )
             if len(self._buffer) >= max_buffer:
                 logger.warning(
                     "write_behind_buffer_full",
@@ -144,7 +142,7 @@ class WriteBehindBuffer:
                 logger.debug(
                     "write_behind_buffer_full",
                     buffer_size=len(self._buffer),
-                    max_size=self.buffer_size
+                    max_size=self.buffer_size,
                 )
                 self.flush()
 
@@ -156,7 +154,7 @@ class WriteBehindBuffer:
                 logger.debug(
                     "write_behind_buffer_size_threshold",
                     size=current_size,
-                    threshold=self.buffer_size
+                    threshold=self.buffer_size,
                 )
                 self.flush()
 
@@ -206,20 +204,16 @@ class WriteBehindBuffer:
                             logger.debug(
                                 "write_behind_buffer_time_flush",
                                 time_since_flush=time_since_flush,
-                                buffer_size=len(self._buffer)
+                                buffer_size=len(self._buffer),
                             )
                             self.flush()
 
             except Exception as e:
-                logger.error(
-                    "write_behind_buffer_flush_loop_error",
-                    error=str(e),
-                    exc_info=True
-                )
+                logger.error("write_behind_buffer_flush_loop_error", error=str(e), exc_info=True)
                 # Continue loop even on error
                 time.sleep(1.0)
 
-    def _flush_events(self, events_data: List[Dict[str, Any]]) -> int:
+    def _flush_events(self, events_data: list[dict[str, Any]]) -> int:
         """
         Flush events to PostgreSQL with retry logic.
 
@@ -246,7 +240,7 @@ class WriteBehindBuffer:
                     count=persisted_count,
                     total=len(events_data),
                     retry_count=retry_count,
-                    duration=duration
+                    duration=duration,
                 )
 
                 return persisted_count
@@ -262,7 +256,7 @@ class WriteBehindBuffer:
                         retry_count=retry_count,
                         max_retries=self.max_retries,
                         delay=self.retry_delay_seconds,
-                        duration=duration
+                        duration=duration,
                     )
                     time.sleep(self.retry_delay_seconds * retry_count)  # Exponential backoff
                 else:
@@ -272,7 +266,7 @@ class WriteBehindBuffer:
                         retry_count=retry_count,
                         event_count=len(events_data),
                         duration=duration,
-                        exc_info=True
+                        exc_info=True,
                     )
                     # Store failed events for manual retry or DLQ
                     self._handle_failed_events(events_data, str(e))
@@ -280,7 +274,7 @@ class WriteBehindBuffer:
 
         return persisted_count
 
-    def _persist_events_batch(self, events_data: List[Dict[str, Any]]) -> int:
+    def _persist_events_batch(self, events_data: list[dict[str, Any]]) -> int:
         """
         Persist a batch of events to PostgreSQL.
 
@@ -302,7 +296,7 @@ class WriteBehindBuffer:
             try:
                 timestamp_str = event_data.get("timestamp", "")
                 if isinstance(timestamp_str, str):
-                    timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                    timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
                 else:
                     timestamp = timezone.now()
 
@@ -316,7 +310,7 @@ class WriteBehindBuffer:
                     user_id=event_data.get("source", {}).get("user_id"),
                     request_id=event_data.get("source", {}).get("request_id"),
                     data=event_data.get("data", {}),
-                    metadata=event_data.get("metadata", {})
+                    metadata=event_data.get("metadata", {}),
                 )
                 events_to_create.append(event_obj)
 
@@ -326,7 +320,7 @@ class WriteBehindBuffer:
                     event_id=event_id,
                     event_type=event_type,
                     error=str(e),
-                    exc_info=True
+                    exc_info=True,
                 )
                 # Continue with other events
                 continue
@@ -344,7 +338,7 @@ class WriteBehindBuffer:
 
         return persisted_count
 
-    def _validate_consistency(self, events_data: List[Dict[str, Any]], persisted_count: int):
+    def _validate_consistency(self, events_data: list[dict[str, Any]], persisted_count: int):
         """
         Validate that events were persisted correctly.
 
@@ -357,7 +351,7 @@ class WriteBehindBuffer:
                 "write_behind_buffer_consistency_warning",
                 expected=len(events_data),
                 persisted=persisted_count,
-                difference=len(events_data) - persisted_count
+                difference=len(events_data) - persisted_count,
             )
 
         # Sample validation: check events exist in database
@@ -371,10 +365,10 @@ class WriteBehindBuffer:
                     logger.warning(
                         "write_behind_buffer_consistency_check_failed",
                         event_id=event_id,
-                        event_type=event_data.get("event_type")
+                        event_type=event_data.get("event_type"),
                     )
 
-    def _handle_failed_events(self, events_data: List[Dict[str, Any]], error_message: str):
+    def _handle_failed_events(self, events_data: list[dict[str, Any]], error_message: str):
         """
         Handle events that failed to persist after all retries.
 
@@ -392,7 +386,7 @@ class WriteBehindBuffer:
             "write_behind_buffer_failed_events",
             count=len(events_data),
             error=error_message,
-            event_ids=[e.get("event_id") for e in events_data[:10]]  # Log first 10 IDs
+            event_ids=[e.get("event_id") for e in events_data[:10]],  # Log first 10 IDs
         )
 
     def get_buffer_size(self) -> int:
@@ -400,7 +394,7 @@ class WriteBehindBuffer:
         with self._lock:
             return len(self._buffer)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get buffer statistics."""
         with self._lock:
             return {
@@ -408,12 +402,12 @@ class WriteBehindBuffer:
                 "max_buffer_size": self.buffer_size,
                 "flush_interval_seconds": self.flush_interval_seconds,
                 "is_running": self._is_running,
-                "time_since_last_flush": time.time() - self._last_flush_time
+                "time_since_last_flush": time.time() - self._last_flush_time,
             }
 
 
 # Global write-behind buffer instance
-_write_behind_buffer: Optional[WriteBehindBuffer] = None
+_write_behind_buffer: WriteBehindBuffer | None = None
 _buffer_lock = threading.Lock()
 
 
@@ -437,4 +431,3 @@ def shutdown_write_behind_buffer(flush: bool = True):
         if _write_behind_buffer:
             _write_behind_buffer.stop(flush=flush)
             _write_behind_buffer = None
-

@@ -12,14 +12,12 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
 from hub.apps.dq.tests.test_base import DQAPITestBase
-from hub.apps.jobs.models import Job, JobStatus, JobType
+from hub.apps.jobs.models import JobType
 from hub.apps.jobs.utils import create_job
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -95,12 +93,8 @@ class TestResultsEndpointRegression(DQAPITestBase):
     def test_by_category_groups_multiple(self):
         """3 COMPLETENESS + 2 VALIDITY checks yield correct counts."""
         checks = [
-            {"category": "COMPLETENESS", "status": "PASS", "name": f"c{i}"}
-            for i in range(3)
-        ] + [
-            {"category": "VALIDITY", "status": "FAIL", "name": f"v{i}"}
-            for i in range(2)
-        ]
+            {"category": "COMPLETENESS", "status": "PASS", "name": f"c{i}"} for i in range(3)
+        ] + [{"category": "VALIDITY", "status": "FAIL", "name": f"v{i}"} for i in range(2)]
         run = self._create_run(checks_json=checks, quality_score=60.0)
         resp = self._get_results(run.id)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)

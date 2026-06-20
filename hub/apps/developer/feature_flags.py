@@ -3,6 +3,7 @@
 
 Gates the Developer Plugin ViewSet on ``Tenant.developer_enabled``.
 """
+
 from __future__ import annotations
 
 from rest_framework.response import Response

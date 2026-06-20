@@ -1,12 +1,14 @@
 """
 Integration tests for API endpoint audit script
 """
+
+import importlib.util
+import json
 import os
 import sys
 import tempfile
-import json
-import importlib.util
 from pathlib import Path
+
 import pytest
 
 # Add scripts directory to path
@@ -14,8 +16,8 @@ scripts_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(scripts_dir))
 
 # Import module with hyphenated name using importlib
-script_path = scripts_dir / 'audit-api-endpoints.py'
-spec = importlib.util.spec_from_file_location('audit_api_endpoints', script_path)
+script_path = scripts_dir / "audit-api-endpoints.py"
+spec = importlib.util.spec_from_file_location("audit_api_endpoints", script_path)
 audit_api_endpoints = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit_api_endpoints)
 
@@ -36,12 +38,11 @@ class TestEndpointAuditorIntegration:
         # Should find the file if running from project root
         if urls_file:
             assert os.path.exists(urls_file)
-            assert urls_file.endswith('urls.py')
-            assert 'api' in urls_file
+            assert urls_file.endswith("urls.py")
+            assert "api" in urls_file
 
     @pytest.mark.skipif(
-        not os.path.exists('hub/apps/api/urls.py'),
-        reason='Django project not available'
+        not os.path.exists("hub/apps/api/urls.py"), reason="Django project not available"
     )
     def test_full_audit(self):
         """Test full audit process"""
@@ -59,34 +60,33 @@ class TestEndpointAuditorIntegration:
             )
 
             # Check results structure
-            assert 'inventory' in results
-            assert 'issues' in results
-            assert 'mount_points' in results
+            assert "inventory" in results
+            assert "issues" in results
+            assert "mount_points" in results
 
             # Check inventory structure
-            inventory = results['inventory']
-            assert 'summary' in inventory
-            assert 'endpoints' in inventory
+            inventory = results["inventory"]
+            assert "summary" in inventory
+            assert "endpoints" in inventory
 
             # Check summary
-            summary = inventory['summary']
-            assert 'total_endpoints' in summary
-            assert 'total_services' in summary
+            summary = inventory["summary"]
+            assert "total_endpoints" in summary
+            assert "total_services" in summary
 
             # Should have some endpoints
-            assert summary['total_endpoints'] > 0
+            assert summary["total_endpoints"] > 0
 
             # Check issues structure
-            issues = results['issues']
-            assert 'duplicates' in issues or 'naming_inconsistencies' in issues
+            issues = results["issues"]
+            assert "duplicates" in issues or "naming_inconsistencies" in issues
 
         except Exception as e:
             # If Django setup fails, that's okay for integration test
             pytest.skip(f"Django setup failed: {e}")
 
     @pytest.mark.skipif(
-        not os.path.exists('hub/apps/api/urls.py'),
-        reason='Django project not available'
+        not os.path.exists("hub/apps/api/urls.py"), reason="Django project not available"
     )
     def test_json_output(self):
         """Test JSON output format"""
@@ -102,14 +102,13 @@ class TestEndpointAuditorIntegration:
 
             # Should be valid JSON
             parsed = json.loads(json_output)
-            assert 'inventory' in parsed
+            assert "inventory" in parsed
 
         except Exception as e:
             pytest.skip(f"Django setup failed: {e}")
 
     @pytest.mark.skipif(
-        not os.path.exists('hub/apps/api/urls.py'),
-        reason='Django project not available'
+        not os.path.exists("hub/apps/api/urls.py"), reason="Django project not available"
     )
     def test_markdown_output(self):
         """Test Markdown output format"""
@@ -128,7 +127,7 @@ class TestEndpointAuditorIntegration:
             assert len(markdown_output) > 0
 
             # Should contain expected sections
-            assert 'API Endpoint Audit Report' in markdown_output or '# ' in markdown_output
+            assert "API Endpoint Audit Report" in markdown_output or "# " in markdown_output
 
         except Exception as e:
             pytest.skip(f"Django setup failed: {e}")
@@ -146,7 +145,7 @@ urlpatterns = [
 ]
 """
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write(urls_content)
             temp_path = f.name
 
@@ -154,11 +153,10 @@ urlpatterns = [
             mapper = ServiceMountPointMapper()
             mount_points = mapper.map_from_file(temp_path)
 
-            assert 'auth' in mount_points
-            assert mount_points['auth'] == 'hub.apps.auth.urls'
-            assert 'tenants' in mount_points
-            assert 'users' in mount_points
+            assert "auth" in mount_points
+            assert mount_points["auth"] == "hub.apps.auth.urls"
+            assert "tenants" in mount_points
+            assert "users" in mount_points
 
         finally:
             os.unlink(temp_path)
-

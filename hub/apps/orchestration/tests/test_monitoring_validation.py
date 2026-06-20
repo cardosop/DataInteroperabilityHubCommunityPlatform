@@ -10,6 +10,7 @@ Comprehensive TDD tests for:
 All tests follow TDD principles, use real implementations (no mocks/stubs),
 and fix root causes rather than workarounds.
 """
+
 import uuid
 
 from django.contrib.auth import get_user_model
@@ -23,8 +24,6 @@ from hub.apps.orchestration.metrics import (
 )
 from hub.apps.orchestration.models import (
     WorkflowDefinition,
-    WorkflowInstance,
-    WorkflowStatus,
 )
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
@@ -46,7 +45,9 @@ class MonitoringValidationTestBase(TestCase):
             kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.engine = WorkflowEngine()
 
@@ -57,9 +58,11 @@ class MonitoringValidationTestBase(TestCase):
 
         self.engine.register_task("test_task", test_task)
 
-        # Create workflow definition
+        # Create workflow definition with unique name to avoid collisions
+        # across test classes and stale --reuse-db data.
+        self.workflow_name = f"test_workflow_{uuid.uuid4().hex[:8]}"
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=self.workflow_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
@@ -76,7 +79,7 @@ class TestValidationMetrics(MonitoringValidationTestBase):
         """Test that validation metrics are recorded"""
         # Create and start workflow instance
         instance = self.engine.create_instance(
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             input_data={"test": "data"},
             tenant_id=str(self.tenant.id),
             created_by_id=str(self.user.id),
@@ -89,40 +92,50 @@ class TestValidationMetrics(MonitoringValidationTestBase):
         self.engine._execute_task_step(instance, step, step_def)
 
         # Verify metrics exist and have expected Prometheus metric interface.
-        # Existence check only: exact counts require a Prometheus scrape endpoint,
-        # but we verify these are real metric objects with a labels() method.
-        self.assertIsNotNone(
-            workflow_business_rules_validations_total,
-            "validations_total metric should be defined",
+        # We can't assert exact counter values without a Prometheus scrape endpoint,
+        # but we verify the metrics are importable, support labels(), and that
+        # labeling with the expected keys succeeds without error.
+        metrics = [
+            ("validations_total", workflow_business_rules_validations_total),
+            ("validation_duration_seconds", workflow_business_rules_validation_duration_seconds),
+            ("cache_hits_total", workflow_business_rules_validation_cache_hits_total),
+            ("cache_misses_total", workflow_business_rules_validation_cache_misses_total),
+        ]
+        for name, metric in metrics:
+            self.assertIsNotNone(metric, f"{name} metric should be defined")
+            self.assertTrue(hasattr(metric, "labels"), f"{name} should support labels()")
+        # Verify we can label and increment the counter metrics
+        labeled = workflow_business_rules_validations_total.labels(
+            workflow_name=self.workflow_name,
+            step_name="step1",
+            rule_name="test_rule",
+            validation_type="workflow_state",
+            result="passed",
+            tenant_id=str(self.tenant.id),
         )
-        self.assertIsNotNone(
-            workflow_business_rules_validation_duration_seconds,
-            "validation_duration_seconds metric should be defined",
-        )
-        self.assertIsNotNone(
-            workflow_business_rules_validation_cache_hits_total,
-            "cache_hits_total metric should be defined",
-        )
-        self.assertIsNotNone(
-            workflow_business_rules_validation_cache_misses_total,
-            "cache_misses_total metric should be defined",
-        )
-        # Verify they expose the Prometheus labels interface
-        self.assertTrue(
-            hasattr(workflow_business_rules_validations_total, "labels"),
-            "validations_total should support labels()",
-        )
-        self.assertTrue(
-            hasattr(workflow_business_rules_validation_duration_seconds, "labels"),
-            "validation_duration_seconds should support labels()",
-        )
+        self.assertTrue(hasattr(labeled, "inc"), "labeled counter should support inc()")
+        labeled.inc()  # should not raise
 
     def test_validation_metrics_labels(self):
-        """Test that validation metrics have correct labels"""
-        # Metrics should support labels: workflow_name, step_name, rule_name, validation_type, result, tenant_id
-        # We can't easily test this without Prometheus, but we verify the metrics exist
-        self.assertTrue(hasattr(workflow_business_rules_validations_total, "labels"))
-        self.assertTrue(hasattr(workflow_business_rules_validation_duration_seconds, "labels"))
+        """Test that validation metrics accept the expected label set."""
+        expected_labels = {
+            "workflow_name": self.workflow_name,
+            "step_name": "step1",
+            "rule_name": "test_rule",
+            "validation_type": "workflow_state",
+            "result": "passed",
+            "tenant_id": str(self.tenant.id),
+        }
+        # Counter metric
+        labeled_counter = workflow_business_rules_validations_total.labels(**expected_labels)
+        self.assertTrue(hasattr(labeled_counter, "inc"),
+                        "Labeled counter should support inc()")
+        labeled_counter.inc()
+        # Histogram metric
+        labeled_hist = workflow_business_rules_validation_duration_seconds.labels(**expected_labels)
+        self.assertTrue(hasattr(labeled_hist, "observe"),
+                        "Labeled histogram should support observe()")
+        labeled_hist.observe(0.5)
 
 
 class TestValidationLogging(MonitoringValidationTestBase):
@@ -146,7 +159,7 @@ class TestValidationLogging(MonitoringValidationTestBase):
         try:
             # Create and start workflow instance
             instance = self.engine.create_instance(
-                workflow_name="test_workflow",
+                workflow_name=self.workflow_name,
                 input_data={"test": "data"},
                 tenant_id=str(self.tenant.id),
                 created_by_id=str(self.user.id),
@@ -158,10 +171,14 @@ class TestValidationLogging(MonitoringValidationTestBase):
             step_def = self.workflow_def.dsl_json["steps"][0]
             self.engine._execute_task_step(instance, step, step_def)
 
-            # Check logs (logs are in JSON format, so we check for key fields)
+            # Check that logs were produced with validation context
             log_output = log_capture.getvalue()
-            # Verify logs contain validation context
-            # Note: Actual log format may vary, but we verify logging happens
-            self.assertIsNotNone(log_output)
+            self.assertIsInstance(log_output, str)
+            # The workflow engine should log at least one message during step execution.
+            # Verify the log output is non-empty and contains the workflow name.
+            self.assertGreater(len(log_output), 0,
+                               "Expected at least one log message during workflow step execution")
+            self.assertIn(self.workflow_name, log_output,
+                          "Log output should reference the workflow name")
         finally:
             logger.removeHandler(handler)

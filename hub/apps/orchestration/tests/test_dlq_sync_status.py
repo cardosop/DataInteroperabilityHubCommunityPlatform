@@ -5,6 +5,7 @@ Real behavioral tests: creates WorkflowInstance with DLQ state_data
 in FAILED and PENDING states, calls OrchestrationBusinessRules.
 No existence/import checks.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -36,12 +37,15 @@ class TestDLQSyncStatus(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"DLQ-{uid}", slug=f"dlq-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"DLQ-{uid}",
+            slug=f"dlq-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"dlq-{uid}@meshant.test",
-            password="testpass", tenant=self.tenant,
+            password="testpass",
+            tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
 
@@ -61,11 +65,17 @@ class TestDLQSyncStatus(TestCase):
             created_by=self.user,
         )
         rules = OrchestrationBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
         )
         result = rules.validate_workflow_state(wf, tenant=self.tenant, user=self.user)
-        assert result is not None
-        assert isinstance(result.is_valid, bool)
+        self.assertIsNotNone(result, "validate_workflow_state must return a result")
+        self.assertIsInstance(result.is_valid, bool,
+            "result.is_valid must be a boolean")
+        # A FAILED workflow with DLQ state_data should produce validation
+        # output reflecting the DLQ tracking information.
+        self.assertIsNotNone(result.errors, "result.errors must not be None")
+        self.assertIsNotNone(result.warnings, "result.warnings must not be None")
 
     def test_failed_workflow_without_dlq_state_validates(self):
         """FAILED workflow without DLQ data also returns structured result."""
@@ -80,8 +90,13 @@ class TestDLQSyncStatus(TestCase):
             created_by=self.user,
         )
         rules = OrchestrationBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
         )
         result = rules.validate_workflow_state(wf, tenant=self.tenant, user=self.user)
-        assert result is not None
-        assert isinstance(result.is_valid, bool)
+        self.assertIsNotNone(result, "validate_workflow_state must return a result")
+        self.assertIsInstance(result.is_valid, bool,
+            "result.is_valid must be a boolean")
+        # A FAILED workflow without DLQ data should still validate — it
+        # should not crash just because DLQ fields are absent.
+        self.assertIsNotNone(result.errors, "result.errors must not be None")

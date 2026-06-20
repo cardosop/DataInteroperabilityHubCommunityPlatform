@@ -10,30 +10,29 @@ All validation methods follow engineering best practices:
 - Comprehensive error messages with context
 - Follow DRY, SOLID, and clean code principles
 """
-import logging
-from typing import Dict, List, Any, Optional, Set
-from dataclasses import dataclass, field
 
+import logging
+from dataclasses import dataclass
+from typing import Any
+
+from hub.apps.assets.models import Asset
 from hub.apps.core.business_rules.base import (
     BusinessRules,
     RuleExecutionContext,
     ValidationResult,
 )
 from hub.apps.core.business_rules.registry import register_rule
+from hub.apps.datasets.models import Dataset
+from hub.apps.transformation.exceptions import (
+    AssetCompatibilityError,
+    ResourceQuotaExceededError,
+    TransformationValidationError,
+)
 from hub.apps.transformation.models import (
-    TransformationPipeline,
-    TransformationNode,
     NodeType,
     PipelineStatus,
-    ExecutionMode
+    TransformationPipeline,
 )
-from hub.apps.transformation.exceptions import (
-    TransformationValidationError,
-    AssetCompatibilityError,
-    ResourceQuotaExceededError
-)
-from hub.apps.assets.models import Asset
-from hub.apps.datasets.models import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -48,18 +47,21 @@ class TransformationRuleExecutionContext(RuleExecutionContext):
     - source_asset: Optional source asset
     - target_asset: Optional target asset
     """
-    pipeline: Optional[TransformationPipeline] = None
-    source_asset: Optional[Asset] = None
-    target_asset: Optional[Asset] = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    pipeline: TransformationPipeline | None = None
+    source_asset: Asset | None = None
+    target_asset: Asset | None = None
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert context to dictionary for caching/logging."""
         base_dict = super().to_dict()
-        base_dict.update({
-            'pipeline_id': str(self.pipeline.id) if self.pipeline else None,
-            'source_asset_id': str(self.source_asset.id) if self.source_asset else None,
-            'target_asset_id': str(self.target_asset.id) if self.target_asset else None,
-        })
+        base_dict.update(
+            {
+                "pipeline_id": str(self.pipeline.id) if self.pipeline else None,
+                "source_asset_id": str(self.source_asset.id) if self.source_asset else None,
+                "target_asset_id": str(self.target_asset.id) if self.target_asset else None,
+            }
+        )
         return base_dict
 
 
@@ -68,7 +70,6 @@ class TransformationRuleExecutionContext(RuleExecutionContext):
     description="Validates transformation pipeline structure, node compatibility, and asset compatibility",
     tags=["transformation", "pipeline", "validation"],
     priority=10,
-
     openspec_ref="specs/transformation-business-rules/spec.md",
 )
 class TransformationBusinessRules(BusinessRules):
@@ -90,9 +91,21 @@ class TransformationBusinessRules(BusinessRules):
     NODE_DEPENDENCIES = {
         NodeType.FILTER: set(),  # Filter can be first
         NodeType.JOIN: {NodeType.FILTER},  # Join should come after filter
-        NodeType.AGGREGATE: {NodeType.FILTER, NodeType.JOIN},  # Aggregate needs filtered/joined data
-        NodeType.TRANSFORM: {NodeType.FILTER, NodeType.JOIN, NodeType.AGGREGATE},  # Transform can come after any
-        NodeType.OUTPUT: {NodeType.FILTER, NodeType.JOIN, NodeType.AGGREGATE, NodeType.TRANSFORM}  # Output should be last
+        NodeType.AGGREGATE: {
+            NodeType.FILTER,
+            NodeType.JOIN,
+        },  # Aggregate needs filtered/joined data
+        NodeType.TRANSFORM: {
+            NodeType.FILTER,
+            NodeType.JOIN,
+            NodeType.AGGREGATE,
+        },  # Transform can come after any
+        NodeType.OUTPUT: {
+            NodeType.FILTER,
+            NodeType.JOIN,
+            NodeType.AGGREGATE,
+            NodeType.TRANSFORM,
+        },  # Output should be last
     }
 
     # Required fields per node type
@@ -101,7 +114,7 @@ class TransformationBusinessRules(BusinessRules):
         NodeType.JOIN: {"join_keys", "join_type"},
         NodeType.AGGREGATE: {"group_by", "aggregation_functions"},
         NodeType.TRANSFORM: {"transform_expression"},
-        NodeType.OUTPUT: set()  # Output nodes don't require specific fields
+        NodeType.OUTPUT: set(),  # Output nodes don't require specific fields
     }
 
     def get_rule_name(self) -> str:
@@ -109,10 +122,7 @@ class TransformationBusinessRules(BusinessRules):
         return "TransformationBusinessRules"
 
     def validate(
-        self,
-        context: Optional[RuleExecutionContext] = None,
-        *args,
-        **kwargs
+        self, context: RuleExecutionContext | None = None, *args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -143,69 +153,67 @@ class TransformationBusinessRules(BusinessRules):
             target_asset = context.target_asset
         else:
             # Try to get from kwargs first
-            pipeline = kwargs.get('pipeline')
-            source_asset = kwargs.get('source_asset')
-            target_asset = kwargs.get('target_asset')
+            pipeline = kwargs.get("pipeline")
+            source_asset = kwargs.get("source_asset")
+            target_asset = kwargs.get("target_asset")
 
             # If not in kwargs, try to get from context.metadata or context.resource
             if not pipeline:
-                if context and hasattr(context, 'resource') and isinstance(context.resource, TransformationPipeline):
+                if (
+                    context
+                    and hasattr(context, "resource")
+                    and isinstance(context.resource, TransformationPipeline)
+                ):
                     pipeline = context.resource
-                elif context and hasattr(context, 'metadata'):
-                    pipeline = context.metadata.get('pipeline')
+                elif context and hasattr(context, "metadata"):
+                    pipeline = context.metadata.get("pipeline")
 
-            if not source_asset:
-                if context and hasattr(context, 'metadata'):
-                    source_asset = context.metadata.get('source_asset')
+            if not source_asset and context and hasattr(context, "metadata"):
+                source_asset = context.metadata.get("source_asset")
 
-            if not target_asset:
-                if context and hasattr(context, 'metadata'):
-                    target_asset = context.metadata.get('target_asset')
+            if not target_asset and context and hasattr(context, "metadata"):
+                target_asset = context.metadata.get("target_asset")
 
         if not pipeline:
             return ValidationResult(
                 is_valid=False,
                 errors=["Pipeline is required for transformation validation"],
-                details={"validation_type": "missing_pipeline"}
+                details={"validation_type": "missing_pipeline"},
             )
 
         # Determine which validations to run
-        validation_type = kwargs.get('validation_type', 'all')
+        validation_type = kwargs.get("validation_type", "all")
 
         # Run appropriate validations
-        if validation_type == 'structure':
+        if validation_type == "structure":
             return self.validate_pipeline_structure(pipeline, raise_on_error=False)
-        elif validation_type == 'node_compatibility':
+        elif validation_type == "node_compatibility":
             return self.validate_node_compatibility(pipeline, raise_on_error=False)
-        elif validation_type == 'schema_alignment':
+        elif validation_type == "schema_alignment":
             if not source_asset:
                 return ValidationResult(
                     is_valid=False,
                     errors=["Source asset is required for schema alignment validation"],
-                    details={"validation_type": "schema_alignment"}
+                    details={"validation_type": "schema_alignment"},
                 )
             return self.validate_schema_alignment(
                 pipeline, source_asset, target_asset, raise_on_error=False
             )
-        elif validation_type == 'asset_compatibility':
+        elif validation_type == "asset_compatibility":
             if not source_asset:
                 return ValidationResult(
                     is_valid=False,
                     errors=["Source asset is required for asset compatibility validation"],
-                    details={"validation_type": "asset_compatibility"}
+                    details={"validation_type": "asset_compatibility"},
                 )
             return self.validate_asset_compatibility(
                 pipeline, source_asset, target_asset, raise_on_error=False
             )
         else:  # 'all' or default
-            return self.validate_all(
-                pipeline, source_asset, target_asset, raise_on_error=False
-            )
+            return self.validate_all(pipeline, source_asset, target_asset, raise_on_error=False)
 
     def validate_pipeline_structure(
-        self,
-        pipeline: TransformationPipeline,
-        raise_on_error: bool = True
+        self, pipeline: TransformationPipeline, raise_on_error: bool = True
     ) -> ValidationResult:
         """
         Validate pipeline structure and definition.
@@ -232,14 +240,12 @@ class TransformationBusinessRules(BusinessRules):
         details = {
             "pipeline_id": str(pipeline.id),
             "pipeline_name": pipeline.name,
-            "validation_checks": {}
+            "validation_checks": {},
         }
 
         # Validate pipeline_definition is a dictionary
         if not isinstance(pipeline.get_pipeline_definition(), dict):
-            errors.append(
-                "Pipeline definition must be a JSON object (dictionary)"
-            )
+            errors.append("Pipeline definition must be a JSON object (dictionary)")
             details["validation_checks"]["pipeline_definition_type"] = False
         else:
             details["validation_checks"]["pipeline_definition_type"] = True
@@ -248,9 +254,7 @@ class TransformationBusinessRules(BusinessRules):
             required_fields = ["version", "steps"]
             for field in required_fields:
                 if field not in pipeline.get_pipeline_definition():
-                    errors.append(
-                        f"Pipeline definition must contain '{field}' field"
-                    )
+                    errors.append(f"Pipeline definition must contain '{field}' field")
                     details["validation_checks"][f"has_{field}"] = False
                 else:
                     details["validation_checks"][f"has_{field}"] = True
@@ -259,9 +263,7 @@ class TransformationBusinessRules(BusinessRules):
             version = pipeline.get_pipeline_definition().get("version")
             if version:
                 if not isinstance(version, str) or not version.strip():
-                    errors.append(
-                        "Pipeline definition 'version' must be a non-empty string"
-                    )
+                    errors.append("Pipeline definition 'version' must be a non-empty string")
                     details["validation_checks"]["version_format"] = False
                 else:
                     details["validation_checks"]["version_format"] = True
@@ -289,17 +291,13 @@ class TransformationBusinessRules(BusinessRules):
                     step_name = step.get("name")
                     if step_name:
                         if step_name in step_names:
-                            errors.append(
-                                f"Duplicate step name '{step_name}' at index {i}"
-                            )
+                            errors.append(f"Duplicate step name '{step_name}' at index {i}")
                         else:
                             step_names.add(step_name)
 
                 details["unique_step_names"] = len(step_names) == len(steps)
                 if not details["unique_step_names"]:
-                    warnings.append(
-                        "Some steps have duplicate names, which may cause confusion"
-                    )
+                    warnings.append("Some steps have duplicate names, which may cause confusion")
 
         # Validate pipeline status
         valid_statuses = [choice[0] for choice in PipelineStatus.choices]
@@ -313,10 +311,7 @@ class TransformationBusinessRules(BusinessRules):
             details["validation_checks"]["status_valid"] = True
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
@@ -324,16 +319,12 @@ class TransformationBusinessRules(BusinessRules):
                 message="Pipeline structure validation failed",
                 error_code=TransformationValidationError.ERROR_CODE_INVALID_PIPELINE_DEFINITION,
                 details=details,
-                tenant_id=self.tenant_id
+                tenant_id=self.tenant_id,
             )
 
         return result
 
-    def _validate_step_structure(
-        self,
-        step: Dict[str, Any],
-        index: int
-    ) -> List[str]:
+    def _validate_step_structure(self, step: dict[str, Any], index: int) -> list[str]:
         """
         Validate a single step structure.
 
@@ -365,25 +356,20 @@ class TransformationBusinessRules(BusinessRules):
         node_config = step.get("node_config")
         if node_config is not None:
             if not isinstance(node_config, dict):
-                errors.append(
-                    f"Step {index} 'node_config' must be a JSON object"
-                )
+                errors.append(f"Step {index} 'node_config' must be a JSON object")
             else:
                 # Validate node_type if present
                 node_type = node_config.get("node_type")
-                if node_type:
-                    if node_type not in self.VALID_NODE_TYPES:
-                        errors.append(
-                            f"Step {index} has invalid node_type '{node_type}'. "
-                            f"Valid types: {', '.join(self.VALID_NODE_TYPES)}"
-                        )
+                if node_type and node_type not in self.VALID_NODE_TYPES:
+                    errors.append(
+                        f"Step {index} has invalid node_type '{node_type}'. "
+                        f"Valid types: {', '.join(self.VALID_NODE_TYPES)}"
+                    )
 
         return errors
 
     def validate_node_compatibility(
-        self,
-        pipeline: TransformationPipeline,
-        raise_on_error: bool = True
+        self, pipeline: TransformationPipeline, raise_on_error: bool = True
     ) -> ValidationResult:
         """
         Validate node compatibility within a pipeline.
@@ -409,7 +395,7 @@ class TransformationBusinessRules(BusinessRules):
         details = {
             "pipeline_id": str(pipeline.id),
             "pipeline_name": pipeline.name,
-            "node_compatibility_checks": {}
+            "node_compatibility_checks": {},
         }
 
         steps = pipeline.get_pipeline_definition().get("steps", [])
@@ -417,17 +403,14 @@ class TransformationBusinessRules(BusinessRules):
             errors.append("Pipeline has no steps to validate")
             details["node_compatibility_checks"]["has_steps"] = False
             result = ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
             if raise_on_error:
                 raise TransformationValidationError(
                     message="Pipeline has no steps",
                     error_code=TransformationValidationError.ERROR_CODE_INVALID_PIPELINE_DEFINITION,
                     details=details,
-                    tenant_id=self.tenant_id
+                    tenant_id=self.tenant_id,
                 )
             return result
 
@@ -471,7 +454,7 @@ class TransformationBusinessRules(BusinessRules):
         # Validate node execution order
         if len(node_types_by_position) > 1:
             for i in range(len(node_types_by_position)):
-                pos, step_name, node_type = node_types_by_position[i]
+                _pos, step_name, node_type = node_types_by_position[i]
 
                 try:
                     node_type_enum = NodeType(node_type)
@@ -495,9 +478,7 @@ class TransformationBusinessRules(BusinessRules):
         # Validate that there's at least one OUTPUT node
         output_nodes = [nt for _, _, nt in node_types_by_position if nt == "output"]
         if not output_nodes:
-            warnings.append(
-                "Pipeline has no OUTPUT node. Pipeline may not produce output."
-            )
+            warnings.append("Pipeline has no OUTPUT node. Pipeline may not produce output.")
         else:
             details["output_node_count"] = len(output_nodes)
 
@@ -512,10 +493,7 @@ class TransformationBusinessRules(BusinessRules):
                 errors.extend(node_errors)
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
@@ -523,25 +501,44 @@ class TransformationBusinessRules(BusinessRules):
                 message="Node compatibility validation failed",
                 error_code=TransformationValidationError.ERROR_CODE_INVALID_NODE_CONFIG,
                 details=details,
-                tenant_id=self.tenant_id
+                tenant_id=self.tenant_id,
             )
 
         return result
 
     # SQL/expression safety: deny dangerous patterns
     _DANGEROUS_PATTERNS = [
-        "DROP ", "DELETE ", "TRUNCATE ", "ALTER ",
-        "INSERT ", "UPDATE ", "CREATE ", "GRANT ",
-        "REVOKE ", "EXEC ", "EXECUTE ", "xp_",
-        "sp_", "INFORMATION_SCHEMA", "sys.",
-        "pg_catalog", "pg_sleep", "--", "/*",
-        "UNION SELECT", "INTO OUTFILE", "LOAD_FILE",
+        "DROP ",
+        "DELETE ",
+        "TRUNCATE ",
+        "ALTER ",
+        "INSERT ",
+        "UPDATE ",
+        "CREATE ",
+        "GRANT ",
+        "REVOKE ",
+        "EXEC ",
+        "EXECUTE ",
+        "xp_",
+        "sp_",
+        "INFORMATION_SCHEMA",
+        "sys.",
+        "pg_catalog",
+        "pg_sleep",
+        "--",
+        "/*",
+        "UNION SELECT",
+        "INTO OUTFILE",
+        "LOAD_FILE",
     ]
 
     @classmethod
     def _check_expression_safety(
-        cls, expression: str, field_name: str, step_name: str,
-    ) -> List[str]:
+        cls,
+        expression: str,
+        field_name: str,
+        step_name: str,
+    ) -> list[str]:
         """Check expression for dangerous SQL patterns."""
         errors = []
         upper = expression.upper()
@@ -555,12 +552,8 @@ class TransformationBusinessRules(BusinessRules):
         return errors
 
     def _validate_node_config(
-        self,
-        node_type: str,
-        node_config: Dict[str, Any],
-        step_name: str,
-        step_index: int
-    ) -> List[str]:
+        self, node_type: str, node_config: dict[str, Any], step_name: str, step_index: int
+    ) -> list[str]:
         """
         Validate node-specific configuration.
 
@@ -593,9 +586,13 @@ class TransformationBusinessRules(BusinessRules):
                     f"Step '{step_name}' (FILTER node) 'filter_expression' must be a string"
                 )
             else:
-                errors.extend(self._check_expression_safety(
-                    filter_expr, "filter_expression", step_name,
-                ))
+                errors.extend(
+                    self._check_expression_safety(
+                        filter_expr,
+                        "filter_expression",
+                        step_name,
+                    )
+                )
 
         # Validate JOIN node
         elif node_type_enum == NodeType.JOIN:
@@ -607,11 +604,10 @@ class TransformationBusinessRules(BusinessRules):
                     f"Step '{step_name}' (JOIN node) must have either 'join_keys' or 'join_type' in node_config"
                 )
 
-            if join_keys:
-                if not isinstance(join_keys, (list, dict)):
-                    errors.append(
-                        f"Step '{step_name}' (JOIN node) 'join_keys' must be a list or dictionary"
-                    )
+            if join_keys and not isinstance(join_keys, (list, dict)):
+                errors.append(
+                    f"Step '{step_name}' (JOIN node) 'join_keys' must be a list or dictionary"
+                )
 
             if join_type:
                 valid_join_types = {"inner", "left", "right", "outer", "full"}
@@ -656,10 +652,13 @@ class TransformationBusinessRules(BusinessRules):
                     f"Step '{step_name}' (TRANSFORM node) 'transform_expression' must be a string or dictionary"
                 )
             elif isinstance(transform_expr, str):
-                errors.extend(self._check_expression_safety(
-                    transform_expr, "transform_expression",
-                    step_name,
-                ))
+                errors.extend(
+                    self._check_expression_safety(
+                        transform_expr,
+                        "transform_expression",
+                        step_name,
+                    )
+                )
 
         # OUTPUT node doesn't require specific validation
 
@@ -669,8 +668,8 @@ class TransformationBusinessRules(BusinessRules):
         self,
         pipeline: TransformationPipeline,
         source_asset: Asset,
-        target_asset: Optional[Asset] = None,
-        raise_on_error: bool = True
+        target_asset: Asset | None = None,
+        raise_on_error: bool = True,
     ) -> ValidationResult:
         """
         Validate schema alignment between pipeline and assets.
@@ -698,21 +697,16 @@ class TransformationBusinessRules(BusinessRules):
         details = {
             "pipeline_id": str(pipeline.id),
             "source_asset_id": str(source_asset.id),
-            "schema_alignment_checks": {}
+            "schema_alignment_checks": {},
         }
 
         # Get source asset schema
-        source_dataset = source_asset.datasets.order_by('-version').first()
+        source_dataset = source_asset.datasets.order_by("-version").first()
         if not source_dataset:
-            errors.append(
-                f"Source asset '{source_asset.name}' has no dataset"
-            )
+            errors.append(f"Source asset '{source_asset.name}' has no dataset")
             details["schema_alignment_checks"]["source_dataset_exists"] = False
             result = ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
             if raise_on_error:
                 raise AssetCompatibilityError(
@@ -721,7 +715,7 @@ class TransformationBusinessRules(BusinessRules):
                     pipeline_id=str(pipeline.id),
                     asset_id=str(source_asset.id),
                     details=details,
-                    tenant_id=self.tenant_id
+                    tenant_id=self.tenant_id,
                 )
             return result
 
@@ -732,16 +726,14 @@ class TransformationBusinessRules(BusinessRules):
 
         # Validate target asset schema if provided
         if target_asset:
-            target_dataset = target_asset.datasets.order_by('-version').first()
+            target_dataset = target_asset.datasets.order_by("-version").first()
             if target_dataset:
                 target_schema = target_dataset.schema_json or {}
                 target_fields = {f.get("name"): f for f in target_schema.get("fields", [])}
                 details["target_schema_fields"] = list(target_fields.keys())
                 details["schema_alignment_checks"]["target_dataset_exists"] = True
             else:
-                warnings.append(
-                    f"Target asset '{target_asset.name}' has no dataset"
-                )
+                warnings.append(f"Target asset '{target_asset.name}' has no dataset")
                 details["schema_alignment_checks"]["target_dataset_exists"] = False
 
         # Extract field references from pipeline steps
@@ -775,10 +767,7 @@ class TransformationBusinessRules(BusinessRules):
                     )
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
@@ -789,15 +778,12 @@ class TransformationBusinessRules(BusinessRules):
                 asset_id=str(source_asset.id),
                 expected_schema=source_schema,
                 details=details,
-                tenant_id=self.tenant_id
+                tenant_id=self.tenant_id,
             )
 
         return result
 
-    def _extract_referenced_fields(
-        self,
-        pipeline: TransformationPipeline
-    ) -> Set[str]:
+    def _extract_referenced_fields(self, pipeline: TransformationPipeline) -> set[str]:
         """
         Extract field names referenced in pipeline steps.
 
@@ -820,8 +806,9 @@ class TransformationBusinessRules(BusinessRules):
                 # Simple extraction - look for common patterns
                 # This is a simplified version - full expression parsing would be more robust
                 import re
+
                 # Match field names (alphanumeric with underscores, not starting with numbers)
-                field_pattern = r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b'
+                field_pattern = r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b"
                 matches = re.findall(field_pattern, filter_expr)
                 # Filter out common keywords
                 keywords = {"and", "or", "not", "in", "is", "null", "true", "false", "if", "else"}
@@ -853,16 +840,40 @@ class TransformationBusinessRules(BusinessRules):
                 if isinstance(transform_expr, str):
                     # Extract field references from transform expression
                     import re
+
                     # Pattern to match field names, handling method calls (e.g., "name.upper()" -> "name")
                     # Match identifiers that are not followed by a dot (method calls) or are at the start
                     # This pattern matches: field names, but excludes method names after dots
                     # First, remove method calls (e.g., "name.upper()" -> "name")
                     # Replace method calls with just the field name
-                    transform_expr_cleaned = re.sub(r'\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\(', '.', transform_expr)
+                    transform_expr_cleaned = re.sub(
+                        r"\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\(", ".", transform_expr
+                    )
                     # Now extract field names
-                    field_pattern = r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b'
+                    field_pattern = r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b"
                     matches = re.findall(field_pattern, transform_expr_cleaned)
-                    keywords = {"and", "or", "not", "in", "is", "null", "true", "false", "if", "else", "sum", "avg", "count", "min", "max", "len", "str", "int", "float", "bool"}
+                    keywords = {
+                        "and",
+                        "or",
+                        "not",
+                        "in",
+                        "is",
+                        "null",
+                        "true",
+                        "false",
+                        "if",
+                        "else",
+                        "sum",
+                        "avg",
+                        "count",
+                        "min",
+                        "max",
+                        "len",
+                        "str",
+                        "int",
+                        "float",
+                        "bool",
+                    }
                     referenced_fields.update(m for m in matches if m.lower() not in keywords)
                 elif isinstance(transform_expr, dict):
                     # If transform_expression is a dict, extract field names from values
@@ -876,8 +887,8 @@ class TransformationBusinessRules(BusinessRules):
         self,
         pipeline: TransformationPipeline,
         source_asset: Asset,
-        target_asset: Optional[Asset] = None,
-        raise_on_error: bool = True
+        target_asset: Asset | None = None,
+        raise_on_error: bool = True,
     ) -> ValidationResult:
         """
         Validate asset compatibility with pipeline requirements.
@@ -907,11 +918,12 @@ class TransformationBusinessRules(BusinessRules):
         details = {
             "pipeline_id": str(pipeline.id),
             "source_asset_id": str(source_asset.id),
-            "asset_compatibility_checks": {}
+            "asset_compatibility_checks": {},
         }
 
         # Validate source asset status
         from hub.apps.assets.models import AssetStatus
+
         valid_source_statuses = [AssetStatus.ACTIVE, AssetStatus.PUBLIC]
         if source_asset.status not in valid_source_statuses:
             errors.append(
@@ -923,17 +935,12 @@ class TransformationBusinessRules(BusinessRules):
             details["asset_compatibility_checks"]["source_asset_status"] = True
 
         # Validate source asset has dataset
-        source_dataset = source_asset.datasets.order_by('-version').first()
+        source_dataset = source_asset.datasets.order_by("-version").first()
         if not source_dataset:
-            errors.append(
-                f"Source asset '{source_asset.name}' has no dataset"
-            )
+            errors.append(f"Source asset '{source_asset.name}' has no dataset")
             details["asset_compatibility_checks"]["source_dataset_exists"] = False
             result = ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
             if raise_on_error:
                 raise AssetCompatibilityError(
@@ -944,7 +951,7 @@ class TransformationBusinessRules(BusinessRules):
                     source_asset_id=str(source_asset.id),
                     target_asset_id=str(target_asset.id) if target_asset else None,
                     details=details,
-                    tenant_id=self.tenant_id
+                    tenant_id=self.tenant_id,
                 )
             return result
 
@@ -958,31 +965,31 @@ class TransformationBusinessRules(BusinessRules):
         )
         errors.extend(schema_validation_result["errors"])
         warnings.extend(schema_validation_result["warnings"])
-        details["asset_compatibility_checks"]["schema_validation"] = schema_validation_result["details"]
+        details["asset_compatibility_checks"]["schema_validation"] = schema_validation_result[
+            "details"
+        ]
 
         # 2. Validate asset data format (CSV, JSON, Parquet, etc.)
-        format_validation_result = self._validate_asset_format_compatibility(
-            source_dataset
-        )
+        format_validation_result = self._validate_asset_format_compatibility(source_dataset)
         errors.extend(format_validation_result["errors"])
         warnings.extend(format_validation_result["warnings"])
-        details["asset_compatibility_checks"]["format_validation"] = format_validation_result["details"]
+        details["asset_compatibility_checks"]["format_validation"] = format_validation_result[
+            "details"
+        ]
 
         # 3. Validate asset size (for execution mode selection: sync vs async)
-        size_validation_result = self._validate_asset_size_for_execution_mode(
-            source_dataset
-        )
+        size_validation_result = self._validate_asset_size_for_execution_mode(source_dataset)
         errors.extend(size_validation_result["errors"])
         warnings.extend(size_validation_result["warnings"])
         details["asset_compatibility_checks"]["size_validation"] = size_validation_result["details"]
 
         # 4. Validate asset access (user has access to asset)
-        access_validation_result = self._validate_asset_access(
-            source_asset
-        )
+        access_validation_result = self._validate_asset_access(source_asset)
         errors.extend(access_validation_result["errors"])
         warnings.extend(access_validation_result["warnings"])
-        details["asset_compatibility_checks"]["access_validation"] = access_validation_result["details"]
+        details["asset_compatibility_checks"]["access_validation"] = access_validation_result[
+            "details"
+        ]
 
         # Validate target asset if provided
         if target_asset:
@@ -999,7 +1006,7 @@ class TransformationBusinessRules(BusinessRules):
                 details["asset_compatibility_checks"]["target_asset_status"] = True
 
             # Validate target asset has dataset (optional for new assets)
-            target_dataset = target_asset.datasets.order_by('-version').first()
+            target_dataset = target_asset.datasets.order_by("-version").first()
             if target_dataset:
                 details["target_dataset_format"] = target_dataset.format
                 details["target_dataset_version"] = target_dataset.version
@@ -1028,10 +1035,7 @@ class TransformationBusinessRules(BusinessRules):
                 details["asset_compatibility_checks"]["target_tenant_match"] = True
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
@@ -1043,7 +1047,7 @@ class TransformationBusinessRules(BusinessRules):
                 source_asset_id=str(source_asset.id),
                 target_asset_id=str(target_asset.id) if target_asset else None,
                 details=details,
-                tenant_id=self.tenant_id
+                tenant_id=self.tenant_id,
             )
 
         return result
@@ -1051,9 +1055,9 @@ class TransformationBusinessRules(BusinessRules):
     def validate_all(
         self,
         pipeline: TransformationPipeline,
-        source_asset: Optional[Asset] = None,
-        target_asset: Optional[Asset] = None,
-        raise_on_error: bool = True
+        source_asset: Asset | None = None,
+        target_asset: Asset | None = None,
+        raise_on_error: bool = True,
     ) -> ValidationResult:
         """
         Run all validation checks.
@@ -1069,10 +1073,7 @@ class TransformationBusinessRules(BusinessRules):
         """
         all_errors = []
         all_warnings = []
-        all_details = {
-            "pipeline_id": str(pipeline.id),
-            "validation_results": {}
-        }
+        all_details = {"pipeline_id": str(pipeline.id), "validation_results": {}}
 
         # Validate pipeline structure
         structure_result = self.validate_pipeline_structure(pipeline, raise_on_error=False)
@@ -1107,7 +1108,7 @@ class TransformationBusinessRules(BusinessRules):
             is_valid=len(all_errors) == 0,
             errors=all_errors,
             warnings=all_warnings,
-            details=all_details
+            details=all_details,
         )
 
         if not result.is_valid and raise_on_error:
@@ -1119,24 +1120,21 @@ class TransformationBusinessRules(BusinessRules):
                     pipeline_id=str(pipeline.id),
                     asset_id=str(source_asset.id) if source_asset else None,
                     details=all_details,
-                    tenant_id=self.tenant_id
+                    tenant_id=self.tenant_id,
                 )
             else:
                 raise TransformationValidationError(
                     message="Pipeline validation failed",
                     error_code=TransformationValidationError.ERROR_CODE_VALIDATION_FAILED,
                     details=all_details,
-                    tenant_id=self.tenant_id
+                    tenant_id=self.tenant_id,
                 )
 
         return result
 
     def _validate_asset_schema_compatibility(
-        self,
-        pipeline: TransformationPipeline,
-        source_asset: Asset,
-        source_dataset: "Dataset"
-    ) -> Dict[str, Any]:
+        self, pipeline: TransformationPipeline, source_asset: Asset, source_dataset: "Dataset"
+    ) -> dict[str, Any]:
         """
         Validate asset schema matches pipeline input schema.
 
@@ -1155,15 +1153,13 @@ class TransformationBusinessRules(BusinessRules):
             "pipeline_input_schema_exists": False,
             "schema_fields_match": False,
             "missing_fields": [],
-            "type_mismatches": []
+            "type_mismatches": [],
         }
 
         # Get asset schema from dataset
         asset_schema = source_dataset.schema_json
         if not asset_schema:
-            errors.append(
-                f"Source asset '{source_asset.name}' dataset has no schema"
-            )
+            errors.append(f"Source asset '{source_asset.name}' dataset has no schema")
             return {"errors": errors, "warnings": warnings, "details": details}
 
         asset_fields = asset_schema.get("fields", [])
@@ -1178,7 +1174,7 @@ class TransformationBusinessRules(BusinessRules):
             if field_name:
                 asset_field_map[field_name] = {
                     "data_type": field_dict.get("data_type") or field_dict.get("type", "string"),
-                    "nullable": field_dict.get("nullable", True)
+                    "nullable": field_dict.get("nullable", True),
                 }
 
         details["asset_field_count"] = len(asset_field_map)
@@ -1223,14 +1219,12 @@ class TransformationBusinessRules(BusinessRules):
                 field_name = field_info.get("name")
                 if field_name:
                     pipeline_field_map[field_name] = {
-                        "data_type": field_info.get("data_type") or field_info.get("type", "string"),
-                        "nullable": field_info.get("nullable", True)
+                        "data_type": field_info.get("data_type")
+                        or field_info.get("type", "string"),
+                        "nullable": field_info.get("nullable", True),
                     }
             elif isinstance(field_info, str):
-                pipeline_field_map[field_info] = {
-                    "data_type": "string",
-                    "nullable": True
-                }
+                pipeline_field_map[field_info] = {"data_type": "string", "nullable": True}
 
         details["pipeline_field_count"] = len(pipeline_field_map)
         details["pipeline_fields"] = list(pipeline_field_map.keys())
@@ -1248,7 +1242,7 @@ class TransformationBusinessRules(BusinessRules):
 
         # Check for type compatibility (warnings only, as types can be coerced)
         type_mismatches = []
-        for field_name in pipeline_field_map.keys():
+        for field_name in pipeline_field_map:
             if field_name in asset_field_map:
                 pipeline_type = pipeline_field_map[field_name]["data_type"].lower()
                 asset_type = asset_field_map[field_name]["data_type"].lower()
@@ -1260,22 +1254,24 @@ class TransformationBusinessRules(BusinessRules):
                     "string": {"string", "text", "varchar"},
                     "boolean": {"boolean", "bool"},
                     "date": {"date", "datetime", "timestamp"},
-                    "datetime": {"datetime", "timestamp", "date"}
+                    "datetime": {"datetime", "timestamp", "date"},
                 }
 
                 # Check if types are compatible
                 is_compatible = (
-                    pipeline_type == asset_type or
-                    pipeline_type in compatible_types.get(asset_type, set()) or
-                    asset_type in compatible_types.get(pipeline_type, set())
+                    pipeline_type == asset_type
+                    or pipeline_type in compatible_types.get(asset_type, set())
+                    or asset_type in compatible_types.get(pipeline_type, set())
                 )
 
                 if not is_compatible:
-                    type_mismatches.append({
-                        "field": field_name,
-                        "asset_type": asset_type,
-                        "pipeline_type": pipeline_type
-                    })
+                    type_mismatches.append(
+                        {
+                            "field": field_name,
+                            "asset_type": asset_type,
+                            "pipeline_type": pipeline_type,
+                        }
+                    )
 
         if type_mismatches:
             warnings.append(
@@ -1288,10 +1284,7 @@ class TransformationBusinessRules(BusinessRules):
 
         return {"errors": errors, "warnings": warnings, "details": details}
 
-    def _validate_asset_format_compatibility(
-        self,
-        source_dataset: "Dataset"
-    ) -> Dict[str, Any]:
+    def _validate_asset_format_compatibility(self, source_dataset: "Dataset") -> dict[str, Any]:
         """
         Validate asset data format (CSV, JSON, Parquet, etc.).
 
@@ -1306,7 +1299,7 @@ class TransformationBusinessRules(BusinessRules):
         details = {
             "format_valid": False,
             "format": source_dataset.format,
-            "supported_format": False
+            "supported_format": False,
         }
 
         # Supported formats
@@ -1340,10 +1333,7 @@ class TransformationBusinessRules(BusinessRules):
 
         return {"errors": errors, "warnings": warnings, "details": details}
 
-    def _validate_asset_size_for_execution_mode(
-        self,
-        source_dataset: "Dataset"
-    ) -> Dict[str, Any]:
+    def _validate_asset_size_for_execution_mode(self, source_dataset: "Dataset") -> dict[str, Any]:
         """
         Validate asset size for execution mode selection (sync vs async).
 
@@ -1360,7 +1350,7 @@ class TransformationBusinessRules(BusinessRules):
             "execution_mode": None,
             "row_count": None,
             "file_size": None,
-            "size_threshold_exceeded": False
+            "size_threshold_exceeded": False,
         }
 
         # Execution mode selection thresholds (matching TransformationService)
@@ -1389,11 +1379,9 @@ class TransformationBusinessRules(BusinessRules):
             return {"errors": errors, "warnings": warnings, "details": details}
 
         # Determine execution mode based on thresholds
-        if row_count is not None and row_count < SYNC_ROW_THRESHOLD:
-            details["execution_mode"] = "SYNC"
-            details["size_threshold_exceeded"] = False
-            details["size_valid"] = True
-        elif file_size > 0 and file_size < SYNC_SIZE_THRESHOLD:
+        if (row_count is not None and row_count < SYNC_ROW_THRESHOLD) or (
+            file_size > 0 and file_size < SYNC_SIZE_THRESHOLD
+        ):
             details["execution_mode"] = "SYNC"
             details["size_threshold_exceeded"] = False
             details["size_valid"] = True
@@ -1407,10 +1395,7 @@ class TransformationBusinessRules(BusinessRules):
 
         return {"errors": errors, "warnings": warnings, "details": details}
 
-    def _validate_asset_access(
-        self,
-        source_asset: Asset
-    ) -> Dict[str, Any]:
+    def _validate_asset_access(self, source_asset: Asset) -> dict[str, Any]:
         """
         Validate user has access to asset.
 
@@ -1426,14 +1411,12 @@ class TransformationBusinessRules(BusinessRules):
             "access_valid": False,
             "access_allowed": False,
             "cross_tenant": False,
-            "entitlement_required": False
+            "entitlement_required": False,
         }
 
         # If no tenant_id or user_id, skip access validation (will be handled elsewhere)
         if not self.tenant_id:
-            warnings.append(
-                "tenant_id not provided, skipping asset access validation"
-            )
+            warnings.append("tenant_id not provided, skipping asset access validation")
             details["access_valid"] = True  # Not an error, just skipped
             return {"errors": errors, "warnings": warnings, "details": details}
 
@@ -1465,8 +1448,7 @@ class TransformationBusinessRules(BusinessRules):
         if not access_allowed:
             access_reason = access_result.get("reason") or "Access denied"
             errors.append(
-                f"Access denied to source asset '{source_asset.name}'. "
-                f"Reason: {access_reason}"
+                f"Access denied to source asset '{source_asset.name}'. Reason: {access_reason}"
             )
             details["access_reason"] = str(access_reason)
             details["access_valid"] = False
@@ -1479,8 +1461,8 @@ class TransformationBusinessRules(BusinessRules):
         self,
         pipeline: TransformationPipeline,
         source_asset: Asset,
-        target_asset: Optional[Asset] = None,
-        raise_on_error: bool = True
+        target_asset: Asset | None = None,
+        raise_on_error: bool = True,
     ) -> ValidationResult:
         """
         Validate cross-tenant operations for pipeline execution.
@@ -1510,24 +1492,21 @@ class TransformationBusinessRules(BusinessRules):
         details = {
             "pipeline_id": str(pipeline.id),
             "source_asset_id": str(source_asset.id),
-            "cross_tenant_checks": {}
+            "cross_tenant_checks": {},
         }
 
         if not self.tenant_id:
             errors.append("tenant_id is required for cross-tenant validation")
             details["cross_tenant_checks"]["tenant_id_provided"] = False
             result = ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
             if raise_on_error:
                 raise TransformationValidationError(
                     message="tenant_id is required for cross-tenant validation",
                     error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
                     details=details,
-                    tenant_id=self.tenant_id
+                    tenant_id=self.tenant_id,
                 )
             return result
 
@@ -1541,16 +1520,16 @@ class TransformationBusinessRules(BusinessRules):
 
         if source_is_cross_tenant:
             # Validate cross-tenant access for source asset
-            source_access_result = self._validate_cross_tenant_asset_access(
-                source_asset, "READ"
-            )
+            source_access_result = self._validate_cross_tenant_asset_access(source_asset, "READ")
             if not source_access_result["allowed"]:
                 errors.append(
                     f"Cross-tenant access denied for source asset '{source_asset.name}'. "
                     f"Reason: {source_access_result.get('reason', 'Access denied')}"
                 )
                 details["cross_tenant_checks"]["source_access_allowed"] = False
-                details["cross_tenant_checks"]["source_access_reason"] = source_access_result.get("reason")
+                details["cross_tenant_checks"]["source_access_reason"] = source_access_result.get(
+                    "reason"
+                )
             else:
                 details["cross_tenant_checks"]["source_access_allowed"] = True
                 if source_access_result.get("entitlement_required"):
@@ -1578,7 +1557,9 @@ class TransformationBusinessRules(BusinessRules):
                         f"Reason: {target_access_result.get('reason', 'Access denied')}"
                     )
                     details["cross_tenant_checks"]["target_access_allowed"] = False
-                    details["cross_tenant_checks"]["target_access_reason"] = target_access_result.get("reason")
+                    details["cross_tenant_checks"]["target_access_reason"] = (
+                        target_access_result.get("reason")
+                    )
                 else:
                     details["cross_tenant_checks"]["target_access_allowed"] = True
                     if target_access_result.get("entitlement_required"):
@@ -1588,10 +1569,7 @@ class TransformationBusinessRules(BusinessRules):
                 details["cross_tenant_checks"]["target_is_same_tenant"] = True
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
@@ -1604,16 +1582,14 @@ class TransformationBusinessRules(BusinessRules):
                     message="Cross-tenant operation validation failed",
                     error_code=TransformationValidationError.ERROR_CODE_VALIDATION_FAILED,
                     details=details,
-                    tenant_id=self.tenant_id
+                    tenant_id=self.tenant_id,
                 )
 
         return result
 
     def _validate_cross_tenant_asset_access(
-        self,
-        asset: Asset,
-        access_type: str = "READ"
-    ) -> Dict[str, Any]:
+        self, asset: Asset, access_type: str = "READ"
+    ) -> dict[str, Any]:
         """
         Validate cross-tenant access to an asset.
 
@@ -1634,11 +1610,7 @@ class TransformationBusinessRules(BusinessRules):
         from hub.apps.governance.abac import ABACEngine
         from hub.apps.marketplace.access_utils import check_entitlement
 
-        result = {
-            "allowed": False,
-            "reason": None,
-            "entitlement_required": False
-        }
+        result = {"allowed": False, "reason": None, "entitlement_required": False}
 
         if not self.user_id:
             result["reason"] = "user_id is required for access validation"
@@ -1651,7 +1623,7 @@ class TransformationBusinessRules(BusinessRules):
                 tenant_id=str(asset.tenant_id),
                 resource_type="ASSET",
                 resource_id=str(asset.id),
-                access_type=access_type
+                access_type=access_type,
             )
 
             if not abac_result.allowed:
@@ -1661,10 +1633,7 @@ class TransformationBusinessRules(BusinessRules):
                 )
                 return result
         except Exception as e:
-            logger.warning(
-                f"ABAC evaluation failed for asset {asset.id}: {e}",
-                exc_info=True
-            )
+            logger.warning(f"ABAC evaluation failed for asset {asset.id}: {e}", exc_info=True)
             # Continue with entitlement check as fallback
 
         # Check marketplace entitlements for cross-tenant access
@@ -1672,13 +1641,12 @@ class TransformationBusinessRules(BusinessRules):
             has_access, error_code, entitlement = check_entitlement(
                 consumer_tenant_id=self.tenant_id,
                 asset_id=str(asset.id),
-                provider_tenant_id=str(asset.tenant_id)
+                provider_tenant_id=str(asset.tenant_id),
             )
 
             if not has_access:
                 result["reason"] = (
-                    f"Entitlement required for cross-tenant access. "
-                    f"Error code: {error_code}"
+                    f"Entitlement required for cross-tenant access. Error code: {error_code}"
                 )
                 result["entitlement_required"] = True
                 return result
@@ -1688,10 +1656,7 @@ class TransformationBusinessRules(BusinessRules):
         result["allowed"] = True
         return result
 
-    def _estimate_compute_quota(
-        self,
-        pipeline: TransformationPipeline
-    ) -> Dict[str, float]:
+    def _estimate_compute_quota(self, pipeline: TransformationPipeline) -> dict[str, float]:
         """
         Estimate compute quota requirements (CPU, memory) from pipeline definition.
 
@@ -1719,7 +1684,11 @@ class TransformationBusinessRules(BusinessRules):
         base_memory_per_node_gb = 1.0
 
         # Complex node types require more resources
-        complex_node_types = {NodeType.JOIN.upper(), NodeType.AGGREGATE.upper(), NodeType.TRANSFORM.upper()}
+        complex_node_types = {
+            NodeType.JOIN.upper(),
+            NodeType.AGGREGATE.upper(),
+            NodeType.TRANSFORM.upper(),
+        }
 
         def get_node_type(step):
             """Extract node_type from step, checking node_config first"""
@@ -1727,10 +1696,7 @@ class TransformationBusinessRules(BusinessRules):
             node_type = node_config.get("node_type") or step.get("node_type")
             return node_type.upper() if node_type else None
 
-        complex_node_count = sum(
-            1 for step in steps
-            if get_node_type(step) in complex_node_types
-        )
+        complex_node_count = sum(1 for step in steps if get_node_type(step) in complex_node_types)
 
         # Calculate CPU requirements
         # Base: 0.5 cores per node
@@ -1750,14 +1716,12 @@ class TransformationBusinessRules(BusinessRules):
         return {
             "cpu_cores": cpu_cores,
             "memory_gb": memory_gb,
-            "compute_hours": compute_hours_per_execution
+            "compute_hours": compute_hours_per_execution,
         }
 
     def _estimate_storage_quota(
-        self,
-        pipeline: TransformationPipeline,
-        source_asset: Optional[Asset] = None
-    ) -> Dict[str, float]:
+        self, pipeline: TransformationPipeline, source_asset: Asset | None = None
+    ) -> dict[str, float]:
         """
         Estimate storage quota requirements for pipeline results.
 
@@ -1783,10 +1747,10 @@ class TransformationBusinessRules(BusinessRules):
         if source_asset:
             # Try to get dataset size if available
             try:
-                if hasattr(source_asset, 'dataset') and source_asset.dataset:
+                if hasattr(source_asset, "dataset") and source_asset.dataset:
                     dataset = source_asset.dataset
-                    if hasattr(dataset, 'size_bytes') and dataset.size_bytes:
-                        base_storage_gb = dataset.size_bytes / (1024.0 ** 3)  # Convert bytes to GB
+                    if hasattr(dataset, "size_bytes") and dataset.size_bytes:
+                        base_storage_gb = dataset.size_bytes / (1024.0**3)  # Convert bytes to GB
             except Exception:
                 pass
 
@@ -1807,17 +1771,10 @@ class TransformationBusinessRules(BusinessRules):
             node_type = node_config.get("node_type") or step.get("node_type")
             return node_type.upper() if node_type else None
 
-        filter_count = sum(
-            1 for step in steps
-            if get_node_type(step) == NodeType.FILTER.upper()
-        )
-        join_count = sum(
-            1 for step in steps
-            if get_node_type(step) == NodeType.JOIN.upper()
-        )
+        filter_count = sum(1 for step in steps if get_node_type(step) == NodeType.FILTER.upper())
+        join_count = sum(1 for step in steps if get_node_type(step) == NodeType.JOIN.upper())
         aggregate_count = sum(
-            1 for step in steps
-            if get_node_type(step) == NodeType.AGGREGATE.upper()
+            1 for step in steps if get_node_type(step) == NodeType.AGGREGATE.upper()
         )
 
         # Apply transformation multipliers
@@ -1835,15 +1792,11 @@ class TransformationBusinessRules(BusinessRules):
         # 10% overhead for metadata
         estimated_storage_gb *= 1.1
 
-        return {
-            "storage_gb": estimated_storage_gb
-        }
+        return {"storage_gb": estimated_storage_gb}
 
     def _estimate_query_quota(
-        self,
-        pipeline: TransformationPipeline,
-        is_preview: bool = False
-    ) -> Dict[str, float]:
+        self, pipeline: TransformationPipeline, is_preview: bool = False
+    ) -> dict[str, float]:
         """
         Estimate query quota requirements for preview operations.
 
@@ -1870,16 +1823,14 @@ class TransformationBusinessRules(BusinessRules):
         # Additional quota based on complexity: 0.5 units per node
         query_quota = 1.0 + (node_count * 0.5)
 
-        return {
-            "query_quota": query_quota
-        }
+        return {"query_quota": query_quota}
 
     def validate_resource_quota(
         self,
         pipeline: TransformationPipeline,
-        source_asset: Optional[Asset] = None,
+        source_asset: Asset | None = None,
         is_preview: bool = False,
-        raise_on_error: bool = True
+        raise_on_error: bool = True,
     ) -> ValidationResult:
         """
         Validate resource quota for pipeline execution.
@@ -1906,26 +1857,20 @@ class TransformationBusinessRules(BusinessRules):
         """
         errors = []
         warnings = []
-        details = {
-            "pipeline_id": str(pipeline.id),
-            "quota_checks": {}
-        }
+        details = {"pipeline_id": str(pipeline.id), "quota_checks": {}}
 
         if not self.tenant_id:
             errors.append("tenant_id is required for quota validation")
             details["quota_checks"]["tenant_id_provided"] = False
             result = ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
             if raise_on_error:
                 raise TransformationValidationError(
                     message="tenant_id is required for quota validation",
                     error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
                     details=details,
-                    tenant_id=self.tenant_id
+                    tenant_id=self.tenant_id,
                 )
             return result
 
@@ -1933,9 +1878,10 @@ class TransformationBusinessRules(BusinessRules):
 
         # Get tenant job limits
         try:
-            from hub.apps.tenants.services import get_tenant_job_limits
-            from hub.apps.jobs.utils import check_tenant_job_limits
             from django.core.cache import cache
+
+            from hub.apps.jobs.utils import check_tenant_job_limits
+            from hub.apps.tenants.services import get_tenant_job_limits
 
             limits = get_tenant_job_limits(self.tenant_id)
             max_concurrency = limits["max_job_concurrency"]
@@ -1991,11 +1937,10 @@ class TransformationBusinessRules(BusinessRules):
 
         except Exception as e:
             logger.warning(
-                f"Failed to check tenant job limits for tenant {self.tenant_id}: {e}",
-                exc_info=True
+                f"Failed to check tenant job limits for tenant {self.tenant_id}: {e}", exc_info=True
             )
             warnings.append(
-                f"Could not validate job concurrency quota: {str(e)}. "
+                f"Could not validate job concurrency quota: {e!s}. "
                 f"Proceeding with other quota validations."
             )
             details["quota_checks"]["job_limits_validation_error"] = str(e)
@@ -2011,18 +1956,15 @@ class TransformationBusinessRules(BusinessRules):
 
         # Integrate with GovernanceService for quota validation
         try:
-            from hub.apps.governance.services import GovernanceService
             from hub.apps.core.services.base import ValidationError
+            from hub.apps.governance.services import GovernanceService
 
-            governance_service = GovernanceService(
-                tenant_id=self.tenant_id,
-                user_id=self.user_id
-            )
+            governance_service = GovernanceService(tenant_id=self.tenant_id, user_id=self.user_id)
 
             # Build requested quota dictionary for GovernanceService
             requested_quota = {
                 "storage_gb": storage_quota["storage_gb"],
-                "compute_hours": compute_quota["compute_hours"]
+                "compute_hours": compute_quota["compute_hours"],
             }
 
             # Add query quota if this is a preview operation
@@ -2034,25 +1976,21 @@ class TransformationBusinessRules(BusinessRules):
             # Validate quota allocation via GovernanceService
             try:
                 validated_quota = governance_service.validate_resource_quota_allocation(
-                    tenant_id=self.tenant_id,
-                    requested_quota=requested_quota
+                    tenant_id=self.tenant_id, requested_quota=requested_quota
                 )
                 details["quota_checks"]["validated_quota"] = validated_quota
                 details["quota_checks"]["governance_validation_passed"] = True
 
                 # Enforce tenant-level resource limits
                 governance_service.check_tenant_resource_limits(
-                    tenant_id=self.tenant_id,
-                    requested_quota=validated_quota
+                    tenant_id=self.tenant_id, requested_quota=validated_quota
                 )
                 details["quota_checks"]["tenant_limits_check_passed"] = True
 
             except ValidationError as e:
                 # GovernanceService validation failed
                 error_message = str(e)
-                errors.append(
-                    f"Resource quota validation failed: {error_message}"
-                )
+                errors.append(f"Resource quota validation failed: {error_message}")
                 details["quota_checks"]["governance_validation_passed"] = False
                 details["quota_checks"]["governance_validation_error"] = error_message
 
@@ -2083,10 +2021,10 @@ class TransformationBusinessRules(BusinessRules):
         except Exception as e:
             logger.warning(
                 f"Failed to validate resource quota via GovernanceService for tenant {self.tenant_id}: {e}",
-                exc_info=True
+                exc_info=True,
             )
             warnings.append(
-                f"Could not validate resource quota via GovernanceService: {str(e)}. "
+                f"Could not validate resource quota via GovernanceService: {e!s}. "
                 f"Proceeding with pipeline validation."
             )
             details["quota_checks"]["governance_service_error"] = str(e)
@@ -2098,10 +2036,7 @@ class TransformationBusinessRules(BusinessRules):
         details["quota_checks"]["pipeline_node_count"] = node_count
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:
@@ -2140,7 +2075,7 @@ class TransformationBusinessRules(BusinessRules):
                 pipeline_id=str(pipeline.id),
                 tenant_id=self.tenant_id,
                 user_id=self.user_id,
-                details=details
+                details=details,
             )
 
         return result
@@ -2148,9 +2083,9 @@ class TransformationBusinessRules(BusinessRules):
     def validate_pipeline_execution_permission(
         self,
         pipeline: TransformationPipeline,
-        source_asset: Optional[Asset] = None,
-        target_asset: Optional[Asset] = None,
-        raise_on_error: bool = True
+        source_asset: Asset | None = None,
+        target_asset: Asset | None = None,
+        raise_on_error: bool = True,
     ) -> ValidationResult:
         """
         Validate pipeline execution permissions.
@@ -2176,26 +2111,20 @@ class TransformationBusinessRules(BusinessRules):
 
         errors = []
         warnings = []
-        details = {
-            "pipeline_id": str(pipeline.id),
-            "permission_checks": {}
-        }
+        details = {"pipeline_id": str(pipeline.id), "permission_checks": {}}
 
         if not self.user_id:
             errors.append("user_id is required for permission validation")
             details["permission_checks"]["user_id_provided"] = False
             result = ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
             if raise_on_error:
                 raise TransformationValidationError(
                     message="user_id is required for permission validation",
                     error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
                     details=details,
-                    tenant_id=self.tenant_id
+                    tenant_id=self.tenant_id,
                 )
             return result
 
@@ -2211,7 +2140,7 @@ class TransformationBusinessRules(BusinessRules):
                 tenant_id=str(pipeline.tenant_id),
                 resource_type="TRANSFORMATION_PIPELINE",
                 resource_id=str(pipeline.id),
-                access_type="EXECUTE"
+                access_type="EXECUTE",
             )
 
             if not pipeline_result.allowed:
@@ -2229,12 +2158,9 @@ class TransformationBusinessRules(BusinessRules):
                     details["permission_checks"]["pipeline_policy"] = pipeline_result.policy.name
 
         except Exception as e:
-            logger.warning(
-                f"ABAC evaluation failed for pipeline {pipeline.id}: {e}",
-                exc_info=True
-            )
+            logger.warning(f"ABAC evaluation failed for pipeline {pipeline.id}: {e}", exc_info=True)
             warnings.append(
-                f"Could not validate pipeline execution permission: {str(e)}. "
+                f"Could not validate pipeline execution permission: {e!s}. "
                 f"Proceeding with validation."
             )
             details["permission_checks"]["pipeline_validation_error"] = str(e)
@@ -2249,7 +2175,7 @@ class TransformationBusinessRules(BusinessRules):
                     tenant_id=str(source_asset.tenant_id),
                     resource_type="ASSET",
                     resource_id=str(source_asset.id),
-                    access_type="READ"
+                    access_type="READ",
                 )
 
                 if not source_result.allowed:
@@ -2264,15 +2190,16 @@ class TransformationBusinessRules(BusinessRules):
                 else:
                     details["permission_checks"]["source_asset_read_allowed"] = True
                     if source_result.policy:
-                        details["permission_checks"]["source_asset_policy"] = source_result.policy.name
+                        details["permission_checks"]["source_asset_policy"] = (
+                            source_result.policy.name
+                        )
 
             except Exception as e:
                 logger.warning(
-                    f"ABAC evaluation failed for source asset {source_asset.id}: {e}",
-                    exc_info=True
+                    f"ABAC evaluation failed for source asset {source_asset.id}: {e}", exc_info=True
                 )
                 warnings.append(
-                    f"Could not validate source asset access permission: {str(e)}. "
+                    f"Could not validate source asset access permission: {e!s}. "
                     f"Proceeding with validation."
                 )
                 details["permission_checks"]["source_asset_validation_error"] = str(e)
@@ -2287,7 +2214,7 @@ class TransformationBusinessRules(BusinessRules):
                     tenant_id=str(target_asset.tenant_id),
                     resource_type="ASSET",
                     resource_id=str(target_asset.id),
-                    access_type="WRITE"
+                    access_type="WRITE",
                 )
 
                 if not target_result.allowed:
@@ -2302,24 +2229,22 @@ class TransformationBusinessRules(BusinessRules):
                 else:
                     details["permission_checks"]["target_asset_write_allowed"] = True
                     if target_result.policy:
-                        details["permission_checks"]["target_asset_policy"] = target_result.policy.name
+                        details["permission_checks"]["target_asset_policy"] = (
+                            target_result.policy.name
+                        )
 
             except Exception as e:
                 logger.warning(
-                    f"ABAC evaluation failed for target asset {target_asset.id}: {e}",
-                    exc_info=True
+                    f"ABAC evaluation failed for target asset {target_asset.id}: {e}", exc_info=True
                 )
                 warnings.append(
-                    f"Could not validate target asset write permission: {str(e)}. "
+                    f"Could not validate target asset write permission: {e!s}. "
                     f"Proceeding with validation."
                 )
                 details["permission_checks"]["target_asset_validation_error"] = str(e)
 
         result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
         if not result.is_valid and raise_on_error:

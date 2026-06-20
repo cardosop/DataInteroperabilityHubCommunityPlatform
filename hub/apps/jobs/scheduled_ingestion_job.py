@@ -4,14 +4,14 @@ Scheduled Ingestion Job Execution
 Handles execution of SCHEDULED_INGESTION job type.
 """
 
+import contextlib
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 
 import structlog
-from django.db import transaction
 from django.utils import timezone
 
-from hub.apps.jobs.models import Job, JobStatus
+from hub.apps.jobs.models import Job
 from hub.apps.scheduled_ingestion.cost_tracking import CostTrackingManager
 from hub.apps.scheduled_ingestion.dead_letter_queue import DeadLetterQueueManager
 from hub.apps.scheduled_ingestion.ingestion import ScheduledIngestionProcessor
@@ -25,7 +25,7 @@ from hub.apps.scheduled_ingestion.models import (
 logger = structlog.get_logger(__name__)
 
 
-def _execute_scheduled_ingestion_job(job_obj: Job) -> Dict[str, Any]:
+def _execute_scheduled_ingestion_job(job_obj: Job) -> dict[str, Any]:
     """
     Execute SCHEDULED_INGESTION job.
 
@@ -60,12 +60,10 @@ def _execute_scheduled_ingestion_job(job_obj: Job) -> Dict[str, Any]:
     # Get or create run record
     run = None
     if job_obj.details_json and job_obj.details_json.get("scheduled_ingestion_run_id"):
-        try:
+        with contextlib.suppress(ScheduledIngestionRun.DoesNotExist):
             run = ScheduledIngestionRun.objects.get(
                 id=job_obj.details_json["scheduled_ingestion_run_id"]
             )
-        except ScheduledIngestionRun.DoesNotExist:
-            pass
 
     if not run:
         # Create new run record

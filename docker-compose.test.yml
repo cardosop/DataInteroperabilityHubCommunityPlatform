@@ -61,7 +61,7 @@ services:
       -c shared_buffers=256MB
       -c work_mem=8MB
       -c max_connections=500
-      -c statement_timeout=120s
+      -c statement_timeout=300s
       -c idle_in_transaction_session_timeout=300s
 
   # One-off: ensure hub_test database exists (handles volumes created without POSTGRES_DB=hub_test)
@@ -373,7 +373,7 @@ services:
   clamav-test:
     profiles:
       - clamav-test
-    image: clamav/clamav:1.4
+    image: clamav/clamav:1.5
     container_name: hub-test-clamav
     ports:
       - "127.0.0.1:${CLAMAV_TEST_PORT:-13310}:3310"
@@ -565,6 +565,10 @@ services:
       DEBUG: "True"
       LOG_LEVEL: DEBUG
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-test-internal-api-key-for-test-env}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
+      AWS_S3_ENDPOINT_URL: http://minio-test:9000
+      AWS_STORAGE_BUCKET_NAME: hub-files
     deploy:
       resources:
         limits:
@@ -611,6 +615,10 @@ services:
       REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
       COMPLIANCE_WORKER_THREADS: "4"
       COMPLIANCE_SCANNER_WORKERS: "4"
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
+      AWS_S3_ENDPOINT_URL: http://minio-test:9000
+      AWS_STORAGE_BUCKET_NAME: hub-files
     depends_on:
       redis-queue-test:
         condition: service_healthy
@@ -735,6 +743,14 @@ services:
       # Without this, root-owned .pyc files in __pycache__ persist across runs
       # and prevent source changes on the host from taking effect in the container.
       PYTHONDONTWRITEBYTECODE: "1"
+      # Ensure ENVIRONMENT=test so _user_lookup_alias() returns "default"
+      # and RLS BYPASSRLS/admin-specific paths are not used for test login.
+      ENVIRONMENT: test
+      # Force create_audit_event(tenant=None) to use the default connection
+      # with row_security=off instead of the admin alias (separate psycopg2
+      # connection unmanaged by TransactionTestCase/TestCase).  Prevents FK
+      # violations during fixture teardown.
+      SKIP_TEST_MIGRATIONS: "1"
       POSTGRES_HOST: postgres-test
       POSTGRES_PORT: "5432"
       POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
@@ -742,8 +758,9 @@ services:
       # Use hub_test_test_shared so gunicorn sees same data as pytest (TEST_DB_SUFFIX=shared)
       # and Prefect worker API calls (get_export_config, patch_export_run) update the same run the test polls
       POSTGRES_DB: hub_test_test_shared
-      EMAIL_BACKEND: ${EMAIL_BACKEND:-smtp}
+      EMAIL_BACKEND: smtp
       EMAIL_BASE_URL: ${EMAIL_BASE_URL:-http://localhost:8001}
+      E2E_ENABLE_SMTP: "true"
       EMAIL_JOB_NOTIFICATIONS_ENABLED: ${EMAIL_JOB_NOTIFICATIONS_ENABLED:-false}
       SMTP_HOST: ${SMTP_HOST:-mailhog-test}
       SMTP_PORT: ${SMTP_PORT:-1025}
@@ -807,7 +824,6 @@ services:
       # Enable the ClamAV live-scanner test (test_scanner.ClamAVScannerLiveTest).
       RUN_CLAMAV_LIVE_TESTS: "1"
       CLAMAV_LIVE_TEST_HOST: ${CLAMAV_LIVE_TEST_HOST:-clamav-test}
-      ENVIRONMENT: test
       APP_VERSION: ${APP_VERSION:-1.0.0-test}
       DEBUG: "False"
       LOG_LEVEL: DEBUG
@@ -844,19 +860,12 @@ services:
       # --- Marketplace connector credentials (from .env.test) ---
       # CKAN: local instance in this compose stack
       CKAN_TEST_URL: http://ckan-test:5000
-      CKAN_TEST_API_KEY: ${CKAN_TEST_API_KEY:-}
-      # DadosGovBr (Swagger API)
-      DADOS_GOV_BR_API_KEY: ${DADOS_GOV_BR_API_KEY:-}
-      CKAN_DADOS_GOV_BR_API_KEY: ${CKAN_DADOS_GOV_BR_API_KEY:-}
-      # AWS Data Exchange (separate from MinIO S3 creds above)
-      AWS_DATA_EXCHANGE_ACCESS_KEY_ID: ${AWS_DATA_EXCHANGE_ACCESS_KEY_ID:-}
-      AWS_DATA_EXCHANGE_SECRET_ACCESS_KEY: ${AWS_DATA_EXCHANGE_SECRET_ACCESS_KEY:-}
-      AWS_DATA_EXCHANGE_TEST_DATASET_ID: ${AWS_DATA_EXCHANGE_TEST_DATASET_ID:-}
-      # Snowflake / GCP / Azure / Databricks credentials are loaded via
-      # env_file (.env.test) — do NOT repeat them here with ${VAR:-}
-      # empty defaults because the environment: section always overrides
-      # the env_file values, even when the substitution resolves to an
-      # empty string.
+      # NB: CKAN_TEST_API_KEY, DADOS_GOV_BR_API_KEY, CKAN_DADOS_GOV_BR_API_KEY,
+      # AWS_DATA_EXCHANGE_*, Snowflake, GCP, Azure, and Databricks credentials
+      # are loaded exclusively via env_file (.env.test).  Do NOT repeat them
+      # here with ${VAR:-} empty defaults — the environment: section always
+      # overrides the env_file values, even when the substitution resolves to
+      # an empty string.
       GCP_LOCATION: ${GCP_LOCATION:-US}
       # Suppress test env validation warning; dev default is fine for test
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-test-jwt-secret-key-for-pytest-32b}
@@ -948,13 +957,14 @@ services:
     volumes:
       - .:/app
     environment:
-      EMAIL_BACKEND: ${EMAIL_BACKEND:-smtp}
+      EMAIL_BACKEND: smtp
       EMAIL_BASE_URL: ${EMAIL_BASE_URL:-http://localhost:8001}
       EMAIL_JOB_NOTIFICATIONS_ENABLED: ${EMAIL_JOB_NOTIFICATIONS_ENABLED:-false}
       SMTP_HOST: ${SMTP_HOST:-mailhog-test}
       SMTP_PORT: ${SMTP_PORT:-1025}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
       SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+      E2E_ENABLE_SMTP: "true"
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@test.hub.example.com}
@@ -988,6 +998,9 @@ services:
       ENVIRONMENT: test
       APP_VERSION: ${APP_VERSION:-1.0.0-test}
       DEBUG: "True"
+      # Prevent stale .pyc bytecode from masking source changes on the
+      # bind-mounted /app volume (same as api-service-test).
+      PYTHONDONTWRITEBYTECODE: "1"
       LOG_LEVEL: DEBUG
       DJANGO_SETTINGS_MODULE: hub.settings
       # JWT settings must match api-service-test so tests that generate
@@ -1196,7 +1209,7 @@ services:
     image: hub-test-prefect-integration:latest
     container_name: hub-test-prefect-integration
     user: root
-    command: sh -c "pip install --quiet sentry-sdk duckdb polars pyarrow pytest pytest-django pytest-asyncio pytest-mock && cd /app/services/prefect-integration && PYTHONPATH=/app python -m uvicorn main:app --host 0.0.0.0 --port 8084"
+    command: sh -c "pip install --quiet sentry-sdk duckdb polars pyarrow pytest pytest-django pytest-asyncio pytest-mock httpx2 && cd /app/services/prefect-integration && PYTHONPATH=/app python -m uvicorn main:app --host 0.0.0.0 --port 8084"
     ports:
       - "${PREFECT_INTEGRATION_TEST_PORT:-8114}:8084"
     volumes:
@@ -1230,6 +1243,13 @@ services:
       HUB_BASE_URL: http://api-service-test:8000
       HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:-e2e-test-worker-key-scheduled-export}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-test-internal-api-key-for-test-env}
+      # MinIO test credentials — sourced from the SAME substitution vars
+      # as the minio-test service so credential drift is impossible.
+      TEST_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minio}
+      TEST_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
+      # Prevent stale .pyc bytecode from masking source changes on the
+      # bind-mounted /app volume (same as api-service-test).
+      PYTHONDONTWRITEBYTECODE: "1"
       ENVIRONMENT: test
       DEBUG: "True"
     depends_on:
@@ -1389,9 +1409,18 @@ services:
           curl -sf http://localhost:5000/api/3/action/status_show >/dev/null 2>&1 && break
           sleep 2
         done
-        # Create org + dataset if missing
+        # Extra settling time — CKAN may accept status_show but still be
+        # initialising Solr / Redis connections needed for write operations.
+        sleep 10
+        # Create org + dataset if missing (with retries for write operations)
         python3 -c "
-        import httpx, os, sys
+        import json, os, sys
+        try:
+            import requests
+        except ImportError:
+            print('[ckan-seed] requests not available, trying urllib fallback')
+            import urllib.request
+            requests = None
         token = os.getenv('CKAN_SEED_TOKEN', '')
         if not token:
             # Generate a token via CLI
@@ -1405,22 +1434,61 @@ services:
                     break
         if not token:
             print('[ckan-seed] No token, skipping seed'); sys.exit(0)
-        h = {'Authorization': token, 'Content-Type': 'application/json'}
         base = 'http://localhost:5000'
+        def _get(url, headers, timeout=30):
+            if requests:
+                return requests.get(url, headers=headers, timeout=timeout)
+            else:
+                req = urllib.request.Request(url, headers=headers)
+                return urllib.request.urlopen(req, timeout=timeout)
+        def _post(url, headers, json_data, timeout=30):
+            body = json.dumps(json_data).encode('utf-8')
+            headers2 = dict(headers)
+            headers2['Content-Type'] = headers2.get('Content-Type', 'application/json')
+            if requests:
+                return requests.post(url, headers=headers2, data=body, timeout=timeout)
+            else:
+                req = urllib.request.Request(url, data=body, headers=headers2, method='POST')
+                return urllib.request.urlopen(req, timeout=timeout)
+        def _status(r):
+            return r.status_code if requests else r.getcode()
+        def _json_body(r):
+            return r.json() if requests else json.loads(r.read().decode('utf-8'))
+        h = {'Authorization': token}
         # Check if dataset exists
-        r = httpx.get(f'{base}/api/3/action/package_show?id=meshant-test-dataset', headers=h, timeout=10)
-        if r.status_code == 200 and r.json().get('success'):
+        r = _get(f'{base}/api/3/action/package_show?id=meshant-test-dataset', headers=h)
+        if _status(r) == 200 and _json_body(r).get('success'):
             print('[ckan-seed] Test dataset already exists'); sys.exit(0)
-        # Create org
-        httpx.post(f'{base}/api/3/action/organization_create', headers=h, timeout=10,
-                   json={'name': 'meshant-test-org', 'title': 'Meshant Test Org'})
+        # Create org (retry up to 3 times — Solr warmup can be slow)
+        for attempt in range(1, 4):
+            try:
+                r_org = _post(f'{base}/api/3/action/organization_create', headers=h,
+                              json_data={'name': 'meshant-test-org', 'title': 'Meshant Test Org'})
+                break
+            except Exception as e:
+                if attempt < 3:
+                    print(f'[ckan-seed] org create attempt {attempt} failed ({e}), retrying...')
+                    import time
+                    time.sleep(5)
+                else:
+                    print(f'[ckan-seed] org create failed after 3 attempts: {e}')
+                    sys.exit(0)
         # Create dataset
-        r = httpx.post(f'{base}/api/3/action/package_create', headers=h, timeout=10,
-                   json={'name': 'meshant-test-dataset', 'title': 'Meshant Test Dataset',
-                         'notes': 'Sample dataset for integration testing', 'owner_org': 'meshant-test-org',
-                         'resources': [{'name': 'sample.csv', 'url': 'http://example.com/sample.csv',
-                                        'format': 'CSV', 'description': 'Sample CSV resource'}]})
-        print(f'[ckan-seed] Created test dataset: {r.json().get(\"success\")}')
+        r = _post(f'{base}/api/3/action/package_create', headers=h,
+                  json_data={'name': 'meshant-test-dataset', 'title': 'Meshant Test Dataset',
+                             'notes': 'Sample dataset for integration testing', 'owner_org': 'meshant-test-org',
+                             'resources': [
+                                 {'name': 'sample.csv',
+                                  'url': 'http://ckan-test:5000/api/3/action/status_show',
+                                  'format': 'JSON', 'description': 'CKAN status endpoint (test download target)'},
+                                 {'name': 'package_search.json',
+                                  'url': 'http://ckan-test:5000/api/3/action/package_search?rows=1',
+                                  'format': 'JSON', 'description': 'CKAN search endpoint (test download target)'},
+                                 {'name': 'broken_url_test',
+                                  'url': 'http://ckan-test:5000/api/3/action/package_show?id=zzz-nonexistent-package-12345',
+                                  'format': 'JSON', 'description': 'Deliberately broken URL (404) for error-handling tests'}
+                             ]})
+        print(f'[ckan-seed] Created test dataset: {_json_body(r).get(\"success\")}')
         " 2>&1
         # Wait for foreground CKAN process
         wait $$CKAN_PID
@@ -1431,6 +1499,8 @@ services:
       CKAN_SITE_URL: http://ckan-test:5000
       CKAN_SITE_ID: default
       CKAN___BEAKER__SESSION__SECRET: ckan-test-secret
+      # Fixed seed token so .env.test CKAN_TEST_API_KEY stays valid across restarts
+      CKAN_SEED_TOKEN: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJqdGkiOiJXNFVXNTZLQW5yWjRzSGNQLXlNbTZkX08yS0dSb29VMGxDWlo2bGR3YXRVIiwiaWF0IjoxNzgxODMwMjI0fQ.YHmMeCW-WyivW4j1q2jsTBf3W8aZKIT44g80Rf3cnG4
     ports:
       - "${CKAN_TEST_PORT:-5100}:5000"
     depends_on:

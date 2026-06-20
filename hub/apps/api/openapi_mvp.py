@@ -20,7 +20,5 @@ def postprocess_drop_mvp_gated_paths(
     paths = result.get("paths")
     if not isinstance(paths, dict):
         return result
-    result["paths"] = {
-        k: v for k, v in paths.items() if not openapi_path_is_mvp_gated(k)
-    }
+    result["paths"] = {k: v for k, v in paths.items() if not openapi_path_is_mvp_gated(k)}
     return result

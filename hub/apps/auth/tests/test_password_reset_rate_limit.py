@@ -1,6 +1,8 @@
 """Phase 87: Password reset rate limiting tests."""
-from django.test import TestCase, override_settings
+
 from django.core.cache import cache
+from django.test import TestCase, override_settings
+
 from hub.apps.auth.views import _check_password_reset_rate_limit
 
 
@@ -13,7 +15,7 @@ class TestPasswordResetRateLimit(TestCase):
         for i in range(5):
             self.assertTrue(
                 _check_password_reset_rate_limit("user@example.com"),
-                f"Request {i+1} should be allowed",
+                f"Request {i + 1} should be allowed",
             )
 
     @override_settings(RATE_LIMIT_ENABLED=True)

@@ -4,6 +4,7 @@ Tests for hub/apps/webhooks/ssrf_guard.py
 All tests exercise the real guard with actual DNS resolution mocked at the
 socket layer so the suite runs offline and deterministically.
 """
+
 import socket
 from unittest.mock import patch
 
@@ -15,10 +16,10 @@ from hub.apps.webhooks.ssrf_guard import (
     validate_webhook_url,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _mock_dns(ip: str):
     """Return a context manager that makes getaddrinfo always resolve to *ip*."""
@@ -34,6 +35,7 @@ def _mock_dns_ipv6(ip: str):
 # ---------------------------------------------------------------------------
 # Scheme validation
 # ---------------------------------------------------------------------------
+
 
 class TestNonHttpSchemeBlocked:
     def test_file_scheme_raises_validation_error(self):
@@ -57,6 +59,7 @@ class TestNonHttpSchemeBlocked:
 # Loopback
 # ---------------------------------------------------------------------------
 
+
 class TestLoopbackBlocked:
     def test_loopback_127_0_0_1(self):
         with pytest.raises(SSRFViolationError):
@@ -72,9 +75,8 @@ class TestLoopbackBlocked:
 
     def test_localhost_hostname(self):
         """'localhost' resolves to 127.0.0.1 — must be blocked via DNS check."""
-        with _mock_dns("127.0.0.1"):
-            with pytest.raises(SSRFViolationError):
-                validate_webhook_url("http://localhost/hook", raise_as_validation_error=False)
+        with _mock_dns("127.0.0.1"), pytest.raises(SSRFViolationError):
+            validate_webhook_url("http://localhost/hook", raise_as_validation_error=False)
 
 
 class TestIPv6LoopbackBlocked:
@@ -83,9 +85,8 @@ class TestIPv6LoopbackBlocked:
             validate_webhook_url("http://[::1]/hook", raise_as_validation_error=False)
 
     def test_ipv6_loopback_via_dns(self):
-        with _mock_dns_ipv6("::1"):
-            with pytest.raises(SSRFViolationError):
-                validate_webhook_url("http://example.com/hook", raise_as_validation_error=False)
+        with _mock_dns_ipv6("::1"), pytest.raises(SSRFViolationError):
+            validate_webhook_url("http://example.com/hook", raise_as_validation_error=False)
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +97,7 @@ class TestIPv6LoopbackBlocked:
 # would miss them.
 # ---------------------------------------------------------------------------
 
+
 class TestIPv6MappedIPv4Blocked:
     """
     ::ffff:x.x.x.x is the IPv4-mapped IPv6 format returned by getaddrinfo on
@@ -105,39 +107,35 @@ class TestIPv6MappedIPv4Blocked:
 
     def test_ipv6_mapped_loopback_blocked(self):
         """::ffff:127.0.0.1 maps to 127.0.0.1 (loopback) and must be blocked."""
-        with _mock_dns_ipv6("::ffff:127.0.0.1"):
-            with pytest.raises(SSRFViolationError):
-                validate_webhook_url(
-                    "http://example.com/hook",
-                    raise_as_validation_error=False,
-                )
+        with _mock_dns_ipv6("::ffff:127.0.0.1"), pytest.raises(SSRFViolationError):
+            validate_webhook_url(
+                "http://example.com/hook",
+                raise_as_validation_error=False,
+            )
 
     def test_ipv6_mapped_rfc1918_10x_blocked(self):
         """::ffff:10.0.0.1 maps to a private RFC-1918 address and must be blocked."""
-        with _mock_dns_ipv6("::ffff:10.0.0.1"):
-            with pytest.raises(SSRFViolationError):
-                validate_webhook_url(
-                    "http://example.com/hook",
-                    raise_as_validation_error=False,
-                )
+        with _mock_dns_ipv6("::ffff:10.0.0.1"), pytest.raises(SSRFViolationError):
+            validate_webhook_url(
+                "http://example.com/hook",
+                raise_as_validation_error=False,
+            )
 
     def test_ipv6_mapped_rfc1918_192168_blocked(self):
         """::ffff:192.168.1.1 maps to a private RFC-1918 address and must be blocked."""
-        with _mock_dns_ipv6("::ffff:192.168.1.1"):
-            with pytest.raises(SSRFViolationError):
-                validate_webhook_url(
-                    "http://example.com/hook",
-                    raise_as_validation_error=False,
-                )
+        with _mock_dns_ipv6("::ffff:192.168.1.1"), pytest.raises(SSRFViolationError):
+            validate_webhook_url(
+                "http://example.com/hook",
+                raise_as_validation_error=False,
+            )
 
     def test_ipv6_mapped_imds_blocked(self):
         """::ffff:169.254.169.254 maps to the AWS IMDS address and must be blocked."""
-        with _mock_dns_ipv6("::ffff:169.254.169.254"):
-            with pytest.raises(SSRFViolationError):
-                validate_webhook_url(
-                    "http://example.com/hook",
-                    raise_as_validation_error=False,
-                )
+        with _mock_dns_ipv6("::ffff:169.254.169.254"), pytest.raises(SSRFViolationError):
+            validate_webhook_url(
+                "http://example.com/hook",
+                raise_as_validation_error=False,
+            )
 
     def test_ipv6_mapped_public_ip_allowed(self):
         """::ffff:93.184.216.34 maps to a public IP and must NOT be blocked."""
@@ -152,6 +150,7 @@ class TestIPv6MappedIPv4Blocked:
 # ---------------------------------------------------------------------------
 # RFC-1918
 # ---------------------------------------------------------------------------
+
 
 class TestRFC1918Blocked:
     def test_10_x_blocked(self):
@@ -171,29 +170,33 @@ class TestRFC1918Blocked:
             validate_webhook_url("http://192.168.1.100/hook", raise_as_validation_error=False)
 
     def test_rfc1918_via_dns(self):
-        with _mock_dns("10.0.0.5"):
-            with pytest.raises(SSRFViolationError):
-                validate_webhook_url("http://internal.corp/hook", raise_as_validation_error=False)
+        with _mock_dns("10.0.0.5"), pytest.raises(SSRFViolationError):
+            validate_webhook_url("http://internal.corp/hook", raise_as_validation_error=False)
 
 
 # ---------------------------------------------------------------------------
 # AWS IMDS / Link-local
 # ---------------------------------------------------------------------------
 
+
 class TestAWSIMDSBlocked:
     def test_aws_imds_direct_ip(self):
         with pytest.raises(SSRFViolationError):
-            validate_webhook_url("http://169.254.169.254/latest/meta-data/", raise_as_validation_error=False)
+            validate_webhook_url(
+                "http://169.254.169.254/latest/meta-data/", raise_as_validation_error=False
+            )
 
     def test_link_local_via_dns(self):
-        with _mock_dns("169.254.1.1"):
-            with pytest.raises(SSRFViolationError):
-                validate_webhook_url("http://metadata.example.com/hook", raise_as_validation_error=False)
+        with _mock_dns("169.254.1.1"), pytest.raises(SSRFViolationError):
+            validate_webhook_url(
+                "http://metadata.example.com/hook", raise_as_validation_error=False
+            )
 
 
 # ---------------------------------------------------------------------------
 # DNS rebinding
 # ---------------------------------------------------------------------------
+
 
 class TestDNSRebindingBlocked:
     """
@@ -204,25 +207,24 @@ class TestDNSRebindingBlocked:
 
     def test_dns_rebinding_blocked_at_delivery(self):
         """Hostname was valid at registration but now resolves to 127.0.0.1."""
-        with _mock_dns("127.0.0.1"):
-            with pytest.raises(SSRFViolationError):
-                validate_webhook_url(
-                    "http://rebind.example.com/hook",
-                    raise_as_validation_error=False,
-                )
+        with _mock_dns("127.0.0.1"), pytest.raises(SSRFViolationError):
+            validate_webhook_url(
+                "http://rebind.example.com/hook",
+                raise_as_validation_error=False,
+            )
 
     def test_dns_rebinding_to_rfc1918(self):
-        with _mock_dns("192.168.0.1"):
-            with pytest.raises(SSRFViolationError):
-                validate_webhook_url(
-                    "http://rebind.example.com/hook",
-                    raise_as_validation_error=False,
-                )
+        with _mock_dns("192.168.0.1"), pytest.raises(SSRFViolationError):
+            validate_webhook_url(
+                "http://rebind.example.com/hook",
+                raise_as_validation_error=False,
+            )
 
 
 # ---------------------------------------------------------------------------
 # Public URLs allowed
 # ---------------------------------------------------------------------------
+
 
 class TestPublicUrlAllowed:
     def test_public_https_url(self):
@@ -236,4 +238,6 @@ class TestPublicUrlAllowed:
 
     def test_public_url_with_port(self):
         with _mock_dns("8.8.8.8"):
-            validate_webhook_url("https://api.example.com:8443/hook", raise_as_validation_error=False)
+            validate_webhook_url(
+                "https://api.example.com:8443/hook", raise_as_validation_error=False
+            )

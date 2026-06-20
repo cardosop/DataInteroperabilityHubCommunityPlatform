@@ -16,6 +16,7 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Report generation
 """
 
+import contextlib
 import json
 import uuid
 
@@ -23,10 +24,7 @@ import pytest
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.migration_validation import (
-    ContractValidationResult,
-    MigrationValidationReport,
     MigrationValidator,
-    ValidationIssue,
 )
 from hub.apps.contracts.models import (
     Contract,
@@ -125,12 +123,10 @@ class MigrationValidationTestBase(ContractsTestBase):
         # Get original ODCS contract
         original_odcs_contract = None
         if odcs_contract.original_raw:
-            try:
+            with contextlib.suppress(Exception):
                 original_odcs_contract = parse_contract(
                     odcs_contract.original_raw, odcs_contract.original_format
                 )
-            except Exception:
-                pass
 
         # Generate ODPS from HubContract
         hub_contract = odcs_contract.hub_contract_json
@@ -227,7 +223,7 @@ class MigrationValidatorUnitTest(MigrationValidationTestBase):
         odcs_contract = self._create_odcs_contract_with_marketplace(
             marketplace_data={"license_summary": "Test license"}
         )
-        odps_contract = self._migrate_contract_to_odps(odcs_contract)
+        self._migrate_contract_to_odps(odcs_contract)
 
         # Validate links through public API - validate_migration() internally calls _validate_contract_migration()
         validator = MigrationValidator(tenant_id=str(self.tenant.id))
@@ -329,7 +325,7 @@ class MigrationValidatorUnitTest(MigrationValidationTestBase):
         odcs_contract = self._create_odcs_contract_with_marketplace(
             marketplace_data=marketplace_data
         )
-        odps_contract = self._migrate_contract_to_odps(odcs_contract)
+        self._migrate_contract_to_odps(odcs_contract)
 
         # Compare marketplace metadata through public API - validate_migration() internally calls _compare_marketplace_metadata()
         validator = MigrationValidator(tenant_id=str(self.tenant.id))
@@ -345,7 +341,8 @@ class MigrationValidatorUnitTest(MigrationValidationTestBase):
         ]
         # Note: Some fields might be transformed during ODPS generation/normalization,
         # so we check that there are no critical marketplace issues
-        # The validation should pass if marketplace data is preserved
+        self.assertEqual(len(marketplace_issues), 0,
+            f"Should have no marketplace issues when metadata preserved; got {marketplace_issues}")
         self.assertTrue(result.is_migrated)
 
     def test_compare_marketplace_metadata_missing(self):
@@ -360,11 +357,11 @@ class MigrationValidatorUnitTest(MigrationValidationTestBase):
         # Create ODPS contract without marketplace data (simulate data loss)
         # Use contract_service from base class if same tenant, otherwise create new instance
         if str(odcs_contract.tenant_id) == str(self.tenant.id):
-            contract_service = self.contract_service
+            pass
         else:
             from hub.apps.contracts.services import ContractService
 
-            contract_service = ContractService(
+            ContractService(
                 tenant_id=str(odcs_contract.tenant_id),
                 user_id=str(odcs_contract.created_by.id) if odcs_contract.created_by else None,
             )
@@ -374,7 +371,6 @@ class MigrationValidatorUnitTest(MigrationValidationTestBase):
         odps_hub.pop("marketplace", None)  # Remove marketplace
 
         # Create ODPS contract
-        import uuid
 
         odps_contract = Contract.objects.create(
             tenant=odcs_contract.tenant,
@@ -423,8 +419,8 @@ class MigrationValidatorUnitTest(MigrationValidationTestBase):
             issue for issue in result.issues if "marketplace" in issue.issue_type.lower()
         ]
         # The validation should detect missing marketplace fields
-        # Note: The exact issue type depends on implementation
-        self.assertTrue(result.is_migrated or len(marketplace_issues) > 0)
+        self.assertGreater(len(marketplace_issues), 0,
+            "Validation must detect marketplace data loss")
 
     def test_compare_hubcontract_data_preserved(self):
         """Test HubContract data comparison when preserved."""
@@ -493,7 +489,7 @@ class MigrationValidatorUnitTest(MigrationValidationTestBase):
         odcs_contract = self._create_odcs_contract_with_marketplace(
             marketplace_data={"license_summary": "Test license"}
         )
-        odps_contract = self._migrate_contract_to_odps(odcs_contract)
+        self._migrate_contract_to_odps(odcs_contract)
 
         # Validate and generate report
         validator = MigrationValidator(tenant_id=str(self.tenant.id))
@@ -658,7 +654,7 @@ class MigrationValidationIntegrationTest(MigrationValidationTestBase):
         # Create ODPS contract with missing sections (simulate data loss)
         from hub.apps.contracts.services import ContractService
 
-        contract_service = ContractService(
+        ContractService(
             tenant_id=str(odcs_contract.tenant_id),
             user_id=str(odcs_contract.created_by.id) if odcs_contract.created_by else None,
         )
@@ -717,7 +713,9 @@ class MigrationValidationIntegrationTest(MigrationValidationTestBase):
         # Note: Some differences are expected, but missing entire sections should be flagged
         missing_sections = data_comp.get("missing_sections", [])
         # Quality or privacy_compliance should be detected as missing
-        self.assertGreater(len(missing_sections), 0, "Should detect missing sections (quality, privacy_compliance)")
+        self.assertGreater(
+            len(missing_sections), 0, "Should detect missing sections (quality, privacy_compliance)"
+        )
 
     def test_validate_migration_report_statistics(self):
         """Test that report includes comprehensive statistics."""
@@ -729,7 +727,7 @@ class MigrationValidationIntegrationTest(MigrationValidationTestBase):
             contract = self._create_odcs_contract_with_marketplace(
                 marketplace_data={"license_summary": f"License {i}"}
             )
-            odps_contract = self._migrate_contract_to_odps(contract)
+            self._migrate_contract_to_odps(contract)
             contracts.append(contract)
 
         # Not migrated

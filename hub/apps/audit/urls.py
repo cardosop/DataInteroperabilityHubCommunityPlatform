@@ -1,11 +1,13 @@
 """
 Audit URL Configuration
 """
-from django.urls import path, include
+
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
+
 from .views import (
-    AuditEventViewSet,
     AuditEventRetentionPolicyViewSet,
+    AuditEventViewSet,
     AuditIntegrityVerifyView,
     ResourceActivityViewSet,
 )
@@ -34,33 +36,33 @@ integrity_verify_view = AuditIntegrityVerifyView.as_view({"get": "list"})
 
 # Add custom export endpoint that bypasses DRF format suffix routing
 # This allows ?format=csv query parameter to work without conflicts
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+
 
 def export_audit_events_custom(request, *args, **kwargs):
     """
     Custom export endpoint that bypasses DRF format suffix routing.
-    
+
     This endpoint handles ?format=csv query parameter without conflicts
     from DRF's format suffix patterns.
-    
+
     Uses the viewset's as_view() to ensure proper authentication and permissions.
     The key is that this function receives the request and passes it to the viewset view,
     which will handle authentication via DRF's authentication classes.
     """
     # Import here to avoid circular imports
     from .views import AuditEventViewSet
-    
+
     # Use the viewset's as_view() method to create a proper view
     # This ensures authentication, permissions, and all DRF machinery works correctly
     # The export action already handles ?format=csv correctly by prioritizing query params
     # We create the view once and reuse it (DRF views are callable and handle this correctly)
-    if not hasattr(export_audit_events_custom, '_view'):
-        export_audit_events_custom._view = AuditEventViewSet.as_view({'get': 'export'})
-    
+    if not hasattr(export_audit_events_custom, "_view"):
+        export_audit_events_custom._view = AuditEventViewSet.as_view({"get": "export"})
+
     # Call the view - this will properly handle authentication via DRF's authentication classes
     # Pass *args and **kwargs to ensure URL parameters are handled correctly
     return export_audit_events_custom._view(request, *args, **kwargs)
+
 
 urlpatterns = [
     # Standard router URLs (includes export action)
@@ -73,4 +75,3 @@ urlpatterns = [
         name="audit-integrity-verify",
     ),
 ]
-

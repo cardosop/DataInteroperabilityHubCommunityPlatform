@@ -11,11 +11,12 @@ Tests cover:
 All tests use real implementations (no mocks/stubs).
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
-from rest_framework import serializers
 
 from hub.apps.gdpr.models import (
     DataExportJob,
@@ -25,7 +26,6 @@ from hub.apps.gdpr.models import (
 )
 from hub.apps.gdpr.serializers import DataExportJobSerializer, ErasureRequestSerializer
 from hub.apps.tenants.models import Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -38,7 +38,9 @@ class DataExportJobSerializerTest(TestCase):
         """Set up test fixtures"""
         # Create tenant
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE")
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE"
+        )
 
         # Create user
         self.user = User.objects.create_user(
@@ -152,8 +154,7 @@ class DataExportJobSerializerTest(TestCase):
         )
 
         # Read-only fields should be ignored during update
-        self.assertTrue(serializer.is_valid(),
-            "Serializer should accept valid data")
+        self.assertTrue(serializer.is_valid(), "Serializer should accept valid data")
         # Original values should remain (compare same types: UUID to UUID)
         self.assertEqual(self.job.id, serializer.instance.id)
         self.assertEqual(self.job.status, serializer.instance.status)
@@ -168,8 +169,17 @@ class DataExportJobSerializerTest(TestCase):
         # In practice, objects are created via service layer, not serializer
         read_only_count = sum(1 for f in serializer.fields.values() if f.read_only)
         total = len(serializer.fields)
-        self.assertGreater(read_only_count, total // 2,
-            f"Majority of fields must be read-only (got {read_only_count}/{total})")
+        # DataExportJobSerializer has 11 fields; 10 are read-only (status is writable)
+        expected_ro = 10
+        self.assertEqual(
+            read_only_count, expected_ro,
+            f"Expected {expected_ro} read-only fields out of {total}; got {read_only_count}",
+        )
+        # Verify the one field that IS writable
+        self.assertFalse(
+            serializer.fields["status"].read_only,
+            "status must be writable (the only field not in read_only_fields)",
+        )
 
     # ========== EDGE CASES TESTS ==========
 
@@ -211,7 +221,9 @@ class ErasureRequestSerializerTest(TestCase):
         """Set up test fixtures"""
         # Create tenant
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE")
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE"
+        )
 
         # Create user
         self.user = User.objects.create_user(
@@ -342,8 +354,7 @@ class ErasureRequestSerializerTest(TestCase):
         )
 
         # Read-only fields should be ignored during update
-        self.assertTrue(serializer.is_valid(),
-            "Serializer should accept valid data")
+        self.assertTrue(serializer.is_valid(), "Serializer should accept valid data")
         # Original values should remain (compare same types: UUID to UUID)
         self.assertEqual(self.request.id, serializer.instance.id)
         self.assertEqual(self.request.status, serializer.instance.status)
@@ -358,8 +369,12 @@ class ErasureRequestSerializerTest(TestCase):
         # In practice, objects are created via service layer, not serializer
         read_only_count = sum(1 for f in serializer.fields.values() if f.read_only)
         total = len(serializer.fields)
-        self.assertGreater(read_only_count, total // 2,
-            f"Majority of fields must be read-only (got {read_only_count}/{total})")
+        # ErasureRequestSerializer — ALL 12 fields are in read_only_fields
+        self.assertEqual(
+            read_only_count, total,
+            f"ErasureRequestSerializer has NO writable fields; "
+            f"all {total} must be read-only. Got {read_only_count}/{total} read-only.",
+        )
 
     # ========== EDGE CASES TESTS ==========
 

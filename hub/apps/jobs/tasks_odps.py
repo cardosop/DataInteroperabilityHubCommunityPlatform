@@ -28,6 +28,7 @@ logger = structlog.get_logger(__name__)
 
 # SAVING CHECKPOINT: Start of normalization handler
 
+
 def _execute_odps_normalization_job(job_obj: Job) -> dict:
     """
     Execute ODPS_NORMALIZATION job.
@@ -383,12 +384,13 @@ def _execute_odps_normalization_job(job_obj: Job) -> dict:
             contract_id=str(contract_id) if "contract_id" in locals() else None,
             error=str(e),
             exc_info=True,
-            message=f"ODPS normalization job failed: {str(e)}",
+            message=f"ODPS normalization job failed: {e!s}",
         )
-        raise Exception(f"ODPS normalization failed: {str(e)}") from e
+        raise Exception(f"ODPS normalization failed: {e!s}") from e
 
 
 # SAVING CHECKPOINT: Start of ref_resolution handler
+
 
 def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
     """
@@ -597,7 +599,7 @@ def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
             # Update progress: Failed (100%)
             job_obj.details_json["progress_percentage"] = 100.0
             job_obj.details_json["current_phase"] = "failed"
-            job_obj.details_json["status_message"] = f"$ref resolution failed: {str(e)}"
+            job_obj.details_json["status_message"] = f"$ref resolution failed: {e!s}"
             job_obj.save(update_fields=["details_json", "updated_at"])
 
             # Publish failure event
@@ -618,7 +620,7 @@ def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
                     contract_id=str(contract_id),
                     extra={"error_type": type(event_err).__name__, "error": str(event_err)},
                 )
-            raise ValueError(f"ODPS $ref resolution failed: {str(e)}")
+            raise ValueError(f"ODPS $ref resolution failed: {e!s}")
 
         # Update progress: Saving results (90%)
         job_obj.details_json["progress_percentage"] = 90.0
@@ -742,12 +744,13 @@ def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
             contract_id=str(contract_id) if "contract_id" in locals() else None,
             error=str(e),
             exc_info=True,
-            message=f"ODPS $ref resolution job failed: {str(e)}",
+            message=f"ODPS $ref resolution job failed: {e!s}",
         )
-        raise Exception(f"ODPS $ref resolution failed: {str(e)}") from e
+        raise Exception(f"ODPS $ref resolution failed: {e!s}") from e
 
 
 # SAVING CHECKPOINT: Start of export handler
+
 
 def _execute_odps_export_job(job_obj: Job) -> dict:
     """
@@ -778,7 +781,6 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
 
     try:
         # Import here to avoid circular imports
-        import json
 
         from hub.apps.contracts.models import Contract, OriginalFormat, OriginalSpecType
         from hub.apps.contracts.normalization import parse_contract
@@ -799,7 +801,7 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
         # Validate contract has hub_contract_json
         if not contract.hub_contract_json:
             raise ValueError(
-                f"Contract {contract_id} has no hub_contract_json. " "Cannot export as ODPS format."
+                f"Contract {contract_id} has no hub_contract_json. Cannot export as ODPS format."
             )
 
         # Get export options from job details
@@ -1102,7 +1104,7 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
             contract_id=str(contract_id) if "contract_id" in locals() else None,
             error=str(e),
             exc_info=True,
-            message=f"ODPS export job failed: {str(e)}",
+            message=f"ODPS export job failed: {e!s}",
         )
 
         # Record export failure metric (Task 6.6.4)
@@ -1127,10 +1129,11 @@ def _execute_odps_export_job(job_obj: Job) -> dict:
                 extra={"error_type": type(metrics_err).__name__, "error": str(metrics_err)},
             )
 
-        raise Exception(f"ODPS export failed: {str(e)}") from e
+        raise Exception(f"ODPS export failed: {e!s}") from e
 
 
 # SAVING CHECKPOINT: Start of semantic_mapping handler
+
 
 def _execute_odps_semantic_mapping_job(job_obj: Job) -> dict:
     """
@@ -1384,12 +1387,13 @@ def _execute_odps_semantic_mapping_job(job_obj: Job) -> dict:
             contract_id=str(contract_id) if "contract_id" in locals() else None,
             error=str(e),
             exc_info=True,
-            message=f"ODPS semantic mapping job failed: {str(e)}",
+            message=f"ODPS semantic mapping job failed: {e!s}",
         )
-        raise Exception(f"ODPS semantic mapping failed: {str(e)}") from e
+        raise Exception(f"ODPS semantic mapping failed: {e!s}") from e
 
 
 # SAVING CHECKPOINT: Start of linking handler
+
 
 def _execute_odps_linking_job(job_obj: Job) -> dict:
     """
@@ -1434,7 +1438,7 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
     try:
         # Import here to avoid circular imports
         from hub.apps.contracts.linking_validation import LinkingValidationError, validate_linking
-        from hub.apps.contracts.models import Contract, NormalizationStatus, OriginalSpecType
+        from hub.apps.contracts.models import Contract
         from hub.apps.contracts.services import ContractService
         from hub.apps.core.events.publisher import EventPublisher
         from hub.apps.core.events.service_publishers import ODPSEventPublisher
@@ -1527,7 +1531,7 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
             # Update progress: Validation failed (100%)
             job_obj.details_json["progress_percentage"] = 100.0
             job_obj.details_json["current_phase"] = "failed"
-            job_obj.details_json["status_message"] = f"Linking validation failed: {str(e)}"
+            job_obj.details_json["status_message"] = f"Linking validation failed: {e!s}"
             job_obj.save(update_fields=["details_json", "updated_at"])
 
             # Publish failure event
@@ -1540,7 +1544,7 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
                     current_phase="validation",
                     validation_passed=False,
                     validation_errors=[str(e)],
-                    status_message=f"Linking validation failed: {str(e)}",
+                    status_message=f"Linking validation failed: {e!s}",
                     tenant_id=tenant_id,
                     user_id=user_id,
                 )
@@ -1551,7 +1555,7 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
                     contract_id=str(contract_id),
                     extra={"error_type": type(event_err).__name__, "error": str(event_err)},
                 )
-            raise ValueError(f"ODPS linking validation failed: {str(e)}")
+            raise ValueError(f"ODPS linking validation failed: {e!s}")
 
         # Update progress: Validation passed (40%)
         job_obj.details_json["progress_percentage"] = 40.0
@@ -1763,7 +1767,6 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
             odcs_contract_id=odcs_contract_id if "odcs_contract_id" in locals() else None,
             error=str(e),
             exc_info=True,
-            message=f"ODPS linking job failed: {str(e)}",
+            message=f"ODPS linking job failed: {e!s}",
         )
-        raise Exception(f"ODPS linking failed: {str(e)}") from e
-
+        raise Exception(f"ODPS linking failed: {e!s}") from e

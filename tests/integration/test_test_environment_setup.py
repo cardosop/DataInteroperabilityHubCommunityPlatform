@@ -14,7 +14,6 @@ Tests validate:
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -37,14 +36,14 @@ class TestTestEnvironmentDockerCompose:
     @pytest.fixture(scope="class")
     def docker_compose_config(self, docker_compose_file):
         """Load docker-compose.test.yml configuration."""
-        with open(docker_compose_file, "r") as f:
+        with open(docker_compose_file) as f:
             return yaml.safe_load(f)
 
     def test_docker_compose_file_exists(self, docker_compose_file):
         """Test that docker-compose.test.yml exists."""
-        assert (
-            docker_compose_file.exists()
-        ), f"docker-compose.test.yml not found at {docker_compose_file}"
+        assert docker_compose_file.exists(), (
+            f"docker-compose.test.yml not found at {docker_compose_file}"
+        )
 
     def test_docker_compose_valid_yaml(self, docker_compose_config):
         """Test that docker-compose.test.yml is valid YAML."""
@@ -55,9 +54,9 @@ class TestTestEnvironmentDockerCompose:
         """Test that all services have either build or image specified."""
         services = docker_compose_config.get("services", {})
         for service_name, service_config in services.items():
-            assert (
-                "build" in service_config or "image" in service_config
-            ), f"Service {service_name} must have either 'build' or 'image'"
+            assert "build" in service_config or "image" in service_config, (
+                f"Service {service_name} must have either 'build' or 'image'"
+            )
 
     def test_infrastructure_services_defined(self, docker_compose_config):
         """Test that infrastructure services are defined."""
@@ -112,9 +111,9 @@ class TestTestEnvironmentDockerCompose:
             # Skip volume-only entries (docker-compose may list volumes under services in some configs)
             if "build" not in service_config and "image" not in service_config:
                 continue
-            assert (
-                "healthcheck" in service_config
-            ), f"Service {service_name} must have healthcheck configured"
+            assert "healthcheck" in service_config, (
+                f"Service {service_name} must have healthcheck configured"
+            )
 
     def test_services_use_test_ports(self, docker_compose_config):
         """Test that services use isolated test ports."""
@@ -171,9 +170,9 @@ class TestTestEnvironmentDockerCompose:
                 network_names = list(networks.keys())
             else:
                 network_names = []
-            assert "hub-test-net" in network_names or "hub-test-net" in str(
-                networks
-            ), f"Service {service_name} should use hub-test-net network"
+            assert "hub-test-net" in network_names or "hub-test-net" in str(networks), (
+                f"Service {service_name} should use hub-test-net network"
+            )
 
     def test_services_have_test_environment(self, docker_compose_config):
         """Test that services have test environment variables."""
@@ -197,6 +196,7 @@ class TestTestEnvironmentServices:
         try:
             result = subprocess.run(
                 ["docker", "compose", "-f", "docker-compose.test.yml", "ps", "--format", "json"],
+                check=False,
                 cwd=project_root,
                 capture_output=True,
                 text=True,

@@ -8,6 +8,7 @@ happen at image-build time, when env vars like `MVP_MODE` and
 `E2E_TEST_SECRET` may be absent. ``deploy=True`` scopes the checks to
 explicit `--deploy` invocations (post-deploy health probe).
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -45,9 +46,7 @@ def check_mvp_mode_on_staging(app_configs: Any, **kwargs: Any) -> list[Error]:
 
 
 @register(Tags.security, deploy=True)
-def check_e2e_secret_when_endpoints_mounted(
-    app_configs: Any, **kwargs: Any
-) -> list[Error]:
+def check_e2e_secret_when_endpoints_mounted(app_configs: Any, **kwargs: Any) -> list[Error]:
     """hub.E002 — E2E_TEST_SECRET must be set where ensure_e2e_* endpoints exist.
 
     The ``@require_e2e_token`` decorator returns 404 when the secret is

@@ -10,16 +10,14 @@ values (access tokens, passwords, refresh tokens, Stripe keys, etc.)
 in the response body or headers.
 """
 
-import json
 import requests
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_base_url
 
-
 SENSITIVE_PATTERNS = [
-    "TestPass123",             # seeded E2E persona password
-    "sk_test_",               # Stripe test key prefix
-    "whsec_",                 # Stripe webhook secret prefix
+    "TestPass123",  # seeded E2E persona password
+    "sk_test_",  # Stripe test key prefix
+    "whsec_",  # Stripe webhook secret prefix
 ]
 
 
@@ -43,9 +41,7 @@ def test_401_error_body_does_not_contain_token():
     assert resp.status_code == 401
 
     body = resp.text
-    assert "secret-payload" not in body, (
-        "401 response body contains the submitted token payload"
-    )
+    assert "secret-payload" not in body, "401 response body contains the submitted token payload"
     # Also check headers for the token payload
     _assert_pattern_not_in_headers(resp, "secret-payload")
 
@@ -66,9 +62,7 @@ def test_login_error_does_not_echo_password():
     )
 
     body = resp.text
-    assert password not in body, (
-        "Login error response body contains the submitted password"
-    )
+    assert password not in body, "Login error response body contains the submitted password"
     _assert_pattern_not_in_headers(resp, password)
 
 
@@ -92,9 +86,7 @@ def test_validation_error_does_not_leak_api_key():
     body = resp.text
     # The access token must not appear in the error response
     if creds.api_key and len(creds.api_key) > 20:
-        assert creds.api_key not in body, (
-            "Error response body contains the access token"
-        )
+        assert creds.api_key not in body, "Error response body contains the access token"
         _assert_pattern_not_in_headers(resp, creds.api_key)
 
 

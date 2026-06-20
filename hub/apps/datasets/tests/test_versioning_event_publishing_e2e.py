@@ -62,9 +62,7 @@ class DatasetVersioningEventPublishingE2ETest(DatasetsAPITestBase):
             self.assertGreaterEqual(event_count_after, event_count_before)
 
             created_event = (
-                Event.objects.filter(event_type="version.created")
-                .order_by("-timestamp")
-                .first()
+                Event.objects.filter(event_type="version.created").order_by("-timestamp").first()
             )
             self.assertIsNotNone(created_event)
             self.assertEqual(created_event.data["version_id"], dataset_id)
@@ -229,7 +227,7 @@ class DatasetVersioningEventPublishingE2ETest(DatasetsAPITestBase):
 
         # May return 201 or 400 depending on service availability
         if response.status_code == status.HTTP_201_CREATED:
-            new_version_id = response.data["id"]
+            response.data["id"]
 
             # Verify event metadata
             created_event = (
@@ -243,9 +241,7 @@ class DatasetVersioningEventPublishingE2ETest(DatasetsAPITestBase):
 
                 # Check optional fields
                 self.assertEqual(created_event.data["semantic_version"], "2.0.0")
-                self.assertEqual(
-                    created_event.data["parent_version_id"], str(parent_dataset_id)
-                )
+                self.assertEqual(created_event.data["parent_version_id"], str(parent_dataset_id))
 
                 # Check event metadata
                 self.assertEqual(created_event.event_type, "version.created")
@@ -334,9 +330,8 @@ class DatasetVersioningEventPublishingE2ETest(DatasetsAPITestBase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_e2e_create_version_database_error_handling(self):
-        """Test error handling when version creation fails"""
-        # Create dataset directly
+    def test_e2e_create_version_succeeds(self):
+        """Version creation on existing dataset succeeds and returns 201."""
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -348,17 +343,12 @@ class DatasetVersioningEventPublishingE2ETest(DatasetsAPITestBase):
         )
 
         version_data = {
-            "semantic_version": "1.0.0",  # Use valid format to avoid database constraint errors
+            "semantic_version": "1.0.0",
         }
 
         response = self.client.post(
             f"/api/v1/datasets/{dataset.id}/versions/", version_data, format="json"
         )
 
-        # Should return 201 (success) or 400 (validation error)
-        # Database errors (500) should be caught and handled as 400 or 500 depending on error type
-        self.assertIn(response.status_code, [
-            status.HTTP_201_CREATED,
-            status.HTTP_400_BAD_REQUEST,
-            status.HTTP_500_INTERNAL_SERVER_ERROR  # Database constraint errors may return 500
-        ])
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("id", response.data)

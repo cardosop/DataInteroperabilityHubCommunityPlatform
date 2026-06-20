@@ -3,9 +3,8 @@ Unit tests for Redis monitoring.
 
 Tests Redis monitoring metrics collection and validation.
 """
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-import redis
+
+from unittest.mock import Mock
 
 
 class TestRedisMonitoring:
@@ -46,15 +45,11 @@ class TestRedisMonitoring:
     def test_redis_metrics_labels(self):
         """Test that Redis metrics have correct labels."""
         # Simulate metric with labels
-        metric_labels = {
-            'redis_instance': 'cache',
-            'redis_port': '6379',
-            'job': 'redis-cache'
-        }
+        metric_labels = {"redis_instance": "cache", "redis_port": "6379", "job": "redis-cache"}
 
-        assert 'redis_instance' in metric_labels
-        assert 'job' in metric_labels
-        assert metric_labels['redis_instance'] == 'cache'
+        assert "redis_instance" in metric_labels
+        assert "job" in metric_labels
+        assert metric_labels["redis_instance"] == "cache"
 
     def test_redis_exporter_health_check(self):
         """Test Redis exporter health check."""
@@ -98,14 +93,10 @@ class TestRedisMonitoring:
 
     def test_redis_instance_separation(self):
         """Test that Redis instances are properly separated in metrics."""
-        instances = ['cache', 'queue', 'events', 'channels']
+        instances = ["cache", "queue", "events", "channels"]
 
         for instance in instances:
             # Each instance should have unique labels
-            labels = {
-                'redis_instance': instance,
-                'job': f'redis-{instance}'
-            }
-            assert labels['redis_instance'] == instance
-            assert labels['job'] == f'redis-{instance}'
-
+            labels = {"redis_instance": instance, "job": f"redis-{instance}"}
+            assert labels["redis_instance"] == instance
+            assert labels["job"] == f"redis-{instance}"

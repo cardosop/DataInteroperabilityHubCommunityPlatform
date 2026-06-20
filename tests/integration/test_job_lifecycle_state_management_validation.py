@@ -4,32 +4,31 @@ Comprehensive Integration Tests for Job Lifecycle & State Management Validation
 Tests job status tracking, cancellation, timeout handling, retry logic,
 result storage, and progress tracking using real implementations.
 """
-import uuid
-import time
-from datetime import timedelta
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from django.utils import timezone
-from django.core.cache import cache
-from django_rq import get_queue
-from django_rq.jobs import Job as RQJob
 
-from hub.apps.jobs.models import Job, JobType, JobStatus, JobPriority
+import uuid
+from datetime import timedelta
+
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.test import TestCase
+from django.utils import timezone
+from django_rq import get_queue
+
+from hub.apps.jobs.models import Job, JobStatus, JobType
+from hub.apps.jobs.tasks import check_job_timeouts
 from hub.apps.jobs.utils import (
-    create_job,
-    get_job_timeout,
-    get_job_max_retries,
     calculate_retry_delay,
-    get_job_retry_initial_delay,
+    create_job,
+    decrement_tenant_job_counter,
+    get_job_max_retries,
     get_job_retry_backoff_factor,
+    get_job_retry_initial_delay,
     get_job_retry_max_delay,
-    is_transient_failure,
-    retry_job,
+    get_job_timeout,
     get_tenant_job_counter,
     increment_tenant_job_counter,
-    decrement_tenant_job_counter,
+    is_transient_failure,
 )
-from hub.apps.jobs.tasks import check_job_timeouts
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 
@@ -45,20 +44,20 @@ class JobStatusTrackingTest(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
     def tearDown(self):
         """Clean up after tests"""
         # Clear Redis queues
-        for queue_name in ['job_critical', 'job_default', 'job_low']:
+        for queue_name in ["job_critical", "job_default", "job_low"]:
             queue = get_queue(queue_name)
             queue.empty()
         cache.clear()
@@ -70,7 +69,7 @@ class JobStatusTrackingTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Initial state: PENDING
@@ -86,7 +85,7 @@ class JobStatusTrackingTest(TestCase):
         self.assertIsNone(job.completed_at)
 
         # Transition to COMPLETED
-        job.mark_completed({'result': 'success'})
+        job.mark_completed({"result": "success"})
         job.refresh_from_db()
         self.assertEqual(job.status, JobStatus.COMPLETED.value)
         self.assertIsNotNone(job.started_at)
@@ -100,7 +99,7 @@ class JobStatusTrackingTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Initial state: PENDING
@@ -112,7 +111,7 @@ class JobStatusTrackingTest(TestCase):
         self.assertEqual(job.status, JobStatus.RUNNING.value)
 
         # Transition to FAILED
-        job.mark_failed("Test error", {'error': 'test'})
+        job.mark_failed("Test error", {"error": "test"})
         job.refresh_from_db()
         self.assertEqual(job.status, JobStatus.FAILED.value)
         self.assertIsNotNone(job.error_message)
@@ -126,7 +125,7 @@ class JobStatusTrackingTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Verify initial status is persisted
@@ -151,7 +150,7 @@ class JobStatusTrackingTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         running_job = create_job(
@@ -159,7 +158,7 @@ class JobStatusTrackingTest(TestCase):
             user=self.user,
             job_type=JobType.SEMANTIC_MAPPING.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
         running_job.mark_started()
 
@@ -168,10 +167,10 @@ class JobStatusTrackingTest(TestCase):
             user=self.user,
             job_type=JobType.DQ_RUN.value,
             resource_type="DATASET",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
         completed_job.mark_started()
-        completed_job.mark_completed({'result': 'success'})
+        completed_job.mark_completed({"result": "success"})
 
         # Query by status
         pending_jobs = Job.objects.filter(status=JobStatus.PENDING.value)
@@ -190,7 +189,7 @@ class JobStatusTrackingTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Track status changes via timestamps
@@ -205,7 +204,7 @@ class JobStatusTrackingTest(TestCase):
         self.assertGreater(started_at, initial_created_at)
 
         # Transition to COMPLETED
-        job.mark_completed({'result': 'success'})
+        job.mark_completed({"result": "success"})
         job.refresh_from_db()
         completed_at = job.completed_at
         self.assertIsNotNone(completed_at)
@@ -223,7 +222,7 @@ class JobStatusTrackingTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Cancel from PENDING
@@ -247,19 +246,19 @@ class JobCancellationTest(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
     def tearDown(self):
         """Clean up after tests"""
-        for queue_name in ['job_critical', 'job_default', 'job_low']:
+        for queue_name in ["job_critical", "job_default", "job_low"]:
             queue = get_queue(queue_name)
             queue.empty()
         cache.clear()
@@ -271,7 +270,7 @@ class JobCancellationTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Verify job is PENDING and can be cancelled
@@ -292,7 +291,7 @@ class JobCancellationTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Start job
@@ -322,14 +321,14 @@ class JobCancellationTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Start job and set some state
         job.mark_started()
         if job.details_json is None:
             job.details_json = {}
-        job.details_json['progress_percentage'] = 50.0
+        job.details_json["progress_percentage"] = 50.0
         job.save()
 
         # Cancel job
@@ -349,7 +348,7 @@ class JobCancellationTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Cancel job
@@ -367,7 +366,7 @@ class JobCancellationTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Start job
@@ -377,7 +376,7 @@ class JobCancellationTest(TestCase):
         # Simulate some work done
         if job.details_json is None:
             job.details_json = {}
-        job.details_json['partial_result'] = 'some_data'
+        job.details_json["partial_result"] = "some_data"
         job.save()
 
         # Cancel job
@@ -400,19 +399,19 @@ class JobTimeoutHandlingTest(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
     def tearDown(self):
         """Clean up after tests"""
-        for queue_name in ['job_critical', 'job_default', 'job_low']:
+        for queue_name in ["job_critical", "job_default", "job_low"]:
             queue = get_queue(queue_name)
             queue.empty()
         cache.clear()
@@ -432,7 +431,7 @@ class JobTimeoutHandlingTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Timeout should be set based on job type (if not explicitly provided)
@@ -450,7 +449,7 @@ class JobTimeoutHandlingTest(TestCase):
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4()),
-            timeout_seconds=60  # 1 minute
+            timeout_seconds=60,  # 1 minute
         )
 
         # Start job in the past to simulate timeout
@@ -466,7 +465,7 @@ class JobTimeoutHandlingTest(TestCase):
         self.assertEqual(job.status, JobStatus.FAILED.value)
         self.assertIn("timeout", job.error_message.lower())
         self.assertIsNotNone(job.result_json)
-        self.assertTrue(job.result_json.get('timeout', False))
+        self.assertTrue(job.result_json.get("timeout", False))
 
     def test_job_timeout_cleanup(self):
         """Test job timeout cleanup"""
@@ -476,7 +475,7 @@ class JobTimeoutHandlingTest(TestCase):
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4()),
-            timeout_seconds=60
+            timeout_seconds=60,
         )
 
         # Start job in the past
@@ -502,7 +501,7 @@ class JobTimeoutHandlingTest(TestCase):
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4()),
-            timeout_seconds=60
+            timeout_seconds=60,
         )
 
         # Start job in the past
@@ -518,7 +517,7 @@ class JobTimeoutHandlingTest(TestCase):
         self.assertEqual(job.status, JobStatus.FAILED.value)
         # Timeout failures should not be retried
         if job.details_json:
-            retry_count = job.details_json.get('retry_count', 0)
+            retry_count = job.details_json.get("retry_count", 0)
             self.assertEqual(retry_count, 0)
 
     def test_job_timeout_compensation(self):
@@ -529,14 +528,14 @@ class JobTimeoutHandlingTest(TestCase):
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4()),
-            timeout_seconds=60
+            timeout_seconds=60,
         )
 
         # Start job and set partial progress
         job.mark_started()
         if job.details_json is None:
             job.details_json = {}
-        job.details_json['progress_percentage'] = 50.0
+        job.details_json["progress_percentage"] = 50.0
         job.started_at = timezone.now() - timedelta(seconds=120)
         job.save()
 
@@ -560,19 +559,19 @@ class JobRetryLogicTest(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
     def tearDown(self):
         """Clean up after tests"""
-        for queue_name in ['job_critical', 'job_default', 'job_low']:
+        for queue_name in ["job_critical", "job_default", "job_low"]:
             queue = get_queue(queue_name)
             queue.empty()
         cache.clear()
@@ -595,12 +594,12 @@ class JobRetryLogicTest(TestCase):
 
         # Retry 1: initial_delay * (backoff_factor ^ 1)
         delay_1 = calculate_retry_delay(1, type=job_type)
-        expected_1 = int(initial_delay * (backoff_factor ** 1))
+        expected_1 = int(initial_delay * (backoff_factor**1))
         self.assertEqual(delay_1, expected_1)
 
         # Retry 2: initial_delay * (backoff_factor ^ 2)
         delay_2 = calculate_retry_delay(2, type=job_type)
-        expected_2 = int(initial_delay * (backoff_factor ** 2))
+        expected_2 = int(initial_delay * (backoff_factor**2))
         self.assertEqual(delay_2, expected_2)
 
     def test_retry_count_tracking(self):
@@ -610,26 +609,26 @@ class JobRetryLogicTest(TestCase):
             user=self.user,
             job_type=JobType.DQ_RUN.value,
             resource_type="DATASET",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Simulate retry by updating details_json
         if job.details_json is None:
             job.details_json = {}
-        job.details_json['retry_count'] = 1
-        job.details_json['last_retry_at'] = timezone.now().isoformat()
+        job.details_json["retry_count"] = 1
+        job.details_json["last_retry_at"] = timezone.now().isoformat()
         job.save()
 
         # Verify retry count is tracked
         job.refresh_from_db()
-        self.assertEqual(job.details_json.get('retry_count'), 1)
-        self.assertIsNotNone(job.details_json.get('last_retry_at'))
+        self.assertEqual(job.details_json.get("retry_count"), 1)
+        self.assertIsNotNone(job.details_json.get("last_retry_at"))
 
     def test_retry_delay_calculation(self):
         """Test retry delay calculation"""
         job_type = JobType.DQ_RUN.value
-        initial_delay = get_job_retry_initial_delay(job_type)
-        backoff_factor = get_job_retry_backoff_factor(job_type)
+        get_job_retry_initial_delay(job_type)
+        get_job_retry_backoff_factor(job_type)
         max_delay = get_job_retry_max_delay(job_type)
 
         # Calculate delays for multiple retries
@@ -643,7 +642,7 @@ class JobRetryLogicTest(TestCase):
         # Verify exponential growth (until capped)
         for i in range(1, len(delays)):
             if delays[i] < max_delay:
-                self.assertGreaterEqual(delays[i], delays[i-1])
+                self.assertGreaterEqual(delays[i], delays[i - 1])
 
     def test_max_retry_enforcement(self):
         """Test max retry enforcement"""
@@ -652,7 +651,7 @@ class JobRetryLogicTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_MIGRATION.value,  # Max 1 retry
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         max_retries = get_job_max_retries(JobType.CONTRACT_MIGRATION.value)
@@ -661,12 +660,12 @@ class JobRetryLogicTest(TestCase):
         # Simulate reaching max retries
         if job.details_json is None:
             job.details_json = {}
-        job.details_json['retry_count'] = max_retries
+        job.details_json["retry_count"] = max_retries
         job.save()
 
         # Verify retry count matches max retries
         job.refresh_from_db()
-        self.assertEqual(job.details_json.get('retry_count'), max_retries)
+        self.assertEqual(job.details_json.get("retry_count"), max_retries)
 
     def test_retry_failure_handling(self):
         """Test retry failure handling"""
@@ -684,7 +683,7 @@ class JobRetryLogicTest(TestCase):
             user=self.user,
             job_type=JobType.DQ_RUN.value,
             resource_type="DATASET",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Simulate transient failure - should be retriable
@@ -693,7 +692,7 @@ class JobRetryLogicTest(TestCase):
             max_retries = get_job_max_retries(JobType.DQ_RUN.value)
             if job.details_json is None:
                 job.details_json = {}
-            current_retry = job.details_json.get('retry_count', 0)
+            current_retry = job.details_json.get("retry_count", 0)
             if current_retry < max_retries:
                 # Would retry
                 self.assertLess(current_retry, max_retries)
@@ -708,19 +707,19 @@ class JobResultStorageTest(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
     def tearDown(self):
         """Clean up after tests"""
-        for queue_name in ['job_critical', 'job_default', 'job_low']:
+        for queue_name in ["job_critical", "job_default", "job_low"]:
             queue = get_queue(queue_name)
             queue.empty()
         cache.clear()
@@ -732,18 +731,18 @@ class JobResultStorageTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Store result
-        result_data = {'status': 'success', 'data': 'test_result'}
+        result_data = {"status": "success", "data": "test_result"}
         job.mark_completed(result_json=result_data)
         job.refresh_from_db()
 
         # Verify result is persisted
         self.assertIsNotNone(job.result_json)
-        self.assertEqual(job.result_json.get('status'), 'success')
-        self.assertEqual(job.result_json.get('data'), 'test_result')
+        self.assertEqual(job.result_json.get("status"), "success")
+        self.assertEqual(job.result_json.get("data"), "test_result")
 
     def test_job_result_retrieval(self):
         """Test job result retrieval"""
@@ -752,19 +751,19 @@ class JobResultStorageTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Store result
-        result_data = {'status': 'success', 'validation_result': 'valid'}
+        result_data = {"status": "success", "validation_result": "valid"}
         job.mark_completed(result_json=result_data)
 
         # Retrieve result
         job.refresh_from_db()
         retrieved_result = job.result_json
         self.assertIsNotNone(retrieved_result)
-        self.assertEqual(retrieved_result.get('status'), 'success')
-        self.assertEqual(retrieved_result.get('validation_result'), 'valid')
+        self.assertEqual(retrieved_result.get("status"), "success")
+        self.assertEqual(retrieved_result.get("validation_result"), "valid")
 
     def test_job_result_expiration(self):
         """Test job result expiration"""
@@ -776,16 +775,16 @@ class JobResultStorageTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
-        result_data = {'status': 'success', 'timestamp': timezone.now().isoformat()}
+        result_data = {"status": "success", "timestamp": timezone.now().isoformat()}
         job.mark_completed(result_json=result_data)
         job.refresh_from_db()
 
         # Verify result is stored (expiration would be handled by retention policies)
         self.assertIsNotNone(job.result_json)
-        self.assertIsNotNone(job.result_json.get('timestamp'))
+        self.assertIsNotNone(job.result_json.get("timestamp"))
 
     def test_job_result_size_limits(self):
         """Test job result size limits"""
@@ -795,20 +794,20 @@ class JobResultStorageTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Store result with moderate size
         result_data = {
-            'status': 'success',
-            'data': 'x' * 1000  # 1KB of data
+            "status": "success",
+            "data": "x" * 1000,  # 1KB of data
         }
         job.mark_completed(result_json=result_data)
         job.refresh_from_db()
 
         # Verify result is stored
         self.assertIsNotNone(job.result_json)
-        self.assertEqual(len(job.result_json.get('data', '')), 1000)
+        self.assertEqual(len(job.result_json.get("data", "")), 1000)
 
     def test_job_result_security_tenant_isolation(self):
         """Test job result security (tenant isolation)"""
@@ -818,7 +817,7 @@ class JobResultStorageTest(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
 
         # Create jobs for each tenant
@@ -827,24 +826,24 @@ class JobResultStorageTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
-        job1.mark_completed(result_json={'tenant': 'tenant1', 'data': 'secret1'})
+        job1.mark_completed(result_json={"tenant": "tenant1", "data": "secret1"})
 
         user2 = User.objects.create_user(
             email=f"user2-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=tenant2,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         job2 = create_job(
             tenant=tenant2,
             user=user2,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
-        job2.mark_completed(result_json={'tenant': 'tenant2', 'data': 'secret2'})
+        job2.mark_completed(result_json={"tenant": "tenant2", "data": "secret2"})
 
         # Verify tenant isolation: jobs are filtered by tenant
         tenant1_jobs = Job.objects.filter(tenant=tenant1)
@@ -865,19 +864,19 @@ class JobProgressTrackingTest(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
             email=f"user-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
     def tearDown(self):
         """Clean up after tests"""
-        for queue_name in ['job_critical', 'job_default', 'job_low']:
+        for queue_name in ["job_critical", "job_default", "job_low"]:
             queue = get_queue(queue_name)
             queue.empty()
         cache.clear()
@@ -889,18 +888,18 @@ class JobProgressTrackingTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Update progress
         if job.details_json is None:
             job.details_json = {}
-        job.details_json['progress_percentage'] = 50.0
+        job.details_json["progress_percentage"] = 50.0
         job.save()
 
         # Verify progress is stored
         job.refresh_from_db()
-        self.assertEqual(job.details_json.get('progress_percentage'), 50.0)
+        self.assertEqual(job.details_json.get("progress_percentage"), 50.0)
 
     def test_job_progress_persistence(self):
         """Test job progress persistence"""
@@ -909,27 +908,27 @@ class JobProgressTrackingTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Update progress at different stages
         if job.details_json is None:
             job.details_json = {}
 
-        job.details_json['progress_percentage'] = 25.0
+        job.details_json["progress_percentage"] = 25.0
         job.save()
         job.refresh_from_db()
-        self.assertEqual(job.details_json.get('progress_percentage'), 25.0)
+        self.assertEqual(job.details_json.get("progress_percentage"), 25.0)
 
-        job.details_json['progress_percentage'] = 50.0
+        job.details_json["progress_percentage"] = 50.0
         job.save()
         job.refresh_from_db()
-        self.assertEqual(job.details_json.get('progress_percentage'), 50.0)
+        self.assertEqual(job.details_json.get("progress_percentage"), 50.0)
 
-        job.details_json['progress_percentage'] = 75.0
+        job.details_json["progress_percentage"] = 75.0
         job.save()
         job.refresh_from_db()
-        self.assertEqual(job.details_json.get('progress_percentage'), 75.0)
+        self.assertEqual(job.details_json.get("progress_percentage"), 75.0)
 
     def test_job_progress_event_publishing(self):
         """Test job progress event publishing"""
@@ -940,20 +939,20 @@ class JobProgressTrackingTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Update progress
         if job.details_json is None:
             job.details_json = {}
-        job.details_json['progress_percentage'] = 50.0
-        job.details_json['current_step'] = 'validation'
+        job.details_json["progress_percentage"] = 50.0
+        job.details_json["current_step"] = "validation"
         job.save()
 
         # Verify progress is stored for event publishing
         job.refresh_from_db()
-        self.assertEqual(job.details_json.get('progress_percentage'), 50.0)
-        self.assertEqual(job.details_json.get('current_step'), 'validation')
+        self.assertEqual(job.details_json.get("progress_percentage"), 50.0)
+        self.assertEqual(job.details_json.get("current_step"), "validation")
 
     def test_job_progress_websocket_updates(self):
         """Test job progress WebSocket updates"""
@@ -964,26 +963,26 @@ class JobProgressTrackingTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Update progress
         if job.details_json is None:
             job.details_json = {}
-        job.details_json['progress_percentage'] = 75.0
-        job.details_json['current_step'] = 'finalizing'
+        job.details_json["progress_percentage"] = 75.0
+        job.details_json["current_step"] = "finalizing"
         job.save()
 
         # Verify progress format is suitable for WebSocket updates
         job.refresh_from_db()
         progress_data = {
-            'progress_percentage': job.details_json.get('progress_percentage'),
-            'current_step': job.details_json.get('current_step'),
-            'job_id': str(job.id),
-            'status': job.status
+            "progress_percentage": job.details_json.get("progress_percentage"),
+            "current_step": job.details_json.get("current_step"),
+            "job_id": str(job.id),
+            "status": job.status,
         }
-        self.assertIsNotNone(progress_data['progress_percentage'])
-        self.assertIsNotNone(progress_data['current_step'])
+        self.assertIsNotNone(progress_data["progress_percentage"])
+        self.assertIsNotNone(progress_data["current_step"])
 
     def test_job_progress_accuracy_verification(self):
         """Test job progress accuracy verification"""
@@ -992,7 +991,7 @@ class JobProgressTrackingTest(TestCase):
             user=self.user,
             job_type=JobType.CONTRACT_VALIDATION.value,
             resource_type="CONTRACT",
-            resource_id=str(uuid.uuid4())
+            resource_id=str(uuid.uuid4()),
         )
 
         # Update progress through stages
@@ -1000,20 +999,20 @@ class JobProgressTrackingTest(TestCase):
             job.details_json = {}
 
         # Progress should be between 0 and 100
-        job.details_json['progress_percentage'] = 0.0
+        job.details_json["progress_percentage"] = 0.0
         job.save()
         job.refresh_from_db()
-        self.assertGreaterEqual(job.details_json.get('progress_percentage'), 0.0)
+        self.assertGreaterEqual(job.details_json.get("progress_percentage"), 0.0)
 
-        job.details_json['progress_percentage'] = 100.0
+        job.details_json["progress_percentage"] = 100.0
         job.save()
         job.refresh_from_db()
-        self.assertLessEqual(job.details_json.get('progress_percentage'), 100.0)
+        self.assertLessEqual(job.details_json.get("progress_percentage"), 100.0)
 
         # Verify progress increases monotonically (in real scenarios)
         progress_values = [0.0, 25.0, 50.0, 75.0, 100.0]
         for progress in progress_values:
-            job.details_json['progress_percentage'] = progress
+            job.details_json["progress_percentage"] = progress
             job.save()
             job.refresh_from_db()
-            self.assertEqual(job.details_json.get('progress_percentage'), progress)
+            self.assertEqual(job.details_json.get("progress_percentage"), progress)

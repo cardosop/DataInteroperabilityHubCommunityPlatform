@@ -38,9 +38,11 @@ Bypass contract
   operator clicked Exit before the JWT's natural ``exp``; we trust
   the session row over the token claim).
 """
+
 from __future__ import annotations
+
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from django.http import HttpRequest, HttpResponse
 
@@ -80,9 +82,7 @@ class ImpersonationMiddleware:
             # ``jwt_utils`` decoding can run).
             from hub.apps.auth.jwt_utils import JWTTokenGenerator
 
-            payload = JWTTokenGenerator.decode_access_token(
-                token, verify_version=False
-            )
+            payload = JWTTokenGenerator.decode_access_token(token, verify_version=False)
         except Exception:  # pragma: no cover — token decoding is best-effort
             return
         if not payload:
@@ -109,11 +109,7 @@ class ImpersonationMiddleware:
         try:
             from .models import ImpersonationSession, ImpersonationSessionStatus
 
-            sess = (
-                ImpersonationSession.objects.using("admin")
-                .only("status")
-                .get(pk=sess_id)
-            )
+            sess = ImpersonationSession.objects.using("admin").only("status").get(pk=sess_id)
         except Exception:
             return
         if sess.status != ImpersonationSessionStatus.ACTIVE:

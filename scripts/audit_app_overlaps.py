@@ -9,8 +9,8 @@ Analyzes all Django apps under ``hub/apps/`` for:
 
 Generates a merge-priority report ordered by overlap severity.
 """
+
 import ast
-import os
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -21,29 +21,51 @@ APPS_DIR = PROJECT_ROOT / "hub" / "apps"
 # Known semantic groupings — apps in the same group likely overlap
 SEMANTIC_GROUPS = {
     "data-pipeline": {
-        "integrations", "virtualization", "transformation",
-        "scheduled_ingestion", "scheduled_export",
+        "integrations",
+        "virtualization",
+        "transformation",
+        "scheduled_ingestion",
+        "scheduled_export",
     },
     "governance-compliance": {
-        "governance", "compliance", "regulation_policies", "dsar",
+        "governance",
+        "compliance",
+        "regulation_policies",
+        "dsar",
     },
     "assets-contracts": {
-        "assets", "contracts", "datasets", "files",
+        "assets",
+        "contracts",
+        "datasets",
+        "files",
     },
     "marketplace-billing": {
-        "marketplace", "billing", "baas",
+        "marketplace",
+        "billing",
+        "baas",
     },
     "observability-audit": {
-        "observability", "audit", "notifications",
+        "observability",
+        "audit",
+        "notifications",
     },
     "core-infra": {
-        "core", "api", "auth", "tenants", "users", "jobs", "mesh",
+        "core",
+        "api",
+        "auth",
+        "tenants",
+        "users",
+        "jobs",
+        "mesh",
     },
     "search-semantic": {
-        "search", "semantic",
+        "search",
+        "semantic",
     },
     "quality-webhooks": {
-        "dq", "webhooks", "processor_agreements",
+        "dq",
+        "webhooks",
+        "processor_agreements",
     },
 }
 
@@ -60,9 +82,8 @@ def _ast_imports(filepath: Path) -> set[str]:
         if isinstance(node, ast.Import):
             for alias in node.names:
                 imports.add(alias.name.split(".")[0])
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imports.add(node.module.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imports.add(node.module.split(".")[0])
     return imports
 
 
@@ -125,7 +146,9 @@ def analyze() -> dict:
         if len(present) >= 2:
             total_imports = sum(
                 len(cross_imports.get(a, {}).get(b, set()))
-                for a in present for b in present if a != b
+                for a in present
+                for b in present
+                if a != b
             )
             group_overlaps[group_name] = {
                 "apps": sorted(present),
@@ -133,15 +156,13 @@ def analyze() -> dict:
             }
 
     return {
-        "apps": {k: {kk: vv for kk, vv in v.items() if kk != "path"}
-                 for k, v in apps.items()},
+        "apps": {k: {kk: vv for kk, vv in v.items() if kk != "path"} for k, v in apps.items()},
         "cross_imports": {
             app: {dep: len(files) for dep, files in deps.items()}
             for app, deps in cross_imports.items()
         },
         "group_overlaps": dict(
-            sorted(group_overlaps.items(),
-                   key=lambda x: x[1]["cross_imports"], reverse=True)
+            sorted(group_overlaps.items(), key=lambda x: x[1]["cross_imports"], reverse=True)
         ),
     }
 
@@ -153,11 +174,10 @@ def print_report(results: dict) -> None:
     print("Semantic Group Overlaps (ordered by merge priority):")
     for i, (group, info) in enumerate(results["group_overlaps"].items(), 1):
         apps_str = ", ".join(info["apps"])
-        print(f"  {i}. {group} ({len(info['apps'])} apps, "
-              f"{info['cross_imports']} cross-imports):")
+        print(f"  {i}. {group} ({len(info['apps'])} apps, {info['cross_imports']} cross-imports):")
         print(f"     Apps: {apps_str}")
         if i <= 3:
-            print(f"     → PRIORITY MERGE CANDIDATE")
+            print("     → PRIORITY MERGE CANDIDATE")
 
     print("\nCross-App Import Dependencies:")
     for app, deps in sorted(results["cross_imports"].items()):
@@ -173,6 +193,7 @@ def main():
 
     if "--json" in sys.argv:
         import json
+
         print(json.dumps(results, indent=2))
     else:
         print_report(results)

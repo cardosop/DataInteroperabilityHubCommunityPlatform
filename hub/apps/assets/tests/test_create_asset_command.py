@@ -21,6 +21,7 @@ from django.core.management import call_command
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
+
 from hub.apps.assets.models import (
     Asset,
     AssetStatus,
@@ -32,7 +33,6 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import User, UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -47,7 +47,7 @@ class CreateAssetCommandTest(TestCase):
             kyc_status="UNVERIFIED",
         )
         ensure_tenant_has_active_subscription(self.tenant)
-        user_manager = cast(Any, User.objects)
+        user_manager = cast("Any", User.objects)
         self.user = user_manager.create_user(
             email=f"create-asset-{uid}@example.com",
             password="testpass123",
@@ -70,11 +70,11 @@ class CreateAssetCommandTest(TestCase):
             **base_payload,
         }
         api_response = cast(
-            Any,
+            "Any",
             self.api_client.post(
-            "/api/v1/assets/",
-            data=json.dumps(api_payload),
-            content_type="application/json",
+                "/api/v1/assets/",
+                data=json.dumps(api_payload),
+                content_type="application/json",
             ),
         )
         self.assertEqual(api_response.status_code, status.HTTP_201_CREATED)

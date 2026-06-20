@@ -7,6 +7,7 @@ All tests use real implementations (no mocks of hub services).
 DQServiceClient uses real service with graceful handling when unavailable.
 """
 
+import contextlib
 import io
 import uuid
 
@@ -17,7 +18,7 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.dq.models import DQRun, DQRunStatus
+from hub.apps.dq.models import DQRun
 from hub.apps.dq.service_client import DQServiceClient
 from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.tenants.services import get_tenant_dq_profile
@@ -44,10 +45,8 @@ class TenantConfigDQIntegrationTest(TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        try:
+        with contextlib.suppress(TransactionManagementError):
             super().tearDownClass()
-        except TransactionManagementError:
-            pass
 
     # Disable automatic database flush to avoid foreign key constraint issues
     reset_sequences = False
@@ -56,7 +55,6 @@ class TenantConfigDQIntegrationTest(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -65,16 +63,13 @@ class TenantConfigDQIntegrationTest(TestCase):
         # TransactionTestCase on the shared test DB.  Only touch
         # 'default' — other aliases raise DatabaseOperationForbidden.
         from django.db import connections
+
         conn = connections["default"]
-        try:
+        with contextlib.suppress(Exception):
             conn.close_if_unusable_or_obsolete()
-        except Exception:
-            pass
         if conn.connection is None or getattr(conn.connection, "closed", 1):
-            try:
+            with contextlib.suppress(Exception):
                 conn.close()
-            except Exception:
-                pass
             conn.connection = None
             conn.closed_in_transaction = False
             conn.needs_rollback = False
@@ -88,6 +83,7 @@ class TenantConfigDQIntegrationTest(TestCase):
         # them against files that no longer exist in MinIO.
         try:
             from django_rq import get_queue
+
             queue = get_queue("job_critical")
             queue.empty()
         except Exception:
@@ -119,6 +115,7 @@ class TenantConfigDQIntegrationTest(TestCase):
         # Create subscription so middleware doesn't block write ops
         from hub.apps.billing.models import Subscription, SubscriptionStatus
         from hub.apps.tenants.models import TenantPlan
+
         free_plan = TenantPlan.objects.filter(slug="free").first()
         if free_plan:
             Subscription.objects.get_or_create(
@@ -127,7 +124,7 @@ class TenantConfigDQIntegrationTest(TestCase):
                     "plan": free_plan,
                     "status": SubscriptionStatus.ACTIVE,
                     "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
-                }
+                },
             )
 
         # Create a real File so the DQ endpoint can find it, AND upload
@@ -236,9 +233,7 @@ class TenantConfigDQIntegrationTest(TestCase):
 
         # Use real DQServiceClient (no mock)
         # Create DQ run without explicit profile_key (should use platform default)
-        response = self.client.post(
-            "/api/v1/dq/runs/", {"file_id": self.file_id}, format="json"
-        )
+        response = self.client.post("/api/v1/dq/runs/", {"file_id": self.file_id}, format="json")
 
         # Only 201/202 indicates the system actually processed the request.
         if response.status_code in [
@@ -342,9 +337,7 @@ class TenantConfigDQIntegrationTest(TestCase):
 
         # Use real DQServiceClient (no mock)
         # Create DQ run
-        response = self.client.post(
-            "/api/v1/dq/runs/", {"file_id": self.file_id}, format="json"
-        )
+        response = self.client.post("/api/v1/dq/runs/", {"file_id": self.file_id}, format="json")
 
         # Only 201/202 indicates the system actually processed the request.
         if response.status_code in [

@@ -1,22 +1,22 @@
 """
 Phase 260.2.D — EICAR upload → malware scan → download blocked → dataset blocked.
 
-Requires real MinIO/S3, reachable ClamAV, and ``RUN_FILE_VIRUS_SCAN_E2E=1``.
+Self-probing: ``setUp`` checks ClamAV connectivity and EICAR detection at
+runtime. If ClamAV or S3/MinIO is unavailable the test is skipped with a
+clear message (no env-var gate needed). This mirrors the ``redis_or_skip()``
+pattern — probe, don't pre-gate.
 
 RQ runs synchronously under pytest (``RQ_QUEUES[*][ASYNC]=False``); the scan job
 executes on transaction commit from ``complete_upload``.
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import hashlib
-import os
 import time
-import unittest
 import uuid
 
+import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
@@ -25,7 +25,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.files.models import File, FileScanStatus, FileStatus
-from hub.apps.files.scanner import ClamAVScanner, EICAR_STANDARD_TEST_BYTES
+from hub.apps.files.scanner import EICAR_STANDARD_TEST_BYTES, ClamAVScanner
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
@@ -44,12 +44,31 @@ def _clamav_detects_eicar() -> bool:
     return outcome == FileScanStatus.INFECTED
 
 
-@pytest.mark.requires_file_virus_scan_e2e
+def _s3_storage_available() -> bool:
+    try:
+        storage = S3StorageClient()
+        storage._ensure_bucket_exists()
+        return True
+    except Exception:
+        return False
+
+
+def _clamav_and_storage_skip_reason() -> str | None:
+    """Return a skip message if ClamAV or S3 is unavailable, else None."""
+    if not getattr(settings, "CLAMAV_ENABLED", True):
+        return "CLAMAV_ENABLED is False — cannot run virus scan E2E"
+    if not _clamav_detects_eicar():
+        return (
+            "ClamAV did not classify EICAR as INFECTED — ensure the clamav-test "
+            "profile is started and CLAMAV_HOST/CLAMAV_PORT are reachable"
+        )
+    if not _s3_storage_available():
+        return "S3/MinIO storage not available"
+    return None
+
+
+@pytest.mark.requires_clamav
 @pytest.mark.django_db(transaction=True)
-@unittest.skipUnless(
-    os.environ.get("RUN_FILE_VIRUS_SCAN_E2E") == "1",
-    "Set RUN_FILE_VIRUS_SCAN_E2E=1 to run full-stack ClamAV + storage EICAR flow",
-)
 @override_settings(
     EVENT_BUS_ASYNC_PERSISTENCE=False,
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,
@@ -58,7 +77,19 @@ def _clamav_detects_eicar() -> bool:
     CLAMAV_ENABLED=True,
 )
 class FileVirusScanE2ETest(TransactionTestCase):
-    """Uses TransactionTestCase so upload commits enqueue + synchronous RQ scan."""
+    """Uses TransactionTestCase so upload commits enqueue + synchronous RQ scan.
+
+    Self-probes ClamAV + S3 availability at ``setUp`` time — skips with
+    a clear message when infrastructure is absent rather than requiring
+    a pre-set env var.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        reason = _clamav_and_storage_skip_reason()
+        if reason is not None:
+            raise pytest.skip(reason)
 
     def setUp(self):
         super().setUp()
@@ -81,18 +112,6 @@ class FileVirusScanE2ETest(TransactionTestCase):
 
     @pytest.mark.integration
     def test_eicar_complete_upload_scan_download_and_dataset_rejected(self):
-        if not _clamav_detects_eicar():
-            self.skipTest(
-                "ClamAV did not classify EICAR as INFECTED — enable clamav-test "
-                "profile and CLAMAV_HOST/CLAMAV_PORT in the test stack"
-            )
-
-        try:
-            storage = S3StorageClient()
-            storage._ensure_bucket_exists()
-        except Exception as exc:
-            self.skipTest(f"S3/MinIO not available for virus E2E: {exc}")
-
         body = EICAR_STANDARD_TEST_BYTES
         fid = uuid.uuid4()
         pending = File.objects.create(
@@ -107,6 +126,7 @@ class FileVirusScanE2ETest(TransactionTestCase):
             scan_status=FileScanStatus.PENDING_SCAN,
         )
 
+        storage = S3StorageClient()
         storage.save_file(
             tenant_id=str(self.tenant.id),
             file_id=str(pending.id),
@@ -143,13 +163,21 @@ class FileVirusScanE2ETest(TransactionTestCase):
 
         from hub.apps.audit.models import AuditEvent
 
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="FILE_MALWARE_DETECTED",
-                resource_id=str(fid),
-            ).exists(),
-            msg="Malware scan should emit FILE_MALWARE_DETECTED audit event",
+        audit = AuditEvent.objects.filter(
+            action="FILE_MALWARE_DETECTED",
+            resource_id=str(fid),
+        ).first()
+        self.assertIsNotNone(
+            audit,
+            "Malware scan should emit FILE_MALWARE_DETECTED audit event",
         )
+        self.assertEqual(audit.result, "FAILURE")
+        self.assertEqual(audit.resource_type, "FILE")
+        self.assertEqual(audit.tenant_id, self.tenant.id)
+        details = audit.details_json or {}
+        self.assertEqual(details.get("scan_status"), FileScanStatus.INFECTED)
+        self.assertIsNotNone(details.get("threat_signature"))
+        self.assertIn("Eicar", details.get("threat_signature", ""))
 
         dl = self.client.get(f"/api/v1/files/{fid}/download/")
         self.assertEqual(dl.status_code, status.HTTP_403_FORBIDDEN)

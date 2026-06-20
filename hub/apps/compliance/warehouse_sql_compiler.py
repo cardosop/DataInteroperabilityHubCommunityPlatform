@@ -11,14 +11,16 @@ Covers three scan categories:
 
 Reuses ``CompiledCheck`` from ``hub.apps.dq.warehouse_sql_compiler``.
 """
+
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+
+from typing import Any
 
 from hub.apps.dq.warehouse_sql_compiler import CompiledCheck
 
 # ── Per-dialect regex function templates ──────────────────────────────
 
-_REGEX_FN: Dict[str, str] = {
+_REGEX_FN: dict[str, str] = {
     "SNOWFLAKE": "REGEXP_LIKE({col}, '{pattern}')",
     "BIGQUERY": "REGEXP_CONTAINS({col}, r'{pattern}')",
     "DATABRICKS": "{col} RLIKE '{pattern}'",
@@ -26,7 +28,7 @@ _REGEX_FN: Dict[str, str] = {
 
 # ── Per-dialect date function templates (for retention) ───────────────
 
-_DATE_SUB_FN: Dict[str, str] = {
+_DATE_SUB_FN: dict[str, str] = {
     "SNOWFLAKE": "DATEADD(day, -{days}, CURRENT_DATE())",
     "BIGQUERY": "DATE_SUB(CURRENT_DATE(), INTERVAL {days} DAY)",
     "DATABRICKS": "CURRENT_DATE() - INTERVAL {days} DAYS",
@@ -34,7 +36,7 @@ _DATE_SUB_FN: Dict[str, str] = {
 
 # ── Per-dialect TYPEOF equivalent ────────────────────────────────────
 
-_TYPEOF_FN: Dict[str, str] = {
+_TYPEOF_FN: dict[str, str] = {
     "SNOWFLAKE": "TYPEOF({col})",
     "BIGQUERY": (
         "CASE WHEN SAFE_CAST({col} AS INT64) = {col} THEN 'INT64' "
@@ -46,7 +48,7 @@ _TYPEOF_FN: Dict[str, str] = {
 
 # ── PII regex patterns ────────────────────────────────────────────────
 
-_PII_PATTERNS: Dict[str, str] = {
+_PII_PATTERNS: dict[str, str] = {
     "pii_email": r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
     "pii_phone": r"\+?\d[\d\s\(\)\-\.]{7,}\d",
     "pii_ssn": r"\d{3}-\d{2}-\d{4}",
@@ -75,11 +77,11 @@ class ComplianceWarehouseSQLCompiler:
 
     @staticmethod
     def compile(
-        scan_definitions: List[Dict[str, Any]],
+        scan_definitions: list[dict[str, Any]],
         warehouse_type: str,
         table_fqn: str,
-        applicable_regulations: Optional[List[str]] = None,
-    ) -> List[CompiledCheck]:
+        applicable_regulations: list[str] | None = None,
+    ) -> list[CompiledCheck]:
         """Compile scan definitions into ``CompiledCheck`` objects.
 
         Args:
@@ -96,7 +98,7 @@ class ComplianceWarehouseSQLCompiler:
         wt = warehouse_type.upper()
         regs = applicable_regulations or []
         reg_suffix = "_" + "_".join(r.lower() for r in regs) if regs else ""
-        compiled: List[CompiledCheck] = []
+        compiled: list[CompiledCheck] = []
 
         for i, scan in enumerate(scan_definitions):
             scan_type = scan.get("type", "")
@@ -124,7 +126,7 @@ class ComplianceWarehouseSQLCompiler:
 
 
 def _compile_pii(
-    scan: Dict[str, Any],
+    scan: dict[str, Any],
     scan_type: str,
     column: str,
     wt: str,
@@ -133,17 +135,14 @@ def _compile_pii(
     reg_suffix: str,
 ) -> CompiledCheck:
     pattern = _PII_PATTERNS.get(scan_type, ".*")
-    regex_fn = _REGEX_FN.get(wt, _REGEX_FN["SNOWFLAKE"]).format(
-        col=column, pattern=pattern
-    )
+    regex_fn = _REGEX_FN.get(wt, _REGEX_FN["SNOWFLAKE"]).format(col=column, pattern=pattern)
     name = f"{scan_type}_{column}{reg_suffix}_{idx}"
     return CompiledCheck(
         check_name=name,
         check_type=scan_type,
         column_name=column,
         sql=(
-            f"SELECT COUNT(*) AS match_count FROM {table} "
-            f"WHERE {column} IS NOT NULL AND {regex_fn}"
+            f"SELECT COUNT(*) AS match_count FROM {table} WHERE {column} IS NOT NULL AND {regex_fn}"
         ),
         result_key="match_count",
         pass_condition="result == 0",
@@ -152,7 +151,7 @@ def _compile_pii(
 
 
 def _compile_retention(
-    scan: Dict[str, Any],
+    scan: dict[str, Any],
     column: str,
     wt: str,
     table: str,
@@ -166,10 +165,7 @@ def _compile_retention(
         check_name=name,
         check_type="retention_breach",
         column_name=column,
-        sql=(
-            f"SELECT COUNT(*) AS stale_count FROM {table} "
-            f"WHERE {column} < {date_fn}"
-        ),
+        sql=(f"SELECT COUNT(*) AS stale_count FROM {table} WHERE {column} < {date_fn}"),
         result_key="stale_count",
         pass_condition="result == 0",
         warehouse_type=wt,

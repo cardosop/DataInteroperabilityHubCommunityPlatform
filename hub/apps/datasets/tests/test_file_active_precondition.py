@@ -28,11 +28,12 @@ Three layers:
    documented error envelope. Active file with real bytes returns
    201 (skips when MinIO is unavailable).
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, TransactionTestCase, override_settings
 from rest_framework import status

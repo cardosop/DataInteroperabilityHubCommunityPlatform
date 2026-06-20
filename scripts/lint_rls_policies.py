@@ -20,10 +20,7 @@ from pathlib import Path
 
 import yaml
 
-
-APP_PY_SOURCE_PATH_RE = re.compile(
-    r"^hub/apps/(?P<app>[a-zA-Z0-9_]+)/(?P<rel>[a-zA-Z0-9_/]+\.py)$"
-)
+APP_PY_SOURCE_PATH_RE = re.compile(r"^hub/apps/(?P<app>[a-zA-Z0-9_]+)/(?P<rel>[a-zA-Z0-9_/]+\.py)$")
 MIGRATION_PATH_RE = re.compile(r"^hub/apps/[a-zA-Z0-9_]+/migrations/.*\.py$")
 
 
@@ -35,7 +32,9 @@ class TenantModel:
     file_path: str
 
 
-def _run_git(repo_root: Path, args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+def _run_git(
+    repo_root: Path, args: list[str], *, check: bool = True
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-C", str(repo_root), *args],
         text=True,
@@ -146,7 +145,9 @@ def _table_name_for_model(app_label: str, model_name: str, db_table: str | None)
     return f"{app_label}_{model_name.lower()}"
 
 
-def _tenant_models_from_source(source: str, app_label: str, file_path: str) -> dict[str, TenantModel]:
+def _tenant_models_from_source(
+    source: str, app_label: str, file_path: str
+) -> dict[str, TenantModel]:
     if not source.strip():
         return {}
 
@@ -160,7 +161,11 @@ def _tenant_models_from_source(source: str, app_label: str, file_path: str) -> d
             continue
 
         meta_class = next(
-            (child for child in node.body if isinstance(child, ast.ClassDef) and child.name == "Meta"),
+            (
+                child
+                for child in node.body
+                if isinstance(child, ast.ClassDef) and child.name == "Meta"
+            ),
             None,
         )
         if meta_class is not None:
@@ -174,10 +179,7 @@ def _tenant_models_from_source(source: str, app_label: str, file_path: str) -> d
 
         has_tenant_fk = False
         for stmt in node.body:
-            if isinstance(stmt, ast.Assign):
-                if isinstance(stmt.value, ast.Call) and _call_is_tenant_fk(stmt.value):
-                    has_tenant_fk = True
-            elif isinstance(stmt, ast.AnnAssign):
+            if isinstance(stmt, ast.Assign) or isinstance(stmt, ast.AnnAssign):
                 if isinstance(stmt.value, ast.Call) and _call_is_tenant_fk(stmt.value):
                     has_tenant_fk = True
             if has_tenant_fk:
@@ -248,7 +250,9 @@ def _policy_matches_table(sql_text: str, table_name: str) -> bool:
     return False
 
 
-def _find_policy_tables_in_migrations(repo_root: Path, migration_paths: list[str], tables: set[str]) -> dict[str, str]:
+def _find_policy_tables_in_migrations(
+    repo_root: Path, migration_paths: list[str], tables: set[str]
+) -> dict[str, str]:
     matches: dict[str, str] = {}
     if not tables:
         return matches
@@ -268,7 +272,9 @@ def _find_policy_tables_in_migrations(repo_root: Path, migration_paths: list[str
     return matches
 
 
-def lint_rls_policy_pairing(repo_root: Path, base_ref: str, allowlist_path: Path, fail_on_new: bool = False) -> int:
+def lint_rls_policy_pairing(
+    repo_root: Path, base_ref: str, allowlist_path: Path, fail_on_new: bool = False
+) -> int:
     merge_base = _resolve_merge_base(repo_root, base_ref)
     changed_files = _changed_files_since(repo_root, merge_base)
 
@@ -311,7 +317,9 @@ def lint_rls_policy_pairing(repo_root: Path, base_ref: str, allowlist_path: Path
 
     allowlist_tables = _parse_allowlist(allowlist_path)
     table_names = {candidate.table_name for candidate in new_tenant_models}
-    found_policies = _find_policy_tables_in_migrations(repo_root, changed_migration_paths, table_names)
+    found_policies = _find_policy_tables_in_migrations(
+        repo_root, changed_migration_paths, table_names
+    )
 
     missing: list[TenantModel] = []
     for candidate in new_tenant_models:
@@ -343,9 +351,7 @@ def lint_rls_policy_pairing(repo_root: Path, base_ref: str, allowlist_path: Path
 
     print("\nERROR: missing CREATE POLICY coverage for new tenant-scoped tables:")
     for candidate in missing:
-        print(
-            f"  - {candidate.table_name} (model {candidate.app_label}.{candidate.model_name})"
-        )
+        print(f"  - {candidate.table_name} (model {candidate.app_label}.{candidate.model_name})")
     print(
         "\nAdd a migration with CREATE POLICY ... ON <table> ... "
         "or add a justified exception to the allowlist."
@@ -380,8 +386,8 @@ def main() -> int:
         action="store_true",
         default=False,
         help="TR.M.4 — exit non-zero when any new tenant-scoped model is found "
-             "(regardless of whether it has RLS policy). Use for CI enforcement "
-             "that every new model ships its RLS policy in the same PR.",
+        "(regardless of whether it has RLS policy). Use for CI enforcement "
+        "that every new model ships its RLS policy in the same PR.",
     )
     parser.add_argument(
         "--allowlist",
@@ -398,7 +404,9 @@ def main() -> int:
 
     try:
         return lint_rls_policy_pairing(
-            repo_root, args.base_ref, allowlist_path,
+            repo_root,
+            args.base_ref,
+            allowlist_path,
             fail_on_new=args.fail_on_new,
         )
     except Exception as exc:

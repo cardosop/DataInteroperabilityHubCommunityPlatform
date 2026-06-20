@@ -4,20 +4,18 @@ Unit tests for file upload and download.
 Tests use real S3StorageClient with graceful handling when storage unavailable.
 """
 
+import contextlib
 import hashlib
+import uuid
 
 import pytest
 from django.core.files.base import ContentFile
-from django.test import TestCase
 from rest_framework import status
-from rest_framework.test import APIClient
 
 from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.files.tests.test_base import FilesAPITestBase
 from hub.apps.tenants.models import KYCStatus, Tenant
-from hub.apps.users.models import UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -33,7 +31,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
             self.storage_client = S3StorageClient()
             self.storage_client._ensure_bucket_exists()
             self.storage_available = True
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover — S3 probe
             self.storage_available = False
 
     def test_init_file_upload_simple(self):
@@ -41,6 +39,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
         import uuid
+
         filename = f"init-test-{uuid.uuid4().hex[:8]}.csv"
         data = {
             "name": filename,
@@ -96,11 +95,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
             self.skipTest("S3/MinIO storage not available")
         from django.conf import settings
 
-        over_limit_size = (
-            getattr(
-                settings, "MAX_BROWSER_UPLOAD_SIZE", 100 * 1024 * 1024
-            ) + 1
-        )
+        over_limit_size = getattr(settings, "MAX_BROWSER_UPLOAD_SIZE", 100 * 1024 * 1024) + 1
         data = {
             "name": "large.csv",
             "content_type": "text/csv",
@@ -108,13 +103,9 @@ class FileUploadDownloadTest(FilesAPITestBase):
             "upload_method": "browser",
         }
 
-        response = self.client.post(
-            "/api/v1/files/init/", data, format="json"
-        )
+        response = self.client.post("/api/v1/files/init/", data, format="json")
 
-        self.assertEqual(
-            response.status_code, status.HTTP_400_BAD_REQUEST
-        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("size", str(response.data).lower())
 
     def test_init_file_upload_under_browser_size_limit_succeeds(self):
@@ -168,7 +159,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
         file_obj = File.objects.create(
             id=fid,
             tenant=self.tenant,
-            name="test.csv",
+            name=f"test-{uuid.uuid4().hex[:8]}.csv",
             content_type="text/csv",
             size=len(test_content),
             storage_path=f"{self.tenant.id}/{fid}/test.csv",
@@ -205,9 +196,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
 
         # 5 MiB is the S3 minimum part size
         part_data = b"x" * (5 * 1024 * 1024)
-        storage_key = (
-            f"{self.tenant.id}/{uuid.uuid4()}/large.csv"
-        )
+        storage_key = f"{self.tenant.id}/{uuid.uuid4()}/large.csv"
 
         file_obj = File.objects.create(
             tenant=self.tenant,
@@ -264,12 +253,10 @@ class FileUploadDownloadTest(FilesAPITestBase):
         self.assertEqual(file_obj.status, FileStatus.ACTIVE)
 
         # Clean up multipart upload
-        try:
+        with contextlib.suppress(Exception):
             self.storage_client.abort_multipart_upload(
                 key=file_obj.storage_path, upload_id=upload_id
             )
-        except Exception:
-            pass
 
     def test_download_file(self):
         """Test file download"""
@@ -279,7 +266,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
         # Create active file
         file_obj = File.objects.create(
             tenant=self.tenant,
-            name="test.csv",
+            name=f"test-{uuid.uuid4().hex[:8]}.csv",
             content_type="text/csv",
             size=1024,
             storage_path=f"{self.tenant.id}/test.csv",
@@ -292,7 +279,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("download_url", response.data)
-        self.assertEqual(response.data["filename"], "test.csv")
+        self.assertEqual(response.data["filename"], file_obj.name)
         self.assertEqual(response.data["expires_in"], 3600)
 
     def test_download_file_not_active(self):
@@ -300,7 +287,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
         # Create pending file
         file_obj = File.objects.create(
             tenant=self.tenant,
-            name="test.csv",
+            name=f"test-{uuid.uuid4().hex[:8]}.csv",
             content_type="text/csv",
             size=1024,
             storage_path=f"{self.tenant.id}/test.csv",
@@ -320,7 +307,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
         # Create active file
         file_obj = File.objects.create(
             tenant=self.tenant,
-            name="test.csv",
+            name=f"test-{uuid.uuid4().hex[:8]}.csv",
             content_type="text/csv",
             size=1024,
             storage_path=f"{self.tenant.id}/test.csv",

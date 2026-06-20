@@ -8,10 +8,10 @@ import Django at runtime. The local copy is kept honest by an
 
 Phase 215.2 — see openspec/changes/preprod01/specs/cli-sdk-mvp-awareness/spec.md
 """
+
 from __future__ import annotations
 
-from typing import Dict, FrozenSet, Final
-
+from typing import Dict, Final, FrozenSet
 
 # Canonical relative prefixes (relative to ``/api/v1/``) that are gated when
 # MVP_MODE is on. Order does not matter; the frozenset is the contract.
@@ -26,21 +26,23 @@ from typing import Dict, FrozenSet, Final
 # though the SDK currently requires 3.12+ — this matches the doctrine in the
 # CLI module and gives us cheap forward-portability if downstream consumers
 # pin an older interpreter.
-MVP_GATED_PREFIXES: Final[FrozenSet[str]] = frozenset({
-    "mesh/",
-    "virtualization/",
-    "integrations/",
-    "baas/",
-    "ml/",
-    "ai/",
-    "transformation/",
-    "social/",
-    "scheduled-ingestions/",
-    "scheduled-exports/",
-    "developer/",
-    "dpia/",
-    "ropa/",
-})
+MVP_GATED_PREFIXES: Final[FrozenSet[str]] = frozenset(
+    {
+        "mesh/",
+        "virtualization/",
+        "integrations/",
+        "baas/",
+        "ml/",
+        "ai/",
+        "transformation/",
+        "social/",
+        "scheduled-ingestions/",
+        "scheduled-exports/",
+        "developer/",
+        "dpia/",
+        "ropa/",
+    }
+)
 
 
 # Stable, machine-readable error code. Programmatic consumers SHOULD branch on

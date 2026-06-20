@@ -149,9 +149,7 @@ class AdminUserEditTest(TestCase):
         self.assertIn("DATA_CONSUMER", response.data["roles"])
         self.assertNotIn("DATA_PROVIDER", response.data["roles"])
 
-        role_names = [
-            ur.role.name for ur in UserRole.objects.filter(user=self.regular_user_a)
-        ]
+        role_names = [ur.role.name for ur in UserRole.objects.filter(user=self.regular_user_a)]
         self.assertIn("DATA_CONSUMER", role_names)
         self.assertNotIn("DATA_PROVIDER", role_names)
 
@@ -238,11 +236,12 @@ class AdminUserEditTest(TestCase):
     def test_put_creates_audit_event(self):
         """PUT /users/{id}/ creates USER_UPDATED audit event."""
         self.client.force_authenticate(user=self.tenant_a_admin)
-        self.client.put(
+        resp = self.client.put(
             f"/api/v1/users/{self.regular_user_a.id}/",
             {"display_name": "Audited Update", "status": "ACTIVE", "role_ids": []},
             format="json",
         )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
         events = AuditEvent.objects.filter(
             resource_type="USER",
             resource_id=str(self.regular_user_a.id),

@@ -4,9 +4,8 @@ Unit tests for audit views (AuditEventViewSet).
 Tests cover all viewset methods: list, retrieve, export with comprehensive
 scenarios including success, failure, edge cases, and error handling.
 """
-import uuid
 
-import json
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -29,10 +28,9 @@ def grant_role(user, tenant, name):
     TENANT_ADMIN or AUDITOR, so existing tests that exercise these
     endpoints must grant an appropriate role during setup.
     """
-    role, _ = Role.objects.get_or_create(
-        tenant=tenant, name=name, defaults={"description": name}
-    )
+    role, _ = Role.objects.get_or_create(tenant=tenant, name=name, defaults={"description": name})
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
+
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -331,9 +329,7 @@ class AuditEventViewSetTest(TestCase):
 
         response = self.client.get("/api/v1/audit/audit-events/")
         results = response.data["results"]
-        self.assertGreater(
-            len(results), 1, "Expected at least 2 events to verify ordering"
-        )
+        self.assertGreater(len(results), 1, "Expected at least 2 events to verify ordering")
 
         # First event should be the newest
         self.assertEqual(results[0]["id"], str(newer_event.id))
@@ -341,7 +337,8 @@ class AuditEventViewSetTest(TestCase):
         # Verify full descending order: each timestamp must be >= the next
         for i in range(len(results) - 1):
             self.assertGreaterEqual(
-                results[i]["timestamp"], results[i + 1]["timestamp"],
+                results[i]["timestamp"],
+                results[i + 1]["timestamp"],
                 f"Events at indices {i} and {i + 1} are not in descending "
                 f"order: {results[i]['timestamp']} < {results[i + 1]['timestamp']}",
             )
@@ -481,12 +478,14 @@ class AuditEventViewSetTest(TestCase):
 
         # Verify all returned events match the filter
         self.assertGreater(
-            len(response.data), 0,
+            len(response.data),
+            0,
             "Expected at least one result for ASSET resource_type filter",
         )
         for i, event in enumerate(response.data):
             self.assertEqual(
-                event["resource_type"], "ASSET",
+                event["resource_type"],
+                "ASSET",
                 f"Event at index {i} has resource_type={event.get('resource_type')!r}, "
                 f"expected 'ASSET'",
             )
@@ -570,7 +569,8 @@ class AuditEventViewSetTest(TestCase):
             "/api/v1/audit/audit-events/export/?format=json",
         )
         self.assertEqual(
-            response.status_code, status.HTTP_400_BAD_REQUEST,
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
         )
 
     def test_export_audit_events_size_limit_exceeded_has_error_key(self):
@@ -616,8 +616,9 @@ class AuditEventViewSetTest(TestCase):
 
         # Scope to a recent date range to avoid hitting the 10k export cap
         # when running with --reuse-db accumulated data.
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
 
         since = (timezone.now() - timedelta(hours=1)).isoformat()
         response = self.client.get(

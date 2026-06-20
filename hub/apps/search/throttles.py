@@ -9,6 +9,7 @@ Phase 273.3 — ``throttled()`` override emits SEARCH_RATE_LIMIT_EXCEEDED
 audit event on every 429 response. Wrapped in try/except so audit-DB
 outage never blocks the throttle response.
 """
+
 from django.conf import settings
 from rest_framework.throttling import UserRateThrottle
 
@@ -24,7 +25,7 @@ class _AuditableThrottle(UserRateThrottle):
         # can anticipate limits before hitting 429.
         try:
             rate_str = self.get_rate()
-            num_req, period_sec = self.parse_rate(rate_str)
+            num_req, _period_sec = self.parse_rate(rate_str)
             # remaining: subtract the current history count from the limit
             history = self.history or []
             remaining = max(0, num_req - len(history))
@@ -66,7 +67,9 @@ class _AuditableThrottle(UserRateThrottle):
                 resource_type="SEARCH_QUERY",
                 action=action,
                 actor_user=request.user if request.user.is_authenticated else None,
-                tenant=getattr(request.user, "tenant", None) if request.user.is_authenticated else None,
+                tenant=getattr(request.user, "tenant", None)
+                if request.user.is_authenticated
+                else None,
                 resource_id=None,
                 result="THROTTLED",
                 details={

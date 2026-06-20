@@ -4,6 +4,7 @@ ODCS Default Normalizer
 Default implementation of ODCSNormalizerBase that supports all ODCS versions.
 This maintains backward compatibility with the existing ODCSNormalizer behavior.
 """
+
 from hub.apps.contracts.normalization.odcs_normalizer_base import ODCSNormalizerBase
 
 
@@ -35,5 +36,3 @@ class ODCSNormalizerDefault(ODCSNormalizerBase):
         """
         # Support all versions for backward compatibility
         return True
-
-

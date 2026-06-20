@@ -13,22 +13,22 @@ Usage:
                                           [--inventory INVENTORY_FILE] [--output OUTPUT_FILE]
 """
 
-import re
-import json
-import ast
 import argparse
+import ast
+import json
+import re
 import sys
-from pathlib import Path
-from typing import Dict, List, Set, Optional, Any, Tuple
-from dataclasses import dataclass, field, asdict
 from collections import defaultdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-import urllib.parse
+from pathlib import Path
+from typing import Any
 
 
 @dataclass
 class CodeExample:
     """Represents a code example found in documentation or example files"""
+
     source_file: str
     language: str  # python, bash, shell, curl, http, javascript, typescript, etc.
     code: str
@@ -39,13 +39,14 @@ class CodeExample:
 @dataclass
 class ExampleValidationResult:
     """Validation result for a code example"""
+
     example: CodeExample
     is_valid: bool
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    endpoints_found: List[str] = field(default_factory=list)
-    endpoints_valid: List[str] = field(default_factory=list)
-    endpoints_invalid: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    endpoints_found: list[str] = field(default_factory=list)
+    endpoints_valid: list[str] = field(default_factory=list)
+    endpoints_invalid: list[str] = field(default_factory=list)
 
 
 class CodeExampleChecker:
@@ -56,7 +57,7 @@ class CodeExampleChecker:
         docs_dir: str = "docs",
         examples_dir: str = "examples",
         endpoint_inventory_file: str = "docs/api-audit/endpoint-inventory-current.json",
-        base_path: str = "."
+        base_path: str = ".",
     ):
         self.base_path = Path(base_path)
         self.docs_dir = self.base_path / docs_dir
@@ -69,65 +70,54 @@ class CodeExampleChecker:
             )
 
         # Load endpoint inventory
-        self.known_endpoints: Dict[str, Set[str]] = {}  # endpoint_path -> set of methods
+        self.known_endpoints: dict[str, set[str]] = {}  # endpoint_path -> set of methods
         self._load_endpoint_inventory()
 
         # All code examples found
-        self.code_examples: List[CodeExample] = []
+        self.code_examples: list[CodeExample] = []
 
         # Patterns for finding endpoints in code
         self.endpoint_patterns = [
             # Full URLs: http://.../api/v1/...
-            re.compile(
-                r'(?:https?://[^\s"\'`\)]+)?(/api/v\d+/[^\s"\'`\)]+)',
-                re.IGNORECASE
-            ),
+            re.compile(r'(?:https?://[^\s"\'`\)]+)?(/api/v\d+/[^\s"\'`\)]+)', re.IGNORECASE),
             # Relative paths: /api/v1/...
-            re.compile(
-                r'["\'](/api/v\d+/[^\s"\'`\)]+)["\']',
-                re.IGNORECASE
-            ),
+            re.compile(r'["\'](/api/v\d+/[^\s"\'`\)]+)["\']', re.IGNORECASE),
             # f-strings: f'/api/v1/...'
-            re.compile(
-                r'f["\'](/api/v\d+/[^\s"\'`\)]+)["\']',
-                re.IGNORECASE
-            ),
+            re.compile(r'f["\'](/api/v\d+/[^\s"\'`\)]+)["\']', re.IGNORECASE),
             # URL variables: url = "..."
-            re.compile(
-                r'url\s*=\s*["\']([^"\']*?/api/v\d+/[^\s"\'`\)]+)["\']',
-                re.IGNORECASE
-            ),
+            re.compile(r'url\s*=\s*["\']([^"\']*?/api/v\d+/[^\s"\'`\)]+)["\']', re.IGNORECASE),
             # curl commands
-            re.compile(
-                r'curl\s+[^\s]*\s+([^\s]*?/api/v\d+/[^\s]+)',
-                re.IGNORECASE
-            ),
+            re.compile(r"curl\s+[^\s]*\s+([^\s]*?/api/v\d+/[^\s]+)", re.IGNORECASE),
             # HTTP method + path
             re.compile(
-                r'(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+([^\s]*?/api/v\d+/[^\s]+)',
-                re.IGNORECASE
+                r"(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+([^\s]*?/api/v\d+/[^\s]+)",
+                re.IGNORECASE,
             ),
         ]
 
     def _load_endpoint_inventory(self):
         """Load endpoint inventory from JSON file"""
         try:
-            with open(self.endpoint_inventory_file, 'r', encoding='utf-8') as f:
+            with open(self.endpoint_inventory_file, encoding="utf-8") as f:
                 inventory_data = json.load(f)
 
             # Handle different inventory formats
-            if 'inventory' in inventory_data:
-                endpoints = inventory_data['inventory'].get('endpoints', [])
-            elif 'endpoints' in inventory_data:
-                endpoints = inventory_data['endpoints']
+            if "inventory" in inventory_data:
+                endpoints = inventory_data["inventory"].get("endpoints", [])
+            elif "endpoints" in inventory_data:
+                endpoints = inventory_data["endpoints"]
             else:
                 endpoints = []
 
             for endpoint_info in endpoints:
                 if isinstance(endpoint_info, dict):
                     # Handle different endpoint formats
-                    endpoint_path = endpoint_info.get('full_path') or endpoint_info.get('endpoint_path') or endpoint_info.get('path', '')
-                    methods = endpoint_info.get('methods', [])
+                    endpoint_path = (
+                        endpoint_info.get("full_path")
+                        or endpoint_info.get("endpoint_path")
+                        or endpoint_info.get("path", "")
+                    )
+                    methods = endpoint_info.get("methods", [])
 
                     if endpoint_path:
                         normalized = self.normalize_endpoint(endpoint_path)
@@ -144,14 +134,19 @@ class CodeExampleChecker:
     def normalize_endpoint(self, endpoint: str) -> str:
         """Normalize endpoint path for comparison"""
         # Remove protocol and host
-        endpoint = re.sub(r'https?://[^/]+', '', endpoint)
+        endpoint = re.sub(r"https?://[^/]+", "", endpoint)
         # Remove query parameters
-        endpoint = endpoint.split('?')[0]
+        endpoint = endpoint.split("?")[0]
         # Remove fragments
-        endpoint = endpoint.split('#')[0]
+        endpoint = endpoint.split("#")[0]
         # Normalize trailing slash (but preserve root paths)
-        if endpoint and not endpoint.endswith('/') and '/api/' in endpoint and endpoint != '/api/v1':
-            endpoint += '/'
+        if (
+            endpoint
+            and not endpoint.endswith("/")
+            and "/api/" in endpoint
+            and endpoint != "/api/v1"
+        ):
+            endpoint += "/"
         return endpoint
 
     def is_our_api_endpoint(self, endpoint: str) -> bool:
@@ -159,18 +154,18 @@ class CodeExampleChecker:
         normalized = self.normalize_endpoint(endpoint)
         # Skip Prometheus, Grafana, and other external service endpoints
         external_patterns = [
-            r':9090',  # Prometheus
-            r':3000',  # Grafana
-            r'/metrics',
-            r'/api/v1/query',  # Prometheus query API
+            r":9090",  # Prometheus
+            r":3000",  # Grafana
+            r"/metrics",
+            r"/api/v1/query",  # Prometheus query API
         ]
         for pattern in external_patterns:
             if re.search(pattern, endpoint, re.IGNORECASE):
                 return False
         # Only validate endpoints that start with /api/v1/ or /api/v2/ etc.
-        return bool(re.match(r'^/api/v\d+/', normalized))
+        return bool(re.match(r"^/api/v\d+/", normalized))
 
-    def find_code_examples(self) -> List[CodeExample]:
+    def find_code_examples(self) -> list[CodeExample]:
         """Find all code examples in documentation and example files"""
         examples = []
 
@@ -187,12 +182,12 @@ class CodeExampleChecker:
         self.code_examples = examples
         return examples
 
-    def _extract_from_markdown(self, md_file: Path) -> List[CodeExample]:
+    def _extract_from_markdown(self, md_file: Path) -> list[CodeExample]:
         """Extract code examples from markdown file"""
         examples = []
 
         try:
-            content = md_file.read_text(encoding='utf-8')
+            content = md_file.read_text(encoding="utf-8")
             # Try to get relative path, fall back to absolute if not subpath
             try:
                 relative_path = str(md_file.relative_to(self.base_path))
@@ -201,18 +196,15 @@ class CodeExampleChecker:
                 relative_path = str(md_file)
 
             # Pattern to match code blocks: ```language\ncode\n```
-            code_block_pattern = re.compile(
-                r'```(\w+)?\n(.*?)```',
-                re.DOTALL | re.MULTILINE
-            )
+            code_block_pattern = re.compile(r"```(\w+)?\n(.*?)```", re.DOTALL | re.MULTILINE)
 
             line_number = 1
             for match in code_block_pattern.finditer(content):
-                language = match.group(1) or 'text'
+                language = match.group(1) or "text"
                 code = match.group(2).strip()
 
                 # Calculate approximate line number
-                line_number = content[:match.start()].count('\n') + 1
+                line_number = content[: match.start()].count("\n") + 1
 
                 # Get context (50 chars before and after)
                 start_context = max(0, match.start() - 50)
@@ -224,7 +216,7 @@ class CodeExampleChecker:
                     language=language.lower(),
                     code=code,
                     line_number=line_number,
-                    context=context
+                    context=context,
                 )
                 examples.append(example)
 
@@ -233,12 +225,12 @@ class CodeExampleChecker:
 
         return examples
 
-    def _extract_from_python_file(self, py_file: Path) -> List[CodeExample]:
+    def _extract_from_python_file(self, py_file: Path) -> list[CodeExample]:
         """Extract code example from Python file"""
         examples = []
 
         try:
-            content = py_file.read_text(encoding='utf-8')
+            content = py_file.read_text(encoding="utf-8")
             # Try to get relative path, fall back to absolute if not subpath
             try:
                 relative_path = str(py_file.relative_to(self.base_path))
@@ -248,10 +240,10 @@ class CodeExampleChecker:
 
             example = CodeExample(
                 source_file=relative_path,
-                language='python',
+                language="python",
                 code=content,
                 line_number=1,
-                context=""
+                context="",
             )
             examples.append(example)
 
@@ -260,7 +252,9 @@ class CodeExampleChecker:
 
         return examples
 
-    def extract_endpoints_from_examples(self, examples: Optional[List[CodeExample]] = None) -> List[Dict[str, Any]]:
+    def extract_endpoints_from_examples(
+        self, examples: list[CodeExample] | None = None
+    ) -> list[dict[str, Any]]:
         """Extract endpoint URLs from code examples"""
         if examples is None:
             examples = self.code_examples
@@ -278,46 +272,44 @@ class CodeExampleChecker:
                     key = (example.source_file, normalized, example.line_number)
                     if key not in seen:
                         seen.add(key)
-                        endpoints.append({
-                            'endpoint': normalized,
-                            'original': endpoint,
-                            'source_file': example.source_file,
-                            'language': example.language,
-                            'line_number': example.line_number,
-                            'context': example.code[:200]  # First 200 chars
-                        })
+                        endpoints.append(
+                            {
+                                "endpoint": normalized,
+                                "original": endpoint,
+                                "source_file": example.source_file,
+                                "language": example.language,
+                                "line_number": example.line_number,
+                                "context": example.code[:200],  # First 200 chars
+                            }
+                        )
 
         return endpoints
 
     def validate_python_syntax(self, example: CodeExample) -> ExampleValidationResult:
         """Validate Python code syntax"""
-        result = ExampleValidationResult(
-            example=example,
-            is_valid=True,
-            errors=[],
-            warnings=[]
-        )
+        result = ExampleValidationResult(example=example, is_valid=True, errors=[], warnings=[])
 
-        if example.language != 'python':
+        if example.language != "python":
             result.warnings.append(f"Not a Python example (language: {example.language})")
             return result
 
         # For code snippets in markdown, be more lenient with indentation
         # Only validate if it's a full Python file
-        is_full_file = example.source_file.endswith('.py')
+        is_full_file = example.source_file.endswith(".py")
 
         try:
             # Try parsing as-is first
             ast.parse(example.code)
         except SyntaxError as e:
             # If it's a code snippet (not a full file), try dedenting
-            if not is_full_file and 'unexpected indent' in str(e).lower():
+            if not is_full_file and "unexpected indent" in str(e).lower():
                 try:
                     import textwrap
+
                     dedented = textwrap.dedent(example.code)
                     ast.parse(dedented)
                     # If dedenting fixes it, just warn instead of error
-                    result.warnings.append(f"Code snippet has indentation (fixed by dedenting)")
+                    result.warnings.append("Code snippet has indentation (fixed by dedenting)")
                 except:
                     # If dedenting doesn't help, it's a real syntax error
                     result.is_valid = False
@@ -327,7 +319,7 @@ class CodeExampleChecker:
                 result.errors.append(f"Syntax error: {e.msg} at line {e.lineno}")
         except Exception as e:
             result.is_valid = False
-            result.errors.append(f"Parse error: {str(e)}")
+            result.errors.append(f"Parse error: {e!s}")
 
         return result
 
@@ -336,18 +328,10 @@ class CodeExampleChecker:
         normalized = self.normalize_endpoint(endpoint)
 
         # Create a dummy example for the result
-        dummy_example = CodeExample(
-            source_file="",
-            language="",
-            code="",
-            line_number=0
-        )
+        dummy_example = CodeExample(source_file="", language="", code="", line_number=0)
 
         result = ExampleValidationResult(
-            example=dummy_example,
-            is_valid=True,
-            errors=[],
-            warnings=[]
+            example=dummy_example, is_valid=True, errors=[], warnings=[]
         )
 
         if normalized in self.known_endpoints:
@@ -359,7 +343,7 @@ class CodeExampleChecker:
 
         return result
 
-    def validate_all_examples(self) -> Dict[str, Any]:
+    def validate_all_examples(self) -> dict[str, Any]:
         """Validate all code examples comprehensively"""
         print("🔍 Finding code examples...")
         examples = self.find_code_examples()
@@ -375,19 +359,14 @@ class CodeExampleChecker:
         # Group endpoints by example
         endpoints_by_example = defaultdict(list)
         for endpoint_info in endpoints:
-            key = (endpoint_info['source_file'], endpoint_info['line_number'])
+            key = (endpoint_info["source_file"], endpoint_info["line_number"])
             endpoints_by_example[key].append(endpoint_info)
 
         for example in examples:
-            result = ExampleValidationResult(
-                example=example,
-                is_valid=True,
-                errors=[],
-                warnings=[]
-            )
+            result = ExampleValidationResult(example=example, is_valid=True, errors=[], warnings=[])
 
             # Validate Python syntax
-            if example.language == 'python':
+            if example.language == "python":
                 syntax_result = self.validate_python_syntax(example)
                 if not syntax_result.is_valid:
                     result.is_valid = False
@@ -398,8 +377,8 @@ class CodeExampleChecker:
             example_endpoints = endpoints_by_example.get(key, [])
 
             for endpoint_info in example_endpoints:
-                endpoint = endpoint_info['endpoint']
-                original_endpoint = endpoint_info.get('original', endpoint)
+                endpoint = endpoint_info["endpoint"]
+                original_endpoint = endpoint_info.get("original", endpoint)
                 result.endpoints_found.append(endpoint)
 
                 # Only validate endpoints that belong to our API
@@ -413,7 +392,9 @@ class CodeExampleChecker:
                         result.errors.extend(endpoint_result.errors)
                 else:
                     # External endpoint - just warn
-                    result.warnings.append(f"Skipping validation for external endpoint: {original_endpoint}")
+                    result.warnings.append(
+                        f"Skipping validation for external endpoint: {original_endpoint}"
+                    )
 
             validation_results.append(result)
 
@@ -426,26 +407,26 @@ class CodeExampleChecker:
         invalid_endpoints = sum(len(r.endpoints_invalid) for r in validation_results)
 
         return {
-            'summary': {
-                'generated_at': datetime.now().isoformat(),
-                'total_examples': total_examples,
-                'valid_examples': valid_examples,
-                'invalid_examples': invalid_examples,
-                'total_endpoints_found': total_endpoints,
-                'valid_endpoints': valid_endpoints,
-                'invalid_endpoints': invalid_endpoints,
-                'known_endpoints_in_inventory': len(self.known_endpoints)
+            "summary": {
+                "generated_at": datetime.now().isoformat(),
+                "total_examples": total_examples,
+                "valid_examples": valid_examples,
+                "invalid_examples": invalid_examples,
+                "total_endpoints_found": total_endpoints,
+                "valid_endpoints": valid_endpoints,
+                "invalid_endpoints": invalid_endpoints,
+                "known_endpoints_in_inventory": len(self.known_endpoints),
             },
-            'examples': [asdict(result) for result in validation_results],
-            'endpoints': endpoints
+            "examples": [asdict(result) for result in validation_results],
+            "endpoints": endpoints,
         }
 
-    def generate_report(self, results: Dict[str, Any], output_file: str):
+    def generate_report(self, results: dict[str, Any], output_file: str):
         """Generate JSON report"""
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(results, f, indent=2, ensure_ascii=False)
 
         print(f"\n📊 Report generated: {output_path}")
@@ -463,30 +444,26 @@ def main():
         description="Check code examples in documentation and example files"
     )
     parser.add_argument(
-        '--docs-dir',
-        default='docs',
-        help='Directory containing documentation files (default: docs)'
+        "--docs-dir",
+        default="docs",
+        help="Directory containing documentation files (default: docs)",
     )
     parser.add_argument(
-        '--examples-dir',
-        default='examples',
-        help='Directory containing example files (default: examples)'
+        "--examples-dir",
+        default="examples",
+        help="Directory containing example files (default: examples)",
     )
     parser.add_argument(
-        '--inventory',
-        default='docs/api-audit/endpoint-inventory-current.json',
-        help='Endpoint inventory JSON file (default: docs/api-audit/endpoint-inventory-current.json)'
+        "--inventory",
+        default="docs/api-audit/endpoint-inventory-current.json",
+        help="Endpoint inventory JSON file (default: docs/api-audit/endpoint-inventory-current.json)",
     )
     parser.add_argument(
-        '--output',
-        default='docs/api-audit/code-examples-audit.json',
-        help='Output JSON report file (default: docs/api-audit/code-examples-audit.json)'
+        "--output",
+        default="docs/api-audit/code-examples-audit.json",
+        help="Output JSON report file (default: docs/api-audit/code-examples-audit.json)",
     )
-    parser.add_argument(
-        '--base-path',
-        default='.',
-        help='Base path of the project (default: .)'
-    )
+    parser.add_argument("--base-path", default=".", help="Base path of the project (default: .)")
 
     args = parser.parse_args()
 
@@ -495,14 +472,14 @@ def main():
             docs_dir=args.docs_dir,
             examples_dir=args.examples_dir,
             endpoint_inventory_file=args.inventory,
-            base_path=args.base_path
+            base_path=args.base_path,
         )
 
         results = checker.validate_all_examples()
         checker.generate_report(results, args.output)
 
         # Exit with error code if there are invalid examples
-        if results['summary']['invalid_examples'] > 0:
+        if results["summary"]["invalid_examples"] > 0:
             sys.exit(1)
 
     except FileNotFoundError as e:
@@ -511,10 +488,10 @@ def main():
     except Exception as e:
         print(f"Unexpected error: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
-

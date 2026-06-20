@@ -3,39 +3,40 @@ Integration tests for service layer monitoring functionality.
 
 Tests Prometheus metrics, tracing, and alerting capabilities.
 """
-import uuid
+
 import os
 import sys
-import django
+import uuid
 from pathlib import Path
-from typing import Optional
+
+import django
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # Set Django settings module
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hub.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
 
 # Setup Django
 django.setup()
 
-from django.test import TestCase, override_settings  # noqa: E402
+from django.test import TestCase, override_settings
 
-from hub.apps.core.services.base import (  # noqa: E402
+from hub.apps.core.services.base import (
     BaseService,
     ServiceError,
     ValidationError,
 )
-from hub.apps.core.services.health import (  # noqa: E402
+from hub.apps.core.services.cross_service_access import (
+    ServiceClient,
+)
+from hub.apps.core.services.health import (
     ServiceHealthCheck,
     ServiceHealthMonitor,
 )
-from hub.apps.core.services.cross_service_access import (  # noqa: E402
-    ServiceClient,
-)
-from hub.apps.tenants.models import Tenant  # noqa: E402
-from hub.apps.users.models import User  # noqa: E402
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User
 
 
 class SampleService(BaseService):
@@ -43,9 +44,7 @@ class SampleService(BaseService):
 
     service_name = "test_service"
 
-    def test_operation(
-        self, tenant_id: str, data: Optional[dict] = None
-    ):
+    def test_operation(self, tenant_id: str, data: dict | None = None):
         """Test operation that records metrics."""
         return self.execute_with_metrics(
             operation="test_operation",
@@ -90,8 +89,9 @@ class ServiceLayerMonitoringIntegrationTest(TestCase):
 
     def test_service_operation_metrics_recorded(self):
         """Test that service operations record metrics."""
-        from hub.apps.observability.otel_metrics import REGISTRY
         from prometheus_client import generate_latest
+
+        from hub.apps.observability.otel_metrics import REGISTRY
 
         # Execute a service operation
         result = self.service.test_operation(
@@ -105,24 +105,21 @@ class ServiceLayerMonitoringIntegrationTest(TestCase):
 
         # Verify metrics were recorded (if registry available)
         if REGISTRY is not None:
-            metrics = generate_latest(REGISTRY).decode(
-                'utf-8'
-            )
+            metrics = generate_latest(REGISTRY).decode("utf-8")
             has_service_metrics = (
-                'service_operations_total' in metrics
-                or 'service_operation_duration_seconds'
-                in metrics
+                "service_operations_total" in metrics
+                or "service_operation_duration_seconds" in metrics
             )
             self.assertTrue(
                 has_service_metrics,
-                "Expected service operation metrics"
-                " to be recorded",
+                "Expected service operation metrics to be recorded",
             )
 
     def test_service_operation_error_metrics_recorded(self):
         """Test that service operation errors record metrics."""
-        from hub.apps.observability.otel_metrics import REGISTRY
         from prometheus_client import generate_latest
+
+        from hub.apps.observability.otel_metrics import REGISTRY
 
         # Execute a service operation that raises an error
         with self.assertRaises(ServiceError):
@@ -132,13 +129,10 @@ class ServiceLayerMonitoringIntegrationTest(TestCase):
 
         # Verify error metrics recorded (if registry available)
         if REGISTRY is not None:
-            metrics = generate_latest(REGISTRY).decode(
-                'utf-8'
-            )
+            metrics = generate_latest(REGISTRY).decode("utf-8")
             has_error_metrics = (
-                'service_operation_errors_total' in metrics
-                or 'service_operation_duration_seconds'
-                in metrics
+                "service_operation_errors_total" in metrics
+                or "service_operation_duration_seconds" in metrics
             )
             self.assertTrue(
                 has_error_metrics,
@@ -147,12 +141,14 @@ class ServiceLayerMonitoringIntegrationTest(TestCase):
 
     def test_service_health_check_metrics(self):
         """Test that service health checks record metrics."""
-        from hub.apps.observability.otel_metrics import REGISTRY
         from prometheus_client import generate_latest
+
+        from hub.apps.observability.otel_metrics import REGISTRY
 
         # Create a health check
         health_check = ServiceHealthCheck(
-            "test-service", timeout=1.0,
+            "test-service",
+            timeout=1.0,
         )
 
         try:
@@ -164,19 +160,15 @@ class ServiceLayerMonitoringIntegrationTest(TestCase):
 
         # Verify health check metrics (if registry available)
         if REGISTRY is not None:
-            metrics = generate_latest(REGISTRY).decode(
-                'utf-8'
-            )
+            metrics = generate_latest(REGISTRY).decode("utf-8")
             has_health_metrics = (
-                'service_health_checks_total' in metrics
-                or 'service_health_check_duration_seconds'
-                in metrics
-                or 'service_health_status' in metrics
+                "service_health_checks_total" in metrics
+                or "service_health_check_duration_seconds" in metrics
+                or "service_health_status" in metrics
             )
             self.assertTrue(
                 has_health_metrics,
-                "Expected health check metrics"
-                " to be recorded",
+                "Expected health check metrics to be recorded",
             )
 
     @override_settings(OPENTELEMETRY_ENABLED=True)
@@ -186,6 +178,7 @@ class ServiceLayerMonitoringIntegrationTest(TestCase):
             from hub.apps.observability.tracing import (
                 get_tracer,
             )
+
             tracer = get_tracer(__name__)
 
             # Tracer may be None if deps not installed
@@ -209,8 +202,9 @@ class ServiceLayerMonitoringIntegrationTest(TestCase):
 
     def test_cross_service_call_metrics(self):
         """Test that cross-service calls record metrics."""
-        from hub.apps.observability.otel_metrics import REGISTRY
         from prometheus_client import generate_latest
+
+        from hub.apps.observability.otel_metrics import REGISTRY
 
         try:
             client = ServiceClient(
@@ -224,24 +218,19 @@ class ServiceLayerMonitoringIntegrationTest(TestCase):
             except Exception:
                 pass  # Any connection error is expected
         except (ImportError, RuntimeError) as exc:
-            self.skipTest(
-                f"Service client creation failed: {exc}"
-            )
+            self.skipTest(f"Service client creation failed: {exc}")
 
         # Verify cross-service call metrics
         if REGISTRY is not None:
-            metrics = generate_latest(REGISTRY).decode(
-                'utf-8'
-            )
+            metrics = generate_latest(REGISTRY).decode("utf-8")
             has_call_metrics = (
-                'service_calls_total' in metrics
-                or 'service_call_duration_seconds' in metrics
-                or 'service_call_errors_total' in metrics
+                "service_calls_total" in metrics
+                or "service_call_duration_seconds" in metrics
+                or "service_call_errors_total" in metrics
             )
             self.assertTrue(
                 has_call_metrics,
-                "Expected cross-service call metrics"
-                " to be recorded",
+                "Expected cross-service call metrics to be recorded",
             )
 
     def test_service_health_monitor(self):
@@ -267,10 +256,7 @@ class ServiceLayerMonitoringIntegrationTest(TestCase):
                 self.assertIn("status", result)
                 self.assertIn("timestamp", result)
         except (ConnectionError, OSError, TimeoutError) as e:
-            self.fail(
-                "Service health monitor failed"
-                f" unexpectedly: {e}"
-            )
+            self.fail(f"Service health monitor failed unexpectedly: {e}")
 
     def test_service_operation_validation_error(self):
         """Test that validation errors are recorded correctly."""
@@ -278,9 +264,7 @@ class ServiceLayerMonitoringIntegrationTest(TestCase):
         class ValidatingService(BaseService):
             service_name = "validating_service"
 
-            def validate_and_process(
-                self, tenant_id: str, data: dict
-            ):
+            def validate_and_process(self, tenant_id: str, data: dict):
                 """Validate and process data."""
                 return self.execute_with_metrics(
                     operation="validate_and_process",

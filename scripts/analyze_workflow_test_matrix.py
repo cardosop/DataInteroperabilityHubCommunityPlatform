@@ -5,6 +5,7 @@ Comprehensive workflow test matrix analyzer.
 Analyzes workflows, their API trigger points, and associated tests to create
 a complete test matrix for Phase 11.1.
 """
+
 import ast
 import json
 import os
@@ -12,7 +13,6 @@ import re
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -30,12 +30,12 @@ class WorkflowAnalyzer:
         self.tests_e2e_dir = project_root / "tests" / "e2e"
         self.orchestration_tests_dir = project_root / "hub" / "apps" / "orchestration" / "tests"
 
-        self.workflows: Dict[str, Dict] = {}
-        self.api_triggers: Dict[str, List[Dict]] = defaultdict(list)
-        self.integration_tests: Dict[str, List[str]] = defaultdict(list)
-        self.e2e_tests: Dict[str, List[str]] = defaultdict(list)
+        self.workflows: dict[str, dict] = {}
+        self.api_triggers: dict[str, list[dict]] = defaultdict(list)
+        self.integration_tests: dict[str, list[str]] = defaultdict(list)
+        self.e2e_tests: dict[str, list[str]] = defaultdict(list)
 
-    def discover_workflows(self) -> Dict[str, Dict]:
+    def discover_workflows(self) -> dict[str, dict]:
         """Discover all workflows in the workflows directory."""
         workflows = {}
 
@@ -43,7 +43,6 @@ class WorkflowAnalyzer:
             if workflow_file.name.startswith("__") or workflow_file.name.startswith("test_"):
                 continue
 
-            workflow_name = workflow_file.stem
             class_name = self._extract_workflow_class_name(workflow_file)
 
             if class_name:
@@ -55,10 +54,10 @@ class WorkflowAnalyzer:
 
         return workflows
 
-    def _extract_workflow_class_name(self, file_path: Path) -> Optional[str]:
+    def _extract_workflow_class_name(self, file_path: Path) -> str | None:
         """Extract workflow class name from file."""
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 content = f.read()
                 tree = ast.parse(content)
 
@@ -70,10 +69,10 @@ class WorkflowAnalyzer:
             print(f"Error parsing {file_path}: {e}")
         return None
 
-    def _extract_workflow_name(self, file_path: Path, class_name: str) -> Optional[str]:
+    def _extract_workflow_name(self, file_path: Path, class_name: str) -> str | None:
         """Extract WORKFLOW_NAME constant from workflow class."""
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 content = f.read()
                 tree = ast.parse(content)
 
@@ -94,7 +93,7 @@ class WorkflowAnalyzer:
             print(f"Error extracting workflow name from {file_path}: {e}")
         return None
 
-    def find_api_triggers(self) -> Dict[str, List[Dict]]:
+    def find_api_triggers(self) -> dict[str, list[dict]]:
         """Find where workflows are triggered from API endpoints."""
         triggers = defaultdict(list)
 
@@ -125,7 +124,7 @@ class WorkflowAnalyzer:
                     continue
 
                 try:
-                    with open(py_file, "r", encoding="utf-8") as f:
+                    with open(py_file, encoding="utf-8") as f:
                         content = f.read()
                         lines = content.split("\n")
 
@@ -153,8 +152,8 @@ class WorkflowAnalyzer:
         return triggers
 
     def _extract_api_context(
-        self, file_path: Path, position: int, lines: List[str]
-    ) -> Tuple[str, str]:
+        self, file_path: Path, position: int, lines: list[str]
+    ) -> tuple[str, str]:
         """Extract function name and API path context."""
         func_name = "unknown"
         api_path = "unknown"
@@ -194,7 +193,7 @@ class WorkflowAnalyzer:
 
         return func_name, api_path
 
-    def find_integration_tests(self) -> Dict[str, List[str]]:
+    def find_integration_tests(self) -> dict[str, list[str]]:
         """Find integration tests for each workflow."""
         tests = defaultdict(list)
 
@@ -214,7 +213,7 @@ class WorkflowAnalyzer:
 
         return tests
 
-    def find_e2e_tests(self) -> Dict[str, List[str]]:
+    def find_e2e_tests(self) -> dict[str, list[str]]:
         """Find E2E tests for each workflow."""
         tests = defaultdict(list)
 
@@ -226,12 +225,12 @@ class WorkflowAnalyzer:
 
         return tests
 
-    def _find_workflow_references_in_file(self, file_path: Path) -> Set[str]:
+    def _find_workflow_references_in_file(self, file_path: Path) -> set[str]:
         """Find workflow class references in a test file."""
         workflow_refs = set()
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 content = f.read()
 
                 # Look for workflow imports and usage
@@ -252,7 +251,7 @@ class WorkflowAnalyzer:
 
         return workflow_refs
 
-    def analyze(self) -> Dict:
+    def analyze(self) -> dict:
         """Run complete analysis."""
         print("Discovering workflows...")
         self.workflows = self.discover_workflows()
@@ -353,7 +352,7 @@ def main():
     with open(artifacts_dir / "WORKFLOW_TEST_MATRIX.md", "w") as f:
         f.write(matrix_md)
 
-    print(f"\nResults saved to:")
+    print("\nResults saved to:")
     print(f"  - {artifacts_dir / 'workflow_analysis.json'}")
     print(f"  - {artifacts_dir / 'WORKFLOW_TEST_MATRIX.md'}")
 

@@ -2,6 +2,8 @@
 Unit tests for Asset model.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -10,7 +12,6 @@ from django.test import TestCase
 from hub.apps.assets.models import (
     Asset,
     AssetStatus,
-    AssetVisibility,
     ComplianceStatus,
     DQStatus,
 )
@@ -21,7 +22,6 @@ from hub.apps.contracts.models import (
     ValidationStatus,
 )
 from hub.apps.tenants.models import Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -32,14 +32,15 @@ class AssetModelTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        super().setUp()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
-    def test_create_asset_sets_tenant(self):
-        """Test asset creation sets tenant."""
+    def test_create_asset_sets_all_fields(self):
+        """Asset creation sets tenant, key, name, and default statuses."""
         asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
@@ -50,44 +51,8 @@ class AssetModelTest(TestCase):
         )
 
         self.assertEqual(asset.tenant, self.tenant)
-
-    def test_create_asset_sets_key(self):
-        """Test asset creation sets key."""
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            description="Test description",
-            status=AssetStatus.DRAFT,
-            created_by=self.user,
-        )
-
         self.assertEqual(asset.key, "test-asset")
-
-    def test_create_asset_sets_name(self):
-        """Test asset creation sets name."""
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            description="Test description",
-            status=AssetStatus.DRAFT,
-            created_by=self.user,
-        )
-
         self.assertEqual(asset.name, "Test Asset")
-
-    def test_create_asset_sets_default_status_values(self):
-        """Test asset creation sets default status values correctly"""
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            description="Test description",
-            status=AssetStatus.DRAFT,
-            created_by=self.user,
-        )
-
         self.assertEqual(asset.status, AssetStatus.DRAFT)
         self.assertEqual(asset.dq_status, DQStatus.UNKNOWN)
         self.assertEqual(asset.compliance_status, ComplianceStatus.UNKNOWN)
@@ -132,7 +97,7 @@ class AssetModelTest(TestCase):
         )
 
         # No contract - cannot activate
-        can_activate, blockers = asset.can_activate()
+        can_activate, _blockers = asset.can_activate()
         self.assertFalse(can_activate)
 
     def test_can_activate_returns_blockers_without_contract(self):
@@ -145,7 +110,7 @@ class AssetModelTest(TestCase):
         )
 
         # No contract - cannot activate
-        can_activate, blockers = asset.can_activate()
+        _can_activate, blockers = asset.can_activate()
         self.assertGreater(len(blockers), 0)
 
     def test_can_activate_returns_true_with_valid_contract(self):
@@ -158,7 +123,7 @@ class AssetModelTest(TestCase):
         )
 
         # Add valid contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             version=1,
@@ -174,7 +139,7 @@ class AssetModelTest(TestCase):
         )
 
         # Contract-only asset can activate
-        can_activate, blockers = asset.can_activate()
+        can_activate, _blockers = asset.can_activate()
         self.assertTrue(can_activate)
 
     def test_can_activate_returns_no_blockers_with_valid_contract(self):
@@ -187,7 +152,7 @@ class AssetModelTest(TestCase):
         )
 
         # Add valid contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             version=1,
@@ -203,7 +168,7 @@ class AssetModelTest(TestCase):
         )
 
         # Contract-only asset can activate
-        can_activate, blockers = asset.can_activate()
+        _can_activate, blockers = asset.can_activate()
         self.assertEqual(len(blockers), 0)
 
     def test_increment_version(self):
@@ -234,14 +199,13 @@ class AssetModelTest(TestCase):
             created_by=self.user,
         )
 
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                Asset.objects.create(
-                    tenant=self.tenant,
-                    key="duplicate-key",
-                    name="Second Asset",
-                    created_by=self.user,
-                )
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Asset.objects.create(
+                tenant=self.tenant,
+                key="duplicate-key",
+                name="Second Asset",
+                created_by=self.user,
+            )
 
     def test_asset_clean_validation_fails_without_contract(self):
         """Test asset clean() validation fails for ACTIVE without contract (failure scenario)"""
@@ -291,14 +255,13 @@ class AssetModelTest(TestCase):
         from django.db import DataError, transaction
 
         long_key = "a" * 300  # CharField max_length=255
-        with self.assertRaises(DataError):
-            with transaction.atomic():
-                Asset.objects.create(
-                    tenant=self.tenant,
-                    key=long_key,
-                    name="Test Asset",
-                    created_by=self.user,
-                )
+        with self.assertRaises(DataError), transaction.atomic():
+            Asset.objects.create(
+                tenant=self.tenant,
+                key=long_key,
+                name="Test Asset",
+                created_by=self.user,
+            )
 
     def test_create_asset_special_characters_in_key(self):
         """Key with hyphens, underscores, dots is accepted."""

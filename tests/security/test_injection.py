@@ -41,8 +41,7 @@ class SQLInjectionAPITest(InjectionTestBase):
                     response.json() if hasattr(response, "json") else {}
                 )
                 self.assertTrue(
-                    isinstance(data, list)
-                    or (isinstance(data, dict) and "results" in data),
+                    isinstance(data, list) or (isinstance(data, dict) and "results" in data),
                     "Response must remain list or paginated",
                 )
 
@@ -88,8 +87,7 @@ class SQLInjectionAPITest(InjectionTestBase):
                     response.json() if hasattr(response, "json") else {}
                 )
                 self.assertTrue(
-                    isinstance(data, list)
-                    or (isinstance(data, dict) and "results" in data),
+                    isinstance(data, list) or (isinstance(data, dict) and "results" in data),
                     "Response must remain list or paginated",
                 )
 
@@ -116,8 +114,7 @@ class SQLInjectionAPITest(InjectionTestBase):
                     response.json() if hasattr(response, "json") else {}
                 )
                 self.assertTrue(
-                    isinstance(data, list)
-                    or (isinstance(data, dict) and "results" in data),
+                    isinstance(data, list) or (isinstance(data, dict) and "results" in data),
                     "Response must remain list or paginated",
                 )
 
@@ -144,8 +141,7 @@ class SQLInjectionAPITest(InjectionTestBase):
                     response.json() if hasattr(response, "json") else {}
                 )
                 self.assertTrue(
-                    isinstance(data, list)
-                    or (isinstance(data, dict) and "results" in data),
+                    isinstance(data, list) or (isinstance(data, dict) and "results" in data),
                     "Response must remain list or paginated",
                 )
 

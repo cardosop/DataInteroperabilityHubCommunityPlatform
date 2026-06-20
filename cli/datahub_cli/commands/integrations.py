@@ -1,6 +1,7 @@
 """
 283.5.11 — Integration CLI commands.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,15 +14,14 @@ from ..api_client import api_client
 @click.group()
 def integrations():
     """Integration connections, sync jobs, and marketplace connectors"""
-    pass
 
 
 # ── Connections ─────────────────────────────────────────────────────────────
 
+
 @integrations.group("connections")
 def connections():
     """Manage integration connections"""
-    pass
 
 
 @connections.command("list")
@@ -33,7 +33,7 @@ def list_connections():
         click.echo("No connections found.")
         return
     for r in results:
-        click.echo(f"{r.get('id','')}  {r.get('source_type','')}  {r.get('status','')}")
+        click.echo(f"{r.get('id', '')}  {r.get('source_type', '')}  {r.get('status', '')}")
 
 
 @connections.command("create")
@@ -45,9 +45,13 @@ def create_connection(source_type, config_json):
         config = json.loads(config_json)
     except json.JSONDecodeError as exc:
         raise click.ClickException(f"Invalid JSON config: {exc}")
-    data = api_client.post("integrations/connections/", json_data={
-        "source_type": source_type, "config": config,
-    })
+    data = api_client.post(
+        "integrations/connections/",
+        json_data={
+            "source_type": source_type,
+            "config": config,
+        },
+    )
     click.echo(json.dumps(data, indent=2, default=str))
 
 
@@ -70,6 +74,7 @@ def delete_connection(conn_id):
 
 # ── Sync jobs ───────────────────────────────────────────────────────────────
 
+
 @integrations.command("sync-jobs")
 def list_sync_jobs():
     """List sync jobs"""
@@ -79,15 +84,15 @@ def list_sync_jobs():
         click.echo("No sync jobs found.")
         return
     for r in results:
-        click.echo(f"{r.get('id','')}  {r.get('status','')}  {r.get('created_at','')}")
+        click.echo(f"{r.get('id', '')}  {r.get('status', '')}  {r.get('created_at', '')}")
 
 
 # ── Marketplace connectors ──────────────────────────────────────────────────
 
+
 @integrations.group("marketplace")
 def marketplace():
     """Browse marketplace connectors"""
-    pass
 
 
 @marketplace.command("list")
@@ -99,7 +104,7 @@ def list_marketplace_connectors():
         click.echo("No marketplace connectors found.")
         return
     for r in results:
-        click.echo(f"{r.get('id','')}  {r.get('name','')}")
+        click.echo(f"{r.get('id', '')}  {r.get('name', '')}")
 
 
 @marketplace.command("get")

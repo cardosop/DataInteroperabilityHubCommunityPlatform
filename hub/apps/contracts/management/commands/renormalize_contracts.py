@@ -58,6 +58,7 @@ Then, after the self-heal run, demote any remaining structureless assets::
         --filter=structureless --apply --apply-asset-revert \\
         --checkpoint-table=structureless-revert-2026-05-08
 """
+
 import json
 import time
 
@@ -213,11 +214,7 @@ class Command(BaseCommand):
         include_active_only = options.get("include_active_only", False)
 
         if spec_version != "3.1.0":
-            self.stderr.write(
-                self.style.ERROR(
-                    "Only --spec-version 3.1.0 is supported"
-                )
-            )
+            self.stderr.write(self.style.ERROR("Only --spec-version 3.1.0 is supported"))
             return
 
         # --apply-asset-revert implies --apply for safety: the revert
@@ -246,9 +243,7 @@ class Command(BaseCommand):
         # no-op against the legacy v3.1.0-backfill path.
         if include_active_only and filter_kind != "structureless":
             self.stderr.write(
-                self.style.ERROR(
-                    "--include-active-only requires --filter=structureless"
-                )
+                self.style.ERROR("--include-active-only requires --filter=structureless")
             )
             return
 
@@ -298,12 +293,8 @@ class Command(BaseCommand):
                 )
             )
             if dry_run and result.get("dry_run_warnings"):
-                for cid, warns in result[
-                    "dry_run_warnings"
-                ].items():
-                    self.stdout.write(
-                        f"  {cid}: {len(warns)} warning(s)"
-                    )
+                for cid, warns in result["dry_run_warnings"].items():
+                    self.stdout.write(f"  {cid}: {len(warns)} warning(s)")
         else:
             # Enqueue as RQ task
             import django_rq
@@ -318,8 +309,7 @@ class Command(BaseCommand):
             )
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Enqueued renormalize_contracts_v310"
-                    f" on job_default — RQ job ID: {job.id}"
+                    f"Enqueued renormalize_contracts_v310 on job_default — RQ job ID: {job.id}"
                 )
             )
 
@@ -366,8 +356,7 @@ class Command(BaseCommand):
 
         if output_format == "json":
             self.stdout.write(
-                f"# renormalize_contracts --filter=structureless "
-                f"--dry-run --output=json"
+                "# renormalize_contracts --filter=structureless --dry-run --output=json"
             )
             if tenant_id:
                 self.stdout.write(f"# tenant_id={tenant_id}")
@@ -434,9 +423,7 @@ class Command(BaseCommand):
             emitted += 1
 
         if output_format == "json":
-            self.stdout.write(
-                f"# scanned={scanned} structureless={emitted}"
-            )
+            self.stdout.write(f"# scanned={scanned} structureless={emitted}")
         elif count_only:
             # Cron-friendly: a single integer on stdout, nothing else.
             # The daily pushgateway script greps for this exact line.
@@ -458,18 +445,19 @@ class Command(BaseCommand):
                     from hub.apps.contracts.normalization_metrics import (
                         set_structureless_backlog,
                     )
+
                     set_structureless_backlog(
                         count=emitted,
                         tenant_id=tenant_id,
                     )
                 except Exception:
-                    pass
+                    logger.warning(
+                        "renormalize_contracts_set_structureless_backlog_failed",
+                        tenant_id=tenant_id, count=emitted, exc_info=True,
+                    )
         else:
             self.stdout.write(
-                self.style.SUCCESS(
-                    f"Scanned {scanned} contracts, "
-                    f"{emitted} structureless"
-                )
+                self.style.SUCCESS(f"Scanned {scanned} contracts, {emitted} structureless")
             )
 
     # ------------------------------------------------------------------
@@ -515,9 +503,11 @@ class Command(BaseCommand):
         # correlate the run with the RQ job ID / cron timestamp.
         try:
             import structlog
+
             logger = structlog.get_logger(__name__)
         except ImportError:  # structlog optional
             import logging
+
             logger = logging.getLogger(__name__)
 
         logger.info(
@@ -542,6 +532,7 @@ class Command(BaseCommand):
             # gate's exact invocation with --apply still scopes to
             # ACTIVE residue.
             from hub.apps.contracts.models import ContractStatus
+
             qs = qs.filter(status=ContractStatus.ACTIVE)
 
         # Resume — exclude already-completed checkpoints. ``done`` AND
@@ -588,13 +579,11 @@ class Command(BaseCommand):
         per_tenant_totals: dict = {}
 
         if output_format == "json":
-            self.stdout.write(
-                f"# renormalize_contracts --filter=structureless --apply"
-            )
+            self.stdout.write("# renormalize_contracts --filter=structureless --apply")
             self.stdout.write(f"# run_id={run_id} total_candidates={total}")
 
         for offset in range(0, total, batch_size):
-            batch_ids = candidate_ids[offset:offset + batch_size]
+            batch_ids = candidate_ids[offset : offset + batch_size]
             batch_outcomes = self._process_apply_batch(
                 batch_ids=batch_ids,
                 checkpoint_table=checkpoint_table,
@@ -643,9 +632,7 @@ class Command(BaseCommand):
                         "healed": healed,
                         "residual": residual,
                         "failed": failed,
-                        "reverted_asset_ids": [
-                            str(aid) for aid in reverted_asset_ids
-                        ],
+                        "reverted_asset_ids": [str(aid) for aid in reverted_asset_ids],
                     },
                 )
             except Exception as exc:
@@ -662,9 +649,7 @@ class Command(BaseCommand):
         # editor"). Drop the synthetic ``None`` key (tenantless test
         # fixtures) before serializing — it's never a real Wave-4 target.
         per_tenant_clean = {
-            tid: counts
-            for tid, counts in per_tenant_totals.items()
-            if tid is not None
+            tid: counts for tid, counts in per_tenant_totals.items() if tid is not None
         }
         residue_tenants = sorted(
             tid
@@ -685,9 +670,7 @@ class Command(BaseCommand):
         }
 
         if output_format == "json":
-            self.stdout.write(
-                "# " + json.dumps(summary, sort_keys=True)
-            )
+            self.stdout.write("# " + json.dumps(summary, sort_keys=True))
         else:
             self.stdout.write(
                 self.style.SUCCESS(
@@ -698,9 +681,7 @@ class Command(BaseCommand):
                 )
             )
 
-        logger.info(
-            "renormalize_structureless_apply_complete", **summary
-        )
+        logger.info("renormalize_structureless_apply_complete", **summary)
 
     def _process_apply_batch(
         self,
@@ -731,9 +712,11 @@ class Command(BaseCommand):
 
         try:
             import structlog
+
             logger = structlog.get_logger(__name__)
         except ImportError:
             import logging
+
             logger = logging.getLogger(__name__)
 
         outcome = {
@@ -756,9 +739,7 @@ class Command(BaseCommand):
             # ``of=`` and ``skip_locked`` (no-ops there); Postgres
             # honors them for true row-level locking.
             locked_rows = list(
-                Contract.objects.select_for_update(
-                    skip_locked=True
-                )
+                Contract.objects.select_for_update(skip_locked=True)
                 .filter(id__in=batch_ids)
                 .order_by("id")
             )
@@ -766,9 +747,7 @@ class Command(BaseCommand):
             for contract in locked_rows:
                 outcome["processed"] += 1
                 contract_id = str(contract.id)
-                tenant_key = (
-                    str(contract.tenant_id) if contract.tenant_id else None
-                )
+                tenant_key = str(contract.tenant_id) if contract.tenant_id else None
                 tenant_bucket = outcome["per_tenant"].setdefault(
                     tenant_key,
                     {
@@ -799,13 +778,9 @@ class Command(BaseCommand):
                         # Customer-action cohort: revert ACTIVE assets
                         # backed by still-structureless contracts.
                         if apply_asset_revert:
-                            reverted = self._maybe_revert_asset(
-                                contract, run_id=run_id
-                            )
+                            reverted = self._maybe_revert_asset(contract, run_id=run_id)
                             if reverted:
-                                outcome["reverted_asset_ids"].append(
-                                    contract.asset_id
-                                )
+                                outcome["reverted_asset_ids"].append(contract.asset_id)
 
                     if checkpoint_table:
                         MigrationCheckpoint.objects.update_or_create(
@@ -825,9 +800,7 @@ class Command(BaseCommand):
                                     "contract_id": contract_id,
                                     "result": result_status,
                                     "asset_id": (
-                                        str(contract.asset_id)
-                                        if contract.asset_id
-                                        else None
+                                        str(contract.asset_id) if contract.asset_id else None
                                     ),
                                     "run_id": run_id,
                                 },
@@ -836,7 +809,7 @@ class Command(BaseCommand):
                         )
                     _ = healed  # logged at logger level above
 
-                except Exception as exc:  # noqa: BLE001 — per-contract isolation
+                except Exception as exc:
                     outcome["failed"] += 1
                     tenant_bucket["failed"] += 1
                     logger.warning(
@@ -879,6 +852,7 @@ class Command(BaseCommand):
             from hub.apps.contracts.normalization_metrics import (
                 record_renormalize_batch_duration,
             )
+
             if outcome["failed"] > 0:
                 outcome_label = "failed"
             elif outcome["healed"] > 0 and outcome["residual"] > 0:
@@ -897,7 +871,10 @@ class Command(BaseCommand):
                 duration_seconds=time.time() - batch_started_at,
             )
         except Exception:
-            # Metric backend outage MUST NOT break the migration.
+            logger.warning(
+                "renormalize_contracts_batch_duration_metric_failed",
+                outcome=outcome_label, exc_info=True,
+            )
             pass
 
         # Phase 227 W3.4 — emit one ``contract.batch_renormalized``
@@ -970,7 +947,7 @@ class Command(BaseCommand):
                         "failed": counts.get("failed", 0),
                     },
                 )
-            except Exception as exc:  # noqa: BLE001 — best-effort fanout
+            except Exception as exc:
                 logger.warning(
                     "renormalize_batch_webhook_dispatch_failed",
                     run_id=run_id,
@@ -1003,8 +980,8 @@ class Command(BaseCommand):
         try:
             (
                 hub_contract,
-                detected_spec_type,
-                detected_spec_version,
+                _detected_spec_type,
+                _detected_spec_version,
                 norm_status,
                 norm_errors,
                 norm_warnings,
@@ -1012,9 +989,7 @@ class Command(BaseCommand):
                 raw_contract=contract.original_raw or "",
                 format=contract.original_format,
                 spec_type=contract.original_spec_type,
-                tenant_id=(
-                    str(contract.tenant_id) if contract.tenant_id else None
-                ),
+                tenant_id=(str(contract.tenant_id) if contract.tenant_id else None),
                 # ``contract_id=None`` deliberately — the production
                 # event-publishing path requires the contract to be a
                 # known row; in --silent-events mode we want no
@@ -1040,9 +1015,7 @@ class Command(BaseCommand):
 
         contract.hub_contract_json = hub_contract
         contract.normalization_status = (
-            norm_status
-            if hasattr(norm_status, "value") is False
-            else norm_status.value
+            norm_status if hasattr(norm_status, "value") is False else norm_status.value
         )
         contract.normalization_errors = norm_errors or []
         contract.normalization_warnings = norm_warnings or []
@@ -1076,12 +1049,14 @@ class Command(BaseCommand):
             from hub.apps.search.indexing import SearchIndexer
 
             SearchIndexer.index_contract(contract)
-        except Exception as exc:  # noqa: BLE001 — best-effort projection
+        except Exception as exc:
             try:
                 import structlog
+
                 _logger = structlog.get_logger(__name__)
             except ImportError:
                 import logging
+
                 _logger = logging.getLogger(__name__)
             _logger.warning(
                 "renormalize_search_reindex_failed",
@@ -1104,7 +1079,7 @@ class Command(BaseCommand):
         forward operation — the L6.4 reverse migration reads these
         events to restore prior status.
         """
-        from hub.apps.assets.models import Asset, AssetStatus
+        from hub.apps.assets.models import AssetStatus
         from hub.apps.audit.utils import create_audit_event
 
         asset = getattr(contract, "asset", None)
@@ -1117,10 +1092,9 @@ class Command(BaseCommand):
         # different one satisfies the floor, we don't touch the asset.
         if contract.status != "ACTIVE":
             return False
-        active_contracts = list(
-            asset.contracts.filter(status="ACTIVE")
-        )
+        active_contracts = list(asset.contracts.filter(status="ACTIVE"))
         from hub.apps.contracts.structureless import is_structureless
+
         if any(not is_structureless(c) for c in active_contracts):
             return False
 
@@ -1147,7 +1121,10 @@ class Command(BaseCommand):
                 },
             )
         except Exception:
-            # Audit event failure must NOT roll back the demotion —
+            logger.warning(
+                "renormalize_contracts_audit_failed",
+                contract_id=str(contract.id), run_id=run_id, exc_info=True,
+            )
             # the asset state change is the load-bearing operation.
             pass
 
@@ -1173,9 +1150,11 @@ class Command(BaseCommand):
         except NoTenantAdminsError as exc:
             try:
                 import structlog
+
                 _logger = structlog.get_logger(__name__)
             except ImportError:
                 import logging
+
                 _logger = logging.getLogger(__name__)
             _logger.warning(
                 "asset_auto_reverted_no_tenant_admins",
@@ -1183,12 +1162,14 @@ class Command(BaseCommand):
                 tenant_id=str(getattr(asset, "tenant_id", "")),
                 reason=str(exc),
             )
-        except Exception as exc:  # noqa: BLE001 — best-effort dispatch
+        except Exception as exc:
             try:
                 import structlog
+
                 _logger = structlog.get_logger(__name__)
             except ImportError:
                 import logging
+
                 _logger = logging.getLogger(__name__)
             _logger.warning(
                 "asset_auto_reverted_notification_dispatch_failed",

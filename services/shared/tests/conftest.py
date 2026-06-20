@@ -5,18 +5,19 @@ IMPORTANT: INTERNAL_API_KEY must be set BEFORE importing
 shared.auth because _load_key_at_startup() runs at
 module import time and raises ValueError if the env var is absent.
 """
+
 import os
 
 # ── Bootstrap env BEFORE any shared imports ─────────────────────
 _TEST_KEY = "test-shared-services-key-phase79"
 os.environ["INTERNAL_API_KEY"] = _TEST_KEY
 
-import pytest  # noqa: E402
-from fastapi import FastAPI  # noqa: E402
-from httpx import ASGITransport, AsyncClient  # noqa: E402
+import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 
-from shared.auth import InternalApiKeyMiddleware  # noqa: E402
-from shared.middleware import (  # noqa: E402
+from shared.auth import InternalApiKeyMiddleware
+from shared.middleware import (
     RequestSizeLimitMiddleware,
 )
 
@@ -46,7 +47,8 @@ def _build_app(
         extra_public_paths=extra_public_paths,
     )
     app.add_middleware(
-        RequestSizeLimitMiddleware, max_bytes=max_bytes,
+        RequestSizeLimitMiddleware,
+        max_bytes=max_bytes,
     )
 
     @app.get("/health")
@@ -86,7 +88,5 @@ def test_app() -> FastAPI:
 async def client(test_app: FastAPI):
     """Async httpx test client."""
     transport = ASGITransport(app=test_app)
-    async with AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as ac:
+    async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
         yield ac

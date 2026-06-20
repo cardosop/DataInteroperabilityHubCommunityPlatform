@@ -1,7 +1,9 @@
 """Phase 88: Atomic deduplication tests -- verifies TOCTOU fix."""
+
 import threading
-from django.test import TestCase
 from unittest.mock import patch
+
+from django.test import TestCase
 
 from hub.apps.core.events.deduplication import (
     check_and_store_event,
@@ -17,6 +19,7 @@ class TestAtomicDeduplication(TestCase):
             from hub.apps.core.events.deduplication import (
                 get_redis_client,
             )
+
             client = get_redis_client()
             if client is None:
                 self.skipTest("Redis not available")
@@ -37,7 +40,10 @@ class TestAtomicDeduplication(TestCase):
         key, rc = self._redis_key("new")
 
         is_dup, eid = check_and_store_event(
-            key, "evt-001", ttl=60, redis_client=rc,
+            key,
+            "evt-001",
+            ttl=60,
+            redis_client=rc,
         )
         self.assertFalse(is_dup)
         self.assertEqual(eid, "evt-001")
@@ -46,10 +52,16 @@ class TestAtomicDeduplication(TestCase):
         key, rc = self._redis_key("dup")
 
         is_dup1, eid1 = check_and_store_event(
-            key, "evt-001", ttl=60, redis_client=rc,
+            key,
+            "evt-001",
+            ttl=60,
+            redis_client=rc,
         )
         is_dup2, eid2 = check_and_store_event(
-            key, "evt-002", ttl=60, redis_client=rc,
+            key,
+            "evt-002",
+            ttl=60,
+            redis_client=rc,
         )
 
         self.assertFalse(is_dup1)
@@ -68,16 +80,15 @@ class TestAtomicDeduplication(TestCase):
         def worker(thread_id):
             barrier.wait()
             is_dup, eid = check_and_store_event(
-                key, f"evt-{thread_id}",
-                ttl=60, redis_client=rc,
+                key,
+                f"evt-{thread_id}",
+                ttl=60,
+                redis_client=rc,
             )
             with results_lock:
                 results.append((thread_id, is_dup, eid))
 
-        threads = [
-            threading.Thread(target=worker, args=(i,))
-            for i in range(10)
-        ]
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(10)]
         for t in threads:
             t.start()
         for t in threads:
@@ -85,7 +96,8 @@ class TestAtomicDeduplication(TestCase):
 
         # Verify all threads completed
         self.assertEqual(
-            len(results), 10,
+            len(results),
+            10,
             f"Only {len(results)}/10 threads completed",
         )
 
@@ -93,11 +105,13 @@ class TestAtomicDeduplication(TestCase):
         dup_events = [r for r in results if r[1]]
 
         self.assertEqual(
-            len(new_events), 1,
+            len(new_events),
+            1,
             f"Expected exactly 1 new, got {len(new_events)}",
         )
         self.assertEqual(
-            len(dup_events), 9,
+            len(dup_events),
+            9,
             f"Expected 9 duplicates, got {len(dup_events)}",
         )
 
@@ -113,7 +127,8 @@ class TestAtomicDeduplication(TestCase):
             return_value=None,
         ):
             is_dup, eid = check_and_store_event(
-                "test:key", "evt-001",
+                "test:key",
+                "evt-001",
             )
         self.assertFalse(is_dup)
         self.assertEqual(eid, "evt-001")

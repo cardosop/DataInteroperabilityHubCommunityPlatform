@@ -11,19 +11,19 @@ Usage:
     python scripts/lint_debug_output.py --json
     python scripts/lint_debug_output.py --since 7d  # only recently modified files
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import re
 import subprocess
-import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 FRONTEND_DIRS = ["frontend/src/features", "frontend/src/shared"]
 BACKEND_DIRS = ["hub/apps"]
-BLOCKING_DATE = datetime(2026, 6, 21, tzinfo=timezone.utc)
+BLOCKING_DATE = datetime(2026, 6, 21, tzinfo=UTC)
 
 CONSOLE_PATTERN = re.compile(r"\bconsole\.(log|error|warn|debug)\s*\(", re.IGNORECASE)
 PRINT_PATTERN = re.compile(r"\bprint\s*\([^)]*\)")
@@ -32,21 +32,21 @@ EXEMPT_GLOBS = {"**/tests/**", "**/conftest.py", "**/__init__.py", "**/migration
 
 
 def _is_exempt(filepath: str) -> bool:
-    for pattern in EXEMPT_GLOBS:
-        if filepath.endswith(".py"):
-            if "tests/" in filepath or "migrations/" in filepath:
-                return True
+    for _pattern in EXEMPT_GLOBS:
+        if filepath.endswith(".py") and ("tests/" in filepath or "migrations/" in filepath):
+            return True
     return False
 
 
 def _git_modified_files(repo_root: Path, since_days: int | None) -> list[str]:
     if since_days is None:
         return []
-    since = (datetime.now(timezone.utc) - timedelta(days=since_days)).strftime("%Y-%m-%d")
+    since = (datetime.now(UTC) - timedelta(days=since_days)).strftime("%Y-%m-%d")
     result = subprocess.run(
-        ["git", "-C", str(repo_root), "log", f"--since={since}",
-         "--name-only", "--pretty=format:"],
-        text=True, capture_output=True,
+        ["git", "-C", str(repo_root), "log", f"--since={since}", "--name-only", "--pretty=format:"],
+        check=False,
+        text=True,
+        capture_output=True,
     )
     return [l.strip() for l in result.stdout.splitlines() if l.strip()]
 
@@ -64,8 +64,12 @@ def scan_file(filepath: Path) -> list[dict]:
     return findings
 
 
-def run_lint(repo_root: Path, blocking: bool = False, json_output: bool = False,
-             since_days: int | None = None) -> int:
+def run_lint(
+    repo_root: Path,
+    blocking: bool = False,
+    json_output: bool = False,
+    since_days: int | None = None,
+) -> int:
     all_findings = []
     scan_dirs = [repo_root / d for d in FRONTEND_DIRS + BACKEND_DIRS]
 
@@ -81,16 +85,23 @@ def run_lint(repo_root: Path, blocking: bool = False, json_output: bool = False,
                 continue
             all_findings.extend(scan_file(py_file))
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     is_blocking = blocking or now >= BLOCKING_DATE
 
     if json_output:
-        print(json.dumps({
-            "status": "fail" if (all_findings and is_blocking) else ("warn" if all_findings else "ok"),
-            "total": len(all_findings),
-            "blocking": is_blocking,
-            "findings": all_findings[:50],
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "status": "fail"
+                    if (all_findings and is_blocking)
+                    else ("warn" if all_findings else "ok"),
+                    "total": len(all_findings),
+                    "blocking": is_blocking,
+                    "findings": all_findings[:50],
+                },
+                indent=2,
+            )
+        )
     else:
         print(f"Debug Output Lint: {len(all_findings)} issue(s)")
         for f in all_findings[:20]:
@@ -110,7 +121,9 @@ def main() -> int:
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--blocking", action="store_true")
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--since", type=int, default=None, help="Only scan files modified in last N days")
+    parser.add_argument(
+        "--since", type=int, default=None, help="Only scan files modified in last N days"
+    )
     args = parser.parse_args()
     return run_lint(args.repo_root, args.blocking, args.json, args.since)
 

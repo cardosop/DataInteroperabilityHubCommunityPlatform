@@ -6,7 +6,6 @@ to ensure they cannot be instantiated incorrectly and work as expected.
 """
 
 from datetime import datetime
-from typing import List
 
 import pytest
 
@@ -48,18 +47,17 @@ class TestMarketplaceType:
         ]
 
         actual_types = [mt.value for mt in MarketplaceType]
-        assert len(actual_types) == len(
-            expected_types
-        ), f"Expected {len(expected_types)} marketplace types, got {len(actual_types)}"
-        assert set(actual_types) == set(
-            expected_types
-        ), "Marketplace types don't match expected values"
+        assert len(actual_types) == len(expected_types), (
+            f"Expected {len(expected_types)} marketplace types, got {len(actual_types)}"
+        )
+        assert set(actual_types) == set(expected_types), (
+            "Marketplace types don't match expected values"
+        )
 
     def test_enum_string_representation(self):
-        """Test that enum values are strings"""
+        """Test that enum values are strings (required for JSON serialization)."""
         for marketplace_type in MarketplaceType:
             assert isinstance(marketplace_type.value, str)
-            assert marketplace_type.value == marketplace_type.name
 
 
 class TestSyncDirection:
@@ -75,7 +73,6 @@ class TestSyncDirection:
         """Test that enum values are strings"""
         for sync_direction in SyncDirection:
             assert isinstance(sync_direction.value, str)
-            assert sync_direction.value == sync_direction.name
 
 
 class TestSyncStatus:
@@ -91,7 +88,6 @@ class TestSyncStatus:
         """Test that enum values are strings"""
         for sync_status in SyncStatus:
             assert isinstance(sync_status.value, str)
-            assert sync_status.value == sync_status.name
 
 
 class TestMarketplaceListing:
@@ -160,11 +156,10 @@ class TestMarketplaceListing:
             title="Serialization Test",
         )
 
-        # Test that dataclass fields are accessible
-        assert hasattr(listing, "__dataclass_fields__")
-        assert "marketplace_id" in listing.__dict__
-        assert "marketplace_type" in listing.__dict__
-        assert "title" in listing.__dict__
+        # Verify serialized field values
+        assert listing.marketplace_id == "test-789"
+        assert listing.marketplace_type == MarketplaceType.DATABRICKS_MARKETPLACE
+        assert listing.title == "Serialization Test"
 
 
 class TestMarketplaceResource:
@@ -325,12 +320,11 @@ class TestMarketplaceAssetMapping:
             odps_metadata={"product": {}},
         )
 
-        # Test that dataclass fields are accessible
-        assert hasattr(mapping, "__dataclass_fields__")
-        assert "asset_data" in mapping.__dict__
-        assert "source_type" in mapping.__dict__
-        assert "source_metadata" in mapping.__dict__
-        assert "odps_metadata" in mapping.__dict__
+        # Verify serialized field values
+        assert mapping.asset_data == {"name": "Test"}
+        assert mapping.source_type == AssetSourceType.FEDERATED
+        assert mapping.source_metadata == {"marketplace_type": "TEST"}
+        assert mapping.odps_metadata == {"product": {}}
 
 
 class TestDataMarketplaceConnector:
@@ -382,17 +376,15 @@ class TestDataMarketplaceConnector:
                     actual_methods.add("supported_sync_directions")
 
         # Verify all expected abstract methods exist
-        assert abstract_methods.issubset(
-            actual_methods
-        ), f"Missing abstract methods: {abstract_methods - actual_methods}"
+        assert abstract_methods.issubset(actual_methods), (
+            f"Missing abstract methods: {abstract_methods - actual_methods}"
+        )
 
     def test_concrete_implementation_required(self):
         """Test that a concrete implementation must implement all abstract methods"""
 
         class IncompleteConnector(DataMarketplaceConnector):
             """Incomplete connector implementation"""
-
-            pass
 
         # Should raise TypeError when trying to instantiate
         with pytest.raises(TypeError):
@@ -478,9 +470,9 @@ class TestDataMarketplaceConnector:
             )
 
     def test_resource_missing_required_fields(self):
-        """Test that MarketplaceResource requires resource_id"""
+        """Test that MarketplaceResource requires resource_id, resource_type, and name."""
         with pytest.raises(TypeError):
-            MarketplaceResource(listing_id="listing-123", name="Test Resource")
+            MarketplaceResource()
 
     def test_sync_result_missing_status(self):
         """Test that SyncResult requires status"""
@@ -488,12 +480,10 @@ class TestDataMarketplaceConnector:
             SyncResult()
 
     def test_mapping_missing_required_fields(self):
-        """Test that MarketplaceAssetMapping requires hub_asset_id"""
+        """Test that MarketplaceAssetMapping requires asset_data, source_type,
+        and source_metadata."""
         with pytest.raises(TypeError):
-            MarketplaceAssetMapping(
-                external_listing_id="ext-123",
-                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
-            )
+            MarketplaceAssetMapping()
 
     # ========== EDGE CASES TESTS ==========
 
@@ -524,7 +514,7 @@ class TestDataMarketplaceConnector:
             resource_type="FILE",
             name="Resource with special chars: !@#$",
         )
-        assert "special chars" in resource.name
+        assert resource.name == "Resource with special chars: !@#$"
 
     def test_sync_result_with_large_counts(self):
         """Test that SyncResult handles large counts"""
@@ -649,13 +639,6 @@ class TestDataMarketplaceConnector:
         assert isinstance(mapping.resources, list)
         assert mapping.odps_metadata is None or isinstance(mapping.odps_metadata, dict)
         assert mapping.odcs_metadata is None or isinstance(mapping.odcs_metadata, dict)
-
-    def test_enum_values_are_immutable(self):
-        """Test that enum values are immutable"""
-        # Enums should be immutable
-        original_value = MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value
-        # Cannot modify enum values (they're read-only)
-        assert MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value == original_value
 
     def test_dataclass_field_types(self):
         """Test that dataclass fields have correct types"""

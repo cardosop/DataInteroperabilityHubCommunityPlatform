@@ -5,12 +5,11 @@ Base ViewSet and mixins for contract management.
 Contains core CRUD operations and shared functionality.
 """
 
-from django.db import transaction
+import contextlib
+
 from django.db.models import Case, IntegerField, Q, Value, When
-from drf_spectacular.utils import extend_schema_view
-from rest_framework import permissions, status, viewsets
+from rest_framework import permissions, viewsets
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.response import Response
 
 from .models import Contract, NormalizationStatus
 from .pagination import ContractPageNumberPagination
@@ -48,6 +47,7 @@ def _is_test_environment():
     # Django settings flag (some setups set settings.TESTING)
     try:
         from django.conf import settings
+
         if getattr(settings, "TESTING", False):
             return True
         db_name = (settings.DATABASES.get("default") or {}).get("NAME") or ""
@@ -60,6 +60,7 @@ def _is_test_environment():
     # Live connection DB name (most reliable when request runs; handles Django test DB naming)
     try:
         from django.db import connection
+
         db_name = connection.settings_dict.get("NAME", "") or ""
         db_lower = db_name.lower()
         if db_name == "hub_test" or "_test_" in db_lower or db_lower.startswith("test_"):
@@ -94,6 +95,7 @@ class ContractViewSetBase(viewsets.ModelViewSet):
 
         # Load user from DB with roles so role checks see up-to-date assignments
         from django.contrib.auth import get_user_model
+
         from hub.apps.users.models import UserRole
 
         User = get_user_model()
@@ -107,8 +109,7 @@ class ContractViewSetBase(viewsets.ModelViewSet):
         # UserRole (e.g. created in test setUp); avoids stale prefetch in test runs.
         if not role_names:
             role_names = list(
-                UserRole.objects.filter(user_id=user.pk)
-                .values_list("role__name", flat=True)
+                UserRole.objects.filter(user_id=user.pk).values_list("role__name", flat=True)
             )
         if view_action not in ["create", "update", "partial_update", "destroy"]:
             return True
@@ -117,17 +118,14 @@ class ContractViewSetBase(viewsets.ModelViewSet):
         if not role_names:
             if _is_test_environment():
                 return True
-            raise PermissionDenied(
-                "Contract write requires TENANT_ADMIN or DATA_PROVIDER role."
-            )
+            raise PermissionDenied("Contract write requires TENANT_ADMIN or DATA_PROVIDER role.")
 
         # AUDITOR-only: deny write (always enforced so auditor_cannot_* tests get 403)
         if "AUDITOR" in role_names:
             has_write_role = "TENANT_ADMIN" in role_names or "DATA_PROVIDER" in role_names
             if not has_write_role:
                 raise PermissionDenied(
-                    "AUDITOR role has read-only access. "
-                    "Cannot perform write operations."
+                    "AUDITOR role has read-only access. Cannot perform write operations."
                 )
 
         return True
@@ -162,10 +160,8 @@ class ContractViewSetBase(viewsets.ModelViewSet):
                         if not hasattr(self.request, "tenant") or not self.request.tenant:
                             from hub.apps.tenants.models import Tenant
 
-                            try:
+                            with contextlib.suppress(Tenant.DoesNotExist):
                                 self.request.tenant = Tenant.objects.get(id=db_user.tenant_id)
-                            except Tenant.DoesNotExist:
-                                pass
                 except User.DoesNotExist:
                     pass
 
@@ -259,9 +255,13 @@ class ContractViewSetBase(viewsets.ModelViewSet):
                     except (ValueError, TypeError):
                         queryset = Contract.objects.none()
                     else:
-                        queryset = Contract.objects.select_related("tenant", "created_by").filter(tenant_id=tenant_id)
+                        queryset = Contract.objects.select_related("tenant", "created_by").filter(
+                            tenant_id=tenant_id
+                        )
                 else:
-                    queryset = Contract.objects.select_related("tenant", "created_by").filter(tenant_id=tenant_id)
+                    queryset = Contract.objects.select_related("tenant", "created_by").filter(
+                        tenant_id=tenant_id
+                    )
             else:
                 queryset = Contract.objects.none()
 
@@ -387,9 +387,8 @@ class ContractViewSetBase(viewsets.ModelViewSet):
                     elif owner_email:
                         if email_match:
                             contract_ids.append(contract.id)
-                    elif owner_name:
-                        if name_match:
-                            contract_ids.append(contract.id)
+                    elif owner_name and name_match:
+                        contract_ids.append(contract.id)
             except Exception as e:
                 # Log the error for debugging but don't fail silently
                 import logging
@@ -614,6 +613,7 @@ class ContractViewSetBase(viewsets.ModelViewSet):
         odcs_version_filter = query_params.get("odcs_version")
         if odcs_version_filter:
             from .models import OriginalSpecType
+
             queryset = queryset.filter(
                 original_spec_type=OriginalSpecType.ODCS,
                 original_spec_version=odcs_version_filter,
@@ -707,9 +707,7 @@ class ContractViewSetBase(viewsets.ModelViewSet):
         for field in order_fields:
             field_name = field.lstrip("-")  # Remove leading minus for
             # comparison
-            if field in sort_mapping:
-                ordering_list.append(sort_mapping[field])
-            elif field.startswith("-") and field[1:] in sort_mapping:
+            if field in sort_mapping or (field.startswith("-") and field[1:] in sort_mapping):
                 ordering_list.append(sort_mapping[field])
             elif field_name in valid_db_fields:
                 # Allow valid database fields

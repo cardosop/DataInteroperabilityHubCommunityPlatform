@@ -2,13 +2,14 @@
 Unit tests for AuditEvent model.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()

@@ -4,18 +4,18 @@ Marketplace Connector Factory
 Factory for creating marketplace connectors based on marketplace type.
 Follows the same pattern as SourceConnectorFactory for consistency.
 """
+
 import logging
-from typing import Dict, List, Type, Optional, Any
+from typing import Any
+
 from hub.apps.integrations.base import (
     DataMarketplaceConnector,
     MarketplaceType,
 )
 from hub.apps.integrations.config.marketplace_instances import (
-    get_marketplace_instance_config,
     MARKETPLACE_INSTANCES,
     # Backward compatibility (deprecated)
-    get_ckan_instance_config,
-    CKAN_INSTANCES,
+    get_marketplace_instance_config,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,13 +53,11 @@ class MarketplaceConnectorFactory:
 
     # Class-level registry of connector classes
     # Maps MarketplaceType enum values to connector class types
-    _connectors: Dict[str, Type[DataMarketplaceConnector]] = {}
+    _connectors: dict[str, type[DataMarketplaceConnector]] = {}
 
     @classmethod
     def register_connector(
-        cls,
-        marketplace_type: MarketplaceType,
-        connector_class: Type[DataMarketplaceConnector]
+        cls, marketplace_type: MarketplaceType, connector_class: type[DataMarketplaceConnector]
     ) -> None:
         """
         Register a marketplace connector class.
@@ -100,10 +98,7 @@ class MarketplaceConnectorFactory:
         cls._connectors[marketplace_type.value] = connector_class
 
     @classmethod
-    def get_connector(
-        cls,
-        marketplace_type: MarketplaceType
-    ) -> DataMarketplaceConnector:
+    def get_connector(cls, marketplace_type: MarketplaceType) -> DataMarketplaceConnector:
         """
         Get a connector instance for the given marketplace type.
 
@@ -150,9 +145,9 @@ class MarketplaceConnectorFactory:
     def create_connector(
         cls,
         marketplace_type: MarketplaceType,
-        config: Optional[Dict[str, Any]] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        config: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
     ) -> DataMarketplaceConnector:
         """
         Create a connector instance with configuration.
@@ -205,36 +200,42 @@ class MarketplaceConnectorFactory:
             # Try with config if provided
             if config is not None:
                 import inspect
+
                 sig = inspect.signature(connector_class.__init__)
                 params = sig.parameters
 
                 # Check if __init__ accepts config parameter
-                if 'config' in params:
+                if "config" in params:
                     # Try with config, tenant_id, user_id if they're in signature
-                    kwargs = {'config': config}
-                    if 'tenant_id' in params and tenant_id:
-                        kwargs['tenant_id'] = tenant_id
-                    if 'user_id' in params and user_id:
-                        kwargs['user_id'] = user_id
+                    kwargs = {"config": config}
+                    if "tenant_id" in params and tenant_id:
+                        kwargs["tenant_id"] = tenant_id
+                    if "user_id" in params and user_id:
+                        kwargs["user_id"] = user_id
                     try:
                         return connector_class(**kwargs)
                     except TypeError:
                         # Try with just config
                         return connector_class(config=config)
                 # Special handling for CKANConnector which expects base_url and api_key
-                elif 'base_url' in params:
+                elif "base_url" in params:
                     kwargs = {}
                     # Check if instance_id is provided - use instance config if available
-                    if 'instance_id' in config and marketplace_type == MarketplaceType.CKAN_INSTANCE:
-                        instance_config = get_marketplace_instance_config(config['instance_id'])
+                    if (
+                        "instance_id" in config
+                        and marketplace_type == MarketplaceType.CKAN_INSTANCE
+                    ):
+                        instance_config = get_marketplace_instance_config(config["instance_id"])
                         if instance_config:
                             # Check connector type and use appropriate connector class
-                            connector_type = getattr(instance_config, 'connector_type', 'ckan')
+                            connector_type = getattr(instance_config, "connector_type", "ckan")
 
-                            if connector_type == 'swagger':
+                            if connector_type == "swagger":
                                 # Use DadosGovBrConnector for Swagger-based instances
                                 try:
-                                    from hub.apps.integrations.connectors.dados_gov_br_connector import DadosGovBrConnector
+                                    from hub.apps.integrations.connectors.dados_gov_br_connector import (
+                                        DadosGovBrConnector,
+                                    )
                                 except ImportError:
                                     raise ValueError(
                                         "DadosGovBrConnector not available. "
@@ -243,15 +244,17 @@ class MarketplaceConnectorFactory:
                                 connector_class = DadosGovBrConnector
 
                                 # Use instance configuration for Swagger connector
-                                kwargs['base_url'] = instance_config.base_url
+                                kwargs["base_url"] = instance_config.base_url
                                 # Resolve JWT token: override > config api_key > instance env var
-                                if 'api_key' in config:
-                                    kwargs['jwt_token'] = config['api_key']
+                                if "api_key" in config:
+                                    kwargs["jwt_token"] = config["api_key"]
                                 else:
-                                    kwargs['jwt_token'] = instance_config.get_api_key() or ''
-                                swagger_spec_url = getattr(instance_config, 'swagger_spec_url', None)
+                                    kwargs["jwt_token"] = instance_config.get_api_key() or ""
+                                swagger_spec_url = getattr(
+                                    instance_config, "swagger_spec_url", None
+                                )
                                 if swagger_spec_url:
-                                    kwargs['swagger_spec_url'] = swagger_spec_url
+                                    kwargs["swagger_spec_url"] = swagger_spec_url
 
                                 logger.debug(
                                     f"Using instance configuration for Swagger instance "
@@ -260,12 +263,12 @@ class MarketplaceConnectorFactory:
                             else:
                                 # Use standard CKAN connector
                                 # Use instance configuration
-                                kwargs['base_url'] = instance_config.base_url
+                                kwargs["base_url"] = instance_config.base_url
                                 # Resolve API key: override > config api_key > instance env var
-                                if 'api_key' in config:
-                                    kwargs['api_key'] = config['api_key']
+                                if "api_key" in config:
+                                    kwargs["api_key"] = config["api_key"]
                                 else:
-                                    kwargs['api_key'] = instance_config.get_api_key()
+                                    kwargs["api_key"] = instance_config.get_api_key()
 
                                 logger.debug(
                                     f"Using instance configuration for CKAN instance "
@@ -273,112 +276,115 @@ class MarketplaceConnectorFactory:
                                 )
                         else:
                             # Instance not found, fall back to direct config
-                            if 'base_url' in config:
-                                kwargs['base_url'] = config['base_url']
-                            elif 'endpoint' in config:
-                                kwargs['base_url'] = config['endpoint']
+                            if "base_url" in config:
+                                kwargs["base_url"] = config["base_url"]
+                            elif "endpoint" in config:
+                                kwargs["base_url"] = config["endpoint"]
                             # DadosGovBrConnector expects jwt_token, not api_key
-                            if 'jwt_token' in params and 'api_key' not in params:
-                                kwargs['jwt_token'] = config.get('jwt_token') or config.get('api_key') or ''
-                            elif 'api_key' in config:
-                                kwargs['api_key'] = config['api_key']
+                            if "jwt_token" in params and "api_key" not in params:
+                                kwargs["jwt_token"] = (
+                                    config.get("jwt_token") or config.get("api_key") or ""
+                                )
+                            elif "api_key" in config:
+                                kwargs["api_key"] = config["api_key"]
                     else:
                         # No instance_id, use direct config
-                        if 'base_url' in config:
-                            kwargs['base_url'] = config['base_url']
-                        elif 'endpoint' in config:
-                            kwargs['base_url'] = config['endpoint']
+                        if "base_url" in config:
+                            kwargs["base_url"] = config["base_url"]
+                        elif "endpoint" in config:
+                            kwargs["base_url"] = config["endpoint"]
                         # DadosGovBrConnector expects jwt_token, not api_key
-                        if 'jwt_token' in params and 'api_key' not in params:
-                            kwargs['jwt_token'] = config.get('jwt_token') or config.get('api_key') or ''
-                        elif 'api_key' in config:
-                            kwargs['api_key'] = config['api_key']
-                    if 'tenant_id' in params and tenant_id:
-                        kwargs['tenant_id'] = tenant_id
-                    if 'user_id' in params and user_id:
-                        kwargs['user_id'] = user_id
+                        if "jwt_token" in params and "api_key" not in params:
+                            kwargs["jwt_token"] = (
+                                config.get("jwt_token") or config.get("api_key") or ""
+                            )
+                        elif "api_key" in config:
+                            kwargs["api_key"] = config["api_key"]
+                    if "tenant_id" in params and tenant_id:
+                        kwargs["tenant_id"] = tenant_id
+                    if "user_id" in params and user_id:
+                        kwargs["user_id"] = user_id
                     try:
                         return connector_class(**kwargs)
                     except TypeError:
                         # Try with just base_url and api_key/jwt_token
-                        if 'jwt_token' in kwargs:
+                        if "jwt_token" in kwargs:
                             return connector_class(
-                                base_url=kwargs.get('base_url'),
-                                jwt_token=kwargs.get('jwt_token', ''),
-                                swagger_spec_url=kwargs.get('swagger_spec_url')
+                                base_url=kwargs.get("base_url"),
+                                jwt_token=kwargs.get("jwt_token", ""),
+                                swagger_spec_url=kwargs.get("swagger_spec_url"),
                             )
                         else:
                             return connector_class(
-                                base_url=kwargs.get('base_url'),
-                                api_key=kwargs.get('api_key')
+                                base_url=kwargs.get("base_url"), api_key=kwargs.get("api_key")
                             )
                 # Special handling for SnowflakeConnector which expects account, user, token, etc.
                 elif marketplace_type == MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE:
                     # SnowflakeConnector expects: account, user, token, warehouse (optional), role (optional), database (optional)
                     kwargs = {}
-                    if 'account' in config:
-                        kwargs['account'] = config['account']
-                    if 'user' in config:
-                        kwargs['user'] = config['user']
-                    if 'token' in config:
-                        kwargs['token'] = config['token']
-                    if 'warehouse' in config:
-                        kwargs['warehouse'] = config['warehouse']
-                    if 'role' in config:
-                        kwargs['role'] = config['role']
-                    if 'database' in config:
-                        kwargs['database'] = config['database']
+                    if "account" in config:
+                        kwargs["account"] = config["account"]
+                    if "user" in config:
+                        kwargs["user"] = config["user"]
+                    if "token" in config:
+                        kwargs["token"] = config["token"]
+                    if "warehouse" in config:
+                        kwargs["warehouse"] = config["warehouse"]
+                    if "role" in config:
+                        kwargs["role"] = config["role"]
+                    if "database" in config:
+                        kwargs["database"] = config["database"]
                     return connector_class(**kwargs)
                 # Special handling for AWSDataExchangeConnector which expects AWS credentials
                 elif marketplace_type == MarketplaceType.AWS_DATA_EXCHANGE:
                     # AWSDataExchangeConnector expects: aws_access_key_id, aws_secret_access_key,
                     # aws_session_token (optional), region_name (optional), role_arn (optional)
                     kwargs = {}
-                    if 'aws_access_key_id' in config:
-                        kwargs['aws_access_key_id'] = config['aws_access_key_id']
-                    if 'aws_secret_access_key' in config:
-                        kwargs['aws_secret_access_key'] = config['aws_secret_access_key']
-                    if 'aws_session_token' in config:
-                        kwargs['aws_session_token'] = config['aws_session_token']
-                    if 'region_name' in config:
-                        kwargs['region_name'] = config['region_name']
-                    if 'role_arn' in config:
-                        kwargs['role_arn'] = config['role_arn']
+                    if "aws_access_key_id" in config:
+                        kwargs["aws_access_key_id"] = config["aws_access_key_id"]
+                    if "aws_secret_access_key" in config:
+                        kwargs["aws_secret_access_key"] = config["aws_secret_access_key"]
+                    if "aws_session_token" in config:
+                        kwargs["aws_session_token"] = config["aws_session_token"]
+                    if "region_name" in config:
+                        kwargs["region_name"] = config["region_name"]
+                    if "role_arn" in config:
+                        kwargs["role_arn"] = config["role_arn"]
                     return connector_class(**kwargs)
                 # Special handling for GCPMarketplaceConnector which expects GCP credentials
                 elif marketplace_type == MarketplaceType.GOOGLE_CLOUD_MARKETPLACE:
                     # GCPMarketplaceConnector expects: project_id (required), credentials_json (optional),
                     # location (optional, default 'US'), use_adc (optional, default False)
                     kwargs = {}
-                    if 'project_id' in config:
-                        kwargs['project_id'] = config['project_id']
-                    if 'credentials_json' in config:
-                        kwargs['credentials_json'] = config['credentials_json']
-                    if 'location' in config:
-                        kwargs['location'] = config['location']
-                    if 'use_adc' in config:
-                        kwargs['use_adc'] = config['use_adc']
+                    if "project_id" in config:
+                        kwargs["project_id"] = config["project_id"]
+                    if "credentials_json" in config:
+                        kwargs["credentials_json"] = config["credentials_json"]
+                    if "location" in config:
+                        kwargs["location"] = config["location"]
+                    if "use_adc" in config:
+                        kwargs["use_adc"] = config["use_adc"]
                     return connector_class(**kwargs)
                 # Special handling for DatabricksConnector which expects host, token, cluster_id (optional)
                 elif marketplace_type == MarketplaceType.DATABRICKS_MARKETPLACE:
                     # DatabricksConnector expects: host (required), token (required), cluster_id (optional)
                     kwargs = {}
-                    if 'host' in config:
-                        kwargs['host'] = config['host']
-                    if 'token' in config:
-                        kwargs['token'] = config['token']
-                    if 'cluster_id' in config:
-                        kwargs['cluster_id'] = config['cluster_id']
+                    if "host" in config:
+                        kwargs["host"] = config["host"]
+                    if "token" in config:
+                        kwargs["token"] = config["token"]
+                    if "cluster_id" in config:
+                        kwargs["cluster_id"] = config["cluster_id"]
                     return connector_class(**kwargs)
                 # Special handling for AzureMarketplaceConnector: base_url, api_key, api_version
                 elif marketplace_type == MarketplaceType.AZURE_MARKETPLACE:
                     kwargs = {}
-                    if 'base_url' in config:
-                        kwargs['base_url'] = config['base_url']
-                    if 'api_key' in config:
-                        kwargs['api_key'] = config['api_key']
-                    if 'api_version' in config:
-                        kwargs['api_version'] = config['api_version']
+                    if "base_url" in config:
+                        kwargs["base_url"] = config["base_url"]
+                    if "api_key" in config:
+                        kwargs["api_key"] = config["api_key"]
+                    if "api_version" in config:
+                        kwargs["api_version"] = config["api_version"]
                     return connector_class(**kwargs)
                 elif len(params) > 1:  # Has parameters beyond self
                     # Try config as positional argument
@@ -388,17 +394,17 @@ class MarketplaceConnectorFactory:
                         # Fall back to no-arg constructor
                         connector = connector_class()
                         # Try to set config via attribute or method
-                        if hasattr(connector, 'set_config'):
+                        if hasattr(connector, "set_config"):
                             connector.set_config(config)
-                        elif hasattr(connector, 'config'):
+                        elif hasattr(connector, "config"):
                             connector.config = config
                         return connector
                 else:
                     # No parameters, use default constructor and set config after
                     connector = connector_class()
-                    if hasattr(connector, 'set_config'):
+                    if hasattr(connector, "set_config"):
                         connector.set_config(config)
-                    elif hasattr(connector, 'config'):
+                    elif hasattr(connector, "config"):
                         connector.config = config
                     return connector
             else:
@@ -406,11 +412,11 @@ class MarketplaceConnectorFactory:
                 return connector_class()
         except Exception as e:
             raise ValueError(
-                f"Failed to create connector instance for {marketplace_type.value}: {str(e)}"
+                f"Failed to create connector instance for {marketplace_type.value}: {e!s}"
             ) from e
 
     @classmethod
-    def get_supported_types(cls) -> List[MarketplaceType]:
+    def get_supported_types(cls) -> list[MarketplaceType]:
         """
         Get a list of all supported marketplace types.
 
@@ -455,7 +461,7 @@ class MarketplaceConnectorFactory:
         return marketplace_type.value in cls._connectors
 
     @classmethod
-    def get_capability_matrix(cls) -> Dict[str, Dict[str, Any]]:
+    def get_capability_matrix(cls) -> dict[str, dict[str, Any]]:
         """Return the capability matrix for all registered connectors.
 
         Returns a dict keyed by marketplace type with each entry
@@ -471,7 +477,7 @@ class MarketplaceConnectorFactory:
         """
         from hub.apps.integrations.base import SyncDirection
 
-        matrix: Dict[str, Dict[str, Any]] = {}
+        matrix: dict[str, dict[str, Any]] = {}
         for mtype_value, connector_cls in sorted(cls._connectors.items()):
             # Read the property from a bare instance.  Connectors
             # return a static list so no credentials are needed.
@@ -480,10 +486,7 @@ class MarketplaceConnectorFactory:
                 dirs = inst.supported_sync_directions
             except Exception:
                 dirs = []
-            dir_values = [
-                d.value if hasattr(d, "value") else str(d)
-                for d in dirs
-            ]
+            dir_values = [d.value if hasattr(d, "value") else str(d) for d in dirs]
             matrix[mtype_value] = {
                 "sync_directions": dir_values,
                 "supports_push": (
@@ -494,10 +497,7 @@ class MarketplaceConnectorFactory:
                     SyncDirection.PULL.value in dir_values
                     or SyncDirection.BIDIRECTIONAL.value in dir_values
                 ),
-                "connector_class": (
-                    f"{connector_cls.__module__}."
-                    f"{connector_cls.__qualname__}"
-                ),
+                "connector_class": (f"{connector_cls.__module__}.{connector_cls.__qualname__}"),
             }
         return matrix
 
@@ -522,17 +522,13 @@ class MarketplaceConnectorFactory:
             )
 
         if marketplace_type.value not in cls._connectors:
-            raise ValueError(
-                f"Marketplace type not registered: {marketplace_type.value}"
-            )
+            raise ValueError(f"Marketplace type not registered: {marketplace_type.value}")
 
         del cls._connectors[marketplace_type.value]
 
     @classmethod
     def create_ckan_connector_from_instance(
-        cls,
-        instance_id: str,
-        api_key: Any = _NOT_PROVIDED
+        cls, instance_id: str, api_key: Any = _NOT_PROVIDED
     ) -> DataMarketplaceConnector:
         """
         Create a marketplace connector from a registered instance configuration.
@@ -608,12 +604,14 @@ class MarketplaceConnectorFactory:
         # Check connector type and import appropriate connector class.
         # Use instance config to choose the class (not the single registry entry), so
         # demo.ckan.org and data.gov get CKANConnector and dados.gov.br gets DadosGovBrConnector.
-        connector_type = getattr(instance_config, 'connector_type', 'ckan')
+        connector_type = getattr(instance_config, "connector_type", "ckan")
 
-        if connector_type == 'swagger':
+        if connector_type == "swagger":
             # Import DadosGovBrConnector for Swagger-based instances
             try:
-                from hub.apps.integrations.connectors.dados_gov_br_connector import DadosGovBrConnector
+                from hub.apps.integrations.connectors.dados_gov_br_connector import (
+                    DadosGovBrConnector,
+                )
             except ImportError:
                 raise ValueError(
                     "DadosGovBrConnector not available. "
@@ -627,8 +625,7 @@ class MarketplaceConnectorFactory:
                 from hub.apps.integrations.connectors.ckan_connector import CKANConnector
             except ImportError:
                 raise ValueError(
-                    "CKANConnector not available. "
-                    "Ensure ckan_connector.py is properly installed."
+                    "CKANConnector not available. Ensure ckan_connector.py is properly installed."
                 )
             connector_class = CKANConnector
 
@@ -653,8 +650,7 @@ class MarketplaceConnectorFactory:
             resolved_api_key = api_key
             if api_key is not None:
                 logger.debug(
-                    f"Using API key/JWT token override for instance "
-                    f"{instance_config.name}"
+                    f"Using API key/JWT token override for instance {instance_config.name}"
                 )
             else:
                 logger.debug(
@@ -664,13 +660,13 @@ class MarketplaceConnectorFactory:
 
         # Create connector with instance configuration
         try:
-            if connector_type == 'swagger':
+            if connector_type == "swagger":
                 # DadosGovBrConnector uses jwt_token parameter
-                swagger_spec_url = getattr(instance_config, 'swagger_spec_url', None)
+                swagger_spec_url = getattr(instance_config, "swagger_spec_url", None)
                 connector = connector_class(
                     base_url=instance_config.base_url,
-                    jwt_token=resolved_api_key or '',
-                    swagger_spec_url=swagger_spec_url
+                    jwt_token=resolved_api_key or "",
+                    swagger_spec_url=swagger_spec_url,
                 )
                 logger.debug(
                     f"Created DadosGovBrConnector (Swagger) for instance {instance_config.name} "
@@ -679,8 +675,7 @@ class MarketplaceConnectorFactory:
             else:
                 # Standard CKANConnector uses api_key parameter
                 connector = connector_class(
-                    base_url=instance_config.base_url,
-                    api_key=resolved_api_key
+                    base_url=instance_config.base_url, api_key=resolved_api_key
                 )
                 logger.debug(
                     f"Created CKANConnector for instance {instance_config.name} "
@@ -689,14 +684,12 @@ class MarketplaceConnectorFactory:
             return connector
         except Exception as e:
             raise ValueError(
-                f"Failed to create connector for instance '{instance_id}': {str(e)}"
+                f"Failed to create connector for instance '{instance_id}': {e!s}"
             ) from e
 
     @classmethod
     def create_marketplace_connector_from_instance(
-        cls,
-        instance_id: str,
-        api_key: Any = _NOT_PROVIDED
+        cls, instance_id: str, api_key: Any = _NOT_PROVIDED
     ) -> DataMarketplaceConnector:
         """
         Create a marketplace connector from a registered instance configuration.
@@ -740,5 +733,3 @@ class MarketplaceConnectorFactory:
             )
         """
         return cls.create_ckan_connector_from_instance(instance_id, api_key)
-
-

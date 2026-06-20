@@ -14,39 +14,23 @@ class Phase232ProgrammeAPI:
     def __init__(self, client: DataHubClient) -> None:
         self._client = client
 
-    async def list_compliance_runs(
-        self, params: Optional[Mapping[str, Any]] = None
-    ) -> Any:
+    async def list_compliance_runs(self, params: Optional[Mapping[str, Any]] = None) -> Any:
         return await self._client.get("compliance/runs/", params=params or {})
 
-    async def list_dpia_records(
-        self, params: Optional[Mapping[str, Any]] = None
-    ) -> Any:
+    async def list_dpia_records(self, params: Optional[Mapping[str, Any]] = None) -> Any:
         return await self._client.get("dpia/records/", params=params or {})
 
-    async def list_ropa_generations(
-        self, params: Optional[Mapping[str, Any]] = None
-    ) -> Any:
+    async def list_ropa_generations(self, params: Optional[Mapping[str, Any]] = None) -> Any:
         return await self._client.get("ropa/generations/", params=params or {})
 
-    async def list_breach_incidents(
-        self, params: Optional[Mapping[str, Any]] = None
-    ) -> Any:
+    async def list_breach_incidents(self, params: Optional[Mapping[str, Any]] = None) -> Any:
         return await self._client.get("governance/breach-incidents/", params=params or {})
 
-    async def list_dsar_requests(
-        self, params: Optional[Mapping[str, Any]] = None
-    ) -> Any:
+    async def list_dsar_requests(self, params: Optional[Mapping[str, Any]] = None) -> Any:
         return await self._client.get("governance/dsar-requests/", params=params or {})
 
-    async def list_consent_purposes(
-        self, params: Optional[Mapping[str, Any]] = None
-    ) -> Any:
+    async def list_consent_purposes(self, params: Optional[Mapping[str, Any]] = None) -> Any:
         return await self._client.get("governance/consent-purposes/", params=params or {})
 
-    async def list_processor_agreements(
-        self, params: Optional[Mapping[str, Any]] = None
-    ) -> Any:
-        return await self._client.get(
-            "governance/processor-agreements/", params=params or {}
-        )
+    async def list_processor_agreements(self, params: Optional[Mapping[str, Any]] = None) -> Any:
+        return await self._client.get("governance/processor-agreements/", params=params or {})

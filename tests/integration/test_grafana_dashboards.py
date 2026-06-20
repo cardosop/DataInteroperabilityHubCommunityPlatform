@@ -46,9 +46,9 @@ class TestGrafanaDashboards:
     def test_dashboard_json_valid(self, dashboards_dir):
         """Each JSON dashboard file must parse and have dashboard/title."""
         if not dashboards_dir.exists():
-            pytest.skip("Dashboards dir not found")
+            pytest.skip("Dashboards dir not found")  # noqa: skip-in-body — runtime service dependency
         for path in dashboards_dir.glob("*.json"):
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 try:
                     data = json.load(f)
                 except json.JSONDecodeError as e:
@@ -75,7 +75,7 @@ class TestGrafanaDashboards:
         """Datasource config valid (YAML with apiVersion/datasources)."""
         path = datasources_dir / "prometheus.yml"
         if not path.exists():
-            pytest.skip("Prometheus datasource config not found")
+            pytest.skip("Prometheus datasource config not found")  # noqa: skip-in-body — runtime service dependency
         content = path.read_text(encoding="utf-8")
         assert "apiVersion" in content or "datasources" in content
         assert "prometheus" in content.lower()

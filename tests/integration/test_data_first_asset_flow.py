@@ -49,7 +49,9 @@ class TestDataFirstAssetFlowIntegration(TestCase):
         )
         ensure_user_has_data_provider_role(self.user)
 
-        csv_content = b"id,name,email,age\n1,John Doe,john@example.com,30\n2,Jane Smith,jane@example.com,25\n"
+        csv_content = (
+            b"id,name,email,age\n1,John Doe,john@example.com,30\n2,Jane Smith,jane@example.com,25\n"
+        )
         self.file_obj = File.objects.create(
             tenant=self.tenant,
             name="integration_test_data.csv",
@@ -69,7 +71,7 @@ class TestDataFirstAssetFlowIntegration(TestCase):
             self.file_obj.save(update_fields=["storage_path"])
         except Exception:
             self.file_obj.storage_path = (
-                f"{str(self.tenant.id)}/{str(self.file_obj.id)}/integration_test_data.csv"
+                f"{self.tenant.id!s}/{self.file_obj.id!s}/integration_test_data.csv"
             )
             self.file_obj.save(update_fields=["storage_path"])
 

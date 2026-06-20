@@ -10,27 +10,29 @@ Tests verify:
 6. Integration with services
 7. E2E workflow execution
 """
+
 try:
     import pytest
+
     pytestmark = pytest.mark.django_db(transaction=True)
 except ImportError:
     pytest = None
     pytestmark = None
 
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from django.utils import timezone
+import uuid
 
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
-from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.models import WorkflowDefinition, WorkflowInstance, WorkflowStatus
-from hub.apps.orchestration.workflows.api_key_management import APIKeyManagementWorkflow
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+
 from hub.apps.auth.models import APIKey as AuthAPIKey
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus, Role, UserRole
 from hub.apps.baas.models import APITierModel
 from hub.apps.baas.services import UsageTrackingService
-import uuid
+from hub.apps.orchestration.models import WorkflowDefinition, WorkflowInstance, WorkflowStatus
+from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflows.api_key_management import APIKeyManagementWorkflow
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 User = get_user_model()
 
@@ -55,9 +57,11 @@ class APIKeyManagementWorkflowDefinitionTest(TestCase):
         """Test that register_workflow creates workflow definition"""
         APIKeyManagementWorkflow.register_workflow(self.registry)
 
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=APIKeyManagementWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=APIKeyManagementWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         self.assertIsNotNone(workflow_def, "Workflow definition should be created")
         self.assertEqual(workflow_def.name, APIKeyManagementWorkflow.WORKFLOW_NAME)
@@ -75,9 +79,11 @@ class APIKeyManagementWorkflowDefinitionTest(TestCase):
         """Test that workflow DSL has all required steps"""
         APIKeyManagementWorkflow.register_workflow(self.registry)
 
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=APIKeyManagementWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=APIKeyManagementWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         self.assertIsNotNone(workflow_def)
         dsl = workflow_def.dsl_json
@@ -99,11 +105,13 @@ class APIKeyManagementWorkflowDefinitionTest(TestCase):
             "validate_revocation",
             "revoke_key",
             "notify_user",
-            "complete"
+            "complete",
         ]
 
         for required_step in required_steps:
-            self.assertIn(required_step, step_names, f"Step '{required_step}' should be in workflow")
+            self.assertIn(
+                required_step, step_names, f"Step '{required_step}' should be in workflow"
+            )
 
     def test_register_tasks_registers_all_tasks(self):
         """Test that register_tasks registers all workflow tasks"""
@@ -143,23 +151,20 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
 
         # Create test tenant and user
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
         # Create TENANT_ADMIN role (required for API key creation)
         self.admin_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="TENANT_ADMIN",
-            defaults={"description": "Tenant Administrator"}
+            defaults={"description": "Tenant Administrator"},
         )
 
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Assign TENANT_ADMIN role to user
@@ -172,7 +177,7 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
                 "rate_limit_per_hour": 1000,
                 "rate_limit_per_day": 10000,
                 "max_requests_per_month": 100000,
-            }
+            },
         )
 
     def test_validate_request_task_success(self):
@@ -183,15 +188,17 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
             "user_id": str(self.user.id),
             "name": "Test API Key",
             "tier": "FREE",
-            "expires_at": None
+            "expires_at": None,
         }
 
         # Register workflow first
         APIKeyManagementWorkflow.register_workflow(self.registry)
 
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=APIKeyManagementWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=APIKeyManagementWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         instance = WorkflowInstance.objects.create(
             workflow_definition=workflow_def,
@@ -200,11 +207,11 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
             tenant=self.tenant,
             input_data=input_data,
             created_by_id=str(self.user.id),
-            status=WorkflowStatus.DRAFT
+            status=WorkflowStatus.DRAFT,
         )
 
         # Create mock step object (like product_creation tests)
-        step = type('Step', (), {"name": "validate_request"})()
+        step = type("Step", (), {"name": "validate_request"})()
 
         result = APIKeyManagementWorkflow._validate_request_task(input_data, instance, step)
 
@@ -224,38 +231,11 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
         # Register workflow first
         APIKeyManagementWorkflow.register_workflow(self.registry)
 
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=APIKeyManagementWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
-
-        instance = WorkflowInstance.objects.create(
-            workflow_definition=workflow_def,
-            workflow_name=APIKeyManagementWorkflow.WORKFLOW_NAME,
-            workflow_version=APIKeyManagementWorkflow.WORKFLOW_VERSION,
-            tenant=self.tenant,
-            input_data=input_data,
-            created_by_id=str(self.user.id),
-            status=WorkflowStatus.DRAFT
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=APIKeyManagementWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
         )
-
-        # Create mock step object
-        step = type('Step', (), {"name": "validate_request"})()
-
-        with self.assertRaises(ValueError):
-            APIKeyManagementWorkflow._validate_request_task(input_data, instance, step)
-
-    def test_generate_key_task_success(self):
-        """Test generate_key task generates secure key"""
-        input_data = {
-            "operation": "create"
-        }
-
-        # Register workflow first
-        APIKeyManagementWorkflow.register_workflow(self.registry)
-
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=APIKeyManagementWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
 
         instance = WorkflowInstance.objects.create(
             workflow_definition=workflow_def,
@@ -265,17 +245,48 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
             input_data=input_data,
             created_by_id=str(self.user.id),
             status=WorkflowStatus.DRAFT,
-            state_data={"operation": "create"}
         )
 
         # Create mock step object
-        step = type('Step', (), {"name": "generate_key"})()
+        step = type("Step", (), {"name": "validate_request"})()
+
+        with self.assertRaises(ValueError):
+            APIKeyManagementWorkflow._validate_request_task(input_data, instance, step)
+
+    def test_generate_key_task_success(self):
+        """Test generate_key task generates secure key"""
+        input_data = {"operation": "create"}
+
+        # Register workflow first
+        APIKeyManagementWorkflow.register_workflow(self.registry)
+
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=APIKeyManagementWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
+
+        instance = WorkflowInstance.objects.create(
+            workflow_definition=workflow_def,
+            workflow_name=APIKeyManagementWorkflow.WORKFLOW_NAME,
+            workflow_version=APIKeyManagementWorkflow.WORKFLOW_VERSION,
+            tenant=self.tenant,
+            input_data=input_data,
+            created_by_id=str(self.user.id),
+            status=WorkflowStatus.DRAFT,
+            state_data={"operation": "create"},
+        )
+
+        # Create mock step object
+        step = type("Step", (), {"name": "generate_key"})()
 
         result = APIKeyManagementWorkflow._generate_key_task(input_data, instance, step)
 
         self.assertIn("plaintext_key", result["state"])
         self.assertIn("key_hash", result["state"])
-        self.assertEqual(len(result["state"]["plaintext_key"]), 43)  # URL-safe base64 without padding
+        self.assertEqual(
+            len(result["state"]["plaintext_key"]), 43
+        )  # URL-safe base64 without padding
         self.assertEqual(len(result["state"]["key_hash"]), 64)  # SHA-256 hex digest
 
     def test_store_key_task_success(self):
@@ -286,9 +297,11 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
         # Register workflow first
         APIKeyManagementWorkflow.register_workflow(self.registry)
 
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=APIKeyManagementWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=APIKeyManagementWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         instance = WorkflowInstance.objects.create(
             workflow_definition=workflow_def,
@@ -305,12 +318,12 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
                 "name": "Test API Key",
                 "tier_id": str(self.tier.id),
                 "key_hash": key_hash,
-                "expires_at": None
-            }
+                "expires_at": None,
+            },
         )
 
         # Create mock step object
-        step = type('Step', (), {"name": "store_key"})()
+        step = type("Step", (), {"name": "store_key"})()
 
         result = APIKeyManagementWorkflow._store_key_task({}, instance, step)
 
@@ -331,22 +344,24 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
             user=self.user,
             tier=self.tier,
             name="Test API Key",
-            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key())
+            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key()),
         )
 
         input_data = {
             "operation": "revoke",
             "api_key_id": str(api_key.id),
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
 
         # Register workflow first
         APIKeyManagementWorkflow.register_workflow(self.registry)
 
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=APIKeyManagementWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=APIKeyManagementWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         instance = WorkflowInstance.objects.create(
             workflow_definition=workflow_def,
@@ -355,11 +370,11 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
             tenant=self.tenant,
             input_data=input_data,
             created_by_id=str(self.user.id),
-            status=WorkflowStatus.DRAFT
+            status=WorkflowStatus.DRAFT,
         )
 
         # Create mock step object
-        step = type('Step', (), {"name": "validate_revocation"})()
+        step = type("Step", (), {"name": "validate_revocation"})()
 
         result = APIKeyManagementWorkflow._validate_revocation_task(input_data, instance, step)
 
@@ -374,15 +389,17 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
             user=self.user,
             tier=self.tier,
             name="Test API Key",
-            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key())
+            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key()),
         )
 
         # Register workflow first
         APIKeyManagementWorkflow.register_workflow(self.registry)
 
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=APIKeyManagementWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=APIKeyManagementWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         instance = WorkflowInstance.objects.create(
             workflow_definition=workflow_def,
@@ -392,14 +409,11 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
             input_data={"operation": "revoke"},
             created_by_id=str(self.user.id),
             status=WorkflowStatus.DRAFT,
-            state_data={
-                "operation": "revoke",
-                "api_key_id": str(api_key.id)
-            }
+            state_data={"operation": "revoke", "api_key_id": str(api_key.id)},
         )
 
         # Create mock step object
-        step = type('Step', (), {"name": "revoke_key"})()
+        step = type("Step", (), {"name": "revoke_key"})()
 
         result = APIKeyManagementWorkflow._revoke_key_task({}, instance, step)
 
@@ -422,23 +436,20 @@ class APIKeyManagementWorkflowCompensationTest(TestCase):
         APIKeyManagementWorkflow.register_tasks(self.engine)
 
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
         # Create TENANT_ADMIN role (required for API key creation)
         self.admin_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="TENANT_ADMIN",
-            defaults={"description": "Tenant Administrator"}
+            defaults={"description": "Tenant Administrator"},
         )
 
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Assign TENANT_ADMIN role to user
@@ -450,7 +461,7 @@ class APIKeyManagementWorkflowCompensationTest(TestCase):
                 "rate_limit_per_hour": 1000,
                 "rate_limit_per_day": 10000,
                 "max_requests_per_month": 100000,
-            }
+            },
         )
 
     def test_rollback_key_generation_deletes_key(self):
@@ -461,15 +472,17 @@ class APIKeyManagementWorkflowCompensationTest(TestCase):
             user=self.user,
             tier=self.tier,
             name="Test API Key",
-            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key())
+            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key()),
         )
 
         # Register workflow first
         APIKeyManagementWorkflow.register_workflow(self.registry)
 
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=APIKeyManagementWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=APIKeyManagementWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         instance = WorkflowInstance.objects.create(
             workflow_definition=workflow_def,
@@ -479,11 +492,11 @@ class APIKeyManagementWorkflowCompensationTest(TestCase):
             input_data={},
             created_by_id=str(self.user.id),
             status=WorkflowStatus.DRAFT,
-            state_data={"api_key_id": str(api_key.id)}
+            state_data={"api_key_id": str(api_key.id)},
         )
 
         # Create mock step object
-        step = type('Step', (), {"name": "rollback_key_generation"})()
+        step = type("Step", (), {"name": "rollback_key_generation"})()
 
         result = APIKeyManagementWorkflow._rollback_key_generation_task({}, instance, step)
 
@@ -500,16 +513,18 @@ class APIKeyManagementWorkflowCompensationTest(TestCase):
             user=self.user,
             tier=self.tier,
             name="Test API Key",
-            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key())
+            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key()),
         )
         api_key.revoke()
 
         # Register workflow first
         APIKeyManagementWorkflow.register_workflow(self.registry)
 
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=APIKeyManagementWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=APIKeyManagementWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         instance = WorkflowInstance.objects.create(
             workflow_definition=workflow_def,
@@ -519,11 +534,11 @@ class APIKeyManagementWorkflowCompensationTest(TestCase):
             input_data={},
             created_by_id=str(self.user.id),
             status=WorkflowStatus.DRAFT,
-            state_data={"api_key_id": str(api_key.id)}
+            state_data={"api_key_id": str(api_key.id)},
         )
 
         # Create mock step object
-        step = type('Step', (), {"name": "rollback_key_revocation"})()
+        step = type("Step", (), {"name": "rollback_key_revocation"})()
 
         result = APIKeyManagementWorkflow._rollback_key_revocation_task({}, instance, step)
 
@@ -546,23 +561,20 @@ class APIKeyManagementWorkflowIntegrationTest(TestCase):
         APIKeyManagementWorkflow.register_tasks(self.engine)
 
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
         # Create TENANT_ADMIN role (required for API key creation)
         self.admin_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="TENANT_ADMIN",
-            defaults={"description": "Tenant Administrator"}
+            defaults={"description": "Tenant Administrator"},
         )
 
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Assign TENANT_ADMIN role to user
@@ -574,7 +586,7 @@ class APIKeyManagementWorkflowIntegrationTest(TestCase):
                 "rate_limit_per_hour": 1000,
                 "rate_limit_per_day": 10000,
                 "max_requests_per_month": 100000,
-            }
+            },
         )
 
     def test_create_api_key_workflow_complete(self):
@@ -585,19 +597,19 @@ class APIKeyManagementWorkflowIntegrationTest(TestCase):
             "user_id": str(self.user.id),
             "name": "Test API Key",
             "tier": "FREE",
-            "expires_at": None
+            "expires_at": None,
         }
 
         instance = self.engine.create_instance(
             workflow_name=APIKeyManagementWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         # Initialize state_data
         instance.state_data = input_data.copy()
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         # Start and execute workflow
         instance = self.engine.start_instance(str(instance.id))
@@ -624,26 +636,26 @@ class APIKeyManagementWorkflowIntegrationTest(TestCase):
             user=self.user,
             tier=self.tier,
             name="Test API Key",
-            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key())
+            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key()),
         )
 
         input_data = {
             "operation": "revoke",
             "api_key_id": str(api_key.id),
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
 
         instance = self.engine.create_instance(
             workflow_name=APIKeyManagementWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         # Initialize state_data
         instance.state_data = input_data.copy()
-        instance.save(update_fields=['state_data'])
+        instance.save(update_fields=["state_data"])
 
         # Start and execute workflow
         instance = self.engine.start_instance(str(instance.id))
@@ -664,23 +676,20 @@ class APIKeyManagementWorkflowE2ETest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
         # Create TENANT_ADMIN role (required for API key creation)
         self.admin_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="TENANT_ADMIN",
-            defaults={"description": "Tenant Administrator"}
+            defaults={"description": "Tenant Administrator"},
         )
 
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Assign TENANT_ADMIN role to user
@@ -692,22 +701,19 @@ class APIKeyManagementWorkflowE2ETest(TestCase):
                 "rate_limit_per_hour": 1000,
                 "rate_limit_per_day": 10000,
                 "max_requests_per_month": 100000,
-            }
+            },
         )
 
     def test_service_create_api_key_with_workflow(self):
         """Test UsageTrackingService.create_api_key_with_workflow"""
-        service = UsageTrackingService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        service = UsageTrackingService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         result = service.create_api_key_with_workflow(
             name="Test API Key",
             tier_name="FREE",
             expires_at=None,
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         self.assertIn("api_key_id", result)
@@ -728,18 +734,13 @@ class APIKeyManagementWorkflowE2ETest(TestCase):
             user=self.user,
             tier=self.tier,
             name="Test API Key",
-            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key())
+            key_hash=AuthAPIKey.hash_key(AuthAPIKey.generate_key()),
         )
 
-        service = UsageTrackingService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        service = UsageTrackingService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         result = service.revoke_api_key_with_workflow(
-            api_key_id=str(api_key.id),
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            api_key_id=str(api_key.id), tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         self.assertIn("api_key_id", result)

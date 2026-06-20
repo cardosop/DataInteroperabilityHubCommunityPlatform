@@ -11,19 +11,17 @@ Features:
 - Automatic cleanup of stale acknowledgments
 - Metrics for acknowledgment tracking
 """
-from typing import Dict, Any, Optional
+
 import json
 import time
-import uuid
-import structlog
-from django.conf import settings
+
 import redis
-from datetime import datetime, timedelta
+import structlog
 
 from .metrics import (
     event_acknowledged_total,
-    event_acknowledgment_timeout_total,
     event_acknowledgment_failed_total,
+    event_acknowledgment_timeout_total,
 )
 
 logger = structlog.get_logger(__name__)
@@ -43,7 +41,7 @@ STATUS_ACKNOWLEDGED = "acknowledged"
 STATUS_FAILED = "failed"
 
 
-def get_redis_client() -> Optional[redis.Redis]:
+def get_redis_client() -> redis.Redis | None:
     """
     Get Redis client for acknowledgment operations.
 
@@ -54,6 +52,7 @@ def get_redis_client() -> Optional[redis.Redis]:
     """
     try:
         from hub.apps.core.redis_pools import get_redis_events_client
+
         client = get_redis_events_client()
         client.ping()
         return client
@@ -61,7 +60,7 @@ def get_redis_client() -> Optional[redis.Redis]:
         logger.warning(
             "event_acknowledgment_redis_unavailable",
             error=str(e),
-            message="Event acknowledgment tracking unavailable"
+            message="Event acknowledgment tracking unavailable",
         )
         return None
 
@@ -70,8 +69,8 @@ def mark_event_pending(
     event_id: str,
     subscriber_name: str,
     event_type: str,
-    redis_client: Optional[redis.Redis] = None,
-    timeout: int = DEFAULT_ACK_TIMEOUT
+    redis_client: redis.Redis | None = None,
+    timeout: int = DEFAULT_ACK_TIMEOUT,
 ) -> bool:
     """
     Mark event as pending acknowledgment.
@@ -103,22 +102,18 @@ def mark_event_pending(
             "event_type": event_type,
             "status": STATUS_PENDING,
             "created_at": time.time(),
-            "timeout": timeout
+            "timeout": timeout,
         }
 
         # Set with timeout
-        redis_client.setex(
-            pending_key,
-            timeout,
-            json.dumps(pending_data)
-        )
+        redis_client.setex(pending_key, timeout, json.dumps(pending_data))
 
         logger.debug(
             "event_marked_pending",
             event_id=event_id,
             subscriber_name=subscriber_name,
             event_type=event_type,
-            timeout=timeout
+            timeout=timeout,
         )
         return True
     except Exception as e:
@@ -127,15 +122,13 @@ def mark_event_pending(
             event_id=event_id,
             subscriber_name=subscriber_name,
             error=str(e),
-            exc_info=True
+            exc_info=True,
         )
         return False
 
 
 def mark_event_processing(
-    event_id: str,
-    subscriber_name: str,
-    redis_client: Optional[redis.Redis] = None
+    event_id: str, subscriber_name: str, redis_client: redis.Redis | None = None
 ) -> bool:
     """
     Mark event as being processed.
@@ -171,20 +164,12 @@ def mark_event_processing(
 
         # Set processing key with same timeout
         timeout = pending_data.get("timeout", DEFAULT_ACK_TIMEOUT)
-        redis_client.setex(
-            processing_key,
-            timeout,
-            json.dumps(pending_data)
-        )
+        redis_client.setex(processing_key, timeout, json.dumps(pending_data))
 
         # Remove pending key
         redis_client.delete(pending_key)
 
-        logger.debug(
-            "event_marked_processing",
-            event_id=event_id,
-            subscriber_name=subscriber_name
-        )
+        logger.debug("event_marked_processing", event_id=event_id, subscriber_name=subscriber_name)
         return True
     except Exception as e:
         logger.error(
@@ -192,7 +177,7 @@ def mark_event_processing(
             event_id=event_id,
             subscriber_name=subscriber_name,
             error=str(e),
-            exc_info=True
+            exc_info=True,
         )
         return False
 
@@ -201,8 +186,8 @@ def acknowledge_event(
     event_id: str,
     subscriber_name: str,
     event_type: str,
-    redis_client: Optional[redis.Redis] = None,
-    success: bool = True
+    redis_client: redis.Redis | None = None,
+    success: bool = True,
 ) -> bool:
     """
     Acknowledge event processing completion.
@@ -244,7 +229,7 @@ def acknowledge_event(
                 logger.debug(
                     "event_already_acknowledged_or_timeout",
                     event_id=event_id,
-                    subscriber_name=subscriber_name
+                    subscriber_name=subscriber_name,
                 )
                 return False
 
@@ -257,28 +242,28 @@ def acknowledge_event(
             "status": STATUS_ACKNOWLEDGED if success else STATUS_FAILED,
             "acknowledged_at": time.time(),
             "processing_duration": (
-                time.time() - processing_data.get("processing_started_at", processing_data.get("created_at", time.time()))
-            )
+                time.time()
+                - processing_data.get(
+                    "processing_started_at", processing_data.get("created_at", time.time())
+                )
+            ),
         }
 
         # Store acknowledgment with longer TTL (24 hours for audit)
         redis_client.setex(
             ack_key,
             24 * 60 * 60,  # 24 hours
-            json.dumps(ack_data)
+            json.dumps(ack_data),
         )
 
         # Record metrics
         if success:
             event_acknowledged_total.labels(
-                event_type=event_type,
-                subscriber_name=subscriber_name,
-                status="success"
+                event_type=event_type, subscriber_name=subscriber_name, status="success"
             ).inc()
         else:
             event_acknowledgment_failed_total.labels(
-                event_type=event_type,
-                subscriber_name=subscriber_name
+                event_type=event_type, subscriber_name=subscriber_name
             ).inc()
 
         logger.info(
@@ -286,7 +271,7 @@ def acknowledge_event(
             event_id=event_id,
             subscriber_name=subscriber_name,
             event_type=event_type,
-            success=success
+            success=success,
         )
         return True
     except Exception as e:
@@ -295,15 +280,13 @@ def acknowledge_event(
             event_id=event_id,
             subscriber_name=subscriber_name,
             error=str(e),
-            exc_info=True
+            exc_info=True,
         )
         return False
 
 
 def check_event_acknowledged(
-    event_id: str,
-    subscriber_name: str,
-    redis_client: Optional[redis.Redis] = None
+    event_id: str, subscriber_name: str, redis_client: redis.Redis | None = None
 ) -> bool:
     """
     Check if event has been acknowledged.
@@ -330,10 +313,7 @@ def check_event_acknowledged(
         return False
 
 
-def get_pending_events(
-    subscriber_name: str,
-    redis_client: Optional[redis.Redis] = None
-) -> list:
+def get_pending_events(subscriber_name: str, redis_client: redis.Redis | None = None) -> list:
     """
     Get list of pending events for subscriber.
 
@@ -363,18 +343,12 @@ def get_pending_events(
         return event_ids
     except Exception as e:
         logger.error(
-            "get_pending_events_error",
-            subscriber_name=subscriber_name,
-            error=str(e),
-            exc_info=True
+            "get_pending_events_error", subscriber_name=subscriber_name, error=str(e), exc_info=True
         )
         return []
 
 
-def cleanup_timeout_events(
-    subscriber_name: str,
-    redis_client: Optional[redis.Redis] = None
-) -> int:
+def cleanup_timeout_events(subscriber_name: str, redis_client: redis.Redis | None = None) -> int:
     """
     Clean up timed-out events (events that exceeded acknowledgment timeout).
 
@@ -419,7 +393,7 @@ def cleanup_timeout_events(
                         # Record timeout metric
                         event_acknowledgment_timeout_total.labels(
                             event_type=data.get("event_type", "unknown"),
-                            subscriber_name=subscriber_name
+                            subscriber_name=subscriber_name,
                         ).inc()
 
                         logger.warning(
@@ -427,7 +401,7 @@ def cleanup_timeout_events(
                             event_id=data.get("event_id"),
                             subscriber_name=subscriber_name,
                             event_type=data.get("event_type"),
-                            timeout=timeout
+                            timeout=timeout,
                         )
             except Exception:
                 pass
@@ -438,7 +412,9 @@ def cleanup_timeout_events(
                 data_str = redis_client.get(key)
                 if data_str:
                     data = json.loads(data_str)
-                    processing_started_at = data.get("processing_started_at", data.get("created_at", 0))
+                    processing_started_at = data.get(
+                        "processing_started_at", data.get("created_at", 0)
+                    )
                     timeout = data.get("timeout", DEFAULT_ACK_TIMEOUT)
 
                     if current_time - processing_started_at > timeout:
@@ -449,7 +425,7 @@ def cleanup_timeout_events(
                         # Record timeout metric
                         event_acknowledgment_timeout_total.labels(
                             event_type=data.get("event_type", "unknown"),
-                            subscriber_name=subscriber_name
+                            subscriber_name=subscriber_name,
                         ).inc()
 
                         logger.warning(
@@ -457,7 +433,7 @@ def cleanup_timeout_events(
                             event_id=data.get("event_id"),
                             subscriber_name=subscriber_name,
                             event_type=data.get("event_type"),
-                            timeout=timeout
+                            timeout=timeout,
                         )
             except Exception:
                 pass
@@ -468,7 +444,6 @@ def cleanup_timeout_events(
             "cleanup_timeout_events_error",
             subscriber_name=subscriber_name,
             error=str(e),
-            exc_info=True
+            exc_info=True,
         )
         return 0
-

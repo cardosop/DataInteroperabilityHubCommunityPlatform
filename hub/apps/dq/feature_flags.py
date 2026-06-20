@@ -31,16 +31,14 @@ Both helpers return the canonical 403 shape per the spec wording for
 standard ``api_error_response`` shape — the spec explicitly mandates
 ``error_code`` so client-side flag-aware UI can branch reliably).
 """
-from __future__ import annotations
 
-from typing import Optional, Tuple
+from __future__ import annotations
 
 from rest_framework import status
 from rest_framework.response import Response
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.tenants.request_tenant import get_request_tenant
-
 
 # Sentinel error_code values exposed on the 403 wire.  Test suite
 # imports these so a future rename surfaces in CI.
@@ -64,7 +62,7 @@ def _flag_disabled_response(error_code: str, message: str) -> Response:
     )
 
 
-def check_data_quality_enabled(request) -> Tuple[Optional[Tenant], Optional[Response]]:
+def check_data_quality_enabled(request) -> tuple[Tenant | None, Response | None]:
     """Return ``(tenant, None)`` when the BASE DQ flag is on.
 
     Returns ``(None, response_403)`` when:
@@ -89,7 +87,7 @@ def check_data_quality_enabled(request) -> Tuple[Optional[Tenant], Optional[Resp
 
 def check_data_quality_advanced_enabled(
     request,
-) -> Tuple[Optional[Tenant], Optional[Response]]:
+) -> tuple[Tenant | None, Response | None]:
     """Return ``(tenant, None)`` when BOTH the base AND advanced flags
     are on.  Conjunctive — the base flag wins when off.
 

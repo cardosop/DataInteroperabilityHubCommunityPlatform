@@ -21,14 +21,13 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "assert_mutation_coverage.cjs"
 
 
 def _has_node() -> bool:
     try:
-        res = subprocess.run(["node", "--version"], capture_output=True, timeout=10)
+        res = subprocess.run(["node", "--version"], check=False, capture_output=True, timeout=10)
         return res.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
@@ -58,7 +57,7 @@ def _run(
         cmd.append(f"--allowlist={allowlist}")
     else:
         cmd.append(f"--allowlist={tmpdir}/nonexistent_allowlist.txt")
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    return subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=120)
 
 
 def _write_spec(tmpdir: Path, name: str, source: str) -> Path:
@@ -133,8 +132,7 @@ test('no coverage', async ({ page }) => {
     data = json.loads(res.stdout)
     assert data["total"] >= 1
     assert any(
-        "verifyViaApi" in "+".join(f["missing"])
-        and "verifyAuditEvent" in "+".join(f["missing"])
+        "verifyViaApi" in "+".join(f["missing"]) and "verifyAuditEvent" in "+".join(f["missing"])
         for f in data["findings"]
     )
 
@@ -329,6 +327,7 @@ test('b', async ({ page }) => {
             "--update",
             "--expiry-days=30",
         ],
+        check=False,
         capture_output=True,
         text=True,
         timeout=120,
@@ -349,9 +348,7 @@ test('b', async ({ page }) => {
     assert entry_lines, "allow-list seeded with zero entries"
     entry_pattern = re.compile(r"^[^:]+:\d{4}-\d{2}-\d{2}:.+$")
     for line in entry_lines:
-        assert entry_pattern.match(line), (
-            f"malformed allow-list entry: {line!r}"
-        )
+        assert entry_pattern.match(line), f"malformed allow-list entry: {line!r}"
 
 
 def test_update_mode_then_blocking_mode_passes(tmp_path: Path) -> None:
@@ -376,6 +373,7 @@ test('a', async ({ page }) => {
             "--update",
             "--expiry-days=30",
         ],
+        check=False,
         capture_output=True,
         text=True,
         timeout=120,
@@ -390,6 +388,7 @@ test('a', async ({ page }) => {
             f"--root={tmp_path}",
             f"--allowlist={allowlist}",
         ],
+        check=False,
         capture_output=True,
         text=True,
         timeout=120,
@@ -400,6 +399,7 @@ test('a', async ({ page }) => {
 def test_update_expiry_days_must_be_positive(tmp_path: Path) -> None:
     res = subprocess.run(
         ["node", str(SCRIPT), "--update", "--expiry-days=-1", f"--root={tmp_path}"],
+        check=False,
         capture_output=True,
         text=True,
         timeout=30,
@@ -426,6 +426,7 @@ test('a', async ({ page }) => {
             f"--root={tmp_path}",
             f"--allowlist={tmp_path}/nonexistent.txt",
         ],
+        check=False,
         capture_output=True,
         text=True,
         timeout=120,

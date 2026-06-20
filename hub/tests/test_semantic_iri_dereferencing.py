@@ -11,14 +11,13 @@ Verifies:
   - GET /semantic/sparql/description (public) → SD (generated locally).
   - Authentication is required for dereference_resource.
 """
+
 import uuid
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
 from django.urls import reverse
-from rest_framework.response import Response as DrfResponse
 from rest_framework.test import APIClient
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -31,7 +30,9 @@ _SAMPLE_UUID = str(uuid.uuid4())
 def _make_user(email="phase22@test.example.com"):
     """Create a User with a personal Tenant (no username field)."""
     from django.contrib.auth import get_user_model
+
     from hub.apps.tenants.models import Tenant
+
     User = get_user_model()
     user = User.objects.create_user(
         email=email,
@@ -61,6 +62,7 @@ def _api_client(user=None):
 # ---------------------------------------------------------------------------
 # 22.3 — dereference_resource view
 # ---------------------------------------------------------------------------
+
 
 @override_settings(SEMANTIC_BASE_IRI=_SEMANTIC_BASE_IRI)
 class TestDereferenceResourceRdfRedirect(TestCase):
@@ -170,9 +172,8 @@ class TestDereferenceResourceJsonFallback(TestCase):
             "hub.apps.semantic.services.SemanticURIResolutionService.resolve"
         ) as mock_resolve:
             from hub.apps.semantic.services import UriResolutionOutcome
-            mock_resolve.return_value = UriResolutionOutcome(
-                status_code=200, data=mock_result
-            )
+
+            mock_resolve.return_value = UriResolutionOutcome(status_code=200, data=mock_result)
             resp = _api_client(user).get(url, HTTP_ACCEPT="application/json")
         # Must NOT be a redirect.
         self.assertNotEqual(resp.status_code, 303)
@@ -181,6 +182,7 @@ class TestDereferenceResourceJsonFallback(TestCase):
 # ---------------------------------------------------------------------------
 # 22.5 / 22.9 — SPARQL 1.1 Service Description proxy
 # ---------------------------------------------------------------------------
+
 
 class TestSparqlServiceDescriptionDedicatedEndpoint(TestCase):
     """
@@ -227,9 +229,7 @@ class TestSparqlQueryBareGetReturnsSD(TestCase):
         mock_result = {"results": {"bindings": []}}
         with patch(
             "hub.apps.semantic.views.SemanticServiceClient",
-            return_value=MagicMock(
-                query_sparql=MagicMock(return_value=mock_result)
-            ),
+            return_value=MagicMock(query_sparql=MagicMock(return_value=mock_result)),
         ):
             resp = _api_client(user).get(
                 url,

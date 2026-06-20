@@ -22,6 +22,7 @@ WorkflowInstance is created directly via ``WorkflowInstance.objects.create``
 (no full workflow execution) so the test exercises only the read
 endpoint's mapping logic.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -31,7 +32,6 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from hub.apps.assets.models import AssetStatus
 from hub.apps.orchestration.models import (
     WorkflowDefinition,
     WorkflowInstance,
@@ -44,7 +44,6 @@ from hub.apps.testing.role_support import (
     ensure_user_has_tenant_admin_role,
 )
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -118,16 +117,15 @@ class AssetWorkflowStatusRunningTest(TestCase):
     def test_running_returns_progress_step_started_at(self):
         tenant, user = _seed_tenant()
         wi = _seed_workflow_instance(
-            tenant, user,
+            tenant,
+            user,
             status=WorkflowStatus.RUNNING,
             progress=42,
             step_name="run_compliance_checks",
         )
         client = APIClient()
         client.force_authenticate(user=user)
-        resp = client.get(
-            f"/api/v1/assets/workflows/{wi.id}/status/"
-        )
+        resp = client.get(f"/api/v1/assets/workflows/{wi.id}/status/")
         assert resp.status_code == 200, resp.content
         body = resp.json()
         assert body["workflow_instance_id"] == str(wi.id)
@@ -145,7 +143,8 @@ class AssetWorkflowStatusCompletedTest(TestCase):
         tenant, user = _seed_tenant()
         asset_uuid = str(uuid.uuid4())
         wi = _seed_workflow_instance(
-            tenant, user,
+            tenant,
+            user,
             status=WorkflowStatus.COMPLETED,
             progress=100,
             step_name="activate_asset",
@@ -153,9 +152,7 @@ class AssetWorkflowStatusCompletedTest(TestCase):
         )
         client = APIClient()
         client.force_authenticate(user=user)
-        resp = client.get(
-            f"/api/v1/assets/workflows/{wi.id}/status/"
-        )
+        resp = client.get(f"/api/v1/assets/workflows/{wi.id}/status/")
         body = resp.json()
         assert body["status"] == "COMPLETED"
         assert body["asset_id"] == asset_uuid
@@ -168,7 +165,8 @@ class AssetWorkflowStatusFailedTest(TestCase):
     def test_failed_returns_error_message(self):
         tenant, user = _seed_tenant()
         wi = _seed_workflow_instance(
-            tenant, user,
+            tenant,
+            user,
             status=WorkflowStatus.FAILED,
             progress=30,
             step_name="run_dq_checks",
@@ -176,9 +174,7 @@ class AssetWorkflowStatusFailedTest(TestCase):
         )
         client = APIClient()
         client.force_authenticate(user=user)
-        resp = client.get(
-            f"/api/v1/assets/workflows/{wi.id}/status/"
-        )
+        resp = client.get(f"/api/v1/assets/workflows/{wi.id}/status/")
         body = resp.json()
         assert body["status"] == "FAILED"
         assert "DQ check failed" in body["message"]
@@ -190,14 +186,13 @@ class AssetWorkflowStatusPendingTest(TestCase):
     def test_draft_maps_to_pending(self):
         tenant, user = _seed_tenant()
         wi = _seed_workflow_instance(
-            tenant, user,
+            tenant,
+            user,
             status=WorkflowStatus.DRAFT,
         )
         client = APIClient()
         client.force_authenticate(user=user)
-        resp = client.get(
-            f"/api/v1/assets/workflows/{wi.id}/status/"
-        )
+        resp = client.get(f"/api/v1/assets/workflows/{wi.id}/status/")
         body = resp.json()
         assert body["status"] == "PENDING"
 
@@ -213,9 +208,7 @@ class AssetWorkflowStatusTenantScopingTest(TestCase):
 
         client = APIClient()
         client.force_authenticate(user=user_b)
-        resp = client.get(
-            f"/api/v1/assets/workflows/{wi_a.id}/status/"
-        )
+        resp = client.get(f"/api/v1/assets/workflows/{wi_a.id}/status/")
         assert resp.status_code == 404, resp.content
 
     def test_malformed_uuid_returns_404(self):

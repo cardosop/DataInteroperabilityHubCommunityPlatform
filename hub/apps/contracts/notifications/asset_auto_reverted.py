@@ -31,6 +31,7 @@ Design notes
   Tests patch ``send_email_async`` and ``create_user_notification``
   at this module's path.
 """
+
 from __future__ import annotations
 
 import logging
@@ -134,15 +135,12 @@ def send_asset_auto_reverted_notification(
     schema_editor_url = _schema_editor_url(contract_id)
     asset_url_value = _asset_url(asset_id)
 
-    subject = (
-        f"[{tenant_name}] Asset \"{asset_name}\" auto-reverted to DRAFT — "
-        f"action required"
-    )
+    subject = f'[{tenant_name}] Asset "{asset_name}" auto-reverted to DRAFT — action required'
     template_name = "notifications/emails/asset_auto_reverted.html"
     email_type_value = EmailType.ASSET_AUTO_REVERTED_NOTIFICATION.value
 
     in_app_message = (
-        f"Asset \"{asset_name}\" was auto-reverted from "
+        f'Asset "{asset_name}" was auto-reverted from '
         f"{previous_status} to DRAFT because its active contract is "
         "structureless. Open the Schema editor on the contract to "
         "remediate, then restore the asset."
@@ -177,7 +175,7 @@ def send_asset_auto_reverted_notification(
                         "asset_id": asset_id,
                     },
                 )
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:
             logger.exception(
                 "asset_auto_reverted_in_app_failed",
                 extra={
@@ -201,9 +199,7 @@ def send_asset_auto_reverted_notification(
             "schema_editor_url": schema_editor_url,
             "run_id": run_id,
             "admin_first_name": (
-                getattr(admin, "first_name", None)
-                or getattr(admin, "name", None)
-                or ""
+                getattr(admin, "first_name", None) or getattr(admin, "name", None) or ""
             ),
         }
 

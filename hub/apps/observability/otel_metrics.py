@@ -31,11 +31,9 @@ Migration from prometheus-client:
     All metric names and labels are preserved exactly.
 """
 
-import os
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
-from django.conf import settings
 from django.http import HttpResponse
 
 # OpenTelemetry imports
@@ -55,13 +53,13 @@ except ImportError:
 
 
 # Global meter instance and metric reader
-_meter: Optional[object] = None
+_meter: object | None = None
 # Use string annotation to avoid NameError if PrometheusMetricReader not available
 _metric_reader: Optional["PrometheusMetricReader"] = None if not OPENTELEMETRY_AVAILABLE else None
 _initialized = False
 
 
-def setup_opentelemetry_metrics() -> Optional[object]:
+def setup_opentelemetry_metrics() -> object | None:
     """
     Set up OpenTelemetry metrics with Prometheus exporter.
 
@@ -141,7 +139,7 @@ def setup_opentelemetry_metrics() -> Optional[object]:
         return None
 
 
-def get_meter() -> Optional[object]:
+def get_meter() -> object | None:
     """
     Get OpenTelemetry meter instance.
 
@@ -199,12 +197,12 @@ class _ValueProxy:
         self._count = value
 
 
-def _labeled_metric_cache_key(kwargs: Dict[str, str]) -> frozenset:
+def _labeled_metric_cache_key(kwargs: dict[str, str]) -> frozenset:
     """Stable cache key for labeled metric instances (same labels -> same _LabeledMetric)."""
     return frozenset((k, str(v)) for k, v in sorted(kwargs.items()))
 
 
-def _get_or_create_labeled(wrapper: Any, kwargs: Dict[str, Any]) -> Any:
+def _get_or_create_labeled(wrapper: Any, kwargs: dict[str, Any]) -> Any:
     """
     Return a single _LabeledMetric per wrapper+labels so .inc() accumulates on ._value
     and get_contract_cache_metrics() reads non-zero hit counts.
@@ -215,12 +213,12 @@ def _get_or_create_labeled(wrapper: Any, kwargs: Dict[str, Any]) -> Any:
     cache = getattr(wrapper, "_labeled_metrics_cache", None)
     if cache is None:
         cache = {}
-        setattr(wrapper, "_labeled_metrics_cache", cache)
+        wrapper._labeled_metrics_cache = cache
 
     lock = getattr(wrapper, "_labeled_metrics_lock", None)
     if lock is None:
         lock = threading.Lock()
-        setattr(wrapper, "_labeled_metrics_lock", lock)
+        wrapper._labeled_metrics_lock = lock
 
     key = _labeled_metric_cache_key(kwargs)
     with lock:
@@ -232,7 +230,7 @@ def _get_or_create_labeled(wrapper: Any, kwargs: Dict[str, Any]) -> Any:
 class _LabeledMetric:
     """Wrapper for labeled metric operations (compatibility with prometheus-client API)"""
 
-    def __init__(self, metric, attributes: Dict[str, str]):
+    def __init__(self, metric, attributes: dict[str, str]):
         self.metric = metric
         self.attributes = attributes or {}
         self._value = _ValueProxy()  # Compatibility property
@@ -304,13 +302,13 @@ class _CounterWrapper:
                 )
         return self._counter
 
-    def add(self, amount: float, attributes: Dict[str, str] = None):
+    def add(self, amount: float, attributes: dict[str, str] = None):
         """Add to counter"""
         counter = self._get_counter()
         if counter is not None:
             counter.add(amount, attributes=attributes or {})
 
-    def inc(self, attributes: Dict[str, str] = None):
+    def inc(self, attributes: dict[str, str] = None):
         """Increment counter by 1"""
         self.add(1, attributes=attributes)
 
@@ -358,13 +356,13 @@ class _HistogramWrapper:
                 )
         return self._histogram
 
-    def record(self, amount: float, attributes: Dict[str, str] = None):
+    def record(self, amount: float, attributes: dict[str, str] = None):
         """Record a value"""
         histogram = self._get_histogram()
         if histogram is not None:
             histogram.record(amount, attributes=attributes or {})
 
-    def observe(self, amount: float, attributes: Dict[str, str] = None):
+    def observe(self, amount: float, attributes: dict[str, str] = None):
         """Alias for record (for compatibility with prometheus-client API)"""
         self.record(amount, attributes=attributes)
 
@@ -381,7 +379,7 @@ class _UpDownCounterWrapper:
         self.description = description
         self.unit = unit
         self._counter = None
-        self._current_values: Dict[str, float] = {}  # Track current values by attribute key
+        self._current_values: dict[str, float] = {}  # Track current values by attribute key
         self._expected_labels = expected_labels or ()
 
     @property
@@ -407,13 +405,13 @@ class _UpDownCounterWrapper:
                 )
         return self._counter
 
-    def _get_key(self, attributes: Dict[str, str] = None) -> str:
+    def _get_key(self, attributes: dict[str, str] = None) -> str:
         """Get a key for the attributes dict"""
         if attributes is None:
             return ""
         return ",".join(f"{k}={v}" for k, v in sorted(attributes.items()))
 
-    def add(self, amount: float, attributes: Dict[str, str] = None):
+    def add(self, amount: float, attributes: dict[str, str] = None):
         """Add to counter"""
         counter = self._get_counter()
         if counter is not None:
@@ -422,7 +420,7 @@ class _UpDownCounterWrapper:
             key = self._get_key(attributes)
             self._current_values[key] = self._current_values.get(key, 0) + amount
 
-    def set(self, value: float, attributes: Dict[str, str] = None):
+    def set(self, value: float, attributes: dict[str, str] = None):
         """Set counter to a specific value (resets to 0 first, then adds value)"""
         key = self._get_key(attributes)
         current = self._current_values.get(key, 0)
@@ -438,11 +436,11 @@ class _UpDownCounterWrapper:
                 self._value_proxy = _ValueProxy()
             self._value_proxy.set(value)
 
-    def inc(self, amount: float = 1, attributes: Dict[str, str] = None):
+    def inc(self, amount: float = 1, attributes: dict[str, str] = None):
         """Increment counter"""
         self.add(amount, attributes=attributes)
 
-    def dec(self, amount: float = 1, attributes: Dict[str, str] = None):
+    def dec(self, amount: float = 1, attributes: dict[str, str] = None):
         """Decrement counter"""
         self.add(-amount, attributes=attributes)
 
@@ -1206,8 +1204,7 @@ breach_hours_since_discovery = _UpDownCounterWrapper(
 # Phase 277.B.099 — webhook DLQ depth gauge
 webhook_dlq_size = _UpDownCounterWrapper(
     "webhook_dlq_size",
-    "Number of webhook deliveries in DEAD_LETTER status.  Reported by "
-    "emit_webhook_dlq_metrics().",
+    "Number of webhook deliveries in DEAD_LETTER status.  Reported by emit_webhook_dlq_metrics().",
     unit="1",
     expected_labels=("tenant_id",),
 )
@@ -1761,7 +1758,6 @@ billing_reports_voided_total = _CounterWrapper(
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 
-
 # ── Transformation Pipeline Metrics (Phase 115E.1) ──────────────────────
 
 transformation_runs_total = _CounterWrapper(
@@ -1798,8 +1794,13 @@ transformation_memory_bytes = _HistogramWrapper(
     "Memory usage of transformation pipeline executions",
     unit="By",
     buckets=(
-        1048576, 10485760, 52428800, 104857600,
-        268435456, 536870912, 1073741824,
+        1048576,
+        10485760,
+        52428800,
+        104857600,
+        268435456,
+        536870912,
+        1073741824,
     ),
     expected_labels=("pipeline_id", "tenant_id"),
 )
@@ -1850,5 +1851,5 @@ def metrics_view(request):
             extra={"error_type": type(e).__name__},
         )
         return HttpResponse(
-            f"Error generating metrics: {str(e)}", status=500, content_type="text/plain"
+            f"Error generating metrics: {e!s}", status=500, content_type="text/plain"
         )

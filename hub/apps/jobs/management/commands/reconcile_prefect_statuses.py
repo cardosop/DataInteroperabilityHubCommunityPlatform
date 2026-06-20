@@ -34,6 +34,4 @@ class Command(BaseCommand):
         )
 
         reconciled = reconcile_prefect_run_statuses()
-        self.stdout.write(
-            self.style.SUCCESS(f"Reconciled {reconciled} stale run(s).")
-        )
+        self.stdout.write(self.style.SUCCESS(f"Reconciled {reconciled} stale run(s)."))

@@ -12,10 +12,10 @@ pagination via real API calls against the staging environment.
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_get
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _provision_analyst():
     return provision_persona("data_analyst")
@@ -45,9 +45,7 @@ def test_search_assets_by_query():
     if resp.status_code == 404:
         pytest.skip("Search endpoint not found (404)")
 
-    assert resp.status_code == 200, (
-        f"Search returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"Search returned {resp.status_code}: {resp.text[:500]}"
 
     body = resp.json()
     results = _extract_results(body)
@@ -74,9 +72,7 @@ def test_search_empty_returns_results():
     if resp.status_code == 400:
         pytest.skip("Empty search query not supported (400)")
 
-    assert resp.status_code == 200, (
-        f"Empty search returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"Empty search returned {resp.status_code}: {resp.text[:500]}"
 
     body = resp.json()
     results = _extract_results(body)
@@ -118,9 +114,7 @@ def test_search_pagination():
     assert isinstance(results, list), (
         f"Expected paginated results to be a list, got {type(results).__name__}"
     )
-    assert len(results) <= 5, (
-        f"Requested limit=5 but got {len(results)} results"
-    )
+    assert len(results) <= 5, f"Requested limit=5 but got {len(results)} results"
 
     # Check for pagination metadata if response is a dict
     if isinstance(body, dict):

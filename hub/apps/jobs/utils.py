@@ -6,7 +6,7 @@ Utilities for creating and managing jobs.
 
 import time
 import uuid
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import structlog
 from django.conf import settings
@@ -341,7 +341,7 @@ def retry_job(job_obj: Job, job_type: str, exception: Exception) -> bool:
     return True
 
 
-def check_tenant_job_limits(tenant_id: str) -> Tuple[bool, Optional[str]]:
+def check_tenant_job_limits(tenant_id: str) -> tuple[bool, str | None]:
     """
     Check if tenant has capacity for a new job (concurrency and queue depth).
 
@@ -493,7 +493,7 @@ def decrement_tenant_job_counter(tenant_id: str, counter_type: str = "running") 
         )
 
 
-def get_job_priority(job_type: str, priority: Optional[str] = None) -> str:
+def get_job_priority(job_type: str, priority: str | None = None) -> str:
     """
     Get priority for a job type.
 
@@ -550,10 +550,10 @@ def create_job(
     job_type: str = None,
     resource_type: str = None,
     resource_id: str = None,
-    details_json: Optional[Dict[str, Any]] = None,
-    timeout_seconds: Optional[int] = None,
+    details_json: dict[str, Any] | None = None,
+    timeout_seconds: int | None = None,
     queue_name: str = "default",
-    priority: Optional[str] = None,
+    priority: str | None = None,
     executed_by_prefect: bool = False,
     created_by=None,  # Alias for ``user`` — Phase 278 callers use this name.
 ) -> Job:
@@ -771,7 +771,7 @@ def get_queue_for_job_type(job_type: str) -> str:
     return "job_default"
 
 
-def get_job_enqueue_timestamp(job_id: str) -> Optional[float]:
+def get_job_enqueue_timestamp(job_id: str) -> float | None:
     """
     Get job enqueue timestamp from Redis.
 
@@ -785,7 +785,7 @@ def get_job_enqueue_timestamp(job_id: str) -> Optional[float]:
     return cache.get(key)
 
 
-def get_job_wait_time(job_id: str) -> Optional[float]:
+def get_job_wait_time(job_id: str) -> float | None:
     """
     Calculate job wait time in seconds.
 
@@ -924,7 +924,7 @@ def increment_reserved_slots_usage() -> int:
         New reserved slots usage count
     """
     key = "worker:reserved_slots_usage"
-    current = cache.get_or_set(key, 0, timeout=86400)
+    cache.get_or_set(key, 0, timeout=86400)
     new_count = cache.incr(key)
     # Set expiration if cache backend supports it (Redis does, LocMemCache doesn't)
     try:
@@ -971,7 +971,7 @@ def increment_shared_slots_usage() -> int:
         New shared slots usage count
     """
     key = "worker:shared_slots_usage"
-    current = cache.get_or_set(key, 0, timeout=86400)
+    cache.get_or_set(key, 0, timeout=86400)
     new_count = cache.incr(key)
     # Set expiration if cache backend supports it (Redis does, LocMemCache doesn't)
     try:
@@ -1019,7 +1019,7 @@ def can_use_shared_slot() -> bool:
     return shared_usage < WORKER_SHARED_SLOTS
 
 
-def can_process_job(queue_name: str, job_id: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+def can_process_job(queue_name: str, job_id: str | None = None) -> tuple[bool, str | None]:
     """
     Check if a job can be processed based on reserved slots and starvation prevention.
 
@@ -1040,15 +1040,14 @@ def can_process_job(queue_name: str, job_id: Optional[str] = None) -> Tuple[bool
             return False, "no_slots_available"
 
     # Check starvation prevention for NORMAL priority jobs
-    if queue_name == "job_default" and job_id:
-        if should_elevate_job(job_id, queue_name):
-            # Elevated job can use reserved slots or shared slots
-            if can_use_reserved_slot():
-                return True, "elevated_reserved_slot"
-            elif can_use_shared_slot():
-                return True, "elevated_shared_slot"
-            else:
-                return False, "no_slots_available"
+    if queue_name == "job_default" and job_id and should_elevate_job(job_id, queue_name):
+        # Elevated job can use reserved slots or shared slots
+        if can_use_reserved_slot():
+            return True, "elevated_reserved_slot"
+        elif can_use_shared_slot():
+            return True, "elevated_shared_slot"
+        else:
+            return False, "no_slots_available"
 
     # NORMAL and LOW priority jobs can only use shared slots
     if queue_name in ["job_default", "job_low"]:

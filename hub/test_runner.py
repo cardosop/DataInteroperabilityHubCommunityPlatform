@@ -7,6 +7,7 @@ the test DB is already fully migrated (e.g. from a previous run or from
 another test suite like phase 6.6).
 """
 
+import contextlib
 import os
 import time
 
@@ -29,7 +30,7 @@ def _ensure_connection_with_retry(connection, max_attempts=3, delay=5):
         except Exception as e:
             last_error = e
             if attempt < max_attempts:
-                time.sleep(delay)  # INTENTIONAL: test-specific timing requirement
+                time.sleep(delay)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
             else:
                 raise last_error
 
@@ -71,6 +72,7 @@ def _guard_against_production_db():
     Set SKIP_PROD_DB_GUARD=1 to bypass (not recommended).
     """
     import os
+
     if os.environ.get("SKIP_PROD_DB_GUARD", "").strip().lower() in ("1", "true"):
         return
 
@@ -133,10 +135,8 @@ class NoMigrateTestRunner(DiscoverRunner):
                     conn.savepoint_ids = []
                     conn.atomic_blocks = []
                     conn.connection = None
-                    try:
+                    with contextlib.suppress(Exception):
                         conn.ensure_connection()
-                    except Exception:
-                        pass
                 elif conn.needs_rollback:
                     # Mode 2: transaction aborted — full connection reset.
                     # A simple conn.rollback() breaks Django TestCase's outer
@@ -168,14 +168,10 @@ class NoMigrateTestRunner(DiscoverRunner):
                                 conn.connection.rollback()
                         except Exception:
                             pass
-                        try:
+                        with contextlib.suppress(Exception):
                             conn.close()
-                        except Exception:
-                            pass
-                        try:
+                        with contextlib.suppress(Exception):
                             conn.ensure_connection()
-                        except Exception:
-                            pass
             except Exception:
                 pass
 
@@ -235,12 +231,15 @@ class NoMigrateTestRunner(DiscoverRunner):
                 DjangoTestCase._post_teardown = _post_teardown_with_recovery
 
             # ── _remove_databases_failures resilience ─────────────
-            if not getattr(DjangoTestCase._remove_databases_failures, "_hub_remove_db_failures_patched", False):
+            if not getattr(
+                DjangoTestCase._remove_databases_failures, "_hub_remove_db_failures_patched", False
+            ):
                 _original_remove = DjangoTestCase._remove_databases_failures
 
                 @classmethod
                 def _remove_databases_failures_resilient(cls):
                     from django.db import connections
+
                     for alias in connections:
                         if alias in cls.databases:
                             continue

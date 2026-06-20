@@ -1,11 +1,12 @@
 """
 Phase 83.10 — warm_cache management command tests.
 """
+
 from io import StringIO
 from unittest.mock import patch
 
 import pytest
-from django.core.management import call_command, CommandError
+from django.core.management import CommandError, call_command
 from django.test import TestCase
 
 # Patch where the command imports, not where the functions are defined
@@ -14,17 +15,20 @@ _CMD = "hub.apps.core.management.commands.warm_cache"
 
 @pytest.mark.django_db(transaction=True)
 class WarmCacheCommandTest(TestCase):
-
     def _create_tenant(self):
         from hub.apps.tenants.models import Tenant
+
         return Tenant.objects.get_or_create(
-            name="cache-test", defaults={"slug": "cache-test"},
+            name="cache-test",
+            defaults={"slug": "cache-test"},
         )[0]
 
     @patch(f"{_CMD}.warm_tenant_cache")
     def test_tenant_cache_warmed(self, mock_warm):
         mock_warm.return_value = {
-            "assets": 5, "contracts": 3, "marketplace": 2,
+            "assets": 5,
+            "contracts": 3,
+            "marketplace": 2,
         }
         tenant = self._create_tenant()
         out = StringIO()
@@ -34,8 +38,10 @@ class WarmCacheCommandTest(TestCase):
     @patch(f"{_CMD}.warm_all_tenants_cache")
     def test_all_tenants_mode(self, mock_warm):
         mock_warm.return_value = {
-            "successful": 1, "total_tenants": 1,
-            "failed": 0, "results_by_tenant": {},
+            "successful": 1,
+            "total_tenants": 1,
+            "failed": 0,
+            "results_by_tenant": {},
         }
         out = StringIO()
         call_command("warm_cache", "--all-tenants", stdout=out)

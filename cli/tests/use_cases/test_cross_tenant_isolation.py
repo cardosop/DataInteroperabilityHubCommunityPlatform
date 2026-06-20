@@ -11,25 +11,17 @@ assets, contracts, and compliance runs must never leak across tenant
 boundaries.
 """
 
-import os
 import requests
-from tests._persona_provisioning import provision_persona, PersonaCredentials
-from tests.fixtures.personas import MVP_PERSONA_ROLES
+from tests._persona_provisioning import provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import (
     api_base_url,
-    api_get,
-    api_post,
-    api_put,
-    api_delete,
-    api_login,
-    api_unauthenticated_get,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _auth_headers(token: str, tenant_id: str | None = None) -> dict:
     headers = {"Authorization": f"Bearer {token}"}
@@ -80,8 +72,7 @@ def test_asset_invisible_across_tenants():
         timeout=15,
     )
     assert create_resp.status_code in (200, 201), (
-        f"Asset creation in tenant A failed: {create_resp.status_code}: "
-        f"{create_resp.text[:300]}"
+        f"Asset creation in tenant A failed: {create_resp.status_code}: {create_resp.text[:300]}"
     )
     asset_body = create_resp.json()
     asset_id = asset_body.get("id") or asset_body.get("key")
@@ -161,8 +152,7 @@ def test_contract_invisible_across_tenants():
         pytest.skip("Contracts endpoint not available")
 
     assert create_resp.status_code in (200, 201), (
-        f"Contract creation failed: {create_resp.status_code}: "
-        f"{create_resp.text[:300]}"
+        f"Contract creation failed: {create_resp.status_code}: {create_resp.text[:300]}"
     )
     contract_body = create_resp.json()
     contract_id = contract_body.get("id")
@@ -202,8 +192,7 @@ def test_compliance_run_invisible_across_tenants():
         pytest.skip("Compliance runs endpoint not available")
 
     assert run_resp.status_code in (200, 201, 202), (
-        f"Compliance run creation failed: {run_resp.status_code}: "
-        f"{run_resp.text[:300]}"
+        f"Compliance run creation failed: {run_resp.status_code}: {run_resp.text[:300]}"
     )
     run_body = run_resp.json()
     run_id = run_body.get("id") or run_body.get("run_id")

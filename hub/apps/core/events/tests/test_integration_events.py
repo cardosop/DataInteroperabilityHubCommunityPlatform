@@ -1,14 +1,15 @@
 """
 Integration tests for event flow.
 """
+
 import uuid
 from unittest.mock import Mock, patch
+
 from django.test import TestCase, override_settings
-from django.utils import timezone
+
 from hub.apps.core.events.bus import EventBus
-from hub.apps.core.events.models import Event, EventSubscription
-from hub.apps.core.events.schema import EventSchema
 from hub.apps.core.events.event_types import validate_event_data
+from hub.apps.core.events.models import Event, EventSubscription
 from hub.apps.tenants.models import Tenant
 
 uid = uuid.uuid4().hex[:8]
@@ -20,10 +21,7 @@ class EventFlowIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test data."""
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.redis_client = Mock()
         self.event_bus = EventBus(redis_client=self.redis_client)
         self.redis_client.publish.return_value = 1
@@ -31,10 +29,7 @@ class EventFlowIntegrationTest(TestCase):
     def test_publish_and_persist_contract_created(self):
         """Test publishing and persisting contract.created event."""
         contract_id = str(uuid.uuid4())
-        data = {
-            "contract_id": contract_id,
-            "status": "ACTIVE"
-        }
+        data = {"contract_id": contract_id, "status": "ACTIVE"}
 
         # Validate data first
         is_valid, error = validate_event_data("contract.created", data)
@@ -42,9 +37,7 @@ class EventFlowIntegrationTest(TestCase):
 
         # Publish event
         event_id = self.event_bus.publish(
-            event_type="contract.created",
-            data=data,
-            tenant_id=str(self.tenant.id)
+            event_type="contract.created", data=data, tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(event_id)
@@ -58,11 +51,7 @@ class EventFlowIntegrationTest(TestCase):
     def test_publish_and_persist_asset_created(self):
         """Test publishing and persisting asset.created event."""
         asset_id = str(uuid.uuid4())
-        data = {
-            "asset_id": asset_id,
-            "name": "Test Asset",
-            "domain": "test"
-        }
+        data = {"asset_id": asset_id, "name": "Test Asset", "domain": "test"}
 
         # Validate data first
         is_valid, error = validate_event_data("asset.created", data)
@@ -70,9 +59,7 @@ class EventFlowIntegrationTest(TestCase):
 
         # Publish event
         event_id = self.event_bus.publish(
-            event_type="asset.created",
-            data=data,
-            tenant_id=str(self.tenant.id)
+            event_type="asset.created", data=data, tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(event_id)
@@ -88,7 +75,7 @@ class EventFlowIntegrationTest(TestCase):
         data = {
             "workflow_instance_id": workflow_instance_id,
             "workflow_name": "test_workflow",
-            "workflow_version": "1.0.0"
+            "workflow_version": "1.0.0",
         }
 
         # Validate data first
@@ -97,9 +84,7 @@ class EventFlowIntegrationTest(TestCase):
 
         # Publish event
         event_id = self.event_bus.publish(
-            event_type="workflow.started",
-            data=data,
-            tenant_id=str(self.tenant.id)
+            event_type="workflow.started", data=data, tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(event_id)
@@ -109,7 +94,7 @@ class EventFlowIntegrationTest(TestCase):
         self.assertEqual(event.event_type, "workflow.started")
         self.assertEqual(event.data["workflow_instance_id"], workflow_instance_id)
 
-    @patch('hub.apps.core.utils.test_mode.should_skip_initialization', return_value=False)
+    @patch("hub.apps.core.utils.test_mode.should_skip_initialization", return_value=False)
     def test_event_subscription_registration(self, mock_skip):
         """Test event subscription registration via EventSubscriber."""
         from hub.apps.core.events.subscriber import EventSubscriber
@@ -120,8 +105,7 @@ class EventFlowIntegrationTest(TestCase):
 
         # Verify DB record created by EventSubscriber
         subscription = EventSubscription.objects.get(
-            subscriber_name="test_subscriber",
-            event_type_pattern="contract.*"
+            subscriber_name="test_subscriber", event_type_pattern="contract.*"
         )
         self.assertEqual(subscription.subscriber_name, "test_subscriber")
         self.assertEqual(subscription.event_type_pattern, "contract.*")
@@ -130,31 +114,20 @@ class EventFlowIntegrationTest(TestCase):
     def test_event_replay(self):
         """Test event replay functionality."""
         # Create test events
-        event1_data = {
-            "contract_id": str(uuid.uuid4()),
-            "status": "ACTIVE"
-        }
-        event2_data = {
-            "contract_id": str(uuid.uuid4()),
-            "status": "ACTIVE"
-        }
+        event1_data = {"contract_id": str(uuid.uuid4()), "status": "ACTIVE"}
+        event2_data = {"contract_id": str(uuid.uuid4()), "status": "ACTIVE"}
 
         event_id1 = self.event_bus.publish(
-            event_type="contract.created",
-            data=event1_data,
-            tenant_id=str(self.tenant.id)
+            event_type="contract.created", data=event1_data, tenant_id=str(self.tenant.id)
         )
 
         event_id2 = self.event_bus.publish(
-            event_type="contract.created",
-            data=event2_data,
-            tenant_id=str(self.tenant.id)
+            event_type="contract.created", data=event2_data, tenant_id=str(self.tenant.id)
         )
 
         # Replay events
         events = self.event_bus.replay_events(
-            event_type="contract.created",
-            tenant_id=str(self.tenant.id)
+            event_type="contract.created", tenant_id=str(self.tenant.id)
         )
 
         self.assertGreaterEqual(len(events), 2)
@@ -174,9 +147,7 @@ class EventFlowIntegrationTest(TestCase):
         # Try to publish invalid event
         with self.assertRaises(Exception):
             self.event_bus.publish(
-                event_type="contract.created",
-                data=invalid_data,
-                tenant_id=str(self.tenant.id)
+                event_type="contract.created", data=invalid_data, tenant_id=str(self.tenant.id)
             )
 
     def test_publish_and_persist_workflow_step_started(self):
@@ -186,7 +157,7 @@ class EventFlowIntegrationTest(TestCase):
             "workflow_instance_id": workflow_instance_id,
             "step_index": 0,
             "step_name": "process_data",
-            "step_type": "task"
+            "step_type": "task",
         }
 
         # Validate data first
@@ -195,9 +166,7 @@ class EventFlowIntegrationTest(TestCase):
 
         # Publish event
         event_id = self.event_bus.publish(
-            event_type="workflow.step.started",
-            data=data,
-            tenant_id=str(self.tenant.id)
+            event_type="workflow.step.started", data=data, tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(event_id)
@@ -218,7 +187,7 @@ class EventFlowIntegrationTest(TestCase):
             "step_index": 1,
             "step_name": "validate_input",
             "output_data": {"result": "success", "records_processed": 100},
-            "duration_ms": 500
+            "duration_ms": 500,
         }
 
         # Validate data first
@@ -227,9 +196,7 @@ class EventFlowIntegrationTest(TestCase):
 
         # Publish event
         event_id = self.event_bus.publish(
-            event_type="workflow.step.completed",
-            data=data,
-            tenant_id=str(self.tenant.id)
+            event_type="workflow.step.completed", data=data, tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(event_id)
@@ -252,7 +219,7 @@ class EventFlowIntegrationTest(TestCase):
             "step_name": "transform_data",
             "error_message": "Transformation failed: invalid format",
             "error_details": {"field": "data", "reason": "invalid format"},
-            "retry_count": 1
+            "retry_count": 1,
         }
 
         # Validate data first
@@ -261,9 +228,7 @@ class EventFlowIntegrationTest(TestCase):
 
         # Publish event
         event_id = self.event_bus.publish(
-            event_type="workflow.step.failed",
-            data=data,
-            tenant_id=str(self.tenant.id)
+            event_type="workflow.step.failed", data=data, tenant_id=str(self.tenant.id)
         )
 
         self.assertIsNotNone(event_id)
@@ -287,12 +252,10 @@ class EventFlowIntegrationTest(TestCase):
             "workflow_instance_id": workflow_instance_id,
             "step_index": 0,
             "step_name": "step_1",
-            "step_type": "task"
+            "step_type": "task",
         }
         started_event_id = self.event_bus.publish(
-            event_type="workflow.step.started",
-            data=started_data,
-            tenant_id=str(self.tenant.id)
+            event_type="workflow.step.started", data=started_data, tenant_id=str(self.tenant.id)
         )
 
         # Publish step completed event
@@ -301,12 +264,10 @@ class EventFlowIntegrationTest(TestCase):
             "step_index": 0,
             "step_name": "step_1",
             "output_data": {"status": "success"},
-            "duration_ms": 1000
+            "duration_ms": 1000,
         }
         completed_event_id = self.event_bus.publish(
-            event_type="workflow.step.completed",
-            data=completed_data,
-            tenant_id=str(self.tenant.id)
+            event_type="workflow.step.completed", data=completed_data, tenant_id=str(self.tenant.id)
         )
 
         # Verify both events persisted
@@ -325,7 +286,7 @@ class EventFlowIntegrationTest(TestCase):
         invalid_data = {
             "workflow_instance_id": str(uuid.uuid4()),
             "step_index": 0,
-            "step_name": "test_step"
+            "step_name": "test_step",
         }
 
         is_valid, error = validate_event_data("workflow.step.failed", invalid_data)
@@ -353,7 +314,7 @@ class EventFlowIntegrationTest(TestCase):
             step_index=0,
             step_name="test_step",
             step_type="task",
-            tenant_id=tenant_id
+            tenant_id=tenant_id,
         )
 
         # Publish step completed event
@@ -363,7 +324,7 @@ class EventFlowIntegrationTest(TestCase):
             step_name="test_step",
             output_data={"result": "success"},
             duration_ms=500,
-            tenant_id=tenant_id
+            tenant_id=tenant_id,
         )
 
         # Verify events persisted
@@ -374,4 +335,3 @@ class EventFlowIntegrationTest(TestCase):
         self.assertEqual(completed_event.event_type, "workflow.step.completed")
         self.assertEqual(str(started_event.tenant_id), tenant_id)
         self.assertEqual(str(completed_event.tenant_id), tenant_id)
-

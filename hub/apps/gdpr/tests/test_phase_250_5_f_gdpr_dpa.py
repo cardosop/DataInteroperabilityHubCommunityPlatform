@@ -41,6 +41,7 @@ Real Django ORM rows for `Tenant`, `User`, `Asset`,
 logic. The audit assertions read the real `AuditEvent` table to
 confirm scrubbing actually persisted.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -57,11 +58,10 @@ from hub.apps.assets.models import (
     ExternalResourceReference,
 )
 from hub.apps.audit.models import AuditEvent
-from hub.apps.gdpr.models import ErasureRequest, ErasureRequestStatus
+from hub.apps.gdpr.models import ErasureRequest
 from hub.apps.gdpr.services import ErasureService
 from hub.apps.governance.models import ClassificationCategory
 from hub.apps.tenants.models import Tenant
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -112,34 +112,24 @@ class TestFederatedImportClassificationDefault(TestCase):
 
     def test_field_accepts_RESTRICTED(self):
         tenant = _seed_tenant()
-        tenant.federated_import_classification_default = (
-            ClassificationCategory.RESTRICTED
-        )
+        tenant.federated_import_classification_default = ClassificationCategory.RESTRICTED
         tenant.save(
             update_fields=["federated_import_classification_default"],
         )
         tenant.refresh_from_db()
-        assert (
-            tenant.federated_import_classification_default
-            == ClassificationCategory.RESTRICTED
-        )
+        assert tenant.federated_import_classification_default == ClassificationCategory.RESTRICTED
 
     def test_field_accepts_PII(self):
         """A tenant whose source-marketplace contains PII can pin
         the default to PII to ensure every imported metadata blob
         receives the PII classification at intake."""
         tenant = _seed_tenant()
-        tenant.federated_import_classification_default = (
-            ClassificationCategory.PII
-        )
+        tenant.federated_import_classification_default = ClassificationCategory.PII
         tenant.save(
             update_fields=["federated_import_classification_default"],
         )
         tenant.refresh_from_db()
-        assert (
-            tenant.federated_import_classification_default
-            == ClassificationCategory.PII
-        )
+        assert tenant.federated_import_classification_default == ClassificationCategory.PII
 
 
 # ---------------------------------------------------------------------------
@@ -260,7 +250,8 @@ class TestGDPRErasureAssetCascade(TestCase):
 
         request = self._create_erasure_request(user, tenant)
         service = ErasureService(
-            tenant_id=str(tenant.id), user_id=str(user.id),
+            tenant_id=str(tenant.id),
+            user_id=str(user.id),
         )
         service.execute_erasure(str(request.id))
 
@@ -273,9 +264,7 @@ class TestGDPRErasureAssetCascade(TestCase):
             "250.5.F.5 / G2-2 contract."
         )
         # Name + description MUST no longer carry the user's email.
-        assert user.email not in (asset.name or ""), (
-            f"asset.name still carries PII: {asset.name!r}"
-        )
+        assert user.email not in (asset.name or ""), f"asset.name still carries PII: {asset.name!r}"
         assert user.email not in (asset.description or ""), (
             f"asset.description still carries PII: {asset.description!r}"
         )
@@ -286,7 +275,7 @@ class TestGDPRErasureAssetCascade(TestCase):
         tenant = _seed_tenant()
         user_a = _seed_user(tenant)
         user_b = _seed_user(tenant)
-        asset_a = Asset.objects.create(
+        Asset.objects.create(
             tenant=tenant,
             key=f"a-{uuid.uuid4().hex[:8]}",
             name="A's Asset",
@@ -303,7 +292,8 @@ class TestGDPRErasureAssetCascade(TestCase):
 
         request = self._create_erasure_request(user_a, tenant)
         service = ErasureService(
-            tenant_id=str(tenant.id), user_id=str(user_a.id),
+            tenant_id=str(tenant.id),
+            user_id=str(user_a.id),
         )
         service.execute_erasure(str(request.id))
 
@@ -332,7 +322,8 @@ class TestGDPRErasureAssetCascade(TestCase):
 
         request = self._create_erasure_request(user, tenant)
         service = ErasureService(
-            tenant_id=str(tenant.id), user_id=str(user.id),
+            tenant_id=str(tenant.id),
+            user_id=str(user.id),
         )
         service.execute_erasure(str(request.id))
         request.refresh_from_db()
@@ -340,8 +331,7 @@ class TestGDPRErasureAssetCascade(TestCase):
         # The erasure-completion audit MUST mention assets so the
         # audit replay shows the cascade ran.
         assert "assets" in request.deleted_resources, (
-            f"deleted_resources MUST include 'assets'; got "
-            f"{request.deleted_resources!r}"
+            f"deleted_resources MUST include 'assets'; got {request.deleted_resources!r}"
         )
 
     def test_post_save_signal_fires_per_asset_so_search_vector_rebuilds(self):
@@ -410,17 +400,20 @@ class TestGDPRErasureAssetCascade(TestCase):
         captured = []
 
         def _capture(sender, instance, **kwargs):
-            captured.append({
-                "pk": instance.pk,
-                "name": instance.name,
-                "description": instance.description,
-            })
+            captured.append(
+                {
+                    "pk": instance.pk,
+                    "name": instance.name,
+                    "description": instance.description,
+                }
+            )
 
         post_save.connect(_capture, sender=Asset, dispatch_uid="t250_5_f_audit")
         try:
             request = self._create_erasure_request(user, tenant)
             service = ErasureService(
-                tenant_id=str(tenant.id), user_id=str(user.id),
+                tenant_id=str(tenant.id),
+                user_id=str(user.id),
             )
             service.execute_erasure(str(request.id))
         finally:
@@ -429,9 +422,7 @@ class TestGDPRErasureAssetCascade(TestCase):
         # Filter to the captured events for OUR assets — other
         # signal-driven saves (e.g. ErasureRequest's own audit
         # cascade) would otherwise pollute the assertion.
-        per_asset_saves = {
-            ev["pk"]: ev for ev in captured if ev["pk"] in (a1.pk, a2.pk)
-        }
+        per_asset_saves = {ev["pk"]: ev for ev in captured if ev["pk"] in (a1.pk, a2.pk)}
         assert a1.pk in per_asset_saves, (
             "post_save MUST fire for asset a1 — without it the "
             "search_vector rebuild signal can't run and the user's "
@@ -471,7 +462,8 @@ class TestGDPRErasureAuditEventScrubbing(TestCase):
 
     def _create_erasure_request(self, user, tenant) -> ErasureRequest:
         service = ErasureService(
-            tenant_id=str(tenant.id), user_id=str(user.id),
+            tenant_id=str(tenant.id),
+            user_id=str(user.id),
         )
         return service.create_request(
             user_id=str(user.id),
@@ -499,7 +491,8 @@ class TestGDPRErasureAuditEventScrubbing(TestCase):
 
         request = self._create_erasure_request(user, tenant)
         service = ErasureService(
-            tenant_id=str(tenant.id), user_id=str(user.id),
+            tenant_id=str(tenant.id),
+            user_id=str(user.id),
         )
         service.execute_erasure(str(request.id))
 
@@ -511,12 +504,18 @@ class TestGDPRErasureAuditEventScrubbing(TestCase):
         # OR removed).  The scrubbing implementation uses
         # "deleted@deleted.local" for all PII field values.
         for pii_key in (
-            "email", "display_name", "phone",
-            "ip_address", "user_agent",
+            "email",
+            "display_name",
+            "phone",
+            "ip_address",
+            "user_agent",
         ):
             value = details.get(pii_key)
-            self.assertIn(value, (None, "deleted@deleted.local"),
-                f"PII key {pii_key!r} must be None or 'deleted@deleted.local'; got {value!r}")
+            self.assertIn(
+                value,
+                (None, "deleted@deleted.local"),
+                f"PII key {pii_key!r} must be None or 'deleted@deleted.local'; got {value!r}",
+            )
 
         # Non-PII keys MUST be preserved.
         assert details.get("non_pii_metadata") == {

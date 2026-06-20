@@ -8,11 +8,10 @@ Validates test results and coverage requirements:
 - Performance targets met
 - Security requirements met
 """
-import json
-import sys
+
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 
 class TestValidator:
@@ -23,8 +22,8 @@ class TestValidator:
         self.report_dir.mkdir(parents=True, exist_ok=True)
 
     def validate_test_results(
-        self, results: Dict[str, Any], output_file: Optional[Path] = None
-    ) -> Tuple[bool, Dict[str, Any]]:
+        self, results: dict[str, Any], output_file: Path | None = None
+    ) -> tuple[bool, dict[str, Any]]:
         """Validate that all tests are passing."""
         if output_file is None:
             output_file = self.report_dir / "test_validation_report.txt"
@@ -102,10 +101,10 @@ class TestValidator:
 
     def validate_coverage_requirements(
         self,
-        coverage_data: Dict[str, Any],
+        coverage_data: dict[str, Any],
         min_coverage: float = 80.0,
-        output_file: Optional[Path] = None,
-    ) -> Tuple[bool, Dict[str, Any]]:
+        output_file: Path | None = None,
+    ) -> tuple[bool, dict[str, Any]]:
         """Validate that coverage requirements are met."""
         if output_file is None:
             output_file = self.report_dir / "coverage_validation_report.txt"
@@ -190,10 +189,10 @@ class TestValidator:
 
     def validate_performance_targets(
         self,
-        performance_data: Dict[str, Any],
-        targets: Optional[Dict[str, Any]] = None,
-        output_file: Optional[Path] = None,
-    ) -> Tuple[bool, Dict[str, Any]]:
+        performance_data: dict[str, Any],
+        targets: dict[str, Any] | None = None,
+        output_file: Path | None = None,
+    ) -> tuple[bool, dict[str, Any]]:
         """Validate that performance targets are met."""
         if output_file is None:
             output_file = self.report_dir / "performance_validation_report.txt"
@@ -310,8 +309,8 @@ class TestValidator:
         return validation_results["targets_met"], validation_results
 
     def validate_security_requirements(
-        self, security_data: Dict[str, Any], output_file: Optional[Path] = None
-    ) -> Tuple[bool, Dict[str, Any]]:
+        self, security_data: dict[str, Any], output_file: Path | None = None
+    ) -> tuple[bool, dict[str, Any]]:
         """Validate that security requirements are met."""
         if output_file is None:
             output_file = self.report_dir / "security_validation_report.txt"

@@ -6,7 +6,9 @@ All operations are unauthenticated (public ingress per GDPR Art. 15-22).
 Backward-compatible — existing ``submit()``, ``status()``, ``verify_otp()``
 signatures preserved.
 """
+
 from typing import Any, Dict, List, Optional
+
 from .client import DataHubClient
 
 
@@ -120,7 +122,11 @@ class PublicDsarAPI:
     # ── Convenience: full OTP flow ──────────────────────────────────────
 
     async def submit_and_verify(
-        self, email: str, request_type: str, otp: str, **kwargs,
+        self,
+        email: str,
+        request_type: str,
+        otp: str,
+        **kwargs,
     ) -> Dict[str, Any]:
         """Submit a DSAR and verify the OTP in one call."""
         submit_resp = await self.submit_request(email, request_type, **kwargs)

@@ -4,6 +4,7 @@ Phase 205: Compliance shared circuit breaker + activation degradation (no unitte
 Uses a connection-refused compliance URL to open the circuit, then verifies activation
 with WARN and audit ``COMPLIANCE_SERVICE_UNAVAILABLE``.
 """
+
 import uuid
 
 import pytest
@@ -67,11 +68,14 @@ class ComplianceCircuitBreakerActivationTests(TestCase):
         threshold = breaker.failure_threshold
         for i in range(threshold):
             result = client.scan_file(
-                b"c\n1\n", "csv", tenant_id=str(self.tenant.id),
+                b"c\n1\n",
+                "csv",
+                tenant_id=str(self.tenant.id),
             )
             # Verify each call actually failed (returned fallback/error)
             self.assertEqual(
-                result.get("overall_status"), "UNKNOWN",
+                result.get("overall_status"),
+                "UNKNOWN",
                 f"Call {i + 1}/{threshold} should have failed against unreachable host",
             )
         self.assertEqual(breaker.get_state(), CircuitBreakerState.OPEN)

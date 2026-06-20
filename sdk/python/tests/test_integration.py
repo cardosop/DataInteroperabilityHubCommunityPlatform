@@ -22,17 +22,16 @@ Option 3: Manual setup via Django shell:
     >>> # Create tenant, assign user, create API key
     >>> # See scripts/setup_sdk_test_tenant_and_api_key.py for details
 """
-import os
+
 import pytest
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
-    ODPSValidationError,
-    ODPSExportError,
-    ODPSLinkingError,
     NotFoundError,
+    ODPSExportError,
+    ODPSValidationError,
 )
 from tests._sdk_test_helpers import (
-    check_api_available,
     create_real_api_config,
 )
 
@@ -67,6 +66,7 @@ def real_api_config():
 async def real_client(real_api_config):
     """Create SDK client with real API configuration and proper cleanup."""
     import asyncio
+
     async with DataHubClient(real_api_config) as client:
         yield client
         # Small delay between heavy ODPS tests to avoid overwhelming
@@ -79,14 +79,19 @@ def test_client_initialization(config):
     client = DataHubClient(config)
 
     expected_apis = [
-        "contracts", "lineage", "scheduled_ingestion", "versioning",
-        "governance", "mesh", "search", "observability", "webhooks",
+        "contracts",
+        "lineage",
+        "scheduled_ingestion",
+        "versioning",
+        "governance",
+        "mesh",
+        "search",
+        "observability",
+        "webhooks",
     ]
     for api_name in expected_apis:
         assert hasattr(client, api_name), f"Missing API module: {api_name}"
-        assert getattr(client, api_name) is not None, (
-            f"API module is None: {api_name}"
-        )
+        assert getattr(client, api_name) is not None, f"API module is None: {api_name}"
 
 
 @pytest.mark.asyncio
@@ -330,12 +335,16 @@ async def test_create_odps_product_first_flow_e2e(real_client):
 
         # Step 3: Verify ODPS contract
         assert "id" in odps_contract, "ODPS contract should have an ID"
-        assert odps_contract.get("original_spec_type") == "ODPS", "ODPS contract should have spec type ODPS"
+        assert odps_contract.get("original_spec_type") == "ODPS", (
+            "ODPS contract should have spec type ODPS"
+        )
         odps_id = odps_contract["id"]
 
         # Step 4: Verify ODCS contract
         assert "id" in odcs_contract, "ODCS contract should have an ID"
-        assert odcs_contract.get("original_spec_type") == "ODCS", "ODCS contract should have spec type ODCS"
+        assert odcs_contract.get("original_spec_type") == "ODCS", (
+            "ODCS contract should have spec type ODCS"
+        )
         odcs_id = odcs_contract["id"]
 
         # Step 5: Verify contracts are linked (check links)
@@ -435,7 +444,9 @@ async def test_export_odps_integration(real_client):
 
         # Verify export structure
         assert isinstance(export_json, dict), "Export should return a dictionary for JSON format"
-        assert "schema" in export_json or "product" in export_json, "Export should contain ODPS structure"
+        assert "schema" in export_json or "product" in export_json, (
+            "Export should contain ODPS structure"
+        )
 
         # Test export as YAML
         export_yaml = await client.contracts.export_odps(
@@ -531,8 +542,11 @@ async def test_download_odps_integration(real_client):
 
         # Verify it's valid JSON
         import json
+
         json_content = json.loads(download_json.decode("utf-8"))
-        assert "schema" in json_content or "product" in json_content, "Downloaded content should contain ODPS structure"
+        assert "schema" in json_content or "product" in json_content, (
+            "Downloaded content should contain ODPS structure"
+        )
 
         # Test download as YAML
         download_yaml = await client.contracts.download_odps(
@@ -547,7 +561,9 @@ async def test_download_odps_integration(real_client):
 
         # Verify it contains YAML-like content
         yaml_content = download_yaml.decode("utf-8")
-        assert "schema" in yaml_content or "product" in yaml_content, "Downloaded YAML should contain ODPS structure"
+        assert "schema" in yaml_content or "product" in yaml_content, (
+            "Downloaded YAML should contain ODPS structure"
+        )
 
     except Exception as e:
         error_str = str(e)
@@ -558,7 +574,6 @@ async def test_download_odps_integration(real_client):
                 f"Error: {error_str[:200]}"
             )
         raise
-
 
 
 @pytest.mark.asyncio
@@ -575,7 +590,7 @@ async def test_export_odps_error_scenarios(real_client):
         assert "uuid" in e.message.lower() or "contract_id" in e.message.lower()
     except NotFoundError as e:
         # API may return 404 for invalid UUID, which is also acceptable
-        assert hasattr(e, 'http_status') and e.http_status == 404, (
+        assert hasattr(e, "http_status") and e.http_status == 404, (
             f"Expected 404 NotFoundError, got {type(e).__name__}: {e}"
         )
 
@@ -604,16 +619,13 @@ async def test_export_odps_error_scenarios(real_client):
         await client.contracts.export_odps("00000000-0000-0000-0000-000000000000", format="json")
         pytest.fail("Should have raised NotFoundError or ODPSExportError")
     except NotFoundError as e:
-        assert hasattr(e, 'http_status') and e.http_status == 404
+        assert hasattr(e, "http_status") and e.http_status == 404
     except ODPSExportError as e:
-        assert hasattr(e, 'code')
+        assert hasattr(e, "code")
     except ODPSValidationError as e:
-        assert hasattr(e, 'code')
+        assert hasattr(e, "code")
     except Exception as e:
-        pytest.fail(
-            f"Unexpected exception type for non-existent contract: "
-            f"{type(e).__name__}: {e}"
-        )
+        pytest.fail(f"Unexpected exception type for non-existent contract: {type(e).__name__}: {e}")
 
 
 @pytest.mark.asyncio
@@ -641,16 +653,13 @@ async def test_download_odps_error_scenarios(real_client):
         await client.contracts.download_odps("00000000-0000-0000-0000-000000000000", format="json")
         pytest.fail("Should have raised NotFoundError or ODPSExportError")
     except NotFoundError as e:
-        assert hasattr(e, 'http_status') and e.http_status == 404
+        assert hasattr(e, "http_status") and e.http_status == 404
     except ODPSExportError as e:
-        assert hasattr(e, 'code')
+        assert hasattr(e, "code")
     except ODPSValidationError as e:
-        assert hasattr(e, 'code')
+        assert hasattr(e, "code")
     except Exception as e:
-        pytest.fail(
-            f"Unexpected exception for non-existent contract: "
-            f"{type(e).__name__}: {e}"
-        )
+        pytest.fail(f"Unexpected exception for non-existent contract: {type(e).__name__}: {e}")
 
 
 @pytest.mark.asyncio

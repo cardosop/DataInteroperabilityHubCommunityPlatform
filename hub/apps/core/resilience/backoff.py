@@ -9,6 +9,7 @@ across concurrent callers and avoid thundering-herd effects.
 
 Reference: https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
 """
+
 import random
 import time
 
@@ -33,7 +34,7 @@ def backoff_with_jitter(
     Returns:
         Jittered delay in seconds (always >= 0).
     """
-    exp_delay = min(max_delay, base_delay * (2 ** attempt))
+    exp_delay = min(max_delay, base_delay * (2**attempt))
     return random.uniform(0, exp_delay)
 
 

@@ -56,11 +56,11 @@ lookups per field (one for the contract field, one for the dataset
 field). 100-field diffs measure < 1 ms in practice, well under the
 200 ms p95 budget from the spec.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
-
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Type-compatibility table (Phase 250.2.B.3)
@@ -71,7 +71,7 @@ from typing import Any, Dict, List, Optional, Set
 #: This table intentionally folds ``str`` → ``string`` and ``int`` →
 #: ``integer`` so the contract-side ODCS form and the dataset-side
 #: pandas form interop without surfacing a false mismatch.
-_TYPE_ALIASES: Dict[str, str] = {
+_TYPE_ALIASES: dict[str, str] = {
     # Strings
     "string": "string",
     "str": "string",
@@ -116,14 +116,14 @@ _TYPE_ALIASES: Dict[str, str] = {
 #: declares). The diff still REPORTS the mismatch, but flags it
 #: ``compatible=True`` so the WARN-only severity rule doesn't escalate
 #: it to a structural FAIL.
-_COMPATIBLE_WIDENINGS: Dict[str, Set[str]] = {
-    "integer": {"long"},          # int32 fits in int64
+_COMPATIBLE_WIDENINGS: dict[str, set[str]] = {
+    "integer": {"long"},  # int32 fits in int64
     "float": {"double", "decimal"},  # float32 fits in float64 / decimal
-    "date": {"timestamp"},        # date fits in timestamp
+    "date": {"timestamp"},  # date fits in timestamp
 }
 
 
-def _canonicalise_type(raw: Optional[str]) -> str:
+def _canonicalise_type(raw: str | None) -> str:
     """Normalise a type-name string for comparison.
 
     Returns ``""`` for ``None`` / non-string inputs so downstream
@@ -159,17 +159,15 @@ class SchemaDriftResult:
             ``compatible=False``.
     """
 
-    missing_fields: List[str] = field(default_factory=list)
-    extra_fields: List[str] = field(default_factory=list)
-    type_mismatches: List[Dict[str, Any]] = field(default_factory=list)
+    missing_fields: list[str] = field(default_factory=list)
+    extra_fields: list[str] = field(default_factory=list)
+    type_mismatches: list[dict[str, Any]] = field(default_factory=list)
     structural_incompatibility: bool = False
 
     @property
     def detected(self) -> bool:
         """``True`` if any drift exists (any of the 3 categories non-empty)."""
-        return bool(
-            self.missing_fields or self.extra_fields or self.type_mismatches
-        )
+        return bool(self.missing_fields or self.extra_fields or self.type_mismatches)
 
     @property
     def severity(self) -> str:
@@ -185,7 +183,7 @@ class SchemaDriftResult:
             return "FAIL"
         return "WARN"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Wire-friendly serialisation for ``state_data`` /
         API ``result_summary.schema_drift``.
 
@@ -214,10 +212,10 @@ class SchemaCompareService:
 
     @staticmethod
     def _extract_fields(
-        schema: Optional[Dict[str, Any]],
+        schema: dict[str, Any] | None,
         *,
         type_key: str,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """Extract a ``{field_name: canonical_type}`` map from either
         wire shape.
 
@@ -244,7 +242,7 @@ class SchemaCompareService:
         else:
             return {}
 
-        result: Dict[str, str] = {}
+        result: dict[str, str] = {}
         for entry in raw_fields:
             if not isinstance(entry, dict):
                 continue
@@ -262,8 +260,8 @@ class SchemaCompareService:
     def compare(
         cls,
         *,
-        contract_schema: Optional[Dict[str, Any]],
-        inferred_schema: Optional[Dict[str, Any]],
+        contract_schema: dict[str, Any] | None,
+        inferred_schema: dict[str, Any] | None,
     ) -> SchemaDriftResult:
         """Diff a HubContract schema against an inferred dataset schema.
 
@@ -329,7 +327,7 @@ class SchemaCompareService:
         # Type mismatches: same field name, different canonical types.
         # Iterate sorted intersection so the output ordering is stable.
         common = sorted(contract_names & dataset_names)
-        type_mismatches: List[Dict[str, Any]] = []
+        type_mismatches: list[dict[str, Any]] = []
         for name in common:
             ct = contract_fields[name]
             dt = dataset_fields[name]
@@ -346,9 +344,7 @@ class SchemaCompareService:
             )
 
         # Structural: any missing OR any incompatible type mismatch.
-        structural = bool(missing) or any(
-            not m["compatible"] for m in type_mismatches
-        )
+        structural = bool(missing) or any(not m["compatible"] for m in type_mismatches)
 
         return SchemaDriftResult(
             missing_fields=missing,

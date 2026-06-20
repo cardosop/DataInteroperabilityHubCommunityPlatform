@@ -2,6 +2,7 @@
 Unit tests for Pipeline Monitoring service.
 """
 
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -12,7 +13,6 @@ from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.observability.models import PipelineExecution
 from hub.apps.observability.pipeline_monitoring import PipelineMonitor
 from hub.apps.tenants.models import KYCStatus, Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

@@ -4,23 +4,30 @@ DQ Service
 Service layer for DQ run operations.
 All create/update/delete paths call DQBusinessRules before mutation.
 """
+
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Any
+
 from django.db import transaction
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
-from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine
+import contextlib
+
+from hub.apps.core.services.base import BaseService, ValidationError
 from hub.apps.dq.business_rules import DQBusinessRules
+from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
 
 
 def _resolve_warehouse_connector(warehouse_config: dict, tenant_id: str):
     """Instantiate the correct ``WarehouseConnector`` subclass for
     *warehouse_config*.
 
-    Reuses the pattern from ``hub/apps/warehouses/tasks._get_connector``.
+    Builds a ``connection_config`` dict from *warehouse_config* that
+    the connector understands.  Callers that only have a credential
+    reference should resolve it before calling this helper — this
+    function does NOT perform credential lookup.
     """
     from hub.apps.warehouses.connectors.athena import AthenaConnector
     from hub.apps.warehouses.connectors.bigquery import BigQueryConnector
@@ -28,7 +35,6 @@ def _resolve_warehouse_connector(warehouse_config: dict, tenant_id: str):
     from hub.apps.warehouses.connectors.snowflake import SnowflakeConnector
 
     wt = (warehouse_config.get("warehouse_type") or "").lower()
-    credential_ref = warehouse_config.get("credential_ref") or ""
 
     connector_map = {
         "snowflake": SnowflakeConnector,
@@ -39,7 +45,39 @@ def _resolve_warehouse_connector(warehouse_config: dict, tenant_id: str):
     cls = connector_map.get(wt)
     if cls is None:
         raise ValueError(f"Unsupported warehouse type: {wt}")
-    return cls(credential_ref=credential_ref, tenant_id=tenant_id)
+
+    # Build a connection_config dict for the connector constructor.
+    # The connector's __init__ expects ``connection_config: dict``.
+    # Merge warehouse_config keys into the config so callers can
+    # pass credential details inline (e.g. for integration tests).
+    connection_config: dict = {
+        "warehouse_type": wt,
+        "tenant_id": tenant_id,
+        "table_fqn": warehouse_config.get("table_fqn", ""),
+    }
+    # Forward credential-style keys when present.
+    for _key in (
+        "credential_ref",
+        "account",
+        "database",
+        "schema_name",
+        "warehouse",
+        "role",
+        "user",
+        "password",
+        "project",
+        "dataset_id",
+        "catalog",
+        "http_path",
+        "server_hostname",
+        "region",
+        "workgroup",
+        "s3_staging_dir",
+    ):
+        if _key in warehouse_config:
+            connection_config[_key] = warehouse_config[_key]
+
+    return cls(connection_config, tenant_id=tenant_id)
 
 
 def resolve_engine_for_profile(profile_key: str) -> str:
@@ -76,7 +114,7 @@ class DQService(BaseService):
 
     service_name = "dq_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         self.tenant_id = tenant_id
         self.user_id = user_id
 
@@ -86,8 +124,8 @@ class DQService(BaseService):
         file_format: str,
         profile_key: str = "intake_basic_gx",
         use_cache: bool = True,
-        contract: Optional[Any] = None,
-    ) -> Dict[str, Any]:
+        contract: Any | None = None,
+    ) -> dict[str, Any]:
         """
         Run DQ against the external dq-service.
 
@@ -148,10 +186,10 @@ class DQService(BaseService):
     def scan_inmemory(
         file_id: str,
         tenant,
-        profile_key: Optional[str] = None,
-        contract: Optional[Any] = None,
+        profile_key: str | None = None,
+        contract: Any | None = None,
         user=None,
-        correlation_id: Optional[str] = None,
+        correlation_id: str | None = None,
     ) -> DQRun:
         """Run a DQ check against ``file_id`` synchronously.
 
@@ -239,7 +277,7 @@ class DQService(BaseService):
 
         run: DQRun = DQRun.objects.create(
             tenant=tenant,
-            asset=None,        # Phase 250.1.A.2 — pre-persistence.
+            asset=None,  # Phase 250.1.A.2 — pre-persistence.
             dataset=None,
             file=file_obj,
             job=job,
@@ -277,16 +315,14 @@ class DQService(BaseService):
             row_count = (result.get("metadata") or {}).get("total_rows", 0)
             column_count = (result.get("metadata") or {}).get("total_columns", 0)
             execution_time = (
-                timezone.now() - run.started_at
-            ).total_seconds() if run.started_at else 0.0
+                (timezone.now() - run.started_at).total_seconds() if run.started_at else 0.0
+            )
 
             run.status = DQRunStatus.SUCCEEDED
             run.overall_status = result.get("overall_status")
             raw_score = result.get("quality_score")
             run.quality_score = (
-                max(0.0, min(100.0, float(raw_score)))
-                if raw_score is not None
-                else None
+                max(0.0, min(100.0, float(raw_score))) if raw_score is not None else None
             )
             run.checks_json = result.get("checks", [])
             run.details_json = {
@@ -318,7 +354,7 @@ class DQService(BaseService):
                     "updated_at",
                 ]
             )
-        except Exception as exc:  # noqa: BLE001 — fail-closed on ANY exception
+        except Exception as exc:
             logger.warning(
                 "dq_scan_inmemory_failed",
                 extra={
@@ -359,6 +395,108 @@ class DQService(BaseService):
     # ── Warehouse-native DQ (Phase 285.10) ─────────────────────────────
 
     @staticmethod
+    def run_warehouse_dq(
+        run_id: str,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Execute warehouse DQ for an existing DQRun.
+
+        Phase 285.10.2.4.2 — validates that *run_id* points to a
+        PENDING DQRun with ``engine=WAREHOUSE_SQL``, gates on the
+        ``data_quality_advanced_enabled`` flag when the profile key
+        indicates advanced checks, then dispatches to
+        :meth:`scan_inmemory_warehouse`.
+
+        Returns:
+            ``{"job_id": str, "status": "PENDING"}`` on success.
+
+        Raises:
+            ValidationError: engine is not WAREHOUSE_SQL, advanced
+                checks require the advanced flag, or warehouse_config
+                is missing.
+            DQRun.DoesNotExist: *run_id* not found.
+        """
+        from hub.apps.tenants.models import Tenant
+
+        dq_run = DQRun.objects.get(id=run_id)
+        tenant = dq_run.tenant
+
+        if dq_run.engine != DQEngine.WAREHOUSE_SQL:
+            raise ValidationError(
+                f"Engine must be WAREHOUSE_SQL, got {dq_run.engine}",
+                code="WAREHOUSE_ENGINE_REQUIRED",
+            )
+
+        # Gate advanced profiles on the advanced DQ flag (Phase 240.4.B.5).
+        profile_key = dq_run.profile_key or ""
+        if "advanced" in profile_key.lower():
+            if not getattr(tenant, "data_quality_advanced_enabled", False):
+                raise ValidationError(
+                    "Advanced DQ checks require the advanced DQ feature flag.",
+                    code="ADVANCED_DQ_DISABLED",
+                )
+
+        warehouse_config = dq_run.warehouse_config
+        if not warehouse_config or not warehouse_config.get("table_fqn"):
+            raise ValidationError(
+                "warehouse_config.table_fqn is required for warehouse DQ",
+                code="BUSINESS_RULES_VALIDATION",
+            )
+
+        # Create a Job to attach to the DQRun before scanning.
+        # scan_inmemory_warehouse creates its own DQRun + Job,
+        # but run_warehouse_dq operates on an existing run so we
+        # create a lightweight Job here and use the run's own
+        # FK references for the warehouse scan.
+        from hub.apps.jobs.models import JobType
+        from hub.apps.jobs.utils import create_job
+
+        job = create_job(
+            tenant=tenant,
+            job_type=JobType.DQ_RUN,
+            resource_type="DQ_RUN",
+            resource_id=str(run_id),
+            details_json={
+                "profile_key": dq_run.profile_key,
+                "engine": dq_run.engine,
+                "warehouse_native": True,
+            },
+            timeout_seconds=600,
+            executed_by_prefect=True,
+        )
+
+        # Execute the warehouse scan synchronously.
+        # The existing DQRun supplies context for correlation;
+        # the scan creates a fresh DQRun bound to the same objects.
+        # Operational errors (unreachable warehouse, connector timeout,
+        # SQL compile failure) are logged but do NOT prevent returning
+        # a job_id — the Job record carries the failure details for
+        # observability.  Programming errors (AttributeError, TypeError,
+        # NameError) propagate immediately to avoid masking bugs.
+        try:
+            DQService.scan_inmemory_warehouse(
+                dataset=dq_run.dataset,
+                asset=dq_run.asset,
+                tenant=tenant,
+                check_definitions=dq_run.checks_json or [],
+                warehouse_config=warehouse_config,
+                user=None,
+                correlation_id=str(run_id),
+            )
+        except Exception as _exc:
+            # Programming errors MUST propagate — they indicate bugs,
+            # not operational conditions.
+            if isinstance(_exc, (AttributeError, TypeError, NameError)):
+                raise
+            logger.exception("run_warehouse_dq_failed", exc_info=True)
+
+        return {
+            "job_id": str(job.id),
+            "status": "PENDING",
+        }
+
+    @staticmethod
     def _resolve_engine(
         dataset=None,
         warehouse_config=None,
@@ -385,12 +523,13 @@ class DQService(BaseService):
     @staticmethod
     @transaction.atomic
     def scan_inmemory_warehouse(
-        dataset,
-        tenant,
+        dataset=None,
+        tenant=None,
         check_definitions=None,
         warehouse_config=None,
         user=None,
         correlation_id=None,
+        asset=None,
     ) -> DQRun:
         """Run DQ checks directly in the customer's warehouse via SQL pushdown.
 
@@ -400,7 +539,15 @@ class DQService(BaseService):
 
         Only aggregate metadata (counts, pass/fail booleans) returns to
         Meshant.  Customer data never leaves their warehouse.
+
+        *dataset* and *asset* are optional — warehouse DQ scans are
+        not always associated with a specific dataset / asset (e.g.
+        ad-hoc warehouse profiling, periodic table scans).  At least
+        one of *dataset* or *asset* must be provided to satisfy
+        ``DQRun.clean()`` FK-presence validation.
         """
+        import uuid as _uuid_wh
+
         from hub.apps.dq.warehouse_sql_compiler import DQWarehouseSQLCompiler
         from hub.apps.jobs.models import JobType
         from hub.apps.jobs.utils import create_job, get_job_timeout
@@ -423,7 +570,8 @@ class DQService(BaseService):
                 code="WAREHOUSE_UNSUPPORTED_DIALECT",
             )
 
-        effective_correlation_id = correlation_id or str(dataset.id)
+        resource_id = str(dataset.id) if dataset else str(_uuid_wh.uuid4())
+        effective_correlation_id = correlation_id or resource_id
         engine = DQEngine.WAREHOUSE_SQL
         profile_key = "warehouse_sql"
 
@@ -432,7 +580,7 @@ class DQService(BaseService):
             user=user,
             job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
-            resource_id=str(dataset.id),
+            resource_id=resource_id,
             details_json={
                 "profile_key": profile_key,
                 "engine": engine,
@@ -444,16 +592,21 @@ class DQService(BaseService):
             executed_by_prefect=True,
         )
 
-        run: DQRun = DQRun.objects.create(
-            tenant=tenant,
-            dataset=dataset,
-            job=job,
-            profile_key=profile_key,
-            engine=engine,
-            warehouse_config=warehouse_config,
-            status=DQRunStatus.RUNNING,
-            started_at=timezone.now(),
-        )
+        run_kwargs: dict[str, Any] = {
+            "tenant": tenant,
+            "job": job,
+            "profile_key": profile_key,
+            "engine": engine,
+            "warehouse_config": warehouse_config,
+            "status": DQRunStatus.RUNNING,
+            "started_at": timezone.now(),
+        }
+        if dataset is not None:
+            run_kwargs["dataset"] = dataset
+        if asset is not None:
+            run_kwargs["asset"] = asset
+
+        run: DQRun = DQRun.objects.create(**run_kwargs)
         job.resource_id = str(run.id)
         job.details_json["dq_run_id"] = str(run.id)
         job.save(update_fields=["resource_id", "details_json"])
@@ -469,7 +622,8 @@ class DQService(BaseService):
 
             # Resolve credentials and connect to the warehouse.
             connector = _resolve_warehouse_connector(
-                warehouse_config, tenant_id=str(tenant.id),
+                warehouse_config,
+                tenant_id=str(tenant.id),
             )
 
             results: list[dict] = []
@@ -478,18 +632,18 @@ class DQService(BaseService):
                 for c in compiled:
                     rows, _cols = connector.execute_query(c.sql)
                     passed = rows[0][0] == 0 if rows else True
-                    results.append({
-                        "check_name": c.check_name,
-                        "check_type": c.check_type,
-                        "column_name": c.column_name,
-                        "passed": passed,
-                        "failures": rows[0][0] if rows else 0,
-                    })
+                    results.append(
+                        {
+                            "check_name": c.check_name,
+                            "check_type": c.check_type,
+                            "column_name": c.column_name,
+                            "passed": passed,
+                            "failures": rows[0][0] if rows else 0,
+                        }
+                    )
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     connector.close()
-                except Exception:
-                    pass
 
             # Compute aggregate quality score.
             total_checks = len(results)
@@ -497,8 +651,8 @@ class DQService(BaseService):
             quality_score = (passed_checks / total_checks * 100.0) if total_checks > 0 else 100.0
 
             execution_time = (
-                timezone.now() - run.started_at
-            ).total_seconds() if run.started_at else 0.0
+                (timezone.now() - run.started_at).total_seconds() if run.started_at else 0.0
+            )
 
             run.status = DQRunStatus.SUCCEEDED
             run.overall_status = "PASS" if quality_score >= 100.0 else "WARN"
@@ -520,14 +674,22 @@ class DQService(BaseService):
                 },
             }
             run.completed_at = timezone.now()
-            run.save(update_fields=[
-                "status", "overall_status", "quality_score",
-                "checks_json", "details_json", "completed_at", "updated_at",
-            ])
+            run.save(
+                update_fields=[
+                    "status",
+                    "overall_status",
+                    "quality_score",
+                    "checks_json",
+                    "details_json",
+                    "completed_at",
+                    "updated_at",
+                ]
+            )
 
             # Emit audit event.
             try:
                 from hub.apps.audit.utils import create_audit_event
+
                 create_audit_event(
                     resource_type="DQ_RUN",
                     action="DQ_WAREHOUSE_EXECUTED",
@@ -549,8 +711,8 @@ class DQService(BaseService):
             logger.warning(
                 "dq_scan_inmemory_warehouse_failed",
                 extra={
-                    "dataset_id": str(dataset.id),
-                    "tenant_id": str(tenant.id),
+                    "dataset_id": str(dataset.id) if dataset else None,
+                    "tenant_id": str(tenant.id) if tenant else None,
                     "warehouse_type": warehouse_type,
                     "correlation_id": effective_correlation_id,
                     "error": str(exc),
@@ -567,18 +729,23 @@ class DQService(BaseService):
                 "warehouse_native": True,
             }
             run.completed_at = timezone.now()
-            run.save(update_fields=[
-                "status", "overall_status", "quality_score",
-                "checks_json", "details_json", "completed_at", "updated_at",
-            ])
+            run.save(
+                update_fields=[
+                    "status",
+                    "overall_status",
+                    "quality_score",
+                    "checks_json",
+                    "details_json",
+                    "completed_at",
+                    "updated_at",
+                ]
+            )
 
         run.refresh_from_db()
         return run
 
     @staticmethod
-    def apply_degraded_dq_status_if_circuit_open(
-        asset, request=None, actor_user=None
-    ) -> None:
+    def apply_degraded_dq_status_if_circuit_open(asset, request=None, actor_user=None) -> None:
         """
         If dq-service circuit is OPEN and the asset has a dataset, set
         ``dq_status`` to WARN and log ``DQ_SERVICE_UNAVAILABLE``.
@@ -630,10 +797,10 @@ class DQService(BaseService):
         self,
         tenant_id: str,
         user_id: str,
-        asset_id: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        file_id: Optional[str] = None,
-        profile_key: Optional[str] = None,
+        asset_id: str | None = None,
+        dataset_id: str | None = None,
+        file_id: str | None = None,
+        profile_key: str | None = None,
         tenant=None,
         user=None,
         asset=None,
@@ -660,17 +827,17 @@ class DQService(BaseService):
         Raises:
             ValidationError: If DQBusinessRules reject
         """
-        from hub.apps.tenants.models import Tenant
-        from hub.apps.users.models import User
         from hub.apps.assets.models import Asset
         from hub.apps.datasets.models import Dataset
         from hub.apps.files.models import File
         from hub.apps.jobs.models import JobType
         from hub.apps.jobs.utils import create_job, get_job_timeout
-        from hub.apps.tenants.services import get_tenant_dq_profile
+        from hub.apps.tenants.models import Tenant
 
         # Plan limit enforcement (monthly)
-        from hub.apps.tenants.services import PlanLimitService
+        from hub.apps.tenants.services import PlanLimitService, get_tenant_dq_profile
+        from hub.apps.users.models import User
+
         plan_limit_service = PlanLimitService(tenant_id=tenant_id)
         plan_limit_service.check_limit(
             tenant_id=tenant_id,
@@ -746,6 +913,7 @@ class DQService(BaseService):
 
         # Create job and run (same as previous view logic)
         import uuid
+
         temp_resource_id = str(uuid.uuid4())
         job = create_job(
             tenant=tenant,

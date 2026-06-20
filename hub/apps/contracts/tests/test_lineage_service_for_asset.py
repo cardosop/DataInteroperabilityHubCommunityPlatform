@@ -18,6 +18,7 @@ view depends on:
 No mocks of internal code paths.  Real DB rows for tenants, assets,
 contracts, and lineage edges.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -28,7 +29,6 @@ from django.test import TestCase
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -46,8 +46,11 @@ def _make_tenant(slug_prefix: str) -> Tenant:
 
 
 def _make_contract(
-    tenant: Tenant, *, name: str, asset: Asset | None = None,
-) -> "Contract":  # type: ignore[name-defined]  # test: edge-case type exercise
+    tenant: Tenant,
+    *,
+    name: str,
+    asset: Asset | None = None,
+) -> Contract:  # type: ignore[name-defined]  # test: edge-case type exercise
     from hub.apps.contracts.models import (
         Contract,
         ContractStatus,
@@ -120,7 +123,6 @@ def _make_edge(
 
 
 class GetForAssetResolutionTests(TestCase):
-
     def test_no_active_contract_raises_notfound(self):
         from hub.apps.contracts.lineage_service import LineageService
         from hub.apps.core.services.base import NotFoundError
@@ -165,7 +167,6 @@ class GetForAssetResolutionTests(TestCase):
 
 
 class GetForAssetTraversalTests(TestCase):
-
     def test_walks_one_hop_at_max_depth_1(self):
         """A → B edge, max_depth=1, returns both nodes + the link."""
         from hub.apps.contracts.lineage_service import LineageService
@@ -176,7 +177,9 @@ class GetForAssetTraversalTests(TestCase):
         asset_b = _make_asset(tenant)
         contract_b = _make_contract(tenant, name="customers", asset=asset_b)
         _make_edge(
-            tenant, source_contract=contract_a, target_contract=contract_b,
+            tenant,
+            source_contract=contract_a,
+            target_contract=contract_b,
             edge_type="reference",
         )
 
@@ -199,12 +202,10 @@ class GetForAssetTraversalTests(TestCase):
 
 
 class GetForAssetTruncationTests(TestCase):
-
     def test_dense_graph_truncation_returns_flag(self):
         """When the BFS would exceed F1_NODE_CAP, the response carries
         ``truncated=true`` and the result set is bounded."""
         from hub.apps.contracts.lineage_service import LineageService
-        from hub.apps.contracts.models import LineageEdge
 
         tenant = _make_tenant("dense")
         asset = _make_asset(tenant)
@@ -219,7 +220,9 @@ class GetForAssetTruncationTests(TestCase):
             for i in range(10):
                 target = _make_contract(tenant, name=f"sink-{i}")
                 _make_edge(
-                    tenant, source_contract=root, target_contract=target,
+                    tenant,
+                    source_contract=root,
+                    target_contract=target,
                 )
             service = LineageService(tenant_id=str(tenant.id))
             graph = service.get_for_asset(
@@ -246,7 +249,6 @@ class GetForAssetTruncationTests(TestCase):
 
 
 class GetForAssetCrossTenantAnonymisationTests(TestCase):
-
     def test_cross_tenant_endpoint_rendered_as_external(self):
         """An edge pointing at a contract owned by a DIFFERENT tenant
         SHALL render the foreign endpoint as a generic ``external``
@@ -283,10 +285,7 @@ class GetForAssetCrossTenantAnonymisationTests(TestCase):
             owner_tenant_id=str(provider.id),
             max_depth=2,
         )
-        foreign_nodes = [
-            n for n in graph["nodes"]
-            if n["id"] == str(contract_c.id)
-        ]
+        foreign_nodes = [n for n in graph["nodes"] if n["id"] == str(contract_c.id)]
         self.assertEqual(len(foreign_nodes), 1)
         node = foreign_nodes[0]
         self.assertEqual(node["type"], "external")
@@ -300,7 +299,6 @@ class GetForAssetCrossTenantAnonymisationTests(TestCase):
 
 
 class GetForAssetNodeLabelTests(TestCase):
-
     def test_label_derived_from_contract_name_not_transformation_ref(self):
         """Node labels SHALL be derived from
         ``hub_contract_json.info.name`` only — never from
@@ -317,7 +315,9 @@ class GetForAssetNodeLabelTests(TestCase):
         contract = _make_contract(tenant, name="orders", asset=asset)
         upstream = _make_contract(tenant, name="raw-orders")
         _make_edge(
-            tenant, source_contract=upstream, target_contract=contract,
+            tenant,
+            source_contract=upstream,
+            target_contract=contract,
             edge_type="transformation",
             transformation_ref="dbt_redact_pii_secret_logic_v3",
         )
@@ -331,7 +331,8 @@ class GetForAssetNodeLabelTests(TestCase):
         )
         for node in graph["nodes"]:
             self.assertNotIn(
-                "dbt_redact_pii", node["label"],
+                "dbt_redact_pii",
+                node["label"],
                 msg=(
                     "Node label MUST NOT carry transformation_ref hints — "
                     "I4 mitigation in F1 STRIDE threat model"

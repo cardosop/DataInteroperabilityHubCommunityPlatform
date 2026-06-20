@@ -11,19 +11,32 @@ Usage:
   DATAHUB_API_TOKEN=<token> \
   pytest sdk/python/tests/use_cases/test_public_dsar_journey.py -v
 """
+
 import os
 
 import pytest
 
+pytestmark = [
+    pytest.mark.journey("JOURNEY-CPO-015"),
+]
+
 DATAHUB_BASE_URL = os.environ.get("DATAHUB_BASE_URL", "")
+
+
 def _api_token():
-    return os.environ.get("DATAHUB_API_TOKEN") or os.environ.get("TEST_API_KEY") or os.environ.get("DATAHUB_API_KEY") or ""
+    return (
+        os.environ.get("DATAHUB_API_TOKEN")
+        or os.environ.get("TEST_API_KEY")
+        or os.environ.get("DATAHUB_API_KEY")
+        or ""
+    )
 
 
 def _backend_available():
     # Use the shared conftest helper which checks the correct /health/
     # path and honours API_TEST_PORT / MESHANT_API_URL env vars.
     from tests.conftest import is_api_available
+
     return is_api_available()
 
 
@@ -43,6 +56,7 @@ class TestSDKPublicJourney:
     async def test_sdk_client_creation(self):
         """SDK client can be instantiated with the backend URL."""
         from datahub_interoperability import DataHubClient, DataHubClientConfig
+
         config = DataHubClientConfig(base_url=DATAHUB_BASE_URL, api_token=_api_token())
         async with DataHubClient(config) as client:
             assert client is not None
@@ -51,6 +65,7 @@ class TestSDKPublicJourney:
         """SDK public DSAR API returns valid response."""
         from datahub_interoperability import DataHubClient, DataHubClientConfig
         from datahub_interoperability.public_dsar import PublicDsarAPI
+
         config = DataHubClientConfig(base_url=DATAHUB_BASE_URL, api_token=_api_token())
         async with DataHubClient(config) as client:
             api = PublicDsarAPI(client)

@@ -5,7 +5,7 @@ Tests configuration validation, metadata normalization, datetime parsing,
 ID sanitization, and error classes.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -223,16 +223,16 @@ class TestParseMarketplaceDatetime:
     def test_parse_common_format(self):
         """Test parsing common datetime format"""
         dt_str = "2025-01-01 12:00:00"
-        result = parse_marketplace_datetime(dt_str, default_timezone=timezone.utc)
+        result = parse_marketplace_datetime(dt_str, default_timezone=UTC)
 
         assert isinstance(result, datetime)
         assert result.year == 2025
-        assert result.tzinfo == timezone.utc
+        assert result.tzinfo == UTC
 
     def test_parse_date_only(self):
         """Test parsing date-only format"""
         dt_str = "2025-01-01"
-        result = parse_marketplace_datetime(dt_str, default_timezone=timezone.utc)
+        result = parse_marketplace_datetime(dt_str, default_timezone=UTC)
 
         assert isinstance(result, datetime)
         assert result.year == 2025
@@ -260,7 +260,7 @@ class TestParseMarketplaceDatetime:
     def test_parse_with_default_timezone(self):
         """Test parsing applies default timezone to timezone-naive datetime"""
         dt_str = "2025-01-01 12:00:00"
-        custom_tz = timezone.utc
+        custom_tz = UTC
         result = parse_marketplace_datetime(dt_str, default_timezone=custom_tz)
 
         assert result.tzinfo == custom_tz
@@ -526,45 +526,36 @@ class TestMarketplaceSyncError:
         assert result == {}
 
     def test_parse_datetime_with_invalid_format(self):
-        """Test that parse_marketplace_datetime handles invalid formats"""
-        # Should handle gracefully - may return None or raise error
-        try:
-            result = parse_marketplace_datetime("invalid-date")
-            # If it returns None, that's acceptable
-            assert result is None or isinstance(result, datetime)
-        except (ValueError, TypeError, MarketplaceError):
-            # If it raises error, that's also acceptable
-            pass
+        """Test that parse_marketplace_datetime raises MarketplaceError for invalid formats"""
+        with pytest.raises(MarketplaceError) as exc_info:
+            parse_marketplace_datetime("invalid-date")
+        assert "unable to parse" in exc_info.value.message.lower()
 
     def test_sanitize_id_with_special_characters(self):
         """Test that sanitize_marketplace_id handles special characters"""
         special_id = "test-id!@#$%^&*()"
         sanitized = sanitize_marketplace_id(special_id)
-        # Should remove or replace special characters
+        # Special characters must be removed; only alphanumeric, _, -, . are allowed.
         assert isinstance(sanitized, str)
         assert len(sanitized) > 0
+        for char in "!@#$%^&*()":
+            assert char not in sanitized, f"Special char {char!r} should have been removed"
+        assert sanitized == "test-id", f"Expected 'test-id', got {sanitized!r}"
 
     def test_sanitize_id_with_empty_string(self):
-        """Test that sanitize_marketplace_id handles empty string"""
-        # May return empty string or raise MarketplaceError (implementation raises)
-        try:
-            sanitized = sanitize_marketplace_id("")
-            assert isinstance(sanitized, str)
-        except MarketplaceError:
-            # Implementation raises when empty - acceptable
-            pass
+        """Test that sanitize_marketplace_id raises MarketplaceError for empty string"""
+        with pytest.raises(MarketplaceError) as exc_info:
+            sanitize_marketplace_id("")
+        assert "cannot be empty" in exc_info.value.message.lower()
 
     # ========== EDGE CASES TESTS ==========
 
     def test_validate_config_with_very_long_values(self):
-        """Test that validate_config handles very long values"""
+        """Test that validate_config handles very long values without truncation"""
         long_config = {"api_key": "a" * 10000, "endpoint": "https://" + "a" * 1000 + ".com"}
-        try:
-            result = validate_marketplace_config(long_config)
-            assert result == long_config
-        except MarketplaceError:
-            # If validation fails due to length, that's acceptable
-            pass
+        result = validate_marketplace_config(long_config)
+        assert result == long_config
+        assert len(result["api_key"]) == 10000
 
     def test_normalize_metadata_with_deeply_nested(self):
         """Test that normalize_marketplace_metadata handles deeply nested structures"""
@@ -581,19 +572,22 @@ class TestMarketplaceSyncError:
             "2024-01-01",
         ]
         for fmt in formats:
-            try:
-                result = parse_marketplace_datetime(fmt)
-                if result:
-                    assert isinstance(result, datetime)
-            except (ValueError, TypeError):
-                # Some formats may not be supported
-                pass
+            result = parse_marketplace_datetime(fmt)
+            assert result is not None, f"Failed to parse datetime format: {fmt!r}"
+            assert isinstance(result, datetime), f"Parsed result is not datetime for: {fmt!r}"
 
     def test_sanitize_id_with_unicode(self):
         """Test that sanitize_marketplace_id handles unicode characters"""
         unicode_id = "test-id-测试-тест-🎉"
         sanitized = sanitize_marketplace_id(unicode_id)
+        # Without allow_unicode, non-ASCII characters must be stripped.
         assert isinstance(sanitized, str)
+        assert len(sanitized) > 0
+        assert "测试" not in sanitized, "Unicode chars should be removed when allow_unicode=False"
+        assert "тест" not in sanitized
+        assert "🎉" not in sanitized
+        # Only safe ASCII chars (alphanumeric, _, -, .) survive + strip trailing delimiters
+        assert sanitized == "test-id", f"Expected 'test-id', got {sanitized!r}"
 
     # ========== TDD COMPLIANCE TESTS ==========
 

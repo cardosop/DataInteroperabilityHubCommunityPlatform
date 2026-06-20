@@ -7,24 +7,25 @@ Tests verify:
 3. User-friendly error messages
 4. Error context and suggestions
 """
+
 import json
+
 import pytest
-from click.testing import CliRunner
 from datahub_cli.odps_errors import (
     ODPSCLIError,
-    ODPSValidationError,
-    ODPSRefResolutionError,
-    ODPSNormalizationError,
     ODPSExportError,
     ODPSLinkingError,
+    ODPSNormalizationError,
     ODPSParameterError,
-    parse_api_error_response,
+    ODPSRefResolutionError,
+    ODPSValidationError,
     handle_api_error,
-    validate_odps_version,
-    validate_odcs_version,
+    parse_api_error_response,
     validate_contract_id,
     validate_file_format,
     validate_mutually_exclusive_options,
+    validate_odcs_version,
+    validate_odps_version,
     validate_required_option,
 )
 
@@ -45,19 +46,19 @@ class TestODPSCLIError:
         error = ODPSCLIError(
             "Test error",
             error_code="TEST_ERROR",
-            context={'field_path': '/product/name', 'file_path': 'test.json'},
-            suggestion="Fix the field"
+            context={"field_path": "/product/name", "file_path": "test.json"},
+            suggestion="Fix the field",
         )
         assert error.error_code == "TEST_ERROR"
-        assert error.context['field_path'] == '/product/name'
+        assert error.context["field_path"] == "/product/name"
         assert error.suggestion == "Fix the field"
 
     def test_odps_cli_error_format_message(self):
         """Test error message formatting"""
         error = ODPSCLIError(
             "Validation failed",
-            context={'field_path': '/product/name', 'expected': 'string', 'actual': 'number'},
-            suggestion="Change the field type"
+            context={"field_path": "/product/name", "expected": "string", "actual": "number"},
+            suggestion="Change the field type",
         )
         message = error.format_message()
         assert "Validation failed" in message
@@ -75,7 +76,7 @@ class TestODPSErrorTypes:
         error = ODPSValidationError(
             "Schema validation failed",
             error_code="SCHEMA_VALIDATION_FAILED",
-            context={'field_path': '/product/version'}
+            context={"field_path": "/product/version"},
         )
         assert isinstance(error, ODPSCLIError)
         assert error.error_code == "SCHEMA_VALIDATION_FAILED"
@@ -85,7 +86,7 @@ class TestODPSErrorTypes:
         error = ODPSRefResolutionError(
             "Reference resolution failed",
             error_code="RESOLUTION_FAILED",
-            context={'ref_path': '#/definitions/Product'}
+            context={"ref_path": "#/definitions/Product"},
         )
         assert isinstance(error, ODPSCLIError)
         assert error.error_code == "RESOLUTION_FAILED"
@@ -95,7 +96,7 @@ class TestODPSErrorTypes:
         error = ODPSNormalizationError(
             "Normalization failed",
             error_code="NORMALIZATION_FAILED",
-            context={'field_path': '/product/name'}
+            context={"field_path": "/product/name"},
         )
         assert isinstance(error, ODPSCLIError)
         assert error.error_code == "NORMALIZATION_FAILED"
@@ -103,9 +104,7 @@ class TestODPSErrorTypes:
     def test_odps_export_error(self):
         """Test ODPSExportError"""
         error = ODPSExportError(
-            "Export failed",
-            error_code="EXPORT_FAILED",
-            context={'export_format': 'yaml'}
+            "Export failed", error_code="EXPORT_FAILED", context={"export_format": "yaml"}
         )
         assert isinstance(error, ODPSCLIError)
         assert error.error_code == "EXPORT_FAILED"
@@ -115,7 +114,7 @@ class TestODPSErrorTypes:
         error = ODPSLinkingError(
             "Linking failed",
             error_code="LINKING_FAILED",
-            context={'odcs_id': 'odcs-1', 'odps_id': 'odps-1'}
+            context={"odcs_id": "odcs-1", "odps_id": "odps-1"},
         )
         assert isinstance(error, ODPSCLIError)
         assert error.error_code == "LINKING_FAILED"
@@ -123,9 +122,7 @@ class TestODPSErrorTypes:
     def test_odps_parameter_error(self):
         """Test ODPSParameterError"""
         error = ODPSParameterError(
-            "Invalid parameter",
-            error_code="INVALID_PARAMETER",
-            context={'parameter': 'version'}
+            "Invalid parameter", error_code="INVALID_PARAMETER", context={"parameter": "version"}
         )
         assert isinstance(error, ODPSCLIError)
         assert error.error_code == "INVALID_PARAMETER"
@@ -137,106 +134,90 @@ class TestParseAPIErrorResponse:
     def test_parse_validation_error(self):
         """Test parsing validation error response"""
         error_data = {
-            'error': {
-                'code': 'SCHEMA_VALIDATION_FAILED',
-                'message': 'Schema validation failed',
-                'context': {
-                    'field_path': '/product/version',
-                    'expected': 'string',
-                    'actual': 'number'
-                }
+            "error": {
+                "code": "SCHEMA_VALIDATION_FAILED",
+                "message": "Schema validation failed",
+                "context": {
+                    "field_path": "/product/version",
+                    "expected": "string",
+                    "actual": "number",
+                },
             }
         }
         error = parse_api_error_response(error_data)
         assert isinstance(error, ODPSValidationError)
-        assert error.error_code == 'SCHEMA_VALIDATION_FAILED'
-        assert error.context['field_path'] == '/product/version'
+        assert error.error_code == "SCHEMA_VALIDATION_FAILED"
+        assert error.context["field_path"] == "/product/version"
 
     def test_parse_ref_resolution_error(self):
         """Test parsing ref resolution error response"""
         error_data = {
-            'error': {
-                'code': 'RESOLUTION_FAILED',
-                'message': 'Reference resolution failed',
-                'context': {
-                    'ref_path': '#/definitions/Product',
-                    'ref_type': 'internal'
-                }
+            "error": {
+                "code": "RESOLUTION_FAILED",
+                "message": "Reference resolution failed",
+                "context": {"ref_path": "#/definitions/Product", "ref_type": "internal"},
             }
         }
         error = parse_api_error_response(error_data)
         assert isinstance(error, ODPSRefResolutionError)
-        assert error.error_code == 'RESOLUTION_FAILED'
+        assert error.error_code == "RESOLUTION_FAILED"
 
     def test_parse_normalization_error(self):
         """Test parsing normalization error response"""
         error_data = {
-            'error': {
-                'code': 'NORMALIZATION_FAILED',
-                'message': 'Normalization failed',
-                'context': {
-                    'field_path': '/product/name',
-                    'source_path': '/product/name',
-                    'target_path': '/name'
-                }
+            "error": {
+                "code": "NORMALIZATION_FAILED",
+                "message": "Normalization failed",
+                "context": {
+                    "field_path": "/product/name",
+                    "source_path": "/product/name",
+                    "target_path": "/name",
+                },
             }
         }
         error = parse_api_error_response(error_data)
         assert isinstance(error, ODPSNormalizationError)
-        assert error.error_code == 'NORMALIZATION_FAILED'
+        assert error.error_code == "NORMALIZATION_FAILED"
 
     def test_parse_export_error(self):
         """Test parsing export error response"""
         error_data = {
-            'error': {
-                'code': 'EXPORT_FAILED',
-                'message': 'Export failed',
-                'context': {
-                    'export_format': 'yaml',
-                    'file_path': '/tmp/export.yaml'
-                }
+            "error": {
+                "code": "EXPORT_FAILED",
+                "message": "Export failed",
+                "context": {"export_format": "yaml", "file_path": "/tmp/export.yaml"},
             }
         }
         error = parse_api_error_response(error_data)
         assert isinstance(error, ODPSExportError)
-        assert error.error_code == 'EXPORT_FAILED'
+        assert error.error_code == "EXPORT_FAILED"
 
     def test_parse_linking_error(self):
         """Test parsing linking error response"""
         error_data = {
-            'error': {
-                'code': 'LINKING_FAILED',
-                'message': 'Linking failed',
-                'context': {
-                    'source_id': 'odcs-1',
-                    'target_id': 'odps-1'
-                }
+            "error": {
+                "code": "LINKING_FAILED",
+                "message": "Linking failed",
+                "context": {"source_id": "odcs-1", "target_id": "odps-1"},
             }
         }
         error = parse_api_error_response(error_data)
         assert isinstance(error, ODPSLinkingError)
-        assert error.error_code == 'LINKING_FAILED'
+        assert error.error_code == "LINKING_FAILED"
 
     def test_parse_generic_error(self):
         """Test parsing generic error response"""
-        error_data = {
-            'error': {
-                'code': 'UNKNOWN_ERROR',
-                'message': 'Unknown error occurred'
-            }
-        }
+        error_data = {"error": {"code": "UNKNOWN_ERROR", "message": "Unknown error occurred"}}
         error = parse_api_error_response(error_data)
         assert isinstance(error, ODPSCLIError)
-        assert error.error_code == 'UNKNOWN_ERROR'
+        assert error.error_code == "UNKNOWN_ERROR"
 
     def test_parse_error_with_string_error(self):
         """Test parsing error with string error field"""
-        error_data = {
-            'error': 'Simple error message'
-        }
+        error_data = {"error": "Simple error message"}
         error = parse_api_error_response(error_data)
         assert isinstance(error, ODPSCLIError)
-        assert 'Simple error message' in error.message
+        assert "Simple error message" in error.message
 
     def test_parse_error_invalid_data(self):
         """Test parsing invalid error data"""
@@ -252,23 +233,25 @@ class TestHandleAPIError:
 
     def test_handle_json_error(self):
         """Test handling JSON error response"""
-        error_json = json.dumps({
-            'error': {
-                'code': 'VALIDATION_FAILED',
-                'message': 'Validation failed',
-                'context': {'field_path': '/product/name'}
+        error_json = json.dumps(
+            {
+                "error": {
+                    "code": "VALIDATION_FAILED",
+                    "message": "Validation failed",
+                    "context": {"field_path": "/product/name"},
+                }
             }
-        })
-        error = handle_api_error(error_json, 400, 'contracts/products/')
+        )
+        error = handle_api_error(error_json, 400, "contracts/products/")
         assert isinstance(error, ODPSCLIError)
-        assert error.context['status_code'] == 400
-        assert error.context['endpoint'] == 'contracts/products/'
+        assert error.context["status_code"] == 400
+        assert error.context["endpoint"] == "contracts/products/"
 
     def test_handle_text_error(self):
         """Test handling text error response"""
         error = handle_api_error("Simple error text", 500)
         assert isinstance(error, ODPSCLIError)
-        assert error.context['status_code'] == 500
+        assert error.context["status_code"] == 500
 
     def test_handle_http_400(self):
         """Test handling HTTP 400 error"""
@@ -284,7 +267,9 @@ class TestHandleAPIError:
 
     def test_handle_http_404(self):
         """Test handling HTTP 404 error"""
-        error = handle_api_error('{"error": {"message": "Not found"}}', 404, 'contracts/contracts/123/')
+        error = handle_api_error(
+            '{"error": {"message": "Not found"}}', 404, "contracts/contracts/123/"
+        )
         assert error.suggestion is not None
         assert "not found" in error.suggestion.lower() or "id" in error.suggestion.lower()
 
@@ -418,14 +403,14 @@ class TestValidateFileFormat:
     def test_validate_yaml_file(self, tmp_path):
         """Test validating YAML file"""
         file_path = tmp_path / "test.yaml"
-        file_path.write_text('test: data')
+        file_path.write_text("test: data")
         format_type = validate_file_format(str(file_path))
         assert format_type == "YAML"
 
     def test_validate_yml_file(self, tmp_path):
         """Test validating .yml file"""
         file_path = tmp_path / "test.yml"
-        file_path.write_text('test: data')
+        file_path.write_text("test: data")
         format_type = validate_file_format(str(file_path))
         assert format_type == "YAML"
 
@@ -443,25 +428,30 @@ class TestValidateFileFormat:
         # For files without extension, we need to read to detect format
         import os
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             nonexistent = os.path.join(tmpdir, "nonexistent")
             with pytest.raises(ODPSParameterError) as exc_info:
                 validate_file_format(nonexistent)  # No extension, needs to read
-            assert "not found" in str(exc_info.value).lower() or "read" in str(exc_info.value).lower() or "exist" in str(exc_info.value).lower()
+            assert (
+                "not found" in str(exc_info.value).lower()
+                or "read" in str(exc_info.value).lower()
+                or "exist" in str(exc_info.value).lower()
+            )
 
     def test_validate_file_with_allowed_formats(self, tmp_path):
         """Test validating file with allowed formats"""
         file_path = tmp_path / "test.json"
         file_path.write_text('{"test": "data"}')
-        format_type = validate_file_format(str(file_path), allowed_formats=['JSON', 'YAML'])
+        format_type = validate_file_format(str(file_path), allowed_formats=["JSON", "YAML"])
         assert format_type == "JSON"
 
     def test_validate_file_unsupported_format(self, tmp_path):
         """Test validating file with unsupported format"""
         file_path = tmp_path / "test.xml"
-        file_path.write_text('<test>data</test>')
+        file_path.write_text("<test>data</test>")
         with pytest.raises(ODPSParameterError) as exc_info:
-            validate_file_format(str(file_path), allowed_formats=['JSON', 'YAML'])
+            validate_file_format(str(file_path), allowed_formats=["JSON", "YAML"])
         assert "unsupported" in str(exc_info.value).lower()
 
 
@@ -471,19 +461,19 @@ class TestValidateMutuallyExclusiveOptions:
     def test_validate_mutually_exclusive_both_provided(self):
         """Test validating when both options are provided"""
         with pytest.raises(ODPSParameterError) as exc_info:
-            validate_mutually_exclusive_options('extract-odcs', True, 'link-odcs', 'odcs-123')
+            validate_mutually_exclusive_options("extract-odcs", True, "link-odcs", "odcs-123")
         assert "Cannot use both" in str(exc_info.value)
         assert "extract-odcs" in str(exc_info.value)
         assert "link-odcs" in str(exc_info.value)
 
     def test_validate_mutually_exclusive_none_provided(self):
         """Test validating when neither option is provided (should pass)"""
-        validate_mutually_exclusive_options('extract-odcs', False, 'link-odcs', None)
+        validate_mutually_exclusive_options("extract-odcs", False, "link-odcs", None)
 
     def test_validate_mutually_exclusive_one_provided(self):
         """Test validating when one option is provided (should pass)"""
-        validate_mutually_exclusive_options('extract-odcs', True, 'link-odcs', None)
-        validate_mutually_exclusive_options('extract-odcs', False, 'link-odcs', 'odcs-123')
+        validate_mutually_exclusive_options("extract-odcs", True, "link-odcs", None)
+        validate_mutually_exclusive_options("extract-odcs", False, "link-odcs", "odcs-123")
 
 
 class TestValidateRequiredOption:
@@ -491,20 +481,19 @@ class TestValidateRequiredOption:
 
     def test_validate_required_option_provided(self):
         """Test validating when required option is provided (should pass)"""
-        validate_required_option('extract-odcs', True)
+        validate_required_option("extract-odcs", True)
 
     def test_validate_required_option_missing(self):
         """Test validating when required option is missing"""
         with pytest.raises(ODPSParameterError) as exc_info:
-            validate_required_option('extract-odcs', False)
+            validate_required_option("extract-odcs", False)
         assert "Required option" in str(exc_info.value) or "Must specify" in str(exc_info.value)
         assert "extract-odcs" in str(exc_info.value)
 
     def test_validate_required_option_with_alternative(self):
         """Test validating required option with alternative"""
         with pytest.raises(ODPSParameterError) as exc_info:
-            validate_required_option('extract-odcs', False, alternative='link-odcs')
+            validate_required_option("extract-odcs", False, alternative="link-odcs")
         assert "Must specify either" in str(exc_info.value)
         assert "extract-odcs" in str(exc_info.value)
         assert "link-odcs" in str(exc_info.value)
-

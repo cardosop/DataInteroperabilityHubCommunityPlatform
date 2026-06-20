@@ -1,23 +1,29 @@
 """Virtual dataset CRUD methods for VirtualizationService."""
-from typing import Dict, Any, Optional, List
-from django.db import transaction
-from django.utils import timezone
-import logging
 
-from hub.apps.core.services.base import NotFoundError, ValidationError, ConflictError, PermissionError
-from hub.apps.virtualization.models import (
-    VirtualDataset,
-    QueryType,
-    VirtualDatasetStatus,
+import logging
+from typing import Any
+
+from django.db import transaction
+
+from hub.apps.core.services.base import (
+    ConflictError,
+    NotFoundError,
+    PermissionError,
+    ValidationError,
 )
 from hub.apps.virtualization.business_rules import (
     VirtualizationBusinessRules,
 )
 from hub.apps.virtualization.metrics import (
+    get_query_type,
+    get_tenant_id,
     virtualization_dataset_created_total,
     virtualization_dataset_creation_duration_seconds,
-    get_tenant_id,
-    get_query_type,
+)
+from hub.apps.virtualization.models import (
+    QueryType,
+    VirtualDataset,
+    VirtualDatasetStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,7 +35,7 @@ class DatasetServiceMixin:
     def get_virtual_dataset(
         self,
         virtual_dataset_id: str,
-        tenant_id: Optional[str] = None,
+        tenant_id: str | None = None,
     ) -> VirtualDataset:
         """
         Get virtual dataset by ID.
@@ -60,12 +66,12 @@ class DatasetServiceMixin:
 
     def get_virtual_datasets(
         self,
-        tenant_id: Optional[str] = None,
-        status: Optional[VirtualDatasetStatus] = None,
-        query_type: Optional[QueryType] = None,
-        limit: Optional[int] = None,
+        tenant_id: str | None = None,
+        status: VirtualDatasetStatus | None = None,
+        query_type: QueryType | None = None,
+        limit: int | None = None,
         offset: int = 0,
-    ) -> List[VirtualDataset]:
+    ) -> list[VirtualDataset]:
         """
         Get virtual datasets with optional filtering.
 
@@ -116,11 +122,11 @@ class DatasetServiceMixin:
         name: str,
         query: str,
         query_type: QueryType,
-        description: Optional[str] = None,
-        schema: Optional[Dict[str, Any]] = None,
-        sources: Optional[List[Dict[str, Any]]] = None,
-        version: Optional[str] = None,
-        status: Optional[VirtualDatasetStatus] = None,
+        description: str | None = None,
+        schema: dict[str, Any] | None = None,
+        sources: list[dict[str, Any]] | None = None,
+        version: str | None = None,
+        status: VirtualDatasetStatus | None = None,
     ) -> VirtualDataset:
         """
         Create a virtual dataset with comprehensive validation.
@@ -159,10 +165,10 @@ class DatasetServiceMixin:
             PermissionError: If user lacks required permissions or ABAC policy denies access
             ConflictError: If dataset with same name/version already exists
         """
-        import re
         from django.contrib.auth import get_user_model
-        from hub.apps.tenants.models import Tenant
+
         from hub.apps.audit.utils import create_audit_event
+        from hub.apps.tenants.models import Tenant
 
         effective_tenant_id = tenant_id or self.tenant_id
         if not effective_tenant_id:
@@ -174,6 +180,7 @@ class DatasetServiceMixin:
 
         # Plan limit enforcement
         from hub.apps.tenants.services import PlanLimitService
+
         plan_limit_service = PlanLimitService(tenant_id=effective_tenant_id)
         plan_limit_service.check_limit(
             tenant_id=effective_tenant_id,
@@ -234,11 +241,8 @@ class DatasetServiceMixin:
             self._check_user_permissions(effective_user_id, effective_tenant_id)
         except PermissionError as e:
             logger.warning(
-                f"User permission check failed for virtual dataset creation: {str(e)}",
-                extra={
-                    "tenant_id": effective_tenant_id,
-                    "user_id": effective_user_id
-                }
+                f"User permission check failed for virtual dataset creation: {e!s}",
+                extra={"tenant_id": effective_tenant_id, "user_id": effective_user_id},
             )
             raise
 
@@ -249,7 +253,7 @@ class DatasetServiceMixin:
                 query=query,
                 query_type=query_type,
                 sources=sources,
-                schema=schema
+                schema=schema,
             )
         except ValidationError as e:
             logger.warning(
@@ -257,25 +261,20 @@ class DatasetServiceMixin:
                 extra={
                     "tenant_id": effective_tenant_id,
                     "user_id": effective_user_id,
-                    "error_code": e.code
-                }
+                    "error_code": e.code,
+                },
             )
             raise
 
         # 3. Check ABAC policies
         try:
             self._check_abac_policies(
-                user_id=effective_user_id,
-                tenant_id=effective_tenant_id,
-                access_type="WRITE"
+                user_id=effective_user_id, tenant_id=effective_tenant_id, access_type="WRITE"
             )
         except PermissionError as e:
             logger.warning(
-                f"ABAC policy check failed for virtual dataset creation: {str(e)}",
-                extra={
-                    "tenant_id": effective_tenant_id,
-                    "user_id": effective_user_id
-                }
+                f"ABAC policy check failed for virtual dataset creation: {e!s}",
+                extra={"tenant_id": effective_tenant_id, "user_id": effective_user_id},
             )
             raise
 
@@ -289,8 +288,8 @@ class DatasetServiceMixin:
                     "tenant_id": effective_tenant_id,
                     "user_id": effective_user_id,
                     "query_type": query_type,
-                    "error_code": e.code
-                }
+                    "error_code": e.code,
+                },
             )
             raise
 
@@ -303,8 +302,8 @@ class DatasetServiceMixin:
                 extra={
                     "tenant_id": effective_tenant_id,
                     "user_id": effective_user_id,
-                    "error_code": e.code
-                }
+                    "error_code": e.code,
+                },
             )
             raise
 
@@ -318,8 +317,8 @@ class DatasetServiceMixin:
                     "tenant_id": effective_tenant_id,
                     "user_id": effective_user_id,
                     "error_code": e.code,
-                    "details": e.details
-                }
+                    "details": e.details,
+                },
             )
             raise
 
@@ -333,8 +332,8 @@ class DatasetServiceMixin:
                     "tenant_id": effective_tenant_id,
                     "user_id": effective_user_id,
                     "error_code": e.code,
-                    "details": e.details
-                }
+                    "details": e.details,
+                },
             )
             raise
 
@@ -348,16 +347,14 @@ class DatasetServiceMixin:
                     "tenant_id": effective_tenant_id,
                     "user_id": effective_user_id,
                     "error_code": e.code,
-                    "details": e.details
-                }
+                    "details": e.details,
+                },
             )
             raise
 
         # 9. Check for duplicate name/version combination
         existing = VirtualDataset.objects.filter(
-            tenant_id=effective_tenant_id,
-            name=name,
-            version=version
+            tenant_id=effective_tenant_id, name=name, version=version
         ).first()
         if existing:
             raise ConflictError(
@@ -366,6 +363,7 @@ class DatasetServiceMixin:
 
         # 10. Create virtual dataset
         import time
+
         creation_start_time = time.time()
         try:
             virtual_dataset = VirtualDataset.objects.create(
@@ -388,15 +386,11 @@ class DatasetServiceMixin:
             status_str = str(status)
 
             virtualization_dataset_created_total.labels(
-                tenant_id=tenant_id_str,
-                query_type=query_type_str,
-                status=status_str
+                tenant_id=tenant_id_str, query_type=query_type_str, status=status_str
             ).inc()
 
             virtualization_dataset_creation_duration_seconds.labels(
-                tenant_id=tenant_id_str,
-                query_type=query_type_str,
-                status=status_str
+                tenant_id=tenant_id_str, query_type=query_type_str, status=status_str
             ).observe(creation_duration)
 
         except Exception as e:
@@ -406,30 +400,25 @@ class DatasetServiceMixin:
             query_type_str = get_query_type(query_type)
 
             virtualization_dataset_created_total.labels(
-                tenant_id=tenant_id_str,
-                query_type=query_type_str,
-                status="FAILED"
+                tenant_id=tenant_id_str, query_type=query_type_str, status="FAILED"
             ).inc()
 
             virtualization_dataset_creation_duration_seconds.labels(
-                tenant_id=tenant_id_str,
-                query_type=query_type_str,
-                status="FAILED"
+                tenant_id=tenant_id_str, query_type=query_type_str, status="FAILED"
             ).observe(creation_duration)
 
             logger.error(
-                f"Failed to create virtual dataset: {str(e)}",
+                f"Failed to create virtual dataset: {e!s}",
                 extra={
                     "tenant_id": effective_tenant_id,
                     "user_id": effective_user_id,
                     "dataset_name": name,  # Use dataset_name instead of name (name is reserved in LogRecord)
-                    "query_type": query_type
+                    "query_type": query_type,
                 },
-                exc_info=True
+                exc_info=True,
             )
             raise ValidationError(
-                f"Failed to create virtual dataset: {str(e)}",
-                code="DATASET_CREATION_FAILED"
+                f"Failed to create virtual dataset: {e!s}", code="DATASET_CREATION_FAILED"
             ) from e
 
         # 11. Publish event
@@ -449,14 +438,15 @@ class DatasetServiceMixin:
                 extra={
                     "virtual_dataset_id": str(virtual_dataset.id),
                     "tenant_id": effective_tenant_id,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
 
         # 9. Index for search
         try:
             from hub.apps.search.indexing import SearchIndexer
+
             SearchIndexer.index_virtual_dataset(virtual_dataset)
         except Exception as e:
             # Log but don't fail dataset creation if indexing fails
@@ -465,9 +455,9 @@ class DatasetServiceMixin:
                 extra={
                     "virtual_dataset_id": str(virtual_dataset.id),
                     "tenant_id": effective_tenant_id,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
 
         # 10. Create audit log
@@ -498,9 +488,9 @@ class DatasetServiceMixin:
                 extra={
                     "virtual_dataset_id": str(virtual_dataset.id),
                     "tenant_id": effective_tenant_id,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
 
         logger.info(
@@ -511,8 +501,8 @@ class DatasetServiceMixin:
                 "user_id": effective_user_id,
                 "dataset_name": name,  # Use 'dataset_name' instead of 'name' to avoid LogRecord conflict
                 "query_type": query_type,
-                "status": status
-            }
+                "status": status,
+            },
         )
 
         return virtual_dataset
@@ -521,16 +511,16 @@ class DatasetServiceMixin:
     def update_virtual_dataset(
         self,
         virtual_dataset_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        name: Optional[str] = None,
-        query: Optional[str] = None,
-        query_type: Optional[QueryType] = None,
-        description: Optional[str] = None,
-        schema: Optional[Dict[str, Any]] = None,
-        sources: Optional[List[Dict[str, Any]]] = None,
-        version: Optional[str] = None,
-        status: Optional[VirtualDatasetStatus] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        name: str | None = None,
+        query: str | None = None,
+        query_type: QueryType | None = None,
+        description: str | None = None,
+        schema: dict[str, Any] | None = None,
+        sources: list[dict[str, Any]] | None = None,
+        version: str | None = None,
+        status: VirtualDatasetStatus | None = None,
     ) -> VirtualDataset:
         """
         Update a virtual dataset with comprehensive validation and audit logging.
@@ -557,8 +547,9 @@ class DatasetServiceMixin:
             PermissionError: If user lacks required permissions
         """
         from django.contrib.auth import get_user_model
-        from hub.apps.tenants.models import Tenant
+
         from hub.apps.audit.utils import create_audit_event
+        from hub.apps.tenants.models import Tenant
 
         effective_tenant_id = tenant_id or self.tenant_id
         if not effective_tenant_id:
@@ -583,8 +574,7 @@ class DatasetServiceMixin:
         # Get virtual dataset
         try:
             virtual_dataset = VirtualDataset.objects.get(
-                id=virtual_dataset_id,
-                tenant_id=effective_tenant_id
+                id=virtual_dataset_id, tenant_id=effective_tenant_id
             )
         except VirtualDataset.DoesNotExist:
             raise NotFoundError(f"Virtual dataset with id {virtual_dataset_id} not found")
@@ -606,12 +596,12 @@ class DatasetServiceMixin:
             self._check_user_permissions(effective_user_id, effective_tenant_id)
         except PermissionError as e:
             logger.warning(
-                f"User permission check failed for virtual dataset update: {str(e)}",
+                f"User permission check failed for virtual dataset update: {e!s}",
                 extra={
                     "tenant_id": effective_tenant_id,
                     "user_id": effective_user_id,
-                    "virtual_dataset_id": virtual_dataset_id
-                }
+                    "virtual_dataset_id": virtual_dataset_id,
+                },
             )
             raise
 
@@ -665,15 +655,24 @@ class DatasetServiceMixin:
         if name is not None and name != original_values["name"]:
             changes["name"] = {"old": original_values["name"], "new": name}
         if query is not None and query != original_values["query"]:
-            changes["query"] = {"old": "***REDACTED***", "new": "***REDACTED***"}  # Don't log full queries
+            changes["query"] = {
+                "old": "***REDACTED***",
+                "new": "***REDACTED***",
+            }  # Don't log full queries
         if query_type is not None and query_type != original_values["query_type"]:
             changes["query_type"] = {"old": original_values["query_type"], "new": query_type}
         if description is not None and description != original_values["description"]:
             changes["description"] = {"old": original_values["description"], "new": description}
         if schema is not None and schema != original_values["schema"]:
-            changes["schema"] = {"old": "***REDACTED***", "new": "***REDACTED***"}  # Don't log full schemas
+            changes["schema"] = {
+                "old": "***REDACTED***",
+                "new": "***REDACTED***",
+            }  # Don't log full schemas
         if sources is not None and sources != original_values["sources"]:
-            changes["sources"] = {"old": len(original_values["sources"]) if original_values["sources"] else 0, "new": len(sources) if sources else 0}
+            changes["sources"] = {
+                "old": len(original_values["sources"]) if original_values["sources"] else 0,
+                "new": len(sources) if sources else 0,
+            }
         if version is not None and version != original_values["version"]:
             changes["version"] = {"old": original_values["version"], "new": version}
         if status is not None and status != original_values["status"]:
@@ -691,7 +690,7 @@ class DatasetServiceMixin:
             user_id=effective_user_id,
             changes=changes,
             previous_status=str(previous_status) if previous_status else None,
-            new_status=str(new_status) if new_status else None
+            new_status=str(new_status) if new_status else None,
         )
 
         # Create audit log
@@ -699,15 +698,24 @@ class DatasetServiceMixin:
             if name is not None and name != original_values["name"]:
                 changes["name"] = {"old": original_values["name"], "new": name}
             if query is not None and query != original_values["query"]:
-                changes["query"] = {"old": "***REDACTED***", "new": "***REDACTED***"}  # Don't log full queries
+                changes["query"] = {
+                    "old": "***REDACTED***",
+                    "new": "***REDACTED***",
+                }  # Don't log full queries
             if query_type is not None and query_type != original_values["query_type"]:
                 changes["query_type"] = {"old": original_values["query_type"], "new": query_type}
             if description is not None and description != original_values["description"]:
                 changes["description"] = {"old": original_values["description"], "new": description}
             if schema is not None and schema != original_values["schema"]:
-                changes["schema"] = {"old": "***REDACTED***", "new": "***REDACTED***"}  # Don't log full schemas
+                changes["schema"] = {
+                    "old": "***REDACTED***",
+                    "new": "***REDACTED***",
+                }  # Don't log full schemas
             if sources is not None and sources != original_values["sources"]:
-                changes["sources"] = {"old": len(original_values["sources"]) if original_values["sources"] else 0, "new": len(sources) if sources else 0}
+                changes["sources"] = {
+                    "old": len(original_values["sources"]) if original_values["sources"] else 0,
+                    "new": len(sources) if sources else 0,
+                }
             if version is not None and version != original_values["version"]:
                 changes["version"] = {"old": original_values["version"], "new": version}
             if status is not None and status != original_values["status"]:
@@ -738,9 +746,9 @@ class DatasetServiceMixin:
                 extra={
                     "virtual_dataset_id": str(virtual_dataset.id),
                     "tenant_id": effective_tenant_id,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
 
         logger.info(
@@ -749,7 +757,7 @@ class DatasetServiceMixin:
                 "virtual_dataset_id": str(virtual_dataset.id),
                 "tenant_id": effective_tenant_id,
                 "user_id": effective_user_id,
-            }
+            },
         )
 
         return virtual_dataset
@@ -758,8 +766,8 @@ class DatasetServiceMixin:
     def delete_virtual_dataset(
         self,
         virtual_dataset_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
     ) -> None:
         """
         Delete a virtual dataset with comprehensive audit logging.
@@ -775,8 +783,9 @@ class DatasetServiceMixin:
             PermissionError: If user lacks required permissions
         """
         from django.contrib.auth import get_user_model
-        from hub.apps.tenants.models import Tenant
+
         from hub.apps.audit.utils import create_audit_event
+        from hub.apps.tenants.models import Tenant
 
         effective_tenant_id = tenant_id or self.tenant_id
         if not effective_tenant_id:
@@ -801,8 +810,7 @@ class DatasetServiceMixin:
         # Get virtual dataset
         try:
             virtual_dataset = VirtualDataset.objects.get(
-                id=virtual_dataset_id,
-                tenant_id=effective_tenant_id
+                id=virtual_dataset_id, tenant_id=effective_tenant_id
             )
         except VirtualDataset.DoesNotExist:
             raise NotFoundError(f"Virtual dataset with id {virtual_dataset_id} not found")
@@ -822,19 +830,18 @@ class DatasetServiceMixin:
             self._check_user_permissions(effective_user_id, effective_tenant_id)
         except PermissionError as e:
             logger.warning(
-                f"User permission check failed for virtual dataset deletion: {str(e)}",
+                f"User permission check failed for virtual dataset deletion: {e!s}",
                 extra={
                     "tenant_id": effective_tenant_id,
                     "user_id": effective_user_id,
-                    "virtual_dataset_id": virtual_dataset_id
-                }
+                    "virtual_dataset_id": virtual_dataset_id,
+                },
             )
             raise
 
         # Remove from search index
         self._remove_from_search_index(
-            virtual_dataset_id=str(virtual_dataset.id),
-            tenant_id=effective_tenant_id
+            virtual_dataset_id=str(virtual_dataset.id), tenant_id=effective_tenant_id
         )
 
         # Publish delete event
@@ -842,7 +849,7 @@ class DatasetServiceMixin:
             virtual_dataset_id=str(virtual_dataset.id),
             tenant_id=effective_tenant_id,
             user_id=effective_user_id,
-            reason="User requested deletion"
+            reason="User requested deletion",
         )
 
         # Create audit log before deletion
@@ -863,9 +870,9 @@ class DatasetServiceMixin:
                 extra={
                     "virtual_dataset_id": str(virtual_dataset.id),
                     "tenant_id": effective_tenant_id,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
 
         # Delete the virtual dataset
@@ -877,7 +884,7 @@ class DatasetServiceMixin:
                 "virtual_dataset_id": virtual_dataset_id,
                 "tenant_id": effective_tenant_id,
                 "user_id": effective_user_id,
-            }
+            },
         )
 
     def _update_search_index(self, virtual_dataset: VirtualDataset) -> None:
@@ -892,6 +899,7 @@ class DatasetServiceMixin:
         """
         try:
             from hub.apps.search.indexing import SearchIndexer
+
             SearchIndexer.index_virtual_dataset(virtual_dataset)
         except Exception as e:
             # Log but don't fail operation if indexing fails
@@ -900,16 +908,12 @@ class DatasetServiceMixin:
                 extra={
                     "virtual_dataset_id": str(virtual_dataset.id),
                     "tenant_id": str(virtual_dataset.tenant_id),
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
 
-    def _remove_from_search_index(
-        self,
-        virtual_dataset_id: str,
-        tenant_id: str
-    ) -> None:
+    def _remove_from_search_index(self, virtual_dataset_id: str, tenant_id: str) -> None:
         """
         Remove virtual dataset from search index.
 
@@ -922,10 +926,9 @@ class DatasetServiceMixin:
         """
         try:
             from hub.apps.search.indexing import SearchIndexer
+
             SearchIndexer.delete_index(
-                tenant_id=tenant_id,
-                resource_type="VIRTUAL_DATASET",
-                resource_id=virtual_dataset_id
+                tenant_id=tenant_id, resource_type="VIRTUAL_DATASET", resource_id=virtual_dataset_id
             )
         except Exception as e:
             # Log but don't fail operation if index removal fails
@@ -934,7 +937,7 @@ class DatasetServiceMixin:
                 extra={
                     "virtual_dataset_id": virtual_dataset_id,
                     "tenant_id": tenant_id,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )

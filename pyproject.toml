@@ -36,6 +36,8 @@ exclude = [
     "dist",
     "migrations",
     "node_modules",
+    "backups",
+    "cli/build",
 ]
 
 [tool.ruff.lint]
@@ -72,6 +74,8 @@ known-first-party = ["hub"]
 "__init__.py" = ["F401"]  # unused imports in __init__.py
 "tests/**/*.py" = ["PLR2004", "S101"]  # allow magic numbers and asserts in tests
 "hub/apps/**/migrations/*.py" = ["ALL"]  # ignore migrations
+"scripts/check_doc_journey_marker_sync.py" = ["PLR0912", "PLR0915"]  # CLI tool — inherent complexity in multi-check runner
+"scripts/check_doc_uc_marker_sync.py" = ["PLR0912", "PLR0915"]  # CLI tool — same pattern
 
 [tool.mypy]
 python_version = "3.12"

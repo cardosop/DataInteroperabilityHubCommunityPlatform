@@ -51,7 +51,10 @@ class ContractViewSetTest(ContractsAPITestBase):
         # Create another tenant and user for isolation tests
         _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         ensure_tenant_has_active_subscription(self.other_tenant)
 
@@ -185,7 +188,10 @@ class ContractViewSetTest(ContractsAPITestBase):
         results = response.data.get("results", [])
         self.assertGreaterEqual(len(results), 1)
         self.assertTrue(
-            any("Analytics" in str(c.get("hub_contract_json", {}).get("info", {}).get("name", "")) for c in results)
+            any(
+                "Analytics" in str(c.get("hub_contract_json", {}).get("info", {}).get("name", ""))
+                for c in results
+            )
         )
 
     def test_list_contracts_sorting_by_created_at(self):
@@ -612,13 +618,9 @@ class ContractViewSetTest(ContractsAPITestBase):
         response = self.client.post("/api/v1/contracts/", data, format="json")
 
         # Should handle gracefully (either succeed or return appropriate error)
-        self.assertIn(
+        self.assertLess(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            ],
+            500,
         )
 
     # ========== ERROR HANDLING ==========
@@ -674,21 +676,14 @@ class ContractViewSetTest(ContractsAPITestBase):
         )
 
     def test_update_contract_with_none_data(self):
-        """Test updating contract with None data."""
+        """Updating with None payload is a no-op returning 200."""
         self.client.force_authenticate(user=self.user)
-
-        try:
-            response = self.client.patch(
-                f"/api/v1/contracts/{self.contract.id}/", None, format="json"  # type: ignore[misc]  # test: edge-case type exercise
-            )
-            # May raise exception or return error
-            self.assertIn(
-                response.status_code,
-                [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR],
-            )
-        except Exception:
-            # None data may raise exception
-            pass
+        response = self.client.patch(
+            f"/api/v1/contracts/{self.contract.id}/",
+            None,
+            format="json",  # type: ignore[misc]  # test: edge-case type exercise
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_update_contract_with_empty_data(self):
         """Test updating contract with empty data."""

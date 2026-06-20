@@ -4,7 +4,7 @@ Shared base for concurrency tests. Uses real DB, real APIClient, no mocks/stubs.
 
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 from django.core.cache import cache
 from django.test import TransactionTestCase
@@ -93,7 +93,7 @@ class ConcurrencyTestBase(TransactionTestCase):
         cache.clear()
         super().tearDown()
 
-    def create_contract_payload(self, product_id: Optional[str] = None) -> Dict[str, Any]:
+    def create_contract_payload(self, product_id: str | None = None) -> dict[str, Any]:
         """Return ODPS payload for contract creation (unique product_id for concurrent creates)."""
         pid = product_id or f"product-{uuid.uuid4().hex[:12]}"
         return {
@@ -163,8 +163,8 @@ class WorkflowConcurrencyTestBase(ConcurrencyTestBase):
         from hub.apps.orchestration.models import WorkflowInstance
 
         def test_task(
-            input_data: Dict[str, Any], instance: WorkflowInstance, step
-        ) -> Dict[str, Any]:
+            input_data: dict[str, Any], instance: WorkflowInstance, step
+        ) -> dict[str, Any]:
             time.sleep(0.005)
             return {"result": "success", "input": input_data}
 

@@ -7,12 +7,12 @@ Proves:
 3. H.2: Every connector's push methods raise NotImplementedError
         with a descriptive message (not a generic 500)
 """
+
 import pytest
 from django.test import TestCase
 
 from hub.apps.integrations.base import SyncDirection
 from hub.apps.integrations.factory import MarketplaceConnectorFactory
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -20,14 +20,41 @@ pytestmark = pytest.mark.django_db(transaction=True)
 def _get_registered_connectors():
     """Return list of (type_value, connector_instance) for all
     registered connectors, skipping any that fail to instantiate
-    (e.g. missing optional dependencies)."""
+    (e.g. missing optional dependencies).
+
+    Logs a warning when a connector fails to instantiate so that
+    unexpected breakage (e.g. AttributeError after a refactor,
+    missing module after a rename) surfaces in test output instead
+    of being silently swallowed.
+    """
+    import logging
+
+    _logger = logging.getLogger("hub.apps.integrations.tests.capabilities")
+
     result = []
     for mtype in MarketplaceConnectorFactory.get_supported_types():
         try:
             connector = MarketplaceConnectorFactory.get_connector(mtype)
             result.append((mtype.value, connector))
-        except Exception:
-            pass
+        except (ImportError, ModuleNotFoundError) as exc:
+            _logger.debug(
+                "Skipping connector %s — optional dependency not available: %s",
+                mtype.value,
+                exc,
+            )
+        except (ValueError, TypeError) as exc:
+            _logger.debug(
+                "Skipping connector %s — configuration not available: %s",
+                mtype.value,
+                exc,
+            )
+        except Exception as exc:
+            _logger.warning(
+                "Unexpected error instantiating connector %s: %s",
+                mtype.value,
+                exc,
+                exc_info=True,
+            )
     return result
 
 
@@ -39,7 +66,8 @@ class CapabilityMatrixTest(TestCase):
         matrix = MarketplaceConnectorFactory.get_capability_matrix()
         self.assertIsInstance(matrix, dict)
         self.assertGreater(
-            len(matrix), 0,
+            len(matrix),
+            0,
             "At least one connector must be registered",
         )
 
@@ -48,13 +76,16 @@ class CapabilityMatrixTest(TestCase):
         supports_push, supports_pull, connector_class."""
         matrix = MarketplaceConnectorFactory.get_capability_matrix()
         required = {
-            "sync_directions", "supports_push",
-            "supports_pull", "connector_class",
+            "sync_directions",
+            "supports_push",
+            "supports_pull",
+            "connector_class",
         }
         for mtype, entry in matrix.items():
             missing = required - entry.keys()
             self.assertEqual(
-                missing, set(),
+                missing,
+                set(),
                 f"{mtype} missing keys: {missing}",
             )
 
@@ -75,8 +106,7 @@ class CapabilityMatrixTest(TestCase):
                 continue
             self.assertFalse(
                 entry["supports_push"],
-                f"{mtype} must NOT claim push support "
-                f"(sync_directions={entry['sync_directions']})",
+                f"{mtype} must NOT claim push support (sync_directions={entry['sync_directions']})",
             )
             self.assertTrue(
                 entry["supports_pull"],
@@ -87,14 +117,10 @@ class CapabilityMatrixTest(TestCase):
         """Matrix sync_directions must match the connector's
         supported_sync_directions property."""
         for mtype_val, connector in _get_registered_connectors():
-            matrix = (
-                MarketplaceConnectorFactory.get_capability_matrix()
-            )
+            matrix = MarketplaceConnectorFactory.get_capability_matrix()
             if mtype_val not in matrix:
                 continue
-            expected = [
-                d.value for d in connector.supported_sync_directions
-            ]
+            expected = [d.value for d in connector.supported_sync_directions]
             self.assertEqual(
                 matrix[mtype_val]["sync_directions"],
                 expected,
@@ -146,9 +172,7 @@ class UnsupportedPushOperationsTest(TestCase):
             except NotImplementedError:
                 raise  # expected — re-raise for assertRaises
         # All attempts got TypeError — re-raise last one
-        raise TypeError(
-            f"Could not find valid signature for {method_name}"
-        )
+        raise TypeError(f"Could not find valid signature for {method_name}")
 
     def _assert_push_raises(self, connector, method_name, mtype):
         """Helper: assert the method raises NotImplementedError
@@ -161,8 +185,7 @@ class UnsupportedPushOperationsTest(TestCase):
 
         with self.assertRaises(
             NotImplementedError,
-            msg=f"{mtype}.{method_name}() must raise "
-                f"NotImplementedError",
+            msg=f"{mtype}.{method_name}() must raise NotImplementedError",
         ) as ctx:
             # Call with minimal args.  Connector signatures vary,
             # so catch TypeError from wrong arity and retry with
@@ -173,8 +196,7 @@ class UnsupportedPushOperationsTest(TestCase):
         # Must not be empty / generic
         self.assertTrue(
             len(msg) > 10,
-            f"{mtype}.{method_name}() error message too "
-            f"short: '{ctx.exception}'",
+            f"{mtype}.{method_name}() error message too short: '{ctx.exception}'",
         )
         # Must mention directionality or the connector name
         self.assertTrue(
@@ -202,14 +224,8 @@ class UnsupportedPushOperationsTest(TestCase):
         tested = 0
         for mtype_val, connector in _get_registered_connectors():
             # Skip bidirectional/push-capable connectors
-            dirs = [
-                d.value
-                for d in connector.supported_sync_directions
-            ]
-            if (
-                SyncDirection.PUSH.value in dirs
-                or SyncDirection.BIDIRECTIONAL.value in dirs
-            ):
+            dirs = [d.value for d in connector.supported_sync_directions]
+            if SyncDirection.PUSH.value in dirs or SyncDirection.BIDIRECTIONAL.value in dirs:
                 continue
             # Skip test-only in-memory connector (stubs all ops)
             cls_name = type(connector).__name__.lower()
@@ -218,38 +234,59 @@ class UnsupportedPushOperationsTest(TestCase):
 
             for method_name in push_methods:
                 self._assert_push_raises(
-                    connector, method_name, mtype_val,
+                    connector,
+                    method_name,
+                    mtype_val,
                 )
                 tested += 1
 
         self.assertGreater(
-            tested, 0,
+            tested,
+            0,
             "At least one connector must be tested",
         )
 
     def test_push_error_is_not_generic_500(self):
         """Push errors must be NotImplementedError (maps to
-        400/405 in DRF), NOT a generic Exception (500)."""
+        400/405 in DRF), NOT a generic Exception (500).
+
+        Uses ``_call_with_fallback`` to try multiple connector
+        signatures so that signature mismatches (TypeError) do not
+        mask the actual push-error contract.
+        """
+        not_implemented_count = 0
+        tested_count = 0
         for mtype_val, connector in _get_registered_connectors():
-            dirs = [
-                d.value
-                for d in connector.supported_sync_directions
-            ]
+            dirs = [d.value for d in connector.supported_sync_directions]
             if SyncDirection.PUSH.value in dirs:
                 continue
-            # Skip test-only in-memory connector (stubs all ops)
             cls_name = type(connector).__name__.lower()
             if "inmemory" in cls_name or "in_memory" in cls_name or "fake" in cls_name:
                 continue
+
+            method = getattr(connector, "sync_push", None)
+            if method is None:
+                continue
+
+            tested_count += 1
             try:
-                connector.sync_push(mappings=[])
+                self._call_with_fallback(method, "sync_push")
+                # If we reach here, sync_push succeeded — that's wrong for a
+                # PULL-only connector.  (Shouldn't happen; _call_with_fallback
+                # raises TypeError if no signature matched).
             except NotImplementedError:
-                pass  # correct — maps to 400/405
+                not_implemented_count += 1
             except TypeError:
-                pass  # acceptable — signature mismatch
+                pass  # no signature matched — treated as not-applicable
             except Exception as e:
                 self.fail(
                     f"{mtype_val}.sync_push() raised "
                     f"{type(e).__name__} instead of "
                     f"NotImplementedError: {e}",
                 )
+
+        self.assertGreater(
+            not_implemented_count, 0,
+            f"No connector raised NotImplementedError for sync_push "
+            f"(tested {tested_count} PULL-only connectors)."
+        )

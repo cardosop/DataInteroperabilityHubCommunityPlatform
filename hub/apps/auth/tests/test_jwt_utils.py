@@ -1,6 +1,7 @@
 """
 Unit tests for JWT utilities.
 """
+
 import time
 import uuid
 
@@ -178,7 +179,8 @@ class JWTSecurityTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"JWT Sec {uid}", slug=f"jwt-sec-{uid}",
+            name=f"JWT Sec {uid}",
+            slug=f"jwt-sec-{uid}",
         )
         self.user = User.objects.create_user(
             email=f"jwtsec-{uid}@example.com",
@@ -207,7 +209,9 @@ class JWTSecurityTest(TestCase):
             "authz_version": self.user.token_version,
         }
         token = pyjwt.encode(
-            payload, _sign_key, algorithm=settings.JWT_ALGORITHM,
+            payload,
+            _sign_key,
+            algorithm=settings.JWT_ALGORITHM,
         )
         result = JWTTokenGenerator.decode_access_token(token)
         self.assertIsNone(result)
@@ -232,7 +236,9 @@ class JWTSecurityTest(TestCase):
             "authz_version": self.user.token_version,
         }
         token = pyjwt.encode(
-            payload, _sign_key, algorithm=settings.JWT_ALGORITHM,
+            payload,
+            _sign_key,
+            algorithm=settings.JWT_ALGORITHM,
         )
         result = JWTTokenGenerator.decode_access_token(token)
         self.assertIsNone(result)
@@ -252,7 +258,9 @@ class JWTSecurityTest(TestCase):
             "authz_version": self.user.token_version,
         }
         token = pyjwt.encode(
-            payload, "attacker-secret", algorithm="HS256",
+            payload,
+            "attacker-secret-with-sufficient-length-for-hs256",
+            algorithm="HS256",
         )
         result = JWTTokenGenerator.decode_access_token(token)
         self.assertIsNone(result)
@@ -260,7 +268,8 @@ class JWTSecurityTest(TestCase):
     def test_tampered_payload_rejected(self):
         """Modifying a token's payload after signing invalidates it."""
         token = JWTTokenGenerator.generate_access_token(
-            user=self.user, tenant_id=str(self.tenant.id),
+            user=self.user,
+            tenant_id=str(self.tenant.id),
         )
         # Tamper: flip a character in the payload section
         parts = token.split(".")
@@ -278,14 +287,16 @@ class JWTSecurityTest(TestCase):
         """decode_access_token(verify_version=True) rejects tokens
         whose authz_version is older than the DB value."""
         token = JWTTokenGenerator.generate_access_token(
-            user=self.user, tenant_id=str(self.tenant.id),
+            user=self.user,
+            tenant_id=str(self.tenant.id),
         )
         # Bump DB version after token was issued
         self.user.token_version += 1
         self.user.save(update_fields=["token_version"])
 
         result = JWTTokenGenerator.decode_access_token(
-            token, verify_version=True,
+            token,
+            verify_version=True,
         )
         self.assertIsNone(result)
 
@@ -293,13 +304,15 @@ class JWTSecurityTest(TestCase):
         """decode_access_token(verify_version=False) returns payload
         even when authz_version is stale (used for tenant scoping)."""
         token = JWTTokenGenerator.generate_access_token(
-            user=self.user, tenant_id=str(self.tenant.id),
+            user=self.user,
+            tenant_id=str(self.tenant.id),
         )
         self.user.token_version += 1
         self.user.save(update_fields=["token_version"])
 
         result = JWTTokenGenerator.decode_access_token(
-            token, verify_version=False,
+            token,
+            verify_version=False,
         )
         self.assertIsNotNone(result)
         self.assertEqual(result["sub"], str(self.user.id))
@@ -309,7 +322,8 @@ class JWTSecurityTest(TestCase):
     def test_token_contains_standard_claims(self):
         """Generated tokens include all required standard claims."""
         token = JWTTokenGenerator.generate_access_token(
-            user=self.user, tenant_id=str(self.tenant.id),
+            user=self.user,
+            tenant_id=str(self.tenant.id),
         )
         payload = JWTTokenGenerator.decode_access_token(token)
         self.assertIsNotNone(payload)
@@ -319,7 +333,8 @@ class JWTSecurityTest(TestCase):
     def test_token_contains_custom_claims(self):
         """Generated tokens include project-specific custom claims."""
         token = JWTTokenGenerator.generate_access_token(
-            user=self.user, tenant_id=str(self.tenant.id),
+            user=self.user,
+            tenant_id=str(self.tenant.id),
         )
         payload = JWTTokenGenerator.decode_access_token(token)
         self.assertIsNotNone(payload)

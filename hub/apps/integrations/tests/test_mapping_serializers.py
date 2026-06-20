@@ -4,6 +4,7 @@ Marketplace Mapping Serializers Tests
 Comprehensive unit tests for marketplace mapping serializers.
 """
 
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -15,7 +16,6 @@ from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.models import MarketplaceConnection, MarketplaceMapping
 from hub.apps.integrations.serializers import MarketplaceMappingSerializer
 from hub.apps.tenants.models import KYCStatus, Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

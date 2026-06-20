@@ -87,8 +87,10 @@ class BillingAPI:
         return data.get("limits", {})
 
     async def get_usage(
-        self, metric_key: Optional[str] = None,
-        page: int = 1, page_size: int = 50,
+        self,
+        metric_key: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 50,
     ) -> Dict[str, Any]:
         params: Dict[str, Any] = {"page": page, "page_size": page_size}
         if metric_key:
@@ -96,8 +98,10 @@ class BillingAPI:
         return await self.client.get("billing/usage/", params=params)
 
     async def process_refund(
-        self, payment_intent_id: str,
-        amount_cents: int, reason: str,
+        self,
+        payment_intent_id: str,
+        amount_cents: int,
+        reason: str,
     ) -> Dict[str, Any]:
         return await self.client.post(
             "billing/refunds/",
@@ -109,7 +113,8 @@ class BillingAPI:
         )
 
     async def trigger_reconciliation(
-        self, dry_run: bool = False,
+        self,
+        dry_run: bool = False,
     ) -> Dict[str, Any]:
         return await self.client.post(
             "billing/admin/reconcile/",

@@ -3,33 +3,40 @@ Webhook Service
 
 Service for webhook delivery with retry logic and authentication.
 """
+
 from __future__ import annotations
 
 import json
-import hmac
-import hashlib
 import random
-import uuid
-from typing import Any, Dict, Optional
-from django.utils import timezone
 from datetime import timedelta
-from django.db import transaction
+from typing import Any
+
 import structlog
-
 from django.conf import settings as django_settings
+from django.db import transaction
+from django.utils import timezone
 
-from .models import Webhook, WebhookDelivery, WebhookSigningKey, WebhookStatus, DeliveryStatus, WebhookEventType
-from .service_client import WebhookDeliveryClient
-from .rate_limit import check_outbound_rate_limit, emit_rate_limit_block_metric
+from hub.apps.contracts.odps_errors import RecoveryStrategy
+
+from .models import (
+    DeliveryStatus,
+    Webhook,
+    WebhookDelivery,
+    WebhookEventType,
+    WebhookSigningKey,
+    WebhookStatus,
+)
 from .odps_webhook_errors import (
-    ODPSWebhookError,
     ODPSWebhookDeliveryError,
-    ODPSWebhookValidationError,
+    ODPSWebhookError,
     ODPSWebhookPayloadError,
+    ODPSWebhookValidationError,
 )
 from .odps_webhook_validators import validate_odps_webhook_payload
+from .metrics import emit_outbound_attempt, observe_signature_duration
+from .rate_limit import check_outbound_rate_limit, emit_rate_limit_block_metric
+from .service_client import WebhookDeliveryClient
 from .ssrf_guard import SSRFViolationError, is_safe_url, validate_webhook_url
-from hub.apps.contracts.odps_errors import RecoveryStrategy
 
 logger = structlog.get_logger(__name__)
 
@@ -62,7 +69,7 @@ class WebhookDeliveryService:
         event_type: str,
         resource_type: str,
         resource_id: str,
-        event_data: Dict[str, Any]
+        event_data: dict[str, Any],
     ) -> int:
         """
         Trigger webhook delivery for matching subscriptions.
@@ -80,9 +87,7 @@ class WebhookDeliveryService:
         # Find active webhooks for this event type
         # select_related("tenant") avoids N+1 queries when accessing webhook.tenant
         webhooks = Webhook.objects.select_related("tenant").filter(
-            tenant_id=tenant_id,
-            status=WebhookStatus.ACTIVE,
-            event_types__contains=event_type
+            tenant_id=tenant_id, status=WebhookStatus.ACTIVE, event_types__contains=event_type
         )
 
         count = 0
@@ -96,12 +101,7 @@ class WebhookDeliveryService:
             )
             count += 1
 
-        logger.info(
-            "webhooks_triggered",
-            tenant_id=tenant_id,
-            event_type=event_type,
-            count=count
-        )
+        logger.info("webhooks_triggered", tenant_id=tenant_id, event_type=event_type, count=count)
 
         return count
 
@@ -111,7 +111,7 @@ class WebhookDeliveryService:
         event_type: str,
         resource_type: str,
         resource_id: str,
-        event_data: Dict[str, Any]
+        event_data: dict[str, Any],
     ):
         """
         Create and deliver a webhook with validation and error handling.
@@ -155,7 +155,7 @@ class WebhookDeliveryService:
             "resource_type": resource_type,
             "resource_id": resource_id,
             "timestamp": timezone.now().isoformat(),
-            "data": event_data
+            "data": event_data,
         }
 
         # Promote event_id / id from event_data to top-level
@@ -186,7 +186,6 @@ class WebhookDeliveryService:
                 )
                 raise
 
-
         # Validate payload for virtualization events
         # Note: Virtualization events use the same payload structure as other events
         # No special validation needed beyond standard webhook payload validation
@@ -199,7 +198,7 @@ class WebhookDeliveryService:
             payload_json = json.dumps(payload, sort_keys=True)
         except (TypeError, ValueError) as e:
             raise ODPSWebhookPayloadError(
-                message=f"Failed to serialize webhook payload: {str(e)}",
+                message=f"Failed to serialize webhook payload: {e!s}",
                 error_code=ODPSWebhookPayloadError.ERROR_CODE_INVALID_PAYLOAD_STRUCTURE,
                 user_message="Webhook payload cannot be serialized to JSON",
                 tenant_id=str(webhook.tenant_id),
@@ -233,6 +232,7 @@ class WebhookDeliveryService:
             # Emit audit event (REQ-WH-RL-004)
             try:
                 from hub.apps.audit.utils import create_audit_event
+
                 create_audit_event(
                     resource_type="WEBHOOK",
                     action="WEBHOOK_RATE_LIMIT_EXCEEDED",
@@ -261,6 +261,13 @@ class WebhookDeliveryService:
                 webhook_id=str(webhook.id),
                 event_type=event_type,
             )
+            # Emit outbound attempt metric (Phase 233.6)
+            emit_outbound_attempt(
+                tenant_id=str(webhook.tenant_id),
+                webhook_id=str(webhook.id),
+                event_type=event_type,
+                outcome="rate_limited",
+            )
 
             logger.warning(
                 "webhook_rate_limited",
@@ -286,7 +293,7 @@ class WebhookDeliveryService:
                 signature = webhook.generate_signature(payload_json)
         except Exception as e:
             raise ODPSWebhookError(
-                message=f"Failed to generate webhook signature: {str(e)}",
+                message=f"Failed to generate webhook signature: {e!s}",
                 error_code=ODPSWebhookError.ERROR_CODE_WEBHOOK_UNKNOWN,
                 user_message="Failed to generate webhook signature",
                 tenant_id=str(webhook.tenant_id),
@@ -311,6 +318,12 @@ class WebhookDeliveryService:
                     webhook_id=str(webhook.id),
                     event_id=event_id,
                 )
+                emit_outbound_attempt(
+                    tenant_id=str(webhook.tenant_id),
+                    webhook_id=str(webhook.id),
+                    event_type=event_type,
+                    outcome="duplicate_skipped",
+                )
                 return
 
         # ── Create delivery record ───────────────────────────────────
@@ -326,7 +339,7 @@ class WebhookDeliveryService:
             )
         except Exception as e:
             raise ODPSWebhookError(
-                message=f"Failed to create webhook delivery record: {str(e)}",
+                message=f"Failed to create webhook delivery record: {e!s}",
                 error_code=ODPSWebhookError.ERROR_CODE_WEBHOOK_UNKNOWN,
                 user_message="Failed to create webhook delivery record",
                 tenant_id=str(webhook.tenant_id),
@@ -342,12 +355,20 @@ class WebhookDeliveryService:
         # Wrapped in on_commit so the delivery record is visible to the
         # worker — prevents the task racing a still-uncommitted row.
         from django.conf import settings as _s
+
+        # Emit outbound attempt metric — triggered (Phase 233.6)
+        emit_outbound_attempt(
+            tenant_id=str(webhook.tenant_id),
+            webhook_id=str(webhook.id),
+            event_type=event_type,
+            outcome="triggered",
+        )
+
         if getattr(_s, "WEBHOOK_ASYNC_DELIVERY", True):
             from hub.apps.webhooks import tasks as _wh_tasks
+
             _did = str(delivery.id)
-            transaction.on_commit(
-                lambda: _wh_tasks.deliver_webhook.delay(_did)
-            )
+            transaction.on_commit(lambda: _wh_tasks.deliver_webhook.delay(_did))
         else:
             WebhookDeliveryService._attempt_delivery(delivery)
 
@@ -387,7 +408,7 @@ class WebhookDeliveryService:
             payload_json = json.dumps(delivery.payload, sort_keys=True)
         except (TypeError, ValueError) as e:
             error = ODPSWebhookPayloadError(
-                message=f"Failed to serialize delivery payload: {str(e)}",
+                message=f"Failed to serialize delivery payload: {e!s}",
                 error_code=ODPSWebhookPayloadError.ERROR_CODE_INVALID_PAYLOAD_STRUCTURE,
                 user_message="Failed to serialize webhook payload for delivery",
                 tenant_id=str(webhook.tenant_id),
@@ -404,7 +425,7 @@ class WebhookDeliveryService:
             "Content-Type": "application/json",
             "X-Webhook-Signature": delivery.signature,
             "X-Webhook-Event-Type": delivery.event_type,
-            "User-Agent": f"{getattr(django_settings, 'APP_NAME', 'Meshant').replace(' ', '')}/1.0"
+            "User-Agent": f"{getattr(django_settings, 'APP_NAME', 'Meshant').replace(' ', '')}/1.0",
         }
 
         # Use WebhookDeliveryClient for circuit breaker and retry logic
@@ -448,9 +469,7 @@ class WebhookDeliveryService:
                 headers=headers,
             )
             status_code = initial_response.status_code
-            response_text = (
-                initial_response.text[:1000] if initial_response.text else ""
-            )
+            response_text = initial_response.text[:1000] if initial_response.text else ""
 
             # ── Redirect SSRF guard ──────────────────────────────────────
             # An attacker can register a public URL that returns 301/302 to
@@ -478,9 +497,7 @@ class WebhookDeliveryService:
                             delivery_id=str(delivery.id),
                             event_type=delivery.event_type,
                         )
-                        WebhookDeliveryService._handle_delivery_error(
-                            delivery, ssrf_redirect_error
-                        )
+                        WebhookDeliveryService._handle_delivery_error(delivery, ssrf_redirect_error)
                         return
 
                 if location:
@@ -509,7 +526,13 @@ class WebhookDeliveryService:
                     delivery_id=str(delivery.id),
                     webhook_id=str(webhook.id),
                     event_type=delivery.event_type,
-                    status_code=status_code
+                    status_code=status_code,
+                )
+                emit_outbound_attempt(
+                    tenant_id=str(webhook.tenant_id),
+                    webhook_id=str(webhook.id),
+                    event_type=delivery.event_type,
+                    outcome="delivered_success",
                 )
             else:
                 # HTTP error - create structured error
@@ -526,7 +549,7 @@ class WebhookDeliveryService:
 
             if isinstance(e, httpx.TimeoutException):
                 error = ODPSWebhookDeliveryError(
-                    message=f"Webhook delivery timeout: {str(e)}",
+                    message=f"Webhook delivery timeout: {e!s}",
                     error_code=ODPSWebhookDeliveryError.ERROR_CODE_TIMEOUT,
                     user_message=f"Webhook delivery to '{webhook.url}' timed out after {WebhookDeliveryService._get_request_timeout()} seconds",
                     tenant_id=str(webhook.tenant_id),
@@ -538,9 +561,9 @@ class WebhookDeliveryService:
                 )
             elif isinstance(e, httpx.ConnectError):
                 error = ODPSWebhookDeliveryError(
-                    message=f"Webhook delivery connection error: {str(e)}",
+                    message=f"Webhook delivery connection error: {e!s}",
                     error_code=ODPSWebhookDeliveryError.ERROR_CODE_CONNECTION_ERROR,
-                    user_message=f"Failed to connect to webhook URL '{webhook.url}': {str(e)}",
+                    user_message=f"Failed to connect to webhook URL '{webhook.url}': {e!s}",
                     tenant_id=str(webhook.tenant_id),
                     webhook_id=str(webhook.id),
                     delivery_id=str(delivery.id),
@@ -558,9 +581,9 @@ class WebhookDeliveryService:
             else:
                 # Generic network error or unexpected error
                 error = ODPSWebhookDeliveryError(
-                    message=f"Webhook delivery error: {str(e)}",
+                    message=f"Webhook delivery error: {e!s}",
                     error_code=ODPSWebhookDeliveryError.ERROR_CODE_NETWORK_ERROR,
-                    user_message=f"Error when delivering webhook to '{webhook.url}': {str(e)}",
+                    user_message=f"Error when delivering webhook to '{webhook.url}': {e!s}",
                     tenant_id=str(webhook.tenant_id),
                     webhook_id=str(webhook.id),
                     delivery_id=str(delivery.id),
@@ -683,6 +706,12 @@ class WebhookDeliveryService:
             # Non-recoverable error - mark as failed
             delivery.status = DeliveryStatus.FAILED
             delivery.save()
+            emit_outbound_attempt(
+                tenant_id=str(delivery.webhook.tenant_id),
+                webhook_id=str(delivery.webhook.id),
+                event_type=delivery.event_type,
+                outcome="delivered_failed",
+            )
 
     @staticmethod
     def _schedule_retry(delivery: WebhookDelivery):
@@ -699,7 +728,13 @@ class WebhookDeliveryService:
                 "webhook_dead_letter",
                 delivery_id=str(delivery.id),
                 webhook_id=str(webhook.id),
-                attempts=delivery.attempt_number
+                attempts=delivery.attempt_number,
+            )
+            emit_outbound_attempt(
+                tenant_id=str(webhook.tenant_id),
+                webhook_id=str(webhook.id),
+                event_type=delivery.event_type,
+                outcome="delivered_dead_letter",
             )
             return
 
@@ -766,8 +801,7 @@ class WebhookDeliveryService:
 
         # Get pending deliveries ready for retry (RATE_LIMITED is terminal)
         pending_deliveries = WebhookDelivery.objects.filter(
-            status__in=[DeliveryStatus.PENDING, DeliveryStatus.FAILED],
-            next_retry_at__lte=now
+            status__in=[DeliveryStatus.PENDING, DeliveryStatus.FAILED], next_retry_at__lte=now
         ).exclude(
             status=DeliveryStatus.RATE_LIMITED,
         )[:limit]
@@ -785,7 +819,7 @@ class WebhookDeliveryService:
         event_type: str,
         resource_type: str,
         resource_id: str,
-        event_data: Dict[str, Any]
+        event_data: dict[str, Any],
     ) -> int:
         """
         Trigger webhook delivery for ODPS events with validation and error handling.
@@ -826,7 +860,7 @@ class WebhookDeliveryService:
             "resource_type": resource_type,
             "resource_id": resource_id,
             "timestamp": timezone.now().isoformat(),
-            "data": event_data
+            "data": event_data,
         }
 
         try:
@@ -850,7 +884,7 @@ class WebhookDeliveryService:
             event_type=event_type,
             resource_type=resource_type,
             resource_id=resource_id,
-            event_data=event_data
+            event_data=event_data,
         )
 
     @staticmethod
@@ -866,10 +900,7 @@ class WebhookDeliveryService:
         """
         return list(
             Webhook.filter_by_odps_events(
-                Webhook.objects.filter(
-                    tenant_id=tenant_id,
-                    status=WebhookStatus.ACTIVE
-                )
+                Webhook.objects.filter(tenant_id=tenant_id, status=WebhookStatus.ACTIVE)
             )
         )
 
@@ -887,16 +918,12 @@ class WebhookDeliveryService:
         """
         return list(
             Webhook.filter_by_event_type(
-                event_type,
-                Webhook.objects.filter(
-                    tenant_id=tenant_id,
-                    status=WebhookStatus.ACTIVE
-                )
+                event_type, Webhook.objects.filter(tenant_id=tenant_id, status=WebhookStatus.ACTIVE)
             )
         )
 
     @staticmethod
-    def deliver_test_event(webhook: Webhook) -> Optional[WebhookDelivery]:
+    def deliver_test_event(webhook: Webhook) -> WebhookDelivery | None:
         """Deliver a synthetic test event to *webhook* (Phase 233.4).
 
         The test event uses ``event_type="webhook.test"`` and a spec-shaped
@@ -927,9 +954,9 @@ class WebhookDeliveryService:
         # Return the most recent delivery for this webhook + event_type.
         return (
             WebhookDelivery.objects.filter(
-                webhook=webhook, event_type="webhook.test",
+                webhook=webhook,
+                event_type="webhook.test",
             )
             .order_by("-created_at")
             .first()
         )
-

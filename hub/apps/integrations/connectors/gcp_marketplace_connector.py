@@ -20,12 +20,12 @@ https://cloud.google.com/analytics-hub/docs
 import csv
 import json
 import logging
-import os
 import time
-from django.utils import timezone
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
+
+from django.utils import timezone
 
 if TYPE_CHECKING:
     from google.cloud.bigquery_analyticshub_v1 import AnalyticsHubServiceClient
@@ -74,6 +74,8 @@ from hub.apps.core.resilience.circuit_breaker import (
 )
 from hub.apps.core.services.base import (
     ConnectionError as HubConnectionError,
+)
+from hub.apps.core.services.base import (
     NotFoundError,
     PermissionError,
 )
@@ -103,6 +105,7 @@ def _camel_to_snake_keys(obj: Any) -> Any:
     ``product_i_d``).
     """
     import re
+
     if isinstance(obj, dict):
         result = {}
         for k, v in obj.items():
@@ -143,8 +146,8 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
     def __init__(
         self,
-        project_id: Optional[str] = _SENTINEL,  # type: ignore[assignment]  # sentinel object for "not provided" vs None distinction
-        credentials_json: Optional[Dict[str, Any]] = None,
+        project_id: str | None = _SENTINEL,  # type: ignore[assignment]  # sentinel object for "not provided" vs None distinction
+        credentials_json: dict[str, Any] | None = None,
         location: str = "US",
         use_adc: bool = False,
     ):
@@ -205,13 +208,13 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
         # Initialize client placeholders (lazy initialization)
         self._bigquery_client = None  # type: Optional[Any]  # bigquery.Client when available
-        self._analyticshub_client: Optional[Any] = None  # AnalyticsHubServiceClient when available
+        self._analyticshub_client: Any | None = None  # AnalyticsHubServiceClient when available
         self._credentials = None
 
         # Track authentication state
         self._authenticated = False
 
-    def _is_transient_error(self, error_code: Optional[int]) -> bool:
+    def _is_transient_error(self, error_code: int | None) -> bool:
         """
         Check if Google Cloud API error is transient and should be retried.
 
@@ -295,7 +298,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         level: str,
         message: str,
         operation: str = "",
-        error_code: Optional[int] = None,
+        error_code: int | None = None,
         error_message: str = "",
         attempt: int = 0,
         max_retries: int = 0,
@@ -326,7 +329,8 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             if request:
                 correlation_id = getattr(request, "trace_id", None)
                 trace_id = getattr(request, "trace_id", None)
-        except Exception:
+        except (ImportError, AttributeError):
+            # Middleware not installed or request unavailable — non-fatal.
             pass
 
         # Build structured log context
@@ -625,7 +629,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         return MarketplaceType.GOOGLE_CLOUD_MARKETPLACE
 
     @property
-    def supported_sync_directions(self) -> List[SyncDirection]:
+    def supported_sync_directions(self) -> list[SyncDirection]:
         """
         Get the list of sync directions supported by this connector.
 
@@ -634,7 +638,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         """
         return [SyncDirection.PULL]
 
-    def authenticate(self, credentials: Dict[str, Any]) -> bool:
+    def authenticate(self, credentials: dict[str, Any]) -> bool:
         """
         Authenticate with Google Cloud using provided credentials.
 
@@ -724,7 +728,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             try:
                 client = self._get_bigquery_client()
                 # Perform lightweight operation: list datasets with max_results=1
-                datasets = list(client.list_datasets(max_results=1))
+                list(client.list_datasets(max_results=1))
                 self._log_with_context(
                     "info",
                     f"Connection test successful for GCP project {self.project_id}",
@@ -739,7 +743,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     error_message=str(e),
                 )
                 raise HubConnectionError(f"Authentication failed: {e}") from e
-            except ValueError as e:
+            except ValueError:
                 # Re-raise ValueError as-is (e.g., missing project_id)
                 raise
 
@@ -750,10 +754,10 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
     def list_listings(
         self,
-        filters: Optional[Dict[str, Any]] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[MarketplaceListing]:
+        filters: dict[str, Any] | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[MarketplaceListing]:
         """
         List available listings from Analytics Hub.
 
@@ -778,7 +782,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             ValueError: If filters or pagination parameters are invalid
         """
 
-        def execute_list_listings() -> List[MarketplaceListing]:
+        def execute_list_listings() -> list[MarketplaceListing]:
             """Execute list_listings."""
             if not ANALYTICSHUB_AVAILABLE:
                 raise ImportError(
@@ -787,12 +791,10 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 )
 
             # Validate pagination parameters
-            if offset is not None:
-                if not isinstance(offset, int) or offset < 0:
-                    raise ValueError("offset must be a non-negative integer")
-            if limit is not None:
-                if not isinstance(limit, int) or limit < 0:
-                    raise ValueError("limit must be a non-negative integer")
+            if offset is not None and (not isinstance(offset, int) or offset < 0):
+                raise ValueError("offset must be a non-negative integer")
+            if limit is not None and (not isinstance(limit, int) or limit < 0):
+                raise ValueError("limit must be a non-negative integer")
 
             client = self._get_analyticshub_client()
             if client is None:
@@ -864,10 +866,9 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                             )
 
                             # Apply filters
-                            if filters:
-                                if filters.get("category"):
-                                    if marketplace_listing.category != filters["category"]:
-                                        continue
+                            if filters and filters.get("category"):
+                                if marketplace_listing.category != filters["category"]:
+                                    continue
 
                             all_listings.append(marketplace_listing)
                         except NotFoundError:
@@ -944,14 +945,14 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 raise ImportError("Analytics Hub client is not available")
 
             # Parse listing name to get components
-            project_id, location, data_exchange_id, listing_id_short = self._parse_listing_name(
+            _project_id, _location, data_exchange_id, listing_id_short = self._parse_listing_name(
                 listing_id
             )
 
             # If we have full path, use it directly
             if data_exchange_id:
                 listing_path = self._get_listing_path(data_exchange_id, listing_id_short)
-                listing = client.get_listing(name=listing_path)
+                client.get_listing(name=listing_path)
                 # Get data exchange for metadata
                 exchange_path = self._get_data_exchange_path(data_exchange_id)
                 exchange = client.get_data_exchange(name=exchange_path)
@@ -969,7 +970,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 )
                 try:
                     listing_path = self._get_listing_path(exchange_id, listing_id_short)
-                    listing = client.get_listing(name=listing_path)
+                    client.get_listing(name=listing_path)
                     listing_details = self._get_listing_details(exchange_id, listing_id_short)
                     return self._build_marketplace_listing(listing_details, exchange_id, exchange)
                 except GoogleAPIError as e:
@@ -996,7 +997,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             execute_get_listing, "get_listing", f"listing '{listing_id}'"
         )
 
-    def _get_listing_details(self, data_exchange_id: str, listing_id: str) -> Dict[str, Any]:
+    def _get_listing_details(self, data_exchange_id: str, listing_id: str) -> dict[str, Any]:
         """
         Get full listing details from Analytics Hub API.
 
@@ -1012,7 +1013,9 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             NotFoundError: If listing not found (404)
             ConnectionError: If unable to connect to Analytics Hub
         """
-        if data_exchange_id is None or (isinstance(data_exchange_id, str) and not data_exchange_id.strip()):
+        if data_exchange_id is None or (
+            isinstance(data_exchange_id, str) and not data_exchange_id.strip()
+        ):
             raise ValueError("data_exchange_id cannot be None or empty")
         if listing_id is None or (isinstance(listing_id, str) and not listing_id.strip()):
             raise ValueError("listing_id cannot be None or empty")
@@ -1022,7 +1025,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 "Install it with: pip install google-cloud-bigquery-analyticshub"
             )
 
-        def execute_get_listing_details() -> Dict[str, Any]:
+        def execute_get_listing_details() -> dict[str, Any]:
             """Execute get_listing_details."""
             client = self._get_analyticshub_client()
             if client is None:
@@ -1037,9 +1040,10 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             # works everywhere but returns camelCase.  We route through a
             # camelCase→snake_case converter so the downstream dict-access
             # code sees the same keys regardless of the code-path taken.
+
             from google.protobuf.json_format import MessageToDict
-            import re
-            raw = listing._pb if hasattr(listing, '_pb') else listing
+
+            raw = listing._pb if hasattr(listing, "_pb") else listing
             camel_dict = MessageToDict(raw)
             listing_dict = _camel_to_snake_keys(camel_dict)
             return listing_dict
@@ -1052,7 +1056,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         )
 
     def _build_marketplace_listing(
-        self, listing_details: Dict[str, Any], data_exchange_id: str, exchange: Any = None
+        self, listing_details: dict[str, Any], data_exchange_id: str, exchange: Any = None
     ) -> MarketplaceListing:
         """
         Build MarketplaceListing object from Analytics Hub listing details.
@@ -1087,7 +1091,10 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 elif hasattr(create_time, "timestamp"):
                     created_at = datetime.fromtimestamp(create_time.timestamp())
             except (ValueError, AttributeError):
-                pass
+                logger.debug(
+                    "gcp_marketplace_create_time_parse_skipped",
+                    listing_id=listing_details.get("name", "unknown"),
+                )
 
         if listing_details.get("update_time"):
             try:
@@ -1097,7 +1104,10 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 elif hasattr(update_time, "timestamp"):
                     updated_at = datetime.fromtimestamp(update_time.timestamp())
             except (ValueError, AttributeError):
-                pass
+                logger.debug(
+                    "gcp_marketplace_update_time_parse_skipped",
+                    listing_id=listing_details.get("name", "unknown"),
+                )
 
         # Build URL (Analytics Hub console URL)
         url = None
@@ -1112,7 +1122,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         odps_metadata = self._extract_odps_metadata(listing_details, data_exchange_id, exchange)
 
         # Extract ODCS metadata
-        odcs_metadata = self._extract_odcs_metadata(listing_details)
+        self._extract_odcs_metadata(listing_details)
 
         # Build metadata dictionary
         metadata = {
@@ -1150,8 +1160,8 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         )
 
     def _extract_odps_metadata(
-        self, listing_details: Dict[str, Any], data_exchange_id: str, exchange: Any = None
-    ) -> Optional[Dict[str, Any]]:
+        self, listing_details: dict[str, Any], data_exchange_id: str, exchange: Any = None
+    ) -> dict[str, Any] | None:
         """
         Extract ODPS contract metadata from Analytics Hub listing.
 
@@ -1169,7 +1179,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         Returns:
             Structured ODPS metadata dictionary or None if no ODPS data available
         """
-        odps_metadata: Dict[str, Any] = {}
+        odps_metadata: dict[str, Any] = {}
 
         # Extract product details
         listing_name = listing_details.get("name", "")
@@ -1177,7 +1187,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         display_name = listing_details.get("display_name", "")
         description = listing_details.get("description", "")
 
-        product_details: Dict[str, Any] = {
+        product_details: dict[str, Any] = {
             "product_id": listing_id,
             "product_name": display_name or listing_id,
             "product_description": description or "",
@@ -1296,7 +1306,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
         return None
 
-    def _extract_odcs_metadata(self, listing_details: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _extract_odcs_metadata(self, listing_details: dict[str, Any]) -> dict[str, Any] | None:
         """
         Extract ODCS contract metadata hints from Analytics Hub listing.
 
@@ -1311,7 +1321,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         Returns:
             Structured ODCS metadata dictionary (will be enhanced after dataset subscription)
         """
-        odcs_metadata: Dict[str, Any] = {}
+        odcs_metadata: dict[str, Any] = {}
 
         # Extract schema hints from BigQuery dataset reference
         bigquery_dataset = listing_details.get("bigquery_dataset")
@@ -1384,7 +1394,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
         return None
 
-    def list_resources(self, listing_id: str) -> List[MarketplaceResource]:
+    def list_resources(self, listing_id: str) -> list[MarketplaceResource]:
         """
         List resources associated with an Analytics Hub listing.
 
@@ -1407,7 +1417,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         if not isinstance(listing_id, str) or not listing_id.strip():
             raise ValueError("listing_id must be a non-empty string")
 
-        def execute_list_resources() -> List[MarketplaceResource]:
+        def execute_list_resources() -> list[MarketplaceResource]:
             """Execute list_resources."""
             # First, get the listing to find the BigQuery dataset
             listing = self.get_listing(listing_id)
@@ -1661,7 +1671,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
             if "/" in resource_id:
                 # Full listing path
-                project, location, exchange, listing = self._parse_listing_name(resource_id)
+                _project, _location, exchange, listing = self._parse_listing_name(resource_id)
                 listing_id = listing
                 data_exchange_id = exchange
             elif "." in resource_id and resource_id.count(".") >= 2:
@@ -1738,7 +1748,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 raise ValueError(f"Invalid table reference format: {table_ref}")
 
             # Extract schema from BigQuery dataset
-            schema = self._extract_schema_from_bigquery_dataset(dataset_id, table_id, table_project)
+            self._extract_schema_from_bigquery_dataset(dataset_id, table_id, table_project)
 
             # Create destination directory if it doesn't exist
             dest_path = Path(destination_path)
@@ -1746,7 +1756,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
             # Export table data using BigQuery export job
             client = self._get_bigquery_client()
-            table_ref_obj = client.dataset(dataset_id, project=table_project).table(table_id)
+            client.dataset(dataset_id, project=table_project).table(table_id)
 
             # Determine file format from destination path extension
             file_ext = dest_path.suffix.lower()
@@ -1952,8 +1962,8 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         )
 
     def _extract_schema_from_bigquery_dataset(
-        self, dataset_id: str, table_id: str, project_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, dataset_id: str, table_id: str, project_id: str | None = None
+    ) -> dict[str, Any]:
         """
         Extract schema from BigQuery dataset table.
 
@@ -2092,7 +2102,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         return "string"
 
     def map_to_hub_asset(
-        self, listing: MarketplaceListing, sync_job_id: Optional[str] = None
+        self, listing: MarketplaceListing, sync_job_id: str | None = None
     ) -> MarketplaceAssetMapping:
         """
         Map an Analytics Hub listing to a Hub asset representation.
@@ -2151,7 +2161,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         tags = listing.tags or []
 
         # Build comprehensive asset_data
-        asset_data: Dict[str, Any] = {
+        asset_data: dict[str, Any] = {
             "name": title,
             "description": description,
             "key": f"gcp-marketplace-{listing.marketplace_id}",
@@ -2168,7 +2178,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         provider = listing_details.get("data_provider") or listing_details.get("publisher")
 
         # Extract source metadata
-        source_metadata: Dict[str, Any] = {
+        source_metadata: dict[str, Any] = {
             "marketplace_type": MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value,
             "marketplace_id": listing.marketplace_id,
             "listing_id": listing.marketplace_id,
@@ -2234,9 +2244,9 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
     def map_from_hub_asset(
         self,
-        asset_data: Dict[str, Any],
-        odps_metadata: Optional[Dict[str, Any]] = None,
-        odcs_metadata: Optional[Dict[str, Any]] = None,
+        asset_data: dict[str, Any],
+        odps_metadata: dict[str, Any] | None = None,
+        odcs_metadata: dict[str, Any] | None = None,
     ):
         """
         Map a Hub asset to an Analytics Hub listing representation.
@@ -2261,7 +2271,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             "Use map_to_hub_asset() to map Analytics Hub listings TO Hub assets."
         )
 
-    def sync_push(self, asset_ids: List[str], options: Optional[Dict[str, Any]] = None):
+    def sync_push(self, asset_ids: list[str], options: dict[str, Any] | None = None):
         """
         Perform bulk push synchronization (Hub → Analytics Hub).
 
@@ -2286,9 +2296,9 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
     def sync_pull(
         self,
-        listing_ids: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        options: Optional[Dict[str, Any]] = None,
+        listing_ids: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
     ) -> SyncResult:
         """
         Perform bulk pull synchronization (Analytics Hub → Hub) following metadata-first pattern.
@@ -2527,7 +2537,9 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             status = (
                 SyncStatus.COMPLETED
                 if failed_items == 0
-                else SyncStatus.PARTIAL if successful_items > 0 else SyncStatus.FAILED
+                else SyncStatus.PARTIAL
+                if successful_items > 0
+                else SyncStatus.FAILED
             )
 
             return SyncResult(

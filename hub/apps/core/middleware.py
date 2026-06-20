@@ -1,6 +1,7 @@
 """
 Core middleware utilities.
 """
+
 from django.middleware.common import CommonMiddleware as _CommonMiddleware
 from django.template.response import ContentNotRenderedError
 

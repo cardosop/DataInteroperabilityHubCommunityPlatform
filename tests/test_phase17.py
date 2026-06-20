@@ -25,18 +25,16 @@ Covers:
         key must be absent from job_variables (not an empty list which can
         break some K8s work pool versions).
 """
+
 from __future__ import annotations
 
-import importlib
 import os
 import sys
-import types
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # 17.10  test_deployment_sync_no_docker_sdk_import
 # ---------------------------------------------------------------------------
+
 
 def test_deployment_sync_no_docker_sdk_import():
     """
@@ -75,6 +73,7 @@ def test_deployment_sync_no_docker_sdk_import():
 # ---------------------------------------------------------------------------
 # 17.10  K8s job_variables shape tests (pure-unit, no Prefect server needed)
 # ---------------------------------------------------------------------------
+
 
 def _build_k8s_job_variables(env: dict | None = None) -> dict:
     """
@@ -160,12 +159,14 @@ def test_k8s_job_variables_no_docker_network_key():
 
 def test_k8s_job_variables_resource_bounds():
     """Resource requests and limits must be present and correctly nested."""
-    jv = _build_k8s_job_variables({
-        "PREFECT_K8S_CPU_REQUEST": "200m",
-        "PREFECT_K8S_CPU_LIMIT": "2000m",
-        "PREFECT_K8S_MEMORY_REQUEST": "512Mi",
-        "PREFECT_K8S_MEMORY_LIMIT": "2Gi",
-    })
+    jv = _build_k8s_job_variables(
+        {
+            "PREFECT_K8S_CPU_REQUEST": "200m",
+            "PREFECT_K8S_CPU_LIMIT": "2000m",
+            "PREFECT_K8S_MEMORY_REQUEST": "512Mi",
+            "PREFECT_K8S_MEMORY_LIMIT": "2Gi",
+        }
+    )
     assert jv["resources"]["requests"]["cpu"] == "200m"
     assert jv["resources"]["limits"]["cpu"] == "2000m"
     assert jv["resources"]["requests"]["memory"] == "512Mi"
@@ -180,9 +181,7 @@ def test_k8s_image_pull_secrets_omitted_when_empty():
 
 def test_k8s_image_pull_secrets_populated_when_set():
     """When pull secrets are configured they appear as a list."""
-    jv = _build_k8s_job_variables({
-        "PREFECT_K8S_IMAGE_PULL_SECRETS": "regcred,ecr-secret"
-    })
+    jv = _build_k8s_job_variables({"PREFECT_K8S_IMAGE_PULL_SECRETS": "regcred,ecr-secret"})
     assert jv["image_pull_secrets"] == ["regcred", "ecr-secret"]
 
 

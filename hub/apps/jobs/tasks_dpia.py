@@ -1,6 +1,7 @@
 """Job handlers for DPIA tooling — Phase 232.5."""
 
 from __future__ import annotations
+
 from hub.apps.dpia.services.review_due import run_dpia_review_due_scan
 
 

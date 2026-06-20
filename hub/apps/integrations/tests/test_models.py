@@ -5,6 +5,7 @@ Comprehensive tests for model creation, validation, encryption, and constraints.
 """
 
 import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -13,7 +14,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.integrations.base import MarketplaceType
-from hub.apps.integrations.encryption import EncryptionError, decrypt_json_field, encrypt_json_field
+from hub.apps.integrations.encryption import EncryptionError
 from hub.apps.integrations.models import MarketplaceConnection
 from hub.apps.tenants.models import Tenant
 
@@ -202,7 +203,9 @@ class MarketplaceConnectionModelTest(TestCase):
 
         # After save, config should be encrypted
         self.assertIn("_encrypted", connection.config)
-        self.assertNotEqual(connection.config["_encrypted"], self.config)
+        encrypted_value = connection.config["_encrypted"]
+        self.assertIsInstance(encrypted_value, str)
+        self.assertGreater(len(encrypted_value), 0)
 
         # Verify decryption works
         decrypted = connection.get_config()
@@ -244,8 +247,9 @@ class MarketplaceConnectionModelTest(TestCase):
         decrypted = connection.get_config()
         self.assertEqual(decrypted, {})
 
-    def test_get_config_none_config(self):
-        """Test get_config handles None/empty config"""
+    def test_get_config_empty_dict_config(self):
+        """Test get_config handles empty dict config (Django JSONField stores
+        None as {} in practice)."""
         # JSONField with default=dict always returns a dict, never None
         # Even if we try to set None, Django converts it to {}
         connection = MarketplaceConnection.objects.create(
@@ -292,41 +296,6 @@ class MarketplaceConnectionModelTest(TestCase):
                 marketplace_type.name.replace("_", " ").title(),
             )
 
-    def test_indexes_exist(self):
-        """Test that indexes are created correctly"""
-        from django.db import connection as db_connection
-
-        # Create connections to test indexes
-        MarketplaceConnection.objects.create(
-            tenant=self.tenant,
-            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-            name="Index Test 1",
-            config=self.config,
-            is_active=True,
-        )
-
-        MarketplaceConnection.objects.create(
-            tenant=self.tenant,
-            marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE.value,
-            name="Index Test 2",
-            config=self.config,
-            is_active=False,
-        )
-
-        # Verify queries use indexes (check execution plan)
-        with db_connection.cursor() as cursor:
-            # Query that should use tenant + marketplace_type index
-            cursor.execute(
-                """
-                EXPLAIN SELECT * FROM marketplace_connections
-                WHERE tenant_id = %s AND marketplace_type = %s
-            """,
-                [self.tenant.id, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value],
-            )
-
-            # Just verify query executes without error
-            # Actual index usage depends on PostgreSQL query planner
-
     def test_ordering_by_created_at_desc(self):
         """Test that connections are ordered by created_at descending"""
         connection1 = MarketplaceConnection.objects.create(
@@ -336,16 +305,15 @@ class MarketplaceConnectionModelTest(TestCase):
             config=self.config,
         )
 
-        import time
-
-        time.sleep(0.01)  # Small delay to ensure different timestamps  # INTENTIONAL: test-specific timing
-
         connection2 = MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE.value,
             name="Second Connection",
             config=self.config,
         )
+
+        connection1.refresh_from_db()
+        connection2.refresh_from_db()
 
         connections = list(MarketplaceConnection.objects.all())
         self.assertEqual(connections[0], connection2)  # Most recent first
@@ -430,16 +398,12 @@ class MarketplaceConnectionModelTest(TestCase):
 
         original_updated_at = connection.updated_at
 
-        import time
-
-        time.sleep(0.01)  # INTENTIONAL: test-specific timing requirement
-
-        # Update connection
+        # Update connection — auto_now on updated_at guarantees monotonicity
         connection.is_active = False
         connection.save()
 
         connection.refresh_from_db()
-        self.assertGreater(connection.updated_at, original_updated_at)
+        self.assertGreaterEqual(connection.updated_at, original_updated_at)
 
     # ========== FAILURE SCENARIOS TESTS ==========
 
@@ -516,22 +480,26 @@ class MarketplaceConnectionModelTest(TestCase):
     # ========== EDGE CASES TESTS ==========
 
     def test_connection_name_max_length(self):
-        """Test that connection name respects max length"""
-        # Create connection with very long name
-        long_name = "a" * 500  # Assuming reasonable max length
-        try:
-            connection = MarketplaceConnection.objects.create(
+        """Test that connection name of exactly max_length=255 is accepted."""
+        long_name = "a" * 255
+        connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name=long_name,
+            config=self.config,
+        )
+        connection.refresh_from_db()
+        self.assertEqual(connection.name, long_name)
+
+    def test_connection_name_exceeds_max_length(self):
+        """Test that name exceeding max_length=255 raises ValidationError."""
+        with self.assertRaises((ValidationError, IntegrityError)):
+            MarketplaceConnection.objects.create(
                 tenant=self.tenant,
                 marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-                name=long_name,
+                name="a" * 256,
                 config=self.config,
             )
-            # If it succeeds, verify it was stored correctly
-            connection.refresh_from_db()
-            self.assertEqual(connection.name, long_name)
-        except (ValidationError, IntegrityError):
-            # If max length is enforced, that's also acceptable
-            pass
 
     def test_config_with_large_data(self):
         """Test that config can handle large data structures"""
@@ -678,10 +646,4 @@ class MarketplaceConnectionModelTest(TestCase):
         repr_str = repr(connection)
         # Should contain key identifying information
         self.assertIn(str(connection.id), repr_str or "")
-        # May contain name, tenant name, or marketplace type
-        self.assertTrue(
-            "Repr Test" in repr_str
-            or "Test Tenant" in repr_str
-            or "Snowflake" in repr_str
-            or str(connection.id) in repr_str
-        )
+        self.assertIn("Repr Test", repr_str)

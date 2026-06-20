@@ -3,18 +3,19 @@ Comprehensive tests for Saga pattern implementation.
 
 Tests saga step definition, execution, compensation, and error handling.
 """
+
 import uuid
+
 from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.orchestration.saga import (
+    SagaCompensationError,
+    SagaExecutionError,
     SagaOrchestrator,
+    SagaStatus,
     SagaStep,
     SagaStepResult,
-    SagaStatus,
-    SagaStepStatus,
-    SagaExecutionError,
-    SagaCompensationError,
 )
 
 
@@ -33,45 +34,58 @@ class SagaPatternTest(TestCase):
         """Create a successful forward action"""
         # Capture reference to execution_log to ensure closure uses current instance
         execution_log = self.execution_log
+
         def action(input_data: dict) -> SagaStepResult:
-            execution_log.append({
-                "step": step_name,
-                "action": "forward",
-                "input": input_data.copy(),
-                "timestamp": timezone.now()
-            })
-            return SagaStepResult.success_result(output=output_data or {"result": f"{step_name}_completed"})
+            execution_log.append(
+                {
+                    "step": step_name,
+                    "action": "forward",
+                    "input": input_data.copy(),
+                    "timestamp": timezone.now(),
+                }
+            )
+            return SagaStepResult.success_result(
+                output=output_data or {"result": f"{step_name}_completed"}
+            )
+
         return action
 
     def _create_failure_action(self, step_name: str, error_message: str = None):
         """Create a failing forward action"""
         # Capture reference to execution_log to ensure closure uses current instance
         execution_log = self.execution_log
+
         def action(input_data: dict) -> SagaStepResult:
-            execution_log.append({
-                "step": step_name,
-                "action": "forward",
-                "input": input_data.copy(),
-                "timestamp": timezone.now()
-            })
-            return SagaStepResult.failure_result(
-                error=error_message or f"{step_name}_failed",
-                error_details={"step": step_name}
+            execution_log.append(
+                {
+                    "step": step_name,
+                    "action": "forward",
+                    "input": input_data.copy(),
+                    "timestamp": timezone.now(),
+                }
             )
+            return SagaStepResult.failure_result(
+                error=error_message or f"{step_name}_failed", error_details={"step": step_name}
+            )
+
         return action
 
     def _create_compensation_action(self, step_name: str):
         """Create a compensation action"""
         # Capture reference to compensation_log to ensure closure uses current instance
         compensation_log = self.compensation_log
+
         def action(input_data: dict) -> SagaStepResult:
-            compensation_log.append({
-                "step": step_name,
-                "action": "compensation",
-                "input": input_data.copy(),
-                "timestamp": timezone.now()
-            })
+            compensation_log.append(
+                {
+                    "step": step_name,
+                    "action": "compensation",
+                    "input": input_data.copy(),
+                    "timestamp": timezone.now(),
+                }
+            )
             return SagaStepResult.success_result(output={"compensated": step_name})
+
         return action
 
     def test_saga_step_definition(self):
@@ -81,7 +95,7 @@ class SagaPatternTest(TestCase):
             name="test_step",
             forward_action=self._create_success_action("test_step"),
             compensation_action=self._create_compensation_action("test_step"),
-            description="Test step"
+            description="Test step",
         )
 
         self.assertEqual(step.name, "test_step")
@@ -92,7 +106,7 @@ class SagaPatternTest(TestCase):
         # Valid step without compensation
         step_no_comp = SagaStep(
             name="test_step_no_comp",
-            forward_action=self._create_success_action("test_step_no_comp")
+            forward_action=self._create_success_action("test_step_no_comp"),
         )
 
         self.assertIsNone(step_no_comp.compensation_action)
@@ -114,7 +128,7 @@ class SagaPatternTest(TestCase):
             SagaStep(
                 name="test",
                 forward_action=self._create_success_action("test"),
-                compensation_action="not_callable"
+                compensation_action="not_callable",
             )
         self.assertIn("compensation_action must be callable", str(cm.exception))
 
@@ -128,8 +142,7 @@ class SagaPatternTest(TestCase):
 
         # Failure result
         failure_result = SagaStepResult.failure_result(
-            error="Test error",
-            error_details={"code": "TEST_ERROR"}
+            error="Test error", error_details={"code": "TEST_ERROR"}
         )
         self.assertFalse(failure_result.success)
         self.assertEqual(failure_result.error, "Test error")
@@ -143,18 +156,18 @@ class SagaPatternTest(TestCase):
             SagaStep(
                 name="step1",
                 forward_action=self._create_success_action("step1", {"value1": 1}),
-                compensation_action=self._create_compensation_action("step1")
+                compensation_action=self._create_compensation_action("step1"),
             ),
             SagaStep(
                 name="step2",
                 forward_action=self._create_success_action("step2", {"value2": 2}),
-                compensation_action=self._create_compensation_action("step2")
+                compensation_action=self._create_compensation_action("step2"),
             ),
             SagaStep(
                 name="step3",
                 forward_action=self._create_success_action("step3", {"value3": 3}),
-                compensation_action=self._create_compensation_action("step3")
-            )
+                compensation_action=self._create_compensation_action("step3"),
+            ),
         ]
 
         context = orchestrator.execute(steps, initial_state={"initial": "data"})
@@ -189,18 +202,18 @@ class SagaPatternTest(TestCase):
             SagaStep(
                 name="step1",
                 forward_action=self._create_success_action("step1", {"value1": 1}),
-                compensation_action=self._create_compensation_action("step1")
+                compensation_action=self._create_compensation_action("step1"),
             ),
             SagaStep(
                 name="step2",
                 forward_action=self._create_success_action("step2", {"value2": 2}),
-                compensation_action=self._create_compensation_action("step2")
+                compensation_action=self._create_compensation_action("step2"),
             ),
             SagaStep(
                 name="step3_fail",
                 forward_action=self._create_failure_action("step3_fail", "Step 3 failed"),
-                compensation_action=self._create_compensation_action("step3_fail")
-            )
+                compensation_action=self._create_compensation_action("step3_fail"),
+            ),
         ]
 
         with self.assertRaises(SagaExecutionError) as cm:
@@ -236,13 +249,13 @@ class SagaPatternTest(TestCase):
             SagaStep(
                 name="step1_fail",
                 forward_action=self._create_failure_action("step1_fail", "First step failed"),
-                compensation_action=self._create_compensation_action("step1_fail")
+                compensation_action=self._create_compensation_action("step1_fail"),
             ),
             SagaStep(
                 name="step2",
                 forward_action=self._create_success_action("step2"),
-                compensation_action=self._create_compensation_action("step2")
-            )
+                compensation_action=self._create_compensation_action("step2"),
+            ),
         ]
 
         with self.assertRaises(SagaExecutionError):
@@ -267,18 +280,18 @@ class SagaPatternTest(TestCase):
             SagaStep(
                 name="step1",
                 forward_action=self._create_success_action("step1"),
-                compensation_action=None  # No compensation
+                compensation_action=None,  # No compensation
             ),
             SagaStep(
                 name="step2",
                 forward_action=self._create_success_action("step2"),
-                compensation_action=self._create_compensation_action("step2")
+                compensation_action=self._create_compensation_action("step2"),
             ),
             SagaStep(
                 name="step3_fail",
                 forward_action=self._create_failure_action("step3_fail"),
-                compensation_action=None
-            )
+                compensation_action=None,
+            ),
         ]
 
         with self.assertRaises(SagaExecutionError):
@@ -300,13 +313,13 @@ class SagaPatternTest(TestCase):
             SagaStep(
                 name="step1",
                 forward_action=self._create_success_action("step1"),
-                compensation_action=failing_compensation
+                compensation_action=failing_compensation,
             ),
             SagaStep(
                 name="step2_fail",
                 forward_action=self._create_failure_action("step2_fail"),
-                compensation_action=None
-            )
+                compensation_action=None,
+            ),
         ]
 
         with self.assertRaises(SagaCompensationError) as cm:
@@ -328,13 +341,13 @@ class SagaPatternTest(TestCase):
             SagaStep(
                 name="step1",
                 forward_action=self._create_success_action("step1"),
-                compensation_action=self._create_compensation_action("step1")
+                compensation_action=self._create_compensation_action("step1"),
             ),
             SagaStep(
                 name="step2_exception",
                 forward_action=exception_action,
-                compensation_action=self._create_compensation_action("step2_exception")
-            )
+                compensation_action=self._create_compensation_action("step2_exception"),
+            ),
         ]
 
         with self.assertRaises(SagaExecutionError) as cm:
@@ -367,7 +380,7 @@ class SagaPatternTest(TestCase):
         steps = [
             SagaStep(name="step1", forward_action=step1_action),
             SagaStep(name="step2", forward_action=step2_action),
-            SagaStep(name="step3", forward_action=step3_action)
+            SagaStep(name="step3", forward_action=step3_action),
         ]
 
         context = orchestrator.execute(steps, initial_state={"initial": "data"})
@@ -391,23 +404,25 @@ class SagaPatternTest(TestCase):
             self.assertIn("step_specific", input_data)
             self.assertEqual(input_data["step_specific"], "custom_value")
             # Log the input for verification
-            self.execution_log.append({
-                "step": "step1",
-                "action": "forward",
-                "input": input_data.copy(),
-                "timestamp": timezone.now()
-            })
+            self.execution_log.append(
+                {
+                    "step": "step1",
+                    "action": "forward",
+                    "input": input_data.copy(),
+                    "timestamp": timezone.now(),
+                }
+            )
             return SagaStepResult.success_result()
 
         steps = [
             SagaStep(
                 name="step1",
                 forward_action=step_action,
-                input_data={"step_specific": "custom_value"}
+                input_data={"step_specific": "custom_value"},
             )
         ]
 
-        context = orchestrator.execute(steps, initial_state={"shared": "data"})
+        orchestrator.execute(steps, initial_state={"shared": "data"})
 
         # Verify step received both shared state and step-specific input
         self.assertEqual(len(self.execution_log), 1)
@@ -431,13 +446,13 @@ class SagaPatternTest(TestCase):
             SagaStep(
                 name="step1",
                 forward_action=self._create_success_action("step1"),
-                compensation_action=self._create_compensation_action("step1")
+                compensation_action=self._create_compensation_action("step1"),
             ),
             SagaStep(
                 name="step2",
                 forward_action=self._create_success_action("step2"),
-                compensation_action=self._create_compensation_action("step2")
-            )
+                compensation_action=self._create_compensation_action("step2"),
+            ),
         ]
 
         context = orchestrator.execute(steps)
@@ -462,13 +477,13 @@ class SagaPatternTest(TestCase):
             SagaStep(
                 name="step1",
                 forward_action=self._create_success_action("step1"),
-                compensation_action=self._create_compensation_action("step1")
+                compensation_action=self._create_compensation_action("step1"),
             ),
             SagaStep(
                 name="step2_fail",
                 forward_action=self._create_failure_action("step2_fail"),
-                compensation_action=None
-            )
+                compensation_action=None,
+            ),
         ]
 
         with self.assertRaises(SagaExecutionError):
@@ -501,12 +516,7 @@ class SagaPatternTest(TestCase):
         self.assertEqual(orchestrator.get_status(), SagaStatus.PENDING)
 
         # Successful execution
-        steps = [
-            SagaStep(
-                name="step1",
-                forward_action=self._create_success_action("step1")
-            )
-        ]
+        steps = [SagaStep(name="step1", forward_action=self._create_success_action("step1"))]
 
         orchestrator.execute(steps)
         self.assertEqual(orchestrator.get_status(), SagaStatus.COMPLETED)
@@ -517,16 +527,12 @@ class SagaPatternTest(TestCase):
             SagaStep(
                 name="step1",
                 forward_action=self._create_success_action("step1"),
-                compensation_action=self._create_compensation_action("step1")
+                compensation_action=self._create_compensation_action("step1"),
             ),
-            SagaStep(
-                name="step2_fail",
-                forward_action=self._create_failure_action("step2_fail")
-            )
+            SagaStep(name="step2_fail", forward_action=self._create_failure_action("step2_fail")),
         ]
 
         with self.assertRaises(SagaExecutionError):
             orchestrator2.execute(steps2)
 
         self.assertEqual(orchestrator2.get_status(), SagaStatus.COMPENSATED)
-

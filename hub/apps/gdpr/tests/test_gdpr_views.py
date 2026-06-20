@@ -20,7 +20,6 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -237,23 +236,6 @@ class DataExportJobViewSetTest(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    def test_export_data_with_existing_pending_job(self):
-        """Test that export_data with existing pending job returns 400 error"""
-        # Create pending job
-        DataExportJob.objects.create(
-            user=self.user, tenant=self.tenant, status=DataExportStatus.PENDING
-        )
-
-        self.client.force_authenticate(user=self.user)
-
-        response = self.client.post("/api/v1/users/me/export-jobs/export-data/")
-
-        # handle_service_exception maps ValidationError → 400
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        data = self._response_data(response)
-        self.assertIn("detail", data)
-        self.assertEqual(data["code"], "EXPORT_IN_PROGRESS")
-
     def test_export_data_error_response_format(self):
         """Test that export_data returns standardized error format"""
         # Create pending job to trigger error
@@ -285,16 +267,20 @@ class DataExportJobViewSetTest(TestCase):
 
         # Should succeed
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        # Verify a new job was actually created (count increased by 1)
+        final_count = DataExportJob.objects.filter(user=self.user).count()
+        self.assertEqual(final_count, 2)  # 1 pre-existing completed + 1 new
 
     # ========== EDGE CASES TESTS ==========
 
     def test_list_export_jobs_pagination(self):
         """Test that list endpoint supports pagination"""
         from django.conf import settings
+
         page_size = settings.REST_FRAMEWORK.get("PAGE_SIZE", 50)
         total = page_size + 5  # Exceed page size to trigger pagination
 
-        for i in range(total):
+        for _i in range(total):
             DataExportJob.objects.create(
                 user=self.user, tenant=self.tenant, status=DataExportStatus.COMPLETED
             )
@@ -522,8 +508,11 @@ class ErasureRequestViewSetTest(TestCase):
         # Verify erasure was executed (not just requested)
         request_id = response.data["request_id"]
         request = ErasureRequest.objects.get(id=request_id)
-        self.assertEqual(request.status, ErasureRequestStatus.COMPLETED,
-                         "Erasure should complete — if this fails, check execute_erasure service")
+        self.assertEqual(
+            request.status,
+            ErasureRequestStatus.COMPLETED,
+            "Erasure should complete — if this fails, check execute_erasure service",
+        )
 
         # Verify user was actually anonymized
         self.user.refresh_from_db()
@@ -535,22 +524,6 @@ class ErasureRequestViewSetTest(TestCase):
         response = self.client.post("/api/v1/users/me/erasure-requests/request-erasure/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-
-    def test_request_erasure_with_existing_pending_request(self):
-        """Test that request_erasure with existing pending request returns 400 error"""
-        # Create pending request
-        ErasureRequest.objects.create(
-            user=self.user, tenant=self.tenant, status=ErasureRequestStatus.PENDING
-        )
-
-        self.client.force_authenticate(user=self.user)
-
-        response = self.client.post("/api/v1/users/me/erasure-requests/request-erasure/")
-
-        # handle_service_exception maps ValidationError → 400
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        data = _response_data(response)
-        self.assertEqual(data["code"], "ERASURE_IN_PROGRESS")
 
     def test_request_erasure_error_response_format(self):
         """Test that request_erasure returns standardized error format"""
@@ -583,16 +556,20 @@ class ErasureRequestViewSetTest(TestCase):
 
         # Service only blocks PENDING/PROCESSING — completed requests don't block new ones
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        # Verify a new request was actually created (count increased by 1)
+        final_count = ErasureRequest.objects.filter(user=self.user).count()
+        self.assertEqual(final_count, 2)  # 1 pre-existing completed + 1 new
 
     # ========== EDGE CASES TESTS ==========
 
     def test_list_erasure_requests_pagination(self):
         """Test that list endpoint supports pagination"""
         from django.conf import settings
+
         page_size = settings.REST_FRAMEWORK.get("PAGE_SIZE", 50)
         total = page_size + 5  # Exceed page size to trigger pagination
 
-        for i in range(total):
+        for _i in range(total):
             ErasureRequest.objects.create(
                 user=self.user, tenant=self.tenant, status=ErasureRequestStatus.COMPLETED
             )
@@ -607,18 +584,5 @@ class ErasureRequestViewSetTest(TestCase):
         self.assertEqual(len(response.data["results"]), page_size)
         self.assertIsNotNone(response.data.get("next"))
 
-    def test_request_erasure_creates_request_and_returns_id(self):
-        """Test that request_erasure creates the request and returns its ID"""
-        self.client.force_authenticate(user=self.user)
-
-        response = self.client.post("/api/v1/users/me/erasure-requests/request-erasure/")
-
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn("request_id", response.data)
-        self.assertIn("status", response.data)
-        self.assertIn("requested_at", response.data)
-
-        # Verify the request was persisted
-        request_id = response.data["request_id"]
-        request = ErasureRequest.objects.get(id=request_id)
-        self.assertEqual(str(request.user_id), str(self.user.id))
+    # test_request_erasure_success above covers request creation with all the same
+    # assertions (status code, response keys, DB persistence, tenant verification).

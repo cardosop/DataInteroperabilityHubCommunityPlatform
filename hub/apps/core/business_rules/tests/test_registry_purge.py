@@ -5,6 +5,7 @@ Asserts that the 28-rule registration still works after the Phase 274.6
 purge.  NotImplementedError tests for deleted methods now live in
 test_registry.py.
 """
+
 import pytest
 from django.test import TestCase
 
@@ -16,6 +17,7 @@ class TestRegistryPurge(TestCase):
 
     def setUp(self):
         from hub.apps.core.business_rules.registry import get_registry
+
         self.registry = get_registry()
 
     def test_register_still_works(self):

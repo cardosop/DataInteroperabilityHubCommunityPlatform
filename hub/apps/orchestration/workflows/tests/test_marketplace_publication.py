@@ -6,26 +6,27 @@ Comprehensive tests for marketplace publication workflow including:
 - Integration tests for workflow execution
 - E2E tests for complete marketplace publication journey
 """
+
 import uuid
+from unittest.mock import MagicMock, patch
+
 import pytest
 from django.test import TestCase
 from django.utils import timezone
-from unittest.mock import patch, MagicMock
 
-from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus, StepStatus
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
-from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.workflows.marketplace_publication import MarketplacePublicationWorkflow
-from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
-from hub.apps.assets.models import Asset, AssetStatus, DQStatus, ComplianceStatus
-from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus, DQStatus
+from hub.apps.audit.models import AuditEvent
 from hub.apps.contracts.models import Contract, ContractStatus
+from hub.apps.core.events.models import Event
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
+from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
+from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
+from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflows.marketplace_publication import MarketplacePublicationWorkflow
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User
-from hub.apps.search.models import SearchIndex
-from hub.apps.audit.models import AuditEvent
-from hub.apps.core.events.models import Event
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -41,13 +42,13 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             name=f"Test Tenant Unit {unique_id}",
             slug=f"test-tenant-unit-{unique_id}",
             status="ACTIVE",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-unit-{unique_id}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            display_name="Test User"
+            display_name="Test User",
         )
 
         self.asset = Asset.objects.create(
@@ -57,7 +58,7 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             status=AssetStatus.ACTIVE,
             dq_status=DQStatus.PASS,
             compliance_status=ComplianceStatus.PASS,
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.file = File.objects.create(
@@ -68,7 +69,7 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             content_type="text/csv",
             status=FileStatus.ACTIVE,
             content_sha256=f"abc123{unique_id}",
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.dataset = Dataset.objects.create(
@@ -78,13 +79,13 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             schema_json={
                 "fields": [
                     {"name": "id", "data_type": "integer", "nullable": False},
-                    {"name": "name", "data_type": "string", "nullable": True}
+                    {"name": "name", "data_type": "string", "nullable": True},
                 ]
             },
             sample_data_json=[{"id": 1, "name": "test1"}],
             row_count=100,
             format="CSV",
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.contract = Contract.objects.create(
@@ -96,17 +97,14 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             validation_status="VALID",
             normalization_status="NORMALIZED_OK",
             hub_contract_json={
-                "info": {
-                    "title": "Test Contract",
-                    "description": "Test contract description"
-                },
+                "info": {"title": "Test Contract", "description": "Test contract description"},
                 "marketplace": {
                     "license_summary": "MIT License",
                     "intended_use": ["analytics", "machine_learning"],
-                    "restricted_use": ["resale"]
-                }
+                    "restricted_use": ["resale"],
+                },
             },
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.engine = WorkflowEngine()
@@ -126,21 +124,15 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             input_data={
                 "tenant_id": str(self.tenant.id),
                 "asset_id": str(self.asset.id),
-                "metadata_json": {
-                    "title": "Test Listing",
-                    "short_description": "Test description"
-                },
-                "pricing_model": PricingModel.FREE
+                "metadata_json": {"title": "Test Listing", "short_description": "Test description"},
+                "pricing_model": PricingModel.FREE,
             },
-            state_data={}
+            state_data={},
         )
 
     def test_validate_asset_eligibility_task_success(self):
         """Test validate asset eligibility task with all checks passing"""
-        input_data = {
-            "tenant_id": str(self.tenant.id),
-            "asset_id": str(self.asset.id)
-        }
+        input_data = {"tenant_id": str(self.tenant.id), "asset_id": str(self.asset.id)}
 
         result = MarketplacePublicationWorkflow._validate_asset_eligibility_task(
             input_data, self.workflow_instance, None
@@ -158,10 +150,7 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
         self.tenant.kyc_status = KYCStatus.UNVERIFIED
         self.tenant.save()
 
-        input_data = {
-            "tenant_id": str(self.tenant.id),
-            "asset_id": str(self.asset.id)
-        }
+        input_data = {"tenant_id": str(self.tenant.id), "asset_id": str(self.asset.id)}
 
         with self.assertRaises(ValueError) as context:
             MarketplacePublicationWorkflow._validate_asset_eligibility_task(
@@ -175,10 +164,7 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
         self.asset.status = AssetStatus.DRAFT
         self.asset.save()
 
-        input_data = {
-            "tenant_id": str(self.tenant.id),
-            "asset_id": str(self.asset.id)
-        }
+        input_data = {"tenant_id": str(self.tenant.id), "asset_id": str(self.asset.id)}
 
         with self.assertRaises(ValueError) as context:
             MarketplacePublicationWorkflow._validate_asset_eligibility_task(
@@ -191,10 +177,7 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
         """Test validate asset eligibility task with no active contract"""
         self.contract.delete()
 
-        input_data = {
-            "tenant_id": str(self.tenant.id),
-            "asset_id": str(self.asset.id)
-        }
+        input_data = {"tenant_id": str(self.tenant.id), "asset_id": str(self.asset.id)}
 
         with self.assertRaises(ValueError) as context:
             MarketplacePublicationWorkflow._validate_asset_eligibility_task(
@@ -208,10 +191,7 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
         self.contract.validation_status = "INVALID"
         self.contract.save()
 
-        input_data = {
-            "tenant_id": str(self.tenant.id),
-            "asset_id": str(self.asset.id)
-        }
+        input_data = {"tenant_id": str(self.tenant.id), "asset_id": str(self.asset.id)}
 
         with self.assertRaises(ValueError) as context:
             MarketplacePublicationWorkflow._validate_asset_eligibility_task(
@@ -225,10 +205,7 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
         self.asset.dq_status = DQStatus.FAIL
         self.asset.save()
 
-        input_data = {
-            "tenant_id": str(self.tenant.id),
-            "asset_id": str(self.asset.id)
-        }
+        input_data = {"tenant_id": str(self.tenant.id), "asset_id": str(self.asset.id)}
 
         with self.assertRaises(ValueError) as context:
             MarketplacePublicationWorkflow._validate_asset_eligibility_task(
@@ -242,10 +219,7 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
         self.asset.compliance_status = ComplianceStatus.FAIL
         self.asset.save()
 
-        input_data = {
-            "tenant_id": str(self.tenant.id),
-            "asset_id": str(self.asset.id)
-        }
+        input_data = {"tenant_id": str(self.tenant.id), "asset_id": str(self.asset.id)}
 
         with self.assertRaises(ValueError) as context:
             MarketplacePublicationWorkflow._validate_asset_eligibility_task(
@@ -258,17 +232,14 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
         """Test create marketplace listing task"""
         self.workflow_instance.state_data = {
             "asset_id": str(self.asset.id),
-            "tenant_id": str(self.tenant.id)
+            "tenant_id": str(self.tenant.id),
         }
         self.workflow_instance.save()
 
         input_data = {
             "asset_id": str(self.asset.id),
-            "metadata_json": {
-                "title": "Test Listing",
-                "short_description": "Test description"
-            },
-            "pricing_model": PricingModel.FREE
+            "metadata_json": {"title": "Test Listing", "short_description": "Test description"},
+            "pricing_model": PricingModel.FREE,
         }
 
         result = MarketplacePublicationWorkflow._create_marketplace_listing_task(
@@ -291,21 +262,16 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             asset=self.asset,
             status=ListingStatus.DRAFT,
             pricing_model=PricingModel.FREE,
-            metadata_json={"title": "Existing Listing"}
+            metadata_json={"title": "Existing Listing"},
         )
 
         self.workflow_instance.state_data = {
             "asset_id": str(self.asset.id),
-            "tenant_id": str(self.tenant.id)
+            "tenant_id": str(self.tenant.id),
         }
         self.workflow_instance.save()
 
-        input_data = {
-            "asset_id": str(self.asset.id),
-            "metadata_json": {
-                "title": "New Listing"
-            }
-        }
+        input_data = {"asset_id": str(self.asset.id), "metadata_json": {"title": "New Listing"}}
 
         result = MarketplacePublicationWorkflow._create_marketplace_listing_task(
             input_data, self.workflow_instance, None
@@ -319,16 +285,11 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
         """Test create marketplace listing task with contract metadata prepopulation"""
         self.workflow_instance.state_data = {
             "asset_id": str(self.asset.id),
-            "tenant_id": str(self.tenant.id)
+            "tenant_id": str(self.tenant.id),
         }
         self.workflow_instance.save()
 
-        input_data = {
-            "asset_id": str(self.asset.id),
-            "metadata_json": {
-                "title": "Test Listing"
-            }
-        }
+        input_data = {"asset_id": str(self.asset.id), "metadata_json": {"title": "Test Listing"}}
 
         result = MarketplacePublicationWorkflow._create_marketplace_listing_task(
             input_data, self.workflow_instance, None
@@ -345,18 +306,16 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             asset=self.asset,
             status=ListingStatus.DRAFT,
             pricing_model=PricingModel.FREE,
-            metadata_json={}
+            metadata_json={},
         )
 
-        self.workflow_instance.state_data = {
-            "listing_id": str(listing.id)
-        }
+        self.workflow_instance.state_data = {"listing_id": str(listing.id)}
         self.workflow_instance.save()
 
         input_data = {
             "pricing_model": PricingModel.REQUEST_APPROVAL,
             "price_amount": 100.0,
-            "currency": "USD"
+            "currency": "USD",
         }
 
         result = MarketplacePublicationWorkflow._configure_pricing_model_task(
@@ -378,18 +337,16 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             asset=self.asset,
             status=ListingStatus.DRAFT,
             pricing_model=PricingModel.FREE,
-            metadata_json={}
+            metadata_json={},
         )
 
-        self.workflow_instance.state_data = {
-            "listing_id": str(listing.id)
-        }
+        self.workflow_instance.state_data = {"listing_id": str(listing.id)}
         self.workflow_instance.save()
 
         input_data = {
             "pricing_model": PricingModel.REQUEST_APPROVAL,
             "price_amount": 0,  # Invalid: must be > 0
-            "currency": "USD"
+            "currency": "USD",
         }
 
         with self.assertRaises(ValueError) as context:
@@ -406,12 +363,12 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             asset=self.asset,
             status=ListingStatus.DRAFT,
             pricing_model=PricingModel.FREE,
-            metadata_json={}
+            metadata_json={},
         )
 
         self.workflow_instance.state_data = {
             "listing_id": str(listing.id),
-            "asset_id": str(self.asset.id)
+            "asset_id": str(self.asset.id),
         }
         self.workflow_instance.save()
 
@@ -438,12 +395,12 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             asset=self.asset,
             status=ListingStatus.DRAFT,
             pricing_model=PricingModel.FREE,
-            metadata_json={}
+            metadata_json={},
         )
 
         self.workflow_instance.state_data = {
             "listing_id": str(listing.id),
-            "asset_id": str(self.asset.id)
+            "asset_id": str(self.asset.id),
         }
         self.workflow_instance.save()
 
@@ -463,14 +420,10 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             asset=self.asset,
             status=ListingStatus.DRAFT,
             pricing_model=PricingModel.FREE,
-            metadata_json={
-                "title": "Test Listing"
-            }
+            metadata_json={"title": "Test Listing"},
         )
 
-        self.workflow_instance.state_data = {
-            "listing_id": str(listing.id)
-        }
+        self.workflow_instance.state_data = {"listing_id": str(listing.id)}
         self.workflow_instance.save()
 
         input_data = {}
@@ -493,12 +446,10 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             asset=self.asset,
             status=ListingStatus.DRAFT,
             pricing_model=PricingModel.FREE,
-            metadata_json={}  # Missing title
+            metadata_json={},  # Missing title
         )
 
-        self.workflow_instance.state_data = {
-            "listing_id": str(listing.id)
-        }
+        self.workflow_instance.state_data = {"listing_id": str(listing.id)}
         self.workflow_instance.save()
 
         input_data = {}
@@ -510,7 +461,7 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
 
         self.assertIn("Cannot publish listing", str(context.exception))
 
-    @patch('hub.apps.search.indexing.SearchIndexer.index_asset')
+    @patch("hub.apps.search.indexing.SearchIndexer.index_asset")
     def test_index_for_marketplace_search_task_success(self, mock_index_asset):
         """Test index for marketplace search task"""
         mock_search_index = MagicMock()
@@ -522,12 +473,12 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             asset=self.asset,
             status=ListingStatus.PUBLISHED,
             pricing_model=PricingModel.FREE,
-            metadata_json={"title": "Test Listing"}
+            metadata_json={"title": "Test Listing"},
         )
 
         self.workflow_instance.state_data = {
             "listing_id": str(listing.id),
-            "asset_id": str(self.asset.id)
+            "asset_id": str(self.asset.id),
         }
         self.workflow_instance.save()
 
@@ -541,7 +492,7 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
         self.assertEqual(result["search_index_id"], "search-index-id")
         mock_index_asset.assert_called_once_with(self.asset)
 
-    @patch('hub.apps.search.indexing.SearchIndexer.index_asset')
+    @patch("hub.apps.search.indexing.SearchIndexer.index_asset")
     def test_index_for_marketplace_search_task_failure_non_critical(self, mock_index_asset):
         """Test index for marketplace search task with indexing failure (non-critical)"""
         mock_index_asset.side_effect = Exception("Indexing failed")
@@ -551,12 +502,12 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             asset=self.asset,
             status=ListingStatus.PUBLISHED,
             pricing_model=PricingModel.FREE,
-            metadata_json={"title": "Test Listing"}
+            metadata_json={"title": "Test Listing"},
         )
 
         self.workflow_instance.state_data = {
             "listing_id": str(listing.id),
-            "asset_id": str(self.asset.id)
+            "asset_id": str(self.asset.id),
         }
         self.workflow_instance.save()
 
@@ -576,17 +527,13 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             asset=self.asset,
             status=ListingStatus.PUBLISHED,
             pricing_model=PricingModel.FREE,
-            metadata_json={"title": "Test Listing"}
+            metadata_json={"title": "Test Listing"},
         )
 
-        self.workflow_instance.state_data = {
-            "listing_id": str(listing.id)
-        }
+        self.workflow_instance.state_data = {"listing_id": str(listing.id)}
         self.workflow_instance.save()
 
-        input_data = {
-            "send_notifications": True
-        }
+        input_data = {"send_notifications": True}
 
         result = MarketplacePublicationWorkflow._send_notifications_task(
             input_data, self.workflow_instance, None
@@ -601,17 +548,13 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             asset=self.asset,
             status=ListingStatus.PUBLISHED,
             pricing_model=PricingModel.FREE,
-            metadata_json={"title": "Test Listing"}
+            metadata_json={"title": "Test Listing"},
         )
 
-        self.workflow_instance.state_data = {
-            "listing_id": str(listing.id)
-        }
+        self.workflow_instance.state_data = {"listing_id": str(listing.id)}
         self.workflow_instance.save()
 
-        input_data = {
-            "send_notifications": False
-        }
+        input_data = {"send_notifications": False}
 
         result = MarketplacePublicationWorkflow._send_notifications_task(
             input_data, self.workflow_instance, None
@@ -628,7 +571,7 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             status=ListingStatus.PUBLISHED,
             pricing_model=PricingModel.FREE,
             metadata_json={"title": "Test Listing"},
-            published_at=timezone.now()
+            published_at=timezone.now(),
         )
 
         self.workflow_instance.state_data = {
@@ -636,14 +579,11 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             "asset_id": str(self.asset.id),
             "validation_results": {"kyc_verified": True},
             "pricing_model": PricingModel.FREE,
-            "license_info": {"license_summary": "MIT License"}
+            "license_info": {"license_summary": "MIT License"},
         }
         self.workflow_instance.save()
 
-        input_data = {
-            "tenant_id": str(self.tenant.id),
-            "triggered_by_id": str(self.user.id)
-        }
+        input_data = {"tenant_id": str(self.tenant.id), "triggered_by_id": str(self.user.id)}
 
         result = MarketplacePublicationWorkflow._audit_logging_task(
             input_data, self.workflow_instance, None
@@ -665,12 +605,12 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             asset=self.asset,
             status=ListingStatus.DRAFT,
             pricing_model=PricingModel.FREE,
-            metadata_json={}
+            metadata_json={},
         )
 
         self.workflow_instance.state_data = {
             "listing_id": str(listing.id),
-            "existing_listing": False
+            "existing_listing": False,
         }
         self.workflow_instance.save()
 
@@ -688,12 +628,12 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             asset=self.asset,
             status=ListingStatus.DRAFT,
             pricing_model=PricingModel.FREE,
-            metadata_json={}
+            metadata_json={},
         )
 
         self.workflow_instance.state_data = {
             "listing_id": str(listing.id),
-            "existing_listing": True
+            "existing_listing": True,
         }
         self.workflow_instance.save()
 
@@ -713,12 +653,10 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
             status=ListingStatus.PUBLISHED,
             pricing_model=PricingModel.FREE,
             metadata_json={"title": "Test Listing"},
-            published_at=timezone.now()
+            published_at=timezone.now(),
         )
 
-        self.workflow_instance.state_data = {
-            "listing_id": str(listing.id)
-        }
+        self.workflow_instance.state_data = {"listing_id": str(listing.id)}
         self.workflow_instance.save()
 
         result = MarketplacePublicationWorkflow._rollback_publication_task(
@@ -731,12 +669,12 @@ class MarketplacePublicationWorkflowUnitTest(TestCase):
         self.assertEqual(listing.status, ListingStatus.UNLISTED)
         self.assertIsNone(listing.published_at)
 
-    @patch('hub.apps.search.indexing.SearchIndexer.delete_index')
+    @patch("hub.apps.search.indexing.SearchIndexer.delete_index")
     def test_rollback_indexing_task(self, mock_delete_index):
         """Test rollback indexing task"""
         self.workflow_instance.state_data = {
             "search_index_id": "search-index-id",
-            "asset_id": str(self.asset.id)
+            "asset_id": str(self.asset.id),
         }
         self.workflow_instance.save()
 
@@ -758,13 +696,13 @@ class MarketplacePublicationWorkflowIntegrationTest(TestCase):
             name=f"Test Tenant Integration {unique_id}",
             slug=f"test-tenant-integration-{unique_id}",
             status="ACTIVE",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-integration-{unique_id}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            display_name="Test User"
+            display_name="Test User",
         )
 
         self.asset = Asset.objects.create(
@@ -774,7 +712,7 @@ class MarketplacePublicationWorkflowIntegrationTest(TestCase):
             status=AssetStatus.ACTIVE,
             dq_status=DQStatus.PASS,
             compliance_status=ComplianceStatus.PASS,
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.file = File.objects.create(
@@ -785,19 +723,15 @@ class MarketplacePublicationWorkflowIntegrationTest(TestCase):
             content_type="text/csv",
             status=FileStatus.ACTIVE,
             content_sha256=f"abc123{unique_id}",
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             file=self.file,
-            schema_json={
-                "fields": [
-                    {"name": "id", "data_type": "integer", "nullable": False}
-                ]
-            },
-            created_by=self.user
+            schema_json={"fields": [{"name": "id", "data_type": "integer", "nullable": False}]},
+            created_by=self.user,
         )
 
         self.contract = Contract.objects.create(
@@ -810,15 +744,12 @@ class MarketplacePublicationWorkflowIntegrationTest(TestCase):
             normalization_status="NORMALIZED_OK",
             hub_contract_json={
                 "info": {"title": "Test Contract"},
-                "marketplace": {
-                    "license_summary": "MIT License",
-                    "intended_use": ["analytics"]
-                }
+                "marketplace": {"license_summary": "MIT License", "intended_use": ["analytics"]},
             },
-            created_by=self.user
+            created_by=self.user,
         )
 
-    @patch('hub.apps.search.indexing.SearchIndexer.index_asset')
+    @patch("hub.apps.search.indexing.SearchIndexer.index_asset")
     def test_execute_workflow_success(self, mock_index_asset):
         """Test complete workflow execution"""
         mock_search_index = MagicMock()
@@ -828,13 +759,10 @@ class MarketplacePublicationWorkflowIntegrationTest(TestCase):
         result = MarketplacePublicationWorkflow.execute(
             tenant_id=str(self.tenant.id),
             asset_id=str(self.asset.id),
-            metadata_json={
-                "title": "Test Listing",
-                "short_description": "Test description"
-            },
+            metadata_json={"title": "Test Listing", "short_description": "Test description"},
             pricing_model=PricingModel.FREE,
             send_notifications=True,
-            triggered_by_id=str(self.user.id)
+            triggered_by_id=str(self.user.id),
         )
 
         self.assertTrue(result["success"])
@@ -848,9 +776,7 @@ class MarketplacePublicationWorkflowIntegrationTest(TestCase):
 
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
-            resource_type="LISTING",
-            action="MARKETPLACE_PUBLISHED",
-            resource_id=str(listing.id)
+            resource_type="LISTING", action="MARKETPLACE_PUBLISHED", resource_id=str(listing.id)
         )
         self.assertTrue(audit_events.exists())
 
@@ -863,7 +789,7 @@ class MarketplacePublicationWorkflowIntegrationTest(TestCase):
             MarketplacePublicationWorkflow.execute(
                 tenant_id=str(self.tenant.id),
                 asset_id=str(self.asset.id),
-                metadata_json={"title": "Test Listing"}
+                metadata_json={"title": "Test Listing"},
             )
 
         self.assertIn("eligibility validation failed", str(context.exception))
@@ -876,7 +802,7 @@ class MarketplacePublicationWorkflowIntegrationTest(TestCase):
             metadata_json={"title": "Test Listing"},
             pricing_model=PricingModel.REQUEST_APPROVAL,
             price_amount=100.0,
-            currency="USD"
+            currency="USD",
         )
 
         listing = Listing.objects.get(id=result["listing_id"])
@@ -896,13 +822,13 @@ class MarketplacePublicationWorkflowE2ETest(TestCase):
             name=f"Test Tenant E2E {unique_id}",
             slug=f"test-tenant-e2e-{unique_id}",
             status="ACTIVE",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-e2e-{unique_id}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            display_name="Test User"
+            display_name="Test User",
         )
 
         self.asset = Asset.objects.create(
@@ -912,7 +838,7 @@ class MarketplacePublicationWorkflowE2ETest(TestCase):
             status=AssetStatus.ACTIVE,
             dq_status=DQStatus.PASS,
             compliance_status=ComplianceStatus.PASS,
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.contract = Contract.objects.create(
@@ -928,13 +854,13 @@ class MarketplacePublicationWorkflowE2ETest(TestCase):
                 "marketplace": {
                     "license_summary": "MIT License",
                     "intended_use": ["analytics", "machine_learning"],
-                    "restricted_use": ["resale"]
-                }
+                    "restricted_use": ["resale"],
+                },
             },
-            created_by=self.user
+            created_by=self.user,
         )
 
-    @patch('hub.apps.search.indexing.SearchIndexer.index_asset')
+    @patch("hub.apps.search.indexing.SearchIndexer.index_asset")
     def test_complete_marketplace_publication_journey(self, mock_index_asset):
         """Test complete marketplace publication journey from start to finish"""
         mock_search_index = MagicMock()
@@ -948,13 +874,13 @@ class MarketplacePublicationWorkflowE2ETest(TestCase):
             metadata_json={
                 "title": "Premium Data Product",
                 "short_description": "High-quality dataset for analytics",
-                "tags": ["analytics", "finance"]
+                "tags": ["analytics", "finance"],
             },
             pricing_model=PricingModel.REQUEST_APPROVAL,
             price_amount=500.0,
             currency="USD",
             send_notifications=True,
-            triggered_by_id=str(self.user.id)
+            triggered_by_id=str(self.user.id),
         )
 
         # Verify workflow completed successfully
@@ -981,9 +907,7 @@ class MarketplacePublicationWorkflowE2ETest(TestCase):
 
         # Verify audit event
         audit_event = AuditEvent.objects.filter(
-            resource_type="LISTING",
-            action="MARKETPLACE_PUBLISHED",
-            resource_id=str(listing.id)
+            resource_type="LISTING", action="MARKETPLACE_PUBLISHED", resource_id=str(listing.id)
         ).first()
         self.assertIsNotNone(audit_event)
         self.assertEqual(audit_event.tenant, self.tenant)
@@ -1001,13 +925,13 @@ class MarketplacePublicationWorkflowE2ETest(TestCase):
             asset=self.asset,
             status=ListingStatus.DRAFT,
             pricing_model=PricingModel.FREE,
-            metadata_json={"title": "Existing Listing"}
+            metadata_json={"title": "Existing Listing"},
         )
 
         result = MarketplacePublicationWorkflow.execute(
             tenant_id=str(self.tenant.id),
             asset_id=str(self.asset.id),
-            metadata_json={"title": "Updated Listing"}
+            metadata_json={"title": "Updated Listing"},
         )
 
         # Should use existing listing
@@ -1028,13 +952,13 @@ class MarketplacePublicationWorkflowStepEventsTest(TestCase):
             name=f"Test Tenant Step Events {unique_id}",
             slug=f"test-tenant-step-events-{unique_id}",
             status="ACTIVE",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-step-events-{unique_id}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            display_name="Test User"
+            display_name="Test User",
         )
 
         self.asset = Asset.objects.create(
@@ -1044,7 +968,7 @@ class MarketplacePublicationWorkflowStepEventsTest(TestCase):
             status=AssetStatus.ACTIVE,
             dq_status=DQStatus.PASS,
             compliance_status=ComplianceStatus.PASS,
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.contract = Contract.objects.create(
@@ -1056,17 +980,14 @@ class MarketplacePublicationWorkflowStepEventsTest(TestCase):
             validation_status="VALID",
             normalization_status="NORMALIZED_OK",
             hub_contract_json={
-                "info": {
-                    "title": "Test Contract",
-                    "description": "Test contract description"
-                },
+                "info": {"title": "Test Contract", "description": "Test contract description"},
                 "marketplace": {
                     "license_summary": "MIT License",
                     "intended_use": "Data analysis",
-                    "restricted_use": "No commercial use"
-                }
+                    "restricted_use": "No commercial use",
+                },
             },
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_marketplace_publication_workflow_receives_step_events(self):
@@ -1085,7 +1006,7 @@ class MarketplacePublicationWorkflowStepEventsTest(TestCase):
             send_notifications=False,
             triggered_by_id=str(self.user.id),
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Verify workflow completed successfully
@@ -1097,20 +1018,25 @@ class MarketplacePublicationWorkflowStepEventsTest(TestCase):
 
         # Query actual events from database (no mocks - real event persistence)
         step_started_events = Event.objects.filter(
-            event_type="workflow.step.started",
-            data__workflow_instance_id=str(workflow_instance.id)
-        ).order_by('created_at')
+            event_type="workflow.step.started", data__workflow_instance_id=str(workflow_instance.id)
+        ).order_by("created_at")
 
         step_completed_events = Event.objects.filter(
             event_type="workflow.step.completed",
-            data__workflow_instance_id=str(workflow_instance.id)
-        ).order_by('created_at')
+            data__workflow_instance_id=str(workflow_instance.id),
+        ).order_by("created_at")
 
         # MarketplacePublicationWorkflow has 8 steps, so we should have step events
-        self.assertGreater(step_started_events.count(), 0,
-                          f"Expected step.started events, got {step_started_events.count()}")
-        self.assertGreater(step_completed_events.count(), 0,
-                          f"Expected step.completed events, got {step_completed_events.count()}")
+        self.assertGreater(
+            step_started_events.count(),
+            0,
+            f"Expected step.started events, got {step_started_events.count()}",
+        )
+        self.assertGreater(
+            step_completed_events.count(),
+            0,
+            f"Expected step.completed events, got {step_completed_events.count()}",
+        )
 
         # Collect event data
         step_started_data = [event.data for event in step_started_events]
@@ -1150,20 +1076,30 @@ class MarketplacePublicationWorkflowStepEventsTest(TestCase):
             "publish_listing",
             "index_for_marketplace_search",
             "send_notifications",
-            "audit_logging"
+            "audit_logging",
         ]
 
         actual_step_names = [event_data["step_name"] for event_data in step_started_data]
         for expected_name in expected_step_names:
-            self.assertIn(expected_name, actual_step_names,
-                         f"Expected step '{expected_name}' not found in step events")
+            self.assertIn(
+                expected_name,
+                actual_step_names,
+                f"Expected step '{expected_name}' not found in step events",
+            )
 
         # Verify progress increases or stays the same as steps progress
-        started_progresses = sorted([e["progress_percentage"] for e in step_started_data],
-                                   key=lambda x: step_started_data[[e["progress_percentage"] for e in step_started_data].index(x)]["step_index"])
+        started_progresses = sorted(
+            [e["progress_percentage"] for e in step_started_data],
+            key=lambda x: step_started_data[
+                [e["progress_percentage"] for e in step_started_data].index(x)
+            ]["step_index"],
+        )
         for i in range(1, len(started_progresses)):
-            self.assertGreaterEqual(started_progresses[i], started_progresses[i-1] - 1.0,
-                                  "Progress should generally increase or stay the same")
+            self.assertGreaterEqual(
+                started_progresses[i],
+                started_progresses[i - 1] - 1.0,
+                "Progress should generally increase or stay the same",
+            )
 
     def test_marketplace_publication_workflow_step_events_no_breaking_changes(self):
         """Regression test: Verify workflow execution still works correctly with step events"""
@@ -1182,7 +1118,7 @@ class MarketplacePublicationWorkflowStepEventsTest(TestCase):
             send_notifications=False,
             triggered_by_id=str(self.user.id),
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Verify workflow completed successfully (no breaking changes)
@@ -1207,9 +1143,6 @@ class MarketplacePublicationWorkflowStepEventsTest(TestCase):
 
         # Verify audit event was created
         audit_event = AuditEvent.objects.filter(
-            resource_type="LISTING",
-            action="MARKETPLACE_PUBLISHED",
-            resource_id=str(listing.id)
+            resource_type="LISTING", action="MARKETPLACE_PUBLISHED", resource_id=str(listing.id)
         ).first()
         self.assertIsNotNone(audit_event)
-

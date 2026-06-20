@@ -16,6 +16,7 @@ real serialization, real header / body assertions). The model layer
 uses real DB rows. Per the project's TDD doctrine: no mocks beyond
 the boundary.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,9 +27,8 @@ from unittest.mock import patch
 
 import pytest
 import responses
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.utils import timezone
-
 
 pytestmark = [pytest.mark.django_db(transaction=True)]
 
@@ -90,6 +90,7 @@ def _reset_circuit_breaker(channel: str) -> None:
     from hub.apps.core.resilience.circuit_breaker import (
         reset_circuit_breaker_by_name,
     )
+
     reset_circuit_breaker_by_name(f"dq_alert_{channel.lower()}")
 
 
@@ -99,7 +100,6 @@ def _reset_circuit_breaker(channel: str) -> None:
 
 
 class SlackAlertClientTests(TestCase):
-
     def setUp(self):
         _reset_circuit_breaker("SLACK")
         self.rule = _make_rule(
@@ -158,8 +158,9 @@ class SlackAlertClientTests(TestCase):
 
     @responses.activate
     def test_timeout_marks_transient(self):
-        from hub.apps.dq.clients import SlackAlertClient
         import requests
+
+        from hub.apps.dq.clients import SlackAlertClient
 
         # ``responses`` provides a ConnectionError if no match — to
         # simulate a Timeout we use a callback that raises.
@@ -180,7 +181,8 @@ class SlackAlertClientTests(TestCase):
         from hub.apps.dq.clients import SlackAlertClient
 
         rule = _make_rule(
-            channels=["SLACK"], channel_config={"webhook_url": ""},
+            channels=["SLACK"],
+            channel_config={"webhook_url": ""},
         )
         # ``deliver`` translates AlertDeliveryError to a result so the
         # dispatcher can move on; the metadata flags it.
@@ -195,7 +197,6 @@ class SlackAlertClientTests(TestCase):
 
 
 class WebhookAlertClientTests(TestCase):
-
     def setUp(self):
         _reset_circuit_breaker("WEBHOOK")
         self.rule = _make_rule(
@@ -294,7 +295,6 @@ class WebhookAlertClientTests(TestCase):
 
 
 class PagerDutyAlertClientTests(TestCase):
-
     def setUp(self):
         _reset_circuit_breaker("PAGERDUTY")
         self.rule = _make_rule(
@@ -317,7 +317,8 @@ class PagerDutyAlertClientTests(TestCase):
             },
         )
         result = PagerDutyAlertClient().deliver(
-            self.rule, _payload(severity="CRITICAL"),
+            self.rule,
+            _payload(severity="CRITICAL"),
         )
         assert result.success is True
         assert result.delivery_id == "pd-dedup-1"
@@ -360,7 +361,6 @@ class PagerDutyAlertClientTests(TestCase):
 
 
 class EmailAlertClientTests(TestCase):
-
     def setUp(self):
         _reset_circuit_breaker("EMAIL")
         self.rule = _make_rule(
@@ -409,7 +409,8 @@ class EmailAlertClientTests(TestCase):
         from hub.apps.dq.clients import EmailAlertClient
 
         rule = _make_rule(
-            channels=["EMAIL"], channel_config={"emails": []},
+            channels=["EMAIL"],
+            channel_config={"emails": []},
         )
         result = EmailAlertClient().deliver(rule, _payload())
         assert result.success is False
@@ -422,7 +423,6 @@ class EmailAlertClientTests(TestCase):
 
 
 class DispatcherDedupTests(TestCase):
-
     def setUp(self):
         _reset_circuit_breaker("WEBHOOK")
         self.rule = _make_rule(
@@ -540,7 +540,6 @@ class DispatcherDedupTests(TestCase):
 
 
 class RetrySchedulingTests(TestCase):
-
     def setUp(self):
         _reset_circuit_breaker("WEBHOOK")
         self.rule = _make_rule(
@@ -551,11 +550,14 @@ class RetrySchedulingTests(TestCase):
     @responses.activate
     def test_first_failure_schedules_retry_with_backoff(self):
         from hub.apps.dq.tasks import (
-            RETRY_SCHEDULE_SECONDS, deliver_or_schedule_retry,
+            RETRY_SCHEDULE_SECONDS,
+            deliver_or_schedule_retry,
         )
 
         responses.add(
-            responses.POST, "https://partner.example.com/dq", status=503,
+            responses.POST,
+            "https://partner.example.com/dq",
+            status=503,
         )
         with patch("hub.apps.dq.tasks.get_queue") as fake_get_queue:
             queue = fake_get_queue.return_value
@@ -579,7 +581,9 @@ class RetrySchedulingTests(TestCase):
         from hub.apps.dq.tasks import deliver_or_schedule_retry
 
         responses.add(
-            responses.POST, "https://partner.example.com/dq", status=400,
+            responses.POST,
+            "https://partner.example.com/dq",
+            status=400,
         )
         with patch("hub.apps.dq.tasks.get_queue"):
             outcome = deliver_or_schedule_retry(
@@ -599,11 +603,14 @@ class RetrySchedulingTests(TestCase):
         from hub.apps.audit.event_types import DQ_ALERT_DEAD_LETTER
         from hub.apps.audit.models import AuditEvent
         from hub.apps.dq.tasks import (
-            MAX_DELIVERY_ATTEMPTS, deliver_or_schedule_retry,
+            MAX_DELIVERY_ATTEMPTS,
+            deliver_or_schedule_retry,
         )
 
         responses.add(
-            responses.POST, "https://partner.example.com/dq", status=503,
+            responses.POST,
+            "https://partner.example.com/dq",
+            status=503,
         )
         # Pretend we're at the final attempt — next failure dead-letters.
         with patch("hub.apps.dq.tasks.get_queue"):
@@ -625,7 +632,6 @@ class RetrySchedulingTests(TestCase):
 
 
 class CircuitBreakerTransitionTests(TestCase):
-
     def setUp(self):
         _reset_circuit_breaker("SLACK")
         self.rule = _make_rule(
@@ -653,7 +659,9 @@ class CircuitBreakerTransitionTests(TestCase):
             client.deliver(self.rule, _payload())
 
         breaker = get_shared_circuit_breaker(
-            "dq_alert_slack", failure_threshold=5, timeout_seconds=60,
+            "dq_alert_slack",
+            failure_threshold=5,
+            timeout_seconds=60,
         )
         assert breaker.get_state() == CircuitBreakerState.OPEN
 
@@ -686,6 +694,10 @@ class CircuitBreakerTransitionTests(TestCase):
 
     @responses.activate
     def test_half_open_recovers_to_closed_on_success(self):
+        # Use a short timeout so we can test the OPEN→HALF_OPEN
+        # transition without sleeping a real minute.
+        from unittest.mock import patch as _patch
+
         from hub.apps.core.resilience.circuit_breaker import (
             CircuitBreakerState,
             reset_circuit_breaker_by_name,
@@ -694,10 +706,6 @@ class CircuitBreakerTransitionTests(TestCase):
             get_shared_circuit_breaker,
         )
         from hub.apps.dq.clients import SlackAlertClient
-
-        # Use a short timeout so we can test the OPEN→HALF_OPEN
-        # transition without sleeping a real minute.
-        from unittest.mock import patch as _patch
 
         # C8: Reset any cached breaker before creating the client.
         # Without this, a prior test may have created the shared
@@ -710,7 +718,9 @@ class CircuitBreakerTransitionTests(TestCase):
         reset_circuit_breaker_by_name("dq_alert_slack")
 
         with _patch.object(
-            SlackAlertClient, "circuit_breaker_timeout_seconds", 1,
+            SlackAlertClient,
+            "circuit_breaker_timeout_seconds",
+            1,
         ):
             client = SlackAlertClient()
             responses.add(
@@ -723,12 +733,14 @@ class CircuitBreakerTransitionTests(TestCase):
                 client.deliver(self.rule, _payload())
 
             breaker = get_shared_circuit_breaker(
-                "dq_alert_slack", failure_threshold=5, timeout_seconds=1,
+                "dq_alert_slack",
+                failure_threshold=5,
+                timeout_seconds=1,
             )
             assert breaker.get_state() == CircuitBreakerState.OPEN
 
             # Wait past the timeout so the next call probes HALF_OPEN.
-            time.sleep(1.5)
+            time.sleep(1.5)  # noqa: sleep-needed — test timing requirement
 
             # Re-prime responses with a healthy 200 and then run the
             # success_threshold count of calls so the breaker closes.
@@ -768,7 +780,9 @@ class AuditEventEmissionTests(TestCase):
         from hub.apps.dq.tasks import deliver_or_schedule_retry
 
         responses.add(
-            responses.POST, "https://partner.example.com/dq", status=200,
+            responses.POST,
+            "https://partner.example.com/dq",
+            status=200,
         )
         deliver_or_schedule_retry(
             rule_id=str(self.rule.id),
@@ -788,7 +802,9 @@ class AuditEventEmissionTests(TestCase):
         from hub.apps.dq.tasks import deliver_or_schedule_retry
 
         responses.add(
-            responses.POST, "https://partner.example.com/dq", status=503,
+            responses.POST,
+            "https://partner.example.com/dq",
+            status=503,
         )
         with patch("hub.apps.dq.tasks.get_queue"):
             deliver_or_schedule_retry(
@@ -819,7 +835,9 @@ class AuditEventEmissionTests(TestCase):
         reset_circuit_breaker_by_name("dq_alert_webhook")
 
         responses.add(
-            responses.POST, "https://partner.example.com/dq", status=503,
+            responses.POST,
+            "https://partner.example.com/dq",
+            status=503,
         )
         client = WebhookAlertClient()
 
@@ -834,9 +852,7 @@ class AuditEventEmissionTests(TestCase):
             action=DQ_ALERT_CHANNEL_DEGRADED,
             resource_id=str(self.rule.id),
         )
-        assert rows.count() == 1, (
-            f"expected exactly 1 channel-degraded audit, got {rows.count()}"
-        )
+        assert rows.count() == 1, f"expected exactly 1 channel-degraded audit, got {rows.count()}"
         details = rows.first().details_json or {}
         assert details.get("channel") == "WEBHOOK"
         assert details.get("circuit_breaker_name") == "dq_alert_webhook"
@@ -846,10 +862,13 @@ class AuditEventEmissionTests(TestCase):
         # table — the contract is one row per transition into OPEN.
         client.deliver(self.rule, _payload())
         client.deliver(self.rule, _payload())
-        assert AuditEvent.objects.filter(
-            action=DQ_ALERT_CHANNEL_DEGRADED,
-            resource_id=str(self.rule.id),
-        ).count() == 1
+        assert (
+            AuditEvent.objects.filter(
+                action=DQ_ALERT_CHANNEL_DEGRADED,
+                resource_id=str(self.rule.id),
+            ).count()
+            == 1
+        )
 
         reset_circuit_breaker_by_name("dq_alert_webhook")
 
@@ -862,11 +881,14 @@ class AuditEventEmissionTests(TestCase):
         from hub.apps.audit.event_types import DQ_ALERT_DEAD_LETTER
         from hub.apps.audit.models import AuditEvent
         from hub.apps.dq.tasks import (
-            MAX_DELIVERY_ATTEMPTS, deliver_or_schedule_retry,
+            MAX_DELIVERY_ATTEMPTS,
+            deliver_or_schedule_retry,
         )
 
         responses.add(
-            responses.POST, "https://partner.example.com/dq", status=503,
+            responses.POST,
+            "https://partner.example.com/dq",
+            status=503,
         )
         with patch("hub.apps.dq.tasks.get_queue"):
             deliver_or_schedule_retry(
@@ -910,7 +932,8 @@ class EmailBreakerTransientTests(TestCase):
 
     def test_smtp_outage_trips_breaker(self):
         from hub.apps.core.resilience.circuit_breaker import (
-            CircuitBreakerState, reset_circuit_breaker_by_name,
+            CircuitBreakerState,
+            reset_circuit_breaker_by_name,
         )
         from hub.apps.core.resilience.service_breakers import (
             get_shared_circuit_breaker,
@@ -934,7 +957,9 @@ class EmailBreakerTransientTests(TestCase):
                 client.deliver(self.rule, _payload())
 
         breaker = get_shared_circuit_breaker(
-            "dq_alert_email", failure_threshold=5, timeout_seconds=60,
+            "dq_alert_email",
+            failure_threshold=5,
+            timeout_seconds=60,
         )
         assert breaker.get_state() == CircuitBreakerState.OPEN
         reset_circuit_breaker_by_name("dq_alert_email")

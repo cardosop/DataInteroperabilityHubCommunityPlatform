@@ -16,7 +16,7 @@ import json
 from django.test import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
-from hub.apps.contracts.normalization import get_normalizer, normalize_contract
+from hub.apps.contracts.normalization import normalize_contract
 
 
 class ODPSNormalizationIntegrationTest(TestCase):
@@ -91,7 +91,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         contract = self._create_odps_contract_with_marketplace("4.1", marketplace_data)
         contract_json = json.dumps(contract)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -141,7 +141,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         contract = self._create_odps_contract_with_marketplace("4.0", marketplace_data)
         contract_json = json.dumps(contract)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -180,7 +180,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         contract = self._create_odps_contract_with_marketplace("3.9", marketplace_data)
         contract_json = json.dumps(contract)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -207,7 +207,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         contract = self._create_odps_contract_with_marketplace("2.9", marketplace_data)
         contract_json = json.dumps(contract)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -234,7 +234,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         contract = self._create_odps_contract_with_marketplace("1.9", marketplace_data)
         contract_json = json.dumps(contract)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -265,7 +265,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         contract = self._create_odps_contract_with_license("4.1", license_data)
         contract_json = json.dumps(contract)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -300,7 +300,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         contract = self.base_odps_contract.copy()
         contract_json = json.dumps(contract)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -322,7 +322,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         contract = self.base_odps_contract.copy()
         contract_json = json.dumps(contract)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -345,7 +345,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         contract = self._create_odps_contract_with_marketplace("4.1", marketplace_data)
         contract_json = json.dumps(contract)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -388,7 +388,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
 
         odps_contract_json = json.dumps(odps_contract)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=odps_contract_json, format="JSON"
         )
 
@@ -443,7 +443,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
 
                 contract_json = json.dumps(contract)
 
-                hub_contract, spec_type, spec_version, status, errors, warnings = (
+                hub_contract, spec_type, _spec_version, status, errors, _warnings = (
                     normalize_contract(raw_contract=contract_json, format="JSON")
                 )
 
@@ -512,7 +512,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
 
         contract_json = json.dumps(contract)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -562,7 +562,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         }
 
         contract_json = json.dumps(contract_4_1)
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, spec_version, _status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -592,7 +592,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
 
         contract_json = json.dumps(contract)
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, _errors, warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -622,7 +622,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         }
 
         contract_json = json.dumps(contract)
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -649,7 +649,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         }
 
         contract_json = json.dumps(contract)
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -677,7 +677,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         }
 
         contract_json = json.dumps(contract)
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -702,7 +702,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         }
 
         contract_json = json.dumps(contract)
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 
@@ -729,7 +729,7 @@ class ODPSNormalizationIntegrationTest(TestCase):
         }
 
         contract_json = json.dumps(contract)
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
             raw_contract=contract_json, format="JSON"
         )
 

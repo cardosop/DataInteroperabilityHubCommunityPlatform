@@ -2,12 +2,9 @@
 Unit tests for workflow orchestration metrics.
 """
 
-import json
-import time
 import uuid
 
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.orchestration.metrics import (
     get_error_type,
@@ -22,11 +19,8 @@ from hub.apps.orchestration.metrics import (
     workflow_steps_started_total,
 )
 from hub.apps.orchestration.models import (
-    StepStatus,
     WorkflowDefinition,
-    WorkflowInstance,
     WorkflowStatus,
-    WorkflowStep,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
@@ -37,14 +31,20 @@ class WorkflowMetricsTest(TestCase):
 
     def setUp(self):
         """Set up test data"""
-        self.tenant = Tenant.objects.create(name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}")
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
+        )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
-        # Create workflow definition
+        # Create workflow definition with unique name to avoid collisions
+        # across test classes and stale --reuse-db data.
+        self.workflow_name = f"test_workflow_{uuid.uuid4().hex[:8]}"
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=self.workflow_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0",
@@ -212,15 +212,21 @@ class WorkflowMetricsIntegrationTest(TestCase):
     def setUp(self):
         """Set up test data"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
-        # Create workflow definition
+        # Create workflow definition with unique name to avoid collisions
+        # across test classes and stale --reuse-db data.
+        self.workflow_name = f"test_workflow_{uuid.uuid4().hex[:8]}"
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=self.workflow_name,
             version="1.0.0",
             dsl_json={
                 "version": "1.0",
@@ -237,14 +243,14 @@ class WorkflowMetricsIntegrationTest(TestCase):
 
         # Create instance (should record created metric)
         instance = engine.create_instance(
-            workflow_name="test_workflow",
+            workflow_name=self.workflow_name,
             input_data={"test": "data"},
             tenant_id=str(self.tenant.id),
             created_by_id=str(self.user.id),
         )
 
         self.assertIsNotNone(instance)
-        self.assertEqual(instance.workflow_name, "test_workflow")
+        self.assertEqual(instance.workflow_name, self.workflow_name)
 
         # Start instance (should record started metric)
         instance = engine.start_instance(str(instance.id))

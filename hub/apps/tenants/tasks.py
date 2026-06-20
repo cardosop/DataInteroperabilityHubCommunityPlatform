@@ -14,7 +14,9 @@ path, two activation surfaces:
   type ``TENANT_HARD_DELETE_SWEEP`` → dispatcher → this adapter →
   work function.
 """
+
 from __future__ import annotations
+
 import logging
 from typing import Any
 
@@ -45,9 +47,7 @@ def _execute_tenant_hard_delete_sweep_job(job_obj) -> dict[str, Any]:
     )
 
     try:
-        summary = run_tenant_hard_delete_sweep(
-            dry_run=dry_run, sweep_run_id=sweep_run_id
-        )
+        summary = run_tenant_hard_delete_sweep(dry_run=dry_run, sweep_run_id=sweep_run_id)
     except Exception:
         logger.exception(
             "tenant_hard_delete_sweep_job_failed",

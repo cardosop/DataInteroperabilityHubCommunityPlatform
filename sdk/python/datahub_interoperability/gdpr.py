@@ -5,7 +5,7 @@ Provides methods for data export and erasure requests.
 Uses real hub API - no mocks/stubs.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from .client import DataHubClient
 

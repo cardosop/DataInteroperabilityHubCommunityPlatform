@@ -59,11 +59,11 @@ def _seed_tenant_user_client(*, tenant: Tenant | None = None):
 
     file_obj = File.objects.create(
         tenant=tenant,
-        name="rate-limit.csv",
+        name=f"rate-limit-{uid}.csv",
         content_type="text/csv",
         size=42,
         status=FileStatus.ACTIVE,
-        storage_path=f"{tenant.id}/{uuid.uuid4()}/rate-limit.csv",
+        storage_path=f"{tenant.id}/{uuid.uuid4()}/rate-limit-{uid}.csv",
         created_by=user,
     )
     client = APIClient()
@@ -119,16 +119,30 @@ class AssetCreationRateLimitQuotaTest(TestCase):
             "asset_data_first_tenant": "1000/minute",
         }
 
+        # First call: POST /api/v1/assets/ with a VALID body so the
+        # throttle is actually evaluated (an empty body would return
+        # 400 from validation, not prove the throttle consumed the
+        # budget).
+        uid = uuid.uuid4().hex[:8]
         create_resp = cast(
             "Any",
             client.post(
                 "/api/v1/assets/",
-                {},
+                {"key": f"rl-{uid}", "name": "Rate Limit Test"},
                 format="json",
             ),
         )
-        assert create_resp.status_code == status.HTTP_400_BAD_REQUEST
+        # With a valid body the throttle is consumed; the response
+        # may be 201 (success) or 429 (already throttled from other
+        # tests). Both prove the throttle was evaluated.
+        self.assertIn(
+            create_resp.status_code,
+            (status.HTTP_201_CREATED, status.HTTP_429_TOO_MANY_REQUESTS),
+        )
 
+        # Second call: POST /api/v1/assets/data-first/ — the per-user
+        # budget (1/min) was consumed by the first call, so this must
+        # return 429.
         second_resp = cast(
             "Any",
             client.post(
@@ -138,7 +152,13 @@ class AssetCreationRateLimitQuotaTest(TestCase):
                 HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()),
             ),
         )
-        assert second_resp.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+        self.assertEqual(
+            second_resp.status_code,
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Per-user throttle budget (1/min) shared across create "
+            "and data-first endpoints must be exhausted by the first "
+            "call and return 429 on the second.",
+        )
 
     def test_tenant_throttle_applies_across_users_in_same_tenant(self):
         tenant, _user1, client1, _file1 = _seed_tenant_user_client()
@@ -152,22 +172,37 @@ class AssetCreationRateLimitQuotaTest(TestCase):
             "asset_data_first_tenant": "1/minute",
         }
 
+        # First call: user1 POSTs with a VALID body so the tenant
+        # throttle is actually evaluated.
+        uid1 = uuid.uuid4().hex[:8]
         first_resp = cast(
             "Any",
             client1.post(
                 "/api/v1/assets/",
-                {},
+                {"key": f"rl-t1-{uid1}", "name": "Tenant Rate Limit"},
                 format="json",
             ),
         )
-        assert first_resp.status_code == status.HTTP_400_BAD_REQUEST
+        self.assertIn(
+            first_resp.status_code,
+            (status.HTTP_201_CREATED, status.HTTP_429_TOO_MANY_REQUESTS),
+        )
 
+        # Second call: user2 in the SAME tenant. The per-tenant
+        # budget (1/min) was consumed by user1, so user2 gets 429.
+        uid2 = uuid.uuid4().hex[:8]
         second_resp = cast(
             "Any",
             client2.post(
                 "/api/v1/assets/",
-                {},
+                {"key": f"rl-t2-{uid2}", "name": "Tenant Rate Limit 2"},
                 format="json",
             ),
         )
-        assert second_resp.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+        self.assertEqual(
+            second_resp.status_code,
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Per-tenant throttle budget (1/min) shared across users "
+            "in the same tenant must return 429 for user2 after "
+            "user1 consumed the budget.",
+        )

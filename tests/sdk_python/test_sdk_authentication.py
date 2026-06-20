@@ -6,8 +6,6 @@ Uses REAL API server (no mocks) - uses existing API service in Docker Compose.
 """
 
 import pytest
-from asgiref.sync import sync_to_async
-from rest_framework import status
 
 # Try to import SDK
 try:

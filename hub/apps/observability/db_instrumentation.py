@@ -4,9 +4,11 @@ Database Query Instrumentation
 Instrumentation for tracking slow database queries with OpenTelemetry spans.
 Creates spans for queries exceeding a configurable threshold (default: 100ms).
 """
-import time
+
+import contextlib
 import logging
-from typing import Optional, Dict, Any
+import time
+
 from django.conf import settings
 from django.db import connection
 from django.db.backends.utils import CursorWrapper
@@ -18,6 +20,7 @@ OPENTELEMETRY_AVAILABLE = False
 try:
     from opentelemetry import trace
     from opentelemetry.trace import Status, StatusCode
+
     OPENTELEMETRY_AVAILABLE = True
 except ImportError:
     OPENTELEMETRY_AVAILABLE = False
@@ -27,15 +30,15 @@ def is_opentelemetry_enabled() -> bool:
     """Check if OpenTelemetry is enabled."""
     if not OPENTELEMETRY_AVAILABLE:
         return False
-    return getattr(settings, 'OPENTELEMETRY_ENABLED', False)
+    return getattr(settings, "OPENTELEMETRY_ENABLED", False)
 
 
 def get_slow_query_threshold_ms() -> float:
     """Get slow query threshold in milliseconds."""
-    return getattr(settings, 'OTEL_DB_SLOW_QUERY_THRESHOLD_MS', 100.0)
+    return getattr(settings, "OTEL_DB_SLOW_QUERY_THRESHOLD_MS", 100.0)
 
 
-def extract_table_from_query(sql: str) -> Optional[str]:
+def extract_table_from_query(sql: str) -> str | None:
     """
     Extract table name from SQL query.
 
@@ -49,36 +52,36 @@ def extract_table_from_query(sql: str) -> Optional[str]:
 
     # Try to extract table name from common patterns
     # SELECT ... FROM table_name
-    if 'FROM' in sql_upper:
-        parts = sql_upper.split('FROM', 1)
+    if "FROM" in sql_upper:
+        parts = sql_upper.split("FROM", 1)
         if len(parts) > 1:
             table_part = parts[1].strip().split()[0]
             # Remove quotes and schema prefix, convert to lowercase
-            table = table_part.strip('"\'`').split('.')[-1].lower()
+            table = table_part.strip("\"'`").split(".")[-1].lower()
             return table
 
     # INSERT INTO table_name
-    if 'INSERT INTO' in sql_upper:
-        parts = sql_upper.split('INSERT INTO', 1)
+    if "INSERT INTO" in sql_upper:
+        parts = sql_upper.split("INSERT INTO", 1)
         if len(parts) > 1:
             table_part = parts[1].strip().split()[0]
-            table = table_part.strip('"\'`').split('.')[-1].lower()
+            table = table_part.strip("\"'`").split(".")[-1].lower()
             return table
 
     # UPDATE table_name
-    if 'UPDATE' in sql_upper:
-        parts = sql_upper.split('UPDATE', 1)
+    if "UPDATE" in sql_upper:
+        parts = sql_upper.split("UPDATE", 1)
         if len(parts) > 1:
             table_part = parts[1].strip().split()[0]
-            table = table_part.strip('"\'`').split('.')[-1].lower()
+            table = table_part.strip("\"'`").split(".")[-1].lower()
             return table
 
     # DELETE FROM table_name
-    if 'DELETE FROM' in sql_upper:
-        parts = sql_upper.split('DELETE FROM', 1)
+    if "DELETE FROM" in sql_upper:
+        parts = sql_upper.split("DELETE FROM", 1)
         if len(parts) > 1:
             table_part = parts[1].strip().split()[0]
-            table = table_part.strip('"\'`').split('.')[-1].lower()
+            table = table_part.strip("\"'`").split(".")[-1].lower()
             return table
 
     return None
@@ -96,22 +99,22 @@ def extract_operation_from_query(sql: str) -> str:
     """
     sql_upper = sql.upper().strip()
 
-    if sql_upper.startswith('SELECT'):
-        return 'SELECT'
-    elif sql_upper.startswith('INSERT'):
-        return 'INSERT'
-    elif sql_upper.startswith('UPDATE'):
-        return 'UPDATE'
-    elif sql_upper.startswith('DELETE'):
-        return 'DELETE'
-    elif sql_upper.startswith('CREATE'):
-        return 'CREATE'
-    elif sql_upper.startswith('ALTER'):
-        return 'ALTER'
-    elif sql_upper.startswith('DROP'):
-        return 'DROP'
+    if sql_upper.startswith("SELECT"):
+        return "SELECT"
+    elif sql_upper.startswith("INSERT"):
+        return "INSERT"
+    elif sql_upper.startswith("UPDATE"):
+        return "UPDATE"
+    elif sql_upper.startswith("DELETE"):
+        return "DELETE"
+    elif sql_upper.startswith("CREATE"):
+        return "CREATE"
+    elif sql_upper.startswith("ALTER"):
+        return "ALTER"
+    elif sql_upper.startswith("DROP"):
+        return "DROP"
     else:
-        return 'OTHER'
+        return "OTHER"
 
 
 class InstrumentedCursorWrapper(CursorWrapper):
@@ -236,10 +239,8 @@ def _create_db_query_span(sql: str, duration_ms: float, is_many: bool = False):
 
         # Set attributes
         for key, value in attributes.items():
-            try:
+            with contextlib.suppress(Exception):
                 span.set_attribute(key, value)
-            except Exception:
-                pass
 
         # Set status
         span.set_status(Status(StatusCode.OK))
@@ -264,6 +265,7 @@ def instrument_database_connection():
 
     # Skip instrumentation in test mode to avoid connection issues
     import sys
+
     if "test" in sys.argv or "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ:
         logger.debug("Skipping database instrumentation in test mode")
         return
@@ -275,7 +277,7 @@ def instrument_database_connection():
         def instrumented_cursor():
             # Ensure connection is open before creating cursor
             # This handles cases where connections are closed between operations
-            if hasattr(connection, 'ensure_connection'):
+            if hasattr(connection, "ensure_connection"):
                 try:
                     # Always try to ensure connection is open
                     # This will reopen if closed, or do nothing if already open
@@ -291,14 +293,12 @@ def instrument_database_connection():
             except (Exception, AttributeError) as e:
                 # If cursor creation fails due to closed connection, try to reopen and retry once
                 # This handles race conditions where connection closes between ensure_connection and cursor()
-                if hasattr(connection, 'ensure_connection'):
+                if hasattr(connection, "ensure_connection"):
                     try:
                         # Force reconnection by closing and reopening
-                        if hasattr(connection, 'close'):
-                            try:
+                        if hasattr(connection, "close"):
+                            with contextlib.suppress(Exception):
                                 connection.close()
-                            except Exception:
-                                pass
                         connection.ensure_connection()
                         cursor = original_cursor()
                         return InstrumentedCursorWrapper(cursor, connection)
@@ -312,4 +312,3 @@ def instrument_database_connection():
         logger.info("Database query instrumentation enabled")
     except Exception as e:
         logger.warning(f"Failed to instrument database connection: {e}")
-

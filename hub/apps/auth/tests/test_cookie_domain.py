@@ -26,11 +26,11 @@ class CookieDomainTests(TestCase):
             kyc_status="UNVERIFIED",
         )
         self.user = cast(
-            Any,
+            "Any",
             User.objects.create(
-            email=f"cookie-domain-{uid}@example.com",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
+                email=f"cookie-domain-{uid}@example.com",
+                tenant=self.tenant,
+                status=UserStatus.ACTIVE,
             ),
         )
         self.user.set_password("testpass123")

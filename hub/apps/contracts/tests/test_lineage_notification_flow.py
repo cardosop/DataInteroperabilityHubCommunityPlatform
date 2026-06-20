@@ -19,6 +19,7 @@ of internal code: the entire path is exercised against the real
 Contract / LineageEdge / LineageSubscription / UserNotification
 models.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -32,7 +33,6 @@ from hub.apps.contracts import lineage_impact_dispatcher as dispatcher_mod
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -64,16 +64,36 @@ class FakeRedis:
         return True
 
 
+_ORIG_GET_REDIS = None
+
+
+def _save_and_patch_redis(test_case):
+    """Replace ``dispatcher_mod._get_redis_client`` with a FakeRedis,
+    saving the original so tearDown can restore it."""
+    global _ORIG_GET_REDIS
+    if _ORIG_GET_REDIS is None:
+        _ORIG_GET_REDIS = dispatcher_mod._get_redis_client
+    test_case._fake_redis = FakeRedis()
+    dispatcher_mod._get_redis_client = lambda: test_case._fake_redis
+
+
+def _restore_redis():
+    global _ORIG_GET_REDIS
+    if _ORIG_GET_REDIS is not None:
+        dispatcher_mod._get_redis_client = _ORIG_GET_REDIS
+        _ORIG_GET_REDIS = None
+
+
 class LineageNotificationFlowTests(TransactionTestCase):
     """End-to-end flow covering REQ-LIN-F3-001 through REQ-LIN-F3-006."""
 
     def setUp(self):
-        # Replace the Redis client at the dispatcher module level so
-        # debounce + rate-limit have a deterministic store.  This is
-        # NOT a mock of the dispatcher's logic — it's a controlled
-        # backend the dispatcher uses identically to production.
-        self._fake_redis = FakeRedis()
-        dispatcher_mod._get_redis_client = lambda: self._fake_redis
+        super().setUp()
+        _save_and_patch_redis(self)
+
+    def tearDown(self):
+        _restore_redis()
+        super().tearDown()
 
     def _make_tenant(self, slug_prefix="f3-flow"):
         suffix = uuid.uuid4().hex[:8]
@@ -152,16 +172,21 @@ class LineageNotificationFlowTests(TransactionTestCase):
         # Seed a derivation edge so the classifier returns HIGH.
         LineageEdge.objects.create(
             tenant=tenant,
-            source_contract_id=c_src.id, target_contract_id=c_tgt.id,
-            source_model="default", source_field="x",
-            target_model="default", target_field="x",
+            source_contract_id=c_src.id,
+            target_contract_id=c_tgt.id,
+            source_model="default",
+            source_field="x",
+            target_model="default",
+            target_field="x",
             edge_type="derivation",
         )
 
         # Subscribe the user.
         LineageSubscription.objects.create(
-            user=subscriber, source_contract=c_src,
-            severity_threshold="HIGH", in_app=True,
+            user=subscriber,
+            source_contract=c_src,
+            severity_threshold="HIGH",
+            in_app=True,
         )
 
         # Mutate the lineage subtree — the post_save signal fires
@@ -178,7 +203,8 @@ class LineageNotificationFlowTests(TransactionTestCase):
         # The dispatcher runs synchronously after commit; the
         # UserNotification row should now exist.
         notifications = UserNotification.objects.filter(
-            user=subscriber, category="LINEAGE_IMPACT",
+            user=subscriber,
+            category="LINEAGE_IMPACT",
         )
         self.assertGreaterEqual(notifications.count(), 1)
         notif = notifications.first()
@@ -203,8 +229,12 @@ class LineageNotificationLoadSmokeTests(TransactionTestCase):
     SUBSCRIBER_COUNT = 50
 
     def setUp(self):
-        self._fake_redis = FakeRedis()
-        dispatcher_mod._get_redis_client = lambda: self._fake_redis
+        super().setUp()
+        _save_and_patch_redis(self)
+
+    def tearDown(self):
+        _restore_redis()
+        super().tearDown()
 
     def test_50_subscribers_all_dispatched(self):
         from hub.apps.contracts.models import (
@@ -227,28 +257,38 @@ class LineageNotificationLoadSmokeTests(TransactionTestCase):
         ensure_tenant_has_active_subscription(tenant)
 
         asset_src = Asset.objects.create(
-            tenant=tenant, key=f"asset-{uuid.uuid4().hex[:6]}",
-            name="load-src", status=AssetStatus.DRAFT,
+            tenant=tenant,
+            key=f"asset-{uuid.uuid4().hex[:6]}",
+            name="load-src",
+            status=AssetStatus.DRAFT,
         )
         asset_tgt = Asset.objects.create(
-            tenant=tenant, key=f"asset-{uuid.uuid4().hex[:6]}",
-            name="load-tgt", status=AssetStatus.DRAFT,
+            tenant=tenant,
+            key=f"asset-{uuid.uuid4().hex[:6]}",
+            name="load-tgt",
+            status=AssetStatus.DRAFT,
         )
         c_src = Contract.objects.create(
-            tenant=tenant, asset=asset_src, version=1,
+            tenant=tenant,
+            asset=asset_src,
+            version=1,
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.1.0",
-            original_format=OriginalFormat.JSON, original_raw="{}",
+            original_format=OriginalFormat.JSON,
+            original_raw="{}",
             hub_contract_json={"info": {"name": "src"}, "models": []},
             normalization_status="NORMALIZED_OK",
             validation_status="VALID",
             status=ContractStatus.ACTIVE,
         )
         c_tgt = Contract.objects.create(
-            tenant=tenant, asset=asset_tgt, version=1,
+            tenant=tenant,
+            asset=asset_tgt,
+            version=1,
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.1.0",
-            original_format=OriginalFormat.JSON, original_raw="{}",
+            original_format=OriginalFormat.JSON,
+            original_raw="{}",
             hub_contract_json={"info": {"name": "tgt"}, "models": []},
             normalization_status="NORMALIZED_OK",
             validation_status="VALID",
@@ -256,28 +296,37 @@ class LineageNotificationLoadSmokeTests(TransactionTestCase):
         )
         LineageEdge.objects.create(
             tenant=tenant,
-            source_contract_id=c_src.id, target_contract_id=c_tgt.id,
-            source_model="default", source_field="x",
-            target_model="default", target_field="x",
+            source_contract_id=c_src.id,
+            target_contract_id=c_tgt.id,
+            source_model="default",
+            source_field="x",
+            target_model="default",
+            target_field="x",
             edge_type="derivation",
         )
 
         # Bulk-create the subscribers.
         users = []
         for i in range(self.SUBSCRIBER_COUNT):
-            users.append(User.objects.create_user(
-                email=f"loaduser-{i}-{suffix}@example.com",
-                password="testpass123",
-                tenant=tenant,
-                status=UserStatus.ACTIVE,
-            ))
-        LineageSubscription.objects.bulk_create([
-            LineageSubscription(
-                user=u, source_contract=c_src,
-                severity_threshold="HIGH", in_app=True,
+            users.append(
+                User.objects.create_user(
+                    email=f"loaduser-{i}-{suffix}@example.com",
+                    password="testpass123",
+                    tenant=tenant,
+                    status=UserStatus.ACTIVE,
+                )
             )
-            for u in users
-        ])
+        LineageSubscription.objects.bulk_create(
+            [
+                LineageSubscription(
+                    user=u,
+                    source_contract=c_src,
+                    severity_threshold="HIGH",
+                    in_app=True,
+                )
+                for u in users
+            ]
+        )
 
         # Trigger the dispatch by saving the contract with new lineage.
         c_src.hub_contract_json = {
@@ -320,8 +369,12 @@ class LineageDispatcherIdempotencyTests(TransactionTestCase):
     """
 
     def setUp(self):
-        self._fake_redis = FakeRedis()
-        dispatcher_mod._get_redis_client = lambda: self._fake_redis
+        super().setUp()
+        _save_and_patch_redis(self)
+
+    def tearDown(self):
+        _restore_redis()
+        super().tearDown()
 
     def test_double_invocation_yields_one_notification(self):
         from hub.apps.contracts.lineage_impact_dispatcher import (
@@ -339,38 +392,51 @@ class LineageDispatcherIdempotencyTests(TransactionTestCase):
 
         suffix = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name=f"chaos-{suffix}", slug=f"chaos-{suffix}",
-            status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+            name=f"chaos-{suffix}",
+            slug=f"chaos-{suffix}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         ensure_tenant_has_active_subscription(tenant)
         user = User.objects.create_user(
             email=f"chaos-{suffix}@example.com",
             password="testpass123",
-            tenant=tenant, status=UserStatus.ACTIVE,
+            tenant=tenant,
+            status=UserStatus.ACTIVE,
         )
         asset_src = Asset.objects.create(
-            tenant=tenant, key=f"asset-{uuid.uuid4().hex[:6]}",
-            name="chaos-src", status=AssetStatus.DRAFT,
+            tenant=tenant,
+            key=f"asset-{uuid.uuid4().hex[:6]}",
+            name="chaos-src",
+            status=AssetStatus.DRAFT,
         )
         asset_tgt = Asset.objects.create(
-            tenant=tenant, key=f"asset-{uuid.uuid4().hex[:6]}",
-            name="chaos-tgt", status=AssetStatus.DRAFT,
+            tenant=tenant,
+            key=f"asset-{uuid.uuid4().hex[:6]}",
+            name="chaos-tgt",
+            status=AssetStatus.DRAFT,
         )
         c_src = Contract.objects.create(
-            tenant=tenant, asset=asset_src, version=1,
+            tenant=tenant,
+            asset=asset_src,
+            version=1,
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.1.0",
-            original_format=OriginalFormat.JSON, original_raw="{}",
+            original_format=OriginalFormat.JSON,
+            original_raw="{}",
             hub_contract_json={"info": {"name": "s"}, "models": []},
             normalization_status="NORMALIZED_OK",
             validation_status="VALID",
             status=ContractStatus.ACTIVE,
         )
         c_tgt = Contract.objects.create(
-            tenant=tenant, asset=asset_tgt, version=1,
+            tenant=tenant,
+            asset=asset_tgt,
+            version=1,
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.1.0",
-            original_format=OriginalFormat.JSON, original_raw="{}",
+            original_format=OriginalFormat.JSON,
+            original_raw="{}",
             hub_contract_json={"info": {"name": "t"}, "models": []},
             normalization_status="NORMALIZED_OK",
             validation_status="VALID",
@@ -378,27 +444,37 @@ class LineageDispatcherIdempotencyTests(TransactionTestCase):
         )
         LineageEdge.objects.create(
             tenant=tenant,
-            source_contract_id=c_src.id, target_contract_id=c_tgt.id,
-            source_model="default", source_field="x",
-            target_model="default", target_field="x",
+            source_contract_id=c_src.id,
+            target_contract_id=c_tgt.id,
+            source_model="default",
+            source_field="x",
+            target_model="default",
+            target_field="x",
             edge_type="derivation",
         )
         LineageSubscription.objects.create(
-            user=user, source_contract=c_src, severity_threshold="HIGH",
+            user=user,
+            source_contract=c_src,
+            severity_threshold="HIGH",
         )
 
         # Invoke the dispatcher twice as if a worker re-queued the job.
         handle_contract_updated(
-            contract_id=str(c_src.id), tenant_id=str(tenant.id),
-            old_lineage_hash="a", new_lineage_hash="b",
+            contract_id=str(c_src.id),
+            tenant_id=str(tenant.id),
+            old_lineage_hash="a",
+            new_lineage_hash="b",
         )
         handle_contract_updated(
-            contract_id=str(c_src.id), tenant_id=str(tenant.id),
-            old_lineage_hash="a", new_lineage_hash="b",
+            contract_id=str(c_src.id),
+            tenant_id=str(tenant.id),
+            old_lineage_hash="a",
+            new_lineage_hash="b",
         )
 
         delivered = UserNotification.objects.filter(
-            user=user, category="LINEAGE_IMPACT",
+            user=user,
+            category="LINEAGE_IMPACT",
         ).count()
         self.assertEqual(delivered, 1)
 
@@ -432,19 +508,29 @@ class ContractUpdatedSignalTests(TransactionTestCase):
 
         self._calls = []
 
-        def _recorder(*, contract_id, tenant_id, old_lineage_hash,
-                      new_lineage_hash, version=None, actor_user_id=""):
-            self._calls.append({
-                "contract_id": contract_id,
-                "old": old_lineage_hash,
-                "new": new_lineage_hash,
-            })
+        def _recorder(
+            *,
+            contract_id,
+            tenant_id,
+            old_lineage_hash,
+            new_lineage_hash,
+            version=None,
+            actor_user_id="",
+        ):
+            self._calls.append(
+                {
+                    "contract_id": contract_id,
+                    "old": old_lineage_hash,
+                    "new": new_lineage_hash,
+                }
+            )
 
         # We patch via the lazy-import path the signal uses.  The
         # signal reads `from hub.apps.contracts.lineage_impact_dispatcher
         # import handle_contract_updated` at call-time, so we patch
         # the module attribute the signal will resolve.
         from hub.apps.contracts import lineage_impact_dispatcher as disp
+
         self._orig_handler = disp.handle_contract_updated
         disp.handle_contract_updated = _recorder
         self._signals_mod = signals_mod
@@ -456,8 +542,10 @@ class ContractUpdatedSignalTests(TransactionTestCase):
     def _make_tenant(self):
         suffix = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name=f"sig-{suffix}", slug=f"sig-{suffix}",
-            status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+            name=f"sig-{suffix}",
+            slug=f"sig-{suffix}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         ensure_tenant_has_active_subscription(tenant)
         return tenant
@@ -469,18 +557,24 @@ class ContractUpdatedSignalTests(TransactionTestCase):
             OriginalFormat,
             OriginalSpecType,
         )
+
         asset = Asset.objects.create(
-            tenant=tenant, key=f"asset-{uuid.uuid4().hex[:6]}",
-            name=name, status=AssetStatus.DRAFT,
+            tenant=tenant,
+            key=f"asset-{uuid.uuid4().hex[:6]}",
+            name=name,
+            status=AssetStatus.DRAFT,
         )
         body = {"info": {"name": name}, "models": []}
         if lineage is not None:
             body["lineage"] = lineage
         return Contract.objects.create(
-            tenant=tenant, asset=asset, version=1,
+            tenant=tenant,
+            asset=asset,
+            version=1,
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.1.0",
-            original_format=OriginalFormat.JSON, original_raw="{}",
+            original_format=OriginalFormat.JSON,
+            original_raw="{}",
             hub_contract_json=body,
             normalization_status="NORMALIZED_OK",
             validation_status="VALID",
@@ -510,7 +604,8 @@ class ContractUpdatedSignalTests(TransactionTestCase):
         dispatcher — REQ-LIN-F3-001 'Event suppressed on no-op'."""
         tenant = self._make_tenant()
         contract = self._make_contract(
-            tenant, lineage={"version": 1, "edges": []},
+            tenant,
+            lineage={"version": 1, "edges": []},
         )
         self._calls.clear()
 
@@ -525,7 +620,8 @@ class ContractUpdatedSignalTests(TransactionTestCase):
 
         tenant = self._make_tenant()
         contract = self._make_contract(
-            tenant, lineage={"version": 1, "edges": []},
+            tenant,
+            lineage={"version": 1, "edges": []},
         )
         self._calls.clear()
 

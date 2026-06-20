@@ -9,11 +9,11 @@ Usage:
     python scripts/lint_helm_charts.py
     python scripts/lint_helm_charts.py --chart-dir deploy/helm
 """
+
 from __future__ import annotations
 
 import argparse
 import subprocess
-import sys
 from pathlib import Path
 
 
@@ -31,7 +31,10 @@ def lint_chart(chart_dir: Path) -> tuple[bool, str]:
     """Run helm lint against a chart directory."""
     result = subprocess.run(
         ["helm", "lint", str(chart_dir)],
-        text=True, capture_output=True, timeout=30,
+        check=False,
+        text=True,
+        capture_output=True,
+        timeout=30,
     )
     if result.returncode != 0:
         return False, f"LINT FAILED: {chart_dir.name}\n{result.stderr[:300]}"
@@ -47,7 +50,10 @@ def template_chart(chart_dir: Path) -> tuple[bool, str]:
 
     result = subprocess.run(
         ["helm", "template", str(chart_dir)],
-        text=True, capture_output=True, timeout=30,
+        check=False,
+        text=True,
+        capture_output=True,
+        timeout=30,
     )
     if result.returncode != 0:
         return False, f"TEMPLATE FAILED: {chart_dir.name}\n{result.stderr[:300]}"

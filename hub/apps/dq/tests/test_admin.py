@@ -22,14 +22,11 @@ no mocks. Each assertion targets a property a future maintainer
 might break (e.g. accidentally swapping ``all_objects`` back to
 ``objects`` would surface as a failing changelist test).
 """
-from __future__ import annotations
 
-import uuid
-from datetime import timedelta
+from __future__ import annotations
 
 import pytest
 from django.contrib import admin as django_admin
-from django.utils import timezone
 
 from hub.apps.dq.models import (
     DQAlertingRule,
@@ -39,8 +36,7 @@ from hub.apps.dq.models import (
     DQRunStatus,
     DQTrend,
 )
-from hub.apps.dq.tests.test_base import DQAPITransactionTestBase
-
+from hub.apps.dq.tests.test_base import DQAPITestBaseExtended
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -50,12 +46,13 @@ pytestmark = pytest.mark.django_db(transaction=True)
 # ────────────────────────────────────────────────────────────────────
 
 
-class DQAdminRegistryTests(DQAPITransactionTestBase):
+class DQAdminRegistryTests(DQAPITestBaseExtended):
     """Pins that 240.5.B.1's four models are registered."""
 
     def test_dq_run_is_registered(self):
         self.assertIn(
-            DQRun, django_admin.site._registry,
+            DQRun,
+            django_admin.site._registry,
             "DQRun must be registered with the default AdminSite "
             "for ops staff to manage runs through the admin UI.",
         )
@@ -76,7 +73,7 @@ class DQAdminRegistryTests(DQAPITransactionTestBase):
 # ────────────────────────────────────────────────────────────────────
 
 
-class DQAdminShapeTests(DQAPITransactionTestBase):
+class DQAdminShapeTests(DQAPITestBaseExtended):
     """Each ModelAdmin must declare the four spec-required attrs.
 
     These are the attributes that drive the admin UI's usefulness;
@@ -106,7 +103,8 @@ class DQAdminShapeTests(DQAPITransactionTestBase):
     def test_dq_run_admin_marks_details_json_readonly(self):
         cls = type(self._admin_for(DQRun))
         self.assertIn(
-            "details_json", cls.readonly_fields,
+            "details_json",
+            cls.readonly_fields,
             "DQRun.details_json carries metering + engine output; "
             "must be readonly so ops can't accidentally clobber the "
             "DQ run's audit trail.",
@@ -123,6 +121,7 @@ class DQAdminShapeTests(DQAPITransactionTestBase):
         cls = type(self._admin_for(DQTrend))
         self.assertIn("metadata", cls.readonly_fields)
         self.assertTrue(cls.list_display)
+        self.assertTrue(cls.list_filter)
 
     def test_dq_alerting_rule_admin_marks_channel_config_readonly(self):
         cls = type(self._admin_for(DQAlertingRule))
@@ -130,6 +129,12 @@ class DQAdminShapeTests(DQAPITransactionTestBase):
         # config — same readonly treatment as the other JSON fields.
         self.assertIn("channel_config", cls.readonly_fields)
         self.assertTrue(cls.list_display)
+        self.assertTrue(cls.list_filter)
+
+    def test_dq_alerting_rule_admin_has_search_fields(self):
+        cls = type(self._admin_for(DQAlertingRule))
+        self.assertTrue(cls.search_fields)
+        self.assertIn("name", cls.search_fields)
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -137,7 +142,7 @@ class DQAdminShapeTests(DQAPITransactionTestBase):
 # ────────────────────────────────────────────────────────────────────
 
 
-class DQAdminSoftDeleteTests(DQAPITransactionTestBase):
+class DQAdminSoftDeleteTests(DQAPITestBaseExtended):
     """Spec 240.5.B.2: ``DQRunAdmin.get_queryset`` MUST use
     ``all_objects`` so admins can recover soft-deleted rows.
 
@@ -182,11 +187,13 @@ class DQAdminSoftDeleteTests(DQAPITransactionTestBase):
         ids = set(qs.values_list("id", flat=True))
 
         self.assertIn(
-            self.live_run.id, ids,
+            self.live_run.id,
+            ids,
             "Live (non-deleted) run missing from admin changelist.",
         )
         self.assertIn(
-            self.deleted_run.id, ids,
+            self.deleted_run.id,
+            ids,
             "Soft-deleted run missing from admin changelist — "
             "DQRunAdmin.get_queryset must use ``all_objects``, not "
             "``objects``, so admins can recover deleted rows.",
@@ -227,7 +234,7 @@ class DQAdminSoftDeleteTests(DQAPITransactionTestBase):
 # ────────────────────────────────────────────────────────────────────
 
 
-class DQAdminRestoreActionTests(DQAPITransactionTestBase):
+class DQAdminRestoreActionTests(DQAPITestBaseExtended):
     """Spec 240.5.B.2: ``DQRunAdmin`` declares a ``restore`` admin
     action that un-deletes soft-deleted rows."""
 
@@ -236,16 +243,13 @@ class DQAdminRestoreActionTests(DQAPITransactionTestBase):
 
     def test_dq_run_admin_declares_restore_action(self):
         admin_obj = self._admin_for(DQRun)
-        action_names = (
-            list(getattr(admin_obj, "actions", None) or [])
-        )
+        action_names = list(getattr(admin_obj, "actions", None) or [])
         # ``actions`` may be a list of callables or strings — both
         # forms work in Django. Resolve to a name set.
-        resolved_names = {
-            getattr(a, "__name__", a) for a in action_names if a is not None
-        }
+        resolved_names = {getattr(a, "__name__", a) for a in action_names if a is not None}
         self.assertIn(
-            "restore", resolved_names,
+            "restore",
+            resolved_names,
             "DQRunAdmin must declare a `restore` action so ops "
             "can un-delete soft-deleted rows from the changelist. "
             f"Got actions: {resolved_names}",
@@ -283,17 +287,15 @@ class DQAdminRestoreActionTests(DQAPITransactionTestBase):
         # testing admin actions outside the request/response stack.
         # The session attr is also required by the storage backend's
         # cookie path, even when nothing reads it back.
-        setattr(request, "session", {})
-        setattr(request, "_messages", FallbackStorage(request))
+        request.session = {}
+        request._messages = FallbackStorage(request)
 
         # Resolve the bound or unbound restore method and call it.
         restore_action = None
         for entry in getattr(admin_obj, "actions", None) or []:
             name = getattr(entry, "__name__", entry)
             if name == "restore":
-                restore_action = (
-                    entry if callable(entry) else getattr(admin_obj, entry)
-                )
+                restore_action = entry if callable(entry) else getattr(admin_obj, entry)
                 break
         self.assertIsNotNone(restore_action, "restore action not resolvable")
         assert restore_action is not None  # narrow for pyright
@@ -315,3 +317,86 @@ class DQAdminRestoreActionTests(DQAPITransactionTestBase):
             run.deleted_at,
             "restore action did not clear deleted_at",
         )
+
+    def test_anomaly_restore_action_un_deletes_selected_rows(self):
+        """Restore admin action clears is_deleted + deleted_at on DQAnomaly."""
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.test import RequestFactory
+
+        anomaly = DQAnomaly.objects.create(
+            tenant=self.tenant,
+            metric_type="quality_score",
+            expected_value=95.0,
+            actual_value=70.0,
+            deviation=25.0,
+        )
+        anomaly.soft_delete()
+        self.assertTrue(anomaly.is_deleted)
+
+        admin_obj = self._admin_for(DQAnomaly)
+        request = RequestFactory().post("/admin/dq/dqanomaly/")
+        request.user = self.user
+        request.session = {}
+        request._messages = FallbackStorage(request)
+
+        restore_action = self._resolve_restore_action(admin_obj)
+        self.assertIsNotNone(restore_action, "restore action not resolvable")
+        assert restore_action is not None
+
+        queryset = DQAnomaly.all_objects.filter(id=anomaly.id)
+        try:
+            restore_action(request, queryset)
+        except TypeError:
+            restore_action(admin_obj, request, queryset)
+
+        anomaly.refresh_from_db()
+        self.assertFalse(anomaly.is_deleted)
+        self.assertIsNone(anomaly.deleted_at)
+
+    def test_trend_restore_action_un_deletes_selected_rows(self):
+        """Restore admin action clears is_deleted + deleted_at on DQTrend."""
+        from datetime import timedelta
+
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.test import RequestFactory
+        from django.utils import timezone
+
+        trend = DQTrend.objects.create(
+            tenant=self.tenant,
+            metric_type="quality_score",
+            period_start=timezone.now() - timedelta(days=1),
+            period_end=timezone.now(),
+            period_type="DAILY",
+            current_value=90.0,
+        )
+        trend.soft_delete()
+        self.assertTrue(trend.is_deleted)
+
+        admin_obj = self._admin_for(DQTrend)
+        request = RequestFactory().post("/admin/dq/dqtrend/")
+        request.user = self.user
+        request.session = {}
+        request._messages = FallbackStorage(request)
+
+        restore_action = self._resolve_restore_action(admin_obj)
+        self.assertIsNotNone(restore_action, "restore action not resolvable")
+        assert restore_action is not None
+
+        queryset = DQTrend.all_objects.filter(id=trend.id)
+        try:
+            restore_action(request, queryset)
+        except TypeError:
+            restore_action(admin_obj, request, queryset)
+
+        trend.refresh_from_db()
+        self.assertFalse(trend.is_deleted)
+        self.assertIsNone(trend.deleted_at)
+
+    @staticmethod
+    def _resolve_restore_action(admin_obj):
+        """Resolve the restore action callable from an admin instance."""
+        for entry in getattr(admin_obj, "actions", None) or []:
+            name = getattr(entry, "__name__", entry)
+            if name == "restore":
+                return entry if callable(entry) else getattr(admin_obj, entry)
+        return None

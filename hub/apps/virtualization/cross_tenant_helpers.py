@@ -11,7 +11,6 @@ views.
 """
 
 import logging
-from typing import Optional, Tuple
 
 from django.http import HttpRequest
 from rest_framework.exceptions import PermissionDenied
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 def get_dataset_for_cross_tenant_check(
     dataset_id: str, request: HttpRequest
-) -> Tuple[Optional[VirtualDataset], Optional[PermissionDenied]]:
+) -> tuple[VirtualDataset | None, PermissionDenied | None]:
     """
     Get VirtualDataset without tenant filter and check cross-tenant access.
 
@@ -49,7 +48,7 @@ def get_dataset_for_cross_tenant_check(
     except VirtualDataset.DoesNotExist:
         return None, None
 
-    tenant_id, tenant = get_request_tenant(request)
+    _tenant_id, tenant = get_request_tenant(request)
     if not tenant:
         return dataset, None
 
@@ -66,7 +65,7 @@ def get_dataset_for_cross_tenant_check(
 
 def get_execution_for_cross_tenant_check(
     execution_id: str, request: HttpRequest
-) -> Tuple[Optional[QueryExecution], Optional[PermissionDenied]]:
+) -> tuple[QueryExecution | None, PermissionDenied | None]:
     """
     Get QueryExecution without tenant filter and check cross-tenant access.
 
@@ -90,7 +89,7 @@ def get_execution_for_cross_tenant_check(
     except QueryExecution.DoesNotExist:
         return None, None
 
-    tenant_id, tenant = get_request_tenant(request)
+    _tenant_id, tenant = get_request_tenant(request)
     if not tenant:
         return execution, None
 
@@ -124,7 +123,7 @@ def check_abac_for_dataset(
     if not request.user or not request.user.id:
         return
 
-    tenant_id, tenant = get_request_tenant(request)
+    _tenant_id, tenant = get_request_tenant(request)
     if not tenant or not dataset.tenant:
         return
 
@@ -189,7 +188,7 @@ def check_abac_for_execution(
     if not execution.virtual_dataset or not execution.virtual_dataset.tenant:
         return
 
-    tenant_id, tenant = get_request_tenant(request)
+    _tenant_id, tenant = get_request_tenant(request)
     if not tenant:
         return
 

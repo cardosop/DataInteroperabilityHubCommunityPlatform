@@ -9,25 +9,26 @@ Tests audit event creation for query execution:
 
 Uses REAL audit system (no mocks).
 """
+
+import contextlib
+import uuid
+
 import pytest
 from django.test import TestCase
-from django.utils import timezone
 
-from hub.apps.virtualization.services import VirtualizationService
-from hub.apps.virtualization.models import (
-    VirtualDataset,
-    QueryExecution,
-    QueryType,
-    VirtualDatasetStatus,
-    QueryExecutionStatus,
-    QueryExecutionMode,
-)
-from hub.apps.tenants.models import Tenant
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.users.models import User, UserStatus
 from hub.apps.audit.models import AuditEvent
-from hub.apps.core.services.base import ValidationError
-import uuid
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User, UserStatus
+from hub.apps.virtualization.models import (
+    QueryExecution,
+    QueryExecutionMode,
+    QueryExecutionStatus,
+    QueryType,
+    VirtualDataset,
+    VirtualDatasetStatus,
+)
+from hub.apps.virtualization.services import VirtualizationService
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -39,8 +40,7 @@ class VirtualizationAuditLoggingTest(TestCase):
         """Set up test fixtures"""
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
-            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
 
         # Create user
@@ -48,21 +48,17 @@ class VirtualizationAuditLoggingTest(TestCase):
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create service instance
         self.service = VirtualizationService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create test asset
         self.asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE
+            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.ACTIVE
         )
 
         # Create virtual dataset
@@ -78,10 +74,10 @@ class VirtualizationAuditLoggingTest(TestCase):
                     "asset_id": str(self.asset.id),
                     "host": "localhost",
                     "port": 5432,
-                    "database": "testdb"
+                    "database": "testdb",
                 }
             ],
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
     def test_audit_logging_query_execution_start(self):
@@ -92,23 +88,17 @@ class VirtualizationAuditLoggingTest(TestCase):
             query=self.virtual_dataset.query,
             status=QueryExecutionStatus.PENDING,
             parameters={},
-            execution_mode=QueryExecutionMode.SYNC
+            execution_mode=QueryExecutionMode.SYNC,
         )
 
         # Count audit events before
         initial_count = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET",
-            action="QUERY_EXECUTION_STARTED"
+            resource_type="VIRTUAL_DATASET", action="QUERY_EXECUTION_STARTED"
         ).count()
 
         # Execute query (will fail at execution but audit logging should run)
         try:
-            self.service._execute_query_sync(
-                execution,
-                self.virtual_dataset,
-                {},
-                30
-            )
+            self.service._execute_query_sync(execution, self.virtual_dataset, {}, 30)
         except Exception:
             # Execution may fail for various reasons (no actual database, etc.)
             # But audit logging should have run
@@ -118,12 +108,12 @@ class VirtualizationAuditLoggingTest(TestCase):
         audit_events = AuditEvent.objects.filter(
             resource_type="VIRTUAL_DATASET",
             action="QUERY_EXECUTION_STARTED",
-            resource_id=str(self.virtual_dataset.id)
+            resource_id=str(self.virtual_dataset.id),
         )
         self.assertGreater(audit_events.count(), initial_count)
 
         # Verify audit event details
-        audit_event = audit_events.latest('timestamp')
+        audit_event = audit_events.latest("timestamp")
         self.assertEqual(audit_event.actor_user, self.user)
         self.assertEqual(audit_event.tenant, self.tenant)
         self.assertEqual(audit_event.result, "SUCCESS")
@@ -146,23 +136,17 @@ class VirtualizationAuditLoggingTest(TestCase):
             query=self.virtual_dataset.query,
             status=QueryExecutionStatus.PENDING,
             parameters={},
-            execution_mode=QueryExecutionMode.SYNC
+            execution_mode=QueryExecutionMode.SYNC,
         )
 
         # Count audit events before
         initial_count = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET",
-            action="QUERY_EXECUTION_COMPLETED"
+            resource_type="VIRTUAL_DATASET", action="QUERY_EXECUTION_COMPLETED"
         ).count()
 
         # Try to execute query (will likely fail but we're testing audit logging)
         try:
-            self.service._execute_query_sync(
-                execution,
-                self.virtual_dataset,
-                {},
-                30
-            )
+            self.service._execute_query_sync(execution, self.virtual_dataset, {}, 30)
         except Exception:
             # Execution may fail, but if it completes, audit logging should run
             pass
@@ -171,12 +155,12 @@ class VirtualizationAuditLoggingTest(TestCase):
         completion_events = AuditEvent.objects.filter(
             resource_type="VIRTUAL_DATASET",
             action="QUERY_EXECUTION_COMPLETED",
-            resource_id=str(self.virtual_dataset.id)
+            resource_id=str(self.virtual_dataset.id),
         )
 
         # If execution completed, verify audit event
         if completion_events.count() > initial_count:
-            audit_event = completion_events.latest('timestamp')
+            audit_event = completion_events.latest("timestamp")
             self.assertEqual(audit_event.actor_user, self.user)
             self.assertEqual(audit_event.tenant, self.tenant)
             self.assertEqual(audit_event.result, "SUCCESS")
@@ -198,23 +182,17 @@ class VirtualizationAuditLoggingTest(TestCase):
             query=self.virtual_dataset.query,
             status=QueryExecutionStatus.PENDING,
             parameters={},
-            execution_mode=QueryExecutionMode.SYNC
+            execution_mode=QueryExecutionMode.SYNC,
         )
 
         # Count audit events before
         initial_count = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET",
-            action="QUERY_EXECUTION_FAILED"
+            resource_type="VIRTUAL_DATASET", action="QUERY_EXECUTION_FAILED"
         ).count()
 
         # Execute query (will fail due to no actual database)
         try:
-            self.service._execute_query_sync(
-                execution,
-                self.virtual_dataset,
-                {},
-                30
-            )
+            self.service._execute_query_sync(execution, self.virtual_dataset, {}, 30)
         except Exception:
             # Execution should fail, triggering failure audit logging
             pass
@@ -223,12 +201,12 @@ class VirtualizationAuditLoggingTest(TestCase):
         failure_events = AuditEvent.objects.filter(
             resource_type="VIRTUAL_DATASET",
             action="QUERY_EXECUTION_FAILED",
-            resource_id=str(self.virtual_dataset.id)
+            resource_id=str(self.virtual_dataset.id),
         )
 
         # If execution failed, verify audit event
         if failure_events.count() > initial_count:
-            audit_event = failure_events.latest('timestamp')
+            audit_event = failure_events.latest("timestamp")
             self.assertEqual(audit_event.actor_user, self.user)
             self.assertEqual(audit_event.tenant, self.tenant)
             self.assertEqual(audit_event.result, "FAILURE")
@@ -251,26 +229,21 @@ class VirtualizationAuditLoggingTest(TestCase):
             query=self.virtual_dataset.query,
             status=QueryExecutionStatus.PENDING,
             parameters={"param1": "value1"},
-            execution_mode=QueryExecutionMode.SYNC
+            execution_mode=QueryExecutionMode.SYNC,
         )
 
         # Execute query (will fail but audit logging should run)
-        try:
+        with contextlib.suppress(Exception):
             self.service._execute_query_sync(
-                execution,
-                self.virtual_dataset,
-                {"param1": "value1"},
-                30
+                execution, self.virtual_dataset, {"param1": "value1"}, 30
             )
-        except Exception:
-            pass
 
         # Verify start audit event has all required fields
         start_event = AuditEvent.objects.filter(
             resource_type="VIRTUAL_DATASET",
             action="QUERY_EXECUTION_STARTED",
-            resource_id=str(self.virtual_dataset.id)
-        ).latest('timestamp')
+            resource_id=str(self.virtual_dataset.id),
+        ).latest("timestamp")
 
         details = start_event.details_json
         required_fields = ["execution_id", "dataset_id", "query_type", "sources"]
@@ -283,10 +256,7 @@ class VirtualizationAuditLoggingTest(TestCase):
     def test_audit_logging_handles_missing_user_gracefully(self):
         """Test that audit logging handles missing user gracefully"""
         # Create service without user_id
-        service_no_user = VirtualizationService(
-            tenant_id=str(self.tenant.id),
-            user_id=None
-        )
+        service_no_user = VirtualizationService(tenant_id=str(self.tenant.id), user_id=None)
 
         # Create query execution
         execution = QueryExecution.objects.create(
@@ -294,17 +264,12 @@ class VirtualizationAuditLoggingTest(TestCase):
             query=self.virtual_dataset.query,
             status=QueryExecutionStatus.PENDING,
             parameters={},
-            execution_mode=QueryExecutionMode.SYNC
+            execution_mode=QueryExecutionMode.SYNC,
         )
 
         # Should not raise - missing user is handled gracefully
         try:
-            service_no_user._execute_query_sync(
-                execution,
-                self.virtual_dataset,
-                {},
-                30
-            )
+            service_no_user._execute_query_sync(execution, self.virtual_dataset, {}, 30)
         except Exception:
             # Execution may fail, but audit logging should not crash
             pass
@@ -314,10 +279,7 @@ class VirtualizationAuditLoggingTest(TestCase):
     def test_audit_logging_handles_missing_tenant_gracefully(self):
         """Test that audit logging handles missing tenant gracefully"""
         # Create service without tenant_id
-        service_no_tenant = VirtualizationService(
-            tenant_id=None,
-            user_id=str(self.user.id)
-        )
+        service_no_tenant = VirtualizationService(tenant_id=None, user_id=str(self.user.id))
 
         # Create query execution
         execution = QueryExecution.objects.create(
@@ -325,20 +287,14 @@ class VirtualizationAuditLoggingTest(TestCase):
             query=self.virtual_dataset.query,
             status=QueryExecutionStatus.PENDING,
             parameters={},
-            execution_mode=QueryExecutionMode.SYNC
+            execution_mode=QueryExecutionMode.SYNC,
         )
 
         # Should not raise - missing tenant is handled gracefully
         try:
-            service_no_tenant._execute_query_sync(
-                execution,
-                self.virtual_dataset,
-                {},
-                30
-            )
+            service_no_tenant._execute_query_sync(execution, self.virtual_dataset, {}, 30)
         except Exception:
             # Execution may fail, but audit logging should not crash
             pass
 
         # Verify no crash occurred (test passes if no exception raised)
-

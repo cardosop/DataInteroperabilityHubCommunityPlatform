@@ -48,7 +48,7 @@ class RefResolverCoverageGapsTest(TestCase):
         """Cache-disabled resolver still resolves refs correctly."""
         document = {"$ref": "#/definitions/test", "definitions": {"test": {"type": "string"}}}
         resolver_no_cache = RefResolver(enable_caching=False)
-        resolved, original = resolver_no_cache.resolve_all_refs(
+        resolved, _original = resolver_no_cache.resolve_all_refs(
             document=document, preserve_original=True
         )
         self.assertIsInstance(resolved, dict)
@@ -167,7 +167,7 @@ class RefResolverCoverageGapsTest(TestCase):
                 result = resolver.resolve_external("https://example.com/schema.json")
                 self.assertIsNotNone(result)
                 # Verify cache hit rate can be retrieved (public API)
-                hit_rate = resolver.get_cache_hit_rate()
+                resolver.get_cache_hit_rate()
                 # hit_rate may be None if Redis unavailable
             finally:
                 resolver.resolve_external = original_resolve
@@ -370,6 +370,7 @@ class RefResolverCoverageGapsTest(TestCase):
         resolver.resolve_external = mock_resolve_external  # type: ignore[misc]  # test: edge-case type exercise
 
         import json
+
         try:
             with self.assertRaises(
                 (ODPSRefResolutionError, json.JSONDecodeError),
@@ -432,7 +433,7 @@ class RefResolverCoverageGapsTest(TestCase):
         self.assertIn("definitions", resolved)
         self.assertEqual(resolved["definitions"]["test"]["type"], "string")
 
-        resolved2, original2 = resolve_odps_refs(document, remove_external_refs=True)
+        resolved2, _original2 = resolve_odps_refs(document, remove_external_refs=True)
         self.assertIsInstance(resolved2, dict)
         self.assertIn("definitions", resolved2)
 
@@ -451,7 +452,7 @@ class RefResolverCoverageGapsTest(TestCase):
             "$ref": "#/definitions/test",
             "definitions": {"test": {"type": "string", "description": "<>&\"'"}},
         }
-        resolved, original = self.resolver.resolve_all_refs(
+        resolved, _original = self.resolver.resolve_all_refs(
             document=doc_with_special, preserve_original=True
         )
         self.assertIsInstance(resolved, dict)
@@ -465,7 +466,7 @@ class RefResolverCoverageGapsTest(TestCase):
             "$ref": "#/definitions/test",
             "definitions": {"test": {"type": "string", "description": "产品"}},
         }
-        resolved, original = self.resolver.resolve_all_refs(
+        resolved, _original = self.resolver.resolve_all_refs(
             document=doc_with_unicode, preserve_original=True
         )
         self.assertIsInstance(resolved, dict)
@@ -489,14 +490,16 @@ class RefResolverCoverageGapsTest(TestCase):
                 "level4": {"type": "string"},
             },
         }
-        resolved, original = self.resolver.resolve_all_refs(
+        resolved, _original = self.resolver.resolve_all_refs(
             document=nested_doc, preserve_original=True
         )
         self.assertIsInstance(resolved, dict)
         # The terminal definition must be resolved to its concrete value
         self.assertEqual(
-            resolved["definitions"]["level4"], {"type": "string"},
-            "Terminal definition must be resolved")
+            resolved["definitions"]["level4"],
+            {"type": "string"},
+            "Terminal definition must be resolved",
+        )
         # level1 may carry its $ref at the top level when only definitions
         # are recursively walked — the ref inside definitions → level4 IS
         # resolved as verified above.  The structural contract is that
@@ -518,4 +521,3 @@ class RefResolverCoverageGapsTest(TestCase):
         resolved, original = resolve_odps_refs(empty_doc, disable_external_refs=True)
         self.assertEqual(resolved, {})
         self.assertIsInstance(original, dict)
-

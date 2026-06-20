@@ -24,6 +24,7 @@ External boundaries (S3, compliance, DQ HTTP clients) are mocked at
 their boundaries; idempotency caching uses the real
 ``django.core.cache`` backend.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -47,7 +48,6 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -187,8 +187,8 @@ class IdempotencyKeyRequiredTest(TestCase):
         }
         canonical = _canonical_bytes(body)
         for bad_key in [
-            "ab",          # too short — middleware rejects
-            "!!invalid",   # invalid chars — middleware rejects
+            "ab",  # too short — middleware rejects
+            "!!invalid",  # invalid chars — middleware rejects
             f"{uuid.uuid4()}:tooshort",  # view-level parse_key rejects
         ]:
             response = client.post(
@@ -270,8 +270,7 @@ class IdempotencyKeyReplayTest(TestCase):
         # Patch the workflow to RAISE if called — this proves the
         # idempotency cache short-circuits before reaching it.
         with patch(
-            "hub.apps.orchestration.workflows.asset_creation."
-            "AssetCreationWorkflow.execute"
+            "hub.apps.orchestration.workflows.asset_creation.AssetCreationWorkflow.execute"
         ) as mock_execute:
             mock_execute.side_effect = AssertionError(
                 "workflow MUST NOT be re-executed on idempotent replay"
@@ -359,9 +358,14 @@ class IdempotencyKeyRedisDownTest(TestCase):
         }
         idem_key = _compose_key(tenant.id, _canonical_bytes(body))
 
-        with _patch_storage(), _patch_compliance_pass(), _patch_dq_pass(), patch(
-            "hub.apps.api.middleware.idempotency_utils.get_redis_client",
-            return_value=None,
+        with (
+            _patch_storage(),
+            _patch_compliance_pass(),
+            _patch_dq_pass(),
+            patch(
+                "hub.apps.api.middleware.idempotency_utils.get_redis_client",
+                return_value=None,
+            ),
         ):
             response = _post_canonical(client, body, idem_key)
 
@@ -369,7 +373,6 @@ class IdempotencyKeyRedisDownTest(TestCase):
         assert response.status_code == status.HTTP_201_CREATED
         # The response is NOT a replay (middleware was bypassed).
         assert response.get("Idempotency-Replayed") in (None, "false")
-
 
 
 class IdempotencyServiceUnitTest(TestCase):
@@ -391,7 +394,6 @@ class IdempotencyServiceUnitTest(TestCase):
     def test_parse_key_rejects_malformed_inputs(self):
         from hub.apps.core.idempotency import (
             IdempotencyError,
-            IdempotencyKeyMalformed,
             IdempotencyService,
         )
 
@@ -429,9 +431,7 @@ class IdempotencyServiceUnitTest(TestCase):
         tenant_uuid = uuid.uuid4()
         key = IdempotencyService.compose_key(tenant_uuid, b'{"a":1}')
         with pytest.raises(IdempotencyKeyBodyMismatch):
-            IdempotencyService.assert_body_matches_key(
-                key, b'{"a":2}', tenant_uuid
-            )
+            IdempotencyService.assert_body_matches_key(key, b'{"a":2}', tenant_uuid)
 
     def test_assert_body_matches_key_raises_on_tenant_mismatch(self):
         from hub.apps.core.idempotency import (
@@ -443,9 +443,7 @@ class IdempotencyServiceUnitTest(TestCase):
         tenant_b = uuid.uuid4()
         key = IdempotencyService.compose_key(tenant_a, b'{"a":1}')
         with pytest.raises(IdempotencyKeyTenantMismatch):
-            IdempotencyService.assert_body_matches_key(
-                key, b'{"a":1}', tenant_b
-            )
+            IdempotencyService.assert_body_matches_key(key, b'{"a":1}', tenant_b)
 
     # --------------------------------------------------------------
     # Phase 250.1.D review-pass — new contract pins
@@ -613,9 +611,14 @@ class IdempotencyConcurrencyLockTest(TestCase):
         assert response.status_code == status.HTTP_201_CREATED, response.data
 
         # Lock MUST be free — re-acquiring should succeed immediately.
-        assert IdempotencyService.acquire_lock(
-            idem_key, scope=scope, ttl_seconds=60,
-        ) is True
+        assert (
+            IdempotencyService.acquire_lock(
+                idem_key,
+                scope=scope,
+                ttl_seconds=60,
+            )
+            is True
+        )
         IdempotencyService.release_lock(idem_key, scope=scope)
 
     def test_lock_released_on_unhandled_exception(self):
@@ -638,10 +641,12 @@ class IdempotencyConcurrencyLockTest(TestCase):
 
         # Force the workflow to raise an unhandled exception by
         # patching execute() to raise something the view doesn't catch.
-        with _patch_storage(), patch(
-            "hub.apps.orchestration.workflows.asset_creation."
-            "AssetCreationWorkflow.execute",
-            side_effect=RuntimeError("boom — unhandled"),
+        with (
+            _patch_storage(),
+            patch(
+                "hub.apps.orchestration.workflows.asset_creation.AssetCreationWorkflow.execute",
+                side_effect=RuntimeError("boom — unhandled"),
+            ),
         ):
             try:
                 _post_canonical(client, body, idem_key)
@@ -652,7 +657,12 @@ class IdempotencyConcurrencyLockTest(TestCase):
                 pass
 
         # Lock MUST be free even though the workflow blew up.
-        assert IdempotencyService.acquire_lock(
-            idem_key, scope=scope, ttl_seconds=60,
-        ) is True
+        assert (
+            IdempotencyService.acquire_lock(
+                idem_key,
+                scope=scope,
+                ttl_seconds=60,
+            )
+            is True
+        )
         IdempotencyService.release_lock(idem_key, scope=scope)

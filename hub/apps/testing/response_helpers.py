@@ -15,7 +15,9 @@ The data-first endpoints can return either:
 Tests must accept both because middleware short-circuits are
 architecturally valid responses, not bugs.
 """
+
 from __future__ import annotations
+
 import json
 
 

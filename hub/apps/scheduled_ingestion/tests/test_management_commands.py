@@ -83,7 +83,6 @@ class TestDetectAndRemediateStuckRuns(TransactionTestCase):
     def _fixture_teardown(cls):
         """Override to skip database flush for tests."""
         # Skip flush to avoid foreign key constraint issues
-        pass
 
     def setUp(self):
         """Set up test data."""
@@ -304,7 +303,7 @@ class TestDetectAndRemediateStuckRuns(TransactionTestCase):
         """Test command with custom threshold hours."""
         # Create a run that's stuck for 1 hour (below default 2h threshold)
         stuck_time = timezone.now() - timedelta(hours=1)
-        run = ScheduledIngestionRun.objects.create(
+        ScheduledIngestionRun.objects.create(
             scheduled_ingestion=self.scheduled_ingestion,
             status=ScheduledIngestionRunStatus.RUNNING,
             started_at=stuck_time,
@@ -326,7 +325,7 @@ class TestDetectAndRemediateStuckRuns(TransactionTestCase):
         """Test command with multiple stuck runs."""
         # Create multiple stuck runs
         stuck_time = timezone.now() - timedelta(hours=3)
-        for i in range(3):
+        for _i in range(3):
             ScheduledIngestionRun.objects.create(
                 scheduled_ingestion=self.scheduled_ingestion,
                 status=ScheduledIngestionRunStatus.RUNNING,

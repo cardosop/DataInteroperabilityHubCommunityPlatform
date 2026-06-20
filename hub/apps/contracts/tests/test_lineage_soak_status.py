@@ -20,6 +20,7 @@ The report's status code rolls up:
 The command exits non-zero when status is CRITICAL so the cron / CI
 soak-tracker can branch on the return code.
 """
+
 from __future__ import annotations
 
 import json
@@ -35,6 +36,7 @@ from django.utils import timezone
 
 def _create_tenant():
     from hub.apps.tenants.models import Tenant
+
     suffix = uuid.uuid4().hex[:8]
     return Tenant.objects.create(name=f"Soak Co {suffix}", slug=f"soak-{suffix}")
 
@@ -93,10 +95,7 @@ class TestCriticalDriftEventCausesNonZero(TransactionTestCase):
         )
 
         _, rc, report = _run("--days=7")
-        assert rc != 0, (
-            f"expected non-zero exit on drift event; got rc={rc}, "
-            f"report={report!r}"
-        )
+        assert rc != 0, f"expected non-zero exit on drift event; got rc={rc}, report={report!r}"
         assert report["status"] == "CRITICAL"
         drift_rule = next(r for r in report["rules"] if r["rule"] == "drift")
         assert drift_rule["status"] == "CRITICAL"
@@ -129,9 +128,7 @@ class TestWindowFlagFiltersOldEvents(TransactionTestCase):
         # logic is what we're pinning, not cross-test isolation.
         # 7-day window → out-of-window event is excluded → OK exit.
         _, rc, report = _run(f"--tenant={tenant.id}", "--days=7")
-        assert rc == 0, (
-            f"old event must be excluded; got rc={rc} report={report!r}"
-        )
+        assert rc == 0, f"old event must be excluded; got rc={rc} report={report!r}"
         # 60-day window → in-window → CRITICAL.
         _, rc60, report60 = _run(f"--tenant={tenant.id}", "--days=60")
         assert rc60 != 0

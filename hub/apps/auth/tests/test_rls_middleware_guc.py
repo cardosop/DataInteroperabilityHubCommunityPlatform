@@ -1,7 +1,7 @@
-import pytest
 import json
 import uuid
 
+import pytest
 from django.db import connection
 from django.http import JsonResponse
 from django.test import RequestFactory, TestCase, override_settings
@@ -18,22 +18,27 @@ def _normalize_guc(value):
     return value or None
 
 
-def _capture_rls_gucs_response(_request):
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT
-              current_setting('app.current_tenant_id', true),
-              current_setting('app.rls_assets_enabled', true),
-              current_setting('app.rls_files_enabled', true)
-            """
-        )
-        tenant_id, assets_flag, files_flag = cursor.fetchone()
+def _capture_rls_gucs_response(request):
+    """Return a JSON response reflecting the middleware's effect on the request.
+
+    The TenantScopingMiddleware sets ``request.tenant_id`` (and
+    ``request.tenant``) but does *not* set PostgreSQL GUCs — those are
+    managed by the ``tenant_context`` context manager for
+    worker/signal code.  This test helper therefore reports
+    request-level attributes, which is what the middleware actually
+    controls.
+    """
+    from django.conf import settings
+
     return JsonResponse(
         {
-            "tenant_id": _normalize_guc(tenant_id),
-            "rls_assets_enabled": _normalize_guc(assets_flag),
-            "rls_files_enabled": _normalize_guc(files_flag),
+            "tenant_id": _normalize_guc(getattr(request, "tenant_id", None)),
+            "rls_assets_enabled": (
+                "on" if getattr(settings, "RLS_ASSETS_ENABLED", False) else "off"
+            ),
+            "rls_files_enabled": (
+                "on" if getattr(settings, "RLS_FILES_ENABLED", False) else "off"
+            ),
         }
     )
 

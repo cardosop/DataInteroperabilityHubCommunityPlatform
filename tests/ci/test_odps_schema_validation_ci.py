@@ -8,14 +8,15 @@ and can be used in CI/CD pipelines.
 Note: This is a standalone test that does not require Django or database access.
 Can be run directly: python tests/ci/test_odps_schema_validation_ci.py
 """
+
+# Prevent Django from loading if pytest-django is present
+import os
 import subprocess
 import sys
 from pathlib import Path
 
-# Prevent Django from loading if pytest-django is present
-import os
-os.environ.setdefault('SKIP_DJANGO_SETUP', '1')
-os.environ.pop('DJANGO_SETTINGS_MODULE', None)
+os.environ.setdefault("SKIP_DJANGO_SETUP", "1")
+os.environ.pop("DJANGO_SETTINGS_MODULE", None)
 
 
 def test_validate_odps_schemas_script_exists():
@@ -32,9 +33,10 @@ def test_validate_odps_schemas_script_runs():
     # Run the script
     result = subprocess.run(
         [sys.executable, str(script_path), "--strict"],
+        check=False,
         capture_output=True,
         text=True,
-        cwd=script_path.parent.parent
+        cwd=script_path.parent.parent,
     )
 
     # Verify it exits with success
@@ -52,7 +54,9 @@ def test_validate_odps_schemas_script_runs():
 def test_validate_odps_schemas_script_detects_invalid_json():
     """Test that the validation script detects invalid JSON"""
     script_path = Path(__file__).parent.parent.parent / "scripts" / "validate_odps_schemas.py"
-    schemas_dir = Path(__file__).parent.parent.parent / "hub" / "apps" / "contracts" / "schemas" / "odps"
+    schemas_dir = (
+        Path(__file__).parent.parent.parent / "hub" / "apps" / "contracts" / "schemas" / "odps"
+    )
 
     # Create a temporary invalid JSON file
     invalid_schema = schemas_dir / "v4.1" / "test-invalid.json"
@@ -65,9 +69,10 @@ def test_validate_odps_schemas_script_detects_invalid_json():
         # For this test, we'll just verify the script can handle the directory structure
         result = subprocess.run(
             [sys.executable, str(script_path), "--strict"],
+            check=False,
             capture_output=True,
             text=True,
-            cwd=script_path.parent.parent
+            cwd=script_path.parent.parent,
         )
 
         # Should still pass because test-invalid.json is not odps-schema.json
@@ -85,9 +90,10 @@ def test_validate_odps_schemas_script_handles_missing_schemas():
     # Run with a non-existent directory
     result = subprocess.run(
         [sys.executable, str(script_path), "--strict", "--schemas-dir", "/nonexistent/path"],
+        check=False,
         capture_output=True,
         text=True,
-        cwd=script_path.parent.parent
+        cwd=script_path.parent.parent,
     )
 
     # Should fail because directory doesn't exist
@@ -127,4 +133,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

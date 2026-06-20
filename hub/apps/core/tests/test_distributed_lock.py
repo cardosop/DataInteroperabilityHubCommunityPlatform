@@ -3,6 +3,7 @@
 Tests the SET NX + Lua compare-and-del token-release semantics against
 the live Redis instance (redis-cache-test) shared by the test suite.
 """
+
 from __future__ import annotations
 
 import threading
@@ -25,7 +26,8 @@ def _get_cache_redis_or_none():
     """Return a real Redis client for the cache pool, or None if unavailable."""
     try:
         redis_url = getattr(
-            settings, "REDIS_CACHE_URL",
+            settings,
+            "REDIS_CACHE_URL",
             getattr(settings, "REDIS_URL", "redis://redis-cache-test:6379/0"),
         )
         client = redis_lib.from_url(
@@ -68,20 +70,28 @@ class DistributedLockRedisTests(TestCase):
     @pytest.mark.integration
     def test_acquire_exclusive(self) -> None:
         ok1, tok1 = distributed_lock_acquire(
-            self.redis, f"{_LOCK_KEY_PREFIX}:purge", ttl_seconds=30,
+            self.redis,
+            f"{_LOCK_KEY_PREFIX}:purge",
+            ttl_seconds=30,
         )
         self.assertTrue(ok1)
         ok2, _ = distributed_lock_acquire(
-            self.redis, f"{_LOCK_KEY_PREFIX}:purge", ttl_seconds=30,
+            self.redis,
+            f"{_LOCK_KEY_PREFIX}:purge",
+            ttl_seconds=30,
         )
         self.assertFalse(ok2)
         self.assertTrue(
             distributed_lock_release(
-                self.redis, f"{_LOCK_KEY_PREFIX}:purge", token=tok1,
+                self.redis,
+                f"{_LOCK_KEY_PREFIX}:purge",
+                token=tok1,
             ),
         )
         ok3, _ = distributed_lock_acquire(
-            self.redis, f"{_LOCK_KEY_PREFIX}:purge", ttl_seconds=30,
+            self.redis,
+            f"{_LOCK_KEY_PREFIX}:purge",
+            ttl_seconds=30,
         )
         self.assertTrue(ok3)
 
@@ -91,7 +101,9 @@ class DistributedLockRedisTests(TestCase):
         ok, tok_a = distributed_lock_acquire(self.redis, key, ttl_seconds=30)
         self.assertTrue(ok)
         released = distributed_lock_release(
-            self.redis, key, token="wrong-holder",
+            self.redis,
+            key,
+            token="wrong-holder",
         )
         self.assertFalse(released)
         self.assertEqual(self.redis.get(key), tok_a)
@@ -122,7 +134,9 @@ class DistributedLockRedisTests(TestCase):
                 return
             barrier.wait()
             ok, tok = distributed_lock_acquire(
-                client, f"{_LOCK_KEY_PREFIX}:r3", ttl_seconds=60,
+                client,
+                f"{_LOCK_KEY_PREFIX}:r3",
+                ttl_seconds=60,
             )
             results.append(ok)
             if ok:
@@ -137,7 +151,9 @@ class DistributedLockRedisTests(TestCase):
         self.assertEqual(sum(1 for ok in results if ok), 1)
         for tok in tokens:
             distributed_lock_release(
-                self.redis, f"{_LOCK_KEY_PREFIX}:r3", token=tok,
+                self.redis,
+                f"{_LOCK_KEY_PREFIX}:r3",
+                token=tok,
             )
 
     @pytest.mark.integration
@@ -149,16 +165,24 @@ class DistributedLockRedisTests(TestCase):
         )
 
         ok1, tok1 = distributed_lock_acquire(
-            self.redis, _PURGE_LOCK_KEY, ttl_seconds=3600, wait_seconds=0,
+            self.redis,
+            _PURGE_LOCK_KEY,
+            ttl_seconds=3600,
+            wait_seconds=0,
         )
         self.assertTrue(ok1)
         ok2, _ = distributed_lock_acquire(
-            self.redis, _PURGE_LOCK_KEY, ttl_seconds=3600, wait_seconds=0,
+            self.redis,
+            _PURGE_LOCK_KEY,
+            ttl_seconds=3600,
+            wait_seconds=0,
         )
         self.assertFalse(ok2)
         self.assertTrue(
             distributed_lock_release(
-                self.redis, _PURGE_LOCK_KEY, token=tok1,
+                self.redis,
+                _PURGE_LOCK_KEY,
+                token=tok1,
             ),
         )
 
@@ -166,19 +190,22 @@ class DistributedLockRedisTests(TestCase):
     def test_wait_seconds_polls_when_lock_held(self) -> None:
         """When lock is held, wait_seconds spins until deadline then returns False."""
         import time as _time
+
         key = f"{_LOCK_KEY_PREFIX}:wait-poll"
         ok1, tok1 = distributed_lock_acquire(self.redis, key, ttl_seconds=30)
         self.assertTrue(ok1)
 
         start = _time.monotonic()
         ok2, _ = distributed_lock_acquire(
-            self.redis, key, ttl_seconds=30,
-            wait_seconds=1.0, retry_interval_seconds=0.1,
+            self.redis,
+            key,
+            ttl_seconds=30,
+            wait_seconds=1.0,
+            retry_interval_seconds=0.1,
         )
         elapsed = _time.monotonic() - start
         self.assertFalse(ok2)
-        self.assertGreaterEqual(elapsed, 0.9,
-                                "Should have polled for at least ~1 second")
+        self.assertGreaterEqual(elapsed, 0.9, "Should have polled for at least ~1 second")
 
         distributed_lock_release(self.redis, key, token=tok1)
 
@@ -186,11 +213,9 @@ class DistributedLockRedisTests(TestCase):
     def test_acquire_rejects_non_positive_ttl(self) -> None:
         """TTL <= 0 must raise ValueError."""
         with self.assertRaises(ValueError) as ctx:
-            distributed_lock_acquire(self.redis, f"{_LOCK_KEY_PREFIX}:ttl-0",
-                                     ttl_seconds=0)
+            distributed_lock_acquire(self.redis, f"{_LOCK_KEY_PREFIX}:ttl-0", ttl_seconds=0)
         self.assertIn("ttl_seconds must be positive", str(ctx.exception))
 
         with self.assertRaises(ValueError) as ctx:
-            distributed_lock_acquire(self.redis, f"{_LOCK_KEY_PREFIX}:ttl-neg",
-                                     ttl_seconds=-5)
+            distributed_lock_acquire(self.redis, f"{_LOCK_KEY_PREFIX}:ttl-neg", ttl_seconds=-5)
         self.assertIn("ttl_seconds must be positive", str(ctx.exception))

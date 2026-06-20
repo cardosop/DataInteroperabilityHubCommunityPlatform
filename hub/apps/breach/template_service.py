@@ -1,6 +1,7 @@
 """Render breach notification copy with tenant overrides (Phase 232.3.8)."""
 
 from __future__ import annotations
+
 from string import Template
 
 from hub.apps.breach.default_templates import DEFAULT_BREACH_REGIME, PLATFORM_BREACH_TEMPLATES
@@ -66,6 +67,4 @@ def render_for_authority_id(
     auth = None
     if notification.supervisory_authority_id:
         auth = get_authority_by_id(notification.supervisory_authority_id)
-    return render_notification_copy(
-        notification=notification, incident=incident, authority=auth
-    )
+    return render_notification_copy(notification=notification, incident=incident, authority=auth)

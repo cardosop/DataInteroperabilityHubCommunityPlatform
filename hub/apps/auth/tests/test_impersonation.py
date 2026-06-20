@@ -5,6 +5,7 @@ Verifies tenant_id pinning on impersonation access tokens,
 audit event emission with impersonation_session_id, and
 multi-tab logout sync.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -25,17 +26,22 @@ class TestImpersonationTokenPinning(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"IMP-{uid}", slug=f"imp-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"IMP-{uid}",
+            slug=f"imp-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         self.admin = User.objects.create_user(
             email=f"admin-{uid}@meshant.test",
-            password="testpass", tenant=self.tenant,
-            status=UserStatus.ACTIVE, is_platform_admin=True,
+            password="testpass",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+            is_platform_admin=True,
         )
         self.target_user = User.objects.create_user(
             email=f"target-{uid}@meshant.test",
-            password="testpass", tenant=self.tenant,
+            password="testpass",
+            tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
         self.client = APIClient()
@@ -64,8 +70,10 @@ class TestImpersonationTokenPinning(TestCase):
 
     def test_impersonation_session_id_embeds_in_token(self):
         """token includes tenant_id in payload (impersonation not yet wired)."""
+        import base64
+        import json
+
         from hub.apps.auth.jwt_utils import JWTTokenGenerator
-        import base64, json
 
         token = JWTTokenGenerator.generate_access_token(
             user=self.target_user,
@@ -81,8 +89,8 @@ class TestImpersonationTokenPinning(TestCase):
 
     def test_impersonation_audit_emits_correct_actor(self):
         """Impersonation audit events carry the correct actor."""
-        from hub.apps.audit.utils import create_audit_event
         from hub.apps.audit.models import AuditEvent
+        from hub.apps.audit.utils import create_audit_event
 
         create_audit_event(
             resource_type="TENANT",

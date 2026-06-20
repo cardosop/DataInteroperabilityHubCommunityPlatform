@@ -7,6 +7,8 @@ Tests covering:
 3. tasks.py error-handling: permanent → fail immediately,
    transient → re-raise for retry, unknown → retry once then fail
 """
+
+import contextlib
 import uuid
 
 import httpx
@@ -31,13 +33,11 @@ from hub.apps.integrations.models import (
     MarketplaceConnection,
     MarketplaceSyncJob,
 )
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
-from hub.apps.integrations.models import MarketplaceSyncJob
-from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import (
     ensure_tenant_has_active_subscription,
 )
+from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -91,7 +91,8 @@ class ClassifyConnectorErrorTest(TestCase):
     def test_httpx_connect_error_is_transient(self):
         request = httpx.Request("GET", "https://x.com")
         exc = httpx.ConnectError(
-            "failed to connect", request=request,
+            "failed to connect",
+            request=request,
         )
         self.assertEqual(
             classify_connector_error(exc),
@@ -103,7 +104,8 @@ class ClassifyConnectorErrorTest(TestCase):
     def test_httpx_read_timeout_is_transient(self):
         request = httpx.Request("GET", "https://x.com")
         exc = httpx.ReadTimeout(
-            "read timed out", request=request,
+            "read timed out",
+            request=request,
         )
         self.assertEqual(
             classify_connector_error(exc),
@@ -113,8 +115,25 @@ class ClassifyConnectorErrorTest(TestCase):
     def test_httpx_pool_timeout_is_transient(self):
         request = httpx.Request("GET", "https://x.com")
         exc = httpx.PoolTimeout(
-            "pool timed out", request=request,
+            "pool timed out",
+            request=request,
         )
+        self.assertEqual(
+            classify_connector_error(exc),
+            ConnectorErrorType.TRANSIENT,
+        )
+
+    def test_httpx_connect_timeout_is_transient(self):
+        request = httpx.Request("GET", "https://x.com")
+        exc = httpx.ConnectTimeout("connect timed out", request=request)
+        self.assertEqual(
+            classify_connector_error(exc),
+            ConnectorErrorType.TRANSIENT,
+        )
+
+    def test_httpx_remote_protocol_error_is_transient(self):
+        request = httpx.Request("GET", "https://x.com")
+        exc = httpx.RemoteProtocolError("protocol error", request=request)
         self.assertEqual(
             classify_connector_error(exc),
             ConnectorErrorType.TRANSIENT,
@@ -182,6 +201,20 @@ class ClassifyConnectorErrorTest(TestCase):
 
     def test_422_is_permanent(self):
         exc = _make_httpx_status_error(422)
+        self.assertEqual(
+            classify_connector_error(exc),
+            ConnectorErrorType.PERMANENT,
+        )
+
+    def test_405_is_permanent(self):
+        exc = _make_httpx_status_error(405)
+        self.assertEqual(
+            classify_connector_error(exc),
+            ConnectorErrorType.PERMANENT,
+        )
+
+    def test_409_is_permanent(self):
+        exc = _make_httpx_status_error(409)
         self.assertEqual(
             classify_connector_error(exc),
             ConnectorErrorType.PERMANENT,
@@ -335,7 +368,8 @@ class NoDuplicateErrorOnMarkFailedTest(TestCase):
         job.refresh_from_db()
         self.assertEqual(len(job.errors), 1)
         self.assertEqual(
-            job.errors[0]["error_type"], "permanent",
+            job.errors[0]["error_type"],
+            "permanent",
         )
         self.assertEqual(job.status, SyncStatus.FAILED.value)
 
@@ -347,7 +381,8 @@ class NoDuplicateErrorOnMarkFailedTest(TestCase):
         job.refresh_from_db()
         self.assertEqual(len(job.errors), 1)
         self.assertEqual(
-            job.errors[0]["message"], "plain fail",
+            job.errors[0]["message"],
+            "plain fail",
         )
         self.assertNotIn("error_type", job.errors[0])
 
@@ -362,10 +397,13 @@ class TaskErrorClassificationWiringTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"T-{uid}", slug=f"t-{uid}",
+            name=f"T-{uid}",
+            slug=f"t-{uid}",
         )
         self.user = User.objects.create_user(
-            email=f"u-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE,
+            email=f"u-{uid}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
@@ -421,6 +459,7 @@ class TaskErrorClassificationWiringTest(TestCase):
         def map_to_hub_asset(self, listing, sync_job_id=None):
             from hub.apps.assets.models import AssetSourceType
             from hub.apps.integrations.base import MarketplaceAssetMapping
+
             return MarketplaceAssetMapping(
                 asset_data={"name": listing.title},
                 source_type=AssetSourceType.FEDERATED,
@@ -444,38 +483,30 @@ class TaskErrorClassificationWiringTest(TestCase):
         def sync_pull(self, listing_ids=None, filters=None, options=None):
             return SyncResult(
                 status=SyncStatus.COMPLETED,
-                total_items=0, successful_items=0,
+                total_items=0,
+                successful_items=0,
             )
 
     @staticmethod
     def _register_test_connector(connector_cls):
         MarketplaceConnectorFactory.register_connector(
-            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, connector_cls,
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+            connector_cls,
         )
 
     @staticmethod
     def _unregister_test_connector():
-        try:
+        with contextlib.suppress(ValueError):
             MarketplaceConnectorFactory.unregister_connector(
                 MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
             )
-        except ValueError:
-            pass
 
     # ── tests ──────────────────────────────────────────────────────
 
-    def test_imports_present(self):
-        """tasks.py module-level imports are available."""
-        from hub.apps.integrations.tasks import (
-            classify_connector_error,
-            ConnectorErrorType,
-        )
-        self.assertTrue(callable(classify_connector_error))
-        self.assertIsNotNone(ConnectorErrorType)
-
-    def test_classify_is_called_for_connector_error(self):
-        """classify_connector_error is called when a connector raises
-        an exception during sync execution."""
+    def test_connector_connection_error_is_re_raised(self):
+        """ConnectionError from connector during sync execution is
+        re-raised to the caller so the task's TRANSIENT handler can
+        classify it and potentially retry."""
         import hub.apps.integrations.tasks as tasks_mod
 
         class _TransientConnector(self._SimpleTestConnector):
@@ -485,7 +516,8 @@ class TaskErrorClassificationWiringTest(TestCase):
         self._register_test_connector(_TransientConnector)
         try:
             sync_job = MarketplaceSyncJob.objects.create(
-                tenant=self.tenant, connection=self.connection,
+                tenant=self.tenant,
+                connection=self.connection,
                 direction=SyncDirection.PUSH.value,
                 status=SyncStatus.PENDING.value,
                 metadata={"asset_ids": ["a-1"]},
@@ -495,9 +527,10 @@ class TaskErrorClassificationWiringTest(TestCase):
         finally:
             self._unregister_test_connector()
 
-    def test_permanent_error_raises_service_error(self):
-        """When a connector returns None (classifier → PERMANENT),
-        the task raises ServiceError."""
+    def test_connector_returns_none_raises_service_error_and_marks_failed(self):
+        """When a connector returns None, tasks.py raises ServiceError
+        directly (NOT via the classification PERMANENT path). Job is
+        marked FAILED."""
         import hub.apps.integrations.tasks as tasks_mod
 
         class _NoResultConnector(self._SimpleTestConnector):
@@ -507,7 +540,8 @@ class TaskErrorClassificationWiringTest(TestCase):
         self._register_test_connector(_NoResultConnector)
         try:
             sync_job = MarketplaceSyncJob.objects.create(
-                tenant=self.tenant, connection=self.connection,
+                tenant=self.tenant,
+                connection=self.connection,
                 direction=SyncDirection.PUSH.value,
                 status=SyncStatus.PENDING.value,
                 metadata={"asset_ids": ["a-1"]},
@@ -533,7 +567,8 @@ class TaskErrorClassificationWiringTest(TestCase):
         self._register_test_connector(_TransientConnector)
         try:
             sync_job = MarketplaceSyncJob.objects.create(
-                tenant=self.tenant, connection=self.connection,
+                tenant=self.tenant,
+                connection=self.connection,
                 direction=SyncDirection.PUSH.value,
                 status=SyncStatus.PENDING.value,
                 metadata={"asset_ids": ["a-1"]},
@@ -547,27 +582,137 @@ class TaskErrorClassificationWiringTest(TestCase):
         finally:
             self._unregister_test_connector()
 
-    def test_permanent_error_marks_job_failed(self):
-        """PERMANENT errors mark the sync job as FAILED."""
+    def test_permanent_http_error_raises_service_error(self):
+        """classify_connector_error PERMANENT path (tasks.py lines 866-887):
+        connector raises httpx.HTTPStatusError(401), classified as PERMANENT,
+        job marked FAILED with error_type='permanent', ServiceError raised."""
         import hub.apps.integrations.tasks as tasks_mod
+        import httpx
 
-        class _NoResultConnector(self._SimpleTestConnector):
+        class _AuthFailureConnector(self._SimpleTestConnector):
             def sync_push(self, asset_ids, options=None):
-                return None
+                request = httpx.Request("GET", "https://example.com/api")
+                response = httpx.Response(status_code=401, request=request)
+                raise httpx.HTTPStatusError(
+                    message="401 Unauthorized",
+                    request=request,
+                    response=response,
+                )
 
-        self._register_test_connector(_NoResultConnector)
+        self._register_test_connector(_AuthFailureConnector)
         try:
             sync_job = MarketplaceSyncJob.objects.create(
-                tenant=self.tenant, connection=self.connection,
+                tenant=self.tenant,
+                connection=self.connection,
+                direction=SyncDirection.PUSH.value,
+                status=SyncStatus.PENDING.value,
+                metadata={"asset_ids": ["a-1"]},
+            )
+            with self.assertRaises(ServiceError) as cm:
+                tasks_mod.execute_marketplace_sync(str(sync_job.id))
+            self.assertIn("Permanent error during sync", str(cm.exception))
+
+            sync_job.refresh_from_db()
+            self.assertEqual(sync_job.status, SyncStatus.FAILED.value)
+            self.assertTrue(any(
+                e.get("error_type") == "permanent"
+                for e in sync_job.errors
+            ))
+        finally:
+            self._unregister_test_connector()
+
+    def test_unknown_error_retry_count_zero_re_raises(self):
+        """UNKNOWN error with retry_count=0 re-raises the original exception
+        (first retry attempt — may be retried by the caller)."""
+        import hub.apps.integrations.tasks as tasks_mod
+
+        class _RuntimeErrorConnector(self._SimpleTestConnector):
+            def sync_push(self, asset_ids, options=None):
+                raise RuntimeError("Unexpected connector crash")
+
+        self._register_test_connector(_RuntimeErrorConnector)
+        try:
+            sync_job = MarketplaceSyncJob.objects.create(
+                tenant=self.tenant,
+                connection=self.connection,
+                direction=SyncDirection.PUSH.value,
+                status=SyncStatus.PENDING.value,
+                metadata={"asset_ids": ["a-1"]},
+            )
+            with self.assertRaises(RuntimeError):
+                tasks_mod.execute_marketplace_sync(str(sync_job.id), retry_count=0)
+
+            sync_job.refresh_from_db()
+            self.assertGreater(len(sync_job.errors), 0)
+            self.assertTrue(any(
+                e.get("error_type") == "unknown"
+                for e in sync_job.errors
+            ))
+        finally:
+            self._unregister_test_connector()
+
+    def test_unknown_error_retry_count_exceeded_raises_service_error(self):
+        """UNKNOWN error with retry_count >= 1 raises ServiceError
+        and marks the job as FAILED (retry budget exhausted)."""
+        import hub.apps.integrations.tasks as tasks_mod
+
+        class _RuntimeErrorConnector2(self._SimpleTestConnector):
+            def sync_push(self, asset_ids, options=None):
+                raise RuntimeError("Unexpected connector crash")
+
+        self._register_test_connector(_RuntimeErrorConnector2)
+        try:
+            sync_job = MarketplaceSyncJob.objects.create(
+                tenant=self.tenant,
+                connection=self.connection,
                 direction=SyncDirection.PUSH.value,
                 status=SyncStatus.PENDING.value,
                 metadata={"asset_ids": ["a-1"]},
             )
             with self.assertRaises(ServiceError):
-                tasks_mod.execute_marketplace_sync(str(sync_job.id))
+                tasks_mod.execute_marketplace_sync(str(sync_job.id), retry_count=1)
 
             sync_job.refresh_from_db()
-            self.assertEqual(sync_job.status, SyncStatus.FAILED.value,
-                             "PERMANENT error must mark job as FAILED")
+            self.assertEqual(sync_job.status, SyncStatus.FAILED.value)
+            self.assertTrue(any(
+                e.get("error_type") == "unknown"
+                for e in sync_job.errors
+            ))
+        finally:
+            self._unregister_test_connector()
+
+    def test_bidirectional_sync_executes_and_completes(self):
+        """BIDIRECTIONAL sync path (tasks.py lines 491-568) executes both
+        PUSH and PULL and marks the job COMPLETED."""
+        import hub.apps.integrations.tasks as tasks_mod
+
+        class _BidiConnector(self._SimpleTestConnector):
+            def sync_push(self, asset_ids, options=None):
+                return SyncResult(
+                    status=SyncStatus.COMPLETED,
+                    total_items=1,
+                    successful_items=1,
+                )
+
+            def sync_pull(self, listing_ids=None, filters=None, options=None):
+                return SyncResult(
+                    status=SyncStatus.COMPLETED,
+                    total_items=1,
+                    successful_items=1,
+                )
+
+        self._register_test_connector(_BidiConnector)
+        try:
+            sync_job = MarketplaceSyncJob.objects.create(
+                tenant=self.tenant,
+                connection=self.connection,
+                direction=SyncDirection.BIDIRECTIONAL.value,
+                status=SyncStatus.PENDING.value,
+                metadata={"asset_ids": ["a-1"], "listing_ids": ["l-1"]},
+            )
+            result = tasks_mod.execute_marketplace_sync(str(sync_job.id))
+            self.assertEqual(result["status"], "completed")
+            sync_job.refresh_from_db()
+            self.assertEqual(sync_job.status, SyncStatus.COMPLETED.value)
         finally:
             self._unregister_test_connector()

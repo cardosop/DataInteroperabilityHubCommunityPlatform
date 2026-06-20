@@ -12,7 +12,6 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
 
 import pytest
 import requests
@@ -41,13 +40,13 @@ class TestOpenAPISpecCompleteness:
         # Fallback to file if API not available
         spec_path = project_root / "api" / "openapi-hub-v1.yaml"
         if spec_path.exists():
-            with open(spec_path, "r") as f:
+            with open(spec_path) as f:
                 return yaml.safe_load(f)
 
         # Try JSON file
         spec_path = project_root / "api" / "openapi-hub-v1.json"
         if spec_path.exists():
-            with open(spec_path, "r") as f:
+            with open(spec_path) as f:
                 return json.load(f)
 
         pytest.skip("OpenAPI spec not available")
@@ -55,9 +54,9 @@ class TestOpenAPISpecCompleteness:
     def test_openapi_version(self, openapi_spec):
         """Test that OpenAPI version is 3.x."""
         assert "openapi" in openapi_spec
-        assert openapi_spec["openapi"].startswith(
-            "3."
-        ), f"OpenAPI version must be 3.x, got {openapi_spec['openapi']}"
+        assert openapi_spec["openapi"].startswith("3."), (
+            f"OpenAPI version must be 3.x, got {openapi_spec['openapi']}"
+        )
 
     def test_info_section_complete(self, openapi_spec):
         """Test that info section is complete."""
@@ -92,9 +91,9 @@ class TestOpenAPISpecCompleteness:
                 if not operation.get("tags"):
                     operations_without_tags.append(f"{method.upper()} {path}")
 
-        assert (
-            len(operations_without_tags) == 0
-        ), f"Operations without tags: {operations_without_tags[:10]}"
+        assert len(operations_without_tags) == 0, (
+            f"Operations without tags: {operations_without_tags[:10]}"
+        )
 
     def test_all_operations_have_operation_id(self, openapi_spec):
         """Test that all operations have operationId."""
@@ -115,9 +114,9 @@ class TestOpenAPISpecCompleteness:
                 if not operation.get("operationId"):
                     operations_without_id.append(f"{method.upper()} {path}")
 
-        assert (
-            len(operations_without_id) == 0
-        ), f"Operations without operationId: {operations_without_id[:10]}"
+        assert len(operations_without_id) == 0, (
+            f"Operations without operationId: {operations_without_id[:10]}"
+        )
 
     def test_operations_have_descriptions(self, openapi_spec):
         """Test that operations have descriptions or summaries."""
@@ -140,7 +139,7 @@ class TestOpenAPISpecCompleteness:
 
         # Warn but don't fail - descriptions are nice to have
         if operations_without_docs:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
                 f"Some operations lack descriptions (non-blocking): {len(operations_without_docs)}"
             )
 
@@ -176,7 +175,7 @@ class TestOpenAPISpecCompleteness:
 
         # Warn but don't fail - error responses are added by enhancement
         if operations_missing_errors:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
                 f"Some operations missing error responses (may be added by enhancement): {len(operations_missing_errors)}"
             )
 
@@ -191,9 +190,9 @@ class TestOpenAPISpecCompleteness:
         components = openapi_spec.get("components", {})
         security_schemes = components.get("securitySchemes", {})
         assert len(security_schemes) > 0, "OpenAPI spec must define security schemes"
-        assert (
-            "BearerAuth" in security_schemes or "bearerAuth" in security_schemes
-        ), "Bearer authentication scheme must be defined"
+        assert "BearerAuth" in security_schemes or "bearerAuth" in security_schemes, (
+            "Bearer authentication scheme must be defined"
+        )
 
     def test_examples_present(self, openapi_spec):
         """Test that operations have examples (at least for POST/PUT/PATCH)."""
@@ -240,7 +239,7 @@ class TestOpenAPISpecCompleteness:
 
         # Warn but don't fail - examples are nice to have
         if operations_without_examples:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
                 f"Some operations lack examples (non-blocking): {len(operations_without_examples)}"
             )
 
@@ -257,6 +256,6 @@ class TestOpenAPISpecCompleteness:
         ]
 
         if tags_without_description:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
                 f"Some tags lack descriptions (non-blocking): {tags_without_description[:5]}"
             )

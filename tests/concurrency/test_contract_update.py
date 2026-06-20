@@ -1,4 +1,5 @@
 """Constraint-based contract update tests (replaces threading-based concurrency)."""
+
 import uuid
 
 from django.test import TestCase

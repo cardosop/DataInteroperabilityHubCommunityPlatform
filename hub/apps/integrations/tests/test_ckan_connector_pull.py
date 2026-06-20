@@ -7,26 +7,19 @@ No mocks or stubs - all tests use actual CKAN API endpoints and download real re
 Uses centralized test utilities for consistent configuration.
 """
 
-import unittest
 import os
 import tempfile
+import unittest
 import uuid
-from pathlib import Path
 
 import httpx
 import pytest
 from django.test import TestCase
 
 from hub.apps.core.services.base import NotFoundError
-from hub.apps.integrations.base import (
-    MarketplaceListing,
-    MarketplaceResource,
-    MarketplaceType,
-)
 from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
     create_test_connector,
-    get_test_ckan_url,  # Backward compatibility
     marketplace_available,
 )
 
@@ -68,11 +61,9 @@ class TestCKANConnectorPullOperations(TestCase):
         # failed connection doesn't leak a PG transaction to subsequent classes.
         try:
             cls.connector.test_connection()
-        except Exception as e:
+        except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError) as e:
             cls._rollback_atomics(cls.cls_atomics)
-            raise unittest.SkipTest(
-                f"Cannot connect to CKAN instance at {cls.ckan_url}: {e}"
-            )
+            raise unittest.SkipTest(f"Cannot connect to CKAN instance at {cls.ckan_url}: {e}")
 
         # Find a test resource with a downloadable URL
         # Try multiple resources until we find one that's actually downloadable
@@ -121,15 +112,15 @@ class TestCKANConnectorPullOperations(TestCase):
                                         cls.test_resource_id = resource.resource_id
                                         cls.test_resource_url = resource.url
                                         break
-                                except Exception:
+                                except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
                                     continue
-                            except Exception:
+                            except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
                                 continue
                     if cls.test_resource_id:
                         break
-                except Exception:
+                except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
                     continue
-        except Exception:
+        except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
             pass
 
     def setUp(self):
@@ -437,11 +428,11 @@ class TestCKANConnectorPullOperations(TestCase):
                                 if e.response.status_code == 404:
                                     broken_resource = resource
                                     break
-                            except Exception:
+                            except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
                                 continue
                     if broken_resource:
                         break
-                except Exception:
+                except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
                     continue
 
             if broken_resource:
@@ -460,7 +451,7 @@ class TestCKANConnectorPullOperations(TestCase):
             else:
                 # No broken resources found - this is fine, skip test
                 self.skipTest("No resources with broken URLs found to test error handling")
-        except Exception as e:
+        except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError) as e:
             self.skipTest(f"Could not test broken URL handling: {e}")
 
     def test_download_resource_with_none_resource_id(self):
@@ -599,14 +590,14 @@ class TestCKANConnectorPullOperations(TestCase):
                                 ):  # 206 is Partial Content
                                     downloadable_resource = resource
                                     break
-                            except Exception:
+                            except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
                                 continue
-                        except Exception:
+                        except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
                             continue
 
                 if downloadable_resource:
                     break
-            except Exception:
+            except (httpx.HTTPStatusError, httpx.RequestError, HubConnectionError):
                 continue
 
         if downloadable_resource and downloadable_resource.url:
@@ -633,23 +624,22 @@ class TestCKANConnectorPullOperations(TestCase):
             finally:
                 if os.path.exists(destination_path):
                     os.unlink(destination_path)
-        else:
-            # Use the test resource from setUpClass if available
-            if self.test_resource_id:
-                assert self.test_resource_id is not None, "test_resource_id should be set"
-                resource_id: str = self.test_resource_id
-                with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-                    destination_path = tmp_file.name
+        # Use the test resource from setUpClass if available
+        elif self.test_resource_id:
+            assert self.test_resource_id is not None, "test_resource_id should be set"
+            resource_id: str = self.test_resource_id
+            with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                destination_path = tmp_file.name
 
-                try:
-                    result_path = self.connector.download_resource(resource_id, destination_path)
-                    self.assertTrue(os.path.exists(result_path))
-                    self.assertGreater(os.path.getsize(result_path), 0)
-                finally:
-                    if os.path.exists(destination_path):
-                        os.unlink(destination_path)
-            else:
-                self.skipTest(
-                    "No downloadable resource found in any listing. "
-                    "Some CKAN resources may have broken links - this is expected in real-world scenarios."
-                )
+            try:
+                result_path = self.connector.download_resource(resource_id, destination_path)
+                self.assertTrue(os.path.exists(result_path))
+                self.assertGreater(os.path.getsize(result_path), 0)
+            finally:
+                if os.path.exists(destination_path):
+                    os.unlink(destination_path)
+        else:
+            self.skipTest(
+                "No downloadable resource found in any listing. "
+                "Some CKAN resources may have broken links - this is expected in real-world scenarios."
+            )

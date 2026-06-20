@@ -15,13 +15,14 @@ import logging
 import uuid
 
 import requests
+
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_base_url, api_get
-
 
 # ---------------------------------------------------------------------------
 # X-Request-ID propagation
 # ---------------------------------------------------------------------------
+
 
 def test_api_response_includes_request_id():
     """API responses should include an X-Request-ID header for tracing."""
@@ -74,6 +75,7 @@ def test_client_can_send_request_id():
 # SDK logging
 # ---------------------------------------------------------------------------
 
+
 def test_sdk_logger_exists():
     """The SDK should register a logger under a predictable name."""
     logger = logging.getLogger("datahub_interoperability")
@@ -88,6 +90,7 @@ def test_sdk_logger_exists():
 # ---------------------------------------------------------------------------
 # CLI --verbose (TODO marker if not yet implemented)
 # ---------------------------------------------------------------------------
+
 
 def test_cli_verbose_flag_exists():
     """CLI should accept a --verbose or -v flag for structured logging.
@@ -111,7 +114,4 @@ def test_cli_verbose_flag_exists():
     if "--verbose" in help_text or "-v" in help_text:
         pass  # Flag exists — good
     else:
-        pytest.skip(
-            "CLI does not have --verbose flag yet — "
-            "TODO: add --verbose to CLI root group"
-        )
+        pytest.skip("CLI does not have --verbose flag yet — TODO: add --verbose to CLI root group")

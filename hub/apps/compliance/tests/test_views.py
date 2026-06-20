@@ -44,7 +44,10 @@ class ComplianceRunViewSetTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -58,7 +61,10 @@ class ComplianceRunViewSetTest(TestCase):
         # Create another tenant and user for isolation tests
         _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         ensure_tenant_has_active_subscription(self.tenant)
         ensure_tenant_has_active_subscription(self.other_tenant)
@@ -634,8 +640,9 @@ class ComplianceRunViewSetTest(TestCase):
 
     def test_create_compliance_run_rejects_invalid_contract_schema(self):
         """5.4.2: Creating run with asset whose contract has invalid privacy_compliance returns 400; real validation, no mocks."""
-        from hub.apps.contracts.models import Contract, ContractStatus
         from hub.apps.contracts.models import (
+            Contract,
+            ContractStatus,
             NormalizationStatus,
             OriginalFormat,
             OriginalSpecType,
@@ -1238,9 +1245,7 @@ class ComplianceRunViewSetTest(TestCase):
         self.compliance_run.save()
 
         self.client.force_authenticate(user=self.user)
-        response = self.client.get(
-            f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
-        )
+        response = self.client.get(f"/api/v1/compliance/runs/{self.compliance_run.id}/results/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["compliance_score"], 100.0)
@@ -1262,11 +1267,56 @@ class ComplianceRunViewSetTest(TestCase):
         self.compliance_run.save()
 
         self.client.force_authenticate(user=self.user)
-        response = self.client.get(
-            f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
-        )
+        response = self.client.get(f"/api/v1/compliance/runs/{self.compliance_run.id}/results/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["compliance_score"], 50.0)
         self.assertEqual(response.data["score_breakdown"]["columns_with_pii"], 2)
         self.assertEqual(response.data["score_breakdown"]["pii_detection_rate"], 1.0)
+
+    # ── /results/ on non-SUCCEEDED status ──────────────────────────────
+
+    @pytest.mark.integration
+    def test_results_action_pending_run_returns_empty_results(self):
+        """A PENDING run returns 200 with empty/minimal results (no scan data yet)."""
+        self.compliance_run.status = ComplianceRunStatus.PENDING
+        self.compliance_run.save()
+        self.client.force_authenticate(user=self.user)
+        url = f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Results endpoint always returns 200 and includes the standard keys.
+        self.assertIn("compliance_score", response.data)
+        self.assertEqual(response.data["compliance_score"], 100.0)
+
+    @pytest.mark.integration
+    def test_results_action_running_run_returns_results(self):
+        """A RUNNING run returns 200 with partial results (no terminal data yet)."""
+        self.compliance_run.status = ComplianceRunStatus.RUNNING
+        self.compliance_run.save()
+        self.client.force_authenticate(user=self.user)
+        url = f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("compliance_score", response.data)
+
+    @pytest.mark.integration
+    def test_results_action_failed_run_returns_results(self):
+        """A FAILED run returns 200 with results — endpoint is status-agnostic."""
+        self.compliance_run.status = ComplianceRunStatus.FAILED
+        self.compliance_run.save()
+        self.client.force_authenticate(user=self.user)
+        url = f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    # ── PATCH edge cases ───────────────────────────────────────────────
+
+    @pytest.mark.integration
+    def test_partial_update_empty_regulations(self):
+        """PATCH with empty regulations list should succeed and clear regulations."""
+        self.client.force_authenticate(user=self.user)
+        url = f"/api/v1/compliance/runs/{self.compliance_run.id}/"
+        response = self.client.patch(url, {"regulations": []}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["regulations"], [])

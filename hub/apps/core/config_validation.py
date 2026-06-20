@@ -45,8 +45,7 @@ def validate_database_config() -> None:
     for key in ("ENGINE", "NAME", "HOST", "PORT"):
         if key not in default:
             raise ImproperlyConfigured(
-                f"DATABASES['default'] must define '{key}'. "
-                "See docs/CONFIG_VALIDATION_DESIGN.md."
+                f"DATABASES['default'] must define '{key}'. See docs/CONFIG_VALIDATION_DESIGN.md."
             )
     if not default.get("ENGINE") or not default.get("NAME"):
         raise ImproperlyConfigured(

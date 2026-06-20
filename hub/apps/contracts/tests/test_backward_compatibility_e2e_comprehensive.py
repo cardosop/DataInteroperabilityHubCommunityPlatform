@@ -18,9 +18,7 @@ from rest_framework import status
 
 from hub.apps.contracts.models import (
     Contract,
-    ContractStatus,
     NormalizationStatus,
-    OriginalFormat,
     OriginalSpecType,
 )
 from hub.apps.contracts.normalization import get_normalizer, normalize_contract
@@ -442,11 +440,11 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
         # Step 3: Normalization
         (
             hub_contract,
-            detected_spec_type,
-            detected_spec_version,
+            _detected_spec_type,
+            _detected_spec_version,
             norm_status,
             norm_errors,
-            norm_warnings,
+            _norm_warnings,
         ) = normalize_contract(raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS")
         self.assertIsNotNone(hub_contract, "Normalization should succeed for ODCS 3.0.2")
         self.assertIn(
@@ -487,11 +485,11 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
         # Normalization
         (
             hub_contract,
-            detected_spec_type,
-            detected_spec_version,
+            _detected_spec_type,
+            _detected_spec_version,
             norm_status,
-            norm_errors,
-            norm_warnings,
+            _norm_errors,
+            _norm_warnings,
         ) = normalize_contract(raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS")
         self.assertIsNotNone(hub_contract, "Normalization should succeed for ODCS 3.0.1")
         self.assertIn(
@@ -525,11 +523,11 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
         # Normalization
         (
             hub_contract,
-            detected_spec_type,
-            detected_spec_version,
+            _detected_spec_type,
+            _detected_spec_version,
             norm_status,
-            norm_errors,
-            norm_warnings,
+            _norm_errors,
+            _norm_warnings,
         ) = normalize_contract(raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS")
         self.assertIsNotNone(hub_contract, "Normalization should succeed for ODCS 3.0.0")
         self.assertIn(
@@ -565,11 +563,11 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
         # Normalization
         (
             hub_contract,
-            detected_spec_type,
-            detected_spec_version,
+            _detected_spec_type,
+            _detected_spec_version,
             norm_status,
-            norm_errors,
-            norm_warnings,
+            _norm_errors,
+            _norm_warnings,
         ) = normalize_contract(raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS")
         self.assertIsNotNone(hub_contract, "Normalization should succeed for ODCS 3.0.0-preview")
         self.assertIn(
@@ -603,11 +601,11 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
         # Normalization
         (
             hub_contract,
-            detected_spec_type,
-            detected_spec_version,
+            _detected_spec_type,
+            _detected_spec_version,
             norm_status,
-            norm_errors,
-            norm_warnings,
+            _norm_errors,
+            _norm_warnings,
         ) = normalize_contract(raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS")
         self.assertIsNotNone(hub_contract, "Normalization should succeed for ODCS 2.2.2")
         self.assertIn(
@@ -647,11 +645,11 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
                 odcs_doc = create_odcs_contract(version)
                 (
                     hub_contract,
-                    detected_spec_type,
-                    detected_spec_version,
+                    _detected_spec_type,
+                    _detected_spec_version,
                     norm_status,
                     norm_errors,
-                    norm_warnings,
+                    _norm_warnings,
                 ) = normalize_contract(
                     raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS"
                 )
@@ -715,11 +713,11 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
 
                 (
                     hub_contract,
-                    detected_spec_type,
-                    detected_spec_version,
+                    _detected_spec_type,
+                    _detected_spec_version,
                     norm_status,
                     norm_errors,
-                    norm_warnings,
+                    _norm_warnings,
                 ) = normalize_contract(
                     raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS"
                 )
@@ -783,11 +781,11 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
 
                 (
                     hub_contract,
-                    detected_spec_type,
-                    detected_spec_version,
+                    _detected_spec_type,
+                    _detected_spec_version,
                     norm_status,
                     norm_errors,
-                    norm_warnings,
+                    _norm_warnings,
                 ) = normalize_contract(
                     raw_contract=json.dumps(minimal_odcs), format="JSON", spec_type="ODCS"
                 )
@@ -817,11 +815,11 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
         # Normalize baseline
         (
             baseline_hub_contract,
-            baseline_detected_spec_type,
-            baseline_detected_spec_version,
-            baseline_norm_status,
+            _baseline_detected_spec_type,
+            _baseline_detected_spec_version,
+            _baseline_norm_status,
             baseline_norm_errors,
-            baseline_norm_warnings,
+            _baseline_norm_warnings,
         ) = normalize_contract(
             raw_contract=json.dumps(baseline_contract), format="JSON", spec_type="ODCS"
         )
@@ -844,18 +842,16 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
         baseline_contract = create_odcs_contract("3.0.2", "baseline-regression")
         (
             baseline_hub_contract,
-            baseline_detected_spec_type,
-            baseline_detected_spec_version,
-            baseline_norm_status,
-            baseline_norm_errors,
-            baseline_norm_warnings,
+            _baseline_detected_spec_type,
+            _baseline_detected_spec_version,
+            _baseline_norm_status,
+            _baseline_norm_errors,
+            _baseline_norm_warnings,
         ) = normalize_contract(
             raw_contract=json.dumps(baseline_contract), format="JSON", spec_type="ODCS"
         )
 
         self.assertIsNotNone(baseline_hub_contract, "Baseline should normalize")
-        baseline_id = baseline_hub_contract["id"]
-        baseline_schema_fields = baseline_hub_contract.get("schema", {}).get("fields", [])
 
         # Test all other versions
         for version in ["3.0.1", "3.0.0", "3.0.0-preview", "2.2.2"]:
@@ -864,11 +860,11 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
 
                 (
                     hub_contract,
-                    detected_spec_type,
-                    detected_spec_version,
-                    norm_status,
+                    _detected_spec_type,
+                    _detected_spec_version,
+                    _norm_status,
                     norm_errors,
-                    norm_warnings,
+                    _norm_warnings,
                 ) = normalize_contract(
                     raw_contract=json.dumps(contract), format="JSON", spec_type="ODCS"
                 )
@@ -1060,12 +1056,12 @@ class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
             with self.subTest(format="ODCS", version=version):
                 odcs_doc = create_odcs_contract(version)
                 (
-                    hub_contract,
-                    detected_spec_type,
-                    detected_spec_version,
+                    _hub_contract,
+                    _detected_spec_type,
+                    _detected_spec_version,
                     norm_status,
-                    norm_errors,
-                    norm_warnings,
+                    _norm_errors,
+                    _norm_warnings,
                 ) = normalize_contract(
                     raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS"
                 )

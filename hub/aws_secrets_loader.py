@@ -57,17 +57,17 @@ logger = logging.getLogger(__name__)
 # Each secret is a JSON object with key-value pairs that become env vars.
 # ---------------------------------------------------------------------------
 _SECRET_SUBSYSTEMS: list[tuple[str, str]] = [
-    ("django",   "Django core secrets"),
-    ("redis",    "Redis credentials"),
-    ("s3",       "S3/MinIO credentials"),
+    ("django", "Django core secrets"),
+    ("redis", "Redis credentials"),
+    ("s3", "S3/MinIO credentials"),
     ("postgres", "PostgreSQL credentials"),
     ("pgbouncer", "PgBouncer credentials"),
-    ("fuseki",   "Fuseki credentials"),
-    ("workers",  "Worker API keys"),
-    ("api",      "API internal keys"),
-    ("email",    "Email provider credentials"),
-    ("stripe",   "Stripe payment keys"),
-    ("ckan",     "CKAN integration keys"),
+    ("fuseki", "Fuseki credentials"),
+    ("workers", "Worker API keys"),
+    ("api", "API internal keys"),
+    ("email", "Email provider credentials"),
+    ("stripe", "Stripe payment keys"),
+    ("ckan", "CKAN integration keys"),
 ]
 
 # Retry configuration
@@ -94,13 +94,12 @@ _NON_RETRYABLE_EXCEPTIONS = (
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _build_client():
     """Construct a boto3 Secrets Manager client from environment."""
     region = os.environ.get("AWS_REGION", "us-east-1").strip()
     if not region:
-        raise RuntimeError(
-            "AWS_REGION is not set — cannot connect to AWS Secrets Manager."
-        )
+        raise RuntimeError("AWS_REGION is not set — cannot connect to AWS Secrets Manager.")
     return boto3.client("secretsmanager", region_name=region)
 
 
@@ -171,6 +170,7 @@ def _do_load() -> None:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def load_from_aws() -> None:
     """
     Load all application secrets from AWS Secrets Manager and inject into ``os.environ``.
@@ -210,7 +210,10 @@ def load_from_aws() -> None:
                 delay = _RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
                 logger.warning(
                     "AWS SM load attempt %d/%d failed: %s. Retrying in %d s ...",
-                    attempt, _RETRY_ATTEMPTS, exc, delay,
+                    attempt,
+                    _RETRY_ATTEMPTS,
+                    exc,
+                    delay,
                 )
                 time.sleep(delay)
 
@@ -223,13 +226,17 @@ def load_from_aws() -> None:
                 delay = _RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
                 logger.warning(
                     "AWS SM load attempt %d/%d failed (transient): %s. Retrying in %d s ...",
-                    attempt, _RETRY_ATTEMPTS, exc, delay,
+                    attempt,
+                    _RETRY_ATTEMPTS,
+                    exc,
+                    delay,
                 )
                 time.sleep(delay)
             else:
                 logger.error(
                     "AWS SM load failed after %d attempts: %s",
-                    _RETRY_ATTEMPTS, exc,
+                    _RETRY_ATTEMPTS,
+                    exc,
                 )
 
         except Exception as exc:
@@ -238,13 +245,17 @@ def load_from_aws() -> None:
                 delay = _RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
                 logger.warning(
                     "AWS SM load attempt %d/%d failed (unexpected): %s. Retrying in %d s ...",
-                    attempt, _RETRY_ATTEMPTS, exc, delay,
+                    attempt,
+                    _RETRY_ATTEMPTS,
+                    exc,
+                    delay,
                 )
                 time.sleep(delay)
             else:
                 logger.error(
                     "AWS SM load failed after %d attempts (unexpected): %s",
-                    _RETRY_ATTEMPTS, exc,
+                    _RETRY_ATTEMPTS,
+                    exc,
                 )
 
     raise RuntimeError(

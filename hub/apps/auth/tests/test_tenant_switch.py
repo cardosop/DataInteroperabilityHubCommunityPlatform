@@ -21,10 +21,9 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.auth.jwt_utils import JWTTokenGenerator
 from hub.apps.auth.middleware import TenantScopingMiddleware
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
-from hub.apps.users.models import UserTenantMembership
+from hub.apps.users.models import User, UserStatus, UserTenantMembership
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.uc("UC-AUTH-007"), pytest.mark.journey("JOURNEY-AUTH-007")]
 
 
 class MeTenantsEndpointTest(TestCase):
@@ -191,7 +190,7 @@ class SwitchTenantEndpointTest(TestCase):
 
     def test_switch_tenant_creates_tenant_switch_audit_event(self):
         """POST /auth/switch-tenant/ creates TENANT_SWITCH audit event with from/to tenant ids."""
-        initial_count = AuditEvent.objects.filter(action="TENANT_SWITCH").count()
+        AuditEvent.objects.filter(action="TENANT_SWITCH").count()
         response = self.client.post(
             "/api/v1/auth/switch-tenant/",
             {"tenant_id": str(self.tenant_b.id)},

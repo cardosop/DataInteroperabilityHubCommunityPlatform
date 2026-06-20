@@ -5,16 +5,15 @@ Tests that AUDITOR:
 - Cannot access tenant configuration
 - Read-only access to most resources
 """
+
+import uuid
+
 import pytest
-from django.test import TestCase
 from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
 from rest_framework import status
 
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, Role, UserRole, UserStatus
+from hub.apps.users.models import Role, User, UserRole, UserStatus
 from tests.e2e.conftest import E2ETestBase, get_response_data
-import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
 User = get_user_model()
@@ -22,138 +21,128 @@ User = get_user_model()
 
 class AuditorPersonaTest(E2ETestBase):
     """E2E tests for AUDITOR persona"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-        
+
         # Create AUDITOR role
         self.auditor_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="AUDITOR",
-            defaults={"description": "Auditor"}
+            tenant=self.tenant, name="AUDITOR", defaults={"description": "Auditor"}
         )
-        
+
         # Create auditor user
         self.auditor_user = User.objects.create_user(
             email=f"auditor-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         UserRole.objects.create(user=self.auditor_user, role=self.auditor_role)
-        
+
         # Authenticate as auditor
         self.client.force_authenticate(user=self.auditor_user)
-    
+
     def test_auditor_cannot_get_tenant_config(self):
         """Test AUDITOR cannot GET tenant configuration"""
         response = self.client.get(f"/api/v1/tenants/{self.tenant.id}/config/")
-        
+
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertIn("error", get_response_data(response) or {})
-    
+
     def test_auditor_cannot_patch_tenant_config(self):
         """Test AUDITOR cannot PATCH tenant configuration"""
         data = {"default_dq_profile": "intake_basic_gx"}
-        
+
         response = self.client.patch(
-            f"/api/v1/tenants/{self.tenant.id}/config/",
-            data,
-            format="json"
+            f"/api/v1/tenants/{self.tenant.id}/config/", data, format="json"
         )
-        
+
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-    
+
     def test_auditor_can_read_contracts(self):
         """Test AUDITOR can read contracts (read-only)"""
         response = self.client.get("/api/v1/contracts/")
-        
+
         # Should be able to read
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
-    
+
     def test_auditor_cannot_create_contracts(self):
         """Test AUDITOR cannot create contracts"""
         # Create valid contract data with required fields
         contract_data = {
             "original_raw": '{"id": "test", "name": "Test Contract", "schema": {"fields": []}}',
-            "original_format": "JSON"
+            "original_format": "JSON",
         }
-        
-        response = self.client.post(
-            "/api/v1/contracts/",
-            contract_data,
-            format="json"
-        )
-        
+
+        response = self.client.post("/api/v1/contracts/", contract_data, format="json")
+
         # AUDITOR should not be able to create contracts — expect 403 or 400
         # (400 can occur if validation rejects before permission check)
-        self.assertNotEqual(response.status_code, status.HTTP_201_CREATED,
-            "AUDITOR was able to create contract - role-based permissions not implemented")
-        self.assertIn(response.status_code, [
-            status.HTTP_403_FORBIDDEN,
-            status.HTTP_400_BAD_REQUEST,
-        ], f"Expected 403 or 400, got {response.status_code}")
-    
+        self.assertNotEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+            "AUDITOR was able to create contract - role-based permissions not implemented",
+        )
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_403_FORBIDDEN,
+                status.HTTP_400_BAD_REQUEST,
+            ],
+            f"Expected 403 or 400, got {response.status_code}",
+        )
+
     def test_auditor_cannot_update_contracts(self):
         """Test AUDITOR cannot update contracts"""
         # Create a contract first (as another user)
         from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
-        
+
         contract = ContractFactoryEnhanced.create_contract_with_all_sections(
             tenant=self.tenant,
-            created_by=self.user  # Use different user
+            created_by=self.user,  # Use different user
         )
-        
+
         data = {"info": {"title": "Updated Title"}}
-        response = self.client.patch(
-            f"/api/v1/contracts/{contract.id}/",
-            data,
-            format="json"
-        )
-        
+        response = self.client.patch(f"/api/v1/contracts/{contract.id}/", data, format="json")
+
         # Should be forbidden
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-    
+
     def test_auditor_cannot_delete_contracts(self):
         """Test AUDITOR cannot delete contracts"""
         from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
-        
+
         contract = ContractFactoryEnhanced.create_contract_with_all_sections(
-            tenant=self.tenant,
-            created_by=self.user
+            tenant=self.tenant, created_by=self.user
         )
-        
+
         response = self.client.delete(f"/api/v1/contracts/{contract.id}/")
-        
+
         # Should be forbidden
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-    
+
     def test_auditor_can_read_dq_runs(self):
         """Test AUDITOR can read DQ runs (read-only)"""
         response = self.client.get("/api/v1/dq/runs/")
-        
+
         # Should be able to read
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
-    
+
     def test_auditor_cannot_create_dq_runs(self):
         """Test AUDITOR cannot create DQ runs"""
         # Create valid test data as tenant admin (auditor cannot create assets)
         self.client.force_authenticate(user=self.user)
-        asset_id = self.create_asset(key='dq-test-asset', name='DQ Test Asset')
-        file_id = self.init_file_upload(name='test.csv', content_type='text/csv', size=1024)
+        asset_id = self.create_asset(key="dq-test-asset", name="DQ Test Asset")
+        file_id = self.init_file_upload(name="test.csv", content_type="text/csv", size=1024)
         self.complete_file_upload(file_id)
         dataset_id = self.create_dataset(file_id, asset_id)
         self.client.force_authenticate(user=self.auditor_user)
 
         data = {"asset_id": str(asset_id), "dataset_id": str(dataset_id)}
 
-        response = self.client.post(
-            "/api/v1/dq/runs/",
-            data,
-            format="json"
-        )
-        
+        response = self.client.post("/api/v1/dq/runs/", data, format="json")
+
         # Should be forbidden (403) or validation error (400) if permissions not implemented
         if response.status_code == status.HTTP_201_CREATED:
             # Permissions not implemented - this is a test failure
@@ -164,71 +153,70 @@ class AuditorPersonaTest(E2ETestBase):
         else:
             # Should be 403 if permissions are implemented
             self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-    
+
     def test_auditor_can_read_compliance_runs(self):
         """Test AUDITOR can read compliance runs (read-only)"""
         response = self.client.get("/api/v1/compliance/runs/")
-        
+
         # Should be able to read
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
-    
+
     def test_auditor_cannot_create_compliance_runs(self):
         """Test AUDITOR cannot create compliance runs"""
         # Create valid test data as tenant admin (auditor cannot create assets)
         self.client.force_authenticate(user=self.user)
-        asset_id = self.create_asset(key='compliance-test-asset', name='Compliance Test Asset')
-        file_id = self.init_file_upload(name='test.csv', content_type='text/csv', size=1024)
+        asset_id = self.create_asset(key="compliance-test-asset", name="Compliance Test Asset")
+        file_id = self.init_file_upload(name="test.csv", content_type="text/csv", size=1024)
         self.complete_file_upload(file_id)
         dataset_id = self.create_dataset(file_id, asset_id)
         self.client.force_authenticate(user=self.auditor_user)
 
         data = {"asset_id": str(asset_id), "dataset_id": str(dataset_id)}
 
-        response = self.client.post(
-            "/api/v1/compliance/runs/",
-            data,
-            format="json"
-        )
-        
+        response = self.client.post("/api/v1/compliance/runs/", data, format="json")
+
         # Should be forbidden (403) or validation error (400) if permissions not implemented
         if response.status_code == status.HTTP_201_CREATED:
             # Permissions not implemented - this is a test failure
-            self.fail("AUDITOR was able to create compliance run - role-based permissions not implemented")
+            self.fail(
+                "AUDITOR was able to create compliance run - role-based permissions not implemented"
+            )
         elif response.status_code == status.HTTP_400_BAD_REQUEST:
             # Validation error - permissions might not be checked if validation fails first
             pass
         else:
             # Should be 403 if permissions are implemented
             self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-    
+
     def test_auditor_can_read_audit_logs(self):
         """Test AUDITOR can read audit logs (read-only)"""
         response = self.client.get("/api/v1/audit/events/")
-        
+
         # Should be able to read audit logs
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
-    
+
     def test_auditor_cannot_modify_audit_logs(self):
         """Test AUDITOR cannot modify audit logs"""
         # Audit logs should be immutable
         # Try to create one (should fail)
         data = {"action": "TEST_ACTION"}
-        
-        response = self.client.post(
-            "/api/v1/audit/events/",
-            data,
-            format="json"
+
+        response = self.client.post("/api/v1/audit/events/", data, format="json")
+
+        # Audit logs must be immutable — write must be rejected (403/405) or not exist (404)  # noqa: broad-status-codes
+
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_403_FORBIDDEN,
+                status.HTTP_404_NOT_FOUND,
+                status.HTTP_405_METHOD_NOT_ALLOWED,
+            ],
+            f"Audit immutability: write should be rejected, got {response.status_code}",
         )
-        
-        # Audit logs must be immutable — write must be rejected (403/405) or not exist (404)
-        self.assertIn(response.status_code, [
-            status.HTTP_403_FORBIDDEN,
-            status.HTTP_404_NOT_FOUND,
-            status.HTTP_405_METHOD_NOT_ALLOWED,
-        ], f"Audit immutability: write should be rejected, got {response.status_code}")
         # 201/200 would mean audit logs are writable — that's the real failure
         self.assertNotEqual(response.status_code, status.HTTP_201_CREATED)
-    
+
     def test_auditor_read_only_access_summary(self):
         """Test AUDITOR has read-only access to most resources"""
         # Test various read operations
@@ -236,14 +224,10 @@ class AuditorPersonaTest(E2ETestBase):
             "/api/v1/contracts/",
             "/api/v1/dq/runs/",
             "/api/v1/compliance/runs/",
-            "/api/v1/audit/events/"
+            "/api/v1/audit/events/",
         ]
-        
+
         for endpoint in read_endpoints:
             response = self.client.get(endpoint)
             # Should be able to read (may return empty list)
-            self.assertIn(response.status_code, [
-                status.HTTP_200_OK,
-                status.HTTP_404_NOT_FOUND
-            ])
-
+            self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])

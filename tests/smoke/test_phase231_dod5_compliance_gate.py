@@ -59,16 +59,16 @@ References
 - ``hub/apps/compliance/signals.py`` (post_save receiver)
 - ``hub/apps/marketplace/compliance_gate.py`` (publish 422 path)
 """
+
 from __future__ import annotations
 
+import contextlib
 import os
 import time
 import uuid
-from typing import Optional
 
 import pytest
 import requests
-
 
 ASSETS_PATH = "/api/v1/assets/"
 COMPLIANCE_RUNS_PATH = "/api/v1/compliance/runs/"
@@ -82,23 +82,20 @@ def _truthy_env(name: str) -> bool:
 
 GATE_ENABLED = _truthy_env("SMOKE_PHASE231_GATE_ENABLED")
 CRITICAL_LISTING_ID = os.getenv("SMOKE_PHASE231_CRITICAL_LISTING_ID")
-AUTO_ENQUEUE_TIMEOUT = int(
-    os.getenv("SMOKE_PHASE231_AUTO_ENQUEUE_TIMEOUT", "60")
-)
-AUTO_ENQUEUE_INTERVAL = float(
-    os.getenv("SMOKE_PHASE231_AUTO_ENQUEUE_INTERVAL", "5")
-)
+AUTO_ENQUEUE_TIMEOUT = int(os.getenv("SMOKE_PHASE231_AUTO_ENQUEUE_TIMEOUT", "60"))
+AUTO_ENQUEUE_INTERVAL = float(os.getenv("SMOKE_PHASE231_AUTO_ENQUEUE_INTERVAL", "5"))
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _resolve_tenant_id(
     base_url: str,
     session: requests.Session,
     timeout: int,
-) -> Optional[str]:
+) -> str | None:
     response = session.get(f"{base_url}{AUTH_ME_PATH}", timeout=timeout)
     if response.status_code != 200:
         return None
@@ -116,15 +113,14 @@ def _delete_asset(
     timeout: int,
     asset_id: str,
 ) -> None:
-    try:
+    with contextlib.suppress(requests.RequestException):
         session.delete(f"{base_url}{ASSETS_PATH}{asset_id}/", timeout=timeout)
-    except requests.RequestException:
-        pass
 
 
 # ---------------------------------------------------------------------------
 # 1) Auto-enqueue within 60 s
 # ---------------------------------------------------------------------------
+
 
 class TestPhase231DoD5AutoEnqueueOnAssetCreate:
     """231.DoD.5 — gate-enabled tenant: Asset registration auto-enqueues
@@ -143,22 +139,15 @@ class TestPhase231DoD5AutoEnqueueOnAssetCreate:
         authenticated_session: requests.Session,
         timeout: int,
     ) -> None:
-        own_tenant_id = _resolve_tenant_id(
-            base_url, authenticated_session, timeout
-        )
+        own_tenant_id = _resolve_tenant_id(base_url, authenticated_session, timeout)
         if not own_tenant_id:
-            pytest.skip(
-                "Could not resolve smoke admin tenant via /auth/me/"
-            )
+            pytest.skip("Could not resolve smoke admin tenant via /auth/me/")  # noqa: skip-in-body — runtime service dependency
 
         unique_key = f"smoke-p231-dod5-{uuid.uuid4().hex[:12]}"
         create_payload = {
             "key": unique_key,
             "name": f"Smoke P231 DoD.5 ({unique_key})",
-            "description": (
-                "Phase 231.DoD.5 smoke — auto-enqueue verification. "
-                "Safe to delete."
-            ),
+            "description": ("Phase 231.DoD.5 smoke — auto-enqueue verification. Safe to delete."),
             "asset_type": "DATASET",
         }
         create_response = authenticated_session.post(
@@ -168,14 +157,13 @@ class TestPhase231DoD5AutoEnqueueOnAssetCreate:
         )
 
         if create_response.status_code == 422:
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
                 "Asset create endpoint refused minimal payload "
                 f"({create_response.status_code}): "
                 f"{create_response.text[:300]} — adjust create_payload."
             )
         assert create_response.status_code in (200, 201), (
-            f"Asset create failed ({create_response.status_code}): "
-            f"{create_response.text[:500]}"
+            f"Asset create failed ({create_response.status_code}): {create_response.text[:500]}"
         )
         asset = create_response.json()
         asset_id = asset.get("id") or asset.get("asset_id")
@@ -196,17 +184,23 @@ class TestPhase231DoD5AutoEnqueueOnAssetCreate:
                     timeout=timeout,
                 )
                 assert list_resp.status_code == 200, (
-                    f"Compliance-runs list failed "
-                    f"({list_resp.status_code}): {list_resp.text[:300]}"
+                    f"Compliance-runs list failed ({list_resp.status_code}): {list_resp.text[:300]}"
                 )
                 body = list_resp.json()
                 results = body.get("results", body if isinstance(body, list) else [])
-                seen_runs = [r for r in results if str(r.get("asset")) == str(asset_id)
-                             or str(r.get("asset_id")) == str(asset_id)
-                             or str((r.get("asset") or {}).get("id") if isinstance(r.get("asset"), dict) else "") == str(asset_id)]
+                seen_runs = [
+                    r
+                    for r in results
+                    if str(r.get("asset")) == str(asset_id)
+                    or str(r.get("asset_id")) == str(asset_id)
+                    or str(
+                        (r.get("asset") or {}).get("id") if isinstance(r.get("asset"), dict) else ""
+                    )
+                    == str(asset_id)
+                ]
                 if seen_runs:
                     break
-                time.sleep(AUTO_ENQUEUE_INTERVAL)
+                time.sleep(AUTO_ENQUEUE_INTERVAL)  # noqa: sleep-needed — retry loop
 
             assert seen_runs, (
                 f"Phase 231.DoD.5: no ComplianceRun auto-enqueued for "
@@ -224,6 +218,7 @@ class TestPhase231DoD5AutoEnqueueOnAssetCreate:
 # ---------------------------------------------------------------------------
 # 2) CRITICAL asset blocked from publish with HTTP 422
 # ---------------------------------------------------------------------------
+
 
 class TestPhase231DoD5CriticalAssetBlockedFromPublish:
     """231.DoD.5 — publishing a CRITICAL asset's listing returns HTTP 422."""
@@ -273,6 +268,4 @@ class TestPhase231DoD5CriticalAssetBlockedFromPublish:
             code == "COMPLIANCE_THRESHOLD_EXCEEDED"
             or details_code == "COMPLIANCE_THRESHOLD_EXCEEDED"
             or code == "VALIDATION_ERROR"  # outer code; details carry the gate code
-        ), (
-            f"422 body missing COMPLIANCE_THRESHOLD_EXCEEDED code: {body}"
-        )
+        ), f"422 body missing COMPLIANCE_THRESHOLD_EXCEEDED code: {body}"

@@ -12,9 +12,9 @@ Usage:
   python scripts/validate_doc_snippets.py --language python  # Python only
   python scripts/validate_doc_snippets.py --check            # exit 1 on failures
 """
+
 import ast
 import json
-import os
 import re
 import sys
 from argparse import ArgumentParser
@@ -23,7 +23,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DOCS_DIR = PROJECT_ROOT / "docs"
 
-FENCE_PATTERN = re.compile(r'```(\w+)?\n(.*?)```', re.DOTALL)
+FENCE_PATTERN = re.compile(r"```(\w+)?\n(.*?)```", re.DOTALL)
 
 
 def extract_snippets(content: str, language: str | None = None) -> list[dict]:
@@ -36,11 +36,13 @@ def extract_snippets(content: str, language: str | None = None) -> list[dict]:
             continue
         if language and lang != language:
             continue
-        snippets.append({
-            "language": lang,
-            "code": code,
-            "line": content[:m.start()].count("\n") + 1,
-        })
+        snippets.append(
+            {
+                "language": lang,
+                "code": code,
+                "line": content[: m.start()].count("\n") + 1,
+            }
+        )
     return snippets
 
 
@@ -110,20 +112,22 @@ def validate_all(language: str | None = None) -> dict:
             ok, error = validator(snip["code"])
             if not ok:
                 results["failed"] += 1
-                results["details"].append({
-                    "file": rel,
-                    "line": snip["line"],
-                    "language": lang,
-                    "error": error,
-                    "preview": snip["code"][:100],
-                })
+                results["details"].append(
+                    {
+                        "file": rel,
+                        "line": snip["line"],
+                        "language": lang,
+                        "error": error,
+                        "preview": snip["code"][:100],
+                    }
+                )
 
     return results
 
 
 def print_report(results: dict) -> None:
     """Print human-readable snippet validation report."""
-    print(f"Documentation Snippet Validator (281.A.10.4)\n")
+    print("Documentation Snippet Validator (281.A.10.4)\n")
     print(f"  Total snippets: {results['total']}")
     print(f"  Failed: {results['failed']}")
 
@@ -131,7 +135,7 @@ def print_report(results: dict) -> None:
         print("  ✅ All code snippets valid.")
         return
 
-    print(f"\n  Failed snippets:")
+    print("\n  Failed snippets:")
     for d in results["details"]:
         print(f"    {d['file']}:{d['line']} [{d['language']}]")
         print(f"      Error: {d['error']}")
@@ -140,7 +144,9 @@ def print_report(results: dict) -> None:
 
 def main():
     parser = ArgumentParser(description="Validate documentation code snippets")
-    parser.add_argument("--language", default=None, help="Language to validate (python, bash, json)")
+    parser.add_argument(
+        "--language", default=None, help="Language to validate (python, bash, json)"
+    )
     parser.add_argument("--check-syntax-only", action="store_true", help="Shell-only: syntax check")
     parser.add_argument("--check", action="store_true", help="Exit 1 on failures")
     args = parser.parse_args()

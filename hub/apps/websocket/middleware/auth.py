@@ -4,8 +4,6 @@ WebSocket Authentication Middleware
 Authenticates WebSocket connections using JWT tokens or API keys.
 """
 
-from typing import Optional
-
 import structlog
 from asgiref.sync import sync_to_async
 
@@ -23,8 +21,6 @@ except ImportError:
     class BaseMiddleware:
         """Stub for BaseMiddleware when channels is not available."""
 
-        pass
-
     CHANNELS_AVAILABLE = False
 
 from django.contrib.auth import get_user_model
@@ -35,7 +31,7 @@ User = get_user_model()
 logger = structlog.get_logger(__name__)
 
 
-def _get_user_from_token_sync(token: str) -> Optional[User]:
+def _get_user_from_token_sync(token: str) -> User | None:
     """
     Synchronous helper to get user from JWT token.
 
@@ -122,7 +118,7 @@ def _get_user_from_token_sync(token: str) -> Optional[User]:
 
 
 @database_sync_to_async
-def get_user_from_token(token: str) -> Optional[User]:
+def get_user_from_token(token: str) -> User | None:
     """
     Get user from JWT token.
 
@@ -135,7 +131,7 @@ def get_user_from_token(token: str) -> Optional[User]:
     return _get_user_from_token_sync(token)
 
 
-def _get_user_from_api_key_sync(api_key: str) -> Optional[User]:
+def _get_user_from_api_key_sync(api_key: str) -> User | None:
     """
     Synchronous helper to get user from API key.
 
@@ -183,7 +179,7 @@ def _get_user_from_api_key_sync(api_key: str) -> Optional[User]:
 
 
 @database_sync_to_async
-def get_user_from_api_key(api_key: str) -> Optional[User]:
+def get_user_from_api_key(api_key: str) -> User | None:
     """
     Get user from API key.
 
@@ -207,7 +203,7 @@ class WebSocketAuthMiddleware(BaseMiddleware):
     Rejects connections if authentication fails (sends close message with code 4001).
     """
 
-    def _extract_token_from_headers(self, headers: list) -> Optional[str]:
+    def _extract_token_from_headers(self, headers: list) -> str | None:
         """
         Extract JWT token from Authorization header.
 
@@ -230,7 +226,7 @@ class WebSocketAuthMiddleware(BaseMiddleware):
                     return header_value[7:]  # Case-insensitive
         return None
 
-    def _extract_api_key_from_headers(self, headers: list) -> Optional[str]:
+    def _extract_api_key_from_headers(self, headers: list) -> str | None:
         """
         Extract API key from X-API-Key header.
 
@@ -300,9 +296,7 @@ class WebSocketAuthMiddleware(BaseMiddleware):
         # Check if query-param auth has been disabled (post-deprecation)
         from django.conf import settings
 
-        query_param_auth_disabled = getattr(
-            settings, "WEBSOCKET_QUERY_PARAM_AUTH_DISABLED", False
-        )
+        query_param_auth_disabled = getattr(settings, "WEBSOCKET_QUERY_PARAM_AUTH_DISABLED", False)
 
         # --- Header-based auth (not deprecated) ---
         header_token = self._extract_token_from_headers(headers)
@@ -329,7 +323,7 @@ class WebSocketAuthMiddleware(BaseMiddleware):
                         "websocket_auth_query_param_rejected",
                         path=scope.get("path"),
                         message="Query-parameter authentication has been disabled. "
-                                "Use message-based authentication.",
+                        "Use message-based authentication.",
                     )
                     await send(
                         {
@@ -355,7 +349,7 @@ class WebSocketAuthMiddleware(BaseMiddleware):
                         "websocket_auth_query_param_deprecated",
                         path=scope.get("path"),
                         message="Token authentication via query parameter is deprecated. "
-                                "Use message-based authentication instead.",
+                        "Use message-based authentication instead.",
                     )
 
         # Set user and tenant in scope if authenticated

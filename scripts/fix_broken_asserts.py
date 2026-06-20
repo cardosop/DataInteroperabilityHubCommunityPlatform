@@ -7,9 +7,10 @@ Repairs two common artifacts:
 2. ``self.assertIn(x not, y)`` → ``self.assertNotIn(x, y)``
 3. ``self.assertEqual(x, {)`` → ``self.assertEqual(x, {})``
 """
+
+import os
 import re
 import sys
-import os
 
 
 def fix_file(path: str) -> bool:

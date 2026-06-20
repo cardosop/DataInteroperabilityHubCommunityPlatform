@@ -6,6 +6,7 @@ Tests cover all service methods with 100% coverage target.
 All tests use real implementations (no mocks of hub services).
 Uses real LineageTraverser and visualization functions.
 """
+
 import uuid
 
 import pytest
@@ -135,8 +136,10 @@ class LineageServiceTest(ContractsTransactionTestBase):
         """Test that contract lineage respects tenant isolation."""
         # Create another tenant
         _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
-        other_user = User.objects.create_user(
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}"
+        )
+        User.objects.create_user(
             email=f"other-{_uid}@example.com", tenant=other_tenant, status=UserStatus.ACTIVE
         )
 
@@ -204,7 +207,8 @@ class LineageServiceTest(ContractsTransactionTestBase):
 
             # get_cached_lineage must have been called at least once
             self.assertGreater(
-                mock_get_cached.call_count, 0,
+                mock_get_cached.call_count,
+                0,
                 "get_cached_lineage must be called when use_cache=True",
             )
 
@@ -228,7 +232,8 @@ class LineageServiceTest(ContractsTransactionTestBase):
 
             # get_cached_lineage must NOT be called when cache is disabled
             self.assertEqual(
-                mock_get_cached.call_count, 0,
+                mock_get_cached.call_count,
+                0,
                 "get_cached_lineage must not be called when use_cache=False",
             )
 
@@ -290,7 +295,7 @@ class LineageServiceTest(ContractsTransactionTestBase):
         max_contract_depth=10.
         """
         # Create chained contracts: downstream → mid → upstream
-        upstream = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             original_raw='{"info": {"name": "upstream-depth"}}',
             original_format="JSON",
@@ -299,7 +304,7 @@ class LineageServiceTest(ContractsTransactionTestBase):
                 "models": [{"name": "m", "fields": [{"name": "f"}]}],
             },
         )
-        mid = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             original_raw='{"info": {"name": "mid-depth"}}',
             original_format="JSON",
@@ -431,14 +436,14 @@ class LineageServiceTest(ContractsTransactionTestBase):
             )
 
     def test_get_contract_lineage_missing_tenant_id(self):
-        """get_contract_lineage without tenant_id either succeeds using the
-        service-level default or raises ValueError.  Both are valid."""
-        service_no_tenant = LineageService(user_id=str(self.user.id))
+        """get_contract_lineage without tenant_id succeeds using service default.
 
-        try:
-            lineage = service_no_tenant.get_contract_lineage(contract_id=str(self.contract.id))
-            self.assertIn("contracts", lineage)
-            self.assertIn("entries", lineage)
-        except (ValueError, NotFoundError):
-            # Service-level tenant_id may be required; raise is valid.
-            pass
+        When LineageService is constructed without tenant_id, it resolves
+        the tenant from the provided contract.  This test pins the current
+        behaviour — if the contract requires tenant-scoping at the service
+        layer, this test should be updated to assert ValueError.
+        """
+        service_no_tenant = LineageService(user_id=str(self.user.id))
+        lineage = service_no_tenant.get_contract_lineage(contract_id=str(self.contract.id))
+        self.assertIn("contracts", lineage)
+        self.assertIn("entries", lineage)

@@ -53,6 +53,7 @@ When run against a live staging environment (with real microservices),
 the network-boundary patches drop and the test exercises the real
 contract end-to-end. Mark via the ``E2E_LIVE_MICROSERVICES=1`` env var.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -63,16 +64,15 @@ from unittest.mock import patch
 import pytest
 from django.contrib.auth import get_user_model
 
-from hub.apps.compliance.services import ComplianceService
 from hub.apps.compliance.models import ComplianceRun
-from hub.apps.dq.services import DQService
+from hub.apps.compliance.services import ComplianceService
 from hub.apps.dq.models import DQRun
+from hub.apps.dq.services import DQService
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -86,7 +86,7 @@ _LIVE_MODE = os.environ.get("E2E_LIVE_MICROSERVICES", "").lower() in ("1", "true
 # ---------------------------------------------------------------------------
 
 
-def _seed_file(*, fail_closed: bool = True) -> tuple[Tenant, "User", File]:
+def _seed_file(*, fail_closed: bool = True) -> tuple[Tenant, User, File]:
     uid = uuid.uuid4().hex[:8]
     tenant = Tenant.objects.create(
         name=f"ContractTest {uid}",
@@ -168,10 +168,13 @@ class TestComplianceScanInmemoryContract:
         ``None``). The row MUST be persisted (queryable via
         `ComplianceRun.objects.get(id=...)`)."""
         tenant, user, file_obj = _seed_file()
-        with self._patch_compliance_client(
-            overall_status="PASS",
-            allowed_to_store=True,
-        ), self._patch_storage():
+        with (
+            self._patch_compliance_client(
+                overall_status="PASS",
+                allowed_to_store=True,
+            ),
+            self._patch_storage(),
+        ):
             result = ComplianceService.scan_inmemory(
                 file_id=str(file_obj.id),
                 tenant=tenant,
@@ -196,10 +199,13 @@ class TestComplianceScanInmemoryContract:
         be back to the create-then-validate ordering bug.
         """
         tenant, user, file_obj = _seed_file()
-        with self._patch_compliance_client(
-            overall_status="PASS",
-            allowed_to_store=True,
-        ), self._patch_storage():
+        with (
+            self._patch_compliance_client(
+                overall_status="PASS",
+                allowed_to_store=True,
+            ),
+            self._patch_storage(),
+        ):
             result = ComplianceService.scan_inmemory(
                 file_id=str(file_obj.id),
                 tenant=tenant,
@@ -224,10 +230,13 @@ class TestComplianceScanInmemoryContract:
         """
         tenant, user, file_obj = _seed_file()
         for status_value in ("PASS", "WARN", "FAIL"):
-            with self._patch_compliance_client(
-                overall_status=status_value,
-                allowed_to_store=(status_value != "FAIL"),
-            ), self._patch_storage():
+            with (
+                self._patch_compliance_client(
+                    overall_status=status_value,
+                    allowed_to_store=(status_value != "FAIL"),
+                ),
+                self._patch_storage(),
+            ):
                 result = ComplianceService.scan_inmemory(
                     file_id=str(file_obj.id),
                     tenant=tenant,
@@ -289,9 +298,7 @@ class TestDQScanInmemoryContract:
         }
         actual_params = set(param_names)
         missing = expected_params - actual_params
-        assert not missing, (
-            f"DQService.scan_inmemory signature missing params: {missing}."
-        )
+        assert not missing, f"DQService.scan_inmemory signature missing params: {missing}."
 
         assert param_names[0] == "file_id"
         assert param_names[1] == "tenant"
@@ -326,8 +333,7 @@ class TestDQScanInmemoryContract:
         asset_fk = getattr(result, "asset", None)
         asset_fk_id = getattr(result, "asset_id", None)
         assert asset_fk is None and asset_fk_id is None, (
-            "scan_inmemory persisted DQRun with asset FK; Phase 250.1.A "
-            "contract violated."
+            "scan_inmemory persisted DQRun with asset FK; Phase 250.1.A contract violated."
         )
 
     def test_overall_status_enum(self):
@@ -382,23 +388,27 @@ class TestWorkflowUsesBothScans:
 
     def test_both_scans_returnable_from_workflow_perspective(self):
         tenant, user, file_obj = _seed_file()
-        with patch(
-            "hub.apps.compliance.service_client.ComplianceServiceClient.scan_file",
-            return_value={
-                "overall_status": "PASS",
-                "allowed_to_store": True,
-                "metadata": {},
-            },
-        ), patch(
-            "hub.apps.dq.service_client.DQServiceClient.run_dq",
-            return_value={
-                "overall_status": "PASS",
-                "quality_score": 100,
-                "metadata": {},
-            },
-        ), patch(
-            "hub.apps.files.storage.S3StorageClient.get_file_content",
-            return_value=b"a,b\n1,2\n",
+        with (
+            patch(
+                "hub.apps.compliance.service_client.ComplianceServiceClient.scan_file",
+                return_value={
+                    "overall_status": "PASS",
+                    "allowed_to_store": True,
+                    "metadata": {},
+                },
+            ),
+            patch(
+                "hub.apps.dq.service_client.DQServiceClient.run_dq",
+                return_value={
+                    "overall_status": "PASS",
+                    "quality_score": 100,
+                    "metadata": {},
+                },
+            ),
+            patch(
+                "hub.apps.files.storage.S3StorageClient.get_file_content",
+                return_value=b"a,b\n1,2\n",
+            ),
         ):
             compliance_result = ComplianceService.scan_inmemory(
                 file_id=str(file_obj.id),

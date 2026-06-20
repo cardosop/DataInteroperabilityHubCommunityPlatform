@@ -12,22 +12,27 @@ These tests require:
 To run:
     pytest cli/tests/integration/test_cli_all_services_odps.py -v
 """
-import pytest
+
 import json
 import os
-import uuid
-import tempfile
 import subprocess
+import tempfile
+import uuid
+
+import pytest
 from click.testing import CliRunner
-from datahub_cli.main import cli
 from datahub_cli.config import config
+from datahub_cli.main import cli
 
 
 def _check_api_available():
     """Check if API service is available"""
     try:
         import requests
-        response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2)
+
+        response = requests.get(
+            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
+        )
         return response.status_code < 600
     except Exception:
         return False
@@ -68,26 +73,32 @@ print(api_key_value)
 """
     try:
         result = subprocess.run(
-            ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'hub/manage.py', 'shell'],
+            ["docker", "compose", "exec", "-T", "api-service", "python", "hub/manage.py", "shell"],
+            check=False,
             input=django_shell_script,
             text=True,
             capture_output=True,
             timeout=30,
-            cwd='/home/ph/Desktop/DataInteroperabilityHub'
+            cwd="/home/ph/Desktop/DataInteroperabilityHub",
         )
         if result.returncode == 0:
-            output_lines = result.stdout.strip().split('\n')
+            output_lines = result.stdout.strip().split("\n")
             for line in reversed(output_lines):
                 line = line.strip()
-                if (line and len(line) > 30 and
-                    not line.startswith('{') and
-                    not line.startswith('"') and
-                    not 'timestamp' in line.lower() and
-                    not 'logger' in line.lower() and
-                    not 'level' in line.lower() and
-                    not 'message' in line.lower() and
-                    ' ' not in line and ':' not in line and '/' not in line):
-                    cleaned = line.replace('-', '').replace('_', '')
+                if (
+                    line
+                    and len(line) > 30
+                    and not line.startswith("{")
+                    and not line.startswith('"')
+                    and "timestamp" not in line.lower()
+                    and "logger" not in line.lower()
+                    and "level" not in line.lower()
+                    and "message" not in line.lower()
+                    and " " not in line
+                    and ":" not in line
+                    and "/" not in line
+                ):
+                    cleaned = line.replace("-", "").replace("_", "")
                     if cleaned.isalnum():
                         return line
     except Exception:
@@ -102,10 +113,10 @@ def setup_config():
     config.set_api_base_url(api_base_url)
 
     api_key = (
-        os.environ.get('DATAHUB_API_KEY') or
-        os.environ.get('TEST_API_KEY') or
-        config.get_api_key() or
-        _create_test_api_key()
+        os.environ.get("DATAHUB_API_KEY")
+        or os.environ.get("TEST_API_KEY")
+        or config.get_api_key()
+        or _create_test_api_key()
     )
 
     if api_key:
@@ -127,7 +138,7 @@ def comprehensive_odps_contract():
                 "en": {
                     "productID": f"cross-service-product-{uuid.uuid4().hex[:8]}",
                     "name": "Cross-Service Test Product",
-                    "description": "Product for testing across all services"
+                    "description": "Product for testing across all services",
                 }
             },
             "contract": {
@@ -140,9 +151,9 @@ def comprehensive_odps_contract():
                     "schema": {
                         "fields": [
                             {"name": "id", "type": "string", "nullable": False},
-                            {"name": "name", "type": "string", "nullable": False}
+                            {"name": "name", "type": "string", "nullable": False},
                         ]
-                    }
+                    },
                 }
             },
             "pricing": {
@@ -152,31 +163,33 @@ def comprehensive_odps_contract():
                         "name": "Basic Plan",
                         "price": 99.99,
                         "currency": "USD",
-                        "billingPeriod": "monthly"
+                        "billingPeriod": "monthly",
                     }
                 ]
             },
             "accessMethods": [
-                {
-                    "type": "API",
-                    "endpoint": "https://api.example.com/data",
-                    "protocol": "REST"
-                }
-            ]
-        }
+                {"type": "API", "endpoint": "https://api.example.com/data", "protocol": "REST"}
+            ],
+        },
     }
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(odps_data, f)
         temp_path = f.name
 
     runner = CliRunner()
-    result = runner.invoke(cli, [
-        'contracts', 'create-odps',
-        '--file', temp_path,
-        '--extract-odcs',
-        '--output-format', 'json'
-    ])
+    result = runner.invoke(
+        cli,
+        [
+            "contracts",
+            "create-odps",
+            "--file",
+            temp_path,
+            "--extract-odcs",
+            "--output-format",
+            "json",
+        ],
+    )
 
     if os.path.exists(temp_path):
         os.unlink(temp_path)
@@ -186,12 +199,17 @@ def comprehensive_odps_contract():
 
     try:
         contract_data = json.loads(result.output)
-        odps_id = contract_data.get('odps_contract', {}).get('id') or contract_data.get('id')
-        odcs_id = contract_data.get('odcs_contract', {}).get('id') if 'odcs_contract' in contract_data else None
+        odps_id = contract_data.get("odps_contract", {}).get("id") or contract_data.get("id")
+        odcs_id = (
+            contract_data.get("odcs_contract", {}).get("id")
+            if "odcs_contract" in contract_data
+            else None
+        )
         yield odps_id, odcs_id
     except json.JSONDecodeError:
         import re
-        match = re.search(r'ODPS Contract ID:\s*([a-f0-9-]+)', result.output)
+
+        match = re.search(r"ODPS Contract ID:\s*([a-f0-9-]+)", result.output)
         if match:
             yield match.group(1), None
         else:
@@ -204,23 +222,32 @@ def test_asset():
     runner = CliRunner()
     asset_key = f"cross-service-asset-{uuid.uuid4().hex[:8]}"
 
-    result = runner.invoke(cli, [
-        'assets', 'create',
-        '--name', 'Cross-Service Asset',
-        '--key', asset_key,
-        '--domain', 'test',
-        '--output-format', 'json'
-    ])
+    result = runner.invoke(
+        cli,
+        [
+            "assets",
+            "create",
+            "--name",
+            "Cross-Service Asset",
+            "--key",
+            asset_key,
+            "--domain",
+            "test",
+            "--output-format",
+            "json",
+        ],
+    )
 
     if result.exit_code != 0:
         pytest.skip(f"Failed to create test asset: {result.output}")
 
     try:
         asset_data = json.loads(result.output)
-        yield asset_data.get('id')
+        yield asset_data.get("id")
     except json.JSONDecodeError:
         import re
-        match = re.search(r'ID:\s*([a-f0-9-]+)', result.output)
+
+        match = re.search(r"ID:\s*([a-f0-9-]+)", result.output)
         if match:
             yield match.group(1)
         else:
@@ -234,75 +261,89 @@ class TestCLIAllServicesODPS:
     def test_contracts_service_with_odps(self, comprehensive_odps_contract, setup_config):
         """Test all contracts service commands with ODPS"""
         runner = CliRunner()
-        odps_id, odcs_id = comprehensive_odps_contract
+        odps_id, _odcs_id = comprehensive_odps_contract
 
         # Test contracts list
-        result_list = runner.invoke(cli, ['contracts', 'list', '--format', 'json'])
+        result_list = runner.invoke(cli, ["contracts", "list", "--format", "json"])
         assert result_list.exit_code == 0
 
         # Test contracts get
-        result_get = runner.invoke(cli, [
-            'contracts', 'get', odps_id, '--show-odps', '--format', 'json'
-        ])
+        result_get = runner.invoke(
+            cli, ["contracts", "get", odps_id, "--show-odps", "--format", "json"]
+        )
         assert result_get.exit_code == 0
 
         # Test contracts get-pricing
-        result_pricing = runner.invoke(cli, [
-            'contracts', 'get-pricing', odps_id, '--format', 'json'
-        ])
+        result_pricing = runner.invoke(
+            cli, ["contracts", "get-pricing", odps_id, "--format", "json"]
+        )
         assert result_pricing.exit_code == 0
 
         # Test contracts get-access-methods
-        result_access = runner.invoke(cli, [
-            'contracts', 'get-access-methods', odps_id, '--format', 'json'
-        ])
+        result_access = runner.invoke(
+            cli, ["contracts", "get-access-methods", odps_id, "--format", "json"]
+        )
         assert result_access.exit_code == 0
 
         # Test contracts export
-        result_export = runner.invoke(cli, [
-            'contracts', 'export', odps_id,
-            '--format', 'odps', '--output-format', 'json',
-            '--version', '4.1', '--cli-format', 'json'
-        ])
+        result_export = runner.invoke(
+            cli,
+            [
+                "contracts",
+                "export",
+                odps_id,
+                "--format",
+                "odps",
+                "--output-format",
+                "json",
+                "--version",
+                "4.1",
+                "--cli-format",
+                "json",
+            ],
+        )
         assert result_export.exit_code == 0
 
         # Test contracts validate
-        result_validate = runner.invoke(cli, [
-            'contracts', 'validate', odps_id, '--format', 'json'
-        ])
+        result_validate = runner.invoke(cli, ["contracts", "validate", odps_id, "--format", "json"])
         assert result_validate.exit_code == 0  # May fail validation
 
         # Test contracts lint
-        result_lint = runner.invoke(cli, [
-            'contracts', 'lint', odps_id, '--format', 'json'
-        ])
+        result_lint = runner.invoke(cli, ["contracts", "lint", odps_id, "--format", "json"])
         assert result_lint.exit_code == 0  # May have linting issues
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
     def test_assets_service_with_odps(self, comprehensive_odps_contract, test_asset, setup_config):
         """Test all assets service commands with ODPS"""
         runner = CliRunner()
-        odps_id, _ = comprehensive_odps_contract
+        _odps_id, _ = comprehensive_odps_contract
 
         # Link ODPS contract to asset (if asset_id option exists)
         # This is done via contracts create-odps with --asset-id
 
         # Test assets list
-        result_list = runner.invoke(cli, ['assets', 'list', '--format', 'json'])
+        result_list = runner.invoke(cli, ["assets", "list", "--format", "json"])
         assert result_list.exit_code == 0
 
         # Test assets get
-        result_get = runner.invoke(cli, [
-            'assets', 'get', test_asset, '--include', 'contract', '--format', 'json'
-        ])
+        result_get = runner.invoke(
+            cli, ["assets", "get", test_asset, "--include", "contract", "--format", "json"]
+        )
         assert result_get.exit_code == 0
 
         # Test assets update
-        result_update = runner.invoke(cli, [
-            'assets', 'update', test_asset,
-            '--description', 'Updated with ODPS integration',
-            '--format', 'json'
-        ])
+        result_update = runner.invoke(
+            cli,
+            [
+                "assets",
+                "update",
+                test_asset,
+                "--description",
+                "Updated with ODPS integration",
+                "--format",
+                "json",
+            ],
+        )
         assert result_update.exit_code == 0
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
@@ -311,27 +352,25 @@ class TestCLIAllServicesODPS:
         runner = CliRunner()
 
         # Test marketplace connections list
-        result_connections = runner.invoke(cli, [
-            'marketplace', 'connections', 'list', '--format', 'json'
-        ])
+        result_connections = runner.invoke(
+            cli, ["marketplace", "connections", "list", "--format", "json"]
+        )
         assert result_connections.exit_code == 0
 
         # Test marketplace connectors list
-        result_connectors = runner.invoke(cli, [
-            'marketplace', 'connectors', 'list', '--format', 'json'
-        ])
+        result_connectors = runner.invoke(
+            cli, ["marketplace", "connectors", "list", "--format", "json"]
+        )
         assert result_connectors.exit_code == 0
 
         # Test marketplace mappings list
-        result_mappings = runner.invoke(cli, [
-            'marketplace', 'mappings', 'list', '--format', 'json'
-        ])
+        result_mappings = runner.invoke(
+            cli, ["marketplace", "mappings", "list", "--format", "json"]
+        )
         assert result_mappings.exit_code == 0
 
         # Test marketplace sync list
-        result_sync = runner.invoke(cli, [
-            'marketplace', 'sync', 'list', '--format', 'json'
-        ])
+        result_sync = runner.invoke(cli, ["marketplace", "sync", "list", "--format", "json"])
         assert result_sync.exit_code == 0
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
@@ -340,7 +379,7 @@ class TestCLIAllServicesODPS:
         runner = CliRunner()
 
         # Test files list
-        result_list = runner.invoke(cli, ['files', 'list', '--format', 'json'])
+        result_list = runner.invoke(cli, ["files", "list", "--format", "json"])
         assert result_list.exit_code == 0
 
         # Files service may not directly integrate with ODPS,
@@ -352,7 +391,7 @@ class TestCLIAllServicesODPS:
         runner = CliRunner()
 
         # Test jobs list
-        result_list = runner.invoke(cli, ['jobs', 'list', '--format', 'json'])
+        result_list = runner.invoke(cli, ["jobs", "list", "--format", "json"])
         assert result_list.exit_code == 0
 
         # Jobs may be created during ODPS contract creation workflows
@@ -370,7 +409,7 @@ class TestCLIAllServicesODPS:
                 "details": {
                     "en": {
                         "productID": f"workflow-product-{uuid.uuid4().hex[:8]}",
-                        "name": "Workflow Product"
+                        "name": "Workflow Product",
                     }
                 },
                 "contract": {
@@ -380,49 +419,48 @@ class TestCLIAllServicesODPS:
                         "id": "workflow-contract",
                         "name": "workflow-contract",
                         "version": "1.0.0",
-                        "schema": {
-                            "fields": [
-                                {"name": "id", "type": "string", "nullable": False}
-                            ]
-                        }
+                        "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                     }
-                }
-            }
+                },
+            },
         }
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(odps_data, f)
             temp_path = f.name
 
         try:
             # Create ODPS contract with asset
-            create_result = runner.invoke(cli, [
-                'contracts', 'create-odps',
-                '--file', temp_path,
-                '--extract-odcs',
-                '--asset-id', test_asset,
-                '--output-format', 'json'
-            ])
+            create_result = runner.invoke(
+                cli,
+                [
+                    "contracts",
+                    "create-odps",
+                    "--file",
+                    temp_path,
+                    "--extract-odcs",
+                    "--asset-id",
+                    test_asset,
+                    "--output-format",
+                    "json",
+                ],
+            )
 
             assert create_result.exit_code == 0
             contract_data = json.loads(create_result.output)
-            odps_id = contract_data.get('odps_contract', {}).get('id') or contract_data.get('id')
+            odps_id = contract_data.get("odps_contract", {}).get("id") or contract_data.get("id")
 
             # Verify asset has contract
-            asset_result = runner.invoke(cli, [
-                'assets', 'get', test_asset,
-                '--include', 'contract',
-                '--format', 'json'
-            ])
+            asset_result = runner.invoke(
+                cli, ["assets", "get", test_asset, "--include", "contract", "--format", "json"]
+            )
 
             assert asset_result.exit_code == 0
 
             # Verify contract has ODPS info
-            contract_result = runner.invoke(cli, [
-                'contracts', 'get', odps_id,
-                '--show-odps',
-                '--format', 'json'
-            ])
+            contract_result = runner.invoke(
+                cli, ["contracts", "get", odps_id, "--show-odps", "--format", "json"]
+            )
 
             assert contract_result.exit_code == 0
 
@@ -431,18 +469,20 @@ class TestCLIAllServicesODPS:
                 os.unlink(temp_path)
 
     @pytest.mark.skipif(not _check_api_available(), reason="API service not available")
-    def test_cli_output_format_consistency_with_odps(self, comprehensive_odps_contract, setup_config):
+    def test_cli_output_format_consistency_with_odps(
+        self, comprehensive_odps_contract, setup_config
+    ):
         """Test CLI output format consistency with ODPS across all commands"""
         runner = CliRunner()
         odps_id, _ = comprehensive_odps_contract
 
         # Test JSON format consistency
         commands = [
-            ['contracts', 'get', odps_id, '--format', 'json'],
-            ['contracts', 'get-pricing', odps_id, '--format', 'json'],
-            ['contracts', 'get-access-methods', odps_id, '--format', 'json'],
-            ['contracts', 'list', '--format', 'json'],
-            ['assets', 'list', '--format', 'json'],
+            ["contracts", "get", odps_id, "--format", "json"],
+            ["contracts", "get-pricing", odps_id, "--format", "json"],
+            ["contracts", "get-access-methods", odps_id, "--format", "json"],
+            ["contracts", "list", "--format", "json"],
+            ["assets", "list", "--format", "json"],
         ]
 
         for cmd in commands:
@@ -452,17 +492,19 @@ class TestCLIAllServicesODPS:
             # Verify JSON output is valid
             try:
                 output_data = json.loads(result.output)
-                assert isinstance(output_data, (dict, list)), f"Command {cmd} did not produce valid JSON structure"
+                assert isinstance(output_data, (dict, list)), (
+                    f"Command {cmd} did not produce valid JSON structure"
+                )
             except json.JSONDecodeError:
                 pytest.fail(f"Command {cmd} did not produce valid JSON: {result.output}")
 
         # Test table format consistency
         table_commands = [
-            ['contracts', 'get', odps_id, '--format', 'table'],
-            ['contracts', 'get-pricing', odps_id, '--format', 'table'],
-            ['contracts', 'get-access-methods', odps_id, '--format', 'table'],
-            ['contracts', 'list', '--format', 'table'],
-            ['assets', 'list', '--format', 'table'],
+            ["contracts", "get", odps_id, "--format", "table"],
+            ["contracts", "get-pricing", odps_id, "--format", "table"],
+            ["contracts", "get-access-methods", odps_id, "--format", "table"],
+            ["contracts", "list", "--format", "table"],
+            ["assets", "list", "--format", "table"],
         ]
 
         for cmd in table_commands:

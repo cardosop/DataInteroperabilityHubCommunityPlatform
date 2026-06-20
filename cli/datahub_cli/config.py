@@ -3,12 +3,13 @@ Configuration management for DataHub CLI.
 
 Handles reading and writing configuration from ~/.datahub/config.yaml
 """
-import os
-import yaml
-from pathlib import Path
-from typing import Optional, Dict, Any
-import click
 
+import os
+from pathlib import Path
+from typing import Any
+
+import click
+import yaml
 
 CONFIG_DIR = Path.home() / ".datahub"
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
@@ -18,19 +19,21 @@ class Config:
     """Configuration manager for DataHub CLI"""
 
     def __init__(self):
-        self._config: Dict[str, Any] = {}
+        self._config: dict[str, Any] = {}
         self._load()
 
     def _get_config_file(self):
         """Get config file path (allows patching in tests)"""
         # Import here to get patched value at runtime
         from datahub_cli.config import CONFIG_FILE
+
         return CONFIG_FILE
 
     def _get_config_dir(self):
         """Get config directory path (allows patching in tests)"""
         # Import here to get patched value at runtime
         from datahub_cli.config import CONFIG_DIR
+
         return CONFIG_DIR
 
     def _load(self):
@@ -38,7 +41,7 @@ class Config:
         config_file = self._get_config_file()
         if config_file.exists():
             try:
-                with open(config_file, 'r') as f:
+                with open(config_file) as f:
                     loaded = yaml.safe_load(f)
                     # Ensure loaded data is a dict (handle corrupted/invalid YAML)
                     if isinstance(loaded, dict):
@@ -46,7 +49,10 @@ class Config:
                     else:
                         # Invalid YAML or non-dict data - reset to empty dict
                         self._config = {}
-                        click.echo(f"Warning: Config file contains invalid data, resetting to defaults", err=True)
+                        click.echo(
+                            "Warning: Config file contains invalid data, resetting to defaults",
+                            err=True,
+                        )
             except Exception as e:
                 click.echo(f"Warning: Failed to load config file: {e}", err=True)
                 self._config = {}
@@ -67,7 +73,7 @@ class Config:
         config_file = self._get_config_file()
         config_dir.mkdir(parents=True, exist_ok=True)
         try:
-            with open(config_file, 'w') as f:
+            with open(config_file, "w") as f:
                 yaml.dump(self._config, f, default_flow_style=False)
                 f.flush()
         except Exception as e:
@@ -90,7 +96,6 @@ class Config:
         variables before falling back to the config-file value, matching the
         convention used by :meth:`get_api_key`.
         """
-        import os
         env_url = (
             os.environ.get("DATAHUB_BASE_URL")
             or os.environ.get("MESHANT_API_URL")
@@ -102,12 +107,11 @@ class Config:
 
     def set_api_base_url(self, url: str):
         """Set API base URL"""
-        self.set('api_base_url', url)
+        self.set("api_base_url", url)
 
-    def get_api_key(self) -> Optional[str]:
+    def get_api_key(self) -> str | None:
         """Get API key from config file or environment variable"""
         # Check environment variable first (for testing/integration)
-        import os
         env_key = (
             os.environ.get("DATAHUB_API_KEY")
             or os.environ.get("TEST_API_KEY")
@@ -121,42 +125,41 @@ class Config:
 
     def set_api_key(self, api_key: str):
         """Set API key"""
-        self.set('api_key', api_key)
+        self.set("api_key", api_key)
 
-    def get_default_tenant(self) -> Optional[str]:
+    def get_default_tenant(self) -> str | None:
         """Get default tenant ID"""
-        return self.get('default_tenant')
+        return self.get("default_tenant")
 
     def set_default_tenant(self, tenant_id: str):
         """Set default tenant ID"""
-        self.set('default_tenant', tenant_id)
+        self.set("default_tenant", tenant_id)
 
-    def get_access_token(self) -> Optional[str]:
+    def get_access_token(self) -> str | None:
         """Get access token"""
-        return self.get('access_token')
+        return self.get("access_token")
 
     def set_access_token(self, token: str):
         """Set access token"""
-        self.set('access_token', token)
+        self.set("access_token", token)
 
-    def get_refresh_token(self) -> Optional[str]:
+    def get_refresh_token(self) -> str | None:
         """Get refresh token"""
-        return self.get('refresh_token')
+        return self.get("refresh_token")
 
     def set_refresh_token(self, token: str):
         """Set refresh token"""
-        self.set('refresh_token', token)
+        self.set("refresh_token", token)
 
     def clear_auth(self):
         """Clear authentication tokens (but keep API key)"""
-        if 'access_token' in self._config:
-            del self._config['access_token']
-        if 'refresh_token' in self._config:
-            del self._config['refresh_token']
+        if "access_token" in self._config:
+            del self._config["access_token"]
+        if "refresh_token" in self._config:
+            del self._config["refresh_token"]
         # Note: We don't clear api_key here - it should be explicitly cleared if needed
         self._save()
 
 
 # Global config instance
 config = Config()
-

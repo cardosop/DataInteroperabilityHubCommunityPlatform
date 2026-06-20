@@ -20,9 +20,8 @@ from hub.apps.assets.tests.factories import AssetFactory
 from hub.apps.contracts.models import OriginalFormat, OriginalSpecType
 from hub.apps.orchestration.models import StepStatus, WorkflowStatus
 from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
-from tests.e2e.conftest import E2ETestBase
 from tests.e2e.workflow_e2e_base import WorkflowE2ETestBase
-from tests.factories import TenantFactory, UserFactory
+from tests.factories import TenantFactory
 
 
 def _minimal_odcs_raw():
@@ -62,7 +61,7 @@ class TestWorkflowRetryAfterValidationFailureE2E(WorkflowE2ETestBase):
             "user_id": str(self.user.id),
             "asset_id": asset_id_nonexistent,
         }
-        instance, err = self.create_start_and_execute(
+        instance, _err = self.create_start_and_execute(
             ContractCreationWorkflow.WORKFLOW_NAME,
             input_data,
             tenant_id=str(self.tenant.id),
@@ -420,7 +419,7 @@ class TestValidationBehaviorServiceFailureE2E(WorkflowE2ETestBase):
             "tenant_id": str(self.tenant.id),
             "user_id": str(self.user.id),
         }
-        instance, err = self.create_start_and_execute(
+        instance, _err = self.create_start_and_execute(
             ContractCreationWorkflow.WORKFLOW_NAME,
             input_data,
             tenant_id=str(self.tenant.id),

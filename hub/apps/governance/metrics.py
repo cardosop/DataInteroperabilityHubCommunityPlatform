@@ -29,6 +29,7 @@ Defensive fallback: if ``prometheus_client`` is not installed
 with ``labels()`` + ``set()`` no-ops. Mirrors the pattern in
 ``hub.apps.webhooks.metrics``.
 """
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -37,7 +38,7 @@ from typing import Protocol
 class _GaugeLike(Protocol):
     """Structural type covering both prometheus_client.Gauge and the stub."""
 
-    def labels(self, **kwargs: str) -> "_GaugeLike": ...
+    def labels(self, **kwargs: str) -> _GaugeLike: ...
 
     def set(self, value: float) -> None: ...
 
@@ -86,11 +87,12 @@ try:
     )
 
 except Exception:  # pragma: no cover — defensive fallback
+
     class _GaugeStub:
-        def labels(self, **_: object) -> "_GaugeStub":  # noqa: ARG002
+        def labels(self, **_: object) -> _GaugeStub:
             return self
 
-        def set(self, _value: float) -> None:  # noqa: ARG002
+        def set(self, _value: float) -> None:
             return None
 
     governance_access_requests_pending = _GaugeStub()

@@ -15,13 +15,13 @@ The end-to-end-with-real-service path is exercised by
 ``test_views.py::test_create_dq_run_success_with_profile_key``
 (skipped when dq-service is unavailable).
 """
+
 from __future__ import annotations
 
 import uuid
 
 import pytest
 from django.test import TransactionTestCase
-
 
 pytestmark = [pytest.mark.django_db(transaction=True)]
 
@@ -50,20 +50,28 @@ def _setup_real_graph():
         status=UserStatus.ACTIVE,
     )
     asset = Asset.objects.create(
-        tenant=tenant, key=f"a-{uid}", name=f"A {uid}",
-        status=AssetStatus.ACTIVE, created_by=user,
+        tenant=tenant,
+        key=f"a-{uid}",
+        name=f"A {uid}",
+        status=AssetStatus.ACTIVE,
+        created_by=user,
     )
     file_obj = File.objects.create(
-        tenant=tenant, name=f"f-{uid}.csv",
-        content_type="text/csv", size=10,
+        tenant=tenant,
+        name=f"f-{uid}.csv",
+        content_type="text/csv",
+        size=10,
         status=FileStatus.ACTIVE,
         storage_path=f"dq/{tenant.id}/{uid}/payload.csv",
         content_sha256="0" * 64,
         created_by=user,
     )
     dataset = Dataset.objects.create(
-        tenant=tenant, asset=asset, file=file_obj,
-        format="CSV", created_by=user,
+        tenant=tenant,
+        asset=asset,
+        file=file_obj,
+        format="CSV",
+        created_by=user,
     )
     return tenant, user, asset, dataset, file_obj
 
@@ -113,30 +121,33 @@ class DQServiceEngineRoutingTests(TransactionTestCase):
         # the default branch.
         assert self._resolve_engine("custom_intake_profile") == DQEngine.GREAT_EXPECTATIONS
 
-    def test_create_dq_run_persists_soda_engine(self):
-        """End-to-end-ish: the persisted ``DQRun.engine`` field
-        reflects the routing decision when create_dq_run completes
-        — even if the downstream dq-service HTTP call fails / is
-        absent. The DQRun row is created in PENDING state BEFORE
-        the service call, so the engine attribution survives a
-        backend outage and shows up in the audit log + retention
-        sweep correctly.
+    def test_soda_engine_is_persistable_on_dqrun_model(self):
+        """The ``DQRun.engine`` field round-trips correctly for SODA.
+
+        Verifies that a ``DQRun`` row created with ``engine=SODA``
+        and ``profile_key=*_soda`` survives a DB round-trip with both
+        values intact — the engine field is DB-persistable and
+        ``full_clean()`` does not reject the SODA enum member.
+
+        Does NOT call the full ``DQService.create_dq_run`` here
+        (which would attempt a dq-service HTTP request and fail in
+        a unit-test environment); that end-to-end path is exercised
+        by ``test_views.py::test_create_dq_run_success_with_profile_key``.
         """
         from hub.apps.dq.models import DQEngine, DQRun
 
-        tenant, user, asset, dataset, file_obj = _setup_real_graph()
-        # We don't call the full DQService.create_dq_run here (it
-        # would attempt a dq-service HTTP request and fail in unit-
-        # test env). Instead we verify the model + manager support
-        # writing a row with engine=SODA AND the routing helper
-        # picks SODA — together those pin the contract.
+        tenant, _user, asset, dataset, file_obj = _setup_real_graph()
+        engine = self._resolve_engine("intake_basic_soda")
+        assert engine == DQEngine.SODA, "routing helper must resolve to SODA"
+
         run = DQRun.objects.create(
             tenant=tenant,
             asset=asset,
             dataset=dataset,
             file=file_obj,
             job=__import__(
-                "hub.apps.jobs.models", fromlist=["Job"],
+                "hub.apps.jobs.models",
+                fromlist=["Job"],
             ).Job.objects.create(
                 tenant=tenant,
                 type="DQ_RUN",
@@ -145,7 +156,7 @@ class DQServiceEngineRoutingTests(TransactionTestCase):
                 resource_id=asset.id,
             ),
             profile_key="intake_basic_soda",
-            engine=self._resolve_engine("intake_basic_soda"),
+            engine=engine,
             status="PENDING",
         )
         reloaded = DQRun.objects.get(pk=run.pk)

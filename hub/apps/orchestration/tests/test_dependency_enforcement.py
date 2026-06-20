@@ -1,10 +1,10 @@
 """
 285.11.2.6 — Tests for DependencyAwareExecutor enforcement.
 """
-import pytest
 
 import uuid
 
+import pytest
 from django.test import TestCase
 
 from hub.apps.orchestration.dependency_executor import (
@@ -23,16 +23,18 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 def _make_tenant(flag=True):
     from hub.apps.tenants.models import Tenant
+
     slug = f"t-{uuid.uuid4().hex[:8]}"
     return Tenant.objects.create(
-        name=f"Test-{slug}", slug=slug, status="ACTIVE",
+        name=f"Test-{slug}",
+        slug=slug,
+        status="ACTIVE",
         pipeline_dependency_enabled=flag,
     )
 
 
 @pytest.mark.integration
 class TestDependencyEnforcement(TestCase):
-
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -45,7 +47,8 @@ class TestDependencyEnforcement(TestCase):
         called = []
 
         result = executor.enqueue_with_dependency_check(
-            "dq", str(uuid.uuid4()),
+            "dq",
+            str(uuid.uuid4()),
             enqueue_fn=lambda: called.append(True) or {"status": "enqueued"},
         )
         self.assertTrue(called)
@@ -58,7 +61,8 @@ class TestDependencyEnforcement(TestCase):
         called = []
 
         result = executor.enqueue_with_dependency_check(
-            "dq", str(uuid.uuid4()),
+            "dq",
+            str(uuid.uuid4()),
             enqueue_fn=lambda: called.append(True) or {"status": "RUNNING"},
         )
         self.assertTrue(called)
@@ -83,7 +87,8 @@ class TestDependencyEnforcement(TestCase):
         called = []
 
         result = executor.enqueue_with_dependency_check(
-            PipelineType.TRANSFORMATION, downstream_id,
+            PipelineType.TRANSFORMATION,
+            downstream_id,
             enqueue_fn=lambda: called.append(True) or {},
             resolve_upstream_statuses={},
         )
@@ -107,8 +112,11 @@ class TestDependencyEnforcement(TestCase):
         )
 
         count = handle_upstream_completed(
-            str(tenant.id), PipelineType.DQ,
-            upstream_id, upstream_id, "SUCCEEDED",
+            str(tenant.id),
+            PipelineType.DQ,
+            upstream_id,
+            upstream_id,
+            "SUCCEEDED",
         )
         self.assertEqual(count, 1)
 
@@ -128,7 +136,10 @@ class TestDependencyEnforcement(TestCase):
         )
 
         count = handle_upstream_completed(
-            str(tenant.id), PipelineType.DQ,
-            upstream_id, upstream_id, "FAILED",
+            str(tenant.id),
+            PipelineType.DQ,
+            upstream_id,
+            upstream_id,
+            "FAILED",
         )
         self.assertEqual(count, 1)

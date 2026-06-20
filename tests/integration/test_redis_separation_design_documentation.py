@@ -4,7 +4,9 @@ Integration tests for Redis Separation Decision documentation in design.md.
 These tests validate that the Decision 14 documentation is complete, accurate, and up-to-date
 with the current implementation.
 """
+
 import os
+
 from django.test import TestCase
 
 
@@ -15,22 +17,21 @@ class RedisSeparationDesignDocumentationTest(TestCase):
         """Set up test fixtures."""
         self.design_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            'openspec',
-            'changes',
-            'odps1',
-            'design.md'
+            "openspec",
+            "changes",
+            "odps1",
+            "design.md",
         )
 
     def _read_design_content(self):
         """Read the design.md file content."""
-        with open(self.design_path, 'r', encoding='utf-8') as f:
+        with open(self.design_path, encoding="utf-8") as f:
             return f.read()
 
     def test_design_file_exists(self):
         """Test that the design.md file exists."""
         self.assertTrue(
-            os.path.exists(self.design_path),
-            f"Design file not found: {self.design_path}"
+            os.path.exists(self.design_path), f"Design file not found: {self.design_path}"
         )
 
     def test_decision_14_section_exists(self):
@@ -285,4 +286,3 @@ class RedisSeparationDesignDocumentationTest(TestCase):
         self.assertIn("Optional", content)
         self.assertIn("Required", content)
         self.assertIn("Not required", content)
-

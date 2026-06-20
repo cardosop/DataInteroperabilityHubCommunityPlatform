@@ -21,14 +21,9 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-MAPPING_FILE = (
-    REPO_ROOT / "docs" / "mvpdocs" / "_meta"
-    / "persona-mapping.yaml"
-)
+MAPPING_FILE = REPO_ROOT / "docs" / "mvpdocs" / "_meta" / "persona-mapping.yaml"
 
-CANON_PERSONAS = frozenset(
-    {"DPO", "DE", "CPO", "DC", "MPA", "DEV"}
-)
+CANON_PERSONAS = frozenset({"DPO", "DE", "CPO", "DC", "MPA", "DEV"})
 
 
 def _parse_mapping() -> dict[str, str]:
@@ -53,9 +48,7 @@ def _parse_mapping() -> dict[str, str]:
 
 def _extract_frontend_personas() -> set[str]:
     """Extract persona names from frontend e2e spec filenames."""
-    personas_dir = (
-        REPO_ROOT / "frontend" / "e2e" / "personas"
-    )
+    personas_dir = REPO_ROOT / "frontend" / "e2e" / "personas"
     if not personas_dir.is_dir():
         return set()
     result = set()
@@ -75,10 +68,7 @@ def _extract_python_personas(filepath: Path) -> set[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if (
-                    isinstance(target, ast.Name)
-                    and target.id == "MVP_PERSONA_ROLES"
-                ):
+                if isinstance(target, ast.Name) and target.id == "MVP_PERSONA_ROLES":
                     val = ast.literal_eval(node.value)
                     return set(val)
     return set()
@@ -99,8 +89,7 @@ def main() -> int:
         REPO_ROOT / "cli" / "tests" / "fixtures" / "personas.py"
     )
     sdk_personas = _extract_python_personas(
-        REPO_ROOT / "sdk" / "python" / "tests"
-        / "fixtures" / "personas.py"
+        REPO_ROOT / "sdk" / "python" / "tests" / "fixtures" / "personas.py"
     )
 
     all_personas = fe_personas | cli_personas | sdk_personas
@@ -117,10 +106,7 @@ def main() -> int:
     for source, personas in sources.items():
         for p in sorted(personas):
             if p not in mapping:
-                errors.append(
-                    f"Persona {p!r} from {source}"
-                    " missing from mapping"
-                )
+                errors.append(f"Persona {p!r} from {source} missing from mapping")
 
     # Check 2: every mapping value is canonical
     for key, value in sorted(mapping.items()):
@@ -134,21 +120,19 @@ def main() -> int:
     # Check 3: no stale mapping keys
     for key in sorted(mapping.keys()):
         if key not in all_personas:
-            print(
-                f"WARN: Mapping key {key!r} not found"
-                " in any fixture source (may be stale)"
-            )
+            print(f"WARN: Mapping key {key!r} not found in any fixture source (may be stale)")
 
     if errors:
-        print(f"\nFAIL: {len(errors)} persona-mapping drift "
-              "error(s):")
+        print(f"\nFAIL: {len(errors)} persona-mapping drift error(s):")
         for e in errors:
             print(f"  - {e}")
         return 1
 
-    print(f"\nPASS: {len(mapping)} personas mapped,"
-          f" {len(all_personas)} fixture personas covered,"
-          f" all values in {sorted(CANON_PERSONAS)}")
+    print(
+        f"\nPASS: {len(mapping)} personas mapped,"
+        f" {len(all_personas)} fixture personas covered,"
+        f" all values in {sorted(CANON_PERSONAS)}"
+    )
     return 0
 
 

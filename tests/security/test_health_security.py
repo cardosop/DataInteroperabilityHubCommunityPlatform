@@ -45,8 +45,11 @@ HEALTH_ALLOWED_KEYS = {"status", "database", "redis", "baas", "http_status"}
 LIVE_ALLOWED_KEYS = {"status"}
 # Phase 221.3.2: response sanitized — only aggregate counts, no service names.
 CIRCUIT_BREAKER_ALLOWED_KEYS = {
-    "status", "total_breakers", "open_breakers",
-    "error", "http_status",
+    "status",
+    "total_breakers",
+    "open_breakers",
+    "error",
+    "http_status",
 }
 
 
@@ -128,8 +131,10 @@ class HealthCircuitBreakerSecurityTest(HealthSecurityTestBase):
         super().setUp()
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name=f"T {uid}", slug=f"t-sec-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"T {uid}",
+            slug=f"t-sec-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         user = User.objects.create_user(
             email=f"sec-{uid}@example.com",
@@ -165,7 +170,8 @@ class HealthCircuitBreakerSecurityTest(HealthSecurityTestBase):
             return
         text = response.content.decode("utf-8", errors="replace")
         self._assert_no_sensitive_data_in_text(
-            text, "/health/circuit-breakers/",
+            text,
+            "/health/circuit-breakers/",
         )
         try:
             data = response.json()

@@ -601,7 +601,7 @@ class ErrorHierarchyInheritanceTest(TestCase):
     def test_error_with_cause_exception_chain(self):
         """Test error with exception chain."""
         inner_error = ValueError("Inner error")
-        middle_error = TypeError("Middle error")
+        TypeError("Middle error")
         outer_error = ODPSError("Outer error", cause=inner_error)
 
         # Should preserve cause information

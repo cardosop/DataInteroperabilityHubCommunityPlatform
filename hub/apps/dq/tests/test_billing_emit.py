@@ -25,6 +25,7 @@ emit at the module-attribute boundary so the assertion proves
 the production codepath fired the event, not just that the
 helper was importable.
 """
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -32,8 +33,7 @@ from unittest.mock import patch
 import pytest
 
 from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
-from hub.apps.dq.tests.test_base import DQAPITransactionTestBase
-
+from hub.apps.dq.tests.test_base import DQAPITestBaseExtended
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -83,8 +83,7 @@ def _patch_dq_service_failure():
     )
 
 
-class DQRunBillingEmitTests(DQAPITransactionTestBase):
-
+class DQRunBillingEmitTests(DQAPITestBaseExtended):
     def setUp(self):
         super().setUp()
         # Pre-seed a DQRun in PENDING state. ``engine`` is required
@@ -111,14 +110,18 @@ class DQRunBillingEmitTests(DQAPITransactionTestBase):
         proof the production codepath fired."""
         from hub.apps.dq.views import execute_dq_run
 
-        with _patch_storage(), _patch_dq_service_success():
-            with patch(
+        with (
+            _patch_storage(),
+            _patch_dq_service_success(),
+            patch(
                 "hub.apps.billing.events.emit_event",
-            ) as emit_spy:
-                execute_dq_run(str(self.dq_run.id))
+            ) as emit_spy,
+        ):
+            execute_dq_run(str(self.dq_run.id))
 
         self.assertEqual(
-            emit_spy.call_count, 1,
+            emit_spy.call_count,
+            1,
             f"emit_event must fire exactly once on a SUCCEEDED DQ run; "
             f"got {emit_spy.call_count} calls. "
             f"call_args_list={emit_spy.call_args_list}",
@@ -138,11 +141,14 @@ class DQRunBillingEmitTests(DQAPITransactionTestBase):
         engine-derived ones)."""
         from hub.apps.dq.views import execute_dq_run
 
-        with _patch_storage(), _patch_dq_service_success():
-            with patch(
+        with (
+            _patch_storage(),
+            _patch_dq_service_success(),
+            patch(
                 "hub.apps.billing.events.emit_event",
-            ) as emit_spy:
-                execute_dq_run(str(self.dq_run.id))
+            ) as emit_spy,
+        ):
+            execute_dq_run(str(self.dq_run.id))
 
         self.assertEqual(emit_spy.call_count, 1)
 
@@ -157,9 +163,7 @@ class DQRunBillingEmitTests(DQAPITransactionTestBase):
         payload = call.kwargs.get("payload")
         if payload is None and len(call.args) >= 2:
             payload = call.args[1]
-        assert payload is not None, (
-            f"emit_event call shape unexpected: {call}"
-        )
+        assert payload is not None, f"emit_event call shape unexpected: {call}"
 
         for key in (
             "tenant_id",
@@ -171,7 +175,8 @@ class DQRunBillingEmitTests(DQAPITransactionTestBase):
             "quality_score",
         ):
             self.assertIn(
-                key, payload,
+                key,
+                payload,
                 f"Spec-required key {key!r} missing from emit "
                 f"payload; got keys: {sorted(payload.keys())}",
             )
@@ -187,7 +192,8 @@ class DQRunBillingEmitTests(DQAPITransactionTestBase):
         # ``timezone.now() - dq_run.started_at`` so we can't pin
         # the exact value, but we can pin the type contract.
         self.assertIsInstance(
-            payload["execution_time_seconds"], (int, float),
+            payload["execution_time_seconds"],
+            (int, float),
         )
         self.assertGreaterEqual(payload["execution_time_seconds"], 0)
 
@@ -201,11 +207,14 @@ class DQRunBillingEmitTests(DQAPITransactionTestBase):
         from hub.apps.billing.event_types import DQ_RUN_COMPLETED
         from hub.apps.dq.views import execute_dq_run
 
-        with _patch_storage(), _patch_dq_service_success():
-            with patch(
+        with (
+            _patch_storage(),
+            _patch_dq_service_success(),
+            patch(
                 "hub.apps.billing.events.emit_event",
-            ) as emit_spy:
-                execute_dq_run(str(self.dq_run.id))
+            ) as emit_spy,
+        ):
+            execute_dq_run(str(self.dq_run.id))
 
         call = emit_spy.call_args
         event_type = call.kwargs.get("event_type")
@@ -223,16 +232,19 @@ class DQRunBillingEmitTests(DQAPITransactionTestBase):
         NOT billable — no event must be emitted."""
         from hub.apps.dq.views import execute_dq_run
 
-        with _patch_storage(), _patch_dq_service_failure():
-            with patch(
+        with (
+            _patch_storage(),
+            _patch_dq_service_failure(),
+            patch(
                 "hub.apps.billing.events.emit_event",
-            ) as emit_spy:
-                execute_dq_run(str(self.dq_run.id))
+            ) as emit_spy,
+        ):
+            execute_dq_run(str(self.dq_run.id))
 
         self.assertEqual(
-            emit_spy.call_count, 0,
-            f"emit_event must NOT fire on a FAILED DQ run; "
-            f"got {emit_spy.call_count} calls",
+            emit_spy.call_count,
+            0,
+            f"emit_event must NOT fire on a FAILED DQ run; got {emit_spy.call_count} calls",
         )
 
         # Sanity: the DQRun should be in a failure terminal state.
@@ -257,13 +269,16 @@ class DQRunBillingEmitTests(DQAPITransactionTestBase):
         the DQRun is still saved as SUCCEEDED."""
         from hub.apps.dq.views import execute_dq_run
 
-        with _patch_storage(), _patch_dq_service_success():
-            with patch(
+        with (
+            _patch_storage(),
+            _patch_dq_service_success(),
+            patch(
                 "hub.apps.billing.events.emit_event",
                 side_effect=Exception("simulated billing bus outage"),
-            ):
-                # Should NOT raise even though emit_event blew up.
-                execute_dq_run(str(self.dq_run.id))
+            ),
+        ):
+            # Should NOT raise even though emit_event blew up.
+            execute_dq_run(str(self.dq_run.id))
 
         # DQRun still landed as SUCCEEDED despite the billing
         # failure — this is the contract for "billing is best-effort".

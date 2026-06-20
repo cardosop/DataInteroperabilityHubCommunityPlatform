@@ -17,9 +17,10 @@ template carries the operator-required fields. We do not mock the
 template renderer — we let Django render the real HTML and assert key
 substrings appear so future edits to copy don't silently drift.
 """
+
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, timedelta
 
 import pytest
 from django.test import TestCase
@@ -28,23 +29,27 @@ from django.utils import timezone
 
 def _create_tenant(name: str = "Wave 0 Notify Co"):
     from hub.apps.tenants.models import Tenant
+
     return Tenant.objects.create(name=name, slug=name.lower().replace(" ", "-"))
 
 
 def _create_user(email: str, tenant):
     from django.contrib.auth import get_user_model
+
     User = get_user_model()
     return User.objects.create(email=email, tenant=tenant)
 
 
 def _grant_tenant_admin_role(user, tenant):
     from hub.apps.users.models import Role, UserRole
+
     role, _ = Role.objects.get_or_create(tenant=tenant, name="TENANT_ADMIN")
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
 
 
 def _create_contract(tenant, *, name: str | None = None):
     from hub.apps.contracts.models import Contract
+
     return Contract.objects.create(
         tenant=tenant,
         original_spec_type="ODCS",
@@ -59,6 +64,7 @@ def _create_contract(tenant, *, name: str | None = None):
 # ---------------------------------------------------------------------------
 # EmailType registration
 # ---------------------------------------------------------------------------
+
 
 def test_email_type_enum_includes_asset_contract_structureless_pending():
     from hub.apps.notifications.models import EmailType
@@ -76,9 +82,9 @@ def test_email_type_enum_includes_asset_contract_structureless_pending():
 # Tenant-admin lookup
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.django_db(transaction=True)
 class TenantAdminLookupTests(TestCase):
-
     def test_get_tenant_admin_users_returns_only_admins(self):
         from hub.apps.users.services import get_tenant_admin_users
 
@@ -118,8 +124,8 @@ class TenantAdminLookupTests(TestCase):
         role, _ = Role.objects.get_or_create(tenant=tenant, name="TENANT_ADMIN")
         UserRole.objects.get_or_create(user=admin, tenant=tenant, role=role)
         # Force a second user_role row to simulate historical duplicate.
-        # Use a separate role with the same name on a different scope to
-        # exercise distinct(); skip if the unique constraint forbids it.
+        second_role, _ = Role.objects.get_or_create(tenant=tenant, name="TENANT_ADMIN_SCOPED")
+        UserRole.objects.get_or_create(user=admin, tenant=tenant, role=second_role)
         admins = list(get_tenant_admin_users(tenant))
         assert admins.count(admin) == 1
 
@@ -128,9 +134,9 @@ class TenantAdminLookupTests(TestCase):
 # Notification helper
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.django_db(transaction=True)
 class NotifyTenantAdminsTests(TestCase):
-
     def test_helper_dispatches_one_email_per_admin(self):
         """Every tenant admin gets exactly one email — no admin gets two,
         and no non-admin user receives an email.
@@ -203,14 +209,13 @@ class NotifyTenantAdminsTests(TestCase):
         )
         assert results
         for r in results:
-            assert r["email_type"] == (
-                EmailType.ASSET_CONTRACT_STRUCTURELESS_PENDING.value
-            )
+            assert r["email_type"] == (EmailType.ASSET_CONTRACT_STRUCTURELESS_PENDING.value)
 
 
 # ---------------------------------------------------------------------------
 # Email template rendering
 # ---------------------------------------------------------------------------
+
 
 def test_template_renders_with_required_substrings():
     """Rendering against a real Django template — no mocks. Asserts the
@@ -222,11 +227,11 @@ def test_template_renders_with_required_substrings():
     `_summarise_contract`) instead of substituted in the template,
     because Django has no built-in string-substitution filter.
     """
-    from datetime import datetime, timezone as tz
+    from datetime import datetime
 
     from hub.apps.notifications.templates import render_email_template
 
-    deadline = datetime(2026, 5, 14, 23, 59, tzinfo=tz.utc)
+    deadline = datetime(2026, 5, 14, 23, 59, tzinfo=UTC)
     rendered = render_email_template(
         "notifications/emails/asset_contract_structureless_pending.html",
         {
@@ -271,7 +276,6 @@ def test_template_renders_per_contract_schema_editor_url_correctly():
     intact in the rendered HTML, with the contract ID in the correct
     URL path position.
     """
-    from datetime import datetime, timezone as tz
 
     from hub.apps.notifications.templates import render_email_template
 
@@ -334,13 +338,9 @@ def test_dispatcher_pre_renders_schema_editor_url_per_contract():
 
     summary = _summarise_contract(
         _FakeContract("abc-123", {"info": {"name": "orders"}}),
-        schema_editor_url_template=(
-            "https://example.com/contracts/{contract_id}/edit?tab=schema"
-        ),
+        schema_editor_url_template=("https://example.com/contracts/{contract_id}/edit?tab=schema"),
     )
     assert summary["id"] == "abc-123"
-    assert summary["schema_editor_url"] == (
-        "https://example.com/contracts/abc-123/edit?tab=schema"
-    )
+    assert summary["schema_editor_url"] == ("https://example.com/contracts/abc-123/edit?tab=schema")
     # Hard regression: placeholder must be substituted, not appended.
     assert "{contract_id}" not in summary["schema_editor_url"]

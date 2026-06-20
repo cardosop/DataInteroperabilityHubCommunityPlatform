@@ -9,6 +9,7 @@ Validates:
 - GET /audit/audit-events/?trace_id=<uuid> filter works
 - Migration is safe (null=True, default=None)
 """
+
 import uuid
 from unittest.mock import patch
 
@@ -29,7 +30,9 @@ class TraceIdModelTests(TestCase):
 
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name="TraceTest", slug="trace-test", status=TenantStatus.ACTIVE,
+            name="TraceTest",
+            slug="trace-test",
+            status=TenantStatus.ACTIVE,
         )
 
     def test_field_exists_and_nullable(self):
@@ -66,12 +69,18 @@ class TraceIdModelTests(TestCase):
         """AuditEvent.objects.filter(trace_id=...) works."""
         tid = uuid.uuid4()
         AuditEvent.objects.create(
-            tenant=self.tenant, resource_type="A", action="FILTERED",
-            result="SUCCESS", trace_id=tid,
+            tenant=self.tenant,
+            resource_type="A",
+            action="FILTERED",
+            result="SUCCESS",
+            trace_id=tid,
         )
         AuditEvent.objects.create(
-            tenant=self.tenant, resource_type="B", action="UNFILTERED",
-            result="SUCCESS", trace_id=None,
+            tenant=self.tenant,
+            resource_type="B",
+            action="UNFILTERED",
+            result="SUCCESS",
+            trace_id=None,
         )
         filtered = AuditEvent.objects.filter(trace_id=tid)
         assert filtered.count() == 1
@@ -83,7 +92,9 @@ class TraceIdOtelExtractionTests(TestCase):
 
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name="OTelTrace", slug="otel-trace", status=TenantStatus.ACTIVE,
+            name="OTelTrace",
+            slug="otel-trace",
+            status=TenantStatus.ACTIVE,
         )
 
     def test_trace_id_extracted_when_span_active(self):
@@ -110,15 +121,12 @@ class TraceIdOtelExtractionTests(TestCase):
 
         event = AuditEvent.objects.filter(action="OTEL_SPAN_TEST").first()
         assert event is not None
-        assert event.trace_id is not None, (
-            "trace_id should be populated from OTel span"
-        )
+        assert event.trace_id is not None, "trace_id should be populated from OTel span"
         # OTel trace_id (128-bit int) is formatted as a 32-char hex UUID
         # by create_audit_event.  We assert it is a real UUID — not None
         # and not a raw decimal string.
         assert isinstance(event.trace_id, uuid.UUID), (
-            f"trace_id should be a UUID, got {type(event.trace_id).__name__}: "
-            f"{event.trace_id}"
+            f"trace_id should be a UUID, got {type(event.trace_id).__name__}: {event.trace_id}"
         )
 
     def test_trace_id_none_when_otel_unavailable(self):
@@ -134,8 +142,7 @@ class TraceIdOtelExtractionTests(TestCase):
         event = AuditEvent.objects.filter(action="NO_OTEL_TEST").first()
         assert event is not None
         assert event.trace_id is None, (
-            f"trace_id should be None when OTel is unavailable, "
-            f"but got {event.trace_id}"
+            f"trace_id should be None when OTel is unavailable, but got {event.trace_id}"
         )
 
     def test_trace_id_none_when_span_invalid(self):
@@ -191,7 +198,9 @@ class TraceIdSerializerTests(TestCase):
 
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name="SerializerTrace", slug="serializer-trace", status=TenantStatus.ACTIVE,
+            name="SerializerTrace",
+            slug="serializer-trace",
+            status=TenantStatus.ACTIVE,
         )
 
     def test_serializer_includes_trace_id(self):
@@ -233,32 +242,37 @@ class TraceIdFilterTests(TestCase):
         from hub.apps.users.models import Role, UserRole
 
         self.tenant = Tenant.objects.create(
-            name="FilterTrace", slug="filter-trace", status=TenantStatus.ACTIVE,
+            name="FilterTrace",
+            slug="filter-trace",
+            status=TenantStatus.ACTIVE,
         )
         self.user = User.objects.create_user(
-            email="trace-filter@example.com", password="testpass",
+            email="trace-filter@example.com",
+            password="testpass",
             tenant=self.tenant,
         )
-        role = Role.objects.create(
-            tenant=self.tenant, name="TENANT_ADMIN", description=""
-        )
+        role = Role.objects.create(tenant=self.tenant, name="TENANT_ADMIN", description="")
         UserRole.objects.create(user=self.user, tenant=self.tenant, role=role)
         self.tid = uuid.uuid4()
         AuditEvent.objects.create(
-            tenant=self.tenant, resource_type="A", action="FILTER_A",
-            result="SUCCESS", trace_id=self.tid,
+            tenant=self.tenant,
+            resource_type="A",
+            action="FILTER_A",
+            result="SUCCESS",
+            trace_id=self.tid,
         )
         AuditEvent.objects.create(
-            tenant=self.tenant, resource_type="B", action="FILTER_B",
-            result="SUCCESS", trace_id=None,
+            tenant=self.tenant,
+            resource_type="B",
+            action="FILTER_B",
+            result="SUCCESS",
+            trace_id=None,
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 
     def test_filter_by_trace_id_returns_matching_events(self):
-        resp = self.client.get(
-            f"/api/v1/audit/audit-events/?trace_id={self.tid}"
-        )
+        resp = self.client.get(f"/api/v1/audit/audit-events/?trace_id={self.tid}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["count"] >= 1
@@ -268,9 +282,7 @@ class TraceIdFilterTests(TestCase):
 
     def test_filter_by_nonexistent_trace_id_returns_empty(self):
         fake_id = str(uuid.uuid4())
-        resp = self.client.get(
-            f"/api/v1/audit/audit-events/?trace_id={fake_id}"
-        )
+        resp = self.client.get(f"/api/v1/audit/audit-events/?trace_id={fake_id}")
         assert resp.status_code == 200
         assert resp.json()["count"] == 0
 
@@ -288,8 +300,8 @@ class TraceIdMigrationSafetyTests(TestCase):
 
     def test_migration_exists(self):
         """Migration 0014 adds trace_id with null=True, default=None."""
-        from django.db.migrations.loader import MigrationLoader
         from django.db import connections
+        from django.db.migrations.loader import MigrationLoader
 
         loader = MigrationLoader(connections["default"])
         migration = loader.disk_migrations.get(("audit", "0014_auditevent_trace_id"))

@@ -87,7 +87,7 @@ critical_journeys:
   - JOURNEY-CPO-007   # Execute GDPR Right to be Forgotten
   - JOURNEY-CPO-008   # Manage Consent Tracking
   - JOURNEY-CPO-009   # Configure Automated Retention
-  - JOURNEY-CPO-010   # Review Retention Reports
+  - JOURNEY-CPO-010   # Review AI Auto-Classification Results
   # Data Consumer (marketplace)
   - JOURNEY-DC-001   # Discover and Purchase Asset
   # Tenant Admin (billing / cost)

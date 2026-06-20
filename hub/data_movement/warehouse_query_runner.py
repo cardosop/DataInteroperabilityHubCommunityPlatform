@@ -10,14 +10,15 @@ Also provides ``TableFQN`` for warehouse-aware table name parsing,
 ``WarehouseIdempotencyKey`` for cache/retry deduplication, and
 ``FakeWarehouseQueryRunner`` for deterministic testing.
 """
+
 from __future__ import annotations
+
 import hashlib
 import json
 import re
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
-
+from typing import Any
 
 # ── 285.10.1.1.2 — TableFQN ───────────────────────────────────────────
 
@@ -45,8 +46,10 @@ class TableFQN:
             q = '"'
         else:
             q = "`"
-        parts = [self.database, self.schema_name, self.table_name] if self.database else (
-            [self.schema_name, self.table_name] if self.schema_name else [self.table_name]
+        parts = (
+            [self.database, self.schema_name, self.table_name]
+            if self.database
+            else ([self.schema_name, self.table_name] if self.schema_name else [self.table_name])
         )
         return ".".join(f"{q}{p}{q}" for p in parts)
 
@@ -75,7 +78,7 @@ class ReadOnlyGuard:
     """Reject write-SQL statements to enforce read-only execution."""
 
     @staticmethod
-    def check(sql: Optional[str]) -> None:
+    def check(sql: str | None) -> None:
         if not sql:
             return
         match = _READ_ONLY_BLOCKED.search(sql)
@@ -107,9 +110,9 @@ class WarehouseIdempotencyKey:
     def build(
         cls,
         table_fqn: str,
-        check_definition: Dict[str, Any],
+        check_definition: dict[str, Any],
         last_modified: str = "",
-    ) -> "WarehouseIdempotencyKey":
+    ) -> WarehouseIdempotencyKey:
         check_json = json.dumps(check_definition, sort_keys=True)
         check_hash = hashlib.sha256(check_json.encode()).hexdigest()[:16]
         return cls(
@@ -154,7 +157,7 @@ class WarehouseQueryRunner:
 
     # ── Public API ────────────────────────────────────────────────────
 
-    def execute(self, sql: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    def execute(self, sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Execute a read-only SELECT query. Returns rows as dicts."""
         ReadOnlyGuard.check(sql)
         result = self._execute_with_retry(sql, params)
@@ -168,6 +171,7 @@ class WarehouseQueryRunner:
             return
         try:
             from hub.apps.observability.otel_metrics import warehouse_native_query_total
+
             warehouse_native_query_total.add(
                 1,
                 attributes={
@@ -179,14 +183,14 @@ class WarehouseQueryRunner:
         except Exception:
             pass  # metrics are best-effort
 
-    def execute_aggregate(self, sql: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def execute_aggregate(self, sql: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Execute an aggregate query. Returns the single result row."""
         rows = self.execute(sql, params)
         if rows:
             return dict(rows[0])
         return {}
 
-    def get_table_schema(self, table_fqn: str) -> List[Dict[str, Any]]:
+    def get_table_schema(self, table_fqn: str) -> list[dict[str, Any]]:
         """Query INFORMATION_SCHEMA for table column metadata."""
         fqn = TableFQN(table_fqn, self.warehouse_type)
 
@@ -209,22 +213,24 @@ class WarehouseQueryRunner:
             raise ValueError(f"Unsupported warehouse type: {self.warehouse_type}")
 
         rows = self.execute(sql)
-        result: List[Dict[str, Any]] = []
+        result: list[dict[str, Any]] = []
         for r in rows:
-            result.append({
-                "name": r.get("column_name", r.get("col_name", "")),
-                "type": r.get("data_type", r.get("data_type", "unknown")),
-                "nullable": r.get("is_nullable", "YES").upper() == "YES",
-            })
+            result.append(
+                {
+                    "name": r.get("column_name", r.get("col_name", "")),
+                    "type": r.get("data_type", r.get("data_type", "unknown")),
+                    "nullable": r.get("is_nullable", "YES").upper() == "YES",
+                }
+            )
         return result
 
     # ── Internal ──────────────────────────────────────────────────────
 
     def _execute_with_retry(
-        self, sql: str, params: Optional[Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
+        self, sql: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         """Execute SQL with exponential backoff retry."""
-        last_exc: Optional[Exception] = None
+        last_exc: Exception | None = None
 
         for attempt in range(self._MAX_RETRIES):
             try:
@@ -243,13 +249,12 @@ class WarehouseQueryRunner:
 
         self._emit_query_metric(outcome="failure")
         raise RuntimeError(
-            f"Query failed after {self._MAX_RETRIES} attempts. "
-            f"Last error: {last_exc}"
+            f"Query failed after {self._MAX_RETRIES} attempts. Last error: {last_exc}"
         ) from last_exc
 
     def _execute_single(
-        self, sql: str, params: Optional[Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
+        self, sql: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         """Execute a single query attempt. Override per warehouse driver."""
         self.query_count += 1
         self._track_cost(sql)
@@ -267,6 +272,7 @@ class WarehouseQueryRunner:
         """Set circuit breaker metric after consecutive failures."""
         try:
             from hub.apps.observability.otel_metrics import get_meter
+
             meter = get_meter("warehouse_query_runner")
             counter = meter.create_counter(
                 name="warehouse_circuit_open_total",
@@ -286,11 +292,13 @@ class FakeWarehouseQueryRunner(WarehouseQueryRunner):
 
     def __init__(
         self,
-        rows: Optional[List[Dict[str, Any]]] = None,
-        aggregate_result: Optional[Dict[str, Any]] = None,
-        schema: Optional[List[Dict[str, Any]]] = None,
+        rows: list[dict[str, Any]] | None = None,
+        aggregate_result: dict[str, Any] | None = None,
+        schema: list[dict[str, Any]] | None = None,
     ):
-        super().__init__("SNOWFLAKE", "arn:aws:secretsmanager:test:fake", "test-tenant", query_type="")
+        super().__init__(
+            "SNOWFLAKE", "arn:aws:secretsmanager:test:fake", "test-tenant", query_type=""
+        )
         self._rows = rows or []
         self._aggregate = aggregate_result or {}
         self._schema = schema or []
@@ -298,15 +306,15 @@ class FakeWarehouseQueryRunner(WarehouseQueryRunner):
         self.total_cost = 0.0
 
     def _execute_single(
-        self, sql: str, params: Optional[Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
+        self, sql: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         self.query_count += 1
         self._track_cost(sql)
         return list(self._rows)
 
-    def execute_aggregate(self, sql: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def execute_aggregate(self, sql: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         self.query_count += 1
         return dict(self._aggregate)
 
-    def get_table_schema(self, table_fqn: str) -> List[Dict[str, Any]]:
+    def get_table_schema(self, table_fqn: str) -> list[dict[str, Any]]:
         return list(self._schema)

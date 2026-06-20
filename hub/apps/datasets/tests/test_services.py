@@ -6,10 +6,11 @@ Tests cover all service methods with 100% coverage target.
 All tests use real implementations (no mocks of hub services).
 S3 operations use real boto3 client with graceful handling when S3 unavailable.
 """
+
 import uuid
 
 import pytest
-from hub.apps.assets.models import Asset
+
 from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.tests.test_base import DatasetsTestBase
@@ -37,9 +38,7 @@ class DatasetServiceTest(DatasetsTestBase):
         self.assertIsNotNone(dataset)
         self.assertIsNotNone(dataset.id)
         # Verify persisted to DB
-        self.assertTrue(
-            Dataset.objects.filter(id=dataset.id).exists()
-        )
+        self.assertTrue(Dataset.objects.filter(id=dataset.id).exists())
 
     def test_create_dataset_success_sets_file_id(self):
         """Test successful dataset creation sets file_id correctly."""
@@ -102,7 +101,9 @@ class DatasetServiceTest(DatasetsTestBase):
         """Test retrieving dataset from wrong tenant (failure scenario)"""
         # Create another tenant and dataset
         _sfx = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_sfx}", slug=f"other-tenant-{_sfx}")
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_sfx}", slug=f"other-tenant-{_sfx}"
+        )
         other_file = File.objects.create(
             tenant=other_tenant,
             name="other.csv",

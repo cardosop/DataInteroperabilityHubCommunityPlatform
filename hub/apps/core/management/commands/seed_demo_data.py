@@ -19,7 +19,6 @@ import logging
 import uuid
 from datetime import timedelta
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db.models import F
@@ -157,55 +156,63 @@ def _build_odcs(domain, noun, index):
     """Build a minimal ODCS v3 contract JSON with models for lineage."""
     version = ODCS_VERSIONS[index % len(ODCS_VERSIONS)]
     fk_field = domain["fields_b"][0]["name"]
-    return json.dumps({
-        "apiVersion": f"odcs.io/{version}",
-        "kind": "DataContract",
-        "id": f"demo-{domain['name']}-{noun}",
-        "name": f"{domain['name'].title()} {noun.replace('-', ' ').title()} Contract",
-        "version": "1.0.0",
-        "schema": {
-            "fields": [{"name": f["name"], "type": f["type"]} for f in domain["fields_a"]],
-        },
-        "models": [
-            {
-                "name": domain["model_a"],
-                "fields": [
-                    {**f, "isPrimaryKey": i == 0, **(
-                        {"references": f"{domain['model_b']}.{fk_field}"}
-                        if f["name"] == fk_field else {}
-                    )}
-                    for i, f in enumerate(domain["fields_a"])
-                ],
+    return json.dumps(
+        {
+            "apiVersion": f"odcs.io/{version}",
+            "kind": "DataContract",
+            "id": f"demo-{domain['name']}-{noun}",
+            "name": f"{domain['name'].title()} {noun.replace('-', ' ').title()} Contract",
+            "version": "1.0.0",
+            "schema": {
+                "fields": [{"name": f["name"], "type": f["type"]} for f in domain["fields_a"]],
             },
-            {
-                "name": domain["model_b"],
-                "fields": [
-                    {**f, "isPrimaryKey": i == 0}
-                    for i, f in enumerate(domain["fields_b"])
-                ],
-            },
-        ],
-        "servicelevels": {"availability": {"percentage": str(99.0 + index * 0.1)}},
-        "terms": {"usage": f"Internal {domain['name']} analytics"},
-    })
+            "models": [
+                {
+                    "name": domain["model_a"],
+                    "fields": [
+                        {
+                            **f,
+                            "isPrimaryKey": i == 0,
+                            **(
+                                {"references": f"{domain['model_b']}.{fk_field}"}
+                                if f["name"] == fk_field
+                                else {}
+                            ),
+                        }
+                        for i, f in enumerate(domain["fields_a"])
+                    ],
+                },
+                {
+                    "name": domain["model_b"],
+                    "fields": [
+                        {**f, "isPrimaryKey": i == 0} for i, f in enumerate(domain["fields_b"])
+                    ],
+                },
+            ],
+            "servicelevels": {"availability": {"percentage": str(99.0 + index * 0.1)}},
+            "terms": {"usage": f"Internal {domain['name']} analytics"},
+        }
+    )
 
 
 def _build_odps(domain, noun):
     """Build a minimal ODPS v4.1 wrapper around an embedded ODCS contract."""
-    return json.dumps({
-        "schema": "https://opendataproducts.org/schema/v4.1",
-        "version": "4.1",
-        "product": {
-            "details": {
-                "en": {
-                    "productID": f"demo-{domain['name']}-{noun}-product",
-                    "name": f"{domain['name'].title()} {noun.replace('-', ' ').title()} Product",
-                    "description": f"ODPS product wrapping the {noun} contract.",
-                    "productVersion": "1.0.0",
+    return json.dumps(
+        {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": f"demo-{domain['name']}-{noun}-product",
+                        "name": f"{domain['name'].title()} {noun.replace('-', ' ').title()} Product",
+                        "description": f"ODPS product wrapping the {noun} contract.",
+                        "productVersion": "1.0.0",
+                    }
                 }
-            }
-        },
-    })
+            },
+        }
+    )
 
 
 def _build_schema(domain, noun):
@@ -224,13 +231,17 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from hub.apps.assets.models import Asset, AssetStatus
         from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
-        from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus, NormalizationStatus
+        from hub.apps.contracts.models import (
+            Contract,
+            ContractStatus,
+            ValidationStatus,
+        )
         from hub.apps.contracts.services import ContractService
         from hub.apps.datasets.models import Dataset
-        from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine
+        from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
         from hub.apps.files.models import File
-        from hub.apps.jobs.models import Job, JobType, JobStatus
-        from hub.apps.marketplace.models import Listing, Order, Entitlement
+        from hub.apps.jobs.models import Job, JobStatus, JobType
+        from hub.apps.marketplace.models import Entitlement, Listing, Order
         from hub.apps.webhooks.models import Webhook
 
         # ── Resolve users ────────────────────────────────────────────
@@ -243,7 +254,9 @@ class Command(BaseCommand):
         try:
             consumer_user = User.objects.get(email="e2e_consumer@example.com")
         except User.DoesNotExist:
-            self.stderr.write("e2e_consumer@example.com not found — run ensure_e2e_user_roles first")
+            self.stderr.write(
+                "e2e_consumer@example.com not found — run ensure_e2e_user_roles first"
+            )
             return
         consumer_tenant = consumer_user.tenant
 
@@ -258,7 +271,8 @@ class Command(BaseCommand):
                 is_draft = i >= 3  # last 2 per domain stay DRAFT
 
                 asset, new = Asset.objects.get_or_create(
-                    key=key, tenant=dpo_tenant,
+                    key=key,
+                    tenant=dpo_tenant,
                     defaults=dict(
                         name=f"{domain['name'].title()} {noun.replace('-', ' ').title()}",
                         description=f"Demo {domain['name']} asset: {noun.replace('-', ' ')}.",
@@ -296,7 +310,9 @@ class Command(BaseCommand):
                 asset = Asset.objects.filter(key=key, tenant=dpo_tenant).first()
                 if not asset:
                     continue
-                if Contract.objects.filter(asset=asset, original_spec_type="ODPS", tenant=dpo_tenant).exists():
+                if Contract.objects.filter(
+                    asset=asset, original_spec_type="ODPS", tenant=dpo_tenant
+                ).exists():
                     continue
                 try:
                     odps = svc.create_contract(
@@ -323,7 +339,11 @@ class Command(BaseCommand):
                 tenant=dpo_tenant,
                 name=f"demo-{domain['name']}-{noun}.{ext}",
                 defaults=dict(
-                    content_type={"CSV": "text/csv", "JSON": "application/json", "PARQUET": "application/octet-stream"}[fmt],
+                    content_type={
+                        "CSV": "text/csv",
+                        "JSON": "application/json",
+                        "PARQUET": "application/octet-stream",
+                    }[fmt],
                     size=FILE_SIZES[idx % len(FILE_SIZES)],
                     storage_path=f"demo/{dpo_tenant.id}/{asset.id}/data.{ext}",
                     status="ACTIVE",
@@ -331,7 +351,8 @@ class Command(BaseCommand):
                 ),
             )
             Dataset.objects.get_or_create(
-                asset=asset, tenant=dpo_tenant,
+                asset=asset,
+                tenant=dpo_tenant,
                 defaults=dict(
                     file=file_obj,
                     format=fmt,
@@ -367,8 +388,9 @@ class Command(BaseCommand):
         # REQUEST_APPROVAL with price (paid, provider must approve),
         # FREE (free, provider must approve). Prices in metadata_json.
         active_assets = list(
-            Asset.objects.filter(key__startswith="demo-", tenant=dpo_tenant, status=AssetStatus.ACTIVE)
-            .order_by("key")[:20]
+            Asset.objects.filter(
+                key__startswith="demo-", tenant=dpo_tenant, status=AssetStatus.ACTIVE
+            ).order_by("key")[:20]
         )
         # Pricing configs: (model, price_amount, currency, description)
         pricing_configs = [
@@ -426,8 +448,10 @@ class Command(BaseCommand):
 
         # ── Phase 6: Consumer Orders + Entitlements (10) ─────────────
         free_published = Listing.objects.filter(
-            tenant=dpo_tenant, status="PUBLISHED",
-            pricing_model="FREE_AUTO_APPROVE", asset__key__startswith="demo-",
+            tenant=dpo_tenant,
+            status="PUBLISHED",
+            pricing_model="FREE_AUTO_APPROVE",
+            asset__key__startswith="demo-",
         ).order_by("created_at")[:10]
         for listing in free_published:
             if Order.objects.filter(listing=listing, tenant=consumer_tenant).exists():
@@ -440,7 +464,9 @@ class Command(BaseCommand):
                 approved_at=timezone.now(),
             )
             Entitlement.objects.get_or_create(
-                order=order, tenant=consumer_tenant, listing=listing,
+                order=order,
+                tenant=consumer_tenant,
+                listing=listing,
                 defaults=dict(
                     asset=listing.asset,
                     status="ACTIVE",
@@ -449,19 +475,28 @@ class Command(BaseCommand):
             stats["orders"] += 1
 
         # ── Phase 7: DQ Runs (10) ───────────────────────────────────
-        dq_assets = list(Asset.objects.filter(
-            key__startswith="demo-", tenant=dpo_tenant, datasets__isnull=False,
-        ).distinct()[:10])
+        dq_assets = list(
+            Asset.objects.filter(
+                key__startswith="demo-",
+                tenant=dpo_tenant,
+                datasets__isnull=False,
+            ).distinct()[:10]
+        )
         for idx, asset in enumerate(dq_assets):
             if DQRun.objects.filter(asset=asset, tenant=dpo_tenant).exists():
                 continue
             job = Job.objects.create(
-                tenant=dpo_tenant, type=JobType.DQ_RUN,
-                status=JobStatus.COMPLETED, created_by=dpo_user,
-                resource_type="ASSET", resource_id=str(asset.id),
+                tenant=dpo_tenant,
+                type=JobType.DQ_RUN,
+                status=JobStatus.COMPLETED,
+                created_by=dpo_user,
+                resource_type="ASSET",
+                resource_id=str(asset.id),
             )
             DQRun.objects.create(
-                tenant=dpo_tenant, asset=asset, job=job,
+                tenant=dpo_tenant,
+                asset=asset,
+                job=job,
                 profile_key="intake_basic_gx",
                 engine=DQEngine.GREAT_EXPECTATIONS,
                 status=DQRunStatus.SUCCEEDED if idx < 5 else DQRunStatus.FAILED,
@@ -476,12 +511,17 @@ class Command(BaseCommand):
             if ComplianceRun.objects.filter(asset=asset, tenant=dpo_tenant).exists():
                 continue
             job = Job.objects.create(
-                tenant=dpo_tenant, type=JobType.COMPLIANCE_RUN,
-                status=JobStatus.COMPLETED, created_by=dpo_user,
-                resource_type="ASSET", resource_id=str(asset.id),
+                tenant=dpo_tenant,
+                type=JobType.COMPLIANCE_RUN,
+                status=JobStatus.COMPLETED,
+                created_by=dpo_user,
+                resource_type="ASSET",
+                resource_id=str(asset.id),
             )
             ComplianceRun.objects.create(
-                tenant=dpo_tenant, asset=asset, job=job,
+                tenant=dpo_tenant,
+                asset=asset,
+                job=job,
                 status=ComplianceRunStatus.SUCCEEDED if idx < 5 else ComplianceRunStatus.FAILED,
                 allowed_to_store=idx < 5,
                 started_at=timezone.now() - timedelta(hours=idx),
@@ -494,7 +534,10 @@ class Command(BaseCommand):
         event_configs = [
             ("Demo Asset Events", ["asset.created", "asset.updated"]),
             ("Demo Contract Events", ["contract.created", "contract.updated"]),
-            ("Demo Marketplace Events", ["marketplace.listing.published", "marketplace.order.created"]),
+            (
+                "Demo Marketplace Events",
+                ["marketplace.listing.published", "marketplace.order.created"],
+            ),
             ("Demo DQ Events", ["dq.run.succeeded", "dq.run.failed"]),
             ("Demo Compliance Events", ["compliance.run.succeeded"]),
         ]
@@ -503,7 +546,8 @@ class Command(BaseCommand):
                 continue
             try:
                 Webhook.objects.create(
-                    name=wh_name, tenant=dpo_tenant,
+                    name=wh_name,
+                    tenant=dpo_tenant,
                     url=f"https://webhook.site/{uuid.uuid4().hex[:12]}",
                     secret=uuid.uuid4().hex,
                     event_types=events,
@@ -517,11 +561,19 @@ class Command(BaseCommand):
 
         # ── Summary ──────────────────────────────────────────────────
         total_assets = Asset.objects.filter(key__startswith="demo-", tenant=dpo_tenant).count()
-        total_contracts = Contract.objects.filter(asset__key__startswith="demo-", tenant=dpo_tenant).count()
-        total_listings = Listing.objects.filter(asset__key__startswith="demo-", tenant=dpo_tenant).count()
-        total_orders = Order.objects.filter(listing__asset__key__startswith="demo-", tenant=consumer_tenant).count()
-        self.stdout.write(self.style.SUCCESS(
-            f"\nSeeded: {total_assets} assets, {total_contracts} contracts, "
-            f"{stats['datasets']} datasets, {total_listings} listings, "
-            f"{total_orders} orders, 5 webhooks"
-        ))
+        total_contracts = Contract.objects.filter(
+            asset__key__startswith="demo-", tenant=dpo_tenant
+        ).count()
+        total_listings = Listing.objects.filter(
+            asset__key__startswith="demo-", tenant=dpo_tenant
+        ).count()
+        total_orders = Order.objects.filter(
+            listing__asset__key__startswith="demo-", tenant=consumer_tenant
+        ).count()
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"\nSeeded: {total_assets} assets, {total_contracts} contracts, "
+                f"{stats['datasets']} datasets, {total_listings} listings, "
+                f"{total_orders} orders, 5 webhooks"
+            )
+        )

@@ -17,15 +17,17 @@ Actual API paths:
   POST /auth/sso/saml/callback/
 """
 
-import requests
 from urllib.parse import parse_qs, urlparse
+
+import requests
+
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_base_url
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
@@ -62,9 +64,7 @@ def test_sso_initiation_returns_redirect():
 
     if resp.status_code == 200:
         body = resp.json()
-        assert "login_url" in body, (
-            f"200 response missing login_url: {body}"
-        )
+        assert "login_url" in body, f"200 response missing login_url: {body}"
         parsed = urlparse(body["login_url"])
         query = parse_qs(parsed.query)
         assert query.get("state"), (
@@ -73,14 +73,9 @@ def test_sso_initiation_returns_redirect():
     elif resp.status_code == 400:
         # SSO not configured for this tenant — valid response
         body = resp.json()
-        assert "error" in body or "detail" in body, (
-            f"400 response missing error detail: {body}"
-        )
+        assert "error" in body or "detail" in body, f"400 response missing error detail: {body}"
     else:
-        pytest.fail(
-            f"SSO initiation returned unexpected "
-            f"{resp.status_code}: {resp.text[:300]}"
-        )
+        pytest.fail(f"SSO initiation returned unexpected {resp.status_code}: {resp.text[:300]}")
 
 
 def test_sso_initiation_missing_params_returns_400():
@@ -117,9 +112,7 @@ def test_sso_oidc_callback_without_id_token_returns_400():
     )
 
     if resp.status_code == 404:
-        pytest.skip(
-            "SSO callback endpoint not implemented yet (404)"
-        )
+        pytest.skip("SSO callback endpoint not implemented yet (404)")
 
     assert resp.status_code in (400, 422), (
         f"SSO callback without id_token returned "
@@ -143,9 +136,7 @@ def test_sso_oidc_callback_with_invalid_token_returns_error():
     )
 
     if resp.status_code == 404:
-        pytest.skip(
-            "SSO callback endpoint not implemented yet (404)"
-        )
+        pytest.skip("SSO callback endpoint not implemented yet (404)")
 
     assert resp.status_code in (400, 401, 422), (
         f"SSO callback with invalid token returned "
@@ -176,6 +167,5 @@ def test_sso_saml_login_url_exists():
 
     # 200 (configured) or 400 (not configured) are both valid
     assert resp.status_code < 500, (
-        f"SAML login-url returned server error "
-        f"{resp.status_code}: {resp.text[:300]}"
+        f"SAML login-url returned server error {resp.status_code}: {resp.text[:300]}"
     )

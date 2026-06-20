@@ -22,7 +22,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 COMPOSE_FILE = "docker-compose.test.yml"
 API_SVC = "api-service-test"
@@ -33,13 +32,18 @@ def run_pytest_collect(paths: list[str], repo_root: Path, compose_cmd: list[str]
     # Quote each path for safe shell passing (spaces/special chars)
     path_args = " ".join(shlex.quote(p) for p in paths)
     cmd = compose_cmd + [
-        "exec", "-T", API_SVC, "bash", "-c",
+        "exec",
+        "-T",
+        API_SVC,
+        "bash",
+        "-c",
         "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings "
         f"python -m pytest {path_args} --collect-only -q 2>&1",
     ]
     try:
         proc = subprocess.run(
             cmd,
+            check=False,
             cwd=repo_root,
             capture_output=True,
             text=True,
@@ -108,10 +112,16 @@ def list_test_files(path: str, repo_root: Path) -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate batch_definitions.txt with batches ≤ max tests.")
+    parser = argparse.ArgumentParser(
+        description="Generate batch_definitions.txt with batches ≤ max tests."
+    )
     parser.add_argument("--max", type=int, default=200, help="Max tests per batch (default 200).")
-    parser.add_argument("--output", type=str, default="scripts/batch_definitions.txt", help="Output file path.")
-    parser.add_argument("--compose-file", type=str, default=COMPOSE_FILE, help="Docker Compose file.")
+    parser.add_argument(
+        "--output", type=str, default="scripts/batch_definitions.txt", help="Output file path."
+    )
+    parser.add_argument(
+        "--compose-file", type=str, default=COMPOSE_FILE, help="Docker Compose file."
+    )
     args = parser.parse_args()
     out_path = Path(args.output)
     if not out_path.is_absolute():
@@ -121,14 +131,21 @@ def main() -> int:
     # Get current batch list from shell script
     result = subprocess.run(
         [str(REPO_ROOT / "scripts" / "run_phase_12a_batched.sh"), "--list-batches"],
+        check=False,
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
         timeout=30,
     )
-    lines = [l.strip() for l in (result.stdout or "").strip().splitlines() if l.strip() and l.strip()[0].isdigit()]
+    lines = [
+        l.strip()
+        for l in (result.stdout or "").strip().splitlines()
+        if l.strip() and l.strip()[0].isdigit()
+    ]
     if not lines:
-        print("Error: No batch lines from run_phase_12a_batched.sh --list-batches.", file=sys.stderr)
+        print(
+            "Error: No batch lines from run_phase_12a_batched.sh --list-batches.", file=sys.stderr
+        )
         return 1
 
     new_batches: list[str] = []

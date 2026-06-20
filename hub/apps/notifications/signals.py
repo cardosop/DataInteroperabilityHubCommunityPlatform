@@ -3,10 +3,13 @@ Email Notification Signals
 
 Signals for triggering email notifications on various events.
 """
+
 from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+
 from hub.apps.jobs.models import Job, JobStatus
+
 from .tasks import send_job_completion_email, send_job_failure_email
 
 
@@ -31,7 +34,7 @@ def job_status_changed(sender, instance, created, **kwargs):
         return
 
     # Check if job notifications are enabled
-    if not getattr(settings, 'EMAIL_JOB_NOTIFICATIONS_ENABLED', False):
+    if not getattr(settings, "EMAIL_JOB_NOTIFICATIONS_ENABLED", False):
         return
 
     # Only send emails for terminal states — defer to on_commit so the
@@ -40,6 +43,5 @@ def job_status_changed(sender, instance, created, **kwargs):
     if instance.status == JobStatus.COMPLETED:
         if instance.created_by:
             transaction.on_commit(lambda: send_job_completion_email.delay(job_id))
-    elif instance.status == JobStatus.FAILED:
-        if instance.created_by:
-            transaction.on_commit(lambda: send_job_failure_email.delay(job_id))
+    elif instance.status == JobStatus.FAILED and instance.created_by:
+        transaction.on_commit(lambda: send_job_failure_email.delay(job_id))

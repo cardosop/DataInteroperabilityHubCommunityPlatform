@@ -13,22 +13,16 @@ All registry operations follow engineering best practices:
 - Comprehensive error messages with context
 - Follow DRY, SOLID, and clean code principles
 """
+
 import importlib
 import inspect
 import pkgutil
 from collections import defaultdict, deque
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import (
     Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Type,
-    Tuple,
-    Union,
 )
-from dataclasses import dataclass, field
 
 import structlog
 
@@ -55,14 +49,15 @@ class RuleMetadata:
         priority: Execution priority (lower = higher priority)
         enabled: Whether the rule is enabled
     """
-    rule_class: Type[BusinessRules]
+
+    rule_class: type[BusinessRules]
     rule_name: str
-    description: Optional[str] = None
-    tags: List[str] = field(default_factory=list)
-    dependencies: List[str] = field(default_factory=list)
+    description: str | None = None
+    tags: list[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
     priority: int = 100  # Default priority
     enabled: bool = True
-    openspec_ref: Optional[str] = None  # Phase 274.15 — conformance metadata backfill
+    openspec_ref: str | None = None  # Phase 274.15 — conformance metadata backfill
 
     def __post_init__(self):
         """Validate rule metadata."""
@@ -91,19 +86,19 @@ class BusinessRulesRegistry:
 
     def __init__(self):
         """Initialize the registry."""
-        self._rules: Dict[str, RuleMetadata] = {}
-        self._dependency_graph: Dict[str, Set[str]] = defaultdict(set)
-        self._reverse_dependency_graph: Dict[str, Set[str]] = defaultdict(set)
+        self._rules: dict[str, RuleMetadata] = {}
+        self._dependency_graph: dict[str, set[str]] = defaultdict(set)
+        self._reverse_dependency_graph: dict[str, set[str]] = defaultdict(set)
 
     def register(
         self,
-        rule_name: Optional[str] = None,
-        description: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        depends_on: Optional[List[str]] = None,
+        rule_name: str | None = None,
+        description: str | None = None,
+        tags: list[str] | None = None,
+        depends_on: list[str] | None = None,
         priority: int = 100,
         enabled: bool = True,
-        openspec_ref: Optional[str] = None,
+        openspec_ref: str | None = None,
     ) -> Callable:
         """
         Decorator for registering business rules.
@@ -132,7 +127,8 @@ class BusinessRulesRegistry:
             class DomainBusinessRules(BusinessRules):
                 ...
         """
-        def decorator(rule_class: Type[BusinessRules]) -> Type[BusinessRules]:
+
+        def decorator(rule_class: type[BusinessRules]) -> type[BusinessRules]:
             # Use provided name or class name
             name = rule_name or rule_class.__name__
 
@@ -141,8 +137,10 @@ class BusinessRulesRegistry:
                 existing = self._rules[name]
                 # Check if it's the same class by comparing name and module
                 # (Python creates new class objects even for same definition)
-                if (existing.rule_class.__name__ != rule_class.__name__ or
-                    existing.rule_class.__module__ != rule_class.__module__):
+                if (
+                    existing.rule_class.__name__ != rule_class.__name__
+                    or existing.rule_class.__module__ != rule_class.__module__
+                ):
                     raise ValueError(
                         f"Rule name '{name}' is already registered with a different class. "
                         f"Existing: {existing.rule_class.__name__} from {existing.rule_class.__module__}, "
@@ -152,7 +150,7 @@ class BusinessRulesRegistry:
                 logger.debug(
                     "Updating metadata for existing rule",
                     rule_name=name,
-                    rule_class=rule_class.__name__
+                    rule_class=rule_class.__name__,
                 )
 
             # Create metadata
@@ -179,14 +177,14 @@ class BusinessRulesRegistry:
                 rule_class=rule_class.__name__,
                 dependencies=metadata.dependencies,
                 priority=priority,
-                enabled=enabled
+                enabled=enabled,
             )
 
             return rule_class
 
         return decorator
 
-    def _update_dependency_graph(self, rule_name: str, dependencies: List[str]):
+    def _update_dependency_graph(self, rule_name: str, dependencies: list[str]):
         """
         Update dependency graph for a rule.
 
@@ -211,7 +209,8 @@ class BusinessRulesRegistry:
             "BusinessRulesRegistry.register_instance() was removed in Phase 274.6. "
             "Use the @register_rule decorator instead."
         )
-    def get_rule(self, rule_name: str) -> Optional[RuleMetadata]:
+
+    def get_rule(self, rule_name: str) -> RuleMetadata | None:
         """
         Get rule metadata by name.
 
@@ -223,7 +222,7 @@ class BusinessRulesRegistry:
         """
         return self._rules.get(rule_name)
 
-    def get_all_rules(self) -> Dict[str, RuleMetadata]:
+    def get_all_rules(self) -> dict[str, RuleMetadata]:
         """
         Get all registered rules.
 
@@ -234,11 +233,11 @@ class BusinessRulesRegistry:
 
     def discover_rules(
         self,
-        package: Union[str, Any],
-        rule_name_pattern: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        enabled_only: bool = True
-    ) -> List[str]:
+        package: str | Any,
+        rule_name_pattern: str | None = None,
+        tags: list[str] | None = None,
+        enabled_only: bool = True,
+    ) -> list[str]:
         """
         Auto-discover and register business rules from a package.
 
@@ -269,21 +268,17 @@ class BusinessRulesRegistry:
                 module = package
 
             # Walk through package modules
-            if hasattr(module, '__path__'):
+            if hasattr(module, "__path__"):
                 # It's a package, walk through submodules
                 for _, modname, ispkg in pkgutil.walk_packages(
-                    module.__path__,
-                    module.__name__ + '.'
+                    module.__path__, module.__name__ + "."
                 ):
                     if not ispkg:
                         try:
                             submodule = importlib.import_module(modname)
                             discovered.extend(
                                 self._discover_rules_from_module(
-                                    submodule,
-                                    rule_name_pattern,
-                                    tags,
-                                    enabled_only
+                                    submodule, rule_name_pattern, tags, enabled_only
                                 )
                             )
                         except Exception as e:
@@ -291,17 +286,12 @@ class BusinessRulesRegistry:
                                 "Failed to import module during rule discovery",
                                 module=modname,
                                 error=str(e),
-                                exc_info=True
+                                exc_info=True,
                             )
             else:
                 # It's a single module
                 discovered.extend(
-                    self._discover_rules_from_module(
-                        module,
-                        rule_name_pattern,
-                        tags,
-                        enabled_only
-                    )
+                    self._discover_rules_from_module(module, rule_name_pattern, tags, enabled_only)
                 )
 
         except Exception as e:
@@ -309,14 +299,14 @@ class BusinessRulesRegistry:
                 "Failed to discover rules from package",
                 package=str(package),
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
 
         logger.info(
             "Rule discovery completed",
             package=str(package),
             discovered_count=len(discovered),
-            discovered_rules=discovered
+            discovered_rules=discovered,
         )
 
         return discovered
@@ -324,10 +314,10 @@ class BusinessRulesRegistry:
     def _discover_rules_from_module(
         self,
         module: Any,
-        rule_name_pattern: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        enabled_only: bool = True
-    ) -> List[str]:
+        rule_name_pattern: str | None = None,
+        tags: list[str] | None = None,
+        enabled_only: bool = True,
+    ) -> list[str]:
         """
         Discover rules from a single module.
 
@@ -343,12 +333,13 @@ class BusinessRulesRegistry:
         discovered = []
 
         # Find all BusinessRules subclasses in module
-        for name, obj in inspect.getmembers(module, inspect.isclass):
+        for _name, obj in inspect.getmembers(module, inspect.isclass):
             # Check if it's a BusinessRules subclass (but not BusinessRules itself)
-            if (issubclass(obj, BusinessRules) and
-                obj != BusinessRules and
-                obj.__module__ == module.__name__):
-
+            if (
+                issubclass(obj, BusinessRules)
+                and obj != BusinessRules
+                and obj.__module__ == module.__name__
+            ):
                 rule_name = obj.__name__
 
                 # Check pattern match
@@ -357,10 +348,7 @@ class BusinessRulesRegistry:
 
                 # Check if already registered
                 if rule_name in self._rules:
-                    logger.debug(
-                        "Rule already registered, skipping",
-                        rule_name=rule_name
-                    )
+                    logger.debug("Rule already registered, skipping", rule_name=rule_name)
                     continue
 
                 # Register discovered rule
@@ -372,12 +360,12 @@ class BusinessRulesRegistry:
                         "Failed to register discovered rule",
                         rule_name=rule_name,
                         error=str(e),
-                        exc_info=True
+                        exc_info=True,
                     )
 
         return discovered
 
-    def get_dependencies(self, rule_name: str) -> Set[str]:
+    def get_dependencies(self, rule_name: str) -> set[str]:
         """
         Get dependencies for a rule.
 
@@ -389,7 +377,7 @@ class BusinessRulesRegistry:
         """
         return self._dependency_graph.get(rule_name, set()).copy()
 
-    def get_dependents(self, rule_name: str) -> Set[str]:
+    def get_dependents(self, rule_name: str) -> set[str]:
         """
         Get rules that depend on this rule.
 
@@ -401,10 +389,7 @@ class BusinessRulesRegistry:
         """
         return self._reverse_dependency_graph.get(rule_name, set()).copy()
 
-    def resolve_execution_order(
-        self,
-        rule_names: Optional[List[str]] = None
-    ) -> List[str]:
+    def resolve_execution_order(self, rule_names: list[str] | None = None) -> list[str]:
         """
         Resolve execution order for rules based on dependencies.
 
@@ -423,10 +408,7 @@ class BusinessRulesRegistry:
         # Get rules to process
         if rule_names is None:
             # All enabled rules
-            rules_to_process = [
-                name for name, metadata in self._rules.items()
-                if metadata.enabled
-            ]
+            rules_to_process = [name for name, metadata in self._rules.items() if metadata.enabled]
         else:
             # Validate all rules exist
             for name in rule_names:
@@ -435,33 +417,24 @@ class BusinessRulesRegistry:
             rules_to_process = rule_names
 
         # Build dependency graph for selected rules
-        graph: Dict[str, Set[str]] = {}
+        graph: dict[str, set[str]] = {}
         for rule_name in rules_to_process:
             metadata = self._rules[rule_name]
             # Only include dependencies that are in rules_to_process
-            graph[rule_name] = {
-                dep for dep in metadata.dependencies
-                if dep in rules_to_process
-            }
+            graph[rule_name] = {dep for dep in metadata.dependencies if dep in rules_to_process}
 
         # Topological sort
-        in_degree: Dict[str, int] = {name: 0 for name in rules_to_process}
+        in_degree: dict[str, int] = dict.fromkeys(rules_to_process, 0)
         for rule_name, deps in graph.items():
-            for dep in deps:
+            for _dep in deps:
                 in_degree[rule_name] += 1
 
         # Priority queue (lower priority = higher priority)
-        queue = deque([
-            name for name in rules_to_process
-            if in_degree[name] == 0
-        ])
+        queue = deque([name for name in rules_to_process if in_degree[name] == 0])
         # Sort by priority
-        queue = deque(sorted(
-            queue,
-            key=lambda n: self._rules[n].priority
-        ))
+        queue = deque(sorted(queue, key=lambda n: self._rules[n].priority))
 
-        result: List[str] = []
+        result: list[str] = []
         processed = set()
 
         while queue:
@@ -480,34 +453,30 @@ class BusinessRulesRegistry:
                         queue.append(dependent)
 
             # Re-sort queue by priority
-            queue = deque(sorted(
-                queue,
-                key=lambda n: self._rules[n].priority
-            ))
+            queue = deque(sorted(queue, key=lambda n: self._rules[n].priority))
 
         # Check for circular dependencies
         if len(result) != len(rules_to_process):
             remaining = set(rules_to_process) - set(result)
-            raise ValueError(
-                f"Circular dependency detected. Rules not processed: {remaining}"
-            )
+            raise ValueError(f"Circular dependency detected. Rules not processed: {remaining}")
 
         return result
 
     # Phase 274.6 — removed. Use individual rule execute() or RuleChain instead.
     def execute_rules(
         self,
-        rule_names: Optional[List[str]] = None,
-        context: Optional[RuleExecutionContext] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        rule_names: list[str] | None = None,
+        context: RuleExecutionContext | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         short_circuit: bool = True,
-        use_cache: Optional[bool] = None,
-        **kwargs
-    ) -> Dict[str, ValidationResult]:
+        use_cache: bool | None = None,
+        **kwargs,
+    ) -> dict[str, ValidationResult]:
         raise NotImplementedError(
             "BusinessRulesRegistry.execute_rules() was removed in Phase 274.6. "
         )
+
     def enable_rule(self, rule_name: str) -> None:
         """Phase 274.6 — removed."""
         raise NotImplementedError(
@@ -559,13 +528,13 @@ def get_registry() -> BusinessRulesRegistry:
 
 # Convenience decorator
 def register_rule(
-    rule_name: Optional[str] = None,
-    description: Optional[str] = None,
-    tags: Optional[List[str]] = None,
-    depends_on: Optional[List[str]] = None,
+    rule_name: str | None = None,
+    description: str | None = None,
+    tags: list[str] | None = None,
+    depends_on: list[str] | None = None,
     priority: int = 100,
     enabled: bool = True,
-    openspec_ref: Optional[str] = None,
+    openspec_ref: str | None = None,
 ) -> Callable:
     """
     Decorator for registering business rules with the global registry.
@@ -603,4 +572,3 @@ def register_rule(
         enabled=enabled,
         openspec_ref=openspec_ref,
     )
-

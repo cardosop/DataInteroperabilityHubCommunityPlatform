@@ -7,8 +7,9 @@ Security tests for data mesh endpoints (Task 8.6.4).
 Uses real API client and backend; no mocks or stubs.
 """
 
-import pytest
 import uuid
+
+import pytest
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -43,6 +44,7 @@ class DataMeshSecurityTestBase(TestCase):
 
     def _create_user(self, email, tenant):
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         return User.objects.create_user(
             email=email,
@@ -103,9 +105,7 @@ class DataMeshTenantIsolationSecurityTest(DataMeshSecurityTestBase):
             results = data if isinstance(data, list) else []
         ids = [str(r.get("id")) for r in results if isinstance(r, dict) and r.get("id")]
         domain_a_ids = list(
-            DataMeshDomain.objects.filter(
-                tenant=self.tenant_a
-            ).values_list("id", flat=True)
+            DataMeshDomain.objects.filter(tenant=self.tenant_a).values_list("id", flat=True)
         )
         for did in domain_a_ids:
             self.assertNotIn(

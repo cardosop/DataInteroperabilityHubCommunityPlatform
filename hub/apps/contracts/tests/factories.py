@@ -3,19 +3,22 @@ Test Factories for Contracts
 
 Real factories (not mocks) for creating test contracts with all HubContract sections.
 """
+
 import uuid
-from typing import Dict, Any, List, Optional
+from typing import Any
+
 from django.contrib.auth import get_user_model
+
+from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
     NormalizationStatus,
-    ValidationStatus,
+    OriginalFormat,
     OriginalSpecType,
-    OriginalFormat
+    ValidationStatus,
 )
 from hub.apps.tenants.models import Tenant
-from hub.apps.assets.models import Asset
 
 User = get_user_model()
 
@@ -37,21 +40,21 @@ class ContractFactoryEnhanced:
 
     @staticmethod
     def create_hub_contract_json(
-        contract_id: Optional[str] = None,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        version: Optional[str] = None,
-        owners: Optional[List[Dict[str, str]]] = None,
-        tags: Optional[List[str]] = None,
-        quality_rules: Optional[List[Dict[str, Any]]] = None,
-        compliance_policy: Optional[Dict[str, Any]] = None,
-        lifecycle_policy: Optional[Dict[str, Any]] = None,
-        marketplace_policy: Optional[Dict[str, Any]] = None,
-        schema_fields: Optional[List[Dict[str, Any]]] = None,
-        primary_key: Optional[List[str]] = None,
-        unique_constraints: Optional[List] = None,
-        indexes: Optional[List] = None,
-    ) -> Dict[str, Any]:
+        contract_id: str | None = None,
+        name: str | None = None,
+        description: str | None = None,
+        version: str | None = None,
+        owners: list[dict[str, str]] | None = None,
+        tags: list[str] | None = None,
+        quality_rules: list[dict[str, Any]] | None = None,
+        compliance_policy: dict[str, Any] | None = None,
+        lifecycle_policy: dict[str, Any] | None = None,
+        marketplace_policy: dict[str, Any] | None = None,
+        schema_fields: list[dict[str, Any]] | None = None,
+        primary_key: list[str] | None = None,
+        unique_constraints: list | None = None,
+        indexes: list | None = None,
+    ) -> dict[str, Any]:
         """
         Create a complete HubContract JSON with all sections.
 
@@ -81,9 +84,7 @@ class ContractFactoryEnhanced:
         if version is None:
             version = "1.0.0"
         if owners is None:
-            owners = [
-                {"name": "Data Platform Team", "email": "dataplatform@example.com"}
-            ]
+            owners = [{"name": "Data Platform Team", "email": "dataplatform@example.com"}]
         if tags is None:
             tags = ["analytics", "sales", "test"]
         if quality_rules is None:
@@ -93,7 +94,7 @@ class ContractFactoryEnhanced:
                     "dimension": "completeness",
                     "expression": "test_field IS NOT NULL",
                     "severity": "ERROR",
-                    "field": "test_field"
+                    "field": "test_field",
                 }
             ]
         if compliance_policy is None:
@@ -102,22 +103,19 @@ class ContractFactoryEnhanced:
                 "personal_data_categories": [],
                 "jurisdictions": [],
                 "legal_bases": [],
-                "retention_policy": None
+                "retention_policy": None,
             }
         if lifecycle_policy is None:
             lifecycle_policy = {
                 "data_source": "test.source",
                 "refresh_cadence": "DAILY",
-                "slas": {
-                    "availability": 99.0,
-                    "latency_ms_p95": 5000
-                }
+                "slas": {"availability": 99.0, "latency_ms_p95": 5000},
             }
         if marketplace_policy is None:
             marketplace_policy = {
                 "license_summary": "MIT License",
                 "intended_use": ["analytics"],
-                "restricted_use": []
+                "restricted_use": [],
             }
         if schema_fields is None:
             schema_fields = [
@@ -135,7 +133,7 @@ class ContractFactoryEnhanced:
                     "max_length": None,
                     "minimum": None,
                     "maximum": None,
-                    "metadata": {}
+                    "metadata": {},
                 }
             ]
         if primary_key is None:
@@ -153,37 +151,34 @@ class ContractFactoryEnhanced:
                 "description": description,
                 "version": version,
                 "owners": owners,
-                "tags": tags
+                "tags": tags,
             },
             "schema": {
                 "fields": schema_fields,
                 "primary_key": primary_key,
                 "unique_constraints": unique_constraints,
-                "indexes": indexes
+                "indexes": indexes,
             },
-            "quality": {
-                "default_profile_key": "intake_basic",
-                "rules": quality_rules
-            },
+            "quality": {"default_profile_key": "intake_basic", "rules": quality_rules},
             "privacy_compliance": compliance_policy,
             "lifecycle": lifecycle_policy,
-            "marketplace": marketplace_policy
+            "marketplace": marketplace_policy,
         }
 
     @staticmethod
     def create_contract(
         tenant: Tenant,
         created_by: User,
-        asset: Optional[Asset] = None,
+        asset: Asset | None = None,
         version: int = 1,
         status: ContractStatus = ContractStatus.DRAFT,
         original_spec_type: OriginalSpecType = OriginalSpecType.ODCS,
         original_spec_version: str = "3.0.2",
         original_format: OriginalFormat = OriginalFormat.JSON,
         normalization_status: NormalizationStatus = NormalizationStatus.NORMALIZED_OK,
-        validation_status: Optional[ValidationStatus] = None,
-        hub_contract_json: Optional[Dict[str, Any]] = None,
-        **kwargs
+        validation_status: ValidationStatus | None = None,
+        hub_contract_json: dict[str, Any] | None = None,
+        **kwargs,
     ) -> Contract:
         """
         Create a Contract instance with complete HubContract JSON.
@@ -206,13 +201,14 @@ class ContractFactoryEnhanced:
             Contract instance
         """
         # Extract original_raw from kwargs if provided (before passing to create_hub_contract_json)
-        original_raw = kwargs.pop('original_raw', None)
+        original_raw = kwargs.pop("original_raw", None)
 
         if hub_contract_json is None:
             hub_contract_json = ContractFactoryEnhanced.create_hub_contract_json(**kwargs)
 
         # Use provided original_raw if available, otherwise create from hub_contract_json
         import json
+
         if original_raw is not None:
             # If it's a dict, convert to JSON string
             if isinstance(original_raw, dict):
@@ -220,15 +216,17 @@ class ContractFactoryEnhanced:
             # If it's already a string, use it as-is
         else:
             # Create original_raw from hub_contract_json for testing
-            original_raw = json.dumps({
-                "id": hub_contract_json.get("id", "test-contract"),
-                "info": hub_contract_json.get("info", {}),
-                "schema": hub_contract_json.get("schema", {}),
-                "quality": hub_contract_json.get("quality", {}),
-                "privacy_compliance": hub_contract_json.get("privacy_compliance", {}),
-                "lifecycle": hub_contract_json.get("lifecycle", {}),
-                "marketplace": hub_contract_json.get("marketplace", {})
-            })
+            original_raw = json.dumps(
+                {
+                    "id": hub_contract_json.get("id", "test-contract"),
+                    "info": hub_contract_json.get("info", {}),
+                    "schema": hub_contract_json.get("schema", {}),
+                    "quality": hub_contract_json.get("quality", {}),
+                    "privacy_compliance": hub_contract_json.get("privacy_compliance", {}),
+                    "lifecycle": hub_contract_json.get("lifecycle", {}),
+                    "marketplace": hub_contract_json.get("marketplace", {}),
+                }
+            )
 
         return Contract.objects.create(
             tenant=tenant,
@@ -247,15 +245,11 @@ class ContractFactoryEnhanced:
             validation_status=validation_status,
             validation_errors=[],
             validation_warnings=[],
-            created_by=created_by
+            created_by=created_by,
         )
 
     @staticmethod
-    def create_contract_with_all_sections(
-        tenant: Tenant,
-        created_by: User,
-        **kwargs
-    ) -> Contract:
+    def create_contract_with_all_sections(tenant: Tenant, created_by: User, **kwargs) -> Contract:
         """
         Create a contract with all sections populated (owners, tags, quality, compliance, lifecycle, marketplace).
 
@@ -267,7 +261,7 @@ class ContractFactoryEnhanced:
             hub_contract_json=ContractFactoryEnhanced.create_hub_contract_json(
                 owners=[
                     {"name": "Data Platform Team", "email": "dataplatform@example.com"},
-                    {"name": "John Doe", "email": "john.doe@example.com"}
+                    {"name": "John Doe", "email": "john.doe@example.com"},
                 ],
                 tags=["analytics", "sales", "orders", "customer-data"],
                 quality_rules=[
@@ -276,15 +270,15 @@ class ContractFactoryEnhanced:
                         "dimension": "completeness",
                         "expression": "order_id IS NOT NULL",
                         "severity": "ERROR",
-                        "field": "order_id"
+                        "field": "order_id",
                     },
                     {
                         "rule_id": "valid_email_format",
                         "dimension": "validity",
                         "expression": "customer_email LIKE '%@%.%'",
                         "severity": "WARNING",
-                        "field": "customer_email"
-                    }
+                        "field": "customer_email",
+                    },
                 ],
                 compliance_policy={
                     "contains_personal_data": True,
@@ -293,21 +287,18 @@ class ContractFactoryEnhanced:
                     "legal_bases": ["CONSENT", "CONTRACT"],
                     "retention_policy": {
                         "period": "P5Y",
-                        "notes": "5 years retention after contract end"
-                    }
+                        "notes": "5 years retention after contract end",
+                    },
                 },
                 lifecycle_policy={
                     "data_source": "OLTP.orders",
                     "refresh_cadence": "DAILY",
-                    "slas": {
-                        "availability": 99.0,
-                        "latency_ms_p95": 5000
-                    }
+                    "slas": {"availability": 99.0, "latency_ms_p95": 5000},
                 },
                 marketplace_policy={
                     "license_summary": "MIT License",
                     "intended_use": ["analytics", "machine_learning"],
-                    "restricted_use": ["resale"]
+                    "restricted_use": ["resale"],
                 },
                 schema_fields=[
                     {
@@ -324,10 +315,7 @@ class ContractFactoryEnhanced:
                         "max_length": 20,
                         "minimum": None,
                         "maximum": None,
-                        "metadata": {
-                            "source_system": "OLTP",
-                            "business_key": True
-                        }
+                        "metadata": {"source_system": "OLTP", "business_key": True},
                     },
                     {
                         "name": "customer_email",
@@ -343,13 +331,12 @@ class ContractFactoryEnhanced:
                         "max_length": 255,
                         "minimum": None,
                         "maximum": None,
-                        "metadata": {}
-                    }
+                        "metadata": {},
+                    },
                 ],
                 primary_key=["order_id"],
                 unique_constraints=[],
-                indexes=[["customer_email"]]
+                indexes=[["customer_email"]],
             ),
-            **kwargs
+            **kwargs,
         )
-

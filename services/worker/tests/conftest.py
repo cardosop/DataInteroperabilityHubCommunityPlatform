@@ -9,6 +9,7 @@ TenantPlan seeding) that must be active for any django_db test.
 
 This conftest imports both files so all patches are applied.
 """
+
 import os
 import sys
 from contextlib import contextmanager
@@ -18,7 +19,7 @@ import pytest
 
 # Ensure repo root is on sys.path so project conftest modules
 # are importable.
-_repo_root = Path(__file__).resolve().parents[3]  # noqa: E501
+_repo_root = Path(__file__).resolve().parents[3]
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
@@ -53,10 +54,11 @@ def runtime_db_connection():
 
     @contextmanager
     def _swap():
-        db_conf = settings.DATABASES['default']
-        current_name = db_conf['NAME']
+        db_conf = settings.DATABASES["default"]
+        current_name = db_conf["NAME"]
         runtime_name = os.environ.get(
-            'POSTGRES_DB', 'hub_test_test_shared',
+            "POSTGRES_DB",
+            "hub_test_test_shared",
         )
 
         # If already pointing at the runtime DB, nothing to do.
@@ -64,13 +66,13 @@ def runtime_db_connection():
             yield
             return
 
-        db_conf['NAME'] = runtime_name
-        conn = connections['default']
+        db_conf["NAME"] = runtime_name
+        conn = connections["default"]
         conn.close()
         try:
             yield
         finally:
-            db_conf['NAME'] = current_name
+            db_conf["NAME"] = current_name
             conn.close()
 
     return _swap

@@ -1,22 +1,23 @@
 """Consent management commands (GDPR compliance)."""
 
 import json
+
 import click
+
 from ..api_client import api_client
 
 
 @click.group()
 def consent():
     """Consent management — purposes, records, dashboard."""
-    pass
 
 
 # ── Purposes ────────────────────────────────────────────────────────────
 
+
 @consent.group("purposes")
 def consent_purposes():
     """Consent purpose management."""
-    pass
 
 
 @consent_purposes.command("list")
@@ -32,9 +33,14 @@ def consent_purposes_list():
 @click.option("--required/--optional", default=False)
 def consent_purposes_create(name, description, required):
     """Create a consent purpose."""
-    resp = api_client.post("consent/consent-purposes/", json={
-        "name": name, "description": description, "required": required,
-    })
+    resp = api_client.post(
+        "consent/consent-purposes/",
+        json={
+            "name": name,
+            "description": description,
+            "required": required,
+        },
+    )
     click.echo(json.dumps(resp, indent=2))
 
 
@@ -51,10 +57,10 @@ def consent_purposes_delete(purpose_id, confirm):
 
 # ── Records ─────────────────────────────────────────────────────────────
 
+
 @consent.group("records")
 def consent_records():
     """Consent record management."""
-    pass
 
 
 @consent_records.command("list")
@@ -69,13 +75,18 @@ def consent_records_list():
 @click.option("--granted/--denied", default=True)
 def consent_records_create(purpose_id, granted):
     """Record a consent decision."""
-    resp = api_client.post("consent/consent-records/", json={
-        "purpose_id": purpose_id, "granted": granted,
-    })
+    resp = api_client.post(
+        "consent/consent-records/",
+        json={
+            "purpose_id": purpose_id,
+            "granted": granted,
+        },
+    )
     click.echo(json.dumps(resp, indent=2))
 
 
 # ── Dashboard ───────────────────────────────────────────────────────────
+
 
 @consent.command("dashboard")
 def consent_dashboard():

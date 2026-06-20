@@ -32,17 +32,17 @@ also deferred) reads the last 7 days from S3, computes p95 of each
 test's ``measurement_ms``, and opens a GitHub issue if today's run is
 > 20% above that p95. The 20% threshold is documented in the spec.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import statistics
 import subprocess
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from collections.abc import Sequence
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Sequence
-
 
 # The schema field set is locked by ``test_perf_record.py``. Any change
 # to this list must update the test in lockstep so the schema lock is
@@ -105,7 +105,7 @@ def _git_sha() -> str:
 
 
 def _now_iso_utc() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _percentile(values: Sequence[float], pct: float) -> float:

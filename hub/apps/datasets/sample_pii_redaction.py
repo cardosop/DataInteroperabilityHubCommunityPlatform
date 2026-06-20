@@ -8,6 +8,7 @@ patterns (email, phone, card, SSN) or bear high-risk column names with the liter
 """
 
 from __future__ import annotations
+
 import re
 from copy import deepcopy
 from typing import Any

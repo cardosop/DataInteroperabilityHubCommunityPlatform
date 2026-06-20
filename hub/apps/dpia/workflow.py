@@ -1,7 +1,8 @@
 """DPIA workflow transitions — Phase 232.5."""
 
 from __future__ import annotations
-from typing import Any, Optional
+
+from typing import Any
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -157,7 +158,7 @@ def complete_consultation(*, dpia: Dpia, actor, approve: bool) -> Dpia:
 
 
 @transaction.atomic
-def create_follow_on_version(*, dpia: Dpia, actor, title: Optional[str] = None) -> Dpia:
+def create_follow_on_version(*, dpia: Dpia, actor, title: str | None = None) -> Dpia:
     """Create a new DRAFT version after an approved / closed cycle."""
     _ensure_dpia_feature(dpia.tenant)
     if dpia.status not in (
@@ -197,7 +198,7 @@ def create_follow_on_version(*, dpia: Dpia, actor, title: Optional[str] = None) 
 
 
 def diff_wizard_payloads(
-    current: dict[str, Any], previous: Optional[dict[str, Any]]
+    current: dict[str, Any], previous: dict[str, Any] | None
 ) -> dict[str, Any]:
     """Structural diff for wizard JSON (shallow key-level)."""
     prev = previous or {}
@@ -212,4 +213,8 @@ def diff_wizard_payloads(
                     "after": current.get(k),
                 }
             )
-    return {"changed_keys": changes, "previous_key_count": len(prev), "current_key_count": len(current)}
+    return {
+        "changed_keys": changes,
+        "previous_key_count": len(prev),
+        "current_key_count": len(current),
+    }

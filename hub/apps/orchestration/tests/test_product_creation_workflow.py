@@ -17,8 +17,8 @@ except ImportError:
     pytest = None
     pytestmark = None
 
-import uuid
 import json
+import uuid
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -26,11 +26,10 @@ from django.test import TestCase
 from hub.apps.contracts.models import Contract, OriginalSpecType
 from hub.apps.orchestration.models import WorkflowDefinition, WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflow_engine import WorkflowEngine, WorkflowExecutionError
 from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import UserStatus
-import uuid
 
 User = get_user_model()
 
@@ -49,11 +48,6 @@ class ProductCreationWorkflowDefinitionTest(TestCase):
 
     def test_register_workflow_creates_definition(self):
         """Test that register_workflow creates workflow definition"""
-        # Count existing definitions
-        initial_count = WorkflowDefinition.objects.filter(
-            name=ProductCreationWorkflow.WORKFLOW_NAME
-        ).count()
-
         ProductCreationWorkflow.register_workflow(self.registry)
 
         # Verify workflow definition exists (may already exist from previous test)
@@ -404,7 +398,9 @@ class ProductCreationWorkflowStepExecutionTest(TestCase):
         instance = WorkflowInstance.objects.create(
             workflow_definition=WorkflowDefinition.objects.filter(
                 name=ProductCreationWorkflow.WORKFLOW_NAME
-            ).order_by("-created_at").first(),
+            )
+            .order_by("-created_at")
+            .first(),
             workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
             workflow_version="1.0.0",
             tenant=self.tenant,
@@ -441,7 +437,9 @@ class ProductCreationWorkflowStepExecutionTest(TestCase):
         instance = WorkflowInstance.objects.create(
             workflow_definition=WorkflowDefinition.objects.filter(
                 name=ProductCreationWorkflow.WORKFLOW_NAME
-            ).order_by("-created_at").first(),
+            )
+            .order_by("-created_at")
+            .first(),
             workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
             workflow_version="1.0.0",
             tenant=self.tenant,
@@ -485,7 +483,9 @@ class ProductCreationWorkflowE2ETest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-e2e-{uuid.uuid4().hex[:8]}@example.com",
@@ -558,7 +558,7 @@ class ProductCreationWorkflowE2ETest(TestCase):
         }
 
         # Execute workflow
-        workflow_def = self.registry.get_workflow(ProductCreationWorkflow.WORKFLOW_NAME)
+        self.registry.get_workflow(ProductCreationWorkflow.WORKFLOW_NAME)
         instance = self.engine.create_instance(
             workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
@@ -632,7 +632,7 @@ class ProductCreationWorkflowE2ETest(TestCase):
         }
 
         # Execute workflow
-        workflow_def = self.registry.get_workflow(ProductCreationWorkflow.WORKFLOW_NAME)
+        self.registry.get_workflow(ProductCreationWorkflow.WORKFLOW_NAME)
         instance = self.engine.create_instance(
             workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
@@ -644,8 +644,10 @@ class ProductCreationWorkflowE2ETest(TestCase):
         try:
             instance = self.engine.start_instance(str(instance.id))
             instance = self.engine.execute_instance(str(instance.id))
-        except Exception:
-            pass  # Expected to fail
+        except WorkflowExecutionError:
+            # Expected — validation step raised a controlled error.
+            # Refresh so we can inspect the final status below.
+            pass
 
         # Verify workflow failed (may be FAILED or ROLLED_BACK if compensation ran)
         instance.refresh_from_db()
@@ -695,7 +697,7 @@ class ProductCreationWorkflowE2ETest(TestCase):
         }
 
         # Execute workflow
-        workflow_def = self.registry.get_workflow(ProductCreationWorkflow.WORKFLOW_NAME)
+        self.registry.get_workflow(ProductCreationWorkflow.WORKFLOW_NAME)
         instance = self.engine.create_instance(
             workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
@@ -707,8 +709,10 @@ class ProductCreationWorkflowE2ETest(TestCase):
         try:
             instance = self.engine.start_instance(str(instance.id))
             instance = self.engine.execute_instance(str(instance.id))
-        except Exception:
-            pass  # Expected to fail
+        except WorkflowExecutionError:
+            # Expected — the workflow failed at a controlled validation step.
+            # Refresh so we can inspect the final status below.
+            pass
 
         # Verify workflow failed (may be FAILED or ROLLED_BACK if compensation ran)
         instance.refresh_from_db()
@@ -755,7 +759,7 @@ class ProductCreationWorkflowE2ETest(TestCase):
         }
 
         # Execute workflow
-        workflow_def = self.registry.get_workflow(ProductCreationWorkflow.WORKFLOW_NAME)
+        self.registry.get_workflow(ProductCreationWorkflow.WORKFLOW_NAME)
         instance = self.engine.create_instance(
             workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
@@ -964,9 +968,9 @@ class ProductCreationWorkflowCompensationTest(TestCase):
                         original_task
                     )
 
-        except Exception as e:
-            # If we get here, compensation should have been triggered
-            # Verify ODCS contract was deleted
+        except WorkflowExecutionError:
+            # Expected — the monkey-patched task raised a controlled error
+            # triggering compensation. Verify ODCS contract was deleted.
             odcs_contract_id = instance.state_data.get("odcs_contract_id")
             if odcs_contract_id:
                 try:
@@ -1140,34 +1144,32 @@ class ProductCreationWorkflowCompensationTest(TestCase):
             "extensions", {}
         ).get("x_odps", {}).get("odps_link")
 
-        # If links don't exist yet, execute link_contracts step
+        # If links don't exist yet, execute link_contracts step.
+        # The linking MUST succeed for the compensation test to be meaningful.
         if not odps_has_link or not odcs_has_link:
             link_contracts_step = steps[8]
-            try:
-                link_contracts_step_def = step_defs[link_contracts_step.step_index]
-                step_output = self.engine._execute_step(
-                    instance, link_contracts_step, link_contracts_step_def
-                )
+            link_contracts_step_def = step_defs[link_contracts_step.step_index]
+            step_output = self.engine._execute_step(
+                instance, link_contracts_step, link_contracts_step_def
+            )
 
-                # Update workflow state with step output
-                step_state = step_output.get("state", {})
-                if step_state:
-                    instance.state_data.update(step_state)
-                for key, value in step_output.items():
-                    if key != "state" and key != "output":
-                        instance.state_data[key] = value
-                instance.save(update_fields=["state_data", "updated_at"])
+            # Update workflow state with step output
+            step_state = step_output.get("state", {})
+            if step_state:
+                instance.state_data.update(step_state)
+            for key, value in step_output.items():
+                if key != "state" and key != "output":
+                    instance.state_data[key] = value
+            instance.save(update_fields=["state_data", "updated_at"])
 
-                link_contracts_step.status = StepStatus.COMPLETED
-                link_contracts_step.save()
+            link_contracts_step.status = StepStatus.COMPLETED
+            link_contracts_step.save()
 
-                # Refresh contracts
-                odps_contract.refresh_from_db()
-                odcs_contract.refresh_from_db()
-            except Exception as e:
-                pass
+            # Refresh contracts
+            odps_contract.refresh_from_db()
+            odcs_contract.refresh_from_db()
 
-        # Verify links exist
+        # Verify links exist — if they don't, the compensation test is not possible.
         odps_contract.refresh_from_db()
         odcs_contract.refresh_from_db()
 
@@ -1212,7 +1214,9 @@ class ProductCreationWorkflowEventPublishingTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-events-{uuid.uuid4().hex[:8]}@example.com",
@@ -1275,9 +1279,6 @@ class ProductCreationWorkflowEventPublishingTest(TestCase):
             "tenant_id": str(self.tenant.id),
             "user_id": str(self.user.id),
         }
-
-        # Count events before
-        initial_count = Event.objects.filter(event_type="workflow.created").count()
 
         instance = self.engine.create_instance(
             workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
@@ -1400,6 +1401,7 @@ class ProductCreationWorkflowEventPublishingTest(TestCase):
         instance.refresh_from_db()
         if instance.status == WorkflowStatus.RUNNING:
             from django.core.exceptions import ValidationError
+
             try:
                 self.engine.start_instance(str(instance.id))
             except ValidationError:
@@ -1629,8 +1631,10 @@ class ProductCreationWorkflowEventPublishingTest(TestCase):
         # Execute workflow - should fail
         try:
             instance = self.engine.execute_instance(str(instance.id))
-        except Exception:
-            pass  # Expected to fail
+        except WorkflowExecutionError:
+            # Expected — the workflow failed at a controlled validation step.
+            # Refresh so we can inspect the final status below.
+            pass
 
         instance.refresh_from_db()
 
@@ -1684,8 +1688,10 @@ class ProductCreationWorkflowEventPublishingTest(TestCase):
         # Execute workflow - should fail
         try:
             instance = self.engine.execute_instance(str(instance.id))
-        except Exception:
-            pass  # Expected to fail
+        except WorkflowExecutionError:
+            # Expected — the workflow failed at a controlled validation step.
+            # Refresh so we can inspect the final status below.
+            pass
 
         instance.refresh_from_db()
 
@@ -1751,8 +1757,10 @@ class ProductCreationWorkflowEventPublishingTest(TestCase):
         # Execute workflow - should fail
         try:
             instance = self.engine.execute_instance(str(instance.id))
-        except Exception:
-            pass  # Expected to fail
+        except WorkflowExecutionError:
+            # Expected — the workflow failed at a controlled validation step.
+            # Refresh so we can inspect the final status below.
+            pass
 
         instance.refresh_from_db()
 
@@ -1907,7 +1915,7 @@ class ProductCreationWorkflowProgressTrackingTest(TestCase):
                 self.assertGreaterEqual(
                     progress_values[i],
                     progress_values[i - 1],
-                    f"Progress should not decrease: {progress_values[i-1]} -> {progress_values[i]}",
+                    f"Progress should not decrease: {progress_values[i - 1]} -> {progress_values[i]}",
                 )
 
     def test_progress_increases_monotonically_edge_case_retry(self):
@@ -1936,9 +1944,7 @@ class ProductCreationWorkflowProgressTrackingTest(TestCase):
             data__workflow_instance_id=str(instance.id),
         ).order_by("timestamp")
 
-        initial_progress_values = [
-            e.data["progress_percentage"] for e in initial_events if "progress_percentage" in e.data
-        ]
+        [e.data["progress_percentage"] for e in initial_events if "progress_percentage" in e.data]
 
         # Execute workflow
         instance = self.engine.execute_instance(str(instance.id))
@@ -1960,7 +1966,7 @@ class ProductCreationWorkflowProgressTrackingTest(TestCase):
                     all_progress_values[i],
                     all_progress_values[i - 1],
                     f"Progress should not decrease even with retries: "
-                    f"{all_progress_values[i-1]} -> {all_progress_values[i]}",
+                    f"{all_progress_values[i - 1]} -> {all_progress_values[i]}",
                 )
 
     def test_progress_in_step_events(self):

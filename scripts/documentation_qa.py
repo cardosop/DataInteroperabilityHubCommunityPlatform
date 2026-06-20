@@ -14,13 +14,10 @@ Comprehensive QA checks for ODPS and Marketplace Integration documentation:
 """
 
 import json
-import os
 import re
 import sys
-from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Set, Tuple
-from urllib.parse import urlparse
+from typing import Any
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -49,7 +46,7 @@ class DocumentationQA:
         self.marketplace_events = set()
         self.marketplace_connectors = set()
 
-    def run_all_checks(self) -> Dict[str, Any]:
+    def run_all_checks(self) -> dict[str, Any]:
         """Run all QA checks and return results."""
         print("🔍 Starting Documentation Quality Assurance...")
         print("=" * 80)
@@ -81,7 +78,7 @@ class DocumentationQA:
 
         return results
 
-    def check_consistency(self) -> Dict[str, Any]:
+    def check_consistency(self) -> dict[str, Any]:
         """Check documentation consistency."""
         print("\n📋 Checking Documentation Consistency...")
         issues = []
@@ -107,7 +104,7 @@ class DocumentationQA:
             "diagrams_checked": len([i for i in issues if "diagram" in i.get("type", "")]),
         }
 
-    def check_completeness(self) -> Dict[str, Any]:
+    def check_completeness(self) -> dict[str, Any]:
         """Check documentation completeness."""
         print("\n✅ Checking Documentation Completeness...")
         issues = []
@@ -163,7 +160,7 @@ class DocumentationQA:
             "marketplace_connectors_found": len(self.marketplace_connectors),
         }
 
-    def check_accuracy(self) -> Dict[str, Any]:
+    def check_accuracy(self) -> dict[str, Any]:
         """Check documentation accuracy."""
         print("\n🎯 Checking Documentation Accuracy...")
         issues = []
@@ -188,7 +185,7 @@ class DocumentationQA:
             "version_checks": len([i for i in issues if "version" in i.get("type", "")]),
         }
 
-    def check_links(self) -> Dict[str, Any]:
+    def check_links(self) -> dict[str, Any]:
         """Check documentation links."""
         print("\n🔗 Checking Documentation Links...")
         broken_links = []
@@ -214,7 +211,7 @@ class DocumentationQA:
             "broken_links": broken_links,
         }
 
-    def _find_odps_docs(self) -> List[Path]:
+    def _find_odps_docs(self) -> list[Path]:
         """Find all ODPS-related documentation files."""
         odps_files = []
         patterns = ["ODPS_*.md", "*ODPS*.md", "MARKETPLACE_*.md", "*marketplace*.md"]
@@ -226,7 +223,7 @@ class DocumentationQA:
 
         return sorted(odps_files)
 
-    def _check_terminology(self, files: List[Path]) -> List[Dict[str, Any]]:
+    def _check_terminology(self, files: list[Path]) -> list[dict[str, Any]]:
         """Check terminology consistency."""
         issues = []
         # Terminology is acceptable in multiple forms:
@@ -238,22 +235,22 @@ class DocumentationQA:
         # Check for actual inconsistencies (e.g., mixing ODPS and ODCS incorrectly)
         for file_path in files:
             try:
-                content = file_path.read_text(encoding="utf-8")
+                file_path.read_text(encoding="utf-8")
                 # Check for obvious errors like "ODPS contract" when it should be "ODCS contract"
                 # This is a simplified check - full terminology checking would be more complex
-                pass  # Terminology variations are acceptable
+                # Terminology variations are acceptable
             except Exception as e:
                 issues.append(
                     {
                         "file": str(file_path.relative_to(self.docs_dir)),
                         "type": "terminology",
-                        "issue": f"Error reading file: {str(e)}",
+                        "issue": f"Error reading file: {e!s}",
                     }
                 )
 
         return issues
 
-    def _check_code_examples(self, files: List[Path]) -> List[Dict[str, Any]]:
+    def _check_code_examples(self, files: list[Path]) -> list[dict[str, Any]]:
         """Check code example consistency."""
         issues = []
         code_patterns = {
@@ -288,7 +285,7 @@ class DocumentationQA:
                                         {
                                             "file": str(file_path.relative_to(self.docs_dir)),
                                             "type": "code_example",
-                                            "issue": f"Potentially invalid JSON in code example {i+1}",
+                                            "issue": f"Potentially invalid JSON in code example {i + 1}",
                                             "severity": "warning",
                                         }
                                     )
@@ -297,13 +294,13 @@ class DocumentationQA:
                     {
                         "file": str(file_path.relative_to(self.docs_dir)),
                         "type": "code_example",
-                        "issue": f"Error checking code examples: {str(e)}",
+                        "issue": f"Error checking code examples: {e!s}",
                     }
                 )
 
         return issues
 
-    def _check_diagrams(self, files: List[Path]) -> List[Dict[str, Any]]:
+    def _check_diagrams(self, files: list[Path]) -> list[dict[str, Any]]:
         """Check diagram consistency."""
         issues = []
         # Diagrams are typically in ASCII art or Mermaid format
@@ -325,7 +322,7 @@ class DocumentationQA:
                                 {
                                     "file": str(file_path.relative_to(self.docs_dir)),
                                     "type": "diagram",
-                                    "issue": f"Empty diagram block {i+1}",
+                                    "issue": f"Empty diagram block {i + 1}",
                                     "severity": "warning",
                                 }
                             )
@@ -334,7 +331,7 @@ class DocumentationQA:
                     {
                         "file": str(file_path.relative_to(self.docs_dir)),
                         "type": "diagram",
-                        "issue": f"Error checking diagrams: {str(e)}",
+                        "issue": f"Error checking diagrams: {e!s}",
                     }
                 )
 
@@ -436,7 +433,7 @@ class DocumentationQA:
         ]
         self.marketplace_connectors.update(connectors)
 
-    def _check_odps_features_documented(self) -> List[Dict[str, Any]]:
+    def _check_odps_features_documented(self) -> list[dict[str, Any]]:
         """Check if all ODPS features are documented."""
         issues = []
         required_features = {
@@ -484,7 +481,7 @@ class DocumentationQA:
 
         return issues
 
-    def _check_odps_endpoints_documented(self) -> List[Dict[str, Any]]:
+    def _check_odps_endpoints_documented(self) -> list[dict[str, Any]]:
         """Check if all ODPS endpoints are documented."""
         issues = []
         api_ref = self.docs_dir / "API_ENDPOINTS_REFERENCE.md"
@@ -518,7 +515,7 @@ class DocumentationQA:
 
         return issues
 
-    def _check_odps_events_documented(self) -> List[Dict[str, Any]]:
+    def _check_odps_events_documented(self) -> list[dict[str, Any]]:
         """Check if all ODPS events are documented."""
         issues = []
         event_ref = self.docs_dir / "EVENT_TYPES_REFERENCE.md"
@@ -555,7 +552,7 @@ class DocumentationQA:
 
         return issues
 
-    def _check_odps_workflows_documented(self) -> List[Dict[str, Any]]:
+    def _check_odps_workflows_documented(self) -> list[dict[str, Any]]:
         """Check if all ODPS workflows are documented."""
         issues = []
         creation_flows = self.docs_dir / "ODPS_CREATION_FLOWS.md"
@@ -591,7 +588,7 @@ class DocumentationQA:
 
         return issues
 
-    def _check_marketplace_features_documented(self) -> List[Dict[str, Any]]:
+    def _check_marketplace_features_documented(self) -> list[dict[str, Any]]:
         """Check if all marketplace features are documented."""
         issues = []
         marketplace_guide = self.docs_dir / "MARKETPLACE_INTEGRATION_USER_GUIDE.md"
@@ -640,7 +637,7 @@ class DocumentationQA:
 
         return issues
 
-    def _check_marketplace_endpoints_documented(self) -> List[Dict[str, Any]]:
+    def _check_marketplace_endpoints_documented(self) -> list[dict[str, Any]]:
         """Check if all marketplace endpoints are documented."""
         issues = []
         api_ref = self.docs_dir / "MARKETPLACE_API_REFERENCE.md"
@@ -657,7 +654,7 @@ class DocumentationQA:
         # Basic check - marketplace API reference exists
         return issues
 
-    def _check_marketplace_events_documented(self) -> List[Dict[str, Any]]:
+    def _check_marketplace_events_documented(self) -> list[dict[str, Any]]:
         """Check if all marketplace events are documented."""
         issues = []
         event_ref = self.docs_dir / "EVENT_TYPES_REFERENCE.md"
@@ -683,7 +680,7 @@ class DocumentationQA:
 
         return issues
 
-    def _check_marketplace_connectors_documented(self) -> List[Dict[str, Any]]:
+    def _check_marketplace_connectors_documented(self) -> list[dict[str, Any]]:
         """Check if all marketplace connectors are documented."""
         issues = []
         required_connectors = [
@@ -717,14 +714,14 @@ class DocumentationQA:
 
         return issues
 
-    def _check_code_syntax(self) -> List[Dict[str, Any]]:
+    def _check_code_syntax(self) -> list[dict[str, Any]]:
         """Check code example syntax."""
         issues = []
         # Basic syntax checking is done in _check_code_examples
         # This can be extended with more sophisticated checks
         return issues
 
-    def _check_api_examples(self) -> List[Dict[str, Any]]:
+    def _check_api_examples(self) -> list[dict[str, Any]]:
         """Check API examples for accuracy."""
         issues = []
         odps_files = self._find_odps_docs()
@@ -750,18 +747,17 @@ class DocumentationQA:
                     {
                         "file": str(file_path.relative_to(self.docs_dir)),
                         "type": "api_example",
-                        "issue": f"Error checking API examples: {str(e)}",
+                        "issue": f"Error checking API examples: {e!s}",
                     }
                 )
 
         return issues
 
-    def _check_version_numbers(self) -> List[Dict[str, Any]]:
+    def _check_version_numbers(self) -> list[dict[str, Any]]:
         """Check version numbers for accuracy."""
         issues = []
         odps_files = self._find_odps_docs()
         valid_odps_versions = ["4.1", "4.0", "1.x"]
-        valid_odcs_versions = ["3.0.2", "3.0.1", "3.0.0", "2.2.2"]
 
         for file_path in odps_files:
             try:
@@ -784,13 +780,13 @@ class DocumentationQA:
                     {
                         "file": str(file_path.relative_to(self.docs_dir)),
                         "type": "version",
-                        "issue": f"Error checking versions: {str(e)}",
+                        "issue": f"Error checking versions: {e!s}",
                     }
                 )
 
         return issues
 
-    def _extract_links(self, file_path: Path) -> List[str]:
+    def _extract_links(self, file_path: Path) -> list[str]:
         """Extract all links from a markdown file."""
         links = []
         try:
@@ -798,7 +794,7 @@ class DocumentationQA:
             # Extract markdown links [text](url)
             link_pattern = r"\[([^\]]+)\]\(([^)]+)\)"
             matches = re.findall(link_pattern, content)
-            for text, url in matches:
+            for _text, url in matches:
                 links.append(url)
         except Exception:
             pass
@@ -822,7 +818,7 @@ class DocumentationQA:
         if (
             link.startswith("../")
             or link.startswith("./")
-            or (not link.startswith("/") and not "://" in link)
+            or (not link.startswith("/") and "://" not in link)
         ):
             # Relative link - resolve from source file
             try:
@@ -867,7 +863,7 @@ class DocumentationQA:
 
         return True  # Unknown format, assume valid
 
-    def generate_report(self, results: Dict[str, Any], output_file: Path = None) -> str:
+    def generate_report(self, results: dict[str, Any], output_file: Path = None) -> str:
         """Generate QA report."""
         report_lines = []
         report_lines.append("# Documentation Quality Assurance Report")
@@ -943,7 +939,7 @@ def main():
 
     # Generate report
     report_file = DOCS_DIR / "documentation_qa_report.md"
-    report = qa.generate_report(results, report_file)
+    qa.generate_report(results, report_file)
 
     # Print summary
     print("\n" + "=" * 80)

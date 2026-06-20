@@ -11,16 +11,13 @@ Comprehensive tests for marketplace synchronization workflow including:
 All tests use real services and connectors - no mocks/stubs.
 """
 
-import uuid
-import json
 import os
-import tempfile
+import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.test import TestCase, override_settings
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetSourceType, AssetStatus
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
@@ -41,16 +38,14 @@ from hub.apps.integrations.models import (
     MarketplaceSyncJob,
 )
 from hub.apps.orchestration.models import (
-    StepStatus,
     WorkflowDefinition,
     WorkflowInstance,
     WorkflowStatus,
 )
 from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflow_engine import WorkflowEngine, WorkflowExecutionError
 from hub.apps.orchestration.workflows.marketplace_sync import MarketplaceSyncWorkflow
 from hub.apps.tenants.models import KYCStatus, Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -116,11 +111,29 @@ class StubMarketplaceConnector(DataMarketplaceConnector):
     def publish_resource(self, listing_id: str, resource: MarketplaceResource):
         return resource
 
+    # Track filesystem side effects so tests can clean them up.
+    _created_paths: list[str] = []
+
+    @classmethod
+    def cleanup_downloaded_files(cls):
+        """Remove files created by this stub during tests."""
+        import shutil
+        for path in cls._created_paths:
+            try:
+                if os.path.isfile(path):
+                    os.unlink(path)
+                elif os.path.isdir(path):
+                    shutil.rmtree(path, ignore_errors=True)
+            except OSError:
+                pass
+        cls._created_paths.clear()
+
     def download_resource(self, resource_id: str, destination_path: str):
-        # Create empty file at destination
+        # Create test file at destination, tracking it for cleanup.
         os.makedirs(os.path.dirname(destination_path), exist_ok=True)
         with open(destination_path, "w") as f:
             f.write("test data")
+        self._created_paths.append(destination_path)
         return destination_path
 
     def map_to_hub_asset(self, listing: MarketplaceListing):
@@ -302,15 +315,28 @@ class MarketplaceSyncWorkflowTaskExecutionTest(TestCase):
         MarketplaceSyncWorkflow.register_workflow(self.registry)
         MarketplaceSyncWorkflow.register_tasks(self.engine)
 
+    def tearDown(self):
+        StubMarketplaceConnector.cleanup_downloaded_files()
+        super().tearDown()
+
     def test_validate_connection_task_success(self):
         """Test validate_connection task with valid connection"""
-        # Register real test connector (no mocks)
+        # Register real test connector (no mocks); clean up after test.
         MarketplaceConnectorFactory.register_connector(
             MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, StubMarketplaceConnector
         )
+        self.addCleanup(
+            lambda: MarketplaceConnectorFactory.unregister_connector(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+            )
+        )
 
         # Get workflow definition
-        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_push").order_by("-created_at").first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name="marketplace_sync_push")
+            .order_by("-created_at")
+            .first()
+        )
 
         # Create workflow instance
         instance = WorkflowInstance.objects.create(
@@ -340,13 +366,22 @@ class MarketplaceSyncWorkflowTaskExecutionTest(TestCase):
             def test_connection(self):
                 return False  # Always fail
 
-        # Register failing connector
+        # Register failing connector; clean up after test.
         MarketplaceConnectorFactory.register_connector(
             MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, FailingConnector
         )
+        self.addCleanup(
+            lambda: MarketplaceConnectorFactory.unregister_connector(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+            )
+        )
 
         # Get workflow definition
-        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_push").order_by("-created_at").first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name="marketplace_sync_push")
+            .order_by("-created_at")
+            .first()
+        )
 
         # Create workflow instance
         instance = WorkflowInstance.objects.create(
@@ -384,7 +419,11 @@ class MarketplaceSyncWorkflowTaskExecutionTest(TestCase):
         )
 
         # Get workflow definition
-        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_push").order_by("-created_at").first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name="marketplace_sync_push")
+            .order_by("-created_at")
+            .first()
+        )
 
         # Create workflow instance with connection_id
         instance = WorkflowInstance.objects.create(
@@ -418,7 +457,11 @@ class MarketplaceSyncWorkflowTaskExecutionTest(TestCase):
         )
 
         # Get workflow definition
-        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_push").order_by("-created_at").first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name="marketplace_sync_push")
+            .order_by("-created_at")
+            .first()
+        )
 
         # Create workflow instance
         instance = WorkflowInstance.objects.create(
@@ -481,7 +524,11 @@ class MarketplaceSyncWorkflowCompensationTest(TestCase):
 
     def test_rollback_connection_validation(self):
         """Test rollback_connection_validation (no-op)"""
-        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_push").order_by("-created_at").first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name="marketplace_sync_push")
+            .order_by("-created_at")
+            .first()
+        )
         instance = WorkflowInstance.objects.create(
             workflow_name="marketplace_sync_push",
             workflow_definition=workflow_def,
@@ -496,7 +543,11 @@ class MarketplaceSyncWorkflowCompensationTest(TestCase):
 
     def test_rollback_asset_validation(self):
         """Test rollback_asset_validation (no-op)"""
-        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_push").order_by("-created_at").first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name="marketplace_sync_push")
+            .order_by("-created_at")
+            .first()
+        )
         instance = WorkflowInstance.objects.create(
             workflow_name="marketplace_sync_push",
             workflow_definition=workflow_def,
@@ -526,7 +577,11 @@ class MarketplaceSyncWorkflowCompensationTest(TestCase):
             external_listing_id="listing-123",
         )
 
-        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_push").order_by("-created_at").first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name="marketplace_sync_push")
+            .order_by("-created_at")
+            .first()
+        )
         instance = WorkflowInstance.objects.create(
             workflow_name="marketplace_sync_push",
             workflow_definition=workflow_def,
@@ -587,7 +642,11 @@ class MarketplaceSyncWorkflowCompensationTest(TestCase):
             status=ContractStatus.ACTIVE,
         )
 
-        workflow_def = WorkflowDefinition.objects.filter(name="marketplace_sync_pull").order_by("-created_at").first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name="marketplace_sync_pull")
+            .order_by("-created_at")
+            .first()
+        )
         instance = WorkflowInstance.objects.create(
             workflow_name="marketplace_sync_pull",
             workflow_definition=workflow_def,
@@ -647,6 +706,10 @@ class MarketplaceSyncWorkflowIntegrationTest(TestCase):
         MarketplaceSyncWorkflow.register_workflow(self.registry)
         MarketplaceSyncWorkflow.register_tasks(self.engine)
 
+    def tearDown(self):
+        StubMarketplaceConnector.cleanup_downloaded_files()
+        super().tearDown()
+
     def test_push_workflow_execution(self):
         """Test complete PUSH workflow execution"""
         # Create test asset
@@ -666,9 +729,14 @@ class MarketplaceSyncWorkflowIntegrationTest(TestCase):
             status=SyncStatus.PENDING.value,
         )
 
-        # Register real test connector (no mocks)
+        # Register real test connector (no mocks); clean up after test.
         MarketplaceConnectorFactory.register_connector(
             MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, StubMarketplaceConnector
+        )
+        self.addCleanup(
+            lambda: MarketplaceConnectorFactory.unregister_connector(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+            )
         )
 
         # Create workflow instance
@@ -695,34 +763,22 @@ class MarketplaceSyncWorkflowIntegrationTest(TestCase):
         instance = self.engine.start_instance(str(instance.id))
         self.assertEqual(instance.status, WorkflowStatus.RUNNING)
 
-        # Execute workflow (this will run all steps)
-        # Note: This may fail if semantic service is not available, which is OK for integration test
+        # Execute workflow (this will run all steps).
+        # External services (semantic, marketplace) may be unavailable in CI;
+        # a controlled failure is acceptable.
         try:
             instance = self.engine.execute_instance(str(instance.id))
-            # Workflow should complete successfully if all services are available
-            self.assertIn(instance.status, [WorkflowStatus.COMPLETED, WorkflowStatus.FAILED])
-
-            if instance.status == WorkflowStatus.COMPLETED:
-                # Verify sync job is completed
-                sync_job.refresh_from_db()
-                self.assertEqual(sync_job.status, SyncStatus.COMPLETED.value)
-        except Exception as e:
-            # If workflow fails due to external service unavailability, that's acceptable
-            # The important thing is that the workflow executed without crashing
+        except WorkflowExecutionError:
             instance.refresh_from_db()
-            # Verify workflow attempted execution
-            self.assertIsNotNone(instance.status)
-            # Verify sync job status was updated (may still be PENDING if workflow failed very early)
+            instance.status = instance.status  # already refreshed
+        # The workflow must reach a terminal state (completed, failed, or rolled back).
+        self.assertTrue(
+            instance.is_terminal(),
+            f"Workflow should be terminal, got {instance.status}",
+        )
+        if instance.status == WorkflowStatus.COMPLETED:
             sync_job.refresh_from_db()
-            self.assertIn(
-                sync_job.status,
-                [
-                    SyncStatus.PENDING.value,
-                    SyncStatus.RUNNING.value,
-                    SyncStatus.FAILED.value,
-                    SyncStatus.PARTIAL.value,
-                ],
-            )
+            self.assertEqual(sync_job.status, SyncStatus.COMPLETED.value)
 
 
 class MarketplaceSyncWorkflowE2ETest(TestCase):
@@ -757,6 +813,10 @@ class MarketplaceSyncWorkflowE2ETest(TestCase):
         MarketplaceSyncWorkflow.register_workflow(self.registry)
         MarketplaceSyncWorkflow.register_tasks(self.engine)
 
+    def tearDown(self):
+        StubMarketplaceConnector.cleanup_downloaded_files()
+        super().tearDown()
+
     @override_settings(SEMANTIC_SERVICE_TIMEOUT=5)
     def test_pull_workflow_e2e(self):
         """Test complete PULL workflow end-to-end"""
@@ -768,9 +828,14 @@ class MarketplaceSyncWorkflowE2ETest(TestCase):
             status=SyncStatus.PENDING.value,
         )
 
-        # Register real test connector (no mocks)
+        # Register real test connector (no mocks); clean up after test.
         MarketplaceConnectorFactory.register_connector(
             MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, StubMarketplaceConnector
+        )
+        self.addCleanup(
+            lambda: MarketplaceConnectorFactory.unregister_connector(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+            )
         )
 
         # Create workflow instance
@@ -796,41 +861,27 @@ class MarketplaceSyncWorkflowE2ETest(TestCase):
         instance = self.engine.start_instance(str(instance.id))
         self.assertEqual(instance.status, WorkflowStatus.RUNNING)
 
-        # Execute workflow
-        # Note: This uses real services - may fail if semantic service unavailable
+        # Execute workflow — external services may be unavailable in CI.
         try:
             instance = self.engine.execute_instance(str(instance.id))
-            # Verify workflow attempted execution
-            self.assertIn(instance.status, [WorkflowStatus.COMPLETED, WorkflowStatus.FAILED])
-
-            if instance.status == WorkflowStatus.COMPLETED:
-                # Verify sync job is completed
-                sync_job.refresh_from_db()
-                self.assertEqual(sync_job.status, SyncStatus.COMPLETED.value)
-
-                # Verify mappings were created
-                mappings = MarketplaceMapping.objects.filter(
-                    tenant=self.tenant, connection=self.connection
-                )
-                self.assertGreater(mappings.count(), 0)
-            else:
-                # If workflow failed, verify it failed gracefully
-                self.assertIsNotNone(instance.error_message)
-                # Verify sync job status was updated
-                sync_job.refresh_from_db()
-                self.assertIn(sync_job.status, [SyncStatus.FAILED.value, SyncStatus.PARTIAL.value])
-        except Exception as e:
-            # If workflow fails due to external service unavailability, verify graceful failure
+        except WorkflowExecutionError:
             instance.refresh_from_db()
-            self.assertIsNotNone(instance.status)
-            # Verify sync job status was updated (may still be PENDING if workflow failed very early)
+        # The workflow must reach a terminal state.
+        self.assertTrue(
+            instance.is_terminal(),
+            f"Workflow should be terminal, got {instance.status}",
+        )
+        if instance.status == WorkflowStatus.COMPLETED:
+            sync_job.refresh_from_db()
+            self.assertEqual(sync_job.status, SyncStatus.COMPLETED.value)
+            mappings = MarketplaceMapping.objects.filter(
+                tenant=self.tenant, connection=self.connection
+            )
+            self.assertGreater(mappings.count(), 0)
+        else:
+            self.assertIsNotNone(instance.error_message)
             sync_job.refresh_from_db()
             self.assertIn(
                 sync_job.status,
-                [
-                    SyncStatus.PENDING.value,
-                    SyncStatus.RUNNING.value,
-                    SyncStatus.FAILED.value,
-                    SyncStatus.PARTIAL.value,
-                ],
+                [SyncStatus.FAILED.value, SyncStatus.PARTIAL.value],
             )

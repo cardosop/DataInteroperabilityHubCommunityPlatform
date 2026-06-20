@@ -24,8 +24,10 @@ Pure function, no audit emission, no side effects — composable into
 the FE meter endpoint AND any future quota dashboards / cron-style
 enforcement scripts without re-implementing the aggregation.
 """
+
 from __future__ import annotations
-from typing import Optional, TypedDict
+
+from typing import TypedDict
 
 from django.db.models import Sum
 
@@ -49,10 +51,10 @@ class QuotaPlanResolutionError(RuntimeError):
 
 class FileStorageQuota(TypedDict):
     used_bytes: int
-    limit_bytes: Optional[int]
-    percentage: Optional[float]
-    plan_slug: Optional[str]
-    plan_tier: Optional[str]
+    limit_bytes: int | None
+    percentage: float | None
+    plan_slug: str | None
+    plan_tier: str | None
     unlimited: bool
 
 
@@ -62,17 +64,14 @@ def _tenant_file_storage_used_bytes(tenant_id: str) -> int:
     Filter set matches ``billing.limit_registry["max_storage_gb"]`` so
     the meter and the limit-gate cannot disagree on what counts.
     """
-    aggregate = (
-        File.objects.filter(
-            tenant_id=tenant_id,
-            status=FileStatus.ACTIVE,
-        )
-        .aggregate(total=Sum("size"))
-    )
+    aggregate = File.objects.filter(
+        tenant_id=tenant_id,
+        status=FileStatus.ACTIVE,
+    ).aggregate(total=Sum("size"))
     return int(aggregate.get("total") or 0)
 
 
-def _resolve_tenant_plan(tenant: Tenant) -> Optional[TenantPlan]:
+def _resolve_tenant_plan(tenant: Tenant) -> TenantPlan | None:
     """Tenant plan resolution with FREE-plan fallback (matches
     ``PlanLimitService._check`` semantics so the meter shows the
     same plan name the limit gate would enforce against).
@@ -108,13 +107,12 @@ def get_tenant_file_storage_quota(tenant_id: str) -> FileStorageQuota:
         # (``PlanLimitService._check`` raises ``NotFoundError``
         # here) instead of silently lying about unlimited storage.
         raise QuotaPlanResolutionError(
-            "No tenant plan resolved and no FREE plan exists. "
-            "Run: manage.py seed_default_plans"
+            "No tenant plan resolved and no FREE plan exists. Run: manage.py seed_default_plans"
         )
 
     used_bytes = _tenant_file_storage_used_bytes(tenant_id)
 
-    limit_gb: Optional[float] = plan.get_limit("max_storage_gb")
+    limit_gb: float | None = plan.get_limit("max_storage_gb")
 
     if limit_gb is None:
         return FileStorageQuota(
@@ -130,7 +128,7 @@ def get_tenant_file_storage_quota(tenant_id: str) -> FileStorageQuota:
     # shape with ``used_bytes``.  The bytes form is what the FE
     # meter renders against; converting once on the server side
     # avoids the client having to know the GB-to-bytes constant.
-    limit_bytes = int(float(limit_gb) * (1024 ** 3))
+    limit_bytes = int(float(limit_gb) * (1024**3))
 
     if limit_bytes <= 0:
         # Defensive — a plan with ``max_storage_gb=0`` would divide-

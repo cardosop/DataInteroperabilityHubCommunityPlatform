@@ -5,16 +5,17 @@ Validates ``UserBusinessRules.validate_user_creation()`` across
 valid inputs, duplicate email, missing tenant, invalid status,
 weak password, role tenant mismatch, and invitation expiry.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.test import TestCase
 
-from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.business_rules import UserBusinessRules
-from hub.apps.users.models import Role, User, UserRole
+from hub.apps.users.models import Role, User
 
 
 @pytest.mark.django_db(transaction=True)
@@ -22,19 +23,25 @@ from hub.apps.users.models import Role, User, UserRole
 class TestUserBusinessRules(TestCase):
     """UserBusinessRules.validate_user_creation() contract tests."""
 
-    @classmethod
-    def setUpTestData(cls):
+    def setUp(self):
         uid = uuid.uuid4().hex[:8]
-        cls.tenant = Tenant.objects.create(
-            name=f"UBR-{uid}", slug=f"ubr-{uid}",
-            status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+        self.tenant = Tenant.objects.create(
+            name=f"UBR-{uid}",
+            slug=f"ubr-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
-        cls.rules = UserBusinessRules(
-            tenant_id=str(cls.tenant.id),
+        # Disable OTel metrics/tracing so the instance is picklable
+        # (setUpTestData deepcopies class attributes, and OTel meter
+        # objects hold _thread.RLock instances that can't be pickled).
+        self.rules = UserBusinessRules(
+            tenant_id=str(self.tenant.id),
             user_id=None,
+            enable_metrics=False,
+            enable_tracing=False,
         )
-        cls.valid_email = f"valid-{uid}@example.com"
-        cls.valid_password = "securepass123"
+        self.valid_email = f"valid-{uid}@example.com"
+        self.valid_password = "securepass123"
 
     # ── Happy path ─────────────────────────────────────────────────
 
@@ -62,7 +69,8 @@ class TestUserBusinessRules(TestCase):
     def test_duplicate_email_rejected(self):
         email = f"dup-{uuid.uuid4().hex[:8]}@example.com"
         User.objects.create_user(
-            email=email, password="testpass123",
+            email=email,
+            password="testpass123",
             tenant=self.tenant,
         )
         result = self.rules.validate_user_creation(
@@ -122,7 +130,7 @@ class TestUserBusinessRules(TestCase):
         result = self.rules.validate_user_creation(
             email=self.valid_email,
             tenant_id=str(self.tenant.id),
-            password="12345678",  # exactly 8
+            password="0123456789",  # exactly 10 — the current minimum
         )
         assert result.is_valid is True
 
@@ -133,7 +141,8 @@ class TestUserBusinessRules(TestCase):
         other_tenant = Tenant.objects.create(
             name=f"UBR-other-{uuid.uuid4().hex[:8]}",
             slug=f"ubr-other-{uuid.uuid4().hex[:8]}",
-            status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
         role = Role.objects.create(
             tenant=other_tenant,
@@ -166,10 +175,11 @@ class TestUserBusinessRules(TestCase):
 
     @pytest.mark.integration
     def test_expired_invitation_token_rejected(self):
-        from django.utils import timezone
         from datetime import timedelta
 
-        expired_user = User.objects.create_user(
+        from django.utils import timezone
+
+        User.objects.create_user(
             email=f"expired-inv-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,

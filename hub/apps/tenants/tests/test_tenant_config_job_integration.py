@@ -7,11 +7,14 @@ All tests use real implementations (no mocks of hub services).
 Uses real Redis queue and cache for job orchestration.
 """
 
+import contextlib
+import logging
 import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from redis.exceptions import ConnectionError as RedisConnectionError
 from django.db.transaction import TransactionManagementError
 from django.test import TestCase
 from rest_framework import status
@@ -32,16 +35,16 @@ from hub.apps.users.models import Role, UserRole, UserStatus
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
+_LOGGER = logging.getLogger(__name__)
+
 
 class TenantConfigJobIntegrationTest(TestCase):
     """Test Job Orchestration integration with tenant configuration"""
 
     @classmethod
     def tearDownClass(cls):
-        try:
+        with contextlib.suppress(TransactionManagementError):
             super().tearDownClass()
-        except TransactionManagementError:
-            pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -49,16 +52,13 @@ class TenantConfigJobIntegrationTest(TestCase):
         # TransactionTestCase on the shared test DB.  Only touch
         # 'default' — other aliases raise DatabaseOperationForbidden.
         from django.db import connections
+
         conn = connections["default"]
-        try:
+        with contextlib.suppress(Exception):
             conn.close_if_unusable_or_obsolete()
-        except Exception:
-            pass
         if conn.connection is None or getattr(conn.connection, "closed", 1):
-            try:
+            with contextlib.suppress(Exception):
                 conn.close()
-            except Exception:
-                pass
             conn.connection = None
             conn.closed_in_transaction = False
             conn.needs_rollback = False
@@ -88,13 +88,12 @@ class TenantConfigJobIntegrationTest(TestCase):
             name="DATA_PROVIDER",
             defaults={"description": "Data Provider"},
         )
-        UserRole.objects.create(
-            user=self.user, role=provider_role, tenant=self.tenant
-        )
+        UserRole.objects.create(user=self.user, role=provider_role, tenant=self.tenant)
 
         # Create subscription so middleware doesn't block write ops
         from hub.apps.billing.models import Subscription, SubscriptionStatus
         from hub.apps.tenants.models import TenantPlan
+
         free_plan = TenantPlan.objects.filter(slug="free").first()
         if free_plan:
             Subscription.objects.get_or_create(
@@ -103,7 +102,7 @@ class TenantConfigJobIntegrationTest(TestCase):
                     "plan": free_plan,
                     "status": SubscriptionStatus.ACTIVE,
                     "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:16]}",
-                }
+                },
             )
 
         self.platform_defaults = get_platform_defaults()
@@ -167,9 +166,13 @@ class TenantConfigJobIntegrationTest(TestCase):
                 logger.warning("Job created but not enqueued - Redis may be unavailable")
             else:
                 self.assertEqual(queue_count, 1)
-        except Exception:
-            # Redis connection failed - job was still created, which is acceptable
-            pass
+        except RedisConnectionError:
+            # Redis container not available in this test environment — job DB
+            # record was still created, which is the load-bearing invariant.
+            _LOGGER.warning(
+                "Redis unavailable — skipping enqueue verification for "
+                "test_job_creation_within_tenant_concurrency_limit"
+            )
 
     def test_job_creation_exceeding_concurrency_limit(self):
         """Test job creation fails when tenant concurrency limit exceeded"""
@@ -273,9 +276,9 @@ class TenantConfigJobIntegrationTest(TestCase):
                 logger.warning("Job created but not enqueued - Redis may be unavailable")
             else:
                 self.assertEqual(queue_count, 1)
-        except Exception:
-            # Redis connection failed - job was still created
-            pass
+        except RedisConnectionError:
+            # Redis container not available — job DB record still exists.
+            _LOGGER.warning("Redis unavailable — skipping enqueue verification")
 
     def test_job_counters_increment_decrement(self):
         """Test job counters increment/decrement correctly"""
@@ -390,9 +393,9 @@ class TenantConfigJobIntegrationTest(TestCase):
                 logger.warning("Job created but not enqueued - Redis may be unavailable")
             else:
                 self.assertEqual(queue_count, 1)
-        except Exception:
-            # Redis connection failed - job was still created
-            pass
+        except RedisConnectionError:
+            # Redis container not available — job DB record still exists.
+            _LOGGER.warning("Redis unavailable — skipping enqueue verification")
 
         # Simulate job completion (decrement running counter)
         decrement_tenant_job_counter(str(self.tenant.id), "running")

@@ -3,10 +3,12 @@
 
 Pre-defined templates for S3, Snowflake, BigQuery, and custom exports.
 """
-from __future__ import annotations
-from typing import Any, Dict
 
-EXPORT_TEMPLATES: Dict[str, Dict[str, Any]] = {
+from __future__ import annotations
+
+from typing import Any
+
+EXPORT_TEMPLATES: dict[str, dict[str, Any]] = {
     "S3_DAILY_DUMP": {
         "name": "S3 Daily Dump",
         "destination_type": "S3",
@@ -84,12 +86,12 @@ EXPORT_TEMPLATES: Dict[str, Dict[str, Any]] = {
 }
 
 
-def get_template(template_name: str) -> Dict[str, Any] | None:
+def get_template(template_name: str) -> dict[str, Any] | None:
     """Return an export template by name, or None if not found."""
     return EXPORT_TEMPLATES.get(template_name)
 
 
-def list_templates() -> list[Dict[str, Any]]:
+def list_templates() -> list[dict[str, Any]]:
     """List all available export templates with names and descriptions."""
     return [
         {"name": name, "description": t["description"], "destination_type": t["destination_type"]}

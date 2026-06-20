@@ -78,10 +78,10 @@ The validation checks for these environment variables:
 ## Test Markers
 
 New pytest markers added:
-- `@pytest.mark.requires_test_env` - Tests requiring environment validation
-- `@pytest.mark.requires_database` - Tests requiring database connectivity
+- `@pytest.mark.requires_db` - Tests requiring environment validation
+- `@pytest.mark.requires_db` - Tests requiring database connectivity
 - `@pytest.mark.requires_redis` - Tests requiring Redis connectivity
-- `@pytest.mark.requires_services_connectivity` - Tests requiring service connectivity
+- `@pytest.mark.unit_connectivity` - Tests requiring service connectivity
 
 ## Usage in Tests
 

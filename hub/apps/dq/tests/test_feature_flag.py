@@ -25,6 +25,7 @@ Test matrix (4 cells × N endpoint families):
 
 All tests use real DB rows + real DRF dispatch — no mocks.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -86,12 +87,12 @@ def _hit(client: APIClient, method: str, url: str, body: dict | None = None):
 
 
 class FeatureFlagTestBase(DQAPITestBase):
-
     def setUp(self):
         super().setUp()
+        from django.utils import timezone as dj_tz
+
         from hub.apps.assets.models import Asset, AssetStatus
         from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
-        from django.utils import timezone as dj_tz
 
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -138,7 +139,8 @@ class TestBaseFlagOnAdvancedFlagOn(FeatureFlagTestBase):
         for label, method, url, body in _basic_endpoints(self):
             r = _hit(self.client, method, url, body)
             self.assertEqual(
-                r.status_code, status.HTTP_200_OK,
+                r.status_code,
+                status.HTTP_200_OK,
                 f"{label}: expected 200, got {r.status_code} body={r.content!r}",
             )
 
@@ -147,7 +149,8 @@ class TestBaseFlagOnAdvancedFlagOn(FeatureFlagTestBase):
         for label, method, url, body in _advanced_endpoints(self):
             r = _hit(self.client, method, url, body)
             self.assertEqual(
-                r.status_code, status.HTTP_200_OK,
+                r.status_code,
+                status.HTTP_200_OK,
                 f"{label}: expected 200, got {r.status_code} body={r.content!r}",
             )
 
@@ -160,7 +163,8 @@ class TestBaseFlagOnAdvancedFlagOff(FeatureFlagTestBase):
         for label, method, url, body in _basic_endpoints(self):
             r = _hit(self.client, method, url, body)
             self.assertEqual(
-                r.status_code, status.HTTP_200_OK,
+                r.status_code,
+                status.HTTP_200_OK,
                 f"{label}: expected 200, got {r.status_code} body={r.content!r}",
             )
 
@@ -169,7 +173,8 @@ class TestBaseFlagOnAdvancedFlagOff(FeatureFlagTestBase):
         for label, method, url, body in _advanced_endpoints(self):
             r = _hit(self.client, method, url, body)
             self.assertEqual(
-                r.status_code, status.HTTP_403_FORBIDDEN,
+                r.status_code,
+                status.HTTP_403_FORBIDDEN,
                 f"{label}: expected 403, got {r.status_code} body={r.content!r}",
             )
             payload = r.json()
@@ -190,7 +195,8 @@ class TestBaseFlagOff(FeatureFlagTestBase):
         for label, method, url, body in _basic_endpoints(self) + _advanced_endpoints(self):
             r = _hit(self.client, method, url, body)
             self.assertEqual(
-                r.status_code, status.HTTP_403_FORBIDDEN,
+                r.status_code,
+                status.HTTP_403_FORBIDDEN,
                 f"{label}: expected 403, got {r.status_code} body={r.content!r}",
             )
             payload = r.json()
@@ -250,21 +256,21 @@ class TestDefaultFlagSemantics(FeatureFlagTestBase):
 
 
 class TestCapabilitiesExposeFlags(FeatureFlagTestBase):
-
     def test_capabilities_endpoint_exposes_data_quality_flags(self):
         self._set_flags(base=True, advanced=False)
         r = self.client.get("/api/v1/capabilities/")
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         caps = r.json().get("capabilities", {})
         self.assertIn(
-            "data_quality", caps,
+            "data_quality",
+            caps,
             "Phase 240.4.B.4: /api/v1/capabilities/ MUST expose "
             "``data_quality`` so the SPA can render the DQ menu.",
         )
         self.assertIn(
-            "data_quality_advanced", caps,
-            "Phase 240.4.B.4: /api/v1/capabilities/ MUST expose "
-            "``data_quality_advanced``.",
+            "data_quality_advanced",
+            caps,
+            "Phase 240.4.B.4: /api/v1/capabilities/ MUST expose ``data_quality_advanced``.",
         )
         self.assertEqual(caps["data_quality"], True)
         self.assertEqual(caps["data_quality_advanced"], False)
@@ -281,7 +287,8 @@ class TestCapabilitiesExposeFlags(FeatureFlagTestBase):
         # semantics so the SPA never advertises a sub-feature whose
         # parent is disabled.
         self.assertEqual(
-            caps["data_quality_advanced"], False,
+            caps["data_quality_advanced"],
+            False,
             "Capability ``data_quality_advanced`` MUST be False "
             "whenever ``data_quality`` is False — conjunctive.",
         )
@@ -330,7 +337,8 @@ class TestDQTestBaseDefaultsBothFlagsOn(FeatureFlagTestBase):
         # (no ``_set_flags`` call — relies on the base-class defaults).
         r = self.client.get("/api/v1/dq/quality/anomalies/")
         self.assertEqual(
-            r.status_code, status.HTTP_200_OK,
+            r.status_code,
+            status.HTTP_200_OK,
             f"Phase 240.4.B audit-fix Gap 1: with default fixtures, "
             f"DQQualityViewSet must return 200 (got {r.status_code} "
             f"body={r.content!r}).  If this fails with 403 + "
@@ -359,7 +367,8 @@ class TestDeprecatedAliasInheritsGate(FeatureFlagTestBase):
         r = self.client.get("/api/v1/quality/runs/")
         self.assertEqual(r.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(
-            r.json().get("error_code"), "DATA_QUALITY_DISABLED",
+            r.json().get("error_code"),
+            "DATA_QUALITY_DISABLED",
             "Deprecated /api/v1/quality/runs/ MUST inherit the base "
             "flag gate via MRO.  If this 200s, the alias has dropped "
             "the gate.",
@@ -370,7 +379,8 @@ class TestDeprecatedAliasInheritsGate(FeatureFlagTestBase):
         r = self.client.get("/api/v1/quality/anomalies/")
         self.assertEqual(r.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(
-            r.json().get("error_code"), "DATA_QUALITY_ADVANCED_DISABLED",
+            r.json().get("error_code"),
+            "DATA_QUALITY_ADVANCED_DISABLED",
             "Deprecated /api/v1/quality/anomalies/ MUST inherit the "
             "advanced flag gate (conjunctive) via MRO.",
         )

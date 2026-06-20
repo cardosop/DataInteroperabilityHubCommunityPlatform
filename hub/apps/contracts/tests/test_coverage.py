@@ -1,7 +1,6 @@
 """
 Unit tests for normalization coverage metrics.
 """
-import pytest
 
 from hub.apps.contracts.coverage import (
     CoverageResult,

@@ -43,14 +43,13 @@ ORM-direct test still passes but production breaks.
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import os
 import unittest
 from datetime import timedelta
 from io import StringIO
 
+import pytest
 from django.core.management import call_command
 from django.utils import timezone
 from rest_framework import status
@@ -289,12 +288,10 @@ class OrphanDatasetLifecycleTest(DatasetsAPITestBase):
 
         # --- 2. TIME-TRAVEL: backdate ``deleted_at`` past the
         # tenant's grace period so the file becomes purge-eligible.
-        # We cannot ``time.sleep(grace_days)``; backdating the
+  # noqa: sleep-needed  # We cannot ``time.sleep(grace_days)``; backdating the
         # ``deleted_at`` column directly mirrors how production
         # would look on day ``grace_days+1``.
-        grace_days = int(
-            getattr(self.tenant, "file_soft_delete_grace_days", 30) or 30
-        )
+        grace_days = int(getattr(self.tenant, "file_soft_delete_grace_days", 30) or 30)
         backdated = timezone.now() - timedelta(days=grace_days + 1)
         File.objects.filter(pk=self.file.pk).update(deleted_at=backdated)
 

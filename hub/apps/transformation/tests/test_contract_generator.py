@@ -3,13 +3,11 @@
 
 Tests YAML parsing, catalog.json extraction, and HubContract JSON generation.
 """
-import pytest
 
 import json
-import os
-import uuid
 from pathlib import Path
 
+import pytest
 import yaml
 
 # ── Fixture paths ─────────────────────────────────────────────────────
@@ -73,9 +71,7 @@ class TestParseModelsYaml:
         assert customers["description"] == "Cleaned customer records"
         assert len(customers["columns"]) == 5
 
-        customer_id = next(
-            c for c in customers["columns"] if c["name"] == "customer_id"
-        )
+        customer_id = next(c for c in customers["columns"] if c["name"] == "customer_id")
         assert customer_id["description"] == "Primary key"
         assert "unique" in customer_id["tests"]
         assert "not_null" in customer_id["tests"]
@@ -87,10 +83,13 @@ class TestParseModelsYaml:
 
         yml_path = str(tmp_path / "schema.yml")
         with open(yml_path, "w") as f:
-            yaml.dump({
-                "version": 2,
-                "models": [{"name": "minimal", "columns": []}],
-            }, f)
+            yaml.dump(
+                {
+                    "version": 2,
+                    "models": [{"name": "minimal", "columns": []}],
+                },
+                f,
+            )
 
         models = DbtContractGenerator._parse_models_yaml(yml_path)
         assert len(models) == 1
@@ -103,13 +102,18 @@ class TestParseModelsYaml:
 
         yml_path = str(tmp_path / "schema.yml")
         with open(yml_path, "w") as f:
-            yaml.dump({
-                "version": 2,
-                "models": [{
-                    "name": "m",
-                    "columns": [{"name": "col1"}],
-                }],
-            }, f)
+            yaml.dump(
+                {
+                    "version": 2,
+                    "models": [
+                        {
+                            "name": "m",
+                            "columns": [{"name": "col1"}],
+                        }
+                    ],
+                },
+                f,
+            )
 
         models = DbtContractGenerator._parse_models_yaml(yml_path)
         col = models[0]["columns"][0]
@@ -123,13 +127,18 @@ class TestParseModelsYaml:
 
         yml_path = str(tmp_path / "schema.yml")
         with open(yml_path, "w") as f:
-            yaml.dump({
-                "version": 2,
-                "models": [{
-                    "name": "m",
-                    "columns": [{"name": "col1", "description": "desc"}],
-                }],
-            }, f)
+            yaml.dump(
+                {
+                    "version": 2,
+                    "models": [
+                        {
+                            "name": "m",
+                            "columns": [{"name": "col1", "description": "desc"}],
+                        }
+                    ],
+                },
+                f,
+            )
 
         models = DbtContractGenerator._parse_models_yaml(yml_path)
         assert models[0]["columns"][0]["tests"] == []
@@ -200,13 +209,18 @@ class TestParseModelsYaml:
 
         yml_path = str(tmp_path / "bad_col.yml")
         with open(yml_path, "w") as f:
-            yaml.dump({
-                "version": 2,
-                "models": [{
-                    "name": "m",
-                    "columns": [{"description": "no name here"}],
-                }],
-            }, f)
+            yaml.dump(
+                {
+                    "version": 2,
+                    "models": [
+                        {
+                            "name": "m",
+                            "columns": [{"description": "no name here"}],
+                        }
+                    ],
+                },
+                f,
+            )
 
         with pytest.raises(DbtContractGeneratorError, match="missing required 'name'"):
             DbtContractGenerator._parse_models_yaml(yml_path)
@@ -221,10 +235,13 @@ class TestParseModelsYaml:
 
         yml_path = str(tmp_path / "bad_model.yml")
         with open(yml_path, "w") as f:
-            yaml.dump({
-                "version": 2,
-                "models": [{"description": "no name", "columns": []}],
-            }, f)
+            yaml.dump(
+                {
+                    "version": 2,
+                    "models": [{"description": "no name", "columns": []}],
+                },
+                f,
+            )
 
         with pytest.raises(DbtContractGeneratorError, match="missing required 'name'"):
             DbtContractGenerator._parse_models_yaml(yml_path)
@@ -312,10 +329,7 @@ class TestGenerateHubContract:
         assert len(contract["schema"]["fields"]) == 5 + 6  # customers(5) + orders(6)
 
         # Check primary key detection
-        pk_fields = [
-            f for f in contract["schema"]["fields"]
-            if f.get("is_primary_key")
-        ]
+        pk_fields = [f for f in contract["schema"]["fields"] if f.get("is_primary_key")]
         assert len(pk_fields) == 2  # customer_id in both models
 
         # Check info section
@@ -330,16 +344,21 @@ class TestGenerateHubContract:
         # Write schema YAML with one model
         yml_path = str(tmp_path / "schema.yml")
         with open(yml_path, "w") as f:
-            yaml.dump({
-                "version": 2,
-                "models": [{
-                    "name": "customers",
-                    "columns": [
-                        {"name": "customer_id", "tests": ["unique", "not_null"]},
-                        {"name": "email"},
+            yaml.dump(
+                {
+                    "version": 2,
+                    "models": [
+                        {
+                            "name": "customers",
+                            "columns": [
+                                {"name": "customer_id", "tests": ["unique", "not_null"]},
+                                {"name": "email"},
+                            ],
+                        }
                     ],
-                }],
-            }, f)
+                },
+                f,
+            )
 
         # Write catalog with types
         catalog_path = str(tmp_path / "catalog.json")
@@ -349,9 +368,7 @@ class TestGenerateHubContract:
         gen = DbtContractGenerator()
         contract = gen.generate_from_yaml(yml_path, catalog_path=catalog_path)
 
-        customer_id = next(
-            f for f in contract["schema"]["fields"] if f["name"] == "customer_id"
-        )
+        customer_id = next(f for f in contract["schema"]["fields"] if f["name"] == "customer_id")
         assert customer_id["type"] == "integer"  # from catalog
         assert customer_id["is_unique"] is True  # from YAML test
         assert customer_id["is_not_null"] is True  # from YAML test
@@ -379,16 +396,21 @@ class TestGenerateHubContract:
 
         yml_path = str(tmp_path / "schema.yml")
         with open(yml_path, "w") as f:
-            yaml.dump({
-                "version": 2,
-                "models": [{
-                    "name": "customers",
-                    "columns": [
-                        {"name": "customer_id"},
-                        {"name": "missing_from_catalog"},
+            yaml.dump(
+                {
+                    "version": 2,
+                    "models": [
+                        {
+                            "name": "customers",
+                            "columns": [
+                                {"name": "customer_id"},
+                                {"name": "missing_from_catalog"},
+                            ],
+                        }
                     ],
-                }],
-            }, f)
+                },
+                f,
+            )
 
         catalog_path = str(tmp_path / "catalog.json")
         catalog = _make_sample_catalog()
@@ -403,18 +425,14 @@ class TestGenerateHubContract:
         contract = gen.generate_from_yaml(yml_path, catalog_path=catalog_path)
 
         missing = next(
-            f for f in contract["schema"]["fields"]
-            if f["name"] == "missing_from_catalog"
+            f for f in contract["schema"]["fields"] if f["name"] == "missing_from_catalog"
         )
         assert missing["type"] is None, (
             "Column 'missing_from_catalog' must appear in schema with "
             "type=None when not found in catalog.json"
         )
         # Also verify the column from catalog IS enriched.
-        customer_id = next(
-            f for f in contract["schema"]["fields"]
-            if f["name"] == "customer_id"
-        )
+        customer_id = next(f for f in contract["schema"]["fields"] if f["name"] == "customer_id")
         assert customer_id["type"] == "integer", (
             "Column 'customer_id' in catalog must have its type enriched"
         )

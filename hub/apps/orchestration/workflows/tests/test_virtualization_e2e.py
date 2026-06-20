@@ -3,27 +3,28 @@ E2E tests for Virtualization Query Execution Workflow
 
 End-to-end tests for complete workflow execution with all services.
 """
+
 import uuid
+
 import pytest
 
 pytestmark = pytest.mark.slow
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.workflows.virtualization import VirtualizationWorkflow
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import User, UserStatus
 from hub.apps.virtualization.models import (
+    QueryExecution,
+    QueryExecutionMode,
+    QueryExecutionStatus,
+    QueryType,
     VirtualDataset,
     VirtualDatasetStatus,
-    QueryExecution,
-    QueryExecutionStatus,
-    QueryExecutionMode,
-    QueryType
 )
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -35,15 +36,13 @@ class VirtualizationWorkflowE2ETest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -51,14 +50,8 @@ class VirtualizationWorkflowE2ETest(TestCase):
             name="Test Virtual Dataset",
             query="SELECT id, name FROM users WHERE age > 18",
             query_type=QueryType.SQL,
-            sources=[
-                {
-                    "type": "postgresql",
-                    "host": "localhost",
-                    "database": "testdb"
-                }
-            ],
-            status=VirtualDatasetStatus.ACTIVE
+            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
+            status=VirtualDatasetStatus.ACTIVE,
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
@@ -78,7 +71,7 @@ class VirtualizationWorkflowE2ETest(TestCase):
                 parameters={},
                 execution_mode=QueryExecutionMode.ASYNC,
                 engine=self.engine,
-                registry=self.registry
+                registry=self.registry,
             )
 
             # If execution succeeds, verify all components
@@ -106,17 +99,26 @@ class VirtualizationWorkflowE2ETest(TestCase):
             # Check that workflow instance was created and all steps were attempted
             workflow_instances = WorkflowInstance.objects.filter(
                 workflow_name=VirtualizationWorkflow.WORKFLOW_NAME
-            ).order_by('-created_at')
-            self.assertTrue(workflow_instances.exists(), f"Workflow instance should be created even on failure. Error: {str(e)}")
+            ).order_by("-created_at")
+            self.assertTrue(
+                workflow_instances.exists(),
+                f"Workflow instance should be created even on failure. Error: {e!s}",
+            )
 
             workflow_instance = workflow_instances.first()
             # Workflow should be in FAILED, ROLLING_BACK, or ROLLED_BACK state
-            self.assertIn(workflow_instance.status, [WorkflowStatus.FAILED, WorkflowStatus.ROLLING_BACK, WorkflowStatus.ROLLED_BACK],
-                         f"Workflow status should be FAILED, ROLLING_BACK, or ROLLED_BACK, got {workflow_instance.status}")
+            self.assertIn(
+                workflow_instance.status,
+                [WorkflowStatus.FAILED, WorkflowStatus.ROLLING_BACK, WorkflowStatus.ROLLED_BACK],
+                f"Workflow status should be FAILED, ROLLING_BACK, or ROLLED_BACK, got {workflow_instance.status}",
+            )
 
             # Verify workflow steps were executed (at least up to execute_query)
-            self.assertIn("virtual_dataset_id", workflow_instance.state_data,
-                          "virtual_dataset_id should be in state_data")
+            self.assertIn(
+                "virtual_dataset_id",
+                workflow_instance.state_data,
+                "virtual_dataset_id should be in state_data",
+            )
 
             # Verify execution was created and marked as failed.
             # During compensation rollback the QueryExecution row may be
@@ -125,8 +127,11 @@ class VirtualizationWorkflowE2ETest(TestCase):
                 execution_id = workflow_instance.state_data["execution_id"]
                 try:
                     execution = QueryExecution.objects.get(id=execution_id)
-                    self.assertEqual(execution.status, QueryExecutionStatus.FAILED,
-                                   f"Execution should be FAILED, got {execution.status}")
+                    self.assertEqual(
+                        execution.status,
+                        QueryExecutionStatus.FAILED,
+                        f"Execution should be FAILED, got {execution.status}",
+                    )
                 except QueryExecution.DoesNotExist:
                     pass  # deleted during compensation rollback — acceptable
 
@@ -134,16 +139,18 @@ class VirtualizationWorkflowE2ETest(TestCase):
         """Test workflow compensation when execution fails"""
         # Create invalid virtual dataset (empty query will fail validation)
         # Use bulk_create to bypass model validation
-        invalid_datasets = VirtualDataset.objects.bulk_create([
-            VirtualDataset(
-                tenant=self.tenant,
-                created_by=self.user,
-                name="Invalid Dataset",
-                query="",  # Empty query will fail validation
-                query_type=QueryType.SQL,
-                status=VirtualDatasetStatus.ACTIVE
-            )
-        ])
+        invalid_datasets = VirtualDataset.objects.bulk_create(
+            [
+                VirtualDataset(
+                    tenant=self.tenant,
+                    created_by=self.user,
+                    name="Invalid Dataset",
+                    query="",  # Empty query will fail validation
+                    query_type=QueryType.SQL,
+                    status=VirtualDatasetStatus.ACTIVE,
+                )
+            ]
+        )
         invalid_dataset = invalid_datasets[0]
 
         # Execute workflow - should fail at validation step
@@ -155,22 +162,25 @@ class VirtualizationWorkflowE2ETest(TestCase):
                 parameters={},
                 execution_mode=QueryExecutionMode.ASYNC,
                 engine=self.engine,
-                registry=self.registry
+                registry=self.registry,
             )
 
         # Verify workflow instance is in failed state
         workflow_instances = WorkflowInstance.objects.filter(
             workflow_name=VirtualizationWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at')
+        ).order_by("-created_at")
         if workflow_instances.exists():
             workflow_instance = workflow_instances.first()
-            self.assertIn(workflow_instance.status, [WorkflowStatus.FAILED, WorkflowStatus.ROLLING_BACK, WorkflowStatus.ROLLED_BACK])
+            self.assertIn(
+                workflow_instance.status,
+                [WorkflowStatus.FAILED, WorkflowStatus.ROLLING_BACK, WorkflowStatus.ROLLED_BACK],
+            )
 
     def test_e2e_multi_source_federated_metadata(self):
         """E2E: multi-source federated query with two metadata-only federated assets."""
-        from hub.apps.assets.models import Asset, AssetSourceType
-        from hub.apps.assets.models import DataStrategy
         import uuid as uuid_mod
+
+        from hub.apps.assets.models import Asset, AssetSourceType, DataStrategy
 
         asset1 = Asset.objects.create(
             tenant=self.tenant,
@@ -178,7 +188,7 @@ class VirtualizationWorkflowE2ETest(TestCase):
             key=f"fed-e2e-1-{uuid_mod.uuid4()}",
             name="E2E Federated 1",
             source_type=AssetSourceType.FEDERATED,
-            data_strategy=DataStrategy.METADATA_ONLY
+            data_strategy=DataStrategy.METADATA_ONLY,
         )
         asset2 = Asset.objects.create(
             tenant=self.tenant,
@@ -186,7 +196,7 @@ class VirtualizationWorkflowE2ETest(TestCase):
             key=f"fed-e2e-2-{uuid_mod.uuid4()}",
             name="E2E Federated 2",
             source_type=AssetSourceType.FEDERATED,
-            data_strategy=DataStrategy.METADATA_ONLY
+            data_strategy=DataStrategy.METADATA_ONLY,
         )
         multi_vd = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -198,7 +208,7 @@ class VirtualizationWorkflowE2ETest(TestCase):
                 {"type": "federated_asset", "asset_id": str(asset1.id)},
                 {"type": "federated_asset", "asset_id": str(asset2.id)},
             ],
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
         result = VirtualizationWorkflow.execute(
             virtual_dataset_id=str(multi_vd.id),
@@ -207,7 +217,7 @@ class VirtualizationWorkflowE2ETest(TestCase):
             parameters={},
             execution_mode=QueryExecutionMode.ASYNC,
             engine=self.engine,
-            registry=self.registry
+            registry=self.registry,
         )
         self.assertTrue(result["success"])
         self.assertIn("execution_id", result)
@@ -216,4 +226,3 @@ class VirtualizationWorkflowE2ETest(TestCase):
         self.assertEqual(instance.state_data["execution_results"]["source_count"], 2)
         execution = QueryExecution.objects.get(id=result["execution_id"])
         self.assertEqual(execution.status, QueryExecutionStatus.COMPLETED)
-

@@ -1,6 +1,7 @@
 """
 283.5.14 — Lineage subscription CLI commands.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,7 +14,6 @@ from ..api_client import api_client
 @click.group()
 def lineage_subscriptions():
     """Manage lineage subscriptions"""
-    pass
 
 
 @lineage_subscriptions.command("list")
@@ -25,7 +25,7 @@ def list_subscriptions():
         click.echo("No lineage subscriptions found.")
         return
     for r in results:
-        click.echo(f"{r.get('id','')}  {r.get('resource_type','')}  {r.get('status','')}")
+        click.echo(f"{r.get('id', '')}  {r.get('resource_type', '')}  {r.get('status', '')}")
 
 
 @lineage_subscriptions.command("create")
@@ -34,9 +34,13 @@ def list_subscriptions():
 @click.option("--format", "output_format", type=click.Choice(["json", "table"]), default="table")
 def create_subscription(resource_type, resource_id, output_format):
     """Subscribe to lineage events"""
-    data = api_client.post("lineage-subscriptions/", json_data={
-        "resource_type": resource_type, "resource_id": resource_id,
-    })
+    data = api_client.post(
+        "lineage-subscriptions/",
+        json_data={
+            "resource_type": resource_type,
+            "resource_id": resource_id,
+        },
+    )
     if output_format == "json":
         click.echo(json.dumps(data, indent=2, default=str))
     else:

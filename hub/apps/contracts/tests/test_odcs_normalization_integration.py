@@ -9,8 +9,7 @@ with comprehensive coverage including:
 - Technical normalization correctness
 """
 
-import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from unittest import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
@@ -115,9 +114,9 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
         }
 
         # Store baseline normalization result for comparison
-        self.baseline_result: Optional[NormalizationResult] = None
+        self.baseline_result: NormalizationResult | None = None
 
-    def _create_versioned_contract(self, version: str) -> Dict[str, Any]:
+    def _create_versioned_contract(self, version: str) -> dict[str, Any]:
         """Create a versioned contract from the baseline."""
         contract = self.baseline_contract_3_0_2.copy()
         contract["apiVersion"] = f"odcs.io/v{version}"
@@ -127,7 +126,7 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
         return contract
 
     def _normalize_with_version_specific_normalizer(
-        self, contract_data: Dict[str, Any], version: str
+        self, contract_data: dict[str, Any], version: str
     ) -> NormalizationResult:
         """Normalize using version-specific normalizer."""
         normalizers = {
@@ -143,7 +142,7 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
         return normalizer.normalize(contract_data, spec_version=version)
 
     def _normalize_via_registry(
-        self, contract_data: Dict[str, Any], version: str
+        self, contract_data: dict[str, Any], version: str
     ) -> NormalizationResult:
         """Normalize using the normalizer registry."""
         normalizer = get_normalizer(OriginalSpecType.ODCS, version, contract_data)
@@ -151,7 +150,7 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
             raise ValueError(f"No normalizer found in registry for version {version}")
         return normalizer.normalize(contract_data, spec_version=version)
 
-    def _assert_hub_contract_structure(self, hub_contract: Dict[str, Any], version: str):
+    def _assert_hub_contract_structure(self, hub_contract: dict[str, Any], version: str):
         """Assert that hub_contract has the expected structure."""
         # Required top-level fields
         assert "id" in hub_contract, f"HubContract missing 'id' for version {version}"
@@ -168,51 +167,53 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
         assert "fields" in schema, f"HubContract.schema missing 'fields' for version {version}"
 
         # Normalization metadata
-        assert (
-            "normalization" in hub_contract
-        ), f"HubContract missing 'normalization' metadata for version {version}"
+        assert "normalization" in hub_contract, (
+            f"HubContract missing 'normalization' metadata for version {version}"
+        )
         normalization = hub_contract["normalization"]
-        assert (
-            "original_spec_type" in normalization
-        ), f"HubContract.normalization missing 'original_spec_type' for version {version}"
-        assert (
-            "original_spec_version" in normalization
-        ), f"HubContract.normalization missing 'original_spec_version' for version {version}"
-        assert (
-            normalization["original_spec_type"] == OriginalSpecType.ODCS
-        ), f"HubContract.normalization.original_spec_type should be ODCS for version {version}"
+        assert "original_spec_type" in normalization, (
+            f"HubContract.normalization missing 'original_spec_type' for version {version}"
+        )
+        assert "original_spec_version" in normalization, (
+            f"HubContract.normalization missing 'original_spec_version' for version {version}"
+        )
+        assert normalization["original_spec_type"] == OriginalSpecType.ODCS, (
+            f"HubContract.normalization.original_spec_type should be ODCS for version {version}"
+        )
 
     def _assert_normalization_result_valid(
         self, result: NormalizationResult, version: str, expect_success: bool = True
     ):
         """Assert that normalization result is valid."""
         assert result is not None, f"NormalizationResult is None for version {version}"
-        assert (
-            result.spec_type == OriginalSpecType.ODCS
-        ), f"NormalizationResult.spec_type should be ODCS for version {version}"
-        assert (
-            result.spec_version == version
-        ), f"NormalizationResult.spec_version should be {version}, got {result.spec_version}"
-        assert isinstance(
-            result.errors, list
-        ), f"NormalizationResult.errors should be a list for version {version}"
-        assert isinstance(
-            result.warnings, list
-        ), f"NormalizationResult.warnings should be a list for version {version}"
+        assert result.spec_type == OriginalSpecType.ODCS, (
+            f"NormalizationResult.spec_type should be ODCS for version {version}"
+        )
+        assert result.spec_version == version, (
+            f"NormalizationResult.spec_version should be {version}, got {result.spec_version}"
+        )
+        assert isinstance(result.errors, list), (
+            f"NormalizationResult.errors should be a list for version {version}"
+        )
+        assert isinstance(result.warnings, list), (
+            f"NormalizationResult.warnings should be a list for version {version}"
+        )
 
         if expect_success:
             assert result.status in [
                 NormalizationStatus.NORMALIZED_OK,
                 NormalizationStatus.NORMALIZED_WITH_WARNINGS,
-            ], f"Normalization should succeed for version {version}, got status {result.status}. Errors: {result.errors if result.errors else 'None'}"
-            assert (
-                result.hub_contract is not None
-            ), f"HubContract should not be None for version {version}"
+            ], (
+                f"Normalization should succeed for version {version}, got status {result.status}. Errors: {result.errors if result.errors else 'None'}"
+            )
+            assert result.hub_contract is not None, (
+                f"HubContract should not be None for version {version}"
+            )
             self._assert_hub_contract_structure(result.hub_contract, version)
         else:
-            assert (
-                result.status == NormalizationStatus.NORMALIZATION_FAILED
-            ), f"Normalization should fail for version {version}"
+            assert result.status == NormalizationStatus.NORMALIZATION_FAILED, (
+                f"Normalization should fail for version {version}"
+            )
 
     def _compare_with_baseline(
         self,
@@ -246,9 +247,9 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
 
             # Version should match
             if "version" in baseline_info and "version" in result_info:
-                assert (
-                    baseline_info["version"] == result_info["version"]
-                ), f"Version mismatch: baseline={baseline_info['version']}, result={result_info['version']} for version {version}"
+                assert baseline_info["version"] == result_info["version"], (
+                    f"Version mismatch: baseline={baseline_info['version']}, result={result_info['version']} for version {version}"
+                )
 
         # Schema structure should be similar
         if "schema" in baseline_hc and "schema" in result_hc:
@@ -262,9 +263,9 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
                 # Field count may differ due to version-specific schema differences
                 # But structure should be similar
                 assert isinstance(baseline_fields, list), "Baseline fields should be a list"
-                assert isinstance(
-                    result_fields, list
-                ), f"Result fields should be a list for version {version}"
+                assert isinstance(result_fields, list), (
+                    f"Result fields should be a list for version {version}"
+                )
 
         # Normalization metadata should be consistent
         if "normalization" in baseline_hc and "normalization" in result_hc:
@@ -273,15 +274,15 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
 
             # Original spec type should match
             if "original_spec_type" in baseline_norm and "original_spec_type" in result_norm:
-                assert (
-                    baseline_norm["original_spec_type"] == result_norm["original_spec_type"]
-                ), f"Original spec type mismatch for version {version}"
+                assert baseline_norm["original_spec_type"] == result_norm["original_spec_type"], (
+                    f"Original spec type mismatch for version {version}"
+                )
 
             # Original spec version should match the version being tested
             if "original_spec_version" in result_norm:
-                assert (
-                    result_norm["original_spec_version"] == version
-                ), f"Original spec version should be {version}, got {result_norm['original_spec_version']}"
+                assert result_norm["original_spec_version"] == version, (
+                    f"Original spec version should be {version}, got {result_norm['original_spec_version']}"
+                )
 
 
 class ODCSNormalizationAllVersionsTest(ODCSNormalizationIntegrationTestBase):
@@ -401,9 +402,9 @@ class ODCSNormalizationGracefulDegradationTest(ODCSNormalizationIntegrationTestB
 
         # Should have errors for missing required field
         assert len(result.errors) > 0, "Should have errors for missing 'name' field"
-        assert any(
-            "name" in error.lower() for error in result.errors
-        ), "Error should mention 'name' field"
+        assert any("name" in error.lower() for error in result.errors), (
+            "Error should mention 'name' field"
+        )
         # But should still return a hub_contract (for debugging)
         assert result.hub_contract is not None, "Should return hub_contract even with errors"
 
@@ -522,9 +523,9 @@ class ODCSNormalizationGracefulDegradationTest(ODCSNormalizationIntegrationTestB
                 NormalizationStatus.NORMALIZED_OK,
                 NormalizationStatus.NORMALIZED_WITH_WARNINGS,
             ], f"Should succeed for version {version} with missing optional fields"
-            assert (
-                result.hub_contract is not None
-            ), f"Should return hub_contract for version {version}"
+            assert result.hub_contract is not None, (
+                f"Should return hub_contract for version {version}"
+            )
 
 
 class ODCSNormalizationBaselineComparisonTest(ODCSNormalizationIntegrationTestBase):
@@ -646,22 +647,22 @@ class ODCSNormalizationBaselineComparisonTest(ODCSNormalizationIntegrationTestBa
 
         # All results should have consistent structure
         for version, result in results.items():
-            assert (
-                result.hub_contract is not None
-            ), f"HubContract should not be None for version {version}"
+            assert result.hub_contract is not None, (
+                f"HubContract should not be None for version {version}"
+            )
             self._assert_hub_contract_structure(result.hub_contract, version)
 
             # All should have same normalization metadata structure
-            assert (
-                "normalization" in result.hub_contract
-            ), f"Missing normalization metadata for version {version}"
+            assert "normalization" in result.hub_contract, (
+                f"Missing normalization metadata for version {version}"
+            )
             normalization = result.hub_contract["normalization"]
-            assert (
-                normalization["original_spec_type"] == OriginalSpecType.ODCS
-            ), f"Original spec type should be ODCS for version {version}"
-            assert (
-                normalization["original_spec_version"] == version
-            ), f"Original spec version should be {version} for version {version}"
+            assert normalization["original_spec_type"] == OriginalSpecType.ODCS, (
+                f"Original spec type should be ODCS for version {version}"
+            )
+            assert normalization["original_spec_version"] == version, (
+                f"Original spec version should be {version} for version {version}"
+            )
 
 
 class ODCSNormalizationTechnicalCorrectnessTest(ODCSNormalizationIntegrationTestBase):
@@ -801,13 +802,13 @@ class ODCSNormalizationTechnicalCorrectnessTest(ODCSNormalizationIntegrationTest
         assert "normalization" in result.hub_contract, "Should have 'normalization' metadata"
         normalization = result.hub_contract["normalization"]
         assert "original_spec_type" in normalization, "Should have 'original_spec_type'"
-        assert (
-            normalization["original_spec_type"] == OriginalSpecType.ODCS
-        ), "Original spec type should be ODCS"
+        assert normalization["original_spec_type"] == OriginalSpecType.ODCS, (
+            "Original spec type should be ODCS"
+        )
         assert "original_spec_version" in normalization, "Should have 'original_spec_version'"
-        assert (
-            normalization["original_spec_version"] == "3.0.2"
-        ), "Original spec version should be 3.0.2"
+        assert normalization["original_spec_version"] == "3.0.2", (
+            "Original spec version should be 3.0.2"
+        )
         assert "coverage" in normalization, "Should have 'coverage' in normalization"
 
     def test_integration_handles_unicode_characters(self):

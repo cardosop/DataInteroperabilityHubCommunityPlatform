@@ -11,14 +11,12 @@ Tests:
 All tests use real implementations (no mocks/stubs).
 """
 
-import json
 import uuid
 
-from django.conf import settings
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from hub.apps.core.events.bus import EventBus, get_event_bus
+from hub.apps.core.events.bus import get_event_bus
 from hub.apps.core.events.models import Event
 from hub.apps.core.events.persistence_tasks import (
     _validate_batch_persistence,
@@ -92,7 +90,7 @@ class WriteBehindPatternTest(TestCase):
         initial_count = Event.objects.count()
 
         # Add events up to buffer size
-        for i in range(5):
+        for _i in range(5):
             event_data = {
                 "event_id": str(uuid.uuid4()),
                 "event_type": "contract.created",
@@ -122,13 +120,14 @@ class WriteBehindPatternTest(TestCase):
     def test_write_behind_buffer_time_flush(self):
         """Test write-behind buffer flushes based on time interval."""
         buffer = WriteBehindBuffer(
-            buffer_size=100, flush_interval_seconds=0.5  # Short interval for test
+            buffer_size=100,
+            flush_interval_seconds=0.5,  # Short interval for test
         )
         buffer.start()
         initial_count = Event.objects.count()
 
         # Add a few events
-        for i in range(3):
+        for _i in range(3):
             event_data = {
                 "event_id": str(uuid.uuid4()),
                 "event_type": "contract.created",
@@ -192,7 +191,7 @@ class WriteBehindPatternTest(TestCase):
         buffer.start()
 
         event_ids = []
-        for i in range(5):
+        for _i in range(5):
             event_id = str(uuid.uuid4())
             event_ids.append(event_id)
 
@@ -263,7 +262,7 @@ class PersistenceRetryTest(TestCase):
         """Test batch event persistence with retry logic."""
         events_data = []
         event_ids = []
-        for i in range(5):
+        for _i in range(5):
             eid = str(uuid.uuid4())
             event_ids.append(eid)
             events_data.append(
@@ -347,7 +346,7 @@ class ConsistencyValidationTest(TestCase):
     def test_validate_batch_persistence(self):
         """Test batch persistence validation."""
         events_data = []
-        for i in range(5):
+        for _i in range(5):
             events_data.append(
                 {
                     "event_id": str(uuid.uuid4()),
@@ -395,7 +394,7 @@ class DualWriteOptimizationTest(TestCase):
 
         # Publish events with write-behind enabled
         event_ids = []
-        for i in range(10):
+        for _i in range(10):
             event_id = self.event_bus.publish(
                 event_type="contract.created",
                 data={"contract_id": str(uuid.uuid4())},

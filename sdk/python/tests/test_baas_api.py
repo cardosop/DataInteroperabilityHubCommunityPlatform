@@ -8,16 +8,16 @@ Unit tests for BaaS API.
 Tests validation, error handling, and method signatures without making real API calls.
 """
 import os
-import pytest
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
-from datahub_interoperability import DataHubClient, DataHubClientConfig, BaaSAPI
+from unittest.mock import AsyncMock
+
+import pytest
+
+from datahub_interoperability import BaaSAPI, DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
     BaaSValidationError,
-    BaaSError,
-    NotFoundError,
     ForbiddenError,
-    ValidationError,
+    NotFoundError,
 )
 
 

@@ -20,41 +20,42 @@ Features:
 Total: 100+ test cases
 """
 
-import json
 import time
 import uuid
-from typing import Any, Dict, List
 
 import pytest
-
-pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
-from django.utils import timezone
+from django.db.models.signals import post_save
+from django.test import TransactionTestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel, Order, OrderStatus, Entitlement, EntitlementStatus
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-from hub.apps.users.models import Role, UserRole
-from hub.apps.semantic.signals import contract_saved, asset_saved
 from hub.apps.contracts.models import Contract
-from hub.apps.assets.models import Asset
-from django.db.models.signals import post_save
+from hub.apps.marketplace.models import ListingStatus, PricingModel
+from hub.apps.semantic.signals import asset_saved, contract_saved
+from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
+from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     AssetFactory,
+    ListingFactory,
     TenantFactory,
     UserFactory,
-    ListingFactory,
 )
 from tests.utils.test_data_management import TestDatabaseIsolationMixin
 
 User = get_user_model()
 
-pytestmark = [pytest.mark.django_db, pytest.mark.integration]
+pytestmark = [
+    pytest.mark.django_db,
+    pytest.mark.integration,
+    pytest.mark.slow,
+    pytest.mark.uc("UC-MKT-003"),
+    pytest.mark.uc("UC-MKT-004"),
+    pytest.mark.uc("UC-MKT-005"),
+    pytest.mark.uc("UC-MKT-006"),
+]
 
 
 class MarketplaceOriginalUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixin):
@@ -72,7 +73,6 @@ class MarketplaceOriginalUseCasesTestBase(TransactionTestCase, TestDatabaseIsola
         which provides isolation without flushing.
         """
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -84,7 +84,6 @@ class MarketplaceOriginalUseCasesTestBase(TransactionTestCase, TestDatabaseIsola
         self.client = APIClient()
 
         # Create tenants (use unique name/slug to avoid conflicts between tests)
-        import uuid
         unique_id = str(uuid.uuid4())[:8]
         self.provider_tenant = TenantFactory.create_tenant(
             name=f"Provider Tenant {unique_id}",
@@ -162,18 +161,18 @@ class UCMKT003ListMarketplaceAssetsTest(MarketplaceOriginalUseCasesTestBase):
 
     def test_list_marketplace_assets_success(self):
         """Test successful marketplace asset listing"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.consumer_user)
 
         listings_url = "/api/v1/marketplace/listings/"
         listings_response = self.client.get(listings_url)
         self.assertEqual(listings_response.status_code, status.HTTP_200_OK)
-        self.assertIn("results", listings_response.data if isinstance(listings_response.data, dict) else {})
+        self.assertIn(
+            "results", listings_response.data if isinstance(listings_response.data, dict) else {}
+        )
 
     def test_list_marketplace_assets_filter_by_domain(self):
         """Test filtering marketplace assets by domain"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.consumer_user)
 
@@ -183,7 +182,6 @@ class UCMKT003ListMarketplaceAssetsTest(MarketplaceOriginalUseCasesTestBase):
 
     def test_list_marketplace_assets_filter_by_pricing(self):
         """Test filtering marketplace assets by pricing model"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.consumer_user)
 
@@ -193,12 +191,11 @@ class UCMKT003ListMarketplaceAssetsTest(MarketplaceOriginalUseCasesTestBase):
 
     def test_list_marketplace_assets_pagination(self):
         """Test marketplace asset listing with pagination"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.consumer_user)
 
         # Create more listings
-        for i in range(5):
+        for _i in range(5):
             ListingFactory.create_listing(
                 tenant=self.provider_tenant,
                 status=ListingStatus.PUBLISHED,
@@ -210,7 +207,6 @@ class UCMKT003ListMarketplaceAssetsTest(MarketplaceOriginalUseCasesTestBase):
 
     def test_list_marketplace_assets_performance(self):
         """Test performance target: listing should be < 300ms"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.consumer_user)
 
@@ -220,7 +216,9 @@ class UCMKT003ListMarketplaceAssetsTest(MarketplaceOriginalUseCasesTestBase):
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(listings_response.status_code, status.HTTP_200_OK)
-        self.assertLess(elapsed_time, 1000, f"Listing took {elapsed_time}ms, exceeds 1000ms threshold")
+        self.assertLess(
+            elapsed_time, 1000, f"Listing took {elapsed_time}ms, exceeds 1000ms threshold"
+        )
 
 
 class UCMKT004SearchMarketplaceTest(MarketplaceOriginalUseCasesTestBase):
@@ -228,7 +226,6 @@ class UCMKT004SearchMarketplaceTest(MarketplaceOriginalUseCasesTestBase):
 
     def test_search_marketplace_success(self):
         """Test successful marketplace search"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.consumer_user)
 
@@ -238,7 +235,6 @@ class UCMKT004SearchMarketplaceTest(MarketplaceOriginalUseCasesTestBase):
 
     def test_search_marketplace_by_title(self):
         """Test searching marketplace by title"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.consumer_user)
 
@@ -248,17 +244,17 @@ class UCMKT004SearchMarketplaceTest(MarketplaceOriginalUseCasesTestBase):
 
     def test_search_marketplace_combined_filters(self):
         """Test combining search with filters"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.consumer_user)
 
         listings_url = "/api/v1/marketplace/listings/"
-        search_response = self.client.get(f"{listings_url}?search=Test&domain=analytics&pricing_model=FREE")
+        search_response = self.client.get(
+            f"{listings_url}?search=Test&domain=analytics&pricing_model=FREE"
+        )
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
 
     def test_search_marketplace_performance(self):
         """Test performance target: search should be < 300ms"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.consumer_user)
 
@@ -268,7 +264,9 @@ class UCMKT004SearchMarketplaceTest(MarketplaceOriginalUseCasesTestBase):
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
-        self.assertLess(elapsed_time, 1000, f"Search took {elapsed_time}ms, exceeds 1000ms threshold")
+        self.assertLess(
+            elapsed_time, 1000, f"Search took {elapsed_time}ms, exceeds 1000ms threshold"
+        )
 
 
 class UCMKT005ManageMarketplaceListingTest(MarketplaceOriginalUseCasesTestBase):
@@ -276,7 +274,6 @@ class UCMKT005ManageMarketplaceListingTest(MarketplaceOriginalUseCasesTestBase):
 
     def test_create_marketplace_listing_success(self):
         """Test successful marketplace listing creation"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -299,7 +296,6 @@ class UCMKT005ManageMarketplaceListingTest(MarketplaceOriginalUseCasesTestBase):
 
     def test_update_marketplace_listing_success(self):
         """Test successful marketplace listing update"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -315,7 +311,6 @@ class UCMKT005ManageMarketplaceListingTest(MarketplaceOriginalUseCasesTestBase):
 
     def test_unpublish_marketplace_listing_success(self):
         """Test unpublishing marketplace listing"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -326,7 +321,6 @@ class UCMKT005ManageMarketplaceListingTest(MarketplaceOriginalUseCasesTestBase):
 
     def test_manage_marketplace_listing_performance(self):
         """Test performance target: listing management should be < 1000ms"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -337,7 +331,9 @@ class UCMKT005ManageMarketplaceListingTest(MarketplaceOriginalUseCasesTestBase):
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(update_response.status_code, status.HTTP_200_OK)
-        self.assertLess(elapsed_time, 2000, f"Update took {elapsed_time}ms, exceeds 2000ms threshold")
+        self.assertLess(
+            elapsed_time, 2000, f"Update took {elapsed_time}ms, exceeds 2000ms threshold"
+        )
 
 
 class UCMKT006TrackMarketplaceOrdersTest(MarketplaceOriginalUseCasesTestBase):
@@ -368,7 +364,11 @@ class UCMKT006TrackMarketplaceOrdersTest(MarketplaceOriginalUseCasesTestBase):
         order_data = {"listing_id": str(self.listing.id)}
         orders_url = reverse("order-list")
         order_response = self.client.post(orders_url, order_data, format="json")
-        self.assertEqual(order_response.status_code, status.HTTP_201_CREATED, f"Order creation failed: {getattr(order_response, 'data', order_response.content)}")
+        self.assertEqual(
+            order_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Order creation failed: {getattr(order_response, 'data', order_response.content)}",
+        )
         order_id = order_response.data["id"]
 
         # Get order
@@ -384,7 +384,7 @@ class UCMKT006TrackMarketplaceOrdersTest(MarketplaceOriginalUseCasesTestBase):
         self.client.force_authenticate(user=self.consumer_user)
 
         # Create multiple orders
-        for i in range(3):
+        for _i in range(3):
             order_data = {"listing_id": str(self.listing.id)}
             orders_url = reverse("order-list")
             self.client.post(orders_url, order_data, format="json")
@@ -407,7 +407,9 @@ class UCMKT006TrackMarketplaceOrdersTest(MarketplaceOriginalUseCasesTestBase):
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
-        self.assertLess(elapsed_time, 5000, f"Order creation took {elapsed_time}ms, exceeds 5000ms threshold")
+        self.assertLess(
+            elapsed_time, 5000, f"Order creation took {elapsed_time}ms, exceeds 5000ms threshold"
+        )
 
 
 class UCMKT007ManageEntitlementsTest(MarketplaceOriginalUseCasesTestBase):
@@ -422,7 +424,7 @@ class UCMKT007ManageEntitlementsTest(MarketplaceOriginalUseCasesTestBase):
         # Create order that generates entitlement
         order_data = {"listing_id": str(self.listing.id)}
         orders_url = reverse("order-list")
-        order_response = self.client.post(orders_url, order_data, format="json")
+        self.client.post(orders_url, order_data, format="json")
 
         # List entitlements
         entitlements_url = reverse("entitlement-list")
@@ -438,7 +440,7 @@ class UCMKT007ManageEntitlementsTest(MarketplaceOriginalUseCasesTestBase):
         # Create order that generates entitlement
         order_data = {"listing_id": str(self.listing.id)}
         orders_url = reverse("order-list")
-        order_response = self.client.post(orders_url, order_data, format="json")
+        self.client.post(orders_url, order_data, format="json")
 
         # Get entitlements
         entitlements_url = reverse("entitlement-list")
@@ -467,7 +469,11 @@ class UCMKT007ManageEntitlementsTest(MarketplaceOriginalUseCasesTestBase):
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(entitlements_response.status_code, status.HTTP_200_OK)
-        self.assertLess(elapsed_time, 1000, f"Entitlement listing took {elapsed_time}ms, exceeds 1000ms threshold")
+        self.assertLess(
+            elapsed_time,
+            1000,
+            f"Entitlement listing took {elapsed_time}ms, exceeds 1000ms threshold",
+        )
 
 
 class UCMKT008ConfigureMarketplaceAccessTest(MarketplaceOriginalUseCasesTestBase):
@@ -475,7 +481,6 @@ class UCMKT008ConfigureMarketplaceAccessTest(MarketplaceOriginalUseCasesTestBase
 
     def test_configure_marketplace_access_via_listing(self):
         """Test configuring marketplace access via listing"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -498,7 +503,6 @@ class UCMKT008ConfigureMarketplaceAccessTest(MarketplaceOriginalUseCasesTestBase
 
     def test_configure_marketplace_access_free_auto_approve(self):
         """Test configuring free auto-approve access"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 

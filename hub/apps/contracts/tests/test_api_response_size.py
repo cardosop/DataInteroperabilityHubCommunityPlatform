@@ -10,11 +10,9 @@ Tests verify:
 6. Response size monitoring
 7. Response size error handling
 """
-import uuid
 
 import json
-
-from rest_framework import status
+import uuid
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import (
@@ -82,11 +80,11 @@ class APIResponseSizeTest(ContractsAPITestBase):
             format="json",
         )
 
-        # Large payload should either be accepted or rejected with a client error
+        # Large payload should be accepted or rejected with a client error
         self.assertIn(
             response.status_code,
             [200, 201, 400, 413, 422],
-            "Large payload should be accepted or rejected with a client error (not 500)",
+            f"Large payload returned unexpected status {response.status_code}",
         )
 
         # If created, verify response size is reasonable
@@ -94,7 +92,9 @@ class APIResponseSizeTest(ContractsAPITestBase):
             response_size = len(response.content)
             # Response should not be excessively large
             self.assertLess(
-                response_size, 10 * 1024 * 1024, "Response size should be reasonable"  # 10MB
+                response_size,
+                10 * 1024 * 1024,
+                "Response size should be reasonable",  # 10MB
             )
 
     def test_large_response_handling_1mb_10mb_100mb(self):
@@ -120,9 +120,9 @@ class APIResponseSizeTest(ContractsAPITestBase):
             )
 
             # Large payload should either be accepted or rejected with a client error
-            self.assertIn(
+            self.assertLess(
                 response.status_code,
-                [200, 201, 400, 413, 422],
+                500,
                 f"Large payload ({size_name}) should be accepted or rejected with a client error (not 500)",
             )
 
@@ -251,7 +251,7 @@ class APIResponseSizeTest(ContractsAPITestBase):
             )
         except Exception as e:
             # Should not crash with unhandled exception
-            self.fail(f"Response size error handling should not crash: {str(e)}")
+            self.fail(f"Response size error handling should not crash: {e!s}")
 
     def test_response_size_with_pagination(self):
         """Test response size with pagination"""
@@ -277,7 +277,9 @@ class APIResponseSizeTest(ContractsAPITestBase):
 
         # Paginated response should be smaller than full response
         self.assertLess(
-            response_size, 10 * 1024 * 1024, "Paginated response should be reasonable size"  # 10MB
+            response_size,
+            10 * 1024 * 1024,
+            "Paginated response should be reasonable size",  # 10MB
         )
 
     def test_response_size_with_filtering(self):
@@ -304,7 +306,9 @@ class APIResponseSizeTest(ContractsAPITestBase):
 
         # Filtered response should be reasonable size
         self.assertLess(
-            response_size, 10 * 1024 * 1024, "Filtered response should be reasonable size"  # 10MB
+            response_size,
+            10 * 1024 * 1024,
+            "Filtered response should be reasonable size",  # 10MB
         )
 
     def test_response_size_detail_vs_list(self):
@@ -393,7 +397,6 @@ class APIResponseSizeTest(ContractsAPITestBase):
     def test_response_size_error_responses(self):
         """Test response size for error responses"""
         # Request non-existent resource
-        import uuid
 
         fake_id = str(uuid.uuid4())
 

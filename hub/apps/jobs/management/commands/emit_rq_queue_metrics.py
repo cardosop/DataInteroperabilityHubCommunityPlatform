@@ -8,6 +8,7 @@ Usage:
 Intended to be run as a sidecar in the worker pod or as a Kubernetes
 CronJob every 30 seconds to keep the ``rq_queue_depth`` gauge current.
 """
+
 from __future__ import annotations
 
 import time

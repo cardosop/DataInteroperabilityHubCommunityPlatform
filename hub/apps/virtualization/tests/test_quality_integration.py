@@ -3,27 +3,29 @@ Tests for QualityService integration in VirtualizationService query execution.
 
 Tests use real services (no mocks/stubs) to validate end-to-end quality integration.
 """
+
+import uuid
+
 import pytest
-from django.test import TestCase
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.test import TestCase
 from django.utils import timezone
 
-from hub.apps.tenants.models import Tenant, KYCStatus, TenantPlan, PlanTier
 from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.core.services.base import ValidationError
+from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan
+from hub.apps.users.models import Role, UserRole
 from hub.apps.virtualization.models import (
-    VirtualDataset,
     QueryExecution,
-    QueryType,
-    VirtualDatasetStatus,
-    QueryExecutionStatus,
     QueryExecutionMode,
+    QueryExecutionStatus,
+    QueryType,
+    VirtualDataset,
+    VirtualDatasetStatus,
 )
 from hub.apps.virtualization.services import VirtualizationService
-from hub.apps.core.services.base import ValidationError
-from hub.apps.users.models import Role, UserRole
-from django.conf import settings
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -46,6 +48,7 @@ def dq_service_available() -> bool:
     """Check if DQService is available"""
     try:
         from hub.apps.dq.service_client import DQServiceClient
+
         client = DQServiceClient()
         is_healthy, _ = client.health_check()
         return is_healthy
@@ -59,31 +62,22 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.orchestration.registry import reset_workflow_definition_cache
+
         reset_workflow_definition_cache()
-        from hub.apps.users.models import Role, UserRole
 
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email=f"test-{uid}@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
         # Create DATA_PROVIDER role and assign to user
         provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=provider_role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=provider_role)
 
         # Set up subscription/plan
         plan, _ = TenantPlan.objects.get_or_create(
@@ -91,12 +85,20 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
             defaults={
                 "name": "Virtualization Test Plan",
                 "tier": PlanTier.PRO,
-                "limits_json": {"max_assets": 100, "max_storage_gb": 1000, "max_virtual_datasets": 100},
+                "limits_json": {
+                    "max_assets": 100,
+                    "max_storage_gb": 1000,
+                    "max_virtual_datasets": 100,
+                },
                 "is_active": True,
             },
         )
         if "max_storage_gb" not in (plan.limits_json or {}):
-            plan.limits_json = {**(plan.limits_json or {}), "max_storage_gb": 1000, "max_virtual_datasets": 100}
+            plan.limits_json = {
+                **(plan.limits_json or {}),
+                "max_storage_gb": 1000,
+                "max_virtual_datasets": 100,
+            }
             plan.save(update_fields=["limits_json"])
         if self.tenant.plan_id != plan.id:
             self.tenant.plan = plan
@@ -111,7 +113,9 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
             },
         )
 
-        self.service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.service = VirtualizationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         # Clear cache
         cache.clear()
@@ -126,10 +130,8 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
             name="Quality Test Dataset",
             query="SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10",
             query_type=QueryType.SPARQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
-
-        from hub.apps.core.services.base import ValidationError
 
         try:
             execution = self.service.execute_query(
@@ -137,7 +139,7 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 execution_mode=QueryExecutionMode.SYNC,
-                parameters={}
+                parameters={},
             )
         except (ValidationError, ValueError) as e:
             err = str(e).lower()
@@ -145,7 +147,7 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
                 self.skipTest(f"SPARQL service not available: {e}")
             executions = QueryExecution.objects.filter(
                 virtual_dataset_id=sparql_dataset.id
-            ).order_by('-created_at')
+            ).order_by("-created_at")
             execution = executions.first()
 
         self.assertIsNotNone(execution)
@@ -154,16 +156,19 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
         if execution.execution_log:
             # Look for quality check entries in logs
             quality_logs = [
-                log for log in execution.execution_log
-                if isinstance(log, dict) and (
-                    "quality" in log.get("message", "").lower() or
-                    "dq" in log.get("message", "").lower()
+                log
+                for log in execution.execution_log
+                if isinstance(log, dict)
+                and (
+                    "quality" in log.get("message", "").lower()
+                    or "dq" in log.get("message", "").lower()
                 )
             ]
             # If execution completed, quality check should produce log entries
             if execution.status == QueryExecutionStatus.COMPLETED:
-                self.assertGreater(len(quality_logs), 0,
-                                   "Completed execution should have quality check logs")
+                self.assertGreater(
+                    len(quality_logs), 0, "Completed execution should have quality check logs"
+                )
 
     @pytest.mark.skipif(not dq_service_available(), reason="DQService not available")
     def test_execute_query_validates_quality_threshold(self):
@@ -175,10 +180,8 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
             query="SELECT 1 as test_column",
             query_type=QueryType.SQL,
             status=VirtualDatasetStatus.ACTIVE,
-            sources=[_get_test_db_source()]
+            sources=[_get_test_db_source()],
         )
-
-        from hub.apps.core.services.base import ValidationError
 
         try:
             execution = self.service.execute_query(
@@ -186,25 +189,37 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 execution_mode=QueryExecutionMode.SYNC,
-                parameters={}
+                parameters={},
             )
-        except (ValidationError, ValueError, Exception) as e:
-            if "connection" in str(e).lower() or "refused" in str(e).lower():
+        except (ValidationError, ValueError) as e:
+            err = str(e).lower()
+            if any(kw in err for kw in ("connection", "refused", "timeout", "operational")):
                 self.skipTest(f"Database source not reachable: {e}")
-            executions = QueryExecution.objects.filter(
-                virtual_dataset_id=dataset.id
-            ).order_by('-created_at')
+            executions = QueryExecution.objects.filter(virtual_dataset_id=dataset.id).order_by(
+                "-created_at"
+            )
             execution = executions.first()
             if execution is None:
                 self.skipTest(f"Database source not reachable: {e}")
 
         self.assertIsNotNone(execution)
-        # Quality validation should produce an execution_log with either
-        # quality-check entries or a status field reflecting the outcome.
+        # execution_log is a JSONField storing a list of dicts, each with keys
+        # like {"timestamp": ..., "level": ..., "message": ...}.  Iterate over
+        # the list elements to find quality-related log entries.
         if execution.execution_log:
-            self.assertIn(
-                'status', execution.execution_log,
-                "execution_log should record quality check status"
+            quality_entries = [
+                entry
+                for entry in execution.execution_log
+                if isinstance(entry, dict)
+                and (
+                    "quality" in str(entry).lower()
+                    or "dq" in str(entry).lower()
+                )
+            ]
+            self.assertGreater(
+                len(quality_entries),
+                0,
+                "execution_log should contain quality check entries",
             )
 
     @pytest.mark.skipif(not dq_service_available(), reason="DQService not available")
@@ -217,10 +232,8 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
             query="SELECT 1 as col1, 2 as col2",
             query_type=QueryType.SQL,
             status=VirtualDatasetStatus.ACTIVE,
-            sources=[_get_test_db_source()]
+            sources=[_get_test_db_source()],
         )
-
-        from hub.apps.core.services.base import ValidationError
 
         try:
             execution = self.service.execute_query(
@@ -228,27 +241,44 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 execution_mode=QueryExecutionMode.SYNC,
-                parameters={}
+                parameters={},
             )
-        except (ValidationError, ValueError, Exception) as e:
-            if "connection" in str(e).lower() or "refused" in str(e).lower():
+        except (ValidationError, ValueError) as e:
+            err = str(e).lower()
+            if any(kw in err for kw in ("connection", "refused", "timeout", "operational")):
                 self.skipTest(f"Database source not reachable: {e}")
-            executions = QueryExecution.objects.filter(
-                virtual_dataset_id=dataset.id
-            ).order_by('-created_at')
+            executions = QueryExecution.objects.filter(virtual_dataset_id=dataset.id).order_by(
+                "-created_at"
+            )
             execution = executions.first()
             if execution is None:
                 self.skipTest(f"Database source not reachable: {e}")
 
         self.assertIsNotNone(execution)
         self.assertIsNotNone(execution.execution_log)
-        # FIXME: The virtualization workflow currently stores an empty list
-        # in execution_log for completed executions.  This field should
-        # contain quality metric entries.  When the workflow is updated to
-        # populate execution_log, change this to assertGreater(len, 0).
-        # Tracking: hub/apps/orchestration/workflows/virtualization.py
-        self.assertIsInstance(execution.execution_log, list,
-                              "execution_log must be a list")
+        self.assertIsInstance(execution.execution_log, list, "execution_log must be a list")
+
+        # The virtualization workflow now calls _run_quality_check_on_results
+        # after query execution, so completed executions should carry quality
+        # entries in execution_log.
+        if execution.status == QueryExecutionStatus.COMPLETED:
+            quality_entries = [
+                entry
+                for entry in execution.execution_log
+                if isinstance(entry, dict)
+                and (
+                    "quality" in str(entry).lower()
+                    or "dq" in str(entry).lower()
+                    or entry.get("level") == "QUALITY"
+                )
+            ]
+            self.assertGreater(
+                len(quality_entries),
+                0,
+                "Completed execution should have quality check entries in execution_log. "
+                "If the workflow does not yet call _run_quality_check_on_results, see "
+                "hub/apps/orchestration/workflows/virtualization.py:_execute_query_task",
+            )
 
     def test_execute_query_handles_quality_service_unavailable(self):
         """Test that query execution continues if quality service is unavailable"""
@@ -259,10 +289,8 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
             query="SELECT 1 as test",
             query_type=QueryType.SQL,
             status=VirtualDatasetStatus.ACTIVE,
-            sources=[_get_test_db_source()]
+            sources=[_get_test_db_source()],
         )
-
-        from hub.apps.core.services.base import ValidationError
 
         try:
             execution = self.service.execute_query(
@@ -270,23 +298,23 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 execution_mode=QueryExecutionMode.SYNC,
-                parameters={}
+                parameters={},
             )
-        except (ValidationError, ValueError, Exception) as e:
-            if "connection" in str(e).lower() or "refused" in str(e).lower():
+        except (ValidationError, ValueError) as e:
+            err = str(e).lower()
+            if any(kw in err for kw in ("connection", "refused", "timeout", "operational")):
                 self.skipTest(f"Database source not reachable: {e}")
-            executions = QueryExecution.objects.filter(
-                virtual_dataset_id=dataset.id
-            ).order_by('-created_at')
+            executions = QueryExecution.objects.filter(virtual_dataset_id=dataset.id).order_by(
+                "-created_at"
+            )
             execution = executions.first()
             if execution is None:
                 self.skipTest(f"Database source not reachable: {e}")
 
         self.assertIsNotNone(execution)
-        self.assertIn(execution.status, [
-            QueryExecutionStatus.COMPLETED,
-            QueryExecutionStatus.FAILED
-        ])
+        self.assertIn(
+            execution.status, [QueryExecutionStatus.COMPLETED, QueryExecutionStatus.FAILED]
+        )
 
 
 class VirtualizationQualityIntegrationTest(TestCase):
@@ -295,31 +323,22 @@ class VirtualizationQualityIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         from hub.apps.orchestration.registry import reset_workflow_definition_cache
+
         reset_workflow_definition_cache()
-        from hub.apps.users.models import Role, UserRole
 
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email=f"test-{uid}@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
         )
 
         # Create DATA_PROVIDER role and assign to user
         provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=provider_role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=provider_role)
 
         # Set up subscription/plan
         plan, _ = TenantPlan.objects.get_or_create(
@@ -327,12 +346,20 @@ class VirtualizationQualityIntegrationTest(TestCase):
             defaults={
                 "name": "Virtualization Test Plan",
                 "tier": PlanTier.PRO,
-                "limits_json": {"max_assets": 100, "max_storage_gb": 1000, "max_virtual_datasets": 100},
+                "limits_json": {
+                    "max_assets": 100,
+                    "max_storage_gb": 1000,
+                    "max_virtual_datasets": 100,
+                },
                 "is_active": True,
             },
         )
         if "max_storage_gb" not in (plan.limits_json or {}):
-            plan.limits_json = {**(plan.limits_json or {}), "max_storage_gb": 1000, "max_virtual_datasets": 100}
+            plan.limits_json = {
+                **(plan.limits_json or {}),
+                "max_storage_gb": 1000,
+                "max_virtual_datasets": 100,
+            }
             plan.save(update_fields=["limits_json"])
         if self.tenant.plan_id != plan.id:
             self.tenant.plan = plan
@@ -347,7 +374,9 @@ class VirtualizationQualityIntegrationTest(TestCase):
             },
         )
 
-        self.service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.service = VirtualizationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         # Clear cache
         cache.clear()
@@ -363,10 +392,8 @@ class VirtualizationQualityIntegrationTest(TestCase):
             query="SELECT 1 AS id, 'federated' AS name",
             query_type=QueryType.FEDERATED,
             status=VirtualDatasetStatus.ACTIVE,
-            sources=[_get_test_db_source()]
+            sources=[_get_test_db_source()],
         )
-
-        from hub.apps.core.services.base import ValidationError
 
         try:
             execution = self.service.execute_query(
@@ -374,12 +401,12 @@ class VirtualizationQualityIntegrationTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 execution_mode=QueryExecutionMode.SYNC,
-                parameters={}
+                parameters={},
             )
         except ValidationError:
             executions = QueryExecution.objects.filter(
                 virtual_dataset_id=federated_dataset.id
-            ).order_by('-created_at')
+            ).order_by("-created_at")
             execution = executions.first()
 
         self.assertIsNotNone(execution)
@@ -390,7 +417,5 @@ class VirtualizationQualityIntegrationTest(TestCase):
         if execution.status == QueryExecutionStatus.COMPLETED:
             # execution_log is a JSONField (nullable). Verify it is not None.
             self.assertIsNotNone(
-                execution.execution_log,
-                "Completed execution should have execution_log populated"
+                execution.execution_log, "Completed execution should have execution_log populated"
             )
-

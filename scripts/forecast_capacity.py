@@ -7,12 +7,13 @@ Linear regression on tenant count, API volume, storage. Produces
 
 Usage: python scripts/forecast_capacity.py [--ci]
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 
@@ -114,7 +115,7 @@ def main() -> int:
                 print(f"  - {w}")
 
     if warnings and args.ci:
-        print(f"\nCI warning: Capacity forecasts exceed thresholds.")
+        print("\nCI warning: Capacity forecasts exceed thresholds.")
         return 1
     return 0
 

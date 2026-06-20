@@ -10,33 +10,32 @@ This test suite implements comprehensive, engineering-grade validation for:
 
 All tests use real implementations (no mocks/stubs) per requirements.
 """
-import uuid
-import json
+
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Dict, Any, List
-from unittest.mock import patch
-from django.test import TestCase, override_settings
+import uuid
+from datetime import UTC, datetime, timedelta
+
+import structlog
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-import structlog
+from django.test import TestCase, override_settings
 
-from hub.apps.core.events.bus import get_event_bus, EventBus
-from hub.apps.core.events.models import Event, DeadLetterQueue, EventSubscription
-from hub.apps.core.events.service_publishers import ODPSEventPublisher
+from hub.apps.audit.models import AuditEvent
+from hub.apps.audit.odps_event_subscriber import ODPSAuditSubscriber
+from hub.apps.core.events.bus import get_event_bus
 from hub.apps.core.events.event_types import (
+    CURRENT_EVENT_VERSION,
     get_event_schema,
     validate_event_data,
-    get_all_event_types,
-    EVENT_TYPE_SCHEMAS,
-    CURRENT_EVENT_VERSION
 )
+from hub.apps.core.events.models import DeadLetterQueue, Event, EventSubscription
 from hub.apps.core.events.schema import EventSchema
-from hub.apps.webhooks.odps_event_subscriber import ODPSEventSubscriber as WebhookODPSEventSubscriber
+from hub.apps.core.events.service_publishers import ODPSEventPublisher
 from hub.apps.notifications.odps_event_subscriber import ODPSNotificationSubscriber
-from hub.apps.audit.odps_event_subscriber import ODPSAuditSubscriber
 from hub.apps.tenants.models import Tenant
-from hub.apps.audit.models import AuditEvent
+from hub.apps.webhooks.odps_event_subscriber import (
+    ODPSEventSubscriber as WebhookODPSEventSubscriber,
+)
 
 User = get_user_model()
 logger = structlog.get_logger(__name__)
@@ -69,13 +68,13 @@ class ODPSEventSchemaValidationTest(TestCase):
         self.tenant = Tenant.objects.create(
             id=self.tenant_id,
             name=f"Test Tenant {unique_suffix}",
-            slug=f"test-tenant-{unique_suffix}"
+            slug=f"test-tenant-{unique_suffix}",
         )
         self.user = User.objects.create_user(
             id=self.user_id,
             email=f"test-{unique_suffix}@example.com",
             password="testpass123",
-            tenant=self.tenant
+            tenant=self.tenant,
         )
 
     def test_all_odps_lifecycle_event_schemas_exist(self):
@@ -157,11 +156,11 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "asset_id": str(uuid.uuid4()),
                     "status": "ACTIVE",
                     "odps_version": "4.1",
-                    "original_format": "JSON"
+                    "original_format": "JSON",
                 },
                 "invalid_data": {
                     "contract_id": 12345  # Invalid type
-                }
+                },
             },
             {
                 "event_type": "odps.updated",
@@ -169,18 +168,18 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "contract_id": str(uuid.uuid4()),
                     "changes": {"status": "ACTIVE"},
                     "previous_status": "DRAFT",
-                    "new_status": "ACTIVE"
+                    "new_status": "ACTIVE",
                 },
-                "invalid_data": {}  # Missing required field
+                "invalid_data": {},  # Missing required field
             },
             {
                 "event_type": "odps.deleted",
                 "valid_data": {
                     "contract_id": str(uuid.uuid4()),
-                    "deleted_at": datetime.now(timezone.utc).isoformat(),
-                    "reason": "User requested deletion"
+                    "deleted_at": datetime.now(UTC).isoformat(),
+                    "reason": "User requested deletion",
                 },
-                "invalid_data": {}  # Missing required field
+                "invalid_data": {},  # Missing required field
             },
             {
                 "event_type": "odps.normalized",
@@ -188,36 +187,36 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "contract_id": str(uuid.uuid4()),
                     "normalization_status": "NORMALIZED_OK",
                     "normalization_errors": None,
-                    "odps_version": "4.1"
+                    "odps_version": "4.1",
                 },
                 "invalid_data": {
                     "contract_id": str(uuid.uuid4())
                     # Missing required normalization_status
-                }
+                },
             },
             {
                 "event_type": "odps.linked",
                 "valid_data": {
                     "odps_contract_id": str(uuid.uuid4()),
                     "odcs_contract_id": str(uuid.uuid4()),
-                    "link_type": "bidirectional"
+                    "link_type": "bidirectional",
                 },
                 "invalid_data": {
                     "odps_contract_id": str(uuid.uuid4())
                     # Missing odcs_contract_id
-                }
+                },
             },
             {
                 "event_type": "odps.unlinked",
                 "valid_data": {
                     "odps_contract_id": str(uuid.uuid4()),
                     "odcs_contract_id": str(uuid.uuid4()),
-                    "reason": "User requested unlink"
+                    "reason": "User requested unlink",
                 },
                 "invalid_data": {
                     "odps_contract_id": str(uuid.uuid4())
                     # Missing odcs_contract_id
-                }
+                },
             },
         ]
 
@@ -248,12 +247,12 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "workflow_version": "1.0.0",
                     "input_data": {"contract_id": contract_id},
                     "odps_version": "4.1",
-                    "progress_percentage": 0.0
+                    "progress_percentage": 0.0,
                 },
                 "invalid_data": {
                     "workflow_name": "odps_creation"
                     # Missing required workflow_instance_id
-                }
+                },
             },
             {
                 "event_type": "odps.workflow.completed",
@@ -264,12 +263,12 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "output_data": {"contract_id": contract_id},
                     "duration_ms": 1000,
                     "odps_contract_id": contract_id,
-                    "progress_percentage": 100.0
+                    "progress_percentage": 100.0,
                 },
                 "invalid_data": {
                     "workflow_name": "odps_creation"
                     # Missing required workflow_instance_id
-                }
+                },
             },
             {
                 "event_type": "odps.workflow.failed",
@@ -280,13 +279,13 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "error_message": "Workflow failed",
                     "error_details": {"step": 3},
                     "failed_step_index": 3,
-                    "progress_percentage": 50.0
+                    "progress_percentage": 50.0,
                 },
                 "invalid_data": {
                     "workflow_instance_id": workflow_instance_id,
-                    "workflow_name": "odps_creation"
+                    "workflow_name": "odps_creation",
                     # Missing required error_message
-                }
+                },
             },
             {
                 "event_type": "odps.workflow.step.completed",
@@ -298,13 +297,13 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "output_data": {"parsed": True},
                     "duration_ms": 100,
                     "progress_percentage": 25.0,
-                    "odps_version": "4.1"
+                    "odps_version": "4.1",
                 },
                 "invalid_data": {
                     "workflow_instance_id": workflow_instance_id,
-                    "step_name": "parse_odps"
+                    "step_name": "parse_odps",
                     # Missing required step_index
-                }
+                },
             },
             {
                 "event_type": "odps.workflow.step.failed",
@@ -316,14 +315,14 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "error_details": {"line": 42},
                     "retry_count": 2,
                     "duration_ms": 50,
-                    "progress_percentage": 25.0
+                    "progress_percentage": 25.0,
                 },
                 "invalid_data": {
                     "workflow_instance_id": workflow_instance_id,
                     "step_index": 1,
-                    "step_name": "parse_odps"
+                    "step_name": "parse_odps",
                     # Missing required error_message
-                }
+                },
             },
             {
                 "event_type": "odps.workflow.progress",
@@ -334,13 +333,13 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "progress_percentage": 50.0,
                     "current_step_index": 2,
                     "current_step_name": "normalize",
-                    "total_steps": 4
+                    "total_steps": 4,
                 },
                 "invalid_data": {
                     "workflow_instance_id": workflow_instance_id,
-                    "workflow_name": "odps_creation"
+                    "workflow_name": "odps_creation",
                     # Missing required progress_percentage
-                }
+                },
             },
             {
                 "event_type": "odps.creation.progress",
@@ -351,12 +350,12 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "current_step": "normalize",
                     "total_steps": 4,
                     "step_index": 2,
-                    "status_message": "Normalizing contract"
+                    "status_message": "Normalizing contract",
                 },
                 "invalid_data": {
                     "contract_id": contract_id
                     # Missing required progress_percentage
-                }
+                },
             },
             {
                 "event_type": "odps.normalization.progress",
@@ -369,12 +368,12 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "items_processed": 150,
                     "items_total": 200,
                     "status_message": "Validating items",
-                    "odps_version": "4.1"
+                    "odps_version": "4.1",
                 },
                 "invalid_data": {
                     "contract_id": contract_id
                     # Missing required progress_percentage
-                }
+                },
             },
         ]
 
@@ -404,13 +403,13 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "ref_type": "internal",
                     "resolution_status": "success",
                     "ref_count": 5,
-                    "duration_ms": 100
+                    "duration_ms": 100,
                 },
                 "invalid_data": {
                     "contract_id": contract_id,
-                    "ref_path": "#/definitions/quality"
+                    "ref_path": "#/definitions/quality",
                     # Missing required ref_type and resolution_status
-                }
+                },
             },
             {
                 "event_type": "odps.ref.failed",
@@ -420,14 +419,14 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "ref_type": "external",
                     "error_message": "Failed to resolve external reference",
                     "error_code": "RESOLUTION_FAILED",
-                    "error_details": {"timeout": True, "retry_count": 3}
+                    "error_details": {"timeout": True, "retry_count": 3},
                 },
                 "invalid_data": {
                     "contract_id": contract_id,
                     "ref_path": "https://example.com/schema.json",
-                    "ref_type": "external"
+                    "ref_type": "external",
                     # Missing required error_message
-                }
+                },
             },
             {
                 "event_type": "odps.ref.progress",
@@ -438,12 +437,12 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "refs_total": 10,
                     "current_ref_path": "#/definitions/quality",
                     "ref_type": "internal",
-                    "status_message": "Processing references"
+                    "status_message": "Processing references",
                 },
                 "invalid_data": {
                     "contract_id": contract_id
                     # Missing required progress_percentage
-                }
+                },
             },
         ]
 
@@ -471,12 +470,12 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "contract_id": contract_id,
                     "export_format": "odps",
                     "output_format": "json",
-                    "odps_version": "4.1"
+                    "odps_version": "4.1",
                 },
                 "invalid_data": {
                     "contract_id": contract_id
                     # Missing required export_format
-                }
+                },
             },
             {
                 "event_type": "odps.export.completed",
@@ -485,12 +484,12 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "export_format": "odps",
                     "output_format": "json",
                     "file_size": 2048,
-                    "duration_ms": 100
+                    "duration_ms": 100,
                 },
                 "invalid_data": {
                     "contract_id": contract_id
                     # Missing required export_format
-                }
+                },
             },
             {
                 "event_type": "odps.export.failed",
@@ -498,13 +497,13 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "contract_id": contract_id,
                     "export_format": "odps",
                     "error_message": "Export failed: Invalid format",
-                    "error_details": {"error_code": "INVALID_FORMAT", "line": 42}
+                    "error_details": {"error_code": "INVALID_FORMAT", "line": 42},
                 },
                 "invalid_data": {
                     "contract_id": contract_id,
-                    "export_format": "odps"
+                    "export_format": "odps",
                     # Missing required error_message
-                }
+                },
             },
             {
                 "event_type": "odps.export.progress",
@@ -516,13 +515,13 @@ class ODPSEventSchemaValidationTest(TestCase):
                     "bytes_processed": 1024,
                     "bytes_total": 2048,
                     "status_message": "Serializing contract",
-                    "odps_version": "4.1"
+                    "odps_version": "4.1",
                 },
                 "invalid_data": {
                     "contract_id": contract_id,
-                    "export_format": "odps"
+                    "export_format": "odps",
                     # Missing required progress_percentage
-                }
+                },
             },
         ]
 
@@ -561,7 +560,7 @@ class ODPSEventSchemaValidationTest(TestCase):
             user_id=user_id,
             request_id="test-request-id",
             correlation_id="test-correlation-id",
-            tags=["odps", "contract"]
+            tags=["odps", "contract"],
         )
 
         # Verify base structure
@@ -587,7 +586,7 @@ class ODPSEventSchemaValidationTest(TestCase):
 
         # Verify timestamp is ISO 8601
         try:
-            datetime.fromisoformat(event["timestamp"].replace('Z', '+00:00'))
+            datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00"))
         except ValueError:
             self.fail("timestamp is not valid ISO 8601")
 
@@ -617,13 +616,9 @@ class ODPSEventSchemaValidationTest(TestCase):
         # Build a complete event
         event = EventSchema.build_event(
             event_type="odps.created",
-            data={
-                "contract_id": contract_id,
-                "status": "ACTIVE",
-                "odps_version": "4.1"
-            },
+            data={"contract_id": contract_id, "status": "ACTIVE", "odps_version": "4.1"},
             tenant_id=tenant_id,
-            user_id=user_id
+            user_id=user_id,
         )
 
         # Validate full event
@@ -661,25 +656,24 @@ class ODPSEventPublishingValidationTest(TestCase):
         self.tenant = Tenant.objects.create(
             id=self.tenant_id,
             name=f"Test Tenant {unique_suffix}",
-            slug=f"test-tenant-{unique_suffix}"
+            slug=f"test-tenant-{unique_suffix}",
         )
         self.user = User.objects.create_user(
             id=self.user_id,
             email=f"test-{unique_suffix}@example.com",
             password="testpass123",
-            tenant=self.tenant
+            tenant=self.tenant,
         )
 
         # Create publisher
         self.publisher = ODPSEventPublisher()
-        setattr(self.publisher, 'tenant_id', self.tenant_id)
-        setattr(self.publisher, 'user_id', self.user_id)
+        self.publisher.tenant_id = self.tenant_id
+        self.publisher.user_id = self.user_id
 
         from hub.apps.core.events.publisher import EventPublisher
+
         self.publisher._event_publisher = EventPublisher(
-            service_name="odps_service",
-            tenant_id=self.tenant_id,
-            user_id=self.user_id
+            service_name="odps_service", tenant_id=self.tenant_id, user_id=self.user_id
         )
 
         self.event_bus = get_event_bus()
@@ -695,11 +689,10 @@ class ODPSEventPublishingValidationTest(TestCase):
             asset_id=asset_id,
             status="ACTIVE",
             odps_version="4.1",
-            original_format="JSON"
+            original_format="JSON",
         )
 
         self.assertIsNotNone(event_id)
-
 
         # Verify event was persisted to PostgreSQL
         event = Event.objects.get(event_id=event_id)
@@ -723,14 +716,10 @@ class ODPSEventPublishingValidationTest(TestCase):
 
         # Publish event
         event_id = self.publisher.publish_odps_updated(
-            contract_id=contract_id,
-            changes=changes,
-            previous_status="DRAFT",
-            new_status="ACTIVE"
+            contract_id=contract_id, changes=changes, previous_status="DRAFT", new_status="ACTIVE"
         )
 
         self.assertIsNotNone(event_id)
-
 
         # Verify event was persisted
         event = Event.objects.get(event_id=event_id)
@@ -749,11 +738,10 @@ class ODPSEventPublishingValidationTest(TestCase):
         event_id = self.publisher.publish_odps_linked(
             odps_contract_id=odps_contract_id,
             odcs_contract_id=odcs_contract_id,
-            link_type="bidirectional"
+            link_type="bidirectional",
         )
 
         self.assertIsNotNone(event_id)
-
 
         # Verify event was persisted
         event = Event.objects.get(event_id=event_id)
@@ -773,11 +761,10 @@ class ODPSEventPublishingValidationTest(TestCase):
             ref_type="internal",
             resolution_status="success",
             ref_count=5,
-            duration_ms=100
+            duration_ms=100,
         )
 
         self.assertIsNotNone(event_id)
-
 
         # Verify event was persisted
         event = Event.objects.get(event_id=event_id)
@@ -799,11 +786,10 @@ class ODPSEventPublishingValidationTest(TestCase):
             export_format="odps",
             output_format="json",
             file_size=2048,
-            duration_ms=100
+            duration_ms=100,
         )
 
         self.assertIsNotNone(event_id)
-
 
         # Verify event was persisted
         event = Event.objects.get(event_id=event_id)
@@ -827,11 +813,10 @@ class ODPSEventPublishingValidationTest(TestCase):
             output_data={"contract_id": contract_id},
             duration_ms=1000,
             odps_contract_id=contract_id,
-            progress_percentage=100.0
+            progress_percentage=100.0,
         )
 
         self.assertIsNotNone(event_id)
-
 
         # Verify event was persisted
         event = Event.objects.get(event_id=event_id)
@@ -844,17 +829,18 @@ class ODPSEventPublishingValidationTest(TestCase):
 
     def test_event_timestamps_are_correct(self):
         """Verify event timestamps are correct and sequential."""
-        contract_id = str(uuid.uuid4())
+        str(uuid.uuid4())
         timestamps = []
 
         # Publish multiple events
         for i in range(3):
-            time.sleep(0.01)  # INTENTIONAL: test-specific delay  # Small delay to ensure different timestamps
+            time.sleep(  # noqa: sleep-needed — retry loop
+                0.01
+            )  # INTENTIONAL: test-specific delay  # Small delay to ensure different timestamps
             event_id = self.publisher.publish_odps_created(
-                contract_id=str(uuid.uuid4()),
-                status="DRAFT"
+                contract_id=str(uuid.uuid4()), status="DRAFT"
             )
-    
+
             event = Event.objects.get(event_id=event_id)
             timestamps.append(event.timestamp)
 
@@ -863,7 +849,7 @@ class ODPSEventPublishingValidationTest(TestCase):
             self.assertLessEqual(
                 timestamps[i],
                 timestamps[i + 1],
-                f"Event {i+1} timestamp should be >= event {i} timestamp"
+                f"Event {i + 1} timestamp should be >= event {i} timestamp",
             )
 
     def test_event_ordering_no_out_of_order(self):
@@ -872,30 +858,27 @@ class ODPSEventPublishingValidationTest(TestCase):
         event_ids = []
 
         # Publish events in sequence
-        event_ids.append(self.publisher.publish_odps_created(
-            contract_id=contract_id,
-            status="DRAFT"
-        ))
+        event_ids.append(
+            self.publisher.publish_odps_created(contract_id=contract_id, status="DRAFT")
+        )
 
+        event_ids.append(
+            self.publisher.publish_odps_updated(
+                contract_id=contract_id,
+                changes={"status": "ACTIVE"},
+                previous_status="DRAFT",
+                new_status="ACTIVE",
+            )
+        )
 
-        event_ids.append(self.publisher.publish_odps_updated(
-            contract_id=contract_id,
-            changes={"status": "ACTIVE"},
-            previous_status="DRAFT",
-            new_status="ACTIVE"
-        ))
-
-
-        event_ids.append(self.publisher.publish_odps_normalized(
-            contract_id=contract_id,
-            normalization_status="SUCCESS"
-        ))
-
+        event_ids.append(
+            self.publisher.publish_odps_normalized(
+                contract_id=contract_id, normalization_status="SUCCESS"
+            )
+        )
 
         # Retrieve events in order
-        events = Event.objects.filter(
-            event_id__in=event_ids
-        ).order_by('timestamp')
+        events = Event.objects.filter(event_id__in=event_ids).order_by("timestamp")
 
         # Verify events are in correct order
         event_types = [e.event_type for e in events]
@@ -911,31 +894,27 @@ class ODPSEventPublishingValidationTest(TestCase):
         # Test all major ODPS event publishing methods
         operations = {
             "created": lambda: self.publisher.publish_odps_created(
-                contract_id=contract_id,
-                status="ACTIVE"
+                contract_id=contract_id, status="ACTIVE"
             ),
             "updated": lambda: self.publisher.publish_odps_updated(
                 contract_id=contract_id,
                 changes={"status": "ACTIVE"},
                 previous_status="DRAFT",
-                new_status="ACTIVE"
+                new_status="ACTIVE",
             ),
             "deleted": lambda: self.publisher.publish_odps_deleted(
-                contract_id=contract_id,
-                reason="Test deletion"
+                contract_id=contract_id, reason="Test deletion"
             ),
             "normalized": lambda: self.publisher.publish_odps_normalized(
-                contract_id=contract_id,
-                normalization_status="SUCCESS"
+                contract_id=contract_id, normalization_status="SUCCESS"
             ),
             "linked": lambda: self.publisher.publish_odps_linked(
-                odps_contract_id=odps_contract_id,
-                odcs_contract_id=odcs_contract_id
+                odps_contract_id=odps_contract_id, odcs_contract_id=odcs_contract_id
             ),
             "unlinked": lambda: self.publisher.publish_odps_unlinked(
                 odps_contract_id=odps_contract_id,
                 odcs_contract_id=odcs_contract_id,
-                reason="Test unlink"
+                reason="Test unlink",
             ),
             "ref_resolved": lambda: self.publisher.publish_odps_ref_resolved(
                 contract_id=contract_id,
@@ -943,40 +922,34 @@ class ODPSEventPublishingValidationTest(TestCase):
                 ref_type="internal",
                 resolution_status="success",
                 ref_count=5,  # Provide required field
-                duration_ms=100  # Provide required field
+                duration_ms=100,  # Provide required field
             ),
             "ref_failed": lambda: self.publisher.publish_odps_ref_failed(
                 contract_id=contract_id,
                 ref_path="https://example.com/schema.json",
                 ref_type="external",
                 error_message="Failed to resolve",
-                error_code="RESOLUTION_FAILED"  # Provide required field
+                error_code="RESOLUTION_FAILED",  # Provide required field
             ),
             "export_started": lambda: self.publisher.publish_odps_export_started(
-                contract_id=contract_id,
-                export_format="odps"
+                contract_id=contract_id, export_format="odps"
             ),
             "export_completed": lambda: self.publisher.publish_odps_export_completed(
-                contract_id=contract_id,
-                export_format="odps"
+                contract_id=contract_id, export_format="odps"
             ),
             "export_failed": lambda: self.publisher.publish_odps_export_failed(
-                contract_id=contract_id,
-                export_format="odps",
-                error_message="Export failed"
+                contract_id=contract_id, export_format="odps", error_message="Export failed"
             ),
             "workflow_started": lambda: self.publisher.publish_odps_workflow_started(
-                workflow_instance_id=workflow_instance_id,
-                workflow_name="odps_creation"
+                workflow_instance_id=workflow_instance_id, workflow_name="odps_creation"
             ),
             "workflow_completed": lambda: self.publisher.publish_odps_workflow_completed(
-                workflow_instance_id=workflow_instance_id,
-                workflow_name="odps_creation"
+                workflow_instance_id=workflow_instance_id, workflow_name="odps_creation"
             ),
             "workflow_failed": lambda: self.publisher.publish_odps_workflow_failed(
                 workflow_instance_id=workflow_instance_id,
                 workflow_name="odps_creation",
-                error_message="Workflow failed"
+                error_message="Workflow failed",
             ),
         }
 
@@ -984,9 +957,11 @@ class ODPSEventPublishingValidationTest(TestCase):
         for operation_name, operation_func in operations.items():
             try:
                 event_id = operation_func()
-                if event_id is not None:  # Some operations may return None with graceful degradation
+                if (
+                    event_id is not None
+                ):  # Some operations may return None with graceful degradation
                     event_ids[operation_name] = event_id
-        
+
             except Exception as e:
                 self.fail(f"Operation {operation_name} failed to publish event: {e}")
 
@@ -1001,7 +976,7 @@ class ODPSEventPublishingValidationTest(TestCase):
 
             if persisted_count != expected_count:
                 # Get detailed information about what's missing
-                persisted_ids = set(persisted_events.values_list('event_id', flat=True))
+                persisted_ids = set(persisted_events.values_list("event_id", flat=True))
                 published_ids = set(event_ids.values())
                 missing_ids = published_ids - persisted_ids
 
@@ -1027,9 +1002,8 @@ class ODPSEventPublishingValidationTest(TestCase):
             asset_id=asset_id,
             status="ACTIVE",
             odps_version="4.1",
-            original_format="JSON"
+            original_format="JSON",
         )
-
 
         # Retrieve event
         event = Event.objects.get(event_id=event_id)
@@ -1055,11 +1029,7 @@ class ODPSEventPublishingValidationTest(TestCase):
         contract_id = str(uuid.uuid4())
 
         # Publish event
-        event_id = self.publisher.publish_odps_created(
-            contract_id=contract_id,
-            status="ACTIVE"
-        )
-
+        event_id = self.publisher.publish_odps_created(contract_id=contract_id, status="ACTIVE")
 
         # Verify event was persisted to PostgreSQL
         event = Event.objects.get(event_id=event_id)
@@ -1099,25 +1069,24 @@ class ODPSEventSubscriberTestingTest(TestCase):
         self.tenant = Tenant.objects.create(
             id=self.tenant_id,
             name=f"Test Tenant {unique_suffix}",
-            slug=f"test-tenant-{unique_suffix}"
+            slug=f"test-tenant-{unique_suffix}",
         )
         self.user = User.objects.create_user(
             id=self.user_id,
             email=f"test-{unique_suffix}@example.com",
             password="testpass123",
-            tenant=self.tenant
+            tenant=self.tenant,
         )
 
         # Create publisher
         self.publisher = ODPSEventPublisher()
-        setattr(self.publisher, 'tenant_id', self.tenant_id)
-        setattr(self.publisher, 'user_id', self.user_id)
+        self.publisher.tenant_id = self.tenant_id
+        self.publisher.user_id = self.user_id
 
         from hub.apps.core.events.publisher import EventPublisher
+
         self.publisher._event_publisher = EventPublisher(
-            service_name="odps_service",
-            tenant_id=self.tenant_id,
-            user_id=self.user_id
+            service_name="odps_service", tenant_id=self.tenant_id, user_id=self.user_id
         )
 
         # Initialize subscribers
@@ -1131,11 +1100,7 @@ class ODPSEventSubscriberTestingTest(TestCase):
         self.assertGreater(len(self.notification_subscriber.handlers), 0)
 
         # Check that lifecycle events are subscribed
-        lifecycle_events = [
-            "odps.created",
-            "odps.updated",
-            "odps.deleted"
-        ]
+        lifecycle_events = ["odps.created", "odps.updated", "odps.deleted"]
 
         for event_type in lifecycle_events:
             has_handler = any(
@@ -1168,7 +1133,7 @@ class ODPSEventSubscriberTestingTest(TestCase):
             "odps.deleted",
             "odps.normalized",
             "odps.linked",
-            "odps.unlinked"
+            "odps.unlinked",
         ]
 
         for event_type in odps_event_types:
@@ -1187,10 +1152,7 @@ class ODPSEventSubscriberTestingTest(TestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "data": {"contract_id": contract_id},
-            "source": {
-                "tenant_id": self.tenant_id,
-                "user_id": self.user_id
-            }
+            "source": {"tenant_id": self.tenant_id, "user_id": self.user_id},
         }
 
         # Call handler directly (subscriber should not raise exception)
@@ -1211,12 +1173,9 @@ class ODPSEventSubscriberTestingTest(TestCase):
                 "contract_id": contract_id,
                 "changes": {"status": "ACTIVE"},
                 "previous_status": "DRAFT",
-                "new_status": "ACTIVE"
+                "new_status": "ACTIVE",
             },
-            "source": {
-                "tenant_id": self.tenant_id,
-                "user_id": self.user_id
-            }
+            "source": {"tenant_id": self.tenant_id, "user_id": self.user_id},
         }
 
         # Call handler directly
@@ -1235,7 +1194,7 @@ class ODPSEventSubscriberTestingTest(TestCase):
             "odps.updated",
             "odps.linked",
             "odps.normalized",
-            "odps.export.completed"
+            "odps.export.completed",
         ]
 
         for event_type in event_types:
@@ -1243,10 +1202,7 @@ class ODPSEventSubscriberTestingTest(TestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": event_type,
                 "data": {"contract_id": contract_id},
-                "source": {
-                    "tenant_id": self.tenant_id,
-                    "user_id": self.user_id
-                }
+                "source": {"tenant_id": self.tenant_id, "user_id": self.user_id},
             }
 
             # Call handler directly
@@ -1258,8 +1214,7 @@ class ODPSEventSubscriberTestingTest(TestCase):
         # Verify audit logs were created
 
         audit_events = AuditEvent.objects.filter(
-            resource_type="ODPS_CONTRACT",
-            resource_id=contract_id
+            resource_type="ODPS_CONTRACT", resource_id=contract_id
         )
         # At least some audit events should be created
         self.assertGreater(audit_events.count(), 0)
@@ -1273,16 +1228,13 @@ class ODPSEventSubscriberTestingTest(TestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "data": {"contract_id": contract_id},
-            "source": {
-                "tenant_id": self.tenant_id,
-                "user_id": self.user_id
-            }
+            "source": {"tenant_id": self.tenant_id, "user_id": self.user_id},
         }
 
         # Call handler directly (should not raise exception)
         try:
             self.webhook_subscriber._handle_odps_event(event_dict)
-        except Exception as e:
+        except Exception:
             # Webhook subscriber may fail if no webhooks are configured, which is OK
             # We just verify it doesn't crash
             pass
@@ -1299,7 +1251,7 @@ class ODPSEventSubscriberTestingTest(TestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.created",
                 "data": {"contract_id": contract_id},
-                "source": {"tenant_id": self.tenant_id, "user_id": self.user_id}
+                "source": {"tenant_id": self.tenant_id, "user_id": self.user_id},
             },
             {
                 "event_id": str(uuid.uuid4()),
@@ -1308,27 +1260,24 @@ class ODPSEventSubscriberTestingTest(TestCase):
                     "contract_id": contract_id,
                     "changes": {"status": "ACTIVE"},
                     "previous_status": "DRAFT",
-                    "new_status": "ACTIVE"
+                    "new_status": "ACTIVE",
                 },
-                "source": {"tenant_id": self.tenant_id, "user_id": self.user_id}
+                "source": {"tenant_id": self.tenant_id, "user_id": self.user_id},
             },
             {
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.linked",
                 "data": {
                     "odps_contract_id": odps_contract_id,
-                    "odcs_contract_id": odcs_contract_id
+                    "odcs_contract_id": odcs_contract_id,
                 },
-                "source": {"tenant_id": self.tenant_id, "user_id": self.user_id}
+                "source": {"tenant_id": self.tenant_id, "user_id": self.user_id},
             },
             {
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.normalized",
-                "data": {
-                    "contract_id": contract_id,
-                    "normalization_status": "SUCCESS"
-                },
-                "source": {"tenant_id": self.tenant_id, "user_id": self.user_id}
+                "data": {"contract_id": contract_id, "normalization_status": "SUCCESS"},
+                "source": {"tenant_id": self.tenant_id, "user_id": self.user_id},
             },
         ]
 
@@ -1341,11 +1290,8 @@ class ODPSEventSubscriberTestingTest(TestCase):
             except Exception as e:
                 self.fail(f"Subscriber failed to handle {event_dict['event_type']} event: {e}")
 
-
         # Verify audit logs were created
-        audit_events = AuditEvent.objects.filter(
-            resource_type="ODPS_CONTRACT"
-        )
+        audit_events = AuditEvent.objects.filter(resource_type="ODPS_CONTRACT")
         self.assertGreater(audit_events.count(), 0)
 
     def test_subscribers_process_events_correctly(self):
@@ -1353,11 +1299,7 @@ class ODPSEventSubscriberTestingTest(TestCase):
         contract_id = str(uuid.uuid4())
 
         # Publish event
-        event_id = self.publisher.publish_odps_created(
-            contract_id=contract_id,
-            status="ACTIVE"
-        )
-
+        event_id = self.publisher.publish_odps_created(contract_id=contract_id, status="ACTIVE")
 
         # Verify event was persisted
         event = Event.objects.get(event_id=event_id)
@@ -1368,14 +1310,13 @@ class ODPSEventSubscriberTestingTest(TestCase):
             "source": {
                 "service": event.source_service,
                 "tenant_id": str(event.tenant_id) if event.tenant_id else None,
-                "user_id": str(event.user_id) if event.user_id else None
-            }
+                "user_id": str(event.user_id) if event.user_id else None,
+            },
         }
 
         # Test audit subscriber creates audit log
         initial_audit_count = AuditEvent.objects.count()
         self.audit_subscriber._handle_odps_event(event_dict)
-
 
         # Verify audit log was created
         final_audit_count = AuditEvent.objects.count()
@@ -1383,8 +1324,7 @@ class ODPSEventSubscriberTestingTest(TestCase):
 
         # Verify audit event details
         audit_event = AuditEvent.objects.filter(
-            resource_type="ODPS_CONTRACT",
-            resource_id=contract_id
+            resource_type="ODPS_CONTRACT", resource_id=contract_id
         ).first()
         self.assertIsNotNone(audit_event)
         self.assertEqual(audit_event.action, "ODPS_CREATED")
@@ -1416,25 +1356,24 @@ class ODPSEventReplayTestingTest(TestCase):
         self.tenant = Tenant.objects.create(
             id=self.tenant_id,
             name=f"Test Tenant {unique_suffix}",
-            slug=f"test-tenant-{unique_suffix}"
+            slug=f"test-tenant-{unique_suffix}",
         )
         self.user = User.objects.create_user(
             id=self.user_id,
             email=f"test-{unique_suffix}@example.com",
             password="testpass123",
-            tenant=self.tenant
+            tenant=self.tenant,
         )
 
         # Create publisher
         self.publisher = ODPSEventPublisher()
-        setattr(self.publisher, 'tenant_id', self.tenant_id)
-        setattr(self.publisher, 'user_id', self.user_id)
+        self.publisher.tenant_id = self.tenant_id
+        self.publisher.user_id = self.user_id
 
         from hub.apps.core.events.publisher import EventPublisher
+
         self.publisher._event_publisher = EventPublisher(
-            service_name="odps_service",
-            tenant_id=self.tenant_id,
-            user_id=self.user_id
+            service_name="odps_service", tenant_id=self.tenant_id, user_id=self.user_id
         )
 
         self.event_bus = get_event_bus()
@@ -1444,26 +1383,21 @@ class ODPSEventReplayTestingTest(TestCase):
         """Clean up after each test."""
         cache.clear()
 
-
     def test_event_replay_from_postgresql_persistence(self):
         """Test event replay from PostgreSQL persistence."""
-        contract_id = str(uuid.uuid4())
+        str(uuid.uuid4())
 
         # Create and persist events
         event_ids = []
-        for i in range(3):
+        for _i in range(3):
             event_id = self.publisher.publish_odps_created(
-                contract_id=str(uuid.uuid4()),
-                status="DRAFT"
+                contract_id=str(uuid.uuid4()), status="DRAFT"
             )
             event_ids.append(event_id)
-    
 
         # Replay events
         replayed_events = self.event_bus.replay_events(
-            event_type="odps.created",
-            tenant_id=self.tenant_id,
-            limit=10
+            event_type="odps.created", tenant_id=self.tenant_id, limit=10
         )
 
         # Verify events were replayed
@@ -1482,26 +1416,22 @@ class ODPSEventReplayTestingTest(TestCase):
 
     def test_event_replay_after_service_restart(self):
         """Test event replay after service restart (simulated)."""
-        contract_id = str(uuid.uuid4())
+        str(uuid.uuid4())
 
         # Create events
         event_ids = []
-        for i in range(2):
+        for _i in range(2):
             event_id = self.publisher.publish_odps_created(
-                contract_id=str(uuid.uuid4()),
-                status="DRAFT"
+                contract_id=str(uuid.uuid4()), status="DRAFT"
             )
             event_ids.append(event_id)
-    
 
         # Simulate service restart by creating new event bus instance
         new_event_bus = get_event_bus()
 
         # Replay events
         replayed_events = new_event_bus.replay_events(
-            event_type="odps.created",
-            tenant_id=self.tenant_id,
-            limit=10
+            event_type="odps.created", tenant_id=self.tenant_id, limit=10
         )
 
         # Verify events were replayed
@@ -1509,23 +1439,17 @@ class ODPSEventReplayTestingTest(TestCase):
 
     def test_event_replay_after_network_partition(self):
         """Test event replay after network partition (simulated)."""
-        contract_id = str(uuid.uuid4())
+        str(uuid.uuid4())
 
         # Create events before partition
-        event_id1 = self.publisher.publish_odps_created(
-            contract_id=str(uuid.uuid4()),
-            status="DRAFT"
-        )
-
+        self.publisher.publish_odps_created(contract_id=str(uuid.uuid4()), status="DRAFT")
 
         # Simulate network partition (events persisted but not delivered via Redis)
         # Events are still in PostgreSQL
 
         # After partition recovery, replay events
         replayed_events = self.event_bus.replay_events(
-            event_type="odps.created",
-            tenant_id=self.tenant_id,
-            limit=10
+            event_type="odps.created", tenant_id=self.tenant_id, limit=10
         )
 
         # Verify events were replayed
@@ -1537,23 +1461,15 @@ class ODPSEventReplayTestingTest(TestCase):
         contract_id = str(uuid.uuid4())
 
         # Create a single event
-        event_id = self.publisher.publish_odps_created(
-            contract_id=contract_id,
-            status="DRAFT"
-        )
-
+        self.publisher.publish_odps_created(contract_id=contract_id, status="DRAFT")
 
         # Replay events multiple times
         replayed_events_1 = self.event_bus.replay_events(
-            event_type="odps.created",
-            tenant_id=self.tenant_id,
-            limit=10
+            event_type="odps.created", tenant_id=self.tenant_id, limit=10
         )
 
         replayed_events_2 = self.event_bus.replay_events(
-            event_type="odps.created",
-            tenant_id=self.tenant_id,
-            limit=10
+            event_type="odps.created", tenant_id=self.tenant_id, limit=10
         )
 
         # Verify same events are returned (no duplicates created)
@@ -1562,32 +1478,20 @@ class ODPSEventReplayTestingTest(TestCase):
         self.assertEqual(replayed_events_1[0]["event_id"], replayed_events_2[0]["event_id"])
 
         # Verify only one event exists in database
-        events_in_db = Event.objects.filter(
-            event_type="odps.created",
-            tenant_id=self.tenant_id
-        )
+        events_in_db = Event.objects.filter(event_type="odps.created", tenant_id=self.tenant_id)
         self.assertEqual(events_in_db.count(), 1)
 
     def test_event_replay_with_filters(self):
         """Test event replay with various filters."""
         # Create events of different types
-        self.publisher.publish_odps_created(
-            contract_id=str(uuid.uuid4()),
-            status="DRAFT"
-        )
+        self.publisher.publish_odps_created(contract_id=str(uuid.uuid4()), status="DRAFT")
         self.publisher.publish_odps_updated(
-            contract_id=str(uuid.uuid4()),
-            changes={},
-            previous_status="DRAFT",
-            new_status="ACTIVE"
+            contract_id=str(uuid.uuid4()), changes={}, previous_status="DRAFT", new_status="ACTIVE"
         )
-
 
         # Replay with event_type filter
         replayed_events = self.event_bus.replay_events(
-            event_type="odps.created",
-            tenant_id=self.tenant_id,
-            limit=10
+            event_type="odps.created", tenant_id=self.tenant_id, limit=10
         )
 
         # Verify only odps.created events are replayed
@@ -1596,12 +1500,11 @@ class ODPSEventReplayTestingTest(TestCase):
 
     def test_event_replay_with_time_range_filter(self):
         """Test event replay with time range filter."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create event 2 hours ago
         event_id1 = self.publisher.publish_odps_created(
-            contract_id=str(uuid.uuid4()),
-            status="DRAFT"
+            contract_id=str(uuid.uuid4()), status="DRAFT"
         )
         event1 = Event.objects.get(event_id=event_id1)
         event1.timestamp = now - timedelta(hours=2)
@@ -1609,13 +1512,11 @@ class ODPSEventReplayTestingTest(TestCase):
 
         # Create event 1 hour ago
         event_id2 = self.publisher.publish_odps_created(
-            contract_id=str(uuid.uuid4()),
-            status="DRAFT"
+            contract_id=str(uuid.uuid4()), status="DRAFT"
         )
         event2 = Event.objects.get(event_id=event_id2)
         event2.timestamp = now - timedelta(hours=1)
         event2.save()
-
 
         # Replay events from last 90 minutes
         replayed_events = self.event_bus.replay_events(
@@ -1623,7 +1524,7 @@ class ODPSEventReplayTestingTest(TestCase):
             tenant_id=self.tenant_id,
             start_time=now - timedelta(minutes=90),
             end_time=now,
-            limit=10
+            limit=10,
         )
 
         # Verify only recent event is replayed
@@ -1636,20 +1537,17 @@ class ODPSEventReplayTestingTest(TestCase):
         asset_id = str(uuid.uuid4())
 
         # Create event with all fields
-        event_id = self.publisher.publish_odps_created(
+        self.publisher.publish_odps_created(
             contract_id=contract_id,
             asset_id=asset_id,
             status="ACTIVE",
             odps_version="4.1",
-            original_format="JSON"
+            original_format="JSON",
         )
-
 
         # Replay event
         replayed_events = self.event_bus.replay_events(
-            event_type="odps.created",
-            tenant_id=self.tenant_id,
-            limit=10
+            event_type="odps.created", tenant_id=self.tenant_id, limit=10
         )
 
         # Verify event structure is preserved
@@ -1692,6 +1590,7 @@ class ODPSEventBusIntegrationTestingTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         from django.db import connection
+
         with connection.cursor() as cur:
             cur.execute("SET statement_timeout = '300s'")
 
@@ -1702,25 +1601,24 @@ class ODPSEventBusIntegrationTestingTest(TestCase):
         self.tenant = Tenant.objects.create(
             id=self.tenant_id,
             name=f"Test Tenant {unique_suffix}",
-            slug=f"test-tenant-{unique_suffix}"
+            slug=f"test-tenant-{unique_suffix}",
         )
         self.user = User.objects.create_user(
             id=self.user_id,
             email=f"test-{unique_suffix}@example.com",
             password="testpass123",
-            tenant=self.tenant
+            tenant=self.tenant,
         )
 
         # Create publisher
         self.publisher = ODPSEventPublisher()
-        setattr(self.publisher, 'tenant_id', self.tenant_id)
-        setattr(self.publisher, 'user_id', self.user_id)
+        self.publisher.tenant_id = self.tenant_id
+        self.publisher.user_id = self.user_id
 
         from hub.apps.core.events.publisher import EventPublisher
+
         self.publisher._event_publisher = EventPublisher(
-            service_name="odps_service",
-            tenant_id=self.tenant_id,
-            user_id=self.user_id
+            service_name="odps_service", tenant_id=self.tenant_id, user_id=self.user_id
         )
 
         self.event_bus = get_event_bus()
@@ -1730,11 +1628,7 @@ class ODPSEventBusIntegrationTestingTest(TestCase):
         contract_id = str(uuid.uuid4())
 
         # Publish event
-        event_id = self.publisher.publish_odps_created(
-            contract_id=contract_id,
-            status="ACTIVE"
-        )
-
+        event_id = self.publisher.publish_odps_created(contract_id=contract_id, status="ACTIVE")
 
         # Verify event was persisted to PostgreSQL
         event = Event.objects.get(event_id=event_id)
@@ -1755,9 +1649,8 @@ class ODPSEventBusIntegrationTestingTest(TestCase):
             asset_id=asset_id,
             status="ACTIVE",
             odps_version="4.1",
-            original_format="JSON"
+            original_format="JSON",
         )
-
 
         # Retrieve event from PostgreSQL
         event = Event.objects.get(event_id=event_id)
@@ -1779,6 +1672,7 @@ class ODPSEventBusIntegrationTestingTest(TestCase):
     def test_dead_letter_queue_handling(self):
         """Test dead letter queue handling for failed events."""
         from hub.apps.webhooks.odps_event_subscriber import ODPSEventSubscriber
+
         subscriber = ODPSEventSubscriber()
 
         # Create event dict
@@ -1786,14 +1680,15 @@ class ODPSEventBusIntegrationTestingTest(TestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "data": {"contract_id": str(uuid.uuid4())},
-            "source": {
-                "tenant_id": self.tenant_id,
-                "user_id": self.user_id
-            }
+            "source": {"tenant_id": self.tenant_id, "user_id": self.user_id},
         }
 
         # Mock a non-transient error
-        original_trigger = subscriber._trigger_webhook_with_retry if hasattr(subscriber, '_trigger_webhook_with_retry') else None
+        original_trigger = (
+            subscriber._trigger_webhook_with_retry
+            if hasattr(subscriber, "_trigger_webhook_with_retry")
+            else None
+        )
 
         def mock_trigger_webhook(*args, **kwargs):
             raise ValueError("Invalid event data")
@@ -1811,11 +1706,9 @@ class ODPSEventBusIntegrationTestingTest(TestCase):
             if original_trigger:
                 subscriber._trigger_webhook_with_retry = original_trigger
 
-
         # Verify event was sent to DLQ
-        dlq_entries = DeadLetterQueue.objects.filter(
-            subscriber=subscriber.subscriber_name,
-            event_type="odps.created"
+        DeadLetterQueue.objects.filter(
+            subscriber=subscriber.subscriber_name, event_type="odps.created"
         )
         # DLQ entry may or may not be created depending on error handling
         # The important thing is that the mechanism exists
@@ -1826,9 +1719,15 @@ class ODPSEventBusIntegrationTestingTest(TestCase):
 
         # Mock Redis client to raise exception
         original_redis = self.event_bus.redis_client
-        mock_redis = type('MockRedis', (), {
-            'publish': lambda *args, **kwargs: (_ for _ in ()).throw(Exception("Redis connection failed"))
-        })()
+        mock_redis = type(
+            "MockRedis",
+            (),
+            {
+                "publish": lambda *args, **kwargs: (_ for _ in ()).throw(
+                    Exception("Redis connection failed")
+                )
+            },
+        )()
 
         self.event_bus.redis_client = mock_redis
 
@@ -1836,12 +1735,7 @@ class ODPSEventBusIntegrationTestingTest(TestCase):
             # Publish event - should still persist to PostgreSQL even if Redis fails
             # Note: In actual implementation, event bus should handle this gracefully
             # For now, we verify the event can be published
-            event_id = self.publisher.publish_odps_created(
-                contract_id=contract_id,
-                status="ACTIVE"
-            )
-
-    
+            event_id = self.publisher.publish_odps_created(contract_id=contract_id, status="ACTIVE")
 
             # Verify event was persisted to PostgreSQL even if Redis failed
             event = Event.objects.get(event_id=event_id)
@@ -1858,11 +1752,7 @@ class ODPSEventBusIntegrationTestingTest(TestCase):
         # For now, we verify that events can be published successfully
         # In production, event bus should handle PostgreSQL failures gracefully
 
-        event_id = self.publisher.publish_odps_created(
-            contract_id=contract_id,
-            status="ACTIVE"
-        )
-
+        event_id = self.publisher.publish_odps_created(contract_id=contract_id, status="ACTIVE")
 
         # Verify event was persisted
         event = Event.objects.get(event_id=event_id)
@@ -1873,11 +1763,7 @@ class ODPSEventBusIntegrationTestingTest(TestCase):
         contract_id = str(uuid.uuid4())
 
         # Publish event
-        event_id = self.publisher.publish_odps_created(
-            contract_id=contract_id,
-            status="ACTIVE"
-        )
-
+        event_id = self.publisher.publish_odps_created(contract_id=contract_id, status="ACTIVE")
 
         # Verify event was persisted synchronously
         event = Event.objects.get(event_id=event_id)
@@ -1899,20 +1785,17 @@ class ODPSEventBusIntegrationTestingTest(TestCase):
             subscriber_name=subscriber_name,
             event_type_pattern=event_type_pattern,
             handler=test_handler,
-            is_active=True
+            is_active=True,
         )
 
         # Verify subscription was created
         subscription = EventSubscription.objects.get(
-            subscriber_name=subscriber_name,
-            event_type_pattern=event_type_pattern
+            subscriber_name=subscriber_name, event_type_pattern=event_type_pattern
         )
         self.assertIsNotNone(subscription)
         self.assertTrue(subscription.is_active)
 
         # Clean up
         EventSubscription.objects.filter(
-            subscriber_name=subscriber_name,
-            event_type_pattern=event_type_pattern
+            subscriber_name=subscriber_name, event_type_pattern=event_type_pattern
         ).delete()
-

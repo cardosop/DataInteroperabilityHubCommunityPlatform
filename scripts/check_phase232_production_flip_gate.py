@@ -36,15 +36,16 @@ Exits 0 (clean) or 1 (gate violated). On violation, prints one
 ``::error::`` line per missing attestation so GitHub Actions surfaces
 each in the PR check output.
 """
+
 from __future__ import annotations
 
 import argparse
 import re
 import subprocess
 import sys
+from collections.abc import Iterable
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Iterable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -83,9 +84,7 @@ TABLETOP_LEDGER = REPO_ROOT / "docs" / "audit-reports" / "232-tabletop-ledger.md
 
 #: Ledger rows that haven't been filled out yet contain placeholder
 #: tokens; the gate treats any of these as "not signed".
-_PLACEHOLDER_RE = re.compile(
-    r"_to be filled_|_YYYY-MM-DD_|_link_|_short-SHA_|_name_|_attestation_"
-)
+_PLACEHOLDER_RE = re.compile(r"_to be filled_|_YYYY-MM-DD_|_link_|_short-SHA_|_name_|_attestation_")
 
 #: Tabletop run is fresh only if its most recent green-run date is
 #: within this many days of "today".
@@ -95,6 +94,7 @@ TABLETOP_FRESHNESS_DAYS = 90
 # ---------------------------------------------------------------------------
 # Diff resolution
 # ---------------------------------------------------------------------------
+
 
 def _git_diff(base_ref: str, head_ref: str, path: str) -> str:
     """Return the git diff for ``path`` between ``base_ref`` and ``head_ref``.
@@ -143,7 +143,9 @@ def _flipped_flags_in_diff(diff_text: str) -> set[str]:
         r"""
         ^\+                              # added line
         \s*
-        (?P<flag>""" + flag_alternation + r""")
+        (?P<flag>"""
+        + flag_alternation
+        + r""")
         \s*[:=]\s*
         (?P<quote>['"]?)
         (?P<value>true|True)
@@ -232,13 +234,11 @@ def _privacy_signoff_violations(subsystems: Iterable[str]) -> list[str]:
             date_str = block.get(f"{role}.date", "")
             if not name or _PLACEHOLDER_RE.search(name):
                 violations.append(
-                    f"DoD.1: subsystem '{subsystem}' missing real "
-                    f"`{role}.name` (got '{name}')."
+                    f"DoD.1: subsystem '{subsystem}' missing real `{role}.name` (got '{name}')."
                 )
             if not date_str or _PLACEHOLDER_RE.search(date_str):
                 violations.append(
-                    f"DoD.1: subsystem '{subsystem}' missing real "
-                    f"`{role}.date` (got '{date_str}')."
+                    f"DoD.1: subsystem '{subsystem}' missing real `{role}.date` (got '{date_str}')."
                 )
     return violations
 
@@ -353,21 +353,13 @@ def _tabletop_violations(today: date | None = None) -> list[str]:
         ]
     last_date, last_outcome = runs[-1]
     if last_outcome != "green":
-        return [
-            f"DoD.7: most recent tabletop run outcome="
-            f"'{last_outcome}' (expected 'green')."
-        ]
+        return [f"DoD.7: most recent tabletop run outcome='{last_outcome}' (expected 'green')."]
     if last_date == "_YYYY-MM-DD_":
-        return [
-            "DoD.7: most recent tabletop run date is still a placeholder."
-        ]
+        return ["DoD.7: most recent tabletop run date is still a placeholder."]
     try:
         run_date = datetime.strptime(last_date, "%Y-%m-%d").date()
     except ValueError:
-        return [
-            f"DoD.7: most recent tabletop run date '{last_date}' is not "
-            "ISO YYYY-MM-DD."
-        ]
+        return [f"DoD.7: most recent tabletop run date '{last_date}' is not ISO YYYY-MM-DD."]
     today = today or date.today()
     if today - run_date > timedelta(days=TABLETOP_FRESHNESS_DAYS):
         return [
@@ -382,6 +374,7 @@ def _tabletop_violations(today: date | None = None) -> list[str]:
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)

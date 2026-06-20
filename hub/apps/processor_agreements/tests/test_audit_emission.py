@@ -2,11 +2,10 @@
 from all mutation paths. Real DB, real audit rows — no mocks."""
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import uuid
 
+import pytest
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient

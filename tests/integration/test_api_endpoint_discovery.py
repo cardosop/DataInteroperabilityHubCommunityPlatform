@@ -11,17 +11,15 @@ Tests verify:
 Uses REAL services (no mocks/stubs) - always fixing root causes and following
 development best practices.
 """
+
 import uuid
 
 import pytest
-import json
 import yaml
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
-from django.urls import get_resolver, URLPattern, URLResolver
-from django.conf import settings
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
@@ -37,8 +35,10 @@ class APIEndpointDiscoveryTest(TestCase):
         """Set up test fixtures — authenticated client (221.4.2)."""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"T {uid}", slug=f"t-disc-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"T {uid}",
+            slug=f"t-disc-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"disc-{uid}@example.com",
@@ -203,13 +203,17 @@ class APIEndpointDiscoveryTest(TestCase):
 
         # DRF may parse YAML response as string in response.data, or we need to use response.content
         # Try both approaches
-        if hasattr(response, 'data') and isinstance(response.data, str):
+        if hasattr(response, "data") and isinstance(response.data, str):
             content = response.data
-        elif hasattr(response, 'data') and isinstance(response.data, bytes):
+        elif hasattr(response, "data") and isinstance(response.data, bytes):
             content = response.data.decode("utf-8")
         else:
             # Fallback to response.content
-            content = response.content.decode("utf-8") if isinstance(response.content, bytes) else str(response.content)
+            content = (
+                response.content.decode("utf-8")
+                if isinstance(response.content, bytes)
+                else str(response.content)
+            )
 
         spec = yaml.safe_load(content)
         self.assertIsInstance(spec, dict, f"YAML spec should be dict, got {type(spec)}")
@@ -234,13 +238,17 @@ class APIEndpointDiscoveryTest(TestCase):
 
         # DRF may parse YAML response as string in response.data, or we need to use response.content
         # Try both approaches
-        if hasattr(yaml_response, 'data') and isinstance(yaml_response.data, str):
+        if hasattr(yaml_response, "data") and isinstance(yaml_response.data, str):
             yaml_content = yaml_response.data
-        elif hasattr(yaml_response, 'data') and isinstance(yaml_response.data, bytes):
+        elif hasattr(yaml_response, "data") and isinstance(yaml_response.data, bytes):
             yaml_content = yaml_response.data.decode("utf-8")
         else:
             # Fallback to response.content
-            yaml_content = yaml_response.content.decode("utf-8") if isinstance(yaml_response.content, bytes) else str(yaml_response.content)
+            yaml_content = (
+                yaml_response.content.decode("utf-8")
+                if isinstance(yaml_response.content, bytes)
+                else str(yaml_response.content)
+            )
 
         yaml_spec = yaml.safe_load(yaml_content)
         self.assertIsInstance(yaml_spec, dict, f"YAML spec should be dict, got {type(yaml_spec)}")
@@ -288,7 +296,7 @@ class APIEndpointDiscoveryTest(TestCase):
 
         # Check that POST endpoints have request bodies
         post_endpoints_with_body = 0
-        for path, methods in paths.items():
+        for _path, methods in paths.items():
             if "post" in methods:
                 post_method = methods["post"]
                 if "requestBody" in post_method:
@@ -309,8 +317,8 @@ class APIEndpointDiscoveryTest(TestCase):
 
         # Check endpoints have responses
         endpoints_with_responses = 0
-        for path, methods in paths.items():
-            for method_name, method_spec in methods.items():
+        for _path, methods in paths.items():
+            for _method_name, method_spec in methods.items():
                 if isinstance(method_spec, dict) and "responses" in method_spec:
                     endpoints_with_responses += 1
 
@@ -432,9 +440,7 @@ class APIEndpointDiscoveryTest(TestCase):
             )
             # Should not contain double slashes (except after /api/v1/)
             if "//" in endpoint_url.replace("/api/v1/", ""):
-                self.fail(
-                    f"Endpoint {endpoint_name} URL {endpoint_url} contains double slashes"
-                )
+                self.fail(f"Endpoint {endpoint_name} URL {endpoint_url} contains double slashes")
 
     def test_openapi_spec_completeness(self):
         """Test that OpenAPI spec is complete and includes all necessary components"""
@@ -444,9 +450,7 @@ class APIEndpointDiscoveryTest(TestCase):
         # Verify required top-level fields
         required_fields = ["openapi", "info", "paths", "components"]
         for field in required_fields:
-            self.assertIn(
-                field, spec, f"Required field {field} missing from OpenAPI spec"
-            )
+            self.assertIn(field, spec, f"Required field {field} missing from OpenAPI spec")
 
         # Verify info has required fields
         info = spec.get("info", {})
@@ -455,15 +459,11 @@ class APIEndpointDiscoveryTest(TestCase):
 
         # Verify paths is non-empty
         paths = spec.get("paths", {})
-        self.assertGreater(
-            len(paths), 0, "OpenAPI spec paths section is empty"
-        )
+        self.assertGreater(len(paths), 0, "OpenAPI spec paths section is empty")
 
         # Verify components has schemas
         components = spec.get("components", {})
-        self.assertIn(
-            "schemas", components, "Components.schemas missing from OpenAPI spec"
-        )
+        self.assertIn("schemas", components, "Components.schemas missing from OpenAPI spec")
 
     def test_openapi_spec_has_security_schemes(self):
         """Test that OpenAPI spec includes security schemes"""
@@ -525,4 +525,3 @@ class APIEndpointDiscoveryTest(TestCase):
             (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN),
             "ReDoc must reject unauthenticated requests",
         )
-

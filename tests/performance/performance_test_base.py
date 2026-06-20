@@ -4,11 +4,11 @@ Base utilities for performance tests.
 Shared setup and helpers for API endpoint performance tests.
 Uses real implementations - no mocks or stubs.
 """
+
 from __future__ import annotations
 
 import statistics
 import time
-from typing import Optional
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -16,7 +16,7 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.tenants.models import Tenant, TenantStatus
+from hub.apps.tenants.models import TenantStatus
 from hub.apps.users.models import Role, UserRole, UserStatus
 from tests.factories import TenantFactory
 
@@ -25,7 +25,7 @@ User = get_user_model()
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.performance]
 
 
-def calculate_percentile(values: list, percentile: float) -> Optional[float]:
+def calculate_percentile(values: list, percentile: float) -> float | None:
     """Calculate percentile from list of values."""
     if not values:
         return None

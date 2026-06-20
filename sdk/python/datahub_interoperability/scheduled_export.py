@@ -5,7 +5,7 @@ Provides methods for managing scheduled data export workflows.
 Uses real hub API - no mocks/stubs.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from .client import DataHubClient
 

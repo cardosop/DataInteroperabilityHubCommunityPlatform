@@ -1,6 +1,7 @@
 """Daily processor-agreement expiry sweep (Phase 232.6.7)."""
 
 from __future__ import annotations
+
 from datetime import date
 
 from django.utils import timezone

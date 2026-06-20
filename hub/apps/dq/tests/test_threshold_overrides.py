@@ -22,6 +22,7 @@ Real Django models + a transport-boundary stub via
 ``unittest.mock.patch`` only on the HTTP layer — no mocks of the
 threshold-resolution logic itself.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -30,7 +31,6 @@ from unittest.mock import patch
 import pytest
 from django.core.exceptions import ValidationError
 from django.test import TransactionTestCase
-
 
 pytestmark = [pytest.mark.django_db(transaction=True)]
 
@@ -54,8 +54,47 @@ def _make_tenant(**kwargs):
     return Tenant.objects.create(**defaults)
 
 
-class TenantThresholdValidationTests(TransactionTestCase):
+# ---------------------------------------------------------------------------
+# Shared fake-response factory — used by header-propagation and cache-key
+# tests to stub the HTTP transport boundary without duplicating the _R inner
+# class six times.
+# ---------------------------------------------------------------------------
 
+
+def _fake_dq_response(metadata=None):
+    """Return a minimal fake ``httpx.Response``-like object for /run.
+
+    ``status_code`` is always 200, ``raise_for_status()`` is a no-op,
+    and ``json()`` returns a canonical PASS result with the optional
+    *metadata* dict merged in.  This allows per-test marker injection
+    for cache-pollution assertions without repeating the full payload
+    shape.
+    """
+    _metadata = metadata or {}
+
+    class _FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "overall_status": "PASS",
+                "quality_score": 100.0,
+                "checks": [],
+                "engine_type": "GX",
+                "engine_version": "0.18",
+                "profile_key": "intake_basic_gx",
+                "metadata": _metadata,
+            }
+
+        @staticmethod
+        def raise_for_status():
+            pass
+
+    return _FakeResponse()
+
+
+class TenantThresholdValidationTests(TransactionTestCase):
     def test_default_is_null_both_fields(self):
         tenant = _make_tenant()
         assert tenant.dq_input_max_bytes is None
@@ -65,7 +104,9 @@ class TenantThresholdValidationTests(TransactionTestCase):
         from hub.apps.tenants.models import Tenant
 
         t = Tenant(
-            name="lo", slug="lo-bound", status="ACTIVE",
+            name="lo",
+            slug="lo-bound",
+            status="ACTIVE",
             kyc_status="UNVERIFIED",
             dq_input_max_bytes=10 * 1024 * 1024 - 1,  # 1 byte under
         )
@@ -76,7 +117,9 @@ class TenantThresholdValidationTests(TransactionTestCase):
         from hub.apps.tenants.models import Tenant
 
         t = Tenant(
-            name="hi", slug="hi-bound", status="ACTIVE",
+            name="hi",
+            slug="hi-bound",
+            status="ACTIVE",
             kyc_status="UNVERIFIED",
             dq_input_max_bytes=5 * 1024 * 1024 * 1024 + 1,  # 1 byte over
         )
@@ -94,7 +137,9 @@ class TenantThresholdValidationTests(TransactionTestCase):
         from hub.apps.tenants.models import Tenant
 
         t = Tenant(
-            name="lo", slug="lo-sampling", status="ACTIVE",
+            name="lo",
+            slug="lo-sampling",
+            status="ACTIVE",
             kyc_status="UNVERIFIED",
             dq_sampling_threshold_rows=9_999,  # below 10 000
         )
@@ -105,7 +150,9 @@ class TenantThresholdValidationTests(TransactionTestCase):
         from hub.apps.tenants.models import Tenant
 
         t = Tenant(
-            name="hi", slug="hi-sampling", status="ACTIVE",
+            name="hi",
+            slug="hi-sampling",
+            status="ACTIVE",
             kyc_status="UNVERIFIED",
             dq_sampling_threshold_rows=100_000_001,  # above 100M
         )
@@ -144,23 +191,7 @@ class DQServiceClientHeaderForwardingTests(TransactionTestCase):
             captured["headers"] = kwargs.get("headers", {})
             captured["data"] = kwargs.get("data", {})
 
-            # Return a fake httpx Response with the bare-minimum
-            # JSON body the caller expects.
-            class _R:
-                status_code = 200
-                def json(self_inner):
-                    return {
-                        "overall_status": "PASS",
-                        "quality_score": 100.0,
-                        "checks": [],
-                        "engine_type": "GX",
-                        "engine_version": "0.18",
-                        "profile_key": "intake_basic_gx",
-                        "metadata": {},
-                    }
-                def raise_for_status(self_inner):
-                    pass
-            return _R()
+            return _fake_dq_response()
 
         with patch.object(client, "_request_with_retry", _capture_request):
             client.run_dq(
@@ -184,21 +215,8 @@ class DQServiceClientHeaderForwardingTests(TransactionTestCase):
 
         def _capture_request(method, endpoint, **kwargs):
             captured["headers"] = kwargs.get("headers", {})
-            class _R:
-                status_code = 200
-                def json(self_inner):
-                    return {
-                        "overall_status": "PASS",
-                        "quality_score": 100.0,
-                        "checks": [],
-                        "engine_type": "GX",
-                        "engine_version": "0.18",
-                        "profile_key": "intake_basic_gx",
-                        "metadata": {},
-                    }
-                def raise_for_status(self_inner):
-                    pass
-            return _R()
+
+            return _fake_dq_response()
 
         with patch.object(client, "_request_with_retry", _capture_request):
             client.run_dq(
@@ -225,21 +243,8 @@ class DQServiceClientHeaderForwardingTests(TransactionTestCase):
 
         def _capture_request(method, endpoint, **kwargs):
             captured["headers"] = kwargs.get("headers", {})
-            class _R:
-                status_code = 200
-                def json(self_inner):
-                    return {
-                        "overall_status": "PASS",
-                        "quality_score": 100.0,
-                        "checks": [],
-                        "engine_type": "GX",
-                        "engine_version": "0.18",
-                        "profile_key": "intake_basic_gx",
-                        "metadata": {},
-                    }
-                def raise_for_status(self_inner):
-                    pass
-            return _R()
+
+            return _fake_dq_response()
 
         with patch.object(client, "_request_with_retry", _capture_request):
             client.run_dq(
@@ -266,21 +271,8 @@ class DQServiceClientHeaderForwardingTests(TransactionTestCase):
 
         def _capture_request(method, endpoint, **kwargs):
             captured["headers"] = kwargs.get("headers", {})
-            class _R:
-                status_code = 200
-                def json(self_inner):
-                    return {
-                        "overall_status": "PASS",
-                        "quality_score": 100.0,
-                        "checks": [],
-                        "engine_type": "GX",
-                        "engine_version": "0.18",
-                        "profile_key": "intake_basic_gx",
-                        "metadata": {},
-                    }
-                def raise_for_status(self_inner):
-                    pass
-            return _R()
+
+            return _fake_dq_response()
 
         with patch.object(client, "_request_with_retry", _capture_request):
             client.run_dq(
@@ -307,21 +299,8 @@ class DQServiceClientHeaderForwardingTests(TransactionTestCase):
 
         def _capture_request(method, endpoint, **kwargs):
             captured["headers"] = kwargs.get("headers", {})
-            class _R:
-                status_code = 200
-                def json(self_inner):
-                    return {
-                        "overall_status": "PASS",
-                        "quality_score": 100.0,
-                        "checks": [],
-                        "engine_type": "GX",
-                        "engine_version": "0.18",
-                        "profile_key": "intake_basic_gx",
-                        "metadata": {},
-                    }
-                def raise_for_status(self_inner):
-                    pass
-            return _R()
+
+            return _fake_dq_response()
 
         with patch.object(client, "_request_with_retry", _capture_request):
             client.run_dq(
@@ -352,6 +331,7 @@ class CacheKeyIsolationByThresholdTests(TransactionTestCase):
 
     def test_different_thresholds_produce_different_cache_keys(self):
         from django.core.cache import cache
+
         from hub.apps.dq.service_client import DQServiceClient
 
         # Two tenants, identical file, different sampling thresholds.
@@ -367,26 +347,15 @@ class CacheKeyIsolationByThresholdTests(TransactionTestCase):
         # cache key for the two collided.
         def _make_capture(marker):
             def _capture_request(method, endpoint, **kwargs):
-                class _R:
-                    status_code = 200
-                    def json(self_inner):
-                        return {
-                            "overall_status": "PASS",
-                            "quality_score": 100.0,
-                            "checks": [],
-                            "engine_type": "GX",
-                            "engine_version": "0.18",
-                            "profile_key": "intake_basic_gx",
-                            "metadata": {"_tenant_marker": marker},
-                        }
-                    def raise_for_status(self_inner):
-                        pass
-                return _R()
+                return _fake_dq_response(metadata={"_tenant_marker": marker})
+
             return _capture_request
 
         # Tenant A run (populates cache under tenant-A's key).
         with patch.object(
-            client, "_request_with_retry", _make_capture("A"),
+            client,
+            "_request_with_retry",
+            _make_capture("A"),
         ):
             seen_results["A"] = client.run_dq(
                 file_content=b"a,b\n1,2\n",
@@ -402,7 +371,9 @@ class CacheKeyIsolationByThresholdTests(TransactionTestCase):
         # the audit-fix it should miss the cache and call the (B)
         # transport stub, returning marker "B".
         with patch.object(
-            client, "_request_with_retry", _make_capture("B"),
+            client,
+            "_request_with_retry",
+            _make_capture("B"),
         ):
             seen_results["B"] = client.run_dq(
                 file_content=b"a,b\n1,2\n",
@@ -426,6 +397,7 @@ class CacheKeyIsolationByThresholdTests(TransactionTestCase):
         regression for the common case (most tenants have NULL
         overrides)."""
         from django.core.cache import cache
+
         from hub.apps.dq.service_client import DQServiceClient
 
         tenant_a = _make_tenant()  # both NULL
@@ -435,25 +407,14 @@ class CacheKeyIsolationByThresholdTests(TransactionTestCase):
 
         def _make_capture(marker):
             def _capture_request(method, endpoint, **kwargs):
-                class _R:
-                    status_code = 200
-                    def json(self_inner):
-                        return {
-                            "overall_status": "PASS",
-                            "quality_score": 100.0,
-                            "checks": [],
-                            "engine_type": "GX",
-                            "engine_version": "0.18",
-                            "profile_key": "intake_basic_gx",
-                            "metadata": {"_tenant_marker": marker},
-                        }
-                    def raise_for_status(self_inner):
-                        pass
-                return _R()
+                return _fake_dq_response(metadata={"_tenant_marker": marker})
+
             return _capture_request
 
         with patch.object(
-            client, "_request_with_retry", _make_capture("A"),
+            client,
+            "_request_with_retry",
+            _make_capture("A"),
         ):
             res_a = client.run_dq(
                 file_content=b"a,b\n1,2\n",
@@ -465,7 +426,9 @@ class CacheKeyIsolationByThresholdTests(TransactionTestCase):
 
         # Tenant B should hit the cache (same env-default key).
         with patch.object(
-            client, "_request_with_retry", _make_capture("B"),
+            client,
+            "_request_with_retry",
+            _make_capture("B"),
         ):
             res_b = client.run_dq(
                 file_content=b"a,b\n1,2\n",

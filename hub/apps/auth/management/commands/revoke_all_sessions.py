@@ -4,6 +4,7 @@ Usage:
     python manage.py revoke_all_sessions --tenant <slug> --reason "Security incident INC-1234"
     python manage.py revoke_all_sessions --tenant <slug> --dry-run
 """
+
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -12,23 +13,25 @@ class Command(BaseCommand):
     help = "Revoke all active user sessions for a tenant (security incident response)."
 
     def add_arguments(self, parser):
+        parser.add_argument("--tenant", type=str, required=True, help="Tenant slug or UUID.")
         parser.add_argument(
-            "--tenant", type=str, required=True, help="Tenant slug or UUID."
+            "--reason",
+            type=str,
+            default="Manual revocation",
+            help="Reason for the revocation (logged in audit trail).",
         )
         parser.add_argument(
-            "--reason", type=str, default="Manual revocation",
-            help="Reason for the revocation (logged in audit trail)."
-        )
-        parser.add_argument(
-            "--dry-run", action="store_true", default=False,
-            help="Report sessions that would be revoked without revoking them."
+            "--dry-run",
+            action="store_true",
+            default=False,
+            help="Report sessions that would be revoked without revoking them.",
         )
 
     def handle(self, *args, **options):
         import uuid as _uuid
 
-        from hub.apps.tenants.models import Tenant
         from hub.apps.audit.utils import create_audit_event
+        from hub.apps.tenants.models import Tenant
 
         tenant_slug = options["tenant"]
         try:
@@ -41,8 +44,9 @@ class Command(BaseCommand):
         reason = options["reason"]
 
         # Count active sessions for this tenant's users
-        from hub.apps.auth.models import Session
         from django.contrib.auth import get_user_model
+
+        from hub.apps.auth.models import Session
 
         User = get_user_model()
         tenant_users = User.objects.filter(tenant=tenant)
@@ -53,8 +57,7 @@ class Command(BaseCommand):
 
         count = sessions.count()
         self.stdout.write(
-            f"Tenant {tenant.slug}: {count} active session(s) "
-            f"across {tenant_users.count()} user(s)"
+            f"Tenant {tenant.slug}: {count} active session(s) across {tenant_users.count()} user(s)"
         )
 
         if dry_run:

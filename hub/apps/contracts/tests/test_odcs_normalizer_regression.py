@@ -11,7 +11,6 @@ from unittest import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization import (
-    NormalizationResult,
     ODCSNormalizer,
     normalize_contract,
 )
@@ -74,7 +73,7 @@ class ODCSNormalizerRegressionTest(TestCase):
             "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, status, errors, warnings = normalize_contract(
             raw_contract=json.dumps(contract_data), format="JSON", spec_type="ODCS"
         )
 
@@ -111,7 +110,7 @@ class ODCSNormalizerRegressionTest(TestCase):
             "lifecycle": {"data_source": "database", "refresh_cadence": "daily"},
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
             raw_contract=json.dumps(contract_data), format="JSON", spec_type="ODCS"
         )
 

@@ -8,16 +8,19 @@ executes within an active transaction context. It provides:
 - Single ``rule_chain_completed`` audit event
 - Async-safe semantics (no side-effect helpers fire until all steps pass)
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from django.db import transaction
 
-from hub.apps.core.business_rules.base import BusinessRules, RuleExecutionContext, ValidationResult
+from hub.apps.core.business_rules.base import RuleExecutionContext, ValidationResult
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +29,7 @@ logger = logging.getLogger(__name__)
 # pattern :mod:`base` already uses).
 try:
     from opentelemetry import trace as _otel_trace
+
     from hub.apps.observability.otel_config import get_tracer as _otel_get_tracer
 
     _OTEL_AVAILABLE = True
@@ -76,19 +80,19 @@ class RuleChain:
     """Phase 274.7 — named chain of business rule steps."""
 
     name: str
-    steps: List[Callable[..., ValidationResult]] = field(default_factory=list)
+    steps: list[Callable[..., ValidationResult]] = field(default_factory=list)
     requires_transaction: bool = True
     short_circuit: bool = True
     async_safe: bool = True
 
     def execute(
         self,
-        context: Optional[RuleExecutionContext] = None,
+        context: RuleExecutionContext | None = None,
         *,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Execute the chain within a transaction.
 
         Returns ``{outcome, steps, duration_ms, errors}``.
@@ -107,8 +111,8 @@ class RuleChain:
         )
 
         started_at = time.monotonic()
-        results: Dict[str, ValidationResult] = {}
-        errors: List[str] = []
+        results: dict[str, ValidationResult] = {}
+        errors: list[str] = []
 
         # Phase 274.8.2 — open the canonical parent span for the entire
         # chain. Per-step spans opened by individual rules (via
@@ -119,7 +123,9 @@ class RuleChain:
         # carries the whole chain summary.
         with _chain_span(self.name) as chain_span:
             chain_span.set_attribute("business_rule_chain.name", self.name)
-            chain_span.set_attribute("business_rule_chain.tenant_id", str(tenant_id) if tenant_id else "")
+            chain_span.set_attribute(
+                "business_rule_chain.tenant_id", str(tenant_id) if tenant_id else ""
+            )
             chain_span.set_attribute("business_rule_chain.user_id", str(user_id) if user_id else "")
             chain_span.set_attribute("business_rule_chain.short_circuit", bool(self.short_circuit))
             chain_span.set_attribute("business_rule_chain.steps_planned", len(self.steps))
@@ -135,7 +141,9 @@ class RuleChain:
                         idx += 1
                     step_name = f"{base_name}_{idx}"
                 try:
-                    result = step(ctx, **kwargs) if callable(step) else ValidationResult(is_valid=True)
+                    result = (
+                        step(ctx, **kwargs) if callable(step) else ValidationResult(is_valid=True)
+                    )
                     if isinstance(result, ValidationResult):
                         results[step_name] = result
                         if not result.is_valid and self.short_circuit:
@@ -152,10 +160,8 @@ class RuleChain:
                     # Record the exception on the chain span so
                     # Tempo/Jaeger surfaces the failing step without
                     # forcing operators to cross-reference logs.
-                    try:
+                    with contextlib.suppress(Exception):
                         chain_span.record_exception(exc)
-                    except Exception:
-                        pass
                     if self.short_circuit:
                         break
 
@@ -171,12 +177,8 @@ class RuleChain:
                 chain_span.set_attribute(
                     "business_rule_chain.outcome", "PASS" if all_valid else "FAIL"
                 )
-                chain_span.set_attribute(
-                    "business_rule_chain.duration_ms", round(duration_ms, 2)
-                )
-                chain_span.set_attribute(
-                    "business_rule_chain.errors_count", len(errors)
-                )
+                chain_span.set_attribute("business_rule_chain.duration_ms", round(duration_ms, 2))
+                chain_span.set_attribute("business_rule_chain.errors_count", len(errors))
             except Exception:
                 pass
 
@@ -190,6 +192,7 @@ class RuleChain:
         # audit service exposes a ``using`` kwarg.
         try:
             from hub.apps.audit.models import AuditEvent
+
             AuditEvent.objects.create(
                 resource_type="RULE_CHAIN",
                 action="RULE_CHAIN_COMPLETED",
@@ -213,9 +216,11 @@ class RuleChain:
         if not all_valid and getattr(ctx, "metadata", {}).get("is_async"):
             try:
                 from hub.apps.notifications.utils import create_user_notification
+
                 if user_id and tenant_id:
-                    from hub.apps.users.models import User
                     from hub.apps.tenants.models import Tenant
+                    from hub.apps.users.models import User
+
                     user = User.objects.get(pk=user_id)
                     tenant_obj = Tenant.objects.get(pk=tenant_id)
                     create_user_notification(
@@ -239,7 +244,7 @@ class RuleChain:
 
 # ── Chain registry ──────────────────────────────────────────────────────
 
-_CHAINS: Dict[str, RuleChain] = {}
+_CHAINS: dict[str, RuleChain] = {}
 
 
 def register_chain(
@@ -250,6 +255,7 @@ def register_chain(
     async_safe: bool = True,
 ) -> Callable:
     """Decorator that registers a function as a RuleChain builder."""
+
     def decorator(func):
         chain = RuleChain(
             name=name,
@@ -260,26 +266,30 @@ def register_chain(
         chain.steps = list(func()) if callable(func) else []
         _CHAINS[name] = chain
         return func
+
     return decorator
 
 
 def execute_chain(
     name: str,
-    context: Optional[RuleExecutionContext] = None,
+    context: RuleExecutionContext | None = None,
     *,
-    tenant_id: Optional[str] = None,
-    user_id: Optional[str] = None,
+    tenant_id: str | None = None,
+    user_id: str | None = None,
     **kwargs,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Execute a registered chain by name."""
     chain = _CHAINS.get(name)
     if chain is None:
         raise ValueError(f"RuleChain '{name}' not found. Registered: {list(_CHAINS.keys())}")
     return chain.execute(
-        context=context, tenant_id=tenant_id, user_id=user_id, **kwargs,
+        context=context,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        **kwargs,
     )
 
 
-def get_chain(name: str) -> Optional[RuleChain]:
+def get_chain(name: str) -> RuleChain | None:
     """Return a registered chain, or None."""
     return _CHAINS.get(name)

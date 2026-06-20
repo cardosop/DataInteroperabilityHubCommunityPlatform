@@ -15,21 +15,25 @@ To run these tests:
 3. Set API key: export DATAHUB_API_KEY=your-api-key
 4. Run: pytest tests/integration/test_product_details_real_api.py -v
 """
-import pytest
-import requests
+
 import json
 import os
-import uuid
 import subprocess
+import uuid
+
+import pytest
+import requests
 from click.testing import CliRunner
-from datahub_cli.main import cli
 from datahub_cli.config import config
+from datahub_cli.main import cli
 
 
 def _check_api_available():
     """Check if API service is available"""
     try:
-        response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2)
+        response = requests.get(
+            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
+        )
         return response.status_code < 600  # Any HTTP response means API is up
     except Exception:
         return False
@@ -53,10 +57,10 @@ class TestProductDetailsRealAPI:
 
         # Try to get API key from environment, config, or create one
         api_key = (
-            os.environ.get('DATAHUB_API_KEY') or
-            os.environ.get('TEST_API_KEY') or
-            config.get_api_key() or
-            self._create_test_api_key()
+            os.environ.get("DATAHUB_API_KEY")
+            or os.environ.get("TEST_API_KEY")
+            or config.get_api_key()
+            or self._create_test_api_key()
         )
 
         if not api_key:
@@ -111,10 +115,22 @@ print(api_key.key)
 """
         try:
             result = subprocess.run(
-                ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'manage.py', 'shell', '-c', django_shell_script],
+                [
+                    "docker",
+                    "compose",
+                    "exec",
+                    "-T",
+                    "api-service",
+                    "python",
+                    "manage.py",
+                    "shell",
+                    "-c",
+                    django_shell_script,
+                ],
+                check=False,
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
             )
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip()
@@ -122,33 +138,40 @@ print(api_key.key)
             pass
         return None
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_product_details_success(self, setup_config, api_available):
         """Test getting product details from ODPS contract with real API"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         # Create an ODPS 4.1 contract with product details
         api_base_url = config.get_api_base_url()
         contract_data = {
-            "original_raw": json.dumps({
-                "schema": "https://opendataproducts.org/schema/v4.1",
-                "version": "4.1",
-                "product": {
-                    "details": {
-                        "en": {
-                            "productID": f"test-product-{uuid.uuid4().hex[:8]}",
-                            "name": "Test Product",
-                            "description": "A test product description",
-                            "productVersion": "1.0.0",
-                            "category": "Data Product",
-                            "tags": ["test", "integration", "product"]
+            "original_raw": json.dumps(
+                {
+                    "schema": "https://opendataproducts.org/schema/v4.1",
+                    "version": "4.1",
+                    "product": {
+                        "details": {
+                            "en": {
+                                "productID": f"test-product-{uuid.uuid4().hex[:8]}",
+                                "name": "Test Product",
+                                "description": "A test product description",
+                                "productVersion": "1.0.0",
+                                "category": "Data Product",
+                                "tags": ["test", "integration", "product"],
+                            }
                         }
-                    }
+                    },
                 }
-            }),
+            ),
             "original_format": "JSON",
-            "original_spec_type": "ODPS"
+            "original_spec_type": "ODPS",
         }
 
         try:
@@ -156,9 +179,11 @@ print(api_key.key)
                 f"{api_base_url}/contracts/",
                 json=contract_data,
                 headers={"X-API-Key": self.api_key},
-                timeout=30
+                timeout=30,
             )
-            assert response.status_code in [200, 201], f"Failed to create contract: {response.status_code} - {response.text}"
+            assert response.status_code in [200, 201], (
+                f"Failed to create contract: {response.status_code} - {response.text}"
+            )
 
             contract_response = response.json()
             contract_id = contract_response.get("id")
@@ -166,56 +191,64 @@ print(api_key.key)
 
             # Wait a bit for normalization to complete
             import time
-            time.sleep(2)
+
+            time.sleep(2)  # noqa: sleep-needed — test timing requirement
 
             runner = CliRunner()
-            result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id])
+            result = runner.invoke(cli, ["contracts", "get-product-details", contract_id])
 
             # Should succeed
             assert result.exit_code == 0, f"Command failed with output: {result.output}"
-            assert 'Product Details for Contract' in result.output
-            assert 'Test Product' in result.output
-            assert 'A test product description' in result.output
-            assert '1.0.0' in result.output
-            assert 'Data Product' in result.output
+            assert "Product Details for Contract" in result.output
+            assert "Test Product" in result.output
+            assert "A test product description" in result.output
+            assert "1.0.0" in result.output
+            assert "Data Product" in result.output
 
         except Exception as e:
-            pytest.skip(f"Failed to create test contract: {str(e)}")
+            pytest.skip(f"Failed to create test contract: {e!s}")
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_product_details_multilingual(self, setup_config, api_available):
         """Test getting product details in different languages"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         # Create an ODPS 4.1 contract with multilingual product details
         api_base_url = config.get_api_base_url()
         contract_data = {
-            "original_raw": json.dumps({
-                "schema": "https://opendataproducts.org/schema/v4.1",
-                "version": "4.1",
-                "product": {
-                    "details": {
-                        "en": {
-                            "productID": f"test-product-{uuid.uuid4().hex[:8]}",
-                            "name": "Test Product",
-                            "description": "English description"
-                        },
-                        "fi": {
-                            "productID": f"test-product-{uuid.uuid4().hex[:8]}",
-                            "name": "Testi Tuote",
-                            "description": "Suomenkielinen kuvaus"
-                        },
-                        "es": {
-                            "productID": f"test-product-{uuid.uuid4().hex[:8]}",
-                            "name": "Producto de Prueba",
-                            "description": "Descripción en español"
+            "original_raw": json.dumps(
+                {
+                    "schema": "https://opendataproducts.org/schema/v4.1",
+                    "version": "4.1",
+                    "product": {
+                        "details": {
+                            "en": {
+                                "productID": f"test-product-{uuid.uuid4().hex[:8]}",
+                                "name": "Test Product",
+                                "description": "English description",
+                            },
+                            "fi": {
+                                "productID": f"test-product-{uuid.uuid4().hex[:8]}",
+                                "name": "Testi Tuote",
+                                "description": "Suomenkielinen kuvaus",
+                            },
+                            "es": {
+                                "productID": f"test-product-{uuid.uuid4().hex[:8]}",
+                                "name": "Producto de Prueba",
+                                "description": "Descripción en español",
+                            },
                         }
-                    }
+                    },
                 }
-            }),
+            ),
             "original_format": "JSON",
-            "original_spec_type": "ODPS"
+            "original_spec_type": "ODPS",
         }
 
         try:
@@ -223,9 +256,11 @@ print(api_key.key)
                 f"{api_base_url}/contracts/",
                 json=contract_data,
                 headers={"X-API-Key": self.api_key},
-                timeout=30
+                timeout=30,
             )
-            assert response.status_code in [200, 201], f"Failed to create contract: {response.status_code} - {response.text}"
+            assert response.status_code in [200, 201], (
+                f"Failed to create contract: {response.status_code} - {response.text}"
+            )
 
             contract_response = response.json()
             contract_id = contract_response.get("id")
@@ -233,55 +268,69 @@ print(api_key.key)
 
             # Wait a bit for normalization to complete
             import time
-            time.sleep(2)
+
+            time.sleep(2)  # noqa: sleep-needed — test timing requirement
 
             runner = CliRunner()
 
             # Test English
-            result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--lang', 'en'])
+            result = runner.invoke(
+                cli, ["contracts", "get-product-details", contract_id, "--lang", "en"]
+            )
             assert result.exit_code == 0
-            assert 'Test Product' in result.output
-            assert 'English description' in result.output
+            assert "Test Product" in result.output
+            assert "English description" in result.output
 
             # Test Finnish
-            result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--lang', 'fi'])
+            result = runner.invoke(
+                cli, ["contracts", "get-product-details", contract_id, "--lang", "fi"]
+            )
             assert result.exit_code == 0
-            assert 'Testi Tuote' in result.output
-            assert 'Suomenkielinen kuvaus' in result.output
+            assert "Testi Tuote" in result.output
+            assert "Suomenkielinen kuvaus" in result.output
 
             # Test Spanish
-            result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--lang', 'es'])
+            result = runner.invoke(
+                cli, ["contracts", "get-product-details", contract_id, "--lang", "es"]
+            )
             assert result.exit_code == 0
-            assert 'Producto de Prueba' in result.output
-            assert 'Descripción en español' in result.output
+            assert "Producto de Prueba" in result.output
+            assert "Descripción en español" in result.output
 
         except Exception as e:
-            pytest.skip(f"Failed to create test contract: {str(e)}")
+            pytest.skip(f"Failed to create test contract: {e!s}")
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_product_details_json_format(self, setup_config, api_available):
         """Test getting product details in JSON format"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         # Create an ODPS 4.1 contract with product details
         api_base_url = config.get_api_base_url()
         contract_data = {
-            "original_raw": json.dumps({
-                "schema": "https://opendataproducts.org/schema/v4.1",
-                "version": "4.1",
-                "product": {
-                    "details": {
-                        "en": {
-                            "productID": f"test-product-{uuid.uuid4().hex[:8]}",
-                            "name": "Test Product",
-                            "description": "A test product description"
+            "original_raw": json.dumps(
+                {
+                    "schema": "https://opendataproducts.org/schema/v4.1",
+                    "version": "4.1",
+                    "product": {
+                        "details": {
+                            "en": {
+                                "productID": f"test-product-{uuid.uuid4().hex[:8]}",
+                                "name": "Test Product",
+                                "description": "A test product description",
+                            }
                         }
-                    }
+                    },
                 }
-            }),
+            ),
             "original_format": "JSON",
-            "original_spec_type": "ODPS"
+            "original_spec_type": "ODPS",
         }
 
         try:
@@ -289,9 +338,11 @@ print(api_key.key)
                 f"{api_base_url}/contracts/",
                 json=contract_data,
                 headers={"X-API-Key": self.api_key},
-                timeout=30
+                timeout=30,
             )
-            assert response.status_code in [200, 201], f"Failed to create contract: {response.status_code} - {response.text}"
+            assert response.status_code in [200, 201], (
+                f"Failed to create contract: {response.status_code} - {response.text}"
+            )
 
             contract_response = response.json()
             contract_id = contract_response.get("id")
@@ -299,43 +350,53 @@ print(api_key.key)
 
             # Wait a bit for normalization to complete
             import time
-            time.sleep(2)
+
+            time.sleep(2)  # noqa: sleep-needed — test timing requirement
 
             runner = CliRunner()
-            result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--format', 'json'])
+            result = runner.invoke(
+                cli, ["contracts", "get-product-details", contract_id, "--format", "json"]
+            )
 
             # Should succeed and return valid JSON
             assert result.exit_code == 0
             output_data = json.loads(result.output)
             assert isinstance(output_data, dict)
-            assert 'productID' in output_data or 'name' in output_data
+            assert "productID" in output_data or "name" in output_data
 
         except Exception as e:
-            pytest.skip(f"Failed to create test contract: {str(e)}")
+            pytest.skip(f"Failed to create test contract: {e!s}")
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_product_details_missing_language(self, setup_config, api_available):
         """Test getting product details for a language that doesn't exist"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         # Create an ODPS 4.1 contract with only English product details
         api_base_url = config.get_api_base_url()
         contract_data = {
-            "original_raw": json.dumps({
-                "schema": "https://opendataproducts.org/schema/v4.1",
-                "version": "4.1",
-                "product": {
-                    "details": {
-                        "en": {
-                            "productID": f"test-product-{uuid.uuid4().hex[:8]}",
-                            "name": "Test Product"
+            "original_raw": json.dumps(
+                {
+                    "schema": "https://opendataproducts.org/schema/v4.1",
+                    "version": "4.1",
+                    "product": {
+                        "details": {
+                            "en": {
+                                "productID": f"test-product-{uuid.uuid4().hex[:8]}",
+                                "name": "Test Product",
+                            }
                         }
-                    }
+                    },
                 }
-            }),
+            ),
             "original_format": "JSON",
-            "original_spec_type": "ODPS"
+            "original_spec_type": "ODPS",
         }
 
         try:
@@ -343,9 +404,11 @@ print(api_key.key)
                 f"{api_base_url}/contracts/",
                 json=contract_data,
                 headers={"X-API-Key": self.api_key},
-                timeout=30
+                timeout=30,
             )
-            assert response.status_code in [200, 201], f"Failed to create contract: {response.status_code} - {response.text}"
+            assert response.status_code in [200, 201], (
+                f"Failed to create contract: {response.status_code} - {response.text}"
+            )
 
             contract_response = response.json()
             contract_id = contract_response.get("id")
@@ -353,38 +416,49 @@ print(api_key.key)
 
             # Wait a bit for normalization to complete
             import time
-            time.sleep(2)
+
+            time.sleep(2)  # noqa: sleep-needed — test timing requirement
 
             runner = CliRunner()
-            result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--lang', 'fr'])
+            result = runner.invoke(
+                cli, ["contracts", "get-product-details", contract_id, "--lang", "fr"]
+            )
 
             # Should succeed but indicate no product details for that language
             assert result.exit_code == 0
-            assert 'No product details found' in result.output or 'may not be available' in result.output
+            assert (
+                "No product details found" in result.output
+                or "may not be available" in result.output
+            )
 
         except Exception as e:
-            pytest.skip(f"Failed to create test contract: {str(e)}")
+            pytest.skip(f"Failed to create test contract: {e!s}")
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_product_details_non_odps_contract(self, setup_config, api_available):
         """Test getting product details from non-ODPS contract (should fail)"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         # Create an ODCS contract (not ODPS)
         api_base_url = config.get_api_base_url()
         contract_data = {
-            "original_raw": json.dumps({
-                "apiVersion": "odcs/v3",
-                "kind": "DataContract",
-                "id": f"test-contract-{uuid.uuid4().hex[:8]}",
-                "name": "Test Contract",
-                "schema": {
-                    "fields": [{"name": "id", "type": "string"}]
+            "original_raw": json.dumps(
+                {
+                    "apiVersion": "odcs/v3",
+                    "kind": "DataContract",
+                    "id": f"test-contract-{uuid.uuid4().hex[:8]}",
+                    "name": "Test Contract",
+                    "schema": {"fields": [{"name": "id", "type": "string"}]},
                 }
-            }),
+            ),
             "original_format": "JSON",
-            "original_spec_type": "ODCS"
+            "original_spec_type": "ODCS",
         }
 
         try:
@@ -392,47 +466,60 @@ print(api_key.key)
                 f"{api_base_url}/contracts/",
                 json=contract_data,
                 headers={"X-API-Key": self.api_key},
-                timeout=30
+                timeout=30,
             )
-            assert response.status_code in [200, 201], f"Failed to create contract: {response.status_code} - {response.text}"
+            assert response.status_code in [200, 201], (
+                f"Failed to create contract: {response.status_code} - {response.text}"
+            )
 
             contract_response = response.json()
             contract_id = contract_response.get("id")
             assert contract_id, "Failed to get contract ID from response."
 
             runner = CliRunner()
-            result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id])
+            result = runner.invoke(cli, ["contracts", "get-product-details", contract_id])
 
             # Should fail because contract is not ODPS
             assert result.exit_code != 0
-            assert 'error' in result.output.lower() or 'odps' in result.output.lower() or 'validation' in result.output.lower()
+            assert (
+                "error" in result.output.lower()
+                or "odps" in result.output.lower()
+                or "validation" in result.output.lower()
+            )
 
         except Exception as e:
-            pytest.skip(f"Failed to create test contract: {str(e)}")
+            pytest.skip(f"Failed to create test contract: {e!s}")
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_get_product_details_invalid_language_code(self, setup_config, api_available):
         """Test getting product details with invalid language code"""
         if not self.api_key:
-            pytest.skip("No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+            pytest.skip(
+                "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+            )
 
         # Create an ODPS 4.1 contract
         api_base_url = config.get_api_base_url()
         contract_data = {
-            "original_raw": json.dumps({
-                "schema": "https://opendataproducts.org/schema/v4.1",
-                "version": "4.1",
-                "product": {
-                    "details": {
-                        "en": {
-                            "productID": f"test-product-{uuid.uuid4().hex[:8]}",
-                            "name": "Test Product"
+            "original_raw": json.dumps(
+                {
+                    "schema": "https://opendataproducts.org/schema/v4.1",
+                    "version": "4.1",
+                    "product": {
+                        "details": {
+                            "en": {
+                                "productID": f"test-product-{uuid.uuid4().hex[:8]}",
+                                "name": "Test Product",
+                            }
                         }
-                    }
+                    },
                 }
-            }),
+            ),
             "original_format": "JSON",
-            "original_spec_type": "ODPS"
+            "original_spec_type": "ODPS",
         }
 
         try:
@@ -440,21 +527,24 @@ print(api_key.key)
                 f"{api_base_url}/contracts/",
                 json=contract_data,
                 headers={"X-API-Key": self.api_key},
-                timeout=30
+                timeout=30,
             )
-            assert response.status_code in [200, 201], f"Failed to create contract: {response.status_code} - {response.text}"
+            assert response.status_code in [200, 201], (
+                f"Failed to create contract: {response.status_code} - {response.text}"
+            )
 
             contract_response = response.json()
             contract_id = contract_response.get("id")
             assert contract_id, "Failed to get contract ID from response."
 
             runner = CliRunner()
-            result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--lang', 'invalid'])
+            result = runner.invoke(
+                cli, ["contracts", "get-product-details", contract_id, "--lang", "invalid"]
+            )
 
             # Should fail with invalid language code error
             assert result.exit_code != 0
-            assert 'language code' in result.output.lower() or 'invalid' in result.output.lower()
+            assert "language code" in result.output.lower() or "invalid" in result.output.lower()
 
         except Exception as e:
-            pytest.skip(f"Failed to create test contract: {str(e)}")
-
+            pytest.skip(f"Failed to create test contract: {e!s}")

@@ -22,6 +22,7 @@ because the kill switch fires at the view boundary BEFORE serializer
 parsing — this is the load-bearing contract (no side-effects on
 rejection).
 """
+
 from __future__ import annotations
 
 import uuid
@@ -39,7 +40,6 @@ from hub.apps.testing.role_support import (
     ensure_user_has_tenant_admin_role,
 )
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -156,7 +156,7 @@ class AssetCreationKillSwitchViewTest(TestCase):
         """Counter-test: with the flag at default True, the POST path
         works as it did pre-Phase. Pins that the gate is opt-in
         (False breaks creation) not fail-closed (True still works)."""
-        tenant, user = _seed_tenant(asset_creation_enabled=True)
+        _tenant, user = _seed_tenant(asset_creation_enabled=True)
         client = APIClient()
         client.force_authenticate(user=user)
 
@@ -184,7 +184,7 @@ class AssetCreationCapabilityResponseTest(TestCase):
     whether to render the create button / form vs the disabled page."""
 
     def test_capabilities_carries_asset_creation_true(self):
-        tenant, user = _seed_tenant(asset_creation_enabled=True)
+        _tenant, user = _seed_tenant(asset_creation_enabled=True)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get("/api/v1/capabilities/")
@@ -194,7 +194,7 @@ class AssetCreationCapabilityResponseTest(TestCase):
         assert caps["asset_creation"] is True
 
     def test_capabilities_carries_asset_creation_false(self):
-        tenant, user = _seed_tenant(asset_creation_enabled=False)
+        _tenant, user = _seed_tenant(asset_creation_enabled=False)
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get("/api/v1/capabilities/")

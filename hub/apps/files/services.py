@@ -3,17 +3,18 @@ File Service
 
 Business logic for file operations.
 """
+
+import contextlib
 import os
-import uuid
 import time
-from typing import Dict, Any, Optional
+import uuid
 
-from django.db import transaction
+from django.db import IntegrityError
 
-from hub.apps.core.services.base import BaseService, ValidationError, NotFoundError
 from hub.apps.core.events.service_publishers import FileEventPublisher
-from hub.apps.files.models import File, FileScanStatus, FileStatus
+from hub.apps.core.services.base import BaseService, ValidationError
 from hub.apps.files.business_rules import FilesBusinessRules
+from hub.apps.files.models import File, FileScanStatus, FileStatus
 
 
 class FileService(BaseService, FileEventPublisher):
@@ -22,20 +23,22 @@ class FileService(BaseService, FileEventPublisher):
 
     Provides business logic for retrieving and validating files.
     """
+
     service_name = "file_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None, request_id: Optional[str] = None):
+    def __init__(
+        self,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request_id: str | None = None,
+    ):
         """Initialize FileService."""
         self.tenant_id = tenant_id
         self.user_id = user_id
         self.request_id = request_id
         FileEventPublisher.__init__(self)
 
-    def get_file(
-        self,
-        file_id: str,
-        tenant_id: Optional[str] = None
-    ) -> File:
+    def get_file(self, file_id: str, tenant_id: str | None = None) -> File:
         """
         Get file by ID.
 
@@ -57,11 +60,7 @@ class FileService(BaseService, FileEventPublisher):
         file_obj = self.execute_with_metrics(
             operation="get_file",
             tenant_id=effective_tenant_id,
-            func=lambda: self.get_resource_or_raise(
-                File,
-                file_id,
-                tenant_id=effective_tenant_id
-            )
+            func=lambda: self.get_resource_or_raise(File, file_id, tenant_id=effective_tenant_id),
         )
 
         # Publish file.downloaded event (file retrieval is treated as download).
@@ -75,28 +74,21 @@ class FileService(BaseService, FileEventPublisher):
                 self.publish_file_downloaded(
                     file_id=file_id,
                     download_duration_ms=download_duration_ms,
-                    download_size=file_obj.size
+                    download_size=file_obj.size,
                 )
         except Exception as e:
             import structlog
+
             logger = structlog.get_logger(__name__)
             logger.warning(
                 f"Failed to publish file.downloaded event for file {file_id}: {e}",
-                extra={
-                    "file_id": file_id,
-                    "tenant_id": effective_tenant_id,
-                    "error": str(e)
-                },
-                exc_info=True
+                extra={"file_id": file_id, "tenant_id": effective_tenant_id, "error": str(e)},
+                exc_info=True,
             )
 
         return file_obj
 
-    def validate_file_active(
-        self,
-        file_id: str,
-        tenant_id: Optional[str] = None
-    ) -> File:
+    def validate_file_active(self, file_id: str, tenant_id: str | None = None) -> File:
         """
         Validate that file exists and is active.
 
@@ -116,11 +108,7 @@ class FileService(BaseService, FileEventPublisher):
             raise ValidationError("tenant_id is required")
 
         def _validate():
-            file_obj = self.get_resource_or_raise(
-                File,
-                file_id,
-                tenant_id=effective_tenant_id
-            )
+            file_obj = self.get_resource_or_raise(File, file_id, tenant_id=effective_tenant_id)
 
             previous_status = file_obj.status
 
@@ -141,45 +129,39 @@ class FileService(BaseService, FileEventPublisher):
                 with _tx.atomic():
                     self.publish_file_updated(
                         file_id=str(file_id),
-                        changes={
-                            "validation": {
-                                "old": None,
-                                "new": "validated_active"
-                            }
-                        },
-                        previous_status=previous_status.value if hasattr(previous_status, 'value') else str(previous_status),
-                        new_status=file_obj.status.value if hasattr(file_obj.status, 'value') else str(file_obj.status)
+                        changes={"validation": {"old": None, "new": "validated_active"}},
+                        previous_status=previous_status.value
+                        if hasattr(previous_status, "value")
+                        else str(previous_status),
+                        new_status=file_obj.status.value
+                        if hasattr(file_obj.status, "value")
+                        else str(file_obj.status),
                     )
             except Exception as e:
                 import structlog
+
                 logger = structlog.get_logger(__name__)
                 logger.warning(
                     f"Failed to publish file.updated event for file {file_id}: {e}",
-                    extra={
-                        "file_id": file_id,
-                        "tenant_id": effective_tenant_id,
-                        "error": str(e)
-                    },
-                    exc_info=True
+                    extra={"file_id": file_id, "tenant_id": effective_tenant_id, "error": str(e)},
+                    exc_info=True,
                 )
 
             return file_obj
 
         return self.execute_with_metrics(
-            operation="validate_file_active",
-            tenant_id=effective_tenant_id,
-            func=_validate
+            operation="validate_file_active", tenant_id=effective_tenant_id, func=_validate
         )
 
     def create_file(
         self,
         tenant_id: str,
-        user_id: Optional[str],
+        user_id: str | None,
         name: str,
         content_type: str,
         size: int,
         upload_method: str = "browser",
-        created_by_id: Optional[str] = None,
+        created_by_id: str | None = None,
     ) -> File:
         """
         Create a file record (init upload). Runs FilesBusinessRules.validate_file_for_create
@@ -194,10 +176,8 @@ class FileService(BaseService, FileEventPublisher):
         tenant = self.get_resource_or_raise(Tenant, tenant_id)
         user = None
         if user_id:
-            try:
+            with contextlib.suppress(User.DoesNotExist):
                 user = User.objects.get(id=user_id)
-            except User.DoesNotExist:
-                pass
 
         rules = FilesBusinessRules(tenant_id=tenant_id, user_id=user_id)
         result = rules.validate_file_for_create(
@@ -209,17 +189,30 @@ class FileService(BaseService, FileEventPublisher):
             user=user,
         )
         if not result.is_valid:
+            # Propagate the specific error_code from business rules
+            # when available (e.g. FILENAME_COLLISION), falling back
+            # to the generic code.
+            specific_code = result.details.get("error_code") if result.details else None
             raise ValidationError(
                 "; ".join(result.errors),
-                code="BUSINESS_RULES_VALIDATION",
+                code=specific_code or "BUSINESS_RULES_VALIDATION",
                 details=result.details,
+                http_status=409 if specific_code == "FILENAME_COLLISION" else 400,
             )
 
         file_id = uuid.uuid4()
+        # NFC-normalise the filename so that NFD-decomposed inputs
+        # (e.g. 'café.csv') are stored as composed 'café.csv'.
+        import unicodedata
+
+        name = unicodedata.normalize("NFC", name or "")
         # G2.1 (glittery-herding-graham): sanitize user-provided filename to
         # prevent path traversal (../../etc/passwd → passwd). Also strip null
         # bytes and normalize backslashes.
-        safe_name = os.path.basename((name or "").replace("\x00", "").replace("\\", "/")).strip() or "unnamed"
+        safe_name = (
+            os.path.basename((name or "").replace("\x00", "").replace("\\", "/")).strip()
+            or "unnamed"
+        )
         storage_path = f"{tenant_id}/{file_id}/{safe_name}"
         metadata_json = {
             "upload_method": upload_method,
@@ -234,6 +227,7 @@ class FileService(BaseService, FileEventPublisher):
             # Must be inside _create() so it runs within execute_with_transaction's
             # transaction.atomic() scope (select_for_update requires active transaction).
             from hub.apps.tenants.services import PlanLimitService
+
             plan_limit_service = PlanLimitService(tenant_id=tenant_id)
             plan_limit_service.check_limit(
                 tenant_id=tenant_id,
@@ -263,8 +257,11 @@ class FileService(BaseService, FileEventPublisher):
                 )
             except Exception as e:
                 import structlog
+
                 log = structlog.get_logger(__name__)
-                log.warning("Failed to publish file.created", file_id=str(file_obj.id), error=str(e))
+                log.warning(
+                    "Failed to publish file.created", file_id=str(file_obj.id), error=str(e)
+                )
             return file_obj
 
         return self.execute_with_transaction(
@@ -277,9 +274,9 @@ class FileService(BaseService, FileEventPublisher):
         self,
         file_id: str,
         tenant_id: str,
-        user_id: Optional[str],
-        content_sha256: Optional[str] = None,
-        new_status: Optional[str] = None,
+        user_id: str | None,
+        content_sha256: str | None = None,
+        new_status: str | None = None,
     ) -> File:
         """
         Update file (e.g. complete upload). Runs FilesBusinessRules.validate_file_for_update
@@ -295,10 +292,8 @@ class FileService(BaseService, FileEventPublisher):
         tenant = self.get_resource_or_raise(Tenant, tenant_id)
         user = None
         if user_id:
-            try:
+            with contextlib.suppress(User.DoesNotExist):
                 user = User.objects.get(id=user_id)
-            except User.DoesNotExist:
-                pass
 
         rules = FilesBusinessRules(tenant_id=tenant_id, user_id=user_id)
         result = rules.validate_file_for_update(
@@ -308,10 +303,15 @@ class FileService(BaseService, FileEventPublisher):
             new_status=new_status,
         )
         if not result.is_valid:
+            # Propagate the specific error_code from business rules
+            # when available (e.g. FILENAME_COLLISION), falling back
+            # to the generic code.
+            specific_code = result.details.get("error_code") if result.details else None
             raise ValidationError(
                 "; ".join(result.errors),
-                code="BUSINESS_RULES_VALIDATION",
+                code=specific_code or "BUSINESS_RULES_VALIDATION",
                 details=result.details,
+                http_status=409 if specific_code == "FILENAME_COLLISION" else 400,
             )
 
         def _update():
@@ -325,7 +325,17 @@ class FileService(BaseService, FileEventPublisher):
                 file_obj.status = new_status
                 updates["status"] = new_status
             if updates:
-                file_obj.save(update_fields=list(updates.keys()) + ["updated_at"])
+                try:
+                    file_obj.save(update_fields=list(updates.keys()) + ["updated_at"])
+                except IntegrityError:
+                    # The partial unique index unique_active_filename_per_tenant
+                    # caught a concurrent save with the same (tenant, name, ACTIVE).
+                    raise ValidationError(
+                        f"Filename collision: {file_obj.name!r} is already ACTIVE "
+                        "in this tenant.",
+                        code="FILENAME_COLLISION",
+                        http_status=409,
+                    ) from None
             # Publish events when completing upload (terminal status).
             # IMPORTANT: wrapped in its own transaction.atomic() savepoint so that
             # if event publishing does a DB operation that fails (e.g. deduplication
@@ -333,17 +343,20 @@ class FileService(BaseService, FileEventPublisher):
             # a caught DB error sets needs_rollback=True which cascades outward
             # via validate_no_broken_transaction(), corrupting the connection for
             # all subsequent queries in the same request cycle.
-            if (
-                new_status == FileStatus.ACTIVE
-                and content_sha256
-            ):
+            if new_status == FileStatus.ACTIVE and content_sha256:
                 try:
                     from django.db import transaction as _tx
                     from django.utils import timezone
 
                     with _tx.atomic():
-                        upload_start = file_obj.created_at.timestamp() if file_obj.created_at else None
-                        upload_duration_ms = int((timezone.now().timestamp() - upload_start) * 1000) if upload_start else None
+                        upload_start = (
+                            file_obj.created_at.timestamp() if file_obj.created_at else None
+                        )
+                        upload_duration_ms = (
+                            int((timezone.now().timestamp() - upload_start) * 1000)
+                            if upload_start
+                            else None
+                        )
                         self.publish_file_uploaded(
                             file_id=str(file_obj.id),
                             file_size=file_obj.size,
@@ -357,7 +370,9 @@ class FileService(BaseService, FileEventPublisher):
                                 "status": {"old": previous_status, "new": new_status},
                                 "content_sha256": {"old": None, "new": content_sha256},
                             },
-                            previous_status=previous_status.value if hasattr(previous_status, "value") else str(previous_status),
+                            previous_status=previous_status.value
+                            if hasattr(previous_status, "value")
+                            else str(previous_status),
                             new_status=(
                                 new_status.value
                                 if hasattr(new_status, "value")
@@ -366,14 +381,16 @@ class FileService(BaseService, FileEventPublisher):
                         )
                 except Exception as e:
                     import structlog
+
                     log = structlog.get_logger(__name__)
-                    log.warning("Failed to publish file.uploaded/updated", file_id=str(file_obj.id), error=str(e))
+                    log.warning(
+                        "Failed to publish file.uploaded/updated",
+                        file_id=str(file_obj.id),
+                        error=str(e),
+                    )
 
             # Malware scan after any terminal upload-with-hash (ACTIVE or COMPLETED).
-            scan_after_upload = bool(
-                content_sha256
-                and new_status == FileStatus.ACTIVE
-            )
+            scan_after_upload = bool(content_sha256 and new_status == FileStatus.ACTIVE)
             if scan_after_upload:
                 from django.conf import settings as dj_settings
                 from django.db import transaction as dj_transaction
@@ -424,7 +441,7 @@ class FileService(BaseService, FileEventPublisher):
         self,
         file_id: str,
         tenant_id: str,
-        user_id: Optional[str],
+        user_id: str | None,
     ) -> None:
         """
         Soft-delete file and remove from storage. Runs FilesBusinessRules.validate_file_for_destroy
@@ -432,16 +449,13 @@ class FileService(BaseService, FileEventPublisher):
         """
         from hub.apps.tenants.models import Tenant
         from hub.apps.users.models import User
-        from hub.apps.files.storage import S3StorageClient
 
         file_obj = self.get_resource_or_raise(File, file_id, tenant_id=tenant_id)
         tenant = self.get_resource_or_raise(Tenant, tenant_id)
         user = None
         if user_id:
-            try:
+            with contextlib.suppress(User.DoesNotExist):
                 user = User.objects.get(id=user_id)
-            except User.DoesNotExist:
-                pass
 
         rules = FilesBusinessRules(tenant_id=tenant_id, user_id=user_id)
         result = rules.validate_file_for_destroy(
@@ -450,10 +464,15 @@ class FileService(BaseService, FileEventPublisher):
             user=user,
         )
         if not result.is_valid:
+            # Propagate the specific error_code from business rules
+            # when available (e.g. FILENAME_COLLISION), falling back
+            # to the generic code.
+            specific_code = result.details.get("error_code") if result.details else None
             raise ValidationError(
                 "; ".join(result.errors),
-                code="BUSINESS_RULES_VALIDATION",
+                code=specific_code or "BUSINESS_RULES_VALIDATION",
                 details=result.details,
+                http_status=409 if specific_code == "FILENAME_COLLISION" else 400,
             )
 
         def _delete():
@@ -465,6 +484,7 @@ class FileService(BaseService, FileEventPublisher):
             # Dataset retirement cascade) runs later via the
             # ``purge_deleted_files`` management command.
             from django.utils import timezone as _tz
+
             file_obj.status = FileStatus.DELETING
             file_obj.deleted_at = _tz.now()
             file_obj.save(update_fields=["status", "deleted_at", "updated_at"])
@@ -475,12 +495,14 @@ class FileService(BaseService, FileEventPublisher):
                 )
             except Exception as e:
                 import structlog
+
                 log = structlog.get_logger(__name__)
-                log.warning("Failed to publish file.deleted", file_id=str(file_obj.id), error=str(e))
+                log.warning(
+                    "Failed to publish file.deleted", file_id=str(file_obj.id), error=str(e)
+                )
 
         self.execute_with_transaction(
             operation="delete_file",
             tenant_id=tenant_id,
             func=_delete,
         )
-

@@ -6,6 +6,7 @@ encrypted via the KMS+Fernet chain (reused from integrations/encryption.py).
 ``WarehouseConnectionACL`` provides finer-grained-than-TENANT_ADMIN
 access control for connection operations.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -16,6 +17,7 @@ from django.db import models
 
 class WarehouseType(models.TextChoices):
     """Supported data warehouse types."""
+
     SNOWFLAKE = "SNOWFLAKE", "Snowflake"
     BIGQUERY = "BIGQUERY", "BigQuery"
     DATABRICKS = "DATABRICKS", "Databricks"
@@ -29,6 +31,7 @@ class WarehouseConnection(models.Model):
     in the ``config`` JSONField, matching the MarketplaceConnection
     pattern from ``hub/apps/integrations/encryption.py``.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",
@@ -88,11 +91,13 @@ class WarehouseConnection(models.Model):
     def get_config(self) -> dict:
         """Decrypt and return the connection config."""
         from hub.apps.integrations.encryption import decrypt_json_field
+
         return decrypt_json_field(self.config)
 
     def set_config(self, raw_config: dict) -> None:
         """Encrypt and store connection config."""
         from hub.apps.integrations.encryption import encrypt_json_field
+
         self.config = encrypt_json_field(raw_config)
 
     def save(self, *args, **kwargs):
@@ -131,8 +136,10 @@ class WarehouseConnection(models.Model):
             value = config.get(key)
             if value and isinstance(value, str) and value.startswith(("http://", "https://")):
                 from hub.apps.security.url_validators import is_safe_url
+
                 if not is_safe_url(value):
                     from django.core.exceptions import ValidationError
+
                     raise ValidationError(
                         f"URL in '{key}' is not safe: {value}. "
                         f"Internal/loopback addresses are blocked per SSRF policy."
@@ -147,9 +154,11 @@ class WarehouseConnection(models.Model):
         if not residency:
             return
         from hub.apps.warehouses.residency_validator import validate_warehouse_region
+
         result = validate_warehouse_region(residency, self.region)
         if not result.valid:
             from django.core.exceptions import ValidationError
+
             raise ValidationError(
                 {
                     "region": (
@@ -166,12 +175,14 @@ class WarehouseConnection(models.Model):
         """Phase 275.A.17 — refuse deletion while LIVE_QUERY assets reference
         this connection. Soft-delete via is_active=False instead."""
         from hub.apps.assets.models import Asset, DataStrategy
+
         live_assets = Asset.objects.filter(
             warehouse_connection=self,
             data_strategy=DataStrategy.LIVE_QUERY,
         )
         if live_assets.exists():
             from django.core.exceptions import ValidationError
+
             raise ValidationError(
                 f"Cannot delete WarehouseConnection '{self.name}': "
                 f"{live_assets.count()} LIVE_QUERY asset(s) still reference it. "
@@ -186,6 +197,7 @@ class WarehouseConnectionACL(models.Model):
 
     Default: TENANT_ADMIN inherits all. Explicit grants narrow access.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",

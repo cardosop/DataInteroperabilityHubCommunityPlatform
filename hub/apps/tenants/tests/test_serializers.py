@@ -6,11 +6,12 @@ TenantOnboardingSerializer, TenantSuspendSerializer, TenantReactivateSerializer,
 RateLimitsSerializer with real validation. No mocks/stubs.
 """
 
+import uuid
+
 import pytest
 from django.test import TestCase
 
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-import uuid
 from hub.apps.tenants.serializers import (
     RateLimitsSerializer,
     TenantCreateSerializer,
@@ -69,6 +70,7 @@ class TenantCreateSerializerTest(TestCase):
     def test_valid_data_success(self):
         """Success: valid name, slug, optional region creates tenant."""
         import uuid as _uuid
+
         _uid = _uuid.uuid4().hex[:8]
         data = {"name": f"New Tenant {_uid}", "slug": f"new-tenant-{_uid}", "region": "us-east-1"}
         serializer = TenantCreateSerializer(data=data)
@@ -82,6 +84,7 @@ class TenantCreateSerializerTest(TestCase):
     def test_slug_normalized_to_lowercase(self):
         """Success: slug is normalized to lowercase."""
         import uuid as _uuid
+
         _uid = _uuid.uuid4().hex[:8]
         data = {"name": f"New Tenant {_uid}", "slug": f"New-Tenant-{_uid}"}
         serializer = TenantCreateSerializer(data=data)

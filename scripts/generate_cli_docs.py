@@ -7,6 +7,7 @@ then writes docs/mvpdocs/cli-reference/{group}.md + index.md.
 
 Idempotent: safe to re-run; overwrites existing files.
 """
+
 from __future__ import annotations
 
 import ast
@@ -17,9 +18,7 @@ from pathlib import Path
 # Paths
 # -------------------------------------------------------------------
 REPO_ROOT = Path(__file__).resolve().parent.parent
-MVP_GATES_PATH = (
-    REPO_ROOT / "cli" / "datahub_cli" / "_mvp_gates.py"
-)
+MVP_GATES_PATH = REPO_ROOT / "cli" / "datahub_cli" / "_mvp_gates.py"
 DOCS_DIR = REPO_ROOT / "docs" / "mvpdocs" / "cli-reference"
 
 
@@ -36,36 +35,22 @@ def read_gated_prefixes() -> frozenset[str]:
         target = None
         value = None
         if isinstance(node, ast.Assign):
-            if (
-                len(node.targets) == 1
-                and isinstance(node.targets[0], ast.Name)
-            ):
+            if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
                 target = node.targets[0]
                 value = node.value
-        elif isinstance(node, ast.AnnAssign):
-            if isinstance(node.target, ast.Name):
-                target = node.target
-                value = node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            target = node.target
+            value = node.value
 
-        if (
-            target
-            and target.id == "MVP_GATED_RELATIVE_PREFIXES"
-            and value
-        ):
-            if (
-                isinstance(value, ast.Call)
-                and len(value.args) == 1
-            ):
+        if target and target.id == "MVP_GATED_RELATIVE_PREFIXES" and value:
+            if isinstance(value, ast.Call) and len(value.args) == 1:
                 set_node = value.args[0]
                 if isinstance(set_node, ast.Set):
                     return frozenset(
-                        str(elt.value)
-                        for elt in set_node.elts
-                        if isinstance(elt, ast.Constant)
+                        str(elt.value) for elt in set_node.elts if isinstance(elt, ast.Constant)
                     )
     print(
-        "WARNING: could not parse "
-        "MVP_GATED_RELATIVE_PREFIXES",
+        "WARNING: could not parse MVP_GATED_RELATIVE_PREFIXES",
         file=sys.stderr,
     )
     return frozenset()
@@ -80,8 +65,12 @@ CLI_GROUPS: list[dict] = [
         "group": "assets",
         "desc": "Manage data assets (datasets, files, schemas)",
         "subcommands": [
-            "list", "get", "create", "update",
-            "archive", "publish",
+            "list",
+            "get",
+            "create",
+            "update",
+            "archive",
+            "publish",
         ],
         "resource": "asset",
         "api_prefix": "assets",
@@ -91,8 +80,12 @@ CLI_GROUPS: list[dict] = [
         "group": "contracts",
         "desc": "Manage and validate data contracts (ODCS/SLA)",
         "subcommands": [
-            "list", "get", "create", "validate",
-            "lint", "diff",
+            "list",
+            "get",
+            "create",
+            "validate",
+            "lint",
+            "diff",
         ],
         "resource": "contract",
         "api_prefix": "contracts",
@@ -108,12 +101,13 @@ CLI_GROUPS: list[dict] = [
     },
     {
         "group": "files",
-        "desc": (
-            "Upload, download and manage files "
-            "attached to assets"
-        ),
+        "desc": ("Upload, download and manage files attached to assets"),
         "subcommands": [
-            "list", "get", "upload", "download", "delete",
+            "list",
+            "get",
+            "upload",
+            "download",
+            "delete",
         ],
         "resource": "file",
         "api_prefix": "files",
@@ -123,7 +117,11 @@ CLI_GROUPS: list[dict] = [
         "group": "jobs",
         "desc": "Monitor and control background jobs and tasks",
         "subcommands": [
-            "list", "get", "status", "cancel", "logs",
+            "list",
+            "get",
+            "status",
+            "cancel",
+            "logs",
         ],
         "resource": "job",
         "api_prefix": "jobs",
@@ -141,7 +139,10 @@ CLI_GROUPS: list[dict] = [
         "group": "dq",
         "desc": "Run data-quality checks and review results",
         "subcommands": [
-            "run", "results", "profiles", "configure",
+            "run",
+            "results",
+            "profiles",
+            "configure",
         ],
         "resource": "dq profile",
         "api_prefix": "dq",
@@ -149,12 +150,12 @@ CLI_GROUPS: list[dict] = [
     },
     {
         "group": "compliance",
-        "desc": (
-            "Scan assets for compliance violations "
-            "and review results"
-        ),
+        "desc": ("Scan assets for compliance violations and review results"),
         "subcommands": [
-            "scan", "results", "profiles", "configure",
+            "scan",
+            "results",
+            "profiles",
+            "configure",
         ],
         "resource": "compliance",
         "api_prefix": "compliance",
@@ -162,10 +163,7 @@ CLI_GROUPS: list[dict] = [
     },
     {
         "group": "governance",
-        "desc": (
-            "Manage governance policies, retention "
-            "rules and consent"
-        ),
+        "desc": ("Manage governance policies, retention rules and consent"),
         "subcommands": ["policies", "retention", "consent"],
         "resource": "governance",
         "api_prefix": "governance",
@@ -173,10 +171,7 @@ CLI_GROUPS: list[dict] = [
     },
     {
         "group": "marketplace",
-        "desc": (
-            "Browse listings, place orders and "
-            "manage entitlements"
-        ),
+        "desc": ("Browse listings, place orders and manage entitlements"),
         "subcommands": ["listings", "orders", "entitlements"],
         "resource": "marketplace",
         "api_prefix": "marketplace",
@@ -208,12 +203,12 @@ CLI_GROUPS: list[dict] = [
     },
     {
         "group": "billing",
-        "desc": (
-            "View usage, invoices, quotas and "
-            "plan details"
-        ),
+        "desc": ("View usage, invoices, quotas and plan details"),
         "subcommands": [
-            "usage", "invoices", "quotas", "upgrade",
+            "usage",
+            "invoices",
+            "quotas",
+            "upgrade",
         ],
         "resource": "billing",
         "api_prefix": "billing",
@@ -221,12 +216,13 @@ CLI_GROUPS: list[dict] = [
     },
     {
         "group": "tenants",
-        "desc": (
-            "Manage tenants, switch context and "
-            "list members"
-        ),
+        "desc": ("Manage tenants, switch context and list members"),
         "subcommands": [
-            "list", "get", "create", "switch", "members",
+            "list",
+            "get",
+            "create",
+            "switch",
+            "members",
         ],
         "resource": "tenant",
         "api_prefix": "tenants",
@@ -234,12 +230,12 @@ CLI_GROUPS: list[dict] = [
     },
     {
         "group": "gdpr",
-        "desc": (
-            "GDPR data-subject requests: export, "
-            "erase, consent"
-        ),
+        "desc": ("GDPR data-subject requests: export, erase, consent"),
         "subcommands": [
-            "export", "erase", "consent", "status",
+            "export",
+            "erase",
+            "consent",
+            "status",
         ],
         "resource": "GDPR request",
         "api_prefix": "gdpr",
@@ -247,10 +243,7 @@ CLI_GROUPS: list[dict] = [
     },
     {
         "group": "search",
-        "desc": (
-            "Full-text and faceted search across "
-            "the catalogue"
-        ),
+        "desc": ("Full-text and faceted search across the catalogue"),
         "subcommands": ["query", "suggest", "facets"],
         "resource": "search",
         "api_prefix": "search",
@@ -258,10 +251,7 @@ CLI_GROUPS: list[dict] = [
     },
     {
         "group": "semantic",
-        "desc": (
-            "Semantic layer: resolve terms, "
-            "SPARQL queries, browse"
-        ),
+        "desc": ("Semantic layer: resolve terms, SPARQL queries, browse"),
         "subcommands": ["resolve", "sparql", "browse"],
         "resource": "semantic",
         "api_prefix": "semantic",
@@ -345,17 +335,10 @@ def render_group_page(grp: dict) -> str:
     api_prefix = grp["api_prefix"]
     cls = grp["class"]
 
-    rows = "\n".join(
-        f"| `{g} {s}` | {_subcmd_desc(s, resource)} |"
-        for s in grp["subcommands"]
-    )
+    rows = "\n".join(f"| `{g} {s}` | {_subcmd_desc(s, resource)} |" for s in grp["subcommands"])
 
     first_sub = grp["subcommands"][0]
-    id_sub = (
-        "get"
-        if "get" in grp["subcommands"]
-        else grp["subcommands"][-1]
-    )
+    id_sub = "get" if "get" in grp["subcommands"] else grp["subcommands"][-1]
 
     return (
         f"# datahub {g}\n"
@@ -426,15 +409,9 @@ def render_index(
     gated_prefixes: frozenset[str],
 ) -> str:
     """Return the index.md content listing all MVP groups."""
-    rows = "\n".join(
-        f"| [`datahub {g['group']}`]"
-        f"({g['group']}.md) | {g['desc']} |"
-        for g in groups
-    )
+    rows = "\n".join(f"| [`datahub {g['group']}`]({g['group']}.md) | {g['desc']} |" for g in groups)
 
-    gated_list = ", ".join(
-        f"`{p.rstrip('/')}`" for p in sorted(gated_prefixes)
-    )
+    gated_list = ", ".join(f"`{p.rstrip('/')}`" for p in sorted(gated_prefixes))
 
     return (
         "# CLI Reference\n"
@@ -488,10 +465,7 @@ def render_index(
 def main() -> None:
     """Generate all CLI reference docs."""
     gated = read_gated_prefixes()
-    print(
-        f"Parsed {len(gated)} gated prefixes "
-        f"from {MVP_GATES_PATH.name}"
-    )
+    print(f"Parsed {len(gated)} gated prefixes from {MVP_GATES_PATH.name}")
 
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
 

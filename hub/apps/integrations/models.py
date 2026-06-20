@@ -3,15 +3,16 @@ Marketplace Connection Models
 
 Models for managing marketplace connections, sync jobs, and mappings.
 """
+
 import uuid
-import json
-from django.db import models
-from django.core.exceptions import ValidationError
-from django.utils import timezone
+
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.utils import timezone
 
 from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
-from hub.apps.integrations.encryption import encrypt_json_field, decrypt_json_field, EncryptionError
+from hub.apps.integrations.encryption import EncryptionError, decrypt_json_field, encrypt_json_field
 
 
 class MarketplaceConnection(models.Model):
@@ -24,35 +25,34 @@ class MarketplaceConnection(models.Model):
     Each tenant can have multiple marketplace connections, but connection
     names must be unique within a tenant.
     """
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
         editable=False,
-        help_text="Unique identifier for the marketplace connection"
+        help_text="Unique identifier for the marketplace connection",
     )
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="marketplace_connections",
-        help_text="Tenant this connection belongs to"
+        help_text="Tenant this connection belongs to",
     )
     marketplace_type = models.CharField(
         max_length=50,
         choices=[(mt.value, mt.name.replace("_", " ").title()) for mt in MarketplaceType],
-        help_text="Type of marketplace (e.g., SNOWFLAKE_DATA_MARKETPLACE, AWS_DATA_EXCHANGE)"
+        help_text="Type of marketplace (e.g., SNOWFLAKE_DATA_MARKETPLACE, AWS_DATA_EXCHANGE)",
     )
     name = models.CharField(
-        max_length=255,
-        help_text="Human-readable name for this connection (unique per tenant)"
+        max_length=255, help_text="Human-readable name for this connection (unique per tenant)"
     )
     config = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Encrypted connection configuration (API keys, endpoints, etc.)"
+        help_text="Encrypted connection configuration (API keys, endpoints, etc.)",
     )
     is_active = models.BooleanField(
-        default=True,
-        help_text="Whether this connection is active and can be used"
+        default=True, help_text="Whether this connection is active and can be used"
     )
     consecutive_failure_count = models.PositiveIntegerField(
         default=0,
@@ -75,10 +75,7 @@ class MarketplaceConnection(models.Model):
             models.Index(fields=["marketplace_type", "is_active"]),
         ]
         constraints = [
-            models.UniqueConstraint(
-                fields=["tenant", "name"],
-                name="unique_tenant_connection_name"
-            )
+            models.UniqueConstraint(fields=["tenant", "name"], name="unique_tenant_connection_name")
         ]
 
     def __str__(self):
@@ -99,21 +96,19 @@ class MarketplaceConnection(models.Model):
         # Validate marketplace_type is a valid enum value
         valid_types = [mt.value for mt in MarketplaceType]
         if self.marketplace_type not in valid_types:
-            raise ValidationError({
-                'marketplace_type': f"Invalid marketplace type. Must be one of: {', '.join(valid_types)}"
-            })
+            raise ValidationError(
+                {
+                    "marketplace_type": f"Invalid marketplace type. Must be one of: {', '.join(valid_types)}"
+                }
+            )
 
         # Validate name is not empty
         if not self.name or not self.name.strip():
-            raise ValidationError({
-                'name': "Connection name cannot be empty"
-            })
+            raise ValidationError({"name": "Connection name cannot be empty"})
 
         # Validate config is a dictionary (allow empty dict)
         if not isinstance(self.config, dict):
-            raise ValidationError({
-                'config': "Configuration must be a dictionary"
-            })
+            raise ValidationError({"config": "Configuration must be a dictionary"})
 
     def save(self, *args, **kwargs):
         """
@@ -137,9 +132,7 @@ class MarketplaceConnection(models.Model):
                 # to distinguish from plain JSON
                 self.config = {"_encrypted": encrypted_config}
             except EncryptionError as e:
-                raise ValidationError({
-                    'config': f"Failed to encrypt configuration: {str(e)}"
-                }) from e
+                raise ValidationError({"config": f"Failed to encrypt configuration: {e!s}"}) from e
 
         super().save(*args, **kwargs)
 
@@ -162,7 +155,9 @@ class MarketplaceConnection(models.Model):
                 encrypted_str = self.config["_encrypted"]
                 return decrypt_json_field(encrypted_str)
             except EncryptionError as e:
-                raise EncryptionError(f"Failed to decrypt configuration for connection {self.id}: {str(e)}") from e
+                raise EncryptionError(
+                    f"Failed to decrypt configuration for connection {self.id}: {e!s}"
+                ) from e
 
         # If not encrypted (legacy data or plain dict), return as-is
         return self.config if isinstance(self.config, dict) else {}
@@ -186,59 +181,48 @@ class MarketplaceSyncJob(models.Model):
     Tracks synchronization operations between the Hub and external marketplaces.
     Records progress, errors, and metadata for each sync operation.
     """
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
         editable=False,
-        help_text="Unique identifier for the sync job"
+        help_text="Unique identifier for the sync job",
     )
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="marketplace_sync_jobs",
-        help_text="Tenant this sync job belongs to"
+        help_text="Tenant this sync job belongs to",
     )
     connection = models.ForeignKey(
         MarketplaceConnection,
         on_delete=models.CASCADE,
         related_name="sync_jobs",
-        help_text="Marketplace connection used for this sync"
+        help_text="Marketplace connection used for this sync",
     )
     direction = models.CharField(
         max_length=20,
         choices=[(sd.value, sd.name.replace("_", " ").title()) for sd in SyncDirection],
-        help_text="Sync direction: PUSH, PULL, or BIDIRECTIONAL"
+        help_text="Sync direction: PUSH, PULL, or BIDIRECTIONAL",
     )
     status = models.CharField(
         max_length=20,
         choices=[(ss.value, ss.name.replace("_", " ").title()) for ss in SyncStatus],
         default=SyncStatus.PENDING.value,
-        help_text="Sync job status: PENDING, RUNNING, COMPLETED, FAILED, PARTIAL"
+        help_text="Sync job status: PENDING, RUNNING, COMPLETED, FAILED, PARTIAL",
     )
-    items_synced = models.IntegerField(
-        default=0,
-        help_text="Number of items successfully synced"
-    )
-    items_failed = models.IntegerField(
-        default=0,
-        help_text="Number of items that failed to sync"
-    )
+    items_synced = models.IntegerField(default=0, help_text="Number of items successfully synced")
+    items_failed = models.IntegerField(default=0, help_text="Number of items that failed to sync")
     errors = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="List of error messages encountered during sync"
+        default=list, blank=True, help_text="List of error messages encountered during sync"
     )
     metadata = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text="Additional metadata about the sync operation"
+        default=dict, blank=True, help_text="Additional metadata about the sync operation"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     completed_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When the sync job completed (success or failure)"
+        null=True, blank=True, help_text="When the sync job completed (success or failure)"
     )
 
     class Meta:
@@ -249,7 +233,9 @@ class MarketplaceSyncJob(models.Model):
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["connection", "status"]),
             models.Index(fields=["status", "created_at"]),
-            models.Index(fields=["connection", "status", "created_at"], name="idx_syncjob_conn_st_cr"),
+            models.Index(
+                fields=["connection", "status", "created_at"], name="idx_syncjob_conn_st_cr"
+            ),
         ]
 
     def __str__(self):
@@ -270,39 +256,33 @@ class MarketplaceSyncJob(models.Model):
         # Validate direction is a valid enum value
         valid_directions = [sd.value for sd in SyncDirection]
         if self.direction not in valid_directions:
-            raise ValidationError({
-                'direction': f"Invalid sync direction. Must be one of: {', '.join(valid_directions)}"
-            })
+            raise ValidationError(
+                {
+                    "direction": f"Invalid sync direction. Must be one of: {', '.join(valid_directions)}"
+                }
+            )
 
         # Validate status is a valid enum value
         valid_statuses = [ss.value for ss in SyncStatus]
         if self.status not in valid_statuses:
-            raise ValidationError({
-                'status': f"Invalid sync status. Must be one of: {', '.join(valid_statuses)}"
-            })
+            raise ValidationError(
+                {"status": f"Invalid sync status. Must be one of: {', '.join(valid_statuses)}"}
+            )
 
         # Validate items_synced and items_failed are non-negative
         if self.items_synced < 0:
-            raise ValidationError({
-                'items_synced': "Items synced cannot be negative"
-            })
+            raise ValidationError({"items_synced": "Items synced cannot be negative"})
 
         if self.items_failed < 0:
-            raise ValidationError({
-                'items_failed': "Items failed cannot be negative"
-            })
+            raise ValidationError({"items_failed": "Items failed cannot be negative"})
 
         # Validate errors is a list
         if not isinstance(self.errors, list):
-            raise ValidationError({
-                'errors': "Errors must be a list"
-            })
+            raise ValidationError({"errors": "Errors must be a list"})
 
         # Validate metadata is a dictionary
         if not isinstance(self.metadata, dict):
-            raise ValidationError({
-                'metadata': "Metadata must be a dictionary"
-            })
+            raise ValidationError({"metadata": "Metadata must be a dictionary"})
 
     def save(self, *args, **kwargs):
         """
@@ -321,7 +301,7 @@ class MarketplaceSyncJob(models.Model):
         return self.status in [
             SyncStatus.COMPLETED.value,
             SyncStatus.FAILED.value,
-            SyncStatus.PARTIAL.value
+            SyncStatus.PARTIAL.value,
         ]
 
     def is_running(self) -> bool:
@@ -355,9 +335,24 @@ class MarketplaceSyncJob(models.Model):
             current_metadata.update(metadata)
             self.metadata = current_metadata
 
-        self.save(update_fields=['status', 'completed_at', 'items_synced', 'metadata', 'updated_at'])
+        self.save(
+            update_fields=[
+                "status",
+                "completed_at",
+                "items_synced",
+                "errors",
+                "metadata",
+                "updated_at",
+            ]
+        )
 
-    def mark_failed(self, error_message: str = None, items_synced: int = None, items_failed: int = None, metadata: dict = None):
+    def mark_failed(
+        self,
+        error_message: str = None,
+        items_synced: int = None,
+        items_failed: int = None,
+        metadata: dict = None,
+    ):
         """
         Mark sync job as failed.
 
@@ -387,7 +382,17 @@ class MarketplaceSyncJob(models.Model):
             current_metadata.update(metadata)
             self.metadata = current_metadata
 
-        self.save(update_fields=['status', 'completed_at', 'items_synced', 'items_failed', 'errors', 'metadata', 'updated_at'])
+        self.save(
+            update_fields=[
+                "status",
+                "completed_at",
+                "items_synced",
+                "items_failed",
+                "errors",
+                "metadata",
+                "updated_at",
+            ]
+        )
 
     def add_error(
         self,
@@ -427,7 +432,7 @@ class MarketplaceSyncJob(models.Model):
         self.errors.append(error_entry)
 
         if save:
-            self.save(update_fields=['errors', 'updated_at'])
+            self.save(update_fields=["errors", "updated_at"])
 
     def mark_running(self):
         """
@@ -435,7 +440,7 @@ class MarketplaceSyncJob(models.Model):
         """
         if self.status != SyncStatus.RUNNING.value:
             self.status = SyncStatus.RUNNING.value
-            self.save(update_fields=['status', 'updated_at'])
+            self.save(update_fields=["status", "updated_at"])
 
     def mark_partial(self, items_synced: int, items_failed: int, metadata: dict = None):
         """
@@ -459,7 +464,17 @@ class MarketplaceSyncJob(models.Model):
             current_metadata.update(metadata)
             self.metadata = current_metadata
 
-        self.save(update_fields=['status', 'completed_at', 'items_synced', 'items_failed', 'metadata', 'updated_at'])
+        self.save(
+            update_fields=[
+                "status",
+                "completed_at",
+                "items_synced",
+                "items_failed",
+                "errors",
+                "metadata",
+                "updated_at",
+            ]
+        )
 
 
 class MarketplaceMapping(models.Model):
@@ -470,48 +485,46 @@ class MarketplaceMapping(models.Model):
     Tracks synchronization metadata and external identifiers for bidirectional
     synchronization between the Hub and external marketplaces.
     """
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
         editable=False,
-        help_text="Unique identifier for the mapping"
+        help_text="Unique identifier for the mapping",
     )
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="marketplace_mappings",
-        help_text="Tenant this mapping belongs to"
+        help_text="Tenant this mapping belongs to",
     )
     connection = models.ForeignKey(
         MarketplaceConnection,
         on_delete=models.CASCADE,
         related_name="mappings",
-        help_text="Marketplace connection this mapping is associated with"
+        help_text="Marketplace connection this mapping is associated with",
     )
     hub_asset = models.ForeignKey(
         "assets.Asset",
         on_delete=models.CASCADE,
         related_name="marketplace_mappings",
-        help_text="Hub asset being mapped to external marketplace"
+        help_text="Hub asset being mapped to external marketplace",
     )
     external_listing_id = models.CharField(
-        max_length=255,
-        help_text="External marketplace listing identifier"
+        max_length=255, help_text="External marketplace listing identifier"
     )
     external_resource_ids = models.JSONField(
         default=list,
         blank=True,
-        help_text="List of external resource identifiers (e.g., dataset IDs, file IDs)"
+        help_text="List of external resource identifiers (e.g., dataset IDs, file IDs)",
     )
     sync_metadata = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Metadata about the synchronization (last sync status, errors, etc.)"
+        help_text="Metadata about the synchronization (last sync status, errors, etc.)",
     )
     last_synced_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Timestamp of last successful synchronization"
+        null=True, blank=True, help_text="Timestamp of last successful synchronization"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -527,8 +540,7 @@ class MarketplaceMapping(models.Model):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["connection", "hub_asset"],
-                name="unique_connection_asset_mapping"
+                fields=["connection", "hub_asset"], name="unique_connection_asset_mapping"
             )
         ]
 
@@ -549,41 +561,36 @@ class MarketplaceMapping(models.Model):
 
         # Validate external_listing_id is not empty
         if not self.external_listing_id or not self.external_listing_id.strip():
-            raise ValidationError({
-                'external_listing_id': "External listing ID cannot be empty"
-            })
+            raise ValidationError({"external_listing_id": "External listing ID cannot be empty"})
 
         # Validate external_resource_ids is a list
         if not isinstance(self.external_resource_ids, list):
-            raise ValidationError({
-                'external_resource_ids': "External resource IDs must be a list"
-            })
+            raise ValidationError({"external_resource_ids": "External resource IDs must be a list"})
 
         # Validate sync_metadata is a dictionary
         if not isinstance(self.sync_metadata, dict):
-            raise ValidationError({
-                'sync_metadata': "Sync metadata must be a dictionary"
-            })
+            raise ValidationError({"sync_metadata": "Sync metadata must be a dictionary"})
 
         # Check for unique constraint violation manually for better error message
         if self.pk:
             # Updating existing instance
-            if MarketplaceMapping.objects.filter(
-                connection=self.connection,
-                hub_asset=self.hub_asset
-            ).exclude(pk=self.pk).exists():
-                raise ValidationError({
-                    '__all__': "A mapping already exists for this connection and asset."
-                })
-        else:
-            # Creating new instance
-            if MarketplaceMapping.objects.filter(
-                connection=self.connection,
-                hub_asset=self.hub_asset
-            ).exists():
-                raise ValidationError({
-                    '__all__': "A mapping already exists for this connection and asset."
-                })
+            if (
+                MarketplaceMapping.objects.filter(
+                    connection=self.connection, hub_asset=self.hub_asset
+                )
+                .exclude(pk=self.pk)
+                .exists()
+            ):
+                raise ValidationError(
+                    {"__all__": "A mapping already exists for this connection and asset."}
+                )
+        # Creating new instance
+        elif MarketplaceMapping.objects.filter(
+            connection=self.connection, hub_asset=self.hub_asset
+        ).exists():
+            raise ValidationError(
+                {"__all__": "A mapping already exists for this connection and asset."}
+            )
 
     def save(self, *args, **kwargs):
         """
@@ -620,11 +627,12 @@ class MarketplaceMapping(models.Model):
         else:
             self.last_synced_at = timezone.now()
 
-        self.save(update_fields=['sync_metadata', 'last_synced_at', 'updated_at'])
+        self.save(update_fields=["sync_metadata", "last_synced_at", "updated_at"])
 
 
 class ScheduleType(models.TextChoices):
     """Schedule type enumeration for marketplace sync"""
+
     DAILY = "DAILY", "Daily"
     WEEKLY = "WEEKLY", "Weekly"
     MONTHLY = "MONTHLY", "Monthly"
@@ -633,6 +641,7 @@ class ScheduleType(models.TextChoices):
 
 class ScheduledMarketplaceSyncStatus(models.TextChoices):
     """Scheduled marketplace sync status enumeration"""
+
     ACTIVE = "ACTIVE", "Active"
     PAUSED = "PAUSED", "Paused"
     ERROR = "ERROR", "Error"
@@ -645,73 +654,59 @@ class ScheduledMarketplaceSync(models.Model):
     Stores schedule configuration for marketplace sync operations that should
     run automatically on a recurring basis (daily, weekly, monthly, or custom cron).
     """
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
         editable=False,
-        help_text="Unique identifier for the scheduled sync"
+        help_text="Unique identifier for the scheduled sync",
     )
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="scheduled_marketplace_syncs",
-        help_text="Tenant this scheduled sync belongs to"
+        help_text="Tenant this scheduled sync belongs to",
     )
     connection = models.ForeignKey(
         MarketplaceConnection,
         on_delete=models.CASCADE,
         related_name="scheduled_syncs",
-        help_text="Marketplace connection to use for sync"
+        help_text="Marketplace connection to use for sync",
     )
-    name = models.CharField(
-        max_length=255,
-        help_text="Scheduled sync name (unique per tenant)"
-    )
-    description = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Optional description"
-    )
+    name = models.CharField(max_length=255, help_text="Scheduled sync name (unique per tenant)")
+    description = models.TextField(null=True, blank=True, help_text="Optional description")
     direction = models.CharField(
         max_length=20,
         choices=[(sd.value, sd.name.replace("_", " ").title()) for sd in SyncDirection],
-        help_text="Sync direction: PUSH, PULL, or BIDIRECTIONAL"
+        help_text="Sync direction: PUSH, PULL, or BIDIRECTIONAL",
     )
     schedule_type = models.CharField(
         max_length=20,
         choices=ScheduleType.choices,
         default=ScheduleType.DAILY,
-        help_text="Schedule type: DAILY, WEEKLY, MONTHLY, CUSTOM_CRON"
+        help_text="Schedule type: DAILY, WEEKLY, MONTHLY, CUSTOM_CRON",
     )
     schedule_config = models.JSONField(
         default=dict,
-        help_text="Schedule configuration (cron expression, timezone, days of week, time)"
+        help_text="Schedule configuration (cron expression, timezone, days of week, time)",
     )
     sync_options = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Sync options (asset_ids, listing_ids, filters, options) to use for each sync"
+        help_text="Sync options (asset_ids, listing_ids, filters, options) to use for each sync",
     )
     status = models.CharField(
         max_length=20,
         choices=ScheduledMarketplaceSyncStatus.choices,
         default=ScheduledMarketplaceSyncStatus.ACTIVE,
-        help_text="Status: ACTIVE, PAUSED, ERROR"
+        help_text="Status: ACTIVE, PAUSED, ERROR",
     )
     next_run_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Next scheduled run time (calculated based on schedule)"
+        null=True, blank=True, help_text="Next scheduled run time (calculated based on schedule)"
     )
-    last_run_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Last run time"
-    )
+    last_run_at = models.DateTimeField(null=True, blank=True, help_text="Last run time")
     last_sync_job_id = models.UUIDField(
-        null=True,
-        blank=True,
-        help_text="ID of the last sync job created"
+        null=True, blank=True, help_text="ID of the last sync job created"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -721,7 +716,7 @@ class ScheduledMarketplaceSync(models.Model):
         related_name="created_scheduled_marketplace_syncs",
         null=True,
         blank=True,
-        help_text="User who created this scheduled sync"
+        help_text="User who created this scheduled sync",
     )
 
     class Meta:
@@ -735,8 +730,7 @@ class ScheduledMarketplaceSync(models.Model):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["tenant", "name"],
-                name="unique_scheduled_sync_name_per_tenant"
+                fields=["tenant", "name"], name="unique_scheduled_sync_name_per_tenant"
             )
         ]
 
@@ -751,17 +745,16 @@ class ScheduledMarketplaceSync(models.Model):
         if self.schedule_type == ScheduleType.CUSTOM_CRON:
             cron_expr = self.schedule_config.get("cron")
             if not cron_expr:
-                raise ValidationError({
-                    'schedule_config': 'Cron expression is required for CUSTOM_CRON schedule type'
-                })
+                raise ValidationError(
+                    {"schedule_config": "Cron expression is required for CUSTOM_CRON schedule type"}
+                )
             # Validate cron expression
             try:
                 from croniter import croniter
+
                 croniter(cron_expr)
             except Exception as e:
-                raise ValidationError({
-                    'schedule_config': f'Invalid cron expression: {str(e)}'
-                })
+                raise ValidationError({"schedule_config": f"Invalid cron expression: {e!s}"})
 
     def save(self, *args, **kwargs):
         """Override save to validate and calculate next_run_at"""
@@ -769,8 +762,8 @@ class ScheduledMarketplaceSync(models.Model):
 
         # Calculate next_run_at if not set or if schedule changed
         # Skip calculation if next_run_at is explicitly provided in update_fields
-        update_fields = kwargs.get('update_fields')
-        if update_fields and 'next_run_at' in update_fields:
+        update_fields = kwargs.get("update_fields")
+        if update_fields and "next_run_at" in update_fields:
             # next_run_at is being explicitly updated, don't recalculate
             pass
         elif not self.next_run_at or self._state.adding:
@@ -818,7 +811,9 @@ class ScheduledMarketplaceSync(models.Model):
             hour, minute = map(int, time_str.split(":"))
 
             # Find next matching day
-            next_run = now.replace(day=day_of_month, hour=hour, minute=minute, second=0, microsecond=0)
+            next_run = now.replace(
+                day=day_of_month, hour=hour, minute=minute, second=0, microsecond=0
+            )
             if next_run <= now:
                 # Move to next month
                 if next_run.month == 12:
@@ -860,14 +855,14 @@ class ScheduledMarketplaceSync(models.Model):
         self.last_run_at = timezone.now()
         self.last_sync_job_id = sync_job_id
         self.next_run_at = self._calculate_next_run_at()
-        self.save(update_fields=['last_run_at', 'last_sync_job_id', 'next_run_at', 'updated_at'])
+        self.save(update_fields=["last_run_at", "last_sync_job_id", "next_run_at", "updated_at"])
 
 
 # Phase 228 F4 (228.F4.6) — re-export OpenLineage models so Django's
 # app-loader picks them up. The models themselves live in the
 # ``openlineage`` sub-package for namespacing; this re-export is the
 # canonical pattern for sub-package models in a single app.
-from hub.apps.integrations.openlineage.models import (  # noqa: E402, F401
+from hub.apps.integrations.openlineage.models import (  # noqa: F401
     OpenLineageDeadLetter,
     OpenLineageIngestApiKey,
 )

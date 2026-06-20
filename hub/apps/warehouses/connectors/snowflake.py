@@ -5,11 +5,13 @@ Auth via PAT/JWT/keypair from the encrypted vault.
 SQL dialect: Snowflake SQL. INFORMATION_SCHEMA reflection.
 Query-tag for cost attribution. Circuit-breaker integration.
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from hub.apps.warehouses.base import (
     QueryResult,
@@ -88,17 +90,20 @@ class SnowflakeConnector(WarehouseConnector):
     def _build_query_tag(self) -> str:
         """Build a JSON query-tag for cost attribution."""
         import json
-        return json.dumps({
-            "tenant_id": self._tenant_id,
-            "asset_id": self._asset_id,
-            "request_id": self._request_id,
-            "source": "meshant-hub",
-        })
+
+        return json.dumps(
+            {
+                "tenant_id": self._tenant_id,
+                "asset_id": self._asset_id,
+                "request_id": self._request_id,
+                "source": "meshant-hub",
+            }
+        )
 
     def execute_query(
         self,
         sql: str,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         limit: int = 100,
     ) -> QueryResult:
         self._check_circuit_breaker(self._tenant_id)
@@ -139,7 +144,7 @@ class SnowflakeConnector(WarehouseConnector):
         finally:
             cursor.close()
 
-    def reflect_schema(self, table_name: str) -> List[SchemaColumn]:
+    def reflect_schema(self, table_name: str) -> list[SchemaColumn]:
         sql = (
             "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COMMENT "
             "FROM INFORMATION_SCHEMA.COLUMNS "
@@ -149,16 +154,16 @@ class SnowflakeConnector(WarehouseConnector):
         result = self.execute_query(sql, {"table_name": table_name.upper()})
         return [
             SchemaColumn(
-                name=r[0], data_type=r[1],
-                nullable=r[2] == "YES", comment=r[3] or "",
+                name=r[0],
+                data_type=r[1],
+                nullable=r[2] == "YES",
+                comment=r[3] or "",
             )
             for r in result.rows
         ]
 
     def close(self) -> None:
         if self._conn:
-            try:
+            with contextlib.suppress(Exception):
                 self._conn.close()
-            except Exception:
-                pass
             self._connected = False

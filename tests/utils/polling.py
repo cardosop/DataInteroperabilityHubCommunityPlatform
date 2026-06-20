@@ -6,7 +6,7 @@ No mocks; used for real async behavior (e.g. event persistence, flush).
 """
 
 import time
-from typing import Callable, Optional
+from collections.abc import Callable
 
 
 def wait_until(

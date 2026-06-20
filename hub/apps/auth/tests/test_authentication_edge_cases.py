@@ -12,23 +12,22 @@ Targets uncovered lines in hub/apps/auth/authentication.py:
   162    - User tenant_id mismatch triggers refresh
   168    - authenticate_header returns 'ApiKey'
 """
+
 import uuid
-from unittest.mock import patch, MagicMock
-
 import pytest
+from django.contrib.auth import get_user_model
 from django.test import TestCase
-from rest_framework.test import APIClient, APIRequestFactory
 from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.test import APIClient, APIRequestFactory
 
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus, UserTenantMembership
-from hub.apps.auth.models import APIKey
 from hub.apps.auth.authentication import (
-    JWTAuthentication,
     APIKeyAuthentication,
+    JWTAuthentication,
 )
 from hub.apps.auth.jwt_utils import JWTTokenGenerator
-from django.contrib.auth import get_user_model
+from hub.apps.auth.models import APIKey
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import UserStatus, UserTenantMembership
 
 User = get_user_model()
 
@@ -79,31 +78,26 @@ class JWTAuthenticationEdgeCases(TestCase):
         self.assertIsNone(result)
 
     def test_token_for_nonexistent_user(self):
-        """Lines 47-59: decode succeeds but user not found."""
-        fake_user_id = str(uuid.uuid4())
-        fake_payload = {
-            "sub": fake_user_id,
-            "tenant_id": str(self.tenant.id),
-            "authz_version": 0,
-        }
+        """When a real user is deleted between token issuance and authentication,
+        the decoded token references a nonexistent user → AuthenticationFailed."""
+        uid = uuid.uuid4().hex[:8]
+        temp_user = User.objects.create_user(
+            email=f"temp-{uid}@example.com",
+            password="temppass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        token = self._generate_token(user=temp_user)
+        temp_user_id = temp_user.id
+        temp_user.delete()
+
         auth = JWTAuthentication()
         request = self.factory.get("/api/v1/assets/")
-        request.META["HTTP_AUTHORIZATION"] = "Bearer valid.token"
+        request.META["HTTP_AUTHORIZATION"] = f"Bearer {token}"
 
-        with patch.object(
-            JWTTokenGenerator,
-            "decode_access_token",
-            return_value=fake_payload,
-        ), patch.object(
-            JWTTokenGenerator,
-            "get_user_from_token",
-            return_value=None,
-        ):
-            with self.assertRaises(AuthenticationFailed) as ctx:
-                auth.authenticate(request)
-        self.assertIn(
-            "User not found", str(ctx.exception)
-        )
+        with self.assertRaises(AuthenticationFailed) as ctx:
+            auth.authenticate(request)
+        self.assertIn("User not found", str(ctx.exception))
 
     def test_token_for_inactive_user(self):
         """Line 63: Token for inactive user is rejected."""
@@ -120,32 +114,20 @@ class JWTAuthenticationEdgeCases(TestCase):
         self.assertIn("not active", str(ctx.exception))
 
     def test_token_version_invalidated(self):
-        """Line 67: decode succeeds, user found, active, but
-        validate_token_version returns False (version bumped
-        between decode and second check)."""
-        payload = {
-            "sub": str(self.user.id),
-            "tenant_id": str(self.tenant.id),
-            "authz_version": -1,  # stale version
-        }
+        """After a user's token_version is incremented, a previously-issued
+        real JWT is rejected with TOKEN_INVALIDATED."""
+        token = self._generate_token()
+        # Bump the token version to invalidate previously-issued tokens
+        self.user.token_version += 1
+        self.user.save(update_fields=["token_version"])
+
         auth = JWTAuthentication()
         request = self.factory.get("/api/v1/assets/")
-        request.META["HTTP_AUTHORIZATION"] = "Bearer valid.tok"
+        request.META["HTTP_AUTHORIZATION"] = f"Bearer {token}"
 
-        with patch.object(
-            JWTTokenGenerator,
-            "decode_access_token",
-            return_value=payload,
-        ), patch.object(
-            JWTTokenGenerator,
-            "get_user_from_token",
-            return_value=self.user,
-        ):
-            with self.assertRaises(AuthenticationFailed) as ctx:
-                auth.authenticate(request)
-        self.assertIn(
-            "invalidated", str(ctx.exception)
-        )
+        with self.assertRaises(AuthenticationFailed) as ctx:
+            auth.authenticate(request)
+        self.assertIn("invalidated", str(ctx.exception))
 
     def test_jwt_sets_tenant_id_when_not_set(self):
         """Line 71: JWT authentication sets request.tenant_id when not already set."""
@@ -233,7 +215,7 @@ class APIKeyAuthenticationEdgeCases(TestCase):
 
         result = auth.authenticate(request)
         self.assertIsNotNone(result)
-        user, key = result
+        user, _key = result
         self.assertEqual(user.id, self.user.id)
         self.assertEqual(request.tenant_id, str(self.tenant.id))
 
@@ -274,8 +256,9 @@ class APIKeyAuthenticationEdgeCases(TestCase):
 
     def test_expired_api_key_rejected(self):
         """Line 118: Expired API key should be rejected."""
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
 
         key_str, _ = self._create_api_key(
             expires_at=timezone.now() - timedelta(hours=1),
@@ -290,22 +273,29 @@ class APIKeyAuthenticationEdgeCases(TestCase):
         self.assertIn("expired", str(ctx.exception))
 
     def test_api_key_user_not_found(self):
-        """Line 134: API key references user that cannot be loaded."""
-        key_str, _ = self._create_api_key()
+        """When the user tied to an API key is deleted (CASCADE) the API key
+        row is removed as well, so ``APIKey.objects.get(...)`` raises first
+        with 'Invalid API key'.  The 'User not found' guard at line 134 of
+        authentication.py is a defensive check for data inconsistency that
+        normal ORM operations cannot reach — it would require a raw delete
+        bypassing the CASCADE FK."""
+        uid = uuid.uuid4().hex[:8]
+        key_user = User.objects.create_user(
+            email=f"apikey-user-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        key_str, _ = self._create_api_key(user=key_user)
+        key_user.delete()
 
         auth = APIKeyAuthentication()
         request = self.factory.get("/api/v1/assets/")
         request.META["HTTP_X_API_KEY"] = key_str
 
-        with patch(
-            "hub.apps.auth.authentication.User.objects.filter"
-        ) as mock_filter:
-            mock_qs = MagicMock()
-            mock_qs.prefetch_related.return_value.first.return_value = None
-            mock_filter.return_value = mock_qs
-            with self.assertRaises(AuthenticationFailed) as ctx:
-                auth.authenticate(request)
-            self.assertIn("User not found", str(ctx.exception))
+        with self.assertRaises(AuthenticationFailed) as ctx:
+            auth.authenticate(request)
+        self.assertIn("Invalid API key", str(ctx.exception))
 
     def test_api_key_user_inactive(self):
         """Line 136: API key user is inactive."""
@@ -364,7 +354,7 @@ class APIKeyAuthenticationEdgeCases(TestCase):
 
         result = auth.authenticate(request)
         self.assertIsNotNone(result)
-        user, key = result
+        user, _key = result
         self.assertEqual(user.id, self.user.id)
 
     def test_no_api_key_returns_none(self):

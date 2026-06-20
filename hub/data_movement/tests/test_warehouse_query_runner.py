@@ -1,14 +1,15 @@
 """
 285.10.1.1 — Tests for WarehouseQueryRunner, TableFQN, and FakeWarehouseQueryRunner.
 """
-import pytest
-from hub.data_movement.warehouse_query_runner import (
-    TableFQN,
-    ReadOnlyGuard,
-    WarehouseIdempotencyKey,
-    FakeWarehouseQueryRunner,
-)
 
+import pytest
+
+from hub.data_movement.warehouse_query_runner import (
+    FakeWarehouseQueryRunner,
+    ReadOnlyGuard,
+    TableFQN,
+    WarehouseIdempotencyKey,
+)
 
 # ── TableFQN tests ────────────────────────────────────────────────────
 

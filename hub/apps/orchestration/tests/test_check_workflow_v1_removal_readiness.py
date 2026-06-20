@@ -18,6 +18,7 @@ command machinery so the test exercises ``add_arguments`` parsing and
 ``handle`` end-to-end. ``sys.exit`` raises ``SystemExit``; tests catch it
 and assert on the exit code per the standard Django mgmt-cmd test pattern.
 """
+
 from __future__ import annotations
 
 import io
@@ -28,6 +29,7 @@ from datetime import timedelta
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from django.test import TestCase
 from django.utils import timezone
 
 from hub.apps.orchestration.models import (
@@ -36,7 +38,6 @@ from hub.apps.orchestration.models import (
     WorkflowStatus,
 )
 from hub.apps.tenants.models import Tenant
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -110,14 +111,16 @@ def _seed_inflight_v1(*, count: int = 1) -> list[WorkflowInstance]:
     wf_def = _seed_v1_definition_only()
     instances: list[WorkflowInstance] = []
     for i in range(count):
-        instances.append(WorkflowInstance.objects.create(
-            workflow_definition=wf_def,
-            workflow_name="asset_creation",
-            workflow_version="1.0.0",
-            status=WorkflowStatus.RUNNING,
-            tenant_id=None,
-            input_data={"key": f"inflight-{i}"},
-        ))
+        instances.append(
+            WorkflowInstance.objects.create(
+                workflow_definition=wf_def,
+                workflow_name="asset_creation",
+                workflow_version="1.0.0",
+                status=WorkflowStatus.RUNNING,
+                tenant_id=None,
+                input_data={"key": f"inflight-{i}"},
+            )
+        )
     return instances
 
 
@@ -138,38 +141,38 @@ def _run_command(*args, expect_exit: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-class TestReadinessVerdict:
+class TestReadinessVerdict(TestCase):
     """The command produces a 3-way verdict: READY (0) / NOT READY (1) / DATA ERROR (2)."""
 
     def test_ready_when_no_inflight_runs_and_soak_elapsed(self):
         _seed_v1_v2_post_soak()
         # No in-flight v1 instances seeded.
         out = _run_command(expect_exit=0)
-        assert "READY" in out
-        assert "blocked" not in out
+        self.assertIn("READY", out)
+        self.assertNotIn("blocked", out)
 
     def test_not_ready_when_inflight_runs_exist(self):
         _seed_v1_v2_post_soak()
         _seed_inflight_v1(count=3)
         out = _run_command(expect_exit=1)
-        assert "NOT READY" in out
+        self.assertIn("NOT READY", out)
         # Reason mentions in-flight count.
-        assert "3_inflight_runs" in out
+        self.assertIn("3_inflight_runs", out)
 
     def test_not_ready_when_soak_window_not_elapsed(self):
         _seed_v1_v2_within_soak()
         # No in-flight runs, but v1 still in soak.
         out = _run_command(expect_exit=1)
-        assert "NOT READY" in out
-        assert "soak_window_not_elapsed" in out
+        self.assertIn("NOT READY", out)
+        self.assertIn("soak_window_not_elapsed", out)
 
     def test_not_ready_when_both_blockers_present(self):
         _seed_v1_v2_within_soak()
         _seed_inflight_v1(count=2)
         out = _run_command(expect_exit=1)
-        assert "NOT READY" in out
-        assert "2_inflight_runs" in out
-        assert "soak_window_not_elapsed" in out
+        self.assertIn("NOT READY", out)
+        self.assertIn("2_inflight_runs", out)
+        self.assertIn("soak_window_not_elapsed", out)
 
     def test_only_non_terminal_statuses_count_as_inflight(self):
         """Terminal statuses (COMPLETED, FAILED, CANCELLED, ROLLED_BACK)
@@ -190,7 +193,7 @@ class TestReadinessVerdict:
                 input_data={"key": f"terminal-{terminal_status}"},
             )
         out = _run_command(expect_exit=0)
-        assert "READY" in out
+        self.assertIn("READY", out)
 
     def test_non_terminal_states_all_block(self):
         """Every status enum that is NOT terminal MUST count as in-flight."""
@@ -211,9 +214,9 @@ class TestReadinessVerdict:
                 input_data={"key": f"nt-{s}"},
             )
         out = _run_command(expect_exit=1)
-        assert "NOT READY" in out
+        self.assertIn("NOT READY", out)
         # Five non-terminal instances should be blocking.
-        assert "5_inflight_runs" in out
+        self.assertIn("5_inflight_runs", out)
 
 
 # ---------------------------------------------------------------------------
@@ -221,20 +224,20 @@ class TestReadinessVerdict:
 # ---------------------------------------------------------------------------
 
 
-class TestJsonOutput:
+class TestJsonOutput(TestCase):
     """``--json`` emits a structured verdict consumable by automation."""
 
     def test_json_ready_verdict(self):
         _seed_v1_v2_post_soak()
         out = _run_command("--json", expect_exit=0)
         verdict = json.loads(out)
-        assert verdict["ready"] is True
-        assert verdict["exit_code"] == 0
-        assert verdict["inflight_count"] == 0
-        assert verdict["soak_elapsed"] is True
-        assert verdict["workflow"] == "asset_creation"
-        assert verdict["version"] == "1.0.0"
-        assert verdict["soak_days"] == 14
+        self.assertTrue(verdict["ready"])
+        self.assertEqual(verdict["exit_code"], 0)
+        self.assertEqual(verdict["inflight_count"], 0)
+        self.assertTrue(verdict["soak_elapsed"])
+        self.assertEqual(verdict["workflow"], "asset_creation")
+        self.assertEqual(verdict["version"], "1.0.0")
+        self.assertEqual(verdict["soak_days"], 14)
 
     def test_json_not_ready_with_breakdown(self):
         _seed_v1_v2_post_soak()
@@ -263,16 +266,18 @@ class TestJsonOutput:
         )
         out = _run_command("--json", expect_exit=1)
         verdict = json.loads(out)
-        assert verdict["ready"] is False
-        assert verdict["inflight_count"] == 3
+        self.assertFalse(verdict["ready"])
+        self.assertEqual(verdict["inflight_count"], 3)
         # Per-tenant breakdown distinguishes tenant_a (2 runs) from tenant_b (1 run).
         breakdown = verdict["per_tenant_breakdown"]
-        assert breakdown[str(tenant_a.id)] == 2
-        assert breakdown[str(tenant_b.id)] == 1
+        self.assertEqual(breakdown[str(tenant_a.id)], 2)
+        self.assertEqual(breakdown[str(tenant_b.id)], 1)
         # Examples list capped at 10 with full diagnostic shape.
-        assert len(verdict["examples"]) == 3
+        self.assertEqual(len(verdict["examples"]), 3)
         for ex in verdict["examples"]:
-            assert {"instance_id", "tenant_id", "status", "started_at"}.issubset(ex.keys())
+            self.assertTrue(
+                {"instance_id", "tenant_id", "status", "started_at"}.issubset(ex.keys())
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +285,7 @@ class TestJsonOutput:
 # ---------------------------------------------------------------------------
 
 
-class TestConfigurableKnobs:
+class TestConfigurableKnobs(TestCase):
     """The command accepts ``--workflow``, ``--workflow-version``, ``--soak-days``."""
 
     def test_custom_workflow_name(self):
@@ -301,19 +306,19 @@ class TestConfigurableKnobs:
             "--workflow-version=1.0.0",
             expect_exit=1,
         )
-        assert "other_workflow" in out
+        self.assertIn("other_workflow", out)
 
     def test_custom_soak_days(self):
         """A version deactivated 7 days ago is OUTSIDE a 5-day soak but
         INSIDE a 14-day soak."""
         _seed_v1_v2_within_soak()
         # Move v1 7 days back.
-        WorkflowDefinition.objects.filter(
-            name="asset_creation", version="1.0.0"
-        ).update(updated_at=timezone.now() - timedelta(days=7))
+        WorkflowDefinition.objects.filter(name="asset_creation", version="1.0.0").update(
+            updated_at=timezone.now() - timedelta(days=7)
+        )
         # 5-day soak: v1 outside → READY (assuming no in-flight).
         out_short = _run_command("--soak-days=5", expect_exit=0)
-        assert "READY" in out_short
+        self.assertIn("READY", out_short)
         # 14-day soak (default): v1 inside → NOT READY.
         out_default = _run_command(expect_exit=1)
-        assert "soak_window_not_elapsed" in out_default
+        self.assertIn("soak_window_not_elapsed", out_default)

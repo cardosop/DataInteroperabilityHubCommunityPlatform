@@ -25,29 +25,28 @@ Total: 100+ test cases
 import json
 import time
 import uuid
-from typing import Any, Dict, List
 
 import pytest
 
-pytestmark = pytest.mark.slow
+# Note: This file uses original Compliance UC numbering (UC-COMP-001 through 008)
+# which differs from canonical docs/USE_CASES.md numbering.
+# UC-COMP-001: Run Compliance Scan (matches canonical)
+# UC-COMP-002�008 here map to different titles than canonical.
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
-from django.utils import timezone
+from django.db.models.signals import post_save
+from django.test import TransactionTestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus, RiskLevel
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.datasets.models import Dataset, DatasetKind
-from hub.apps.files.models import File, FileStatus
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
-from hub.apps.users.models import Role, UserRole
-from hub.apps.semantic.signals import contract_saved, asset_saved
+from hub.apps.compliance.models import ComplianceRunStatus
 from hub.apps.contracts.models import Contract
-from hub.apps.assets.models import Asset
-from django.db.models.signals import post_save
+from hub.apps.datasets.models import DatasetKind
+from hub.apps.files.models import FileStatus
+from hub.apps.semantic.signals import asset_saved, contract_saved
+from hub.apps.tenants.models import KYCStatus, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     AssetFactory,
     DatasetFactory,
@@ -59,7 +58,19 @@ from tests.utils.test_data_management import TestDatabaseIsolationMixin
 
 User = get_user_model()
 
-pytestmark = [pytest.mark.django_db, pytest.mark.integration]
+pytestmark = [
+    pytest.mark.django_db,
+    pytest.mark.integration,
+    pytest.mark.slow,
+    pytest.mark.uc("UC-COMP-001"),
+    pytest.mark.uc("UC-COMP-002"),
+    pytest.mark.uc("UC-COMP-003"),
+    pytest.mark.uc("UC-COMP-004"),
+    pytest.mark.uc("UC-COMP-005"),
+    pytest.mark.uc("UC-COMP-006"),
+    pytest.mark.uc("UC-COMP-007"),
+    pytest.mark.uc("UC-COMP-008"),
+]
 
 
 class ComplianceOriginalUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixin):
@@ -77,7 +88,6 @@ class ComplianceOriginalUseCasesTestBase(TransactionTestCase, TestDatabaseIsolat
         which provides isolation without flushing.
         """
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -90,7 +100,6 @@ class ComplianceOriginalUseCasesTestBase(TransactionTestCase, TestDatabaseIsolat
 
         # Create tenant
         # Create tenant (use unique name/slug to avoid conflicts between tests)
-        import uuid
         unique_id = str(uuid.uuid4())[:8]
         self.tenant = TenantFactory.create_tenant(
             name=f"Test Tenant {unique_id}",
@@ -241,7 +250,11 @@ class UCCOMP001RunComplianceScanTest(ComplianceOriginalUseCasesTestBase):
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(compliance_response.status_code, status.HTTP_201_CREATED)
-        self.assertLess(elapsed_time, 10000, f"Compliance scan creation took {elapsed_time}ms, exceeds 10000ms threshold")
+        self.assertLess(
+            elapsed_time,
+            10000,
+            f"Compliance scan creation took {elapsed_time}ms, exceeds 10000ms threshold",
+        )
 
 
 class UCCOMP002ViewComplianceReportTest(ComplianceOriginalUseCasesTestBase):
@@ -320,7 +333,6 @@ class UCCOMP003ConfigureCompliancePoliciesTest(ComplianceOriginalUseCasesTestBas
     def test_configure_compliance_policies_via_contract(self):
         """Test configuring compliance policies via contract"""
         from django.urls import reverse
-        import json
 
         self.client.force_authenticate(user=self.de_user)
 
@@ -361,7 +373,7 @@ class UCCOMP004MonitorComplianceStatusTest(ComplianceOriginalUseCasesTestBase):
         self.client.force_authenticate(user=self.dpo_user)
 
         # Create multiple compliance runs
-        for i in range(3):
+        for _i in range(3):
             compliance_data = {
                 "asset_id": str(self.asset.id),
                 "scan_mode": "internal",
@@ -384,7 +396,6 @@ class UCCOMP005SetComplianceAlertsTest(ComplianceOriginalUseCasesTestBase):
     def test_set_compliance_alerts_via_contract(self):
         """Test setting compliance alerts via contract"""
         from django.urls import reverse
-        import json
 
         self.client.force_authenticate(user=self.de_user)
 
@@ -442,7 +453,7 @@ class UCCOMP006RemediateComplianceIssuesTest(ComplianceOriginalUseCasesTestBase)
         # If results available, check for violations
         if report_response.status_code == status.HTTP_200_OK:
             report_data = report_response.data
-            violations = report_data.get("violations", [])
+            report_data.get("violations", [])
             # Remediation would involve fixing data or updating policies
             # This is tested via the workflow that triggers remediation
 
@@ -493,7 +504,7 @@ class UCCOMP008TrackComplianceHistoryTest(ComplianceOriginalUseCasesTestBase):
 
         # Create multiple compliance runs (simulating history)
         compliance_runs = []
-        for i in range(3):
+        for _i in range(3):
             compliance_data = {
                 "asset_id": str(self.asset.id),
                 "scan_mode": "internal",

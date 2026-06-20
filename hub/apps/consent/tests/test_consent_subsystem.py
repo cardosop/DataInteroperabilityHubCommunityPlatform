@@ -1,11 +1,10 @@
 """Phase 232.1 consent subsystem integration tests (real DB + crypto, no mocks)."""
 
 from __future__ import annotations
-import pytest
 
-import pytest
 import uuid
 
+import pytest
 from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient

@@ -7,10 +7,11 @@ when a Dataset record is created, updated, or deleted.
 Follows the existing contracts/signals.py pub/sub pattern:
 best-effort, failures logged at WARNING, never propagate.
 """
+
 import logging
 
 from django.db import transaction
-from django.db.models.signals import post_save, post_delete, pre_save
+from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,7 @@ def schedule_orphan_file_check_on_dataset_delete(sender, instance, **kwargs):
         from hub.apps.datasets.orphan_file_reconcile import (
             schedule_orphan_file_check_after_dataset_delete,
         )
+
         schedule_orphan_file_check_after_dataset_delete(
             tenant_id=instance.tenant_id,
             file_id=instance.file_id,
@@ -129,8 +131,10 @@ def fire_dataset_tombstone_on_archive(sender, instance, **kwargs):
     def _dispatch():
         try:
             from hub.apps.semantic.tombstone import (
-                REASON_DATASET_ARCHIVED, tombstone_resource,
+                REASON_DATASET_ARCHIVED,
+                tombstone_resource,
             )
+
             tombstone_resource(
                 resource_type="DATASET",
                 resource_id=dataset_id,
@@ -138,9 +142,9 @@ def fire_dataset_tombstone_on_archive(sender, instance, **kwargs):
             )
         except Exception as exc:
             logger.warning(
-                "dataset_tombstone_dispatch_failed "
-                "dataset_id=%s error=%s",
-                dataset_id, exc,
+                "dataset_tombstone_dispatch_failed dataset_id=%s error=%s",
+                dataset_id,
+                exc,
             )
 
     transaction.on_commit(_dispatch)
@@ -169,8 +173,7 @@ def rebuild_dataset_search_vector(sender, instance, **kwargs):
         enqueue_dataset_search_vector_update(str(instance.pk))
     except Exception as exc:
         logger.warning(
-            "dataset_search_vector_enqueue_failed "
-            "dataset_id=%s error=%s",
+            "dataset_search_vector_enqueue_failed dataset_id=%s error=%s",
             instance.pk,
             exc,
         )

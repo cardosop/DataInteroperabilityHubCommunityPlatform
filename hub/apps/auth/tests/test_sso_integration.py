@@ -4,13 +4,14 @@ Integration tests for SSO
 Tests for SSO authentication flows.
 """
 
+import urllib.parse
 import uuid
+
 import pytest
 from django.test import TestCase
 
 from hub.apps.auth.sso import SSOService
 from hub.apps.tenants.models import Tenant, TenantConfig
-from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -22,7 +23,10 @@ class SSOIntegrationTest(TestCase):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create tenant config with SSO
@@ -59,31 +63,53 @@ class SSOIntegrationTest(TestCase):
         self.assertEqual(provider.tenant_id, str(self.tenant.id))
 
     def test_sso_login_url_generation_saml_returns_url(self):
-        """Test SSO login URL generation for SAML returns URL."""
+        """SAML login URL targets the configured sso_url with expected params."""
         saml_url = SSOService.get_sso_login_url(
             tenant_id=str(self.tenant.id),
             provider_type="SAML",
             redirect_uri="https://example.com/callback",
         )
         self.assertIsNotNone(saml_url)
+        self.assertIsInstance(saml_url, str)
+        parsed = urllib.parse.urlparse(saml_url)
+        self.assertEqual(parsed.scheme, "https")
+        self.assertEqual(parsed.hostname, "saml.example.com")
+        self.assertEqual(parsed.path, "/sso")
+        self.assertIn("SAMLRequest", parsed.query)
 
     def test_sso_login_url_generation_oidc_returns_url(self):
-        """Test SSO login URL generation for OIDC returns URL."""
+        """OIDC login URL targets the configured authorization_endpoint with
+        client_id, redirect_uri, response_type, scope, and state."""
         oidc_url = SSOService.get_sso_login_url(
             tenant_id=str(self.tenant.id),
             provider_type="OIDC",
             redirect_uri="https://example.com/callback",
         )
         self.assertIsNotNone(oidc_url)
+        self.assertIsInstance(oidc_url, str)
+        parsed = urllib.parse.urlparse(oidc_url)
+        self.assertEqual(parsed.scheme, "https")
+        self.assertEqual(parsed.hostname, "oidc.example.com")
+        self.assertEqual(parsed.path, "/auth")
+        qs = urllib.parse.parse_qs(parsed.query)
+        self.assertIn("client_id", qs)
+        self.assertEqual(qs["client_id"][0], "test-client-id")
+        self.assertEqual(qs["redirect_uri"][0], "https://example.com/callback")
+        self.assertEqual(qs["response_type"][0], "code")
+        self.assertIn("openid", qs["scope"][0])
+        self.assertIn("state", qs)
 
     def test_sso_login_url_generation_oidc_includes_client_id(self):
-        """Test SSO login URL generation for OIDC includes client_id."""
+        """OIDC URL client_id matches the tenant config."""
         oidc_url = SSOService.get_sso_login_url(
             tenant_id=str(self.tenant.id),
             provider_type="OIDC",
             redirect_uri="https://example.com/callback",
         )
-        self.assertIn("client_id", oidc_url)
+        self.assertIsNotNone(oidc_url)
+        parsed = urllib.parse.urlparse(oidc_url)
+        qs = urllib.parse.parse_qs(parsed.query)
+        self.assertEqual(qs["client_id"][0], "test-client-id")
 
     # ========== FAILURE SCENARIOS ==========
 

@@ -18,25 +18,30 @@ would surface a no-op.
 These are PURE-PYTHON file-content checks — no Django, no AWS, no
 k6 invocation. Runs in any CI env without credentials.
 """
+
 from __future__ import annotations
 
 import os
 import re
 
-PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..")
-)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 K6_SCRIPT_PATH = os.path.join(
-    PROJECT_ROOT, "tests", "load", "concurrent_uploads_memory.k6.js",
+    PROJECT_ROOT,
+    "tests",
+    "load",
+    "concurrent_uploads_memory.k6.js",
 )
 WORKFLOW_PATH = os.path.join(
-    PROJECT_ROOT, ".github", "workflows", "upload-memory-nightly.yml",
+    PROJECT_ROOT,
+    ".github",
+    "workflows",
+    "upload-memory-nightly.yml",
 )
 
 
 def _read(path: str) -> str:
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return f.read()
 
 
@@ -50,8 +55,7 @@ def test_k6_script_exists():
     the workflow references. Catches a future repo-restructure that
     moves the script without updating the workflow."""
     assert os.path.isfile(K6_SCRIPT_PATH), (
-        f"k6 script not found at {K6_SCRIPT_PATH!r}; "
-        "Phase 260.7.I.1 mandates this exact filename"
+        f"k6 script not found at {K6_SCRIPT_PATH!r}; Phase 260.7.I.1 mandates this exact filename"
     )
 
 
@@ -97,11 +101,7 @@ def test_k6_script_simulates_1gib_files():
     # Accept either `1024 * 1024 * 1024` or `2 ** 30` or 1073741824
     # — three equivalent ways to write 1 GiB. The numeric value is
     # the contract; the syntax is the implementer's choice.
-    assert (
-        "1024 * 1024 * 1024" in src
-        or "2 ** 30" in src
-        or "1073741824" in src
-    ), (
+    assert "1024 * 1024 * 1024" in src or "2 ** 30" in src or "1073741824" in src, (
         "k6 script MUST simulate 1 GiB file size per Phase 260.7.I.1 "
         "spec ('100 concurrent 1GB uploads'). Accepted forms: "
         "`1024 * 1024 * 1024`, `2 ** 30`, or literal `1073741824`."
@@ -326,11 +326,11 @@ def test_workflow_script_path_matches_actual_script():
     workflow_src = _read(WORKFLOW_PATH)
     # Extract the path the workflow uses
     match = re.search(
-        r"tests/load/(\S+\.k6\.js)", workflow_src,
+        r"tests/load/(\S+\.k6\.js)",
+        workflow_src,
     )
     assert match, (
-        "Workflow doesn't reference any tests/load/*.k6.js script; "
-        "expected a literal path"
+        "Workflow doesn't reference any tests/load/*.k6.js script; expected a literal path"
     )
     referenced_relpath = "tests/load/" + match.group(1)
     referenced_abspath = os.path.join(PROJECT_ROOT, referenced_relpath)

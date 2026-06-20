@@ -3,7 +3,8 @@ Extended coverage tests for ODPS normalizer to reach 90%+ coverage.
 
 This file contains additional tests targeting specific uncovered code paths.
 
-All tests use real implementations (no mocks/stubs) where possible.
+Uses real implementations where possible. MockTransport is used for HTTP
+endpoint verification at the network boundary (acceptable test utility).
 Metrics exception handling is already covered by try/except blocks in the code.
 """
 
@@ -11,7 +12,6 @@ from django.test import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus
 from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
-from hub.apps.contracts.odps_errors import ODPSNormalizationError
 
 
 class ODPSNormalizerExtendedCoverageTest(TestCase):
@@ -351,16 +351,6 @@ class ODPSNormalizerExtendedCoverageTest(TestCase):
 
     def test_normalize_marketplace_pricing_plans_edge_cases(self):
         """Test marketplace normalization edge cases (lines 1408, 1417, 1433, 1447-1449)."""
-        contract_data = {
-            "product": {
-                "marketplace": {
-                    "pricingPlans": [
-                        {"name": "Free", "price": 0},
-                        {"name": "Premium", "price": {"amount": 99, "currency": "USD"}},
-                    ]
-                }
-            }
-        }
 
         # Test marketplace normalization through public API - normalize() internally calls _normalize_marketplace()
         contract_data_full = {
@@ -382,11 +372,6 @@ class ODPSNormalizerExtendedCoverageTest(TestCase):
 
     def test_normalize_schema_minimal_edge_cases(self):
         """Test schema minimal normalization edge cases (lines 1484, 1513-1523, 1549, 1557, 1577, 1607, 1615, 1644-1646)."""
-        contract_data = {
-            "product": {
-                "dataSchema": {"fields": [{"name": "field1", "type": "string", "required": True}]}
-            }
-        }
 
         # Test schema minimal normalization through public API - normalize() internally calls _normalize_schema_minimal()
         contract_data_full = {
@@ -404,18 +389,6 @@ class ODPSNormalizerExtendedCoverageTest(TestCase):
 
     def test_normalize_product_strategy_edge_cases(self):
         """Test product strategy normalization edge cases (lines 1674, 1678, 1700-1724, 1762-1764, 1776, 1791, 1795)."""
-        contract_data = {
-            "product": {
-                "productStrategy": {
-                    "objectives": ["Objective 1", {"metric": "quality", "target": 0.95}],
-                    "strategicAlignment": [
-                        "Goal 1",
-                        {"goal": "Digital transformation", "priority": "high"},
-                    ],
-                    "productKPIs": ["KPI 1", {"metric": "adoption", "target": 1000}],
-                }
-            }
-        }
 
         # Test product strategy normalization through public API - normalize() internally calls _normalize_product_strategy()
         contract_data_full = {
@@ -439,7 +412,6 @@ class ODPSNormalizerExtendedCoverageTest(TestCase):
 
     def test_normalize_product_strategy_version_checks(self):
         """Test product strategy version checks (lines 1873, 1883-1888)."""
-        contract_data = {"product": {"productStrategy": {"objectives": ["Test"]}}}
 
         # Test product strategy version checks through public API - normalize() internally calls _normalize_product_strategy()
         # Test with version 4.0 (productStrategy may not be processed in 4.0)

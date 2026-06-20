@@ -9,6 +9,11 @@ collection and the reason is invisible until the test is executed.
 Use ``@pytest.mark.skip(reason=...)`` or ``@pytest.mark.skipif(cond, reason=...)``
 at the decorator level instead — these are visible at collection time.
 
+Exception: Runtime-dependent skip conditions (service health checks, DB
+queries, Docker CLI, subprocess calls) CANNOT be evaluated at module import
+time and MUST stay in the test body.  Annotate these with
+``# noqa: skip-in-body`` on the ``pytest.skip()`` line.
+
 Usage:
     python scripts/check_pytest_skip_in_body.py
     python scripts/check_pytest_skip_in_body.py --path hub/apps/assets/tests
@@ -34,8 +39,11 @@ def _find_test_files(search_roots: list[str]) -> list[str]:
         if not p.exists():
             continue
         for dirpath, dirnames, filenames in os.walk(p):
-            dirnames[:] = [d for d in dirnames if d not in ("__pycache__", ".git", "migrations",
-                                                             ".venv", "venv", "node_modules")]
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if d not in ("__pycache__", ".git", "migrations", ".venv", "venv", "node_modules")
+            ]
             for fn in filenames:
                 if not fn.endswith(".py"):
                     continue
@@ -47,10 +55,20 @@ def _find_test_files(search_roots: list[str]) -> list[str]:
 class PytestSkipInBodyVisitor(ast.NodeVisitor):
     """Walk test functions looking for pytest.skip() calls in their body."""
 
-    def __init__(self, file_path: str) -> None:
+    def __init__(self, file_path: str, source_lines: list[str]) -> None:
         self.file_path = file_path
+        self.source_lines = source_lines
         self.violations: list[int] = []  # line numbers
         self._in_test_func = False
+
+    def _has_noqa(self, lineno: int) -> bool:
+        """Check if the current or previous line has a noqa annotation."""
+        for offset in (0, 1):
+            idx = lineno - 1 - offset
+            if 0 <= idx < len(self.source_lines):
+                if "# noqa: skip-in-body" in self.source_lines[idx]:
+                    return True
+        return False
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         if node.name.startswith("test_"):
@@ -74,7 +92,8 @@ class PytestSkipInBodyVisitor(ast.NodeVisitor):
                 and call.func.value.id == "pytest"
                 and call.func.attr == "skip"
             ):
-                self.violations.append(node.lineno)
+                if not self._has_noqa(node.lineno):
+                    self.violations.append(node.lineno)
                 return
         # Conditional:  if cond: pytest.skip(...)
         if isinstance(node, ast.If):
@@ -91,7 +110,7 @@ def check_file(file_path: str) -> list[int]:
         tree = ast.parse(source, filename=file_path)
     except SyntaxError:
         return []
-    visitor = PytestSkipInBodyVisitor(file_path)
+    visitor = PytestSkipInBodyVisitor(file_path, source.splitlines(keepends=True))
     visitor.visit(tree)
     return visitor.violations
 
@@ -101,10 +120,14 @@ def main() -> None:
     parser.add_argument("--path", nargs="*", default=None)
     args = parser.parse_args()
 
-    roots = args.path if args.path else [
-        str(REPO_ROOT / "hub"),
-        str(REPO_ROOT / "tests"),
-    ]
+    roots = (
+        args.path
+        if args.path
+        else [
+            str(REPO_ROOT / "hub"),
+            str(REPO_ROOT / "tests"),
+        ]
+    )
     test_files = _find_test_files(roots)
 
     violations: list[tuple[str, int]] = []
@@ -119,7 +142,10 @@ def main() -> None:
             print(f"  {rel}:{lineno}")
         if len(violations) > 20:
             print(f"  ... and {len(violations) - 20} more")
-        print("Use @pytest.mark.skip(reason=...) or @pytest.mark.skipif(...) at the decorator level.")
+        print(
+            "Use @pytest.mark.skip(reason=...) or @pytest.mark.skipif(...) at the decorator level, "
+            "or annotate runtime-dependent skips with # noqa: skip-in-body."
+        )
         sys.exit(1)
 
     print("GATE-07: PASSED — no pytest.skip() inside test function bodies.")

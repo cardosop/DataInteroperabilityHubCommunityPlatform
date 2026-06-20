@@ -20,21 +20,19 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.db import transaction
 from django.test import TestCase
 
-from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
 from hub.apps.contracts.services import ContractService, ODPSService
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-from hub.apps.users.models import UserStatus
+from hub.apps.tenants.models import Tenant, TenantStatus
 from tests.fixtures.test_data_factories import (
     AssetFactory,
     ContractFactory,
     TenantFactory,
     UserFactory,
 )
-from tests.utils.test_data_management import TestDataManager, seed_test_data
+from tests.utils.test_data_management import seed_test_data
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -480,9 +478,7 @@ class TestDataSeedingForAllContractTypesTest(TestCase):
     def test_seed_data_with_very_large_counts(self):
         """Test seed data with large (but feasible) counts."""
         try:
-            tenants = seed_test_data(
-                tenant_count=5, users_per_tenant=10, assets_per_tenant=20
-            )
+            tenants = seed_test_data(tenant_count=5, users_per_tenant=10, assets_per_tenant=20)
             # Should handle larger counts within timeout
             self.assertEqual(len(tenants), 5)
         except Exception as e:
@@ -493,17 +489,17 @@ class TestDataSeedingForAllContractTypesTest(TestCase):
         """Test that seed data can be called multiple times."""
         # First call
         try:
-            tenants1 = seed_test_data(tenant_count=2)
+            seed_test_data(tenant_count=2)
         except Exception:
             self.skipTest("seed_test_data failed due to stale DB state (reuse-db)")
         count1 = Tenant.objects.count()
 
-        # Second call
+        # Second call — should be idempotent (reuse-db may have stale data)
+        from django.db import IntegrityError
         try:
-            tenants2 = seed_test_data(tenant_count=2)
-        except Exception:
-            # Idempotency may fail on unique constraints — that's acceptable
-            return
+            seed_test_data(tenant_count=2)
+        except IntegrityError:
+            self.skipTest("seed_test_data not idempotent with reuse-db unique constraints")
         count2 = Tenant.objects.count()
 
         # Should handle multiple calls (may create duplicates or skip)
@@ -577,30 +573,21 @@ class TestDataSeedingForAllContractTypesTest(TestCase):
             self.assertEqual(contract.tenant, tenant2)
 
     def test_seed_data_with_nonexistent_asset_reference(self):
-        """Test seed data handles nonexistent asset references."""
-        # Create tenant and user
-        tenant = TenantFactory.create_tenant()
-        user = UserFactory.create_user(tenant=tenant)
-
-        # Try to create contract with nonexistent asset
+        """Test seed data handles nonexistent asset references gracefully."""
         import uuid
 
-        nonexistent_asset_id = str(uuid.uuid4())
+        tenant = TenantFactory.create_tenant()
+        UserFactory.create_user(tenant=tenant)
 
-        # Should handle gracefully (may skip or create without asset)
-        try:
-            contract = ContractFactory.create_contract(
-                tenant=tenant,
-                asset_id=nonexistent_asset_id,
-                original_spec_type=OriginalSpecType.ODCS.value,
-            )
-            # If it creates, verify it handles missing asset
-            if contract.asset_id != nonexistent_asset_id:
-                # Asset was created or None
-                pass
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        nonexistent_asset_id = uuid.uuid4()
+        # Contract.asset is nullable, so creating with a nonexistent asset_id
+        # succeeds — the FK is not enforced at the ORM level for null=True.
+        contract = ContractFactory.create_contract(
+            tenant=tenant,
+            asset_id=nonexistent_asset_id,
+        )
+        self.assertIsNotNone(contract)
+        self.assertIsNotNone(contract.id)
 
     def test_seed_data_contracts_with_special_characters(self):
         """Test seed data with special characters in contract data."""

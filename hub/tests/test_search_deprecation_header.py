@@ -6,6 +6,7 @@ Validates via real HTTP requests:
 - UnifiedSearchView does NOT return deprecation headers
 - Both views reject empty q with 400
 """
+
 import uuid
 
 import pytest
@@ -18,7 +19,6 @@ from hub.apps.billing.tests.plan_fixtures import get_pro_plan
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
-
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
@@ -27,12 +27,17 @@ def _setup_auth_client():
     uid = uuid.uuid4().hex[:6]
     plan = get_pro_plan()
     tenant = Tenant.objects.create(
-        name=f"search-hdr-{uid}", slug=f"search-hdr-{uid}", plan=plan,
+        name=f"search-hdr-{uid}",
+        slug=f"search-hdr-{uid}",
+        plan=plan,
     )
-    from django.utils import timezone
     from datetime import timedelta
+
+    from django.utils import timezone
+
     Subscription.objects.create(
-        tenant=tenant, plan=plan,
+        tenant=tenant,
+        plan=plan,
         status=SubscriptionStatus.ACTIVE,
         current_period_start=timezone.now(),
         current_period_end=timezone.now() + timedelta(days=30),
@@ -61,7 +66,8 @@ class SearchDeprecationHeaderTest(TestCase):
         self.assertIn(resp.status_code, [200, 400])
         if resp.status_code == 200:
             self.assertIn(
-                "Deprecation", resp,
+                "Deprecation",
+                resp,
                 "SearchViewSet must set Deprecation response header",
             )
             self.assertEqual(resp["Deprecation"], "true")
@@ -71,7 +77,8 @@ class SearchDeprecationHeaderTest(TestCase):
         resp = self.client.get("/api/v1/search/search/", {"q": "test"})
         if resp.status_code == 200:
             self.assertIn(
-                "Link", resp,
+                "Link",
+                resp,
                 "SearchViewSet must set Link response header",
             )
             self.assertIn("successor-version", resp.get("Link", ""))
@@ -81,7 +88,8 @@ class SearchDeprecationHeaderTest(TestCase):
         resp = self.client.get("/api/search/", {"q": "test"})
         if resp.status_code == 200:
             self.assertNotIn(
-                "Deprecation", resp,
+                "Deprecation",
+                resp,
                 "UnifiedSearchView must NOT set Deprecation header",
             )
 
@@ -96,7 +104,8 @@ class SearchViewSetEmptyQueryGuardTest(TestCase):
         """GET /api/v1/search/search/?q= must return 400."""
         resp = self.client.get("/api/v1/search/search/", {"q": ""})
         self.assertEqual(
-            resp.status_code, 400,
+            resp.status_code,
+            400,
             f"Empty q must return 400, got {resp.status_code}",
         )
         self.assertIn("required", str(resp.data).lower())
@@ -105,7 +114,8 @@ class SearchViewSetEmptyQueryGuardTest(TestCase):
         """GET /api/search/?q= must return 400."""
         resp = self.client.get("/api/search/", {"q": ""})
         self.assertEqual(
-            resp.status_code, 400,
+            resp.status_code,
+            400,
             f"Empty q must return 400, got {resp.status_code}",
         )
         # Check for the specific error code, not just the substring

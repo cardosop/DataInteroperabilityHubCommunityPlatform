@@ -3,12 +3,10 @@ Integration tests for Dataset Version History
 
 Tests for version operations in the context of API and dataset creation.
 """
+
 import uuid
 
-import json
-
 import pytest
-from django.utils import timezone
 from rest_framework import status
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -295,19 +293,20 @@ class VersionHistoryIntegrationTest(DatasetsAPITestBase):
 
     def test_version_integration_failure_nonexistent_dataset(self):
         """Test version integration with non-existent dataset (failure scenario)"""
-        import uuid
 
         fake_dataset = Dataset(id=uuid.uuid4(), tenant=self.tenant)
 
         # get_version_tree must handle a non-persisted dataset gracefully —
         # returning an empty list, never raising.
         history = VersionHistoryManager.get_version_tree(fake_dataset)
-        self.assertIsInstance(history, list,
-            "get_version_tree must return a list even for non-existent dataset")
+        self.assertIsInstance(
+            history, list, "get_version_tree must return a list even for non-existent dataset"
+        )
         # The tree includes the dataset itself as a node — length ≥ 1 is
         # expected even when no version history records exist.
-        self.assertGreaterEqual(len(history), 1,
-            "get_version_tree must include the dataset node itself")
+        self.assertGreaterEqual(
+            len(history), 1, "get_version_tree must include the dataset node itself"
+        )
 
     # ========== EDGE CASES ==========
 
@@ -328,8 +327,9 @@ class VersionHistoryIntegrationTest(DatasetsAPITestBase):
         # get_version_tree must return a list (possibly empty) for a dataset
         # with no version history — never raise.
         history = VersionHistoryManager.get_version_tree(dataset)
-        self.assertIsInstance(history, list,
-            "get_version_tree must return a list even for empty history")
+        self.assertIsInstance(
+            history, list, "get_version_tree must return a list even for empty history"
+        )
 
     def test_version_integration_edge_case_single_version(self):
         """Test version integration with single version (edge case)"""
@@ -352,7 +352,7 @@ class VersionHistoryIntegrationTest(DatasetsAPITestBase):
     # ========== ERROR HANDLING ==========
 
     def test_create_version_integration(self):
-        """Test error handling in version integration"""
+        """Test version creation integration on a persisted dataset."""
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -366,5 +366,4 @@ class VersionHistoryIntegrationTest(DatasetsAPITestBase):
         # create_version must succeed for a valid persisted dataset
         # without raising.
         VersionHistoryManager.create_version(dataset, semantic_version="1.0.0", is_current=True)
-        self.assertIsNotNone(dataset,
-            "create_version must succeed for a valid persisted dataset")
+        self.assertIsNotNone(dataset, "create_version must succeed for a valid persisted dataset")

@@ -4,13 +4,17 @@ Base Service Classes and Utilities
 Provides base service classes and error types for the service layer.
 Also includes OpenTelemetry instrumentation utilities for service clients.
 """
+
 import logging
 import sys
 import time
 import uuid
+from collections.abc import Callable
 from contextlib import contextmanager
-from typing import Optional, Type, Any, Callable, Dict, List
-from django.core.exceptions import ObjectDoesNotExist, ValidationError as DjangoValidationError
+from typing import Any
+
+from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.paginator import InvalidPage as DjangoInvalidPage
 from django.db import IntegrityError as DjangoIntegrityError
 from django.db import models
@@ -22,6 +26,7 @@ OPENTELEMETRY_AVAILABLE = False
 try:
     from opentelemetry import trace
     from opentelemetry.trace import Status, StatusCode
+
     OPENTELEMETRY_AVAILABLE = True
 except ImportError:
     OPENTELEMETRY_AVAILABLE = False
@@ -32,13 +37,21 @@ def is_opentelemetry_enabled() -> bool:
     if not OPENTELEMETRY_AVAILABLE:
         return False
     from django.conf import settings
-    return getattr(settings, 'OPENTELEMETRY_ENABLED', False)
+
+    return getattr(settings, "OPENTELEMETRY_ENABLED", False)
 
 
 # Service Error Classes
 class ServiceError(Exception):
     """Base exception for service layer errors."""
-    def __init__(self, message: str = "", code: str = "SERVICE_ERROR", details: Optional[Dict[str, Any]] = None, http_status: int = 500):
+
+    def __init__(
+        self,
+        message: str = "",
+        code: str = "SERVICE_ERROR",
+        details: dict[str, Any] | None = None,
+        http_status: int = 500,
+    ):
         super().__init__(message)
         self.message = message
         self.code = code
@@ -48,7 +61,14 @@ class ServiceError(Exception):
 
 class ValidationError(ServiceError):
     """Exception raised for validation errors."""
-    def __init__(self, message: str, code: str = "VALIDATION_ERROR", details: Optional[Dict[str, Any]] = None, http_status: int = 400):
+
+    def __init__(
+        self,
+        message: str,
+        code: str = "VALIDATION_ERROR",
+        details: dict[str, Any] | None = None,
+        http_status: int = 400,
+    ):
         super().__init__(message)
         self.message = message
         self.code = code
@@ -61,7 +81,13 @@ class NotFoundError(ServiceError):
 
     _SENTINEL = object()
 
-    def __init__(self, message: str, code=_SENTINEL, details: Optional[Dict[str, Any]] = None, http_status: int = 404):
+    def __init__(
+        self,
+        message: str,
+        code=_SENTINEL,
+        details: dict[str, Any] | None = None,
+        http_status: int = 404,
+    ):
         # Support positional (resource_type, resource_id) shorthand:
         #   NotFoundError("Asset", "123") → message="Asset", details={"resource_type": "Asset", "resource_id": "123"}
         # But NOT when code= is explicitly an error code like "PLAN_NOT_FOUND".
@@ -76,19 +102,40 @@ class NotFoundError(ServiceError):
 
 class PermissionError(ServiceError):
     """Exception raised for permission errors."""
-    def __init__(self, message: str = "", code: str = "PERMISSION_DENIED", details: Optional[Dict[str, Any]] = None, http_status: int = 403):
+
+    def __init__(
+        self,
+        message: str = "",
+        code: str = "PERMISSION_DENIED",
+        details: dict[str, Any] | None = None,
+        http_status: int = 403,
+    ):
         super().__init__(message, code=code, details=details, http_status=http_status)
 
 
 class ConflictError(ServiceError):
     """Exception raised for conflict errors (e.g., duplicate resources)."""
-    def __init__(self, message: str = "", code: str = "CONFLICT_ERROR", details: Optional[Dict[str, Any]] = None, http_status: int = 409):
+
+    def __init__(
+        self,
+        message: str = "",
+        code: str = "CONFLICT_ERROR",
+        details: dict[str, Any] | None = None,
+        http_status: int = 409,
+    ):
         super().__init__(message, code=code, details=details, http_status=http_status)
 
 
 class ConnectionError(ServiceError):
     """Exception raised for connection errors (e.g., network failures, service unavailable)."""
-    def __init__(self, message: str, code: str = "CONNECTION_ERROR", details: Optional[Dict[str, Any]] = None, http_status: int = 503):
+
+    def __init__(
+        self,
+        message: str,
+        code: str = "CONNECTION_ERROR",
+        details: dict[str, Any] | None = None,
+        http_status: int = 503,
+    ):
         super().__init__(message)
         self.message = message
         self.code = code
@@ -98,20 +145,21 @@ class ConnectionError(ServiceError):
 
 try:
     from prometheus_client import Counter, Histogram
+
     service_operations_total = Counter(
-        'service_operations_total',
-        'Total service operations',
-        ['service', 'operation', 'tenant_id'],
+        "service_operations_total",
+        "Total service operations",
+        ["service", "operation", "tenant_id"],
     )
     service_operation_duration_seconds = Histogram(
-        'service_operation_duration_seconds',
-        'Service operation duration',
-        ['service', 'operation', 'tenant_id'],
+        "service_operation_duration_seconds",
+        "Service operation duration",
+        ["service", "operation", "tenant_id"],
     )
     service_operation_errors_total = Counter(
-        'service_operation_errors_total',
-        'Total service operation errors',
-        ['service', 'operation', 'error_code', 'tenant_id'],
+        "service_operation_errors_total",
+        "Total service operation errors",
+        ["service", "operation", "error_code", "tenant_id"],
     )
 except ImportError:
     service_operations_total = None
@@ -137,7 +185,8 @@ class BaseService:
         attr = "_logger_inst"
         if not hasattr(self, attr):
             object.__setattr__(
-                self, attr,
+                self,
+                attr,
                 logging.getLogger(f"{__name__}.{self.service_name}"),
             )
         return getattr(self, attr)
@@ -148,9 +197,9 @@ class BaseService:
 
     def __init__(
         self,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request_id: Optional[str] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request_id: str | None = None,
         **kwargs,
     ):
         self.tenant_id = tenant_id
@@ -160,7 +209,7 @@ class BaseService:
         # so that mixins (e.g. IngestionEventPublisher) get initialized.
         super().__init__(**kwargs)
 
-    def _get_context(self) -> Dict[str, Any]:
+    def _get_context(self) -> dict[str, Any]:
         return {
             "service": self.service_name,
             "tenant_id": getattr(self, "tenant_id", None),
@@ -175,9 +224,7 @@ class BaseService:
             extra={**self._get_context(), **kwargs},
         )
 
-    def _log_operation_success(
-        self, operation: str, duration_ms: float = 0, **kwargs
-    ):
+    def _log_operation_success(self, operation: str, duration_ms: float = 0, **kwargs):
         self._logger.info(
             "Operation %s succeeded in %.2fms",
             operation,
@@ -186,18 +233,26 @@ class BaseService:
         )
 
     def _log_operation_error(
-        self, operation: str, error: Exception,
-        duration_ms: float = 0, **kwargs
+        self, operation: str, error: Exception, duration_ms: float = 0, **kwargs
     ):
         # Business-rule rejections (plan limits, validation, not-found,
         # conflict/duplicate, permission denials) and client-input errors
         # (bad pagination, division-by-zero from page_size=0) are normal
         # operation, not system faults.  Log at WARNING so on-call pages
         # don't fire on expected throttling or routine business rejections.
-        if isinstance(error, (ValidationError, ConflictError, NotFoundError,
-                              PermissionError,
-                              ValueError, ZeroDivisionError, DjangoInvalidPage,
-                              DjangoIntegrityError)):
+        if isinstance(
+            error,
+            (
+                ValidationError,
+                ConflictError,
+                NotFoundError,
+                PermissionError,
+                ValueError,
+                ZeroDivisionError,
+                DjangoInvalidPage,
+                DjangoIntegrityError,
+            ),
+        ):
             log_level = logging.WARNING
         else:
             log_level = logging.ERROR
@@ -211,8 +266,7 @@ class BaseService:
         )
 
     def _record_metrics(
-        self, operation: str, duration: float,
-        success: bool = True, error_code: Optional[str] = None
+        self, operation: str, duration: float, success: bool = True, error_code: str | None = None
     ):
         tid = self.tenant_id or ""
         if service_operations_total:
@@ -237,7 +291,7 @@ class BaseService:
 
     @staticmethod
     def validate_resource_tenant(
-        model_class: Type[models.Model],
+        model_class: type[models.Model],
         resource_id: str,
         expected_tenant_id: str,
         *,
@@ -274,10 +328,10 @@ class BaseService:
 
     def get_resource_or_raise(
         self,
-        model_class: Type[models.Model],
+        model_class: type[models.Model],
         resource_id: str,
-        tenant_id: Optional[str] = None,
-        **filters
+        tenant_id: str | None = None,
+        **filters,
     ) -> models.Model:
         """
         Get resource by ID or raise NotFoundError.
@@ -295,17 +349,14 @@ class BaseService:
             NotFoundError: If resource not found
         """
         effective_tenant_id = tenant_id or self.tenant_id
-        resource_type = filters.pop('resource_type', model_class.__name__)
+        resource_type = filters.pop("resource_type", model_class.__name__)
 
         try:
-            filters['id'] = resource_id
+            filters["id"] = resource_id
             if effective_tenant_id:
                 # Try tenant_id field first
-                if hasattr(model_class, 'tenant_id'):
-                    filters['tenant_id'] = effective_tenant_id
-                # Fallback to tenant field
-                elif hasattr(model_class, 'tenant'):
-                    filters['tenant_id'] = effective_tenant_id
+                if hasattr(model_class, "tenant_id") or hasattr(model_class, "tenant"):
+                    filters["tenant_id"] = effective_tenant_id
 
             return model_class.objects.get(**filters)
         except ObjectDoesNotExist:
@@ -334,6 +385,7 @@ class BaseService:
             PermissionError: If the tenant is not active.
         """
         from hub.apps.tenants.models import Tenant
+
         try:
             tenant = Tenant.objects.get(pk=tenant_id)
         except Tenant.DoesNotExist:
@@ -350,6 +402,7 @@ class BaseService:
     def get_tenant_or_raise(self, tenant_id: str):
         """Return the Tenant instance or raise NotFoundError."""
         from hub.apps.tenants.models import Tenant
+
         try:
             return Tenant.objects.get(pk=tenant_id)
         except Tenant.DoesNotExist:
@@ -362,21 +415,21 @@ class BaseService:
     def transaction_context(self):
         """Context manager that wraps the body in a DB transaction."""
         from django.db import transaction as db_transaction
+
         with db_transaction.atomic():
             yield
 
     def validate_required_fields(
-        self, data: Dict[str, Any], required_fields: List[str],
+        self,
+        data: dict[str, Any],
+        required_fields: list[str],
     ) -> None:
         """Validate that all required fields are present and non-None.
 
         Raises:
             ValidationError: If any required field is missing or None.
         """
-        missing = [
-            f for f in required_fields
-            if f not in data or data[f] is None
-        ]
+        missing = [f for f in required_fields if f not in data or data[f] is None]
         if missing:
             raise ValidationError(
                 f"Missing required fields: {', '.join(missing)}",
@@ -385,11 +438,7 @@ class BaseService:
             )
 
     def execute_with_metrics(
-        self,
-        operation: str,
-        tenant_id: Optional[str] = None,
-        func: Optional[Callable] = None,
-        **kwargs
+        self, operation: str, tenant_id: str | None = None, func: Callable | None = None, **kwargs
     ) -> Any:
         """
         Execute function with metrics collection.
@@ -406,9 +455,8 @@ class BaseService:
         if func is None:
             # Used as decorator
             def decorator(f: Callable) -> Callable:
-                return self.execute_with_metrics(
-                    operation, tenant_id, f, **kwargs
-                )
+                return self.execute_with_metrics(operation, tenant_id, f, **kwargs)
+
             return decorator
 
         self._log_operation_start(operation, **kwargs)
@@ -416,53 +464,46 @@ class BaseService:
         try:
             result = func()
             duration = time.time() - start
-            self._log_operation_success(
-                operation, duration * 1000, **kwargs
-            )
+            self._log_operation_success(operation, duration * 1000, **kwargs)
             self._record_metrics(operation, duration, success=True)
             return result
         except ServiceError:
             duration = time.time() - start
-            self._log_operation_error(
-                operation, sys.exc_info()[1], duration * 1000, **kwargs
-            )
-            error_code = getattr(
-                sys.exc_info()[1], "code", "SERVICE_ERROR"
-            )
+            self._log_operation_error(operation, sys.exc_info()[1], duration * 1000, **kwargs)
+            error_code = getattr(sys.exc_info()[1], "code", "SERVICE_ERROR")
             self._record_metrics(
-                operation, duration, success=False,
+                operation,
+                duration,
+                success=False,
                 error_code=error_code,
             )
             raise
         except DjangoValidationError as e:
             duration = time.time() - start
-            self._log_operation_error(
-                operation, e, duration * 1000, **kwargs
-            )
+            self._log_operation_error(operation, e, duration * 1000, **kwargs)
             self._record_metrics(
-                operation, duration, success=False,
+                operation,
+                duration,
+                success=False,
                 error_code="VALIDATION_ERROR",
             )
             raise ValidationError(str(e)) from e
         except Exception as e:
             duration = time.time() - start
-            self._log_operation_error(
-                operation, e, duration * 1000, **kwargs
-            )
+            self._log_operation_error(operation, e, duration * 1000, **kwargs)
             self._record_metrics(
-                operation, duration, success=False,
+                operation,
+                duration,
+                success=False,
                 error_code="INTERNAL_ERROR",
             )
             raise ServiceError(
-                str(e), code="INTERNAL_ERROR",
+                str(e),
+                code="INTERNAL_ERROR",
             ) from e
 
     def execute_with_transaction(
-        self,
-        operation: str,
-        tenant_id: Optional[str] = None,
-        func: Optional[Callable] = None,
-        **kwargs
+        self, operation: str, tenant_id: str | None = None, func: Callable | None = None, **kwargs
     ) -> Any:
         """
         Execute function within a database transaction with metrics collection.
@@ -484,18 +525,11 @@ class BaseService:
         # Execute function within transaction with metrics
         with transaction.atomic():
             return self.execute_with_metrics(
-                operation=operation,
-                tenant_id=tenant_id,
-                func=func,
-                **kwargs
+                operation=operation, tenant_id=tenant_id, func=func, **kwargs
             )
 
 
-def instrument_service_call(
-    service_name: str,
-    endpoint: str,
-    method: str = "GET"
-):
+def instrument_service_call(service_name: str, endpoint: str, method: str = "GET"):
     """
     Decorator to instrument service client calls with spans.
 
@@ -512,9 +546,10 @@ def instrument_service_call(
     Returns:
         Decorator function
     """
+
     def decorator(func: Callable) -> Callable:
-        from functools import wraps
         import time
+        from functools import wraps
 
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -526,10 +561,7 @@ def instrument_service_call(
 
             try:
                 tracer = trace.get_tracer(__name__)
-                span = tracer.start_as_current_span(
-                    span_name,
-                    kind=trace.SpanKind.CLIENT
-                )
+                span = tracer.start_as_current_span(span_name, kind=trace.SpanKind.CLIENT)
 
                 # Add service attributes
                 span.set_attribute("service.name", service_name)

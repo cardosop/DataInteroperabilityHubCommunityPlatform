@@ -84,9 +84,7 @@ def aggregate_skip_events(artifact_dir: Path) -> Counter[str]:
                 try:
                     entry = json.loads(line)
                 except json.JSONDecodeError as exc:
-                    raise RuntimeError(
-                        f"Malformed JSONL at {jsonl_path}:{line_no}: {exc}"
-                    ) from exc
+                    raise RuntimeError(f"Malformed JSONL at {jsonl_path}:{line_no}: {exc}") from exc
                 reason = str(entry.get("reason", "(no reason)"))
                 counter[reason] += 1
     return counter
@@ -111,7 +109,7 @@ def _matching_category(
 
 
 def check_thresholds(
-    counts: "Counter[str] | dict[str, int]",
+    counts: Counter[str] | dict[str, int],
     *,
     total_tests: int,
     threshold: float,
@@ -134,9 +132,7 @@ def check_thresholds(
     if total_tests <= 0:
         raise ValueError(f"total_tests must be > 0, got {total_tests!r}")
     if not (0 < threshold < 1):
-        raise ValueError(
-            f"threshold must be strictly between 0 and 1, got {threshold!r}"
-        )
+        raise ValueError(f"threshold must be strictly between 0 and 1, got {threshold!r}")
     if categories:
         for prefix, cat_threshold in categories:
             if not (0 < cat_threshold < 1):
@@ -159,15 +155,12 @@ def check_thresholds(
             marker = "FAIL" if pct > threshold else "ok"
             if pct > threshold:
                 any_over = True
-            messages.append(
-                f"  [{marker}] {count:5d} / {total_tests} ({pct:.1%}) — {reason}"
-            )
+            messages.append(f"  [{marker}] {count:5d} / {total_tests} ({pct:.1%}) — {reason}")
         else:
             prefix, _ = match
             category_totals[prefix] = category_totals.get(prefix, 0) + count
             messages.append(
-                f"  [category-member] {count:5d} / {total_tests} ({pct:.1%}) "
-                f"— {reason}"
+                f"  [category-member] {count:5d} / {total_tests} ({pct:.1%}) — {reason}"
             )
 
     # Render an aggregated [category] line per registered category, even
@@ -194,14 +187,10 @@ def _parse_category_arg(value: str) -> tuple[str, float]:
     silently disable the category override otherwise.
     """
     if "=" not in value:
-        raise argparse.ArgumentTypeError(
-            f"--category must be 'PREFIX=THRESHOLD', got {value!r}"
-        )
+        raise argparse.ArgumentTypeError(f"--category must be 'PREFIX=THRESHOLD', got {value!r}")
     prefix, _, raw_threshold = value.rpartition("=")
     if not prefix:
-        raise argparse.ArgumentTypeError(
-            f"--category prefix must be non-empty in {value!r}"
-        )
+        raise argparse.ArgumentTypeError(f"--category prefix must be non-empty in {value!r}")
     try:
         threshold = float(raw_threshold)
     except ValueError as exc:
@@ -209,9 +198,7 @@ def _parse_category_arg(value: str) -> tuple[str, float]:
             f"--category threshold must be a number, got {raw_threshold!r}"
         ) from exc
     if not (0 < threshold < 1):
-        raise argparse.ArgumentTypeError(
-            f"--category threshold must be in (0, 1), got {threshold}"
-        )
+        raise argparse.ArgumentTypeError(f"--category threshold must be in (0, 1), got {threshold}")
     return (prefix, threshold)
 
 
@@ -222,7 +209,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--artifact-dir", type=Path, default=Path("test-results"))
     parser.add_argument("--total-tests", type=int, required=True)
     parser.add_argument(
-        "--threshold", type=float, default=0.05,
+        "--threshold",
+        type=float,
+        default=0.05,
         help="Per-reason fraction above which the build fails (default 0.05 = 5%%).",
     )
     parser.add_argument(
@@ -260,9 +249,7 @@ def main(argv: list[str] | None = None) -> int:
         f"threshold={args.threshold:.0%} of {args.total_tests} tests"
     )
     if args.category:
-        cat_summary = ", ".join(
-            f"{p}={t:.0%}" for p, t in args.category
-        )
+        cat_summary = ", ".join(f"{p}={t:.0%}" for p, t in args.category)
         summary += f" — categories: {cat_summary}"
     print(summary)
     for msg in messages:

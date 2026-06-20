@@ -2,6 +2,8 @@
 Unit tests for audit utilities.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -15,7 +17,6 @@ from hub.apps.audit.utils import (
     redact_string,
 )
 from hub.apps.tenants.models import Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

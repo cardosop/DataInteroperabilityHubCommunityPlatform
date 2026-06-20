@@ -10,18 +10,28 @@ Features:
 - Cache invalidation on mutations
 - Cache tags for efficient bulk invalidation (Redis)
 """
-from typing import Any, Dict, List, Optional, Tuple
-from django.core.cache import cache
-from django.conf import settings
+
 import hashlib
 import json
+from typing import Any
+
 import structlog
+from django.conf import settings
+from django.core.cache import cache
 
 logger = structlog.get_logger(__name__)
 
+# Cache operations are best-effort.  These exception types represent
+# transient infrastructure failures (network blip, Redis restart, DNS
+# flap) that should NOT crash the caller.  Programming errors
+# (AttributeError, TypeError, etc.) are NOT in this tuple — they are
+# caught separately and logged at ERROR so SRE can see them without
+# the caller crashing.
+_CACHE_INFRA_EXCEPTIONS = (ConnectionError, TimeoutError, OSError)
+
 # Cache TTLs (in seconds)
-CACHE_TTL_ASSET_LIST = getattr(settings, 'CACHE_TTL_ASSET_LIST', 300)  # 5 minutes
-CACHE_TTL_ASSET_DETAIL = getattr(settings, 'CACHE_TTL_ASSET_DETAIL', 600)  # 10 minutes
+CACHE_TTL_ASSET_LIST = getattr(settings, "CACHE_TTL_ASSET_LIST", 300)  # 5 minutes
+CACHE_TTL_ASSET_DETAIL = getattr(settings, "CACHE_TTL_ASSET_DETAIL", 600)  # 10 minutes
 
 # Cache key prefixes
 CACHE_PREFIX_ASSET_LIST = "asset:list"
@@ -32,17 +42,18 @@ CACHE_TAG_ASSET_DETAIL = "asset:detail"  # Tag for bulk invalidation
 ASSET_LIST_REGISTRY_PREFIX = "asset:list:registry"
 
 
-def get_tenant_id_from_request(request) -> Optional[str]:
+def get_tenant_id_from_request(request) -> str | None:
     """
     Extract tenant ID from request (Phase 16: delegates to central helper).
 
     See hub.apps.tenants.request_tenant.get_request_tenant_id and docs/TENANT_ISOLATION.md.
     """
     from hub.apps.tenants.request_tenant import get_request_tenant_id
+
     return get_request_tenant_id(request)
 
 
-def hash_filters(query_params: Dict[str, Any]) -> str:
+def hash_filters(query_params: dict[str, Any]) -> str:
     """
     Generate hash from query parameters for cache key.
 
@@ -54,10 +65,7 @@ def hash_filters(query_params: Dict[str, Any]) -> str:
     """
     # Normalize query parameters
     # Remove None values and sort for deterministic hashing
-    normalized_params = {
-        k: v for k, v in sorted(query_params.items())
-        if v is not None and v != ''
-    }
+    normalized_params = {k: v for k, v in sorted(query_params.items()) if v is not None and v != ""}
 
     # Convert to JSON string for hashing
     params_str = json.dumps(normalized_params, sort_keys=True, default=str)
@@ -96,9 +104,9 @@ def get_asset_detail_cache_key(asset_id: str) -> str:
 def cache_asset_list(
     tenant_id: str,
     filters_hash: str,
-    results: List[Dict[str, Any]],
+    results: list[dict[str, Any]],
     total_count: int,
-    ttl: Optional[int] = None
+    ttl: int | None = None,
 ) -> None:
     """
     Cache asset list query results.
@@ -114,18 +122,15 @@ def cache_asset_list(
     if not tenant_id:
         logger.warning("cache_asset_list_skipped", reason="Invalid tenant_id")
         return
-    
+
     cache_key = get_asset_list_cache_key(tenant_id, filters_hash)
     ttl = ttl or CACHE_TTL_ASSET_LIST
 
-    cache_data = {
-        'results': results,
-        'total_count': total_count
-    }
+    cache_data = {"results": results, "total_count": total_count}
 
     try:
-        cache_backend = getattr(settings, 'CACHES', {}).get('default', {}).get('BACKEND', '')
-        use_redis = 'redis' in cache_backend.lower() or 'RedisCache' in cache_backend
+        cache_backend = getattr(settings, "CACHES", {}).get("default", {}).get("BACKEND", "")
+        use_redis = "redis" in cache_backend.lower() or "RedisCache" in cache_backend
 
         if use_redis:
             # Use cache tags for efficient invalidation
@@ -151,22 +156,32 @@ def cache_asset_list(
             filters_hash=filters_hash,
             result_count=len(results),
             total_count=total_count,
-            ttl=ttl
+            ttl=ttl,
         )
-    except Exception as e:
+    except _CACHE_INFRA_EXCEPTIONS as e:
         logger.warning(
             "asset_list_cache_error",
             error=str(e),
             tenant_id=tenant_id,
             filters_hash=filters_hash,
-            message="Failed to cache asset list"
+            message="Failed to cache asset list — transient infrastructure error",
+        )
+    except Exception:
+        # Programming error in the cache layer — log at ERROR so it
+        # surfaces in Sentry/DataDog but DON'T crash the caller.
+        # Cache is best-effort by design.
+        logger.error(
+            "asset_list_cache_unexpected_error",
+            tenant_id=tenant_id,
+            filters_hash=filters_hash,
+            message="Unexpected error caching asset list",
+            exc_info=True,
         )
 
 
 def get_cached_asset_list(
-    tenant_id: str,
-    filters_hash: str
-) -> Optional[Tuple[List[Dict[str, Any]], int]]:
+    tenant_id: str, filters_hash: str
+) -> tuple[list[dict[str, Any]], int] | None:
     """
     Get cached asset list query results.
 
@@ -186,27 +201,32 @@ def get_cached_asset_list(
                 "asset_list_cache_hit",
                 tenant_id=tenant_id,
                 filters_hash=filters_hash,
-                result_count=len(cached_data.get('results', [])),
-                total_count=cached_data.get('total_count', 0)
+                result_count=len(cached_data.get("results", [])),
+                total_count=cached_data.get("total_count", 0),
             )
-            return cached_data.get('results'), cached_data.get('total_count')
+            return cached_data.get("results"), cached_data.get("total_count")
         return None
-    except Exception as e:
+    except _CACHE_INFRA_EXCEPTIONS as e:
         logger.warning(
             "asset_list_cache_get_error",
             error=str(e),
             tenant_id=tenant_id,
             filters_hash=filters_hash,
-            message="Failed to get cached asset list"
+            message="Failed to get cached asset list — transient infrastructure error",
         )
-        return None
+        return None  # cache miss — caller falls back to DB query
+    except Exception:
+        logger.error(
+            "asset_list_cache_get_unexpected_error",
+            tenant_id=tenant_id,
+            filters_hash=filters_hash,
+            message="Unexpected error reading asset list cache",
+            exc_info=True,
+        )
+        return None  # cache miss — caller falls back to DB query
 
 
-def cache_asset_detail(
-    asset_id: str,
-    asset_data: Dict[str, Any],
-    ttl: Optional[int] = None
-) -> None:
+def cache_asset_detail(asset_id: str, asset_data: dict[str, Any], ttl: int | None = None) -> None:
     """
     Cache asset detail data.
 
@@ -219,28 +239,31 @@ def cache_asset_detail(
     if not asset_id:
         logger.warning("cache_asset_detail_skipped", reason="Invalid asset_id")
         return
-    
+
     cache_key = get_asset_detail_cache_key(asset_id)
     ttl = ttl or CACHE_TTL_ASSET_DETAIL
 
     try:
         cache.set(cache_key, asset_data, timeout=ttl)
 
-        logger.debug(
-            "asset_detail_cached",
-            asset_id=asset_id,
-            ttl=ttl
-        )
-    except Exception as e:
+        logger.debug("asset_detail_cached", asset_id=asset_id, ttl=ttl)
+    except _CACHE_INFRA_EXCEPTIONS as e:
         logger.warning(
             "asset_detail_cache_error",
             error=str(e),
             asset_id=asset_id,
-            message="Failed to cache asset detail"
+            message="Failed to cache asset detail — transient infrastructure error",
+        )
+    except Exception:
+        logger.error(
+            "asset_detail_cache_unexpected_error",
+            asset_id=asset_id,
+            message="Unexpected error caching asset detail",
+            exc_info=True,
         )
 
 
-def get_cached_asset_detail(asset_id: str) -> Optional[Dict[str, Any]]:
+def get_cached_asset_detail(asset_id: str) -> dict[str, Any] | None:
     """
     Get cached asset detail data.
 
@@ -255,22 +278,27 @@ def get_cached_asset_detail(asset_id: str) -> Optional[Dict[str, Any]]:
     try:
         cached_data = cache.get(cache_key)
         if cached_data:
-            logger.debug(
-                "asset_detail_cache_hit",
-                asset_id=asset_id
-            )
+            logger.debug("asset_detail_cache_hit", asset_id=asset_id)
         return cached_data
-    except Exception as e:
+    except _CACHE_INFRA_EXCEPTIONS as e:
         logger.warning(
             "asset_detail_cache_get_error",
             error=str(e),
             asset_id=asset_id,
-            message="Failed to get cached asset detail"
+            message="Failed to get cached asset detail — transient infrastructure error",
         )
-        return None
+        return None  # cache miss — caller falls back to DB query
+    except Exception:
+        logger.error(
+            "asset_detail_cache_get_unexpected_error",
+            asset_id=asset_id,
+            message="Unexpected error reading asset detail cache",
+            exc_info=True,
+        )
+        return None  # cache miss — caller falls back to DB query
 
 
-def invalidate_asset_list_cache(tenant_id: Optional[str] = None) -> None:
+def invalidate_asset_list_cache(tenant_id: str | None = None) -> None:
     """
     Invalidate asset list cache.
 
@@ -279,8 +307,8 @@ def invalidate_asset_list_cache(tenant_id: Optional[str] = None) -> None:
     """
     try:
         if tenant_id:
-            cache_backend = getattr(settings, 'CACHES', {}).get('default', {}).get('BACKEND', '')
-            use_redis = 'redis' in cache_backend.lower() or 'RedisCache' in cache_backend
+            cache_backend = getattr(settings, "CACHES", {}).get("default", {}).get("BACKEND", "")
+            use_redis = "redis" in cache_backend.lower() or "RedisCache" in cache_backend
 
             if use_redis:
                 tag_key = f"{CACHE_TAG_ASSET_LIST}:{tenant_id}"
@@ -291,13 +319,13 @@ def invalidate_asset_list_cache(tenant_id: Optional[str] = None) -> None:
                     logger.info(
                         "asset_list_cache_invalidated",
                         tenant_id=tenant_id,
-                        keys_invalidated=len(tag_set)
+                        keys_invalidated=len(tag_set),
                     )
                 else:
                     logger.debug(
                         "asset_list_cache_invalidation_skipped",
                         tenant_id=tenant_id,
-                        reason="No tag set found"
+                        reason="No tag set found",
                     )
             else:
                 # Non-Redis: delete keys from per-tenant registry (set in cache_asset_list)
@@ -310,27 +338,34 @@ def invalidate_asset_list_cache(tenant_id: Optional[str] = None) -> None:
                     logger.info(
                         "asset_list_cache_invalidated",
                         tenant_id=tenant_id,
-                        keys_invalidated=len(keys_for_tenant)
+                        keys_invalidated=len(keys_for_tenant),
                     )
                 else:
                     logger.debug(
                         "asset_list_cache_invalidation_skipped",
                         tenant_id=tenant_id,
-                        reason="No registry found"
+                        reason="No registry found",
                     )
         else:
             # Invalidate all list caches
             # This is expensive - use sparingly
             logger.warning(
                 "asset_list_cache_invalidation_all",
-                message="Invalidating all asset list caches - this may be expensive"
+                message="Invalidating all asset list caches - this may be expensive",
             )
-    except Exception as e:
+    except _CACHE_INFRA_EXCEPTIONS as e:
         logger.error(
             "asset_list_cache_invalidation_error",
             error=str(e),
             tenant_id=tenant_id,
-            message="Failed to invalidate asset list cache"
+            message="Failed to invalidate asset list cache — transient infrastructure error",
+        )
+    except Exception:
+        logger.error(
+            "asset_list_cache_invalidation_unexpected_error",
+            tenant_id=tenant_id,
+            message="Unexpected error invalidating asset list cache",
+            exc_info=True,
         )
 
 
@@ -345,20 +380,24 @@ def invalidate_asset_detail_cache(asset_id: str) -> None:
         cache_key = get_asset_detail_cache_key(asset_id)
         cache.delete(cache_key)
 
-        logger.debug(
-            "asset_detail_cache_invalidated",
-            asset_id=asset_id
-        )
-    except Exception as e:
+        logger.debug("asset_detail_cache_invalidated", asset_id=asset_id)
+    except _CACHE_INFRA_EXCEPTIONS as e:
         logger.error(
             "asset_detail_cache_invalidation_error",
             error=str(e),
             asset_id=asset_id,
-            message="Failed to invalidate asset detail cache"
+            message="Failed to invalidate asset detail cache — transient infrastructure error",
+        )
+    except Exception:
+        logger.error(
+            "asset_detail_cache_invalidation_unexpected_error",
+            asset_id=asset_id,
+            message="Unexpected error invalidating asset detail cache",
+            exc_info=True,
         )
 
 
-def invalidate_asset_caches(asset_id: str, tenant_id: Optional[str] = None) -> None:
+def invalidate_asset_caches(asset_id: str, tenant_id: str | None = None) -> None:
     """
     Invalidate all caches for an asset (detail and list).
 
@@ -372,4 +411,3 @@ def invalidate_asset_caches(asset_id: str, tenant_id: Optional[str] = None) -> N
     # Invalidate list cache (all queries for this tenant)
     if tenant_id:
         invalidate_asset_list_cache(tenant_id)
-

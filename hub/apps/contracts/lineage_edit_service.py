@@ -27,10 +27,11 @@ client.  Raises :class:`ConflictError` on cycle / SERIALIZABLE
 serialization failure; :class:`ValidationError` on field-not-found
 or type-mismatch.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -56,9 +57,9 @@ logger = logging.getLogger(__name__)
 def apply_lineage_patch(
     *,
     contract: Any,
-    desired_edges: List[Dict[str, Any]],
+    desired_edges: list[dict[str, Any]],
     user: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Apply a full-state lineage patch to ``contract``.
 
     Args
@@ -98,7 +99,8 @@ def apply_lineage_patch(
 
         existing_open = _load_existing_open_edges(contract)
         desired_normalised = _normalise_desired_edges(
-            desired_edges, contract,
+            desired_edges,
+            contract,
         )
 
         # Phase 228.F2.DoD.1 audit (REQ-LIN-F2-002 "Cross-tenant rejected") —
@@ -116,14 +118,8 @@ def apply_lineage_patch(
         existing_keys = {_edge_signature(e) for e in existing_open}
         desired_keys = {_edge_signature(e) for e in desired_normalised}
 
-        to_close = [
-            e for e in existing_open
-            if _edge_signature(e) not in desired_keys
-        ]
-        to_open = [
-            e for e in desired_normalised
-            if _edge_signature(e) not in existing_keys
-        ]
+        to_close = [e for e in existing_open if _edge_signature(e) not in desired_keys]
+        to_open = [e for e in desired_normalised if _edge_signature(e) not in existing_keys]
 
         try:
             _close_edges(to_close)
@@ -209,7 +205,7 @@ def _set_serializable_isolation() -> None:
         )
 
 
-def _load_existing_open_edges(contract: Any) -> List[Dict[str, Any]]:
+def _load_existing_open_edges(contract: Any) -> list[dict[str, Any]]:
     from hub.apps.contracts.models import LineageEdge
 
     rows = LineageEdge.objects.filter(
@@ -222,20 +218,15 @@ def _load_existing_open_edges(contract: Any) -> List[Dict[str, Any]]:
         # Use Q for the OR.
     )
     from django.db.models import Q
-    rows = rows.filter(
-        Q(source_contract_id=contract.id) | Q(target_contract_id=contract.id)
-    )
+
+    rows = rows.filter(Q(source_contract_id=contract.id) | Q(target_contract_id=contract.id))
     return [_edge_row_to_dict(row) for row in rows]
 
 
-def _edge_row_to_dict(row: Any) -> Dict[str, Any]:
+def _edge_row_to_dict(row: Any) -> dict[str, Any]:
     return {
-        "source_contract": (
-            str(row.source_contract_id) if row.source_contract_id else None
-        ),
-        "target_contract": (
-            str(row.target_contract_id) if row.target_contract_id else None
-        ),
+        "source_contract": (str(row.source_contract_id) if row.source_contract_id else None),
+        "target_contract": (str(row.target_contract_id) if row.target_contract_id else None),
         "source_model": row.source_model or "",
         "source_field": row.source_field or "",
         "target_model": row.target_model or "",
@@ -247,9 +238,9 @@ def _edge_row_to_dict(row: Any) -> Dict[str, Any]:
 
 
 def _normalise_desired_edges(
-    desired_edges: List[Dict[str, Any]],
+    desired_edges: list[dict[str, Any]],
     contract: Any,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Coerce serializer output into stable string-keyed dicts.
 
     The serializer output mixes UUID and str types; downstream code
@@ -260,12 +251,10 @@ def _normalise_desired_edges(
         out.append(
             {
                 "source_contract": (
-                    str(edge.get("source_contract"))
-                    if edge.get("source_contract") else None
+                    str(edge.get("source_contract")) if edge.get("source_contract") else None
                 ),
                 "target_contract": (
-                    str(edge.get("target_contract"))
-                    if edge.get("target_contract") else None
+                    str(edge.get("target_contract")) if edge.get("target_contract") else None
                 ),
                 "source_model": edge.get("source_model", "") or "",
                 "source_field": edge.get("source_field", "") or "",
@@ -279,7 +268,7 @@ def _normalise_desired_edges(
     return out
 
 
-def _edge_signature(edge: Dict[str, Any]) -> Tuple:
+def _edge_signature(edge: dict[str, Any]) -> tuple:
     """Stable signature used for diff + dedup."""
     return (
         edge.get("source_contract") or "",
@@ -293,7 +282,8 @@ def _edge_signature(edge: Dict[str, Any]) -> Tuple:
 
 
 def _validate_no_cross_tenant_edge_references(
-    contract: Any, edges: List[Dict[str, Any]],
+    contract: Any,
+    edges: list[dict[str, Any]],
 ) -> None:
     """Phase 228.F2.DoD.1 audit (REQ-LIN-F2-002 "Cross-tenant rejected").
 
@@ -338,9 +328,7 @@ def _validate_no_cross_tenant_edge_references(
 
     # Bulk-fetch tenant ids for referenced contracts.
     contract_tenants = dict(
-        Contract.objects
-        .filter(id__in=referenced_ids)
-        .values_list("id", "tenant_id")
+        Contract.objects.filter(id__in=referenced_ids).values_list("id", "tenant_id")
     )
 
     for edge in edges:
@@ -375,7 +363,8 @@ def _validate_no_cross_tenant_edge_references(
 
 
 def _validate_field_existence(
-    contract: Any, edges: List[Dict[str, Any]],
+    contract: Any,
+    edges: list[dict[str, Any]],
 ) -> None:
     """For every edge whose source / target contract IS the
     contract under edit, verify the named field exists in
@@ -390,16 +379,21 @@ def _validate_field_existence(
     payload = contract.hub_contract_json or {}
     own_id = str(contract.id)
     # Cache foreign contracts to avoid N+1.
-    foreign_payloads: Dict[str, Dict[str, Any]] = {}
+    foreign_payloads: dict[str, dict[str, Any]] = {}
 
-    def _lookup_payload(contract_id: str) -> Dict[str, Any]:
+    def _lookup_payload(contract_id: str) -> dict[str, Any]:
         if contract_id == own_id:
             return payload
         if contract_id in foreign_payloads:
             return foreign_payloads[contract_id]
-        c = Contract.objects.filter(
-            id=contract_id, tenant_id=contract.tenant_id,
-        ).only("id", "hub_contract_json").first()
+        c = (
+            Contract.objects.filter(
+                id=contract_id,
+                tenant_id=contract.tenant_id,
+            )
+            .only("id", "hub_contract_json")
+            .first()
+        )
         body = (c.hub_contract_json if c else None) or {}
         foreign_payloads[contract_id] = body
         return body
@@ -431,23 +425,29 @@ def _validate_field_existence(
 
 
 def _validate_type_compatibility_all(
-    contract: Any, edges: List[Dict[str, Any]],
+    contract: Any,
+    edges: list[dict[str, Any]],
 ) -> None:
     """For every edge with both endpoints declared, check column types."""
     from hub.apps.contracts.models import Contract
 
     payload = contract.hub_contract_json or {}
     own_id = str(contract.id)
-    foreign_payloads: Dict[str, Dict[str, Any]] = {}
+    foreign_payloads: dict[str, dict[str, Any]] = {}
 
-    def _lookup_payload(contract_id: str) -> Dict[str, Any]:
+    def _lookup_payload(contract_id: str) -> dict[str, Any]:
         if contract_id == own_id:
             return payload
         if contract_id in foreign_payloads:
             return foreign_payloads[contract_id]
-        c = Contract.objects.filter(
-            id=contract_id, tenant_id=contract.tenant_id,
-        ).only("id", "hub_contract_json").first()
+        c = (
+            Contract.objects.filter(
+                id=contract_id,
+                tenant_id=contract.tenant_id,
+            )
+            .only("id", "hub_contract_json")
+            .first()
+        )
         body = (c.hub_contract_json if c else None) or {}
         foreign_payloads[contract_id] = body
         return body
@@ -468,7 +468,8 @@ def _validate_type_compatibility_all(
             edge.get("target_field") or "",
         )
         if not validate_type_compatibility(
-            src_type, tgt_type,
+            src_type,
+            tgt_type,
             transformation_ref=edge.get("transformation_ref") or "",
         ):
             raise ValidationError(
@@ -483,7 +484,9 @@ def _validate_type_compatibility_all(
 
 
 def _resolve_field_type(
-    payload: Dict[str, Any], model_name: str, field_name: str,
+    payload: dict[str, Any],
+    model_name: str,
+    field_name: str,
 ) -> str:
     """Resolve the data type for a model/field pair."""
     if not isinstance(payload, dict):
@@ -496,22 +499,22 @@ def _resolve_field_type(
     for model in payload.get("models") or []:
         if isinstance(model, dict) and model.get("name") == model_name:
             return _walk_field_for_type(
-                model.get("fields") or [], field_name,
+                model.get("fields") or [],
+                field_name,
             )
     return ""
 
 
 def _walk_field_for_type(
-    fields: List[Dict[str, Any]], qname: str,
+    fields: list[dict[str, Any]],
+    qname: str,
 ) -> str:
     head, _, rest = qname.partition(".")
     for field in fields:
         if not isinstance(field, dict) or field.get("name") != head:
             continue
         if not rest:
-            return str(
-                field.get("data_type") or field.get("type") or ""
-            )
+            return str(field.get("data_type") or field.get("type") or "")
         nested = field.get("fields")
         if nested is None:
             items = field.get("items")
@@ -524,7 +527,7 @@ def _walk_field_for_type(
     return ""
 
 
-def _validate_no_cycles(edges: List[Dict[str, Any]]) -> None:
+def _validate_no_cycles(edges: list[dict[str, Any]]) -> None:
     """Reject the patch if the edges contain a cycle.
 
     Tests every edge against the rest using ``detect_cycle`` —
@@ -552,12 +555,12 @@ def _validate_no_cycles(edges: List[Dict[str, Any]]) -> None:
             )
 
 
-def _close_edges(edges: List[Dict[str, Any]]) -> None:
+def _close_edges(edges: list[dict[str, Any]]) -> None:
     """SCD Type 2 close: set ``valid_to=NOW()`` on the open rows."""
     if not edges:
         return
+
     from hub.apps.contracts.models import LineageEdge
-    from django.db.models import Q
 
     now = timezone.now()
     for edge in edges:
@@ -576,14 +579,15 @@ def _close_edges(edges: List[Dict[str, Any]]) -> None:
 
 
 def _open_edges(
-    contract: Any, edges: List[Dict[str, Any]],
-) -> List[Any]:
+    contract: Any,
+    edges: list[dict[str, Any]],
+) -> list[Any]:
     """Insert new ``LineageEdge`` rows for the desired set."""
     if not edges:
         return []
     from hub.apps.contracts.models import LineageEdge
 
-    created: List[Any] = []
+    created: list[Any] = []
     for edge in edges:
         row = LineageEdge.objects.create(
             tenant_id=contract.tenant_id,
@@ -603,7 +607,8 @@ def _open_edges(
 
 
 def _reserialise_hub_contract_lineage(
-    contract: Any, desired_edges: List[Dict[str, Any]],
+    contract: Any,
+    desired_edges: list[dict[str, Any]],
 ) -> None:
     """Re-write ``hub_contract_json.lineage`` from the desired edges.
 
@@ -622,7 +627,7 @@ def _reserialise_hub_contract_lineage(
     if not isinstance(existing_lineage, dict):
         existing_lineage = {}
 
-    entries: List[Dict[str, Any]] = []
+    entries: list[dict[str, Any]] = []
     for edge in desired_edges:
         src_cid = edge.get("source_contract")
         if not src_cid:
@@ -655,8 +660,8 @@ def _emit_audit_events(
     *,
     contract: Any,
     user: Any,
-    opened: List[Any],
-    closed: List[Dict[str, Any]],
+    opened: list[Any],
+    closed: list[dict[str, Any]],
 ) -> None:
     """One audit event per opened/closed edge (F2.9)."""
     try:
@@ -674,12 +679,10 @@ def _emit_audit_events(
                 details={
                     "edge_id": str(row.id),
                     "source_contract": (
-                        str(row.source_contract_id)
-                        if row.source_contract_id else None
+                        str(row.source_contract_id) if row.source_contract_id else None
                     ),
                     "target_contract": (
-                        str(row.target_contract_id)
-                        if row.target_contract_id else None
+                        str(row.target_contract_id) if row.target_contract_id else None
                     ),
                     "source_field": row.source_field,
                     "target_field": row.target_field,
@@ -689,7 +692,8 @@ def _emit_audit_events(
             )
         except Exception as exc:  # pragma: no cover — best-effort
             logger.warning(
-                "lineage_edit.audit_emit_failed_added: %s", exc,
+                "lineage_edit.audit_emit_failed_added: %s",
+                exc,
             )
     for edge in closed:
         try:
@@ -710,7 +714,8 @@ def _emit_audit_events(
             )
         except Exception as exc:  # pragma: no cover — best-effort
             logger.warning(
-                "lineage_edit.audit_emit_failed_removed: %s", exc,
+                "lineage_edit.audit_emit_failed_removed: %s",
+                exc,
             )
 
 

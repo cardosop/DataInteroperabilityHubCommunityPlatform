@@ -7,6 +7,8 @@ Tests use real DB and real contract lineage (LineageService); no mocks/stubs.
 Covers: params, tenant isolation, response shape, auth, error handling.
 """
 
+import uuid
+
 import pytest
 from django.test import TestCase
 from rest_framework import status
@@ -15,7 +17,6 @@ from rest_framework.test import APIClient
 from hub.apps.contracts.models import Contract
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

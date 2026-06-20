@@ -5,6 +5,17 @@ Provides event-driven communication infrastructure with Redis Pub/Sub and Postgr
 """
 
 from .bus import EventBus, EventBusError, EventPublishError, EventSubscribeError, get_event_bus
+from .deduplication import (
+    DEDUPLICATION_KEY_PREFIX,
+    DEFAULT_DEDUPLICATION_TTL,
+    check_event_duplicate,
+    generate_deduplication_key,
+    is_event_duplicate,
+    store_event_id,
+)
+from .deduplication import (
+    get_redis_client as get_deduplication_redis_client,
+)
 from .event_types import (
     CURRENT_EVENT_VERSION,
     EVENT_TYPE_SCHEMAS,
@@ -23,15 +34,6 @@ from .subscribers import (
     WorkflowTriggerSubscriber,
 )
 from .versioning import EventSchemaVersionManager, get_version_manager
-from .deduplication import (
-    generate_deduplication_key,
-    check_event_duplicate,
-    store_event_id,
-    is_event_duplicate,
-    get_redis_client as get_deduplication_redis_client,
-    DEFAULT_DEDUPLICATION_TTL,
-    DEDUPLICATION_KEY_PREFIX,
-)
 
 __all__ = [
     # Bus

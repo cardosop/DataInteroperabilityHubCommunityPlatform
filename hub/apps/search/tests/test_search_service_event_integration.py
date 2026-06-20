@@ -16,7 +16,6 @@ Following TDD approach and engineering best practices:
 import uuid
 
 from django.test import TestCase, override_settings
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract
@@ -41,16 +40,22 @@ class SearchServiceEventIntegrationTest(TestCase):
         """Set up test data"""
         # Ensure clean DB connection (previous test may have poisoned the transaction)
         from django.db import connection
+
         if connection.needs_rollback:
             connection.rollback()
 
         # Reset the global event bus singleton so overridden settings take effect
         import hub.apps.core.events.bus as bus_module
+
         bus_module._event_bus = None
 
         # Flush Redis dedup keys so events are persisted fresh each run
         try:
-            from hub.apps.core.events.deduplication import get_redis_client, DEDUPLICATION_KEY_PREFIX
+            from hub.apps.core.events.deduplication import (
+                DEDUPLICATION_KEY_PREFIX,
+                get_redis_client,
+            )
+
             redis_client = get_redis_client()
             if redis_client:
                 for key in redis_client.scan_iter(f"{DEDUPLICATION_KEY_PREFIX}:*"):
@@ -72,7 +77,9 @@ class SearchServiceEventIntegrationTest(TestCase):
             pass
 
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
@@ -100,15 +107,15 @@ class SearchServiceEventIntegrationTest(TestCase):
         ).count()
 
         # Perform search
-        results, total = self.service.search(
+        _results, total = self.service.search(
             tenant_id=str(self.tenant.id), query="test", user_id=str(self.user.id)
         )
 
         # Verify event was published
         # Events are persisted synchronously in tests, so we can query immediately
-        events = Event.objects.filter(
-            event_type="search.query", tenant_id=self.tenant.id
-        ).order_by("-created_at")
+        events = Event.objects.filter(event_type="search.query", tenant_id=self.tenant.id).order_by(
+            "-created_at"
+        )
         self.assertGreaterEqual(events.count(), initial_count + 1)
 
         event = events.first()
@@ -140,7 +147,7 @@ class SearchServiceEventIntegrationTest(TestCase):
         )
 
         # Perform search with filters
-        results, total = self.service.search(
+        _results, _total = self.service.search(
             tenant_id=str(self.tenant.id),
             query="test",
             resource_type="CONTRACT",
@@ -162,7 +169,7 @@ class SearchServiceEventIntegrationTest(TestCase):
     def test_search_publishes_event_with_no_results(self):
         """Test that search() publishes search.query event with no_results=True when no results"""
         # Perform search with no matching results
-        results, total = self.service.search(
+        _results, _total = self.service.search(
             tenant_id=str(self.tenant.id),
             query="nonexistent_query_xyz123",
             user_id=str(self.user.id),
@@ -208,7 +215,7 @@ class SearchServiceEventIntegrationTest(TestCase):
         initial_count = Event.objects.filter(event_type="search.index.updated").count()
 
         # Update index
-        search_index = self.service.update_index(
+        self.service.update_index(
             resource_type="CONTRACT",
             resource_id=str(contract.id),
             tenant_id=str(self.tenant.id),
@@ -263,7 +270,7 @@ class SearchServiceEventIntegrationTest(TestCase):
         )
 
         # Update index with update_type='created'
-        search_index = self.service.update_index(
+        self.service.update_index(
             resource_type="CONTRACT",
             resource_id=str(contract.id),
             tenant_id=str(self.tenant.id),
@@ -329,7 +336,7 @@ class SearchServiceEventIntegrationTest(TestCase):
             OriginalSpecType,
         )
 
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             version=1,
             status=ContractStatus.DRAFT,
@@ -346,7 +353,7 @@ class SearchServiceEventIntegrationTest(TestCase):
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             created_by=self.user,
         )
-        asset = Asset.objects.create(tenant=self.tenant, name="Test Asset", created_by=self.user)
+        Asset.objects.create(tenant=self.tenant, name="Test Asset", created_by=self.user)
 
         # Get initial event count (tenant-scoped to avoid shared-DB cross-contamination)
         initial_count = Event.objects.filter(
@@ -354,9 +361,7 @@ class SearchServiceEventIntegrationTest(TestCase):
         ).count()
 
         # Rebuild index
-        result = self.service.rebuild_index(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        self.service.rebuild_index(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         # Verify event was published
         # Events are persisted synchronously in tests, so we can query immediately
@@ -394,7 +399,7 @@ class SearchServiceEventIntegrationTest(TestCase):
         )
 
         # Perform search
-        results, total = self.service.search(
+        _results, _total = self.service.search(
             tenant_id=str(self.tenant.id), query="test", user_id=str(self.user.id)
         )
 
@@ -419,7 +424,7 @@ class SearchServiceEventIntegrationTest(TestCase):
         )
 
         # Update index
-        search_index = self.service.update_index(
+        self.service.update_index(
             resource_type="ASSET",
             resource_id=str(asset.id),
             tenant_id=str(self.tenant.id),
@@ -472,7 +477,7 @@ class SearchServiceEventIntegrationTest(TestCase):
         )
 
         # Update index
-        search_index = self.service.update_index(
+        self.service.update_index(
             resource_type="DATASET",
             resource_id=str(dataset.id),
             tenant_id=str(self.tenant.id),
@@ -506,7 +511,7 @@ class SearchServiceEventIntegrationTest(TestCase):
         )
 
         # Perform search without query string
-        results, total = self.service.search(
+        _results, _total = self.service.search(
             tenant_id=str(self.tenant.id),
             query="",
             resource_type="CONTRACT",
@@ -552,6 +557,7 @@ class SearchServiceEventIntegrationTest(TestCase):
     def tearDown(self):
         """Reconnect signals and reset event bus after test."""
         import hub.apps.core.events.bus as bus_module
+
         bus_module._event_bus = None
 
         from django.db.models.signals import post_save

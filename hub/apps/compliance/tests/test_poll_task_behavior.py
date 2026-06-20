@@ -5,13 +5,15 @@ Validates terminal-status short-circuit, missing job_id handling,
 timeout fail-closed behavior, result persistence on COMPLETED,
 failure marking on FAILED, and re-enqueue on RUNNING.
 """
+
 import uuid
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils import timezone
-from unittest.mock import patch, MagicMock
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
@@ -21,8 +23,6 @@ from hub.apps.jobs.utils import create_job
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
@@ -106,6 +106,16 @@ class PollTaskBehaviorTest(TestCase):
         self.assertEqual(run.status, ComplianceRunStatus.FAILED)
         MockClient.assert_not_called()
 
+    @patch("hub.apps.compliance.service_client.ComplianceServiceClient")
+    def test_missing_job_id_with_none_metadata_marks_failed(self, MockClient):
+        """metadata_json=None (not just {}) also marks run as FAILED."""
+        run = self._create_run(metadata_json=None)
+        poll_compliance_job(run.id)
+
+        run.refresh_from_db()
+        self.assertEqual(run.status, ComplianceRunStatus.FAILED)
+        MockClient.assert_not_called()
+
     # ----------------------------------------------------------------
     # 3. Timeout marks FAILED with fail-closed fields
     # ----------------------------------------------------------------
@@ -170,6 +180,14 @@ class PollTaskBehaviorTest(TestCase):
 
         run.refresh_from_db()
         self.assertEqual(run.status, ComplianceRunStatus.FAILED)
+        # Phase 213.G.6 — error detail must be persisted so API
+        # consumers can surface it (not just logged and thrown away).
+        self.assertEqual(
+            run.regulation_mapping_json["error_type"], "REMOTE_FAILURE",
+        )
+        self.assertEqual(
+            run.regulation_mapping_json["error"], "Internal scanner error",
+        )
 
     # ----------------------------------------------------------------
     # 6. RUNNING re-enqueues the task

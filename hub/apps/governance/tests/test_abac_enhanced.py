@@ -3,27 +3,27 @@ Enhanced Unit tests for ABAC
 
 Tests for policy caching, invalidation, and field-level policies.
 """
+
 import uuid
 
 import pytest
-from django.test import TestCase
 from django.core.cache import cache
+from django.test import TestCase
 
-from hub.apps.governance.abac import ABACEngine, PolicyEvaluationResult
-from hub.apps.governance.models import AccessPolicy, FieldAccessPolicy
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
-
+from hub.apps.governance.abac import ABACEngine
+from hub.apps.governance.models import AccessPolicy, FieldAccessPolicy
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class ABACCacheTest(TestCase):
     """Test ABAC policy caching"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         uid = uuid.uuid4().hex[:8]
@@ -31,20 +31,32 @@ class ABACCacheTest(TestCase):
             name=f"Test Tenant {uid}",
             slug=f"test-tenant-{uid}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
 
         self.user = User.objects.create_user(
             email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
     def test_policy_caching(self):
         """Test that policies are cached"""
         # Clear cache
         cache.clear()
+
+        # Create a policy that will match the lookup (empty conditions
+        # match any resource) so the test has real content to verify.
+        policy = AccessPolicy.objects.create(
+            tenant=self.tenant,
+            name="Cache Test Policy",
+            conditions={},
+            effect="ALLOW",
+            priority=100,
+            enabled=True,
+        )
+
         # resource_id must be a valid UUID (asset_id is UUIDField)
         resource_uuid = str(uuid.uuid4())
 
@@ -62,8 +74,22 @@ class ABACCacheTest(TestCase):
             resource_uuid,
         )
 
-        # Should return same policies
-        self.assertEqual(len(policies1), len(policies2))
+        # Should return the same policy with the same ID
+        self.assertGreater(len(policies1), 0, "At least one matching policy expected")
+        self.assertEqual(
+            [p.id for p in policies1],
+            [p.id for p in policies2],
+            "Both calls should return the same policy set",
+        )
+
+        # Verify cache was populated (policies are cached after first fetch)
+        cache_key = ABACEngine._get_cache_key(
+            str(self.tenant.id), "ASSET", resource_uuid,
+        )
+        self.assertIsNotNone(
+            cache.get(cache_key),
+            "Cache should be populated after _get_applicable_policies",
+        )
 
     def test_cache_invalidation(self):
         """Test cache invalidation on policy update"""
@@ -71,9 +97,7 @@ class ABACCacheTest(TestCase):
         policy = AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Test Policy for Invalidation",
-            conditions={
-                "user": {"role": "DATA_PROVIDER"}
-            },
+            conditions={"user": {"role": "DATA_PROVIDER"}},
             effect="ALLOW",
             priority=10,
         )
@@ -158,9 +182,9 @@ class ABACFieldLevelTest(TestCase):
             conditions={},
             effect="ALLOW",
             priority=10,
-            dataset=self.dataset
+            dataset=self.dataset,
         )
-        
+
         # Create field policy
         self.field_policy = FieldAccessPolicy.objects.create(
             tenant=self.tenant,
@@ -168,9 +192,9 @@ class ABACFieldLevelTest(TestCase):
             dataset=self.dataset,
             field_name="ssn",
             access_type="READ",
-            masking_strategy="REDACT"
+            masking_strategy="REDACT",
         )
-    
+
     def test_field_level_access(self):
         """Test field-level access evaluation"""
         result = ABACEngine.evaluate_access(
@@ -179,11 +203,10 @@ class ABACFieldLevelTest(TestCase):
             resource_type="DATASET",
             resource_id=str(self.dataset.id),
             access_type="READ",
-            field_name="ssn"
+            field_name="ssn",
         )
-        
+
         self.assertTrue(result.allowed)
         self.assertTrue(result.masking_required)
         self.assertEqual(len(result.field_policies), 1)
         self.assertEqual(result.field_policies[0].field_name, "ssn")
-

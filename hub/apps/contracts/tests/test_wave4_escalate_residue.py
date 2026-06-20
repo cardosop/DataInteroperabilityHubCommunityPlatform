@@ -18,6 +18,7 @@ residue reminder deadline has passed.  Behaviours pinned:
 No mocks of internal code; real DB rows for tenants, contracts,
 audit events.
 """
+
 from __future__ import annotations
 
 import datetime as _dt
@@ -36,6 +37,7 @@ from django.utils import timezone
 
 def _create_tenant(slug_prefix: str = "w43"):
     from hub.apps.tenants.models import Tenant
+
     suffix = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
         name=f"{slug_prefix}-{suffix}",
@@ -50,6 +52,7 @@ def _create_contract(tenant, *, hub_contract_json):
         OriginalFormat,
         OriginalSpecType,
     )
+
     return Contract.objects.create(
         tenant=tenant,
         version=1,
@@ -68,6 +71,7 @@ def _record_reminded(tenant, *, deadline: _dt.date, when=None, residue_count: in
     """Write a SCHEMA_EDITOR_RESIDUE_REMINDED audit row carrying the
     deadline, optionally backdated."""
     from hub.apps.audit.models import AuditEvent
+
     event = AuditEvent.objects.create(
         tenant=tenant,
         action="SCHEMA_EDITOR_RESIDUE_REMINDED",
@@ -100,7 +104,6 @@ _HC_STRUCTURELESS = {"models": [], "schema": {"fields": []}}
 
 @pytest.mark.django_db(transaction=True)
 class EscalationEligibilityTests(TestCase):
-
     def test_tenant_past_deadline_with_residue_is_escalated(self):
         from hub.apps.audit.models import AuditEvent
 
@@ -191,7 +194,6 @@ class EscalationEligibilityTests(TestCase):
 
 @pytest.mark.django_db(transaction=True)
 class EscalationIdempotencyTests(TestCase):
-
     def test_re_running_does_not_double_escalate(self):
         from hub.apps.audit.models import AuditEvent
 
@@ -323,7 +325,6 @@ class EscalationActiveOnlyScopeTests(TestCase):
 
 @pytest.mark.django_db(transaction=True)
 class EscalationOutputTests(TestCase):
-
     def test_dry_run_writes_no_audit_rows(self):
         from hub.apps.audit.models import AuditEvent
 
@@ -337,7 +338,9 @@ class EscalationOutputTests(TestCase):
 
         out = io.StringIO()
         call_command(
-            "wave4_escalate_residue", "--dry-run", stdout=out,
+            "wave4_escalate_residue",
+            "--dry-run",
+            stdout=out,
         )
 
         self.assertEqual(
@@ -368,10 +371,7 @@ class EscalationOutputTests(TestCase):
         )
 
         self.assertTrue(path.exists())
-        rows = [
-            json.loads(line)
-            for line in path.read_text().splitlines() if line.strip()
-        ]
+        rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["tenant_id"], str(tenant.id))
         self.assertIn("deadline", rows[0])

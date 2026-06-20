@@ -6,6 +6,7 @@ currently authenticated user. Writes are intentionally limited to the
 flows (governance, marketplace, jobs, contracts) via
 `utils.create_user_notification`, never by clients.
 """
+
 from __future__ import annotations
 
 from django.db import transaction
@@ -81,9 +82,7 @@ class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         """
         with transaction.atomic():
             updated = (
-                self.get_queryset()
-                .filter(read=False)
-                .update(read=True, read_at=timezone.now())
+                self.get_queryset().filter(read=False).update(read=True, read_at=timezone.now())
             )
         return Response({"updated": updated}, status=status.HTTP_200_OK)
 
@@ -92,12 +91,13 @@ class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
 # Unauthenticated endpoint so users can opt out directly from email links.
 # Always returns 200 to prevent user enumeration via token probing.
 
-import hashlib as _hashlib  # noqa: E402
+import contextlib
+import hashlib as _hashlib
 
-from django.contrib.auth import get_user_model  # noqa: E402
-from django.http import HttpRequest, JsonResponse  # noqa: E402
-from django.views.decorators.csrf import csrf_exempt  # noqa: E402
-from django.views.decorators.http import require_http_methods  # noqa: E402
+from django.contrib.auth import get_user_model
+from django.http import HttpRequest, JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 
 _User = get_user_model()
 
@@ -114,6 +114,7 @@ def _marketing_opt_out(user):
 
     try:
         from hub.apps.audit.utils import create_audit_event
+
         create_audit_event(
             resource_type="USER",
             action="EMAIL_UNSUBSCRIBED",
@@ -138,10 +139,8 @@ def marketing_unsubscribe(request: HttpRequest, token: str = ""):
     # still return 200 — we just don't waste a DB round-trip.
     if token and len(token) >= 16:
         token_hash = _hashlib.sha256(token.encode()).hexdigest()
-        try:
+        with contextlib.suppress(_User.DoesNotExist):
             user = _User.objects.get(unsubscribe_token=token_hash)
-        except _User.DoesNotExist:
-            pass
 
     if user is not None:
         _marketing_opt_out(user)
@@ -149,11 +148,6 @@ def marketing_unsubscribe(request: HttpRequest, token: str = ""):
     # Body text must contain "Unsubscribed" so that plain-text email
     # clients render a human-readable confirmation.  JSON clients
     # (Accept: application/json) get the structured payload.
-    html = (
-        "<html><body><h1>Unsubscribed</h1>"
-        "<p>You have been unsubscribed from marketing emails.</p>"
-        "</body></html>"
-    )
     accept = request.META.get("HTTP_ACCEPT", "")
     if "application/json" in accept:
         return JsonResponse(

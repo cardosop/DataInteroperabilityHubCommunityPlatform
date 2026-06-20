@@ -6,17 +6,14 @@ SSRF function, DNS failures are treated as unsafe, DNS timeout raises, and
 local $ref (#fragment) is considered safe.
 """
 
-import socket
 from unittest.mock import patch
 
-import pytest
 from django.test import TestCase
 
 from hub.apps.webhooks.ssrf_guard import (
     SSRFViolationError,
-    is_safe_url,
-    validate_webhook_url,
     _resolve_and_check,
+    is_safe_url,
 )
 
 
@@ -47,7 +44,7 @@ class SSRFSingleSourceTest(TestCase):
         import time
 
         def slow_resolve(*args, **kwargs):
-            time.sleep(10)  # INTENTIONAL: test-specific delay  # longer than the 5s timeout
+            time.sleep(10)  # noqa: sleep-needed  # INTENTIONAL: test-specific delay  # longer than the 5s timeout
             return []
 
         mock_getaddrinfo.side_effect = slow_resolve
@@ -83,6 +80,7 @@ class SSRFSingleSourceTest(TestCase):
 
         result = subprocess.run(
             ["grep", "-r", "_SSRF_BLOCKED_NETWORKS", "hub/apps/contracts/", "--include=*.py"],
+            check=False,
             capture_output=True,
             text=True,
         )

@@ -58,7 +58,12 @@ class VirtualDatasetSerializerDecryptionTest(TestCase):
     def test_to_representation_decrypts_encrypted_sources(self):
         """Encrypted sources should be decrypted and masked in API response."""
         sources = [
-            {"type": "postgresql", "host": "db.example.com", "database": "testdb", "password": "secret123"},
+            {
+                "type": "postgresql",
+                "host": "db.example.com",
+                "database": "testdb",
+                "password": "secret123",
+            },
         ]
         ds = self._create_dataset(sources)
         ds.refresh_from_db()

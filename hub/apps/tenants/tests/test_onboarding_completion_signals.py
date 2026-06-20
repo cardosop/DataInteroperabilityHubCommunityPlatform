@@ -18,6 +18,7 @@ needed (signals fire synchronously in the test transaction).
 callbacks actually fire — without it, the signal handlers wouldn't
 run because the test never commits.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -30,7 +31,6 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan, TenantStatus
 from hub.apps.users.models import Role, User, UserRole, UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -104,9 +104,7 @@ def _activate_subscription(
 
 
 def _onboarding_completed_audit_count(tenant: Tenant) -> int:
-    return AuditEvent.objects.filter(
-        tenant=tenant, action="ONBOARDING_COMPLETED"
-    ).count()
+    return AuditEvent.objects.filter(tenant=tenant, action="ONBOARDING_COMPLETED").count()
 
 
 # ---------------------------------------------------------------------------

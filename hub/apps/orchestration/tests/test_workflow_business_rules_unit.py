@@ -9,25 +9,23 @@ Comprehensive TDD unit tests for:
 All tests follow TDD principles, use real implementations (no mocks/stubs),
 and fix root causes rather than workarounds.
 """
+
 import time
 import uuid
+from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from typing import Dict, Any
 
-from hub.apps.orchestration.models import (
-    WorkflowDefinition,
-    WorkflowStatus,
-    StepStatus,
-)
-from hub.apps.orchestration.workflow_engine import (
-    WorkflowEngine,
-    WorkflowExecutionError
-)
 from hub.apps.orchestration.business_rules import OrchestrationBusinessRules
 from hub.apps.orchestration.compensation import WorkflowCompensation
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
+from hub.apps.orchestration.models import (
+    StepStatus,
+    WorkflowDefinition,
+    WorkflowStatus,
+)
+from hub.apps.orchestration.workflow_engine import WorkflowEngine, WorkflowExecutionError
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
 
 User = get_user_model()
@@ -44,12 +42,12 @@ class WorkflowBusinessRulesUnitTestBase(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Register test tasks
@@ -68,7 +66,7 @@ class WorkflowBusinessRulesUnitTestBase(TestCase):
             return {
                 "result": "success",
                 "accumulated": new_value,
-                "state": {"accumulated": new_value, "step": step.step_name}
+                "state": {"accumulated": new_value, "step": step.step_name},
             }
 
         self.engine.register_task("success_task", success_task)
@@ -77,8 +75,7 @@ class WorkflowBusinessRulesUnitTestBase(TestCase):
 
         # Create business rules instance
         self.business_rules = OrchestrationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create workflow definition
@@ -89,16 +86,17 @@ class WorkflowBusinessRulesUnitTestBase(TestCase):
                 "version": "1.0.0",
                 "steps": [
                     {"name": "step1", "type": "task", "task": "success_task"},
-                    {"name": "step2", "type": "task", "task": "state_accumulating_task"}
-                ]
+                    {"name": "step2", "type": "task", "task": "state_accumulating_task"},
+                ],
             },
-            created_by=self.user
+            created_by=self.user,
         )
 
 
 # ============================================================================
 # 4.1.1 Test Workflow Engine Business Rules Integration
 # ============================================================================
+
 
 class TestWorkflowEngineBusinessRulesIntegration(WorkflowBusinessRulesUnitTestBase):
     """Test workflow engine business rules integration (4.1.1)"""
@@ -175,7 +173,7 @@ class TestWorkflowEngineBusinessRulesIntegration(WorkflowBusinessRulesUnitTestBa
 
         # Get the step
         step = instance.steps.first()
-        step_def = self.workflow_def.dsl_json["steps"][0]
+        self.workflow_def.dsl_json["steps"][0]
 
         # Corrupt step input_data to trigger validation error
         # Set input_data to a non-dict (should be caught by validation)
@@ -255,7 +253,7 @@ class TestWorkflowEngineBusinessRulesIntegration(WorkflowBusinessRulesUnitTestBa
         self.assertIn("validation", error_message.lower())
 
         # Verify error_details includes validation information
-        if hasattr(cm.exception, 'error_details'):
+        if hasattr(cm.exception, "error_details"):
             self.assertIsNotNone(cm.exception.error_details)
 
     def test_validation_caching(self):
@@ -271,9 +269,7 @@ class TestWorkflowEngineBusinessRulesIntegration(WorkflowBusinessRulesUnitTestBa
 
         # First validation - should not be cached
         time.time()  # Start time (not used but shows intent)
-        result1 = self.business_rules.validate_workflow_state(
-            instance, self.tenant, self.user
-        )
+        result1 = self.business_rules.validate_workflow_state(instance, self.tenant, self.user)
 
         # Verify validation succeeded
         self.assertTrue(result1.is_valid)
@@ -281,9 +277,7 @@ class TestWorkflowEngineBusinessRulesIntegration(WorkflowBusinessRulesUnitTestBa
         # Second validation with same data - should potentially use cache
         # Note: Caching behavior depends on implementation
         time.time()  # Start time (not used but shows intent)
-        result2 = self.business_rules.validate_workflow_state(
-            instance, self.tenant, self.user
-        )
+        result2 = self.business_rules.validate_workflow_state(instance, self.tenant, self.user)
 
         # Verify validation succeeded
         self.assertTrue(result2.is_valid)
@@ -297,6 +291,7 @@ class TestWorkflowEngineBusinessRulesIntegration(WorkflowBusinessRulesUnitTestBa
 # ============================================================================
 # 4.1.2 Test Orchestration Business Rules
 # ============================================================================
+
 
 class TestOrchestrationBusinessRules(WorkflowBusinessRulesUnitTestBase):
     """Test orchestration business rules (4.1.2)"""
@@ -323,9 +318,9 @@ class TestOrchestrationBusinessRules(WorkflowBusinessRulesUnitTestBase):
         # Verify validation succeeded
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertEqual(result.details['workflow_id'], str(instance.id))
-        self.assertEqual(result.details['step_id'], str(step.id))
-        self.assertEqual(result.details['step_name'], step.step_name)
+        self.assertEqual(result.details["workflow_id"], str(instance.id))
+        self.assertEqual(result.details["step_id"], str(step.id))
+        self.assertEqual(result.details["step_name"], step.step_name)
 
     def test_workflow_step_validation_failure_wrong_status(self):
         """Test workflow step validation - failure (wrong status) (4.1.2.1)"""
@@ -378,9 +373,7 @@ class TestOrchestrationBusinessRules(WorkflowBusinessRulesUnitTestBase):
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
         error_msg = result.errors[0]
-        self.assertTrue(
-            "PENDING" in error_msg or "RUNNING" in error_msg
-        )
+        self.assertTrue("PENDING" in error_msg or "RUNNING" in error_msg)
 
     def test_step_input_validation_success(self):
         """Test step input validation - success path (4.1.2.2)"""
@@ -397,11 +390,7 @@ class TestOrchestrationBusinessRules(WorkflowBusinessRulesUnitTestBase):
         step = instance.steps.first()
 
         # Valid step input
-        step_input = {
-            "test": "data",
-            "value": 123,
-            "nested": {"key": "value"}
-        }
+        step_input = {"test": "data", "value": 123, "nested": {"key": "value"}}
 
         # Validate step input
         result = self.business_rules.validate_step_input(
@@ -411,10 +400,10 @@ class TestOrchestrationBusinessRules(WorkflowBusinessRulesUnitTestBase):
         # Verify validation succeeded
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertEqual(result.details['workflow_id'], str(instance.id))
-        self.assertEqual(result.details['step_id'], str(step.id))
-        self.assertIn('input_keys', result.details)
-        self.assertIn('input_size', result.details)
+        self.assertEqual(result.details["workflow_id"], str(instance.id))
+        self.assertEqual(result.details["step_id"], str(step.id))
+        self.assertIn("input_keys", result.details)
+        self.assertIn("input_size", result.details)
 
     def test_step_input_validation_failure_not_dict(self):
         """Test step input validation - failure (not a dictionary) (4.1.2.2)"""
@@ -459,10 +448,7 @@ class TestOrchestrationBusinessRules(WorkflowBusinessRulesUnitTestBase):
 
         # Invalid step input (contains non-serializable object)
         # Use a lambda function which is not JSON serializable
-        step_input: Dict[str, Any] = {
-            "test": "data",
-            "non_serializable": lambda x: x
-        }
+        step_input: dict[str, Any] = {"test": "data", "non_serializable": lambda x: x}
 
         # Validate step input - should fail
         # The validation method tries to serialize to check size,
@@ -479,8 +465,7 @@ class TestOrchestrationBusinessRules(WorkflowBusinessRulesUnitTestBase):
         # Check for JSON serialization error
         error_text = " ".join(result.errors).lower()
         self.assertTrue(
-            "json" in error_text or "serializable" in error_text or
-            "serialize" in error_text
+            "json" in error_text or "serializable" in error_text or "serialize" in error_text
         )
 
     def test_step_input_validation_warning_empty(self):
@@ -526,11 +511,7 @@ class TestOrchestrationBusinessRules(WorkflowBusinessRulesUnitTestBase):
         step = instance.steps.first()
 
         # Valid step output
-        step_output = {
-            "result": "success",
-            "data": {"key": "value"},
-            "value": 123
-        }
+        step_output = {"result": "success", "data": {"key": "value"}, "value": 123}
 
         # Validate step output
         result = self.business_rules.validate_step_output(
@@ -540,10 +521,10 @@ class TestOrchestrationBusinessRules(WorkflowBusinessRulesUnitTestBase):
         # Verify validation succeeded
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertEqual(result.details['workflow_id'], str(instance.id))
-        self.assertEqual(result.details['step_id'], str(step.id))
-        self.assertIn('output_keys', result.details)
-        self.assertIn('output_size', result.details)
+        self.assertEqual(result.details["workflow_id"], str(instance.id))
+        self.assertEqual(result.details["step_id"], str(step.id))
+        self.assertIn("output_keys", result.details)
+        self.assertIn("output_size", result.details)
 
     def test_step_output_validation_failure_not_dict(self):
         """Test step output validation - failure (not a dictionary) (4.1.2.3)"""
@@ -588,10 +569,7 @@ class TestOrchestrationBusinessRules(WorkflowBusinessRulesUnitTestBase):
 
         # Invalid step output (contains non-serializable object)
         # Use a lambda function which is not JSON serializable
-        step_output: Dict[str, Any] = {
-            "result": "success",
-            "non_serializable": lambda x: x
-        }
+        step_output: dict[str, Any] = {"result": "success", "non_serializable": lambda x: x}
 
         # Validate step output - should fail
         # The validation method tries to serialize to check size,
@@ -608,8 +586,7 @@ class TestOrchestrationBusinessRules(WorkflowBusinessRulesUnitTestBase):
         # Check for JSON serialization error
         error_text = " ".join(result.errors).lower()
         self.assertTrue(
-            "json" in error_text or "serializable" in error_text or
-            "serialize" in error_text
+            "json" in error_text or "serializable" in error_text or "serialize" in error_text
         )
 
     def test_step_output_validation_warning_empty(self):
@@ -652,15 +629,13 @@ class TestOrchestrationBusinessRules(WorkflowBusinessRulesUnitTestBase):
         instance = self.engine.start_instance(str(instance.id))
 
         # Validate workflow state
-        result = self.business_rules.validate_workflow_state(
-            instance, self.tenant, self.user
-        )
+        result = self.business_rules.validate_workflow_state(instance, self.tenant, self.user)
 
         # Verify validation succeeded
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertEqual(result.details['workflow_id'], str(instance.id))
-        self.assertIn('workflow_state_validation', result.details)
+        self.assertEqual(result.details["workflow_id"], str(instance.id))
+        self.assertIn("workflow_state_validation", result.details)
 
     def test_workflow_state_validation_failure_invalid_state_data(self):
         """Test workflow state validation - failure (invalid state_data) (4.1.2.4)"""
@@ -678,9 +653,7 @@ class TestOrchestrationBusinessRules(WorkflowBusinessRulesUnitTestBase):
         instance.save()
 
         # Validate workflow state - should fail
-        result = self.business_rules.validate_workflow_state(
-            instance, self.tenant, self.user
-        )
+        result = self.business_rules.validate_workflow_state(instance, self.tenant, self.user)
 
         # Verify validation failed
         self.assertFalse(result.is_valid)
@@ -702,17 +675,12 @@ class TestOrchestrationBusinessRules(WorkflowBusinessRulesUnitTestBase):
         # Use a lambda function which is not JSON serializable
         # We can't save this to the database, so we set it in memory only
         # and test validation directly
-        non_serializable_data = {
-            "test": "data",
-            "non_serializable": lambda x: x
-        }
+        non_serializable_data = {"test": "data", "non_serializable": lambda x: x}
         # Set it directly on the instance object (in memory, not saved)
         instance.state_data = non_serializable_data
 
         # Validate workflow state - should fail
-        result = self.business_rules.validate_workflow_state(
-            instance, self.tenant, self.user
-        )
+        result = self.business_rules.validate_workflow_state(instance, self.tenant, self.user)
 
         # Verify validation failed
         self.assertFalse(result.is_valid)
@@ -720,14 +688,14 @@ class TestOrchestrationBusinessRules(WorkflowBusinessRulesUnitTestBase):
         # Check for JSON serialization error
         error_text = " ".join(result.errors).lower()
         self.assertTrue(
-            "json" in error_text or "serializable" in error_text or
-            "serialize" in error_text
+            "json" in error_text or "serializable" in error_text or "serialize" in error_text
         )
 
 
 # ============================================================================
 # 4.1.3 Test Compensation Validation
 # ============================================================================
+
 
 class TestCompensationValidation(WorkflowBusinessRulesUnitTestBase):
     """Test compensation validation (4.1.3)"""
@@ -748,19 +716,12 @@ class TestCompensationValidation(WorkflowBusinessRulesUnitTestBase):
                         "name": "step1",
                         "type": "task",
                         "task": "success_task",
-                        "compensation": {
-                            "type": "task",
-                            "task": "success_task"
-                        }
+                        "compensation": {"type": "task", "task": "success_task"},
                     },
-                    {
-                        "name": "step2",
-                        "type": "task",
-                        "task": "failing_task"
-                    }
-                ]
+                    {"name": "step2", "type": "task", "task": "failing_task"},
+                ],
             },
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create compensation handler
@@ -794,7 +755,7 @@ class TestCompensationValidation(WorkflowBusinessRulesUnitTestBase):
         # Verify validation succeeded (compensation validation doesn't block)
         # Compensation validation may have warnings but should not fail
         self.assertIsNotNone(result)
-        self.assertIn('workflow_step_execution_validation', result.details)
+        self.assertIn("workflow_step_execution_validation", result.details)
 
     def test_compensation_validation_warnings(self):
         """Test compensation validation - warnings path (4.1.3.2)"""
@@ -843,7 +804,7 @@ class TestCompensationValidation(WorkflowBusinessRulesUnitTestBase):
         handler.setLevel(logging.WARNING)
 
         # Get compensation logger
-        compensation_logger = logging.getLogger('hub.apps.orchestration.compensation')
+        compensation_logger = logging.getLogger("hub.apps.orchestration.compensation")
         compensation_logger.addHandler(handler)
         compensation_logger.setLevel(logging.WARNING)
 
@@ -872,9 +833,7 @@ class TestCompensationValidation(WorkflowBusinessRulesUnitTestBase):
             instance.save()
 
             # Execute compensation
-            compensation_result = self.compensation._compensate_step(
-                instance, step1
-            )
+            compensation_result = self.compensation._compensate_step(instance, step1)
 
             # Verify compensation executed
             self.assertIsNotNone(compensation_result)
@@ -917,15 +876,11 @@ class TestCompensationValidation(WorkflowBusinessRulesUnitTestBase):
         step1.mark_completed(step1.output_data or {})
 
         # Rollback workflow - should validate using business rules
-        rolled_back_instance = self.compensation.rollback_workflow(
-            instance, step2
-        )
+        rolled_back_instance = self.compensation.rollback_workflow(instance, step2)
 
         # Verify rollback completed
         self.assertIsNotNone(rolled_back_instance)
-        self.assertEqual(
-            rolled_back_instance.status, WorkflowStatus.ROLLED_BACK
-        )
+        self.assertEqual(rolled_back_instance.status, WorkflowStatus.ROLLED_BACK)
 
         # Verify compensation validation was performed
         # (validation warnings are logged but don't block compensation)

@@ -4,6 +4,7 @@
 Verifies that events published by Tenant A are not visible to Tenant B
 in the persisted event store.
 """
+
 import uuid
 
 import pytest

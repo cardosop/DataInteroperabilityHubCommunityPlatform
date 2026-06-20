@@ -10,15 +10,18 @@ Configuration is loaded from:
 3. Default values (fallback if neither YAML nor env vars are set)
 4. Per-tenant overrides (from TenantConfig.odps_refs_config JSONField)
 """
+
 import os
 import re
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any
 from urllib.parse import urlparse
+
 import structlog
 
 try:
     import yaml
+
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
@@ -28,8 +31,8 @@ logger = structlog.get_logger(__name__)
 
 # Default configuration values
 DEFAULT_ALLOWED_BASE_DIRS = ["./contracts/refs", "./odps-refs"]
-DEFAULT_URL_ALLOWLIST: List[str] = []
-DEFAULT_URL_DENYLIST: List[str] = []
+DEFAULT_URL_ALLOWLIST: list[str] = []
+DEFAULT_URL_DENYLIST: list[str] = []
 
 # Environment variable names
 ENV_ODPS_REFS_DIR = "ODPS_REFS_DIR"
@@ -50,7 +53,9 @@ class ODPSRefsConfig:
         url_denylist: List of denied URL patterns for external $ref resolution
     """
 
-    def __init__(self, config_file: Optional[Path] = None, tenant_config: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self, config_file: Path | None = None, tenant_config: dict[str, Any] | None = None
+    ):
         """
         Initialize configuration from file and environment variables.
 
@@ -76,17 +81,16 @@ class ODPSRefsConfig:
         # Load from YAML file if available
         if YAML_AVAILABLE and self._config_file.exists():
             try:
-                with open(self._config_file, 'r', encoding='utf-8') as f:
+                with open(self._config_file, encoding="utf-8") as f:
                     self._config_data = yaml.safe_load(f) or {}
                 logger.debug(
-                    "Loaded ODPS refs configuration from file",
-                    config_file=str(self._config_file)
+                    "Loaded ODPS refs configuration from file", config_file=str(self._config_file)
                 )
             except Exception as e:
                 logger.warning(
                     "Failed to load ODPS refs configuration from file, using defaults",
                     config_file=str(self._config_file),
-                    error=str(e)
+                    error=str(e),
                 )
                 self._config_data = {}
         else:
@@ -95,7 +99,7 @@ class ODPSRefsConfig:
             else:
                 logger.debug(
                     "ODPS refs configuration file not found, using defaults",
-                    config_file=str(self._config_file)
+                    config_file=str(self._config_file),
                 )
             self._config_data = {}
 
@@ -108,61 +112,63 @@ class ODPSRefsConfig:
         odps_refs_dir = os.getenv(ENV_ODPS_REFS_DIR)
         if odps_refs_dir:
             # Ensure allowed_base_dirs exists in config
-            if 'allowed_base_dirs' not in self._config_data:
-                self._config_data['allowed_base_dirs'] = []
+            if "allowed_base_dirs" not in self._config_data:
+                self._config_data["allowed_base_dirs"] = []
 
             # Add environment variable directory if not already present
-            if odps_refs_dir not in self._config_data['allowed_base_dirs']:
-                self._config_data['allowed_base_dirs'].append(odps_refs_dir)
+            if odps_refs_dir not in self._config_data["allowed_base_dirs"]:
+                self._config_data["allowed_base_dirs"].append(odps_refs_dir)
                 logger.debug(
                     "Added directory from environment variable to allowed_base_dirs",
                     directory=odps_refs_dir,
-                    env_var=ENV_ODPS_REFS_DIR
+                    env_var=ENV_ODPS_REFS_DIR,
                 )
 
         # ODPS_URL_ALLOWLIST: Comma-separated list of allowed URL patterns
         url_allowlist_env = os.getenv(ENV_ODPS_URL_ALLOWLIST)
         if url_allowlist_env:
-            allowlist_items = [item.strip() for item in url_allowlist_env.split(',') if item.strip()]
+            allowlist_items = [
+                item.strip() for item in url_allowlist_env.split(",") if item.strip()
+            ]
             if allowlist_items:
                 # Merge with existing allowlist (env vars take precedence)
-                existing_allowlist = self._config_data.get('url_allowlist', [])
+                existing_allowlist = self._config_data.get("url_allowlist", [])
                 # Combine and deduplicate
                 combined_allowlist = list(set(existing_allowlist + allowlist_items))
-                self._config_data['url_allowlist'] = combined_allowlist
+                self._config_data["url_allowlist"] = combined_allowlist
                 logger.debug(
                     "Set URL allowlist from environment variable",
                     count=len(combined_allowlist),
-                    env_var=ENV_ODPS_URL_ALLOWLIST
+                    env_var=ENV_ODPS_URL_ALLOWLIST,
                 )
 
         # ODPS_URL_DENYLIST: Comma-separated list of denied URL patterns
         url_denylist_env = os.getenv(ENV_ODPS_URL_DENYLIST)
         if url_denylist_env:
-            denylist_items = [item.strip() for item in url_denylist_env.split(',') if item.strip()]
+            denylist_items = [item.strip() for item in url_denylist_env.split(",") if item.strip()]
             if denylist_items:
                 # Merge with existing denylist (env vars take precedence)
-                existing_denylist = self._config_data.get('url_denylist', [])
+                existing_denylist = self._config_data.get("url_denylist", [])
                 # Combine and deduplicate
                 combined_denylist = list(set(existing_denylist + denylist_items))
-                self._config_data['url_denylist'] = combined_denylist
+                self._config_data["url_denylist"] = combined_denylist
                 logger.debug(
                     "Set URL denylist from environment variable",
                     count=len(combined_denylist),
-                    env_var=ENV_ODPS_URL_DENYLIST
+                    env_var=ENV_ODPS_URL_DENYLIST,
                 )
 
         # Apply per-tenant overrides (highest precedence)
         if self._tenant_config:
-            if 'url_allowlist' in self._tenant_config:
-                self._config_data['url_allowlist'] = self._tenant_config['url_allowlist']
+            if "url_allowlist" in self._tenant_config:
+                self._config_data["url_allowlist"] = self._tenant_config["url_allowlist"]
                 logger.debug("Applied per-tenant URL allowlist override")
-            if 'url_denylist' in self._tenant_config:
-                self._config_data['url_denylist'] = self._tenant_config['url_denylist']
+            if "url_denylist" in self._tenant_config:
+                self._config_data["url_denylist"] = self._tenant_config["url_denylist"]
                 logger.debug("Applied per-tenant URL denylist override")
 
     @property
-    def allowed_base_dirs(self) -> List[str]:
+    def allowed_base_dirs(self) -> list[str]:
         """
         Get list of allowed base directories for local $ref resolution.
 
@@ -176,20 +182,17 @@ class ODPSRefsConfig:
             ['./contracts/refs', './odps-refs']
         """
         # Get from config data, or use defaults
-        dirs = self._config_data.get('allowed_base_dirs', DEFAULT_ALLOWED_BASE_DIRS.copy())
+        dirs = self._config_data.get("allowed_base_dirs", DEFAULT_ALLOWED_BASE_DIRS.copy())
 
         # Ensure it's a list
         if not isinstance(dirs, list):
-            logger.warning(
-                "allowed_base_dirs is not a list, using defaults",
-                value=dirs
-            )
+            logger.warning("allowed_base_dirs is not a list, using defaults", value=dirs)
             return DEFAULT_ALLOWED_BASE_DIRS.copy()
 
         # Return a copy to prevent external modification
         return dirs.copy()
 
-    def get_allowed_base_dirs_absolute(self, base_path: Optional[Path] = None) -> List[Path]:
+    def get_allowed_base_dirs_absolute(self, base_path: Path | None = None) -> list[Path]:
         """
         Get list of allowed base directories as absolute Path objects.
 
@@ -218,7 +221,7 @@ class ODPSRefsConfig:
 
         return absolute_dirs
 
-    def is_path_allowed(self, file_path: Path, base_path: Optional[Path] = None) -> bool:
+    def is_path_allowed(self, file_path: Path, base_path: Path | None = None) -> bool:
         """
         Check if a file path is within an allowed base directory.
 
@@ -262,7 +265,7 @@ class ODPSRefsConfig:
                 # is_relative_to() is available in Python 3.9+, use alternative for compatibility
                 try:
                     # Python 3.9+ method
-                    if hasattr(resolved_file_path, 'is_relative_to'):
+                    if hasattr(resolved_file_path, "is_relative_to"):
                         if resolved_file_path.is_relative_to(resolved_allowed_dir):
                             return True
                 except (AttributeError, ValueError):
@@ -270,7 +273,9 @@ class ODPSRefsConfig:
 
                 # Fallback for Python < 3.9: check if commonpath matches
                 try:
-                    common_path = Path(os.path.commonpath([str(resolved_file_path), str(resolved_allowed_dir)]))
+                    common_path = Path(
+                        os.path.commonpath([str(resolved_file_path), str(resolved_allowed_dir)])
+                    )
                     if common_path == resolved_allowed_dir:
                         return True
                 except (ValueError, OSError):
@@ -282,14 +287,14 @@ class ODPSRefsConfig:
                     "Failed to check path against allowed directory",
                     allowed_dir=str(allowed_dir),
                     file_path=str(file_path),
-                    error=str(e)
+                    error=str(e),
                 )
                 continue
 
         return False
 
     @property
-    def url_allowlist(self) -> List[str]:
+    def url_allowlist(self) -> list[str]:
         """
         Get list of allowed URL patterns for external $ref resolution.
 
@@ -309,24 +314,20 @@ class ODPSRefsConfig:
             ['https://schemas.example.com', 'https://*.trusted-domain.com']
         """
         # Get from tenant config first, then config data, then defaults
-        patterns = (
-            self._tenant_config.get('url_allowlist') or
-            self._config_data.get('url_allowlist', DEFAULT_URL_ALLOWLIST.copy())
+        patterns = self._tenant_config.get("url_allowlist") or self._config_data.get(
+            "url_allowlist", DEFAULT_URL_ALLOWLIST.copy()
         )
 
         # Ensure it's a list
         if not isinstance(patterns, list):
-            logger.warning(
-                "url_allowlist is not a list, using defaults",
-                value=patterns
-            )
+            logger.warning("url_allowlist is not a list, using defaults", value=patterns)
             return DEFAULT_URL_ALLOWLIST.copy()
 
         # Return a copy to prevent external modification
         return patterns.copy()
 
     @property
-    def url_denylist(self) -> List[str]:
+    def url_denylist(self) -> list[str]:
         """
         Get list of denied URL patterns for external $ref resolution.
 
@@ -346,17 +347,13 @@ class ODPSRefsConfig:
             ['http://*', 'https://*.malicious.com']
         """
         # Get from tenant config first, then config data, then defaults
-        patterns = (
-            self._tenant_config.get('url_denylist') or
-            self._config_data.get('url_denylist', DEFAULT_URL_DENYLIST.copy())
+        patterns = self._tenant_config.get("url_denylist") or self._config_data.get(
+            "url_denylist", DEFAULT_URL_DENYLIST.copy()
         )
 
         # Ensure it's a list
         if not isinstance(patterns, list):
-            logger.warning(
-                "url_denylist is not a list, using defaults",
-                value=patterns
-            )
+            logger.warning("url_denylist is not a list, using defaults", value=patterns)
             return DEFAULT_URL_DENYLIST.copy()
 
         # Return a copy to prevent external modification
@@ -391,11 +388,7 @@ class ODPSRefsConfig:
         try:
             parsed_url = urlparse(url)
         except Exception as e:
-            logger.warning(
-                "Failed to parse URL for allowlist check",
-                url=url,
-                error=str(e)
-            )
+            logger.warning("Failed to parse URL for allowlist check", url=url, error=str(e))
             return False
 
         # Validate URL has required components (scheme and netloc)
@@ -404,7 +397,7 @@ class ODPSRefsConfig:
                 "URL missing required components (scheme or netloc)",
                 url=url,
                 scheme=parsed_url.scheme,
-                netloc=parsed_url.netloc
+                netloc=parsed_url.netloc,
             )
             return False
 
@@ -413,11 +406,7 @@ class ODPSRefsConfig:
         if denylist:
             for pattern in denylist:
                 if self._url_matches_pattern(url, parsed_url, pattern):
-                    logger.debug(
-                        "URL denied by denylist pattern",
-                        url=url,
-                        pattern=pattern
-                    )
+                    logger.debug("URL denied by denylist pattern", url=url, pattern=pattern)
                     return False
 
         # Check allowlist
@@ -429,19 +418,11 @@ class ODPSRefsConfig:
         # URL must match at least one allowlist pattern
         for pattern in allowlist:
             if self._url_matches_pattern(url, parsed_url, pattern):
-                logger.debug(
-                    "URL allowed by allowlist pattern",
-                    url=url,
-                    pattern=pattern
-                )
+                logger.debug("URL allowed by allowlist pattern", url=url, pattern=pattern)
                 return True
 
         # URL doesn't match any allowlist pattern
-        logger.debug(
-            "URL not in allowlist",
-            url=url,
-            allowlist=allowlist
-        )
+        logger.debug("URL not in allowlist", url=url, allowlist=allowlist)
         return False
 
     def _url_matches_pattern(self, url: str, parsed_url: Any, pattern: str) -> bool:
@@ -465,8 +446,8 @@ class ODPSRefsConfig:
             True if URL matches pattern, False otherwise
         """
         # Normalize pattern (remove trailing slashes for comparison)
-        pattern = pattern.rstrip('/')
-        url_normalized = url.rstrip('/')
+        pattern = pattern.rstrip("/")
+        url_normalized = url.rstrip("/")
 
         # Exact match (including path)
         if url_normalized == pattern:
@@ -477,10 +458,10 @@ class ODPSRefsConfig:
             pattern_parsed = urlparse(pattern)
         except Exception:
             # If pattern can't be parsed as URL, try as hostname
-            if '*' in pattern:
+            if "*" in pattern:
                 # Wildcard hostname pattern
-                pattern_regex = pattern.replace('.', r'\.').replace('*', '.*')
-                if re.match(f'^{pattern_regex}$', parsed_url.netloc):
+                pattern_regex = pattern.replace(".", r"\.").replace("*", ".*")
+                if re.match(f"^{pattern_regex}$", parsed_url.netloc):
                     return True
             elif pattern == parsed_url.netloc:
                 return True
@@ -493,44 +474,43 @@ class ODPSRefsConfig:
                 return False
 
             # Extract pattern host
-            pattern_host = pattern_parsed.netloc or pattern_parsed.path.split('/')[0]
+            pattern_host = pattern_parsed.netloc or pattern_parsed.path.split("/")[0]
 
             # Check if pattern has a path component
-            pattern_has_path = bool(pattern_parsed.path and pattern_parsed.path != '/')
+            pattern_has_path = bool(pattern_parsed.path and pattern_parsed.path != "/")
 
             if pattern_has_path:
                 # Pattern includes path - must match exactly (including path)
                 # Normalize paths for comparison
-                pattern_path = pattern_parsed.path.rstrip('/')
-                url_path = parsed_url.path.rstrip('/')
+                pattern_path = pattern_parsed.path.rstrip("/")
+                url_path = parsed_url.path.rstrip("/")
 
                 # Host must match
                 if pattern_host == parsed_url.netloc:
                     # Exact path match
                     if pattern_path == url_path:
                         return True
-                elif '*' in pattern_host:
+                elif "*" in pattern_host:
                     # Wildcard hostname with path
-                    pattern_regex = pattern_host.replace('.', r'\.').replace('*', '.*')
-                    if re.match(f'^{pattern_regex}$', parsed_url.netloc):
+                    pattern_regex = pattern_host.replace(".", r"\.").replace("*", ".*")
+                    if re.match(f"^{pattern_regex}$", parsed_url.netloc):
                         if pattern_path == url_path:
                             return True
-            else:
-                # Pattern has no path - match host only (any path allowed)
-                if '*' in pattern_host:
-                    # Wildcard hostname pattern
-                    pattern_regex = pattern_host.replace('.', r'\.').replace('*', '.*')
-                    if re.match(f'^{pattern_regex}$', parsed_url.netloc):
-                        return True
-                elif pattern_host == parsed_url.netloc:
+            # Pattern has no path - match host only (any path allowed)
+            elif "*" in pattern_host:
+                # Wildcard hostname pattern
+                pattern_regex = pattern_host.replace(".", r"\.").replace("*", ".*")
+                if re.match(f"^{pattern_regex}$", parsed_url.netloc):
                     return True
+            elif pattern_host == parsed_url.netloc:
+                return True
         else:
             # No scheme in pattern - match host only (any scheme/path allowed)
-            pattern_host = pattern.split('/')[0]
-            if '*' in pattern_host:
+            pattern_host = pattern.split("/")[0]
+            if "*" in pattern_host:
                 # Wildcard hostname pattern
-                pattern_regex = pattern_host.replace('.', r'\.').replace('*', '.*')
-                if re.match(f'^{pattern_regex}$', parsed_url.netloc):
+                pattern_regex = pattern_host.replace(".", r"\.").replace("*", ".*")
+                if re.match(f"^{pattern_regex}$", parsed_url.netloc):
                     return True
             elif pattern_host == parsed_url.netloc:
                 return True
@@ -539,12 +519,11 @@ class ODPSRefsConfig:
 
 
 # Global configuration instance (lazy-loaded)
-_config_instance: Optional[ODPSRefsConfig] = None
+_config_instance: ODPSRefsConfig | None = None
 
 
 def get_odps_refs_config(
-    config_file: Optional[Path] = None,
-    tenant_config: Optional[Dict[str, Any]] = None
+    config_file: Path | None = None, tenant_config: dict[str, Any] | None = None
 ) -> ODPSRefsConfig:
     """
     Get the global ODPS refs configuration instance.
@@ -578,7 +557,7 @@ def get_odps_refs_config(
 
 
 # Convenience function for getting allowed base directories
-def get_allowed_base_dirs() -> List[str]:
+def get_allowed_base_dirs() -> list[str]:
     """
     Get list of allowed base directories for local $ref resolution.
 
@@ -596,7 +575,7 @@ def get_allowed_base_dirs() -> List[str]:
 
 
 # Convenience function for checking if URL is allowed
-def is_url_allowed(url: str, tenant_config: Optional[Dict[str, Any]] = None) -> bool:
+def is_url_allowed(url: str, tenant_config: dict[str, Any] | None = None) -> bool:
     """
     Check if a URL is allowed for external $ref resolution.
 
@@ -617,4 +596,3 @@ def is_url_allowed(url: str, tenant_config: Optional[Dict[str, Any]] = None) -> 
     """
     config = get_odps_refs_config(tenant_config=tenant_config)
     return config.is_url_allowed(url)
-

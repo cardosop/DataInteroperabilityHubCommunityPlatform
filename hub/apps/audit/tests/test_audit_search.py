@@ -26,11 +26,12 @@ Engineering contract this suite pins (preprod01 tasks.md 234.6):
     observed on every ``?q=`` request — the slow-query alert
     (p95 > 5s for 5m) depends on this being emitted.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -117,8 +118,7 @@ class TestAuditFtsColumnAndQuery:
         repr_text = str(evt.details_json_tsvector).lower()
         for fragment in ("asset", "warehous", "complianc"):
             assert fragment in repr_text, (
-                f"expected stemmed lexeme for {fragment!r} in tsvector, "
-                f"got: {repr_text}"
+                f"expected stemmed lexeme for {fragment!r} in tsvector, got: {repr_text}"
             )
 
     @pytest.mark.integration

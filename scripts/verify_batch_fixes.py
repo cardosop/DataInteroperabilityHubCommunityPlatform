@@ -18,6 +18,7 @@ Environment Variables:
     POSTGRES_USER: Database user (default: hub)
     POSTGRES_PASSWORD: Database password (default: hub)
 """
+
 import argparse
 import os
 import subprocess
@@ -25,7 +26,6 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 # Add project root to path
 project_root = Path(__file__).resolve().parent.parent
@@ -38,8 +38,8 @@ class BatchResult:
     def __init__(self, batch_name: str, app_path: str):
         self.batch_name = batch_name
         self.app_path = app_path
-        self.start_time: Optional[float] = None
-        self.end_time: Optional[float] = None
+        self.start_time: float | None = None
+        self.end_time: float | None = None
         self.duration: float = 0.0
         self.exit_code: int = 0
         self.total_tests: int = 0
@@ -49,14 +49,14 @@ class BatchResult:
         self.skipped: int = 0
         self.output: str = ""
         self.status: str = "PENDING"
-        self.error_summary: List[str] = []
+        self.error_summary: list[str] = []
 
     @property
     def success(self) -> bool:
         """Check if batch execution was successful."""
         return self.exit_code == 0 and self.failed == 0 and self.errors == 0
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convert result to dictionary."""
         return {
             "batch_name": self.batch_name,
@@ -95,7 +95,7 @@ class BatchVerifier:
         ("hub/apps/observability", "Observability App"),
     ]
 
-    def __init__(self, project_root: Path, report_dir: Optional[Path] = None):
+    def __init__(self, project_root: Path, report_dir: Path | None = None):
         self.project_root = project_root
         self.report_dir = report_dir or (project_root / "test_reports_comprehensive")
         self.report_dir.mkdir(parents=True, exist_ok=True)
@@ -111,7 +111,7 @@ class BatchVerifier:
                 self.python_executable = str(venv_python)
                 break
 
-    def get_environment(self) -> Dict[str, str]:
+    def get_environment(self) -> dict[str, str]:
         """Get environment variables for test execution."""
         env = os.environ.copy()
 
@@ -151,9 +151,9 @@ class BatchVerifier:
         result = BatchResult(batch_name, app_path)
         result.start_time = time.time()
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"Running: {batch_name} ({app_path})")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
 
         # Convert app path to Django test path
         # e.g., 'hub/apps/developer' -> 'hub.apps.developer.tests'
@@ -175,6 +175,7 @@ class BatchVerifier:
         try:
             process = subprocess.run(
                 cmd,
+                check=False,
                 cwd=str(self.project_root),
                 capture_output=True,
                 text=True,
@@ -213,7 +214,7 @@ class BatchVerifier:
             result.duration = result.end_time - result.start_time
             result.exit_code = 1
             result.status = "ERROR"
-            result.error_summary.append(f"Execution error: {str(e)}")
+            result.error_summary.append(f"Execution error: {e!s}")
             print(f"❌ {batch_name}: ERROR - {e}")
 
         return result
@@ -270,8 +271,8 @@ class BatchVerifier:
         result.error_summary = error_lines[:10]
 
     def verify_signal_fixes(
-        self, batches: Optional[List[Tuple[str, str]]] = None
-    ) -> List[BatchResult]:
+        self, batches: list[tuple[str, str]] | None = None
+    ) -> list[BatchResult]:
         """
         Verify signal fixes by re-running batches.
 
@@ -295,9 +296,7 @@ class BatchVerifier:
 
         return results
 
-    def run_failed_batches(
-        self, batches: Optional[List[Tuple[str, str]]] = None
-    ) -> List[BatchResult]:
+    def run_failed_batches(self, batches: list[tuple[str, str]] | None = None) -> list[BatchResult]:
         """
         Run other FAILED batches (starting with smallest).
 
@@ -321,7 +320,7 @@ class BatchVerifier:
 
         return results
 
-    def generate_report(self, results: List[BatchResult], report_name: str):
+    def generate_report(self, results: list[BatchResult], report_name: str):
         """Generate a comprehensive test report."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         report_file = self.report_dir / f"{report_name}_{timestamp}.md"
@@ -338,7 +337,7 @@ class BatchVerifier:
             f.write(f"- **Total Batches**: {total}\n")
             f.write(f"- **Passed**: {passed}\n")
             f.write(f"- **Failed**: {failed}\n")
-            f.write(f"- **Success Rate**: {(passed/total*100) if total > 0 else 0:.1f}%\n\n")
+            f.write(f"- **Success Rate**: {(passed / total * 100) if total > 0 else 0:.1f}%\n\n")
 
             f.write("## Batch Results\n\n")
 

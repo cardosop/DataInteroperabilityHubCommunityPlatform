@@ -21,6 +21,7 @@ What we pin
 * A failure in any step does NOT block subsequent steps.
 * The summary dict reports the count of dependents invalidated.
 """
+
 from __future__ import annotations
 
 import time
@@ -28,11 +29,12 @@ import uuid
 
 import pytest
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
 
 def _make_tenant():
     from hub.apps.tenants.models import Tenant
+
     suffix = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
         name=f"L8.5 Co {suffix}",
@@ -47,6 +49,7 @@ def _make_contract(tenant):
         OriginalFormat,
         OriginalSpecType,
     )
+
     return Contract.objects.create(
         tenant=tenant,
         version=1,
@@ -55,9 +58,7 @@ def _make_contract(tenant):
         original_format=OriginalFormat.JSON,
         original_raw="{}",
         hub_contract_json={
-            "models": [
-                {"name": "m", "fields": [{"name": "id", "data_type": "string"}]}
-            ],
+            "models": [{"name": "m", "fields": [{"name": "id", "data_type": "string"}]}],
             "schema": {"fields": [{"name": "id", "data_type": "string"}]},
         },
         normalization_status="NORMALIZED_OK",
@@ -68,7 +69,6 @@ def _make_contract(tenant):
 
 @pytest.mark.django_db(transaction=True)
 class PostSaveCascadeTest(TestCase):
-
     def test_cascade_does_not_raise_on_clean_run(self):
         from hub.apps.contracts.cache_invalidation import run_post_save_cascade
 
@@ -186,7 +186,7 @@ class PostSaveCascadeTest(TestCase):
         # (Some backends are eventually consistent; we tolerate that
         # by re-reading with a tiny sleep — but Django's local-mem
         # cache is synchronous in tests.)
-        time.sleep(0.05)
+        time.sleep(0.05)  # noqa: sleep-needed — test timing requirement
         assert get_cached_contract(str(contract.id)) is None, (
             "Step 2 (invalidate_contract_cache) did not flush the "
             "stale cached snapshot — cache will serve old data."

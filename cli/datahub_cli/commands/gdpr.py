@@ -6,7 +6,6 @@ Uses real hub API - no mocks/stubs.
 """
 
 import json
-from typing import Optional
 
 import click
 
@@ -16,7 +15,6 @@ from ..api_client import api_client
 @click.group()
 def gdpr():
     """GDPR data portability and erasure commands"""
-    pass
 
 
 @gdpr.command("export-data")
@@ -90,9 +88,7 @@ def list_export_jobs(limit: int, offset: int, output_format: str):
                 download_url = (
                     str(job.get("download_url", ""))[:48] if job.get("download_url") else "N/A"
                 )
-                click.echo(
-                    f"{job_id:<40} " f"{status_val:<15} " f"{created:<25} " f"{download_url:<50}"
-                )
+                click.echo(f"{job_id:<40} {status_val:<15} {created:<25} {download_url:<50}")
     except click.ClickException:
         raise
     except Exception as e:
@@ -179,9 +175,7 @@ def list_erasure_requests(limit: int, offset: int, output_format: str):
                     if request.get("completed_at")
                     else "N/A"
                 )
-                click.echo(
-                    f"{request_id:<40} " f"{status_val:<15} " f"{requested:<25} " f"{completed:<25}"
-                )
+                click.echo(f"{request_id:<40} {status_val:<15} {requested:<25} {completed:<25}")
     except click.ClickException:
         raise
     except Exception as e:

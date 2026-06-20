@@ -16,8 +16,6 @@ import configparser
 import os
 from pathlib import Path
 
-import pytest
-
 # Repo root: tests/ci/test_phase0_prerequisites.py -> parent.parent
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -34,9 +32,7 @@ class TestPhase0_3PytestIni:
         """pytest.ini must set DJANGO_SETTINGS_MODULE to hub.settings."""
         path = REPO_ROOT / "pytest.ini"
         content = path.read_text()
-        assert "DJANGO_SETTINGS_MODULE" in content, (
-            "pytest.ini must set DJANGO_SETTINGS_MODULE"
-        )
+        assert "DJANGO_SETTINGS_MODULE" in content, "pytest.ini must set DJANGO_SETTINGS_MODULE"
         assert "hub.settings" in content, (
             "pytest.ini must set DJANGO_SETTINGS_MODULE=hub.settings (or equivalent)"
         )

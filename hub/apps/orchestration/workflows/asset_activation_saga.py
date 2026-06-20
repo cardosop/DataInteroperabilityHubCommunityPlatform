@@ -11,23 +11,23 @@ Compensation:
 - Rollback activation
 - Reset status
 """
-import logging
-from typing import Dict, Any
 
+import logging
+from typing import Any
+
+from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.orchestration.saga import (
+    SagaExecutionError,
+    SagaOrchestrator,
     SagaStep,
     SagaStepResult,
-    SagaOrchestrator,
-    SagaExecutionError
 )
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract
-from hub.apps.jobs.models import Job, JobType, JobStatus
 
 logger = logging.getLogger(__name__)
 
 
-def validate_contract(input_data: Dict[str, Any]) -> SagaStepResult:
+def validate_contract(input_data: dict[str, Any]) -> SagaStepResult:
     """
     Step 1: Validate contract for asset activation.
 
@@ -37,7 +37,7 @@ def validate_contract(input_data: Dict[str, Any]) -> SagaStepResult:
     Returns:
         SagaStepResult with contract validation result
     """
-    asset_id = input_data.get('asset_id')
+    asset_id = input_data.get("asset_id")
     if not asset_id:
         return SagaStepResult.failure_result("asset_id is required")
 
@@ -49,46 +49,44 @@ def validate_contract(input_data: Dict[str, Any]) -> SagaStepResult:
 
         if not contract:
             return SagaStepResult.failure_result(
-                "No active contract found for asset",
-                {"asset_id": str(asset_id)}
+                "No active contract found for asset", {"asset_id": str(asset_id)}
             )
 
         # Validate contract is ready for activation
         if contract.status != "ACTIVE":
             return SagaStepResult.failure_result(
                 f"Contract status is {contract.status}, expected ACTIVE",
-                {"contract_id": str(contract.id), "contract_status": contract.status}
+                {"contract_id": str(contract.id), "contract_status": contract.status},
             )
 
         logger.info(
             "asset_activation_contract_validated",
-            extra={
+            extra={"asset_id": str(asset_id), "contract_id": str(contract.id)},
+        )
+
+        return SagaStepResult.success_result(
+            {
+                "contract_id": str(contract.id),
+                "contract_status": contract.status,
                 "asset_id": str(asset_id),
-                "contract_id": str(contract.id)
+                "original_asset_status": asset.status.value
+                if hasattr(asset.status, "value")
+                else str(asset.status),
             }
         )
 
-        return SagaStepResult.success_result({
-            "contract_id": str(contract.id),
-            "contract_status": contract.status,
-            "asset_id": str(asset_id),
-            "original_asset_status": asset.status.value if hasattr(asset.status, 'value') else str(asset.status)
-        })
-
     except Asset.DoesNotExist:
         return SagaStepResult.failure_result(
-            f"Asset not found: {asset_id}",
-            {"asset_id": str(asset_id)}
+            f"Asset not found: {asset_id}", {"asset_id": str(asset_id)}
         )
     except Exception as e:
         logger.exception("asset_activation_contract_validation_error")
         return SagaStepResult.failure_result(
-            f"Contract validation failed: {str(e)}",
-            {"exception_type": type(e).__name__}
+            f"Contract validation failed: {e!s}", {"exception_type": type(e).__name__}
         )
 
 
-def compensate_contract_validation(input_data: Dict[str, Any]) -> SagaStepResult:
+def compensate_contract_validation(input_data: dict[str, Any]) -> SagaStepResult:
     """
     Compensation for contract validation step.
 
@@ -97,7 +95,7 @@ def compensate_contract_validation(input_data: Dict[str, Any]) -> SagaStepResult
     return SagaStepResult.success_result()
 
 
-def check_data_quality(input_data: Dict[str, Any]) -> SagaStepResult:
+def check_data_quality(input_data: dict[str, Any]) -> SagaStepResult:
     """
     Step 2: Check data quality for asset.
 
@@ -107,7 +105,7 @@ def check_data_quality(input_data: Dict[str, Any]) -> SagaStepResult:
     Returns:
         SagaStepResult with DQ check result
     """
-    asset_id = input_data.get('asset_id')
+    asset_id = input_data.get("asset_id")
     if not asset_id:
         return SagaStepResult.failure_result("asset_id is required")
 
@@ -119,13 +117,12 @@ def check_data_quality(input_data: Dict[str, Any]) -> SagaStepResult:
             resource_type="ASSET",
             resource_id=asset.id,
             type=JobType.DQ_RUN,
-            status=JobStatus.COMPLETED
-        ).order_by('-created_at')
+            status=JobStatus.COMPLETED,
+        ).order_by("-created_at")
 
         if not dq_jobs.exists():
             return SagaStepResult.failure_result(
-                "No successful DQ job found for asset",
-                {"asset_id": str(asset_id)}
+                "No successful DQ job found for asset", {"asset_id": str(asset_id)}
             )
 
         latest_dq_job = dq_jobs.first()
@@ -137,8 +134,8 @@ def check_data_quality(input_data: Dict[str, Any]) -> SagaStepResult:
                 {
                     "asset_id": str(asset_id),
                     "dq_status": asset.dq_status,
-                    "dq_job_id": str(latest_dq_job.id)
-                }
+                    "dq_job_id": str(latest_dq_job.id),
+                },
             )
 
         logger.info(
@@ -146,29 +143,26 @@ def check_data_quality(input_data: Dict[str, Any]) -> SagaStepResult:
             extra={
                 "asset_id": str(asset_id),
                 "dq_status": asset.dq_status,
-                "dq_job_id": str(latest_dq_job.id)
-            }
+                "dq_job_id": str(latest_dq_job.id),
+            },
         )
 
-        return SagaStepResult.success_result({
-            "dq_status": asset.dq_status,
-            "dq_job_id": str(latest_dq_job.id)
-        })
+        return SagaStepResult.success_result(
+            {"dq_status": asset.dq_status, "dq_job_id": str(latest_dq_job.id)}
+        )
 
     except Asset.DoesNotExist:
         return SagaStepResult.failure_result(
-            f"Asset not found: {asset_id}",
-            {"asset_id": str(asset_id)}
+            f"Asset not found: {asset_id}", {"asset_id": str(asset_id)}
         )
     except Exception as e:
         logger.exception("asset_activation_dq_check_error")
         return SagaStepResult.failure_result(
-            f"DQ check failed: {str(e)}",
-            {"exception_type": type(e).__name__}
+            f"DQ check failed: {e!s}", {"exception_type": type(e).__name__}
         )
 
 
-def compensate_dq_check(input_data: Dict[str, Any]) -> SagaStepResult:
+def compensate_dq_check(input_data: dict[str, Any]) -> SagaStepResult:
     """
     Compensation for DQ check step.
 
@@ -177,7 +171,7 @@ def compensate_dq_check(input_data: Dict[str, Any]) -> SagaStepResult:
     return SagaStepResult.success_result()
 
 
-def check_compliance(input_data: Dict[str, Any]) -> SagaStepResult:
+def check_compliance(input_data: dict[str, Any]) -> SagaStepResult:
     """
     Step 3: Check compliance for asset.
 
@@ -187,7 +181,7 @@ def check_compliance(input_data: Dict[str, Any]) -> SagaStepResult:
     Returns:
         SagaStepResult with compliance check result
     """
-    asset_id = input_data.get('asset_id')
+    asset_id = input_data.get("asset_id")
     if not asset_id:
         return SagaStepResult.failure_result("asset_id is required")
 
@@ -199,13 +193,12 @@ def check_compliance(input_data: Dict[str, Any]) -> SagaStepResult:
             resource_type="ASSET",
             resource_id=asset.id,
             type=JobType.COMPLIANCE_RUN,
-            status=JobStatus.COMPLETED
-        ).order_by('-created_at')
+            status=JobStatus.COMPLETED,
+        ).order_by("-created_at")
 
         if not compliance_jobs.exists():
             return SagaStepResult.failure_result(
-                "No successful compliance job found for asset",
-                {"asset_id": str(asset_id)}
+                "No successful compliance job found for asset", {"asset_id": str(asset_id)}
             )
 
         latest_compliance_job = compliance_jobs.first()
@@ -217,8 +210,8 @@ def check_compliance(input_data: Dict[str, Any]) -> SagaStepResult:
                 {
                     "asset_id": str(asset_id),
                     "compliance_status": asset.compliance_status,
-                    "compliance_job_id": str(latest_compliance_job.id)
-                }
+                    "compliance_job_id": str(latest_compliance_job.id),
+                },
             )
 
         logger.info(
@@ -226,29 +219,29 @@ def check_compliance(input_data: Dict[str, Any]) -> SagaStepResult:
             extra={
                 "asset_id": str(asset_id),
                 "compliance_status": asset.compliance_status,
-                "compliance_job_id": str(latest_compliance_job.id)
+                "compliance_job_id": str(latest_compliance_job.id),
+            },
+        )
+
+        return SagaStepResult.success_result(
+            {
+                "compliance_status": asset.compliance_status,
+                "compliance_job_id": str(latest_compliance_job.id),
             }
         )
 
-        return SagaStepResult.success_result({
-            "compliance_status": asset.compliance_status,
-            "compliance_job_id": str(latest_compliance_job.id)
-        })
-
     except Asset.DoesNotExist:
         return SagaStepResult.failure_result(
-            f"Asset not found: {asset_id}",
-            {"asset_id": str(asset_id)}
+            f"Asset not found: {asset_id}", {"asset_id": str(asset_id)}
         )
     except Exception as e:
         logger.exception("asset_activation_compliance_check_error")
         return SagaStepResult.failure_result(
-            f"Compliance check failed: {str(e)}",
-            {"exception_type": type(e).__name__}
+            f"Compliance check failed: {e!s}", {"exception_type": type(e).__name__}
         )
 
 
-def compensate_compliance_check(input_data: Dict[str, Any]) -> SagaStepResult:
+def compensate_compliance_check(input_data: dict[str, Any]) -> SagaStepResult:
     """
     Compensation for compliance check step.
 
@@ -257,7 +250,7 @@ def compensate_compliance_check(input_data: Dict[str, Any]) -> SagaStepResult:
     return SagaStepResult.success_result()
 
 
-def activate_asset(input_data: Dict[str, Any]) -> SagaStepResult:
+def activate_asset(input_data: dict[str, Any]) -> SagaStepResult:
     """
     Step 4: Activate the asset.
 
@@ -267,8 +260,8 @@ def activate_asset(input_data: Dict[str, Any]) -> SagaStepResult:
     Returns:
         SagaStepResult with activation result
     """
-    asset_id = input_data.get('asset_id')
-    original_status = input_data.get('original_asset_status')
+    asset_id = input_data.get("asset_id")
+    original_status = input_data.get("original_asset_status")
 
     if not asset_id:
         return SagaStepResult.failure_result("asset_id is required")
@@ -282,37 +275,41 @@ def activate_asset(input_data: Dict[str, Any]) -> SagaStepResult:
 
         # Activate asset
         asset.status = AssetStatus.ACTIVE
-        asset.save(update_fields=['status', 'updated_at'])
+        asset.save(update_fields=["status", "updated_at"])
 
         logger.info(
             "asset_activation_completed",
             extra={
                 "asset_id": str(asset_id),
                 "original_status": original_status,
-                "new_status": asset.status
+                "new_status": asset.status,
+            },
+        )
+
+        return SagaStepResult.success_result(
+            {
+                "asset_id": str(asset_id),
+                "original_status": original_status.value
+                if hasattr(original_status, "value")
+                else str(original_status),
+                "new_status": asset.status.value
+                if hasattr(asset.status, "value")
+                else str(asset.status),
             }
         )
 
-        return SagaStepResult.success_result({
-            "asset_id": str(asset_id),
-            "original_status": original_status.value if hasattr(original_status, 'value') else str(original_status),
-            "new_status": asset.status.value if hasattr(asset.status, 'value') else str(asset.status)
-        })
-
     except Asset.DoesNotExist:
         return SagaStepResult.failure_result(
-            f"Asset not found: {asset_id}",
-            {"asset_id": str(asset_id)}
+            f"Asset not found: {asset_id}", {"asset_id": str(asset_id)}
         )
     except Exception as e:
         logger.exception("asset_activation_error")
         return SagaStepResult.failure_result(
-            f"Asset activation failed: {str(e)}",
-            {"exception_type": type(e).__name__}
+            f"Asset activation failed: {e!s}", {"exception_type": type(e).__name__}
         )
 
 
-def compensate_activation(input_data: Dict[str, Any]) -> SagaStepResult:
+def compensate_activation(input_data: dict[str, Any]) -> SagaStepResult:
     """
     Compensation for activation step: rollback activation and reset status.
 
@@ -322,12 +319,12 @@ def compensate_activation(input_data: Dict[str, Any]) -> SagaStepResult:
     Returns:
         SagaStepResult with compensation result
     """
-    asset_id = input_data.get('asset_id')
+    asset_id = input_data.get("asset_id")
     # Try to get original_status from various sources
     original_status = (
-        input_data.get('original_status') or
-        input_data.get('step_output', {}).get('original_status') or
-        input_data.get('original_asset_status')
+        input_data.get("original_status")
+        or input_data.get("step_output", {}).get("original_status")
+        or input_data.get("original_asset_status")
     )
 
     if not asset_id:
@@ -351,36 +348,37 @@ def compensate_activation(input_data: Dict[str, Any]) -> SagaStepResult:
             # Default to DRAFT if no original status
             asset.status = AssetStatus.DRAFT
 
-        asset.save(update_fields=['status', 'updated_at'])
+        asset.save(update_fields=["status", "updated_at"])
 
         logger.info(
             "asset_activation_compensated",
             extra={
                 "asset_id": str(asset_id),
                 "original_status": str(original_status),
+                "reset_status": asset.status.value,
+            },
+        )
+
+        return SagaStepResult.success_result(
+            {
+                "asset_id": str(asset_id),
                 "reset_status": asset.status.value
+                if hasattr(asset.status, "value")
+                else str(asset.status),
             }
         )
 
-        return SagaStepResult.success_result({
-            "asset_id": str(asset_id),
-            "reset_status": asset.status.value if hasattr(asset.status, 'value') else str(asset.status)
-        })
-
     except Asset.DoesNotExist:
         logger.warning(
-            "asset_activation_compensation_asset_not_found",
-            extra={"asset_id": str(asset_id)}
+            "asset_activation_compensation_asset_not_found", extra={"asset_id": str(asset_id)}
         )
-        return SagaStepResult.success_result({
-            "warning": "Asset not found during compensation",
-            "asset_id": str(asset_id)
-        })
+        return SagaStepResult.success_result(
+            {"warning": "Asset not found during compensation", "asset_id": str(asset_id)}
+        )
     except Exception as e:
         logger.exception("asset_activation_compensation_error")
         return SagaStepResult.failure_result(
-            f"Activation compensation failed: {str(e)}",
-            {"exception_type": type(e).__name__}
+            f"Activation compensation failed: {e!s}", {"exception_type": type(e).__name__}
         )
 
 
@@ -394,42 +392,40 @@ def create_asset_activation_saga(asset_id: str) -> SagaOrchestrator:
     Returns:
         Configured SagaOrchestrator instance
     """
-    steps = [
+    [
         SagaStep(
             name="validate_contract",
             forward_action=validate_contract,
             compensation_action=compensate_contract_validation,
-            description="Validate contract for asset activation"
+            description="Validate contract for asset activation",
         ),
         SagaStep(
             name="check_data_quality",
             forward_action=check_data_quality,
             compensation_action=compensate_dq_check,
-            description="Check data quality for asset"
+            description="Check data quality for asset",
         ),
         SagaStep(
             name="check_compliance",
             forward_action=check_compliance,
             compensation_action=compensate_compliance_check,
-            description="Check compliance for asset"
+            description="Check compliance for asset",
         ),
         SagaStep(
             name="activate_asset",
             forward_action=activate_asset,
             compensation_action=compensate_activation,
-            description="Activate the asset"
-        )
+            description="Activate the asset",
+        ),
     ]
 
     orchestrator = SagaOrchestrator()
-    orchestrator.context.state = {
-        "asset_id": asset_id
-    }
+    orchestrator.context.state = {"asset_id": asset_id}
 
     return orchestrator
 
 
-def execute_asset_activation(asset_id: str) -> Dict[str, Any]:
+def execute_asset_activation(asset_id: str) -> dict[str, Any]:
     """
     Execute asset activation saga workflow.
 
@@ -449,26 +445,26 @@ def execute_asset_activation(asset_id: str) -> Dict[str, Any]:
             name="validate_contract",
             forward_action=validate_contract,
             compensation_action=compensate_contract_validation,
-            description="Validate contract for asset activation"
+            description="Validate contract for asset activation",
         ),
         SagaStep(
             name="check_data_quality",
             forward_action=check_data_quality,
             compensation_action=compensate_dq_check,
-            description="Check data quality for asset"
+            description="Check data quality for asset",
         ),
         SagaStep(
             name="check_compliance",
             forward_action=check_compliance,
             compensation_action=compensate_compliance_check,
-            description="Check compliance for asset"
+            description="Check compliance for asset",
         ),
         SagaStep(
             name="activate_asset",
             forward_action=activate_asset,
             compensation_action=compensate_activation,
-            description="Activate the asset"
-        )
+            description="Activate the asset",
+        ),
     ]
 
     try:
@@ -478,25 +474,17 @@ def execute_asset_activation(asset_id: str) -> Dict[str, Any]:
             "success": True,
             "saga_id": orchestrator.saga_id,
             "status": orchestrator.status.value,
-            "context": {
-                "asset_id": asset_id,
-                "final_state": context.state
-            }
+            "context": {"asset_id": asset_id, "final_state": context.state},
         }
     except SagaExecutionError as e:
         logger.error(
             "asset_activation_saga_failed",
-            extra={
-                "saga_id": orchestrator.saga_id,
-                "asset_id": asset_id,
-                "error": str(e)
-            }
+            extra={"saga_id": orchestrator.saga_id, "asset_id": asset_id, "error": str(e)},
         )
         return {
             "success": False,
             "saga_id": orchestrator.saga_id,
             "status": orchestrator.status.value,
             "error": str(e),
-            "context": orchestrator.context
+            "context": orchestrator.context,
         }
-

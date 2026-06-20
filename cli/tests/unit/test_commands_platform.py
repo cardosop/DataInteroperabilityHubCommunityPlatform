@@ -1,10 +1,10 @@
 """Unit tests for ``datahub platform`` commands (283.5.6)."""
+
 import json
+from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
-from unittest.mock import Mock
-
 from datahub_cli.main import cli
 
 
@@ -52,17 +52,42 @@ class TestPlatformTenants:
     @pytest.mark.unit
     def test_create_table(self, runner, mock_api):
         mock_api.post.return_value = {"id": "t-new", "slug": "newco", "display_name": "NewCo"}
-        result = runner.invoke(cli, ["platform", "tenants", "create", "--slug", "newco",
-                                     "--display-name", "NewCo", "--admin-email", "admin@newco.com"])
+        result = runner.invoke(
+            cli,
+            [
+                "platform",
+                "tenants",
+                "create",
+                "--slug",
+                "newco",
+                "--display-name",
+                "NewCo",
+                "--admin-email",
+                "admin@newco.com",
+            ],
+        )
         assert result.exit_code == 0
         assert "t-new" in result.output
 
     @pytest.mark.unit
     def test_create_json(self, runner, mock_api):
         mock_api.post.return_value = {"id": "t-new", "slug": "newco"}
-        result = runner.invoke(cli, ["platform", "tenants", "create", "--slug", "newco",
-                                     "--display-name", "NewCo", "--admin-email", "a@b.com",
-                                     "--format", "json"])
+        result = runner.invoke(
+            cli,
+            [
+                "platform",
+                "tenants",
+                "create",
+                "--slug",
+                "newco",
+                "--display-name",
+                "NewCo",
+                "--admin-email",
+                "a@b.com",
+                "--format",
+                "json",
+            ],
+        )
         assert result.exit_code == 0
         assert json.loads(result.output)["slug"] == "newco"
 
@@ -114,8 +139,20 @@ class TestPlatformUsers:
     @pytest.mark.unit
     def test_create(self, runner, mock_api):
         mock_api.post.return_value = {"id": "u-new", "email": "new@acme.com"}
-        result = runner.invoke(cli, ["platform", "users", "create", "--email", "new@acme.com",
-                                     "--tenant-id", "t-1", "--display-name", "New User"])
+        result = runner.invoke(
+            cli,
+            [
+                "platform",
+                "users",
+                "create",
+                "--email",
+                "new@acme.com",
+                "--tenant-id",
+                "t-1",
+                "--display-name",
+                "New User",
+            ],
+        )
         assert result.exit_code == 0
         assert "u-new" in result.output
 
@@ -132,8 +169,19 @@ class TestPlatformImpersonate:
     @pytest.mark.unit
     def test_impersonate(self, runner, mock_api):
         mock_api.post.return_value = {"session_id": "imp-1", "user_id": "u-1", "tenant_id": "t-1"}  # noqa: PHASE216-STATIC-ID
-        result = runner.invoke(cli, ["platform", "impersonate", "--user-id", "u-1",
-                                     "--tenant-id", "t-1", "--reason", "Debugging issue #42"])
+        result = runner.invoke(
+            cli,
+            [
+                "platform",
+                "impersonate",
+                "--user-id",
+                "u-1",
+                "--tenant-id",
+                "t-1",
+                "--reason",
+                "Debugging issue #42",
+            ],
+        )
         assert result.exit_code == 0
         parsed = json.loads(result.output)
         assert parsed["session_id"] == "imp-1"

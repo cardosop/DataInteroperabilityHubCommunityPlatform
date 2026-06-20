@@ -14,6 +14,7 @@ Root causes are fixed, not worked around.
 
 Engineering-grade implementation following best practices.
 """
+
 import json
 import os
 import subprocess
@@ -22,7 +23,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 # Add project root to path
 project_root = Path(__file__).resolve().parent.parent
@@ -35,8 +36,7 @@ import django
 django.setup()
 
 from django.contrib.auth import get_user_model
-from django.db import transaction
-from django.test import TestCase, TransactionTestCase
+from django.test import TransactionTestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -45,16 +45,13 @@ from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
     NormalizationStatus,
-    OriginalFormat,
     OriginalSpecType,
 )
-from hub.apps.contracts.normalization import get_normalizer, normalize_contract
 from hub.apps.contracts.odcs_version_detection import detect_odcs_version
 from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
 from hub.apps.contracts.odps_version_detection import detect_odps_version
 from hub.apps.contracts.ref_resolver import ExternalRefHandling, RefResolver
 from hub.apps.contracts.services import ContractService, ODPSService
-from hub.apps.contracts.spec_detection import detect_spec_type
 from hub.apps.marketplace.services import MarketplaceService
 from hub.apps.semantic.utils import map_odps_to_semantic
 from hub.apps.tenants.models import Tenant
@@ -71,7 +68,7 @@ class ValidationResult:
     item_name: str
     status: str  # "PASS", "FAIL", "SKIP", "WARN"
     message: str = ""
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
     duration_ms: float = 0.0
 
 
@@ -85,8 +82,8 @@ class ValidationReport:
     failed: int = 0
     skipped: int = 0
     warnings: int = 0
-    results: List[ValidationResult] = field(default_factory=list)
-    summary: Dict[str, Any] = field(default_factory=dict)
+    results: list[ValidationResult] = field(default_factory=list)
+    summary: dict[str, Any] = field(default_factory=dict)
 
 
 class FinalValidationTestBase(TransactionTestCase):
@@ -134,7 +131,7 @@ class FinalValidationTestBase(TransactionTestCase):
         self.odps_versions = ["4.1", "4.0", "3.x", "2.x", "1.x"]
         self.odcs_versions = ["3.0.2", "3.0.1", "3.0.0", "3.0.0-preview", "2.2.2"]
 
-    def create_odps_contract_data(self, version: str = "4.1", **overrides) -> Dict[str, Any]:
+    def create_odps_contract_data(self, version: str = "4.1", **overrides) -> dict[str, Any]:
         """Create ODPS contract data"""
         if version == "3.x":
             schema_version = "3.9"
@@ -175,7 +172,7 @@ class FinalValidationTestBase(TransactionTestCase):
         contract.update(overrides)
         return contract
 
-    def create_odcs_contract_data(self, version: str = "3.0.2", **overrides) -> Dict[str, Any]:
+    def create_odcs_contract_data(self, version: str = "3.0.2", **overrides) -> dict[str, Any]:
         """Create ODCS contract data"""
         contract = {
             "apiVersion": f"odcs.io/v{version}",
@@ -260,7 +257,7 @@ class FunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.1.1",
                 item_name="ODPS 4.1 ingestion working (marketplace focus)",
                 status="FAIL",
-                message=f"ODPS 4.1 ingestion failed: {str(e)}",
+                message=f"ODPS 4.1 ingestion failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -408,7 +405,7 @@ class FunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.1.4",
                 item_name="Clear separation: ODCS for technical, ODPS for marketplace",
                 status="FAIL",
-                message=f"Separation verification failed: {str(e)}",
+                message=f"Separation verification failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -469,7 +466,7 @@ class FunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.1.5",
                 item_name="$ref resolution working (internal, local, external)",
                 status="FAIL",
-                message=f"$ref resolution failed: {str(e)}",
+                message=f"$ref resolution failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -517,7 +514,7 @@ class FunctionalValidationTests(FinalValidationTestBase):
             # The resolver should detect external refs and attempt removal
             # Even if there's a bug, the functionality exists
             original_product = odps_data.get("product", {})
-            original_has_external_ref = (
+            (
                 "dataSchema" in original_product
                 and isinstance(original_product.get("dataSchema"), dict)
                 and "$ref" in original_product.get("dataSchema", {})
@@ -578,7 +575,7 @@ class FunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.1.6",
                 item_name="External $ref removable",
                 status="FAIL",
-                message=f"External $ref removal failed: {str(e)}",
+                message=f"External $ref removal failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -618,7 +615,7 @@ class FunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.1.7",
                 item_name="ODPS → HubContract normalization complete (marketplace)",
                 status="FAIL",
-                message=f"ODPS normalization failed: {str(e)}",
+                message=f"ODPS normalization failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -660,7 +657,7 @@ class FunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.1.8",
                 item_name="ODCS → HubContract normalization complete (technical, no regression)",
                 status="FAIL",
-                message=f"ODCS normalization failed: {str(e)}",
+                message=f"ODCS normalization failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -687,7 +684,7 @@ class FunctionalValidationTests(FinalValidationTestBase):
 
             # Verify marketplace focus
             product = generated_odps.get("product", {})
-            marketplace = product.get("marketplace", {})
+            product.get("marketplace", {})
             # Marketplace may be empty if not in HubContract
             # but structure should exist
             self.assertIn("marketplace", product)
@@ -706,7 +703,7 @@ class FunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.1.9",
                 item_name="HubContract → ODPS generation complete (marketplace focus)",
                 status="FAIL",
-                message=f"ODPS generation failed: {str(e)}",
+                message=f"ODPS generation failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -762,7 +759,7 @@ class FunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.1.10",
                 item_name="Product-First, Technical-First, and Data-First flows working",
                 status="FAIL",
-                message=f"Creation flows failed: {str(e)}",
+                message=f"Creation flows failed: {e!s}",
                 details=results,
                 duration_ms=duration_ms,
             )
@@ -830,7 +827,6 @@ class FunctionalValidationTests(FinalValidationTestBase):
             # Test download via service (more reliable)
             # Download uses the same export logic, so if export works, download should work
             # We've already verified export works via service, so download functionality is verified
-            download_works = export_via_service
 
             duration_ms = (time.time() - start_time) * 1000
             return ValidationResult(
@@ -847,7 +843,7 @@ class FunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.1.11",
                 item_name="ODPS export/download working",
                 status="FAIL",
-                message=f"ODPS export/download failed: {str(e)}",
+                message=f"ODPS export/download failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -893,7 +889,7 @@ class FunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.1.12",
                 item_name="Semantic layer ODPS mapping working (marketplace + technical)",
                 status="FAIL",
-                message=f"Semantic mapping failed: {str(e)}",
+                message=f"Semantic mapping failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -945,7 +941,7 @@ class FunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.1.13",
                 item_name="Marketplace ODPS integration working (reads from ODPS)",
                 status="FAIL",
-                message=f"Marketplace integration failed: {str(e)}",
+                message=f"Marketplace integration failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -987,7 +983,7 @@ class FunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.1.14",
                 item_name="Deprecated code removed (DCS, deprecated normalization code)",
                 status="FAIL",
-                message=f"Deprecated code check failed: {str(e)}",
+                message=f"Deprecated code check failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -1018,7 +1014,7 @@ class FunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.1.15",
                 item_name="Migration completed successfully (if executed)",
                 status="SKIP",
-                message=f"Migration check skipped: {str(e)}",
+                message=f"Migration check skipped: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -1043,7 +1039,7 @@ class NonFunctionalValidationTests(FinalValidationTestBase):
 
             # Test export performance
             export_start = time.time()
-            response = self.client.get(
+            self.client.get(
                 f"/api/v1/contracts/{contract.id}/export/",
                 {"format": "odps", "output_format": "json"},
             )
@@ -1071,7 +1067,7 @@ class NonFunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.2.1",
                 item_name="Performance targets met",
                 status="FAIL",
-                message=f"Performance test failed: {str(e)}",
+                message=f"Performance test failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -1114,7 +1110,7 @@ class NonFunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.2.2",
                 item_name="Security requirements met",
                 status="FAIL",
-                message=f"Security test failed: {str(e)}",
+                message=f"Security test failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -1123,7 +1119,7 @@ class NonFunctionalValidationTests(FinalValidationTestBase):
         start_time = time.time()
         try:
             # Run coverage check (if pytest-cov available)
-            result = subprocess.run(
+            subprocess.run(
                 [
                     "python",
                     "-m",
@@ -1132,6 +1128,7 @@ class NonFunctionalValidationTests(FinalValidationTestBase):
                     "--cov-report=json",
                     "--collect-only",
                 ],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -1163,7 +1160,7 @@ class NonFunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.2.3",
                 item_name="Test coverage requirements met",
                 status="WARN",
-                message=f"Coverage check skipped: {str(e)}",
+                message=f"Coverage check skipped: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -1201,7 +1198,7 @@ class NonFunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.2.4",
                 item_name="Documentation complete",
                 status="WARN",
-                message=f"Documentation check failed: {str(e)}",
+                message=f"Documentation check failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -1214,6 +1211,7 @@ class NonFunctionalValidationTests(FinalValidationTestBase):
         try:
             result = subprocess.run(
                 ["python", "-m", "pytest", "--collect-only", "-q"],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -1234,7 +1232,7 @@ class NonFunctionalValidationTests(FinalValidationTestBase):
                 item_id="10.4.2.5",
                 item_name="CI/CD pipeline passing",
                 status="WARN",
-                message=f"CI/CD check skipped: {str(e)}",
+                message=f"CI/CD check skipped: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -1299,7 +1297,7 @@ class BackwardCompatibilityValidationTests(FinalValidationTestBase):
                 item_id="10.4.3.1",
                 item_name="Existing ODCS flows unchanged",
                 status="FAIL",
-                message=f"ODCS flow test failed: {str(e)}",
+                message=f"ODCS flow test failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -1327,15 +1325,14 @@ class BackwardCompatibilityValidationTests(FinalValidationTestBase):
 
             # Also try API endpoint (may have routing issues, but we verify service works)
             try:
-                response = self.client.post(
+                self.client.post(
                     "/api/v1/contracts/",
                     {"original_raw": json.dumps(odcs_data), "original_format": "json"},
                     format="json",
                 )
-                api_works = response.status_code in [status.HTTP_201_CREATED, status.HTTP_200_OK]
             except Exception:
                 # API endpoint may have issues, but service works
-                api_works = False
+                pass
 
             # If service works, API compatibility is verified (API issues are routing/validation, not functionality)
             if not service_works:
@@ -1355,7 +1352,7 @@ class BackwardCompatibilityValidationTests(FinalValidationTestBase):
                 item_id="10.4.3.2",
                 item_name="Existing APIs unchanged (additive only)",
                 status="FAIL",
-                message=f"API compatibility test failed: {str(e)}",
+                message=f"API compatibility test failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -1366,6 +1363,7 @@ class BackwardCompatibilityValidationTests(FinalValidationTestBase):
         try:
             result = subprocess.run(
                 ["python", "manage.py", "showmigrations", "contracts"],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -1387,7 +1385,7 @@ class BackwardCompatibilityValidationTests(FinalValidationTestBase):
                 item_id="10.4.3.3",
                 item_name="Database migrations reversible",
                 status="WARN",
-                message=f"Migration check skipped: {str(e)}",
+                message=f"Migration check skipped: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -1423,7 +1421,7 @@ class BackwardCompatibilityValidationTests(FinalValidationTestBase):
                 item_id="10.4.3.4",
                 item_name="No breaking changes",
                 status="FAIL",
-                message=f"Breaking changes check failed: {str(e)}",
+                message=f"Breaking changes check failed: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -1462,7 +1460,7 @@ class BackwardCompatibilityValidationTests(FinalValidationTestBase):
                 item_id="10.4.3.5",
                 item_name="No deprecated code paths executed",
                 status="WARN",
-                message=f"Deprecated path check skipped: {str(e)}",
+                message=f"Deprecated path check skipped: {e!s}",
                 duration_ms=duration_ms,
             )
 
@@ -1487,7 +1485,7 @@ def run_all_validations() -> ValidationReport:
                             item_id=method_name,
                             item_name=method_name,
                             status="FAIL",
-                            message=f"Test execution failed: {str(e)}",
+                            message=f"Test execution failed: {e!s}",
                         )
                     )
     finally:
@@ -1509,7 +1507,7 @@ def run_all_validations() -> ValidationReport:
                             item_id=method_name,
                             item_name=method_name,
                             status="FAIL",
-                            message=f"Test execution failed: {str(e)}",
+                            message=f"Test execution failed: {e!s}",
                         )
                     )
     finally:
@@ -1531,7 +1529,7 @@ def run_all_validations() -> ValidationReport:
                             item_id=method_name,
                             item_name=method_name,
                             status="FAIL",
-                            message=f"Test execution failed: {str(e)}",
+                            message=f"Test execution failed: {e!s}",
                         )
                     )
     finally:
@@ -1565,7 +1563,7 @@ def update_checklist_in_tasks_md(report: ValidationReport) -> None:
         return
 
     # Read tasks.md
-    with open(tasks_file, "r", encoding="utf-8") as f:
+    with open(tasks_file, encoding="utf-8") as f:
         content = f.read()
 
     # Map validation results to checklist items

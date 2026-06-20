@@ -7,6 +7,7 @@ Implements task 9.6.1.3.1 from the ODPS integration tasks.
 
 import json
 from pathlib import Path
+
 from django.test import TestCase
 
 try:
@@ -27,13 +28,16 @@ class ServiceClientAuditTest(TestCase):
         possible_paths = [
             Path("docs/api-audit/service-client-audit.json"),
             Path("/app/docs/api-audit/service-client-audit.json"),
-            Path(__file__).parent.parent.parent.parent / "docs" / "api-audit" / "service-client-audit.json"
+            Path(__file__).parent.parent.parent.parent
+            / "docs"
+            / "api-audit"
+            / "service-client-audit.json",
         ]
 
         cls.audit_data = None
         for path in possible_paths:
             if path.exists():
-                with open(path, 'r') as f:
+                with open(path) as f:
                     cls.audit_data = json.load(f)
                 break
 
@@ -70,9 +74,15 @@ class ServiceClientAuditTest(TestCase):
         self.assertIn("total_service_to_service_calls", summary)
         self.assertIn("services", summary)
 
-        self.assertGreater(summary["total_service_clients"], 0, "Should find at least one service client")
+        self.assertGreater(
+            summary["total_service_clients"], 0, "Should find at least one service client"
+        )
         self.assertGreater(summary["total_methods"], 0, "Should find at least one method")
-        self.assertGreater(summary["total_service_to_service_calls"], 0, "Should find at least one service-to-service call")
+        self.assertGreater(
+            summary["total_service_to_service_calls"],
+            0,
+            "Should find at least one service-to-service call",
+        )
 
     def test_all_service_clients_found(self):
         """Test that all expected service clients are found"""
@@ -91,7 +101,7 @@ class ServiceClientAuditTest(TestCase):
         self.assertGreater(
             len(found_services & expected_set),
             0,
-            f"Should find at least some expected services. Found: {found_services}, Expected: {expected_set}"
+            f"Should find at least some expected services. Found: {found_services}, Expected: {expected_set}",
         )
 
     def test_service_client_structure(self):
@@ -106,7 +116,11 @@ class ServiceClientAuditTest(TestCase):
             self.assertIn("methods", client)
 
             self.assertIsInstance(client["methods"], list)
-            self.assertGreater(len(client["methods"]), 0, f"Service client {client['class_name']} should have at least one method")
+            self.assertGreater(
+                len(client["methods"]),
+                0,
+                f"Service client {client['class_name']} should have at least one method",
+            )
 
     def test_service_client_methods(self):
         """Test that service client methods have required fields"""
@@ -133,8 +147,11 @@ class ServiceClientAuditTest(TestCase):
                     self.assertIn("line_number", http_call)
 
                     # HTTP method should be valid
-                    self.assertIn(http_call["http_method"], ["GET", "POST", "PUT", "DELETE", "PATCH", "UNKNOWN"],
-                                 f"Invalid HTTP method: {http_call['http_method']}")
+                    self.assertIn(
+                        http_call["http_method"],
+                        ["GET", "POST", "PUT", "DELETE", "PATCH", "UNKNOWN"],
+                        f"Invalid HTTP method: {http_call['http_method']}",
+                    )
 
                     # Endpoint should be present
                     self.assertIsNotNone(http_call["endpoint"])
@@ -172,8 +189,10 @@ class ServiceClientAuditTest(TestCase):
             # If it's not "unknown", it should look like a URL
             if base_url != "unknown":
                 self.assertTrue(
-                    base_url.startswith("http://") or base_url.startswith("https://") or base_url.startswith("<"),
-                    f"Base URL should start with http://, https://, or <: {base_url}"
+                    base_url.startswith("http://")
+                    or base_url.startswith("https://")
+                    or base_url.startswith("<"),
+                    f"Base URL should start with http://, https://, or <: {base_url}",
                 )
 
     def test_service_client_http_client_types(self):
@@ -197,11 +216,13 @@ class ServiceClientAuditTest(TestCase):
         for client in self.audit_data["service_clients"]:
             file_path = client["file_path"]
             # File path should end with .py
-            self.assertTrue(file_path.endswith(".py"), f"File path should end with .py: {file_path}")
+            self.assertTrue(
+                file_path.endswith(".py"), f"File path should end with .py: {file_path}"
+            )
             # File path should contain service_client or cli_client
             self.assertTrue(
                 "service_client" in file_path or "cli_client" in file_path,
-                f"File path should contain service_client or cli_client: {file_path}"
+                f"File path should contain service_client or cli_client: {file_path}",
             )
 
     def test_service_client_class_names(self):
@@ -212,5 +233,7 @@ class ServiceClientAuditTest(TestCase):
             # Class name should contain "Client"
             self.assertIn("Client", class_name, f"Class name should contain 'Client': {class_name}")
             # Class name should not start with "Test"
-            self.assertFalse(class_name.startswith("Test"), f"Class name should not start with 'Test': {class_name}")
-
+            self.assertFalse(
+                class_name.startswith("Test"),
+                f"Class name should not start with 'Test': {class_name}",
+            )

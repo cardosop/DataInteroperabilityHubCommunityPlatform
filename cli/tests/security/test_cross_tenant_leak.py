@@ -13,7 +13,6 @@ import json
 import uuid
 
 import requests
-
 from tests._persona_provisioning import provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import api_get, api_post
@@ -21,10 +20,14 @@ from tests.use_cases._api_helpers import api_get, api_post
 
 def _create_asset_in_tenant(creds, name):
     """Create an asset and return its id."""
-    resp = api_post("/assets/", creds, json={
-        "name": name,
-        "key": fresh_id("xtn-asset"),
-    })
+    resp = api_post(
+        "/assets/",
+        creds,
+        json={
+            "name": name,
+            "key": fresh_id("xtn-asset"),
+        },
+    )
     if resp.status_code in (201, 200):
         return resp.json().get("id")
     return None
@@ -40,21 +43,24 @@ def _create_contract_in_tenant(creds, name):
     regressions are visible in test output.
     """
     import logging
+
     _log = logging.getLogger(__name__)
 
-    contract_spec = json.dumps({
-        "apiVersion": "odcs.io/v3.0.2",
-        "kind": "DataContract",
-        "id": f"xtn-odcs-{uuid.uuid4().hex[:8]}",
-        "name": name,
-        "version": "1.0.0",
-        "schema": {
-            "fields": [
-                {"name": "id", "type": "string", "nullable": False},
-                {"name": "name", "type": "string", "nullable": False},
-            ]
+    contract_spec = json.dumps(
+        {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": f"xtn-odcs-{uuid.uuid4().hex[:8]}",
+            "name": name,
+            "version": "1.0.0",
+            "schema": {
+                "fields": [
+                    {"name": "id", "type": "string", "nullable": False},
+                    {"name": "name", "type": "string", "nullable": False},
+                ]
+            },
         }
-    })
+    )
 
     payload = {
         "original_raw": contract_spec,
@@ -66,16 +72,17 @@ def _create_contract_in_tenant(creds, name):
     # 90 s if the datacontract-service is warming up or under contention.
     for attempt, timeout in enumerate((45, 90), start=1):
         import time as _time
+
         t0 = _time.monotonic()
         try:
             resp = api_post("/contracts/", creds, json=payload, timeout=timeout)
-        except (requests.exceptions.ConnectionError,
-                requests.exceptions.Timeout) as exc:
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
             if attempt < 2:
                 _log.warning(
-                    "Contract creation attempt %d failed after %ds: %s. "
-                    "Retrying...",
-                    attempt, timeout, exc,
+                    "Contract creation attempt %d failed after %ds: %s. Retrying...",
+                    attempt,
+                    timeout,
+                    exc,
                 )
                 continue
             raise
@@ -158,8 +165,7 @@ def test_contract_from_tenant_a_invisible_to_tenant_b():
     # Positive control: tenant A must be able to retrieve its own contract
     verify_a = api_get(f"/contracts/{contract_id}/", creds_a)
     assert verify_a.status_code in (200, 201), (
-        f"Tenant A cannot see its own contract {contract_id}: "
-        f"{verify_a.status_code}"
+        f"Tenant A cannot see its own contract {contract_id}: {verify_a.status_code}"
     )
 
     resp_b = api_get(f"/contracts/{contract_id}/", creds_b)

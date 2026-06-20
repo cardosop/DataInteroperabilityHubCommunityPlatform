@@ -14,6 +14,7 @@ Two append-mostly tables:
   helper matches the convention every other secret in the codebase
   follows + avoids introducing a parallel encryption substrate).
 """
+
 from __future__ import annotations
 
 import secrets
@@ -53,7 +54,7 @@ def verify_ingest_key(plaintext: str, key_hash: str) -> bool:
 
     try:
         return bcrypt.checkpw(plaintext.encode("utf-8"), key_hash.encode("utf-8"))
-    except Exception:  # noqa: BLE001 — malformed hash → treat as no-match
+    except Exception:
         return False
 
 
@@ -299,6 +300,7 @@ class OpenLineageDeadLetter(models.Model):
         """Decrypt the payload on demand. Callers MUST treat the
         result as confidential — never log."""
         import json
+
         from hub.apps.webhooks.encryption import decrypt_secret
 
         plain = decrypt_secret(self.event_payload_encrypted)
@@ -307,6 +309,7 @@ class OpenLineageDeadLetter(models.Model):
     @event_payload.setter
     def event_payload(self, value: dict) -> None:
         import json
+
         from hub.apps.webhooks.encryption import encrypt_secret
 
         self.event_payload_encrypted = encrypt_secret(json.dumps(value, sort_keys=True))
@@ -328,6 +331,7 @@ class OpenLineageInboundEvent(models.Model):
     can return a byte-identical response without re-running the
     translator. Access logs / audit-events carry the full event body.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",

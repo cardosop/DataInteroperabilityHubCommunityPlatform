@@ -15,10 +15,10 @@ from ..api_client import api_client
 @click.group()
 def tenants():
     """Tenant management — usage, config, plans, feature flags."""
-    pass
 
 
 # ── List ──────────────────────────────────────────────────────────────────
+
 
 @tenants.command("list")
 @click.option("--format", "output_format", type=click.Choice(["json", "table"]), default="table")
@@ -36,13 +36,14 @@ def list_tenants(output_format, page, page_size):
                 click.echo("(no tenants)")
                 return
             for t in results:
-                click.echo(f"{t.get('id','?')}  {t.get('slug', t.get('display_name','?'))}")
+                click.echo(f"{t.get('id', '?')}  {t.get('slug', t.get('display_name', '?'))}")
     except Exception as exc:
         click.echo(f"Error: {exc}", err=True)
         raise SystemExit(1)
 
 
 # ── Usage ────────────────────────────────────────────────────────────────
+
 
 @tenants.command("usage")
 @click.option("--format", "output_format", type=click.Choice(["json", "table"]), default="table")
@@ -64,6 +65,7 @@ def get_usage(output_format):
 
 # ── Profile / Config ─────────────────────────────────────────────────────
 
+
 @tenants.command("me")
 @click.option("--format", "output_format", type=click.Choice(["json", "table"]), default="table")
 def tenants_me(output_format):
@@ -81,7 +83,6 @@ def tenants_me(output_format):
 @tenants.group("config")
 def tenants_config():
     """Tenant configuration."""
-    pass
 
 
 @tenants_config.command("get")
@@ -106,10 +107,10 @@ def tenants_config_update(key, value):
 
 # ── Feature Flags ────────────────────────────────────────────────────────
 
+
 @tenants.group("feature-flags")
 def tenants_feature_flags():
     """Feature flag management."""
-    pass
 
 
 @tenants_feature_flags.command("list")
@@ -137,10 +138,10 @@ def tenants_feature_flags_history():
 
 # ── Tax ID ───────────────────────────────────────────────────────────────
 
+
 @tenants.group("tax-id")
 def tenants_tax_id():
     """Tax ID management."""
-    pass
 
 
 @tenants_tax_id.command("get")
@@ -161,6 +162,7 @@ def tenants_tax_id_submit(tax_id, country):
 
 # ── Seed Sample Data ─────────────────────────────────────────────────────
 
+
 @tenants.command("seed-sample")
 def tenants_seed_sample():
     """Seed sample demo data into the current tenant."""
@@ -170,10 +172,10 @@ def tenants_seed_sample():
 
 # ── Plan Management ──────────────────────────────────────────────────────
 
+
 @tenants.group("plan")
 def tenants_plan():
     """Plan and subscription management."""
-    pass
 
 
 @tenants_plan.command("info")
@@ -221,6 +223,7 @@ def tenants_plan_ml_addons():
 
 # ── Onboarding ───────────────────────────────────────────────────────────
 
+
 @tenants.command("onboarding")
 @click.option("--tenant-name", required=True)
 @click.option("--email", required=True)
@@ -237,10 +240,10 @@ def tenants_onboarding(tenant_name, email, password, display_name):
 
 # ── Admin Operations (PLATFORM_ADMIN gated) ──────────────────────────────
 
+
 @tenants.group("admin")
 def tenants_admin():
     """Admin operations (requires PLATFORM_ADMIN role)."""
-    pass
 
 
 @tenants_admin.command("list")
@@ -257,9 +260,15 @@ def tenants_admin_list():
 @click.option("--password", required=True, hide_input=True)
 def tenants_admin_create(name, slug, email, password):
     """Create a new tenant (platform admin)."""
-    resp = api_client.post("admin/tenants/", json={
-        "name": name, "slug": slug, "email": email, "password": password,
-    })
+    resp = api_client.post(
+        "admin/tenants/",
+        json={
+            "name": name,
+            "slug": slug,
+            "email": email,
+            "password": password,
+        },
+    )
     click.echo(json.dumps(resp, indent=2))
 
 

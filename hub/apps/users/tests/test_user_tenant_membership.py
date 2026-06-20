@@ -87,9 +87,7 @@ class UserTenantMembershipServiceAddMembershipTest(TestCase):
         from hub.apps.users.models import UserTenantMembership
 
         self.assertTrue(
-            UserTenantMembership.objects.filter(
-                user=self.user, tenant=other_tenant
-            ).exists()
+            UserTenantMembership.objects.filter(user=self.user, tenant=other_tenant).exists()
         )
 
     def test_add_membership_idempotent(self):
@@ -105,9 +103,7 @@ class UserTenantMembershipServiceAddMembershipTest(TestCase):
         service.add_membership(self.user, other_tenant)
         service.add_membership(self.user, other_tenant)
 
-        count = UserTenantMembership.objects.filter(
-            user=self.user, tenant=other_tenant
-        ).count()
+        count = UserTenantMembership.objects.filter(user=self.user, tenant=other_tenant).count()
         self.assertEqual(count, 1)
 
     def test_add_membership_for_primary_tenant_creates_membership(self):
@@ -119,9 +115,7 @@ class UserTenantMembershipServiceAddMembershipTest(TestCase):
         service.add_membership(self.user, self.tenant)
 
         self.assertTrue(
-            UserTenantMembership.objects.filter(
-                user=self.user, tenant=self.tenant
-            ).exists(),
+            UserTenantMembership.objects.filter(user=self.user, tenant=self.tenant).exists(),
             "add_membership for primary tenant should create membership",
         )
 

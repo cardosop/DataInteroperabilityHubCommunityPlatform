@@ -5,7 +5,9 @@ Enforces tenant suspension read-only behavior and tenant isolation.
 Also checks subscription status (Phase 25.2.4).
 """
 
-from django.http import HttpResponseForbidden, JsonResponse
+import contextlib
+
+from django.http import JsonResponse
 
 from .models import Tenant, TenantStatus
 
@@ -127,10 +129,8 @@ class TenantSuspensionMiddleware:
                         tenant_id_set = True
                         # Also set request.tenant if not already set
                         if not hasattr(request, "tenant") or not request.tenant:
-                            try:
+                            with contextlib.suppress(Tenant.DoesNotExist):
                                 request.tenant = Tenant.all_objects.get(id=tenant_id)
-                            except Tenant.DoesNotExist:
-                                pass
                 except User.DoesNotExist:
                     # User doesn't exist in database - can't get tenant_id, try fallback
                     pass
@@ -151,10 +151,8 @@ class TenantSuspensionMiddleware:
                         tenant_id_set = True
                         # Try to get tenant object
                         if not hasattr(request, "tenant") or not request.tenant:
-                            try:
+                            with contextlib.suppress(Tenant.DoesNotExist):
                                 request.tenant = Tenant.all_objects.get(id=tenant_id)
-                            except Tenant.DoesNotExist:
-                                pass
                     elif hasattr(user, "tenant") and user.tenant:
                         tenant_id = user.tenant.id
                         request.tenant_id = tenant_id
@@ -210,13 +208,15 @@ class TenantSuspensionMiddleware:
 
                 from hub.apps.billing.models import Subscription, SubscriptionStatus
 
-                _BLOCKED_STATUSES = frozenset({
-                    SubscriptionStatus.PAST_DUE,
-                    SubscriptionStatus.UNPAID,
-                    SubscriptionStatus.CANCELED,
-                    SubscriptionStatus.INCOMPLETE,
-                    SubscriptionStatus.INCOMPLETE_EXPIRED,
-                })
+                _BLOCKED_STATUSES = frozenset(
+                    {
+                        SubscriptionStatus.PAST_DUE,
+                        SubscriptionStatus.UNPAID,
+                        SubscriptionStatus.CANCELED,
+                        SubscriptionStatus.INCOMPLETE,
+                        SubscriptionStatus.INCOMPLETE_EXPIRED,
+                    }
+                )
                 _cache_key = f"tenant_sub_check:{tenant_id}"
 
                 # Try the cache first (fail gracefully if cache is down).
@@ -255,10 +255,8 @@ class TenantSuspensionMiddleware:
                         )
 
                     # Cache the status string for 30 seconds.
-                    try:
+                    with contextlib.suppress(Exception):
                         _cache.set(_cache_key, subscription.status, 30)
-                    except Exception:
-                        pass
 
                     if subscription.status in _BLOCKED_STATUSES:
                         return JsonResponse(

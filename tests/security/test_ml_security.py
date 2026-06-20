@@ -7,8 +7,9 @@ Security tests for ML endpoints (Task 8.6.2).
 Uses real API client and backend; no mocks or stubs.
 """
 
-import pytest
 import uuid
+
+import pytest
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -42,6 +43,7 @@ class MLSecurityTestBase(TestCase):
 
     def _create_user(self, email, tenant):
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         return User.objects.create_user(
             email=email,
@@ -104,7 +106,11 @@ class MLTenantIsolationSecurityTest(MLSecurityTestBase):
         response = self.client.get("/api/v1/ml/models/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.data
-        results = data.get("results") if isinstance(data, dict) else (data if isinstance(data, list) else [])
+        results = (
+            data.get("results")
+            if isinstance(data, dict)
+            else (data if isinstance(data, list) else [])
+        )
         ids = [str(r.get("id")) for r in results if isinstance(r, dict) and r.get("id")]
         model_a_ids = list(
             MLModel.objects.filter(tenant=self.tenant_a).values_list("id", flat=True)

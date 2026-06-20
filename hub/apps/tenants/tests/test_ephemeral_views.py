@@ -41,12 +41,12 @@ class BuildUniqueSlugTest(TestCase):
         # distinguishable from other test fixtures.
         slug = _build_unique_slug("My Tenant")
         self.assertTrue(slug.startswith(EPHEMERAL_TENANT_PREFIX))
-        self.assertTrue(slug.startswith('e2e-'))
+        self.assertTrue(slug.startswith("e2e-"))
 
     def test_two_calls_produce_distinct_slugs(self):
         a = _build_unique_slug("same name")
         b = _build_unique_slug("same name")
-        self.assertNotEqual(a, b, 'slug uniqueness comes from the random suffix')
+        self.assertNotEqual(a, b, "slug uniqueness comes from the random suffix")
 
     def test_handles_empty_suggested_name(self):
         slug = _build_unique_slug("")
@@ -67,14 +67,14 @@ class BuildUniqueSlugTest(TestCase):
 class BuildAdminEmailTest(TestCase):
     def test_includes_slug(self):
         email = _build_admin_email("e2e-ephemeral-foo-abcd1234")
-        self.assertIn('e2e-ephemeral-foo-abcd1234', email)
+        self.assertIn("e2e-ephemeral-foo-abcd1234", email)
 
     def test_uses_test_only_domain(self):
         # The .test TLD is reserved (RFC 2606) — emails to it never leave
         # the network. Important for an endpoint that returns plaintext
         # passwords; we don't want them resolving to a real mailbox.
         email = _build_admin_email("e2e-ephemeral-x")
-        self.assertTrue(email.endswith('@e2e.meshant.test'))
+        self.assertTrue(email.endswith("@e2e.meshant.test"))
 
 
 # Pure-helper tests for `is_e2e_environment` / `verify_e2e_token` live
@@ -111,8 +111,8 @@ class EphemeralTenantViewTest(TestCase):
         self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.content)
 
         body = res.json()
-        self.assertTrue('id' in body and 'slug' in body and ('admin_user' in body))
-        self.assertTrue(body['slug'].startswith(EPHEMERAL_TENANT_PREFIX))
+        self.assertTrue("id" in body and "slug" in body and ("admin_user" in body))
+        self.assertTrue(body["slug"].startswith(EPHEMERAL_TENANT_PREFIX))
 
         # Tenant + admin + role row are all materialised.
         tenant = Tenant.all_objects.get(id=body["id"])
@@ -125,13 +125,13 @@ class EphemeralTenantViewTest(TestCase):
 
         # The plaintext password actually authenticates the admin.
         admin.refresh_from_db()
-        self.assertTrue(admin.check_password(body['admin_user']['password']))
+        self.assertTrue(admin.check_password(body["admin_user"]["password"]))
 
     def test_two_calls_produce_distinct_tenants(self):
         a = self._post({"name": "spec-A"}).json()
         b = self._post({"name": "spec-A"}).json()
-        self.assertNotEqual(a['id'], b['id'])
-        self.assertNotEqual(a['slug'], b['slug'])
+        self.assertNotEqual(a["id"], b["id"])
+        self.assertNotEqual(a["slug"], b["slug"])
 
     def test_missing_token_returns_404(self):
         res = self._post(token=None)
@@ -154,9 +154,9 @@ class EphemeralTenantViewTest(TestCase):
         res = self._post({"name": "secrecy"}).json()
         password = res["admin_user"]["password"]
         # No top-level field, no nested duplication.
-        self.assertNotEqual(res.get('id'), password)
-        self.assertNotEqual(res.get('slug'), password)
-        self.assertNotEqual(res.get('name'), password)
+        self.assertNotEqual(res.get("id"), password)
+        self.assertNotEqual(res.get("slug"), password)
+        self.assertNotEqual(res.get("name"), password)
 
 
 @override_settings(ENVIRONMENT="production", DEBUG=False, E2E_TEST_SECRET="test-secret-aaa")
@@ -192,4 +192,4 @@ class EphemeralTenantCleanupContractTest(TestCase):
         body = res.json()
         # The cron's default prefix is `e2e-`; failure here means a
         # provisioning leak would NOT be auto-collected.
-        self.assertTrue(body['slug'].startswith('e2e-'))
+        self.assertTrue(body["slug"].startswith("e2e-"))

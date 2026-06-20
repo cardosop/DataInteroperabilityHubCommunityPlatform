@@ -18,12 +18,9 @@ import json
 import uuid
 
 import pytest
-from django.test import TestCase
 
 from hub.apps.contracts.models import (
     Contract,
-    ContractStatus,
-    OriginalFormat,
     OriginalSpecType,
 )
 from hub.apps.contracts.odps_linking_compensation import ODPSLinkingCompensation, ODPSLinkingState
@@ -395,6 +392,7 @@ class ODPSLinkingCompensationTransactionTest(ODPSLinkingCompensationIntegrationT
         except Exception as e:
             # If creation fails due to database limits, skip the test
             from django.db.utils import OperationalError
+
             if isinstance(e, OperationalError):
                 self.skipTest(f"Document too large for database index: {e}")
             raise

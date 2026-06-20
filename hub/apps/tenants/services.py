@@ -4,21 +4,20 @@ Tenant Service
 Business logic for tenant operations.
 """
 
+import contextlib
 import uuid
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q, Sum
+from django.db.models import Sum
 from django.utils import timezone
 
 from hub.apps.core.events.service_publishers import TenantEventPublisher
 from hub.apps.core.services.base import BaseService, NotFoundError, PermissionError, ValidationError
 from hub.apps.tenants.models import (
     KYCStatus,
-    PlanCategory,
-    PlanTier,
     Tenant,
     TenantConfig,
     TenantPlan,
@@ -28,7 +27,7 @@ from hub.apps.tenants.models import (
 from hub.apps.tenants.validators import get_platform_defaults
 
 
-def get_tenant_config(tenant: Tenant) -> Dict[str, Any]:
+def get_tenant_config(tenant: Tenant) -> dict[str, Any]:
     """
     Get tenant configuration with platform defaults.
 
@@ -152,7 +151,10 @@ def get_tenant_config_value(tenant: Tenant, key: str, default: Any = None) -> An
             "max_file_size_bytes": ("max_file_size_bytes", lambda v: v if v is not None else None),
             "max_job_concurrency": ("max_job_concurrency", lambda v: v if v is not None else None),
             "max_queued_jobs": ("max_queued_jobs", lambda v: v if v is not None else None),
-            "trust_signals_enabled": ("trust_signals_enabled", lambda v: v if v is not None else None),
+            "trust_signals_enabled": (
+                "trust_signals_enabled",
+                lambda v: v if v is not None else None,
+            ),
             "versioning_enabled": ("versioning_enabled", lambda v: v if v is not None else None),
             "workflows_enabled": ("workflows_enabled", lambda v: v if v is not None else None),
             "compliance_risk_threshold": ("compliance_risk_threshold", lambda v: v),
@@ -238,7 +240,7 @@ def get_tenant_file_size_limit(tenant_id: str) -> int:
         return platform_defaults.get("max_file_size_bytes", 10737418240)
 
 
-def get_tenant_job_limits(tenant_id: str) -> Dict[str, int]:
+def get_tenant_job_limits(tenant_id: str) -> dict[str, int]:
     """
     Get tenant job concurrency and queuing limits with platform default fallback.
 
@@ -274,7 +276,7 @@ class TenantService(BaseService, TenantEventPublisher):
 
     service_name = "tenant_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize TenantService.
 
@@ -337,7 +339,7 @@ class TenantService(BaseService, TenantEventPublisher):
         )
 
     @transaction.atomic
-    def create_tenant(self, name: str, slug: str, region: Optional[str] = None, **kwargs) -> Tenant:
+    def create_tenant(self, name: str, slug: str, region: str | None = None, **kwargs) -> Tenant:
         """
         Create a new tenant.
 
@@ -382,17 +384,19 @@ class TenantService(BaseService, TenantEventPublisher):
             return tenant
 
         return self.execute_with_metrics(
-            operation="create_tenant", tenant_id=None, func=_create  # No tenant_id yet for creation
+            operation="create_tenant",
+            tenant_id=None,
+            func=_create,  # No tenant_id yet for creation
         )
 
     @transaction.atomic
     def update_tenant(
         self,
         tenant_id: str,
-        name: Optional[str] = None,
-        slug: Optional[str] = None,
-        kyc_status: Optional[str] = None,
-        region: Optional[str] = None,
+        name: str | None = None,
+        slug: str | None = None,
+        kyc_status: str | None = None,
+        region: str | None = None,
         **kwargs,
     ) -> Tenant:
         """
@@ -454,7 +458,7 @@ class TenantService(BaseService, TenantEventPublisher):
         )
 
     @transaction.atomic
-    def delete_tenant(self, tenant_id: str, reason: Optional[str] = None, **kwargs) -> Tenant:
+    def delete_tenant(self, tenant_id: str, reason: str | None = None, **kwargs) -> Tenant:
         """
         Delete a tenant (soft delete).
 
@@ -498,18 +502,18 @@ class TenantService(BaseService, TenantEventPublisher):
     def update_tenant_config(
         self,
         tenant_id: str,
-        default_dq_profile: Optional[str] = None,
-        allowed_compliance_regimes: Optional[list] = None,
-        default_compliance_regimes: Optional[list] = None,
-        data_retention_days: Optional[int] = None,
-        rate_limits: Optional[Dict[str, Any]] = None,
-        max_file_size_bytes: Optional[int] = None,
-        max_job_concurrency: Optional[int] = None,
-        max_queued_jobs: Optional[int] = None,
-        trust_signals_enabled: Optional[bool] = None,
-        versioning_enabled: Optional[bool] = None,
-        workflows_enabled: Optional[bool] = None,
-        compliance_risk_threshold: Optional[str] = None,
+        default_dq_profile: str | None = None,
+        allowed_compliance_regimes: list | None = None,
+        default_compliance_regimes: list | None = None,
+        data_retention_days: int | None = None,
+        rate_limits: dict[str, Any] | None = None,
+        max_file_size_bytes: int | None = None,
+        max_job_concurrency: int | None = None,
+        max_queued_jobs: int | None = None,
+        trust_signals_enabled: bool | None = None,
+        versioning_enabled: bool | None = None,
+        workflows_enabled: bool | None = None,
+        compliance_risk_threshold: str | None = None,
         **kwargs,
     ) -> TenantConfig:
         """
@@ -541,7 +545,7 @@ class TenantService(BaseService, TenantEventPublisher):
             tenant = self.get_resource_or_raise(Tenant, tenant_id)
 
             # Get or create tenant config - use select_for_update to prevent race conditions
-            config, created = TenantConfig.objects.select_for_update().get_or_create(tenant=tenant)
+            config, _created = TenantConfig.objects.select_for_update().get_or_create(tenant=tenant)
 
             # Track quota changes
             quota_fields = {
@@ -609,9 +613,7 @@ class TenantService(BaseService, TenantEventPublisher):
                     )
 
             if compliance_risk_threshold is not None:
-                prev_thr = getattr(
-                    config, "compliance_risk_threshold", None
-                )
+                prev_thr = getattr(config, "compliance_risk_threshold", None)
                 if prev_thr != compliance_risk_threshold:
                     config.compliance_risk_threshold = compliance_risk_threshold
                     updated_fields.append("compliance_risk_threshold")
@@ -645,7 +647,7 @@ class PlanLimitService(BaseService):
 
     service_name = "plan_limit_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize PlanLimitService.
 
@@ -657,9 +659,12 @@ class PlanLimitService(BaseService):
         self.user_id = user_id
 
     def check_limit(
-        self, tenant_id: str, limit_key: str, delta: int = 1,
+        self,
+        tenant_id: str,
+        limit_key: str,
+        delta: int = 1,
         emit_warning: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Check if tenant has exceeded plan limit for a specific limit key.
 
@@ -699,11 +704,7 @@ class PlanLimitService(BaseService):
             # select_related("plan") because plan is a nullable FK
             # (LEFT OUTER JOIN) and PostgreSQL forbids FOR UPDATE on
             # the nullable side of an outer join.
-            tenant = (
-                Tenant.objects.select_for_update()
-                .filter(pk=tenant_id)
-                .first()
-            )
+            tenant = Tenant.objects.select_for_update().filter(pk=tenant_id).first()
             if not tenant:
                 raise NotFoundError(
                     f"Tenant {tenant_id} not found",
@@ -723,12 +724,12 @@ class PlanLimitService(BaseService):
                 plan = tenant.plan
                 if not plan:
                     plan = TenantPlan.objects.filter(
-                        slug="free", is_active=True,
+                        slug="free",
+                        is_active=True,
                     ).first()
                     if not plan:
                         raise NotFoundError(
-                            "No FREE plan found. "
-                            "Run: manage.py seed_default_plans",
+                            "No FREE plan found. Run: manage.py seed_default_plans",
                             code="PLAN_NOT_FOUND",
                         )
 
@@ -814,7 +815,9 @@ class PlanLimitService(BaseService):
 
             return result
 
-        return self.execute_with_transaction(operation="check_limit", tenant_id=tenant_id, func=_check)
+        return self.execute_with_transaction(
+            operation="check_limit", tenant_id=tenant_id, func=_check
+        )
 
 
 class TenantUsageService(BaseService):
@@ -829,7 +832,7 @@ class TenantUsageService(BaseService):
 
     service_name = "tenant_usage_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize TenantUsageService.
 
@@ -842,8 +845,8 @@ class TenantUsageService(BaseService):
     def calculate_usage_summary(
         self,
         tenant_id: str,
-        period_start: Optional[datetime] = None,
-        period_end: Optional[datetime] = None,
+        period_start: datetime | None = None,
+        period_end: datetime | None = None,
     ) -> TenantUsageSummary:
         """
         Calculate usage summary for a tenant for a given period.
@@ -883,7 +886,7 @@ class TenantUsageService(BaseService):
                     ) - timedelta(seconds=1)
 
             # Get or create usage summary
-            usage_summary, created = TenantUsageSummary.objects.get_or_create(
+            usage_summary, _created = TenantUsageSummary.objects.get_or_create(
                 tenant=tenant,
                 period_start=local_period_start,
                 period_end=local_period_end,
@@ -965,7 +968,9 @@ class TenantUsageService(BaseService):
             # opt-out configuration at calculation time so the summary
             # reflects the state that was in effect during the period.
             usage_summary.notification_opt_outs = getattr(
-                tenant, "notification_opt_outs", {},
+                tenant,
+                "notification_opt_outs",
+                {},
             )
             usage_summary.save()
 
@@ -975,7 +980,7 @@ class TenantUsageService(BaseService):
             operation="calculate_usage_summary", tenant_id=tenant_id, func=_calculate
         )
 
-    def get_current_usage(self, tenant_id: str) -> Dict[str, Any]:
+    def get_current_usage(self, tenant_id: str) -> dict[str, Any]:
         """
         Phase 277.B.106 — dynamic RESOURCE_COUNTERS usage.
 
@@ -1022,8 +1027,8 @@ class TenantUsageService(BaseService):
     def get_usage_summary(
         self,
         tenant_id: str,
-        period_start: Optional[datetime] = None,
-        period_end: Optional[datetime] = None,
+        period_start: datetime | None = None,
+        period_end: datetime | None = None,
     ) -> TenantUsageSummary:
         """
         Get or calculate usage summary for a period.
@@ -1053,7 +1058,7 @@ class TenantOnboardingService(BaseService, TenantEventPublisher):
 
     service_name = "tenant_onboarding_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize TenantOnboardingService.
 
@@ -1074,8 +1079,8 @@ class TenantOnboardingService(BaseService, TenantEventPublisher):
         first_user_email: str = None,
         first_user_password: str = None,
         first_user_display_name: str = None,
-        region: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        region: str | None = None,
+    ) -> dict[str, Any]:
         """
         Create a tenant with first user (self-service onboarding).
 
@@ -1155,8 +1160,11 @@ class TenantOnboardingService(BaseService, TenantEventPublisher):
                         email=first_user_email,
                         password=first_user_password,
                         tenant=tenant,
-                        display_name=first_user_display_name or (
-                            first_user_email.split("@")[0] if "@" in first_user_email else first_user_email
+                        display_name=first_user_display_name
+                        or (
+                            first_user_email.split("@")[0]
+                            if "@" in first_user_email
+                            else first_user_email
                         ),
                         status=UserStatus.ACTIVE,
                     )
@@ -1198,9 +1206,7 @@ class TenantOnboardingService(BaseService, TenantEventPublisher):
             if plan.tier != "FREE":
                 try:
                     subscription_service = SubscriptionService()
-                    customer_result = subscription_service.create_customer(
-                        tenant=tenant, email=first_user_email
-                    )
+                    subscription_service.create_customer(tenant=tenant, email=first_user_email)
                     subscription = subscription_service.create_subscription(
                         tenant=tenant, plan=plan, trial_days=14 if plan.tier == "PRO" else 0
                     )
@@ -1286,7 +1292,7 @@ class PersonalTenantService(BaseService, TenantEventPublisher):
 
     service_name = "personal_tenant_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """Initialize PersonalTenantService."""
         self.tenant_id = tenant_id
         self.user_id = user_id
@@ -1294,7 +1300,7 @@ class PersonalTenantService(BaseService, TenantEventPublisher):
 
     @transaction.atomic
     def create_personal_tenant_for_user(
-        self, email: str, display_name: Optional[str] = None
+        self, email: str, display_name: str | None = None
     ) -> Tenant:
         """
         Create a personal tenant for a user (self-service registration).
@@ -1418,7 +1424,7 @@ class TenantLifecycleService(BaseService, TenantEventPublisher):
 
     service_name = "tenant_lifecycle_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize TenantLifecycleService.
 
@@ -1431,7 +1437,7 @@ class TenantLifecycleService(BaseService, TenantEventPublisher):
         TenantEventPublisher.__init__(self, tenant_id=tenant_id, user_id=user_id)
 
     @transaction.atomic
-    def suspend_tenant(self, tenant_id: str, reason: Optional[str] = None) -> Tenant:
+    def suspend_tenant(self, tenant_id: str, reason: str | None = None) -> Tenant:
         """
         Suspend a tenant (read-only mode).
 
@@ -1466,10 +1472,8 @@ class TenantLifecycleService(BaseService, TenantEventPublisher):
 
             actor_user = None
             if self.user_id:
-                try:
+                with contextlib.suppress(User.DoesNotExist):
                     actor_user = User.objects.get(id=self.user_id)
-                except User.DoesNotExist:
-                    pass
 
             create_audit_event(
                 resource_type="TENANT",
@@ -1525,10 +1529,8 @@ class TenantLifecycleService(BaseService, TenantEventPublisher):
 
             actor_user = None
             if self.user_id:
-                try:
+                with contextlib.suppress(User.DoesNotExist):
                     actor_user = User.objects.get(id=self.user_id)
-                except User.DoesNotExist:
-                    pass
 
             create_audit_event(
                 resource_type="TENANT",

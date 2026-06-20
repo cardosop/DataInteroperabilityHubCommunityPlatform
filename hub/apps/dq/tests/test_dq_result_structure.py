@@ -6,14 +6,10 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase
 from rest_framework import status
-from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset
 from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
 from hub.apps.dq.tests.test_base import DQAPITestBase
-from hub.apps.files.models import File, FileStatus
 from hub.apps.jobs.models import Job, JobType
 
 pytestmark = pytest.mark.django_db(transaction=True)

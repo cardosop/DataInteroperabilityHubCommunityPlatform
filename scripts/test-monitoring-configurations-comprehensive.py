@@ -12,13 +12,13 @@ Tests verify:
 All tests use real implementations (no mocks/stubs).
 """
 
-import os
-import sys
 import json
+import os
 import subprocess
-import requests
+import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+
+import requests
 
 
 class MonitoringConfigurationsTest:
@@ -69,7 +69,7 @@ class MonitoringConfigurationsTest:
         print("Test 1: Prometheus Configuration")
         print("-" * 60)
 
-        prometheus_config = self.project_root / 'monitoring' / 'prometheus' / 'prometheus.yml'
+        prometheus_config = self.project_root / "monitoring" / "prometheus" / "prometheus.yml"
 
         if not prometheus_config.exists():
             print("⚠️  SKIPPED: Prometheus config not found")
@@ -77,15 +77,15 @@ class MonitoringConfigurationsTest:
             return
 
         try:
-            content = prometheus_config.read_text(encoding='utf-8')
+            content = prometheus_config.read_text(encoding="utf-8")
 
             # Check for scrape_configs
-            assert 'scrape_configs' in content, "Should have scrape_configs"
-            assert 'api-service' in content, "Should scrape api-service"
+            assert "scrape_configs" in content, "Should have scrape_configs"
+            assert "api-service" in content, "Should scrape api-service"
 
             # Check for old patterns
-            if '/compliance-runs/' in content or '/dq-runs/' in content:
-                if 'deprecated' not in content.lower():
+            if "/compliance-runs/" in content or "/dq-runs/" in content:
+                if "deprecated" not in content.lower():
                     raise AssertionError("Should not have old endpoint patterns")
 
             print("✅ PASSED: Prometheus configuration valid")
@@ -106,14 +106,14 @@ class MonitoringConfigurationsTest:
         print("Test 2: Grafana Dashboards")
         print("-" * 60)
 
-        dashboards_dir = self.project_root / 'monitoring' / 'grafana' / 'dashboards'
+        dashboards_dir = self.project_root / "monitoring" / "grafana" / "dashboards"
 
         if not dashboards_dir.exists():
             print("⚠️  SKIPPED: Dashboards directory not found")
             self.tests_skipped += 1
             return
 
-        dashboard_files = list(dashboards_dir.glob('*.json'))
+        dashboard_files = list(dashboards_dir.glob("*.json"))
 
         if len(dashboard_files) == 0:
             print("⚠️  SKIPPED: No dashboard files found")
@@ -121,10 +121,10 @@ class MonitoringConfigurationsTest:
             return
 
         key_dashboards = [
-            'api-performance.json',
-            'system-health.json',
-            'tenant-usage.json',
-            'job-processing.json',
+            "api-performance.json",
+            "system-health.json",
+            "tenant-usage.json",
+            "job-processing.json",
         ]
 
         try:
@@ -135,32 +135,35 @@ class MonitoringConfigurationsTest:
 
             # Check all dashboards are valid JSON
             for dashboard_file in dashboard_files:
-                content = dashboard_file.read_text(encoding='utf-8')
+                content = dashboard_file.read_text(encoding="utf-8")
                 dashboard = json.loads(content)
-                assert 'dashboard' in dashboard or 'panels' in dashboard, (
+                assert "dashboard" in dashboard or "panels" in dashboard, (
                     f"Dashboard {dashboard_file.name} should have dashboard or panels key"
                 )
 
             # Check tenant-usage dashboard uses standardized metrics
-            tenant_usage = dashboards_dir / 'tenant-usage.json'
+            tenant_usage = dashboards_dir / "tenant-usage.json"
             if tenant_usage.exists():
-                content = tenant_usage.read_text(encoding='utf-8')
+                content = tenant_usage.read_text(encoding="utf-8")
                 dashboard = json.loads(content)
                 content_str = json.dumps(dashboard)
 
                 # Should use standardized metric names (not endpoint paths)
-                if 'runs' in content_str.lower():
-                    assert 'dq_runs_total' in content_str or 'compliance_runs_total' in content_str, (
-                        "Should use standardized metric names"
-                    )
+                if "runs" in content_str.lower():
+                    assert (
+                        "dq_runs_total" in content_str or "compliance_runs_total" in content_str
+                    ), "Should use standardized metric names"
 
             # Check no hardcoded old endpoint patterns
             for dashboard_file in dashboard_files:
-                content = dashboard_file.read_text(encoding='utf-8')
-                if '/api/v1/compliance-runs/' in content or '/api/v1/dq-runs/' in content:
+                content = dashboard_file.read_text(encoding="utf-8")
+                if "/api/v1/compliance-runs/" in content or "/api/v1/dq-runs/" in content:
                     dashboard = json.loads(content)
                     content_str = json.dumps(dashboard)
-                    if '/api/v1/compliance-runs/' in content_str or '/api/v1/dq-runs/' in content_str:
+                    if (
+                        "/api/v1/compliance-runs/" in content_str
+                        or "/api/v1/dq-runs/" in content_str
+                    ):
                         raise AssertionError(
                             f"Dashboard {dashboard_file.name} should not hardcode old endpoint patterns"
                         )
@@ -187,7 +190,7 @@ class MonitoringConfigurationsTest:
         print("Test 3: Metrics Code")
         print("-" * 60)
 
-        metrics_file = self.project_root / 'hub' / 'apps' / 'observability' / 'otel_metrics.py'
+        metrics_file = self.project_root / "hub" / "apps" / "observability" / "otel_metrics.py"
 
         if not metrics_file.exists():
             print("⚠️  SKIPPED: Metrics file not found")
@@ -195,17 +198,19 @@ class MonitoringConfigurationsTest:
             return
 
         try:
-            content = metrics_file.read_text(encoding='utf-8')
+            content = metrics_file.read_text(encoding="utf-8")
 
             # Should not have hardcoded old patterns
-            if '/compliance-runs/' in content or '/dq-runs/' in content:
-                if 'deprecated' not in content.lower():
+            if "/compliance-runs/" in content or "/dq-runs/" in content:
+                if "deprecated" not in content.lower():
                     raise AssertionError("Should not hardcode old endpoint patterns")
 
             # Should use dynamic route/path
-            assert 'request.path' in content or 'resolver_match' in content or 'route' in content.lower(), (
-                "Should use dynamic route/path, not hardcoded endpoints"
-            )
+            assert (
+                "request.path" in content
+                or "resolver_match" in content
+                or "route" in content.lower()
+            ), "Should use dynamic route/path, not hardcoded endpoints"
 
             print("✅ PASSED: Metrics code uses dynamic patterns")
             self.tests_passed += 1
@@ -225,8 +230,15 @@ class MonitoringConfigurationsTest:
         print("Test 4: Jaeger Operation Names")
         print("-" * 60)
 
-        tracing_file = self.project_root / 'hub' / 'apps' / 'observability' / 'tracing.py'
-        span_middleware = self.project_root / 'hub' / 'apps' / 'observability' / 'middleware' / 'span_middleware.py'
+        tracing_file = self.project_root / "hub" / "apps" / "observability" / "tracing.py"
+        span_middleware = (
+            self.project_root
+            / "hub"
+            / "apps"
+            / "observability"
+            / "middleware"
+            / "span_middleware.py"
+        )
 
         if not tracing_file.exists() and not span_middleware.exists():
             print("⚠️  SKIPPED: Tracing configuration not found")
@@ -235,15 +247,17 @@ class MonitoringConfigurationsTest:
 
         try:
             if span_middleware.exists():
-                content = span_middleware.read_text(encoding='utf-8')
-                assert 'request.path' in content or 'route' in content.lower() or 'span_name' in content.lower(), (
-                    "Operation names should be set dynamically from request path"
-                )
+                content = span_middleware.read_text(encoding="utf-8")
+                assert (
+                    "request.path" in content
+                    or "route" in content.lower()
+                    or "span_name" in content.lower()
+                ), "Operation names should be set dynamically from request path"
 
             if tracing_file.exists():
-                content = tracing_file.read_text(encoding='utf-8')
-                if '/compliance-runs/' in content or '/dq-runs/' in content:
-                    if 'deprecated' not in content.lower():
+                content = tracing_file.read_text(encoding="utf-8")
+                if "/compliance-runs/" in content or "/dq-runs/" in content:
+                    if "deprecated" not in content.lower():
                         raise AssertionError("Should not hardcode old endpoint patterns")
 
             print("✅ PASSED: Jaeger operation names use dynamic patterns")
@@ -264,7 +278,7 @@ class MonitoringConfigurationsTest:
         print("Test 5: Log Aggregation Patterns")
         print("-" * 60)
 
-        settings_file = self.project_root / 'hub' / 'settings.py'
+        settings_file = self.project_root / "hub" / "settings.py"
 
         if not settings_file.exists():
             print("⚠️  SKIPPED: Settings file not found")
@@ -272,12 +286,12 @@ class MonitoringConfigurationsTest:
             return
 
         try:
-            content = settings_file.read_text(encoding='utf-8')
+            content = settings_file.read_text(encoding="utf-8")
 
             # If logging uses paths, should not hardcode old patterns
-            if 'request.path' in content.lower() or 'path' in content.lower():
-                if '/compliance-runs/' in content or '/dq-runs/' in content:
-                    if 'deprecated' not in content.lower():
+            if "request.path" in content.lower() or "path" in content.lower():
+                if "/compliance-runs/" in content or "/dq-runs/" in content:
+                    if "deprecated" not in content.lower():
                         raise AssertionError("Should not hardcode old endpoint patterns")
 
             print("✅ PASSED: Log aggregation patterns use dynamic paths")
@@ -298,7 +312,7 @@ class MonitoringConfigurationsTest:
         print("Test 6: Verification Script")
         print("-" * 60)
 
-        verify_script = self.project_root / 'scripts' / 'verify-monitoring-configurations.py'
+        verify_script = self.project_root / "scripts" / "verify-monitoring-configurations.py"
 
         if not verify_script.exists():
             print("⚠️  SKIPPED: Verification script not found")
@@ -308,19 +322,21 @@ class MonitoringConfigurationsTest:
         try:
             result = subprocess.run(
                 [sys.executable, str(verify_script)],
+                check=False,
                 capture_output=True,
                 text=True,
                 cwd=str(self.project_root),
-                timeout=60
+                timeout=60,
             )
 
             assert result.returncode == 0, (
                 f"Script should exit with code 0.\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
             )
 
-            assert "All monitoring configurations use standardized endpoint patterns" in result.stdout or "No issues found" in result.stdout, (
-                "Script should report success"
-            )
+            assert (
+                "All monitoring configurations use standardized endpoint patterns" in result.stdout
+                or "No issues found" in result.stdout
+            ), "Script should report success"
 
             print("✅ PASSED: Verification script runs successfully")
             self.tests_passed += 1
@@ -340,7 +356,7 @@ class MonitoringConfigurationsTest:
         print("Test 7: Service Integration (Optional)")
         print("-" * 60)
 
-        api_url = os.getenv('API_BASE_URL', 'http://localhost:8000')
+        api_url = os.getenv("API_BASE_URL", "http://localhost:8000")
 
         def check_service(url: str, timeout: int = 2) -> bool:
             try:
@@ -358,9 +374,10 @@ class MonitoringConfigurationsTest:
                 )
 
                 if response.status_code == 200:
-                    assert 'http_requests_total' in response.text or 'http_request' in response.text.lower(), (
-                        "Metrics should contain HTTP request metrics"
-                    )
+                    assert (
+                        "http_requests_total" in response.text
+                        or "http_request" in response.text.lower()
+                    ), "Metrics should contain HTTP request metrics"
 
                 print("✅ PASSED: API metrics endpoint accessible")
                 self.tests_passed += 1
@@ -406,6 +423,5 @@ def main():
     sys.exit(0 if success else 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

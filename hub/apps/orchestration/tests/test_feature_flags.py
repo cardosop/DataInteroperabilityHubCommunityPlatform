@@ -11,24 +11,23 @@ Comprehensive TDD tests for:
 All tests follow TDD principles, use real implementations (no mocks/stubs),
 and fix root causes rather than workarounds.
 """
+
 import uuid
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
-from hub.apps.orchestration.models import (
-    WorkflowDefinition,
-    WorkflowInstance,
-    WorkflowStatus,
-)
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.feature_flags import (
     WorkflowBusinessRulesFeatureFlags,
     get_feature_flags,
     is_business_rules_validation_enabled,
     reset_feature_flags,
 )
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
+from hub.apps.orchestration.models import (
+    WorkflowDefinition,
+)
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
 
 User = get_user_model()
@@ -42,17 +41,17 @@ class FeatureFlagsTestBase(TestCase):
         super().setUp()
         # Reset feature flags singleton before each test
         reset_feature_flags()
-        
+
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.engine = WorkflowEngine()
 
@@ -65,15 +64,13 @@ class FeatureFlagsTestBase(TestCase):
 
         # Create workflow definition
         self.workflow_def = WorkflowDefinition.objects.create(
-            name="test_workflow",
+            name=f"test_workflow_{uuid.uuid4().hex[:8]}",
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
-                "steps": [
-                    {"name": "step1", "type": "task", "task": "test_task"}
-                ]
+                "steps": [{"name": "step1", "type": "task", "task": "test_task"}],
             },
-            created_by=self.user
+            created_by=self.user,
         )
 
 
@@ -86,24 +83,20 @@ class TestFeatureFlagsConfiguration(FeatureFlagsTestBase):
         with override_settings(ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=True):
             flags = WorkflowBusinessRulesFeatureFlags()
             self.assertTrue(flags.enabled_globally)
-            self.assertTrue(
-                flags.is_enabled("test_workflow", tenant_id=str(self.tenant.id))
-            )
+            self.assertTrue(flags.is_enabled(self.workflow_def.name, tenant_id=str(self.tenant.id)))
 
         # Test disabled globally
         with override_settings(ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=False):
             flags = WorkflowBusinessRulesFeatureFlags()
             self.assertFalse(flags.enabled_globally)
-            self.assertFalse(
-                flags.is_enabled("test_workflow", tenant_id=str(self.tenant.id))
-            )
+            self.assertFalse(flags.is_enabled(self.workflow_def.name, tenant_id=str(self.tenant.id)))
 
     def test_gradual_rollout_percentage(self):
         """Test gradual rollout percentage configuration"""
         # Test 0% rollout (disabled)
         with override_settings(
             ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=True,
-            WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE=0
+            WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE=0,
         ):
             flags = WorkflowBusinessRulesFeatureFlags()
             self.assertEqual(flags.rollout_percentage, 0)
@@ -111,9 +104,9 @@ class TestFeatureFlagsConfiguration(FeatureFlagsTestBase):
             enabled_count = 0
             for i in range(100):
                 if flags.is_enabled(
-                    "test_workflow",
+                    self.workflow_def.name,
                     tenant_id=str(self.tenant.id),
-                    workflow_instance_id=f"instance-{i}"
+                    workflow_instance_id=f"instance-{i}",
                 ):
                     enabled_count += 1
             self.assertEqual(enabled_count, 0)
@@ -121,7 +114,7 @@ class TestFeatureFlagsConfiguration(FeatureFlagsTestBase):
         # Test 50% rollout
         with override_settings(
             ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=True,
-            WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE=50
+            WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE=50,
         ):
             flags = WorkflowBusinessRulesFeatureFlags()
             self.assertEqual(flags.rollout_percentage, 50)
@@ -129,9 +122,9 @@ class TestFeatureFlagsConfiguration(FeatureFlagsTestBase):
             enabled_count = 0
             for i in range(100):
                 if flags.is_enabled(
-                    "test_workflow",
+                    self.workflow_def.name,
                     tenant_id=str(self.tenant.id),
-                    workflow_instance_id=f"instance-{i}"
+                    workflow_instance_id=f"instance-{i}",
                 ):
                     enabled_count += 1
             # Allow statistical variance for 50% rollout (35-65% in CI)
@@ -141,7 +134,7 @@ class TestFeatureFlagsConfiguration(FeatureFlagsTestBase):
         # Test 100% rollout (fully enabled)
         with override_settings(
             ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=True,
-            WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE=100
+            WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE=100,
         ):
             flags = WorkflowBusinessRulesFeatureFlags()
             self.assertEqual(flags.rollout_percentage, 100)
@@ -149,9 +142,9 @@ class TestFeatureFlagsConfiguration(FeatureFlagsTestBase):
             for i in range(10):
                 self.assertTrue(
                     flags.is_enabled(
-                        "test_workflow",
+                        self.workflow_def.name,
                         tenant_id=str(self.tenant.id),
-                        workflow_instance_id=f"instance-{i}"
+                        workflow_instance_id=f"instance-{i}",
                     )
                 )
 
@@ -162,21 +155,15 @@ class TestFeatureFlagsConfiguration(FeatureFlagsTestBase):
             WORKFLOW_BUSINESS_RULES_VALIDATION_WORKFLOWS={
                 "workflow1": True,
                 "workflow2": False,
-            }
+            },
         ):
             flags = WorkflowBusinessRulesFeatureFlags()
             # Workflow1 should be enabled
-            self.assertTrue(
-                flags.is_enabled("workflow1", tenant_id=str(self.tenant.id))
-            )
+            self.assertTrue(flags.is_enabled("workflow1", tenant_id=str(self.tenant.id)))
             # Workflow2 should be disabled
-            self.assertFalse(
-                flags.is_enabled("workflow2", tenant_id=str(self.tenant.id))
-            )
+            self.assertFalse(flags.is_enabled("workflow2", tenant_id=str(self.tenant.id)))
             # Other workflows should use default (enabled with 100% rollout)
-            self.assertTrue(
-                flags.is_enabled("other_workflow", tenant_id=str(self.tenant.id))
-            )
+            self.assertTrue(flags.is_enabled("other_workflow", tenant_id=str(self.tenant.id)))
 
     def test_disabled_workflows_list(self):
         """Test disabled workflows list configuration"""
@@ -185,24 +172,14 @@ class TestFeatureFlagsConfiguration(FeatureFlagsTestBase):
             WORKFLOW_BUSINESS_RULES_VALIDATION_DISABLED_WORKFLOWS=[
                 "disabled_workflow1",
                 "disabled_workflow2",
-            ]
+            ],
         ):
             flags = WorkflowBusinessRulesFeatureFlags()
             # Disabled workflows should be disabled
-            self.assertFalse(
-                flags.is_enabled(
-                    "disabled_workflow1", tenant_id=str(self.tenant.id)
-                )
-            )
-            self.assertFalse(
-                flags.is_enabled(
-                    "disabled_workflow2", tenant_id=str(self.tenant.id)
-                )
-            )
+            self.assertFalse(flags.is_enabled("disabled_workflow1", tenant_id=str(self.tenant.id)))
+            self.assertFalse(flags.is_enabled("disabled_workflow2", tenant_id=str(self.tenant.id)))
             # Other workflows should be enabled
-            self.assertTrue(
-                flags.is_enabled("other_workflow", tenant_id=str(self.tenant.id))
-            )
+            self.assertTrue(flags.is_enabled("other_workflow", tenant_id=str(self.tenant.id)))
 
     def test_enabled_workflows_list(self):
         """Test enabled workflows list (overrides rollout)"""
@@ -211,19 +188,13 @@ class TestFeatureFlagsConfiguration(FeatureFlagsTestBase):
             WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE=0,
             WORKFLOW_BUSINESS_RULES_VALIDATION_ENABLED_WORKFLOWS=[
                 "enabled_workflow1",
-            ]
+            ],
         ):
             flags = WorkflowBusinessRulesFeatureFlags()
             # Enabled workflow should be enabled even with 0% rollout
-            self.assertTrue(
-                flags.is_enabled(
-                    "enabled_workflow1", tenant_id=str(self.tenant.id)
-                )
-            )
+            self.assertTrue(flags.is_enabled("enabled_workflow1", tenant_id=str(self.tenant.id)))
             # Other workflows should be disabled (0% rollout)
-            self.assertFalse(
-                flags.is_enabled("other_workflow", tenant_id=str(self.tenant.id))
-            )
+            self.assertFalse(flags.is_enabled("other_workflow", tenant_id=str(self.tenant.id)))
 
     def test_per_tenant_configuration(self):
         """Test per-tenant enable/disable configuration"""
@@ -231,7 +202,7 @@ class TestFeatureFlagsConfiguration(FeatureFlagsTestBase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
 
         with override_settings(
@@ -239,19 +210,13 @@ class TestFeatureFlagsConfiguration(FeatureFlagsTestBase):
             WORKFLOW_BUSINESS_RULES_VALIDATION_TENANTS={
                 str(self.tenant.id): True,
                 str(tenant2.id): False,
-            }
+            },
         ):
             flags = WorkflowBusinessRulesFeatureFlags()
             # Tenant 1 should have validation enabled
-            self.assertTrue(
-                flags.is_enabled(
-                    "test_workflow", tenant_id=str(self.tenant.id)
-                )
-            )
+            self.assertTrue(flags.is_enabled(self.workflow_def.name, tenant_id=str(self.tenant.id)))
             # Tenant 2 should have validation disabled
-            self.assertFalse(
-                flags.is_enabled("test_workflow", tenant_id=str(tenant2.id))
-            )
+            self.assertFalse(flags.is_enabled(self.workflow_def.name, tenant_id=str(tenant2.id)))
 
     def test_priority_order(self):
         """Test feature flag priority order"""
@@ -271,23 +236,11 @@ class TestFeatureFlagsConfiguration(FeatureFlagsTestBase):
         ):
             flags = WorkflowBusinessRulesFeatureFlags()
             # Per-workflow config should override everything
-            self.assertTrue(
-                flags.is_enabled(
-                    "priority_workflow", tenant_id=str(self.tenant.id)
-                )
-            )
+            self.assertTrue(flags.is_enabled("priority_workflow", tenant_id=str(self.tenant.id)))
             # Disabled list should override rollout and global
-            self.assertFalse(
-                flags.is_enabled(
-                    "disabled_workflow", tenant_id=str(self.tenant.id)
-                )
-            )
+            self.assertFalse(flags.is_enabled("disabled_workflow", tenant_id=str(self.tenant.id)))
             # Enabled list should override rollout and global
-            self.assertTrue(
-                flags.is_enabled(
-                    "enabled_workflow", tenant_id=str(self.tenant.id)
-                )
-            )
+            self.assertTrue(flags.is_enabled("enabled_workflow", tenant_id=str(self.tenant.id)))
 
     def test_get_config_summary(self):
         """Test get_config_summary method"""
@@ -317,7 +270,7 @@ class TestFeatureFlagsIntegration(FeatureFlagsTestBase):
         with override_settings(ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=False):
             # Create workflow instance
             instance = self.engine.create_instance(
-                workflow_name="test_workflow",
+                workflow_name=self.workflow_def.name,
                 input_data={"test": "data"},
                 tenant_id=str(self.tenant.id),
                 created_by_id=str(self.user.id),
@@ -338,7 +291,7 @@ class TestFeatureFlagsIntegration(FeatureFlagsTestBase):
         with override_settings(ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=True):
             # Create workflow instance
             instance = self.engine.create_instance(
-                workflow_name="test_workflow",
+                workflow_name=self.workflow_def.name,
                 input_data={"test": "data"},
                 tenant_id=str(self.tenant.id),
                 created_by_id=str(self.user.id),
@@ -358,11 +311,11 @@ class TestFeatureFlagsIntegration(FeatureFlagsTestBase):
         """Test per-workflow disable in workflow engine"""
         with override_settings(
             ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=True,
-            WORKFLOW_BUSINESS_RULES_VALIDATION_DISABLED_WORKFLOWS=["test_workflow"]
+            WORKFLOW_BUSINESS_RULES_VALIDATION_DISABLED_WORKFLOWS=[self.workflow_def.name],
         ):
             # Create workflow instance
             instance = self.engine.create_instance(
-                workflow_name="test_workflow",
+                workflow_name=self.workflow_def.name,
                 input_data={"test": "data"},
                 tenant_id=str(self.tenant.id),
                 created_by_id=str(self.user.id),
@@ -382,21 +335,17 @@ class TestFeatureFlagsIntegration(FeatureFlagsTestBase):
         """Test that rollout is consistent for same workflow instance"""
         with override_settings(
             ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=True,
-            WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE=50
+            WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE=50,
         ):
             flags = WorkflowBusinessRulesFeatureFlags()
             instance_id = "test-instance-123"
 
             # Same instance should have same result
             result1 = flags.is_enabled(
-                "test_workflow",
-                tenant_id=str(self.tenant.id),
-                workflow_instance_id=instance_id
+                self.workflow_def.name, tenant_id=str(self.tenant.id), workflow_instance_id=instance_id
             )
             result2 = flags.is_enabled(
-                "test_workflow",
-                tenant_id=str(self.tenant.id),
-                workflow_instance_id=instance_id
+                self.workflow_def.name, tenant_id=str(self.tenant.id), workflow_instance_id=instance_id
             )
             self.assertEqual(result1, result2)
 
@@ -411,7 +360,7 @@ class TestFeatureFlagsConvenienceFunctions(FeatureFlagsTestBase):
             flags1 = get_feature_flags()
             flags2 = get_feature_flags()
             self.assertIs(flags1, flags2)
-        
+
         # Different settings should return different instance
         with override_settings(ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=False):
             flags3 = get_feature_flags()
@@ -422,16 +371,10 @@ class TestFeatureFlagsConvenienceFunctions(FeatureFlagsTestBase):
         """Test is_business_rules_validation_enabled convenience function"""
         with override_settings(ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=True):
             self.assertTrue(
-                is_business_rules_validation_enabled(
-                    "test_workflow",
-                    tenant_id=str(self.tenant.id)
-                )
+                is_business_rules_validation_enabled(self.workflow_def.name, tenant_id=str(self.tenant.id))
             )
 
         with override_settings(ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION=False):
             self.assertFalse(
-                is_business_rules_validation_enabled(
-                    "test_workflow",
-                    tenant_id=str(self.tenant.id)
-                )
+                is_business_rules_validation_enabled(self.workflow_def.name, tenant_id=str(self.tenant.id))
             )

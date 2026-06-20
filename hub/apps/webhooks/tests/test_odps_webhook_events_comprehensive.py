@@ -15,158 +15,32 @@ development best practices.
 
 import json
 import uuid
-import time
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Dict, Any, List, Optional
-from queue import Queue
 
 import pytest
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True)]
+
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.users.models import UserStatus
 from hub.apps.webhooks.models import (
+    DeliveryStatus,
     Webhook,
     WebhookDelivery,
     WebhookEventType,
     WebhookStatus,
-    DeliveryStatus,
 )
-from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.webhooks.service import WebhookDeliveryService
-from hub.apps.webhooks.odps_event_subscriber import ODPSEventSubscriber, get_odps_event_subscriber
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.users.models import UserStatus
-from hub.apps.core.events.publisher import EventPublisher
-from hub.apps.core.events.bus import get_event_bus
 from tests.utils.wait_helpers import wait_for_event_persistence
 
-pytestmark = pytest.mark.django_db(transaction=True)
+from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookServer
+
 User = get_user_model()
-
-
-class WebhookReceiverHandler(BaseHTTPRequestHandler):
-    """HTTP request handler for receiving webhook deliveries."""
-
-    def __init__(self, request_queue: Queue, response_status: int = 200,
-                 response_delay: float = 0.0, *args, **kwargs):
-        self.request_queue = request_queue
-        self.response_status = response_status
-        self.response_delay = response_delay
-        super().__init__(*args, **kwargs)
-
-    def do_POST(self):
-        """Handle POST requests (webhook deliveries)."""
-        content_length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(content_length) if content_length > 0 else b''
-        headers = dict(self.headers)
-
-        request_data = {
-            'path': self.path,
-            'method': 'POST',
-            'headers': headers,
-            'body': body.decode('utf-8') if body else '',
-            'timestamp': timezone.now().isoformat(),
-        }
-        self.request_queue.put(request_data)
-
-        if self.response_delay > 0:
-            remaining = self.response_delay
-            while remaining > 0:
-                time.sleep(min(remaining, 0.5))  # INTENTIONAL: simulates slow webhook receiver
-                remaining -= 0.5
-
-        self.send_response(self.response_status)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        response_body = json.dumps({'status': 'received'})
-        self.wfile.write(response_body.encode('utf-8'))
-
-    def log_message(self, format, *args):
-        """Suppress server logs during tests."""
-        pass
-
-
-class TestWebhookServer:
-    """Test HTTP server for receiving webhook deliveries."""
-
-    __test__ = False  # Not a test class — prevent pytest collection warning
-
-    def __init__(self, port: int = 0, response_status: int = 200,
-                 response_delay: float = 0.0):
-        self.port = port
-        self.response_status = response_status
-        self.response_delay = response_delay
-        self.request_queue: Queue = Queue()
-        self.server: Optional[HTTPServer] = None
-        self.thread: Optional[threading.Thread] = None
-
-    def start(self):
-        """Start the HTTP server."""
-        def handler_factory(*args, **kwargs):
-            return WebhookReceiverHandler(
-                self.request_queue,
-                self.response_status,
-                self.response_delay,
-                *args,
-                **kwargs
-            )
-
-        self.server = HTTPServer(("localhost", self.port), handler_factory)
-        self.port = self.server.server_address[1]
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
-
-    def stop(self):
-        """Stop the HTTP server without blocking on in-flight requests."""
-        if self.server:
-            shutdown_thread = threading.Thread(target=self.server.shutdown, daemon=True)
-            shutdown_thread.start()
-            shutdown_thread.join(timeout=5)
-            try:
-                self.server.server_close()
-            except Exception:
-                pass
-            self.server = None
-            self.thread = None
-
-    def get_url(self) -> str:
-        """Get the server URL."""
-        return f"http://localhost:{self.port}/webhook"
-
-    def get_received_requests(self, timeout: float = 5.0) -> List[Dict[str, Any]]:
-        """Get all received requests."""
-        requests = []
-        start_time = time.time()
-
-        while time.time() - start_time < timeout:
-            try:
-                request = self.request_queue.get(timeout=0.1)
-                requests.append(request)
-            except:
-                if time.time() - start_time >= timeout:
-                    break
-
-        return requests
-
-    def clear_requests(self):
-        """Clear all received requests."""
-        while not self.request_queue.empty():
-            try:
-                self.request_queue.get_nowait()
-            except:
-                pass
-
-    def __enter__(self):
-        self.start()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.stop()
 
 
 @override_settings(WEBHOOK_ASYNC_DELIVERY=False)
@@ -244,9 +118,9 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
             # Verify HTTP request
             requests = server.get_received_requests(timeout=2.0)
             self.assertEqual(len(requests), 1)
-            payload = json.loads(requests[0]['body'])
-            self.assertEqual(payload['event_type'], WebhookEventType.ODPS_CREATED)
-            self.assertEqual(payload['data'], event_data)
+            payload = json.loads(requests[0]["body"])
+            self.assertEqual(payload["event_type"], WebhookEventType.ODPS_CREATED)
+            self.assertEqual(payload["data"], event_data)
 
     def test_all_odps_webhook_events_updated(self):
         """Test webhook delivery for odps.updated event"""
@@ -633,13 +507,10 @@ class ODPSWebhookEventsComprehensiveTest(TransactionTestCase):
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
             self.assertIsNotNone(delivery)
             self.assertIsNotNone(delivery.error_message)
-            # Should be scheduled for retry or failed
-            self.assertIn(delivery.status, [DeliveryStatus.FAILED, DeliveryStatus.PENDING])
-
-            # Verify retry is scheduled
-            if delivery.status == DeliveryStatus.FAILED:
-                self.assertIsNotNone(delivery.next_retry_at)
-                self.assertGreater(delivery.attempt_number, 0)
+            # Should be FAILED with retry scheduled (500 response triggers retry)
+            self.assertEqual(delivery.status, DeliveryStatus.FAILED)
+            self.assertIsNotNone(delivery.next_retry_at)
+            self.assertGreater(delivery.attempt_number, 0)
 
     def test_odps_webhook_event_dead_letter_queue(self):
         """Test webhook event dead letter queue after max retries"""

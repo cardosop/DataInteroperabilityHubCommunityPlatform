@@ -15,16 +15,18 @@ input-validation guards.
   function.  Returns ``(schema_json, sample_data, row_count)`` so the
   caller writes a single ORM update.
 """
+
 from __future__ import annotations
+
 import hashlib
 import json
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File
 
 
-def canonical_schema_hash(schema: Optional[dict]) -> str:
+def canonical_schema_hash(schema: dict | None) -> str:
     """SHA-256 hex digest over a JSON-stable serialisation of *schema*.
 
     ``None`` and ``{}`` produce DIFFERENT hashes so the audit row can
@@ -44,7 +46,7 @@ def canonical_schema_hash(schema: Optional[dict]) -> str:
 
 def reinfer_dataset_schema(
     file_obj: File,
-) -> Tuple[dict, Any, Optional[int]]:
+) -> tuple[dict, Any, int | None]:
     """Re-run schema inference for *file_obj* and return the
     ``(schema_json, sample_data, row_count)`` triple.
 
@@ -100,9 +102,7 @@ def reinfer_dataset_schema(
 
     storage = S3StorageClient()
     sample_max = (
-        inference_plan.bytes_to_read
-        if inference_plan.mode == InferenceMode.SAMPLE
-        else None
+        inference_plan.bytes_to_read if inference_plan.mode == InferenceMode.SAMPLE else None
     )
     file_content = fetch_file_content_for_dataset_schema_safe(
         storage=storage,
@@ -154,7 +154,7 @@ def apply_refreshed_schema(
     *,
     schema_json: dict,
     sample_data: Any,
-    row_count: Optional[int],
+    row_count: int | None,
 ) -> bool:
     """Persist the re-inferred schema onto *dataset* and return
     ``schema_changed`` (True iff the canonical hash flipped).

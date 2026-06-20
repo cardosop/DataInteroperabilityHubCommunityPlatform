@@ -1,6 +1,7 @@
 """
 Phase 277.B.088 — breach SLA metrics tests.
 """
+
 from datetime import timedelta
 
 import pytest
@@ -21,6 +22,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 class BreachSLAMetricsTests(TestCase):
     def setUp(self):
         import uuid
+
         self.tenant = Tenant.objects.create(
             name=f"SLA Tenant {uuid.uuid4().hex[:8]}",
             slug=f"sla-{uuid.uuid4().hex[:8]}",
@@ -32,7 +34,8 @@ class BreachSLAMetricsTests(TestCase):
     def test_metric_exists_with_expected_labels(self):
         assert breach_hours_since_discovery.name == "breach_hours_since_discovery"
         assert set(breach_hours_since_discovery._expected_labels) == {
-            "tenant_id", "breach_id",
+            "tenant_id",
+            "breach_id",
         }
 
     def test_emit_returns_empty_list_when_no_breaches(self):
@@ -59,10 +62,7 @@ class BreachSLAMetricsTests(TestCase):
             status=BreachIncidentStatus.CLOSED,
         )
         results = emit_breach_sla_metrics()
-        assert not any(
-            r["breach_id"] == str(BreachIncident.objects.first().id)
-            for r in results
-        )
+        assert not any(r["breach_id"] == str(BreachIncident.objects.first().id) for r in results)
 
     def test_emit_skips_legal_hold_breaches(self):
         BreachIncident.objects.create(

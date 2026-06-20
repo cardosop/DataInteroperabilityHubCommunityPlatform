@@ -28,10 +28,11 @@ so two diff calls on the same input produce byte-identical output —
 required by the UI's React Query cache + by JSON-snapshot tests in
 the frontend.
 """
+
 from __future__ import annotations
 
-from typing import Any, Iterable
-
+from collections.abc import Iterable
+from typing import Any
 
 # Spec-compliant identity tuple — every field that participates in
 # row identity under SCD Type 2. A change to ANY of these fields

@@ -17,7 +17,7 @@ REPO_ROOT = SCRIPTS_DIR.parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(REPO_ROOT))
 
-from check_skip_counter import (  # noqa: E402
+from check_skip_counter import (
     aggregate_skip_events,
     check_thresholds,
     main,
@@ -66,9 +66,7 @@ class TestAggregate:
     def test_blank_lines_are_ignored(self, tmp_path: Path):
         path = tmp_path / "skip-events.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            '{"test":"t1","reason":"x"}\n\n   \n{"test":"t2","reason":"x"}\n'
-        )
+        path.write_text('{"test":"t1","reason":"x"}\n\n   \n{"test":"t2","reason":"x"}\n')
         assert aggregate_skip_events(tmp_path) == {"x": 2}
 
     def test_malformed_jsonl_raises(self, tmp_path: Path):
@@ -83,16 +81,20 @@ class TestAggregate:
 class TestCheckThresholds:
     def test_empty_counts_passes(self):
         passed, msgs = check_thresholds(
-            {}, total_tests=100, threshold=0.05,
+            {},
+            total_tests=100,
+            threshold=0.05,
         )
         assert passed is True
         assert msgs == []
 
     def test_under_threshold_passes(self):
         from collections import Counter
+
         passed, msgs = check_thresholds(
             Counter({"S3 not reachable": 3}),
-            total_tests=100, threshold=0.05,
+            total_tests=100,
+            threshold=0.05,
         )
         assert passed is True
         assert "[ok]" in msgs[0]
@@ -100,9 +102,11 @@ class TestCheckThresholds:
 
     def test_over_threshold_fails(self):
         from collections import Counter
+
         passed, msgs = check_thresholds(
             Counter({"S3 not reachable": 10}),
-            total_tests=100, threshold=0.05,
+            total_tests=100,
+            threshold=0.05,
         )
         assert passed is False
         assert "[FAIL]" in msgs[0]
@@ -110,9 +114,11 @@ class TestCheckThresholds:
 
     def test_one_reason_over_fails_even_if_others_under(self):
         from collections import Counter
+
         passed, msgs = check_thresholds(
             Counter({"S3 not reachable": 10, "Semantic not importable": 2}),
-            total_tests=100, threshold=0.05,
+            total_tests=100,
+            threshold=0.05,
         )
         assert passed is False
         # Every reason appears in messages, regardless of pass/fail
@@ -120,16 +126,19 @@ class TestCheckThresholds:
 
     def test_rejects_zero_total_tests(self):
         from collections import Counter
+
         with pytest.raises(ValueError):
             check_thresholds(Counter(), total_tests=0, threshold=0.05)
 
     def test_rejects_negative_total_tests(self):
         from collections import Counter
+
         with pytest.raises(ValueError):
             check_thresholds(Counter(), total_tests=-1, threshold=0.05)
 
     def test_rejects_threshold_not_between_0_and_1(self):
         from collections import Counter
+
         with pytest.raises(ValueError):
             check_thresholds(Counter(), total_tests=100, threshold=0)
         with pytest.raises(ValueError):
@@ -144,11 +153,16 @@ class TestCLIEntrypoint:
             tmp_path / "skip-events.jsonl",
             [{"test": "t1", "reason": "S3 not reachable"}],
         )
-        code = main([
-            "--artifact-dir", str(tmp_path),
-            "--total-tests", "100",
-            "--threshold", "0.05",
-        ])
+        code = main(
+            [
+                "--artifact-dir",
+                str(tmp_path),
+                "--total-tests",
+                "100",
+                "--threshold",
+                "0.05",
+            ]
+        )
         assert code == 0
         out = capsys.readouterr().out
         assert "[ok]" in out
@@ -158,22 +172,32 @@ class TestCLIEntrypoint:
             tmp_path / "skip-events.jsonl",
             [{"test": f"t{i}", "reason": "S3 not reachable"} for i in range(10)],
         )
-        code = main([
-            "--artifact-dir", str(tmp_path),
-            "--total-tests", "100",
-            "--threshold", "0.05",
-        ])
+        code = main(
+            [
+                "--artifact-dir",
+                str(tmp_path),
+                "--total-tests",
+                "100",
+                "--threshold",
+                "0.05",
+            ]
+        )
         assert code == 1
         out = capsys.readouterr().out
         assert "[FAIL]" in out
         assert "::error" in out
 
     def test_main_with_no_artifact_dir_exits_zero(self, tmp_path: Path, capsys):
-        code = main([
-            "--artifact-dir", str(tmp_path / "nonexistent"),
-            "--total-tests", "100",
-            "--threshold", "0.05",
-        ])
+        code = main(
+            [
+                "--artifact-dir",
+                str(tmp_path / "nonexistent"),
+                "--total-tests",
+                "100",
+                "--threshold",
+                "0.05",
+            ]
+        )
         assert code == 0
         assert "No skip events found" in capsys.readouterr().out
 
@@ -196,10 +220,13 @@ class TestCategoryAwareThresholds:
 
     def test_category_below_override_threshold_passes(self):
         from collections import Counter
-        counts = Counter({
-            "audit-exposed bug awaiting fix: AUDIT-BUG-001": 5,
-            "audit-exposed bug awaiting fix: AUDIT-BUG-002": 3,
-        })
+
+        counts = Counter(
+            {
+                "audit-exposed bug awaiting fix: AUDIT-BUG-001": 5,
+                "audit-exposed bug awaiting fix: AUDIT-BUG-002": 3,
+            }
+        )
         passed, msgs = check_thresholds(
             counts,
             total_tests=100,
@@ -216,9 +243,12 @@ class TestCategoryAwareThresholds:
 
     def test_category_above_override_threshold_fails(self):
         from collections import Counter
-        counts = Counter({
-            "audit-exposed bug awaiting fix: AUDIT-BUG-001": 16,
-        })
+
+        counts = Counter(
+            {
+                "audit-exposed bug awaiting fix: AUDIT-BUG-001": 16,
+            }
+        )
         passed, msgs = check_thresholds(
             counts,
             total_tests=100,
@@ -236,9 +266,12 @@ class TestCategoryAwareThresholds:
         default even though it's well under the 15 % category band.
         """
         from collections import Counter
-        counts = Counter({
-            "audit-exposed bug awaiting fix: AUDIT-BUG-001": 6,  # 6 % > 5 %
-        })
+
+        counts = Counter(
+            {
+                "audit-exposed bug awaiting fix: AUDIT-BUG-001": 6,  # 6 % > 5 %
+            }
+        )
         passed, msgs = check_thresholds(
             counts,
             total_tests=100,
@@ -251,18 +284,21 @@ class TestCategoryAwareThresholds:
         # doesn't waste time scrolling looking for the default-threshold
         # comparison that doesn't apply here.
         in_category_lines = [
-            m for m in msgs
-            if "audit-exposed bug awaiting fix: AUDIT-BUG-001" in m
-            and "[category-member]" in m
+            m
+            for m in msgs
+            if "audit-exposed bug awaiting fix: AUDIT-BUG-001" in m and "[category-member]" in m
         ]
         assert len(in_category_lines) == 1
 
     def test_non_category_reasons_still_use_default_threshold(self):
         from collections import Counter
-        counts = Counter({
-            "audit-exposed bug awaiting fix: AUDIT-BUG-001": 5,  # under 15 %
-            "S3 not reachable": 6,  # over default 5 %
-        })
+
+        counts = Counter(
+            {
+                "audit-exposed bug awaiting fix: AUDIT-BUG-001": 5,  # under 15 %
+                "S3 not reachable": 6,  # over default 5 %
+            }
+        )
         passed, msgs = check_thresholds(
             counts,
             total_tests=100,
@@ -283,12 +319,18 @@ class TestCategoryAwareThresholds:
             for i in range(16)
         ]
         _write_jsonl(tmp_path / "skip-events.jsonl", events)
-        code = main([
-            "--artifact-dir", str(tmp_path),
-            "--total-tests", "100",
-            "--threshold", "0.05",
-            "--category", "audit-exposed bug awaiting fix=0.15",
-        ])
+        code = main(
+            [
+                "--artifact-dir",
+                str(tmp_path),
+                "--total-tests",
+                "100",
+                "--threshold",
+                "0.05",
+                "--category",
+                "audit-exposed bug awaiting fix=0.15",
+            ]
+        )
         assert code == 1
         out = capsys.readouterr().out
         assert "[category]" in out
@@ -301,10 +343,16 @@ class TestCategoryAwareThresholds:
             [{"test": "t1", "reason": "x"}],
         )
         with pytest.raises(SystemExit) as exc:
-            main([
-                "--artifact-dir", str(tmp_path),
-                "--total-tests", "100",
-                "--threshold", "0.05",
-                "--category", "no-equals-sign",
-            ])
+            main(
+                [
+                    "--artifact-dir",
+                    str(tmp_path),
+                    "--total-tests",
+                    "100",
+                    "--threshold",
+                    "0.05",
+                    "--category",
+                    "no-equals-sign",
+                ]
+            )
         assert exc.value.code != 0

@@ -3,14 +3,14 @@ ODCS Validation Utilities
 
 Provides validation functions for ODCS (Open Data Contract Standard) operations.
 """
+
 import re
-from typing import Optional
 
 from hub.apps.contracts.odcs_errors import ODCSValidationError
 from hub.apps.contracts.odcs_generator import get_supported_odcs_versions
 
 
-def validate_odcs_version(version: Optional[str]) -> None:
+def validate_odcs_version(version: str | None) -> None:
     """
     Validate ODCS version format.
 
@@ -48,7 +48,7 @@ def validate_odcs_version(version: Optional[str]) -> None:
 
     # ODCS version format: major.minor[.patch] or major.minor[-suffix]
     # Examples: "3.0.2", "3.0.1", "3.0.0", "3.0.0-preview", "2.2.2"
-    version_pattern = r'^\d+\.\d+(\.\d+)?(-[a-zA-Z0-9-]+)?$'
+    version_pattern = r"^\d+\.\d+(\.\d+)?(-[a-zA-Z0-9-]+)?$"
     if not re.match(version_pattern, version):
         raise ODCSValidationError(
             message=f"Invalid ODCS version format: {version}",
@@ -73,4 +73,3 @@ def validate_odcs_version(version: Optional[str]) -> None:
                 "supported_versions": supported_versions,
             },
         )
-

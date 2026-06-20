@@ -17,10 +17,10 @@ Environment Variables:
     POSTGRES_USER: Database user (default: hub)
     POSTGRES_PASSWORD: Database password (default: hub)
 """
+
 import argparse
 import os
 import sys
-from typing import List, Tuple
 
 # Add project root to path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -45,7 +45,7 @@ def get_db_connection_params() -> dict:
     }
 
 
-def get_test_databases(conn, pattern: str = "hub_test%") -> List[str]:
+def get_test_databases(conn, pattern: str = "hub_test%") -> list[str]:
     """
     Get list of test databases matching the pattern.
 
@@ -127,7 +127,7 @@ def drop_database(conn, database_name: str) -> bool:
 
 def cleanup_test_databases(
     pattern: str = "hub_test%", dry_run: bool = False, verbose: bool = True
-) -> Tuple[int, int, int]:
+) -> tuple[int, int, int]:
     """
     Clean up test databases matching the pattern.
 
@@ -177,12 +177,15 @@ def cleanup_test_databases(
             print("Terminating connections to all test databases...")
         cursor = conn.cursor()
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT pg_terminate_backend(pg_stat_activity.pid)
                 FROM pg_stat_activity
                 WHERE pg_stat_activity.datname LIKE %s
                 AND pid <> pg_backend_pid();
-            """, (pattern.replace("%", "%%"),))
+            """,
+                (pattern.replace("%", "%%"),),
+            )
             terminated_total = cursor.rowcount
             if verbose:
                 print(f"  ✓ Terminated {terminated_total} connection(s)")
@@ -231,7 +234,7 @@ def cleanup_test_databases(
 
     except psycopg2.OperationalError as e:
         print(f"❌ ERROR: Could not connect to PostgreSQL: {e}")
-        print(f"\nConnection parameters:")
+        print("\nConnection parameters:")
         print(f"  Host: {conn_params['host']}")
         print(f"  Port: {conn_params['port']}")
         print(f"  User: {conn_params['user']}")
@@ -265,7 +268,7 @@ def main():
 
     args = parser.parse_args()
 
-    total_found, terminated, dropped = cleanup_test_databases(
+    total_found, _terminated, dropped = cleanup_test_databases(
         pattern=args.pattern, dry_run=args.dry_run, verbose=not args.quiet
     )
 

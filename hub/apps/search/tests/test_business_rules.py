@@ -45,7 +45,9 @@ class SearchBusinessRulesInitializationTest(TestCase):
             pass
 
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
@@ -179,7 +181,9 @@ class SearchQueryValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
@@ -252,7 +256,6 @@ class SearchQueryValidationTest(TestCase):
 
     def test_validate_query_length_too_long(self):
         """Test query length validation with query exceeding max length"""
-        from django.conf import settings
 
         max_length = getattr(settings, "SEARCH_QUERY_MAX_LENGTH", 1000)
         long_query = "a" * (max_length + 1)
@@ -312,7 +315,6 @@ class SearchQueryValidationTest(TestCase):
 
     def test_validate_query_complexity_exceeds_limit(self):
         """Test query complexity validation with query exceeding complexity limit"""
-        from django.conf import settings
 
         complexity_limit = getattr(settings, "SEARCH_QUERY_COMPLEXITY_LIMIT", 50)
 
@@ -401,7 +403,9 @@ class SearchIndexValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
@@ -526,8 +530,6 @@ class SearchIndexValidationTest(TestCase):
     def test_validate_index_update_timestamp_inconsistency(self):
         """Test index update validation with timestamp inconsistency"""
         from datetime import timedelta
-
-        from django.utils import timezone
 
         # Create a real contract first
         from hub.apps.contracts.models import Contract
@@ -718,7 +720,9 @@ class SearchFilterValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
@@ -746,7 +750,8 @@ class SearchFilterValidationTest(TestCase):
     def test_validate_filters_invalid_type(self):
         """Test filter validation with invalid filter type"""
         context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id), filters="not a dict"  # type: ignore[misc]  # test: edge-case type exercise
+            tenant_id=str(self.tenant.id),
+            filters="not a dict",  # type: ignore[misc]  # test: edge-case type exercise
         )
         result = self.rules.validate(context)
         self.assertFalse(result.is_valid)
@@ -788,7 +793,9 @@ class SearchFilterExpressionValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
@@ -801,7 +808,7 @@ class SearchFilterExpressionValidationTest(TestCase):
     def test_validate_filter_expressions_valid_resource_type(self):
         """Test filter expression validation with valid resource_type"""
         filters = {"resource_type": "CONTRACT"}
-        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), filters=filters)
+        SearchRuleExecutionContext(tenant_id=str(self.tenant.id), filters=filters)
         result = self.rules._validate_filter_expressions(filters)
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
@@ -899,7 +906,9 @@ class SearchFilterSecurityValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
@@ -979,7 +988,9 @@ class SearchFilterPerformanceValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
@@ -1058,7 +1069,9 @@ class SearchFilterValidationIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
@@ -1162,7 +1175,7 @@ class SearchFilterValidationIntegrationTest(TestCase):
         self.assertEqual(len(validation_result.errors), 0)
 
         # Use validated filters with SearchService
-        results, total = self.search_service.search(
+        _results, total = self.search_service.search(
             tenant_id=str(self.tenant.id),
             query="test",
             resource_type=filters.get("resource_type"),
@@ -1185,7 +1198,9 @@ class SearchQueryValidationIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
@@ -1287,7 +1302,7 @@ class SearchQueryValidationIntegrationTest(TestCase):
 
         # Search should only return results for current tenant
         query = "contract"
-        results, total = self.search_service.search(
+        results, _total = self.search_service.search(
             tenant_id=str(self.tenant.id), query=query, limit=10
         )
 
@@ -1306,7 +1321,9 @@ class SearchIndexValidationIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",

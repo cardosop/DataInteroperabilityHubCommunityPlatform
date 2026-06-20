@@ -14,6 +14,7 @@ Usage::
 
     pytestmark = skip_if_mvp_mode   # skip entire file when MVP_MODE=true
 """
+
 from __future__ import annotations
 
 import pytest

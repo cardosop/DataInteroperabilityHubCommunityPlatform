@@ -31,11 +31,11 @@ walking the LineageEdge index + the ``hub_contract_json`` JSON.
 Dataclasses give us a typed boundary between that computation and
 the classifier so the classifier stays pure-function testable.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Tuple
 
 
 class Severity(str, Enum):
@@ -55,7 +55,7 @@ class Severity(str, Enum):
         return _SEVERITY_RANK[self]
 
 
-_SEVERITY_RANK: Dict[Severity, int] = {
+_SEVERITY_RANK: dict[Severity, int] = {
     Severity.LOW: 1,
     Severity.MEDIUM: 2,
     Severity.HIGH: 3,
@@ -70,7 +70,7 @@ class LineageEdgeDelta:
 
     before: dict
     after: dict
-    fields_changed: List[str]
+    fields_changed: list[str]
 
 
 @dataclass(frozen=True)
@@ -92,10 +92,10 @@ class LineageDiff:
         field is a CRITICAL break.
     """
 
-    added: List[dict] = field(default_factory=list)
-    removed: List[dict] = field(default_factory=list)
-    modified: List[LineageEdgeDelta] = field(default_factory=list)
-    downstream_field_dependencies: Dict[Tuple[str, str], List[str]] = field(
+    added: list[dict] = field(default_factory=list)
+    removed: list[dict] = field(default_factory=list)
+    modified: list[LineageEdgeDelta] = field(default_factory=list)
+    downstream_field_dependencies: dict[tuple[str, str], list[str]] = field(
         default_factory=dict,
     )
 
@@ -116,9 +116,9 @@ class ContractDiff:
         changed.
     """
 
-    removed_fields: List[Tuple[str, str]] = field(default_factory=list)
-    added_fields: List[Tuple[str, str]] = field(default_factory=list)
-    modified_fields: List[Tuple[str, str]] = field(default_factory=list)
+    removed_fields: list[tuple[str, str]] = field(default_factory=list)
+    added_fields: list[tuple[str, str]] = field(default_factory=list)
+    modified_fields: list[tuple[str, str]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +164,8 @@ def classify(
 
 
 def _is_breaking_field_removal(
-    contract_diff: ContractDiff, diff: LineageDiff,
+    contract_diff: ContractDiff,
+    diff: LineageDiff,
 ) -> bool:
     """A removed field counts as CRITICAL only when at least one
     downstream contract depends on it (i.e. the field shows up in
@@ -180,10 +181,7 @@ def _is_breaking_field_removal(
 
 def _has_transformation_change(diff: LineageDiff) -> bool:
     """True if any modified edge changed its ``transformation_ref``."""
-    return any(
-        "transformation_ref" in delta.fields_changed
-        for delta in diff.modified
-    )
+    return any("transformation_ref" in delta.fields_changed for delta in diff.modified)
 
 
 _DERIVATION_TYPES = {"derivation", "transformation"}
@@ -196,9 +194,7 @@ def _has_derivation_edge_added(diff: LineageDiff) -> bool:
     Added derivation is HIGH per the spec mapping — interesting but
     not breaking.
     """
-    return any(
-        edge.get("edge_type") in _DERIVATION_TYPES for edge in diff.added
-    )
+    return any(edge.get("edge_type") in _DERIVATION_TYPES for edge in diff.added)
 
 
 def _has_derivation_edge_removed(diff: LineageDiff) -> bool:
@@ -209,9 +205,7 @@ def _has_derivation_edge_removed(diff: LineageDiff) -> bool:
     contract was deriving values from this edge and now isn't, so
     consumers see different data even if no field was removed.
     """
-    return any(
-        edge.get("edge_type") in _DERIVATION_TYPES for edge in diff.removed
-    )
+    return any(edge.get("edge_type") in _DERIVATION_TYPES for edge in diff.removed)
 
 
 def _has_only_metadata_changes(diff: LineageDiff) -> bool:
@@ -222,9 +216,7 @@ def _has_only_metadata_changes(diff: LineageDiff) -> bool:
     treats these as cosmetic.
     """
     for delta in diff.modified:
-        if delta.fields_changed and (
-            "transformation_ref" not in delta.fields_changed
-        ):
+        if delta.fields_changed and ("transformation_ref" not in delta.fields_changed):
             return True
     return False
 

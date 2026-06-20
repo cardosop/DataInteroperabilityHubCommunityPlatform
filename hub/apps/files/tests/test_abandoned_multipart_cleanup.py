@@ -6,12 +6,11 @@ real S3/MinIO multipart APIs (no mocks).
 """
 
 from __future__ import annotations
-import pytest
-import pytest
 
 import uuid
 from io import StringIO
 
+import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
@@ -22,17 +21,10 @@ from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.files.tests.test_base import FilesTestBase
 
-
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def _redis_or_skip() -> None:
-    try:
-        get_redis_client().ping()
-    except Exception as exc:  # pragma: no cover — environment-dependent
-        import unittest
-
-        raise unittest.SkipTest(f"Redis required: {exc}") from exc
+from hub.apps.files.tests.test_base import redis_or_skip as _redis_or_skip
 
 
 def _multipart_live(storage: S3StorageClient, *, key: str, upload_id: str) -> bool:
@@ -53,7 +45,7 @@ class CleanupAbandonedMultipartUploadsTests(FilesTestBase):
             self.storage = S3StorageClient()
             self.storage._ensure_bucket_exists()
             self.storage_available = True
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover — S3 probe
             self.storage_available = False
 
     @pytest.mark.integration

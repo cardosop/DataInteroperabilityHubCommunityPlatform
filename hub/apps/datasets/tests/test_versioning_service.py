@@ -89,7 +89,6 @@ class VersioningServiceTest(DatasetsTestBase):
 
     def test_create_version_not_found(self):
         """Test creating version with non-existent dataset (failure scenario)"""
-        import uuid
 
         fake_id = str(uuid.uuid4())
 
@@ -102,7 +101,6 @@ class VersioningServiceTest(DatasetsTestBase):
 
     def test_compare_versions_not_found(self):
         """Test comparing versions with non-existent dataset (failure scenario)"""
-        import uuid
 
         fake_id = str(uuid.uuid4())
 
@@ -117,7 +115,6 @@ class VersioningServiceTest(DatasetsTestBase):
 
     def test_get_version_history_not_found(self):
         """Test getting version history for non-existent dataset (failure scenario)"""
-        import uuid
 
         fake_id = str(uuid.uuid4())
 
@@ -155,31 +152,30 @@ class VersioningServiceTest(DatasetsTestBase):
         self.assertEqual(new_version.version_tags, [])
 
     def test_compare_versions_same_dataset(self):
-        """Test comparing version with itself (edge case)"""
+        """Test comparing a dataset version with itself returns no changes."""
         result = self.service.compare_versions(
             dataset_id_1=str(self.dataset.id),
             dataset_id_2=str(self.dataset.id),
             tenant_id=str(self.tenant.id),
         )
 
-        # Should return comparison indicating no changes
         self.assertIsInstance(result, dict)
+        self.assertIn("schema_diff", result)
+        self.assertEqual(len(result["schema_diff"].get("changes", [])), 0)
 
     def test_get_version_history_single_version(self):
-        """Test getting version history for dataset with single version (edge case)"""
+        """Test getting version history for dataset with single version."""
         history = self.service.get_version_history(
             dataset_id=str(self.dataset.id), tenant_id=str(self.tenant.id)
         )
 
-        # Should return at least the base dataset
         self.assertIsInstance(history, list)
         self.assertGreaterEqual(len(history), 1)
 
     # ========== ERROR HANDLING ==========
 
     def test_create_version_invalid_tenant(self):
-        """Test creating version with invalid tenant_id (error handling)"""
-        import uuid
+        """Test creating version with invalid tenant_id raises NotFoundError."""
 
         fake_tenant_id = str(uuid.uuid4())
 
@@ -188,27 +184,26 @@ class VersioningServiceTest(DatasetsTestBase):
                 dataset_id=str(self.dataset.id), tenant_id=fake_tenant_id, semantic_version="1.1.0"
             )
 
-        self.assertEqual(cm.exception.code, "NOT_FOUND")
+        self.assertEqual(getattr(cm.exception, "code", None), "NOT_FOUND")
 
-    def test_compare_versions_same_dataset(self):
-        """Test error handling when version comparison fails"""
-        # Use valid dataset IDs
-        result = self.service.compare_versions(
-            dataset_id_1=str(self.dataset.id),
-            dataset_id_2=str(self.dataset.id),
-            tenant_id=str(self.tenant.id),
-        )
+    def test_compare_versions_nonexistent_dataset(self):
+        """compare_versions with non-existent dataset raises NotFoundError."""
 
-        # Should return comparison or handle errors gracefully
-        self.assertIsNotNone(result)
-        self.assertIsInstance(result, dict)
+        fake_id = str(uuid.uuid4())
+        with self.assertRaises(NotFoundError) as cm:
+            self.service.compare_versions(
+                dataset_id_1=fake_id,
+                dataset_id_2=str(self.dataset.id),
+                tenant_id=str(self.tenant.id),
+            )
+
+        self.assertEqual(getattr(cm.exception, "code", None), "NOT_FOUND")
 
     def test_get_version_history_with_persisted_dataset(self):
-        """Test error handling when version history retrieval fails"""
+        """Test getting version history for a persisted dataset."""
         history = self.service.get_version_history(
             dataset_id=str(self.dataset.id), tenant_id=str(self.tenant.id)
         )
 
-        # Should return history or handle errors gracefully
-        self.assertIsNotNone(history)
         self.assertIsInstance(history, list)
+        self.assertGreaterEqual(len(history), 1)

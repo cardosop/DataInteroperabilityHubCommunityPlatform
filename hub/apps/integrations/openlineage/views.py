@@ -19,8 +19,10 @@ Capability gate (228.F4.8): every endpoint returns 404 when
 ``lineage.openlineage_export`` is OFF. The flag default is OFF in
 prod / staging, ON in test.
 """
+
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
@@ -28,13 +30,13 @@ import logging
 from typing import Any
 
 from django.conf import settings
-from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
-from rest_framework import serializers, status
+from django.db import IntegrityError
+from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +76,14 @@ def _verify_hmac(body: bytes, signature_header: str | None) -> bool:
         return False
     if not signature_header.startswith("sha256="):
         return False
-    expected = "sha256=" + hmac.new(
-        key.encode("utf-8"), body, hashlib.sha256,
-    ).hexdigest()
+    expected = (
+        "sha256="
+        + hmac.new(
+            key.encode("utf-8"),
+            body,
+            hashlib.sha256,
+        ).hexdigest()
+    )
     return hmac.compare_digest(expected, signature_header)
 
 
@@ -120,6 +127,7 @@ def _authenticate_ingest_key(request) -> Any | None:
             # Best-effort last-used update; failure is non-fatal.
             try:
                 from django.utils import timezone
+
                 now = timezone.now()
                 update_fields = ["last_used_at"]
                 cand.last_used_at = now
@@ -145,8 +153,15 @@ def _authenticate_ingest_key(request) -> Any | None:
                         tenant=cand.tenant,
                         key_row=cand,
                     )
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "openlineage_key_grace_update_skipped",
+                    extra={
+                        "key_id": str(getattr(cand, "id", "")),
+                        "tenant_id": str(getattr(cand.tenant, "id", "")),
+                        "error": str(exc),
+                    },
+                )
             return cand
     return None
 
@@ -162,12 +177,10 @@ def _record_inbound_metric(*, result: str) -> None:
     """Best-effort emit of ``openlineage_inbound_total{result}``."""
     try:
         from hub.apps.observability.metrics import openlineage_inbound_total
-    except Exception:  # noqa: BLE001
+    except ImportError:
         return
-    try:
+    with contextlib.suppress(Exception):
         openlineage_inbound_total.labels(result=result).inc()
-    except Exception:  # noqa: BLE001
-        pass
 
 
 def _translate_inbound_event_to_edges(event: dict, *, tenant) -> int:
@@ -179,8 +192,6 @@ def _translate_inbound_event_to_edges(event: dict, *, tenant) -> int:
     event references contracts the tenant doesn't own / when the
     edge already exists open).
     """
-    from django.db import IntegrityError
-
     from hub.apps.contracts.models import Contract, LineageEdge
     from hub.apps.integrations.openlineage.translator import (
         openlineage_to_meshant_edge,
@@ -297,11 +308,13 @@ def openlineage_events_view(request):
     elif len(inputs) + len(outputs) > MAX_INBOUND_DATASETS:
         _record_inbound_metric(result="too_large")
         return Response(
-            {"error": {
-                "code": "DATASETS_LIMIT_EXCEEDED",
-                "limit": MAX_INBOUND_DATASETS,
-                "received": len(inputs) + len(outputs),
-            }},
+            {
+                "error": {
+                    "code": "DATASETS_LIMIT_EXCEEDED",
+                    "limit": MAX_INBOUND_DATASETS,
+                    "received": len(inputs) + len(outputs),
+                }
+            },
             status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
         )
 
@@ -309,6 +322,7 @@ def openlineage_events_view(request):
     from hub.apps.integrations.openlineage.translator import (
         validate_openlineage_event,
     )
+
     try:
         validate_openlineage_event(event)
     except Exception as exc:  # jsonschema.ValidationError + others
@@ -318,10 +332,12 @@ def openlineage_events_view(request):
         )
         _record_inbound_metric(result="validation_failed")
         return Response(
-            {"error": {
-                "code": "OPENLINEAGE_VALIDATION_FAILED",
-                "message": str(exc)[:512],
-            }},
+            {
+                "error": {
+                    "code": "OPENLINEAGE_VALIDATION_FAILED",
+                    "message": str(exc)[:512],
+                }
+            },
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -343,7 +359,8 @@ def openlineage_events_view(request):
         )
 
     existing = OpenLineageInboundEvent.objects.filter(
-        tenant=key.tenant, event_id=str(event_id),
+        tenant=key.tenant,
+        event_id=str(event_id),
     ).first()
     if existing is not None:
         _record_inbound_metric(result="duplicate")
@@ -365,27 +382,25 @@ def openlineage_events_view(request):
             event_id=str(event_id),
             edges_created=edges_created,
         )
-    except Exception as exc:  # noqa: BLE001 — race-window: a concurrent
+    except IntegrityError:
         # request inserted the same (tenant, event_id) between our
         # ``filter`` and the ``create``. The unique constraint surfaces
         # as IntegrityError; treat as duplicate.
-        from django.db import IntegrityError
-
-        if isinstance(exc, IntegrityError):
-            existing = OpenLineageInboundEvent.objects.filter(
-                tenant=key.tenant, event_id=str(event_id),
-            ).first()
-            if existing is not None:
-                _record_inbound_metric(result="duplicate")
-                return Response(
-                    {
-                        "accepted": True,
-                        "event_id": existing.event_id,
-                        "edges_created": existing.edges_created,
-                        "duplicate": True,
-                    },
-                    status=status.HTTP_202_ACCEPTED,
-                )
+        existing = OpenLineageInboundEvent.objects.filter(
+            tenant=key.tenant,
+            event_id=str(event_id),
+        ).first()
+        if existing is not None:
+            _record_inbound_metric(result="duplicate")
+            return Response(
+                {
+                    "accepted": True,
+                    "event_id": existing.event_id,
+                    "edges_created": existing.edges_created,
+                    "duplicate": True,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
         raise
 
     _record_inbound_metric(result="accepted")
@@ -423,7 +438,7 @@ def _emit_key_audit(
     try:
         from hub.apps.audit import models as audit_models
         from hub.apps.audit.utils import create_audit_event
-    except Exception:  # noqa: BLE001 — audit module optional at import.
+    except ImportError:
         return
     try:
         action = getattr(audit_models, action_const_name)
@@ -445,7 +460,7 @@ def _emit_key_audit(
                 "key_prefix": getattr(key_row, "key_prefix", ""),
             },
         )
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:
         logger.warning(
             "openlineage_audit_emit_failed",
             extra={"action": action_const_name, "error": str(exc)},
@@ -460,10 +475,23 @@ def _is_tenant_admin(user, tenant) -> bool:
         return True
     try:
         from hub.apps.users.models import UserRole
+    except ImportError:
+        return False
+    try:
         return UserRole.objects.filter(
-            user=user, tenant=tenant, role__name="TENANT_ADMIN",
+            user=user,
+            tenant=tenant,
+            role__name="TENANT_ADMIN",
         ).exists()
-    except Exception:  # noqa: BLE001 — fail closed
+    except Exception as exc:
+        logger.warning(
+            "openlineage_tenant_admin_check_failed",
+            extra={
+                "user_id": str(getattr(user, "id", "")),
+                "tenant_id": str(getattr(tenant, "id", "")),
+                "error": str(exc),
+            },
+        )
         return False
 
 
@@ -557,6 +585,7 @@ def openlineage_keys_detail_view(request, pk):
     from hub.apps.integrations.openlineage.models import (
         OpenLineageIngestApiKey,
     )
+
     user = request.user
     tenant = getattr(user, "tenant", None)
     if tenant is None or not _is_tenant_admin(user, tenant):
@@ -572,6 +601,7 @@ def openlineage_keys_detail_view(request, pk):
             status=status.HTTP_404_NOT_FOUND,
         )
     from django.utils import timezone
+
     row.revoked_at = timezone.now()
     row.save(update_fields=["revoked_at"])
     _emit_key_audit(

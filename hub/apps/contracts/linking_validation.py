@@ -6,10 +6,11 @@ Validates contract linking operations to ensure:
 2. Contract compatibility
 3. No circular references
 """
+
+from typing import Any
+
 import structlog
-from typing import Dict, Any, Optional, Set, List
 from django.core.exceptions import ValidationError
-from django.db import transaction
 
 from hub.apps.contracts.models import Contract, OriginalSpecType
 from hub.apps.contracts.odps_errors import ODPSLinkingError
@@ -19,12 +20,9 @@ logger = structlog.get_logger(__name__)
 
 class LinkingValidationError(ODPSLinkingError):
     """Exception raised when linking validation fails."""
-    pass
 
 
-def validate_contract_exists(
-    contract_id: str, tenant_id: Optional[str] = None
-) -> Contract:
+def validate_contract_exists(contract_id: str, tenant_id: str | None = None) -> Contract:
     """
     Validate that a contract exists and belongs to the given tenant.
 
@@ -52,7 +50,7 @@ def validate_contract_exists(
         raise LinkingValidationError(
             message=f"Contract not found: {contract_id}",
             error_code="CONTRACT_NOT_FOUND",
-            context={"contract_id": contract_id}
+            context={"contract_id": contract_id},
         )
 
     if str(contract.tenant_id) != str(tenant_id):
@@ -62,17 +60,14 @@ def validate_contract_exists(
             context={
                 "contract_id": contract_id,
                 "contract_tenant_id": str(contract.tenant_id),
-                "expected_tenant_id": tenant_id
-            }
+                "expected_tenant_id": tenant_id,
+            },
         )
 
     return contract
 
 
-def validate_contract_compatibility(
-    odps_contract: Contract,
-    odcs_contract: Contract
-) -> None:
+def validate_contract_compatibility(odps_contract: Contract, odcs_contract: Contract) -> None:
     """
     Validate that ODPS and ODCS contracts are compatible for linking.
 
@@ -87,14 +82,10 @@ def validate_contract_compatibility(
 
     # Validate spec types
     if odps_contract.original_spec_type != OriginalSpecType.ODPS:
-        errors.append(
-            f"First contract must be ODPS type, got {odps_contract.original_spec_type}"
-        )
+        errors.append(f"First contract must be ODPS type, got {odps_contract.original_spec_type}")
 
     if odcs_contract.original_spec_type != OriginalSpecType.ODCS:
-        errors.append(
-            f"Second contract must be ODCS type, got {odcs_contract.original_spec_type}"
-        )
+        errors.append(f"Second contract must be ODCS type, got {odcs_contract.original_spec_type}")
 
     # Validate same tenant
     if odps_contract.tenant_id != odcs_contract.tenant_id:
@@ -112,9 +103,10 @@ def validate_contract_compatibility(
 
     # Validate normalization status (should be normalized)
     from hub.apps.contracts.models import NormalizationStatus
+
     if odps_contract.normalization_status not in [
         NormalizationStatus.NORMALIZED_OK,
-        NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        NormalizationStatus.NORMALIZED_WITH_WARNINGS,
     ]:
         errors.append(
             f"ODPS contract must be normalized. Current status: {odps_contract.normalization_status}"
@@ -122,7 +114,7 @@ def validate_contract_compatibility(
 
     if odcs_contract.normalization_status not in [
         NormalizationStatus.NORMALIZED_OK,
-        NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        NormalizationStatus.NORMALIZED_WITH_WARNINGS,
     ]:
         errors.append(
             f"ODCS contract must be normalized. Current status: {odcs_contract.normalization_status}"
@@ -135,12 +127,12 @@ def validate_contract_compatibility(
             context={
                 "odps_contract_id": str(odps_contract.id),
                 "odcs_contract_id": str(odcs_contract.id),
-                "errors": errors
-            }
+                "errors": errors,
+            },
         )
 
 
-def _get_linked_contract_ids(contract: Contract) -> Set[str]:
+def _get_linked_contract_ids(contract: Contract) -> set[str]:
     """
     Get all contract IDs linked to the given contract (both ODPS and ODCS links).
 
@@ -174,8 +166,8 @@ def _get_linked_contract_ids(contract: Contract) -> Set[str]:
 def _check_circular_reference(
     start_contract_id: str,
     target_contract_id: str,
-    visited: Optional[Set[str]] = None,
-    max_depth: int = 10
+    visited: set[str] | None = None,
+    max_depth: int = 10,
 ) -> bool:
     """
     Check if linking would create a circular reference using DFS.
@@ -213,7 +205,9 @@ def _check_circular_reference(
 
         # Recursively check all linked contracts
         for linked_id in linked_ids:
-            if _check_circular_reference(linked_id, target_contract_id, visited.copy(), max_depth - 1):
+            if _check_circular_reference(
+                linked_id, target_contract_id, visited.copy(), max_depth - 1
+            ):
                 return True
 
     except Contract.DoesNotExist:
@@ -223,10 +217,7 @@ def _check_circular_reference(
     return False
 
 
-def validate_no_circular_reference(
-    odps_contract_id: str,
-    odcs_contract_id: str
-) -> None:
+def validate_no_circular_reference(odps_contract_id: str, odcs_contract_id: str) -> None:
     """
     Validate that linking would not create a circular reference.
 
@@ -245,8 +236,8 @@ def validate_no_circular_reference(
             context={
                 "odps_contract_id": odps_contract_id,
                 "odcs_contract_id": odcs_contract_id,
-                "description": "Self-reference detected"
-            }
+                "description": "Self-reference detected",
+            },
         )
 
     # Check if linking ODPS -> ODCS would create a cycle
@@ -257,8 +248,8 @@ def validate_no_circular_reference(
             context={
                 "odps_contract_id": odps_contract_id,
                 "odcs_contract_id": odcs_contract_id,
-                "description": "Linking ODPS -> ODCS would create a cycle"
-            }
+                "description": "Linking ODPS -> ODCS would create a cycle",
+            },
         )
 
     # Check if linking ODCS -> ODPS would create a cycle
@@ -269,15 +260,13 @@ def validate_no_circular_reference(
             context={
                 "odps_contract_id": odps_contract_id,
                 "odcs_contract_id": odcs_contract_id,
-                "description": "Linking ODCS -> ODPS would create a cycle"
-            }
+                "description": "Linking ODCS -> ODPS would create a cycle",
+            },
         )
 
 
 def validate_linking(
-    odps_contract_id: str,
-    odcs_contract_id: str,
-    tenant_id: Optional[str] = None
+    odps_contract_id: str, odcs_contract_id: str, tenant_id: str | None = None
 ) -> tuple[Contract, Contract]:
     """
     Comprehensive linking validation.
@@ -350,7 +339,7 @@ def validate_linking(
         logger.info(
             "Contracts already correctly linked, validation passes (idempotent)",
             odps_contract_id=odps_contract_id,
-            odcs_contract_id=odcs_contract_id
+            odcs_contract_id=odcs_contract_id,
         )
     else:
         # Validate no circular references (only if not already correctly linked)
@@ -360,13 +349,13 @@ def validate_linking(
         "Linking validation passed",
         odps_contract_id=odps_contract_id,
         odcs_contract_id=odcs_contract_id,
-        tenant_id=tenant_id
+        tenant_id=tenant_id,
     )
 
     return odps_contract, odcs_contract
 
 
-def validate_odps_to_odcs_link(odps_contract: Contract) -> Optional[Contract]:
+def validate_odps_to_odcs_link(odps_contract: Contract) -> Contract | None:
     """
     Validate that ODPS → ODCS link exists and the linked contract exists.
 
@@ -403,8 +392,8 @@ def validate_odps_to_odcs_link(odps_contract: Contract) -> Optional[Contract]:
             context={
                 "odps_contract_id": str(odps_contract.id),
                 "odcs_link": str(odcs_link),
-                "description": "ODPS → ODCS link points to non-existent contract"
-            }
+                "description": "ODPS → ODCS link points to non-existent contract",
+            },
         )
 
     # Validate that linked contract is actually ODCS
@@ -416,8 +405,8 @@ def validate_odps_to_odcs_link(odps_contract: Contract) -> Optional[Contract]:
                 "odps_contract_id": str(odps_contract.id),
                 "odcs_link": str(odcs_link),
                 "linked_contract_type": odcs_contract.original_spec_type,
-                "expected_type": OriginalSpecType.ODCS
-            }
+                "expected_type": OriginalSpecType.ODCS,
+            },
         )
 
     # Validate same tenant
@@ -429,20 +418,20 @@ def validate_odps_to_odcs_link(odps_contract: Contract) -> Optional[Contract]:
                 "odps_contract_id": str(odps_contract.id),
                 "odcs_link": str(odcs_link),
                 "odps_tenant_id": str(odps_contract.tenant_id),
-                "odcs_tenant_id": str(odcs_contract.tenant_id)
-            }
+                "odcs_tenant_id": str(odcs_contract.tenant_id),
+            },
         )
 
     logger.debug(
         "ODPS → ODCS link validated",
         odps_contract_id=str(odps_contract.id),
-        odcs_contract_id=str(odcs_contract.id)
+        odcs_contract_id=str(odcs_contract.id),
     )
 
     return odcs_contract
 
 
-def validate_odcs_to_odps_link(odcs_contract: Contract) -> Optional[Contract]:
+def validate_odcs_to_odps_link(odcs_contract: Contract) -> Contract | None:
     """
     Validate that ODCS → ODPS link exists and the linked contract exists.
 
@@ -479,8 +468,8 @@ def validate_odcs_to_odps_link(odcs_contract: Contract) -> Optional[Contract]:
             context={
                 "odcs_contract_id": str(odcs_contract.id),
                 "odps_link": str(odps_link),
-                "description": "ODCS → ODPS link points to non-existent contract"
-            }
+                "description": "ODCS → ODPS link points to non-existent contract",
+            },
         )
 
     # Validate that linked contract is actually ODPS
@@ -492,8 +481,8 @@ def validate_odcs_to_odps_link(odcs_contract: Contract) -> Optional[Contract]:
                 "odcs_contract_id": str(odcs_contract.id),
                 "odps_link": str(odps_link),
                 "linked_contract_type": odps_contract.original_spec_type,
-                "expected_type": OriginalSpecType.ODPS
-            }
+                "expected_type": OriginalSpecType.ODPS,
+            },
         )
 
     # Validate same tenant
@@ -505,14 +494,14 @@ def validate_odcs_to_odps_link(odcs_contract: Contract) -> Optional[Contract]:
                 "odcs_contract_id": str(odcs_contract.id),
                 "odps_link": str(odps_link),
                 "odcs_tenant_id": str(odcs_contract.tenant_id),
-                "odps_tenant_id": str(odps_contract.tenant_id)
-            }
+                "odps_tenant_id": str(odps_contract.tenant_id),
+            },
         )
 
     logger.debug(
         "ODCS → ODPS link validated",
         odcs_contract_id=str(odcs_contract.id),
-        odps_contract_id=str(odps_contract.id)
+        odps_contract_id=str(odps_contract.id),
     )
 
     return odps_contract
@@ -585,18 +574,18 @@ def validate_referential_integrity(contract: Contract) -> None:
             context={
                 "contract_id": str(contract.id),
                 "contract_type": contract.original_spec_type,
-                "errors": errors
-            }
+                "errors": errors,
+            },
         )
 
     logger.debug(
         "Referential integrity validated",
         contract_id=str(contract.id),
-        contract_type=contract.original_spec_type
+        contract_type=contract.original_spec_type,
     )
 
 
-def validate_all_links(contract: Contract) -> Dict[str, Any]:
+def validate_all_links(contract: Contract) -> dict[str, Any]:
     """
     Comprehensive validation of all links for a contract.
 
@@ -619,11 +608,7 @@ def validate_all_links(contract: Contract) -> Dict[str, Any]:
     Raises:
         LinkingValidationError: If any validation fails
     """
-    result = {
-        "odps_to_odcs": None,
-        "odcs_to_odps": None,
-        "referential_integrity": True
-    }
+    result = {"odps_to_odcs": None, "odcs_to_odps": None, "referential_integrity": True}
 
     # Validate ODPS → ODCS link
     if contract.original_spec_type == OriginalSpecType.ODPS:
@@ -641,8 +626,7 @@ def validate_all_links(contract: Contract) -> Dict[str, Any]:
         contract_id=str(contract.id),
         contract_type=contract.original_spec_type,
         has_odps_to_odcs=result["odps_to_odcs"] is not None,
-        has_odcs_to_odps=result["odcs_to_odps"] is not None
+        has_odcs_to_odps=result["odcs_to_odps"] is not None,
     )
 
     return result
-

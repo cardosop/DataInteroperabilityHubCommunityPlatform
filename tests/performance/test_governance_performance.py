@@ -3,6 +3,7 @@ Performance tests for Governance API.
 
 Measures list endpoint latency. Uses real implementations - no mocks or stubs.
 """
+
 import pytest
 
 pytestmark = pytest.mark.slow

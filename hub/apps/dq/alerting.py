@@ -10,18 +10,17 @@ short-circuits re-fires; failures schedule RQ retries with exponential
 back-off and dead-letter to the ops PagerDuty after the budget is
 exhausted (see ``hub.apps.dq.tasks``).
 """
+
 from __future__ import annotations
 
 import hashlib
-from typing import Any, Dict, List, Optional
-from django.db.models import Q
-from django.utils import timezone
 from datetime import timedelta
-import structlog
+from typing import Any
 
-from .models import DQRun, DQAlertingRule, DQAnomalySeverity, DQAlertChannel
-from hub.apps.assets.models import Asset
-from hub.apps.datasets.models import Dataset
+import structlog
+from django.utils import timezone
+
+from .models import DQAlertingRule, DQRun
 
 logger = structlog.get_logger(__name__)
 
@@ -48,7 +47,7 @@ def compute_alert_id(*, rule_id: str, run_id: str, alert_type: str) -> str:
     the dispatcher can compare against ``rule.last_alert_id`` and
     skip delivery within the dedup window.
     """
-    raw = f"{rule_id}:{run_id}:{alert_type}".encode("utf-8")
+    raw = f"{rule_id}:{run_id}:{alert_type}".encode()
     return hashlib.sha256(raw).hexdigest()[:32]
 
 
@@ -56,95 +55,76 @@ class DQAlertingService:
     """
     Service for evaluating and triggering DQ alerting rules.
     """
-    
+
     @staticmethod
-    def evaluate_rules(
-        dq_run: DQRun,
-        metric_type: str = "quality_score"
-    ) -> List[Dict[str, Any]]:
+    def evaluate_rules(dq_run: DQRun, metric_type: str = "quality_score") -> list[dict[str, Any]]:
         """
         Evaluate all applicable alerting rules for a DQ run.
-        
+
         Args:
             dq_run: DQ run to evaluate
             metric_type: Type of metric to evaluate
-        
+
         Returns:
             List of triggered alerts
         """
         triggered_alerts = []
-        
+
         # Get metric value
         metric_value = DQAlertingService._get_metric_value(dq_run, metric_type)
         if metric_value is None:
             return triggered_alerts
-        
+
         # Get applicable rules
-        rules = DQAlertingService._get_applicable_rules(
-            dq_run,
-            metric_type
-        )
-        
+        rules = DQAlertingService._get_applicable_rules(dq_run, metric_type)
+
         # Evaluate each rule
         for rule in rules:
             if rule.evaluate(metric_value):
-                alert = DQAlertingService._create_alert(
-                    rule,
-                    dq_run,
-                    metric_type,
-                    metric_value
-                )
+                alert = DQAlertingService._create_alert(rule, dq_run, metric_type, metric_value)
                 triggered_alerts.append(alert)
-                
+
                 # Trigger alert delivery
                 DQAlertingService._deliver_alert(alert, rule)
-        
+
         return triggered_alerts
-    
+
     @staticmethod
-    def _get_metric_value(dq_run: DQRun, metric_type: str) -> Optional[float]:
+    def _get_metric_value(dq_run: DQRun, metric_type: str) -> float | None:
         """Get metric value from DQ run"""
         if metric_type == "quality_score":
             return dq_run.quality_score
-        
+
         # Extract from details_json
         if dq_run.details_json and isinstance(dq_run.details_json, dict):
             return dq_run.details_json.get(metric_type)
-        
+
         return None
-    
+
     @staticmethod
-    def _get_applicable_rules(
-        dq_run: DQRun,
-        metric_type: str
-    ) -> List[DQAlertingRule]:
+    def _get_applicable_rules(dq_run: DQRun, metric_type: str) -> list[DQAlertingRule]:
         """Get applicable alerting rules"""
         # Get asset-specific and global rules
         rules_query = DQAlertingRule.objects.filter(
-            tenant=dq_run.tenant,
-            enabled=True,
-            metric_type=metric_type
+            tenant=dq_run.tenant, enabled=True, metric_type=metric_type
         )
-        
+
         # Asset-specific rules
         if dq_run.asset:
             asset_rules = rules_query.filter(asset=dq_run.asset)
         else:
             asset_rules = DQAlertingRule.objects.none()
-        
+
         # Global rules (no asset specified)
         global_rules = rules_query.filter(asset__isnull=True)
-        
+
         # Combine and return
         return list(asset_rules) + list(global_rules)
-    
+
     @staticmethod
     def _create_alert(
-        rule: DQAlertingRule,
-        dq_run: DQRun,
-        metric_type: str,
-        metric_value: float
-    ) -> Dict[str, Any]:
+        rule: DQAlertingRule, dq_run: DQRun, metric_type: str, metric_value: float
+    ) -> dict[str, Any]:
         """Create alert dictionary"""
         return {
             "rule_id": str(rule.id),
@@ -158,14 +138,14 @@ class DQAlertingService:
             "asset_id": str(dq_run.asset.id) if dq_run.asset else None,
             "dataset_id": str(dq_run.dataset.id) if dq_run.dataset else None,
             "triggered_at": timezone.now().isoformat(),
-            "message": f"{rule.name}: {metric_type} {rule.comparison_operator} {rule.threshold} (actual: {metric_value})"
+            "message": f"{rule.name}: {metric_type} {rule.comparison_operator} {rule.threshold} (actual: {metric_value})",
         }
-    
+
     @staticmethod
     def _deliver_alert(
-        alert: Dict[str, Any],
+        alert: dict[str, Any],
         rule: DQAlertingRule,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Deliver alert through configured channels.
 
         Phase 240.1.A.2 / 240.1.A.4 — replaces the four log-only stubs.
@@ -191,7 +171,9 @@ class DQAlertingService:
         run_id = alert.get("dq_run_id") or ""
         alert_type = alert.get("metric_type") or "metric"
         alert_id = compute_alert_id(
-            rule_id=str(rule.id), run_id=str(run_id), alert_type=alert_type,
+            rule_id=str(rule.id),
+            run_id=str(run_id),
+            alert_type=alert_type,
         )
         # Decorate the payload with the dedup token so every client
         # sends the SAME alert_id to its partner (PagerDuty dedup_key,
@@ -205,14 +187,11 @@ class DQAlertingService:
                 rule_id=str(rule.id),
                 alert_id=alert_id,
                 last_alert_id=rule.last_alert_id,
-                last_fired_at=(
-                    rule.last_fired_at.isoformat()
-                    if rule.last_fired_at else None
-                ),
+                last_fired_at=(rule.last_fired_at.isoformat() if rule.last_fired_at else None),
             )
             return []
 
-        outcomes: List[Dict[str, Any]] = []
+        outcomes: list[dict[str, Any]] = []
         # ``rule.alert_channels`` is a JSON list of channel strings;
         # dedupe in case a tenant double-listed a channel.
         seen: set = set()
@@ -227,7 +206,7 @@ class DQAlertingService:
                     payload=payload,
                     attempt_number=1,
                 )
-            except Exception as exc:  # noqa: BLE001 — boundary
+            except Exception as exc:
                 # The dispatcher itself should never raise; if it does
                 # we still want to emit a failure audit + log so the
                 # delivery doesn't silently disappear.
@@ -253,7 +232,8 @@ class DQAlertingService:
 
     @staticmethod
     def _is_within_dedup_window(
-        rule: DQAlertingRule, alert_id: str,
+        rule: DQAlertingRule,
+        alert_id: str,
     ) -> bool:
         """True if the same alert_id was delivered within the dedup window.
 
@@ -268,27 +248,23 @@ class DQAlertingService:
             return False
         cutoff = timezone.now() - timedelta(hours=DEDUP_WINDOW_HOURS)
         return rule.last_fired_at >= cutoff
-    
+
     @staticmethod
     def get_alert_history(
-        tenant_id: str,
-        asset_id: Optional[str] = None,
-        rule_id: Optional[str] = None,
-        days: int = 30
-    ) -> List[Dict[str, Any]]:
+        tenant_id: str, asset_id: str | None = None, rule_id: str | None = None, days: int = 30
+    ) -> list[dict[str, Any]]:
         """
         Get alert history (stored alerts would be in a separate table in production).
-        
+
         Args:
             tenant_id: Tenant UUID
             asset_id: Optional asset UUID
             rule_id: Optional rule UUID
             days: Number of days to look back
-        
+
         Returns:
             List of alert history entries
         """
         # In production, this would query a DQAlertHistory model
         # For now, return empty list
         return []
-

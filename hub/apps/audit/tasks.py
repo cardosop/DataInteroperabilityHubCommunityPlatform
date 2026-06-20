@@ -18,10 +18,10 @@ command — same code path, two activation surfaces:
 Both paths converge on a single implementation so the proof-of-tamper
 trail is identical regardless of who scheduled it.
 """
-from __future__ import annotations
-import structlog
 
-from .models import AuditMerkleSnapshot
+from __future__ import annotations
+
+import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -50,9 +50,7 @@ def _execute_audit_merkle_snapshot_job(job_obj) -> dict:
     try:
         rows = snapshot_all_tenants_now(window_hours=window_hours)
     except Exception:
-        logger.exception(
-            "audit_merkle_snapshot_job_failed", job_id=str(job_obj.id)
-        )
+        logger.exception("audit_merkle_snapshot_job_failed", job_id=str(job_obj.id))
         raise
 
     per_tenant: dict[str, dict] = {}
@@ -108,8 +106,7 @@ def _execute_audit_permanent_delete_sweep_job(job_obj) -> dict:
     dry_run = bool(details.get("dry_run", False))
     tenant_id = details.get("tenant_id")
     age_threshold_days = int(
-        details.get("age_threshold_days", DEFAULT_AGE_THRESHOLD_DAYS)
-        or DEFAULT_AGE_THRESHOLD_DAYS
+        details.get("age_threshold_days", DEFAULT_AGE_THRESHOLD_DAYS) or DEFAULT_AGE_THRESHOLD_DAYS
     )
 
     logger.info(

@@ -30,7 +30,6 @@ from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, 
 from hub.apps.core.services.base import (
     ConflictError,
     NotFoundError,
-    PermissionError,
     ValidationError,
 )
 from hub.apps.governance.models import AccessPolicy
@@ -164,7 +163,13 @@ class VirtualDatasetManagementTest(TestCase):
             query_type=QueryType.SQL,
             status=VirtualDatasetStatus.DRAFT,
             sources=[
-                {"id": "src1", "type": "postgresql", "host": "localhost", "database": "testdb", "port": 5432},
+                {
+                    "id": "src1",
+                    "type": "postgresql",
+                    "host": "localhost",
+                    "database": "testdb",
+                    "port": 5432,
+                },
             ],
         )
 
@@ -194,7 +199,13 @@ class VirtualDatasetManagementTest(TestCase):
             query="SELECT * FROM target_table",
             query_type=QueryType.SQL,
             sources=[
-                {"id": "src1", "type": "postgresql", "host": "localhost", "database": "testdb", "port": 5432},
+                {
+                    "id": "src1",
+                    "type": "postgresql",
+                    "host": "localhost",
+                    "database": "testdb",
+                    "port": 5432,
+                },
             ],
         )
         dataset_id = str(dataset.id)
@@ -280,7 +291,13 @@ class VirtualDatasetManagementTest(TestCase):
             query_type=QueryType.SQL,
             schema=schema,
             sources=[
-                {"id": "src1", "type": "postgresql", "host": "localhost", "database": "testdb", "port": 5432},
+                {
+                    "id": "src1",
+                    "type": "postgresql",
+                    "host": "localhost",
+                    "database": "testdb",
+                    "port": 5432,
+                },
             ],
         )
 
@@ -299,7 +316,13 @@ class VirtualDatasetManagementTest(TestCase):
             query_type=QueryType.SQL,
             schema={"cache": {"enabled": True, "ttl_seconds": 3600, "key_prefix": "vd_cache"}},
             sources=[
-                {"id": "src1", "type": "postgresql", "host": "localhost", "database": "testdb", "port": 5432},
+                {
+                    "id": "src1",
+                    "type": "postgresql",
+                    "host": "localhost",
+                    "database": "testdb",
+                    "port": 5432,
+                },
             ],
         )
 
@@ -323,7 +346,9 @@ class VirtualDatasetManagementTest(TestCase):
             )
 
         # Test empty name (sources required for SQL so we get name validation error)
-        _min_sources = [{"id": "s", "type": "postgresql", "host": "localhost", "database": "d", "port": 5432}]
+        _min_sources = [
+            {"id": "s", "type": "postgresql", "host": "localhost", "database": "d", "port": 5432}
+        ]
         with self.assertRaises(ValidationError):
             self.service.create_virtual_dataset(
                 tenant_id=str(self.tenant.id),
@@ -349,10 +374,16 @@ class VirtualDatasetManagementTest(TestCase):
     def test_virtual_dataset_error_handling(self):
         """Test virtual dataset error handling"""
         minimal_sources = [
-            {"id": "src1", "type": "postgresql", "host": "localhost", "database": "testdb", "port": 5432},
+            {
+                "id": "src1",
+                "type": "postgresql",
+                "host": "localhost",
+                "database": "testdb",
+                "port": 5432,
+            },
         ]
         # Test duplicate name/version
-        dataset1 = self.service.create_virtual_dataset(
+        self.service.create_virtual_dataset(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             name="Duplicate Test",
@@ -561,7 +592,7 @@ class FederatedQueryExecutionTest(TestCase):
             execution_id=str(execution.id), tenant_id=str(self.tenant.id)
         )
         if workflow_state:
-            optimized_query = workflow_state.get("state_data", {}).get("optimized_query")
+            workflow_state.get("state_data", {}).get("optimized_query")
             # Optimized query may be present if optimization was applied
             # This is a best-effort check since optimization depends on workflow execution
 
@@ -573,16 +604,16 @@ class FederatedQueryExecutionTest(TestCase):
             dataset = self.service.create_virtual_dataset(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                name=f"Parallel Dataset {i+1}",
-                query=f"SELECT * FROM table{i+1}",
+                name=f"Parallel Dataset {i + 1}",
+                query=f"SELECT * FROM table{i + 1}",
                 query_type=QueryType.SQL,
                 status=VirtualDatasetStatus.ACTIVE,
                 sources=[
                     {
-                        "id": f"source{i+1}",
+                        "id": f"source{i + 1}",
                         "type": "postgresql",
                         "host": "localhost",
-                        "database": f"db{i+1}",
+                        "database": f"db{i + 1}",
                         "port": 5432,
                     }
                 ],
@@ -644,7 +675,7 @@ class FederatedQueryExecutionTest(TestCase):
         while execution.status not in [QueryExecutionStatus.COMPLETED, QueryExecutionStatus.FAILED]:
             if time.time() - start_time > timeout:
                 break
-            time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(0.5)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
             execution.refresh_from_db()
 
         # If completed, check that result aggregation occurred
@@ -675,7 +706,7 @@ class FederatedQueryExecutionTest(TestCase):
         ]:
             if time.time() - start_time > timeout:
                 break
-            time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(0.5)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
             execution.refresh_from_db()
 
         # Execution should eventually fail or be cancelled due to timeout
@@ -700,7 +731,7 @@ class FederatedQueryExecutionTest(TestCase):
     def test_query_error_handling(self):
         """Test query error handling: invalid source type is rejected at create (ValidationError)."""
         # Creating a dataset with invalid source type must raise ValidationError (business rule)
-        with self.assertRaises(ValidationError) as cm:
+        with self.assertRaises(ValidationError):
             self.service.create_virtual_dataset(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
@@ -711,7 +742,8 @@ class FederatedQueryExecutionTest(TestCase):
                 sources=[{"id": "invalid_source", "type": "invalid_type"}],
             )
         self.assertTrue(
-            "invalid_type" in str(cm.exception).lower() or "not supported" in str(cm.exception).lower(),
+            "invalid_type" in str(cm.exception).lower()
+            or "not supported" in str(cm.exception).lower(),
             f"Expected error about invalid source type, got: {cm.exception}",
         )
 
@@ -745,7 +777,9 @@ class FederationTopologyTest(TestCase):
         """Set up test data"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name=f"Topology Test Tenant {uuid.uuid4().hex[:8]}", slug=f"topology-test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Topology Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"topology-test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         unique_id = uuid.uuid4().hex[:8]
         self.user = User.objects.create_user(
@@ -830,7 +864,13 @@ class FederationTopologyTest(TestCase):
             status=VirtualDatasetStatus.ACTIVE,
             sources=[
                 shared_source,
-                {"id": "source2", "type": "mysql", "host": "localhost", "database": "db2", "port": 3306},
+                {
+                    "id": "source2",
+                    "type": "mysql",
+                    "host": "localhost",
+                    "database": "db2",
+                    "port": 3306,
+                },
             ],
         )
 
@@ -1007,7 +1047,9 @@ class FederationTopologyTest(TestCase):
 
         # Test with invalid tenant (should be filtered automatically)
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {uuid.uuid4().hex[:8]}", slug=f"other-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         other_user = User.objects.create_user(
             email=f"other_user_{uuid.uuid4().hex[:8]}@example.com",
@@ -1126,7 +1168,7 @@ class VirtualizationPerformanceTest(TestCase):
                 execution_mode=QueryExecutionMode.SYNC,
                 timeout_seconds=10,
             )
-        except ValidationError as e:
+        except ValidationError:
             # Connection failures are expected in test environment
             # Verify that execution was created and tracked
             from hub.apps.virtualization.models import QueryExecution
@@ -1147,10 +1189,10 @@ class VirtualizationPerformanceTest(TestCase):
         while execution.status not in [QueryExecutionStatus.COMPLETED, QueryExecutionStatus.FAILED]:
             if time.time() - start_wait > timeout:
                 break
-            time.sleep(0.1)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
             execution.refresh_from_db()
 
-        execution_time = time.time() - start_time
+        time.time() - start_time
 
         # For sync mode, execution should complete quickly
         # Note: Actual performance depends on source availability
@@ -1172,16 +1214,16 @@ class VirtualizationPerformanceTest(TestCase):
             dataset = self.service.create_virtual_dataset(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                name=f"Concurrent Dataset {i+1}",
-                query=f"SELECT * FROM concurrent_table{i+1}",
+                name=f"Concurrent Dataset {i + 1}",
+                query=f"SELECT * FROM concurrent_table{i + 1}",
                 query_type=QueryType.SQL,
                 status=VirtualDatasetStatus.ACTIVE,
                 sources=[
                     {
-                        "id": f"source{i+1}",
+                        "id": f"source{i + 1}",
                         "type": "postgresql",
                         "host": "localhost",
-                        "database": f"db{i+1}",
+                        "database": f"db{i + 1}",
                         "port": 5432,
                     }
                 ],
@@ -1263,12 +1305,12 @@ class VirtualizationPerformanceTest(TestCase):
         while execution.status not in [QueryExecutionStatus.COMPLETED, QueryExecutionStatus.FAILED]:
             if time.time() - start_time > timeout:
                 break
-            time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(0.5)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
             execution.refresh_from_db()
 
         # If completed, check result handling
         if execution.status == QueryExecutionStatus.COMPLETED:
-            metrics = execution.metrics or {}
+            pass
             # Large result sets should have metrics about size
             # Note: Actual result size depends on source data
 
@@ -1308,12 +1350,12 @@ class VirtualizationPerformanceTest(TestCase):
         ]:
             if time.time() - start_time > timeout:
                 break
-            time.sleep(0.1)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
             execution1.refresh_from_db()
 
         # Execute same query again (should use cache if available)
         try:
-            execution2 = self.service.execute_query(
+            self.service.execute_query(
                 virtual_dataset_id=str(self.virtual_dataset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
@@ -1330,7 +1372,7 @@ class VirtualizationPerformanceTest(TestCase):
             cache_key = execution1.result_cache_key
             if cache_key:
                 # Cache should be available
-                cached_result = cache.get(cache_key)
+                cache.get(cache_key)
                 # Note: Cache availability depends on workflow implementation
 
     def test_performance_monitoring(self):
@@ -1362,7 +1404,7 @@ class VirtualizationPerformanceTest(TestCase):
         while execution.status not in [QueryExecutionStatus.COMPLETED, QueryExecutionStatus.FAILED]:
             if time.time() - start_time > timeout:
                 break
-            time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(0.5)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
             execution.refresh_from_db()
 
         # Check performance metrics
@@ -1372,7 +1414,6 @@ class VirtualizationPerformanceTest(TestCase):
             self.assertIsNotNone(metrics)
 
             # Check execution log for performance info
-            execution_log = execution.execution_log or []
             # Log should contain performance-related entries
 
 

@@ -22,6 +22,7 @@ Tests cover:
 3. Existing rows backfilled to FALSE / FALSE by the migration.
 4. Round-trip through ORM (set/save/refresh) preserves both flags.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -30,7 +31,6 @@ import pytest
 from django.db import connection
 
 from hub.apps.tenants.models import Tenant
-
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.unit]
 

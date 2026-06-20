@@ -3,6 +3,7 @@ User Management Models
 
 Defines User and Role models with relationships.
 """
+
 import uuid
 import weakref
 
@@ -11,7 +12,6 @@ from django.core.validators import EmailValidator
 from django.db import models
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
-from django.utils import timezone
 
 # Registry of live User Python objects keyed by PK, so signal handlers can
 # find and clear the per-instance _role_cache on the exact object held by the
@@ -22,6 +22,7 @@ _live_user_instances: weakref.WeakValueDictionary = weakref.WeakValueDictionary(
 
 class UserStatus(models.TextChoices):
     """User status enumeration"""
+
     ACTIVE = "ACTIVE", "Active"
     INVITED = "INVITED", "Invited"
     DISABLED = "DISABLED", "Disabled"
@@ -30,26 +31,26 @@ class UserStatus(models.TextChoices):
 
 class UserManager(BaseUserManager):
     """Custom user manager"""
-    
+
     def create_user(self, email, password=None, tenant=None, **extra_fields):
         """Create and save a regular user"""
         if not email:
             raise ValueError("The Email field must be set")
-        
+
         email = self.normalize_email(email)
         user = self.model(email=email, tenant=tenant, **extra_fields)
-        
+
         if password:
             user.set_password(password)
-        
+
         user.save(using=self._db)
         return user
-    
+
     def create_superuser(self, email, password=None, tenant=None, **extra_fields):
         """Create and save a superuser (platform admin)"""
         extra_fields.setdefault("is_platform_admin", True)
         extra_fields.setdefault("status", UserStatus.ACTIVE)
-        
+
         if extra_fields.get("is_platform_admin") is not True:
             raise ValueError("Superuser must have is_platform_admin=True")
 
@@ -61,9 +62,10 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
     """
     Custom User model representing a user account.
-    
+
     Each user belongs to exactly one tenant (except platform admins).
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",
@@ -71,29 +73,29 @@ class User(AbstractBaseUser, PermissionsMixin):
         related_name="users",
         null=True,
         blank=True,
-        help_text="Tenant this user belongs to (null for platform admins)"
+        help_text="Tenant this user belongs to (null for platform admins)",
     )
     email = models.EmailField(
         unique=True,
         validators=[EmailValidator()],
-        help_text="User email address (unique across platform)"
+        help_text="User email address (unique across platform)",
     )
     display_name = models.CharField(
         max_length=255,
         default="",  # Phase 92: empty string instead of NULL
         blank=True,
-        help_text="User display name"
+        help_text="User display name",
     )
     avatar_url = models.URLField(
         max_length=500,
         default="",  # Phase 92: empty string instead of NULL
         blank=True,
-        help_text="URL to user avatar image (e.g. gravatar, CDN)"
+        help_text="URL to user avatar image (e.g. gravatar, CDN)",
     )
     preferences = models.JSONField(
         default=dict,
         blank=True,
-        help_text="User preferences (theme, language, notifications, etc.)"
+        help_text="User preferences (theme, language, notifications, etc.)",
     )
     # Phase 278.E.3 — saved list filters/views per user. Each entry:
     # {resource_type: string, name: string, filters: dict, sort: string}
@@ -107,30 +109,25 @@ class User(AbstractBaseUser, PermissionsMixin):
         max_length=20,
         choices=UserStatus.choices,
         default=UserStatus.INVITED,
-        help_text="User status: ACTIVE, INVITED, or DISABLED"
+        help_text="User status: ACTIVE, INVITED, or DISABLED",
     )
     is_platform_admin = models.BooleanField(
-        default=False,
-        help_text="Platform-level admin privileges (transcends tenant boundaries)"
+        default=False, help_text="Platform-level admin privileges (transcends tenant boundaries)"
     )
-    
+
     # Invitation tokens — stored as SHA-256(plaintext_uuid) (11.3)
     invitation_token = models.CharField(
         max_length=64,
         null=True,
         blank=True,
         db_index=True,
-        help_text="SHA-256 hex hash of the invitation UUID token"
+        help_text="SHA-256 hex hash of the invitation UUID token",
     )
     invitation_token_expires_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Invitation token expiration time"
+        null=True, blank=True, help_text="Invitation token expiration time"
     )
     invitation_token_used_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When invitation token was used"
+        null=True, blank=True, help_text="When invitation token was used"
     )
 
     # Password reset tokens — stored as SHA-256(plaintext_uuid) (11.3)
@@ -139,17 +136,13 @@ class User(AbstractBaseUser, PermissionsMixin):
         null=True,
         blank=True,
         db_index=True,
-        help_text="SHA-256 hex hash of the password-reset UUID token"
+        help_text="SHA-256 hex hash of the password-reset UUID token",
     )
     password_reset_token_expires_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Password reset token expiration time"
+        null=True, blank=True, help_text="Password reset token expiration time"
     )
     password_reset_token_used_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When password reset token was used"
+        null=True, blank=True, help_text="When password reset token was used"
     )
 
     # Email verification (Phase 204): HMAC-signed token stored as SHA-256 hex of plaintext
@@ -177,23 +170,19 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     # Token version for session invalidation
     token_version = models.IntegerField(
-        default=1,
-        help_text="Token version, incremented on password reset or role change"
+        default=1, help_text="Token version, incremented on password reset or role change"
     )
 
     # Account lockout (277.B.066) — progressive backoff
     failed_login_count = models.IntegerField(
-        default=0,
-        help_text="Consecutive failed login attempts since last successful login"
+        default=0, help_text="Consecutive failed login attempts since last successful login"
     )
     locked_until = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Account locked until this time (progressive backoff)"
+        null=True, blank=True, help_text="Account locked until this time (progressive backoff)"
     )
     lockout_level = models.IntegerField(
         default=0,
-        help_text="Number of consecutive lockout periods triggered; drives progressive window doubling"
+        help_text="Number of consecutive lockout periods triggered; drives progressive window doubling",
     )
 
     # CAN-SPAM / GDPR unsubscribe token (277.B.097)
@@ -220,10 +209,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
 
     objects = UserManager()
-    
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
-    
+
     class Meta:
         db_table = "users"
         ordering = ["email"]
@@ -237,10 +226,10 @@ class User(AbstractBaseUser, PermissionsMixin):
             models.UniqueConstraint(
                 fields=["tenant", "email"],
                 name="unique_tenant_email",
-                condition=models.Q(tenant__isnull=False)
+                condition=models.Q(tenant__isnull=False),
             )
         ]
-    
+
     def __str__(self):
         if self.tenant_id is None:
             return f"{self.email} (Platform Admin)"
@@ -248,24 +237,24 @@ class User(AbstractBaseUser, PermissionsMixin):
             return f"{self.email} ({self.tenant.name})"
         except Exception:
             return f"{self.email} (tenant_id={self.tenant_id})"
-    
+
     def is_active(self) -> bool:
         """Check if user is active"""
         return self.status == UserStatus.ACTIVE
-    
+
     def is_invited(self) -> bool:
         """Check if user is invited"""
         return self.status == UserStatus.INVITED
-    
+
     def is_disabled(self) -> bool:
         """Check if user is disabled"""
         return self.status == UserStatus.DISABLED
-    
+
     def increment_token_version(self):
         """Increment token version to invalidate existing sessions"""
         self.token_version += 1
         self.save(update_fields=["token_version", "updated_at"])
-    
+
     def has_role(self, *role_names):
         """
         Check if user has any of the specified roles.
@@ -303,9 +292,10 @@ class User(AbstractBaseUser, PermissionsMixin):
 class Role(models.Model):
     """
     Role model representing a logical permission set within a tenant.
-    
+
     Roles are tenant-scoped (except for platform-level roles).
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",
@@ -313,20 +303,15 @@ class Role(models.Model):
         related_name="roles",
         null=True,
         blank=True,
-        help_text="Tenant this role belongs to (null for platform-level roles)"
+        help_text="Tenant this role belongs to (null for platform-level roles)",
     )
     name = models.CharField(
-        max_length=100,
-        help_text="Role name (e.g., TENANT_ADMIN, DATA_PROVIDER)"
+        max_length=100, help_text="Role name (e.g., TENANT_ADMIN, DATA_PROVIDER)"
     )
-    description = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Role description"
-    )
+    description = models.TextField(null=True, blank=True, help_text="Role description")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = "roles"
         ordering = ["name"]
@@ -334,12 +319,9 @@ class Role(models.Model):
             models.Index(fields=["tenant", "name"]),
         ]
         constraints = [
-            models.UniqueConstraint(
-                fields=["tenant", "name"],
-                name="unique_tenant_role_name"
-            )
+            models.UniqueConstraint(fields=["tenant", "name"], name="unique_tenant_role_name")
         ]
-    
+
     def __str__(self):
         return f"{self.name} ({self.tenant.name})"
 
@@ -352,12 +334,9 @@ class UserRole(models.Model):
     constraint prevents duplicate role grants at the DB level; application
     code must use get_or_create to stay idempotent.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name="user_roles"
-    )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="user_roles")
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
@@ -365,11 +344,7 @@ class UserRole(models.Model):
         help_text="Tenant this role assignment belongs to (denormalised from role.tenant)",
         null=True,  # nullable for the migration; set NOT NULL via 0009 data migration
     )
-    role = models.ForeignKey(
-        Role,
-        on_delete=models.CASCADE,
-        related_name="user_roles"
-    )
+    role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name="user_roles")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -382,8 +357,7 @@ class UserRole(models.Model):
         constraints = [
             # DB-level last-resort guarantee: one role grant per (user, tenant, role).
             models.UniqueConstraint(
-                fields=["user", "tenant", "role"],
-                name="unique_user_tenant_role"
+                fields=["user", "tenant", "role"], name="unique_user_tenant_role"
             )
         ]
 
@@ -489,6 +463,7 @@ class PasswordHistory(models.Model):
 # User object whenever a UserRole row is created, updated, or deleted.
 # This ensures has_role() is not stale within long-lived process memory.
 # ---------------------------------------------------------------------------
+
 
 def _clear_user_role_cache(user_id) -> None:
     """

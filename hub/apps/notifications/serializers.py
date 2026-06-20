@@ -1,4 +1,5 @@
 """Serializers for the in-app notification inbox (Phase 223.1)."""
+
 from rest_framework import serializers
 
 from .models import UserNotification

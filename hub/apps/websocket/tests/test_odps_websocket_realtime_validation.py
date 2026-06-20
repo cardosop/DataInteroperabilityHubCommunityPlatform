@@ -10,29 +10,23 @@ This test suite validates:
 
 All tests use real implementations without mocks/stubs where possible.
 """
-import uuid
+
 import asyncio
 import time
-from datetime import datetime, timedelta, timezone as dt_timezone
-from unittest.mock import AsyncMock, patch, MagicMock
+import uuid
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+
 from asgiref.sync import sync_to_async
 from django.utils import timezone as django_timezone
 
-from hub.apps.websocket.tests.test_base import AsyncWebSocketTransactionTestCase
+from hub.apps.core.events.models import Event as EventModel
 from hub.apps.websocket.consumers.event_consumer import EventConsumer
 from hub.apps.websocket.protocol import (
     WebSocketMessage,
     WebSocketMessageType,
 )
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus, Role, UserRole
-from hub.apps.core.events.models import Event as EventModel
-from hub.apps.core.events.bus import get_event_bus
-from hub.apps.core.events.deduplication import (
-    check_event_duplicate,
-    store_event_id,
-    get_redis_client as get_deduplication_redis_client,
-)
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTransactionTestCase
 
 
 class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
@@ -53,22 +47,7 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
 
     def _create_consumer(self, user=None, tenant=None):
         """Create EventConsumer instance for testing."""
-        consumer = EventConsumer()
-        consumer.scope = {
-            "user": user or self.user,
-            "tenant": tenant or self.tenant
-        }
-        consumer.channel_name = "test_channel"
-        consumer.channel_layer = None
-        consumer.send_json_message = AsyncMock()
-        consumer.send = AsyncMock()
-        consumer.close = AsyncMock()
-        consumer.last_activity = datetime.now(dt_timezone.utc)
-        consumer._connection_closed = False
-        consumer.replay_enabled = True
-        consumer.replay_window_seconds = 3600
-        consumer.last_event_timestamps = {}
-        return consumer
+        return self.create_test_consumer(user=user, tenant=tenant)
 
     async def test_odps_creation_progress_events_sent_correctly(self):
         """Test that odps.creation.progress events are sent correctly."""
@@ -85,36 +64,36 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
                 "current_step": "initialize",
                 "step_index": 0,
                 "total_steps": 10,
-                "status_message": "Initializing ODPS creation"
+                "status_message": "Initializing ODPS creation",
             },
             {
                 "progress_percentage": 25.0,
                 "current_step": "parse_odps",
                 "step_index": 2,
                 "total_steps": 10,
-                "status_message": "Parsing ODPS document"
+                "status_message": "Parsing ODPS document",
             },
             {
                 "progress_percentage": 50.0,
                 "current_step": "normalize_odps",
                 "step_index": 5,
                 "total_steps": 10,
-                "status_message": "Normalizing ODPS document"
+                "status_message": "Normalizing ODPS document",
             },
             {
                 "progress_percentage": 75.0,
                 "current_step": "link_contracts",
                 "step_index": 7,
                 "total_steps": 10,
-                "status_message": "Linking contracts"
+                "status_message": "Linking contracts",
             },
             {
                 "progress_percentage": 100.0,
                 "current_step": "complete",
                 "step_index": 9,
                 "total_steps": 10,
-                "status_message": "ODPS creation completed"
-            }
+                "status_message": "ODPS creation completed",
+            },
         ]
 
         for event_data in progress_events:
@@ -122,31 +101,40 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.creation.progress",
                 "event_version": "1.0.0",
-                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+                "timestamp": datetime.now(UTC).isoformat() + "Z",
                 "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
                 "data": {
                     "contract_id": contract_id,
                     "workflow_instance_id": workflow_instance_id,
-                    **event_data
-                }
+                    **event_data,
+                },
             }
 
             consumer.send_json_message.reset_mock()
 
             # Mock deduplication
-            with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-                with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                    await consumer.send_event(event)
+            with (
+                patch(
+                    "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                    return_value=(False, None),
+                ),
+                patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+            ):
+                await consumer.send_event(event)
 
             # Verify event was sent
-            self.assertTrue(consumer.send_json_message.called,
-                          f"Event with {event_data['progress_percentage']}% should be sent")
+            self.assertTrue(
+                consumer.send_json_message.called,
+                f"Event with {event_data['progress_percentage']}% should be sent",
+            )
 
             # Verify event data accuracy
             response = consumer.send_json_message.call_args[0][0]
             self.assertEqual(response.type, WebSocketMessageType.EVENT.value)
             self.assertEqual(response.data["event_type"], "odps.creation.progress")
-            self.assertEqual(response.data["data"]["progress_percentage"], event_data["progress_percentage"])
+            self.assertEqual(
+                response.data["data"]["progress_percentage"], event_data["progress_percentage"]
+            )
             self.assertEqual(response.data["data"]["current_step"], event_data["current_step"])
             self.assertEqual(response.data["data"]["step_index"], event_data["step_index"])
             self.assertEqual(response.data["data"]["total_steps"], event_data["total_steps"])
@@ -166,36 +154,36 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
                 "current_phase": "initialization",
                 "phase_index": 0,
                 "total_phases": 6,
-                "status_message": "Starting ODPS normalization"
+                "status_message": "Starting ODPS normalization",
             },
             {
                 "progress_percentage": 16.67,
                 "current_phase": "info_mapping",
                 "phase_index": 1,
                 "total_phases": 6,
-                "status_message": "Mapping info section"
+                "status_message": "Mapping info section",
             },
             {
                 "progress_percentage": 50.0,
                 "current_phase": "schema_mapping",
                 "phase_index": 3,
                 "total_phases": 6,
-                "status_message": "Mapping schema section"
+                "status_message": "Mapping schema section",
             },
             {
                 "progress_percentage": 83.33,
                 "current_phase": "marketplace_mapping",
                 "phase_index": 5,
                 "total_phases": 6,
-                "status_message": "Mapping marketplace fields"
+                "status_message": "Mapping marketplace fields",
             },
             {
                 "progress_percentage": 100.0,
                 "current_phase": "completed",
                 "phase_index": 5,
                 "total_phases": 6,
-                "status_message": "Normalization completed"
-            }
+                "status_message": "Normalization completed",
+            },
         ]
 
         for event_data in progress_events:
@@ -203,25 +191,29 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.normalization.progress",
                 "event_version": "1.0.0",
-                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+                "timestamp": datetime.now(UTC).isoformat() + "Z",
                 "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
-                "data": {
-                    "contract_id": contract_id,
-                    **event_data
-                }
+                "data": {"contract_id": contract_id, **event_data},
             }
 
             consumer.send_json_message.reset_mock()
 
-            with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-                with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                    await consumer.send_event(event)
+            with (
+                patch(
+                    "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                    return_value=(False, None),
+                ),
+                patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+            ):
+                await consumer.send_event(event)
 
             # Verify event was sent with accurate data
             self.assertTrue(consumer.send_json_message.called)
             response = consumer.send_json_message.call_args[0][0]
             self.assertEqual(response.data["event_type"], "odps.normalization.progress")
-            self.assertEqual(response.data["data"]["progress_percentage"], event_data["progress_percentage"])
+            self.assertEqual(
+                response.data["data"]["progress_percentage"], event_data["progress_percentage"]
+            )
             self.assertEqual(response.data["data"]["current_phase"], event_data["current_phase"])
             self.assertEqual(response.data["data"]["phase_index"], event_data["phase_index"])
 
@@ -239,29 +231,29 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
                 "refs_processed": 0,
                 "refs_total": 10,
                 "current_ref_path": None,
-                "status_message": "Starting reference resolution"
+                "status_message": "Starting reference resolution",
             },
             {
                 "progress_percentage": 30.0,
                 "refs_processed": 3,
                 "refs_total": 10,
                 "current_ref_path": "#/definitions/quality",
-                "status_message": "Resolving internal references"
+                "status_message": "Resolving internal references",
             },
             {
                 "progress_percentage": 60.0,
                 "refs_processed": 6,
                 "refs_total": 10,
                 "current_ref_path": "#/definitions/schema",
-                "status_message": "Resolving schema references"
+                "status_message": "Resolving schema references",
             },
             {
                 "progress_percentage": 100.0,
                 "refs_processed": 10,
                 "refs_total": 10,
                 "current_ref_path": None,
-                "status_message": "All references resolved"
-            }
+                "status_message": "All references resolved",
+            },
         ]
 
         for event_data in progress_events:
@@ -269,25 +261,29 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.ref.progress",
                 "event_version": "1.0.0",
-                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+                "timestamp": datetime.now(UTC).isoformat() + "Z",
                 "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
-                "data": {
-                    "contract_id": contract_id,
-                    **event_data
-                }
+                "data": {"contract_id": contract_id, **event_data},
             }
 
             consumer.send_json_message.reset_mock()
 
-            with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-                with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                    await consumer.send_event(event)
+            with (
+                patch(
+                    "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                    return_value=(False, None),
+                ),
+                patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+            ):
+                await consumer.send_event(event)
 
             # Verify event was sent with accurate progress
             self.assertTrue(consumer.send_json_message.called)
             response = consumer.send_json_message.call_args[0][0]
             self.assertEqual(response.data["event_type"], "odps.ref.progress")
-            self.assertEqual(response.data["data"]["progress_percentage"], event_data["progress_percentage"])
+            self.assertEqual(
+                response.data["data"]["progress_percentage"], event_data["progress_percentage"]
+            )
             self.assertEqual(response.data["data"]["refs_processed"], event_data["refs_processed"])
             self.assertEqual(response.data["data"]["refs_total"], event_data["refs_total"])
 
@@ -305,21 +301,21 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
                 "status": "started",
                 "progress_percentage": 0.0,
                 "current_phase": "initialization",
-                "status_message": "Starting contract linking"
+                "status_message": "Starting contract linking",
             },
             {
                 "status": "in_progress",
                 "progress_percentage": 50.0,
                 "current_phase": "validation",
-                "status_message": "Validating contracts"
+                "status_message": "Validating contracts",
             },
             {
                 "status": "completed",
                 "progress_percentage": 100.0,
                 "current_phase": "completed",
                 "validation_passed": True,
-                "status_message": "Contracts linked successfully"
-            }
+                "status_message": "Contracts linked successfully",
+            },
         ]
 
         for event_data in status_events:
@@ -327,27 +323,34 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.linking.status",
                 "event_version": "1.0.0",
-                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+                "timestamp": datetime.now(UTC).isoformat() + "Z",
                 "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
                 "data": {
                     "odps_contract_id": odps_contract_id,
                     "odcs_contract_id": odcs_contract_id,
-                    **event_data
-                }
+                    **event_data,
+                },
             }
 
             consumer.send_json_message.reset_mock()
 
-            with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-                with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                    await consumer.send_event(event)
+            with (
+                patch(
+                    "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                    return_value=(False, None),
+                ),
+                patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+            ):
+                await consumer.send_event(event)
 
             # Verify event was sent with accurate status
             self.assertTrue(consumer.send_json_message.called)
             response = consumer.send_json_message.call_args[0][0]
             self.assertEqual(response.data["event_type"], "odps.linking.status")
             self.assertEqual(response.data["data"]["status"], event_data["status"])
-            self.assertEqual(response.data["data"]["progress_percentage"], event_data["progress_percentage"])
+            self.assertEqual(
+                response.data["data"]["progress_percentage"], event_data["progress_percentage"]
+            )
             self.assertEqual(response.data["data"]["current_phase"], event_data["current_phase"])
 
     async def test_odps_export_progress_events_sent_correctly(self):
@@ -365,7 +368,7 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
                 "current_phase": "initialization",
                 "bytes_processed": 0,
                 "bytes_total": 10000,
-                "status_message": "Starting export"
+                "status_message": "Starting export",
             },
             {
                 "export_format": "json",
@@ -373,7 +376,7 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
                 "current_phase": "generation",
                 "bytes_processed": 5000,
                 "bytes_total": 10000,
-                "status_message": "Generating ODPS document"
+                "status_message": "Generating ODPS document",
             },
             {
                 "export_format": "json",
@@ -381,8 +384,8 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
                 "current_phase": "completed",
                 "bytes_processed": 10000,
                 "bytes_total": 10000,
-                "status_message": "Export completed"
-            }
+                "status_message": "Export completed",
+            },
         ]
 
         for event_data in progress_events:
@@ -390,25 +393,29 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.export.progress",
                 "event_version": "1.0.0",
-                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+                "timestamp": datetime.now(UTC).isoformat() + "Z",
                 "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
-                "data": {
-                    "contract_id": contract_id,
-                    **event_data
-                }
+                "data": {"contract_id": contract_id, **event_data},
             }
 
             consumer.send_json_message.reset_mock()
 
-            with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-                with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                    await consumer.send_event(event)
+            with (
+                patch(
+                    "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                    return_value=(False, None),
+                ),
+                patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+            ):
+                await consumer.send_event(event)
 
             # Verify event was sent with accurate progress
             self.assertTrue(consumer.send_json_message.called)
             response = consumer.send_json_message.call_args[0][0]
             self.assertEqual(response.data["event_type"], "odps.export.progress")
-            self.assertEqual(response.data["data"]["progress_percentage"], event_data["progress_percentage"])
+            self.assertEqual(
+                response.data["data"]["progress_percentage"], event_data["progress_percentage"]
+            )
             self.assertEqual(response.data["data"]["export_format"], event_data["export_format"])
             self.assertEqual(response.data["data"]["current_phase"], event_data["current_phase"])
 
@@ -424,7 +431,7 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
             "odps.creation.progress",
             "odps.normalization.progress",
             "odps.ref.progress",
-            "odps.export.progress"
+            "odps.export.progress",
         ]
 
         for event_type in event_types:
@@ -433,19 +440,21 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
                     "event_id": str(uuid.uuid4()),
                     "event_type": event_type,
                     "event_version": "1.0.0",
-                    "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+                    "timestamp": datetime.now(UTC).isoformat() + "Z",
                     "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
-                    "data": {
-                        "contract_id": contract_id,
-                        "progress_percentage": percentage
-                    }
+                    "data": {"contract_id": contract_id, "progress_percentage": percentage},
                 }
 
                 consumer.send_json_message.reset_mock()
 
-                with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-                    with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                        await consumer.send_event(event)
+                with (
+                    patch(
+                        "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                        return_value=(False, None),
+                    ),
+                    patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+                ):
+                    await consumer.send_event(event)
 
                 # Verify progress_percentage is present and accurate
                 self.assertTrue(consumer.send_json_message.called)
@@ -465,52 +474,56 @@ class WebSocketProgressEventTest(AsyncWebSocketTransactionTestCase):
             {
                 "event_type": "odps.creation.progress",
                 "step_field": "current_step",
-                "step_value": "normalize_odps"
+                "step_value": "normalize_odps",
             },
             {
                 "event_type": "odps.normalization.progress",
                 "step_field": "current_phase",
-                "step_value": "schema_mapping"
+                "step_value": "schema_mapping",
             },
             {
                 "event_type": "odps.linking.status",
                 "step_field": "current_phase",
-                "step_value": "validation"
+                "step_value": "validation",
             },
             {
                 "event_type": "odps.export.progress",
                 "step_field": "current_phase",
-                "step_value": "formatting"
-            }
+                "step_value": "formatting",
+            },
         ]
 
         for test_case in test_cases:
-            event_data = {
-                "contract_id": contract_id,
-                "progress_percentage": 50.0
-            }
+            event_data = {"contract_id": contract_id, "progress_percentage": 50.0}
             event_data[test_case["step_field"]] = test_case["step_value"]
 
             event = {
                 "event_id": str(uuid.uuid4()),
                 "event_type": test_case["event_type"],
                 "event_version": "1.0.0",
-                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+                "timestamp": datetime.now(UTC).isoformat() + "Z",
                 "source": {"service": "hub", "tenant_id": str(self.tenant.id)},
-                "data": event_data
+                "data": event_data,
             }
 
             consumer.send_json_message.reset_mock()
 
-            with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-                with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                    await consumer.send_event(event)
+            with (
+                patch(
+                    "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                    return_value=(False, None),
+                ),
+                patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+            ):
+                await consumer.send_event(event)
 
             # Verify step name is present and accurate
             self.assertTrue(consumer.send_json_message.called)
             response = consumer.send_json_message.call_args[0][0]
             self.assertIn(test_case["step_field"], response.data["data"])
-            self.assertEqual(response.data["data"][test_case["step_field"]], test_case["step_value"])
+            self.assertEqual(
+                response.data["data"][test_case["step_field"]], test_case["step_value"]
+            )
 
 
 class WebSocketEventFilteringTest(AsyncWebSocketTransactionTestCase):
@@ -530,16 +543,13 @@ class WebSocketEventFilteringTest(AsyncWebSocketTransactionTestCase):
     def _create_consumer(self, user=None, tenant=None):
         """Create EventConsumer instance for testing."""
         consumer = EventConsumer()
-        consumer.scope = {
-            "user": user or self.user1,
-            "tenant": tenant or self.tenant1
-        }
+        consumer.scope = {"user": user or self.user1, "tenant": tenant or self.tenant1}
         consumer.channel_name = "test_channel"
         consumer.channel_layer = None
         consumer.send_json_message = AsyncMock()
         consumer.send = AsyncMock()
         consumer.close = AsyncMock()
-        consumer.last_activity = datetime.now(dt_timezone.utc)
+        consumer.last_activity = datetime.now(UTC)
         consumer._connection_closed = False
         consumer.replay_enabled = True
         consumer.replay_window_seconds = 3600
@@ -563,9 +573,9 @@ class WebSocketEventFilteringTest(AsyncWebSocketTransactionTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+            "timestamp": datetime.now(UTC).isoformat() + "Z",
             "source": {"tenant_id": str(self.tenant1.id)},
-            "data": {"contract_id": contract_id1}
+            "data": {"contract_id": contract_id1},
         }
 
         # Event not matching filter
@@ -573,23 +583,33 @@ class WebSocketEventFilteringTest(AsyncWebSocketTransactionTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+            "timestamp": datetime.now(UTC).isoformat() + "Z",
             "source": {"tenant_id": str(self.tenant1.id)},
-            "data": {"contract_id": contract_id2}
+            "data": {"contract_id": contract_id2},
         }
 
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                # Send matching event
-                await consumer.send_event(event1)
-                self.assertTrue(consumer.send_json_message.called, "Event with matching contract_id should pass")
+        with (
+            patch(
+                "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                return_value=(False, None),
+            ),
+            patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+        ):
+            # Send matching event
+            await consumer.send_event(event1)
+            self.assertTrue(
+                consumer.send_json_message.called, "Event with matching contract_id should pass"
+            )
 
-                # Reset mock
-                consumer.send_json_message.reset_mock()
+            # Reset mock
+            consumer.send_json_message.reset_mock()
 
-                # Send non-matching event
-                await consumer.send_event(event2)
-                self.assertFalse(consumer.send_json_message.called, "Event with different contract_id should be filtered")
+            # Send non-matching event
+            await consumer.send_event(event2)
+            self.assertFalse(
+                consumer.send_json_message.called,
+                "Event with different contract_id should be filtered",
+            )
 
     async def test_events_filtered_by_tenant_id(self):
         """Test that events are filtered by tenant_id."""
@@ -604,9 +624,9 @@ class WebSocketEventFilteringTest(AsyncWebSocketTransactionTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+            "timestamp": datetime.now(UTC).isoformat() + "Z",
             "source": {"tenant_id": str(self.tenant1.id)},
-            "data": {"contract_id": contract_id}
+            "data": {"contract_id": contract_id},
         }
 
         # Event from different tenant - should be filtered
@@ -614,23 +634,31 @@ class WebSocketEventFilteringTest(AsyncWebSocketTransactionTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+            "timestamp": datetime.now(UTC).isoformat() + "Z",
             "source": {"tenant_id": str(self.tenant2.id)},
-            "data": {"contract_id": contract_id}
+            "data": {"contract_id": contract_id},
         }
 
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                # Send event from same tenant
-                await consumer.send_event(event1)
-                self.assertTrue(consumer.send_json_message.called, "Event from same tenant should pass")
+        with (
+            patch(
+                "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                return_value=(False, None),
+            ),
+            patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+        ):
+            # Send event from same tenant
+            await consumer.send_event(event1)
+            self.assertTrue(consumer.send_json_message.called, "Event from same tenant should pass")
 
-                # Reset mock
-                consumer.send_json_message.reset_mock()
+            # Reset mock
+            consumer.send_json_message.reset_mock()
 
-                # Send event from different tenant
-                await consumer.send_event(event2)
-                self.assertFalse(consumer.send_json_message.called, "Event from different tenant should be filtered")
+            # Send event from different tenant
+            await consumer.send_event(event2)
+            self.assertFalse(
+                consumer.send_json_message.called,
+                "Event from different tenant should be filtered",
+            )
 
     async def test_events_filtered_by_user_id(self):
         """Test that events are filtered by user_id."""
@@ -645,12 +673,9 @@ class WebSocketEventFilteringTest(AsyncWebSocketTransactionTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
-            "source": {
-                "tenant_id": str(self.tenant1.id),
-                "user_id": str(self.user1.id)
-            },
-            "data": {"contract_id": contract_id}
+            "timestamp": datetime.now(UTC).isoformat() + "Z",
+            "source": {"tenant_id": str(self.tenant1.id), "user_id": str(self.user1.id)},
+            "data": {"contract_id": contract_id},
         }
 
         # Event from different user - should be filtered
@@ -658,26 +683,31 @@ class WebSocketEventFilteringTest(AsyncWebSocketTransactionTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
-            "source": {
-                "tenant_id": str(self.tenant1.id),
-                "user_id": str(self.user2.id)
-            },
-            "data": {"contract_id": contract_id}
+            "timestamp": datetime.now(UTC).isoformat() + "Z",
+            "source": {"tenant_id": str(self.tenant1.id), "user_id": str(self.user2.id)},
+            "data": {"contract_id": contract_id},
         }
 
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                # Send event from same user
-                await consumer.send_event(event1)
-                self.assertTrue(consumer.send_json_message.called, "Event from same user should pass")
+        with (
+            patch(
+                "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                return_value=(False, None),
+            ),
+            patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+        ):
+            # Send event from same user
+            await consumer.send_event(event1)
+            self.assertTrue(consumer.send_json_message.called, "Event from same user should pass")
 
-                # Reset mock
-                consumer.send_json_message.reset_mock()
+            # Reset mock
+            consumer.send_json_message.reset_mock()
 
-                # Send event from different user
-                await consumer.send_event(event2)
-                self.assertFalse(consumer.send_json_message.called, "Event from different user should be filtered")
+            # Send event from different user
+            await consumer.send_event(event2)
+            self.assertFalse(
+                consumer.send_json_message.called,
+                "Event from different user should be filtered",
+            )
 
     async def test_users_only_receive_own_events(self):
         """Test that users only receive their own events."""
@@ -697,12 +727,9 @@ class WebSocketEventFilteringTest(AsyncWebSocketTransactionTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
-            "source": {
-                "tenant_id": str(self.tenant1.id),
-                "user_id": str(self.user1.id)
-            },
-            "data": {"contract_id": contract_id}
+            "timestamp": datetime.now(UTC).isoformat() + "Z",
+            "source": {"tenant_id": str(self.tenant1.id), "user_id": str(self.user1.id)},
+            "data": {"contract_id": contract_id},
         }
 
         # Event from user2
@@ -710,35 +737,45 @@ class WebSocketEventFilteringTest(AsyncWebSocketTransactionTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
-            "source": {
-                "tenant_id": str(self.tenant1.id),
-                "user_id": str(self.user2.id)
-            },
-            "data": {"contract_id": contract_id}
+            "timestamp": datetime.now(UTC).isoformat() + "Z",
+            "source": {"tenant_id": str(self.tenant1.id), "user_id": str(self.user2.id)},
+            "data": {"contract_id": contract_id},
         }
 
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                # Send event1 to both consumers
-                await consumer1.send_event(event1)
-                await consumer2.send_event(event1)
+        with (
+            patch(
+                "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                return_value=(False, None),
+            ),
+            patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+        ):
+            # Send event1 to both consumers
+            await consumer1.send_event(event1)
+            await consumer2.send_event(event1)
 
-                # Only consumer1 should receive it
-                self.assertTrue(consumer1.send_json_message.called, "User1 should receive their own event")
-                self.assertFalse(consumer2.send_json_message.called, "User2 should not receive user1's event")
+            # Only consumer1 should receive it
+            self.assertTrue(
+                consumer1.send_json_message.called, "User1 should receive their own event"
+            )
+            self.assertFalse(
+                consumer2.send_json_message.called, "User2 should not receive user1's event"
+            )
 
-                # Reset mocks
-                consumer1.send_json_message.reset_mock()
-                consumer2.send_json_message.reset_mock()
+            # Reset mocks
+            consumer1.send_json_message.reset_mock()
+            consumer2.send_json_message.reset_mock()
 
-                # Send event2 to both consumers
-                await consumer1.send_event(event2)
-                await consumer2.send_event(event2)
+            # Send event2 to both consumers
+            await consumer1.send_event(event2)
+            await consumer2.send_event(event2)
 
-                # Only consumer2 should receive it
-                self.assertFalse(consumer1.send_json_message.called, "User1 should not receive user2's event")
-                self.assertTrue(consumer2.send_json_message.called, "User2 should receive their own event")
+            # Only consumer2 should receive it
+            self.assertFalse(
+                consumer1.send_json_message.called, "User1 should not receive user2's event"
+            )
+            self.assertTrue(
+                consumer2.send_json_message.called, "User2 should receive their own event"
+            )
 
     async def test_multiple_filters_combined(self):
         """Test that multiple filters work together correctly."""
@@ -749,7 +786,7 @@ class WebSocketEventFilteringTest(AsyncWebSocketTransactionTestCase):
         consumer.filters = {
             "tenant_id": str(self.tenant1.id),
             "user_id": str(self.user1.id),
-            "resource_id": contract_id
+            "resource_id": contract_id,
         }
 
         # Event matching all filters
@@ -757,12 +794,9 @@ class WebSocketEventFilteringTest(AsyncWebSocketTransactionTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
-            "source": {
-                "tenant_id": str(self.tenant1.id),
-                "user_id": str(self.user1.id)
-            },
-            "data": {"contract_id": contract_id}
+            "timestamp": datetime.now(UTC).isoformat() + "Z",
+            "source": {"tenant_id": str(self.tenant1.id), "user_id": str(self.user1.id)},
+            "data": {"contract_id": contract_id},
         }
 
         # Event not matching resource_id filter
@@ -770,26 +804,33 @@ class WebSocketEventFilteringTest(AsyncWebSocketTransactionTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
-            "source": {
-                "tenant_id": str(self.tenant1.id),
-                "user_id": str(self.user1.id)
-            },
-            "data": {"contract_id": str(uuid.uuid4())}
+            "timestamp": datetime.now(UTC).isoformat() + "Z",
+            "source": {"tenant_id": str(self.tenant1.id), "user_id": str(self.user1.id)},
+            "data": {"contract_id": str(uuid.uuid4())},
         }
 
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                # Send event matching all filters
-                await consumer.send_event(event1)
-                self.assertTrue(consumer.send_json_message.called, "Event matching all filters should pass")
+        with (
+            patch(
+                "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                return_value=(False, None),
+            ),
+            patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+        ):
+            # Send event matching all filters
+            await consumer.send_event(event1)
+            self.assertTrue(
+                consumer.send_json_message.called, "Event matching all filters should pass"
+            )
 
-                # Reset mock
-                consumer.send_json_message.reset_mock()
+            # Reset mock
+            consumer.send_json_message.reset_mock()
 
-                # Send event not matching resource_id filter
-                await consumer.send_event(event2)
-                self.assertFalse(consumer.send_json_message.called, "Event not matching all filters should be filtered")
+            # Send event not matching resource_id filter
+            await consumer.send_event(event2)
+            self.assertFalse(
+                consumer.send_json_message.called,
+                "Event not matching all filters should be filtered",
+            )
 
 
 class WebSocketReconnectionTest(AsyncWebSocketTransactionTestCase):
@@ -810,22 +851,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTransactionTestCase):
 
     def _create_consumer(self, user=None, tenant=None):
         """Create EventConsumer instance for testing."""
-        consumer = EventConsumer()
-        consumer.scope = {
-            "user": user or self.user,
-            "tenant": tenant or self.tenant
-        }
-        consumer.channel_name = "test_channel"
-        consumer.channel_layer = None
-        consumer.send_json_message = AsyncMock()
-        consumer.send = AsyncMock()
-        consumer.close = AsyncMock()
-        consumer.last_activity = datetime.now(dt_timezone.utc)
-        consumer._connection_closed = False
-        consumer.replay_enabled = True
-        consumer.replay_window_seconds = 3600
-        consumer.last_event_timestamps = {}
-        return consumer
+        return self.create_test_consumer(user=user, tenant=tenant)
 
     async def test_event_replay_on_reconnection(self):
         """Test that events are replayed on reconnection."""
@@ -847,19 +873,19 @@ class WebSocketReconnectionTest(AsyncWebSocketTransactionTestCase):
                 tenant_id=self.tenant.id,
                 user_id=self.user.id,
                 data={"contract_id": contract_id, "sequence": i},
-                metadata={}
+                metadata={},
             )
             events.append(event)
 
         # Mock deduplication to allow replay
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+        with patch(
+            "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+            return_value=(False, None),
+        ):
             # Subscribe (simulates reconnection)
             message = WebSocketMessage(
                 type=WebSocketMessageType.SUBSCRIBE.value,
-                data={
-                    "event_types": ["odps.*"],
-                    "filters": {}
-                }
+                data={"event_types": ["odps.*"], "filters": {}},
             )
             await consumer.handle_subscribe(message)
 
@@ -886,7 +912,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTransactionTestCase):
             tenant_id=self.tenant.id,
             user_id=self.user.id,
             data={"contract_id": contract_id},
-            metadata={}
+            metadata={},
         )
 
         # Track sent event IDs
@@ -902,6 +928,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTransactionTestCase):
 
         # Mock deduplication - first call returns not duplicate, subsequent calls return duplicate
         call_count = [0]
+
         def check_duplicate_side_effect(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
@@ -918,31 +945,40 @@ class WebSocketReconnectionTest(AsyncWebSocketTransactionTestCase):
         consumer._get_deduplication_redis_client = MagicMock(return_value=mock_redis)
 
         # Patch where the function is imported in event_consumer module
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', side_effect=check_duplicate_side_effect):
-            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                # Subscribe (first connection)
-                message = WebSocketMessage(
-                    type=WebSocketMessageType.SUBSCRIBE.value,
-                    data={
-                        "event_types": ["odps.*"],
-                        "filters": {}
-                    }
-                )
-                await consumer.handle_subscribe(message)
+        with (
+            patch(
+                "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                side_effect=check_duplicate_side_effect,
+            ),
+            patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+        ):
+            # Subscribe (first connection)
+            message = WebSocketMessage(
+                type=WebSocketMessageType.SUBSCRIBE.value,
+                data={"event_types": ["odps.*"], "filters": {}},
+            )
+            await consumer.handle_subscribe(message)
 
-                # Simulate reconnection - subscribe again
-                consumer.send_json_message.reset_mock()
-                await consumer.handle_subscribe(message)
+            # Simulate reconnection - subscribe again
+            consumer.send_json_message.reset_mock()
+            await consumer.handle_subscribe(message)
 
-                # Verify no duplicate events were sent
-                # The deduplication should prevent sending the same event twice
-                event_calls = [
-                    call for call in consumer.send_json_message.call_args_list
-                    if call[0][0].type == WebSocketMessageType.EVENT.value
-                ]
-                # All events should be unique
-                event_ids = [call[0][0].data.get("event_id") for call in event_calls if call[0][0].data.get("event_id")]
-                self.assertEqual(len(event_ids), len(set(event_ids)), "No duplicate event IDs should be sent")
+            # Verify no duplicate events were sent
+            # The deduplication should prevent sending the same event twice
+            event_calls = [
+                call
+                for call in consumer.send_json_message.call_args_list
+                if call[0][0].type == WebSocketMessageType.EVENT.value
+            ]
+            # All events should be unique
+            event_ids = [
+                call[0][0].data.get("event_id")
+                for call in event_calls
+                if call[0][0].data.get("event_id")
+            ]
+            self.assertEqual(
+                len(event_ids), len(set(event_ids)), "No duplicate event IDs should be sent"
+            )
 
     async def test_reconnection_after_network_partition(self):
         """Test reconnection after network partition."""
@@ -964,7 +1000,7 @@ class WebSocketReconnectionTest(AsyncWebSocketTransactionTestCase):
         contract_id = str(uuid.uuid4())
         event_time = django_timezone.now() - timedelta(minutes=5)
 
-        event = await sync_to_async(EventModel.objects.create)(
+        await sync_to_async(EventModel.objects.create)(
             event_id=uuid.uuid4(),
             event_type="odps.created",
             event_version="1.0.0",
@@ -973,18 +1009,18 @@ class WebSocketReconnectionTest(AsyncWebSocketTransactionTestCase):
             tenant_id=self.tenant.id,
             user_id=self.user.id,
             data={"contract_id": contract_id},
-            metadata={}
+            metadata={},
         )
 
         # Mock deduplication
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+        with patch(
+            "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+            return_value=(False, None),
+        ):
             # Subscribe (reconnection)
             message = WebSocketMessage(
                 type=WebSocketMessageType.SUBSCRIBE.value,
-                data={
-                    "event_types": ["odps.*"],
-                    "filters": {}
-                }
+                data={"event_types": ["odps.*"], "filters": {}},
             )
             await consumer2.handle_subscribe(message)
 
@@ -1013,19 +1049,19 @@ class WebSocketReconnectionTest(AsyncWebSocketTransactionTestCase):
                 tenant_id=self.tenant.id,
                 user_id=self.user.id,
                 data={"contract_id": contract_id, "sequence": i},
-                metadata={}
+                metadata={},
             )
             events.append(event)
 
         # Mock deduplication
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
+        with patch(
+            "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+            return_value=(False, None),
+        ):
             # Subscribe (after service restart)
             message = WebSocketMessage(
                 type=WebSocketMessageType.SUBSCRIBE.value,
-                data={
-                    "event_types": ["odps.*"],
-                    "filters": {}
-                }
+                data={"event_types": ["odps.*"], "filters": {}},
             )
             await consumer.handle_subscribe(message)
 
@@ -1052,22 +1088,7 @@ class WebSocketEventDeduplicationTest(AsyncWebSocketTransactionTestCase):
 
     def _create_consumer(self, user=None, tenant=None):
         """Create EventConsumer instance for testing."""
-        consumer = EventConsumer()
-        consumer.scope = {
-            "user": user or self.user,
-            "tenant": tenant or self.tenant
-        }
-        consumer.channel_name = "test_channel"
-        consumer.channel_layer = None
-        consumer.send_json_message = AsyncMock()
-        consumer.send = AsyncMock()
-        consumer.close = AsyncMock()
-        consumer.last_activity = datetime.now(dt_timezone.utc)
-        consumer._connection_closed = False
-        consumer.replay_enabled = True
-        consumer.replay_window_seconds = 3600
-        consumer.last_event_timestamps = {}
-        return consumer
+        return self.create_test_consumer(user=user, tenant=tenant)
 
     async def test_duplicate_events_not_delivered(self):
         """Test that duplicate events are not delivered."""
@@ -1081,9 +1102,9 @@ class WebSocketEventDeduplicationTest(AsyncWebSocketTransactionTestCase):
             "event_id": event_id,
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+            "timestamp": datetime.now(UTC).isoformat() + "Z",
             "source": {"tenant_id": str(self.tenant.id)},
-            "data": {"contract_id": contract_id}
+            "data": {"contract_id": contract_id},
         }
 
         # Mock Redis client to return a mock client so deduplication works
@@ -1096,19 +1117,29 @@ class WebSocketEventDeduplicationTest(AsyncWebSocketTransactionTestCase):
 
         # First event - not a duplicate
         # Patch where the function is imported in event_consumer module
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                await consumer.send_event(event)
-                self.assertTrue(consumer.send_json_message.called, "First event should be sent")
+        with (
+            patch(
+                "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                return_value=(False, None),
+            ),
+            patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+        ):
+            await consumer.send_event(event)
+            self.assertTrue(consumer.send_json_message.called, "First event should be sent")
 
         # Reset mock
         consumer.send_json_message.reset_mock()
         mock_redis.get.return_value = event_id  # Second call - duplicate found
 
         # Second event with same ID - should be duplicate
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(True, event_id)):
+        with patch(
+            "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+            return_value=(True, event_id),
+        ):
             await consumer.send_event(event)
-            self.assertFalse(consumer.send_json_message.called, "Duplicate event should not be sent")
+            self.assertFalse(
+                consumer.send_json_message.called, "Duplicate event should not be sent"
+            )
 
     async def test_event_deduplication_logic(self):
         """Test that event deduplication logic works correctly."""
@@ -1124,9 +1155,9 @@ class WebSocketEventDeduplicationTest(AsyncWebSocketTransactionTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.created",
                 "event_version": "1.0.0",
-                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+                "timestamp": datetime.now(UTC).isoformat() + "Z",
                 "source": {"tenant_id": str(self.tenant.id)},
-                "data": {"contract_id": contract_id, "sequence": i}
+                "data": {"contract_id": contract_id, "sequence": i},
             }
             events.append(event)
 
@@ -1143,7 +1174,6 @@ class WebSocketEventDeduplicationTest(AsyncWebSocketTransactionTestCase):
                 return (True, events[call_count[0] - 1]["event_id"])
 
         # Store original to avoid recursion
-        original_send_json_message = consumer.send_json_message
 
         async def track_sent_events(message):
             if message.type == WebSocketMessageType.EVENT.value:
@@ -1161,10 +1191,15 @@ class WebSocketEventDeduplicationTest(AsyncWebSocketTransactionTestCase):
         consumer._get_deduplication_redis_client = MagicMock(return_value=mock_redis)
 
         # Patch where the function is imported in event_consumer module
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', side_effect=check_duplicate_side_effect):
-            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                for event in events:
-                    await consumer.send_event(event)
+        with (
+            patch(
+                "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                side_effect=check_duplicate_side_effect,
+            ),
+            patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+        ):
+            for event in events:
+                await consumer.send_event(event)
 
         # Verify only non-duplicate events were sent
         self.assertEqual(len(sent_event_ids), 3, "Only non-duplicate events should be sent")
@@ -1187,9 +1222,9 @@ class WebSocketEventDeduplicationTest(AsyncWebSocketTransactionTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.created",
                 "event_version": "1.0.0",
-                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+                "timestamp": datetime.now(UTC).isoformat() + "Z",
                 "source": {"tenant_id": str(self.tenant.id)},
-                "data": {"contract_id": contract_id, "sequence": i}
+                "data": {"contract_id": contract_id, "sequence": i},
             }
             events.append(event)
 
@@ -1200,13 +1235,13 @@ class WebSocketEventDeduplicationTest(AsyncWebSocketTransactionTestCase):
         def check_duplicate_side_effect(*args, **kwargs):
             # Simulate 20% duplicate rate
             import random
+
             if random.random() < 0.2:
                 duplicate_count[0] += 1
                 return (True, str(uuid.uuid4()))
             return (False, None)
 
         # Store original to avoid recursion
-        original_send_json_message = consumer.send_json_message
 
         async def track_sent_events(message):
             if message.type == WebSocketMessageType.EVENT.value:
@@ -1223,30 +1258,41 @@ class WebSocketEventDeduplicationTest(AsyncWebSocketTransactionTestCase):
         # Patch the consumer's method to return mock Redis
         consumer._get_deduplication_redis_client = MagicMock(return_value=mock_redis)
 
-        start_time = time.time()
+        start_time = time.monotonic()
 
         # Patch where the function is imported in event_consumer module
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', side_effect=check_duplicate_side_effect):
-            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                # Send all events concurrently
-                tasks = [consumer.send_event(event) for event in events]
-                await asyncio.gather(*tasks)
+        with (
+            patch(
+                "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                side_effect=check_duplicate_side_effect,
+            ),
+            patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+        ):
+            # Send all events concurrently
+            tasks = [consumer.send_event(event) for event in events]
+            await asyncio.gather(*tasks)
 
-        elapsed_time = time.time() - start_time
+        elapsed_time = time.monotonic() - start_time
 
         # Verify deduplication worked
         # Should have sent fewer events than total (due to duplicates)
-        self.assertLess(len(sent_event_ids), num_events, "Some events should be filtered as duplicates")
+        self.assertLess(
+            len(sent_event_ids), num_events, "Some events should be filtered as duplicates"
+        )
 
         # Verify performance is reasonable (should complete in reasonable time)
         self.assertLess(elapsed_time, 5.0, "Deduplication should complete quickly even under load")
 
 
 class WebSocketPerformanceTest(AsyncWebSocketTransactionTestCase):
-    """
-    WebSocket Performance Testing (Task 10.1.12.5)
+    """Performance measurements for WebSocket event delivery.
 
-    Tests WebSocket latency, throughput, and connection limits.
+    WARNING: These tests use mocked consumers (AsyncMock.send_json_message),
+    so they measure mock dispatch overhead (~microseconds), NOT real
+    WebSocket frame latency.  They are NOT suitable for validating
+    production performance.  Keep the tests for regression detection
+    on the event-dispatch code path, but treat the timing thresholds
+    as mock-overhead ceilings, not real-time guarantees.
     """
 
     def setUp(self):
@@ -1259,22 +1305,7 @@ class WebSocketPerformanceTest(AsyncWebSocketTransactionTestCase):
 
     def _create_consumer(self, user=None, tenant=None):
         """Create EventConsumer instance for testing."""
-        consumer = EventConsumer()
-        consumer.scope = {
-            "user": user or self.user,
-            "tenant": tenant or self.tenant
-        }
-        consumer.channel_name = "test_channel"
-        consumer.channel_layer = None
-        consumer.send_json_message = AsyncMock()
-        consumer.send = AsyncMock()
-        consumer.close = AsyncMock()
-        consumer.last_activity = datetime.now(dt_timezone.utc)
-        consumer._connection_closed = False
-        consumer.replay_enabled = True
-        consumer.replay_window_seconds = 3600
-        consumer.last_event_timestamps = {}
-        return consumer
+        return self.create_test_consumer(user=user, tenant=tenant)
 
     async def test_websocket_latency_for_progress_events(self):
         """Test that WebSocket latency is <100ms for progress events."""
@@ -1287,13 +1318,13 @@ class WebSocketPerformanceTest(AsyncWebSocketTransactionTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.creation.progress",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+            "timestamp": datetime.now(UTC).isoformat() + "Z",
             "source": {"tenant_id": str(self.tenant.id)},
             "data": {
                 "contract_id": contract_id,
                 "progress_percentage": 50.0,
-                "current_step": "normalize_odps"
-            }
+                "current_step": "normalize_odps",
+            },
         }
 
         # Measure latency
@@ -1301,13 +1332,18 @@ class WebSocketPerformanceTest(AsyncWebSocketTransactionTestCase):
         for _ in range(10):
             consumer.send_json_message.reset_mock()
 
-            start_time = time.time()
+            start_time = time.monotonic()
 
-            with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-                with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                    await consumer.send_event(event)
+            with (
+                patch(
+                    "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                    return_value=(False, None),
+                ),
+                patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+            ):
+                await consumer.send_event(event)
 
-            end_time = time.time()
+            end_time = time.monotonic()
             latency_ms = (end_time - start_time) * 1000
             latencies.append(latency_ms)
 
@@ -1316,11 +1352,17 @@ class WebSocketPerformanceTest(AsyncWebSocketTransactionTestCase):
         # jitter so we use 500ms avg / 1000ms max as CI-safe guards
         # that still catch catastrophic regressions (10× degradation).
         avg_latency = sum(latencies) / len(latencies)
-        self.assertLess(avg_latency, 500.0, f"Average latency should be <500ms (CI-safe), got {avg_latency:.2f}ms")
+        self.assertLess(
+            avg_latency,
+            500.0,
+            f"Average latency should be <500ms (CI-safe), got {avg_latency:.2f}ms",
+        )
 
         # Verify all individual latencies are reasonable
         max_latency = max(latencies)
-        self.assertLess(max_latency, 1000.0, f"Max latency should be <1000ms (CI-safe), got {max_latency:.2f}ms")
+        self.assertLess(
+            max_latency, 1000.0, f"Max latency should be <1000ms (CI-safe), got {max_latency:.2f}ms"
+        )
 
     async def test_websocket_throughput(self):
         """Test that WebSocket can handle 1000+ events/second."""
@@ -1337,13 +1379,13 @@ class WebSocketPerformanceTest(AsyncWebSocketTransactionTestCase):
                 "event_id": str(uuid.uuid4()),
                 "event_type": "odps.creation.progress",
                 "event_version": "1.0.0",
-                "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+                "timestamp": datetime.now(UTC).isoformat() + "Z",
                 "source": {"tenant_id": str(self.tenant.id)},
                 "data": {
                     "contract_id": contract_id,
                     "progress_percentage": float(i),
-                    "current_step": f"step_{i}"
-                }
+                    "current_step": f"step_{i}",
+                },
             }
             events.append(event)
 
@@ -1355,22 +1397,30 @@ class WebSocketPerformanceTest(AsyncWebSocketTransactionTestCase):
         # Patch the consumer's method to return mock Redis
         consumer._get_deduplication_redis_client = MagicMock(return_value=mock_redis)
 
-        start_time = time.time()
+        start_time = time.monotonic()
 
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                # Send all events
-                tasks = [consumer.send_event(event) for event in events]
-                await asyncio.gather(*tasks)
+        with (
+            patch(
+                "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                return_value=(False, None),
+            ),
+            patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+        ):
+            # Send all events
+            tasks = [consumer.send_event(event) for event in events]
+            await asyncio.gather(*tasks)
 
-        elapsed_time = time.time() - start_time
+        elapsed_time = time.monotonic() - start_time
         throughput = num_events / elapsed_time
 
         # Verify throughput is >= 1000 events/second
         # Note: In test environment, throughput may be lower due to overhead
         # Adjust threshold to be more realistic for test environment
-        self.assertGreaterEqual(throughput, 100.0,
-                              f"Throughput should be >=100 events/second in test environment, got {throughput:.2f} events/second")
+        self.assertGreaterEqual(
+            throughput,
+            100.0,
+            f"Throughput should be >=100 events/second in test environment, got {throughput:.2f} events/second",
+        )
 
     async def test_websocket_connection_limits(self):
         """Test WebSocket connection limits."""
@@ -1378,14 +1428,17 @@ class WebSocketPerformanceTest(AsyncWebSocketTransactionTestCase):
         max_connections = 100
         consumers = []
 
-        for i in range(max_connections):
+        for _i in range(max_connections):
             consumer = self._create_consumer()
             consumer.subscribed_event_types = {"odps.*"}
             consumers.append(consumer)
 
         # Verify all connections can be created
-        self.assertEqual(len(consumers), max_connections,
-                        f"Should be able to create {max_connections} connections")
+        self.assertEqual(
+            len(consumers),
+            max_connections,
+            f"Should be able to create {max_connections} connections",
+        )
 
         # Verify all connections can send events
         contract_id = str(uuid.uuid4())
@@ -1393,18 +1446,25 @@ class WebSocketPerformanceTest(AsyncWebSocketTransactionTestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "event_version": "1.0.0",
-            "timestamp": datetime.now(dt_timezone.utc).isoformat() + "Z",
+            "timestamp": datetime.now(UTC).isoformat() + "Z",
             "source": {"tenant_id": str(self.tenant.id)},
-            "data": {"contract_id": contract_id}
+            "data": {"contract_id": contract_id},
         }
 
-        with patch('hub.apps.websocket.consumers.event_consumer.check_event_duplicate', return_value=(False, None)):
-            with patch('hub.apps.websocket.consumers.event_consumer.store_event_id'):
-                # Send event to all connections
-                tasks = [consumer.send_event(event) for consumer in consumers]
-                await asyncio.gather(*tasks)
+        with (
+            patch(
+                "hub.apps.websocket.consumers.event_consumer.check_event_duplicate",
+                return_value=(False, None),
+            ),
+            patch("hub.apps.websocket.consumers.event_consumer.store_event_id"),
+        ):
+            # Send event to all connections
+            tasks = [consumer.send_event(event) for consumer in consumers]
+            await asyncio.gather(*tasks)
 
-                # Verify all connections received the event
-                for consumer in consumers:
-                    self.assertTrue(consumer.send_json_message.called,
-                                  "All connections should be able to send events")
+            # Verify all connections received the event
+            for consumer in consumers:
+                self.assertTrue(
+                    consumer.send_json_message.called,
+                    "All connections should be able to send events",
+                )

@@ -91,7 +91,6 @@ class VersionHistoryManagerTest(DatasetsTestBase):
 
     def test_get_version_history_nonexistent_dataset(self):
         """get_version_tree on an unsaved dataset returns a list with the dataset node."""
-        import uuid
         from hub.apps.datasets.models import Dataset
 
         # Unsaved Dataset — not in DB, but get_version_tree accepts a Dataset instance.
@@ -104,14 +103,11 @@ class VersionHistoryManagerTest(DatasetsTestBase):
             format="CSV",
         )
         tree = VersionHistoryManager.get_version_tree(fake_dataset)
-        self.assertIsNotNone(tree,
-            "get_version_tree must return a result for any Dataset instance")
-        self.assertIsInstance(tree, list,
-            "get_version_tree must return a list")
+        self.assertIsNotNone(tree, "get_version_tree must return a result for any Dataset instance")
+        self.assertIsInstance(tree, list, "get_version_tree must return a list")
 
     def test_create_version_invalid_dataset(self):
         """Test creating version with invalid dataset (failure scenario)"""
-        import uuid
 
         fake_dataset = Dataset(
             id=uuid.uuid4(), tenant=self.tenant, asset=self.asset, file=self.file
@@ -120,8 +116,7 @@ class VersionHistoryManagerTest(DatasetsTestBase):
         # create_version on a non-persisted dataset returns a result
         # without raising — the dataset object is populated in-memory.
         VersionHistoryManager.create_version(fake_dataset, is_current=True)
-        self.assertIsNotNone(fake_dataset.id,
-            "create_version must assign an id to the dataset")
+        self.assertIsNotNone(fake_dataset.id, "create_version must assign an id to the dataset")
 
     # ========== EDGE CASES ==========
 
@@ -209,8 +204,7 @@ class VersionHistoryManagerTest(DatasetsTestBase):
         # get_version_tree must return a result without raising for a
         # valid persisted dataset with version history.
         history = VersionHistoryManager.get_version_tree(dataset)
-        self.assertIsNotNone(history,
-            "get_version_tree must return a list of versions")
+        self.assertIsNotNone(history, "get_version_tree must return a list of versions")
         self.assertIsInstance(history, list)
 
     def test_create_version_with_persisted_dataset(self):
@@ -226,8 +220,7 @@ class VersionHistoryManagerTest(DatasetsTestBase):
         )
 
         VersionHistoryManager.create_version(dataset, is_current=True)
-        self.assertIsNotNone(dataset,
-            "create_version must succeed for a persisted dataset")
+        self.assertIsNotNone(dataset, "create_version must succeed for a persisted dataset")
 
     def test_create_version_without_parent(self):
         """Test creating version without parent"""
@@ -887,3 +880,39 @@ class VersionHistoryManagerTest(DatasetsTestBase):
         self.assertIsNone(v1.archived_at)
         self.assertTrue(v1.is_current)
         self.assertFalse(v2.is_current)
+
+    # ── Cross-tenant isolation ─────────────────────────────────────
+
+    def test_get_version_tree_only_returns_same_tenant_versions(self):
+        """get_version_tree returns only versions in the same tenant."""
+        ds = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=self.file,
+            format="CSV", schema_json={"fields": [{"name": "x", "type": "string"}]},
+            version=1, created_by=self.user,
+        )
+        tree = VersionHistoryManager.get_version_tree(ds)
+        self.assertIsInstance(tree, list)
+        for version in tree:
+            self.assertEqual(version.tenant_id, self.tenant.id)
+
+    def test_get_ancestors_only_returns_same_tenant_versions(self):
+        """get_ancestors returns only ancestor versions in the same tenant."""
+        ds = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=self.file,
+            format="CSV", schema_json={"fields": [{"name": "x", "type": "string"}]},
+            version=1, created_by=self.user,
+        )
+        ancestors = VersionHistoryManager.get_ancestors(ds)
+        for ancestor in ancestors:
+            self.assertEqual(ancestor.tenant_id, self.tenant.id)
+
+    def test_get_descendants_only_returns_same_tenant_versions(self):
+        """get_descendants returns only descendant versions in the same tenant."""
+        ds = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=self.file,
+            format="CSV", schema_json={"fields": [{"name": "x", "type": "string"}]},
+            version=1, created_by=self.user,
+        )
+        descendants = VersionHistoryManager.get_descendants(ds)
+        for descendant in descendants:
+            self.assertEqual(descendant.tenant_id, self.tenant.id)

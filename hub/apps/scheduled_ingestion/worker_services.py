@@ -6,10 +6,11 @@ create File + Dataset, index, update incremental state; on failure mark_file_fai
 Same order and semantics as hub ScheduledIngestionWorkflow per-file processing.
 """
 
+import contextlib
 import hashlib
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from django.core.files.base import ContentFile
 from django.db import transaction
@@ -44,11 +45,11 @@ def process_file_for_run(
     file_path: str,
     file_content: bytes,
     tenant_id: str,
-    user_id: Optional[str] = None,
-    asset_id: Optional[str] = None,
-    contract_id: Optional[str] = None,
-    dq_options: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    user_id: str | None = None,
+    asset_id: str | None = None,
+    contract_id: str | None = None,
+    dq_options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Process one file for a run: validate (business rules), optional DQ, create File + Dataset,
     index, update incremental state. On permanent failure: mark_file_failed (DLQ sync at run completion).
@@ -93,10 +94,8 @@ def process_file_for_run(
         from django.contrib.auth import get_user_model
 
         User = get_user_model()
-        try:
+        with contextlib.suppress(User.DoesNotExist):
             user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            pass
     file_validation_result = rules.validate(
         schedule=scheduled_ingestion,
         tenant=tenant,
@@ -123,10 +122,8 @@ def process_file_for_run(
     if contract_id:
         from hub.apps.contracts.models import Contract
 
-        try:
+        with contextlib.suppress(Contract.DoesNotExist):
             contract = Contract.objects.get(id=contract_id, tenant=tenant)
-        except Contract.DoesNotExist:
-            pass
     try:
         from hub.apps.dq.service_client import DQServiceClient
 
@@ -149,7 +146,7 @@ def process_file_for_run(
                     "DQ_QUALITY_BELOW_THRESHOLD",
                 )
                 raise ServiceValidationError(
-                    f"DQ quality score below threshold",
+                    "DQ quality score below threshold",
                     code="DQ_VALIDATION_ERROR",
                     details={
                         "quality_score": quality_score,
@@ -200,6 +197,7 @@ def process_file_for_run(
         elif file_format in ("XLSX", "XLS"):
             try:
                 from hub.apps.datasets.schema_inference import infer_schema_from_excel
+
                 schema_json = infer_schema_from_excel(file_content)
             except (ImportError, ValueError, AttributeError) as e:
                 logger.debug(
@@ -238,10 +236,8 @@ def process_file_for_run(
     parent_version = None
     asset = scheduled_ingestion.asset
     if asset_id:
-        try:
+        with contextlib.suppress(Asset.DoesNotExist):
             asset = Asset.objects.get(id=asset_id, tenant=tenant)
-        except Asset.DoesNotExist:
-            pass
     if asset:
         latest = Dataset.objects.filter(tenant=tenant, asset=asset).order_by("-version").first()
         if latest:
@@ -252,8 +248,7 @@ def process_file_for_run(
     # the new schema does not remove fields that were present before.
     if parent_version is not None and parent_version.schema_json:
         new_fields = set(
-            (f.get("name") or f.get("field"))
-            for f in (schema_json.get("fields") or [])
+            (f.get("name") or f.get("field")) for f in (schema_json.get("fields") or [])
         )
         old_fields = set(
             (f.get("name") or f.get("field"))
@@ -320,10 +315,8 @@ def process_file_for_run(
 
         asset = scheduled_ingestion.asset
         if asset_id:
-            try:
+            with contextlib.suppress(Asset.DoesNotExist):
                 asset = Asset.objects.get(id=asset_id, tenant=tenant)
-            except Asset.DoesNotExist:
-                pass
         if not asset and scheduled_ingestion.auto_create_asset:
             asset_key = f"scheduled-ingestion-{scheduled_ingestion.id}"
             # Phase 250.2.C.2 (closes Gap 4 / B2-9) — replace the
@@ -340,6 +333,8 @@ def process_file_for_run(
             from hub.apps.assets.services import AssetService
             from hub.apps.core.services.base import (
                 ConflictError as _AssetConflictError,
+            )
+            from hub.apps.core.services.base import (
                 ValidationError as _AssetValidationError,
             )
             from hub.apps.observability.otel_metrics import (
@@ -383,9 +378,7 @@ def process_file_for_run(
                     logger.warning(
                         "scheduled_ingestion_asset_key_retired",
                         extra={
-                            "scheduled_ingestion_id": str(
-                                scheduled_ingestion.id
-                            ),
+                            "scheduled_ingestion_id": str(scheduled_ingestion.id),
                             "tenant_id": str(tenant.id),
                             "asset_key": asset_key,
                             "asset_id": exc.details.get("asset_id"),
@@ -394,9 +387,7 @@ def process_file_for_run(
                     scheduled_ingestion_asset_key_retired_total.add(
                         1,
                         attributes={
-                            "scheduled_ingestion_id": str(
-                                scheduled_ingestion.id
-                            ),
+                            "scheduled_ingestion_id": str(scheduled_ingestion.id),
                             "tenant_id": str(tenant.id),
                         },
                     )
@@ -570,7 +561,7 @@ def _mark_permanent_failure(
     scheduled_ingestion: ScheduledIngestion,
     file_path: str,
     error_message: str,
-    error_code: Optional[str] = None,
+    error_code: str | None = None,
 ) -> None:
     """Record permanent failure in ingestion state (DLQ sync at run completion)."""
     state_manager = IncrementalStateManager(scheduled_ingestion)

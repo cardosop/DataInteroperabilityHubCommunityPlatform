@@ -7,7 +7,8 @@ validated in :func:`hub.apps.core.events.event_types.validate_event_data`.
 """
 
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+
+from typing import Any
 
 from hub.apps.core.events.event_types import DOMAIN_EVENT_PREFIX
 from hub.apps.core.events.publisher import EventPublisher
@@ -26,15 +27,14 @@ def domain_event_type(leaf_type: str) -> str:
     """
     leaf_type = leaf_type.strip().strip(".").strip()
     if leaf_type.startswith(DOMAIN_EVENT_PREFIX):
-        remainder = leaf_type[len(DOMAIN_EVENT_PREFIX):]
+        remainder = leaf_type[len(DOMAIN_EVENT_PREFIX) :]
     else:
         remainder = leaf_type
     if not remainder:
         raise ValueError("leaf_type cannot be empty")
     if "." not in remainder:
         raise ValueError(
-            "domain leaf_type requires at least two segments "
-            "(e.g. consent.record.revoked)"
+            "domain leaf_type requires at least two segments (e.g. consent.record.revoked)"
         )
     if not remainder.replace(".", "").replace("_", "").isalnum():
         # Allow alphanumeric + dots + underscores only.
@@ -46,9 +46,9 @@ def build_domain_event_envelope(
     *,
     tenant_id: str,
     aggregate: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     schema_version: str = "1",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return envelope dict validated by ``validate_event_data`` for domain events."""
     return {
         "tenant_id": str(tenant_id),
@@ -67,12 +67,12 @@ class DomainEventPublisher(EventPublisher):
         *,
         tenant_id: str,
         aggregate: str,
-        payload: Dict[str, Any],
-        user_id: Optional[str] = None,
-        request_id: Optional[str] = None,
-        correlation_id: Optional[str] = None,
-        causation_id: Optional[str] = None,
-        tags: Optional[List[str]] = None,
+        payload: dict[str, Any],
+        user_id: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
+        causation_id: str | None = None,
+        tags: list[str] | None = None,
         skip_deduplication: bool = False,
         schema_version: str = "1",
     ) -> str:

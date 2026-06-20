@@ -9,11 +9,13 @@ ephemeral server deadlock and 600s timeouts), asserts run created and updated.
 Requires PREFECT_API_URL pointing at a running Prefect server (e.g. prefect-server-test).
 """
 
-import unittest
+import contextlib
 import os
 import subprocess
 import sys
+import unittest
 import urllib.request
+import uuid
 
 import pytest
 from django.test import LiveServerTestCase
@@ -30,7 +32,6 @@ from hub.apps.scheduled_ingestion.models import (
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 # Integration test; 600s allows subprocess + LiveServer + teardown (flush can be slow)
 pytestmark = [
@@ -104,10 +105,9 @@ class TestPrefectFullFlowIntegration(LiveServerTestCase):
     def tearDown(self):
         """Ensure DB connection is usable before teardown (avoids flush failure if Postgres restarts)."""
         from django.db import connection
-        try:
+
+        with contextlib.suppress(Exception):
             connection.ensure_connection()
-        except Exception:
-            pass
         super().tearDown()
 
     def setUp(self):
@@ -180,10 +180,15 @@ class TestPrefectFullFlowIntegration(LiveServerTestCase):
         try:
             subprocess.run(
                 [sys.executable, "-c", "import prefect"],
+                check=False,
                 capture_output=True,
                 timeout=30,  # Prefect 3.x server client init can be slow
-                env={**os.environ, "PYTHONPATH": prefect_integration
-                     + os.pathsep + os.environ.get("PYTHONPATH", "")},
+                env={
+                    **os.environ,
+                    "PYTHONPATH": prefect_integration
+                    + os.pathsep
+                    + os.environ.get("PYTHONPATH", ""),
+                },
             ).check_returncode()
         except (subprocess.CalledProcessError, FileNotFoundError):
             raise unittest.SkipTest(
@@ -221,6 +226,7 @@ scheduled_ingestion_full_flow(
         try:
             proc = subprocess.run(
                 [sys.executable, "-c", script],
+                check=False,
                 env=env,
                 capture_output=True,
                 text=True,
@@ -281,4 +287,3 @@ scheduled_ingestion_full_flow(
             )
         self.assertIsNotNone(run.completed_at, "Run should have completed_at set")
         self.assertIsNotNone(run.started_at, "Run should have started_at set")
-

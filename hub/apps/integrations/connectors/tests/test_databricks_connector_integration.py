@@ -4,14 +4,15 @@ Integration tests for DatabricksConnector with real Databricks API.
 Tests use real Databricks API endpoints - no mocks or stubs.
 Uses Bearer token authentication.
 """
-import unittest
+
 import os
+import unittest
+
 import pytest
 from django.test import TestCase
 
-from hub.apps.integrations.connectors.databricks_connector import DatabricksConnector
 from hub.apps.integrations.base import MarketplaceType, SyncDirection
-from hub.apps.core.services.base import NotFoundError
+from hub.apps.integrations.connectors.databricks_connector import DatabricksConnector
 
 
 @pytest.mark.integration
@@ -28,12 +29,14 @@ class TestDatabricksConnectorIntegration(TestCase):
         """Set up test class with real Databricks connector."""
         # Check credentials BEFORE super().setUpClass() to avoid
         # _fixture_teardown() closing connections on the skip path.
-        cls.host = os.getenv('DATABRICKS_HOST')
-        cls.token = os.getenv('DATABRICKS_TOKEN')
-        cls.cluster_id = os.getenv('DATABRICKS_CLUSTER_ID')  # Optional
+        cls.host = os.getenv("DATABRICKS_HOST")
+        cls.token = os.getenv("DATABRICKS_TOKEN")
+        cls.cluster_id = os.getenv("DATABRICKS_CLUSTER_ID")  # Optional
 
         if not cls.host or not cls.token:
-            raise unittest.SkipTest("DATABRICKS_HOST and DATABRICKS_TOKEN not set - skipping integration tests")
+            raise unittest.SkipTest(
+                "DATABRICKS_HOST and DATABRICKS_TOKEN not set - skipping integration tests"
+            )
 
         super().setUpClass()
 
@@ -41,15 +44,13 @@ class TestDatabricksConnectorIntegration(TestCase):
         assert cls.host is not None
         assert cls.token is not None
         cls.connector = DatabricksConnector(
-            host=cls.host,
-            token=cls.token,
-            cluster_id=cls.cluster_id
+            host=cls.host, token=cls.token, cluster_id=cls.cluster_id
         )
 
     def test_connector_initialization(self):
         """Test that connector initializes correctly."""
         assert self.connector is not None
-        assert self.connector.host == self.host.rstrip('/')
+        assert self.connector.host == self.host.rstrip("/")
         assert self.connector.token == self.token
         assert self.connector.client is not None
         assert self.connector._circuit_breaker is not None
@@ -69,25 +70,28 @@ class TestDatabricksConnectorIntegration(TestCase):
         assert self.connector._circuit_breaker.failure_threshold == 5
         assert self.connector._circuit_breaker.timeout_seconds == 60
         assert self.connector._circuit_breaker.success_threshold == 2
-        assert self.connector._circuit_breaker.service_name == 'databricks-connector'
+        assert self.connector._circuit_breaker.service_name == "databricks-connector"
 
     def test_authenticate(self):
         """Test authentication with real Databricks API."""
         try:
-            credentials = {
-                'host': self.host,
-                'token': self.token
-            }
+            credentials = {"host": self.host, "token": self.token}
             if self.cluster_id:
-                credentials['cluster_id'] = self.cluster_id
+                credentials["cluster_id"] = self.cluster_id
 
             result = self.connector.authenticate(credentials)
             assert result is True
             assert self.connector._authenticated is True
         except ConnectionError as e:
             error_str = str(e).lower()
-            if 'authentication failed' in error_str or 'unauthorized' in error_str or 'invalid token' in error_str:
-                raise unittest.SkipTest(f"Databricks authentication failed (token may be expired or invalid): {e}")
+            if (
+                "authentication failed" in error_str
+                or "unauthorized" in error_str
+                or "invalid token" in error_str
+            ):
+                raise unittest.SkipTest(
+                    f"Databricks authentication failed (token may be expired or invalid): {e}"
+                )
             pytest.fail(f"Authentication failed: {e}")
         except Exception as e:
             pytest.fail(f"Authentication failed: {e}")
@@ -100,8 +104,14 @@ class TestDatabricksConnectorIntegration(TestCase):
             assert self.connector._authenticated is True
         except ConnectionError as e:
             error_str = str(e).lower()
-            if 'authentication failed' in error_str or 'unauthorized' in error_str or 'invalid token' in error_str:
-                raise unittest.SkipTest(f"Databricks connection test failed (token may be expired or invalid): {e}")
+            if (
+                "authentication failed" in error_str
+                or "unauthorized" in error_str
+                or "invalid token" in error_str
+            ):
+                raise unittest.SkipTest(
+                    f"Databricks connection test failed (token may be expired or invalid): {e}"
+                )
             pytest.fail(f"Connection test failed: {e}")
         except Exception as e:
             pytest.fail(f"Connection test failed: {e}")
@@ -112,17 +122,14 @@ class TestDatabricksConnectorIntegration(TestCase):
         assert self.token is not None
         try:
             # Test with same credentials (should work)
-            credentials = {
-                'host': self.host,
-                'token': self.token
-            }
+            credentials = {"host": self.host, "token": self.token}
             result = self.connector.authenticate(credentials)
             assert result is True
-            assert self.connector.host == self.host.rstrip('/')
+            assert self.connector.host == self.host.rstrip("/")
             assert self.connector.token == self.token
         except ConnectionError as e:
             error_str = str(e).lower()
-            if 'authentication failed' in error_str or 'unauthorized' in error_str:
+            if "authentication failed" in error_str or "unauthorized" in error_str:
                 raise unittest.SkipTest(f"Databricks authentication failed: {e}")
             pytest.fail(f"Authentication failed: {e}")
 
@@ -132,17 +139,13 @@ class TestDatabricksConnectorIntegration(TestCase):
             raise unittest.SkipTest("DATABRICKS_CLUSTER_ID not set - skipping cluster_id test")
 
         try:
-            credentials = {
-                'host': self.host,
-                'token': self.token,
-                'cluster_id': self.cluster_id
-            }
+            credentials = {"host": self.host, "token": self.token, "cluster_id": self.cluster_id}
             result = self.connector.authenticate(credentials)
             assert result is True
             assert self.connector.cluster_id == self.cluster_id
         except ConnectionError as e:
             error_str = str(e).lower()
-            if 'authentication failed' in error_str or 'unauthorized' in error_str:
+            if "authentication failed" in error_str or "unauthorized" in error_str:
                 raise unittest.SkipTest(f"Databricks authentication failed: {e}")
             pytest.fail(f"Authentication failed: {e}")
 
@@ -150,12 +153,11 @@ class TestDatabricksConnectorIntegration(TestCase):
         """Test HTTP client is configured correctly."""
         assert self.host is not None
         assert self.token is not None
-        assert self.connector.client.base_url == self.host.rstrip('/')
+        assert self.connector.client.base_url == self.host.rstrip("/")
         assert self.connector.client.timeout.read == 30.0
         # Verify headers include Bearer token
         headers = self.connector._get_default_headers()
-        assert 'Authorization' in headers
-        assert headers['Authorization'] == f'Bearer {self.token}'
-        assert headers['Content-Type'] == 'application/json'
-        assert headers['Accept'] == 'application/json'
-
+        assert "Authorization" in headers
+        assert headers["Authorization"] == f"Bearer {self.token}"
+        assert headers["Content-Type"] == "application/json"
+        assert headers["Accept"] == "application/json"

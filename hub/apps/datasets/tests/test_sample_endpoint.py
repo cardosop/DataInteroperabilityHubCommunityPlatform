@@ -90,4 +90,6 @@ class DatasetSampleEndpointTest(DatasetsAPITestBase):
         self.client.logout()
         url = f"/api/v1/datasets/{self.dataset.id}/sample/"
         response = self.client.get(url)
-        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+        self.assertIn(
+            response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]
+        )

@@ -7,8 +7,10 @@ Implements ODCSNormalizerBase with 3.0.0-preview-specific support, focusing on:
 - Graceful degradation for missing features (preview versions may have incomplete features)
 - ODCS 3.0.0-preview-specific field mappings (if any)
 """
+
+from typing import Any
+
 import structlog
-from typing import Dict, Any, List
 
 from hub.apps.contracts.normalization.odcs_normalizer_base import ODCSNormalizerBase
 
@@ -49,10 +51,10 @@ class ODCSNormalizerV3_0_0_Preview(ODCSNormalizerBase):
 
     def _map_version_specific_fields(
         self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
-        spec_version: str
+        odcs_contract: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
+        spec_version: str,
     ) -> None:
         """
         Map ODCS 3.0.0-preview-specific fields to HubContract format.
@@ -82,7 +84,7 @@ class ODCSNormalizerV3_0_0_Preview(ODCSNormalizerBase):
                 "odcs_v3_0_0_preview_unexpected_version",
                 expected_version="3.0.0-preview",
                 actual_version=spec_version,
-                message="ODCSNormalizerV3_0_0_Preview received unexpected version"
+                message="ODCSNormalizerV3_0_0_Preview received unexpected version",
             )
 
         # ODCS 3.0.0-preview is a preview version and may have:
@@ -105,7 +107,7 @@ class ODCSNormalizerV3_0_0_Preview(ODCSNormalizerBase):
         # the base class's graceful degradation for any missing or unexpected fields.
 
         # Add a warning if the contract seems incomplete (optional, for observability)
-        if not odcs_contract.get('schema') and not odcs_contract.get('models'):
+        if not odcs_contract.get("schema") and not odcs_contract.get("models"):
             warnings.append(
                 "ODCS 3.0.0-preview contract may be incomplete - schema/models section is missing"
             )
@@ -113,7 +115,5 @@ class ODCSNormalizerV3_0_0_Preview(ODCSNormalizerBase):
         logger.debug(
             "odcs_v3_0_0_preview_version_specific_mapping_complete",
             spec_version=spec_version,
-            message="ODCS 3.0.0-preview version-specific mapping complete (graceful degradation for missing features)"
+            message="ODCS 3.0.0-preview version-specific mapping complete (graceful degradation for missing features)",
         )
-
-

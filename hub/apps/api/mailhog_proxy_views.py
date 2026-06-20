@@ -49,7 +49,7 @@ never via this proxy.
 from __future__ import annotations
 
 import logging
-from typing import Any, Tuple
+from typing import Any
 
 import requests
 from django.conf import settings
@@ -152,7 +152,7 @@ def _generic_503(reason: str) -> Response:
     )
 
 
-def _proxy_get(upstream_url: str) -> Tuple[Any, int]:
+def _proxy_get(upstream_url: str) -> tuple[Any, int]:
     """Run the upstream GET with safety rails, return (body_dict, status).
 
     Pure-ish: takes the resolved URL, returns the parsed body + status

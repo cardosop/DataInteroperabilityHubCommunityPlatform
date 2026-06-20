@@ -13,19 +13,18 @@ All validation methods follow engineering best practices:
 - Comprehensive error messages with context
 - Follow DRY, SOLID, and clean code principles
 """
+
 import logging
-from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
-from django.core.exceptions import ValidationError as DjangoValidationError
-
+from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, ComplianceStatus, DQStatus
 from hub.apps.core.business_rules.base import (
     BusinessRules,
     RuleExecutionContext,
     ValidationResult,
 )
 from hub.apps.core.business_rules.registry import register_rule
-from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, DQStatus, ComplianceStatus
 from hub.apps.users.models import User
 
 if TYPE_CHECKING:
@@ -33,6 +32,7 @@ if TYPE_CHECKING:
 
 # Forward reference for Dataset type hint
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from hub.apps.datasets.models import Dataset
 
@@ -49,19 +49,22 @@ class AssetsRuleExecutionContext(RuleExecutionContext):
     - tenant: Optional tenant instance for validation
     - user: Optional user instance for permission validation
     """
-    asset: Optional[Asset] = None
-    tenant: Optional[Any] = None  # Using Any to avoid circular import
-    user: Optional[User] = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    asset: Asset | None = None
+    tenant: Any | None = None  # Using Any to avoid circular import
+    user: User | None = None
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert context to dictionary for caching/logging."""
         base_dict = super().to_dict()
-        base_dict.update({
-            'asset_id': str(self.asset.id) if self.asset else None,
-            'asset_key': self.asset.key if self.asset else None,
-            'tenant_id': str(self.tenant.id) if self.tenant else None,
-            'user_id': str(self.user.id) if self.user else None,
-        })
+        base_dict.update(
+            {
+                "asset_id": str(self.asset.id) if self.asset else None,
+                "asset_key": self.asset.key if self.asset else None,
+                "tenant_id": str(self.tenant.id) if self.tenant else None,
+                "user_id": str(self.user.id) if self.user else None,
+            }
+        )
         return base_dict
 
 
@@ -70,7 +73,6 @@ class AssetsRuleExecutionContext(RuleExecutionContext):
     description="Validates asset lifecycle, structure, tenant context, and access permissions",
     tags=["assets", "validation"],
     priority=10,
-
     openspec_ref="specs/asset-business-rules/spec.md",
 )
 class AssetsBusinessRules(BusinessRules):
@@ -89,10 +91,7 @@ class AssetsBusinessRules(BusinessRules):
         return "AssetsBusinessRules"
 
     def validate(
-        self,
-        context: Optional[RuleExecutionContext] = None,
-        *args,
-        **kwargs
+        self, context: RuleExecutionContext | None = None, *args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -126,67 +125,69 @@ class AssetsBusinessRules(BusinessRules):
             user = context.user
         else:
             # Try to get from kwargs first
-            asset = kwargs.get('asset')
-            tenant = kwargs.get('tenant')
-            user = kwargs.get('user')
+            asset = kwargs.get("asset")
+            tenant = kwargs.get("tenant")
+            user = kwargs.get("user")
 
             # If not in kwargs, try to get from context.metadata or context.resource
             if not asset:
-                if context and hasattr(context, 'resource') and isinstance(context.resource, Asset):
+                if context and hasattr(context, "resource") and isinstance(context.resource, Asset):
                     asset = context.resource
-                elif context and hasattr(context, 'metadata') and isinstance(context.metadata, dict):
-                    asset = context.metadata.get('asset')
-                    tenant = context.metadata.get('tenant') or tenant
-                    user = context.metadata.get('user') or user
+                elif (
+                    context and hasattr(context, "metadata") and isinstance(context.metadata, dict)
+                ):
+                    asset = context.metadata.get("asset")
+                    tenant = context.metadata.get("tenant") or tenant
+                    user = context.metadata.get("user") or user
 
         if not asset:
             return ValidationResult(
                 is_valid=False,
                 errors=["Asset is required for validation"],
-                details={"validation_type": kwargs.get('validation_type', 'all')}
+                details={"validation_type": kwargs.get("validation_type", "all")},
             )
 
-        validation_type = kwargs.get('validation_type', 'all')
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        validation_type = kwargs.get("validation_type", "all")
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "asset_id": str(asset.id) if asset.id else None,
-            "asset_key": asset.key if hasattr(asset, 'key') else None,
-            "asset_name": asset.name if hasattr(asset, 'name') else None,
+            "asset_key": asset.key if hasattr(asset, "key") else None,
+            "asset_name": asset.name if hasattr(asset, "name") else None,
             "validation_type": validation_type,
         }
 
         # Perform validation based on type
         # Note: Specific validation methods will be implemented in subsequent tasks
         # For now, we provide a basic structure that validates asset existence
-        if validation_type in ('structure', 'all'):
+        if validation_type in ("structure", "all"):
             structure_result = self._validate_asset_structure(asset)
             if not structure_result.is_valid:
                 errors.extend(structure_result.errors)
                 warnings.extend(structure_result.warnings)
                 details.update(structure_result.details)
 
-        if validation_type in ('tenant_context', 'all'):
+        if validation_type in ("tenant_context", "all"):
             tenant_result = self._validate_tenant_context(asset, tenant)
             if not tenant_result.is_valid:
                 errors.extend(tenant_result.errors)
                 warnings.extend(tenant_result.warnings)
                 details.update(tenant_result.details)
 
-        if validation_type in ('permissions', 'all'):
+        if validation_type in ("permissions", "all"):
             permissions_result = self._validate_permissions(asset, user)
             if not permissions_result.is_valid:
                 errors.extend(permissions_result.errors)
                 warnings.extend(permissions_result.warnings)
                 details.update(permissions_result.details)
 
-        if validation_type in ('lifecycle', 'all'):
+        if validation_type in ("lifecycle", "all"):
             lifecycle_result = self._validate_asset_lifecycle(
                 asset,
-                old_status=kwargs.get('old_status'),
-                new_status=kwargs.get('new_status', asset.status),
-                old_visibility=kwargs.get('old_visibility'),
-                new_visibility=kwargs.get('new_visibility', asset.visibility)
+                old_status=kwargs.get("old_status"),
+                new_status=kwargs.get("new_status", asset.status),
+                old_visibility=kwargs.get("old_visibility"),
+                new_visibility=kwargs.get("new_visibility", asset.visibility),
             )
             if not lifecycle_result.is_valid:
                 errors.extend(lifecycle_result.errors)
@@ -195,8 +196,13 @@ class AssetsBusinessRules(BusinessRules):
 
         # Safety net: unrecognized validation_type silently ran no checks
         # and would return is_valid=True — warn the caller.
-        if validation_type not in ('structure', 'tenant_context', 'permissions',
-                                   'lifecycle', 'all'):
+        if validation_type not in (
+            "structure",
+            "tenant_context",
+            "permissions",
+            "lifecycle",
+            "all",
+        ):
             warnings.append(
                 f"Unrecognized validation_type '{validation_type}' — "
                 f"no validation rules were executed. "
@@ -208,10 +214,7 @@ class AssetsBusinessRules(BusinessRules):
         is_valid = len(errors) == 0
 
         return ValidationResult(
-            is_valid=is_valid,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=is_valid, errors=errors, warnings=warnings, details=details
         )
 
     def _validate_asset_structure(self, asset: Asset) -> ValidationResult:
@@ -224,9 +227,9 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with structure validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {}
 
         # Validate required fields
         if not asset.key:
@@ -243,30 +246,28 @@ class AssetsBusinessRules(BusinessRules):
         if asset.status not in [choice[0] for choice in AssetStatus.choices]:
             errors.append(f"Invalid asset status: {asset.status}")
 
-        # Validate visibility is valid
-        if asset.visibility not in [choice[0] for choice in AssetVisibility.choices]:
-            errors.append(f"Invalid asset visibility: {asset.visibility}")
+        # Phase 250.3.B — ``visibility`` is a derived @property; it
+        # always returns INTERNAL or PUBLIC.  The separate visibility
+        # validation that lived here was dead code (could never fail)
+        # and has been removed.
 
         # Warnings for optional fields that might be useful
         if not asset.description:
             warnings.append("Asset description is recommended for better discoverability")
 
-        details['structure_checks'] = {
-            'has_key': bool(asset.key),
-            'has_name': bool(asset.name),
-            'has_description': bool(asset.description),
-            'status': asset.status,
-            'visibility': asset.visibility,
+        details["structure_checks"] = {
+            "has_key": bool(asset.key),
+            "has_name": bool(asset.name),
+            "has_description": bool(asset.description),
+            "status": asset.status,
+            "visibility": asset.visibility,
         }
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
-    def _validate_tenant_context(self, asset: Asset, tenant: Optional[Any] = None) -> ValidationResult:
+    def _validate_tenant_context(self, asset: Asset, tenant: Any | None = None) -> ValidationResult:
         """
         Validate tenant context consistency.
 
@@ -277,29 +278,25 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with tenant context validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {}
 
         # Validate asset has tenant
-        if not hasattr(asset, 'tenant') or asset.tenant is None:
+        if not hasattr(asset, "tenant") or asset.tenant is None:
             errors.append("Asset must have a tenant")
             return ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
 
         asset_tenant_id = str(asset.tenant.id) if asset.tenant else None
 
         # Validate tenant context matches asset tenant
-        if self.tenant_id:
-            if asset_tenant_id != str(self.tenant_id):
-                errors.append(
-                    f"Tenant mismatch: asset tenant ({asset_tenant_id}) "
-                    f"does not match context tenant ({self.tenant_id})"
-                )
+        if self.tenant_id and asset_tenant_id != str(self.tenant_id):
+            errors.append(
+                f"Tenant mismatch: asset tenant ({asset_tenant_id}) "
+                f"does not match context tenant ({self.tenant_id})"
+            )
 
         # If tenant instance provided, validate it matches
         if tenant:
@@ -310,21 +307,18 @@ class AssetsBusinessRules(BusinessRules):
                     f"does not match asset tenant ({asset_tenant_id})"
                 )
 
-        details['tenant_validation'] = {
-            'asset_tenant_id': asset_tenant_id,
-            'context_tenant_id': self.tenant_id,
-            'provided_tenant_id': str(tenant.id) if tenant else None,
-            'matches': len(errors) == 0,
+        details["tenant_validation"] = {
+            "asset_tenant_id": asset_tenant_id,
+            "context_tenant_id": self.tenant_id,
+            "provided_tenant_id": str(tenant.id) if tenant else None,
+            "matches": len(errors) == 0,
         }
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
-    def _validate_permissions(self, asset: Asset, user: Optional[User] = None) -> ValidationResult:
+    def _validate_permissions(self, asset: Asset, user: User | None = None) -> ValidationResult:
         """
         Validate user permissions for asset access.
 
@@ -335,13 +329,15 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with permissions validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {}
 
         # If user provided, validate user tenant matches asset tenant
         if user:
-            user_tenant_id = str(user.tenant.id) if hasattr(user, 'tenant') and user.tenant else None
+            user_tenant_id = (
+                str(user.tenant.id) if hasattr(user, "tenant") and user.tenant else None
+            )
             asset_tenant_id = str(asset.tenant.id) if asset.tenant else None
 
             if user_tenant_id and asset_tenant_id and user_tenant_id != asset_tenant_id:
@@ -350,34 +346,32 @@ class AssetsBusinessRules(BusinessRules):
                 )
 
             # Validate user_id in context matches provided user
-            if self.user_id:
-                if str(user.id) != str(self.user_id):
-                    warnings.append(
-                        f"User ID mismatch: provided user ({user.id}) "
-                        f"does not match context user ({self.user_id})"
-                    )
+            if self.user_id and str(user.id) != str(self.user_id):
+                warnings.append(
+                    f"User ID mismatch: provided user ({user.id}) "
+                    f"does not match context user ({self.user_id})"
+                )
 
-        details['permissions_validation'] = {
-            'user_id': str(user.id) if user else None,
-            'context_user_id': self.user_id,
-            'asset_tenant_id': str(asset.tenant.id) if asset.tenant else None,
-            'user_tenant_id': str(user.tenant.id) if user and hasattr(user, 'tenant') and user.tenant else None,
+        details["permissions_validation"] = {
+            "user_id": str(user.id) if user else None,
+            "context_user_id": self.user_id,
+            "asset_tenant_id": str(asset.tenant.id) if asset.tenant else None,
+            "user_tenant_id": str(user.tenant.id)
+            if user and hasattr(user, "tenant") and user.tenant
+            else None,
         }
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def _validate_asset_lifecycle(
         self,
         asset: Asset,
-        old_status: Optional[str] = None,
-        new_status: Optional[str] = None,
-        old_visibility: Optional[str] = None,
-        new_visibility: Optional[str] = None
+        old_status: str | None = None,
+        new_status: str | None = None,
+        old_visibility: str | None = None,
+        new_visibility: str | None = None,
     ) -> ValidationResult:
         """
         Validate asset lifecycle transitions and requirements.
@@ -398,11 +392,9 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with lifecycle validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            'lifecycle_validation': {}
-        }
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"lifecycle_validation": {}}
 
         # Use provided values or current asset values
         current_status = new_status if new_status is not None else asset.status
@@ -417,7 +409,7 @@ class AssetsBusinessRules(BusinessRules):
         if not status_transition_result.is_valid:
             errors.extend(status_transition_result.errors)
             warnings.extend(status_transition_result.warnings)
-            details['lifecycle_validation']['status_transition'] = status_transition_result.details
+            details["lifecycle_validation"]["status_transition"] = status_transition_result.details
 
         # Validate activation requirements if transitioning to ACTIVE
         if current_status == AssetStatus.ACTIVE and previous_status != AssetStatus.ACTIVE:
@@ -425,7 +417,9 @@ class AssetsBusinessRules(BusinessRules):
             if not activation_result.is_valid:
                 errors.extend(activation_result.errors)
                 warnings.extend(activation_result.warnings)
-                details['lifecycle_validation']['activation_requirements'] = activation_result.details
+                details["lifecycle_validation"]["activation_requirements"] = (
+                    activation_result.details
+                )
 
         # Validate visibility changes
         if current_visibility != previous_visibility:
@@ -435,7 +429,7 @@ class AssetsBusinessRules(BusinessRules):
             if not visibility_result.is_valid:
                 errors.extend(visibility_result.errors)
                 warnings.extend(visibility_result.warnings)
-                details['lifecycle_validation']['visibility_change'] = visibility_result.details
+                details["lifecycle_validation"]["visibility_change"] = visibility_result.details
 
         # Validate retirement requirements if transitioning to RETIRED
         if current_status == AssetStatus.RETIRED and previous_status != AssetStatus.RETIRED:
@@ -443,30 +437,31 @@ class AssetsBusinessRules(BusinessRules):
             if not retirement_result.is_valid:
                 errors.extend(retirement_result.errors)
                 warnings.extend(retirement_result.warnings)
-                details['lifecycle_validation']['retirement_requirements'] = retirement_result.details
+                details["lifecycle_validation"]["retirement_requirements"] = (
+                    retirement_result.details
+                )
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def _validate_status_transition(
-        self,
-        asset: Asset,
-        old_status: str,
-        new_status: str
+        self, asset: Asset, old_status: str, new_status: str
     ) -> ValidationResult:
         """
         Validate status transition is allowed.
 
         Allowed transitions:
-        - DRAFT → ACTIVE, RETIRED (soft-delete from draft allowed)
-        - ACTIVE → PUBLIC
-        - ACTIVE → RETIRED
+        - DRAFT → ACTIVE, RETIRED (soft-delete from draft via DELETE endpoint)
+        - ACTIVE → PUBLIC, RETIRED
         - PUBLIC → RETIRED
         - RETIRED → (no transitions allowed)
+
+        Note: DRAFT→RETIRED is allowed here (for the DELETE endpoint)
+        but rejected by Asset.VALID_TRANSITIONS / full_clean().  The
+        service layer's delete_asset() uses .update() which bypasses
+        full_clean(), so the business-rules gate is the authoritative
+        check for soft-delete.
 
         Args:
             asset: Asset instance
@@ -476,49 +471,45 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with transition validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            'old_status': old_status,
-            'new_status': new_status,
-            'transition_allowed': True
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
+            "old_status": old_status,
+            "new_status": new_status,
+            "transition_allowed": True,
         }
 
         # If status hasn't changed, no validation needed
         if old_status == new_status:
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
-        # Define allowed transitions (DRAFT may go to RETIRED for soft-delete)
+        # Define allowed transitions.
+        # DRAFT→RETIRED is allowed for soft-delete via the DELETE endpoint
+        # (the service layer uses .update() which bypasses full_clean()).
         allowed_transitions = {
             AssetStatus.DRAFT: [AssetStatus.ACTIVE, AssetStatus.RETIRED],
             AssetStatus.ACTIVE: [AssetStatus.PUBLIC, AssetStatus.RETIRED],
             AssetStatus.PUBLIC: [AssetStatus.RETIRED],
-            AssetStatus.RETIRED: []  # No transitions from RETIRED
+            AssetStatus.RETIRED: [],  # No transitions from RETIRED
         }
 
         # Check if transition is allowed
         if old_status not in allowed_transitions:
             errors.append(f"Invalid old status: {old_status}")
-            details['transition_allowed'] = False
+            details["transition_allowed"] = False
         elif new_status not in allowed_transitions[old_status]:
             errors.append(
                 f"Invalid status transition: {old_status} → {new_status}. "
                 f"Allowed transitions from {old_status}: {', '.join(allowed_transitions[old_status])}"
             )
-            details['transition_allowed'] = False
+            details["transition_allowed"] = False
         else:
-            details['transition_allowed'] = True
+            details["transition_allowed"] = True
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def _validate_activation_requirements(self, asset: Asset) -> ValidationResult:
@@ -539,56 +530,62 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with activation requirements validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            'activation_checks': {}
-        }
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"activation_checks": {}}
 
         # Check contract requirements
-        from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus, NormalizationStatus
+        from hub.apps.contracts.models import (
+            ContractStatus,
+            NormalizationStatus,
+            ValidationStatus,
+        )
 
         active_contract = asset.contracts.filter(status=ContractStatus.ACTIVE).first()
         if not active_contract:
             errors.append("Asset must have an ACTIVE contract to be activated")
-            details['activation_checks']['has_active_contract'] = False
+            details["activation_checks"]["has_active_contract"] = False
         else:
-            details['activation_checks']['has_active_contract'] = True
-            details['activation_checks']['contract_id'] = str(active_contract.id)
+            details["activation_checks"]["has_active_contract"] = True
+            details["activation_checks"]["contract_id"] = str(active_contract.id)
 
             # Check contract validation status
             if active_contract.validation_status not in [
                 ValidationStatus.VALID,
-                ValidationStatus.WARNING_ONLY
+                ValidationStatus.WARNING_ONLY,
             ]:
                 errors.append(
                     f"Contract validation_status must be VALID or WARNING_ONLY "
                     f"(current: {active_contract.validation_status})"
                 )
-                details['activation_checks']['contract_validation_status_valid'] = False
+                details["activation_checks"]["contract_validation_status_valid"] = False
             else:
-                details['activation_checks']['contract_validation_status_valid'] = True
-                details['activation_checks']['contract_validation_status'] = active_contract.validation_status
+                details["activation_checks"]["contract_validation_status_valid"] = True
+                details["activation_checks"]["contract_validation_status"] = (
+                    active_contract.validation_status
+                )
 
             # Check contract normalization status
             if active_contract.normalization_status not in [
                 NormalizationStatus.NORMALIZED_OK,
-                NormalizationStatus.NORMALIZED_WITH_WARNINGS
+                NormalizationStatus.NORMALIZED_WITH_WARNINGS,
             ]:
                 errors.append(
                     f"Contract normalization_status must be NORMALIZED_OK or NORMALIZED_WITH_WARNINGS "
                     f"(current: {active_contract.normalization_status})"
                 )
-                details['activation_checks']['contract_normalization_status_valid'] = False
+                details["activation_checks"]["contract_normalization_status_valid"] = False
             else:
-                details['activation_checks']['contract_normalization_status_valid'] = True
-                details['activation_checks']['contract_normalization_status'] = active_contract.normalization_status
+                details["activation_checks"]["contract_normalization_status_valid"] = True
+                details["activation_checks"]["contract_normalization_status"] = (
+                    active_contract.normalization_status
+                )
 
         # Check dataset requirements (if dataset exists)
         dataset = asset.datasets.first()
         if dataset:
-            details['activation_checks']['has_dataset'] = True
-            details['activation_checks']['dataset_id'] = str(dataset.id)
+            details["activation_checks"]["has_dataset"] = True
+            details["activation_checks"]["dataset_id"] = str(dataset.id)
 
             # Check DQ status
             if asset.dq_status not in [DQStatus.PASS, DQStatus.WARN]:
@@ -596,11 +593,13 @@ class AssetsBusinessRules(BusinessRules):
                     f"dq_status must be PASS or WARN when dataset exists "
                     f"(current: {asset.dq_status})"
                 )
-                details['activation_checks']['dq_status_valid'] = False
+                details["activation_checks"]["dq_status_valid"] = False
             else:
-                details['activation_checks']['dq_status_valid'] = True
+                details["activation_checks"]["dq_status_valid"] = True
                 if asset.dq_status == DQStatus.WARN:
-                    warnings.append("Asset has DQ status WARN - activation allowed but quality issues exist")
+                    warnings.append(
+                        "Asset has DQ status WARN - activation allowed but quality issues exist"
+                    )
 
             # Check compliance status
             if asset.compliance_status not in [ComplianceStatus.PASS, ComplianceStatus.WARN]:
@@ -608,28 +607,23 @@ class AssetsBusinessRules(BusinessRules):
                     f"compliance_status must be PASS or WARN when dataset exists "
                     f"(current: {asset.compliance_status})"
                 )
-                details['activation_checks']['compliance_status_valid'] = False
+                details["activation_checks"]["compliance_status_valid"] = False
             else:
-                details['activation_checks']['compliance_status_valid'] = True
+                details["activation_checks"]["compliance_status_valid"] = True
                 if asset.compliance_status == ComplianceStatus.WARN:
-                    warnings.append("Asset has compliance status WARN - activation allowed but compliance issues exist")
+                    warnings.append(
+                        "Asset has compliance status WARN - activation allowed but compliance issues exist"
+                    )
         else:
-            details['activation_checks']['has_dataset'] = False
+            details["activation_checks"]["has_dataset"] = False
             # Contract-only assets are allowed (no dataset required)
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def _validate_visibility_change(
-        self,
-        asset: Asset,
-        old_visibility: str,
-        new_visibility: str,
-        current_status: str
+        self, asset: Asset, old_visibility: str, new_visibility: str, current_status: str
     ) -> ValidationResult:
         """
         Validate visibility change requirements.
@@ -646,50 +640,42 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with visibility change validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            'old_visibility': old_visibility,
-            'new_visibility': new_visibility,
-            'current_status': current_status
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
+            "old_visibility": old_visibility,
+            "new_visibility": new_visibility,
+            "current_status": current_status,
         }
 
         # If visibility hasn't changed, no validation needed
         if old_visibility == new_visibility:
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
         # Check INTERNAL → PUBLIC transition requires ACTIVE status
-        if (
-            old_visibility == AssetVisibility.INTERNAL and
-            new_visibility == AssetVisibility.PUBLIC
-        ):
+        if old_visibility == AssetVisibility.INTERNAL and new_visibility == AssetVisibility.PUBLIC:
             if current_status != AssetStatus.ACTIVE:
                 errors.append(
                     f"Visibility change from INTERNAL to PUBLIC requires ACTIVE status "
                     f"(current status: {current_status})"
                 )
-                details['visibility_change_allowed'] = False
+                details["visibility_change_allowed"] = False
             else:
-                details['visibility_change_allowed'] = True
+                details["visibility_change_allowed"] = True
 
         # PUBLIC → INTERNAL is always allowed
         elif (
-            old_visibility == AssetVisibility.PUBLIC and
-            new_visibility == AssetVisibility.INTERNAL
+            old_visibility == AssetVisibility.PUBLIC and new_visibility == AssetVisibility.INTERNAL
         ):
-            details['visibility_change_allowed'] = True
-            warnings.append("Changing visibility from PUBLIC to INTERNAL will hide the asset from public view")
+            details["visibility_change_allowed"] = True
+            warnings.append(
+                "Changing visibility from PUBLIC to INTERNAL will hide the asset from public view"
+            )
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def _validate_retirement_requirements(self, asset: Asset) -> ValidationResult:
@@ -706,50 +692,44 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with retirement requirements validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            'retirement_checks': {}
-        }
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {"retirement_checks": {}}
 
         # Check for active marketplace listings
         from hub.apps.marketplace.models import Listing, ListingStatus
 
-        active_listings = Listing.objects.filter(
-            asset=asset,
-            status=ListingStatus.PUBLISHED
-        )
+        active_listings = Listing.objects.filter(asset=asset, status=ListingStatus.PUBLISHED)
 
         if active_listings.exists():
             listing_count = active_listings.count()
-            listing_ids = [str(listing.id) for listing in active_listings[:5]]  # Limit to first 5 for details
+            listing_ids = [
+                str(listing.id) for listing in active_listings[:5]
+            ]  # Limit to first 5 for details
             errors.append(
                 f"Asset cannot be retired while it has {listing_count} active marketplace listing(s). "
                 f"Please unlist or delete the listings first."
             )
-            details['retirement_checks']['has_active_listings'] = True
-            details['retirement_checks']['active_listing_count'] = listing_count
-            details['retirement_checks']['active_listing_ids'] = listing_ids
+            details["retirement_checks"]["has_active_listings"] = True
+            details["retirement_checks"]["active_listing_count"] = listing_count
+            details["retirement_checks"]["active_listing_ids"] = listing_ids
         else:
-            details['retirement_checks']['has_active_listings'] = False
+            details["retirement_checks"]["has_active_listings"] = False
 
         # Check for other dependencies (e.g., active entitlements, scheduled jobs, etc.)
         # This can be extended in the future as more dependencies are identified
-        details['retirement_checks']['other_dependencies_checked'] = True
+        details["retirement_checks"]["other_dependencies_checked"] = True
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def validate_dataset_attachment(
         self,
         asset: Asset,
         dataset: "Dataset",
-        user: Optional[User] = None,
-        proposed_version: Optional[int] = None
+        user: User | None = None,
+        proposed_version: int | None = None,
     ) -> ValidationResult:
         """
         Validate dataset can be attached to asset.
@@ -769,12 +749,12 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with attachment validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            'asset_id': str(asset.id),
-            'dataset_id': str(dataset.id),
-            'validation_checks': {}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
+            "asset_id": str(asset.id),
+            "dataset_id": str(dataset.id),
+            "validation_checks": {},
         }
 
         # Validate tenant ownership
@@ -782,21 +762,21 @@ class AssetsBusinessRules(BusinessRules):
         if not tenant_result.is_valid:
             errors.extend(tenant_result.errors)
             warnings.extend(tenant_result.warnings)
-        details['validation_checks']['tenant_ownership'] = tenant_result.details
+        details["validation_checks"]["tenant_ownership"] = tenant_result.details
 
         # Validate dataset access
         access_result = self._validate_dataset_access(asset, dataset, user)
         if not access_result.is_valid:
             errors.extend(access_result.errors)
             warnings.extend(access_result.warnings)
-        details['validation_checks']['access'] = access_result.details
+        details["validation_checks"]["access"] = access_result.details
 
         # Validate schema compatibility (if contract exists)
         schema_result = self._validate_dataset_schema_compatibility(asset, dataset)
         if not schema_result.is_valid:
             errors.extend(schema_result.errors)
             warnings.extend(schema_result.warnings)
-        details['validation_checks']['schema_compatibility'] = schema_result.details
+        details["validation_checks"]["schema_compatibility"] = schema_result.details
 
         # Validate version compatibility
         version_result = self._validate_dataset_version_compatibility(
@@ -805,19 +785,14 @@ class AssetsBusinessRules(BusinessRules):
         if not version_result.is_valid:
             errors.extend(version_result.errors)
             warnings.extend(version_result.warnings)
-        details['validation_checks']['version_compatibility'] = version_result.details
+        details["validation_checks"]["version_compatibility"] = version_result.details
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def _validate_dataset_tenant_ownership(
-        self,
-        asset: Asset,
-        dataset: "Dataset"
+        self, asset: Asset, dataset: "Dataset"
     ) -> ValidationResult:
         """
         Validate dataset belongs to same tenant as asset.
@@ -829,32 +804,26 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with tenant ownership validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            'asset_tenant_id': str(asset.tenant.id) if asset.tenant else None,
-            'dataset_tenant_id': str(dataset.tenant.id) if dataset.tenant else None,
-            'tenants_match': False
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
+            "asset_tenant_id": str(asset.tenant.id) if asset.tenant else None,
+            "dataset_tenant_id": str(dataset.tenant.id) if dataset.tenant else None,
+            "tenants_match": False,
         }
 
         # Validate asset has tenant
         if not asset.tenant:
             errors.append("Asset must have a tenant")
             return ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
 
         # Validate dataset has tenant
         if not dataset.tenant:
             errors.append("Dataset must have a tenant")
             return ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
 
         # Validate tenants match
@@ -865,22 +834,16 @@ class AssetsBusinessRules(BusinessRules):
             errors.append(
                 f"Dataset tenant ({dataset_tenant_id}) does not match asset tenant ({asset_tenant_id})"
             )
-            details['tenants_match'] = False
+            details["tenants_match"] = False
         else:
-            details['tenants_match'] = True
+            details["tenants_match"] = True
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def _validate_dataset_access(
-        self,
-        asset: Asset,
-        dataset: "Dataset",
-        user: Optional[User] = None
+        self, asset: Asset, dataset: "Dataset", user: User | None = None
     ) -> ValidationResult:
         """
         Validate user has access to dataset.
@@ -896,33 +859,27 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with access validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            'access_allowed': False,
-            'cross_tenant': False,
-            'user_provided': user is not None
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
+            "access_allowed": False,
+            "cross_tenant": False,
+            "user_provided": user is not None,
         }
 
         # If no user provided, skip access validation (will be handled at API level)
         if not user:
             warnings.append("User not provided, skipping dataset access validation")
-            details['access_allowed'] = True  # Not an error, just skipped
+            details["access_allowed"] = True  # Not an error, just skipped
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
         # Validate user has tenant
-        if not hasattr(user, 'tenant') or not user.tenant:
+        if not hasattr(user, "tenant") or not user.tenant:
             errors.append("User must have a tenant for access validation")
             return ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
 
         # Check if cross-tenant access
@@ -930,20 +887,14 @@ class AssetsBusinessRules(BusinessRules):
         dataset_tenant_id = str(dataset.tenant.id) if dataset.tenant else None
         user_tenant_id = str(user.tenant.id) if user.tenant else None
 
-        is_cross_tenant = (
-            asset_tenant_id != user_tenant_id or
-            dataset_tenant_id != user_tenant_id
-        )
-        details['cross_tenant'] = is_cross_tenant
+        is_cross_tenant = asset_tenant_id != user_tenant_id or dataset_tenant_id != user_tenant_id
+        details["cross_tenant"] = is_cross_tenant
 
         if not is_cross_tenant:
             # Same tenant - access allowed
-            details['access_allowed'] = True
+            details["access_allowed"] = True
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
         # Cross-tenant access - would require entitlements (future enhancement)
@@ -952,20 +903,13 @@ class AssetsBusinessRules(BusinessRules):
             "Cross-tenant dataset access detected. "
             "Full entitlement validation not yet implemented in business rules."
         )
-        details['access_allowed'] = True  # Allow for now, will be enforced at API level
-        details['entitlement_check_required'] = True
+        details["access_allowed"] = True  # Allow for now, will be enforced at API level
+        details["entitlement_check_required"] = True
 
-        return ValidationResult(
-            is_valid=True,
-            errors=errors,
-            warnings=warnings,
-            details=details
-        )
+        return ValidationResult(is_valid=True, errors=errors, warnings=warnings, details=details)
 
     def _validate_dataset_schema_compatibility(
-        self,
-        asset: Asset,
-        dataset: "Dataset"
+        self, asset: Asset, dataset: "Dataset"
     ) -> ValidationResult:
         """
         Validate dataset schema is compatible with asset contract schema.
@@ -979,132 +923,123 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with schema compatibility validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            'contract_exists': False,
-            'contract_has_schema': False,
-            'dataset_has_schema': False,
-            'schema_compatible': False,
-            'missing_fields': [],
-            'type_mismatches': [],
-            'extra_fields': []
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
+            "contract_exists": False,
+            "contract_has_schema": False,
+            "dataset_has_schema": False,
+            "schema_compatible": False,
+            "missing_fields": [],
+            "type_mismatches": [],
+            "extra_fields": [],
         }
 
         # Get contract schema
-        from hub.apps.contracts.models import Contract, ContractStatus
+        from hub.apps.contracts.models import ContractStatus
 
         active_contract = asset.contracts.filter(status=ContractStatus.ACTIVE).first()
         if not active_contract:
             warnings.append("Asset has no ACTIVE contract - schema compatibility check skipped")
-            details['contract_exists'] = False
+            details["contract_exists"] = False
             return ValidationResult(
                 is_valid=True,  # Not an error if no contract
                 errors=errors,
                 warnings=warnings,
-                details=details
+                details=details,
             )
 
-        details['contract_exists'] = True
-        details['contract_id'] = str(active_contract.id)
+        details["contract_exists"] = True
+        details["contract_id"] = str(active_contract.id)
 
         # Get contract schema
         hub_contract_json = active_contract.hub_contract_json
         if not hub_contract_json:
-            warnings.append("Contract has no hub_contract_json - schema compatibility check skipped")
-            details['contract_has_schema'] = False
+            warnings.append(
+                "Contract has no hub_contract_json - schema compatibility check skipped"
+            )
+            details["contract_has_schema"] = False
             return ValidationResult(
                 is_valid=True,  # Not an error if no schema
                 errors=errors,
                 warnings=warnings,
-                details=details
+                details=details,
             )
 
-        contract_schema = hub_contract_json.get('schema')
+        contract_schema = hub_contract_json.get("schema")
         if not contract_schema:
-            warnings.append("Contract hub_contract_json has no schema section - schema compatibility check skipped")
-            details['contract_has_schema'] = False
+            warnings.append(
+                "Contract hub_contract_json has no schema section - schema compatibility check skipped"
+            )
+            details["contract_has_schema"] = False
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
-        contract_fields = contract_schema.get('fields', [])
+        contract_fields = contract_schema.get("fields", [])
         if not contract_fields:
             warnings.append("Contract schema has no fields - schema compatibility check skipped")
-            details['contract_has_schema'] = False
+            details["contract_has_schema"] = False
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
-        details['contract_has_schema'] = True
-        details['contract_field_count'] = len(contract_fields)
+        details["contract_has_schema"] = True
+        details["contract_field_count"] = len(contract_fields)
 
         # Get dataset schema
         dataset_schema = dataset.schema_json
         if not dataset_schema:
             errors.append("Dataset has no schema_json - cannot validate schema compatibility")
-            details['dataset_has_schema'] = False
+            details["dataset_has_schema"] = False
             return ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
 
-        dataset_fields = dataset_schema.get('fields', [])
+        dataset_fields = dataset_schema.get("fields", [])
         if not isinstance(dataset_fields, list):
             errors.append("Dataset schema_json.fields must be a list")
-            details['dataset_has_schema'] = False
+            details["dataset_has_schema"] = False
             return ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
 
         if not dataset_fields:
             errors.append("Dataset schema has no fields - cannot validate schema compatibility")
-            details['dataset_has_schema'] = False
+            details["dataset_has_schema"] = False
             return ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
 
-        details['dataset_has_schema'] = True
-        details['dataset_field_count'] = len(dataset_fields)
+        details["dataset_has_schema"] = True
+        details["dataset_field_count"] = len(dataset_fields)
 
         # Build field maps for comparison
         contract_field_map = {}
         for field_dict in contract_fields:
             if isinstance(field_dict, dict):
-                field_name = field_dict.get('name')
+                field_name = field_dict.get("name")
                 if field_name:
                     contract_field_map[field_name] = {
-                        'data_type': field_dict.get('data_type') or field_dict.get('type', 'string'),
-                        'nullable': field_dict.get('nullable', True),
-                        'required': field_dict.get('required', False)
+                        "data_type": field_dict.get("data_type")
+                        or field_dict.get("type", "string"),
+                        "nullable": field_dict.get("nullable", True),
+                        "required": field_dict.get("required", False),
                     }
 
         dataset_field_map = {}
         for field_dict in dataset_fields:
             if isinstance(field_dict, dict):
-                field_name = field_dict.get('name')
+                field_name = field_dict.get("name")
                 if field_name:
                     dataset_field_map[field_name] = {
-                        'data_type': field_dict.get('data_type') or field_dict.get('type', 'string'),
-                        'nullable': field_dict.get('nullable', True)
+                        "data_type": field_dict.get("data_type")
+                        or field_dict.get("type", "string"),
+                        "nullable": field_dict.get("nullable", True),
                     }
 
-        details['contract_field_names'] = list(contract_field_map.keys())
-        details['dataset_field_names'] = list(dataset_field_map.keys())
+        details["contract_field_names"] = list(contract_field_map.keys())
+        details["dataset_field_names"] = list(dataset_field_map.keys())
 
         # Check for missing fields (contract fields not in dataset)
         missing_fields = set(contract_field_map.keys()) - set(dataset_field_map.keys())
@@ -1112,14 +1047,14 @@ class AssetsBusinessRules(BusinessRules):
             errors.append(
                 f"Dataset schema missing required contract fields: {', '.join(sorted(missing_fields))}"
             )
-            details['missing_fields'] = list(missing_fields)
+            details["missing_fields"] = list(missing_fields)
 
         # Check for type mismatches
         type_mismatches = []
-        for field_name in contract_field_map.keys():
+        for field_name in contract_field_map:
             if field_name in dataset_field_map:
-                contract_type = contract_field_map[field_name]['data_type'].lower()
-                dataset_type = dataset_field_map[field_name]['data_type'].lower()
+                contract_type = contract_field_map[field_name]["data_type"].lower()
+                dataset_type = dataset_field_map[field_name]["data_type"].lower()
 
                 # Type compatibility matrix (similar to transformation pipeline)
                 TYPE_COMPATIBILITY = {
@@ -1137,29 +1072,33 @@ class AssetsBusinessRules(BusinessRules):
 
                 compatible_types = TYPE_COMPATIBILITY.get(contract_type, {contract_type})
                 if dataset_type not in compatible_types and contract_type != dataset_type:
-                    type_mismatches.append({
-                        'field': field_name,
-                        'contract_type': contract_type,
-                        'dataset_type': dataset_type
-                    })
+                    type_mismatches.append(
+                        {
+                            "field": field_name,
+                            "contract_type": contract_type,
+                            "dataset_type": dataset_type,
+                        }
+                    )
                     errors.append(
                         f"Field '{field_name}' has incompatible types: "
                         f"contract expects '{contract_type}', dataset has '{dataset_type}'"
                     )
                 elif contract_type != dataset_type:
                     # Types are compatible but different - warning
-                    type_mismatches.append({
-                        'field': field_name,
-                        'contract_type': contract_type,
-                        'dataset_type': dataset_type,
-                        'compatible': True
-                    })
+                    type_mismatches.append(
+                        {
+                            "field": field_name,
+                            "contract_type": contract_type,
+                            "dataset_type": dataset_type,
+                            "compatible": True,
+                        }
+                    )
                     warnings.append(
                         f"Field '{field_name}' has different but compatible types: "
                         f"contract expects '{contract_type}', dataset has '{dataset_type}'"
                     )
 
-        details['type_mismatches'] = type_mismatches
+        details["type_mismatches"] = type_mismatches
 
         # Check for extra fields (dataset fields not in contract) - warning only
         extra_fields = set(dataset_field_map.keys()) - set(contract_field_map.keys())
@@ -1167,23 +1106,17 @@ class AssetsBusinessRules(BusinessRules):
             warnings.append(
                 f"Dataset schema contains fields not in contract: {', '.join(sorted(extra_fields))}"
             )
-            details['extra_fields'] = list(extra_fields)
+            details["extra_fields"] = list(extra_fields)
 
         # Schema is compatible if no errors
-        details['schema_compatible'] = len(errors) == 0
+        details["schema_compatible"] = len(errors) == 0
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def _validate_dataset_version_compatibility(
-        self,
-        asset: Asset,
-        dataset: "Dataset",
-        proposed_version: Optional[int] = None
+        self, asset: Asset, dataset: "Dataset", proposed_version: int | None = None
     ) -> ValidationResult:
         """
         Validate dataset version compatibility.
@@ -1201,41 +1134,33 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with version compatibility validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            'proposed_version': proposed_version,
-            'latest_version': None,
-            'version_valid': False
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
+            "proposed_version": proposed_version,
+            "latest_version": None,
+            "version_valid": False,
         }
 
         # Get latest dataset version for this asset
-        latest_dataset = asset.datasets.order_by('-version').first()
+        latest_dataset = asset.datasets.order_by("-version").first()
         latest_version = latest_dataset.version if latest_dataset else 0
-        details['latest_version'] = latest_version
+        details["latest_version"] = latest_version
 
         # If no proposed version, will be auto-incremented (valid)
         if proposed_version is None:
-            details['version_valid'] = True
-            details['auto_increment'] = True
+            details["version_valid"] = True
+            details["auto_increment"] = True
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
         # Validate proposed version is positive integer
         if not isinstance(proposed_version, int) or proposed_version < 1:
-            errors.append(
-                f"Proposed version must be a positive integer (got: {proposed_version})"
-            )
-            details['version_valid'] = False
+            errors.append(f"Proposed version must be a positive integer (got: {proposed_version})")
+            details["version_valid"] = False
             return ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
 
         # Validate version increments properly
@@ -1243,9 +1168,9 @@ class AssetsBusinessRules(BusinessRules):
             errors.append(
                 f"Proposed version ({proposed_version}) must be greater than latest version ({latest_version})"
             )
-            details['version_valid'] = False
+            details["version_valid"] = False
         else:
-            details['version_valid'] = True
+            details["version_valid"] = True
 
         # Check for version conflicts (if dataset already attached to asset with different version)
         if dataset.asset == asset and dataset.version != proposed_version:
@@ -1253,21 +1178,18 @@ class AssetsBusinessRules(BusinessRules):
                 f"Dataset is already attached to asset with version {dataset.version}, "
                 f"proposed version {proposed_version} will update it"
             )
-            details['version_update'] = True
+            details["version_update"] = True
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def validate_contract_attachment(
         self,
         asset: Asset,
         contract: "Contract",
-        user: Optional[User] = None,
-        proposed_version: Optional[int] = None
+        user: User | None = None,
+        proposed_version: int | None = None,
     ) -> ValidationResult:
         """
         Validate contract can be attached to asset.
@@ -1287,32 +1209,32 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with attachment validation status
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            'asset_id': str(asset.id),
-            'contract_id': str(contract.id),
-            'validation_checks': {}
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
+            "asset_id": str(asset.id),
+            "contract_id": str(contract.id),
+            "validation_checks": {},
         }
 
         # Validate contract validation status
         validation_status_result = self._validate_contract_validation_status(contract)
         errors.extend(validation_status_result.errors)
         warnings.extend(validation_status_result.warnings)
-        details['validation_checks']['validation_status'] = validation_status_result.details
+        details["validation_checks"]["validation_status"] = validation_status_result.details
 
         # Validate contract normalization status
         normalization_status_result = self._validate_contract_normalization_status(contract)
         errors.extend(normalization_status_result.errors)
         warnings.extend(normalization_status_result.warnings)
-        details['validation_checks']['normalization_status'] = normalization_status_result.details
+        details["validation_checks"]["normalization_status"] = normalization_status_result.details
 
         # Validate tenant ownership
         tenant_result = self._validate_contract_tenant_ownership(asset, contract)
         if not tenant_result.is_valid:
             errors.extend(tenant_result.errors)
             warnings.extend(tenant_result.warnings)
-        details['validation_checks']['tenant_ownership'] = tenant_result.details
+        details["validation_checks"]["tenant_ownership"] = tenant_result.details
 
         # Validate version compatibility
         version_result = self._validate_contract_version_compatibility(
@@ -1321,13 +1243,10 @@ class AssetsBusinessRules(BusinessRules):
         if not version_result.is_valid:
             errors.extend(version_result.errors)
             warnings.extend(version_result.warnings)
-        details['validation_checks']['version_compatibility'] = version_result.details
+        details["validation_checks"]["version_compatibility"] = version_result.details
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def _validate_contract_validation_status(self, contract: "Contract") -> ValidationResult:
@@ -1343,11 +1262,11 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with validation status check
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            'validation_status': contract.validation_status,
-            'status_valid': False
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
+            "validation_status": contract.validation_status,
+            "status_valid": False,
         }
 
         from hub.apps.contracts.models import ValidationStatus
@@ -1361,25 +1280,22 @@ class AssetsBusinessRules(BusinessRules):
                 f"Contract validation_status must be VALID, WARNING_ONLY, or SKIPPED "
                 f"(current: {contract.validation_status})"
             )
-            details['status_valid'] = False
+            details["status_valid"] = False
         else:
-            details['status_valid'] = True
+            details["status_valid"] = True
             if contract.validation_status == ValidationStatus.WARNING_ONLY:
                 warnings.append(
                     "Contract has validation status WARNING_ONLY - attachment allowed but validation warnings exist"
                 )
                 if contract.validation_warnings:
-                    details['validation_warnings'] = contract.validation_warnings
+                    details["validation_warnings"] = contract.validation_warnings
             elif contract.validation_status == ValidationStatus.SKIPPED:
                 warnings.append(
                     "Contract validation was skipped - attachment allowed but contract has not been validated"
                 )
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def _validate_contract_normalization_status(self, contract: "Contract") -> ValidationResult:
@@ -1395,41 +1311,40 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with normalization status check
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            'normalization_status': contract.normalization_status,
-            'status_valid': False
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
+            "normalization_status": contract.normalization_status,
+            "status_valid": False,
         }
 
         from hub.apps.contracts.models import NormalizationStatus
 
         if contract.normalization_status not in [
             NormalizationStatus.NORMALIZED_OK,
-            NormalizationStatus.NORMALIZED_WITH_WARNINGS
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         ]:
             errors.append(
                 f"Contract normalization_status must be NORMALIZED_OK or NORMALIZED_WITH_WARNINGS "
                 f"(current: {contract.normalization_status})"
             )
-            details['status_valid'] = False
+            details["status_valid"] = False
         else:
-            details['status_valid'] = True
+            details["status_valid"] = True
             if contract.normalization_status == NormalizationStatus.NORMALIZED_WITH_WARNINGS:
                 warnings.append(
                     "Contract has normalization status NORMALIZED_WITH_WARNINGS - attachment allowed but normalization warnings exist"
                 )
                 if contract.normalization_warnings:
-                    details['normalization_warnings'] = contract.normalization_warnings
+                    details["normalization_warnings"] = contract.normalization_warnings
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
-    def _validate_contract_tenant_ownership(self, asset: Asset, contract: "Contract") -> ValidationResult:
+    def _validate_contract_tenant_ownership(
+        self, asset: Asset, contract: "Contract"
+    ) -> ValidationResult:
         """
         Validate contract tenant ownership.
 
@@ -1443,52 +1358,40 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with tenant ownership check
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            'asset_tenant_id': str(asset.tenant.id) if asset.tenant else None,
-            'contract_tenant_id': str(contract.tenant.id) if contract.tenant else None,
-            'tenant_match': False
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
+            "asset_tenant_id": str(asset.tenant.id) if asset.tenant else None,
+            "contract_tenant_id": str(contract.tenant.id) if contract.tenant else None,
+            "tenant_match": False,
         }
 
         if not contract.tenant:
             errors.append("Contract must have a tenant")
             return ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
 
         if not asset.tenant:
             errors.append("Asset must have a tenant")
             return ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
 
         if str(contract.tenant.id) != str(asset.tenant.id):
             errors.append(
                 f"Contract tenant ({contract.tenant.id}) does not match asset tenant ({asset.tenant.id})"
             )
-            details['tenant_match'] = False
+            details["tenant_match"] = False
         else:
-            details['tenant_match'] = True
+            details["tenant_match"] = True
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def _validate_contract_version_compatibility(
-        self,
-        asset: Asset,
-        contract: "Contract",
-        proposed_version: Optional[int] = None
+        self, asset: Asset, contract: "Contract", proposed_version: int | None = None
     ) -> ValidationResult:
         """
         Validate contract version compatibility.
@@ -1506,24 +1409,25 @@ class AssetsBusinessRules(BusinessRules):
         Returns:
             ValidationResult with version compatibility check
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
-            'current_version': contract.version,
-            'proposed_version': proposed_version,
-            'version_valid': False
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
+            "current_version": contract.version,
+            "proposed_version": proposed_version,
+            "version_valid": False,
         }
 
         # Get latest version for this asset (excluding the contract being attached)
         from hub.apps.contracts.models import Contract
 
-        existing_contracts = Contract.objects.filter(
-            tenant=asset.tenant,
-            asset=asset
-        ).exclude(id=contract.id).order_by('-version')
+        existing_contracts = (
+            Contract.objects.filter(tenant=asset.tenant, asset=asset)
+            .exclude(id=contract.id)
+            .order_by("-version")
+        )
 
         latest_version = existing_contracts.first().version if existing_contracts.exists() else 0
-        details['latest_version'] = latest_version
+        details["latest_version"] = latest_version
 
         # If contract already attached to this asset, check if version matches
         if contract.asset == asset:
@@ -1532,74 +1436,58 @@ class AssetsBusinessRules(BusinessRules):
                     f"Contract is already attached to asset with version {contract.version}, "
                     f"proposed version {proposed_version} will update it"
                 )
-                details['version_update'] = True
+                details["version_update"] = True
             else:
-                details['version_valid'] = True
-                details['already_attached'] = True
+                details["version_valid"] = True
+                details["already_attached"] = True
                 return ValidationResult(
-                    is_valid=True,
-                    errors=errors,
-                    warnings=warnings,
-                    details=details
+                    is_valid=True, errors=errors, warnings=warnings, details=details
                 )
 
         # If no proposed version, will be auto-incremented (valid)
         if proposed_version is None:
-            details['version_valid'] = True
-            details['auto_increment'] = True
+            details["version_valid"] = True
+            details["auto_increment"] = True
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
         # Validate proposed version is positive integer
         if not isinstance(proposed_version, int) or proposed_version < 1:
-            errors.append(
-                f"Proposed version must be a positive integer (got: {proposed_version})"
-            )
-            details['version_valid'] = False
+            errors.append(f"Proposed version must be a positive integer (got: {proposed_version})")
+            details["version_valid"] = False
             return ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
 
         # Check for version conflicts first (more specific error)
-        conflicting_contract = Contract.objects.filter(
-            tenant=asset.tenant,
-            asset=asset,
-            version=proposed_version
-        ).exclude(id=contract.id).first()
+        conflicting_contract = (
+            Contract.objects.filter(tenant=asset.tenant, asset=asset, version=proposed_version)
+            .exclude(id=contract.id)
+            .first()
+        )
 
         if conflicting_contract:
             errors.append(
                 f"Version {proposed_version} already exists for this asset (contract: {conflicting_contract.id})"
             )
-            details['version_valid'] = False
-            details['conflicting_contract_id'] = str(conflicting_contract.id)
+            details["version_valid"] = False
+            details["conflicting_contract_id"] = str(conflicting_contract.id)
         # Validate version increments properly
         elif proposed_version <= latest_version:
             errors.append(
                 f"Proposed version ({proposed_version}) must be greater than latest version ({latest_version})"
             )
-            details['version_valid'] = False
+            details["version_valid"] = False
         else:
-            details['version_valid'] = True
+            details["version_valid"] = True
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def validate_health_score_calculation(
-        self,
-        asset: Asset,
-        raise_on_error: bool = False
+        self, asset: Asset, raise_on_error: bool = False
     ) -> ValidationResult:
         """
         Validate health score calculation components.
@@ -1620,13 +1508,13 @@ class AssetsBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "asset_id": str(asset.id),
             "asset_key": asset.key,
             "asset_name": asset.name,
-            "health_score_checks": {}
+            "health_score_checks": {},
         }
 
         # Define status strings for comparison
@@ -1670,7 +1558,10 @@ class AssetsBusinessRules(BusinessRules):
 
             # Check compliance status appropriateness for asset status
             if asset.status == active_status_str:
-                if asset.compliance_status not in [str(ComplianceStatus.PASS), str(ComplianceStatus.WARN)]:
+                if asset.compliance_status not in [
+                    str(ComplianceStatus.PASS),
+                    str(ComplianceStatus.WARN),
+                ]:
                     errors.append(
                         f"Asset with ACTIVE status requires compliance status PASS or WARN, "
                         f"but current status is {asset.compliance_status}"
@@ -1704,7 +1595,9 @@ class AssetsBusinessRules(BusinessRules):
                     details["health_score_checks"]["contract_validation_status_appropriate"] = False
             else:
                 details["health_score_checks"]["contract_validation_status_appropriate"] = True
-                details["health_score_checks"]["contract_validation_status"] = contract.validation_status
+                details["health_score_checks"]["contract_validation_status"] = (
+                    contract.validation_status
+                )
 
             # Validate contract normalization status
             if contract.normalization_status not in ["NORMALIZED_OK", "NORMALIZED_WITH_WARNINGS"]:
@@ -1714,22 +1607,26 @@ class AssetsBusinessRules(BusinessRules):
                         f"NORMALIZED_OK or NORMALIZED_WITH_WARNINGS, "
                         f"but current status is {contract.normalization_status}"
                     )
-                    details["health_score_checks"]["contract_normalization_status_appropriate"] = False
+                    details["health_score_checks"]["contract_normalization_status_appropriate"] = (
+                        False
+                    )
                 else:
                     warnings.append(
                         f"Contract normalization_status is {contract.normalization_status}. "
                         f"Asset cannot be activated until contract is normalized"
                     )
-                    details["health_score_checks"]["contract_normalization_status_appropriate"] = False
+                    details["health_score_checks"]["contract_normalization_status_appropriate"] = (
+                        False
+                    )
             else:
                 details["health_score_checks"]["contract_normalization_status_appropriate"] = True
-                details["health_score_checks"]["contract_normalization_status"] = contract.normalization_status
+                details["health_score_checks"]["contract_normalization_status"] = (
+                    contract.normalization_status
+                )
         else:
             details["health_score_checks"]["contract_exists"] = False
             if asset.status == active_status_str:
-                errors.append(
-                    "Asset with ACTIVE status requires an ACTIVE contract"
-                )
+                errors.append("Asset with ACTIVE status requires an ACTIVE contract")
                 details["health_score_checks"]["contract_required"] = True
             else:
                 warnings.append(
@@ -1749,33 +1646,26 @@ class AssetsBusinessRules(BusinessRules):
                 details["health_score_checks"]["health_score"] = asset.health_score
         else:
             details["health_score_checks"]["health_score"] = None
-            warnings.append(
-                "Health score is not calculated. Consider recalculating health score"
-            )
+            warnings.append("Health score is not calculated. Consider recalculating health score")
 
         is_valid = len(errors) == 0
         result = ValidationResult(
-            is_valid=is_valid,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=is_valid, errors=errors, warnings=warnings, details=details
         )
 
         if not is_valid and raise_on_error:
             from hub.apps.core.services.base import ValidationError
+
             raise ValidationError(
                 f"Health score calculation validation failed: {', '.join(errors)}",
                 code="INVALID_HEALTH_SCORE_CALCULATION",
-                details=details
+                details=details,
             )
 
         return result
 
     def validate_health_score_thresholds(
-        self,
-        asset: Asset,
-        target_status: Optional[AssetStatus] = None,
-        raise_on_error: bool = False
+        self, asset: Asset, target_status: AssetStatus | None = None, raise_on_error: bool = False
     ) -> ValidationResult:
         """
         Validate health score thresholds for asset status transitions.
@@ -1797,15 +1687,15 @@ class AssetsBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "asset_id": str(asset.id),
             "asset_key": asset.key,
             "asset_name": asset.name,
             "current_status": asset.status,
             "target_status": target_status or asset.status,
-            "threshold_checks": {}
+            "threshold_checks": {},
         }
 
         # Define minimum thresholds
@@ -1827,27 +1717,24 @@ class AssetsBusinessRules(BusinessRules):
         # Calculate current health score if not set
         if asset.health_score is None:
             from hub.apps.assets.health_score import AssetHealthScoreService
+
             try:
                 calculated_score = AssetHealthScoreService.calculate_health_score(asset)
                 details["threshold_checks"]["health_score_calculated"] = True
                 details["threshold_checks"]["calculated_score"] = calculated_score
             except Exception as e:
-                errors.append(
-                    f"Failed to calculate health score: {str(e)}"
-                )
+                errors.append(f"Failed to calculate health score: {e!s}")
                 details["threshold_checks"]["health_score_calculated"] = False
                 result = ValidationResult(
-                    is_valid=False,
-                    errors=errors,
-                    warnings=warnings,
-                    details=details
+                    is_valid=False, errors=errors, warnings=warnings, details=details
                 )
                 if raise_on_error:
                     from hub.apps.core.services.base import ValidationError
+
                     raise ValidationError(
                         f"Health score threshold validation failed: {', '.join(errors)}",
                         code="HEALTH_SCORE_CALCULATION_FAILED",
-                        details=details
+                        details=details,
                     )
                 return result
 
@@ -1872,6 +1759,7 @@ class AssetsBusinessRules(BusinessRules):
 
             # Check component scores
             from hub.apps.assets.health_score import AssetHealthScoreService
+
             breakdown = AssetHealthScoreService.get_health_score_breakdown(asset)
             dq_score = breakdown["components"]["dq"]["score"]
             compliance_score = breakdown["components"]["compliance"]["score"]
@@ -1898,7 +1786,7 @@ class AssetsBusinessRules(BusinessRules):
                 "dq": dq_score,
                 "compliance": compliance_score,
                 "freshness": breakdown["components"]["freshness"]["score"],
-                "usage": breakdown["components"]["usage"]["score"]
+                "usage": breakdown["components"]["usage"]["score"],
             }
 
         elif target == public_status_str:
@@ -1921,27 +1809,22 @@ class AssetsBusinessRules(BusinessRules):
 
         is_valid = len(errors) == 0
         result = ValidationResult(
-            is_valid=is_valid,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=is_valid, errors=errors, warnings=warnings, details=details
         )
 
         if not is_valid and raise_on_error:
             from hub.apps.core.services.base import ValidationError
+
             raise ValidationError(
                 f"Health score threshold validation failed: {', '.join(errors)}",
                 code="HEALTH_SCORE_THRESHOLD_NOT_MET",
-                details=details
+                details=details,
             )
 
         return result
 
     def validate_health_score_update_triggers(
-        self,
-        asset: Asset,
-        last_calculated_at: Optional[Any] = None,
-        raise_on_error: bool = False
+        self, asset: Asset, last_calculated_at: Any | None = None, raise_on_error: bool = False
     ) -> ValidationResult:
         """
         Validate when health score should be recalculated.
@@ -1963,29 +1846,28 @@ class AssetsBusinessRules(BusinessRules):
         Raises:
             ValidationError: If raise_on_error=True and validation fails
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        details: Dict[str, Any] = {
+        errors: list[str] = []
+        warnings: list[str] = []
+        details: dict[str, Any] = {
             "asset_id": str(asset.id),
             "asset_key": asset.key,
             "asset_name": asset.name,
-            "update_trigger_checks": {}
+            "update_trigger_checks": {},
         }
 
         from django.utils import timezone
-        from datetime import timedelta
 
         # Determine last calculation time
         if last_calculated_at:
             last_calc = last_calculated_at
-        elif hasattr(asset, 'health_score_updated_at') and asset.health_score_updated_at:
+        elif hasattr(asset, "health_score_updated_at") and asset.health_score_updated_at:
             last_calc = asset.health_score_updated_at
         else:
             # Fallback to asset updated_at
             last_calc = asset.updated_at
 
         details["update_trigger_checks"]["last_calculated_at"] = (
-            last_calc.isoformat() if hasattr(last_calc, 'isoformat') else str(last_calc)
+            last_calc.isoformat() if hasattr(last_calc, "isoformat") else str(last_calc)
         )
 
         # Check if health score is stale (older than 24 hours)
@@ -1993,7 +1875,7 @@ class AssetsBusinessRules(BusinessRules):
         now = timezone.now()
 
         # Ensure last_calc is timezone-aware
-        if hasattr(last_calc, 'tzinfo'):
+        if hasattr(last_calc, "tzinfo"):
             if last_calc.tzinfo is None:
                 # Make naive datetime timezone-aware
                 last_calc = timezone.make_aware(last_calc)
@@ -2021,9 +1903,7 @@ class AssetsBusinessRules(BusinessRules):
         unknown_compliance_str = str(ComplianceStatus.UNKNOWN)
 
         if asset.dq_status == unknown_dq_str:
-            warnings.append(
-                "DQ status is UNKNOWN. Health score may not reflect current DQ state"
-            )
+            warnings.append("DQ status is UNKNOWN. Health score may not reflect current DQ state")
             details["update_trigger_checks"]["dq_status_unknown"] = True
 
         if asset.compliance_status == unknown_compliance_str:
@@ -2034,27 +1914,22 @@ class AssetsBusinessRules(BusinessRules):
 
         # Check if contract status has changed (if contract exists)
         contract = asset.contracts.filter(status="ACTIVE").first()
-        if contract:
-            if contract.validation_status not in ["VALID", "WARNING_ONLY"]:
-                warnings.append(
-                    f"Contract validation_status is {contract.validation_status}. "
-                    f"Health score may need recalculation after contract validation"
-                )
-                details["update_trigger_checks"]["contract_validation_changed"] = True
+        if contract and contract.validation_status not in ["VALID", "WARNING_ONLY"]:
+            warnings.append(
+                f"Contract validation_status is {contract.validation_status}. "
+                f"Health score may need recalculation after contract validation"
+            )
+            details["update_trigger_checks"]["contract_validation_changed"] = True
 
         # Check if asset status requires recalculation
         active_status_str = str(AssetStatus.ACTIVE)
         if asset.status == active_status_str and asset.health_score is None:
-            errors.append(
-                "Asset with ACTIVE status must have a calculated health score"
-            )
+            errors.append("Asset with ACTIVE status must have a calculated health score")
             details["update_trigger_checks"]["recalculation_required"] = True
         elif asset.status == active_status_str and asset.health_score is not None:
             # Validate health score meets threshold
             threshold_result = self.validate_health_score_thresholds(
-                asset=asset,
-                target_status=str(AssetStatus.ACTIVE),
-                raise_on_error=False
+                asset=asset, target_status=str(AssetStatus.ACTIVE), raise_on_error=False
             )
             if not threshold_result.is_valid:
                 warnings.append(
@@ -2066,12 +1941,14 @@ class AssetsBusinessRules(BusinessRules):
                 details["update_trigger_checks"]["threshold_check_passed"] = True
 
         # Determine if recalculation is required vs recommended
-        recalculation_required = details["update_trigger_checks"].get("recalculation_required", False)
+        recalculation_required = details["update_trigger_checks"].get(
+            "recalculation_required", False
+        )
         recalculation_recommended = (
-            details["update_trigger_checks"].get("recalculation_recommended", False) or
-            details["update_trigger_checks"].get("dq_status_unknown", False) or
-            details["update_trigger_checks"].get("compliance_status_unknown", False) or
-            details["update_trigger_checks"].get("contract_validation_changed", False)
+            details["update_trigger_checks"].get("recalculation_recommended", False)
+            or details["update_trigger_checks"].get("dq_status_unknown", False)
+            or details["update_trigger_checks"].get("compliance_status_unknown", False)
+            or details["update_trigger_checks"].get("contract_validation_changed", False)
         )
 
         details["update_trigger_checks"]["recalculation_required"] = recalculation_required
@@ -2079,22 +1956,19 @@ class AssetsBusinessRules(BusinessRules):
 
         is_valid = len(errors) == 0
         result = ValidationResult(
-            is_valid=is_valid,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=is_valid, errors=errors, warnings=warnings, details=details
         )
 
         if not is_valid and raise_on_error:
             from hub.apps.core.services.base import ValidationError
+
             raise ValidationError(
                 f"Health score update trigger validation failed: {', '.join(errors)}",
                 code="HEALTH_SCORE_UPDATE_REQUIRED",
-                details=details
+                details=details,
             )
 
         return result
-
 
 
 class AssetActivationRule:
@@ -2129,8 +2003,7 @@ class AssetActivationRule:
         from hub.apps.compliance.models import ComplianceRun, RiskLevel
 
         latest = (
-            ComplianceRun.objects
-            .filter(asset=asset, status__in=("SUCCEEDED", "FAILED"))
+            ComplianceRun.objects.filter(asset=asset, status__in=("SUCCEEDED", "FAILED"))
             .order_by("-completed_at")
             .first()
         )
@@ -2174,6 +2047,7 @@ class AssetActivationRule:
         # Risk exceeds tenant threshold → THRESHOLD_EXCEEDED.
         if asset.tenant_id:
             from hub.apps.tenants.models import TenantConfig
+
             try:
                 cfg = TenantConfig.objects.only("compliance_risk_threshold").get(
                     tenant_id=asset.tenant_id,
@@ -2194,7 +2068,7 @@ class AssetActivationRule:
                             ),
                         },
                     }
-            except Tenant.DoesNotExist:
+            except TenantConfig.DoesNotExist:
                 logger.warning(
                     "validate_activation: tenant not found for asset %s; "
                     "falling through without compliance threshold check.",

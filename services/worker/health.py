@@ -3,11 +3,12 @@ Health check endpoints for worker service.
 
 Implements /healthz (liveness) and /ready (readiness) probes following Kubernetes standards.
 """
-from django.http import JsonResponse
-from django.db import connection
+
 from django.core.cache import cache
-from django.conf import settings
+from django.db import connection
+from django.http import JsonResponse
 from django.utils import timezone
+
 from hub.apps.core.redis_pools import get_redis_queue_client
 
 
@@ -28,9 +29,9 @@ def healthz(request=None):
         If request is provided: JsonResponse
     """
     response_data = {
-        'status': 'ok',
-        'service': 'worker-service',
-        'timestamp': timezone.now().isoformat()
+        "status": "ok",
+        "service": "worker-service",
+        "timestamp": timezone.now().isoformat(),
     }
     # Return tuple for HTTP server, or JsonResponse for Django
     if request is not None:
@@ -58,34 +59,34 @@ def ready(request=None):
     try:
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
-        checks['database'] = 'ok'
+        checks["database"] = "ok"
     except Exception as e:
-        checks['database'] = f'unhealthy: {str(e)}'
+        checks["database"] = f"unhealthy: {e!s}"
         all_ready = False
 
     # Check Redis queue connection (required for job queues)
     try:
         r = get_redis_queue_client()
         r.ping()
-        checks['redis_queue'] = 'ok'
+        checks["redis_queue"] = "ok"
     except Exception as e:
-        checks['redis_queue'] = f'unhealthy: {str(e)}'
+        checks["redis_queue"] = f"unhealthy: {e!s}"
         all_ready = False
 
     # Check cache backend (may be same as Redis)
     try:
-        cache.get('health_check_test', None)
-        checks['cache'] = 'ok'
+        cache.get("health_check_test", None)
+        checks["cache"] = "ok"
     except Exception as e:
-        checks['cache'] = f'unhealthy: {str(e)}'
+        checks["cache"] = f"unhealthy: {e!s}"
         all_ready = False
 
     if all_ready:
         response_data = {
-            'status': 'ready',
-            'service': 'worker-service',
-            'checks': checks,
-            'timestamp': timezone.now().isoformat()
+            "status": "ready",
+            "service": "worker-service",
+            "checks": checks,
+            "timestamp": timezone.now().isoformat(),
         }
         if request is not None:
             return JsonResponse(response_data, status=200)
@@ -93,13 +94,12 @@ def ready(request=None):
     else:
         error_msg = "; ".join([f"{k}: {v}" for k, v in checks.items() if "unhealthy" in v])
         response_data = {
-            'status': 'not_ready',
-            'service': 'worker-service',
-            'checks': checks,
-            'error': error_msg,
-            'timestamp': timezone.now().isoformat()
+            "status": "not_ready",
+            "service": "worker-service",
+            "checks": checks,
+            "error": error_msg,
+            "timestamp": timezone.now().isoformat(),
         }
         if request is not None:
             return JsonResponse(response_data, status=503)
         return (503, response_data)
-

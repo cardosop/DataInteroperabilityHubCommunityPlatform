@@ -4,7 +4,6 @@ Comprehensive integration scenario tests for Python SDK.
 Tests complete workflows using real API server (no mocks) - uses existing API service in Docker Compose.
 """
 
-import asyncio
 import json
 import uuid
 
@@ -20,7 +19,6 @@ except ImportError:
     SDK_AVAILABLE = False
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract
 from tests.sdk_python.conftest import SDKTestBase
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]

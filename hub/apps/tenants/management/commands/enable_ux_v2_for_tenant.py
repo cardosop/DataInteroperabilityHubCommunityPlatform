@@ -8,10 +8,12 @@ Usage:
     python manage.py enable_ux_v2_for_tenant <subdomain>
     python manage.py enable_ux_v2_for_tenant acme-corp
 """
+
+import structlog
 from django.core.management.base import BaseCommand, CommandError
+
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.tenants.models import Tenant
-import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -32,9 +34,7 @@ class Command(BaseCommand):
         try:
             tenant = Tenant.objects.using("admin").get(slug=subdomain)
         except Tenant.DoesNotExist:
-            raise CommandError(
-                f'Tenant with subdomain "{subdomain}" not found.'
-            )
+            raise CommandError(f'Tenant with subdomain "{subdomain}" not found.')
 
         if tenant.ux_v2_enabled:
             self.stdout.write(
@@ -65,14 +65,10 @@ class Command(BaseCommand):
                 },
             )
         except Exception as audit_err:
-            self.stderr.write(
-                f"Audit event emission failed (non-fatal): {audit_err}"
-            )
+            self.stderr.write(f"Audit event emission failed (non-fatal): {audit_err}")
 
         self.stdout.write(
-            self.style.SUCCESS(
-                f"UX v2 enabled for tenant {tenant.name} ({tenant.slug})."
-            )
+            self.style.SUCCESS(f"UX v2 enabled for tenant {tenant.name} ({tenant.slug}).")
         )
 
         logger.info(

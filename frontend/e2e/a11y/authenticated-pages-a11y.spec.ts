@@ -83,8 +83,6 @@ test.describe('Authenticated Pages A11y', () => {
 // Phase 277.3.8 — Extended a11y coverage.
 // Semantic pages (SPARQL tab, ontology tab) and asset activation blocker dialog.
 
-import { test, expect } from '@playwright/test';
-
 test.describe('a11y: semantic pages (Phase 277.3.8)', () => {
   test('SPARQL query page is reachable for a11y check', async ({ page }) => {
     await page.goto('/semantic');

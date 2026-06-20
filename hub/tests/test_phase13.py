@@ -28,11 +28,12 @@ from hub.apps.auth.jwt_utils import JWTTokenGenerator
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.users.models import User
 
-
 # ── Helpers ─────────────────────────────────────────────────────────────────
+
 
 def _make_tenant(name=None):
     from hub.apps.tenants.models import Tenant
+
     slug = f"t-{uuid.uuid4().hex[:8]}"
     return Tenant.objects.create(
         name=name or f"Tenant-{slug}",
@@ -76,6 +77,7 @@ def _get_access_token(client, email, password):
 
 # ── 13.1 — Atomic job claim ──────────────────────────────────────────────────
 
+
 @pytest.mark.timeout(600)  # Concurrent TRUNCATE from other tests on shared DB
 class TestAtomicJobClaim(TransactionTestCase):
     """
@@ -105,6 +107,7 @@ class TestAtomicJobClaim(TransactionTestCase):
         # on_delete=RESTRICT, so tenant deletion fails while users exist.
         from hub.apps.tenants.models import Tenant
         from hub.apps.users.models import User
+
         Job.objects.all().delete()
         User.objects.filter(tenant__slug__startswith="t-").delete()
         Tenant.objects.filter(slug__startswith="t-").delete()
@@ -126,6 +129,7 @@ class TestAtomicJobClaim(TransactionTestCase):
 
         def attempt_claim():
             from django.db import connection, transaction
+
             from hub.apps.jobs.models import JobStatus
 
             try:
@@ -167,9 +171,9 @@ class TestAtomicJobClaim(TransactionTestCase):
         job_id = str(job.id)
 
         with transaction.atomic():
-            claimed = Job.objects.filter(
-                id=job_id, status=JobStatus.PENDING
-            ).update(status=JobStatus.RUNNING, started_at=timezone.now())
+            claimed = Job.objects.filter(id=job_id, status=JobStatus.PENDING).update(
+                status=JobStatus.RUNNING, started_at=timezone.now()
+            )
 
         self.assertEqual(claimed, 0)
         job.refresh_from_db()
@@ -178,13 +182,15 @@ class TestAtomicJobClaim(TransactionTestCase):
 
 # ── 13.2 — recover_stuck_jobs management command ─────────────────────────────
 
+
 @pytest.mark.django_db
 class TestRecoverStuckJobs(TestCase):
     """recover_stuck_jobs marks orphaned RUNNING jobs as FAILED."""
 
     def _call_command(self, **kwargs):
-        from django.core.management import call_command
         from io import StringIO
+
+        from django.core.management import call_command
 
         out = StringIO()
         call_command("recover_stuck_jobs", stdout=out, **kwargs)
@@ -194,9 +200,7 @@ class TestRecoverStuckJobs(TestCase):
         """A RUNNING job started > threshold ago should be marked FAILED."""
         job = _make_job(status=JobStatus.RUNNING)
         # Back-date started_at beyond the default 120-minute threshold
-        Job.objects.filter(id=job.id).update(
-            started_at=timezone.now() - timedelta(minutes=130)
-        )
+        Job.objects.filter(id=job.id).update(started_at=timezone.now() - timedelta(minutes=130))
 
         output = self._call_command(threshold_minutes=120)
 
@@ -208,9 +212,7 @@ class TestRecoverStuckJobs(TestCase):
     def test_ignores_recently_started_running_job(self):
         """A RUNNING job started recently should NOT be touched."""
         job = _make_job(status=JobStatus.RUNNING)
-        Job.objects.filter(id=job.id).update(
-            started_at=timezone.now() - timedelta(minutes=10)
-        )
+        Job.objects.filter(id=job.id).update(started_at=timezone.now() - timedelta(minutes=10))
 
         output = self._call_command(threshold_minutes=120)
 
@@ -221,9 +223,7 @@ class TestRecoverStuckJobs(TestCase):
     def test_dry_run_does_not_mutate(self):
         """--dry-run must not change any job status."""
         job = _make_job(status=JobStatus.RUNNING)
-        Job.objects.filter(id=job.id).update(
-            started_at=timezone.now() - timedelta(minutes=130)
-        )
+        Job.objects.filter(id=job.id).update(started_at=timezone.now() - timedelta(minutes=130))
 
         self._call_command(threshold_minutes=120, dry_run=True)
 
@@ -233,6 +233,7 @@ class TestRecoverStuckJobs(TestCase):
 
 # ── 25.24.3 — recover_stuck_jobs syncs ScheduledIngestionRun ──────────────────
 
+
 @pytest.mark.django_db
 class TestRecoverStuckJobsSyncsIngestionRun(TestCase):
     """
@@ -241,8 +242,9 @@ class TestRecoverStuckJobsSyncsIngestionRun(TestCase):
     """
 
     def _call_command(self, **kwargs):
-        from django.core.management import call_command
         from io import StringIO
+
+        from django.core.management import call_command
 
         out = StringIO()
         call_command("recover_stuck_jobs", stdout=out, **kwargs)
@@ -297,7 +299,7 @@ class TestRecoverStuckJobsSyncsIngestionRun(TestCase):
             job_id=job.id,
         )
 
-        output = self._call_command(threshold_minutes=120)
+        self._call_command(threshold_minutes=120)
 
         # Assert Job is FAILED
         job.refresh_from_db()
@@ -311,6 +313,7 @@ class TestRecoverStuckJobsSyncsIngestionRun(TestCase):
 
 # ── 13.6 — Async webhook delivery ────────────────────────────────────────────
 
+
 @pytest.mark.django_db(transaction=True)
 @override_settings(WEBHOOK_SSRF_ENABLED=False, WEBHOOK_ASYNC_DELIVERY=True)
 class TestWebhookAsyncDelivery(TransactionTestCase):
@@ -318,6 +321,7 @@ class TestWebhookAsyncDelivery(TransactionTestCase):
     With WEBHOOK_ASYNC_DELIVERY=True, trigger_webhook() must enqueue an RQ
     task rather than calling _attempt_delivery() in the request thread.
     """
+
     databases = "__all__"
 
     def _make_webhook(self, tenant):
@@ -338,9 +342,7 @@ class TestWebhookAsyncDelivery(TransactionTestCase):
         self._make_webhook(tenant)
 
         with (
-            patch(
-                "hub.apps.webhooks.tasks.deliver_webhook.delay"
-            ) as mock_delay,
+            patch("hub.apps.webhooks.tasks.deliver_webhook.delay") as mock_delay,
             patch.object(
                 __import__(
                     "hub.apps.webhooks.service",
@@ -365,6 +367,7 @@ class TestWebhookAsyncDelivery(TransactionTestCase):
 
 # ── 13.8 — Webhook deliveries pagination ─────────────────────────────────────
 
+
 @pytest.mark.django_db
 @override_settings(JWT_ALGORITHM="HS256", JWT_SECRET_KEY="test-hs256-secret-key-phase13-xx")
 class TestWebhookDeliveriesPagination(TestCase):
@@ -374,14 +377,13 @@ class TestWebhookDeliveriesPagination(TestCase):
     """
 
     def setUp(self):
+        from hub.apps.users.services import UserTenantMembershipService
         from hub.apps.webhooks.models import (
             DeliveryStatus,
             Webhook,
             WebhookDelivery,
             WebhookStatus,
         )
-
-        from hub.apps.users.services import UserTenantMembershipService
 
         self.tenant = _make_tenant()
         self.user, self.password = _make_user(tenant=self.tenant)
@@ -428,6 +430,7 @@ class TestWebhookDeliveriesPagination(TestCase):
 
 
 # ── 13.9 — UserRole bulk_create ──────────────────────────────────────────────
+
 
 @pytest.mark.django_db
 class TestUserRoleBulkCreate(TestCase):
@@ -492,12 +495,11 @@ class TestUserRoleBulkCreate(TestCase):
             [UserRole(user=user, tenant=tenant, role=role)],
             ignore_conflicts=True,
         )
-        self.assertEqual(
-            UserRole.objects.filter(user=user, role=role).count(), 1
-        )
+        self.assertEqual(UserRole.objects.filter(user=user, role=role).count(), 1)
 
 
 # ── 13.10 — Registration 409 on duplicate email ───────────────────────────────
+
 
 @pytest.mark.django_db
 @override_settings(
@@ -550,6 +552,7 @@ class TestRegistrationDuplicateEmail(TestCase):
 
 # ── 13.5 — StructlogContextMiddleware ────────────────────────────────────────
 
+
 @pytest.mark.django_db
 class TestStructlogContextMiddleware(TestCase):
     """
@@ -561,8 +564,8 @@ class TestStructlogContextMiddleware(TestCase):
 
     def _make_request_with_tenant(self, tenant, user=None):
         """Build a minimal Django request-like object with tenant/user set."""
-        from django.test import RequestFactory
         from django.contrib.auth.models import AnonymousUser
+        from django.test import RequestFactory
 
         factory = RequestFactory()
         request = factory.get("/api/v1/assets/")
@@ -573,6 +576,7 @@ class TestStructlogContextMiddleware(TestCase):
     def test_binds_tenant_id_before_view(self):
         """tenant_id must appear in structlog contextvars during get_response."""
         import structlog
+
         from hub.apps.api.middleware import StructlogContextMiddleware
 
         tenant = _make_tenant()
@@ -583,6 +587,7 @@ class TestStructlogContextMiddleware(TestCase):
         def fake_get_response(req):
             captured.update(structlog.contextvars.get_contextvars())
             from django.http import HttpResponse
+
             return HttpResponse()
 
         middleware = StructlogContextMiddleware(fake_get_response)
@@ -595,6 +600,7 @@ class TestStructlogContextMiddleware(TestCase):
     def test_binds_user_id_before_view(self):
         """user_id must appear in structlog contextvars for authenticated users."""
         import structlog
+
         from hub.apps.api.middleware import StructlogContextMiddleware
 
         tenant = _make_tenant()
@@ -606,6 +612,7 @@ class TestStructlogContextMiddleware(TestCase):
         def fake_get_response(req):
             captured.update(structlog.contextvars.get_contextvars())
             from django.http import HttpResponse
+
             return HttpResponse()
 
         middleware = StructlogContextMiddleware(fake_get_response)
@@ -618,6 +625,7 @@ class TestStructlogContextMiddleware(TestCase):
     def test_anonymous_user_not_bound(self):
         """Anonymous (unauthenticated) requests must not bind user_id."""
         import structlog
+
         from hub.apps.api.middleware import StructlogContextMiddleware
 
         tenant = _make_tenant()
@@ -628,6 +636,7 @@ class TestStructlogContextMiddleware(TestCase):
         def fake_get_response(req):
             captured.update(structlog.contextvars.get_contextvars())
             from django.http import HttpResponse
+
             return HttpResponse()
 
         middleware = StructlogContextMiddleware(fake_get_response)
@@ -639,6 +648,7 @@ class TestStructlogContextMiddleware(TestCase):
 
 
 # ── 13.9 (extended) — UserRole bulk_create in update + invite paths ───────────
+
 
 @pytest.mark.django_db
 class TestUserRoleBulkCreateAllPaths(TestCase):

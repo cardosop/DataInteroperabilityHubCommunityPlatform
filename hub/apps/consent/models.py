@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import uuid
 
 from django.conf import settings
@@ -43,7 +44,9 @@ class ConsentPurpose(models.Model):
     class Meta:
         db_table = "consent_purpose"
         constraints = [
-            models.UniqueConstraint(fields=["tenant", "key"], name="consent_purpose_tenant_key_uniq"),
+            models.UniqueConstraint(
+                fields=["tenant", "key"], name="consent_purpose_tenant_key_uniq"
+            ),
         ]
         indexes = [
             models.Index(fields=["tenant", "is_active"]),

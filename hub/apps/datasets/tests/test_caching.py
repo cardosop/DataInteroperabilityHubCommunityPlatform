@@ -9,6 +9,7 @@ Tests cover:
 - Filter hash generation
 - Error handling
 """
+
 import uuid
 
 try:
@@ -20,12 +21,10 @@ except ImportError:
     pytestmark = None
 
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import override_settings
 
 from hub.apps.assets.models import Asset
 from hub.apps.datasets.caching import (
-    CACHE_TTL_DATASET_DETAIL,
-    CACHE_TTL_DATASET_LIST,
     cache_dataset_detail,
     cache_dataset_list,
     get_cached_dataset_detail,
@@ -264,7 +263,6 @@ class DatasetCachingTest(DatasetsTestBase):
 
     def test_get_tenant_id_from_request(self):
         """Test extracting tenant ID from request"""
-        from rest_framework.request import Request
         from rest_framework.test import APIRequestFactory
 
         factory = APIRequestFactory()
@@ -328,31 +326,23 @@ class DatasetCachingTest(DatasetsTestBase):
         self.assertIsNotNone(cached)
 
     def test_cache_and_retrieve_basic_operation(self):
-        """Test that cache errors are handled gracefully"""
+        """Cache set + get round-trips correctly for list and detail."""
         tenant_id = str(self.tenant.id)
         filters_hash = hash_filters({"page": 1})
         results = [{"id": str(self.dataset.id)}]
 
-        # Cache should not raise exceptions even if cache backend fails
-        # (This is tested implicitly by the error handling in cache functions)
-        try:
-            cache_dataset_list(tenant_id, filters_hash, results, 1)
-            cache_dataset_detail(str(self.dataset.id), {"id": str(self.dataset.id)})
-        except Exception:
-            self.fail("Cache functions should handle errors gracefully")
+        cache_dataset_list(tenant_id, filters_hash, results, 1)
+        cache_dataset_detail(str(self.dataset.id), {"id": str(self.dataset.id)})
+        # Verify the list cache can be retrieved
+        cached = get_cached_dataset_list(tenant_id, filters_hash)
+        self.assertIsNotNone(cached, "Cached list should be retrievable")
 
     # ========== EDGE CASES ==========
 
     def test_cache_edge_case_empty_tenant_id(self):
-        """Test caching with empty tenant_id (edge case)"""
-        # Should handle empty tenant_id gracefully
-        try:
-            key = get_dataset_list_cache_key("", "abc123")
-            # If succeeds, should return key or handle gracefully
-            self.assertIsNotNone(key)
-        except Exception:
-            # If fails, that's acceptable for empty tenant_id
-            pass
+        """Empty tenant_id produces a valid cache key (not an error)."""
+        key = get_dataset_list_cache_key("", "abc123")
+        self.assertIsNotNone(key)
 
     def test_cache_edge_case_very_long_filters_hash(self):
         """Test caching with very long filters_hash (edge case)"""
@@ -372,67 +362,28 @@ class DatasetCachingTest(DatasetsTestBase):
         self.assertIsNotNone(key)
 
     def test_cache_edge_case_zero_ttl(self):
-        """Test caching with zero TTL (edge case)"""
+        """Zero TTL expires immediately — cached value should be None."""
         results = [{"id": str(self.dataset.id)}]
-        filters_hash = hash_filters({})
-
-        # Should handle zero TTL gracefully
-        try:
-            cache_dataset_list(
-                str(self.tenant.id), filters_hash, results,
-                total_count=len(results), ttl=0
-            )
-            cached = get_cached_dataset_list(str(self.tenant.id), filters_hash)
-            self.assertTrue(
-                cached is None or (isinstance(cached, tuple) and len(cached) == 2),
-                f"Expected None or (list, int), got {type(cached).__name__}",
-            )
-        except Exception:
-            pass
-
-    def test_cache_edge_case_negative_ttl(self):
-        """Test caching with negative TTL (edge case)"""
-        results = [{"id": str(self.dataset.id)}]
-        filters_hash = hash_filters({})
-
-        # Should handle negative TTL gracefully
-        try:
-            cache_dataset_list(
-                str(self.tenant.id), filters_hash, results,
-                total_count=len(results), ttl=-1
-            )
-            cached = get_cached_dataset_list(str(self.tenant.id), filters_hash)
-            self.assertTrue(
-                cached is None or (isinstance(cached, tuple) and len(cached) == 2),
-                f"Expected None or (list, int), got {type(cached).__name__}",
-            )
-        except Exception:
-            pass
-
-    # ========== ERROR HANDLING ==========
-
-    def test_cache_key_generation_with_random_tenant_id(self):
-        """Test error handling with invalid tenant_id"""
-        import uuid
-
-        fake_tenant_id = str(uuid.uuid4())
-        filters_hash = hash_filters({})
-
-        # Should handle invalid tenant_id gracefully
-        try:
-            key = get_dataset_list_cache_key(fake_tenant_id, filters_hash)
-            # Should return key
-            self.assertIsNotNone(key)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("get_dataset_list_cache_key should handle invalid tenant_id gracefully")
-
-    def test_cache_empty_results_returns_empty_list(self):
-        """Caching an empty list stores it and retrieves it correctly."""
         filters_hash = hash_filters({})
 
         cache_dataset_list(
-            str(self.tenant.id), filters_hash, [], total_count=0
+            str(self.tenant.id), filters_hash, results, total_count=len(results), ttl=0
+        )
+        cached = get_cached_dataset_list(str(self.tenant.id), filters_hash)
+        # Zero TTL means the entry expires immediately;
+        # the cache backend may return None.
+        self.assertTrue(
+            cached is None or (isinstance(cached, tuple) and len(cached) == 2),
+            f"Expected None or (list, int), got {type(cached).__name__}",
+        )
+
+    def test_cache_edge_case_negative_ttl(self):
+        """Negative TTL expires immediately — cached value should be None."""
+        results = [{"id": str(self.dataset.id)}]
+        filters_hash = hash_filters({})
+
+        cache_dataset_list(
+            str(self.tenant.id), filters_hash, results, total_count=len(results), ttl=-1
         )
         cached = get_cached_dataset_list(str(self.tenant.id), filters_hash)
         self.assertTrue(
@@ -440,21 +391,35 @@ class DatasetCachingTest(DatasetsTestBase):
             f"Expected None or (list, int), got {type(cached).__name__}",
         )
 
-    def test_cache_and_retrieve_with_custom_ttl(self):
-        """Caching and retrieving with default TTL works correctly."""
+    # ========== ERROR HANDLING ==========
+
+    def test_cache_key_generation_with_random_tenant_id(self):
+        """Random UUID tenant_id produces a valid, non-None cache key."""
+        import uuid
+
+        fake_tenant_id = str(uuid.uuid4())
+        filters_hash = hash_filters({})
+
+        key = get_dataset_list_cache_key(fake_tenant_id, filters_hash)
+        self.assertIsNotNone(key)
+        self.assertIn(fake_tenant_id, key)
+
+    def test_cache_empty_results_returns_empty_list(self):
+        """Caching an empty list stores it and retrieves it correctly."""
+        filters_hash = hash_filters({})
+
+        cache_dataset_list(str(self.tenant.id), filters_hash, [], total_count=0)
+        cached = get_cached_dataset_list(str(self.tenant.id), filters_hash)
+        self.assertTrue(
+            cached is None or (isinstance(cached, tuple) and len(cached) == 2),
+            f"Expected None or (list, int), got {type(cached).__name__}",
+        )
+
+    def test_cache_and_retrieve_uses_default_ttl(self):
+        """Cache set + get with default TTL round-trips correctly."""
         filters_hash = hash_filters({})
         results = [{"id": str(self.dataset.id)}]
 
-        # Should handle cache unavailability gracefully (no exception)
-        try:
-            cache_dataset_list(
-                str(self.tenant.id), filters_hash, results, total_count=len(results)
-            )
-            cached = get_cached_dataset_list(str(self.tenant.id), filters_hash)
-            # get_cached_dataset_list returns None or (results_list, total_count)
-            self.assertTrue(
-                cached is None or (isinstance(cached, tuple) and len(cached) == 2),
-                f"Expected None or (list, int), got {type(cached).__name__}: {cached!r}",
-            )
-        except Exception:
-            self.fail("cache_dataset_list should handle cache unavailability gracefully")
+        cache_dataset_list(str(self.tenant.id), filters_hash, results, total_count=len(results))
+        cached = get_cached_dataset_list(str(self.tenant.id), filters_hash)
+        self.assertIsNotNone(cached, "Cached data should be retrievable with default TTL")

@@ -11,9 +11,9 @@ Tests all job management endpoints with 60+ test cases covering:
 
 All tests use real services (no mocks/stubs) and run against Docker Compose instances.
 """
+
 import time
 import uuid
-from datetime import timedelta
 
 import pytest
 
@@ -26,12 +26,12 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.audit.models import AuditEvent
-from hub.apps.jobs.models import Job, JobType, JobStatus
-from hub.apps.tenants.models import KYCStatus, TenantStatus
+from hub.apps.jobs.models import JobStatus, JobType
+from hub.apps.tenants.models import TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
-from tests.fixtures.test_data_factories import TenantFactory, JobFactory
+from tests.fixtures.test_data_factories import JobFactory, TenantFactory
 
 # Use regular django_db marker - TestCase handles transactions efficiently
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -96,7 +96,11 @@ class TestJobListAPI(TestCase):
         response = self.client.get("/api/v1/jobs/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        jobs_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(jobs_list, list)
         self.assertEqual(len(jobs_list), 1)
         self.assertEqual(str(jobs_list[0]["id"]), str(job.id))
@@ -105,7 +109,7 @@ class TestJobListAPI(TestCase):
         """Test listing multiple jobs"""
         # Create multiple jobs
         jobs = []
-        for i in range(5):
+        for _i in range(5):
             job = JobFactory.create_job(
                 tenant=self.tenant,
                 type=JobType.DQ_RUN,
@@ -117,14 +121,18 @@ class TestJobListAPI(TestCase):
         response = self.client.get("/api/v1/jobs/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        jobs_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(jobs_list, list)
         self.assertEqual(len(jobs_list), 5)
 
     def test_list_jobs_success_pagination(self):
         """Test pagination for job listing"""
         # Create more jobs than default page size
-        for i in range(25):
+        for _i in range(25):
             JobFactory.create_job(
                 tenant=self.tenant,
                 type=JobType.DQ_RUN,
@@ -146,19 +154,19 @@ class TestJobListAPI(TestCase):
     def test_list_jobs_success_filter_by_status(self):
         """Test filtering jobs by status"""
         # Create jobs with different statuses
-        pending_job = JobFactory.create_job(
+        JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
             status=JobStatus.PENDING,
             created_by=self.user,
         )
-        running_job = JobFactory.create_job(
+        JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
             status=JobStatus.RUNNING,
             created_by=self.user,
         )
-        completed_job = JobFactory.create_job(
+        JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.CONTRACT_VALIDATION,
             status=JobStatus.COMPLETED,
@@ -170,7 +178,11 @@ class TestJobListAPI(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Response is paginated, so check for 'results' key
-        jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        jobs_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(jobs_list, list)
         # Should only return PENDING jobs
         for job_data in jobs_list:
@@ -179,13 +191,13 @@ class TestJobListAPI(TestCase):
     def test_list_jobs_success_filter_by_type(self):
         """Test filtering jobs by type"""
         # Create jobs with different types
-        dq_job = JobFactory.create_job(
+        JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
             status=JobStatus.PENDING,
             created_by=self.user,
         )
-        compliance_job = JobFactory.create_job(
+        JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
             status=JobStatus.PENDING,
@@ -197,7 +209,11 @@ class TestJobListAPI(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Response is paginated, so check for 'results' key
-        jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        jobs_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(jobs_list, list)
         # Should only return DQ_RUN jobs
         for job_data in jobs_list:
@@ -206,19 +222,19 @@ class TestJobListAPI(TestCase):
     def test_list_jobs_success_filter_by_status_and_type(self):
         """Test filtering jobs by both status and type"""
         # Create jobs with different statuses and types
-        pending_dq = JobFactory.create_job(
+        JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
             status=JobStatus.PENDING,
             created_by=self.user,
         )
-        running_dq = JobFactory.create_job(
+        JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
             status=JobStatus.RUNNING,
             created_by=self.user,
         )
-        pending_compliance = JobFactory.create_job(
+        JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
             status=JobStatus.PENDING,
@@ -230,7 +246,11 @@ class TestJobListAPI(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Response is paginated, so check for 'results' key
-        jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        jobs_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(jobs_list, list)
         # Should only return PENDING DQ_RUN jobs
         for job_data in jobs_list:
@@ -246,14 +266,14 @@ class TestJobListAPI(TestCase):
             status=JobStatus.PENDING,
             created_by=self.user,
         )
-        time.sleep(0.01)  # INTENTIONAL: e2e/integration test polling real services
-        job2 = JobFactory.create_job(
+        time.sleep(0.01)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
+        JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
             status=JobStatus.PENDING,
             created_by=self.user,
         )
-        time.sleep(0.01)  # INTENTIONAL: e2e/integration test polling real services
+        time.sleep(0.01)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
         job3 = JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
@@ -264,7 +284,11 @@ class TestJobListAPI(TestCase):
         response = self.client.get("/api/v1/jobs/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        jobs_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(jobs_list, list)
         # Should be ordered by created_at descending (newest first)
         if len(jobs_list) >= 3:
@@ -287,7 +311,7 @@ class TestJobListAPI(TestCase):
             status=JobStatus.PENDING,
             created_by=self.user,
         )
-        time.sleep(0.01)  # INTENTIONAL: e2e/integration test polling real services
+        time.sleep(0.01)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
         job2 = JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.DQ_RUN,
@@ -298,7 +322,11 @@ class TestJobListAPI(TestCase):
         response = self.client.get("/api/v1/jobs/?ordering=created_at")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        jobs_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(jobs_list, list)
         # Verify ordering parameter is accepted and doesn't cause errors
         # Note: DRF OrderingFilter may apply ordering, but default ordering might persist
@@ -324,7 +352,11 @@ class TestJobListAPI(TestCase):
         # Most implementations return empty list for invalid filters
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
         if response.status_code == status.HTTP_200_OK:
-            jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+            jobs_list = (
+                response.data.get("results", response.data)
+                if isinstance(response.data, dict)
+                else response.data
+            )
             self.assertIsInstance(jobs_list, list)
 
     def test_list_jobs_invalid_type_filter(self):
@@ -334,7 +366,11 @@ class TestJobListAPI(TestCase):
         # Should return empty list or 400, depending on implementation
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
         if response.status_code == status.HTTP_200_OK:
-            jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+            jobs_list = (
+                response.data.get("results", response.data)
+                if isinstance(response.data, dict)
+                else response.data
+            )
             self.assertIsInstance(jobs_list, list)
 
     def test_list_jobs_invalid_ordering(self):
@@ -349,7 +385,7 @@ class TestJobListAPI(TestCase):
     def test_list_jobs_performance_p95(self):
         """Test performance: response time < 500ms p95"""
         # Create a reasonable number of jobs
-        for i in range(50):
+        for _i in range(50):
             JobFactory.create_job(
                 tenant=self.tenant,
                 type=JobType.DQ_RUN,
@@ -405,7 +441,11 @@ class TestJobListAPI(TestCase):
         response = self.client.get("/api/v1/jobs/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        jobs_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         job_ids = [job["id"] for job in jobs_list]
         self.assertIn(str(own_job.id), job_ids)
         self.assertNotIn(str(other_job.id), job_ids)
@@ -431,7 +471,11 @@ class TestJobListAPI(TestCase):
         response = self.client.get("/api/v1/jobs/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        jobs_list = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
         self.assertIsInstance(jobs_list, list)
         self.assertEqual(len(jobs_list), 0)
 
@@ -825,9 +869,7 @@ class TestJobCancelAPI(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Verify audit event was created
-        new_count = AuditEvent.objects.filter(
-            resource_type="JOB", action="JOB_CANCELLED"
-        ).count()
+        new_count = AuditEvent.objects.filter(resource_type="JOB", action="JOB_CANCELLED").count()
         self.assertEqual(new_count, initial_count + 1)
 
         # Verify audit event details
@@ -839,4 +881,3 @@ class TestJobCancelAPI(TestCase):
         self.assertIsNotNone(audit_event)
         self.assertEqual(str(audit_event.resource_id), str(job.id))
         self.assertEqual(audit_event.tenant_id, self.tenant.id)
-

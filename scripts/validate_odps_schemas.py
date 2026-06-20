@@ -17,16 +17,17 @@ Exit codes:
     1: One or more schemas are invalid
     2: jsonschema library not available (non-strict mode only)
 """
+
 import argparse
 import json
 import re
 import sys
 from pathlib import Path
-from typing import List, Tuple, Dict, Any, Optional
 
 try:
     import jsonschema
     from jsonschema import Draft202012Validator, SchemaError, ValidationError
+
     JSONSCHEMA_AVAILABLE = True
 except ImportError:
     JSONSCHEMA_AVAILABLE = False
@@ -35,7 +36,7 @@ except ImportError:
     ValidationError = Exception
 
 
-def validate_json_file(file_path: Path) -> Tuple[bool, str, dict]:
+def validate_json_file(file_path: Path) -> tuple[bool, str, dict]:
     """
     Validate that a file is valid JSON.
 
@@ -46,7 +47,7 @@ def validate_json_file(file_path: Path) -> Tuple[bool, str, dict]:
         Tuple of (is_valid, error_message, data)
     """
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
         return True, "", data
     except json.JSONDecodeError as e:
@@ -55,7 +56,7 @@ def validate_json_file(file_path: Path) -> Tuple[bool, str, dict]:
         return False, f"Error reading file: {e}", {}
 
 
-def validate_json_schema(schema_data: dict, file_path: Path) -> Tuple[bool, str]:
+def validate_json_schema(schema_data: dict, file_path: Path) -> tuple[bool, str]:
     """
     Validate that a dictionary is valid JSON Schema.
 
@@ -75,7 +76,7 @@ def validate_json_schema(schema_data: dict, file_path: Path) -> Tuple[bool, str]
         return True, ""
     except SchemaError as e:
         return False, f"Invalid JSON Schema: {e}"
-    except Exception as e:
+    except Exception:
         # For older drafts, try basic validation
         try:
             if jsonschema:
@@ -87,7 +88,7 @@ def validate_json_schema(schema_data: dict, file_path: Path) -> Tuple[bool, str]
 
 def validate_schema_version_consistency(
     schema_data: dict, version_dir: str, schema_path: Path
-) -> Tuple[bool, List[str]]:
+) -> tuple[bool, list[str]]:
     """
     Validate that schema file matches its version directory.
 
@@ -150,7 +151,7 @@ def validate_schema_version_consistency(
     return len(errors) == 0, errors
 
 
-def validate_schema_structure(schema_data: dict, schema_path: Path) -> Tuple[bool, List[str]]:
+def validate_schema_structure(schema_data: dict, schema_path: Path) -> tuple[bool, list[str]]:
     """
     Validate that schema has required structure.
 
@@ -172,7 +173,9 @@ def validate_schema_structure(schema_data: dict, schema_path: Path) -> Tuple[boo
     # Check $schema is valid JSON Schema draft URL
     schema_url = schema_data.get("$schema", "")
     if schema_url and not schema_url.startswith("https://json-schema.org/draft/"):
-        errors.append(f"Invalid $schema URL '{schema_url}' (should start with 'https://json-schema.org/draft/')")
+        errors.append(
+            f"Invalid $schema URL '{schema_url}' (should start with 'https://json-schema.org/draft/')"
+        )
 
     # Check type is "object" (ODPS schemas should be object schemas)
     schema_type = schema_data.get("type")
@@ -183,8 +186,8 @@ def validate_schema_structure(schema_data: dict, schema_path: Path) -> Tuple[boo
 
 
 def validate_odps_schemas(
-    schemas_dir: Path, strict: bool = False, version_filter: Optional[str] = None
-) -> Tuple[bool, List[str]]:
+    schemas_dir: Path, strict: bool = False, version_filter: str | None = None
+) -> tuple[bool, list[str]]:
     """
     Validate all ODPS schema files.
 
@@ -210,7 +213,9 @@ def validate_odps_schemas(
         if not version_filter.startswith("v"):
             version_filter = f"v{version_filter}"
         if version_filter not in required_versions:
-            return False, [f"Invalid version filter: {version_filter}. Must be one of {required_versions}"]
+            return False, [
+                f"Invalid version filter: {version_filter}. Must be one of {required_versions}"
+            ]
         required_versions = [version_filter]
 
     schema_filename = "odps-schema.json"
@@ -249,7 +254,9 @@ def validate_odps_schemas(
             continue
 
         # Validate version consistency
-        is_valid_version, version_errors = validate_schema_version_consistency(schema_data, version, schema_path)
+        is_valid_version, version_errors = validate_schema_version_consistency(
+            schema_data, version, schema_path
+        )
         if not is_valid_version:
             for error in version_errors:
                 errors.append(f"❌ {schema_path}: Version consistency error - {error}")
@@ -267,7 +274,9 @@ def validate_odps_schemas(
                 print(f"✅ {schema_path}: Valid JSON Schema (version {version.lstrip('v')})")
                 validated_count += 1
         else:
-            print(f"✅ {schema_path}: Valid JSON (version {version.lstrip('v')}, JSON Schema validation skipped - library not available)")
+            print(
+                f"✅ {schema_path}: Valid JSON (version {version.lstrip('v')}, JSON Schema validation skipped - library not available)"
+            )
             validated_count += 1
 
     if validated_count > 0:
@@ -291,24 +300,24 @@ Examples:
 
   # Validate specific version
   python scripts/validate_odps_schemas.py --strict --version 4.1
-        """
+        """,
     )
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="Require jsonschema library for JSON Schema validation"
+        help="Require jsonschema library for JSON Schema validation",
     )
     parser.add_argument(
         "--schemas-dir",
         type=Path,
         default=None,
-        help="Path to schemas/odps directory (default: auto-detect from script location)"
+        help="Path to schemas/odps directory (default: auto-detect from script location)",
     )
     parser.add_argument(
         "--version",
         type=str,
         default=None,
-        help="Validate only specific ODPS version (e.g., '4.1', '4.0', '3.x'). If not specified, validates all versions."
+        help="Validate only specific ODPS version (e.g., '4.1', '4.0', '3.x'). If not specified, validates all versions.",
     )
 
     args = parser.parse_args()
@@ -323,7 +332,9 @@ Examples:
         schemas_dir = project_root / "hub" / "apps" / "contracts" / "schemas" / "odps"
 
     # Validate schemas
-    all_valid, errors = validate_odps_schemas(schemas_dir, strict=args.strict, version_filter=args.version)
+    all_valid, errors = validate_odps_schemas(
+        schemas_dir, strict=args.strict, version_filter=args.version
+    )
 
     # Print results
     if errors:
@@ -342,4 +353,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-

@@ -55,6 +55,7 @@ trivial in-memory stand-in via ``unittest.mock.patch`` because we
 don't run an S3 endpoint in tests; this is the only patched
 boundary, and it's a true I/O boundary, not a business-logic mock.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -76,7 +77,6 @@ from hub.apps.scheduled_ingestion.models import (
 from hub.apps.scheduled_ingestion.worker_services import process_file_for_run
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -162,7 +162,9 @@ class TestWorkerBootstrapsViaAssetService(TestCase):
         tenant = _seed_tenant()
         user = _seed_user(tenant)
         scheduled_ingestion = _seed_scheduled_ingestion(
-            tenant, user, auto_create_asset=True,
+            tenant,
+            user,
+            auto_create_asset=True,
         )
         run = _seed_run(scheduled_ingestion)
         csv_content = b"id,name\n1,alpha\n2,beta\n"
@@ -206,7 +208,9 @@ class TestWorkerBootstrapsViaAssetService(TestCase):
         tenant = _seed_tenant()
         user = _seed_user(tenant)
         scheduled_ingestion = _seed_scheduled_ingestion(
-            tenant, user, auto_create_asset=True,
+            tenant,
+            user,
+            auto_create_asset=True,
         )
         run_1 = _seed_run(scheduled_ingestion)
         run_2 = _seed_run(scheduled_ingestion)
@@ -229,8 +233,7 @@ class TestWorkerBootstrapsViaAssetService(TestCase):
             )
 
         assert r1["asset_id"] == r2["asset_id"], (
-            "Both runs MUST resolve to the SAME asset id "
-            "(idempotent fast path)."
+            "Both runs MUST resolve to the SAME asset id (idempotent fast path)."
         )
         audit_count = AuditEvent.objects.filter(
             tenant=tenant,
@@ -259,7 +262,9 @@ class TestWorkerRetiredKeyRejection(TestCase):
         tenant = _seed_tenant()
         user = _seed_user(tenant)
         scheduled_ingestion = _seed_scheduled_ingestion(
-            tenant, user, auto_create_asset=True,
+            tenant,
+            user,
+            auto_create_asset=True,
         )
         # Pre-seed a RETIRED asset holding the key the worker would
         # otherwise auto-bootstrap.
@@ -273,9 +278,7 @@ class TestWorkerRetiredKeyRejection(TestCase):
         run = _seed_run(scheduled_ingestion)
         csv_content = b"id,name\n1,alpha\n"
 
-        with _stub_s3_save_file(), pytest.raises(
-            ServiceValidationError
-        ) as exc_info:
+        with _stub_s3_save_file(), pytest.raises(ServiceValidationError) as exc_info:
             process_file_for_run(
                 run_id=str(run.id),
                 file_path="data/sample.csv",
@@ -306,7 +309,9 @@ class TestWorkerRetiredKeyRejection(TestCase):
         tenant = _seed_tenant()
         user = _seed_user(tenant)
         scheduled_ingestion = _seed_scheduled_ingestion(
-            tenant, user, auto_create_asset=True,
+            tenant,
+            user,
+            auto_create_asset=True,
         )
         Asset.objects.create(
             tenant=tenant,
@@ -318,18 +323,21 @@ class TestWorkerRetiredKeyRejection(TestCase):
         run = _seed_run(scheduled_ingestion)
         csv_content = b"id,name\n1,alpha\n"
 
-        with _stub_s3_save_file(), patch(
-            "hub.apps.observability.otel_metrics."
-            "scheduled_ingestion_asset_key_retired_total.add"
-        ) as mock_add:
-            with pytest.raises(ServiceValidationError):
-                process_file_for_run(
-                    run_id=str(run.id),
-                    file_path="data/sample.csv",
-                    file_content=csv_content,
-                    tenant_id=str(tenant.id),
-                    user_id=str(user.id),
-                )
+        with (
+            _stub_s3_save_file(),
+            patch(
+                "hub.apps.observability.otel_metrics."
+                "scheduled_ingestion_asset_key_retired_total.add"
+            ) as mock_add,
+            pytest.raises(ServiceValidationError),
+        ):
+            process_file_for_run(
+                run_id=str(run.id),
+                file_path="data/sample.csv",
+                file_content=csv_content,
+                tenant_id=str(tenant.id),
+                user_id=str(user.id),
+            )
 
         assert mock_add.called, (
             "ASSET_KEY_RETIRED rejection MUST increment the "
@@ -341,9 +349,7 @@ class TestWorkerRetiredKeyRejection(TestCase):
         # alerting routing.
         _, kwargs = mock_add.call_args
         attrs = kwargs.get("attributes") or {}
-        assert attrs.get("scheduled_ingestion_id") == str(
-            scheduled_ingestion.id
-        )
+        assert attrs.get("scheduled_ingestion_id") == str(scheduled_ingestion.id)
         assert attrs.get("tenant_id") == str(tenant.id)
 
     def test_RETIRED_rejection_marks_file_permanent_failure(self):
@@ -354,7 +360,9 @@ class TestWorkerRetiredKeyRejection(TestCase):
         tenant = _seed_tenant()
         user = _seed_user(tenant)
         scheduled_ingestion = _seed_scheduled_ingestion(
-            tenant, user, auto_create_asset=True,
+            tenant,
+            user,
+            auto_create_asset=True,
         )
         Asset.objects.create(
             tenant=tenant,
@@ -366,9 +374,7 @@ class TestWorkerRetiredKeyRejection(TestCase):
         run = _seed_run(scheduled_ingestion)
         csv_content = b"id,name\n1,alpha\n"
 
-        with _stub_s3_save_file(), pytest.raises(
-            ServiceValidationError
-        ):
+        with _stub_s3_save_file(), pytest.raises(ServiceValidationError):
             process_file_for_run(
                 run_id=str(run.id),
                 file_path="data/sample.csv",
@@ -387,10 +393,7 @@ class TestWorkerRetiredKeyRejection(TestCase):
         # outcome is a valid permanent-failure signal.
         if state:
             state_str = str(state)
-            assert (
-                "data/sample.csv" in state_str
-                or "ASSET_KEY_RETIRED" in state_str
-            ), (
+            assert "data/sample.csv" in state_str or "ASSET_KEY_RETIRED" in state_str, (
                 "Permanent-failure record MUST mention the file "
                 f"path or rejection code; got state={state!r}"
             )

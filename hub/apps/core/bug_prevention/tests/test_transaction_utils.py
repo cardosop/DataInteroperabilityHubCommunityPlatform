@@ -1,13 +1,14 @@
 """
 Tests for Transaction Utilities
 """
-import time
+
 import uuid
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from django.db import OperationalError, transaction
 from django.test import TestCase
 
+from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.core.bug_prevention.transaction_utils import (
     TransactionManager,
     retry_on_deadlock,
@@ -15,7 +16,6 @@ from hub.apps.core.bug_prevention.transaction_utils import (
     with_transaction,
 )
 from hub.apps.tenants.models import Tenant
-from hub.apps.assets.models import Asset, AssetStatus
 
 
 def _uid():
@@ -58,15 +58,14 @@ class TransactionAtomicTest(TestCase):
         )
         asset_key = f"test-asset-rollback-{uid}"
 
-        with self.assertRaises(ValueError):
-            with transaction_atomic():
-                Asset.objects.create(
-                    tenant=tenant,
-                    key=asset_key,
-                    name="Test Asset",
-                    status=AssetStatus.ACTIVE,
-                )
-                raise ValueError("Test error")
+        with self.assertRaises(ValueError), transaction_atomic():
+            Asset.objects.create(
+                tenant=tenant,
+                key=asset_key,
+                name="Test Asset",
+                status=AssetStatus.ACTIVE,
+            )
+            raise ValueError("Test error")
 
         # Asset should not exist after rollback
         self.assertFalse(Asset.objects.filter(key=asset_key).exists())
@@ -150,7 +149,7 @@ class TransactionManagerTest(TestCase):
 
         with transaction.atomic():
             with self.manager.savepoint():
-                asset1 = Asset.objects.create(
+                Asset.objects.create(
                     tenant=self.tenant,
                     key=asset1_key,
                     name="Asset Inside Savepoint",
@@ -158,7 +157,7 @@ class TransactionManagerTest(TestCase):
                 )
             # Create a second asset AFTER the savepoint to prove the
             # savepoint committed and did not break the outer transaction.
-            asset2 = Asset.objects.create(
+            Asset.objects.create(
                 tenant=self.tenant,
                 key=asset2_key,
                 name="Asset After Savepoint",
@@ -190,15 +189,14 @@ class TransactionManagerTest(TestCase):
 
             # The savepoint raises ValueError; we catch it here so the
             # outer atomic block is NOT broken.
-            with self.assertRaises(ValueError):
-                with self.manager.savepoint():
-                    Asset.objects.create(
-                        tenant=self.tenant,
-                        key=asset2_key,
-                        name="Asset 2",
-                        status=AssetStatus.ACTIVE,
-                    )
-                    raise ValueError("Test error")
+            with self.assertRaises(ValueError), self.manager.savepoint():
+                Asset.objects.create(
+                    tenant=self.tenant,
+                    key=asset2_key,
+                    name="Asset 2",
+                    status=AssetStatus.ACTIVE,
+                )
+                raise ValueError("Test error")
 
         # asset1 was outside the savepoint -- it should survive
         self.assertTrue(Asset.objects.filter(key=asset1_key).exists())

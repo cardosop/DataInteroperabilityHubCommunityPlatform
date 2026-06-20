@@ -23,11 +23,12 @@ enqueue sites + the queue's serialisation round-trip keep
 working, AND (b) the wrap is in place so a future refactor that
 drops the helper doesn't silently regress the RLS safety net.
 """
+
 from __future__ import annotations
-import pytest
 
 import inspect
 
+import pytest
 from django.test import TestCase
 
 from hub.apps.notifications.tasks import (
@@ -48,16 +49,9 @@ class TestMarketplaceTasksAcceptTenantIdKwarg(TestCase):
         # through ``__wrapped__`` if present.
         target = getattr(fn, "__wrapped__", fn)
         sig = inspect.signature(target)
-        assert (
-            "tenant_id" in sig.parameters
-            or any(
-                p.kind == inspect.Parameter.VAR_KEYWORD
-                for p in sig.parameters.values()
-            )
-        ), (
-            f"{fn.__name__} must accept tenant_id kwarg; "
-            f"got params={list(sig.parameters)}"
-        )
+        assert "tenant_id" in sig.parameters or any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+        ), f"{fn.__name__} must accept tenant_id kwarg; got params={list(sig.parameters)}"
 
     @pytest.mark.integration
     def test_send_marketplace_sync_completion_email_accepts_tenant_id(self):
@@ -94,9 +88,7 @@ class TestMarketplaceTasksWrapInTenantContext(TestCase):
             f"_run_with_tenant_context() so RLS-active deploys "
             f"resolve the row"
         )
-        assert model_name in src, (
-            f"{fn.__name__} body must still reference {model_name}"
-        )
+        assert model_name in src, f"{fn.__name__} body must still reference {model_name}"
 
     @pytest.mark.integration
     def test_sync_completion_wraps_marketplace_sync_job(self):

@@ -57,9 +57,8 @@ def _delta_cell(before: int, after: int, polarity: Polarity) -> str:
     text = f"{sign}{delta}"
     if polarity == "neutral":
         return f"{EMOJI_NEUTRAL} {text}"
-    improvement = (
-        (polarity == "up_is_good" and delta > 0)
-        or (polarity == "down_is_good" and delta < 0)
+    improvement = (polarity == "up_is_good" and delta > 0) or (
+        polarity == "down_is_good" and delta < 0
     )
     emoji = EMOJI_GOOD if improvement else EMOJI_BAD
     return f"{emoji} {text}"
@@ -103,9 +102,7 @@ def render_diff(baseline: dict, current: dict) -> str:
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     if len(args) != 2:
-        sys.stderr.write(
-            "usage: e2e_metrics_diff.py <baseline.json> <current.json>\n"
-        )
+        sys.stderr.write("usage: e2e_metrics_diff.py <baseline.json> <current.json>\n")
         return 2
     baseline = json.loads(Path(args[0]).read_text(encoding="utf-8"))
     current = json.loads(Path(args[1]).read_text(encoding="utf-8"))

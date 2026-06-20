@@ -19,15 +19,15 @@ The metric assertion (``lineage_edge_writes_total{operation}``)
 uses ``mock.patch`` at the import-site of the helper — that's the
 boundary the spec explicitly requires fail-soft semantics for.
 """
+
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone as _tz
+from datetime import timedelta
 from unittest import mock
 
 import pytest
 from django.db import IntegrityError, transaction
-from django.test import TransactionTestCase
 from django.utils import timezone
 
 from hub.apps.contracts.tests.test_base import ContractsTransactionTestBase
@@ -144,8 +144,7 @@ class TestEdgeCreatedOnContractSave(ContractsTransactionTestBase):
 
         after = LineageEdge.objects.filter(target_contract=target).count()
         assert after == before, (
-            f"idempotent resave should not duplicate edges; "
-            f"before={before} after={after}"
+            f"idempotent resave should not duplicate edges; before={before} after={after}"
         )
         # And the open edge count is exactly 1.
         open_count = LineageEdge.objects.filter(
@@ -187,12 +186,8 @@ class TestEdgeCreatedOnContractSave(ContractsTransactionTestBase):
         }
         target.save()
 
-        all_edges = list(
-            LineageEdge.objects.filter(target_contract=target).order_by("valid_from")
-        )
-        assert len(all_edges) == 2, (
-            f"expected 2 rows (closed + open); got {len(all_edges)}"
-        )
+        all_edges = list(LineageEdge.objects.filter(target_contract=target).order_by("valid_from"))
+        assert len(all_edges) == 2, f"expected 2 rows (closed + open); got {len(all_edges)}"
         closed = [e for e in all_edges if e.valid_to is not None]
         opened = [e for e in all_edges if e.valid_to is None]
         assert len(closed) == 1, "exactly one row closed"
@@ -227,9 +222,7 @@ class TestEdgeCreatedOnContractSave(ContractsTransactionTestBase):
         tenant.delete()
 
         after = LineageEdge.objects.filter(tenant_id=tenant.id).count()
-        assert after == 0, (
-            f"tenant cascade should remove all edges; got {after} remaining"
-        )
+        assert after == 0, f"tenant cascade should remove all edges; got {after} remaining"
 
 
 # ---------------------------------------------------------------------------
@@ -250,7 +243,7 @@ class TestSignalRunsOnCommitOnly(ContractsTransactionTestBase):
 
         try:
             with transaction.atomic():
-                target = _create_contract(
+                _create_contract(
                     tenant,
                     lineage_entries=[
                         {
@@ -273,8 +266,7 @@ class TestSignalRunsOnCommitOnly(ContractsTransactionTestBase):
         # Only the upstream contract committed (created before atomic).
         assert contract_count == 1, contract_count
         assert edge_count == 0, (
-            f"on_commit handler must not fire for a rolled-back save; "
-            f"got {edge_count} edges"
+            f"on_commit handler must not fire for a rolled-back save; got {edge_count} edges"
         )
 
 
@@ -309,9 +301,7 @@ class TestValidFromIsDBSide(ContractsTransactionTestBase):
         )
         after = timezone.now()
 
-        edge = LineageEdge.objects.get(
-            target_contract=target, valid_to__isnull=True
-        )
+        edge = LineageEdge.objects.get(target_contract=target, valid_to__isnull=True)
         # The DB-recorded valid_from should land between ``before`` and
         # ``after``, accounting for ~1s round-trip slack on either side.
         slack = timedelta(seconds=2)
@@ -398,9 +388,7 @@ class TestEdgeWriteMetric(ContractsTransactionTestBase):
         tenant = _create_tenant()
         upstream = _create_contract(tenant)
 
-        with mock.patch(
-            "hub.apps.contracts.lineage_sync.record_edge_write"
-        ) as m:
+        with mock.patch("hub.apps.contracts.lineage_sync.record_edge_write") as m:
             _create_contract(
                 tenant,
                 lineage_entries=[
@@ -412,11 +400,10 @@ class TestEdgeWriteMetric(ContractsTransactionTestBase):
                 ],
             )
         # At least one ``add`` operation observed.
-        ops = [c.kwargs.get("operation") or (c.args[0] if c.args else None)
-               for c in m.call_args_list]
-        assert "add" in ops, (
-            f"expected at least one add metric; got operations={ops}"
-        )
+        ops = [
+            c.kwargs.get("operation") or (c.args[0] if c.args else None) for c in m.call_args_list
+        ]
+        assert "add" in ops, f"expected at least one add metric; got operations={ops}"
 
 
 # ---------------------------------------------------------------------------
@@ -459,8 +446,7 @@ class TestEdgeAuditEvents(ContractsTransactionTestBase):
             tenant=tenant,
         ).count()
         assert after - before >= 1, (
-            f"expected ≥1 LINEAGE_EDGE_CREATED audit row; got "
-            f"before={before} after={after}"
+            f"expected ≥1 LINEAGE_EDGE_CREATED audit row; got before={before} after={after}"
         )
 
     def test_close_emits_lineage_edge_deleted_audit(self):

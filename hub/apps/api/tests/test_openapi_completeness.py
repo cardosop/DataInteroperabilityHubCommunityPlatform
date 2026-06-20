@@ -4,15 +4,11 @@ Phase 277.B.023 — OpenAPI completeness conformance test.
 Verifies every registered API endpoint has drf_spectacular schema entries,
 response examples, and documented error codes. Used as a CI gate.
 """
-from __future__ import annotations
 
-import ast
-import os
-from pathlib import Path
+from __future__ import annotations
 
 import pytest
 from django.test import TestCase
-from rest_framework.test import APIClient
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -23,6 +19,7 @@ class TestOpenAPICompleteness(TestCase):
     def test_openapi_schema_generation_does_not_crash(self):
         """drf_spectacular can generate the OpenAPI schema without errors."""
         from django.urls import reverse
+
         resp = self.client.get(reverse("openapi-schema-v1"))
         assert resp.status_code == 200, f"Schema generation failed: {resp.status_code}"
         data = resp.json() if hasattr(resp, "json") else resp.data
@@ -32,6 +29,7 @@ class TestOpenAPICompleteness(TestCase):
     def test_schema_has_info_section(self):
         """OpenAPI schema has required info section."""
         from django.urls import reverse
+
         resp = self.client.get(reverse("openapi-schema-v1"))
         data = resp.json() if hasattr(resp, "json") else resp.data
         assert "info" in data
@@ -40,6 +38,7 @@ class TestOpenAPICompleteness(TestCase):
     def test_major_endpoints_have_schema(self):
         """10 sampled endpoints are present in the generated OpenAPI schema."""
         from django.urls import reverse
+
         resp = self.client.get(reverse("openapi-schema-v1"))
         data = resp.json() if hasattr(resp, "json") else resp.data
         paths = data.get("paths", {})
@@ -66,6 +65,7 @@ class TestOpenAPICompleteness(TestCase):
     def test_error_responses_use_canonical_shape(self):
         """Sampled error responses match StandardResponseFormatter format."""
         from django.urls import reverse
+
         resp = self.client.get(reverse("openapi-schema-v1"))
         data = resp.json() if hasattr(resp, "json") else resp.data
         paths = data.get("paths", {})

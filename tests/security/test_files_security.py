@@ -13,8 +13,8 @@ from rest_framework.test import APIClient
 
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.users.models import UserStatus
 
 User = __import__("django.contrib.auth", fromlist=["get_user_model"]).get_user_model()
 

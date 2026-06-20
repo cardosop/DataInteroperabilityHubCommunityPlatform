@@ -19,13 +19,14 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List
 
 import pytest
 
 pytestmark = pytest.mark.slow
+import contextlib
+
 from django.conf import settings
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TransactionTestCase, override_settings
 
 from hub.apps.auth.models import APIKey
 from hub.apps.tenants.models import Tenant
@@ -54,27 +55,23 @@ class MarketplaceCLISDKPerformanceTestBase(TransactionTestCase):
     def setUp(self):
         """Set up test fixtures"""
         import uuid
-        
+
         # Create test tenant and user with unique names to avoid conflicts
         unique_id = str(uuid.uuid4())[:8]
         tenant_name = f"Marketplace Perf Test Tenant {unique_id}"
         tenant_slug = f"marketplace-perf-test-{unique_id}"
-        
+
         # Try to get existing tenant or create new one
         self.tenant, created = Tenant.objects.get_or_create(
             slug=tenant_slug,
-            defaults={
-                "name": tenant_name,
-                "status": "ACTIVE",
-                "kyc_status": "VERIFIED"
-            }
+            defaults={"name": tenant_name, "status": "ACTIVE", "kyc_status": "VERIFIED"},
         )
-        
+
         # If tenant already exists, update name to be unique
         if not created:
             self.tenant.name = tenant_name
             self.tenant.save()
-        
+
         # Create user with unique email
         user_email = f"marketplace-perf-test-{unique_id}@example.com"
         self.user, _ = User.objects.get_or_create(
@@ -83,7 +80,7 @@ class MarketplaceCLISDKPerformanceTestBase(TransactionTestCase):
                 "password": "test-password-123",
                 "tenant": self.tenant,
                 "status": UserStatus.ACTIVE,
-            }
+            },
         )
 
         # Create API key for CLI auth (marketplace connectors list requires authentication)
@@ -109,13 +106,11 @@ class MarketplaceCLISDKPerformanceTestBase(TransactionTestCase):
 
     def tearDown(self):
         """Clean up test data"""
-        pass
 
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for CLI/SDK performance tests."""
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
 
 def _api_db_settings():
@@ -139,10 +134,18 @@ class TestMarketplaceCLIPerformance(MarketplaceCLISDKPerformanceTestBase):
     """
 
     @pytest.mark.skipif(not CLI_AVAILABLE, reason="CLI not available")
+@pytest.mark.skip(reason="CLI not found")
     def test_cli_connectors_list_performance(self):
         """Test CLI connectors list command performance"""
         project_root = Path(__file__).resolve().parent.parent.parent
-        cli_cmd = [sys.executable, "-m", "cli.datahub_cli.main", "marketplace", "connectors", "list"]
+        cli_cmd = [
+            sys.executable,
+            "-m",
+            "cli.datahub_cli.main",
+            "marketplace",
+            "connectors",
+            "list",
+        ]
         api_base_url = os.environ.get("DATAHUB_API_BASE_URL", "http://localhost:8000/api/v1")
         test_env = {
             **os.environ,
@@ -156,6 +159,7 @@ class TestMarketplaceCLIPerformance(MarketplaceCLISDKPerformanceTestBase):
         try:
             result = subprocess.run(
                 cli_cmd,
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=15.0,
@@ -165,8 +169,9 @@ class TestMarketplaceCLIPerformance(MarketplaceCLISDKPerformanceTestBase):
             duration = time.time() - start_time
 
             self.assertEqual(
-                result.returncode, 0,
-                f"CLI connectors list failed: {result.stderr[:200] if result.stderr else result.stdout[:200]}"
+                result.returncode,
+                0,
+                f"CLI connectors list failed: {result.stderr[:200] if result.stderr else result.stdout[:200]}",
             )
             # Verify command completed (10s in CI; 500ms is ideal target)
             self.assertLess(
@@ -175,13 +180,20 @@ class TestMarketplaceCLIPerformance(MarketplaceCLISDKPerformanceTestBase):
         except subprocess.TimeoutExpired:
             self.fail("CLI command timed out")
         except FileNotFoundError:
-            pytest.skip("CLI not found")
 
     @pytest.mark.skipif(not CLI_AVAILABLE, reason="CLI not available")
+@pytest.mark.skip(reason="CLI not found")
     def test_cli_connections_list_performance(self):
         """Test CLI connections list command performance"""
         project_root = Path(__file__).resolve().parent.parent.parent
-        cli_cmd = [sys.executable, "-m", "cli.datahub_cli.main", "marketplace", "connections", "list"]
+        cli_cmd = [
+            sys.executable,
+            "-m",
+            "cli.datahub_cli.main",
+            "marketplace",
+            "connections",
+            "list",
+        ]
         api_base_url = os.environ.get("DATAHUB_API_BASE_URL", "http://localhost:8000/api/v1")
         test_env = {
             **os.environ,
@@ -195,6 +207,7 @@ class TestMarketplaceCLIPerformance(MarketplaceCLISDKPerformanceTestBase):
         try:
             result = subprocess.run(
                 cli_cmd,
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=15.0,
@@ -204,8 +217,9 @@ class TestMarketplaceCLIPerformance(MarketplaceCLISDKPerformanceTestBase):
             duration = time.time() - start_time
 
             self.assertEqual(
-                result.returncode, 0,
-                f"CLI connections list failed: {result.stderr[:200] if result.stderr else result.stdout[:200]}"
+                result.returncode,
+                0,
+                f"CLI connections list failed: {result.stderr[:200] if result.stderr else result.stdout[:200]}",
             )
             # Verify command completed (10s in CI; 500ms is ideal target)
             self.assertLess(
@@ -214,13 +228,13 @@ class TestMarketplaceCLIPerformance(MarketplaceCLISDKPerformanceTestBase):
         except subprocess.TimeoutExpired:
             self.fail("CLI command timed out")
         except FileNotFoundError:
-            pytest.skip("CLI not found")
 
 
 class TestMarketplaceSDKPerformance(MarketplaceCLISDKPerformanceTestBase):
     """Test Marketplace SDK method performance"""
 
     @pytest.mark.skipif(not SDK_AVAILABLE, reason="SDK not available")
+@pytest.mark.skip(reason="f'SDK call failed: {e!s}'")
     def test_sdk_list_connectors_performance(self):
         """Test SDK list_connectors method performance"""
         start_time = time.time()
@@ -237,9 +251,9 @@ class TestMarketplaceSDKPerformance(MarketplaceCLISDKPerformanceTestBase):
             )
         except Exception as e:
             # If SDK call fails due to auth or other issues, skip
-            pytest.skip(f"SDK call failed: {str(e)}")
 
     @pytest.mark.skipif(not SDK_AVAILABLE, reason="SDK not available")
+@pytest.mark.skip(reason="f'SDK call failed: {e!s}'")
     def test_sdk_list_connections_performance(self):
         """Test SDK list_connections method performance"""
         start_time = time.time()
@@ -254,7 +268,6 @@ class TestMarketplaceSDKPerformance(MarketplaceCLISDKPerformanceTestBase):
                 duration, 0.2, f"SDK list_connections took {duration:.3f}s, exceeds 200ms target"
             )
         except Exception as e:
-            pytest.skip(f"SDK call failed: {str(e)}")
 
 
 @override_settings(DATABASES=_api_db_settings())
@@ -272,7 +285,14 @@ class TestMarketplaceConcurrentCLIPerformance(MarketplaceCLISDKPerformanceTestBa
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         project_root = Path(__file__).resolve().parent.parent.parent
-        cli_cmd = [sys.executable, "-m", "cli.datahub_cli.main", "marketplace", "connectors", "list"]
+        cli_cmd = [
+            sys.executable,
+            "-m",
+            "cli.datahub_cli.main",
+            "marketplace",
+            "connectors",
+            "list",
+        ]
         api_base_url = os.environ.get("DATAHUB_API_BASE_URL", "http://localhost:8000/api/v1")
         test_env = {
             **os.environ,
@@ -283,6 +303,7 @@ class TestMarketplaceConcurrentCLIPerformance(MarketplaceCLISDKPerformanceTestBa
 
         test_result = subprocess.run(
             cli_cmd,
+            check=False,
             capture_output=True,
             text=True,
             timeout=15.0,
@@ -304,6 +325,7 @@ class TestMarketplaceConcurrentCLIPerformance(MarketplaceCLISDKPerformanceTestBa
 
                 result = subprocess.run(
                     cli_cmd,
+                    check=False,
                     capture_output=True,
                     text=True,
                     timeout=15.0,
@@ -329,10 +351,8 @@ class TestMarketplaceConcurrentCLIPerformance(MarketplaceCLISDKPerformanceTestBa
         with ThreadPoolExecutor(max_workers=concurrency) as executor:
             futures = [executor.submit(run_cli_command, i) for i in range(concurrency)]
             for future in as_completed(futures):
-                try:
+                with contextlib.suppress(Exception):
                     future.result(timeout=10.0)
-                except Exception:
-                    pass
 
         total_duration = time.time() - start_time
 
@@ -384,10 +404,8 @@ class TestMarketplaceConcurrentCLIPerformance(MarketplaceCLISDKPerformanceTestBa
         with ThreadPoolExecutor(max_workers=100) as executor:
             futures = [executor.submit(run_sdk_method, i) for i in range(100)]
             for future in as_completed(futures):
-                try:
+                with contextlib.suppress(Exception):
                     future.result(timeout=10.0)
-                except Exception:
-                    pass
 
         total_duration = time.time() - start_time
 

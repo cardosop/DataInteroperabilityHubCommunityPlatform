@@ -3,11 +3,12 @@ Phase 274.7.3/274.7.10 — chain side-effect ordering invariant test.
 
 Asserts NO side-effect helpers fire until ALL chain steps succeed.
 """
+
 import pytest
 from django.test import TestCase
 
-from hub.apps.core.business_rules.chains import RuleChain
 from hub.apps.core.business_rules.base import ValidationResult
+from hub.apps.core.business_rules.chains import RuleChain
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

@@ -1,6 +1,7 @@
 """Phase 107: Database connection handling under load."""
-from django.test import TestCase
+
 from django.db import connection
+from django.test import TestCase
 
 
 class DatabaseConnectionExhaustionTest(TestCase):
@@ -26,10 +27,10 @@ class DatabaseConnectionExhaustionTest(TestCase):
     def test_connection_recovers_after_error(self):
         """Connection recovers after a query error."""
         from django.db import transaction
+
         try:
-            with transaction.atomic():
-                with connection.cursor() as cursor:
-                    cursor.execute("SELECT * FROM nonexistent_table_xyz")
+            with transaction.atomic(), connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM nonexistent_table_xyz")
         except Exception:
             pass
         with connection.cursor() as cursor:

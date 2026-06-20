@@ -4,8 +4,8 @@ DLQ (via mark_file_failed), Notifications (at run completion); Compliance and
 Semantic when configured. No mocks: real services.
 """
 
-import unittest
 import os
+import unittest
 import uuid
 
 import pytest
@@ -27,22 +27,29 @@ try:
     if not hasattr(pg_operations.DatabaseOperations.sql_flush, "_patched_for_cascade"):
         _original_sql_flush = pg_operations.DatabaseOperations.sql_flush
 
-        def _patched_sql_flush(
-            self, style, tables, *, reset_sequences=False, allow_cascade=False
-        ):
+        def _patched_sql_flush(self, style, tables, *, reset_sequences=False, allow_cascade=False):
             return _original_sql_flush(
                 self, style, tables, reset_sequences=reset_sequences, allow_cascade=True
             )
 
         _patched_sql_flush._patched_for_cascade = True
         pg_operations.DatabaseOperations.sql_flush = _patched_sql_flush
-except Exception:
-    pass
+except AttributeError:
+    # Django ORM internals changed — the flush patch is a non-critical
+    # test infrastructure helper; log and continue without it.
+    import logging
 
-from hub.apps.audit.models import AuditEvent
+    logging.getLogger(__name__).warning(
+        "sql_flush patch failed (Django internals changed) — "
+        "tests may run against non-empty tables"
+    )
+
+import contextlib
+
 from hub.apps.auth.models import APIKey
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File
+from hub.apps.files.storage import S3StorageClient
 from hub.apps.scheduled_ingestion.internal_auth import SCOPE_SCHEDULED_INGESTION_INTERNAL
 from hub.apps.scheduled_ingestion.models import (
     ScheduledIngestion,
@@ -51,7 +58,6 @@ from hub.apps.scheduled_ingestion.models import (
     ScheduleType,
     SourceType,
 )
-from hub.apps.files.storage import S3StorageClient
 from hub.apps.scheduled_ingestion.worker_services import process_file_for_run
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
@@ -105,10 +111,17 @@ class ProcessFileIntegrationsTest(TestCase):
             self._storage_available = True
         except Exception as e:
             err = str(e).lower()
-            if "invalidaccesskeyid" in err or "access key" in err:
-                pass
-            elif "connection" in err or "could not connect" in err or "name resolution" in err:
-                pass
+            if (
+                "invalidaccesskeyid" in err
+                or "access key" in err
+                or "connection" in err
+                or "could not connect" in err
+                or "name resolution" in err
+            ):
+                logging.getLogger(__name__).warning(
+                    "MinIO storage unavailable — storage-dependent tests "
+                    "will be skipped: %s", e
+                )
 
         suffix = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
@@ -146,10 +159,8 @@ class ProcessFileIntegrationsTest(TestCase):
         # TransactionTestCase teardown runs flush; ensure DB connection is open so flush does not raise "connection already closed"
         from django.db import connection
 
-        try:
+        with contextlib.suppress(Exception):
             connection.ensure_connection()
-        except Exception:
-            pass
         super().tearDown()
 
     def test_process_file_creates_file_and_dataset_and_indexes(self):
@@ -248,6 +259,5 @@ class ProcessFileIntegrationsTest(TestCase):
             resource_id=dataset.id,
             tenant=self.tenant,
         ).first()
-        self.assertIsNotNone(semantic,
-            "SemanticResource must be created for the dataset")
+        self.assertIsNotNone(semantic, "SemanticResource must be created for the dataset")
         self.assertEqual(semantic.resource_id, dataset.id)

@@ -58,8 +58,7 @@ class MockFallbackTest(TestCase):
         self.assertGreater(len(content), 0)
         # Must be valid CSV: decodes to text with commas or newlines
         text = content.decode("utf-8")
-        self.assertIn(",", text,
-            f"CSV mock content must contain commas; got: {text[:80]}")
+        self.assertIn(",", text, f"CSV mock content must contain commas; got: {text[:80]}")
 
     def test_mock_content_returns_bytes_json(self):
         """JSON format returns valid, parseable JSON bytes."""
@@ -68,19 +67,33 @@ class MockFallbackTest(TestCase):
         self.assertGreater(len(content), 0)
         # Must be valid JSON
         import json
+
         parsed = json.loads(content)
-        self.assertIsInstance(parsed, (dict, list),
-            f"JSON mock content must parse to dict or list; got {type(parsed).__name__}")
+        self.assertIsInstance(
+            parsed,
+            (dict, list),
+            f"JSON mock content must parse to dict or list; got {type(parsed).__name__}",
+        )
 
     def test_mock_content_returns_bytes_parquet(self):
-        """PARQUET format returns valid non-empty bytes (or falls back to CSV)."""
+        """PARQUET format returns valid non-empty bytes.
+
+        When pandas is available, the mock produces genuine Parquet bytes
+        (binary, non-UTF-8-decodable).  When pandas is absent, the
+        fallback produces CSV bytes (UTF-8-decodable text).  Both paths
+        are valid per the mock-fallback contract.
+        """
         content = _generate_mock_file_content(self.file, "PARQUET")
         self.assertIsInstance(content, bytes)
         self.assertGreater(len(content), 0)
-        # Content must decode to valid text (csv fallback) or be valid parquet bytes
         try:
             text = content.decode("utf-8")
+            # CSV fallback — verify it looks like CSV (has commas/newlines).
             self.assertGreater(len(text), 0)
+            self.assertIn("\n", text, "CSV fallback must contain newlines")
         except UnicodeDecodeError:
-            # Binary parquet content — acceptable
-            pass
+            # Genuine binary Parquet content — verify the magic bytes.
+            self.assertTrue(
+                content[:4] == b"PAR1",
+                f"Parquet content must start with PAR1 magic; got {content[:4]!r}",
+            )

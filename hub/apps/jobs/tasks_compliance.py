@@ -9,6 +9,7 @@ SAVING CHECKPOINT: This module contains Compliance job handlers (< 700 lines per
 from django.utils import timezone
 
 from .models import Job
+from .tasks_base import JobExecutionError
 
 
 def _execute_compliance_run_job(job_obj: Job) -> dict:
@@ -90,7 +91,7 @@ def _execute_compliance_run_job(job_obj: Job) -> dict:
                 if compliance_run.regulation_mapping_json
                 else "Compliance run failed"
             )
-            raise Exception(f"Compliance run failed: {error_msg}")
+            raise JobExecutionError(f"Compliance run failed: {error_msg}")
 
         return {
             "status": compliance_run.status.lower(),
@@ -106,4 +107,4 @@ def _execute_compliance_run_job(job_obj: Job) -> dict:
         raise  # Re-raise validation errors
     except Exception as e:
         # Wrap other exceptions
-        raise Exception(f"Compliance run execution failed: {str(e)}") from e
+        raise JobExecutionError(f"Compliance run execution failed: {e!s}") from e

@@ -132,18 +132,22 @@ class DQServiceClientTest(TestCase):
 
         transport = httpx.MockTransport(handler)
         self.client.client = httpx.Client(transport=transport, base_url=self.client.base_url)
-        
+
         # Disable caching and circuit breaker fallback for this test
         # by directly calling the internal execute_dq_check function
-        from django.core.cache import cache
         import hashlib
+
+        from django.core.cache import cache
+
         cache_key = f"dq:run:{hashlib.sha256(b'id,name\n1,Test').hexdigest()}:intake_basic_gx"
         cache.delete(cache_key)  # Clear any cached result
-        
+
         # Temporarily disable circuit breaker fallback by patching it
         original_call = self.client._circuit_breaker.call
+
         def call_without_fallback(func, fallback=None):
             return func()
+
         self.client._circuit_breaker.call = call_without_fallback
 
         try:
@@ -166,17 +170,21 @@ class DQServiceClientTest(TestCase):
 
         transport = httpx.MockTransport(handler)
         self.client.client = httpx.Client(transport=transport, base_url=self.client.base_url)
-        
+
         # Disable caching and circuit breaker fallback for this test
-        from django.core.cache import cache
         import hashlib
+
+        from django.core.cache import cache
+
         cache_key = f"dq:run:{hashlib.sha256(b'id,name\n1,Test').hexdigest()}:intake_basic_gx"
         cache.delete(cache_key)  # Clear any cached result
-        
+
         # Temporarily disable circuit breaker fallback by patching it
         original_call = self.client._circuit_breaker.call
+
         def call_without_fallback(func, fallback=None):
             return func()
+
         self.client._circuit_breaker.call = call_without_fallback
 
         try:
@@ -203,17 +211,21 @@ class DQServiceClientTest(TestCase):
 
         transport = httpx.MockTransport(handler)
         self.client.client = httpx.Client(transport=transport, base_url=self.client.base_url)
-        
+
         # Disable caching and circuit breaker fallback for this test
-        from django.core.cache import cache
         import hashlib
+
+        from django.core.cache import cache
+
         cache_key = f"dq:run:{hashlib.sha256(b'invalid content').hexdigest()}:intake_basic_gx"
         cache.delete(cache_key)  # Clear any cached result
-        
+
         # Temporarily disable circuit breaker fallback by patching it
         original_call = self.client._circuit_breaker.call
+
         def call_without_fallback(func, fallback=None):
             return func()
+
         self.client._circuit_breaker.call = call_without_fallback
 
         try:

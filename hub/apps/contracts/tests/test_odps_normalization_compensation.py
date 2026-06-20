@@ -17,13 +17,11 @@ import json
 import pytest
 
 from hub.apps.contracts.models import (
-    Contract,
     ContractStatus,
     NormalizationStatus,
     OriginalFormat,
     OriginalSpecType,
 )
-from hub.apps.contracts.odps_errors import ODPSNormalizationError
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -60,15 +58,15 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
                             # Missing "name" - required for normalization but might pass validation
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
 
         # Act
         # Create ODPS contract - normalization should fail if name is missing
-        # Note: This might fail validation first, but if it passes validation,
-        # normalization will fail and we can test compensation
+        from hub.apps.core.services.base import ValidationError
+
         try:
             contract = self.odps_service.create_odps(
                 odps_raw=invalid_odps_raw,
@@ -90,11 +88,14 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
                 self.assertIsNotNone(contract.normalization_errors)
                 self.assertGreater(len(contract.normalization_errors), 0)
                 self.assertIsNone(contract.hub_contract_json)
-        except Exception:
-            # If validation fails before normalization, that's expected
-            # The key test is that original_raw preservation works when normalization fails
-            # We test this in other scenarios that do pass validation
-            pass
+        except ValidationError as e:
+            # Validation may reject the contract before normalization;
+            # verify the error contains useful diagnostics about what was rejected
+            self.assertIsNotNone(e.details)
+            self.assertTrue(
+                any(word in str(e).lower() for word in ("name", "required", "missing", "normalis")),
+                f"ValidationError should explain the rejection; got: {e}",
+            )
 
     def test_normalization_failure_with_ref_resolution_preserves_original_raw(self):
         """Test that original_raw is preserved even when ref resolution fails."""
@@ -185,13 +186,15 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
                             # Missing "name" - required for normalization
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
 
         # Act
         # Create ODPS contract
+        from hub.apps.core.services.base import ValidationError
+
         try:
             contract = self.odps_service.create_odps(
                 odps_raw=invalid_odps_raw,
@@ -226,17 +229,22 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
                 # Verify hub_contract_json is None
                 self.assertIsNone(contract.hub_contract_json)
                 self.assertIsNone(contract.hub_contract_version)
-        except Exception:
-            # If validation fails, that's expected - the key is testing normalization failure
-            # which we test in scenarios that pass validation
-            pass
+        except ValidationError as e:
+            # Validation may reject the contract before normalization;
+            # verify the error contains useful diagnostics about what was rejected
+            self.assertIsNotNone(e.details)
+            self.assertTrue(
+                any(word in str(e).lower() for word in ("name", "required", "missing", "normalis")),
+                f"ValidationError should explain the rejection; got: {e}",
+            )
 
-    def test_normalization_failure_preserves_original_raw_on_exception(self):
-        """Test that original_raw is preserved even when normalization raises exception."""
-        # This test verifies that original_raw is preserved even when unexpected errors occur
-        # Since we can't easily cause normalization exceptions without failing validation first,
-        # we'll test with a valid document and verify the preservation mechanism works
-        # The actual exception handling is tested in the normalizer unit tests
+    def test_original_raw_preserved_on_successful_normalization(self):
+        """Test that original_raw is preserved when normalization succeeds.
+
+        Note: Testing the actual normalization-exception path requires patching
+        the normalizer to raise; that is covered by the normalizer unit tests.
+        This test verifies the preservation mechanism works on the happy path.
+        """
 
         # Use a valid ODPS document to verify original_raw preservation works
         valid_odps_raw = json.dumps(
@@ -244,7 +252,7 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
                 "schema": "https://opendataproducts.org/schema/v4.1",
                 "product": {
                     "details": {"en": {"productID": "test-product", "name": "Test Product"}},
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -321,7 +329,7 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
                             "description": "测试描述",
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -350,7 +358,7 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
                             "description": "Test <description> & more",
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -380,7 +388,7 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
                             "description": large_description,
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )
@@ -438,7 +446,7 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
                             "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
                         }
                     },
-                    "dataSchema": {"fields": []},
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
             }
         )

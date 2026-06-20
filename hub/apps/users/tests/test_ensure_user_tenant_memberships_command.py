@@ -1,6 +1,6 @@
-import pytest
 from io import StringIO
 
+import pytest
 from django.core.management import call_command
 from django.test import TestCase
 
@@ -30,9 +30,7 @@ class EnsureUserTenantMembershipsCommandTest(TestCase):
 
         call_command("ensure_user_tenant_memberships")
 
-        self.assertTrue(
-            UserTenantMembership.objects.filter(user=user, tenant=tenant).exists()
-        )
+        self.assertTrue(UserTenantMembership.objects.filter(user=user, tenant=tenant).exists())
         audit = AuditEvent.objects.filter(
             action=event_types.MEMBERSHIP_GRANTED,
             resource_id=str(user.id),

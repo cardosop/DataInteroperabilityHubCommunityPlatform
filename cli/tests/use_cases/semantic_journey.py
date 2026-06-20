@@ -12,10 +12,10 @@ via real API calls against the staging environment.
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_get
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _provision_analyst():
     return provision_persona("data_analyst")

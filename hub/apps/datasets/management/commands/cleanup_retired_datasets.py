@@ -15,6 +15,7 @@ Two safety nets:
 """
 
 from __future__ import annotations
+
 from datetime import timedelta
 from typing import Any
 
@@ -64,9 +65,7 @@ class Command(BaseCommand):
 
         # Iterate per-tenant so every dataset is evaluated against
         # its OWNER tenant's retention window.
-        tenants = Tenant.objects.all().only(
-            "id", "dataset_retain_after_retire_days"
-        )
+        tenants = Tenant.objects.all().only("id", "dataset_retain_after_retire_days")
         for tenant in tenants.iterator():
             window_days = int(tenant.dataset_retain_after_retire_days or 90)
             cutoff = now - timedelta(days=window_days)
@@ -83,8 +82,7 @@ class Command(BaseCommand):
 
             if dry_run:
                 self.stdout.write(
-                    f"[dry-run] tenant={tenant.id} eligible={count} "
-                    f"window_days={window_days}"
+                    f"[dry-run] tenant={tenant.id} eligible={count} window_days={window_days}"
                 )
                 continue
 
@@ -93,8 +91,7 @@ class Command(BaseCommand):
             ids = list(qs.values_list("id", flat=True))
             deleted_count, _ = Dataset.objects.filter(id__in=ids).delete()
             self.stdout.write(
-                f"tenant={tenant.id} window_days={window_days} "
-                f"deleted={deleted_count}"
+                f"tenant={tenant.id} window_days={window_days} deleted={deleted_count}"
             )
             deleted_total += deleted_count
 
@@ -124,9 +121,7 @@ class Command(BaseCommand):
                 # Audit emission must NOT block the cleanup — the
                 # deletion is already durable on the row. Log so ops
                 # has visibility but continue with the next tenant.
-                self.stderr.write(
-                    f"audit emit failed for tenant={tenant.id}: {audit_err}"
-                )
+                self.stderr.write(f"audit emit failed for tenant={tenant.id}: {audit_err}")
 
         if dry_run:
             self.stdout.write(

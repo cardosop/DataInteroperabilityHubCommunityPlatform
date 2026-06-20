@@ -33,7 +33,6 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
-from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -79,6 +78,7 @@ def _check_threshold(name: str, value: float, threshold: float, unit: str = "") 
 
 # ── 312.17.1 — API Response Time Benchmarks ──────────────────────────
 
+
 def check_api_response_times() -> dict:
     """Measure API response times against p95 thresholds.
     Uses repeated requests to estimate p95.  For CI, runs a modest sample;
@@ -93,7 +93,9 @@ def check_api_response_times() -> dict:
             results["api_get_list_ms"].append(elapsed * 1000)
     if results["api_get_list_ms"]:
         p95 = sorted(results["api_get_list_ms"])[int(len(results["api_get_list_ms"]) * 0.95)]
-        passed, msg = _check_threshold("API GET list p95", p95, THRESHOLDS["api_get_list_p95_ms"], "ms")
+        passed, msg = _check_threshold(
+            "API GET list p95", p95, THRESHOLDS["api_get_list_p95_ms"], "ms"
+        )
         print(msg)
         if not passed:
             failures.append("api_get_list_p95")
@@ -105,12 +107,13 @@ def check_api_response_times() -> dict:
 
 # ── 312.17.2 — Worker Queue Depth Benchmark ──────────────────────────
 
+
 def check_worker_queue_depth() -> dict:
     """Check RQ worker queue depth via the API or Redis directly."""
     failures: list[str] = []
 
     # Try the RQ queue stats endpoint.
-    status, elapsed, body = _api_request("/api/v1/jobs/queue-stats/")
+    status, _elapsed, body = _api_request("/api/v1/jobs/queue-stats/")
     if status == 404:
         print("  SKIP  Worker queue stats endpoint not available")
         return {"failures": []}
@@ -133,7 +136,9 @@ def check_worker_queue_depth() -> dict:
             depth = len(data)
 
         if depth is not None:
-            passed, msg = _check_threshold("Worker queue depth", depth, THRESHOLDS["worker_queue_depth_max"])
+            passed, msg = _check_threshold(
+                "Worker queue depth", depth, THRESHOLDS["worker_queue_depth_max"]
+            )
             print(msg)
             if not passed:
                 failures.append("worker_queue_depth")
@@ -147,6 +152,7 @@ def check_worker_queue_depth() -> dict:
 
 # ── 312.17.3 — PgBouncer Connection Pool Benchmark ───────────────────
 
+
 def check_pgbouncer_pool() -> dict:
     """Check PgBouncer client wait time via the PgBouncer admin console or API."""
     failures: list[str] = []
@@ -159,15 +165,19 @@ def check_pgbouncer_pool() -> dict:
         return {"failures": []}
 
     if status == 200:
-        print(f"  INFO  Database health endpoint responded in {elapsed*1000:.0f}ms")
+        print(f"  INFO  Database health endpoint responded in {elapsed * 1000:.0f}ms")
         # If the response includes pool stats, parse them.
         try:
             data = json.loads(body)
             if isinstance(data, dict):
                 pool_wait = data.get("pgbouncer_avg_wait_ms") or data.get("pool_wait_ms")
                 if pool_wait is not None:
-                    passed, msg = _check_threshold("PgBouncer client wait", pool_wait,
-                                                    THRESHOLDS["pgbouncer_wait_p95_ms"], "ms")
+                    passed, msg = _check_threshold(
+                        "PgBouncer client wait",
+                        pool_wait,
+                        THRESHOLDS["pgbouncer_wait_p95_ms"],
+                        "ms",
+                    )
                     print(msg)
                     if not passed:
                         failures.append("pgbouncer_wait")
@@ -183,6 +193,7 @@ def check_pgbouncer_pool() -> dict:
 
 # ── 312.17.4 — DB Active Connections Benchmark ───────────────────────
 
+
 def check_db_connections() -> dict:
     """Check active PostgreSQL connections via the health endpoint."""
     failures: list[str] = []
@@ -190,7 +201,7 @@ def check_db_connections() -> dict:
     status, elapsed, body = _api_request("/api/v1/health/database/")
     if status != 200:
         # Try the generic health endpoint.
-        status, elapsed, body = _api_request("/health/")
+        status, _elapsed, body = _api_request("/health/")
         if status not in (200, 503):
             print("  SKIP  No health endpoint available for DB connection check")
             return {"failures": []}
@@ -202,10 +213,13 @@ def check_db_connections() -> dict:
         return {"failures": []}
 
     if isinstance(data, dict):
-        conns = data.get("active_connections") or data.get("db_connections") or data.get("connections")
+        conns = (
+            data.get("active_connections") or data.get("db_connections") or data.get("connections")
+        )
         if conns is not None:
-            passed, msg = _check_threshold("DB active connections", conns,
-                                            THRESHOLDS["db_active_connections_max"])
+            passed, msg = _check_threshold(
+                "DB active connections", conns, THRESHOLDS["db_active_connections_max"]
+            )
             print(msg)
             if not passed:
                 failures.append("db_connections")
@@ -219,13 +233,14 @@ def check_db_connections() -> dict:
 
 # ── 312.17.5 — Redis Memory Benchmark ────────────────────────────────
 
+
 def check_redis_memory() -> dict:
     """Check Redis memory usage via health endpoint or Redis metrics."""
     failures: list[str] = []
 
     status, elapsed, body = _api_request("/api/v1/health/redis/")
     if status == 404:
-        status, elapsed, body = _api_request("/health/")
+        status, _elapsed, body = _api_request("/health/")
         if status not in (200, 503):
             print("  SKIP  No health endpoint available for Redis memory check")
             return {"failures": []}
@@ -245,8 +260,7 @@ def check_redis_memory() -> dict:
                 pct = redis_info.get(key)
                 if pct is not None:
                     passed, msg = _check_threshold(
-                        f"Redis {instance} memory", pct,
-                        THRESHOLDS["redis_memory_pct_max"], "%"
+                        f"Redis {instance} memory", pct, THRESHOLDS["redis_memory_pct_max"], "%"
                     )
                     print(msg)
                     if not passed:
@@ -255,8 +269,9 @@ def check_redis_memory() -> dict:
             # Generic memory check.
             mem = redis_info if isinstance(redis_info, (int, float)) else None
             if mem is not None:
-                passed, msg = _check_threshold("Redis memory", mem,
-                                                THRESHOLDS["redis_memory_pct_max"], "%")
+                passed, msg = _check_threshold(
+                    "Redis memory", mem, THRESHOLDS["redis_memory_pct_max"], "%"
+                )
                 print(msg)
                 if not passed:
                     failures.append("redis_memory")
@@ -281,8 +296,12 @@ CHECKS = {
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Performance baseline gate checks (312.17)")
-    parser.add_argument("--check", choices=list(CHECKS) + ["all"], default="all",
-                        help="Which check to run (default: all)")
+    parser.add_argument(
+        "--check",
+        choices=list(CHECKS) + ["all"],
+        default="all",
+        help="Which check to run (default: all)",
+    )
     parser.add_argument("--json", action="store_true", help="JSON output for CI")
     args = parser.parse_args()
 
@@ -292,25 +311,25 @@ def main() -> None:
 
     for name in selected:
         label, fn = CHECKS[name]
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"  {label} (312.17)")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         result = fn()
         all_failures.extend(result.get("failures", []))
         report[name] = result
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     if all_failures:
         print(f"  FAILED: {len(all_failures)} threshold(s) exceeded:")
         for f in all_failures:
             print(f"    - {f}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         if args.json:
             print(json.dumps({"status": "fail", "failures": all_failures, "report": report}))
         sys.exit(1)
     else:
         print("  PASSED: All performance baselines within thresholds")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         if args.json:
             print(json.dumps({"status": "pass", "failures": [], "report": report}))
         sys.exit(0)

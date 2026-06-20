@@ -18,21 +18,11 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from threading import Thread
 
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
 from hub.apps.contracts.config.odps_refs_config import ODPSRefsConfig
 from hub.apps.contracts.odps_errors import ODPSRefResolutionError
-from hub.apps.contracts.odps_rate_limiting import (
-    RATE_LIMIT_GLOBAL,
-    RATE_LIMIT_PER_TENANT,
-    RATE_LIMIT_PER_USER,
-    check_rate_limit,
-)
 from hub.apps.contracts.ref_resolver import (
-    DEFAULT_MAX_REF_SIZE,
-    DEFAULT_MAX_TOTAL_SIZE,
-    DEFAULT_TIMEOUT_PER_REF,
-    DEFAULT_TIMEOUT_TOTAL,
     MAX_URL_LENGTH,
     RefResolver,
 )
@@ -412,7 +402,6 @@ class RateLimitBypassPenetrationTest(TestCase):
             self.config._config_data["url_allowlist"] = [base_url]
             url = f"{base_url}/schema.json"
             success_count = 0
-            rate_limited = False
             for _ in range(15):
                 try:
                     result = self.resolver.resolve_external(url)
@@ -420,7 +409,6 @@ class RateLimitBypassPenetrationTest(TestCase):
                     success_count += 1
                 except ODPSRefResolutionError as e:
                     if e.error_code == ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED:
-                        rate_limited = True
                         break
                     raise
             self.assertGreater(

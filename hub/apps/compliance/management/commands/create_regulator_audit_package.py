@@ -5,47 +5,36 @@ Usage:
         --tenant <slug> --regulation GDPR --from 2025-01-01 --to 2025-12-31 \
         --output /tmp/audit-package.zip
 """
+
 import hashlib
 import json
-import os
 import zipfile
-from datetime import datetime
 
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
 
 class Command(BaseCommand):
     help = "Create a regulator audit evidence package."
 
     def add_arguments(self, parser):
+        parser.add_argument("--tenant", type=str, required=True, help="Tenant slug or UUID.")
+        parser.add_argument("--regulation", type=str, default="GDPR", help="Regulation key.")
         parser.add_argument(
-            "--tenant", type=str, required=True, help="Tenant slug or UUID."
+            "--from", dest="from_date", type=str, required=True, help="Start date (ISO format)."
         )
         parser.add_argument(
-            "--regulation", type=str, default="GDPR", help="Regulation key."
+            "--to", dest="to_date", type=str, required=True, help="End date (ISO format)."
         )
+        parser.add_argument("--output", type=str, required=True, help="Output ZIP file path.")
         parser.add_argument(
-            "--from", dest="from_date", type=str, required=True,
-            help="Start date (ISO format)."
-        )
-        parser.add_argument(
-            "--to", dest="to_date", type=str, required=True,
-            help="End date (ISO format)."
-        )
-        parser.add_argument(
-            "--output", type=str, required=True, help="Output ZIP file path."
-        )
-        parser.add_argument(
-            "--verbose", action="store_true", default=False,
-            help="Show per-section progress."
+            "--verbose", action="store_true", default=False, help="Show per-section progress."
         )
 
     def handle(self, *args, **options):
         import uuid as _uuid
 
-        from hub.apps.tenants.models import Tenant
         from hub.apps.audit.models import AuditEvent
+        from hub.apps.tenants.models import Tenant
 
         tenant_slug = options["tenant"]
         try:
@@ -77,11 +66,16 @@ class Command(BaseCommand):
         ).order_by("timestamp")
         audit_lines = []
         for e in events.iterator(chunk_size=5000):
-            audit_lines.append(json.dumps({
-                "id": str(e.id), "action": e.action,
-                "resource_type": e.resource_type,
-                "timestamp": e.timestamp.isoformat(),
-            }))
+            audit_lines.append(
+                json.dumps(
+                    {
+                        "id": str(e.id),
+                        "action": e.action,
+                        "resource_type": e.resource_type,
+                        "timestamp": e.timestamp.isoformat(),
+                    }
+                )
+            )
         sections["audit_trail.jsonl"] = "\n".join(audit_lines)
         if verbose:
             self.stdout.write(f"    {len(audit_lines)} events")
@@ -90,6 +84,7 @@ class Command(BaseCommand):
         if verbose:
             self.stdout.write("  Exporting compliance scans...")
         from hub.apps.compliance.models import ComplianceRun
+
         scans = ComplianceRun.objects.filter(
             tenant=tenant,
             created_at__gte=from_date,
@@ -97,12 +92,17 @@ class Command(BaseCommand):
         ).order_by("created_at")
         scan_lines = []
         for s in scans.iterator(chunk_size=5000):
-            scan_lines.append(json.dumps({
-                "id": str(s.id), "framework": s.framework,
-                "regulation_key": s.regulation_key,
-                "allowed_to_store": s.allowed_to_store,
-                "created_at": s.created_at.isoformat(),
-            }))
+            scan_lines.append(
+                json.dumps(
+                    {
+                        "id": str(s.id),
+                        "framework": s.framework,
+                        "regulation_key": s.regulation_key,
+                        "allowed_to_store": s.allowed_to_store,
+                        "created_at": s.created_at.isoformat(),
+                    }
+                )
+            )
         sections["compliance_scans.jsonl"] = "\n".join(scan_lines)
         if verbose:
             self.stdout.write(f"    {len(scan_lines)} scans")
@@ -111,14 +111,10 @@ class Command(BaseCommand):
         with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for filename, content in sections.items():
                 zf.writestr(filename, content)
-                checksums[filename] = hashlib.sha256(
-                    content.encode()
-                ).hexdigest()
+                checksums[filename] = hashlib.sha256(content.encode()).hexdigest()
 
             # Add checksums
-            checksum_content = "\n".join(
-                f"{h}  {f}" for f, h in checksums.items()
-            )
+            checksum_content = "\n".join(f"{h}  {f}" for f, h in checksums.items())
             zf.writestr("checksums.txt", checksum_content)
 
         self.stdout.write(

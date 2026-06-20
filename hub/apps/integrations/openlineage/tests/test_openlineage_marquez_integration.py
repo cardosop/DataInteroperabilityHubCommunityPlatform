@@ -20,6 +20,7 @@ The test asserts:
   the job populated by our event.
 * ``DeliveryOutcome == DELIVERED`` (not DEAD_LETTERED).
 """
+
 from __future__ import annotations
 
 import os
@@ -27,7 +28,6 @@ import uuid
 
 import pytest
 import requests
-
 
 MARQUEZ_URL = os.environ.get("MARQUEZ_INTEGRATION_TEST_URL")
 
@@ -46,6 +46,7 @@ def _build_event() -> dict:
     from hub.apps.integrations.openlineage.translator import (
         meshant_edge_to_openlineage,
     )
+
     edge = {
         "id": str(uuid.uuid4()),
         "source_contract": str(uuid.uuid4()),
@@ -66,7 +67,8 @@ def _build_event() -> dict:
 @pytest.mark.django_db(transaction=True)
 def test_outbound_event_lands_in_marquez():
     from hub.apps.integrations.openlineage.adapter import (
-        DeliveryOutcome, OpenLineageAdapter,
+        DeliveryOutcome,
+        OpenLineageAdapter,
     )
     from hub.apps.tenants.models import Tenant
 
@@ -75,7 +77,8 @@ def test_outbound_event_lands_in_marquez():
     # never goes through the API auth path.
     suffix = uuid.uuid4().hex[:8]
     tenant = Tenant.objects.create(
-        name=f"Integ Co {suffix}", slug=f"integ-{suffix}",
+        name=f"Integ Co {suffix}",
+        slug=f"integ-{suffix}",
     )
 
     event = _build_event()
@@ -94,14 +97,19 @@ def test_outbound_event_lands_in_marquez():
     # Verify the job exists in Marquez via its own API. The event
     # we sent declared ``job.namespace=meshant.lineage`` +
     # ``job.name=<transformation_ref>`` so the lookup is deterministic.
+    # URL-encode path segments: job names may contain :// and other
+    # characters that break unencoded URL paths.
+    from urllib.parse import quote
+
     job_namespace = event["job"]["namespace"]
     job_name = event["job"]["name"]
     base = MARQUEZ_URL.rsplit("/api/v1/", 1)[0] + "/api/v1"
+    encoded_ns = quote(job_namespace, safe="")
+    encoded_job = quote(job_name, safe="")
     resp = requests.get(
-        f"{base}/namespaces/{job_namespace}/jobs/{job_name}",
+        f"{base}/namespaces/{encoded_ns}/jobs/{encoded_job}",
         timeout=10,
     )
     assert resp.status_code == 200, (
-        f"Marquez did not register the job: status={resp.status_code} "
-        f"body={resp.text[:300]}"
+        f"Marquez did not register the job: status={resp.status_code} body={resp.text[:300]}"
     )

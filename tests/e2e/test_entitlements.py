@@ -11,10 +11,10 @@ Covers:
 Uses REAL services (no mocks).
 """
 
+import uuid
 from datetime import timedelta
 
 import pytest
-from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 
@@ -25,13 +25,11 @@ from hub.apps.marketplace.models import (
     Listing,
     ListingStatus,
     Order,
-    OrderStatus,
     PricingModel,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
 
 from .conftest import E2ETestBase, get_response_data
-import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 
@@ -48,14 +46,18 @@ class EntitlementsE2ETest(E2ETestBase):
 
         # Create consumer tenant (must have active subscription for order creation)
         self.consumer_tenant = Tenant.objects.create(
-            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}", slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
         from hub.apps.users.models import User
 
         ensure_e2e_tenant_ready(self.consumer_tenant)
         self.consumer_user = User.objects.create_user(
-            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.consumer_tenant
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.consumer_tenant,
         )
 
     def test_entitlement_creation_from_order(self):
@@ -285,11 +287,14 @@ class EntitlementsE2ETest(E2ETestBase):
             f"/api/v1/marketplace/entitlements/?status={EntitlementStatus.ACTIVE}"
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        entitlement_statuses = {e["status"] for e in (get_response_data(response) or {}).get("results", [])}
+        {e["status"] for e in (get_response_data(response) or {}).get("results", [])}
         # All returned entitlements should have ACTIVE status
         for ent in (get_response_data(response) or {}).get("results", []):
-            self.assertEqual(ent.get("status"), EntitlementStatus.ACTIVE,
-                f"Filter should only return ACTIVE entitlements, got {ent.get('status')}")
+            self.assertEqual(
+                ent.get("status"),
+                EntitlementStatus.ACTIVE,
+                f"Filter should only return ACTIVE entitlements, got {ent.get('status')}",
+            )
 
     def test_get_entitlement_details(self):
         """Test retrieving entitlement details"""
@@ -324,7 +329,7 @@ class EntitlementsE2ETest(E2ETestBase):
 
         # Endpoint may not be available or may require different permissions
         if response.status_code == status.HTTP_404_NOT_FOUND:
-            pytest.skip("Entitlement detail endpoint not available")
+            pytest.skip("Entitlement detail endpoint not available")  # noqa: skip-in-body — runtime service dependency
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual((get_response_data(response) or {})["id"], str(entitlement.id))
@@ -349,7 +354,7 @@ class EntitlementsE2ETest(E2ETestBase):
         )
 
         # Create active entitlement
-        entitlement = Entitlement.objects.create(
+        Entitlement.objects.create(
             tenant=self.consumer_tenant,
             asset=asset,
             listing=listing,
@@ -366,11 +371,14 @@ class EntitlementsE2ETest(E2ETestBase):
 
         # Endpoint may not be available
         if response.status_code == status.HTTP_404_NOT_FOUND:
-            pytest.skip("Entitlement access check endpoint not available")
+            pytest.skip("Entitlement access check endpoint not available")  # noqa: skip-in-body — runtime service dependency
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         access_data = get_response_data(response) or {}
-        self.assertTrue(access_data.get("has_access"), f"Should have access with valid entitlement, got: {access_data}")
+        self.assertTrue(
+            access_data.get("has_access"),
+            f"Should have access with valid entitlement, got: {access_data}",
+        )
         self.assertEqual((get_response_data(response) or {}).get("asset_id"), str(asset_id))
 
     def test_entitlement_cross_tenant_isolation(self):
@@ -391,7 +399,7 @@ class EntitlementsE2ETest(E2ETestBase):
         )
 
         # Create entitlement for consumer tenant
-        entitlement = Entitlement.objects.create(
+        Entitlement.objects.create(
             tenant=self.consumer_tenant,
             asset=asset,
             listing=listing,
@@ -400,12 +408,16 @@ class EntitlementsE2ETest(E2ETestBase):
 
         # Create another tenant (no entitlement)
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {uuid.uuid4().hex[:8]}", slug=f"other-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         from hub.apps.users.models import User
 
         other_user = User.objects.create_user(
-            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=other_tenant,
         )
 
         # Switch to other user (no entitlement)

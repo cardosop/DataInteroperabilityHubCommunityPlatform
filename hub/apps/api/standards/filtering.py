@@ -4,7 +4,7 @@ Standardized Filtering
 Provides consistent filtering across all API endpoints.
 """
 
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 import structlog
 from django.db.models import Q, QuerySet
@@ -48,7 +48,7 @@ class StandardFilterBackend(BaseFilterBackend):
         # Get allowed filter fields from view; normalise to List[str] | None
         raw_fields = getattr(view, "filter_fields", None)
         if raw_fields and isinstance(raw_fields, (list, set, tuple, frozenset)):
-            allowed_fields: Optional[List[str]] = list(raw_fields)
+            allowed_fields: list[str] | None = list(raw_fields)
         else:
             allowed_fields = None
 
@@ -57,9 +57,7 @@ class StandardFilterBackend(BaseFilterBackend):
         # (e.g. from URL bookmarks or older frontends) should not break requests.
         if allowed_fields is not None:
             filter_params = {
-                k: v
-                for k, v in filter_params.items()
-                if k.split("__")[0] in allowed_fields
+                k: v for k, v in filter_params.items() if k.split("__")[0] in allowed_fields
             }
             if not filter_params:
                 return queryset
@@ -70,7 +68,7 @@ class StandardFilterBackend(BaseFilterBackend):
         return queryset
 
 
-def parse_filter_params(request) -> Dict[str, Any]:
+def parse_filter_params(request) -> dict[str, Any]:
     """
     Parse filter parameters from request query params.
 
@@ -108,9 +106,9 @@ def parse_filter_params(request) -> Dict[str, Any]:
 
 
 def validate_filter_params(
-    filter_params: Dict[str, Any],
-    allowed_fields: Optional[List[str]] = None,
-) -> Tuple[bool, Optional[str]]:
+    filter_params: dict[str, Any],
+    allowed_fields: list[str] | None = None,
+) -> tuple[bool, str | None]:
     """
     Validate filter parameters.
 
@@ -126,7 +124,7 @@ def validate_filter_params(
 
     # Check if all fields are allowed
     if allowed_fields is not None:
-        for field in filter_params.keys():
+        for field in filter_params:
             # Extract base field name (before __)
             base_field = field.split("__")[0]
             if base_field not in allowed_fields:
@@ -156,7 +154,7 @@ def validate_filter_params(
         "day",
     }
 
-    for field in filter_params.keys():
+    for field in filter_params:
         if "__" in field:
             parts = field.split("__")
             if len(parts) > 1:
@@ -175,8 +173,8 @@ def validate_filter_params(
 
 def apply_filters(
     queryset: QuerySet,
-    filter_params: Dict[str, Any],
-    allowed_fields: Optional[List[str]] = None,
+    filter_params: dict[str, Any],
+    allowed_fields: list[str] | None = None,
 ) -> QuerySet:
     """
     Apply filters to queryset.

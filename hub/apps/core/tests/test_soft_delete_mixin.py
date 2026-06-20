@@ -1,6 +1,8 @@
 """Phase 92: Soft-delete mixin tests."""
+
 from django.test import TestCase
 from django.utils import timezone
+
 from hub.apps.tenants.models import Tenant
 
 

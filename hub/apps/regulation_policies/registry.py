@@ -6,11 +6,13 @@ overrides remain in ``TenantConfig`` / future policy apps.
 """
 
 from __future__ import annotations
+
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Iterable, cast
+from typing import Any, cast
 
 import yaml
 from django.conf import settings
@@ -153,7 +155,7 @@ def _regulation_yaml_document() -> dict[str, Any]:
     """Cached YAML root document (authorities + breach routing)."""
     path = _data_path()
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    return cast(dict[str, Any], raw if isinstance(raw, dict) else {})
+    return cast("dict[str, Any]", raw if isinstance(raw, dict) else {})
 
 
 @lru_cache(maxsize=1)

@@ -25,7 +25,7 @@ def test_compose_file():
 @pytest.fixture(scope="module")
 def test_compose_config(test_compose_file):
     """Load docker-compose.test.yml configuration."""
-    with open(test_compose_file, "r") as f:
+    with open(test_compose_file) as f:
         return yaml.safe_load(f)
 
 
@@ -34,9 +34,9 @@ class TestDockerComposeTest:
 
     def test_test_compose_file_exists(self, test_compose_file):
         """docker-compose.test.yml must exist."""
-        assert (
-            test_compose_file.exists()
-        ), f"docker-compose.test.yml not found at {test_compose_file}"
+        assert test_compose_file.exists(), (
+            f"docker-compose.test.yml not found at {test_compose_file}"
+        )
 
     def test_test_compose_valid_yaml(self, test_compose_config):
         """docker-compose.test.yml must be valid YAML with services."""
@@ -98,6 +98,6 @@ class TestDockerComposeTest:
         """Every service must have build or image."""
         services = test_compose_config.get("services", {})
         for name, config in services.items():
-            assert (
-                "build" in config or "image" in config
-            ), f"Service {name} must have build or image"
+            assert "build" in config or "image" in config, (
+                f"Service {name} must have build or image"
+            )

@@ -1,10 +1,12 @@
 """HMAC-SHA256 proofs for consent records (rolling 3-key verification window)."""
 
 from __future__ import annotations
+
 import hashlib
 import hmac
 import json
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from django.conf import settings
 
@@ -65,7 +67,9 @@ def get_signing_key_ring_for_tenant(tenant_id: str) -> list[bytes]:
     return keys
 
 
-def build_canonical_bytes(*, tenant_id: str, user_id: str, purpose_id: str, payload: Mapping[str, Any]) -> bytes:
+def build_canonical_bytes(
+    *, tenant_id: str, user_id: str, purpose_id: str, payload: Mapping[str, Any]
+) -> bytes:
     """Deterministic canonical representation for HMAC input."""
     body = {
         "tenant_id": str(tenant_id),
@@ -73,10 +77,14 @@ def build_canonical_bytes(*, tenant_id: str, user_id: str, purpose_id: str, payl
         "purpose_id": str(purpose_id),
         "payload": dict(sorted(payload.items())),
     }
-    return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
-def compute_proof_hmac(*, key: bytes, tenant_id: str, user_id: str, purpose_id: str, payload: Mapping[str, Any]) -> str:
+def compute_proof_hmac(
+    *, key: bytes, tenant_id: str, user_id: str, purpose_id: str, payload: Mapping[str, Any]
+) -> str:
     msg = build_canonical_bytes(
         tenant_id=tenant_id, user_id=user_id, purpose_id=purpose_id, payload=payload
     )

@@ -5,10 +5,11 @@ Comprehensive test runner for Redis configuration tests.
 This script runs all Redis configuration tests and validates the implementation
 without requiring Django setup. It directly tests Redis connections and configuration.
 """
-import os
+
 import sys
-import redis
 from pathlib import Path
+
+import redis
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -28,7 +29,9 @@ def test_redis_instances_accessible():
     results = []
     for port, name in clients_config:
         try:
-            client = redis.Redis(host="localhost", port=port, decode_responses=True, socket_connect_timeout=3)
+            client = redis.Redis(
+                host="localhost", port=port, decode_responses=True, socket_connect_timeout=3
+            )
             result = client.ping()
             if result:
                 print(f"✓ redis-{name} (port {port}): Accessible")
@@ -50,15 +53,27 @@ def test_redis_instances_isolated():
     """Test that Redis instances are isolated."""
     print("\n=== Testing Redis Instance Isolation ===")
     try:
-        cache_client = redis.Redis(host="localhost", port=6379, decode_responses=True, socket_connect_timeout=3)
-        queue_client = redis.Redis(host="localhost", port=6380, decode_responses=True, socket_connect_timeout=3)
-        events_client = redis.Redis(host="localhost", port=6381, decode_responses=True, socket_connect_timeout=3)
-        channels_client = redis.Redis(host="localhost", port=6382, decode_responses=True, socket_connect_timeout=3)
+        cache_client = redis.Redis(
+            host="localhost", port=6379, decode_responses=True, socket_connect_timeout=3
+        )
+        queue_client = redis.Redis(
+            host="localhost", port=6380, decode_responses=True, socket_connect_timeout=3
+        )
+        events_client = redis.Redis(
+            host="localhost", port=6381, decode_responses=True, socket_connect_timeout=3
+        )
+        channels_client = redis.Redis(
+            host="localhost", port=6382, decode_responses=True, socket_connect_timeout=3
+        )
 
         # Set unique keys in each instance
         test_keys = {}
-        for name, client in [("cache", cache_client), ("queue", queue_client),
-                            ("events", events_client), ("channels", channels_client)]:
+        for name, client in [
+            ("cache", cache_client),
+            ("queue", queue_client),
+            ("events", events_client),
+            ("channels", channels_client),
+        ]:
             key = f"test_isolation_{name}"
             value = f"{name}_value"
             client.set(key, value)
@@ -67,8 +82,12 @@ def test_redis_instances_isolated():
 
         # Verify isolation - keys should only exist in their respective instances
         all_isolated = True
-        for name, client in [("cache", cache_client), ("queue", queue_client),
-                            ("events", events_client), ("channels", channels_client)]:
+        for name, client in [
+            ("cache", cache_client),
+            ("queue", queue_client),
+            ("events", events_client),
+            ("channels", channels_client),
+        ]:
             expected_key, expected_value = test_keys[name]
             # Check that key exists in correct instance
             if client.get(expected_key) != expected_value:
@@ -76,8 +95,12 @@ def test_redis_instances_isolated():
                 all_isolated = False
 
         # Cleanup
-        for name, client in [("cache", cache_client), ("queue", queue_client),
-                            ("events", events_client), ("channels", channels_client)]:
+        for name, client in [
+            ("cache", cache_client),
+            ("queue", queue_client),
+            ("events", events_client),
+            ("channels", channels_client),
+        ]:
             key, _ = test_keys[name]
             client.delete(key)
 
@@ -127,24 +150,16 @@ def test_redis_connection_pools():
         # Test connection pool creation directly using redis.ConnectionPool
         # This avoids Django settings dependency
         cache_pool = redis.ConnectionPool.from_url(
-            "redis://localhost:6379/0",
-            max_connections=50,
-            decode_responses=True
+            "redis://localhost:6379/0", max_connections=50, decode_responses=True
         )
         queue_pool = redis.ConnectionPool.from_url(
-            "redis://localhost:6380/0",
-            max_connections=20,
-            decode_responses=True
+            "redis://localhost:6380/0", max_connections=20, decode_responses=True
         )
         events_pool = redis.ConnectionPool.from_url(
-            "redis://localhost:6381/0",
-            max_connections=30,
-            decode_responses=True
+            "redis://localhost:6381/0", max_connections=30, decode_responses=True
         )
         channels_pool = redis.ConnectionPool.from_url(
-            "redis://localhost:6382/0",
-            max_connections=40,
-            decode_responses=True
+            "redis://localhost:6382/0", max_connections=40, decode_responses=True
         )
 
         assert cache_pool is not None
@@ -176,6 +191,7 @@ def test_redis_connection_pools():
     except Exception as e:
         print(f"✗ Connection pool test error: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -216,4 +232,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

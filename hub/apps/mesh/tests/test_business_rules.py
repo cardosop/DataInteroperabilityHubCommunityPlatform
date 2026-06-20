@@ -9,22 +9,19 @@ Unit tests for DataMeshBusinessRules.
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
 
+import uuid
 from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.test import TestCase
 
-from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.core.business_rules.registry import get_registry
-from hub.apps.core.services.base import ValidationError
 from hub.apps.mesh.business_rules import (
     DataMeshBusinessRules,
-    DataMeshRuleExecutionContext,
 )
 from hub.apps.mesh.models import DataMeshDomain, DomainStatus
 from hub.apps.tenants.models import KYCStatus, Tenant
-import uuid
 
 User = get_user_model()
 
@@ -41,7 +38,9 @@ class DataMeshBusinessRulesInitializationTest(TestCase):
     def test_initialization_with_tenant_id(self):
         """Test initialization with tenant_id"""
         tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         rules = DataMeshBusinessRules(tenant_id=str(tenant.id))
         self.assertEqual(rules.tenant_id, str(tenant.id))
@@ -50,7 +49,9 @@ class DataMeshBusinessRulesInitializationTest(TestCase):
     def test_initialization_with_tenant_and_user(self):
         """Test initialization with tenant_id and user_id"""
         tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=tenant
@@ -79,10 +80,14 @@ class DataMeshBusinessRulesDomainStructureTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -183,7 +188,9 @@ class DataMeshBusinessRulesDomainStructureTest(TestCase):
             name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=other_tenant,
         )
 
         domain = DataMeshDomain(
@@ -203,13 +210,19 @@ class DataMeshBusinessRulesOwnershipTransferTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.current_owner = User.objects.create_user(
-            email=f"current-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"current-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.new_owner = User.objects.create_user(
-            email=f"new-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"new-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant,
@@ -269,7 +282,9 @@ class DataMeshBusinessRulesOwnershipTransferTest(TestCase):
             name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=other_tenant,
         )
 
         result = self.rules.validate_ownership_transfer(
@@ -315,7 +330,9 @@ class DataMeshBusinessRulesBoundariesTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id))
 
@@ -437,10 +454,14 @@ class DataMeshBusinessRulesPolicyConflictTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant, name="Test Domain", owner=self.user, status=DomainStatus.ACTIVE
@@ -790,10 +811,14 @@ class DataMeshBusinessRulesGovernanceIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant, name="Test Domain", owner=self.user, status=DomainStatus.ACTIVE
@@ -887,7 +912,6 @@ class DataMeshBusinessRulesGovernanceIntegrationTest(TestCase):
     def test_validate_policy_conflicts_with_tenant_wide_policies(self):
         """Test validate_policy_conflicts considers tenant-wide policies (inheritance)"""
         from hub.apps.governance.models import AccessPolicy
-        from hub.apps.mesh.models import PolicyApplication, PolicyApplicationStatus
 
         # Create tenant-wide policy (inherited)
         tenant_policy = AccessPolicy.objects.create(
@@ -987,7 +1011,6 @@ class DataMeshBusinessRulesGovernanceIntegrationTest(TestCase):
 
     def test_policy_precedence_domain_overrides_tenant(self):
         """Test policy precedence: domain-specific policies override tenant-wide at same priority"""
-        from hub.apps.governance.models import AccessPolicy
 
         # Check precedence resolution
         precedence = self.rules._resolve_policy_precedence(
@@ -1000,7 +1023,6 @@ class DataMeshBusinessRulesGovernanceIntegrationTest(TestCase):
 
     def test_policy_precedence_higher_priority_wins(self):
         """Test policy precedence: higher priority (lower number) wins"""
-        from hub.apps.governance.models import AccessPolicy
 
         # Test with existing having higher priority
         precedence = self.rules._resolve_policy_precedence(
@@ -1024,7 +1046,6 @@ class DataMeshBusinessRulesGovernanceIntegrationTest(TestCase):
 
     def test_condition_overlap_detailed_nested_conditions(self):
         """Test detailed condition overlap detection with nested conditions"""
-        from hub.apps.governance.models import AccessPolicy
 
         conditions1 = {
             "user": {"user_roles": ["admin", "manager"], "department": "IT"},
@@ -1051,7 +1072,6 @@ class DataMeshBusinessRulesGovernanceIntegrationTest(TestCase):
 
     def test_condition_overlap_detailed_list_intersection(self):
         """Test detailed condition overlap detection with list intersections"""
-        from hub.apps.governance.models import AccessPolicy
 
         conditions1 = {"user_roles": ["admin", "manager", "user"]}
         conditions2 = {"user_roles": ["admin", "guest"]}
@@ -1114,10 +1134,14 @@ class DataMeshBusinessRulesDomainOwnershipTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant,
@@ -1198,7 +1222,9 @@ class DataMeshBusinessRulesDomainOwnershipTest(TestCase):
             name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=other_tenant,
         )
 
         from hub.apps.users.models import Role, UserRole
@@ -1227,10 +1253,14 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant,
@@ -1363,7 +1393,9 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
 
         # Create user without TENANT_ADMIN role
         regular_user = User.objects.create_user(
-            email=f"regular-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"regular-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
         rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(regular_user.id))
@@ -1386,10 +1418,14 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.domain = DataMeshDomain.objects.create(
             tenant=self.tenant, name="Test Domain", owner=self.user, status=DomainStatus.ACTIVE
@@ -1505,7 +1541,6 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
     def test_validate_policy_conflicts_with_tenant_wide_policies(self):
         """Test validate_policy_conflicts considers tenant-wide policies (inheritance)"""
         from hub.apps.governance.models import AccessPolicy
-        from hub.apps.mesh.models import PolicyApplication, PolicyApplicationStatus
 
         # Create tenant-wide policy (inherited)
         tenant_policy = AccessPolicy.objects.create(
@@ -1606,10 +1641,9 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
     def test_policy_precedence_domain_overrides_tenant(self):
         """Test policy precedence: domain-specific policies override tenant-wide at same priority"""
         from hub.apps.governance.models import AccessPolicy
-        from hub.apps.mesh.models import PolicyApplication, PolicyApplicationStatus
 
         # Create tenant-wide policy
-        tenant_policy = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Tenant Policy",
             conditions={"user_roles": ["admin"]},
@@ -1620,7 +1654,7 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
         )
 
         # Create domain-specific policy with same priority
-        domain_policy = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Domain Policy",
             conditions={"user_roles": ["admin"]},
@@ -1639,7 +1673,6 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
 
     def test_policy_precedence_higher_priority_wins(self):
         """Test policy precedence: higher priority (lower number) wins"""
-        from hub.apps.governance.models import AccessPolicy
 
         # Test with existing having higher priority
         precedence = self.rules._resolve_policy_precedence(
@@ -1663,7 +1696,6 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
 
     def test_condition_overlap_detailed_nested_conditions(self):
         """Test detailed condition overlap detection with nested conditions"""
-        from hub.apps.governance.models import AccessPolicy
 
         conditions1 = {
             "user": {"user_roles": ["admin", "manager"], "department": "IT"},
@@ -1690,7 +1722,6 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
 
     def test_condition_overlap_detailed_list_intersection(self):
         """Test detailed condition overlap detection with list intersections"""
-        from hub.apps.governance.models import AccessPolicy
 
         conditions1 = {"user_roles": ["admin", "manager", "user"]}
         conditions2 = {"user_roles": ["admin", "guest"]}
@@ -1753,10 +1784,14 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -1782,7 +1817,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
     def test_validate_domain_boundary_definition_overlap_data_products(self):
         """Test validate_domain_boundary_definition detects overlap in data_products"""
         # Create first domain
-        domain1 = DataMeshDomain.objects.create(
+        DataMeshDomain.objects.create(
             tenant=self.tenant,
             name="Domain 1",
             owner=self.user,
@@ -1810,7 +1845,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
     def test_validate_domain_boundary_definition_overlap_schemas(self):
         """Test validate_domain_boundary_definition detects overlap in schemas"""
         # Create first domain
-        domain1 = DataMeshDomain.objects.create(
+        DataMeshDomain.objects.create(
             tenant=self.tenant,
             name="Domain 1",
             owner=self.user,
@@ -1837,7 +1872,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
     def test_validate_domain_boundary_definition_overlap_access_patterns_warning(self):
         """Test validate_domain_boundary_definition warns about overlap in access_patterns"""
         # Create first domain
-        domain1 = DataMeshDomain.objects.create(
+        DataMeshDomain.objects.create(
             tenant=self.tenant,
             name="Domain 1",
             owner=self.user,
@@ -1865,7 +1900,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
     def test_validate_domain_boundary_definition_no_overlap(self):
         """Test validate_domain_boundary_definition with no overlaps"""
         # Create first domain
-        domain1 = DataMeshDomain.objects.create(
+        DataMeshDomain.objects.create(
             tenant=self.tenant,
             name="Domain 1",
             owner=self.user,
@@ -1939,7 +1974,10 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
         )
 
         asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", domain=None  # No domain set
+            tenant=self.tenant,
+            key="test-asset",
+            name="Test Asset",
+            domain=None,  # No domain set
         )
 
         result = self.rules.validate_asset_domain_boundary(asset, domain)
@@ -2020,7 +2058,9 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=other_tenant,
         )
 
         domain2 = DataMeshDomain.objects.create(
@@ -2149,7 +2189,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
         )
         domain.refresh_from_db()
 
-        result = self.rules.validate_domain_resource_quota(domain)
+        self.rules.validate_domain_resource_quota(domain)
 
         # Should handle gracefully - resource_quota might be stored as string in DB
         # But our validation should catch it
@@ -2203,10 +2243,14 @@ class DataMeshBusinessRulesErrorHandlingTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -2414,7 +2458,9 @@ class DataMeshBusinessRulesErrorHandlingTest(TestCase):
             name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=other_tenant,
         )
 
         domain = DataMeshDomain.objects.create(

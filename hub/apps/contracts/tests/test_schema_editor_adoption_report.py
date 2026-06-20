@@ -18,6 +18,7 @@ What we pin
 * The ``--gate-threshold`` exit-code path: command exits non-zero
   when the ratio is below the threshold.
 """
+
 from __future__ import annotations
 
 import io
@@ -32,6 +33,7 @@ from django.utils import timezone
 
 def _create_tenant(slug_prefix: str = "w24"):
     from hub.apps.tenants.models import Tenant
+
     suffix = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
         name=f"{slug_prefix}-{suffix}",
@@ -46,6 +48,7 @@ def _create_contract(tenant, *, hub_contract_json):
         OriginalFormat,
         OriginalSpecType,
     )
+
     return Contract.objects.create(
         tenant=tenant,
         version=1,
@@ -71,6 +74,7 @@ def _record_editor_opened(tenant, *, when=None):
     existing rows but ``QuerySet.update()`` is fixture-friendly).
     """
     from hub.apps.audit.models import AuditEvent
+
     event = AuditEvent.objects.create(
         tenant=tenant,
         action="SCHEMA_EDITOR_OPENED",
@@ -86,9 +90,7 @@ def _record_editor_opened(tenant, *, when=None):
 
 
 _HC_OK = {
-    "models": [
-        {"name": "m", "fields": [{"name": "id", "data_type": "string"}]}
-    ],
+    "models": [{"name": "m", "fields": [{"name": "id", "data_type": "string"}]}],
     "schema": {"fields": [{"name": "id", "data_type": "string"}]},
 }
 _HC_STRUCTURELESS = {"models": [], "schema": {"fields": []}}
@@ -97,6 +99,12 @@ _HC_STRUCTURELESS = {"models": [], "schema": {"fields": []}}
 @pytest.mark.django_db(transaction=True)
 class AdoptionReportTests(TestCase):
     """``compute_adoption_report`` pure-function tests."""
+
+    def setUp(self):
+        """Purge contracts left by a previous --reuse-db run so
+        adoption counts reflect only this test's data."""
+        from hub.apps.contracts.models import Contract
+        Contract.objects.all().delete()
 
     def test_empty_population_returns_zero_ratio(self):
         from hub.apps.contracts.management.commands.schema_editor_adoption_report import (
@@ -117,7 +125,8 @@ class AdoptionReportTests(TestCase):
         _create_contract(tenant, hub_contract_json=_HC_STRUCTURELESS)
 
         report = compute_adoption_report(
-            since_days=7, include_tenants=True,
+            since_days=7,
+            include_tenants=True,
         )
         self.assertIn(str(tenant.id), report["structureless_tenant_ids"])
         self.assertEqual(report["adopted_tenant_count"], 0)
@@ -132,11 +141,13 @@ class AdoptionReportTests(TestCase):
         _create_contract(tenant, hub_contract_json=_HC_STRUCTURELESS)
 
         report = compute_adoption_report(
-            since_days=7, include_tenants=True,
+            since_days=7,
+            include_tenants=True,
         )
         # The same tenant should appear only once.
         self.assertEqual(
-            report["structureless_tenant_ids"].count(str(tenant.id)), 1,
+            report["structureless_tenant_ids"].count(str(tenant.id)),
+            1,
         )
 
     def test_tenant_with_structural_only_is_excluded(self):
@@ -148,7 +159,8 @@ class AdoptionReportTests(TestCase):
         _create_contract(tenant, hub_contract_json=_HC_OK)
 
         report = compute_adoption_report(
-            since_days=7, include_tenants=True,
+            since_days=7,
+            include_tenants=True,
         )
         self.assertNotIn(str(tenant.id), report.get("structureless_tenant_ids", []))
 
@@ -162,7 +174,8 @@ class AdoptionReportTests(TestCase):
         _record_editor_opened(tenant)
 
         report = compute_adoption_report(
-            since_days=7, include_tenants=True,
+            since_days=7,
+            include_tenants=True,
         )
         self.assertEqual(report["structureless_tenant_count"], 1)
         self.assertEqual(report["adopted_tenant_count"], 1)
@@ -177,13 +190,15 @@ class AdoptionReportTests(TestCase):
         _create_contract(tenant, hub_contract_json=_HC_STRUCTURELESS)
         # Record an opened event 30 days ago — outside a 7-day window.
         _record_editor_opened(
-            tenant, when=timezone.now() - timedelta(days=30),
+            tenant,
+            when=timezone.now() - timedelta(days=30),
         )
 
         report = compute_adoption_report(since_days=7)
         self.assertEqual(report["structureless_tenant_count"], 1)
         self.assertEqual(
-            report["adopted_tenant_count"], 0,
+            report["adopted_tenant_count"],
+            0,
             "Stale audit row must not count against the watch-window gate",
         )
 
@@ -209,6 +224,11 @@ class AdoptionReportTests(TestCase):
 @pytest.mark.django_db(transaction=True)
 class AdoptionReportGateExitCodeTests(TestCase):
     """The management command exits non-zero when the gate fails."""
+
+    def setUp(self):
+        """Purge contracts left by a previous --reuse-db run."""
+        from hub.apps.contracts.models import Contract
+        Contract.objects.all().delete()
 
     def test_gate_threshold_exits_nonzero_on_underadoption(self):
         # 2 structureless tenants, none adopted → ratio 0 < threshold 0.30.

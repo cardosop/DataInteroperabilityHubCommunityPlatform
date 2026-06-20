@@ -7,38 +7,38 @@ map methods to endpoints, and identify service-to-service API calls.
 This script implements task 9.6.1.3.1 from the ODPS integration tasks.
 """
 
-import os
-import re
-import json
 import ast
-from pathlib import Path
-from typing import Dict, List, Set, Tuple, Any, Optional
-from collections import defaultdict
-from dataclasses import dataclass, asdict
+import json
+import re
+from dataclasses import asdict, dataclass
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 
 @dataclass
 class ServiceClientInfo:
     """Information about a service client class"""
+
     file_path: str
     class_name: str
     service_name: str
     base_url: str
     http_client_type: str  # httpx.Client, requests, etc.
-    methods: List[Dict[str, Any]]
+    methods: list[dict[str, Any]]
 
 
 @dataclass
 class ServiceClientMethod:
     """Information about a service client method"""
+
     method_name: str
     http_method: str  # GET, POST, PUT, DELETE, etc.
     endpoint: str
     line_number: int
-    parameters: List[str]
-    return_type: Optional[str]
-    docstring: Optional[str]
+    parameters: list[str]
+    return_type: str | None
+    docstring: str | None
 
 
 class ServiceClientAuditor:
@@ -46,10 +46,10 @@ class ServiceClientAuditor:
 
     def __init__(self, root_dir: str):
         self.root_dir = Path(root_dir)
-        self.service_clients: List[ServiceClientInfo] = []
-        self.service_to_service_calls: List[Dict[str, Any]] = []
+        self.service_clients: list[ServiceClientInfo] = []
+        self.service_to_service_calls: list[dict[str, Any]] = []
 
-    def find_service_client_files(self) -> List[Path]:
+    def find_service_client_files(self) -> list[Path]:
         """Find all service client files"""
         service_client_files = []
 
@@ -89,11 +89,13 @@ class ServiceClientAuditor:
                     if isinstance(target, ast.Name) and target.id == "base_url":
                         if isinstance(child.value, ast.Call):
                             # getattr(settings, 'SEMANTIC_SERVICE_URL', default_url)
-                            if isinstance(child.value.func, ast.Name) and child.value.func.id == "getattr":
-                                if len(child.value.args) >= 2:
-                                    if isinstance(child.value.args[1], ast.Constant):
-                                        value = child.value.args[1].value
-                                        base_url = str(value) if value is not None else "unknown"
+                            if (
+                                isinstance(child.value.func, ast.Name)
+                                and child.value.func.id == "getattr"
+                            ) and len(child.value.args) >= 2:
+                                if isinstance(child.value.args[1], ast.Constant):
+                                    value = child.value.args[1].value
+                                    base_url = str(value) if value is not None else "unknown"
                         elif isinstance(child.value, ast.Constant):
                             value = child.value.value
                             base_url = str(value) if value is not None else "unknown"
@@ -146,11 +148,11 @@ class ServiceClientAuditor:
             service_name = file_name.replace("_service_client", "").replace("_cli_client", "")
 
         # Convert to lowercase with hyphens
-        service_name = re.sub(r'([A-Z])', r'-\1', service_name).lower().lstrip('-')
+        service_name = re.sub(r"([A-Z])", r"-\1", service_name).lower().lstrip("-")
 
         return service_name or "unknown"
 
-    def extract_endpoint_from_call(self, call_node: ast.Call, method_name: str) -> Optional[str]:
+    def extract_endpoint_from_call(self, call_node: ast.Call, method_name: str) -> str | None:
         """Extract endpoint from HTTP method call"""
         endpoint = None
 
@@ -159,7 +161,7 @@ class ServiceClientAuditor:
             if keyword.arg == "endpoint":
                 if isinstance(keyword.value, ast.Constant):
                     endpoint = keyword.value.value
-                elif hasattr(ast, 'Str') and isinstance(keyword.value, ast.Str):  # Python < 3.8
+                elif hasattr(ast, "Str") and isinstance(keyword.value, ast.Str):  # Python < 3.8
                     endpoint = keyword.value.s
                 elif isinstance(keyword.value, ast.JoinedStr):  # f-string
                     # Try to extract static parts
@@ -167,7 +169,7 @@ class ServiceClientAuditor:
                     for part in keyword.value.values:
                         if isinstance(part, ast.Constant):
                             parts.append(str(part.value))
-                        elif hasattr(ast, 'Str') and isinstance(part, ast.Str):  # Python < 3.8
+                        elif hasattr(ast, "Str") and isinstance(part, ast.Str):  # Python < 3.8
                             parts.append(part.s)
                     if parts:
                         endpoint = "".join(parts)
@@ -191,14 +193,14 @@ class ServiceClientAuditor:
 
         return endpoint
 
-    def _extract_string_from_ast(self, arg: ast.AST, method_name: str) -> Optional[str]:
+    def _extract_string_from_ast(self, arg: ast.AST, method_name: str) -> str | None:
         """Extract string value from AST node"""
         if isinstance(arg, ast.Constant):
             value = arg.value
             return str(value) if isinstance(value, str) else None
         # Python < 3.8 compatibility
-        elif hasattr(ast, 'Str') and isinstance(arg, getattr(ast, 'Str', type(None))):
-            return getattr(arg, 's', None)
+        elif hasattr(ast, "Str") and isinstance(arg, getattr(ast, "Str", type(None))):
+            return getattr(arg, "s", None)
         elif isinstance(arg, ast.JoinedStr):  # f-string
             parts = []
             for part in arg.values:
@@ -207,8 +209,8 @@ class ServiceClientAuditor:
                     if isinstance(value, str):
                         parts.append(value)
                 # Python < 3.8 compatibility
-                elif hasattr(ast, 'Str') and isinstance(part, getattr(ast, 'Str', type(None))):
-                    s_value = getattr(part, 's', None)
+                elif hasattr(ast, "Str") and isinstance(part, getattr(ast, "Str", type(None))):
+                    s_value = getattr(part, "s", None)
                     if s_value:
                         parts.append(s_value)
             if parts:
@@ -234,13 +236,13 @@ class ServiceClientAuditor:
                         value = arg.value
                         return str(value).upper() if value is not None else "UNKNOWN"
                     # Python < 3.8 compatibility
-                    elif hasattr(ast, 'Str') and isinstance(arg, getattr(ast, 'Str', type(None))):
-                        s_value = getattr(arg, 'value', None)
+                    elif hasattr(ast, "Str") and isinstance(arg, getattr(ast, "Str", type(None))):
+                        s_value = getattr(arg, "value", None)
                         return s_value.upper() if s_value else "UNKNOWN"
 
         return "UNKNOWN"
 
-    def extract_methods(self, class_node: ast.ClassDef, file_path: Path) -> List[Dict[str, Any]]:
+    def extract_methods(self, class_node: ast.ClassDef, file_path: Path) -> list[dict[str, Any]]:
         """Extract methods from service client class"""
         methods = []
 
@@ -264,7 +266,11 @@ class ServiceClientAuditor:
                     if isinstance(node.returns, ast.Name):
                         return_type = node.returns.id
                     elif isinstance(node.returns, ast.Subscript):
-                        return_type = ast.unparse(node.returns) if hasattr(ast, 'unparse') else str(node.returns)
+                        return_type = (
+                            ast.unparse(node.returns)
+                            if hasattr(ast, "unparse")
+                            else str(node.returns)
+                        )
 
                 # Find HTTP calls in method body (including nested functions)
                 http_calls = []
@@ -278,32 +284,41 @@ class ServiceClientAuditor:
                                 http_method = self.extract_http_method_from_call(node)
                                 endpoint = self.extract_endpoint_from_call(node, method_name)
                                 if endpoint:
-                                    http_calls.append({
-                                        "http_method": http_method,
-                                        "endpoint": endpoint,
-                                        "line_number": node.lineno
-                                    })
+                                    http_calls.append(
+                                        {
+                                            "http_method": http_method,
+                                            "endpoint": endpoint,
+                                            "line_number": node.lineno,
+                                        }
+                                    )
                             # Check if it's self.client.request(...) or self.client.get(...)
                             elif isinstance(node.func.value, ast.Attribute):
                                 if node.func.value.attr == "client":
                                     http_method = self.extract_http_method_from_call(node)
                                     endpoint = self.extract_endpoint_from_call(node, method_name)
                                     if endpoint:
-                                        http_calls.append({
-                                            "http_method": http_method,
-                                            "endpoint": endpoint,
-                                            "line_number": node.lineno
-                                        })
+                                        http_calls.append(
+                                            {
+                                                "http_method": http_method,
+                                                "endpoint": endpoint,
+                                                "line_number": node.lineno,
+                                            }
+                                        )
                             # Check if it's client.request(...) or client.get(...)
-                            elif isinstance(node.func.value, ast.Name) and node.func.value.id == "client":
+                            elif (
+                                isinstance(node.func.value, ast.Name)
+                                and node.func.value.id == "client"
+                            ):
                                 http_method = self.extract_http_method_from_call(node)
                                 endpoint = self.extract_endpoint_from_call(node, method_name)
                                 if endpoint:
-                                    http_calls.append({
-                                        "http_method": http_method,
-                                        "endpoint": endpoint,
-                                        "line_number": node.lineno
-                                    })
+                                    http_calls.append(
+                                        {
+                                            "http_method": http_method,
+                                            "endpoint": endpoint,
+                                            "line_number": node.lineno,
+                                        }
+                                    )
 
                     # Recursively process child nodes
                     for child in ast.iter_child_nodes(node):
@@ -313,21 +328,23 @@ class ServiceClientAuditor:
                 extract_calls_from_node(node)
 
                 if http_calls or method_name != "__init__":
-                    methods.append({
-                        "method_name": method_name,
-                        "parameters": parameters,
-                        "return_type": return_type,
-                        "docstring": docstring,
-                        "line_number": node.lineno,
-                        "http_calls": http_calls
-                    })
+                    methods.append(
+                        {
+                            "method_name": method_name,
+                            "parameters": parameters,
+                            "return_type": return_type,
+                            "docstring": docstring,
+                            "line_number": node.lineno,
+                            "http_calls": http_calls,
+                        }
+                    )
 
         return methods
 
-    def audit_file(self, file_path: Path) -> Optional[ServiceClientInfo]:
+    def audit_file(self, file_path: Path) -> ServiceClientInfo | None:
         """Audit a single service client file"""
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding="utf-8") as f:
                 content = f.read()
 
             tree = ast.parse(content, filename=str(file_path))
@@ -356,7 +373,7 @@ class ServiceClientAuditor:
                             service_name=service_name,
                             base_url=base_url,
                             http_client_type=http_client_type,
-                            methods=methods
+                            methods=methods,
                         )
         except Exception as e:
             print(f"Error auditing {file_path}: {e}")
@@ -369,18 +386,20 @@ class ServiceClientAuditor:
         for client_info in self.service_clients:
             for method in client_info.methods:
                 for http_call in method.get("http_calls", []):
-                    self.service_to_service_calls.append({
-                        "service_client": client_info.class_name,
-                        "service_name": client_info.service_name,
-                        "method": method["method_name"],
-                        "http_method": http_call["http_method"],
-                        "endpoint": http_call["endpoint"],
-                        "full_url": f"{client_info.base_url}{http_call['endpoint']}",
-                        "file_path": client_info.file_path,
-                        "line_number": http_call["line_number"]
-                    })
+                    self.service_to_service_calls.append(
+                        {
+                            "service_client": client_info.class_name,
+                            "service_name": client_info.service_name,
+                            "method": method["method_name"],
+                            "http_method": http_call["http_method"],
+                            "endpoint": http_call["endpoint"],
+                            "full_url": f"{client_info.base_url}{http_call['endpoint']}",
+                            "file_path": client_info.file_path,
+                            "line_number": http_call["line_number"],
+                        }
+                    )
 
-    def run(self) -> Dict[str, Any]:
+    def run(self) -> dict[str, Any]:
         """Run the audit"""
         print("Searching for service client files...")
         service_client_files = self.find_service_client_files()
@@ -404,10 +423,10 @@ class ServiceClientAuditor:
                 "total_service_clients": len(self.service_clients),
                 "total_methods": sum(len(client.methods) for client in self.service_clients),
                 "total_service_to_service_calls": len(self.service_to_service_calls),
-                "services": [client.service_name for client in self.service_clients]
+                "services": [client.service_name for client in self.service_clients],
             },
             "service_clients": [asdict(client) for client in self.service_clients],
-            "service_to_service_calls": self.service_to_service_calls
+            "service_to_service_calls": self.service_to_service_calls,
         }
 
         return report
@@ -427,16 +446,17 @@ def main():
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         json.dump(report, f, indent=2)
 
     print(f"\nReport saved to {output_path}")
-    print(f"Summary:")
+    print("Summary:")
     print(f"  Total service clients: {report['summary']['total_service_clients']}")
     print(f"  Total methods: {report['summary']['total_methods']}")
-    print(f"  Total service-to-service calls: {report['summary']['total_service_to_service_calls']}")
+    print(
+        f"  Total service-to-service calls: {report['summary']['total_service_to_service_calls']}"
+    )
 
 
 if __name__ == "__main__":
     main()
-

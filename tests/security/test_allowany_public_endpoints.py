@@ -15,7 +15,6 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-
 # Sensitive patterns that must NOT appear in public endpoint responses
 SENSITIVE_PATTERNS = [
     re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"),  # email
@@ -81,7 +80,9 @@ class AllowAnyPublicEndpointsTest(TestCase):
         """GET /api/v1/semantic/ontology unauthenticated must return ontology or 503, no user/tenant data."""
         response = self.client.get("/api/v1/semantic/ontology")
         # 200 (ontology content) or 503 (service unavailable) are acceptable
-        self.assertIn(response.status_code, (status.HTTP_200_OK, status.HTTP_503_SERVICE_UNAVAILABLE))
+        self.assertIn(
+            response.status_code, (status.HTTP_200_OK, status.HTTP_503_SERVICE_UNAVAILABLE)
+        )
         text = response.content.decode("utf-8", errors="replace")
         self._assert_no_sensitive_data_in_text(text, "semantic/ontology")
         if response.status_code == 200:
@@ -91,7 +92,9 @@ class AllowAnyPublicEndpointsTest(TestCase):
     def test_semantic_jsonld_context_unauthenticated_returns_public_or_error_only(self):
         """GET /api/v1/semantic/context.jsonld unauthenticated must return JSON-LD context or 503, no user/tenant data."""
         response = self.client.get("/api/v1/semantic/context.jsonld")
-        self.assertIn(response.status_code, (status.HTTP_200_OK, status.HTTP_503_SERVICE_UNAVAILABLE))
+        self.assertIn(
+            response.status_code, (status.HTTP_200_OK, status.HTTP_503_SERVICE_UNAVAILABLE)
+        )
         text = response.content.decode("utf-8", errors="replace")
         self._assert_no_sensitive_data_in_text(text, "semantic/context")
 
@@ -140,4 +143,6 @@ class AllowAnyPublicEndpointsTest(TestCase):
         self.assertNotIn("password", data)
         text = response.content.decode("utf-8", errors="replace")
         self.assertNotIn("Bearer ", text, "auth/register must not expose tokens")
-        self.assertNotIn("refresh_token", text.lower(), "auth/register must not expose refresh token")
+        self.assertNotIn(
+            "refresh_token", text.lower(), "auth/register must not expose refresh token"
+        )

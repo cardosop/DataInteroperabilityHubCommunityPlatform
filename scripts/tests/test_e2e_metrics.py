@@ -19,10 +19,10 @@ import pytest
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from e2e_metrics import (  # noqa: E402
+from e2e_metrics import (
+    aggregate_metrics,
     count_python_metrics,
     count_typescript_metrics,
-    aggregate_metrics,
 )
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -36,6 +36,7 @@ TS_VERIFY_API = FIXTURES / "typescript" / "fixture_verify_api.spec.ts"
 
 
 # --------------------------------------------------------------------- Python
+
 
 class TestPythonMetrics:
     def test_swallows_fixture_counts(self):
@@ -63,9 +64,7 @@ class TestPythonMetrics:
         assert m["orm_query"] == 3, (
             "Should count Asset.objects.get, Asset.objects.filter, Dataset.objects.create"
         )
-        assert m["status_code_assertion"] == 3, (
-            "Should count == 201, == 200, != 500"
-        )
+        assert m["status_code_assertion"] == 3, "Should count == 201, == 200, != 500"
         assert m["test_skip_call"] == 1, "pytest.skip() should count"
 
     def test_unittest_style_status_assertions(self):
@@ -88,13 +87,12 @@ class TestPythonMetrics:
 
 # --------------------------------------------------------------------- TypeScript
 
+
 class TestTypescriptMetrics:
     @pytest.fixture(autouse=True)
     def _ensure_node_available(self):
         try:
-            subprocess.run(
-                ["node", "--version"], check=True, capture_output=True, timeout=10
-            )
+            subprocess.run(["node", "--version"], check=True, capture_output=True, timeout=10)
         except (FileNotFoundError, subprocess.CalledProcessError):
             pytest.skip("node not available on PATH — TypeScript metrics cannot be tested")
 
@@ -122,6 +120,7 @@ class TestTypescriptMetrics:
 
 
 # --------------------------------------------------------------------- Aggregation
+
 
 class TestAggregation:
     def test_aggregate_sums_python(self):
@@ -169,10 +168,12 @@ class TestAggregation:
         assert "generated_at" in result
         # timestamp is ISO-8601
         from datetime import datetime
+
         datetime.fromisoformat(result["generated_at"])
 
 
 # --------------------------------------------------------------------- CLI
+
 
 class TestCLI:
     def test_cli_outputs_valid_json(self, tmp_path: Path):
@@ -181,9 +182,12 @@ class TestCLI:
             [
                 sys.executable,
                 str(SCRIPTS_DIR / "e2e_metrics.py"),
-                "--pytest-dir", str(FIXTURES / "python"),
-                "--playwright-dir", str(FIXTURES / "typescript"),
-                "--output", str(out),
+                "--pytest-dir",
+                str(FIXTURES / "python"),
+                "--playwright-dir",
+                str(FIXTURES / "typescript"),
+                "--output",
+                str(out),
             ],
             check=True,
             capture_output=True,

@@ -122,6 +122,9 @@ REQUIRED_DETAIL_KEYS = (
     "remediation_url",
 )
 
+# collect_structural_floor_errors returns flattened 4-key error dicts (Phase 274.4).
+COLLECT_ERROR_KEYS = ("code", "subcode", "message", "remediation_url")
+
 
 def _assert_full_payload_shape(details: Dict[str, Any]) -> None:
     """Assert every required detail key is present and non-empty."""
@@ -448,11 +451,11 @@ class TestCollectStructuralFloorErrors:
         )
         assert len(errors) == 1
         err = errors[0]
+        # Phase 274.4: collect_structural_floor_errors returns flattened 4-key dicts
+        for key in COLLECT_ERROR_KEYS:
+            assert key in err, f"missing key {key!r} in {err}"
         assert err["code"] == ERROR_CODE
         assert err["subcode"] == SUBCODE_ODPS_NO_PORTS
-        # All canonical detail keys present in the flattened dict.
-        for key in REQUIRED_DETAIL_KEYS:
-            assert key in err, f"missing key {key!r} in {err}"
 
 
 # ---------------------------------------------------------------------------

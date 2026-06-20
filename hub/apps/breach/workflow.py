@@ -1,8 +1,10 @@
 """Breach incident workflow + statutory notification fan-out (Phase 232.3.5)."""
 
 from __future__ import annotations
+
+from collections.abc import Iterable
 from datetime import timedelta
-from typing import Any, Iterable, Optional, cast
+from typing import Any, cast
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -41,7 +43,7 @@ def _audit_event_ids_for(
     *,
     tenant_id,
     incident_id: str,
-    notification_id: Optional[str] = None,
+    notification_id: str | None = None,
 ) -> list[str]:
     id_list: list[str] = [incident_id]
     if notification_id:
@@ -148,7 +150,7 @@ def transition_incident_status(
         return incident
     incident.status = new_status
     if notes:
-        d = cast(dict[str, Any], dict(incident.details_json or {}))
+        d = cast("dict[str, Any]", dict(incident.details_json or {}))
         d["status_notes"] = (d.get("status_notes", "") + "\n" + notes).strip()
         incident.details_json = d
     incident.save(update_fields=["status", "details_json", "updated_at"])

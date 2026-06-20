@@ -8,8 +8,7 @@ Idempotent: skips existing plans by slug. If create fails due to duplicate name
 
 import structlog
 from django.core.management.base import BaseCommand
-from django.db import transaction
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 
 from hub.apps.tenants.models import PlanCategory, PlanTier, TenantPlan
 

@@ -21,15 +21,14 @@ These are STATIC checks — no AWS API calls, no Terraform plan, no
 mocks. The tests parse the IaC source files directly and assert on
 their content. Runs on every CI build.
 """
+
 from __future__ import annotations
 
 import glob
 import os
 import re
 
-PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..")
-)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 KMS_MODULE_PATH = os.path.join(
     PROJECT_ROOT,
@@ -55,9 +54,12 @@ def _all_terraform_files() -> list[str]:
     code that would generate spurious matches).
     """
     paths = []
-    for path in sorted(glob.glob(
-        os.path.join(TERRAFORM_ROOT, "**", "*.tf"), recursive=True,
-    )):
+    for path in sorted(
+        glob.glob(
+            os.path.join(TERRAFORM_ROOT, "**", "*.tf"),
+            recursive=True,
+        )
+    ):
         # Skip the local provider/module cache that ``terraform init``
         # creates — contains copies of provider source we don't own.
         if "/.terraform/" in path:
@@ -72,7 +74,7 @@ def _all_terraform_files() -> list[str]:
 
 
 def _read(path: str) -> str:
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return f.read()
 
 
@@ -86,9 +88,7 @@ def _extract_kms_key_blocks(tf_source: str) -> list[tuple[str, str]]:
     """
     blocks = []
     # Pattern: resource "aws_kms_key" "<name>" {
-    pattern = re.compile(
-        r'resource\s+"aws_kms_key"\s+"([^"]+)"\s*\{', re.MULTILINE
-    )
+    pattern = re.compile(r'resource\s+"aws_kms_key"\s+"([^"]+)"\s*\{', re.MULTILINE)
     for match in pattern.finditer(tf_source):
         name = match.group(1)
         # Find the matching closing `}` by walking forward and
@@ -168,14 +168,13 @@ def test_all_platform_kms_keys_have_rotation_enabled():
         # Match: enable_key_rotation = true
         # Tolerate whitespace + boolean casing.
         match = re.search(
-            r'enable_key_rotation\s*=\s*(true|false)',
+            r"enable_key_rotation\s*=\s*(true|false)",
             body,
             re.IGNORECASE,
         )
         if match is None:
             failures.append(
-                f"  - {relpath}::aws_kms_key.{name} does NOT declare "
-                "enable_key_rotation"
+                f"  - {relpath}::aws_kms_key.{name} does NOT declare enable_key_rotation"
             )
             continue
         value = match.group(1).lower()
@@ -187,8 +186,7 @@ def test_all_platform_kms_keys_have_rotation_enabled():
 
     assert not failures, (
         "Phase 260.7.H runbook policy violation — every customer-managed "
-        "KMS key MUST set enable_key_rotation = true:\n"
-        + "\n".join(failures)
+        "KMS key MUST set enable_key_rotation = true:\n" + "\n".join(failures)
     )
 
 
@@ -286,7 +284,9 @@ def test_runbook_app_encryption_key_claim_matches_terraform():
     )
     body = by_name["app_encryption"]
     assert re.search(
-        r'enable_key_rotation\s*=\s*true', body, re.IGNORECASE,
+        r"enable_key_rotation\s*=\s*true",
+        body,
+        re.IGNORECASE,
     ), (
         "Runbook claims ``app_encryption`` has rotation enabled, but the "
         "Terraform source disagrees — the runbook is stale OR the IaC "

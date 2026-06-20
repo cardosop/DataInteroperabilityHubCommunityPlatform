@@ -4,6 +4,7 @@ These tests call the view function directly to avoid middleware interactions
 in the test environment.  The URL routing is tested implicitly by the
 module-level ``urls.py`` registration.
 """
+
 import json
 import uuid
 

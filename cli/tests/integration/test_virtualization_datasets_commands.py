@@ -19,24 +19,27 @@ To run these tests:
 3. Set API key: export DATAHUB_API_KEY=your-api-key
 4. Run: pytest tests/integration/test_virtualization_datasets_commands.py -v
 """
-import pytest
-import requests
 import json
 import os
-import uuid
-import subprocess
-import time
 import re
+import subprocess
 import tempfile
+import time
+import uuid
+
+import pytest
+import requests
 from click.testing import CliRunner
-from datahub_cli.main import cli
 from datahub_cli.config import config
+from datahub_cli.main import cli
 
 
 def _check_api_available():
     """Check if API service is available"""
     try:
-        response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2)
+        response = requests.get(
+            os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=2
+        )
         return response.status_code < 600  # Any HTTP response means API is up
     except Exception:
         return False
@@ -57,14 +60,14 @@ def shared_api_key():
     api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
 
     # Check if API key is provided via environment variable
-    env_key = os.environ.get('DATAHUB_API_KEY') or os.environ.get('TEST_API_KEY')
+    env_key = os.environ.get("DATAHUB_API_KEY") or os.environ.get("TEST_API_KEY")
     if env_key and env_key.strip():
         # Validate the provided key
         try:
             response = requests.get(
                 f"{api_base_url}/virtualization/datasets/",
-                headers={'Authorization': f'ApiKey {env_key}', 'Content-Type': 'application/json'},
-                timeout=5
+                headers={"Authorization": f"ApiKey {env_key}", "Content-Type": "application/json"},
+                timeout=5,
             )
             if response.status_code in [200, 201]:
                 return env_key.strip()
@@ -144,7 +147,7 @@ for verify_attempt in range(max_verify_attempts):
     verify_key = APIKey.objects.filter(key_hash=api_key_hash).first()
     if verify_key:
         break
-    time.sleep(0.2 * (verify_attempt + 1))  # Increasing delays: 0.2s, 0.4s, 0.6s, 0.8s, 1.0s
+    time.sleep(0.2 * (verify_attempt + 1))  # noqa: sleep-needed  # Increasing delays: 0.2s, 0.4s, 0.6s, 0.8s, 1.0s
 
 if not verify_key:
     # Last attempt with fresh connection
@@ -156,7 +159,7 @@ if not verify_key:
         exit(1)
 
 # Additional delay to ensure commit is fully propagated
-time.sleep(0.3)
+time.sleep(0.3)  # noqa: sleep-needed — test timing requirement
 
 # Output the key with clear markers
 print("===API_KEY_START===")
@@ -176,34 +179,36 @@ print("===API_KEY_END===", file=sys.stderr)
     for attempt in range(max_retries):
         try:
             result = subprocess.run(
-                ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'manage.py', 'shell'],
+                ["docker", "compose", "exec", "-T", "api-service", "python", "manage.py", "shell"],
                 input=django_shell_script,
                 capture_output=True,
                 text=True,
                 timeout=30,
                 check=False,
-                cwd='/home/ph/Desktop/DataInteroperabilityHub'
+                cwd="/home/ph/Desktop/DataInteroperabilityHub",
             )
 
             # Extract API key from output using multiple strategies
             output = result.stdout + result.stderr
 
             # Strategy 1: Look for markers
-            marker_pattern = r'===API_KEY_START===\s*([A-Za-z0-9_-]{20,})\s*===API_KEY_END==='
+            marker_pattern = r"===API_KEY_START===\s*([A-Za-z0-9_-]{20,})\s*===API_KEY_END==="
             match = re.search(marker_pattern, output, re.MULTILINE | re.DOTALL)
             if match:
                 api_key = match.group(1).strip()
 
             # Strategy 2: Look for key-like strings (20+ alphanumeric/dash/underscore chars)
             if not api_key:
-                key_pattern = r'([A-Za-z0-9_-]{20,})'
+                key_pattern = r"([A-Za-z0-9_-]{20,})"
                 matches = re.findall(key_pattern, output)
                 # Filter out common false positives
                 for potential_key in matches:
-                    if (len(potential_key) >= 20 and
-                        not potential_key.startswith('virtualization-datasets-cli-test') and
-                        'error' not in potential_key.lower() and
-                        'traceback' not in potential_key.lower()):
+                    if (
+                        len(potential_key) >= 20
+                        and not potential_key.startswith("virtualization-datasets-cli-test")
+                        and "error" not in potential_key.lower()
+                        and "traceback" not in potential_key.lower()
+                    ):
                         api_key = potential_key
                         break
 
@@ -217,15 +222,17 @@ print("===API_KEY_END===", file=sys.stderr)
                     try:
                         # Exponential backoff with cap
                         wait_time = validation_delay * (validation_attempt + 1)
-                        if wait_time > 2.0:
-                            wait_time = 2.0
+                        wait_time = min(wait_time, 2.0)
                         if validation_attempt > 0:
-                            time.sleep(wait_time)
+                            time.sleep(wait_time)  # noqa: sleep-needed — retry loop
 
                         response = requests.get(
                             f"{api_base_url}/virtualization/datasets/",
-                            headers={'Authorization': f'ApiKey {api_key}', 'Content-Type': 'application/json'},
-                            timeout=5
+                            headers={
+                                "Authorization": f"ApiKey {api_key}",
+                                "Content-Type": "application/json",
+                            },
+                            timeout=5,
                         )
 
                         if response.status_code in [200, 201]:
@@ -237,19 +244,19 @@ print("===API_KEY_END===", file=sys.stderr)
                                 continue
                         elif response.status_code == 429:
                             # Rate limited, wait longer
-                            retry_after = response.headers.get('Retry-After', '2')
+                            retry_after = response.headers.get("Retry-After", "2")
                             try:
                                 wait_time = float(retry_after) + 0.5
                             except ValueError:
                                 wait_time = 2.5
                             if validation_attempt < max_validation_attempts - 1:
-                                time.sleep(wait_time)
+                                time.sleep(wait_time)  # noqa: sleep-needed — retry loop
                                 continue
                     except requests.exceptions.RequestException:
                         # Network error, retry
                         if validation_attempt < max_validation_attempts - 1:
                             continue
-                    except Exception as e:
+                    except Exception:
                         # Other error, log and retry
                         if validation_attempt < max_validation_attempts - 1:
                             continue
@@ -261,13 +268,13 @@ print("===API_KEY_END===", file=sys.stderr)
 
         except subprocess.TimeoutExpired:
             if attempt < max_retries - 1:
-                time.sleep(1.0)
+                time.sleep(1.0)  # noqa: sleep-needed — retry loop
                 continue
         except Exception as e:
             if attempt < max_retries - 1:
-                time.sleep(1.0)
+                time.sleep(1.0)  # noqa: sleep-needed — retry loop
                 continue
-            print(f"Error creating API key: {e}", file=__import__('sys').stderr)
+            print(f"Error creating API key: {e}", file=__import__("sys").stderr)
 
     # If we couldn't create a key, raise an error
     pytest.skip("Could not create or validate API key for integration tests")
@@ -298,24 +305,24 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         api_key = api_key.strip()
 
         # Validate API key format
-        if not api_key or len(api_key) < 20 or not all(c.isalnum() or c in '-_' for c in api_key):
+        if not api_key or len(api_key) < 20 or not all(c.isalnum() or c in "-_" for c in api_key):
             self.api_key = None
             yield
             return
 
         # Clear any existing tokens first
-        if 'access_token' in config._config:
-            del config._config['access_token']
-        if 'refresh_token' in config._config:
-            del config._config['refresh_token']
+        if "access_token" in config._config:
+            del config._config["access_token"]
+        if "refresh_token" in config._config:
+            del config._config["refresh_token"]
         config._save()
 
         # Set environment variables FIRST
-        os.environ['DATAHUB_API_KEY'] = api_key
-        os.environ['TEST_API_KEY'] = api_key
+        os.environ["DATAHUB_API_KEY"] = api_key
+        os.environ["TEST_API_KEY"] = api_key
 
         # Also set in config file as fallback
-        config._config['api_key'] = api_key
+        config._config["api_key"] = api_key
         config._save()
 
         # Reload config to ensure it's read correctly
@@ -324,8 +331,8 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         # Verify tokens are cleared and API key is set
         if config.get_access_token():
             # Force clear any remaining tokens
-            config._config.pop('access_token', None)
-            config._config.pop('refresh_token', None)
+            config._config.pop("access_token", None)
+            config._config.pop("refresh_token", None)
             config._save()
             config._load()
 
@@ -335,13 +342,16 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         yield
 
         # Cleanup - only clear tokens, not API key (it's shared across tests)
-        if 'access_token' in config._config:
-            del config._config['access_token']
-        if 'refresh_token' in config._config:
-            del config._config['refresh_token']
+        if "access_token" in config._config:
+            del config._config["access_token"]
+        if "refresh_token" in config._config:
+            del config._config["refresh_token"]
         config._save()
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_datasets_list_command(self, setup_config, api_available):
         """Test datasets list command"""
         if not self.api_key:
@@ -350,17 +360,18 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         runner = CliRunner()
 
         # Test list command with JSON output
-        result = runner.invoke(cli, [
-            'virtualization', 'datasets', 'list',
-            '--format', 'json',
-            '--page-size', '10'
-        ])
+        result = runner.invoke(
+            cli, ["virtualization", "datasets", "list", "--format", "json", "--page-size", "10"]
+        )
 
         assert result.exit_code == 0, f"List command failed: {result.output}"
         output_data = json.loads(result.output)
-        assert 'results' in output_data or isinstance(output_data, list)
+        assert "results" in output_data or isinstance(output_data, list)
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_datasets_list_with_filters(self, setup_config, api_available):
         """Test datasets list command with filters"""
         if not self.api_key:
@@ -369,15 +380,16 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         runner = CliRunner()
 
         # Test list command with status filter
-        result = runner.invoke(cli, [
-            'virtualization', 'datasets', 'list',
-            '--status', 'DRAFT',
-            '--format', 'json'
-        ])
+        result = runner.invoke(
+            cli, ["virtualization", "datasets", "list", "--status", "DRAFT", "--format", "json"]
+        )
 
         assert result.exit_code == 0, f"List with filter failed: {result.output}"
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_datasets_create_and_get_command(self, setup_config, api_available):
         """Test complete flow: create dataset, then get it"""
         if not self.api_key:
@@ -387,64 +399,63 @@ class TestVirtualizationDatasetsCommandsRealAPI:
 
         # Create a test dataset definition
         dataset_data = {
-            'name': f'test-dataset-{uuid.uuid4().hex[:8]}',
-            'description': 'Test virtual dataset for CLI integration tests',
-            'query': 'SELECT * FROM test_table',
-            'query_type': 'SQL',
-            'version': '1.0.0',
-            'status': 'DRAFT'
+            "name": f"test-dataset-{uuid.uuid4().hex[:8]}",
+            "description": "Test virtual dataset for CLI integration tests",
+            "query": "SELECT * FROM test_table",
+            "query_type": "SQL",
+            "version": "1.0.0",
+            "status": "DRAFT",
         }
 
         # Create temporary file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(dataset_data, f)
             temp_file = f.name
 
         try:
             # Ensure API key is available
             if self.api_key:
-                os.environ['DATAHUB_API_KEY'] = self.api_key
-                os.environ['TEST_API_KEY'] = self.api_key
-                config._config['api_key'] = self.api_key
+                os.environ["DATAHUB_API_KEY"] = self.api_key
+                os.environ["TEST_API_KEY"] = self.api_key
+                config._config["api_key"] = self.api_key
                 config._save()
                 config._load()
 
             # Create dataset
-            result = runner.invoke(cli, [
-                'virtualization', 'datasets', 'create',
-                '--file', temp_file,
-                '--format', 'json'
-            ])
+            result = runner.invoke(
+                cli,
+                ["virtualization", "datasets", "create", "--file", temp_file, "--format", "json"],
+            )
 
             assert result.exit_code == 0, f"Create failed: {result.output}"
             create_output = json.loads(result.output)
-            assert 'id' in create_output
-            dataset_id = create_output['id']
-            assert create_output['name'] == dataset_data['name']
+            assert "id" in create_output
+            dataset_id = create_output["id"]
+            assert create_output["name"] == dataset_data["name"]
 
             # Get dataset
-            result = runner.invoke(cli, [
-                'virtualization', 'datasets', 'get',
-                dataset_id,
-                '--format', 'json'
-            ])
+            result = runner.invoke(
+                cli, ["virtualization", "datasets", "get", dataset_id, "--format", "json"]
+            )
 
             assert result.exit_code == 0, f"Get failed: {result.output}"
             get_output = json.loads(result.output)
-            assert get_output['id'] == dataset_id
-            assert get_output['name'] == dataset_data['name']
+            assert get_output["id"] == dataset_id
+            assert get_output["name"] == dataset_data["name"]
 
             # Cleanup: Delete dataset
-            result = runner.invoke(cli, [
-                'virtualization', 'datasets', 'delete',
-                dataset_id
-            ], input='y\n')
+            result = runner.invoke(
+                cli, ["virtualization", "datasets", "delete", dataset_id], input="y\n"
+            )
 
             assert result.exit_code == 0, f"Delete failed: {result.output}"
         finally:
             os.unlink(temp_file)
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_datasets_update_command(self, setup_config, api_available):
         """Test update dataset command"""
         if not self.api_key:
@@ -454,64 +465,66 @@ class TestVirtualizationDatasetsCommandsRealAPI:
 
         # Create a test dataset first
         dataset_data = {
-            'name': f'test-dataset-{uuid.uuid4().hex[:8]}',
-            'description': 'Test virtual dataset for update test',
-            'query': 'SELECT * FROM test_table',
-            'query_type': 'SQL',
-            'status': 'DRAFT'
+            "name": f"test-dataset-{uuid.uuid4().hex[:8]}",
+            "description": "Test virtual dataset for update test",
+            "query": "SELECT * FROM test_table",
+            "query_type": "SQL",
+            "status": "DRAFT",
         }
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(dataset_data, f)
             create_file = f.name
 
         try:
             if self.api_key:
-                os.environ['DATAHUB_API_KEY'] = self.api_key
-                os.environ['TEST_API_KEY'] = self.api_key
-                config._config['api_key'] = self.api_key
+                os.environ["DATAHUB_API_KEY"] = self.api_key
+                os.environ["TEST_API_KEY"] = self.api_key
+                config._config["api_key"] = self.api_key
                 config._save()
                 config._load()
 
             # Create dataset
-            result = runner.invoke(cli, [
-                'virtualization', 'datasets', 'create',
-                '--file', create_file,
-                '--format', 'json'
-            ])
+            result = runner.invoke(
+                cli,
+                ["virtualization", "datasets", "create", "--file", create_file, "--format", "json"],
+            )
 
             assert result.exit_code == 0, f"Create failed: {result.output}"
             create_output = json.loads(result.output)
-            dataset_id = create_output['id']
+            dataset_id = create_output["id"]
 
             # Update dataset
-            update_data = {
-                'description': 'Updated description',
-                'status': 'ACTIVE'
-            }
+            update_data = {"description": "Updated description", "status": "ACTIVE"}
 
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
                 json.dump(update_data, f)
                 update_file = f.name
 
             try:
-                result = runner.invoke(cli, [
-                    'virtualization', 'datasets', 'update',
-                    dataset_id,
-                    '--file', update_file,
-                    '--format', 'json'
-                ])
+                result = runner.invoke(
+                    cli,
+                    [
+                        "virtualization",
+                        "datasets",
+                        "update",
+                        dataset_id,
+                        "--file",
+                        update_file,
+                        "--format",
+                        "json",
+                    ],
+                )
 
                 assert result.exit_code == 0, f"Update failed: {result.output}"
                 update_output = json.loads(result.output)
-                assert update_output['id'] == dataset_id
-                assert update_output['status'] == 'ACTIVE'
+                assert update_output["id"] == dataset_id
+                assert update_output["status"] == "ACTIVE"
 
                 # Cleanup
-                result = runner.invoke(cli, [
-                    'virtualization', 'datasets', 'delete',
-                    dataset_id
-                ], input='y\n')
+                result = runner.invoke(
+                    cli, ["virtualization", "datasets", "delete", dataset_id], input="y\n"
+                )
 
                 assert result.exit_code == 0, f"Delete failed: {result.output}"
             finally:
@@ -519,7 +532,10 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         finally:
             os.unlink(create_file)
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_datasets_list_table_format(self, setup_config, api_available):
         """Test datasets list command with table format"""
         if not self.api_key:
@@ -527,17 +543,18 @@ class TestVirtualizationDatasetsCommandsRealAPI:
 
         runner = CliRunner()
 
-        result = runner.invoke(cli, [
-            'virtualization', 'datasets', 'list',
-            '--format', 'table',
-            '--page-size', '5'
-        ])
+        result = runner.invoke(
+            cli, ["virtualization", "datasets", "list", "--format", "table", "--page-size", "5"]
+        )
 
         assert result.exit_code == 0, f"List table format failed: {result.output}"
         # Table format should contain headers
-        assert 'ID' in result.output or 'No virtual datasets found' in result.output
+        assert "ID" in result.output or "No virtual datasets found" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_datasets_create_invalid_file(self, setup_config, api_available):
         """Test create command with invalid file"""
         if not self.api_key:
@@ -546,15 +563,21 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         runner = CliRunner()
 
         # Test with non-existent file
-        result = runner.invoke(cli, [
-            'virtualization', 'datasets', 'create',
-            '--file', '/nonexistent/file.json'
-        ])
+        result = runner.invoke(
+            cli, ["virtualization", "datasets", "create", "--file", "/nonexistent/file.json"]
+        )
 
         assert result.exit_code != 0, "Should fail with non-existent file"
-        assert 'not found' in result.output.lower() or 'does not exist' in result.output.lower() or 'File not found' in result.output
+        assert (
+            "not found" in result.output.lower()
+            or "does not exist" in result.output.lower()
+            or "File not found" in result.output
+        )
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_datasets_create_invalid_json(self, setup_config, api_available):
         """Test create command with invalid JSON"""
         if not self.api_key:
@@ -563,22 +586,24 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         runner = CliRunner()
 
         # Create file with invalid JSON
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            f.write('{ invalid json }')
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write("{ invalid json }")
             temp_file = f.name
 
         try:
-            result = runner.invoke(cli, [
-                'virtualization', 'datasets', 'create',
-                '--file', temp_file
-            ])
+            result = runner.invoke(
+                cli, ["virtualization", "datasets", "create", "--file", temp_file]
+            )
 
             assert result.exit_code != 0, "Should fail with invalid JSON"
-            assert 'invalid json' in result.output.lower() or 'JSON' in result.output
+            assert "invalid json" in result.output.lower() or "JSON" in result.output
         finally:
             os.unlink(temp_file)
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_datasets_create_missing_required_fields(self, setup_config, api_available):
         """Test create command with missing required fields"""
         if not self.api_key:
@@ -587,26 +612,26 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         runner = CliRunner()
 
         # Create file missing required fields
-        incomplete_data = {
-            'description': 'Missing required fields'
-        }
+        incomplete_data = {"description": "Missing required fields"}
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(incomplete_data, f)
             temp_file = f.name
 
         try:
-            result = runner.invoke(cli, [
-                'virtualization', 'datasets', 'create',
-                '--file', temp_file
-            ])
+            result = runner.invoke(
+                cli, ["virtualization", "datasets", "create", "--file", temp_file]
+            )
 
             assert result.exit_code != 0, "Should fail with missing required fields"
-            assert 'name' in result.output.lower() or 'required' in result.output.lower()
+            assert "name" in result.output.lower() or "required" in result.output.lower()
         finally:
             os.unlink(temp_file)
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_datasets_get_nonexistent(self, setup_config, api_available):
         """Test get command with nonexistent dataset ID"""
         if not self.api_key:
@@ -615,15 +640,15 @@ class TestVirtualizationDatasetsCommandsRealAPI:
         runner = CliRunner()
 
         fake_id = str(uuid.uuid4())
-        result = runner.invoke(cli, [
-            'virtualization', 'datasets', 'get',
-            fake_id
-        ])
+        result = runner.invoke(cli, ["virtualization", "datasets", "get", fake_id])
 
         assert result.exit_code != 0, "Should fail with nonexistent ID"
-        assert 'not found' in result.output.lower() or '404' in result.output
+        assert "not found" in result.output.lower() or "404" in result.output
 
-    @pytest.mark.skipif(not _check_api_available(), reason="API service is not available. Ensure Docker Compose services are running.")
+    @pytest.mark.skipif(
+        not _check_api_available(),
+        reason="API service is not available. Ensure Docker Compose services are running.",
+    )
     def test_datasets_list_pagination(self, setup_config, api_available):
         """Test datasets list command with pagination"""
         if not self.api_key:
@@ -631,15 +656,22 @@ class TestVirtualizationDatasetsCommandsRealAPI:
 
         runner = CliRunner()
 
-        result = runner.invoke(cli, [
-            'virtualization', 'datasets', 'list',
-            '--page', '1',
-            '--page-size', '5',
-            '--format', 'json'
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "virtualization",
+                "datasets",
+                "list",
+                "--page",
+                "1",
+                "--page-size",
+                "5",
+                "--format",
+                "json",
+            ],
+        )
 
         assert result.exit_code == 0, f"List with pagination failed: {result.output}"
         output_data = json.loads(result.output)
         # Should have pagination info
-        assert 'count' in output_data or 'results' in output_data
-
+        assert "count" in output_data or "results" in output_data

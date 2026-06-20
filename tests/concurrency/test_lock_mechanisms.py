@@ -4,7 +4,6 @@ Uses real DB; no mocks.
 """
 
 import threading
-from typing import List
 
 from django.db import connection, transaction
 
@@ -34,8 +33,8 @@ class LockMechanismsTest(ConcurrencyTestBase):
             version=1,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
         )
-        results: List[bool] = []
-        errors: List[str] = []
+        results: list[bool] = []
+        errors: list[str] = []
         lock = threading.Lock()
 
         def run_transaction(index: int) -> None:
@@ -80,7 +79,7 @@ class LockMechanismsTest(ConcurrencyTestBase):
             version=1,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
         )
-        counts: List[int] = []
+        counts: list[int] = []
         lock = threading.Lock()
 
         def read_count() -> None:
@@ -107,7 +106,7 @@ class LockMechanismsTest(ConcurrencyTestBase):
 
     def test_concurrent_reads_no_blocking(self):
         """Concurrent read-only transactions do not block each other."""
-        for i in range(3):
+        for _i in range(3):
             Contract.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
@@ -119,7 +118,7 @@ class LockMechanismsTest(ConcurrencyTestBase):
                 version=1,
                 normalization_status=NormalizationStatus.NORMALIZED_OK,
             )
-        results: List[int] = []
+        results: list[int] = []
         lock = threading.Lock()
 
         def read_all() -> None:

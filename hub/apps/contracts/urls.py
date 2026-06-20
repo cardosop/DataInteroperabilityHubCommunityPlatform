@@ -2,9 +2,10 @@
 Contract URL Configuration
 """
 
+import contextlib
+
 from django.urls import include, path, re_path
 from rest_framework.routers import DefaultRouter
-from rest_framework.views import APIView
 
 from .views import ContractViewSet
 
@@ -14,7 +15,6 @@ from .views import ContractViewSet
 # is already included in hub/apps/api/urls.py
 router = DefaultRouter()
 router.register(r"", ContractViewSet, basename="contract")
-
 
 
 # Custom function-based view for lineage visualization that bypasses DRF format suffix routing
@@ -37,7 +37,6 @@ def lineage_visualization_custom(request, id=None, *args, **kwargs):
     detail actions with lookup_field='id'.
     """
     # Import here to avoid circular imports
-    from rest_framework.exceptions import NotFound
 
     from .views import ContractViewSet
 
@@ -82,6 +81,7 @@ def lineage_visualization_custom(request, id=None, *args, **kwargs):
     elif hasattr(drf_request, "user") and drf_request.user and not drf_request.user.is_anonymous:
         # Fallback: get tenant_id from user (for tests where middleware doesn't run)
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         try:
             db_user = User.objects.only("tenant_id").get(id=drf_request.user.id)
@@ -95,10 +95,9 @@ def lineage_visualization_custom(request, id=None, *args, **kwargs):
     elif hasattr(drf_request, "tenant_id") and drf_request.tenant_id:
         # Fallback: get tenant object from tenant_id (for tests where middleware doesn't run)
         from hub.apps.tenants.models import Tenant
-        try:
+
+        with contextlib.suppress(Tenant.DoesNotExist):
             drf_request.tenant = Tenant.objects.get(id=drf_request.tenant_id)
-        except Tenant.DoesNotExist:
-            pass
 
     # CRITICAL: Set up viewset for detail action BEFORE calling the action method
     # This ensures get_object() works correctly:
@@ -209,6 +208,7 @@ def export_contract_custom(request, id=None, *args, **kwargs):
     elif hasattr(drf_request, "user") and drf_request.user and not drf_request.user.is_anonymous:
         # Fallback: get tenant_id from user (for tests where middleware doesn't run)
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         try:
             db_user = User.objects.only("tenant_id").get(id=drf_request.user.id)
@@ -225,6 +225,7 @@ def export_contract_custom(request, id=None, *args, **kwargs):
     elif hasattr(drf_request, "tenant_id") and drf_request.tenant_id:
         # Fallback: get tenant object from tenant_id (for tests where middleware doesn't run)
         from hub.apps.tenants.models import Tenant
+
         try:
             # tenant_id is already a UUID, so we can use it directly
             drf_request.tenant = Tenant.objects.get(id=drf_request.tenant_id)
@@ -258,18 +259,18 @@ def export_contract_custom(request, id=None, *args, **kwargs):
         viewset.check_throttles(drf_request)
 
         # DEBUG: Verify setup before calling action (always log in test mode)
-        import os
         import logging
-        logger = logging.getLogger(__name__)
-        contract_id = kwargs.get("id")
+        import os
+
+        logging.getLogger(__name__)
+        kwargs.get("id")
 
         # Always log in test environments (check multiple ways to detect test mode)
-        is_test = (
-            os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith("test") or
-            "test" in os.environ.get("PYTEST_CURRENT_TEST", "") or
-            "pytest" in str(os.environ.get("_", ""))
+        (
+            os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith("test")
+            or "test" in os.environ.get("PYTEST_CURRENT_TEST", "")
+            or "pytest" in str(os.environ.get("_", ""))
         )
-
 
         # Call the action method directly
         # The action method will call get_object() which will now work correctly because:
@@ -292,10 +293,10 @@ def export_contract_custom(request, id=None, *args, **kwargs):
 
         # Create context for exception handler
         context = {
-            'view': viewset,
-            'args': args,
-            'kwargs': kwargs,
-            'request': drf_request,
+            "view": viewset,
+            "args": args,
+            "kwargs": kwargs,
+            "request": drf_request,
         }
 
         # Get DRF's exception handler response
@@ -303,10 +304,8 @@ def export_contract_custom(request, id=None, *args, **kwargs):
 
         if exc_response is not None:
             # DRF handled the exception, finalize and return the response
-            try:
+            with contextlib.suppress(AttributeError, TypeError):
                 exc_response = viewset.finalize_response(drf_request, exc_response, *args, **kwargs)
-            except (AttributeError, TypeError):
-                pass
             return exc_response
 
         # If exception handler returns None, re-raise the exception
@@ -389,6 +388,7 @@ def download_contract_custom(request, id=None, *args, **kwargs):
     elif hasattr(drf_request, "user") and drf_request.user and not drf_request.user.is_anonymous:
         # Fallback: get tenant_id from user (for tests where middleware doesn't run)
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         try:
             db_user = User.objects.only("tenant_id").get(id=drf_request.user.id)
@@ -402,10 +402,9 @@ def download_contract_custom(request, id=None, *args, **kwargs):
     elif hasattr(drf_request, "tenant_id") and drf_request.tenant_id:
         # Fallback: get tenant object from tenant_id (for tests where middleware doesn't run)
         from hub.apps.tenants.models import Tenant
-        try:
+
+        with contextlib.suppress(Tenant.DoesNotExist):
             drf_request.tenant = Tenant.objects.get(id=drf_request.tenant_id)
-        except Tenant.DoesNotExist:
-            pass
 
     # CRITICAL: Set up viewset for detail action BEFORE calling the action method
     # This ensures get_object() works correctly:
@@ -450,10 +449,10 @@ def download_contract_custom(request, id=None, *args, **kwargs):
 
         # Create context for exception handler
         context = {
-            'view': viewset,
-            'args': args,
-            'kwargs': kwargs,
-            'request': drf_request,
+            "view": viewset,
+            "args": args,
+            "kwargs": kwargs,
+            "request": drf_request,
         }
 
         # Get DRF's exception handler response
@@ -461,10 +460,8 @@ def download_contract_custom(request, id=None, *args, **kwargs):
 
         if exc_response is not None:
             # DRF handled the exception, finalize and return the response
-            try:
+            with contextlib.suppress(AttributeError, TypeError):
                 exc_response = viewset.finalize_response(drf_request, exc_response, *args, **kwargs)
-            except (AttributeError, TypeError):
-                pass
             return exc_response
 
         # If exception handler returns None, re-raise the exception

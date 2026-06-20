@@ -50,9 +50,7 @@ class PersonalTenantSecurityTest(TestCase):
             format="json",
         )
         self.assertEqual(login.status_code, status.HTTP_200_OK)
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {login.data['access_token']}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['access_token']}")
 
         other_tenant = Tenant.objects.create(
             name=f"Other Tenant {uuid.uuid4().hex[:8]}",
@@ -95,9 +93,7 @@ class PersonalTenantSecurityTest(TestCase):
             format="json",
         )
         self.assertEqual(login.status_code, status.HTTP_200_OK)
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {login.data['access_token']}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['access_token']}")
 
         user = User.objects.get(email=email)
         tenant_admin_role, _ = Role.objects.get_or_create(
@@ -156,9 +152,7 @@ class PersonalTenantSecurityTest(TestCase):
             format="json",
         )
         self.assertEqual(login.status_code, status.HTTP_200_OK)
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {login.data['access_token']}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['access_token']}")
 
         first = self.client.get("/api/v1/auth/me/")
         self.assertEqual(first.status_code, status.HTTP_200_OK)
@@ -187,7 +181,7 @@ class PersonalTenantSecurityTest(TestCase):
         )
 
         service = PersonalTenantService()
-        with self.assertRaises(ServiceValidationError) as cm:
+        with self.assertRaises(ServiceValidationError):
             service.create_personal_tenant_for_user(email=email, display_name="Leak User")
 
         exc = cm.exception

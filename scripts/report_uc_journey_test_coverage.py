@@ -77,10 +77,14 @@ def resolve_doc(root: Path, candidates: tuple[str, ...]) -> Path | None:
 
 
 def extract_uc_ids(use_cases_path: Path) -> list[str]:
-    """Extract UC-* IDs from USE_CASES.md (lines like **ID**: UC-XXX)."""
+    """Extract UC-* IDs from USE_CASES.md (table format: | UC-XXX | ... or **ID**: UC-XXX)."""
     ids: list[str] = []
     content = use_cases_path.read_text()
+    # Canonical section header format: **ID**: UC-XXX
     for m in re.finditer(r"\*\*ID\*\*:\s*(UC-[A-Za-z0-9-]+)", content):
+        ids.append(m.group(1))
+    # Markdown table format: | UC-XXX | Title | ... |
+    for m in re.finditer(r"\|\s*(UC-[A-Z]+(?:-[A-Z]+)*-\d+[A-Z]?)\s*\|", content):
         ids.append(m.group(1))
     return sorted(set(ids))
 
@@ -95,7 +99,7 @@ def extract_journey_ids(user_journeys_path: Path) -> list[str]:
     # Canonical section header
     for m in re.finditer(r"\*\*Journey ID\*\*:\s*(JOURNEY-[A-Za-z0-9-]+)", content):
         ids.append(m.group(1))
-    # List items: - JOURNEY-XXX: or - JOURNEY-XXX 
+    # List items: - JOURNEY-XXX: or - JOURNEY-XXX
     for m in re.finditer(r"^-\s+(JOURNEY-[A-Za-z0-9-]+)[:\s]", content, re.MULTILINE):
         ids.append(m.group(1))
     # Table cell: | JOURNEY-XXX |
@@ -157,9 +161,10 @@ def strip_gap_blocks(content: str) -> str:
         stripped = line.strip()
         # Block ends at a blank line, a blank JSDoc/Python-docstring line
         # (`*` or `#` alone), or any line that's not continuing a comment.
-        is_blank_comment = stripped in ("", "*", "*/", "#") or re.fullmatch(
-            r"[*#/]+\s*", stripped or ""
-        ) is not None
+        is_blank_comment = (
+            stripped in ("", "*", "*/", "#")
+            or re.fullmatch(r"[*#/]+\s*", stripped or "") is not None
+        )
         is_continuing_comment = bool(re.match(r"^\s*(\*|#|//)", line))
         if is_blank_comment or not is_continuing_comment:
             in_gap = False
@@ -203,7 +208,9 @@ def find_markers_in_file(file_path: Path) -> tuple[list[str], list[str]]:
     # @pytest.mark.uc("UC-XXX") or pytest.mark.uc("UC-XXX")
     for m in re.finditer(r'pytest\.mark\.uc\s*\(\s*["\'](UC-[A-Za-z0-9-]+)["\']', content):
         uc_ids.append(m.group(1))
-    for m in re.finditer(r'pytest\.mark\.journey\s*\(\s*["\'](JOURNEY-[A-Za-z0-9-]+)["\']', content):
+    for m in re.finditer(
+        r'pytest\.mark\.journey\s*\(\s*["\'](JOURNEY-[A-Za-z0-9-]+)["\']', content
+    ):
         journey_ids.append(m.group(1))
     return sorted(set(uc_ids)), sorted(set(journey_ids))
 
@@ -263,6 +270,7 @@ def build_scenario_coverage(
     Returns (uc_scenario, journey_scenario) where each value is
     {"success": bool, "failure": bool, "edge": bool}.
     """
+
     def aggregate(files: list[str]) -> dict[str, bool]:
         out: dict[str, bool] = {"success": False, "failure": False, "edge": False}
         for rel in files:
@@ -442,13 +450,19 @@ def run_ci_mode(
     else:
         parts = []
         if critical_gaps_uc:
-            parts.append(f"{len(critical_gaps_uc)} critical UC(s) with no tests: {', '.join(critical_gaps_uc[:10])}{'...' if len(critical_gaps_uc) > 10 else ''}")
+            parts.append(
+                f"{len(critical_gaps_uc)} critical UC(s) with no tests: {', '.join(critical_gaps_uc[:10])}{'...' if len(critical_gaps_uc) > 10 else ''}"
+            )
         if critical_gaps_journey:
-            parts.append(f"{len(critical_gaps_journey)} critical journey(s) with no tests: {', '.join(critical_gaps_journey[:10])}{'...' if len(critical_gaps_journey) > 10 else ''}")
+            parts.append(
+                f"{len(critical_gaps_journey)} critical journey(s) with no tests: {', '.join(critical_gaps_journey[:10])}{'...' if len(critical_gaps_journey) > 10 else ''}"
+            )
         if not uc_meets:
             parts.append(f"UC coverage {uc_coverage_pct:.1f}% below threshold {uc_threshold_pct}%")
         if not journey_meets:
-            parts.append(f"Journey coverage {journey_coverage_pct:.1f}% below threshold {journey_threshold_pct}%")
+            parts.append(
+                f"Journey coverage {journey_coverage_pct:.1f}% below threshold {journey_threshold_pct}%"
+            )
         ci_result["summary"] = "Traceability gate failed: " + "; ".join(parts)
 
     if output_path:
@@ -481,7 +495,9 @@ def output_markdown(
     print("|-------|-------|------------------------------------------|")
     for uc, files in sorted(uc_to_files.items()):
         status = "✅" if files else "⚠️ no tests"
-        scenario_cell = _scenario_cell(uc_scenario[uc]) if uc_scenario and uc in uc_scenario else "—"
+        scenario_cell = (
+            _scenario_cell(uc_scenario[uc]) if uc_scenario and uc in uc_scenario else "—"
+        )
         files_preview = ", ".join(f"[{Path(f).name}]({f})" for f in files[:3]) if files else "—"
         if len(files) > 3:
             files_preview += f" +{len(files) - 3} more"
@@ -491,7 +507,11 @@ def output_markdown(
     print("|------------|-------|------------------------------------------|")
     for j, files in sorted(journey_to_files.items()):
         status = "✅" if files else "⚠️ no tests"
-        scenario_cell = _scenario_cell(journey_scenario[j]) if journey_scenario and j in journey_scenario else "—"
+        scenario_cell = (
+            _scenario_cell(journey_scenario[j])
+            if journey_scenario and j in journey_scenario
+            else "—"
+        )
         files_preview = ", ".join(f"[{Path(f).name}]({f})" for f in files[:3]) if files else "—"
         if len(files) > 3:
             files_preview += f" +{len(files) - 3} more"
@@ -501,9 +521,13 @@ def output_markdown(
     if zero_uc or zero_journey:
         print("\n## Zero-test items\n")
         if zero_uc:
-            print(f"- Use cases with no tests: {len(zero_uc)} — {', '.join(zero_uc[:15])}{'...' if len(zero_uc) > 15 else ''}")
+            print(
+                f"- Use cases with no tests: {len(zero_uc)} — {', '.join(zero_uc[:15])}{'...' if len(zero_uc) > 15 else ''}"
+            )
         if zero_journey:
-            print(f"- Journeys with no tests: {len(zero_journey)} — {', '.join(zero_journey[:15])}{'...' if len(zero_journey) > 15 else ''}")
+            print(
+                f"- Journeys with no tests: {len(zero_journey)} — {', '.join(zero_journey[:15])}{'...' if len(zero_journey) > 15 else ''}"
+            )
     if broken_links:
         print("\n## Broken file links (TEST_TRACEABILITY.md)\n")
         for p in broken_links:
@@ -575,8 +599,7 @@ def main() -> int:
 
     if use_cases_path is None:
         print(
-            "USE_CASES.md not found in any candidate location: "
-            + ", ".join(USE_CASES_CANDIDATES),
+            "USE_CASES.md not found in any candidate location: " + ", ".join(USE_CASES_CANDIDATES),
             file=sys.stderr,
         )
         return 1
@@ -591,12 +614,8 @@ def main() -> int:
     uc_ids = extract_uc_ids(use_cases_path)
     journey_ids = extract_journey_ids(user_journeys_path)
     test_files = collect_test_files(root)
-    uc_to_files, journey_to_files = build_coverage(
-        root, uc_ids, journey_ids, test_files
-    )
-    uc_scenario, journey_scenario = build_scenario_coverage(
-        root, uc_to_files, journey_to_files
-    )
+    uc_to_files, journey_to_files = build_coverage(root, uc_ids, journey_ids, test_files)
+    uc_scenario, journey_scenario = build_scenario_coverage(root, uc_to_files, journey_to_files)
 
     broken_links: list[str] = []
     if args.audit_traceability or args.ci_mode:
@@ -610,7 +629,11 @@ def main() -> int:
             broken_links = audit_traceability(root, traceability_path)
 
     if args.ci_mode:
-        critical_list_path = Path(args.critical_list) if args.critical_list else docs / "CRITICAL_UC_JOURNEY_IDS.yaml"
+        critical_list_path = (
+            Path(args.critical_list)
+            if args.critical_list
+            else docs / "CRITICAL_UC_JOURNEY_IDS.yaml"
+        )
         if not critical_list_path.is_file():
             print(f"Critical list not found: {critical_list_path}", file=sys.stderr)
             return 1
@@ -619,8 +642,16 @@ def main() -> int:
         except Exception as e:
             print(f"Failed to load critical list: {e}", file=sys.stderr)
             return 1
-        uc_threshold = args.uc_threshold if args.uc_threshold is not None else float(thresholds.get("uc_coverage_percent", 70))
-        journey_threshold = args.journey_threshold if args.journey_threshold is not None else float(thresholds.get("journey_coverage_percent", 60))
+        uc_threshold = (
+            args.uc_threshold
+            if args.uc_threshold is not None
+            else float(thresholds.get("uc_coverage_percent", 70))
+        )
+        journey_threshold = (
+            args.journey_threshold
+            if args.journey_threshold is not None
+            else float(thresholds.get("journey_coverage_percent", 60))
+        )
         output_path = Path(args.output) if args.output else None
         exit_code, ci_result = run_ci_mode(
             root=root,
@@ -664,9 +695,9 @@ def main() -> int:
 
     if args.output:
         import contextlib
-        with open(args.output, "w") as f:
-            with contextlib.redirect_stdout(f):
-                write_report()
+
+        with open(args.output, "w") as f, contextlib.redirect_stdout(f):
+            write_report()
     else:
         write_report()
 

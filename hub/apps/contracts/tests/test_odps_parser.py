@@ -13,7 +13,6 @@ import json
 import tempfile
 from pathlib import Path
 
-import yaml
 from django.test import TestCase
 
 from hub.apps.contracts.odps_parser import ODPSParser, ODPSValidationError
@@ -488,7 +487,7 @@ product:
 """
         result = ODPSParser.parse(yaml_content, format="yaml")
         self.assertIsInstance(result, dict)
-        self.assertEqual(result["product"]["details"]["en"]["name"], 'Product <>&"\'')
+        self.assertEqual(result["product"]["details"]["en"]["name"], "Product <>&\"'")
 
     def test_parse_yaml_with_unicode(self):
         """Test YAML parsing with unicode characters."""

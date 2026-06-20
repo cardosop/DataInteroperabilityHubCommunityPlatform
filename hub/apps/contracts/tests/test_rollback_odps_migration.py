@@ -17,8 +17,8 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Edge cases
 """
 
-import uuid
 import json
+import uuid
 from io import StringIO
 
 import pytest
@@ -27,11 +27,9 @@ from django.core.management import call_command
 pytestmark = pytest.mark.django_db(transaction=True)
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.management.commands.rollback_odps_migration import Command
 from hub.apps.contracts.models import Contract, OriginalSpecType
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-
 
 
 class RollbackODPSMigrationTestBase(ContractsTestBase):
@@ -40,7 +38,9 @@ class RollbackODPSMigrationTestBase(ContractsTestBase):
     def setUp(self):
         """Set up test fixtures."""
         super().setUp()
-        import uuid; uid = uuid.uuid4().hex[:8]
+        import uuid
+
+        uid = uuid.uuid4().hex[:8]
         # Update tenant/user names for clarity
         self.tenant.name = f"Rollback Test {uid}"
         self.tenant.slug = f"rollback-test-{uid}"
@@ -200,7 +200,7 @@ class RemoveODPSLinksTest(RollbackODPSMigrationTestBase):
 
     def test_remove_links_handles_missing_link(self):
         """Test removing links when link doesn't exist through public API."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Remove link first time through public API
         out1 = StringIO()
@@ -301,9 +301,9 @@ class RestorePreviousStateTest(RollbackODPSMigrationTestBase):
             odcs_contract.hub_contract_json["extensions"] = {}
         if "x_odps" not in odcs_contract.hub_contract_json["extensions"]:
             odcs_contract.hub_contract_json["extensions"]["x_odps"] = {}
-        odcs_contract.hub_contract_json["extensions"]["x_odps"][
-            "previous_odps_link"
-        ] = previous_odps_link
+        odcs_contract.hub_contract_json["extensions"]["x_odps"]["previous_odps_link"] = (
+            previous_odps_link
+        )
         odcs_contract.save(update_fields=["hub_contract_json"])
 
         # Perform rollback through public API
@@ -349,9 +349,9 @@ class RestorePreviousStateTest(RollbackODPSMigrationTestBase):
             odcs_contract.hub_contract_json["extensions"] = {}
         if "x_odps" not in odcs_contract.hub_contract_json["extensions"]:
             odcs_contract.hub_contract_json["extensions"]["x_odps"] = {}
-        odcs_contract.hub_contract_json["extensions"]["x_odps"][
-            "previous_odps_link"
-        ] = previous_odps_link
+        odcs_contract.hub_contract_json["extensions"]["x_odps"]["previous_odps_link"] = (
+            previous_odps_link
+        )
         odcs_contract.save(update_fields=["hub_contract_json"])
 
         # Delete ODPS contract
@@ -376,8 +376,9 @@ class RestorePreviousStateTest(RollbackODPSMigrationTestBase):
         # Verify ODCS contract state after rollback with missing ODPS contract.
         odcs_contract.refresh_from_db()
         hub_contract = odcs_contract.hub_contract_json
-        self.assertIsNotNone(hub_contract,
-                             "ODCS contract hub_contract_json must persist after rollback")
+        self.assertIsNotNone(
+            hub_contract, "ODCS contract hub_contract_json must persist after rollback"
+        )
 
 
 class RollbackValidationTest(RollbackODPSMigrationTestBase):
@@ -441,7 +442,7 @@ class RollbackValidationTest(RollbackODPSMigrationTestBase):
             odps_contract.refresh_from_db()
             odps_hub_contract = odps_contract.hub_contract_json
             odps_extensions = odps_hub_contract.get("extensions", {})
-            odps_x_odps = odps_extensions.get("x_odps", {})
+            odps_extensions.get("x_odps", {})
             # If contract still exists, link may or may not be removed
             # depending on whether the command found the relationship
         # else: ODPS contract was deleted (full rollback) — that's also valid
@@ -524,7 +525,7 @@ class CommandIntegrationTest(RollbackODPSMigrationTestBase):
 
     def test_command_dry_run_mode(self):
         """Test command in dry-run mode."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Run command in dry-run mode
         out = StringIO()
@@ -566,7 +567,7 @@ class CommandIntegrationTest(RollbackODPSMigrationTestBase):
         """Test command in batch mode."""
         # Create multiple linked contracts
         contracts = []
-        for i in range(3):
+        for _i in range(3):
             odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
             contracts.append((odcs_contract, odps_contract))
 
@@ -621,7 +622,7 @@ class CommandIntegrationTest(RollbackODPSMigrationTestBase):
         )
 
         # Create one linked contract
-        linked_odcs, linked_odps = self._create_linked_odcs_odps_contracts()
+        linked_odcs, _linked_odps = self._create_linked_odcs_odps_contracts()
 
         # Run command
         out = StringIO()
@@ -648,9 +649,6 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
 
     def test_migrate_then_rollback_then_verify(self):
         """Test complete workflow: migrate, rollback, verify state restored."""
-        from hub.apps.contracts.management.commands.migrate_contracts_to_odps import (
-            Command as MigrateCommand,
-        )
 
         # Create ODCS contract with marketplace data
         contract_service = self.contract_service
@@ -796,15 +794,14 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
         odcs_contract.refresh_from_db()
         hub_contract = odcs_contract.hub_contract_json
         extensions = hub_contract.get("extensions", {})
-        x_odps = extensions.get("x_odps", {})
+        extensions.get("x_odps", {})
         # The ODCS contract should persist; link removal behavior depends on
         # the rollback command implementation.
-        self.assertIsNotNone(hub_contract,
-                             "ODCS contract hub_contract_json must persist")
+        self.assertIsNotNone(hub_contract, "ODCS contract hub_contract_json must persist")
 
     def test_rollback_with_missing_extensions(self):
         """Test rollback with contract missing extensions."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Remove extensions
         hub_contract = odcs_contract.hub_contract_json or {}
@@ -829,7 +826,7 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
 
     def test_rollback_with_missing_x_odps(self):
         """Test rollback with contract missing x_odps section."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Remove x_odps
         hub_contract = odcs_contract.hub_contract_json or {}
@@ -887,30 +884,25 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
 
         # Test through public API - call_command() internally calls _remove_odps_link_from_odcs()
         out = StringIO()
-        try:
-            call_command(
-                "rollback_odps_migration",
-                "--contract-id",
-                str(odcs_contract.id),
-                stdout=out,
-            )
-            # Should handle None hub_contract_json gracefully
-            odcs_contract.refresh_from_db()
-            hub_contract = odcs_contract.hub_contract_json
-            if hub_contract:
-                extensions = hub_contract.get("extensions", {})
-                x_odps = extensions.get("x_odps", {})
-                self.assertIsNone(x_odps.get("odps_link"))
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        call_command(
+            "rollback_odps_migration",
+            "--contract-id",
+            str(odcs_contract.id),
+            stdout=out,
+        )
+        # Should handle None hub_contract_json gracefully
+        odcs_contract.refresh_from_db()
+        hub_contract = odcs_contract.hub_contract_json
+        if hub_contract:
+            extensions = hub_contract.get("extensions", {})
+            x_odps = extensions.get("x_odps", {})
+            self.assertIsNone(x_odps.get("odps_link"))
 
     def test_rollback_with_invalid_contract_id_format(self):
         """Test rollback with invalid contract ID format raises CommandError."""
         out = StringIO()
-        # An invalid UUID format should cause the command to raise an error.
-        # The exact error type depends on the implementation (CommandError,
-        # ValueError, or SystemExit from argparse).
+        # Invalid UUID format should cause the command to raise an error.
+        from django.core.management import CommandError
         try:
             call_command(
                 "rollback_odps_migration",
@@ -924,15 +916,20 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
                 "not found" in output or "invalid" in output.lower(),
                 f"Expected error indicator for invalid contract ID, got: {output}",
             )
-        except (ValueError, SystemExit, Exception):
+        except (CommandError, ValueError, SystemExit):
             # Raising an exception for invalid format is also acceptable.
             pass
+        except Exception as e:
+            # conftest wraps ValueError as django.core.exceptions.ValidationError
+            from django.core.exceptions import ValidationError as _DJV
+            if not isinstance(e, _DJV):
+                raise
 
     def test_rollback_with_very_large_batch_size(self):
         """Test rollback with very large batch size."""
         # Create multiple contracts
         contracts = []
-        for i in range(5):
+        for _i in range(5):
             odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
             contracts.append((odcs_contract, odps_contract))
 
@@ -967,7 +964,7 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
 
     def test_rollback_with_zero_batch_size(self):
         """Test rollback with zero batch size."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Run command with zero batch size
         out = StringIO()
@@ -989,12 +986,13 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
         odcs_contract.refresh_from_db()
         hub_contract = odcs_contract.hub_contract_json
         extensions = hub_contract.get("extensions", {})
-        x_odps = extensions.get("x_odps", {})
+        extensions.get("x_odps", {})
         # The command may or may not process contracts when batch-size is 0,
         # depending on implementation. Verify the ODCS contract still exists.
         odcs_contract.refresh_from_db()
-        self.assertIsNotNone(odcs_contract.hub_contract_json,
-                             "ODCS contract must still exist after rollback")
+        self.assertIsNotNone(
+            odcs_contract.hub_contract_json, "ODCS contract must still exist after rollback"
+        )
 
     def test_rollback_cross_tenant_isolation(self):
         """Test rollback respects tenant isolation."""
@@ -1028,7 +1026,7 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
 
     def test_rollback_with_special_characters_in_contract_id(self):
         """Test rollback with special characters in contract ID."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Update hub_contract_json with special characters
         hub_contract = odcs_contract.hub_contract_json or {}
@@ -1053,7 +1051,7 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
 
     def test_rollback_with_unicode_in_contract_id(self):
         """Test rollback with unicode characters in contract ID."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Update hub_contract_json with unicode
         hub_contract = odcs_contract.hub_contract_json or {}

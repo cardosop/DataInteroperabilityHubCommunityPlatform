@@ -1,50 +1,59 @@
 """
 Asset management commands.
 """
-import click
+
 import json
-from typing import Optional
+
+import click
+
 from ..api_client import api_client
 
 
 @click.group()
 def assets():
     """Asset management commands"""
-    pass
 
 
-@assets.command('list')
-@click.option('--status', help='Filter by status (DRAFT, ACTIVE, ARCHIVED)')
-@click.option('--domain', help='Filter by domain')
-@click.option('--limit', type=int, default=20, help='Limit number of results')
-@click.option('--offset', type=int, default=0, help='Offset for pagination')
-@click.option('--format', 'output_format', type=click.Choice(['json', 'table']), default='table', help='Output format')
-def list_assets(status: Optional[str], domain: Optional[str], limit: int, offset: int, output_format: str):
+@assets.command("list")
+@click.option("--status", help="Filter by status (DRAFT, ACTIVE, ARCHIVED)")
+@click.option("--domain", help="Filter by domain")
+@click.option("--limit", type=int, default=20, help="Limit number of results")
+@click.option("--offset", type=int, default=0, help="Offset for pagination")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
+def list_assets(
+    status: str | None, domain: str | None, limit: int, offset: int, output_format: str
+):
     """List assets"""
-    params = {'limit': limit, 'offset': offset}
+    params = {"limit": limit, "offset": offset}
     if status:
-        params['status'] = status
+        params["status"] = status
     if domain:
-        params['domain'] = domain
-    
+        params["domain"] = domain
+
     try:
         # API endpoint structure: /api/v1/assets/ (assets/ from api/urls.py + assets from router)
-        data = api_client.get('assets/', params=params)
+        data = api_client.get("assets/", params=params)
         # Handle both paginated response (dict with 'results') and direct list response
         if isinstance(data, dict):
-            results = data.get('results', [])
+            results = data.get("results", [])
         elif isinstance(data, list):
             results = data
         else:
             results = []
-        
-        if output_format == 'json':
+
+        if output_format == "json":
             click.echo(json.dumps(results, indent=2))
         else:
             if not results:
                 click.echo("No assets found.")
                 return
-            
+
             # Table format
             click.echo(f"{'ID':<40} {'Name':<30} {'Status':<15} {'Domain':<20}")
             click.echo("-" * 105)
@@ -52,37 +61,41 @@ def list_assets(status: Optional[str], domain: Optional[str], limit: int, offset
                 # Ensure asset is a dict and handle None values safely
                 if not isinstance(asset, dict):
                     continue
-                asset_id = str(asset.get('id', ''))[:36] if asset.get('id') else ''
-                asset_name = str(asset.get('name', ''))[:28] if asset.get('name') else ''
-                asset_status = str(asset.get('status', ''))[:15] if asset.get('status') else ''
-                asset_domain = str(asset.get('domain', ''))[:18] if asset.get('domain') else ''
-                click.echo(
-                    f"{asset_id:<40} "
-                    f"{asset_name:<30} "
-                    f"{asset_status:<15} "
-                    f"{asset_domain:<20}"
-                )
+                asset_id = str(asset.get("id", ""))[:36] if asset.get("id") else ""
+                asset_name = str(asset.get("name", ""))[:28] if asset.get("name") else ""
+                asset_status = str(asset.get("status", ""))[:15] if asset.get("status") else ""
+                asset_domain = str(asset.get("domain", ""))[:18] if asset.get("domain") else ""
+                click.echo(f"{asset_id:<40} {asset_name:<30} {asset_status:<15} {asset_domain:<20}")
     except click.ClickException:
         raise
     except Exception as e:
         raise click.ClickException(f"Failed to list assets: {e}")
 
 
-@assets.command('get')
-@click.argument('asset_id')
-@click.option('--include', help='Comma-separated list of related resources (contract,datasets,latest_dq,latest_compliance)')
-@click.option('--format', 'output_format', type=click.Choice(['json', 'table']), default='table', help='Output format')
-def get_asset(asset_id: str, include: Optional[str], output_format: str):
+@assets.command("get")
+@click.argument("asset_id")
+@click.option(
+    "--include",
+    help="Comma-separated list of related resources (contract,datasets,latest_dq,latest_compliance)",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
+def get_asset(asset_id: str, include: str | None, output_format: str):
     """Get asset details"""
     params = {}
     if include:
-        params['include'] = include
-    
+        params["include"] = include
+
     try:
         # API endpoint structure: /api/v1/assets/{id}/ (assets/ from api/urls.py + assets from router)
-        data = api_client.get(f'assets/{asset_id}/', params=params)
-        
-        if output_format == 'json':
+        data = api_client.get(f"assets/{asset_id}/", params=params)
+
+        if output_format == "json":
             click.echo(json.dumps(data, indent=2))
         else:
             # Table format
@@ -92,7 +105,7 @@ def get_asset(asset_id: str, include: Optional[str], output_format: str):
             click.echo(f"Status: {data.get('status')}")
             click.echo(f"Domain: {data.get('domain')}")
             click.echo(f"Visibility: {data.get('visibility')}")
-            if data.get('description'):
+            if data.get("description"):
                 click.echo(f"Description: {data.get('description')}")
             click.echo(f"Created: {data.get('created_at')}")
             click.echo(f"Updated: {data.get('updated_at')}")
@@ -102,33 +115,47 @@ def get_asset(asset_id: str, include: Optional[str], output_format: str):
         raise click.ClickException(f"Failed to get asset: {e}")
 
 
-@assets.command('create')
-@click.option('--name', required=True, help='Asset name')
-@click.option('--key', required=True, help='Asset key (unique identifier)')
-@click.option('--description', help='Asset description')
-@click.option('--domain', help='Asset domain')
-@click.option('--visibility', type=click.Choice(['INTERNAL', 'PUBLIC']), default='INTERNAL', help='Asset visibility')
-@click.option('--format', 'output_format', type=click.Choice(['json', 'table']), default='table', help='Output format')
-def create_asset(name: str, key: str, description: Optional[str], domain: Optional[str], visibility: str, output_format: str):
+@assets.command("create")
+@click.option("--name", required=True, help="Asset name")
+@click.option("--key", required=True, help="Asset key (unique identifier)")
+@click.option("--description", help="Asset description")
+@click.option("--domain", help="Asset domain")
+@click.option(
+    "--visibility",
+    type=click.Choice(["INTERNAL", "PUBLIC"]),
+    default="INTERNAL",
+    help="Asset visibility",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
+def create_asset(
+    name: str,
+    key: str,
+    description: str | None,
+    domain: str | None,
+    visibility: str,
+    output_format: str,
+):
     """Create a new asset"""
-    data = {
-        'name': name,
-        'key': key,
-        'visibility': visibility
-    }
+    data = {"name": name, "key": key, "visibility": visibility}
     if description:
-        data['description'] = description
+        data["description"] = description
     if domain:
-        data['domain'] = domain
-    
+        data["domain"] = domain
+
     try:
         # API endpoint structure: /api/v1/assets/ (assets/ from api/urls.py + assets from router)
-        result = api_client.post('assets/', json_data=data)
-        
-        if output_format == 'json':
+        result = api_client.post("assets/", json_data=data)
+
+        if output_format == "json":
             click.echo(json.dumps(result, indent=2))
         else:
-            click.echo(f"Asset created successfully!")
+            click.echo("Asset created successfully!")
             click.echo(f"ID: {result.get('id')}")
             click.echo(f"Name: {result.get('name')}")
             click.echo(f"Status: {result.get('status')}")
@@ -138,36 +165,49 @@ def create_asset(name: str, key: str, description: Optional[str], domain: Option
         raise click.ClickException(f"Failed to create asset: {e}")
 
 
-@assets.command('update')
-@click.argument('asset_id')
-@click.option('--name', help='Asset name')
-@click.option('--description', help='Asset description')
-@click.option('--domain', help='Asset domain')
-@click.option('--visibility', type=click.Choice(['INTERNAL', 'PUBLIC']), help='Asset visibility')
-@click.option('--format', 'output_format', type=click.Choice(['json', 'table']), default='table', help='Output format')
-def update_asset(asset_id: str, name: Optional[str], description: Optional[str], domain: Optional[str], visibility: Optional[str], output_format: str):
+@assets.command("update")
+@click.argument("asset_id")
+@click.option("--name", help="Asset name")
+@click.option("--description", help="Asset description")
+@click.option("--domain", help="Asset domain")
+@click.option("--visibility", type=click.Choice(["INTERNAL", "PUBLIC"]), help="Asset visibility")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
+def update_asset(
+    asset_id: str,
+    name: str | None,
+    description: str | None,
+    domain: str | None,
+    visibility: str | None,
+    output_format: str,
+):
     """Update an asset"""
     data = {}
     if name:
-        data['name'] = name
+        data["name"] = name
     if description is not None:
-        data['description'] = description
+        data["description"] = description
     if domain:
-        data['domain'] = domain
+        data["domain"] = domain
     if visibility:
-        data['visibility'] = visibility
-    
+        data["visibility"] = visibility
+
     if not data:
         raise click.ClickException("No fields to update")
-    
+
     try:
         # API endpoint structure: /api/v1/assets/{id}/ (assets/ from api/urls.py + assets from router)
-        result = api_client.patch(f'assets/{asset_id}/', json_data=data)
-        
-        if output_format == 'json':
+        result = api_client.patch(f"assets/{asset_id}/", json_data=data)
+
+        if output_format == "json":
             click.echo(json.dumps(result, indent=2))
         else:
-            click.echo(f"Asset updated successfully!")
+            click.echo("Asset updated successfully!")
             click.echo(f"ID: {result.get('id')}")
             click.echo(f"Name: {result.get('name')}")
     except click.ClickException:
@@ -176,19 +216,18 @@ def update_asset(asset_id: str, name: Optional[str], description: Optional[str],
         raise click.ClickException(f"Failed to update asset: {e}")
 
 
-@assets.command('delete')
-@click.argument('asset_id')
-@click.option('--confirm', is_flag=True, help='Skip confirmation prompt')
+@assets.command("delete")
+@click.argument("asset_id")
+@click.option("--confirm", is_flag=True, help="Skip confirmation prompt")
 def delete_asset(asset_id: str, confirm: bool):
     """Delete an asset"""
-    if not confirm:
-        if not click.confirm(f"Are you sure you want to delete asset {asset_id}?"):
-            click.echo("Cancelled.")
-            return
-    
+    if not confirm and not click.confirm(f"Are you sure you want to delete asset {asset_id}?"):
+        click.echo("Cancelled.")
+        return
+
     try:
         # API endpoint structure: /api/v1/assets/{id}/ (assets/ from api/urls.py + assets from router)
-        api_client.delete(f'assets/{asset_id}/')
+        api_client.delete(f"assets/{asset_id}/")
         click.echo(f"Asset {asset_id} deleted successfully!")
     except click.ClickException:
         raise
@@ -196,26 +235,30 @@ def delete_asset(asset_id: str, confirm: bool):
         raise click.ClickException(f"Failed to delete asset: {e}")
 
 
-@assets.command('activate')
-@click.argument('asset_id')
-@click.option('--format', 'output_format', type=click.Choice(['json', 'table']), default='table', help='Output format')
+@assets.command("activate")
+@click.argument("asset_id")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
 def activate_asset(asset_id: str, output_format: str):
     """Activate an asset"""
     try:
         # Fetch current asset to get version for optimistic locking
-        asset_data = api_client.get(f'assets/{asset_id}/')
-        version = asset_data.get('version')
+        asset_data = api_client.get(f"assets/{asset_id}/")
+        version = asset_data.get("version")
         if version is None:
-            raise click.ClickException(
-                "Could not read asset version (required for activation)"
-            )
+            raise click.ClickException("Could not read asset version (required for activation)")
 
         result = api_client.post(
-            f'assets/{asset_id}/activate/',
-            json_data={'version': version},
+            f"assets/{asset_id}/activate/",
+            json_data={"version": version},
         )
 
-        if output_format == 'json':
+        if output_format == "json":
             click.echo(json.dumps(result, indent=2))
         else:
             click.echo("Asset activated successfully!")
@@ -225,4 +268,3 @@ def activate_asset(asset_id: str, output_format: str):
         raise
     except Exception as e:
         raise click.ClickException(f"Failed to activate asset: {e}")
-

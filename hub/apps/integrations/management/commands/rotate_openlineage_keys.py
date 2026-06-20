@@ -18,6 +18,7 @@ Usage::
     # Override the grace window:
     python manage.py rotate_openlineage_keys --tenant=<uuid> --grace-days=14
 """
+
 from __future__ import annotations
 
 import datetime as _dt
@@ -25,7 +26,6 @@ import json
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
-
 
 DEFAULT_GRACE_DAYS = 7
 
@@ -40,7 +40,7 @@ def _emit_rotation_audit(*, tenant, new_key, outgoing_count, grace_window_ends):
     try:
         from hub.apps.audit.models import OPENLINEAGE_KEY_ROTATED
         from hub.apps.audit.utils import create_audit_event
-    except Exception:  # noqa: BLE001 — audit optional at import.
+    except Exception:
         return
     try:
         create_audit_event(
@@ -55,7 +55,7 @@ def _emit_rotation_audit(*, tenant, new_key, outgoing_count, grace_window_ends):
                 "grace_window_ends": grace_window_ends.isoformat(),
             },
         )
-    except Exception:  # noqa: BLE001 — best-effort.
+    except Exception:
         pass
 
 
@@ -92,9 +92,7 @@ class Command(BaseCommand):
         try:
             tenant = Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist as exc:
-            raise CommandError(
-                f"Tenant {tenant_id!r} not found"
-            ) from exc
+            raise CommandError(f"Tenant {tenant_id!r} not found") from exc
 
         # Outgoing keys: every still-active key gets ``expires_at``
         # set to ``now + grace_days``. Already-revoked / expired
@@ -119,14 +117,19 @@ class Command(BaseCommand):
         prefix = plaintext.removeprefix("msh_ol_")[:8]
 
         if dry_run:
-            self.stdout.write(json.dumps({
-                "phase": "228.F4.11",
-                "dry_run": True,
-                "tenant_id": str(tenant.id),
-                "outgoing_keys_to_grace": outgoing_count,
-                "grace_window_ends": cutoff.isoformat(),
-                "would_create_prefix": prefix,
-            }, sort_keys=True))
+            self.stdout.write(
+                json.dumps(
+                    {
+                        "phase": "228.F4.11",
+                        "dry_run": True,
+                        "tenant_id": str(tenant.id),
+                        "outgoing_keys_to_grace": outgoing_count,
+                        "grace_window_ends": cutoff.isoformat(),
+                        "would_create_prefix": prefix,
+                    },
+                    sort_keys=True,
+                )
+            )
             return
 
         outgoing.update(expires_at=cutoff)
@@ -149,14 +152,19 @@ class Command(BaseCommand):
 
         # Output: structured JSON + a separate, plain-text plaintext
         # line so an operator pasting into a vault GUI gets it cleanly.
-        self.stdout.write(json.dumps({
-            "phase": "228.F4.11",
-            "tenant_id": str(tenant.id),
-            "new_key_id": str(new_key.id),
-            "new_key_prefix": prefix,
-            "outgoing_keys_graced": outgoing_count,
-            "grace_window_ends": cutoff.isoformat(),
-        }, sort_keys=True))
+        self.stdout.write(
+            json.dumps(
+                {
+                    "phase": "228.F4.11",
+                    "tenant_id": str(tenant.id),
+                    "new_key_id": str(new_key.id),
+                    "new_key_prefix": prefix,
+                    "outgoing_keys_graced": outgoing_count,
+                    "grace_window_ends": cutoff.isoformat(),
+                },
+                sort_keys=True,
+            )
+        )
         self.stdout.write("")
         self.stdout.write("=== NEW INGEST KEY (visible ONCE) ===")
         self.stdout.write(plaintext)

@@ -12,7 +12,6 @@ All tests use real implementations. Circuit-breaker tests use the
 real Redis-backed breaker by manipulating Redis state directly.
 """
 
-import copy
 import time
 import uuid
 
@@ -53,12 +52,16 @@ class FailClosedBehaviorTest(TestCase):
         from hub.apps.core.resilience.service_breakers import (
             reset_shared_circuit_breakers_for_service,
         )
+
         reset_shared_circuit_breakers_for_service("compliance-service")
 
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -107,6 +110,7 @@ class FailClosedBehaviorTest(TestCase):
         won't help.  Short backoff (1s / 2s / 3s) keeps the ceiling low.
         """
         import logging
+
         _logger = logging.getLogger(__name__)
 
         from hub.apps.compliance.models import ComplianceRunStatus
@@ -129,10 +133,12 @@ class FailClosedBehaviorTest(TestCase):
             delay = 1.0 * (attempt + 1)
             _logger.debug(
                 "poll attempt %d/%d (status=%s, delay=%.1fs)",
-                attempt + 1, max_attempts,
-                compliance_run.status, delay,
+                attempt + 1,
+                max_attempts,
+                compliance_run.status,
+                delay,
             )
-            time.sleep(delay)
+            time.sleep(delay)  # noqa: sleep-needed — polling loop
 
     def _setup_test_file_content(self):
         """Set up test file content in storage. Retries so MinIO startup delay does not cause skips."""
@@ -154,7 +160,7 @@ class FailClosedBehaviorTest(TestCase):
                 return
             except Exception:
                 if attempt < max_attempts - 1:
-                    time.sleep(delay_seconds)  # INTENTIONAL: test-specific timing requirement
+                    time.sleep(delay_seconds)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
                     continue
                 # Storage not available after retries - tests will skip
                 self.storage_available = False
@@ -194,13 +200,19 @@ class FailClosedBehaviorTest(TestCase):
 
         # Assert the run reached a terminal state
         compliance_run.refresh_from_db()
-        self.assertIn(compliance_run.status, [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED, ComplianceRunStatus.QUEUED])
+        self.assertIn(
+            compliance_run.status,
+            [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED, ComplianceRunStatus.QUEUED],
+        )
         # If it completed, verify fail-closed
         if compliance_run.status == ComplianceRunStatus.FAILED:
             self.assertFalse(compliance_run.allowed_to_store)
         elif compliance_run.status == ComplianceRunStatus.SUCCEEDED:
-            # Still verify allowed_to_store is set (not None)
-            self.assertIsNotNone(compliance_run.allowed_to_store)
+            # SSN content must trigger allowed_to_store=False (fail-closed).
+            self.assertFalse(
+                compliance_run.allowed_to_store,
+                "Expected allowed_to_store=False for SSN content (fail-closed)",
+            )
         elif compliance_run.status == ComplianceRunStatus.QUEUED:
             self.skipTest("Compliance service returned async response")
 
@@ -223,7 +235,7 @@ class FailClosedBehaviorTest(TestCase):
         # Execute compliance run - should handle error gracefully
         try:
             execute_compliance_run(str(compliance_run.id))
-        except (ConnectionError, OSError, ValueError) as exc:
+        except (ConnectionError, OSError, ValueError):
             # Expected if storage/service unavailable
             pass
 
@@ -245,7 +257,7 @@ class FailClosedBehaviorTest(TestCase):
         )
 
         # Create a contract for the asset (required for activation)
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -261,12 +273,12 @@ class FailClosedBehaviorTest(TestCase):
         )
 
         # Create a dataset for the asset (required for compliance check in can_activate)
-        dataset = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant, asset=asset, file=self.file, format="CSV", created_by=self.user
         )
 
         # Create compliance run for asset with FAIL status
-        compliance_run = ComplianceRun.objects.create(
+        ComplianceRun.objects.create(
             tenant=self.tenant,
             asset=asset,
             file=self.file,
@@ -289,6 +301,71 @@ class FailClosedBehaviorTest(TestCase):
         blocker_text = " ".join(blockers).lower()
         self.assertIn("compliance_status", blocker_text)
 
+    def test_persist_result_updates_asset_compliance_and_blocks_activation(self):
+        """End-to-end enforcement chain: _persist_result sets asset compliance_status
+        from the scan result, and can_activate() respects it."""
+        from hub.apps.compliance.services import ComplianceService
+
+        # Create asset with a dataset (required for can_activate)
+        asset = Asset.objects.create(
+            tenant=self.tenant, key="test-enforce", name="Test Enforce", created_by=self.user
+        )
+        Contract.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            status=ContractStatus.ACTIVE,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"id": "test", "name": "Test Contract"}',
+            hub_contract_version="1.0.0",
+            hub_contract_json={"hub_contract_version": 1, "id": "test"},
+            validation_status=ValidationStatus.VALID,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            created_by=self.user,
+        )
+        Dataset.objects.create(
+            tenant=self.tenant, asset=asset, file=self.file, format="CSV", created_by=self.user
+        )
+
+        run = ComplianceRun.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            file=self.file,
+            job=self.job,
+            status=ComplianceRunStatus.RUNNING,
+            started_at=timezone.now(),
+        )
+
+        # Simulate a FAIL result from the compliance microservice.
+        ComplianceService._persist_result(
+            run,
+            {
+                "overall_status": "FAIL",
+                "risk_level": "HIGH",
+                "allowed_to_store": False,
+                "detected_categories": ["SSN"],
+                "column_findings": [],
+                "applicable_regulations": ["GDPR"],
+                "metadata": {},
+            },
+        )
+
+        asset.refresh_from_db()
+        self.assertEqual(
+            asset.compliance_status,
+            ComplianceStatus.FAIL,
+            "_persist_result must update asset.compliance_status to FAIL",
+        )
+
+        run.refresh_from_db()
+        self.assertEqual(run.status, ComplianceRunStatus.SUCCEEDED)
+
+        can_activate, blockers = asset.can_activate()
+        self.assertFalse(can_activate, "Asset with FAIL compliance must not activate")
+        blocker_text = " ".join(blockers).lower()
+        self.assertIn("compliance_status", blocker_text)
+
     # ========== FALLBACK / UNKNOWN (fail-closed) ==========
 
     def test_fallback_response_has_allowed_to_store_false(self):
@@ -302,7 +379,7 @@ class FailClosedBehaviorTest(TestCase):
         # Use a non-routable host to trigger a real connection failure.
         # This exercises the real retry/fallback path in scan_file
         # without mocking any internal method.
-        import copy
+
         client = ComplianceServiceClient()
         original_base_url = client.base_url
         original_client = client.client
@@ -416,8 +493,10 @@ class FailClosedBehaviorTest(TestCase):
         )
         self.assertFalse(compliance_run.allowed_to_store)
 
-    def test_fail_closed_handles_service_timeout(self):
-        """Test fail-closed handles service timeout gracefully"""
+    def test_drive_queued_to_terminal_state(self):
+        """Compliance runs left in QUEUED state (no RQ worker in tests) are
+        driven to a terminal state (SUCCEEDED or FAILED) by the test helper,
+        and FAILED runs enforce allowed_to_store=False."""
         if not self.storage_available:
             self.skipTest("Storage not available - skipping test that requires storage")
 
@@ -426,32 +505,31 @@ class FailClosedBehaviorTest(TestCase):
             tenant=self.tenant, file=self.file, job=self.job, status=ComplianceRunStatus.PENDING
         )
 
-        # Set very short timeout to trigger timeout error
-        self.job.timeout_seconds = 1
-        self.job.save()
-
-        # Execute compliance run - may timeout
+        # Execute compliance run
         try:
             execute_compliance_run(str(compliance_run.id))
         except Exception:
-            # Expected if timeout occurs
             pass
 
         # Drive async (QUEUED) run to a terminal state — RQ worker not running in tests
         self._drive_to_terminal_status(compliance_run)
-        # Verify compliance run was handled
         compliance_run.refresh_from_db()
+
+        # After _drive_to_terminal_status, the run must be in a terminal state.
         self.assertIn(
             compliance_run.status,
-            [
-                ComplianceRunStatus.SUCCEEDED,
-                ComplianceRunStatus.FAILED,
-                ComplianceRunStatus.QUEUED,
-            ],
+            [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED],
+            f"Expected terminal status; got {compliance_run.status}",
         )
 
         if compliance_run.status == ComplianceRunStatus.FAILED:
-            self.assertFalse(compliance_run.allowed_to_store)
+            self.assertFalse(
+                compliance_run.allowed_to_store,
+                "FAILED compliance run must have allowed_to_store=False (fail-closed)",
+            )
+        else:
+            # SUCCEEDED runs must have a non-None allowed_to_store value.
+            self.assertIsNotNone(compliance_run.allowed_to_store)
 
     # ========== DEGRADED COMPLIANCE STATUS ==========
 

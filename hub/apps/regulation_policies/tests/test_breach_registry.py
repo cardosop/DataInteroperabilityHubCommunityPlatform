@@ -1,17 +1,15 @@
 """Phase 232.3 — breach statutory clock + supervisory routing (YAML-backed)."""
 
 from __future__ import annotations
-import pytest
+
+from datetime import UTC, datetime, timedelta
 
 import pytest
-from datetime import datetime, timedelta, timezone as dt_timezone
-
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.regulation_policies.registry import (
-    breach_statutory_clock_matrix,
     breach_notification_routing_map,
+    breach_statutory_clock_matrix,
     compute_breach_supervisory_deadline_utc,
     merge_breach_incident_sla_windows,
     resolve_breach_supervisory_authority_ids,
@@ -40,7 +38,7 @@ class BreachRegistryTests(TestCase):
     def test_compute_deadline_is_min_across_regimes(self):
         # Django 5+ removed ``django.utils.timezone.utc``; use stdlib
         # ``datetime.timezone.utc`` instead.
-        discovered = datetime(2026, 5, 1, 12, 0, tzinfo=dt_timezone.utc)
+        discovered = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
         d = compute_breach_supervisory_deadline_utc(discovered, ("GDPR", "LGPD"))
         g = breach_statutory_clock_matrix("GDPR")
         l = breach_statutory_clock_matrix("LGPD")

@@ -64,8 +64,10 @@ class FileSizeLimitsTest(FilesAPITestBase):
         # Check for either "global maximum" or "platform default limit" in error message
         error_msg = str(cm.exception).lower()
         self.assertTrue(
-            "global maximum" in error_msg or "platform default limit" in error_msg or "exceeds" in error_msg,
-            f"Expected 'global maximum' or 'platform default limit' in error message, got: {cm.exception}"
+            "global maximum" in error_msg
+            or "platform default limit" in error_msg
+            or "exceeds" in error_msg,
+            f"Expected 'global maximum' or 'platform default limit' in error message, got: {cm.exception}",
         )
 
     def test_validate_file_type_allowed(self):

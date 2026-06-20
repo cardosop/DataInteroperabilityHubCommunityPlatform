@@ -11,35 +11,31 @@ Tests cover:
 - Exception handling
 - Fallback mechanism integration
 """
-import time
+
+import contextlib
 import threading
+import time
 import uuid
-from datetime import datetime, timedelta, timezone
-from unittest.mock import Mock, patch, MagicMock
-from unittest import skipIf
+from datetime import UTC, datetime, timedelta
 
 import redis
-from django.test import TestCase, override_settings
 from django.conf import settings
+from django.test import TestCase, override_settings
 
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
-    CircuitBreakerState,
     CircuitBreakerError,
+    CircuitBreakerState,
     circuit_breaker,
 )
-from hub.apps.core.resilience.fallback import FallbackStrategy
 
 
 def get_real_redis_client_or_none():
     """Get real Redis client or return None if unavailable."""
     try:
-        redis_url = getattr(settings, 'REDIS_URL', 'redis://redis-cache-test:6379/0')
+        redis_url = getattr(settings, "REDIS_URL", "redis://redis-cache-test:6379/0")
         client = redis.from_url(
-            redis_url,
-            decode_responses=True,
-            socket_connect_timeout=2,
-            socket_timeout=2
+            redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2
         )
         client.ping()
         return client
@@ -56,30 +52,32 @@ def redis_available():
 # Circuit Breaker State Tests
 # ============================================================================
 
+
 class TestCircuitBreakerState(TestCase):
     """Test circuit breaker state enumeration."""
 
     def test_state_values(self):
         """Test state enum values."""
-        self.assertEqual(CircuitBreakerState.CLOSED.value, 'CLOSED')
-        self.assertEqual(CircuitBreakerState.OPEN.value, 'OPEN')
-        self.assertEqual(CircuitBreakerState.HALF_OPEN.value, 'HALF_OPEN')
+        self.assertEqual(CircuitBreakerState.CLOSED.value, "CLOSED")
+        self.assertEqual(CircuitBreakerState.OPEN.value, "OPEN")
+        self.assertEqual(CircuitBreakerState.HALF_OPEN.value, "HALF_OPEN")
 
     def test_state_string_representation(self):
         """Test state string representation."""
-        self.assertEqual(CircuitBreakerState.CLOSED.value, 'CLOSED')
-        self.assertEqual(CircuitBreakerState.OPEN.value, 'OPEN')
-        self.assertEqual(CircuitBreakerState.HALF_OPEN.value, 'HALF_OPEN')
+        self.assertEqual(CircuitBreakerState.CLOSED.value, "CLOSED")
+        self.assertEqual(CircuitBreakerState.OPEN.value, "OPEN")
+        self.assertEqual(CircuitBreakerState.HALF_OPEN.value, "HALF_OPEN")
 
 
 # ============================================================================
 # Circuit Breaker Base Class Tests
 # ============================================================================
 
+
 class TestCircuitBreakerBase(TestCase):
     """Test circuit breaker base class functionality."""
 
-    @override_settings(REDIS_URL='redis://redis-cache-test:6379/0')
+    @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
     def setUp(self):
         """Set up test fixtures."""
         self.redis_client = get_real_redis_client_or_none()
@@ -91,16 +89,14 @@ class TestCircuitBreakerBase(TestCase):
             failure_threshold=5,
             timeout_seconds=60,
             success_threshold=2,
-            redis_client=self.redis_client
+            redis_client=self.redis_client,
         )
 
     def tearDown(self):
         """Clean up test fixtures."""
-        if hasattr(self, 'circuit_breaker'):
-            try:
+        if hasattr(self, "circuit_breaker"):
+            with contextlib.suppress(Exception):
                 self.circuit_breaker.reset()
-            except Exception:
-                pass
 
     def test_initial_state_is_closed(self):
         """Test circuit breaker starts in CLOSED state."""
@@ -116,10 +112,7 @@ class TestCircuitBreakerBase(TestCase):
     def test_custom_configuration(self):
         """Test custom configuration values."""
         cb = CircuitBreaker(
-            service_name="test",
-            failure_threshold=10,
-            timeout_seconds=120,
-            success_threshold=3
+            service_name="test", failure_threshold=10, timeout_seconds=120, success_threshold=3
         )
         self.assertEqual(cb.failure_threshold, 10)
         self.assertEqual(cb.timeout_seconds, 120)
@@ -127,6 +120,7 @@ class TestCircuitBreakerBase(TestCase):
 
     def test_call_successful_operation(self):
         """Test calling successful operation."""
+
         def successful_func():
             return "success"
 
@@ -136,6 +130,7 @@ class TestCircuitBreakerBase(TestCase):
 
     def test_call_failing_operation(self):
         """Test calling failing operation."""
+
         def failing_func():
             raise Exception("Service error")
 
@@ -147,15 +142,14 @@ class TestCircuitBreakerBase(TestCase):
 
     def test_state_transition_closed_to_open(self):
         """Test state transition from CLOSED to OPEN after threshold failures."""
+
         def failing_func():
             raise Exception("Service error")
 
         # Trigger failures up to threshold
-        for i in range(5):
-            try:
+        for _i in range(5):
+            with contextlib.suppress(Exception):
                 self.circuit_breaker.call(failing_func)
-            except Exception:
-                pass
 
         # Next failure should open circuit
         with self.assertRaises(CircuitBreakerError) as context:
@@ -166,20 +160,19 @@ class TestCircuitBreakerBase(TestCase):
 
     def test_state_transition_open_to_half_open_after_timeout(self):
         """Test state transition from OPEN to HALF_OPEN after timeout."""
+
         def failing_func():
             raise Exception("Service error")
 
         # Open the circuit
-        for i in range(5):
-            try:
+        for _i in range(5):
+            with contextlib.suppress(Exception):
                 self.circuit_breaker.call(failing_func)
-            except Exception:
-                pass
 
         # Manually set state to OPEN and update timestamp
         self.circuit_breaker._set_state(CircuitBreakerState.OPEN)
         # Set opened_at to past (timeout seconds ago)
-        self.circuit_breaker._set_opened_at(datetime.now(timezone.utc) - timedelta(seconds=61))
+        self.circuit_breaker._set_opened_at(datetime.now(UTC) - timedelta(seconds=61))
 
         # Next call should transition to HALF_OPEN
         def successful_func():
@@ -191,6 +184,7 @@ class TestCircuitBreakerBase(TestCase):
 
     def test_state_transition_half_open_to_closed_on_success(self):
         """Test state transition from HALF_OPEN to CLOSED after success threshold."""
+
         def successful_func():
             return "success"
 
@@ -198,7 +192,7 @@ class TestCircuitBreakerBase(TestCase):
         self.circuit_breaker._set_state(CircuitBreakerState.HALF_OPEN)
 
         # Trigger successes up to threshold
-        for i in range(2):
+        for _i in range(2):
             result = self.circuit_breaker.call(successful_func)
             self.assertEqual(result, "success")
 
@@ -207,6 +201,7 @@ class TestCircuitBreakerBase(TestCase):
 
     def test_state_transition_half_open_to_open_on_failure(self):
         """Test state transition from HALF_OPEN to OPEN on failure."""
+
         def failing_func():
             raise Exception("Service error")
 
@@ -222,15 +217,14 @@ class TestCircuitBreakerBase(TestCase):
 
     def test_reset_circuit_breaker(self):
         """Test resetting circuit breaker."""
+
         # Open the circuit
         def failing_func():
             raise Exception("Service error")
 
-        for i in range(5):
-            try:
+        for _i in range(5):
+            with contextlib.suppress(Exception):
                 self.circuit_breaker.call(failing_func)
-            except Exception:
-                pass
 
         self.assertEqual(self.circuit_breaker.get_state(), CircuitBreakerState.OPEN)
 
@@ -252,10 +246,11 @@ class TestCircuitBreakerBase(TestCase):
 # Redis-Backed State Storage Tests
 # ============================================================================
 
+
 class TestRedisBackedState(TestCase):
     """Test Redis-backed state storage."""
 
-    @override_settings(REDIS_URL='redis://redis-cache-test:6379/0')
+    @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
     def setUp(self):
         """Set up test fixtures."""
         self.redis_client = get_real_redis_client_or_none()
@@ -276,28 +271,20 @@ class TestRedisBackedState(TestCase):
 
     def test_state_persistence_across_instances(self):
         """Test state persists across different circuit breaker instances."""
-        cb1 = CircuitBreaker(
-            service_name=self.service_name,
-            redis_client=self.redis_client
-        )
+        cb1 = CircuitBreaker(service_name=self.service_name, redis_client=self.redis_client)
 
         # Open circuit with first instance
         def failing_func():
             raise Exception("Service error")
 
-        for i in range(5):
-            try:
+        for _i in range(5):
+            with contextlib.suppress(Exception):
                 cb1.call(failing_func)
-            except Exception:
-                pass
 
         self.assertEqual(cb1.get_state(), CircuitBreakerState.OPEN)
 
         # Create second instance - should see same state
-        cb2 = CircuitBreaker(
-            service_name=self.service_name,
-            redis_client=self.redis_client
-        )
+        cb2 = CircuitBreaker(service_name=self.service_name, redis_client=self.redis_client)
 
         self.assertEqual(cb2.get_state(), CircuitBreakerState.OPEN)
 
@@ -310,34 +297,26 @@ class TestRedisBackedState(TestCase):
     def test_failure_count_persistence(self):
         """Test failure count persists across instances."""
         cb1 = CircuitBreaker(
-            service_name=self.service_name,
-            failure_threshold=5,
-            redis_client=self.redis_client
+            service_name=self.service_name, failure_threshold=5, redis_client=self.redis_client
         )
 
         def failing_func():
             raise Exception("Service error")
 
         # Trigger 3 failures
-        for i in range(3):
-            try:
+        for _i in range(3):
+            with contextlib.suppress(Exception):
                 cb1.call(failing_func)
-            except Exception:
-                pass
 
         # Create second instance
         cb2 = CircuitBreaker(
-            service_name=self.service_name,
-            failure_threshold=5,
-            redis_client=self.redis_client
+            service_name=self.service_name, failure_threshold=5, redis_client=self.redis_client
         )
 
         # Trigger 2 more failures with second instance
-        for i in range(2):
-            try:
+        for _i in range(2):
+            with contextlib.suppress(Exception):
                 cb2.call(failing_func)
-            except Exception:
-                pass
 
         # Next failure should open circuit
         with self.assertRaises(CircuitBreakerError):
@@ -350,10 +329,11 @@ class TestRedisBackedState(TestCase):
 # Thread Safety Tests
 # ============================================================================
 
+
 class TestThreadSafety(TestCase):
     """Test thread-safe state management."""
 
-    @override_settings(REDIS_URL='redis://redis-cache-test:6379/0')
+    @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
     def setUp(self):
         """Set up test fixtures."""
         self.redis_client = get_real_redis_client_or_none()
@@ -363,21 +343,20 @@ class TestThreadSafety(TestCase):
         self.circuit_breaker = CircuitBreaker(
             service_name=self.service_name,
             failure_threshold=10,  # Higher threshold for concurrent tests
-            redis_client=self.redis_client
+            redis_client=self.redis_client,
         )
         self.results = []
         self.lock = threading.Lock()
 
     def tearDown(self):
         """Clean up test fixtures."""
-        if hasattr(self, 'circuit_breaker'):
-            try:
+        if hasattr(self, "circuit_breaker"):
+            with contextlib.suppress(Exception):
                 self.circuit_breaker.reset()
-            except Exception:
-                pass
 
     def test_concurrent_calls(self):
         """Test concurrent calls to circuit breaker."""
+
         def successful_func():
             return "success"
 
@@ -392,7 +371,7 @@ class TestThreadSafety(TestCase):
 
         # Create multiple threads
         threads = []
-        for i in range(10):
+        for _i in range(10):
             thread = threading.Thread(target=call_circuit_breaker)
             threads.append(thread)
             thread.start()
@@ -407,18 +386,17 @@ class TestThreadSafety(TestCase):
 
     def test_concurrent_failures(self):
         """Test concurrent failures are properly counted."""
+
         def failing_func():
             raise Exception("Service error")
 
         def call_circuit_breaker():
-            try:
+            with contextlib.suppress(Exception):
                 self.circuit_breaker.call(failing_func)
-            except Exception:
-                pass
 
         # Create multiple threads
         threads = []
-        for i in range(10):
+        for _i in range(10):
             thread = threading.Thread(target=call_circuit_breaker)
             threads.append(thread)
             thread.start()
@@ -435,10 +413,11 @@ class TestThreadSafety(TestCase):
 # Circuit Breaker Decorator Tests
 # ============================================================================
 
+
 class TestCircuitBreakerDecorator(TestCase):
     """Test circuit breaker decorator."""
 
-    @override_settings(REDIS_URL='redis://redis-cache-test:6379/0')
+    @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
     def setUp(self):
         """Set up test fixtures."""
         self.redis_client = get_real_redis_client_or_none()
@@ -457,10 +436,9 @@ class TestCircuitBreakerDecorator(TestCase):
         from hub.apps.core.resilience.service_breakers import (
             reset_shared_circuit_breakers_for_service,
         )
-        try:
+
+        with contextlib.suppress(Exception):
             reset_shared_circuit_breakers_for_service(self.service_name)
-        except Exception:
-            pass
         # Clean up Redis keys
         try:
             pattern = f"circuit_breaker:{self.service_name}:*"
@@ -472,6 +450,7 @@ class TestCircuitBreakerDecorator(TestCase):
 
     def test_decorator_successful_call(self):
         """Test decorator with successful call."""
+
         @circuit_breaker(service_name=self.service_name, redis_client=self.redis_client)
         def test_function():
             return "success"
@@ -481,6 +460,7 @@ class TestCircuitBreakerDecorator(TestCase):
 
     def test_decorator_failing_call(self):
         """Test decorator with failing call."""
+
         @circuit_breaker(service_name=self.service_name, redis_client=self.redis_client)
         def test_function():
             raise Exception("Service error")
@@ -492,6 +472,7 @@ class TestCircuitBreakerDecorator(TestCase):
 
     def test_decorator_with_parameters(self):
         """Test decorator with function parameters."""
+
         @circuit_breaker(service_name=self.service_name, redis_client=self.redis_client)
         def test_function(param1, param2=None):
             return f"{param1}-{param2}"
@@ -501,6 +482,7 @@ class TestCircuitBreakerDecorator(TestCase):
 
     def test_decorator_with_kwargs(self):
         """Test decorator with keyword arguments."""
+
         @circuit_breaker(service_name=self.service_name, redis_client=self.redis_client)
         def test_function(**kwargs):
             return kwargs
@@ -510,20 +492,17 @@ class TestCircuitBreakerDecorator(TestCase):
 
     def test_decorator_circuit_opens_after_threshold(self):
         """Test decorator opens circuit after threshold failures."""
+
         @circuit_breaker(
-            service_name=self.service_name,
-            failure_threshold=5,
-            redis_client=self.redis_client
+            service_name=self.service_name, failure_threshold=5, redis_client=self.redis_client
         )
         def test_function():
             raise Exception("Service error")
 
         # Trigger failures
-        for i in range(5):
-            try:
+        for _i in range(5):
+            with contextlib.suppress(Exception):
                 test_function()
-            except Exception:
-                pass
 
         # Next call should raise CircuitBreakerError
         with self.assertRaises(CircuitBreakerError) as context:
@@ -536,10 +515,11 @@ class TestCircuitBreakerDecorator(TestCase):
 # Fallback Mechanism Tests
 # ============================================================================
 
+
 class TestFallbackMechanism(TestCase):
     """Test fallback mechanism integration."""
 
-    @override_settings(REDIS_URL='redis://redis-cache-test:6379/0')
+    @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
     def setUp(self):
         """Set up test fixtures."""
         self.redis_client = get_real_redis_client_or_none()
@@ -547,21 +527,18 @@ class TestFallbackMechanism(TestCase):
             self.skipTest("Redis not available for integration tests")
         self.service_name = f"test_service_{uuid.uuid4().hex[:12]}"
         self.circuit_breaker = CircuitBreaker(
-            service_name=self.service_name,
-            failure_threshold=5,
-            redis_client=self.redis_client
+            service_name=self.service_name, failure_threshold=5, redis_client=self.redis_client
         )
 
     def tearDown(self):
         """Clean up test fixtures."""
-        if hasattr(self, 'circuit_breaker'):
-            try:
+        if hasattr(self, "circuit_breaker"):
+            with contextlib.suppress(Exception):
                 self.circuit_breaker.reset()
-            except Exception:
-                pass
 
     def test_fallback_on_circuit_open(self):
         """Test fallback is called when circuit is open."""
+
         def primary_func():
             raise Exception("Service error")
 
@@ -569,11 +546,9 @@ class TestFallbackMechanism(TestCase):
             return "fallback_result"
 
         # Open circuit
-        for i in range(5):
-            try:
+        for _i in range(5):
+            with contextlib.suppress(Exception):
                 self.circuit_breaker.call(primary_func)
-            except Exception:
-                pass
 
         # Call with fallback
         result = self.circuit_breaker.call(primary_func, fallback=fallback_func)
@@ -581,24 +556,25 @@ class TestFallbackMechanism(TestCase):
 
     def test_fallback_not_called_on_success(self):
         """Test fallback is not called when primary succeeds."""
-        call_count = {'primary': 0, 'fallback': 0}
+        call_count = {"primary": 0, "fallback": 0}
 
         def primary_func():
-            call_count['primary'] += 1
+            call_count["primary"] += 1
             return "success"
 
         def fallback_func():
-            call_count['fallback'] += 1
+            call_count["fallback"] += 1
             return "fallback"
 
         result = self.circuit_breaker.call(primary_func, fallback=fallback_func)
 
         self.assertEqual(result, "success")
-        self.assertEqual(call_count['primary'], 1)
-        self.assertEqual(call_count['fallback'], 0)
+        self.assertEqual(call_count["primary"], 1)
+        self.assertEqual(call_count["fallback"], 0)
 
     def test_fallback_on_exception(self):
         """Test fallback is called when failures reach threshold and circuit opens."""
+
         def primary_func():
             raise Exception("Service error")
 
@@ -621,10 +597,11 @@ class TestFallbackMechanism(TestCase):
 # Integration Tests
 # ============================================================================
 
+
 class TestCircuitBreakerIntegration(TestCase):
     """Integration tests for circuit breaker."""
 
-    @override_settings(REDIS_URL='redis://redis-cache-test:6379/0')
+    @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
     def setUp(self):
         """Set up test fixtures."""
         self.redis_client = get_real_redis_client_or_none()
@@ -650,7 +627,7 @@ class TestCircuitBreakerIntegration(TestCase):
             failure_threshold=3,
             timeout_seconds=1,  # Short timeout for testing
             success_threshold=2,
-            redis_client=self.redis_client
+            redis_client=self.redis_client,
         )
 
         def failing_func():
@@ -663,16 +640,14 @@ class TestCircuitBreakerIntegration(TestCase):
         self.assertEqual(cb.get_state(), CircuitBreakerState.CLOSED)
 
         # Trigger failures to OPEN
-        for i in range(3):
-            try:
+        for _i in range(3):
+            with contextlib.suppress(Exception):
                 cb.call(failing_func)
-            except Exception:
-                pass
 
         self.assertEqual(cb.get_state(), CircuitBreakerState.OPEN)
 
         # Wait for timeout
-        time.sleep(1.1)  # INTENTIONAL: test-specific timing requirement
+        time.sleep(1.1)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
 
         # Next call should transition to HALF_OPEN
         result = cb.call(successful_func)
@@ -683,4 +658,3 @@ class TestCircuitBreakerIntegration(TestCase):
         result = cb.call(successful_func)
         self.assertEqual(result, "success")
         self.assertEqual(cb.get_state(), CircuitBreakerState.CLOSED)
-

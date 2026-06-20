@@ -4,6 +4,7 @@ Standalone verification that rollback scripts exist and are readable (5.1.3).
 No Django or database required. Use when full Django test suite cannot run
 (e.g. Postgres not yet ready).
 """
+
 import os
 import sys
 

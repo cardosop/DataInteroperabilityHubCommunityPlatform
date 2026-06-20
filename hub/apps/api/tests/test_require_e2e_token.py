@@ -19,11 +19,11 @@ assertion in ``views.py`` verifies the decorator is present on all four.
 No mocks — the decorator is tested via the real Django URLconf and test
 client. Only the runtime configuration (settings) is overridden per test.
 """
+
 from __future__ import annotations
 
 import pytest
 from django.test import TestCase, override_settings
-
 
 pytestmark = pytest.mark.django_db
 
@@ -46,9 +46,7 @@ class RequireE2ETokenDecoratorGateTest(TestCase):
 
     @override_settings(E2E_TEST_SECRET=TEST_SECRET, ENVIRONMENT="staging")
     def test_missing_header_returns_404(self):
-        response = self.client.post(
-            ENSURE_E2E_USERS_URL, content_type="application/json"
-        )
+        response = self.client.post(ENSURE_E2E_USERS_URL, content_type="application/json")
         self.assertEqual(response.status_code, 404)
 
     @override_settings(E2E_TEST_SECRET=TEST_SECRET, ENVIRONMENT="staging")
@@ -126,17 +124,12 @@ class AllFiveE2EViewsCarryTheDecoratorTest(TestCase):
         tree = ast.parse(inspect.getsource(views_module))
         seen: dict[str, list[str]] = {}
         for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.FunctionDef)
-                and node.name in expected_decorated
-            ):
+            if isinstance(node, ast.FunctionDef) and node.name in expected_decorated:
                 decorator_names: list[str] = []
                 for d in node.decorator_list:
                     if isinstance(d, ast.Name):
                         decorator_names.append(d.id)
-                    elif isinstance(d, ast.Call) and isinstance(
-                        d.func, ast.Name
-                    ):
+                    elif isinstance(d, ast.Call) and isinstance(d.func, ast.Name):
                         decorator_names.append(d.func.id)
                 seen[node.name] = decorator_names
 
@@ -146,11 +139,7 @@ class AllFiveE2EViewsCarryTheDecoratorTest(TestCase):
             f"Expected E2E view functions not found in source: {not_found}",
         )
 
-        missing_decorator = [
-            name
-            for name, decs in seen.items()
-            if "require_e2e_token" not in decs
-        ]
+        missing_decorator = [name for name, decs in seen.items() if "require_e2e_token" not in decs]
         self.assertFalse(
             missing_decorator,
             f"E2E views missing @require_e2e_token in source: {missing_decorator}",

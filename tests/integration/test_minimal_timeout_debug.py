@@ -3,23 +3,24 @@
 import uuid
 Minimal test to debug timeout issues
 """
+
 import json
 import time
+
+from django.db.models.signals import post_save
 from django.test import TestCase
-from django.test.utils import override_settings
-from rest_framework.test import APIClient
-from rest_framework import status
 from django.urls import reverse
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
+from rest_framework.test import APIClient
+
+from hub.apps.assets.models import Asset
+from hub.apps.contracts.models import Contract, OriginalFormat
+from hub.apps.semantic.signals import asset_saved, contract_saved
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.tenants.signals import create_default_roles
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
-from hub.apps.users.models import User, Role, UserRole
-from hub.apps.contracts.models import Contract, OriginalFormat
-from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import TenantFactory, UserFactory
-from django.db.models.signals import post_save
-from hub.apps.semantic.signals import contract_saved, asset_saved
-from hub.apps.tenants.signals import create_default_roles
 
 # Disconnect signals
 post_save.disconnect(contract_saved, sender=Contract)
@@ -37,7 +38,6 @@ class MinimalTimeoutTest(TestCase):
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -50,6 +50,7 @@ class MinimalTimeoutTest(TestCase):
         start = time.time()
         # Use unique name/slug to avoid conflicts
         import uuid
+
         unique_id = str(uuid.uuid4())[:8]
         self.tenant = TenantFactory.create_tenant(
             name=f"Minimal Test Tenant {unique_id}",
@@ -71,7 +72,9 @@ class MinimalTimeoutTest(TestCase):
 
         print(f"[{time.time()}] Creating user...")
         start = time.time()
-        self.user = UserFactory.create_user(tenant=self.tenant, email=f"minimal-{unique_id}@test.com")
+        self.user = UserFactory.create_user(
+            tenant=self.tenant, email=f"minimal-{unique_id}@test.com"
+        )
         UserRole.objects.get_or_create(user=self.user, role=self.role)
         print(f"[{time.time()}] User created in {time.time() - start:.3f}s")
 
@@ -97,7 +100,9 @@ class MinimalTimeoutTest(TestCase):
         }
         asset_response = self.client.post(reverse("asset-list"), asset_data, format="json")
         elapsed = time.time() - start
-        print(f"[{time.time()}] Asset creation took {elapsed:.3f}s, status: {asset_response.status_code}")
+        print(
+            f"[{time.time()}] Asset creation took {elapsed:.3f}s, status: {asset_response.status_code}"
+        )
 
         if asset_response.status_code != 201:
             print(f"Error: {asset_response.data}")
@@ -129,7 +134,9 @@ class MinimalTimeoutTest(TestCase):
         }
         contract_response = self.client.post(reverse("contract-list"), contract_data, format="json")
         elapsed = time.time() - start
-        print(f"[{time.time()}] Contract creation took {elapsed:.3f}s, status: {contract_response.status_code}")
+        print(
+            f"[{time.time()}] Contract creation took {elapsed:.3f}s, status: {contract_response.status_code}"
+        )
 
         if contract_response.status_code != 201:
             print(f"Error: {contract_response.data}")

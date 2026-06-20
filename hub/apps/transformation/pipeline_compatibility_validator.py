@@ -10,24 +10,24 @@ All validation methods follow engineering best practices:
 - Comprehensive error messages with context
 - Follow DRY, SOLID, and clean code principles
 """
+
 import hashlib
 import json
 import logging
-from typing import Dict, Any, Optional, List, Set
 from dataclasses import dataclass
+from typing import Any
 
-from django.core.cache import cache
 from django.conf import settings
+from django.core.cache import cache
 
-from hub.apps.core.business_rules.base import ValidationResult
-from hub.apps.transformation.models import TransformationPipeline, NodeType
 from hub.apps.assets.models import Asset
-from hub.apps.datasets.models import Dataset
+from hub.apps.core.business_rules.base import ValidationResult
+from hub.apps.transformation.models import NodeType, TransformationPipeline
 
 logger = logging.getLogger(__name__)
 
 # Cache TTL for validation results (in seconds)
-CACHE_TTL_VALIDATION = getattr(settings, 'CACHE_TTL_PIPELINE_VALIDATION', 300)  # 5 minutes default
+CACHE_TTL_VALIDATION = getattr(settings, "CACHE_TTL_PIPELINE_VALIDATION", 300)  # 5 minutes default
 
 # Cache key prefix
 CACHE_PREFIX_VALIDATION = "pipeline:compatibility:validation"
@@ -36,21 +36,22 @@ CACHE_PREFIX_VALIDATION = "pipeline:compatibility:validation"
 @dataclass
 class SchemaField:
     """Represents a schema field with type information."""
+
     name: str
     data_type: str
     nullable: bool = True
-    description: Optional[str] = None
-    format: Optional[str] = None
-    pattern: Optional[str] = None
-    enum: Optional[List[Any]] = None
-    default: Optional[Any] = None
-    min_length: Optional[int] = None
-    max_length: Optional[int] = None
-    minimum: Optional[float] = None
-    maximum: Optional[float] = None
+    description: str | None = None
+    format: str | None = None
+    pattern: str | None = None
+    enum: list[Any] | None = None
+    default: Any | None = None
+    min_length: int | None = None
+    max_length: int | None = None
+    minimum: float | None = None
+    maximum: float | None = None
 
     @classmethod
-    def from_dict(cls, field_dict: Dict[str, Any]) -> 'SchemaField':
+    def from_dict(cls, field_dict: dict[str, Any]) -> "SchemaField":
         """Create SchemaField from dictionary."""
         return cls(
             name=field_dict.get("name", ""),
@@ -86,9 +87,21 @@ class PipelineCompatibilityValidator:
     NODE_DEPENDENCIES = {
         NodeType.FILTER: set(),  # Filter can be first
         NodeType.JOIN: {NodeType.FILTER},  # Join should come after filter
-        NodeType.AGGREGATE: {NodeType.FILTER, NodeType.JOIN},  # Aggregate needs filtered/joined data
-        NodeType.TRANSFORM: {NodeType.FILTER, NodeType.JOIN, NodeType.AGGREGATE},  # Transform can come after any
-        NodeType.OUTPUT: {NodeType.FILTER, NodeType.JOIN, NodeType.AGGREGATE, NodeType.TRANSFORM}  # Output should be last
+        NodeType.AGGREGATE: {
+            NodeType.FILTER,
+            NodeType.JOIN,
+        },  # Aggregate needs filtered/joined data
+        NodeType.TRANSFORM: {
+            NodeType.FILTER,
+            NodeType.JOIN,
+            NodeType.AGGREGATE,
+        },  # Transform can come after any
+        NodeType.OUTPUT: {
+            NodeType.FILTER,
+            NodeType.JOIN,
+            NodeType.AGGREGATE,
+            NodeType.TRANSFORM,
+        },  # Output should be last
     }
 
     # Required fields per node type
@@ -97,7 +110,7 @@ class PipelineCompatibilityValidator:
         NodeType.JOIN: {"join_keys", "join_type"},
         NodeType.AGGREGATE: {"group_by", "aggregation_functions"},
         NodeType.TRANSFORM: {"transform_expression"},
-        NodeType.OUTPUT: set()  # Output nodes don't require specific fields
+        NodeType.OUTPUT: set(),  # Output nodes don't require specific fields
     }
 
     # Data type compatibility matrix
@@ -115,7 +128,7 @@ class PipelineCompatibilityValidator:
         "object": {"object", "dict", "json"},
     }
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize validator.
 
@@ -129,9 +142,9 @@ class PipelineCompatibilityValidator:
     def validate_pipeline_compatibility(
         self,
         pipeline: TransformationPipeline,
-        input_schema: Optional[Dict[str, Any]] = None,
-        input_asset: Optional[Asset] = None,
-        use_cache: bool = True
+        input_schema: dict[str, Any] | None = None,
+        input_asset: Asset | None = None,
+        use_cache: bool = True,
     ) -> ValidationResult:
         """
         Comprehensive pipeline compatibility validation.
@@ -166,7 +179,7 @@ class PipelineCompatibilityValidator:
         all_details = {
             "pipeline_id": str(pipeline.id),
             "pipeline_name": pipeline.name,
-            "validation_checks": {}
+            "validation_checks": {},
         }
 
         # 1. Validate pipeline definition structure
@@ -198,9 +211,7 @@ class PipelineCompatibilityValidator:
 
         # 4. Validate schema compatibility if input schema available
         if effective_input_schema:
-            schema_result = self.validate_schema_compatibility(
-                pipeline, effective_input_schema
-            )
+            schema_result = self.validate_schema_compatibility(pipeline, effective_input_schema)
             all_errors.extend(schema_result.errors)
             all_warnings.extend(schema_result.warnings)
             all_details["validation_checks"]["schema_compatibility"] = schema_result.details
@@ -218,11 +229,11 @@ class PipelineCompatibilityValidator:
             )
             all_details["validation_checks"]["schema_compatibility"] = {
                 "skipped": True,
-                "reason": "No input schema provided"
+                "reason": "No input schema provided",
             }
             all_details["validation_checks"]["data_type_compatibility"] = {
                 "skipped": True,
-                "reason": "No input schema provided"
+                "reason": "No input schema provided",
             }
 
         # Create final result
@@ -230,7 +241,7 @@ class PipelineCompatibilityValidator:
             is_valid=len(all_errors) == 0,
             errors=all_errors,
             warnings=all_warnings,
-            details=all_details
+            details=all_details,
         )
 
         # Cache result if caching enabled
@@ -240,10 +251,7 @@ class PipelineCompatibilityValidator:
 
         return result
 
-    def validate_pipeline_definition(
-        self,
-        pipeline: TransformationPipeline
-    ) -> ValidationResult:
+    def validate_pipeline_definition(self, pipeline: TransformationPipeline) -> ValidationResult:
         """
         Validate pipeline definition structure.
 
@@ -261,23 +269,14 @@ class PipelineCompatibilityValidator:
         """
         errors = []
         warnings = []
-        details = {
-            "pipeline_id": str(pipeline.id),
-            "pipeline_name": pipeline.name,
-            "checks": {}
-        }
+        details = {"pipeline_id": str(pipeline.id), "pipeline_name": pipeline.name, "checks": {}}
 
         # Validate pipeline_definition is a dictionary
         if not isinstance(pipeline.get_pipeline_definition(), dict):
-            errors.append(
-                "Pipeline definition must be a JSON object (dictionary)"
-            )
+            errors.append("Pipeline definition must be a JSON object (dictionary)")
             details["checks"]["pipeline_definition_type"] = False
             return ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
 
         details["checks"]["pipeline_definition_type"] = True
@@ -286,9 +285,7 @@ class PipelineCompatibilityValidator:
         required_fields = ["version", "steps"]
         for field in required_fields:
             if field not in pipeline.get_pipeline_definition():
-                errors.append(
-                    f"Pipeline definition must contain '{field}' field"
-                )
+                errors.append(f"Pipeline definition must contain '{field}' field")
                 details["checks"][f"has_{field}"] = False
             else:
                 details["checks"][f"has_{field}"] = True
@@ -297,9 +294,7 @@ class PipelineCompatibilityValidator:
         version = pipeline.get_pipeline_definition().get("version")
         if version:
             if not isinstance(version, str) or not version.strip():
-                errors.append(
-                    "Pipeline definition 'version' must be a non-empty string"
-                )
+                errors.append("Pipeline definition 'version' must be a non-empty string")
                 details["checks"]["version_format"] = False
             else:
                 details["checks"]["version_format"] = True
@@ -328,29 +323,19 @@ class PipelineCompatibilityValidator:
                 step_name = step.get("name")
                 if step_name:
                     if step_name in step_names:
-                        errors.append(
-                            f"Duplicate step name '{step_name}' at index {i}"
-                        )
+                        errors.append(f"Duplicate step name '{step_name}' at index {i}")
                     else:
                         step_names.add(step_name)
 
             details["unique_step_names"] = len(step_names) == len(steps)
             if not details["unique_step_names"]:
-                warnings.append(
-                    "Some steps have duplicate names, which may cause confusion"
-                )
+                warnings.append("Some steps have duplicate names, which may cause confusion")
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
-    def validate_node_compatibility(
-        self,
-        pipeline: TransformationPipeline
-    ) -> ValidationResult:
+    def validate_node_compatibility(self, pipeline: TransformationPipeline) -> ValidationResult:
         """
         Validate node compatibility within a pipeline.
 
@@ -371,7 +356,7 @@ class PipelineCompatibilityValidator:
         details = {
             "pipeline_id": str(pipeline.id),
             "pipeline_name": pipeline.name,
-            "node_compatibility_checks": {}
+            "node_compatibility_checks": {},
         }
 
         steps = pipeline.get_pipeline_definition().get("steps", [])
@@ -379,10 +364,7 @@ class PipelineCompatibilityValidator:
             errors.append("Pipeline has no steps to validate")
             details["node_compatibility_checks"]["has_steps"] = False
             return ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
 
         details["node_compatibility_checks"]["has_steps"] = True
@@ -426,7 +408,7 @@ class PipelineCompatibilityValidator:
         # Validate node execution order
         if len(node_types_by_position) > 1:
             for i in range(len(node_types_by_position)):
-                pos, step_name, node_type = node_types_by_position[i]
+                _pos, step_name, node_type = node_types_by_position[i]
 
                 try:
                     node_type_enum = NodeType(node_type)
@@ -449,9 +431,7 @@ class PipelineCompatibilityValidator:
         # Validate that there's at least one OUTPUT node
         output_nodes = [nt for _, _, nt in node_types_by_position if nt == "output"]
         if not output_nodes:
-            warnings.append(
-                "Pipeline has no OUTPUT node. Pipeline may not produce output."
-            )
+            warnings.append("Pipeline has no OUTPUT node. Pipeline may not produce output.")
         else:
             details["output_node_count"] = len(output_nodes)
 
@@ -466,16 +446,11 @@ class PipelineCompatibilityValidator:
                 errors.extend(node_errors)
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def validate_schema_compatibility(
-        self,
-        pipeline: TransformationPipeline,
-        input_schema: Dict[str, Any]
+        self, pipeline: TransformationPipeline, input_schema: dict[str, Any]
     ) -> ValidationResult:
         """
         Validate schema compatibility between input schema and pipeline input schema.
@@ -494,10 +469,7 @@ class PipelineCompatibilityValidator:
         """
         errors = []
         warnings = []
-        details = {
-            "pipeline_id": str(pipeline.id),
-            "schema_compatibility_checks": {}
-        }
+        details = {"pipeline_id": str(pipeline.id), "schema_compatibility_checks": {}}
 
         # Extract pipeline input schema from pipeline definition
         pipeline_input_schema = pipeline.get_pipeline_definition().get("input_schema")
@@ -510,15 +482,14 @@ class PipelineCompatibilityValidator:
 
         if not pipeline_input_schema:
             warnings.append(
-                "Pipeline does not define an input schema. "
-                "Cannot validate schema compatibility."
+                "Pipeline does not define an input schema. Cannot validate schema compatibility."
             )
             details["schema_compatibility_checks"]["pipeline_input_schema_exists"] = False
             return ValidationResult(
                 is_valid=True,  # Not an error, just a warning
                 errors=errors,
                 warnings=warnings,
-                details=details
+                details=details,
             )
 
         details["schema_compatibility_checks"]["pipeline_input_schema_exists"] = True
@@ -530,10 +501,7 @@ class PipelineCompatibilityValidator:
             errors.append("Input schema 'fields' must be a list")
             details["schema_compatibility_checks"]["input_schema_valid"] = False
             return ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=False, errors=errors, warnings=warnings, details=details
             )
 
         for field_dict in input_schema_fields:
@@ -585,16 +553,11 @@ class PipelineCompatibilityValidator:
             details["extra_fields"] = list(extra_fields)
 
         return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
     def validate_data_type_compatibility(
-        self,
-        pipeline: TransformationPipeline,
-        input_schema: Dict[str, Any]
+        self, pipeline: TransformationPipeline, input_schema: dict[str, Any]
     ) -> ValidationResult:
         """
         Validate data type compatibility between input schema and pipeline requirements.
@@ -612,10 +575,7 @@ class PipelineCompatibilityValidator:
         """
         errors = []
         warnings = []
-        details = {
-            "pipeline_id": str(pipeline.id),
-            "data_type_compatibility_checks": {}
-        }
+        details = {"pipeline_id": str(pipeline.id), "data_type_compatibility_checks": {}}
 
         # Extract pipeline input schema
         pipeline_input_schema = pipeline.get_pipeline_definition().get("input_schema")
@@ -624,15 +584,11 @@ class PipelineCompatibilityValidator:
 
         if not pipeline_input_schema:
             warnings.append(
-                "Pipeline does not define an input schema. "
-                "Cannot validate data type compatibility."
+                "Pipeline does not define an input schema. Cannot validate data type compatibility."
             )
             details["data_type_compatibility_checks"]["pipeline_input_schema_exists"] = False
             return ValidationResult(
-                is_valid=True,
-                errors=errors,
-                warnings=warnings,
-                details=details
+                is_valid=True, errors=errors, warnings=warnings, details=details
             )
 
         details["data_type_compatibility_checks"]["pipeline_input_schema_exists"] = True
@@ -671,38 +627,34 @@ class PipelineCompatibilityValidator:
                 # Check type compatibility
                 compatible_types = self.TYPE_COMPATIBILITY.get(input_type, {input_type})
                 if pipeline_type not in compatible_types and input_type != pipeline_type:
-                    type_mismatches.append({
-                        "field": field_name,
-                        "input_type": input_type,
-                        "pipeline_type": pipeline_type,
-                        "compatible": False
-                    })
+                    type_mismatches.append(
+                        {
+                            "field": field_name,
+                            "input_type": input_type,
+                            "pipeline_type": pipeline_type,
+                            "compatible": False,
+                        }
+                    )
                     errors.append(
                         f"Field '{field_name}' has incompatible types: "
                         f"input schema has '{input_type}', pipeline expects '{pipeline_type}'"
                     )
-                else:
-                    if input_type != pipeline_type:
-                        warnings.append(
-                            f"Field '{field_name}' has different types but they are compatible: "
-                            f"input schema has '{input_type}', pipeline expects '{pipeline_type}'"
-                        )
+                elif input_type != pipeline_type:
+                    warnings.append(
+                        f"Field '{field_name}' has different types but they are compatible: "
+                        f"input schema has '{input_type}', pipeline expects '{pipeline_type}'"
+                    )
 
         details["data_type_compatibility_checks"]["type_mismatches"] = type_mismatches
-        details["data_type_compatibility_checks"]["all_types_compatible"] = len(type_mismatches) == 0
-
-        return ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
+        details["data_type_compatibility_checks"]["all_types_compatible"] = (
+            len(type_mismatches) == 0
         )
 
-    def _validate_step_structure(
-        self,
-        step: Dict[str, Any],
-        index: int
-    ) -> List[str]:
+        return ValidationResult(
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
+        )
+
+    def _validate_step_structure(self, step: dict[str, Any], index: int) -> list[str]:
         """Validate a single step structure."""
         errors = []
 
@@ -723,21 +675,14 @@ class PipelineCompatibilityValidator:
 
         # Validate node_config if present
         node_config = step.get("node_config")
-        if node_config is not None:
-            if not isinstance(node_config, dict):
-                errors.append(
-                    f"Step {index} 'node_config' must be a JSON object"
-                )
+        if node_config is not None and not isinstance(node_config, dict):
+            errors.append(f"Step {index} 'node_config' must be a JSON object")
 
         return errors
 
     def _validate_node_config(
-        self,
-        node_type: str,
-        node_config: Dict[str, Any],
-        step_name: str,
-        step_index: int
-    ) -> List[str]:
+        self, node_type: str, node_config: dict[str, Any], step_name: str, step_index: int
+    ) -> list[str]:
         """Validate node-specific configuration."""
         errors = []
 
@@ -769,11 +714,10 @@ class PipelineCompatibilityValidator:
                     f"Step '{step_name}' (JOIN node) must have either 'join_keys' or 'join_type' in node_config"
                 )
 
-            if join_keys:
-                if not isinstance(join_keys, (list, dict)):
-                    errors.append(
-                        f"Step '{step_name}' (JOIN node) 'join_keys' must be a list or dictionary"
-                    )
+            if join_keys and not isinstance(join_keys, (list, dict)):
+                errors.append(
+                    f"Step '{step_name}' (JOIN node) 'join_keys' must be a list or dictionary"
+                )
 
             if join_type:
                 valid_join_types = {"inner", "left", "right", "outer", "full"}
@@ -823,9 +767,8 @@ class PipelineCompatibilityValidator:
         return errors
 
     def _extract_pipeline_input_schema(
-        self,
-        pipeline: TransformationPipeline
-    ) -> Optional[Dict[str, Any]]:
+        self, pipeline: TransformationPipeline
+    ) -> dict[str, Any] | None:
         """
         Extract pipeline input schema from pipeline steps.
 
@@ -845,18 +788,17 @@ class PipelineCompatibilityValidator:
         # Create a simple schema structure
         fields = []
         for field_name in sorted(referenced_fields):
-            fields.append({
-                "name": field_name,
-                "data_type": "string",  # Default type, actual type would need more analysis
-                "nullable": True
-            })
+            fields.append(
+                {
+                    "name": field_name,
+                    "data_type": "string",  # Default type, actual type would need more analysis
+                    "nullable": True,
+                }
+            )
 
         return {"fields": fields}
 
-    def _extract_referenced_fields(
-        self,
-        pipeline: TransformationPipeline
-    ) -> Set[str]:
+    def _extract_referenced_fields(self, pipeline: TransformationPipeline) -> set[str]:
         """
         Extract field names referenced in pipeline steps.
 
@@ -877,7 +819,8 @@ class PipelineCompatibilityValidator:
                 # Extract fields from filter expression
                 filter_expr = node_config.get("filter_expression", "")
                 import re
-                field_pattern = r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b'
+
+                field_pattern = r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b"
                 matches = re.findall(field_pattern, filter_expr)
                 keywords = {"and", "or", "not", "in", "is", "null", "true", "false", "if", "else"}
                 referenced_fields.update(m for m in matches if m.lower() not in keywords)
@@ -907,9 +850,26 @@ class PipelineCompatibilityValidator:
                 transform_expr = node_config.get("transform_expression", "")
                 if isinstance(transform_expr, str):
                     import re
-                    field_pattern = r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b'
+
+                    field_pattern = r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b"
                     matches = re.findall(field_pattern, transform_expr)
-                    keywords = {"and", "or", "not", "in", "is", "null", "true", "false", "if", "else", "sum", "avg", "count", "min", "max"}
+                    keywords = {
+                        "and",
+                        "or",
+                        "not",
+                        "in",
+                        "is",
+                        "null",
+                        "true",
+                        "false",
+                        "if",
+                        "else",
+                        "sum",
+                        "avg",
+                        "count",
+                        "min",
+                        "max",
+                    }
                     referenced_fields.update(m for m in matches if m.lower() not in keywords)
                 elif isinstance(transform_expr, dict):
                     for value in transform_expr.values():
@@ -918,7 +878,7 @@ class PipelineCompatibilityValidator:
 
         return referenced_fields
 
-    def _extract_schema_from_asset(self, asset: Asset) -> Optional[Dict[str, Any]]:
+    def _extract_schema_from_asset(self, asset: Asset) -> dict[str, Any] | None:
         """
         Extract schema from asset's latest dataset.
 
@@ -928,7 +888,7 @@ class PipelineCompatibilityValidator:
         Returns:
             Schema dictionary or None if asset has no dataset
         """
-        latest_dataset = asset.datasets.order_by('-version').first()
+        latest_dataset = asset.datasets.order_by("-version").first()
         if not latest_dataset:
             return None
 
@@ -937,22 +897,21 @@ class PipelineCompatibilityValidator:
             return None
 
         # Ensure schema_json has 'fields' key
-        if isinstance(schema_json, dict):
-            if "fields" not in schema_json:
-                # Try to convert if schema_json is a different format
-                if "schema" in schema_json:
-                    schema_json = schema_json["schema"]
-                else:
-                    # Assume schema_json itself is the schema
-                    pass
+        if isinstance(schema_json, dict) and "fields" not in schema_json:
+            # Try to convert if schema_json is a different format
+            if "schema" in schema_json:
+                schema_json = schema_json["schema"]
+            else:
+                # Assume schema_json itself is the schema
+                pass
 
         return schema_json if isinstance(schema_json, dict) else None
 
     def _generate_cache_key(
         self,
         pipeline: TransformationPipeline,
-        input_schema: Optional[Dict[str, Any]],
-        input_asset: Optional[Asset]
+        input_schema: dict[str, Any] | None,
+        input_asset: Asset | None,
     ) -> str:
         """
         Generate cache key for validation result.
@@ -974,7 +933,7 @@ class PipelineCompatibilityValidator:
         if input_asset:
             key_parts.append(f"asset:{input_asset.id}")
             # Include asset dataset version for cache invalidation
-            latest_dataset = input_asset.datasets.order_by('-version').first()
+            latest_dataset = input_asset.datasets.order_by("-version").first()
             if latest_dataset:
                 key_parts.append(f"dataset:{latest_dataset.version}")
         elif input_schema:
@@ -987,4 +946,3 @@ class PipelineCompatibilityValidator:
             key_parts.append(f"tenant:{self.tenant_id}")
 
         return ":".join(key_parts)
-

@@ -7,6 +7,7 @@ Usage:
     python manage.py verify_tamper_evidence --since 24h
     python manage.py verify_tamper_evidence --merkle-root-id <uuid>
 """
+
 from django.core.management.base import BaseCommand
 
 
@@ -31,14 +32,14 @@ class Command(BaseCommand):
         since = options["since"]
         root_id = options.get("merkle_root_id")
 
-        self.stdout.write(
-            f"verify_tamper_evidence: since={since} root_id={root_id}"
-        )
+        self.stdout.write(f"verify_tamper_evidence: since={since} root_id={root_id}")
+
+        import hashlib
+        from datetime import timedelta
+
+        from django.utils import timezone
 
         from hub.apps.audit.models import AuditEvent
-        from django.utils import timezone
-        from datetime import timedelta
-        import hashlib
 
         # Resolve time range
         if since == "all":
@@ -80,12 +81,8 @@ class Command(BaseCommand):
         if leaves:
             verified += 1
 
-        self.stdout.write(
-            f"Result: {verified} hour(s) verified, {mismatched} mismatched"
-        )
+        self.stdout.write(f"Result: {verified} hour(s) verified, {mismatched} mismatched")
         if mismatched > 0:
-            self.stdout.write(
-                self.style.ERROR("TAMPER EVIDENCE FAILURE — see details above")
-            )
+            self.stdout.write(self.style.ERROR("TAMPER EVIDENCE FAILURE — see details above"))
         else:
             self.stdout.write(self.style.SUCCESS("All Merkle roots verified."))

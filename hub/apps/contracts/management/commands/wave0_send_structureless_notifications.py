@@ -26,6 +26,7 @@ Engineering invariants
 * **Deadline validation** — must be a valid ISO date and strictly in
   the future. A past or malformed deadline raises ``CommandError``.
 """
+
 from __future__ import annotations
 
 import datetime as _dt
@@ -51,10 +52,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--deadline",
             required=True,
-            help=(
-                "Wave-5 customer deadline as ISO date (YYYY-MM-DD). "
-                "Must be in the future."
-            ),
+            help=("Wave-5 customer deadline as ISO date (YYYY-MM-DD). Must be in the future."),
         )
         parser.add_argument(
             "--dry-run",
@@ -88,8 +86,7 @@ class Command(BaseCommand):
 
         if options.get("tenant_id"):
             rows_by_tenant = {
-                tid: rows for tid, rows in rows_by_tenant.items()
-                if tid == options["tenant_id"]
+                tid: rows for tid, rows in rows_by_tenant.items() if tid == options["tenant_id"]
             }
 
         dry_run: bool = options["dry_run"]
@@ -106,35 +103,28 @@ class Command(BaseCommand):
 
         for tenant_id, rows in rows_by_tenant.items():
             if tenant_id is None:
-                self.stdout.write(self.style.WARNING(
-                    "  [warn] skipping rows with null tenant_id"
-                ))
+                self.stdout.write(self.style.WARNING("  [warn] skipping rows with null tenant_id"))
                 continue
             try:
                 tenant = Tenant.objects.get(id=tenant_id)
             except Tenant.DoesNotExist:
-                self.stdout.write(self.style.WARNING(
-                    f"  [warn] skipping tenant_id={tenant_id} — not in DB"
-                ))
+                self.stdout.write(
+                    self.style.WARNING(f"  [warn] skipping tenant_id={tenant_id} — not in DB")
+                )
                 continue
 
             # Drift guard: re-load each contract and exclude any that
             # are no longer structureless.
             contract_ids = [r["contract_id"] for r in rows]
-            current_contracts = list(
-                Contract.objects.filter(id__in=contract_ids)
-            )
-            still_structureless = [
-                c for c in current_contracts if is_structureless(c)
-            ]
-            remediated_ids = [
-                str(c.id) for c in current_contracts
-                if not is_structureless(c)
-            ]
+            current_contracts = list(Contract.objects.filter(id__in=contract_ids))
+            still_structureless = [c for c in current_contracts if is_structureless(c)]
+            remediated_ids = [str(c.id) for c in current_contracts if not is_structureless(c)]
             for cid in remediated_ids:
-                self.stdout.write(self.style.WARNING(
-                    f"  [skipped] {cid} no longer structureless (remediated since capture)"
-                ))
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"  [skipped] {cid} no longer structureless (remediated since capture)"
+                    )
+                )
 
             tenant_label = getattr(tenant, "name", str(tenant_id))
 
@@ -153,28 +143,34 @@ class Command(BaseCommand):
                     deadline=deadline,
                 )
             except NoTenantAdminsError:
-                self.stdout.write(self.style.WARNING(
-                    f"  [skipped] {tenant_label} ({tenant_id}): "
-                    f"no TENANT_ADMIN — escalate per runbook §227.0.3"
-                ))
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"  [skipped] {tenant_label} ({tenant_id}): "
+                        f"no TENANT_ADMIN — escalate per runbook §227.0.3"
+                    )
+                )
                 continue
 
-            self.stdout.write(self.style.SUCCESS(
-                f"  Notified {tenant_label} ({tenant_id}): "
-                f"{len(dispatched)} email(s) — "
-                f"{len(still_structureless)} contract(s)"
-            ))
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"  Notified {tenant_label} ({tenant_id}): "
+                    f"{len(dispatched)} email(s) — "
+                    f"{len(still_structureless)} contract(s)"
+                )
+            )
 
             for d in dispatched:
-                audit_records.append({
-                    "tenant_id": str(tenant_id),
-                    "tenant_name": tenant_label,
-                    "to_email": d["to_email"],
-                    "email_type": d["email_type"],
-                    "deadline": deadline.isoformat(),
-                    "contract_count": len(still_structureless),
-                    "dispatched_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
-                })
+                audit_records.append(
+                    {
+                        "tenant_id": str(tenant_id),
+                        "tenant_name": tenant_label,
+                        "to_email": d["to_email"],
+                        "email_type": d["email_type"],
+                        "deadline": deadline.isoformat(),
+                        "contract_count": len(still_structureless),
+                        "dispatched_at": _dt.datetime.now(_dt.UTC).isoformat(),
+                    }
+                )
 
         if audit_output and audit_records:
             audit_path = Path(audit_output)
@@ -182,10 +178,11 @@ class Command(BaseCommand):
             with audit_path.open("w", encoding="utf-8") as fp:
                 for rec in audit_records:
                     fp.write(json.dumps(rec, sort_keys=True) + "\n")
-            self.stdout.write(self.style.SUCCESS(
-                f"  Audit trail written to {audit_path} "
-                f"({len(audit_records)} record(s))"
-            ))
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"  Audit trail written to {audit_path} ({len(audit_records)} record(s))"
+                )
+            )
 
     # ------------------------------------------------------------------
 
@@ -194,9 +191,7 @@ class Command(BaseCommand):
         try:
             d = _dt.date.fromisoformat(raw)
         except (TypeError, ValueError) as exc:
-            raise CommandError(
-                f"--deadline must be ISO date (YYYY-MM-DD); got {raw!r}"
-            ) from exc
+            raise CommandError(f"--deadline must be ISO date (YYYY-MM-DD); got {raw!r}") from exc
         if d <= _dt.date.today():
             raise CommandError(
                 f"--deadline must be in the future; got {raw} "

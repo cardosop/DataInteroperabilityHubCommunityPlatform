@@ -10,6 +10,7 @@ errors when running with xdist/parallel or --reuse-db, and to avoid
 TransactionTestCase teardown flush timeouts.
 """
 
+import contextlib
 import os
 import unittest
 import uuid
@@ -92,10 +93,8 @@ class IngestionServiceTest(TestCase):
             config=Config(signature_version="s3v4"),
             region_name="us-east-1",
         )
-        try:
+        with contextlib.suppress(s3.exceptions.BucketAlreadyOwnedByYou):
             s3.create_bucket(Bucket=bucket_name)
-        except s3.exceptions.BucketAlreadyOwnedByYou:
-            pass
         # Upload a minimal CSV file so the workflow has something to process
         s3.put_object(Bucket=bucket_name, Key="test.csv", Body=b"id,name\n1,test\n")
 
@@ -133,8 +132,7 @@ class IngestionServiceTest(TestCase):
             # Infrastructure not available (Prefect, network, storage) —
             # skip with a clear message rather than silently passing.
             raise unittest.SkipTest(
-                f"Skipping execute_ingestion integration test — "
-                f"infrastructure unavailable: {e}"
+                f"Skipping execute_ingestion integration test — infrastructure unavailable: {e}"
             ) from e
         except Exception as e:
             # The workflow may fail because external infrastructure

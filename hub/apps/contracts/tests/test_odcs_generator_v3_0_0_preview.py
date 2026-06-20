@@ -319,8 +319,11 @@ class ODCSGeneratorV3_0_0_PreviewEdgeCasesTest(TestCase):
         # The generator may omit the info section entirely (when no info fields
         # are populated) or include it without the owners key.  Use .get() so
         # the assertion runs unconditionally.
-        self.assertNotIn("owners", odcs_doc.get("info", {}),
-            "Empty owners list must not produce owners key in output")
+        self.assertNotIn(
+            "owners",
+            odcs_doc.get("info", {}),
+            "Empty owners list must not produce owners key in output",
+        )
 
     def test_handles_missing_optional_fields(self):
         """Test handling of missing optional fields"""
@@ -350,8 +353,8 @@ class ODCSGeneratorV3_0_0_PreviewRoundTripTest(TestCase):
 
         # Normalize back to HubContract (convert to JSON string first)
         odcs_json = json.dumps(odcs_doc)
-        hub_contract_dict, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            odcs_json, "JSON", spec_type="ODCS"
+        hub_contract_dict, _spec_type, _spec_version, _status, errors, _warnings = (
+            normalize_contract(odcs_json, "JSON", spec_type="ODCS")
         )
         self.assertIsNotNone(hub_contract_dict)
         self.assertEqual(len(errors), 0, f"Normalization errors: {errors}")
@@ -381,8 +384,8 @@ class ODCSGeneratorV3_0_0_PreviewRoundTripTest(TestCase):
 
         # Normalize back to HubContract (convert to JSON string first)
         odcs_json = json.dumps(odcs_doc)
-        hub_contract_dict, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            odcs_json, "JSON", spec_type="ODCS"
+        hub_contract_dict, _spec_type, _spec_version, _status, errors, _warnings = (
+            normalize_contract(odcs_json, "JSON", spec_type="ODCS")
         )
         self.assertIsNotNone(hub_contract_dict)
         self.assertEqual(len(errors), 0, f"Normalization errors: {errors}")
@@ -435,10 +438,12 @@ class ODCSGeneratorV3_0_0_PreviewRoundTripTest(TestCase):
         # Verify the generator handles the large input and preserves the data
         self.assertIn("name", result)
         self.assertEqual(result["name"], "Test Product")
-        self.assertIn("description", result,
-            "Large description must be present in output")
-        self.assertEqual(result["description"], large_description,
-            "Large description value must be preserved exactly")
+        self.assertIn("description", result, "Large description must be present in output")
+        self.assertEqual(
+            result["description"],
+            large_description,
+            "Large description value must be preserved exactly",
+        )
 
     def test_generation_handles_none_values(self):
         """Test that generation handles None values correctly."""
@@ -454,8 +459,9 @@ class ODCSGeneratorV3_0_0_PreviewRoundTripTest(TestCase):
         self.assertIn("name", result)
         self.assertEqual(result["name"], "Test Product")
         # None-valued fields must be absent from output
-        self.assertNotIn("description", result,
-            "None description field must be omitted from output")
+        self.assertNotIn(
+            "description", result, "None description field must be omitted from output"
+        )
 
     def test_generation_handles_nested_structures(self):
         """Test that generation handles nested structures correctly."""
@@ -473,8 +479,11 @@ class ODCSGeneratorV3_0_0_PreviewRoundTripTest(TestCase):
         # Verify the generator doesn't crash and preserves known fields.
         self.assertIsNotNone(result)
         self.assertIn("name", result)
-        self.assertEqual(result["name"], "Test Product",
-            "Name must be correctly extracted from deeply nested hub_contract info")
+        self.assertEqual(
+            result["name"],
+            "Test Product",
+            "Name must be correctly extracted from deeply nested hub_contract info",
+        )
         # Verify the generator produces a structurally valid ODCS doc
         self.assertIn("apiVersion", result)
         self.assertIn("kind", result)

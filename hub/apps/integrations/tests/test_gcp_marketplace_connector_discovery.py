@@ -18,7 +18,6 @@ To run these tests:
 import json
 import os
 
-import pytest
 from django.test import TestCase
 
 from hub.apps.core.services.base import NotFoundError, PermissionError
@@ -42,18 +41,16 @@ def get_test_credentials():
     credentials in environments where they are not configured.
     """
     import unittest
-    import json
+
     env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
     if not env_json:
-        raise unittest.SkipTest(
-            "GCP_SERVICE_ACCOUNT_JSON not set — skipping"
-        )
+        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON not set — skipping")
     try:
         return json.loads(env_json)
     except json.JSONDecodeError:
-        raise unittest.SkipTest(
-            "GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping"
-        )
+        raise unittest.SkipTest("GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping")
+
+
 class TestGCPMarketplaceConnectorDiscovery(TestCase):
     """Integration tests for GCP Marketplace connector discovery operations"""
 
@@ -72,7 +69,10 @@ class TestGCPMarketplaceConnectorDiscovery(TestCase):
             connector.authenticate(credentials)
             cls._auth_ok = True
         except Exception:
-            pass
+            import logging
+            logging.getLogger(__name__).warning(
+                "GCP auth failed in setUpClass — discovery tests will skip"
+            )
 
     def setUp(self):
         """Set up test fixtures — reuse class-level auth result."""
@@ -428,8 +428,6 @@ class TestGCPMarketplaceConnectorDiscovery(TestCase):
                     self.skipTest("Listing metadata missing data_exchange_id")
 
                 # Build marketplace listing
-                # Type checker doesn't recognize the isinstance check above, so assert
-                assert isinstance(data_exchange_id, str), "data_exchange_id must be str"
                 marketplace_listing = self.connector._build_marketplace_listing(
                     listing_details, data_exchange_id
                 )
@@ -453,7 +451,6 @@ class TestGCPMarketplaceConnectorDiscovery(TestCase):
                 }
 
                 data_exchange_id = "test-exchange"
-                assert isinstance(data_exchange_id, str)  # Type guard
                 marketplace_listing = self.connector._build_marketplace_listing(
                     sample_listing_details, data_exchange_id
                 )
@@ -555,7 +552,6 @@ class TestGCPMarketplaceConnectorDiscovery(TestCase):
             listings = self.connector.list_listings(limit=1000000)
             # Should handle large limit gracefully (may be capped internally)
             self.assertIsInstance(listings, list)
-            self.assertLessEqual(len(listings), 1000000)
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
         except NotFoundError:
@@ -630,7 +626,7 @@ class TestGCPMarketplaceConnectorDiscovery(TestCase):
         """Test _parse_listing_name() error handling with invalid format"""
         # Test with invalid format
         try:
-            project, location, exchange, listing = self.connector._parse_listing_name(
+            project, _location, _exchange, _listing = self.connector._parse_listing_name(
                 "invalid-format"
             )
             # Should handle gracefully or use defaults

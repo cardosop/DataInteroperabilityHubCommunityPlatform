@@ -12,10 +12,10 @@ handling empty queries, and verifying pagination in results.
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_get
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _user_creds():
     return provision_persona("data_analyst")
@@ -61,9 +61,7 @@ def test_search_assets():
     resp = _search(creds, "asset")
     _skip_if_not_found(resp, "Search assets")
 
-    assert resp.status_code == 200, (
-        f"Search returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"Search returned {resp.status_code}: {resp.text[:500]}"
     body = resp.json()
     # Should be a list or paginated dict
     assert isinstance(body, (dict, list)), f"Unexpected search response type: {type(body)}"
@@ -75,9 +73,7 @@ def test_search_contracts():
     resp = _search(creds, "contract")
     _skip_if_not_found(resp, "Search contracts")
 
-    assert resp.status_code == 200, (
-        f"Search returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"Search returned {resp.status_code}: {resp.text[:500]}"
 
 
 def test_search_empty_query():
@@ -108,11 +104,18 @@ def test_search_returns_pagination():
     has_pagination = any(
         k in keys_lower
         for k in (
-            "count", "total", "total_count", "total_results",
-            "next", "previous", "page", "page_size", "limit", "offset",
-            "has_more", "has_next",
+            "count",
+            "total",
+            "total_count",
+            "total_results",
+            "next",
+            "previous",
+            "page",
+            "page_size",
+            "limit",
+            "offset",
+            "has_more",
+            "has_next",
         )
     )
-    assert has_pagination, (
-        f"Search response lacks pagination metadata: {list(body.keys())}"
-    )
+    assert has_pagination, f"Search response lacks pagination metadata: {list(body.keys())}"

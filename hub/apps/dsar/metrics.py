@@ -1,16 +1,19 @@
 """285.14.8.4 — DSAR module metrics."""
+
 from __future__ import annotations
+
 from typing import Protocol
 
 
 class _MetricLike(Protocol):
-    def labels(self, **kwargs: str) -> "_MetricLike": ...
+    def labels(self, **kwargs: str) -> _MetricLike: ...
     def inc(self, amount: float = 1) -> None: ...
 
 
 class _MetricStub:
-    def labels(self, **_: object) -> "_MetricStub":
+    def labels(self, **_: object) -> _MetricStub:
         return self
+
     def inc(self, _amount: float = 1) -> None:
         return None
 

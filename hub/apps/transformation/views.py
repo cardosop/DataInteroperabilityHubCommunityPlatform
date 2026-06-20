@@ -3,44 +3,53 @@ Transformation Views
 
 Django REST Framework views for transformation pipeline management.
 """
-import structlog
+
 import time
-from rest_framework import viewsets, status, permissions
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.exceptions import ValidationError, NotFound, PermissionDenied
-from rest_framework.filters import OrderingFilter, SearchFilter
-from django.db import transaction
+
+import structlog
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.paginator import Paginator
-from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse, inline_serializer
-from rest_framework import serializers
+from django.db import transaction
+from drf_spectacular.utils import (
+    OpenApiResponse,
+    extend_schema,
+    extend_schema_view,
+    inline_serializer,
+)
+from rest_framework import permissions, serializers, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound, PermissionDenied, Throttled, ValidationError
+from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.response import Response
 
+from hub.apps.audit.utils import create_audit_event
+from hub.apps.auth.permissions import HasScope
+from hub.apps.governance.abac import ABACEngine
+from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
+
+from .business_rules import TransformationBusinessRules
 from .models import (
-    TransformationPipeline, PipelineStatus, PipelineExecution, ExecutionStatus, ExecutionMode,
-    PreviewResult, WranglingSession
+    ExecutionStatus,
+    PipelineExecution,
+    PipelineStatus,
+    PreviewResult,
+    TransformationPipeline,
+    WranglingSession,
 )
 from .serializers import (
-    TransformationPipelineSerializer,
-    TransformationPipelineCreateSerializer,
-    TransformationPipelineUpdateSerializer,
-    PipelineValidationResponseSerializer,
-    PipelineExecutionSerializer,
     PipelineExecutionProgressSerializer,
     PipelineExecutionResultSerializer,
+    PipelineExecutionSerializer,
+    PipelineValidationResponseSerializer,
     PreviewResultSerializer,
-    WranglingSessionSerializer,
+    TransformationPipelineCreateSerializer,
+    TransformationPipelineSerializer,
+    TransformationPipelineUpdateSerializer,
     WranglingOperationRequestSerializer,
     WranglingResultSerializer,
+    WranglingSessionSerializer,
 )
-from .business_rules import TransformationBusinessRules
-from .exceptions import TransformationValidationError
 from .services import TransformationService
-from hub.apps.auth.permissions import HasRole, HasAnyRole, HasScope, HasAnyScope
-from hub.apps.audit.utils import create_audit_event
-from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
-from rest_framework.exceptions import Throttled
-from hub.apps.governance.abac import ABACEngine, PolicyEvaluationResult
 
 logger = structlog.get_logger(__name__)
 
@@ -80,34 +89,45 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
     Requires DATA_PROVIDER or TENANT_ADMIN role for write operations.
     Requires transformation:write scope for write operations.
     """
+
     queryset = TransformationPipeline.objects.all()
     serializer_class = TransformationPipelineSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
 
     def initial(self, request, *args, **kwargs):
-        from hub.apps.tenants.feature_flag_gates import check_transformation_enabled
         from rest_framework.exceptions import PermissionDenied
+
+        from hub.apps.tenants.feature_flag_gates import check_transformation_enabled
+
         result = check_transformation_enabled(request)
         if isinstance(result, Response):
             raise PermissionDenied(detail=result.data)
         super().initial(request, *args, **kwargs)
 
     filter_backends = [OrderingFilter, SearchFilter]
-    ordering_fields = ['name', 'status', 'version', 'created_at', 'updated_at']
-    ordering = ['-created_at']  # Default ordering
-    search_fields = ['name', 'description']
+    ordering_fields = ["name", "status", "version", "created_at", "updated_at"]
+    ordering = ["-created_at"]  # Default ordering
+    search_fields = ["name", "description"]
 
     def get_permissions(self):
         """Return appropriate permissions based on action"""
-        if self.action in ['create', 'update', 'partial_update', 'destroy',
-                          'validate', 'test', 'execute', 'preview']:
+        if self.action in [
+            "create",
+            "update",
+            "partial_update",
+            "destroy",
+            "validate",
+            "test",
+            "execute",
+            "preview",
+        ]:
             return [
                 permissions.IsAuthenticated(),
-                HasScope('transformation:write'),
+                HasScope("transformation:write"),
             ]
         # Read operations require transformation:read scope
-        return [permissions.IsAuthenticated(), HasScope('transformation:read')]
+        return [permissions.IsAuthenticated(), HasScope("transformation:read")]
 
     def get_queryset(self):
         """Filter queryset based on user permissions and query parameters"""
@@ -127,6 +147,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 # Convert to UUID if it's a string
                 if isinstance(tenant_id, str):
                     import uuid
+
                     try:
                         tenant_id = uuid.UUID(tenant_id)
                     except (ValueError, TypeError):
@@ -141,9 +162,10 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             if not tenant_id and hasattr(user, "id") and user.id:
                 # Query user from database to get fresh tenant_id (works in LiveServerTestCase)
                 from django.contrib.auth import get_user_model
+
                 User = get_user_model()
                 try:
-                    db_user = User.objects.only('tenant_id').get(id=user.id)
+                    db_user = User.objects.only("tenant_id").get(id=user.id)
                     if db_user.tenant_id:
                         tenant_id = db_user.tenant_id
                 except User.DoesNotExist:
@@ -159,6 +181,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 # Ensure tenant_id is a UUID for proper filtering
                 if isinstance(tenant_id, str):
                     import uuid
+
                     try:
                         tenant_id = uuid.UUID(tenant_id)
                     except (ValueError, TypeError):
@@ -169,7 +192,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 return TransformationPipeline.objects.none()
 
         # Apply status filter if provided
-        status_filter = self.request.query_params.get('status')
+        status_filter = self.request.query_params.get("status")
         if status_filter:
             # Validate status value
             valid_statuses = [choice[0] for choice in PipelineStatus.choices]
@@ -180,7 +203,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 return TransformationPipeline.objects.none()
 
         # Apply version filter if provided
-        version_filter = self.request.query_params.get('version')
+        version_filter = self.request.query_params.get("version")
         if version_filter:
             queryset = queryset.filter(version=version_filter)
 
@@ -193,12 +216,14 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             tenant_id = self.request.tenant_id
             if isinstance(tenant_id, str):
                 import uuid
+
                 try:
                     tenant_id = uuid.UUID(tenant_id)
                 except (ValueError, TypeError):
                     tenant_id = None
             if tenant_id:
                 from hub.apps.tenants.models import Tenant
+
                 try:
                     return Tenant.objects.get(id=tenant_id)
                 except Tenant.DoesNotExist:
@@ -212,11 +237,13 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if hasattr(user, "id") and user.id:
             from django.contrib.auth import get_user_model
+
             User = get_user_model()
             try:
-                db_user = User.objects.only('tenant_id').get(id=user.id)
+                db_user = User.objects.only("tenant_id").get(id=user.id)
                 if db_user.tenant_id:
                     from hub.apps.tenants.models import Tenant
+
                     try:
                         return Tenant.objects.get(id=db_user.tenant_id)
                     except Tenant.DoesNotExist:
@@ -236,7 +263,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         tenant_id: str,
         resource_type: str,
         resource_id: str,
-        access_type: str = "WRITE"
+        access_type: str = "WRITE",
     ) -> None:
         """
         Check ABAC policy for resource access.
@@ -257,7 +284,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 tenant_id=tenant_id,
                 resource_type=resource_type,
                 resource_id=resource_id,
-                access_type=access_type
+                access_type=access_type,
             )
 
             if not result.allowed:
@@ -279,7 +306,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                     resource_type=resource_type,
                     resource_id=resource_id,
                     access_type=access_type,
-                    message="No ABAC policy matched, allowing access (fail open)"
+                    message="No ABAC policy matched, allowing access (fail open)",
                 )
 
             logger.debug(
@@ -304,17 +331,14 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 resource_id=resource_id,
                 access_type=access_type,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
             # In production, you might want to fail closed (deny access) or fail open (allow)
             # For now, we'll allow access if ABAC check fails (fail open)
             # This can be configured via settings
 
     def _check_pipeline_ownership_or_access(
-        self,
-        pipeline: TransformationPipeline,
-        user,
-        access_type: str = "WRITE"
+        self, pipeline: TransformationPipeline, user, access_type: str = "WRITE"
     ) -> bool:
         """
         Check if user owns pipeline or has access via domain/mesh.
@@ -352,10 +376,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         return False
 
     def _check_resource_level_permissions(
-        self,
-        pipeline: TransformationPipeline,
-        user,
-        access_type: str = "WRITE"
+        self, pipeline: TransformationPipeline, user, access_type: str = "WRITE"
     ) -> None:
         """
         Check resource-level permissions including ABAC policies.
@@ -380,7 +401,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             tenant_id=tenant_id,
             resource_type="TRANSFORMATION_PIPELINE",
             resource_id=str(pipeline.id),
-            access_type=access_type
+            access_type=access_type,
         )
 
         # Check ownership or access via domain/mesh
@@ -406,7 +427,10 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             # Get rate limit headers for response
             headers = get_rate_limit_headers(request, rate_limit_results)
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -434,9 +458,10 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             user_tenant_id = None
             if hasattr(user, "id") and user.id:
                 from django.contrib.auth import get_user_model
+
                 User = get_user_model()
                 try:
-                    db_user = User.objects.only('tenant_id').get(id=user.id)
+                    db_user = User.objects.only("tenant_id").get(id=user.id)
                     user_tenant_id = db_user.tenant_id
                 except User.DoesNotExist:
                     pass
@@ -453,25 +478,24 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 tenant_id=str(tenant.id),
                 resource_type="TRANSFORMATION_PIPELINE",
                 resource_id=placeholder_resource_id,
-                access_type="WRITE"
+                access_type="WRITE",
             )
         except PermissionDenied:
             # Re-raise with more context
             raise PermissionDenied(
-                "You do not have permission to create pipelines. "
-                "ABAC policy denied access."
+                "You do not have permission to create pipelines. ABAC policy denied access."
             )
 
         # Create pipeline instance
         pipeline = TransformationPipeline(
             tenant=tenant,
             created_by=user,
-            name=serializer.validated_data['name'],
-            description=serializer.validated_data.get('description'),
-            pipeline_definition=serializer.validated_data['pipeline_definition'],
-            version=serializer.validated_data.get('version', '1.0.0'),
-            status=serializer.validated_data.get('status', PipelineStatus.DRAFT),
-            metadata=serializer.validated_data.get('metadata', {}),
+            name=serializer.validated_data["name"],
+            description=serializer.validated_data.get("description"),
+            pipeline_definition=serializer.validated_data["pipeline_definition"],
+            version=serializer.validated_data.get("version", "1.0.0"),
+            status=serializer.validated_data.get("status", PipelineStatus.DRAFT),
+            metadata=serializer.validated_data.get("metadata", {}),
         )
 
         try:
@@ -492,7 +516,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 "pipeline_version": pipeline.version,
                 "pipeline_status": pipeline.status,
             },
-            request=request
+            request=request,
         )
 
         # Serialize and return response
@@ -530,7 +554,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         queryset = self.filter_queryset(self.get_queryset())
 
         # Pagination
-        page_size = request.query_params.get('page_size', 20)
+        page_size = request.query_params.get("page_size", 20)
         try:
             page_size = int(page_size)
             if page_size < 1 or page_size > 100:
@@ -539,11 +563,10 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             page_size = 20
 
         paginator = Paginator(queryset, page_size)
-        page_number = request.query_params.get('page', 1)
+        page_number = request.query_params.get("page", 1)
         try:
             page_number = int(page_number)
-            if page_number < 1:
-                page_number = 1
+            page_number = max(page_number, 1)
         except (ValueError, TypeError):
             page_number = 1
 
@@ -553,12 +576,14 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             page = paginator.page(1)
 
         serializer = self.get_serializer(page.object_list, many=True)
-        return Response({
-            'count': paginator.count,
-            'next': page.next_page_number() if page.has_next() else None,
-            'previous': page.previous_page_number() if page.has_previous() else None,
-            'results': serializer.data,
-        })
+        return Response(
+            {
+                "count": paginator.count,
+                "next": page.next_page_number() if page.has_next() else None,
+                "previous": page.previous_page_number() if page.has_previous() else None,
+                "results": serializer.data,
+            }
+        )
 
     def retrieve(self, request, id=None):
         """
@@ -600,18 +625,18 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         # Update fields
-        if 'name' in serializer.validated_data:
-            pipeline.name = serializer.validated_data['name']
-        if 'description' in serializer.validated_data:
-            pipeline.description = serializer.validated_data['description']
-        if 'pipeline_definition' in serializer.validated_data:
-            pipeline.pipeline_definition = serializer.validated_data['pipeline_definition']
-        if 'version' in serializer.validated_data:
-            pipeline.version = serializer.validated_data['version']
-        if 'status' in serializer.validated_data:
-            pipeline.status = serializer.validated_data['status']
-        if 'metadata' in serializer.validated_data:
-            pipeline.metadata = serializer.validated_data['metadata']
+        if "name" in serializer.validated_data:
+            pipeline.name = serializer.validated_data["name"]
+        if "description" in serializer.validated_data:
+            pipeline.description = serializer.validated_data["description"]
+        if "pipeline_definition" in serializer.validated_data:
+            pipeline.pipeline_definition = serializer.validated_data["pipeline_definition"]
+        if "version" in serializer.validated_data:
+            pipeline.version = serializer.validated_data["version"]
+        if "status" in serializer.validated_data:
+            pipeline.status = serializer.validated_data["status"]
+        if "metadata" in serializer.validated_data:
+            pipeline.metadata = serializer.validated_data["metadata"]
 
         try:
             pipeline.full_clean()
@@ -631,7 +656,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 "pipeline_version": pipeline.version,
                 "pipeline_status": pipeline.status,
             },
-            request=request
+            request=request,
         )
 
         response_serializer = TransformationPipelineSerializer(pipeline)
@@ -682,6 +707,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
 
         # Create audit event
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.get(id=tenant_id)
         create_audit_event(
             resource_type="transformation_pipeline",
@@ -692,7 +718,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             details={
                 "pipeline_name": pipeline_name,
             },
-            request=request
+            request=request,
         )
 
         logger.info(
@@ -713,7 +739,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         },
         tags=["Transformation"],
     )
-    @action(detail=True, methods=['post'], url_path='validate')
+    @action(detail=True, methods=["post"], url_path="validate")
     def validate_pipeline(self, request, id=None):
         """
         Validate transformation pipeline.
@@ -741,18 +767,15 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         user_id = str(user.id) if user else None
 
         # Validate pipeline using business rules
-        business_rules = TransformationBusinessRules(
-            tenant_id=tenant_id,
-            user_id=user_id
-        )
+        business_rules = TransformationBusinessRules(tenant_id=tenant_id, user_id=user_id)
 
         validation_result = business_rules.validate_pipeline_structure(
-            pipeline,
-            raise_on_error=False
+            pipeline, raise_on_error=False
         )
 
         # Create audit event
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.get(id=tenant_id) if tenant_id else pipeline.tenant
         create_audit_event(
             resource_type="transformation_pipeline",
@@ -766,15 +789,17 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 "validation_errors": validation_result.errors,
                 "validation_warnings": validation_result.warnings,
             },
-            request=request
+            request=request,
         )
 
-        response_serializer = PipelineValidationResponseSerializer({
-            'is_valid': validation_result.is_valid,
-            'errors': validation_result.errors,
-            'warnings': validation_result.warnings,
-            'details': validation_result.details,
-        })
+        response_serializer = PipelineValidationResponseSerializer(
+            {
+                "is_valid": validation_result.is_valid,
+                "errors": validation_result.errors,
+                "warnings": validation_result.warnings,
+                "details": validation_result.details,
+            }
+        )
 
         logger.info(
             "pipeline_validated",
@@ -790,31 +815,31 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         summary="Execute transformation pipeline",
         description="Execute a transformation pipeline on a source asset.",
         request=inline_serializer(
-            name='PipelineExecuteRequest',
+            name="PipelineExecuteRequest",
             fields={
-                'asset_id': serializers.UUIDField(help_text="Source asset ID to transform"),
-                'execution_mode': serializers.ChoiceField(
-                    choices=['SYNC', 'ASYNC'],
+                "asset_id": serializers.UUIDField(help_text="Source asset ID to transform"),
+                "execution_mode": serializers.ChoiceField(
+                    choices=["SYNC", "ASYNC"],
                     required=False,
-                    help_text="Execution mode: SYNC (synchronous) or ASYNC (asynchronous)"
+                    help_text="Execution mode: SYNC (synchronous) or ASYNC (asynchronous)",
                 ),
-            }
+            },
         ),
         responses={
             200: inline_serializer(
-                name='PipelineExecuteResponse',
+                name="PipelineExecuteResponse",
                 fields={
-                    'execution_id': serializers.UUIDField(),
-                    'status': serializers.CharField(),
-                    'pipeline_id': serializers.UUIDField(),
-                    'asset_id': serializers.UUIDField(),
-                }
+                    "execution_id": serializers.UUIDField(),
+                    "status": serializers.CharField(),
+                    "pipeline_id": serializers.UUIDField(),
+                    "asset_id": serializers.UUIDField(),
+                },
             ),
-            429: OpenApiResponse(description='Rate limit exceeded'),
+            429: OpenApiResponse(description="Rate limit exceeded"),
         },
         tags=["Transformation"],
     )
-    @action(detail=True, methods=['post'], url_path='execute')
+    @action(detail=True, methods=["post"], url_path="execute")
     @transaction.atomic
     def execute_pipeline(self, request, id=None):
         """
@@ -829,7 +854,10 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             # Get rate limit headers for response
             headers = get_rate_limit_headers(request, rate_limit_results)
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -850,7 +878,11 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
 
         # ── Legacy engine deprecation (Phase 285.9) ──────────────────
         try:
-            pipeline_def = pipeline.get_pipeline_definition() if hasattr(pipeline, "get_pipeline_definition") else pipeline.pipeline_definition
+            pipeline_def = (
+                pipeline.get_pipeline_definition()
+                if hasattr(pipeline, "get_pipeline_definition")
+                else pipeline.pipeline_definition
+            )
         except Exception:
             pipeline_def = pipeline.pipeline_definition
         legacy_mode = pipeline_def.get("mode", "") if isinstance(pipeline_def, dict) else ""
@@ -874,21 +906,18 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied("Cannot execute pipeline from different tenant")
 
         # Validate request data
-        asset_id = request.data.get('asset_id')
+        asset_id = request.data.get("asset_id")
         if not asset_id:
             raise ValidationError({"asset_id": "This field is required."})
 
-        execution_mode = request.data.get('execution_mode', 'ASYNC')
+        execution_mode = request.data.get("execution_mode", "ASYNC")
 
         # Get tenant_id and user_id
         tenant_id = str(pipeline.tenant.id) if pipeline.tenant else None
         user_id = str(user.id) if user else None
 
         # Initialize service
-        service = TransformationService(
-            tenant_id=tenant_id,
-            user_id=user_id
-        )
+        service = TransformationService(tenant_id=tenant_id, user_id=user_id)
 
         # Execute pipeline
         execution = service.execute_pipeline(
@@ -897,11 +926,12 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             tenant_id=tenant_id,
             user_id=user_id,
             execution_mode=execution_mode,
-            request=request
+            request=request,
         )
 
         # Create audit event
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.get(id=tenant_id) if tenant_id else pipeline.tenant
         create_audit_event(
             resource_type="transformation_pipeline",
@@ -915,7 +945,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 "asset_id": str(asset_id),
                 "execution_mode": execution_mode,
             },
-            request=request
+            request=request,
         )
 
         # Add rate limit headers to response
@@ -928,12 +958,15 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             tenant_id=tenant_id,
             user_id=user_id,
         )
-        response = Response({
-            'execution_id': str(execution.id),
-            'status': execution.status,
-            'pipeline_id': str(pipeline.id),
-            'asset_id': str(asset_id),
-        }, status=status.HTTP_200_OK)
+        response = Response(
+            {
+                "execution_id": str(execution.id),
+                "status": execution.status,
+                "pipeline_id": str(pipeline.id),
+                "asset_id": str(asset_id),
+            },
+            status=status.HTTP_200_OK,
+        )
         # Add rate limit headers to response
         for header_name, header_value in headers.items():
             response[header_name] = header_value
@@ -951,28 +984,32 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         except TransformationPipeline.DoesNotExist:
             raise NotFound("Pipeline not found")
 
-        from .contract_drift_detector import ContractDriftDetector, DriftReport
+        from .contract_drift_detector import ContractDriftDetector
 
         # Get the pipeline's upstream dataset and its schema history.
         metadata = pipeline.metadata or {}
         source_asset_id = metadata.get("source_asset_id")
         if not source_asset_id:
-            return Response({
-                "status": "no_upstream",
-                "message": "Pipeline has no upstream dataset configured.",
-                "changes": [],
-            })
+            return Response(
+                {
+                    "status": "no_upstream",
+                    "message": "Pipeline has no upstream dataset configured.",
+                    "changes": [],
+                }
+            )
 
         # Retrieve schema from the latest and previous dataset versions.
         previous_schema = metadata.get("previous_output_schema")
         current_schema = metadata.get("current_output_schema")
 
         if not previous_schema or not current_schema:
-            return Response({
-                "status": "no_schema_history",
-                "message": "Insufficient schema history for drift detection.",
-                "changes": [],
-            })
+            return Response(
+                {
+                    "status": "no_schema_history",
+                    "message": "Insufficient schema history for drift detection.",
+                    "changes": [],
+                }
+            )
 
         reports = ContractDriftDetector.detect(
             upstream_dataset=None,  # resolved internally
@@ -982,31 +1019,36 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
 
         # Filter to only the report for this pipeline.
         my_report = next(
-            (r for r in reports if r.pipeline_id == str(pipeline.id)), None,
+            (r for r in reports if r.pipeline_id == str(pipeline.id)),
+            None,
         )
         if my_report is None:
-            return Response({
-                "status": "no_drift",
-                "pipeline_id": str(pipeline.id),
-                "changes": [],
-            })
-
-        return Response({
-            "status": "drift_detected" if my_report.has_breaking_changes else "drift_warning",
-            "pipeline_id": my_report.pipeline_id,
-            "pipeline_name": my_report.pipeline_name,
-            "has_breaking_changes": my_report.has_breaking_changes,
-            "changes": [
+            return Response(
                 {
-                    "field": c.field_name,
-                    "severity": c.severity.value,
-                    "description": c.description,
-                    "previous_value": c.previous_value,
-                    "current_value": c.current_value,
+                    "status": "no_drift",
+                    "pipeline_id": str(pipeline.id),
+                    "changes": [],
                 }
-                for c in my_report.changes
-            ],
-        })
+            )
+
+        return Response(
+            {
+                "status": "drift_detected" if my_report.has_breaking_changes else "drift_warning",
+                "pipeline_id": my_report.pipeline_id,
+                "pipeline_name": my_report.pipeline_name,
+                "has_breaking_changes": my_report.has_breaking_changes,
+                "changes": [
+                    {
+                        "field": c.field_name,
+                        "severity": c.severity.value,
+                        "description": c.description,
+                        "previous_value": c.previous_value,
+                        "current_value": c.current_value,
+                    }
+                    for c in my_report.changes
+                ],
+            }
+        )
 
     @action(detail=True, methods=["get"], url_path="impact-preview")
     def impact_preview(self, request, id=None):
@@ -1025,67 +1067,68 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         tenant_id = str(pipeline.tenant_id)
         try:
             report = DeployImpactAnalyzer.analyze(
-                pipeline_id=str(pipeline.id), tenant_id=tenant_id,
+                pipeline_id=str(pipeline.id),
+                tenant_id=tenant_id,
             )
         except ValueError as e:
             raise NotFound(str(e))
 
-        return Response({
-            "pipeline_id": report.pipeline_id,
-            "pipeline_name": report.pipeline_name,
-            "total_downstream": report.total_downstream,
-            "breaking_count": report.breaking_count,
-            "is_safe_to_deploy": report.is_safe_to_deploy,
-            "estimated_downtime": report.estimated_downtime,
-            "downstream": [
-                {
-                    "pipeline_id": d.pipeline_id,
-                    "pipeline_name": d.pipeline_name,
-                    "pipeline_status": d.pipeline_status,
-                    "contract_compatible": d.contract_compatible,
-                    "contract_conflicts": d.contract_conflicts,
-                    "estimated_impact": d.estimated_impact,
-                }
-                for d in report.downstream_pipelines
-            ],
-        })
+        return Response(
+            {
+                "pipeline_id": report.pipeline_id,
+                "pipeline_name": report.pipeline_name,
+                "total_downstream": report.total_downstream,
+                "breaking_count": report.breaking_count,
+                "is_safe_to_deploy": report.is_safe_to_deploy,
+                "estimated_downtime": report.estimated_downtime,
+                "downstream": [
+                    {
+                        "pipeline_id": d.pipeline_id,
+                        "pipeline_name": d.pipeline_name,
+                        "pipeline_status": d.pipeline_status,
+                        "contract_compatible": d.contract_compatible,
+                        "contract_conflicts": d.contract_conflicts,
+                        "estimated_impact": d.estimated_impact,
+                    }
+                    for d in report.downstream_pipelines
+                ],
+            }
+        )
 
     @extend_schema(
         summary="Preview transformation pipeline",
         description="Preview transformation pipeline execution on sample data.",
         request=inline_serializer(
-            name='PipelinePreviewRequest',
+            name="PipelinePreviewRequest",
             fields={
-                'asset_id': serializers.UUIDField(help_text="Source asset ID to preview"),
-                'sample_size': serializers.IntegerField(
-                    default=100,
-                    required=False,
-                    help_text="Number of rows to sample (default: 100)"
+                "asset_id": serializers.UUIDField(help_text="Source asset ID to preview"),
+                "sample_size": serializers.IntegerField(
+                    default=100, required=False, help_text="Number of rows to sample (default: 100)"
                 ),
-                'sampling_method': serializers.ChoiceField(
-                    choices=['first_n', 'random'],
-                    default='first_n',
+                "sampling_method": serializers.ChoiceField(
+                    choices=["first_n", "random"],
+                    default="first_n",
                     required=False,
-                    help_text="Sampling method: first_n or random (default: first_n)"
+                    help_text="Sampling method: first_n or random (default: first_n)",
                 ),
-            }
+            },
         ),
         responses={
             200: inline_serializer(
-                name='PipelinePreviewResponse',
+                name="PipelinePreviewResponse",
                 fields={
-                    'preview_id': serializers.CharField(),
-                    'pipeline_id': serializers.UUIDField(),
-                    'asset_id': serializers.UUIDField(),
-                    'analysis': serializers.DictField(),
-                    'cached': serializers.BooleanField(),
-                }
+                    "preview_id": serializers.CharField(),
+                    "pipeline_id": serializers.UUIDField(),
+                    "asset_id": serializers.UUIDField(),
+                    "analysis": serializers.DictField(),
+                    "cached": serializers.BooleanField(),
+                },
             ),
-            429: OpenApiResponse(description='Rate limit exceeded'),
+            429: OpenApiResponse(description="Rate limit exceeded"),
         },
         tags=["Transformation"],
     )
-    @action(detail=True, methods=['post'], url_path='preview')
+    @action(detail=True, methods=["post"], url_path="preview")
     def preview_pipeline(self, request, id=None):
         """
         Preview transformation pipeline execution on sample data.
@@ -1099,7 +1142,10 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             # Get rate limit headers for response
             headers = get_rate_limit_headers(request, rate_limit_results)
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -1126,22 +1172,19 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied("Cannot preview pipeline from different tenant")
 
         # Validate request data
-        asset_id = request.data.get('asset_id')
+        asset_id = request.data.get("asset_id")
         if not asset_id:
             raise ValidationError({"asset_id": "This field is required."})
 
-        sample_size = request.data.get('sample_size', 100)
-        sampling_method = request.data.get('sampling_method', 'first_n')
+        sample_size = request.data.get("sample_size", 100)
+        sampling_method = request.data.get("sampling_method", "first_n")
 
         # Get tenant_id and user_id
         tenant_id = str(pipeline.tenant.id) if pipeline.tenant else None
         user_id = str(user.id) if user else None
 
         # Initialize service
-        service = TransformationService(
-            tenant_id=tenant_id,
-            user_id=user_id
-        )
+        service = TransformationService(tenant_id=tenant_id, user_id=user_id)
 
         # Generate preview
         preview_result = service.preview_transformation(
@@ -1150,11 +1193,12 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             sample_size=sample_size,
             sampling_method=sampling_method,
             tenant_id=tenant_id,
-            user_id=user_id
+            user_id=user_id,
         )
 
         # Create audit event
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.get(id=tenant_id) if tenant_id else pipeline.tenant
         create_audit_event(
             resource_type="transformation_pipeline",
@@ -1168,7 +1212,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 "asset_id": str(asset_id),
                 "sample_size": sample_size,
             },
-            request=request
+            request=request,
         )
 
         # Add rate limit headers to response
@@ -1192,20 +1236,18 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         description="List all executions for a transformation pipeline with filtering and pagination.",
         responses={
             200: inline_serializer(
-                name='PipelineExecutionsListResponse',
+                name="PipelineExecutionsListResponse",
                 fields={
-                    'count': serializers.IntegerField(),
-                    'next': serializers.IntegerField(allow_null=True),
-                    'previous': serializers.IntegerField(allow_null=True),
-                    'results': serializers.ListField(
-                        child=serializers.DictField()
-                    ),
-                }
+                    "count": serializers.IntegerField(),
+                    "next": serializers.IntegerField(allow_null=True),
+                    "previous": serializers.IntegerField(allow_null=True),
+                    "results": serializers.ListField(child=serializers.DictField()),
+                },
             ),
         },
         tags=["Transformation"],
     )
-    @action(detail=True, methods=['get'], url_path='executions')
+    @action(detail=True, methods=["get"], url_path="executions")
     def list_executions(self, request, id=None):
         """
         List all executions for a transformation pipeline.
@@ -1226,6 +1268,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             tenant_id = request.tenant_id
             if isinstance(tenant_id, str):
                 import uuid
+
                 try:
                     tenant_id = uuid.UUID(tenant_id)
                 except (ValueError, TypeError):
@@ -1236,9 +1279,10 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
 
         if not tenant_id and hasattr(user, "id") and user.id:
             from django.contrib.auth import get_user_model
+
             User = get_user_model()
             try:
-                db_user = User.objects.only('tenant_id').get(id=user.id)
+                db_user = User.objects.only("tenant_id").get(id=user.id)
                 if db_user.tenant_id:
                     tenant_id = db_user.tenant_id
             except User.DoesNotExist:
@@ -1253,6 +1297,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         elif tenant_id:
             if isinstance(tenant_id, str):
                 import uuid
+
                 try:
                     tenant_id = uuid.UUID(tenant_id)
                 except (ValueError, TypeError):
@@ -1277,7 +1322,7 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         queryset = PipelineExecution.objects.filter(pipeline=pipeline)
 
         # Apply status filter if provided
-        status_filter = request.query_params.get('status')
+        status_filter = request.query_params.get("status")
         if status_filter:
             valid_statuses = [choice[0] for choice in ExecutionStatus.choices]
             if status_filter.upper() in valid_statuses:
@@ -1287,10 +1332,10 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
                 queryset = PipelineExecution.objects.none()
 
         # Order by most recent first
-        queryset = queryset.order_by('-started_at', '-created_at')
+        queryset = queryset.order_by("-started_at", "-created_at")
 
         # Pagination
-        page_size = request.query_params.get('page_size', 20)
+        page_size = request.query_params.get("page_size", 20)
         try:
             page_size = int(page_size)
             if page_size < 1 or page_size > 100:
@@ -1299,11 +1344,10 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             page_size = 20
 
         paginator = Paginator(queryset, page_size)
-        page_number = request.query_params.get('page', 1)
+        page_number = request.query_params.get("page", 1)
         try:
             page_number = int(page_number)
-            if page_number < 1:
-                page_number = 1
+            page_number = max(page_number, 1)
         except (ValueError, TypeError):
             page_number = 1
 
@@ -1313,12 +1357,14 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
             page = paginator.page(1)
 
         serializer = PipelineExecutionSerializer(page.object_list, many=True)
-        return Response({
-            'count': paginator.count,
-            'next': page.next_page_number() if page.has_next() else None,
-            'previous': page.previous_page_number() if page.has_previous() else None,
-            'results': serializer.data,
-        })
+        return Response(
+            {
+                "count": paginator.count,
+                "next": page.next_page_number() if page.has_next() else None,
+                "previous": page.previous_page_number() if page.has_previous() else None,
+                "results": serializer.data,
+            }
+        )
 
 
 @extend_schema_view(
@@ -1335,15 +1381,16 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
     Tenant-scoped: users can only see/manage executions in their tenant.
     Requires transformation:read scope for all operations.
     """
+
     queryset = PipelineExecution.objects.all()
     serializer_class = PipelineExecutionSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
 
     def get_permissions(self):
-        if self.action in ('cancel_execution',):
-            return [permissions.IsAuthenticated(), HasScope('transformation:write')]
-        return [permissions.IsAuthenticated(), HasScope('transformation:read')]
+        if self.action in ("cancel_execution",):
+            return [permissions.IsAuthenticated(), HasScope("transformation:write")]
+        return [permissions.IsAuthenticated(), HasScope("transformation:read")]
 
     def get_queryset(self):
         """Filter queryset based on user permissions"""
@@ -1361,6 +1408,7 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 tenant_id = self.request.tenant_id
                 if isinstance(tenant_id, str):
                     import uuid
+
                     try:
                         tenant_id = uuid.UUID(tenant_id)
                     except (ValueError, TypeError):
@@ -1373,9 +1421,10 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             # Fallback to user.tenant_id
             if not tenant_id and hasattr(user, "id") and user.id:
                 from django.contrib.auth import get_user_model
+
                 User = get_user_model()
                 try:
-                    db_user = User.objects.only('tenant_id').get(id=user.id)
+                    db_user = User.objects.only("tenant_id").get(id=user.id)
                     if db_user.tenant_id:
                         tenant_id = db_user.tenant_id
                 except User.DoesNotExist:
@@ -1389,6 +1438,7 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             if tenant_id:
                 if isinstance(tenant_id, str):
                     import uuid
+
                     try:
                         tenant_id = uuid.UUID(tenant_id)
                     except (ValueError, TypeError):
@@ -1398,7 +1448,7 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 return PipelineExecution.objects.none()
 
         # Apply status filter if provided
-        status_filter = self.request.query_params.get('status')
+        status_filter = self.request.query_params.get("status")
         if status_filter:
             valid_statuses = [choice[0] for choice in ExecutionStatus.choices]
             if status_filter.upper() in valid_statuses:
@@ -1406,7 +1456,7 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             else:
                 return PipelineExecution.objects.none()
 
-        return queryset.order_by('-started_at', '-created_at')
+        return queryset.order_by("-started_at", "-created_at")
 
     def retrieve(self, request, id=None):
         """
@@ -1428,18 +1478,18 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         request=None,
         responses={
             200: inline_serializer(
-                name='PipelineExecutionCancelResponse',
+                name="PipelineExecutionCancelResponse",
                 fields={
-                    'execution_id': serializers.UUIDField(),
-                    'status': serializers.CharField(),
-                    'message': serializers.CharField(),
-                }
+                    "execution_id": serializers.UUIDField(),
+                    "status": serializers.CharField(),
+                    "message": serializers.CharField(),
+                },
             ),
-            400: OpenApiResponse(description='Execution cannot be cancelled'),
+            400: OpenApiResponse(description="Execution cannot be cancelled"),
         },
         tags=["Transformation"],
     )
-    @action(detail=True, methods=['post'], url_path='cancel')
+    @action(detail=True, methods=["post"], url_path="cancel")
     @transaction.atomic
     def cancel_execution(self, request, id=None):
         """
@@ -1456,11 +1506,11 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         if not execution.can_cancel():
             return Response(
                 {
-                    'error': f'Execution cannot be cancelled (current status: {execution.status})',
-                    'execution_id': str(execution.id),
-                    'status': execution.status
+                    "error": f"Execution cannot be cancelled (current status: {execution.status})",
+                    "execution_id": str(execution.id),
+                    "status": execution.status,
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         user = request.user
@@ -1483,6 +1533,7 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
 
         # Create audit event
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.get(id=tenant_id) if tenant_id else execution.pipeline.tenant
         create_audit_event(
             resource_type="transformation_pipeline_execution",
@@ -1495,7 +1546,7 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 "pipeline_name": execution.pipeline.name,
                 "execution_status": execution.status,
             },
-            request=request
+            request=request,
         )
 
         logger.info(
@@ -1506,11 +1557,14 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             user_id=str(user.id),
         )
 
-        return Response({
-            'execution_id': str(execution.id),
-            'status': execution.status,
-            'message': 'Execution cancelled successfully',
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "execution_id": str(execution.id),
+                "status": execution.status,
+                "message": "Execution cancelled successfully",
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(
         summary="Get execution progress",
@@ -1520,7 +1574,7 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         },
         tags=["Transformation"],
     )
-    @action(detail=True, methods=['get'], url_path='progress')
+    @action(detail=True, methods=["get"], url_path="progress")
     def get_progress(self, request, id=None):
         """
         Get execution progress.
@@ -1572,14 +1626,21 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
 
         # Get estimated completion time
         estimated_completion_at = None
-        if execution.status == ExecutionStatus.RUNNING and execution.started_at and progress_percentage:
+        if (
+            execution.status == ExecutionStatus.RUNNING
+            and execution.started_at
+            and progress_percentage
+        ):
             duration = execution.get_duration_seconds()
             if duration and progress_percentage > 0:
                 # Estimate: (elapsed_time / progress) * 100
                 estimated_total_seconds = (duration / progress_percentage) * 100.0
                 remaining_seconds = estimated_total_seconds - duration
                 from django.utils import timezone
-                estimated_completion_at = timezone.now() + timezone.timedelta(seconds=remaining_seconds)
+
+                estimated_completion_at = timezone.now() + timezone.timedelta(
+                    seconds=remaining_seconds
+                )
 
         # Get recent logs (last 10 entries)
         recent_logs = []
@@ -1587,16 +1648,16 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             recent_logs = execution.execution_log[-10:]
 
         response_data = {
-            'execution_id': str(execution.id),
-            'status': execution.status,
-            'progress_percentage': progress_percentage,
-            'current_step': current_step,
-            'total_steps': total_steps,
-            'started_at': execution.started_at,
-            'estimated_completion_at': estimated_completion_at,
-            'duration_seconds': execution.get_duration_seconds(),
-            'metrics': execution.metrics if execution.metrics else {},
-            'recent_logs': recent_logs,
+            "execution_id": str(execution.id),
+            "status": execution.status,
+            "progress_percentage": progress_percentage,
+            "current_step": current_step,
+            "total_steps": total_steps,
+            "started_at": execution.started_at,
+            "estimated_completion_at": estimated_completion_at,
+            "duration_seconds": execution.get_duration_seconds(),
+            "metrics": execution.metrics if execution.metrics else {},
+            "recent_logs": recent_logs,
         }
 
         serializer = PipelineExecutionProgressSerializer(response_data)
@@ -1607,12 +1668,12 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         description="Get the result of a completed pipeline execution, including result asset and metrics.",
         responses={
             200: PipelineExecutionResultSerializer,
-            404: OpenApiResponse(description='Execution not found'),
-            400: OpenApiResponse(description='Execution not completed'),
+            404: OpenApiResponse(description="Execution not found"),
+            400: OpenApiResponse(description="Execution not completed"),
         },
         tags=["Transformation"],
     )
-    @action(detail=True, methods=['get'], url_path='result')
+    @action(detail=True, methods=["get"], url_path="result")
     def get_result(self, request, id=None):
         """
         Get execution result.
@@ -1628,11 +1689,11 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         if execution.status not in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]:
             return Response(
                 {
-                    'error': f'Execution is not in a terminal state (current status: {execution.status})',
-                    'execution_id': str(execution.id),
-                    'status': execution.status
+                    "error": f"Execution is not in a terminal state (current status: {execution.status})",
+                    "execution_id": str(execution.id),
+                    "status": execution.status,
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Extract error message from logs if failed
@@ -1645,16 +1706,16 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     break
 
         response_data = {
-            'execution_id': str(execution.id),
-            'status': execution.status,
-            'result_asset_id': str(execution.result_asset.id) if execution.result_asset else None,
-            'result_asset_name': execution.result_asset.name if execution.result_asset else None,
-            'metrics': execution.metrics if execution.metrics else {},
-            'execution_log': execution.execution_log if execution.execution_log else [],
-            'started_at': execution.started_at,
-            'completed_at': execution.completed_at,
-            'duration_seconds': execution.get_duration_seconds(),
-            'error_message': error_message,
+            "execution_id": str(execution.id),
+            "status": execution.status,
+            "result_asset_id": str(execution.result_asset.id) if execution.result_asset else None,
+            "result_asset_name": execution.result_asset.name if execution.result_asset else None,
+            "metrics": execution.metrics if execution.metrics else {},
+            "execution_log": execution.execution_log if execution.execution_log else [],
+            "started_at": execution.started_at,
+            "completed_at": execution.completed_at,
+            "duration_seconds": execution.get_duration_seconds(),
+            "error_message": error_message,
         }
 
         serializer = PipelineExecutionResultSerializer(response_data)
@@ -1667,8 +1728,8 @@ class PipelineExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         description="Get preview result by preview ID.",
         responses={
             200: PreviewResultSerializer,
-            404: OpenApiResponse(description='Preview not found'),
-            410: OpenApiResponse(description='Preview expired'),
+            404: OpenApiResponse(description="Preview not found"),
+            410: OpenApiResponse(description="Preview expired"),
         },
         tags=["Transformation"],
     ),
@@ -1680,6 +1741,7 @@ class PreviewResultViewSet(viewsets.ReadOnlyModelViewSet):
     Tenant-scoped: users can only see previews in their tenant.
     Requires transformation:read scope for all operations.
     """
+
     queryset = PreviewResult.objects.all()
     serializer_class = PreviewResultSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -1687,7 +1749,7 @@ class PreviewResultViewSet(viewsets.ReadOnlyModelViewSet):
     lookup_url_kwarg = "preview_id"
 
     def get_permissions(self):
-        return [permissions.IsAuthenticated(), HasScope('transformation:read')]
+        return [permissions.IsAuthenticated(), HasScope("transformation:read")]
 
     def get_queryset(self):
         """Filter queryset based on user permissions"""
@@ -1705,6 +1767,7 @@ class PreviewResultViewSet(viewsets.ReadOnlyModelViewSet):
                 tenant_id = self.request.tenant_id
                 if isinstance(tenant_id, str):
                     import uuid
+
                     try:
                         tenant_id = uuid.UUID(tenant_id)
                     except (ValueError, TypeError):
@@ -1717,9 +1780,10 @@ class PreviewResultViewSet(viewsets.ReadOnlyModelViewSet):
             # Fallback to user.tenant_id
             if not tenant_id and hasattr(user, "id") and user.id:
                 from django.contrib.auth import get_user_model
+
                 User = get_user_model()
                 try:
-                    db_user = User.objects.only('tenant_id').get(id=user.id)
+                    db_user = User.objects.only("tenant_id").get(id=user.id)
                     if db_user.tenant_id:
                         tenant_id = db_user.tenant_id
                 except User.DoesNotExist:
@@ -1733,6 +1797,7 @@ class PreviewResultViewSet(viewsets.ReadOnlyModelViewSet):
             if tenant_id:
                 if isinstance(tenant_id, str):
                     import uuid
+
                     try:
                         tenant_id = uuid.UUID(tenant_id)
                     except (ValueError, TypeError):
@@ -1741,7 +1806,7 @@ class PreviewResultViewSet(viewsets.ReadOnlyModelViewSet):
             else:
                 return PreviewResult.objects.none()
 
-        return queryset.order_by('-generated_at')
+        return queryset.order_by("-generated_at")
 
     def retrieve(self, request, preview_id=None):
         """
@@ -1758,11 +1823,11 @@ class PreviewResultViewSet(viewsets.ReadOnlyModelViewSet):
         if preview.is_expired():
             return Response(
                 {
-                    'error': 'Preview has expired',
-                    'preview_id': preview_id,
-                    'expires_at': preview.expires_at.isoformat(),
+                    "error": "Preview has expired",
+                    "preview_id": preview_id,
+                    "expires_at": preview.expires_at.isoformat(),
                 },
-                status=status.HTTP_410_GONE
+                status=status.HTTP_410_GONE,
             )
 
         serializer = self.get_serializer(preview)
@@ -1775,7 +1840,7 @@ class PreviewResultViewSet(viewsets.ReadOnlyModelViewSet):
         description="Get detailed information about a wrangling session.",
         responses={
             200: WranglingSessionSerializer,
-            404: OpenApiResponse(description='Wrangling session not found'),
+            404: OpenApiResponse(description="Wrangling session not found"),
         },
         tags=["Transformation"],
     ),
@@ -1785,8 +1850,8 @@ class PreviewResultViewSet(viewsets.ReadOnlyModelViewSet):
         request=WranglingOperationRequestSerializer,
         responses={
             200: WranglingResultSerializer,
-            400: OpenApiResponse(description='Invalid request'),
-            404: OpenApiResponse(description='Asset or session not found'),
+            400: OpenApiResponse(description="Invalid request"),
+            404: OpenApiResponse(description="Asset or session not found"),
         },
         tags=["Transformation"],
     ),
@@ -1801,6 +1866,7 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
     Tenant-scoped: users can only see/manage sessions in their tenant.
     Requires transformation:read for reads, transformation:write for writes.
     """
+
     queryset = WranglingSession.objects.all()
     serializer_class = WranglingSessionSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -1814,9 +1880,9 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
         return response
 
     def get_permissions(self):
-        if self.action in ('create', 'update', 'partial_update', 'destroy'):
-            return [permissions.IsAuthenticated(), HasScope('transformation:write')]
-        return [permissions.IsAuthenticated(), HasScope('transformation:read')]
+        if self.action in ("create", "update", "partial_update", "destroy"):
+            return [permissions.IsAuthenticated(), HasScope("transformation:write")]
+        return [permissions.IsAuthenticated(), HasScope("transformation:read")]
 
     def get_queryset(self):
         """Filter queryset based on user permissions"""
@@ -1834,6 +1900,7 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
                 tenant_id = self.request.tenant_id
                 if isinstance(tenant_id, str):
                     import uuid
+
                     try:
                         tenant_id = uuid.UUID(tenant_id)
                     except (ValueError, TypeError):
@@ -1846,9 +1913,10 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
             # Fallback to user.tenant_id
             if not tenant_id and hasattr(user, "id") and user.id:
                 from django.contrib.auth import get_user_model
+
                 User = get_user_model()
                 try:
-                    db_user = User.objects.only('tenant_id').get(id=user.id)
+                    db_user = User.objects.only("tenant_id").get(id=user.id)
                     if db_user.tenant_id:
                         tenant_id = db_user.tenant_id
                 except User.DoesNotExist:
@@ -1862,6 +1930,7 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
             if tenant_id:
                 if isinstance(tenant_id, str):
                     import uuid
+
                     try:
                         tenant_id = uuid.UUID(tenant_id)
                     except (ValueError, TypeError):
@@ -1870,7 +1939,7 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
             else:
                 return WranglingSession.objects.none()
 
-        return queryset.order_by('-created_at')
+        return queryset.order_by("-created_at")
 
     @transaction.atomic
     def create(self, request):
@@ -1885,9 +1954,9 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
         serializer = WranglingOperationRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        asset_id = serializer.validated_data['asset_id']
-        operation = serializer.validated_data['operation']
-        session_id = serializer.validated_data.get('session_id')
+        asset_id = serializer.validated_data["asset_id"]
+        operation = serializer.validated_data["operation"]
+        session_id = serializer.validated_data.get("session_id")
 
         # Get tenant and user
         tenant = self.get_tenant_from_request()
@@ -1899,10 +1968,7 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
         user_id = str(user.id) if user else None
 
         # Initialize service
-        service = TransformationService(
-            tenant_id=tenant_id,
-            user_id=user_id
-        )
+        service = TransformationService(tenant_id=tenant_id, user_id=user_id)
 
         # Perform wrangling operation
         result = service.wrangle_data(
@@ -1911,7 +1977,7 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
             session_id=str(session_id) if session_id else None,
             tenant_id=tenant_id,
             user_id=user_id,
-            request=request
+            request=request,
         )
 
         # Create audit event
@@ -1926,7 +1992,7 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
                 "operation_id": result.get("operation_id"),
                 "asset_id": str(asset_id),
             },
-            request=request
+            request=request,
         )
 
         response_serializer = WranglingResultSerializer(result)
@@ -1946,21 +2012,21 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
         request=None,
         responses={
             200: inline_serializer(
-                name='WranglingUndoResponse',
+                name="WranglingUndoResponse",
                 fields={
-                    'session_id': serializers.UUIDField(),
-                    'undone_operation': serializers.DictField(allow_null=True),
-                    'can_undo': serializers.BooleanField(),
-                    'can_redo': serializers.BooleanField(),
-                    'applied_operations_count': serializers.IntegerField(),
-                }
+                    "session_id": serializers.UUIDField(),
+                    "undone_operation": serializers.DictField(allow_null=True),
+                    "can_undo": serializers.BooleanField(),
+                    "can_redo": serializers.BooleanField(),
+                    "applied_operations_count": serializers.IntegerField(),
+                },
             ),
-            400: OpenApiResponse(description='Cannot undo'),
-            404: OpenApiResponse(description='Wrangling session not found'),
+            400: OpenApiResponse(description="Cannot undo"),
+            404: OpenApiResponse(description="Wrangling session not found"),
         },
         tags=["Transformation"],
     )
-    @action(detail=True, methods=['post'], url_path='undo')
+    @action(detail=True, methods=["post"], url_path="undo")
     @transaction.atomic
     def undo_operation(self, request, id=None):
         """
@@ -1977,10 +2043,10 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
         if not session.can_undo():
             return Response(
                 {
-                    'error': 'Cannot undo: no operations to undo',
-                    'session_id': str(session.id),
+                    "error": "Cannot undo: no operations to undo",
+                    "session_id": str(session.id),
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Undo operation
@@ -1999,7 +2065,7 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
                 "undone_operation_type": undone_operation.get("type") if undone_operation else None,
                 "history_position": session.history_position,
             },
-            request=request
+            request=request,
         )
 
         logger.info(
@@ -2010,13 +2076,16 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
             user_id=str(user.id) if user else None,
         )
 
-        return Response({
-            'session_id': str(session.id),
-            'undone_operation': undone_operation,
-            'can_undo': session.can_undo(),
-            'can_redo': session.can_redo(),
-            'applied_operations_count': len(session.get_applied_operations()),
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "session_id": str(session.id),
+                "undone_operation": undone_operation,
+                "can_undo": session.can_undo(),
+                "can_redo": session.can_redo(),
+                "applied_operations_count": len(session.get_applied_operations()),
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(
         summary="Redo wrangling operation",
@@ -2024,21 +2093,21 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
         request=None,
         responses={
             200: inline_serializer(
-                name='WranglingRedoResponse',
+                name="WranglingRedoResponse",
                 fields={
-                    'session_id': serializers.UUIDField(),
-                    'redone_operation': serializers.DictField(allow_null=True),
-                    'can_undo': serializers.BooleanField(),
-                    'can_redo': serializers.BooleanField(),
-                    'applied_operations_count': serializers.IntegerField(),
-                }
+                    "session_id": serializers.UUIDField(),
+                    "redone_operation": serializers.DictField(allow_null=True),
+                    "can_undo": serializers.BooleanField(),
+                    "can_redo": serializers.BooleanField(),
+                    "applied_operations_count": serializers.IntegerField(),
+                },
             ),
-            400: OpenApiResponse(description='Cannot redo'),
-            404: OpenApiResponse(description='Wrangling session not found'),
+            400: OpenApiResponse(description="Cannot redo"),
+            404: OpenApiResponse(description="Wrangling session not found"),
         },
         tags=["Transformation"],
     )
-    @action(detail=True, methods=['post'], url_path='redo')
+    @action(detail=True, methods=["post"], url_path="redo")
     @transaction.atomic
     def redo_operation(self, request, id=None):
         """
@@ -2055,10 +2124,10 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
         if not session.can_redo():
             return Response(
                 {
-                    'error': 'Cannot redo: no operations to redo',
-                    'session_id': str(session.id),
+                    "error": "Cannot redo: no operations to redo",
+                    "session_id": str(session.id),
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Redo operation
@@ -2077,7 +2146,7 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
                 "redone_operation_type": redone_operation.get("type") if redone_operation else None,
                 "history_position": session.history_position,
             },
-            request=request
+            request=request,
         )
 
         logger.info(
@@ -2088,13 +2157,16 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
             user_id=str(user.id) if user else None,
         )
 
-        return Response({
-            'session_id': str(session.id),
-            'redone_operation': redone_operation,
-            'can_undo': session.can_undo(),
-            'can_redo': session.can_redo(),
-            'applied_operations_count': len(session.get_applied_operations()),
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "session_id": str(session.id),
+                "redone_operation": redone_operation,
+                "can_undo": session.can_undo(),
+                "can_redo": session.can_redo(),
+                "applied_operations_count": len(session.get_applied_operations()),
+            },
+            status=status.HTTP_200_OK,
+        )
 
     def get_tenant_from_request(self):
         """Get tenant from request with proper fallback logic"""
@@ -2103,12 +2175,14 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
             tenant_id = self.request.tenant_id
             if isinstance(tenant_id, str):
                 import uuid
+
                 try:
                     tenant_id = uuid.UUID(tenant_id)
                 except (ValueError, TypeError):
                     tenant_id = None
             if tenant_id:
                 from hub.apps.tenants.models import Tenant
+
                 try:
                     return Tenant.objects.get(id=tenant_id)
                 except Tenant.DoesNotExist:
@@ -2122,11 +2196,13 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if hasattr(user, "id") and user.id:
             from django.contrib.auth import get_user_model
+
             User = get_user_model()
             try:
-                db_user = User.objects.only('tenant_id').get(id=user.id)
+                db_user = User.objects.only("tenant_id").get(id=user.id)
                 if db_user.tenant_id:
                     from hub.apps.tenants.models import Tenant
+
                     try:
                         return Tenant.objects.get(id=db_user.tenant_id)
                     except Tenant.DoesNotExist:
@@ -2139,4 +2215,3 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
             return user.tenant
 
         return None
-

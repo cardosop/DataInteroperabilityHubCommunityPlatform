@@ -27,9 +27,11 @@ Environment Variables:
     OTEL_TRACES_SAMPLER: Sampling strategy - 'always_on', 'always_off', 'traceidratio' (default: based on environment)
     OTEL_TRACES_SAMPLER_ARG: Sampling rate for traceidratio (default: 1.0 for dev, 0.1 for prod)
 """
-import os
+
 import logging
-from typing import Optional, Dict, Any, TYPE_CHECKING
+import os
+from typing import TYPE_CHECKING, Any, Optional
+
 from django.conf import settings
 
 if TYPE_CHECKING:
@@ -40,17 +42,18 @@ logger = logging.getLogger(__name__)
 # OpenTelemetry availability flag
 OPENTELEMETRY_AVAILABLE = False
 try:
-    from opentelemetry import trace, metrics
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    from opentelemetry.sdk.resources import Resource
-    from opentelemetry.sdk.trace.sampling import (
-        TraceIdRatioBased,
-        ALWAYS_ON,
-        ALWAYS_OFF,
-    )
+    from opentelemetry import metrics, trace
     from opentelemetry.instrumentation.django import DjangoInstrumentor
     from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.sdk.trace.sampling import (
+        ALWAYS_OFF,
+        ALWAYS_ON,
+        TraceIdRatioBased,
+    )
+
     OPENTELEMETRY_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"OpenTelemetry packages not available: {e}")
@@ -65,8 +68,7 @@ def get_service_name() -> str:
         Service name (default: 'data-interoperability-hub-api')
     """
     return os.getenv(
-        'OTEL_SERVICE_NAME',
-        getattr(settings, 'OTEL_SERVICE_NAME', 'data-interoperability-hub-api')
+        "OTEL_SERVICE_NAME", getattr(settings, "OTEL_SERVICE_NAME", "data-interoperability-hub-api")
     )
 
 
@@ -81,21 +83,21 @@ def get_service_version() -> str:
     """
     # "unknown" is the sentinel used by the Dockerfile (ARG GIT_SHA=unknown)
     # and settings.py (default="unknown") when no real version is available.
-    _SENTINEL = 'unknown'
+    _SENTINEL = "unknown"
 
     # Check env var first (set by Dockerfile ENV OTEL_SERVICE_VERSION=${GIT_SHA})
-    env_version = os.getenv('OTEL_SERVICE_VERSION')
+    env_version = os.getenv("OTEL_SERVICE_VERSION")
     if env_version and env_version != _SENTINEL:
         return env_version
     # Check settings (populated from the same env var at startup)
-    settings_version = getattr(settings, 'OTEL_SERVICE_VERSION', None)
+    settings_version = getattr(settings, "OTEL_SERVICE_VERSION", None)
     if settings_version and settings_version != _SENTINEL:
         return settings_version
     # Legacy fallback
-    app_version = getattr(settings, 'APP_VERSION', None)
+    app_version = getattr(settings, "APP_VERSION", None)
     if app_version:
         return app_version
-    return '1.0.0'
+    return "1.0.0"
 
 
 def get_environment() -> str:
@@ -110,18 +112,18 @@ def get_environment() -> str:
     Returns:
         Environment name: 'development', 'staging', or 'production'
     """
-    env_name = os.getenv('OTEL_ENVIRONMENT', '').lower()
-    if env_name in ('development', 'staging', 'production'):
+    env_name = os.getenv("OTEL_ENVIRONMENT", "").lower()
+    if env_name in ("development", "staging", "production"):
         return env_name
 
     # Use the Django ENVIRONMENT setting as the canonical source
     # (set in settings.py from the ENVIRONMENT env var, e.g. 'production')
-    django_env = getattr(settings, 'ENVIRONMENT', '').lower()
-    if django_env in ('development', 'staging', 'production'):
+    django_env = getattr(settings, "ENVIRONMENT", "").lower()
+    if django_env in ("development", "staging", "production"):
         return django_env
 
     # Final heuristic fallback
-    return 'development' if getattr(settings, 'DEBUG', False) else 'production'
+    return "development" if getattr(settings, "DEBUG", False) else "production"
 
 
 def get_sampling_config() -> tuple:
@@ -134,26 +136,26 @@ def get_sampling_config() -> tuple:
         - staging: 50% sampling
         - production: 10% sampling (configurable)
     """
-    sampler_type = os.getenv('OTEL_TRACES_SAMPLER', '').lower()
+    sampler_type = os.getenv("OTEL_TRACES_SAMPLER", "").lower()
     environment = get_environment()
 
     # Check for explicit sampler configuration
-    if sampler_type == 'always_on':
+    if sampler_type == "always_on":
         return ALWAYS_ON, 1.0
-    elif sampler_type == 'always_off':
+    elif sampler_type == "always_off":
         return ALWAYS_OFF, 0.0
-    elif sampler_type == 'traceidratio':
-        sampling_rate = float(os.getenv('OTEL_TRACES_SAMPLER_ARG', '0.1'))
+    elif sampler_type == "traceidratio":
+        sampling_rate = float(os.getenv("OTEL_TRACES_SAMPLER_ARG", "0.1"))
         return TraceIdRatioBased(sampling_rate), sampling_rate
 
     # Environment-based defaults
-    if environment == 'development':
+    if environment == "development":
         return ALWAYS_ON, 1.0
-    elif environment == 'staging':
+    elif environment == "staging":
         sampling_rate = 0.5
         return TraceIdRatioBased(sampling_rate), sampling_rate
     else:  # production
-        sampling_rate = float(os.getenv('OTEL_TRACES_SAMPLER_ARG', '0.1'))
+        sampling_rate = float(os.getenv("OTEL_TRACES_SAMPLER_ARG", "0.1"))
         return TraceIdRatioBased(sampling_rate), sampling_rate
 
 
@@ -174,9 +176,7 @@ def create_resource() -> Optional["Resource"]:
         return None
 
     # Start with any extra keys from settings (custom labels, etc.)
-    resource_attributes: Dict[str, str] = dict(
-        getattr(settings, 'OTEL_RESOURCE_ATTRIBUTES', {})
-    )
+    resource_attributes: dict[str, str] = dict(getattr(settings, "OTEL_RESOURCE_ATTRIBUTES", {}))
 
     # Always resolve standard keys dynamically — the helpers inspect
     # env vars and current settings, so they stay correct even when
@@ -185,14 +185,12 @@ def create_resource() -> Optional["Resource"]:
     resource_attributes["service.name"] = get_service_name()
     resource_attributes["service.version"] = get_service_version()
     resource_attributes["deployment.environment"] = get_environment()
-    resource_attributes["service.namespace"] = getattr(
-        settings, 'OTEL_SERVICE_NAMESPACE', 'hub'
-    )
+    resource_attributes["service.namespace"] = getattr(settings, "OTEL_SERVICE_NAMESPACE", "hub")
 
     # Optional deployment-specific attributes (set via Django settings or Vault)
-    if hasattr(settings, 'DEPLOYMENT_REGION'):
+    if hasattr(settings, "DEPLOYMENT_REGION"):
         resource_attributes["deployment.region"] = settings.DEPLOYMENT_REGION
-    if hasattr(settings, 'INSTANCE_ID'):
+    if hasattr(settings, "INSTANCE_ID"):
         resource_attributes["service.instance.id"] = settings.INSTANCE_ID
 
     return Resource.create(resource_attributes)
@@ -212,15 +210,18 @@ def create_otlp_exporter():
         from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
         endpoint = os.getenv(
-            'OTEL_EXPORTER_OTLP_ENDPOINT',
-            getattr(settings, 'OTEL_EXPORTER_OTLP_ENDPOINT', 'http://otel-collector:4317')
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            getattr(settings, "OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317"),
         )
 
         # Support both gRPC and HTTP/protobuf protocols
-        protocol = os.getenv('OTEL_EXPORTER_OTLP_PROTOCOL', 'grpc').lower()
+        protocol = os.getenv("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc").lower()
 
-        if protocol == 'http/protobuf':
-            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as HTTPOTLPSpanExporter
+        if protocol == "http/protobuf":
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+                OTLPSpanExporter as HTTPOTLPSpanExporter,
+            )
+
             exporter = HTTPOTLPSpanExporter(endpoint=endpoint)
         else:
             exporter = OTLPSpanExporter(endpoint=endpoint)
@@ -245,8 +246,8 @@ def create_jaeger_exporter():
     try:
         from opentelemetry.exporter.jaeger.thrift import JaegerExporter
 
-        agent_host = os.getenv('JAEGER_AGENT_HOST', 'jaeger')
-        agent_port = int(os.getenv('JAEGER_AGENT_PORT', '6831'))
+        agent_host = os.getenv("JAEGER_AGENT_HOST", "jaeger")
+        agent_port = int(os.getenv("JAEGER_AGENT_PORT", "6831"))
 
         exporter = JaegerExporter(
             agent_host_name=agent_host,
@@ -260,7 +261,7 @@ def create_jaeger_exporter():
         return None
 
 
-def setup_opentelemetry_tracing() -> Optional[object]:
+def setup_opentelemetry_tracing() -> object | None:
     """
     Set up OpenTelemetry distributed tracing.
 
@@ -277,7 +278,7 @@ def setup_opentelemetry_tracing() -> Optional[object]:
         logger.warning("OpenTelemetry packages not available")
         return None
 
-    if not getattr(settings, 'OPENTELEMETRY_ENABLED', False):
+    if not getattr(settings, "OPENTELEMETRY_ENABLED", False):
         logger.debug("OpenTelemetry tracing disabled")
         return None
 
@@ -308,17 +309,14 @@ def setup_opentelemetry_tracing() -> Optional[object]:
             sampler, sampling_rate = get_sampling_config()
 
         # Create tracer provider
-        tracer_provider = TracerProvider(
-            resource=resource,
-            sampler=sampler
-        )
+        tracer_provider = TracerProvider(resource=resource, sampler=sampler)
         trace.set_tracer_provider(tracer_provider)
 
         # Determine exporter type
-        exporter_type = os.getenv('OPENTELEMETRY_EXPORTER', 'otlp').lower()
+        exporter_type = os.getenv("OPENTELEMETRY_EXPORTER", "otlp").lower()
 
         # Create exporter
-        if exporter_type == 'jaeger':
+        if exporter_type == "jaeger":
             exporter = create_jaeger_exporter()
         else:  # default to OTLP
             exporter = create_otlp_exporter()
@@ -358,7 +356,7 @@ def setup_opentelemetry_tracing() -> Optional[object]:
         return None
 
 
-def get_tracer(name: Optional[str] = None) -> Optional[object]:
+def get_tracer(name: str | None = None) -> object | None:
     """
     Get OpenTelemetry tracer instance.
 
@@ -371,7 +369,7 @@ def get_tracer(name: Optional[str] = None) -> Optional[object]:
     if not OPENTELEMETRY_AVAILABLE:
         return None
 
-    if not getattr(settings, 'OPENTELEMETRY_ENABLED', False):
+    if not getattr(settings, "OPENTELEMETRY_ENABLED", False):
         return None
 
     try:
@@ -399,7 +397,7 @@ def get_current_span():
         return None
 
 
-def add_span_attributes(attributes: Dict[str, Any]):
+def add_span_attributes(attributes: dict[str, Any]):
     """
     Add attributes to the current span.
 
@@ -410,4 +408,3 @@ def add_span_attributes(attributes: Dict[str, Any]):
     if span:
         for key, value in attributes.items():
             span.set_attribute(key, value)
-

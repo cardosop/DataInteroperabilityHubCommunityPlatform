@@ -11,6 +11,7 @@ Required env vars (set as GitHub secrets in CI):
     SMOKE_ADMIN_EMAIL
     SMOKE_ADMIN_PASSWORD
 """
+
 import requests
 
 
@@ -53,9 +54,7 @@ class TestLogin:
         token = data.get("access") or data.get("token") or data.get("access_token")
         assert token, f"No access token in login response keys: {list(data.keys())}"
         # JWT format: three base64url segments separated by dots
-        assert len(token.split(".")) == 3, (
-            f"access token does not look like a JWT: {token[:50]}..."
-        )
+        assert len(token.split(".")) == 3, f"access token does not look like a JWT: {token[:50]}..."
 
     def test_login_returns_refresh_token(
         self,
@@ -131,10 +130,7 @@ class TestTokenRefresh:
             timeout=timeout,
         )
         assert login_resp.status_code == 200
-        refresh_token = (
-            login_resp.json().get("refresh")
-            or login_resp.json().get("refresh_token")
-        )
+        refresh_token = login_resp.json().get("refresh") or login_resp.json().get("refresh_token")
         payload = {"refresh_token": refresh_token} if refresh_token else {}
 
         # Step 2: exchange refresh token (cookie mode uses cookie-only body)

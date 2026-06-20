@@ -11,19 +11,19 @@ Usage:
     python scripts/lint_journey_marker_coverage.py --blocking
     python scripts/lint_journey_marker_coverage.py --json
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import os
 import re
-import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 JOURNEY_IDS_FILE = "docs/CRITICAL_UC_JOURNEY_IDS.yaml"
-SCAN_DIRS = ["hub/apps", "tests"]
-BLOCKING_DATE = datetime(2026, 6, 21, tzinfo=timezone.utc)
+SCAN_DIRS = ["hub/apps", "tests", "cli/tests", "sdk/python/tests", "services"]
+BLOCKING_DATE = datetime(2026, 6, 21, tzinfo=UTC)
 
 
 def _extract_yaml_journey_ids(filepath: Path) -> set[str]:
@@ -70,26 +70,35 @@ def run_lint(
     )
 
     uncovered = yaml_ids - marked_ids
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     is_blocking = blocking or now >= BLOCKING_DATE
 
     if json_output:
-        print(json.dumps({
-            "status": "fail" if (uncovered and is_blocking) else ("warn" if uncovered else "ok"),
-            "yaml_journey_count": len(yaml_ids),
-            "marked_journey_count": len(marked_ids),
-            "uncovered_count": len(uncovered),
-            "coverage_pct": round(
-                (len(yaml_ids) - len(uncovered)) / max(len(yaml_ids), 1) * 100, 1,
-            ),
-            "blocking": is_blocking,
-            "uncovered": sorted(uncovered),
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "status": "fail"
+                    if (uncovered and is_blocking)
+                    else ("warn" if uncovered else "ok"),
+                    "yaml_journey_count": len(yaml_ids),
+                    "marked_journey_count": len(marked_ids),
+                    "uncovered_count": len(uncovered),
+                    "coverage_pct": round(
+                        (len(yaml_ids) - len(uncovered)) / max(len(yaml_ids), 1) * 100,
+                        1,
+                    ),
+                    "blocking": is_blocking,
+                    "uncovered": sorted(uncovered),
+                },
+                indent=2,
+            )
+        )
     else:
         coverage = round(
-            (len(yaml_ids) - len(uncovered)) / max(len(yaml_ids), 1) * 100, 1,
+            (len(yaml_ids) - len(uncovered)) / max(len(yaml_ids), 1) * 100,
+            1,
         )
-        print(f"Journey Marker Coverage Check")
+        print("Journey Marker Coverage Check")
         print(f"  YAML journey IDs: {len(yaml_ids)}")
         print(f"  Marked in tests:  {len(marked_ids)}")
         print(f"  Uncovered:        {len(uncovered)}")
@@ -97,10 +106,12 @@ def run_lint(
         mode = "BLOCKING" if is_blocking else "INFORMATIONAL"
         print(f"  Mode: {mode} (until {BLOCKING_DATE.strftime('%Y-%m-%d')})")
         if uncovered:
-            print(f"\n  Uncovered journeys:")
+            print("\n  Uncovered journeys:")
             for j in sorted(uncovered):
                 print(f"    - {j}")
-            print(f"\n  Add @pytest.mark.journey(\"{sorted(uncovered)[0]}\") to the relevant test file.")
+            print(
+                f'\n  Add @pytest.mark.journey("{sorted(uncovered)[0]}") to the relevant test file.'
+            )
 
     if uncovered and is_blocking:
         return 1

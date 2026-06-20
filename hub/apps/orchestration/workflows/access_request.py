@@ -6,7 +6,7 @@ approval routing, timeout handling, escalation, and compensation.
 """
 
 from datetime import timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
 from dateutil import parser as date_parser
@@ -14,9 +14,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from hub.apps.audit.utils import create_audit_event
-from hub.apps.governance.abac import ABACEngine
 from hub.apps.governance.business_rules import GovernanceBusinessRules
-from hub.apps.governance.classification import DataClassifier
 from hub.apps.governance.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -170,8 +168,8 @@ class AccessRequestWorkflow:
 
     @staticmethod
     def _create_access_request_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create access request record.
 
@@ -315,8 +313,8 @@ class AccessRequestWorkflow:
 
     @staticmethod
     def _classify_request_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Classify access request based on resource classification.
 
@@ -393,12 +391,15 @@ class AccessRequestWorkflow:
             requires_approval = False
         elif caller_requires_approval is True:
             requires_approval = True
-        elif highest_classification in [
-            ClassificationCategory.PUBLIC,
-            ClassificationCategory.INTERNAL,
-        ]:
-            if access_request.requested_access_type == "READ":
-                requires_approval = False
+        elif (
+            highest_classification
+            in [
+                ClassificationCategory.PUBLIC,
+                ClassificationCategory.INTERNAL,
+            ]
+            and access_request.requested_access_type == "READ"
+        ):
+            requires_approval = False
 
         logger.info(
             "Access request classified",
@@ -419,8 +420,8 @@ class AccessRequestWorkflow:
 
     @staticmethod
     def _route_to_approvers_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Route access request to approvers based on classification and workflow rules.
 
@@ -662,8 +663,8 @@ class AccessRequestWorkflow:
 
     @staticmethod
     def _wait_for_step_approval_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Wait for approval step to complete (check status, handle timeout).
 
@@ -781,8 +782,8 @@ class AccessRequestWorkflow:
 
     @staticmethod
     def _escalate_approval_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Escalate approval step to next level or notify administrators.
 
@@ -913,8 +914,8 @@ class AccessRequestWorkflow:
 
     @staticmethod
     def _grant_access_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Grant access to the requested resource.
 
@@ -1002,8 +1003,8 @@ class AccessRequestWorkflow:
 
     @staticmethod
     def _revoke_access_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Revoke access (compensation task).
 
@@ -1036,8 +1037,8 @@ class AccessRequestWorkflow:
 
     @staticmethod
     def _send_notifications_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Send notifications to relevant parties.
 
@@ -1178,8 +1179,8 @@ class AccessRequestWorkflow:
 
     @staticmethod
     def _audit_logging_task(
-        input_data: Dict[str, Any], instance: WorkflowInstance, step
-    ) -> Dict[str, Any]:
+        input_data: dict[str, Any], instance: WorkflowInstance, step
+    ) -> dict[str, Any]:
         """
         Create audit log entry for access request.
 
@@ -1261,16 +1262,16 @@ class AccessRequestWorkflow:
         cls,
         tenant_id: str,
         requested_by_id: str,
-        asset_id: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        file_id: Optional[str] = None,
+        asset_id: str | None = None,
+        dataset_id: str | None = None,
+        file_id: str | None = None,
         reason: str = "",
         requested_access_type: str = "READ",
-        expires_at: Optional[str] = None,
-        requires_approval: Optional[bool] = None,
-        engine: Optional[WorkflowEngine] = None,
-        registry: Optional[WorkflowRegistry] = None,
-    ) -> Dict[str, Any]:
+        expires_at: str | None = None,
+        requires_approval: bool | None = None,
+        engine: WorkflowEngine | None = None,
+        registry: WorkflowRegistry | None = None,
+    ) -> dict[str, Any]:
         """
         Execute access request workflow.
 
@@ -1353,7 +1354,7 @@ class AccessRequestWorkflow:
     @classmethod
     @transaction.atomic
     def approve_access_request(
-        cls, access_request_id: str, approved_by_id: str, step_index: Optional[int] = None
+        cls, access_request_id: str, approved_by_id: str, step_index: int | None = None
     ) -> AccessRequest:
         """
         Approve an access request (can be called externally when approver acts).

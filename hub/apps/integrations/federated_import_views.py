@@ -10,15 +10,16 @@ Secrets Manager ARN), never raw credentials. Credential references are
 masked in structlog + API responses. The worker resolves the ARN at
 job execution time via ``hub.aws_secrets_loader``.
 """
-from __future__ import annotations
-import structlog
 
+from __future__ import annotations
+
+import structlog
 from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from hub.apps.audit.utils import create_audit_event
@@ -86,7 +87,9 @@ def _validate_credential_ref(credential_ref: str) -> None:
         raise ValidationError({"credential_ref": "This field is required."})
     if not credential_ref.startswith("arn:aws:secretsmanager:"):
         raise ValidationError(
-            {"credential_ref": "Must be a valid AWS Secrets Manager ARN (arn:aws:secretsmanager:...)."}
+            {
+                "credential_ref": "Must be a valid AWS Secrets Manager ARN (arn:aws:secretsmanager:...)."
+            }
         )
 
 
@@ -127,7 +130,10 @@ class FederatedImportViewSet(viewsets.GenericViewSet):
             "properties": {
                 "provider_id": {"type": "string", "description": "Provider id from /providers/"},
                 "credential_ref": {"type": "string", "description": "AWS Secrets Manager ARN"},
-                "external_listing_id": {"type": "string", "description": "Optional external listing id to import"},
+                "external_listing_id": {
+                    "type": "string",
+                    "description": "Optional external listing id to import",
+                },
                 "data_strategy": {
                     "type": "string",
                     "enum": ["METADATA_ONLY", "DOWNLOAD_SELECTIVE", "DOWNLOAD_ALL"],
@@ -169,10 +175,12 @@ class FederatedImportViewSet(viewsets.GenericViewSet):
         # 285.12.2.9 — Deterministic placeholder UUID from request params
         # so the job can be idempotently looked up before the worker
         # assigns the real asset resource_id on completion.
-        placeholder_uuid = str(_uuid.uuid5(
-            _uuid.NAMESPACE_OID,
-            f"{tenant.id}:{provider_id}:{external_listing_id or ''}",
-        ))
+        placeholder_uuid = str(
+            _uuid.uuid5(
+                _uuid.NAMESPACE_OID,
+                f"{tenant.id}:{provider_id}:{external_listing_id or ''}",
+            )
+        )
 
         with transaction.atomic():
             job = Job.objects.create(
@@ -206,7 +214,7 @@ class FederatedImportViewSet(viewsets.GenericViewSet):
                     "data_strategy": data_strategy,
                 },
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.warning("federated_import_audit_emit_failed", exc_info=True)
 
         # Mask credential_ref in the response (284.A.2).
@@ -228,7 +236,9 @@ class FederatedImportViewSet(viewsets.GenericViewSet):
         summary="Get federated import job status",
         description="Returns the current status of a federated import job.",
         parameters=[
-            OpenApiParameter(name="job_id", type=str, location=OpenApiParameter.PATH, description="Job UUID"),
+            OpenApiParameter(
+                name="job_id", type=str, location=OpenApiParameter.PATH, description="Job UUID"
+            ),
         ],
         responses={200: OpenApiResponse(description="Job status")},
     )
@@ -253,7 +263,9 @@ class FederatedImportViewSet(viewsets.GenericViewSet):
                 "details": safe_details,
                 "created_at": job.created_at.isoformat(),
                 "updated_at": job.updated_at.isoformat() if job.updated_at else None,
-                "completed_at": job.completed_at.isoformat() if hasattr(job, "completed_at") and job.completed_at else None,
+                "completed_at": job.completed_at.isoformat()
+                if hasattr(job, "completed_at") and job.completed_at
+                else None,
             }
         )
 
@@ -297,7 +309,7 @@ class FederatedImportViewSet(viewsets.GenericViewSet):
                 resource_id=str(job.id),
                 details={"job_type": JobType.FEDERATED_IMPORT.value},
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.warning("federated_import_cancel_audit_emit_failed", exc_info=True)
 
         return Response({"id": str(job.id), "status": job.status})

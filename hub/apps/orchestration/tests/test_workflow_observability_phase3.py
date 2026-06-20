@@ -12,16 +12,16 @@ and fix root causes rather than workarounds.
 Uses wait_until for event persistence (no fixed time.sleep) per FIX_PLAN_FLAKY_TESTS_5_6_2.
 """
 
+import contextlib
+import uuid
+
 import structlog
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 
-from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.core.events.models import Event
 from hub.apps.orchestration.metrics import (
-    get_tenant_id,
-    workflow_business_rules_validation_cache_hits_total,
     workflow_business_rules_validation_cache_misses_total,
     workflow_business_rules_validation_duration_seconds,
     workflow_business_rules_validations_total,
@@ -29,15 +29,12 @@ from hub.apps.orchestration.metrics import (
 from hub.apps.orchestration.models import (
     StepStatus,
     WorkflowDefinition,
-    WorkflowInstance,
     WorkflowStatus,
-    WorkflowStep,
 )
 from hub.apps.orchestration.workflow_engine import WorkflowEngine, WorkflowExecutionError
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
 from tests.utils.polling import wait_until
-import uuid
 
 User = get_user_model()
 logger = structlog.get_logger(__name__)
@@ -57,7 +54,9 @@ class WorkflowObservabilityPhase3TestBase(TestCase):
             kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
         # Register test tasks
@@ -248,7 +247,7 @@ class TestEventPublishingEnhancement(WorkflowObservabilityPhase3TestBase):
     def test_step_started_event_includes_validation_status(self):
         """Test that workflow.step.started events include validation status"""
         # Create workflow definition
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_workflow",
             version="1.0.0",
             dsl_json={
@@ -294,7 +293,7 @@ class TestEventPublishingEnhancement(WorkflowObservabilityPhase3TestBase):
     def test_step_completed_event_includes_validation_context(self):
         """Test that workflow.step.completed events include validation context"""
         # Create workflow definition
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_workflow",
             version="1.0.0",
             dsl_json={
@@ -352,7 +351,7 @@ class TestEventPublishingEnhancement(WorkflowObservabilityPhase3TestBase):
 
         self.engine.register_task("failing_task", failing_task)
 
-        workflow_def = WorkflowDefinition.objects.create(
+        WorkflowDefinition.objects.create(
             name="test_workflow",
             version="1.0.0",
             dsl_json={
@@ -372,10 +371,8 @@ class TestEventPublishingEnhancement(WorkflowObservabilityPhase3TestBase):
         instance = self.engine.start_instance(str(instance.id))
 
         # Execute workflow step - will fail
-        try:
+        with contextlib.suppress(WorkflowExecutionError):
             instance = self.engine.execute_instance(str(instance.id))
-        except WorkflowExecutionError:
-            pass
 
         def step_failed_event_persisted():
             return Event.objects.filter(

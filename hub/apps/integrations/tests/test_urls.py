@@ -6,6 +6,7 @@ expected views with proper routing.
 """
 
 import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -15,7 +16,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset
 from hub.apps.auth.models import APIKey
-from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
+from hub.apps.integrations.base import MarketplaceType, SyncDirection
 from hub.apps.integrations.models import (
     MarketplaceConnection,
     MarketplaceMapping,
@@ -29,7 +30,6 @@ from hub.apps.integrations.views import (
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserStatus
-import uuid
 
 User = get_user_model()
 
@@ -56,7 +56,9 @@ class MarketplaceIntegrationURLPatternResolutionTest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED,
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            kyc_status=KYCStatus.VERIFIED,
             marketplace_integrations_enabled=True,
         )
         self.user = User.objects.create_user(
@@ -232,7 +234,9 @@ class MarketplaceIntegrationURLIntegrationTest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED,
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            kyc_status=KYCStatus.VERIFIED,
             marketplace_integrations_enabled=True,
         )
         # Active subscription required so TenantSuspensionMiddleware allows API writes
@@ -293,18 +297,16 @@ class MarketplaceIntegrationURLIntegrationTest(TestCase):
         self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
         self.assertEqual(detail_response.data["id"], connection_id)
 
-        # Test action endpoint
+        # Test action endpoint — should return 200 or 400 gracefully.
+        # 500 means an unhandled crash, which this test must catch.
         test_response = self.client.post(
             f"/api/v1/integrations/marketplace/connections/{connection_id}/test/"
         )
-        # May return 200 (success) or 400/500 (connection test failed)
+
         self.assertIn(
             test_response.status_code,
-            [
-                status.HTTP_200_OK,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-            ],
+            [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST],
+            msg=f"Test endpoint should handle errors gracefully, got {test_response.status_code}: {test_response.data}",
         )
 
     def test_sync_jobs_endpoints_accessible(self):
@@ -332,14 +334,12 @@ class MarketplaceIntegrationURLIntegrationTest(TestCase):
             },
             format="json",
         )
-        # May return 201 (created) or 400/500 (validation/connector error)
+        # Sync job creation should succeed (201) or return validation error (400).
+        # 500 is a crash — the test must fail on it.
         self.assertIn(
             create_response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-            ],
+            [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST],
+            msg=f"Expected 201 or 400, got {create_response.status_code}: {create_response.data}",
         )
 
         if create_response.status_code == status.HTTP_201_CREATED:
@@ -503,14 +503,17 @@ class MarketplaceIntegrationURLIntegrationTest(TestCase):
             reverse("invalid-url-name")
 
     def test_url_resolve_with_invalid_path(self):
-        """Test that resolve() handles invalid paths"""
-        with self.assertRaises(Exception):
+        """Test that resolve() raises Resolver404 for invalid paths"""
+        from django.urls import Resolver404
+
+        with self.assertRaises(Resolver404):
             resolve("/api/v1/integrations/marketplace/invalid-path/")
 
     def test_url_resolve_with_missing_id(self):
-        """Test that resolve() handles paths with missing IDs"""
-        # Try to resolve detail URL without ID
-        with self.assertRaises(Exception):
+        """Test that resolve() raises Resolver404 for paths with missing IDs"""
+        from django.urls import Resolver404
+
+        with self.assertRaises(Resolver404):
             resolve("/api/v1/integrations/marketplace/connections//")
 
     # ========== TDD COMPLIANCE TESTS ==========
@@ -519,7 +522,7 @@ class MarketplaceIntegrationURLIntegrationTest(TestCase):
         """Test that all URL patterns have basenames"""
         from hub.apps.integrations.urls import router
 
-        for prefix, viewset, basename in router.registry:
+        for _prefix, _viewset, basename in router.registry:
             self.assertIsNotNone(basename)
             self.assertIsInstance(basename, str)
             self.assertGreater(len(basename), 0)
@@ -528,7 +531,7 @@ class MarketplaceIntegrationURLIntegrationTest(TestCase):
         """Test that all URL patterns have viewsets"""
         from hub.apps.integrations.urls import router
 
-        for prefix, viewset, basename in router.registry:
+        for _prefix, viewset, _basename in router.registry:
             self.assertIsNotNone(viewset)
             # Viewset should be a class
             self.assertTrue(hasattr(viewset, "__name__") or hasattr(viewset, "__class__"))
@@ -537,7 +540,7 @@ class MarketplaceIntegrationURLIntegrationTest(TestCase):
         """Test that URL patterns follow consistent naming"""
         from hub.apps.integrations.urls import router
 
-        for prefix, viewset, basename in router.registry:
+        for prefix, _viewset, basename in router.registry:
             # Basename should match prefix pattern
             if "connection" in prefix:
                 self.assertIn("connection", basename)

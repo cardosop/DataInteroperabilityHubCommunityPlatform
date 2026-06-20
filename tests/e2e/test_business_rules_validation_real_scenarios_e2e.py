@@ -23,9 +23,8 @@ from django.test.utils import override_settings
 from hub.apps.core.events.models import Event
 from hub.apps.orchestration.business_rules import OrchestrationBusinessRules
 from hub.apps.orchestration.models import WorkflowStatus
-from hub.apps.orchestration.workflow_engine import WorkflowExecutionError
-from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
+from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from tests.e2e.workflow_e2e_base import WorkflowE2ETestBase
 from tests.factories import TenantFactory, UserFactory
 
@@ -84,7 +83,7 @@ def _valid_odps_doc_minimal(schema_version: str = "4.1", version_field: str = "4
 
 
 @pytest.mark.e2e
-@pytest.mark.requires_database
+@pytest.mark.requires_db
 @pytest.mark.timeout(1800)
 class TestServiceSpecificBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
     """
@@ -98,12 +97,16 @@ class TestServiceSpecificBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
     def test_odps_business_rules_document_structure_validation_surfaces_in_workflow(self):
         # Missing 'product' triggers ODPS structure validation failure in ProductCreationWorkflow._parse_odps_task()
         input_data = {
-            "original_raw": json.dumps({"schema": "https://opendataproducts.org/schema/v4.1", "version": "4.1"}),
+            "original_raw": json.dumps(
+                {"schema": "https://opendataproducts.org/schema/v4.1", "version": "4.1"}
+            ),
             "original_format": "JSON",
             "tenant_id": str(self.tenant.id),
             "user_id": str(self.user.id),
         }
-        instance, err = self.create_start_and_execute(ProductCreationWorkflow.WORKFLOW_NAME, input_data)
+        instance, _err = self.create_start_and_execute(
+            ProductCreationWorkflow.WORKFLOW_NAME, input_data
+        )
         instance.refresh_from_db()
         self.assertIn(
             instance.status,
@@ -121,7 +124,9 @@ class TestServiceSpecificBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
             "tenant_id": str(self.tenant.id),
             "user_id": str(self.user.id),
         }
-        instance, err = self.create_start_and_execute(ProductCreationWorkflow.WORKFLOW_NAME, input_data)
+        instance, _err = self.create_start_and_execute(
+            ProductCreationWorkflow.WORKFLOW_NAME, input_data
+        )
         instance.refresh_from_db()
         self.assertIn(
             instance.status,
@@ -140,14 +145,18 @@ class TestServiceSpecificBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
             "tenant_id": str(self.tenant.id),
             "user_id": str(self.user.id),
         }
-        instance, _ = self.create_start_and_execute(ProductCreationWorkflow.WORKFLOW_NAME, input_data)
+        instance, _ = self.create_start_and_execute(
+            ProductCreationWorkflow.WORKFLOW_NAME, input_data
+        )
         instance.refresh_from_db()
         self.assertIn(
             instance.status,
             [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK],
             f"Expected workflow to fail (validation surfaced); got status={instance.status}",
         )
-        self.assertIn("product.contract.spec must be a dictionary", (instance.error_message or "").lower())
+        self.assertIn(
+            "product.contract.spec must be a dictionary", (instance.error_message or "").lower()
+        )
 
     def test_contracts_business_rules_creation_validation_surfaces_in_workflow(self):
         # ContractsBusinessRules.validate_contract_creation is strict on metadata fields like
@@ -159,7 +168,9 @@ class TestServiceSpecificBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
             "user_id": str(self.user.id),
             "original_spec_type": "NOT_A_REAL_SPEC_TYPE",
         }
-        instance, err = self.create_start_and_execute(ContractCreationWorkflow.WORKFLOW_NAME, input_data)
+        instance, _err = self.create_start_and_execute(
+            ContractCreationWorkflow.WORKFLOW_NAME, input_data
+        )
         instance.refresh_from_db()
         # May be FAILED or ROLLED_BACK when compensation runs after validation failure
         self.assertIn(
@@ -167,12 +178,14 @@ class TestServiceSpecificBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
             [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK],
             f"Expected workflow to fail (validation surfaced); got status={instance.status}",
         )
-        combined = ((instance.error_message or "") + " " + str(instance.error_details or {})).lower()
+        combined = (
+            (instance.error_message or "") + " " + str(instance.error_details or {})
+        ).lower()
         self.assertIn("invalid original_spec_type", combined)
 
 
 @pytest.mark.e2e
-@pytest.mark.requires_database
+@pytest.mark.requires_db
 @pytest.mark.timeout(900)
 class TestOrchestrationBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
     """
@@ -199,7 +212,9 @@ class TestOrchestrationBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
         br = OrchestrationBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         # DRAFT workflow should not allow execution
-        result = br.validate_workflow_step_execution(instance, step, tenant=self.tenant, user=self.user)
+        result = br.validate_workflow_step_execution(
+            instance, step, tenant=self.tenant, user=self.user
+        )
         self.assertFalse(result.is_valid)
         self.assertTrue(
             any("expected RUNNING" in e for e in result.errors),
@@ -209,8 +224,13 @@ class TestOrchestrationBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
         # Make RUNNING and validate again (should be allowed for PENDING step)
         instance.status = WorkflowStatus.RUNNING
         instance.save(update_fields=["status", "updated_at"])
-        result2 = br.validate_workflow_step_execution(instance, step, tenant=self.tenant, user=self.user)
-        self.assertTrue(result2.is_valid, f"Expected valid, got errors={result2.errors}, warnings={result2.warnings}")
+        result2 = br.validate_workflow_step_execution(
+            instance, step, tenant=self.tenant, user=self.user
+        )
+        self.assertTrue(
+            result2.is_valid,
+            f"Expected valid, got errors={result2.errors}, warnings={result2.warnings}",
+        )
 
     def test_validate_workflow_step_execution_detects_tenant_context_mismatch(self):
         instance, step = self._create_instance_and_first_step()
@@ -220,7 +240,9 @@ class TestOrchestrationBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
         other_tenant = TenantFactory()
         br = OrchestrationBusinessRules(tenant_id=str(other_tenant.id), user_id=str(self.user.id))
 
-        result = br.validate_workflow_step_execution(instance, step, tenant=other_tenant, user=self.user)
+        result = br.validate_workflow_step_execution(
+            instance, step, tenant=other_tenant, user=self.user
+        )
         self.assertFalse(result.is_valid)
         self.assertTrue(
             any("does not match provided tenant" in e for e in result.errors),
@@ -235,12 +257,16 @@ class TestOrchestrationBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
         br = OrchestrationBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         # Structure validation
-        result = br.validate_step_input(instance, step, ["not", "a", "dict"], tenant=self.tenant, user=self.user)  # type: ignore[arg-type]
+        result = br.validate_step_input(
+            instance, step, ["not", "a", "dict"], tenant=self.tenant, user=self.user
+        )  # type: ignore[arg-type]
         self.assertFalse(result.is_valid)
         self.assertTrue(any("must be a dictionary" in e for e in result.errors))
 
         # "Schema" validation (JSON serializable requirement)
-        result2 = br.validate_step_input(instance, step, {"bad": object()}, tenant=self.tenant, user=self.user)
+        result2 = br.validate_step_input(
+            instance, step, {"bad": object()}, tenant=self.tenant, user=self.user
+        )
         self.assertFalse(result2.is_valid)
         self.assertTrue(any("not JSON serializable" in e for e in result2.errors))
 
@@ -251,11 +277,15 @@ class TestOrchestrationBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
 
         br = OrchestrationBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
-        result = br.validate_step_output(instance, step, "not-a-dict", tenant=self.tenant, user=self.user)  # type: ignore[arg-type]
+        result = br.validate_step_output(
+            instance, step, "not-a-dict", tenant=self.tenant, user=self.user
+        )  # type: ignore[arg-type]
         self.assertFalse(result.is_valid)
         self.assertTrue(any("must be a dictionary" in e for e in result.errors))
 
-        result2 = br.validate_step_output(instance, step, {"bad": object()}, tenant=self.tenant, user=self.user)
+        result2 = br.validate_step_output(
+            instance, step, {"bad": object()}, tenant=self.tenant, user=self.user
+        )
         self.assertFalse(result2.is_valid)
         self.assertTrue(any("not JSON serializable" in e for e in result2.errors))
 
@@ -276,11 +306,13 @@ class TestOrchestrationBusinessRulesInWorkflowContextE2E(WorkflowE2ETestBase):
         instance.save(update_fields=["current_step_index", "state_data", "updated_at"])
         result2 = br.validate_workflow_state(instance, tenant=self.tenant, user=self.user)
         self.assertFalse(result2.is_valid)
-        self.assertTrue(any("out of bounds" in e for e in result2.errors), f"errors={result2.errors}")
+        self.assertTrue(
+            any("out of bounds" in e for e in result2.errors), f"errors={result2.errors}"
+        )
 
 
 @pytest.mark.e2e
-@pytest.mark.requires_database
+@pytest.mark.requires_db
 @pytest.mark.requires_redis
 @pytest.mark.timeout(1800)
 class TestBusinessRulesErrorPropagationWarningsEventsAndCachingE2E(WorkflowE2ETestBase):
@@ -330,30 +362,37 @@ class TestBusinessRulesErrorPropagationWarningsEventsAndCachingE2E(WorkflowE2ETe
     def test_validation_warnings_are_logged_persisted_and_emitted_in_events(self):
         # Cross-tenant created_by user should generate warnings (permissions/tenant consistency) but not block execution.
         other_tenant = TenantFactory()
-        cross_tenant_user = UserFactory(tenant=other_tenant, email=f"x_{uuid.uuid4().hex[:8]}@example.com")
+        cross_tenant_user = UserFactory(
+            tenant=other_tenant, email=f"x_{uuid.uuid4().hex[:8]}@example.com"
+        )
 
         input_data = {
             "original_raw": json.dumps(_valid_odcs_contract_minimal()),
             "original_format": "JSON",
-            "tenant_id": str(self.tenant.id),              # workflow tenant
-            "user_id": str(cross_tenant_user.id),          # user from other tenant
+            "tenant_id": str(self.tenant.id),  # workflow tenant
+            "user_id": str(cross_tenant_user.id),  # user from other tenant
         }
 
         # Ensure events are persisted synchronously when possible (Celery isn't running in the test container).
-        with override_settings(
-            EVENT_BUS_ENABLE_PERSISTENCE=True,
-            EVENT_BUS_ASYNC_PERSISTENCE=False,
-            EVENT_BUS_WRITE_BEHIND_ENABLED=False,
+        with (
+            override_settings(
+                EVENT_BUS_ENABLE_PERSISTENCE=True,
+                EVENT_BUS_ASYNC_PERSISTENCE=False,
+                EVENT_BUS_WRITE_BEHIND_ENABLED=False,
+            ),
+            self.assertLogs("hub.apps.orchestration.workflow_engine", level="WARNING") as log_ctx,
         ):
-            with self.assertLogs("hub.apps.orchestration.workflow_engine", level="WARNING") as log_ctx:
-                instance, _ = self.create_start_and_execute(
-                    ContractCreationWorkflow.WORKFLOW_NAME,
-                    input_data,
-                    created_by_id=str(cross_tenant_user.id),
-                )
+            instance, _ = self.create_start_and_execute(
+                ContractCreationWorkflow.WORKFLOW_NAME,
+                input_data,
+                created_by_id=str(cross_tenant_user.id),
+            )
         # The workflow may still fail later for other reasons, but warnings must not *cause* a validation failure.
         instance.refresh_from_db()
-        self.assertIn(instance.status, (WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.RUNNING))
+        self.assertIn(
+            instance.status,
+            (WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.RUNNING),
+        )
 
         # Warnings must be logged (message contains "validation warnings")
         warning_msgs = "\n".join(log_ctx.output).lower()
@@ -367,12 +406,20 @@ class TestBusinessRulesErrorPropagationWarningsEventsAndCachingE2E(WorkflowE2ETe
         vr = (instance.state_data or {}).get("_validation_results", {})
         # At least one validation section should include non-empty warnings list
         warnings_found = False
-        for section in ("workflow_state", "step_input", "step_execution", "step_output", "post_workflow_state"):
+        for section in (
+            "workflow_state",
+            "step_input",
+            "step_execution",
+            "step_output",
+            "post_workflow_state",
+        ):
             sec = vr.get(section) or {}
             if isinstance(sec, dict) and sec.get("warnings"):
                 warnings_found = True
                 break
-        self.assertTrue(warnings_found, f"Expected warnings in state_data._validation_results, got: {vr}")
+        self.assertTrue(
+            warnings_found, f"Expected warnings in state_data._validation_results, got: {vr}"
+        )
 
         # Warnings must be present in workflow events when persistence is sync (override_settings
         # above). If events are persisted async (e.g. no worker), poll briefly then assert only
@@ -381,7 +428,11 @@ class TestBusinessRulesErrorPropagationWarningsEventsAndCachingE2E(WorkflowE2ETe
         for _ in range(25):  # up to ~5s
             ev = (
                 Event.objects.filter(
-                    event_type__in=["workflow.step.started", "workflow.step.completed", "workflow.step.failed"],
+                    event_type__in=[
+                        "workflow.step.started",
+                        "workflow.step.completed",
+                        "workflow.step.failed",
+                    ],
                     data__workflow_instance_id=str(instance.id),
                 )
                 .order_by("-timestamp")
@@ -389,11 +440,13 @@ class TestBusinessRulesErrorPropagationWarningsEventsAndCachingE2E(WorkflowE2ETe
             )
             if ev is not None:
                 break
-            time.sleep(0.2)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(0.2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
         if ev is not None:
             data = ev.data or {}
             vc = data.get("validation_context") or {}
-            self.assertTrue(isinstance(vc, dict), f"Expected dict validation_context, got {type(vc)}")
+            self.assertTrue(
+                isinstance(vc, dict), f"Expected dict validation_context, got {type(vc)}"
+            )
             validations = vc.get("validations") or {}
             warnings_in_event = any(
                 (v or {}).get("warnings") for v in validations.values() if isinstance(v, dict)
@@ -418,6 +471,7 @@ class TestBusinessRulesErrorPropagationWarningsEventsAndCachingE2E(WorkflowE2ETe
 
         # Use short TTL to validate expiry without long sleeps
         with override_settings(CACHE_TTL_BUSINESS_RULES=1):
+
             def _run_cached_workflow_state_validation():
                 start = time.time()
                 result, cached_flag = self.workflow_engine._cached_orchestration_validation(  # type: ignore[attr-defined]
@@ -464,11 +518,10 @@ class TestBusinessRulesErrorPropagationWarningsEventsAndCachingE2E(WorkflowE2ETe
             self.assertFalse(cached3)
 
             # TTL behavior: wait for TTL to expire -> next call should be cache miss
-            time.sleep(1.2)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(1.2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
             result4, cached4 = _run_cached_workflow_state_validation()
             self.assertTrue(result4.is_valid)
             self.assertFalse(cached4)
 
             # Cache metrics are recorded via WorkflowEngine._record_validation_metrics without raising,
             # and cache behavior is observable via the cached_flag transitions above.
-

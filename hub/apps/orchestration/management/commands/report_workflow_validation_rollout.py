@@ -3,8 +3,9 @@ Management command to report current workflow business rules validation
 rollout status. Supports gradual rollout verification (Task 5.2).
 Uses real feature flags and settings; no mocks.
 """
-from django.core.management.base import BaseCommand
+
 from django.conf import settings
+from django.core.management.base import BaseCommand
 
 from hub.apps.orchestration.feature_flags import (
     get_feature_flags,
@@ -34,24 +35,12 @@ class Command(BaseCommand):
 
         # Current config
         self.stdout.write("=== Workflow Business Rules Validation Rollout ===\n")
-        self.stdout.write(
-            f"  Global enabled: {summary['enabled_globally']}\n"
-        )
-        self.stdout.write(
-            f"  Rollout percentage: {summary['rollout_percentage']}%\n"
-        )
-        self.stdout.write(
-            f"  Per-workflow config: {summary['workflow_config_count']}\n"
-        )
-        self.stdout.write(
-            f"  Disabled workflows: {summary['disabled_workflows_count']}\n"
-        )
-        self.stdout.write(
-            f"  Enabled workflows: {summary['enabled_workflows_count']}\n"
-        )
-        self.stdout.write(
-            f"  Per-tenant config: {summary['tenant_config_count']}\n"
-        )
+        self.stdout.write(f"  Global enabled: {summary['enabled_globally']}\n")
+        self.stdout.write(f"  Rollout percentage: {summary['rollout_percentage']}%\n")
+        self.stdout.write(f"  Per-workflow config: {summary['workflow_config_count']}\n")
+        self.stdout.write(f"  Disabled workflows: {summary['disabled_workflows_count']}\n")
+        self.stdout.write(f"  Enabled workflows: {summary['enabled_workflows_count']}\n")
+        self.stdout.write(f"  Per-tenant config: {summary['tenant_config_count']}\n")
 
         # Workflow tiers from settings (for gradual rollout reference)
         test_workflows = getattr(
@@ -72,9 +61,7 @@ class Command(BaseCommand):
 
         self.stdout.write("\n--- Validation enabled per workflow ---\n")
         for name in all_known:
-            enabled = flags.is_enabled(
-                name, tenant_id=None, workflow_instance_id=None
-            )
+            enabled = flags.is_enabled(name, tenant_id=None, workflow_instance_id=None)
             tier = "test" if name in test_workflows else "critical"
             status = "enabled" if enabled else "disabled"
             self.stdout.write(f"  {name} ({tier}): {status}\n")

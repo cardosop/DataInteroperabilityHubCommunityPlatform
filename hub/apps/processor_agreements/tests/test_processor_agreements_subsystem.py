@@ -1,16 +1,15 @@
 """Integration tests for processor agreement tracker (real ORM; no mocks)."""
 
 from __future__ import annotations
-import pytest
 
-import pytest
 import hashlib
 import uuid
 from datetime import date, timedelta
 
+import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase
 from django.core.exceptions import ValidationError
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 

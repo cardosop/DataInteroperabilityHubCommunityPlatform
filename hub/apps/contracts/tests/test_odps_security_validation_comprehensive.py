@@ -8,20 +8,16 @@ Tests all security features without mocks/stubs:
 - Timeout handling (5s per external fetch)
 - Access control (export/download permissions)
 """
-import uuid
 
 import json
-import os
 import tempfile
 import time
-from decimal import Decimal
+import uuid
 from pathlib import Path
-from typing import Any, Dict
 
 import pytest
 
 pytestmark = pytest.mark.slow
-from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -35,16 +31,13 @@ from hub.apps.contracts.models import (
     OriginalSpecType,
 )
 from hub.apps.contracts.odps_errors import ODPSRefResolutionError
-from hub.apps.contracts.odps_security_logging import SecurityEventType, SecuritySeverity
 from hub.apps.contracts.ref_resolver import (
     DEFAULT_MAX_REF_SIZE,
     DEFAULT_MAX_TOTAL_SIZE,
-    DEFAULT_TIMEOUT_PER_REF,
     MAX_URL_LENGTH,
     RefResolver,
 )
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
-from hub.apps.core.services.base import ValidationError
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
 
@@ -69,13 +62,18 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
 
         # Create additional user for same tenant
         self.other_user = User.objects.create_user(
-            email=f"other-user-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+            email=f"other-user-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
         # Create another tenant for cross-tenant access tests
         _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
         )
 
         self.other_tenant_user = User.objects.create_user(
@@ -410,7 +408,9 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
             enable_caching=False,
         )
         # Add test URL to allowlist
-        resolver.config._config_data["url_allowlist"] = list(self.config._config_data["url_allowlist"]) + ["https://example.com"]
+        resolver.config._config_data["url_allowlist"] = list(
+            self.config._config_data["url_allowlist"]
+        ) + ["https://example.com"]
 
         # Simulate that 1.5MB has already been used by resolving a ref
         # First ref: valid JSON content of approximately 1.5MB
@@ -460,7 +460,9 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
             enable_caching=False,
             httpx_transport=httpx.MockTransport(handler),
         )
-        resolver.config._config_data["url_allowlist"] = list(self.config._config_data["url_allowlist"]) + ["https://example.com"]
+        resolver.config._config_data["url_allowlist"] = list(
+            self.config._config_data["url_allowlist"]
+        ) + ["https://example.com"]
 
         # resolve() calls _check_timeout() which initializes _start_time
         result = resolver.resolve_external("https://example.com/schema.json")
@@ -469,9 +471,6 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
 
     def test_timeout_check_rejects_exceeded_total_timeout(self):
         """Test that total timeout violations are rejected through public API"""
-        import time
-
-        import httpx
 
         resolver = RefResolver(
             config=self.config,
@@ -494,7 +493,6 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
 
     def test_timeout_check_allows_within_timeout(self):
         """Test that requests within timeout are allowed through public API"""
-        import time
 
         import httpx
 
@@ -509,7 +507,9 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
             enable_caching=False,
             httpx_transport=httpx.MockTransport(handler),
         )
-        resolver.config._config_data["url_allowlist"] = list(self.config._config_data["url_allowlist"]) + ["https://example.com"]
+        resolver.config._config_data["url_allowlist"] = list(
+            self.config._config_data["url_allowlist"]
+        ) + ["https://example.com"]
 
         # Set start_time to 1 second ago (within 30 second timeout)
         resolver._start_time = time.time() - 1
@@ -539,9 +539,7 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
         # Transport handler that raises TimeoutException to exercise the
         # httpx.TimeoutException → ODPSRefResolutionError conversion path.
         def _timeout_handler(request: httpx.Request) -> httpx.Response:
-            raise httpx.TimeoutException(
-                "Simulated timeout", request=request
-            )
+            raise httpx.TimeoutException("Simulated timeout", request=request)
 
         resolver._httpx_transport = httpx.MockTransport(_timeout_handler)
         resolver.config._config_data["url_allowlist"] = ["https://example.com"]
@@ -574,31 +572,19 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
             response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_404_NOT_FOUND]
         )
 
-    def test_export_allows_same_tenant_user(self):
-        """Test that same-tenant users can export contracts"""
-        # Refresh contract to ensure it's accessible
+    def test_contract_tenant_identity_matches_owner(self):
+        """Test that same-tenant user has matching tenant_id with the contract."""
         self.odps_contract.refresh_from_db()
-
-        # Test that contract is accessible to same-tenant user
-        # Verify tenant filtering works correctly
         self.assertEqual(self.odps_contract.tenant_id, self.user.tenant_id)
         self.assertEqual(self.odps_contract.tenant_id, self.tenant.id)
+        # Endpoint-level export/download access tested in test_export_endpoint.py
 
-        # The contract should be accessible (actual endpoint testing may have URL routing issues,
-        # but the core permission logic is validated by ensuring tenant_id matches)
-        # For comprehensive endpoint testing, see test_export_endpoint.py and test_download_endpoint.py
-
-    def test_export_allows_other_user_same_tenant(self):
-        """Test that other users in same tenant can export contracts"""
-        # Refresh contract to ensure it's accessible
+    def test_contract_tenant_identity_matches_other_tenant_user(self):
+        """Test that another user in the same tenant also has matching tenant_id."""
         self.odps_contract.refresh_from_db()
-
-        # Test that contract is accessible to other users in same tenant
         self.assertEqual(self.odps_contract.tenant_id, self.other_user.tenant_id)
         self.assertEqual(self.odps_contract.tenant_id, self.tenant.id)
-
-        # The contract should be accessible to other users in same tenant
-        # (actual endpoint testing may have URL routing issues, but permission logic is validated)
+        # Endpoint-level export/download access tested in test_export_endpoint.py
 
     def test_export_denies_cross_tenant_access(self):
         """Test that cross-tenant users cannot export contracts"""
@@ -629,27 +615,19 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
             f"Expected 401 Unauthorized, got {response.status_code}. Check endpoint URL is correct.",
         )
 
-    def test_download_allows_same_tenant_user(self):
-        """Test that same-tenant users can download contracts"""
-        # Refresh contract to ensure it's accessible
+    def test_contract_tenant_identity_matches_owner_download(self):
+        """Test that same-tenant user's tenant_id matches the contract (download context)."""
         self.odps_contract.refresh_from_db()
-
-        # Test that contract is accessible to same-tenant user
         self.assertEqual(self.odps_contract.tenant_id, self.user.tenant_id)
         self.assertEqual(self.odps_contract.tenant_id, self.tenant.id)
+        # Endpoint-level download access tested in test_download_endpoint.py
 
-        # The contract should be accessible (permission logic validated)
-
-    def test_download_allows_other_user_same_tenant(self):
-        """Test that other users in same tenant can download contracts"""
-        # Refresh contract to ensure it's accessible
+    def test_contract_tenant_identity_matches_other_tenant_user_download(self):
+        """Test that another same-tenant user's tenant_id matches the contract (download context)."""
         self.odps_contract.refresh_from_db()
-
-        # Test that contract is accessible to other users in same tenant
         self.assertEqual(self.odps_contract.tenant_id, self.other_user.tenant_id)
         self.assertEqual(self.odps_contract.tenant_id, self.tenant.id)
-
-        # The contract should be accessible to other users in same tenant
+        # Endpoint-level download access tested in test_download_endpoint.py
 
     def test_download_denies_cross_tenant_access(self):
         """Test that cross-tenant users cannot download contracts"""
@@ -711,7 +689,9 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
             max_ref_size=1000,  # 1KB for testing
             enable_caching=False,
         )
-        resolver.config._config_data["url_allowlist"] = list(self.config._config_data["url_allowlist"]) + ["https://example.com"]
+        resolver.config._config_data["url_allowlist"] = list(
+            self.config._config_data["url_allowlist"]
+        ) + ["https://example.com"]
 
         large_padding = 2000 - len(json.dumps({"data": ""}).encode())
         large_content = json.dumps({"data": "x" * large_padding}).encode()
@@ -728,7 +708,6 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
         )
 
         # Step 4: Test timeout
-        import time
 
         resolver = RefResolver(
             config=self.config,
@@ -816,7 +795,9 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
             max_total_size=DEFAULT_MAX_TOTAL_SIZE,  # 10MB
             enable_caching=False,
         )
-        resolver.config._config_data["url_allowlist"] = list(self.config._config_data["url_allowlist"]) + ["https://example.com"]
+        resolver.config._config_data["url_allowlist"] = list(
+            self.config._config_data["url_allowlist"]
+        ) + ["https://example.com"]
 
         exact_padding = DEFAULT_MAX_REF_SIZE - len(json.dumps({"data": ""}).encode())
         exact_content = json.dumps({"data": "x" * exact_padding}).encode()
@@ -852,7 +833,9 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
             max_total_size=DEFAULT_MAX_TOTAL_SIZE,
             enable_caching=False,
         )
-        resolver_total.config._config_data["url_allowlist"] = list(self.config._config_data["url_allowlist"]) + ["https://example.com"]
+        resolver_total.config._config_data["url_allowlist"] = list(
+            self.config._config_data["url_allowlist"]
+        ) + ["https://example.com"]
 
         first_ref_size = DEFAULT_MAX_TOTAL_SIZE - DEFAULT_MAX_REF_SIZE
         first_padding = first_ref_size - len(json.dumps({"data": ""}).encode())

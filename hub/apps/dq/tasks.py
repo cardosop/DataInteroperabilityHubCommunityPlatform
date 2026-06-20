@@ -23,20 +23,19 @@ three. The retry task takes only serializable scalars (``rule_id``,
 ``payload``, ``attempt_number``) so it round-trips cleanly through
 Redis.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from django.utils import timezone
-
 from django_rq import get_queue, job
 
 # Phase 240.5.F.3 — wrap every ``logger.*(..., extra={...})`` call's
 # payload in ``_redact()`` before emit so future field additions
 # (e.g. accidental ``details_json`` / ``row_samples``) are stripped.
 from .log_helpers import _redact
-
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +48,7 @@ logger = logging.getLogger(__name__)
 # dispatcher's first synchronous attempt is "attempt 1" — if it fails,
 # we schedule attempt 2 to fire after 60 s, then attempt 3 after 5 m,
 # then attempt 4 after 30 m. After attempt 4 fails we dead-letter.
-RETRY_SCHEDULE_SECONDS: List[int] = [60, 5 * 60, 30 * 60]
+RETRY_SCHEDULE_SECONDS: list[int] = [60, 5 * 60, 30 * 60]
 
 #: Total attempts INCLUDING the synchronous first attempt. Equals
 #: ``len(RETRY_SCHEDULE_SECONDS) + 1`` by construction.
@@ -65,9 +64,9 @@ def deliver_or_schedule_retry(
     *,
     rule_id: str,
     channel: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     attempt_number: int = 1,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Try one delivery; on failure schedule the next retry / dead-letter.
 
     Returns
@@ -107,9 +106,13 @@ def deliver_or_schedule_retry(
     except ValueError as exc:
         logger.error(
             "dq_alert_unknown_channel",
-            extra=_redact({
-                "rule_id": rule_id, "channel": channel, "error": str(exc),
-            }),
+            extra=_redact(
+                {
+                    "rule_id": rule_id,
+                    "channel": channel,
+                    "error": str(exc),
+                }
+            ),
         )
         _emit_dead_letter_audit(rule, channel, payload, str(exc), attempt_number)
         return {
@@ -135,7 +138,11 @@ def deliver_or_schedule_retry(
 
     # Failure — emit FAILED audit, then decide retry vs dead-letter.
     _emit_failed_audit(
-        rule, channel, payload, result.error or "unknown", attempt_number,
+        rule,
+        channel,
+        payload,
+        result.error or "unknown",
+        attempt_number,
     )
 
     # Unrecoverable failures should NOT be retried.
@@ -150,7 +157,11 @@ def deliver_or_schedule_retry(
     )
     if next_action == "dead_lettered":
         _emit_dead_letter_audit(
-            rule, channel, payload, result.error or "unknown", attempt_number,
+            rule,
+            channel,
+            payload,
+            result.error or "unknown",
+            attempt_number,
         )
 
     return {
@@ -172,9 +183,9 @@ def dq_alert_redeliver(
     *,
     rule_id: str,
     channel: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     attempt_number: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """RQ task — re-attempt delivery after back-off.
 
     Wired in from ``deliver_or_schedule_retry`` via ``enqueue_in``.
@@ -198,7 +209,7 @@ def _schedule_retry_or_dead_letter(
     *,
     rule_id: str,
     channel: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     attempt_number: int,
     last_error: str,
     unrecoverable: bool,
@@ -242,18 +253,20 @@ def _schedule_retry_or_dead_letter(
     )
     logger.info(
         "dq_alert_retry_scheduled",
-        extra=_redact({
-            "rule_id": rule_id,
-            "channel": channel,
-            "alert_id": payload.get("alert_id"),
-            "attempt_number": next_attempt,
-            "delay_seconds": delay_seconds,
-        }),
+        extra=_redact(
+            {
+                "rule_id": rule_id,
+                "channel": channel,
+                "alert_id": payload.get("alert_id"),
+                "attempt_number": next_attempt,
+                "delay_seconds": delay_seconds,
+            }
+        ),
     )
     return "retry_scheduled"
 
 
-def _stamp_last_fired(rule, payload: Dict[str, Any]) -> None:
+def _stamp_last_fired(rule, payload: dict[str, Any]) -> None:
     """Persist the dedup window state — atomic UPDATE, no full save."""
     from hub.apps.dq.models import DQAlertingRule
 
@@ -278,12 +291,15 @@ def _record_audit_write_failure(action: str, exc: Exception) -> None:
         from services.shared.metrics import dq_audit_write_errors_total
 
         dq_audit_write_errors_total.labels(
-            service="hub", action=action,
+            service="hub",
+            action=action,
         ).inc()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     logger.warning(
-        "dq_audit_write_failed action=%s error=%s", action, exc,
+        "dq_audit_write_failed action=%s error=%s",
+        action,
+        exc,
     )
 
 
@@ -303,7 +319,9 @@ def _emit_delivered_audit(rule, channel, payload, result, attempt_number) -> Non
         from services.shared.metrics import dq_alert_deliveries_total
 
         dq_alert_deliveries_total.labels(
-            service="hub", channel=channel, status="SUCCESS",
+            service="hub",
+            channel=channel,
+            status="SUCCESS",
         ).inc()
     except Exception:
         pass
@@ -327,7 +345,7 @@ def _emit_delivered_audit(rule, channel, payload, result, attempt_number) -> Non
                 "metadata": result.metadata,
             },
         )
-    except Exception as exc:  # noqa: BLE001 — best-effort audit
+    except Exception as exc:
         # Phase 240.1.B audit-fix — count audit-write failures so the
         # DQAuditWriteFailing alert can fire.  We re-raise on the
         # underlying create_audit_event failure path is not desirable
@@ -352,7 +370,9 @@ def _emit_failed_audit(rule, channel, payload, error, attempt_number) -> None:
         from services.shared.metrics import dq_alert_deliveries_total
 
         dq_alert_deliveries_total.labels(
-            service="hub", channel=channel, status="FAIL",
+            service="hub",
+            channel=channel,
+            status="FAIL",
         ).inc()
     except Exception:
         pass
@@ -373,7 +393,7 @@ def _emit_failed_audit(rule, channel, payload, error, attempt_number) -> None:
                 "attempt_number": attempt_number,
             },
         )
-    except Exception as exc:  # noqa: BLE001 — best-effort audit
+    except Exception as exc:
         _record_audit_write_failure("DQ_ALERT_FAILED", exc)
 
 
@@ -407,7 +427,7 @@ def _page_ops_pagerduty(
     *,
     rule_id: str,
     channel: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     attempt_number: int,
     last_error: str,
 ) -> None:
@@ -424,16 +444,18 @@ def _page_ops_pagerduty(
     """
     from django.conf import settings
 
-    routing_key: Optional[str] = getattr(settings, "OPS_PAGERDUTY_KEY", None)
+    routing_key: str | None = getattr(settings, "OPS_PAGERDUTY_KEY", None)
     if not routing_key:
         logger.warning(
             "dq_alert_dead_letter_ops_pagerduty_skipped",
-            extra=_redact({
-                "reason": "OPS_PAGERDUTY_KEY not configured",
-                "rule_id": rule_id,
-                "channel": channel,
-                "attempt_number": attempt_number,
-            }),
+            extra=_redact(
+                {
+                    "reason": "OPS_PAGERDUTY_KEY not configured",
+                    "rule_id": rule_id,
+                    "channel": channel,
+                    "attempt_number": attempt_number,
+                }
+            ),
         )
         return
 
@@ -445,15 +467,9 @@ def _page_ops_pagerduty(
             json={
                 "routing_key": routing_key,
                 "event_action": "trigger",
-                "dedup_key": (
-                    f"dq_alert_dead_letter:{rule_id}:"
-                    f"{payload.get('alert_id', '')}"
-                ),
+                "dedup_key": (f"dq_alert_dead_letter:{rule_id}:{payload.get('alert_id', '')}"),
                 "payload": {
-                    "summary": (
-                        f"DQ alert dead-letter for rule {rule_id} "
-                        f"on channel {channel}"
-                    ),
+                    "summary": (f"DQ alert dead-letter for rule {rule_id} on channel {channel}"),
                     "source": "meshant-dq-ops",
                     "severity": "error",
                     "component": "dq-alerting-pipeline",
@@ -478,23 +494,27 @@ def _page_ops_pagerduty(
                 # but could in principle echo customer-derived content;
                 # _redact() drops any redacted-key bag a future change
                 # might introduce here.
-                extra=_redact({
-                    "rule_id": rule_id,
-                    "channel": channel,
-                    "http_status": response.status_code,
-                    "body_preview": response.text[:200],
-                }),
+                extra=_redact(
+                    {
+                        "rule_id": rule_id,
+                        "channel": channel,
+                        "http_status": response.status_code,
+                        "body_preview": response.text[:200],
+                    }
+                ),
             )
-    except Exception as exc:  # noqa: BLE001 — boundary
+    except Exception as exc:
         # Don't let an ops-paging failure mask the dead-letter audit
         # row that already landed. Log loudly and move on; ops
         # already has the audit-event-based on-call dashboard.
         logger.error(
             "dq_alert_dead_letter_ops_pagerduty_exception",
-            extra=_redact({
-                "rule_id": rule_id,
-                "channel": channel,
-                "error": str(exc),
-            }),
+            extra=_redact(
+                {
+                    "rule_id": rule_id,
+                    "channel": channel,
+                    "error": str(exc),
+                }
+            ),
             exc_info=True,
         )

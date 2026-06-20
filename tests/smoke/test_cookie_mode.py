@@ -12,7 +12,6 @@ from urllib.parse import urlparse
 import pytest
 import requests
 
-
 COOKIE_SECURITY_PATTERN = re.compile(
     r"Set-Cookie:.*HttpOnly.*Secure.*SameSite=Strict.*Domain=\.meshant\.com",
     re.IGNORECASE,
@@ -42,7 +41,7 @@ def test_login_sets_secure_httponly_domain_cookie(
     """
     host = (urlparse(base_url).hostname or "").lower()
     if host in {"localhost", "127.0.0.1"}:
-        pytest.skip(
+        pytest.skip(  # noqa: skip-in-body — runtime service dependency
             "Cookie domain smoke check targets staging/production hostnames",
         )
 
@@ -57,9 +56,6 @@ def test_login_sets_secure_httponly_domain_cookie(
 
     cookie_lines = _set_cookie_headers(response)
     assert cookie_lines, "No Set-Cookie headers returned from login"
-    assert any(
-        COOKIE_SECURITY_PATTERN.search(line) for line in cookie_lines
-    ), (
-        "Expected secure strict domain cookie not found. "
-        f"Set-Cookie lines: {cookie_lines}"
+    assert any(COOKIE_SECURITY_PATTERN.search(line) for line in cookie_lines), (
+        f"Expected secure strict domain cookie not found. Set-Cookie lines: {cookie_lines}"
     )

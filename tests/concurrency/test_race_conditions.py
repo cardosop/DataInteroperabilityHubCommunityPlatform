@@ -5,7 +5,6 @@ lock contention, and data consistency. Real API and DB; no mocks.
 
 import json
 import threading
-from typing import List
 
 from rest_framework.test import APIClient
 
@@ -27,8 +26,8 @@ class RaceConditionsTest(ConcurrencyTestBase):
         clients = [APIClient() for _ in range(5)]
         for c in clients:
             c.force_authenticate(user=self.user)
-        results: List[int] = []
-        errors: List[str] = []
+        results: list[int] = []
+        errors: list[str] = []
 
         def create_one(client: APIClient, index: int) -> None:
             try:
@@ -75,8 +74,8 @@ class RaceConditionsTest(ConcurrencyTestBase):
         clients = [APIClient() for _ in range(8)]
         for c in clients:
             c.force_authenticate(user=self.user)
-        codes: List[int] = []
-        errors: List[str] = []
+        codes: list[int] = []
+        errors: list[str] = []
 
         def read_one(client: APIClient) -> None:
             try:
@@ -111,8 +110,8 @@ class RaceConditionsTest(ConcurrencyTestBase):
         clients = [APIClient() for _ in range(3)]
         for c in clients:
             c.force_authenticate(user=self.user)
-        codes: List[int] = []
-        errors: List[str] = []
+        codes: list[int] = []
+        errors: list[str] = []
 
         def update_one(client: APIClient) -> None:
             try:
@@ -155,8 +154,8 @@ class RaceConditionsTest(ConcurrencyTestBase):
         clients = [APIClient() for _ in range(5)]
         for c in clients:
             c.force_authenticate(user=self.user)
-        codes: List[int] = []
-        errors: List[str] = []
+        codes: list[int] = []
+        errors: list[str] = []
 
         def delete_one(client: APIClient, contract_id: str) -> None:
             try:
@@ -183,8 +182,8 @@ class RaceConditionsTest(ConcurrencyTestBase):
         clients = [APIClient() for _ in range(4)]
         for c in clients:
             c.force_authenticate(user=self.user)
-        created_ids: List[str] = []
-        errors: List[str] = []
+        created_ids: list[str] = []
+        errors: list[str] = []
 
         def create_and_collect(client: APIClient, index: int) -> None:
             try:

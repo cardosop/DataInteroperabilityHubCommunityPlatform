@@ -3,19 +3,22 @@ DQ Models
 
 Data Quality Run model for tracking DQ executions, anomalies, and trends.
 """
+
 import uuid
-from django.db import models
+
 from django.core.exceptions import ValidationError
+from django.db import models
 
 from hub.apps.integrations.encryption import (
+    EncryptionError,
     decrypt_json_field,
     encrypt_json_field,
-    EncryptionError,
 )
 
 
 class DQRunStatus(models.TextChoices):
     """DQ Run status enumeration"""
+
     PENDING = "PENDING", "Pending"
     RUNNING = "RUNNING", "Running"
     SUCCEEDED = "SUCCEEDED", "Succeeded"
@@ -24,6 +27,7 @@ class DQRunStatus(models.TextChoices):
 
 class DQEngine(models.TextChoices):
     """DQ Engine enumeration"""
+
     GREAT_EXPECTATIONS = "GREAT_EXPECTATIONS", "Great Expectations"
     SODA = "SODA", "Soda"
     WAREHOUSE_SQL = "WAREHOUSE_SQL", "Warehouse SQL"
@@ -31,6 +35,7 @@ class DQEngine(models.TextChoices):
 
 class DQAnomalySeverity(models.TextChoices):
     """DQ Anomaly severity enumeration"""
+
     CRITICAL = "CRITICAL", "Critical"
     HIGH = "HIGH", "High"
     MEDIUM = "MEDIUM", "Medium"
@@ -39,6 +44,7 @@ class DQAnomalySeverity(models.TextChoices):
 
 class DQTrendDirection(models.TextChoices):
     """DQ Trend direction enumeration"""
+
     IMPROVING = "IMPROVING", "Improving"
     DEGRADING = "DEGRADING", "Degrading"
     STABLE = "STABLE", "Stable"
@@ -62,7 +68,8 @@ class _ActiveDQQuerySet(models.QuerySet):
         from django.utils import timezone
 
         return self.filter(is_deleted=False).update(
-            is_deleted=True, deleted_at=timezone.now(),
+            is_deleted=True,
+            deleted_at=timezone.now(),
         )
 
 
@@ -96,15 +103,16 @@ class _AllObjectsManager(models.Manager):
 class DQRun(models.Model):
     """
     DQ Run model representing a data quality check execution.
-    
+
     Tracks DQ runs for assets, datasets, or files.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="dq_runs",
-        help_text="Tenant this DQ run belongs to"
+        help_text="Tenant this DQ run belongs to",
     )
     asset = models.ForeignKey(
         "assets.Asset",
@@ -112,7 +120,7 @@ class DQRun(models.Model):
         related_name="dq_runs",
         null=True,
         blank=True,
-        help_text="Asset this DQ run is for (nullable)"
+        help_text="Asset this DQ run is for (nullable)",
     )
     dataset = models.ForeignKey(
         "datasets.Dataset",
@@ -120,7 +128,7 @@ class DQRun(models.Model):
         related_name="dq_runs",
         null=True,
         blank=True,
-        help_text="Dataset this DQ run is for (nullable; SET_NULL preserves audit trail)"
+        help_text="Dataset this DQ run is for (nullable; SET_NULL preserves audit trail)",
     )
     file = models.ForeignKey(
         "files.File",
@@ -128,60 +136,43 @@ class DQRun(models.Model):
         related_name="dq_runs",
         null=True,
         blank=True,
-        help_text="File this DQ run is for (scan-only, nullable)"
+        help_text="File this DQ run is for (scan-only, nullable)",
     )
     job = models.ForeignKey(
         "jobs.Job",
         on_delete=models.CASCADE,
         related_name="dq_runs",
-        help_text="Job that orchestrates this DQ run"
+        help_text="Job that orchestrates this DQ run",
     )
     profile_key = models.CharField(
-        max_length=100,
-        help_text="DQ profile key (e.g., intake_basic_gx, intake_basic_soda)"
+        max_length=100, help_text="DQ profile key (e.g., intake_basic_gx, intake_basic_soda)"
     )
     engine = models.CharField(
         max_length=50,
         choices=DQEngine.choices,
-        help_text="DQ engine used: GREAT_EXPECTATIONS or SODA"
+        help_text="DQ engine used: GREAT_EXPECTATIONS or SODA",
     )
     status = models.CharField(
         max_length=20,
         choices=DQRunStatus.choices,
         default=DQRunStatus.PENDING,
-        help_text="DQ run status: PENDING, RUNNING, SUCCEEDED, FAILED"
+        help_text="DQ run status: PENDING, RUNNING, SUCCEEDED, FAILED",
     )
     overall_status = models.CharField(
         max_length=20,
         null=True,
         blank=True,
-        help_text="Overall DQ status: PASS, FAIL, WARN, UNKNOWN (from result)"
+        help_text="Overall DQ status: PASS, FAIL, WARN, UNKNOWN (from result)",
     )
-    quality_score = models.FloatField(
-        null=True,
-        blank=True,
-        help_text="Quality score (0-100)"
-    )
+    quality_score = models.FloatField(null=True, blank=True, help_text="Quality score (0-100)")
     checks_json = models.JSONField(
-        null=True,
-        blank=True,
-        help_text="List of DQ checks with results"
+        null=True, blank=True, help_text="List of DQ checks with results"
     )
     details_json = models.JSONField(
-        null=True,
-        blank=True,
-        help_text="Detailed DQ results and metadata"
+        null=True, blank=True, help_text="Detailed DQ results and metadata"
     )
-    started_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When DQ run started"
-    )
-    completed_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When DQ run completed"
-    )
+    started_at = models.DateTimeField(null=True, blank=True, help_text="When DQ run started")
+    completed_at = models.DateTimeField(null=True, blank=True, help_text="When DQ run completed")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -202,8 +193,7 @@ class DQRun(models.Model):
         null=True,
         blank=True,
         help_text=(
-            "Phase 240.1.C — when this row was soft-deleted. NULL "
-            "when ``is_deleted=False``."
+            "Phase 240.1.C — when this row was soft-deleted. NULL when ``is_deleted=False``."
         ),
     )
 
@@ -214,7 +204,10 @@ class DQRun(models.Model):
     objects = SoftDeleteManager()
     all_objects = _AllObjectsManager()
 
-    warehouse_config = models.JSONField(default=dict, blank=True, help_text="Warehouse config for DQ warehouse integration")
+    warehouse_config = models.JSONField(
+        default=dict, blank=True, help_text="Warehouse config for DQ warehouse integration"
+    )
+
     class Meta:
         db_table = "dq_runs"
         ordering = ["-created_at"]
@@ -242,9 +235,7 @@ class DQRun(models.Model):
         super().clean()
 
         if not self.asset and not self.dataset and not self.file:
-            raise ValidationError(
-                "At least one of asset, dataset, or file must be set"
-            )
+            raise ValidationError("At least one of asset, dataset, or file must be set")
 
     def save(self, *args, **kwargs):
         """Override save to validate before saving"""
@@ -274,12 +265,13 @@ class DQAnomaly(models.Model):
     """
     DQ Anomaly model for tracking detected anomalies in data quality metrics.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="dq_anomalies",
-        help_text="Tenant this anomaly belongs to"
+        help_text="Tenant this anomaly belongs to",
     )
     asset = models.ForeignKey(
         "assets.Asset",
@@ -287,7 +279,7 @@ class DQAnomaly(models.Model):
         related_name="dq_anomalies",
         null=True,
         blank=True,
-        help_text="Asset this anomaly is for (nullable)"
+        help_text="Asset this anomaly is for (nullable)",
     )
     dataset = models.ForeignKey(
         "datasets.Dataset",
@@ -295,7 +287,7 @@ class DQAnomaly(models.Model):
         related_name="dq_anomalies",
         null=True,
         blank=True,
-        help_text="Dataset this anomaly is for (nullable)"
+        help_text="Dataset this anomaly is for (nullable)",
     )
     dq_run = models.ForeignKey(
         DQRun,
@@ -303,56 +295,35 @@ class DQAnomaly(models.Model):
         related_name="anomalies",
         null=True,
         blank=True,
-        help_text="DQ run that detected this anomaly (nullable)"
+        help_text="DQ run that detected this anomaly (nullable)",
     )
     metric_type = models.CharField(
-        max_length=100,
-        help_text="Type of metric (e.g., quality_score, completeness, accuracy)"
+        max_length=100, help_text="Type of metric (e.g., quality_score, completeness, accuracy)"
     )
     expected_value = models.FloatField(
-        null=True,
-        blank=True,
-        help_text="Expected value for this metric"
+        null=True, blank=True, help_text="Expected value for this metric"
     )
-    actual_value = models.FloatField(
-        help_text="Actual value that triggered the anomaly"
-    )
-    deviation = models.FloatField(
-        help_text="Deviation from expected value"
-    )
+    actual_value = models.FloatField(help_text="Actual value that triggered the anomaly")
+    deviation = models.FloatField(help_text="Deviation from expected value")
     severity = models.CharField(
         max_length=20,
         choices=DQAnomalySeverity.choices,
         default=DQAnomalySeverity.MEDIUM,
-        help_text="Anomaly severity: CRITICAL, HIGH, MEDIUM, LOW"
+        help_text="Anomaly severity: CRITICAL, HIGH, MEDIUM, LOW",
     )
     anomaly_type = models.CharField(
-        max_length=50,
-        help_text="Type of anomaly (e.g., z_score_outlier, iqr_outlier, sudden_drop)"
+        max_length=50, help_text="Type of anomaly (e.g., z_score_outlier, iqr_outlier, sudden_drop)"
     )
-    description = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Description of the anomaly"
-    )
+    description = models.TextField(null=True, blank=True, help_text="Description of the anomaly")
     metadata = models.JSONField(
-        default=dict,
-        null=True,
-        blank=True,
-        help_text="Additional metadata about the anomaly"
+        default=dict, null=True, blank=True, help_text="Additional metadata about the anomaly"
     )
-    detected_at = models.DateTimeField(
-        auto_now_add=True,
-        help_text="When the anomaly was detected"
-    )
+    detected_at = models.DateTimeField(auto_now_add=True, help_text="When the anomaly was detected")
     acknowledged = models.BooleanField(
-        default=False,
-        help_text="Whether the anomaly has been acknowledged"
+        default=False, help_text="Whether the anomaly has been acknowledged"
     )
     acknowledged_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When the anomaly was acknowledged"
+        null=True, blank=True, help_text="When the anomaly was acknowledged"
     )
     acknowledged_by = models.ForeignKey(
         "users.User",
@@ -360,7 +331,7 @@ class DQAnomaly(models.Model):
         related_name="acknowledged_dq_anomalies",
         null=True,
         blank=True,
-        help_text="User who acknowledged the anomaly"
+        help_text="User who acknowledged the anomaly",
     )
 
     # Phase 240.1.C.1 — soft-delete fields (mirror DQRun).
@@ -412,12 +383,13 @@ class DQTrend(models.Model):
     """
     DQ Trend model for tracking quality trends over time.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="dq_trends",
-        help_text="Tenant this trend belongs to"
+        help_text="Tenant this trend belongs to",
     )
     asset = models.ForeignKey(
         "assets.Asset",
@@ -425,7 +397,7 @@ class DQTrend(models.Model):
         related_name="dq_trends",
         null=True,
         blank=True,
-        help_text="Asset this trend is for (nullable)"
+        help_text="Asset this trend is for (nullable)",
     )
     dataset = models.ForeignKey(
         "datasets.Dataset",
@@ -433,60 +405,37 @@ class DQTrend(models.Model):
         related_name="dq_trends",
         null=True,
         blank=True,
-        help_text="Dataset this trend is for (nullable)"
+        help_text="Dataset this trend is for (nullable)",
     )
     metric_type = models.CharField(
-        max_length=100,
-        help_text="Type of metric (e.g., quality_score, completeness, accuracy)"
+        max_length=100, help_text="Type of metric (e.g., quality_score, completeness, accuracy)"
     )
-    period_start = models.DateTimeField(
-        help_text="Start of the trend period"
-    )
-    period_end = models.DateTimeField(
-        help_text="End of the trend period"
-    )
+    period_start = models.DateTimeField(help_text="Start of the trend period")
+    period_end = models.DateTimeField(help_text="End of the trend period")
     period_type = models.CharField(
-        max_length=20,
-        help_text="Period type: HOURLY, DAILY, WEEKLY, MONTHLY"
+        max_length=20, help_text="Period type: HOURLY, DAILY, WEEKLY, MONTHLY"
     )
-    current_value = models.FloatField(
-        help_text="Current value for this metric"
-    )
+    current_value = models.FloatField(help_text="Current value for this metric")
     previous_value = models.FloatField(
-        null=True,
-        blank=True,
-        help_text="Previous value for comparison"
+        null=True, blank=True, help_text="Previous value for comparison"
     )
     change_amount = models.FloatField(
-        null=True,
-        blank=True,
-        help_text="Change amount (current - previous)"
+        null=True, blank=True, help_text="Change amount (current - previous)"
     )
-    change_percent = models.FloatField(
-        null=True,
-        blank=True,
-        help_text="Percentage change"
-    )
+    change_percent = models.FloatField(null=True, blank=True, help_text="Percentage change")
     direction = models.CharField(
         max_length=20,
         choices=DQTrendDirection.choices,
-        help_text="Trend direction: IMPROVING, DEGRADING, STABLE"
+        help_text="Trend direction: IMPROVING, DEGRADING, STABLE",
     )
     trend_strength = models.FloatField(
-        null=True,
-        blank=True,
-        help_text="Trend strength (0-1, higher = stronger trend)"
+        null=True, blank=True, help_text="Trend strength (0-1, higher = stronger trend)"
     )
     forecast_value = models.FloatField(
-        null=True,
-        blank=True,
-        help_text="Forecasted value for next period"
+        null=True, blank=True, help_text="Forecasted value for next period"
     )
     metadata = models.JSONField(
-        default=dict,
-        null=True,
-        blank=True,
-        help_text="Additional metadata about the trend"
+        default=dict, null=True, blank=True, help_text="Additional metadata about the trend"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -538,6 +487,7 @@ class DQTrend(models.Model):
 
 class DQAlertChannel(models.TextChoices):
     """DQ Alert channel enumeration"""
+
     EMAIL = "EMAIL", "Email"
     SLACK = "SLACK", "Slack"
     WEBHOOK = "WEBHOOK", "Webhook"
@@ -548,12 +498,13 @@ class DQAlertingRule(models.Model):
     """
     DQ Alerting Rule model for configurable alerting rules.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="dq_alerting_rules",
-        help_text="Tenant this rule belongs to"
+        help_text="Tenant this rule belongs to",
     )
     asset = models.ForeignKey(
         "assets.Asset",
@@ -561,24 +512,14 @@ class DQAlertingRule(models.Model):
         related_name="dq_alerting_rules",
         null=True,
         blank=True,
-        help_text="Asset this rule applies to (nullable for global rules)"
+        help_text="Asset this rule applies to (nullable for global rules)",
     )
-    name = models.CharField(
-        max_length=255,
-        help_text="Rule name"
-    )
-    description = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Rule description"
-    )
+    name = models.CharField(max_length=255, help_text="Rule name")
+    description = models.TextField(null=True, blank=True, help_text="Rule description")
     metric_type = models.CharField(
-        max_length=100,
-        help_text="Type of metric (e.g., quality_score, completeness, accuracy)"
+        max_length=100, help_text="Type of metric (e.g., quality_score, completeness, accuracy)"
     )
-    threshold = models.FloatField(
-        help_text="Threshold value (e.g., quality_score < 0.9)"
-    )
+    threshold = models.FloatField(help_text="Threshold value (e.g., quality_score < 0.9)")
     comparison_operator = models.CharField(
         max_length=10,
         choices=[
@@ -587,38 +528,34 @@ class DQAlertingRule(models.Model):
             (">", "Greater than"),
             (">=", "Greater than or equal"),
             ("==", "Equal to"),
-            ("!=", "Not equal to")
+            ("!=", "Not equal to"),
         ],
         default="<",
-        help_text="Comparison operator"
+        help_text="Comparison operator",
     )
     severity = models.CharField(
         max_length=20,
         choices=DQAnomalySeverity.choices,
         default=DQAnomalySeverity.MEDIUM,
-        help_text="Alert severity: CRITICAL, HIGH, MEDIUM, LOW"
+        help_text="Alert severity: CRITICAL, HIGH, MEDIUM, LOW",
     )
     alert_channels = models.JSONField(
-        default=list,
-        help_text="List of alert channels (EMAIL, SLACK, WEBHOOK, PAGERDUTY)"
+        default=list, help_text="List of alert channels (EMAIL, SLACK, WEBHOOK, PAGERDUTY)"
     )
     channel_config = models.JSONField(
         default=dict,
         null=True,
         blank=True,
-        help_text="Channel-specific configuration (e.g., email addresses, webhook URLs)"
+        help_text="Channel-specific configuration (e.g., email addresses, webhook URLs)",
     )
-    enabled = models.BooleanField(
-        default=True,
-        help_text="Whether the rule is enabled"
-    )
+    enabled = models.BooleanField(default=True, help_text="Whether the rule is enabled")
     created_by = models.ForeignKey(
         "users.User",
         on_delete=models.SET_NULL,
         related_name="created_dq_alerting_rules",
         null=True,
         blank=True,
-        help_text="User who created the rule"
+        help_text="User who created the rule",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -641,9 +578,7 @@ class DQAlertingRule(models.Model):
     last_fired_at = models.DateTimeField(
         null=True,
         blank=True,
-        help_text=(
-            "Phase 240.1.A — timestamp of the last delivery attempt."
-        ),
+        help_text=("Phase 240.1.A — timestamp of the last delivery attempt."),
     )
 
     class Meta:
@@ -664,38 +599,23 @@ class DQAlertingRule(models.Model):
 
     def __str__(self):
         return f"DQ Alerting Rule {self.name} ({self.metric_type})"
-    
+
     def clean(self):
         """Validate rule configuration"""
         super().clean()
 
         if not self.alert_channels:
-            raise ValidationError(
-                "At least one alert channel must be specified"
-            )
+            raise ValidationError("At least one alert channel must be specified")
 
         # Validate channel config (skip if already encrypted)
         if self.channel_config and not (
-            isinstance(self.channel_config, dict)
-            and "_encrypted" in self.channel_config
+            isinstance(self.channel_config, dict) and "_encrypted" in self.channel_config
         ):
             for channel in self.alert_channels:
-                if (
-                    channel == "EMAIL"
-                    and "emails" not in self.channel_config
-                ):
-                    raise ValidationError(
-                        "EMAIL channel requires 'emails' "
-                        "in channel_config"
-                    )
-                elif (
-                    channel == "WEBHOOK"
-                    and "url" not in self.channel_config
-                ):
-                    raise ValidationError(
-                        "WEBHOOK channel requires 'url' "
-                        "in channel_config"
-                    )
+                if channel == "EMAIL" and "emails" not in self.channel_config:
+                    raise ValidationError("EMAIL channel requires 'emails' in channel_config")
+                elif channel == "WEBHOOK" and "url" not in self.channel_config:
+                    raise ValidationError("WEBHOOK channel requires 'url' in channel_config")
 
     def save(self, *args, **kwargs):
         """Override save to validate and encrypt channel_config."""
@@ -711,9 +631,7 @@ class DQAlertingRule(models.Model):
                 encrypted = encrypt_json_field(self.channel_config)
                 self.channel_config = {"_encrypted": encrypted}
             except EncryptionError as e:
-                raise ValidationError(
-                    {"channel_config": f"Failed to encrypt: {e}"}
-                ) from e
+                raise ValidationError({"channel_config": f"Failed to encrypt: {e}"}) from e
 
         super().save(*args, **kwargs)
 
@@ -729,25 +647,23 @@ class DQAlertingRule(models.Model):
             return {}
         if isinstance(self.channel_config, dict):
             if "_encrypted" in self.channel_config:
-                return decrypt_json_field(
-                    self.channel_config["_encrypted"]
-                )
+                return decrypt_json_field(self.channel_config["_encrypted"])
             return self.channel_config
         return {}
-    
+
     def evaluate(self, metric_value: float) -> bool:
         """
         Evaluate if the rule condition is met.
-        
+
         Args:
             metric_value: Current metric value
-        
+
         Returns:
             True if condition is met (alert should fire), False otherwise
         """
         if not self.enabled:
             return False
-        
+
         if self.comparison_operator == "<":
             return metric_value < self.threshold
         elif self.comparison_operator == "<=":

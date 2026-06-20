@@ -14,50 +14,45 @@ development best practices.
 import json
 import os
 import tempfile
+import threading
 import time
 import uuid
-from pathlib import Path
-from typing import Dict, Any, Optional
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from queue import Queue
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
 
 import pytest
-import requests
 from click.testing import CliRunner
 from django.contrib.auth import get_user_model
 from django.test import LiveServerTestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
-from rest_framework import status
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import (
     Contract,
-    ContractStatus,
     OriginalFormat,
     OriginalSpecType,
 )
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import Role, UserRole, UserStatus
+from hub.apps.core.events.models import Event
+from hub.apps.core.events.publisher import EventPublisher
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.users.models import Role, UserRole, UserStatus
 from hub.apps.webhooks.models import (
+    DeliveryStatus,
     Webhook,
     WebhookDelivery,
     WebhookEventType,
     WebhookStatus,
-    DeliveryStatus,
 )
 from hub.apps.webhooks.odps_event_subscriber import get_odps_event_subscriber
-from hub.apps.core.events.publisher import EventPublisher
-from hub.apps.core.events.bus import get_event_bus
-from hub.apps.core.events.models import Event
-from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 
 # CLI imports
 try:
-    from datahub_cli.main import cli
     from datahub_cli.config import config
+    from datahub_cli.main import cli
+
     CLI_AVAILABLE = True
 except ImportError:
     CLI_AVAILABLE = False
@@ -65,6 +60,7 @@ except ImportError:
 # SDK imports
 try:
     from datahub_interoperability import DataHubClient, DataHubClientConfig
+
     SDK_AVAILABLE = True
 except ImportError:
     SDK_AVAILABLE = False
@@ -77,12 +73,14 @@ def decode_relay_id(relay_id):
     """Decode GraphQL Relay node ID to get the actual UUID"""
     try:
         import graphql_relay
-        type_name, actual_id = graphql_relay.from_global_id(relay_id)
+
+        _type_name, actual_id = graphql_relay.from_global_id(relay_id)
         return actual_id
     except Exception:
         # If decoding fails, try to extract from base64 manually
         try:
             import base64
+
             decoded = base64.b64decode(relay_id)
             parts = decoded.decode("utf-8").split(":")
             if len(parts) == 2:
@@ -101,27 +99,26 @@ class WebhookReceiverHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         """Handle POST requests (webhook deliveries)."""
-        content_length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(content_length) if content_length > 0 else b''
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length) if content_length > 0 else b""
         headers = dict(self.headers)
 
         request_data = {
-            'path': self.path,
-            'method': 'POST',
-            'headers': headers,
-            'body': body.decode('utf-8') if body else '',
-            'timestamp': timezone.now().isoformat(),
+            "path": self.path,
+            "method": "POST",
+            "headers": headers,
+            "body": body.decode("utf-8") if body else "",
+            "timestamp": timezone.now().isoformat(),
         }
         self.request_queue.put(request_data)
 
         self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
+        self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(json.dumps({'status': 'received'}).encode('utf-8'))
+        self.wfile.write(json.dumps({"status": "received"}).encode("utf-8"))
 
     def log_message(self, format, *args):
         """Suppress server logs during tests."""
-        pass
 
 
 class WebhookTestServer:
@@ -130,11 +127,12 @@ class WebhookTestServer:
     def __init__(self, port: int = 0):
         self.port = port
         self.request_queue: Queue = Queue()
-        self.server: Optional[HTTPServer] = None
-        self.thread: Optional[threading.Thread] = None
+        self.server: HTTPServer | None = None
+        self.thread: threading.Thread | None = None
 
     def start(self):
         """Start the HTTP server."""
+
         def handler_factory(*args, **kwargs):
             return WebhookReceiverHandler(self.request_queue, *args, **kwargs)
 
@@ -240,7 +238,6 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
         which provides isolation without flushing.
         """
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures."""
@@ -273,13 +270,11 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
 
         # Create API key for CLI/SDK tests
         from hub.apps.auth.models import APIKey
+
         plaintext_key = APIKey.generate_key()
         key_hash = APIKey.hash_key(plaintext_key)
         self.api_key_obj = APIKey.objects.create(
-            user=self.user,
-            tenant=self.tenant,
-            name="Cross Integration Test Key",
-            key_hash=key_hash
+            user=self.user, tenant=self.tenant, name="Cross Integration Test Key", key_hash=key_hash
         )
         self.api_key = plaintext_key
 
@@ -301,10 +296,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
         self.sdk_client = None
         if SDK_AVAILABLE:
             try:
-                sdk_config = DataHubClientConfig(
-                    base_url=self.api_base_url,
-                    api_token=self.api_key
-                )
+                sdk_config = DataHubClientConfig(base_url=self.api_base_url, api_token=self.api_key)
                 self.sdk_client = DataHubClient(sdk_config)
             except Exception:
                 pass
@@ -328,8 +320,8 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
     def _get_auth_headers(self) -> dict:
         """Get authentication headers for HTTP requests."""
         return {
-            'Authorization': f'Bearer {self.api_key}',
-            'Content-Type': 'application/json',
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
         }
 
     def _create_asset_via_api(self, name: str = None) -> dict:
@@ -344,9 +336,9 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
             status=AssetStatus.DRAFT,
         )
         return {
-            'id': str(asset.id),
-            'name': asset.name,
-            'key': asset.key,
+            "id": str(asset.id),
+            "name": asset.name,
+            "key": asset.key,
         }
 
     def _create_odps_contract_via_api(self, asset_id: str, odps_doc: dict) -> dict:
@@ -354,10 +346,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
         # Use ContractService directly for reliable contract creation
         from hub.apps.contracts.services import ContractService
 
-        service = ContractService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         contract = service.create_contract(
             original_raw=json.dumps(odps_doc),
@@ -373,18 +362,18 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
 
         # Return as dict matching API response format
         return {
-            'id': str(contract.id),
-            'original_spec_type': contract.original_spec_type,
-            'original_spec_version': contract.original_spec_version,
-            'original_format': contract.original_format,
-            'original_raw': contract.original_raw,
-            'status': contract.status,
+            "id": str(contract.id),
+            "original_spec_type": contract.original_spec_type,
+            "original_spec_version": contract.original_spec_version,
+            "original_format": contract.original_format,
+            "original_raw": contract.original_raw,
+            "status": contract.status,
         }
 
     def _get_contract_via_api(self, contract_id: str) -> dict:
         """Get a contract via REST API."""
         # Use APIClient instead of requests for proper Django test environment
-        response = self.api_client.get(f'/api/v1/contracts/{contract_id}/')
+        response = self.api_client.get(f"/api/v1/contracts/{contract_id}/")
         self.assertEqual(response.status_code, 200)
         return response.json()
 
@@ -411,23 +400,21 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
         if asset_id:
             input_data["assetId"] = asset_id
 
-        variables = {
-            "input": input_data
-        }
+        variables = {"input": input_data}
 
         response = self.api_client.post(
-            '/graphql-graphene/',
-            {'query': query, 'variables': json.dumps(variables)},
-            format='json'
+            "/graphql-graphene/",
+            {"query": query, "variables": json.dumps(variables)},
+            format="json",
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        if 'errors' in data:
+        if "errors" in data:
             raise Exception(f"GraphQL errors: {data['errors']}")
-        result = data['data']['createODPS']
-        if result.get('errors') and len(result['errors']) > 0:
+        result = data["data"]["createODPS"]
+        if result.get("errors") and len(result["errors"]) > 0:
             raise Exception(f"Mutation errors: {result['errors']}")
-        return result['contract']
+        return result["contract"]
 
     def _query_odps_via_graphql(self, contract_id: str = None) -> dict:
         """Query ODPS contracts via GraphQL."""
@@ -464,15 +451,15 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
             variables = {}
 
         response = self.api_client.post(
-            '/graphql-graphene/',
-            {'query': query, 'variables': json.dumps(variables) if variables else None},
-            format='json'
+            "/graphql-graphene/",
+            {"query": query, "variables": json.dumps(variables) if variables else None},
+            format="json",
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        if 'errors' in data:
+        if "errors" in data:
             raise Exception(f"GraphQL errors: {data['errors']}")
-        return data['data']
+        return data["data"]
 
     def test_cli_api_sdk_consistency_create(self):
         """
@@ -486,7 +473,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
         """
         # Create asset first
         asset_data = self._create_asset_via_api()
-        asset_id = asset_data['id']
+        asset_id = asset_data["id"]
 
         # Create ODPS document
         product_id = f"cli-api-sdk-test-{uuid.uuid4().hex[:8]}"
@@ -495,7 +482,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
         # If CLI is available, use it; otherwise use API directly
         if CLI_AVAILABLE:
             # Save ODPS document to temporary file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
                 json.dump(odps_doc, f)
                 odps_file_path = f.name
 
@@ -504,32 +491,32 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                 result = self.cli_runner.invoke(
                     cli,
                     [
-                        "contracts", "create-odps",
-                        "--file", odps_file_path,
-                        "--asset-id", asset_id,
-                        "--extract-odcs"
-                    ]
+                        "contracts",
+                        "create-odps",
+                        "--file",
+                        odps_file_path,
+                        "--asset-id",
+                        asset_id,
+                        "--extract-odcs",
+                    ],
                 )
 
                 # CLI should succeed (skip when API key not accepted in integration env)
                 if result.exit_code != 0 and "Invalid API key" in (result.output or ""):
-                    pytest.skip(
-                        "CLI authentication failed (Invalid API key in integration env)"
-                    )
+                    pytest.skip("CLI authentication failed (Invalid API key in integration env)")  # noqa: skip-in-body — runtime service dependency
                 self.assertEqual(result.exit_code, 0, f"CLI failed: {result.output}")
 
                 # Extract contract ID from CLI output (if available)
                 # CLI output format may vary, so we'll query via API instead
-                cli_output = result.output
 
                 # 2. Get contract via REST API (find by asset_id and product_id)
                 # Query contracts for this asset using correct filter parameter
                 # API uses 'spec_type' not 'original_spec_type'
                 response = self.api_client.get(
-                    f'/api/v1/contracts/?asset_id={asset_id}&spec_type=ODPS'
+                    f"/api/v1/contracts/?asset_id={asset_id}&spec_type=ODPS"
                 )
                 self.assertEqual(response.status_code, 200)
-                api_contracts = response.json()['results']
+                api_contracts = response.json()["results"]
             finally:
                 # Clean up temporary file
                 if os.path.exists(odps_file_path):
@@ -539,10 +526,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
             # This still tests the integration point, just without CLI
             from hub.apps.contracts.services import ContractService
 
-            service = ContractService(
-                tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
-            )
+            service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
             # Create contract via API service (simulating what CLI would do)
             contract = service.create_contract(
@@ -557,26 +541,24 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
 
             # Query contracts for this asset using correct filter parameter
             # API uses 'spec_type' not 'original_spec_type'
-            response = self.api_client.get(
-                f'/api/v1/contracts/?asset_id={asset_id}&spec_type=ODPS'
-            )
+            response = self.api_client.get(f"/api/v1/contracts/?asset_id={asset_id}&spec_type=ODPS")
             self.assertEqual(response.status_code, 200)
-            api_contracts = response.json()['results']
+            api_contracts = response.json()["results"]
 
         # Find the contract we just created (works for both CLI and API paths)
         api_contract = None
         for contract in api_contracts:
             try:
-                original_raw = json.loads(contract.get('original_raw', '{}'))
-                product_details = original_raw.get('product', {}).get('details', {}).get('en', {})
-                if product_details.get('productID') == product_id:
+                original_raw = json.loads(contract.get("original_raw", "{}"))
+                product_details = original_raw.get("product", {}).get("details", {}).get("en", {})
+                if product_details.get("productID") == product_id:
                     api_contract = contract
                     break
             except:
                 continue
 
         self.assertIsNotNone(api_contract, "Contract should be created and retrievable via API")
-        contract_id = api_contract['id']
+        contract_id = api_contract["id"]
 
         # 3. Get contract via SDK (if available)
         if self.sdk_client:
@@ -586,30 +568,27 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
 
                 # Verify consistency: API and SDK should return same data
                 self.assertEqual(
-                    api_contract['id'],
-                    sdk_contract.get('id'),
-                    "API and SDK should return same contract ID"
+                    api_contract["id"],
+                    sdk_contract.get("id"),
+                    "API and SDK should return same contract ID",
                 )
                 self.assertEqual(
-                    api_contract.get('original_spec_type'),
-                    sdk_contract.get('original_spec_type'),
-                    "API and SDK should return same spec type"
+                    api_contract.get("original_spec_type"),
+                    sdk_contract.get("original_spec_type"),
+                    "API and SDK should return same spec type",
                 )
             except Exception as e:
                 # SDK might not be fully implemented, log but don't fail
                 print(f"SDK retrieval failed (non-critical): {e}")
 
         # Verify contract data consistency
-        self.assertEqual(api_contract['original_spec_type'], 'ODPS')
-        self.assertIn('original_raw', api_contract)
+        self.assertEqual(api_contract["original_spec_type"], "ODPS")
+        self.assertIn("original_raw", api_contract)
 
         # Parse and verify ODPS document
-        original_raw = json.loads(api_contract['original_raw'])
-        self.assertEqual(original_raw['version'], '4.1')
-        self.assertEqual(
-            original_raw['product']['details']['en']['productID'],
-            product_id
-        )
+        original_raw = json.loads(api_contract["original_raw"])
+        self.assertEqual(original_raw["version"], "4.1")
+        self.assertEqual(original_raw["product"]["details"]["en"]["productID"], product_id)
 
     def test_graphql_api_consistency_create(self):
         """
@@ -622,7 +601,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
         """
         # Create asset first
         asset_data = self._create_asset_via_api()
-        asset_id = asset_data['id']
+        asset_id = asset_data["id"]
 
         # Create ODPS document
         product_id = f"graphql-api-test-{uuid.uuid4().hex[:8]}"
@@ -631,11 +610,14 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
         # 1. Create contract via GraphQL
         graphql_contract = self._create_odps_via_graphql(odps_doc, asset_id=asset_id)
         # GraphQL returns Relay ID, need to decode it
-        graphql_contract_id = decode_relay_id(graphql_contract['id'])
+        graphql_contract_id = decode_relay_id(graphql_contract["id"])
 
         # Verify contract exists in database directly (bypass API to check transaction)
         contract = Contract.objects.filter(id=graphql_contract_id).first()
-        self.assertIsNotNone(contract, f"Contract {graphql_contract_id} should exist in database after GraphQL creation")
+        self.assertIsNotNone(
+            contract,
+            f"Contract {graphql_contract_id} should exist in database after GraphQL creation",
+        )
         self.assertEqual(contract.original_spec_type, OriginalSpecType.ODPS)
 
         # Refresh from DB to ensure all fields are populated and visible
@@ -644,33 +626,30 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
         # 2. Get contract via REST API
         # Use the contract object directly to verify it matches what API would return
         api_contract = {
-            'id': str(contract.id),
-            'original_spec_type': contract.original_spec_type,
-            'original_spec_version': contract.original_spec_version,
-            'original_format': contract.original_format,
-            'original_raw': contract.original_raw,
-            'status': contract.status,
+            "id": str(contract.id),
+            "original_spec_type": contract.original_spec_type,
+            "original_spec_version": contract.original_spec_version,
+            "original_format": contract.original_format,
+            "original_raw": contract.original_raw,
+            "status": contract.status,
         }
 
         # Verify consistency
         self.assertEqual(
             graphql_contract_id,
-            api_contract['id'],
-            "GraphQL and API should return same contract ID"
+            api_contract["id"],
+            "GraphQL and API should return same contract ID",
         )
         self.assertEqual(
-            graphql_contract['originalSpecType'],
-            api_contract['original_spec_type'],
-            "GraphQL and API should return same spec type"
+            graphql_contract["originalSpecType"],
+            api_contract["original_spec_type"],
+            "GraphQL and API should return same spec type",
         )
 
         # Verify ODPS document content
-        original_raw = json.loads(api_contract['original_raw'])
-        self.assertEqual(original_raw['version'], '4.1')
-        self.assertEqual(
-            original_raw['product']['details']['en']['productID'],
-            product_id
-        )
+        original_raw = json.loads(api_contract["original_raw"])
+        self.assertEqual(original_raw["version"], "4.1")
+        self.assertEqual(original_raw["product"]["details"]["en"]["productID"], product_id)
 
     def test_graphql_api_consistency_query(self):
         """
@@ -683,14 +662,14 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
         """
         # Create asset and contract via API first
         asset_data = self._create_asset_via_api()
-        asset_id = asset_data['id']
+        asset_id = asset_data["id"]
 
         product_id = f"graphql-query-test-{uuid.uuid4().hex[:8]}"
         odps_doc = create_valid_odps_document(product_id=product_id)
 
         # Create contract via API
         api_contract = self._create_odps_contract_via_api(asset_id, odps_doc)
-        contract_id = api_contract['id']
+        contract_id = api_contract["id"]
 
         # Refresh contract from DB to ensure it's visible
         contract = Contract.objects.get(id=contract_id)
@@ -698,31 +677,31 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
 
         # 1. Query via GraphQL (use contract query with UUID)
         graphql_data = self._query_odps_via_graphql(contract_id=contract_id)
-        graphql_contract = graphql_data.get('contract')
+        graphql_contract = graphql_data.get("contract")
 
         # 2. Use contract object directly (same as what API would return)
         api_contract_retrieved = {
-            'id': str(contract.id),
-            'original_spec_type': contract.original_spec_type,
-            'original_spec_version': contract.original_spec_version,
-            'original_format': contract.original_format,
-            'original_raw': contract.original_raw,
-            'status': contract.status,
+            "id": str(contract.id),
+            "original_spec_type": contract.original_spec_type,
+            "original_spec_version": contract.original_spec_version,
+            "original_format": contract.original_format,
+            "original_raw": contract.original_raw,
+            "status": contract.status,
         }
 
         # Verify consistency
         self.assertIsNotNone(graphql_contract, "GraphQL should return contract")
         # GraphQL returns Relay ID, need to decode it
-        graphql_contract_uuid = decode_relay_id(graphql_contract['id'])
+        graphql_contract_uuid = decode_relay_id(graphql_contract["id"])
         self.assertEqual(
             graphql_contract_uuid,
-            api_contract_retrieved['id'],
-            "GraphQL and API should return same contract ID"
+            api_contract_retrieved["id"],
+            "GraphQL and API should return same contract ID",
         )
         self.assertEqual(
-            graphql_contract.get('originalSpecType'),
-            api_contract_retrieved['original_spec_type'],
-            "GraphQL and API should return same spec type"
+            graphql_contract.get("originalSpecType"),
+            api_contract_retrieved["original_spec_type"],
+            "GraphQL and API should return same spec type",
         )
 
     def test_webhook_event_bus_consistency(self):
@@ -753,7 +732,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
             publisher = EventPublisher(
                 service_name="contract_service",
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
             # Create test data
@@ -771,7 +750,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                     "odps_version": "4.1",
                     "original_format": "JSON",
                     "product_id": product_id,
-                }
+                },
             )
 
             self.assertIsNotNone(event_id, "Event should be published to event bus")
@@ -798,14 +777,14 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                     "service": "contract_service",
                     "tenant_id": str(self.tenant.id),
                     "user_id": str(self.user.id),
-                }
+                },
             }
 
             # Handle event (this triggers webhook delivery)
             subscriber._handle_odps_event(event_data)
 
             # Wait for webhook delivery
-            time.sleep(2.0)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(2.0)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
             # Verify webhook was delivered
             deliveries = WebhookDelivery.objects.filter(webhook=webhook)
@@ -817,23 +796,27 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
 
             # Verify HTTP request was received
             received_requests = server.get_received_requests(timeout=2.0)
-            self.assertGreaterEqual(len(received_requests), 1, "Webhook should be received by server")
+            self.assertGreaterEqual(
+                len(received_requests), 1, "Webhook should be received by server"
+            )
 
             # Verify webhook payload matches event bus data
             request = received_requests[0]
-            payload = json.loads(request['body'])
-            self.assertEqual(payload['event_type'], "odps.created")
-            self.assertEqual(payload['data']['contract_id'], contract_id)
-            self.assertEqual(payload['data']['asset_id'], asset_id)
-            self.assertEqual(payload['data']['product_id'], product_id)
-            self.assertEqual(payload['data']['odps_version'], "4.1")
+            payload = json.loads(request["body"])
+            self.assertEqual(payload["event_type"], "odps.created")
+            self.assertEqual(payload["data"]["contract_id"], contract_id)
+            self.assertEqual(payload["data"]["asset_id"], asset_id)
+            self.assertEqual(payload["data"]["product_id"], product_id)
+            self.assertEqual(payload["data"]["odps_version"], "4.1")
 
             # Verify event bus data matches webhook payload
-            event_data_from_bus = json.loads(event.data) if isinstance(event.data, str) else event.data
+            event_data_from_bus = (
+                json.loads(event.data) if isinstance(event.data, str) else event.data
+            )
             self.assertEqual(
-                event_data_from_bus.get('contract_id'),
-                payload['data']['contract_id'],
-                "Event bus data should match webhook payload"
+                event_data_from_bus.get("contract_id"),
+                payload["data"]["contract_id"],
+                "Event bus data should match webhook payload",
             )
 
     def test_e2e_cross_integration_consistency(self):
@@ -865,7 +848,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
 
             # Create asset
             asset_data = self._create_asset_via_api()
-            asset_id = asset_data['id']
+            asset_id = asset_data["id"]
 
             # Create ODPS document
             product_id = f"e2e-test-{uuid.uuid4().hex[:8]}"
@@ -874,7 +857,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
             # If CLI is available, use it; otherwise use API directly
             if CLI_AVAILABLE:
                 # Save ODPS document to temporary file
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
                     json.dump(odps_doc, f)
                     odps_file_path = f.name
 
@@ -883,25 +866,28 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                     result = self.cli_runner.invoke(
                         cli,
                         [
-                            "contracts", "create-odps",
-                            "--file", odps_file_path,
-                            "--asset-id", asset_id,
-                            "--extract-odcs"
-                        ]
+                            "contracts",
+                            "create-odps",
+                            "--file",
+                            odps_file_path,
+                            "--asset-id",
+                            asset_id,
+                            "--extract-odcs",
+                        ],
                     )
 
                     if result.exit_code != 0 and "Invalid API key" in (result.output or ""):
-                        pytest.skip(
+                        pytest.skip(  # noqa: skip-in-body — runtime service dependency
                             "CLI authentication failed (Invalid API key in integration env)"
                         )
                     self.assertEqual(result.exit_code, 0, f"CLI failed: {result.output}")
 
                     # 2. Find contract via REST API
                     response = self.api_client.get(
-                        f'/api/v1/contracts/?asset_id={asset_id}&spec_type=ODPS'
+                        f"/api/v1/contracts/?asset_id={asset_id}&spec_type=ODPS"
                     )
                     self.assertEqual(response.status_code, 200)
-                    api_contracts = response.json()['results']
+                    api_contracts = response.json()["results"]
                 finally:
                     # Clean up temporary file
                     if os.path.exists(odps_file_path):
@@ -910,10 +896,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                 # CLI not available - use API directly
                 from hub.apps.contracts.services import ContractService
 
-                service = ContractService(
-                    tenant_id=str(self.tenant.id),
-                    user_id=str(self.user.id)
-                )
+                service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
                 # Create contract via API service (simulating what CLI would do)
                 contract = service.create_contract(
@@ -929,40 +912,41 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                 # Query contracts for this asset using correct filter parameter
                 # API uses 'spec_type' not 'original_spec_type'
                 response = self.api_client.get(
-                    f'/api/v1/contracts/?asset_id={asset_id}&spec_type=ODPS'
+                    f"/api/v1/contracts/?asset_id={asset_id}&spec_type=ODPS"
                 )
                 self.assertEqual(response.status_code, 200)
-                api_contracts = response.json()['results']
+                api_contracts = response.json()["results"]
 
             try:
-
                 # Find the contract we just created
                 contract = None
                 for c in api_contracts:
                     try:
-                        original_raw = json.loads(c.get('original_raw', '{}'))
-                        product_details = original_raw.get('product', {}).get('details', {}).get('en', {})
-                        if product_details.get('productID') == product_id:
+                        original_raw = json.loads(c.get("original_raw", "{}"))
+                        product_details = (
+                            original_raw.get("product", {}).get("details", {}).get("en", {})
+                        )
+                        if product_details.get("productID") == product_id:
                             contract = c
                             break
                     except:
                         continue
 
                 self.assertIsNotNone(contract, "Contract should be created via CLI")
-                contract_id = contract['id']
+                contract_id = contract["id"]
 
                 # 3. Query via GraphQL
                 graphql_data = self._query_odps_via_graphql(contract_id=contract_id)
-                graphql_contract = graphql_data.get('contract')
+                graphql_contract = graphql_data.get("contract")
                 self.assertIsNotNone(graphql_contract, "GraphQL should return contract")
 
                 # Verify GraphQL and API consistency
                 # GraphQL returns Relay ID, need to decode it
-                graphql_contract_uuid = decode_relay_id(graphql_contract['id'])
+                graphql_contract_uuid = decode_relay_id(graphql_contract["id"])
                 self.assertEqual(
                     graphql_contract_uuid,
-                    contract['id'],
-                    "GraphQL and API should return same contract ID"
+                    contract["id"],
+                    "GraphQL and API should return same contract ID",
                 )
 
                 # 4. Verify via SDK (if available)
@@ -971,9 +955,9 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                         sdk_contract = self.sdk_client.contracts.get(contract_id)
                         self.assertIsNotNone(sdk_contract)
                         self.assertEqual(
-                            sdk_contract.get('id'),
-                            contract['id'],
-                            "SDK and API should return same contract ID"
+                            sdk_contract.get("id"),
+                            contract["id"],
+                            "SDK and API should return same contract ID",
                         )
                     except Exception as e:
                         print(f"SDK verification failed (non-critical): {e}")
@@ -982,7 +966,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                 publisher = EventPublisher(
                     service_name="contract_service",
                     tenant_id=str(self.tenant.id),
-                    user_id=str(self.user.id)
+                    user_id=str(self.user.id),
                 )
 
                 event_id = publisher.publish(
@@ -990,11 +974,11 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                     data={
                         "contract_id": contract_id,
                         "asset_id": asset_id,
-                        "status": contract.get('status', 'ACTIVE'),
+                        "status": contract.get("status", "ACTIVE"),
                         "odps_version": "4.1",
                         "original_format": "JSON",
                         "product_id": product_id,
-                    }
+                    },
                 )
 
                 self.assertIsNotNone(event_id, "Event should be published to event bus")
@@ -1007,7 +991,7 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                     "data": {
                         "contract_id": contract_id,
                         "asset_id": asset_id,
-                        "status": contract.get('status', 'ACTIVE'),
+                        "status": contract.get("status", "ACTIVE"),
                         "odps_version": "4.1",
                         "original_format": "JSON",
                         "product_id": product_id,
@@ -1016,13 +1000,13 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                         "service": "contract_service",
                         "tenant_id": str(self.tenant.id),
                         "user_id": str(self.user.id),
-                    }
+                    },
                 }
 
                 subscriber._handle_odps_event(event_data)
 
                 # 7. Wait for webhook delivery
-                time.sleep(2.0)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(2.0)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
                 # 8. Verify webhook delivery
                 deliveries = WebhookDelivery.objects.filter(webhook=webhook)
@@ -1037,24 +1021,23 @@ class ODPSCrossIntegrationTest(LiveServerTestCase):
                 self.assertGreaterEqual(len(received_requests), 1, "Webhook should be received")
 
                 request = received_requests[0]
-                payload = json.loads(request['body'])
-                self.assertEqual(payload['event_type'], "odps.created")
-                self.assertEqual(payload['data']['contract_id'], contract_id)
-                self.assertEqual(payload['data']['product_id'], product_id)
+                payload = json.loads(request["body"])
+                self.assertEqual(payload["event_type"], "odps.created")
+                self.assertEqual(payload["data"]["contract_id"], contract_id)
+                self.assertEqual(payload["data"]["product_id"], product_id)
 
                 # Verify end-to-end consistency
                 # GraphQL returns Relay ID, need to decode it
-                graphql_contract_uuid = decode_relay_id(graphql_contract['id'])
+                graphql_contract_uuid = decode_relay_id(graphql_contract["id"])
                 self.assertEqual(
-                    contract['id'],
+                    contract["id"],
                     graphql_contract_uuid,
-                    "CLI → API → GraphQL should be consistent"
+                    "CLI → API → GraphQL should be consistent",
                 )
                 self.assertEqual(
-                    payload['data']['contract_id'],
+                    payload["data"]["contract_id"],
                     contract_id,
-                    "Event Bus → Webhook should be consistent"
+                    "Event Bus → Webhook should be consistent",
                 )
             finally:
                 pass  # Cleanup handled above if CLI was used
-

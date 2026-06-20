@@ -363,7 +363,7 @@ class ODPSBackwardCompatibilityIntegrationTest(TestCase):
     def test_all_versions_registered(self):
         """Test that all backward compatibility normalizers are registered"""
         from hub.apps.contracts.models import OriginalSpecType
-        from hub.apps.contracts.normalization import _NORMALIZER_REGISTRY, get_normalizer
+        from hub.apps.contracts.normalization import get_normalizer
 
         # Check that all versions have normalizers
         versions = ["3.9", "2.9", "1.9"]
@@ -520,15 +520,19 @@ class ODPSBackwardCompatibilityIntegrationTest(TestCase):
         self.assertIsNotNone(result.hub_contract)
         # None values should be either preserved as None or handled per spec
         has_description = "description" in result.hub_contract
-        has_info_description = "info" in result.hub_contract and "description" in result.hub_contract["info"]
+        has_info_description = (
+            "info" in result.hub_contract and "description" in result.hub_contract["info"]
+        )
         if has_description:
             self.assertTrue(
-                result.hub_contract["description"] is None or isinstance(result.hub_contract["description"], str),
+                result.hub_contract["description"] is None
+                or isinstance(result.hub_contract["description"], str),
                 "None description should be preserved as None or converted to string",
             )
         if has_info_description:
             self.assertTrue(
-                result.hub_contract["info"]["description"] is None or isinstance(result.hub_contract["info"]["description"], str),
+                result.hub_contract["info"]["description"] is None
+                or isinstance(result.hub_contract["info"]["description"], str),
                 "None description in info should be preserved as None or converted to string",
             )
 
@@ -559,6 +563,8 @@ class ODPSBackwardCompatibilityIntegrationTest(TestCase):
         self.assertIn("schema", result.hub_contract)
         self.assertIn("fields", result.hub_contract["schema"])
         self.assertEqual(
-            result.hub_contract["schema"]["fields"][0]["nested"]["level1"]["level2"]["level3"]["value"],
+            result.hub_contract["schema"]["fields"][0]["nested"]["level1"]["level2"]["level3"][
+                "value"
+            ],
             "deep",
         )

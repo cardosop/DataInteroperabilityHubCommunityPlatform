@@ -23,8 +23,9 @@ class ScheduledIngestionAutoPauseTest(TestCase):
     """Test auto-pause after consecutive failures."""
 
     def _create_schedule(self, failure_count=0):
-        from hub.apps.tenants.models import Tenant
         from django.db import connection
+
+        from hub.apps.tenants.models import Tenant
 
         tenant, _ = Tenant.objects.get_or_create(
             name="auto-pause-test",
@@ -42,12 +43,21 @@ class ScheduledIngestionAutoPauseTest(TestCase):
                     prefect_work_pool_name, deployment_sync_status)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 [
-                    str(si_id), str(tenant.id),
-                    f"test-{uuid.uuid4().hex[:8]}", "HTTP",
+                    str(si_id),
+                    str(tenant.id),
+                    f"test-{uuid.uuid4().hex[:8]}",
+                    "HTTP",
                     '{"url":"https://example.com/data.csv"}',
-                    "DAILY", '{"cron":"0 0 * * *","timezone":"UTC"}',
-                    "ACTIVE", failure_count, now, now, False, False,
-                    "default", "PENDING",
+                    "DAILY",
+                    '{"cron":"0 0 * * *","timezone":"UTC"}',
+                    "ACTIVE",
+                    failure_count,
+                    now,
+                    now,
+                    False,
+                    False,
+                    "default",
+                    "PENDING",
                 ],
             )
         return ScheduledIngestion.objects.get(id=si_id)
@@ -68,9 +78,7 @@ class ScheduledIngestionAutoPauseTest(TestCase):
         )
 
         si = self._create_schedule(failure_count=4)
-        run = self._create_run(
-            si, ScheduledIngestionRunStatus.FAILED, "Connection refused"
-        )
+        run = self._create_run(si, ScheduledIngestionRunStatus.FAILED, "Connection refused")
 
         apply_run_completion_side_effects(run, "FAILED")
 
@@ -107,9 +115,7 @@ class ScheduledIngestionAutoPauseTest(TestCase):
         )
 
         si = self._create_schedule(failure_count=2)
-        run = self._create_run(
-            si, ScheduledIngestionRunStatus.FAILED, "Timeout"
-        )
+        run = self._create_run(si, ScheduledIngestionRunStatus.FAILED, "Timeout")
 
         apply_run_completion_side_effects(run, "FAILED")
 

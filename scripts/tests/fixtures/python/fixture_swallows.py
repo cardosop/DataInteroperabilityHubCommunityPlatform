@@ -6,25 +6,22 @@
 - test_skip_call_count: 0
 """
 
+import builtins
+import contextlib
+
 
 def a():
-    try:
-        pass
-    except Exception:
+    with contextlib.suppress(Exception):
         pass
 
 
 def b():
-    try:
-        pass
-    except:
+    with contextlib.suppress(builtins.BaseException):
         pass
 
 
 def c_specific_type_does_not_count():
-    try:
-        pass
-    except ValueError:
+    with contextlib.suppress(ValueError):
         pass
 
 

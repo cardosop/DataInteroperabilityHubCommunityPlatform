@@ -14,10 +14,10 @@ from tests._persona_provisioning import provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import api_delete, api_get, api_post, api_put
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _owner_creds():
     return provision_persona("data_product_owner")
@@ -68,9 +68,7 @@ def test_list_assets():
     resp = api_get("/assets/", creds)
     _skip_if_not_found(resp, "List assets")
 
-    assert resp.status_code == 200, (
-        f"GET /assets/ returned {resp.status_code}: {resp.text[:500]}"
-    )
+    assert resp.status_code == 200, f"GET /assets/ returned {resp.status_code}: {resp.text[:500]}"
     body = resp.json()
     # Accept either a bare list or a paginated wrapper with "results"
     if isinstance(body, dict):
@@ -155,9 +153,7 @@ def test_asset_lifecycle():
         creds,
         json={"name": updated_name, "description": "lifecycle v2"},
     )
-    assert put_resp.status_code in (200, 204), (
-        f"Lifecycle update failed: {put_resp.status_code}"
-    )
+    assert put_resp.status_code in (200, 204), f"Lifecycle update failed: {put_resp.status_code}"
 
     # Get and verify update
     get_resp = api_get(f"/assets/{asset_id}/", creds)
@@ -206,8 +202,10 @@ def test_search_assets_by_name():
     )
 
     body = search_resp.json()
-    results = body if isinstance(body, list) else (
-        body.get("results") or body.get("items") or body.get("data") or []
+    results = (
+        body
+        if isinstance(body, list)
+        else (body.get("results") or body.get("items") or body.get("data") or [])
     )
     names = [r.get("name", "") for r in results]
     assert any(unique in n for n in names), (

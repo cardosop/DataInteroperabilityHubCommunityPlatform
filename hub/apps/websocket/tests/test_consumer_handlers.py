@@ -4,12 +4,12 @@ Unit tests for WebSocket consumer message handlers.
 These tests directly test the consumer's message handling methods
 without relying on the full WebSocket connection flow.
 """
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
+from unittest.mock import AsyncMock
+
+import pytest
 from django.contrib.auth import get_user_model
 
-from hub.apps.tenants.models import Tenant
 from hub.apps.websocket.consumers.event_consumer import EventConsumer
 from hub.apps.websocket.protocol import (
     WebSocketMessage,
@@ -63,10 +63,9 @@ class TestEventConsumerHandlers(AsyncWebSocketTestCase):
         self.assertIn("contract.created", consumer.subscribed_event_types)
         self.assertIn("asset.activated", consumer.subscribed_event_types)
 
-        # Check that confirmation was sent
+        # Check that confirmation was sent with expected content
         self.assertTrue(consumer.send.called)
         call_args = consumer.send.call_args
-        self.assertIsNotNone(call_args)
         # The send method should have been called with text_data containing JSON
         self.assertIn("text_data", call_args.kwargs)
 
@@ -111,10 +110,9 @@ class TestEventConsumerHandlers(AsyncWebSocketTestCase):
 
         await consumer.handle_ping(message)
 
-        # Check that pong was sent
+        # Check that pong was sent with expected content
         self.assertTrue(consumer.send.called)
         call_args = consumer.send.call_args
-        self.assertIsNotNone(call_args)
         self.assertIn("text_data", call_args.kwargs)
 
     async def test_receive_subscribe_message(self):
@@ -163,4 +161,3 @@ class TestEventConsumerHandlers(AsyncWebSocketTestCase):
 
         # Check that error was sent
         self.assertTrue(consumer.send_error.called)
-

@@ -25,19 +25,19 @@ To run these tests:
 3. Run: pytest tests/test_baas_api_integration.py -v -m integration
 """
 import os
-import sys
-import pytest
-import uuid
 import subprocess
-import asyncio
-from typing import Optional, Dict, Any
-from datahub_interoperability import DataHubClient, DataHubClientConfig, BaaSAPI
+import sys
+import uuid
+from typing import Optional
+
+import pytest
+
+from datahub_interoperability import BaaSAPI, DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
-    BaaSValidationError,
     BaaSError,
-    NotFoundError,
+    BaaSValidationError,
     ForbiddenError,
-    ValidationError,
+    NotFoundError,
 )
 
 
@@ -66,22 +66,30 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
             return key
     except Exception as exc:
         import sys as _sys
-        print(f"[BaaS SDK] Django shell tenant creation failed ({exc!r}), "
-              f"falling back to canonical helper.", file=_sys.stderr)
+
+        print(
+            f"[BaaS SDK] Django shell tenant creation failed ({exc!r}), "
+            f"falling back to canonical helper.",
+            file=_sys.stderr,
+        )
 
     # Method 2: Use canonical conftest helper (validates token, auto-provisions)
     try:
         from tests.conftest import get_api_key
+
         canonical = get_api_key()
         if canonical:
             return canonical
     except Exception as exc:
         import sys as _sys
-        print(f"[BaaS SDK] Canonical helper failed ({exc!r}), "
-              f"falling back to env vars.", file=_sys.stderr)
+
+        print(
+            f"[BaaS SDK] Canonical helper failed ({exc!r}), falling back to env vars.",
+            file=_sys.stderr,
+        )
 
     # Method 3: Use environment variables (last resort)
-    api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
+    api_key = os.environ.get("TEST_API_KEY") or os.environ.get("DATAHUB_API_KEY")
     if api_key:
         return api_key
 
@@ -90,11 +98,10 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
 
 def _create_baas_tenant_and_key() -> Optional[str]:
     """Create a dedicated tenant with ``baas_enabled=True`` and return an API key."""
-    import subprocess as _sp
 
-    unique_id = uuid.uuid4().hex[:8]
+    uuid.uuid4().hex[:8]
     try:
-        unique_id = uuid.uuid4().hex[:8]
+        uuid.uuid4().hex[:8]
         django_shell_script = f"""
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus, Role, UserRole
@@ -159,8 +166,8 @@ from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.tenants.models import TenantPlan
 plan = TenantPlan.objects.first()
 if plan:
-    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
-    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={"plan": plan, 'status': SubscriptionStatus.ACTIVE})
+    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={"plan": plan, 'status': SubscriptionStatus.ACTIVE})
 
 # Print the plaintext key (it's only available at creation time)
 print('API_KEY_START')
@@ -168,27 +175,38 @@ print(api_key_value)
 print('API_KEY_END')
 """
         result = subprocess.run(
-                        ['docker', 'compose', '-f', 'docker-compose.test.yml', 'exec', '-T', 'api-service-test', 'python', 'hub/manage.py', 'shell'],
+            [
+                "docker",
+                "compose",
+                "-f",
+                "docker-compose.test.yml",
+                "exec",
+                "-T",
+                "api-service-test",
+                "python",
+                "hub/manage.py",
+                "shell",
+            ],
             input=django_shell_script,
             text=True,
             capture_output=True,
             timeout=30,
-            cwd='/home/ph/Desktop/DataInteroperabilityHub'
+            cwd="/home/ph/Desktop/DataInteroperabilityHub",
         )
         # Combine stdout and stderr (Django logs to stderr, output to stdout)
         combined_output = result.stdout + result.stderr if result.stderr else result.stdout
 
         if result.returncode == 0:
             # Extract API key from output using markers
-            output_lines = combined_output.strip().split('\n')
+            output_lines = combined_output.strip().split("\n")
             api_key = None
             in_api_key = False
             for line in output_lines:
                 line = line.strip()
-                if line == 'API_KEY_START':
+                if line == "API_KEY_START":
                     in_api_key = True
                     continue
-                elif line == 'API_KEY_END':
+                elif line == "API_KEY_END":
                     in_api_key = False
                     continue
                 elif in_api_key and line:
@@ -201,13 +219,13 @@ print('API_KEY_END')
                     line = line.strip()
                     if not line or len(line) < 20:
                         continue
-                    if line.startswith('>>>') or line.startswith('...'):
+                    if line.startswith(">>>") or line.startswith("..."):
                         continue
-                    if 'imported' in line.lower() or 'objects' in line.lower() or 'Error' in line:
+                    if "imported" in line.lower() or "objects" in line.lower() or "Error" in line:
                         continue
-                    if ' ' in line:
+                    if " " in line:
                         continue
-                    if all(c.isalnum() or c in '-_' for c in line):
+                    if all(c.isalnum() or c in "-_" for c in line):
                         api_key = line
                         break
 
@@ -229,11 +247,13 @@ print('API_KEY_END')
 @pytest.fixture
 def real_api_config():
     """Fixture for real API configuration"""
-    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8001/api/v1')
+    api_base_url = os.environ.get("API_BASE_URL", "http://localhost:8001/api/v1")
     api_key = setup_authentication_for_sdk_tests(api_base_url)
 
     if not api_key:
-        pytest.skip("No API key available for testing. Set TEST_API_KEY or DATAHUB_API_KEY environment variable.")
+        pytest.skip(
+            "No API key available for testing. Set TEST_API_KEY or DATAHUB_API_KEY environment variable."
+        )
 
     config = DataHubClientConfig(
         base_url=api_base_url,
@@ -265,10 +285,7 @@ class TestBaaSAPIIntegration:
     async def test_create_api_key_integration(self, baas_api):
         """Test creating API key via SDK with real API"""
         unique_id = uuid.uuid4().hex[:8]
-        result = await baas_api.create_api_key(
-            name=f"SDK Test Key {unique_id}",
-            tier="FREE"
-        )
+        result = await baas_api.create_api_key(name=f"SDK Test Key {unique_id}", tier="FREE")
 
         assert result is not None
         assert "id" in result
@@ -293,10 +310,7 @@ class TestBaaSAPIIntegration:
         """Test getting API key via SDK with real API"""
         # First create a key
         unique_id = uuid.uuid4().hex[:8]
-        created = await baas_api.create_api_key(
-            name=f"SDK Get Test Key {unique_id}",
-            tier="FREE"
-        )
+        created = await baas_api.create_api_key(name=f"SDK Get Test Key {unique_id}", tier="FREE")
         api_key_id = created["id"]
 
         # Then get it
@@ -313,16 +327,12 @@ class TestBaaSAPIIntegration:
         # First create a key
         unique_id = uuid.uuid4().hex[:8]
         created = await baas_api.create_api_key(
-            name=f"SDK Update Test Key {unique_id}",
-            tier="FREE"
+            name=f"SDK Update Test Key {unique_id}", tier="FREE"
         )
         api_key_id = created["id"]
 
         # Then update it
-        result = await baas_api.update_api_key(
-            api_key_id,
-            name=f"SDK Updated Key {unique_id}"
-        )
+        result = await baas_api.update_api_key(api_key_id, name=f"SDK Updated Key {unique_id}")
 
         assert result is not None
         assert result["id"] == api_key_id
@@ -333,8 +343,7 @@ class TestBaaSAPIIntegration:
         # First create a key
         unique_id = uuid.uuid4().hex[:8]
         created = await baas_api.create_api_key(
-            name=f"SDK Revoke Test Key {unique_id}",
-            tier="FREE"
+            name=f"SDK Revoke Test Key {unique_id}", tier="FREE"
         )
         api_key_id = created["id"]
 
@@ -372,10 +381,7 @@ class TestBaaSAPIIntegration:
         """Test getting usage stats with filters via SDK with real API"""
         # Create a key and use it
         unique_id = uuid.uuid4().hex[:8]
-        created = await baas_api.create_api_key(
-            name=f"SDK Usage Test Key {unique_id}",
-            tier="FREE"
-        )
+        created = await baas_api.create_api_key(name=f"SDK Usage Test Key {unique_id}", tier="FREE")
         api_key_id = created["id"]
 
         # Get stats filtered by API key
@@ -398,7 +404,9 @@ class TestBaaSAPIIntegration:
             assert isinstance(result, list)
         except (ForbiddenError, BaaSError) as e:
             # Expected if user is not admin
-            if isinstance(e, ForbiddenError) or ("platform administrator" in str(e) or "admin" in str(e).lower()):
+            if isinstance(e, ForbiddenError) or (
+                "platform administrator" in str(e) or "admin" in str(e).lower()
+            ):
                 pytest.skip("User is not platform admin, cannot test by-tenant endpoint")
             else:
                 raise
@@ -407,10 +415,7 @@ class TestBaaSAPIIntegration:
         """Test checking quota via SDK with real API"""
         # Create a key
         unique_id = uuid.uuid4().hex[:8]
-        created = await baas_api.create_api_key(
-            name=f"SDK Quota Test Key {unique_id}",
-            tier="FREE"
-        )
+        created = await baas_api.create_api_key(name=f"SDK Quota Test Key {unique_id}", tier="FREE")
         api_key_id = created["id"]
 
         try:
@@ -419,7 +424,7 @@ class TestBaaSAPIIntegration:
             assert isinstance(result, dict)
         except (NotFoundError, BaaSError) as e:
             # Quota endpoint might not exist yet (404) or other error
-            if isinstance(e, NotFoundError) or (isinstance(e, BaaSError) and '404' in str(e)):
+            if isinstance(e, NotFoundError) or (isinstance(e, BaaSError) and "404" in str(e)):
                 pytest.skip("Quota endpoint not available")
             else:
                 raise
@@ -438,6 +443,7 @@ class TestBaaSAPIIntegration:
         assert isinstance(result, str)
         # Should be valid JSON string
         import json
+
         parsed = json.loads(result)
         assert isinstance(parsed, dict)
 

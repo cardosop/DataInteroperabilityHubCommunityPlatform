@@ -5,13 +5,13 @@ need user-status and tenant-context fixture updates before they can run
 green — the implementation is done, the test fixtures need alignment.
 Skipped until that work is complete.
 """
-import unittest
+
 import uuid
 from unittest.mock import patch
 
 import pytest
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -20,7 +20,6 @@ from hub.apps.core.idempotency import IdempotencyService
 from hub.apps.scheduled_export.models import (
     ScheduledExport,
     ScheduledExportRun,
-    ScheduledExportRunStatus,
     ScheduledExportStatus,
 )
 from hub.apps.scheduled_export.views import _TRIGGER_IDEMPOTENCY_SCOPE
@@ -41,6 +40,7 @@ def _make_tenant(name=None):
     )
     # Trigger endpoint requires active subscription
     from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
     ensure_tenant_has_active_subscription(tenant)
     return tenant
 
@@ -93,6 +93,7 @@ class TriggerIdempotencyTest(TestCase):
         # Create a user and authenticate — the trigger endpoint requires
         # IsAuthenticated permission.
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         self.user = User.objects.create_user(
             email=f"idem-test-{uuid.uuid4().hex[:8]}@example.com",
@@ -128,9 +129,7 @@ class TriggerIdempotencyTest(TestCase):
         self.assertIn("flow_run_id", resp.data)
         # One run created
         self.assertEqual(
-            ScheduledExportRun.objects.filter(
-                scheduled_export=self.export
-            ).count(),
+            ScheduledExportRun.objects.filter(scheduled_export=self.export).count(),
             1,
         )
 
@@ -148,17 +147,26 @@ class TriggerIdempotencyTest(TestCase):
             resp2 = _trigger(self.client, self.export, idem_key=key)
         self.assertEqual(resp2.status_code, status.HTTP_200_OK)
         replay_header = resp2.get("Idempotent-Replay")
-        self.assertIn(replay_header, ("true", None),
-                      "Replay header is 'true' when cache wired, None otherwise")
+        self.assertIn(
+            replay_header,
+            ("true", None),
+            "Replay header is 'true' when cache wired, None otherwise",
+        )
         # DRF Response has .data; cached JsonResponse has .json()
-        flow_run_id_2 = resp2.data.get("flow_run_id") if hasattr(resp2, "data") else resp2.json().get("flow_run_id")
-        flow_run_id_1 = resp1.data.get("flow_run_id") if hasattr(resp1, "data") else resp1.json().get("flow_run_id")
+        flow_run_id_2 = (
+            resp2.data.get("flow_run_id")
+            if hasattr(resp2, "data")
+            else resp2.json().get("flow_run_id")
+        )
+        flow_run_id_1 = (
+            resp1.data.get("flow_run_id")
+            if hasattr(resp1, "data")
+            else resp1.json().get("flow_run_id")
+        )
         self.assertEqual(flow_run_id_2, flow_run_id_1)
         # Still only one run
         self.assertEqual(
-            ScheduledExportRun.objects.filter(
-                scheduled_export=self.export
-            ).count(),
+            ScheduledExportRun.objects.filter(scheduled_export=self.export).count(),
             1,
         )
 
@@ -199,8 +207,11 @@ class TriggerIdempotencyTest(TestCase):
             resp2 = _trigger(self.client, export2, idem_key=key_for_a)
         self.assertEqual(resp2.status_code, status.HTTP_200_OK)
         replay_header = resp2.get("Idempotent-Replay")
-        self.assertIn(replay_header, ("true", None),
-                      "Replay header is 'true' when cache is wired, None otherwise")
+        self.assertIn(
+            replay_header,
+            ("true", None),
+            "Replay header is 'true' when cache is wired, None otherwise",
+        )
 
     @pytest.mark.integration
     def test_invalid_key_format_returns_400(self):
@@ -251,6 +262,7 @@ class TriggerIdempotencyEdgeCases(TestCase):
         self.client = APIClient()
         self.tenant = _make_tenant()
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         self.user = User.objects.create_user(
             email=f"idem-edge-{uuid.uuid4().hex[:8]}@example.com",
@@ -295,7 +307,5 @@ class TriggerIdempotencyEdgeCases(TestCase):
 
         # Lock should be released by the finally block
         # Verify no cached response
-        cached = IdempotencyService.get_cached_response(
-            key, scope=_TRIGGER_IDEMPOTENCY_SCOPE
-        )
+        cached = IdempotencyService.get_cached_response(key, scope=_TRIGGER_IDEMPOTENCY_SCOPE)
         self.assertIsNone(cached)

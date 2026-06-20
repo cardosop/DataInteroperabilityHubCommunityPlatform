@@ -4,11 +4,12 @@ Tests for ComplianceBusinessRules.validate() limit enforcement.
 Validates concurrent run limits, recent failure warnings,
 resource requirement, and cross-tenant asset rejection.
 """
+
 import uuid
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.compliance.business_rules import ComplianceBusinessRules
@@ -18,8 +19,6 @@ from hub.apps.jobs.utils import create_job
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
@@ -93,7 +92,7 @@ class BusinessRulesLimitsTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
         )
-        result = rules.validate(
+        rules.validate(
             compliance_run=new_run,
             tenant=self.tenant,
             user=self.user,
@@ -107,9 +106,8 @@ class BusinessRulesLimitsTest(TestCase):
             user=self.user,
             validation_type="quota",
         )
-        concurrent_exceeded = (
-            result_all.details.get("concurrent_limit_exceeded", False)
-            or any("concurrent" in e.lower() for e in result_all.errors)
+        concurrent_exceeded = result_all.details.get("concurrent_limit_exceeded", False) or any(
+            "concurrent" in e.lower() for e in result_all.errors
         )
         self.assertTrue(
             concurrent_exceeded,
@@ -135,23 +133,21 @@ class BusinessRulesLimitsTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
         )
-        result = rules.validate(
+        result = rules.validate_compliance_run_execution(
             compliance_run=new_run,
             tenant=self.tenant,
             user=self.user,
-            validation_type="compliance_run",
+            validation_type="quota",
         )
-        self.assertTrue(result.is_valid,
-            f"Expected valid result; got errors: {result.errors}")
+        self.assertTrue(result.is_valid, f"Expected valid result; got errors: {result.errors}")
         # Under the concurrent limit: no warnings, no errors, no
         # concurrent-limit detail flag should be set.
-        self.assertEqual(len(result.warnings), 0,
-            f"Unexpected warnings: {result.warnings}")
-        self.assertEqual(len(result.errors), 0,
-            f"Unexpected errors: {result.errors}")
+        self.assertEqual(len(result.warnings), 0, f"Unexpected warnings: {result.warnings}")
+        self.assertEqual(len(result.errors), 0, f"Unexpected errors: {result.errors}")
         self.assertFalse(
             result.details.get("concurrent_limit_exceeded", False),
-            "concurrent_limit_exceeded must be False when under limit")
+            "concurrent_limit_exceeded must be False when under limit",
+        )
 
     # ----------------------------------------------------------------
     # 3. Recent failures warning

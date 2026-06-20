@@ -108,7 +108,7 @@ class TestTokenGate:
         # Both the canonical and lowercase shape should pass.
         # Django normalises headers to uppercase internally; the helper
         # checks both cases of the surface header.
-        res = client.get(LIST_URL, **{"HTTP_X_E2E_TOKEN": "proxy-test-secret"})
+        res = client.get(LIST_URL, HTTP_X_E2E_TOKEN="proxy-test-secret")
         assert res.status_code == 200
 
 
@@ -271,18 +271,21 @@ class TestMessageIdValidation:
         # The pure validator MUST reject `..` even though `.` is in the
         # allow-list (legitimate MailHog IDs contain `<hash>@<domain>`).
         from hub.apps.api.mailhog_proxy_views import _validate_message_id
+
         assert _validate_message_id("..") is False
         assert _validate_message_id("a..b") is False
         assert _validate_message_id("../etc") is False  # also has slash anyway
 
     def test_validator_rejects_leading_or_trailing_dot(self):
         from hub.apps.api.mailhog_proxy_views import _validate_message_id
+
         assert _validate_message_id(".hidden") is False
         assert _validate_message_id("trail.") is False
 
     def test_validator_accepts_legitimate_mailhog_id_shapes(self):
         # Hash@domain is the canonical MailHog ID shape; must pass.
         from hub.apps.api.mailhog_proxy_views import _validate_message_id
+
         assert _validate_message_id("abc-123") is True
         assert _validate_message_id("abc_123") is True
         assert _validate_message_id("aBcD3F.GhI@example.com") is True
@@ -291,11 +294,13 @@ class TestMessageIdValidation:
 
     def test_validator_rejects_empty_or_oversized(self):
         from hub.apps.api.mailhog_proxy_views import _validate_message_id
+
         assert _validate_message_id("") is False
         assert _validate_message_id("a" * 65) is False  # > MAX_MESSAGE_ID_LEN
 
     def test_validator_rejects_arbitrary_special_chars(self):
         from hub.apps.api.mailhog_proxy_views import _validate_message_id
+
         for bad in ("a$b", "a/b", "a?b=c", "a%2Eb", "a b", "a;b"):
             assert _validate_message_id(bad) is False, f"validator allowed {bad!r}"
 

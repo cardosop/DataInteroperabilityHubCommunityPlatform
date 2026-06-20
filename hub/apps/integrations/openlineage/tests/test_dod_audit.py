@@ -16,6 +16,7 @@ Test surface uses real fixtures (real Tenant + Subscription + admin
 user + ``OpenLineageIngestApiKey`` + DLQ rows + LineageEdge writes).
 HTTP path is exercised via ``APIClient`` end-to-end.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -30,7 +31,6 @@ from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-
 HMAC_KEY = "test-hmac-signing-key-32-bytes-long-XYZ"
 INBOUND_URL = "/api/v1/lineage/openlineage/events/"
 KEYS_URL = "/api/v1/lineage/openlineage/keys/"
@@ -44,7 +44,8 @@ KEYS_URL = "/api/v1/lineage/openlineage/keys/"
 def _create_tenant():
     from hub.apps.billing.models import Subscription, SubscriptionStatus
     from hub.apps.billing.tests.plan_fixtures import (
-        create_unique_tenant, get_pro_plan,
+        create_unique_tenant,
+        get_pro_plan,
     )
 
     plan = get_pro_plan()
@@ -66,10 +67,13 @@ def _create_tenant():
 
 def _create_admin(tenant):
     from django.contrib.auth import get_user_model
+
     from hub.apps.users.models import Role, UserRole
+
     User = get_user_model()
     u = User.objects.create(
-        email=f"admin-{uuid.uuid4().hex[:6]}@x", tenant=tenant,
+        email=f"admin-{uuid.uuid4().hex[:6]}@x",
+        tenant=tenant,
     )
     role, _ = Role.objects.get_or_create(tenant=tenant, name="TENANT_ADMIN")
     UserRole.objects.get_or_create(user=u, tenant=tenant, role=role)
@@ -82,6 +86,7 @@ def _create_active_key(tenant):
         generate_ingest_key_plaintext,
         hash_ingest_key,
     )
+
     plaintext = generate_ingest_key_plaintext()
     row = OpenLineageIngestApiKey.objects.create(
         tenant=tenant,
@@ -94,6 +99,7 @@ def _create_active_key(tenant):
 
 def _create_contract(tenant, *, name="c"):
     from hub.apps.contracts.models import Contract
+
     return Contract.objects.create(
         tenant=tenant,
         version=1,
@@ -122,17 +128,30 @@ def _build_event(*, source_id=None, target_id=None, run_id=None):
         "schemaURL": "https://openlineage.io/spec/2-0-0/OpenLineage.json",
         "run": {"runId": run_id or str(uuid.uuid4())},
         "job": {"namespace": "etl", "name": "orders_etl"},
-        "inputs": [{"namespace": "meshant.contracts",
-                     "name": str(source_id) if source_id else str(uuid.uuid4())}],
-        "outputs": [{"namespace": "meshant.contracts",
-                      "name": str(target_id) if target_id else str(uuid.uuid4())}],
+        "inputs": [
+            {
+                "namespace": "meshant.contracts",
+                "name": str(source_id) if source_id else str(uuid.uuid4()),
+            }
+        ],
+        "outputs": [
+            {
+                "namespace": "meshant.contracts",
+                "name": str(target_id) if target_id else str(uuid.uuid4()),
+            }
+        ],
     }
 
 
 def _hmac_sign(body: bytes) -> str:
-    return "sha256=" + hmac.new(
-        HMAC_KEY.encode("utf-8"), body, hashlib.sha256,
-    ).hexdigest()
+    return (
+        "sha256="
+        + hmac.new(
+            HMAC_KEY.encode("utf-8"),
+            body,
+            hashlib.sha256,
+        ).hexdigest()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +170,7 @@ class TestOutboundMetric(TransactionTestCase):
         where *responses* is a list populated with ``(method, path)`` for
         every request the server received."""
         import threading
-        from http.server import HTTPServer, BaseHTTPRequestHandler
+        from http.server import BaseHTTPRequestHandler, HTTPServer
 
         responses: list = []
         seq = iter(status_sequence)
@@ -167,6 +186,7 @@ class TestOutboundMetric(TransactionTestCase):
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
                 self.wfile.write(b"{}")
+
             def log_message(self, fmt, *args):
                 pass  # silence server logs
 
@@ -178,7 +198,8 @@ class TestOutboundMetric(TransactionTestCase):
 
     def test_success_emits_result_success(self):
         from hub.apps.integrations.openlineage.adapter import (
-            DeliveryOutcome, OpenLineageAdapter,
+            DeliveryOutcome,
+            OpenLineageAdapter,
         )
 
         port, responses, server = self._start_server([200])
@@ -194,14 +215,15 @@ class TestOutboundMetric(TransactionTestCase):
                 tenant=None,
             )
             self.assertEqual(outcome, DeliveryOutcome.DELIVERED)
-            self.assertGreaterEqual(len(responses), 1,
-                                    "server must receive at least one POST")
+            self.assertGreaterEqual(len(responses), 1, "server must receive at least one POST")
         finally:
             server.shutdown()
+            server.server_close()
 
     def test_retry_then_success(self):
         from hub.apps.integrations.openlineage.adapter import (
-            DeliveryOutcome, OpenLineageAdapter,
+            DeliveryOutcome,
+            OpenLineageAdapter,
         )
 
         # First request → 503 (transient), second → 200 (success).
@@ -218,14 +240,15 @@ class TestOutboundMetric(TransactionTestCase):
                 tenant=None,
             )
             self.assertEqual(outcome, DeliveryOutcome.DELIVERED)
-            self.assertEqual(len(responses), 2,
-                             "should see exactly 2 requests (retry + success)")
+            self.assertEqual(len(responses), 2, "should see exactly 2 requests (retry + success)")
         finally:
             server.shutdown()
+            server.server_close()
 
     def test_dlq_emits_result_dlq(self):
         from hub.apps.integrations.openlineage.adapter import (
-            DeliveryOutcome, OpenLineageAdapter,
+            DeliveryOutcome,
+            OpenLineageAdapter,
         )
 
         tenant = _create_tenant()
@@ -243,10 +266,10 @@ class TestOutboundMetric(TransactionTestCase):
                 tenant=tenant,
             )
             self.assertEqual(outcome, DeliveryOutcome.DEAD_LETTERED)
-            self.assertEqual(len(responses), 1,
-                             "permanent failure: exactly one attempt, then DLQ")
+            self.assertEqual(len(responses), 1, "permanent failure: exactly one attempt, then DLQ")
         finally:
             server.shutdown()
+            server.server_close()
 
 
 # ---------------------------------------------------------------------------
@@ -257,21 +280,22 @@ class TestOutboundMetric(TransactionTestCase):
 @pytest.mark.django_db(transaction=True)
 @override_settings(OPENLINEAGE_HMAC_SIGNING_KEY=HMAC_KEY)
 class TestInboundTranslatesAndReturnsEdges(TransactionTestCase):
-
     def setUp(self):
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         connection.close()
         connection.savepoint_ids = []
         connection.needs_rollback = False
         connection.ensure_connection()
-
-
 
     def test_inbound_creates_edge_when_both_endpoints_resolve(self):
         from hub.apps.contracts.models import LineageEdge
@@ -318,7 +342,8 @@ class TestInboundTranslatesAndReturnsEdges(TransactionTestCase):
         client = APIClient()
         # source / target uuids that don't exist for this tenant.
         event = _build_event(
-            source_id=uuid.uuid4(), target_id=uuid.uuid4(),
+            source_id=uuid.uuid4(),
+            target_id=uuid.uuid4(),
         )
         body = json.dumps(event).encode("utf-8")
         resp = client.post(
@@ -342,21 +367,22 @@ class TestInboundTranslatesAndReturnsEdges(TransactionTestCase):
 @pytest.mark.django_db(transaction=True)
 @override_settings(OPENLINEAGE_HMAC_SIGNING_KEY=HMAC_KEY)
 class TestInboundIdempotency(TransactionTestCase):
-
     def setUp(self):
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         connection.close()
         connection.savepoint_ids = []
         connection.needs_rollback = False
         connection.ensure_connection()
-
-
 
     def test_duplicate_event_id_returns_original_202_zero_new_edges(self):
         from hub.apps.contracts.models import LineageEdge
@@ -375,7 +401,9 @@ class TestInboundIdempotency(TransactionTestCase):
         sig = _hmac_sign(body)
 
         first = client.post(
-            INBOUND_URL, data=body, content_type="application/json",
+            INBOUND_URL,
+            data=body,
+            content_type="application/json",
             HTTP_X_MESHANT_SIGNATURE=sig,
             HTTP_X_MESHANT_OPENLINEAGE_KEY=plaintext,
         )
@@ -388,7 +416,9 @@ class TestInboundIdempotency(TransactionTestCase):
 
         # Same body, same key, same signature — duplicate POST.
         second = client.post(
-            INBOUND_URL, data=body, content_type="application/json",
+            INBOUND_URL,
+            data=body,
+            content_type="application/json",
             HTTP_X_MESHANT_SIGNATURE=sig,
             HTTP_X_MESHANT_OPENLINEAGE_KEY=plaintext,
         )
@@ -407,9 +437,13 @@ class TestInboundIdempotency(TransactionTestCase):
         )
 
         # And exactly one OpenLineageInboundEvent persisted.
-        assert OpenLineageInboundEvent.objects.filter(
-            tenant=tenant, event_id=event["run"]["runId"],
-        ).count() == 1
+        assert (
+            OpenLineageInboundEvent.objects.filter(
+                tenant=tenant,
+                event_id=event["run"]["runId"],
+            ).count()
+            == 1
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -420,21 +454,22 @@ class TestInboundIdempotency(TransactionTestCase):
 @pytest.mark.django_db(transaction=True)
 @override_settings(OPENLINEAGE_HMAC_SIGNING_KEY=HMAC_KEY)
 class TestInboundPayloadCaps(TransactionTestCase):
-
     def setUp(self):
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         connection.close()
         connection.savepoint_ids = []
         connection.needs_rollback = False
         connection.ensure_connection()
-
-
 
     def test_body_over_1mb_returns_413(self):
         tenant = _create_tenant()
@@ -461,12 +496,10 @@ class TestInboundPayloadCaps(TransactionTestCase):
         event = _build_event()
         # 60 inputs + 60 outputs = 120 total > 100.
         event["inputs"] = [
-            {"namespace": "meshant.contracts", "name": str(uuid.uuid4())}
-            for _ in range(60)
+            {"namespace": "meshant.contracts", "name": str(uuid.uuid4())} for _ in range(60)
         ]
         event["outputs"] = [
-            {"namespace": "meshant.contracts", "name": str(uuid.uuid4())}
-            for _ in range(60)
+            {"namespace": "meshant.contracts", "name": str(uuid.uuid4())} for _ in range(60)
         ]
         body = json.dumps(event).encode("utf-8")
         resp = client.post(
@@ -490,7 +523,6 @@ class TestInboundPayloadCaps(TransactionTestCase):
 
 @pytest.mark.django_db(transaction=True)
 class TestKeyAuditEvents(TransactionTestCase):
-
     def _login(self, client, user):
         # Match the auth-cookie pattern existing F4 tests use.
         client.force_authenticate(user=user)
@@ -504,12 +536,14 @@ class TestKeyAuditEvents(TransactionTestCase):
         self._login(client, admin)
 
         before = AuditEvent.objects.filter(
-            action="OPENLINEAGE_KEY_CREATED", tenant=tenant,
+            action="OPENLINEAGE_KEY_CREATED",
+            tenant=tenant,
         ).count()
         resp = client.post(KEYS_URL, data={"label": "audit-test"}, format="json")
         assert resp.status_code == 201
         after = AuditEvent.objects.filter(
-            action="OPENLINEAGE_KEY_CREATED", tenant=tenant,
+            action="OPENLINEAGE_KEY_CREATED",
+            tenant=tenant,
         ).count()
         assert after - before == 1
 
@@ -523,12 +557,14 @@ class TestKeyAuditEvents(TransactionTestCase):
         self._login(client, admin)
 
         before = AuditEvent.objects.filter(
-            action="OPENLINEAGE_KEY_REVOKED", tenant=tenant,
+            action="OPENLINEAGE_KEY_REVOKED",
+            tenant=tenant,
         ).count()
         resp = client.delete(f"{KEYS_URL}{key_row.id}/")
         assert resp.status_code == 204
         after = AuditEvent.objects.filter(
-            action="OPENLINEAGE_KEY_REVOKED", tenant=tenant,
+            action="OPENLINEAGE_KEY_REVOKED",
+            tenant=tenant,
         ).count()
         assert after - before == 1
 
@@ -541,7 +577,8 @@ class TestKeyAuditEvents(TransactionTestCase):
 
         tenant = _create_tenant()
         before = AuditEvent.objects.filter(
-            action="OPENLINEAGE_KEY_ROTATED", tenant=tenant,
+            action="OPENLINEAGE_KEY_ROTATED",
+            tenant=tenant,
         ).count()
         call_command(
             "rotate_openlineage_keys",
@@ -549,7 +586,8 @@ class TestKeyAuditEvents(TransactionTestCase):
             stdout=StringIO(),
         )
         after = AuditEvent.objects.filter(
-            action="OPENLINEAGE_KEY_ROTATED", tenant=tenant,
+            action="OPENLINEAGE_KEY_ROTATED",
+            tenant=tenant,
         ).count()
         assert after - before == 1
 
@@ -564,21 +602,22 @@ class TestKeyAuditEvents(TransactionTestCase):
 @pytest.mark.django_db(transaction=True)
 @override_settings(OPENLINEAGE_HMAC_SIGNING_KEY=HMAC_KEY)
 class TestKeyGraceUsageAudit(TransactionTestCase):
-
     def setUp(self):
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         connection.close()
         connection.savepoint_ids = []
         connection.needs_rollback = False
         connection.ensure_connection()
-
-
 
     def test_first_grace_period_request_emits_audit(self):
         from hub.apps.audit.models import AuditEvent
@@ -605,7 +644,8 @@ class TestKeyGraceUsageAudit(TransactionTestCase):
         client = APIClient()
 
         before = AuditEvent.objects.filter(
-            action="OPENLINEAGE_KEY_GRACE_USED", tenant=tenant,
+            action="OPENLINEAGE_KEY_GRACE_USED",
+            tenant=tenant,
         ).count()
 
         event = _build_event(source_id=str(src.id), target_id=str(tgt.id))
@@ -620,11 +660,11 @@ class TestKeyGraceUsageAudit(TransactionTestCase):
         assert resp.status_code == 202, resp.content
 
         after = AuditEvent.objects.filter(
-            action="OPENLINEAGE_KEY_GRACE_USED", tenant=tenant,
+            action="OPENLINEAGE_KEY_GRACE_USED",
+            tenant=tenant,
         ).count()
         assert after - before == 1, (
-            f"first grace-window auth must emit 1 audit; "
-            f"got delta={after - before}"
+            f"first grace-window auth must emit 1 audit; got delta={after - before}"
         )
         # Latch field set so subsequent uses don't fire again.
         key.refresh_from_db()
@@ -667,11 +707,10 @@ class TestKeyGraceUsageAudit(TransactionTestCase):
             assert resp.status_code == 202
 
         count = AuditEvent.objects.filter(
-            action="OPENLINEAGE_KEY_GRACE_USED", tenant=tenant,
+            action="OPENLINEAGE_KEY_GRACE_USED",
+            tenant=tenant,
         ).count()
-        assert count == 1, (
-            f"only the FIRST grace-window auth must audit; got {count}"
-        )
+        assert count == 1, f"only the FIRST grace-window auth must audit; got {count}"
 
     def test_non_graced_key_does_not_emit_grace_audit(self):
         """A key with ``expires_at IS NULL`` (not yet rotated) MUST
@@ -685,7 +724,8 @@ class TestKeyGraceUsageAudit(TransactionTestCase):
         client = APIClient()
 
         before = AuditEvent.objects.filter(
-            action="OPENLINEAGE_KEY_GRACE_USED", tenant=tenant,
+            action="OPENLINEAGE_KEY_GRACE_USED",
+            tenant=tenant,
         ).count()
 
         event = _build_event(source_id=str(src.id), target_id=str(tgt.id))
@@ -700,11 +740,11 @@ class TestKeyGraceUsageAudit(TransactionTestCase):
         assert resp.status_code == 202
 
         after = AuditEvent.objects.filter(
-            action="OPENLINEAGE_KEY_GRACE_USED", tenant=tenant,
+            action="OPENLINEAGE_KEY_GRACE_USED",
+            tenant=tenant,
         ).count()
         assert after == before, (
-            "non-graced key must not emit OPENLINEAGE_KEY_GRACE_USED; "
-            f"got delta={after - before}"
+            f"non-graced key must not emit OPENLINEAGE_KEY_GRACE_USED; got delta={after - before}"
         )
 
 
@@ -713,8 +753,9 @@ class TestKeyGraceUsageAudit(TransactionTestCase):
 # ---------------------------------------------------------------------------
 
 
-def _create_dlq_row(tenant, *, replay_attempts=0, permanently_failed=False,
-                    delivered_at=None, next_retry_at=None):
+def _create_dlq_row(
+    tenant, *, replay_attempts=0, permanently_failed=False, delivered_at=None, next_retry_at=None
+):
     from hub.apps.integrations.openlineage.models import OpenLineageDeadLetter
 
     row = OpenLineageDeadLetter(
@@ -745,14 +786,17 @@ def _create_dlq_row(tenant, *, replay_attempts=0, permanently_failed=False,
 
 @pytest.mark.django_db(transaction=True)
 class TestDlqNextRetryAtSchedulingAndFilter(TransactionTestCase):
-
     def setUp(self):
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         connection.close()
         connection.savepoint_ids = []
@@ -761,9 +805,8 @@ class TestDlqNextRetryAtSchedulingAndFilter(TransactionTestCase):
         # TransactionTestCase does not rollback — delete any rows leaked
         # by prior tests so each test starts with a clean DLQ table.
         from hub.apps.integrations.openlineage.models import OpenLineageDeadLetter
+
         OpenLineageDeadLetter.objects.all().delete()
-
-
 
     def test_failed_replay_sets_next_retry_at_in_future(self):
         from hub.apps.integrations.openlineage.adapter import DeliveryOutcome
@@ -781,9 +824,7 @@ class TestDlqNextRetryAtSchedulingAndFilter(TransactionTestCase):
             openlineage_dlq_replay_sweep(max_rows=10)
 
         row.refresh_from_db()
-        assert row.next_retry_at is not None, (
-            "failed replay must schedule next_retry_at"
-        )
+        assert row.next_retry_at is not None, "failed replay must schedule next_retry_at"
         assert row.next_retry_at > timezone.now(), (
             f"next_retry_at must be in the future; got {row.next_retry_at}"
         )
@@ -825,8 +866,9 @@ class TestDlqNextRetryAtSchedulingAndFilter(TransactionTestCase):
         )
 
         tenant = _create_tenant()
-        row = _create_dlq_row(tenant, replay_attempts=2,
-                              next_retry_at=timezone.now() - timedelta(seconds=1))
+        row = _create_dlq_row(
+            tenant, replay_attempts=2, next_retry_at=timezone.now() - timedelta(seconds=1)
+        )
         row_id = row.id
         with mock.patch(
             "hub.apps.integrations.openlineage.adapter.OpenLineageAdapter"
@@ -846,21 +888,22 @@ class TestDlqNextRetryAtSchedulingAndFilter(TransactionTestCase):
 
 @pytest.mark.django_db(transaction=True)
 class TestDlqDepthGauge(TransactionTestCase):
-
     def setUp(self):
         from django.db import connection
-        if not hasattr(connection.ensure_connection, '__self__'):
+
+        if not hasattr(connection.ensure_connection, "__self__"):
             from types import MethodType
+
             from django.db.backends.base.base import BaseDatabaseWrapper
+
             connection.ensure_connection = MethodType(
-                BaseDatabaseWrapper.ensure_connection, connection,
+                BaseDatabaseWrapper.ensure_connection,
+                connection,
             )
         connection.close()
         connection.savepoint_ids = []
         connection.needs_rollback = False
         connection.ensure_connection()
-
-
 
     def test_sweep_emits_dlq_depth_metric(self):
         from hub.apps.integrations.openlineage.adapter import DeliveryOutcome
@@ -873,9 +916,7 @@ class TestDlqDepthGauge(TransactionTestCase):
 
         # Patch the canonical metric symbol at its source — the
         # sweep imports it lazily inside ``_record_dlq_depth_metric``.
-        with mock.patch(
-            "hub.apps.observability.metrics.openlineage_dlq_depth"
-        ) as gauge:
+        with mock.patch("hub.apps.observability.metrics.openlineage_dlq_depth") as gauge:
             with mock.patch(
                 "hub.apps.integrations.openlineage.adapter.OpenLineageAdapter"
             ) as adapter_cls:
@@ -885,8 +926,6 @@ class TestDlqDepthGauge(TransactionTestCase):
         # Sweep emits both depth labels: one per ``permanently_failed`` value.
         labelsets = [c.kwargs for c in gauge.labels.call_args_list]
         kept = [d for d in labelsets if "permanently_failed" in d]
-        assert len(kept) >= 2, (
-            f"sweep must emit both depth labels; got {labelsets}"
-        )
+        assert len(kept) >= 2, f"sweep must emit both depth labels; got {labelsets}"
         values = {d.get("permanently_failed") for d in kept}
         assert {"true", "false"}.issubset(values), values

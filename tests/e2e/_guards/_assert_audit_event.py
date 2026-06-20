@@ -36,6 +36,7 @@ def _audit_event_model():
     # tests that don't have Django set up yet (our own test__guards.py doesn't
     # want Django at import time; it sets up the test DB via pytest-django).
     from hub.apps.audit.models import AuditEvent
+
     return AuditEvent
 
 
@@ -54,8 +55,9 @@ def _recent_events_for(tenant, limit: int = 10) -> list[dict[str, Any]]:
     )
 
 
-def _build_queryset(*, tenant, action: str, resource_type: str,
-                    resource_id=None, result: str = "SUCCESS", **extras):
+def _build_queryset(
+    *, tenant, action: str, resource_type: str, resource_id=None, result: str = "SUCCESS", **extras
+):
     AuditEvent = _audit_event_model()
     qs = AuditEvent.objects.filter(
         action=action,
@@ -69,8 +71,9 @@ def _build_queryset(*, tenant, action: str, resource_type: str,
     return qs
 
 
-def _failure_message(*, tenant, action, resource_type, resource_id, result,
-                     extras, extra_prefix: str = "") -> str:
+def _failure_message(
+    *, tenant, action, resource_type, resource_id, result, extras, extra_prefix: str = ""
+) -> str:
     recent = _recent_events_for(tenant)
     extras_str = f", extras={extras}" if extras else ""
     header = (
@@ -107,14 +110,24 @@ def assert_audit_event(
     we can migrate existing tests with a near-mechanical find/replace.
     """
     qs = _build_queryset(
-        tenant=tenant, action=action, resource_type=resource_type,
-        resource_id=resource_id, result=result, **extras,
+        tenant=tenant,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        result=result,
+        **extras,
     )
     if not qs.exists():
-        raise AssertionError(_failure_message(
-            tenant=tenant, action=action, resource_type=resource_type,
-            resource_id=resource_id, result=result, extras=extras,
-        ))
+        raise AssertionError(
+            _failure_message(
+                tenant=tenant,
+                action=action,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                result=result,
+                extras=extras,
+            )
+        )
 
 
 def assert_audit_event_eventually(
@@ -142,15 +155,25 @@ def assert_audit_event_eventually(
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         qs = _build_queryset(
-            tenant=tenant, action=action, resource_type=resource_type,
-            resource_id=resource_id, result=result, **extras,
+            tenant=tenant,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            result=result,
+            **extras,
         )
         if qs.exists():
             return
         time.sleep(poll_interval)
 
-    raise AssertionError(_failure_message(
-        tenant=tenant, action=action, resource_type=resource_type,
-        resource_id=resource_id, result=result, extras=extras,
-        extra_prefix=f"(after polling {timeout:.1f}s) ",
-    ))
+    raise AssertionError(
+        _failure_message(
+            tenant=tenant,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            result=result,
+            extras=extras,
+            extra_prefix=f"(after polling {timeout:.1f}s) ",
+        )
+    )

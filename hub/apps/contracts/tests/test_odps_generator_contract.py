@@ -114,7 +114,8 @@ class ODPSGeneratorContractEmbeddingTest(SimpleTestCase):
 
         with self.assertRaises(ODPSExportError) as context:
             generate_odps_from_hubcontract(
-                hub_contract, original_odcs_contract="not-a-dict"  # Invalid type
+                hub_contract,
+                original_odcs_contract="not-a-dict",  # Invalid type
             )
 
         error = context.exception
@@ -565,8 +566,11 @@ class ODPSGeneratorContractIntegrationTest(SimpleTestCase):
         spec = result["product"]["contract"]["spec"]
         self.assertIn("schema", spec)
         self.assertIn("properties", spec["schema"])
-        self.assertIn("nested", spec["schema"]["properties"],
-            "Nested schema structure must be preserved in contract spec")
+        self.assertIn(
+            "nested",
+            spec["schema"]["properties"],
+            "Nested schema structure must be preserved in contract spec",
+        )
         nested = spec["schema"]["properties"]["nested"]
         self.assertIn("properties", nested)
         self.assertIn("level1", nested["properties"])

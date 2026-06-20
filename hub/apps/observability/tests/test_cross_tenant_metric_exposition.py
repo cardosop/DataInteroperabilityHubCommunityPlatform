@@ -35,6 +35,7 @@ We pin the labels to ``endpoint="semantic.ingest_rdf"`` and
 ``cross_tenant_denied()`` helper signature drifts (e.g. someone renames
 the endpoint label).
 """
+
 from __future__ import annotations
 
 import re
@@ -46,10 +47,9 @@ from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase
 from rest_framework.test import APIClient
 
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -68,10 +68,10 @@ EXPECTED_REASON_LABEL = "body_tenant_mismatch"
 #: existing prometheus_client default labels (e.g. ``_created`` family)
 #: don't break the match.
 _COUNTER_LINE_RE = re.compile(
-    r'^cross_tenant_denied_total\{[^}]*'
+    r"^cross_tenant_denied_total\{[^}]*"
     rf'endpoint="{re.escape(EXPECTED_ENDPOINT_LABEL)}"'
-    r'[^}]*\}\s+'
-    r'(?P<value>[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*$',
+    r"[^}]*\}\s+"
+    r"(?P<value>[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*$",
     re.MULTILINE,
 )
 
@@ -85,8 +85,7 @@ def _read_counter_from_metrics(client: APIClient) -> float:
     """
     response = client.get("/metrics/")
     assert response.status_code in (200, 503), (
-        f"/metrics/ returned unexpected {response.status_code}: "
-        f"{response.content[:300]!r}"
+        f"/metrics/ returned unexpected {response.status_code}: {response.content[:300]!r}"
     )
     if response.status_code == 503:
         # Metrics subsystem unavailable — surface a clear failure rather
@@ -102,15 +101,14 @@ def _read_counter_from_metrics(client: APIClient) -> float:
             value = float(match.group("value"))
         except ValueError:
             continue
-        if value > max_value:
-            max_value = value
+        max_value = max(max_value, value)
     return max_value
 
 
 def _make_tenant(prefix: str) -> Tenant:
     suffix = uuid.uuid4().hex[:8]
     tenant = cast(
-        Tenant,
+        "Tenant",
         Tenant.objects.create(
             name=f"{prefix}-{suffix}",
             slug=f"{prefix}-{suffix}",
@@ -135,6 +133,7 @@ def _make_user(tenant: Tenant) -> Any:
 # ---------------------------------------------------------------------------
 # The exposition test
 # ---------------------------------------------------------------------------
+
 
 class CrossTenantDeniedMetricExpositionTests(TransactionTestCase):
     """End-to-end exposition: denial → counter increment → /metrics/ scrape."""
@@ -161,7 +160,7 @@ class CrossTenantDeniedMetricExpositionTests(TransactionTestCase):
         denial_response = self.api_client.post(
             self.endpoint,
             {
-                "graph_data": "<urn:s> <urn:p> \"o\" .",
+                "graph_data": '<urn:s> <urn:p> "o" .',
                 "format": "turtle",
                 "tenant_id": str(self.tenant_b.id),
             },
@@ -212,7 +211,7 @@ class CrossTenantDeniedMetricExpositionTests(TransactionTestCase):
         denial_response = self.api_client.post(
             self.endpoint,
             {
-                "graph_data": "<urn:s> <urn:p> \"o\" .",
+                "graph_data": '<urn:s> <urn:p> "o" .',
                 "format": "turtle",
                 "tenant_id": str(self.tenant_b.id),
             },
@@ -222,7 +221,7 @@ class CrossTenantDeniedMetricExpositionTests(TransactionTestCase):
 
         response = self.metrics_client.get("/metrics/")
         if response.status_code == 503:
-            pytest.skip("Metrics subsystem unavailable in this environment")
+            pytest.skip("Metrics subsystem unavailable in this environment")  # noqa: skip-in-body — runtime service dependency
         self.assertEqual(response.status_code, 200)
         body = response.content.decode("utf-8")
 

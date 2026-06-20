@@ -1,13 +1,13 @@
 """
 Unit tests for SupportChannel object normalization.
 """
+
 import json
 
-import pytest
 from django.test import TestCase
 
-from hub.apps.contracts.normalization import normalize_contract
 from hub.apps.contracts.models import NormalizationStatus
+from hub.apps.contracts.normalization import normalize_contract
 
 
 class TestSupportChannelNormalization(TestCase):
@@ -41,13 +41,14 @@ class TestSupportChannelNormalization(TestCase):
             ],
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
-        assert status == NormalizationStatus.NORMALIZED_OK or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert (
+            status == NormalizationStatus.NORMALIZED_OK
+            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        )
         assert hub_contract is not None
 
         # Check contacts (entries with name/email)
@@ -66,7 +67,9 @@ class TestSupportChannelNormalization(TestCase):
         assert slack_channel["description"] == "Slack support channel"
         assert slack_channel["scope"] == "general"
 
-        ticket_channel = next((c for c in hub_contract["support"] if c.get("tool") == "ticket"), None)
+        ticket_channel = next(
+            (c for c in hub_contract["support"] if c.get("tool") == "ticket"), None
+        )
         assert ticket_channel is not None
         assert ticket_channel["url"] == "https://tickets.example.com"
 
@@ -100,10 +103,8 @@ class TestSupportChannelNormalization(TestCase):
             ],
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         assert hub_contract is not None
@@ -133,10 +134,8 @@ class TestSupportChannelNormalization(TestCase):
             ],
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         assert hub_contract is not None
@@ -166,10 +165,8 @@ class TestSupportChannelNormalization(TestCase):
             ],
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         assert hub_contract is not None
@@ -191,13 +188,14 @@ class TestSupportChannelNormalization(TestCase):
             "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
-        assert status == NormalizationStatus.NORMALIZED_OK or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert (
+            status == NormalizationStatus.NORMALIZED_OK
+            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        )
         assert hub_contract is not None
         # support should not be present if not in source
         assert "support" not in hub_contract or hub_contract.get("support") is None
@@ -214,15 +212,19 @@ class TestSupportChannelNormalization(TestCase):
             "support": "invalid_string",  # Should be list
         }
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status, _errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
 
         # Should still normalize but skip invalid support
-        assert status == NormalizationStatus.NORMALIZED_OK or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        assert (
+            status == NormalizationStatus.NORMALIZED_OK
+            or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        )
         assert hub_contract is not None
         # support should not be present if invalid
-        assert "support" not in hub_contract or hub_contract.get("support") is None or len(hub_contract.get("support", [])) == 0
-
+        assert (
+            "support" not in hub_contract
+            or hub_contract.get("support") is None
+            or len(hub_contract.get("support", [])) == 0
+        )

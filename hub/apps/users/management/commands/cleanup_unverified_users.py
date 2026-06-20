@@ -1,12 +1,11 @@
 from __future__ import annotations
+
 from datetime import timedelta
-from typing import Optional
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
-
 
 DEFAULT_UNVERIFIED_USER_RETENTION_DAYS: int = 30
 _PERSONAL_TENANT_SLUG_PREFIX = "personal-"
@@ -17,8 +16,7 @@ def _is_auto_created_personal_tenant(*, user, tenant) -> bool:
         return False
     expected_name = f"Personal - {user.email}"
     return bool(
-        tenant.slug.startswith(_PERSONAL_TENANT_SLUG_PREFIX)
-        and tenant.name == expected_name
+        tenant.slug.startswith(_PERSONAL_TENANT_SLUG_PREFIX) and tenant.name == expected_name
     )
 
 
@@ -41,9 +39,9 @@ def _should_delete_personal_tenant_after_user_delete(
 ) -> bool:
     from hub.apps.users.models import User, UserTenantMembership
 
-    has_other_primary_users = User.objects.filter(tenant=tenant).exclude(
-        pk=deleting_user_id
-    ).exists()
+    has_other_primary_users = (
+        User.objects.filter(tenant=tenant).exclude(pk=deleting_user_id).exists()
+    )
     if has_other_primary_users:
         return False
     has_other_memberships = (
@@ -122,9 +120,7 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         from hub.apps.users.models import User
 
-        retention_days = self._resolve_retention_days(
-            explicit_days=opts.get("retention_days")
-        )
+        retention_days = self._resolve_retention_days(explicit_days=opts.get("retention_days"))
         cutoff = timezone.now() - timedelta(days=retention_days)
         candidates = (
             User.objects.filter(
@@ -185,7 +181,7 @@ class Command(BaseCommand):
             )
         )
 
-    def _resolve_retention_days(self, *, explicit_days: Optional[int]) -> int:
+    def _resolve_retention_days(self, *, explicit_days: int | None) -> int:
         if explicit_days is not None:
             return int(explicit_days)
         configured_days = getattr(

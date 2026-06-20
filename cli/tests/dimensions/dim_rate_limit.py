@@ -11,6 +11,7 @@ rate limit is exceeded, and that the error message is user-friendly
 """
 
 import time
+
 import requests
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_base_url
@@ -88,9 +89,7 @@ def test_backoff_resolves_after_waiting():
             wait = int(resp.headers.get("Retry-After", "2"))
             time.sleep(min(wait, 10))
             retry = requests.get(url, headers=headers, timeout=10)
-            assert retry.status_code == 200, (
-                f"After backoff, still got {retry.status_code}"
-            )
+            assert retry.status_code == 200, f"After backoff, still got {retry.status_code}"
             return
 
     pytest.skip("Rate limiter did not fire")

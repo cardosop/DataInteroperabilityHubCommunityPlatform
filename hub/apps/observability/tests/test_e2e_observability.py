@@ -9,27 +9,26 @@ from datetime import timedelta
 import pytest
 
 pytestmark = pytest.mark.slow
+import uuid
+
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.datasets.models import Dataset
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.observability.data_slas import DataSLAMonitor
 from hub.apps.observability.incident_management import IncidentManager
 from hub.apps.observability.models import (
     DataIncident,
     DataObservabilityMetric,
-    DataSLA,
     PipelineExecution,
 )
 from hub.apps.observability.pipeline_monitoring import PipelineMonitor
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -120,7 +119,7 @@ class PipelineMonitoringE2ETest(TestCase):
         """Test syncing pipeline executions from Job records"""
         # Create multiple jobs
         jobs = []
-        for i in range(3):
+        for _i in range(3):
             job = Job.objects.create(
                 tenant=self.tenant,
                 type=JobType.DQ_RUN,
@@ -382,7 +381,7 @@ class DataIncidentsE2ETest(TestCase):
         DataSLAMonitor.check_compliance(str(sla.id))
 
         # Step 4: Auto-detect incidents
-        result = IncidentManager.auto_detect_incidents(str(self.tenant.id))
+        IncidentManager.auto_detect_incidents(str(self.tenant.id))
 
         # Step 5: Verify incident was created
         incidents = DataIncident.objects.filter(

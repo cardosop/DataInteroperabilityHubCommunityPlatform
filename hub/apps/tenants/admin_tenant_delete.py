@@ -28,7 +28,9 @@ Rejection contract (REQ-ADMIN-TENANT-DELETE-001):
   (idempotency contract — the operator's second click on the
   "Deactivate" button shouldn't error opaquely).
 """
+
 from __future__ import annotations
+
 import logging
 from datetime import timedelta
 
@@ -121,9 +123,7 @@ class AdminTenantDeleteView(APIView):
         # below.
         with transaction.atomic():
             try:
-                tenant = (
-                    Tenant.all_objects.select_for_update().get(pk=tenant_id)
-                )
+                tenant = Tenant.all_objects.select_for_update().get(pk=tenant_id)
             except Tenant.DoesNotExist:
                 return Response(
                     {"detail": "Tenant not found."},

@@ -31,14 +31,13 @@ class TestErrorResponseStructure:
         client = APIClient()
         response = client.get("/api/v1/assets/nonexistent-id-12345/")
         if response.status_code >= 500:
-            pytest.skip("Backend unavailable")
+            pytest.skip("Backend unavailable")  # noqa: skip-in-body — runtime service dependency
 
         # 404 from DRF returns {"detail": "Not found."}
         if response.status_code == 404:
             try:
                 data = response.json()
-                assert "detail" in data, \
-                    f"404 response missing 'detail': {data}"
+                assert "detail" in data, f"404 response missing 'detail': {data}"
             except json.JSONDecodeError:
                 pass  # Some endpoints may not return JSON for 404
 
@@ -50,8 +49,9 @@ class TestErrorResponseStructure:
         if response.status_code == 405:
             try:
                 data = response.json()
-                assert "detail" in data or "error" in data, \
+                assert "detail" in data or "error" in data, (
                     f"405 response missing error details: {data}"
+                )
             except json.JSONDecodeError:
                 pass
 
@@ -63,8 +63,7 @@ class TestErrorResponseStructure:
         if method == "GET":
             response = client.get(endpoint)
         elif method == "POST":
-            response = client.post(endpoint, data=json.dumps({}),
-                                   content_type="application/json")
+            response = client.post(endpoint, data=json.dumps({}), content_type="application/json")
         elif method == "DELETE":
             response = client.delete(endpoint)
         else:
@@ -74,8 +73,9 @@ class TestErrorResponseStructure:
             ct = response.get("Content-Type", "")
             # JSON content type check
             if response.content:
-                assert "application/json" in ct or response.status_code == 404, \
+                assert "application/json" in ct or response.status_code == 404, (
                     f"Error response for {method} {endpoint} should be JSON, got {ct}"
+                )
 
 
 @pytest.mark.integration
@@ -86,7 +86,7 @@ class TestErrorResponseSanitization:
     # Patterns that must NOT appear in production error responses
     _BLOCKED_PATTERNS = [
         "Traceback (most recent call last)",
-        "File \"",
+        'File "',
         "django/db/",
         "psycopg2",
         "OPERATION_FAILED",
@@ -106,14 +106,12 @@ class TestErrorResponseSanitization:
             try:
                 body = response.content.decode()
                 for pattern in self._BLOCKED_PATTERNS[:2]:  # Check traceback patterns
-                    assert pattern not in body, \
-                        f"Error response contains '{pattern}': {body[:200]}"
+                    assert pattern not in body, f"Error response contains '{pattern}': {body[:200]}"
             except Exception:
-                pass  # Non-JSON body, check raw
+                # Non-JSON body, check raw
                 body = response.content.decode(errors="replace")
                 for pattern in self._BLOCKED_PATTERNS[:2]:
-                    assert pattern not in body, \
-                        f"Error response contains '{pattern}': {body[:200]}"
+                    assert pattern not in body, f"Error response contains '{pattern}': {body[:200]}"
 
     @pytest.mark.django_db
     @override_settings(DEBUG=False)
@@ -126,5 +124,4 @@ class TestErrorResponseSanitization:
         if response.status_code == 500 and response.content:
             body = response.content.decode(errors="replace")
             for pattern in ["Traceback", "django/db/", "psycopg2"]:
-                assert pattern not in body, \
-                    f"500 response must not expose '{pattern}'"
+                assert pattern not in body, f"500 response must not expose '{pattern}'"

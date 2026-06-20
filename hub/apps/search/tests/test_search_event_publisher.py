@@ -5,6 +5,8 @@ Tests event publishing using real EventPublisher and EventBus (no mocks/stubs).
 All tests use real services and models following engineering best practices.
 """
 
+import uuid
+
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -12,7 +14,6 @@ from hub.apps.core.events.models import Event
 from hub.apps.core.events.service_publishers import SearchEventPublisher
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 
 @override_settings(
@@ -32,11 +33,16 @@ class SearchEventPublisherTest(TestCase):
         identical payloads from previous runs are not silently skipped.
         """
         import hub.apps.core.events.bus as bus_module
+
         bus_module._event_bus = None
 
         # Flush Redis dedup keys so events are persisted fresh each run
         try:
-            from hub.apps.core.events.deduplication import get_redis_client, DEDUPLICATION_KEY_PREFIX
+            from hub.apps.core.events.deduplication import (
+                DEDUPLICATION_KEY_PREFIX,
+                get_redis_client,
+            )
+
             redis_client = get_redis_client()
             if redis_client:
                 for key in redis_client.scan_iter(f"{DEDUPLICATION_KEY_PREFIX}:*"):
@@ -45,7 +51,9 @@ class SearchEventPublisherTest(TestCase):
             pass
 
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
@@ -66,6 +74,7 @@ class SearchEventPublisherTest(TestCase):
     def tearDown(self):
         """Reset global event bus singleton after tests."""
         import hub.apps.core.events.bus as bus_module
+
         bus_module._event_bus = None
 
     def test_publish_search_query_event(self):

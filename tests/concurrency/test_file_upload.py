@@ -1,6 +1,9 @@
 """Phase 103: File record creation consistency."""
+
 import uuid
+
 from django.test import TestCase
+
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import Tenant
 
@@ -11,7 +14,8 @@ class FileUploadConsistencyTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"File {uid}", slug=f"file-{uid}",
+            name=f"File {uid}",
+            slug=f"file-{uid}",
         )
 
     def test_multiple_files_all_succeed(self):
@@ -24,9 +28,7 @@ class FileUploadConsistencyTest(TestCase):
                 storage_path=f"test/{uuid.uuid4().hex}.csv",
                 status=FileStatus.PENDING,
             )
-        self.assertEqual(
-            File.objects.filter(tenant=self.tenant).count(), 5
-        )
+        self.assertEqual(File.objects.filter(tenant=self.tenant).count(), 5)
 
     def test_file_count_matches_creates(self):
         ids = []

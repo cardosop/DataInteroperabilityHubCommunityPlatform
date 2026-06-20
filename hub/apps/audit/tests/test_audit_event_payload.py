@@ -3,11 +3,11 @@ Phase 121G — Audit Event Payload Tests
 
 Verifies audit events have correct structure and required fields.
 """
+
 import uuid
 
 from django.test import TestCase
 
-from hub.apps.audit.models import AuditEvent
 from hub.apps.audit.utils import create_audit_event
 
 

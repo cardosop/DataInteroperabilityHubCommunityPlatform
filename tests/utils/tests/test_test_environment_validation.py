@@ -4,15 +4,13 @@ Tests for test environment validation module.
 Following TDD approach - tests define expected behavior.
 """
 
-import os
 import pytest
+
 from tests.utils.test_environment_validation import (
-    EnvironmentValidator,
-    EnvironmentValidationError,
-    validate_test_environment,
+    TestEnvironmentValidationError,
     # Backward compatibility
     TestEnvironmentValidator,
-    TestEnvironmentValidationError,
+    validate_test_environment,
 )
 
 
@@ -36,7 +34,7 @@ class TestTestEnvironmentValidator:
         monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key")
 
         validator = TestEnvironmentValidator(strict=True)
-        is_valid, errors, warnings = validator.validate_all()
+        is_valid, errors, _warnings = validator.validate_all()
 
         assert is_valid is True
         assert len(errors) == 0
@@ -54,7 +52,7 @@ class TestTestEnvironmentValidator:
             monkeypatch.delenv(var, raising=False)
 
         validator = TestEnvironmentValidator(strict=True)
-        is_valid, errors, warnings = validator.validate_all()
+        is_valid, errors, _warnings = validator.validate_all()
 
         assert is_valid is False
         assert len(errors) > 0
@@ -77,7 +75,7 @@ class TestTestEnvironmentValidator:
         monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key")
 
         validator = TestEnvironmentValidator(strict=True)
-        is_valid, errors, warnings = validator.validate_all()
+        is_valid, errors, _warnings = validator.validate_all()
 
         assert is_valid is False
         assert any("Invalid URL format" in error for error in errors)
@@ -98,7 +96,7 @@ class TestTestEnvironmentValidator:
         monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key")
 
         validator = TestEnvironmentValidator(strict=True)
-        is_valid, errors, warnings = validator.validate_all()
+        is_valid, errors, _warnings = validator.validate_all()
 
         assert is_valid is False
         assert any("Invalid POSTGRES_PORT" in error for error in errors)
@@ -110,7 +108,7 @@ class TestTestEnvironmentValidator:
         monkeypatch.delenv("REDIS_URL", raising=False)
 
         validator = TestEnvironmentValidator(strict=False)
-        is_valid, errors, warnings = validator.validate_all()
+        _is_valid, errors, warnings = validator.validate_all()
 
         # In non-strict mode, missing vars generate warnings, not errors
         assert len(errors) == 0
@@ -159,7 +157,7 @@ class TestValidateTestEnvironment:
         monkeypatch.setenv("SECRET_KEY", "test-secret-key")
         monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key")
 
-        is_valid, errors, warnings = validate_test_environment(strict=True)
+        is_valid, errors, _warnings = validate_test_environment(strict=True)
         assert is_valid is True
         assert len(errors) == 0
 
@@ -184,4 +182,3 @@ class TestValidateTestEnvironment:
         assert is_valid is False
         assert len(errors) == 0  # Errors become warnings in non-strict mode
         assert len(warnings) > 0
-

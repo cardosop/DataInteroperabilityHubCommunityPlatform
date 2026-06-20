@@ -4,7 +4,8 @@ Utilities for virtualization source configuration.
 Provides credential masking for API responses so sensitive fields
 (password, connection_string, etc.) are never exposed.
 """
-from typing import Any, Dict, List
+
+from typing import Any
 
 # Fields to mask in source configs when returning via API
 SENSITIVE_SOURCE_FIELDS = [
@@ -21,7 +22,7 @@ SENSITIVE_SOURCE_FIELDS = [
 ]
 
 
-def mask_source_config(config: Dict[str, Any]) -> Dict[str, Any]:
+def mask_source_config(config: dict[str, Any]) -> dict[str, Any]:
     """
     Mask sensitive fields in a source configuration for API response.
 
@@ -37,9 +38,7 @@ def mask_source_config(config: Dict[str, Any]) -> Dict[str, Any]:
     masked = {}
     for key, value in config.items():
         key_lower = key.lower()
-        is_sensitive = any(
-            s in key_lower for s in SENSITIVE_SOURCE_FIELDS
-        )
+        is_sensitive = any(s in key_lower for s in SENSITIVE_SOURCE_FIELDS)
         if is_sensitive and value:
             masked[key] = "***masked***"
         else:
@@ -48,8 +47,8 @@ def mask_source_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def mask_sources_for_api(
-    sources: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    sources: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """
     Mask sensitive fields in all source configs for API response.
 

@@ -25,7 +25,6 @@ from hub.apps.contracts.models import (
     ValidationStatus,
 )
 from hub.apps.datasets.models import Dataset
-from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
 from hub.apps.files.models import File, FileStatus
 from hub.apps.jobs.models import JobType
 from hub.apps.jobs.utils import create_job
@@ -72,9 +71,14 @@ class ActivationBlockersAPITest(TestCase):
             created_by=self.user,
         )
 
-    def _make_contract(self, asset, *, con_status=ContractStatus.ACTIVE,
-                       val_status=ValidationStatus.VALID,
-                       norm_status=NormalizationStatus.NORMALIZED_OK):
+    def _make_contract(
+        self,
+        asset,
+        *,
+        con_status=ContractStatus.ACTIVE,
+        val_status=ValidationStatus.VALID,
+        norm_status=NormalizationStatus.NORMALIZED_OK,
+    ):
         return Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
@@ -108,8 +112,16 @@ class ActivationBlockersAPITest(TestCase):
             created_by=self.user,
         )
 
-    def _make_compliance_run(self, asset, dataset, *, run_status=ComplianceRunStatus.SUCCEEDED,
-                             overall="PASS", risk="LOW", allowed=True):
+    def _make_compliance_run(
+        self,
+        asset,
+        dataset,
+        *,
+        run_status=ComplianceRunStatus.SUCCEEDED,
+        overall="PASS",
+        risk="LOW",
+        allowed=True,
+    ):
         job = create_job(
             tenant=self.tenant,
             user=self.user,
@@ -236,8 +248,13 @@ class ActivationBlockersAPITest(TestCase):
 
     # -- multiple blockers ------------------------------------------------
 
-    def test_multiple_blockers_returned(self):
-        """No contract + DQ FAIL -> both blockers in details array."""
+    def test_contract_blocker_returned_when_no_contract(self):
+        """Without a contract, the contract blocker is returned first.
+
+        DQ and compliance blockers only appear when a dataset exists AND
+        the contract check already passed.  With no contract the blocker
+        list may only contain the contract message — verify at least one
+        blocker is returned."""
         asset = self._make_asset(dq=DQStatus.FAIL, compliance=ComplianceStatus.FAIL)
         self._make_dataset(asset)
         resp = self._activate(asset)
@@ -245,10 +262,6 @@ class ActivationBlockersAPITest(TestCase):
         details = resp.data.get("details", [])
         details_str = str(details)
         self.assertIn("ACTIVE contract", details_str)
-        # DQ and compliance blockers only appear when a dataset exists AND
-        # the contract check already passed; with no contract the blocker
-        # list may only contain the contract message.  Verify at least one
-        # blocker is returned.
         self.assertGreaterEqual(len(details), 1)
 
     # -- compliance run blocks activation ---------------------------------
@@ -259,7 +272,8 @@ class ActivationBlockersAPITest(TestCase):
         self._make_contract(asset)
         ds = self._make_dataset(asset)
         self._make_compliance_run(
-            asset, ds,
+            asset,
+            ds,
             run_status=ComplianceRunStatus.FAILED,
             overall="FAIL",
             risk="HIGH",

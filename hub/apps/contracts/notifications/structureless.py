@@ -30,11 +30,13 @@ Design notes
   staging default, so ops can override per-environment without code
   edits.
 """
+
 from __future__ import annotations
 
 import datetime as _dt
 import logging
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 from django.conf import settings
 
@@ -70,10 +72,7 @@ def _format_deadline(deadline: _dt.datetime | _dt.date) -> str:
         return deadline.date().isoformat()
     if isinstance(deadline, _dt.date):
         return deadline.isoformat()
-    raise TypeError(
-        "deadline must be a datetime or date instance; "
-        f"got {type(deadline).__name__}"
-    )
+    raise TypeError(f"deadline must be a datetime or date instance; got {type(deadline).__name__}")
 
 
 def _summarise_contract(
@@ -98,9 +97,7 @@ def _summarise_contract(
         "id": contract_id,
         "name": str(name),
         "spec_type": str(getattr(contract, "original_spec_type", "")),
-        "schema_editor_url": schema_editor_url_template.replace(
-            "{contract_id}", contract_id
-        ),
+        "schema_editor_url": schema_editor_url_template.replace("{contract_id}", contract_id),
     }
 
 
@@ -148,9 +145,7 @@ def send_structureless_contract_pending_notification(
         _DEFAULT_SCHEMA_EDITOR_URL,
     )
     contract_summaries = [
-        _summarise_contract(
-            c, schema_editor_url_template=schema_editor_url_template
-        )
+        _summarise_contract(c, schema_editor_url_template=schema_editor_url_template)
         for c in structureless_contracts
     ]
 
@@ -159,9 +154,7 @@ def send_structureless_contract_pending_notification(
         f"{getattr(tenant, 'name', 'your tenant')}"
     )
 
-    template_name = (
-        "notifications/emails/asset_contract_structureless_pending.html"
-    )
+    template_name = "notifications/emails/asset_contract_structureless_pending.html"
 
     email_type_value = EmailType.ASSET_CONTRACT_STRUCTURELESS_PENDING.value
     tenant_id = str(getattr(tenant, "id", "")) or None

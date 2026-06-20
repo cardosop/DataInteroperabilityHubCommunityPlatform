@@ -6,13 +6,11 @@ All create/update/delete paths apply validation and audit.
 """
 
 import uuid
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 
 from django.contrib.auth import get_user_model
 
 if TYPE_CHECKING:
-    from hub.apps.tenants.models import Tenant
-
     User = get_user_model()
 from django.db import IntegrityError, transaction
 
@@ -34,7 +32,7 @@ class UserService(BaseService):
 
     service_name = "user_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         self.tenant_id = tenant_id
         self.user_id = user_id
 
@@ -44,10 +42,10 @@ class UserService(BaseService):
         tenant_id: str,
         actor_user_id: str,
         email: str,
-        password: Optional[str] = None,
-        display_name: Optional[str] = None,
-        status: Optional[str] = None,
-        role_ids: Optional[list] = None,
+        password: str | None = None,
+        display_name: str | None = None,
+        status: str | None = None,
+        role_ids: list | None = None,
         send_invitation: bool = True,
         **kwargs,
     ) -> User:
@@ -82,6 +80,7 @@ class UserService(BaseService):
 
         # Plan limit enforcement
         from hub.apps.tenants.services import PlanLimitService
+
         plan_limit_service = PlanLimitService(tenant_id=tenant_id)
         plan_limit_service.check_limit(
             tenant_id=tenant_id,
@@ -223,8 +222,8 @@ class UserService(BaseService):
         tenant_id: str,
         actor_user_id: str,
         email: str,
-        display_name: Optional[str] = None,
-        role_ids: Optional[list] = None,
+        display_name: str | None = None,
+        role_ids: list | None = None,
         send_invitation: bool = True,
     ) -> tuple[User, bool]:
         """
@@ -265,9 +264,9 @@ class UserService(BaseService):
             from hub.apps.users.models import UserTenantMembership
 
             already_member = (
-                (existing_user.tenant_id is not None and str(existing_user.tenant_id) == str(tenant_id))
-                or UserTenantMembership.objects.filter(user=existing_user, tenant=tenant).exists()
-            )
+                existing_user.tenant_id is not None
+                and str(existing_user.tenant_id) == str(tenant_id)
+            ) or UserTenantMembership.objects.filter(user=existing_user, tenant=tenant).exists()
             if already_member:
                 # Idempotent: user already a member → return existing user with
                 # created=False, matching the non-member existing-user branch below.
@@ -380,9 +379,13 @@ class UserService(BaseService):
             # would produce (review fix from 225.5.review).
             user.status = UserStatus.DISABLED
             user.token_version += 1
-            user.save(update_fields=[
-                "status", "token_version", "updated_at",
-            ])
+            user.save(
+                update_fields=[
+                    "status",
+                    "token_version",
+                    "updated_at",
+                ]
+            )
             log_user_operation(
                 action="USER_DISABLED",
                 user=user,
@@ -410,21 +413,50 @@ class UserTenantMembershipService:
     Per design D16 and specs/tenants/spec.md User Tenant Membership.
     """
 
-    def add_membership(self, user, tenant) -> None:
+    def add_membership(
+        self, user, tenant, actor_user=None, reason: str = ""
+    ) -> None:
         """
         Add user to tenant (idempotent). Creates UserTenantMembership if not exists.
 
         Args:
             user: User instance
             tenant: Tenant instance
+            actor_user: Optional user performing the grant (for audit).
+            reason: Optional human-readable reason (for audit).
         """
         from .models import UserTenantMembership
 
-        UserTenantMembership.objects.get_or_create(
+        membership, created = UserTenantMembership.objects.get_or_create(
             user=user,
             tenant=tenant,
             defaults={},
         )
+        if not created:
+            return  # idempotent — do not emit a second audit event
+
+        # Emit MEMBERSHIP_GRANTED audit event.
+        try:
+            from hub.apps.audit.event_types import MEMBERSHIP_GRANTED
+            from hub.apps.audit.utils import create_audit_event
+
+            create_audit_event(
+                resource_type="USER_TENANT_MEMBERSHIP",
+                action=MEMBERSHIP_GRANTED,
+                tenant=tenant,
+                actor_user=actor_user,
+                resource_id=str(user.id),
+                details={
+                    "subject_user_id": str(user.id),
+                    "actor_user_id": str(actor_user.id) if actor_user else None,
+                    "tenant_id": str(tenant.id),
+                    "membership_id": str(membership.id),
+                    "reason": reason or "",
+                },
+            )
+        except Exception:
+            # Audit emission is best-effort; never block the operation.
+            pass
 
     def list_tenants_for_user(self, user) -> list:
         """
@@ -468,14 +500,73 @@ class UserTenantMembershipService:
 
         from .models import UserTenantMembership
 
-        return UserTenantMembership.objects.filter(
-            user=user, tenant_id=tenant_id
-        ).exists()
+        return UserTenantMembership.objects.filter(user=user, tenant_id=tenant_id).exists()
+
+    def remove_membership(
+        self,
+        user,
+        tenant,
+        actor_user=None,
+        reason: str = "",
+    ) -> bool:
+        """
+        Remove a user's membership from a tenant.
+
+        Deletes the ``UserTenantMembership`` row if it exists.
+        Returns True if a membership was deleted, False if none existed.
+
+        Args:
+            user: User instance
+            tenant: Tenant instance
+            actor_user: User performing the removal (for audit)
+            reason: Human-readable reason for the removal
+        """
+        from .models import UserTenantMembership
+
+        # Capture membership id before deletion for the audit trail.
+        membership = UserTenantMembership.objects.filter(
+            user=user,
+            tenant=tenant,
+        ).first()
+
+        if membership is None:
+            return False
+
+        membership_id = str(membership.id)
+        deleted, _ = UserTenantMembership.objects.filter(
+            id=membership.id,
+        ).delete()
+
+        # Emit MEMBERSHIP_REVOKED audit event.
+        try:
+            from hub.apps.audit.event_types import MEMBERSHIP_REVOKED
+            from hub.apps.audit.utils import create_audit_event
+
+            create_audit_event(
+                resource_type="USER_TENANT_MEMBERSHIP",
+                action=MEMBERSHIP_REVOKED,
+                tenant=tenant,
+                actor_user=actor_user,
+                resource_id=str(user.id),
+                details={
+                    "subject_user_id": str(user.id),
+                    "actor_user_id": str(actor_user.id) if actor_user else None,
+                    "tenant_id": str(tenant.id),
+                    "membership_id": membership_id,
+                    "reason": reason or "",
+                },
+            )
+        except Exception:
+            # Audit emission is best-effort; never block the operation.
+            pass
+
+        return deleted > 0
 
 
 # ---------------------------------------------------------------------------
 # Phase 227 Wave 0 — tenant-admin lookup
 # ---------------------------------------------------------------------------
+
 
 def get_tenant_admin_users(tenant) -> "Any":
     """Return the active TENANT_ADMIN users for a tenant.

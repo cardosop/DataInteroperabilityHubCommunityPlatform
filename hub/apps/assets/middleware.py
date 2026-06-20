@@ -33,14 +33,13 @@ The Sunset date is gated by
 to the deploy date + 90 days if unset, which lines up with the
 3-release-cycle phase-2 column-drop schedule from D250.4).
 """
+
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from django.conf import settings
-
 
 _ASSETS_PATH_RE = re.compile(r"^/api/v[0-9]+/assets/")
 
@@ -58,33 +57,29 @@ def _format_rfc7231(dt: datetime) -> str:
     """Format a timezone-aware datetime as an RFC-7231 IMF-fixdate."""
     if dt.tzinfo is None:
         # Defensive: treat naive datetimes as UTC. RFC-7231 requires GMT.
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc).strftime(_RFC7231_FORMAT)
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC).strftime(_RFC7231_FORMAT)
 
 
 def _resolve_sunset_date() -> str:
     """Return the RFC-7231 sunset date for the visibility deprecation."""
-    configured: Optional[datetime] = getattr(
+    configured: datetime | None = getattr(
         settings, "ASSET_VISIBILITY_DEPRECATION_SUNSET_DATE", None
     )
     if configured is not None:
         return _format_rfc7231(configured)
-    fallback = datetime.now(timezone.utc) + timedelta(
-        days=_DEFAULT_SUNSET_OFFSET_DAYS
-    )
+    fallback = datetime.now(UTC) + timedelta(days=_DEFAULT_SUNSET_OFFSET_DAYS)
     return _format_rfc7231(fallback)
 
 
 def _no_cache_window_active() -> bool:
     """True iff the post-deploy no-cache window is still open."""
-    until: Optional[datetime] = getattr(
-        settings, "ASSET_VISIBILITY_DEPRECATION_NO_CACHE_UNTIL", None
-    )
+    until: datetime | None = getattr(settings, "ASSET_VISIBILITY_DEPRECATION_NO_CACHE_UNTIL", None)
     if until is None:
         return False
     if until.tzinfo is None:
-        until = until.replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) < until
+        until = until.replace(tzinfo=UTC)
+    return datetime.now(UTC) < until
 
 
 class AssetVisibilityDeprecationHeadersMiddleware:
@@ -111,7 +106,7 @@ class AssetVisibilityDeprecationHeadersMiddleware:
         # The Link header carries the deprecation-doc URL so admins
         # can read the migration guide directly from the response.
         response["Link"] = (
-            '</docs/api/migrations/visibility-deprecation.md>; '
+            "</docs/api/migrations/visibility-deprecation.md>; "
             'rel="deprecation"; type="text/markdown"'
         )
 
@@ -143,11 +138,12 @@ class DataFirstBodyCapMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
+        from django.http import JsonResponse
+
         from hub.apps.assets.data_first_body_guard import (
             evaluate_data_first_body_headers,
             is_data_first_post,
         )
-        from django.http import JsonResponse
 
         if is_data_first_post(request):
             rejection = evaluate_data_first_body_headers(

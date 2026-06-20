@@ -3,33 +3,34 @@ Webhook Serializers
 
 Serializers for webhook models.
 """
+
 from rest_framework import serializers
+
 from .models import Webhook, WebhookDelivery, WebhookEventType
 
 
 class WebhookSerializer(serializers.ModelSerializer):
     """Serializer for Webhook model"""
+
     secret = serializers.CharField(
-        write_only=True,
-        required=True,
-        help_text="Webhook secret for HMAC signature"
+        write_only=True, required=True, help_text="Webhook secret for HMAC signature"
     )
 
     class Meta:
         model = Webhook
         fields = [
-            'id',
-            'name',
-            'url',
-            'secret',
-            'event_types',
-            'status',
-            'max_retries',
-            'retry_intervals',
-            'created_at',
-            'updated_at'
+            "id",
+            "name",
+            "url",
+            "secret",
+            "event_types",
+            "status",
+            "max_retries",
+            "retry_intervals",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ["id", "created_at", "updated_at"]
 
     def validate_url(self, value):
         """Validate webhook URL is safe (SSRF protection).
@@ -39,9 +40,11 @@ class WebhookSerializer(serializers.ModelSerializer):
         the guard via ``@override_settings(WEBHOOK_SSRF_ENABLED=False)``.
         """
         from django.conf import settings as dj_settings
+
         if not getattr(dj_settings, "WEBHOOK_SSRF_ENABLED", True):
             return value
         from .ssrf_guard import validate_webhook_url
+
         validate_webhook_url(value, raise_as_validation_error=True)
         return value
 
@@ -74,40 +77,39 @@ class WebhookSerializer(serializers.ModelSerializer):
 class WebhookDeliverySerializer(serializers.ModelSerializer):
     """Serializer for WebhookDelivery model"""
 
-    webhook_name = serializers.CharField(source='webhook.name', read_only=True)
-    webhook_url = serializers.URLField(source='webhook.url', read_only=True)
+    webhook_name = serializers.CharField(source="webhook.name", read_only=True)
+    webhook_url = serializers.URLField(source="webhook.url", read_only=True)
 
     class Meta:
         model = WebhookDelivery
         fields = [
-            'id',
-            'webhook',
-            'webhook_name',
-            'webhook_url',
-            'event_type',
-            'payload',
-            'signature',
-            'status',
-            'attempt_number',
-            'http_status_code',
-            'response_body',
-            'error_message',
-            'delivered_at',
-            'next_retry_at',
-            'created_at',
-            'updated_at'
+            "id",
+            "webhook",
+            "webhook_name",
+            "webhook_url",
+            "event_type",
+            "payload",
+            "signature",
+            "status",
+            "attempt_number",
+            "http_status_code",
+            "response_body",
+            "error_message",
+            "delivered_at",
+            "next_retry_at",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = [
-            'id',
-            'signature',
-            'status',
-            'attempt_number',
-            'http_status_code',
-            'response_body',
-            'error_message',
-            'delivered_at',
-            'next_retry_at',
-            'created_at',
-            'updated_at'
+            "id",
+            "signature",
+            "status",
+            "attempt_number",
+            "http_status_code",
+            "response_body",
+            "error_message",
+            "delivered_at",
+            "next_retry_at",
+            "created_at",
+            "updated_at",
         ]
-

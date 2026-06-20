@@ -5,7 +5,9 @@ Provides two base classes:
 - AsyncWebSocketTestCase (TestCase) — fast, for in-memory async tests
 - AsyncWebSocketTransactionTestCase — for tests needing cross-thread DB
 """
+
 import uuid
+
 from django.test import TestCase, TransactionTestCase
 
 
@@ -19,10 +21,13 @@ class _WebSocketTestHelpers:
         return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
     def create_unique_tenant(
-        self, name_prefix="Test Tenant",
-        slug_prefix="test-tenant", **kwargs,
+        self,
+        name_prefix="Test Tenant",
+        slug_prefix="test-tenant",
+        **kwargs,
     ):
         from hub.apps.tenants.models import Tenant
+
         return Tenant.objects.create(
             name=self.get_unique_tenant_name(name_prefix),
             slug=self.get_unique_slug(slug_prefix),
@@ -33,16 +38,67 @@ class _WebSocketTestHelpers:
         return f"{prefix}-{uuid.uuid4().hex[:8]}@example.com"
 
     def create_unique_user(
-        self, tenant=None, email_prefix="test", **kwargs,
+        self,
+        tenant=None,
+        email_prefix="test",
+        **kwargs,
     ):
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         if tenant is None:
             tenant = self.create_unique_tenant()
         email = self.get_unique_email(email_prefix)
         return User.objects.create_user(
-            email=email, tenant=tenant, **kwargs,
+            email=email,
+            tenant=tenant,
+            **kwargs,
         )
+
+    def create_test_consumer(
+        self,
+        user=None,
+        tenant=None,
+        *,
+        with_replay: bool = True,
+        with_dedup_redis: bool = False,
+    ):
+        """Create a fully-mocked EventConsumer for unit testing.
+
+        Returns an EventConsumer whose ``send_json_message``, ``send``,
+        and ``close`` are all ``AsyncMock`` instances so tests can
+        assert on calls without a real WebSocket connection.
+
+        Args:
+            user: Override the default test user in ``scope``.
+            tenant: Override the default test tenant in ``scope``.
+            with_replay: If True (default), set ``replay_enabled``,
+                ``replay_window_seconds``, and ``last_event_timestamps``
+                so replay-dependent tests work out of the box.
+            with_dedup_redis: If True, mock ``_get_deduplication_redis_client``
+                to return a ``MagicMock`` (prevents real Redis connections).
+        """
+        from unittest.mock import AsyncMock, MagicMock
+        from datetime import UTC, datetime
+
+        from hub.apps.websocket.consumers.event_consumer import EventConsumer
+
+        consumer = EventConsumer()
+        consumer.scope = {"user": user or self.user, "tenant": tenant or self.tenant}
+        consumer.channel_name = "test_channel"
+        consumer.channel_layer = None
+        consumer.send_json_message = AsyncMock()
+        consumer.send = AsyncMock()
+        consumer.close = AsyncMock()
+        consumer.last_activity = datetime.now(UTC)
+        consumer._connection_closed = False
+        if with_replay:
+            consumer.replay_enabled = True
+            consumer.replay_window_seconds = 3600
+            consumer.last_event_timestamps = {}
+        if with_dedup_redis:
+            consumer._get_deduplication_redis_client = MagicMock(return_value=None)
+        return consumer
 
 
 class AsyncWebSocketTestCase(_WebSocketTestHelpers, TestCase):
@@ -57,7 +113,8 @@ class AsyncWebSocketTestCase(_WebSocketTestHelpers, TestCase):
 
 
 class AsyncWebSocketTransactionTestCase(
-    _WebSocketTestHelpers, TransactionTestCase,
+    _WebSocketTestHelpers,
+    TransactionTestCase,
 ):
     """Base class for async tests needing cross-thread DB access.
 

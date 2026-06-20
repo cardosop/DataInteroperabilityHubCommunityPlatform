@@ -38,6 +38,7 @@ External boundaries (S3 storage, compliance / DQ HTTP clients) are
 mocked at their boundaries; everything else (engine, registry,
 versioning, ORM, audit) runs against the real implementations.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -47,27 +48,23 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from hub.apps.assets.models import Asset
 from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.models import AuditEvent
 from hub.apps.files.models import File, FileStatus
 from hub.apps.orchestration.models import (
     WorkflowDefinition,
     WorkflowInstance,
-    WorkflowStatus,
 )
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.versioning import WorkflowVersionManager
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.workflows.asset_creation import (
     AssetCreationWorkflow,
-    FailClosedRejection,
 )
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -177,9 +174,7 @@ class DualVersionRegistrationTest(TestCase):
         registry = WorkflowRegistry()
         AssetCreationWorkflow.register_workflow(registry)
 
-        rows = list(
-            WorkflowDefinition.objects.filter(name="asset_creation").order_by("version")
-        )
+        rows = list(WorkflowDefinition.objects.filter(name="asset_creation").order_by("version"))
         versions = sorted(d.version for d in rows)
         assert "1.0.0" in versions, (
             "v1 must be registered for the soak window (D250.7) so "
@@ -193,12 +188,8 @@ class DualVersionRegistrationTest(TestCase):
 
         v1 = WorkflowDefinition.objects.get(name="asset_creation", version="1.0.0")
         v2 = WorkflowDefinition.objects.get(name="asset_creation", version="2.0.0")
-        assert v1.is_active is False, (
-            "v1 MUST be deactivated so new instances default to v2"
-        )
-        assert v2.is_active is True, (
-            "v2 MUST be the active version after register_workflow returns"
-        )
+        assert v1.is_active is False, "v1 MUST be deactivated so new instances default to v2"
+        assert v2.is_active is True, "v2 MUST be the active version after register_workflow returns"
 
     def test_explicit_v1_version_pins_legacy_dsl(self):
         tenant, user, _file = _seed_tenant_user_file(fail_closed=False)
@@ -222,9 +213,7 @@ class DualVersionRegistrationTest(TestCase):
         instance.refresh_from_db()
         assert instance.workflow_version == "1.0.0"
         # The instance's DSL MUST be the v1 sequence, not v2.
-        v1_step_names = [
-            s["name"] for s in instance.workflow_definition.dsl_json["steps"]
-        ]
+        v1_step_names = [s["name"] for s in instance.workflow_definition.dsl_json["steps"]]
         assert "run_dq_checks" in v1_step_names
         assert "run_compliance_checks" in v1_step_names
         # v2-only step MUST NOT appear in the v1 DSL.
@@ -258,8 +247,7 @@ class DualVersionRegistrationTest(TestCase):
             "v1 MUST persist asset BEFORE running DQ checks (legacy contract)"
         )
         assert create_idx < comp_idx, (
-            "v1 MUST persist asset BEFORE running compliance checks "
-            "(legacy contract)"
+            "v1 MUST persist asset BEFORE running compliance checks (legacy contract)"
         )
 
 
@@ -275,7 +263,7 @@ class InFlightMigrationTest(TestCase):
         """Start an asset_creation workflow under v1.0.0, then register v2.0.0
         (which deactivates v1), then continue executing the v1 instance and
         assert it completes on the v1 step sequence."""
-        tenant, user, file_obj = _seed_tenant_user_file(fail_closed=False)
+        tenant, user, _file_obj = _seed_tenant_user_file(fail_closed=False)
         engine = WorkflowEngine()
         AssetCreationWorkflow.register_tasks(engine)
 
@@ -300,8 +288,7 @@ class InFlightMigrationTest(TestCase):
         )
         instance.refresh_from_db()
         assert instance.workflow_version == "1.0.0", (
-            "instance MUST be pinned to v1 because that's the active "
-            "version at create-time"
+            "instance MUST be pinned to v1 because that's the active version at create-time"
         )
         v1_pin_id = instance.workflow_definition_id
 
@@ -326,14 +313,14 @@ class InFlightMigrationTest(TestCase):
         # tenant.compliance_fail_closed_enabled=False, the workflow runs
         # cleanly through to completion.
         instance = engine.start_instance(str(instance.id))
-        with _patch_storage(), _patch_compliance(
-            {"overall_status": "PASS", "allowed_to_store": True, "metadata": {}}
-        ), _patch_dq(
-            {"overall_status": "PASS", "quality_score": 95.0, "metadata": {}}
-        ), patch(
-            "hub.apps.orchestration.workflows.data_quality.DataQualityCheckWorkflow.execute"
-        ) as mock_dq_wf, patch(
-            "hub.apps.compliance.views.execute_compliance_run"
+        with (
+            _patch_storage(),
+            _patch_compliance({"overall_status": "PASS", "allowed_to_store": True, "metadata": {}}),
+            _patch_dq({"overall_status": "PASS", "quality_score": 95.0, "metadata": {}}),
+            patch(
+                "hub.apps.orchestration.workflows.data_quality.DataQualityCheckWorkflow.execute"
+            ) as mock_dq_wf,
+            patch("hub.apps.compliance.views.execute_compliance_run"),
         ):
             mock_dq_wf.return_value = {
                 "success": True,
@@ -354,14 +341,10 @@ class InFlightMigrationTest(TestCase):
         )
 
         # Verify v1-only step rows exist (not v2 step rows).
-        executed_step_names = set(
-            instance.steps.values_list("step_name", flat=True)
-        )
-        assert "run_dq_checks" in executed_step_names or \
-            "run_compliance_checks" in executed_step_names, (
-            f"v1 instance MUST have v1-only step rows; got "
-            f"{sorted(executed_step_names)}"
-        )
+        executed_step_names = set(instance.steps.values_list("step_name", flat=True))
+        assert (
+            "run_dq_checks" in executed_step_names or "run_compliance_checks" in executed_step_names
+        ), f"v1 instance MUST have v1-only step rows; got {sorted(executed_step_names)}"
         assert "compliance_check_inmemory" not in executed_step_names, (
             "v2-only step MUST NOT appear on a v1 instance"
         )
@@ -378,7 +361,7 @@ class InFlightMigrationTest(TestCase):
         would lose their in-flight runs to a flag they didn't configure
         when they started.
         """
-        tenant, user, file_obj = _seed_tenant_user_file(fail_closed=True)
+        tenant, user, _file_obj = _seed_tenant_user_file(fail_closed=True)
         engine = WorkflowEngine()
         AssetCreationWorkflow.register_tasks(engine)
         registry = WorkflowRegistry()
@@ -414,10 +397,13 @@ class InFlightMigrationTest(TestCase):
             pass
 
         # No fail-closed audit event must have fired.
-        assert AuditEvent.objects.filter(
-            action=audit_event_types.ASSET_FAIL_CLOSED_REJECTED,
-            tenant=tenant,
-        ).count() == 0
+        assert (
+            AuditEvent.objects.filter(
+                action=audit_event_types.ASSET_FAIL_CLOSED_REJECTED,
+                tenant=tenant,
+            ).count()
+            == 0
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -442,6 +428,7 @@ class SoakWindowEligibilityTest(TestCase):
     def test_v1_ineligible_outside_soak_window(self):
         """A version deactivated more than ``soak_days`` ago is ineligible."""
         from datetime import timedelta
+
         from django.utils import timezone
 
         registry = WorkflowRegistry()
@@ -449,9 +436,9 @@ class SoakWindowEligibilityTest(TestCase):
 
         # Backdate v1's updated_at to outside the soak window.
         old_ts = timezone.now() - timedelta(days=30)
-        WorkflowDefinition.objects.filter(
-            name="asset_creation", version="1.0.0"
-        ).update(updated_at=old_ts)
+        WorkflowDefinition.objects.filter(name="asset_creation", version="1.0.0").update(
+            updated_at=old_ts
+        )
 
         assert not WorkflowVersionManager.is_version_eligible_for_inflight(
             "asset_creation", "1.0.0", soak_days=14

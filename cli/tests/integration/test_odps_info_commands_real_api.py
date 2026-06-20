@@ -15,16 +15,17 @@ To run these tests:
 3. Set API key: export DATAHUB_API_KEY=your-api-key
 4. Run: pytest tests/integration/test_odps_info_commands_real_api.py -v
 """
-import pytest
-import requests
-import tempfile
+
+import json
 import os
 import re
-import json
 import subprocess
+
+import pytest
+import requests
 from click.testing import CliRunner
-from datahub_cli.main import cli
 from datahub_cli.config import config
+from datahub_cli.main import cli
 
 
 class TestODPSInfoCommandsRealAPI:
@@ -39,9 +40,9 @@ class TestODPSInfoCommandsRealAPI:
 
         # Try to get API key from environment, config, or use test key
         api_key = (
-            os.environ.get('DATAHUB_API_KEY') or
-            config.get_api_key() or
-            'test-api-key-cli-integration-12345'  # Test key created via Django shell
+            os.environ.get("DATAHUB_API_KEY")
+            or config.get_api_key()
+            or "test-api-key-cli-integration-12345"  # Test key created via Django shell
         )
         config.set_api_key(api_key)
 
@@ -57,7 +58,9 @@ class TestODPSInfoCommandsRealAPI:
     def _check_api_available(self):
         """Check if API service is available"""
         try:
-            response = requests.get(os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=5)
+            response = requests.get(
+                os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1") + "/", timeout=5
+            )
             return response.status_code in [200, 401, 403]  # Any response means API is up
         except Exception:
             return False
@@ -68,65 +71,59 @@ class TestODPSInfoCommandsRealAPI:
         This bypasses CSRF issues and creates a contract we can test against.
         Returns the contract ID.
         """
-        odps_content_json = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product-odps-info",
-                        "name": "Test Product for ODPS Info",
-                        "description": "Test product for ODPS information display"
-                    }
-                },
-                "contract": {
-                    "apiVersion": "odcs/v3",
-                    "kind": "DataContract",
-                    "id": "test-contract-odps-info",
-                    "name": "Test Contract for ODPS Info",
-                    "version": "1.0.0",
-                    "schema": {
-                        "fields": [
+        odps_content_json = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-product-odps-info",
+                            "name": "Test Product for ODPS Info",
+                            "description": "Test product for ODPS information display",
+                        }
+                    },
+                    "contract": {
+                        "apiVersion": "odcs/v3",
+                        "kind": "DataContract",
+                        "id": "test-contract-odps-info",
+                        "name": "Test Contract for ODPS Info",
+                        "version": "1.0.0",
+                        "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
+                    },
+                    "marketplace": {
+                        "pricingPlans": [
                             {
-                                "name": "id",
-                                "type": "string",
-                                "nullable": False
-                            }
-                        ]
-                    }
+                                "planID": "basic",
+                                "name": "Basic Plan",
+                                "price": 9.99,
+                                "currency": "USD",
+                                "billingPeriod": "monthly",
+                            },
+                            {
+                                "planID": "premium",
+                                "name": "Premium Plan",
+                                "price": 49.99,
+                                "currency": "USD",
+                                "billingPeriod": "monthly",
+                                "isDefault": True,
+                            },
+                        ],
+                        "accessMethods": {
+                            "api": {
+                                "type": "REST API",
+                                "endpoint": "https://api.example.com/v1/products/test-product-odps-info",
+                                "protocol": "HTTPS",
+                            },
+                            "download": {
+                                "type": "File Download",
+                                "url": "https://download.example.com/data.zip",
+                            },
+                        },
+                    },
                 },
-                "marketplace": {
-                    "pricingPlans": [
-                        {
-                            "planID": "basic",
-                            "name": "Basic Plan",
-                            "price": 9.99,
-                            "currency": "USD",
-                            "billingPeriod": "monthly"
-                        },
-                        {
-                            "planID": "premium",
-                            "name": "Premium Plan",
-                            "price": 49.99,
-                            "currency": "USD",
-                            "billingPeriod": "monthly",
-                            "isDefault": True
-                        }
-                    ],
-                    "accessMethods": {
-                        "api": {
-                            "type": "REST API",
-                            "endpoint": "https://api.example.com/v1/products/test-product-odps-info",
-                            "protocol": "HTTPS"
-                        },
-                        "download": {
-                            "type": "File Download",
-                            "url": "https://download.example.com/data.zip"
-                        }
-                    }
-                }
             }
-        })
+        )
 
         # Create contract via Django shell in the API service container
         django_shell_script = f"""
@@ -141,7 +138,7 @@ tenant = Tenant.objects.get(slug='cli-test-tenant')
 user = User.objects.get(email='cli-test@example.com')
 
 # Create ODPS contract
-odps_raw = {repr(odps_content_json)}
+odps_raw = {odps_content_json!r}
 contract = Contract.objects.create(
     tenant=tenant,
     created_by=user,
@@ -197,29 +194,29 @@ print(str(contract.id))
         try:
             # Execute Django shell command in the API service container
             result = subprocess.run(
-                ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'manage.py', 'shell'],
+                ["docker", "compose", "exec", "-T", "api-service", "python", "manage.py", "shell"],
+                check=False,
                 input=django_shell_script,
                 text=True,
                 capture_output=True,
                 timeout=30,
-                cwd='/home/ph/Desktop/DataInteroperabilityHub'
+                cwd="/home/ph/Desktop/DataInteroperabilityHub",
             )
 
             if result.returncode == 0:
                 # Extract contract ID from output (should be a UUID)
-                output_lines = result.stdout.strip().split('\n')
+                output_lines = result.stdout.strip().split("\n")
                 for line in output_lines:
                     # Look for UUID pattern
                     contract_id_match = re.search(
-                        r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
-                        line
+                        r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", line
                     )
                     if contract_id_match:
                         return contract_id_match.group(0)
 
             # If we couldn't extract ID, return None
             return None
-        except (subprocess.TimeoutExpired, subprocess.SubprocessError, Exception) as e:
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, Exception):
             # If Django shell fails, return None
             return None
 
@@ -230,29 +227,23 @@ print(str(contract.id))
         """
         try:
             api_base_url = os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1")
-            api_key = os.environ.get('DATAHUB_API_KEY') or 'test-api-key-cli-integration-12345'
+            api_key = os.environ.get("DATAHUB_API_KEY") or "test-api-key-cli-integration-12345"
 
-            headers = {
-                'Authorization': f'ApiKey {api_key}',
-                'Content-Type': 'application/json'
-            }
+            headers = {"Authorization": f"ApiKey {api_key}", "Content-Type": "application/json"}
 
             # List contracts and find an ODPS one
             response = requests.get(
-                f'{api_base_url}/contracts/',
-                headers=headers,
-                params={'limit': 100},
-                timeout=10
+                f"{api_base_url}/contracts/", headers=headers, params={"limit": 100}, timeout=10
             )
 
             if response.status_code == 200:
                 data = response.json()
-                contracts = data.get('results', []) if isinstance(data, dict) else data
+                contracts = data.get("results", []) if isinstance(data, dict) else data
 
                 # Find first ODPS contract
                 for contract in contracts:
-                    if contract.get('original_spec_type') == 'ODPS':
-                        return contract.get('id')
+                    if contract.get("original_spec_type") == "ODPS":
+                        return contract.get("id")
 
             return None
         except Exception:
@@ -280,15 +271,15 @@ print(str(contract.id))
         # Get or create test contract
         contract_id = self._get_or_create_test_contract_id()
         if not contract_id:
-            pytest.skip("Could not get or create test contract. Check Docker Compose services and database.")
+            pytest.skip(
+                "Could not get or create test contract. Check Docker Compose services and database."
+            )
 
         # Test get with --show-odps flag
-        result = runner.invoke(cli, [
-            'contracts', 'get', contract_id, '--show-odps'
-        ])
+        result = runner.invoke(cli, ["contracts", "get", contract_id, "--show-odps"])
 
         assert result.exit_code == 0, f"CLI failed with output: {result.output}"
-        assert 'ODPS Information' in result.output or 'ODPS' in result.output
+        assert "ODPS Information" in result.output or "ODPS" in result.output
         # Note: May not have pricing/access methods if normalization didn't preserve them
         # This is acceptable - we're testing the command works, not the data structure
 
@@ -301,16 +292,16 @@ print(str(contract.id))
         # Get or create test contract
         contract_id = self._get_or_create_test_contract_id()
         if not contract_id:
-            pytest.skip("Could not get or create test contract. Check Docker Compose services and database.")
+            pytest.skip(
+                "Could not get or create test contract. Check Docker Compose services and database."
+            )
 
         # Test get-pricing command
-        result = runner.invoke(cli, [
-            'contracts', 'get-pricing', contract_id
-        ])
+        result = runner.invoke(cli, ["contracts", "get-pricing", contract_id])
 
         assert result.exit_code == 0, f"CLI failed with output: {result.output}"
         # Should either show pricing plans or a message that none were found
-        assert 'pricing' in result.output.lower() or 'Pricing Plans' in result.output
+        assert "pricing" in result.output.lower() or "Pricing Plans" in result.output
 
     def test_get_access_methods_real_api(self, runner):
         """Test contracts get-access-methods command with real API"""
@@ -321,13 +312,13 @@ print(str(contract.id))
         # Get or create test contract
         contract_id = self._get_or_create_test_contract_id()
         if not contract_id:
-            pytest.skip("Could not get or create test contract. Check Docker Compose services and database.")
+            pytest.skip(
+                "Could not get or create test contract. Check Docker Compose services and database."
+            )
 
         # Test get-access-methods command
-        result = runner.invoke(cli, [
-            'contracts', 'get-access-methods', contract_id
-        ])
+        result = runner.invoke(cli, ["contracts", "get-access-methods", contract_id])
 
         assert result.exit_code == 0, f"CLI failed with output: {result.output}"
         # Should either show access methods or a message that none were found
-        assert 'access' in result.output.lower() or 'Access Methods' in result.output
+        assert "access" in result.output.lower() or "Access Methods" in result.output

@@ -4,23 +4,24 @@ Contract management operations for DataHub SDK.
 Provides high-level methods for managing contracts with support for
 all new objects (Contact, Server, Terms, Definition, Lineage, ServiceLevel, Models).
 """
+
 import re
 import uuid
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
+
 from .client import DataHubClient
 from .errors import (
-    ODPSValidationError,
+    ForbiddenError,
+    NetworkError,
+    NotFoundError,
+    ODCSExportError,
+    ODCSValidationError,
     ODPSExportError,
     ODPSLinkingError,
-    parse_odps_error,
-    ODCSValidationError,
-    ODCSExportError,
-    parse_odcs_error,
-    ValidationError,
-    NotFoundError,
-    ForbiddenError,
+    ODPSValidationError,
     UnauthorizedError,
-    NetworkError,
+    parse_odcs_error,
+    parse_odps_error,
 )
 
 
@@ -161,7 +162,7 @@ class ContractsAPI:
 
         # Check if version is supported
         # Supported ODCS versions (must match backend supported versions)
-        supported_versions = ['2.2.2', '3.0.0', '3.0.0-preview', '3.0.1', '3.0.2']
+        supported_versions = ["2.2.2", "3.0.0", "3.0.0-preview", "3.0.1", "3.0.2"]
         if version not in supported_versions:
             raise ODCSValidationError(
                 f"{param_name} '{version}' is not supported. Supported versions: {', '.join(supported_versions)}",
@@ -171,7 +172,9 @@ class ContractsAPI:
                 actual=version,
             )
 
-    def _validate_format(self, format: str, param_name: str = "format", allowed: Optional[List[str]] = None) -> None:
+    def _validate_format(
+        self, format: str, param_name: str = "format", allowed: Optional[List[str]] = None
+    ) -> None:
         """
         Validate format parameter.
 
@@ -264,7 +267,7 @@ class ContractsAPI:
         Returns:
             Mapped ODPS error or original error
         """
-        from .errors import DataHubError, NotFoundError
+        from .errors import DataHubError
 
         # If it's already an ODPS error, return it
         if isinstance(error, (ODPSValidationError, ODPSExportError, ODPSLinkingError)):
@@ -329,7 +332,7 @@ class ContractsAPI:
         Returns:
             Mapped ODCS error or original error
         """
-        from .errors import DataHubError, NotFoundError
+        from .errors import DataHubError
 
         # If it's already an ODCS error, return it
         if isinstance(error, (ODCSValidationError, ODCSExportError)):
@@ -626,7 +629,7 @@ class ContractsAPI:
         # Auto-detect format if not provided
         if not original_format:
             original_raw_stripped = original_raw.strip()
-            if original_raw_stripped.startswith('{'):
+            if original_raw_stripped.startswith("{"):
                 detected_format = "JSON"
             else:
                 detected_format = "YAML"
@@ -657,7 +660,9 @@ class ContractsAPI:
                 if odps_version:
                     link_data["odps_version"] = odps_version
 
-                return await self.client.post(f"contracts/{link_odcs_id}/link-odps/", data=link_data)
+                return await self.client.post(
+                    f"contracts/{link_odcs_id}/link-odps/", data=link_data
+                )
         except Exception as e:
             # Map and re-raise with ODPS error context
             raise self._handle_odps_error(e, "create") from e
@@ -851,7 +856,9 @@ class ContractsAPI:
             raise ODPSValidationError(
                 f"Parameter validation failed: {str(e)}",
                 error_code="VALIDATION_ERROR",
-                details={"context": {"operation": "unlink_odps_from_odcs", "original_error": str(e)}},
+                details={
+                    "context": {"operation": "unlink_odps_from_odcs", "original_error": str(e)}
+                },
             ) from e
 
         try:
@@ -1143,7 +1150,9 @@ class ContractsAPI:
 
         return None
 
-    def get_product_details(self, contract: Dict[str, Any], lang: str = "en") -> Optional[Dict[str, Any]]:
+    def get_product_details(
+        self, contract: Dict[str, Any], lang: str = "en"
+    ) -> Optional[Dict[str, Any]]:
         """
         Get product details from ODPS contract for a specific language.
 
@@ -1163,6 +1172,7 @@ class ContractsAPI:
         if original_raw:
             try:
                 import json
+
                 odps_data = json.loads(original_raw)
                 product = odps_data.get("product", {})
                 if isinstance(product, dict):
@@ -1256,7 +1266,9 @@ class ContractsAPI:
 
         # Use request() to handle both JSON and YAML responses
         try:
-            response = await self.client.request("GET", f"contracts/{contract_id}/export/", params=params)
+            response = await self.client.request(
+                "GET", f"contracts/{contract_id}/export/", params=params
+            )
         except Exception as e:
             # Map and re-raise with ODPS error context
             raise self._handle_odps_error(e, "export") from e
@@ -1276,6 +1288,7 @@ class ContractsAPI:
             try:
                 # Try parsing the response text as JSON (handles both JSON objects and JSON-encoded strings)
                 import json
+
                 parsed = json.loads(response.text)
                 # If the parsed result is a string, parse it again (handles double-encoded JSON)
                 if isinstance(parsed, str):
@@ -1332,7 +1345,9 @@ class ContractsAPI:
 
         # Use request() to get raw response for binary content
         try:
-            response = await self.client.request("GET", f"contracts/{contract_id}/download/", params=params)
+            response = await self.client.request(
+                "GET", f"contracts/{contract_id}/download/", params=params
+            )
             return response.content
         except Exception as e:
             # Map and re-raise with ODPS error context
@@ -1406,7 +1421,9 @@ class ContractsAPI:
 
         # Use request() to handle both JSON and YAML responses
         try:
-            response = await self.client.request("GET", f"contracts/{contract_id}/export/", params=params)
+            response = await self.client.request(
+                "GET", f"contracts/{contract_id}/export/", params=params
+            )
         except Exception as e:
             # Map and re-raise with ODCS error context
             raise self._handle_odcs_error(e, "export") from e
@@ -1426,6 +1443,7 @@ class ContractsAPI:
             try:
                 # Try parsing the response text as JSON (handles both JSON objects and JSON-encoded strings)
                 import json
+
                 parsed = json.loads(response.text)
                 # If the parsed result is a string, parse it again (handles double-encoded JSON)
                 if isinstance(parsed, str):
@@ -1434,4 +1452,3 @@ class ContractsAPI:
             except (json.JSONDecodeError, ValueError):
                 # Fallback to response.json() if direct parsing fails
                 return response.json()
-

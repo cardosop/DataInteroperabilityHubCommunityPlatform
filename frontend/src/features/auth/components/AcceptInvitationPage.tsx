@@ -9,6 +9,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { authService } from '../services/authService';
+import { useAuthStore } from '../store/authStore';
 import './AcceptInvitationPage.css';
 import { Button } from '../../../shared/components/Button';
 
@@ -48,6 +49,15 @@ export function AcceptInvitationPage() {
     try {
       await authService.acceptInvitation({ token: tokenFromQuery, password });
       await authService.fetchAndStoreUser();
+      // Update the Zustand store with the invited user.  By the time the
+      // user submits this form, the async initialize() from page load has
+      // already completed (it runs once in App.tsx useEffect).  There is
+      // no pending race condition — we can safely set the store state and
+      // navigate client-side without a full page reload.
+      const invitedUser = authService.getUser();
+      if (invitedUser) {
+        useAuthStore.setState({ user: invitedUser, isAuthenticated: true });
+      }
       navigate('/', { replace: true });
     } catch (err) {
       setError(normalizeError(err));

@@ -4,6 +4,7 @@ Covers create_tenant_with_first_user() with real DB — no mocks at the
 service boundary.  Previously this code path was only exercised through
 API views and signal handlers.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -15,12 +16,10 @@ from hub.apps.core.events.models import Event
 from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.tenants.models import (
     KYCStatus,
-    Tenant,
     TenantConfig,
     TenantStatus,
 )
 from hub.apps.tenants.services import TenantOnboardingService
-from hub.apps.users.models import Role, UserRole
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -70,7 +69,8 @@ class CreateTenantWithFirstUserTests(TestCase):
         """Failure: first_user_email is required."""
         with pytest.raises(ValidationError) as exc_info:
             self.service.create_tenant_with_first_user(
-                name="Test", slug=f"test-{self.uid}",
+                name="Test",
+                slug=f"test-{self.uid}",
                 first_user_password="testpass123",
             )
         self.assertIn("email", str(exc_info.value).lower())
@@ -79,7 +79,8 @@ class CreateTenantWithFirstUserTests(TestCase):
         """Failure: first_user_password is required."""
         with pytest.raises(ValidationError) as exc_info:
             self.service.create_tenant_with_first_user(
-                name="Test", slug=f"test-{self.uid}",
+                name="Test",
+                slug=f"test-{self.uid}",
                 first_user_email=self.email,
             )
         self.assertIn("password", str(exc_info.value).lower())
@@ -88,7 +89,8 @@ class CreateTenantWithFirstUserTests(TestCase):
         """Failure: nonexistent plan_slug raises NotFoundError."""
         with pytest.raises(NotFoundError):
             self.service.create_tenant_with_first_user(
-                name="Test", slug=f"test-{self.uid}",
+                name="Test",
+                slug=f"test-{self.uid}",
                 plan_slug="nonexistent-plan-999",
                 first_user_email=self.email,
                 first_user_password="testpass123",
@@ -97,13 +99,15 @@ class CreateTenantWithFirstUserTests(TestCase):
     def test_duplicate_slug_raises_validation_error(self):
         """Failure: duplicate slug raises ValidationError with SLUG_EXISTS."""
         self.service.create_tenant_with_first_user(
-            name="First", slug=f"dup-{self.uid}",
+            name="First",
+            slug=f"dup-{self.uid}",
             first_user_email=f"first-{self.uid}@example.com",
             first_user_password="testpass123",
         )
         with pytest.raises(ValidationError) as exc_info:
             self.service.create_tenant_with_first_user(
-                name="Second", slug=f"dup-{self.uid}",
+                name="Second",
+                slug=f"dup-{self.uid}",
                 first_user_email=f"second-{self.uid}@example.com",
                 first_user_password="testpass123",
             )
@@ -112,13 +116,15 @@ class CreateTenantWithFirstUserTests(TestCase):
     def test_duplicate_email_raises_validation_error(self):
         """Failure: duplicate email raises ValidationError with EMAIL_EXISTS."""
         self.service.create_tenant_with_first_user(
-            name="First", slug=f"first-{self.uid}",
+            name="First",
+            slug=f"first-{self.uid}",
             first_user_email=self.email,
             first_user_password="testpass123",
         )
         with pytest.raises(ValidationError) as exc_info:
             self.service.create_tenant_with_first_user(
-                name="Second", slug=f"second-{self.uid}",
+                name="Second",
+                slug=f"second-{self.uid}",
                 first_user_email=self.email,
                 first_user_password="testpass123",
             )

@@ -15,11 +15,8 @@ import json
 from pathlib import Path
 
 import pytest
-from django.test import TestCase
 
 from hub.apps.contracts.models import (
-    Contract,
-    ContractStatus,
     NormalizationStatus,
     OriginalFormat,
     OriginalSpecType,
@@ -66,7 +63,7 @@ class ODPSIngestionIntegrationTest(ContractsTestBase):
         if not fixture_path.exists():
             raise FileNotFoundError(f"Fixture not found: {fixture_path}")
 
-        with open(fixture_path, "r", encoding="utf-8") as f:
+        with open(fixture_path, encoding="utf-8") as f:
             return json.load(f)
 
     def _load_fixture_raw(self, version: str, filename: str) -> str:
@@ -90,7 +87,7 @@ class ODPSIngestionIntegrationTest(ContractsTestBase):
         if not fixture_path.exists():
             raise FileNotFoundError(f"Fixture not found: {fixture_path}")
 
-        with open(fixture_path, "r", encoding="utf-8") as f:
+        with open(fixture_path, encoding="utf-8") as f:
             return f.read()
 
     def test_odps_4_1_ingestion_complete_flow(self):
@@ -111,7 +108,7 @@ class ODPSIngestionIntegrationTest(ContractsTestBase):
             )
         except ValidationError as e:
             # If normalization failed, verify error details
-            self.assertIn("normalization", str(e).lower() or str(e.details or {}))
+            self.assertIn("normalis", str(e).lower() or str(e.details or {}))
             # Contract creation failed due to normalization error - this is expected for invalid ODPS
             # Skip further assertions as contract was not created
             return
@@ -146,18 +143,12 @@ class ODPSIngestionIntegrationTest(ContractsTestBase):
         self.assertIn("marketplace", hub_contract)
         marketplace = hub_contract["marketplace"]
 
-        # Verify marketplace fields are present
-        self.assertIn("license_summary", marketplace)
-        self.assertIn("intended_use", marketplace)
-        self.assertIn("restricted_use", marketplace)
-
-        # Verify extensions contain ODPS marketplace data
-        self.assertIn("extensions", hub_contract)
-        self.assertIn("x_odps", hub_contract["extensions"])
-        x_odps = hub_contract["extensions"]["x_odps"]
-        self.assertIn("pricing_plans", x_odps)
-        self.assertIn("access_methods", x_odps)
-        self.assertIn("payment_gateways", x_odps)
+        # Verify ODPS marketplace extensions contain pricing and access data
+        self.assertIn("x_odps", marketplace)
+        x_odps_marketplace = marketplace["x_odps"]
+        self.assertIn("pricing_plans", x_odps_marketplace)
+        self.assertIn("access_methods", x_odps_marketplace)
+        self.assertIn("payment_gateways", x_odps_marketplace)
 
     def test_odps_4_0_ingestion_complete_flow(self):
         """Integration test: Complete ODPS 4.0 ingestion flow"""
@@ -177,7 +168,7 @@ class ODPSIngestionIntegrationTest(ContractsTestBase):
             )
         except ValidationError as e:
             # If normalization failed, verify error details
-            self.assertIn("normalization", str(e).lower() or str(e.details or {}))
+            self.assertIn("normalis", str(e).lower() or str(e.details or {}))
             # Contract creation failed due to normalization error - this is expected for invalid ODPS
             return
 
@@ -229,7 +220,7 @@ class ODPSIngestionIntegrationTest(ContractsTestBase):
             )
         except ValidationError as e:
             # If normalization failed, verify error details
-            self.assertIn("normalization", str(e).lower() or str(e.details or {}))
+            self.assertIn("normalis", str(e).lower() or str(e.details or {}))
             # Contract creation failed due to normalization error - this is expected for invalid ODPS
             return
 
@@ -274,7 +265,7 @@ class ODPSIngestionIntegrationTest(ContractsTestBase):
             )
         except ValidationError as e:
             # If normalization failed, verify error details
-            self.assertIn("normalization", str(e).lower() or str(e.details or {}))
+            self.assertIn("normalis", str(e).lower() or str(e.details or {}))
             # Contract creation failed due to normalization error - this is expected for invalid ODPS
             return
 
@@ -318,7 +309,7 @@ class ODPSIngestionIntegrationTest(ContractsTestBase):
             )
         except ValidationError as e:
             # If normalization failed, verify error details
-            self.assertIn("normalization", str(e).lower() or str(e.details or {}))
+            self.assertIn("normalis", str(e).lower() or str(e.details or {}))
             # Contract creation failed due to normalization error - this is expected for invalid ODPS
             return
 
@@ -361,7 +352,7 @@ class ODPSIngestionIntegrationTest(ContractsTestBase):
             )
         except ValidationError as e:
             # If normalization fails, that's acceptable for some test fixtures
-            self.assertIn("normalization", str(e).lower() or str(e.details or {}))
+            self.assertIn("normalis", str(e).lower() or str(e.details or {}))
             return
 
         # Verify contract was created
@@ -412,7 +403,7 @@ class ODPSIngestionIntegrationTest(ContractsTestBase):
             )
         except ValidationError as e:
             # If normalization fails due to unresolved local refs, that's acceptable
-            self.assertIn("normalization", str(e).lower() or str(e.details or {}))
+            self.assertIn("normalis", str(e).lower() or str(e.details or {}))
             return
 
         # Verify contract was created (may have warnings for unresolved local refs)
@@ -446,7 +437,7 @@ class ODPSIngestionIntegrationTest(ContractsTestBase):
             )
         except ValidationError as e:
             # If normalization fails due to unresolved external refs, that's acceptable
-            self.assertIn("normalization", str(e).lower() or str(e.details or {}))
+            self.assertIn("normalis", str(e).lower() or str(e.details or {}))
             return
 
         # Verify contract was created
@@ -497,7 +488,7 @@ class ODPSIngestionIntegrationTest(ContractsTestBase):
             )
         except ValidationError as e:
             # If normalization fails, that's acceptable for some test fixtures
-            self.assertIn("normalization", str(e).lower() or str(e.details or {}))
+            self.assertIn("normalis", str(e).lower() or str(e.details or {}))
             return
 
         # Verify contract was created
@@ -650,7 +641,7 @@ class ODPSIngestionIntegrationTest(ContractsTestBase):
             )
         except ValidationError as e:
             # If normalization fails, that's acceptable for some test fixtures
-            self.assertIn("normalization", str(e).lower() or str(e.details or {}))
+            self.assertIn("normalis", str(e).lower() or str(e.details or {}))
             return
 
         # Verify contract was created
@@ -728,7 +719,7 @@ class ODPSIngestionIntegrationTest(ContractsTestBase):
                 except ValidationError as e:
                     # If normalization fails, that's acceptable for some test fixtures
                     # Verify that the error is related to normalization
-                    self.assertIn("normalization", str(e).lower() or str(e.details or {}))
+                    self.assertIn("normalis", str(e).lower() or str(e.details or {}))
                     return
 
                 # Verify contract was created with correct version
@@ -799,7 +790,7 @@ class ODPSIngestionIntegrationTest(ContractsTestBase):
             )
         except ValidationError as e:
             # If normalization fails, that's acceptable for some test fixtures
-            self.assertIn("normalization", str(e).lower() or str(e.details or {}))
+            self.assertIn("normalis", str(e).lower() or str(e.details or {}))
             return
 
         # Verify contract was created

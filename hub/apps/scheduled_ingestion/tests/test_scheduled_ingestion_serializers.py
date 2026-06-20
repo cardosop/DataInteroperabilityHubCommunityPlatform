@@ -12,7 +12,6 @@ import pytest
 from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract
 from hub.apps.scheduled_ingestion.models import (
     ScheduledIngestion,
     ScheduledIngestionRun,
@@ -80,7 +79,7 @@ class ScheduledIngestionSerializerSuccessTest(TestCase):
 
     def test_deserialize_valid_data(self):
         """Valid input deserializes and validates successfully."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "Weekly Load",
             "source_type": SourceType.GCS,
@@ -100,7 +99,7 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
 
     def test_invalid_file_pattern_regex(self):
         """Invalid regex in file_pattern raises ValidationError."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "Test",
             "source_type": SourceType.S3,
@@ -115,7 +114,7 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
 
     def test_custom_cron_missing_cron_expression(self):
         """CUSTOM_CRON without cron in schedule_config raises ValidationError."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "Cron Job",
             "source_type": SourceType.S3,
@@ -132,7 +131,7 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
 
     def test_custom_cron_invalid_cron_expression(self):
         """Invalid cron expression raises ValidationError."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "Cron Job",
             "source_type": SourceType.S3,
@@ -147,7 +146,7 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
 
     def test_s3_missing_bucket(self):
         """S3 source_type without bucket raises ValidationError."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "S3 Job",
             "source_type": SourceType.S3,
@@ -162,7 +161,7 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
 
     def test_gcs_missing_bucket(self):
         """GCS source_type without bucket raises ValidationError."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "GCS Job",
             "source_type": SourceType.GCS,
@@ -177,7 +176,7 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
 
     def test_azure_blob_missing_account_or_container(self):
         """AZURE_BLOB without account_name or container raises ValidationError."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "Azure Job",
             "source_type": SourceType.AZURE_BLOB,
@@ -192,7 +191,7 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
 
     def test_http_missing_base_url(self):
         """HTTP source_type without base_url raises ValidationError."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "HTTP Job",
             "source_type": SourceType.HTTP,
@@ -207,7 +206,7 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
 
     def test_ftp_missing_host(self):
         """FTP source_type without host raises ValidationError."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "FTP Job",
             "source_type": SourceType.FTP,
@@ -222,7 +221,7 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
 
     def test_database_missing_host_or_database(self):
         """DATABASE without host or database in source_config raises ValidationError."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "DB Job",
             "source_type": SourceType.DATABASE,
@@ -237,7 +236,7 @@ class ScheduledIngestionSerializerFailureTest(TestCase):
 
     def test_asset_id_nonexistent_raises_validation_error(self):
         """Providing non-existent asset_id raises ValidationError."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         fake_uuid = uuid.uuid4()
         data = {
             "name": "With Asset",
@@ -258,7 +257,7 @@ class ScheduledIngestionSerializerEdgeCasesTest(TestCase):
 
     def test_allow_blank_name(self):
         """Serializer allows blank name; business rules may enforce non-blank."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "",
             "source_type": SourceType.S3,
@@ -273,7 +272,7 @@ class ScheduledIngestionSerializerEdgeCasesTest(TestCase):
 
     def test_asset_id_null_allowed(self):
         """asset_id can be omitted (optional)."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "No Asset",
             "source_type": SourceType.S3,
@@ -347,7 +346,7 @@ class ScheduledIngestionCreateSerializerSuccessTest(TestCase):
 
     def test_create_serializer_valid_with_test_connection_false(self):
         """Valid data with test_connection=False passes validation."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "Create Test",
             "source_type": SourceType.S3,
@@ -363,7 +362,7 @@ class ScheduledIngestionCreateSerializerSuccessTest(TestCase):
 
     def test_create_removes_test_connection_from_validated_data(self):
         """Validated data does not contain test_connection (popped in validate); create() never receives it."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "Create Test",
             "source_type": SourceType.S3,
@@ -383,7 +382,7 @@ class ScheduledIngestionCreateSerializerFailureTest(TestCase):
 
     def test_invalid_source_config_fails_validation(self):
         """Invalid source_config (e.g. S3 no bucket) fails even with test_connection=True."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "Bad Config",
             "source_type": SourceType.S3,
@@ -436,7 +435,7 @@ class ScheduledIngestionSerializerErrorHandlingTest(TestCase):
 
     def test_valid_cron_expression_passes(self):
         """Valid cron expression passes schedule_config validation."""
-        tenant, user = _tenant_user()
+        _tenant, _user = _tenant_user()
         data = {
             "name": "Cron Job",
             "source_type": SourceType.S3,

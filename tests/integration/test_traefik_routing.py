@@ -16,8 +16,8 @@ Run with Docker Compose (recommended):
 When TRAEFIK_BASE_URL is set (e.g. https://traefik:443), services are assumed already up.
 When unset, set PYTEST_DOCKER_COMPOSE_RUNTIME=1 to start services via DockerComposeManager (host run).
 """
+
 import os
-import time
 from pathlib import Path
 
 import pytest
@@ -26,6 +26,7 @@ import requests
 # Suppress InsecureRequestWarning when using verify=False for Traefik self-signed/dev cert
 try:
     import urllib3
+
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 except Exception:
     pass
@@ -95,6 +96,7 @@ def traefik_services_up(docker_compose_manager_traefik):
     """
     if not _traefik_services_already_running():
         docker_compose_manager_traefik.start_services(TRAEFIK_ROUTING_SERVICES, wait=True)
+
         # Poll until route responds (no fixed sleep per 3.3.2)
         def _root_ok():
             try:
@@ -113,7 +115,7 @@ def traefik_services_up(docker_compose_manager_traefik):
 
 
 @pytest.mark.integration
-@pytest.mark.docker_compose_runtime
+@pytest.mark.requires_db
 class TestTraefikRouting:
     """Traefik single-entrypoint routing: GET / → frontend, GET /api/v1/... → api-gateway."""
 
@@ -126,11 +128,13 @@ class TestTraefikRouting:
             verify=False,
             headers={"Host": "localhost"},
         )
-        assert resp.status_code == 200, (
-            f"GET / via Traefik must return 200, got {resp.status_code}"
-        )
+        assert resp.status_code == 200, f"GET / via Traefik must return 200, got {resp.status_code}"
         content_type = resp.headers.get("Content-Type", "")
-        assert "text/html" in content_type or resp.text.lstrip().lower().startswith("<!doctype html") or "<html" in resp.text.lower(), (
+        assert (
+            "text/html" in content_type
+            or resp.text.lstrip().lower().startswith("<!doctype html")
+            or "<html" in resp.text.lower()
+        ), (
             f"GET / must be HTML from frontend; Content-Type={content_type}, body start={resp.text[:200]!r}"
         )
 
@@ -153,9 +157,7 @@ class TestTraefikRouting:
         assert data["status"] in ("healthy", "degraded"), (
             f"Gateway health status must be healthy or degraded; got {data.get('status')}"
         )
-        assert "backend_services" in data, (
-            "Gateway aggregate health must include backend_services"
-        )
+        assert "backend_services" in data, "Gateway aggregate health must include backend_services"
 
 
 def pytest_configure(config):

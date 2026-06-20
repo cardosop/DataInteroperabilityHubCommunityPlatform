@@ -5,14 +5,14 @@ Validate API documentation completeness.
 This script validates that all API endpoints are properly documented
 and all required documentation files exist.
 """
-import os
+
 import sys
-import json
 from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
 
 def check_file_exists(file_path, description):
     """Check if file exists."""
@@ -24,12 +24,13 @@ def check_file_exists(file_path, description):
         print(f"✗ {description}: {file_path} - MISSING")
         return False
 
+
 def check_documentation_files():
     """Check all required documentation files exist."""
     print("Checking Documentation Files")
     print("=" * 50)
     print()
-    
+
     required_files = [
         ("docs/API_DOCUMENTATION.md", "API Documentation"),
         ("docs/API_BEST_PRACTICES.md", "API Best Practices"),
@@ -48,13 +49,14 @@ def check_documentation_files():
         ("examples/api/list_contracts_with_filters.py", "List Contracts Example"),
         ("examples/api/get_lineage.py", "Get Lineage Example"),
     ]
-    
+
     all_exist = True
     for file_path, description in required_files:
         if not check_file_exists(file_path, description):
             all_exist = False
-    
+
     return all_exist
+
 
 def check_openapi_endpoints():
     """Check OpenAPI endpoints are configured."""
@@ -62,7 +64,7 @@ def check_openapi_endpoints():
     print("Checking OpenAPI Configuration")
     print("=" * 50)
     print()
-    
+
     # Check views.py has OpenAPI views
     views_file = project_root / "hub/apps/api/views.py"
     if views_file.exists():
@@ -72,7 +74,7 @@ def check_openapi_endpoints():
         else:
             print("✗ OpenAPI views not found")
             return False
-    
+
     # Check urls.py has OpenAPI routes
     urls_file = project_root / "hub/urls.py"
     if urls_file.exists():
@@ -82,7 +84,7 @@ def check_openapi_endpoints():
         else:
             print("✗ OpenAPI routes not found")
             return False
-    
+
     # Check settings.py has drf-spectacular configured
     settings_file = project_root / "hub/settings.py"
     if settings_file.exists():
@@ -92,8 +94,9 @@ def check_openapi_endpoints():
         else:
             print("✗ drf-spectacular not configured")
             return False
-    
+
     return True
+
 
 def check_example_code():
     """Check example code files."""
@@ -101,13 +104,13 @@ def check_example_code():
     print("Checking Example Code")
     print("=" * 50)
     print()
-    
+
     example_files = [
         "examples/api/create_contract.py",
         "examples/api/list_contracts_with_filters.py",
         "examples/api/get_lineage.py",
     ]
-    
+
     all_exist = True
     for file_path in example_files:
         full_path = project_root / file_path
@@ -116,32 +119,33 @@ def check_example_code():
         else:
             print(f"✗ {file_path} - MISSING")
             all_exist = False
-    
+
     return all_exist
+
 
 def main():
     """Main validation function."""
     print("API Documentation Validation")
     print("=" * 50)
     print()
-    
+
     results = {
-        'documentation_files': check_documentation_files(),
-        'openapi_config': check_openapi_endpoints(),
-        'example_code': check_example_code(),
+        "documentation_files": check_documentation_files(),
+        "openapi_config": check_openapi_endpoints(),
+        "example_code": check_example_code(),
     }
-    
+
     print()
     print("Validation Summary")
     print("=" * 50)
     print()
-    
+
     all_passed = all(results.values())
-    
+
     for check, passed in results.items():
         status = "✓ PASSED" if passed else "✗ FAILED"
         print(f"{check}: {status}")
-    
+
     print()
     if all_passed:
         print("All documentation checks passed!")
@@ -150,6 +154,6 @@ def main():
         print("Some documentation checks failed. Please review and fix.")
         sys.exit(1)
 
+
 if __name__ == "__main__":
     main()
-

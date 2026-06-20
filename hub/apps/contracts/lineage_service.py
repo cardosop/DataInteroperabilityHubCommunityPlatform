@@ -6,13 +6,13 @@ Extracts lineage logic from views and lineage.py module.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import structlog
 
 from hub.apps.contracts.caching import (
     cache_lineage,
     get_cached_lineage,
-    invalidate_lineage_cache,
 )
 from hub.apps.contracts.impact_analysis import ImpactAnalyzer
 from hub.apps.contracts.impact_notifications import ImpactNotifier
@@ -24,14 +24,30 @@ from hub.apps.contracts.lineage import (
     generate_lineage_mermaid,
 )
 from hub.apps.contracts.models import Contract
-from hub.apps.core.services.base import BaseService, NotFoundError
 from hub.apps.core.events.service_publishers import LineageEventPublisher
+from hub.apps.core.services.base import BaseService, NotFoundError
 from hub.apps.observability.metrics import trace as _lineage_trace
 
 logger = structlog.get_logger(__name__)
 
 
-def _edge_belongs_to_tenant(edge: Dict[str, Any], owner_tenant_id: str) -> bool:
+def _safe_publish_event(method_name: str, **context) -> None:
+    """Log a warning when ``publish_lineage_updated`` fails.
+
+    Event publishing is best-effort — the lineage read must never fail
+    because the event bus is unavailable.  This helper deduplicates the
+    identical ``except Exception`` blocks that appear after every
+    ``self.publish_lineage_updated(...)`` call in the service methods.
+    """
+    logger.warning(
+        "Failed to publish lineage.updated event",
+        method=method_name,
+        **context,
+        exc_info=True,
+    )
+
+
+def _edge_belongs_to_tenant(edge: dict[str, Any], owner_tenant_id: str) -> bool:
     """Phase 228.F1 audit hardening — confirm an edge dict belongs to
     ``owner_tenant_id`` by checking the tenant of its (non-NULL) source
     or target contract.
@@ -51,12 +67,7 @@ def _edge_belongs_to_tenant(edge: Dict[str, Any], owner_tenant_id: str) -> bool:
         endpoint_id = edge.get(fk_id_key)
         if not endpoint_id:
             continue
-        contract = (
-            Contract.objects
-            .filter(id=endpoint_id)
-            .only("id", "tenant_id")
-            .first()
-        )
+        contract = Contract.objects.filter(id=endpoint_id).only("id", "tenant_id").first()
         if contract is None:
             continue
         return str(contract.tenant_id) == owner_tenant_id
@@ -81,9 +92,9 @@ class LineageService(BaseService, LineageEventPublisher):
 
     def __init__(
         self,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request_id: Optional[str] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request_id: str | None = None,
     ):
         """Initialize LineageService with tenant and user context."""
         self.tenant_id = tenant_id
@@ -99,7 +110,10 @@ class LineageService(BaseService, LineageEventPublisher):
 
     @staticmethod
     def _record_query_metric(
-        *, detail: str, cross_tenant: bool, as_of_set: bool,
+        *,
+        detail: str,
+        cross_tenant: bool,
+        as_of_set: bool,
     ) -> None:
         """Phase 228 (REQ-LIN-007 / 228.0.19) — emit
         ``lineage_query_total{detail,cross_tenant,as_of}`` per read.
@@ -115,16 +129,16 @@ class LineageService(BaseService, LineageEventPublisher):
                 cross_tenant="true" if cross_tenant else "false",
                 as_of="true" if as_of_set else "false",
             ).inc()
-        except Exception:  # noqa: BLE001 — observability never breaks the read.
+        except Exception:
             return
 
     @staticmethod
     def _edges_at(
         contract_id: str,
         *,
-        as_of: Optional[datetime] = None,
+        as_of: datetime | None = None,
         direction: str = "incoming",
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Read ``LineageEdge`` rows that satisfy the SCD Type 2
         validity predicate at ``as_of``.
 
@@ -183,10 +197,10 @@ class LineageService(BaseService, LineageEventPublisher):
     def get_contract_lineage(
         self,
         contract_id: str,
-        tenant_id: Optional[str] = None,
+        tenant_id: str | None = None,
         use_cache: bool = True,
-        as_of: Optional[datetime] = None,
-    ) -> Dict[str, Any]:
+        as_of: datetime | None = None,
+    ) -> dict[str, Any]:
         """
         Get contract-level lineage.
 
@@ -214,7 +228,9 @@ class LineageService(BaseService, LineageEventPublisher):
         # not cross tenants by definition; the cross-tenant view lives
         # in a Phase 228 F1 method.
         self._record_query_metric(
-            detail="contract", cross_tenant=False, as_of_set=as_of is not None,
+            detail="contract",
+            cross_tenant=False,
+            as_of_set=as_of is not None,
         )
 
         # Phase 228 — when ``as_of`` is set, route through the
@@ -266,15 +282,13 @@ class LineageService(BaseService, LineageEventPublisher):
             self.publish_lineage_updated(
                 contract_id=contract_id,
                 lineage_type="contract",
-                relationship_count=relationship_count
+                relationship_count=relationship_count,
             )
-        except Exception as e:
-            # Log but don't fail lineage retrieval if event publishing fails
-            logger.warning(
-                "Failed to publish lineage.updated event",
+        except Exception:
+            _safe_publish_event(
+                "get_contract_lineage",
                 contract_id=contract_id,
-                error=str(e),
-                exc_info=True
+                relationship_count=relationship_count,
             )
 
         return result
@@ -284,10 +298,10 @@ class LineageService(BaseService, LineageEventPublisher):
         self,
         contract_id: str,
         model_name: str,
-        tenant_id: Optional[str] = None,
+        tenant_id: str | None = None,
         use_cache: bool = True,
-        as_of: Optional[datetime] = None,
-    ) -> Dict[str, Any]:
+        as_of: datetime | None = None,
+    ) -> dict[str, Any]:
         """
         Get model-level lineage.
 
@@ -306,7 +320,9 @@ class LineageService(BaseService, LineageEventPublisher):
             NotFoundError: If contract or model not found
         """
         self._record_query_metric(
-            detail="model", cross_tenant=False, as_of_set=as_of is not None,
+            detail="model",
+            cross_tenant=False,
+            as_of_set=as_of is not None,
         )
         if as_of is not None:
             # Historical model-level lineage: filter the SCD Type 2 edges
@@ -314,8 +330,11 @@ class LineageService(BaseService, LineageEventPublisher):
             # edge-list shape that matches ``get_contract_lineage(as_of=...)``
             # so callers branching on read-path internals are consistent.
             edges = [
-                e for e in self._edges_at(
-                    contract_id, as_of=as_of, direction="incoming",
+                e
+                for e in self._edges_at(
+                    contract_id,
+                    as_of=as_of,
+                    direction="incoming",
                 )
                 if (e.get("target_model") or "") == model_name
             ]
@@ -366,21 +385,21 @@ class LineageService(BaseService, LineageEventPublisher):
         # Publish lineage.updated event
         try:
             lineage_info = result.get("lineage", {})
-            relationship_count = len(lineage_info.get("models", [])) + len(lineage_info.get("entries", []))
+            relationship_count = len(lineage_info.get("models", [])) + len(
+                lineage_info.get("entries", [])
+            )
             self.publish_lineage_updated(
                 contract_id=contract_id,
                 model_name=model_name,
                 lineage_type="model",
-                relationship_count=relationship_count
+                relationship_count=relationship_count,
             )
-        except Exception as e:
-            # Log but don't fail lineage retrieval if event publishing fails
-            logger.warning(
-                "Failed to publish lineage.updated event",
+        except Exception:
+            _safe_publish_event(
+                "get_model_lineage",
                 contract_id=contract_id,
                 model_name=model_name,
-                error=str(e),
-                exc_info=True
+                relationship_count=relationship_count,
             )
 
         return result
@@ -390,11 +409,11 @@ class LineageService(BaseService, LineageEventPublisher):
         self,
         contract_id: str,
         field_name: str,
-        model_name: Optional[str] = None,
-        tenant_id: Optional[str] = None,
+        model_name: str | None = None,
+        tenant_id: str | None = None,
         use_cache: bool = True,
-        as_of: Optional[datetime] = None,
-    ) -> Dict[str, Any]:
+        as_of: datetime | None = None,
+    ) -> dict[str, Any]:
         """
         Get field-level lineage.
 
@@ -412,12 +431,17 @@ class LineageService(BaseService, LineageEventPublisher):
             NotFoundError: If contract or field not found
         """
         self._record_query_metric(
-            detail="field", cross_tenant=False, as_of_set=as_of is not None,
+            detail="field",
+            cross_tenant=False,
+            as_of_set=as_of is not None,
         )
         if as_of is not None:
             edges = [
-                e for e in self._edges_at(
-                    contract_id, as_of=as_of, direction="incoming",
+                e
+                for e in self._edges_at(
+                    contract_id,
+                    as_of=as_of,
+                    direction="incoming",
                 )
                 if (e.get("target_field") or "") == field_name
                 and (model_name is None or (e.get("target_model") or "") == model_name)
@@ -485,23 +509,23 @@ class LineageService(BaseService, LineageEventPublisher):
         # Publish lineage.updated event
         try:
             lineage_info = result.get("lineage", {})
-            relationship_count = len(lineage_info.get("input_fields", [])) + len(lineage_info.get("transformations", []))
+            relationship_count = len(lineage_info.get("input_fields", [])) + len(
+                lineage_info.get("transformations", [])
+            )
             self.publish_lineage_updated(
                 contract_id=contract_id,
                 model_name=found_model_name,
                 field_name=field_name,
                 lineage_type="field",
-                relationship_count=relationship_count
+                relationship_count=relationship_count,
             )
-        except Exception as e:
-            # Log but don't fail lineage retrieval if event publishing fails
-            logger.warning(
-                "Failed to publish lineage.updated event",
+        except Exception:
+            _safe_publish_event(
+                "get_field_lineage",
                 contract_id=contract_id,
                 model_name=found_model_name,
                 field_name=field_name,
-                error=str(e),
-                exc_info=True
+                relationship_count=relationship_count,
             )
 
         return result
@@ -510,13 +534,13 @@ class LineageService(BaseService, LineageEventPublisher):
     def get_full_lineage(
         self,
         contract_id: str,
-        tenant_id: Optional[str] = None,
+        tenant_id: str | None = None,
         max_contract_depth: int = 10,
         max_model_depth: int = 10,
         max_field_depth: int = 10,
         use_cache: bool = True,
-        as_of: Optional[datetime] = None,
-    ) -> Dict[str, Any]:
+        as_of: datetime | None = None,
+    ) -> dict[str, Any]:
         """
         Get full hierarchical lineage (contract, model, and field levels).
 
@@ -535,16 +559,22 @@ class LineageService(BaseService, LineageEventPublisher):
             NotFoundError: If contract not found
         """
         self._record_query_metric(
-            detail="full", cross_tenant=False, as_of_set=as_of is not None,
+            detail="full",
+            cross_tenant=False,
+            as_of_set=as_of is not None,
         )
         if as_of is not None:
             return {
                 "contract_id": contract_id,
                 "upstream": self._edges_at(
-                    contract_id, as_of=as_of, direction="incoming",
+                    contract_id,
+                    as_of=as_of,
+                    direction="incoming",
                 ),
                 "downstream": self._edges_at(
-                    contract_id, as_of=as_of, direction="outgoing",
+                    contract_id,
+                    as_of=as_of,
+                    direction="outgoing",
                 ),
                 "as_of": as_of.isoformat(),
             }
@@ -553,17 +583,6 @@ class LineageService(BaseService, LineageEventPublisher):
         )
 
         # Check cache - use a composite key for full lineage
-        # Note: Full lineage cache key includes depth parameters, so we can't use the standard function
-        # For now, we'll skip caching for full lineage or use a custom key
-        # This is acceptable since full lineage is expensive and depth params vary
-        if False:  # Disable cache for full lineage due to depth parameters
-            from django.core.cache import cache
-
-            cache_key = f"lineage:full:{contract_id}:{max_contract_depth}:{max_model_depth}:{max_field_depth}"
-            cached_lineage = cache.get(cache_key)
-            if cached_lineage:
-                return cached_lineage
-
         # Use LineageTraverser to get full lineage
         # Root cause fix: Create separate traversers for upstream and downstream
         # to avoid cycle detection false positives (visited_contracts is shared)
@@ -587,19 +606,14 @@ class LineageService(BaseService, LineageEventPublisher):
 
         result = {"upstream": upstream, "downstream": downstream}
 
-        # Cache result - use custom cache key for full lineage
-        if use_cache and False:  # Disable cache for full lineage due to depth parameters
-            from django.core.cache import cache
-
-            from hub.apps.contracts.caching import CACHE_TTL_LINEAGE
-
-            cache_key = f"lineage:full:{contract_id}:{max_contract_depth}:{max_model_depth}:{max_field_depth}"
-            cache.set(cache_key, result, timeout=CACHE_TTL_LINEAGE)
-
         # Publish lineage.updated event for full lineage access
         try:
-            upstream_count = len(upstream.get("referenced_by", [])) if isinstance(upstream, dict) else 0
-            downstream_count = len(downstream.get("contracts", [])) if isinstance(downstream, dict) else 0
+            upstream_count = (
+                len(upstream.get("referenced_by", [])) if isinstance(upstream, dict) else 0
+            )
+            downstream_count = (
+                len(downstream.get("contracts", [])) if isinstance(downstream, dict) else 0
+            )
             relationship_count = upstream_count + downstream_count
             self.publish_lineage_updated(
                 contract_id=contract_id,
@@ -610,16 +624,16 @@ class LineageService(BaseService, LineageEventPublisher):
                     "downstream_count": downstream_count,
                     "max_contract_depth": max_contract_depth,
                     "max_model_depth": max_model_depth,
-                    "max_field_depth": max_field_depth
-                }
+                    "max_field_depth": max_field_depth,
+                },
             )
-        except Exception as e:
-            # Log but don't fail lineage retrieval if event publishing fails
-            logger.warning(
-                "Failed to publish lineage.updated event",
+        except Exception:
+            _safe_publish_event(
+                "get_full_lineage",
                 contract_id=contract_id,
-                error=str(e),
-                exc_info=True
+                relationship_count=relationship_count,
+                upstream_count=upstream_count,
+                downstream_count=downstream_count,
             )
 
         return result
@@ -629,10 +643,10 @@ class LineageService(BaseService, LineageEventPublisher):
         self,
         contract_id: str,
         format: str = "json",
-        tenant_id: Optional[str] = None,
+        tenant_id: str | None = None,
         max_depth: int = 10,
-        as_of: Optional[datetime] = None,
-    ) -> Dict[str, Any]:
+        as_of: datetime | None = None,
+    ) -> dict[str, Any]:
         """
         Get lineage visualization in various formats.
 
@@ -649,15 +663,21 @@ class LineageService(BaseService, LineageEventPublisher):
             NotFoundError: If contract not found
         """
         self._record_query_metric(
-            detail="visualization", cross_tenant=False, as_of_set=as_of is not None,
+            detail="visualization",
+            cross_tenant=False,
+            as_of_set=as_of is not None,
         )
         if as_of is not None:
             # Visualization at ``as_of`` returns the historical edge set
             # in the same nodes-and-edges shape consumers already render.
             edges = self._edges_at(
-                contract_id, as_of=as_of, direction="incoming",
+                contract_id,
+                as_of=as_of,
+                direction="incoming",
             ) + self._edges_at(
-                contract_id, as_of=as_of, direction="outgoing",
+                contract_id,
+                as_of=as_of,
+                direction="outgoing",
             )
             nodes_set = set()
             for e in edges:
@@ -691,14 +711,14 @@ class LineageService(BaseService, LineageEventPublisher):
     def analyze_impact(
         self,
         contract_id: str,
-        model_name: Optional[str] = None,
-        field_name: Optional[str] = None,
-        tenant_id: Optional[str] = None,
+        model_name: str | None = None,
+        field_name: str | None = None,
+        tenant_id: str | None = None,
         max_contract_depth: int = 10,
         max_model_depth: int = 10,
         max_field_depth: int = 10,
         include_fields: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Analyze impact of contract changes.
 
@@ -763,24 +783,22 @@ class LineageService(BaseService, LineageEventPublisher):
                     "severity": impact_result.get("severity"),
                     "max_contract_depth": max_contract_depth,
                     "max_model_depth": max_model_depth,
-                    "max_field_depth": max_field_depth
-                }
+                    "max_field_depth": max_field_depth,
+                },
             )
-        except Exception as e:
-            # Log but don't fail impact analysis if event publishing fails
-            logger.warning(
-                "Failed to publish lineage.updated event",
+        except Exception:
+            _safe_publish_event(
+                "analyze_impact",
                 contract_id=contract_id,
                 model_name=model_name,
                 field_name=field_name,
-                error=str(e),
-                exc_info=True
+                relationship_count=relationship_count,
             )
 
         return result
 
     def notify_impact(
-        self, contract_id: str, impact_analysis: Dict[str, Any], tenant_id: Optional[str] = None
+        self, contract_id: str, impact_analysis: dict[str, Any], tenant_id: str | None = None
     ) -> None:
         """
         Send notifications for impact analysis.
@@ -820,8 +838,8 @@ class LineageService(BaseService, LineageEventPublisher):
         owner_tenant_id: str,
         detail: str = "summary",
         max_depth: int = 3,
-        as_of: Optional[datetime] = None,
-    ) -> Dict[str, Any]:
+        as_of: datetime | None = None,
+    ) -> dict[str, Any]:
         """Return the lineage graph rooted at ``asset_id``'s ACTIVE contract.
 
         Phase 228.F1 (REQ-LIN-F1-001) — the read primitive behind the
@@ -886,12 +904,11 @@ class LineageService(BaseService, LineageEventPublisher):
         )
         if root_contract is None:
             raise NotFoundError(
-                f"No ACTIVE contract found for asset {asset_id} in "
-                f"tenant {owner_tenant_id}"
+                f"No ACTIVE contract found for asset {asset_id} in tenant {owner_tenant_id}"
             )
 
-        nodes_by_id: Dict[str, Dict[str, Any]] = {}
-        links: List[Dict[str, Any]] = []
+        nodes_by_id: dict[str, dict[str, Any]] = {}
+        links: list[dict[str, Any]] = []
         truncated = False
 
         # BFS — visit each contract once.  A node represents either a
@@ -922,7 +939,9 @@ class LineageService(BaseService, LineageEventPublisher):
 
             for direction in ("incoming", "outgoing"):
                 edges = self._edges_at(
-                    contract_id, as_of=as_of, direction=direction,
+                    contract_id,
+                    as_of=as_of,
+                    direction=direction,
                 )
                 # F1.5 audit hardening (post-W6): scope edges to the
                 # owner tenant explicitly.  ``_edges_at`` is shared with
@@ -933,7 +952,8 @@ class LineageService(BaseService, LineageEventPublisher):
                 # into a cross-tenant read.  Belt-and-suspenders with
                 # the tenant FK invariant on LineageEdge.
                 edges = [
-                    e for e in edges
+                    e
+                    for e in edges
                     if (
                         # Edges from `_edges_at` are dicts (not model
                         # instances) — re-confirm tenant via a small
@@ -971,10 +991,11 @@ class LineageService(BaseService, LineageEventPublisher):
                             truncated = True
                             break
                         other_contract = (
-                            Contract.objects
-                            .filter(id=other_id)
+                            Contract.objects.filter(id=other_id)
                             .only(
-                                "id", "tenant_id", "status",
+                                "id",
+                                "tenant_id",
+                                "status",
                                 "hub_contract_json",
                             )
                             .first()
@@ -1002,11 +1023,7 @@ class LineageService(BaseService, LineageEventPublisher):
                     edge["target"] = tgt_id or ""
                     links.append(edge)
 
-                    if (
-                        other_id
-                        and other_id not in visited
-                        and len(visited) < self.F1_NODE_CAP
-                    ):
+                    if other_id and other_id not in visited and len(visited) < self.F1_NODE_CAP:
                         queue.append((other_id, depth + 1))
 
                 if truncated:
@@ -1022,7 +1039,7 @@ class LineageService(BaseService, LineageEventPublisher):
         }
 
     @staticmethod
-    def _render_contract_node(contract: "Contract") -> Dict[str, Any]:
+    def _render_contract_node(contract: "Contract") -> dict[str, Any]:
         """Build a graph node from a Contract instance.
 
         The label is derived from ``hub_contract_json.info.name`` which

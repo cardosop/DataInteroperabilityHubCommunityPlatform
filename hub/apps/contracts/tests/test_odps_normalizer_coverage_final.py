@@ -3,9 +3,9 @@ Final coverage tests targeting specific uncovered exception handlers and edge ca
 
 These tests target the remaining ~52 lines needed to reach 90%+ coverage.
 
-All tests use real implementations (no mocks/stubs) where possible.
+Uses real implementations where possible. MockTransport is used for HTTP
+endpoint verification at the network boundary (acceptable test utility).
 Metrics exception handling is already covered by try/except blocks in the code.
-MockTransport is used for HTTP endpoint verification (acceptable test utility).
 """
 
 import httpx
@@ -13,7 +13,6 @@ from django.test import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus
 from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
-from hub.apps.contracts.odps_errors import ODPSNormalizationError
 
 
 class ODPSNormalizerFinalCoverageTest(TestCase):
@@ -690,20 +689,6 @@ class ODPSNormalizerFinalCoverageTest(TestCase):
             )
 
         # Test latency dimension exception handling (include details so _normalize_info succeeds)
-        contract_data2 = {
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {"en": {"productID": "sla-latency", "name": "SLA Latency Test"}},
-                "SLA": {
-                    "declarative": {
-                        "dimensions": {
-                            "latency": {"target": "invalid_number"}  # Will fail float conversion
-                        }
-                    }
-                },
-            },
-        }
 
         # Test lifecycle normalization through public API - normalize() internally calls _normalize_lifecycle()
         contract_data2_full = {
@@ -726,20 +711,6 @@ class ODPSNormalizerFinalCoverageTest(TestCase):
         # Warnings may be in result.warnings
 
         # Test freshness dimension exception handling (lines 823-824) (include details)
-        contract_data3 = {
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {"en": {"productID": "sla-freshness", "name": "SLA Freshness Test"}},
-                "SLA": {
-                    "declarative": {
-                        "dimensions": {
-                            "freshness": {"target": "invalid_number"}  # Will fail float conversion
-                        }
-                    }
-                },
-            },
-        }
 
         # Test lifecycle normalization through public API - normalize() internally calls _normalize_lifecycle()
         contract_data3_full = {
@@ -764,9 +735,6 @@ class ODPSNormalizerFinalCoverageTest(TestCase):
     def test_normalize_lifecycle_executable_exception_handling(self):
         """Test exception handling for executable SLA (lines 849, 854, 856)."""
         # Test with invalid executable type (lines 849)
-        contract_data = {
-            "product": {"SLA": {"executable": "invalid_type"}}  # Should be list or dict
-        }
 
         # Test lifecycle normalization through public API - normalize() internally calls _normalize_lifecycle()
         contract_data_full = {
@@ -787,7 +755,7 @@ class ODPSNormalizerFinalCoverageTest(TestCase):
             def __getitem__(self, key):
                 raise Exception("Bad executable")
 
-        contract_data2 = {"product": {"SLA": {"executable": BadExecutable()}}}
+        {"product": {"SLA": {"executable": BadExecutable()}}}
 
         # Test lifecycle normalization through public API - normalize() internally calls _normalize_lifecycle()
         contract_data2_full = {
@@ -924,15 +892,6 @@ class ODPSNormalizerFinalCoverageTest(TestCase):
 
     def test_resolve_contract_ref_exception_handling(self):
         """Test exception handling in _resolve_contract_ref (lines 930-931, 934)."""
-        from hub.apps.contracts.ref_resolver import RefResolver
-
-        contract_data = {
-            "product": {
-                "contract": {
-                    "$ref": "https://invalid-domain-that-does-not-exist-12345.com/contract.json"
-                }
-            }
-        }
 
         # Test contract extraction through public API - normalize() internally calls _extract_contract()
         contract_data_full = {
@@ -953,12 +912,6 @@ class ODPSNormalizerFinalCoverageTest(TestCase):
     def test_resolve_contract_ref_non_dict_values(self):
         """Test handling of non-dict resolved values (lines 1006, 1009)."""
         # Test with internal ref that resolves to non-dict directly (before ref resolution)
-        contract_data = {
-            "product": {
-                "contract": {"$ref": "#/definitions/contract"},
-                "definitions": {"contract": "not a dict"},  # Non-dict value at the ref path
-            }
-        }
 
         # Test contract extraction through public API - normalize() internally calls _extract_contract()
         contract_data_full = {
@@ -1003,11 +956,6 @@ class ODPSNormalizerFinalCoverageTest(TestCase):
     def test_resolve_contract_ref_external_paths(self):
         """Test external ref resolution paths (lines 1046-1047, 1049, 1052)."""
         # Test with external ref that resolves to non-dict
-        contract_data = {
-            "product": {
-                "contract": {"$ref": "https://httpbin.org/json"}  # Returns JSON but may not be dict
-            }
-        }
 
         # Test contract extraction through public API - normalize() internally calls _extract_contract()
         contract_data_full = {
@@ -1033,12 +981,6 @@ class ODPSNormalizerFinalCoverageTest(TestCase):
         cause resolution issues.
         """
         # Test with contract ref that might resolve to unexpected type
-        contract_data = {
-            "product": {
-                "contract": {"$ref": "#/definitions/contract"},
-                "definitions": {"contract": "not a dict"},  # Non-dict value at ref path
-            }
-        }
 
         # Test contract extraction through public API - normalize() internally calls _extract_contract()
         contract_data_full = {
@@ -1068,10 +1010,11 @@ class ODPSNormalizerFinalCoverageTest(TestCase):
 
         contract_data_obj = ContractDataWithPath(contract_data)
 
-        hub_contract = {"info": {"name": "Test"}, "schema": {"fields": []}, "extensions": {}}
         warnings = []
 
         # Use real RefResolver - may fail if file doesn't exist, which is expected
+        from hub.apps.contracts.odps_errors import ODPSRefResolutionError
+
         try:
             result = self.normalizer._resolve_contract_ref(
                 "./local-contract.json", contract_data_obj, warnings
@@ -1079,7 +1022,7 @@ class ODPSNormalizerFinalCoverageTest(TestCase):
             # If it succeeds, result should be a dict or None
             if result is not None:
                 self.assertIsInstance(result, dict)
-        except Exception:
+        except (ODPSRefResolutionError, FileNotFoundError, ValueError):
             # Expected - local file may not exist
             pass
 
@@ -1090,8 +1033,9 @@ class ODPSNormalizerFinalCoverageTest(TestCase):
         """
         contract_data = {"product": {"contract": {"$ref": "./local-contract.json"}}}
 
-        hub_contract = {"info": {"name": "Test"}, "schema": {"fields": []}, "extensions": {}}
         warnings = []
+
+        from hub.apps.contracts.odps_errors import ODPSRefResolutionError
 
         # Use real RefResolver - may fail or return None if file doesn't exist
         try:
@@ -1099,10 +1043,8 @@ class ODPSNormalizerFinalCoverageTest(TestCase):
                 "./local-contract.json", contract_data, warnings
             )
             # Should handle gracefully - may be None or raise exception
-            if result is None:
-                # Check if warning was added
-                pass
-        except Exception:
+            self.assertIsNone(result)
+        except (ODPSRefResolutionError, FileNotFoundError, ValueError):
             # Expected - local file may not exist
             pass
 
@@ -1120,13 +1062,11 @@ class ODPSNormalizerFinalCoverageTest(TestCase):
 
         contract_data = {"product": {"contract": {"$ref": "https://example.com/contract.json"}}}
 
-        hub_contract = {"info": {"name": "Test"}, "schema": {"fields": []}, "extensions": {}}
         warnings = []
 
         # Temporarily replace resolve_external to use MockTransport
         from hub.apps.contracts.ref_resolver import RefResolver
 
-        original_resolver_init = RefResolver.__init__
         original_resolve_external = RefResolver.resolve_external
 
         def mock_resolve_external(self, url: str):

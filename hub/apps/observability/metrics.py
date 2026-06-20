@@ -26,17 +26,18 @@ both implemented in this module:
   ``tracer.start_as_current_span`` that the spec's REQ-LIN-007
   references.
 """
+
 from __future__ import annotations
 
 import functools
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from hub.apps.observability.otel_metrics import (
     _CounterWrapper,
     _HistogramWrapper,
 )
-
 
 # ---------------------------------------------------------------------------
 # Phase 228 (REQ-LIN-007) — Prometheus metrics
@@ -156,7 +157,7 @@ def trace(span_name: str | None = None):
                 from hub.apps.observability.tracing import get_tracer
 
                 tracer = get_tracer(__name__)
-            except Exception:  # noqa: BLE001 — observability optional
+            except Exception:
                 tracer = None
 
             start = time.monotonic()
@@ -185,7 +186,7 @@ def _record_method_duration(span_name: str, duration_s: float) -> None:
         return
     try:
         lineage_query_duration_seconds.labels(detail=detail).observe(duration_s)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:
         return
 
 

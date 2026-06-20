@@ -3,12 +3,13 @@ Phase 260.1.G.1 / G.2 — GDPR file hard-delete management commands.
 
 Uses real Redis, PostgreSQL, S3 client (best-effort delete), and ORM. No mocks.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 from io import StringIO
 
+import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
@@ -22,13 +23,7 @@ from hub.apps.gdpr.audit_erasure import GDPR_AUDIT_USER_ID_REDACTED
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def _redis_or_skip() -> None:
-    try:
-        get_redis_client().ping()
-    except Exception as exc:  # pragma: no cover
-        import unittest
-
-        raise unittest.SkipTest(f"Redis required: {exc}") from exc
+from hub.apps.files.tests.test_base import redis_or_skip as _redis_or_skip
 
 
 class GdprDeleteFilesCommandsTests(FilesTestBase):

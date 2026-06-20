@@ -9,8 +9,6 @@ This ensures that:
 - Examples are accurate
 """
 
-import json
-
 from unittest import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType

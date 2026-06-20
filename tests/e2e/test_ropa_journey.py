@@ -16,8 +16,9 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.ropa.models import RopaGeneration, RopaGenerationStatus
 from tests.e2e.conftest import E2ETestBase
 
+pytestmark = [pytest.mark.journey("JOURNEY-CPO-013")]
 
-@pytest.mark.e2e_batch2
+@pytest.mark.e2e
 class RopaGenerationE2ETests(E2ETestBase):
     """E2E tests for RoPA generation + download flow (283.3.3.3)."""
 
@@ -58,9 +59,7 @@ class RopaGenerationE2ETests(E2ETestBase):
         self.assertEqual(resp.data["status"], RopaGenerationStatus.COMPLETED)
 
         gen_id = resp.data["id"]
-        self.assertTrue(
-            RopaGeneration.objects.filter(id=gen_id, tenant=self.tenant).exists()
-        )
+        self.assertTrue(RopaGeneration.objects.filter(id=gen_id, tenant=self.tenant).exists())
 
     def test_list_generations_includes_created(self):
         """List generations returns the created artefact."""
@@ -91,9 +90,7 @@ class RopaGenerationE2ETests(E2ETestBase):
             f"/api/v1/ropa/generations/{gen.id}/delete/",
         )
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertFalse(
-            RopaGeneration.objects.filter(id=gen.id).exists()
-        )
+        self.assertFalse(RopaGeneration.objects.filter(id=gen.id).exists())
 
     def test_ropa_disabled_returns_403(self):
         """When feature flag is off, endpoints return 403."""

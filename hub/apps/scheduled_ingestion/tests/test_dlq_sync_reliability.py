@@ -5,7 +5,6 @@ Tests that dlq_sync_status is correctly tracked on ScheduledIngestionRun
 and that the recovery command works.
 """
 
-import inspect
 from datetime import timedelta
 from io import StringIO
 from unittest.mock import patch
@@ -38,20 +37,26 @@ class DLQSyncStatusTest(TestCase):
 
     def test_lifecycle_sets_synced_on_success(self):
         """worker_run_lifecycle sets dlq_sync_status=SYNCED after successful DLQ sync."""
+        import uuid
+
         from hub.apps.scheduled_ingestion.worker_run_lifecycle import _execute_dlq_sync
         from hub.apps.tenants.models import Tenant
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-        import uuid
 
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name=f"DLQ Sync Test {uid}", slug=f"dlq-sync-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"DLQ Sync Test {uid}",
+            slug=f"dlq-sync-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         ensure_tenant_has_active_subscription(tenant)
         si = ScheduledIngestion.objects.create(
-            tenant=tenant, name=f"dlq-si-{uid}", source_type="S3",
-            schedule_type="DAILY", schedule_config={"time": "00:00"},
+            tenant=tenant,
+            name=f"dlq-si-{uid}",
+            source_type="S3",
+            schedule_type="DAILY",
+            schedule_config={"time": "00:00"},
             source_config={"bucket": "test"},
         )
         run = ScheduledIngestionRun.objects.create(
@@ -65,21 +70,27 @@ class DLQSyncStatusTest(TestCase):
 
     def test_lifecycle_sets_failed_on_exception(self):
         """worker_run_lifecycle sets dlq_sync_status=FAILED when DLQ sync raises."""
+        import uuid
         from unittest.mock import patch as _patch
+
         from hub.apps.scheduled_ingestion.worker_run_lifecycle import _execute_dlq_sync
         from hub.apps.tenants.models import Tenant
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-        import uuid
 
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
-            name=f"DLQ Fail Test {uid}", slug=f"dlq-fail-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"DLQ Fail Test {uid}",
+            slug=f"dlq-fail-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         ensure_tenant_has_active_subscription(tenant)
         si = ScheduledIngestion.objects.create(
-            tenant=tenant, name=f"dlq-fail-si-{uid}", source_type="S3",
-            schedule_type="DAILY", schedule_config={"time": "00:00"},
+            tenant=tenant,
+            name=f"dlq-fail-si-{uid}",
+            source_type="S3",
+            schedule_type="DAILY",
+            schedule_config={"time": "00:00"},
             source_config={"bucket": "test"},
         )
         run = ScheduledIngestionRun.objects.create(
@@ -104,8 +115,10 @@ class DLQSyncRecoveryCommandTest(TestCase):
 
     def setUp(self):
         from hub.apps.tenants.models import Tenant
+
         self.tenant = Tenant.objects.create(
-            name="Test DLQ Tenant", slug="test-dlq-tenant",
+            name="Test DLQ Tenant",
+            slug="test-dlq-tenant",
             status="ACTIVE",
         )
 
@@ -130,7 +143,9 @@ class DLQSyncRecoveryCommandTest(TestCase):
         run.refresh_from_db()
         return run
 
-    @patch("hub.apps.scheduled_ingestion.dead_letter_queue.DeadLetterQueueManager.sync_from_ingestion_state")
+    @patch(
+        "hub.apps.scheduled_ingestion.dead_letter_queue.DeadLetterQueueManager.sync_from_ingestion_state"
+    )
     def test_recovery_command_retries_failed(self, mock_sync):
         """FAILED runs older than 1hr should be retried."""
         run = self._create_run(dlq_status="FAILED", hours_ago=2)

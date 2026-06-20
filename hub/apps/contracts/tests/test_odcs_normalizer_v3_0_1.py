@@ -8,13 +8,10 @@ Tests the ODCS 3.0.1-specific normalizer implementation including:
 - Error handling
 """
 
-from typing import Any, Dict
 from unittest import TestCase
 
-import pytest
-
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
-from hub.apps.contracts.normalization import NormalizationResult, get_normalizer
+from hub.apps.contracts.normalization import get_normalizer
 from hub.apps.contracts.normalization.odcs_normalizer_v3_0_1 import ODCSNormalizerV3_0_1
 from hub.apps.contracts.tests.normalizer_edge_case_mixin import ODCSEdgeCaseMixin
 
@@ -31,7 +28,7 @@ class ODCSNormalizerV3_0_1StructureTest(TestCase):
     def test_spec_type_is_odcs(self):
         """Test that spec_type is set to ODCS."""
         normalizer = ODCSNormalizerV3_0_1()
-        self.assertEqual(normalizer.spec_type , OriginalSpecType.ODCS)
+        self.assertEqual(normalizer.spec_type, OriginalSpecType.ODCS)
 
 
 class ODCSNormalizerV3_0_1SupportsTest(TestCase):
@@ -102,8 +99,8 @@ class ODCSNormalizerV3_0_1NormalizeTest(TestCase):
         self.assertTrue(hasattr(result, "spec_version"))
         self.assertTrue(hasattr(result, "coverage"))
 
-        self.assertEqual(result.spec_type , OriginalSpecType.ODCS)
-        self.assertEqual(result.spec_version , "3.0.1")
+        self.assertEqual(result.spec_type, OriginalSpecType.ODCS)
+        self.assertEqual(result.spec_version, "3.0.1")
         self.assertIsInstance(result.errors, list)
         self.assertIsInstance(result.warnings, list)
 
@@ -121,7 +118,7 @@ class ODCSNormalizerV3_0_1NormalizeTest(TestCase):
 
         result = normalizer.normalize(contract_data, spec_version=None)
 
-        self.assertEqual(result.spec_version , "3.0.1")
+        self.assertEqual(result.spec_version, "3.0.1")
 
     def test_normalize_detects_version_from_version_field(self):
         """Test that normalize() detects version 3.0.1 from version field."""
@@ -135,7 +132,7 @@ class ODCSNormalizerV3_0_1NormalizeTest(TestCase):
 
         result = normalizer.normalize(contract_data, spec_version=None)
 
-        self.assertEqual(result.spec_version , "3.0.1")
+        self.assertEqual(result.spec_version, "3.0.1")
 
     def test_normalize_fails_for_unsupported_version(self):
         """Test that normalize() fails gracefully for unsupported versions."""
@@ -150,9 +147,12 @@ class ODCSNormalizerV3_0_1NormalizeTest(TestCase):
 
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
-        self.assertEqual(result.status , NormalizationStatus.NORMALIZATION_FAILED)
-        self.assertGreater(len(result.errors) , 0)
-        self.assertTrue("does not support" in result.errors[0].lower() or "not support" in result.errors[0].lower())
+        self.assertEqual(result.status, NormalizationStatus.NORMALIZATION_FAILED)
+        self.assertGreater(len(result.errors), 0)
+        self.assertTrue(
+            "does not support" in result.errors[0].lower()
+
+        )
 
     def test_normalize_validates_contract_data_is_dict(self):
         """Test that normalize() validates contract_data is a dictionary."""
@@ -160,8 +160,8 @@ class ODCSNormalizerV3_0_1NormalizeTest(TestCase):
 
         result = normalizer.normalize("not a dict", spec_version="3.0.1")
 
-        self.assertEqual(result.status , NormalizationStatus.NORMALIZATION_FAILED)
-        self.assertGreater(len(result.errors) , 0)
+        self.assertEqual(result.status, NormalizationStatus.NORMALIZATION_FAILED)
+        self.assertGreater(len(result.errors), 0)
         self.assertIn("dictionary", result.errors[0].lower())
 
     def test_normalize_handles_missing_required_fields(self):
@@ -178,7 +178,7 @@ class ODCSNormalizerV3_0_1NormalizeTest(TestCase):
         result = normalizer.normalize(contract_data, spec_version="3.0.1")
 
         # Should have errors for missing required fields
-        self.assertGreater(len(result.errors) , 0)
+        self.assertGreater(len(result.errors), 0)
         self.assertTrue(any("name" in error.lower() for error in result.errors))
         self.assertTrue(any("fields" in error.lower() for error in result.errors))
 
@@ -205,11 +205,13 @@ class ODCSNormalizerV3_0_1NormalizeTest(TestCase):
 
         self.assertEqual(result.status, NormalizationStatus.NORMALIZED_OK)
         self.assertIsNotNone(result.hub_contract)
-        self.assertEqual(result.hub_contract["id"] , "test-contract-3-0-1")
-        self.assertEqual(result.hub_contract["info"]["name"] , "Test Contract 3.0.1")
-        self.assertEqual(result.hub_contract["info"]["description"] , "A test contract for ODCS 3.0.1")
+        self.assertEqual(result.hub_contract["id"], "test-contract-3-0-1")
+        self.assertEqual(result.hub_contract["info"]["name"], "Test Contract 3.0.1")
+        self.assertEqual(
+            result.hub_contract["info"]["description"], "A test contract for ODCS 3.0.1"
+        )
         self.assertIn("models", result.hub_contract)
-        self.assertGreater(len(result.hub_contract["models"]) , 0)
+        self.assertGreater(len(result.hub_contract["models"]), 0)
 
 
 class ODCSNormalizerV3_0_1GracefulDegradationTest(TestCase):
@@ -233,8 +235,8 @@ class ODCSNormalizerV3_0_1GracefulDegradationTest(TestCase):
         # Should succeed even without optional fields
         self.assertEqual(result.status, NormalizationStatus.NORMALIZED_OK)
         self.assertIsNotNone(result.hub_contract)
-        self.assertEqual(result.hub_contract["id"] , "test-1")
-        self.assertEqual(result.hub_contract["info"]["name"] , "Test Contract")
+        self.assertEqual(result.hub_contract["id"], "test-1")
+        self.assertEqual(result.hub_contract["info"]["name"], "Test Contract")
 
     def test_map_version_specific_fields_handles_unexpected_version(self):
         """Test that _map_version_specific_fields logs warning for unexpected version."""
@@ -247,7 +249,7 @@ class ODCSNormalizerV3_0_1GracefulDegradationTest(TestCase):
         normalizer._map_version_specific_fields(odcs_contract, hub_contract, warnings, "3.0.2")
 
         # Should not modify hub_contract structure
-        self.assertEqual(hub_contract["id"] , "test")
+        self.assertEqual(hub_contract["id"], "test")
 
     def test_normalize_with_complex_3_0_1_contract(self):
         """Test normalization of a complex 3.0.1 contract with multiple sections."""
@@ -283,7 +285,7 @@ class ODCSNormalizerV3_0_1GracefulDegradationTest(TestCase):
 
         self.assertEqual(result.status, NormalizationStatus.NORMALIZED_OK)
         self.assertIsNotNone(result.hub_contract)
-        self.assertEqual(result.hub_contract["id"] , "complex-contract-3-0-1")
+        self.assertEqual(result.hub_contract["id"], "complex-contract-3-0-1")
         self.assertIn("quality", result.hub_contract)
         self.assertIn("privacy_compliance", result.hub_contract)
         self.assertIn("lifecycle", result.hub_contract)
@@ -332,7 +334,8 @@ class ODCSNormalizerV3_0_1RegistryTest(TestCase):
 
         self.assertEqual(result.status, NormalizationStatus.NORMALIZED_OK)
         self.assertIsNotNone(result.hub_contract)
-        self.assertEqual(result.spec_version , "3.0.1")
+        self.assertEqual(result.spec_version, "3.0.1")
+
 
 class ODCSNormalizerV3_0_1EdgeCaseTest(ODCSEdgeCaseMixin, TestCase):
     """Standard edge-case tests for ODCS 3.0.1 normalizer (via shared mixin)."""

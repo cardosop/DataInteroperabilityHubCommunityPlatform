@@ -17,6 +17,7 @@ Two task entry points:
   retries them via the adapter, marks ``permanently_failed=True``
   after the 10th replay attempt (per spec).
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,7 +25,6 @@ from typing import Any
 
 from django.conf import settings
 from django.utils import timezone
-
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,8 @@ def _job_decorator():
         from django_rq import job
 
         return job("default")
-    except Exception:  # noqa: BLE001 — make imports robust
+    except ImportError:
+
         def _passthrough(fn):
             return fn
 
@@ -102,21 +103,23 @@ def _record_dlq_depth_metric() -> None:
     sweep."""
     try:
         from hub.apps.observability.metrics import openlineage_dlq_depth
-    except Exception:  # noqa: BLE001
+    except ImportError:
         return
     try:
         from hub.apps.integrations.openlineage.models import (
             OpenLineageDeadLetter,
         )
+
         pending = OpenLineageDeadLetter.objects.filter(
-            delivered_at__isnull=True, permanently_failed=False,
+            delivered_at__isnull=True,
+            permanently_failed=False,
         ).count()
         permafail = OpenLineageDeadLetter.objects.filter(
             permanently_failed=True,
         ).count()
         openlineage_dlq_depth.labels(permanently_failed="false").inc(pending)
         openlineage_dlq_depth.labels(permanently_failed="true").inc(permafail)
-    except Exception:  # noqa: BLE001 — best-effort
+    except (ImportError, AttributeError, ValueError, TypeError, OSError):
         logger.debug("openlineage_dlq_depth_emit_failed")
 
 
@@ -145,18 +148,23 @@ def openlineage_dlq_replay_sweep(*, max_rows: int = 100) -> dict[str, int]:
     from django.db.models import Q
 
     from hub.apps.integrations.openlineage.adapter import (
-        DeliveryOutcome, OpenLineageAdapter,
+        DeliveryOutcome,
+        OpenLineageAdapter,
     )
     from hub.apps.integrations.openlineage.models import OpenLineageDeadLetter
 
     adapter = OpenLineageAdapter()
     now = timezone.now()
-    pending = OpenLineageDeadLetter.objects.filter(
-        delivered_at__isnull=True,
-        permanently_failed=False,
-    ).filter(
-        Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now),
-    ).order_by("created_at")[:max_rows]
+    pending = (
+        OpenLineageDeadLetter.objects.filter(
+            delivered_at__isnull=True,
+            permanently_failed=False,
+        )
+        .filter(
+            Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now),
+        )
+        .order_by("created_at")[:max_rows]
+    )
 
     processed = 0
     replayed_ok = 0
@@ -169,7 +177,7 @@ def openlineage_dlq_replay_sweep(*, max_rows: int = 100) -> dict[str, int]:
         # row is poisoned, ops investigates manually.
         try:
             event = row.event_payload
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception(
                 "openlineage_dlq_decrypt_failed",
                 extra={"dlq_id": str(row.id), "error": str(exc)},
@@ -219,10 +227,14 @@ def openlineage_dlq_replay_sweep(*, max_rows: int = 100) -> dict[str, int]:
                 seconds=_DLQ_RETRY_BACKOFF_SECONDS[idx],
             )
 
-        row.save(update_fields=[
-            "replay_attempts", "last_replay_at",
-            "permanently_failed", "next_retry_at",
-        ])
+        row.save(
+            update_fields=[
+                "replay_attempts",
+                "last_replay_at",
+                "permanently_failed",
+                "next_retry_at",
+            ]
+        )
 
     # Emit the depth gauge AFTER the sweep so Prometheus sees the
     # post-sweep state.

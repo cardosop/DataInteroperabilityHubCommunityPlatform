@@ -2,6 +2,8 @@
 Unit tests for asset activation requirements.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -26,7 +28,6 @@ from hub.apps.jobs.utils import create_job
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -42,7 +43,10 @@ class AssetActivationTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         # Active subscription required so TenantSuspensionMiddleware allows writes.
         ensure_tenant_has_active_subscription(self.tenant)
@@ -72,7 +76,7 @@ class AssetActivationTest(TestCase):
             created_by=self.user,
         )
 
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -127,7 +131,7 @@ class AssetActivationTest(TestCase):
         )
 
         # Create contract with invalid validation status
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -167,7 +171,7 @@ class AssetActivationTest(TestCase):
         )
 
         # Create valid contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -191,7 +195,7 @@ class AssetActivationTest(TestCase):
             created_by=self.user,
         )
 
-        dataset = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant, asset=asset, file=file_obj, format="CSV", created_by=self.user
         )
 
@@ -222,7 +226,7 @@ class AssetActivationTest(TestCase):
         )
 
         # Create valid contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -246,7 +250,7 @@ class AssetActivationTest(TestCase):
             created_by=self.user,
         )
 
-        dataset = Dataset.objects.create(
+        Dataset.objects.create(
             tenant=self.tenant, asset=asset, file=file_obj, format="CSV", created_by=self.user
         )
 
@@ -276,7 +280,7 @@ class AssetActivationTest(TestCase):
         )
 
         # Create valid contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -318,7 +322,7 @@ class AssetActivationTest(TestCase):
         )
 
         # Create valid contract
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -336,7 +340,9 @@ class AssetActivationTest(TestCase):
 
         # Try to activate with old version
         response = self.client.post(
-            f"/api/v1/assets/{asset.id}/activate/", {"version": 1}, format="json"  # Old version
+            f"/api/v1/assets/{asset.id}/activate/",
+            {"version": 1},
+            format="json",  # Old version
         )
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
@@ -399,7 +405,7 @@ class AssetActivationTest(TestCase):
             created_by=self.user,
         )
 
-        contract = Contract.objects.create(
+        Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
             status=ContractStatus.ACTIVE,
@@ -414,7 +420,9 @@ class AssetActivationTest(TestCase):
 
         # Use wrong version
         response = self.client.post(
-            f"/api/v1/assets/{asset.id}/activate/", {"version": 999}, format="json"  # Wrong version
+            f"/api/v1/assets/{asset.id}/activate/",
+            {"version": 999},
+            format="json",  # Wrong version
         )
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
@@ -582,7 +590,9 @@ class AssetActivationTest(TestCase):
             )
             self.assertEqual(act_response.status_code, status.HTTP_200_OK)
 
-    def test_ensure_e2e_activation_prerequisites_idempotent_syncs_dq_when_active_contract_exists(self):
+    def test_ensure_e2e_activation_prerequisites_idempotent_syncs_dq_when_active_contract_exists(
+        self,
+    ):
         """
         When an ACTIVE VALID+NORMALIZED contract already exists (e.g. ODPS journey), the helper
         must not create a second contract; it should only set dq_status / compliance_status

@@ -7,21 +7,20 @@ Includes metrics and tracing for observability.
 
 import hashlib
 import json
-import logging
 import time
-from typing import Any, Callable, Dict, List, Optional, Set
+from collections.abc import Callable
+from typing import Any
 
 import structlog
 from django.conf import settings
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.utils import timezone
 
 from hub.apps.core.events.service_publishers import ODPSEventPublisher, WorkflowEventPublisher
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
 
-from .business_rules import OrchestrationBusinessRules, OrchestrationRuleExecutionContext
+from .business_rules import OrchestrationBusinessRules
 from .compensation import WorkflowCompensation
 from .dsl_parser import WorkflowDSLParser
 from .feature_flags import is_business_rules_validation_enabled
@@ -36,7 +35,6 @@ from .metrics import (
     workflow_compensations_completed_total,
     workflow_compensations_triggered_total,
     workflow_execution_duration_seconds,
-    workflow_instances_cancelled_total,
     workflow_instances_completed_total,
     workflow_instances_created_total,
     workflow_instances_failed_current,
@@ -45,7 +43,6 @@ from .metrics import (
     workflow_instances_retried_total,
     workflow_instances_running,
     workflow_instances_started_total,
-    workflow_instances_timed_out_total,
     workflow_state_size_bytes,
     workflow_step_execution_duration_seconds,
     workflow_steps_completed_total,
@@ -54,7 +51,7 @@ from .metrics import (
     workflow_steps_retried_total,
     workflow_steps_started_total,
 )
-from .models import StepStatus, WorkflowDefinition, WorkflowInstance, WorkflowStatus, WorkflowStep
+from .models import StepStatus, WorkflowInstance, WorkflowStatus, WorkflowStep
 from .state_machine import WorkflowStateMachine
 from .versioning import WorkflowVersionManager
 
@@ -103,8 +100,6 @@ class WorkflowStepValueError(ControlledWorkflowException, ValueError):
 class WorkflowExecutionError(Exception):
     """Workflow execution error"""
 
-    pass
-
 
 class WorkflowEngine(WorkflowEventPublisher):
     """
@@ -115,19 +110,19 @@ class WorkflowEngine(WorkflowEventPublisher):
 
     def __init__(
         self,
-        step_failure_injector: Optional[Callable[[int, str], None]] = None,
-        compensation_observer: Optional[Callable[[str], None]] = None,
+        step_failure_injector: Callable[[int, str], None] | None = None,
+        compensation_observer: Callable[[str], None] | None = None,
     ):
         super().__init__()
         self.dsl_parser = WorkflowDSLParser()
         self.version_manager = WorkflowVersionManager()
-        self.task_registry: Dict[str, Callable] = {}
+        self.task_registry: dict[str, Callable] = {}
         self.compensation = WorkflowCompensation(
             task_registry=self.task_registry,
             compensation_observer=compensation_observer,
         )
         # Track registered task names to avoid duplicate registrations
-        self._registered_task_names: Set[str] = set()
+        self._registered_task_names: set[str] = set()
         # Phase 250.1.A test-mode hook — only set during property-based testing.
         self._step_failure_injector = step_failure_injector
 
@@ -155,10 +150,10 @@ class WorkflowEngine(WorkflowEventPublisher):
     def create_instance(
         self,
         workflow_name: str,
-        input_data: Dict[str, Any],
-        tenant_id: Optional[str] = None,
-        created_by_id: Optional[str] = None,
-        workflow_version: Optional[str] = None,
+        input_data: dict[str, Any],
+        tenant_id: str | None = None,
+        created_by_id: str | None = None,
+        workflow_version: str | None = None,
     ) -> WorkflowInstance:
         """
         Create a new workflow instance.
@@ -452,9 +447,7 @@ class WorkflowEngine(WorkflowEventPublisher):
                     # Keep state_data in sync with the model field
                     instance.state_data["current_step_index"] = instance.current_step_index
                     next_step_name = (
-                        steps[i + 1].get("name", "unknown")
-                        if i + 1 < len(steps)
-                        else "completed"
+                        steps[i + 1].get("name", "unknown") if i + 1 < len(steps) else "completed"
                     )
                     instance.state_data["current_step_name"] = next_step_name
                     # Recalculate progress after step completion (state_data already updated in _execute_step)
@@ -627,8 +620,8 @@ class WorkflowEngine(WorkflowEventPublisher):
         instance: WorkflowInstance,
         start_time: float,
         tenant_id_str: str,
-        span: Optional[Any] = None,
-        error: Optional[Exception] = None,
+        span: Any | None = None,
+        error: Exception | None = None,
     ):
         """Record execution metrics for workflow instance"""
         execution_duration = time.time() - start_time
@@ -670,8 +663,8 @@ class WorkflowEngine(WorkflowEventPublisher):
                     span.record_exception(error)
 
     def _execute_step(
-        self, instance: WorkflowInstance, step: WorkflowStep, step_def: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, instance: WorkflowInstance, step: WorkflowStep, step_def: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Execute a single workflow step.
 
@@ -1174,7 +1167,7 @@ class WorkflowEngine(WorkflowEventPublisher):
     ) -> str:
         return f"workflow:validation:{instance.id}:{step.id}:{validation_type}:{fingerprint_hash}"
 
-    def _fingerprint_hash(self, payload_fingerprint: Dict[str, Any]) -> str:
+    def _fingerprint_hash(self, payload_fingerprint: dict[str, Any]) -> str:
         """
         Stable hash for cache keys.
 
@@ -1189,7 +1182,7 @@ class WorkflowEngine(WorkflowEventPublisher):
         validation_type: str,
         instance: WorkflowInstance,
         step: WorkflowStep,
-        payload_fingerprint: Dict[str, Any],
+        payload_fingerprint: dict[str, Any],
         compute: Callable[[], Any],
     ):
         """
@@ -1222,8 +1215,8 @@ class WorkflowEngine(WorkflowEventPublisher):
         return result, False
 
     def _execute_task_step(
-        self, instance: WorkflowInstance, step: WorkflowStep, step_def: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, instance: WorkflowInstance, step: WorkflowStep, step_def: dict[str, Any]
+    ) -> dict[str, Any]:
         """Execute a task step with business rules validation"""
         task_name = step_def.get("task")
         if not task_name:
@@ -1296,7 +1289,7 @@ class WorkflowEngine(WorkflowEventPublisher):
         validation_span = None
         if _tracer:
             validation_span = _tracer.start_span(
-                name=f"workflow.validation.workflow_state",
+                name="workflow.validation.workflow_state",
                 attributes={
                     "workflow.instance_id": str(instance.id),
                     "workflow.name": instance.workflow_name,
@@ -1441,7 +1434,7 @@ class WorkflowEngine(WorkflowEventPublisher):
         validation_span = None
         if _tracer:
             validation_span = _tracer.start_span(
-                name=f"workflow.validation.step_input",
+                name="workflow.validation.step_input",
                 attributes={
                     "workflow.instance_id": str(instance.id),
                     "workflow.name": instance.workflow_name,
@@ -1516,7 +1509,7 @@ class WorkflowEngine(WorkflowEventPublisher):
         validation_span = None
         if _tracer:
             validation_span = _tracer.start_span(
-                name=f"workflow.validation.step_execution",
+                name="workflow.validation.step_execution",
                 attributes={
                     "workflow.instance_id": str(instance.id),
                     "workflow.name": instance.workflow_name,
@@ -1643,7 +1636,7 @@ class WorkflowEngine(WorkflowEventPublisher):
         validation_span = None
         if _tracer:
             validation_span = _tracer.start_span(
-                name=f"workflow.validation.step_output",
+                name="workflow.validation.step_output",
                 attributes={
                     "workflow.instance_id": str(instance.id),
                     "workflow.name": instance.workflow_name,
@@ -1720,7 +1713,7 @@ class WorkflowEngine(WorkflowEventPublisher):
         validation_span = None
         if _tracer:
             validation_span = _tracer.start_span(
-                name=f"workflow.validation.post_workflow_state",
+                name="workflow.validation.post_workflow_state",
                 attributes={
                     "workflow.instance_id": str(instance.id),
                     "workflow.name": instance.workflow_name,
@@ -2031,8 +2024,8 @@ class WorkflowEngine(WorkflowEventPublisher):
         return " | ".join(error_parts)
 
     def _execute_parallel_step(
-        self, instance: WorkflowInstance, step: WorkflowStep, step_def: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, instance: WorkflowInstance, step: WorkflowStep, step_def: dict[str, Any]
+    ) -> dict[str, Any]:
         """Execute a parallel step"""
         # For now, execute sequentially (can be enhanced with threading/async)
         parallel_steps = step_def.get("steps", [])
@@ -2053,8 +2046,8 @@ class WorkflowEngine(WorkflowEventPublisher):
         return {"results": results}
 
     def _execute_conditional_step(
-        self, instance: WorkflowInstance, step: WorkflowStep, step_def: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, instance: WorkflowInstance, step: WorkflowStep, step_def: dict[str, Any]
+    ) -> dict[str, Any]:
         """Execute a conditional step"""
         condition = step_def.get("condition")
         if not condition:
@@ -2107,8 +2100,8 @@ class WorkflowEngine(WorkflowEventPublisher):
         return {"condition_result": condition_result}
 
     def _execute_loop_step(
-        self, instance: WorkflowInstance, step: WorkflowStep, step_def: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, instance: WorkflowInstance, step: WorkflowStep, step_def: dict[str, Any]
+    ) -> dict[str, Any]:
         """Execute a loop step"""
         items = step_def.get("items", [])
         loop_steps = step_def.get("steps", [])
@@ -2223,8 +2216,8 @@ class WorkflowEngine(WorkflowEventPublisher):
         return {"results": results}
 
     def _execute_retry_step(
-        self, instance: WorkflowInstance, step: WorkflowStep, step_def: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, instance: WorkflowInstance, step: WorkflowStep, step_def: dict[str, Any]
+    ) -> dict[str, Any]:
         """Execute a retry step"""
         max_retries = step_def.get("max_retries", 3)
         retry_steps = step_def.get("steps", [])
@@ -2257,7 +2250,7 @@ class WorkflowEngine(WorkflowEventPublisher):
             f"Retry step failed after {max_retries} attempts: {last_error}"
         )
 
-    def _evaluate_condition(self, condition: Any, state_data: Dict[str, Any]) -> bool:
+    def _evaluate_condition(self, condition: Any, state_data: dict[str, Any]) -> bool:
         """
         Evaluate a condition expression.
 
@@ -2642,7 +2635,7 @@ class WorkflowEngine(WorkflowEventPublisher):
         """
         return workflow_name in self._odps_workflow_names
 
-    def _extract_odps_version_from_input(self, input_data: Dict[str, Any]) -> Optional[str]:
+    def _extract_odps_version_from_input(self, input_data: dict[str, Any]) -> str | None:
         """
         Extract ODPS version from workflow input data (Task 7.1.4).
 
@@ -2662,9 +2655,8 @@ class WorkflowEngine(WorkflowEventPublisher):
 
         # Check state_data if it's nested
         state_data = input_data.get("state_data")
-        if state_data and isinstance(state_data, dict):
-            if "odps_version" in state_data:
-                return state_data.get("odps_version")
+        if state_data and isinstance(state_data, dict) and "odps_version" in state_data:
+            return state_data.get("odps_version")
 
         # Try to extract from original_raw if it's an ODPS document
         if "original_raw" in input_data:
@@ -2687,7 +2679,7 @@ class WorkflowEngine(WorkflowEventPublisher):
 
         return None
 
-    def _get_odps_event_publisher(self, instance: WorkflowInstance) -> Optional[ODPSEventPublisher]:
+    def _get_odps_event_publisher(self, instance: WorkflowInstance) -> ODPSEventPublisher | None:
         """
         Get ODPSEventPublisher instance for ODPS workflow event publishing (Task 7.1.4).
 
@@ -2889,7 +2881,7 @@ class WorkflowEngine(WorkflowEventPublisher):
         step_index: int,
         step_name: str,
         total_steps: int,
-        status_message: Optional[str] = None,
+        status_message: str | None = None,
     ) -> None:
         """
         Publish ODPS creation progress event if this is an ODPS workflow (Task 7.3.2).

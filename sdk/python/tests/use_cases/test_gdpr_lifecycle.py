@@ -18,14 +18,14 @@ These are available to any authenticated user for their own data.
 """
 
 import requests
-from tests._persona_provisioning import provision_persona, PersonaCredentials
-from tests.fixtures.test_data import fresh_id
-from tests.use_cases._api_helpers import api_base_url
 
+from tests._persona_provisioning import provision_persona
+from tests.use_cases._api_helpers import api_base_url
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
@@ -51,20 +51,15 @@ def test_gdpr_export_request():
     )
 
     if resp.status_code == 404:
-        pytest.skip(
-            "GDPR export endpoint not implemented yet (404)"
-        )
+        pytest.skip("GDPR export endpoint not implemented yet (404)")
 
     assert resp.status_code in (200, 201, 202), (
-        f"GDPR export returned {resp.status_code}: "
-        f"{resp.text[:500]}"
+        f"GDPR export returned {resp.status_code}: {resp.text[:500]}"
     )
     body = resp.json()
-    assert (
-        "job_id" in body
-        or "id" in body
-        or "status" in body
-    ), f"GDPR export response missing job_id/id/status: {body}"
+    assert "job_id" in body or "id" in body or "status" in body, (
+        f"GDPR export response missing job_id/id/status: {body}"
+    )
 
 
 def test_gdpr_export_returns_request_status():
@@ -83,9 +78,7 @@ def test_gdpr_export_returns_request_status():
     )
 
     if create_resp.status_code == 404:
-        pytest.skip(
-            "GDPR export endpoint not implemented (404)"
-        )
+        pytest.skip("GDPR export endpoint not implemented (404)")
 
     assert create_resp.status_code in (200, 201, 202)
     body = create_resp.json()
@@ -101,8 +94,7 @@ def test_gdpr_export_returns_request_status():
         if status_resp.status_code == 200:
             status_body = status_resp.json()
             assert "status" in status_body, (
-                f"GDPR export status response missing 'status': "
-                f"{status_body}"
+                f"GDPR export status response missing 'status': {status_body}"
             )
 
 
@@ -121,20 +113,15 @@ def test_gdpr_erasure_request():
     )
 
     if resp.status_code == 404:
-        pytest.skip(
-            "GDPR erasure endpoint not implemented yet (404)"
-        )
+        pytest.skip("GDPR erasure endpoint not implemented yet (404)")
 
     assert resp.status_code in (200, 201, 202), (
-        f"GDPR erasure returned {resp.status_code}: "
-        f"{resp.text[:500]}"
+        f"GDPR erasure returned {resp.status_code}: {resp.text[:500]}"
     )
     body = resp.json()
-    assert (
-        "request_id" in body
-        or "id" in body
-        or "status" in body
-    ), f"GDPR erasure response missing id/status: {body}"
+    assert "request_id" in body or "id" in body or "status" in body, (
+        f"GDPR erasure response missing id/status: {body}"
+    )
 
 
 def test_gdpr_erasure_list_returns_requests():
@@ -151,13 +138,10 @@ def test_gdpr_erasure_list_returns_requests():
     )
 
     if resp.status_code == 404:
-        pytest.skip(
-            "GDPR erasure-requests endpoint not implemented (404)"
-        )
+        pytest.skip("GDPR erasure-requests endpoint not implemented (404)")
 
     assert resp.status_code == 200, (
-        f"GET /users/me/erasure-requests/ returned "
-        f"{resp.status_code}: {resp.text[:300]}"
+        f"GET /users/me/erasure-requests/ returned {resp.status_code}: {resp.text[:300]}"
     )
 
 
@@ -175,8 +159,7 @@ def test_gdpr_export_unauthenticated_returns_401():
         pytest.skip("GDPR endpoint not implemented (404)")
 
     assert resp.status_code == 401, (
-        f"Unauthenticated GDPR export returned "
-        f"{resp.status_code}, expected 401"
+        f"Unauthenticated GDPR export returned {resp.status_code}, expected 401"
     )
 
 
@@ -194,8 +177,7 @@ def test_gdpr_erasure_unauthenticated_returns_401():
         pytest.skip("GDPR endpoint not implemented (404)")
 
     assert resp.status_code == 401, (
-        f"Unauthenticated GDPR erasure returned "
-        f"{resp.status_code}, expected 401"
+        f"Unauthenticated GDPR erasure returned {resp.status_code}, expected 401"
     )
 
 
@@ -212,6 +194,5 @@ def test_gdpr_export_jobs_list_unauthenticated_returns_401():
         pytest.skip("GDPR endpoint not implemented (404)")
 
     assert resp.status_code == 401, (
-        f"Unauthenticated export-jobs list returned "
-        f"{resp.status_code}, expected 401"
+        f"Unauthenticated export-jobs list returned {resp.status_code}, expected 401"
     )

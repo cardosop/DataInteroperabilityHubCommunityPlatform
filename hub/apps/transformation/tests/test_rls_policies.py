@@ -1,8 +1,9 @@
 """285.14.3.11 — Verify RLS policy coverage for transformation app."""
-import pytest
+
 import os
 import re
 
+import pytest
 from django.test import TestCase
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -37,6 +38,7 @@ def _migration_texts(app_dir):
 class TransformationRLSPolicyTests(TestCase):
     def setUp(self):
         import hub.apps.transformation
+
         app_dir = os.path.dirname(hub.apps.transformation.__file__)
         self.migrations = _migration_texts(app_dir)
 
@@ -47,12 +49,11 @@ class TransformationRLSPolicyTests(TestCase):
         for table, model_name in _TRANSFORMATION_MODELS.items():
             if not re.search(
                 rf"CREATE\s+POLICY\s+\S+\s+ON\s+{table}",
-                all_content, re.IGNORECASE,
+                all_content,
+                re.IGNORECASE,
             ):
                 missing.append(f"{model_name} ({table})")
-        assert not missing, (
-            f"Transformation models missing RLS policies: {missing}"
-        )
+        assert not missing, f"Transformation models missing RLS policies: {missing}"
 
     @pytest.mark.integration
     def test_all_tenant_scoped_models_individually_covered(self):
@@ -61,7 +62,8 @@ class TransformationRLSPolicyTests(TestCase):
         for table in _TRANSFORMATION_MODELS:
             assert re.search(
                 rf"CREATE\s+POLICY\s+\S+\s+ON\s+{table}",
-                all_content, re.IGNORECASE,
+                all_content,
+                re.IGNORECASE,
             ), f"{table} RLS policy not found"
 
     @pytest.mark.integration
@@ -71,7 +73,8 @@ class TransformationRLSPolicyTests(TestCase):
         for table in ("transformation_nodes", "transformation_pipeline_executions"):
             assert not re.search(
                 rf"CREATE\s+POLICY\s+\S+\s+ON\s+{table}",
-                all_content, re.IGNORECASE,
+                all_content,
+                re.IGNORECASE,
             ), f"{table} should not have direct RLS (no tenant FK)"
 
     @pytest.mark.integration

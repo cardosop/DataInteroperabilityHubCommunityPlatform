@@ -13,19 +13,21 @@ When both sources are available, the catalog types enrich the YAML
 definitions.  Columns present in YAML but missing from the catalog
 emit a warning and default to ``type: null``.
 """
+
 from __future__ import annotations
+
 import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import yaml
 
 logger = logging.getLogger(__name__)
 
 # dbt test name → HubContract constraint mapping.
-_TEST_TO_CONSTRAINT: Dict[str, str] = {
+_TEST_TO_CONSTRAINT: dict[str, str] = {
     "unique": "is_unique",
     "not_null": "is_not_null",
 }
@@ -70,8 +72,8 @@ class DbtContractGenerator:
     def generate_from_yaml(
         self,
         schema_yml_path: str,
-        catalog_path: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        catalog_path: str | None = None,
+    ) -> dict[str, Any]:
         """Parse a dbt ``schema.yml`` file and return a HubContract dict.
 
         Args:
@@ -85,18 +87,16 @@ class DbtContractGenerator:
         models = self._parse_models_yaml(schema_yml_path)
 
         # Build per-model catalog lookups if available.
-        catalog_columns: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        catalog_columns: dict[str, dict[str, dict[str, Any]]] = {}
         if catalog_path:
             for model in models:
-                cols = self._extract_catalog_columns(
-                    catalog_path, model_name=model["name"]
-                )
+                cols = self._extract_catalog_columns(catalog_path, model_name=model["name"])
                 if cols:
                     catalog_columns[model["name"]] = cols
 
-        all_fields: List[Dict[str, Any]] = []
-        primary_keys: List[str] = []
-        descriptions: List[str] = []
+        all_fields: list[dict[str, Any]] = []
+        primary_keys: list[str] = []
+        descriptions: list[str] = []
 
         for model in models:
             model_name = model["name"]
@@ -106,7 +106,7 @@ class DbtContractGenerator:
                 descriptions.append(f"{model_name}: {model['description']}")
 
             for col in model["columns"]:
-                field: Dict[str, Any] = {
+                field: dict[str, Any] = {
                     "name": col["name"],
                     "type": None,
                     "description": col.get("description", ""),
@@ -118,8 +118,7 @@ class DbtContractGenerator:
                 elif catalog_path:
                     # Column in YAML but not in catalog — warn.
                     logger.warning(
-                        "Column '%s' in model '%s' not found in catalog.json "
-                        "— type will be null",
+                        "Column '%s' in model '%s' not found in catalog.json — type will be null",
                         col["name"],
                         model_name,
                     )
@@ -151,10 +150,10 @@ class DbtContractGenerator:
 
     def generate_from_catalog(
         self,
-        catalog: Dict[str, Any],
-        model_names: Optional[List[str]] = None,
+        catalog: dict[str, Any],
+        model_names: list[str] | None = None,
         dataset_name: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build a HubContract from raw ``catalog.json`` data.
 
         Args:
@@ -172,8 +171,8 @@ class DbtContractGenerator:
         if model_names is None:
             model_names = []
 
-        fields: List[Dict[str, Any]] = []
-        primary_keys: List[str] = []
+        fields: list[dict[str, Any]] = []
+        primary_keys: list[str] = []
 
         for node_id, node in nodes.items():
             node_name = node.get("name", node_id)
@@ -202,8 +201,8 @@ class DbtContractGenerator:
     def generate_from_models_dir(
         self,
         models_dir: str,
-        catalog_path: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        catalog_path: str | None = None,
+    ) -> dict[str, Any]:
         """Scan ``models/`` for ``*.yml`` schema files and merge them
         into a single HubContract.
 
@@ -216,13 +215,11 @@ class DbtContractGenerator:
         """
         yml_files = sorted(Path(models_dir).glob("*.yml"))
         if not yml_files:
-            raise DbtContractGeneratorError(
-                f"No YAML schema files found in {models_dir}"
-            )
+            raise DbtContractGeneratorError(f"No YAML schema files found in {models_dir}")
 
-        all_fields: List[Dict[str, Any]] = []
-        all_primary_keys: List[str] = []
-        all_descriptions: List[str] = []
+        all_fields: list[dict[str, Any]] = []
+        all_primary_keys: list[str] = []
+        all_descriptions: list[str] = []
 
         for yml_path in yml_files:
             contract = self.generate_from_yaml(str(yml_path), catalog_path=catalog_path)
@@ -246,7 +243,7 @@ class DbtContractGenerator:
     # ── Static parsing helpers ────────────────────────────────────────
 
     @staticmethod
-    def _parse_models_yaml(schema_yml_path: str) -> List[Dict[str, Any]]:
+    def _parse_models_yaml(schema_yml_path: str) -> list[dict[str, Any]]:
         """Parse a dbt schema.yml file into a list of model dicts.
 
         Each returned dict has:
@@ -255,9 +252,7 @@ class DbtContractGenerator:
           - ``columns`` (list of {name, description, tests})
         """
         if not os.path.isfile(schema_yml_path):
-            raise DbtContractGeneratorError(
-                f"Schema file not found: {schema_yml_path}"
-            )
+            raise DbtContractGeneratorError(f"Schema file not found: {schema_yml_path}")
 
         try:
             with open(schema_yml_path) as f:
@@ -274,39 +269,39 @@ class DbtContractGenerator:
 
         models_raw = data.get("models", [])
         if not models_raw:
-            raise DbtContractGeneratorError(
-                f"No models found in {schema_yml_path}"
-            )
+            raise DbtContractGeneratorError(f"No models found in {schema_yml_path}")
 
-        models: List[Dict[str, Any]] = []
+        models: list[dict[str, Any]] = []
         for m in models_raw:
             if "name" not in m:
                 raise DbtContractGeneratorError(
                     f"Model in {schema_yml_path} is missing required 'name' field"
                 )
-            columns: List[Dict[str, Any]] = []
+            columns: list[dict[str, Any]] = []
             for c in m.get("columns", []):
                 if "name" not in c:
                     raise DbtContractGeneratorError(
                         f"Column in model '{m['name']}' is missing required 'name' field"
                     )
-                columns.append({
-                    "name": c["name"],
-                    "description": c.get("description", ""),
-                    "tests": c.get("tests", []),
-                })
-            models.append({
-                "name": m["name"],
-                "description": m.get("description", ""),
-                "columns": columns,
-            })
+                columns.append(
+                    {
+                        "name": c["name"],
+                        "description": c.get("description", ""),
+                        "tests": c.get("tests", []),
+                    }
+                )
+            models.append(
+                {
+                    "name": m["name"],
+                    "description": m.get("description", ""),
+                    "columns": columns,
+                }
+            )
 
         return models
 
     @staticmethod
-    def _extract_catalog_columns(
-        catalog_path: str, model_name: str
-    ) -> Dict[str, Dict[str, Any]]:
+    def _extract_catalog_columns(catalog_path: str, model_name: str) -> dict[str, dict[str, Any]]:
         """Extract column name → {type} mapping from catalog.json for a
         specific model.
 
@@ -324,14 +319,12 @@ class DbtContractGenerator:
             with open(catalog_path) as f:
                 catalog = json.load(f)
         except (json.JSONDecodeError, OSError) as exc:
-            logger.warning(
-                "catalog_unparseable path=%s error=%s", catalog_path, str(exc)
-            )
+            logger.warning("catalog_unparseable path=%s error=%s", catalog_path, str(exc))
             return {}
 
         nodes = catalog.get("nodes", {})
         # dbt unique_id format: model.<project>.<name>
-        for node_id, node in nodes.items():
+        for _node_id, node in nodes.items():
             node_name = node.get("name", "")
             if node_name == model_name:
                 columns = node.get("columns", {})
@@ -340,9 +333,7 @@ class DbtContractGenerator:
                     for col_name, col_info in columns.items()
                 }
 
-        logger.debug(
-            "model_not_in_catalog model_name=%s path=%s", model_name, catalog_path
-        )
+        logger.debug("model_not_in_catalog model_name=%s path=%s", model_name, catalog_path)
         return {}
 
     @staticmethod

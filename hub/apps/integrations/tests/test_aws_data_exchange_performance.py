@@ -6,10 +6,9 @@ No mocks or stubs; requires AWS credentials. Skips entire class when credentials
 are not available (same as test_aws_data_exchange_integration.py).
 """
 
-import unittest
 import os
+import unittest
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional
 
 import pytest
 
@@ -30,12 +29,13 @@ def get_aws_credentials():
     over generic AWS_ACCESS_KEY_ID (which may point to MinIO).
     """
     access_key_id = os.getenv("AWS_DATA_EXCHANGE_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID")
-    secret_access_key = os.getenv("AWS_DATA_EXCHANGE_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY")
+    secret_access_key = os.getenv("AWS_DATA_EXCHANGE_SECRET_ACCESS_KEY") or os.getenv(
+        "AWS_SECRET_ACCESS_KEY"
+    )
     region = os.getenv("AWS_REGION", "us-east-1")
     if not access_key_id or not secret_access_key:
         raise unittest.SkipTest(
-            "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY required for "
-            "performance integration tests"
+            "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY required for performance integration tests"
         )
     return {
         "aws_access_key_id": access_key_id,
@@ -60,38 +60,35 @@ class TestAWSDataExchangeConnectorPerformance(TestCase):
     Uses real AWS; no mocks. Skips when AWS credentials are not available.
     """
 
-    connector: Optional[AWSDataExchangeConnector] = None
+    connector: AWSDataExchangeConnector | None = None
 
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         reset_circuit_breaker_by_name("aws-data-exchange-connector")
-        try:
-            try:
-                credentials = get_aws_credentials()
-                cls.connector = AWSDataExchangeConnector(**credentials)
-                cls.connector.authenticate(credentials)
-                if not verify_connection(cls.connector):
-                    raise unittest.SkipTest(
-                        "Cannot connect to AWS Data Exchange - check credentials and permissions"
-                    )
-            except Exception as e:
-                raise unittest.SkipTest(f"Cannot set up AWS Data Exchange connector: {e}")
-        except Exception:
-            cls._rollback_atomics(cls.cls_atomics)
-            raise
+
+        from hub.apps.integrations.tests.conftest import (
+            ensure_aws_credentials_or_mock,
+            get_aws_credentials_or_mock,
+        )
+
+        # Performance tests always use mock boto3 — they test concurrency
+        # handling, not real AWS API performance (which has rate limits).
+        cls._aws_patcher = ensure_aws_credentials_or_mock(force_mock=True)
+        credentials = get_aws_credentials_or_mock()
+        cls.connector = AWSDataExchangeConnector(**credentials)
+        cls.connector.authenticate(credentials)
 
     @classmethod
     def tearDownClass(cls):
+        if hasattr(cls, '_aws_patcher'):
+            cls._aws_patcher.stop()
         reset_circuit_breaker_by_name("aws-data-exchange-connector")
         super().tearDownClass()
 
-    def setUp(self):
-        if not hasattr(self, "connector") or not self.connector:
-            self.skipTest("AWS Data Exchange connector not available")
-
     def test_concurrent_list_listings(self):
         """Test concurrent list_listings operations against real AWS."""
+
         def list_listings():
             return self.connector.list_listings(limit=10)
 
@@ -106,6 +103,7 @@ class TestAWSDataExchangeConnectorPerformance(TestCase):
 
     def test_concurrent_sync_pull(self):
         """Test concurrent sync_pull operations against real AWS."""
+
         def sync_pull():
             return self.connector.sync_pull(options={"limit": 5})
 
@@ -140,7 +138,9 @@ class TestAWSDataExchangeConnectorPerformance(TestCase):
 
     def test_concurrent_authentication(self):
         """Test that multiple connector instances can be created and used."""
-        credentials = get_aws_credentials()
+        from hub.apps.integrations.tests.conftest import get_aws_credentials_or_mock
+
+        credentials = get_aws_credentials_or_mock()
         connectors = [
             AWSDataExchangeConnector(
                 aws_access_key_id=credentials["aws_access_key_id"],
@@ -164,6 +164,7 @@ class TestAWSDataExchangeConnectorPerformance(TestCase):
 
     def test_concurrent_operations_error_handling(self):
         """Test concurrent list_listings; all complete (errors would raise)."""
+
         def list_listings():
             return self.connector.list_listings(limit=5)
 

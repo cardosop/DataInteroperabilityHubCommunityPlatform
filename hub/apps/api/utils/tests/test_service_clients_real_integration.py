@@ -4,14 +4,15 @@ Real integration tests for service clients against Docker Compose services.
 These tests make actual HTTP calls to services running in Docker Compose.
 No mocks or stubs - tests verify real service-to-service communication.
 """
-from django.test import TestCase, override_settings
+
 import httpx
 import structlog
+from django.test import TestCase
 
-from hub.apps.dq.service_client import DQServiceClient
 from hub.apps.compliance.service_client import ComplianceServiceClient
-from hub.apps.semantic.service_client import SemanticServiceClient
 from hub.apps.contracts.cli_client import DataContractCLIClient
+from hub.apps.dq.service_client import DQServiceClient
+from hub.apps.semantic.service_client import SemanticServiceClient
 
 logger = structlog.get_logger(__name__)
 
@@ -46,7 +47,7 @@ class RealServiceClientIntegrationTest(TestCase):
                 "dq_service_health_check_real",
                 is_healthy=is_healthy,
                 service_name=service_name,
-                base_url=self.dq_client.base_url
+                base_url=self.dq_client.base_url,
             )
         except Exception as e:
             # If service is not available, log but don't fail - this is expected in some environments
@@ -54,7 +55,7 @@ class RealServiceClientIntegrationTest(TestCase):
                 "dq_service_health_check_unavailable",
                 error=str(e),
                 base_url=self.dq_client.base_url,
-                message="DQ service may not be running - this is OK for CI/CD environments"
+                message="DQ service may not be running - this is OK for CI/CD environments",
             )
             # Don't fail the test - service availability is environment-dependent
             self.skipTest(f"DQ service not available: {e}")
@@ -69,14 +70,14 @@ class RealServiceClientIntegrationTest(TestCase):
                 "compliance_service_health_check_real",
                 is_healthy=is_healthy,
                 service_name=service_name,
-                base_url=self.compliance_client.base_url
+                base_url=self.compliance_client.base_url,
             )
         except Exception as e:
             logger.warning(
                 "compliance_service_health_check_unavailable",
                 error=str(e),
                 base_url=self.compliance_client.base_url,
-                message="Compliance service may not be running - this is OK for CI/CD environments"
+                message="Compliance service may not be running - this is OK for CI/CD environments",
             )
             self.skipTest(f"Compliance service not available: {e}")
 
@@ -90,14 +91,14 @@ class RealServiceClientIntegrationTest(TestCase):
                 "semantic_service_health_check_real",
                 is_healthy=is_healthy,
                 fuseki_status=fuseki_status,
-                base_url=self.semantic_client.base_url
+                base_url=self.semantic_client.base_url,
             )
         except Exception as e:
             logger.warning(
                 "semantic_service_health_check_unavailable",
                 error=str(e),
                 base_url=self.semantic_client.base_url,
-                message="Semantic service may not be running - this is OK for CI/CD environments"
+                message="Semantic service may not be running - this is OK for CI/CD environments",
             )
             self.skipTest(f"Semantic service not available: {e}")
 
@@ -109,14 +110,14 @@ class RealServiceClientIntegrationTest(TestCase):
             logger.info(
                 "datacontract_service_health_check_real",
                 result=result,
-                base_url=self.datacontract_client.base_url
+                base_url=self.datacontract_client.base_url,
             )
         except Exception as e:
             logger.warning(
                 "datacontract_service_health_check_unavailable",
                 error=str(e),
                 base_url=self.datacontract_client.base_url,
-                message="DataContract service may not be running - this is OK for CI/CD environments"
+                message="DataContract service may not be running - this is OK for CI/CD environments",
             )
             self.skipTest(f"DataContract service not available: {e}")
 
@@ -129,48 +130,48 @@ class RealServiceClientIntegrationTest(TestCase):
         # Verify endpoint construction follows patterns
         # DQ service uses simple endpoints like '/health', '/run'
         # These should NOT include '/api/v1/' prefix
-        self.assertNotIn('/api/v1', self.dq_client.base_url)
+        self.assertNotIn("/api/v1", self.dq_client.base_url)
 
         logger.info(
             "dq_service_endpoint_construction_verified",
             base_url=self.dq_client.base_url,
-            message="DQ service endpoint construction verified"
+            message="DQ service endpoint construction verified",
         )
 
     def test_compliance_service_endpoint_construction_real(self):
         """Verify Compliance service endpoint construction is correct"""
         self.assertIsNotNone(self.compliance_client.base_url)
         self.assertIsInstance(self.compliance_client.base_url, str)
-        self.assertNotIn('/api/v1', self.compliance_client.base_url)
+        self.assertNotIn("/api/v1", self.compliance_client.base_url)
 
         logger.info(
             "compliance_service_endpoint_construction_verified",
             base_url=self.compliance_client.base_url,
-            message="Compliance service endpoint construction verified"
+            message="Compliance service endpoint construction verified",
         )
 
     def test_semantic_service_endpoint_construction_real(self):
         """Verify Semantic service endpoint construction is correct"""
         self.assertIsNotNone(self.semantic_client.base_url)
         self.assertIsInstance(self.semantic_client.base_url, str)
-        self.assertNotIn('/api/v1', self.semantic_client.base_url)
+        self.assertNotIn("/api/v1", self.semantic_client.base_url)
 
         logger.info(
             "semantic_service_endpoint_construction_verified",
             base_url=self.semantic_client.base_url,
-            message="Semantic service endpoint construction verified"
+            message="Semantic service endpoint construction verified",
         )
 
     def test_datacontract_service_endpoint_construction_real(self):
         """Verify DataContract service endpoint construction is correct"""
         self.assertIsNotNone(self.datacontract_client.base_url)
         self.assertIsInstance(self.datacontract_client.base_url, str)
-        self.assertNotIn('/api/v1', self.datacontract_client.base_url)
+        self.assertNotIn("/api/v1", self.datacontract_client.base_url)
 
         logger.info(
             "datacontract_service_endpoint_construction_verified",
             base_url=self.datacontract_client.base_url,
-            message="DataContract service endpoint construction verified"
+            message="DataContract service endpoint construction verified",
         )
 
     def test_service_clients_use_correct_http_clients(self):
@@ -187,7 +188,7 @@ class RealServiceClientIntegrationTest(TestCase):
 
         logger.info(
             "service_clients_http_clients_verified",
-            message="All service clients use correct HTTP client types"
+            message="All service clients use correct HTTP client types",
         )
 
     def test_service_clients_have_circuit_breakers(self):
@@ -199,7 +200,7 @@ class RealServiceClientIntegrationTest(TestCase):
 
         logger.info(
             "service_clients_circuit_breakers_verified",
-            message="All service clients have circuit breaker protection"
+            message="All service clients have circuit breaker protection",
         )
 
     def test_service_clients_endpoint_naming_standards(self):
@@ -216,16 +217,16 @@ class RealServiceClientIntegrationTest(TestCase):
         # and ensuring base URLs don't contain Django API paths
 
         endpoints_to_check = [
-            ('/health', True),  # Simple endpoint
-            ('/scan-file', True),  # Kebab-case
-            ('/map/contract', True),  # Kebab-case with path
-            ('/scan_file', False),  # Snake_case - should not be used
-            ('/scanFile', False),  # CamelCase - should not be used
+            ("/health", True),  # Simple endpoint
+            ("/scan-file", True),  # Kebab-case
+            ("/map/contract", True),  # Kebab-case with path
+            ("/scan_file", False),  # Snake_case - should not be used
+            ("/scanFile", False),  # CamelCase - should not be used
         ]
 
         for endpoint, should_be_valid in endpoints_to_check:
             # Check if endpoint follows kebab-case pattern
-            has_underscore = '_' in endpoint
+            has_underscore = "_" in endpoint
             has_camel_case = any(c.isupper() for c in endpoint if c.isalpha())
 
             if should_be_valid:
@@ -234,6 +235,5 @@ class RealServiceClientIntegrationTest(TestCase):
 
         logger.info(
             "service_clients_endpoint_naming_verified",
-            message="Service client endpoints follow naming standards"
+            message="Service client endpoints follow naming standards",
         )
-

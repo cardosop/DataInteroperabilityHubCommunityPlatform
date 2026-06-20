@@ -17,13 +17,15 @@ Safety
   iteration so DELETING rows disappear; avoids skipping lower-pk rows if a
   mid-batch delete fails (cursor ``pk__gt`` would advance past them).
 """
+
 from __future__ import annotations
+
 import logging
 import os
 import sys
 import uuid
 from datetime import datetime, timedelta
-from typing import Any, List
+from typing import Any
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -48,7 +50,7 @@ def _emit_batch_audit(
     dry_run: bool,
     batch: int,
     min_age_days: int,
-    file_ids: List[str],
+    file_ids: list[str],
     correlation_id: str,
     soft_deleted: int | None = None,
     failure_sample: list[dict[str, str]] | None = None,
@@ -80,7 +82,7 @@ def _emit_batch_audit(
             result="SUCCESS",
             details=details,
         )
-    except Exception as exc:  # noqa: BLE001 — boundary
+    except Exception as exc:
         logger.warning(
             "cleanup_orphan_files_audit_failed tenant_id=%s batch=%s error=%s",
             tenant.id,
@@ -173,8 +175,7 @@ class Command(BaseCommand):
         if not acquired:
             self.stderr.write(
                 self.style.ERROR(
-                    "Another cleanup_orphan_files instance holds the "
-                    "distributed lock; exiting.",
+                    "Another cleanup_orphan_files instance holds the distributed lock; exiting.",
                 ),
             )
             sys.exit(1)
@@ -279,7 +280,7 @@ class Command(BaseCommand):
                 )
                 if last_pk is not None:
                     qs = qs.filter(pk__gt=last_pk)
-                batch: List[Any] = list(qs[:batch_size])
+                batch: list[Any] = list(qs[:batch_size])
                 if not batch:
                     break
 
@@ -325,7 +326,7 @@ class Command(BaseCommand):
                             None,
                         )
                         successes += 1
-                    except Exception as exc:  # noqa: BLE001 — batch boundary
+                    except Exception as exc:
                         logger.warning(
                             "cleanup_orphan_files_delete_failed tenant=%s file=%s error=%s",
                             tenant_id_str,

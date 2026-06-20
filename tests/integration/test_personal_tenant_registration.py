@@ -148,9 +148,7 @@ class PersonalTenantRegistrationIntegrationTest(TestCase):
                 format="json",
             )
             self.assertEqual(login.status_code, status.HTTP_200_OK)
-            self.client.credentials(
-                HTTP_AUTHORIZATION=f"Bearer {login.data['access_token']}"
-            )
+            self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['access_token']}")
 
             other_tenant = Tenant.objects.create(
                 name=f"Other Tenant {uuid.uuid4().hex[:8]}",

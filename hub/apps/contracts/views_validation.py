@@ -6,8 +6,6 @@ Validation, linting, and conversion actions for contract viewsets.
 SAVING CHECKPOINT: This module contains validation-related actions.
 """
 
-import time
-
 from django.utils import timezone
 from drf_spectacular.utils import (
     OpenApiResponse,
@@ -87,6 +85,7 @@ class ContractValidationMixin:
         # Pre-Wave-1 this endpoint accepted unbounded raw bodies, so
         # it was a 413 bypass route around the create/update cap.
         from .serializers import payload_size_envelope
+
         envelope = payload_size_envelope(request.data)
         if envelope is not None:
             return Response(envelope, status=413)
@@ -101,7 +100,7 @@ class ContractValidationMixin:
         svc = NormalizationService()
         try:
             (
-                hub_contract,
+                _hub_contract,
                 detected_spec_type,
                 detected_spec_version,
                 norm_status,
@@ -405,7 +404,7 @@ class ContractValidationMixin:
                 )
 
                 return Response(
-                    {"error": f"Validation failed: {str(e)}"},
+                    {"error": f"Validation failed: {e!s}"},
                     status=http_status,
                 )
 
@@ -470,7 +469,7 @@ class ContractValidationMixin:
 
         except Exception as e:
             return Response(
-                {"error": f"Linting failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": f"Linting failed: {e!s}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     @extend_schema(
@@ -561,6 +560,6 @@ class ContractValidationMixin:
 
         except Exception as e:
             return Response(
-                {"error": f"Conversion failed: {str(e)}"},
+                {"error": f"Conversion failed: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

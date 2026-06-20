@@ -7,6 +7,7 @@ matching ``(asset|contract|tenant|webhook|user)[_-]<rest>``. The fix is
 ``fresh_id(prefix)`` from ``sdk/python/tests/fixtures/test_data.py``.
 Use ``# noqa: PHASE216-STATIC-ID`` to exempt a single line.
 """
+
 from __future__ import annotations
 
 import ast
@@ -15,29 +16,28 @@ from pathlib import Path
 
 import pytest
 
-
 SDK_TESTS_DIR = Path(__file__).resolve().parent
-FORBIDDEN_RE = re.compile(
-    r"^(asset|contract|tenant|webhook|user)[_-][A-Za-z0-9_-]+$"
-)
+FORBIDDEN_RE = re.compile(r"^(asset|contract|tenant|webhook|user)[_-][A-Za-z0-9_-]+$")
 
 # Pre-Phase-216 backlog. Filled by the first guard run; new entries
 # only added for legacy files written before this rule existed.
-ALLOWLIST: frozenset[str] = frozenset({
-    "test_all_apis_odps_integration.py",
-    "test_baas_api.py",
-    "test_contracts_api.py",
-    "test_integration.py",
-    "test_mesh_compliance_api.py",
-    "test_mesh_policies_api.py",
-    "test_mesh_topology_api.py",
-    "test_ml_api_e2e.py",
-    "test_odcs_export_integration.py",
-    "test_odcs_export.py",
-    "test_phase118b_endpoint_fixes.py",
-    "test_phase26_sdk_integration.py",
-    "test_python_js_odps_consistency.py",
-})
+ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "test_all_apis_odps_integration.py",
+        "test_baas_api.py",
+        "test_contracts_api.py",
+        "test_integration.py",
+        "test_mesh_compliance_api.py",
+        "test_mesh_policies_api.py",
+        "test_mesh_topology_api.py",
+        "test_ml_api_e2e.py",
+        "test_odcs_export_integration.py",
+        "test_odcs_export.py",
+        "test_phase118b_endpoint_fixes.py",
+        "test_phase26_sdk_integration.py",
+        "test_python_js_odps_consistency.py",
+    }
+)
 
 
 def _string_literals(tree: ast.Module) -> list[tuple[int, str]]:

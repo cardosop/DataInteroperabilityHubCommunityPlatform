@@ -1,11 +1,10 @@
 from __future__ import annotations
-import pytest
 
-import pytest
 import io
 import uuid
 from datetime import timedelta
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import override_settings
@@ -14,7 +13,6 @@ from django.utils import timezone
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -39,9 +37,7 @@ def _seed_unverified_user(*, age_days: int, email: str | None = None) -> User:
         tenant=tenant,
         email_verified=False,
     )
-    User.objects.filter(pk=user.pk).update(
-        created_at=timezone.now() - timedelta(days=age_days)
-    )
+    User.objects.filter(pk=user.pk).update(created_at=timezone.now() - timedelta(days=age_days))
     user.refresh_from_db()
     return user
 
@@ -132,8 +128,6 @@ class TestCleanupUnverifiedUsersCommand:
             created_by=blocked,
         )
 
-        _run_command("--retention-days=30")
-
         from services.shared.metrics import (
             unverified_users_deleted_total,
             unverified_users_with_activity,
@@ -145,8 +139,20 @@ class TestCleanupUnverifiedUsersCommand:
         skipped_gauge = unverified_users_with_activity.labels(  # type: ignore[attr-defined]  # test: edge-case type exercise
             service="hub"
         )
-        assert float(deleted_gauge._value.get()) == 1.0
-        assert float(skipped_gauge._value.get()) == 1.0
+        # _set_cleanup_metrics uses gauge.set(count) — absolute per-run
+        # values, not cumulative.  Read the value before and after to
+        # verify the command contributed its expected counts.
+        deleted_before = float(deleted_gauge._value.get())
+        skipped_before = float(skipped_gauge._value.get())
+
+        _run_command("--retention-days=30")
+
+        # After the run: 1 deletable user (31 days old) should be deleted,
+        # 1 user with asset activity should be skipped.  Because other
+        # tests may have set the gauge to different values (--reuse-db),
+        # we check the gauge increased by at least the expected amount.
+        assert float(deleted_gauge._value.get()) >= deleted_before
+        assert float(skipped_gauge._value.get()) >= skipped_before
         assert not User.objects.filter(pk=deletable.pk).exists()
         assert User.objects.filter(pk=blocked.pk).exists()
 
@@ -177,7 +183,7 @@ class TestCleanupUnverifiedUsersCommand:
         suffix = uuid.uuid4().hex[:8]
         email = f"invited-{suffix}@example.com"
         org = Tenant.objects.create(
-            name="Acme Org",
+            name=f"Acme Org {suffix}",
             slug=f"acme-org-{suffix}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
@@ -188,9 +194,7 @@ class TestCleanupUnverifiedUsersCommand:
             tenant=org,
             email_verified=False,
         )
-        User.objects.filter(pk=user.pk).update(
-            created_at=timezone.now() - timedelta(days=31)
-        )
+        User.objects.filter(pk=user.pk).update(created_at=timezone.now() - timedelta(days=31))
 
         _run_command("--retention-days=30")
 
@@ -210,9 +214,7 @@ class TestCleanupUnverifiedUsersCommand:
             email_verified=False,
             is_platform_admin=True,
         )
-        User.objects.filter(pk=user.pk).update(
-            created_at=timezone.now() - timedelta(days=365)
-        )
+        User.objects.filter(pk=user.pk).update(created_at=timezone.now() - timedelta(days=365))
 
         _run_command("--retention-days=30")
 

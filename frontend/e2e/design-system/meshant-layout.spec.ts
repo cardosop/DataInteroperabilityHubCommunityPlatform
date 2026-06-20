@@ -18,9 +18,26 @@ import { getTestUser, loginUser } from '../fixtures/auth';
 test.describe('Meshant Layout (Phase 29.0)', () => {
   test.beforeEach(async ({ page }) => {
     const testUser = await getTestUser();
-    await loginUser(page, testUser);
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
+    // Retry once: late-batch Vite GC pauses can cause the first login to
+    // time out on the app-shell wait.  A second attempt with fresh JS
+    // context usually succeeds.
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await loginUser(page, testUser);
+        await page.locator('.app-sidebar').waitFor({ state: 'visible', timeout: 15_000 });
+        return;
+      } catch (err) {
+        lastErr = err;
+        if (attempt === 0) {
+          await page.context().clearCookies().catch(() => {});
+          await page.evaluate(() => localStorage.clear()).catch(() => {});
+          await page.goto('/login', { waitUntil: 'domcontentloaded' });
+          await page.waitForTimeout(2000);
+        }
+      }
+    }
+    throw lastErr ?? new Error('meshant-layout beforeEach: loginUser failed after 2 attempts');
   });
 
   test('.app-main, [data-testid="app-main"] is bounded and does not overflow on a wide viewport', async ({ page }) => {

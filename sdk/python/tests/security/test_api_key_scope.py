@@ -14,9 +14,10 @@ is a D145 persona role, not an API key with a specific scope.
 """
 
 import requests
+
 from tests._persona_provisioning import provision_persona
 from tests.fixtures.test_data import fresh_id
-from tests.use_cases._api_helpers import api_get, api_post, api_base_url
+from tests.use_cases._api_helpers import api_base_url, api_get, api_post
 
 
 def test_data_consumer_role_cannot_create_asset():
@@ -34,18 +35,21 @@ def test_data_consumer_role_cannot_create_asset():
     )
 
     # data_consumer should NOT be able to create assets (write)
-    write_resp = api_post("/assets/", creds, json={
-        "name": fresh_id("scope-test"),
-        "key": fresh_id("scope-key"),
-    })
+    write_resp = api_post(
+        "/assets/",
+        creds,
+        json={
+            "name": fresh_id("scope-test"),
+            "key": fresh_id("scope-key"),
+        },
+    )
     if write_resp.status_code in (200, 201):
         pytest.skip("data_consumer has write access in this deployment config")
     # 403 = forbidden by authorization.
     # 400/422 = rejected by validation before authz — same security outcome
     # (the consumer cannot create the asset).
     assert write_resp.status_code in (400, 403, 422), (
-        f"data_consumer POST /assets/: expected 400/403/422, "
-        f"got {write_resp.status_code}"
+        f"data_consumer POST /assets/: expected 400/403/422, got {write_resp.status_code}"
     )
 
 
@@ -57,14 +61,17 @@ def test_data_consumer_cannot_delete_asset():
     """
     # Create an asset as data_engineer
     eng_creds = provision_persona("data_engineer")
-    create_resp = api_post("/assets/", eng_creds, json={
-        "name": fresh_id("del-scope"),
-        "key": fresh_id("del-key"),
-    })
+    create_resp = api_post(
+        "/assets/",
+        eng_creds,
+        json={
+            "name": fresh_id("del-scope"),
+            "key": fresh_id("del-key"),
+        },
+    )
     if create_resp.status_code not in (200, 201):
         pytest.skip(
-            f"Could not create test asset for delete test "
-            f"(status {create_resp.status_code})"
+            f"Could not create test asset for delete test (status {create_resp.status_code})"
         )
     asset_id = create_resp.json().get("id")
     assert asset_id, "Created asset has no id"
@@ -94,8 +101,7 @@ def test_data_consumer_cannot_delete_asset():
     # Verify the asset still exists (was not deleted)
     still_there = api_get(f"/assets/{asset_id}/", eng_creds)
     assert still_there.status_code in (200, 201), (
-        f"Asset {asset_id} was deleted by data_consumer — "
-        f"write protection failed"
+        f"Asset {asset_id} was deleted by data_consumer — write protection failed"
     )
 
 
@@ -103,6 +109,4 @@ def test_valid_key_can_read():
     """An authenticated persona can read their own profile."""
     creds = provision_persona("data_engineer")
     resp = api_get("/auth/me/", creds)
-    assert resp.status_code == 200, (
-        f"data_engineer GET /auth/me/: {resp.status_code}"
-    )
+    assert resp.status_code == 200, f"data_engineer GET /auth/me/: {resp.status_code}"

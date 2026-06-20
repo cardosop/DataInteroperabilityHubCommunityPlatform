@@ -6,16 +6,15 @@ This module demonstrates comprehensive usage of ODPS functionality in the DataHu
 
 import asyncio
 import os
-import json
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
-    ODPSValidationError,
+    NotFoundError,
     ODPSExportError,
     ODPSLinkingError,
-    NotFoundError,
+    ODPSValidationError,
     ValidationError,
 )
-
 
 # Example ODPS 4.1 document with comprehensive marketplace features
 EXAMPLE_ODPS_41 = """{
@@ -245,14 +244,14 @@ async def example_export_odps(client: DataHubClient, odps_contract_id: str):
         )
 
         if isinstance(odps_json, dict):
-            print(f"✓ Exported ODPS JSON")
+            print("✓ Exported ODPS JSON")
             print(f"  Schema: {odps_json.get('schema')}")
             print(f"  Version: {odps_json.get('version')}")
             if "product" in odps_json:
                 product_details = odps_json["product"].get("details", {}).get("en", {})
                 print(f"  Product: {product_details.get('name')}")
         else:
-            print(f"✓ Exported ODPS JSON (string)")
+            print("✓ Exported ODPS JSON (string)")
 
         # Export as YAML
         print("\nExporting as YAML...")
@@ -264,7 +263,7 @@ async def example_export_odps(client: DataHubClient, odps_contract_id: str):
         if isinstance(odps_yaml, dict) and "content" in odps_yaml:
             print(f"✓ Exported ODPS YAML ({len(odps_yaml['content'])} characters)")
         else:
-            print(f"✓ Exported ODPS YAML")
+            print("✓ Exported ODPS YAML")
 
         return odps_json
 
@@ -342,7 +341,9 @@ async def example_odps_helper_methods(client: DataHubClient, odps_contract_id: s
         if pricing_plans:
             print(f"✓ Found {len(pricing_plans)} pricing plan(s):")
             for plan in pricing_plans:
-                print(f"  - {plan.get('name')} ({plan.get('planID')}): ${plan.get('price')} {plan.get('currency')}/{plan.get('billingPeriod')}")
+                print(
+                    f"  - {plan.get('name')} ({plan.get('planID')}): ${plan.get('price')} {plan.get('currency')}/{plan.get('billingPeriod')}"
+                )
         else:
             print("  No pricing plans found")
 
@@ -442,10 +443,12 @@ async def example_odps_filtering(client: DataHubClient):
             page_size=10,
         )
         print(f"✓ Found {filtered['count']} matching contract(s)")
-        if filtered['results']:
+        if filtered["results"]:
             print("  Sample contracts:")
-            for contract in filtered['results'][:3]:
-                print(f"    - {contract['id']}: {contract.get('original_spec_type')} v{contract.get('original_spec_version')}")
+            for contract in filtered["results"][:3]:
+                print(
+                    f"    - {contract['id']}: {contract.get('original_spec_type')} v{contract.get('original_spec_version')}"
+                )
 
     except Exception as e:
         print(f"✗ Unexpected error: {e}")
@@ -516,7 +519,7 @@ async def example_odps_error_handling(client: DataHubClient):
         )
         print("✗ Should have raised an error")
     except ODPSValidationError as e:
-        print(f"✓ Caught ODPS validation error:")
+        print("✓ Caught ODPS validation error:")
         print(f"  Message: {e.message}")
         print(f"  Error code: {e.code}")
         if e.field_path:
@@ -534,7 +537,7 @@ async def example_odps_error_handling(client: DataHubClient):
         )
         print("✗ Should have raised an error")
     except ODPSValidationError as e:
-        print(f"\n✓ Caught ODPS validation error for invalid UUID:")
+        print("\n✓ Caught ODPS validation error for invalid UUID:")
         print(f"  Message: {e.message}")
         print(f"  Error code: {e.code}")
 
@@ -546,7 +549,7 @@ async def example_odps_error_handling(client: DataHubClient):
         )
         print("✗ Should have raised an error")
     except ODPSValidationError as e:
-        print(f"\n✓ Caught ODPS validation error for invalid format:")
+        print("\n✓ Caught ODPS validation error for invalid format:")
         print(f"  Message: {e.message}")
         print(f"  Error code: {e.code}")
 
@@ -597,4 +600,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

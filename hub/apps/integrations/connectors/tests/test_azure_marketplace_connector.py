@@ -5,13 +5,16 @@ Uses a real HTTP test server (no mocks in connector logic) that serves
 Azure Catalog API-shaped JSON. The connector performs real HTTP requests
 to the test server.
 """
+
 import json
 import socket
 import threading
-import pytest
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Dict, Any
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any
 
+import pytest
+
+from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.base import (
     MarketplaceType,
     SyncDirection,
@@ -20,8 +23,6 @@ from hub.apps.integrations.base import (
 from hub.apps.integrations.connectors.azure_marketplace_connector import (
     AzureMarketplaceConnector,
 )
-from hub.apps.core.services.base import NotFoundError
-
 
 # Azure-shaped product payload (real config shape per Microsoft docs)
 SAMPLE_PRODUCT = {
@@ -71,7 +72,7 @@ def _find_free_port() -> int:
 class AzureShapeHandler(BaseHTTPRequestHandler):
     """Serves Azure Catalog API-shaped responses for real HTTP tests."""
 
-    def _send_json(self, status: int, body: Dict[str, Any]) -> None:
+    def _send_json(self, status: int, body: dict[str, Any]) -> None:
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
@@ -109,6 +110,7 @@ def azure_test_server():
         yield f"http://127.0.0.1:{port}"
     finally:
         server.shutdown()
+        server.server_close()
 
 
 @pytest.fixture
@@ -137,9 +139,7 @@ class TestAzureMarketplaceConnector:
         assert azure_connector.marketplace_type == expected
 
     def test_supported_sync_directions(self, azure_connector):
-        assert (
-            azure_connector.supported_sync_directions == [SyncDirection.PULL]
-        )
+        assert azure_connector.supported_sync_directions == [SyncDirection.PULL]
 
     def test_test_connection(self, azure_connector):
         assert azure_connector.test_connection() is True
@@ -177,10 +177,7 @@ class TestAzureMarketplaceConnector:
         listing = azure_connector.get_listing(pid)
         mapping = azure_connector.map_to_hub_asset(listing, sync_job_id="job-1")
         assert mapping.source_type.value == "FEDERATED"
-        assert (
-            mapping.source_metadata["marketplace_type"]
-            == "AZURE_MARKETPLACE"
-        )
+        assert mapping.source_metadata["marketplace_type"] == "AZURE_MARKETPLACE"
         assert mapping.source_metadata["listing_id"] == pid
         assert mapping.source_metadata.get("sync_job_id") == "job-1"
         assert mapping.asset_data["name"] == SAMPLE_PRODUCT["displayName"]

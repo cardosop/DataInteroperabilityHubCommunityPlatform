@@ -1,6 +1,7 @@
 """
 Compliance operations for DataHub SDK.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,12 +17,14 @@ class ComplianceAPI:
     #: by :meth:`wait_for`. Mirrors the existing ``poll_async``
     #: terminal set on this class. Published as a class constant
     #: so non-canonical deployments can subclass + override.
-    TERMINAL_STATUSES: FrozenSet[str] = frozenset({
-        "completed",
-        "failed",
-        "cancelled",
-        "SUCCEEDED",
-    })
+    TERMINAL_STATUSES: FrozenSet[str] = frozenset(
+        {
+            "completed",
+            "failed",
+            "cancelled",
+            "SUCCEEDED",
+        }
+    )
 
     def __init__(self, client: DataHubClient):
         self.client = client
@@ -115,14 +118,18 @@ class ComplianceAPI:
         elapsed = 0.0
         while elapsed < timeout:
             response = await self.list_runs(
-                asset_id=asset_id, page_size=1,
+                asset_id=asset_id,
+                page_size=1,
             )
             results = response.get("results") or []
             if results:
                 latest: Dict[str, Any] = results[0]
                 run_asset_id = latest.get("asset_id") or latest.get("asset")
-                if (run_asset_id and str(run_asset_id) == str(asset_id)
-                        and latest.get("status") in self.TERMINAL_STATUSES):
+                if (
+                    run_asset_id
+                    and str(run_asset_id) == str(asset_id)
+                    and latest.get("status") in self.TERMINAL_STATUSES
+                ):
                     return latest
             await asyncio.sleep(interval)
             elapsed += interval

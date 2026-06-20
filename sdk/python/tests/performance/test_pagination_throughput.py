@@ -11,10 +11,12 @@ and records the throughput. The 30s budget is generous for CI.
 """
 
 import time
+
 import requests
+
 from tests._persona_provisioning import provision_persona
-from tests.use_cases._api_helpers import api_get
 from tests.fixtures.perf_record import build_perf_record, write_perf_record
+from tests.use_cases._api_helpers import api_get
 
 BUDGET_MS = 30_000.0
 PAGE_SIZE = 100
@@ -33,10 +35,14 @@ def test_pagination_throughput_under_budget():
     page = 1
 
     for _ in range(MAX_PAGES):
-        resp = api_get("/assets/", creds, params={
-            "page": page,
-            "page_size": PAGE_SIZE,
-        })
+        resp = api_get(
+            "/assets/",
+            creds,
+            params={
+                "page": page,
+                "page_size": PAGE_SIZE,
+            },
+        )
         if resp.status_code != 200:
             break
 
@@ -58,6 +64,5 @@ def test_pagination_throughput_under_budget():
     write_perf_record(record)
 
     assert record.passed, (
-        f"Pagination of {total_items} items took {elapsed_ms:.0f}ms "
-        f"(budget: {BUDGET_MS:.0f}ms)"
+        f"Pagination of {total_items} items took {elapsed_ms:.0f}ms (budget: {BUDGET_MS:.0f}ms)"
     )

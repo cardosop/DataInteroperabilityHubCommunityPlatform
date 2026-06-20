@@ -18,10 +18,7 @@ Targets (CI-adjusted for shared DB, cold start, batch load):
 
 import json
 import os
-import sys
 import time
-from pathlib import Path
-from typing import Any, Dict
 
 try:
     import psutil
@@ -34,7 +31,7 @@ except ImportError:
 import pytest
 
 pytestmark = pytest.mark.slow
-from django.test import TestCase, TransactionTestCase
+from django.test import TransactionTestCase
 
 from hub.apps.contracts.models import Contract
 from hub.apps.contracts.services import ODPSService
@@ -97,27 +94,23 @@ class ODPSExportPerformanceTestBase(TransactionTestCase):
     def setUp(self):
         """Set up test fixtures"""
         import uuid
-        
+
         # Create test tenant and user with unique names to avoid conflicts
         unique_id = str(uuid.uuid4())[:8]
         tenant_name = f"Export Performance Test Tenant {unique_id}"
         tenant_slug = f"export-perf-test-{unique_id}"
-        
+
         # Try to get existing tenant or create new one
         self.tenant, created = Tenant.objects.get_or_create(
             slug=tenant_slug,
-            defaults={
-                "name": tenant_name,
-                "status": "ACTIVE",
-                "kyc_status": "VERIFIED"
-            }
+            defaults={"name": tenant_name, "status": "ACTIVE", "kyc_status": "VERIFIED"},
         )
-        
+
         # If tenant already exists, update name to be unique
         if not created:
             self.tenant.name = tenant_name
             self.tenant.save()
-        
+
         # Create user with unique email
         user_email = f"export-perf-test-{unique_id}@example.com"
         self.user, _ = User.objects.get_or_create(
@@ -126,13 +119,13 @@ class ODPSExportPerformanceTestBase(TransactionTestCase):
                 "password": "test-password-123",
                 "tenant": self.tenant,
                 "status": UserStatus.ACTIVE,
-            }
+            },
         )
         self.odps_service = ODPSService()
 
     def tearDown(self):
         """Clean up test data"""
-        if hasattr(self, 'tenant'):
+        if hasattr(self, "tenant"):
             try:
                 Contract.objects.filter(tenant=self.tenant).delete()
             except Exception:
@@ -142,12 +135,12 @@ class ODPSExportPerformanceTestBase(TransactionTestCase):
     def _fixture_teardown(cls):
         """Override to skip database flush for export performance tests."""
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def get_memory_usage(self) -> float:
         """Get current memory usage in MB"""
         try:
             import psutil
+
             process = psutil.Process(os.getpid())
             return process.memory_info().rss / 1024 / 1024  # Convert to MB
         except (ImportError, AttributeError):
@@ -412,7 +405,7 @@ class TestODPSExportConcurrentPerformance(ODPSExportPerformanceTestBase):
         def export_contract(contract):
             try:
                 start_time = time.time()
-                exported = self.odps_service.export_odps(
+                self.odps_service.export_odps(
                     contract_id=str(contract.id),
                     output_format="json",
                     tenant_id=str(self.tenant.id),

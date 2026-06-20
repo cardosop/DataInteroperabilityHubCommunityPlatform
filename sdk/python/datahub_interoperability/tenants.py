@@ -50,6 +50,4 @@ class TenantsAPI:
         Returns:
             Paginated tenant list.
         """
-        return await self.client.get(
-            "tenants/", params={"page": page, "page_size": page_size}
-        )
+        return await self.client.get("tenants/", params={"page": page, "page_size": page_size})

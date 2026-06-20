@@ -15,6 +15,7 @@ import threading
 import time
 
 import requests
+
 from tests.fixtures.test_data import unique_port
 
 
@@ -31,10 +32,10 @@ def _reset_server(port: int, send_partial: bool = True) -> None:
         conn.recv(4096)
         if send_partial:
             # Send partial HTTP response then RST
-            conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n{\"partial\":")
+            conn.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n{"partial":')
             time.sleep(0.1)
         # Force RST by setting SO_LINGER to 0 then closing
-        conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, b'\x01\x00\x00\x00\x00\x00\x00\x00')
+        conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, b"\x01\x00\x00\x00\x00\x00\x00\x00")
         conn.close()
     except socket.timeout:
         pass
@@ -49,10 +50,12 @@ def test_connection_reset_raises_error():
     server_thread.start()
     time.sleep(0.1)  # let server bind
 
-    with pytest.raises((
-        requests.exceptions.ConnectionError,
-        requests.exceptions.ChunkedEncodingError,
-    )):
+    with pytest.raises(
+        (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ChunkedEncodingError,
+        )
+    ):
         requests.get(f"http://127.0.0.1:{port}/api/v1/assets/", timeout=5)
 
     server_thread.join(timeout=5)

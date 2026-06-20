@@ -7,11 +7,11 @@ Usage:
     python manage.py n_plus_1_check --threshold-multiplier 1.5
     python manage.py n_plus_1_check --json
 """
+
 from __future__ import annotations
+
 import json
-import sys
 from dataclasses import dataclass
-from typing import Optional
 
 from django.core.management.base import BaseCommand
 from django.db import DEFAULT_DB_ALIAS, connections
@@ -25,7 +25,7 @@ class ViewThreshold:
     name: str
     max_queries: int
     method: str = "GET"
-    data: Optional[dict] = None
+    data: dict | None = None
 
 
 _DEFAULT_THRESHOLDS: list[ViewThreshold] = [
@@ -35,7 +35,8 @@ _DEFAULT_THRESHOLDS: list[ViewThreshold] = [
     ViewThreshold("/api/v1/search/?q=test", "search", max_queries=6),
     ViewThreshold(
         "/api/v1/semantic/sparql?query=SELECT%20*%20WHERE%20%7B%3Fs%20%3Fp%20%3Fo%7D%20LIMIT%201",
-        "sparql", max_queries=5,
+        "sparql",
+        max_queries=5,
     ),
 ]
 
@@ -64,7 +65,8 @@ def _check_view(
                 response = client.get(threshold.url)
             elif threshold.method == "POST":
                 response = client.post(
-                    threshold.url, data=threshold.data,
+                    threshold.url,
+                    data=threshold.data,
                     content_type="application/json",
                 )
             else:
@@ -83,7 +85,7 @@ def _check_view(
 
 
 def run_n_plus_1_checks(
-    views: Optional[list[str]] = None,
+    views: list[str] | None = None,
     threshold_multiplier: float = 1.0,
     json_output: bool = False,
 ) -> int:
@@ -97,22 +99,35 @@ def run_n_plus_1_checks(
 
     for threshold in targets:
         passed, count, detail = _check_view(
-            client, threshold, threshold_multiplier,
+            client,
+            threshold,
+            threshold_multiplier,
         )
         if not passed:
             failures += 1
-        results.append({
-            "view": threshold.name, "url": threshold.url,
-            "queries": count,
-            "threshold": int(threshold.max_queries * threshold_multiplier),
-            "passed": passed, "detail": detail,
-        })
+        results.append(
+            {
+                "view": threshold.name,
+                "url": threshold.url,
+                "queries": count,
+                "threshold": int(threshold.max_queries * threshold_multiplier),
+                "passed": passed,
+                "detail": detail,
+            }
+        )
 
     if json_output:
-        print(json.dumps({
-            "total": len(results), "passed": len(results) - failures,
-            "failed": failures, "results": results,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "total": len(results),
+                    "passed": len(results) - failures,
+                    "failed": failures,
+                    "results": results,
+                },
+                indent=2,
+            )
+        )
     else:
         for r in results:
             print(f"  {'✓' if r['passed'] else '✗'} {r['detail']}")
@@ -129,15 +144,21 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--view", action="append", dest="views",
+            "--view",
+            action="append",
+            dest="views",
             help="Test a specific view by name (repeatable).",
         )
         parser.add_argument(
-            "--threshold-multiplier", type=float, default=1.0,
+            "--threshold-multiplier",
+            type=float,
+            default=1.0,
             help="Multiply all thresholds (default 1.0).",
         )
         parser.add_argument(
-            "--json", action="store_true", default=False,
+            "--json",
+            action="store_true",
+            default=False,
             help="Output results as JSON.",
         )
 

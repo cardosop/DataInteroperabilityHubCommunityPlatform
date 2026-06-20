@@ -10,23 +10,16 @@ Tests for services updated to follow service integration patterns:
 
 All tests run against real Docker Compose services - no mocks or stubs.
 """
-from django.test import TestCase
-from django.conf import settings
-import structlog
 
-from hub.apps.webhooks.service_client import WebhookDeliveryClient
-from hub.apps.core.services.health_client import ServiceHealthClient
+import structlog
+from django.test import TestCase
+
 from hub.apps.ai.llm_client import LLMClient
-from hub.apps.notifications.services import (
-    SendGridEmailService,
-    SESEmailService,
-    SMTPEmailService
-)
-from hub.apps.core.bug_prevention.services import (
-    IdempotencyService,
-    RequestDeduplicationService
-)
+from hub.apps.core.bug_prevention.services import IdempotencyService, RequestDeduplicationService
 from hub.apps.core.services.base import BaseService
+from hub.apps.core.services.health_client import ServiceHealthClient
+from hub.apps.notifications.services import SendGridEmailService, SESEmailService, SMTPEmailService
+from hub.apps.webhooks.service_client import WebhookDeliveryClient
 
 logger = structlog.get_logger(__name__)
 
@@ -49,7 +42,7 @@ class WebhookDeliveryClientIntegrationTest(TestCase):
     def test_webhook_client_has_circuit_breaker(self):
         """Test that WebhookDeliveryClient has circuit breaker"""
         self.assertIsNotNone(self.client._circuit_breaker)
-        self.assertTrue(hasattr(self.client._circuit_breaker, 'call'))
+        self.assertTrue(hasattr(self.client._circuit_breaker, "call"))
 
     def test_webhook_client_has_retry_logic(self):
         """Test that WebhookDeliveryClient has retry logic"""
@@ -67,9 +60,9 @@ class WebhookDeliveryClientIntegrationTest(TestCase):
     def test_webhook_client_follows_pattern(self):
         """Test that WebhookDeliveryClient follows Pattern 1"""
         # Check for required methods
-        self.assertTrue(hasattr(self.client, '_request_with_retry'))
-        self.assertTrue(hasattr(self.client, 'deliver_webhook'))
-        self.assertTrue(hasattr(self.client, 'health_check'))
+        self.assertTrue(hasattr(self.client, "_request_with_retry"))
+        self.assertTrue(hasattr(self.client, "deliver_webhook"))
+        self.assertTrue(hasattr(self.client, "health_check"))
 
         # Check for circuit breaker
         self.assertIsNotNone(self.client._circuit_breaker)
@@ -95,14 +88,13 @@ class ServiceHealthClientIntegrationTest(TestCase):
     def test_health_client_has_circuit_breaker(self):
         """Test that ServiceHealthClient has circuit breaker"""
         self.assertIsNotNone(self.client._circuit_breaker)
-        self.assertTrue(hasattr(self.client._circuit_breaker, 'call'))
+        self.assertTrue(hasattr(self.client._circuit_breaker, "call"))
 
     def test_health_client_check_health(self):
         """Test ServiceHealthClient health check with real service"""
         # Test with DQ service (should be available in Docker Compose)
         is_healthy, status = self.client.check_health(
-            service_url="http://dq-service:8083",
-            health_path="/health"
+            service_url="http://dq-service:8083", health_path="/health"
         )
         self.assertIsInstance(is_healthy, bool)
         self.assertIsInstance(status, (str, type(None)))
@@ -110,8 +102,8 @@ class ServiceHealthClientIntegrationTest(TestCase):
     def test_health_client_follows_pattern(self):
         """Test that ServiceHealthClient follows Pattern 1"""
         # Check for required methods
-        self.assertTrue(hasattr(self.client, '_request_with_retry'))
-        self.assertTrue(hasattr(self.client, 'check_health'))
+        self.assertTrue(hasattr(self.client, "_request_with_retry"))
+        self.assertTrue(hasattr(self.client, "check_health"))
 
         # Check for circuit breaker
         self.assertIsNotNone(self.client._circuit_breaker)
@@ -137,7 +129,7 @@ class LLMClientIntegrationTest(TestCase):
     def test_llm_client_has_circuit_breaker(self):
         """Test that LLMClient has circuit breaker"""
         self.assertIsNotNone(self.client._circuit_breaker)
-        self.assertTrue(hasattr(self.client._circuit_breaker, 'call'))
+        self.assertTrue(hasattr(self.client._circuit_breaker, "call"))
 
     def test_llm_client_has_retry_logic(self):
         """Test that LLMClient has retry logic"""
@@ -185,7 +177,7 @@ class EmailServicesBaseServiceTest(TestCase):
         ]
 
         for service_class in services:
-            self.assertTrue(hasattr(service_class, 'service_name'))
+            self.assertTrue(hasattr(service_class, "service_name"))
             self.assertIsNotNone(service_class.service_name)
             self.assertIsInstance(service_class.service_name, str)
 
@@ -211,7 +203,7 @@ class BugPreventionServicesBaseServiceTest(TestCase):
         ]
 
         for service_class in services:
-            self.assertTrue(hasattr(service_class, 'service_name'))
+            self.assertTrue(hasattr(service_class, "service_name"))
             self.assertIsNotNone(service_class.service_name)
             self.assertIsInstance(service_class.service_name, str)
 
@@ -225,38 +217,37 @@ class UpdatedServicesRegressionTest(TestCase):
 
         # Verify service class exists and has expected methods
         # _attempt_delivery is the method that uses WebhookDeliveryClient
-        self.assertTrue(hasattr(WebhookDeliveryService, '_attempt_delivery'))
-        self.assertTrue(hasattr(WebhookDeliveryService, 'trigger_webhook'))
-        self.assertTrue(callable(getattr(WebhookDeliveryService, '_attempt_delivery', None)))
+        self.assertTrue(hasattr(WebhookDeliveryService, "_attempt_delivery"))
+        self.assertTrue(hasattr(WebhookDeliveryService, "trigger_webhook"))
+        self.assertTrue(callable(getattr(WebhookDeliveryService, "_attempt_delivery", None)))
 
     def test_service_availability_checker_still_works(self):
         """Test that service availability checker still functions correctly"""
         from hub.apps.core.services.availability import ServiceAvailabilityChecker
 
         # Verify service class exists and has expected methods
-        self.assertTrue(hasattr(ServiceAvailabilityChecker, 'check_service_availability'))
-        self.assertTrue(hasattr(ServiceAvailabilityChecker, 'check_all_services'))
+        self.assertTrue(hasattr(ServiceAvailabilityChecker, "check_service_availability"))
+        self.assertTrue(hasattr(ServiceAvailabilityChecker, "check_all_services"))
 
     def test_llm_client_still_works(self):
         """Test that LLM client still functions correctly"""
         client = LLMClient()
 
         # Verify client has expected methods
-        self.assertTrue(hasattr(client, 'understand_query'))
-        self.assertTrue(hasattr(client, 'match_schemas'))
-        self.assertTrue(hasattr(client, '_call_llm'))
+        self.assertTrue(hasattr(client, "understand_query"))
+        self.assertTrue(hasattr(client, "match_schemas"))
+        self.assertTrue(hasattr(client, "_call_llm"))
 
     def test_email_services_still_work(self):
         """Test that email services still function correctly"""
         # Verify services have send_email method (from EmailService ABC)
-        self.assertTrue(hasattr(SendGridEmailService, 'send_email'))
-        self.assertTrue(hasattr(SESEmailService, 'send_email'))
-        self.assertTrue(hasattr(SMTPEmailService, 'send_email'))
+        self.assertTrue(hasattr(SendGridEmailService, "send_email"))
+        self.assertTrue(hasattr(SESEmailService, "send_email"))
+        self.assertTrue(hasattr(SMTPEmailService, "send_email"))
 
     def test_bug_prevention_services_still_work(self):
         """Test that bug prevention services still function correctly"""
         # Verify services have expected methods
-        self.assertTrue(hasattr(IdempotencyService, 'check_idempotency'))
-        self.assertTrue(hasattr(IdempotencyService, 'validate_key_format'))
-        self.assertTrue(hasattr(RequestDeduplicationService, 'check_duplicate'))
-
+        self.assertTrue(hasattr(IdempotencyService, "check_idempotency"))
+        self.assertTrue(hasattr(IdempotencyService, "validate_key_format"))
+        self.assertTrue(hasattr(RequestDeduplicationService, "check_duplicate"))

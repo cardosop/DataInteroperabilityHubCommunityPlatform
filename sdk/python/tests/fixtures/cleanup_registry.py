@@ -19,13 +19,13 @@ Three layers of cleanup are required by the spec:
 
 This module implements layers 1 and 2. Layer 3 lives in the hub app.
 """
+
 from __future__ import annotations
 
 import logging
 from typing import Callable, List, Tuple
 
 import pytest
-
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +111,5 @@ def cleanup_registry() -> "CleanupRegistry":
     if failures:
         labels = ", ".join(label for label, _ in failures)
         raise RuntimeError(
-            f"cleanup_registry teardown encountered {len(failures)} failures: "
-            f"{labels}"
+            f"cleanup_registry teardown encountered {len(failures)} failures: {labels}"
         )

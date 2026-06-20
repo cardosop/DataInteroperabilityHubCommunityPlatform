@@ -1,6 +1,7 @@
 """
 283.5.7 — Security incident and audit log CLI commands.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,15 +14,14 @@ from ..api_client import api_client
 @click.group()
 def security():
     """Security incidents and audit logs"""
-    pass
 
 
 # ── Incidents ────────────────────────────────────────────────────────────────
 
+
 @security.group("incidents")
 def incidents():
     """Manage security incidents"""
-    pass
 
 
 @incidents.command("list")
@@ -39,7 +39,9 @@ def list_incidents(page, page_size, output_format):
         click.echo("No incidents found.")
         return
     for r in results:
-        click.echo(f"{r.get('id','')}  {r.get('severity','')}  {r.get('status','')}  {r.get('title','')}")
+        click.echo(
+            f"{r.get('id', '')}  {r.get('severity', '')}  {r.get('status', '')}  {r.get('title', '')}"
+        )
 
 
 @incidents.command("create")
@@ -49,9 +51,14 @@ def list_incidents(page, page_size, output_format):
 @click.option("--format", "output_format", type=click.Choice(["json", "table"]), default="table")
 def create_incident(title, severity, description, output_format):
     """Create a security incident"""
-    data = api_client.post("security/incidents/", json_data={
-        "title": title, "severity": severity, "description": description,
-    })
+    data = api_client.post(
+        "security/incidents/",
+        json_data={
+            "title": title,
+            "severity": severity,
+            "description": description,
+        },
+    )
     if output_format == "json":
         click.echo(json.dumps(data, indent=2, default=str))
     else:
@@ -83,10 +90,10 @@ def update_incident(incident_id, status, severity):
 
 # ── Audit logs ──────────────────────────────────────────────────────────────
 
+
 @security.group("audit-logs")
 def audit_logs():
     """View audit logs"""
-    pass
 
 
 @audit_logs.command("list")
@@ -104,7 +111,7 @@ def list_audit_logs(page, page_size, output_format):
         click.echo("No audit logs found.")
         return
     for r in results:
-        click.echo(f"{r.get('id','')}  {r.get('event_type','')}  {r.get('created_at','')}")
+        click.echo(f"{r.get('id', '')}  {r.get('event_type', '')}  {r.get('created_at', '')}")
 
 
 @audit_logs.command("get")

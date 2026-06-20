@@ -19,13 +19,11 @@ import hashlib
 import json
 import time
 import uuid
-from typing import Any, Dict, Optional
 
 import pytest
-from django.test import TestCase
 from rest_framework import status
 
-from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus, DQStatus
+from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.contracts.models import (
     Contract,
@@ -39,7 +37,7 @@ from hub.apps.datasets.models import Dataset
 from hub.apps.dq.models import DQRun, DQRunStatus
 from hub.apps.files.models import File, FileStatus
 from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
-from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.tenants.models import KYCStatus
 
 from .conftest import E2ETestBase, get_response_data
 
@@ -72,42 +70,47 @@ class EnhancedJourneyTestBase(E2ETestBase):
         logged warnings instead of silent exception swallowing.
         """
         import logging
+
         _logger = logging.getLogger(__name__)
         from django.utils import timezone as tz
 
         terminal = {status_enum.SUCCEEDED, status_enum.FAILED}
         wait = 0
         while wait < 6 and run.status not in terminal:
-            time.sleep(2)  # INTENTIONAL: e2e polling
+            time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e polling
             wait += 2
             run.refresh_from_db()
 
         if run.status not in terminal:
             try:
                 from hub.apps.compliance.models import ComplianceRunStatus
-                if hasattr(run, 'job') and status_enum is ComplianceRunStatus:
+
+                if hasattr(run, "job") and status_enum is ComplianceRunStatus:
                     from hub.apps.compliance.views import execute_compliance_run
+
                     execute_compliance_run(str(run.id))
                     run.refresh_from_db()
             except Exception as exc:
                 _logger.warning("Direct execution failed for run %s: %s", run.id, exc)
 
-        if hasattr(run, 'metadata_json') and run.status not in terminal:
+        if hasattr(run, "metadata_json") and run.status not in terminal:
             try:
                 from hub.apps.compliance.models import ComplianceRunStatus
+
                 if run.status == ComplianceRunStatus.QUEUED:
                     from hub.apps.compliance.tasks import poll_compliance_job
+
                     for _ in range(3):
                         poll_compliance_job(run.id)
                         run.refresh_from_db()
                         if run.status in terminal:
                             break
-                        time.sleep(2)
+                        time.sleep(2)  # noqa: sleep-needed — polling loop
             except Exception as exc:
                 _logger.warning("Poll task failed for run %s: %s", run.id, exc)
 
         while wait < max_wait and run.status not in terminal:
-            time.sleep(2)  # INTENTIONAL: e2e polling
+            time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e polling
             wait += 2
             run.refresh_from_db()
 
@@ -115,13 +118,14 @@ class EnhancedJourneyTestBase(E2ETestBase):
             _logger.warning(
                 "SERVICE UNAVAILABLE: fabricating SUCCEEDED for run %s "
                 "(was %s). Investigate if this persists.",
-                run.id, run.status,
+                run.id,
+                run.status,
             )
             run.status = status_enum.SUCCEEDED
             run.overall_status = "PASS"
-            if hasattr(run, 'risk_level'):
+            if hasattr(run, "risk_level"):
                 run.risk_level = "LOW"
-            if hasattr(run, 'allowed_to_store'):
+            if hasattr(run, "allowed_to_store"):
                 run.allowed_to_store = True
             run.completed_at = tz.now()
             run.save()
@@ -215,7 +219,6 @@ class EnhancedJourneyTestBase(E2ETestBase):
         import logging
 
         from django.db import transaction
-        from django.db.models import Q
 
         logger = logging.getLogger(__name__)
 
@@ -263,7 +266,6 @@ class EnhancedJourneyTestBase(E2ETestBase):
                 odps_hub["extensions"]["x_odps"] = {}
             # CRITICAL: Ensure UUIDs are stored as strings in JSONField
             # PostgreSQL JSONField may serialize UUIDs differently, so always use string representation
-            import uuid as uuid_module
 
             odcs_contract_id_str = (
                 str(odcs_contract_id) if not isinstance(odcs_contract_id, str) else odcs_contract_id
@@ -363,7 +365,6 @@ class EnhancedJourneyTestBase(E2ETestBase):
 
     def verify_odps_linking(self, odps_contract_id: str, odcs_contract_id: str):
         """Verify bidirectional linking between ODPS and ODCS contracts."""
-        import uuid
 
         # CRITICAL: Always re-establish links immediately before verification
         # This ensures links are set regardless of what happened before
@@ -542,7 +543,7 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
             DQRunStatus.SUCCEEDED,
             DQRunStatus.FAILED,
         ]:
-            time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
             wait_time += 2
             dq_run.refresh_from_db()
 
@@ -580,9 +581,9 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         contract.refresh_from_db()
 
         acceptable = {ValidationStatus.VALID, ValidationStatus.WARNING_ONLY}
-        if isinstance(validate_result, dict) and "status_code" in validate_result:
-            self.prepare_contract_for_activation(contract_id)
-        elif contract.validation_status not in acceptable:
+        if (
+            isinstance(validate_result, dict) and "status_code" in validate_result
+        ) or contract.validation_status not in acceptable:
             self.prepare_contract_for_activation(contract_id)
 
         # Step 9: NEW - Link ODPS contract to ODCS
@@ -671,7 +672,7 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
             max_wait = 60
             wait_time = 0
             while wait_time < max_wait and asset.status != AssetStatus.ACTIVE:
-                time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
                 wait_time += 2
                 asset.refresh_from_db()
 
@@ -742,9 +743,9 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         contract.refresh_from_db()
 
         acceptable = {ValidationStatus.VALID, ValidationStatus.WARNING_ONLY}
-        if isinstance(validate_result, dict) and "status_code" in validate_result:
-            self.prepare_contract_for_activation(contract_id)
-        elif contract.validation_status not in acceptable:
+        if (
+            isinstance(validate_result, dict) and "status_code" in validate_result
+        ) or contract.validation_status not in acceptable:
             self.prepare_contract_for_activation(contract_id)
 
         # Step 9: Attach contract to asset
@@ -799,7 +800,7 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
             name="test.csv", content_type="text/csv", size=len(test_content)
         )
         self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content)
-        dataset_id = self.create_dataset(file_id, asset_id)
+        self.create_dataset(file_id, asset_id)
         self.prepare_asset_for_activation(asset_id)
 
         # Create ODCS contract
@@ -840,12 +841,9 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         ]:
             validate_result = self.validate_contract(str(odps_contract.id), async_mode=False)
             odps_contract.refresh_from_db()
-            if isinstance(validate_result, dict) and "status_code" in validate_result:
-                self.prepare_contract_for_activation(str(odps_contract.id))
-                # Re-establish links after prepare_contract_for_activation (normalization might clear them)
-                odps_contract.refresh_from_db()
-                self.re_establish_odps_linking(str(odps_contract.id), contract_id)
-            elif odps_contract.validation_status in [
+            if (
+                isinstance(validate_result, dict) and "status_code" in validate_result
+            ) or odps_contract.validation_status in [
                 ValidationStatus.ERROR,
                 ValidationStatus.INVALID,
             ]:
@@ -890,7 +888,7 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
             max_wait = 60
             wait_time = 0
             while wait_time < max_wait and asset.status != AssetStatus.ACTIVE:
-                time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
                 wait_time += 2
                 asset.refresh_from_db()
 
@@ -948,7 +946,7 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
             name="test.csv", content_type="text/csv", size=len(test_content)
         )
         self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content)
-        dataset_id = self.create_dataset(file_id, asset_id)
+        self.create_dataset(file_id, asset_id)
         self.prepare_asset_for_activation(asset_id)
 
         # Create ODCS contract (NO ODPS)
@@ -1013,7 +1011,7 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
             name="data.csv", content_type="text/csv", size=len(test_content)
         )
         self.complete_file_upload(file_id, test_content=test_content)
-        dataset_id = self.create_dataset(file_id, asset_id)
+        self.create_dataset(file_id, asset_id)
         self.prepare_asset_for_activation(asset_id)
 
         # Create ODCS contract
@@ -1060,9 +1058,9 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
         ]:
             validate_result = self.validate_contract(str(odps_contract.id), async_mode=False)
             odps_contract.refresh_from_db()
-            if isinstance(validate_result, dict) and "status_code" in validate_result:
-                self.prepare_contract_for_activation(str(odps_contract.id))
-            elif odps_contract.validation_status in [
+            if (
+                isinstance(validate_result, dict) and "status_code" in validate_result
+            ) or odps_contract.validation_status in [
                 ValidationStatus.ERROR,
                 ValidationStatus.INVALID,
             ]:
@@ -1082,7 +1080,7 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
             max_wait = 60
             wait_time = 0
             while wait_time < max_wait and asset.status != AssetStatus.ACTIVE:
-                time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
                 wait_time += 2
                 asset.refresh_from_db()
 
@@ -1159,7 +1157,7 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
             name="data.csv", content_type="text/csv", size=len(test_content)
         )
         self.complete_file_upload(file_id, test_content=test_content)
-        dataset_id = self.create_dataset(file_id, asset_id)
+        self.create_dataset(file_id, asset_id)
         self.prepare_asset_for_activation(asset_id)
 
         # Create ODCS contract (NO ODPS)
@@ -1232,7 +1230,7 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
             name="data.csv", content_type="text/csv", size=len(test_content)
         )
         self.complete_file_upload(file_id, test_content=test_content)
-        dataset_id = self.create_dataset(file_id, asset_id)
+        self.create_dataset(file_id, asset_id)
         self.prepare_asset_for_activation(asset_id)
 
         odcs_contract_data = {
@@ -1273,9 +1271,9 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
         ]:
             validate_result = self.validate_contract(str(odps_contract.id), async_mode=False)
             odps_contract.refresh_from_db()
-            if isinstance(validate_result, dict) and "status_code" in validate_result:
-                self.prepare_contract_for_activation(str(odps_contract.id))
-            elif odps_contract.validation_status in [
+            if (
+                isinstance(validate_result, dict) and "status_code" in validate_result
+            ) or odps_contract.validation_status in [
                 ValidationStatus.ERROR,
                 ValidationStatus.INVALID,
             ]:
@@ -1294,7 +1292,7 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
             max_wait = 60
             wait_time = 0
             while wait_time < max_wait and asset.status != AssetStatus.ACTIVE:
-                time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
                 wait_time += 2
                 asset.refresh_from_db()
 
@@ -1361,7 +1359,7 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
             name="data.csv", content_type="text/csv", size=len(test_content)
         )
         self.complete_file_upload(file_id, test_content=test_content)
-        dataset_id = self.create_dataset(file_id, asset_id)
+        self.create_dataset(file_id, asset_id)
         self.prepare_asset_for_activation(asset_id)
 
         contract_id = self.create_contract(
@@ -1459,9 +1457,9 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
             contract.refresh_from_db()
 
             acceptable = {ValidationStatus.VALID, ValidationStatus.WARNING_ONLY}
-            if isinstance(validate_result, dict) and "status_code" in validate_result:
-                self.prepare_contract_for_activation(contract_id)
-            elif contract.validation_status not in acceptable:
+            if (
+                isinstance(validate_result, dict) and "status_code" in validate_result
+            ) or contract.validation_status not in acceptable:
                 self.prepare_contract_for_activation(contract_id)
 
         # Step 3: Normalize contract
@@ -1510,9 +1508,9 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
         ]:
             validate_result = self.validate_contract(str(odps_contract.id), async_mode=False)
             odps_contract.refresh_from_db()
-            if isinstance(validate_result, dict) and "status_code" in validate_result:
-                self.prepare_contract_for_activation(str(odps_contract.id))
-            elif odps_contract.validation_status in [
+            if (
+                isinstance(validate_result, dict) and "status_code" in validate_result
+            ) or odps_contract.validation_status in [
                 ValidationStatus.ERROR,
                 ValidationStatus.INVALID,
             ]:
@@ -1531,7 +1529,7 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
         self.complete_file_upload(file_id, test_content=test_content)
 
         # Step 9: Create dataset (triggers schema inference)
-        dataset_id = self.create_dataset(file_id, asset_id)
+        self.create_dataset(file_id, asset_id)
 
         # Step 10: Ensure contract is ACTIVE before activation
         contract = Contract.objects.filter(asset_id=asset_id).first()
@@ -1584,9 +1582,9 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
             contract.refresh_from_db()
 
             acceptable = {ValidationStatus.VALID, ValidationStatus.WARNING_ONLY}
-            if isinstance(validate_result, dict) and "status_code" in validate_result:
-                self.prepare_contract_for_activation(contract_id)
-            elif contract.validation_status not in acceptable:
+            if (
+                isinstance(validate_result, dict) and "status_code" in validate_result
+            ) or contract.validation_status not in acceptable:
                 self.prepare_contract_for_activation(contract_id)
 
         # Step 3: Normalize contract
@@ -1615,7 +1613,7 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
         self.complete_file_upload(file_id, test_content=test_content)
 
         # Step 7: Create dataset
-        dataset_id = self.create_dataset(file_id, asset_id)
+        self.create_dataset(file_id, asset_id)
 
         # Step 7.5: Ensure contract is ACTIVE before activation
         contract = Contract.objects.filter(asset_id=asset_id).first()
@@ -1694,12 +1692,9 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
         ]:
             validate_result = self.validate_contract(str(odps_contract.id), async_mode=False)
             odps_contract.refresh_from_db()
-            if isinstance(validate_result, dict) and "status_code" in validate_result:
-                self.prepare_contract_for_activation(str(odps_contract.id))
-                # Re-establish links after prepare_contract_for_activation (normalization might clear them)
-                odps_contract.refresh_from_db()
-                self.re_establish_odps_linking(str(odps_contract.id), contract_id)
-            elif odps_contract.validation_status in [
+            if (
+                isinstance(validate_result, dict) and "status_code" in validate_result
+            ) or odps_contract.validation_status in [
                 ValidationStatus.ERROR,
                 ValidationStatus.INVALID,
             ]:
@@ -1721,7 +1716,7 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
             name="test.csv", content_type="text/csv", size=len(test_content)
         )
         self.complete_file_upload(file_id, test_content=test_content)
-        dataset_id = self.create_dataset(file_id, asset_id)
+        self.create_dataset(file_id, asset_id)
 
         # CRITICAL: Verify links BEFORE activation to ensure they're set correctly
         # This helps us understand if links are cleared during activation or were never set
@@ -1755,7 +1750,7 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
             max_wait = 60
             wait_time = 0
             while wait_time < max_wait and asset.status != AssetStatus.ACTIVE:
-                time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
                 wait_time += 2
                 asset.refresh_from_db()
 
@@ -1819,7 +1814,7 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
             name="test.csv", content_type="text/csv", size=len(test_content)
         )
         self.complete_file_upload(file_id, test_content=test_content)
-        dataset_id = self.create_dataset(file_id, asset_id)
+        self.create_dataset(file_id, asset_id)
 
         # Activate
         self.prepare_asset_for_activation(asset_id)
@@ -1833,7 +1828,7 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
             max_wait = 60
             wait_time = 0
             while wait_time < max_wait and asset.status != AssetStatus.ACTIVE:
-                time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+                time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
                 wait_time += 2
                 asset.refresh_from_db()
 

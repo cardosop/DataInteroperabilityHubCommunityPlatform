@@ -1,7 +1,8 @@
 """Field mapping methods for MarketplaceIntegrationService."""
-import structlog
-from typing import Any, Dict, List, Optional
 
+from typing import Any
+
+import structlog
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 
@@ -29,11 +30,11 @@ class MappingServiceMixin:
         connection_id: str,
         hub_asset_id: str,
         external_listing_id: str,
-        external_resource_ids: Optional[List[str]] = None,
-        sync_metadata: Optional[Dict[str, Any]] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request: Optional[Any] = None,
+        external_resource_ids: list[str] | None = None,
+        sync_metadata: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request: Any | None = None,
     ) -> MarketplaceMapping:
         """
         Create a marketplace mapping between a Hub asset and an external marketplace listing.
@@ -243,8 +244,8 @@ class MappingServiceMixin:
     def get_mapping(
         self,
         mapping_id: str,
-        tenant_id: Optional[str] = None,
-        request: Optional[Any] = None,
+        tenant_id: str | None = None,
+        request: Any | None = None,
     ) -> MarketplaceMapping:
         """
         Retrieve a marketplace mapping by its ID.
@@ -332,13 +333,13 @@ class MappingServiceMixin:
 
     def list_mappings(
         self,
-        tenant_id: Optional[str] = None,
-        connection_id: Optional[str] = None,
-        hub_asset_id: Optional[str] = None,
+        tenant_id: str | None = None,
+        connection_id: str | None = None,
+        hub_asset_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
-        request: Optional[Any] = None,
-    ) -> List[MarketplaceMapping]:
+        request: Any | None = None,
+    ) -> list[MarketplaceMapping]:
         """
         List marketplace mappings for a tenant.
 
@@ -448,12 +449,12 @@ class MappingServiceMixin:
     def update_mapping(
         self,
         mapping_id: str,
-        external_listing_id: Optional[str] = None,
-        external_resource_ids: Optional[List[str]] = None,
-        sync_metadata: Optional[Dict[str, Any]] = None,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request: Optional[Any] = None,
+        external_listing_id: str | None = None,
+        external_resource_ids: list[str] | None = None,
+        sync_metadata: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request: Any | None = None,
     ) -> MarketplaceMapping:
         """
         Update a marketplace mapping.
@@ -673,10 +674,10 @@ class MappingServiceMixin:
     def delete_mapping(
         self,
         mapping_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        reason: Optional[str] = None,
-        request: Optional[Any] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        reason: str | None = None,
+        request: Any | None = None,
     ) -> None:
         """
         Delete a marketplace mapping.

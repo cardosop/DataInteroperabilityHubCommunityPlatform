@@ -10,21 +10,27 @@ Compensation:
 - Cancel order
 - Revoke entitlement
 """
-import logging
-from typing import Dict, Any
 
+import logging
+from typing import Any
+
+from hub.apps.marketplace.models import (
+    Entitlement,
+    EntitlementStatus,
+    Order,
+    OrderStatus,
+)
 from hub.apps.orchestration.saga import (
+    SagaExecutionError,
+    SagaOrchestrator,
     SagaStep,
     SagaStepResult,
-    SagaOrchestrator,
-    SagaExecutionError
 )
-from hub.apps.marketplace.models import Order, OrderStatus, Entitlement, EntitlementStatus, ListingStatus
 
 logger = logging.getLogger(__name__)
 
 
-def create_order(input_data: Dict[str, Any]) -> SagaStepResult:
+def create_order(input_data: dict[str, Any]) -> SagaStepResult:
     """
     Step 1: Create order for marketplace purchase.
 
@@ -34,9 +40,9 @@ def create_order(input_data: Dict[str, Any]) -> SagaStepResult:
     Returns:
         SagaStepResult with order creation result
     """
-    listing_id = input_data.get('listing_id')
-    buyer_id = input_data.get('buyer_id')
-    tenant_id = input_data.get('tenant_id')
+    listing_id = input_data.get("listing_id")
+    buyer_id = input_data.get("buyer_id")
+    tenant_id = input_data.get("tenant_id")
 
     if not listing_id:
         return SagaStepResult.failure_result("listing_id is required")
@@ -62,7 +68,7 @@ def create_order(input_data: Dict[str, Any]) -> SagaStepResult:
             listing=listing,
             tenant_id=tenant_id,
             created_by_id=buyer_id,
-            status=OrderStatus.REQUESTED
+            status=OrderStatus.REQUESTED,
         )
 
         logger.info(
@@ -73,27 +79,28 @@ def create_order(input_data: Dict[str, Any]) -> SagaStepResult:
                 "buyer_id": str(buyer_id),
                 "tenant_id": str(tenant_id),
                 "price": price,
-                "currency": currency
-            }
+                "currency": currency,
+            },
         )
 
-        return SagaStepResult.success_result({
-            "order_id": str(order.id),
-            "listing_id": str(listing_id),
-            "order_status": order.status,
-            "price": float(price),
-            "currency": currency
-        })
+        return SagaStepResult.success_result(
+            {
+                "order_id": str(order.id),
+                "listing_id": str(listing_id),
+                "order_status": order.status,
+                "price": float(price),
+                "currency": currency,
+            }
+        )
 
     except Exception as e:
         logger.exception("marketplace_purchase_order_creation_error")
         return SagaStepResult.failure_result(
-            f"Order creation failed: {str(e)}",
-            {"exception_type": type(e).__name__}
+            f"Order creation failed: {e!s}", {"exception_type": type(e).__name__}
         )
 
 
-def compensate_order_creation(input_data: Dict[str, Any]) -> SagaStepResult:
+def compensate_order_creation(input_data: dict[str, Any]) -> SagaStepResult:
     """
     Compensation for order creation: cancel order.
 
@@ -103,53 +110,46 @@ def compensate_order_creation(input_data: Dict[str, Any]) -> SagaStepResult:
     Returns:
         SagaStepResult with compensation result
     """
-    order_id = input_data.get('order_id') or input_data.get('step_output', {}).get('order_id')
+    order_id = input_data.get("order_id") or input_data.get("step_output", {}).get("order_id")
 
     if not order_id:
-        return SagaStepResult.success_result({
-            "warning": "No order_id found for compensation"
-        })
+        return SagaStepResult.success_result({"warning": "No order_id found for compensation"})
 
     try:
         order = Order.objects.get(id=order_id)
 
         # Cancel order
         order.status = OrderStatus.CANCELLED
-        order.save(update_fields=['status', 'updated_at'])
+        order.save(update_fields=["status", "updated_at"])
 
         logger.info(
             "marketplace_purchase_order_cancelled",
             extra={
                 "order_id": str(order_id),
-                "original_status": input_data.get('step_output', {}).get('order_status'),
-                "new_status": order.status.value
-            }
+                "original_status": input_data.get("step_output", {}).get("order_status"),
+                "new_status": order.status.value,
+            },
         )
 
-        return SagaStepResult.success_result({
-            "order_id": str(order_id),
-            "cancelled": True,
-            "status": order.status.value
-        })
+        return SagaStepResult.success_result(
+            {"order_id": str(order_id), "cancelled": True, "status": order.status.value}
+        )
 
     except Order.DoesNotExist:
         logger.warning(
-            "marketplace_purchase_order_compensation_not_found",
-            extra={"order_id": str(order_id)}
+            "marketplace_purchase_order_compensation_not_found", extra={"order_id": str(order_id)}
         )
-        return SagaStepResult.success_result({
-            "warning": "Order not found during compensation",
-            "order_id": str(order_id)
-        })
+        return SagaStepResult.success_result(
+            {"warning": "Order not found during compensation", "order_id": str(order_id)}
+        )
     except Exception as e:
         logger.exception("marketplace_purchase_order_compensation_error")
         return SagaStepResult.failure_result(
-            f"Order cancellation failed: {str(e)}",
-            {"exception_type": type(e).__name__}
+            f"Order cancellation failed: {e!s}", {"exception_type": type(e).__name__}
         )
 
 
-def create_entitlement(input_data: Dict[str, Any]) -> SagaStepResult:
+def create_entitlement(input_data: dict[str, Any]) -> SagaStepResult:
     """
     Step 2: Create entitlement for the purchase.
 
@@ -159,10 +159,10 @@ def create_entitlement(input_data: Dict[str, Any]) -> SagaStepResult:
     Returns:
         SagaStepResult with entitlement creation result
     """
-    order_id = input_data.get('order_id')
-    listing_id = input_data.get('listing_id')
-    buyer_id = input_data.get('buyer_id')
-    tenant_id = input_data.get('tenant_id')
+    order_id = input_data.get("order_id")
+    listing_id = input_data.get("listing_id")
+    buyer_id = input_data.get("buyer_id")
+    tenant_id = input_data.get("tenant_id")
 
     if not order_id:
         return SagaStepResult.failure_result("order_id is required")
@@ -185,7 +185,7 @@ def create_entitlement(input_data: Dict[str, Any]) -> SagaStepResult:
             asset=listing.asset,
             tenant_id=tenant_id,
             status=EntitlementStatus.ACTIVE,
-            expires_at=None  # Can be set based on listing configuration
+            expires_at=None,  # Can be set based on listing configuration
         )
 
         logger.info(
@@ -195,25 +195,26 @@ def create_entitlement(input_data: Dict[str, Any]) -> SagaStepResult:
                 "order_id": str(order_id),
                 "listing_id": str(listing_id),
                 "buyer_id": str(buyer_id),
-                "tenant_id": str(tenant_id)
-            }
+                "tenant_id": str(tenant_id),
+            },
         )
 
-        return SagaStepResult.success_result({
-            "entitlement_id": str(entitlement.id),
-            "order_id": str(order_id),
-            "entitlement_status": entitlement.status.value
-        })
+        return SagaStepResult.success_result(
+            {
+                "entitlement_id": str(entitlement.id),
+                "order_id": str(order_id),
+                "entitlement_status": entitlement.status.value,
+            }
+        )
 
     except Exception as e:
         logger.exception("marketplace_purchase_entitlement_creation_error")
         return SagaStepResult.failure_result(
-            f"Entitlement creation failed: {str(e)}",
-            {"exception_type": type(e).__name__}
+            f"Entitlement creation failed: {e!s}", {"exception_type": type(e).__name__}
         )
 
 
-def compensate_entitlement_creation(input_data: Dict[str, Any]) -> SagaStepResult:
+def compensate_entitlement_creation(input_data: dict[str, Any]) -> SagaStepResult:
     """
     Compensation for entitlement creation: revoke entitlement.
 
@@ -223,53 +224,58 @@ def compensate_entitlement_creation(input_data: Dict[str, Any]) -> SagaStepResul
     Returns:
         SagaStepResult with compensation result
     """
-    entitlement_id = input_data.get('entitlement_id') or input_data.get('step_output', {}).get('entitlement_id')
+    entitlement_id = input_data.get("entitlement_id") or input_data.get("step_output", {}).get(
+        "entitlement_id"
+    )
 
     if not entitlement_id:
-        return SagaStepResult.success_result({
-            "warning": "No entitlement_id found for compensation"
-        })
+        return SagaStepResult.success_result(
+            {"warning": "No entitlement_id found for compensation"}
+        )
 
     try:
         entitlement = Entitlement.objects.get(id=entitlement_id)
 
         # Revoke entitlement
         entitlement.status = EntitlementStatus.REVOKED
-        entitlement.save(update_fields=['status', 'updated_at'])
+        entitlement.save(update_fields=["status", "updated_at"])
 
         logger.info(
             "marketplace_purchase_entitlement_revoked",
             extra={
                 "entitlement_id": str(entitlement_id),
-                "original_status": input_data.get('step_output', {}).get('entitlement_status'),
-                "new_status": entitlement.status.value
-            }
+                "original_status": input_data.get("step_output", {}).get("entitlement_status"),
+                "new_status": entitlement.status.value,
+            },
         )
 
-        return SagaStepResult.success_result({
-            "entitlement_id": str(entitlement_id),
-            "revoked": True,
-            "status": entitlement.status.value
-        })
+        return SagaStepResult.success_result(
+            {
+                "entitlement_id": str(entitlement_id),
+                "revoked": True,
+                "status": entitlement.status.value,
+            }
+        )
 
     except Entitlement.DoesNotExist:
         logger.warning(
             "marketplace_purchase_entitlement_compensation_not_found",
-            extra={"entitlement_id": str(entitlement_id)}
+            extra={"entitlement_id": str(entitlement_id)},
         )
-        return SagaStepResult.success_result({
-            "warning": "Entitlement not found during compensation",
-            "entitlement_id": str(entitlement_id)
-        })
+        return SagaStepResult.success_result(
+            {
+                "warning": "Entitlement not found during compensation",
+                "entitlement_id": str(entitlement_id),
+            }
+        )
     except Exception as e:
         logger.exception("marketplace_purchase_entitlement_compensation_error")
         return SagaStepResult.failure_result(
-            f"Entitlement revocation failed: {str(e)}",
-            {"exception_type": type(e).__name__}
+            f"Entitlement revocation failed: {e!s}", {"exception_type": type(e).__name__}
         )
 
 
-def send_notification(input_data: Dict[str, Any]) -> SagaStepResult:
+def send_notification(input_data: dict[str, Any]) -> SagaStepResult:
     """
     Step 3: Send notification about the purchase.
 
@@ -279,10 +285,10 @@ def send_notification(input_data: Dict[str, Any]) -> SagaStepResult:
     Returns:
         SagaStepResult with notification result
     """
-    order_id = input_data.get('order_id')
-    entitlement_id = input_data.get('entitlement_id')
-    buyer_id = input_data.get('buyer_id')
-    tenant_id = input_data.get('tenant_id')
+    order_id = input_data.get("order_id")
+    entitlement_id = input_data.get("entitlement_id")
+    buyer_id = input_data.get("buyer_id")
+    tenant_id = input_data.get("tenant_id")
 
     if not order_id:
         return SagaStepResult.failure_result("order_id is required")
@@ -298,54 +304,56 @@ def send_notification(input_data: Dict[str, Any]) -> SagaStepResult:
                 "entitlement_id": str(entitlement_id) if entitlement_id else None,
                 "buyer_id": str(buyer_id),
                 "tenant_id": str(tenant_id),
-                "detail": f"Purchase completed for Order #{order_id[:8]}"
-            }
+                "detail": f"Purchase completed for Order #{order_id[:8]}",
+            },
         )
 
         # In a real implementation, this would trigger an event or send an email
         # For now, we just log it as the notification step is non-critical
 
-        return SagaStepResult.success_result({
-            "order_id": str(order_id),
-            "entitlement_id": str(entitlement_id) if entitlement_id else None,
-            "notified": True
-        })
+        return SagaStepResult.success_result(
+            {
+                "order_id": str(order_id),
+                "entitlement_id": str(entitlement_id) if entitlement_id else None,
+                "notified": True,
+            }
+        )
 
     except Exception as e:
         logger.exception("marketplace_purchase_notification_error")
         # Notification failure is not critical - log but don't fail the saga
-        return SagaStepResult.success_result({
-            "order_id": str(order_id),
-            "notified": False,
-            "warning": f"Notification failed but continuing: {str(e)}"
-        })
+        return SagaStepResult.success_result(
+            {
+                "order_id": str(order_id),
+                "notified": False,
+                "warning": f"Notification failed but continuing: {e!s}",
+            }
+        )
 
 
-def compensate_notification(input_data: Dict[str, Any]) -> SagaStepResult:
+def compensate_notification(input_data: dict[str, Any]) -> SagaStepResult:
     """
     Compensation for notification step.
 
     Notifications are idempotent and don't require compensation.
     Optionally, we could send a cancellation notification.
     """
-    order_id = input_data.get('order_id') or input_data.get('step_output', {}).get('order_id')
+    order_id = input_data.get("order_id") or input_data.get("step_output", {}).get("order_id")
 
     if order_id:
         logger.info(
             "marketplace_purchase_notification_compensated",
             extra={
                 "order_id": str(order_id),
-                "message": "Purchase notification compensation logged"
-            }
+                "message": "Purchase notification compensation logged",
+            },
         )
 
     return SagaStepResult.success_result()
 
 
 def create_marketplace_purchase_saga(
-    listing_id: str,
-    buyer_id: str,
-    tenant_id: str
+    listing_id: str, buyer_id: str, tenant_id: str
 ) -> SagaOrchestrator:
     """
     Create and configure marketplace purchase saga.
@@ -362,17 +370,13 @@ def create_marketplace_purchase_saga(
     orchestrator.context.state = {
         "listing_id": listing_id,
         "buyer_id": buyer_id,
-        "tenant_id": tenant_id
+        "tenant_id": tenant_id,
     }
 
     return orchestrator
 
 
-def execute_marketplace_purchase(
-    listing_id: str,
-    buyer_id: str,
-    tenant_id: str
-) -> Dict[str, Any]:
+def execute_marketplace_purchase(listing_id: str, buyer_id: str, tenant_id: str) -> dict[str, Any]:
     """
     Execute marketplace purchase saga workflow.
 
@@ -394,30 +398,26 @@ def execute_marketplace_purchase(
             name="create_order",
             forward_action=create_order,
             compensation_action=compensate_order_creation,
-            description="Create order for marketplace purchase"
+            description="Create order for marketplace purchase",
         ),
         SagaStep(
             name="create_entitlement",
             forward_action=create_entitlement,
             compensation_action=compensate_entitlement_creation,
-            description="Create entitlement for the purchase"
+            description="Create entitlement for the purchase",
         ),
         SagaStep(
             name="send_notification",
             forward_action=send_notification,
             compensation_action=compensate_notification,
-            description="Send notification about the purchase"
-        )
+            description="Send notification about the purchase",
+        ),
     ]
 
     try:
         context = orchestrator.execute(
             steps,
-            initial_state={
-                "listing_id": listing_id,
-                "buyer_id": buyer_id,
-                "tenant_id": tenant_id
-            }
+            initial_state={"listing_id": listing_id, "buyer_id": buyer_id, "tenant_id": tenant_id},
         )
 
         return {
@@ -427,8 +427,8 @@ def execute_marketplace_purchase(
             "context": {
                 "order_id": context.state.get("order_id"),
                 "entitlement_id": context.state.get("entitlement_id"),
-                "final_state": context.state
-            }
+                "final_state": context.state,
+            },
         }
     except SagaExecutionError as e:
         logger.error(
@@ -437,14 +437,13 @@ def execute_marketplace_purchase(
                 "saga_id": orchestrator.saga_id,
                 "listing_id": listing_id,
                 "buyer_id": buyer_id,
-                "error": str(e)
-            }
+                "error": str(e),
+            },
         )
         return {
             "success": False,
             "saga_id": orchestrator.saga_id,
             "status": orchestrator.status.value,
             "error": str(e),
-            "context": orchestrator.context
+            "context": orchestrator.context,
         }
-

@@ -7,12 +7,13 @@ Outputs JSON for email automation + audit archive.
 
 Usage: python scripts/generate_uptime_report.py --month 2026-05 [--tenant all]
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -72,11 +73,15 @@ def main() -> int:
     else:
         for r in reports:
             print(f"\n{r['tenant']}: {r['uptime_pct']}% uptime")
-            print(f"  Incidents: {r['incident_count']} (SEV1: {r['incidents_sev1']}, "
-                  f"SEV2: {r['incidents_sev2']}, SEV3: {r['incidents_sev3']})")
+            print(
+                f"  Incidents: {r['incident_count']} (SEV1: {r['incidents_sev1']}, "
+                f"SEV2: {r['incidents_sev2']}, SEV3: {r['incidents_sev3']})"
+            )
             print(f"  MTTR: {r['mttr_minutes']}min, MTTA: {r['mtta_minutes']}min")
-            print(f"  SLA: {'✅ COMPLIANT' if r['sla_compliant'] else '❌ BREACH'} "
-                  f"(threshold: {r['sla_threshold']}%)")
+            print(
+                f"  SLA: {'✅ COMPLIANT' if r['sla_compliant'] else '❌ BREACH'} "
+                f"(threshold: {r['sla_threshold']}%)"
+            )
 
     # Archive for audit
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

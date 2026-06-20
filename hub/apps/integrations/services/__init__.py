@@ -4,13 +4,15 @@ Marketplace Integration Service -- Thin facade.
 Re-exports MarketplaceIntegrationService from its decomposed modules.
 All existing ``from hub.apps.integrations.services import X`` paths are preserved.
 """
-from hub.apps.integrations.services.connection_service import ConnectionServiceMixin
-from hub.apps.integrations.services.sync_service import SyncServiceMixin
-from hub.apps.integrations.services.mapping_service import MappingServiceMixin
-from hub.apps.integrations.services.discovery_service import DiscoveryServiceMixin
+
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import structlog
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from hub.apps.integrations.services.connection_service import ConnectionServiceMixin
+from hub.apps.integrations.services.discovery_service import DiscoveryServiceMixin
+from hub.apps.integrations.services.mapping_service import MappingServiceMixin
+from hub.apps.integrations.services.sync_service import SyncServiceMixin
 
 # Keep the same imports the original __init__ had for type checking
 if TYPE_CHECKING:
@@ -64,9 +66,9 @@ class MarketplaceIntegrationService(
 
     def __init__(
         self,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        request_id: Optional[str] = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        request_id: str | None = None,
     ):
         """
         Initialize MarketplaceIntegrationService.
@@ -86,9 +88,9 @@ class MarketplaceIntegrationService(
 
 
 __all__ = [
-    "MarketplaceIntegrationService",
     "ConnectionServiceMixin",
-    "SyncServiceMixin",
-    "MappingServiceMixin",
     "DiscoveryServiceMixin",
+    "MappingServiceMixin",
+    "MarketplaceIntegrationService",
+    "SyncServiceMixin",
 ]

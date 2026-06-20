@@ -10,13 +10,11 @@ from rest_framework import status
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    NormalizationStatus,
     OriginalFormat,
     OriginalSpecType,
 )
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.tenants.models import Tenant
-
 
 
 class ContractCRUDTest(ContractsAPITestBase):
@@ -96,11 +94,16 @@ schema:
         """Test updating a contract"""
         # Arrange
         # (client already authenticated in ContractsAPITestBase.setUp)
-        valid_odcs = json.dumps({
-            "apiVersion": "odcs.io/v3.0.2", "kind": "DataContract",
-            "id": "test", "name": "Test", "version": "1.0.0",
-            "schema": {"fields": [{"name": "id", "type": "string"}]},
-        })
+        valid_odcs = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test",
+                "name": "Test",
+                "version": "1.0.0",
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
+            }
+        )
         contract = Contract.objects.create(
             tenant=self.tenant,
             status=ContractStatus.DRAFT,
@@ -110,11 +113,16 @@ schema:
             original_raw=valid_odcs,
             created_by=self.user,
         )
-        updated_odcs = json.dumps({
-            "apiVersion": "odcs.io/v3.0.2", "kind": "DataContract",
-            "id": "test", "name": "Updated Test", "version": "1.0.0",
-            "schema": {"fields": [{"name": "id", "type": "string"}]},
-        })
+        updated_odcs = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test",
+                "name": "Updated Test",
+                "version": "1.0.0",
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
+            }
+        )
         updated_data = {
             "original_raw": updated_odcs,
             "original_format": OriginalFormat.JSON,
@@ -134,8 +142,10 @@ schema:
     def test_delete_contract(self):
         """Test deleting a contract (soft delete)"""
         from hub.apps.users.models import Role, UserRole
+
         admin_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant, name="TENANT_ADMIN",
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
             defaults={"description": "Tenant administrator"},
         )
         UserRole.objects.get_or_create(user=self.user, role=admin_role)
@@ -153,8 +163,9 @@ schema:
         response = self.client.delete(f"/api/v1/contracts/{contract.id}/")
 
         self.assertEqual(
-            response.status_code, status.HTTP_204_NO_CONTENT,
-            f"Expected 204, got {response.status_code}: {getattr(response, 'data', getattr(response, 'content', ''))}"
+            response.status_code,
+            status.HTTP_204_NO_CONTENT,
+            f"Expected 204, got {response.status_code}: {getattr(response, 'data', getattr(response, 'content', ''))}",
         )
 
         contract.refresh_from_db()
@@ -166,7 +177,10 @@ schema:
         # Create another tenant and contract
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         other_contract = Contract.objects.create(
             tenant=other_tenant,
@@ -272,7 +286,10 @@ schema:
         # Create contract in different tenant
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         other_contract = Contract.objects.create(
             tenant=other_tenant,
@@ -325,7 +342,10 @@ schema:
         # Create contract in different tenant
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         other_contract = Contract.objects.create(
             tenant=other_tenant,
@@ -396,13 +416,19 @@ schema:
 
         response = self.client.put(f"/api/v1/contracts/{contract.id}/", updated_data, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK,
-            f"PUT update with valid ODCS payload must return 200, got {response.status_code}")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            f"PUT update with valid ODCS payload must return 200, got {response.status_code}",
+        )
         self.assertEqual(response.data["original_raw"], updated_raw)
         # Verify the DB was actually updated.
         contract.refresh_from_db()
-        self.assertEqual(contract.original_raw, updated_raw,
-            "DB original_raw must match the PUT payload after update")
+        self.assertEqual(
+            contract.original_raw,
+            updated_raw,
+            "DB original_raw must match the PUT payload after update",
+        )
 
     def test_update_contract_partial_update(self):
         """Partial update with PATCH (only status) persists the change to the DB."""
@@ -425,12 +451,18 @@ schema:
         )
 
         # PATCH with valid data must return 200 OK
-        self.assertEqual(response.status_code, status.HTTP_200_OK,
-            f"PATCH partial update must return 200, got {response.status_code}")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            f"PATCH partial update must return 200, got {response.status_code}",
+        )
         # Verify the status change was persisted to the database.
         contract.refresh_from_db()
-        self.assertEqual(contract.status, ContractStatus.ACTIVE,
-            f"DB status must be ACTIVE after PATCH, got {contract.status}")
+        self.assertEqual(
+            contract.status,
+            ContractStatus.ACTIVE,
+            f"DB status must be ACTIVE after PATCH, got {contract.status}",
+        )
 
     def test_delete_contract_not_found(self):
         """Test deleting non-existent contract"""
@@ -446,7 +478,10 @@ schema:
         # Create contract in different tenant
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         other_contract = Contract.objects.create(
             tenant=other_tenant,
@@ -558,7 +593,9 @@ schema:
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
             "product": {
-                "details": {"en": {"productID": "test", "name": "Test Product", "description": "A test"}},
+                "details": {
+                    "en": {"productID": "test", "name": "Test Product", "description": "A test"}
+                },
                 "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
             },
         }
@@ -579,7 +616,6 @@ schema:
     def test_create_contract_with_asset_id(self):
         """Test creating contract with asset_id"""
         from hub.apps.assets.models import Asset, AssetStatus
-
 
         asset = Asset.objects.create(
             tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.DRAFT

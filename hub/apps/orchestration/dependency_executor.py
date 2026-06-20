@@ -10,13 +10,13 @@ Wraps each pipeline service's enqueue method with:
 Feature-gated on ``pipeline_dependency_enabled`` — when the flag
 is off, pipelines execute as they do today (pass-through).
 """
+
 from __future__ import annotations
+
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
-from django.core.cache import cache
-from django.db import transaction as db_transaction
 from django.utils import timezone
 
 from hub.apps.jobs.models import JobType
@@ -24,7 +24,6 @@ from hub.apps.jobs.utils import create_job
 
 from .dependency_resolver import PipelineDependencyResolver
 from .models import (
-    DependencyType,
     PipelineDependency,
     PipelineRunDependency,
     PipelineType,
@@ -61,8 +60,8 @@ class DependencyAwareExecutor:
         pipeline_type: str,
         pipeline_id: str,
         enqueue_fn,
-        resolve_upstream_statuses: Dict = None,
-    ) -> Dict[str, Any]:
+        resolve_upstream_statuses: dict = None,
+    ) -> dict[str, Any]:
         """Gate pipeline execution on dependency satisfaction.
 
         Returns one of:
@@ -78,19 +77,26 @@ class DependencyAwareExecutor:
         # Convert statuses dict to resolver format.
         typed_statuses = {
             (str(s.get("type", "")), str(s.get("id", ""))): str(s.get("status", ""))
-            for s in (upstream_statuses.values() if isinstance(upstream_statuses, dict)
-                      else upstream_statuses)
+            for s in (
+                upstream_statuses.values()
+                if isinstance(upstream_statuses, dict)
+                else upstream_statuses
+            )
         }
 
         if self._resolver.are_dependencies_met(
-            pipeline_type, pipeline_id, typed_statuses,
+            pipeline_type,
+            pipeline_id,
+            typed_statuses,
         ):
             return enqueue_fn()
 
         # Not all deps are met → set PENDING_DEPENDENCY.
         waiting_on = self._resolver.resolve_upstream(pipeline_type, pipeline_id)
         self._set_run_status(
-            pipeline_type, pipeline_id, "PENDING_DEPENDENCY",
+            pipeline_type,
+            pipeline_id,
+            "PENDING_DEPENDENCY",
         )
 
         waiting_list = [
@@ -139,10 +145,14 @@ class DependencyAwareExecutor:
         if count > 10:
             # Batch into async job.
             self._enqueue_batch_propagation(
-                upstream_type, upstream_id, upstream_run_id,
+                upstream_type,
+                upstream_id,
+                upstream_run_id,
                 [
-                    {"pipeline_type": d.downstream_pipeline_type,
-                     "pipeline_id": str(d.downstream_pipeline_id)}
+                    {
+                        "pipeline_type": d.downstream_pipeline_type,
+                        "pipeline_id": str(d.downstream_pipeline_id),
+                    }
                     for d in downstream
                 ],
             )
@@ -200,6 +210,7 @@ class DependencyAwareExecutor:
         if not hasattr(self, "_tenant"):
             try:
                 from hub.apps.tenants.models import Tenant
+
                 self._tenant = Tenant.objects.get(id=self.tenant_id)
             except Exception:
                 self._tenant = None
@@ -226,13 +237,16 @@ class DependencyAwareExecutor:
                 from hub.apps.transformation.models import (
                     PipelineExecution,
                 )
+
                 PipelineExecution.objects.filter(id=pipeline_id).update(
-                    status=status, updated_at=timezone.now(),
+                    status=status,
+                    updated_at=timezone.now(),
                 )
             elif pipeline_type == PipelineType.SCHEDULED_INGESTION:
                 from hub.apps.scheduled_ingestion.models import (
                     ScheduledIngestionRun,
                 )
+
                 ScheduledIngestionRun.objects.filter(id=pipeline_id).update(
                     status=status,
                 )
@@ -240,6 +254,7 @@ class DependencyAwareExecutor:
                 from hub.apps.scheduled_export.models import (
                     ScheduledExportRun,
                 )
+
                 ScheduledExportRun.objects.filter(id=pipeline_id).update(
                     status=status,
                 )
@@ -253,7 +268,9 @@ class DependencyAwareExecutor:
             )
 
     def _trigger_single_downstream(
-        self, dep: PipelineDependency, upstream_run_id: str,
+        self,
+        dep: PipelineDependency,
+        upstream_run_id: str,
     ) -> None:
         """Record that a downstream pipeline's upstream dependency
         has resolved successfully.  Creates a PipelineRunDependency
@@ -285,7 +302,7 @@ class DependencyAwareExecutor:
         upstream_type: str,
         upstream_id: str,
         upstream_run_id: str,
-        downstream_pipelines: List[Dict[str, str]],
+        downstream_pipelines: list[dict[str, str]],
     ) -> None:
         """Enqueue a DEPENDENCY_TRIGGER_BATCH job for async processing."""
         try:
@@ -331,8 +348,13 @@ def handle_upstream_completed(
     executor = DependencyAwareExecutor(tenant_id)
     if status.upper() in ("FAILED", "CANCELLED"):
         return executor.propagate_upstream_failure(
-            pipeline_type, pipeline_id, run_id,
+            pipeline_type,
+            pipeline_id,
+            run_id,
         )
     return executor.trigger_downstream(
-        pipeline_type, pipeline_id, run_id, status,
+        pipeline_type,
+        pipeline_id,
+        run_id,
+        status,
     )

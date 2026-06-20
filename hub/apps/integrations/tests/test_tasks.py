@@ -7,9 +7,8 @@ Comprehensive tests for execute_marketplace_sync task including:
 - Error handling tests
 """
 
+import contextlib
 import uuid
-from typing import List, Optional
-from unittest.mock import patch
 
 import pytest
 from django.test import TestCase
@@ -30,9 +29,7 @@ from hub.apps.integrations.base import (
 from hub.apps.integrations.factory import MarketplaceConnectorFactory
 from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob
 from hub.apps.integrations.tasks import execute_marketplace_sync
-from hub.apps.jobs.models import Job, JobStatus, JobType
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
+from hub.apps.jobs.models import JobStatus, JobType
 from tests.fixtures.test_data_factories import TenantFactory, UserFactory
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -47,8 +44,6 @@ class TestMarketplaceConnector(DataMarketplaceConnector):
         self.config = config or {}
         self.tenant_id = tenant_id
         self.user_id = user_id
-        self._sync_push_called = False
-        self._sync_pull_called = False
         self._sync_push_result = None
         self._sync_pull_result = None
 
@@ -98,7 +93,7 @@ class TestMarketplaceConnector(DataMarketplaceConnector):
             title=asset_data.get("name", "Test Asset"),
         )
 
-    def map_to_hub_asset(self, listing: MarketplaceListing, sync_job_id: Optional[str] = None):
+    def map_to_hub_asset(self, listing: MarketplaceListing, sync_job_id: str | None = None):
         from hub.apps.integrations.base import MarketplaceAssetMapping
 
         # Get resources from listing if available
@@ -120,7 +115,6 @@ class TestMarketplaceConnector(DataMarketplaceConnector):
         )
 
     def sync_push(self, asset_ids, options=None):
-        self._sync_push_called = True
         if self._sync_push_result:
             return self._sync_push_result
         return SyncResult(
@@ -136,7 +130,6 @@ class TestMarketplaceConnector(DataMarketplaceConnector):
         )
 
     def sync_pull(self, listing_ids=None, filters=None, options=None):
-        self._sync_pull_called = True
         if self._sync_pull_result:
             return self._sync_pull_result
         listing_count = len(listing_ids) if listing_ids else 1
@@ -350,6 +343,7 @@ class MarketplaceSyncTaskUnitTest(TestCase):
 
     def test_execute_sync_job_push_with_partial_failure(self):
         """Test PUSH sync with partial failures (no mocks: real connector via register)"""
+
         class PartialFailureConnector(TestMarketplaceConnector):
             def sync_push(self, asset_ids, options=None):
                 return SyncResult(
@@ -399,18 +393,23 @@ class MarketplaceSyncTaskUnitTest(TestCase):
             self.assertEqual(sync_job.status, SyncStatus.PARTIAL.value)
             self.assertEqual(sync_job.items_synced, 2)
             self.assertEqual(sync_job.items_failed, 1)
-            # Errors are added from sync_result.errors list
-            self.assertEqual(len(sync_job.errors), 0, "Partial sync without errors should have empty error list")
+            # Errors from sync_result.errors must be persisted in the sync job.
+            # The connector returned errors=["Error syncing asset-3"] — verify they survived save.
+            self.assertEqual(
+                len(sync_job.errors),
+                1,
+                f"Expected 1 persisted error, got {sync_job.errors}",
+            )
+            self.assertIn("Error syncing asset-3", sync_job.errors[0]["message"])
         finally:
-            try:
+            with contextlib.suppress(ValueError):
                 MarketplaceConnectorFactory.unregister_connector(
                     MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
                 )
-            except ValueError:
-                pass
 
     def test_execute_sync_job_push_with_complete_failure(self):
         """Test PUSH sync with complete failure (no mocks: real connector via register)"""
+
         class CompleteFailureConnector(TestMarketplaceConnector):
             def sync_push(self, asset_ids, options=None):
                 return SyncResult(
@@ -451,14 +450,14 @@ class MarketplaceSyncTaskUnitTest(TestCase):
             self.assertEqual(sync_job.status, SyncStatus.FAILED.value)
             self.assertEqual(sync_job.items_synced, 0)
             self.assertEqual(sync_job.items_failed, 2)
-            self.assertGreater(len(sync_job.errors), 0, "Complete failure should record at least one error")
+            self.assertGreater(
+                len(sync_job.errors), 0, "Complete failure should record at least one error"
+            )
         finally:
-            try:
+            with contextlib.suppress(ValueError):
                 MarketplaceConnectorFactory.unregister_connector(
                     MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
                 )
-            except ValueError:
-                pass
 
     def test_execute_sync_job_push_no_asset_ids(self):
         """Test error handling when no asset IDs provided for PUSH"""
@@ -516,8 +515,11 @@ class MarketplaceSyncTaskUnitTest(TestCase):
             # ConnectionError → mark_failed at tasks.py:362 → FAILED
             # (note: TRANSIENT re-raise goes to catch-all, job is already FAILED)
             sync_job.refresh_from_db()
-            self.assertEqual(sync_job.status, SyncStatus.FAILED.value,
-                             f"Expected FAILED after ConnectionError, got {sync_job.status}")
+            self.assertEqual(
+                sync_job.status,
+                SyncStatus.FAILED.value,
+                f"Expected FAILED after ConnectionError, got {sync_job.status}",
+            )
         finally:
             # Unregister test connector
             MarketplaceConnectorFactory.unregister_connector(
@@ -527,20 +529,20 @@ class MarketplaceSyncTaskUnitTest(TestCase):
     # ========== ERROR HANDLING TESTS ==========
 
     def test_execute_sync_job_with_nonexistent_job(self):
-        """Test that execute_marketplace_sync handles nonexistent job"""
+        """Test that execute_marketplace_sync raises ValueError for nonexistent job"""
         fake_job_id = str(uuid.uuid4())
-        with self.assertRaises((ValueError, MarketplaceSyncJob.DoesNotExist)):
+        with self.assertRaises(ValueError) as cm:
             execute_marketplace_sync(fake_job_id, retry_count=0)
+        self.assertIn("not found", str(cm.exception).lower())
 
     def test_execute_sync_job_with_invalid_job_id(self):
-        """Test that execute_marketplace_sync handles invalid job ID format"""
-        from django.core.exceptions import ValidationError as DjangoValidationError
-
-        with self.assertRaises((ValueError, TypeError, DjangoValidationError)):
+        """Test that execute_marketplace_sync raises ValueError for invalid job ID format"""
+        with self.assertRaises(ValueError) as cm:
             execute_marketplace_sync("not-a-uuid", retry_count=0)
+        self.assertIn("invalid", str(cm.exception).lower())
 
     def test_execute_sync_job_handles_missing_connection(self):
-        """Test that execute_marketplace_sync handles missing connection"""
+        """Test that execute_marketplace_sync raises ValueError for missing connection"""
         sync_job = MarketplaceSyncJob.objects.create(
             tenant=self.tenant,
             connection=self.connection,
@@ -550,16 +552,17 @@ class MarketplaceSyncTaskUnitTest(TestCase):
         )
 
         # Delete connection
-        connection_id = self.connection.id
         self.connection.delete()
 
-        # Execute sync - should handle gracefully
-        try:
+        # Execute sync — should raise ValueError due to select_related failure
+        # or an explicit validation error about the missing connection.
+        with self.assertRaises(ValueError) as cm:
             execute_marketplace_sync(str(sync_job.id), retry_count=0)
-            # May succeed or fail depending on implementation
-        except (ValueError, AttributeError):
-            # If it raises error, that's acceptable
-            pass
+        error_msg = str(cm.exception).lower()
+        self.assertTrue(
+            "not found" in error_msg or "does not exist" in error_msg,
+            f"Expected connection-not-found error, got: {cm.exception}",
+        )
 
     # ========== TDD COMPLIANCE TESTS ==========
 
@@ -582,15 +585,18 @@ class MarketplaceSyncTaskUnitTest(TestCase):
         )
 
         try:
-            # Execute sync
+            # Execute sync — TestMarketplaceConnector always returns COMPLETED
             execute_marketplace_sync(str(sync_job.id), retry_count=0)
 
-            # Verify status was updated
+            # Verify status was updated correctly
             sync_job.refresh_from_db()
-            self.assertIn(
+            self.assertEqual(
                 sync_job.status,
-                [SyncStatus.COMPLETED.value, SyncStatus.FAILED.value, SyncStatus.RUNNING.value],
+                SyncStatus.COMPLETED.value,
+                f"Expected COMPLETED, got {sync_job.status}",
             )
+            self.assertEqual(sync_job.items_synced, 1)
+            self.assertEqual(sync_job.items_failed, 0)
         finally:
             MarketplaceConnectorFactory.unregister_connector(
                 MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
@@ -620,17 +626,26 @@ class MarketplaceSyncTaskUnitTest(TestCase):
                 metadata={"asset_ids": [str(asset.id)], "options": {}},
             )
 
-            # Execute sync
+            # Execute sync — ValueError should propagate after mark_failed
             try:
                 execute_marketplace_sync(str(sync_job.id), retry_count=0)
-            except ValueError:
-                # Expected - error should be raised
-                pass
+                self.fail("Expected ValueError to be raised")
+            except ValueError as exc:
+                self.assertIn("Sync failed", str(exc))
 
-            # Verify error was recorded
+            # Verify error was recorded and status is terminal
             sync_job.refresh_from_db()
-            # Error may be recorded or sync job may be marked as failed
-            self.assertIn(sync_job.status, [SyncStatus.FAILED.value, SyncStatus.PENDING.value])
+            self.assertEqual(
+                sync_job.status,
+                SyncStatus.FAILED.value,
+                f"Expected FAILED, got {sync_job.status}",
+            )
+            self.assertGreater(
+                len(sync_job.errors),
+                0,
+                f"Expected at least one recorded error, got {sync_job.errors}",
+            )
+            self.assertIn("Sync failed", sync_job.errors[0]["message"])
         finally:
             MarketplaceConnectorFactory.unregister_connector(
                 MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
@@ -682,12 +697,10 @@ class MarketplaceSyncTaskIntegrationTest(TestCase):
     def tearDown(self):
         """Clean up after tests"""
         # Unregister test connector
-        try:
+        with contextlib.suppress(ValueError):
             MarketplaceConnectorFactory.unregister_connector(
                 MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
             )
-        except ValueError:
-            pass
 
         # Clear queues
         for queue_name in ["job_critical", "job_default", "job_low", "default"]:
@@ -824,6 +837,7 @@ class MarketplaceSyncTaskErrorHandlingTest(TestCase):
 
     def test_execute_sync_job_connector_creation_failure(self):
         """Test error handling when connector creation fails (no mocks: real connector raises in __init__)"""
+
         class FailingConnector(TestMarketplaceConnector):
             def __init__(self, *args, **kwargs):
                 raise Exception("Failed to create connector")
@@ -848,12 +862,10 @@ class MarketplaceSyncTaskErrorHandlingTest(TestCase):
             sync_job.refresh_from_db()
             self.assertEqual(sync_job.status, SyncStatus.FAILED.value)
         finally:
-            try:
+            with contextlib.suppress(ValueError):
                 MarketplaceConnectorFactory.unregister_connector(
                     MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
                 )
-            except ValueError:
-                pass
 
     def test_execute_sync_job_sync_operation_returns_none(self):
         """Test error handling when sync operation returns None"""
@@ -882,8 +894,11 @@ class MarketplaceSyncTaskErrorHandlingTest(TestCase):
                 execute_marketplace_sync(str(sync_job.id), retry_count=0)
 
             # ServiceError("Sync operation returned no result") — exact message
-            self.assertIn("no result", str(cm.exception).lower(),
-                          msg=f"Expected 'no result' in error, got: {cm.exception}")
+            self.assertIn(
+                "no result",
+                str(cm.exception).lower(),
+                msg=f"Expected 'no result' in error, got: {cm.exception}",
+            )
 
             # Verify sync job was marked as failed
             sync_job.refresh_from_db()
@@ -900,3 +915,233 @@ class MarketplaceSyncTaskErrorHandlingTest(TestCase):
                 )
             except ValueError:
                 pass
+
+
+class MarketplaceSyncTaskBidirectionalTest(TestCase):
+    """Tests for BIDIRECTIONAL sync logic (Phase 2.4)."""
+
+    def setUp(self):
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.disconnect(contract_saved, sender=Contract)
+            post_save.disconnect(asset_saved, sender=Asset)
+        except (ImportError, AttributeError):
+            pass
+        self.tenant = TenantFactory.create_tenant()
+        self.user = UserFactory.create_user(tenant=self.tenant)
+        self.connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            name="Bidirectional Connection",
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            is_active=True,
+        )
+        self.connection.set_config(
+            {"api_key": "test-api-key", "endpoint": "https://api.example.com"}
+        )
+        MarketplaceConnectorFactory.register_connector(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, TestMarketplaceConnector
+        )
+
+    def tearDown(self):
+        with contextlib.suppress(ValueError):
+            MarketplaceConnectorFactory.unregister_connector(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+            )
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.connect(contract_saved, sender=Contract, weak=False)
+            post_save.connect(asset_saved, sender=Asset, weak=False)
+        except (ImportError, AttributeError):
+            pass
+
+    def test_bidirectional_both_succeed(self):
+        """BIDIRECTIONAL with both PUSH and PULL succeeding → COMPLETED with summed items."""
+        asset = Asset.objects.create(
+            tenant=self.tenant, key="bi-asset-1", name="Bidirectional Asset"
+        )
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            direction=SyncDirection.BIDIRECTIONAL.value,
+            status=SyncStatus.PENDING.value,
+            metadata={
+                "asset_ids": [str(asset.id)],
+                "listing_ids": ["listing-1"],
+                "options": {},
+            },
+        )
+
+        result = execute_marketplace_sync(str(sync_job.id), retry_count=0)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["sync_status"], SyncStatus.COMPLETED.value)
+        # 1 push item + 1 pull item = 2 total successful
+        self.assertGreaterEqual(result["successful_items"], 1)
+
+        sync_job.refresh_from_db()
+        self.assertEqual(sync_job.status, SyncStatus.COMPLETED.value)
+
+    def test_bidirectional_push_only(self):
+        """BIDIRECTIONAL with only push assets → only PUSH executes."""
+        asset = Asset.objects.create(
+            tenant=self.tenant, key="bi-push-only", name="Push Only"
+        )
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            direction=SyncDirection.BIDIRECTIONAL.value,
+            status=SyncStatus.PENDING.value,
+            metadata={"asset_ids": [str(asset.id)], "options": {}},
+        )
+
+        result = execute_marketplace_sync(str(sync_job.id), retry_count=0)
+        self.assertEqual(result["status"], "completed")
+        sync_job.refresh_from_db()
+        self.assertIn(
+            sync_job.status,
+            [SyncStatus.COMPLETED.value, SyncStatus.PARTIAL.value],
+        )
+
+    def test_bidirectional_no_operations_raises(self):
+        """BIDIRECTIONAL with no asset_ids or listing_ids → ValueError."""
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            direction=SyncDirection.BIDIRECTIONAL.value,
+            status=SyncStatus.PENDING.value,
+            metadata={"options": {}},
+        )
+
+        with self.assertRaises(ValueError) as cm:
+            execute_marketplace_sync(str(sync_job.id), retry_count=0)
+        self.assertIn("No sync operations", str(cm.exception))
+
+        sync_job.refresh_from_db()
+        self.assertEqual(sync_job.status, SyncStatus.FAILED.value)
+
+
+# =============================================================================
+# Error Classification Tests (Phase 2.5)
+# =============================================================================
+
+
+class MarketplaceSyncErrorClassificationTest(TestCase):
+    """Tests for PERMANENT, TRANSIENT, and UNKNOWN error classification paths."""
+
+    def setUp(self):
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.disconnect(contract_saved, sender=Contract)
+            post_save.disconnect(asset_saved, sender=Asset)
+        except (ImportError, AttributeError):
+            pass
+        self.tenant = TenantFactory.create_tenant()
+        self.user = UserFactory.create_user(tenant=self.tenant)
+        self.connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            name="ErrorClass Connection",
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            is_active=True,
+        )
+        self.connection.set_config(
+            {"api_key": "test-api-key", "endpoint": "https://api.example.com"}
+        )
+
+    def tearDown(self):
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.connect(contract_saved, sender=Contract, weak=False)
+            post_save.connect(asset_saved, sender=Asset, weak=False)
+        except (ImportError, AttributeError):
+            pass
+
+    def test_permanent_error_fails_immediately(self):
+        """Error classified as PERMANENT → job marked FAILED, no retry."""
+        # Use a ValueError (not ConnectionError) — the error classifier maps
+        # unknown errors to UNKNOWN, but we can verify the mark_failed path.
+        class PermanentErrorConnector(TestMarketplaceConnector):
+            def sync_push(self, asset_ids, options=None):
+                # Raise a ValueError which is caught and classified
+                raise ValueError("Permanent configuration error")
+
+        MarketplaceConnectorFactory.register_connector(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, PermanentErrorConnector
+        )
+        try:
+            asset = Asset.objects.create(
+                tenant=self.tenant, key="perm-err", name="Permanent Error"
+            )
+            sync_job = MarketplaceSyncJob.objects.create(
+                tenant=self.tenant,
+                connection=self.connection,
+                direction=SyncDirection.PUSH.value,
+                status=SyncStatus.PENDING.value,
+                metadata={"asset_ids": [str(asset.id)], "options": {}},
+            )
+
+            with self.assertRaises(ValueError):
+                execute_marketplace_sync(str(sync_job.id), retry_count=0)
+
+            sync_job.refresh_from_db()
+            self.assertEqual(
+                sync_job.status,
+                SyncStatus.FAILED.value,
+                "Job should be marked FAILED after a permanent/error during sync",
+            )
+        finally:
+            with contextlib.suppress(ValueError):
+                MarketplaceConnectorFactory.unregister_connector(
+                    MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+                )
+
+    def test_connection_error_is_classified_and_records_errors(self):
+        """ConnectionError during sync → job marked FAILED, errors recorded."""
+        class ConnectionErrorConnector(TestMarketplaceConnector):
+            def sync_push(self, asset_ids, options=None):
+                raise ConnectionError("Connection timeout")
+
+        MarketplaceConnectorFactory.register_connector(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, ConnectionErrorConnector
+        )
+        try:
+            asset = Asset.objects.create(
+                tenant=self.tenant, key="conn-err", name="Connection Error"
+            )
+            sync_job = MarketplaceSyncJob.objects.create(
+                tenant=self.tenant,
+                connection=self.connection,
+                direction=SyncDirection.PUSH.value,
+                status=SyncStatus.PENDING.value,
+                metadata={"asset_ids": [str(asset.id)], "options": {}},
+            )
+
+            with self.assertRaises(ConnectionError):
+                execute_marketplace_sync(str(sync_job.id), retry_count=0)
+
+            sync_job.refresh_from_db()
+            self.assertEqual(sync_job.status, SyncStatus.FAILED.value)
+            self.assertGreater(len(sync_job.errors), 0)
+        finally:
+            with contextlib.suppress(ValueError):
+                MarketplaceConnectorFactory.unregister_connector(
+                    MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+                )

@@ -1,18 +1,20 @@
 """Phase 98: JWT token security tests."""
-import uuid
-import pytest
+
 import time
+import uuid
+from datetime import timedelta
+
 import jwt as pyjwt
-from django.test import TestCase
+import pytest
 from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
+
+from hub.apps.auth.models import RefreshToken
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus, UserTenantMembership
-from hub.apps.auth.models import RefreshToken
-from hub.apps.auth.jwt_utils import JWTTokenGenerator
-from django.contrib.auth import get_user_model
-from django.utils import timezone
-from datetime import timedelta
 
 User = get_user_model()
 
@@ -25,7 +27,8 @@ class JWTSecurityTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"JWT Test {uid}", slug=f"jwt-test-{uid}",
+            name=f"JWT Test {uid}",
+            slug=f"jwt-test-{uid}",
         )
         self.user = User.objects.create_user(
             email=f"jwt-{uid}@example.com",
@@ -34,7 +37,8 @@ class JWTSecurityTest(TestCase):
             status=UserStatus.ACTIVE,
         )
         UserTenantMembership.objects.get_or_create(
-            user=self.user, tenant=self.tenant,
+            user=self.user,
+            tenant=self.tenant,
         )
         self.client = APIClient()
 

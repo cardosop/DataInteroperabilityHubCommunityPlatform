@@ -5,13 +5,15 @@ Bounded-cardinality label fallback (UNKNOWN) per the L7 helpers
 convention. All record_* functions are best-effort — metric-backend
 outage MUST NOT fail the search/SPARQL response.
 """
+
 from __future__ import annotations
 
+import contextlib
 from typing import Protocol
 
 
 class _MetricLike(Protocol):
-    def labels(self, **kwargs: str) -> "_MetricLike": ...
+    def labels(self, **kwargs: str) -> _MetricLike: ...
 
     def inc(self, amount: float = 1) -> None: ...
 
@@ -19,7 +21,7 @@ class _MetricLike(Protocol):
 
 
 class _MetricStub:
-    def labels(self, **_: object) -> "_MetricStub":
+    def labels(self, **_: object) -> _MetricStub:
         return self
 
     def inc(self, _amount: float = 1) -> None:
@@ -97,24 +99,16 @@ def record_search(
     _kind = kind if kind in _VALID_KINDS else "fts"
     _outcome = outcome if outcome in _VALID_OUTCOMES else "success"
 
-    try:
+    with contextlib.suppress(Exception):
         search_request_duration_seconds.labels(kind=_kind, outcome=_outcome).observe(duration_s)
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(Exception):
         search_results_count_total.labels(kind=_kind).inc(float(result_count))
-    except Exception:
-        pass
     if result_count == 0:
-        try:
+        with contextlib.suppress(Exception):
             search_no_result_total.labels(kind=_kind).inc()
-        except Exception:
-            pass
     if query_length > 0:
-        try:
+        with contextlib.suppress(Exception):
             search_query_length_bytes.labels(kind=_kind).observe(float(query_length))
-        except Exception:
-            pass
 
 
 def record_sparql(
@@ -126,12 +120,8 @@ def record_sparql(
     """Record SPARQL execution metrics."""
     _outcome = outcome if outcome in _VALID_OUTCOMES else "success"
 
-    try:
+    with contextlib.suppress(Exception):
         sparql_execution_seconds.labels(outcome=_outcome).observe(duration_s)
-    except Exception:
-        pass
     if timed_out:
-        try:
+        with contextlib.suppress(Exception):
             sparql_timeout_total.inc()
-        except Exception:
-            pass

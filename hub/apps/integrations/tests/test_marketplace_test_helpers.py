@@ -83,6 +83,7 @@ class TestCreateTestConnector(TestCase):
         self.assertIsInstance(connector, CKANConnector)
         # Default test instance is ckan-test (local Docker container)
         from hub.apps.integrations.config.marketplace_instances import get_default_test_instance
+
         expected_url = get_default_test_instance().base_url
         self.assertEqual(connector.base_url, expected_url)
 
@@ -303,7 +304,8 @@ class TestCKANTestHelpersIntegration(TestCase):
         """Test create_test_connector() error handling with None instance_name"""
         try:
             connector = create_test_connector(
-                instance_name=None, verify_connection=False  # type: ignore[arg-type]  # test: edge-case type exercise
+                instance_name=None,
+                verify_connection=False,  # type: ignore[arg-type]  # test: edge-case type exercise
             )
             # Should handle gracefully (may use default)
             if connector:

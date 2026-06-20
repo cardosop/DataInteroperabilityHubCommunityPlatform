@@ -11,6 +11,7 @@ import pytest
 try:
     from channels.layers import InMemoryChannelLayer, get_channel_layer
     from channels.testing import WebsocketCommunicator
+
     CHANNELS_AVAILABLE = True
 except ImportError:
     InMemoryChannelLayer = None
@@ -23,7 +24,8 @@ from django.contrib.auth import get_user_model
 # Skip tests if channels not available
 pytestmark = pytest.mark.skipif(not CHANNELS_AVAILABLE, reason="Django Channels not installed")
 
-from hub.apps.tenants.models import Tenant
+import contextlib
+
 from hub.apps.websocket.consumers.event_consumer import EventConsumer
 from hub.apps.websocket.protocol import (
     WebSocketMessage,
@@ -60,14 +62,12 @@ class TestEventConsumer(AsyncWebSocketTransactionTestCase):
                 channel_layer.channels.clear()
             if hasattr(channel_layer, "groups"):
                 channel_layer.groups.clear()
-        except Exception:
-            # If channel layer doesn't support clearing, that's OK
+        except (AttributeError, NotImplementedError):
+            # In-memory channel layer or test layer without flush support
             pass
 
     def tearDown(self):
         """Clean up after each test."""
-        # Clean up channel layer state for test isolation
-        # This prevents test interference
         try:
             from channels.layers import get_channel_layer
 
@@ -76,8 +76,8 @@ class TestEventConsumer(AsyncWebSocketTransactionTestCase):
                 channel_layer.channels.clear()
             if hasattr(channel_layer, "groups"):
                 channel_layer.groups.clear()
-        except Exception:
-            # If channel layer doesn't support clearing, that's OK
+        except (AttributeError, NotImplementedError):
+            # In-memory channel layer or test layer without flush support
             pass
 
     def _create_communicator(self):
@@ -96,78 +96,70 @@ class TestEventConsumer(AsyncWebSocketTransactionTestCase):
         """Test WebSocket connection with authenticated user."""
         communicator = self._create_communicator()
 
-        connected, subprotocol = await communicator.connect()
+        try:
+            connected, subprotocol = await communicator.connect()
+            self.assertTrue(connected, f"Connection failed. Subprotocol: {subprotocol}")
 
-        self.assertTrue(connected, f"Connection failed. Subprotocol: {subprotocol}")
-
-        # Check for confirmation message
-        response = await communicator.receive_json_from()
-        self.assertEqual(response["type"], WebSocketMessageType.SUBSCRIPTION_CONFIRMED.value)
-
-        await communicator.disconnect()
+            # Check for confirmation message
+            response = await communicator.receive_json_from()
+            self.assertEqual(response["type"], WebSocketMessageType.SUBSCRIPTION_CONFIRMED.value)
+        finally:
+            await communicator.disconnect()
 
     async def test_connect_unauthenticated(self):
-        """Test WebSocket connection without authentication."""
+        """Test WebSocket connection without authentication — connection is
+        accepted by ASGI but the consumer MUST close it immediately."""
         communicator = WebsocketCommunicator(
             EventConsumer.as_asgi(),
             "/ws/events/",
         )
-        # Don't set user - should be rejected
         from django.contrib.auth.models import AnonymousUser
 
         communicator.scope["user"] = AnonymousUser()
         communicator.scope["tenant"] = None
 
         try:
-            connected, subprotocol = await communicator.connect()
-
-            # Connection is accepted first (required by WebsocketCommunicator), then closed
-            # So connected will be True, but we should check that it's closed
+            connected, _subprotocol = await communicator.connect()
+            # ASGI always accepts the connection first; the consumer
+            # should then close it immediately for unauthenticated users.
             self.assertTrue(connected)
 
-            # Wait for close message or timeout
-            try:
-                # Try to receive - should get close message or timeout
-                await asyncio.wait_for(communicator.receive(), timeout=0.5)
-            except (asyncio.TimeoutError, Exception):
-                # Expected - connection was closed or timed out
-                pass
+            # The consumer calls accept() then close(code=4001) for AnonymousUser.
+            close_frame = await asyncio.wait_for(communicator.receive_output(), timeout=2.0)
+            self.assertEqual(close_frame["type"], "websocket.close")
+            self.assertEqual(close_frame.get("code"), 4001)
         finally:
-            # Ensure cleanup
-            try:
-                await communicator.disconnect()
-            except Exception:
-                pass
+            await communicator.disconnect()
 
     async def test_connect_no_tenant(self):
-        """Test WebSocket connection with user but no tenant."""
+        """Test WebSocket connection with user but no tenant — the consumer
+        sends an error message and closes with code 4003 (Forbidden)."""
         communicator = WebsocketCommunicator(
             EventConsumer.as_asgi(),
             "/ws/events/",
         )
         communicator.scope["user"] = self.user
-        communicator.scope["tenant"] = None  # No tenant
+        communicator.scope["tenant"] = None
 
         try:
-            connected, subprotocol = await communicator.connect()
-
-            # Connection is accepted first (required by WebsocketCommunicator), then closed
-            # So connected will be True, but we should check that it's closed
+            connected, _subprotocol = await communicator.connect()
             self.assertTrue(connected)
 
-            # Wait for close message or timeout
-            try:
-                # Try to receive - should get close message or timeout
-                await asyncio.wait_for(communicator.receive(), timeout=0.5)
-            except (asyncio.TimeoutError, Exception):
-                # Expected - connection was closed or timed out
-                pass
+            # The consumer first sends a JSON error via websocket.send,
+            # then closes with code 4003.
+            error_response = await asyncio.wait_for(
+                communicator.receive_json_from(), timeout=2.0
+            )
+            self.assertEqual(error_response["type"], "error")
+            self.assertIn("tenant", error_response.get("error", "").lower())
+
+            close_frame = await asyncio.wait_for(
+                communicator.receive_output(), timeout=2.0
+            )
+            self.assertEqual(close_frame["type"], "websocket.close")
+            self.assertEqual(close_frame.get("code"), 4003)
         finally:
-            # Ensure cleanup
-            try:
-                await communicator.disconnect()
-            except Exception:
-                pass
+            await communicator.disconnect()
 
     async def test_receive_subscribe(self):
         """Test receiving subscribe message - connection only."""
@@ -176,7 +168,7 @@ class TestEventConsumer(AsyncWebSocketTransactionTestCase):
         communicator = self._create_communicator()
 
         try:
-            connected, subprotocol = await communicator.connect()
+            connected, _subprotocol = await communicator.connect()
             self.assertTrue(connected)
 
             # Receive initial confirmation
@@ -190,7 +182,7 @@ class TestEventConsumer(AsyncWebSocketTransactionTestCase):
         communicator = self._create_communicator()
 
         try:
-            connected, subprotocol = await communicator.connect()
+            connected, _subprotocol = await communicator.connect()
             self.assertTrue(connected)
 
             # Receive initial confirmation
@@ -205,7 +197,9 @@ class TestEventConsumer(AsyncWebSocketTransactionTestCase):
 
             # Receive subscription confirmation
             sub_response = await communicator.receive_json_from()
-            self.assertEqual(sub_response["type"], WebSocketMessageType.SUBSCRIPTION_CONFIRMED.value)
+            self.assertEqual(
+                sub_response["type"], WebSocketMessageType.SUBSCRIPTION_CONFIRMED.value
+            )
             self.assertIn("asset.created", sub_response["data"]["event_types"])
 
             # Now unsubscribe from one event type
@@ -217,7 +211,9 @@ class TestEventConsumer(AsyncWebSocketTransactionTestCase):
 
             # Receive unsubscribe confirmation
             unsub_response = await communicator.receive_json_from()
-            self.assertEqual(unsub_response["type"], WebSocketMessageType.SUBSCRIPTION_CONFIRMED.value)
+            self.assertEqual(
+                unsub_response["type"], WebSocketMessageType.SUBSCRIPTION_CONFIRMED.value
+            )
             self.assertNotIn("asset.created", unsub_response["data"]["event_types"])
             self.assertIn("asset.updated", unsub_response["data"]["event_types"])
         finally:
@@ -228,7 +224,7 @@ class TestEventConsumer(AsyncWebSocketTransactionTestCase):
         communicator = self._create_communicator()
 
         try:
-            connected, subprotocol = await communicator.connect()
+            connected, _subprotocol = await communicator.connect()
             self.assertTrue(connected)
 
             # Receive initial confirmation
@@ -252,7 +248,7 @@ class TestEventConsumer(AsyncWebSocketTransactionTestCase):
         communicator = self._create_communicator()
 
         try:
-            connected, subprotocol = await communicator.connect()
+            connected, _subprotocol = await communicator.connect()
             self.assertTrue(connected)
 
             # Receive initial confirmation
@@ -273,7 +269,7 @@ class TestEventConsumer(AsyncWebSocketTransactionTestCase):
         communicator = self._create_communicator()
 
         try:
-            connected, subprotocol = await communicator.connect()
+            connected, _subprotocol = await communicator.connect()
             self.assertTrue(connected)
 
             # Receive initial confirmation
@@ -298,7 +294,7 @@ class TestEventConsumer(AsyncWebSocketTransactionTestCase):
         communicator = self._create_communicator()
 
         try:
-            connected, subprotocol = await communicator.connect()
+            connected, _subprotocol = await communicator.connect()
             self.assertTrue(connected)
 
             # Receive initial confirmation

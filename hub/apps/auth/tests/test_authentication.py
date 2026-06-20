@@ -42,7 +42,10 @@ class AuthenticationTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create active user
@@ -481,9 +484,7 @@ class AuthenticationTest(TestCase):
 
     def test_password_reset_request_success_creates_token(self):
         """Test successful password reset request creates token."""
-        self.client.post(
-            "/api/v1/auth/password-reset/", {"email": self.user.email}, format="json"
-        )
+        self.client.post("/api/v1/auth/password-reset/", {"email": self.user.email}, format="json")
 
         # Verify password reset token was created
         self.user.refresh_from_db()
@@ -491,9 +492,7 @@ class AuthenticationTest(TestCase):
 
     def test_password_reset_request_success_sets_token_expiry(self):
         """Test successful password reset request sets token expiry."""
-        self.client.post(
-            "/api/v1/auth/password-reset/", {"email": self.user.email}, format="json"
-        )
+        self.client.post("/api/v1/auth/password-reset/", {"email": self.user.email}, format="json")
 
         # Verify password reset token expiry was set
         self.user.refresh_from_db()
@@ -516,8 +515,8 @@ class AuthenticationTest(TestCase):
 
     def test_password_reset_confirm_success_returns_200(self):
         """Test successful password reset confirmation returns 200."""
-        import uuid
         import hashlib
+        import uuid
 
         # Set password reset token directly: store hash, keep plaintext for the API call
         plaintext_token = str(uuid.uuid4())
@@ -537,8 +536,8 @@ class AuthenticationTest(TestCase):
 
     def test_password_reset_confirm_success_changes_password(self):
         """Test successful password reset confirmation changes password."""
-        import uuid
         import hashlib
+        import uuid
 
         # Set password reset token directly: store hash, keep plaintext for the API call
         plaintext_token = str(uuid.uuid4())
@@ -560,8 +559,8 @@ class AuthenticationTest(TestCase):
 
     def test_password_reset_confirm_success_clears_token(self):
         """Test successful password reset confirmation clears token."""
-        import uuid
         import hashlib
+        import uuid
 
         # Set password reset token directly: store hash, keep plaintext for the API call
         plaintext_token = str(uuid.uuid4())
@@ -686,7 +685,9 @@ class AuthenticationTest(TestCase):
         # Create invited user with expired token
         exp_uid = uuid.uuid4().hex[:8]
         invited_user = User.objects.create_user(
-            email=f"invited-exp-{exp_uid}@example.com", tenant=self.tenant, status=UserStatus.INVITED
+            email=f"invited-exp-{exp_uid}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.INVITED,
         )
 
         # Store hash in DB, keep plaintext to send in the request (11.3)
@@ -713,7 +714,7 @@ class AuthenticationTest(TestCase):
         """Test invitation acceptance for already active user"""
         # Create active user (not invited)
         act_uid = uuid.uuid4().hex[:8]
-        active_user = User.objects.create_user(
+        User.objects.create_user(
             email=f"active-{act_uid}@example.com",
             password="existingpass",
             tenant=self.tenant,

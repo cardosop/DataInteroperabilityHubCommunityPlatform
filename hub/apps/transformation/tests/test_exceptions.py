@@ -9,18 +9,20 @@ Tests verify:
 5. HTTP status codes
 6. Error message formatting
 """
+
 import time
+
 from django.test import TestCase
 
-from hub.apps.transformation.exceptions import (
-    TransformationError,
-    TransformationValidationError,
-    TransformationExecutionError,
-    PipelineNotFoundError,
-    AssetCompatibilityError,
-    ResourceQuotaExceededError,
-)
 from hub.apps.core.services.base import ServiceError
+from hub.apps.transformation.exceptions import (
+    AssetCompatibilityError,
+    PipelineNotFoundError,
+    ResourceQuotaExceededError,
+    TransformationError,
+    TransformationExecutionError,
+    TransformationValidationError,
+)
 
 
 class TransformationErrorTest(TestCase):
@@ -29,7 +31,9 @@ class TransformationErrorTest(TestCase):
     def test_transformation_error_basic(self):
         """Test basic TransformationError creation"""
         error = TransformationError("Test error message")
-        self.assertEqual(str(error), "TransformationError(TRANSFORMATION_UNKNOWN_ERROR): Test error message")
+        self.assertEqual(
+            str(error), "TransformationError(TRANSFORMATION_UNKNOWN_ERROR): Test error message"
+        )
         self.assertEqual(error.message, "Test error message")
         self.assertEqual(error.error_code, TransformationError.ERROR_CODE_UNKNOWN)
         self.assertEqual(error.http_status, 500)
@@ -38,8 +42,7 @@ class TransformationErrorTest(TestCase):
     def test_transformation_error_with_error_code(self):
         """Test TransformationError with custom error code"""
         error = TransformationError(
-            "Test error",
-            error_code=TransformationError.ERROR_CODE_VALIDATION_FAILED
+            "Test error", error_code=TransformationError.ERROR_CODE_VALIDATION_FAILED
         )
         self.assertEqual(error.error_code, TransformationError.ERROR_CODE_VALIDATION_FAILED)
 
@@ -56,11 +59,7 @@ class TransformationErrorTest(TestCase):
 
     def test_transformation_error_with_tenant_user(self):
         """Test TransformationError with tenant and user IDs"""
-        error = TransformationError(
-            "Test error",
-            tenant_id="tenant-123",
-            user_id="user-456"
-        )
+        error = TransformationError("Test error", tenant_id="tenant-123", user_id="user-456")
         self.assertEqual(error.tenant_id, "tenant-123")
         self.assertEqual(error.user_id, "user-456")
 
@@ -80,7 +79,7 @@ class TransformationErrorTest(TestCase):
             details={"key": "value"},
             http_status=400,
             tenant_id="tenant-123",
-            user_id="user-456"
+            user_id="user-456",
         )
         result = error.to_dict()
 
@@ -125,24 +124,19 @@ class TransformationValidationErrorTest(TestCase):
     def test_validation_error_basic(self):
         """Test basic TransformationValidationError creation"""
         error = TransformationValidationError("Validation failed")
-        self.assertEqual(error.error_code, TransformationValidationError.ERROR_CODE_VALIDATION_FAILED)
+        self.assertEqual(
+            error.error_code, TransformationValidationError.ERROR_CODE_VALIDATION_FAILED
+        )
         self.assertEqual(error.http_status, 400)
 
     def test_validation_error_with_field_path(self):
         """Test TransformationValidationError with field path"""
-        error = TransformationValidationError(
-            "Validation failed",
-            field_path="/pipeline/nodes/0"
-        )
+        error = TransformationValidationError("Validation failed", field_path="/pipeline/nodes/0")
         self.assertEqual(error.details["field_path"], "/pipeline/nodes/0")
 
     def test_validation_error_with_expected_actual(self):
         """Test TransformationValidationError with expected and actual values"""
-        error = TransformationValidationError(
-            "Type mismatch",
-            expected="string",
-            actual=123
-        )
+        error = TransformationValidationError("Type mismatch", expected="string", actual=123)
         self.assertEqual(error.details["expected"], "string")
         self.assertEqual(error.details["actual"], 123)
 
@@ -150,15 +144,19 @@ class TransformationValidationErrorTest(TestCase):
         """Test TransformationValidationError error code constants"""
         error = TransformationValidationError(
             "Invalid pipeline definition",
-            error_code=TransformationValidationError.ERROR_CODE_INVALID_PIPELINE_DEFINITION
+            error_code=TransformationValidationError.ERROR_CODE_INVALID_PIPELINE_DEFINITION,
         )
-        self.assertEqual(error.error_code, TransformationValidationError.ERROR_CODE_INVALID_PIPELINE_DEFINITION)
+        self.assertEqual(
+            error.error_code, TransformationValidationError.ERROR_CODE_INVALID_PIPELINE_DEFINITION
+        )
 
         error = TransformationValidationError(
             "Invalid node config",
-            error_code=TransformationValidationError.ERROR_CODE_INVALID_NODE_CONFIG
+            error_code=TransformationValidationError.ERROR_CODE_INVALID_NODE_CONFIG,
         )
-        self.assertEqual(error.error_code, TransformationValidationError.ERROR_CODE_INVALID_NODE_CONFIG)
+        self.assertEqual(
+            error.error_code, TransformationValidationError.ERROR_CODE_INVALID_NODE_CONFIG
+        )
 
     def test_validation_error_inherits_from_transformation_error(self):
         """Test that TransformationValidationError inherits from TransformationError"""
@@ -180,9 +178,7 @@ class TransformationExecutionErrorTest(TestCase):
     def test_execution_error_with_pipeline_execution_ids(self):
         """Test TransformationExecutionError with pipeline and execution IDs"""
         error = TransformationExecutionError(
-            "Execution failed",
-            pipeline_id="pipeline-123",
-            execution_id="execution-456"
+            "Execution failed", pipeline_id="pipeline-123", execution_id="execution-456"
         )
         self.assertEqual(error.details["pipeline_id"], "pipeline-123")
         self.assertEqual(error.details["execution_id"], "execution-456")
@@ -190,9 +186,7 @@ class TransformationExecutionErrorTest(TestCase):
     def test_execution_error_with_node_info(self):
         """Test TransformationExecutionError with node information"""
         error = TransformationExecutionError(
-            "Node execution failed",
-            node_id="node-789",
-            step_name="filter_step"
+            "Node execution failed", node_id="node-789", step_name="filter_step"
         )
         self.assertEqual(error.details["node_id"], "node-789")
         self.assertEqual(error.details["step_name"], "filter_step")
@@ -201,15 +195,19 @@ class TransformationExecutionErrorTest(TestCase):
         """Test TransformationExecutionError error code constants"""
         error = TransformationExecutionError(
             "Execution timeout",
-            error_code=TransformationExecutionError.ERROR_CODE_EXECUTION_TIMEOUT
+            error_code=TransformationExecutionError.ERROR_CODE_EXECUTION_TIMEOUT,
         )
-        self.assertEqual(error.error_code, TransformationExecutionError.ERROR_CODE_EXECUTION_TIMEOUT)
+        self.assertEqual(
+            error.error_code, TransformationExecutionError.ERROR_CODE_EXECUTION_TIMEOUT
+        )
 
         error = TransformationExecutionError(
             "Node execution failed",
-            error_code=TransformationExecutionError.ERROR_CODE_NODE_EXECUTION_FAILED
+            error_code=TransformationExecutionError.ERROR_CODE_NODE_EXECUTION_FAILED,
         )
-        self.assertEqual(error.error_code, TransformationExecutionError.ERROR_CODE_NODE_EXECUTION_FAILED)
+        self.assertEqual(
+            error.error_code, TransformationExecutionError.ERROR_CODE_NODE_EXECUTION_FAILED
+        )
 
     def test_execution_error_inherits_from_transformation_error(self):
         """Test that TransformationExecutionError inherits from TransformationError"""
@@ -229,23 +227,18 @@ class PipelineNotFoundErrorTest(TestCase):
 
     def test_pipeline_not_found_error_with_pipeline_id(self):
         """Test PipelineNotFoundError with pipeline ID"""
-        error = PipelineNotFoundError(
-            "Pipeline not found",
-            pipeline_id="pipeline-123"
-        )
+        error = PipelineNotFoundError("Pipeline not found", pipeline_id="pipeline-123")
         self.assertEqual(error.details["pipeline_id"], "pipeline-123")
 
     def test_pipeline_not_found_error_error_codes(self):
         """Test PipelineNotFoundError error code constants"""
         error = PipelineNotFoundError(
-            "Pipeline deleted",
-            error_code=PipelineNotFoundError.ERROR_CODE_PIPELINE_DELETED
+            "Pipeline deleted", error_code=PipelineNotFoundError.ERROR_CODE_PIPELINE_DELETED
         )
         self.assertEqual(error.error_code, PipelineNotFoundError.ERROR_CODE_PIPELINE_DELETED)
 
         error = PipelineNotFoundError(
-            "Pipeline archived",
-            error_code=PipelineNotFoundError.ERROR_CODE_PIPELINE_ARCHIVED
+            "Pipeline archived", error_code=PipelineNotFoundError.ERROR_CODE_PIPELINE_ARCHIVED
         )
         self.assertEqual(error.error_code, PipelineNotFoundError.ERROR_CODE_PIPELINE_ARCHIVED)
 
@@ -271,7 +264,7 @@ class AssetCompatibilityErrorTest(TestCase):
             "Asset incompatible",
             asset_id="asset-123",
             source_asset_id="source-456",
-            target_asset_id="target-789"
+            target_asset_id="target-789",
         )
         self.assertEqual(error.details["asset_id"], "asset-123")
         self.assertEqual(error.details["source_asset_id"], "source-456")
@@ -286,7 +279,7 @@ class AssetCompatibilityErrorTest(TestCase):
             "Schema mismatch",
             field_path="/email",
             expected_schema=expected_schema,
-            actual_schema=actual_schema
+            actual_schema=actual_schema,
         )
         self.assertEqual(error.details["field_path"], "/email")
         self.assertEqual(error.details["expected_schema"], expected_schema)
@@ -295,14 +288,12 @@ class AssetCompatibilityErrorTest(TestCase):
     def test_asset_compatibility_error_error_codes(self):
         """Test AssetCompatibilityError error code constants"""
         error = AssetCompatibilityError(
-            "Schema incompatible",
-            error_code=AssetCompatibilityError.ERROR_CODE_SCHEMA_INCOMPATIBLE
+            "Schema incompatible", error_code=AssetCompatibilityError.ERROR_CODE_SCHEMA_INCOMPATIBLE
         )
         self.assertEqual(error.error_code, AssetCompatibilityError.ERROR_CODE_SCHEMA_INCOMPATIBLE)
 
         error = AssetCompatibilityError(
-            "Data type mismatch",
-            error_code=AssetCompatibilityError.ERROR_CODE_DATA_TYPE_MISMATCH
+            "Data type mismatch", error_code=AssetCompatibilityError.ERROR_CODE_DATA_TYPE_MISMATCH
         )
         self.assertEqual(error.error_code, AssetCompatibilityError.ERROR_CODE_DATA_TYPE_MISMATCH)
 
@@ -328,7 +319,7 @@ class ResourceQuotaExceededErrorTest(TestCase):
             "Execution time limit exceeded",
             quota_type="execution_time",
             limit=3600.0,
-            current=3700.0
+            current=3700.0,
         )
         self.assertEqual(error.details["quota_type"], "execution_time")
         self.assertEqual(error.details["limit"], 3600.0)
@@ -338,13 +329,14 @@ class ResourceQuotaExceededErrorTest(TestCase):
         """Test ResourceQuotaExceededError error code constants"""
         error = ResourceQuotaExceededError(
             "Execution time limit exceeded",
-            error_code=ResourceQuotaExceededError.ERROR_CODE_EXECUTION_TIME_LIMIT
+            error_code=ResourceQuotaExceededError.ERROR_CODE_EXECUTION_TIME_LIMIT,
         )
-        self.assertEqual(error.error_code, ResourceQuotaExceededError.ERROR_CODE_EXECUTION_TIME_LIMIT)
+        self.assertEqual(
+            error.error_code, ResourceQuotaExceededError.ERROR_CODE_EXECUTION_TIME_LIMIT
+        )
 
         error = ResourceQuotaExceededError(
-            "Memory limit exceeded",
-            error_code=ResourceQuotaExceededError.ERROR_CODE_MEMORY_LIMIT
+            "Memory limit exceeded", error_code=ResourceQuotaExceededError.ERROR_CODE_MEMORY_LIMIT
         )
         self.assertEqual(error.error_code, ResourceQuotaExceededError.ERROR_CODE_MEMORY_LIMIT)
 
@@ -427,7 +419,7 @@ class ErrorSerializationTest(TestCase):
             details={"key1": "value1", "key2": 123},
             http_status=400,
             tenant_id="tenant-123",
-            user_id="user-456"
+            user_id="user-456",
         )
         result = error.to_dict()
 
@@ -463,14 +455,8 @@ class ErrorSerializationTest(TestCase):
     def test_error_serialization_nested_details(self):
         """Test error serialization with nested details"""
         nested_details = {
-            "pipeline": {
-                "id": "pipeline-123",
-                "name": "Test Pipeline"
-            },
-            "nodes": [
-                {"id": "node-1", "type": "filter"},
-                {"id": "node-2", "type": "transform"}
-            ]
+            "pipeline": {"id": "pipeline-123", "name": "Test Pipeline"},
+            "nodes": [{"id": "node-1", "type": "filter"}, {"id": "node-2", "type": "transform"}],
         }
         error = TransformationError("Test error", details=nested_details)
         result = error.to_dict()
@@ -498,13 +484,9 @@ class ErrorSerializationTest(TestCase):
 
         error = TransformationError(
             "Test error",
-            details={
-                "pipeline_id": "pipeline-123",
-                "node_count": 5,
-                "is_active": True
-            },
+            details={"pipeline_id": "pipeline-123", "node_count": 5, "is_active": True},
             tenant_id="tenant-123",
-            user_id="user-456"
+            user_id="user-456",
         )
         result = error.to_dict()
 
@@ -520,14 +502,13 @@ class ErrorSerializationTest(TestCase):
     def test_validation_error_serialization(self):
         """Test TransformationValidationError serialization"""
         error = TransformationValidationError(
-            "Validation failed",
-            field_path="/nodes/0",
-            expected="string",
-            actual=123
+            "Validation failed", field_path="/nodes/0", expected="string", actual=123
         )
         result = error.to_dict()
 
-        self.assertEqual(result["error"], TransformationValidationError.ERROR_CODE_VALIDATION_FAILED)
+        self.assertEqual(
+            result["error"], TransformationValidationError.ERROR_CODE_VALIDATION_FAILED
+        )
         self.assertEqual(result["details"]["field_path"], "/nodes/0")
         self.assertEqual(result["details"]["expected"], "string")
         self.assertEqual(result["details"]["actual"], 123)
@@ -538,7 +519,7 @@ class ErrorSerializationTest(TestCase):
             "Execution failed",
             pipeline_id="pipeline-123",
             execution_id="execution-456",
-            node_id="node-789"
+            node_id="node-789",
         )
         result = error.to_dict()
 
@@ -548,10 +529,7 @@ class ErrorSerializationTest(TestCase):
 
     def test_pipeline_not_found_error_serialization(self):
         """Test PipelineNotFoundError serialization"""
-        error = PipelineNotFoundError(
-            "Pipeline not found",
-            pipeline_id="pipeline-123"
-        )
+        error = PipelineNotFoundError("Pipeline not found", pipeline_id="pipeline-123")
         result = error.to_dict()
 
         self.assertEqual(result["error"], PipelineNotFoundError.ERROR_CODE_PIPELINE_NOT_FOUND)
@@ -564,7 +542,7 @@ class ErrorSerializationTest(TestCase):
             "Asset incompatible",
             pipeline_id="pipeline-123",
             asset_id="asset-456",
-            field_path="/email"
+            field_path="/email",
         )
         result = error.to_dict()
 
@@ -575,10 +553,7 @@ class ErrorSerializationTest(TestCase):
     def test_quota_exceeded_error_serialization(self):
         """Test ResourceQuotaExceededError serialization"""
         error = ResourceQuotaExceededError(
-            "Quota exceeded",
-            quota_type="execution_time",
-            limit=3600.0,
-            current=3700.0
+            "Quota exceeded", quota_type="execution_time", limit=3600.0, current=3700.0
         )
         result = error.to_dict()
 
@@ -586,4 +561,3 @@ class ErrorSerializationTest(TestCase):
         self.assertEqual(result["details"]["quota_type"], "execution_time")
         self.assertEqual(result["details"]["limit"], 3600.0)
         self.assertEqual(result["details"]["current"], 3700.0)
-

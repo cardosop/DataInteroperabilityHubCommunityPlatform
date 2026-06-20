@@ -8,11 +8,12 @@ hot save path free of the SearchVector computation and multi-column JOIN.
 Queue: job_low — these are background maintenance jobs that are never
 latency-sensitive.
 """
+
 from __future__ import annotations
 
-import contextlib
 import logging
-from typing import Any, Callable, Optional, TypeVar
+from collections.abc import Callable
+from typing import TypeVar
 
 import django_rq
 
@@ -24,7 +25,7 @@ _T = TypeVar("_T")
 
 
 def _run_with_tenant_context(
-    tenant_id: Optional[str],
+    tenant_id: str | None,
     func: Callable[[], _T],
 ) -> _T:
     """Run *func* inside ``tenant_context(tenant_id)`` when *tenant_id*
@@ -97,13 +98,9 @@ def update_asset_search_vector(asset_id: str) -> None:
                     + SearchVector("domain", weight="C")
                 )
             )
-        logger.debug(
-            "asset_search_vector_updated asset_id=%s", asset_id
-        )
+        logger.debug("asset_search_vector_updated asset_id=%s", asset_id)
     except Exception:
-        logger.exception(
-            "asset_search_vector_failed asset_id=%s", asset_id
-        )
+        logger.exception("asset_search_vector_failed asset_id=%s", asset_id)
         raise
 
 
@@ -128,11 +125,7 @@ def update_contract_search_vector(contract_id: str) -> None:
                     + SearchVector("hub_contract_version", weight="B")
                 )
             )
-        logger.debug(
-            "contract_search_vector_updated contract_id=%s", contract_id
-        )
+        logger.debug("contract_search_vector_updated contract_id=%s", contract_id)
     except Exception:
-        logger.exception(
-            "contract_search_vector_failed contract_id=%s", contract_id
-        )
+        logger.exception("contract_search_vector_failed contract_id=%s", contract_id)
         raise

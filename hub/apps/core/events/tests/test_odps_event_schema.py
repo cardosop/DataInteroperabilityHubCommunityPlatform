@@ -4,17 +4,21 @@ Unit tests for ODPS event schema validation.
 Tests comprehensive schema validation for all ODPS event types,
 including lifecycle, $ref resolution, and export events.
 """
-import uuid
-from django.test import TestCase
-from datetime import datetime, timezone
 
-from hub.apps.core.events.schema import EventSchema, BASE_EVENT_SCHEMA, get_event_schema
+import uuid
+from datetime import UTC, datetime
+
+from django.test import TestCase
+
+from hub.apps.core.events.event_types import (
+    CURRENT_EVENT_VERSION,
+    get_all_event_types,
+    validate_event_data,
+)
 from hub.apps.core.events.event_types import (
     get_event_schema as get_event_type_schema,
-    validate_event_data,
-    get_all_event_types,
-    CURRENT_EVENT_VERSION
 )
+from hub.apps.core.events.schema import EventSchema, get_event_schema
 
 
 class ODPSEventSchemaTest(TestCase):
@@ -39,7 +43,7 @@ class ODPSEventSchemaTest(TestCase):
             "asset_id": str(uuid.uuid4()),
             "status": "ACTIVE",
             "odps_version": "4.1",
-            "original_format": "JSON"
+            "original_format": "JSON",
         }
         is_valid, error = validate_event_data("odps.created", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -47,9 +51,7 @@ class ODPSEventSchemaTest(TestCase):
 
     def test_odps_created_schema_validation_minimal(self):
         """Test validating odps.created with minimal required fields."""
-        data = {
-            "contract_id": str(uuid.uuid4())
-        }
+        data = {"contract_id": str(uuid.uuid4())}
         is_valid, error = validate_event_data("odps.created", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
         self.assertIsNone(error)
@@ -67,7 +69,7 @@ class ODPSEventSchemaTest(TestCase):
             "contract_id": str(uuid.uuid4()),
             "status": None,
             "odps_version": None,
-            "original_format": None
+            "original_format": None,
         }
         is_valid, error = validate_event_data("odps.created", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -78,7 +80,7 @@ class ODPSEventSchemaTest(TestCase):
             "contract_id": str(uuid.uuid4()),
             "changes": {"status": "ACTIVE"},
             "previous_status": "DRAFT",
-            "new_status": "ACTIVE"
+            "new_status": "ACTIVE",
         }
         is_valid, error = validate_event_data("odps.updated", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -87,8 +89,8 @@ class ODPSEventSchemaTest(TestCase):
         """Test odps.deleted event schema validation."""
         data = {
             "contract_id": str(uuid.uuid4()),
-            "deleted_at": datetime.now(timezone.utc).isoformat(),
-            "reason": "User requested deletion"
+            "deleted_at": datetime.now(UTC).isoformat(),
+            "reason": "User requested deletion",
         }
         is_valid, error = validate_event_data("odps.deleted", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -99,7 +101,7 @@ class ODPSEventSchemaTest(TestCase):
             "contract_id": str(uuid.uuid4()),
             "normalization_status": "NORMALIZED_OK",
             "normalization_errors": None,
-            "odps_version": "4.1"
+            "odps_version": "4.1",
         }
         is_valid, error = validate_event_data("odps.normalized", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -110,7 +112,7 @@ class ODPSEventSchemaTest(TestCase):
             "contract_id": str(uuid.uuid4()),
             "normalization_status": "NORMALIZED_WITH_ERRORS",
             "normalization_errors": ["Error 1", "Error 2"],
-            "odps_version": None
+            "odps_version": None,
         }
         is_valid, error = validate_event_data("odps.normalized", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -120,7 +122,7 @@ class ODPSEventSchemaTest(TestCase):
         data = {
             "odps_contract_id": str(uuid.uuid4()),
             "odcs_contract_id": str(uuid.uuid4()),
-            "link_type": "bidirectional"
+            "link_type": "bidirectional",
         }
         is_valid, error = validate_event_data("odps.linked", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -140,7 +142,7 @@ class ODPSEventSchemaTest(TestCase):
         data = {
             "odps_contract_id": str(uuid.uuid4()),
             "odcs_contract_id": str(uuid.uuid4()),
-            "reason": "User requested unlink"
+            "reason": "User requested unlink",
         }
         is_valid, error = validate_event_data("odps.unlinked", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -153,7 +155,7 @@ class ODPSEventSchemaTest(TestCase):
             "ref_type": "internal",
             "resolution_status": "success",
             "ref_count": 5,
-            "duration_ms": 100
+            "duration_ms": 100,
         }
         is_valid, error = validate_event_data("odps.ref.resolved", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -164,7 +166,7 @@ class ODPSEventSchemaTest(TestCase):
             "contract_id": str(uuid.uuid4()),
             "ref_path": "#/test",
             "ref_type": "internal",
-            "resolution_status": "success"
+            "resolution_status": "success",
         }
         is_valid, error = validate_event_data("odps.ref.resolved", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -177,7 +179,7 @@ class ODPSEventSchemaTest(TestCase):
             "ref_type": "external",
             "error_message": "Failed to resolve external reference",
             "error_code": "RESOLUTION_FAILED",
-            "error_details": {"timeout": True, "retry_count": 3}
+            "error_details": {"timeout": True, "retry_count": 3},
         }
         is_valid, error = validate_event_data("odps.ref.failed", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -188,7 +190,7 @@ class ODPSEventSchemaTest(TestCase):
             "contract_id": str(uuid.uuid4()),
             "export_format": "odps",
             "output_format": "json",
-            "odps_version": "4.1"
+            "odps_version": "4.1",
         }
         is_valid, error = validate_event_data("odps.export.started", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -200,7 +202,7 @@ class ODPSEventSchemaTest(TestCase):
             "export_format": "odps",
             "output_format": "json",
             "file_size": 2048,
-            "duration_ms": 100
+            "duration_ms": 100,
         }
         is_valid, error = validate_event_data("odps.export.completed", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -211,7 +213,7 @@ class ODPSEventSchemaTest(TestCase):
             "contract_id": str(uuid.uuid4()),
             "export_format": "odps",
             "error_message": "Export failed: Invalid format",
-            "error_details": {"error_code": "INVALID_FORMAT", "line": 42}
+            "error_details": {"error_code": "INVALID_FORMAT", "line": 42},
         }
         is_valid, error = validate_event_data("odps.export.failed", data)
         self.assertTrue(is_valid, f"Validation failed: {error}")
@@ -220,7 +222,7 @@ class ODPSEventSchemaTest(TestCase):
         """Test odps.export.failed with missing required error_message."""
         data = {
             "contract_id": str(uuid.uuid4()),
-            "export_format": "odps"
+            "export_format": "odps",
             # Missing error_message
         }
         is_valid, error = validate_event_data("odps.export.failed", data)
@@ -245,7 +247,9 @@ class ODPSEventSchemaTest(TestCase):
 
         all_types = get_all_event_types()
         for event_type in odps_event_types:
-            self.assertIn(event_type, all_types, f"ODPS event type {event_type} not found in registry")
+            self.assertIn(
+                event_type, all_types, f"ODPS event type {event_type} not found in registry"
+            )
 
     def test_odps_schemas_merged_with_base_schema(self):
         """Test that ODPS schemas are properly merged with base schema."""
@@ -281,13 +285,9 @@ class ODPSEventSchemaTest(TestCase):
         contract_id = str(uuid.uuid4())
         event = EventSchema.build_event(
             event_type="odps.created",
-            data={
-                "contract_id": contract_id,
-                "status": "ACTIVE",
-                "odps_version": "4.1"
-            },
+            data={"contract_id": contract_id, "status": "ACTIVE", "odps_version": "4.1"},
             tenant_id=str(uuid.uuid4()),
-            user_id=str(uuid.uuid4())
+            user_id=str(uuid.uuid4()),
         )
 
         # Validate full event structure
@@ -317,9 +317,9 @@ class ODPSEventSchemaTest(TestCase):
                 "ref_type": "internal",
                 "resolution_status": "success",
                 "ref_count": 3,
-                "duration_ms": 50
+                "duration_ms": 50,
             },
-            tenant_id=str(uuid.uuid4())
+            tenant_id=str(uuid.uuid4()),
         )
 
         is_valid, error = EventSchema.validate_event(event)
@@ -338,9 +338,9 @@ class ODPSEventSchemaTest(TestCase):
                 "export_format": "odps",
                 "output_format": "json",
                 "file_size": 1024,
-                "duration_ms": 100
+                "duration_ms": 100,
             },
-            tenant_id=str(uuid.uuid4())
+            tenant_id=str(uuid.uuid4()),
         )
 
         is_valid, error = EventSchema.validate_event(event)
@@ -393,40 +393,31 @@ class ODPSEventSchemaTest(TestCase):
             schema = get_event_type_schema(event_type)
             actual_required = schema["data"].get("required", [])
             for field in expected_required:
-                self.assertIn(field, actual_required,
-                            f"{event_type} missing required field: {field}")
+                self.assertIn(
+                    field, actual_required, f"{event_type} missing required field: {field}"
+                )
 
     def test_odps_schema_optional_fields(self):
         """Test that optional fields are properly defined in ODPS schemas."""
         # Test that optional fields can be omitted
-        data = {
-            "contract_id": str(uuid.uuid4())
-        }
+        data = {"contract_id": str(uuid.uuid4())}
         is_valid, error = validate_event_data("odps.created", data)
         self.assertTrue(is_valid, f"Should allow optional fields to be omitted: {error}")
 
         # Test that optional fields can be None
-        data_with_nulls = {
-            "contract_id": str(uuid.uuid4()),
-            "status": None,
-            "odps_version": None
-        }
+        data_with_nulls = {"contract_id": str(uuid.uuid4()), "status": None, "odps_version": None}
         is_valid, error = validate_event_data("odps.created", data_with_nulls)
         self.assertTrue(is_valid, f"Should allow None for optional fields: {error}")
 
     def test_odps_schema_type_validation(self):
         """Test that ODPS schemas validate field types correctly."""
         # Valid UUID string
-        data = {
-            "contract_id": str(uuid.uuid4())
-        }
+        data = {"contract_id": str(uuid.uuid4())}
         is_valid, error = validate_event_data("odps.created", data)
         self.assertTrue(is_valid, f"Valid UUID string should pass: {error}")
 
         # Invalid type (integer instead of string UUID)
-        data_invalid = {
-            "contract_id": 12345
-        }
+        data_invalid = {"contract_id": 12345}
         is_valid, error = validate_event_data("odps.created", data_invalid)
         self.assertFalse(is_valid, "Invalid type should fail validation")
         self.assertIsNotNone(error, "Error message should be provided")
@@ -435,26 +426,18 @@ class ODPSEventSchemaTest(TestCase):
     def test_odps_linked_schema_both_contract_ids_required(self):
         """Test that odps.linked requires both contract IDs."""
         # Missing odcs_contract_id
-        data = {
-            "odps_contract_id": str(uuid.uuid4())
-        }
+        data = {"odps_contract_id": str(uuid.uuid4())}
         is_valid, error = validate_event_data("odps.linked", data)
         self.assertFalse(is_valid)
         self.assertIn("Missing required field", error)
 
         # Missing odps_contract_id
-        data = {
-            "odcs_contract_id": str(uuid.uuid4())
-        }
+        data = {"odcs_contract_id": str(uuid.uuid4())}
         is_valid, error = validate_event_data("odps.linked", data)
         self.assertFalse(is_valid)
         self.assertIn("Missing required field", error)
 
         # Both present
-        data = {
-            "odps_contract_id": str(uuid.uuid4()),
-            "odcs_contract_id": str(uuid.uuid4())
-        }
+        data = {"odps_contract_id": str(uuid.uuid4()), "odcs_contract_id": str(uuid.uuid4())}
         is_valid, error = validate_event_data("odps.linked", data)
         self.assertTrue(is_valid, f"Both contract IDs should be valid: {error}")
-

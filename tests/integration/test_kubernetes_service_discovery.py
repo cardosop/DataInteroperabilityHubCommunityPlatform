@@ -25,8 +25,7 @@ def kustomize_available_check():
     """Skip entire module if kustomize/kubectl is not available."""
     if not kustomize_available():
         pytest.skip(
-            "kustomize or kubectl kustomize not available; "
-            "install to run Kubernetes manifest tests"
+            "kustomize or kubectl kustomize not available; install to run Kubernetes manifest tests"
         )
 
 
@@ -66,17 +65,23 @@ class TestKubernetesServiceDiscovery:
             )
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
-    def test_services_have_port_names_or_numbers(self, service_name, base_path, kustomize_available_check):
+    def test_services_have_port_names_or_numbers(
+        self, service_name, base_path, kustomize_available_check
+    ):
         """Service ports have port number and preferably name."""
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
         for svc in by_kind.get("Service", []):
             for p in (svc.get("spec") or {}).get("ports", []):
                 assert "port" in p, f"{service_name} Service port entry missing 'port': {p}"
-                assert isinstance(p["port"], (int, str)), f"{service_name} Service port should be number or string"
+                assert isinstance(p["port"], (int, str)), (
+                    f"{service_name} Service port should be number or string"
+                )
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
-    def test_deployment_has_matching_service(self, service_name, base_path, kustomize_available_check):
+    def test_deployment_has_matching_service(
+        self, service_name, base_path, kustomize_available_check
+    ):
         """For each Deployment there is a Service whose selector matches the Deployment's template labels."""
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
@@ -90,7 +95,11 @@ class TestKubernetesServiceDiscovery:
             labels = _workload_labels(d)
             if not labels:
                 continue
-            selector = (d.get("spec") or {}).get("selector", {}).get("matchLabels") or (d.get("spec") or {}).get("selector") or {}
+            selector = (
+                (d.get("spec") or {}).get("selector", {}).get("matchLabels")
+                or (d.get("spec") or {}).get("selector")
+                or {}
+            )
             if not selector:
                 continue
             found = False
@@ -106,7 +115,9 @@ class TestKubernetesServiceDiscovery:
             )
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
-    def test_statefulset_has_matching_service(self, service_name, base_path, kustomize_available_check):
+    def test_statefulset_has_matching_service(
+        self, service_name, base_path, kustomize_available_check
+    ):
         """For each StatefulSet there is a Service (headless or normal) with matching selector."""
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
@@ -138,7 +149,9 @@ class TestKubernetesServiceDiscovery:
             )
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
-    def test_ingress_backend_services_exist(self, service_name, base_path, kustomize_available_check):
+    def test_ingress_backend_services_exist(
+        self, service_name, base_path, kustomize_available_check
+    ):
         """Ingress rules reference Services that exist in the same manifest set."""
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)

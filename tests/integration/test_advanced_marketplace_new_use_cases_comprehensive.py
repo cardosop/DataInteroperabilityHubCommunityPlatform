@@ -26,14 +26,12 @@ from hub.apps.datasets.models import Dataset
 from hub.apps.marketplace.models import ListingStatus
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     AssetFactory,
-    DatasetFactory,
+    ListingFactory,
     TenantFactory,
     UserFactory,
-    ListingFactory,
 )
 from tests.utils.test_data_management import TestDatabaseIsolationMixin
 
@@ -153,7 +151,9 @@ class UCMKTADV001ConfigureUsageBasedPricingTest(AdvancedMarketplaceNewUseCasesTe
         body = response.data
         self.assertIn("id", body, "Response must contain 'id'")
         self.assertIn(
-            "title", body, "Response must contain 'title'",
+            "title",
+            body,
+            "Response must contain 'title'",
         )
 
     def test_create_listing_missing_asset_id_returns_400(self):
@@ -172,11 +172,13 @@ class UCMKTADV001ConfigureUsageBasedPricingTest(AdvancedMarketplaceNewUseCasesTe
         self._auth()
         response = self.client.get(self.LISTINGS_URL)
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         body = response.data
         self.assertIsInstance(
-            body.get("results", body), list,
+            body.get("results", body),
+            list,
             "Response must contain a list of listings",
         )
 
@@ -204,19 +206,17 @@ class UCMKTADV002PreviewDataBeforePurchaseTest(AdvancedMarketplaceNewUseCasesTes
     def test_preview_published_listing(self):
         """GET /listings/{id}/preview/ for published listing -> 200."""
         self._auth(self.dc_user)
-        url = (
-            f"{self.LISTINGS_URL}{self.listing.id}/preview/"
-        )
+        url = f"{self.LISTINGS_URL}{self.listing.id}/preview/"
         response = self.client.get(url)
         self.assertEqual(
             response.status_code,
             status.HTTP_200_OK,
-            f"Preview returned {response.status_code}: "
-            f"{getattr(response, 'data', '')}",
+            f"Preview returned {response.status_code}: {getattr(response, 'data', '')}",
         )
         body = response.data
         self.assertIsInstance(
-            body, dict,
+            body,
+            dict,
             "Preview must return a dict with preview data",
         )
 
@@ -248,11 +248,13 @@ class UCMKTADV003ManageTrustSignalsTest(AdvancedMarketplaceNewUseCasesTestBase):
         self._auth()
         response = self.client.get(self.TRUST_SIGNALS_URL)
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         body = response.data
         self.assertIsInstance(
-            body.get("results", body), list,
+            body.get("results", body),
+            list,
             "Response must contain a list of configs",
         )
 
@@ -266,14 +268,14 @@ class UCMKTADV003ManageTrustSignalsTest(AdvancedMarketplaceNewUseCasesTestBase):
             "is_active": True,
         }
         response = self.client.post(
-            self.TRUST_SIGNALS_URL, data, format="json",
+            self.TRUST_SIGNALS_URL,
+            data,
+            format="json",
         )
         self.assertIn(
             response.status_code,
             [status.HTTP_201_CREATED, status.HTTP_200_OK],
-            f"Trust signal create returned "
-            f"{response.status_code}: "
-            f"{getattr(response, 'data', '')}",
+            f"Trust signal create returned {response.status_code}: {getattr(response, 'data', '')}",
         )
         body = response.data
         self.assertIn("id", body, "Response must contain 'id'")
@@ -300,12 +302,14 @@ class UCMKTADV004TrackRevenueAnalyticsTest(AdvancedMarketplaceNewUseCasesTestBas
         self._auth()
         response = self.client.get(self.ORDERS_URL)
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         body = response.data
         results = body.get("results", body) if isinstance(body, dict) else body
         self.assertIsInstance(
-            results, list,
+            results,
+            list,
             "Response must contain a list of orders",
         )
 
@@ -314,16 +318,19 @@ class UCMKTADV004TrackRevenueAnalyticsTest(AdvancedMarketplaceNewUseCasesTestBas
         self._auth()
         response = self.client.get(self.LISTINGS_URL)
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         body = response.data
         results = body.get("results", body)
         self.assertIsInstance(
-            results, list,
+            results,
+            list,
             "Response must contain a list of listings",
         )
         self.assertGreaterEqual(
-            len(results), 1,
+            len(results),
+            1,
             "DPO should see at least one own listing",
         )
 
@@ -357,14 +364,14 @@ class UCMKTADV005ConfigureDataQualitySLAsTest(AdvancedMarketplaceNewUseCasesTest
             "is_active": True,
         }
         response = self.client.post(
-            self.TRUST_SIGNALS_URL, data, format="json",
+            self.TRUST_SIGNALS_URL,
+            data,
+            format="json",
         )
         self.assertIn(
             response.status_code,
             [status.HTTP_201_CREATED, status.HTTP_200_OK],
-            f"Quality SLA create returned "
-            f"{response.status_code}: "
-            f"{getattr(response, 'data', '')}",
+            f"Quality SLA create returned {response.status_code}: {getattr(response, 'data', '')}",
         )
         body = response.data
         self.assertIn("id", body, "Response must contain 'id'")
@@ -374,11 +381,13 @@ class UCMKTADV005ConfigureDataQualitySLAsTest(AdvancedMarketplaceNewUseCasesTest
         self._auth()
         response = self.client.get(self.TRUST_SIGNALS_URL)
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         body = response.data
         self.assertIsInstance(
-            body.get("results", body), list,
+            body.get("results", body),
+            list,
             "Response must contain a list of configs",
         )
 

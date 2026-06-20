@@ -5,6 +5,7 @@ Provides centralized feature flag management for enabling/disabling features
 without code deployment. Useful for gradual rollouts, A/B testing, and
 safe feature removal.
 """
+
 from django.conf import settings
 from rest_framework import status
 from rest_framework.response import Response
@@ -12,7 +13,6 @@ from rest_framework.response import Response
 
 class FeatureDisabledError(Exception):
     """Raised when a feature is disabled via feature flag."""
-    pass
 
 
 def is_feature_enabled(feature_name: str) -> bool:
@@ -53,10 +53,6 @@ def get_feature_disabled_response(message: str = "This feature has been disabled
         Response: 410 Gone HTTP response
     """
     return Response(
-        {
-            "error": "Feature Disabled",
-            "message": message,
-            "status_code": status.HTTP_410_GONE
-        },
-        status=status.HTTP_410_GONE
+        {"error": "Feature Disabled", "message": message, "status_code": status.HTTP_410_GONE},
+        status=status.HTTP_410_GONE,
     )

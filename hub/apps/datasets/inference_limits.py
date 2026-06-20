@@ -39,10 +39,11 @@ the central directory). Binary formats run FULL_READ up to
 streaming alternatives (pyarrow footer-only Parquet metadata) are
 the right long-term fix and are tracked under 260.5.F.3.
 """
+
 from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 from django.conf import settings
 
@@ -291,8 +292,8 @@ def truncate_to_clean_boundary(content: bytes, file_format: str) -> bytes:
 
 __all__ = [
     "INFERENCE_FULL_READ_BYTES_DEFAULT",
-    "INFERENCE_SAMPLE_BYTES_DEFAULT",
     "INFERENCE_MAX_BYTES_DEFAULT",
+    "INFERENCE_SAMPLE_BYTES_DEFAULT",
     "InferenceMode",
     "InferencePlan",
     "plan_inference_for_file",

@@ -15,6 +15,7 @@ this by ast-parsing both source files and comparing function bodies.
 Cleanup is hooked into ``pytest_sessionfinish`` via
 ``cleanup_registry.register_persona_teardown``.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -24,7 +25,6 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import filelock
 import requests
@@ -53,6 +53,7 @@ class _PersonaInfrastructureError(Exception):
 @dataclass(frozen=True)
 class PersonaCredentials:
     """Credentials returned by ``provision_persona``."""
+
     api_key: str
     user_id: str
     tenant_id: str
@@ -70,19 +71,19 @@ _SEEDED_PASSWORD = "TestPass123"
 # When multiple personas map to the same account, they share credentials
 # (the account has sufficient permissions for all mapped roles).
 _ROLE_TO_SEEDED_EMAIL: dict[str, str] = {
-    "visitor":                 "",  # no login — unauthenticated
-    "auditor":                 "e2e_auditor@example.com",
-    "community_manager":       "e2e_test@example.com",
-    "compliance_officer":      "e2e_cpo@example.com",
-    "data_analyst":            "e2e_consumer@example.com",
-    "data_consumer":           "e2e_consumer@example.com",
-    "data_engineer":           "e2e_test@example.com",
-    "data_mesh_domain_owner":  "e2e_dmo@example.com",
-    "data_product_owner":      "e2e_test@example.com",
-    "data_scientist":          "e2e_test@example.com",
-    "external_developer":      "e2e_developer@example.com",
-    "platform_admin":          "e2e_platform@example.com",
-    "tenant_admin":            "e2e_admin@example.com",
+    "visitor": "",  # no login — unauthenticated
+    "auditor": "e2e_auditor@example.com",
+    "community_manager": "e2e_test@example.com",
+    "compliance_officer": "e2e_cpo@example.com",
+    "data_analyst": "e2e_consumer@example.com",
+    "data_consumer": "e2e_consumer@example.com",
+    "data_engineer": "e2e_test@example.com",
+    "data_mesh_domain_owner": "e2e_dmo@example.com",
+    "data_product_owner": "e2e_test@example.com",
+    "data_scientist": "e2e_test@example.com",
+    "external_developer": "e2e_developer@example.com",
+    "platform_admin": "e2e_platform@example.com",
+    "tenant_admin": "e2e_admin@example.com",
 }
 
 # Maps tenant_slug → dedicated seeded e2e email for cross-tenant tests.
@@ -90,7 +91,7 @@ _ROLE_TO_SEEDED_EMAIL: dict[str, str] = {
 # respective secondary tenants and have DATA_PROVIDER + DATA_CONSUMER roles.
 _TENANT_SLUG_TO_SEEDED_EMAIL: dict[str, str] = {
     "tenant-iso": "e2e_iso@example.com",
-    "tenant-b":   "e2e_tenant_b@example.com",
+    "tenant-b": "e2e_tenant_b@example.com",
 }
 
 
@@ -110,7 +111,7 @@ def _xdist_worker_id() -> str:
     return os.environ.get("PYTEST_XDIST_WORKER", "master")
 
 
-def _cache_key(role: str, tenant_slug: Optional[str]) -> str:
+def _cache_key(role: str, tenant_slug: str | None) -> str:
     """Deterministic cache key for a (role, tenant, worker) tuple."""
     worker = _xdist_worker_id()
     raw = f"{role}:{tenant_slug or 'default'}:{worker}"
@@ -125,7 +126,7 @@ def _lock_path(key: str) -> Path:
     return _CACHE_DIR / f"{key}.lock"
 
 
-def _read_cache(key: str) -> Optional[PersonaCredentials]:
+def _read_cache(key: str) -> PersonaCredentials | None:
     path = _cache_path(key)
     if not path.exists():
         return None
@@ -211,6 +212,7 @@ def _write_cache(key: str, creds: PersonaCredentials) -> None:
 # API interaction
 # ---------------------------------------------------------------------------
 
+
 def _api_base_url() -> str:
     port = os.environ.get("API_TEST_PORT", "8000")
     fallback = f"http://localhost:{port}/api/v1"
@@ -237,7 +239,7 @@ def _login_with_retry(email: str, password: str, max_retries: int = 5) -> reques
     retries (there is no response to return).
     """
     base = _api_base_url()
-    last_resp: Optional[requests.Response] = None
+    last_resp: requests.Response | None = None
 
     for attempt in range(max_retries + 1):
         # ---- connection-level errors: DNS, network, timeout ----
@@ -248,11 +250,14 @@ def _login_with_retry(email: str, password: str, max_retries: int = 5) -> reques
                 timeout=15,
             )
         except (requests.ConnectionError, requests.Timeout) as exc:
-            wait = min(2 ** attempt, 30)
+            wait = min(2**attempt, 30)
             logger.warning(
-                "Login connection error for %s (attempt %d/%d): %s. "
-                "Retrying in %ds...",
-                email, attempt + 1, max_retries + 1, exc, wait,
+                "Login connection error for %s (attempt %d/%d): %s. Retrying in %ds...",
+                email,
+                attempt + 1,
+                max_retries + 1,
+                exc,
+                wait,
             )
             if attempt < max_retries:
                 time.sleep(wait)
@@ -284,7 +289,9 @@ def _login_with_retry(email: str, password: str, max_retries: int = 5) -> reques
             wait = min(retry_after * (attempt + 1), 60)
             logger.info(
                 "Login rate-limited (429), waiting %ds (attempt %d/%d)",
-                wait, attempt + 1, max_retries + 1,
+                wait,
+                attempt + 1,
+                max_retries + 1,
             )
             time.sleep(wait)
             last_resp = resp
@@ -295,12 +302,15 @@ def _login_with_retry(email: str, password: str, max_retries: int = 5) -> reques
 
         # ---- 5xx infrastructure errors: Redis, DB, etc. ----
         if resp.status_code >= 500:
-            wait = min(2 ** attempt, 30)
+            wait = min(2**attempt, 30)
             logger.warning(
-                "Login infrastructure error %d for %s (attempt %d/%d): %s. "
-                "Retrying in %ds...",
-                resp.status_code, email, attempt + 1, max_retries + 1,
-                resp.text[:200], wait,
+                "Login infrastructure error %d for %s (attempt %d/%d): %s. Retrying in %ds...",
+                resp.status_code,
+                email,
+                attempt + 1,
+                max_retries + 1,
+                resp.text[:200],
+                wait,
             )
             if attempt < max_retries:
                 time.sleep(wait)
@@ -362,18 +372,23 @@ def _ensure_e2e_user(email: str, max_retries: int = 3) -> bool:
             if resp.status_code == 200:
                 logger.info(
                     "ensure-e2e-users healed user %s: %s",
-                    email, resp.text[:200],
+                    email,
+                    resp.text[:200],
                 )
                 return True
 
             # Retry on 5xx infrastructure errors (Redis, DB, etc.)
             if resp.status_code >= 500:
-                wait = min(2 ** attempt, 15)
+                wait = min(2**attempt, 15)
                 logger.warning(
                     "ensure-e2e-users infrastructure error %d for %s "
                     "(attempt %d/%d): %s. Retrying in %ds...",
-                    resp.status_code, email, attempt + 1, max_retries + 1,
-                    resp.text[:200], wait,
+                    resp.status_code,
+                    email,
+                    attempt + 1,
+                    max_retries + 1,
+                    resp.text[:200],
+                    wait,
                 )
                 if attempt < max_retries:
                     time.sleep(wait)
@@ -390,36 +405,44 @@ def _ensure_e2e_user(email: str, max_retries: int = 3) -> bool:
                     "container value, or run 'manage.py ensure_e2e_user_roles' "
                     "directly inside the API container. "
                     "Response: %s",
-                    email, resp.text[:200],
+                    email,
+                    resp.text[:200],
                 )
                 return False
 
             logger.warning(
                 "ensure-e2e-users for %s returned %d: %s",
-                email, resp.status_code, resp.text[:200],
+                email,
+                resp.status_code,
+                resp.text[:200],
             )
             return False
 
         except (requests.ConnectionError, requests.Timeout) as exc:
-            wait = min(2 ** attempt, 15)
+            wait = min(2**attempt, 15)
             logger.warning(
-                "ensure-e2e-users connection error for %s (attempt %d/%d): %s. "
-                "Retrying in %ds...",
-                email, attempt + 1, max_retries + 1, exc, wait,
+                "ensure-e2e-users connection error for %s (attempt %d/%d): %s. Retrying in %ds...",
+                email,
+                attempt + 1,
+                max_retries + 1,
+                exc,
+                wait,
             )
             if attempt < max_retries:
                 time.sleep(wait)
                 continue
             logger.warning(
                 "ensure-e2e-users request failed for %s after %d attempts: %s",
-                email, max_retries + 1, exc,
+                email,
+                max_retries + 1,
+                exc,
             )
             return False
 
     return False
 
 
-def _provision_via_login(role: str, tenant_slug: Optional[str]) -> PersonaCredentials:
+def _provision_via_login(role: str, tenant_slug: str | None) -> PersonaCredentials:
     """Login as the pre-seeded E2E user for this persona role.
 
     Staging should already have these accounts via
@@ -455,8 +478,7 @@ def _provision_via_login(role: str, tenant_slug: Optional[str]) -> PersonaCreden
                 role="visitor",
             )
         raise ValueError(
-            f"Unknown persona role {role!r}. Known roles: "
-            f"{sorted(_ROLE_TO_SEEDED_EMAIL.keys())}"
+            f"Unknown persona role {role!r}. Known roles: {sorted(_ROLE_TO_SEEDED_EMAIL.keys())}"
         )
 
     password = _SEEDED_PASSWORD
@@ -483,9 +505,9 @@ def _provision_via_login(role: str, tenant_slug: Optional[str]) -> PersonaCreden
         )
         if is_invalid_creds:
             logger.info(
-                "Login failed for %s (%s), attempting self-heal via "
-                "ensure-e2e-users endpoint",
-                role, email,
+                "Login failed for %s (%s), attempting self-heal via ensure-e2e-users endpoint",
+                role,
+                email,
             )
             if _ensure_e2e_user(email):
                 # Retry login after self-heal
@@ -551,9 +573,10 @@ def _provision_via_login(role: str, tenant_slug: Optional[str]) -> PersonaCreden
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def provision_persona(
     role: str,
-    tenant_slug: Optional[str] = None,
+    tenant_slug: str | None = None,
 ) -> PersonaCredentials:
     """Provision a test persona with the given role.
 
@@ -594,6 +617,7 @@ def provision_persona(
             # exception will propagate and must be caught by the
             # caller.
             import pytest  # noqa: PHASE216-STATIC-ID
+
             pytest.skip(str(e))
         except _PersonaInfrastructureError as e:
             # Convert persistent infrastructure errors (connection
@@ -602,6 +626,7 @@ def provision_persona(
             # message includes diagnostic info so CI can surface
             # the infrastructure problem.
             import pytest  # noqa: PHASE216-STATIC-ID
+
             pytest.skip(str(e))
         except RuntimeError as e:
             # Auth failures (invalid credentials, email not verified)
@@ -609,11 +634,15 @@ def provision_persona(
             # aren't available on this deployment.  Skip rather than
             # fail so the test suite degrades gracefully.
             import pytest  # noqa: PHASE216-STATIC-ID
+
             pytest.skip(str(e))
         _write_cache(key, creds)
 
         # Register teardown to clear cache at session end
-        from tests.fixtures.cleanup_registry import register_persona_teardown  # noqa: PHASE216-STATIC-ID
+        from tests.fixtures.cleanup_registry import (
+            register_persona_teardown,  # noqa: PHASE216-STATIC-ID
+        )
+
         register_persona_teardown(
             f"persona:{role}:{_xdist_worker_id()}",
             lambda: _cache_path(key).unlink(missing_ok=True),

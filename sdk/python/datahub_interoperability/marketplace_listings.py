@@ -1,6 +1,7 @@
 """
 Marketplace listing operations for DataHub SDK.
 """
+
 from typing import Any, Dict, Optional
 
 from .client import DataHubClient
@@ -90,4 +91,6 @@ class MarketplaceListingsAPI:
         return await self.client.get("marketplace/entitlements/", params=params)
 
     async def check_access(self, asset_id: str) -> Dict[str, Any]:
-        return await self.client.get(f"marketplace/entitlements/check-access/", params={"asset_id": asset_id})
+        return await self.client.get(
+            "marketplace/entitlements/check-access/", params={"asset_id": asset_id}
+        )

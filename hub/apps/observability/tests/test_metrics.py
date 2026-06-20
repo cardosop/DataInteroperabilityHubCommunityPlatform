@@ -4,21 +4,20 @@ Tests for Prometheus metrics.
 Comprehensive tests without mocks/stubs, following engineering best practices and TDD principles.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 
 from hub.apps.observability.otel_metrics import (
     get_status_class,
-    http_errors_total,
     http_request_duration_seconds,
     http_requests_total,
-    jobs_completed_total,
     jobs_started_total,
     metrics_view,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -56,7 +55,7 @@ class MetricsTest(TestCase):
     def test_http_metrics(self):
         """Test HTTP request metrics"""
         # Make a request
-        response = self.client.get("/health/")
+        self.client.get("/health/")
 
         # Metrics should be recorded (via middleware)
         # We can't easily test the exact values without Prometheus running,
@@ -130,9 +129,7 @@ class MetricsEdgeCasesTest(TestCase):
 
     def test_metrics_with_unicode(self):
         """Test metrics with unicode characters in labels"""
-        http_requests_total.labels(
-            method="GET", route="/api/v1/测试/", status_class="2xx"
-        ).inc()
+        http_requests_total.labels(method="GET", route="/api/v1/测试/", status_class="2xx").inc()
 
     def test_metrics_multiple_increments(self):
         """Test multiple increments to same metric"""
@@ -149,7 +146,7 @@ class MetricsEdgeCasesTest(TestCase):
         """Test metrics with concurrent-like access"""
         labeled = jobs_started_total.labels(job_type="DQ_RUN", tenant_id=str(self.tenant.id))
         before = labeled._value.get()
-        for i in range(50):
+        for _i in range(50):
             labeled.inc()
         after = labeled._value.get()
         self.assertEqual(after, before + 50)

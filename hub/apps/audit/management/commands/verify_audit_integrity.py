@@ -68,6 +68,7 @@ def _sign_root(root_hex: str, key_hex: str = _CI_SIGNING_KEY) -> str:
     """HMAC-SHA256 sign a Merkle root hex string."""
     import hashlib
     import hmac
+
     return hmac.new(
         bytes.fromhex(key_hex),
         root_hex.encode("utf-8"),
@@ -106,9 +107,19 @@ def run_integrity_verification(
         AuditEvent.objects.filter(tenant_id=tenant_id)
         .order_by("chain_sequence")
         .only(
-            "id", "tenant_id", "actor_user_id", "resource_type", "resource_id",
-            "action", "result", "details_json", "full_details_json",
-            "chain_sequence", "chain_hash", "prev_chain_hash", "timestamp",
+            "id",
+            "tenant_id",
+            "actor_user_id",
+            "resource_type",
+            "resource_id",
+            "action",
+            "result",
+            "details_json",
+            "full_details_json",
+            "chain_sequence",
+            "chain_hash",
+            "prev_chain_hash",
+            "timestamp",
         )
     )
 
@@ -151,8 +162,7 @@ def run_integrity_verification(
         snapshot_pairs: list[tuple[Any, list[Any]]] = []
         for snap in snapshots:
             window_events = [
-                ev for ev in events
-                if snap.period_start <= ev.timestamp < snap.period_end
+                ev for ev in events if snap.period_start <= ev.timestamp < snap.period_end
             ]
             snapshot_pairs.append((snap, window_events))
 
@@ -163,14 +173,13 @@ def run_integrity_verification(
         )
         result["verified"] = augmented.verified
         result["snapshots_checked"] = augmented.snapshots_checked
-        result["snapshot_mismatches"] = [
-            m.to_dict() for m in augmented.snapshot_mismatches
-        ]
+        result["snapshot_mismatches"] = [m.to_dict() for m in augmented.snapshot_mismatches]
 
     result["summary"] = (
-        "PASS" if result["verified"]
+        "PASS"
+        if result["verified"]
         else f"FAIL — {len(result['mismatches'])} chain mismatch(es), "
-             f"{len(result['snapshot_mismatches'])} snapshot mismatch(es)"
+        f"{len(result['snapshot_mismatches'])} snapshot mismatch(es)"
     )
     return result
 
@@ -196,10 +205,7 @@ def _create_ci_snapshot(tenant_id: str, events: list[AuditEvent], now) -> None:
         return
     period_start = min(ev.timestamp for ev in events)
     period_end = max(ev.timestamp for ev in events) + timedelta(seconds=1)
-    leaves = [
-        ev.chain_hash for ev in events
-        if ev.chain_hash
-    ]
+    leaves = [ev.chain_hash for ev in events if ev.chain_hash]
     root_hex = merkle_root(leaves)
     signature_hex = _sign_root(root_hex)
 
@@ -274,9 +280,11 @@ class Command(BaseCommand):
         # 2. Pick the most recent event and tamper its chain_hash
         event = AuditEvent.objects.order_by("-timestamp").first()
         if not event or not event.chain_hash:
-            self.stdout.write(self.style.ERROR(
-                "No chain_hash found on test event — hash-chain may not be enabled."
-            ))
+            self.stdout.write(
+                self.style.ERROR(
+                    "No chain_hash found on test event — hash-chain may not be enabled."
+                )
+            )
             return False
 
         original_hash = event.chain_hash
@@ -294,21 +302,23 @@ class Command(BaseCommand):
         )
 
         # 4. Clean up test data
-        AuditEvent.all_objects.filter(
-            details_json__icontains="_CI_SMOKE_TEST_EVENT"
-        ).delete()
+        AuditEvent.all_objects.filter(details_json__icontains="_CI_SMOKE_TEST_EVENT").delete()
 
         tamper_detected = not result["verified"]
         if tamper_detected:
-            self.stdout.write(self.style.SUCCESS(
-                f"Tamper DETECTED ({len(result.get('mismatches', []))} mismatches) — "
-                "integrity verification is working."
-            ))
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Tamper DETECTED ({len(result.get('mismatches', []))} mismatches) — "
+                    "integrity verification is working."
+                )
+            )
         else:
-            self.stdout.write(self.style.ERROR(
-                "TAMPER NOT DETECTED! Hash-chain integrity regression — "
-                "a tampered chain_hash passed verification."
-            ))
+            self.stdout.write(
+                self.style.ERROR(
+                    "TAMPER NOT DETECTED! Hash-chain integrity regression — "
+                    "a tampered chain_hash passed verification."
+                )
+            )
         return tamper_detected
 
     def handle(self, *args, **options):
@@ -338,9 +348,11 @@ class Command(BaseCommand):
         self.stdout.write(f"Summary: {result.get('summary', 'UNKNOWN')}")
 
         if not result["verified"]:
-            self.stderr.write(self.style.ERROR(
-                f"Audit integrity verification FAILED for tenant {result.get('tenant_id')}"
-            ))
+            self.stderr.write(
+                self.style.ERROR(
+                    f"Audit integrity verification FAILED for tenant {result.get('tenant_id')}"
+                )
+            )
             raise SystemExit(1)
 
         self.stdout.write(self.style.SUCCESS("Audit integrity verification PASSED"))

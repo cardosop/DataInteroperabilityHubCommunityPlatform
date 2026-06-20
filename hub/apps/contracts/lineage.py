@@ -11,20 +11,20 @@ All lineage references use the format: namespace/name/model_name/field_name
 
 from __future__ import annotations
 
-from collections import defaultdict, deque
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from django.core.cache import cache
-from django.db import models
-
-from typing import Optional as _O, Any as _A
+from django.db import DatabaseError, models
 
 # Import Contract model - will be available at runtime.
-Contract: _O[Any] = None
+Contract: Any | None = None
 try:
     from hub.apps.contracts.models import Contract
 except ImportError:
-    pass  # Contract stays None — typed as Optional above
+    import logging
+    logging.getLogger(__name__).warning(
+        "Contract model not available; lineage resolution will be non-functional."
+    )
 
 
 class LineageReference:
@@ -32,19 +32,19 @@ class LineageReference:
 
     def __init__(
         self,
-        namespace: Optional[str] = None,
-        name: Optional[str] = None,
-        model_name: Optional[str] = None,
-        field: Optional[str] = None,
+        namespace: str | None = None,
+        name: str | None = None,
+        model_name: str | None = None,
+        field: str | None = None,
     ):
         self.namespace = namespace
         self.name = name
         self.model_name = model_name
         self.field = field
-        self._resolved_contract: Optional[Contract] = None
-        self._resolved_model: Optional[Dict[str, Any]] = None
-        self._resolved_field: Optional[Dict[str, Any]] = None
-        self._is_broken: Optional[bool] = None
+        self._resolved_contract: Contract | None = None
+        self._resolved_model: dict[str, Any] | None = None
+        self._resolved_field: dict[str, Any] | None = None
+        self._is_broken: bool | None = None
 
     def __str__(self) -> str:
         parts = []
@@ -58,7 +58,7 @@ class LineageReference:
             parts.append(self.field)
         return "/".join(parts) if parts else "unknown"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary format."""
         result = {}
         if self.namespace:
@@ -71,7 +71,7 @@ class LineageReference:
             result["field"] = self.field
         return result
 
-    def resolve_contract(self) -> Optional[Any]:
+    def resolve_contract(self) -> Any | None:
         """Lazily resolve the contract reference."""
         if Contract is None:
             return None
@@ -116,11 +116,20 @@ class LineageReference:
             else:
                 self._is_broken = True
                 return None
+        except (Contract.DoesNotExist, Contract.MultipleObjectsReturned, DatabaseError):
+            # Expected: race conditions, DB unavailability, duplicate data.
+            self._is_broken = True
+            return None
         except Exception:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Unexpected error resolving lineage contract ref=%s", self,
+                exc_info=True,
+            )
             self._is_broken = True
             return None
 
-    def resolve_model(self) -> Optional[Dict[str, Any]]:
+    def resolve_model(self) -> dict[str, Any] | None:
         """Lazily resolve the model reference."""
         if self._resolved_model is not None:
             return self._resolved_model if not self._is_broken else None
@@ -149,7 +158,7 @@ class LineageReference:
         self._is_broken = True
         return None
 
-    def resolve_field(self) -> Optional[Dict[str, Any]]:
+    def resolve_field(self) -> dict[str, Any] | None:
         """Lazily resolve the field reference."""
         if self._resolved_field is not None:
             return self._resolved_field if not self._is_broken else None
@@ -189,7 +198,7 @@ class LineageReference:
         return self._is_broken is True
 
 
-def resolve_lineage_reference(ref: Optional[LineageReference]) -> Optional[Any]:
+def resolve_lineage_reference(ref: LineageReference | None) -> Any | None:
     """
     Resolve a lineage reference to its contract.
 
@@ -201,7 +210,7 @@ def resolve_lineage_reference(ref: Optional[LineageReference]) -> Optional[Any]:
     return ref.resolve_contract()
 
 
-def extract_contract_level_lineage(odcs_contract: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def extract_contract_level_lineage(odcs_contract: dict[str, Any]) -> dict[str, Any] | None:
     """
     Extract contract-level lineage from ODCS contract.
 
@@ -234,20 +243,17 @@ def extract_contract_level_lineage(odcs_contract: Dict[str, Any]) -> Optional[Di
         for source in transform_sources:
             if isinstance(source, dict):
                 # If it's a contract reference (has namespace/name but no model/field)
-                if "namespace" in source or "name" in source:
-                    if (
-                        "model" not in source
-                        and "model_name" not in source
-                        and "field" not in source
-                    ):
-                        contract_refs.append(
-                            {
-                                "namespace": source.get("namespace"),
-                                "name": source.get("name"),
-                                "version": source.get("version"),
-                                "description": source.get("description"),
-                            }
-                        )
+                if ("namespace" in source or "name" in source) and (
+                    "model" not in source and "model_name" not in source and "field" not in source
+                ):
+                    contract_refs.append(
+                        {
+                            "namespace": source.get("namespace"),
+                            "name": source.get("name"),
+                            "version": source.get("version"),
+                            "description": source.get("description"),
+                        }
+                    )
 
     if contract_refs:
         lineage_section["contracts"] = contract_refs
@@ -255,7 +261,7 @@ def extract_contract_level_lineage(odcs_contract: Dict[str, Any]) -> Optional[Di
     return lineage_section if lineage_section else None
 
 
-def extract_model_level_lineage(odcs_schema: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def extract_model_level_lineage(odcs_schema: dict[str, Any]) -> dict[str, Any] | None:
     """
     Extract model-level lineage from ODCS schema object.
 
@@ -288,18 +294,19 @@ def extract_model_level_lineage(odcs_schema: Dict[str, Any]) -> Optional[Dict[st
         for source in transform_sources:
             if isinstance(source, dict):
                 # If it's a model reference (has namespace/name/model but no field)
-                if ("namespace" in source or "name" in source) and (
-                    "model" in source or "model_name" in source
+                if (
+                    ("namespace" in source or "name" in source)
+                    and ("model" in source or "model_name" in source)
+                    and "field" not in source
                 ):
-                    if "field" not in source:
-                        model_refs.append(
-                            {
-                                "namespace": source.get("namespace"),
-                                "name": source.get("name"),
-                                "model_name": source.get("model") or source.get("model_name"),
-                                "description": source.get("description"),
-                            }
-                        )
+                    model_refs.append(
+                        {
+                            "namespace": source.get("namespace"),
+                            "name": source.get("name"),
+                            "model_name": source.get("model") or source.get("model_name"),
+                            "description": source.get("description"),
+                        }
+                    )
 
     if model_refs:
         lineage_section["models"] = model_refs
@@ -307,7 +314,7 @@ def extract_model_level_lineage(odcs_schema: Dict[str, Any]) -> Optional[Dict[st
     return lineage_section if lineage_section else None
 
 
-def extract_field_level_lineage(odcs_field: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def extract_field_level_lineage(odcs_field: dict[str, Any]) -> dict[str, Any] | None:
     """
     Extract field-level lineage from ODCS field definition.
 
@@ -323,7 +330,7 @@ def extract_field_level_lineage(odcs_field: Dict[str, Any]) -> Optional[Dict[str
     if not transform_sources and not transform_logic and not transform_description:
         return None
 
-    entry: Dict[str, Any] = {}
+    entry: dict[str, Any] = {}
 
     if isinstance(transform_sources, list):
         entry["input_fields"] = transform_sources
@@ -353,21 +360,21 @@ class LineageTraverser:
         self.max_contract_depth = max_contract_depth
         self.max_model_depth = max_model_depth
         self.max_field_depth = max_field_depth
-        self.visited_contracts: Set[str] = set()
-        self.visited_models: Set[Tuple[str, str]] = set()  # (contract_id, model_name)
-        self.visited_fields: Set[Tuple[str, str, str]] = (
+        self.visited_contracts: set[str] = set()
+        self.visited_models: set[tuple[str, str]] = set()  # (contract_id, model_name)
+        self.visited_fields: set[tuple[str, str, str]] = (
             set()
         )  # (contract_id, model_name, field_name)
 
     def traverse_top_down(
         self,
-        contract_id: Optional[str] = None,
-        model_name: Optional[str] = None,
-        field_name: Optional[str] = None,
+        contract_id: str | None = None,
+        model_name: str | None = None,
+        field_name: str | None = None,
         contract_depth: int = 0,
         model_depth: int = 0,
         field_depth: int = 0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Traverse lineage top-down (Contract → Model → Field).
 
@@ -401,7 +408,7 @@ class LineageTraverser:
         if not isinstance(hub_contract, dict):
             return {"contract_id": contract_id, "models": [], "error": "Invalid contract data"}
 
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "contract_id": contract_id,
             "contract_name": hub_contract.get("info", {}).get("name"),
             "models": [],
@@ -447,7 +454,7 @@ class LineageTraverser:
 
             self.visited_models.add(model_key)
 
-            model_result: Dict[str, Any] = {
+            model_result: dict[str, Any] = {
                 "model_name": model_name_curr,
                 "fields": [],
             }
@@ -490,7 +497,7 @@ class LineageTraverser:
 
                 self.visited_fields.add(field_key)
 
-                field_result: Dict[str, Any] = {
+                field_result: dict[str, Any] = {
                     "field_name": field_name_curr,
                 }
 
@@ -547,13 +554,13 @@ class LineageTraverser:
 
     def traverse_bottom_up(
         self,
-        contract_id: Optional[str] = None,
-        model_name: Optional[str] = None,
-        field_name: Optional[str] = None,
+        contract_id: str | None = None,
+        model_name: str | None = None,
+        field_name: str | None = None,
         contract_depth: int = 0,
         model_depth: int = 0,
         field_depth: int = 0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Traverse lineage bottom-up (Field → Model → Contract).
 
@@ -589,7 +596,7 @@ class LineageTraverser:
         if not isinstance(hub_contract, dict):
             return {"contract_id": contract_id, "models": [], "error": "Invalid contract data"}
 
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "contract_id": contract_id,
             "contract_name": hub_contract.get("info", {}).get("name"),
             "referenced_by": [],
@@ -627,10 +634,10 @@ class LineageTraverser:
 
     def traverse_bidirectional(
         self,
-        contract_id: Optional[str] = None,
-        model_name: Optional[str] = None,
-        field_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        contract_id: str | None = None,
+        model_name: str | None = None,
+        field_name: str | None = None,
+    ) -> dict[str, Any]:
         """
         Traverse lineage bidirectionally (both upstream and downstream).
 
@@ -663,7 +670,7 @@ class LineageTraverser:
 
 def generate_lineage_json(
     contract: Any, format: str = "json", max_depth: int = 10
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Generate lineage graph in JSON format (for D3.js).
 
@@ -710,9 +717,9 @@ def generate_lineage_json(
 
 
 def _process_lineage_for_visualization(
-    lineage_data: Dict[str, Any],
-    nodes: List[Dict[str, Any]],
-    edges: List[Dict[str, Any]],
+    lineage_data: dict[str, Any],
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
     direction: str,
 ):
     """Helper to process lineage data for visualization."""

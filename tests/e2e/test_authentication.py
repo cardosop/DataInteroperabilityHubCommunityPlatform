@@ -18,11 +18,9 @@ from datetime import timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 
-from hub.apps.audit.models import AuditEvent
 from hub.apps.auth.models import APIKey, RefreshToken
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
@@ -161,7 +159,11 @@ class AuthenticationE2ETest(E2ETestBase):
         self.assertIn("id", data)
         self.assertEqual(data.get("email"), email)
         self.assertEqual(data.get("name"), "New Visitor")
-        self.assertIn("tenant_id", data, "Registration without tenant_id creates personal tenant (useronboardfix)")
+        self.assertIn(
+            "tenant_id",
+            data,
+            "Registration without tenant_id creates personal tenant (useronboardfix)",
+        )
         self.assertIsNotNone(data.get("tenant_id"))
         user = User.objects.get(email=email)
         self.assertTrue(user.check_password("SecurePass123"))
@@ -314,7 +316,7 @@ class AuthenticationE2ETest(E2ETestBase):
     def test_refresh_token_success(self):
         """Test successful token refresh"""
         email = f"refreshuser-{uuid.uuid4().hex[:8]}@example.com"
-        test_user = User.objects.create_user(
+        User.objects.create_user(
             email=email,
             password="testpass123",
             tenant=self.tenant,
@@ -368,7 +370,7 @@ class AuthenticationE2ETest(E2ETestBase):
         # Create expired refresh token
         refresh_token_str = RefreshToken.generate_token()
         refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
-        expired_token = RefreshToken.objects.create(
+        RefreshToken.objects.create(
             user=test_user,
             token_hash=refresh_token_hash,
             expires_at=timezone.now() - timedelta(days=1),  # Expired yesterday
@@ -426,9 +428,7 @@ class AuthenticationE2ETest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = get_response_data(response) or {}
         self.assertIn("revoked_sessions", data)
-        self.assertEqual(
-            data["revoked_sessions"], 1, "One refresh token should be revoked"
-        )
+        self.assertEqual(data["revoked_sessions"], 1, "One refresh token should be revoked")
 
         # Verify refresh token revoked
         token_before.refresh_from_db()
@@ -465,9 +465,7 @@ class AuthenticationE2ETest(E2ETestBase):
             status=UserStatus.ACTIVE,
         )
 
-        response = self.client.post(
-            "/api/v1/auth/password-reset/", {"email": email}, format="json"
-        )
+        response = self.client.post("/api/v1/auth/password-reset/", {"email": email}, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify a reset token was actually generated in the DB
@@ -495,11 +493,13 @@ class AuthenticationE2ETest(E2ETestBase):
         test_user.password_reset_token = token_hash
         test_user.password_reset_token_expires_at = timezone.now() + timedelta(hours=1)
         test_user.password_reset_token_used_at = None
-        test_user.save(update_fields=[
-            "password_reset_token",
-            "password_reset_token_expires_at",
-            "password_reset_token_used_at",
-        ])
+        test_user.save(
+            update_fields=[
+                "password_reset_token",
+                "password_reset_token_expires_at",
+                "password_reset_token_used_at",
+            ]
+        )
 
         # Confirm the reset using the plaintext token
         confirm_response = self.client.post(
@@ -552,20 +552,18 @@ class AuthenticationE2ETest(E2ETestBase):
         # storing it and sends the plaintext only via email (which
         # we cannot intercept in E2E tests without mocking).
         plaintext_token = str(uuid.uuid4())
-        token_hash = hashlib.sha256(
-            plaintext_token.encode()
-        ).hexdigest()
+        token_hash = hashlib.sha256(plaintext_token.encode()).hexdigest()
         user = User.objects.get(email=email)
         user.password_reset_token = token_hash
-        user.password_reset_token_expires_at = (
-            timezone.now() + timedelta(hours=1)
-        )
+        user.password_reset_token_expires_at = timezone.now() + timedelta(hours=1)
         user.password_reset_token_used_at = None
-        user.save(update_fields=[
-            "password_reset_token",
-            "password_reset_token_expires_at",
-            "password_reset_token_used_at",
-        ])
+        user.save(
+            update_fields=[
+                "password_reset_token",
+                "password_reset_token_expires_at",
+                "password_reset_token_used_at",
+            ]
+        )
 
         confirm = self.client.post(
             "/api/v1/auth/password-reset/confirm/",
@@ -588,9 +586,7 @@ class AuthenticationE2ETest(E2ETestBase):
             format="json",
         )
         self.assertEqual(login_resp.status_code, status.HTTP_200_OK)
-        self.assertIn(
-            "access_token", get_response_data(login_resp) or {}
-        )
+        self.assertIn("access_token", get_response_data(login_resp) or {})
 
     def test_create_api_key_success(self):
         """Test creating API key"""
@@ -719,9 +715,7 @@ class AuthenticationE2ETest(E2ETestBase):
             {
                 "name": "Will Expire Key",
                 "scopes": ["assets:read"],
-                "expires_at": (
-                    timezone.now() + timedelta(days=365)
-                ).isoformat(),
+                "expires_at": (timezone.now() + timedelta(days=365)).isoformat(),
             },
             format="json",
         )
@@ -730,9 +724,7 @@ class AuthenticationE2ETest(E2ETestBase):
         api_key_id = create_data["id"]
 
         # Now expire it by backdating expires_at in the DB
-        APIKey.objects.filter(id=api_key_id).update(
-            expires_at=timezone.now() - timedelta(days=1)
-        )
+        APIKey.objects.filter(id=api_key_id).update(expires_at=timezone.now() - timedelta(days=1))
 
         # Clear auth and attempt to use the expired key
         self.client.force_authenticate(user=None)
@@ -826,10 +818,7 @@ class TestJOURNEYAUTH005TenantSwitch(E2ETestBase):
     def test_switch_tenant_success(self):
         """POST /api/v1/auth/switch-tenant/ with own tenant → 200."""
         if not self._switch_available():
-            self.skipTest(
-                "Tenant switch unavailable (feature disabled or "
-                "single-tenant user)"
-            )
+            self.skipTest("Tenant switch unavailable (feature disabled or single-tenant user)")
         response = self.client.post(
             self.SWITCH_TENANT_URL,
             {"tenant_id": str(self.tenant.id)},
@@ -867,8 +856,7 @@ class TestJOURNEYAUTH005TenantSwitch(E2ETestBase):
         )
         self.assertIn(
             response.status_code,
-            [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN,
-             status.HTTP_404_NOT_FOUND],
+            [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND],
             f"Expected error, got: {response.status_code}",
         )
 

@@ -14,8 +14,6 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus, RiskLevel
 from hub.apps.jobs.models import Job, JobStatus, JobType
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus
 
 User = __import__("django.contrib.auth", fromlist=["get_user_model"]).get_user_model()
 

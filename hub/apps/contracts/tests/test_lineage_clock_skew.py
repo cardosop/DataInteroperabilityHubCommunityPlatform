@@ -14,13 +14,13 @@ lineage write paths and asserts an allow-list of legitimate uses
 (test fixtures, audit-event metadata, observability). Production
 write paths are forbidden from using app time.
 """
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
 import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
@@ -110,11 +110,10 @@ def test_no_app_time_in_lineage_write_path(rel: str):
                 violations.append((rel, lineno, line.strip()))
 
     assert violations == [], (
-        f"REQ-LIN-F5-006 violation — lineage write path uses application "
-        f"time. Use ``models.functions.Now()`` / ``Func('NOW')`` / "
-        f"``auto_now``/``auto_now_add`` instead. Offending lines:\n"
-        + "\n".join(f"  {rel}:{lineno}: {text}"
-                    for rel, lineno, text in violations)
+        "REQ-LIN-F5-006 violation — lineage write path uses application "
+        "time. Use ``models.functions.Now()`` / ``Func('NOW')`` / "
+        "``auto_now``/``auto_now_add`` instead. Offending lines:\n"
+        + "\n".join(f"  {rel}:{lineno}: {text}" for rel, lineno, text in violations)
     )
 
 
@@ -134,16 +133,15 @@ def test_lineage_edge_valid_from_uses_db_default():
     # Locate the LineageEdge class block.
     block_match = re.search(
         r"class\s+LineageEdge\s*\(.+?\):(.+?)(?=^class\s+\w|\Z)",
-        text, re.DOTALL | re.MULTILINE,
+        text,
+        re.DOTALL | re.MULTILINE,
     )
     assert block_match is not None, "LineageEdge class block not found"
     block = block_match.group(1)
     # Strip ``#`` comment-only lines so prose mentioning ``Func('NOW')``
     # doesn't satisfy the assertion when the actual field declaration
     # uses a different default.
-    code_only = "\n".join(
-        ln for ln in block.splitlines() if not ln.strip().startswith("#")
-    )
+    code_only = "\n".join(ln for ln in block.splitlines() if not ln.strip().startswith("#"))
     valid_from = re.search(
         r"valid_from\s*=\s*models\.DateTimeField\(([^)]+)\)",
         code_only,
@@ -151,6 +149,5 @@ def test_lineage_edge_valid_from_uses_db_default():
     assert valid_from is not None, "valid_from field not found"
     args = valid_from.group(1)
     assert "db_default=" in args and "Now" in args, (
-        f"valid_from must use db_default=Now() per REQ-LIN-F5-006; "
-        f"args={args!r}"
+        f"valid_from must use db_default=Now() per REQ-LIN-F5-006; args={args!r}"
     )

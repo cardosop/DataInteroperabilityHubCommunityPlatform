@@ -13,6 +13,7 @@ and emits a markdown report with:
 No mocks: tests build a real JSONL file from real ``Contract`` rows and
 assert markdown substrings + counts.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,11 +27,13 @@ from django.test import TestCase
 
 def _create_tenant(name: str = "Wave 0 Summarize Co"):
     from hub.apps.tenants.models import Tenant
+
     return Tenant.objects.create(name=name, slug=name.lower().replace(" ", "-"))
 
 
 def _create_contract(tenant, *, hub_contract_json=None, spec_type="ODCS", original_raw=""):
     from hub.apps.contracts.models import Contract
+
     return Contract.objects.create(
         tenant=tenant,
         original_spec_type=spec_type,
@@ -44,12 +47,14 @@ def _create_contract(tenant, *, hub_contract_json=None, spec_type="ODCS", origin
 
 def _grant_tenant_admin(user, tenant):
     from hub.apps.users.models import Role, UserRole
+
     role, _ = Role.objects.get_or_create(tenant=tenant, name="TENANT_ADMIN")
     UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
 
 
 def _create_user(email, tenant):
     from django.contrib.auth import get_user_model
+
     User = get_user_model()
     return User.objects.create(email=email, tenant=tenant)
 
@@ -83,7 +88,6 @@ def _row(contract, classification: str = "odcs_no_schema_block"):
 
 @pytest.mark.django_db(transaction=True)
 class SummarizeCommandTests(TestCase):
-
     def test_summarizes_total_count(self):
         tmp_path = Path(self.id().replace(".", "_") + "-tmp")
         try:
@@ -112,11 +116,14 @@ class SummarizeCommandTests(TestCase):
             c1 = _create_contract(tenant, hub_contract_json={"models": []})
             c2 = _create_contract(tenant, hub_contract_json={"models": []})
             c3 = _create_contract(tenant, hub_contract_json={"models": []})
-            artefact = _write_jsonl(tmp_path, [
-                _row(c1, "pure_odps_with_outputports"),
-                _row(c2, "odcs_no_schema_block"),
-                _row(c3, "odcs_no_schema_block"),
-            ])
+            artefact = _write_jsonl(
+                tmp_path,
+                [
+                    _row(c1, "pure_odps_with_outputports"),
+                    _row(c2, "odcs_no_schema_block"),
+                    _row(c3, "odcs_no_schema_block"),
+                ],
+            )
 
             out = StringIO()
             call_command(
@@ -130,7 +137,7 @@ class SummarizeCommandTests(TestCase):
             assert "pure_odps_with_outputports" in output
             assert "odcs_no_schema_block" in output
             # The 2-vs-1 ratio between odcs and odps must be visible.
-            assert ("2" in output and "1" in output)
+            assert "2" in output and "1" in output
         finally:
             self._cleanup(tmp_path)
 
@@ -163,17 +170,22 @@ class SummarizeCommandTests(TestCase):
         '(unknown tenant)' rather than crashing the summarizer."""
         tmp_path = Path(self.id().replace(".", "_") + "-tmp")
         try:
-            artefact = _write_jsonl(tmp_path, [{
-                "contract_id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
-                "tenant_id": "00000000-0000-0000-0000-000000000000",
-                "asset_id": None,
-                "spec_type": "ODCS",
-                "spec_version": "3.1.0",
-                "original_format": "YAML",
-                "classification": "other",
-                "models_count": 0,
-                "schema_fields_count": 0,
-            }])
+            artefact = _write_jsonl(
+                tmp_path,
+                [
+                    {
+                        "contract_id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+                        "tenant_id": "00000000-0000-0000-0000-000000000000",
+                        "asset_id": None,
+                        "spec_type": "ODCS",
+                        "spec_version": "3.1.0",
+                        "original_format": "YAML",
+                        "classification": "other",
+                        "models_count": 0,
+                        "schema_fields_count": 0,
+                    }
+                ],
+            )
 
             out = StringIO()
             call_command(
@@ -272,14 +284,19 @@ class SummarizeCommandTests(TestCase):
             call_command(
                 "wave0_summarize_structureless",
                 f"--input={artefact}",
-                stdout=out, stderr=err,
+                stdout=out,
+                stderr=err,
             )
 
             # The malformed line is skipped; the valid row is counted.
             assert "1" in out.getvalue()
             # A warning is surfaced (stdout or stderr).
             combined = out.getvalue() + err.getvalue()
-            assert "skip" in combined.lower() or "malformed" in combined.lower() or "warn" in combined.lower()
+            assert (
+                "skip" in combined.lower()
+                or "malformed" in combined.lower()
+                or "warn" in combined.lower()
+            )
         finally:
             self._cleanup(tmp_path)
 

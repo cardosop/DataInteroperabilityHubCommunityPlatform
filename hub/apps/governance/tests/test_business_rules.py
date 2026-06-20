@@ -3,30 +3,30 @@ Unit tests for GovernanceBusinessRules.
 
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
+
+import uuid
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from hub.apps.core.business_rules.base import ValidationResult, RuleExecutionContext
+from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.core.business_rules.registry import get_registry
+from hub.apps.datasets.models import Dataset
+from hub.apps.files.models import File, FileStatus
 from hub.apps.governance.business_rules import (
     GovernanceBusinessRules,
-    GovernanceRuleExecutionContext
 )
 from hub.apps.governance.models import (
-    AccessRequest,
     AccessPolicy,
-    DataClassification,
+    AccessRequest,
     AccessRequestStatus,
     ClassificationCategory,
     ClassificationStatus,
     ComplianceReport,
+    DataClassification,
 )
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.assets.tests.factories import AssetFactory
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.datasets.models import Dataset
-from hub.apps.files.models import File, FileStatus
-import uuid
+from hub.apps.tenants.models import KYCStatus, Tenant
 
 User = get_user_model()
 
@@ -37,23 +37,25 @@ class GovernanceBusinessRulesInitializationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
     def test_governance_business_rules_initialization(self):
         """Test GovernanceBusinessRules can be initialized and validate"""
-        rules = GovernanceBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         self.assertIsNotNone(rules)
         self.assertEqual(rules.get_rule_name(), "GovernanceBusinessRules")
         self.assertEqual(rules.tenant_id, str(self.tenant.id))
         self.assertEqual(rules.user_id, str(self.user.id))
         # Verify the rules object can actually validate (returns a ValidationResult)
-        self.assertTrue(hasattr(rules, 'validate'))
+        self.assertTrue(hasattr(rules, "validate"))
         result = rules.validate()
         self.assertIsInstance(result, ValidationResult)
 
@@ -99,12 +101,18 @@ class AccessRequestEligibilityValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         # Create asset for access request
         self.asset = Asset.objects.create(
@@ -112,7 +120,7 @@ class AccessRequestEligibilityValidationTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_validate_access_request_eligibility_valid(self):
@@ -122,16 +130,18 @@ class AccessRequestEligibilityValidationTest(TestCase):
             requested_by=self.user,
             asset=self.asset,
             reason="Test reason",
-            requested_access_type="READ"
+            requested_access_type="READ",
         )
 
-        result = self.rules._validate_access_request_eligibility(access_request, self.tenant, self.user)
+        result = self.rules._validate_access_request_eligibility(
+            access_request, self.tenant, self.user
+        )
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertTrue(result.details['user_active'])
-        self.assertTrue(result.details['user_has_tenant'])
-        self.assertTrue(result.details['user_tenant_match'])
+        self.assertTrue(result.details["user_active"])
+        self.assertTrue(result.details["user_has_tenant"])
+        self.assertTrue(result.details["user_tenant_match"])
 
     def test_validate_access_request_eligibility_inactive_user(self):
         """Test eligibility validation with inactive user"""
@@ -143,10 +153,12 @@ class AccessRequestEligibilityValidationTest(TestCase):
             requested_by=self.user,
             asset=self.asset,
             reason="Test reason",
-            requested_access_type="READ"
+            requested_access_type="READ",
         )
 
-        result = self.rules._validate_access_request_eligibility(access_request, self.tenant, self.user)
+        result = self.rules._validate_access_request_eligibility(
+            access_request, self.tenant, self.user
+        )
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -159,7 +171,9 @@ class AccessRequestEligibilityValidationTest(TestCase):
             name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=other_tenant,
         )
 
         access_request = AccessRequest.objects.create(
@@ -167,10 +181,12 @@ class AccessRequestEligibilityValidationTest(TestCase):
             requested_by=other_user,
             asset=self.asset,
             reason="Test reason",
-            requested_access_type="READ"
+            requested_access_type="READ",
         )
 
-        result = self.rules._validate_access_request_eligibility(access_request, self.tenant, other_user)
+        result = self.rules._validate_access_request_eligibility(
+            access_request, self.tenant, other_user
+        )
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -183,12 +199,18 @@ class ResourceAccessValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         # Create resources
         self.asset = Asset.objects.create(
@@ -196,7 +218,7 @@ class ResourceAccessValidationTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.file = File.objects.create(
@@ -206,7 +228,7 @@ class ResourceAccessValidationTest(TestCase):
             size=1000,
             status=FileStatus.ACTIVE,
             storage_path="test/test.csv",
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.dataset = Dataset.objects.create(
@@ -216,7 +238,7 @@ class ResourceAccessValidationTest(TestCase):
             schema_json={"fields": []},
             format="CSV",
             version=1,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_validate_resource_access_asset(self):
@@ -226,15 +248,15 @@ class ResourceAccessValidationTest(TestCase):
             requested_by=self.user,
             asset=self.asset,
             reason="Test reason",
-            requested_access_type="READ"
+            requested_access_type="READ",
         )
 
         result = self.rules._validate_resource_access(access_request, self.tenant, self.user)
 
         self.assertTrue(result.is_valid)
-        self.assertEqual(result.details['resource_type'], 'asset')
-        self.assertEqual(result.details['resource_id'], str(self.asset.id))
-        self.assertTrue(result.details['resource_exists'])
+        self.assertEqual(result.details["resource_type"], "asset")
+        self.assertEqual(result.details["resource_id"], str(self.asset.id))
+        self.assertTrue(result.details["resource_exists"])
 
     def test_validate_resource_access_dataset(self):
         """Test resource access validation with dataset"""
@@ -243,15 +265,15 @@ class ResourceAccessValidationTest(TestCase):
             requested_by=self.user,
             dataset=self.dataset,
             reason="Test reason",
-            requested_access_type="READ"
+            requested_access_type="READ",
         )
 
         result = self.rules._validate_resource_access(access_request, self.tenant, self.user)
 
         self.assertTrue(result.is_valid)
-        self.assertEqual(result.details['resource_type'], 'dataset')
-        self.assertEqual(result.details['resource_id'], str(self.dataset.id))
-        self.assertTrue(result.details['resource_exists'])
+        self.assertEqual(result.details["resource_type"], "dataset")
+        self.assertEqual(result.details["resource_id"], str(self.dataset.id))
+        self.assertTrue(result.details["resource_exists"])
 
     def test_validate_resource_access_file(self):
         """Test resource access validation with file"""
@@ -260,15 +282,15 @@ class ResourceAccessValidationTest(TestCase):
             requested_by=self.user,
             file=self.file,
             reason="Test reason",
-            requested_access_type="READ"
+            requested_access_type="READ",
         )
 
         result = self.rules._validate_resource_access(access_request, self.tenant, self.user)
 
         self.assertTrue(result.is_valid)
-        self.assertEqual(result.details['resource_type'], 'file')
-        self.assertEqual(result.details['resource_id'], str(self.file.id))
-        self.assertTrue(result.details['resource_exists'])
+        self.assertEqual(result.details["resource_type"], "file")
+        self.assertEqual(result.details["resource_id"], str(self.file.id))
+        self.assertTrue(result.details["resource_exists"])
 
     def test_validate_resource_access_no_resource(self):
         """Test resource access validation with no resource"""
@@ -278,11 +300,12 @@ class ResourceAccessValidationTest(TestCase):
             tenant=self.tenant,
             requested_by=self.user,
             reason="Test reason",
-            requested_access_type="READ"
+            requested_access_type="READ",
             # No asset, dataset, or file set
         )
         # Set id manually to avoid save() validation
         import uuid
+
         access_request.id = uuid.uuid4()
 
         result = self.rules._validate_resource_access(access_request, self.tenant, self.user)
@@ -302,7 +325,7 @@ class ResourceAccessValidationTest(TestCase):
             key="other-asset",
             name="Other Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         access_request = AccessRequest.objects.create(
@@ -310,7 +333,7 @@ class ResourceAccessValidationTest(TestCase):
             requested_by=self.user,
             asset=other_asset,
             reason="Test reason",
-            requested_access_type="READ"
+            requested_access_type="READ",
         )
 
         result = self.rules._validate_resource_access(access_request, self.tenant, self.user)
@@ -318,7 +341,7 @@ class ResourceAccessValidationTest(TestCase):
         # Cross-tenant access is allowed but generates warning
         self.assertTrue(result.is_valid)
         self.assertGreater(len(result.warnings), 0)
-        self.assertTrue(result.details['cross_tenant_access'])
+        self.assertTrue(result.details["cross_tenant_access"])
 
 
 class AccessRequestStatusTransitionValidationTest(TestCase):
@@ -327,19 +350,25 @@ class AccessRequestStatusTransitionValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_validate_status_transition_pending_to_approved(self):
@@ -350,17 +379,17 @@ class AccessRequestStatusTransitionValidationTest(TestCase):
             asset=self.asset,
             reason="Test reason",
             requested_access_type="READ",
-            status=AccessRequestStatus.PENDING
+            status=AccessRequestStatus.PENDING,
         )
 
         result = self.rules._validate_access_request_status_transition(
             access_request,
             current_status=AccessRequestStatus.PENDING.value,
-            new_status=AccessRequestStatus.APPROVED.value
+            new_status=AccessRequestStatus.APPROVED.value,
         )
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details['transition_allowed'])
+        self.assertTrue(result.details["transition_allowed"])
 
     def test_validate_status_transition_pending_to_rejected(self):
         """Test status transition from PENDING to REJECTED"""
@@ -370,17 +399,17 @@ class AccessRequestStatusTransitionValidationTest(TestCase):
             asset=self.asset,
             reason="Test reason",
             requested_access_type="READ",
-            status=AccessRequestStatus.PENDING
+            status=AccessRequestStatus.PENDING,
         )
 
         result = self.rules._validate_access_request_status_transition(
             access_request,
             current_status=AccessRequestStatus.PENDING.value,
-            new_status=AccessRequestStatus.REJECTED.value
+            new_status=AccessRequestStatus.REJECTED.value,
         )
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details['transition_allowed'])
+        self.assertTrue(result.details["transition_allowed"])
 
     def test_validate_status_transition_approved_to_revoked(self):
         """Test status transition from APPROVED to REVOKED"""
@@ -390,17 +419,17 @@ class AccessRequestStatusTransitionValidationTest(TestCase):
             asset=self.asset,
             reason="Test reason",
             requested_access_type="READ",
-            status=AccessRequestStatus.APPROVED
+            status=AccessRequestStatus.APPROVED,
         )
 
         result = self.rules._validate_access_request_status_transition(
             access_request,
             current_status=AccessRequestStatus.APPROVED.value,
-            new_status=AccessRequestStatus.REVOKED.value
+            new_status=AccessRequestStatus.REVOKED.value,
         )
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details['transition_allowed'])
+        self.assertTrue(result.details["transition_allowed"])
 
     def test_validate_status_transition_invalid(self):
         """Test invalid status transition"""
@@ -410,18 +439,18 @@ class AccessRequestStatusTransitionValidationTest(TestCase):
             asset=self.asset,
             reason="Test reason",
             requested_access_type="READ",
-            status=AccessRequestStatus.APPROVED
+            status=AccessRequestStatus.APPROVED,
         )
 
         result = self.rules._validate_access_request_status_transition(
             access_request,
             current_status=AccessRequestStatus.APPROVED.value,
-            new_status=AccessRequestStatus.PENDING.value  # Cannot go back to PENDING
+            new_status=AccessRequestStatus.PENDING.value,  # Cannot go back to PENDING
         )
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
-        self.assertFalse(result.details['transition_allowed'])
+        self.assertFalse(result.details["transition_allowed"])
 
     def test_validate_status_transition_current_state_only(self):
         """Test status validation for current state (no transition)"""
@@ -431,18 +460,16 @@ class AccessRequestStatusTransitionValidationTest(TestCase):
             asset=self.asset,
             reason="Test reason",
             requested_access_type="READ",
-            status=AccessRequestStatus.PENDING
+            status=AccessRequestStatus.PENDING,
         )
 
         result = self.rules._validate_access_request_status_transition(
-            access_request,
-            current_status=AccessRequestStatus.PENDING.value,
-            new_status=None
+            access_request, current_status=AccessRequestStatus.PENDING.value, new_status=None
         )
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details['can_be_approved'])
-        self.assertTrue(result.details['can_be_rejected'])
+        self.assertTrue(result.details["can_be_approved"])
+        self.assertTrue(result.details["can_be_rejected"])
 
 
 class AccessRequestApprovalValidationTest(TestCase):
@@ -451,22 +478,30 @@ class AccessRequestApprovalValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         self.approver = User.objects.create_user(
-            email=f"approver-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"approver-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_validate_approval_single_step_authorized(self):
@@ -478,7 +513,7 @@ class AccessRequestApprovalValidationTest(TestCase):
             reason="Test reason",
             requested_access_type="READ",
             status=AccessRequestStatus.PENDING,
-            approvers=[str(self.approver.id)]
+            approvers=[str(self.approver.id)],
         )
 
         result = self.rules._validate_access_request_approval(
@@ -486,13 +521,15 @@ class AccessRequestApprovalValidationTest(TestCase):
         )
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details['approver_authorized'])
-        self.assertEqual(result.details['approval_type'], 'single_step')
+        self.assertTrue(result.details["approver_authorized"])
+        self.assertEqual(result.details["approval_type"], "single_step")
 
     def test_validate_approval_single_step_unauthorized(self):
         """Test approval validation with unauthorized approver"""
         other_user = User.objects.create_user(
-            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
         access_request = AccessRequest.objects.create(
@@ -502,7 +539,7 @@ class AccessRequestApprovalValidationTest(TestCase):
             reason="Test reason",
             requested_access_type="READ",
             status=AccessRequestStatus.PENDING,
-            approvers=[str(self.approver.id)]
+            approvers=[str(self.approver.id)],
         )
 
         result = self.rules._validate_access_request_approval(
@@ -510,7 +547,7 @@ class AccessRequestApprovalValidationTest(TestCase):
         )
 
         self.assertFalse(result.is_valid)
-        self.assertFalse(result.details['approver_authorized'])
+        self.assertFalse(result.details["approver_authorized"])
         self.assertGreater(len(result.errors), 0)
 
     def test_validate_approval_multi_step(self):
@@ -523,10 +560,10 @@ class AccessRequestApprovalValidationTest(TestCase):
             requested_access_type="READ",
             status=AccessRequestStatus.PENDING,
             approval_workflow=[
-                {'approvers': [str(self.approver.id)]},
-                {'approvers': [str(self.approver.id)]}
+                {"approvers": [str(self.approver.id)]},
+                {"approvers": [str(self.approver.id)]},
             ],
-            current_approval_step=0
+            current_approval_step=0,
         )
 
         result = self.rules._validate_access_request_approval(
@@ -534,9 +571,9 @@ class AccessRequestApprovalValidationTest(TestCase):
         )
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details['approver_authorized'])
-        self.assertEqual(result.details['approval_type'], 'multi_step')
-        self.assertEqual(result.details['current_step'], 0)
+        self.assertTrue(result.details["approver_authorized"])
+        self.assertEqual(result.details["approval_type"], "multi_step")
+        self.assertEqual(result.details["current_step"], 0)
 
     def test_validate_approval_not_pending(self):
         """Test approval validation when request is not pending"""
@@ -547,7 +584,7 @@ class AccessRequestApprovalValidationTest(TestCase):
             reason="Test reason",
             requested_access_type="READ",
             status=AccessRequestStatus.APPROVED,
-            approvers=[str(self.approver.id)]
+            approvers=[str(self.approver.id)],
         )
 
         result = self.rules._validate_access_request_approval(
@@ -555,7 +592,7 @@ class AccessRequestApprovalValidationTest(TestCase):
         )
 
         self.assertFalse(result.is_valid)
-        self.assertFalse(result.details['request_is_pending'])
+        self.assertFalse(result.details["request_is_pending"])
         self.assertGreater(len(result.errors), 0)
 
     def test_validate_approval_wrong_tenant(self):
@@ -565,7 +602,9 @@ class AccessRequestApprovalValidationTest(TestCase):
             name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_approver = User.objects.create_user(
-            email=f"other-approver-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-approver-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=other_tenant,
         )
 
         access_request = AccessRequest.objects.create(
@@ -575,7 +614,7 @@ class AccessRequestApprovalValidationTest(TestCase):
             reason="Test reason",
             requested_access_type="READ",
             status=AccessRequestStatus.PENDING,
-            approvers=[str(other_approver.id)]
+            approvers=[str(other_approver.id)],
         )
 
         result = self.rules._validate_access_request_approval(
@@ -583,7 +622,7 @@ class AccessRequestApprovalValidationTest(TestCase):
         )
 
         self.assertFalse(result.is_valid)
-        self.assertFalse(result.details['approver_tenant_match'])
+        self.assertFalse(result.details["approver_tenant_match"])
         self.assertGreater(len(result.errors), 0)
 
 
@@ -593,19 +632,25 @@ class AccessRequestValidationIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_validate_access_request_comprehensive(self):
@@ -616,20 +661,20 @@ class AccessRequestValidationIntegrationTest(TestCase):
             asset=self.asset,
             reason="Test reason",
             requested_access_type="READ",
-            status=AccessRequestStatus.PENDING
+            status=AccessRequestStatus.PENDING,
         )
 
         result = self.rules._validate_access_request(access_request, self.tenant, self.user)
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details['eligibility_validated'])
-        self.assertTrue(result.details['resource_access_validated'])
-        self.assertTrue(result.details['status_transition_validated'])
+        self.assertTrue(result.details["eligibility_validated"])
+        self.assertTrue(result.details["resource_access_validated"])
+        self.assertTrue(result.details["status_transition_validated"])
 
     def test_validate_access_request_with_governance_service(self):
         """Test access request validation integrated with GovernanceService"""
-        from hub.apps.governance.services import GovernanceService
         from hub.apps.core.services.base import ValidationError
+        from hub.apps.governance.services import GovernanceService
 
         service = GovernanceService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
@@ -642,18 +687,19 @@ class AccessRequestValidationIntegrationTest(TestCase):
                 requested_by_id=str(self.user.id),
                 asset_id=str(self.asset.id),
                 reason="Test reason",
-                requested_access_type="READ"
+                requested_access_type="READ",
             )
-        except (ValidationError, Exception) as e:
-            # If workflow fails, create access request directly for validation testing
-            # This tests the business rules integration even if workflow has issues
+        except ValidationError:
+            # If the service rejects creation (e.g. missing workflow),
+            # create the access request directly for validation testing.
+            # Only catch ValidationError — programming errors must propagate.
             access_request = AccessRequest.objects.create(
                 tenant=self.tenant,
                 requested_by=self.user,
                 asset=self.asset,
                 reason="Test reason",
                 requested_access_type="READ",
-                status=AccessRequestStatus.PENDING
+                status=AccessRequestStatus.PENDING,
             )
 
         # Validate using business rules
@@ -669,19 +715,25 @@ class ClassificationLevelValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_validate_classification_level_valid(self):
@@ -691,15 +743,15 @@ class ClassificationLevelValidationTest(TestCase):
             asset=self.asset,
             category=ClassificationCategory.PUBLIC,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_classification_level(classification)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertEqual(result.details['category'], ClassificationCategory.PUBLIC)
-        self.assertEqual(result.details['priority'], 1)
+        self.assertEqual(result.details["category"], ClassificationCategory.PUBLIC)
+        self.assertEqual(result.details["priority"], 1)
 
     def test_validate_classification_level_invalid_category(self):
         """Test classification level validation with invalid category"""
@@ -708,7 +760,7 @@ class ClassificationLevelValidationTest(TestCase):
             asset=self.asset,
             category="INVALID_CATEGORY",
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_classification_level(classification)
@@ -724,7 +776,7 @@ class ClassificationLevelValidationTest(TestCase):
             asset=self.asset,
             category="",
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_classification_level(classification)
@@ -753,13 +805,13 @@ class ClassificationLevelValidationTest(TestCase):
                 asset=self.asset,
                 category=category,
                 status=ClassificationStatus.AUTO_CLASSIFIED,
-                created_by=self.user
+                created_by=self.user,
             )
 
             result = self.rules._validate_classification_level(classification)
 
             self.assertTrue(result.is_valid, f"Category {category} should be valid")
-            self.assertIn('priority', result.details)
+            self.assertIn("priority", result.details)
 
 
 class ClassificationConsistencyValidationTest(TestCase):
@@ -768,19 +820,25 @@ class ClassificationConsistencyValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.file = File.objects.create(
@@ -790,7 +848,7 @@ class ClassificationConsistencyValidationTest(TestCase):
             size=1000,
             status=FileStatus.ACTIVE,
             storage_path="test/test.csv",
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.dataset = Dataset.objects.create(
@@ -800,18 +858,18 @@ class ClassificationConsistencyValidationTest(TestCase):
             schema_json={"fields": []},
             format="CSV",
             version=1,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_validate_classification_consistency_asset_dataset(self):
         """Test classification consistency between asset and dataset"""
         # Create asset-level classification
-        asset_classification = DataClassification.objects.create(
+        DataClassification.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             category=ClassificationCategory.CONFIDENTIAL,
             status=ClassificationStatus.APPROVED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create dataset-level classification (less sensitive - should warn)
@@ -821,7 +879,7 @@ class ClassificationConsistencyValidationTest(TestCase):
             dataset=self.dataset,
             category=ClassificationCategory.INTERNAL,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_classification_consistency(dataset_classification)
@@ -829,17 +887,17 @@ class ClassificationConsistencyValidationTest(TestCase):
         # Should have warnings about inconsistency
         self.assertTrue(result.is_valid)  # Warnings don't make it invalid
         self.assertGreater(len(result.warnings), 0)
-        self.assertTrue(result.details.get('inconsistency_detected', False))
+        self.assertTrue(result.details.get("inconsistency_detected", False))
 
     def test_validate_classification_consistency_dataset_field(self):
         """Test classification consistency between dataset and field"""
         # Create dataset-level classification
-        dataset_classification = DataClassification.objects.create(
+        DataClassification.objects.create(
             tenant=self.tenant,
             dataset=self.dataset,
             category=ClassificationCategory.CONFIDENTIAL,
             status=ClassificationStatus.APPROVED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create field-level classification (less sensitive - should warn)
@@ -849,7 +907,7 @@ class ClassificationConsistencyValidationTest(TestCase):
             field_name="email",
             category=ClassificationCategory.INTERNAL,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_classification_consistency(field_classification)
@@ -857,17 +915,17 @@ class ClassificationConsistencyValidationTest(TestCase):
         # Should have warnings about inconsistency
         self.assertTrue(result.is_valid)  # Warnings don't make it invalid
         self.assertGreater(len(result.warnings), 0)
-        self.assertTrue(result.details.get('inconsistency_detected', False))
+        self.assertTrue(result.details.get("inconsistency_detected", False))
 
     def test_validate_classification_consistency_consistent(self):
         """Test classification consistency with consistent classifications"""
         # Create asset-level classification
-        asset_classification = DataClassification.objects.create(
+        DataClassification.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             category=ClassificationCategory.INTERNAL,
             status=ClassificationStatus.APPROVED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create dataset-level classification (more sensitive - consistent)
@@ -877,15 +935,15 @@ class ClassificationConsistencyValidationTest(TestCase):
             dataset=self.dataset,
             category=ClassificationCategory.CONFIDENTIAL,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_classification_consistency(dataset_classification)
 
         # Should be consistent (no warnings)
         self.assertTrue(result.is_valid)
-        self.assertFalse(result.details.get('inconsistency_detected', False))
-        self.assertTrue(result.details.get('consistent', False))
+        self.assertFalse(result.details.get("inconsistency_detected", False))
+        self.assertTrue(result.details.get("consistent", False))
 
 
 class ClassificationChangeValidationTest(TestCase):
@@ -894,19 +952,25 @@ class ClassificationChangeValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_validate_classification_change_new_classification(self):
@@ -916,14 +980,14 @@ class ClassificationChangeValidationTest(TestCase):
             asset=self.asset,
             category=ClassificationCategory.PUBLIC,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_classification_change(classification)
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details['is_new'])
-        self.assertFalse(result.details['is_change'])
+        self.assertTrue(result.details["is_new"])
+        self.assertFalse(result.details["is_change"])
 
     def test_validate_classification_change_no_change(self):
         """Test classification change validation when category hasn't changed"""
@@ -932,7 +996,7 @@ class ClassificationChangeValidationTest(TestCase):
             asset=self.asset,
             category=ClassificationCategory.PUBLIC,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Update without changing category
@@ -940,7 +1004,7 @@ class ClassificationChangeValidationTest(TestCase):
         result = self.rules._validate_classification_change(classification)
 
         self.assertTrue(result.is_valid)
-        self.assertFalse(result.details['is_change'])
+        self.assertFalse(result.details["is_change"])
 
     def test_validate_classification_change_downgrade_without_approval(self):
         """Test classification change validation - downgrade without approval"""
@@ -949,7 +1013,7 @@ class ClassificationChangeValidationTest(TestCase):
             asset=self.asset,
             category=ClassificationCategory.CONFIDENTIAL,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Try to downgrade to INTERNAL without approval
@@ -959,7 +1023,7 @@ class ClassificationChangeValidationTest(TestCase):
         result = self.rules._validate_classification_change(classification)
 
         self.assertFalse(result.is_valid)
-        self.assertTrue(result.details['is_downgrade'])
+        self.assertTrue(result.details["is_downgrade"])
         self.assertGreater(len(result.errors), 0)
         self.assertIn("requires approval", result.errors[0].lower())
 
@@ -970,7 +1034,7 @@ class ClassificationChangeValidationTest(TestCase):
             asset=self.asset,
             category=ClassificationCategory.CONFIDENTIAL,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Downgrade to INTERNAL with approval
@@ -980,8 +1044,8 @@ class ClassificationChangeValidationTest(TestCase):
         result = self.rules._validate_classification_change(classification)
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details['is_downgrade'])
-        self.assertTrue(result.details['approved'])
+        self.assertTrue(result.details["is_downgrade"])
+        self.assertTrue(result.details["approved"])
 
     def test_validate_classification_change_upgrade(self):
         """Test classification change validation - upgrade (allowed)"""
@@ -990,7 +1054,7 @@ class ClassificationChangeValidationTest(TestCase):
             asset=self.asset,
             category=ClassificationCategory.INTERNAL,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Upgrade to CONFIDENTIAL
@@ -999,8 +1063,8 @@ class ClassificationChangeValidationTest(TestCase):
         result = self.rules._validate_classification_change(classification)
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details['is_upgrade'])
-        self.assertTrue(result.details['upgrade_allowed'])
+        self.assertTrue(result.details["is_upgrade"])
+        self.assertTrue(result.details["upgrade_allowed"])
 
     def test_validate_classification_change_with_previous_category(self):
         """Test classification change validation with explicit previous category"""
@@ -1009,17 +1073,16 @@ class ClassificationChangeValidationTest(TestCase):
             asset=self.asset,
             category=ClassificationCategory.INTERNAL,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_classification_change(
-            classification,
-            previous_category=ClassificationCategory.PUBLIC.value
+            classification, previous_category=ClassificationCategory.PUBLIC.value
         )
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details['is_change'])
-        self.assertTrue(result.details['is_upgrade'])
+        self.assertTrue(result.details["is_change"])
+        self.assertTrue(result.details["is_upgrade"])
 
 
 class ClassificationInheritanceValidationTest(TestCase):
@@ -1028,19 +1091,25 @@ class ClassificationInheritanceValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.file = File.objects.create(
@@ -1050,7 +1119,7 @@ class ClassificationInheritanceValidationTest(TestCase):
             size=1000,
             status=FileStatus.ACTIVE,
             storage_path="test/test.csv",
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.dataset = Dataset.objects.create(
@@ -1060,18 +1129,18 @@ class ClassificationInheritanceValidationTest(TestCase):
             schema_json={"fields": []},
             format="CSV",
             version=1,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_validate_classification_inheritance_dataset_from_asset(self):
         """Test classification inheritance - dataset inherits from asset"""
         # Create asset-level classification
-        asset_classification = DataClassification.objects.create(
+        DataClassification.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             category=ClassificationCategory.CONFIDENTIAL,
             status=ClassificationStatus.APPROVED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create dataset-level classification (less sensitive - should error)
@@ -1081,25 +1150,25 @@ class ClassificationInheritanceValidationTest(TestCase):
             dataset=self.dataset,
             category=ClassificationCategory.INTERNAL,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_classification_inheritance(dataset_classification)
 
         self.assertFalse(result.is_valid)
-        self.assertTrue(result.details.get('inheritance_violation', False))
+        self.assertTrue(result.details.get("inheritance_violation", False))
         self.assertGreater(len(result.errors), 0)
         self.assertIn("less sensitive than parent", result.errors[0].lower())
 
     def test_validate_classification_inheritance_dataset_valid(self):
         """Test classification inheritance - dataset at least as sensitive as asset"""
         # Create asset-level classification
-        asset_classification = DataClassification.objects.create(
+        DataClassification.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             category=ClassificationCategory.INTERNAL,
             status=ClassificationStatus.APPROVED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create dataset-level classification (more sensitive - valid)
@@ -1109,23 +1178,23 @@ class ClassificationInheritanceValidationTest(TestCase):
             dataset=self.dataset,
             category=ClassificationCategory.CONFIDENTIAL,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_classification_inheritance(dataset_classification)
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details.get('inheritance_valid', False))
+        self.assertTrue(result.details.get("inheritance_valid", False))
 
     def test_validate_classification_inheritance_field_from_dataset(self):
         """Test classification inheritance - field inherits from dataset"""
         # Create dataset-level classification
-        dataset_classification = DataClassification.objects.create(
+        DataClassification.objects.create(
             tenant=self.tenant,
             dataset=self.dataset,
             category=ClassificationCategory.CONFIDENTIAL,
             status=ClassificationStatus.APPROVED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create field-level classification (less sensitive - should error)
@@ -1135,25 +1204,25 @@ class ClassificationInheritanceValidationTest(TestCase):
             field_name="email",
             category=ClassificationCategory.INTERNAL,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_classification_inheritance(field_classification)
 
         self.assertFalse(result.is_valid)
-        self.assertTrue(result.details.get('inheritance_violation', False))
+        self.assertTrue(result.details.get("inheritance_violation", False))
         self.assertGreater(len(result.errors), 0)
         self.assertIn("less sensitive than parent", result.errors[0].lower())
 
     def test_validate_classification_inheritance_field_valid(self):
         """Test classification inheritance - field at least as sensitive as dataset"""
         # Create dataset-level classification
-        dataset_classification = DataClassification.objects.create(
+        DataClassification.objects.create(
             tenant=self.tenant,
             dataset=self.dataset,
             category=ClassificationCategory.INTERNAL,
             status=ClassificationStatus.APPROVED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create field-level classification (more sensitive - valid)
@@ -1163,13 +1232,13 @@ class ClassificationInheritanceValidationTest(TestCase):
             field_name="email",
             category=ClassificationCategory.CONFIDENTIAL,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_classification_inheritance(field_classification)
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details.get('inheritance_valid', False))
+        self.assertTrue(result.details.get("inheritance_valid", False))
 
     def test_validate_classification_inheritance_asset_level(self):
         """Test classification inheritance - asset-level (no parent)"""
@@ -1178,14 +1247,14 @@ class ClassificationInheritanceValidationTest(TestCase):
             asset=self.asset,
             category=ClassificationCategory.PUBLIC,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_classification_inheritance(classification)
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details.get('root_level', False))
-        self.assertTrue(result.details.get('inheritance_valid', False))
+        self.assertTrue(result.details.get("root_level", False))
+        self.assertTrue(result.details.get("inheritance_valid", False))
 
 
 class ClassificationValidationIntegrationTest(TestCase):
@@ -1194,19 +1263,25 @@ class ClassificationValidationIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.file = File.objects.create(
@@ -1216,7 +1291,7 @@ class ClassificationValidationIntegrationTest(TestCase):
             size=1000,
             status=FileStatus.ACTIVE,
             storage_path="test/test.csv",
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.dataset = Dataset.objects.create(
@@ -1226,7 +1301,7 @@ class ClassificationValidationIntegrationTest(TestCase):
             schema_json={"fields": []},
             format="CSV",
             version=1,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_validate_classification_comprehensive(self):
@@ -1236,16 +1311,16 @@ class ClassificationValidationIntegrationTest(TestCase):
             asset=self.asset,
             category=ClassificationCategory.PUBLIC,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_classification(classification, self.tenant, self.user)
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details['level_validated'])
-        self.assertTrue(result.details['consistency_validated'])
-        self.assertTrue(result.details['change_validated'])
-        self.assertTrue(result.details['inheritance_validated'])
+        self.assertTrue(result.details["level_validated"])
+        self.assertTrue(result.details["consistency_validated"])
+        self.assertTrue(result.details["change_validated"])
+        self.assertTrue(result.details["inheritance_validated"])
 
     def test_validate_classification_with_downgrade(self):
         """Test comprehensive classification validation with downgrade"""
@@ -1255,7 +1330,7 @@ class ClassificationValidationIntegrationTest(TestCase):
             asset=self.asset,
             category=ClassificationCategory.CONFIDENTIAL,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Try to downgrade without approval
@@ -1265,18 +1340,18 @@ class ClassificationValidationIntegrationTest(TestCase):
         result = self.rules._validate_classification(classification, self.tenant, self.user)
 
         self.assertFalse(result.is_valid)
-        self.assertTrue(result.details['change_validated'])
+        self.assertTrue(result.details["change_validated"])
         self.assertGreater(len(result.errors), 0)
 
     def test_validate_classification_with_inheritance_violation(self):
         """Test comprehensive classification validation with inheritance violation"""
         # Create asset-level classification
-        asset_classification = DataClassification.objects.create(
+        DataClassification.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             category=ClassificationCategory.CONFIDENTIAL,
             status=ClassificationStatus.APPROVED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create dataset-level classification (less sensitive - violates inheritance)
@@ -1286,13 +1361,13 @@ class ClassificationValidationIntegrationTest(TestCase):
             dataset=self.dataset,
             category=ClassificationCategory.INTERNAL,
             status=ClassificationStatus.AUTO_CLASSIFIED,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_classification(dataset_classification, self.tenant, self.user)
 
         self.assertFalse(result.is_valid)
-        self.assertTrue(result.details['inheritance_validated'])
+        self.assertTrue(result.details["inheritance_validated"])
         self.assertGreater(len(result.errors), 0)
 
 
@@ -1302,19 +1377,25 @@ class ABACPolicyValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.file = File.objects.create(
@@ -1324,7 +1405,7 @@ class ABACPolicyValidationTest(TestCase):
             size=1000,
             status=FileStatus.ACTIVE,
             storage_path="test/test.csv",
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.dataset = Dataset.objects.create(
@@ -1334,7 +1415,7 @@ class ABACPolicyValidationTest(TestCase):
             schema_json={"fields": []},
             format="CSV",
             version=1,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_validate_policy_structure_valid(self):
@@ -1346,21 +1427,21 @@ class ABACPolicyValidationTest(TestCase):
             conditions={
                 "user": {"role": "admin"},
                 "resource": {"classification": "PII"},
-                "environment": {"time_of_day": {"$gte": 9, "$lte": 17}}
+                "environment": {"time_of_day": {"$gte": 9, "$lte": 17}},
             },
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_structure(policy)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertTrue(result.details['structure_valid'])
-        self.assertTrue(result.details['has_name'])
-        self.assertTrue(result.details['has_conditions'])
-        self.assertTrue(result.details['effect_valid'])
+        self.assertTrue(result.details["structure_valid"])
+        self.assertTrue(result.details["has_name"])
+        self.assertTrue(result.details["has_conditions"])
+        self.assertTrue(result.details["effect_valid"])
 
     def test_validate_policy_structure_missing_name(self):
         """Test policy structure validation with missing name"""
@@ -1370,7 +1451,7 @@ class ABACPolicyValidationTest(TestCase):
             conditions={"user": {"role": "admin"}},
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_structure(policy)
@@ -1387,7 +1468,7 @@ class ABACPolicyValidationTest(TestCase):
             conditions=None,
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_structure(policy)
@@ -1404,7 +1485,7 @@ class ABACPolicyValidationTest(TestCase):
             conditions="not a dict",
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_structure(policy)
@@ -1421,7 +1502,7 @@ class ABACPolicyValidationTest(TestCase):
             conditions={"user": {"role": "admin"}},
             effect="INVALID",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_structure(policy)
@@ -1438,7 +1519,7 @@ class ABACPolicyValidationTest(TestCase):
             conditions={"user": {"role": "admin"}},
             effect="ALLOW",
             priority="not an int",
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_structure(policy)
@@ -1455,30 +1536,28 @@ class ABACPolicyValidationTest(TestCase):
             conditions={
                 "user": {"role": "admin", "user_roles": ["admin", "manager"]},
                 "resource": {"classification": "PII"},
-                "environment": {"time_of_day": {"$gte": 9, "$lte": 17}}
+                "environment": {"time_of_day": {"$gte": 9, "$lte": 17}},
             },
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_rules(policy)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertTrue(result.details['rules_valid'])
+        self.assertTrue(result.details["rules_valid"])
 
     def test_validate_policy_rules_invalid_operator(self):
         """Test policy rule validation with invalid comparison operator"""
         policy = AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Invalid Operator Policy",
-            conditions={
-                "environment": {"time_of_day": {"$invalid": 9}}
-            },
+            conditions={"environment": {"time_of_day": {"$invalid": 9}}},
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_rules(policy)
@@ -1492,12 +1571,10 @@ class ABACPolicyValidationTest(TestCase):
         policy = AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Invalid Range Policy",
-            conditions={
-                "environment": {"time_of_day": {"$gte": 17, "$lte": 9}}
-            },
+            conditions={"environment": {"time_of_day": {"$gte": 17, "$lte": 9}}},
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_rules(policy)
@@ -1511,12 +1588,10 @@ class ABACPolicyValidationTest(TestCase):
         policy = AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Invalid Value Type Policy",
-            conditions={
-                "environment": {"time_of_day": {"$gte": "not a number"}}
-            },
+            conditions={"environment": {"time_of_day": {"$gte": "not a number"}}},
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_rules(policy)
@@ -1528,13 +1603,13 @@ class ABACPolicyValidationTest(TestCase):
     def test_validate_policy_conflicts_no_conflicts(self):
         """Test policy conflict detection with no conflicts"""
         # Create first policy
-        policy1 = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Policy 1",
             conditions={"user": {"role": "admin"}},
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create second policy with different conditions
@@ -1544,25 +1619,25 @@ class ABACPolicyValidationTest(TestCase):
             conditions={"user": {"role": "user"}},
             effect="ALLOW",
             priority=20,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_conflicts(policy2, self.tenant)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertEqual(len(result.details['conflicts']), 0)
+        self.assertEqual(len(result.details["conflicts"]), 0)
 
     def test_validate_policy_conflicts_effect_conflict_same_priority(self):
         """Test policy conflict detection - effect conflict with same priority"""
         # Create first policy
-        policy1 = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Allow Policy",
             conditions={"user": {"role": "admin"}},
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create second policy with same conditions but different effect and same priority
@@ -1572,26 +1647,26 @@ class ABACPolicyValidationTest(TestCase):
             conditions={"user": {"role": "admin"}},
             effect="DENY",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_conflicts(policy2, self.tenant)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
-        self.assertGreater(len(result.details['conflicts']), 0)
+        self.assertGreater(len(result.details["conflicts"]), 0)
         self.assertIn("conflict", result.errors[0].lower())
 
     def test_validate_policy_conflicts_effect_conflict_different_priority(self):
         """Test policy conflict detection - effect conflict with different priority"""
         # Create first policy
-        policy1 = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Allow Policy",
             conditions={"user": {"role": "admin"}},
             effect="ALLOW",
             priority=20,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create second policy with same conditions but different effect and different priority
@@ -1601,7 +1676,7 @@ class ABACPolicyValidationTest(TestCase):
             conditions={"user": {"role": "admin"}},
             effect="DENY",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_conflicts(policy2, self.tenant)
@@ -1609,18 +1684,18 @@ class ABACPolicyValidationTest(TestCase):
         # Different priority - should be warning, not error
         self.assertTrue(result.is_valid)
         self.assertGreater(len(result.warnings), 0)
-        self.assertGreater(len(result.details['conflicts']), 0)
+        self.assertGreater(len(result.details["conflicts"]), 0)
 
     def test_validate_policy_conflicts_condition_overlap(self):
         """Test policy conflict detection - condition overlap"""
         # Create first policy
-        policy1 = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Policy 1",
             conditions={"user": {"role": "admin", "user_roles": ["admin", "manager"]}},
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create second policy with overlapping conditions
@@ -1630,7 +1705,7 @@ class ABACPolicyValidationTest(TestCase):
             conditions={"user": {"role": "admin"}},
             effect="ALLOW",
             priority=20,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_conflicts(policy2, self.tenant)
@@ -1638,7 +1713,7 @@ class ABACPolicyValidationTest(TestCase):
         # Overlapping conditions should generate warning
         self.assertTrue(result.is_valid)
         self.assertGreater(len(result.warnings), 0)
-        self.assertGreater(len(result.details['conflicts']), 0)
+        self.assertGreater(len(result.details["conflicts"]), 0)
 
     def test_validate_policy_precedence_unique_priority(self):
         """Test policy precedence validation with unique priority"""
@@ -1648,7 +1723,7 @@ class ABACPolicyValidationTest(TestCase):
             conditions={"user": {"role": "admin"}},
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_precedence(policy, self.tenant)
@@ -1659,13 +1734,13 @@ class ABACPolicyValidationTest(TestCase):
     def test_validate_policy_precedence_duplicate_priority(self):
         """Test policy precedence validation with duplicate priority"""
         # Create first policy
-        policy1 = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Policy 1",
             conditions={"user": {"role": "admin"}},
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create second policy with same priority
@@ -1675,7 +1750,7 @@ class ABACPolicyValidationTest(TestCase):
             conditions={"user": {"role": "user"}},
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy_precedence(policy2, self.tenant)
@@ -1694,21 +1769,21 @@ class ABACPolicyValidationTest(TestCase):
             conditions={
                 "user": {"role": "admin", "user_roles": ["admin"]},
                 "resource": {"classification": "PII"},
-                "environment": {"time_of_day": {"$gte": 9, "$lte": 17}}
+                "environment": {"time_of_day": {"$gte": 9, "$lte": 17}},
             },
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy(policy, self.tenant, self.user)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertTrue(result.details['structure_validated'])
-        self.assertTrue(result.details['rules_validated'])
-        self.assertTrue(result.details['conflicts_validated'])
-        self.assertTrue(result.details['precedence_validated'])
+        self.assertTrue(result.details["structure_validated"])
+        self.assertTrue(result.details["rules_validated"])
+        self.assertTrue(result.details["conflicts_validated"])
+        self.assertTrue(result.details["precedence_validated"])
 
     def test_validate_policy_comprehensive_invalid_structure(self):
         """Test comprehensive policy validation with invalid structure"""
@@ -1718,25 +1793,25 @@ class ABACPolicyValidationTest(TestCase):
             conditions=None,
             effect="INVALID",
             priority="not an int",
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy(policy, self.tenant, self.user)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
-        self.assertTrue(result.details['structure_validated'])
+        self.assertTrue(result.details["structure_validated"])
 
     def test_validate_policy_comprehensive_with_conflicts(self):
         """Test comprehensive policy validation with conflicts"""
         # Create first policy
-        policy1 = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Existing Policy",
             conditions={"user": {"role": "admin"}},
             effect="ALLOW",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create conflicting policy
@@ -1746,7 +1821,7 @@ class ABACPolicyValidationTest(TestCase):
             conditions={"user": {"role": "admin"}},
             effect="DENY",
             priority=10,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_policy(policy2, self.tenant, self.user)
@@ -1754,8 +1829,8 @@ class ABACPolicyValidationTest(TestCase):
         # Should detect conflict
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
-        self.assertTrue(result.details['conflicts_validated'])
-        self.assertGreater(len(result.details.get('conflicts', [])), 0)
+        self.assertTrue(result.details["conflicts_validated"])
+        self.assertGreater(len(result.details.get("conflicts", [])), 0)
 
 
 class ComplianceReportGenerationEligibilityTest(TestCase):
@@ -1764,12 +1839,18 @@ class ComplianceReportGenerationEligibilityTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
     def test_validate_report_generation_eligibility_valid(self):
         """Test report generation eligibility with valid user"""
@@ -1779,10 +1860,10 @@ class ComplianceReportGenerationEligibilityTest(TestCase):
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertTrue(result.details['eligible'])
-        self.assertTrue(result.details['user_active'])
-        self.assertTrue(result.details['user_has_tenant'])
-        self.assertTrue(result.details['user_tenant_match'])
+        self.assertTrue(result.details["eligible"])
+        self.assertTrue(result.details["user_active"])
+        self.assertTrue(result.details["user_has_tenant"])
+        self.assertTrue(result.details["user_tenant_match"])
 
     def test_validate_report_generation_eligibility_no_user(self):
         """Test report generation eligibility without user"""
@@ -1814,7 +1895,9 @@ class ComplianceReportGenerationEligibilityTest(TestCase):
             name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=other_tenant,
         )
 
         result = self.rules._validate_compliance_report_generation_eligibility(
@@ -1832,48 +1915,50 @@ class ComplianceReportScopeValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
     def test_validate_report_scope_valid(self):
         """Test report scope validation with valid scope"""
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
 
         end_date = timezone.now()
         start_date = end_date - timedelta(days=30)
 
         result = self.rules._validate_compliance_report_scope(
-            tenant=self.tenant,
-            start_date=start_date,
-            end_date=end_date,
-            regulation="GDPR"
+            tenant=self.tenant, start_date=start_date, end_date=end_date, regulation="GDPR"
         )
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertTrue(result.details['scope_valid'])
-        self.assertTrue(result.details['tenant_match'])
-        self.assertTrue(result.details['regulation_valid'])
-        self.assertTrue(result.details['date_range_valid'])
+        self.assertTrue(result.details["scope_valid"])
+        self.assertTrue(result.details["tenant_match"])
+        self.assertTrue(result.details["regulation_valid"])
+        self.assertTrue(result.details["date_range_valid"])
 
     def test_validate_report_scope_invalid_date_range(self):
         """Test report scope validation with invalid date range (start > end)"""
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
 
         start_date = timezone.now()
         end_date = start_date - timedelta(days=30)
 
         result = self.rules._validate_compliance_report_scope(
-            tenant=self.tenant,
-            start_date=start_date,
-            end_date=end_date,
-            regulation="GDPR"
+            tenant=self.tenant, start_date=start_date, end_date=end_date, regulation="GDPR"
         )
 
         self.assertFalse(result.is_valid)
@@ -1882,17 +1967,15 @@ class ComplianceReportScopeValidationTest(TestCase):
 
     def test_validate_report_scope_future_dates(self):
         """Test report scope validation with future dates"""
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
 
         start_date = timezone.now() + timedelta(days=1)
         end_date = start_date + timedelta(days=30)
 
         result = self.rules._validate_compliance_report_scope(
-            tenant=self.tenant,
-            start_date=start_date,
-            end_date=end_date,
-            regulation="GDPR"
+            tenant=self.tenant, start_date=start_date, end_date=end_date, regulation="GDPR"
         )
 
         self.assertFalse(result.is_valid)
@@ -1901,8 +1984,9 @@ class ComplianceReportScopeValidationTest(TestCase):
 
     def test_validate_report_scope_invalid_regulation(self):
         """Test report scope validation with invalid regulation"""
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
 
         end_date = timezone.now()
         start_date = end_date - timedelta(days=30)
@@ -1911,7 +1995,7 @@ class ComplianceReportScopeValidationTest(TestCase):
             tenant=self.tenant,
             start_date=start_date,
             end_date=end_date,
-            regulation="INVALID_REGULATION"
+            regulation="INVALID_REGULATION",
         )
 
         self.assertFalse(result.is_valid)
@@ -1920,17 +2004,15 @@ class ComplianceReportScopeValidationTest(TestCase):
 
     def test_validate_report_scope_large_date_range(self):
         """Test report scope validation with very large date range"""
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
 
         end_date = timezone.now()
         start_date = end_date - timedelta(days=400)
 
         result = self.rules._validate_compliance_report_scope(
-            tenant=self.tenant,
-            start_date=start_date,
-            end_date=end_date,
-            regulation="GDPR"
+            tenant=self.tenant, start_date=start_date, end_date=end_date, regulation="GDPR"
         )
 
         # Should be valid but with warnings
@@ -1940,8 +2022,9 @@ class ComplianceReportScopeValidationTest(TestCase):
 
     def test_validate_report_scope_with_report(self):
         """Test report scope validation using existing report"""
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
 
         end_date = timezone.now()
         start_date = end_date - timedelta(days=30)
@@ -1953,14 +2036,14 @@ class ComplianceReportScopeValidationTest(TestCase):
             report_data={"test": "data"},
             start_date=start_date,
             end_date=end_date,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_compliance_report_scope(report=report)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertEqual(result.details['report_id'], str(report.id))
+        self.assertEqual(result.details["report_id"], str(report.id))
 
 
 class ComplianceReportFormatValidationTest(TestCase):
@@ -1969,33 +2052,36 @@ class ComplianceReportFormatValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
     def test_validate_report_format_valid(self):
         """Test report format validation with valid format"""
         result = self.rules._validate_compliance_report_format(
-            report_type="STANDARD",
-            regulation="GDPR",
-            export_format="JSON"
+            report_type="STANDARD", regulation="GDPR", export_format="JSON"
         )
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertTrue(result.details['format_valid'])
-        self.assertTrue(result.details['report_type_valid'])
-        self.assertTrue(result.details['regulation_valid'])
-        self.assertTrue(result.details['export_format_valid'])
+        self.assertTrue(result.details["format_valid"])
+        self.assertTrue(result.details["report_type_valid"])
+        self.assertTrue(result.details["regulation_valid"])
+        self.assertTrue(result.details["export_format_valid"])
 
     def test_validate_report_format_invalid_report_type(self):
         """Test report format validation with invalid report type"""
         result = self.rules._validate_compliance_report_format(
-            report_type="INVALID_TYPE",
-            regulation="GDPR"
+            report_type="INVALID_TYPE", regulation="GDPR"
         )
 
         self.assertFalse(result.is_valid)
@@ -2005,8 +2091,7 @@ class ComplianceReportFormatValidationTest(TestCase):
     def test_validate_report_format_invalid_regulation(self):
         """Test report format validation with invalid regulation"""
         result = self.rules._validate_compliance_report_format(
-            report_type="STANDARD",
-            regulation="INVALID_REGULATION"
+            report_type="STANDARD", regulation="INVALID_REGULATION"
         )
 
         self.assertFalse(result.is_valid)
@@ -2016,9 +2101,7 @@ class ComplianceReportFormatValidationTest(TestCase):
     def test_validate_report_format_invalid_export_format(self):
         """Test report format validation with invalid export format"""
         result = self.rules._validate_compliance_report_format(
-            report_type="STANDARD",
-            regulation="GDPR",
-            export_format="INVALID_FORMAT"
+            report_type="STANDARD", regulation="GDPR", export_format="INVALID_FORMAT"
         )
 
         self.assertFalse(result.is_valid)
@@ -2030,8 +2113,7 @@ class ComplianceReportFormatValidationTest(TestCase):
         valid_types = ["STANDARD", "SUMMARY", "DETAILED"]
         for report_type in valid_types:
             result = self.rules._validate_compliance_report_format(
-                report_type=report_type,
-                regulation="GDPR"
+                report_type=report_type, regulation="GDPR"
             )
             self.assertTrue(result.is_valid, f"Report type {report_type} should be valid")
 
@@ -2040,8 +2122,7 @@ class ComplianceReportFormatValidationTest(TestCase):
         valid_regulations = ["GDPR", "HIPAA", "SOX", "LGPD", "CCPA"]
         for regulation in valid_regulations:
             result = self.rules._validate_compliance_report_format(
-                report_type="STANDARD",
-                regulation=regulation
+                report_type="STANDARD", regulation=regulation
             )
             self.assertTrue(result.is_valid, f"Regulation {regulation} should be valid")
 
@@ -2050,16 +2131,15 @@ class ComplianceReportFormatValidationTest(TestCase):
         valid_formats = ["JSON", "CSV", "PDF", "EXCEL", "XLSX"]
         for export_format in valid_formats:
             result = self.rules._validate_compliance_report_format(
-                report_type="STANDARD",
-                regulation="GDPR",
-                export_format=export_format
+                report_type="STANDARD", regulation="GDPR", export_format=export_format
             )
             self.assertTrue(result.is_valid, f"Export format {export_format} should be valid")
 
     def test_validate_report_format_with_report(self):
         """Test report format validation using existing report"""
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
 
         end_date = timezone.now()
         start_date = end_date - timedelta(days=30)
@@ -2071,14 +2151,14 @@ class ComplianceReportFormatValidationTest(TestCase):
             report_data={"test": "data"},
             start_date=start_date,
             end_date=end_date,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_compliance_report_format(report=report)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertEqual(result.details['report_id'], str(report.id))
+        self.assertEqual(result.details["report_id"], str(report.id))
 
 
 class ComplianceReportAccessValidationTest(TestCase):
@@ -2087,15 +2167,22 @@ class ComplianceReportAccessValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
+
+        from datetime import timedelta
 
         from django.utils import timezone
-        from datetime import timedelta
 
         self.end_date = timezone.now()
         self.start_date = self.end_date - timedelta(days=30)
@@ -2109,16 +2196,16 @@ class ComplianceReportAccessValidationTest(TestCase):
             report_data={"test": "data"},
             start_date=self.start_date,
             end_date=self.end_date,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_compliance_report_access(report, self.user, self.tenant)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertTrue(result.details['access_granted'])
-        self.assertTrue(result.details['user_active'])
-        self.assertTrue(result.details['tenant_match'])
+        self.assertTrue(result.details["access_granted"])
+        self.assertTrue(result.details["user_active"])
+        self.assertTrue(result.details["tenant_match"])
 
     def test_validate_report_access_no_user(self):
         """Test report access validation without user"""
@@ -2129,7 +2216,7 @@ class ComplianceReportAccessValidationTest(TestCase):
             report_data={"test": "data"},
             start_date=self.start_date,
             end_date=self.end_date,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_compliance_report_access(report, None, self.tenant)
@@ -2150,7 +2237,7 @@ class ComplianceReportAccessValidationTest(TestCase):
             report_data={"test": "data"},
             start_date=self.start_date,
             end_date=self.end_date,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_compliance_report_access(report, self.user, self.tenant)
@@ -2166,7 +2253,9 @@ class ComplianceReportAccessValidationTest(TestCase):
             name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=other_tenant,
         )
 
         report = ComplianceReport.objects.create(
@@ -2176,7 +2265,7 @@ class ComplianceReportAccessValidationTest(TestCase):
             report_data={"test": "data"},
             start_date=self.start_date,
             end_date=self.end_date,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_compliance_report_access(report, other_user, other_tenant)
@@ -2194,14 +2283,14 @@ class ComplianceReportAccessValidationTest(TestCase):
             report_data={"test": "data"},
             start_date=self.start_date,
             end_date=self.end_date,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_compliance_report_access(report, self.user, self.tenant)
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details['is_creator'])
-        self.assertTrue(result.details['access_granted'])
+        self.assertTrue(result.details["is_creator"])
+        self.assertTrue(result.details["access_granted"])
 
     def test_validate_report_access_no_data(self):
         """Test report access validation when report has empty data"""
@@ -2212,7 +2301,7 @@ class ComplianceReportAccessValidationTest(TestCase):
             report_data={},  # Empty dict instead of None
             start_date=self.start_date,
             end_date=self.end_date,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_compliance_report_access(report, self.user, self.tenant)
@@ -2229,15 +2318,22 @@ class ComplianceReportValidationIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
-        self.rules = GovernanceBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.rules = GovernanceBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
+
+        from datetime import timedelta
 
         from django.utils import timezone
-        from datetime import timedelta
 
         self.end_date = timezone.now()
         self.start_date = self.end_date - timedelta(days=30)
@@ -2252,13 +2348,13 @@ class ComplianceReportValidationIntegrationTest(TestCase):
             start_date=self.start_date,
             end_date=self.end_date,
             export_format="JSON",
-            validation_type="all"
+            validation_type="all",
         )
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details['eligibility_validated'])
-        self.assertTrue(result.details['scope_validated'])
-        self.assertTrue(result.details['format_validated'])
+        self.assertTrue(result.details["eligibility_validated"])
+        self.assertTrue(result.details["scope_validated"])
+        self.assertTrue(result.details["format_validated"])
 
     def test_validate_compliance_report_comprehensive_access(self):
         """Test comprehensive compliance report validation for access"""
@@ -2269,25 +2365,23 @@ class ComplianceReportValidationIntegrationTest(TestCase):
             report_data={"test": "data"},
             start_date=self.start_date,
             end_date=self.end_date,
-            created_by=self.user
+            created_by=self.user,
         )
 
         result = self.rules._validate_compliance_report(
-            report=report,
-            user=self.user,
-            tenant=self.tenant,
-            validation_type="all"
+            report=report, user=self.user, tenant=self.tenant, validation_type="all"
         )
 
         self.assertTrue(result.is_valid)
-        self.assertTrue(result.details['scope_validated'])
-        self.assertTrue(result.details['format_validated'])
-        self.assertTrue(result.details['access_validated'])
+        self.assertTrue(result.details["scope_validated"])
+        self.assertTrue(result.details["format_validated"])
+        self.assertTrue(result.details["access_validated"])
 
     def test_validate_compliance_report_with_invalid_scope(self):
         """Test comprehensive compliance report validation with invalid scope"""
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
 
         # Invalid: start_date > end_date
         invalid_start = timezone.now()
@@ -2300,11 +2394,11 @@ class ComplianceReportValidationIntegrationTest(TestCase):
             report_type="STANDARD",
             start_date=invalid_start,
             end_date=invalid_end,
-            validation_type="all"
+            validation_type="all",
         )
 
         self.assertFalse(result.is_valid)
-        self.assertTrue(result.details['scope_validated'])
+        self.assertTrue(result.details["scope_validated"])
         self.assertGreater(len(result.errors), 0)
 
     def test_validate_compliance_report_with_invalid_format(self):
@@ -2316,10 +2410,9 @@ class ComplianceReportValidationIntegrationTest(TestCase):
             report_type="INVALID_TYPE",
             start_date=self.start_date,
             end_date=self.end_date,
-            validation_type="all"
+            validation_type="all",
         )
 
         self.assertFalse(result.is_valid)
-        self.assertTrue(result.details['format_validated'])
+        self.assertTrue(result.details["format_validated"])
         self.assertGreater(len(result.errors), 0)
-

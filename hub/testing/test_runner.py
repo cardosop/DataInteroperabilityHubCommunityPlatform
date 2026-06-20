@@ -26,7 +26,7 @@ def _ensure_connection_with_retry(connection, max_attempts=3, delay=5):
         except Exception as e:
             last_error = e
             if attempt < max_attempts:
-                time.sleep(delay)
+                time.sleep(delay)  # noqa: sleep-needed — retry loop
             else:
                 raise last_error
 
@@ -37,8 +37,10 @@ class NoMigrateDatabaseCreation(PostgresDatabaseCreation):
     def create_test_db(self, verbosity=1, autoclobber=False, serialize=None, keepdb=False):
         if not _skip_migrations():
             return super().create_test_db(
-                verbosity=verbosity, autoclobber=autoclobber,
-                serialize=serialize, keepdb=keepdb,
+                verbosity=verbosity,
+                autoclobber=autoclobber,
+                serialize=serialize,
+                keepdb=keepdb,
             )
         from django.conf import settings
         from django.core.management import call_command
@@ -94,6 +96,7 @@ class NoMigrateTestRunner(DiscoverRunner):
         if not _skip_migrations():
             return super().setup_databases(**kwargs)
         from django.db import connections
+
         for alias in connections:
             conn = connections[alias]
             conn.creation = NoMigrateDatabaseCreation(conn)

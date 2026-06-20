@@ -15,7 +15,6 @@ from hub.apps.contracts.normalization import (
     _reset_normalizer_registry,
     get_normalizer,
     normalize_contract,
-    register_normalizer,
 )
 from hub.apps.contracts.normalization.odcs_normalizer_default import ODCSNormalizerDefault
 from hub.apps.contracts.normalization.odcs_normalizer_v2_2_2 import ODCSNormalizerV2_2_2
@@ -203,7 +202,7 @@ schema:
     - name: id
       type: string
 """
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, _status, errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 
@@ -224,7 +223,7 @@ schema:
     - name: id
       type: string
 """
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, _status, errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 
@@ -245,7 +244,7 @@ schema:
     - name: id
       type: string
 """
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, _status, errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 
@@ -266,7 +265,7 @@ schema:
     - name: id
       type: string
 """
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, _status, errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 
@@ -287,7 +286,7 @@ schema:
     - name: id
       type: string
 """
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, spec_version, _status, errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 
@@ -308,7 +307,7 @@ schema:
     - name: id
       type: string
 """
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+        hub_contract, spec_type, _spec_version, _status, errors, _warnings = normalize_contract(
             raw_contract, "yaml"
         )
 

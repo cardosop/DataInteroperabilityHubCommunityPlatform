@@ -4,16 +4,17 @@ Unit tests for S3StorageClient.
 Tests use real S3StorageClient with graceful handling when S3/MinIO unavailable.
 """
 
+import contextlib
+
 import pytest
+from botocore.exceptions import EndpointConnectionError
 from django.core.files.base import ContentFile
-from django.test import TestCase
 
 from hub.apps.files.storage import (
     S3StorageClient,
     StorageError,
     StorageObjectNotFoundError,
 )
-from botocore.exceptions import EndpointConnectionError
 from hub.apps.files.tests.test_base import FilesTestBase
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -30,7 +31,7 @@ class S3StorageClientTest(FilesTestBase):
             self.storage_client = S3StorageClient()
             self.storage_client._ensure_bucket_exists()
             self.storage_available = True
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover — S3 probe
             self.storage_available = False
 
     def test_storage_client_initialization(self):
@@ -211,10 +212,8 @@ class S3StorageClientTest(FilesTestBase):
         self.assertIsNotNone(upload_id)
 
         # Clean up - abort multipart upload
-        try:
+        with contextlib.suppress(Exception):
             self.storage_client.abort_multipart_upload(key=storage_path, upload_id=upload_id)
-        except Exception:
-            pass
 
     def test_generate_presigned_part_url_success(self):
         """Test generating presigned part URL."""
@@ -239,10 +238,8 @@ class S3StorageClientTest(FilesTestBase):
         self.assertIn("http", part_url)
 
         # Clean up
-        try:
+        with contextlib.suppress(Exception):
             self.storage_client.abort_multipart_upload(key=storage_path, upload_id=upload_id)
-        except Exception:
-            pass
 
     def test_initiate_and_abort_multipart_upload(self):
         """Test that a multipart upload can be initiated and then aborted.
@@ -274,7 +271,6 @@ class S3StorageClientTest(FilesTestBase):
         verifies that operations raise exceptions instead of crashing
         silently or hanging.
         """
-        from django.test import override_settings
         from botocore.config import Config
 
         # Build a client aimed at an unreachable address.
@@ -294,6 +290,7 @@ class S3StorageClientTest(FilesTestBase):
             read_timeout=1,
         )
         import boto3 as _boto3
+
         bad_client.client = _boto3.client(
             "s3",
             endpoint_url="http://192.0.2.1:9999",
@@ -338,6 +335,7 @@ class S3StorageClientTest(FilesTestBase):
             self.skipTest("S3/MinIO storage not available")
 
         import uuid
+
         nonexistent = f"ghost-{uuid.uuid4().hex[:8]}/nope.txt"
 
         with self.assertRaises(StorageObjectNotFoundError) as cm:
@@ -359,6 +357,7 @@ class S3StorageClientTest(FilesTestBase):
         client._bucket_checked = False
 
         import uuid
+
         fid = uuid.uuid4()
         content = b"retry-test"
         storage_path = client.save_file(
@@ -376,6 +375,7 @@ class S3StorageClientTest(FilesTestBase):
             self.skipTest("S3/MinIO storage not available")
 
         import uuid
+
         fid = uuid.uuid4()
         file_name = "report.csv"
         storage_path = self.storage_client.save_file(

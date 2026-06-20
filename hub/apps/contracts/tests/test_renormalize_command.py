@@ -1,8 +1,9 @@
 """
 Phase 83.1 — renormalize_contracts management command tests.
 """
+
 from io import StringIO
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.core.management import call_command
@@ -11,7 +12,6 @@ from django.test import TestCase
 
 @pytest.mark.django_db(transaction=True)
 class RenormalizeContractsCommandTest(TestCase):
-
     @patch("hub.apps.contracts.tasks.renormalize_contracts_v310")
     def test_sync_processes_contracts(self, mock_task):
         mock_task.return_value = {"processed": 5, "failed": 0}

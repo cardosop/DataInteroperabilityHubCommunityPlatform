@@ -18,7 +18,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import Any
 
 from croniter import croniter
 from django.utils import timezone as django_timezone
@@ -39,9 +39,6 @@ from hub.apps.scheduled_ingestion.models import (
 )
 from hub.apps.users.models import User
 
-if TYPE_CHECKING:
-    from hub.apps.tenants.models import Tenant
-
 logger = logging.getLogger(__name__)
 
 
@@ -58,13 +55,13 @@ class ScheduledIngestionRuleExecutionContext(RuleExecutionContext):
     - user: Optional user instance for permission validation
     """
 
-    schedule: Optional[ScheduledIngestion] = None
-    ingestion_run: Optional[ScheduledIngestionRun] = None
-    source: Optional[Dict[str, Any]] = None
-    tenant: Optional[Any] = None  # Using Any to avoid circular import
-    user: Optional[User] = None
+    schedule: ScheduledIngestion | None = None
+    ingestion_run: ScheduledIngestionRun | None = None
+    source: dict[str, Any] | None = None
+    tenant: Any | None = None  # Using Any to avoid circular import
+    user: User | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert context to dictionary for caching/logging."""
         base_dict = super().to_dict()
         # Add scheduled ingestion-specific fields
@@ -91,7 +88,6 @@ class ScheduledIngestionRuleExecutionContext(RuleExecutionContext):
     description="Validates scheduled ingestion schedules, runs, sources, and tenant context",
     tags=["scheduled_ingestion", "validation", "ingestion"],
     priority=10,
-
     openspec_ref="specs/scheduled-ingestion-business-rules/spec.md",
 )
 class ScheduledIngestionBusinessRules(BusinessRules):
@@ -111,7 +107,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         return "ScheduledIngestionBusinessRules"
 
     def validate(
-        self, context: Optional[RuleExecutionContext] = None, *args, **kwargs
+        self, context: RuleExecutionContext | None = None, *args, **kwargs
     ) -> ValidationResult:
         """
         Main validation method required by BusinessRules base class.
@@ -223,8 +219,8 @@ class ScheduledIngestionBusinessRules(BusinessRules):
     def _validate_schedule(
         self,
         schedule: ScheduledIngestion,
-        tenant: Optional[Any] = None,
-        user: Optional[User] = None,
+        tenant: Any | None = None,
+        user: User | None = None,
     ) -> ValidationResult:
         """
         Validate scheduled ingestion schedule structure and properties.
@@ -332,7 +328,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                 re.compile(schedule.file_pattern)
                 details["file_pattern_valid"] = True
             except re.error as e:
-                errors.append(f"Invalid file pattern regex: {str(e)}")
+                errors.append(f"Invalid file pattern regex: {e!s}")
                 details["file_pattern_valid"] = False
 
         # Validate schedule conflicts (no overlapping schedules for same source)
@@ -407,7 +403,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                     details["cron_expression_valid"] = True
                     details["cron_expression"] = cron_expr
                 except (ValueError, TypeError, AttributeError) as e:
-                    errors.append(f"Invalid cron expression '{cron_expr}': {str(e)}")
+                    errors.append(f"Invalid cron expression '{cron_expr}': {e!s}")
                     details["cron_expression_valid"] = False
                     details["cron_expression"] = cron_expr
                 except Exception as e:
@@ -416,7 +412,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                         "Unexpected error validating cron expression",
                         extra={"cron_expr": cron_expr, "error_type": type(e).__name__},
                     )
-                    errors.append(f"Invalid cron expression '{cron_expr}': {str(e)}")
+                    errors.append(f"Invalid cron expression '{cron_expr}': {e!s}")
                     details["cron_expression_valid"] = False
                     details["cron_expression"] = cron_expr
 
@@ -437,7 +433,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                     else:
                         details["time_format_valid"] = True
                         details["time"] = time_str
-                except (ValueError, AttributeError) as e:
+                except (ValueError, AttributeError):
                     errors.append(f"Invalid time format '{time_str}': expected HH:MM format")
                     details["time_format_valid"] = False
 
@@ -450,23 +446,22 @@ class ScheduledIngestionBusinessRules(BusinessRules):
             if not isinstance(days_of_week, list):
                 errors.append("days_of_week must be a list of integers (0=Monday, 6=Sunday)")
                 details["days_of_week_valid"] = False
+            elif not days_of_week:
+                errors.append("days_of_week cannot be empty")
+                details["days_of_week_valid"] = False
             else:
-                if not days_of_week:
-                    errors.append("days_of_week cannot be empty")
+                invalid_days = [
+                    d for d in days_of_week if not isinstance(d, int) or not (0 <= d <= 6)
+                ]
+                if invalid_days:
+                    errors.append(
+                        f"Invalid days_of_week values: {invalid_days}. "
+                        f"Must be integers 0-6 (0=Monday, 6=Sunday)"
+                    )
                     details["days_of_week_valid"] = False
                 else:
-                    invalid_days = [
-                        d for d in days_of_week if not isinstance(d, int) or not (0 <= d <= 6)
-                    ]
-                    if invalid_days:
-                        errors.append(
-                            f"Invalid days_of_week values: {invalid_days}. "
-                            f"Must be integers 0-6 (0=Monday, 6=Sunday)"
-                        )
-                        details["days_of_week_valid"] = False
-                    else:
-                        details["days_of_week_valid"] = True
-                        details["days_of_week"] = days_of_week
+                    details["days_of_week_valid"] = True
+                    details["days_of_week"] = days_of_week
 
             # Validate time format
             if not isinstance(time_str, str):
@@ -483,7 +478,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                     else:
                         details["time_format_valid"] = True
                         details["time"] = time_str
-                except (ValueError, AttributeError) as e:
+                except (ValueError, AttributeError):
                     errors.append(f"Invalid time format '{time_str}': expected HH:MM format")
                     details["time_format_valid"] = False
 
@@ -496,15 +491,12 @@ class ScheduledIngestionBusinessRules(BusinessRules):
             if not isinstance(day_of_month, int):
                 errors.append("day_of_month must be an integer")
                 details["day_of_month_valid"] = False
+            elif not (1 <= day_of_month <= 31):
+                errors.append(f"Invalid day_of_month '{day_of_month}': must be between 1 and 31")
+                details["day_of_month_valid"] = False
             else:
-                if not (1 <= day_of_month <= 31):
-                    errors.append(
-                        f"Invalid day_of_month '{day_of_month}': must be between 1 and 31"
-                    )
-                    details["day_of_month_valid"] = False
-                else:
-                    details["day_of_month_valid"] = True
-                    details["day_of_month"] = day_of_month
+                details["day_of_month_valid"] = True
+                details["day_of_month"] = day_of_month
 
             # Validate time format
             if not isinstance(time_str, str):
@@ -521,7 +513,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                     else:
                         details["time_format_valid"] = True
                         details["time"] = time_str
-                except (ValueError, AttributeError) as e:
+                except (ValueError, AttributeError):
                     errors.append(f"Invalid time format '{time_str}': expected HH:MM format")
                     details["time_format_valid"] = False
 
@@ -560,11 +552,11 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         try:
             from pytz import timezone as pytz_timezone
 
-            tz = pytz_timezone(timezone_str)
+            pytz_timezone(timezone_str)
             details["timezone_valid"] = True
             details["timezone"] = timezone_str
         except (UnknownTimeZoneError, ValueError, AttributeError) as e:
-            errors.append(f"Invalid timezone '{timezone_str}': {str(e)}")
+            errors.append(f"Invalid timezone '{timezone_str}': {e!s}")
             details["timezone_valid"] = False
             details["timezone"] = timezone_str
         except Exception as e:
@@ -572,7 +564,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                 "Unexpected error validating timezone",
                 extra={"timezone_str": timezone_str, "error_type": type(e).__name__},
             )
-            errors.append(f"Invalid timezone '{timezone_str}': {str(e)}")
+            errors.append(f"Invalid timezone '{timezone_str}': {e!s}")
             details["timezone_valid"] = False
             details["timezone"] = timezone_str
 
@@ -617,7 +609,9 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         matching_sources = []
         for other_schedule in conflicting_schedules:
             # Compare source_config (deep comparison)
-            if self._source_configs_match(schedule.get_source_config(), other_schedule.get_source_config()):
+            if self._source_configs_match(
+                schedule.get_source_config(), other_schedule.get_source_config()
+            ):
                 matching_sources.append(other_schedule)
 
         if not matching_sources:
@@ -691,38 +685,32 @@ class ScheduledIngestionBusinessRules(BusinessRules):
 
         # Validate required fields based on source type
         if source_type == SourceType.S3:
-            required_fields = ["bucket"]
             if "bucket" not in source_config:
                 errors.append("S3 source config requires 'bucket' field")
             if "region" not in source_config:
                 warnings.append("S3 source config should include 'region' field")
 
         elif source_type == SourceType.GCS:
-            required_fields = ["bucket"]
             if "bucket" not in source_config:
                 errors.append("GCS source config requires 'bucket' field")
 
         elif source_type == SourceType.AZURE_BLOB:
-            required_fields = ["container"]
             if "container" not in source_config:
                 errors.append("Azure Blob source config requires 'container' field")
             if "account_name" not in source_config:
                 errors.append("Azure Blob source config requires 'account_name' field")
 
         elif source_type in [SourceType.HTTP, SourceType.HTTPS]:
-            required_fields = ["base_url"]
             if "base_url" not in source_config:
                 errors.append(f"{source_type} source config requires 'base_url' field")
 
         elif source_type in [SourceType.FTP, SourceType.SFTP]:
-            required_fields = ["host"]
             if "host" not in source_config:
                 errors.append(f"{source_type} source config requires 'host' field")
             if "port" not in source_config:
                 warnings.append(f"{source_type} source config should include 'port' field")
 
         elif source_type == SourceType.DATABASE:
-            required_fields = ["host", "database"]
             if "host" not in source_config:
                 errors.append("Database source config requires 'host' field")
             if "database" not in source_config:
@@ -737,7 +725,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
             is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
-    def _source_configs_match(self, config1: Dict[str, Any], config2: Dict[str, Any]) -> bool:
+    def _source_configs_match(self, config1: dict[str, Any], config2: dict[str, Any]) -> bool:
         """
         Check if two source configs match (for conflict detection).
 
@@ -766,7 +754,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
 
     def _calculate_schedule_runs(
         self, schedule: ScheduledIngestion, count: int = 10
-    ) -> List[datetime]:
+    ) -> list[datetime]:
         """
         Calculate next N run times for a schedule.
 
@@ -847,7 +835,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
 
         return runs
 
-    def _schedules_overlap(self, runs1: List[datetime], runs2: List[datetime]) -> bool:
+    def _schedules_overlap(self, runs1: list[datetime], runs2: list[datetime]) -> bool:
         """
         Check if two schedules overlap (have runs at the same time).
 
@@ -871,8 +859,8 @@ class ScheduledIngestionBusinessRules(BusinessRules):
     def _validate_ingestion_run(
         self,
         ingestion_run: ScheduledIngestionRun,
-        tenant: Optional[Any] = None,
-        user: Optional[User] = None,
+        tenant: Any | None = None,
+        user: User | None = None,
     ) -> ValidationResult:
         """
         Comprehensive ingestion run validation including:
@@ -1361,7 +1349,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                 details["job_retrieval_error"] = "Job not found"
             except (AttributeError, KeyError, ValueError) as e:
                 warnings.append(
-                    f"Could not retrieve retry information from job {ingestion_run.job_id}: {str(e)}"
+                    f"Could not retrieve retry information from job {ingestion_run.job_id}: {e!s}"
                 )
                 details["job_retrieval_error"] = str(e)
             except Exception as e:
@@ -1370,7 +1358,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                     extra={"job_id": str(ingestion_run.job_id), "error_type": type(e).__name__},
                 )
                 warnings.append(
-                    f"Could not retrieve retry information from job {ingestion_run.job_id}: {str(e)}"
+                    f"Could not retrieve retry information from job {ingestion_run.job_id}: {e!s}"
                 )
                 details["job_retrieval_error"] = str(e)
 
@@ -1435,10 +1423,10 @@ class ScheduledIngestionBusinessRules(BusinessRules):
     # ====================================================================
     def _validate_source(
         self,
-        source: Union[Dict[str, Any], ScheduledIngestion],
-        tenant: Optional[Any] = None,
-        user: Optional[User] = None,
-        target_asset: Optional[Any] = None,
+        source: dict[str, Any] | ScheduledIngestion,
+        tenant: Any | None = None,
+        user: User | None = None,
+        target_asset: Any | None = None,
     ) -> ValidationResult:
         """
         Comprehensive source validation including:
@@ -1566,7 +1554,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
             is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
 
-    def _validate_source_type(self, source_type: Optional[str]) -> ValidationResult:
+    def _validate_source_type(self, source_type: str | None) -> ValidationResult:
         """
         Validate source type is valid.
 
@@ -1606,7 +1594,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         )
 
     def _validate_source_structure(
-        self, source: Union[ScheduledIngestion, Dict[str, Any]]
+        self, source: ScheduledIngestion | dict[str, Any]
     ) -> ValidationResult:
         """
         Validate source type and source_config structure only (no live connection or accessibility test).
@@ -1662,7 +1650,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         )
 
     def _validate_source_connection(
-        self, source_type: str, source_config: Dict[str, Any]
+        self, source_type: str, source_config: dict[str, Any]
     ) -> ValidationResult:
         """
         Validate source connection works and credentials are valid.
@@ -1730,7 +1718,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
             try:
                 connector = SourceConnectorFactory.get_connector(source_type)
             except ValueError as e:
-                errors.append(f"Unsupported source type for connection testing: {str(e)}")
+                errors.append(f"Unsupported source type for connection testing: {e!s}")
                 details["connection_tested"] = False
                 details["connection_test_failed"] = True
                 return ValidationResult(
@@ -1789,12 +1777,11 @@ class ScheduledIngestionBusinessRules(BusinessRules):
             details["connection_tested"] = True
             details["connection_successful"] = connection_successful
 
-            if not connection_successful:
-                if not connection_error:
-                    errors.append(
-                        f"Connection test failed for {source_type} source. "
-                        f"Please verify credentials and network connectivity."
-                    )
+            if not connection_successful and not connection_error:
+                errors.append(
+                    f"Connection test failed for {source_type} source. "
+                    f"Please verify credentials and network connectivity."
+                )
 
         except (ConnectionError, TimeoutError, ValueError, AttributeError) as e:
             # Connection or configuration error during connection testing
@@ -1807,7 +1794,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                 },
             )
             errors.append(
-                f"Connection test failed for {source_type} source: {str(e)}. "
+                f"Connection test failed for {source_type} source: {e!s}. "
                 f"Please verify credentials and network connectivity."
             )
         except Exception as e:
@@ -1818,7 +1805,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                 exc_info=True,
             )
             warnings.append(
-                f"Connection test encountered an unexpected error: {str(e)}. "
+                f"Connection test encountered an unexpected error: {e!s}. "
                 f"Please verify source configuration manually."
             )
             details["connection_tested"] = False
@@ -1830,7 +1817,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         )
 
     def _validate_source_config_required_fields(
-        self, source_type: str, source_config: Dict[str, Any]
+        self, source_type: str, source_config: dict[str, Any]
     ) -> ValidationResult:
         """
         Validate required fields are present in source_config based on source_type.
@@ -1949,9 +1936,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
             details["required_fields_valid"] = True
 
         # Check optional fields (for warnings)
-        present_optional_fields = [
-            f for f in optional_fields if f in source_config and source_config[f]
-        ]
+        present_optional_fields = [f for f in optional_fields if source_config.get(f)]
         details["optional_fields_present"] = present_optional_fields
 
         # Add warnings for missing important optional fields
@@ -1970,7 +1955,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
         )
 
     def _validate_source_accessibility(
-        self, source_type: str, source_config: Dict[str, Any]
+        self, source_type: str, source_config: dict[str, Any]
     ) -> ValidationResult:
         """
         Validate source is accessible from ingestion service.
@@ -2012,7 +1997,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                     try:
                         from connectors.factory import SourceConnectorFactory
 
-                        connector = SourceConnectorFactory.get_connector(source_type)
+                        SourceConnectorFactory.get_connector(source_type)
 
                         # Test connection (which includes bucket accessibility)
                         # Connection test already covers this, so we'll just mark it
@@ -2024,14 +2009,14 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                         )
                         details["accessibility_tested"] = False
                 except (ConnectionError, TimeoutError, ValueError, AttributeError) as e:
-                    warnings.append(f"Accessibility check failed: {str(e)}")
+                    warnings.append(f"Accessibility check failed: {e!s}")
                     details["accessibility_error"] = str(e)
                 except Exception as e:
                     logger.warning(
                         "Unexpected error during accessibility check",
                         extra={"source_type": source_type, "error_type": type(e).__name__},
                     )
-                    warnings.append(f"Accessibility check failed: {str(e)}")
+                    warnings.append(f"Accessibility check failed: {e!s}")
                     details["accessibility_error"] = str(e)
 
         elif source_type in [SourceType.HTTP.value, SourceType.HTTPS.value]:
@@ -2053,7 +2038,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                         elif response.status_code == 404:
                             warnings.append("Source URL returned 404 - endpoint may not exist")
                 except Exception as e:
-                    warnings.append(f"Accessibility check for URL failed: {str(e)}")
+                    warnings.append(f"Accessibility check for URL failed: {e!s}")
                     details["accessibility_error"] = str(e)
                     details["accessibility_tested"] = True
 
@@ -2085,7 +2070,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
     # Save checkpoint for large file management (business_rules.py > 2100 lines).
     # ====================================================================
     def _validate_source_schema_compatibility(
-        self, source_type: str, source_config: Dict[str, Any], target_asset: Any
+        self, source_type: str, source_config: dict[str, Any], target_asset: Any
     ) -> ValidationResult:
         """
         Validate source schema is compatible with target asset schema.
@@ -2120,7 +2105,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
 
             if not isinstance(target_asset, Asset):
                 warnings.append(
-                    f"Target asset is not an Asset instance - schema compatibility check skipped"
+                    "Target asset is not an Asset instance - schema compatibility check skipped"
                 )
                 details["schema_compatibility_checked"] = False
                 details["skip_reason"] = "invalid_target_asset_type"
@@ -2170,7 +2155,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
             ]
 
         except (AttributeError, ValueError, TypeError) as e:
-            warnings.append(f"Failed to retrieve target asset schema: {str(e)}")
+            warnings.append(f"Failed to retrieve target asset schema: {e!s}")
             details["schema_compatibility_checked"] = False
             details["skip_reason"] = "failed_to_retrieve_target_schema"
         except Exception as e:
@@ -2181,7 +2166,7 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                     "error_type": type(e).__name__,
                 },
             )
-            warnings.append(f"Failed to retrieve target asset schema: {str(e)}")
+            warnings.append(f"Failed to retrieve target asset schema: {e!s}")
             details["schema_compatibility_checked"] = False
             details["skip_reason"] = "failed_to_retrieve_target_schema"
             details["error"] = str(e)
@@ -2264,9 +2249,9 @@ class ScheduledIngestionBusinessRules(BusinessRules):
 
     def _validate_user_permissions(
         self,
-        schedule: Optional[ScheduledIngestion],
-        ingestion_run: Optional[ScheduledIngestionRun],
-        tenant: Optional[Any],
+        schedule: ScheduledIngestion | None,
+        ingestion_run: ScheduledIngestionRun | None,
+        tenant: Any | None,
         user: User,
     ) -> ValidationResult:
         """

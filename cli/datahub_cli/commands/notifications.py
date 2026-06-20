@@ -1,14 +1,15 @@
 """Notification management commands."""
 
 import json
+
 import click
+
 from ..api_client import api_client
 
 
 @click.group()
 def notifications():
     """Notification management."""
-    pass
 
 
 @notifications.command("list")

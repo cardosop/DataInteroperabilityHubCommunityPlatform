@@ -6,6 +6,7 @@ DataContractCLIClient uses real client with graceful handling when CLI service u
 """
 
 import unittest
+import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -28,7 +29,6 @@ from hub.apps.contracts.tests.test_base import (
 )
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
-import uuid
 
 User = get_user_model()
 
@@ -69,8 +69,11 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
 
         response = self.client.post(f"/api/v1/contracts/{contract.id}/validate/", {}, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK,
-            "Sync validation must return 200 when CLI service is available")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            "Sync validation must return 200 when CLI service is available",
+        )
         self.assertIn("validation_status", response.data)
 
         contract.refresh_from_db()
@@ -82,8 +85,9 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
             f"Expected VALID, WARNING_ONLY, or SKIPPED, got {contract.validation_status}",
         )
         # DB timestamp must be set after validation.
-        self.assertIsNotNone(contract.last_validated_at,
-            "last_validated_at must be set after successful validation")
+        self.assertIsNotNone(
+            contract.last_validated_at, "last_validated_at must be set after successful validation"
+        )
 
     def test_validate_contract_with_errors(self):
         """Validation of contract with errors returns 200 with error details."""
@@ -100,8 +104,11 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
 
         response = self.client.post(f"/api/v1/contracts/{contract.id}/validate/", {}, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK,
-            "Validation with errors must return 200 when CLI is available")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            "Validation with errors must return 200 when CLI is available",
+        )
         self.assertIn("validation_status", response.data)
         self.assertIn("errors", response.data)
         self.assertIn("grouped_errors", response.data)
@@ -115,8 +122,7 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
             f"Expected INVALID, ERROR, or SKIPPED for contract with errors, got {contract.validation_status}",
         )
         # The response must include an errors list (may be empty for SKIPPED).
-        self.assertIsInstance(response.data.get("errors"), list,
-            "Response 'errors' must be a list")
+        self.assertIsInstance(response.data.get("errors"), list, "Response 'errors' must be a list")
 
     def test_validate_contract_async(self):
         """Async validation returns 202 ACCEPTED (or 200 sync fallback)."""
@@ -137,14 +143,18 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
             f"/api/v1/contracts/{contract.id}/validate/", {"async": True}, format="json"
         )
 
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED],
-            f"Async validation must return 200 or 202, got {response.status_code}")
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_202_ACCEPTED],
+            f"Async validation must return 200 or 202, got {response.status_code}",
+        )
 
         if response.status_code == status.HTTP_202_ACCEPTED:
             self.assertIn("job_id", response.data)
             self.assertEqual(response.data["status"], "pending")
 
             from hub.apps.jobs.models import Job
+
             job_id = response.data["job_id"]
             job = Job.objects.get(id=job_id)
             self.assertIsNotNone(job)
@@ -164,8 +174,9 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
 
         response = self.client.post(f"/api/v1/contracts/{contract.id}/lint/", {}, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK,
-            "Lint must return 200 when CLI is available")
+        self.assertEqual(
+            response.status_code, status.HTTP_200_OK, "Lint must return 200 when CLI is available"
+        )
         self.assertIn("issues", response.data)
 
     def test_convert_contract(self):
@@ -185,8 +196,11 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
             f"/api/v1/contracts/{contract.id}/convert/", {"target_format": "YAML"}, format="json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK,
-            "Convert must return 200 when CLI is available")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            "Convert must return 200 when CLI is available",
+        )
         self.assertIn("converted_contract", response.data)
         self.assertIn("format", response.data)
 
@@ -259,14 +273,17 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
         """
 
         contract = Contract.objects.create(
-            tenant=self.tenant, status=ContractStatus.DRAFT,
-            original_spec_type=OriginalSpecType.ODCS, original_spec_version="3.0.0",
+            tenant=self.tenant,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
             original_format=OriginalFormat.JSON,
             original_raw='{"id": "test", "name": "Test"}',
             created_by=self.user,
         )
 
         from django.test import override_settings
+
         with override_settings(DATACONTRACT_SERVICE_URL="http://127.0.0.1:65535"):
             response = self.client.post(
                 f"/api/v1/contracts/{contract.id}/validate/", {}, format="json"
@@ -275,10 +292,15 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
         # The view has a try/except around the CLI call that returns 200
         # with an error payload rather than crashing.  The contract's
         # validation_status stays unchanged (the view never updated it).
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_500_INTERNAL_SERVER_ERROR])
+        self.assertIn(
+            response.status_code, [status.HTTP_200_OK, status.HTTP_500_INTERNAL_SERVER_ERROR]
+        )
         contract.refresh_from_db()
-        self.assertEqual(contract.validation_status, ValidationStatus.ERROR,
-            "Error-handling path must set validation_status to ERROR when CLI is unreachable")
+        self.assertEqual(
+            contract.validation_status,
+            ValidationStatus.ERROR,
+            "Error-handling path must set validation_status to ERROR when CLI is unreachable",
+        )
 
     def test_validate_contract_invalid_json(self):
         """Test contract validation with invalid JSON raises error"""
@@ -319,7 +341,10 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
         # Create other tenant and contract
         _uid = uuid.uuid4().hex[:8]
         other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         other_user = User.objects.create_user(
             email=f"other-{_uid}@example.com",
@@ -336,7 +361,6 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
             original_raw='{"id": "other"}',
             created_by=other_user,
         )
-
 
         # Should not be able to validate contract from other tenant
         response = self.client.post(
@@ -376,7 +400,6 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
         if not check_datacontract_cli_available():
             self.skipTest("DataContract CLI service not available in test environment")
 
-
         contract = Contract.objects.create(
             tenant=self.tenant,
             status=ContractStatus.DRAFT,
@@ -394,8 +417,11 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
         )
 
         # View always returns 400 for invalid target format
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST,
-            "Invalid target format must return 400")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+            "Invalid target format must return 400",
+        )
 
     # ========== EDGE CASES ==========
 
@@ -452,8 +478,11 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
         self.assertIsInstance(grouped, dict)
         # One error has no category — must be grouped under "unknown" or "other".
         unknown_bucket = grouped.get("unknown", grouped.get("other", []))
-        self.assertGreater(len(unknown_bucket), 0,
-            "Error without 'category' must land in 'unknown' or 'other' bucket")
+        self.assertGreater(
+            len(unknown_bucket),
+            0,
+            "Error without 'category' must land in 'unknown' or 'other' bucket",
+        )
 
     def test_validate_contract_large_contract_triggers_async(self):
         """Test that large contracts automatically trigger async validation"""
@@ -474,8 +503,11 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
         response = self.client.post(f"/api/v1/contracts/{contract.id}/validate/", {}, format="json")
 
         # Large contracts (>100KB) must auto-switch to async
-        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED,
-            f"Large contract must auto-switch to async (202), got {response.status_code}")
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_202_ACCEPTED,
+            f"Large contract must auto-switch to async (202), got {response.status_code}",
+        )
         self.assertIn("job_id", response.data)
 
     def test_validate_contract_sequential_stress(self):
@@ -501,8 +533,11 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
             response = self.client.post(
                 f"/api/v1/contracts/{contract.id}/validate/", {}, format="json"
             )
-            self.assertIn(response.status_code, [200, 202],
-                f"Request {i+1} returned unexpected status {response.status_code}")
+            self.assertIn(
+                response.status_code,
+                [200, 202],
+                f"Request {i + 1} returned unexpected status {response.status_code}",
+            )
 
     def test_validate_contract_retry_on_failure(self):
         """Validation retry-and-circuit-breaker: when the service is
@@ -515,15 +550,19 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
         """
 
         contract = Contract.objects.create(
-            tenant=self.tenant, status=ContractStatus.DRAFT,
-            original_spec_type=OriginalSpecType.ODCS, original_spec_version="3.0.0",
+            tenant=self.tenant,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
             original_format=OriginalFormat.JSON,
             original_raw='{"id": "test", "name": "Test"}',
             created_by=self.user,
         )
 
         import time as _time
+
         from django.test import override_settings
+
         start = _time.monotonic()
         with override_settings(DATACONTRACT_SERVICE_URL="http://127.0.0.1:65535"):
             response = self.client.post(
@@ -531,7 +570,9 @@ class ContractValidationTest(ContractsAPITransactionTestBase):
             )
         elapsed = _time.monotonic() - start
 
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_500_INTERNAL_SERVER_ERROR])
+        self.assertIn(
+            response.status_code, [status.HTTP_200_OK, status.HTTP_500_INTERNAL_SERVER_ERROR]
+        )
         # Retries must have completed — the endpoint returned, it didn't hang.
         # The retry loop uses ~1s + 3s delays with short timeouts, so
         # elapsed should be well under 30s (generous upper bound).

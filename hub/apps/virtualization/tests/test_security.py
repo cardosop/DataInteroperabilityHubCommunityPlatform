@@ -3,26 +3,26 @@ Security tests for virtualization operations.
 
 Tests access control, data isolation, input validation, and security boundaries.
 """
+
+import uuid
+
+import pytest
 from django.test import TestCase
 from django.utils import timezone
-from django.contrib.auth import get_user_model
-import uuid
-import pytest
 
+from hub.apps.core.services.base import NotFoundError, PermissionError, ValidationError
+from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.users.models import User
 from hub.apps.virtualization.models import (
-    VirtualDataset,
     QueryExecution,
-    QueryType,
-    VirtualDatasetStatus,
-    QueryExecutionStatus,
     QueryExecutionMode,
+    QueryExecutionStatus,
+    QueryType,
+    VirtualDataset,
+    VirtualDatasetStatus,
 )
 from hub.apps.virtualization.services import VirtualizationService
-from hub.apps.core.services.base import PermissionError, ValidationError, NotFoundError
-from hub.apps.tenants.models import Tenant, TenantPlan, PlanTier
-from hub.apps.billing.models import Subscription, SubscriptionStatus
-from hub.apps.users.models import User
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -33,88 +33,46 @@ class VirtualizationSecurityTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         from hub.apps.orchestration.registry import reset_workflow_definition_cache
+
         reset_workflow_definition_cache()
         from hub.apps.users.models import Role, UserRole
 
         _uid1 = uuid.uuid4().hex[:8]
-        self.tenant1 = Tenant.objects.create(
-            name=f"Tenant 1 {_uid1}",
-            slug=f"tenant-1-{_uid1}"
-        )
+        self.tenant1 = Tenant.objects.create(name=f"Tenant 1 {_uid1}", slug=f"tenant-1-{_uid1}")
         _uid2 = uuid.uuid4().hex[:8]
-        self.tenant2 = Tenant.objects.create(
-            name=f"Tenant 2 {_uid2}",
-            slug=f"tenant-2-{_uid2}"
-        )
+        self.tenant2 = Tenant.objects.create(name=f"Tenant 2 {_uid2}", slug=f"tenant-2-{_uid2}")
 
         self.user1 = User.objects.create_user(
-            email=f"user1-{_uid1}@tenant1.com",
-            password="testpass123",
-            tenant=self.tenant1
+            email=f"user1-{_uid1}@tenant1.com", password="testpass123", tenant=self.tenant1
         )
         self.user2 = User.objects.create_user(
-            email=f"user2-{_uid2}@tenant2.com",
-            password="testpass123",
-            tenant=self.tenant2
+            email=f"user2-{_uid2}@tenant2.com", password="testpass123", tenant=self.tenant2
         )
 
         # Assign DATA_PROVIDER role to users
         role1, _ = Role.objects.get_or_create(
             tenant=self.tenant1,
             name="DATA_PROVIDER",
-            defaults={"description": "Data provider role"}
+            defaults={"description": "Data provider role"},
         )
         UserRole.objects.get_or_create(user=self.user1, role=role1)
 
         role2, _ = Role.objects.get_or_create(
             tenant=self.tenant2,
             name="DATA_PROVIDER",
-            defaults={"description": "Data provider role"}
+            defaults={"description": "Data provider role"},
         )
         UserRole.objects.get_or_create(user=self.user2, role=role2)
 
         # Set up subscription/plan for both tenants
         for t in [self.tenant1, self.tenant2]:
-            plan, _ = TenantPlan.objects.get_or_create(
-                slug="virtualization-test-plan",
-                defaults={
-                    "name": "Virtualization Test Plan",
-                    "tier": PlanTier.PRO,
-                    "limits_json": {
-                        "max_assets": 100,
-                        "max_storage_gb": 1000,
-                        "max_virtual_datasets": 100,
-                    },
-                    "is_active": True,
-                },
-            )
-            if "max_storage_gb" not in (plan.limits_json or {}):
-                plan.limits_json = {
-                    **(plan.limits_json or {}),
-                    "max_storage_gb": 1000,
-                    "max_virtual_datasets": 100,
-                }
-                plan.save(update_fields=["limits_json"])
-            if t.plan_id != plan.id:
-                t.plan = plan
-                t.save(update_fields=["plan"])
-            Subscription.objects.get_or_create(
-                tenant=t,
-                defaults={
-                    "plan": plan,
-                    "status": SubscriptionStatus.ACTIVE,
-                    "current_period_start": timezone.now(),
-                    "current_period_end": timezone.now(),
-                },
-            )
+            ensure_tenant_has_active_subscription(t)
 
         self.service1 = VirtualizationService(
-            tenant_id=str(self.tenant1.id),
-            user_id=str(self.user1.id)
+            tenant_id=str(self.tenant1.id), user_id=str(self.user1.id)
         )
         self.service2 = VirtualizationService(
-            tenant_id=str(self.tenant2.id),
-            user_id=str(self.user2.id)
+            tenant_id=str(self.tenant2.id), user_id=str(self.user2.id)
         )
 
     def test_tenant_isolation_dataset_access(self):
@@ -126,26 +84,27 @@ class VirtualizationSecurityTest(TestCase):
             name="Tenant 1 Dataset",
             query="SELECT 1",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         # Try to access from tenant2 service
         with self.assertRaises((NotFoundError, PermissionError)):
             self.service2.get_virtual_dataset(
-                virtual_dataset_id=str(dataset1.id),
-                tenant_id=str(self.tenant2.id)
+                virtual_dataset_id=str(dataset1.id), tenant_id=str(self.tenant2.id)
             )
 
     def test_tenant_isolation_query_execution(self):
         """Test that tenants cannot execute queries on other tenants' datasets."""
-        # Create dataset in tenant1
+        # Create dataset in tenant1 with sources so validation runs to completion
+        # before the cross-tenant check (defense in depth).
         dataset1 = VirtualDataset.objects.create(
             tenant=self.tenant1,
             created_by=self.user1,
             name="Tenant 1 Dataset",
             query="SELECT 1",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
+            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
         )
 
         # Try to execute query from tenant2
@@ -153,7 +112,7 @@ class VirtualizationSecurityTest(TestCase):
             self.service2.execute_query(
                 virtual_dataset_id=str(dataset1.id),
                 tenant_id=str(self.tenant2.id),
-                user_id=str(self.user2.id)
+                user_id=str(self.user2.id),
             )
 
     def test_sql_injection_prevention(self):
@@ -164,12 +123,11 @@ class VirtualizationSecurityTest(TestCase):
             name="SQL Injection Test",
             query="SELECT * FROM users WHERE id = :user_id",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
+            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
         )
 
-        malicious_parameters = {
-            "user_id": "1; DROP TABLE users; --"
-        }
+        malicious_parameters = {"user_id": "1; DROP TABLE users; --"}
 
         # The service MUST reject malicious parameters — either by raising
         # ValidationError or by executing safely with sanitized parameters.
@@ -179,7 +137,7 @@ class VirtualizationSecurityTest(TestCase):
                 virtual_dataset_id=str(dataset.id),
                 tenant_id=str(self.tenant1.id),
                 user_id=str(self.user1.id),
-                parameters=malicious_parameters
+                parameters=malicious_parameters,
             )
         except ValidationError:
             # Injection was blocked — this is the expected secure outcome.
@@ -194,12 +152,13 @@ class VirtualizationSecurityTest(TestCase):
             self.assertNotIn(
                 "DROP TABLE",
                 execution.executed_query.upper(),
-                "Malicious SQL should not appear in the executed query"
+                "Malicious SQL should not appear in the executed query",
             )
 
     def test_query_parameter_validation(self):
         """Test that query parameters are properly validated."""
         from django.conf import settings
+
         db = settings.DATABASES["default"]
         dataset = VirtualDataset.objects.create(
             tenant=self.tenant1,
@@ -208,14 +167,16 @@ class VirtualizationSecurityTest(TestCase):
             query="SELECT 1 WHERE 1 = :id",
             query_type=QueryType.SQL,
             status=VirtualDatasetStatus.ACTIVE,
-            sources=[{
-                "type": "postgresql",
-                "host": db.get("HOST", "localhost"),
-                "port": int(db.get("PORT", 5432)),
-                "database": db.get("NAME"),
-                "username": db.get("USER"),
-                "password": db.get("PASSWORD"),
-            }],
+            sources=[
+                {
+                    "type": "postgresql",
+                    "host": db.get("HOST", "localhost"),
+                    "port": int(db.get("PORT", 5432)),
+                    "database": db.get("NAME"),
+                    "username": db.get("USER"),
+                    "password": db.get("PASSWORD"),
+                }
+            ],
         )
 
         # Invalid parameter types should be rejected
@@ -228,7 +189,7 @@ class VirtualizationSecurityTest(TestCase):
                 virtual_dataset_id=str(dataset.id),
                 tenant_id=str(self.tenant1.id),
                 user_id=str(self.user1.id),
-                parameters=invalid_parameters
+                parameters=invalid_parameters,
             )
         # Complex dict parameters are rejected — either by our validation
         # ("parameter") or by the DB adapter ("can't adapt type 'dict'")
@@ -244,12 +205,11 @@ class VirtualizationSecurityTest(TestCase):
         restricted_user = User.objects.create_user(
             email=f"restricted-{uuid.uuid4().hex[:8]}@tenant1.com",
             password="testpass123",
-            tenant=self.tenant1
+            tenant=self.tenant1,
         )
 
         restricted_service = VirtualizationService(
-            tenant_id=str(self.tenant1.id),
-            user_id=str(restricted_user.id)
+            tenant_id=str(self.tenant1.id), user_id=str(restricted_user.id)
         )
 
         # Try to create dataset without permissions - should fail
@@ -272,7 +232,7 @@ class VirtualizationSecurityTest(TestCase):
             name="Tenant 1 Dataset",
             query="SELECT * FROM tenant1_data",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         dataset2 = VirtualDataset.objects.create(
@@ -281,7 +241,7 @@ class VirtualizationSecurityTest(TestCase):
             name="Tenant 2 Dataset",
             query="SELECT * FROM tenant2_data",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         # Create executions for each
@@ -291,7 +251,7 @@ class VirtualizationSecurityTest(TestCase):
             execution_mode=QueryExecutionMode.SYNC,
             status=QueryExecutionStatus.COMPLETED,
             started_at=timezone.now(),
-            completed_at=timezone.now()
+            completed_at=timezone.now(),
         )
 
         execution2 = QueryExecution.objects.create(
@@ -300,7 +260,7 @@ class VirtualizationSecurityTest(TestCase):
             execution_mode=QueryExecutionMode.SYNC,
             status=QueryExecutionStatus.COMPLETED,
             started_at=timezone.now(),
-            completed_at=timezone.now()
+            completed_at=timezone.now(),
         )
 
         # Verify executions belong to correct tenants
@@ -310,8 +270,7 @@ class VirtualizationSecurityTest(TestCase):
         # Verify tenant2 cannot access tenant1's execution
         with self.assertRaises((NotFoundError, PermissionError)):
             self.service2.get_query_execution(
-                query_execution_id=str(execution1.id),
-                tenant_id=str(self.tenant2.id)
+                query_execution_id=str(execution1.id), tenant_id=str(self.tenant2.id)
             )
 
     def test_query_syntax_validation(self):
@@ -326,13 +285,12 @@ class VirtualizationSecurityTest(TestCase):
             # statements nor safe parameterized queries.
             with self.assertRaises(
                 (ValidationError, ValueError),
-                msg=f"Malicious query should be rejected: {malicious_query!r}"
+                msg=f"Malicious query should be rejected: {malicious_query!r}",
             ):
                 self.service1.create_virtual_dataset(
                     tenant_id=str(self.tenant1.id),
                     user_id=str(self.user1.id),
                     name="Malicious Dataset",
                     query=malicious_query,
-                    query_type=QueryType.SQL
+                    query_type=QueryType.SQL,
                 )
-

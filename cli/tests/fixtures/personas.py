@@ -16,18 +16,17 @@ Parametrize helpers:
     all_mvp_personas — list of all 13 persona role strings
     all_mvp_personas_excluding(*roles) — subset excluding given roles
 """
+
 from __future__ import annotations
 
 import os
 import tempfile
+from collections.abc import Generator
 from dataclasses import dataclass
-from typing import Generator
 
 import pytest
 from click.testing import CliRunner
-
-from tests._persona_provisioning import provision_persona, PersonaCredentials
-
+from tests._persona_provisioning import PersonaCredentials, provision_persona
 
 # ---------------------------------------------------------------------------
 # D145 persona role strings — canonical list
@@ -62,9 +61,11 @@ def all_mvp_personas_excluding(*roles: str) -> list[str]:
 # Internal: build a CliRunner with persona credentials
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PersonaRunner:
     """A CliRunner bound to a specific persona's credentials."""
+
     runner: CliRunner
     credentials: PersonaCredentials
     role: str
@@ -103,10 +104,7 @@ def _make_persona_runner(role: str) -> Generator[PersonaRunner, None, None]:
         )
         config_path = os.path.join(config_dir, "config.yaml")
         with open(config_path, "w") as f:
-            f.write(
-                f"api_url: {api_url}\n"
-                f"api_key: {creds.api_key}\n"
-            )
+            f.write(f"api_url: {api_url}\napi_key: {creds.api_key}\n")
 
         runner = CliRunner(
             env={
@@ -128,53 +126,66 @@ def _make_persona_runner(role: str) -> Generator[PersonaRunner, None, None]:
 # 13 persona fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def visitor_runner():
     yield from _make_persona_runner("visitor")
+
 
 @pytest.fixture(scope="session")
 def auditor_runner():
     yield from _make_persona_runner("auditor")
 
+
 @pytest.fixture(scope="session")
 def community_manager_runner():
     yield from _make_persona_runner("community_manager")
+
 
 @pytest.fixture(scope="session")
 def compliance_officer_runner():
     yield from _make_persona_runner("compliance_officer")
 
+
 @pytest.fixture(scope="session")
 def data_analyst_runner():
     yield from _make_persona_runner("data_analyst")
+
 
 @pytest.fixture(scope="session")
 def data_consumer_runner():
     yield from _make_persona_runner("data_consumer")
 
+
 @pytest.fixture(scope="session")
 def data_engineer_runner():
     yield from _make_persona_runner("data_engineer")
+
 
 @pytest.fixture(scope="session")
 def data_mesh_domain_owner_runner():
     yield from _make_persona_runner("data_mesh_domain_owner")
 
+
 @pytest.fixture(scope="session")
 def data_product_owner_runner():
     yield from _make_persona_runner("data_product_owner")
+
 
 @pytest.fixture(scope="session")
 def data_scientist_runner():
     yield from _make_persona_runner("data_scientist")
 
+
 @pytest.fixture(scope="session")
 def external_developer_runner():
     yield from _make_persona_runner("external_developer")
 
+
 @pytest.fixture(scope="session")
 def platform_admin_runner():
     yield from _make_persona_runner("platform_admin")
+
 
 @pytest.fixture(scope="session")
 def tenant_admin_runner():

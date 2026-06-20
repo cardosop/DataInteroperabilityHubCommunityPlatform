@@ -8,6 +8,7 @@ Tests confirming that:
       and CommunityViewSet.partial_update() no longer calls
       serializer.save() directly
 """
+
 import uuid
 
 import pytest
@@ -15,11 +16,13 @@ from django.test import TestCase
 
 from hub.apps.core.services.base import (
     NotFoundError,
+)
+from hub.apps.core.services.base import (
     ValidationError as ServiceValidationError,
 )
 from hub.apps.social.models import Community
 from hub.apps.social.services import SocialService
-from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import (
     ensure_tenant_has_active_subscription,
 )
@@ -45,9 +48,7 @@ class NotificationsBusinessRulesWiringTest(TestCase):
                 email_type="USER_INVITATION",
                 to_email="not-an-email",
                 subject="Test",
-                template_name=(
-                    "notifications/emails/user_invitation.html"
-                ),
+                template_name=("notifications/emails/user_invitation.html"),
                 context={},
                 tenant_id=None,
                 user_id=None,
@@ -64,9 +65,7 @@ class NotificationsBusinessRulesWiringTest(TestCase):
                 email_type="USER_INVITATION",
                 to_email="",
                 subject="Test",
-                template_name=(
-                    "notifications/emails/user_invitation.html"
-                ),
+                template_name=("notifications/emails/user_invitation.html"),
                 context={},
             )
         self.assertIn("validation failed", str(cm.exception).lower())
@@ -160,8 +159,9 @@ class SearchBusinessRulesWiringTest(TestCase):
         self,
     ):
         """SearchService module imports SearchBusinessRules."""
-        import hub.apps.search.services as svc_module
         import inspect
+
+        import hub.apps.search.services as svc_module
 
         source = inspect.getsource(svc_module)
         self.assertIn(
@@ -346,6 +346,7 @@ class SocialUpdateCommunityTest(TestCase):
         """CommunityViewSet.partial_update() must not call
         serializer.save() — it routes through the service."""
         import inspect
+
         from hub.apps.social.views import CommunityViewSet
 
         source = inspect.getsource(
@@ -363,6 +364,7 @@ class SocialUpdateCommunityTest(TestCase):
         """CommunityViewSet.partial_update() references
         SocialService.update_community()."""
         import inspect
+
         from hub.apps.social.views import CommunityViewSet
 
         source = inspect.getsource(
@@ -371,6 +373,5 @@ class SocialUpdateCommunityTest(TestCase):
         self.assertIn(
             "update_community",
             source,
-            "partial_update must delegate to "
-            "service.update_community()",
+            "partial_update must delegate to service.update_community()",
         )

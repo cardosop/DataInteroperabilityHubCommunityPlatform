@@ -27,7 +27,7 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
-from hub.apps.jobs.models import Job, JobStatus, JobType
+from hub.apps.jobs.models import JobType
 from hub.apps.jobs.utils import create_job
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
@@ -103,7 +103,9 @@ class OnboardingLifecycleTest(TestCase):
             file=file_obj,
         )
 
-    def _create_compliance_run(self, asset, *, run_status=ComplianceRunStatus.SUCCEEDED, allowed_to_store=True):
+    def _create_compliance_run(
+        self, asset, *, run_status=ComplianceRunStatus.SUCCEEDED, allowed_to_store=True
+    ):
         job = create_job(
             tenant=self.tenant,
             user=self.user,
@@ -172,7 +174,9 @@ class OnboardingLifecycleTest(TestCase):
 
     def test_activate_requires_dq_pass_when_dataset_exists(self):
         """Activation with dataset but dq_status=UNKNOWN returns 400."""
-        asset = self._create_asset(dq_status=DQStatus.UNKNOWN, compliance_status=ComplianceStatus.PASS)
+        asset = self._create_asset(
+            dq_status=DQStatus.UNKNOWN, compliance_status=ComplianceStatus.PASS
+        )
         self._create_contract(asset)
         self._create_dataset(asset)
         resp = self._activate(asset)

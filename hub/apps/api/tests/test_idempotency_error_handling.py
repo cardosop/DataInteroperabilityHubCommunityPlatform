@@ -11,23 +11,22 @@ Tests cover:
 
 All tests use real Redis connections - no mocks or stubs.
 """
+
 import json
 import time
 import uuid
-from datetime import datetime, timezone
-from unittest.mock import patch
+from datetime import UTC, datetime
 
-from django.test import TestCase, RequestFactory, override_settings
 from django.http import JsonResponse
+from django.test import RequestFactory, TestCase, override_settings
 
 from hub.apps.api.middleware.idempotency import IdempotencyMiddleware
 from hub.apps.api.middleware.idempotency_utils import (
-    get_redis_client,
     build_idempotency_key,
+    get_idempotency_record,
+    get_redis_client,
     hash_request_body,
     store_idempotency_record,
-    get_idempotency_record,
-    check_idempotency_key_expired,
 )
 
 
@@ -41,6 +40,7 @@ class TestIdempotencyErrorHandling(TestCase):
 
     def test_malformed_idempotency_key_returns_400(self):
         """Test malformed idempotency keys return 400 Bad Request."""
+
         def get_response(request):
             return JsonResponse({"status": "ok"}, status=200)
 
@@ -59,16 +59,16 @@ class TestIdempotencyErrorHandling(TestCase):
                 "/api/v1/assets/",
                 data=json.dumps({"name": "test"}),
                 content_type="application/json",
-                HTTP_IDEMPOTENCY_KEY=invalid_key
+                HTTP_IDEMPOTENCY_KEY=invalid_key,
             )
 
             response = middleware(request)
 
             self.assertEqual(response.status_code, 400, f"Failed for key: {invalid_key}")
             response_data = json.loads(response.content)
-            self.assertIn('error', response_data)
-            self.assertEqual(response_data['error']['code'], 'INVALID_IDEMPOTENCY_KEY')
-            self.assertEqual(response_data['error']['http_status'], 400)
+            self.assertIn("error", response_data)
+            self.assertEqual(response_data["error"]["code"], "INVALID_IDEMPOTENCY_KEY")
+            self.assertEqual(response_data["error"]["http_status"], 400)
 
         # Test empty key separately — the middleware skips empty keys
         # (process_request returns None), then the request is processed
@@ -77,12 +77,17 @@ class TestIdempotencyErrorHandling(TestCase):
             "/api/v1/assets/",
             data=json.dumps({"name": "test"}),
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=""
+            HTTP_IDEMPOTENCY_KEY="",
         )
         response = middleware(request)
-        self.assertIsNotNone(response, "Empty key should still produce a response from get_response")
-        self.assertEqual(response.status_code, 200,
-                         "Empty key should be ignored, allowing normal request processing")
+        self.assertIsNotNone(
+            response, "Empty key should still produce a response from get_response"
+        )
+        self.assertEqual(
+            response.status_code,
+            200,
+            "Empty key should be ignored, allowing normal request processing",
+        )
 
     def test_expired_idempotency_key_detection(self):
         """Test expired idempotency key detection via TTL expiry.
@@ -97,10 +102,10 @@ class TestIdempotencyErrorHandling(TestCase):
         # Store a record with very short TTL (1 second)
         request_hash = hash_request_body({"name": "test"})
         response_data = {
-            'status_code': 201,
-            'body': {'id': '123'},
-            'headers': {},
-            'timestamp': datetime.now(timezone.utc).isoformat()
+            "status_code": 201,
+            "body": {"id": "123"},
+            "headers": {},
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
         store_idempotency_record(redis_client, redis_key, request_hash, response_data, ttl=1)
@@ -112,13 +117,13 @@ class TestIdempotencyErrorHandling(TestCase):
             record = get_idempotency_record(redis_client, redis_key)
             if record is None:
                 break
-            time.sleep(0.05)
+            time.sleep(0.05)  # noqa: sleep-needed — retry loop
 
-        self.assertIsNone(record,
-            "Expired key should be deleted by Redis after TTL expires")
+        self.assertIsNone(record, "Expired key should be deleted by Redis after TTL expires")
 
     def test_redis_failure_during_retrieval_fails_open(self):
         """Test Redis failure during record retrieval fails open gracefully."""
+
         def get_response(request):
             return JsonResponse({"id": "123"}, status=201)
 
@@ -130,17 +135,20 @@ class TestIdempotencyErrorHandling(TestCase):
             "/api/v1/assets/",
             data=json.dumps({"name": "test"}),
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=idempotency_key
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
         )
 
         # Simulate Redis failure by using invalid URL
-        with override_settings(REDIS_URL='redis://invalid-host:6379/0'):
+        with override_settings(REDIS_URL="redis://invalid-host:6379/0"):
             # Reset middleware Redis client
             middleware._redis_client = None
 
             # process_request should return None (fail open)
             response_from_process_request = middleware.process_request(request)
-            self.assertIsNone(response_from_process_request, "Should fail open and return None from process_request")
+            self.assertIsNone(
+                response_from_process_request,
+                "Should fail open and return None from process_request",
+            )
 
             # process_response will still be called and add headers
             # but the request was processed normally
@@ -153,6 +161,7 @@ class TestIdempotencyErrorHandling(TestCase):
 
     def test_idempotency_conflict_returns_409(self):
         """Test idempotency conflict (same key, different body) returns 409."""
+
         def get_response(request):
             return JsonResponse({"id": "123"}, status=201)
 
@@ -164,10 +173,10 @@ class TestIdempotencyErrorHandling(TestCase):
         # Store initial record
         request_hash1 = hash_request_body({"name": "test1"})
         response_data = {
-            'status_code': 201,
-            'body': {'id': '123'},
-            'headers': {},
-            'timestamp': datetime.now(timezone.utc).isoformat()
+            "status_code": 201,
+            "body": {"id": "123"},
+            "headers": {},
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         store_idempotency_record(redis_client, redis_key, request_hash1, response_data, ttl=60)
 
@@ -176,7 +185,7 @@ class TestIdempotencyErrorHandling(TestCase):
             "/api/v1/assets/",
             data=json.dumps({"name": "test2"}),  # Different body
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=idempotency_key
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
         )
 
         response = middleware(request)
@@ -184,13 +193,14 @@ class TestIdempotencyErrorHandling(TestCase):
         # Should return 409 Conflict
         self.assertEqual(response.status_code, 409)
         response_data = json.loads(response.content)
-        self.assertIn('error', response_data)
-        self.assertEqual(response_data['error']['code'], 'IDEMPOTENCY_CONFLICT')
-        self.assertEqual(response_data['error']['http_status'], 409)
-        self.assertIn('Idempotency-Key', response)
+        self.assertIn("error", response_data)
+        self.assertEqual(response_data["error"]["code"], "IDEMPOTENCY_CONFLICT")
+        self.assertEqual(response_data["error"]["http_status"], 409)
+        self.assertIn("Idempotency-Key", response)
 
     def test_invalid_json_in_redis_record_handled_gracefully(self):
         """Test invalid JSON in Redis record is handled gracefully."""
+
         def get_response(request):
             return JsonResponse({"id": "123"}, status=201)
 
@@ -207,7 +217,7 @@ class TestIdempotencyErrorHandling(TestCase):
             "/api/v1/assets/",
             data=json.dumps({"name": "test"}),
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=idempotency_key
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
         )
 
         response = middleware(request)
@@ -215,11 +225,15 @@ class TestIdempotencyErrorHandling(TestCase):
         # Should handle gracefully — invalid JSON in the Redis record is
         # treated as a cache miss. The request is processed as new.
         self.assertIsNotNone(response)
-        self.assertEqual(response.status_code, 201,
-                         "Corrupted Redis record should cause fail-open: process as new request")
+        self.assertEqual(
+            response.status_code,
+            201,
+            "Corrupted Redis record should cause fail-open: process as new request",
+        )
         response_data = json.loads(response.content)
-        self.assertEqual(response_data["id"], "123",
-                         "Response body should match the get_response handler output")
+        self.assertEqual(
+            response_data["id"], "123", "Response body should match the get_response handler output"
+        )
 
     def test_redis_connection_error_handled_gracefully(self):
         """Test Redis connection failure is handled gracefully (fail-open).
@@ -228,6 +242,7 @@ class TestIdempotencyErrorHandling(TestCase):
         follow the same fail-open code path. Previously had two identical
         tests that only varied by docstring — consolidated into one.
         """
+
         def get_response(request):
             return JsonResponse({"id": "123"}, status=201)
 
@@ -239,18 +254,20 @@ class TestIdempotencyErrorHandling(TestCase):
             "/api/v1/assets/",
             data=json.dumps({"name": "test"}),
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=idempotency_key
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
         )
 
         # Simulate Redis failure by using invalid URL
-        with override_settings(REDIS_URL='redis://invalid-host:6379/0'):
+        with override_settings(REDIS_URL="redis://invalid-host:6379/0"):
             # Reset middleware Redis client
             middleware._redis_client = None
 
             # process_request should return None (fail open)
             response_from_process_request = middleware.process_request(request)
-            self.assertIsNone(response_from_process_request,
-                              "Should fail open and return None from process_request")
+            self.assertIsNone(
+                response_from_process_request,
+                "Should fail open and return None from process_request",
+            )
 
             # process_response will still be called and add headers
             # but the request was processed normally
@@ -263,6 +280,7 @@ class TestIdempotencyErrorHandling(TestCase):
 
     def test_idempotency_key_header_present_in_success_responses(self):
         """Test Idempotency-Key header is present in success responses."""
+
         def get_response(request):
             return JsonResponse({"id": "123"}, status=201)
 
@@ -274,14 +292,15 @@ class TestIdempotencyErrorHandling(TestCase):
             "/api/v1/assets/",
             data=json.dumps({"name": "test"}),
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=idempotency_key
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
         )
         response = middleware(request)
         self.assertIsNotNone(response)
-        self.assertIn('Idempotency-Key', response)
+        self.assertIn("Idempotency-Key", response)
 
     def test_idempotency_key_header_present_in_cached_responses(self):
         """Test Idempotency-Key header is present in cached responses."""
+
         def get_response(request):
             return JsonResponse({"id": "123"}, status=201)
 
@@ -293,10 +312,10 @@ class TestIdempotencyErrorHandling(TestCase):
         redis_key = build_idempotency_key(idempotency_key, "/api/v1/assets/", "POST")
         request_hash = hash_request_body({"name": "test"})
         response_data = {
-            'status_code': 201,
-            'body': {'id': '123'},
-            'headers': {},
-            'timestamp': datetime.now(timezone.utc).isoformat()
+            "status_code": 201,
+            "body": {"id": "123"},
+            "headers": {},
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         store_idempotency_record(redis_client, redis_key, request_hash, response_data, ttl=60)
 
@@ -305,11 +324,10 @@ class TestIdempotencyErrorHandling(TestCase):
             "/api/v1/assets/",
             data=json.dumps({"name": "test"}),
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=idempotency_key
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
         )
         response = middleware(request)
 
-        self.assertIn('Idempotency-Key', response)
-        self.assertIn('Idempotency-Replayed', response)
-        self.assertEqual(response['Idempotency-Replayed'], 'true')
-
+        self.assertIn("Idempotency-Key", response)
+        self.assertIn("Idempotency-Replayed", response)
+        self.assertEqual(response["Idempotency-Replayed"], "true")

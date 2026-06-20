@@ -31,7 +31,10 @@ class AuthenticationFlowsTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -227,18 +230,14 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_password_reset_request_creates_token(self):
         """Test password reset request creates token."""
-        self.client.post(
-            "/api/v1/auth/password-reset/", {"email": self.user.email}, format="json"
-        )
+        self.client.post("/api/v1/auth/password-reset/", {"email": self.user.email}, format="json")
 
         self.user.refresh_from_db()
         self.assertIsNotNone(self.user.password_reset_token)
 
     def test_password_reset_request_sets_token_expiry(self):
         """Test password reset request sets token expiry."""
-        self.client.post(
-            "/api/v1/auth/password-reset/", {"email": self.user.email}, format="json"
-        )
+        self.client.post("/api/v1/auth/password-reset/", {"email": self.user.email}, format="json")
 
         self.user.refresh_from_db()
         self.assertIsNotNone(self.user.password_reset_token_expires_at)
@@ -333,7 +332,7 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_accept_invitation_returns_200(self):
         """Test invitation acceptance returns 200."""
-        invited_user, raw_token = self._make_invited_user()
+        _invited_user, raw_token = self._make_invited_user()
 
         response = self.client.post(
             "/api/v1/auth/accept-invitation/",
@@ -345,7 +344,7 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_accept_invitation_returns_access_token(self):
         """Test invitation acceptance returns access_token."""
-        invited_user, raw_token = self._make_invited_user()
+        _invited_user, raw_token = self._make_invited_user()
 
         response = self.client.post(
             "/api/v1/auth/accept-invitation/",
@@ -357,7 +356,7 @@ class AuthenticationFlowsTest(TestCase):
 
     def test_accept_invitation_returns_refresh_token(self):
         """Test invitation acceptance returns refresh_token (httpOnly cookie, 11.1)."""
-        invited_user, raw_token = self._make_invited_user()
+        _invited_user, raw_token = self._make_invited_user()
 
         response = self.client.post(
             "/api/v1/auth/accept-invitation/",
@@ -533,7 +532,9 @@ class AuthenticationFlowsTest(TestCase):
     def test_accept_invitation_expired_token(self):
         """Test invitation acceptance with expired token (error handling)"""
         invited_user = User.objects.create_user(
-            email=f"invited2-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status=UserStatus.INVITED
+            email=f"invited2-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            status=UserStatus.INVITED,
         )
         raw_token = str(uuid.uuid4())
         invited_user.invitation_token = hashlib.sha256(raw_token.encode()).hexdigest()

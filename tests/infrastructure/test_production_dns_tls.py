@@ -10,22 +10,17 @@ Validates:
 
 Does NOT perform live DNS lookups — validates configuration correctness.
 """
+
 import os
-import re
+
 import pytest
 import yaml
 
-PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..")
-)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 TRAEFIK_MAIN = os.path.join(PROJECT_ROOT, "infrastructure", "traefik", "traefik.yml")
-ROUTES_TMPL = os.path.join(
-    PROJECT_ROOT, "infrastructure", "traefik", "dynamic", "routes.yml.tmpl"
-)
-ROUTES_YML = os.path.join(
-    PROJECT_ROOT, "infrastructure", "traefik", "dynamic", "routes.yml"
-)
+ROUTES_TMPL = os.path.join(PROJECT_ROOT, "infrastructure", "traefik", "dynamic", "routes.yml.tmpl")
+ROUTES_YML = os.path.join(PROJECT_ROOT, "infrastructure", "traefik", "dynamic", "routes.yml")
 
 PRODUCTION_DOMAINS = [
     "meshant.com",
@@ -47,6 +42,7 @@ def _load_yaml(path):
 # ---------------------------------------------------------------------------
 # 280.A.6.3.1 — HTTP → HTTPS redirect
 # ---------------------------------------------------------------------------
+
 
 class TestHttpToHttpsRedirect:
     """Validate that all HTTP traffic is redirected to HTTPS."""
@@ -70,33 +66,28 @@ class TestHttpToHttpsRedirect:
         assert entrypoint_redirect.get("to") == "websecure", (
             "web must redirect to websecure entrypoint"
         )
-        assert entrypoint_redirect.get("scheme") == "https", (
-            "redirect scheme must be https"
-        )
+        assert entrypoint_redirect.get("scheme") == "https", "redirect scheme must be https"
 
     def test_websecure_entrypoint_exists(self, traefik_config):
         """The websecure (:443) entrypoint must exist."""
         entrypoints = traefik_config.get("entryPoints", {})
         websecure = entrypoints.get("websecure", {})
         assert websecure is not None, "Missing 'websecure' entrypoint"
-        assert websecure.get("address") == ":443", (
-            "websecure must listen on :443"
-        )
+        assert websecure.get("address") == ":443", "websecure must listen on :443"
 
     def test_websecure_has_tls_enabled(self, traefik_config):
         """websecure must have TLS configuration."""
         entrypoints = traefik_config.get("entryPoints", {})
         websecure = entrypoints.get("websecure", {})
-        tls_config = websecure.get("http", {}).get("tls", {})
+        websecure.get("http", {}).get("tls", {})
         # TLS can be {} (default settings) or have explicit options
-        assert "tls" in websecure.get("http", {}), (
-            "websecure entrypoint must have TLS section"
-        )
+        assert "tls" in websecure.get("http", {}), "websecure entrypoint must have TLS section"
 
 
 # ---------------------------------------------------------------------------
 # 280.A.6.3.2 — TLS certificate resolver
 # ---------------------------------------------------------------------------
+
 
 class TestTlsCertificateResolver:
     """Validate Let's Encrypt ACME configuration."""
@@ -108,9 +99,7 @@ class TestTlsCertificateResolver:
     def test_letsencrypt_resolver_exists(self, traefik_config):
         """A Let's Encrypt certificate resolver must be configured."""
         resolvers = traefik_config.get("certificatesResolvers", {})
-        assert "letsencrypt" in resolvers, (
-            "Missing 'letsencrypt' certificate resolver"
-        )
+        assert "letsencrypt" in resolvers, "Missing 'letsencrypt' certificate resolver"
 
     def test_acme_configuration(self, traefik_config):
         """ACME config must be present with httpChallenge."""
@@ -149,8 +138,7 @@ class TestTlsCertificateResolver:
             assert tls, f"Router '{name}' must have TLS config"
             cert_resolver = tls.get("certResolver")
             assert cert_resolver == "letsencrypt", (
-                f"Router '{name}' certResolver must be 'letsencrypt', "
-                f"got {cert_resolver!r}"
+                f"Router '{name}' certResolver must be 'letsencrypt', got {cert_resolver!r}"
             )
 
     def test_routers_only_use_websecure_entrypoint(self):
@@ -160,9 +148,7 @@ class TestTlsCertificateResolver:
 
         for name, router in routers.items():
             entrypoints = router.get("entryPoints", [])
-            assert "websecure" in entrypoints, (
-                f"Router '{name}' must bind to websecure"
-            )
+            assert "websecure" in entrypoints, f"Router '{name}' must bind to websecure"
             if "web" in entrypoints:
                 # The dashboard router may use web for non-TLS access
                 assert "dashboard" in name.lower(), (
@@ -174,6 +160,7 @@ class TestTlsCertificateResolver:
 # ---------------------------------------------------------------------------
 # 280.A.6.3.3 — Production domain references
 # ---------------------------------------------------------------------------
+
 
 class TestProductionDomainReferences:
     """Validate production domain names are correctly referenced."""
@@ -202,17 +189,19 @@ class TestProductionDomainReferences:
                 "CORS origin regex must use ALLOWED_ORIGINS_REGEX env var"
             )
         if origin_list:
-            assert "*" not in origin_list, (
-                "CORS must NOT use wildcard origin in production"
-            )
+            assert "*" not in origin_list, "CORS must NOT use wildcard origin in production"
 
     def test_no_hardcoded_internal_domains_in_production_routes(self):
         """Routes template must not hardcode internal dev domains."""
         routes = _load_yaml(ROUTES_TMPL)
         routers = routes.get("http", {}).get("routers", {})
         DANGEROUS_DOMAINS = {
-            "localhost", "127.0.0.1", "hub.local", "hub.example.com",
-            "hub.test", "hub.dev",
+            "localhost",
+            "127.0.0.1",
+            "hub.local",
+            "hub.example.com",
+            "hub.test",
+            "hub.dev",
         }
         for name, router in routers.items():
             rule = router.get("rule", "")
@@ -220,9 +209,7 @@ class TestProductionDomainReferences:
                 if domain in rule:
                     # hub.local and hub.example.com are in the api-gateway-host
                     # router for backward compat — that's intentional
-                    if name == "api-gateway-host" and domain in (
-                        "hub.local", "hub.example.com"
-                    ):
+                    if name == "api-gateway-host" and domain in ("hub.local", "hub.example.com"):
                         continue
                     pytest.fail(
                         f"Router '{name}' rule contains '{domain}'. "
@@ -234,12 +221,12 @@ class TestProductionDomainReferences:
 # 280.A.6.3.4 — DNS automation (Terraform Route53)
 # ---------------------------------------------------------------------------
 
+
 class TestRoute53DnsAutomation:
     """Validate Route53 DNS configuration in Terraform."""
 
     STAGING_MAIN = os.path.join(
-        PROJECT_ROOT, "infrastructure", "terraform",
-        "environments", "staging", "main.tf"
+        PROJECT_ROOT, "infrastructure", "terraform", "environments", "staging", "main.tf"
     )
 
     def _read_staging_main(self):
@@ -252,19 +239,14 @@ class TestRoute53DnsAutomation:
     def test_staging_has_route53_zone_data_source(self):
         """Staging terraform must reference the meshant.com hosted zone."""
         content = self._read_staging_main()
-        assert 'aws_route53_zone' in content, (
-            "Staging TF must have Route53 zone data source"
-        )
-        assert 'meshant.com' in content, (
-            "Route53 zone name must be meshant.com"
-        )
+        assert "aws_route53_zone" in content, "Staging TF must have Route53 zone data source"
+        assert "meshant.com" in content, "Route53 zone name must be meshant.com"
 
     def test_staging_route53_iam_policy_is_minimal(self):
         """Route53 IAM policy must be scoped to the specific hosted zone."""
         content = self._read_staging_main()
-        assert 'data.aws_route53_zone.meshant.arn' in content, (
-            "Route53 ChangeResourceRecordSets must be scoped to meshant zone ARN, "
-            "not wildcard"
+        assert "data.aws_route53_zone.meshant.arn" in content, (
+            "Route53 ChangeResourceRecordSets must be scoped to meshant zone ARN, not wildcard"
         )
 
     def test_expected_production_domains_in_route53_zone(self):
@@ -287,6 +269,7 @@ class TestRoute53DnsAutomation:
 # 280.A.6.3.5 — TLS best practices
 # ---------------------------------------------------------------------------
 
+
 class TestTlsBestPractices:
     """Validate TLS configuration follows security best practices."""
 
@@ -306,19 +289,13 @@ class TestTlsBestPractices:
     def test_dashboard_has_auth_middleware(self):
         """Dashboard router must have both IP allowlist AND basic auth."""
         routes = _load_yaml(ROUTES_TMPL)
-        dashboard = (
-            routes.get("http", {})
-            .get("routers", {})
-            .get("traefik-dashboard", {})
-        )
+        dashboard = routes.get("http", {}).get("routers", {}).get("traefik-dashboard", {})
         assert dashboard, "traefik-dashboard router must exist"
         middlewares = dashboard.get("middlewares", [])
         assert "dashboard-ip-allowlist" in middlewares, (
             "Dashboard must have IP allowlist middleware"
         )
-        assert "dashboard-auth" in middlewares, (
-            "Dashboard must have basic auth middleware"
-        )
+        assert "dashboard-auth" in middlewares, "Dashboard must have basic auth middleware"
 
     def test_access_log_drops_sensitive_headers(self, traefik_config):
         """Access logs must drop Authorization and Cookie headers."""
@@ -329,9 +306,7 @@ class TestTlsBestPractices:
         assert dropped.get("Authorization") == "drop", (
             "Authorization header must be dropped from access logs"
         )
-        assert dropped.get("Cookie") == "drop", (
-            "Cookie header must be dropped from access logs"
-        )
+        assert dropped.get("Cookie") == "drop", "Cookie header must be dropped from access logs"
 
     def test_send_anonymous_usage_disabled(self, traefik_config):
         """Anonymous usage reporting must be disabled."""

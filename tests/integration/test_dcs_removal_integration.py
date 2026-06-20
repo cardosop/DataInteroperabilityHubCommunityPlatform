@@ -7,8 +7,6 @@ These tests verify that DCS removal works correctly across the entire system,
 including API endpoints, normalization, validation, and semantic mapping.
 """
 
-import json
-
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -37,7 +35,6 @@ class DCSRemovalIntegrationTest(TestCase):
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures"""
@@ -172,8 +169,11 @@ schema:
         error_str = str(error_message).lower()
         # Accept if it mentions normalization failure, DCS, ODCS, or contract validation
         self.assertTrue(
-            any(keyword in error_str for keyword in ["normalization", "dcs", "odcs", "contract", "validation", "failed"]),
-            f"Error message should indicate rejection: {error_message}"
+            any(
+                keyword in error_str
+                for keyword in ["normalization", "dcs", "odcs", "contract", "validation", "failed"]
+            ),
+            f"Error message should indicate rejection: {error_message}",
         )
 
     def test_normalization_rejects_dcs_directly(self):
@@ -185,8 +185,8 @@ info:
   title: Test
 """
 
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            dcs_contract_yaml, format="yaml"
+        hub_contract, _spec_type, _spec_version, norm_status, errors, _warnings = (
+            normalize_contract(dcs_contract_yaml, format="yaml")
         )
 
         # Should fail
@@ -199,8 +199,19 @@ info:
         error_str = str(error_message).lower()
         # Accept if it mentions normalization failure, DCS, ODCS, or contract validation
         self.assertTrue(
-            any(keyword in error_str for keyword in ["normalization", "dcs", "odcs", "contract", "validation", "failed", "migrate"]),
-            f"Error message should indicate rejection: {error_message}"
+            any(
+                keyword in error_str
+                for keyword in [
+                    "normalization",
+                    "dcs",
+                    "odcs",
+                    "contract",
+                    "validation",
+                    "failed",
+                    "migrate",
+                ]
+            ),
+            f"Error message should indicate rejection: {error_message}",
         )
 
     def test_spec_detection_handles_dcs(self):
@@ -215,8 +226,8 @@ info:
         import yaml
 
         dcs_yaml = yaml.dump(dcs_contract)
-        hub_contract, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            dcs_yaml, format="yaml"
+        hub_contract, spec_type, _spec_version, norm_status, _errors, _warnings = (
+            normalize_contract(dcs_yaml, format="yaml")
         )
 
         self.assertIsNone(hub_contract)

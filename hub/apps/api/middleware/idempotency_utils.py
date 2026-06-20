@@ -4,15 +4,16 @@ Idempotency Utilities
 Utility functions for idempotency key validation, Redis operations,
 and request/response serialization.
 """
+
 import hashlib
 import json
 import re
 import uuid
-from typing import Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
+from typing import Any
 
-import structlog
 import redis
+import structlog
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 
@@ -21,17 +22,14 @@ logger = structlog.get_logger(__name__)
 
 class IdempotencyKeyError(Exception):
     """Base exception for idempotency key errors."""
-    pass
 
 
 class IdempotencyKeyFormatError(IdempotencyKeyError):
     """Raised when idempotency key format is invalid."""
-    pass
 
 
 class IdempotencyConflictError(IdempotencyKeyError):
     """Raised when idempotency key conflicts with existing request."""
-    pass
 
 
 def validate_idempotency_key(key: str) -> bool:
@@ -65,7 +63,7 @@ def validate_idempotency_key(key: str) -> bool:
     # Pattern: alphanumeric, hyphens, underscores, forward slashes, colons
     # Colons are required for the canonical <tenant_uuid>:<sha256(body)> key
     # format used by IdempotencyService and the SDK idempotency helpers.
-    pattern = re.compile(r'^[a-zA-Z0-9\-_/:]+$')
+    pattern = re.compile(r"^[a-zA-Z0-9\-_/:]+$")
     return bool(pattern.match(key))
 
 
@@ -90,8 +88,8 @@ def normalize_idempotency_key(key: str) -> str:
     # Then validate the normalized key
     if not validate_idempotency_key(normalized):
         raise IdempotencyKeyFormatError(
-            f"Invalid idempotency key format. Key must be UUID or 8-256 characters "
-            f"containing only alphanumeric characters, hyphens, underscores, and forward slashes."
+            "Invalid idempotency key format. Key must be UUID or 8-256 characters "
+            "containing only alphanumeric characters, hyphens, underscores, and forward slashes."
         )
 
     return normalized
@@ -112,45 +110,33 @@ def get_redis_client() -> redis.Redis:
     """
     try:
         from hub.apps.core.redis_pools import get_redis_cache_client
+
         client = get_redis_cache_client()
         # Test connection
         client.ping()
         return client
     except ImportError:
         # Fallback to direct connection if redis_pools not available
-        redis_url = getattr(settings, 'REDIS_CACHE_URL', None)
+        redis_url = getattr(settings, "REDIS_CACHE_URL", None)
         if redis_url is None:
-            redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
+            redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
         try:
             client = redis.from_url(
-                redis_url,
-                decode_responses=True,
-                socket_connect_timeout=5,
-                socket_timeout=5
+                redis_url, decode_responses=True, socket_connect_timeout=5, socket_timeout=5
             )
             # Test connection
             client.ping()
             return client
         except Exception as e:
-            logger.error(
-                "idempotency_redis_connection_error",
-                error=str(e),
-                redis_url=redis_url
-            )
+            logger.error("idempotency_redis_connection_error", error=str(e), redis_url=redis_url)
             raise redis.ConnectionError(f"Failed to connect to Redis: {e}") from e
     except Exception as e:
-        logger.error(
-            "idempotency_redis_connection_error",
-            error=str(e)
-        )
+        logger.error("idempotency_redis_connection_error", error=str(e))
         raise redis.ConnectionError(f"Failed to connect to Redis: {e}") from e
 
 
 def build_idempotency_key(
-    idempotency_key: str,
-    endpoint: str,
-    method: str,
-    tenant_id: Optional[str] = None
+    idempotency_key: str, endpoint: str, method: str, tenant_id: str | None = None
 ) -> str:
     """
     Build Redis key for idempotency storage.
@@ -169,15 +155,15 @@ def build_idempotency_key(
     normalized_key = normalize_idempotency_key(idempotency_key)
 
     # Normalize endpoint (remove trailing slashes, normalize path)
-    normalized_endpoint = endpoint.rstrip('/')
+    normalized_endpoint = endpoint.rstrip("/")
 
     # Build key components
-    key_parts = ['idempotency', normalized_key, method.upper(), normalized_endpoint]
+    key_parts = ["idempotency", normalized_key, method.upper(), normalized_endpoint]
 
     if tenant_id:
         key_parts.append(str(tenant_id))
 
-    return ':'.join(key_parts)
+    return ":".join(key_parts)
 
 
 def build_lock_key(idempotency_redis_key: str) -> str:
@@ -207,16 +193,16 @@ def hash_request_body(body: Any) -> str:
         body_str = ""
     elif isinstance(body, (dict, list)):
         # Sort keys for consistent hashing
-        body_str = json.dumps(body, sort_keys=True, separators=(',', ':'))
+        body_str = json.dumps(body, sort_keys=True, separators=(",", ":"))
     elif isinstance(body, str):
         body_str = body
     else:
         body_str = str(body)
 
-    return hashlib.sha256(body_str.encode('utf-8')).hexdigest()
+    return hashlib.sha256(body_str.encode("utf-8")).hexdigest()
 
 
-def serialize_response(response: HttpResponse) -> Dict[str, Any]:
+def serialize_response(response: HttpResponse) -> dict[str, Any]:
     """
     Serialize HTTP response for storage in Redis.
 
@@ -227,35 +213,36 @@ def serialize_response(response: HttpResponse) -> Dict[str, Any]:
         Dictionary with serialized response data
     """
     # Get response body
-    if hasattr(response, 'content'):
+    if hasattr(response, "content"):
         try:
             # Try to decode JSON response
-            body = json.loads(response.content.decode('utf-8'))
+            body = json.loads(response.content.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             # Fallback to string
-            body = response.content.decode('utf-8', errors='replace')
+            body = response.content.decode("utf-8", errors="replace")
     else:
         body = None
 
     # Get headers (exclude sensitive headers)
     excluded_headers = {
-        'content-length', 'content-encoding', 'transfer-encoding',
-        'connection', 'server', 'date'
+        "content-length",
+        "content-encoding",
+        "transfer-encoding",
+        "connection",
+        "server",
+        "date",
     }
-    headers = {
-        k: v for k, v in response.items()
-        if k.lower() not in excluded_headers
-    }
+    headers = {k: v for k, v in response.items() if k.lower() not in excluded_headers}
 
     return {
-        'status_code': response.status_code,
-        'body': body,
-        'headers': headers,
-        'timestamp': datetime.now(timezone.utc).isoformat()
+        "status_code": response.status_code,
+        "body": body,
+        "headers": headers,
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
-def deserialize_response(data: Dict[str, Any]) -> Tuple[int, Dict[str, Any], Dict[str, str]]:
+def deserialize_response(data: dict[str, Any]) -> tuple[int, dict[str, Any], dict[str, str]]:
     """
     Deserialize stored response data.
 
@@ -265,9 +252,9 @@ def deserialize_response(data: Dict[str, Any]) -> Tuple[int, Dict[str, Any], Dic
     Returns:
         Tuple of (status_code, body, headers)
     """
-    status_code = data.get('status_code', 200)
-    body = data.get('body', {})
-    headers = data.get('headers', {})
+    status_code = data.get("status_code", 200)
+    body = data.get("body", {})
+    headers = data.get("headers", {})
 
     return status_code, body, headers
 
@@ -276,8 +263,8 @@ def store_idempotency_record(
     redis_client: redis.Redis,
     redis_key: str,
     request_hash: str,
-    response_data: Dict[str, Any],
-    ttl: int = 86400  # 24 hours default
+    response_data: dict[str, Any],
+    ttl: int = 86400,  # 24 hours default
 ) -> None:
     """
     Store idempotency record in Redis.
@@ -290,22 +277,15 @@ def store_idempotency_record(
         ttl: Time to live in seconds (default: 24 hours)
     """
     record = {
-        'request_hash': request_hash,
-        'response': response_data,
-        'created_at': datetime.now(timezone.utc).isoformat()
+        "request_hash": request_hash,
+        "response": response_data,
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
-    redis_client.setex(
-        redis_key,
-        ttl,
-        json.dumps(record)
-    )
+    redis_client.setex(redis_key, ttl, json.dumps(record))
 
 
-def get_idempotency_record(
-    redis_client: redis.Redis,
-    redis_key: str
-) -> Optional[Dict[str, Any]]:
+def get_idempotency_record(redis_client: redis.Redis, redis_key: str) -> dict[str, Any] | None:
     """
     Retrieve idempotency record from Redis.
 
@@ -324,12 +304,12 @@ def get_idempotency_record(
         record = json.loads(data)
         # Check if record has expired based on created_at timestamp
         # (Redis TTL handles automatic expiration, but we check timestamp for explicit 410 Gone)
-        if 'created_at' in record:
-            created_at_str = record['created_at']
+        if "created_at" in record:
+            created_at_str = record["created_at"]
             try:
-                created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
                 ttl = get_idempotency_ttl()
-                age_seconds = (datetime.now(timezone.utc) - created_at).total_seconds()
+                age_seconds = (datetime.now(UTC) - created_at).total_seconds()
 
                 if age_seconds > ttl:
                     # Record has expired based on timestamp
@@ -340,18 +320,11 @@ def get_idempotency_record(
 
         return record
     except json.JSONDecodeError as e:
-        logger.error(
-            "idempotency_record_decode_error",
-            error=str(e),
-            redis_key=redis_key
-        )
+        logger.error("idempotency_record_decode_error", error=str(e), redis_key=redis_key)
         return None
 
 
-def check_idempotency_key_expired(
-    redis_client: redis.Redis,
-    redis_key: str
-) -> bool:
+def check_idempotency_key_expired(redis_client: redis.Redis, redis_key: str) -> bool:
     """
     Check if an idempotency key has expired.
 
@@ -380,12 +353,12 @@ def check_idempotency_key_expired(
 
         # Also check if record exists but created_at timestamp indicates expiration
         record = get_idempotency_record(redis_client, redis_key)
-        if record and 'created_at' in record:
+        if record and "created_at" in record:
             try:
-                created_at_str = record['created_at']
-                created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                created_at_str = record["created_at"]
+                created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
                 ttl_seconds = get_idempotency_ttl()
-                age_seconds = (datetime.now(timezone.utc) - created_at).total_seconds()
+                age_seconds = (datetime.now(UTC) - created_at).total_seconds()
 
                 if age_seconds > ttl_seconds:
                     return True
@@ -394,19 +367,12 @@ def check_idempotency_key_expired(
 
         return False
     except Exception as e:
-        logger.error(
-            "idempotency_ttl_check_error",
-            error=str(e),
-            redis_key=redis_key
-        )
+        logger.error("idempotency_ttl_check_error", error=str(e), redis_key=redis_key)
         return False
 
 
 def acquire_lock(
-    redis_client: redis.Redis,
-    lock_key: str,
-    timeout: int = 10,
-    expire: int = 30
+    redis_client: redis.Redis, lock_key: str, timeout: int = 10, expire: int = 30
 ) -> bool:
     """
     Acquire distributed lock for concurrent request handling.
@@ -452,7 +418,7 @@ def get_idempotency_ttl() -> int:
     Returns:
         TTL in seconds (default: 24 hours)
     """
-    return getattr(settings, 'IDEMPOTENCY_TTL_SECONDS', 86400)  # 24 hours
+    return getattr(settings, "IDEMPOTENCY_TTL_SECONDS", 86400)  # 24 hours
 
 
 def is_idempotency_enabled() -> bool:
@@ -462,7 +428,7 @@ def is_idempotency_enabled() -> bool:
     Returns:
         True if enabled, False otherwise
     """
-    return getattr(settings, 'IDEMPOTENCY_ENABLED', True)
+    return getattr(settings, "IDEMPOTENCY_ENABLED", True)
 
 
 def should_process_idempotency(request: HttpRequest) -> bool:
@@ -485,15 +451,15 @@ def should_process_idempotency(request: HttpRequest) -> bool:
         return False
 
     # Only process API endpoints
-    if not request.path.startswith('/api/v1/'):
+    if not request.path.startswith("/api/v1/"):
         return False
 
     # Only process state-changing methods
-    if request.method not in ('POST', 'PUT', 'PATCH'):
+    if request.method not in ("POST", "PUT", "PATCH"):
         return False
 
     # Must have Idempotency-Key header
-    if not request.headers.get('Idempotency-Key'):
+    if not request.headers.get("Idempotency-Key"):
         return False
 
     return True
@@ -514,5 +480,4 @@ def get_endpoint_pattern(path: str) -> str:
     """
     # For now, use exact path matching
     # In future, could normalize UUIDs to {id} pattern
-    return path.rstrip('/')
-
+    return path.rstrip("/")

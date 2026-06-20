@@ -19,14 +19,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from e2e_metrics_diff import (  # noqa: E402
-    EMOJI_GOOD,
+from e2e_metrics_diff import (
     EMOJI_BAD,
+    EMOJI_GOOD,
     EMOJI_NEUTRAL,
     NO_CHANGE,
     _delta_cell,
@@ -65,6 +63,7 @@ def _base(**overrides) -> dict:
 
 # ----------------------------------------------------------------- _delta_cell
 
+
 class TestDeltaCell:
     def test_no_change_returns_dash(self):
         assert _delta_cell(10, 10, "down_is_good") == NO_CHANGE
@@ -97,6 +96,7 @@ class TestDeltaCell:
 
 
 # ----------------------------------------------------------------- render_diff
+
 
 class TestRenderDiff:
     def test_identical_says_no_changes(self):
@@ -140,8 +140,7 @@ class TestRenderDiff:
         out = render_diff(before, after)
         # The row should use the neutral marker; also assert no other row
         # is still flipping emoji for this particular line.
-        lines = [ln for ln in out.splitlines()
-                 if "`status_code_assertion_count`" in ln]
+        lines = [ln for ln in out.splitlines() if "`status_code_assertion_count`" in ln]
         assert len(lines) == 1
         assert EMOJI_NEUTRAL in lines[0]
         assert EMOJI_GOOD not in lines[0]
@@ -158,7 +157,7 @@ class TestRenderDiff:
         """Fixture file exercises several polarities in one diff."""
         out = render_diff(_load(BASELINE), _load(MIXED))
         assert EMOJI_GOOD in out  # swallows down, pageerror up, verifyViaApi up
-        assert EMOJI_BAD in out   # test_skip_call up by 2
+        assert EMOJI_BAD in out  # test_skip_call up by 2
         assert EMOJI_NEUTRAL in out  # status_code_assertion_count changed
 
     def test_output_contains_polarity_legend(self):
@@ -169,6 +168,7 @@ class TestRenderDiff:
 
 # ------------------------------------------------------------------------- CLI
 
+
 class TestCLI:
     def test_cli_writes_markdown_to_stdout(self, tmp_path: Path):
         b = tmp_path / "b.json"
@@ -178,7 +178,10 @@ class TestCLI:
 
         result = subprocess.run(
             [sys.executable, str(SCRIPTS_DIR / "e2e_metrics_diff.py"), str(b), str(c)],
-            check=True, capture_output=True, text=True, timeout=30,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         assert "## E2E Metrics Delta" in result.stdout
         assert EMOJI_GOOD in result.stdout
@@ -191,7 +194,10 @@ class TestCLI:
                 str(SCRIPTS_DIR / "e2e_metrics_diff.py"),
                 str(tmp_path / "only-one.json"),
             ],
-            capture_output=True, text=True, timeout=10,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         assert result.returncode == 2
         assert "usage" in result.stderr.lower()
@@ -205,6 +211,9 @@ class TestCLI:
                 str(tmp_path / "missing.json"),
                 str(tmp_path / "also-missing.json"),
             ],
-            capture_output=True, text=True, timeout=10,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         assert result.returncode != 0

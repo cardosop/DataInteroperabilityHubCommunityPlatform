@@ -1,6 +1,7 @@
 """Low-level clamd transport for startup probes (Phase 260.0.17)."""
 
 from __future__ import annotations
+
 import re
 import socket
 

@@ -8,11 +8,8 @@ Classification:
 """
 
 import json
-import os
 import re
-from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 # Patterns to find mocks/stubs
 MOCK_PATTERNS = [
@@ -67,7 +64,7 @@ INTERNAL_PATTERNS = [
 ]
 
 
-def find_mock_usage(file_path: Path) -> List[Dict]:
+def find_mock_usage(file_path: Path) -> list[dict]:
     """Find all mock/stub usage in a file."""
     try:
         content = file_path.read_text(encoding="utf-8")
@@ -122,7 +119,7 @@ def classify_mock(line: str, full_content: str, line_num: int) -> str:
     return "unknown_needs_review"
 
 
-def audit_directory(directory: Path) -> Dict:
+def audit_directory(directory: Path) -> dict:
     """Audit all test files in a directory."""
     results = {
         "external_boundary": [],

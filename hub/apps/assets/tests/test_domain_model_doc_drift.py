@@ -48,12 +48,12 @@ TDD doctrine
 * If the file is missing, the test fails with a clear message
   pointing at the expected path.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
-
 
 # Canonical project root — three parents up from this test file:
 # hub/apps/assets/tests/test_domain_model_doc_drift.py
@@ -121,7 +121,8 @@ class TestSourceTypeFieldDocumented:
         assert "FEDERATED" in domain_model_text
 
     def test_source_type_activation_gate_effect_documented(
-        self, domain_model_text,
+        self,
+        domain_model_text,
     ):
         """The activation-gate semantics for FEDERATED — that
         the tenant flag ``federated_import_enabled`` (D250.3)
@@ -158,7 +159,8 @@ class TestDataStrategyFieldDocumented:
         assert "DOWNLOAD_ALL" in domain_model_text
 
     def test_metadata_only_dq_skip_effect_documented(
-        self, domain_model_text,
+        self,
+        domain_model_text,
     ):
         """The "DQ skipped for METADATA_ONLY" rule (D250.3 /
         ADR-AST-002 decision #3) MUST be documented in the
@@ -167,18 +169,20 @@ class TestDataStrategyFieldDocumented:
         coupling fails the test."""
         # We accept either uppercase or mixed-case "DQ" /
         # "data quality" since the spec sometimes spells it out.
-        text_lower = domain_model_text.lower()
+        domain_model_text = domain_model_text.lower()
         # Both terms must appear within proximity. The simplest
         # invariant: the substring ``METADATA_ONLY`` is followed
         # within 500 chars by either "DQ" or "data quality" with
         # a "skip" / "skipped" / "not run" qualifier.
-        idx = domain_model_text.find("METADATA_ONLY")
+        idx = domain_model_text.find("metadata_only")
         assert idx >= 0
-        window = domain_model_text[idx:idx + 800].lower()
+        window = domain_model_text[idx : idx + 800].lower()
         has_dq_term = "dq" in window or "data quality" in window
         has_skip_term = (
-            "skip" in window or "skipped" in window
-            or "not run" in window or "not required" in window
+            "skip" in window
+            or "skipped" in window
+            or "not run" in window
+            or "not required" in window
         )
         assert has_dq_term and has_skip_term, (
             "The activation-gate effect for METADATA_ONLY (DQ "
@@ -188,18 +192,19 @@ class TestDataStrategyFieldDocumented:
         )
 
     def test_compliance_mandatory_for_federated_documented(
-        self, domain_model_text,
+        self,
+        domain_model_text,
     ):
         """The "compliance MUST run on every federated import"
         rule (D250.3 / ADR-AST-002 decision #2) MUST be in the
         section so a reader doesn't misread "DQ skipped" as
         "all gates skipped"."""
-        text_lower = domain_model_text.lower()
-        # Window: find "FEDERATED" and check for "compliance"
+        domain_model_text = domain_model_text.lower()
+        # Window: find "federated" and check for "compliance"
         # within 800 chars after.
-        idx = domain_model_text.find("FEDERATED")
+        idx = domain_model_text.find("federated")
         assert idx >= 0
-        window = domain_model_text[idx:idx + 1200].lower()
+        window = domain_model_text[idx : idx + 1200].lower()
         assert "compliance" in window, (
             "The mandatory-compliance rule for FEDERATED imports "
             "MUST be documented near the FEDERATED enum value so "

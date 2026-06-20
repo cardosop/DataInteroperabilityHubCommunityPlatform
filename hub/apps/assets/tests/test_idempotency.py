@@ -55,6 +55,7 @@ class AssetIdempotencyKeyTest(TestCase):
         # this one's POST.
         try:
             from hub.apps.api.middleware.idempotency_utils import get_redis_client
+
             r = get_redis_client()
             for k in r.scan_iter(match="idempotency:*"):
                 r.delete(k)
@@ -101,7 +102,6 @@ class AssetIdempotencyKeyTest(TestCase):
             "key": "idem-asset-1",
             "name": "Idem Asset",
             "description": "First create",
-            "visibility": "INTERNAL",
         }
         idem_key = _key()
         first = self.client.post(
@@ -132,8 +132,8 @@ class AssetIdempotencyKeyTest(TestCase):
 
     def test_no_key_creates_new_assets_on_each_call(self) -> None:
         """Without the header the original behaviour is preserved."""
-        body_a = {"key": "no-idem-1", "name": "No Idem 1", "visibility": "INTERNAL"}
-        body_b = {"key": "no-idem-2", "name": "No Idem 2", "visibility": "INTERNAL"}
+        body_a = {"key": "no-idem-1", "name": "No Idem 1"}
+        body_b = {"key": "no-idem-2", "name": "No Idem 2"}
         r1 = self.client.post("/api/v1/assets/", data=body_a, format="json")
         r2 = self.client.post("/api/v1/assets/", data=body_b, format="json")
         self.assertEqual(r1.status_code, status.HTTP_201_CREATED)
@@ -146,7 +146,6 @@ class AssetIdempotencyKeyTest(TestCase):
         body = {
             "key": "idem-mismatch-1",
             "name": "Idem Mismatch",
-            "visibility": "INTERNAL",
         }
         idem_key = _key()
         first = self.client.post(
@@ -172,7 +171,7 @@ class AssetIdempotencyKeyTest(TestCase):
     # ---- Validation errors ---------------------------------------------------
 
     def test_invalid_key_format_returns_400(self) -> None:
-        body = {"key": "x", "name": "Bad Key", "visibility": "INTERNAL"}
+        body = {"key": "x", "name": "Bad Key"}
         # Too short — the middleware key format requires UUID or 8-256 chars.
         resp = self.client.post(
             "/api/v1/assets/",
@@ -191,7 +190,7 @@ class AssetIdempotencyKeyTest(TestCase):
         The middleware's cache key includes the user (or tenant) so a key
         from one identity can't replay another's response.
         """
-        body = {"key": "iso-1", "name": "Cross-Tenant", "visibility": "INTERNAL"}
+        body = {"key": "iso-1", "name": "Cross-Tenant"}
         shared_key = _key("shared")
         first = self.client.post(
             "/api/v1/assets/",
@@ -243,7 +242,7 @@ class AssetIdempotencyKeyTest(TestCase):
         # an asset with the same `key` field. The DB-level uniqueness on
         # ``Asset.key`` per tenant rejects it (409 / 400). The Idempotency-Key
         # feature does NOT turn two distinct requests into one.
-        body = {"key": "diff-keys-asset", "name": "Diff Keys", "visibility": "INTERNAL"}
+        body = {"key": "diff-keys-asset", "name": "Diff Keys"}
         r1 = self.client.post(
             "/api/v1/assets/",
             data=body,
@@ -270,7 +269,7 @@ class AssetIdempotencyKeyTest(TestCase):
         asset key collides). We document the contract explicitly so the spec
         catches an unintended scope expansion.
         """
-        body = {"key": "replay-cross-user", "name": "Replay X-user", "visibility": "INTERNAL"}
+        body = {"key": "replay-cross-user", "name": "Replay X-user"}
         shared_key = _key("xuser")
         first = self.client.post(
             "/api/v1/assets/",

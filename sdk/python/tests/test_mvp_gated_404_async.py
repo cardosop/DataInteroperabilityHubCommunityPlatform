@@ -11,6 +11,7 @@ all other tests assert structural fields only.
 
 Phase 215.2 — see openspec/changes/preprod01/specs/cli-sdk-mvp-awareness/spec.md
 """
+
 from __future__ import annotations
 
 import httpx
@@ -27,7 +28,6 @@ from datahub_interoperability._mvp_gates import (
     MVP_FEATURE_GATED_CODE,
     MVP_GATED_FEATURE_NAMES,
 )
-
 
 BASE_URL = "https://meshant-internal.example.com"
 

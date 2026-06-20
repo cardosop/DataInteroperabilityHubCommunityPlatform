@@ -10,28 +10,17 @@ Tests verify:
 6. Key rotation error handling
 """
 
-import json
-import time
-from datetime import datetime, timedelta
+import uuid
+from datetime import timedelta
 
+from django.contrib.auth import get_user_model
 from django.utils import timezone
-from rest_framework import status
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.auth.models import APIKey
-from hub.apps.contracts.models import (
-    Contract,
-    ContractStatus,
-    NormalizationStatus,
-    OriginalFormat,
-    OriginalSpecType,
-)
-from django.contrib.auth import get_user_model
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.tenants.models import KYCStatus, Tenant
-from hub.apps.users.models import Role, UserRole, UserStatus
-from rest_framework.test import APIClient
-import uuid
+from hub.apps.users.models import Role, UserRole
 
 User = get_user_model()
 
@@ -147,7 +136,7 @@ class APIKeyRotationTest(ContractsAPITestBase):
             key_hash = hashlib.sha256(key.encode()).hexdigest()
 
             api_key = APIKey.objects.create(
-                tenant=self.tenant, user=self.user, key_hash=key_hash, name=f"Key {i+1}"
+                tenant=self.tenant, user=self.user, key_hash=key_hash, name=f"Key {i + 1}"
             )
             keys.append(api_key)
 
@@ -206,8 +195,8 @@ class APIKeyRotationTest(ContractsAPITestBase):
 
         invalid_tenant_id = "00000000-0000-0000-0000-000000000000"
 
-        # Should raise DoesNotExist or ValidationError
-        with self.assertRaises((Tenant.DoesNotExist, Exception)):
+        # Should raise DoesNotExist for invalid tenant FK
+        with self.assertRaises(Exception):
             APIKey.objects.create(
                 tenant_id=invalid_tenant_id,
                 user=self.user,
@@ -266,7 +255,7 @@ class APIKeyRotationTest(ContractsAPITestBase):
             key_hash = hashlib.sha256(key.encode()).hexdigest()
 
             api_key = APIKey.objects.create(
-                tenant=self.tenant, user=self.user, key_hash=key_hash, name=f"Key {i+1}"
+                tenant=self.tenant, user=self.user, key_hash=key_hash, name=f"Key {i + 1}"
             )
             keys.append(api_key)
 

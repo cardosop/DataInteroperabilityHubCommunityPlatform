@@ -1,4 +1,5 @@
 """Constraint-based entitlement revocation tests (replaces threading-based concurrency)."""
+
 import uuid
 
 from django.test import TestCase

@@ -5,10 +5,10 @@ Tests for API inventory review script
 Tests the review and comparison of API inventory with actual endpoints.
 """
 
+import json
 import sys
 import tempfile
 import unittest
-import json
 from pathlib import Path
 
 # Add scripts directory to path
@@ -17,9 +17,9 @@ sys.path.insert(0, str(project_root / "scripts"))
 
 # Import with proper handling
 import importlib.util
+
 spec = importlib.util.spec_from_file_location(
-    "review_api_inventory",
-    project_root / "scripts" / "review_api_inventory.py"
+    "review_api_inventory", project_root / "scripts" / "review_api_inventory.py"
 )
 if spec and spec.loader:
     module = importlib.util.module_from_spec(spec)
@@ -78,6 +78,7 @@ class TestAPIInventoryReviewer(unittest.TestCase):
     def tearDown(self):
         """Clean up test fixtures"""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_parse_inventory_file(self):
@@ -115,14 +116,13 @@ class TestAPIInventoryReviewer(unittest.TestCase):
 
         # Create mock actual endpoints
         from dataclasses import dataclass
-        from typing import Optional
 
         @dataclass
         class MockEndpoint:
             path: str
             method: str
-            view_class: Optional[str] = None
-            file_path: Optional[str] = None
+            view_class: str | None = None
+            file_path: str | None = None
 
         reviewer.actual_endpoints = [
             MockEndpoint(path="/api/v1/assets/", method="GET"),
@@ -136,8 +136,10 @@ class TestAPIInventoryReviewer(unittest.TestCase):
         discrepancies = reviewer.compare_endpoints()
 
         # Should find new endpoint missing in inventory
-        missing_in_inventory = [d for d in discrepancies if d.type == 'missing_in_inventory']
-        self.assertGreater(len(missing_in_inventory), 0, "Should find endpoints missing in inventory")
+        missing_in_inventory = [d for d in discrepancies if d.type == "missing_in_inventory"]
+        self.assertGreater(
+            len(missing_in_inventory), 0, "Should find endpoints missing in inventory"
+        )
 
     def test_verify_inventory_accuracy(self):
         """Test inventory accuracy verification"""
@@ -146,14 +148,13 @@ class TestAPIInventoryReviewer(unittest.TestCase):
 
         # Create mock actual endpoints
         from dataclasses import dataclass
-        from typing import Optional
 
         @dataclass
         class MockEndpoint:
             path: str
             method: str
-            view_class: Optional[str] = None
-            file_path: Optional[str] = None
+            view_class: str | None = None
+            file_path: str | None = None
 
         reviewer.actual_endpoints = [
             MockEndpoint(path="/api/v1/assets/", method="GET"),
@@ -176,10 +177,7 @@ class TestAPIInventoryReviewer(unittest.TestCase):
 
         # Create some discrepancies
         reviewer.discrepancies = [
-            Discrepancy(
-                type="missing_in_inventory",
-                details="Test discrepancy"
-            )
+            Discrepancy(type="missing_in_inventory", details="Test discrepancy")
         ]
 
         detection = reviewer.verify_discrepancy_detection()
@@ -197,14 +195,13 @@ class TestAPIInventoryReviewer(unittest.TestCase):
 
         # Create mock actual endpoints
         from dataclasses import dataclass
-        from typing import Optional
 
         @dataclass
         class MockEndpoint:
             path: str
             method: str
-            view_class: Optional[str] = None
-            file_path: Optional[str] = None
+            view_class: str | None = None
+            file_path: str | None = None
 
         reviewer.actual_endpoints = [
             MockEndpoint(path="/api/v1/assets/", method="GET"),
@@ -213,7 +210,7 @@ class TestAPIInventoryReviewer(unittest.TestCase):
         reviewer.compare_endpoints()
 
         output_file = self.temp_path / "report.json"
-        report = reviewer.generate_report(output_file)
+        reviewer.generate_report(output_file)
 
         self.assertTrue(output_file.exists(), "Report file should exist")
 
@@ -286,14 +283,13 @@ class TestAPIInventoryReviewer(unittest.TestCase):
 
         # Create mock actual endpoints
         from dataclasses import dataclass
-        from typing import Optional
 
         @dataclass
         class MockEndpoint:
             path: str
             method: str
-            view_class: Optional[str] = None
-            file_path: Optional[str] = None
+            view_class: str | None = None
+            file_path: str | None = None
 
         reviewer.actual_endpoints = [
             MockEndpoint(path="/api/v1/assets/", method="GET"),
@@ -306,12 +302,7 @@ class TestAPIInventoryReviewer(unittest.TestCase):
         report = reviewer.generate_report(output_file)
 
         # Verify all required fields exist
-        required_fields = [
-            "generated_at",
-            "inventory_file",
-            "summary",
-            "discrepancies"
-        ]
+        required_fields = ["generated_at", "inventory_file", "summary", "discrepancies"]
 
         for field in required_fields:
             self.assertIn(field, report, f"Report should contain '{field}'")
@@ -322,7 +313,7 @@ class TestAPIInventoryReviewer(unittest.TestCase):
             "total_actual_endpoints",
             "total_discrepancies",
             "accuracy",
-            "discrepancy_detection"
+            "discrepancy_detection",
         ]
 
         for field in summary_fields:
@@ -345,4 +336,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

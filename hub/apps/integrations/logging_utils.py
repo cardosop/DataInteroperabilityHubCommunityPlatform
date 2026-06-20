@@ -3,13 +3,15 @@ Marketplace Integration Logging Utilities
 
 Helper functions for structured logging with correlation IDs in marketplace integrations.
 """
+
+from typing import Any
+
 import structlog
-from typing import Optional, Dict, Any
 
 logger = structlog.get_logger(__name__)
 
 
-def get_correlation_context() -> Dict[str, Any]:
+def get_correlation_context() -> dict[str, Any]:
     """
     Get correlation IDs from current context for structured logging.
 
@@ -29,37 +31,40 @@ def get_correlation_context() -> Dict[str, Any]:
     # Try to get trace context from OpenTelemetry
     try:
         from opentelemetry import trace
+
         span = trace.get_current_span()
         if span and span.get_span_context().is_valid:
             span_context = span.get_span_context()
-            context['trace_id'] = format(span_context.trace_id, '032x')
-            context['span_id'] = format(span_context.span_id, '016x')
+            context["trace_id"] = format(span_context.trace_id, "032x")
+            context["span_id"] = format(span_context.span_id, "016x")
     except Exception:
         pass
 
     # Try to get request context from Django middleware
     try:
         from hub.apps.api.middleware.trace_propagation import get_current_request
+
         request = get_current_request()
         if request:
-            if hasattr(request, 'trace_id') and request.trace_id:
-                context['trace_id'] = request.trace_id
-                context['request_id'] = request.trace_id
-            if hasattr(request, 'span_id') and request.span_id:
-                context['span_id'] = request.span_id
+            if hasattr(request, "trace_id") and request.trace_id:
+                context["trace_id"] = request.trace_id
+                context["request_id"] = request.trace_id
+            if hasattr(request, "span_id") and request.span_id:
+                context["span_id"] = request.span_id
     except Exception:
         pass
 
     # Try to get from structlog contextvars
     try:
         import structlog.contextvars
+
         ctx = structlog.contextvars.get_contextvars()
-        if 'trace_id' in ctx:
-            context['trace_id'] = ctx['trace_id']
-        if 'span_id' in ctx:
-            context['span_id'] = ctx['span_id']
-        if 'request_id' in ctx:
-            context['request_id'] = ctx['request_id']
+        if "trace_id" in ctx:
+            context["trace_id"] = ctx["trace_id"]
+        if "span_id" in ctx:
+            context["span_id"] = ctx["span_id"]
+        if "request_id" in ctx:
+            context["request_id"] = ctx["request_id"]
     except Exception:
         pass
 
@@ -69,15 +74,15 @@ def get_correlation_context() -> Dict[str, Any]:
 def log_connector_operation(
     event: str,
     level: str = "info",
-    operation_type: Optional[str] = None,
-    marketplace_type: Optional[str] = None,
-    tenant_id: Optional[str] = None,
-    connection_id: Optional[str] = None,
-    duration: Optional[float] = None,
-    status: Optional[str] = None,
-    error_type: Optional[str] = None,
-    error_message: Optional[str] = None,
-    **kwargs
+    operation_type: str | None = None,
+    marketplace_type: str | None = None,
+    tenant_id: str | None = None,
+    connection_id: str | None = None,
+    duration: float | None = None,
+    status: str | None = None,
+    error_type: str | None = None,
+    error_message: str | None = None,
+    **kwargs,
 ):
     """
     Log connector operation with structured fields and correlation IDs.
@@ -145,19 +150,19 @@ def log_connector_operation(
 def log_sync_job(
     event: str,
     level: str = "info",
-    sync_job_id: Optional[str] = None,
-    connection_id: Optional[str] = None,
-    marketplace_type: Optional[str] = None,
-    direction: Optional[str] = None,
-    tenant_id: Optional[str] = None,
-    status: Optional[str] = None,
-    duration: Optional[float] = None,
-    total_items: Optional[int] = None,
-    successful_items: Optional[int] = None,
-    failed_items: Optional[int] = None,
-    error_type: Optional[str] = None,
-    error_message: Optional[str] = None,
-    **kwargs
+    sync_job_id: str | None = None,
+    connection_id: str | None = None,
+    marketplace_type: str | None = None,
+    direction: str | None = None,
+    tenant_id: str | None = None,
+    status: str | None = None,
+    duration: float | None = None,
+    total_items: int | None = None,
+    successful_items: int | None = None,
+    failed_items: int | None = None,
+    error_type: str | None = None,
+    error_message: str | None = None,
+    **kwargs,
 ):
     """
     Log sync job operation with structured fields and correlation IDs.
@@ -237,15 +242,15 @@ def log_sync_job(
 def log_api_call(
     event: str,
     level: str = "info",
-    marketplace_type: Optional[str] = None,
-    endpoint: Optional[str] = None,
-    method: Optional[str] = None,
-    status_code: Optional[str] = None,
-    tenant_id: Optional[str] = None,
-    duration: Optional[float] = None,
-    error_type: Optional[str] = None,
-    error_message: Optional[str] = None,
-    **kwargs
+    marketplace_type: str | None = None,
+    endpoint: str | None = None,
+    method: str | None = None,
+    status_code: str | None = None,
+    tenant_id: str | None = None,
+    duration: float | None = None,
+    error_type: str | None = None,
+    error_message: str | None = None,
+    **kwargs,
 ):
     """
     Log API call with structured fields and correlation IDs.
@@ -308,5 +313,3 @@ def log_api_call(
 
     # Log with structured fields (event as first arg, rest as kwargs)
     log_method(event_name, **log_fields)
-
-

@@ -5,7 +5,7 @@ Provides consistent response formatting across all API endpoints.
 """
 
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from django.utils import timezone
 from rest_framework import status
@@ -23,8 +23,8 @@ class StandardResponseFormatter:
     def format_success(
         data: Any,
         status_code: int = status.HTTP_200_OK,
-        message: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        message: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Response:
         """
         Format a successful response.
@@ -60,13 +60,13 @@ class StandardResponseFormatter:
 
     @staticmethod
     def format_list(
-        items: List[Any],
+        items: list[Any],
         count: int,
-        page: Optional[int] = None,
-        page_size: Optional[int] = None,
-        next_cursor: Optional[str] = None,
-        previous_cursor: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        page: int | None = None,
+        page_size: int | None = None,
+        next_cursor: str | None = None,
+        previous_cursor: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Response:
         """
         Format a paginated list response.
@@ -113,8 +113,8 @@ class StandardResponseFormatter:
         error_code: str,
         message: str,
         http_status: int = status.HTTP_400_BAD_REQUEST,
-        details: Optional[Dict[str, Any]] = None,
-        request_id: Optional[str] = None,
+        details: dict[str, Any] | None = None,
+        request_id: str | None = None,
     ) -> Response:
         """
         Format an error response.
@@ -150,8 +150,8 @@ class StandardResponseFormatter:
     @staticmethod
     def format_created(
         data: Any,
-        message: Optional[str] = None,
-        location: Optional[str] = None,
+        message: str | None = None,
+        location: str | None = None,
     ) -> Response:
         """
         Format a 201 Created response.
@@ -191,21 +191,21 @@ class StandardResponseFormatter:
 def format_success_response(
     data: Any,
     status_code: int = status.HTTP_200_OK,
-    message: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None,
+    message: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> Response:
     """Convenience function for formatting success responses."""
     return StandardResponseFormatter.format_success(data, status_code, message, metadata)
 
 
 def format_list_response(
-    items: List[Any],
+    items: list[Any],
     count: int,
-    page: Optional[int] = None,
-    page_size: Optional[int] = None,
-    next_cursor: Optional[str] = None,
-    previous_cursor: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None,
+    page: int | None = None,
+    page_size: int | None = None,
+    next_cursor: str | None = None,
+    previous_cursor: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> Response:
     """Convenience function for formatting list responses."""
     return StandardResponseFormatter.format_list(
@@ -217,8 +217,8 @@ def format_error_response(
     error_code: str,
     message: str,
     http_status: int = status.HTTP_400_BAD_REQUEST,
-    details: Optional[Dict[str, Any]] = None,
-    request_id: Optional[str] = None,
+    details: dict[str, Any] | None = None,
+    request_id: str | None = None,
 ) -> Response:
     """Convenience function for formatting error responses."""
     return StandardResponseFormatter.format_error(

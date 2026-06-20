@@ -60,6 +60,7 @@ boundary; we read the published events from the in-memory queue
 the test fixture provides via the ``EventPublisher`` deduplication
 cache. NO mocks of business logic.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -69,16 +70,13 @@ from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.assets.services import AssetService
-from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.models import AuditEvent
 from hub.apps.core.services.base import (
     ConflictError,
-    NotFoundError,
     ValidationError,
 )
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -206,9 +204,7 @@ class TestFastPathIdempotency(TestCase):
     the claim that a retried scheduled-ingestion run is
     side-effect-free for already-bootstrapped Assets."""
 
-    def _seed_existing(
-        self, tenant: Tenant, user: User, *, status: str
-    ) -> Asset:
+    def _seed_existing(self, tenant: Tenant, user: User, *, status: str) -> Asset:
         asset = Asset.objects.create(
             tenant=tenant,
             key="existing-key",
@@ -342,9 +338,7 @@ class TestRetiredKeyRejection(TestCase):
         assert exc.code == "ASSET_KEY_RETIRED"
         assert exc.http_status == 409
         # No new asset row created.
-        assert Asset.objects.filter(
-            tenant=tenant, key="retired-key"
-        ).count() == 1
+        assert Asset.objects.filter(tenant=tenant, key="retired-key").count() == 1
         # The pre-existing RETIRED row is still RETIRED.
         retired.refresh_from_db()
         assert retired.status == AssetStatus.RETIRED
@@ -386,8 +380,7 @@ class TestRetiredKeyRejection(TestCase):
         # legitimate resolutions (transition or new key).
         remediation = str(details["remediation"]).lower()
         assert "transition" in remediation or "new key" in remediation, (
-            f"Remediation MUST mention transition / new-key; got "
-            f"{details['remediation']!r}"
+            f"Remediation MUST mention transition / new-key; got {details['remediation']!r}"
         )
 
     def test_RETIRED_rejection_emits_NO_audit_or_webhook(self):
@@ -418,8 +411,7 @@ class TestRetiredKeyRejection(TestCase):
             action="ASSET_CREATED",
         ).count()
         assert post_audit == audit_baseline, (
-            "ASSET_KEY_RETIRED rejection MUST NOT emit a new "
-            "ASSET_CREATED audit row."
+            "ASSET_KEY_RETIRED rejection MUST NOT emit a new ASSET_CREATED audit row."
         )
 
 

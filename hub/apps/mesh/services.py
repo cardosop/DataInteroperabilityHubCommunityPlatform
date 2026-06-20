@@ -4,47 +4,47 @@ Data Mesh Service
 Service layer for Data Mesh operations.
 Provides business logic for domain management, policy applications, and compliance reporting.
 """
-from typing import Dict, Any, Optional, List, TYPE_CHECKING
+
+import time
+from typing import TYPE_CHECKING, Any, Optional
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError, ConflictError
 from hub.apps.core.events.service_publishers import DataMeshEventPublisher
+from hub.apps.core.services.base import BaseService, ConflictError, NotFoundError, ValidationError
 from hub.apps.mesh.business_rules import DataMeshBusinessRules
-from hub.apps.mesh.models import (
-    DataMeshDomain,
-    DomainStatus,
-    PolicyApplication,
-    PolicyApplicationStatus,
-    ComplianceReport,
-    MeshComplianceStatus,
-)
 from hub.apps.mesh.metrics import (
-    mesh_domain_created_total,
-    mesh_domain_updated_total,
-    mesh_domain_deleted_total,
-    mesh_domain_creation_duration_seconds,
-    mesh_domain_update_duration_seconds,
-    mesh_policy_applied_total,
-    mesh_policy_revoked_total,
-    mesh_policy_application_duration_seconds,
+    get_domain_id,
+    get_tenant_id,
     mesh_compliance_check_duration_seconds,
-    mesh_compliance_violations_total,
     mesh_compliance_checks_total,
     mesh_compliance_report_generated_total,
-    mesh_topology_update_duration_seconds,
-    mesh_topology_updates_total,
-    mesh_topology_update_failures_total,
+    mesh_compliance_violations_total,
     mesh_domain_count,
-    mesh_relationship_count,
+    mesh_domain_created_total,
+    mesh_domain_creation_duration_seconds,
+    mesh_domain_deleted_total,
+    mesh_domain_health_check_duration_seconds,
     mesh_domain_health_status,
     mesh_domain_health_status_changes_total,
-    mesh_domain_health_check_duration_seconds,
-    get_tenant_id,
-    get_domain_id,
+    mesh_domain_update_duration_seconds,
+    mesh_domain_updated_total,
+    mesh_policy_application_duration_seconds,
+    mesh_policy_applied_total,
+    mesh_relationship_count,
+    mesh_topology_update_duration_seconds,
+    mesh_topology_updates_total,
 )
-import time
+from hub.apps.mesh.models import (
+    ComplianceReport,
+    DataMeshDomain,
+    DomainStatus,
+    MeshComplianceStatus,
+    PolicyApplication,
+    PolicyApplicationStatus,
+)
 
 if TYPE_CHECKING:
     from hub.apps.orchestration.models import WorkflowInstance
@@ -62,7 +62,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
     service_name = "data_mesh_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
         """
         Initialize DataMeshService.
 
@@ -79,7 +79,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
     def get_domain(
         self,
         domain_id: str,
-        tenant_id: Optional[str] = None,
+        tenant_id: str | None = None,
     ) -> DataMeshDomain:
         """
         Get domain by ID.
@@ -110,12 +110,12 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
     def get_domains(
         self,
-        tenant_id: Optional[str] = None,
-        status: Optional[DomainStatus] = None,
-        owner_id: Optional[str] = None,
-        limit: Optional[int] = None,
+        tenant_id: str | None = None,
+        status: DomainStatus | None = None,
+        owner_id: str | None = None,
+        limit: int | None = None,
         offset: int = 0,
-    ) -> List[DataMeshDomain]:
+    ) -> list[DataMeshDomain]:
         """
         Get domains with optional filtering.
 
@@ -158,7 +158,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             func=_get_domains,
         )
 
-    def _validate_boundaries(self, boundaries: Dict[str, Any]) -> None:
+    def _validate_boundaries(self, boundaries: dict[str, Any]) -> None:
         """
         Validate domain boundaries structure and content.
 
@@ -176,15 +176,14 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             if not isinstance(boundaries["data_products"], list):
                 raise ValidationError("boundaries.data_products must be a list")
 
-        if "schemas" in boundaries:
-            if not isinstance(boundaries["schemas"], list):
-                raise ValidationError("boundaries.schemas must be a list")
+        if "schemas" in boundaries and not isinstance(boundaries["schemas"], list):
+            raise ValidationError("boundaries.schemas must be a list")
 
         if "access_patterns" in boundaries:
             if not isinstance(boundaries["access_patterns"], list):
                 raise ValidationError("boundaries.access_patterns must be a list")
 
-    def _validate_resource_quota(self, resource_quota: Dict[str, Any]) -> None:
+    def _validate_resource_quota(self, resource_quota: dict[str, Any]) -> None:
         """
         Validate resource quota structure and values.
 
@@ -205,10 +204,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 raise ValidationError(f"Resource quota '{key}' cannot be negative")
 
     def _allocate_resource_quota(
-        self,
-        tenant_id: str,
-        resource_quota: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, tenant_id: str, resource_quota: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Allocate resource quota for the domain.
 
@@ -254,11 +251,11 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         self,
         tenant_id: str,
         name: str,
-        description: Optional[str] = None,
-        owner_id: Optional[str] = None,
-        boundaries: Optional[Dict[str, Any]] = None,
-        capabilities: Optional[Dict[str, Any]] = None,
-        resource_quota: Optional[Dict[str, Any]] = None,
+        description: str | None = None,
+        owner_id: str | None = None,
+        boundaries: dict[str, Any] | None = None,
+        capabilities: dict[str, Any] | None = None,
+        resource_quota: dict[str, Any] | None = None,
         status: DomainStatus = DomainStatus.ACTIVE,
     ) -> DataMeshDomain:
         """
@@ -297,6 +294,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         # Plan limit enforcement
         from hub.apps.tenants.services import PlanLimitService
+
         plan_limit_service = PlanLimitService(tenant_id=effective_tenant_id)
         plan_limit_service.check_limit(
             tenant_id=effective_tenant_id,
@@ -327,17 +325,17 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         if self.user_id:
             from hub.apps.core.services.base import PermissionError
             from hub.apps.governance.services import GovernanceService
+
             try:
                 GovernanceService(
                     tenant_id=effective_tenant_id, user_id=self.user_id
-                ).check_user_permissions_for_domain_creation(
-                    self.user_id, effective_tenant_id
-                )
+                ).check_user_permissions_for_domain_creation(self.user_id, effective_tenant_id)
             except PermissionError:
                 raise
             # ABAC: skip for platform admins (they transcend tenant boundaries); otherwise enforce when tenant has policies for DATA_MESH_DOMAIN
             if not (user_obj and getattr(user_obj, "is_platform_admin", False)):
                 from hub.apps.governance.abac import ABACEngine
+
                 applicable = ABACEngine._get_applicable_policies(
                     effective_tenant_id, "DATA_MESH_DOMAIN", ""
                 )
@@ -376,9 +374,9 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             )
 
         # Execute workflow
-        from hub.apps.orchestration.workflows.data_mesh import DataMeshWorkflow
-        from hub.apps.orchestration.workflow_engine import WorkflowEngine
         from hub.apps.orchestration.registry import WorkflowRegistry
+        from hub.apps.orchestration.workflow_engine import WorkflowEngine
+        from hub.apps.orchestration.workflows.data_mesh import DataMeshWorkflow
 
         # Create engine and registry
         engine = WorkflowEngine()
@@ -386,6 +384,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         # Register workflow (idempotent - safe to call multiple times)
         try:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.debug("Registering data mesh workflow before domain creation")
             DataMeshWorkflow.register_workflow(registry)
@@ -393,7 +392,9 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         except Exception as e:
             # If workflow registration fails, convert to appropriate error type
             import logging
+
             from django.core.exceptions import ValidationError as DjangoValidationError
+
             logger = logging.getLogger(__name__)
             error_msg = str(e)
             error_type = type(e).__name__
@@ -401,18 +402,23 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
             # Handle "already exists" errors - these are expected with idempotent registration
             if "already exists" in error_msg.lower():
-                logger.debug("Workflow already exists (expected with idempotent registration), continuing")
+                logger.debug(
+                    "Workflow already exists (expected with idempotent registration), continuing"
+                )
                 # Try to get the existing workflow to ensure it's registered
                 try:
                     existing = registry.get_workflow("data_mesh", version="1.0.0")
                     if existing:
                         logger.debug(f"Confirmed workflow exists: {existing.id}")
                     else:
-                        logger.warning("Workflow reported as existing but not found in registry - this is OK, workflow exists")
+                        logger.warning(
+                            "Workflow reported as existing but not found in registry - this is OK, workflow exists"
+                        )
                 except Exception as lookup_error:
-                    logger.warning(f"Error looking up existing workflow: {lookup_error} - this is OK, workflow exists")
+                    logger.warning(
+                        f"Error looking up existing workflow: {lookup_error} - this is OK, workflow exists"
+                    )
                 # Continue - workflow exists, which is fine. Don't raise any error.
-                pass
             # Handle ValidationError types (both Django and custom)
             elif isinstance(e, DjangoValidationError) or isinstance(e, ValidationError):
                 # Re-raise other validation errors
@@ -421,11 +427,15 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             # Handle RuntimeError (from registry when workflow can't be found)
             elif isinstance(e, RuntimeError) and "transaction isolation" in error_msg.lower():
                 # This is a transient transaction isolation issue - workflow exists, just not visible yet
-                logger.warning(f"Transaction isolation issue during workflow registration: {error_msg}. Continuing as workflow exists.")
-                pass  # Don't raise - workflow exists, will be available shortly
+                logger.warning(
+                    f"Transaction isolation issue during workflow registration: {error_msg}. Continuing as workflow exists."
+                )
+                # Don't raise - workflow exists, will be available shortly
             else:
                 # Re-raise other errors
-                logger.error(f"Unexpected error during workflow registration: {error_type}: {error_msg}")
+                logger.error(
+                    f"Unexpected error during workflow registration: {error_type}: {error_msg}"
+                )
                 raise ValidationError(f"Failed to register workflow: {error_msg}") from e
         DataMeshWorkflow.register_tasks(engine)
 
@@ -442,7 +452,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 resource_quota=resource_quota,
                 created_by_id=self.user_id,
                 engine=engine,
-                registry=registry
+                registry=registry,
             )
             creation_duration = time.time() - start_time
             creation_status = "success"
@@ -454,15 +464,18 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             if "already exists" in error_msg.lower():
                 raise ConflictError(error_msg) from e
             # Rollback path may omit step message; treat validate_domain step failure as duplicate if name exists
-            if "validate_domain" in error_msg and ("step failure" in error_msg or "rolled back" in error_msg):
-                if DataMeshDomain.objects.filter(
+            if (
+                "validate_domain" in error_msg
+                and ("step failure" in error_msg or "rolled back" in error_msg)
+                and DataMeshDomain.objects.filter(
                     tenant_id=effective_tenant_id, name=name.strip()
-                ).exists():
-                    raise ConflictError(
-                        f"Domain with name '{name.strip()}' already exists for tenant"
-                    ) from e
+                ).exists()
+            ):
+                raise ConflictError(
+                    f"Domain with name '{name.strip()}' already exists for tenant"
+                ) from e
             raise ValidationError(error_msg) from e
-        except Exception as e:
+        except Exception:
             creation_duration = time.time() - start_time
             creation_status = "failed"
             raise
@@ -479,48 +492,41 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         workflow_instance_id = workflow_result.get("workflow_instance_id")
         if workflow_instance_id:
             from hub.apps.orchestration.models import WorkflowInstance
+
             try:
                 workflow_instance = WorkflowInstance.objects.get(id=workflow_instance_id)
                 domain.workflow_instance = workflow_instance
-                domain.save(update_fields=['workflow_instance'])
+                domain.save(update_fields=["workflow_instance"])
             except WorkflowInstance.DoesNotExist:
                 # Log warning but don't fail - workflow instance may have been deleted
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(
                     f"Workflow instance {workflow_instance_id} not found for domain {domain_id}",
-                    extra={
-                        "domain_id": domain_id,
-                        "workflow_instance_id": workflow_instance_id
-                    }
+                    extra={"domain_id": domain_id, "workflow_instance_id": workflow_instance_id},
                 )
 
         # Update status if different from default (workflow sets to ACTIVE)
         if status != DomainStatus.ACTIVE and domain.status != status:
             domain.status = status
-            domain.save(update_fields=['status'])
+            domain.save(update_fields=["status"])
 
         # Record metrics
         tenant_label = get_tenant_id(effective_tenant_id)
         try:
-            mesh_domain_created_total.labels(
-                tenant_id=tenant_label,
-                status=domain.status
-            ).inc()
+            mesh_domain_created_total.labels(tenant_id=tenant_label, status=domain.status).inc()
 
             mesh_domain_creation_duration_seconds.labels(
-                tenant_id=tenant_label,
-                status=creation_status
+                tenant_id=tenant_label, status=creation_status
             ).observe(creation_duration)
 
             # Update domain count gauge
-            mesh_domain_count.labels(
-                tenant_id=tenant_label,
-                status=domain.status
-            ).inc(1)
+            mesh_domain_count.labels(tenant_id=tenant_label, status=domain.status).inc(1)
         except Exception as e:
             # Log error but don't fail domain creation
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(
                 f"Failed to record metrics for domain creation {domain.id}: {e}",
@@ -550,6 +556,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         except Exception as e:
             # Log error but don't fail domain creation
             import logging
+
             logger = logging.getLogger(__name__)
             logger.error(
                 f"Failed to publish domain.created event for domain {domain.id}: {e}",
@@ -561,8 +568,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
     def get_domain_workflow_instance(
         self,
         domain_id: str,
-        tenant_id: Optional[str] = None,
-    ) -> Optional['WorkflowInstance']:
+        tenant_id: str | None = None,
+    ) -> Optional["WorkflowInstance"]:
         """
         Get workflow instance that created the domain.
 
@@ -579,8 +586,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
     def get_domain_workflow_state(
         self,
         domain_id: str,
-        tenant_id: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
+        tenant_id: str | None = None,
+    ) -> dict[str, Any] | None:
         """
         Get workflow state data for the domain.
 
@@ -599,8 +606,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
     def get_domain_workflow_status(
         self,
         domain_id: str,
-        tenant_id: Optional[str] = None,
-    ) -> Optional[str]:
+        tenant_id: str | None = None,
+    ) -> str | None:
         """
         Get workflow status for the domain.
 
@@ -615,7 +622,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         if workflow_instance:
             # Convert TextChoices to string value
             status = workflow_instance.status
-            if hasattr(status, 'value'):
+            if hasattr(status, "value"):
                 return status.value
             return str(status)
         return None
@@ -623,8 +630,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
     def get_domain_workflow_progress(
         self,
         domain_id: str,
-        tenant_id: Optional[str] = None,
-    ) -> Optional[int]:
+        tenant_id: str | None = None,
+    ) -> int | None:
         """
         Get workflow progress percentage for the domain.
 
@@ -644,14 +651,14 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
     def update_domain(
         self,
         domain_id: str,
-        tenant_id: Optional[str] = None,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        owner_id: Optional[str] = None,
-        boundaries: Optional[Dict[str, Any]] = None,
-        capabilities: Optional[Dict[str, Any]] = None,
-        resource_quota: Optional[Dict[str, Any]] = None,
-        status: Optional[DomainStatus] = None,
+        tenant_id: str | None = None,
+        name: str | None = None,
+        description: str | None = None,
+        owner_id: str | None = None,
+        boundaries: dict[str, Any] | None = None,
+        capabilities: dict[str, Any] | None = None,
+        resource_quota: dict[str, Any] | None = None,
+        status: DomainStatus | None = None,
         _owner_id_provided: bool = False,  # Internal flag to distinguish None from not provided
     ) -> DataMeshDomain:
         """
@@ -733,18 +740,25 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         if _owner_id_provided:
             if owner_id is None:
                 # Explicitly remove owner
-                changes["owner_id"] = {"old": str(domain.owner_id) if domain.owner_id else None, "new": None}
+                changes["owner_id"] = {
+                    "old": str(domain.owner_id) if domain.owner_id else None,
+                    "new": None,
+                }
                 domain.owner_id = None
             else:
                 # Validate owner belongs to tenant
                 from hub.apps.users.models import User
+
                 try:
-                    owner = User.objects.get(id=owner_id, tenant_id=effective_tenant_id)
+                    User.objects.get(id=owner_id, tenant_id=effective_tenant_id)
                 except User.DoesNotExist:
                     raise ValidationError(
                         f"Owner user {owner_id} not found or does not belong to tenant"
                     )
-                changes["owner_id"] = {"old": str(domain.owner_id) if domain.owner_id else None, "new": str(owner_id)}
+                changes["owner_id"] = {
+                    "old": str(domain.owner_id) if domain.owner_id else None,
+                    "new": str(owner_id),
+                }
                 domain.owner_id = owner_id
 
         if boundaries is not None:
@@ -786,16 +800,19 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         # Create audit log for domain update
         if changes:
             try:
+                from django.contrib.auth import get_user_model
+
                 from hub.apps.audit.utils import create_audit_event
                 from hub.apps.tenants.models import Tenant
-                from django.contrib.auth import get_user_model
 
                 User = get_user_model()
                 tenant_obj = Tenant.objects.get(id=effective_tenant_id)
                 actor_user = None
                 if self.user_id:
                     try:
-                        actor_user = User.objects.get(id=self.user_id, tenant_id=effective_tenant_id)
+                        actor_user = User.objects.get(
+                            id=self.user_id, tenant_id=effective_tenant_id
+                        )
                     except User.DoesNotExist:
                         pass  # Continue without actor_user if not found
 
@@ -847,6 +864,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             except Exception as e:
                 # Log error but don't fail domain update if audit logging fails
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(
                     f"Failed to create audit log for domain update {domain.id}: {e}",
@@ -858,26 +876,19 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         if changes:
             update_duration = time.time() - update_start_time
             try:
-                mesh_domain_updated_total.labels(
-                    tenant_id=tenant_label
-                ).inc()
+                mesh_domain_updated_total.labels(tenant_id=tenant_label).inc()
 
-                mesh_domain_update_duration_seconds.labels(
-                    tenant_id=tenant_label
-                ).observe(update_duration)
+                mesh_domain_update_duration_seconds.labels(tenant_id=tenant_label).observe(
+                    update_duration
+                )
 
                 # Update domain count gauge if status changed
                 if "status" in changes:
-                    mesh_domain_count.labels(
-                        tenant_id=tenant_label,
-                        status=previous_status
-                    ).dec(1)
-                    mesh_domain_count.labels(
-                        tenant_id=tenant_label,
-                        status=domain.status
-                    ).inc(1)
+                    mesh_domain_count.labels(tenant_id=tenant_label, status=previous_status).dec(1)
+                    mesh_domain_count.labels(tenant_id=tenant_label, status=domain.status).inc(1)
             except Exception as e:
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(
                     f"Failed to record metrics for domain update {domain.id}: {e}",
@@ -907,6 +918,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             except Exception as e:
                 # Log error but don't fail domain update
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.error(
                     f"Failed to publish domain.updated event for domain {domain.id}: {e}",
@@ -919,8 +931,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
     def delete_domain(
         self,
         domain_id: str,
-        tenant_id: Optional[str] = None,
-        reason: Optional[str] = None,
+        tenant_id: str | None = None,
+        reason: str | None = None,
     ) -> None:
         """
         Delete a data mesh domain.
@@ -965,9 +977,10 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         # Create audit log before deletion
         try:
+            from django.contrib.auth import get_user_model
+
             from hub.apps.audit.utils import create_audit_event
             from hub.apps.tenants.models import Tenant
-            from django.contrib.auth import get_user_model
 
             User = get_user_model()
             tenant_obj = Tenant.objects.get(id=effective_tenant_id)
@@ -999,6 +1012,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         except Exception as e:
             # Log error but don't fail deletion if audit logging fails
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(
                 f"Failed to create audit log for domain deletion {domain_id_str}: {e}",
@@ -1009,17 +1023,14 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         tenant_label = get_tenant_id(effective_tenant_id)
         try:
             mesh_domain_deleted_total.labels(
-                tenant_id=tenant_label,
-                reason=reason or "no_reason"
+                tenant_id=tenant_label, reason=reason or "no_reason"
             ).inc()
 
             # Decrease domain count gauge
-            mesh_domain_count.labels(
-                tenant_id=tenant_label,
-                status=domain.status
-            ).dec(1)
+            mesh_domain_count.labels(tenant_id=tenant_label, status=domain.status).dec(1)
         except Exception as e:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(
                 f"Failed to record metrics for domain deletion {domain_id_str}: {e}",
@@ -1040,6 +1051,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         except Exception as e:
             # Log error but don't fail deletion
             import logging
+
             logger = logging.getLogger(__name__)
             logger.error(
                 f"Failed to publish domain.deleted event for domain {domain_id_str}: {e}",
@@ -1051,8 +1063,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         self,
         domain_id: str,
         policy_id: str,
-        overrides: Optional[Dict[str, Any]] = None,
-        tenant_id: Optional[str] = None,
+        overrides: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
     ) -> PolicyApplication:
         """
         Apply a policy to a data mesh domain.
@@ -1078,6 +1090,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             raise ValidationError("tenant_id is required")
 
         import logging
+
         logger = logging.getLogger(__name__)
 
         # 1. Validate and get domain
@@ -1091,6 +1104,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         # 3. Validate and get policy
         from hub.apps.governance.models import AccessPolicy
+
         try:
             # First get policy without tenant filter to check tenant compatibility
             policy = AccessPolicy.objects.get(id=policy_id)
@@ -1106,9 +1120,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         # 5. Validate policy is enabled
         if not policy.enabled:
-            raise ValidationError(
-                f"Policy '{policy.name}' is disabled and cannot be applied"
-            )
+            raise ValidationError(f"Policy '{policy.name}' is disabled and cannot be applied")
 
         # 6. Validate overrides structure
         overrides_dict = overrides or {}
@@ -1122,6 +1134,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         applied_by_user = None
         if self.user_id:
             from hub.apps.users.models import User
+
             try:
                 applied_by_user = User.objects.get(id=self.user_id, tenant_id=effective_tenant_id)
             except User.DoesNotExist:
@@ -1132,8 +1145,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                         "user_id": self.user_id,
                         "tenant_id": effective_tenant_id,
                         "domain_id": str(domain.id),
-                        "policy_id": str(policy.id)
-                    }
+                        "policy_id": str(policy.id),
+                    },
                 )
                 # Continue without applied_by_user if not found (nullable field)
 
@@ -1161,16 +1174,17 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                     "policy_application_id": str(policy_application.id),
                     "domain_id": str(domain.id),
                     "policy_id": str(policy.id),
-                    "tenant_id": effective_tenant_id
+                    "tenant_id": effective_tenant_id,
                 },
-                exc_info=True
+                exc_info=True,
             )
 
         # 10. Create audit log
         try:
+            from django.contrib.auth import get_user_model
+
             from hub.apps.audit.utils import create_audit_event
             from hub.apps.tenants.models import Tenant
-            from django.contrib.auth import get_user_model
 
             User = get_user_model()
             tenant_obj = Tenant.objects.get(id=effective_tenant_id)
@@ -1212,12 +1226,11 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 tenant_id=tenant_label,
                 domain_id=domain_label,
                 policy_id=str(policy.id),
-                status=policy_application.status
+                status=policy_application.status,
             ).inc()
 
             mesh_policy_application_duration_seconds.labels(
-                tenant_id=tenant_label,
-                status=policy_application.status
+                tenant_id=tenant_label, status=policy_application.status
             ).observe(policy_application_duration)
         except Exception as e:
             logger.warning(
@@ -1254,10 +1267,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         return policy_application
 
     def _check_compliance_for_domain(
-        self,
-        domain: DataMeshDomain,
-        policy_application: PolicyApplication
-    ) -> Optional[ComplianceReport]:
+        self, domain: DataMeshDomain, policy_application: PolicyApplication
+    ) -> ComplianceReport | None:
         """
         Check compliance for a domain after policy application.
 
@@ -1273,9 +1284,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         """
         # Get all applied policies for the domain
         applied_policies = PolicyApplication.objects.filter(
-            domain=domain,
-            status=PolicyApplicationStatus.APPLIED
-        ).select_related('policy')
+            domain=domain, status=PolicyApplicationStatus.APPLIED
+        ).select_related("policy")
 
         # Check if domain has any violations
         violations = []
@@ -1283,35 +1293,39 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         # Basic compliance check: ensure domain is active and has valid policies
         if domain.status != DomainStatus.ACTIVE:
-            violations.append({
-                "type": "DOMAIN_INACTIVE",
-                "severity": "HIGH",
-                "description": f"Domain {domain.name} is not active",
-                "policy_application_id": str(policy_application.id)
-            })
+            violations.append(
+                {
+                    "type": "DOMAIN_INACTIVE",
+                    "severity": "HIGH",
+                    "description": f"Domain {domain.name} is not active",
+                    "policy_application_id": str(policy_application.id),
+                }
+            )
             compliance_status = MeshComplianceStatus.NON_COMPLIANT
 
         # Check if any applied policies are disabled
         for app in applied_policies:
             if app.policy and not app.policy.enabled:
-                violations.append({
-                    "type": "POLICY_DISABLED",
-                    "severity": "MEDIUM",
-                    "description": f"Applied policy {app.policy.name} is disabled",
-                    "policy_application_id": str(app.id),
-                    "policy_id": str(app.policy.id)
-                })
+                violations.append(
+                    {
+                        "type": "POLICY_DISABLED",
+                        "severity": "MEDIUM",
+                        "description": f"Applied policy {app.policy.name} is disabled",
+                        "policy_application_id": str(app.id),
+                        "policy_id": str(app.policy.id),
+                    }
+                )
                 if compliance_status == MeshComplianceStatus.COMPLIANT:
                     compliance_status = MeshComplianceStatus.PARTIAL
 
         # Create or update compliance report
-        compliance_report, created = ComplianceReport.objects.update_or_create(
+        compliance_report, _created = ComplianceReport.objects.update_or_create(
             domain=domain,
             asset=None,  # Domain-level report
             defaults={
                 "compliance_status": compliance_status,
-                "violations": {"items": violations} if violations else {}
-            }
+                "violations": {"items": violations} if violations else {},
+            },
         )
 
         return compliance_report
@@ -1320,8 +1334,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
     def revoke_policy(
         self,
         policy_application_id: str,
-        reason: Optional[str] = None,
-        tenant_id: Optional[str] = None,
+        reason: str | None = None,
+        tenant_id: str | None = None,
     ) -> PolicyApplication:
         """
         Revoke a policy application from a data mesh domain.
@@ -1345,12 +1359,13 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             raise ValidationError("tenant_id is required")
 
         import logging
+
         logger = logging.getLogger(__name__)
 
         # 1. Get policy application
         try:
             policy_application = PolicyApplication.objects.select_related(
-                'domain', 'policy', 'applied_by'
+                "domain", "policy", "applied_by"
             ).get(id=policy_application_id, domain__tenant_id=effective_tenant_id)
         except PolicyApplication.DoesNotExist:
             raise NotFoundError(f"Policy application with id '{policy_application_id}' not found")
@@ -1360,14 +1375,13 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         # 2. Validate policy application can be revoked
         if policy_application.status == PolicyApplicationStatus.REVOKED:
-            raise ValidationError(
-                f"Policy application {policy_application_id} is already revoked"
-            )
+            raise ValidationError(f"Policy application {policy_application_id} is already revoked")
 
         # 3. Get revoking user if provided
         revoked_by_user = None
         if self.user_id:
             from hub.apps.users.models import User
+
             try:
                 revoked_by_user = User.objects.get(id=self.user_id, tenant_id=effective_tenant_id)
             except User.DoesNotExist:
@@ -1377,8 +1391,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                     extra={
                         "user_id": self.user_id,
                         "tenant_id": effective_tenant_id,
-                        "policy_application_id": str(policy_application.id)
-                    }
+                        "policy_application_id": str(policy_application.id),
+                    },
                 )
 
         # 4. Update policy application status to REVOKED
@@ -1397,16 +1411,17 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 extra={
                     "policy_application_id": str(policy_application.id),
                     "domain_id": str(domain.id),
-                    "tenant_id": effective_tenant_id
+                    "tenant_id": effective_tenant_id,
                 },
-                exc_info=True
+                exc_info=True,
             )
 
         # 6. Create audit log
         try:
+            from django.contrib.auth import get_user_model
+
             from hub.apps.audit.utils import create_audit_event
             from hub.apps.tenants.models import Tenant
-            from django.contrib.auth import get_user_model
 
             User = get_user_model()
             tenant_obj = Tenant.objects.get(id=effective_tenant_id)
@@ -1417,7 +1432,9 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 "domain_name": domain.name,
                 "policy_id": str(policy.id) if policy else None,
                 "policy_name": policy.name if policy else "Unknown Policy",
-                "applied_by_id": str(policy_application.applied_by.id) if policy_application.applied_by else None,
+                "applied_by_id": str(policy_application.applied_by.id)
+                if policy_application.applied_by
+                else None,
                 "revoked_by_id": str(revoked_by_user.id) if revoked_by_user else None,
                 "tenant_id": effective_tenant_id,
                 "previous_status": previous_status,
@@ -1464,8 +1481,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
     def check_compliance(
         self,
         domain_id: str,
-        tenant_id: Optional[str] = None,
-        asset_id: Optional[str] = None,
+        tenant_id: str | None = None,
+        asset_id: str | None = None,
     ) -> ComplianceReport:
         """
         Check compliance for a data mesh domain.
@@ -1493,6 +1510,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             raise ValidationError("tenant_id is required")
 
         import logging
+
         logger = logging.getLogger(__name__)
 
         # 1. Get domain
@@ -1505,6 +1523,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         asset = None
         if asset_id:
             from hub.apps.assets.models import Asset
+
             try:
                 asset = Asset.objects.get(id=asset_id, tenant_id=effective_tenant_id)
             except Asset.DoesNotExist:
@@ -1512,9 +1531,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         # 3. Retrieve all applied policies for the domain
         applied_policies = PolicyApplication.objects.filter(
-            domain=domain,
-            status=PolicyApplicationStatus.APPLIED
-        ).select_related('policy')
+            domain=domain, status=PolicyApplicationStatus.APPLIED
+        ).select_related("policy")
 
         # 4. Initialize violations list and compliance status
         violations = []
@@ -1522,52 +1540,61 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         # 5. Check domain-level compliance
         if domain.status != DomainStatus.ACTIVE:
-            violations.append({
-                "type": "DOMAIN_INACTIVE",
-                "severity": "HIGH",
-                "description": f"Domain {domain.name} is not active",
-                "domain_id": str(domain.id)
-            })
+            violations.append(
+                {
+                    "type": "DOMAIN_INACTIVE",
+                    "severity": "HIGH",
+                    "description": f"Domain {domain.name} is not active",
+                    "domain_id": str(domain.id),
+                }
+            )
             compliance_status = MeshComplianceStatus.NON_COMPLIANT
 
         # 6. Check policy compliance
         for policy_app in applied_policies:
             policy = policy_app.policy
             if not policy:
-                violations.append({
-                    "type": "POLICY_MISSING",
-                    "severity": "MEDIUM",
-                    "description": f"Policy application {policy_app.id} references missing policy",
-                    "policy_application_id": str(policy_app.id)
-                })
+                violations.append(
+                    {
+                        "type": "POLICY_MISSING",
+                        "severity": "MEDIUM",
+                        "description": f"Policy application {policy_app.id} references missing policy",
+                        "policy_application_id": str(policy_app.id),
+                    }
+                )
                 if compliance_status == MeshComplianceStatus.COMPLIANT:
                     compliance_status = MeshComplianceStatus.PARTIAL
                 continue
 
             # Check if policy is enabled
             if not policy.enabled:
-                violations.append({
-                    "type": "POLICY_DISABLED",
-                    "severity": "MEDIUM",
-                    "description": f"Applied policy {policy.name} is disabled",
-                    "policy_application_id": str(policy_app.id),
-                    "policy_id": str(policy.id)
-                })
+                violations.append(
+                    {
+                        "type": "POLICY_DISABLED",
+                        "severity": "MEDIUM",
+                        "description": f"Applied policy {policy.name} is disabled",
+                        "policy_application_id": str(policy_app.id),
+                        "policy_id": str(policy.id),
+                    }
+                )
                 if compliance_status == MeshComplianceStatus.COMPLIANT:
                     compliance_status = MeshComplianceStatus.PARTIAL
 
             # Check policy expiration (if applicable)
-            if hasattr(policy_app, 'expires_at') and policy_app.expires_at:
+            if hasattr(policy_app, "expires_at") and policy_app.expires_at:
                 from django.utils import timezone
+
                 if policy_app.expires_at < timezone.now():
-                    violations.append({
-                        "type": "POLICY_EXPIRED",
-                        "severity": "HIGH",
-                        "description": f"Policy {policy.name} has expired",
-                        "policy_application_id": str(policy_app.id),
-                        "policy_id": str(policy.id),
-                        "expires_at": policy_app.expires_at.isoformat()
-                    })
+                    violations.append(
+                        {
+                            "type": "POLICY_EXPIRED",
+                            "severity": "HIGH",
+                            "description": f"Policy {policy.name} has expired",
+                            "policy_application_id": str(policy_app.id),
+                            "policy_id": str(policy.id),
+                            "expires_at": policy_app.expires_at.isoformat(),
+                        }
+                    )
                     compliance_status = MeshComplianceStatus.NON_COMPLIANT
 
         # 7. Validate assets if asset_id provided or check domain assets
@@ -1575,63 +1602,76 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             # Asset-specific compliance check
             # Check asset status
             if asset.status not in ["ACTIVE", "PUBLIC"]:
-                violations.append({
-                    "type": "ASSET_INACTIVE",
-                    "severity": "MEDIUM",
-                    "description": f"Asset {asset.name} is not active or public",
-                    "asset_id": str(asset.id),
-                    "asset_status": asset.status
-                })
+                violations.append(
+                    {
+                        "type": "ASSET_INACTIVE",
+                        "severity": "MEDIUM",
+                        "description": f"Asset {asset.name} is not active or public",
+                        "asset_id": str(asset.id),
+                        "asset_status": asset.status,
+                    }
+                )
                 if compliance_status == MeshComplianceStatus.COMPLIANT:
                     compliance_status = MeshComplianceStatus.PARTIAL
 
             # Check asset compliance status
             if asset.compliance_status == "FAIL":
-                violations.append({
-                    "type": "ASSET_COMPLIANCE_FAIL",
-                    "severity": "HIGH",
-                    "description": f"Asset {asset.name} has compliance failures",
-                    "asset_id": str(asset.id)
-                })
+                violations.append(
+                    {
+                        "type": "ASSET_COMPLIANCE_FAIL",
+                        "severity": "HIGH",
+                        "description": f"Asset {asset.name} has compliance failures",
+                        "asset_id": str(asset.id),
+                    }
+                )
                 compliance_status = MeshComplianceStatus.NON_COMPLIANT
             elif asset.compliance_status == "WARN":
-                violations.append({
-                    "type": "ASSET_COMPLIANCE_WARN",
-                    "severity": "MEDIUM",
-                    "description": f"Asset {asset.name} has compliance warnings",
-                    "asset_id": str(asset.id)
-                })
+                violations.append(
+                    {
+                        "type": "ASSET_COMPLIANCE_WARN",
+                        "severity": "MEDIUM",
+                        "description": f"Asset {asset.name} has compliance warnings",
+                        "asset_id": str(asset.id),
+                    }
+                )
                 if compliance_status == MeshComplianceStatus.COMPLIANT:
                     compliance_status = MeshComplianceStatus.PARTIAL
 
         else:
             # Domain-level asset validation: check all assets in domain
             from hub.apps.assets.models import Asset
+
             domain_assets = Asset.objects.filter(
                 tenant_id=effective_tenant_id,
-                domain=domain.name  # Assets have domain as string field
+                domain=domain.name,  # Assets have domain as string field
             )
 
             # Check for assets with compliance issues
             failed_assets = domain_assets.filter(compliance_status="FAIL")
             if failed_assets.exists():
-                violations.append({
-                    "type": "DOMAIN_ASSETS_COMPLIANCE_FAIL",
-                    "severity": "HIGH",
-                    "description": f"Domain has {failed_assets.count()} assets with compliance failures",
-                    "failed_asset_count": failed_assets.count(),
-                    "failed_asset_ids": [str(a.id) for a in failed_assets[:10]]  # Limit to first 10
-                })
+                violations.append(
+                    {
+                        "type": "DOMAIN_ASSETS_COMPLIANCE_FAIL",
+                        "severity": "HIGH",
+                        "description": f"Domain has {failed_assets.count()} assets with compliance failures",
+                        "failed_asset_count": failed_assets.count(),
+                        "failed_asset_ids": [
+                            str(a.id) for a in failed_assets[:10]
+                        ],  # Limit to first 10
+                    }
+                )
                 compliance_status = MeshComplianceStatus.NON_COMPLIANT
 
             warned_assets = domain_assets.filter(compliance_status="WARN")
             if warned_assets.exists() and compliance_status == MeshComplianceStatus.COMPLIANT:
-                violations.append({
-                    "type": "DOMAIN_ASSETS_COMPLIANCE_WARN",
-                    "severity": "MEDIUM",
-                    "description": f"Domain has {warned_assets.count()} assets with compliance warnings",
-                    "warned_asset_count": warned_assets.count()
-                })
+                violations.append(
+                    {
+                        "type": "DOMAIN_ASSETS_COMPLIANCE_WARN",
+                        "severity": "MEDIUM",
+                        "description": f"Domain has {warned_assets.count()} assets with compliance warnings",
+                        "warned_asset_count": warned_assets.count(),
+                    }
+                )
                 compliance_status = MeshComplianceStatus.PARTIAL
 
         # 8. Create or update compliance report
@@ -1640,13 +1680,10 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         if violations:
             violations_dict = {"items": violations}
 
-        compliance_report, created = ComplianceReport.objects.update_or_create(
+        compliance_report, _created = ComplianceReport.objects.update_or_create(
             domain=domain,
             asset=asset,
-            defaults={
-                "compliance_status": compliance_status,
-                "violations": violations_dict
-            }
+            defaults={"compliance_status": compliance_status, "violations": violations_dict},
         )
 
         # 9. Record metrics
@@ -1654,24 +1691,26 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         domain_label = get_domain_id(str(domain.id))
         compliance_check_duration = time.time() - compliance_check_start_time
         # Convert compliance status to string if it's a TextChoices instance
-        if hasattr(compliance_status, 'value'):
+        if hasattr(compliance_status, "value"):
             compliance_status_str = compliance_status.value
-        elif hasattr(compliance_status, '__str__'):
+        elif hasattr(compliance_status, "__str__"):
             compliance_status_str = str(compliance_status)
         else:
-            compliance_status_str = compliance_status if isinstance(compliance_status, str) else str(compliance_status)
+            compliance_status_str = (
+                compliance_status if isinstance(compliance_status, str) else str(compliance_status)
+            )
 
         try:
             mesh_compliance_checks_total.labels(
                 tenant_id=tenant_label,
                 domain_id=domain_label,
-                compliance_status=compliance_status_str
+                compliance_status=compliance_status_str,
             ).inc()
 
             mesh_compliance_check_duration_seconds.labels(
                 tenant_id=tenant_label,
                 domain_id=domain_label,
-                compliance_status=compliance_status_str
+                compliance_status=compliance_status_str,
             ).observe(compliance_check_duration)
 
             # Record violations
@@ -1682,14 +1721,14 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                     tenant_id=tenant_label,
                     domain_id=domain_label,
                     violation_type=violation_type,
-                    severity=severity
+                    severity=severity,
                 ).inc()
 
             # Record compliance report generation
             mesh_compliance_report_generated_total.labels(
                 tenant_id=tenant_label,
                 domain_id=domain_label,
-                compliance_status=compliance_status_str
+                compliance_status=compliance_status_str,
             ).inc()
         except Exception as e:
             logger.warning(
@@ -1700,6 +1739,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         # 10. Publish compliance.checked event
         try:
             from django.utils import timezone
+
             # Publish both mesh.compliance.checked events
             self.publish_mesh_compliance_checked(
                 domain_id=str(domain.id),
@@ -1738,9 +1778,9 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
     def get_topology(
         self,
-        tenant_id: Optional[str] = None,
+        tenant_id: str | None = None,
         include_health_metrics: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get data mesh topology for a tenant.
 
@@ -1767,23 +1807,24 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         # Validate tenant exists
         from hub.apps.tenants.models import Tenant
+
         try:
             Tenant.objects.get(id=effective_tenant_id)
         except Tenant.DoesNotExist:
             raise ValidationError(f"Tenant with id '{effective_tenant_id}' not found")
 
         import logging
+
         logger = logging.getLogger(__name__)
 
         # Track topology update start time for metrics
         topology_update_start_time = time.time()
 
         # 1. Retrieve all domains for the tenant
-        domains = DataMeshDomain.objects.filter(
-            tenant_id=effective_tenant_id
-        ).select_related('owner', 'tenant').prefetch_related(
-            'policy_applications',
-            'compliance_reports'
+        domains = (
+            DataMeshDomain.objects.filter(tenant_id=effective_tenant_id)
+            .select_related("owner", "tenant")
+            .prefetch_related("policy_applications", "compliance_reports")
         )
 
         # 2. Build domain nodes
@@ -1808,9 +1849,15 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 ).count()
 
                 # Get latest compliance report
-                latest_compliance = domain.compliance_reports.order_by('-generated_at').first()
-                compliance_status = latest_compliance.compliance_status if latest_compliance else MeshComplianceStatus.UNKNOWN
-                violation_count = latest_compliance.get_violation_count() if latest_compliance else 0
+                latest_compliance = domain.compliance_reports.order_by("-generated_at").first()
+                compliance_status = (
+                    latest_compliance.compliance_status
+                    if latest_compliance
+                    else MeshComplianceStatus.UNKNOWN
+                )
+                violation_count = (
+                    latest_compliance.get_violation_count() if latest_compliance else 0
+                )
 
                 # Calculate health score (0-100)
                 health_score = 100
@@ -1837,7 +1884,6 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         # 3. Calculate relationships between domains
         edges = []
-        from hub.apps.assets.models import Asset
 
         # For each domain, find related domains through shared policies
         for domain in domains:
@@ -1849,27 +1895,28 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 domain_policies = set(
                     domain.policy_applications.filter(
                         status=PolicyApplicationStatus.APPLIED
-                    ).values_list('policy_id', flat=True)
+                    ).values_list("policy_id", flat=True)
                 )
                 other_policies = set(
                     other_domain.policy_applications.filter(
                         status=PolicyApplicationStatus.APPLIED
-                    ).values_list('policy_id', flat=True)
+                    ).values_list("policy_id", flat=True)
                 )
 
                 if domain_policies & other_policies:  # Shared policies
                     source_idx = domain_map.get(str(domain.id))
                     target_idx = domain_map.get(str(other_domain.id))
                     if source_idx is not None and target_idx is not None:
-                        edges.append({
-                            "source": str(domain.id),
-                            "target": str(other_domain.id),
-                            "type": "SHARED_POLICY",
-                            "weight": len(domain_policies & other_policies)
-                        })
+                        edges.append(
+                            {
+                                "source": str(domain.id),
+                                "target": str(other_domain.id),
+                                "type": "SHARED_POLICY",
+                                "weight": len(domain_policies & other_policies),
+                            }
+                        )
 
         # 4. Build topology graph
-        from django.utils import timezone
         topology = {
             "nodes": nodes,
             "edges": edges,
@@ -1878,7 +1925,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                 "domain_count": len(nodes),
                 "relationship_count": len(edges),
                 "generated_at": timezone.now().isoformat(),
-            }
+            },
         }
 
         # 5. Calculate summary statistics
@@ -1888,7 +1935,10 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             "total_relationships": len(edges),
             "average_health_score": sum(
                 n.get("health_metrics", {}).get("health_score", 0) for n in nodes
-            ) / len(nodes) if nodes and include_health_metrics else None,
+            )
+            / len(nodes)
+            if nodes and include_health_metrics
+            else None,
         }
 
         topology["summary"] = summary
@@ -1897,25 +1947,20 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         tenant_label = get_tenant_id(effective_tenant_id)
         topology_update_duration = time.time() - topology_update_start_time
         try:
-            mesh_topology_updates_total.labels(
-                tenant_id=tenant_label
-            ).inc()
+            mesh_topology_updates_total.labels(tenant_id=tenant_label).inc()
 
-            mesh_topology_update_duration_seconds.labels(
-                tenant_id=tenant_label
-            ).observe(topology_update_duration)
+            mesh_topology_update_duration_seconds.labels(tenant_id=tenant_label).observe(
+                topology_update_duration
+            )
 
             # Update domain and relationship count gauges
             for node in nodes:
                 node_status = node.get("status", "UNKNOWN")
-                mesh_domain_count.labels(
-                    tenant_id=tenant_label,
-                    status=node_status
-                ).set(len([n for n in nodes if n.get("status") == node_status]))
+                mesh_domain_count.labels(tenant_id=tenant_label, status=node_status).set(
+                    len([n for n in nodes if n.get("status") == node_status])
+                )
 
-            mesh_relationship_count.labels(
-                tenant_id=tenant_label
-            ).set(len(edges))
+            mesh_relationship_count.labels(tenant_id=tenant_label).set(len(edges))
         except Exception as e:
             logger.warning(
                 f"Failed to record metrics for topology update {effective_tenant_id}: {e}",
@@ -1925,6 +1970,7 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         # 7. Publish topology.updated event
         try:
             from django.utils import timezone
+
             self.publish_topology_updated(
                 tenant_id=effective_tenant_id,
                 domain_count=len(nodes),
@@ -1945,8 +1991,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         self,
         domain_id: str,
         health_status: str,
-        health_metrics: Optional[Dict[str, Any]] = None,
-        tenant_id: Optional[str] = None,
+        health_metrics: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
     ) -> None:
         """
         Update domain health status and record metrics.
@@ -1971,31 +2017,29 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         # or use capabilities JSON field
         previous_health_status = None
         if domain.capabilities and isinstance(domain.capabilities, dict):
-            previous_health_status = domain.capabilities.get('health_status')
+            previous_health_status = domain.capabilities.get("health_status")
 
         # Update domain capabilities with health status
-        if not domain.capabilities:
-            domain.capabilities = {}
-        elif not isinstance(domain.capabilities, dict):
+        if not domain.capabilities or not isinstance(domain.capabilities, dict):
             domain.capabilities = {}
 
-        domain.capabilities['health_status'] = health_status
+        domain.capabilities["health_status"] = health_status
         if health_metrics:
-            domain.capabilities['health_metrics'] = health_metrics
-        domain.save(update_fields=['capabilities'])
+            domain.capabilities["health_metrics"] = health_metrics
+        domain.save(update_fields=["capabilities"])
 
         # Record metrics
         tenant_label = get_tenant_id(effective_tenant_id)
         domain_label = get_domain_id(str(domain.id))
-        health_check_start_time = time.time()
+        time.time()
 
         try:
             # Update health status gauge (1=healthy, 0.5=degraded, 0=unhealthy)
-            health_value = 1.0 if health_status == "HEALTHY" else (0.5 if health_status == "DEGRADED" else 0.0)
+            health_value = (
+                1.0 if health_status == "HEALTHY" else (0.5 if health_status == "DEGRADED" else 0.0)
+            )
             mesh_domain_health_status.labels(
-                tenant_id=tenant_label,
-                domain_id=domain_label,
-                health_status=health_status
+                tenant_id=tenant_label, domain_id=domain_label, health_status=health_status
             ).set(health_value)
 
             # Record health status change
@@ -2004,17 +2048,16 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
                     tenant_id=tenant_label,
                     domain_id=domain_label,
                     previous_status=previous_health_status,
-                    new_status=health_status
+                    new_status=health_status,
                 ).inc()
 
             # Record health check duration (simplified - assume 0.1s for now)
             mesh_domain_health_check_duration_seconds.labels(
-                tenant_id=tenant_label,
-                domain_id=domain_label,
-                health_status=health_status
+                tenant_id=tenant_label, domain_id=domain_label, health_status=health_status
             ).observe(0.1)
         except Exception as e:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(
                 f"Failed to record metrics for health status update {domain.id}: {e}",
@@ -2033,9 +2076,9 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             )
         except Exception as e:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(
                 f"Failed to publish health status changed event for domain {domain.id}: {e}",
                 exc_info=True,
             )
-

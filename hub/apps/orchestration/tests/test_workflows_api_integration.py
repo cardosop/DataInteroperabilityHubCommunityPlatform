@@ -6,6 +6,8 @@ get by name/version, trigger (create instance, optional start), tenant
 isolation, pagination, filters, auth.
 """
 
+import uuid
+
 import pytest
 from django.test import TestCase
 from rest_framework import status
@@ -17,7 +19,6 @@ from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantConfig, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import User, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

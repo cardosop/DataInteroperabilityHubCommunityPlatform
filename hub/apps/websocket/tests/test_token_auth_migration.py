@@ -27,9 +27,9 @@ except ImportError:
 from django.contrib.auth import get_user_model
 from django.test import override_settings
 
-pytestmark = pytest.mark.skipif(
-    not CHANNELS_AVAILABLE, reason="Django Channels not installed"
-)
+pytestmark = pytest.mark.skipif(not CHANNELS_AVAILABLE, reason="Django Channels not installed")
+
+import contextlib
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.websocket.consumers.event_consumer import EventConsumer
@@ -96,15 +96,15 @@ class TestMessageBasedAuth(AsyncWebSocketTransactionTestCase):
             self.assertTrue(connected, "Unauthenticated connection should be accepted")
 
             # Send authenticate message
-            await communicator.send_json_to({
-                "type": "authenticate",
-                "data": {"token": self.token},
-            })
+            await communicator.send_json_to(
+                {
+                    "type": "authenticate",
+                    "data": {"token": self.token},
+                }
+            )
 
             # Should receive auth_confirmed
-            response = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=2.0
-            )
+            response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2.0)
             self.assertEqual(response["type"], WebSocketMessageType.AUTH_CONFIRMED.value)
             self.assertIn("user_id", response["data"])
             self.assertEqual(response["data"]["user_id"], str(self.user.id))
@@ -120,22 +120,20 @@ class TestMessageBasedAuth(AsyncWebSocketTransactionTestCase):
             self.assertTrue(connected)
 
             # Send authenticate with bad token
-            await communicator.send_json_to({
-                "type": "authenticate",
-                "data": {"token": "invalid-jwt-token"},
-            })
+            await communicator.send_json_to(
+                {
+                    "type": "authenticate",
+                    "data": {"token": "invalid-jwt-token"},
+                }
+            )
 
             # Should receive error and then connection closes
-            response = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=2.0
-            )
+            response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2.0)
             self.assertEqual(response["type"], WebSocketMessageType.ERROR.value)
             self.assertIn("Authentication failed", response["error"])
         finally:
-            try:
+            with contextlib.suppress(Exception, asyncio.CancelledError):
                 await communicator.disconnect()
-            except (Exception, asyncio.CancelledError):
-                pass
 
     async def test_message_auth_missing_token(self):
         """Authenticate message without token field should return error."""
@@ -146,21 +144,19 @@ class TestMessageBasedAuth(AsyncWebSocketTransactionTestCase):
             self.assertTrue(connected)
 
             # Send authenticate with no token
-            await communicator.send_json_to({
-                "type": "authenticate",
-                "data": {},
-            })
-
-            response = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=2.0
+            await communicator.send_json_to(
+                {
+                    "type": "authenticate",
+                    "data": {},
+                }
             )
+
+            response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2.0)
             self.assertEqual(response["type"], WebSocketMessageType.ERROR.value)
             self.assertIn("token", response["error"].lower())
         finally:
-            try:
+            with contextlib.suppress(Exception, asyncio.CancelledError):
                 await communicator.disconnect()
-            except (Exception, asyncio.CancelledError):
-                pass
 
     async def test_reject_messages_before_auth(self):
         """All non-authenticate messages should be rejected before authentication."""
@@ -171,14 +167,14 @@ class TestMessageBasedAuth(AsyncWebSocketTransactionTestCase):
             self.assertTrue(connected)
 
             # Try to subscribe before authenticating
-            await communicator.send_json_to({
-                "type": "subscribe",
-                "data": {"event_types": ["asset.created"]},
-            })
-
-            response = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=2.0
+            await communicator.send_json_to(
+                {
+                    "type": "subscribe",
+                    "data": {"event_types": ["asset.created"]},
+                }
             )
+
+            response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2.0)
             self.assertEqual(response["type"], WebSocketMessageType.ERROR.value)
             self.assertIn("Authentication required", response["error"])
         finally:
@@ -194,9 +190,7 @@ class TestMessageBasedAuth(AsyncWebSocketTransactionTestCase):
 
             await communicator.send_json_to({"type": "ping"})
 
-            response = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=2.0
-            )
+            response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2.0)
             self.assertEqual(response["type"], WebSocketMessageType.ERROR.value)
             self.assertIn("Authentication required", response["error"])
         finally:
@@ -221,27 +215,23 @@ class TestMessageBasedAuth(AsyncWebSocketTransactionTestCase):
             # The server may send an ERROR message and then close, or just close.
             timed_out = False
             try:
-                response = await asyncio.wait_for(
-                    communicator.receive_json_from(), timeout=3.0
-                )
+                response = await asyncio.wait_for(communicator.receive_json_from(), timeout=3.0)
                 # If we got a JSON response, it should be an error about auth/timeout
                 if response.get("type") == WebSocketMessageType.ERROR.value:
                     self.assertIn(
                         response.get("error", "").lower(),
                         ("", "authentication timeout", "auth", "timeout"),
                     )
-            except (asyncio.TimeoutError, asyncio.CancelledError):
+            except (TimeoutError, asyncio.CancelledError):
                 timed_out = True
 
             # Connection should eventually be closed
             close_received = False
             try:
-                output = await asyncio.wait_for(
-                    communicator.receive_output(), timeout=2.0
-                )
+                output = await asyncio.wait_for(communicator.receive_output(), timeout=2.0)
                 if output.get("type") == "websocket.close":
                     close_received = True
-            except (asyncio.TimeoutError, asyncio.CancelledError):
+            except (TimeoutError, asyncio.CancelledError):
                 pass
 
             # Either we received an error + close, or the connection was closed
@@ -251,10 +241,8 @@ class TestMessageBasedAuth(AsyncWebSocketTransactionTestCase):
                 "Expected close message or timeout after auth deadline",
             )
         finally:
-            try:
+            with contextlib.suppress(Exception, asyncio.CancelledError):
                 await communicator.disconnect()
-            except (Exception, asyncio.CancelledError):
-                pass
 
     async def test_subscribe_works_after_auth(self):
         """After successful message-based auth, normal operations should work."""
@@ -265,25 +253,25 @@ class TestMessageBasedAuth(AsyncWebSocketTransactionTestCase):
             self.assertTrue(connected)
 
             # Authenticate first
-            await communicator.send_json_to({
-                "type": "authenticate",
-                "data": {"token": self.token},
-            })
-
-            auth_response = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=2.0
+            await communicator.send_json_to(
+                {
+                    "type": "authenticate",
+                    "data": {"token": self.token},
+                }
             )
+
+            auth_response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2.0)
             self.assertEqual(auth_response["type"], WebSocketMessageType.AUTH_CONFIRMED.value)
 
             # Now subscribe should work
-            await communicator.send_json_to({
-                "type": "subscribe",
-                "data": {"event_types": ["asset.created"]},
-            })
-
-            sub_response = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=2.0
+            await communicator.send_json_to(
+                {
+                    "type": "subscribe",
+                    "data": {"event_types": ["asset.created"]},
+                }
             )
+
+            sub_response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2.0)
             self.assertEqual(
                 sub_response["type"],
                 WebSocketMessageType.SUBSCRIPTION_CONFIRMED.value,
@@ -301,23 +289,23 @@ class TestMessageBasedAuth(AsyncWebSocketTransactionTestCase):
             self.assertTrue(connected)
 
             # First authenticate
-            await communicator.send_json_to({
-                "type": "authenticate",
-                "data": {"token": self.token},
-            })
-            auth_response = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=2.0
+            await communicator.send_json_to(
+                {
+                    "type": "authenticate",
+                    "data": {"token": self.token},
+                }
             )
+            auth_response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2.0)
             self.assertEqual(auth_response["type"], WebSocketMessageType.AUTH_CONFIRMED.value)
 
             # Second authenticate should be rejected
-            await communicator.send_json_to({
-                "type": "authenticate",
-                "data": {"token": self.token},
-            })
-            response = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=2.0
+            await communicator.send_json_to(
+                {
+                    "type": "authenticate",
+                    "data": {"token": self.token},
+                }
             )
+            response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2.0)
             self.assertEqual(response["type"], WebSocketMessageType.ERROR.value)
             self.assertIn("Already authenticated", response["error"])
         finally:
@@ -362,9 +350,7 @@ class TestDeprecatedQueryParamAuth(AsyncWebSocketTransactionTestCase):
             self.assertTrue(connected)
 
             # Should receive connection confirmation (fully authenticated)
-            response = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=2.0
-            )
+            response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2.0)
             self.assertEqual(
                 response["type"],
                 WebSocketMessageType.SUBSCRIPTION_CONFIRMED.value,
@@ -481,7 +467,7 @@ class TestMiddlewareMessageAuthPassthrough(AsyncWebSocketTransactionTestCase):
             "websocket_auth_query_param_deprecated",
             path=scope.get("path"),
             message="Token authentication via query parameter is deprecated. "
-                    "Use message-based authentication instead.",
+            "Use message-based authentication instead.",
         )
 
     async def test_middleware_header_auth_not_deprecated(self):
@@ -545,27 +531,27 @@ class TestIntegrationMiddlewareToConsumer(AsyncWebSocketTransactionTestCase):
             self.assertTrue(connected)
 
             # Send authenticate message
-            await communicator.send_json_to({
-                "type": "authenticate",
-                "data": {"token": self.token},
-            })
+            await communicator.send_json_to(
+                {
+                    "type": "authenticate",
+                    "data": {"token": self.token},
+                }
+            )
 
             # Should receive auth_confirmed
-            response = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=2.0
-            )
+            response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2.0)
             self.assertEqual(response["type"], WebSocketMessageType.AUTH_CONFIRMED.value)
             self.assertEqual(response["data"]["user_id"], str(self.user.id))
 
             # Now subscribe
-            await communicator.send_json_to({
-                "type": "subscribe",
-                "data": {"event_types": ["asset.created"]},
-            })
-
-            sub_response = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=2.0
+            await communicator.send_json_to(
+                {
+                    "type": "subscribe",
+                    "data": {"event_types": ["asset.created"]},
+                }
             )
+
+            sub_response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2.0)
             self.assertEqual(
                 sub_response["type"],
                 WebSocketMessageType.SUBSCRIPTION_CONFIRMED.value,
@@ -578,32 +564,28 @@ class TestIntegrationMiddlewareToConsumer(AsyncWebSocketTransactionTestCase):
         from channels.routing import URLRouter
 
         app = WebSocketAuthMiddleware(URLRouter(websocket_urlpatterns))
-        communicator = WebsocketCommunicator(
-            app, f"/ws/events/?token={self.token}"
-        )
+        communicator = WebsocketCommunicator(app, f"/ws/events/?token={self.token}")
 
         try:
             connected, _ = await communicator.connect()
             self.assertTrue(connected)
 
             # Should receive connection confirmation directly (no authenticate needed)
-            response = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=2.0
-            )
+            response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2.0)
             self.assertEqual(
                 response["type"],
                 WebSocketMessageType.SUBSCRIPTION_CONFIRMED.value,
             )
 
             # Subscribe should work immediately
-            await communicator.send_json_to({
-                "type": "subscribe",
-                "data": {"event_types": ["asset.created"]},
-            })
-
-            sub_response = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=2.0
+            await communicator.send_json_to(
+                {
+                    "type": "subscribe",
+                    "data": {"event_types": ["asset.created"]},
+                }
             )
+
+            sub_response = await asyncio.wait_for(communicator.receive_json_from(), timeout=2.0)
             self.assertEqual(
                 sub_response["type"],
                 WebSocketMessageType.SUBSCRIPTION_CONFIRMED.value,

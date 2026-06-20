@@ -4,8 +4,9 @@ Phase 80.4 — Integrations signal tests.
 Tests that WorkflowInstance post_save syncs status to MarketplaceSyncJob
 for marketplace_sync workflows.
 """
+
 import uuid
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.db.models.signals import post_save
@@ -40,27 +41,25 @@ class IntegrationsSignalTest(TestCase):
             else:
                 handler = ref
             if handler is not None:
-                name = getattr(handler, '__name__', '') or getattr(handler, '__qualname__', '')
+                name = getattr(handler, "__name__", "") or getattr(handler, "__qualname__", "")
                 if name:
                     handler_names.append(name)
-        assert 'sync_workflow_status_to_sync_job' in handler_names, (
+        assert "sync_workflow_status_to_sync_job" in handler_names, (
             f"sync_workflow_status_to_sync_job not found in handlers: {handler_names}"
         )
 
     def test_created_instance_skipped(self):
         """Signal does nothing on creation (only updates)."""
+        from hub.apps.integrations.models import MarketplaceSyncJob
         from hub.apps.integrations.signals import (
             sync_workflow_status_to_sync_job,
         )
         from hub.apps.orchestration.models import WorkflowInstance
-        from hub.apps.integrations.models import MarketplaceSyncJob
 
         instance = MagicMock(spec=WorkflowInstance)
         instance.workflow_name = "marketplace_sync_push"
 
-        with patch.object(
-            MarketplaceSyncJob.objects, "get"
-        ) as mock_get:
+        with patch.object(MarketplaceSyncJob.objects, "get") as mock_get:
             sync_workflow_status_to_sync_job(
                 sender=WorkflowInstance,
                 instance=instance,
@@ -70,18 +69,16 @@ class IntegrationsSignalTest(TestCase):
 
     def test_non_marketplace_workflow_skipped(self):
         """Signal skips non-marketplace workflows."""
+        from hub.apps.integrations.models import MarketplaceSyncJob
         from hub.apps.integrations.signals import (
             sync_workflow_status_to_sync_job,
         )
         from hub.apps.orchestration.models import WorkflowInstance
-        from hub.apps.integrations.models import MarketplaceSyncJob
 
         instance = MagicMock(spec=WorkflowInstance)
         instance.workflow_name = "dq_run_workflow"
 
-        with patch.object(
-            MarketplaceSyncJob.objects, "get"
-        ) as mock_get:
+        with patch.object(MarketplaceSyncJob.objects, "get") as mock_get:
             sync_workflow_status_to_sync_job(
                 sender=WorkflowInstance,
                 instance=instance,
@@ -91,19 +88,17 @@ class IntegrationsSignalTest(TestCase):
 
     def test_missing_sync_job_id_skipped(self):
         """Signal returns early when state_data has no sync_job_id."""
+        from hub.apps.integrations.models import MarketplaceSyncJob
         from hub.apps.integrations.signals import (
             sync_workflow_status_to_sync_job,
         )
         from hub.apps.orchestration.models import WorkflowInstance
-        from hub.apps.integrations.models import MarketplaceSyncJob
 
         instance = MagicMock(spec=WorkflowInstance)
         instance.workflow_name = "marketplace_sync_pull"
         instance.state_data = {}
 
-        with patch.object(
-            MarketplaceSyncJob.objects, "get"
-        ) as mock_get:
+        with patch.object(MarketplaceSyncJob.objects, "get") as mock_get:
             sync_workflow_status_to_sync_job(
                 sender=WorkflowInstance,
                 instance=instance,
@@ -111,17 +106,14 @@ class IntegrationsSignalTest(TestCase):
             )
             mock_get.assert_not_called()
 
-    @patch(
-        "hub.apps.integrations.services"
-        ".MarketplaceIntegrationService"
-    )
+    @patch("hub.apps.integrations.services.MarketplaceIntegrationService")
     def test_marketplace_sync_calls_service(self, mock_svc_cls):
         """Marketplace sync update triggers service call."""
+        from hub.apps.integrations.models import MarketplaceSyncJob
         from hub.apps.integrations.signals import (
             sync_workflow_status_to_sync_job,
         )
         from hub.apps.orchestration.models import WorkflowInstance
-        from hub.apps.integrations.models import MarketplaceSyncJob
 
         sync_job_id = str(uuid.uuid4())
         instance = MagicMock(spec=WorkflowInstance)
@@ -132,8 +124,9 @@ class IntegrationsSignalTest(TestCase):
         instance.status = "COMPLETED"
 
         with patch.object(
-            MarketplaceSyncJob.objects, "get",
-            return_value=MagicMock(),
+            MarketplaceSyncJob.objects,
+            "get",
+            return_value=MagicMock(spec=MarketplaceSyncJob),
         ):
             sync_workflow_status_to_sync_job(
                 sender=WorkflowInstance,
@@ -143,14 +136,17 @@ class IntegrationsSignalTest(TestCase):
         mock_svc_cls.assert_called_with(
             tenant_id=str(instance.tenant_id),
         )
+        # Verify the service method was actually called
+        mock_svc_instance = mock_svc_cls.return_value
+        mock_svc_instance.sync_workflow_status_to_sync_job.assert_called_once()
 
     def test_exception_logged_not_raised(self):
         """Service failure is logged and does not propagate."""
+        from hub.apps.integrations.models import MarketplaceSyncJob
         from hub.apps.integrations.signals import (
             sync_workflow_status_to_sync_job,
         )
         from hub.apps.orchestration.models import WorkflowInstance
-        from hub.apps.integrations.models import MarketplaceSyncJob
 
         instance = MagicMock(spec=WorkflowInstance)
         instance.workflow_name = "marketplace_sync_push"
@@ -160,7 +156,8 @@ class IntegrationsSignalTest(TestCase):
         instance.id = uuid.uuid4()
 
         with patch.object(
-            MarketplaceSyncJob.objects, "get",
+            MarketplaceSyncJob.objects,
+            "get",
             side_effect=Exception("DB error"),
         ):
             # Should NOT raise

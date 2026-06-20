@@ -47,6 +47,7 @@ via ``ATOMIC_REQUESTS`` / ``using="default"`` coercion)::
     def create(self, request, *args, **kwargs):
         ...
 """
+
 from __future__ import annotations
 
 import os
@@ -57,10 +58,10 @@ from django.conf import settings
 # Writes for these apps still go to the primary ("default").
 _READ_REPLICA_APPS: frozenset[str] = frozenset(
     [
-        "assets",       # Asset catalogue
-        "contracts",    # Data contracts
+        "assets",  # Asset catalogue
+        "contracts",  # Data contracts
         "marketplace",  # Marketplace listings
-        "search",       # Full-text / vector search
+        "search",  # Full-text / vector search
     ]
 )
 
@@ -108,6 +109,7 @@ class ManagementCommandAdminRouter:
         try:
             from hub.apps.audit.event_types import BYPASSRLS_ADMIN_DB_USED
             from hub.apps.audit.utils import create_audit_event
+
             create_audit_event(
                 resource_type="DATABASE",
                 action=BYPASSRLS_ADMIN_DB_USED,

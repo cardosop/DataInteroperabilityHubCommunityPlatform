@@ -8,17 +8,14 @@ Tests cover:
 """
 
 import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
-
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantPlan, PlanTier
-from hub.apps.billing.models import Subscription, SubscriptionStatus
 from django.utils import timezone
-from hub.apps.users.models import Role, User, UserRole, UserStatus
+
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import User, UserStatus
 from hub.apps.virtualization.models import (
     QueryExecution,
     QueryExecutionMode,
@@ -609,9 +606,6 @@ class TopologySerializerTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         import uuid
-        from datetime import datetime
-
-        from django.utils import timezone
 
         self.topology_data = {
             "nodes": [
@@ -653,12 +647,19 @@ class TopologySerializerTest(TestCase):
         """Test VirtualizationTopologySerializer"""
         serializer = VirtualizationTopologySerializer(data=self.topology_data)
         self.assertTrue(serializer.is_valid(), f"Serializer errors: {serializer.errors}")
+        # Verify output structure
+        data = serializer.validated_data
+        self.assertIn("nodes", data)
+        self.assertIn("edges", data)
+        self.assertIn("metadata", data)
+        self.assertIn("summary", data)
+        self.assertEqual(len(data["nodes"]), 1)
+        self.assertEqual(data["summary"]["total_datasets"], 1)
+        self.assertEqual(data["summary"]["active_datasets"], 1)
 
     def test_dataset_topology_serialization(self):
         """Test DatasetTopologySerializer"""
         import uuid
-
-        from django.utils import timezone
 
         dataset_topology_data = {
             "dataset": {
@@ -695,4 +696,12 @@ class TopologySerializerTest(TestCase):
         }
 
         serializer = DatasetTopologySerializer(data=dataset_topology_data)
+        self.assertTrue(serializer.is_valid(), f"Serializer errors: {serializer.errors}")
+        # Verify output structure
+        data = serializer.validated_data
+        self.assertIn("dataset", data)
+        self.assertIn("relationships", data)
+        self.assertIn("health_metrics", data)
+        self.assertEqual(data["dataset"]["name"], "Test Dataset")
+        self.assertEqual(len(data["relationships"]), 1)
         self.assertTrue(serializer.is_valid(), f"Serializer errors: {serializer.errors}")

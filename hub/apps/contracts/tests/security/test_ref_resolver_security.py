@@ -14,6 +14,7 @@ Rate limiting uses real Redis. Size/timeout logging tests assert on SecurityAudi
 Some URL/path validation tests use patch for log verification where real DB persistence is not exercised.
 """
 
+import contextlib
 import json
 import tempfile
 import time
@@ -30,15 +31,10 @@ from hub.apps.contracts.config.odps_refs_config import ODPSRefsConfig
 from hub.apps.contracts.models import SecurityAuditLog
 from hub.apps.contracts.odps_errors import ODPSRefResolutionError
 from hub.apps.contracts.odps_rate_limiting import (
-    RATE_LIMIT_PER_TENANT,
     RATE_LIMIT_PER_USER,
 )
 from hub.apps.contracts.odps_security_logging import SecurityEventType, SecuritySeverity
 from hub.apps.contracts.ref_resolver import (
-    DEFAULT_MAX_REF_SIZE,
-    DEFAULT_MAX_TOTAL_SIZE,
-    DEFAULT_TIMEOUT_PER_REF,
-    DEFAULT_TIMEOUT_TOTAL,
     MAX_URL_LENGTH,
     RefResolver,
 )
@@ -64,7 +60,7 @@ def _make_test_http_server():
 
         def add_delayed_json(self, path: str, data: dict, delay_sec: float):
             def delayed():
-                time.sleep(delay_sec)  # INTENTIONAL: test-specific timing requirement
+                time.sleep(delay_sec)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
                 return ("application/json", json.dumps(data).encode("utf-8"))
 
             self.routes[path] = ("delayed", delayed)
@@ -114,7 +110,7 @@ def _make_test_http_server():
             self.port = self.server.server_address[1]
             self.thread = Thread(target=self.server.serve_forever, daemon=True)
             self.thread.start()
-            time.sleep(0.15)  # INTENTIONAL: test-specific timing requirement
+            time.sleep(0.15)  # noqa: sleep-needed  # INTENTIONAL: test-specific timing requirement
 
         def stop(self):
             if self.server:
@@ -166,7 +162,6 @@ class RefResolverURLValidationTest(TestCase):
 
     def test_url_validation_valid_https_url(self):
         """Test that valid HTTPS URLs pass validation through public API."""
-        import httpx
 
         url = "https://example.com/schema.json"
 
@@ -190,7 +185,6 @@ class RefResolverURLValidationTest(TestCase):
 
     def test_url_validation_valid_http_url(self):
         """Test that valid HTTP URLs pass validation through public API."""
-        import httpx
 
         url = "http://example.com/schema.json"
 
@@ -221,7 +215,7 @@ class RefResolverURLValidationTest(TestCase):
         """Test that JavaScript URLs are rejected through public API"""
         url = "javascript:alert('XSS')"
         # Test through public API - resolve_external() validates URL internally
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_external(url)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
@@ -232,7 +226,7 @@ class RefResolverURLValidationTest(TestCase):
         """Test that file:// URLs are rejected through public API"""
         url = "file:///etc/passwd"
         # Test through public API - resolve_external() validates URL internally
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_external(url)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
@@ -243,7 +237,7 @@ class RefResolverURLValidationTest(TestCase):
         """Test that data: URLs are rejected through public API"""
         url = "data:text/html,<script>alert('XSS')</script>"
         # Test through public API - resolve_external() validates URL internally
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_external(url)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
@@ -254,7 +248,7 @@ class RefResolverURLValidationTest(TestCase):
         """Test that URLs without host are rejected through public API"""
         url = "https:///path/to/schema.json"
         # Test through public API - resolve_external() validates URL internally
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_external(url)
         self.assertEqual(cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_INVALID_REF)
         self.assertIn("missing host", cm.exception.message.lower())
@@ -263,7 +257,7 @@ class RefResolverURLValidationTest(TestCase):
         """Test that URLs with empty host are rejected through public API"""
         url = "https://"
         # Test through public API - resolve_external() validates URL internally
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_external(url)
         self.assertEqual(cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_INVALID_REF)
 
@@ -280,7 +274,7 @@ class RefResolverURLValidationTest(TestCase):
         )
 
         # Test through public API - resolve_external() validates URL internally
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_external(url)
         self.assertEqual(cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_INVALID_REF)
         self.assertIn("exceeds maximum", cm.exception.message.lower())
@@ -289,7 +283,7 @@ class RefResolverURLValidationTest(TestCase):
         """Test that malformed URLs are rejected through public API"""
         url = "not a valid url"
         # Test through public API - resolve_external() validates URL internally
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_external(url)
         # Malformed URLs are rejected - the actual error code depends on where parsing fails
         # If URL parsing fails, it's INVALID_REF; if scheme validation fails, it's SECURITY_VIOLATION
@@ -361,7 +355,7 @@ class RefResolverPathTraversalTest(TestCase):
     def test_path_traversal_rejects_dot_dot_slash(self):
         """Test that ../ path traversal is rejected"""
         attack_path = "../../../etc/passwd"
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_local(attack_path)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
@@ -370,7 +364,7 @@ class RefResolverPathTraversalTest(TestCase):
     def test_path_traversal_rejects_multiple_dot_dot(self):
         """Test that multiple ../ path traversal is rejected"""
         attack_path = "../../../../etc/passwd"
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_local(attack_path)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
@@ -379,7 +373,7 @@ class RefResolverPathTraversalTest(TestCase):
     def test_path_traversal_rejects_absolute_path(self):
         """Test that absolute paths are rejected"""
         attack_path = "/etc/passwd"
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_local(attack_path)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
@@ -389,7 +383,7 @@ class RefResolverPathTraversalTest(TestCase):
     def test_path_traversal_rejects_windows_absolute_path(self):
         """Test that Windows absolute paths are rejected"""
         attack_path = "C:\\Windows\\System32\\config\\sam"
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_local(attack_path)
         # Should be rejected as absolute path or invalid ref
         self.assertIn(
@@ -403,7 +397,7 @@ class RefResolverPathTraversalTest(TestCase):
     def test_path_traversal_rejects_double_dot_encoding(self):
         """Test that double dot encoding (....//) is rejected"""
         attack_path = "....//....//etc/passwd"
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_local(attack_path)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
@@ -421,10 +415,8 @@ class RefResolverPathTraversalTest(TestCase):
         """Test that path traversal attempts are logged"""
         attack_path = "../../../etc/passwd"
         with patch.object(self.resolver._security_logger, "log_security_violation") as mock_log:
-            try:
+            with contextlib.suppress(ODPSRefResolutionError):
                 self.resolver.resolve_local(attack_path)
-            except ODPSRefResolutionError:
-                pass
 
             # Verify security violation was logged
             mock_log.assert_called_once()
@@ -499,7 +491,7 @@ class RefResolverRateLimitingTest(TestCase):
             is_allowed, error = check_rate_limit(
                 tenant_id=self.tenant_id, user_id=self.user_id, redis_client=self.redis_client
             )
-            self.assertTrue(is_allowed, f"Request {i+1} should be allowed")
+            self.assertTrue(is_allowed, f"Request {i + 1} should be allowed")
 
         # Next request should be rejected
         is_allowed, error = check_rate_limit(
@@ -512,7 +504,7 @@ class RefResolverRateLimitingTest(TestCase):
         # Test that RefResolver respects rate limiting (call real resolve_external;
         # rate limit check runs before HTTP, so no mock needed)
         url = "https://example.com/schema.json"
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_external(url)
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED
@@ -520,7 +512,6 @@ class RefResolverRateLimitingTest(TestCase):
 
     def test_rate_limit_allows_when_not_exceeded(self):
         """Test that requests are allowed when rate limit is not exceeded."""
-        import httpx
 
         # Use a unique tenant_id so no rate limit has been accumulated.
         fresh_tenant = f"test-tenant-fresh-{uuid.uuid4()}"
@@ -549,17 +540,15 @@ class RefResolverRateLimitingTest(TestCase):
         from hub.apps.contracts.odps_rate_limiting import check_rate_limit
 
         # Exceed rate limit using real Redis
-        for i in range(RATE_LIMIT_PER_USER):
+        for _i in range(RATE_LIMIT_PER_USER):
             check_rate_limit(
                 tenant_id=self.tenant_id, user_id=self.user_id, redis_client=self.redis_client
             )
 
         # Trigger rate limit via resolver (will raise ODPSRefResolutionError)
         url = "https://example.com/schema.json"
-        try:
+        with contextlib.suppress(ODPSRefResolutionError):
             self.resolver.resolve_external(url)
-        except ODPSRefResolutionError:
-            pass
 
         # Verify rate limit violation was persisted to SecurityAuditLog (no mocks).
         # NOTE: ref-resolver tests use string tenant IDs (not Tenant model instances),
@@ -592,7 +581,6 @@ class RefResolverSizeLimitTest(TestCase):
 
     def test_size_limit_rejects_oversized_ref(self):
         """Test that refs exceeding max_ref_size are rejected through public API."""
-        import httpx
 
         # Create oversized content that exceeds max_ref_size (1000 bytes)
         oversized_content = b'{"data": "' + b"a" * 2000 + b'"}'
@@ -614,7 +602,7 @@ class RefResolverSizeLimitTest(TestCase):
             httpx_transport=httpx.MockTransport(handler),
         )
 
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             resolver.resolve_external("https://example.com/schema.json")
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -652,7 +640,7 @@ class RefResolverSizeLimitTest(TestCase):
             resolver._total_size = 4001  # Set total size
 
             # Test through public API - resolve_local() checks total size limit internally
-            with self.assertRaises(ODPSRefResolutionError) as cm:
+            with self.assertRaises(ODPSRefResolutionError):
                 resolver.resolve_local(str(test_file.relative_to(temp_dir)))
             self.assertEqual(
                 cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -670,7 +658,6 @@ class RefResolverSizeLimitTest(TestCase):
 
     def test_size_limit_allows_within_limits(self):
         """Test that refs within size limits are allowed through public API."""
-        import httpx
 
         normal_content = b'{"data": "test"}'
 
@@ -704,14 +691,14 @@ class RefResolverSizeLimitTest(TestCase):
             max_total_size=5000,
             enable_caching=False,
         )
-        oversized_content = b'{"data": "' + b"a" * 2000 + b'}'
+        oversized_content = b'{"data": "' + b"a" * 2000 + b"}"
         server = _make_test_http_server()
         server.add_raw("/schema.json", oversized_content)
 
         with server:
             self.config._config_data["url_allowlist"] = [server.base_url()]
             url = f"{server.base_url()}/schema.json"
-            with self.assertRaises(ODPSRefResolutionError) as cm:
+            with self.assertRaises(ODPSRefResolutionError):
                 resolver.resolve_external(url)
             self.assertEqual(
                 cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -747,7 +734,7 @@ class RefResolverSizeLimitTest(TestCase):
         with server:
             self.config._config_data["url_allowlist"] = [server.base_url()]
             url = f"{server.base_url()}/schema.json"
-            with self.assertRaises(ODPSRefResolutionError) as cm:
+            with self.assertRaises(ODPSRefResolutionError):
                 resolver.resolve_external(url)
             self.assertEqual(
                 cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -808,7 +795,7 @@ class RefResolverTimeoutTest(TestCase):
         resolver._start_time = time.time() - 3  # 3 seconds ago (timeout_total=2)
 
         # resolve() calls _check_timeout() first, which raises before HTTP
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             resolver.resolve("https://example.com/schema.json")
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -817,7 +804,6 @@ class RefResolverTimeoutTest(TestCase):
 
     def test_timeout_check_allows_within_timeout(self):
         """Test that requests within timeout are allowed through public API."""
-        import httpx
 
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json={"type": "object"}, request=request)
@@ -853,7 +839,7 @@ class RefResolverTimeoutTest(TestCase):
         # resolve() calls _check_timeout() first; set _start_time in past to trigger timeout
         resolver._start_time = time.time() - 3  # 3 seconds ago (timeout_total=2)
 
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             resolver.resolve("https://example.com/schema.json")
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -887,7 +873,7 @@ class RefResolverTimeoutTest(TestCase):
         with server:
             self.config._config_data["url_allowlist"] = [server.base_url()]
             url = f"{server.base_url()}/schema.json"
-            with self.assertRaises(ODPSRefResolutionError) as cm:
+            with self.assertRaises(ODPSRefResolutionError):
                 resolver.resolve(url)
             self.assertIn(
                 cm.exception.error_code,
@@ -955,10 +941,8 @@ class RefResolverSecurityLoggingTest(TestCase):
 
         attack_path = "../../../etc/passwd"
         with patch.object(resolver._security_logger, "log_security_violation") as mock_log:
-            try:
+            with contextlib.suppress(ODPSRefResolutionError):
                 resolver.resolve_local(attack_path)
-            except ODPSRefResolutionError:
-                pass
 
             mock_log.assert_called_once()
             call_args = mock_log.call_args
@@ -988,7 +972,7 @@ class RefResolverSecurityLoggingTest(TestCase):
         with server:
             resolver.config._config_data["url_allowlist"] = [server.base_url()]
             url = f"{server.base_url()}/schema.json"
-            with self.assertRaises(ODPSRefResolutionError) as cm:
+            with self.assertRaises(ODPSRefResolutionError):
                 resolver.resolve_external(url)
             self.assertEqual(
                 cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -1015,7 +999,7 @@ class RefResolverSecurityLoggingTest(TestCase):
         # resolve() calls _check_timeout() first; set _start_time in past to trigger timeout
         resolver._start_time = time.time() - 3  # 3 seconds ago (exceeds 2s timeout)
 
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             resolver.resolve("https://example.com/schema.json")
         self.assertEqual(
             cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
@@ -1059,7 +1043,6 @@ class RefResolverSecurityLoggingTest(TestCase):
 
     def test_url_validation_with_unicode_in_url(self):
         """Test URL validation with unicode characters in URL through public API."""
-        import httpx
 
         url = "https://example.com/产品.json"
 
@@ -1085,8 +1068,10 @@ class RefResolverSecurityLoggingTest(TestCase):
             # Acceptable if unicode in paths triggers a validation rejection.
             self.assertIn(
                 e.error_code,
-                [ODPSRefResolutionError.ERROR_CODE_INVALID_REF,
-                 ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION],
+                [
+                    ODPSRefResolutionError.ERROR_CODE_INVALID_REF,
+                    ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION,
+                ],
             )
 
     def test_path_traversal_with_none_path(self):
@@ -1103,12 +1088,14 @@ class RefResolverSecurityLoggingTest(TestCase):
         """Test path traversal prevention with very long path."""
         very_long_path = "/" + "a" * 10000
         # Very long paths that are absolute should be rejected as security violation.
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_local(very_long_path)
         self.assertIn(
             cm.exception.error_code,
-            [ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION,
-             ODPSRefResolutionError.ERROR_CODE_INVALID_REF],
+            [
+                ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION,
+                ODPSRefResolutionError.ERROR_CODE_INVALID_REF,
+            ],
         )
 
     def test_rate_limit_with_none_tenant_id(self):
@@ -1116,8 +1103,10 @@ class RefResolverSecurityLoggingTest(TestCase):
         from hub.apps.contracts.odps_rate_limiting import check_rate_limit
 
         try:
-            is_allowed, error = check_rate_limit(
-                tenant_id=None, user_id="test-user", redis_client=self.redis_client  # type: ignore[misc]  # test: edge-case type exercise
+            is_allowed, _error = check_rate_limit(
+                tenant_id=None,
+                user_id="test-user",
+                redis_client=self.redis_client,  # type: ignore[misc]  # test: edge-case type exercise
             )
             self.assertFalse(is_allowed, "None tenant_id must not be allowed")
         except (ValueError, TypeError):
@@ -1129,7 +1118,7 @@ class RefResolverSecurityLoggingTest(TestCase):
         from hub.apps.contracts.odps_rate_limiting import check_rate_limit
 
         try:
-            is_allowed, error = check_rate_limit(
+            is_allowed, _error = check_rate_limit(
                 tenant_id="", user_id="test-user", redis_client=self.redis_client
             )
             self.assertFalse(is_allowed, "Empty tenant_id must not be allowed")
@@ -1139,7 +1128,6 @@ class RefResolverSecurityLoggingTest(TestCase):
 
     def test_size_limit_with_empty_response(self):
         """Test that empty (zero-byte) HTTP responses are handled gracefully."""
-        import httpx
 
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, content=b"", request=request)
@@ -1154,18 +1142,19 @@ class RefResolverSecurityLoggingTest(TestCase):
             httpx_transport=httpx.MockTransport(handler),
         )
 
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             resolver.resolve_external("https://example.com/schema.json")
         # Empty body should produce either a resolution failure or invalid ref.
         self.assertIn(
             cm.exception.error_code,
-            [ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED,
-             ODPSRefResolutionError.ERROR_CODE_INVALID_REF],
+            [
+                ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED,
+                ODPSRefResolutionError.ERROR_CODE_INVALID_REF,
+            ],
         )
 
     def test_size_limit_with_small_valid_response(self):
         """Test that a small valid response passes size limit checks."""
-        import httpx
 
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json={"type": "object"}, request=request)
@@ -1186,7 +1175,6 @@ class RefResolverSecurityLoggingTest(TestCase):
 
     def test_timeout_check_with_none_start_time(self):
         """Test timeout check with None start_time — resolve() initializes it."""
-        import httpx
 
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json={"type": "object"}, request=request)
@@ -1245,7 +1233,7 @@ class RefResolverSecurityLoggingTest(TestCase):
 
         # The host is not in the allowlist, so is_url_allowed should reject it.
         # No HTTP call should be made — the security check runs first.
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             resolver.resolve_external(url)
         self.assertEqual(
             cm.exception.error_code,
@@ -1256,7 +1244,7 @@ class RefResolverSecurityLoggingTest(TestCase):
     def test_path_traversal_with_special_characters(self):
         """Test path traversal prevention with special characters."""
         attack_path = "../../../etc/passwd<>&\"'"
-        with self.assertRaises(ODPSRefResolutionError) as cm:
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_local(attack_path)
         self.assertEqual(
             cm.exception.error_code,

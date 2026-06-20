@@ -8,8 +8,9 @@ never JSON. Rejects the commit on a parse error.
 Usage:
     python scripts/lint_env_file.py .env .env.test.example
 """
-import sys
+
 import os
+import sys
 
 
 def lint_env_file(path: str) -> list[str]:

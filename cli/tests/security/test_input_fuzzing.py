@@ -13,7 +13,7 @@ potential vulnerability.
 
 import requests
 from tests._persona_provisioning import provision_persona
-from tests.use_cases._api_helpers import api_base_url, api_post, api_get
+from tests.use_cases._api_helpers import api_base_url, api_get, api_post
 
 
 @pytest.fixture(scope="module")
@@ -39,10 +39,14 @@ SQL_INJECTION_PAYLOADS = [
 def test_sql_injection_in_asset_name(fuzz_creds, payload):
     """SQL injection in asset name must be rejected (4xx), not crash (5xx)
     and not silently accepted (200/201)."""
-    resp = api_post("/assets/", fuzz_creds, json={
-        "name": payload,
-        "key": "fuzz-sql-test",
-    })
+    resp = api_post(
+        "/assets/",
+        fuzz_creds,
+        json={
+            "name": payload,
+            "key": "fuzz-sql-test",
+        },
+    )
     # A 4xx means the API detected and rejected the payload.
     # 409 (Conflict) is common when the API's uniqueness validator
     # catches the payload as a duplicate-key collision.
@@ -62,8 +66,7 @@ def test_sql_injection_in_search_param(fuzz_creds, payload):
     # as persisted fields — 200 (empty results) is acceptable.
     # A 5xx crash or a result-leak would be a problem.
     assert resp.status_code < 500, (
-        f"SQL injection in search param {payload!r} caused "
-        f"server error {resp.status_code}"
+        f"SQL injection in search param {payload!r} caused server error {resp.status_code}"
     )
 
 
@@ -73,7 +76,7 @@ def test_sql_injection_in_search_param(fuzz_creds, payload):
 
 XSS_PAYLOADS = [
     '<script>alert("xss")</script>',
-    '<img src=x onerror=alert(1)>',
+    "<img src=x onerror=alert(1)>",
     '"><svg onload=alert(1)>',
     "javascript:alert(document.cookie)",
 ]
@@ -82,10 +85,14 @@ XSS_PAYLOADS = [
 @pytest.mark.parametrize("payload", XSS_PAYLOADS)
 def test_xss_in_asset_name(fuzz_creds, payload):
     """XSS payload in asset name must be rejected (4xx), not accepted."""
-    resp = api_post("/assets/", fuzz_creds, json={
-        "name": payload,
-        "key": "fuzz-xss-test",
-    })
+    resp = api_post(
+        "/assets/",
+        fuzz_creds,
+        json={
+            "name": payload,
+            "key": "fuzz-xss-test",
+        },
+    )
     # Any 4xx means the API detected and rejected the payload (409
     # is common for duplicate-key detection).  200/201 would mean
     # the XSS payload was ACCEPTED — a stored-XSS vulnerability.
@@ -98,6 +105,7 @@ def test_xss_in_asset_name(fuzz_creds, payload):
 # ---------------------------------------------------------------------------
 # Oversized payloads
 # ---------------------------------------------------------------------------
+
 
 def test_oversized_payload_rejected(fuzz_creds):
     """A 10MB JSON payload must be rejected, not crash the server."""
@@ -127,8 +135,7 @@ def test_deeply_nested_json_rejected(fuzz_creds):
     # Deep nesting should be rejected with a client error, not
     # silently accepted (200/201) and not crash the server (5xx).
     assert resp.status_code in (400, 413, 422), (
-        f"200-level nested JSON returned {resp.status_code} — "
-        f"expected rejection (400/413/422)"
+        f"200-level nested JSON returned {resp.status_code} — expected rejection (400/413/422)"
     )
 
 
@@ -144,13 +151,13 @@ PATH_TRAVERSAL_PAYLOADS = [
 
 # Patterns that would indicate a file-system leak
 _FILE_LEAK_PATTERNS = [
-    "root:",          # /etc/passwd content
-    "/bin/",          # directory listing
-    "/etc/",          # file paths
-    "No such file",   # OS error message
+    "root:",  # /etc/passwd content
+    "/bin/",  # directory listing
+    "/etc/",  # file paths
+    "No such file",  # OS error message
     "Permission denied",  # OS error message
-    "passwd",         # file name leak
-    "shadow",         # file name leak
+    "passwd",  # file name leak
+    "shadow",  # file name leak
 ]
 
 
@@ -158,10 +165,14 @@ _FILE_LEAK_PATTERNS = [
 def test_path_traversal_in_asset_key(fuzz_creds, payload):
     """Path traversal in asset key must be rejected or, if accepted,
     must not expose file-system content."""
-    resp = api_post("/assets/", fuzz_creds, json={
-        "name": "path-traversal-test",
-        "key": payload,
-    })
+    resp = api_post(
+        "/assets/",
+        fuzz_creds,
+        json={
+            "name": "path-traversal-test",
+            "key": payload,
+        },
+    )
 
     # The payload should be rejected.  If it is accepted (200/201),
     # the response must not contain any file-leak patterns.
@@ -178,8 +189,7 @@ def test_path_traversal_in_asset_key(fuzz_creds, payload):
             data = resp.json()
             stored_key = data.get("key", "")
             assert payload != stored_key, (
-                f"Path traversal payload {payload!r} was stored "
-                f"verbatim as the asset key"
+                f"Path traversal payload {payload!r} was stored verbatim as the asset key"
             )
         except (ValueError, KeyError):
             pass  # Non-JSON or missing key — OK, body checks above cover it

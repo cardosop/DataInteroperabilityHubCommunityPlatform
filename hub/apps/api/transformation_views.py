@@ -3,6 +3,7 @@ Placeholder views for transformation pipelines API.
 
 Deferred feature - returns empty placeholders until full implementation.
 """
+
 import uuid
 
 from rest_framework import status, viewsets
@@ -57,7 +58,9 @@ class TransformationPipelineViewSet(viewsets.ViewSet):
         return Response({"pipeline_id": pk, "download_url": None}, status=status.HTTP_200_OK)
 
     def partial_update(self, request, pk=None):
-        return Response({"id": pk, "nodes": request.data.get("nodes", [])}, status=status.HTTP_200_OK)
+        return Response(
+            {"id": pk, "nodes": request.data.get("nodes", [])}, status=status.HTTP_200_OK
+        )
 
 
 class TransformationExecutionViewSet(viewsets.ViewSet):
@@ -69,11 +72,14 @@ class TransformationExecutionViewSet(viewsets.ViewSet):
         return Response({"results": [], "count": 0}, status=status.HTTP_200_OK)
 
     def retrieve(self, request, pk=None):
-        return Response({
-            "id": pk,
-            "status": "completed",
-            "pipeline_id": None,
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "id": pk,
+                "status": "completed",
+                "pipeline_id": None,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class TransformationAuditViewSet(viewsets.ViewSet):

@@ -13,6 +13,8 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from hub.apps.core.responses import handle_service_exception
+from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.orchestration.api_helpers import (
     get_workflow_engine,
     get_workflow_registry,
@@ -22,8 +24,6 @@ from hub.apps.orchestration.serializers import (
     WorkflowDefinitionListSerializer,
     WorkflowTriggerRequestSerializer,
 )
-from hub.apps.core.responses import handle_service_exception
-from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.orchestration.workflow_engine import WorkflowExecutionError
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ class WorkflowListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request: Request) -> Response:
-        tenant, err = _get_tenant_or_400(request)
+        _tenant, err = _get_tenant_or_400(request)
         if err is not None:
             return err
 
@@ -118,7 +118,7 @@ class WorkflowDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request: Request, name: str) -> Response:
-        tenant, err = _get_tenant_or_400(request)
+        _tenant, err = _get_tenant_or_400(request)
         if err is not None:
             return err
 

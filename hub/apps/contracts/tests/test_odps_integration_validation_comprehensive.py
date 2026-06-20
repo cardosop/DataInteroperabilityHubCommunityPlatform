@@ -21,37 +21,36 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pytest
 
 pytestmark = pytest.mark.slow
+import uuid
+
 from django.contrib.auth import get_user_model
 
 from hub.apps.contracts.models import (
     Contract,
-    ContractStatus,
     NormalizationStatus,
     OriginalFormat,
     OriginalSpecType,
 )
 from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
 from hub.apps.contracts.odps_errors import (
-    ODPSExportError,
     ODPSNormalizationError,
     ODPSRefResolutionError,
     ODPSValidationError,
 )
 from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
-from hub.apps.core.services.base import ValidationError
 from hub.apps.contracts.odps_parser import ODPSParser
 from hub.apps.contracts.odps_version_detection import detect_odps_version
 from hub.apps.contracts.ref_resolver import ExternalRefHandling, RefResolver
-from hub.apps.contracts.services import ContractService, ODPSService
+from hub.apps.contracts.services import ODPSService
 from hub.apps.contracts.tests.test_base import ContractsTestBase
+from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -105,7 +104,7 @@ class ODPSIntegrationValidationComprehensiveTest(ContractsTestBase):
         if not fixture_path.exists():
             raise FileNotFoundError(f"Fixture not found: {fixture_path}")
 
-        with open(fixture_path, "r", encoding="utf-8") as f:
+        with open(fixture_path, encoding="utf-8") as f:
             return json.load(f)
 
     def _load_fixture_raw(self, version: str, filename: str) -> str:
@@ -431,7 +430,7 @@ class ODPSIntegrationValidationComprehensiveTest(ContractsTestBase):
             },
         }
 
-        fixture_raw = json.dumps(fixture_data, indent=2)
+        json.dumps(fixture_data, indent=2)
 
         # Create resolver
         resolver = RefResolver(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -492,7 +491,7 @@ class ODPSIntegrationValidationComprehensiveTest(ContractsTestBase):
             )
 
             # Resolve all refs
-            original, resolved = resolver.resolve_all_refs(
+            _original, resolved = resolver.resolve_all_refs(
                 odps_doc, preserve_original=True, external_ref_handling=ExternalRefHandling.RESOLVE
             )
 
@@ -821,8 +820,8 @@ class ODPSIntegrationValidationComprehensiveTest(ContractsTestBase):
             except FileNotFoundError:
                 # Skip if fixture not found
                 continue
-            except Exception as e:
-                # Log error but continue with other versions
+            except (json.JSONDecodeError, KeyError, ValidationError) as e:
+                # Log expected error types but continue with other versions
                 print(f"Error testing export for version {version}: {e}")
                 continue
 
@@ -848,7 +847,7 @@ class ODPSIntegrationValidationComprehensiveTest(ContractsTestBase):
 
         # Step 4: Resolve $ref references (if any)
         resolver = RefResolver(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
-        original, resolved = resolver.resolve_all_refs(
+        _original, resolved = resolver.resolve_all_refs(
             odps_doc, preserve_original=True, external_ref_handling=ExternalRefHandling.RESOLVE
         )
 
@@ -927,8 +926,8 @@ class ODPSIntegrationValidationComprehensiveTest(ContractsTestBase):
             except FileNotFoundError:
                 # Skip if fixture not found
                 continue
-            except Exception as e:
-                # Log error but continue with other versions
+            except (json.JSONDecodeError, KeyError, ValidationError) as e:
+                # Log expected error types but continue with other versions
                 print(f"Error testing version {expected_version}: {e}")
                 continue
 
@@ -1099,9 +1098,16 @@ class ODPSIntegrationValidationComprehensiveTest(ContractsTestBase):
             # If creation fails, it should fail gracefully
             # OperationalError can occur when document is too large for database index
             from django.db.utils import OperationalError
+
             self.assertIsInstance(
                 e,
-                (ValueError, ODPSValidationError, ODPSNormalizationError, ValidationError, OperationalError),
+                (
+                    ValueError,
+                    ODPSValidationError,
+                    ODPSNormalizationError,
+                    ValidationError,
+                    OperationalError,
+                ),
                 "Should raise appropriate exception for very large documents",
             )
 
@@ -1143,13 +1149,10 @@ class ODPSIntegrationValidationComprehensiveTest(ContractsTestBase):
             )
             # If creation succeeds, verify contract was created
             self.assertIsNotNone(contract)
-        except Exception as e:
-            # If creation fails, it should fail gracefully
-            self.assertIsInstance(
-                e,
-                (ValueError, ODPSValidationError, ValidationError),
-                "Should raise appropriate exception for None values",
-            )
+        except (ValueError, ODPSValidationError, ValidationError) as e:
+            # If creation fails, it should fail gracefully with expected exception types
+            # Assertion is satisfied by the specific exception types in the except clause
+            pass
 
     def test_integration_validation_handle_nested_structures(self):
         """Test that integration validation handles nested structures correctly."""
@@ -1240,11 +1243,9 @@ class ODPSIntegrationValidationComprehensiveTest(ContractsTestBase):
         try:
             self.contract_service.get_contract(contract_id=str(contract2.id))
             self.fail("Tenant1 should not be able to access tenant2 contract")
-        except Exception as e:
+        except (ValueError, Contract.DoesNotExist, NotFoundError) as e:
             # Expected - tenant isolation should prevent access
-            self.assertIsInstance(
-                e, (ValueError, Exception), "Should raise exception for cross-tenant access"
-            )
+            pass
 
     def test_integration_validation_handles_unicode_characters(self):
         """Test that integration validation handles unicode characters correctly."""

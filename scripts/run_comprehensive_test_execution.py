@@ -13,6 +13,7 @@ comprehensive, engineering-grade manner following best practices:
 Usage:
     python scripts/run_comprehensive_test_execution.py [--test-type TYPE] [--coverage] [--report-dir DIR]
 """
+
 import argparse
 import json
 import os
@@ -21,7 +22,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -47,8 +48,8 @@ class TestExecutionResult:
 
     def __init__(self, test_type: str):
         self.test_type = test_type
-        self.start_time: Optional[float] = None
-        self.end_time: Optional[float] = None
+        self.start_time: float | None = None
+        self.end_time: float | None = None
         self.duration: float = 0.0
         self.exit_code: int = 0
         self.total_tests: int = 0
@@ -57,16 +58,16 @@ class TestExecutionResult:
         self.errors: int = 0
         self.skipped: int = 0
         self.output: str = ""
-        self.coverage_data: Optional[Dict[str, Any]] = None
+        self.coverage_data: dict[str, Any] | None = None
         self.status: str = "PENDING"
-        self.error_message: Optional[str] = None
+        self.error_message: str | None = None
 
     @property
     def success(self) -> bool:
         """Check if test execution was successful."""
         return self.exit_code == 0 and self.failed == 0 and self.errors == 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert result to dictionary."""
         return {
             "test_type": self.test_type,
@@ -171,7 +172,7 @@ class TestExecutor:
 
         return all_available
 
-    def extract_test_summary(self, output: str) -> Dict[str, int]:
+    def extract_test_summary(self, output: str) -> dict[str, int]:
         """Extract test summary from pytest output."""
         import re
 
@@ -184,12 +185,6 @@ class TestExecutor:
         }
 
         # Look for pytest summary line
-        summary_patterns = [
-            r"(\d+)\s+passed",
-            r"(\d+)\s+failed",
-            r"(\d+)\s+skipped",
-            r"(\d+)\s+error",
-        ]
 
         lines = output.split("\n")
         summary_line = None
@@ -233,7 +228,7 @@ class TestExecutor:
 
         return summary
 
-    def extract_coverage_data(self, output: str) -> Optional[Dict[str, Any]]:
+    def extract_coverage_data(self, output: str) -> dict[str, Any] | None:
         """Extract coverage data from pytest-cov output."""
         import re
 
@@ -364,9 +359,9 @@ class TestExecutor:
         # Remove empty strings
         cmd = [c for c in cmd if c]
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"Running {config['description']}")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
 
         result.start_time = time.time()
         result.status = "RUNNING"
@@ -374,6 +369,7 @@ class TestExecutor:
         try:
             process_result = subprocess.run(
                 cmd,
+                check=False,
                 cwd=str(self.project_root),
                 capture_output=True,
                 text=True,
@@ -401,7 +397,7 @@ class TestExecutor:
                 coverage_json_file = self.report_dir / f"coverage_{test_type}.json"
                 if coverage_json_file.exists():
                     try:
-                        with open(coverage_json_file, "r") as f:
+                        with open(coverage_json_file) as f:
                             json_coverage = json.load(f)
                             if json_coverage:
                                 result.coverage_data = json_coverage
@@ -432,7 +428,9 @@ class TestExecutor:
             result.duration = result.end_time - result.start_time
             result.exit_code = 1
             result.status = "TIMEOUT"
-            result.error_message = f"Test execution timed out after {config['timeout']//60} minutes"
+            result.error_message = (
+                f"Test execution timed out after {config['timeout'] // 60} minutes"
+            )
             result.output = f"Timeout after {config['timeout']} seconds"
 
         except Exception as e:
@@ -440,7 +438,7 @@ class TestExecutor:
             result.duration = result.end_time - result.start_time
             result.exit_code = 1
             result.status = "ERROR"
-            result.error_message = f"Error running tests: {str(e)}"
+            result.error_message = f"Error running tests: {e!s}"
             result.output = str(e)
 
         return result
@@ -474,8 +472,8 @@ class TestExecutor:
         return self.run_pytest_tests("security", with_coverage=False, verbose=True)
 
     def execute_all_tests(
-        self, test_types: Optional[List[str]] = None, with_coverage: bool = False
-    ) -> Dict[str, TestExecutionResult]:
+        self, test_types: list[str] | None = None, with_coverage: bool = False
+    ) -> dict[str, TestExecutionResult]:
         """Execute all specified test types."""
         if test_types is None:
             test_types = list(self.test_categories.keys())
@@ -511,7 +509,7 @@ class TestExecutor:
             # Print summary
             result = results[test_type]
             print(f"\n{result.status}: {self.test_categories[test_type]['description']}")
-            print(f"  Duration: {result.duration:.2f} seconds ({result.duration/60:.2f} minutes)")
+            print(f"  Duration: {result.duration:.2f} seconds ({result.duration / 60:.2f} minutes)")
             print(f"  Total tests: {result.total_tests}")
             print(f"  Passed: {result.passed}")
             if result.failed > 0:
@@ -592,9 +590,9 @@ def main():
     with open(results_file, "w") as f:
         json.dump(results_json, f, indent=2)
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("TEST EXECUTION SUMMARY")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
 
     total_tests = sum(r.total_tests for r in results.values())
     total_passed = sum(r.passed for r in results.values())
@@ -602,14 +600,14 @@ def main():
     total_errors = sum(r.errors for r in results.values())
     total_skipped = sum(r.skipped for r in results.values())
 
-    print(f"\nOverall Results:")
+    print("\nOverall Results:")
     print(f"  Total tests: {total_tests}")
     print(f"  Passed: {total_passed}")
     print(f"  Failed: {total_failed}")
     print(f"  Errors: {total_errors}")
     print(f"  Skipped: {total_skipped}")
 
-    print(f"\nCategory Results:")
+    print("\nCategory Results:")
     for test_type, result in results.items():
         config = executor.test_categories[test_type]
         print(f"  {config['description']}: {result.status}")
@@ -623,14 +621,14 @@ def main():
     # Final status
     all_passed = all(r.success for r in results.values())
     if all_passed:
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("✅ ALL TESTS PASSED")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         return 0
     else:
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("❌ SOME TESTS FAILED")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         print("\nPlease review the test output above and fix any failures.")
         print("Remember: Fix root causes, not symptoms. No mocks/stubs.")
         return 1

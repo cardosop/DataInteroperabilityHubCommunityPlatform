@@ -6,14 +6,14 @@ a Redis-based distributed lock. Only one worker recomputes the
 value; other concurrent requests wait briefly and return stale
 data or the fresh value once available.
 """
-import hashlib
+
 import time
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable
+from typing import Any
 
 from django.core.cache import cache as django_cache
 from django_redis import get_redis_connection
-
 
 LOCK_TTL = 5  # seconds — max time a recompute can hold the lock
 WAIT_TIMEOUT = 2  # seconds — max time to poll for lock release
@@ -37,6 +37,7 @@ def with_stampede_protection(
         def get_datasets(tenant_id):
             return Dataset.objects.filter(tenant_id=tenant_id)
     """
+
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(fn)
         def wrapper(*args, **kwargs):
@@ -74,6 +75,7 @@ def with_stampede_protection(
                 return value
 
         return wrapper
+
     return decorator
 
 

@@ -10,18 +10,16 @@ Comprehensive tests for all service methods including:
 """
 
 import uuid
+
 import pytest
 from django.test import TestCase
-from django.utils import timezone
 
-from hub.apps.assets.models import Asset
-from hub.apps.core.services.base import ConflictError, NotFoundError, ServiceError, ValidationError
-from hub.apps.assets.models import AssetSourceType
+from hub.apps.assets.models import Asset, AssetSourceType
+from hub.apps.core.services.base import ConflictError, NotFoundError, ValidationError
 from hub.apps.integrations.base import (
     DataMarketplaceConnector,
     MarketplaceAssetMapping,
     MarketplaceListing,
-    MarketplaceResource,
     MarketplaceType,
     SyncDirection,
     SyncResult,
@@ -35,7 +33,6 @@ from hub.apps.integrations.models import (
 )
 from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.integrations.utils import MarketplaceAuthenticationError, MarketplaceConnectionError
-from hub.apps.jobs.models import JobType
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
@@ -161,12 +158,8 @@ class MarketplaceIntegrationServiceTest(TestCase):
 
         # Save original so we can restore it in tearDown — avoids polluting
         # other test classes that may rely on the real CKANConnector.
-        self._original_ckan_connector = factory._connectors.get(
-            MarketplaceType.CKAN_INSTANCE.value
-        )
-        factory.register_connector(
-            MarketplaceType.CKAN_INSTANCE, _TestCKANConnector
-        )
+        self._original_ckan_connector = factory._connectors.get(MarketplaceType.CKAN_INSTANCE.value)
+        factory.register_connector(MarketplaceType.CKAN_INSTANCE, _TestCKANConnector)
 
         # Register a test Snowflake connector so connection-test tests have a
         # reliable connector and don't silently skip on infrastructure failures.
@@ -636,7 +629,13 @@ class MarketplaceIntegrationServiceTest(TestCase):
             # If connection test fails, verify error handling
             if not result.get("success", True):
                 self.assertIn("error", result)
-        except (MarketplaceConnectionError, ValidationError, ValueError, ImportError, AttributeError) as e:
+        except (
+            MarketplaceConnectionError,
+            ValidationError,
+            ValueError,
+            ImportError,
+            AttributeError,
+        ) as e:
             self.fail(f"Test Snowflake connector should be registered in setUp: {e}")
 
     def test_test_connection_authentication_error(self):
@@ -661,7 +660,13 @@ class MarketplaceIntegrationServiceTest(TestCase):
             # If authentication fails, verify error handling
             if not result.get("success", True):
                 self.assertIn("error", result)
-        except (MarketplaceAuthenticationError, ValidationError, ValueError, ImportError, AttributeError) as e:
+        except (
+            MarketplaceAuthenticationError,
+            ValidationError,
+            ValueError,
+            ImportError,
+            AttributeError,
+        ) as e:
             self.fail(f"Test Snowflake connector should be registered in setUp: {e}")
 
     def test_test_connection_not_found(self):
@@ -1420,7 +1425,8 @@ class MarketplaceIntegrationServiceTest(TestCase):
         )
 
         updated_mapping = self.service.update_mapping(
-            mapping_id=str(mapping.id), external_listing_id="listing-123"  # Same value
+            mapping_id=str(mapping.id),
+            external_listing_id="listing-123",  # Same value
         )
 
         self.assertEqual(updated_mapping.id, mapping.id)
@@ -1555,13 +1561,23 @@ class MarketplaceIntegrationServiceTest(TestCase):
         try:
             factory = MarketplaceConnectorFactory()
             for mkt_type, attr in [
-                (MarketplaceType.CKAN_INSTANCE, '_original_ckan_connector'),
-                (MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, '_original_snowflake_connector'),
+                (MarketplaceType.CKAN_INSTANCE, "_original_ckan_connector"),
+                (MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, "_original_snowflake_connector"),
             ]:
                 original = getattr(self, attr, None)
                 if original is not None:
                     factory.register_connector(mkt_type, original)
                 else:
                     factory.unregister_connector(mkt_type)
-        except Exception:
+        except (ValueError, AttributeError, TypeError):
+            # ValueError: connector already/not registered (harmless race)
+            # AttributeError: factory internals may change
+            # TypeError: original may not be a valid connector class
             pass
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "Unexpected error restoring connector registration in tearDown",
+                exc_info=True,
+            )

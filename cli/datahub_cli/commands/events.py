@@ -1,6 +1,7 @@
 """
 283.5.9 — Event / Dead Letter Queue CLI commands.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,10 +14,10 @@ from ..api_client import api_client
 @click.group()
 def events():
     """Event replay and Dead Letter Queue management"""
-    pass
 
 
 # ── Event replay ────────────────────────────────────────────────────────────
+
 
 @events.command("replay")
 @click.argument("event_id")
@@ -28,10 +29,10 @@ def replay(event_id):
 
 # ── Dead Letter Queue ───────────────────────────────────────────────────────
 
+
 @events.group("dlq")
 def dlq():
     """Dead Letter Queue operations"""
-    pass
 
 
 @dlq.command("list")
@@ -43,7 +44,7 @@ def dlq_list():
         click.echo("DLQ is empty.")
         return
     for r in results:
-        click.echo(f"{r.get('id','')}  {r.get('event_type','')}  {r.get('status','')}")
+        click.echo(f"{r.get('id', '')}  {r.get('event_type', '')}  {r.get('status', '')}")
 
 
 @dlq.command("retry")

@@ -32,6 +32,7 @@ top-level ``tests/conftest.py`` (which forces ``django.setup()``).
 No mocks, no stubs — the test reads the actual files at their
 canonical paths and validates content directly.
 """
+
 from __future__ import annotations
 
 import ast
@@ -39,7 +40,6 @@ import re
 from pathlib import Path
 
 import pytest
-
 
 # Repository root (this file lives at tests/docs/, two levels deep).
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent

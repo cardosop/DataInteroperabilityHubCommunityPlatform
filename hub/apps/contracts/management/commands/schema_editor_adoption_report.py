@@ -44,11 +44,12 @@ Usage examples
     python manage.py schema_editor_adoption_report \\
         --since-days=7 --gate-threshold=0.30
 """
+
 from __future__ import annotations
 
 import json
 from datetime import timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -108,9 +109,7 @@ class Command(BaseCommand):
         include_tenants = bool(options.get("include_tenants"))
 
         if since_days <= 0:
-            self.stderr.write(
-                self.style.ERROR("--since-days must be > 0")
-            )
+            self.stderr.write(self.style.ERROR("--since-days must be > 0"))
             return
 
         report = compute_adoption_report(
@@ -139,25 +138,19 @@ class Command(BaseCommand):
     # Output formatters
     # ------------------------------------------------------------------
 
-    def _emit_human(self, report: Dict[str, Any], *, since_days: int) -> None:
-        self.stdout.write(
-            self.style.SUCCESS(
-                "Phase 227 Wave 2 — schema-editor adoption report"
-            )
-        )
+    def _emit_human(self, report: dict[str, Any], *, since_days: int) -> None:
+        self.stdout.write(self.style.SUCCESS("Phase 227 Wave 2 — schema-editor adoption report"))
         self.stdout.write(f"Watch window: last {since_days} day(s).")
         self.stdout.write(
-            f"Tenants with structureless contracts:      "
-            f"{report['structureless_tenant_count']}"
+            f"Tenants with structureless contracts:      {report['structureless_tenant_count']}"
         )
         self.stdout.write(
-            f"... of those, opened the editor:           "
-            f"{report['adopted_tenant_count']}"
+            f"... of those, opened the editor:           {report['adopted_tenant_count']}"
         )
         ratio_pct = report["ratio"] * 100
         self.stdout.write(f"Adoption ratio:                            {ratio_pct:.1f} %")
 
-    def _emit_json(self, report: Dict[str, Any]) -> None:
+    def _emit_json(self, report: dict[str, Any]) -> None:
         self.stdout.write(json.dumps(report, sort_keys=True, default=str))
 
 
@@ -171,8 +164,8 @@ def compute_adoption_report(
     *,
     since_days: int = DEFAULT_WATCH_WINDOW_DAYS,
     include_tenants: bool = False,
-    now: Optional[Any] = None,
-) -> Dict[str, Any]:
+    now: Any | None = None,
+) -> dict[str, Any]:
     """Compute the adoption ratio report.
 
     Args
@@ -210,14 +203,13 @@ def compute_adoption_report(
     window_start = anchor - timedelta(days=since_days)
 
     # 1) Tenants with at least one structureless contract.
-    structureless_tenant_ids: List[str] = []
+    structureless_tenant_ids: list[str] = []
     seen: set[str] = set()
     # ``iterator(chunk_size=...)`` keeps memory bounded on large
     # contract corpora — the report runs as a CI gate so we don't want
     # it to OOM.
-    for contract in (
-        Contract.objects.only("id", "tenant_id", "hub_contract_json")
-        .iterator(chunk_size=200)
+    for contract in Contract.objects.only("id", "tenant_id", "hub_contract_json").iterator(
+        chunk_size=200
     ):
         if not is_structureless(contract):
             continue
@@ -248,7 +240,7 @@ def compute_adoption_report(
     else:
         ratio = 0.0
 
-    report: Dict[str, Any] = {
+    report: dict[str, Any] = {
         "structureless_tenant_count": len(structureless_tenant_ids),
         "adopted_tenant_count": len(adopted_tenant_ids),
         "ratio": round(ratio, 4),

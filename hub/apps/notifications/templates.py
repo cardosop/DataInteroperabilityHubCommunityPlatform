@@ -3,15 +3,17 @@ Email Template Rendering
 
 Utilities for rendering email templates with context.
 """
-from typing import Dict, Any, Optional
+
+from typing import Any
 from urllib.parse import urlencode
 
-from django.template.loader import render_to_string
 from django.conf import settings
+from django.template.loader import render_to_string
 
 # Optional import for HTML to text conversion
 try:
     import html2text
+
     HTML2TEXT_AVAILABLE = True
 except ImportError:
     HTML2TEXT_AVAILABLE = False
@@ -19,10 +21,8 @@ except ImportError:
 
 
 def render_email_template(
-    template_name: str,
-    context: Dict[str, Any],
-    text_template_name: Optional[str] = None
-) -> Dict[str, str]:
+    template_name: str, context: dict[str, Any], text_template_name: str | None = None
+) -> dict[str, str]:
     """
     Render email template to HTML and plain text.
 
@@ -36,7 +36,7 @@ def render_email_template(
     """
     # Inject app_name for email templates (Phase 28.7.5 Meshant)
     ctx = dict(context)
-    ctx.setdefault('app_name', getattr(settings, 'APP_NAME', 'Meshant'))
+    ctx.setdefault("app_name", getattr(settings, "APP_NAME", "Meshant"))
     # Render HTML template
     html_content = render_to_string(template_name, ctx)
 
@@ -53,28 +53,26 @@ def render_email_template(
 
     if text_template_name:
         text_content = render_to_string(text_template_name, ctx)
+    # Convert HTML to plain text
+    elif HTML2TEXT_AVAILABLE:
+        h = html2text.HTML2Text()
+        h.ignore_links = False
+        h.ignore_images = True
+        text_content = h.handle(html_content)
     else:
-        # Convert HTML to plain text
-        if HTML2TEXT_AVAILABLE:
-            h = html2text.HTML2Text()
-            h.ignore_links = False
-            h.ignore_images = True
-            text_content = h.handle(html_content)
-        else:
-            # Fallback: strip HTML tags manually if html2text not available
-            import re
-            # Simple HTML tag removal (not as sophisticated as html2text)
-            text_content = re.sub(r'<[^>]+>', '', html_content)
-            # Decode HTML entities
-            import html
-            text_content = html.unescape(text_content)
-            # Clean up whitespace
-            text_content = re.sub(r'\s+', ' ', text_content).strip()
+        # Fallback: strip HTML tags manually if html2text not available
+        import re
 
-    return {
-        'html': html_content,
-        'text': text_content
-    }
+        # Simple HTML tag removal (not as sophisticated as html2text)
+        text_content = re.sub(r"<[^>]+>", "", html_content)
+        # Decode HTML entities
+        import html
+
+        text_content = html.unescape(text_content)
+        # Clean up whitespace
+        text_content = re.sub(r"\s+", " ", text_content).strip()
+
+    return {"html": html_content, "text": text_content}
 
 
 def get_base_url() -> str:
@@ -84,10 +82,10 @@ def get_base_url() -> str:
     Returns:
         Base URL from settings or default
     """
-    base_url = getattr(settings, 'EMAIL_BASE_URL', 'http://localhost:8000')
+    base_url = getattr(settings, "EMAIL_BASE_URL", "http://localhost:8000")
     # Handle case where EMAIL_BASE_URL is explicitly set to None
     if base_url is None:
-        return 'http://localhost:8000'
+        return "http://localhost:8000"
     return base_url
 
 
@@ -209,4 +207,3 @@ def build_unsubscribe_url(token: str) -> str:
 def build_email_preferences_url() -> str:
     """Build authenticated email preferences management URL (277.B.097)."""
     return f"{get_base_url()}/api/v1/auth/me/email-preferences/"
-

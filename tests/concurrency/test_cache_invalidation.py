@@ -3,8 +3,9 @@
 Skipped when Redis cache is unavailable (test containers may not have
 cache connectivity).
 """
+
 import uuid
-import pytest
+
 from django.test import TestCase
 
 
@@ -13,6 +14,7 @@ class CacheInvalidationTest(TestCase):
 
     def _get_cache(self):
         from django.core.cache import cache
+
         try:
             cache.set("_probe", 1, 5)
             cache.delete("_probe")

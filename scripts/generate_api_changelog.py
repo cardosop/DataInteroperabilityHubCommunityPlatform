@@ -10,10 +10,11 @@ Usage:
     python scripts/generate_api_changelog.py              # diff vs last spec
     python scripts/generate_api_changelog.py --base v0.1  # diff vs specific version
 """
+
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 SPEC_DIR = "docs/api/openapi-specs"
 CHANGELOG_PATH = "docs/api/CHANGELOG.md"
@@ -44,8 +45,7 @@ def diff_paths(old: dict, new: dict) -> dict:
         "added": sorted(new_paths - old_paths),
         "removed": sorted(old_paths - new_paths),
         "modified": sorted(
-            p for p in (old_paths & new_paths)
-            if old["paths"][p] != new["paths"][p]
+            p for p in (old_paths & new_paths) if old["paths"][p] != new["paths"][p]
         ),
     }
 
@@ -53,7 +53,7 @@ def diff_paths(old: dict, new: dict) -> dict:
 def generate_changelog_entry(base_version: str, new_version: str = "current") -> str:
     old = load_spec(base_version)
     if old is None:
-        return f"## {new_version} ({datetime.now(timezone.utc).strftime('%Y-%m-%d')})\n\n- Initial API specification.\n\n"
+        return f"## {new_version} ({datetime.now(UTC).strftime('%Y-%m-%d')})\n\n- Initial API specification.\n\n"
 
     # Generate current spec (requires Django + drf-spectacular)
     new_path = os.path.join(SPEC_DIR, f"openapi-{new_version}.json")
@@ -69,7 +69,7 @@ def generate_changelog_entry(base_version: str, new_version: str = "current") ->
         return f"## {new_version}\n\n⚠️ Failed to parse `{new_path}`.\n\n"
 
     paths_diff = diff_paths(old, new)
-    lines = [f"## {new_version} ({datetime.now(timezone.utc).strftime('%Y-%m-%d')})", ""]
+    lines = [f"## {new_version} ({datetime.now(UTC).strftime('%Y-%m-%d')})", ""]
 
     if paths_diff["added"]:
         lines.append("### Added Endpoints")
@@ -98,8 +98,10 @@ def generate_changelog_entry(base_version: str, new_version: str = "current") ->
 
 def main():
     versions = list_spec_versions()
-    base = sys.argv[2] if len(sys.argv) > 2 and sys.argv[1] == "--base" else (
-        versions[-1] if len(versions) > 0 else "v0.1"
+    base = (
+        sys.argv[2]
+        if len(sys.argv) > 2 and sys.argv[1] == "--base"
+        else (versions[-1] if len(versions) > 0 else "v0.1")
     )
 
     entry = generate_changelog_entry(base)

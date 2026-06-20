@@ -6,7 +6,6 @@ Uses real hub API - no mocks/stubs.
 """
 
 import json
-from typing import Optional
 
 import click
 
@@ -16,7 +15,6 @@ from ..api_client import api_client
 @click.group()
 def billing():
     """Billing management commands"""
-    pass
 
 
 @billing.command("subscription")
@@ -96,11 +94,7 @@ def list_invoices(limit: int, offset: int, output_format: str):
                 )
                 paid_at = str(invoice.get("paid_at", ""))[:23] if invoice.get("paid_at") else "N/A"
                 click.echo(
-                    f"{invoice_id:<40} "
-                    f"{amount:<15} "
-                    f"{status_val:<15} "
-                    f"{due_date:<25} "
-                    f"{paid_at:<25}"
+                    f"{invoice_id:<40} {amount:<15} {status_val:<15} {due_date:<25} {paid_at:<25}"
                 )
     except click.ClickException:
         raise
@@ -110,7 +104,8 @@ def list_invoices(limit: int, offset: int, output_format: str):
 
 @billing.command("plan-limits")
 @click.option(
-    "--format", "output_format",
+    "--format",
+    "output_format",
     type=click.Choice(["json", "table"]),
     default="table",
     help="Output format",
@@ -135,9 +130,7 @@ def plan_limits(output_format: str):
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(
-            f"Failed to get plan limits: {e}"
-        )
+        raise click.ClickException(f"Failed to get plan limits: {e}")
 
 
 @billing.command("usage")
@@ -148,14 +141,17 @@ def plan_limits(output_format: str):
 @click.option("--limit", type=int, default=20)
 @click.option("--offset", type=int, default=0)
 @click.option(
-    "--format", "output_format",
+    "--format",
+    "output_format",
     type=click.Choice(["json", "table"]),
     default="table",
     help="Output format",
 )
 def get_usage(
-    resource_type: Optional[str], limit: int,
-    offset: int, output_format: str,
+    resource_type: str | None,
+    limit: int,
+    offset: int,
+    output_format: str,
 ):
     """List usage records for current billing period"""
     params = {"limit": limit, "offset": offset}
@@ -164,12 +160,15 @@ def get_usage(
 
     try:
         data = api_client.get(
-            "billing/usage/", params=params,
+            "billing/usage/",
+            params=params,
         )
         results = (
             data.get("results", [])
-            if isinstance(data, dict) else
-            data if isinstance(data, list) else []
+            if isinstance(data, dict)
+            else data
+            if isinstance(data, list)
+            else []
         )
 
         if output_format == "json":
@@ -178,51 +177,55 @@ def get_usage(
             if not results:
                 click.echo("No usage records found.")
                 return
-            click.echo(
-                f"{'Metric':<30} {'Quantity':<15} "
-                f"{'Period Start':<25}"
-            )
+            click.echo(f"{'Metric':<30} {'Quantity':<15} {'Period Start':<25}")
             click.echo("-" * 70)
             for r in results:
                 if not isinstance(r, dict):
                     continue
                 click.echo(
-                    f"{str(r.get('metric_key', '')):<30} "
-                    f"{str(r.get('quantity', '')):<15} "
+                    f"{r.get('metric_key', '')!s:<30} "
+                    f"{r.get('quantity', '')!s:<15} "
                     f"{str(r.get('period_start', ''))[:23]:<25}"
                 )
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(
-            f"Failed to get usage: {e}"
-        )
+        raise click.ClickException(f"Failed to get usage: {e}")
 
 
 @billing.command("refund")
 @click.argument("payment_intent_id")
 @click.option(
-    "--amount", "amount_cents", type=int,
-    required=True, help="Refund amount in cents",
+    "--amount",
+    "amount_cents",
+    type=int,
+    required=True,
+    help="Refund amount in cents",
 )
 @click.option(
     "--reason",
-    type=click.Choice([
-        "duplicate", "fraudulent",
-        "requested_by_customer",
-    ]),
+    type=click.Choice(
+        [
+            "duplicate",
+            "fraudulent",
+            "requested_by_customer",
+        ]
+    ),
     required=True,
     help="Refund reason",
 )
 @click.option(
-    "--format", "output_format",
+    "--format",
+    "output_format",
     type=click.Choice(["json", "table"]),
     default="table",
     help="Output format",
 )
 def process_refund(
-    payment_intent_id: str, amount_cents: int,
-    reason: str, output_format: str,
+    payment_intent_id: str,
+    amount_cents: int,
+    reason: str,
+    output_format: str,
 ):
     """Issue a Stripe refund (admin only)"""
     try:
@@ -238,25 +241,20 @@ def process_refund(
             click.echo(json.dumps(data, indent=2))
         else:
             click.echo("Refund issued successfully!")
-            click.echo(
-                f"Refund ID: {data.get('refund_id')}"
-            )
+            click.echo(f"Refund ID: {data.get('refund_id')}")
             click.echo(f"Status: {data.get('status')}")
-            click.echo(
-                f"Amount: {data.get('amount_cents')} cents"
-            )
+            click.echo(f"Amount: {data.get('amount_cents')} cents")
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(
-            f"Failed to process refund: {e}"
-        )
+        raise click.ClickException(f"Failed to process refund: {e}")
 
 
 @billing.command("reconcile")
 @click.option("--dry-run", is_flag=True, default=False)
 @click.option(
-    "--format", "output_format",
+    "--format",
+    "output_format",
     type=click.Choice(["json", "table"]),
     default="table",
     help="Output format",
@@ -272,23 +270,15 @@ def reconcile(dry_run: bool, output_format: str):
         if output_format == "json":
             click.echo(json.dumps(data, indent=2))
         else:
-            click.echo(
-                f"Checked: {data.get('checked', 0)}"
-            )
-            click.echo(
-                f"Drifted: {data.get('drifted', 0)}"
-            )
-            click.echo(
-                f"Errors: {data.get('errors', 0)}"
-            )
+            click.echo(f"Checked: {data.get('checked', 0)}")
+            click.echo(f"Drifted: {data.get('drifted', 0)}")
+            click.echo(f"Errors: {data.get('errors', 0)}")
             if dry_run:
                 click.echo("(dry-run — no changes made)")
     except click.ClickException:
         raise
     except Exception as e:
-        raise click.ClickException(
-            f"Failed to reconcile: {e}"
-        )
+        raise click.ClickException(f"Failed to reconcile: {e}")
 
 
 @billing.command("invoice")

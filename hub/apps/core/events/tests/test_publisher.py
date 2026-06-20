@@ -1,6 +1,7 @@
 """
 Tests for event publishers.
 """
+
 import json
 import uuid
 from unittest.mock import Mock, patch

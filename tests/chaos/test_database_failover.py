@@ -1,7 +1,8 @@
 """Phase 111.7 — Database failover → meaningful error, not hang."""
+
 import pytest
-from django.test import TestCase
 from django.db import connection
+from django.test import TestCase
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -18,6 +19,7 @@ class DatabaseFailoverTest(TestCase):
     def test_sequential_queries_work(self):
         """Sequential queries don't exhaust connections."""
         from hub.apps.tenants.models import Tenant
+
         for _ in range(20):
             Tenant.objects.count()
         self.assertTrue(connection.is_usable())

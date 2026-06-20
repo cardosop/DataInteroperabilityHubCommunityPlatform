@@ -3,14 +3,18 @@ Job Models
 
 Generic job model for long-running operations (DQ, compliance, validation, etc.).
 """
+
 import uuid
-from django.db import models
+
 from django.conf import settings
+from django.db import models
 from django.utils import timezone
 
 
 class JobType(models.TextChoices):
     """Job type enumeration"""
+
+    API_KEY_ROTATION_REMINDER = "API_KEY_ROTATION_REMINDER", "API Key Rotation Reminder"
     DQ_RUN = "DQ_RUN", "Data Quality Run"
     COMPLIANCE_RUN = "COMPLIANCE_RUN", "Compliance Run"
     CONTRACT_VALIDATION = "CONTRACT_VALIDATION", "Contract Validation"
@@ -133,6 +137,7 @@ class JobType(models.TextChoices):
 
 class JobStatus(models.TextChoices):
     """Job status enumeration"""
+
     PENDING = "PENDING", "Pending"
     RUNNING = "RUNNING", "Running"
     COMPLETED = "COMPLETED", "Completed"
@@ -142,6 +147,7 @@ class JobStatus(models.TextChoices):
 
 class JobPriority(models.TextChoices):
     """Job priority enumeration"""
+
     LOW = "LOW", "Low"
     NORMAL = "NORMAL", "Normal"
     HIGH = "HIGH", "High"
@@ -154,6 +160,7 @@ class Job(models.Model):
 
     Tracks DQ runs, compliance checks, contract validation, semantic mapping, etc.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         "tenants.Tenant",
@@ -161,71 +168,53 @@ class Job(models.Model):
         related_name="jobs",
         null=True,
         blank=True,
-        help_text="Tenant this job belongs to (nullable for system jobs)"
+        help_text="Tenant this job belongs to (nullable for system jobs)",
     )
     type = models.CharField(
         max_length=50,
         choices=JobType.choices,
-        help_text="Job type: DQ_RUN, COMPLIANCE_RUN, CONTRACT_VALIDATION, etc."
+        help_text="Job type: DQ_RUN, COMPLIANCE_RUN, CONTRACT_VALIDATION, etc.",
     )
     status = models.CharField(
         max_length=20,
         choices=JobStatus.choices,
         default=JobStatus.PENDING,
-        help_text="Job status: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED"
+        help_text="Job status: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED",
     )
     priority = models.CharField(
         max_length=20,
         choices=JobPriority.choices,
         default=JobPriority.NORMAL,
-        help_text="Job priority: HIGH, NORMAL, LOW"
+        help_text="Job priority: HIGH, NORMAL, LOW",
     )
     resource_type = models.CharField(
-        max_length=50,
-        help_text="Resource type: CONTRACT, DATASET, FILE, ASSET, etc."
+        max_length=50, help_text="Resource type: CONTRACT, DATASET, FILE, ASSET, etc."
     )
-    resource_id = models.UUIDField(
-        help_text="ID of the resource this job operates on"
-    )
+    resource_id = models.UUIDField(help_text="ID of the resource this job operates on")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         related_name="created_jobs",
         null=True,
         blank=True,
-        help_text="User who created the job"
+        help_text="User who created the job",
     )
-    started_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When job started running"
-    )
+    started_at = models.DateTimeField(null=True, blank=True, help_text="When job started running")
     completed_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When job completed (success or failure)"
+        null=True, blank=True, help_text="When job completed (success or failure)"
     )
-    error_message = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Error message if job failed"
-    )
+    error_message = models.TextField(null=True, blank=True, help_text="Error message if job failed")
     result_json = models.JSONField(
-        null=True,
-        blank=True,
-        default=dict,
-        help_text="Job result data (partial results supported)"
+        null=True, blank=True, default=dict, help_text="Job result data (partial results supported)"
     )
     details_json = models.JSONField(
         null=True,
         blank=True,
         default=dict,
-        help_text="Job details (engine versions, progress, etc.)"
+        help_text="Job details (engine versions, progress, etc.)",
     )
     timeout_seconds = models.IntegerField(
-        null=True,
-        blank=True,
-        help_text="Job timeout in seconds (configurable per job type)"
+        null=True, blank=True, help_text="Job timeout in seconds (configurable per job type)"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -247,11 +236,7 @@ class Job(models.Model):
 
     def is_terminal(self) -> bool:
         """Check if job is in a terminal state"""
-        return self.status in [
-            JobStatus.COMPLETED,
-            JobStatus.FAILED,
-            JobStatus.CANCELLED
-        ]
+        return self.status in [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED]
 
     def is_running(self) -> bool:
         """Check if job is currently running"""
@@ -265,16 +250,14 @@ class Job(models.Model):
         """Mark job as started"""
         self.status = JobStatus.RUNNING
         self.started_at = timezone.now()
-        self.save(update_fields=['status', 'started_at', 'updated_at'])
+        self.save(update_fields=["status", "started_at", "updated_at"])
 
         # Track metrics
         try:
             from hub.apps.observability.otel_metrics import jobs_started_total
-            tenant_id = str(self.tenant.id) if self.tenant else 'system'
-            jobs_started_total.labels(
-                job_type=self.type,
-                tenant_id=tenant_id
-            ).inc()
+
+            tenant_id = str(self.tenant.id) if self.tenant else "system"
+            jobs_started_total.labels(job_type=self.type, tenant_id=tenant_id).inc()
         except Exception:
             pass  # Metrics may not be available
 
@@ -284,29 +267,27 @@ class Job(models.Model):
         self.completed_at = timezone.now()
         if result_json is not None:
             self.result_json = result_json
-        self.save(update_fields=['status', 'completed_at', 'result_json', 'updated_at'])
+        self.save(update_fields=["status", "completed_at", "result_json", "updated_at"])
 
         # Track metrics
         try:
             from hub.apps.observability.otel_metrics import (
+                job_duration_seconds,
                 jobs_completed_total,
-                job_duration_seconds
             )
-            tenant_id = str(self.tenant.id) if self.tenant else 'system'
+
+            tenant_id = str(self.tenant.id) if self.tenant else "system"
 
             jobs_completed_total.labels(
-                job_type=self.type,
-                status='COMPLETED',
-                tenant_id=tenant_id
+                job_type=self.type, status="COMPLETED", tenant_id=tenant_id
             ).inc()
 
             # Track duration
             if self.started_at:
                 duration = (self.completed_at - self.started_at).total_seconds()
-                job_duration_seconds.labels(
-                    job_type=self.type,
-                    status='COMPLETED'
-                ).observe(duration)
+                job_duration_seconds.labels(job_type=self.type, status="COMPLETED").observe(
+                    duration
+                )
         except Exception:
             pass  # Metrics may not be available
 
@@ -317,54 +298,49 @@ class Job(models.Model):
         self.error_message = error_message
         if result_json is not None:
             self.result_json = result_json
-        self.save(update_fields=['status', 'completed_at', 'error_message', 'result_json', 'updated_at'])
+        self.save(
+            update_fields=["status", "completed_at", "error_message", "result_json", "updated_at"]
+        )
 
         # Track metrics
         try:
             from hub.apps.observability.otel_metrics import (
-                jobs_failed_total,
                 job_duration_seconds,
                 job_retry_failures_total,
+                jobs_failed_total,
             )
-            tenant_id = str(self.tenant.id) if self.tenant else 'system'
+
+            tenant_id = str(self.tenant.id) if self.tenant else "system"
 
             # Extract error code from error message
-            error_code = 'UNKNOWN_ERROR'
-            error_type = 'UNKNOWN_ERROR'
-            if 'timeout' in error_message.lower():
-                error_code = 'TIMEOUT'
-                error_type = 'TIMEOUT'
-            elif 'validation' in error_message.lower():
-                error_code = 'VALIDATION_ERROR'
-                error_type = 'VALIDATION_ERROR'
-            elif 'connection' in error_message.lower():
-                error_type = 'CONNECTION_ERROR'
-            elif 'permission' in error_message.lower():
-                error_type = 'PERMISSION_ERROR'
+            error_code = "UNKNOWN_ERROR"
+            error_type = "UNKNOWN_ERROR"
+            if "timeout" in error_message.lower():
+                error_code = "TIMEOUT"
+                error_type = "TIMEOUT"
+            elif "validation" in error_message.lower():
+                error_code = "VALIDATION_ERROR"
+                error_type = "VALIDATION_ERROR"
+            elif "connection" in error_message.lower():
+                error_type = "CONNECTION_ERROR"
+            elif "permission" in error_message.lower():
+                error_type = "PERMISSION_ERROR"
 
             jobs_failed_total.labels(
-                job_type=self.type,
-                error_code=error_code,
-                tenant_id=tenant_id
+                job_type=self.type, error_code=error_code, tenant_id=tenant_id
             ).inc()
 
             # Track retry failures (if job was retried)
             retry_count = 0
             if self.details_json:
-                retry_count = self.details_json.get('retry_count', 0)
+                retry_count = self.details_json.get("retry_count", 0)
             if retry_count > 0:
-                job_retry_failures_total.labels(
-                    job_type=self.type,
-                    error_type=error_type
-                ).inc()
+                job_retry_failures_total.labels(job_type=self.type, error_type=error_type).inc()
 
             # Track duration
             if self.started_at:
                 duration = (self.completed_at - self.started_at).total_seconds()
-                job_duration_seconds.labels(
-                    job_type=self.type,
-                    status='FAILED'
-                ).observe(duration)
+                job_duration_seconds.labels(job_type=self.type, status="FAILED").observe(duration)
         except Exception:
             pass  # Metrics may not be available
 
@@ -372,7 +348,7 @@ class Job(models.Model):
         """Mark job as cancelled"""
         self.status = JobStatus.CANCELLED
         self.completed_at = timezone.now()
-        self.save(update_fields=['status', 'completed_at', 'updated_at'])
+        self.save(update_fields=["status", "completed_at", "updated_at"])
 
 
 class SideEffectType(models.TextChoices):
@@ -430,9 +406,13 @@ class FailedJobDLQ(models.Model):
     job_id = models.UUIDField(db_index=True, help_text="Original Job UUID that failed")
     queue = models.CharField(max_length=100, help_text="RQ queue name the job was on")
     func_name = models.CharField(max_length=255, help_text="Fully-qualified function name")
-    args_json = models.JSONField(default=dict, help_text="Serialised positional and keyword arguments")
+    args_json = models.JSONField(
+        default=dict, help_text="Serialised positional and keyword arguments"
+    )
     error_message = models.TextField(help_text="Final error message")
-    traceback = models.TextField(blank=True, null=True, help_text="Full traceback at time of final failure")
+    traceback = models.TextField(
+        blank=True, null=True, help_text="Full traceback at time of final failure"
+    )
     tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.SET_NULL,
@@ -452,4 +432,3 @@ class FailedJobDLQ(models.Model):
 
     def __str__(self):
         return f"DLQ:{self.job_id} ({self.func_name})"
-

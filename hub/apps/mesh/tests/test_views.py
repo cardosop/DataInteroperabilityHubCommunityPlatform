@@ -4,7 +4,6 @@ Unit tests for Data Mesh Views.
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
 
-import json
 import uuid
 
 from django.contrib.auth import get_user_model
@@ -15,7 +14,6 @@ from rest_framework.test import APIClient
 
 from hub.apps.auth.models import APIKey
 from hub.apps.governance.models import AccessPolicy
-from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.mesh.models import (
     ComplianceReport,
     DataMeshDomain,
@@ -24,6 +22,7 @@ from hub.apps.mesh.models import (
     PolicyApplicationStatus,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserRole, UserStatus
 
 User = get_user_model()
@@ -259,7 +258,7 @@ class DomainListingEndpointTest(DomainViewSetTestCase):
     def test_list_domains_with_status_filter(self):
         """Test domain listing with status filter"""
         # Create inactive domain
-        inactive_domain = DataMeshDomain.objects.create(
+        DataMeshDomain.objects.create(
             tenant=self.tenant,
             name="Inactive Domain",
             status=DomainStatus.INACTIVE,
@@ -282,7 +281,7 @@ class DomainListingEndpointTest(DomainViewSetTestCase):
             password="testpass123",
             tenant=self.tenant,
         )
-        other_domain = DataMeshDomain.objects.create(
+        DataMeshDomain.objects.create(
             tenant=self.tenant,
             name="Other Domain",
             owner=other_user,
@@ -713,7 +712,7 @@ class PolicyApplicationEndpointTest(DomainViewSetTestCase):
     def test_list_policies_success(self):
         """Test successful policy listing"""
         # Create policy applications
-        policy_app1 = PolicyApplication.objects.create(
+        PolicyApplication.objects.create(
             domain=self.domain,
             policy=self.policy,
             applied_by=self.admin_user,
@@ -730,7 +729,7 @@ class PolicyApplicationEndpointTest(DomainViewSetTestCase):
             effect="ALLOW",
             enabled=True,
         )
-        policy_app2 = PolicyApplication.objects.create(
+        PolicyApplication.objects.create(
             domain=self.domain,
             policy=policy2,
             applied_by=self.admin_user,
@@ -749,13 +748,13 @@ class PolicyApplicationEndpointTest(DomainViewSetTestCase):
     def test_list_policies_with_status_filter(self):
         """Test policy listing with status filter"""
         # Create policy applications with different statuses
-        policy_app1 = PolicyApplication.objects.create(
+        PolicyApplication.objects.create(
             domain=self.domain,
             policy=self.policy,
             applied_by=self.admin_user,
             status=PolicyApplicationStatus.APPLIED,
         )
-        policy_app2 = PolicyApplication.objects.create(
+        PolicyApplication.objects.create(
             domain=self.domain,
             policy=self.policy,
             applied_by=self.admin_user,
@@ -799,7 +798,7 @@ class PolicyApplicationEndpointTest(DomainViewSetTestCase):
     def test_remove_policy_without_permission(self):
         """Test policy removal without proper permissions"""
         # Create policy application
-        policy_app = PolicyApplication.objects.create(
+        PolicyApplication.objects.create(
             domain=self.domain,
             policy=self.policy,
             applied_by=self.admin_user,
@@ -901,12 +900,12 @@ class ComplianceCheckEndpointTest(DomainViewSetTestCase):
     def test_list_compliance_reports_success(self):
         """Test successful compliance report listing"""
         # Create compliance reports
-        report1 = ComplianceReport.objects.create(
+        ComplianceReport.objects.create(
             domain=self.domain,
             compliance_status="COMPLIANT",
             violations={"items": []},
         )
-        report2 = ComplianceReport.objects.create(
+        ComplianceReport.objects.create(
             domain=self.domain,
             compliance_status="NON_COMPLIANT",
             violations={"items": [{"type": "TEST_VIOLATION"}]},
@@ -924,12 +923,12 @@ class ComplianceCheckEndpointTest(DomainViewSetTestCase):
     def test_list_compliance_reports_with_status_filter(self):
         """Test compliance report listing with status filter"""
         # Create compliance reports with different statuses
-        report1 = ComplianceReport.objects.create(
+        ComplianceReport.objects.create(
             domain=self.domain,
             compliance_status="COMPLIANT",
             violations={"items": []},
         )
-        report2 = ComplianceReport.objects.create(
+        ComplianceReport.objects.create(
             domain=self.domain,
             compliance_status="NON_COMPLIANT",
             violations={"items": [{"type": "TEST_VIOLATION"}]},
@@ -1013,7 +1012,7 @@ class FederatedGovernanceIntegrationTest(DomainViewSetTestCase):
             apply_url, {"policy_id": str(self.policy1.id)}, format="json"
         )
         self.assertEqual(apply_response.status_code, status.HTTP_201_CREATED)
-        policy_app1_id = apply_response.data["id"]
+        apply_response.data["id"]
 
         # 2. Apply second policy with overrides
         apply_response2 = self.client.post(
@@ -1385,7 +1384,9 @@ class DomainViewSetErrorHandlingTest(DomainViewSetTestCase):
             name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=other_tenant,
         )
 
         self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}")
@@ -1531,9 +1532,7 @@ class MeshGovernanceViewSetTest(DomainViewSetTestCase):
 
     def test_governance_list_success(self):
         """GET /api/v1/mesh/governance/ returns domain and policy counts."""
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}")
         url = reverse("mesh-governance-list")
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1554,9 +1553,7 @@ class MeshGovernanceViewSetTest(DomainViewSetTestCase):
             name="Other Tenant Domain",
             status=DomainStatus.ACTIVE,
         )
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}")
         url = reverse("mesh-governance-list")
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1576,9 +1573,7 @@ class MeshGovernanceViewSetTest(DomainViewSetTestCase):
 
     def test_governance_policies_list(self):
         """GET /api/v1/mesh/governance/policies/ returns applied policies."""
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}")
         url = reverse("mesh-governance-policies")
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1611,9 +1606,7 @@ class MeshGovernanceViewSetTest(DomainViewSetTestCase):
             applied_by=None,
             status=PolicyApplicationStatus.APPLIED,
         )
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}")
         url = reverse("mesh-governance-policies")
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1626,9 +1619,7 @@ class MeshGovernanceViewSetTest(DomainViewSetTestCase):
 
     def test_governance_compliance_list(self):
         """GET /api/v1/mesh/governance/compliance/ returns compliance summary."""
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}")
         url = reverse("mesh-governance-compliance")
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1640,9 +1631,7 @@ class MeshGovernanceViewSetTest(DomainViewSetTestCase):
 
     def test_governance_reports_list(self):
         """GET /api/v1/mesh/governance/reports/ returns compliance reports."""
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}")
         url = reverse("mesh-governance-reports")
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1667,9 +1656,7 @@ class MeshGovernanceViewSetTest(DomainViewSetTestCase):
             compliance_status=MeshComplianceStatus.COMPLIANT,
             violations={},
         )
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}")
         url = reverse("mesh-governance-reports")
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1688,13 +1675,9 @@ class DomainPartialUpdateEndpointTest(DomainViewSetTestCase):
 
     def test_partial_update_domain_success(self):
         """PATCH updates only provided fields and returns 200."""
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}")
         url = reverse("domain-detail", kwargs={"id": str(self.domain.id)})
-        response = self.client.patch(
-            url, {"description": "Updated via PATCH"}, format="json"
-        )
+        response = self.client.patch(url, {"description": "Updated via PATCH"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["description"], "Updated via PATCH")
         # Name should remain unchanged
@@ -1702,26 +1685,18 @@ class DomainPartialUpdateEndpointTest(DomainViewSetTestCase):
 
     def test_partial_update_domain_invalid_data(self):
         """PATCH with invalid data returns 400 with error message."""
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}")
         url = reverse("domain-detail", kwargs={"id": str(self.domain.id)})
-        response = self.client.patch(
-            url, {"resource_quota": "not-a-dict"}, format="json"
-        )
+        response = self.client.patch(url, {"resource_quota": "not-a-dict"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         # DRF serializer returns field-level errors; resource_quota is the invalid field
         self.assertIn("resource_quota", response.data)
 
     def test_partial_update_domain_no_permission(self):
         """PATCH without admin role returns 403."""
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}")
         url = reverse("domain-detail", kwargs={"id": str(self.domain.id)})
-        response = self.client.patch(
-            url, {"description": "Nope"}, format="json"
-        )
+        response = self.client.patch(url, {"description": "Nope"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
@@ -1754,9 +1729,7 @@ class PlatformAdminBypassTest(DomainViewSetTestCase):
 
     def test_platform_admin_can_list_all_tenants_domains(self):
         """Platform admin sees domains from all tenants in list."""
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}")
         url = reverse("domain-list")
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1766,12 +1739,8 @@ class PlatformAdminBypassTest(DomainViewSetTestCase):
 
     def test_platform_admin_can_retrieve_other_tenant_domain(self):
         """Platform admin can retrieve a domain from any tenant."""
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}"
-        )
-        url = reverse(
-            "domain-detail", kwargs={"id": str(self.other_domain.id)}
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}")
+        url = reverse("domain-detail", kwargs={"id": str(self.other_domain.id)})
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["name"], "Other Tenant Domain")
@@ -1815,26 +1784,16 @@ class PolicyComplianceTenantIsolationTest(DomainViewSetTestCase):
 
     def test_apply_policy_cross_tenant_blocked(self):
         """Applying another tenant's policy fails with 400 (tenant mismatch)."""
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}"
-        )
-        url = reverse(
-            "domain-apply-policy", kwargs={"id": str(self.domain.id)}
-        )
-        response = self.client.post(
-            url, {"policy_id": str(self.other_policy.id)}, format="json"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}")
+        url = reverse("domain-apply-policy", kwargs={"id": str(self.domain.id)})
+        response = self.client.post(url, {"policy_id": str(self.other_policy.id)}, format="json")
         # Policy from another tenant → ValidationError (400)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_list_policies_tenant_isolation(self):
         """Listing policies only returns policies for the authenticated tenant."""
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
-        )
-        url = reverse(
-            "domain-list-policies", kwargs={"id": str(self.domain.id)}
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}")
+        url = reverse("domain-list-policies", kwargs={"id": str(self.domain.id)})
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         other_policy_ids = {str(self.other_policy.id)}
@@ -1843,9 +1802,7 @@ class PolicyComplianceTenantIsolationTest(DomainViewSetTestCase):
 
     def test_check_compliance_cross_tenant_blocked(self):
         """Checking compliance for another tenant's domain fails with 404."""
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}")
         url = reverse(
             "domain-check-compliance",
             kwargs={"id": str(self.other_domain.id)},
@@ -1855,9 +1812,7 @@ class PolicyComplianceTenantIsolationTest(DomainViewSetTestCase):
 
     def test_get_compliance_report_tenant_isolation(self):
         """Getting another tenant's compliance report fails with 404."""
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}")
         url = reverse(
             "domain-get-compliance-report",
             kwargs={

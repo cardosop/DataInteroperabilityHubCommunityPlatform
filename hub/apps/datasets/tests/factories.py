@@ -3,37 +3,38 @@ Test Factories for Datasets
 
 Real factories (not mocks) for creating test data for Dataset models.
 """
-import uuid
-from typing import Optional, Dict, Any, List
+
+from typing import Any
+
 from django.contrib.auth import get_user_model
 
-from hub.apps.datasets.models import Dataset, DatasetKind
-from hub.apps.tenants.models import Tenant
 from hub.apps.assets.models import Asset
+from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File
+from hub.apps.tenants.models import Tenant
 
 User = get_user_model()
 
 
 class DatasetFactory:
     """Factory for creating Dataset instances"""
-    
+
     @staticmethod
     def create_dataset(
         tenant: Tenant,
         file: File,
-        asset: Optional[Asset] = None,
-        schema_json: Optional[Dict[str, Any]] = None,
-        sample_data_json: Optional[List[Dict[str, Any]]] = None,
-        row_count: Optional[int] = None,
-        format: Optional[str] = None,
+        asset: Asset | None = None,
+        schema_json: dict[str, Any] | None = None,
+        sample_data_json: list[dict[str, Any]] | None = None,
+        row_count: int | None = None,
+        format: str | None = None,
         version: int = 1,
-        created_by: Optional[User] = None,
-        **kwargs
+        created_by: User | None = None,
+        **kwargs,
     ) -> Dataset:
         """
         Create a Dataset instance.
-        
+
         Args:
             tenant: Tenant instance (required)
             file: File instance (required)
@@ -45,7 +46,7 @@ class DatasetFactory:
             version: Dataset version (default: 1)
             created_by: User who created the dataset
             **kwargs: Additional fields
-            
+
         Returns:
             Dataset instance
         """
@@ -56,29 +57,26 @@ class DatasetFactory:
                         "name": "id",
                         "type": "string",
                         "nullable": False,
-                        "description": "Unique identifier"
+                        "description": "Unique identifier",
                     },
                     {
                         "name": "value",
                         "type": "string",
                         "nullable": True,
-                        "description": "Value field"
-                    }
+                        "description": "Value field",
+                    },
                 ]
             }
-        
+
         if sample_data_json is None:
-            sample_data_json = [
-                {"id": "1", "value": "test1"},
-                {"id": "2", "value": "test2"}
-            ]
-        
+            sample_data_json = [{"id": "1", "value": "test1"}, {"id": "2", "value": "test2"}]
+
         if row_count is None:
             row_count = 100
-        
+
         if format is None:
             format = "CSV"
-        
+
         return Dataset.objects.create(
             tenant=tenant,
             asset=asset,
@@ -89,27 +87,27 @@ class DatasetFactory:
             format=format,
             version=version,
             created_by=created_by,
-            **kwargs
+            **kwargs,
         )
-    
+
     @staticmethod
     def create_dataset_with_complex_schema(
         tenant: Tenant,
         file: File,
-        asset: Optional[Asset] = None,
-        created_by: Optional[User] = None,
-        **kwargs
+        asset: Asset | None = None,
+        created_by: User | None = None,
+        **kwargs,
     ) -> Dataset:
         """
         Create a Dataset with a complex schema (multiple fields, types, constraints).
-        
+
         Args:
             tenant: Tenant instance
             file: File instance
             asset: Asset instance (optional)
             created_by: User who created the dataset
             **kwargs: Additional fields
-            
+
         Returns:
             Dataset instance with complex schema
         """
@@ -123,7 +121,7 @@ class DatasetFactory:
                     "format": None,
                     "pattern": "^[A-Z0-9]{8}$",
                     "min_length": 8,
-                    "max_length": 8
+                    "max_length": 8,
                 },
                 {
                     "name": "email",
@@ -131,7 +129,7 @@ class DatasetFactory:
                     "nullable": False,
                     "description": "Email address",
                     "format": "email",
-                    "max_length": 255
+                    "max_length": 255,
                 },
                 {
                     "name": "age",
@@ -139,7 +137,7 @@ class DatasetFactory:
                     "nullable": True,
                     "description": "Age in years",
                     "minimum": 0,
-                    "maximum": 150
+                    "maximum": 150,
                 },
                 {
                     "name": "score",
@@ -147,28 +145,28 @@ class DatasetFactory:
                     "nullable": True,
                     "description": "Score value",
                     "minimum": 0.0,
-                    "maximum": 100.0
+                    "maximum": 100.0,
                 },
                 {
                     "name": "is_active",
                     "type": "boolean",
                     "nullable": False,
                     "description": "Active status",
-                    "default": True
+                    "default": True,
                 },
                 {
                     "name": "tags",
                     "type": "array",
                     "nullable": True,
                     "description": "Array of tags",
-                    "items": {"type": "string"}
-                }
+                    "items": {"type": "string"},
+                },
             ],
             "primary_key": ["id"],
             "unique_constraints": [["email"]],
-            "indexes": [["age"], ["score"]]
+            "indexes": [["age"], ["score"]],
         }
-        
+
         sample_data_json = [
             {
                 "id": "ABC12345",
@@ -176,7 +174,7 @@ class DatasetFactory:
                 "age": 25,
                 "score": 85.5,
                 "is_active": True,
-                "tags": ["premium", "active"]
+                "tags": ["premium", "active"],
             },
             {
                 "id": "DEF67890",
@@ -184,10 +182,10 @@ class DatasetFactory:
                 "age": 30,
                 "score": 92.0,
                 "is_active": True,
-                "tags": ["standard"]
-            }
+                "tags": ["standard"],
+            },
         ]
-        
+
         return DatasetFactory.create_dataset(
             tenant=tenant,
             file=file,
@@ -196,6 +194,5 @@ class DatasetFactory:
             sample_data_json=sample_data_json,
             row_count=1000,
             created_by=created_by,
-            **kwargs
+            **kwargs,
         )
-

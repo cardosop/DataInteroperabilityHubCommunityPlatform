@@ -10,25 +10,17 @@ role-based access control (only compliance_officer should be able to
 trigger these operations).
 """
 
-import os
 import requests
-from tests._persona_provisioning import provision_persona, PersonaCredentials
-from tests.fixtures.personas import MVP_PERSONA_ROLES
+from tests._persona_provisioning import PersonaCredentials, provision_persona
 from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import (
     api_base_url,
-    api_get,
-    api_post,
-    api_put,
-    api_delete,
-    api_login,
-    api_unauthenticated_get,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
@@ -80,11 +72,9 @@ def test_gdpr_export_request():
     )
     body = resp.json()
     # Response should contain a request id or status
-    assert (
-        "id" in body
-        or "request_id" in body
-        or "status" in body
-    ), f"GDPR export response missing id/status: {body}"
+    assert "id" in body or "request_id" in body or "status" in body, (
+        f"GDPR export response missing id/status: {body}"
+    )
 
 
 def test_gdpr_export_returns_request_status():
@@ -148,11 +138,9 @@ def test_gdpr_erasure_request():
         f"GDPR erasure returned {resp.status_code}: {resp.text[:500]}"
     )
     body = resp.json()
-    assert (
-        "id" in body
-        or "request_id" in body
-        or "status" in body
-    ), f"GDPR erasure response missing id/status: {body}"
+    assert "id" in body or "request_id" in body or "status" in body, (
+        f"GDPR erasure response missing id/status: {body}"
+    )
 
 
 def test_gdpr_erasure_missing_subject_returns_400():
@@ -177,8 +165,7 @@ def test_gdpr_erasure_missing_subject_returns_400():
     # The endpoint creates an erasure request for the authenticated
     # user — no subject_email needed since the subject is implicit.
     assert resp.status_code in (200, 201, 202), (
-        f"GDPR erasure returned {resp.status_code}: "
-        f"{resp.text[:300]}"
+        f"GDPR erasure returned {resp.status_code}: {resp.text[:300]}"
     )
 
 
@@ -244,6 +231,5 @@ def test_gdpr_unauthenticated_returns_401():
         pytest.skip("GDPR endpoint not implemented (404)")
 
     assert export_resp.status_code == 401, (
-        f"Unauthenticated GDPR export returned {export_resp.status_code}, "
-        f"expected 401"
+        f"Unauthenticated GDPR export returned {export_resp.status_code}, expected 401"
     )

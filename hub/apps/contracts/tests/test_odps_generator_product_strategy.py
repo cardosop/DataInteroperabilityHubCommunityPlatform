@@ -566,8 +566,8 @@ class ODPSGeneratorProductStrategyIntegrationTest(SimpleTestCase):
         self.assertIn("productStrategy", result)
         strategy = result["productStrategy"]
         self.assertIn("objectives", strategy)
-        if len(strategy["objectives"]) > 0:
-            self.assertEqual(strategy["objectives"][0], "提高数据质量")
+        self.assertGreater(len(strategy["objectives"]), 0)
+        self.assertEqual(strategy["objectives"][0], "提高数据质量")
 
     def test_product_strategy_generation_handles_special_characters(self):
         """Test that product strategy generation handles special characters correctly."""
@@ -595,8 +595,8 @@ class ODPSGeneratorProductStrategyIntegrationTest(SimpleTestCase):
         self.assertIn("productStrategy", result)
         strategy = result["productStrategy"]
         self.assertIn("objectives", strategy)
-        if len(strategy["objectives"]) > 0:
-            self.assertEqual(strategy["objectives"][0], "Increase <data> quality & more")
+        self.assertGreater(len(strategy["objectives"]), 0)
+        self.assertEqual(strategy["objectives"][0], "Increase <data> quality & more")
 
     def test_product_strategy_generation_handles_very_large_documents(self):
         """Test that product strategy generation handles very large documents correctly."""
@@ -637,10 +637,11 @@ class ODPSGeneratorProductStrategyIntegrationTest(SimpleTestCase):
             },
         }
 
-        # None values should be omitted or handled gracefully
+        # All-None product_strategy fields should result in productStrategy being omitted
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
         self.assertIsNotNone(result)
-        self.assertIn("productStrategy", result)
+        # When all product_strategy sub-fields are None, productStrategy should be absent
+        self.assertNotIn("productStrategy", result)
 
     def test_product_strategy_generation_handles_nested_structures(self):
         """Test that product strategy generation handles nested structures correctly."""
@@ -671,9 +672,10 @@ class ODPSGeneratorProductStrategyIntegrationTest(SimpleTestCase):
         self.assertIn("productStrategy", result)
         strategy = result["productStrategy"]
         self.assertIn("strategicAlignment", strategy)
-        if len(strategy["strategicAlignment"]) > 0:
-            alignment = strategy["strategicAlignment"][0]
-            if isinstance(alignment, dict) and "nested" in alignment:
-                self.assertIn(
-                    "level1", alignment["nested"], "Nested structures should be preserved"
-                )
+        self.assertGreater(len(strategy["strategicAlignment"]), 0)
+        alignment = strategy["strategicAlignment"][0]
+        self.assertIsInstance(alignment, dict)
+        self.assertIn("nested", alignment)
+        self.assertIn(
+            "level1", alignment["nested"], "Nested structures should be preserved"
+        )

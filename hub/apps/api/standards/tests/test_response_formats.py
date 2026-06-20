@@ -1,12 +1,11 @@
 """
 Comprehensive tests for standardized response formats.
 """
+
 import uuid
-from unittest.mock import Mock
 
 from django.test import TestCase
 from rest_framework import status
-from rest_framework.response import Response
 
 from hub.apps.api.standards.response_formats import (
     StandardResponseFormatter,
@@ -98,9 +97,7 @@ class TestStandardResponseFormatter(TestCase):
         """Test formatting list response with metadata."""
         items = [{"id": "1"}]
         metadata = {"filter": "active"}
-        response = StandardResponseFormatter.format_list(
-            items=items, count=1, metadata=metadata
-        )
+        response = StandardResponseFormatter.format_list(items=items, count=1, metadata=metadata)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["metadata"], metadata)
@@ -165,9 +162,7 @@ class TestStandardResponseFormatter(TestCase):
     def test_format_created_with_location(self):
         """Test formatting 201 Created response with Location header."""
         data = {"id": "123"}
-        response = StandardResponseFormatter.format_created(
-            data, location="/api/v1/resources/123"
-        )
+        response = StandardResponseFormatter.format_created(data, location="/api/v1/resources/123")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response["Location"], "/api/v1/resources/123")

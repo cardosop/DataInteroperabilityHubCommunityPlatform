@@ -3,6 +3,7 @@
 
 Tests SQL generation and result normalization for Snowflake/BQ/Databricks.
 """
+
 import pytest
 
 from hub.apps.transformation.dbt_schema_introspector import DbtSchemaIntrospector
@@ -25,9 +26,7 @@ class TestSqlGeneration:
     @pytest.mark.unit
     def test_bigquery_query(self):
         """BigQuery INFORMATION_SCHEMA query is correct."""
-        sql = DbtSchemaIntrospector._build_bigquery_query(
-            "my-project", "analytics", "customers"
-        )
+        sql = DbtSchemaIntrospector._build_bigquery_query("my-project", "analytics", "customers")
         assert "INFORMATION_SCHEMA.COLUMNS" in sql
         assert "my-project.analytics" in sql
         assert "customers" in sql
@@ -37,9 +36,7 @@ class TestSqlGeneration:
     @pytest.mark.unit
     def test_databricks_query(self):
         """Databricks DESCRIBE TABLE query is correct."""
-        sql = DbtSchemaIntrospector._build_databricks_query(
-            "main", "dbt_schema", "customers"
-        )
+        sql = DbtSchemaIntrospector._build_databricks_query("main", "dbt_schema", "customers")
         assert "DESCRIBE TABLE" in sql
         assert "main.dbt_schema.customers" in sql
 

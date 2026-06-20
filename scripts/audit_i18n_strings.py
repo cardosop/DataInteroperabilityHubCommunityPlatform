@@ -11,11 +11,11 @@ Usage:
     python scripts/audit_i18n_strings.py --ci
     python scripts/audit_i18n_strings.py --json
 """
+
 import argparse
 import json
 import os
 import re
-import sys
 
 # Patterns for hardcoded English strings in UI-facing code
 ENGLISH_PATTERNS = [
@@ -51,10 +51,13 @@ def count_hardcoded_strings() -> tuple[list[dict], int, int]:
                             total_lines += 1
                             for pat in ENGLISH_PATTERNS:
                                 for m in pat.finditer(line):
-                                    findings.append({
-                                        "path": path, "line": lineno,
-                                        "text": m.group(1)[:80],
-                                    })
+                                    findings.append(
+                                        {
+                                            "path": path,
+                                            "line": lineno,
+                                            "text": m.group(1)[:80],
+                                        }
+                                    )
                                     hardcoded_count += 1
                 except Exception:
                     pass
@@ -68,7 +71,7 @@ def count_i18n_strings() -> int:
     for i18n_dir in I18N_DIRS:
         if not os.path.exists(i18n_dir):
             continue
-        for root, dirs, files in os.walk(i18n_dir):
+        for root, _dirs, files in os.walk(i18n_dir):
             for f in files:
                 if not (f.endswith(".json") or f.endswith(".ts") or f.endswith(".tsx")):
                     continue
@@ -94,23 +97,28 @@ def run_audit(json_output: bool = False, ci: bool = False) -> int:
     coverage_pct = (i18n_count / total_ui_strings * 100) if total_ui_strings > 0 else 100.0
 
     if json_output:
-        print(json.dumps({
-            "hardcoded_strings": hardcoded,
-            "i18n_strings": i18n_count,
-            "coverage_pct": round(coverage_pct, 1),
-            "total_lines_scanned": total_lines,
-            "passes_50": coverage_pct > 50,
-            "findings": findings[:50],
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "hardcoded_strings": hardcoded,
+                    "i18n_strings": i18n_count,
+                    "coverage_pct": round(coverage_pct, 1),
+                    "total_lines_scanned": total_lines,
+                    "passes_50": coverage_pct > 50,
+                    "findings": findings[:50],
+                },
+                indent=2,
+            )
+        )
     else:
         print(f"Hardcoded English strings: {hardcoded}")
         print(f"i18n translated strings:  {i18n_count}")
         print(f"i18n coverage:            {coverage_pct:.1f}%")
-        print(f"Target:                   >50%")
+        print("Target:                   >50%")
         if findings:
-            print(f"\nTop hardcoded strings (first 10):")
+            print("\nTop hardcoded strings (first 10):")
             for f in findings[:10]:
-                print(f"  {f['path']}:{f['line']} — \"{f['text']}\"")
+                print(f'  {f["path"]}:{f["line"]} — "{f["text"]}"')
             if len(findings) > 10:
                 print(f"  ... and {len(findings) - 10} more")
 

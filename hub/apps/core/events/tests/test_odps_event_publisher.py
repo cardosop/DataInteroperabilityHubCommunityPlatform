@@ -4,12 +4,14 @@ Unit tests for ODPSEventPublisher.
 Tests all ODPS event publishing methods with comprehensive coverage.
 Follows the same pattern as other service publisher tests.
 """
+
 import uuid
 from unittest.mock import Mock, patch
+
 from django.test import TestCase
 
-from hub.apps.core.events.service_publishers import ODPSEventPublisher
 from hub.apps.core.events.event_types import validate_event_data
+from hub.apps.core.events.service_publishers import ODPSEventPublisher
 
 
 class ODPSEventPublisherTest(TestCase):
@@ -39,7 +41,7 @@ class ODPSEventPublisherTest(TestCase):
         self.assertIsNotNone(service._event_publisher)
         self.assertEqual(service._event_publisher.service_name, "contract_service")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_odps_created(self, mock_publisher_class):
         """Test publish_odps_created method."""
         mock_publisher = Mock()
@@ -77,7 +79,7 @@ class ODPSEventPublisherTest(TestCase):
         is_valid, error = validate_event_data("odps.created", data)
         self.assertTrue(is_valid, f"Event data validation failed: {error}")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_odps_created_minimal(self, mock_publisher_class):
         """Test publish_odps_created with minimal required fields."""
         mock_publisher = Mock()
@@ -98,7 +100,7 @@ class ODPSEventPublisherTest(TestCase):
         is_valid, error = validate_event_data("odps.created", data)
         self.assertTrue(is_valid, f"Event data validation failed: {error}")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_odps_updated(self, mock_publisher_class):
         """Test publish_odps_updated method."""
         mock_publisher = Mock()
@@ -131,7 +133,7 @@ class ODPSEventPublisherTest(TestCase):
         is_valid, error = validate_event_data("odps.updated", data)
         self.assertTrue(is_valid, f"Event data validation failed: {error}")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_odps_deleted(self, mock_publisher_class):
         """Test publish_odps_deleted method."""
         mock_publisher = Mock()
@@ -142,9 +144,7 @@ class ODPSEventPublisherTest(TestCase):
         contract_id = str(uuid.uuid4())
         reason = "User requested deletion"
 
-        event_id = service.publish_odps_deleted(
-            contract_id=contract_id, reason=reason
-        )
+        event_id = service.publish_odps_deleted(contract_id=contract_id, reason=reason)
 
         self.assertEqual(event_id, "event-id-123")
         call_args = mock_publisher.publish.call_args
@@ -158,7 +158,7 @@ class ODPSEventPublisherTest(TestCase):
         is_valid, error = validate_event_data("odps.deleted", data)
         self.assertTrue(is_valid, f"Event data validation failed: {error}")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_odps_normalized(self, mock_publisher_class):
         """Test publish_odps_normalized method."""
         mock_publisher = Mock()
@@ -191,7 +191,7 @@ class ODPSEventPublisherTest(TestCase):
         is_valid, error = validate_event_data("odps.normalized", data)
         self.assertTrue(is_valid, f"Event data validation failed: {error}")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_odps_normalized_with_errors(self, mock_publisher_class):
         """Test publish_odps_normalized with normalization errors."""
         mock_publisher = Mock()
@@ -218,7 +218,7 @@ class ODPSEventPublisherTest(TestCase):
         is_valid, error = validate_event_data("odps.normalized", data)
         self.assertTrue(is_valid, f"Event data validation failed: {error}")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_odps_linked(self, mock_publisher_class):
         """Test publish_odps_linked method."""
         mock_publisher = Mock()
@@ -248,7 +248,7 @@ class ODPSEventPublisherTest(TestCase):
         is_valid, error = validate_event_data("odps.linked", data)
         self.assertTrue(is_valid, f"Event data validation failed: {error}")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_odps_unlinked(self, mock_publisher_class):
         """Test publish_odps_unlinked method."""
         mock_publisher = Mock()
@@ -278,7 +278,7 @@ class ODPSEventPublisherTest(TestCase):
         is_valid, error = validate_event_data("odps.unlinked", data)
         self.assertTrue(is_valid, f"Event data validation failed: {error}")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_odps_ref_resolved(self, mock_publisher_class):
         """Test publish_odps_ref_resolved method."""
         mock_publisher = Mock()
@@ -317,7 +317,7 @@ class ODPSEventPublisherTest(TestCase):
         is_valid, error = validate_event_data("odps.ref.resolved", data)
         self.assertTrue(is_valid, f"Event data validation failed: {error}")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_odps_ref_failed(self, mock_publisher_class):
         """Test publish_odps_ref_failed method."""
         mock_publisher = Mock()
@@ -356,7 +356,7 @@ class ODPSEventPublisherTest(TestCase):
         is_valid, error = validate_event_data("odps.ref.failed", data)
         self.assertTrue(is_valid, f"Event data validation failed: {error}")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_odps_export_started(self, mock_publisher_class):
         """Test publish_odps_export_started method."""
         mock_publisher = Mock()
@@ -389,7 +389,7 @@ class ODPSEventPublisherTest(TestCase):
         is_valid, error = validate_event_data("odps.export.started", data)
         self.assertTrue(is_valid, f"Event data validation failed: {error}")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_odps_export_completed(self, mock_publisher_class):
         """Test publish_odps_export_completed method."""
         mock_publisher = Mock()
@@ -425,7 +425,7 @@ class ODPSEventPublisherTest(TestCase):
         is_valid, error = validate_event_data("odps.export.completed", data)
         self.assertTrue(is_valid, f"Event data validation failed: {error}")
 
-    @patch('hub.apps.core.events.service_publishers.EventPublisher')
+    @patch("hub.apps.core.events.service_publishers.EventPublisher")
     def test_publish_odps_export_failed(self, mock_publisher_class):
         """Test publish_odps_export_failed method."""
         mock_publisher = Mock()

@@ -8,7 +8,9 @@ so recent uploads are not swept.
 
 Used by ``cleanup_orphan_files`` management command (query-building only).
 """
+
 from __future__ import annotations
+
 from datetime import datetime
 from typing import Any
 from uuid import UUID

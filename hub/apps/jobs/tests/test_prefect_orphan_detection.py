@@ -3,11 +3,11 @@ Phase 73.3 — Prefect Job Orphan Detection Tests
 
 Tests the _recover_prefect_orphans section of recover_stuck_jobs command.
 """
-import uuid
 
+import uuid
 from datetime import timedelta
 from io import StringIO
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.core.management import call_command
@@ -23,13 +23,14 @@ class PrefectOrphanDetectionTest(TestCase):
 
     def setUp(self):
         from hub.apps.tenants.models import Tenant
+
         self.tenant = Tenant.objects.create(
-            name="Test Orphan Tenant", slug="test-orphan",
+            name="Test Orphan Tenant",
+            slug="test-orphan",
             status="ACTIVE",
         )
 
     def _create_prefect_job(self, minutes_ago=45):
-        import uuid
         job = Job.objects.create(
             tenant=self.tenant,
             type="SCHEDULED_INGESTION",

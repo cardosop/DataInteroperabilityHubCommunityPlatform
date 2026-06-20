@@ -9,22 +9,11 @@ Tests verify:
 5. Cache key format is correct
 """
 
-import hashlib
-import json
 import time
 
-from django.conf import settings
 from django.core.cache import cache
-from django.test import override_settings
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import (
-    Contract,
-    ContractStatus,
-    NormalizationStatus,
-    OriginalFormat,
-    OriginalSpecType,
-)
 from hub.apps.contracts.config.odps_refs_config import ODPSRefsConfig
 from hub.apps.contracts.ref_resolver import DEFAULT_CACHE_TTL, REDIS_CACHE_PREFIX, RefResolver
 from hub.apps.contracts.tests.test_base import ContractsTestBase
@@ -96,7 +85,8 @@ class CachingBehaviorValidationTest(ContractsTestBase):
             result2 = resolver.resolve_external(test_url)
             self.assertEqual(result2, test_data)
             self.assertEqual(
-                server.request_count, requests_after_first,
+                server.request_count,
+                requests_after_first,
                 "Second resolve must be served from cache (no extra HTTP GET)",
             )
 
@@ -115,8 +105,9 @@ class CachingBehaviorValidationTest(ContractsTestBase):
             # Cold start: hit rate must be 0.0 (no requests yet)
             cold_rate = resolver.get_cache_hit_rate()
             if cold_rate is not None:
-                self.assertEqual(cold_rate, 0.0,
-                    "Cold-start hit rate must be 0.0 before any requests")
+                self.assertEqual(
+                    cold_rate, 0.0, "Cold-start hit rate must be 0.0 before any requests"
+                )
 
             # First resolve — cache miss
             result1 = resolver.resolve_external(test_url)
@@ -125,8 +116,7 @@ class CachingBehaviorValidationTest(ContractsTestBase):
             # Hit rate after one miss = 0.0
             mid_rate = resolver.get_cache_hit_rate()
             if mid_rate is not None:
-                self.assertEqual(mid_rate, 0.0,
-                    "Hit rate must be 0.0 after a single cache miss")
+                self.assertEqual(mid_rate, 0.0, "Hit rate must be 0.0 after a single cache miss")
 
             # Second resolve — cache hit
             result2 = resolver.resolve_external(test_url)
@@ -135,8 +125,7 @@ class CachingBehaviorValidationTest(ContractsTestBase):
             # Hit rate after one miss + one hit = 0.5
             hit_rate = resolver.get_cache_hit_rate()
             if hit_rate is not None:
-                self.assertGreater(hit_rate, 0.0,
-                    "Hit rate must be > 0.0 after a cache hit")
+                self.assertGreater(hit_rate, 0.0, "Hit rate must be > 0.0 after a cache hit")
                 self.assertLessEqual(hit_rate, 1.0)
         finally:
             server.stop()
@@ -158,7 +147,8 @@ class CachingBehaviorValidationTest(ContractsTestBase):
             result2 = resolver.resolve_external(test_url)
             self.assertEqual(result2, test_data)
             self.assertEqual(
-                server.request_count, requests_after_first,
+                server.request_count,
+                requests_after_first,
                 "Second resolve must be served from cache (no extra HTTP GET)",
             )
 
@@ -169,7 +159,8 @@ class CachingBehaviorValidationTest(ContractsTestBase):
             result3 = resolver.resolve_external(test_url)
             self.assertEqual(result3, test_data)
             self.assertGreater(
-                server.request_count, requests_after_first,
+                server.request_count,
+                requests_after_first,
                 "After invalidation, resolver must fetch from origin again",
             )
         finally:
@@ -196,7 +187,7 @@ class CachingBehaviorValidationTest(ContractsTestBase):
                 "Second resolve should be served from Redis (no extra HTTP GET)",
             )
 
-            time.sleep(short_ttl + 0.6)
+            time.sleep(short_ttl + 0.6)  # noqa: sleep-needed — test timing requirement
 
             resolver.resolve_external(test_url)
             self.assertGreater(
@@ -224,7 +215,8 @@ class CachingBehaviorValidationTest(ContractsTestBase):
             prefix_bytes = REDIS_CACHE_PREFIX.encode("utf-8")
             keys = resolver._redis_client.keys(f"{REDIS_CACHE_PREFIX}*")
             self.assertGreater(
-                len(keys), 0,
+                len(keys),
+                0,
                 f"Expected at least one cache key with prefix '{REDIS_CACHE_PREFIX}', got none",
             )
             for key in keys:
@@ -335,7 +327,6 @@ class CachingBehaviorValidationTest(ContractsTestBase):
         if hit_rate is not None:
             self.assertEqual(hit_rate, 0.0)
 
-
     def test_cache_handles_concurrent_access(self):
         """Concurrent access: at most 1 HTTP fetch, all results match input data."""
         import threading
@@ -366,13 +357,15 @@ class CachingBehaviorValidationTest(ContractsTestBase):
 
             # At most 1 actual HTTP fetch (first thread misses, rest hit cache)
             self.assertLessEqual(
-                server.request_count, 5,
+                server.request_count,
+                5,
                 f"At most 5 HTTP requests expected, got {server.request_count}",
             )
 
             # All results must match the input data
             for i, result in enumerate(results):
-                self.assertEqual(result, test_data,
-                    f"Result {i} must match input data, got {result}")
+                self.assertEqual(
+                    result, test_data, f"Result {i} must match input data, got {result}"
+                )
         finally:
             server.stop()

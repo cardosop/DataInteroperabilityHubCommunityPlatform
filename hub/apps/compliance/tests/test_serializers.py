@@ -38,7 +38,10 @@ class ComplianceRunSerializerTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create user
@@ -109,8 +112,9 @@ class ComplianceRunSerializerTest(TestCase):
         )
 
         # Read-only fields should be ignored
-        self.assertTrue(serializer.is_valid(),
-            f"Serializer must be valid; got: {serializer.errors}")
+        self.assertTrue(
+            serializer.is_valid(), f"Serializer must be valid; got: {serializer.errors}"
+        )
         self.assertEqual(str(self.compliance_run.id), serializer.data["id"])
 
     def test_compliance_run_serializer_with_asset(self):
@@ -392,15 +396,19 @@ class ComplianceRunSerializerTest(TestCase):
     def test_serializer_v2_fields_present_in_meta(self):
         """All v2 field names must be in the serializer Meta.fields list."""
         v2_fields = {
-            "cross_border_alert", "localisation_alert", "legal_basis_violations",
-            "schema_version", "regulation_summaries", "estimated_population_ratio",
+            "cross_border_alert",
+            "localisation_alert",
+            "legal_basis_violations",
+            "schema_version",
+            "regulation_summaries",
+            "estimated_population_ratio",
         }
         serializer_fields = set(ComplianceRunSerializer.Meta.fields)
         missing = v2_fields - serializer_fields
         self.assertEqual(
-            missing, set(),
-            f"These v2 fields are missing from ComplianceRunSerializer.Meta.fields: "
-            f"{missing}",
+            missing,
+            set(),
+            f"These v2 fields are missing from ComplianceRunSerializer.Meta.fields: {missing}",
         )
 
     def test_compliance_run_serializer_with_timestamps(self):
@@ -449,7 +457,10 @@ class ComplianceRunCreateSerializerTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="UNVERIFIED"
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
 
         # Create user

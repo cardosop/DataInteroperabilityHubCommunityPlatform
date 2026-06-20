@@ -1,11 +1,10 @@
 """Tests for DPIA high-risk trigger heuristics."""
 
 from __future__ import annotations
-import pytest
 
-import pytest
 import uuid
 
+import pytest
 from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus

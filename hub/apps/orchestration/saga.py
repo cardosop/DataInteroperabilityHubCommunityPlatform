@@ -7,12 +7,14 @@ If any step fails, all previous steps are compensated in reverse order.
 
 This provides a clean, focused API for implementing Saga-based workflows.
 """
+
 import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
-from django.db import transaction
+from typing import Any
+
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -20,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 class SagaStepStatus(Enum):
     """Saga step execution status"""
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
@@ -30,6 +33,7 @@ class SagaStepStatus(Enum):
 
 class SagaStatus(Enum):
     """Saga execution status"""
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
@@ -42,18 +46,21 @@ class SagaStatus(Enum):
 @dataclass
 class SagaStepResult:
     """Result of executing a saga step"""
+
     success: bool
-    output: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-    error_details: Optional[Dict[str, Any]] = None
+    output: dict[str, Any] | None = None
+    error: str | None = None
+    error_details: dict[str, Any] | None = None
 
     @classmethod
-    def success_result(cls, output: Optional[Dict[str, Any]] = None) -> "SagaStepResult":
+    def success_result(cls, output: dict[str, Any] | None = None) -> "SagaStepResult":
         """Create a success result"""
         return cls(success=True, output=output or {})
 
     @classmethod
-    def failure_result(cls, error: str, error_details: Optional[Dict[str, Any]] = None) -> "SagaStepResult":
+    def failure_result(
+        cls, error: str, error_details: dict[str, Any] | None = None
+    ) -> "SagaStepResult":
         """Create a failure result"""
         return cls(success=False, error=error, error_details=error_details or {})
 
@@ -68,11 +75,12 @@ class SagaStep:
     - A compensation action (to undo the forward action)
     - Optional input data
     """
+
     name: str
-    forward_action: Callable[[Dict[str, Any]], SagaStepResult]
-    compensation_action: Optional[Callable[[Dict[str, Any], Dict[str, Any]], SagaStepResult]] = None
-    input_data: Dict[str, Any] = field(default_factory=dict)
-    description: Optional[str] = None
+    forward_action: Callable[[dict[str, Any]], SagaStepResult]
+    compensation_action: Callable[[dict[str, Any], dict[str, Any]], SagaStepResult] | None = None
+    input_data: dict[str, Any] = field(default_factory=dict)
+    description: str | None = None
 
     def __post_init__(self):
         """Validate step definition"""
@@ -87,24 +95,22 @@ class SagaStep:
 @dataclass
 class SagaExecutionContext:
     """Context for saga execution"""
+
     saga_id: str
-    step_results: List[Tuple[SagaStep, SagaStepResult]] = field(default_factory=list)
-    state: Dict[str, Any] = field(default_factory=dict)
-    started_at: Optional[timezone.datetime] = None
-    completed_at: Optional[timezone.datetime] = None
+    step_results: list[tuple[SagaStep, SagaStepResult]] = field(default_factory=list)
+    state: dict[str, Any] = field(default_factory=dict)
+    started_at: timezone.datetime | None = None
+    completed_at: timezone.datetime | None = None
 
     def add_step_result(self, step: SagaStep, result: SagaStepResult):
         """Add a step result to the context"""
         self.step_results.append((step, result))
 
-    def get_completed_steps(self) -> List[Tuple[SagaStep, SagaStepResult]]:
+    def get_completed_steps(self) -> list[tuple[SagaStep, SagaStepResult]]:
         """Get all completed steps in execution order"""
-        return [
-            (step, result) for step, result in self.step_results
-            if result.success
-        ]
+        return [(step, result) for step, result in self.step_results if result.success]
 
-    def get_failed_step(self) -> Optional[Tuple[SagaStep, SagaStepResult]]:
+    def get_failed_step(self) -> tuple[SagaStep, SagaStepResult] | None:
         """Get the first failed step"""
         for step, result in self.step_results:
             if not result.success:
@@ -114,12 +120,10 @@ class SagaExecutionContext:
 
 class SagaExecutionError(Exception):
     """Saga execution error"""
-    pass
 
 
 class SagaCompensationError(Exception):
     """Saga compensation error"""
-    pass
 
 
 class SagaOrchestrator:
@@ -130,7 +134,7 @@ class SagaOrchestrator:
     Implements the Saga pattern for distributed transaction management.
     """
 
-    def __init__(self, saga_id: Optional[str] = None):
+    def __init__(self, saga_id: str | None = None):
         """
         Initialize saga orchestrator.
 
@@ -142,9 +146,7 @@ class SagaOrchestrator:
         self.status = SagaStatus.PENDING
 
     def execute(
-        self,
-        steps: List[SagaStep],
-        initial_state: Optional[Dict[str, Any]] = None
+        self, steps: list[SagaStep], initial_state: dict[str, Any] | None = None
     ) -> SagaExecutionContext:
         """
         Execute saga steps sequentially.
@@ -174,8 +176,8 @@ class SagaOrchestrator:
             extra={
                 "saga_id": self.saga_id,
                 "step_count": len(steps),
-                "step_names": [step.name for step in steps]
-            }
+                "step_names": [step.name for step in steps],
+            },
         )
 
         try:
@@ -186,8 +188,8 @@ class SagaOrchestrator:
                     extra={
                         "saga_id": self.saga_id,
                         "step_name": step.name,
-                        "step_index": step_index
-                    }
+                        "step_index": step_index,
+                    },
                 )
 
                 # Prepare step input (merge initial state, previous step outputs, and step-specific input)
@@ -218,8 +220,8 @@ class SagaOrchestrator:
                                 "saga_id": self.saga_id,
                                 "step_name": step.name,
                                 "error": result.error,
-                                "error_details": result.error_details
-                            }
+                                "error_details": result.error_details,
+                            },
                         )
                     else:
                         # Step succeeded - merge output into state
@@ -231,8 +233,8 @@ class SagaOrchestrator:
                             extra={
                                 "saga_id": self.saga_id,
                                 "step_name": step.name,
-                                "output_keys": list(result.output.keys()) if result.output else []
-                            }
+                                "output_keys": list(result.output.keys()) if result.output else [],
+                            },
                         )
 
                 except Exception as e:
@@ -243,14 +245,13 @@ class SagaOrchestrator:
                             "saga_id": self.saga_id,
                             "step_name": step.name,
                             "exception_type": type(e).__name__,
-                            "exception_message": str(e)
-                        }
+                            "exception_message": str(e),
+                        },
                     )
 
                     # Create failure result
                     failure_result = SagaStepResult.failure_result(
-                        error=str(e),
-                        error_details={"exception_type": type(e).__name__}
+                        error=str(e), error_details={"exception_type": type(e).__name__}
                     )
                     self.context.add_step_result(step, failure_result)
 
@@ -283,8 +284,8 @@ class SagaOrchestrator:
                         (self.context.completed_at - self.context.started_at).total_seconds()
                         if self.context.completed_at and self.context.started_at
                         else None
-                    )
-                }
+                    ),
+                },
             )
 
             return self.context
@@ -300,8 +301,8 @@ class SagaOrchestrator:
                 extra={
                     "saga_id": self.saga_id,
                     "exception_type": type(e).__name__,
-                    "exception_message": str(e)
-                }
+                    "exception_message": str(e),
+                },
             )
 
             # Try to compensate all completed steps
@@ -312,21 +313,18 @@ class SagaOrchestrator:
                 except Exception as comp_error:
                     logger.exception(
                         f"Saga {self.saga_id} compensation failed after unexpected error",
-                        extra={
-                            "saga_id": self.saga_id,
-                            "compensation_error": str(comp_error)
-                        }
+                        extra={"saga_id": self.saga_id, "compensation_error": str(comp_error)},
                     )
                     self.status = SagaStatus.COMPENSATION_FAILED
                     raise SagaCompensationError(
-                        f"Compensation failed after unexpected error: {str(comp_error)}"
+                        f"Compensation failed after unexpected error: {comp_error!s}"
                     ) from comp_error
 
             self.status = SagaStatus.FAILED
             self.context.completed_at = timezone.now()
-            raise SagaExecutionError(f"Saga execution failed: {str(e)}") from e
+            raise SagaExecutionError(f"Saga execution failed: {e!s}") from e
 
-    def _prepare_step_input(self, step: SagaStep) -> Dict[str, Any]:
+    def _prepare_step_input(self, step: SagaStep) -> dict[str, Any]:
         """
         Prepare input for a step by merging state and step-specific input.
 
@@ -344,7 +342,7 @@ class SagaOrchestrator:
 
         return step_input
 
-    def _compensate_steps(self, steps: List[SagaStep]) -> None:
+    def _compensate_steps(self, steps: list[SagaStep]) -> None:
         """
         Compensate completed steps in reverse order.
 
@@ -364,8 +362,8 @@ class SagaOrchestrator:
             extra={
                 "saga_id": self.saga_id,
                 "step_count": len(steps),
-                "step_names": [step.name for step in steps]
-            }
+                "step_names": [step.name for step in steps],
+            },
         )
 
         # Compensate in reverse order
@@ -374,24 +372,16 @@ class SagaOrchestrator:
             if step.compensation_action is None:
                 logger.warning(
                     f"Saga {self.saga_id} step {step.name} has no compensation action, skipping",
-                    extra={
-                        "saga_id": self.saga_id,
-                        "step_name": step.name
-                    }
+                    extra={"saga_id": self.saga_id, "step_name": step.name},
                 )
-                compensation_results.append({
-                    "step": step.name,
-                    "status": "skipped",
-                    "reason": "no_compensation_action"
-                })
+                compensation_results.append(
+                    {"step": step.name, "status": "skipped", "reason": "no_compensation_action"}
+                )
                 continue
 
             logger.info(
                 f"Saga {self.saga_id} compensating step {step.name}",
-                extra={
-                    "saga_id": self.saga_id,
-                    "step_name": step.name
-                }
+                extra={"saga_id": self.saga_id, "step_name": step.name},
             )
 
             try:
@@ -405,16 +395,11 @@ class SagaOrchestrator:
                 if step_result is None:
                     logger.warning(
                         f"Saga {self.saga_id} step {step.name} has no result, skipping compensation",
-                        extra={
-                            "saga_id": self.saga_id,
-                            "step_name": step.name
-                        }
+                        extra={"saga_id": self.saga_id, "step_name": step.name},
                     )
-                    compensation_results.append({
-                        "step": step.name,
-                        "status": "skipped",
-                        "reason": "no_step_result"
-                    })
+                    compensation_results.append(
+                        {"step": step.name, "status": "skipped", "reason": "no_step_result"}
+                    )
                     continue
 
                 # Prepare compensation input (step output + current state)
@@ -422,7 +407,7 @@ class SagaOrchestrator:
                 compensation_input = {
                     **self.context.state,
                     **step_output,
-                    "step_output": step_output
+                    "step_output": step_output,
                 }
 
                 # Execute compensation action
@@ -442,16 +427,18 @@ class SagaOrchestrator:
                             "saga_id": self.saga_id,
                             "step_name": step.name,
                             "error": compensation_result.error,
-                            "error_details": compensation_result.error_details
-                        }
+                            "error_details": compensation_result.error_details,
+                        },
                     )
 
-                    compensation_results.append({
-                        "step": step.name,
-                        "status": "failed",
-                        "error": compensation_result.error,
-                        "error_details": compensation_result.error_details
-                    })
+                    compensation_results.append(
+                        {
+                            "step": step.name,
+                            "status": "failed",
+                            "error": compensation_result.error,
+                            "error_details": compensation_result.error_details,
+                        }
+                    )
 
                     # Continue compensating other steps even if one fails
                     # This is important for partial rollback
@@ -460,17 +447,16 @@ class SagaOrchestrator:
                 # Compensation succeeded
                 logger.info(
                     f"Saga {self.saga_id} step {step.name} compensated successfully",
-                    extra={
-                        "saga_id": self.saga_id,
-                        "step_name": step.name
-                    }
+                    extra={"saga_id": self.saga_id, "step_name": step.name},
                 )
 
-                compensation_results.append({
-                    "step": step.name,
-                    "status": "compensated",
-                    "result": compensation_result.output
-                })
+                compensation_results.append(
+                    {
+                        "step": step.name,
+                        "status": "compensated",
+                        "result": compensation_result.output,
+                    }
+                )
 
             except Exception as e:
                 # Unexpected exception in compensation
@@ -480,25 +466,24 @@ class SagaOrchestrator:
                         "saga_id": self.saga_id,
                         "step_name": step.name,
                         "exception_type": type(e).__name__,
-                        "exception_message": str(e)
-                    }
+                        "exception_message": str(e),
+                    },
                 )
 
-                compensation_results.append({
-                    "step": step.name,
-                    "status": "failed",
-                    "error": str(e),
-                    "error_details": {"exception_type": type(e).__name__}
-                })
+                compensation_results.append(
+                    {
+                        "step": step.name,
+                        "status": "failed",
+                        "error": str(e),
+                        "error_details": {"exception_type": type(e).__name__},
+                    }
+                )
 
                 # Continue compensating other steps
                 continue
 
         # Check if any compensations failed
-        failed_compensations = [
-            r for r in compensation_results
-            if r.get("status") == "failed"
-        ]
+        failed_compensations = [r for r in compensation_results if r.get("status") == "failed"]
 
         if failed_compensations:
             self.status = SagaStatus.COMPENSATION_FAILED
@@ -511,8 +496,8 @@ class SagaOrchestrator:
                 extra={
                     "saga_id": self.saga_id,
                     "failed_steps": [r["step"] for r in failed_compensations],
-                    "compensation_results": compensation_results
-                }
+                    "compensation_results": compensation_results,
+                },
             )
             raise SagaCompensationError(error_message)
 
@@ -523,8 +508,8 @@ class SagaOrchestrator:
             extra={
                 "saga_id": self.saga_id,
                 "compensated_steps": len(steps),
-                "compensation_results": compensation_results
-            }
+                "compensation_results": compensation_results,
+            },
         )
 
     def get_status(self) -> SagaStatus:
@@ -534,4 +519,3 @@ class SagaOrchestrator:
     def get_context(self) -> SagaExecutionContext:
         """Get saga execution context"""
         return self.context
-

@@ -38,7 +38,9 @@ Idempotency
 Re-running the sweep on the same day is a no-op: the first run
 hard-deletes eligible tenants, leaving none for the second run.
 """
+
 from __future__ import annotations
+
 import logging
 from datetime import timedelta
 from typing import Any
@@ -59,9 +61,7 @@ logger = logging.getLogger(__name__)
 GRACE_WINDOW_DAYS: int = 90
 
 
-def _hard_delete_one_tenant(
-    *, tenant_id, sweep_run_id: str | None
-) -> dict[str, Any] | None:
+def _hard_delete_one_tenant(*, tenant_id, sweep_run_id: str | None) -> dict[str, Any] | None:
     """Atomically re-lock + re-validate + hard-delete one tenant.
 
     Phase 235.3 audit-fix Gap 2 — the lookup is now via
@@ -88,10 +88,7 @@ def _hard_delete_one_tenant(
     try:
         with transaction.atomic():
             try:
-                tenant = (
-                    Tenant.all_objects.select_for_update(skip_locked=True)
-                    .get(pk=tenant_id)
-                )
+                tenant = Tenant.all_objects.select_for_update(skip_locked=True).get(pk=tenant_id)
             except Tenant.DoesNotExist:
                 # Concurrent sweep already finished the delete OR the
                 # row was locked by another process (SKIP LOCKED
@@ -110,9 +107,7 @@ def _hard_delete_one_tenant(
                 or tenant.legal_hold
             ):
                 return None
-            if tenant_blocked_by_open_dsar_restriction(
-                tenant_id=str(tenant.id)
-            ):
+            if tenant_blocked_by_open_dsar_restriction(tenant_id=str(tenant.id)):
                 return None
 
             tenant_id_str = str(tenant.id)
@@ -131,9 +126,7 @@ def _hard_delete_one_tenant(
                     "tenant_id": tenant_id_str,
                     "slug": slug,
                     "display_name": display_name,
-                    "scheduled_for_deletion_at": (
-                        scheduled.isoformat() if scheduled else None
-                    ),
+                    "scheduled_for_deletion_at": (scheduled.isoformat() if scheduled else None),
                     "hard_deleted_at": now.isoformat(),
                     "sweep_run_id": sweep_run_id,
                 },
@@ -245,9 +238,7 @@ def run_tenant_hard_delete_sweep(
             continue
 
         try:
-            result = _hard_delete_one_tenant(
-                tenant_id=tenant.id, sweep_run_id=sweep_run_id
-            )
+            result = _hard_delete_one_tenant(tenant_id=tenant.id, sweep_run_id=sweep_run_id)
         except Exception as exc:  # pragma: no cover — defensive
             logger.exception(
                 "tenant_hard_delete_sweep_tenant_failed",

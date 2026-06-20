@@ -6,7 +6,6 @@ Uses real API client and real services (no mocks/stubs).
 
 import pytest
 from django.test import TestCase
-from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.users.models import UserStatus

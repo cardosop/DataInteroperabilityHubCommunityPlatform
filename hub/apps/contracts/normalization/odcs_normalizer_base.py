@@ -4,36 +4,38 @@ ODCS Normalizer Base Class
 Abstract base class for version-specific ODCS normalizers.
 Provides common normalization logic and defines hooks for version-specific implementations.
 """
-import structlog
+
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Tuple, TYPE_CHECKING
+from typing import Any
 
-from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
+import structlog
 
-from hub.apps.contracts.normalization_engine import (
-    NormalizationResult,
-    SpecNormalizer,
-    _determine_normalization_status,
-    _map_quality_rules,
-    _map_quality_contract_level,
-    _map_service_levels,
-    _map_contacts,
-    _map_support_channels,
-    _map_servers,
-    _map_terms,
-    _map_definitions,
-    _build_model_from_schema,
-    _derive_schema_from_model,
-    validate_and_enrich_contacts,
-    validate_and_enrich_servicelevels,
-    validate_and_enrich_roles,
-    validate_and_enrich_team,
-    validate_and_enrich_pricing,
-    validate_and_enrich_lineage,
-)
-from hub.apps.contracts.source_paths import SourcePathTracker, track_field_mapping
 from hub.apps.contracts.context_fields import promote_context_fields
 from hub.apps.contracts.coverage import calculate_coverage
+from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
+from hub.apps.contracts.normalization_engine import (
+    NormalizationResult,
+    _build_model_from_schema,
+    _derive_schema_from_model,
+    _determine_normalization_status,
+    _map_contacts,
+    _map_definitions,
+    _map_quality_contract_level,
+    _map_quality_rules,
+    _map_servers,
+    _map_service_levels,
+    _map_support_channels,
+    _map_terms,
+)
+from hub.apps.contracts.validation import (
+    validate_and_enrich_contacts,
+    validate_and_enrich_lineage,
+    validate_and_enrich_pricing,
+    validate_and_enrich_roles,
+    validate_and_enrich_servicelevels,
+    validate_and_enrich_team,
+)
+from hub.apps.contracts.source_paths import SourcePathTracker, track_field_mapping
 from hub.apps.contracts.typed_models import validate_hub_contract_dict
 from hub.apps.contracts.versioning import get_default_version
 
@@ -82,9 +84,8 @@ class ODCSNormalizerBase(ABC):
             - ODCS 3.0.1 normalizer: return spec_version == "3.0.1"
             - ODCS 3.0.0 normalizer: return spec_version == "3.0.0"
         """
-        pass
 
-    def supports(self, spec_type: str, spec_version: str, contract_data: Dict[str, Any]) -> bool:
+    def supports(self, spec_type: str, spec_version: str, contract_data: dict[str, Any]) -> bool:
         """
         Check if this normalizer supports the given spec type and version.
 
@@ -106,10 +107,8 @@ class ODCSNormalizerBase(ABC):
         return self._supports_version(spec_version)
 
     def normalize(
-        self,
-        contract_data: Dict[str, Any],
-        spec_version: Optional[str] = None
-    ) -> 'NormalizationResult':
+        self, contract_data: dict[str, Any], spec_version: str | None = None
+    ) -> "NormalizationResult":
         """
         Normalize ODCS contract data to HubContract format.
 
@@ -127,9 +126,9 @@ class ODCSNormalizerBase(ABC):
         Returns:
             NormalizationResult with hub_contract, status, errors, warnings, etc.
         """
-        errors: List[str] = []
-        warnings: List[str] = []
-        hub_contract: Optional[Dict[str, Any]] = None
+        errors: list[str] = []
+        warnings: list[str] = []
+        hub_contract: dict[str, Any] | None = None
 
         try:
             # Detect ODCS version if not provided
@@ -147,7 +146,7 @@ class ODCSNormalizerBase(ABC):
                     "odcs_version_not_supported",
                     spec_version=spec_version,
                     normalizer_class=self.__class__.__name__,
-                    message=error_msg
+                    message=error_msg,
                 )
                 return NormalizationResult(
                     hub_contract=None,
@@ -156,12 +155,14 @@ class ODCSNormalizerBase(ABC):
                     warnings=warnings,
                     spec_type=self.spec_type,
                     spec_version=spec_version,
-                    coverage=None
+                    coverage=None,
                 )
 
             # Validate contract_data is a dict
             if not isinstance(contract_data, dict):
-                errors.append(f"Contract data must be a dictionary, got {type(contract_data).__name__}")
+                errors.append(
+                    f"Contract data must be a dictionary, got {type(contract_data).__name__}"
+                )
                 return NormalizationResult(
                     hub_contract=None,
                     status=NormalizationStatus.NORMALIZATION_FAILED,
@@ -169,7 +170,7 @@ class ODCSNormalizerBase(ABC):
                     warnings=warnings,
                     spec_type=self.spec_type,
                     spec_version=spec_version,
-                    coverage=None
+                    coverage=None,
                 )
 
             # Perform normalization
@@ -183,30 +184,28 @@ class ODCSNormalizerBase(ABC):
             # Extract coverage if available
             coverage = None
             if isinstance(hub_contract, dict):
-                coverage = hub_contract.get('normalization', {}).get('coverage')
+                coverage = hub_contract.get("normalization", {}).get("coverage")
 
             # Track ODCS normalization metrics for observability
             try:
                 from hub.apps.observability.otel_metrics import (
+                    odcs_normalization_regression_total,
                     odcs_normalization_total,
                     odcs_version_distribution_total,
-                    odcs_normalization_regression_total,
                 )
-                tenant_id = getattr(self, 'tenant_id', None) or 'unknown'
-                status_str = status.value if hasattr(status, 'value') else str(status)
-                version_str = spec_version or 'unknown'
+
+                tenant_id = getattr(self, "tenant_id", None) or "unknown"
+                status_str = status.value if hasattr(status, "value") else str(status)
+                version_str = spec_version or "unknown"
 
                 # Record normalization metrics
                 odcs_normalization_total.labels(
-                    status=status_str,
-                    version=version_str,
-                    tenant_id=tenant_id
+                    status=status_str, version=version_str, tenant_id=tenant_id
                 ).inc()
 
                 # Record version distribution
                 odcs_version_distribution_total.labels(
-                    version=version_str,
-                    tenant_id=tenant_id
+                    version=version_str, tenant_id=tenant_id
                 ).inc()
 
                 # Detect and record regressions
@@ -215,23 +214,23 @@ class ODCSNormalizerBase(ABC):
                 if status == NormalizationStatus.NORMALIZATION_FAILED:
                     # Check if this is a regression (version that should normally succeed)
                     regression_type = None
-                    if version_str in ['3.0.2', '3.0.1', '3.0.0']:
+                    if version_str in ["3.0.2", "3.0.1", "3.0.0"]:
                         # These are stable versions - failures might indicate regression
                         if len(errors) > 0:
                             # Check for specific regression patterns
-                            error_text = ' '.join(errors).lower()
-                            if 'schema' in error_text or 'validation' in error_text:
-                                regression_type = 'schema_validation'
-                            elif 'field' in error_text or 'mapping' in error_text:
-                                regression_type = 'field_mapping'
+                            error_text = " ".join(errors).lower()
+                            if "schema" in error_text or "validation" in error_text:
+                                regression_type = "schema_validation"
+                            elif "field" in error_text or "mapping" in error_text:
+                                regression_type = "field_mapping"
                             else:
-                                regression_type = 'general_failure'
+                                regression_type = "general_failure"
 
                             if regression_type:
                                 odcs_normalization_regression_total.labels(
                                     version=version_str,
                                     regression_type=regression_type,
-                                    tenant_id=tenant_id
+                                    tenant_id=tenant_id,
                                 ).inc()
             except Exception:
                 # Metrics failure should not affect normalization
@@ -244,18 +243,18 @@ class ODCSNormalizerBase(ABC):
                 warnings=warnings,
                 spec_type=self.spec_type,
                 spec_version=spec_version,
-                coverage=coverage
+                coverage=coverage,
             )
 
         except Exception as e:
             # Catch any unexpected errors
-            error_msg = f"Normalization failed: {str(e)}"
+            error_msg = f"Normalization failed: {e!s}"
             errors.append(error_msg)
             logger.error(
                 "odcs_normalization_unexpected_error",
                 error=str(e),
                 error_type=type(e).__name__,
-                message="Unexpected error during normalization"
+                message="Unexpected error during normalization",
             )
             return NormalizationResult(
                 hub_contract=None,
@@ -264,10 +263,10 @@ class ODCSNormalizerBase(ABC):
                 warnings=warnings,
                 spec_type=self.spec_type,
                 spec_version=spec_version or "3.0.2",
-                coverage=None
+                coverage=None,
             )
 
-    def _detect_odcs_version(self, contract_data: Dict[str, Any]) -> str:
+    def _detect_odcs_version(self, contract_data: dict[str, Any]) -> str:
         """
         Detect ODCS version from contract data.
 
@@ -278,20 +277,20 @@ class ODCSNormalizerBase(ABC):
             Version string (e.g., "3.0.2", "3.0.1", "3.0.0") or "3.0.2" as default
         """
         # Try to extract from apiVersion field
-        api_version = contract_data.get('apiVersion', '')
+        api_version = contract_data.get("apiVersion", "")
         if isinstance(api_version, str):
-            if '/v' in api_version:
+            if "/v" in api_version:
                 # "odcs.io/v3.0.2" format
                 try:
-                    return api_version.split('/v')[-1]
+                    return api_version.split("/v")[-1]
                 except Exception:
                     pass
-            elif api_version.startswith('v') and '.' in api_version:
+            elif api_version.startswith("v") and "." in api_version:
                 # "v3.1.0" short format (ODCS v3.1.0+)
                 return api_version[1:]
 
         # Try version field
-        version = contract_data.get('version')
+        version = contract_data.get("version")
         if isinstance(version, str):
             return version
 
@@ -300,10 +299,10 @@ class ODCSNormalizerBase(ABC):
 
     def _map_version_specific_fields(
         self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str],
-        spec_version: str
+        odcs_contract: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
+        spec_version: str,
     ) -> None:
         """
         Hook for version-specific field mappings.
@@ -323,13 +322,10 @@ class ODCSNormalizerBase(ABC):
         """
         # Default implementation: no version-specific mappings
         # Subclasses can override to add version-specific logic
-        pass
 
     def _normalize_odcs_to_hubcontract(
-        self,
-        odcs_contract: Dict[str, Any],
-        spec_version: str
-    ) -> Tuple[Optional[Dict[str, Any]], NormalizationStatus, List[str], List[str]]:
+        self, odcs_contract: dict[str, Any], spec_version: str
+    ) -> tuple[dict[str, Any] | None, NormalizationStatus, list[str], list[str]]:
         """
         Normalize ODCS contract to HubContract format.
 
@@ -352,24 +348,24 @@ class ODCSNormalizerBase(ABC):
 
             # Basic HubContract structure with version
             # Only set info.description if it's a string (not a dict, which maps to terms)
-            description = odcs_contract.get('description')
+            description = odcs_contract.get("description")
             info_description = description if isinstance(description, str) else None
 
             hub_contract = {
-                'hub_contract_version': get_default_version(),
-                'id': odcs_contract.get('id', ''),
-                'info': {
-                    'name': odcs_contract.get('name', ''),
-                    'description': info_description,
-                    'version': odcs_contract.get('version'),
+                "hub_contract_version": get_default_version(),
+                "id": odcs_contract.get("id", ""),
+                "info": {
+                    "name": odcs_contract.get("name", ""),
+                    "description": info_description,
+                    "version": odcs_contract.get("version"),
                 },
-                'schema': {}
+                "schema": {},
             }
 
             # Track basic field mappings (ODCS fields are at root level)
-            track_field_mapping(path_tracker, 'info', 'name', '', 'name')
-            track_field_mapping(path_tracker, 'info', 'description', '', 'description')
-            track_field_mapping(path_tracker, 'info', 'version', '', 'version')
+            track_field_mapping(path_tracker, "info", "name", "", "name")
+            track_field_mapping(path_tracker, "info", "description", "", "description")
+            track_field_mapping(path_tracker, "info", "version", "", "version")
 
             # Extract info section with owners and tags
             self._normalize_info(odcs_contract, hub_contract, warnings)
@@ -425,41 +421,43 @@ class ODCSNormalizerBase(ABC):
             # Store original spec metadata (required for validation)
             # Set it directly using known spec_type and spec_version instead of detection
             if isinstance(hub_contract, dict):
-                hub_contract.setdefault('original_spec', {})
+                hub_contract.setdefault("original_spec", {})
                 # Ensure spec_type is a string (not a TextChoices tuple)
                 # Django TextChoices returns a tuple (value, label), we need the value
                 if isinstance(self.spec_type, tuple):
                     spec_type_str = self.spec_type[0]  # Get the value from tuple
-                elif hasattr(self.spec_type, 'value'):
+                elif hasattr(self.spec_type, "value"):
                     spec_type_str = self.spec_type.value
                 else:
                     spec_type_str = str(self.spec_type)
-                hub_contract['original_spec']['type'] = spec_type_str
-                hub_contract['original_spec']['version'] = spec_version
+                hub_contract["original_spec"]["type"] = spec_type_str
+                hub_contract["original_spec"]["version"] = spec_version
                 # Extract conformance information if present
                 # Build conforms_to manually to avoid incorrect version detection
-                if 'apiVersion' in odcs_contract:
-                    api_version = odcs_contract.get('apiVersion')
-                    if isinstance(api_version, str) and '/v' in api_version:
-                        version_part = api_version.split('/v')[-1]
-                        hub_contract['original_spec']['conforms_to'] = {
-                            'uri': f"https://bitol-io.github.io/open-data-contract-standard/v{version_part}",
-                            'spec_type': spec_type_str,
-                            'spec_version': spec_version
+                if "apiVersion" in odcs_contract:
+                    api_version = odcs_contract.get("apiVersion")
+                    if isinstance(api_version, str) and "/v" in api_version:
+                        version_part = api_version.split("/v")[-1]
+                        hub_contract["original_spec"]["conforms_to"] = {
+                            "uri": f"https://bitol-io.github.io/open-data-contract-standard/v{version_part}",
+                            "spec_type": spec_type_str,
+                            "spec_version": spec_version,
                         }
-                elif odcs_contract.get('dct:conformsTo') or odcs_contract.get('conformsTo'):
-                    conforms_to_uri = odcs_contract.get('dct:conformsTo') or odcs_contract.get('conformsTo')
+                elif odcs_contract.get("dct:conformsTo") or odcs_contract.get("conformsTo"):
+                    conforms_to_uri = odcs_contract.get("dct:conformsTo") or odcs_contract.get(
+                        "conformsTo"
+                    )
                     if isinstance(conforms_to_uri, str):
-                        hub_contract['original_spec']['conforms_to'] = {
-                            'uri': conforms_to_uri,
-                            'spec_type': spec_type_str,
-                            'spec_version': spec_version
+                        hub_contract["original_spec"]["conforms_to"] = {
+                            "uri": conforms_to_uri,
+                            "spec_type": spec_type_str,
+                            "spec_version": spec_version,
                         }
                     elif isinstance(conforms_to_uri, dict):
-                        hub_contract['original_spec']['conforms_to'] = {
-                            'uri': conforms_to_uri.get('uri', ''),
-                            'spec_type': spec_type_str,
-                            'spec_version': spec_version
+                        hub_contract["original_spec"]["conforms_to"] = {
+                            "uri": conforms_to_uri.get("uri", ""),
+                            "spec_type": spec_type_str,
+                            "spec_version": spec_version,
                         }
 
             # Check for required fields and add errors if missing
@@ -492,7 +490,12 @@ class ODCSNormalizerBase(ABC):
                 # Check if errors are about required fields
                 has_fields_error = any("fields" in err.lower() for err in errors)
                 has_missing_name_error = any(
-                    "name" in err.lower() and ("missing" in err.lower() or "must be provided" in err.lower() or "Field required" in err)
+                    "name" in err.lower()
+                    and (
+                        "missing" in err.lower()
+                        or "must be provided" in err.lower()
+                        or "Field required" in err
+                    )
                     for err in errors
                 )
 
@@ -507,17 +510,19 @@ class ODCSNormalizerBase(ABC):
                 # 2. Name is truly missing (not just empty) AND there are errors about name
                 # Note: This will cause test_normalize_contract_empty_fields to fail, but that test expects graceful handling
                 # The test may need to be updated to reflect the actual behavior when fields are empty
-                if (has_fields_error and fields_empty_or_missing) or (has_missing_name_error and name_missing):
+                if (has_fields_error and fields_empty_or_missing) or (
+                    has_missing_name_error and name_missing
+                ):
                     # Return None when required fields are missing or empty AND there are errors
                     return None, status, errors, warnings
 
             # Attach coverage metrics for observability
             if isinstance(hub_contract, dict):
                 coverage_result = calculate_coverage(hub_contract, spec_type=OriginalSpecType.ODCS)
-                hub_contract.setdefault('normalization', {})
-                hub_contract['normalization']['coverage'] = coverage_result.to_dict()
-                hub_contract['normalization']['original_spec_type'] = OriginalSpecType.ODCS
-                hub_contract['normalization']['original_spec_version'] = spec_version
+                hub_contract.setdefault("normalization", {})
+                hub_contract["normalization"]["coverage"] = coverage_result.to_dict()
+                hub_contract["normalization"]["original_spec_type"] = OriginalSpecType.ODCS
+                hub_contract["normalization"]["original_spec_version"] = spec_version
 
             # Return hub_contract (None if failed, dict if succeeded or partial)
             return hub_contract, status, errors, warnings
@@ -540,7 +545,7 @@ class ODCSNormalizerBase(ABC):
                 error=error_message,
                 error_type=type(e).__name__,
                 error_code=error_code,
-                message="Error during ODCS normalization"
+                message="Error during ODCS normalization",
             )
             return None, NormalizationStatus.NORMALIZATION_FAILED, errors, warnings
 
@@ -549,180 +554,179 @@ class ODCSNormalizerBase(ABC):
     # by subclasses if version-specific behavior is needed.
 
     def _normalize_info(
-        self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """Normalize ODCS info section to HubContract info format."""
-        info = odcs_contract.get('info', {})
+        info = odcs_contract.get("info", {})
         if isinstance(info, dict):
             # Extract info.name if present (some ODCS contracts have name in info section)
-            if 'name' in info and not hub_contract.get('info', {}).get('name'):
-                hub_contract['info']['name'] = info['name']
-            if 'owners' in info:
-                owners = info['owners']
+            if "name" in info and not hub_contract.get("info", {}).get("name"):
+                hub_contract["info"]["name"] = info["name"]
+            if "owners" in info:
+                owners = info["owners"]
                 # Normalize owners: convert strings to HubContractOwner format
                 normalized_owners = []
                 if isinstance(owners, list):
                     for owner in owners:
                         if isinstance(owner, str):
                             # Convert string to HubContractOwner format
-                            normalized_owners.append({'name': owner})
+                            normalized_owners.append({"name": owner})
                         elif isinstance(owner, dict):
                             # Already in correct format, but ensure it has at least 'name' or 'email'
-                            if 'name' in owner or 'email' in owner:
+                            if "name" in owner or "email" in owner:
                                 normalized_owners.append(owner)
                             else:
-                                warnings.append(f"Owner entry missing both 'name' and 'email', skipping: {owner}")
+                                warnings.append(
+                                    f"Owner entry missing both 'name' and 'email', skipping: {owner}"
+                                )
                         else:
-                            warnings.append(f"Invalid owner entry type (expected str or dict, got {type(owner).__name__}), skipping: {owner}")
-                hub_contract['info']['owners'] = normalized_owners
-            if 'tags' in info:
-                hub_contract['info']['tags'] = info['tags']
+                            warnings.append(
+                                f"Invalid owner entry type (expected str or dict, got {type(owner).__name__}), skipping: {owner}"
+                            )
+                hub_contract["info"]["owners"] = normalized_owners
+            if "tags" in info:
+                hub_contract["info"]["tags"] = info["tags"]
         # Also check top-level for owners/tags (ODCS may have them at root)
-        if 'owners' in odcs_contract:
-            owners = odcs_contract['owners']
+        if "owners" in odcs_contract:
+            owners = odcs_contract["owners"]
             # Normalize owners: convert strings to HubContractOwner format
             normalized_owners = []
             if isinstance(owners, list):
                 for owner in owners:
                     if isinstance(owner, str):
                         # Convert string to HubContractOwner format
-                        normalized_owners.append({'name': owner})
+                        normalized_owners.append({"name": owner})
                     elif isinstance(owner, dict):
                         # Already in correct format, but ensure it has at least 'name' or 'email'
-                        if 'name' in owner or 'email' in owner:
+                        if "name" in owner or "email" in owner:
                             normalized_owners.append(owner)
                         else:
-                            warnings.append(f"Owner entry missing both 'name' and 'email', skipping: {owner}")
+                            warnings.append(
+                                f"Owner entry missing both 'name' and 'email', skipping: {owner}"
+                            )
                     else:
-                        warnings.append(f"Invalid owner entry type (expected str or dict, got {type(owner).__name__}), skipping: {owner}")
-            hub_contract['info']['owners'] = normalized_owners
-        if 'tags' in odcs_contract:
-            hub_contract['info']['tags'] = odcs_contract['tags']
+                        warnings.append(
+                            f"Invalid owner entry type (expected str or dict, got {type(owner).__name__}), skipping: {owner}"
+                        )
+            hub_contract["info"]["owners"] = normalized_owners
+        if "tags" in odcs_contract:
+            hub_contract["info"]["tags"] = odcs_contract["tags"]
 
     def _normalize_schema(
-        self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """Normalize ODCS schema section to HubContract schema/models format."""
         models = []
-        if 'schema' in odcs_contract:
-            odcs_schema = odcs_contract['schema']
+        if "schema" in odcs_contract:
+            odcs_schema = odcs_contract["schema"]
             if isinstance(odcs_schema, list):
                 # ODCS schema[] array - map each to a model
                 for idx, schema_entry in enumerate(odcs_schema):
                     if not isinstance(schema_entry, dict):
                         continue
-                    model_entry = _build_model_from_schema(schema_entry, fallback_name=f"model_{idx+1}")
+                    model_entry = _build_model_from_schema(
+                        schema_entry, fallback_name=f"model_{idx + 1}"
+                    )
                     if model_entry:
                         models.append(model_entry)
             elif isinstance(odcs_schema, dict):
                 # Single schema object - map to single model
                 model_entry = _build_model_from_schema(
                     odcs_schema,
-                    fallback_name=odcs_schema.get('name') or odcs_contract.get('name') or "default"
+                    fallback_name=odcs_schema.get("name") or odcs_contract.get("name") or "default",
                 )
                 if model_entry:
                     models.append(model_entry)
-        elif isinstance(odcs_contract.get('models'), list):
+        elif isinstance(odcs_contract.get("models"), list):
             # If models already present (rare), normalize them
-            for idx, model_entry in enumerate(odcs_contract.get('models', [])):
+            for idx, model_entry in enumerate(odcs_contract.get("models", [])):
                 if isinstance(model_entry, dict):
                     normalized = _build_model_from_schema(
-                        model_entry,
-                        fallback_name=model_entry.get('name') or f"model_{idx+1}"
+                        model_entry, fallback_name=model_entry.get("name") or f"model_{idx + 1}"
                     )
                     if normalized:
                         models.append(normalized)
 
         # Always set models[] if we have any
         if models:
-            hub_contract['models'] = models
+            hub_contract["models"] = models
             # Derived schema view for backward compatibility (from first model)
-            schema = hub_contract.get('schema', {})
-            if not schema or not schema.get('fields'):
+            schema = hub_contract.get("schema", {})
+            if not schema or not schema.get("fields"):
                 derived_schema = _derive_schema_from_model(models[0])
-                hub_contract['schema'] = derived_schema
+                hub_contract["schema"] = derived_schema
 
         # If no schema provided but models already present, derive schema
-        schema = hub_contract.get('schema', {})
-        if (not schema or not schema.get('fields')) and hub_contract.get('models'):
-            hub_contract['schema'] = _derive_schema_from_model(hub_contract['models'][0])
+        schema = hub_contract.get("schema", {})
+        if (not schema or not schema.get("fields")) and hub_contract.get("models"):
+            hub_contract["schema"] = _derive_schema_from_model(hub_contract["models"][0])
 
     def _normalize_quality(
-        self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """Normalize ODCS quality section to HubContract quality format."""
-        if 'quality' in odcs_contract:
-            quality_data = odcs_contract['quality']
-            hub_contract['quality'] = {}
-            if 'default_profile_key' in quality_data:
-                hub_contract['quality']['default_profile_key'] = quality_data['default_profile_key']
+        if "quality" in odcs_contract:
+            quality_data = odcs_contract["quality"]
+            hub_contract["quality"] = {}
+            if "default_profile_key" in quality_data:
+                hub_contract["quality"]["default_profile_key"] = quality_data["default_profile_key"]
             mapped_rules = _map_quality_rules(quality_data)
             if mapped_rules is not None:
-                hub_contract['quality']['rules'] = mapped_rules
+                hub_contract["quality"]["rules"] = mapped_rules
             contract_level_quality = _map_quality_contract_level(quality_data)
             if contract_level_quality:
-                hub_contract['quality'].update(contract_level_quality)
+                hub_contract["quality"].update(contract_level_quality)
 
     def _normalize_privacy_compliance(
-        self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """Normalize ODCS privacy_compliance section to HubContract privacy_compliance format."""
         # Check for privacy_compliance, compliance, or privacy at top level
         compliance_data = None
-        if 'privacy_compliance' in odcs_contract:
-            compliance_data = odcs_contract.get('privacy_compliance', {})
-        elif 'compliance' in odcs_contract:
-            compliance_data = odcs_contract.get('compliance', {})
-        elif 'privacy' in odcs_contract:
-            compliance_data = odcs_contract.get('privacy', {})
+        if "privacy_compliance" in odcs_contract:
+            compliance_data = odcs_contract.get("privacy_compliance", {})
+        elif "compliance" in odcs_contract:
+            compliance_data = odcs_contract.get("compliance", {})
+        elif "privacy" in odcs_contract:
+            compliance_data = odcs_contract.get("privacy", {})
 
         if compliance_data:
-            hub_contract['privacy_compliance'] = {}
-            if 'contains_personal_data' in compliance_data:
-                hub_contract['privacy_compliance']['contains_personal_data'] = compliance_data['contains_personal_data']
-            if 'personal_data_categories' in compliance_data:
-                hub_contract['privacy_compliance']['personal_data_categories'] = compliance_data['personal_data_categories']
-            if 'jurisdictions' in compliance_data:
-                hub_contract['privacy_compliance']['jurisdictions'] = compliance_data['jurisdictions']
-            if 'legal_bases' in compliance_data:
-                hub_contract['privacy_compliance']['legal_bases'] = compliance_data['legal_bases']
-            if 'retention_policy' in compliance_data:
-                hub_contract['privacy_compliance']['retention_policy'] = compliance_data['retention_policy']
+            hub_contract["privacy_compliance"] = {}
+            if "contains_personal_data" in compliance_data:
+                hub_contract["privacy_compliance"]["contains_personal_data"] = compliance_data[
+                    "contains_personal_data"
+                ]
+            if "personal_data_categories" in compliance_data:
+                hub_contract["privacy_compliance"]["personal_data_categories"] = compliance_data[
+                    "personal_data_categories"
+                ]
+            if "jurisdictions" in compliance_data:
+                hub_contract["privacy_compliance"]["jurisdictions"] = compliance_data[
+                    "jurisdictions"
+                ]
+            if "legal_bases" in compliance_data:
+                hub_contract["privacy_compliance"]["legal_bases"] = compliance_data["legal_bases"]
+            if "retention_policy" in compliance_data:
+                hub_contract["privacy_compliance"]["retention_policy"] = compliance_data[
+                    "retention_policy"
+                ]
 
     def _normalize_lifecycle(
-        self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """Normalize ODCS lifecycle section to HubContract lifecycle format."""
-        if 'lifecycle' in odcs_contract:
-            lifecycle_data = odcs_contract['lifecycle']
-            hub_contract['lifecycle'] = {}
-            if 'data_source' in lifecycle_data:
-                hub_contract['lifecycle']['data_source'] = lifecycle_data['data_source']
-            if 'refresh_cadence' in lifecycle_data:
-                hub_contract['lifecycle']['refresh_cadence'] = lifecycle_data['refresh_cadence']
-            if 'slas' in lifecycle_data:
-                hub_contract['lifecycle']['slas'] = lifecycle_data['slas']
+        if "lifecycle" in odcs_contract:
+            lifecycle_data = odcs_contract["lifecycle"]
+            hub_contract["lifecycle"] = {}
+            if "data_source" in lifecycle_data:
+                hub_contract["lifecycle"]["data_source"] = lifecycle_data["data_source"]
+            if "refresh_cadence" in lifecycle_data:
+                hub_contract["lifecycle"]["refresh_cadence"] = lifecycle_data["refresh_cadence"]
+            if "slas" in lifecycle_data:
+                hub_contract["lifecycle"]["slas"] = lifecycle_data["slas"]
 
     def _normalize_servicelevels(
-        self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """Normalize ODCS servicelevels (from slaProperties) to HubContract servicelevels format."""
         servicelevels = _map_service_levels(odcs_contract)
@@ -730,13 +734,10 @@ class ODCSNormalizerBase(ABC):
             enriched_servicelevels, sl_errors = validate_and_enrich_servicelevels(servicelevels)
             if sl_errors:
                 warnings.extend([f"ServiceLevel validation: {e}" for e in sl_errors])
-            hub_contract['servicelevels'] = enriched_servicelevels
+            hub_contract["servicelevels"] = enriched_servicelevels
 
     def _normalize_contact(
-        self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """Normalize ODCS contact (from support[] entries with name/email) to HubContract contact format."""
         contacts = _map_contacts(odcs_contract)
@@ -744,60 +745,48 @@ class ODCSNormalizerBase(ABC):
             enriched_contacts, contact_errors = validate_and_enrich_contacts(contacts)
             if contact_errors:
                 warnings.extend([f"Contact validation: {e}" for e in contact_errors])
-            hub_contract['contact'] = enriched_contacts
+            hub_contract["contact"] = enriched_contacts
 
     def _normalize_support_channels(
-        self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """Normalize ODCS support channels (from support[] entries without name/email) to HubContract support format."""
         support_channels = _map_support_channels(odcs_contract)
         if support_channels:
-            hub_contract['support'] = support_channels
+            hub_contract["support"] = support_channels
 
     def _normalize_servers(
-        self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """Normalize ODCS servers to HubContract servers format."""
         servers = _map_servers(odcs_contract)
         if servers:
-            hub_contract['servers'] = servers
+            hub_contract["servers"] = servers
 
     def _normalize_terms(
-        self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """Normalize ODCS terms to HubContract terms format."""
         terms = _map_terms(odcs_contract)
         if terms:
             # Validate/enrich pricing if present in terms
-            if 'pricing' in terms:
-                enriched_pricing, pricing_errors = validate_and_enrich_pricing(terms['pricing'])
+            if "pricing" in terms:
+                enriched_pricing, pricing_errors = validate_and_enrich_pricing(terms["pricing"])
                 if pricing_errors:
                     warnings.extend([f"Pricing validation: {e}" for e in pricing_errors])
-                terms['pricing'] = enriched_pricing
-            hub_contract['terms'] = terms
+                terms["pricing"] = enriched_pricing
+            hub_contract["terms"] = terms
 
     def _normalize_definitions(
-        self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """Normalize ODCS authoritativeDefinitions to HubContract definitions format."""
         definitions = _map_definitions(odcs_contract)
         if definitions:
-            hub_contract['definitions'] = definitions
+            hub_contract["definitions"] = definitions
 
     @staticmethod
-    def _parse_team_v31(team_obj: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _parse_team_v31(team_obj: dict[str, Any]) -> list[dict[str, Any]]:
         """
         Parse a v3.1.0-style team *object* into a flat member list.
 
@@ -813,11 +802,11 @@ class ODCSNormalizerBase(ABC):
         if not isinstance(members_raw, list):
             return []
 
-        parsed: List[Dict[str, Any]] = []
+        parsed: list[dict[str, Any]] = []
         for entry in members_raw:
             if not isinstance(entry, dict):
                 continue
-            member: Dict[str, Any] = {}
+            member: dict[str, Any] = {}
             if "name" in entry:
                 member["member"] = entry["name"]
                 member["name"] = entry["name"]
@@ -837,48 +826,35 @@ class ODCSNormalizerBase(ABC):
         return parsed
 
     def _normalize_roles_team_pricing(
-        self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """Normalize ODCS roles, team, and pricing to HubContract format."""
-        if isinstance(odcs_contract.get('roles'), list):
-            enriched_roles, role_errors = validate_and_enrich_roles(
-                odcs_contract.get('roles')
-            )
+        if isinstance(odcs_contract.get("roles"), list):
+            enriched_roles, role_errors = validate_and_enrich_roles(odcs_contract.get("roles"))
             if role_errors:
-                warnings.extend(
-                    [f"Role validation: {e}" for e in role_errors]
-                )
-            hub_contract['roles'] = enriched_roles
+                warnings.extend([f"Role validation: {e}" for e in role_errors])
+            hub_contract["roles"] = enriched_roles
 
-        team_raw = odcs_contract.get('team')
+        team_raw = odcs_contract.get("team")
         if isinstance(team_raw, list):
             # v3.0.x array shape
             enriched_team, team_errors = validate_and_enrich_team(team_raw)
             if team_errors:
-                warnings.extend(
-                    [f"Team validation: {e}" for e in team_errors]
-                )
-            hub_contract['team'] = enriched_team
+                warnings.extend([f"Team validation: {e}" for e in team_errors])
+            hub_contract["team"] = enriched_team
         elif isinstance(team_raw, dict) and "members" in team_raw:
             # v3.1.0 object shape — gracefully handled by all
             # normalizers so mixed documents don't break
             parsed = self._parse_team_v31(team_raw)
             if parsed:
-                enriched_team, team_errors = validate_and_enrich_team(
-                    parsed
-                )
+                enriched_team, team_errors = validate_and_enrich_team(parsed)
                 if team_errors:
-                    warnings.extend(
-                        [f"Team validation: {e}" for e in team_errors]
-                    )
-                hub_contract['team'] = enriched_team
+                    warnings.extend([f"Team validation: {e}" for e in team_errors])
+                hub_contract["team"] = enriched_team
                 # Also populate info.owners from team members
                 owners = []
                 for m in parsed:
-                    owner: Dict[str, Any] = {}
+                    owner: dict[str, Any] = {}
                     if "name" in m:
                         owner["name"] = m["name"]
                     if "email" in m:
@@ -888,25 +864,18 @@ class ODCSNormalizerBase(ABC):
                 if owners:
                     hub_contract.setdefault("info", {})["owners"] = owners
             else:
-                warnings.append(
-                    "team object has 'members' key but no valid entries"
-                )
+                warnings.append("team object has 'members' key but no valid entries")
 
-        if isinstance(odcs_contract.get('price'), dict):
+        if isinstance(odcs_contract.get("price"), dict):
             enriched_pricing, pricing_errors = validate_and_enrich_pricing(
-                odcs_contract.get('price')
+                odcs_contract.get("price")
             )
             if pricing_errors:
-                warnings.extend(
-                    [f"Pricing validation: {e}" for e in pricing_errors]
-                )
-            hub_contract['pricing'] = enriched_pricing
+                warnings.extend([f"Pricing validation: {e}" for e in pricing_errors])
+            hub_contract["pricing"] = enriched_pricing
 
     def _normalize_lineage(
-        self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """Normalize ODCS lineage to HubContract lineage format."""
         from hub.apps.contracts.lineage import (
@@ -916,54 +885,52 @@ class ODCSNormalizerBase(ABC):
         # Contract-level lineage
         contract_lineage = extract_contract_level_lineage(odcs_contract)
         if contract_lineage:
-            entries = contract_lineage.get('entries', [])
+            entries = contract_lineage.get("entries", [])
             enriched_lineage, lineage_errors = validate_and_enrich_lineage(entries)
             if lineage_errors:
                 warnings.extend([f"Lineage validation: {e}" for e in lineage_errors])
             # Set lineage as LineageSection structure (entries list + contracts if present)
             if enriched_lineage:
-                lineage_section = {'entries': enriched_lineage}
+                lineage_section = {"entries": enriched_lineage}
                 # Add contract references if present
-                if contract_lineage.get('contracts'):
-                    lineage_section['contracts'] = contract_lineage['contracts']
-                hub_contract['lineage'] = lineage_section
+                if contract_lineage.get("contracts"):
+                    lineage_section["contracts"] = contract_lineage["contracts"]
+                hub_contract["lineage"] = lineage_section
 
     def _normalize_marketplace(
-        self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """Normalize ODCS marketplace section to HubContract marketplace format."""
-        if 'marketplace' in odcs_contract:
-            marketplace_data = odcs_contract['marketplace']
-            hub_contract['marketplace'] = {}
-            if 'license_summary' in marketplace_data:
-                hub_contract['marketplace']['license_summary'] = marketplace_data['license_summary']
-            if 'intended_use' in marketplace_data:
-                intended_use = marketplace_data['intended_use']
+        if "marketplace" in odcs_contract:
+            marketplace_data = odcs_contract["marketplace"]
+            hub_contract["marketplace"] = {}
+            if "license_summary" in marketplace_data:
+                hub_contract["marketplace"]["license_summary"] = marketplace_data["license_summary"]
+            if "intended_use" in marketplace_data:
+                intended_use = marketplace_data["intended_use"]
                 # Convert string to list if needed (Pydantic expects list)
                 if isinstance(intended_use, str):
-                    hub_contract['marketplace']['intended_use'] = [intended_use]
+                    hub_contract["marketplace"]["intended_use"] = [intended_use]
                 elif isinstance(intended_use, list):
-                    hub_contract['marketplace']['intended_use'] = intended_use
+                    hub_contract["marketplace"]["intended_use"] = intended_use
                 else:
-                    warnings.append(f"marketplace.intended_use has unexpected type: {type(intended_use)}")
-            if 'restricted_use' in marketplace_data:
-                restricted_use = marketplace_data['restricted_use']
+                    warnings.append(
+                        f"marketplace.intended_use has unexpected type: {type(intended_use)}"
+                    )
+            if "restricted_use" in marketplace_data:
+                restricted_use = marketplace_data["restricted_use"]
                 # Convert string to list if needed (Pydantic expects list)
                 if isinstance(restricted_use, str):
-                    hub_contract['marketplace']['restricted_use'] = [restricted_use]
+                    hub_contract["marketplace"]["restricted_use"] = [restricted_use]
                 elif isinstance(restricted_use, list):
-                    hub_contract['marketplace']['restricted_use'] = restricted_use
+                    hub_contract["marketplace"]["restricted_use"] = restricted_use
                 else:
-                    warnings.append(f"marketplace.restricted_use has unexpected type: {type(restricted_use)}")
+                    warnings.append(
+                        f"marketplace.restricted_use has unexpected type: {type(restricted_use)}"
+                    )
 
     def _normalize_extensions(
-        self,
-        odcs_contract: Dict[str, Any],
-        hub_contract: Dict[str, Any],
-        warnings: List[str]
+        self, odcs_contract: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
     ) -> None:
         """Normalize ODCS extensions (preserve unmappable fields) to HubContract extensions format."""
         extensions = {}
@@ -971,11 +938,32 @@ class ODCSNormalizerBase(ABC):
 
         # Known mappable fields (already mapped above)
         known_fields = {
-            'id', 'name', 'description', 'version', 'schema', 'info',
-            'quality', 'privacy_compliance', 'compliance', 'lifecycle', 'marketplace',
-            'owners', 'tags', 'support', 'servers', 'slaProperties', 'terms',
-            'servicelevels', 'models', 'roles', 'team', 'price',
-            'transformSourceObjects', 'transformLogic', 'apiVersion', 'kind'
+            "id",
+            "name",
+            "description",
+            "version",
+            "schema",
+            "info",
+            "quality",
+            "privacy_compliance",
+            "compliance",
+            "lifecycle",
+            "marketplace",
+            "owners",
+            "tags",
+            "support",
+            "servers",
+            "slaProperties",
+            "terms",
+            "servicelevels",
+            "models",
+            "roles",
+            "team",
+            "price",
+            "transformSourceObjects",
+            "transformLogic",
+            "apiVersion",
+            "kind",
         }
 
         # Copy fields that don't map directly
@@ -987,28 +975,24 @@ class ODCSNormalizerBase(ABC):
             # Store extensions directly at top level for easy access
             extensions.update(odcs_extensions)
             # Also store under 'odcs' for backward compatibility and namespacing
-            extensions['odcs'] = odcs_extensions
+            extensions["odcs"] = odcs_extensions
             # Add informational warning about extensions (they're preserved but indicate unmappable fields)
             warnings.append("Some ODCS fields preserved in extensions")
 
         if extensions:
-            hub_contract['extensions'] = extensions
+            hub_contract["extensions"] = extensions
 
     def _validate_required_fields(
-        self,
-        hub_contract: Dict[str, Any],
-        errors: List[str],
-        warnings: List[str]
+        self, hub_contract: dict[str, Any], errors: list[str], warnings: list[str]
     ) -> None:
         """Validate that required fields are present in hub_contract."""
-        info = hub_contract.get('info', {})
-        if 'name' not in info or not info.get('name'):
+        info = hub_contract.get("info", {})
+        if "name" not in info or not info.get("name"):
             errors.append("Contract must have a 'name' field")
 
-        schema = hub_contract.get('schema', {})
-        if 'fields' not in schema:
+        schema = hub_contract.get("schema", {})
+        if "fields" not in schema:
             errors.append("Contract must have a 'fields' array in schema")
-        elif not schema.get('fields'):
+        elif not schema.get("fields"):
             # Empty fields array is allowed but should be a warning, not an error
             warnings.append("Schema has no fields")
-

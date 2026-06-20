@@ -15,9 +15,9 @@ from django.utils import timezone
 
 from hub.apps.compliance.models import RiskLevel
 from hub.apps.integrations.encryption import (
+    EncryptionError,
     decrypt_json_field,
     encrypt_json_field,
-    EncryptionError,
 )
 
 # Phase 231.2 — thresholds exclude UNKNOWN (fail-closed sentinel on runs only).
@@ -302,9 +302,14 @@ class TenantPlan(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    flsc_estimate_cents = models.IntegerField(null=True, blank=True, help_text="Estimated FLSC in cents")
-    marketplace_take_rate_bps = models.IntegerField(default=0, help_text="Marketplace take rate in basis points")
+    flsc_estimate_cents = models.IntegerField(
+        null=True, blank=True, help_text="Estimated FLSC in cents"
+    )
+    marketplace_take_rate_bps = models.IntegerField(
+        default=0, help_text="Marketplace take rate in basis points"
+    )
     markup_bps = models.IntegerField(null=True, blank=True, help_text="Markup in basis points")
+
     class Meta:
         db_table = "tenant_plans"
         ordering = ["order", "name"]
@@ -644,8 +649,8 @@ class Tenant(models.Model):
         null=True,
         blank=True,
         validators=[
-            MinValueValidator(10 * 1024 * 1024),         # 10 MiB
-            MaxValueValidator(5 * 1024 * 1024 * 1024),   # 5 GiB
+            MinValueValidator(10 * 1024 * 1024),  # 10 MiB
+            MaxValueValidator(5 * 1024 * 1024 * 1024),  # 5 GiB
         ],
         help_text=(
             "Phase 240.3.D — per-tenant DQ input upload cap (bytes). "
@@ -744,9 +749,7 @@ class Tenant(models.Model):
     # Phase 232.4 — Record of Processing Activities (RoPA) generator.
     compliance_ropa_enabled = models.BooleanField(
         default=False,
-        help_text=(
-            "When True, RoPA generation APIs and artefacts are enabled for this tenant."
-        ),
+        help_text=("When True, RoPA generation APIs and artefacts are enabled for this tenant."),
     )
     # Phase 232.5 — DPIA register & review workflow.
     compliance_dpia_enabled = models.BooleanField(
@@ -864,12 +867,10 @@ class Tenant(models.Model):
         help_text="Enable compliance warehouse integration.",
     )
     tenant_dq_warehouse_profile = models.JSONField(
-        default=dict, blank=True,
-        help_text="DQ warehouse profile assigned to this tenant."
+        default=dict, blank=True, help_text="DQ warehouse profile assigned to this tenant."
     )
     notification_opt_outs = models.JSONField(
-        default=dict, blank=True,
-        help_text="Per-tenant notification opt-out configuration."
+        default=dict, blank=True, help_text="Per-tenant notification opt-out configuration."
     )
     pipeline_dependency_enabled = models.BooleanField(
         default=False,
@@ -1406,9 +1407,7 @@ class Tenant(models.Model):
                 encrypted = encrypt_json_field(self.tax_address)
                 self.tax_address = {"_encrypted": encrypted}
             except EncryptionError as e:
-                raise ValidationError(
-                    {"tax_address": f"Failed to encrypt: {e}"}
-                ) from e
+                raise ValidationError({"tax_address": f"Failed to encrypt: {e}"}) from e
 
         super().save(*args, **kwargs)
 
@@ -1656,9 +1655,7 @@ class TenantConfig(models.Model):
                 encrypted = encrypt_json_field(self.sso_config)
                 self.sso_config = {"_encrypted": encrypted}
             except EncryptionError as e:
-                raise ValidationError(
-                    {"sso_config": f"Failed to encrypt: {e}"}
-                ) from e
+                raise ValidationError({"sso_config": f"Failed to encrypt: {e}"}) from e
 
         # ``tax_address`` lives on ``Tenant``, not ``TenantConfig`` —
         # its encryption-on-save is wired into ``Tenant.save`` instead
@@ -1682,9 +1679,7 @@ class TenantConfig(models.Model):
             return {}
         if isinstance(self.sso_config, dict):
             if "_encrypted" in self.sso_config:
-                return decrypt_json_field(
-                    self.sso_config["_encrypted"]
-                )
+                return decrypt_json_field(self.sso_config["_encrypted"])
             return self.sso_config
         return {}
 
@@ -1703,9 +1698,7 @@ class TenantConfig(models.Model):
             return {}
         if isinstance(self.tax_address, dict):
             if "_encrypted" in self.tax_address:
-                return decrypt_json_field(
-                    self.tax_address["_encrypted"]
-                )
+                return decrypt_json_field(self.tax_address["_encrypted"])
             return self.tax_address
         return {}
 
@@ -1753,8 +1746,9 @@ class TenantUsageSummary(models.Model):
 
     # Metadata
     notification_opt_outs = models.JSONField(
-        default=dict, blank=True,
-        help_text="Per-tenant notification opt-out configuration at the time of calculation."
+        default=dict,
+        blank=True,
+        help_text="Per-tenant notification opt-out configuration at the time of calculation.",
     )
 
     # Metadata
@@ -1933,8 +1927,7 @@ class FeatureFlagFlipApproval(models.Model):
             )
         if self.status != FeatureFlagFlipApprovalStatus.PENDING:
             raise ValueError(
-                f"Cannot approve a {self.status!s} row; only PENDING is "
-                "transitionable to APPROVED."
+                f"Cannot approve a {self.status!s} row; only PENDING is transitionable to APPROVED."
             )
         self.status = FeatureFlagFlipApprovalStatus.APPROVED
         self.approved_by = by
@@ -2105,12 +2098,8 @@ class LimitDimension(models.Model):
         db_index=True,
         help_text="Machine-readable limit key (e.g. 'max_assets')",
     )
-    display_name = models.CharField(
-        max_length=200, help_text="Human-readable name"
-    )
-    description = models.TextField(
-        blank=True, default="", help_text="What this limit controls"
-    )
+    display_name = models.CharField(max_length=200, help_text="Human-readable name")
+    description = models.TextField(blank=True, default="", help_text="What this limit controls")
     category = models.CharField(
         max_length=64,
         default="base",
@@ -2192,9 +2181,9 @@ class TierProfile(models.Model):
     def clean(self):
         if self.self_serve and self.sales_only:
             from django.core.exceptions import ValidationError
+
             raise ValidationError(
-                "TierProfile cannot be both self-serve and sales-only. "
-                "Choose at most one."
+                "TierProfile cannot be both self-serve and sales-only. Choose at most one."
             )
         super().clean()
 

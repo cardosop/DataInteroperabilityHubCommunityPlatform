@@ -33,7 +33,7 @@ class AdvisoryLockNotUsedTest(TestCase):
                 lines = text.split("\n")
                 for i, line in enumerate(lines, 1):
                     stripped = line.strip()
-                    if ("pg_advisory_lock" in stripped or "pg_advisory_xact_lock" in stripped):
+                    if "pg_advisory_lock" in stripped or "pg_advisory_xact_lock" in stripped:
                         # Skip comment lines (documentation)
                         if stripped.startswith("#"):
                             continue
@@ -59,6 +59,7 @@ class AdvisoryLockNotUsedTest(TestCase):
     def test_channels_uses_redis_not_postgres(self):
         """CHANNEL_LAYERS must use Redis, not PostgreSQL backend."""
         from django.conf import settings
+
         backend = settings.CHANNEL_LAYERS.get("default", {}).get("BACKEND", "")
         assert "postgres" not in backend.lower(), (
             f"CHANNEL_LAYERS backend is '{backend}' — must use Redis, not PostgreSQL "

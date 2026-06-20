@@ -10,6 +10,7 @@ Ciphertext format:
 - ``v1:<fernet>``   → Fernet (Phase 11.4)
 - plain text        → legacy pre-migration record
 """
+
 import base64
 import hashlib
 import logging
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 def _get_fernet() -> Fernet:
     """Build a Fernet instance derived from settings.ENCRYPTION_KEY."""
     from django.conf import settings
+
     raw = settings.ENCRYPTION_KEY
     derived = hashlib.sha256(raw.encode()).digest()
     fernet_key = base64.urlsafe_b64encode(derived)
@@ -38,9 +40,11 @@ def encrypt_secret(plaintext: str) -> str:
     Tries AWS KMS first, falls back to Fernet.
     Idempotent: already-encrypted values returned unchanged.
     """
-    if (plaintext.startswith(_PREFIX)
-            or plaintext.startswith(_VAULT_PREFIX)
-            or plaintext.startswith(_AWS_KMS_PREFIX)):
+    if (
+        plaintext.startswith(_PREFIX)
+        or plaintext.startswith(_VAULT_PREFIX)
+        or plaintext.startswith(_AWS_KMS_PREFIX)
+    ):
         return plaintext
 
     # Try AWS KMS
@@ -48,6 +52,7 @@ def encrypt_secret(plaintext: str) -> str:
         _is_kms_available,
         _kms_encrypt,
     )
+
     if _is_kms_available():
         try:
             ciphertext = _kms_encrypt(
@@ -56,13 +61,18 @@ def encrypt_secret(plaintext: str) -> str:
             return ciphertext  # "aws-kms:..."
         except Exception as e:
             logger.warning(
-                "webhook_kms_encrypt_fallback: %s", e,
+                "webhook_kms_encrypt_fallback: %s",
+                e,
             )
 
     # Fernet fallback
-    ciphertext = _get_fernet().encrypt(
-        plaintext.encode(),
-    ).decode()
+    ciphertext = (
+        _get_fernet()
+        .encrypt(
+            plaintext.encode(),
+        )
+        .decode()
+    )
     return _PREFIX + ciphertext
 
 
@@ -80,9 +90,10 @@ def decrypt_secret(value: str) -> str:
         from hub.apps.integrations.encryption import (
             _kms_decrypt,
         )
+
         try:
             return _kms_decrypt(value).decode("utf-8")
-        except Exception as exc:
+        except (ValueError, ConnectionError, OSError, RuntimeError) as exc:
             raise ValueError(
                 "Failed to decrypt webhook secret via AWS KMS "
                 "– check IAM permissions and key availability",
@@ -99,13 +110,16 @@ def decrypt_secret(value: str) -> str:
     # Fernet path
     if value.startswith(_PREFIX):
         try:
-            return _get_fernet().decrypt(
-                value[len(_PREFIX):].encode(),
-            ).decode()
+            return (
+                _get_fernet()
+                .decrypt(
+                    value[len(_PREFIX) :].encode(),
+                )
+                .decode()
+            )
         except InvalidToken as exc:
             raise ValueError(
-                "Failed to decrypt webhook secret "
-                "– ENCRYPTION_KEY mismatch?",
+                "Failed to decrypt webhook secret – ENCRYPTION_KEY mismatch?",
             ) from exc
 
     # Legacy plaintext

@@ -12,6 +12,7 @@ Publishing is best-effort: failures are logged at WARNING level and never
 propagate back to the caller so that a Redis outage cannot break contract
 saves.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -49,6 +50,7 @@ def _get_redis_client():
     # is caught by the broad except so this is safe at runtime.
     try:
         from django.core.cache import cache as django_cache
+
         pool_client = getattr(django_cache, "client", None)
         if pool_client is not None:
             return pool_client.get_client()
@@ -59,6 +61,7 @@ def _get_redis_client():
     if _fallback_redis_client is None:
         try:
             import redis as sync_redis
+
             url = os.getenv("REDIS_CACHE_URL") or os.getenv("REDIS_URL", "")
             if not url:
                 return None
@@ -93,9 +96,7 @@ def invalidate_datacontract_cache(sender, instance, **kwargs):
         try:
             client = _get_redis_client()
             if client is None:
-                logger.debug(
-                    "datacontract_cache_invalidation_skipped: no Redis client available"
-                )
+                logger.debug("datacontract_cache_invalidation_skipped: no Redis client available")
                 return
             client.publish(_INVALIDATION_CHANNEL, payload)
             logger.debug(
@@ -117,6 +118,7 @@ def invalidate_datacontract_cache(sender, instance, **kwargs):
 # Search vector rebuild (Phase 18.2)
 # ---------------------------------------------------------------------------
 
+
 @receiver(post_save, sender="contracts.Contract")
 def rebuild_contract_search_vector(sender, instance, **kwargs):
     """
@@ -136,8 +138,7 @@ def rebuild_contract_search_vector(sender, instance, **kwargs):
             enqueue_contract_search_vector_update(str(pk))
         except Exception as exc:
             logger.warning(
-                "contract_search_vector_enqueue_failed "
-                "contract_id=%s error=%s",
+                "contract_search_vector_enqueue_failed contract_id=%s error=%s",
                 pk,
                 exc,
             )
@@ -194,7 +195,8 @@ def _capture_prior_lineage_hash(sender, instance, **kwargs):
         setattr(instance, _PRIOR_LINEAGE_HASH_ATTR, _hash_lineage({}))
         return
     setattr(
-        instance, _PRIOR_LINEAGE_HASH_ATTR,
+        instance,
+        _PRIOR_LINEAGE_HASH_ATTR,
         _hash_lineage(prior.hub_contract_json),
     )
 
@@ -242,6 +244,7 @@ def publish_contract_updated_for_lineage(sender, instance, created, **kwargs):
             from hub.apps.contracts.lineage_impact_dispatcher import (
                 handle_contract_updated,
             )
+
             handle_contract_updated(
                 contract_id=str(contract_id),
                 tenant_id=str(tenant_id) if tenant_id else "",
@@ -252,9 +255,9 @@ def publish_contract_updated_for_lineage(sender, instance, created, **kwargs):
             )
         except Exception as exc:
             logger.warning(
-                "lineage_impact_dispatch_enqueue_failed "
-                "contract_id=%s error=%s",
-                contract_id, exc,
+                "lineage_impact_dispatch_enqueue_failed contract_id=%s error=%s",
+                contract_id,
+                exc,
             )
 
     transaction.on_commit(_enqueue)
@@ -264,6 +267,7 @@ def publish_contract_updated_for_lineage(sender, instance, created, **kwargs):
 # Django's migration/apps loading order clean.
 def _connect_lineage_pre_save():
     from django.db.models.signals import pre_save
+
     pre_save.connect(
         _capture_prior_lineage_hash,
         sender="contracts.Contract",
@@ -283,7 +287,7 @@ _connect_lineage_pre_save()
 # ``tombstone_resource`` path: mark TOMBSTONED + purge Fuseki +
 # emit audit.
 
-from django.db.models.signals import post_delete  # noqa: E402
+from django.db.models.signals import post_delete
 
 
 @receiver(post_delete, sender="contracts.Contract")
@@ -299,8 +303,10 @@ def fire_contract_tombstone_on_delete(sender, instance, **kwargs):
     def _dispatch():
         try:
             from hub.apps.semantic.tombstone import (
-                REASON_CONTRACT_DELETED, tombstone_resource,
+                REASON_CONTRACT_DELETED,
+                tombstone_resource,
             )
+
             tombstone_resource(
                 resource_type="CONTRACT",
                 resource_id=contract_id,
@@ -308,9 +314,9 @@ def fire_contract_tombstone_on_delete(sender, instance, **kwargs):
             )
         except Exception as exc:
             logger.warning(
-                "contract_tombstone_dispatch_failed "
-                "contract_id=%s error=%s",
-                contract_id, exc,
+                "contract_tombstone_dispatch_failed contract_id=%s error=%s",
+                contract_id,
+                exc,
             )
 
     transaction.on_commit(_dispatch)

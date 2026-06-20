@@ -36,16 +36,17 @@ forced True so events land in the ``events`` table where the test
 can read them. External boundaries (S3, compliance, DQ) are mocked
 at their HTTP boundaries.
 """
+
 from __future__ import annotations
 
 import uuid
-from unittest.mock import patch  # noqa: F401 — used by helper closures elsewhere in module
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
-from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.assets.models import Asset
 from hub.apps.core.events.models import Event
 from hub.apps.files.models import File, FileStatus
 from hub.apps.orchestration.workflows.asset_creation import (
@@ -55,7 +56,6 @@ from hub.apps.orchestration.workflows.asset_creation import (
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -142,15 +142,14 @@ class AssetCreatedEventOrderingTest(TestCase):
 
     def test_asset_created_event_fires_after_workflow_commit(self):
         tenant, user, file_obj = _seed()
-        before = Event.objects.filter(
-            event_type="asset.created", tenant_id=tenant.id
-        ).count()
+        before = Event.objects.filter(event_type="asset.created", tenant_id=tenant.id).count()
 
-        with _patch_storage(), _patch_compliance(
-            {"overall_status": "PASS", "allowed_to_store": True, "metadata": {}}
-        ), _patch_dq(
-            {"overall_status": "PASS", "quality_score": 100, "metadata": {}}
-        ), _force_sync_event_persistence():
+        with (
+            _patch_storage(),
+            _patch_compliance({"overall_status": "PASS", "allowed_to_store": True, "metadata": {}}),
+            _patch_dq({"overall_status": "PASS", "quality_score": 100, "metadata": {}}),
+            _force_sync_event_persistence(),
+        ):
             result = AssetCreationWorkflow.execute(
                 tenant_id=str(tenant.id),
                 key="webhook-asset",
@@ -170,9 +169,9 @@ class AssetCreatedEventOrderingTest(TestCase):
 
         # Exactly ONE asset.created event for the asset.
         created_events = list(
-            Event.objects.filter(
-                event_type="asset.created", tenant_id=tenant.id
-            ).order_by("timestamp")
+            Event.objects.filter(event_type="asset.created", tenant_id=tenant.id).order_by(
+                "timestamp"
+            )
         )
         assert len(created_events) - before == 1, (
             f"expected exactly 1 asset.created event; got "
@@ -193,9 +192,7 @@ class AssetCreatedEventOrderingTest(TestCase):
         # activate_asset step is conditionally skipped. Verify that
         # asset.activated was NOT emitted (a regression here would
         # mean activation fired despite being disabled).
-        activated_events = Event.objects.filter(
-            event_type="asset.activated", tenant_id=tenant.id
-        )
+        activated_events = Event.objects.filter(event_type="asset.activated", tenant_id=tenant.id)
         assert not activated_events.exists(), (
             f"asset.activated events leaked despite auto_activate=False: "
             f"{[e.event_id for e in activated_events]}"
@@ -209,11 +206,12 @@ class AssetCreatedThenActivatedOrderingTest(TestCase):
     def test_created_event_strictly_before_activated_event(self):
         tenant, user, file_obj = _seed()
 
-        with _patch_storage(), _patch_compliance(
-            {"overall_status": "PASS", "allowed_to_store": True, "metadata": {}}
-        ), _patch_dq(
-            {"overall_status": "PASS", "quality_score": 100, "metadata": {}}
-        ), _force_sync_event_persistence():
+        with (
+            _patch_storage(),
+            _patch_compliance({"overall_status": "PASS", "allowed_to_store": True, "metadata": {}}),
+            _patch_dq({"overall_status": "PASS", "quality_score": 100, "metadata": {}}),
+            _force_sync_event_persistence(),
+        ):
             result = AssetCreationWorkflow.execute(
                 tenant_id=str(tenant.id),
                 key="ordering-asset",
@@ -296,24 +294,27 @@ class FailClosedSuppressesAssetEventsTest(TestCase):
             event_type="asset.activated", tenant_id=tenant.id
         ).count()
 
-        with _patch_storage(), _patch_compliance(
-            {"overall_status": "FAIL", "allowed_to_store": False, "metadata": {}}
-        ), _patch_dq(
-            {"overall_status": "PASS", "quality_score": 100, "metadata": {}}
-        ), _force_sync_event_persistence():
-            with pytest.raises(FailClosedRejection):
-                AssetCreationWorkflow.execute(
-                    tenant_id=str(tenant.id),
-                    key="suppressed-asset",
-                    name="Suppressed",
-                    file_id=str(file_obj.id),
-                    file_format="CSV",
-                    contract_name="C",
-                    contract_description="",
-                    auto_activate=True,
-                    send_notifications=False,
-                    created_by_id=str(user.id),
-                )
+        with (
+            _patch_storage(),
+            _patch_compliance(
+                {"overall_status": "FAIL", "allowed_to_store": False, "metadata": {}}
+            ),
+            _patch_dq({"overall_status": "PASS", "quality_score": 100, "metadata": {}}),
+            _force_sync_event_persistence(),
+            pytest.raises(FailClosedRejection),
+        ):
+            AssetCreationWorkflow.execute(
+                tenant_id=str(tenant.id),
+                key="suppressed-asset",
+                name="Suppressed",
+                file_id=str(file_obj.id),
+                file_format="CSV",
+                contract_name="C",
+                contract_description="",
+                auto_activate=True,
+                send_notifications=False,
+                created_by_id=str(user.id),
+            )
 
         after_created = Event.objects.filter(
             event_type="asset.created", tenant_id=tenant.id
@@ -329,6 +330,4 @@ class FailClosedSuppressesAssetEventsTest(TestCase):
         )
         assert after_activated == before_activated
         # Belt-and-braces: no Asset row exists either.
-        assert Asset.objects.filter(
-            tenant=tenant, key="suppressed-asset"
-        ).count() == 0
+        assert Asset.objects.filter(tenant=tenant, key="suppressed-asset").count() == 0

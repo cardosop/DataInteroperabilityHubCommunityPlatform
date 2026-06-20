@@ -52,13 +52,15 @@ Usage
     python manage.py wave4_escalate_residue \\
         --audit-output=audit-reports/wave4-escalation-$(date +%F).jsonl
 """
+
 from __future__ import annotations
 
 import datetime as _dt
 import json
 import logging
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -114,7 +116,7 @@ class Command(BaseCommand):
         dry_run: bool = options["dry_run"]
         audit_output = options.get("audit_output")
         active_only = bool(options.get("include_active_only"))
-        records: List[Dict[str, Any]] = []
+        records: list[dict[str, Any]] = []
 
         decisions = list(self._iter_decisions(active_only=active_only))
 
@@ -125,34 +127,38 @@ class Command(BaseCommand):
 
         for decision in decisions:
             tenant = decision["tenant"]
-            tenant_label = (
-                f"{getattr(tenant, 'name', '?')} ({tenant.id})"
-            )
+            tenant_label = f"{getattr(tenant, 'name', '?')} ({tenant.id})"
             verdict = decision["verdict"]
             if verdict == "escalate":
                 if dry_run:
-                    self.stdout.write(self.style.WARNING(
-                        f"  [dry-run] would escalate {tenant_label}: "
-                        f"deadline {decision['deadline']}, "
-                        f"{decision['residue_count']} residue contract(s)"
-                    ))
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"  [dry-run] would escalate {tenant_label}: "
+                            f"deadline {decision['deadline']}, "
+                            f"{decision['residue_count']} residue contract(s)"
+                        )
+                    )
                 else:
                     self._emit_escalation_audit(
                         tenant=tenant,
                         deadline=decision["deadline"],
                         residue_count=decision["residue_count"],
                     )
-                    self.stdout.write(self.style.ERROR(
-                        f"  [escalated] {tenant_label}: deadline "
-                        f"{decision['deadline']}, "
-                        f"{decision['residue_count']} residue contract(s)"
-                    ))
+                    self.stdout.write(
+                        self.style.ERROR(
+                            f"  [escalated] {tenant_label}: deadline "
+                            f"{decision['deadline']}, "
+                            f"{decision['residue_count']} residue contract(s)"
+                        )
+                    )
                 escalated += 1
             elif verdict == "remediated":
-                self.stdout.write(self.style.SUCCESS(
-                    f"  [remediated] {tenant_label}: residue cleared "
-                    f"before {decision['deadline']}"
-                ))
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"  [remediated] {tenant_label}: residue cleared "
+                        f"before {decision['deadline']}"
+                    )
+                )
                 remediated += 1
             elif verdict == "future":
                 self.stdout.write(
@@ -167,38 +173,39 @@ class Command(BaseCommand):
                 )
                 already += 1
 
-            records.append({
-                "tenant_id": str(tenant.id),
-                "tenant_name": getattr(tenant, "name", ""),
-                "verdict": verdict,
-                "deadline": decision["deadline"],
-                "residue_count": decision["residue_count"],
-                "decided_at": _dt.datetime.now(
-                    _dt.timezone.utc
-                ).isoformat(),
-            })
+            records.append(
+                {
+                    "tenant_id": str(tenant.id),
+                    "tenant_name": getattr(tenant, "name", ""),
+                    "verdict": verdict,
+                    "deadline": decision["deadline"],
+                    "residue_count": decision["residue_count"],
+                    "decided_at": _dt.datetime.now(_dt.UTC).isoformat(),
+                }
+            )
 
         if audit_output and records:
             audit_path = Path(audit_output)
             audit_path.parent.mkdir(parents=True, exist_ok=True)
             with audit_path.open("w", encoding="utf-8") as fp:
                 for rec in records:
-                    fp.write(
-                        json.dumps(rec, sort_keys=True, default=str)
-                        + "\n"
-                    )
+                    fp.write(json.dumps(rec, sort_keys=True, default=str) + "\n")
 
-        self.stdout.write(self.style.SUCCESS(
-            f"\nWave 4 escalation summary: "
-            f"escalated={escalated}, remediated={remediated}, "
-            f"future={future}, already-escalated={already}"
-        ))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"\nWave 4 escalation summary: "
+                f"escalated={escalated}, remediated={remediated}, "
+                f"future={future}, already-escalated={already}"
+            )
+        )
 
     # ------------------------------------------------------------------
 
     def _iter_decisions(
-        self, *, active_only: bool = False,
-    ) -> Iterable[Dict[str, Any]]:
+        self,
+        *,
+        active_only: bool = False,
+    ) -> Iterable[dict[str, Any]]:
         """Walk the most-recent ``SCHEMA_EDITOR_RESIDUE_REMINDED``
         audit row per tenant and decide the verdict.
 
@@ -220,7 +227,7 @@ class Command(BaseCommand):
             .select_related("tenant")
             .order_by("-timestamp")
         )
-        latest_by_tenant: Dict[str, Any] = {}
+        latest_by_tenant: dict[str, Any] = {}
         for row in reminder_qs:
             tenant = getattr(row, "tenant", None)
             if tenant is None:
@@ -232,14 +239,11 @@ class Command(BaseCommand):
 
         # Fetch any prior escalation rows in one query — used to
         # short-circuit double-escalation per (tenant, reminder).
-        escalation_rows = (
-            AuditEvent.objects.filter(
-                action="STRUCTURELESS_RESIDUE_DEADLINE_PASSED",
-                tenant_id__in=list(latest_by_tenant.keys()),
-            )
-            .order_by("-timestamp")
-        )
-        latest_escalation_by_tenant: Dict[str, Any] = {}
+        escalation_rows = AuditEvent.objects.filter(
+            action="STRUCTURELESS_RESIDUE_DEADLINE_PASSED",
+            tenant_id__in=list(latest_by_tenant.keys()),
+        ).order_by("-timestamp")
+        latest_escalation_by_tenant: dict[str, Any] = {}
         for row in escalation_rows:
             tid = str(getattr(row, "tenant_id", ""))
             if tid and tid not in latest_escalation_by_tenant:
@@ -251,11 +255,7 @@ class Command(BaseCommand):
             details = getattr(reminder, "details_json", None) or {}
             raw_deadline = details.get("deadline")
             try:
-                deadline = (
-                    _dt.date.fromisoformat(str(raw_deadline))
-                    if raw_deadline
-                    else None
-                )
+                deadline = _dt.date.fromisoformat(str(raw_deadline)) if raw_deadline else None
             except (TypeError, ValueError):
                 logger.warning(
                     "wave4_escalate_residue.malformed_deadline",
@@ -301,9 +301,8 @@ class Command(BaseCommand):
             # W4.2/W4.3-AUDIT-1 fix: respect active_only so a DRAFT
             # residue contract doesn't keep the tenant in the
             # escalation cohort under the strict scope.
-            qs_recheck = (
-                Contract.objects.filter(tenant=tenant)
-                .only("id", "tenant_id", "hub_contract_json", "status")
+            qs_recheck = Contract.objects.filter(tenant=tenant).only(
+                "id", "tenant_id", "hub_contract_json", "status"
             )
             if active_only:
                 qs_recheck = qs_recheck.filter(
@@ -338,6 +337,7 @@ class Command(BaseCommand):
         residue_count: int,
     ) -> None:
         from hub.apps.audit.utils import create_audit_event
+
         try:
             create_audit_event(
                 resource_type="TENANT",
@@ -351,7 +351,9 @@ class Command(BaseCommand):
                 },
             )
         except Exception as exc:  # pragma: no cover — best-effort
-            self.stdout.write(self.style.WARNING(
-                f"  [warn] failed to emit escalation audit row "
-                f"for {tenant.id}: {type(exc).__name__}: {exc}"
-            ))
+            self.stdout.write(
+                self.style.WARNING(
+                    f"  [warn] failed to emit escalation audit row "
+                    f"for {tenant.id}: {type(exc).__name__}: {exc}"
+                )
+            )

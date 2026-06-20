@@ -36,24 +36,41 @@ run_batch() {
 
 case "${1:-}" in
   1)
-    # Auth, setup, cross-cutting, design system, tenant onboarding
-    # Reduce workers to 2: every test in this batch requires a full login cycle.
-    # 4 workers saturate the backend login/capabilities endpoints causing PostgreSQL
-    # statement timeouts (500) and rate-limit cascades (429) that fail 15+ tests.
-    # Note: alternate-flows-failure.spec.ts is already included via cross-cutting/ glob.
-    # Enable authenticated a11y scans (axe on 10 routes) — batch 1 includes e2e/a11y/.
-    export E2E_A11Y=1
-    run_batch 1 "auth, setup, cross-cutting, design-system, tenant" \
-      --workers=2 \
+    # Master batch — delegates to 1a+1b+1c.  Kept for backward compatibility.
+    echo "=== Batch 1: running 1a → 1b → 1c ==="
+    bash "$0" 1a
+    bash "$0" 1b
+    bash "$0" 1c
+    ;;
+  1a)
+    # Auth core: setup, login, personas, tenant, accept-invitation.
+    # ~35 tests, ~5 min.  Run first — most auth failures surface here.
+    run_batch "1a (auth core)" \
+      --workers=1 \
+      e2e/setup/auth-storage.spec.ts \
+      e2e/features/auth.spec.ts \
       e2e/auth-visitor-journeys.spec.ts \
       e2e/login-app-shell.spec.ts \
-      e2e/features/auth.spec.ts \
-      e2e/cross-cutting/ \
-      e2e/setup/ \
+      e2e/use-cases/auth/ \
+      e2e/setup/persona-login-validation.spec.ts
+    ;;
+  1b)
+    # A11y + UX: accessibility scans, design-system, tenant journeys.
+    # ~100 tests, ~12 min.  Largest sub-batch — all a11y/design files.
+    export E2E_A11Y=1
+    run_batch "1b (a11y + UX)" \
+      --workers=1 \
       e2e/a11y/ \
       e2e/design-system/ \
-      e2e/use-cases/auth/ \
-      e2e/journeys/tenant/ \
+      e2e/journeys/tenant/
+    ;;
+  1c)
+    # Cross-cutting + security: edge cases, failure scenarios, infra canary,
+    # CSP/security headers.  ~65 tests, ~6 min.  Environment-sensitive —
+    # security headers and S3 canary may fail in local test env.
+    run_batch "1c (cross-cutting + security)" \
+      --workers=1 \
+      e2e/cross-cutting/ \
       e2e/security/
     ;;
   2)
@@ -71,7 +88,7 @@ case "${1:-}" in
     # DPO journeys + asset/contract/ODPS use cases (all Data Product Owner flows)
     # Reduce workers to 2: eases backend load (ECONNRESET/auth flakiness under 4 workers)
     run_batch 3 "DPO journeys + asset/contract/ODPS use cases" \
-      --workers=2 \
+      --workers=1 \
       e2e/journeys/dpo/ \
       e2e/use-cases/assets/ \
       e2e/use-cases/contracts/ \
@@ -81,7 +98,7 @@ case "${1:-}" in
     # Auth journeys + Data Consumer + Data Engineer + integrations use cases
     # Reduce workers to 2: eases backend load (consumer login connection errors under 4 workers)
     run_batch 4 "auth, DC, DE journeys + integrations use cases" \
-      --workers=2 \
+      --workers=1 \
       e2e/journeys/auth/ \
       e2e/journeys/dc/ \
       e2e/journeys/de/ \
@@ -92,7 +109,7 @@ case "${1:-}" in
     # Reduce workers to 2: PA/TA admin ops + cross-persona isolation tests are RAM-heavy (12 Chrome
     # instances at 4 workers cause OOM kills between test 150-200 on a 61GiB host with Fuseki+API load)
     run_batch 5 "TA, PA, Dev, Aud, cross-persona journeys + webhook use cases" \
-      --workers=2 \
+      --workers=1 \
       e2e/journeys/ta/ \
       e2e/journeys/pa/ \
       e2e/journeys/dev/ \
@@ -104,7 +121,7 @@ case "${1:-}" in
     # CPO, DS, DMO, DA, CM, Marketplace journeys + compliance/DQ/marketplace use cases
     # Reduce workers to 2: ~390 tests × 3 projects; same OOM risk as batch5 at 4 workers
     run_batch 6 "CPO, DS, DMO, DA, CM, Marketplace journeys + compliance/DQ/marketplace use cases" \
-      --workers=2 \
+      --workers=1 \
       e2e/journeys/cpo/ \
       e2e/journeys/ds/ \
       e2e/journeys/dmo/ \
@@ -121,7 +138,7 @@ case "${1:-}" in
     # They remain on disk (run manually via batch 9) until deletion sign-off.
     # Reduce workers to 2: ~220 tests × 3 projects; same OOM risk as batch5 at 4 workers
     run_batch 7 "features, phase7.5, phase8, governance, scheduled" \
-      --workers=2 \
+      --workers=1 \
       e2e/features/ \
       e2e/phase7.5-features-gap-closure.spec.ts \
       e2e/phase8-hardening.spec.ts \
@@ -147,8 +164,11 @@ case "${1:-}" in
     ;;
   list)
     echo "E2E Batches (run with: npm run test:e2e:batchN or bash scripts/e2e-batches.sh N)"
-    echo "  1: auth, setup, cross-cutting, design-system, tenant, security (~100 tests, workers=2)"
-    echo "  2: routes - contracts, marketplace, dq, mesh, integrations, admin (~115 tests)"
+    echo "  1:  master — delegates to 1a → 1b → 1c sequentially"
+    echo "  1a: auth core — setup, login, personas, accept-invitation (~35 tests, ~5 min)"
+    echo "  1b: a11y + UX — 15 a11y files, design-system, tenant (~100 tests, ~12 min)"
+    echo "  1c: cross-cutting + security — edge cases, failure, infra canary, CSP (~65 tests, ~6 min)"
+    echo "  2:  routes - contracts, marketplace, dq, mesh, integrations, admin (~115 tests)"
     echo "  3: DPO journeys + asset/contract/ODPS use cases (~275 tests)"
     echo "  4: auth, DC, DE journeys + integrations use cases (~385 tests)"
     echo "  5: TA, PA, Dev, Aud, cross-persona journeys + webhook use cases (~375 tests)"

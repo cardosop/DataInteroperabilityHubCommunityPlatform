@@ -4,18 +4,18 @@ Phase 260.1.A.7–A.8 — file hard-purge command, retention eligibility, tenant
 Uses real Redis (distributed lock), DB, and optional S3/MinIO. Skips purge tests
 when Redis is unreachable (same pattern as idempotency tests).
 """
+
 from __future__ import annotations
-import pytest
 
 import os
 import uuid
 from datetime import timedelta
 from io import StringIO
 
+import pytest
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.utils import timezone
-
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -28,13 +28,7 @@ from hub.apps.files.tests.test_base import FilesTestBase
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def _redis_or_skip() -> None:
-    try:
-        get_redis_client().ping()
-    except Exception as exc:  # pragma: no cover — environment-dependent
-        import unittest
-
-        raise unittest.SkipTest(f"Redis required: {exc}") from exc
+from hub.apps.files.tests.test_base import redis_or_skip as _redis_or_skip
 
 
 class TenantFileGraceBoundsTests(FilesTestBase):
@@ -99,9 +93,7 @@ class PurgeDeletedFilesCommandTests(FilesTestBase):
         # scope the count to the DELETING fixtures so the parent's
         # ACTIVE file doesn't drift the expected total.
         self.assertEqual(
-            File.objects.filter(
-                tenant=self.tenant, status=FileStatus.DELETING
-            ).count(),
+            File.objects.filter(tenant=self.tenant, status=FileStatus.DELETING).count(),
             3,
         )
 
@@ -299,9 +291,7 @@ class PurgeDeletedFilesCommandTests(FilesTestBase):
         self.assertEqual(f.status, FileStatus.DELETING)
         self.assertIsNotNone(f.deleted_at)
 
-        File.objects.filter(pk=f.pk).update(
-            deleted_at=timezone.now() - timedelta(days=60)
-        )
+        File.objects.filter(pk=f.pk).update(deleted_at=timezone.now() - timedelta(days=60))
 
         prev = os.environ.pop("FILE_PURGE_DRY_RUN_REQUIRED", None)
         try:

@@ -1,16 +1,16 @@
 """
 Tests for pluggable SpecNormalizer registry.
 """
+
 import json
 
-import pytest
 from django.test import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization import (
+    _NORMALIZER_REGISTRY,
     NormalizationResult,
     ODCSNormalizer,
-    _NORMALIZER_REGISTRY,
     _reset_normalizer_registry,
     get_normalizer,
     normalize_contract,
@@ -70,8 +70,12 @@ class TestNormalizerRegistry:
             _reset_normalizer_registry(snapshot)
             register_normalizer(dummy)
 
-            payload = {"id": "custom-id", "name": "Custom", "schema": {"fields": [{"name": "id", "type": "string"}]}}
-            hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            payload = {
+                "id": "custom-id",
+                "name": "Custom",
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
+            }
+            hub_contract, spec_type, _spec_version, status, errors, _warnings = normalize_contract(
                 raw_contract=json.dumps(payload),
                 format="JSON",
                 spec_type=dummy.spec_type,
@@ -118,9 +122,9 @@ class TestNormalizerRegistry:
             assert dummy.spec_type in _NORMALIZER_REGISTRY
             _reset_normalizer_registry(snapshot)
             # Should be back to original state
-            assert _NORMALIZER_REGISTRY == snapshot or len(_NORMALIZER_REGISTRY.get(dummy.spec_type, [])) == len(
-                snapshot.get(dummy.spec_type, [])
-            )
+            assert snapshot == _NORMALIZER_REGISTRY or len(
+                _NORMALIZER_REGISTRY.get(dummy.spec_type, [])
+            ) == len(snapshot.get(dummy.spec_type, []))
         finally:
             _reset_normalizer_registry(snapshot)
 
@@ -131,7 +135,9 @@ class TestODCSNormalizer:
     def test_odcs_normalizer_supports_odcs(self):
         """Test that ODCSNormalizer supports ODCS spec type."""
         normalizer = ODCSNormalizer()
-        assert normalizer.supports(OriginalSpecType.ODCS, "3.0.2", {"apiVersion": "odcs/v3", "kind": "DataContract"})
+        assert normalizer.supports(
+            OriginalSpecType.ODCS, "3.0.2", {"apiVersion": "odcs/v3", "kind": "DataContract"}
+        )
 
     def test_odcs_normalizer_does_not_support_other_specs(self):
         """Test that ODCSNormalizer does not support other spec types."""
@@ -152,13 +158,13 @@ class TestODCSNormalizer:
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
         # Use hasattr checks due to dynamic imports causing isinstance to fail
-        assert hasattr(result, 'hub_contract')
-        assert hasattr(result, 'status')
-        assert hasattr(result, 'errors')
-        assert hasattr(result, 'warnings')
-        assert hasattr(result, 'spec_type')
-        assert hasattr(result, 'spec_version')
-        assert hasattr(result, 'coverage')
+        assert hasattr(result, "hub_contract")
+        assert hasattr(result, "status")
+        assert hasattr(result, "errors")
+        assert hasattr(result, "warnings")
+        assert hasattr(result, "spec_type")
+        assert hasattr(result, "spec_version")
+        assert hasattr(result, "coverage")
         assert result.spec_type == OriginalSpecType.ODCS
         assert result.spec_version == "3.0.2"
         assert result.hub_contract is not None
@@ -173,7 +179,7 @@ class TestODCSNormalizer:
         assert isinstance(result.hub_contract["schema"]["fields"], list)
         assert len(result.hub_contract["schema"]["fields"]) == 1
         assert result.hub_contract["schema"]["fields"][0]["name"] == "id"
-        assert result.hub_contract["schema"]["fields"][0]["type"] == "string"
+        assert result.hub_contract["schema"]["fields"][0]["data_type"] == "string"
 
 
 class TestODPSNormalizerRegistration(TestCase):
@@ -181,8 +187,8 @@ class TestODPSNormalizerRegistration(TestCase):
 
     def test_odps_normalizer_is_registered(self):
         """Test that ODPS normalizer is registered in the registry."""
-        from hub.apps.contracts.normalization import get_normalizer, _NORMALIZER_REGISTRY
         from hub.apps.contracts.models import OriginalSpecType
+        from hub.apps.contracts.normalization import _NORMALIZER_REGISTRY
         from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
 
         # Check that ODPS is in the registry
@@ -195,22 +201,14 @@ class TestODPSNormalizerRegistration(TestCase):
 
     def test_get_normalizer_returns_odps_normalizer(self):
         """Test that get_normalizer returns ODPS normalizer for ODPS contracts."""
-        from hub.apps.contracts.normalization import get_normalizer
         from hub.apps.contracts.models import OriginalSpecType
-        from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+        from hub.apps.contracts.normalization import get_normalizer
 
         # Test with ODPS 4.1 contract
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODPS, "4.1", contract_data)
@@ -219,22 +217,14 @@ class TestODPSNormalizerRegistration(TestCase):
 
     def test_get_normalizer_returns_odps_normalizer_for_different_versions(self):
         """Test that get_normalizer returns ODPS normalizer for different ODPS versions."""
-        from hub.apps.contracts.normalization import get_normalizer
         from hub.apps.contracts.models import OriginalSpecType
-        from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+        from hub.apps.contracts.normalization import get_normalizer
 
         # Test with ODPS 4.0
         contract_data_4_0 = {
             "schema": "https://opendataproducts.org/schema/v4.0",
             "version": "4.0",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODPS, "4.0", contract_data_4_0)
@@ -245,14 +235,7 @@ class TestODPSNormalizerRegistration(TestCase):
         contract_data_3_x = {
             "schema": "https://opendataproducts.org/schema/v3.9",
             "version": "3.9",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODPS, "3.9", contract_data_3_x)
@@ -261,21 +244,13 @@ class TestODPSNormalizerRegistration(TestCase):
 
     def test_odps_normalizer_supports_method(self):
         """Test that registered ODPS normalizer supports() method works correctly."""
-        from hub.apps.contracts.normalization import get_normalizer
         from hub.apps.contracts.models import OriginalSpecType
-        from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+        from hub.apps.contracts.normalization import get_normalizer
 
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODPS, "4.1", contract_data)
@@ -284,33 +259,36 @@ class TestODPSNormalizerRegistration(TestCase):
         # Test supports() method
         assert normalizer.supports(OriginalSpecType.ODPS, "4.1", contract_data)
         # The normalizer may report its own version — accept it
-        supported_version = normalizer.spec_version if hasattr(normalizer, 'spec_version') else "4.1"
+        supported_version = (
+            normalizer.spec_version if hasattr(normalizer, "spec_version") else "4.1"
+        )
         assert normalizer.supports(OriginalSpecType.ODPS, supported_version, contract_data)
         assert not normalizer.supports(OriginalSpecType.ODCS, "3.0.2", contract_data)
 
     def test_normalize_contract_detects_odps(self):
         """Integration test: normalize_contract detects and uses ODPS normalizer."""
+        from hub.apps.contracts.models import OriginalSpecType
         from hub.apps.contracts.normalization import normalize_contract
-        from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 
         # ODPS 4.1 contract
-        odps_contract = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product-odps",
-                        "name": "ODPS Test Product",
-                        "description": "Test description"
+        odps_contract = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-product-odps",
+                            "name": "ODPS Test Product",
+                            "description": "Test description",
+                        }
                     }
-                }
+                },
             }
-        })
+        )
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=odps_contract,
-            format="JSON"
+        hub_contract, spec_type, spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=odps_contract, format="JSON"
         )
 
         # Should detect ODPS
@@ -325,25 +303,21 @@ class TestODPSNormalizerRegistration(TestCase):
 
     def test_normalize_contract_odps_detection_via_schema_url(self):
         """Integration test: ODPS detection via schema URL."""
-        from hub.apps.contracts.normalization import normalize_contract
         from hub.apps.contracts.models import OriginalSpecType
+        from hub.apps.contracts.normalization import normalize_contract
 
         # ODPS contract with schema URL only
-        odps_contract = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
+        odps_contract = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}}
+                },
             }
-        })
+        )
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=odps_contract,
-            format="JSON"
+        hub_contract, spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=odps_contract, format="JSON"
         )
 
         assert spec_type == OriginalSpecType.ODPS
@@ -355,24 +329,16 @@ class TestODPSNormalizerRegistration(TestCase):
 
     def test_normalize_contract_odps_detection_via_product_field(self):
         """Integration test: ODPS detection via product field."""
-        from hub.apps.contracts.normalization import normalize_contract
         from hub.apps.contracts.models import OriginalSpecType
+        from hub.apps.contracts.normalization import normalize_contract
 
         # ODPS contract with product field (no schema URL)
-        odps_contract = json.dumps({
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
-        })
+        odps_contract = json.dumps(
+            {"product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}}}
+        )
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=odps_contract,
-            format="JSON"
+        hub_contract, spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=odps_contract, format="JSON"
         )
 
         # Should detect as ODPS (via product field)
@@ -385,30 +351,26 @@ class TestODPSNormalizerRegistration(TestCase):
 
     def test_normalize_contract_odps_vs_odcs_detection(self):
         """Integration test: ODPS detection takes precedence over ODCS."""
-        from hub.apps.contracts.normalization import normalize_contract
         from hub.apps.contracts.models import OriginalSpecType
+        from hub.apps.contracts.normalization import normalize_contract
 
         # Contract that could be either ODPS or ODCS
         # Has both ODPS indicators (schema URL) and ODCS indicators (apiVersion, kind)
         # ODPS should be detected first
-        contract = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "apiVersion": "odcs/v3",
-            "kind": "DataContract",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
+        contract = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "apiVersion": "odcs/v3",
+                "kind": "DataContract",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}}
+                },
             }
-        })
+        )
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=contract,
-            format="JSON"
+        hub_contract, spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=contract, format="JSON"
         )
 
         # Should detect as ODPS (ODPS detection takes precedence)
@@ -421,27 +383,27 @@ class TestODPSNormalizerRegistration(TestCase):
 
     def test_normalize_contract_odps_with_explicit_spec_type(self):
         """Integration test: normalize_contract with explicit ODPS spec_type."""
+        from hub.apps.contracts.models import OriginalSpecType
         from hub.apps.contracts.normalization import normalize_contract
-        from hub.apps.contracts.models import OriginalSpecType, NormalizationStatus
 
-        odps_contract = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product",
-                        "description": "Test description"
+        odps_contract = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-product",
+                            "name": "Test Product",
+                            "description": "Test description",
+                        }
                     }
-                }
+                },
             }
-        })
+        )
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=odps_contract,
-            format="JSON",
-            spec_type=OriginalSpecType.ODPS
+        hub_contract, spec_type, _spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=odps_contract, format="JSON", spec_type=OriginalSpecType.ODPS
         )
 
         assert spec_type == OriginalSpecType.ODPS
@@ -454,7 +416,9 @@ class TestODPSNormalizerRegistration(TestCase):
     def test_odps_normalizer_registration_in_package_init(self):
         """Test that ODPS normalizer can be imported from normalization package."""
         from hub.apps.contracts.normalization import ODPSNormalizer
-        from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer as ODPSNormalizerDirect
+        from hub.apps.contracts.normalization.odps_normalizer import (
+            ODPSNormalizer as ODPSNormalizerDirect,
+        )
 
         # Should be able to import from package
         assert ODPSNormalizer is not None
@@ -463,9 +427,8 @@ class TestODPSNormalizerRegistration(TestCase):
     def test_odps_normalizer_registry_contains_odps(self):
         """Test that ODPS normalizer is in the registry after module import."""
         # Force import of normalization module to trigger registration
-        import hub.apps.contracts.normalization
-        from hub.apps.contracts.normalization import _NORMALIZER_REGISTRY
         from hub.apps.contracts.models import OriginalSpecType
+        from hub.apps.contracts.normalization import _NORMALIZER_REGISTRY
 
         # Check that ODPS is registered
         assert OriginalSpecType.ODPS in _NORMALIZER_REGISTRY
@@ -474,8 +437,8 @@ class TestODPSNormalizerRegistration(TestCase):
 
     def test_odps_normalizer_handles_all_versions(self):
         """Test that registered ODPS normalizer handles all supported versions."""
-        from hub.apps.contracts.normalization import get_normalizer
         from hub.apps.contracts.models import OriginalSpecType
+        from hub.apps.contracts.normalization import get_normalizer
 
         versions = ["4.1", "4.0", "3.9", "2.9", "1.9"]
 
@@ -487,10 +450,10 @@ class TestODPSNormalizerRegistration(TestCase):
                     "details": {
                         "en": {
                             "productID": f"test-product-{version}",
-                            "name": f"Test Product {version}"
+                            "name": f"Test Product {version}",
                         }
                     }
-                }
+                },
             }
 
             normalizer = get_normalizer(OriginalSpecType.ODPS, version, contract_data)
@@ -498,22 +461,22 @@ class TestODPSNormalizerRegistration(TestCase):
 
     def test_odps_normalizer_not_returned_for_odcs_contracts(self):
         """Test that ODPS normalizer is not returned for ODCS contracts — verifies type-based routing."""
-        from hub.apps.contracts.normalization import get_normalizer
         from hub.apps.contracts.models import OriginalSpecType
+        from hub.apps.contracts.normalization import get_normalizer
 
         odcs_contract_data = {
             "apiVersion": "odcs/v3",
             "kind": "DataContract",
             "id": "test-odcs",
             "name": "ODCS Contract",
-            "schema": {
-                "fields": [{"name": "id", "type": "string"}]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         # Query for an ODCS normalizer with ODCS data — must return an ODCS normalizer
         odcs_normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.2", odcs_contract_data)
-        self.assertIsNotNone(odcs_normalizer, "ODCS normalizer should be found for ODCS contract data")
+        self.assertIsNotNone(
+            odcs_normalizer, "ODCS normalizer should be found for ODCS contract data"
+        )
         self.assertEqual(
             odcs_normalizer.spec_type,
             OriginalSpecType.ODCS,
@@ -534,7 +497,9 @@ class TestODPSNormalizerRegistration(TestCase):
             },
         }
         odps_normalizer = get_normalizer(OriginalSpecType.ODPS, "4.1", odps_contract_data)
-        self.assertIsNotNone(odps_normalizer, "ODPS normalizer should be found for ODPS contract data")
+        self.assertIsNotNone(
+            odps_normalizer, "ODPS normalizer should be found for ODPS contract data"
+        )
         self.assertEqual(
             odps_normalizer.spec_type,
             OriginalSpecType.ODPS,
@@ -549,48 +514,36 @@ class TestODPSNormalizerRegistration(TestCase):
 
     def test_odps_normalizer_integration_full_flow(self):
         """Integration test: Full ODPS normalization flow using registry."""
+        from hub.apps.contracts.models import OriginalSpecType
         from hub.apps.contracts.normalization import normalize_contract
-        from hub.apps.contracts.models import OriginalSpecType, NormalizationStatus
 
         # Complete ODPS 4.1 contract with all sections
-        odps_contract = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "integration-test-product",
-                        "name": "Integration Test Product",
-                        "description": "Full integration test",
-                        "productVersion": "1.0.0",
-                        "tags": ["test", "integration"],
-                        "categories": ["data-product"]
-                    }
-                },
-                "dataQuality": {
-                    "declarative": {
-                        "default": "high-quality"
-                    }
-                },
-                "marketplace": {
-                    "pricingPlans": [
-                        {
-                            "planID": "basic",
-                            "name": "Basic Plan",
-                            "price": 9.99
+        odps_contract = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "integration-test-product",
+                            "name": "Integration Test Product",
+                            "description": "Full integration test",
+                            "productVersion": "1.0.0",
+                            "tags": ["test", "integration"],
+                            "categories": ["data-product"],
                         }
-                    ]
-                }
-            },
-            "dataHolder": {
-                "legalName": "Test Company",
-                "email": "test@example.com"
+                    },
+                    "dataQuality": {"declarative": {"default": "high-quality"}},
+                    "marketplace": {
+                        "pricingPlans": [{"planID": "basic", "name": "Basic Plan", "price": 9.99}]
+                    },
+                },
+                "dataHolder": {"legalName": "Test Company", "email": "test@example.com"},
             }
-        })
+        )
 
-        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=odps_contract,
-            format="JSON"
+        hub_contract, spec_type, spec_version, _status, _errors, _warnings = normalize_contract(
+            raw_contract=odps_contract, format="JSON"
         )
 
         # Verify detection

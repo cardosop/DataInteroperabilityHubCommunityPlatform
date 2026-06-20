@@ -18,28 +18,28 @@ This test suite implements comprehensive, engineering-grade validation for all M
 All tests use real implementations (no mocks/stubs) per requirements.
 """
 import os
-import pytest
 import uuid
-import asyncio
 from typing import Optional
+
+import pytest
 
 from datahub_interoperability.client import DataHubClient
 from datahub_interoperability.config import DataHubClientConfig
-from datahub_interoperability.model_serving import ModelServingAPI
 from datahub_interoperability.errors import (
-    ValidationError,
+    NetworkError,
     NotFoundError,
     ServerError,
-    ConflictError,
     UnauthorizedError,
-    NetworkError,
+    ValidationError,
 )
+from datahub_interoperability.model_serving import ModelServingAPI
 
 
 def check_api_available(api_base_url: str) -> bool:
     """Check if API service is available."""
     try:
         import requests
+
         response = requests.get(f"{api_base_url}/", timeout=5)
         return response.status_code < 600
     except Exception:
@@ -58,7 +58,10 @@ def is_odh_service_error(error: Exception) -> bool:
     """
     if isinstance(error, ServerError):
         error_str = str(error).lower()
-        return any(keyword in error_str for keyword in ["odh", "inference-scheduler", "circuit breaker", "service unavailable"])
+        return any(
+            keyword in error_str
+            for keyword in ["odh", "inference-scheduler", "circuit breaker", "service unavailable"]
+        )
     return False
 
 
@@ -80,6 +83,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     # Method 2: Use canonical conftest helper
     try:
         from tests.conftest import get_api_key
+
         canonical = get_api_key()
         if canonical:
             return canonical
@@ -87,7 +91,7 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
         pass
 
     # Method 3: Fall back to env-var keys
-    api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
+    api_key = os.environ.get("TEST_API_KEY") or os.environ.get("DATAHUB_API_KEY")
     if api_key:
         return api_key
 
@@ -151,45 +155,54 @@ from hub.apps.billing.models import Subscription, SubscriptionStatus
 from hub.apps.tenants.models import TenantPlan
 plan = TenantPlan.objects.first()
 if plan:
-    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
-    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={"plan": plan, 'status': SubscriptionStatus.ACTIVE})
+    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={"plan": plan, 'status': SubscriptionStatus.ACTIVE})
 
 print('API_KEY_START')
 print(api_key_value)
 print('API_KEY_END')
 """
         import subprocess
+
         try:
             subprocess.run(
-                ['docker', 'compose', 'version'],
-                capture_output=True,
-                timeout=5,
-                check=True
+                ["docker", "compose", "version"], capture_output=True, timeout=5, check=True
             )
         except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
             return None
 
         result = subprocess.run(
-                        ['docker', 'compose', '-f', 'docker-compose.test.yml', 'exec', '-T', 'api-service-test', 'python', 'hub/manage.py', 'shell'],
+            [
+                "docker",
+                "compose",
+                "-f",
+                "docker-compose.test.yml",
+                "exec",
+                "-T",
+                "api-service-test",
+                "python",
+                "hub/manage.py",
+                "shell",
+            ],
             input=django_shell_script,
             text=True,
             capture_output=True,
             timeout=30,
-            cwd='/home/ph/Desktop/DataInteroperabilityHub'
+            cwd="/home/ph/Desktop/DataInteroperabilityHub",
         )
 
         combined_output = result.stdout + result.stderr if result.stderr else result.stdout
 
         if result.returncode == 0:
-            output_lines = combined_output.strip().split('\n')
+            output_lines = combined_output.strip().split("\n")
             api_key = None
             in_api_key = False
             for line in output_lines:
                 line = line.strip()
-                if line == 'API_KEY_START':
+                if line == "API_KEY_START":
                     in_api_key = True
                     continue
-                elif line == 'API_KEY_END':
+                elif line == "API_KEY_END":
                     in_api_key = False
                     continue
                 elif in_api_key and line:
@@ -228,7 +241,7 @@ def model_serving_api(client):
 @pytest.fixture
 def real_api_config():
     """Create real API config for integration tests."""
-    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8001/api/v1')
+    api_base_url = os.environ.get("API_BASE_URL", "http://localhost:8001/api/v1")
 
     if not check_api_available(api_base_url):
         pytest.skip(f"API service not available at {api_base_url}")
@@ -261,6 +274,7 @@ def real_model_serving_api(real_client):
 
 
 # Unit Tests - Validation Logic
+
 
 @pytest.mark.asyncio
 async def test_model_serving_api_initialization(model_serving_api, client):
@@ -363,6 +377,7 @@ async def test_validate_input_data_empty(model_serving_api):
 
 # Integration Tests - Deployment Methods
 
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_deploy_model_as_api_success(real_model_serving_api):
@@ -408,6 +423,7 @@ async def test_deploy_model_as_api_empty_model_id(real_model_serving_api):
 
 # Integration Tests - Prediction Methods
 
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_predict_via_api_success(real_model_serving_api):
@@ -447,6 +463,7 @@ async def test_predict_via_api_non_dict_input(real_model_serving_api):
 
 
 # Integration Tests - List Methods
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -523,6 +540,7 @@ async def test_list_deployed_models_invalid_offset(real_model_serving_api):
 
 # Integration Tests - Get Methods
 
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_get_model_serving_details_success(real_model_serving_api):
@@ -542,6 +560,7 @@ async def test_get_model_serving_details_empty_id(real_model_serving_api):
 
 
 # Integration Tests - Undeploy Methods
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -563,6 +582,7 @@ async def test_undeploy_model_empty_id(real_model_serving_api):
 
 # Integration Tests - Quality Metrics Methods
 
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_get_model_quality_metrics_success(real_model_serving_api):
@@ -582,6 +602,7 @@ async def test_get_model_quality_metrics_empty_id(real_model_serving_api):
 
 
 # Integration Tests - A/B Testing Methods
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -673,6 +694,7 @@ async def test_get_ab_test_details_empty_id(real_model_serving_api):
 
 # SDK Error Handling Tests
 
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_sdk_error_handling_not_found(real_model_serving_api):
@@ -708,6 +730,7 @@ async def test_sdk_error_handling_server_error(real_model_serving_api):
 
 
 # SDK Authentication Tests
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -761,6 +784,7 @@ async def test_sdk_authentication_with_invalid_key():
 
 # SDK Retry Logic Tests
 
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_sdk_retry_logic_configurable(real_api_config):
@@ -798,6 +822,7 @@ async def test_sdk_retry_logic_configurable(real_api_config):
 
 
 # Contract Validation Integration Tests
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration

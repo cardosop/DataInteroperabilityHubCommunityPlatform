@@ -25,19 +25,18 @@ We DO patch the OTel metric wrapper objects with ``unittest.mock`` —
 that's not an "internal mock"; it's an OTel boundary spy used by
 the observability stack itself for in-process verification.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import uuid
 from io import StringIO
-from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
 from django.core.management import call_command
 from django.test import TestCase
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -122,8 +121,7 @@ class TestFloorViolationMetricsEmitted(TestCase):
             # eager `from otel_metrics import contract_validation_failed_total`,
             # so the use-site binding is independent of the source
             # module's binding (Python's "from X import Y" semantics).
-            "hub.apps.contracts.normalization_metrics."
-            "contract_validation_failed_total"
+            "hub.apps.contracts.normalization_metrics.contract_validation_failed_total"
         ) as mock_counter:
             with pytest.raises(ValidationError):
                 enforce_structural_floor(
@@ -149,8 +147,7 @@ class TestFloorViolationMetricsEmitted(TestCase):
         from hub.apps.core.services.base import ValidationError
 
         with patch(
-            "hub.apps.contracts.normalization_metrics."
-            "contract_structureless_total"
+            "hub.apps.contracts.normalization_metrics.contract_structureless_total"
         ) as mock_counter:
             with pytest.raises(ValidationError):
                 enforce_structural_floor(
@@ -178,8 +175,7 @@ class TestFloorViolationMetricsEmitted(TestCase):
             # eager `from otel_metrics import contract_validation_failed_total`,
             # so the use-site binding is independent of the source
             # module's binding (Python's "from X import Y" semantics).
-            "hub.apps.contracts.normalization_metrics."
-            "contract_validation_failed_total"
+            "hub.apps.contracts.normalization_metrics.contract_validation_failed_total"
         ) as mock_counter:
             with pytest.raises(ValidationError):
                 enforce_structural_floor(
@@ -204,8 +200,7 @@ class TestSuccessPathHistogramsEmitted(TestCase):
         )
 
         with patch(
-            "hub.apps.contracts.normalization_metrics."
-            "contract_normalization_models_count"
+            "hub.apps.contracts.normalization_metrics.contract_normalization_models_count"
         ) as mock_hist:
             hub_contract = {
                 "models": [
@@ -214,9 +209,7 @@ class TestSuccessPathHistogramsEmitted(TestCase):
                     {"name": "c", "fields": [{"name": "y"}]},
                 ]
             }
-            record_normalization_models_count(
-                hub_contract, spec_type="ODCS"
-            )
+            record_normalization_models_count(hub_contract, spec_type="ODCS")
             assert mock_hist.labels.called
             mock_hist.labels.return_value.observe.assert_called_with(3)
 
@@ -226,8 +219,7 @@ class TestSuccessPathHistogramsEmitted(TestCase):
         )
 
         with patch(
-            "hub.apps.contracts.normalization_metrics."
-            "contract_normalization_fields_total_count"
+            "hub.apps.contracts.normalization_metrics.contract_normalization_fields_total_count"
         ) as mock_hist:
             hub_contract = {
                 "models": [
@@ -237,9 +229,7 @@ class TestSuccessPathHistogramsEmitted(TestCase):
                     "fields": [{"name": "z"}],
                 },
             }
-            record_normalization_fields_total_count(
-                hub_contract, spec_type="ODCS"
-            )
+            record_normalization_fields_total_count(hub_contract, spec_type="ODCS")
             # 2 (model fields) + 1 (schema fields) = 3
             mock_hist.labels.return_value.observe.assert_called_with(3)
 
@@ -305,14 +295,25 @@ class TestL3RaiseEmitsAuditEvent(TestCase):
             f"REJECTED audit event; before={before} after={after}"
         )
 
-        event = AuditEvent.objects.filter(
-            action="CONTRACT_STRUCTURELESS_REJECTED",
-        ).order_by("-timestamp").first()
+        event = (
+            AuditEvent.objects.filter(
+                action="CONTRACT_STRUCTURELESS_REJECTED",
+            )
+            .order_by("-timestamp")
+            .first()
+        )
         assert event is not None
         details = event.details_json
         # Canonical detail keys.
-        for key in ("code", "subcode", "spec_type", "spec_version",
-                    "models_count", "schema_fields_count", "source"):
+        for key in (
+            "code",
+            "subcode",
+            "spec_type",
+            "spec_version",
+            "models_count",
+            "schema_fields_count",
+            "source",
+        ):
             assert key in details, f"missing detail key {key!r}"
         assert details["code"] == "STRUCTURELESS_CONTRACT"
         assert details["source"] == "creation"
@@ -357,9 +358,7 @@ class TestL3StructuredWarnLog(TestCase):
         # codebase (configured in hub/apps/observability/logging.py),
         # so attaching a stdlib handler at the right logger captures
         # the emitted record.
-        target_logger = logging.getLogger(
-            "hub.apps.contracts.structural_floor"
-        )
+        target_logger = logging.getLogger("hub.apps.contracts.structural_floor")
         handler = _CapturingHandler()
         handler.setLevel(logging.WARNING)
         target_logger.addHandler(handler)
@@ -386,10 +385,7 @@ class TestL3StructuredWarnLog(TestCase):
         # the event-name as part of the message). Allow ANY record
         # that mentions the event name for tolerance to the structlog
         # processor chain.
-        matching = [
-            r for r in handler.records
-            if "structural_floor_violation" in r.getMessage()
-        ]
+        matching = [r for r in handler.records if "structural_floor_violation" in r.getMessage()]
         assert matching, (
             f"No WARN log carrying 'structural_floor_violation' found; "
             f"got {[r.getMessage() for r in handler.records]!r}"
@@ -399,9 +395,7 @@ class TestL3StructuredWarnLog(TestCase):
         assert cid in msg, f"contract_id missing from log: {msg!r}"
         assert "ODPS" in msg, f"spec_type missing from log: {msg!r}"
         assert tid in msg, f"tenant_id missing from log: {msg!r}"
-        assert "STRUCTURELESS_ODPS_NO_PORTS" in msg, (
-            f"subcode missing from log: {msg!r}"
-        )
+        assert "STRUCTURELESS_ODPS_NO_PORTS" in msg, f"subcode missing from log: {msg!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -434,13 +428,8 @@ class TestOutputCountFlag(TestCase):
         output = self._run(tenant)
 
         # Single line containing only the count integer.
-        lines = [
-            line for line in output.splitlines()
-            if line.strip() and not line.startswith("#")
-        ]
-        assert lines == ["0"], (
-            f"Expected single line '0'; got {lines!r}"
-        )
+        lines = [line for line in output.splitlines() if line.strip() and not line.startswith("#")]
+        assert lines == ["0"], f"Expected single line '0'; got {lines!r}"
 
     def test_count_matches_structureless_population(self):
         tenant = _create_tenant()
@@ -449,13 +438,9 @@ class TestOutputCountFlag(TestCase):
 
         output = self._run(tenant)
 
-        lines = [
-            line for line in output.splitlines()
-            if line.strip() and not line.startswith("#")
-        ]
+        lines = [line for line in output.splitlines() if line.strip() and not line.startswith("#")]
         assert lines == ["3"], (
-            f"Expected single line '3' (3 structureless contracts); "
-            f"got {lines!r}"
+            f"Expected single line '3' (3 structureless contracts); got {lines!r}"
         )
 
     def test_count_output_is_clean_for_pushgateway(self):
@@ -468,23 +453,16 @@ class TestOutputCountFlag(TestCase):
         output = self._run(tenant)
 
         # Filter out '#'-prefixed lines (they're optional comments).
-        body_lines = [
-            ln for ln in output.splitlines()
-            if ln.strip() and not ln.startswith("#")
-        ]
+        body_lines = [ln for ln in output.splitlines() if ln.strip() and not ln.startswith("#")]
         # The body must be EXACTLY one line.
         assert len(body_lines) == 1, (
-            f"Cron output must be one integer line; got "
-            f"{len(body_lines)} lines: {body_lines!r}"
+            f"Cron output must be one integer line; got {len(body_lines)} lines: {body_lines!r}"
         )
         # That line must parse cleanly as an int.
         try:
             count = int(body_lines[0].strip())
         except ValueError:
-            self.fail(
-                f"Cron output line {body_lines[0]!r} is not a "
-                f"parseable integer"
-            )
+            self.fail(f"Cron output line {body_lines[0]!r} is not a parseable integer")
         assert count >= 0
 
 
@@ -501,16 +479,15 @@ class TestBacklogGaugeDeltas(TestCase):
 
     def test_first_call_advances_gauge_by_count(self):
         from hub.apps.contracts.normalization_metrics import (
-            set_structureless_backlog,
             _last_backlog_value,
+            set_structureless_backlog,
         )
 
         # Reset process-local cache for a deterministic test.
         _last_backlog_value.clear()
 
         with patch(
-            "hub.apps.contracts.normalization_metrics."
-            "contract_structureless_backlog"
+            "hub.apps.contracts.normalization_metrics.contract_structureless_backlog"
         ) as mock_gauge:
             set_structureless_backlog(count=12, tenant_id="t1")
 
@@ -519,15 +496,14 @@ class TestBacklogGaugeDeltas(TestCase):
 
     def test_second_call_with_same_count_is_noop(self):
         from hub.apps.contracts.normalization_metrics import (
-            set_structureless_backlog,
             _last_backlog_value,
+            set_structureless_backlog,
         )
 
         _last_backlog_value.clear()
 
         with patch(
-            "hub.apps.contracts.normalization_metrics."
-            "contract_structureless_backlog"
+            "hub.apps.contracts.normalization_metrics.contract_structureless_backlog"
         ) as mock_gauge:
             set_structureless_backlog(count=5, tenant_id="t2")
             set_structureless_backlog(count=5, tenant_id="t2")
@@ -541,15 +517,14 @@ class TestBacklogGaugeDeltas(TestCase):
         """Backlog draining (e.g., after Wave 3) must emit a negative
         inc so the gauge value decreases."""
         from hub.apps.contracts.normalization_metrics import (
-            set_structureless_backlog,
             _last_backlog_value,
+            set_structureless_backlog,
         )
 
         _last_backlog_value.clear()
 
         with patch(
-            "hub.apps.contracts.normalization_metrics."
-            "contract_structureless_backlog"
+            "hub.apps.contracts.normalization_metrics.contract_structureless_backlog"
         ) as mock_gauge:
             set_structureless_backlog(count=10, tenant_id="t3")
             set_structureless_backlog(count=3, tenant_id="t3")
@@ -572,15 +547,15 @@ class TestSchemaEditorMetricsEndpoint(TestCase):
     OTel counters server-side based on frontend telemetry events."""
 
     def _client(self):
+        from django.contrib.auth import get_user_model
         from rest_framework.test import APIClient
 
+        from hub.apps.tenants.models import KYCStatus, Tenant
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
-        from hub.apps.tenants.models import KYCStatus, Tenant
         from hub.apps.users.models import UserStatus
 
-        from django.contrib.auth import get_user_model
         suffix = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
             name=f"L7.2 Co {suffix}",
@@ -603,8 +578,7 @@ class TestSchemaEditorMetricsEndpoint(TestCase):
         client, tenant = self._client()
 
         with patch(
-            "hub.apps.observability.otel_metrics."
-            "schema_editor_opened_total"
+            "hub.apps.observability.otel_metrics.schema_editor_opened_total"
         ) as mock_counter:
             response = client.post(
                 "/api/v1/contracts/schema-editor/metrics",
@@ -613,21 +587,18 @@ class TestSchemaEditorMetricsEndpoint(TestCase):
             )
 
         assert response.status_code == 204
-        mock_counter.labels.assert_called_with(
-            tenant_id=str(tenant.id), spec_type="ODCS"
-        )
+        mock_counter.labels.assert_called_with(tenant_id=str(tenant.id), spec_type="ODCS")
         mock_counter.labels.return_value.inc.assert_called_once()
 
     def test_save_success_increments_counter_and_observes_ttfs(self):
         client, tenant = self._client()
 
-        with patch(
-            "hub.apps.observability.otel_metrics."
-            "schema_editor_save_total"
-        ) as mock_save, patch(
-            "hub.apps.observability.otel_metrics."
-            "schema_editor_time_to_first_save_seconds"
-        ) as mock_hist:
+        with (
+            patch("hub.apps.observability.otel_metrics.schema_editor_save_total") as mock_save,
+            patch(
+                "hub.apps.observability.otel_metrics.schema_editor_time_to_first_save_seconds"
+            ) as mock_hist,
+        ):
             response = client.post(
                 "/api/v1/contracts/schema-editor/metrics",
                 data={
@@ -645,21 +616,18 @@ class TestSchemaEditorMetricsEndpoint(TestCase):
             spec_type="ODCS",
             outcome="success",
         )
-        mock_hist.labels.assert_called_with(
-            tenant_id=str(tenant.id), spec_type="ODCS"
-        )
+        mock_hist.labels.assert_called_with(tenant_id=str(tenant.id), spec_type="ODCS")
         mock_hist.labels.return_value.observe.assert_called_with(42.5)
 
     def test_save_conflict_increments_counter_no_histogram(self):
         client, _tenant = self._client()
 
-        with patch(
-            "hub.apps.observability.otel_metrics."
-            "schema_editor_save_total"
-        ) as mock_save, patch(
-            "hub.apps.observability.otel_metrics."
-            "schema_editor_time_to_first_save_seconds"
-        ) as mock_hist:
+        with (
+            patch("hub.apps.observability.otel_metrics.schema_editor_save_total") as mock_save,
+            patch(
+                "hub.apps.observability.otel_metrics.schema_editor_time_to_first_save_seconds"
+            ) as mock_hist,
+        ):
             response = client.post(
                 "/api/v1/contracts/schema-editor/metrics",
                 data={
@@ -718,10 +686,7 @@ class TestSchemaEditorMetricsEndpoint(TestCase):
         keeps cardinality bounded."""
         client, _tenant = self._client()
 
-        with patch(
-            "hub.apps.observability.otel_metrics."
-            "schema_editor_save_total"
-        ) as mock_save:
+        with patch("hub.apps.observability.otel_metrics.schema_editor_save_total") as mock_save:
             response = client.post(
                 "/api/v1/contracts/schema-editor/metrics",
                 data={
@@ -749,7 +714,8 @@ class TestSchemaEditorMetricsEndpoint(TestCase):
 
         client, tenant = self._client()
         before = AuditEvent.objects.filter(
-            action="SCHEMA_EDITOR_OPENED", tenant=tenant,
+            action="SCHEMA_EDITOR_OPENED",
+            tenant=tenant,
         ).count()
 
         response = client.post(
@@ -760,7 +726,8 @@ class TestSchemaEditorMetricsEndpoint(TestCase):
 
         assert response.status_code == 204
         rows = AuditEvent.objects.filter(
-            action="SCHEMA_EDITOR_OPENED", tenant=tenant,
+            action="SCHEMA_EDITOR_OPENED",
+            tenant=tenant,
         )
         assert rows.count() == before + 1
         row = rows.order_by("-timestamp").first()
@@ -781,7 +748,8 @@ class TestSchemaEditorMetricsEndpoint(TestCase):
 
         client, tenant = self._client()
         before = AuditEvent.objects.filter(
-            action="SCHEMA_EDITOR_OPENED", tenant=tenant,
+            action="SCHEMA_EDITOR_OPENED",
+            tenant=tenant,
         ).count()
 
         response = client.post(
@@ -797,7 +765,8 @@ class TestSchemaEditorMetricsEndpoint(TestCase):
 
         assert response.status_code == 204
         after = AuditEvent.objects.filter(
-            action="SCHEMA_EDITOR_OPENED", tenant=tenant,
+            action="SCHEMA_EDITOR_OPENED",
+            tenant=tenant,
         ).count()
         assert after == before
 
@@ -809,8 +778,7 @@ class TestSchemaEditorMetricsEndpoint(TestCase):
         raises."""
         client, _tenant = self._client()
         with patch(
-            "hub.apps.contracts.views_schema_editor_metrics."
-            "_record_editor_opened_audit",
+            "hub.apps.contracts.views_schema_editor_metrics._record_editor_opened_audit",
             side_effect=RuntimeError("simulated audit-store outage"),
         ):
             response = client.post(
@@ -835,10 +803,7 @@ class TestStructurelessRolloutDashboardJSON(TestCase):
     failure (the failure mode is silent — the dashboard just doesn't
     show up)."""
 
-    DASHBOARD_PATH = (
-        "monitoring/grafana/dashboards/"
-        "structureless-contract-rollout.json"
-    )
+    DASHBOARD_PATH = "monitoring/grafana/dashboards/structureless-contract-rollout.json"
 
     EXPECTED_METRICS = {
         "contract_validation_failed_total",
@@ -853,6 +818,7 @@ class TestStructurelessRolloutDashboardJSON(TestCase):
 
     def test_dashboard_is_valid_json(self):
         from pathlib import Path
+
         path = Path(self.DASHBOARD_PATH)
         assert path.exists(), f"Dashboard file missing: {path}"
         # Just round-trips the JSON — pin parseability.
@@ -893,10 +859,7 @@ class TestStructurelessRolloutDashboardJSON(TestCase):
         import importlib
 
         otel = importlib.import_module("hub.apps.observability.otel_metrics")
-        base_names = {
-            name.removesuffix("_bucket")
-            for name in self.EXPECTED_METRICS
-        }
+        base_names = {name.removesuffix("_bucket") for name in self.EXPECTED_METRICS}
         for base in base_names:
             assert hasattr(otel, base), (
                 f"Dashboard expects metric ``{base}`` but it's not "
@@ -931,9 +894,7 @@ class TestAuditEventsCounter(TestCase):
             slug=f"l7-audit-{uuid.uuid4().hex[:6]}",
         )
 
-        with patch(
-            "hub.apps.observability.otel_metrics.audit_events_total"
-        ) as mock_counter:
+        with patch("hub.apps.observability.otel_metrics.audit_events_total") as mock_counter:
             create_audit_event(
                 resource_type="ASSET",
                 action="ASSET_AUTO_REVERTED_STRUCTURELESS",
@@ -1024,8 +985,7 @@ class TestApplyBatchDurationEmission(TestCase):
         )
 
         with patch(
-            "hub.apps.contracts.normalization_metrics."
-            "contracts_renormalize_batch_duration_seconds"
+            "hub.apps.contracts.normalization_metrics.contracts_renormalize_batch_duration_seconds"
         ) as mock_hist:
             out = StringIO()
             call_command(
@@ -1039,8 +999,7 @@ class TestApplyBatchDurationEmission(TestCase):
 
         # Histogram observed exactly once per batch (one batch here).
         assert mock_hist.labels.called, (
-            "Batch duration histogram MUST be observed at least once "
-            "per --apply run; got no calls."
+            "Batch duration histogram MUST be observed at least once per --apply run; got no calls."
         )
         # The observed duration is a non-negative float.
         observe_calls = mock_hist.labels.return_value.observe.call_args_list
@@ -1082,8 +1041,7 @@ class TestValidationErrorMetricEmission(TestCase):
         service = ContractService(tenant_id=str(uuid.uuid4()))
 
         with patch(
-            "hub.apps.contracts.normalization_metrics."
-            "contract_validation_failed_total"
+            "hub.apps.contracts.normalization_metrics.contract_validation_failed_total"
         ) as mock_counter:
             service._emit_validation_failed_observability(
                 validation_errors=["info -> name: field required"],

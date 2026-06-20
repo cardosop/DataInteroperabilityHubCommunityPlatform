@@ -12,7 +12,6 @@ All tests use real DB state and real auth flows (no mocks).
 import hashlib
 import uuid
 from datetime import timedelta
-from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -135,12 +134,8 @@ class AcceptInvitationRefreshTokenTest(TestCase):
         # Set user as INVITED with a valid invitation token
         plaintext = str(uuid.uuid4())
         self.user.status = UserStatus.INVITED
-        self.user.invitation_token = hashlib.sha256(
-            plaintext.encode()
-        ).hexdigest()
-        self.user.invitation_token_expires_at = timezone.now() + timedelta(
-            hours=24
-        )
+        self.user.invitation_token = hashlib.sha256(plaintext.encode()).hexdigest()
+        self.user.invitation_token_expires_at = timezone.now() + timedelta(hours=24)
         self.user.invitation_token_used_at = None
         self.user.save()
         self.plaintext_token = plaintext
@@ -157,9 +152,7 @@ class AcceptInvitationRefreshTokenTest(TestCase):
         )
         assert resp.status_code == status.HTTP_200_OK, resp.content
         body = resp.json()
-        assert "access_token" in body, (
-            "body-mode response must include access_token"
-        )
+        assert "access_token" in body, "body-mode response must include access_token"
         assert "refresh_token" in body, (
             "body-mode response must include refresh_token so the SPA can "
             "store and rotate it — otherwise the session dies at access_token "
@@ -256,20 +249,20 @@ class ProductionSSLGuardTest(TestCase):
         import re
         from pathlib import Path
 
-        settings_path = (
-            Path(__file__).resolve().parents[3] / "settings.py"
-        )
+        settings_path = Path(__file__).resolve().parents[3] / "settings.py"
         source = settings_path.read_text()
 
         # Find ALL production blocks — ``re.search`` picks the first one
         # (BaaS SSL at ~line 730), NOT the security-cookie guard block
         # at ~line 2540.  We iterate every block and select the one that
         # contains the security guards.
-        prod_blocks = list(re.finditer(
-            r'if ENVIRONMENT\s*==\s*["\']production["\']\s*:\s*\n'
-            r'((?:\s+.+\n)+)',
-            source,
-        ))
+        prod_blocks = list(
+            re.finditer(
+                r'if ENVIRONMENT\s*==\s*["\']production["\']\s*:\s*\n'
+                r"((?:\s+.+\n)+)",
+                source,
+            )
+        )
         assert prod_blocks, "Production settings block not found"
 
         security_block = None

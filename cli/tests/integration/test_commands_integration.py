@@ -4,14 +4,10 @@ Comprehensive integration tests for CLI commands.
 Tests command groups end-to-end with real API structure (when available).
 """
 
-import json
 import os
-import tempfile
-from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-from datahub_cli.auth import AuthManager
 from datahub_cli.config import Config
 from datahub_cli.main import cli
 
@@ -40,7 +36,7 @@ class TestContractsIntegration:
         config.set_api_base_url(api_base_url)
 
         # Create a test contract file
-        file_path, content = temp_file(".yaml", "name: Test Contract\nversion: 1.0")
+        file_path, _content = temp_file(".yaml", "name: Test Contract\nversion: 1.0")
 
         # Try to create contract
         result = runner.invoke(cli, ["contracts", "create", "--file", file_path])
@@ -92,7 +88,7 @@ class TestContractsIntegration:
   }
 }"""
 
-        file_path, content = temp_file(".json", odps_content)
+        file_path, _content = temp_file(".json", odps_content)
 
         # Test create-odps with --extract-odcs
         result = runner.invoke(
@@ -134,7 +130,7 @@ class TestContractsIntegration:
   }
 }"""
 
-        file_path, content = temp_file(".json", odps_content)
+        file_path, _content = temp_file(".json", odps_content)
 
         # Test create-odps with --link-odcs (using a dummy ID - will fail but tests command structure)
         result = runner.invoke(
@@ -233,7 +229,7 @@ class TestContractsIntegration:
   }
 }"""
 
-        file_path, content = temp_file(".json", odps_content)
+        file_path, _content = temp_file(".json", odps_content)
 
         # Test create with auto-detection (may fail if API not available)
         result = runner.invoke(cli, ["contracts", "create", "--file", file_path])
@@ -292,7 +288,8 @@ class TestContractsIntegration:
 
         # Test unlink-odps (may fail if API not available or contract doesn't exist)
         result = runner.invoke(
-            cli, ["contracts", "unlink-odps", "00000000-0000-0000-0000-000000000000"]  # ODCS ID
+            cli,
+            ["contracts", "unlink-odps", "00000000-0000-0000-0000-000000000000"],  # ODCS ID
         )
 
         # Should either succeed or fail gracefully
@@ -307,7 +304,8 @@ class TestContractsIntegration:
 
         # Test list-links (may fail if API not available or contract doesn't exist)
         result = runner.invoke(
-            cli, ["contracts", "list-links", "00000000-0000-0000-0000-000000000000"]  # Contract ID
+            cli,
+            ["contracts", "list-links", "00000000-0000-0000-0000-000000000000"],  # Contract ID
         )
 
         # Should either succeed or fail gracefully
@@ -431,7 +429,7 @@ class TestFilesIntegration:
         config.set_api_base_url(api_base_url)
 
         # Create a test file
-        file_path, content = temp_file(".csv", "col1,col2\nval1,val2")
+        file_path, _content = temp_file(".csv", "col1,col2\nval1,val2")
 
         # Try to upload
         result = runner.invoke(cli, ["files", "upload", file_path])

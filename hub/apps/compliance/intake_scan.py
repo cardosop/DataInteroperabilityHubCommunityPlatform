@@ -7,8 +7,9 @@ Idempotency: ``django.core.cache.cache.add`` — on django-redis this maps to
 """
 
 from __future__ import annotations
+
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from django.core.cache import cache
 from django.db.models import F, QuerySet
@@ -75,7 +76,7 @@ def compliance_intake_gate_satisfied_for_asset(asset: Any) -> bool:
     return True
 
 
-def enqueue_compliance_intake_scan(asset_id: str, tenant_id: str) -> Optional["ComplianceRun"]:
+def enqueue_compliance_intake_scan(asset_id: str, tenant_id: str) -> ComplianceRun | None:
     """
     Create a COMPLIANCE_RUN job for the asset, with 5-minute idempotency per (tenant, asset).
 
@@ -97,9 +98,7 @@ def enqueue_compliance_intake_scan(asset_id: str, tenant_id: str) -> Optional["C
         return None
 
     try:
-        asset = Asset.objects.select_related("tenant").get(
-            id=asset_id, tenant_id=tenant_id
-        )
+        asset = Asset.objects.select_related("tenant").get(id=asset_id, tenant_id=tenant_id)
     except Asset.DoesNotExist:
         logger.warning(
             "compliance_intake_scan_asset_missing",

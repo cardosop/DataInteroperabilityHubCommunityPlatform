@@ -3,18 +3,16 @@ Workflow Compensation (Saga Pattern)
 
 Implements workflow rollback and compensation logic.
 """
+
 import logging
-from typing import Dict, Any, Optional, Callable
+from collections.abc import Callable
+from typing import Any
+
 from django.db import transaction
 from django.utils import timezone
 
 from .business_rules import OrchestrationBusinessRules
-from .models import (
-    WorkflowInstance,
-    WorkflowStep,
-    WorkflowStatus,
-    StepStatus
-)
+from .models import StepStatus, WorkflowInstance, WorkflowStatus, WorkflowStep
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +26,8 @@ class WorkflowCompensation:
 
     def __init__(
         self,
-        task_registry: Optional[Dict[str, Any]] = None,
-        compensation_observer: Optional[Callable[[str], None]] = None,
+        task_registry: dict[str, Any] | None = None,
+        compensation_observer: Callable[[str], None] | None = None,
     ):
         """
         Initialize compensation handler.
@@ -45,20 +43,16 @@ class WorkflowCompensation:
         else:
             self.task_registry = task_registry
         # Compensation script handler registry
-        self._compensation_handlers: Dict[str, Any] = {}
+        self._compensation_handlers: dict[str, Any] = {}
         self._compensation_observer = compensation_observer
 
-    def register_compensation_handler(
-        self, script_name: str, handler: Any
-    ) -> None:
+    def register_compensation_handler(self, script_name: str, handler: Any) -> None:
         """Register a compensation script handler."""
         self._compensation_handlers[script_name] = handler
 
     @transaction.atomic
     def rollback_workflow(
-        self,
-        instance: WorkflowInstance,
-        failed_step: WorkflowStep
+        self, instance: WorkflowInstance, failed_step: WorkflowStep
     ) -> WorkflowInstance:
         """
         Rollback workflow using compensation logic (Saga pattern).
@@ -70,7 +64,9 @@ class WorkflowCompensation:
         Returns:
             Updated WorkflowInstance
         """
-        logger.info(f"Rolling back workflow instance {instance.id} from step {failed_step.step_index}")
+        logger.info(
+            f"Rolling back workflow instance {instance.id} from step {failed_step.step_index}"
+        )
 
         # Get tenant and user for business rules validation
         tenant = instance.tenant
@@ -78,12 +74,13 @@ class WorkflowCompensation:
 
         # Create business rules instance with tenant/user context
         business_rules = OrchestrationBusinessRules(
-            tenant_id=str(tenant.id) if tenant else None,
-            user_id=str(user.id) if user else None
+            tenant_id=str(tenant.id) if tenant else None, user_id=str(user.id) if user else None
         )
 
         # Validate compensation can execute
-        compensation_validation_result = business_rules.validate_workflow_state(instance, tenant, user)
+        compensation_validation_result = business_rules.validate_workflow_state(
+            instance, tenant, user
+        )
         if not compensation_validation_result.is_valid:
             # Log validation errors but don't block compensation (compensation should proceed)
             logger.warning(
@@ -102,14 +99,13 @@ class WorkflowCompensation:
 
         # Mark workflow as rolling back
         instance.status = WorkflowStatus.ROLLING_BACK
-        instance.save(update_fields=['status', 'updated_at'])
+        instance.save(update_fields=["status", "updated_at"])
 
         try:
             # Get completed steps in reverse order
             completed_steps = instance.steps.filter(
-                step_index__lt=failed_step.step_index,
-                status=StepStatus.COMPLETED
-            ).order_by('-step_index')
+                step_index__lt=failed_step.step_index, status=StepStatus.COMPLETED
+            ).order_by("-step_index")
 
             # Compensate each completed step
             compensation_results = []
@@ -130,9 +126,7 @@ class WorkflowCompensation:
             # _handle_workflow_failure can distinguish controlled
             # business outcomes from genuine system faults.
             _step_error_details = (
-                failed_step.error_details
-                if isinstance(failed_step.error_details, dict)
-                else {}
+                failed_step.error_details if isinstance(failed_step.error_details, dict) else {}
             )
             instance.error_details = {
                 "failed_step_index": failed_step.step_index,
@@ -140,36 +134,38 @@ class WorkflowCompensation:
                 "error_details": _step_error_details,
                 "compensation_results": compensation_results,
             }
-            instance.save(update_fields=[
-                'status', 'completed_at', 'error_message', 'error_details', 'updated_at'
-            ])
+            instance.save(
+                update_fields=[
+                    "status",
+                    "completed_at",
+                    "error_message",
+                    "error_details",
+                    "updated_at",
+                ]
+            )
 
             logger.info(f"Workflow instance {instance.id} rolled back successfully")
 
         except Exception as e:
             # Phase 68.1.3: COMPENSATION_INCOMPLETE instead of FAILED
             # so the recovery command can re-attempt failed compensation steps.
-            logger.exception(f"Error rolling back workflow instance {instance.id}: {str(e)}")
+            logger.exception(f"Error rolling back workflow instance {instance.id}: {e!s}")
             failed_comp_steps = [
                 r.get("step_name", "unknown")
                 for r in compensation_results
                 if isinstance(r, dict) and r.get("status") == "error"
             ]
             instance.status = WorkflowStatus.COMPENSATION_INCOMPLETE
-            instance.error_message = f"Compensation incomplete: {str(e)}"
+            instance.error_message = f"Compensation incomplete: {e!s}"
             instance.error_details = {
                 **(instance.error_details or {}),
                 "compensation_failures": failed_comp_steps,
             }
-            instance.save(update_fields=['status', 'error_message', 'error_details', 'updated_at'])
+            instance.save(update_fields=["status", "error_message", "error_details", "updated_at"])
 
         return instance
 
-    def _compensate_step(
-        self,
-        instance: WorkflowInstance,
-        step: WorkflowStep
-    ) -> Dict[str, Any]:
+    def _compensate_step(self, instance: WorkflowInstance, step: WorkflowStep) -> dict[str, Any]:
         """
         Compensate a workflow step.
 
@@ -188,12 +184,13 @@ class WorkflowCompensation:
 
         # Create business rules instance with tenant/user context
         business_rules = OrchestrationBusinessRules(
-            tenant_id=str(tenant.id) if tenant else None,
-            user_id=str(user.id) if user else None
+            tenant_id=str(tenant.id) if tenant else None, user_id=str(user.id) if user else None
         )
 
         # Validate compensation step using business rules
-        compensation_step_result = business_rules.validate_workflow_step_execution(instance, step, tenant, user)
+        compensation_step_result = business_rules.validate_workflow_step_execution(
+            instance, step, tenant, user
+        )
         if compensation_step_result.warnings:
             # Log validation warnings (don't block compensation)
             logger.warning(
@@ -253,8 +250,8 @@ class WorkflowCompensation:
                 "validation": {
                     "is_valid": compensation_step_result.is_valid,
                     "warnings": compensation_step_result.warnings,
-                    "details": compensation_step_result.details
-                }
+                    "details": compensation_step_result.details,
+                },
             }
 
             logger.info(
@@ -267,16 +264,14 @@ class WorkflowCompensation:
             return compensation_log_data
 
         except Exception as e:
-            logger.exception(f"Error compensating step {step.step_name}: {str(e)}")
-            step.mark_compensated({
-                "status": "failed",
-                "error": str(e)
-            })
+            logger.exception(f"Error compensating step {step.step_name}: {e!s}")
+            step.mark_compensated({"status": "failed", "error": str(e)})
             # Phase 78: Prometheus counter for compensation failures
             try:
                 from hub.apps.observability.otel_metrics import (
                     workflow_compensation_failures_total,
                 )
+
                 wf_name = ""
                 if instance.workflow_definition:
                     wf_name = getattr(instance.workflow_definition, "name", "")
@@ -289,11 +284,8 @@ class WorkflowCompensation:
             return {"status": "failed", "error": str(e)}
 
     def _execute_compensation_task(
-        self,
-        instance: WorkflowInstance,
-        step: WorkflowStep,
-        compensation_def: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, instance: WorkflowInstance, step: WorkflowStep, compensation_def: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Execute compensation task.
 
@@ -336,11 +328,8 @@ class WorkflowCompensation:
         return result if isinstance(result, dict) else {"result": result}
 
     def _execute_compensation_script(
-        self,
-        instance: WorkflowInstance,
-        step: WorkflowStep,
-        compensation_def: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, instance: WorkflowInstance, step: WorkflowStep, compensation_def: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Execute compensation script.
 
@@ -365,12 +354,9 @@ class WorkflowCompensation:
             return handler(instance, step, compensation_def)
 
         # No registered handler — return handler_not_found
-        logger.warning(
-            f"No compensation handler registered for script: {script}"
-        )
+        logger.warning(f"No compensation handler registered for script: {script}")
         return {
             "script": script,
             "status": "handler_not_found",
             "step_output": step.output_data,
         }
-

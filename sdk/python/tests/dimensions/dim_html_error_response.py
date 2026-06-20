@@ -11,9 +11,10 @@ readable error — not a JSON parse traceback.
 """
 
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import requests
+
 from tests.fixtures.test_data import unique_port
 
 HTML_500_BODY = b"""<!DOCTYPE html>

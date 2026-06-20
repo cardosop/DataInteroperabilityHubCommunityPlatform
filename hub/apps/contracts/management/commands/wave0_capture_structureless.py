@@ -19,6 +19,7 @@ single most common Wave-0 failure mode (per Phase 227 doctrine).
 Wrapping in a Django command makes the convention executable code
 that's covered by tests at `test_wave0_capture_command.py`.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -61,11 +62,7 @@ class Command(BaseCommand):
         # operator notices when a re-run is unintended (e.g. partial CSV
         # uploaded vs already-archived report).
         if artefact.exists():
-            self.stdout.write(
-                self.style.WARNING(
-                    f"  [warn] {artefact} exists; overwriting."
-                )
-            )
+            self.stdout.write(self.style.WARNING(f"  [warn] {artefact} exists; overwriting."))
 
         audit_dir.mkdir(parents=True, exist_ok=True)
 
@@ -92,15 +89,12 @@ class Command(BaseCommand):
         # Count the JSONL rows for the summary. Header / trailer lines
         # are prefixed with `#` and excluded.
         json_rows = [
-            ln for ln in body.splitlines()
-            if ln.startswith("{") and ln.rstrip().endswith("}")
+            ln for ln in body.splitlines() if ln.startswith("{") and ln.rstrip().endswith("}")
         ]
         structureless_count = len(json_rows)
 
         self.stdout.write(
-            self.style.SUCCESS(
-                f"  Wrote {artefact} ({structureless_count} structureless rows)"
-            )
+            self.style.SUCCESS(f"  Wrote {artefact} ({structureless_count} structureless rows)")
         )
         if structureless_count == 0:
             self.stdout.write(

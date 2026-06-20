@@ -1,10 +1,10 @@
 """Unit tests for ``datahub tenants`` commands (279.E.1)."""
+
 import json
+from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
-from unittest.mock import Mock
-
 from datahub_cli.main import cli
 
 
@@ -28,8 +28,11 @@ class TestTenantsMe:
     @pytest.mark.unit
     def test_me_table(self, runner, mock_api_client):
         mock_api_client.get.return_value = {
-            "id": "t1", "name": "acme", "slug": "acme",
-            "created_at": "2025-01-01T00:00:00Z", "updated_at": "2025-02-01T00:00:00Z",
+            "id": "t1",
+            "name": "acme",
+            "slug": "acme",
+            "created_at": "2025-01-01T00:00:00Z",
+            "updated_at": "2025-02-01T00:00:00Z",
         }
         result = runner.invoke(cli, ["tenants", "me"])
         assert result.exit_code == 0
@@ -48,7 +51,9 @@ class TestTenantsConfig:
     @pytest.mark.unit
     def test_config_get(self, runner, mock_api_client):
         mock_api_client.get.return_value = {
-            "name": "acme", "slug": "acme", "plan": "pro",
+            "name": "acme",
+            "slug": "acme",
+            "plan": "pro",
         }
         result = runner.invoke(cli, ["tenants", "config", "get"])
         assert result.exit_code == 0
@@ -70,8 +75,11 @@ class TestTenantsUsage:
     @pytest.mark.unit
     def test_usage_table(self, runner, mock_api_client):
         mock_api_client.get.return_value = {
-            "plan_slug": "pro", "plan_tier": "pro",
-            "asset_count": 10, "dataset_count": 5, "storage_gb": 2.5,  # noqa: PHASE216-STATIC-ID
+            "plan_slug": "pro",
+            "plan_tier": "pro",
+            "asset_count": 10,
+            "dataset_count": 5,
+            "storage_gb": 2.5,  # noqa: PHASE216-STATIC-ID
             "api_calls_this_month": 1200,
         }
         result = runner.invoke(cli, ["tenants", "usage"])
@@ -82,6 +90,7 @@ class TestTenantsUsage:
     @pytest.mark.unit
     def test_usage_api_error(self, runner, mock_api_client):
         from click import ClickException
+
         mock_api_client.get.side_effect = ClickException("boom")
         result = runner.invoke(cli, ["tenants", "usage"])
         assert result.exit_code != 0

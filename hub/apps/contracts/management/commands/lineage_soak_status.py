@@ -36,6 +36,7 @@ Usage::
     # Per-tenant scope (operator escalation):
     python manage.py lineage_soak_status --tenant=<uuid> --days=7
 """
+
 from __future__ import annotations
 
 import datetime as _dt
@@ -44,7 +45,6 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
-
 
 DEFAULT_WINDOW_DAYS = 7
 DEFAULT_EDGE_WRITE_THRESHOLD = 100_000
@@ -99,16 +99,17 @@ class Command(BaseCommand):
             cutoff=cutoff,
             tenant_id=tenant_id,
         )
-        rules.append({
-            "rule": "drift",
-            "severity": "critical",
-            "count": drift_count,
-            "status": "CRITICAL" if drift_count > 0 else "OK",
-            "description": (
-                "LineageEdge SCD Type 2 drift detected in window — "
-                "any non-zero count is a P1."
-            ),
-        })
+        rules.append(
+            {
+                "rule": "drift",
+                "severity": "critical",
+                "count": drift_count,
+                "status": "CRITICAL" if drift_count > 0 else "OK",
+                "description": (
+                    "LineageEdge SCD Type 2 drift detected in window — any non-zero count is a P1."
+                ),
+            }
+        )
 
         # ---- Rule 2 — edge-write volume (warn on spike) -----------------
         edge_writes = self._count_in_window(
@@ -117,17 +118,19 @@ class Command(BaseCommand):
             cutoff=cutoff,
             tenant_id=tenant_id,
         )
-        rules.append({
-            "rule": "edge_writes",
-            "severity": "warning",
-            "count": edge_writes,
-            "threshold": edge_threshold,
-            "status": "WARN" if edge_writes > edge_threshold else "OK",
-            "description": (
-                f"Total LineageEdge mutations in window. Above "
-                f"{edge_threshold} suggests a runaway rewrite job."
-            ),
-        })
+        rules.append(
+            {
+                "rule": "edge_writes",
+                "severity": "warning",
+                "count": edge_writes,
+                "threshold": edge_threshold,
+                "status": "WARN" if edge_writes > edge_threshold else "OK",
+                "description": (
+                    f"Total LineageEdge mutations in window. Above "
+                    f"{edge_threshold} suggests a runaway rewrite job."
+                ),
+            }
+        )
 
         # ---- Rule 3 — Phase 227 W5 auto-reverts (warn on any) -----------
         auto_revert_count = self._count_in_window(
@@ -136,17 +139,19 @@ class Command(BaseCommand):
             cutoff=cutoff,
             tenant_id=tenant_id,
         )
-        rules.append({
-            "rule": "auto_revert",
-            "severity": "warning",
-            "count": auto_revert_count,
-            "status": "WARN" if auto_revert_count > 0 else "OK",
-            "description": (
-                "Phase 227 Wave 5 auto-reverts shouldn't fire during a "
-                "Phase 228 soak — a non-zero count means a Wave 5 sweep "
-                "ran in the window. Verify it's an authorised cycle."
-            ),
-        })
+        rules.append(
+            {
+                "rule": "auto_revert",
+                "severity": "warning",
+                "count": auto_revert_count,
+                "status": "WARN" if auto_revert_count > 0 else "OK",
+                "description": (
+                    "Phase 227 Wave 5 auto-reverts shouldn't fire during a "
+                    "Phase 228 soak — a non-zero count means a Wave 5 sweep "
+                    "ran in the window. Verify it's an authorised cycle."
+                ),
+            }
+        )
 
         # ---- Roll-up status ---------------------------------------------
         if any(r["status"] == "CRITICAL" for r in rules):
@@ -164,7 +169,7 @@ class Command(BaseCommand):
             "window_start": cutoff.isoformat(),
             "window_end": timezone.now().isoformat(),
             "rules": rules,
-            "checked_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+            "checked_at": _dt.datetime.now(_dt.UTC).isoformat(),
         }
         self.stdout.write(json.dumps(report, sort_keys=True))
 
@@ -173,7 +178,7 @@ class Command(BaseCommand):
                 f"Soak-period status: CRITICAL ({drift_count} drift events). "
                 f"DoD.8 fails. Page on-call per "
                 f"docs/runbooks/lineage-soak-period.md §"
-                f"\"P1 escalation\"."
+                f'"P1 escalation".'
             )
 
     # ------------------------------------------------------------------

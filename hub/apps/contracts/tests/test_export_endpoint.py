@@ -9,9 +9,9 @@ Comprehensive integration tests verifying:
 
 Tests use real implementations (no mocks/stubs) and follow TDD principles.
 """
-import uuid
 
 import json
+import uuid
 
 from rest_framework import status
 
@@ -24,7 +24,6 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.tenants.models import Tenant
-
 
 
 class ContractExportEndpointTest(ContractsAPITestBase):

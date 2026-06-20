@@ -16,7 +16,9 @@ class ConnectorNotAvailableError(Exception):
     clear failure at job start instead of late failure during processing.
     """
 
-    def __init__(self, connector_type: str, role: str = "source", message: str = "connector not registered"):
+    def __init__(
+        self, connector_type: str, role: str = "source", message: str = "connector not registered"
+    ):
         self.connector_type = connector_type
         self.role = role  # "source" or "destination"
         self.message = message

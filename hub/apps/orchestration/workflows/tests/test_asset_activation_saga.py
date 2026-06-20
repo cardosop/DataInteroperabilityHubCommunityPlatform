@@ -6,30 +6,29 @@ These tests verify:
 - Compensation logic (rollback activation, reset status)
 - Error handling and rollback scenarios
 """
-from django.test import TestCase
-from unittest.mock import patch, MagicMock
 
-from hub.apps.orchestration.workflows.asset_activation_saga import (
-    validate_contract,
-    check_data_quality,
-    check_compliance,
-    activate_asset,
-    compensate_activation,
-    execute_asset_activation,
-    create_asset_activation_saga
-)
-from hub.apps.orchestration.saga import (
-    SagaStep,
-    SagaStepResult,
-    SagaOrchestrator,
-    SagaExecutionError
-)
+import uuid
+from unittest.mock import MagicMock, patch
+
+from django.test import TestCase
+
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
-from hub.apps.jobs.models import Job, JobType, JobStatus
+from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
+from hub.apps.jobs.models import Job, JobStatus, JobType
+from hub.apps.orchestration.saga import (
+    SagaOrchestrator,
+)
+from hub.apps.orchestration.workflows.asset_activation_saga import (
+    activate_asset,
+    check_compliance,
+    check_data_quality,
+    compensate_activation,
+    create_asset_activation_saga,
+    execute_asset_activation,
+    validate_contract,
+)
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User
-import uuid
 
 
 class AssetActivationSagaTest(TestCase):
@@ -38,13 +37,12 @@ class AssetActivationSagaTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
-            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
-            tenant=self.tenant
+            tenant=self.tenant,
         )
 
         # Create asset
@@ -54,7 +52,7 @@ class AssetActivationSagaTest(TestCase):
             tenant=self.tenant,
             status=AssetStatus.DRAFT,
             dq_status="PASS",
-            compliance_status="PASS"
+            compliance_status="PASS",
         )
 
         # Create contract
@@ -65,7 +63,7 @@ class AssetActivationSagaTest(TestCase):
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.0.0",
             original_format=OriginalFormat.JSON,
-            original_raw='{"version": "3.0.0"}'
+            original_raw='{"version": "3.0.0"}',
         )
 
     def test_validate_contract_success(self):
@@ -83,7 +81,7 @@ class AssetActivationSagaTest(TestCase):
             name="No Contract Asset",
             key="no-contract-asset",
             tenant=self.tenant,
-            status=AssetStatus.DRAFT
+            status=AssetStatus.DRAFT,
         )
 
         result = validate_contract({"asset_id": str(asset_no_contract.id)})
@@ -106,7 +104,7 @@ class AssetActivationSagaTest(TestCase):
             resource_id=self.asset.id,
             tenant=self.tenant,
             type=JobType.DQ_RUN,
-            status=JobStatus.COMPLETED
+            status=JobStatus.COMPLETED,
         )
 
         result = check_data_quality({"asset_id": str(self.asset.id)})
@@ -125,7 +123,7 @@ class AssetActivationSagaTest(TestCase):
             resource_id=self.asset.id,
             tenant=self.tenant,
             type=JobType.DQ_RUN,
-            status=JobStatus.COMPLETED
+            status=JobStatus.COMPLETED,
         )
 
         result = check_data_quality({"asset_id": str(self.asset.id)})
@@ -148,7 +146,7 @@ class AssetActivationSagaTest(TestCase):
             resource_id=self.asset.id,
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
-            status=JobStatus.COMPLETED
+            status=JobStatus.COMPLETED,
         )
 
         result = check_compliance({"asset_id": str(self.asset.id)})
@@ -167,7 +165,7 @@ class AssetActivationSagaTest(TestCase):
             resource_id=self.asset.id,
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
-            status=JobStatus.COMPLETED
+            status=JobStatus.COMPLETED,
         )
 
         result = check_compliance({"asset_id": str(self.asset.id)})
@@ -179,10 +177,9 @@ class AssetActivationSagaTest(TestCase):
         """Test asset activation step succeeds."""
         original_status = self.asset.status
 
-        result = activate_asset({
-            "asset_id": str(self.asset.id),
-            "original_asset_status": original_status.value
-        })
+        result = activate_asset(
+            {"asset_id": str(self.asset.id), "original_asset_status": original_status.value}
+        )
 
         self.assertTrue(result.success)
         self.assertIn("new_status", result.output)
@@ -200,13 +197,13 @@ class AssetActivationSagaTest(TestCase):
 
         original_status = AssetStatus.DRAFT
 
-        result = compensate_activation({
-            "asset_id": str(self.asset.id),
-            "original_status": original_status.value,
-            "step_output": {
-                "original_status": original_status.value
+        result = compensate_activation(
+            {
+                "asset_id": str(self.asset.id),
+                "original_status": original_status.value,
+                "step_output": {"original_status": original_status.value},
             }
-        })
+        )
 
         self.assertTrue(result.success)
         self.assertIn("reset_status", result.output)
@@ -221,10 +218,7 @@ class AssetActivationSagaTest(TestCase):
         self.asset.status = AssetStatus.ACTIVE
         self.asset.save()
 
-        result = compensate_activation({
-            "asset_id": str(self.asset.id),
-            "step_output": {}
-        })
+        result = compensate_activation({"asset_id": str(self.asset.id), "step_output": {}})
 
         self.assertTrue(result.success)
 
@@ -240,14 +234,14 @@ class AssetActivationSagaTest(TestCase):
             resource_id=self.asset.id,
             tenant=self.tenant,
             type=JobType.DQ_RUN,
-            status=JobStatus.COMPLETED
+            status=JobStatus.COMPLETED,
         )
         Job.objects.create(
             resource_type="ASSET",
             resource_id=self.asset.id,
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
-            status=JobStatus.COMPLETED
+            status=JobStatus.COMPLETED,
         )
 
         result = execute_asset_activation(str(self.asset.id))
@@ -286,7 +280,7 @@ class AssetActivationSagaTest(TestCase):
             resource_id=self.asset.id,
             tenant=self.tenant,
             type=JobType.DQ_RUN,
-            status=JobStatus.COMPLETED
+            status=JobStatus.COMPLETED,
         )
 
         result = execute_asset_activation(str(self.asset.id))
@@ -309,14 +303,14 @@ class AssetActivationSagaTest(TestCase):
             resource_id=self.asset.id,
             tenant=self.tenant,
             type=JobType.DQ_RUN,
-            status=JobStatus.COMPLETED
+            status=JobStatus.COMPLETED,
         )
         Job.objects.create(
             resource_type="ASSET",
             resource_id=self.asset.id,
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
-            status=JobStatus.COMPLETED
+            status=JobStatus.COMPLETED,
         )
 
         result = execute_asset_activation(str(self.asset.id))
@@ -336,18 +330,20 @@ class AssetActivationSagaTest(TestCase):
             resource_id=self.asset.id,
             tenant=self.tenant,
             type=JobType.DQ_RUN,
-            status=JobStatus.COMPLETED
+            status=JobStatus.COMPLETED,
         )
         Job.objects.create(
             resource_type="ASSET",
             resource_id=self.asset.id,
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
-            status=JobStatus.COMPLETED
+            status=JobStatus.COMPLETED,
         )
 
         # Mock activation to fail
-        with patch('hub.apps.orchestration.workflows.asset_activation_saga.Asset.objects.get') as mock_get:
+        with patch(
+            "hub.apps.orchestration.workflows.asset_activation_saga.Asset.objects.get"
+        ) as mock_get:
             mock_asset = MagicMock()
             mock_asset.status = AssetStatus.DRAFT
             mock_asset.save.side_effect = Exception("Database error")
@@ -364,4 +360,3 @@ class AssetActivationSagaTest(TestCase):
 
         self.assertIsInstance(orchestrator, SagaOrchestrator)
         self.assertEqual(orchestrator.context.state["asset_id"], str(self.asset.id))
-

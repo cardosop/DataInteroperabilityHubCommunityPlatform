@@ -6,7 +6,7 @@ Registration matches process_workflows command.
 """
 
 import logging
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from hub.apps.orchestration.registry import WorkflowRegistry
@@ -79,6 +79,6 @@ def get_workflow_engine():  # -> WorkflowEngine
     return _engine
 
 
-def get_registry_and_engine() -> Tuple["WorkflowRegistry", "WorkflowEngine"]:
+def get_registry_and_engine() -> tuple["WorkflowRegistry", "WorkflowEngine"]:
     """Return (registry, engine) both initialized."""
     return get_workflow_registry(), get_workflow_engine()

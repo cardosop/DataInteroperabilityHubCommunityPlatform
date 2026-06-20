@@ -6,13 +6,13 @@ This script runs the tests without requiring pytest or Django, since the tests
 only validate JSON report structure.
 """
 
+import importlib.util
 import sys
 import traceback
-import importlib.util
 from pathlib import Path
 
 # Load the test module directly
-test_file = Path(__file__).parent / 'test_api_client_usage_search.py'
+test_file = Path(__file__).parent / "test_api_client_usage_search.py"
 spec = importlib.util.spec_from_file_location("test_api_client_usage_search", test_file)
 if spec is None or spec.loader is None:
     raise ImportError(f"Could not load test module from {test_file}")
@@ -24,7 +24,7 @@ TestAPIClientUsageSearch = test_module.TestAPIClientUsageSearch
 def run_tests():
     """Run all tests and report results"""
     test_instance = TestAPIClientUsageSearch()
-    test_methods = [method for method in dir(test_instance) if method.startswith('test_')]
+    test_methods = [method for method in dir(test_instance) if method.startswith("test_")]
 
     passed = 0
     failed = 0
@@ -69,6 +69,5 @@ def run_tests():
         sys.exit(0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run_tests()
-

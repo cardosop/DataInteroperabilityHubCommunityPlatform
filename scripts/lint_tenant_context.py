@@ -15,30 +15,27 @@ CI integration:
     The ``lint-tenant-context`` job in ci.yml runs this script.
     Exit 0 = all compliant.  Exit 1 = gaps found.
 """
+
 from __future__ import annotations
 
 import ast
-import sys
 from pathlib import Path
 
 # Patterns that indicate ORM access to tenant-scoped data.
 # These are string patterns found in Python source that suggest a Django
 # queryset is being built against a tenant-scoped model column.
-_TENANT_ACCESS_PATTERNS = frozenset({
-    ".objects.filter(tenant",
-    ".objects.get(tenant",
-    ".objects.create(tenant",
-    ".objects.update(tenant",
-    ".all_objects.filter(tenant",
-    ".objects.filter(tenant",
-    ".objects.get(tenant",
-    ".objects.create(tenant",
-    ".objects.update(tenant",
-    ".all_objects.filter(tenant",
-    ".objects.exclude(tenant",
-    ".objects.values(",
-    ".objects.values_list(",
-})
+_TENANT_ACCESS_PATTERNS = frozenset(
+    {
+        ".objects.filter(tenant",
+        ".objects.get(tenant",
+        ".objects.create(tenant",
+        ".objects.update(tenant",
+        ".all_objects.filter(tenant",
+        ".objects.exclude(tenant",
+        ".objects.values(",
+        ".objects.values_list(",
+    }
+)
 
 # Files/suffixes that are explicitly exempt (test files run with pytest
 # fixtures that set up tenant context, management commands go through

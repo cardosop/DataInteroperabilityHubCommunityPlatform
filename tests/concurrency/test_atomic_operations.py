@@ -4,7 +4,6 @@ under concurrency. Real DB; no mocks.
 """
 
 import threading
-from typing import List
 
 from django.db import IntegrityError, connection, transaction
 from django.db.models import F
@@ -36,7 +35,7 @@ class AtomicOperationsTest(ConcurrencyTestBase):
             version=0,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
         )
-        results: List[bool] = []
+        results: list[bool] = []
         lock = threading.Lock()
 
         def increment() -> None:
@@ -72,14 +71,14 @@ class AtomicOperationsTest(ConcurrencyTestBase):
         """Concurrent get_or_create with same lookup: one create, others get (or one create)."""
         slug = f"atomic-tenant-{id(self)}"
         Tenant.objects.filter(slug=slug).delete()
-        created_ids: List[int] = []
+        created_ids: list[int] = []
         lock = threading.Lock()
 
         def get_or_create_tenant() -> None:
             try:
                 connection.ensure_connection()
                 try:
-                    tenant, created = Tenant.objects.get_or_create(
+                    tenant, _created = Tenant.objects.get_or_create(
                         slug=slug,
                         defaults={
                             "name": "Atomic Tenant",
@@ -109,7 +108,7 @@ class AtomicOperationsTest(ConcurrencyTestBase):
 
     def test_atomic_save_under_concurrency(self):
         """Multiple threads each create one contract in atomic block; all exist."""
-        created: List[str] = []
+        created: list[str] = []
         lock = threading.Lock()
 
         def create_atomic(idx: int) -> None:

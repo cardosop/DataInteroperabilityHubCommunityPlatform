@@ -11,6 +11,7 @@ import { useEffect, useMemo } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { CommandPalette } from '../../../shared/components/CommandPalette';
 import type { PaletteItem } from '../../../shared/components/CommandPalette';
+import { KeyboardShortcuts } from '../../../shared/components/KeyboardShortcuts';
 import { FEATURE_SIDEBAR_ADVANCED } from '../../../shared/config/featureFlags';
 import { useCapabilities } from '../../../shared/hooks/useCapabilities';
 import { SkipLink } from '../../../shared/components/SkipLink';
@@ -124,6 +125,7 @@ function ShellBody() {
         </main>
       </div>
       <CommandPalette pages={palettePages} actions={paletteActions} />
+      <KeyboardShortcuts />
     </div>
   );
 }

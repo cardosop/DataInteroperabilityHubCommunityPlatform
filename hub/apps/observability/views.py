@@ -6,8 +6,6 @@ API endpoints for data freshness monitoring, volume monitoring, and schema drift
 
 import uuid
 
-from django.db import transaction
-from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import permissions, status, viewsets
@@ -21,7 +19,6 @@ from hub.apps.core.services.base import NotFoundError
 from hub.apps.datasets.models import Dataset
 
 from .freshness import FreshnessMonitor
-from .models import DataObservabilityMetric, FreshnessSLA, SchemaDrift, VolumeTrend
 from .schema_drift import SchemaDriftDetector
 from .serializers import (
     FreshnessDashboardSerializer,
@@ -1105,7 +1102,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
         from .models import DataIncident
 
         try:
-            incident = DataIncident.objects.get(id=incident_id, tenant=tenant)
+            DataIncident.objects.get(id=incident_id, tenant=tenant)
         except DataIncident.DoesNotExist:
             return Response({"error": "Incident not found"}, status=status.HTTP_404_NOT_FOUND)
 

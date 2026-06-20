@@ -7,9 +7,10 @@ Verifies the Phase 235.1 sensitive-flag protections:
   3. Flag registry correctly identifies sensitive flags
   4. Flag stage transitions follow the DRAFT→CANARY→GA lifecycle
 """
-from __future__ import annotations
-import pytest
 
+from __future__ import annotations
+
+import pytest
 from django.test import TestCase
 
 from hub.apps.tenants.feature_flag_registry import REGISTRY
@@ -19,12 +20,14 @@ pytestmark = pytest.mark.django_db(transaction=True)
 _VALID_STAGES = frozenset({"DRAFT", "CANARY", "GA", "DEPRECATED", "RETIRED"})
 
 # Sensitive flags from CLAUDE.md (two-person rule, Phase 235.1)
-_SENSITIVE_FLAGS = frozenset({
-    "compliance_fail_closed_enabled",
-    "allow_intake_on_compliance_degraded",
-    "compliance_audit_full_sampling",
-    "compliance_intake_gate_enabled",
-})
+_SENSITIVE_FLAGS = frozenset(
+    {
+        "compliance_fail_closed_enabled",
+        "allow_intake_on_compliance_degraded",
+        "compliance_audit_full_sampling",
+        "compliance_intake_gate_enabled",
+    }
+)
 
 
 class FeatureFlagGovernanceTests(TestCase):
@@ -41,7 +44,8 @@ class FeatureFlagGovernanceTests(TestCase):
         for f in REGISTRY:
             if f.name in _SENSITIVE_FLAGS:
                 self.assertIn(
-                    f.stage, ("GA", "CANARY"),
+                    f.stage,
+                    ("GA", "CANARY"),
                     f"{f.name} should be GA or CANARY, not {f.stage}",
                 )
 

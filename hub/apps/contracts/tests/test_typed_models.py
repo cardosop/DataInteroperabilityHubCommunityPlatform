@@ -2,8 +2,6 @@
 Tests for typed HubContract models and validation helpers.
 """
 
-import pytest
-
 from hub.apps.contracts.typed_models import HubContractModel, validate_hub_contract_dict
 
 
@@ -292,7 +290,7 @@ class TestTypedModels:
             "schema": {"fields": [{"name": "id", "data_type": "string"}]},
         }
 
-        model, errors = validate_hub_contract_dict(hub_contract)
+        model, _errors = validate_hub_contract_dict(hub_contract)
         # Should handle very long strings
         assert model is None or isinstance(model, HubContractModel)
 
@@ -305,7 +303,7 @@ class TestTypedModels:
             "schema": {"fields": [{"name": "field-name_v2", "data_type": "string"}]},
         }
 
-        model, errors = validate_hub_contract_dict(hub_contract)
+        model, _errors = validate_hub_contract_dict(hub_contract)
         # Should handle special characters
         assert model is None or isinstance(model, HubContractModel)
 
@@ -318,7 +316,7 @@ class TestTypedModels:
             "schema": {"fields": [{"name": "字段名称", "data_type": "string"}]},
         }
 
-        model, errors = validate_hub_contract_dict(hub_contract)
+        model, _errors = validate_hub_contract_dict(hub_contract)
         # Should handle unicode characters
         assert model is None or isinstance(model, HubContractModel)
 
@@ -334,7 +332,7 @@ class TestTypedModels:
             "schema": {"fields": [{"name": "id", "data_type": "string"}]},
         }
 
-        model, errors = validate_hub_contract_dict(hub_contract)
+        model, _errors = validate_hub_contract_dict(hub_contract)
         # Should handle nested structures
         assert model is None or isinstance(model, HubContractModel)
 
@@ -347,7 +345,7 @@ class TestTypedModels:
             "schema": {"fields": [{"name": "id", "data_type": "string"}]},
         }
 
-        model, errors = validate_hub_contract_dict(hub_contract)
+        model, _errors = validate_hub_contract_dict(hub_contract)
         # May accept or reject invalid version
         assert model is None or isinstance(model, HubContractModel)
 
@@ -362,7 +360,7 @@ class TestTypedModels:
             },
         }
 
-        model, errors = validate_hub_contract_dict(hub_contract)
+        model, _errors = validate_hub_contract_dict(hub_contract)
         # Should handle many fields
         assert model is None or isinstance(model, HubContractModel)
 
@@ -379,7 +377,7 @@ class TestTypedModels:
             ],
         }
 
-        model, errors = validate_hub_contract_dict(hub_contract)
+        model, _errors = validate_hub_contract_dict(hub_contract)
         # Should handle many models
         assert model is None or isinstance(model, HubContractModel)
 
@@ -402,7 +400,7 @@ class TestTypedModels:
             },
         }
 
-        model, errors = validate_hub_contract_dict(hub_contract)
+        model, _errors = validate_hub_contract_dict(hub_contract)
         # Should handle many rules
         assert model is None or isinstance(model, HubContractModel)
 
@@ -432,7 +430,7 @@ class TestTypedModels:
             },
         }
 
-        model, errors = validate_hub_contract_dict(hub_contract)
+        model, _errors = validate_hub_contract_dict(hub_contract)
         # Should handle all field properties
         assert model is None or isinstance(model, HubContractModel)
 

@@ -13,15 +13,17 @@ Covers:
   Additional: no-op when replica not configured; allow_migrate blocks replica;
               allow_relation permits cross-database pairs.
 """
+
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_model(app_label: str) -> MagicMock:
     """Return a minimal Django model mock with the given app_label."""
@@ -41,10 +43,12 @@ def _make_obj(db: str) -> MagicMock:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def router():
     """Fresh PrimaryReplicaRouter instance for each test."""
     from hub.db_router import PrimaryReplicaRouter
+
     return PrimaryReplicaRouter()
 
 
@@ -52,6 +56,7 @@ def router():
 def with_replica(settings):
     """Extend settings.DATABASES to include a 'replica' alias."""
     import warnings
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         settings.DATABASES = dict(
@@ -65,6 +70,7 @@ def with_replica(settings):
 def without_replica(settings):
     """Ensure 'replica' is absent from settings.DATABASES."""
     import warnings
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         dbs = {k: v for k, v in settings.DATABASES.items() if k != "replica"}
@@ -75,6 +81,7 @@ def without_replica(settings):
 # ---------------------------------------------------------------------------
 # 17.3  db_for_read — returns "replica" for read-replica apps
 # ---------------------------------------------------------------------------
+
 
 class TestReadRouterReturnsReplica:
     """db_for_read must return 'replica' for all read-replica app labels."""
@@ -108,6 +115,7 @@ class TestReadRouterReturnsReplica:
 # 17.3  db_for_write — always returns "default" for write ops
 # ---------------------------------------------------------------------------
 
+
 class TestWriteRouterReturnsPrimary:
     """db_for_write must always return 'default' for read-replica app models."""
 
@@ -135,6 +143,7 @@ class TestWriteRouterReturnsPrimary:
 # allow_migrate — replica must never be migrated
 # ---------------------------------------------------------------------------
 
+
 class TestAllowMigrate:
     def test_replica_db_always_blocked(self, router):
         """allow_migrate must return False for the replica alias."""
@@ -151,6 +160,7 @@ class TestAllowMigrate:
 # ---------------------------------------------------------------------------
 # allow_relation — cross-database relations
 # ---------------------------------------------------------------------------
+
 
 class TestAllowRelation:
     def test_same_default_db(self, router):

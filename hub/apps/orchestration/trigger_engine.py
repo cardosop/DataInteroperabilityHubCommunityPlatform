@@ -12,7 +12,9 @@ general, priority-ordered, dependency-aware execution cascade.
 For >10 downstream pipelines, batches into background
 ``Job(JobType.DEPENDENCY_TRIGGER_BATCH)``.
 """
+
 from __future__ import annotations
+
 import logging
 
 from django.db import transaction
@@ -36,6 +38,7 @@ def _is_trigger_engine_enabled(tenant_id: str) -> bool:
     """
     try:
         from hub.apps.tenants.models import Tenant
+
         tenant = Tenant.objects.only("pipeline_dependency_enabled").get(id=tenant_id)
         return bool(tenant.pipeline_dependency_enabled)
     except Exception:
@@ -46,10 +49,15 @@ def _is_trigger_engine_enabled(tenant_id: str) -> bool:
 
 _BATCH_THRESHOLD = 10  # trigger >10 downstream → async batch job
 
-_TERMINAL_STATUSES: frozenset[str] = frozenset({
-    "SUCCEEDED", "COMPLETED", "SUCCESS",
-    "FAILED", "CANCELLED",
-})
+_TERMINAL_STATUSES: frozenset[str] = frozenset(
+    {
+        "SUCCEEDED",
+        "COMPLETED",
+        "SUCCESS",
+        "FAILED",
+        "CANCELLED",
+    }
+)
 
 # 285.11.3.1 — mapping from model → pipeline_type for signal dispatch.
 _PIPELINE_DISPATCH = {
@@ -92,7 +100,11 @@ def _connect_signal(model_label: str):
 
 
 def _handle_pipeline_execution_completed(
-    sender, instance, created: bool, raw: bool, **kwargs,
+    sender,
+    instance,
+    created: bool,
+    raw: bool,
+    **kwargs,
 ):
     """Post-save handler for all pipeline execution models.
 
@@ -111,11 +123,7 @@ def _handle_pipeline_execution_completed(
     if status is None or str(status).upper() not in _TERMINAL_STATUSES:
         return
 
-    tenant_id = (
-        str(instance.tenant_id)
-        if getattr(instance, "tenant_id", None)
-        else None
-    )
+    tenant_id = str(instance.tenant_id) if getattr(instance, "tenant_id", None) else None
     if not tenant_id:
         return
 
@@ -137,7 +145,10 @@ def _handle_pipeline_execution_completed(
     # rolled-back save.
     transaction.on_commit(
         lambda: _on_pipeline_terminal(
-            tenant_id, pipeline_type, instance_id, str(status),
+            tenant_id,
+            pipeline_type,
+            instance_id,
+            str(status),
         )
     )
 
@@ -186,13 +197,16 @@ def _trigger_downstream_cascade(
     if status.upper() in ("FAILED", "CANCELLED"):
         executor = DependencyAwareExecutor(tenant_id)
         executor.propagate_upstream_failure(
-            pipeline_type, pipeline_id, pipeline_id,
+            pipeline_type,
+            pipeline_id,
+            pipeline_id,
         )
         return
 
     # Find TRIGGER-type downstream dependencies.
     downstream = [
-        d for d in resolver.resolve_downstream(pipeline_type, pipeline_id)
+        d
+        for d in resolver.resolve_downstream(pipeline_type, pipeline_id)
         if d.dependency_type == DependencyType.TRIGGER
     ]
     if not downstream:
@@ -206,13 +220,11 @@ def _trigger_downstream_cascade(
     ready_to_trigger: list = []
     for dep in downstream:
         upstream_deps = resolver.resolve_upstream(
-            dep.downstream_pipeline_type, str(dep.downstream_pipeline_id),
+            dep.downstream_pipeline_type,
+            str(dep.downstream_pipeline_id),
         )
         # Check if all upstream deps are satisfied.
-        all_met = all(
-            _is_upstream_terminal_success(resolver, u)
-            for u in upstream_deps
-        )
+        all_met = all(_is_upstream_terminal_success(resolver, u) for u in upstream_deps)
         if all_met:
             ready_to_trigger.append(dep)
 
@@ -231,7 +243,9 @@ def _trigger_downstream_cascade(
     count = len(ready_to_trigger)
     if count > _BATCH_THRESHOLD:
         _enqueue_batch_trigger(
-            tenant_id, pipeline_type, pipeline_id,
+            tenant_id,
+            pipeline_type,
+            pipeline_id,
             ready_to_trigger,
         )
     else:
@@ -261,7 +275,9 @@ def _is_upstream_terminal_success(
 
 
 def _get_pipeline_execution_status(
-    tenant_id: str, pipeline_type: str, pipeline_id: str,
+    tenant_id: str,
+    pipeline_type: str,
+    pipeline_id: str,
 ) -> str | None:
     """Query the actual pipeline execution model for its current status.
 
@@ -271,29 +287,59 @@ def _get_pipeline_execution_status(
     try:
         if pipeline_type == PipelineType.TRANSFORMATION:
             from hub.apps.transformation.models import PipelineExecution
-            obj = PipelineExecution.objects.filter(
-                id=pipeline_id, tenant_id=tenant_id,
-            ).only("status").first()
+
+            obj = (
+                PipelineExecution.objects.filter(
+                    id=pipeline_id,
+                    tenant_id=tenant_id,
+                )
+                .only("status")
+                .first()
+            )
         elif pipeline_type == PipelineType.SCHEDULED_INGESTION:
             from hub.apps.scheduled_ingestion.models import ScheduledIngestionRun
-            obj = ScheduledIngestionRun.objects.filter(
-                id=pipeline_id, tenant_id=tenant_id,
-            ).only("status").first()
+
+            obj = (
+                ScheduledIngestionRun.objects.filter(
+                    id=pipeline_id,
+                    tenant_id=tenant_id,
+                )
+                .only("status")
+                .first()
+            )
         elif pipeline_type == PipelineType.SCHEDULED_EXPORT:
             from hub.apps.scheduled_export.models import ScheduledExportRun
-            obj = ScheduledExportRun.objects.filter(
-                id=pipeline_id, tenant_id=tenant_id,
-            ).only("status").first()
+
+            obj = (
+                ScheduledExportRun.objects.filter(
+                    id=pipeline_id,
+                    tenant_id=tenant_id,
+                )
+                .only("status")
+                .first()
+            )
         elif pipeline_type == PipelineType.DQ:
             from hub.apps.dq.models import DQRun
-            obj = DQRun.objects.filter(
-                id=pipeline_id, tenant_id=tenant_id,
-            ).only("status").first()
+
+            obj = (
+                DQRun.objects.filter(
+                    id=pipeline_id,
+                    tenant_id=tenant_id,
+                )
+                .only("status")
+                .first()
+            )
         elif pipeline_type == PipelineType.COMPLIANCE:
             from hub.apps.compliance.models import ComplianceRun
-            obj = ComplianceRun.objects.filter(
-                id=pipeline_id, tenant_id=tenant_id,
-            ).only("status").first()
+
+            obj = (
+                ComplianceRun.objects.filter(
+                    id=pipeline_id,
+                    tenant_id=tenant_id,
+                )
+                .only("status")
+                .first()
+            )
         else:
             return None
         return str(obj.status) if obj else None

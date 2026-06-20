@@ -1,6 +1,9 @@
 """Phase 107: Cascading failure — independent circuit breakers."""
+
 import uuid
+
 from django.test import TestCase
+
 from hub.apps.core.resilience.circuit_breaker import CircuitBreaker, CircuitBreakerState
 
 

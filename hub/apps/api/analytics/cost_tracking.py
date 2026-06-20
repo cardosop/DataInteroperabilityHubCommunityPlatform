@@ -5,17 +5,15 @@ Converts tenant usage metrics to cost estimates for tenant admins.
 Uses TenantUsageSummary, IngestionCost, and configurable rates.
 """
 
-from decimal import Decimal
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from decimal import Decimal
+from typing import Any
 
 from django.conf import settings
-from django.db.models import Sum
 from django.utils import timezone
 
-from hub.apps.tenants.models import Tenant, TenantUsageSummary
+from hub.apps.tenants.models import Tenant
 from hub.apps.tenants.services import TenantUsageService
-
 
 # Default cost rates (configurable via COST_RATES in settings)
 DEFAULT_STORAGE_COST_PER_GB_MONTH = Decimal("0.023")
@@ -24,7 +22,7 @@ DEFAULT_ASSET_COST_PER_MONTH = Decimal("0.00")  # Included in plan
 DEFAULT_DATASET_COST_PER_MONTH = Decimal("0.00")  # Included in plan
 
 
-def _get_cost_rates() -> Dict[str, Decimal]:
+def _get_cost_rates() -> dict[str, Decimal]:
     """Get cost rates from settings with defaults."""
     rates = getattr(settings, "COST_RATES", {})
     return {
@@ -47,11 +45,15 @@ class CostTrackingService:
     @staticmethod
     def get_cost_summary(
         tenant_id: str,
-        period_start: Optional[datetime] = None,
-        period_end: Optional[datetime] = None,
-    ) -> Dict[str, Any]:
+        period_start: datetime | None = None,
+        period_end: datetime | None = None,
+    ) -> dict[str, Any]:
         """
         Get cost summary for tenant: total_cost and breakdown by category.
+
+        Primary source is FLSC (compute_flsc) which queries actual usage
+        records.  Falls back to TenantUsageSummary when FLSC returns zero
+        cost (no usage data) or when the tenant does not exist.
 
         Args:
             tenant_id: Tenant UUID
@@ -59,12 +61,74 @@ class CostTrackingService:
             period_end: End of period (default: end of current month)
 
         Returns:
-            Dict with total_cost, breakdown (storage, api, ingestion, export), period
+            Dict with total_cost, breakdown, source ("flsc" or "fallback"),
+            period.
         """
-        usage_service = TenantUsageService(tenant_id=tenant_id)
-        usage_summary = usage_service.calculate_usage_summary(
-            tenant_id, period_start=period_start, period_end=period_end
-        )
+        # ── Primary path: FLSC ──────────────────────────────────────
+        try:
+            from hub.apps.billing.flsc import compute_flsc
+
+            flsc_result = compute_flsc(tenant_id, period_start, period_end)
+        except Exception:
+            flsc_result = None
+
+        if flsc_result and flsc_result.get("total_cents", 0) > 0:
+            total_cents = flsc_result["total_cents"]
+            breakdown = []
+            dimension_labels = {
+                "api_calls": "api_calls",
+                "storage_gb": "storage",
+                "compute_hours": "compute",
+                "engineering_hours": "engineering",
+                "support_tickets": "support",
+                "platform_base": "platform",
+            }
+            for dim_key, category_label in dimension_labels.items():
+                cents = flsc_result["breakdown"].get(dim_key, 0)
+                breakdown.append(
+                    {
+                        "category": category_label,
+                        "amount_cents": cents,
+                        "amount_usd": cents / 100.0,
+                        "quantity": None,
+                    }
+                )
+
+            return {
+                "tenant_id": tenant_id,
+                "total_cost": total_cents / 100.0,
+                "breakdown": breakdown,
+                "period_start": flsc_result.get("period_start",
+                    period_start.isoformat() if period_start else ""),
+                "period_end": flsc_result.get("period_end",
+                    period_end.isoformat() if period_end else ""),
+                "period": "month",
+                "source": "flsc",
+            }
+
+        # ── Fallback path: TenantUsageSummary ───────────────────────
+        source = "fallback"
+        try:
+            usage_service = TenantUsageService(tenant_id=tenant_id)
+            usage_summary = usage_service.calculate_usage_summary(
+                tenant_id, period_start=period_start, period_end=period_end
+            )
+        except Exception:
+            # Tenant does not exist or usage data unavailable —
+            # return a zero-cost fallback result.
+            now = timezone.now()
+            ps = period_start or datetime(now.year, now.month, 1, tzinfo=now.tzinfo)
+            pe = period_end or ps
+            return {
+                "tenant_id": tenant_id,
+                "total_cost": 0.0,
+                "breakdown": [],
+                "period_start": ps.isoformat(),
+                "period_end": pe.isoformat(),
+                "period": "month",
+                "source": source,
+            }
+
         rates = _get_cost_rates()
 
         storage_gb = usage_summary.storage_bytes / (1024**3)
@@ -81,10 +145,14 @@ class CostTrackingService:
         total_cost = storage_cost + api_cost + ingestion_cost + export_cost
 
         breakdown = [
-            {"category": "storage", "amount_usd": float(storage_cost), "quantity": storage_gb},
-            {"category": "api_calls", "amount_usd": float(api_cost), "quantity": api_calls},
-            {"category": "ingestion", "amount_usd": float(ingestion_cost), "quantity": None},
-            {"category": "export", "amount_usd": float(export_cost), "quantity": None},
+            {"category": "storage", "amount_usd": float(storage_cost),
+             "amount_cents": int(round(storage_cost * 100)), "quantity": storage_gb},
+            {"category": "api_calls", "amount_usd": float(api_cost),
+             "amount_cents": int(round(api_cost * 100)), "quantity": api_calls},
+            {"category": "ingestion", "amount_usd": float(ingestion_cost),
+             "amount_cents": int(round(ingestion_cost * 100)), "quantity": None},
+            {"category": "export", "amount_usd": float(export_cost),
+             "amount_cents": int(round(export_cost * 100)), "quantity": None},
         ]
 
         return {
@@ -94,15 +162,16 @@ class CostTrackingService:
             "period_start": usage_summary.period_start.isoformat(),
             "period_end": usage_summary.period_end.isoformat(),
             "period": "month",
+            "source": source,
         }
 
     @staticmethod
     def get_cost_breakdown(
         tenant_id: str,
-        period_start: Optional[datetime] = None,
-        period_end: Optional[datetime] = None,
+        period_start: datetime | None = None,
+        period_end: datetime | None = None,
         period: str = "month",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get cost breakdown by category (alias for get_cost_summary with period param).
         """
@@ -115,9 +184,9 @@ class CostTrackingService:
     @staticmethod
     def get_cost_by_asset(
         tenant_id: str,
-        period_start: Optional[datetime] = None,
-        period_end: Optional[datetime] = None,
-    ) -> Dict[str, Any]:
+        period_start: datetime | None = None,
+        period_end: datetime | None = None,
+    ) -> dict[str, Any]:
         """
         Get cost breakdown by asset (storage allocated per asset).
         Includes "Unassigned" row for storage from datasets without an asset.
@@ -143,7 +212,7 @@ class CostTrackingService:
                 ) - timedelta(seconds=1)
 
         rates = _get_cost_rates()
-        by_asset: List[Dict[str, Any]] = []
+        by_asset: list[dict[str, Any]] = []
 
         assets = Asset.objects.filter(tenant_id=tenant_id).prefetch_related("datasets__file")
         for asset in assets:
@@ -151,7 +220,6 @@ class CostTrackingService:
             for dataset in asset.datasets.all():
                 if dataset.file and dataset.file.status in [
                     FileStatus.ACTIVE,
-                    FileStatus.COMPLETED,
                 ]:
                     storage_bytes += dataset.file.size or 0
 
@@ -177,14 +245,11 @@ class CostTrackingService:
         for dataset in unassigned_datasets:
             if dataset.file and dataset.file.status in [
                 FileStatus.ACTIVE,
-                FileStatus.COMPLETED,
             ]:
                 unassigned_bytes += dataset.file.size or 0
         if unassigned_bytes > 0:
             unassigned_gb = unassigned_bytes / (1024**3)
-            unassigned_cost = float(
-                Decimal(str(unassigned_gb)) * rates["storage_per_gb_month"]
-            )
+            unassigned_cost = float(Decimal(str(unassigned_gb)) * rates["storage_per_gb_month"])
             by_asset.append(
                 {
                     "asset_id": "__unassigned__",
@@ -204,7 +269,7 @@ class CostTrackingService:
         }
 
     @staticmethod
-    def get_cost_recommendations(tenant_id: str) -> Dict[str, Any]:
+    def get_cost_recommendations(tenant_id: str) -> dict[str, Any]:
         """
         Get cost optimization recommendations for tenant.
         """
@@ -212,7 +277,7 @@ class CostTrackingService:
         current_usage = usage_service.get_current_usage(tenant_id)
         tenant = Tenant.objects.get(id=tenant_id)
         plan = tenant.plan
-        recommendations: List[Dict[str, Any]] = []
+        recommendations: list[dict[str, Any]] = []
 
         if plan and plan.limits_json:
             limits = plan.limits_json
@@ -254,12 +319,12 @@ class CostTrackingService:
         tenant_id: str,
         period: str = "month",
         months: int = 6,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get cost trends over time (historical usage summaries).
         """
         now = timezone.now()
-        trends: List[Dict[str, Any]] = []
+        trends: list[dict[str, Any]] = []
 
         for i in range(months - 1, -1, -1):
             month = now.month - i
@@ -271,9 +336,7 @@ class CostTrackingService:
             if month == 12:
                 period_end = datetime(year + 1, 1, 1, tzinfo=now.tzinfo) - timedelta(seconds=1)
             else:
-                period_end = datetime(year, month + 1, 1, tzinfo=now.tzinfo) - timedelta(
-                    seconds=1
-                )
+                period_end = datetime(year, month + 1, 1, tzinfo=now.tzinfo) - timedelta(seconds=1)
 
             summary = CostTrackingService.get_cost_summary(
                 tenant_id, period_start=period_start, period_end=period_end

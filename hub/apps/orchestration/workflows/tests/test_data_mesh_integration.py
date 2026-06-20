@@ -1,19 +1,23 @@
 """
 Integration tests for Data Mesh Domain Creation Workflow
 """
-import unittest
+
 import uuid
-from unittest.mock import patch, MagicMock
+
 from django.test import TestCase
 
+from hub.apps.governance.models import AccessPolicy
+from hub.apps.mesh.models import (
+    DataMeshDomain,
+    DomainStatus,
+    PolicyApplication,
+)
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.workflows.data_mesh import DataMeshWorkflow
-from hub.apps.mesh.models import DataMeshDomain, DomainStatus, PolicyApplication, PolicyApplicationStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User
-from hub.apps.governance.models import AccessPolicy
 
 
 class DataMeshWorkflowIntegrationTest(TestCase):
@@ -26,35 +30,35 @@ class DataMeshWorkflowIntegrationTest(TestCase):
             name=f"Test Tenant Integration {unique_id}",
             slug=f"test-tenant-integration-{unique_id}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
         self.user = User.objects.create_user(
             email=f"test-integration-{unique_id}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            display_name="Test User"
+            display_name="Test User",
         )
 
     def test_full_workflow_execution(self):
         """Test full workflow execution"""
         # Create default policies (tenant-wide policies that should be applied to all domains)
-        policy1 = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Default Policy 1",
             conditions={"effect": "ALLOW"},
             effect="ALLOW",
             enabled=True,
             asset=None,  # Tenant-wide policy
-            dataset=None  # Tenant-wide policy
+            dataset=None,  # Tenant-wide policy
         )
-        policy2 = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Default Policy 2",
             conditions={"effect": "ALLOW"},
             effect="ALLOW",
             enabled=True,
             asset=None,  # Tenant-wide policy
-            dataset=None  # Tenant-wide policy
+            dataset=None,  # Tenant-wide policy
         )
 
         # Execute workflow
@@ -73,7 +77,7 @@ class DataMeshWorkflowIntegrationTest(TestCase):
             resource_quota={"storage_gb": 100, "compute_hours": 50},
             created_by_id=str(self.user.id),
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Verify workflow completed successfully
@@ -109,9 +113,7 @@ class DataMeshWorkflowIntegrationTest(TestCase):
 
         # Create a domain with the same name to cause validation failure
         DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Duplicate Domain",
-            status=DomainStatus.ACTIVE
+            tenant=self.tenant, name="Duplicate Domain", status=DomainStatus.ACTIVE
         )
 
         # Execute workflow with duplicate name
@@ -126,7 +128,7 @@ class DataMeshWorkflowIntegrationTest(TestCase):
                 name="Duplicate Domain",  # Duplicate name
                 created_by_id=str(self.user.id),
                 engine=engine,
-                registry=registry
+                registry=registry,
             )
 
         self.assertIn("already exists", str(context.exception))
@@ -141,7 +143,7 @@ class DataMeshWorkflowIntegrationTest(TestCase):
             effect="ALLOW",
             enabled=True,
             asset=None,  # Tenant-wide policy
-            dataset=None  # Tenant-wide policy
+            dataset=None,  # Tenant-wide policy
         )
 
         # Create a second policy that will fail application (by making it belong to a different tenant)
@@ -151,16 +153,16 @@ class DataMeshWorkflowIntegrationTest(TestCase):
             name=f"Other Tenant {_uid}",
             slug=f"other-tenant-{_uid}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
-        policy2 = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=other_tenant,  # Different tenant - will cause validation error
             name="Default Policy 2 (Wrong Tenant)",
             conditions={"effect": "ALLOW"},
             effect="ALLOW",
             enabled=True,
             asset=None,  # Tenant-wide policy
-            dataset=None  # Tenant-wide policy
+            dataset=None,  # Tenant-wide policy
         )
 
         # Execute workflow
@@ -174,7 +176,7 @@ class DataMeshWorkflowIntegrationTest(TestCase):
             name="Test Domain With Policy Failure",
             created_by_id=str(self.user.id),
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Verify workflow still completed (policy failure is non-fatal)
@@ -182,7 +184,7 @@ class DataMeshWorkflowIntegrationTest(TestCase):
         self.assertIn("domain_id", result)
 
         # Get workflow instance
-        workflow_instance = WorkflowInstance.objects.get(id=result["workflow_instance_id"])
+        WorkflowInstance.objects.get(id=result["workflow_instance_id"])
 
         # Verify domain was created
         domain = DataMeshDomain.objects.get(id=result["domain_id"])
@@ -208,7 +210,7 @@ class DataMeshWorkflowIntegrationTest(TestCase):
             name="Test Domain Progress",
             created_by_id=str(self.user.id),
             engine=engine,
-            registry=registry
+            registry=registry,
         )
 
         # Get workflow instance
@@ -219,4 +221,3 @@ class DataMeshWorkflowIntegrationTest(TestCase):
 
         # Verify progress is tracked in state_data
         self.assertIn("current_step_name", workflow_instance.state_data)
-

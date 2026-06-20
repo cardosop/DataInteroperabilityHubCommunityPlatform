@@ -3,20 +3,25 @@ Comprehensive tests for enhanced WebSocket authentication middleware.
 
 Tests token extraction from query params and headers, validation, and connection rejection.
 """
-import uuid
+
 import asyncio
+import uuid
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.db import connections
+
 from hub.apps.websocket.tests.test_base import AsyncWebSocketTransactionTestCase
 
 # Optional channels import
 try:
     from channels.db import database_sync_to_async
+
     CHANNELS_AVAILABLE = True
 except ImportError:
     # Fallback to asgiref if channels not available
     from asgiref.sync import sync_to_async
+
     database_sync_to_async = sync_to_async
     CHANNELS_AVAILABLE = False
 
@@ -25,13 +30,12 @@ import pytest
 # Skip tests if channels not available
 pytestmark = pytest.mark.skipif(not CHANNELS_AVAILABLE, reason="Django Channels not installed")
 
-from hub.apps.auth.models import APIKey
 from hub.apps.auth.jwt_utils import JWTTokenGenerator
-from hub.apps.tenants.models import Tenant
+from hub.apps.auth.models import APIKey
 from hub.apps.websocket.middleware.auth import (
     WebSocketAuthMiddleware,
-    get_user_from_token,
     get_user_from_api_key,
+    get_user_from_token,
 )
 
 User = get_user_model()
@@ -74,6 +78,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
 
         # Create API key with unique plaintext key to avoid hash conflicts
         import uuid
+
         self.plaintext_api_key = f"test-api-key-{uuid.uuid4().hex[:8]}"
         key_hash = APIKey.hash_key(self.plaintext_api_key)
         self.api_key_obj = APIKey.objects.create(
@@ -86,6 +91,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
     def _run_async_test(self, async_func):
         """Helper to run async tests with proper database connection handling."""
         from django.db import close_old_connections
+
         close_old_connections()
 
         async def wrapped():
@@ -105,6 +111,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
         middleware = WebSocketAuthMiddleware(next_middleware)
 
         messages = []
+
         async def send(message):
             messages.append(message)
 
@@ -143,6 +150,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
 
     def test_middleware_extracts_token_from_query_params(self):
         """Test that middleware extracts JWT token from query parameters."""
+
         async def run_test():
             scope = {
                 "type": "websocket",
@@ -157,6 +165,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
 
     def test_middleware_extracts_token_from_headers(self):
         """Test that middleware extracts JWT token from Authorization header."""
+
         async def run_test():
             scope = {
                 "type": "websocket",
@@ -173,6 +182,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
 
     def test_middleware_extracts_token_from_access_token_query_param(self):
         """Test that middleware extracts token from access_token query parameter."""
+
         async def run_test():
             scope = {
                 "type": "websocket",
@@ -185,8 +195,10 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
         result = self._run_async_test(run_test)
         self.assertTrue(result)
 
-    def test_middleware_rejects_invalid_token(self):
-        """Test that middleware rejects connection with invalid token."""
+    def test_middleware_passes_through_invalid_token_for_message_auth(self):
+        """Test that middleware passes through invalid token (connection is NOT rejected —
+        auth is deferred to message-based authenticate after accept)."""
+
         async def run_test():
             scope = {
                 "type": "websocket",
@@ -199,8 +211,10 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
         result = self._run_async_test(run_test)
         self.assertTrue(result)
 
-    def test_middleware_rejects_missing_token(self):
-        """Test that middleware rejects connection without token."""
+    def test_middleware_passes_through_missing_token_for_message_auth(self):
+        """Test that middleware passes through missing token (connection is NOT rejected —
+        auth is deferred to message-based authenticate after accept)."""
+
         async def run_test():
             scope = {
                 "type": "websocket",
@@ -215,6 +229,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
 
     def test_middleware_extracts_api_key_from_query_params(self):
         """Test that middleware extracts API key from query parameters."""
+
         async def run_test():
             scope = {
                 "type": "websocket",
@@ -229,6 +244,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
 
     def test_middleware_extracts_api_key_from_headers(self):
         """Test that middleware extracts API key from X-API-Key header."""
+
         async def run_test():
             scope = {
                 "type": "websocket",
@@ -243,8 +259,10 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
         result = self._run_async_test(run_test)
         self.assertTrue(result)
 
-    def test_middleware_rejects_invalid_api_key(self):
-        """Test that middleware rejects connection with invalid API key."""
+    def test_middleware_passes_through_invalid_api_key_for_message_auth(self):
+        """Test that middleware passes through invalid API key (connection is NOT rejected —
+        auth is deferred to message-based authenticate after accept)."""
+
         async def run_test():
             scope = {
                 "type": "websocket",
@@ -257,10 +275,12 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
         result = self._run_async_test(run_test)
         self.assertTrue(result)
 
-    def test_middleware_rejects_expired_api_key(self):
-        """Test that middleware rejects connection with expired API key."""
-        from django.utils import timezone
+    def test_middleware_passes_through_expired_api_key_for_message_auth(self):
+        """Test that middleware passes through expired API key (connection is NOT rejected —
+        auth is deferred to message-based authenticate after accept)."""
         from datetime import timedelta
+
+        from django.utils import timezone
 
         # Create expired API key with unique value to avoid hash collisions
         expired_key_plaintext = f"expired-key-{uuid.uuid4().hex[:12]}"
@@ -289,19 +309,23 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
         """Test that middleware prefers JWT token over API key when both are provided."""
         # Ensure database connection is available before async call
         from django.db import close_old_connections
+
         close_old_connections()
 
         async def run_test():
             # Close old connections and ensure fresh connection in async context
             from django.db import close_old_connections
+
             close_old_connections()
 
             scope = {
                 "type": "websocket",
                 "path": "/ws/events/",
                 "query_string": (
-                    b"token=" + self.token.encode("utf-8") +
-                    b"&api_key=" + self.plaintext_api_key.encode("utf-8")
+                    b"token="
+                    + self.token.encode("utf-8")
+                    + b"&api_key="
+                    + self.plaintext_api_key.encode("utf-8")
                 ),
                 "headers": [],
             }
@@ -312,6 +336,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
 
     def test_middleware_extracts_tenant_from_user(self):
         """Test that middleware extracts tenant from authenticated user."""
+
         async def run_test():
             scope = {
                 "type": "websocket",
@@ -326,6 +351,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
             middleware = WebSocketAuthMiddleware(next_middleware)
 
             messages = []
+
             async def send(message):
                 messages.append(message)
 
@@ -348,6 +374,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
 
     def test_middleware_handles_malformed_authorization_header(self):
         """Test that middleware handles malformed Authorization header gracefully."""
+
         async def run_test():
             scope = {
                 "type": "websocket",
@@ -381,6 +408,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
 
     def test_get_user_from_token_valid(self):
         """Test get_user_from_token with valid token."""
+
         async def run_test():
             # Initialize database connection by querying the user with database_sync_to_async
             # This ensures the connection is initialized in the async context
@@ -403,6 +431,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
 
     def test_get_user_from_token_invalid(self):
         """Test get_user_from_token with invalid token."""
+
         async def run_test():
             return await get_user_from_token("invalid-token")
 
@@ -411,6 +440,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
 
     def test_get_user_from_api_key_valid(self):
         """Test get_user_from_api_key with valid API key."""
+
         async def run_test():
             # Initialize database connection
             api_key_exists = await database_sync_to_async(
@@ -432,6 +462,7 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
 
     def test_get_user_from_api_key_invalid(self):
         """Test get_user_from_api_key with invalid API key."""
+
         async def run_test():
             return await get_user_from_api_key("invalid-key")
 

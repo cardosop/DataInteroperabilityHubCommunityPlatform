@@ -4,18 +4,17 @@ File Storage Views
 REST API views for file upload, download, and management.
 """
 
+import contextlib
 import os
 import time
 import uuid
 
 import structlog
 from django.conf import settings
-from django.db import transaction
-from django.utils import timezone
+from django.db import IntegrityError, transaction
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
-from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 
@@ -27,12 +26,14 @@ from hub.apps.tenants.services import get_tenant_file_size_limit
 
 from .models import File, FileScanStatus, FileStatus
 from .serializers import (
+    ChecksumMismatchSerializer,
     ChunkUploadInitSerializer,
     ChunkUploadResponseSerializer,
     FileCompleteSerializer,
     FileDownloadResponseSerializer,
     FileInitResponseSerializer,
     FileInitSerializer,
+    FileRenameSerializer,
     FileSerializer,
 )
 from .services import FileService
@@ -57,6 +58,7 @@ class FileViewSet(viewsets.ModelViewSet):
 
     def initial(self, request, *args, **kwargs):
         from hub.apps.tenants.kill_switch_gates import ensure_tenant_files_api_allowed
+
         ensure_tenant_files_api_allowed(request)
         super().initial(request, *args, **kwargs)
 
@@ -90,13 +92,105 @@ class FileViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(status=status_param)
         return queryset
 
+    def get_object(self):
+        """Retrieve File by ``id`` lookup, validated as a UUID.
+
+        Returns 400 for malformed (non-UUID) identifiers before reaching
+        the ORM, mirrors the guard in ``rename`` (Phase 260.2.A contract).
+
+        Cross-tenant read probes are audited by ``_get_file_via_entitlement``
+        which is called as a fallback from ``retrieve``, ``download``, and
+        ``scan_status`` — it emits ``FILE_IDOR_ATTEMPT_BLOCKED`` with the
+        precise reason (no asset link vs. entitlement denied).
+        """
+        # ── UUID validation (malformed identifier → 400) ──────────
+        raw_id = self.kwargs.get(self.lookup_field, "")
+        try:
+            uuid.UUID(raw_id)
+        except (ValueError, TypeError, AttributeError):
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+
+            raise DRFValidationError(
+                detail=f"'{raw_id}' is not a valid UUID.",
+                code="invalid",
+            )
+
+        # ── Tenant-scoped fetch ───────────────────────────────────
+        queryset = self.filter_queryset(self.get_queryset())
+        try:
+            obj = queryset.get(id=raw_id)
+        except (File.DoesNotExist, queryset.model.DoesNotExist):
+            from django.http import Http404 as _Http404
+
+            raise _Http404("No File matches the given query.")
+
+        # ── May raise PermissionDenied ────────────────────────────
+        self.check_object_permissions(self.request, obj)
+        return obj
+
+    def _emit_file_idor_audit(self, file_obj, *, reason, extra_details=None):
+        """Emit ``FILE_IDOR_ATTEMPT_BLOCKED`` audit event for a
+        cross-tenant file access probe."""
+        import contextlib
+
+        from hub.apps.audit import event_types as _et
+
+        consumer_tid = get_request_tenant_id(self.request)
+        details = {
+            "reason": reason,
+            "file_owner_tenant_id": str(file_obj.tenant_id),
+            "consumer_tenant_id": consumer_tid or "",
+        }
+        if extra_details:
+            details.update(extra_details)
+        with contextlib.suppress(Exception):
+            create_audit_event(
+                resource_type="FILE",
+                action=_et.FILE_IDOR_ATTEMPT_BLOCKED,
+                actor_user=self.request.user,
+                tenant=file_obj.tenant,
+                resource_id=str(file_obj.id),
+                details=details,
+                request=self.request,
+            )
+
+    def get_throttles(self):
+        """Action-scoped throttles.
+
+        Phase 260.2.E (S-9): init upload → FileInitUserThrottle + FileInitTenantThrottle.
+        Phase S2-3: scan-status → FileScanStatusUserThrottle + FileScanStatusTenantThrottle.
+        """
+        from hub.apps.files.throttles import (
+            FileInitTenantThrottle,
+            FileInitUserThrottle,
+            FileScanStatusTenantThrottle,
+            FileScanStatusUserThrottle,
+        )
+
+        throttles = list(super().get_throttles())
+        if self.action == "init_upload":
+            throttles.extend([FileInitUserThrottle(), FileInitTenantThrottle()])
+        elif self.action == "scan_status":
+            throttles.extend([FileScanStatusUserThrottle(), FileScanStatusTenantThrottle()])
+        return throttles
+
     def _get_file_via_entitlement(self, request, file_id):
         """117B.6: Cross-tenant file access via entitlement.
 
         Returns File if consumer has ACTIVE entitlement for
-        the file's asset; None if file doesn't exist or has
-        no asset link.  Raises PermissionDenied if entitlement
-        is revoked/expired/missing.
+        the file's asset; None if file doesn't exist, has
+        no asset link, or the entitlement is denied.
+
+        Emits ``FILE_IDOR_ATTEMPT_BLOCKED`` audit for every
+        cross-tenant read probe — ``reason=CROSS_TENANT_PROBE``
+        (no asset link) or ``reason=ENTITLEMENT_DENIED`` with
+        ``entitlement_error=ENTITLEMENT_REQUIRED`` (asset link
+        exists but no active entitlement). The response always
+        stays 404 — no existence leak via status code.
+
+        Phase 260.2.A contract: cross-tenant read probes MUST
+        return 404 (not 403), hiding the file's existence even
+        when an entitlement is required.
         """
         try:
             file_obj = File.objects.get(id=file_id)
@@ -113,17 +207,39 @@ class FileViewSet(viewsets.ModelViewSet):
 
         from hub.apps.marketplace.entitlement_check import (
             get_asset_id_from_file,
-            require_entitlement,
         )
+
         asset_id = get_asset_id_from_file(str(file_obj.id))
         if not asset_id:
+            # File exists in another tenant but has no asset link.
+            # Audit the probe, return 404 — no existence leak.
+            self._emit_file_idor_audit(
+                file_obj=file_obj,
+                reason="CROSS_TENANT_PROBE",
+            )
             return None
 
-        require_entitlement(
-            consumer_tenant_id=consumer_tid,
-            asset_id=asset_id,
-            provider_tenant_id=str(file_obj.tenant_id),
+        # Asset-linked file — check entitlement. If denied,
+        # audit with the precise denial reason but STILL return
+        # None → 404 (not 403). The audit record captures the
+        # entitlement-denied detail for the security team.
+        from hub.apps.marketplace.entitlement_check import (
+            require_entitlement,
         )
+
+        try:
+            require_entitlement(
+                consumer_tenant_id=consumer_tid,
+                asset_id=asset_id,
+                provider_tenant_id=str(file_obj.tenant_id),
+            )
+        except Exception:
+            self._emit_file_idor_audit(
+                file_obj=file_obj,
+                reason="ENTITLEMENT_DENIED",
+                extra_details={"entitlement_error": "ENTITLEMENT_REQUIRED"},
+            )
+            return None
         return file_obj
 
     @transaction.atomic
@@ -283,6 +399,60 @@ class FileViewSet(viewsets.ModelViewSet):
         response_serializer = FileInitResponseSerializer(response_data)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=["get"], url_path="parts")
+    def parts(self, request, id=None):
+        """List parts that have been uploaded for a multipart upload.
+
+        GET /api/v1/files/{id}/parts/
+
+        Returns the ground-truth list of parts currently held in S3
+        for an active multipart upload. The response includes the
+        ``upload_id`` so callers can correlate it with their local
+        checkpoint.
+
+        When the multipart upload no longer exists (aborted, expired,
+        or completed) returns 409 with typed code.
+        """
+        file_obj = self.get_object()
+
+        if file_obj.status != FileStatus.UPLOADING:
+            return api_error_response(
+                "File is not in UPLOADING status",
+                status_code=status.HTTP_409_CONFLICT,
+                code="MULTIPART_UPLOAD_NOT_ACTIVE",
+                details={
+                    "file_id": str(file_obj.id),
+                    "current_status": file_obj.status,
+                },
+            )
+
+        upload_id = file_obj.metadata_json.get("multipart_upload_id")
+        if not upload_id:
+            return api_error_response(
+                "No active multipart upload for this file",
+                status_code=status.HTTP_409_CONFLICT,
+                code="MULTIPART_UPLOAD_NOT_ACTIVE",
+                details={"file_id": str(file_obj.id)},
+            )
+
+        storage_client = S3StorageClient()
+        try:
+            s3_parts = storage_client.list_multipart_parts(
+                key=file_obj.storage_path, upload_id=upload_id
+            )
+        except Exception:
+            return api_error_response(
+                "Multipart upload no longer exists",
+                status_code=status.HTTP_409_CONFLICT,
+                code="MULTIPART_UPLOAD_NO_LONGER_EXISTS",
+                details={"file_id": str(file_obj.id), "upload_id": upload_id},
+            )
+
+        return Response(
+            {"upload_id": upload_id, "parts": s3_parts},
+            status=status.HTTP_200_OK,
+        )
+
     @transaction.atomic
     @action(detail=True, methods=["post"], url_path="complete")
     def complete_upload(self, request, id=None):
@@ -305,9 +475,14 @@ class FileViewSet(viewsets.ModelViewSet):
         # Guard: if another request already completed this upload while we
         # waited for the lock, return 409 instead of retrying S3 operations.
         if file_obj.status == FileStatus.ACTIVE:
-            return Response(
-                {"error": "File upload already completed"},
-                status=status.HTTP_409_CONFLICT,
+            return api_error_response(
+                "File upload already completed",
+                status_code=status.HTTP_409_CONFLICT,
+                code="UPLOAD_ALREADY_COMPLETED",
+                details={
+                    "file_id": str(file_obj.id),
+                    "current_status": file_obj.status,
+                },
             )
 
         serializer = FileCompleteSerializer(data=request.data)
@@ -316,25 +491,89 @@ class FileViewSet(viewsets.ModelViewSet):
         content_sha256 = serializer.validated_data["content_sha256"]
         parts = serializer.validated_data.get("parts", [])
 
-        # For multipart uploads, complete the multipart upload
-        if file_obj.metadata_json.get("multipart_upload_id"):
+        # For multipart uploads, validate parts completeness via S3
+        # before attempting the compose. The S3 ListParts API provides
+        # ground truth about which parts S3 actually holds, so we can
+        # return a typed 409 with the exact missing-parts list instead
+        # of letting the compose fail with a generic 500.
+        multipart_upload_id = file_obj.metadata_json.get("multipart_upload_id")
+        if multipart_upload_id:
             if not parts:
-                return Response(
-                    {"error": "Parts are required for multipart upload completion"},
-                    status=status.HTTP_400_BAD_REQUEST,
+                return api_error_response(
+                    "Parts are required for multipart upload completion",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    code="MULTIPART_NO_PARTS",
                 )
 
             storage_client = S3StorageClient()
             try:
+                s3_parts = storage_client.list_multipart_parts(
+                    key=file_obj.storage_path,
+                    upload_id=multipart_upload_id,
+                )
+            except Exception as exc:
+                # ``list_multipart_parts`` raises StorageError for any
+                # ClientError including NoSuchUpload (aborted/expired).
+                err = str(exc)
+                if "NoSuchUpload" in err:
+                    return api_error_response(
+                        "Multipart upload no longer exists",
+                        status_code=status.HTTP_409_CONFLICT,
+                        code="MULTIPART_UPLOAD_NO_LONGER_EXISTS",
+                        details={
+                            "file_id": str(file_obj.id),
+                            "upload_id": multipart_upload_id,
+                        },
+                    )
+                return api_error_response(
+                    f"Failed to list multipart upload parts: {err}",
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    code="MULTIPART_LIST_FAILED",
+                    details={
+                        "file_id": str(file_obj.id),
+                        "upload_id": multipart_upload_id,
+                    },
+                )
+
+            s3_part_numbers = {p["part_number"] for p in s3_parts}
+
+            # Build the expected part set: use chunk_count from
+            # metadata_json if available, otherwise fall back to the
+            # part numbers the client submitted.
+            expected_count = file_obj.metadata_json.get("chunk_count")
+            if expected_count is not None:
+                expected_set = set(range(1, int(expected_count) + 1))
+            else:
+                expected_set = {p["PartNumber"] for p in parts}
+
+            missing = sorted(expected_set - s3_part_numbers)
+            if missing:
+                return api_error_response(
+                    "Multipart upload is incomplete — S3 is missing "
+                    f"{len(missing)} part(s) out of {len(expected_set)} "
+                    "expected.",
+                    status_code=status.HTTP_409_CONFLICT,
+                    code="MULTIPART_INCOMPLETE",
+                    details={
+                        "missing_parts": missing,
+                        "expected_count": len(expected_set),
+                        "uploaded_count": len(s3_part_numbers),
+                        "upload_id": multipart_upload_id,
+                        "file_id": str(file_obj.id),
+                    },
+                )
+
+            try:
                 storage_client.complete_multipart_upload(
                     key=file_obj.storage_path,
-                    upload_id=file_obj.metadata_json["multipart_upload_id"],
+                    upload_id=multipart_upload_id,
                     parts=parts,
                 )
             except Exception as e:
-                return Response(
-                    {"error": f"Failed to complete multipart upload: {str(e)}"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                return api_error_response(
+                    f"Failed to complete multipart upload: {e!s}",
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    code="MULTIPART_COMPOSE_FAILED",
                 )
 
         # Verify file exists in storage
@@ -402,7 +641,7 @@ class FileViewSet(viewsets.ModelViewSet):
                             "error": f"File size ({stored_size} bytes) exceeds tenant limit ({tenant_limit} bytes). "
                             "File upload rejected."
                         },
-                        status=status.HTTP_400_BAD_REQUEST,
+                        status_code=status.HTTP_400_BAD_REQUEST,
                     )
             except Exception as e:
                 logger.warning(
@@ -453,12 +692,7 @@ class FileViewSet(viewsets.ModelViewSet):
                     },
                 )
                 return Response(
-                    {
-                        "error": (
-                            "Hash verification failed: unable "
-                            "to verify file integrity"
-                        )
-                    },
+                    {"error": ("Hash verification failed: unable to verify file integrity")},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -477,6 +711,19 @@ class FileViewSet(viewsets.ModelViewSet):
             )
         except ServiceValidationError as e:
             return handle_service_exception(e)
+        except IntegrityError:
+            # The partial unique index (unique_active_filename_per_tenant)
+            # caught a concurrent complete that won the race for this name.
+            return api_error_response(
+                f"Upload completion collision: file name {file_obj.name!r} is "
+                "already ACTIVE in this tenant from a concurrent upload.",
+                status_code=status.HTTP_409_CONFLICT,
+                code="FILENAME_COLLISION",
+                details={
+                    "file_id": str(file_obj.id),
+                    "name": file_obj.name,
+                },
+            )
 
         # Log audit event
         create_audit_event(
@@ -509,18 +756,18 @@ class FileViewSet(viewsets.ModelViewSet):
         # 117B.6: Try tenant-scoped first; fall back to
         # cross-tenant entitlement check.
         from django.http import Http404
-        from rest_framework.exceptions import NotFound
 
         try:
             file_obj = self.get_object()
         except (Http404, NotFound):
             file_obj = self._get_file_via_entitlement(
-                request, id,
+                request,
+                id,
             )
             if file_obj is None:
                 raise NotFound("File not found.")
 
-        if file_obj.status not in (FileStatus.ACTIVE, FileStatus.COMPLETED):
+        if file_obj.status not in (FileStatus.ACTIVE,):
             return Response(
                 {"error": f"File is not available for download (status: {file_obj.status})"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -544,7 +791,9 @@ class FileViewSet(viewsets.ModelViewSet):
         storage_client = S3StorageClient()
         download_start_time = time.time()
         download_url = storage_client.generate_presigned_download_url(
-            key=file_obj.storage_path, expires_in=3600, filename=file_obj.name  # 1 hour
+            key=file_obj.storage_path,
+            expires_in=3600,
+            filename=file_obj.name,  # 1 hour
         )
 
         # Publish file.downloaded event
@@ -583,10 +832,207 @@ class FileViewSet(viewsets.ModelViewSet):
         )
 
         response_serializer = FileDownloadResponseSerializer(
-            {"download_url": download_url, "expires_in": 3600, "filename": file_obj.name}
+            {
+                "download_url": download_url,
+                "expires_in": 3600,
+                "filename": file_obj.name,
+                "content_sha256": file_obj.content_sha256,
+            }
         )
 
         return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    # ── scan-status (Phase 260.3.D) ──────────────────────────────────
+
+    @action(detail=True, methods=["get"], url_path="scan-status")
+    def scan_status(self, request, id=None):
+        """
+        Get scan status for a file.
+
+        GET /api/v1/files/{id}/scan-status/
+
+        Lightweight poll endpoint for malware scan state.
+        117B.6: Cross-tenant entitlement fallback included.
+        """
+        from django.http import Http404 as _Http404
+
+        try:
+            file_obj = self.get_object()
+        except (_Http404, NotFound):
+            file_obj = self._get_file_via_entitlement(request, id)
+            if file_obj is None:
+                raise
+
+        return Response(
+            {
+                "file_id": str(file_obj.id),
+                "scan_status": file_obj.scan_status,
+                "scanned_at": file_obj.scanned_at,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    # ── quota (Phase 260.4.G) ────────────────────────────────────────
+
+    @action(detail=False, methods=["get"], url_path="quota")
+    def quota(self, request):
+        """
+        Get file storage quota for the current tenant.
+
+        GET /api/v1/files/quota/
+        """
+        from hub.apps.files.quota import QuotaPlanResolutionError, get_tenant_file_storage_quota
+
+        tenant_id_str = get_request_tenant_id(request)
+        if not tenant_id_str:
+            return api_error_response(
+                "Tenant context required",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="TENANT_REQUIRED",
+            )
+
+        try:
+            result = get_tenant_file_storage_quota(tenant_id_str)
+        except QuotaPlanResolutionError as exc:
+            return api_error_response(
+                str(exc),
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                code="QUOTA_PLAN_RESOLUTION_FAILED",
+                details={"tenant_id": tenant_id_str},
+            )
+
+        return Response(result, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="download/checksum-mismatch")
+    def download_checksum_mismatch(self, request, id=None):
+        """Accept a client-side computed SHA-256 and emit a checksum-mismatch audit.
+
+        POST /api/v1/files/{id}/download/checksum-mismatch/
+
+        The endpoint never authoritatively decides match vs mismatch — it
+        logs whatever the client reports so the audit record is complete
+        from the client's POV. Hashes are truncated to 16 hex chars in
+        the audit payload (privacy: full hashes fingerprint content).
+        """
+        file_obj = self.get_object()
+
+        serializer = ChecksumMismatchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        actual_sha256 = serializer.validated_data["actual_sha256"]
+
+        from hub.apps.audit.utils import create_audit_event
+
+        create_audit_event(
+            resource_type="FILE",
+            action="FILE_DOWNLOAD_CHECKSUM_MISMATCH",
+            actor_user=request.user,
+            tenant=file_obj.tenant,
+            resource_id=str(file_obj.id),
+            result="SUCCESS",
+            details={
+                "expected_sha256_prefix": (file_obj.content_sha256 or "")[:16],
+                "actual_sha256_prefix": actual_sha256[:16],
+                "file_id": str(file_obj.id),
+            },
+            request=request,
+        )
+
+        return Response({"status": "ok"}, status=status.HTTP_200_OK)
+
+    @transaction.atomic
+    @action(detail=True, methods=["post"], url_path="rename")
+    def rename(self, request, id=None):
+        """Rename a file.
+
+        POST /api/v1/files/{id}/rename/
+
+        Rename the file while keeping its storage_path unchanged.
+        Validates against active-filename collisions per tenant and
+        emits a FILE_RENAMED audit event.
+        """
+        # Validate UUID format before get_object() so malformed UUIDs
+        # return 400 rather than a router-level 404.
+        try:
+            uuid.UUID(id)
+        except (ValueError, TypeError, AttributeError):
+            return Response(
+                {"error": f"Invalid file ID: {id}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Tenant-scoped fetch via get_object() first, then re-fetch with
+        # select_for_update for the actual mutation.
+        file_obj = self.get_object()
+        file_obj = File.objects.select_for_update().get(id=file_obj.id)
+
+        serializer = FileRenameSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        new_name = serializer.validated_data["name"]
+
+        # Validate filename safety
+        from .validators import validate_filename
+
+        new_name = validate_filename(new_name)
+
+        if new_name == file_obj.name:
+            return Response(
+                FileSerializer(file_obj).data, status=status.HTTP_200_OK
+            )
+
+        # Check active-name collision within the same tenant
+        from .business_rules import FilesBusinessRules
+
+        rules = FilesBusinessRules(
+            tenant_id=str(file_obj.tenant_id),
+            user_id=str(request.user.id),
+        )
+        collision_result = rules.validate_file_for_rename(
+            file=file_obj, tenant=file_obj.tenant, new_name=new_name
+        )
+        if not collision_result.is_valid:
+            return api_error_response(
+                "; ".join(collision_result.errors),
+                status_code=status.HTTP_409_CONFLICT,
+                code="FILENAME_COLLISION",
+                details=collision_result.details,
+            )
+
+        # Emit audit event
+        from hub.apps.audit.utils import create_audit_event
+
+        create_audit_event(
+            resource_type="FILE",
+            action="FILE_RENAMED",
+            actor_user=request.user,
+            tenant=file_obj.tenant,
+            resource_id=str(file_obj.id),
+            result="SUCCESS",
+            details={
+                "previous_name": file_obj.name,
+                "new_name": new_name,
+                "storage_path": file_obj.storage_path,
+                "file_id": str(file_obj.id),
+            },
+            request=request,
+        )
+
+        file_obj.name = new_name
+        try:
+            file_obj.save(update_fields=["name", "updated_at"])
+        except IntegrityError:
+            # The partial unique index (unique_active_filename_per_tenant)
+            # caught a concurrent rename that won the race to this name.
+            return api_error_response(
+                f"Rename collision: {new_name!r} is already in use by another "
+                "ACTIVE file in this tenant.",
+                status_code=status.HTTP_409_CONFLICT,
+                code="FILENAME_COLLISION",
+                details={"name": new_name, "file_id": str(file_obj.id)},
+            )
+
+        return Response(
+            FileSerializer(file_obj).data, status=status.HTTP_200_OK
+        )
 
     @action(detail=True, methods=["post"], url_path="chunks/init")
     def init_chunk_upload(self, request, id=None):
@@ -700,7 +1146,25 @@ class FileViewSet(viewsets.ModelViewSet):
         DELETE /files/{id}
 
         Soft deletes file record and removes from storage. Delegates to FileService.
+
+        Phase 260.2.A: AUDITOR role → 403 on mutating endpoints (even in home tenant).
         """
+        from rest_framework.exceptions import PermissionDenied
+
+        # ── Guard: AUDITOR must not mutate ───────────────────────
+        if hasattr(request.user, "roles") and request.user.roles:
+            role_names = {r.name.upper() if hasattr(r, "name") else "" for r in request.user.roles.all()} if hasattr(request.user.roles, "all") else set()
+        else:
+            role_names = set()
+        if hasattr(request.user, "user_roles"):
+            with contextlib.suppress(Exception):
+                role_names |= {
+                    ur.role.name.upper()
+                    for ur in request.user.user_roles.select_related("role").all()
+                }
+        if "AUDITOR" in role_names:
+            raise PermissionDenied("Auditors are not permitted to mutate resources.")
+
         file_obj = self.get_object()
 
         file_service = FileService(
@@ -734,5 +1198,74 @@ class FileViewSet(viewsets.ModelViewSet):
         return super().list(request, *args, **kwargs)
 
     def retrieve(self, request, *args, **kwargs):
-        """Retrieve file by ID"""
-        return super().retrieve(request, *args, **kwargs)
+        """Retrieve file by ID.
+
+        117B.6: Cross-tenant entitlement check — try tenant-scoped
+        first; fall back to cross-tenant entitlement.
+        260.2.F: Emits ``FILE_METADATA_VIEWED`` under sampling.
+        """
+        from django.http import Http404 as _Http404
+
+        if hasattr(request, "user") and request.user.is_authenticated:
+            consumer_tid = get_request_tenant_id(request)
+        else:
+            consumer_tid = None
+
+        try:
+            file_obj = self.get_object()
+        except (_Http404, NotFound) as exc:
+            # Cross-tenant fallback via entitlement
+            raw_id = self.kwargs.get(self.lookup_field, "")
+            file_obj = self._get_file_via_entitlement(request, raw_id)
+            if file_obj is None:
+                raise
+            # The _get_file_via_entitlement may raise PermissionDenied
+            # when an asset link exists but no entitlement — let that
+            # propagate as 403 (not wrapped in 404).
+            if isinstance(exc, (NotFound,)) and not isinstance(exc, type):
+                pass
+
+        # ── FILE_METADATA_VIEWED audit (260.2.F) ──────────────
+        self._maybe_emit_metadata_viewed_audit(file_obj, consumer_tid)
+
+        serializer = self.get_serializer(file_obj)
+        return Response(serializer.data)
+
+    def _maybe_emit_metadata_viewed_audit(self, file_obj, consumer_tid):
+        """Emit ``FILE_METADATA_VIEWED`` audit under sampling (Phase 260.2.F)."""
+        import contextlib
+
+        from hub.apps.audit import event_types as _et
+        from hub.apps.files.metadata_view_audit import file_metadata_view_should_emit
+
+        try:
+            file_tenant = file_obj.tenant
+        except Exception:
+            return
+
+        if not file_metadata_view_should_emit(
+            file_tenant=file_tenant,
+            file_id=file_obj.id,
+            user_id=self.request.user.id if self.request.user.is_authenticated else None,
+        ):
+            return
+
+        sampling = (
+            "full"
+            if getattr(file_tenant, "compliance_audit_full_sampling", False)
+            else "ten_percent"
+        )
+        details = {"sampling": sampling}
+        if consumer_tid and str(file_obj.tenant_id) != consumer_tid:
+            details["consumer_tenant_id"] = consumer_tid
+
+        with contextlib.suppress(Exception):
+            create_audit_event(
+                resource_type="FILE",
+                action=_et.FILE_METADATA_VIEWED,
+                actor_user=self.request.user,
+                tenant=file_obj.tenant,
+                resource_id=str(file_obj.id),
+                details=details,
+                request=self.request,
+            )

@@ -2,6 +2,7 @@
 Phase D (TR.D.1-D.4) — Processor Agreements test expansion.
 Covers: service-layer CRUD, API endpoints, feature-flag gating, audit events.
 """
+
 import hashlib
 import uuid
 from datetime import date
@@ -32,7 +33,8 @@ class ProcessorAgreementsServiceTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"pa-svc-{uid}", slug=f"pa-svc-{uid}",
+            name=f"pa-svc-{uid}",
+            slug=f"pa-svc-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_processor_agreements_enabled=True,
         )
@@ -41,9 +43,9 @@ class ProcessorAgreementsServiceTests(TestCase):
     def test_processor_agreement_model_exists(self):
         """Verify ProcessorAgreement model has required fields."""
         fields = {f.name for f in ProcessorAgreement._meta.get_fields()}
-        assert 'tenant' in fields or 'tenant_id' in fields, "ProcessorAgreement must have tenant FK"
-        assert 'processor' in fields, "ProcessorAgreement must have processor FK"
-        assert 'agreement_type' in fields, "ProcessorAgreement must have agreement_type"
+        assert "tenant" in fields or "tenant_id" in fields, "ProcessorAgreement must have tenant FK"
+        assert "processor" in fields, "ProcessorAgreement must have processor FK"
+        assert "agreement_type" in fields, "ProcessorAgreement must have agreement_type"
 
     def test_crud_create(self):
         """Agreement creation stores tenant scope and links to processor."""
@@ -66,6 +68,7 @@ class ProcessorAgreementsServiceTests(TestCase):
         """SCC agreement requires transfer_mechanism_summary (min 8 chars)."""
         proc = Processor.objects.create(tenant=self.tenant, name="SCC Processor")
         from django.core.exceptions import ValidationError
+
         with self.assertRaises(ValidationError):
             agreement = ProcessorAgreement(
                 tenant=self.tenant,
@@ -110,13 +113,15 @@ class ProcessorAgreementsApiTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"pa-api-{uid}", slug=f"pa-api-{uid}",
+            name=f"pa-api-{uid}",
+            slug=f"pa-api-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_processor_agreements_enabled=True,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email=f"pa-api-{uid}@test.local", password="Pass1234!",
+            email=f"pa-api-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         role = Role.objects.get_or_create(tenant=self.tenant, name="TENANT_ADMIN")[0]
@@ -135,7 +140,8 @@ class ProcessorAgreementsApiTests(TestCase):
         """Non-TENANT_ADMIN user gets 403 on processor endpoints."""
         uid = uuid.uuid4().hex[:8]
         plain_user = User.objects.create_user(
-            email=f"pa-plain-{uid}@test.local", password="Pass1234!",
+            email=f"pa-plain-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         plain_client = APIClient()
@@ -147,7 +153,8 @@ class ProcessorAgreementsApiTests(TestCase):
         """Tenant A cannot see Tenant B's processors."""
         uid_b = uuid.uuid4().hex[:8]
         tenant_b = Tenant.objects.create(
-            name=f"pa-rls-{uid_b}", slug=f"pa-rls-{uid_b}",
+            name=f"pa-rls-{uid_b}",
+            slug=f"pa-rls-{uid_b}",
             status=TenantStatus.ACTIVE,
             compliance_processor_agreements_enabled=True,
         )
@@ -157,7 +164,12 @@ class ProcessorAgreementsApiTests(TestCase):
         # Query from tenant A's client — should not see tenant B's processor
         resp = self.client.get("/api/v1/processor-agreements/processors/")
         assert resp.status_code == 200
-        names = [item.get("name") for item in (resp.data.get("results", resp.data) if hasattr(resp.data, 'get') else resp.data)]
+        names = [
+            item.get("name")
+            for item in (
+                resp.data.get("results", resp.data) if hasattr(resp.data, "get") else resp.data
+            )
+        ]
         assert "Tenant B Processor" not in names
 
 
@@ -167,13 +179,15 @@ class ProcessorAgreementsFeatureFlagTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"pa-ff-{uid}", slug=f"pa-ff-{uid}",
+            name=f"pa-ff-{uid}",
+            slug=f"pa-ff-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_processor_agreements_enabled=False,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email=f"pa-ff-{uid}@test.local", password="Pass1234!",
+            email=f"pa-ff-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         role = Role.objects.get_or_create(tenant=self.tenant, name="TENANT_ADMIN")[0]
@@ -186,7 +200,7 @@ class ProcessorAgreementsFeatureFlagTests(TestCase):
     def test_flag_disabled_returns_gated(self):
         """When compliance_processor_agreements_enabled=False, processor view denies write."""
         # Test at the permission layer: the permission class checks the tenant flag
-        from hub.apps.processor_agreements.permissions import IsTenantAdminProcessorAgreements
+
         # Permission check should account for the disabled flag
         # Verify that the tenant flag is indeed False
         self.tenant.refresh_from_db()
@@ -206,13 +220,15 @@ class ProcessorAgreementsAuditTests(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"pa-audit-{uid}", slug=f"pa-audit-{uid}",
+            name=f"pa-audit-{uid}",
+            slug=f"pa-audit-{uid}",
             status=TenantStatus.ACTIVE,
             compliance_processor_agreements_enabled=True,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
-            email=f"pa-audit-{uid}@test.local", password="Pass1234!",
+            email=f"pa-audit-{uid}@test.local",
+            password="Pass1234!",
             tenant=self.tenant,
         )
         role = Role.objects.get_or_create(tenant=self.tenant, name="TENANT_ADMIN")[0]
@@ -229,14 +245,18 @@ class ProcessorAgreementsAuditTests(TestCase):
             resource_type="PROCESSOR_AGREEMENT",
             action="PROCESSOR_AGREEMENT_CREATED",
         ).count()
-        resp = self.client.post("/api/v1/processor-agreements/processor-agreements/", {
-            "processor": str(self.proc.id),
-            "agreement_type": ProcessorAgreementType.DPA,
-            "document_uri": "https://example.com/audit-dpa.pdf",
-            "document_hash": _DOC_HASH,
-            "effective_from": str(date.today()),
-            "sub_processors_declared": [],
-        }, format="json")
+        resp = self.client.post(
+            "/api/v1/processor-agreements/processor-agreements/",
+            {
+                "processor": str(self.proc.id),
+                "agreement_type": ProcessorAgreementType.DPA,
+                "document_uri": "https://example.com/audit-dpa.pdf",
+                "document_hash": _DOC_HASH,
+                "effective_from": str(date.today()),
+                "sub_processors_declared": [],
+            },
+            format="json",
+        )
         assert resp.status_code == 201
         after = AuditEvent.objects.filter(
             resource_type="PROCESSOR_AGREEMENT",

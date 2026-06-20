@@ -4,6 +4,7 @@ Phase 275.A.15 — per-warehouse type → Hub canonical type mapping.
 Without this registry, queries return numerically-incorrect data
 due to precision loss or varying type representations across warehouses.
 """
+
 from __future__ import annotations
 
 from enum import Enum
@@ -11,6 +12,7 @@ from enum import Enum
 
 class LossyConversionPolicy(str, Enum):
     """Per-asset policy for handling lossy type conversions."""
+
     STRICT_ERROR = "STRICT_ERROR"
     LOSSY_WARN = "LOSSY_WARN"
     LOSSY_SILENT = "LOSSY_SILENT"

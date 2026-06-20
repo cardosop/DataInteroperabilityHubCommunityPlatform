@@ -12,7 +12,6 @@ accessibility via real API calls against the staging environment.
 import requests
 from tests.use_cases._api_helpers import api_unauthenticated_get
 
-
 # ===========================================================================
 # Tests
 # ===========================================================================
@@ -37,11 +36,7 @@ def test_api_version_header_present():
         "X-Version",
         "X-App-Version",
     ]
-    found = {
-        name: headers.get(name)
-        for name in version_header_names
-        if headers.get(name)
-    }
+    found = {name: headers.get(name) for name in version_header_names if headers.get(name)}
 
     if not found:
         # Version may also be in the response body
@@ -53,10 +48,7 @@ def test_api_version_header_present():
         except (ValueError, requests.exceptions.JSONDecodeError):
             pass
 
-    assert found, (
-        f"No API version header or body field found. "
-        f"Response headers: {dict(headers)}"
-    )
+    assert found, f"No API version header or body field found. Response headers: {dict(headers)}"
 
 
 def test_openapi_schema_accessible():
@@ -73,15 +65,12 @@ def test_openapi_schema_accessible():
     if resp.status_code == 404:
         pytest.skip("OpenAPI schema endpoint not found (404)")
 
-    assert resp.status_code == 200, (
-        f"OpenAPI schema returned {resp.status_code}: {resp.text[:300]}"
-    )
+    assert resp.status_code == 200, f"OpenAPI schema returned {resp.status_code}: {resp.text[:300]}"
 
     body = resp.json()
     # Must be a valid OpenAPI document
     assert "openapi" in body or "swagger" in body or "info" in body, (
-        f"Response does not look like an OpenAPI schema. "
-        f"Keys: {list(body.keys())[:10]}"
+        f"Response does not look like an OpenAPI schema. Keys: {list(body.keys())[:10]}"
     )
 
     if "info" in body:

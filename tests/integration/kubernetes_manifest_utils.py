@@ -101,6 +101,7 @@ def _kustomize_build(base_path: Path) -> str:
         try:
             result = subprocess.run(
                 cmd,
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=60,
@@ -181,6 +182,7 @@ def kubectl_available() -> bool:
     try:
         result = subprocess.run(
             ["kubectl", "version", "--client"],
+            check=False,
             capture_output=True,
             text=True,
             timeout=5,
@@ -198,6 +200,7 @@ def validate_manifests_with_kubectl_dry_run(yaml_stream: str) -> bool:
     try:
         result = subprocess.run(
             ["kubectl", "apply", "--dry-run=client", "-f", "-"],
+            check=False,
             input=yaml_stream,
             capture_output=True,
             text=True,

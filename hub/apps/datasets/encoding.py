@@ -55,9 +55,10 @@ API
 * :data:`MIN_ENCODING_CONFIDENCE` — the threshold (0.9) the
   spec mandates.
 """
+
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Optional
 
 from charset_normalizer import from_bytes
 
@@ -98,7 +99,7 @@ class EncodingDetection:
     to round-trip the BOM rather than silently strip it.
     """
 
-    encoding: Optional[str]
+    encoding: str | None
     confidence: float
     is_confident: bool
     bom: bool
@@ -254,10 +255,7 @@ def validate_text_encoding(
     # threshold=0.90" — the human reads "above threshold but
     # rejected" and is confused. Tagging the path lets us emit a
     # message that matches the actual reason for refusal.
-    if (
-        detection.encoding in ("utf_16_le", "utf_16_be")
-        and not detection.bom
-    ):
+    if detection.encoding in ("utf_16_le", "utf_16_be") and not detection.bom:
         rejection_reason = "BOM_LESS_UTF16_AMBIGUOUS"
         message = (
             f"BOM-less {detection.encoding.upper()} {fmt} content is "

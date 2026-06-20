@@ -1,6 +1,7 @@
 """
 Integration tests for multi-level lineage in API.
 """
+
 import json
 
 from rest_framework import status
@@ -32,14 +33,11 @@ class TestLineageIntegration(ContractsAPITestBase):
             "transformLogic": "SELECT * FROM source",
         }
 
-        hub_contract, spec_type, spec_version, status_val, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status_val, errors, _warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
         )
         self.assertIsNotNone(
-            hub_contract,
-            f"Normalization failed: status={status_val}, errors={errors}"
+            hub_contract, f"Normalization failed: status={status_val}, errors={errors}"
         )
         self.assertIn(
             status_val.value,
@@ -81,10 +79,10 @@ class TestLineageIntegration(ContractsAPITestBase):
             },
         }
 
-        hub_contract, spec_type, spec_version, status_val, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status_val, _errors, _warnings = (
+            normalize_contract(
+                raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
+            )
         )
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status_val.value, "NORMALIZED_OK")
@@ -134,10 +132,10 @@ class TestLineageIntegration(ContractsAPITestBase):
             },
         }
 
-        hub_contract, spec_type, spec_version, status_val, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status_val, _errors, _warnings = (
+            normalize_contract(
+                raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
+            )
         )
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status_val.value, "NORMALIZED_OK")
@@ -195,10 +193,10 @@ class TestLineageIntegration(ContractsAPITestBase):
             },
         }
 
-        hub_contract, spec_type, spec_version, status_val, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_contract),
-            format="JSON",
-            spec_type="ODCS"
+        hub_contract, _spec_type, _spec_version, status_val, _errors, _warnings = (
+            normalize_contract(
+                raw_contract=json.dumps(odcs_contract), format="JSON", spec_type="ODCS"
+            )
         )
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status_val.value, "NORMALIZED_OK")
@@ -234,4 +232,3 @@ class TestLineageIntegration(ContractsAPITestBase):
                 field = fields[0]
                 if "lineage" in field:
                     self.assertIsInstance(field["lineage"], dict)
-

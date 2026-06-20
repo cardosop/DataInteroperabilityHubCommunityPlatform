@@ -4,6 +4,7 @@ Phase 228 (REQ-LIN-006, 228.0.18) — capability flag tests.
 Pins the five lineage flags + the GET /api/v1/capabilities/ endpoint
 + the test-mode / production default policy + per-flag override.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -26,14 +27,12 @@ def test_five_lineage_flags_are_registered():
 
 def test_test_environment_auto_enables_all_flags():
     """REQ-LIN-006 scenario: test env returns all flags True."""
-    from hub.apps.api.capabilities import get_capabilities, LINEAGE_CAPABILITY_FLAGS
+    from hub.apps.api.capabilities import LINEAGE_CAPABILITY_FLAGS, get_capabilities
 
     # Pytest sets PYTEST_CURRENT_TEST so _is_test_environment() returns True.
     caps = get_capabilities()
     for flag in LINEAGE_CAPABILITY_FLAGS:
-        assert caps[flag] is True, (
-            f"flag {flag!r} should be True in test env; got {caps[flag]!r}"
-        )
+        assert caps[flag] is True, f"flag {flag!r} should be True in test env; got {caps[flag]!r}"
 
 
 def test_settings_override_wins_over_default(monkeypatch):
@@ -45,6 +44,7 @@ def test_settings_override_wins_over_default(monkeypatch):
         },
     ):
         from hub.apps.api.capabilities import get_capabilities
+
         caps = get_capabilities()
         assert caps["lineage.field_level_mapping"] is False
         assert caps["lineage.snapshots"] is False
@@ -84,6 +84,7 @@ def test_capabilities_endpoint_returns_flag_map(db):
 
 def test_is_capability_enabled_unknown_flag_returns_false():
     from hub.apps.api.capabilities import is_capability_enabled
+
     assert is_capability_enabled("lineage.does_not_exist") is False
 
 
@@ -115,9 +116,11 @@ class TestAssetCreationBlockedReason:
         is to call ``get_capabilities_for_request`` with a request
         whose ``user.tenant`` is set.
         """
-        from rest_framework.test import APIRequestFactory
-        from hub.apps.users.models import User, UserStatus
         import uuid
+
+        from rest_framework.test import APIRequestFactory
+
+        from hub.apps.users.models import User, UserStatus
 
         uid = uuid.uuid4().hex[:8]
         user = User.objects.create_user(
@@ -133,8 +136,9 @@ class TestAssetCreationBlockedReason:
 
     @staticmethod
     def _new_tenant(*, asset_creation_enabled, onboarding_completed_at=None):
-        from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
         import uuid
+
+        from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 
         uid = uuid.uuid4().hex[:8]
         tenant = Tenant.objects.create(
@@ -156,11 +160,13 @@ class TestAssetCreationBlockedReason:
     def test_anonymous_request_returns_none_reason(self, db):
         """No tenant context → reason is None (no block)."""
         from rest_framework.test import APIRequestFactory
+
         from hub.apps.api.capabilities import get_capabilities_for_request
 
         request = APIRequestFactory().get("/api/v1/capabilities/")
         # No user — anonymous.
         from django.contrib.auth.models import AnonymousUser
+
         request.user = AnonymousUser()
         caps = get_capabilities_for_request(request)
         assert "asset_creation_blocked_reason" in caps
@@ -179,9 +185,7 @@ class TestAssetCreationBlockedReason:
         """asset_creation_enabled=False AND completion_at IS None → ONBOARDING_INCOMPLETE."""
         from hub.apps.api.capabilities import get_capabilities_for_request
 
-        tenant = self._new_tenant(
-            asset_creation_enabled=False, onboarding_completed_at=None
-        )
+        tenant = self._new_tenant(asset_creation_enabled=False, onboarding_completed_at=None)
         request = self._make_request_with_tenant(tenant)
         caps = get_capabilities_for_request(request)
         assert caps["asset_creation"] is False
@@ -191,9 +195,7 @@ class TestAssetCreationBlockedReason:
         """asset_creation_enabled=False AND completion_at IS NOT None → DISABLED_BY_OPS."""
         from hub.apps.api.capabilities import get_capabilities_for_request
 
-        tenant = self._new_tenant(
-            asset_creation_enabled=False, onboarding_completed_at=True
-        )
+        tenant = self._new_tenant(asset_creation_enabled=False, onboarding_completed_at=True)
         request = self._make_request_with_tenant(tenant)
         caps = get_capabilities_for_request(request)
         assert caps["asset_creation"] is False
@@ -203,9 +205,7 @@ class TestAssetCreationBlockedReason:
         """The 'normal post-onboarding tenant' path — flag True + timestamp set."""
         from hub.apps.api.capabilities import get_capabilities_for_request
 
-        tenant = self._new_tenant(
-            asset_creation_enabled=True, onboarding_completed_at=True
-        )
+        tenant = self._new_tenant(asset_creation_enabled=True, onboarding_completed_at=True)
         request = self._make_request_with_tenant(tenant)
         caps = get_capabilities_for_request(request)
         assert caps["asset_creation"] is True

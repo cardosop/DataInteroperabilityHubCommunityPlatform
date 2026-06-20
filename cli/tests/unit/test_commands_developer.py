@@ -1,10 +1,10 @@
 """Unit tests for ``datahub developer`` commands (283.5.12)."""
+
 import json
+from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
-from unittest.mock import Mock
-
 from datahub_cli.main import cli
 
 
@@ -44,16 +44,27 @@ class TestDeveloperPlugins:
     @pytest.mark.unit
     def test_create(self, runner, mock_api):
         mock_api.post.return_value = {"id": "plg-new", "name": "My Plugin"}
-        result = runner.invoke(cli, ["developer", "plugins", "create", "--name", "My Plugin",
-                                     "--config", '{"key":"value"}'])
+        result = runner.invoke(
+            cli,
+            [
+                "developer",
+                "plugins",
+                "create",
+                "--name",
+                "My Plugin",
+                "--config",
+                '{"key":"value"}',
+            ],
+        )
         assert result.exit_code == 0
         parsed = json.loads(result.output)
         assert parsed["name"] == "My Plugin"
 
     @pytest.mark.unit
     def test_create_invalid_config(self, runner, mock_api):
-        result = runner.invoke(cli, ["developer", "plugins", "create", "--name", "P",
-                                     "--config", "bad-json"])
+        result = runner.invoke(
+            cli, ["developer", "plugins", "create", "--name", "P", "--config", "bad-json"]
+        )
         assert result.exit_code != 0
         assert "Invalid JSON" in result.output
 

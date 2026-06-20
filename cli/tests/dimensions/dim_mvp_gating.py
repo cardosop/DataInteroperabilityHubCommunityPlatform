@@ -66,17 +66,15 @@ def test_gated_prefix_unauthenticated_also_404(prefix):
     resp = requests.get(f"{api_base_url()}/{prefix}", timeout=15)
     # 404 (gate fires first) or 401 (auth fires first) — both acceptable.
     # The important thing is it's NOT 200/500.
-    assert resp.status_code in (401, 404), (
-        f"Unauthenticated GET /{prefix}: {resp.status_code}"
-    )
+    assert resp.status_code in (401, 404), f"Unauthenticated GET /{prefix}: {resp.status_code}"
 
 
 def test_non_gated_prefix_is_reachable(auth_creds):
     """Sanity: /assets/ is NOT gated and should return 200 (or 401 if auth issue)."""
     resp = api_get("/assets/", auth_creds)
     assert resp.status_code != 404, (
-        f"GET /assets/ returned 404 — this is a non-gated MVP endpoint. "
-        f"Either the route is broken or MVP gating is too broad."
+        "GET /assets/ returned 404 — this is a non-gated MVP endpoint. "
+        "Either the route is broken or MVP gating is too broad."
     )
 
 

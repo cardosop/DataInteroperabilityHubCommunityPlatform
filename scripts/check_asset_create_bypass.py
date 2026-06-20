@@ -50,13 +50,14 @@ Exit codes
 * 0 — no new bypass; allow-list-only sites unchanged.
 * 1 — new bypass detected; offence printed in ``file:line: <message>`` format.
 """
+
 from __future__ import annotations
 
 import ast
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 # ---------------------------------------------------------------------------
 # Allow-list — Phase 250.1.G migration targets.
@@ -88,9 +89,17 @@ _ALLOWLIST: dict[str, int] = {
 }
 
 _DEFAULT_SCAN_ROOTS: tuple[str, ...] = ("hub/apps",)
-_EXCLUDE_DIR_PARTS: frozenset[str] = frozenset({
-    "__pycache__", "tests", "test", "migrations", ".tox", ".venv", "venv",
-})
+_EXCLUDE_DIR_PARTS: frozenset[str] = frozenset(
+    {
+        "__pycache__",
+        "tests",
+        "test",
+        "migrations",
+        ".tox",
+        ".venv",
+        "venv",
+    }
+)
 
 _PRAGMA_ALLOWED = "asset-create-direct-allowed"
 
@@ -178,9 +187,13 @@ def scan_file(path: Path) -> list[Offence]:
             continue
         if _line_has_exemption(text, node.lineno):
             continue
-        raw_hits.append(Offence(
-            file=str(path), line=node.lineno, pattern=pattern,
-        ))
+        raw_hits.append(
+            Offence(
+                file=str(path),
+                line=node.lineno,
+                pattern=pattern,
+            )
+        )
 
     if not raw_hits:
         return []

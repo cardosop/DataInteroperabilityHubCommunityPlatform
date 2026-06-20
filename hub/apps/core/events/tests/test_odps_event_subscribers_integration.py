@@ -10,20 +10,23 @@ Tests cover:
 
 All tests use real implementations (no mocks/stubs) per requirements.
 """
+
 import uuid
 from unittest.mock import patch
-from django.test import TestCase, override_settings
-from django.contrib.auth import get_user_model
 
-from hub.apps.core.events.service_publishers import ODPSEventPublisher
-from hub.apps.core.events.bus import get_event_bus
-from hub.apps.core.events.models import Event, DeadLetterQueue
-from hub.apps.webhooks.odps_event_subscriber import ODPSEventSubscriber as WebhookODPSEventSubscriber
-from hub.apps.notifications.odps_event_subscriber import ODPSNotificationSubscriber
-from hub.apps.audit.odps_event_subscriber import ODPSAuditSubscriber
+from django.contrib.auth import get_user_model
+from django.test import TestCase, override_settings
+
 from hub.apps.audit.models import AuditEvent
+from hub.apps.audit.odps_event_subscriber import ODPSAuditSubscriber
+from hub.apps.core.events.bus import get_event_bus
+from hub.apps.core.events.models import DeadLetterQueue, Event
+from hub.apps.core.events.service_publishers import ODPSEventPublisher
+from hub.apps.notifications.odps_event_subscriber import ODPSNotificationSubscriber
 from hub.apps.tenants.models import Tenant
-from hub.apps.webhooks.models import WebhookDelivery
+from hub.apps.webhooks.odps_event_subscriber import (
+    ODPSEventSubscriber as WebhookODPSEventSubscriber,
+)
 
 User = get_user_model()
 
@@ -48,6 +51,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
         # Extend statement timeout for these integration tests that do
         # heavy DB operations (event publishing, DLQ processing, retries)
         from django.db import connection
+
         with connection.cursor() as cur:
             cur.execute("SET statement_timeout = '300s'")
 
@@ -59,13 +63,13 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
         self.tenant = Tenant.objects.create(
             id=self.tenant_id,
             name=f"Test Tenant {unique_suffix}",
-            slug=f"test-tenant-{unique_suffix}"
+            slug=f"test-tenant-{unique_suffix}",
         )
         self.user = User.objects.create_user(
             id=self.user_id,
             email=f"test-{unique_suffix}@example.com",
             password="testpass123",
-            tenant=self.tenant
+            tenant=self.tenant,
         )
 
         # Create publisher
@@ -75,10 +79,9 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
 
         # Initialize event publisher
         from hub.apps.core.events.publisher import EventPublisher
+
         self.publisher._event_publisher = EventPublisher(
-            service_name="odps_service",
-            tenant_id=self.tenant_id,
-            user_id=self.user_id
+            service_name="odps_service", tenant_id=self.tenant_id, user_id=self.user_id
         )
 
         # Get event bus instance
@@ -101,7 +104,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
             "odps.deleted",
             "odps.normalized",
             "odps.linked",
-            "odps.unlinked"
+            "odps.unlinked",
         ]
 
         for event_type in odps_event_types:
@@ -118,11 +121,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
         self.assertGreater(len(self.notification_subscriber.handlers), 0)
 
         # Check that lifecycle events are subscribed
-        lifecycle_events = [
-            "odps.created",
-            "odps.updated",
-            "odps.deleted"
-        ]
+        lifecycle_events = ["odps.created", "odps.updated", "odps.deleted"]
 
         for event_type in lifecycle_events:
             has_handler = any(
@@ -149,9 +148,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
 
         # Publish event
         event_id = self.publisher.publish_odps_created(
-            contract_id=contract_id,
-            status="ACTIVE",
-            odps_version="4.1"
+            contract_id=contract_id, status="ACTIVE", odps_version="4.1"
         )
 
         self.assertIsNotNone(event_id)
@@ -169,9 +166,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
 
         # Publish event
         event_id = self.publisher.publish_odps_created(
-            contract_id=contract_id,
-            status="ACTIVE",
-            odps_version="4.1"
+            contract_id=contract_id, status="ACTIVE", odps_version="4.1"
         )
 
         self.assertIsNotNone(event_id)
@@ -189,9 +184,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
 
         # Publish event
         event_id = self.publisher.publish_odps_created(
-            contract_id=contract_id,
-            status="ACTIVE",
-            odps_version="4.1"
+            contract_id=contract_id, status="ACTIVE", odps_version="4.1"
         )
 
         self.assertIsNotNone(event_id)
@@ -205,8 +198,8 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
             "source": {
                 "service": event.source_service,
                 "tenant_id": str(event.tenant_id) if event.tenant_id else None,
-                "user_id": str(event.user_id) if event.user_id else None
-            }
+                "user_id": str(event.user_id) if event.user_id else None,
+            },
         }
 
         # Call audit subscriber handler directly
@@ -214,8 +207,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
 
         # Verify audit log was created
         audit_events = AuditEvent.objects.filter(
-            resource_type="ODPS_CONTRACT",
-            resource_id=contract_id
+            resource_type="ODPS_CONTRACT", resource_id=contract_id
         )
         self.assertGreater(audit_events.count(), 0)
 
@@ -225,8 +217,8 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
         self.assertEqual(audit_event.result, "SUCCESS")
         self.assertEqual(str(audit_event.tenant.id), self.tenant_id)
 
-    @patch('hub.apps.webhooks.odps_event_subscriber.WebhookDeliveryService.trigger_odps_webhook')
-    @patch('time.sleep')  # Speed up retry tests
+    @patch("hub.apps.webhooks.odps_event_subscriber.WebhookDeliveryService.trigger_odps_webhook")
+    @patch("time.sleep")  # Speed up retry tests
     def test_retry_logic_transient_failures(self, mock_sleep, mock_trigger_webhook):
         """Test that retry logic handles transient failures correctly."""
         contract_id = str(uuid.uuid4())
@@ -237,10 +229,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "data": {"contract_id": contract_id},
-            "source": {
-                "tenant_id": self.tenant_id,
-                "user_id": self.user_id
-            }
+            "source": {"tenant_id": self.tenant_id, "user_id": self.user_id},
         }
 
         # Mock webhook service trigger to fail twice then succeed
@@ -268,10 +257,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "data": {"contract_id": contract_id},
-            "source": {
-                "tenant_id": self.tenant_id,
-                "user_id": self.user_id
-            }
+            "source": {"tenant_id": self.tenant_id, "user_id": self.user_id},
         }
 
         # Mock a non-transient error (ValueError)
@@ -291,8 +277,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
 
         # Verify event was sent to DLQ
         dlq_entries = DeadLetterQueue.objects.filter(
-            subscriber=self.webhook_subscriber.subscriber_name,
-            event_type="odps.created"
+            subscriber=self.webhook_subscriber.subscriber_name, event_type="odps.created"
         )
         self.assertGreater(dlq_entries.count(), 0)
 
@@ -310,10 +295,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "data": {"contract_id": contract_id},
-            "source": {
-                "tenant_id": self.tenant_id,
-                "user_id": self.user_id
-            }
+            "source": {"tenant_id": self.tenant_id, "user_id": self.user_id},
         }
 
         # Mock a transient error that always fails
@@ -332,9 +314,8 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
             self.webhook_subscriber._trigger_webhook_with_retry = original_trigger
 
         # Verify event was sent to DLQ after retries
-        dlq_entries = DeadLetterQueue.objects.filter(
-            subscriber=self.webhook_subscriber.subscriber_name,
-            event_type="odps.created"
+        DeadLetterQueue.objects.filter(
+            subscriber=self.webhook_subscriber.subscriber_name, event_type="odps.created"
         )
         # DLQ entry may or may not be created depending on retry logic
         # The important thing is that the mechanism exists
@@ -347,21 +328,20 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
 
         # Publish multiple event types
         events = {
-            'created': self.publisher.publish_odps_created(contract_id=contract_id),
-            'updated': self.publisher.publish_odps_updated(
+            "created": self.publisher.publish_odps_created(contract_id=contract_id),
+            "updated": self.publisher.publish_odps_updated(
                 contract_id=contract_id,
                 changes={"status": "UPDATED"},
                 previous_status="DRAFT",
-                new_status="ACTIVE"
+                new_status="ACTIVE",
             ),
-            'linked': self.publisher.publish_odps_linked(
+            "linked": self.publisher.publish_odps_linked(
                 odps_contract_id=odps_contract_id,
                 odcs_contract_id=odcs_contract_id,
-                link_type="bidirectional"
+                link_type="bidirectional",
             ),
-            'normalized': self.publisher.publish_odps_normalized(
-                contract_id=contract_id,
-                normalization_status="SUCCESS"
+            "normalized": self.publisher.publish_odps_normalized(
+                contract_id=contract_id, normalization_status="SUCCESS"
             ),
         }
 
@@ -382,8 +362,8 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
                 "source": {
                     "service": event.source_service,
                     "tenant_id": str(event.tenant_id) if event.tenant_id else None,
-                    "user_id": str(event.user_id) if event.user_id else None
-                }
+                    "user_id": str(event.user_id) if event.user_id else None,
+                },
             }
 
             # Test that all subscribers can handle the event
@@ -396,13 +376,11 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
                 self.fail(f"Subscriber failed to handle {event_type} event: {e}")
 
         # Verify audit logs were created for all events
-        audit_events = AuditEvent.objects.filter(
-            resource_type="ODPS_CONTRACT"
-        )
+        AuditEvent.objects.filter(resource_type="ODPS_CONTRACT")
         # At least some audit events should be created
         # (audit subscriber processes all events)
 
-    @patch('hub.apps.webhooks.odps_event_subscriber.WebhookDeliveryService.trigger_odps_webhook')
+    @patch("hub.apps.webhooks.odps_event_subscriber.WebhookDeliveryService.trigger_odps_webhook")
     def test_subscriber_error_handling_graceful_degradation(self, mock_trigger_webhook):
         """Test that subscriber errors don't block other events."""
         contract_id = str(uuid.uuid4())
@@ -412,10 +390,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
             "event_id": str(uuid.uuid4()),
             "event_type": "odps.created",
             "data": {"contract_id": contract_id},
-            "source": {
-                "tenant_id": self.tenant_id,
-                "user_id": self.user_id
-            }
+            "source": {"tenant_id": self.tenant_id, "user_id": self.user_id},
         }
 
         # Mock an error in webhook trigger that will be caught by handler's try-except
@@ -432,9 +407,7 @@ class ODPSEventSubscribersIntegrationTest(TestCase):
 
         # Verify event was sent to DLQ (error handling)
         dlq_entries = DeadLetterQueue.objects.filter(
-            subscriber=self.webhook_subscriber.subscriber_name,
-            event_type="odps.created"
+            subscriber=self.webhook_subscriber.subscriber_name, event_type="odps.created"
         )
         # DLQ entry should be created for the error
         self.assertGreater(dlq_entries.count(), 0, "Error should be sent to DLQ")
-

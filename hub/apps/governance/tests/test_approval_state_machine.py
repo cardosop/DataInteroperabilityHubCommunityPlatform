@@ -3,6 +3,7 @@ Phase 274.5.4 — approval state machine tests (8 cases).
 
 Covers PENDING_NEXT_APPROVER transitions from the state_machine module.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -11,9 +12,9 @@ import pytest
 from django.test import TestCase
 
 from hub.apps.governance.business_rules import (
-    ApproverIdentityRule,
-    ApprovalStageRule,
     ApprovalQuorumRule,
+    ApprovalStageRule,
+    ApproverIdentityRule,
 )
 from hub.apps.governance.state_machine import (
     ALLOWED_TRANSITIONS,
@@ -25,7 +26,7 @@ from hub.apps.governance.state_machine import (
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.journey("JOURNEY-CPO-011")]
 
 
 class TestApprovalStateMachine(TestCase):
@@ -65,30 +66,36 @@ class TestApprovalRules(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"ASM-{uid}", slug=f"asm-{uid}",
-            status="ACTIVE", kyc_status="UNVERIFIED",
+            name=f"ASM-{uid}",
+            slug=f"asm-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
         )
         self.active_user = User.objects.create_user(
             email=f"asm-active-{uid}@meshant.test",
-            password="testpass", tenant=self.tenant,
+            password="testpass",
+            tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
         self.inactive_user = User.objects.create_user(
             email=f"asm-inactive-{uid}@meshant.test",
-            password="testpass", tenant=self.tenant,
+            password="testpass",
+            tenant=self.tenant,
             status=UserStatus.DISABLED,
         )
 
     def test_approver_identity_active_user_passes(self):
         rule = ApproverIdentityRule(
-            tenant_id=str(self.tenant.id), user_id=str(self.active_user.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.active_user.id),
         )
         result = rule.validate(None, self.tenant, self.active_user)
         assert result.is_valid
 
     def test_approver_identity_inactive_user_fails(self):
         rule = ApproverIdentityRule(
-            tenant_id=str(self.tenant.id), user_id=str(self.inactive_user.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.inactive_user.id),
         )
         result = rule.validate(None, self.tenant, self.inactive_user)
         assert not result.is_valid
@@ -96,13 +103,15 @@ class TestApprovalRules(TestCase):
 
     def test_approval_stage_pending_transition_valid(self):
         from hub.apps.governance.models import AccessRequest, AccessRequestStatus
+
         ar = AccessRequest(
             tenant=self.tenant,
             status=AccessRequestStatus.PENDING,
             requested_by=self.active_user,
         )
         rule = ApprovalStageRule(
-            tenant_id=str(self.tenant.id), user_id=str(self.active_user.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.active_user.id),
         )
         result = rule.validate_transition(ar, self.tenant, self.active_user)
         assert result.is_valid
@@ -110,25 +119,29 @@ class TestApprovalRules(TestCase):
     def test_approval_stage_invalid_transition(self):
         """A REJECTED request cannot transition to APPROVED."""
         from hub.apps.governance.models import AccessRequest
+
         ar = AccessRequest(
             tenant=self.tenant,
             status="REJECTED",
             requested_by=self.active_user,
         )
         rule = ApprovalStageRule(
-            tenant_id=str(self.tenant.id), user_id=str(self.active_user.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.active_user.id),
         )
         result = rule.validate_transition(ar, self.tenant, self.active_user)
         assert not result.is_valid
 
     def test_approval_quorum_passes_without_prior_approver(self):
         from hub.apps.governance.models import AccessRequest
+
         ar = AccessRequest(
             tenant=self.tenant,
             requested_by=self.active_user,
         )
         rule = ApprovalQuorumRule(
-            tenant_id=str(self.tenant.id), user_id=str(self.active_user.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.active_user.id),
         )
         result = rule.validate(ar, self.tenant)
         assert result.is_valid
@@ -136,13 +149,15 @@ class TestApprovalRules(TestCase):
     def test_approval_quorum_blocks_consecutive_same_approver(self):
         """Anti-self-dealing: same user cannot approve consecutive steps."""
         from hub.apps.governance.models import AccessRequest
+
         ar = AccessRequest(
             tenant=self.tenant,
             requested_by=self.active_user,
             approved_by=self.active_user,
         )
         rule = ApprovalQuorumRule(
-            tenant_id=str(self.tenant.id), user_id=str(self.active_user.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.active_user.id),
         )
         result = rule.validate(ar, self.tenant)
         assert not result.is_valid
@@ -150,10 +165,12 @@ class TestApprovalRules(TestCase):
     def test_approval_quorum_allows_different_user_approver(self):
         """Quorum rule allows a different approver than the requester."""
         from hub.apps.governance.models import AccessRequest
+
         # Create a second active user to serve as approver
         approver = User.objects.create_user(
             email=f"asm-approver-{uuid.uuid4().hex[:8]}@meshant.test",
-            password="testpass", tenant=self.tenant,
+            password="testpass",
+            tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
         # requested_by is active_user, approved_by is a different user → should pass
@@ -163,7 +180,8 @@ class TestApprovalRules(TestCase):
             approved_by=approver,
         )
         rule = ApprovalQuorumRule(
-            tenant_id=str(self.tenant.id), user_id=str(approver.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(approver.id),
         )
         result = rule.validate(ar, self.tenant)
         assert result.is_valid, (
@@ -172,32 +190,28 @@ class TestApprovalRules(TestCase):
 
     def test_multi_step_chain_different_approvers(self):
         """Multi-step chain: different approver per step is valid."""
-        from hub.apps.governance.models import AccessPolicy, AccessRequest
+        from hub.apps.governance.models import AccessRequest
+
         # Create two approvers for the chain
         approver_1 = User.objects.create_user(
             email=f"asm-step1-{uuid.uuid4().hex[:8]}@meshant.test",
-            password="testpass", tenant=self.tenant,
+            password="testpass",
+            tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
         approver_2 = User.objects.create_user(
             email=f"asm-step2-{uuid.uuid4().hex[:8]}@meshant.test",
-            password="testpass", tenant=self.tenant,
+            password="testpass",
+            tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
 
-        # Create an AccessPolicy with a 2-step required approval chain
-        policy = AccessPolicy.objects.create(
-            tenant=self.tenant,
-            name="Multi-Step Approval Policy",
-            conditions={"user": {"tenant_id": str(self.tenant.id)}},
-            effect="ALLOW",
-            priority=100,
-            enabled=True,
-            required_approval_chain=[
-                {"step": 1, "approvers": [str(approver_1.id)], "required_count": 1},
-                {"step": 2, "approvers": [str(approver_2.id)], "required_count": 1},
-            ],
-        )
+        # 2-step approval chain — step 1 approved by approver_1,
+        # step 2 to be approved by approver_2.
+        chain = [
+            {"step": 1, "approvers": [str(approver_1.id)], "required_count": 1},
+            {"step": 2, "approvers": [str(approver_2.id)], "required_count": 1},
+        ]
 
         # Simulate first step approval by approver_1
         ar = AccessRequest(
@@ -206,13 +220,13 @@ class TestApprovalRules(TestCase):
             approved_by=approver_1,
             status="PENDING_NEXT_APPROVER",
         )
-        # Set approval_workflow to reflect we're on step 1→2
-        ar.approval_workflow = policy.required_approval_chain
+        ar.approval_workflow = chain
 
         # approver_1 is the previous approver, approver_2 is the current one
         # Anti-self-dealing: approver_2 != previous_approver → should pass
         rule = ApprovalQuorumRule(
-            tenant_id=str(self.tenant.id), user_id=str(approver_2.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(approver_2.id),
         )
         result = rule.validate(ar, self.tenant)
         assert result.is_valid, (
@@ -229,7 +243,8 @@ class TestApprovalRules(TestCase):
     def test_constants_match_model_choices(self):
         """PENDING_NEXT_APPROVER string matches AccessRequestStatus value."""
         from hub.apps.governance.models import AccessRequestStatus
-        assert PENDING_NEXT_APPROVER == AccessRequestStatus.PENDING_NEXT_APPROVER.value, (
+
+        assert AccessRequestStatus.PENDING_NEXT_APPROVER.value == PENDING_NEXT_APPROVER, (
             f"state_machine.PENDING_NEXT_APPROVER={PENDING_NEXT_APPROVER} "
             f"!= AccessRequestStatus value={AccessRequestStatus.PENDING_NEXT_APPROVER.value}"
         )
@@ -237,6 +252,7 @@ class TestApprovalRules(TestCase):
     def test_allowed_transitions_cover_all_statuses(self):
         """Every AccessRequestStatus value has a transition entry."""
         from hub.apps.governance.models import AccessRequestStatus
+
         for status in AccessRequestStatus.values:
             assert status in ALLOWED_TRANSITIONS, (
                 f"Status {status} missing from ALLOWED_TRANSITIONS"

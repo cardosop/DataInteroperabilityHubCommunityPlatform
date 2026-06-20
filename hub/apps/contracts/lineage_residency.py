@@ -19,11 +19,11 @@ The consent header is `X-Lineage-Cross-Region-Consent: true`; the
 view-layer translator also accepts the form-encoded fallback for
 non-browser clients.
 """
+
 from __future__ import annotations
 
 import enum
 from typing import Any
-
 
 CONSENT_HEADER = "HTTP_X_LINEAGE_CROSS_REGION_CONSENT"
 """Canonical Django META key for the consent header."""
@@ -86,7 +86,7 @@ def consent_from_request(request: Any) -> bool:
     if qp is not None:
         try:
             qp_value = str(qp.get(CONSENT_QUERY_PARAM, "")).strip().lower()
-        except Exception:  # noqa: BLE001
+        except Exception:
             qp_value = ""
         if qp_value in ("1", "true", "yes"):
             return True

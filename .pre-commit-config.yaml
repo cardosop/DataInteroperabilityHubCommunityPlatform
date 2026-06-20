@@ -139,3 +139,20 @@ repos:
         additional_dependencies: [django-stubs, types-redis, types-requests]
         description: "Type check marketplace integration code with mypy"
 
+      # ── Documentation sync hooks (Phase 312.5) ─────────────────────
+      - id: check-journey-doc-sync
+        name: Check journey documentation sync
+        entry: python scripts/check_doc_journey_marker_sync.py
+        language: system
+        files: (docs/USER_JOURNEYS\.md|tests/.*\.py|frontend/e2e/journeys/.*\.spec\.ts|hub/apps/.*/tests/.*\.py)
+        pass_filenames: false
+        description: "Verify bidirectional consistency between journey docs and test markers"
+
+      - id: check-uc-doc-sync
+        name: Check use case documentation sync
+        entry: python scripts/check_doc_uc_marker_sync.py
+        language: system
+        files: (docs/USE_CASES\.md|tests/.*\.py|frontend/e2e/use-cases/.*\.spec\.ts|hub/apps/.*/tests/.*\.py)
+        pass_filenames: false
+        description: "Verify bidirectional consistency between UC docs and test markers"
+

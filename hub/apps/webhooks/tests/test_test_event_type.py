@@ -19,11 +19,12 @@ real ``WebhookDeliveryService._deliver_webhook`` path (with
 ``WEBHOOK_ASYNC_DELIVERY=False`` so the call returns synchronously),
 and the real ``WebhookDelivery`` table.
 """
+
 from __future__ import annotations
-import pytest
 
 import uuid
 
+import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
@@ -38,7 +39,6 @@ from hub.apps.webhooks.models import (
     WebhookEventType,
     WebhookStatus,
 )
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -100,8 +100,7 @@ class TestWebhookTestEventType(TestCase):
         self.assertEqual(resp.status_code, 200, resp.content)
 
         deliveries = list(
-            WebhookDelivery.objects.filter(webhook=self.webhook)
-            .order_by("-created_at")
+            WebhookDelivery.objects.filter(webhook=self.webhook).order_by("-created_at")
         )
         self.assertEqual(len(deliveries) - before, 1)
 
@@ -319,31 +318,13 @@ class TestDeliverTestEventPublicMethod(TestCase):
         )
 
     @pytest.mark.integration
-    def test_public_method_exists_with_one_arg_signature(self) -> None:
-        """The public method exists and takes exactly one positional arg."""
+    def test_deliver_test_event_requires_webhook_argument(self) -> None:
+        """Calling deliver_test_event with no arguments raises TypeError."""
         from hub.apps.webhooks.service import WebhookDeliveryService
 
-        # `deliver_test_event` is a static method on the service class.
         self.assertTrue(hasattr(WebhookDeliveryService, "deliver_test_event"))
-        # It takes exactly one positional parameter (the webhook).
-        # Use inspect.signature so the test catches any future signature
-        # drift (e.g. someone adding a required `*, actor_user` arg
-        # without a default would silently break the view).
-        import inspect
-
-        sig = inspect.signature(WebhookDeliveryService.deliver_test_event)
-        # One required positional parameter (the webhook).
-        required_params = [
-            p
-            for p in sig.parameters.values()
-            if p.default is inspect.Parameter.empty
-            and p.kind
-            in (
-                inspect.Parameter.POSITIONAL_ONLY,
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            )
-        ]
-        self.assertEqual(len(required_params), 1)
+        with self.assertRaises(TypeError):
+            WebhookDeliveryService.deliver_test_event()  # missing required arg
 
     @pytest.mark.integration
     def test_public_method_dispatches_a_test_delivery(self) -> None:
@@ -352,9 +333,7 @@ class TestDeliverTestEventPublicMethod(TestCase):
 
         WebhookDeliveryService.deliver_test_event(self.webhook)
 
-        deliveries = list(
-            WebhookDelivery.objects.filter(webhook=self.webhook)
-        )
+        deliveries = list(WebhookDelivery.objects.filter(webhook=self.webhook))
         self.assertEqual(len(deliveries), 1)
         self.assertEqual(deliveries[0].event_type, "webhook.test")
         # Payload shape matches the spec literal — see

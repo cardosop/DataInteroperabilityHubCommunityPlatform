@@ -9,6 +9,7 @@ Tests are file-based — they verify alarm definitions exist in
 infrastructure config rather than testing live CloudWatch.
 """
 
+import contextlib
 import re
 from pathlib import Path
 
@@ -41,20 +42,14 @@ class TestRDSAlarmsDefined:
             if not d.exists():
                 continue
             for f in d.rglob("*.tf"):
-                try:
+                with contextlib.suppress(Exception):
                     content += "\n" + f.read_text()
-                except Exception:
-                    pass
             for f in d.rglob("*.yaml"):
-                try:
+                with contextlib.suppress(Exception):
                     content += "\n" + f.read_text()
-                except Exception:
-                    pass
             for f in d.rglob("*.yml"):
-                try:
+                with contextlib.suppress(Exception):
                     content += "\n" + f.read_text()
-                except Exception:
-                    pass
         return content
 
     def test_rds_freeable_memory_alarm_defined(self):
@@ -69,8 +64,7 @@ class TestRDSAlarmsDefined:
         # If using RDS, this should be defined. If not using RDS, skip.
         uses_rds = self._uses_rds(content)
         if uses_rds:
-            assert has_fm, \
-                "FreeableMemory alarm should be defined when using RDS"
+            assert has_fm, "FreeableMemory alarm should be defined when using RDS"
 
     def test_rds_cpu_alarm_defined(self):
         """RDS CPUUtilization alarm is defined."""
@@ -82,8 +76,7 @@ class TestRDSAlarmsDefined:
         )
         uses_rds = self._uses_rds(content)
         if uses_rds:
-            assert has_cpu, \
-                "CPUUtilization alarm should be defined when using RDS"
+            assert has_cpu, "CPUUtilization alarm should be defined when using RDS"
 
     def test_rds_connections_alarm_defined(self):
         """RDS DatabaseConnections alarm is defined."""
@@ -95,8 +88,7 @@ class TestRDSAlarmsDefined:
         )
         uses_rds = self._uses_rds(content)
         if uses_rds:
-            assert has_conn, \
-                "DatabaseConnections alarm should be defined when using RDS"
+            assert has_conn, "DatabaseConnections alarm should be defined when using RDS"
 
     def test_rds_disk_queue_depth_alarm_defined(self):
         """RDS DiskQueueDepth alarm is defined."""
@@ -108,8 +100,7 @@ class TestRDSAlarmsDefined:
         )
         uses_rds = self._uses_rds(content)
         if uses_rds:
-            assert has_dqd, \
-                "DiskQueueDepth alarm should be defined when using RDS"
+            assert has_dqd, "DiskQueueDepth alarm should be defined when using RDS"
 
 
 @pytest.mark.unit
@@ -128,7 +119,8 @@ class TestAlarmThresholds:
                 # Extract metric_name and threshold from Terraform alarm blocks
                 for match in re.finditer(
                     r'metric_name\s*=\s*"(\w+)".*?threshold\s*=\s*"?(\d+)"?',
-                    content, re.DOTALL,
+                    content,
+                    re.DOTALL,
                 ):
                     thresholds[match.group(1)] = int(match.group(2))
             except Exception:
@@ -139,12 +131,14 @@ class TestAlarmThresholds:
         """FreeableMemory threshold should be at least 256MB."""
         thresholds = self._find_alarm_thresholds()
         if "FreeableMemory" in thresholds:
-            assert thresholds["FreeableMemory"] >= 256_000_000, \
+            assert thresholds["FreeableMemory"] >= 256_000_000, (
                 f"FreeableMemory threshold too low: {thresholds['FreeableMemory']}"
+            )
 
     def test_cpu_threshold_is_reasonable(self):
         """CPUUtilization threshold should be <= 90%."""
         thresholds = self._find_alarm_thresholds()
         if "CPUUtilization" in thresholds:
-            assert thresholds["CPUUtilization"] <= 90, \
+            assert thresholds["CPUUtilization"] <= 90, (
                 f"CPU alarm threshold too high: {thresholds['CPUUtilization']}%"
+            )

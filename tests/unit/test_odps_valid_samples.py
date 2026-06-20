@@ -6,8 +6,10 @@ Tests verify that all valid ODPS sample files:
 2. Pass schema validation against their respective ODPS schemas
 3. Contain all required fields
 """
+
 try:
     import pytest
+
     pytestmark = pytest.mark.django_db(transaction=True)
 except ImportError:
     # pytest not available, using Django test runner
@@ -16,11 +18,13 @@ except ImportError:
 
 import json
 from pathlib import Path
+
 from django.test import TestCase
 
 try:
     import jsonschema
-    from jsonschema import validate, Draft202012Validator, ValidationError
+    from jsonschema import Draft202012Validator, ValidationError, validate
+
     JSONSCHEMA_AVAILABLE = True
 except ImportError:
     JSONSCHEMA_AVAILABLE = False
@@ -38,6 +42,7 @@ class ODPSValidSamplesTest(TestCase):
 
         # Import ODPS schema loading utility
         from hub.apps.contracts.odps_schema import load_odps_schema
+
         self.load_odps_schema = load_odps_schema
 
         # Map version directories to version strings for schema loading
@@ -54,12 +59,11 @@ class ODPSValidSamplesTest(TestCase):
         sample_path = self.fixtures_dir / "v4.1" / "valid" / "sample-valid-v4.1.json"
 
         self.assertTrue(
-            sample_path.exists(),
-            f"Valid ODPS 4.1 sample file should exist at: {sample_path}"
+            sample_path.exists(), f"Valid ODPS 4.1 sample file should exist at: {sample_path}"
         )
 
         try:
-            with open(sample_path, 'r', encoding='utf-8') as f:
+            with open(sample_path, encoding="utf-8") as f:
                 data = json.load(f)
             self.assertIsInstance(data, dict, "Sample file should contain a JSON object")
         except json.JSONDecodeError as e:
@@ -73,20 +77,20 @@ class ODPSValidSamplesTest(TestCase):
         sample_path = self.fixtures_dir / "v4.1" / "valid" / "sample-valid-v4.1.json"
         schema = self.load_odps_schema("4.1")
 
-        with open(sample_path, 'r', encoding='utf-8') as f:
+        with open(sample_path, encoding="utf-8") as f:
             sample_data = json.load(f)
 
         try:
             validate(instance=sample_data, schema=schema)
         except ValidationError as e:
             error_details = [f"Error: {e.message}"]
-            if hasattr(e, 'absolute_path') and e.absolute_path:
+            if hasattr(e, "absolute_path") and e.absolute_path:
                 error_details.append(f"Instance path: {list(e.absolute_path)}")
-            if hasattr(e, 'schema_path') and e.schema_path:
+            if hasattr(e, "schema_path") and e.schema_path:
                 error_details.append(f"Schema path: {list(e.schema_path)}")
             error_details.append(f"Sample file: {sample_path}")
             self.fail(
-                f"Valid ODPS 4.1 sample file failed schema validation:\n" + "\n".join(error_details)
+                "Valid ODPS 4.1 sample file failed schema validation:\n" + "\n".join(error_details)
             )
         except Exception as e:
             self.fail(
@@ -99,12 +103,11 @@ class ODPSValidSamplesTest(TestCase):
         sample_path = self.fixtures_dir / "v4.0" / "valid" / "sample-valid-v4.0.json"
 
         self.assertTrue(
-            sample_path.exists(),
-            f"Valid ODPS 4.0 sample file should exist at: {sample_path}"
+            sample_path.exists(), f"Valid ODPS 4.0 sample file should exist at: {sample_path}"
         )
 
         try:
-            with open(sample_path, 'r', encoding='utf-8') as f:
+            with open(sample_path, encoding="utf-8") as f:
                 data = json.load(f)
             self.assertIsInstance(data, dict, "Sample file should contain a JSON object")
         except json.JSONDecodeError as e:
@@ -118,20 +121,20 @@ class ODPSValidSamplesTest(TestCase):
         sample_path = self.fixtures_dir / "v4.0" / "valid" / "sample-valid-v4.0.json"
         schema = self.load_odps_schema("4.0")
 
-        with open(sample_path, 'r', encoding='utf-8') as f:
+        with open(sample_path, encoding="utf-8") as f:
             sample_data = json.load(f)
 
         try:
             validate(instance=sample_data, schema=schema)
         except ValidationError as e:
             error_details = [f"Error: {e.message}"]
-            if hasattr(e, 'absolute_path') and e.absolute_path:
+            if hasattr(e, "absolute_path") and e.absolute_path:
                 error_details.append(f"Instance path: {list(e.absolute_path)}")
-            if hasattr(e, 'schema_path') and e.schema_path:
+            if hasattr(e, "schema_path") and e.schema_path:
                 error_details.append(f"Schema path: {list(e.schema_path)}")
             error_details.append(f"Sample file: {sample_path}")
             self.fail(
-                f"Valid ODPS 4.0 sample file failed schema validation:\n" + "\n".join(error_details)
+                "Valid ODPS 4.0 sample file failed schema validation:\n" + "\n".join(error_details)
             )
         except Exception as e:
             self.fail(
@@ -144,12 +147,11 @@ class ODPSValidSamplesTest(TestCase):
         sample_path = self.fixtures_dir / "v3.x" / "valid" / "sample-valid-v3.9.json"
 
         self.assertTrue(
-            sample_path.exists(),
-            f"Valid ODPS 3.x sample file should exist at: {sample_path}"
+            sample_path.exists(), f"Valid ODPS 3.x sample file should exist at: {sample_path}"
         )
 
         try:
-            with open(sample_path, 'r', encoding='utf-8') as f:
+            with open(sample_path, encoding="utf-8") as f:
                 data = json.load(f)
             self.assertIsInstance(data, dict, "Sample file should contain a JSON object")
         except json.JSONDecodeError as e:
@@ -163,20 +165,20 @@ class ODPSValidSamplesTest(TestCase):
         sample_path = self.fixtures_dir / "v3.x" / "valid" / "sample-valid-v3.9.json"
         schema = self.load_odps_schema("3.x")
 
-        with open(sample_path, 'r', encoding='utf-8') as f:
+        with open(sample_path, encoding="utf-8") as f:
             sample_data = json.load(f)
 
         try:
             validate(instance=sample_data, schema=schema)
         except ValidationError as e:
             error_details = [f"Error: {e.message}"]
-            if hasattr(e, 'absolute_path') and e.absolute_path:
+            if hasattr(e, "absolute_path") and e.absolute_path:
                 error_details.append(f"Instance path: {list(e.absolute_path)}")
-            if hasattr(e, 'schema_path') and e.schema_path:
+            if hasattr(e, "schema_path") and e.schema_path:
                 error_details.append(f"Schema path: {list(e.schema_path)}")
             error_details.append(f"Sample file: {sample_path}")
             self.fail(
-                f"Valid ODPS 3.x sample file failed schema validation:\n" + "\n".join(error_details)
+                "Valid ODPS 3.x sample file failed schema validation:\n" + "\n".join(error_details)
             )
         except Exception as e:
             self.fail(
@@ -189,12 +191,11 @@ class ODPSValidSamplesTest(TestCase):
         sample_path = self.fixtures_dir / "v2.x" / "valid" / "sample-valid-v2.9.json"
 
         self.assertTrue(
-            sample_path.exists(),
-            f"Valid ODPS 2.x sample file should exist at: {sample_path}"
+            sample_path.exists(), f"Valid ODPS 2.x sample file should exist at: {sample_path}"
         )
 
         try:
-            with open(sample_path, 'r', encoding='utf-8') as f:
+            with open(sample_path, encoding="utf-8") as f:
                 data = json.load(f)
             self.assertIsInstance(data, dict, "Sample file should contain a JSON object")
         except json.JSONDecodeError as e:
@@ -208,20 +209,20 @@ class ODPSValidSamplesTest(TestCase):
         sample_path = self.fixtures_dir / "v2.x" / "valid" / "sample-valid-v2.9.json"
         schema = self.load_odps_schema("2.x")
 
-        with open(sample_path, 'r', encoding='utf-8') as f:
+        with open(sample_path, encoding="utf-8") as f:
             sample_data = json.load(f)
 
         try:
             validate(instance=sample_data, schema=schema)
         except ValidationError as e:
             error_details = [f"Error: {e.message}"]
-            if hasattr(e, 'absolute_path') and e.absolute_path:
+            if hasattr(e, "absolute_path") and e.absolute_path:
                 error_details.append(f"Instance path: {list(e.absolute_path)}")
-            if hasattr(e, 'schema_path') and e.schema_path:
+            if hasattr(e, "schema_path") and e.schema_path:
                 error_details.append(f"Schema path: {list(e.schema_path)}")
             error_details.append(f"Sample file: {sample_path}")
             self.fail(
-                f"Valid ODPS 2.x sample file failed schema validation:\n" + "\n".join(error_details)
+                "Valid ODPS 2.x sample file failed schema validation:\n" + "\n".join(error_details)
             )
         except Exception as e:
             self.fail(
@@ -234,12 +235,11 @@ class ODPSValidSamplesTest(TestCase):
         sample_path = self.fixtures_dir / "v1.x" / "valid" / "sample-valid-v1.9.json"
 
         self.assertTrue(
-            sample_path.exists(),
-            f"Valid ODPS 1.x sample file should exist at: {sample_path}"
+            sample_path.exists(), f"Valid ODPS 1.x sample file should exist at: {sample_path}"
         )
 
         try:
-            with open(sample_path, 'r', encoding='utf-8') as f:
+            with open(sample_path, encoding="utf-8") as f:
                 data = json.load(f)
             self.assertIsInstance(data, dict, "Sample file should contain a JSON object")
         except json.JSONDecodeError as e:
@@ -253,20 +253,20 @@ class ODPSValidSamplesTest(TestCase):
         sample_path = self.fixtures_dir / "v1.x" / "valid" / "sample-valid-v1.9.json"
         schema = self.load_odps_schema("1.x")
 
-        with open(sample_path, 'r', encoding='utf-8') as f:
+        with open(sample_path, encoding="utf-8") as f:
             sample_data = json.load(f)
 
         try:
             validate(instance=sample_data, schema=schema)
         except ValidationError as e:
             error_details = [f"Error: {e.message}"]
-            if hasattr(e, 'absolute_path') and e.absolute_path:
+            if hasattr(e, "absolute_path") and e.absolute_path:
                 error_details.append(f"Instance path: {list(e.absolute_path)}")
-            if hasattr(e, 'schema_path') and e.schema_path:
+            if hasattr(e, "schema_path") and e.schema_path:
                 error_details.append(f"Schema path: {list(e.schema_path)}")
             error_details.append(f"Sample file: {sample_path}")
             self.fail(
-                f"Valid ODPS 1.x sample file failed schema validation:\n" + "\n".join(error_details)
+                "Valid ODPS 1.x sample file failed schema validation:\n" + "\n".join(error_details)
             )
         except Exception as e:
             self.fail(
@@ -288,12 +288,9 @@ class ODPSValidSamplesTest(TestCase):
             sample_path = self.fixtures_dir / version_dir / "valid" / filename
 
             with self.subTest(version=version_dir, file=filename):
-                self.assertTrue(
-                    sample_path.exists(),
-                    f"Sample file should exist: {sample_path}"
-                )
+                self.assertTrue(sample_path.exists(), f"Sample file should exist: {sample_path}")
 
-                with open(sample_path, 'r', encoding='utf-8') as f:
+                with open(sample_path, encoding="utf-8") as f:
                     data = json.load(f)
 
                 # Check required top-level fields
@@ -302,23 +299,41 @@ class ODPSValidSamplesTest(TestCase):
                 self.assertIn("product", data, f"Sample {filename} should have 'product' field")
 
                 # Check required product.details
-                self.assertIn("details", data["product"],
-                             f"Sample {filename} should have 'product.details' field")
-                self.assertIsInstance(data["product"]["details"], dict,
-                                     f"Sample {filename} 'product.details' should be an object")
+                self.assertIn(
+                    "details",
+                    data["product"],
+                    f"Sample {filename} should have 'product.details' field",
+                )
+                self.assertIsInstance(
+                    data["product"]["details"],
+                    dict,
+                    f"Sample {filename} 'product.details' should be an object",
+                )
 
                 # Check that details has at least one language entry
-                self.assertGreater(len(data["product"]["details"]), 0,
-                                 f"Sample {filename} 'product.details' should have at least one language")
+                self.assertGreater(
+                    len(data["product"]["details"]),
+                    0,
+                    f"Sample {filename} 'product.details' should have at least one language",
+                )
 
                 # Check that each language entry has required fields
                 for lang_code, lang_data in data["product"]["details"].items():
-                    self.assertIn("productID", lang_data,
-                               f"Sample {filename} language '{lang_code}' should have 'productID'")
-                    self.assertIn("name", lang_data,
-                               f"Sample {filename} language '{lang_code}' should have 'name'")
-                    self.assertIn("description", lang_data,
-                               f"Sample {filename} language '{lang_code}' should have 'description'")
+                    self.assertIn(
+                        "productID",
+                        lang_data,
+                        f"Sample {filename} language '{lang_code}' should have 'productID'",
+                    )
+                    self.assertIn(
+                        "name",
+                        lang_data,
+                        f"Sample {filename} language '{lang_code}' should have 'name'",
+                    )
+                    self.assertIn(
+                        "description",
+                        lang_data,
+                        f"Sample {filename} language '{lang_code}' should have 'description'",
+                    )
 
     def test_all_valid_samples_pass_schema_validation(self):
         """Test that all valid samples pass schema validation (comprehensive test)"""
@@ -338,7 +353,7 @@ class ODPSValidSamplesTest(TestCase):
                 sample_path = self.fixtures_dir / version_dir / "valid" / filename
                 schema = self.load_odps_schema(version)
 
-                with open(sample_path, 'r', encoding='utf-8') as f:
+                with open(sample_path, encoding="utf-8") as f:
                     sample_data = json.load(f)
 
                 try:
@@ -349,11 +364,11 @@ class ODPSValidSamplesTest(TestCase):
                     error_details.append(f"Error: {e.message}")
 
                     # Add path information if available
-                    if hasattr(e, 'absolute_path') and e.absolute_path:
+                    if hasattr(e, "absolute_path") and e.absolute_path:
                         error_details.append(f"Instance path: {list(e.absolute_path)}")
-                    if hasattr(e, 'schema_path') and e.schema_path:
+                    if hasattr(e, "schema_path") and e.schema_path:
                         error_details.append(f"Schema path: {list(e.schema_path)}")
-                    if hasattr(e, 'context') and e.context:
+                    if hasattr(e, "context") and e.context:
                         error_details.append(f"Context: {[str(c) for c in e.context]}")
 
                     # Add sample file path for reference
@@ -369,4 +384,3 @@ class ODPSValidSamplesTest(TestCase):
                         f"Unexpected error validating ODPS {version} sample file '{filename}': {type(e).__name__}: {e}\n"
                         f"Sample file: {sample_path}"
                     )
-

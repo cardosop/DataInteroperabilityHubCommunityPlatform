@@ -9,7 +9,6 @@ execution so that failures can be retried by the retry_failed_side_effects CronJ
 """
 
 import logging
-from typing import List
 
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
@@ -46,20 +45,26 @@ def apply_run_completion_side_effects(run: ScheduledIngestionRun, new_status: st
         "new_status": new_status,
     }
 
-    effect_types: List[str] = [SideEffectType.DLQ_SYNC, SideEffectType.NOTIFICATION, SideEffectType.AUDIT_EVENT]
+    effect_types: list[str] = [
+        SideEffectType.DLQ_SYNC,
+        SideEffectType.NOTIFICATION,
+        SideEffectType.AUDIT_EVENT,
+    ]
     if new_status == "COMPLETED":
         effect_types.insert(0, SideEffectType.COST_TRACKING)
 
-    side_effects = SideEffect.objects.bulk_create([
-        SideEffect(
-            run_content_type=run_ct,
-            run_object_id=run.pk,
-            effect_type=et,
-            status=SideEffectStatus.PENDING,
-            context_json=context,
-        )
-        for et in effect_types
-    ])
+    side_effects = SideEffect.objects.bulk_create(
+        [
+            SideEffect(
+                run_content_type=run_ct,
+                run_object_id=run.pk,
+                effect_type=et,
+                status=SideEffectStatus.PENDING,
+                context_json=context,
+            )
+            for et in effect_types
+        ]
+    )
 
     # ── 3. Process each immediately ───────────────────────────────────
     for se in side_effects:
@@ -89,7 +94,9 @@ def execute_side_effect(se: SideEffect) -> None:
         se.status = SideEffectStatus.COMPLETED
         se.completed_at = timezone.now()
         se.error_message = None
-        se.save(update_fields=["status", "completed_at", "error_message", "attempt_count", "updated_at"])
+        se.save(
+            update_fields=["status", "completed_at", "error_message", "attempt_count", "updated_at"]
+        )
     except Exception as exc:
         se.status = SideEffectStatus.FAILED
         se.error_message = str(exc)[:2000]
@@ -103,6 +110,7 @@ def execute_side_effect(se: SideEffect) -> None:
         # Phase 78: Prometheus counter for side-effect failures
         try:
             from hub.apps.observability.otel_metrics import side_effect_failures_total
+
             side_effect_failures_total.labels(effect_type=se.effect_type).inc()
         except Exception:
             pass
@@ -113,6 +121,7 @@ def execute_side_effect(se: SideEffect) -> None:
 
 def _execute_cost_tracking(run_id: str) -> None:
     from .cost_tracking import CostTrackingManager
+
     CostTrackingManager.calculate_run_costs(run_id)
 
 
@@ -123,11 +132,13 @@ def _execute_dlq_sync(scheduled_ingestion_id: str, run_id: str) -> None:
     try:
         DeadLetterQueueManager.sync_from_ingestion_state(scheduled_ingestion_id)
         ScheduledIngestionRun.objects.filter(pk=run_id).update(
-            dlq_sync_status="SYNCED", updated_at=timezone.now(),
+            dlq_sync_status="SYNCED",
+            updated_at=timezone.now(),
         )
     except Exception:
         ScheduledIngestionRun.objects.filter(pk=run_id).update(
-            dlq_sync_status="FAILED", updated_at=timezone.now(),
+            dlq_sync_status="FAILED",
+            updated_at=timezone.now(),
         )
         logger.warning(
             "DLQ sync failed for run %s (ingestion %s)",
@@ -140,14 +151,17 @@ def _execute_dlq_sync(scheduled_ingestion_id: str, run_id: str) -> None:
 
 def _execute_notification(run_id: str, new_status: str) -> None:
     from .models import ScheduledIngestionRun
+
     run = ScheduledIngestionRun.objects.select_related(
-        "scheduled_ingestion", "scheduled_ingestion__created_by",
+        "scheduled_ingestion",
+        "scheduled_ingestion__created_by",
     ).get(pk=run_id)
     _send_completion_or_failure_notification(run, new_status)
 
 
 def _execute_audit_event(run_id: str, new_status: str, scheduled_ingestion_id: str) -> None:
     from hub.apps.audit.utils import create_audit_event
+
     from .models import ScheduledIngestionRun
 
     run = ScheduledIngestionRun.objects.select_related(
@@ -201,8 +215,12 @@ def _update_parent_ingestion(
             scheduled_ingestion.status = ScheduledIngestionStatus.ERROR
 
     update_fields = [
-        "next_run_at", "updated_at", "status", "error_message",
-        "consecutive_failure_count", "last_error_at",
+        "next_run_at",
+        "updated_at",
+        "status",
+        "error_message",
+        "consecutive_failure_count",
+        "last_error_at",
     ]
     scheduled_ingestion.save(update_fields=update_fields)
 

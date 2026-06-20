@@ -1,9 +1,11 @@
 """Streaming CSV for compliance violation rows (Phase 231.8)."""
 
 from __future__ import annotations
+
 import csv
 import io
-from typing import Any, Iterable, Iterator
+from collections.abc import Iterable, Iterator
+from typing import Any
 
 
 def iter_violation_csv_bytes(violations: Iterable[dict[str, Any]] | None) -> Iterator[bytes]:

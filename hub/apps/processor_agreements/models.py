@@ -1,6 +1,7 @@
 """Processor entities and agreements (Phase 232.6)."""
 
 from __future__ import annotations
+
 import uuid
 
 from django.conf import settings
@@ -164,7 +165,9 @@ class ProcessorAgreement(models.Model):
     def clean(self) -> None:
         self.document_uri = validate_document_uri_for_agreement(self.document_uri)
         self.document_hash = validate_document_hash_hex(self.document_hash)
-        self.sub_processors_declared = normalize_subprocessors_declared(self.sub_processors_declared)
+        self.sub_processors_declared = normalize_subprocessors_declared(
+            self.sub_processors_declared
+        )
         validate_agreement_metadata_for_type(
             agreement_type=self.agreement_type,
             expires_on=self.expires_on,

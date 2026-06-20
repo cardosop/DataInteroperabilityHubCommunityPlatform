@@ -1,11 +1,13 @@
 """
 Tests for event schema validation.
 """
+
 import uuid
-from django.test import TestCase
 from datetime import datetime
 
-from hub.apps.core.events.schema import EventSchema, BASE_EVENT_SCHEMA, get_event_schema
+from django.test import TestCase
+
+from hub.apps.core.events.schema import EventSchema, get_event_schema
 
 
 class EventSchemaTest(TestCase):
@@ -21,7 +23,7 @@ class EventSchemaTest(TestCase):
             event_type="contract.created",
             data={"contract_id": contract_id},
             tenant_id=tenant_id,
-            user_id=user_id
+            user_id=user_id,
         )
 
         # event_id must be a valid UUID
@@ -57,8 +59,7 @@ class EventSchemaTest(TestCase):
     def test_validate_event_success(self):
         """Test validating a valid event."""
         event = EventSchema.build_event(
-            event_type="contract.created",
-            data={"contract_id": str(uuid.uuid4())}
+            event_type="contract.created", data={"contract_id": str(uuid.uuid4())}
         )
 
         is_valid, error = EventSchema.validate_event(event)
@@ -67,10 +68,7 @@ class EventSchemaTest(TestCase):
 
     def test_validate_event_missing_field(self):
         """Test validating event with missing required field."""
-        event = {
-            "event_type": "contract.created",
-            "data": {}
-        }
+        event = {"event_type": "contract.created", "data": {}}
 
         is_valid, error = EventSchema.validate_event(event)
         self.assertFalse(is_valid)
@@ -78,10 +76,7 @@ class EventSchemaTest(TestCase):
 
     def test_validate_event_invalid_uuid(self):
         """Test validating event with invalid UUID."""
-        event = EventSchema.build_event(
-            event_type="contract.created",
-            data={}
-        )
+        event = EventSchema.build_event(event_type="contract.created", data={})
         event["event_id"] = "invalid-uuid"
 
         is_valid, error = EventSchema.validate_event(event)
@@ -90,10 +85,7 @@ class EventSchemaTest(TestCase):
 
     def test_validate_event_invalid_event_type(self):
         """Test validating event with invalid event type."""
-        event = EventSchema.build_event(
-            event_type="InvalidEventType",
-            data={}
-        )
+        event = EventSchema.build_event(event_type="InvalidEventType", data={})
 
         is_valid, error = EventSchema.validate_event(event)
         self.assertFalse(is_valid)
@@ -101,10 +93,7 @@ class EventSchemaTest(TestCase):
 
     def test_validate_event_invalid_version(self):
         """Test validating event with invalid version."""
-        event = EventSchema.build_event(
-            event_type="contract.created",
-            data={}
-        )
+        event = EventSchema.build_event(event_type="contract.created", data={})
         event["event_version"] = "invalid"
 
         is_valid, error = EventSchema.validate_event(event)
@@ -146,4 +135,3 @@ class EventSchemaTest(TestCase):
             self.assertIn("event_id", schema["properties"])
             self.assertIn("event_type", schema["properties"])
             self.assertIn("timestamp", schema["properties"])
-

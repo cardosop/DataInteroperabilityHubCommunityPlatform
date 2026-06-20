@@ -2,6 +2,7 @@
 Tests for workflow state cleanup management command.
 """
 
+import uuid
 from datetime import timedelta
 from io import StringIO
 
@@ -18,7 +19,6 @@ from hub.apps.orchestration.models import (
     WorkflowStep,
 )
 from hub.apps.tenants.models import KYCStatus, Tenant
-import uuid
 
 User = get_user_model()
 
@@ -29,7 +29,9 @@ class CleanupWorkflowStateCommandTest(TestCase):
     def setUp(self):
         """Set up test data."""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com", tenant=self.tenant, status="ACTIVE"
@@ -60,8 +62,10 @@ class CleanupWorkflowStateCommandTest(TestCase):
 
         # Verify workflow is archived
         workflow.refresh_from_db()
-        self.assertTrue(workflow.state_data.get("archived"))
-        self.assertIsNotNone(workflow.state_data.get("archived_at"))
+        self.assertTrue(workflow.state_data.get("archived"),
+            f"Expected archived=True, state_data={workflow.state_data}")
+        self.assertIsNotNone(workflow.state_data.get("archived_at"),
+            "archived_at should be set during archival")
 
     def test_dry_run_mode(self):
         """Test dry run mode doesn't make changes."""

@@ -19,26 +19,20 @@ Features:
 Total: 60+ test cases
 """
 
-import json
 import time
 import uuid
-from typing import Any, Dict, List
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.mesh.models import DataMeshDomain, DomainStatus
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
-    AssetFactory,
     TenantFactory,
     UserFactory,
 )
@@ -50,6 +44,11 @@ pytestmark = [
     pytest.mark.django_db,
     pytest.mark.integration,
     pytest.mark.slow,  # Mark as slow due to TransactionTestCase
+    pytest.mark.uc("UC-MESH-001"),
+    pytest.mark.uc("UC-MESH-002"),
+    pytest.mark.uc("UC-MESH-003"),
+    pytest.mark.uc("UC-MESH-004"),
+    pytest.mark.uc("UC-MESH-005"),
 ]
 
 
@@ -194,12 +193,13 @@ class UCMESH001CreateDataMeshDomainTest(DataMeshNewUseCasesTestBase):
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(
-            response.status_code, status.HTTP_201_CREATED,
+            response.status_code,
+            status.HTTP_201_CREATED,
         )
         self.assertLess(
-            elapsed_time, 5000,
-            f"Domain creation took {elapsed_time:.0f}ms, "
-            f"exceeds 5000ms",
+            elapsed_time,
+            5000,
+            f"Domain creation took {elapsed_time:.0f}ms, exceeds 5000ms",
         )
 
 
@@ -225,6 +225,7 @@ class UCMESH002ConfigureFederatedGovernanceTest(DataMeshNewUseCasesTestBase):
 
         # Create an access policy to apply to the domain
         from hub.apps.governance.models import AccessPolicy
+
         policy = AccessPolicy.objects.create(
             tenant=self.tenant,
             name=f"Test Policy {uuid.uuid4().hex[:8]}",
@@ -257,7 +258,8 @@ class UCMESH003ManageDomainTopologyTest(DataMeshNewUseCasesTestBase):
         self.client.force_authenticate(user=self.admin_user)
         response = self.client.get("/api/v1/mesh/topology/")
         self.assertEqual(
-            response.status_code, status.HTTP_200_OK,
+            response.status_code,
+            status.HTTP_200_OK,
         )
         body = response.json()
         self.assertIsInstance(body, dict)

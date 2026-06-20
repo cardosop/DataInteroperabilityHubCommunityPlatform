@@ -4,19 +4,20 @@ Model serving operations for DataHub SDK.
 Provides high-level methods for deploying models as APIs, running predictions,
 managing deployments, and conducting A/B tests with contract validation support.
 """
+
 import asyncio
 import re
 import uuid
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from .client import DataHubClient
 from .errors import (
-    ValidationError,
-    UnauthorizedError,
+    ConflictError,
     ForbiddenError,
     NotFoundError,
     ServerError,
-    ConflictError,
+    UnauthorizedError,
+    ValidationError,
 )
 
 
@@ -53,14 +54,22 @@ class ModelServingAPI:
             raise ValidationError(
                 f"{param_name} is required",
                 request_id=None,
-                details={"field": param_name, "expected": "non-empty string (UUID)", "actual": "empty or None"},
+                details={
+                    "field": param_name,
+                    "expected": "non-empty string (UUID)",
+                    "actual": "empty or None",
+                },
             )
 
         if not isinstance(model_id, str):
             raise ValidationError(
                 f"{param_name} must be a string",
                 request_id=None,
-                details={"field": param_name, "expected": "string (UUID)", "actual": type(model_id).__name__},
+                details={
+                    "field": param_name,
+                    "expected": "string (UUID)",
+                    "actual": type(model_id).__name__,
+                },
             )
 
         # Validate UUID format
@@ -92,14 +101,22 @@ class ModelServingAPI:
             raise ValidationError(
                 f"{param_name} is required",
                 request_id=None,
-                details={"field": param_name, "expected": "non-empty string", "actual": "empty or None"},
+                details={
+                    "field": param_name,
+                    "expected": "non-empty string",
+                    "actual": "empty or None",
+                },
             )
 
         if not isinstance(serving_id, str):
             raise ValidationError(
                 f"{param_name} must be a string",
                 request_id=None,
-                details={"field": param_name, "expected": "string", "actual": type(serving_id).__name__},
+                details={
+                    "field": param_name,
+                    "expected": "string",
+                    "actual": type(serving_id).__name__,
+                },
             )
 
     def _validate_traffic_split(self, traffic_split: str) -> None:
@@ -119,14 +136,22 @@ class ModelServingAPI:
             raise ValidationError(
                 "traffic_split is required",
                 request_id=None,
-                details={"field": "traffic_split", "expected": "non-empty string", "actual": "empty or None"},
+                details={
+                    "field": "traffic_split",
+                    "expected": "non-empty string",
+                    "actual": "empty or None",
+                },
             )
 
         if not isinstance(traffic_split, str):
             raise ValidationError(
                 "traffic_split must be a string",
                 request_id=None,
-                details={"field": "traffic_split", "expected": "string", "actual": type(traffic_split).__name__},
+                details={
+                    "field": "traffic_split",
+                    "expected": "string",
+                    "actual": type(traffic_split).__name__,
+                },
             )
 
         # Validate format: "X:Y" where X and Y are integers
@@ -162,7 +187,11 @@ class ModelServingAPI:
                 raise ValidationError(
                     "traffic_split must contain integer values",
                     request_id=None,
-                    details={"field": "traffic_split", "expected": "integers", "actual": traffic_split},
+                    details={
+                        "field": "traffic_split",
+                        "expected": "integers",
+                        "actual": traffic_split,
+                    },
                 )
 
     def _validate_input_data(self, input_data: Dict[str, Any]) -> None:
@@ -179,14 +208,22 @@ class ModelServingAPI:
             raise ValidationError(
                 "input_data must be a dictionary",
                 request_id=None,
-                details={"field": "input_data", "expected": "dict", "actual": type(input_data).__name__},
+                details={
+                    "field": "input_data",
+                    "expected": "dict",
+                    "actual": type(input_data).__name__,
+                },
             )
 
         if not input_data:
             raise ValidationError(
                 "input_data cannot be empty",
                 request_id=None,
-                details={"field": "input_data", "expected": "non-empty dict", "actual": "empty dict"},
+                details={
+                    "field": "input_data",
+                    "expected": "non-empty dict",
+                    "actual": "empty dict",
+                },
             )
 
     async def _validate_contract_for_model(self, model_id: str) -> Optional[Dict[str, Any]]:
@@ -205,7 +242,7 @@ class ModelServingAPI:
             # For now, we'll attempt to get the model and check for contract
             from .contracts import ContractsAPI
 
-            contracts_api = ContractsAPI(self.client)
+            ContractsAPI(self.client)
             # Search for contracts with model_name matching
             # This is a placeholder - actual implementation depends on contract-model linking
             return None
@@ -271,7 +308,17 @@ class ModelServingAPI:
         except ConflictError:
             raise ConflictError(f"Model {model_id} is already deployed")
         except Exception as e:
-            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(
+                e,
+                (
+                    ValidationError,
+                    UnauthorizedError,
+                    ForbiddenError,
+                    NotFoundError,
+                    ConflictError,
+                    ServerError,
+                ),
+            ):
                 raise
             raise ServerError(f"Failed to deploy model: {str(e)}", "DEPLOYMENT_ERROR", 500)
 
@@ -320,7 +367,9 @@ class ModelServingAPI:
             for attempt in range(max_attempts):
                 deployments = await self.list_deployed_models(model_id=model_id, status="READY")
                 if deployments:
-                    serving_id = deployments[0].get("serving_id") or deployments[0].get("deployment_id")
+                    serving_id = deployments[0].get("serving_id") or deployments[0].get(
+                        "deployment_id"
+                    )
                     break
                 if attempt < max_attempts - 1:
                     # Check if any deployment exists at all before waiting
@@ -334,7 +383,9 @@ class ModelServingAPI:
 
             # Run prediction
             prediction_data = {"deployment_id": serving_id, "input": input_data}
-            response = await self.client.post("ml/inference/deployments/predict/", data=prediction_data)
+            response = await self.client.post(
+                "ml/inference/deployments/predict/", data=prediction_data
+            )
 
             if isinstance(response, dict):
                 # Map response to prediction results format
@@ -357,7 +408,17 @@ class ModelServingAPI:
         except NotFoundError:
             raise
         except Exception as e:
-            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(
+                e,
+                (
+                    ValidationError,
+                    UnauthorizedError,
+                    ForbiddenError,
+                    NotFoundError,
+                    ConflictError,
+                    ServerError,
+                ),
+            ):
                 raise
             raise ServerError(f"Failed to run prediction: {str(e)}", "PREDICTION_ERROR", 500)
 
@@ -434,18 +495,30 @@ class ModelServingAPI:
             # Map to serving format
             result = []
             for deployment in deployments:
-                result.append({
-                    "serving_id": deployment.get("deployment_id", ""),
-                    "model_id": deployment.get("model_id", ""),
-                    "status": deployment.get("status", "UNKNOWN"),
-                    "endpoint": deployment.get("endpoint", ""),
-                    "created_at": deployment.get("created_at", ""),
-                    "updated_at": deployment.get("updated_at"),
-                })
+                result.append(
+                    {
+                        "serving_id": deployment.get("deployment_id", ""),
+                        "model_id": deployment.get("model_id", ""),
+                        "status": deployment.get("status", "UNKNOWN"),
+                        "endpoint": deployment.get("endpoint", ""),
+                        "created_at": deployment.get("created_at", ""),
+                        "updated_at": deployment.get("updated_at"),
+                    }
+                )
 
             return result
         except Exception as e:
-            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(
+                e,
+                (
+                    ValidationError,
+                    UnauthorizedError,
+                    ForbiddenError,
+                    NotFoundError,
+                    ConflictError,
+                    ServerError,
+                ),
+            ):
                 raise
             raise ServerError(f"Failed to list deployed models: {str(e)}", "LIST_ERROR", 500)
 
@@ -497,7 +570,17 @@ class ModelServingAPI:
         except NotFoundError:
             raise NotFoundError(f"Serving with id {serving_id} not found")
         except Exception as e:
-            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(
+                e,
+                (
+                    ValidationError,
+                    UnauthorizedError,
+                    ForbiddenError,
+                    NotFoundError,
+                    ConflictError,
+                    ServerError,
+                ),
+            ):
                 raise
             raise ServerError(f"Failed to get serving details: {str(e)}", "GET_ERROR", 500)
 
@@ -521,7 +604,17 @@ class ModelServingAPI:
         except NotFoundError:
             raise NotFoundError(f"Serving with id {serving_id} not found")
         except Exception as e:
-            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(
+                e,
+                (
+                    ValidationError,
+                    UnauthorizedError,
+                    ForbiddenError,
+                    NotFoundError,
+                    ConflictError,
+                    ServerError,
+                ),
+            ):
                 raise
             raise ServerError(f"Failed to undeploy model: {str(e)}", "UNDEPLOY_ERROR", 500)
 
@@ -576,7 +669,17 @@ class ModelServingAPI:
         except NotFoundError:
             raise NotFoundError(f"Serving with id {serving_id} not found")
         except Exception as e:
-            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(
+                e,
+                (
+                    ValidationError,
+                    UnauthorizedError,
+                    ForbiddenError,
+                    NotFoundError,
+                    ConflictError,
+                    ServerError,
+                ),
+            ):
                 raise
             raise ServerError(f"Failed to get quality metrics: {str(e)}", "METRICS_ERROR", 500)
 
@@ -641,7 +744,17 @@ class ModelServingAPI:
         except ConflictError:
             raise ConflictError(f"A/B test already exists for model {model_id}")
         except Exception as e:
-            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(
+                e,
+                (
+                    ValidationError,
+                    UnauthorizedError,
+                    ForbiddenError,
+                    NotFoundError,
+                    ConflictError,
+                    ServerError,
+                ),
+            ):
                 raise
             raise ServerError(f"Failed to create A/B test: {str(e)}", "AB_TEST_ERROR", 500)
 
@@ -716,18 +829,30 @@ class ModelServingAPI:
             # Map to A/B test format
             result = []
             for ab_test in ab_tests:
-                result.append({
-                    "ab_test_id": ab_test.get("ab_test_id", ab_test.get("id", "")),
-                    "model_id": ab_test.get("model_id", ""),
-                    "variant_id": ab_test.get("variant_id", ""),
-                    "traffic_split": ab_test.get("traffic_split", ""),
-                    "status": ab_test.get("status", "UNKNOWN"),
-                    "created_at": ab_test.get("created_at", ""),
-                })
+                result.append(
+                    {
+                        "ab_test_id": ab_test.get("ab_test_id", ab_test.get("id", "")),
+                        "model_id": ab_test.get("model_id", ""),
+                        "variant_id": ab_test.get("variant_id", ""),
+                        "traffic_split": ab_test.get("traffic_split", ""),
+                        "status": ab_test.get("status", "UNKNOWN"),
+                        "created_at": ab_test.get("created_at", ""),
+                    }
+                )
 
             return result
         except Exception as e:
-            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(
+                e,
+                (
+                    ValidationError,
+                    UnauthorizedError,
+                    ForbiddenError,
+                    NotFoundError,
+                    ConflictError,
+                    ServerError,
+                ),
+            ):
                 raise
             raise ServerError(f"Failed to list A/B tests: {str(e)}", "LIST_ERROR", 500)
 
@@ -796,6 +921,16 @@ class ModelServingAPI:
         except NotFoundError:
             raise NotFoundError(f"A/B test with id {ab_test_id} not found")
         except Exception as e:
-            if isinstance(e, (ValidationError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError)):
+            if isinstance(
+                e,
+                (
+                    ValidationError,
+                    UnauthorizedError,
+                    ForbiddenError,
+                    NotFoundError,
+                    ConflictError,
+                    ServerError,
+                ),
+            ):
                 raise
             raise ServerError(f"Failed to get A/B test details: {str(e)}", "GET_ERROR", 500)

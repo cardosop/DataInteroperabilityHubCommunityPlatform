@@ -11,11 +11,11 @@ Phase 216 has zero tolerance for flake (no ``pytest-rerunfailures``,
 no auto-retry); the only acceptable way to handle eventual consistency
 is to express it as a polling predicate via this helper.
 """
+
 from __future__ import annotations
 
 import time
 from typing import Any, Callable, Optional, TypeVar
-
 
 T = TypeVar("T")
 

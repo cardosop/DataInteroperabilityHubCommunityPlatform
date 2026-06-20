@@ -39,7 +39,6 @@ from hub.apps.contracts.ref_resolver import (
     REDIS_CACHE_PREFIX,
     REDIS_CACHE_STATS_PREFIX,
     ExternalRefHandling,
-    RefMode,
     RefResolver,
 )
 
@@ -192,8 +191,9 @@ class RefResolverInitializationTest(TestCase):
         # resolve() auto-detects external mode → calls resolve_external()
         result = resolver.resolve("https://example.com/schema.json")
 
-        self.assertEqual(len(recorded_requests), 1,
-            "resolve() must route HTTPS URLs to resolve_external()")
+        self.assertEqual(
+            len(recorded_requests), 1, "resolve() must route HTTPS URLs to resolve_external()"
+        )
         self.assertEqual(recorded_requests[0].url.host, "example.com")
         self.assertEqual(recorded_requests[0].method, "GET")
         self.assertEqual(result, {"type": "string"})
@@ -439,7 +439,7 @@ class RefResolverLocalRefTest(TestCase):
         with open(test_file, "w") as f:
             json.dump(test_data, f)
 
-        result = self.resolver.resolve_local(f"./contracts/refs/email.json")
+        result = self.resolver.resolve_local("./contracts/refs/email.json")
         self.assertEqual(result, test_data)
 
     def test_resolve_local_path_traversal_prevention(self):
@@ -791,7 +791,7 @@ class RefResolverExternalRefTest(TestCase):
         """Clean up rate limit keys"""
         if self.redis_client:
             try:
-                pattern = f"odps_ref_rate_limit:*test-tenant*"
+                pattern = "odps_ref_rate_limit:*test-tenant*"
                 keys = self.redis_client.keys(pattern)
                 if keys:
                     self.redis_client.delete(*keys)
@@ -851,7 +851,7 @@ class RefResolverExternalRefTest(TestCase):
                 user_id=self.resolver.user_id,
                 redis_client=self.redis_client,
             )
-            self.assertTrue(is_allowed, f"Request {i+1} should be allowed")
+            self.assertTrue(is_allowed, f"Request {i + 1} should be allowed")
 
         # Next request should be rejected
         is_allowed, error = check_rate_limit(
@@ -874,7 +874,7 @@ class RefResolverExternalRefTest(TestCase):
         """Test that URL not in allowlist raises error"""
         # Use real check_rate_limit (should allow)
         if self.redis_client:
-            is_allowed, error = check_rate_limit(
+            is_allowed, _error = check_rate_limit(
                 tenant_id=self.resolver.tenant_id,
                 user_id=self.resolver.user_id,
                 redis_client=self.redis_client,
@@ -890,12 +890,12 @@ class RefResolverExternalRefTest(TestCase):
 
     def test_resolve_external_timeout(self):
         """External $ref timeout raises error — uses httpx_transport constructor param."""
+
         # Use MockTransport to simulate timeout
         def handler(request: httpx.Request) -> httpx.Response:
             """Simulate timeout"""
-            import time
 
-            time.sleep(0.01)  # INTENTIONAL: test-specific delay (> timeout)
+            time.sleep(0.01)  # noqa: sleep-needed  # INTENTIONAL: test-specific delay (> timeout)
             raise httpx.TimeoutException("Request timed out", request=request)
 
         transport = httpx.MockTransport(handler)
@@ -942,8 +942,10 @@ class RefResolverExternalRefTest(TestCase):
             resolver.resolve_external("https://example.com/schema.json")
         self.assertIn(
             cm.exception.error_code,
-            [ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED,
-             ODPSRefResolutionError.ERROR_CODE_SIZE_LIMIT_EXCEEDED],
+            [
+                ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED,
+                ODPSRefResolutionError.ERROR_CODE_SIZE_LIMIT_EXCEEDED,
+            ],
         )
 
 
@@ -991,7 +993,7 @@ class RefResolverCachingTest(TestCase):
             if keys:
                 self.redis_client.delete(*keys)
             # Clear rate limit keys
-            pattern = f"odps_ref_rate_limit:*test-tenant*"
+            pattern = "odps_ref_rate_limit:*test-tenant*"
             keys = self.redis_client.keys(pattern)
             if keys:
                 self.redis_client.delete(*keys)
@@ -1011,7 +1013,7 @@ class RefResolverCachingTest(TestCase):
             if keys:
                 self.redis_client.delete(*keys)
             # Clear rate limit keys
-            pattern = f"odps_ref_rate_limit:*test-tenant*"
+            pattern = "odps_ref_rate_limit:*test-tenant*"
             keys = self.redis_client.keys(pattern)
             if keys:
                 self.redis_client.delete(*keys)
@@ -1026,7 +1028,7 @@ class RefResolverCachingTest(TestCase):
         MockTransport is used only for endpoint verification (acceptable test utility).
         """
         # Use real check_rate_limit with Redis
-        is_allowed, error = check_rate_limit(
+        is_allowed, _error = check_rate_limit(
             tenant_id=self.resolver.tenant_id,
             user_id=self.resolver.user_id,
             redis_client=self.redis_client,
@@ -1084,7 +1086,7 @@ class RefResolverCachingTest(TestCase):
             url = "https://example.com/schema.json"
             url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
             url_key = f"{REDIS_CACHE_PREFIX}{url_hash}:"
-            cached_content_hash = self.redis_client.get(url_key)
+            self.redis_client.get(url_key)
             # Cache may or may not be stored depending on implementation
             # The important thing is that real Redis is used
         finally:
@@ -1094,7 +1096,7 @@ class RefResolverCachingTest(TestCase):
         """Test that external $ref URL validation rejects invalid schemes using real rate limiting"""
         # Use real check_rate_limit (should allow for validation tests)
         if self.redis_client:
-            is_allowed, error = check_rate_limit(
+            is_allowed, _error = check_rate_limit(
                 tenant_id=self.resolver.tenant_id,
                 user_id=self.resolver.user_id,
                 redis_client=self.redis_client,
@@ -1121,7 +1123,7 @@ class RefResolverCachingTest(TestCase):
         """Test that external $ref URL validation requires valid host using real rate limiting"""
         # Use real check_rate_limit (should allow for validation tests)
         if self.redis_client:
-            is_allowed, error = check_rate_limit(
+            is_allowed, _error = check_rate_limit(
                 tenant_id=self.resolver.tenant_id,
                 user_id=self.resolver.user_id,
                 redis_client=self.redis_client,
@@ -1139,7 +1141,7 @@ class RefResolverCachingTest(TestCase):
         """Test that external $ref URL validation enforces length limit (2048 chars) using real rate limiting"""
         # Use real check_rate_limit (should allow for validation tests)
         if self.redis_client:
-            is_allowed, error = check_rate_limit(
+            is_allowed, _error = check_rate_limit(
                 tenant_id=self.resolver.tenant_id,
                 user_id=self.resolver.user_id,
                 redis_client=self.redis_client,
@@ -1158,7 +1160,7 @@ class RefResolverCachingTest(TestCase):
         """Test that external $ref URL validation rejects invalid URL format using real rate limiting"""
         # Use real check_rate_limit (should allow for validation tests)
         if self.redis_client:
-            is_allowed, error = check_rate_limit(
+            is_allowed, _error = check_rate_limit(
                 tenant_id=self.resolver.tenant_id,
                 user_id=self.resolver.user_id,
                 redis_client=self.redis_client,
@@ -1190,7 +1192,7 @@ class RefResolverCachingTest(TestCase):
                 user_id=self.resolver.user_id,
                 redis_client=self.redis_client,
             )
-            self.assertTrue(is_allowed, f"Request {i+1} should be allowed")
+            self.assertTrue(is_allowed, f"Request {i + 1} should be allowed")
 
         # Next request should be rejected
         is_allowed, error = check_rate_limit(
@@ -1220,7 +1222,7 @@ class RefResolverCachingTest(TestCase):
         MockTransport is used only for endpoint verification (acceptable test utility).
         """
         # Use real check_rate_limit with Redis
-        is_allowed, error = check_rate_limit(
+        is_allowed, _error = check_rate_limit(
             tenant_id=self.resolver.tenant_id,
             user_id=self.resolver.user_id,
             redis_client=self.redis_client,
@@ -1277,14 +1279,13 @@ class RefResolverCachingTest(TestCase):
             import hashlib
 
             url_hash = hashlib.sha256(test_url.encode("utf-8")).hexdigest()[:16]
-            content_hash = hashlib.sha256(test_content).hexdigest()[:16]
+            hashlib.sha256(test_content).hexdigest()[:16]
 
             # Expected cache key format: odps_ref:{url_hash}:{content_hash}
-            expected_data_key = f"{REDIS_CACHE_PREFIX}{url_hash}:{content_hash}"
             expected_url_key = f"{REDIS_CACHE_PREFIX}{url_hash}:"
 
             # Check real Redis for cache keys
-            url_key_value = self.redis_client.get(expected_url_key)
+            self.redis_client.get(expected_url_key)
             # Cache may or may not be stored depending on implementation
             # The important thing is that real Redis is used
         finally:
@@ -1298,7 +1299,7 @@ class RefResolverCachingTest(TestCase):
         MockTransport is used only for endpoint verification (acceptable test utility).
         """
         # Use real check_rate_limit with Redis
-        is_allowed, error = check_rate_limit(
+        is_allowed, _error = check_rate_limit(
             tenant_id=self.resolver.tenant_id,
             user_id=self.resolver.user_id,
             redis_client=self.redis_client,
@@ -1371,7 +1372,7 @@ class RefResolverCachingTest(TestCase):
     def test_external_ref_non_dict_response(self):
         """Test that external $ref rejects non-dict responses (ODPS requirement) using MockTransport"""
         # Use real check_rate_limit with Redis
-        is_allowed, error = check_rate_limit(
+        is_allowed, _error = check_rate_limit(
             tenant_id=self.resolver.tenant_id,
             user_id=self.resolver.user_id,
             redis_client=self.redis_client,
@@ -1445,7 +1446,7 @@ class RefResolverCachingTest(TestCase):
         MockTransport is used only for endpoint verification (acceptable test utility).
         """
         # Use real check_rate_limit with Redis
-        is_allowed, error = check_rate_limit(
+        is_allowed, _error = check_rate_limit(
             tenant_id=self.resolver.tenant_id,
             user_id=self.resolver.user_id,
             redis_client=self.redis_client,
@@ -1515,7 +1516,7 @@ class RefResolverCachingTest(TestCase):
             url_hash = hashlib.sha256(test_url.encode("utf-8")).hexdigest()[:16]
             content_hash_1 = hashlib.sha256(json.dumps(result_1).encode("utf-8")).hexdigest()[:16]
             url_key = f"{REDIS_CACHE_PREFIX}{url_hash}:"
-            cached_content_hash_1 = self.redis_client.get(url_key)
+            self.redis_client.get(url_key)
             # Cache may or may not be stored depending on implementation
 
             # Second resolution (should fetch again due to content change) using real Redis
@@ -1524,7 +1525,7 @@ class RefResolverCachingTest(TestCase):
 
             # Verify different content hash was stored in real Redis
             content_hash_2 = hashlib.sha256(json.dumps(result_2).encode("utf-8")).hexdigest()[:16]
-            cached_content_hash_2 = self.redis_client.get(url_key)
+            self.redis_client.get(url_key)
 
             # Content hashes should be different
             self.assertNotEqual(
@@ -1543,6 +1544,7 @@ class RefResolverCachingTest(TestCase):
 
         # Exceed tenant rate limit using real Redis
         import uuid as _uuid
+
         from hub.apps.contracts.odps_rate_limiting import (
             RATE_LIMIT_PER_TENANT,
             RATE_LIMIT_PER_USER,
@@ -1561,7 +1563,7 @@ class RefResolverCachingTest(TestCase):
                 user_id=user_id,
                 redis_client=self.redis_client,
             )
-            self.assertTrue(is_allowed, f"Request {i+1} should be allowed")
+            self.assertTrue(is_allowed, f"Request {i + 1} should be allowed")
 
         # Next request should be rejected at tenant level
         next_user = f"user-rl-new-{_uuid.uuid4().hex[:8]}"
@@ -1608,7 +1610,7 @@ class RefResolverCachingTest(TestCase):
                 user_id=user_id,
                 redis_client=self.redis_client,
             )
-            self.assertTrue(is_allowed, f"Request {i+1} should be allowed")
+            self.assertTrue(is_allowed, f"Request {i + 1} should be allowed")
 
         # Next request should be rejected at user level
         is_allowed, error = check_rate_limit(
@@ -1651,7 +1653,7 @@ class RefResolverCachingTest(TestCase):
         # Note: This may take time, so we'll test with a smaller subset
         # In practice, global limit is 1000/hour, so we'll test the mechanism
         for i in range(min(10, RATE_LIMIT_GLOBAL)):
-            is_allowed, error = check_rate_limit(
+            _is_allowed, _error = check_rate_limit(
                 tenant_id=f"{tenant_id}-{i}",  # Different tenants to avoid tenant limit
                 user_id=f"{user_id}-{i}",  # Different users to avoid user limit
                 redis_client=self.redis_client,
@@ -1687,7 +1689,6 @@ class RefResolverSecurityControlsTest(TestCase):
 
     def test_timeout_check(self):
         """Test that total timeout is checked through public API"""
-        import time
 
         resolver = RefResolver(timeout_total=1)  # 1 second timeout
         resolver._start_time = time.time() - 2  # 2 seconds ago
@@ -1815,7 +1816,7 @@ class RefResolverOrchestrationTest(SimpleTestCase):
             },
         }
 
-        original, resolved = self.resolver.resolve_all_refs(document)
+        _original, resolved = self.resolver.resolve_all_refs(document)
 
         # Both refs should be resolved
         self.assertNotIn("$ref", resolved["product"]["dataQuality"])
@@ -1834,7 +1835,7 @@ class RefResolverOrchestrationTest(SimpleTestCase):
             },
         }
 
-        original, resolved = self.resolver.resolve_all_refs(document)
+        _original, resolved = self.resolver.resolve_all_refs(document)
 
         # All refs in array should be resolved
         self.assertEqual(len(resolved["product"]["rules"]), 2)
@@ -1935,7 +1936,7 @@ class RefResolverOrchestrationTest(SimpleTestCase):
             },
         }
 
-        original, resolved = self.resolver.resolve_all_refs(document)
+        _original, resolved = self.resolver.resolve_all_refs(document)
 
         # All refs should be resolved
         self.assertNotIn("$ref", resolved["product"]["dataQuality"])
@@ -1953,7 +1954,7 @@ class RefResolverOrchestrationTest(SimpleTestCase):
             },
         }
 
-        original, resolved = self.resolver.resolve_all_refs(document)
+        _original, resolved = self.resolver.resolve_all_refs(document)
 
         # The resolved value should also have its $ref resolved
         self.assertNotIn("$ref", resolved["product"]["dataQuality"])
@@ -1979,7 +1980,7 @@ class RefResolverOrchestrationTest(SimpleTestCase):
             "definitions": {"quality": {"score": 95}},
         }
 
-        original, resolved = self.resolver.resolve_all_refs(document, preserve_original=False)
+        _original, resolved = self.resolver.resolve_all_refs(document, preserve_original=False)
 
         # When preserve_original=False, original and document are the same object
         # But resolved should still be a copy
@@ -2048,7 +2049,7 @@ class RefResolverOrchestrationLocalRefTest(SimpleTestCase):
             "definitions": {"rules": {"items": [{"ruleID": "rule1", "threshold": 0.95}]}},
         }
 
-        original, resolved = self.resolver.resolve_all_refs(document)
+        _original, resolved = self.resolver.resolve_all_refs(document)
 
         # Local ref should be resolved
         self.assertNotIn("$ref", resolved["product"]["dataQuality"])
@@ -2113,7 +2114,7 @@ class RefResolverExternalRefHandlingTest(SimpleTestCase):
             "definitions": {"quality": {"score": 95}},
         }
 
-        original, resolved = self.resolver.resolve_all_refs(
+        _original, resolved = self.resolver.resolve_all_refs(
             document, external_ref_handling=ExternalRefHandling.REMOVE
         )
 
@@ -2136,7 +2137,7 @@ class RefResolverExternalRefHandlingTest(SimpleTestCase):
             }
         }
 
-        original, resolved = self.resolver.resolve_all_refs(
+        _original, resolved = self.resolver.resolve_all_refs(
             document, external_ref_handling=ExternalRefHandling.REMOVE
         )
 
@@ -2173,7 +2174,7 @@ class RefResolverExternalRefHandlingTest(SimpleTestCase):
         }
 
         # Default behavior should resolve internal refs
-        original, resolved = self.resolver.resolve_all_refs(document)
+        _original, resolved = self.resolver.resolve_all_refs(document)
 
         self.assertNotIn("$ref", resolved["product"]["quality"])
         self.assertEqual(resolved["product"]["quality"]["score"], 95)

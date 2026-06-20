@@ -5,9 +5,10 @@ Comprehensive tests without mocks/stubs, following engineering best practices.
 """
 
 import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 
 from hub.apps.core.events.models import Event
@@ -20,7 +21,6 @@ from hub.apps.mesh.services import DataMeshService
 from hub.apps.orchestration.models import WorkflowStatus
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import Role, UserRole
-from django.core.cache import cache
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -221,7 +221,9 @@ class DataMeshServiceEventPublishingTest(TestCase):
             name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
-            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=other_tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=other_tenant,
         )
 
         service = DataMeshService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -579,7 +581,9 @@ class DataMeshServiceDomainOperationsTest(TestCase):
 
         # Create another user for owner update
         other_user = User.objects.create_user(
-            email=f"other-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
 
         updated_domain = self.service.update_domain(
@@ -600,7 +604,7 @@ class DataMeshServiceDomainOperationsTest(TestCase):
     def test_update_domain_duplicate_name(self):
         """Test updating domain with duplicate name raises ConflictError"""
         domain1 = DataMeshDomain.objects.create(tenant=self.tenant, name="Domain 1")
-        domain2 = DataMeshDomain.objects.create(tenant=self.tenant, name="Domain 2")
+        DataMeshDomain.objects.create(tenant=self.tenant, name="Domain 2")
 
         with self.assertRaises(ConflictError) as cm:
             self.service.update_domain(domain_id=str(domain1.id), name="Domain 2")
@@ -658,8 +662,11 @@ class DataMeshServiceDomainOperationsTest(TestCase):
 
         # Verify no event was published if no actual changes
         events = Event.objects.filter(event_type="domain.updated", tenant_id=self.tenant.id)
-        self.assertEqual(events.count(), initial_count,
-                         "No domain.updated event should be published for a no-op update")
+        self.assertEqual(
+            events.count(),
+            initial_count,
+            "No domain.updated event should be published for a no-op update",
+        )
         domain.refresh_from_db()
         self.assertEqual(domain.name, "Test Domain")
 
@@ -736,7 +743,7 @@ class DataMeshServicePolicyOperationsTest(TestCase):
 
     def test_apply_policy_success(self):
         """Test applying policy successfully"""
-        from hub.apps.mesh.models import PolicyApplication, PolicyApplicationStatus
+        from hub.apps.mesh.models import PolicyApplicationStatus
 
         application = self.service.apply_policy(
             domain_id=str(self.domain.id), policy_id=str(self.policy.id), overrides={}
@@ -752,7 +759,7 @@ class DataMeshServicePolicyOperationsTest(TestCase):
 
     def test_apply_policy_with_overrides(self):
         """Test applying policy with overrides"""
-        from hub.apps.mesh.models import PolicyApplication, PolicyApplicationStatus
+        from hub.apps.mesh.models import PolicyApplicationStatus
 
         overrides = {"effect": "DENY", "priority": 50, "conditions": {"user.role": "GUEST"}}
 
@@ -823,9 +830,7 @@ class DataMeshServicePolicyOperationsTest(TestCase):
         # Service fetches policy by ID (no tenant filter), then validates tenant match.
         # Policy belongs to other_tenant, domain belongs to self.tenant -> ValidationError
         with self.assertRaises(ValidationError) as cm:
-            self.service.apply_policy(
-                domain_id=str(self.domain.id), policy_id=str(other_policy.id)
-            )
+            self.service.apply_policy(domain_id=str(self.domain.id), policy_id=str(other_policy.id))
 
         self.assertIn("same tenant", str(cm.exception).lower())
 
@@ -858,14 +863,14 @@ class DataMeshServicePolicyOperationsTest(TestCase):
 
     def test_apply_policy_creates_compliance_check(self):
         """Test that apply_policy creates compliance check"""
-        from hub.apps.mesh.models import ComplianceReport, MeshComplianceStatus
+        from hub.apps.mesh.models import ComplianceReport
 
         application = self.service.apply_policy(
             domain_id=str(self.domain.id), policy_id=str(self.policy.id)
         )
 
         # Check that compliance report was created or updated
-        compliance_reports = ComplianceReport.objects.filter(domain=self.domain)
+        ComplianceReport.objects.filter(domain=self.domain)
         # Compliance checking may create or update reports
         # The exact behavior depends on implementation
         self.assertIsNotNone(application)
@@ -903,9 +908,7 @@ class DataMeshServicePolicyOperationsTest(TestCase):
 
     def test_apply_policy_integration_workflow(self):
         """Integration test for complete policy application workflow"""
-        from hub.apps.audit.models import AuditEvent
         from hub.apps.mesh.models import (
-            ComplianceReport,
             PolicyApplication,
             PolicyApplicationStatus,
         )
@@ -1010,7 +1013,7 @@ class DataMeshServicePolicyAuditLoggingTest(TestCase):
         )
 
         # Now revoke it
-        revoked_application = self.service.revoke_policy(
+        self.service.revoke_policy(
             policy_application_id=str(application.id), reason="Test revocation"
         )
 
@@ -1062,7 +1065,7 @@ class DataMeshServicePolicyAuditLoggingTest(TestCase):
         self.assertIn("policy_id", applied_event.details_json)
 
         # Revoke policy
-        revoked_application = self.service.revoke_policy(
+        self.service.revoke_policy(
             policy_application_id=str(application.id), reason="Integration test revocation"
         )
 
@@ -1161,10 +1164,14 @@ class DataMeshServiceWorkflowIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email=f"test-workflow-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-workflow-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         _ensure_tenant_admin(self.user, self.tenant)
         _ensure_abac_allow_domain_creation(self.tenant, self.user)
@@ -1173,10 +1180,10 @@ class DataMeshServiceWorkflowIntegrationTest(TestCase):
     def test_create_domain_uses_workflow(self):
         """Test that create_domain uses workflow orchestration"""
         from hub.apps.governance.models import AccessPolicy
-        from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
+        from hub.apps.orchestration.models import WorkflowStatus
 
         # Create default policies
-        policy1 = AccessPolicy.objects.create(
+        AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Default Policy 1",
             conditions={"effect": "ALLOW"},
@@ -1224,7 +1231,6 @@ class DataMeshServiceWorkflowIntegrationTest(TestCase):
 
     def test_get_domain_workflow_instance(self):
         """Test getting workflow instance for a domain"""
-        from hub.apps.governance.models import AccessPolicy
 
         # Create domain via service
         domain = self.service.create_domain(

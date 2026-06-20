@@ -25,7 +25,7 @@ class TestMetricsImportFailureIsLogged:
     def test_semantic_main_has_no_silent_import_error_pass(self):
         """main.py must NOT have bare `except ImportError: pass` for metrics."""
         if not SEMANTIC_MAIN.exists():
-            pytest.skip("semantic-service/main.py not found")
+            pytest.skip("semantic-service/main.py not found")  # noqa: skip-in-body — runtime service dependency
 
         content = SEMANTIC_MAIN.read_text()
         # Count lines with bare except ImportError followed by just pass
@@ -44,13 +44,14 @@ class TestMetricsImportFailureIsLogged:
                         silent_count += 1
                         break
                     break
-        assert silent_count == 0, \
+        assert silent_count == 0, (
             f"Found {silent_count} silent except ImportError: pass in {SEMANTIC_MAIN}"
+        )
 
     def test_fuseki_client_has_no_silent_import_error(self):
         """fuseki_client.py must log or raise on ImportError, not silently pass."""
         if not FUSEKI_CLIENT.exists():
-            pytest.skip("fuseki_client.py not found")
+            pytest.skip("fuseki_client.py not found")  # noqa: skip-in-body — runtime service dependency
 
         content = FUSEKI_CLIENT.read_text()
         lines = content.split("\n")
@@ -61,33 +62,38 @@ class TestMetricsImportFailureIsLogged:
                     stripped = lines[j].strip()
                     if not stripped or stripped.startswith("#"):
                         continue
-                    if any(kw in stripped for kw in ("logger.", "logging.", "raise", "log.", "return")):
+                    if any(
+                        kw in stripped for kw in ("logger.", "logging.", "raise", "log.", "return")
+                    ):
                         break
                     if "pass" in stripped:
                         silent_count += 1
                         break
                     break
-        assert silent_count == 0, \
+        assert silent_count == 0, (
             f"Found {silent_count} silent except ImportError: pass in {FUSEKI_CLIENT}"
+        )
 
     def test_disable_metrics_env_var_documented(self):
         """DISABLE_METRICS env var usage is documented in the service."""
         if not SEMANTIC_MAIN.exists():
-            pytest.skip("semantic-service/main.py not found")
+            pytest.skip("semantic-service/main.py not found")  # noqa: skip-in-body — runtime service dependency
 
         content = SEMANTIC_MAIN.read_text()
-        assert "DISABLE_METRICS" in content, \
+        assert "DISABLE_METRICS" in content, (
             "DISABLE_METRICS env var should be referenced in main.py"
+        )
 
     def test_metrics_stubs_are_created_when_import_fails(self):
         """When metrics import fails and DISABLE_METRICS=true, stubs are created."""
         if not SEMANTIC_MAIN.exists():
-            pytest.skip("semantic-service/main.py not found")
+            pytest.skip("semantic-service/main.py not found")  # noqa: skip-in-body — runtime service dependency
 
         content = SEMANTIC_MAIN.read_text()
         # Should contain stub creation after the DISABLE_METRICS check
-        assert "DISABLE_METRICS" in content, \
+        assert "DISABLE_METRICS" in content, (
             "DISABLE_METRICS should be checked before creating stubs"
+        )
 
 
 @pytest.mark.unit
@@ -132,10 +138,18 @@ class TestMetricsImportInAllServices:
                                 # "pass" is silent swallowing — not handled
                                 if "pass" in stripped:
                                     handled = False
-                                elif any(kw in stripped for kw in (
-                                    "logger.", "logging.", "raise", "log.",
-                                    "return", "import ", "from ",
-                                )):
+                                elif any(
+                                    kw in stripped
+                                    for kw in (
+                                        "logger.",
+                                        "logging.",
+                                        "raise",
+                                        "log.",
+                                        "return",
+                                        "import ",
+                                        "from ",
+                                    )
+                                ):
                                     handled = True
                                 break
                             if not handled:

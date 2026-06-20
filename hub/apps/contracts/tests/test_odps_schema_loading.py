@@ -9,7 +9,6 @@ Tests verify that:
 """
 
 import json
-import shutil
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -138,50 +137,30 @@ class ODPSSchemaLoadingTest(TestCase):
             load_odps_schema(None)
 
     def test_load_odps_schema_invalid_json(self):
-        """Test error handling for invalid JSON in schema file"""
-        # Test by temporarily creating an invalid JSON file and patching the base directory
-        # Create a temporary directory structure
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            test_schema_dir = temp_path / "schemas" / "odps" / "v9.9"
-            test_schema_dir.mkdir(parents=True)
+        """Test error handling for invalid JSON in schema file."""
+        from unittest.mock import mock_open
 
-            # Create invalid JSON file
-            invalid_json_file = test_schema_dir / "odps-schema.json"
-            invalid_json_file.write_text("{ invalid json syntax here }", encoding="utf-8")
+        from hub.apps.contracts.odps_schema import _schema_cache
 
-            # Patch Path(__file__).parent to point to our temp directory
-            # We need to patch the module-level Path in odps_schema
-            with patch("hub.apps.contracts.odps_schema.Path") as mock_path_class:
-                # Make Path(__file__) return a mock with parent pointing to temp_dir
-                mock_file_path = Path("/fake/path/to/odps_schema.py")
-                mock_path_instance = mock_path_class.return_value
-                mock_path_instance.__file__ = str(mock_file_path)
-                mock_path_instance.parent = temp_path
+        # Clear the cache so we exercise the file-reading path
+        _schema_cache.clear()
 
-                # Actually, we need to patch it differently - patch the Path(__file__) call
-                # Let's use a simpler approach: directly test the JSON parsing error
-                # by creating a function that mimics the behavior
-                def test_invalid_json_loading():
-                    """Helper to test invalid JSON loading"""
-                    schema_path = temp_path / "schemas" / "odps" / "v9.9" / "odps-schema.json"
-                    with open(schema_path, "r", encoding="utf-8") as f:
-                        return json.load(f)
+        # Mock open() to return invalid JSON, and Path.exists/is_file to return True
+        invalid_json = "{ invalid json syntax here }"
+        m_open = mock_open(read_data=invalid_json)
 
-                # Test that invalid JSON raises JSONDecodeError
-                with self.assertRaises(json.JSONDecodeError):
-                    test_invalid_json_loading()
+        with patch("builtins.open", m_open), \
+             patch.object(Path, "exists", return_value=True), \
+             patch.object(Path, "is_file", return_value=True):
+            with self.assertRaises(json.JSONDecodeError):
+                load_odps_schema("9.9")
 
-        # Also verify the actual function handles JSON errors properly
-        # by checking that it wraps JSONDecodeError with context
-        # This is verified by the function's implementation which we can see raises
-        # JSONDecodeError with a helpful message
+        _schema_cache.clear()
 
     def test_load_odps_schema_file_not_dict(self):
         """Test error handling when schema file doesn't contain a JSON object"""
         # This is tested implicitly - if a schema file contains non-dict JSON, it should fail
         # We verify this by ensuring all actual schema files are dicts in other tests
-        pass
 
     def test_get_available_odps_versions(self):
         """Test getting list of available ODPS versions"""
@@ -226,7 +205,7 @@ class ODPSSchemaLoadingTest(TestCase):
             (" 4.1 ", "v4.1"),  # With whitespace
         ]
 
-        for input_version, expected_dir in test_cases:
+        for input_version, _expected_dir in test_cases:
             with self.subTest(input_version=input_version):
                 # All these should load successfully (if version exists)
                 if input_version.strip().lstrip("v") in ["4.1", "4.0", "3.x", "2.x", "1.x"]:
@@ -305,7 +284,7 @@ class ODPSSchemaLoadingTest(TestCase):
         self.assertEqual(schema1, schema2, "Cached schema should be identical to original")
 
         # Load another version - should also be cached
-        schema3 = load_odps_schema("3.x")
+        load_odps_schema("3.x")
         cached_versions = get_cached_schema_versions()
         self.assertIn("4.1", cached_versions, "Version 4.1 should still be in cache")
         self.assertIn("3.x", cached_versions, "Version 3.x should be in cache after loading")
@@ -419,7 +398,6 @@ class ODPSSchemaLoadingTest(TestCase):
         # This is harder to test without mocking, but we verify the error handling
         # exists in the code. The actual test would require creating a directory
         # with the schema name, which is unlikely in practice.
-        pass
 
     def test_schema_loading_all_versions_cached(self):
         """Test loading all versions and verifying they're all cached"""
@@ -469,15 +447,9 @@ class ODPSSchemaLoadingTest(TestCase):
 
     def test_schema_loading_handles_none_values(self):
         """Test that schema loading handles None values correctly."""
-        # Test with None version (should fail gracefully)
-        try:
-            schema = load_odps_schema(None)  # type: ignore[misc]  # test: edge-case type exercise
-            # If it doesn't fail, verify structure
-            if schema:
-                self.assertIsInstance(schema, dict)
-        except (ValueError, TypeError, FileNotFoundError):
-            # Should handle None values gracefully
-            pass
+        # load_odps_schema(None) should raise ValueError, not crash
+        with self.assertRaises(ValueError):
+            load_odps_schema(None)  # type: ignore[misc]  # test: edge-case type exercise
 
     def test_schema_loading_handles_nested_structures(self):
         """Test that schema loading handles nested structures correctly."""

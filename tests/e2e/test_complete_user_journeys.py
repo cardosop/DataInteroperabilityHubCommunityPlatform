@@ -6,8 +6,8 @@ Uses REAL services (Compliance, DQ, DataContract, MinIO).
 """
 
 import hashlib
-import os
 import time
+import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -19,14 +19,12 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus
 from hub.apps.dq.models import DQRun, DQRunStatus
-from hub.apps.marketplace.models import Listing, ListingStatus, Order, OrderStatus, PricingModel
+from hub.apps.marketplace.models import Listing, ListingStatus, Order, PricingModel
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
-from hub.apps.testing.service_utils import check_service_health
 
 from .conftest import get_response_data
-import uuid
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 User = get_user_model()
@@ -94,12 +92,16 @@ class CompleteUserJourneysE2ETest(TestCase):
         self.client = APIClient()
 
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
         )
         ensure_e2e_tenant_ready(self.tenant)
 
         self.user = User.objects.create_user(
-            email=f"test-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=self.tenant
+            email=f"test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
         )
         ensure_user_has_data_provider_role(self.user)
 
@@ -219,7 +221,7 @@ class CompleteUserJourneysE2ETest(TestCase):
             dq_run = DQRun.objects.get(id=dq_run_id)
             if compliance_run.status in c_terminal and dq_run.status in d_terminal:
                 break
-            time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
             wait_time += 2
 
         # Kick execution directly if still pending.
@@ -227,6 +229,7 @@ class CompleteUserJourneysE2ETest(TestCase):
         if compliance_run.status not in c_terminal:
             try:
                 from hub.apps.compliance.views import execute_compliance_run
+
                 execute_compliance_run(str(compliance_run_id))
             except Exception:
                 pass
@@ -237,7 +240,7 @@ class CompleteUserJourneysE2ETest(TestCase):
             dq_run = DQRun.objects.get(id=dq_run_id)
             if compliance_run.status in c_terminal and dq_run.status in d_terminal:
                 break
-            time.sleep(2)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
             wait_time += 2
 
         compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
@@ -381,7 +384,9 @@ class CompleteUserJourneysE2ETest(TestCase):
         )
         ensure_e2e_tenant_ready(provider_tenant)
         provider_user = User.objects.create_user(
-            email=f"provider-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=provider_tenant
+            email=f"provider-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=provider_tenant,
         )
         ensure_user_has_data_provider_role(provider_user)
 
@@ -426,7 +431,9 @@ class CompleteUserJourneysE2ETest(TestCase):
         )
         ensure_e2e_tenant_ready(consumer_tenant)
         consumer_user = User.objects.create_user(
-            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com", password="testpass123", tenant=consumer_tenant
+            email=f"consumer-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=consumer_tenant,
         )
         consumer_client = APIClient()
         consumer_client.force_authenticate(user=consumer_user)

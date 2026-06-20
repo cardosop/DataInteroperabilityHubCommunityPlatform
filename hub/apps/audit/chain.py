@@ -20,12 +20,15 @@ Why a separate module
   contract MUST tolerate gaps; the verifier in :func:`verify_chain_segment`
   encodes that tolerance once, not at every call site.
 """
+
 from __future__ import annotations
+
 import hashlib
 import json
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timezone as dt_timezone
-from typing import Any, Iterable, Mapping, Sequence
+from datetime import UTC, datetime
+from typing import Any
 
 # Canonical-form field allow-list: any new ``AuditEvent`` column that participates
 # in the chain MUST be added here AND covered by a test that pins the hash
@@ -75,9 +78,9 @@ def _normalize_timestamp(value: Any) -> str | None:
             # Defensive: a naive datetime in the chain would let two events
             # with the same wall-clock seconds in different timezones hash
             # to the same canonical. Force UTC interpretation.
-            value = value.replace(tzinfo=dt_timezone.utc)
+            value = value.replace(tzinfo=UTC)
         else:
-            value = value.astimezone(dt_timezone.utc)
+            value = value.astimezone(UTC)
         return value.isoformat()
     return str(value)
 
@@ -116,9 +119,9 @@ def canonical_form(event: Any) -> bytes:
             payload[field] = raw
         else:
             payload[field] = raw
-    return json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
 def compute_chain_hash(
@@ -186,7 +189,7 @@ class ChainVerification:
     # cryptographic anchor and a mismatch indicates either tampering or
     # legitimate GDPR-erasure that hasn't yet been followed by a re-snap.
     snapshots_checked: int = 0
-    snapshot_mismatches: list["SnapshotMismatch"] = field(default_factory=list)
+    snapshot_mismatches: list[SnapshotMismatch] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {

@@ -5,11 +5,13 @@ Auth via service-account JSON / Workload Identity from encrypted vault.
 Standard SQL. INFORMATION_SCHEMA.COLUMNS reflection.
 bytes-billed cost guard via dryRun=True. Circuit-breaker integration.
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from hub.apps.warehouses.base import (
     QueryResult,
@@ -87,6 +89,7 @@ class BigQueryConnector(WarehouseConnector):
         self._check_circuit_breaker(self._tenant_id)
 
         from google.cloud import bigquery
+
         job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
         query_job = self._client.query(sql, job_config=job_config)
         bytes_billed = query_job.total_bytes_processed or 0
@@ -104,7 +107,7 @@ class BigQueryConnector(WarehouseConnector):
     def execute_query(
         self,
         sql: str,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         limit: int = 100,
     ) -> QueryResult:
         self._check_circuit_breaker(self._tenant_id)
@@ -141,7 +144,7 @@ class BigQueryConnector(WarehouseConnector):
         self._record_cost(self._tenant_id, cost, "bytes_billed")
         return result
 
-    def reflect_schema(self, table_name: str) -> List[SchemaColumn]:
+    def reflect_schema(self, table_name: str) -> list[SchemaColumn]:
         parts = table_name.split(".")
         dataset = parts[0] if len(parts) > 1 else self._config.get("dataset", "")
         table = parts[1] if len(parts) > 1 else table_name
@@ -150,16 +153,16 @@ class BigQueryConnector(WarehouseConnector):
         schema = self._client.get_table(table_ref).schema
         return [
             SchemaColumn(
-                name=field.name, data_type=field.field_type,
-                nullable=field.mode == "NULLABLE", comment=field.description or "",
+                name=field.name,
+                data_type=field.field_type,
+                nullable=field.mode == "NULLABLE",
+                comment=field.description or "",
             )
             for field in schema
         ]
 
     def close(self) -> None:
         if self._client:
-            try:
+            with contextlib.suppress(Exception):
                 self._client.close()
-            except Exception:
-                pass
             self._connected = False

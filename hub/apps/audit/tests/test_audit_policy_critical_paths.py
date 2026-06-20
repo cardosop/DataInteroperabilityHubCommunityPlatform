@@ -6,6 +6,8 @@ contract create, auth login) result in an audit event. No mocks; uses real DB
 and API client. See tasks.md Phase 15 — Governance: Audit policy and AllowAny review.
 """
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -15,7 +17,6 @@ from rest_framework.test import APIClient
 from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import Role, UserStatus
-import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -27,7 +28,7 @@ _MINIMAL_ODPS_ORIGINAL_RAW = (
     '"product": {'
     '"details": {"en": {"productID": "c1", "name": "Test"}}, '
     '"dataSchema": {"fields": [{"name": "id", "type": "string"}]}'
-    '}}'
+    "}}"
 )
 # ODPS variant for minimal-schema edge case: product.details + single dataSchema field.
 # (Empty dataSchema.fields can be rejected by normalizer/API; use one field so create returns 201.)
@@ -36,7 +37,7 @@ _MINIMAL_ODPS_EMPTY_SCHEMA_RAW = (
     '"product": {'
     '"details": {"en": {"productID": "c1", "name": "Test"}}, '
     '"dataSchema": {"fields": [{"name": "id", "type": "string"}]}'
-    '}}'
+    "}}"
 )
 
 
@@ -96,9 +97,7 @@ class AuditPolicyCriticalPathsTest(TestCase):
 
     def test_asset_create_emits_audit_event_returns_201(self):
         """Asset creation MUST emit ASSET_CREATED audit event returns 201."""
-        initial_count = AuditEvent.objects.filter(
-            action="ASSET_CREATED", resource_type="ASSET"
-        ).count()
+        AuditEvent.objects.filter(action="ASSET_CREATED", resource_type="ASSET").count()
         response = self.client.post(
             "/api/v1/assets/",
             {"key": "audit-policy-asset", "name": "Audit Policy Asset", "domain": "test"},
@@ -111,14 +110,12 @@ class AuditPolicyCriticalPathsTest(TestCase):
         initial_count = AuditEvent.objects.filter(
             action="ASSET_CREATED", resource_type="ASSET"
         ).count()
-        response = self.client.post(
+        self.client.post(
             "/api/v1/assets/",
             {"key": "audit-policy-asset", "name": "Audit Policy Asset", "domain": "test"},
             format="json",
         )
-        new_count = AuditEvent.objects.filter(
-            action="ASSET_CREATED", resource_type="ASSET"
-        ).count()
+        new_count = AuditEvent.objects.filter(action="ASSET_CREATED", resource_type="ASSET").count()
         self.assertGreater(
             new_count,
             initial_count,
@@ -142,9 +139,7 @@ class AuditPolicyCriticalPathsTest(TestCase):
             format="json",
         )
         asset_id = asset_resp.data["id"]
-        initial_count = AuditEvent.objects.filter(
-            action="CONTRACT_CREATED", resource_type="CONTRACT"
-        ).count()
+        AuditEvent.objects.filter(action="CONTRACT_CREATED", resource_type="CONTRACT").count()
         response = self.client.post(
             "/api/v1/contracts/",
             {
@@ -165,9 +160,7 @@ class AuditPolicyCriticalPathsTest(TestCase):
             format="json",
         )
         asset_id = asset_resp.data["id"]
-        initial_count = AuditEvent.objects.filter(
-            action="CONTRACT_CREATED", resource_type="CONTRACT"
-        ).count()
+        AuditEvent.objects.filter(action="CONTRACT_CREATED", resource_type="CONTRACT").count()
         response = self.client.post(
             "/api/v1/contracts/",
             {
@@ -192,7 +185,7 @@ class AuditPolicyCriticalPathsTest(TestCase):
     def test_login_emits_audit_event_returns_200(self):
         """Login MUST emit AUTH/LOGIN audit event returns 200."""
         anon_client = APIClient()
-        initial_count = AuditEvent.objects.filter(resource_type="AUTH", action="LOGIN").count()
+        AuditEvent.objects.filter(resource_type="AUTH", action="LOGIN").count()
         response = anon_client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
@@ -204,7 +197,7 @@ class AuditPolicyCriticalPathsTest(TestCase):
         """Login MUST emit AUTH/LOGIN audit event increases count."""
         anon_client = APIClient()
         initial_count = AuditEvent.objects.filter(resource_type="AUTH", action="LOGIN").count()
-        response = anon_client.post(
+        anon_client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
             format="json",

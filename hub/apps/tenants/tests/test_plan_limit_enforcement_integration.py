@@ -4,19 +4,18 @@ Integration tests for plan limit enforcement in asset/dataset/scheduled ingestio
 Tests use real DB, no mocks/stubs per Phase 25 requirements.
 """
 
+import contextlib
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.db.transaction import TransactionManagementError
 from django.test import TestCase
-from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset
 from hub.apps.core.services.base import ValidationError
-from hub.apps.datasets.models import Dataset
-from hub.apps.scheduled_ingestion.models import ScheduledIngestion
 from hub.apps.tenants.models import PlanTier, Tenant, TenantPlan
-import uuid
 
 User = get_user_model()
 
@@ -44,16 +43,13 @@ class PlanLimitEnforcementIntegrationTest(TestCase):
         # 'default' alias — other aliases (admin, baas) are restricted
         # and would raise DatabaseOperationForbidden.
         from django.db import connections
+
         conn = connections["default"]
-        try:
+        with contextlib.suppress(Exception):
             conn.close_if_unusable_or_obsolete()
-        except Exception:
-            pass
         if conn.connection is None or getattr(conn.connection, "closed", 1):
-            try:
+            with contextlib.suppress(Exception):
                 conn.close()
-            except Exception:
-                pass
             conn.connection = None
             conn.closed_in_transaction = False
             conn.needs_rollback = False
@@ -109,8 +105,8 @@ class PlanLimitEnforcementIntegrationTest(TestCase):
     def test_asset_creation_enforces_limit(self):
         """Failure: creating asset over plan limit raises ValidationError with plan_limit_exceeded."""
         # Create assets up to limit
-        asset1 = Asset.objects.create(tenant=self.tenant, key="asset-1", name="Asset 1")
-        asset2 = Asset.objects.create(tenant=self.tenant, key="asset-2", name="Asset 2")
+        Asset.objects.create(tenant=self.tenant, key="asset-1", name="Asset 1")
+        Asset.objects.create(tenant=self.tenant, key="asset-2", name="Asset 2")
 
         # Try to create third asset - should fail
         from hub.apps.assets.services import AssetService
@@ -186,7 +182,7 @@ class PlanLimitEnforcementIntegrationTest(TestCase):
 
         service = IngestionService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
-        ingestion1 = service.create_scheduled_ingestion(
+        service.create_scheduled_ingestion(
             tenant=self.tenant,
             created_by=self.user,
             name="Ingestion 1",
@@ -221,6 +217,7 @@ class PlanLimitEnforcementIntegrationTest(TestCase):
         """Test unlimited plan (ENTERPRISE) allows unlimited resources"""
         # Create enterprise plan with unlimited limits
         import uuid as _uuid
+
         _uid = _uuid.uuid4().hex[:8]
         enterprise_plan = TenantPlan.objects.create(
             name=f"Enterprise Plan {_uid}",

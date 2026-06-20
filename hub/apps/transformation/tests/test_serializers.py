@@ -1,16 +1,16 @@
 """
 Unit tests for transformation serializers — Phase 115F.1
 """
+
 import uuid
 
 import pytest
 from django.test import TestCase
 
 from hub.apps.tenants.models import Tenant
-from hub.apps.transformation.models import PipelineStatus
 from hub.apps.transformation.serializers import (
-    TransformationPipelineSerializer,
     PipelineExecutionSerializer,
+    TransformationPipelineSerializer,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -24,6 +24,7 @@ class TransformationPipelineSerializerTest(TestCase):
     def setUp(self):
         """Create shared fixtures for each test."""
         from django.contrib.auth import get_user_model
+
         global User
         User = get_user_model()
         uid = uuid.uuid4().hex[:8]
@@ -79,9 +80,17 @@ class TransformationPipelineSerializerTest(TestCase):
         """All expected fields are in the serializer."""
         serializer = TransformationPipelineSerializer()
         expected = {
-            "id", "tenant", "created_by", "name", "description",
-            "pipeline_definition", "version", "status",
-            "created_at", "updated_at", "metadata",
+            "id",
+            "tenant",
+            "created_by",
+            "name",
+            "description",
+            "pipeline_definition",
+            "version",
+            "status",
+            "created_at",
+            "updated_at",
+            "metadata",
         }
         self.assertTrue(expected.issubset(set(serializer.fields.keys())))
 

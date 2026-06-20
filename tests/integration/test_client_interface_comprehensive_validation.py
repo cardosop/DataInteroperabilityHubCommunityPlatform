@@ -20,7 +20,7 @@ import json
 import os
 import tempfile
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 import structlog
 from click.testing import CliRunner
@@ -51,10 +51,8 @@ from hub.apps.baas.models import APIUsage
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    NormalizationStatus,
     OriginalFormat,
     OriginalSpecType,
-    ValidationStatus,
 )
 from hub.apps.contracts.services import ContractService, ODPSService
 from hub.apps.tenants.models import Tenant
@@ -101,7 +99,6 @@ class CLIComprehensiveTest(TransactionTestCase):
         which provides isolation without flushing.
         """
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures."""
@@ -691,7 +688,6 @@ class PythonSDKComprehensiveTest(TransactionTestCase):
         which provides isolation without flushing.
         """
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures."""
@@ -818,7 +814,7 @@ class PythonSDKComprehensiveTest(TransactionTestCase):
                     return
                 except IntegrityError:
                     if attempt < 2:
-                        time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
+                        time.sleep(0.5)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
                     else:
                         raise
         if hasattr(self, "user"):
@@ -995,7 +991,6 @@ class PythonSDKComprehensiveTest(TransactionTestCase):
             if "Connection" in str(e) or "Network" in str(e):
                 self.skipTest(f"API not available: {e}")
             # If NotFoundError is not raised, verify error is handled gracefully
-            pass
 
     def test_sdk_error_handling_validation_error(self):
         """Test SDK error handling for validation errors."""
@@ -1029,7 +1024,6 @@ class PythonSDKComprehensiveTest(TransactionTestCase):
             if "Connection" in str(e) or "Network" in str(e):
                 self.skipTest(f"API not available: {e}")
             # If ValidationError is not raised, verify error is handled gracefully
-            pass
 
     def test_sdk_authentication_works(self):
         """Test SDK authentication works correctly."""
@@ -1128,9 +1122,7 @@ class PythonSDKComprehensiveTest(TransactionTestCase):
 
         try:
             result = asyncio.run(run_test())
-            self.assertIsInstance(
-                result, dict, "SDK link_odps_to_odcs should return dictionary"
-            )
+            self.assertIsInstance(result, dict, "SDK link_odps_to_odcs should return dictionary")
             odps_contract.refresh_from_db()
             odcs_contract.refresh_from_db()
             from hub.apps.contracts.linking_validation import _get_linked_contract_ids
@@ -1177,7 +1169,6 @@ class GraphQLComprehensiveTest(TransactionTestCase):
         which provides isolation without flushing.
         """
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures."""
@@ -1202,10 +1193,11 @@ class GraphQLComprehensiveTest(TransactionTestCase):
 
         # Assign DATA_PROVIDER role for contract creation permissions
         from hub.apps.users.models import Role, UserRole
+
         provider_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="DATA_PROVIDER",
-            defaults={"description": "Data Provider with contract creation permissions"}
+            defaults={"description": "Data Provider with contract creation permissions"},
         )
         UserRole.objects.create(user=self.user, role=provider_role)
 
@@ -1274,7 +1266,7 @@ class GraphQLComprehensiveTest(TransactionTestCase):
             Tenant.objects.filter(id=self.tenant_id).delete()
         super().tearDown()
 
-    def _graphql_query(self, query: str, variables: Optional[Dict[str, Any]] = None):
+    def _graphql_query(self, query: str, variables: dict[str, Any] | None = None):
         """Execute GraphQL query."""
         data = {"query": query}
         if variables:
@@ -1685,7 +1677,6 @@ class WebhookComprehensiveTest(TransactionTestCase):
         which provides isolation without flushing.
         """
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures."""
@@ -1851,7 +1842,7 @@ class WebhookComprehensiveTest(TransactionTestCase):
             )
 
             # Give server time to receive request and delivery to complete
-            time.sleep(1.0)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(1.0)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
             # Verify webhook was triggered
             self.assertGreater(
@@ -1981,7 +1972,7 @@ class WebhookComprehensiveTest(TransactionTestCase):
             from hub.apps.webhooks.service import WebhookDeliveryService
 
             # Trigger ODPS_CREATED event
-            created_count = WebhookDeliveryService.trigger_webhook(
+            WebhookDeliveryService.trigger_webhook(
                 tenant_id=str(self.tenant.id),
                 event_type=WebhookEventType.ODPS_CREATED.value,
                 resource_type="ODPS",
@@ -1990,7 +1981,7 @@ class WebhookComprehensiveTest(TransactionTestCase):
             )
 
             # Trigger ODPS_LINKED event
-            linked_count = WebhookDeliveryService.trigger_webhook(
+            WebhookDeliveryService.trigger_webhook(
                 tenant_id=str(self.tenant.id),
                 event_type=WebhookEventType.ODPS_LINKED.value,
                 resource_type="ODPS",
@@ -1999,7 +1990,7 @@ class WebhookComprehensiveTest(TransactionTestCase):
             )
 
             # Give servers time to receive requests
-            time.sleep(0.5)  # INTENTIONAL: e2e/integration test polling real services
+            time.sleep(0.5)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
             # Verify filtering works
             odps_created_deliveries = WebhookDelivery.objects.filter(
@@ -2147,7 +2138,9 @@ class WebhookComprehensiveTest(TransactionTestCase):
             # Verify authentication headers were sent (check received request)
             import time
 
-            time.sleep(0.5)  # Give server time to receive request  # INTENTIONAL: test-specific timing
+            time.sleep(  # noqa: sleep-needed — test timing requirement
+                0.5
+            )  # Give server time to receive request  # INTENTIONAL: test-specific timing
             received_request = server.get_received_request()
             if received_request:
                 headers = received_request.get("headers", {})
@@ -2185,7 +2178,6 @@ class CrossInterfaceConsistencyTest(TransactionTestCase):
         which provides isolation without flushing.
         """
         # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def setUp(self):
         """Set up test fixtures."""

@@ -1,20 +1,24 @@
 """
 Unit tests for TransformationService.
 """
-import unittest
-import uuid
-from unittest.mock import patch, MagicMock
-from django.test import TestCase
-from django.core.exceptions import ValidationError as DjangoValidationError
 
-from hub.apps.transformation.services import TransformationService
-from hub.apps.transformation.models import TransformationPipeline, TransformationNode, PipelineStatus
-from hub.apps.transformation.exceptions import TransformationExecutionError
-from hub.apps.core.services.base import NotFoundError, ValidationError
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import Role, UserRole, UserStatus
-from hub.apps.governance.models import AccessPolicy
+import uuid
+from unittest.mock import MagicMock, patch
+
 from django.contrib.auth import get_user_model
+from django.test import TestCase
+
+from hub.apps.core.services.base import NotFoundError, ValidationError
+from hub.apps.governance.models import AccessPolicy
+from hub.apps.tenants.models import Tenant
+from hub.apps.transformation.exceptions import TransformationExecutionError
+from hub.apps.transformation.models import (
+    PipelineStatus,
+    TransformationNode,
+    TransformationPipeline,
+)
+from hub.apps.transformation.services import TransformationService
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 User = get_user_model()
 
@@ -25,16 +29,11 @@ class TransformationServiceTest(TestCase):
     def setUp(self):
         """Set up per-test fixtures."""
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
 
         # Create DATA_PROVIDER role for the tenant
         self.data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
 
         # Create user with DATA_PROVIDER role
@@ -42,51 +41,35 @@ class TransformationServiceTest(TestCase):
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         # Assign DATA_PROVIDER role to user
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=self.data_provider_role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=self.data_provider_role)
 
         # Create ABAC policy to allow DATA_PROVIDER role users to create pipelines
         AccessPolicy.objects.get_or_create(
             tenant=self.tenant,
             name="Allow Pipeline Creation",
             defaults={
-                "conditions": {
-                    "user": {"tenant_id": str(self.tenant.id)}
-                },
+                "conditions": {"user": {"tenant_id": str(self.tenant.id)}},
                 "effect": "ALLOW",
                 "priority": 100,
                 "enabled": True,
-                "created_by": self.user
-            }
+                "created_by": self.user,
+            },
         )
 
         self.valid_pipeline_definition = {
             "version": "1.0.0",
-            "steps": [
-                {
-                    "name": "step1",
-                    "type": "task",
-                    "task": "extract_data",
-                    "input": {}
-                }
-            ]
+            "steps": [{"name": "step1", "type": "task", "task": "extract_data", "input": {}}],
         }
         self.service = TransformationService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
     def test_service_initialization(self):
         """Test TransformationService initialization."""
-        service = TransformationService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        service = TransformationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         self.assertEqual(service.tenant_id, str(self.tenant.id))
         self.assertEqual(service.user_id, str(self.user.id))
@@ -111,7 +94,7 @@ class TransformationServiceTest(TestCase):
             description="Test description",
             pipeline_definition=self.valid_pipeline_definition,
             version="1.0.0",
-            status=PipelineStatus.DRAFT
+            status=PipelineStatus.DRAFT,
         )
 
         self.assertIsNotNone(pipeline.id)
@@ -126,9 +109,7 @@ class TransformationServiceTest(TestCase):
     def test_create_pipeline_with_defaults(self):
         """Test creating a pipeline with default values."""
         pipeline = self.service.create_pipeline(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            name="Test Pipeline"
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), name="Test Pipeline"
         )
 
         self.assertIsNotNone(pipeline.id)
@@ -150,27 +131,27 @@ class TransformationServiceTest(TestCase):
             created_by=self.user,
             key="source-asset",
             name="Source Asset",
-            status=AssetStatus.ACTIVE
+            status=AssetStatus.ACTIVE,
         )
         target_asset = Asset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
             key="target-asset",
             name="Target Asset",
-            status=AssetStatus.DRAFT
+            status=AssetStatus.DRAFT,
         )
 
         metadata = {
             "tags": ["etl", "customer-data"],
             "source_asset_id": str(source_asset.id),
-            "target_asset_id": str(target_asset.id)
+            "target_asset_id": str(target_asset.id),
         }
 
         pipeline = self.service.create_pipeline(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             name="Test Pipeline",
-            metadata=metadata
+            metadata=metadata,
         )
 
         self.assertEqual(pipeline.metadata, metadata)
@@ -186,7 +167,7 @@ class TransformationServiceTest(TestCase):
                 pipeline_definition={
                     "version": "1.0.0",
                     # Missing required "steps" field
-                }
+                },
             )
 
     def test_update_pipeline(self):
@@ -198,7 +179,7 @@ class TransformationServiceTest(TestCase):
             description="Original description",
             pipeline_definition=self.valid_pipeline_definition,
             version="1.0.0",
-            status=PipelineStatus.DRAFT
+            status=PipelineStatus.DRAFT,
         )
 
         updated_pipeline = self.service.update_pipeline(
@@ -206,7 +187,7 @@ class TransformationServiceTest(TestCase):
             name="Updated Name",
             description="Updated description",
             version="2.0.0",
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         self.assertEqual(updated_pipeline.name, "Updated Name")
@@ -220,12 +201,11 @@ class TransformationServiceTest(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="Original Name",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         updated_pipeline = self.service.update_pipeline(
-            pipeline_id=str(pipeline.id),
-            name="Updated Name"
+            pipeline_id=str(pipeline.id), name="Updated Name"
         )
 
         self.assertEqual(updated_pipeline.name, "Updated Name")
@@ -239,12 +219,11 @@ class TransformationServiceTest(TestCase):
             created_by=self.user,
             name="Test Pipeline",
             pipeline_definition=self.valid_pipeline_definition,
-            metadata={"tag1": "value1", "tag2": "value2"}
+            metadata={"tag1": "value1", "tag2": "value2"},
         )
 
         updated_pipeline = self.service.update_pipeline(
-            pipeline_id=str(pipeline.id),
-            metadata={"tag3": "value3"}
+            pipeline_id=str(pipeline.id), metadata={"tag3": "value3"}
         )
 
         self.assertEqual(updated_pipeline.metadata["tag1"], "value1")
@@ -254,10 +233,7 @@ class TransformationServiceTest(TestCase):
     def test_update_pipeline_not_found(self):
         """Test updating a non-existent pipeline raises NotFoundError."""
         with self.assertRaises(NotFoundError):
-            self.service.update_pipeline(
-                pipeline_id=str(uuid.uuid4()),
-                name="Updated Name"
-            )
+            self.service.update_pipeline(pipeline_id=str(uuid.uuid4()), name="Updated Name")
 
     def test_delete_pipeline(self):
         """Test deleting a transformation pipeline."""
@@ -265,16 +241,14 @@ class TransformationServiceTest(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="Test Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
         pipeline_id = str(pipeline.id)
 
         self.service.delete_pipeline(pipeline_id=pipeline_id)
 
         # Pipeline should be deleted
-        self.assertFalse(
-            TransformationPipeline.objects.filter(id=pipeline_id).exists()
-        )
+        self.assertFalse(TransformationPipeline.objects.filter(id=pipeline_id).exists())
 
     def test_delete_pipeline_with_nodes(self):
         """Test deleting a pipeline also deletes its nodes (cascade)."""
@@ -282,14 +256,14 @@ class TransformationServiceTest(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="Test Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
         node = TransformationNode.objects.create(
             pipeline=pipeline,
             node_type="filter",
             node_config={},
             position={"x": 0, "y": 0},
-            order=1
+            order=1,
         )
         node_id = str(node.id)
         pipeline_id = str(pipeline.id)
@@ -297,12 +271,8 @@ class TransformationServiceTest(TestCase):
         self.service.delete_pipeline(pipeline_id=pipeline_id)
 
         # Pipeline and node should be deleted
-        self.assertFalse(
-            TransformationPipeline.objects.filter(id=pipeline_id).exists()
-        )
-        self.assertFalse(
-            TransformationNode.objects.filter(id=node_id).exists()
-        )
+        self.assertFalse(TransformationPipeline.objects.filter(id=pipeline_id).exists())
+        self.assertFalse(TransformationNode.objects.filter(id=node_id).exists())
 
     def test_delete_pipeline_not_found(self):
         """Test deleting a non-existent pipeline raises NotFoundError."""
@@ -315,12 +285,10 @@ class TransformationServiceTest(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="Test Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
-        retrieved_pipeline = self.service.get_pipeline(
-            pipeline_id=str(pipeline.id)
-        )
+        retrieved_pipeline = self.service.get_pipeline(pipeline_id=str(pipeline.id))
 
         self.assertEqual(retrieved_pipeline.id, pipeline.id)
         self.assertEqual(retrieved_pipeline.name, "Test Pipeline")
@@ -336,7 +304,7 @@ class TransformationServiceTest(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="Test Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         node = self.service.create_node(
@@ -344,7 +312,7 @@ class TransformationServiceTest(TestCase):
             node_type="filter",
             node_config={"filter_expression": "age > 18"},
             position={"x": 100, "y": 200},
-            order=1
+            order=1,
         )
 
         self.assertIsNotNone(node.id)
@@ -360,13 +328,10 @@ class TransformationServiceTest(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="Test Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
-        node = self.service.create_node(
-            pipeline_id=str(pipeline.id),
-            node_type="transform"
-        )
+        node = self.service.create_node(pipeline_id=str(pipeline.id), node_type="transform")
 
         self.assertIsNotNone(node.id)
         self.assertEqual(node.node_type, "transform")
@@ -377,12 +342,9 @@ class TransformationServiceTest(TestCase):
     def test_create_node_pipeline_not_found(self):
         """Test creating a node for non-existent pipeline raises NotFoundError."""
         with self.assertRaises(NotFoundError):
-            self.service.create_node(
-                pipeline_id=str(uuid.uuid4()),
-                node_type="filter"
-            )
+            self.service.create_node(pipeline_id=str(uuid.uuid4()), node_type="filter")
 
-    @patch('hub.apps.transformation.services.TransformationEventPublisher.publish_pipeline_started')
+    @patch("hub.apps.transformation.services.TransformationEventPublisher.publish_pipeline_started")
     def test_publish_pipeline_started_event_delegates_to_publisher(self, mock_publish):
         """Test publish_pipeline_started delegates to TransformationEventPublisher."""
         mock_publish.return_value = "event-id-123"
@@ -392,7 +354,7 @@ class TransformationServiceTest(TestCase):
             execution_id="execution-456",
             source_asset_id="asset-789",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         self.assertEqual(event_id, "event-id-123")
@@ -406,7 +368,9 @@ class TransformationServiceTest(TestCase):
         self.assertEqual(call_args.kwargs["tenant_id"], str(self.tenant.id))
         self.assertEqual(call_args.kwargs["user_id"], str(self.user.id))
 
-    @patch('hub.apps.transformation.services.TransformationEventPublisher.publish_pipeline_completed')
+    @patch(
+        "hub.apps.transformation.services.TransformationEventPublisher.publish_pipeline_completed"
+    )
     def test_publish_pipeline_completed_event_delegates_to_publisher(self, mock_publish):
         """Test publish_pipeline_completed delegates to TransformationEventPublisher."""
         mock_publish.return_value = "event-id-456"
@@ -419,7 +383,7 @@ class TransformationServiceTest(TestCase):
             records_processed=1000,
             status="COMPLETED",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         self.assertEqual(event_id, "event-id-456")
@@ -431,10 +395,10 @@ class TransformationServiceTest(TestCase):
             records_processed=1000,
             status="COMPLETED",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
-    @patch('hub.apps.transformation.services.TransformationEventPublisher.publish_pipeline_failed')
+    @patch("hub.apps.transformation.services.TransformationEventPublisher.publish_pipeline_failed")
     def test_publish_pipeline_failed_event_delegates_to_publisher(self, mock_publish):
         """Test publish_pipeline_failed delegates to TransformationEventPublisher."""
         mock_publish.return_value = "event-id-789"
@@ -448,7 +412,7 @@ class TransformationServiceTest(TestCase):
             error_details=error_details,
             duration_ms=2000,
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         self.assertEqual(event_id, "event-id-789")
@@ -459,7 +423,7 @@ class TransformationServiceTest(TestCase):
             error_details=error_details,
             duration_ms=2000,
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
     def test_service_uses_tenant_id_from_init(self):
@@ -470,7 +434,7 @@ class TransformationServiceTest(TestCase):
             tenant_id=str(self.tenant.id),  # Still required, but service has it
             user_id=str(self.user.id),
             name="Test Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         self.assertEqual(pipeline.tenant_id, self.tenant.id)
@@ -481,7 +445,7 @@ class TransformationServiceTest(TestCase):
         # We'll use a valid tenant_id but invalid pipeline definition
         invalid_definition = {
             "version": "1.0.0",
-            "steps": []  # Empty steps will fail validation
+            "steps": [],  # Empty steps will fail validation
         }
 
         with self.assertRaises(ValidationError):
@@ -489,14 +453,11 @@ class TransformationServiceTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 name="Test Pipeline",
-                pipeline_definition=invalid_definition
+                pipeline_definition=invalid_definition,
             )
 
         # No pipeline should be created
-        self.assertEqual(
-            TransformationPipeline.objects.filter(name="Test Pipeline").count(),
-            0
-        )
+        self.assertEqual(TransformationPipeline.objects.filter(name="Test Pipeline").count(), 0)
 
     def test_create_pipeline_with_invalid_schema(self):
         """Test creating a pipeline with invalid schema raises ValidationError."""
@@ -521,7 +482,7 @@ class TransformationServiceTest(TestCase):
                     tenant_id=str(self.tenant.id),
                     user_id=str(self.user.id),
                     name="Test Pipeline",
-                    pipeline_definition=invalid_def
+                    pipeline_definition=invalid_def,
                 )
 
     def test_create_pipeline_with_incompatible_nodes(self):
@@ -530,17 +491,9 @@ class TransformationServiceTest(TestCase):
         invalid_definition = {
             "version": "1.0.0",
             "steps": [
-                {
-                    "name": "step1",
-                    "type": "task",
-                    "node_config": {"node_type": "output"}
-                },
-                {
-                    "name": "step2",
-                    "type": "task",
-                    "node_config": {"node_type": "output"}
-                }
-            ]
+                {"name": "step1", "type": "task", "node_config": {"node_type": "output"}},
+                {"name": "step2", "type": "task", "node_config": {"node_type": "output"}},
+            ],
         }
 
         with self.assertRaises(ValidationError):
@@ -548,19 +501,15 @@ class TransformationServiceTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 name="Test Pipeline",
-                pipeline_definition=invalid_definition
+                pipeline_definition=invalid_definition,
             )
 
         # Pipeline with invalid node_type
         invalid_definition2 = {
             "version": "1.0.0",
             "steps": [
-                {
-                    "name": "step1",
-                    "type": "task",
-                    "node_config": {"node_type": "invalid_type"}
-                }
-            ]
+                {"name": "step1", "type": "task", "node_config": {"node_type": "invalid_type"}}
+            ],
         }
 
         with self.assertRaises(ValidationError):
@@ -568,7 +517,7 @@ class TransformationServiceTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 name="Test Pipeline",
-                pipeline_definition=invalid_definition2
+                pipeline_definition=invalid_definition2,
             )
 
     def test_create_pipeline_with_asset_compatibility(self):
@@ -581,7 +530,7 @@ class TransformationServiceTest(TestCase):
             created_by=self.user,
             key="source-asset",
             name="Source Asset",
-            status=AssetStatus.ACTIVE
+            status=AssetStatus.ACTIVE,
         )
 
         # Create a valid target asset
@@ -590,13 +539,13 @@ class TransformationServiceTest(TestCase):
             created_by=self.user,
             key="target-asset",
             name="Target Asset",
-            status=AssetStatus.DRAFT
+            status=AssetStatus.DRAFT,
         )
 
         # Create pipeline with valid assets
         metadata = {
             "source_asset_id": str(source_asset.id),
-            "target_asset_id": str(target_asset.id)
+            "target_asset_id": str(target_asset.id),
         }
 
         pipeline = self.service.create_pipeline(
@@ -604,7 +553,7 @@ class TransformationServiceTest(TestCase):
             user_id=str(self.user.id),
             name="Test Pipeline",
             metadata=metadata,
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         self.assertIsNotNone(pipeline.id)
@@ -614,9 +563,7 @@ class TransformationServiceTest(TestCase):
     def test_create_pipeline_with_invalid_source_asset(self):
         """Test creating a pipeline with invalid source asset raises ValidationError."""
         # Non-existent asset
-        metadata = {
-            "source_asset_id": str(uuid.uuid4())
-        }
+        metadata = {"source_asset_id": str(uuid.uuid4())}
 
         with self.assertRaises(ValidationError):
             self.service.create_pipeline(
@@ -624,7 +571,7 @@ class TransformationServiceTest(TestCase):
                 user_id=str(self.user.id),
                 name="Test Pipeline",
                 metadata=metadata,
-                pipeline_definition=self.valid_pipeline_definition
+                pipeline_definition=self.valid_pipeline_definition,
             )
 
     def test_create_pipeline_with_invalid_target_asset(self):
@@ -637,12 +584,10 @@ class TransformationServiceTest(TestCase):
             created_by=self.user,
             key="retired-asset",
             name="Retired Asset",
-            status=AssetStatus.RETIRED
+            status=AssetStatus.RETIRED,
         )
 
-        metadata = {
-            "target_asset_id": str(retired_asset.id)
-        }
+        metadata = {"target_asset_id": str(retired_asset.id)}
 
         with self.assertRaises(ValidationError):
             self.service.create_pipeline(
@@ -650,10 +595,10 @@ class TransformationServiceTest(TestCase):
                 user_id=str(self.user.id),
                 name="Test Pipeline",
                 metadata=metadata,
-                pipeline_definition=self.valid_pipeline_definition
+                pipeline_definition=self.valid_pipeline_definition,
             )
 
-    @patch('hub.apps.transformation.services.TransformationEventPublisher.publish_pipeline_created')
+    @patch("hub.apps.transformation.services.TransformationEventPublisher.publish_pipeline_created")
     def test_create_pipeline_publishes_event(self, mock_publish):
         """Test that pipeline creation publishes transformation.pipeline.created event."""
         mock_publish.return_value = "event-id-123"
@@ -662,7 +607,7 @@ class TransformationServiceTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             name="Test Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         # Verify event was published
@@ -675,16 +620,15 @@ class TransformationServiceTest(TestCase):
         self.assertEqual(call_args.kwargs["tenant_id"], str(self.tenant.id))
         self.assertEqual(call_args.kwargs["user_id"], str(self.user.id))
 
-    @patch('hub.apps.audit.utils.create_audit_event')
+    @patch("hub.apps.audit.utils.create_audit_event")
     def test_create_pipeline_creates_audit_log(self, mock_audit):
         """Test that pipeline creation creates audit log."""
-        from hub.apps.audit.models import AuditEvent
 
         pipeline = self.service.create_pipeline(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             name="Test Pipeline",
-            pipeline_definition=self.valid_pipeline_definition
+            pipeline_definition=self.valid_pipeline_definition,
         )
 
         # Verify audit event was created
@@ -699,7 +643,9 @@ class TransformationServiceTest(TestCase):
 
     def test_create_pipeline_event_publishing_failure_non_critical(self):
         """Test that event publishing failure doesn't prevent pipeline creation."""
-        with patch('hub.apps.transformation.services.TransformationEventPublisher.publish_pipeline_created') as mock_publish:
+        with patch(
+            "hub.apps.transformation.services.TransformationEventPublisher.publish_pipeline_created"
+        ) as mock_publish:
             mock_publish.side_effect = Exception("Event publishing failed")
 
             # Pipeline should still be created
@@ -707,7 +653,7 @@ class TransformationServiceTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 name="Test Pipeline",
-                pipeline_definition=self.valid_pipeline_definition
+                pipeline_definition=self.valid_pipeline_definition,
             )
 
             self.assertIsNotNone(pipeline.id)
@@ -715,7 +661,7 @@ class TransformationServiceTest(TestCase):
 
     def test_create_pipeline_audit_logging_failure_non_critical(self):
         """Test that audit logging failure doesn't prevent pipeline creation."""
-        with patch('hub.apps.audit.utils.create_audit_event') as mock_audit:
+        with patch("hub.apps.audit.utils.create_audit_event") as mock_audit:
             mock_audit.side_effect = Exception("Audit logging failed")
 
             # Pipeline should still be created
@@ -723,7 +669,7 @@ class TransformationServiceTest(TestCase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 name="Test Pipeline",
-                pipeline_definition=self.valid_pipeline_definition
+                pipeline_definition=self.valid_pipeline_definition,
             )
 
             self.assertIsNotNone(pipeline.id)
@@ -740,7 +686,7 @@ class TransformationServiceTest(TestCase):
             created_by=self.user,
             key="source",
             name="Source",
-            status=AssetStatus.ACTIVE
+            status=AssetStatus.ACTIVE,
         )
 
         # Create pipeline with all features
@@ -750,33 +696,18 @@ class TransformationServiceTest(TestCase):
                 {
                     "name": "filter_step",
                     "type": "task",
-                    "node_config": {
-                        "node_type": "filter",
-                        "filter_expression": "age > 18"
-                    }
+                    "node_config": {"node_type": "filter", "filter_expression": "age > 18"},
                 },
                 {
                     "name": "transform_step",
                     "type": "task",
-                    "node_config": {
-                        "node_type": "transform",
-                        "transform_function": "uppercase"
-                    }
+                    "node_config": {"node_type": "transform", "transform_function": "uppercase"},
                 },
-                {
-                    "name": "output_step",
-                    "type": "task",
-                    "node_config": {
-                        "node_type": "output"
-                    }
-                }
-            ]
+                {"name": "output_step", "type": "task", "node_config": {"node_type": "output"}},
+            ],
         }
 
-        metadata = {
-            "source_asset_id": str(source_asset.id),
-            "tags": ["etl", "customer-data"]
-        }
+        metadata = {"source_asset_id": str(source_asset.id), "tags": ["etl", "customer-data"]}
 
         pipeline = self.service.create_pipeline(
             tenant_id=str(self.tenant.id),
@@ -786,7 +717,7 @@ class TransformationServiceTest(TestCase):
             pipeline_definition=pipeline_definition,
             version="1.0.0",
             status=PipelineStatus.DRAFT,
-            metadata=metadata
+            metadata=metadata,
         )
 
         # Verify pipeline was created
@@ -796,9 +727,7 @@ class TransformationServiceTest(TestCase):
 
         # Verify audit log was created
         audit_events = AuditEvent.objects.filter(
-            resource_type="TRANSFORMATION_PIPELINE",
-            action="CREATED",
-            resource_id=pipeline.id
+            resource_type="TRANSFORMATION_PIPELINE", action="CREATED", resource_id=pipeline.id
         )
         self.assertEqual(audit_events.count(), 1)
 
@@ -814,37 +743,27 @@ class PipelineExecutionTest(TestCase):
     def setUp(self):
         """Set up per-test fixtures."""
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
         self.data_provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=self.data_provider_role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=self.data_provider_role)
         AccessPolicy.objects.get_or_create(
             tenant=self.tenant,
             name="Allow Pipeline Execution",
             defaults={
-                "conditions": {
-                    "user": {"tenant_id": str(self.tenant.id)}
-                },
+                "conditions": {"user": {"tenant_id": str(self.tenant.id)}},
                 "effect": "ALLOW",
                 "priority": 100,
                 "enabled": True,
-                "created_by": self.user
-            }
+                "created_by": self.user,
+            },
         )
 
         # Create active pipeline
@@ -854,16 +773,9 @@ class PipelineExecutionTest(TestCase):
             name="Test Execution Pipeline",
             pipeline_definition={
                 "version": "1.0.0",
-                "steps": [
-                    {
-                        "name": "step1",
-                        "type": "task",
-                        "task": "transform",
-                        "input": {}
-                    }
-                ]
+                "steps": [{"name": "step1", "type": "task", "task": "transform", "input": {}}],
             },
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Create asset with dataset
@@ -876,7 +788,7 @@ class PipelineExecutionTest(TestCase):
             created_by=self.user,
             key="test-asset",
             name="Test Asset",
-            status=AssetStatus.ACTIVE
+            status=AssetStatus.ACTIVE,
         )
 
         # Create file
@@ -887,7 +799,7 @@ class PipelineExecutionTest(TestCase):
             content_type="text/csv",
             size=1000,
             status=FileStatus.ACTIVE,
-            storage_path="test/test.csv"
+            storage_path="test/test.csv",
         )
 
         # Create dataset
@@ -897,26 +809,25 @@ class PipelineExecutionTest(TestCase):
             asset=self.asset,
             file=self.file,
             format="CSV",
-            row_count=100  # Small dataset for sync execution
+            row_count=100,  # Small dataset for sync execution
         )
 
         self.service = TransformationService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
-    @patch('hub.apps.files.storage.S3StorageClient')
-    @patch('hub.apps.dq.service_client.DQServiceClient')
-    @patch('hub.apps.compliance.service_client.ComplianceServiceClient')
+    @patch("hub.apps.files.storage.S3StorageClient")
+    @patch("hub.apps.dq.service_client.DQServiceClient")
+    @patch("hub.apps.compliance.service_client.ComplianceServiceClient")
     def test_execute_pipeline_sync_mode(self, mock_compliance_client, mock_dq_client, mock_storage):
         """Test execute_pipeline() in sync mode."""
-        from hub.apps.transformation.models import ExecutionStatus, ExecutionMode
+        from hub.apps.transformation.models import ExecutionMode, ExecutionStatus
 
         # Mock storage client — must support context manager (with S3StorageClient() as ...)
         mock_storage_instance = MagicMock()
         mock_storage.return_value = mock_storage_instance
         mock_storage_instance.__enter__.return_value = mock_storage_instance
-        mock_storage_instance.get_file_content.return_value = b'id,name\n1,test\n2,test2\n'
+        mock_storage_instance.get_file_content.return_value = b"id,name\n1,test\n2,test2\n"
 
         # Mock DQ client
         mock_dq_instance = MagicMock()
@@ -926,7 +837,7 @@ class PipelineExecutionTest(TestCase):
             "quality_score": 0.95,
             "overall_status": "PASS",
             "checks_passed": 10,
-            "checks_failed": 0
+            "checks_failed": 0,
         }
 
         # Mock compliance client — must support context manager (with ComplianceServiceClient() as ...)
@@ -937,7 +848,7 @@ class PipelineExecutionTest(TestCase):
         mock_compliance_instance.scan_file.return_value = {
             "overall_status": "PASS",
             "risk_level": "LOW",
-            "allowed_to_store": True
+            "allowed_to_store": True,
         }
 
         # Execute pipeline
@@ -946,7 +857,7 @@ class PipelineExecutionTest(TestCase):
             asset_id=str(self.asset.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            execution_mode=ExecutionMode.ASYNC
+            execution_mode=ExecutionMode.ASYNC,
         )
 
         # Verify execution
@@ -967,8 +878,8 @@ class PipelineExecutionTest(TestCase):
 
     def test_execute_pipeline_async_mode(self):
         """Test execute_pipeline() in async mode."""
-        from hub.apps.transformation.models import ExecutionStatus, ExecutionMode
         from hub.apps.jobs.models import JobType
+        from hub.apps.transformation.models import ExecutionMode, ExecutionStatus
 
         # Update dataset to have large row count to trigger async mode
         self.dataset.row_count = 50000
@@ -983,7 +894,7 @@ class PipelineExecutionTest(TestCase):
             asset_id=str(self.asset.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            execution_mode=ExecutionMode.ASYNC
+            execution_mode=ExecutionMode.ASYNC,
         )
 
         # Verify execution
@@ -1004,7 +915,7 @@ class PipelineExecutionTest(TestCase):
                 pipeline_id=str(uuid.uuid4()),
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
     def test_execute_pipeline_pipeline_not_active(self):
@@ -1020,7 +931,7 @@ class PipelineExecutionTest(TestCase):
                 pipeline_id=str(self.pipeline.id),
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
     def test_execute_pipeline_asset_not_found(self):
@@ -1032,7 +943,7 @@ class PipelineExecutionTest(TestCase):
                 pipeline_id=str(self.pipeline.id),
                 asset_id=str(uuid.uuid4()),
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
     def test_execute_pipeline_asset_no_dataset(self):
@@ -1047,14 +958,16 @@ class PipelineExecutionTest(TestCase):
                 pipeline_id=str(self.pipeline.id),
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
         self.assertIn("no datasets", str(cm.exception).lower())
 
-    @patch('hub.apps.files.storage.S3StorageClient')
-    @patch('hub.apps.compliance.service_client.ComplianceServiceClient')
-    def test_execute_pipeline_compliance_failure_blocks_execution(self, mock_compliance_client, mock_storage):
+    @patch("hub.apps.files.storage.S3StorageClient")
+    @patch("hub.apps.compliance.service_client.ComplianceServiceClient")
+    def test_execute_pipeline_compliance_failure_blocks_execution(
+        self, mock_compliance_client, mock_storage
+    ):
         """Test that compliance failure blocks pipeline execution."""
         from hub.apps.transformation.exceptions import TransformationValidationError
         from hub.apps.transformation.models import ExecutionMode
@@ -1063,7 +976,7 @@ class PipelineExecutionTest(TestCase):
         mock_storage_instance = MagicMock()
         mock_storage.return_value = mock_storage_instance
         mock_storage_instance.__enter__.return_value = mock_storage_instance
-        mock_storage_instance.get_file_content.return_value = b'id,name\n1,test\n2,test2\n'
+        mock_storage_instance.get_file_content.return_value = b"id,name\n1,test\n2,test2\n"
 
         # Mock compliance client to return FAIL — must support context manager
         mock_compliance_instance = MagicMock()
@@ -1073,7 +986,7 @@ class PipelineExecutionTest(TestCase):
         mock_compliance_instance.scan_file.return_value = {
             "overall_status": "FAIL",
             "risk_level": "HIGH",
-            "allowed_to_store": False
+            "allowed_to_store": False,
         }
 
         with self.assertRaises(TransformationValidationError) as cm:
@@ -1082,7 +995,7 @@ class PipelineExecutionTest(TestCase):
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.ASYNC
+                execution_mode=ExecutionMode.ASYNC,
             )
 
         self.assertIn("compliance", str(cm.exception).lower())
@@ -1094,15 +1007,12 @@ class PreviewTransformationTest(TestCase):
     def setUp(self):
         """Set up per-test fixtures."""
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"T-{uid}",
-            slug=f"t-{uid}"
-        )
+        self.tenant = Tenant.objects.create(name=f"T-{uid}", slug=f"t-{uid}")
         self.user = User.objects.create_user(
             email=f"prev-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         from hub.apps.files.storage import S3StorageClient
@@ -1114,16 +1024,10 @@ class PreviewTransformationTest(TestCase):
             name="Test Pipeline",
             pipeline_definition={
                 "version": "1.0.0",
-                "steps": [
-                    {
-                        "name": "step1",
-                        "type": "task",
-                        "task": "extract_data"
-                    }
-                ]
+                "steps": [{"name": "step1", "type": "task", "task": "extract_data"}],
             },
             version="1.0.0",
-            status=PipelineStatus.ACTIVE
+            status=PipelineStatus.ACTIVE,
         )
 
         # Create asset with dataset and file
@@ -1131,14 +1035,12 @@ class PreviewTransformationTest(TestCase):
         from hub.apps.datasets.models import Dataset
         from hub.apps.files.models import File, FileStatus
 
-        self.asset = Asset.objects.create(
-            tenant=self.tenant,
-            name="Test Asset",
-            domain="test"
-        )
+        self.asset = Asset.objects.create(tenant=self.tenant, name="Test Asset", domain="test")
 
         # Create test CSV content
-        self.test_csv_content = b"id,name,age\n1,Alice,25\n2,Bob,17\n3,Charlie,30\n4,Diana,22\n5,Eve,19"
+        self.test_csv_content = (
+            b"id,name,age\n1,Alice,25\n2,Bob,17\n3,Charlie,30\n4,Diana,22\n5,Eve,19"
+        )
 
         # Create file and upload to storage (real service)
         storage_client = S3StorageClient()
@@ -1149,7 +1051,7 @@ class PreviewTransformationTest(TestCase):
             content_type="text/csv",
             size=len(self.test_csv_content),
             storage_path="placeholder",
-            status=FileStatus.ACTIVE
+            status=FileStatus.ACTIVE,
         )
         # Set storage_path to match what save_file() generates
         expected_key = f"{self.tenant.id}/{self.file.id}"
@@ -1161,7 +1063,7 @@ class PreviewTransformationTest(TestCase):
             storage_client.save_file(
                 tenant_id=str(self.tenant.id),
                 file_id=str(self.file.id),
-                file_content=self.test_csv_content
+                file_content=self.test_csv_content,
             )
         except Exception as e:
             # If storage fails, we'll skip tests that require it
@@ -1183,9 +1085,9 @@ class PreviewTransformationTest(TestCase):
                 "fields": [
                     {"name": "id", "data_type": "integer"},
                     {"name": "name", "data_type": "string"},
-                    {"name": "age", "data_type": "integer"}
+                    {"name": "age", "data_type": "integer"},
                 ]
-            }
+            },
         )
 
         # Check DQ service availability
@@ -1198,16 +1100,16 @@ class PreviewTransformationTest(TestCase):
 
         # Check cache availability (Redis)
         from django.core.cache import cache
+
         try:
-            cache.set('test_key', 'test_value', 1)
-            cache.get('test_key')
+            cache.set("test_key", "test_value", 1)
+            cache.get("test_key")
             self.cache_available = True
         except Exception:
             self.cache_available = False
 
         self.service = TransformationService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
     def test_preview_transformation_success(self):
@@ -1217,6 +1119,7 @@ class PreviewTransformationTest(TestCase):
 
         # Clear cache to ensure cache miss
         from django.core.cache import cache
+
         cache.clear()
 
         # Execute preview with real services
@@ -1224,7 +1127,7 @@ class PreviewTransformationTest(TestCase):
             pipeline_id=str(self.pipeline.id),
             asset_id=str(self.asset.id),
             sample_size=5,
-            sampling_method="first_n"
+            sampling_method="first_n",
         )
 
         # Assertions
@@ -1257,7 +1160,7 @@ class PreviewTransformationTest(TestCase):
                 pipeline_id=str(self.pipeline.id),
                 asset_id=str(self.asset.id),
                 sample_size=5,
-                sampling_method="first_n"
+                sampling_method="first_n",
             )
             self.assertTrue(cached_result["cached"])
             self.assertEqual(cached_result["preview_id"], result["preview_id"])
@@ -1270,21 +1173,18 @@ class PreviewTransformationTest(TestCase):
             self.skipTest("Cache (Redis) not available")
 
         from django.core.cache import cache
+
         cache.clear()
 
         # First call - cache miss
         result1 = self.service.preview_transformation(
-            pipeline_id=str(self.pipeline.id),
-            asset_id=str(self.asset.id),
-            sample_size=5
+            pipeline_id=str(self.pipeline.id), asset_id=str(self.asset.id), sample_size=5
         )
         self.assertFalse(result1["cached"])
 
         # Second call - should be cache hit
         result2 = self.service.preview_transformation(
-            pipeline_id=str(self.pipeline.id),
-            asset_id=str(self.asset.id),
-            sample_size=5
+            pipeline_id=str(self.pipeline.id), asset_id=str(self.asset.id), sample_size=5
         )
 
         # Assertions
@@ -1296,16 +1196,14 @@ class PreviewTransformationTest(TestCase):
         """Test preview fails when pipeline not found."""
         with self.assertRaises(NotFoundError):
             self.service.preview_transformation(
-                pipeline_id=str(uuid.uuid4()),
-                asset_id=str(self.asset.id)
+                pipeline_id=str(uuid.uuid4()), asset_id=str(self.asset.id)
             )
 
     def test_preview_transformation_asset_not_found(self):
         """Test preview fails when asset not found."""
         with self.assertRaises(NotFoundError):
             self.service.preview_transformation(
-                pipeline_id=str(self.pipeline.id),
-                asset_id=str(uuid.uuid4())
+                pipeline_id=str(self.pipeline.id), asset_id=str(uuid.uuid4())
             )
 
     def test_preview_transformation_no_dataset(self):
@@ -1315,8 +1213,7 @@ class PreviewTransformationTest(TestCase):
 
         with self.assertRaises(TransformationExecutionError):
             self.service.preview_transformation(
-                pipeline_id=str(self.pipeline.id),
-                asset_id=str(self.asset.id)
+                pipeline_id=str(self.pipeline.id), asset_id=str(self.asset.id)
             )
 
     def test_preview_transformation_random_sampling(self):
@@ -1325,6 +1222,7 @@ class PreviewTransformationTest(TestCase):
             self.skipTest(f"Storage not available: {self.storage_error}")
 
         from django.core.cache import cache
+
         cache.clear()
 
         # Execute with random sampling
@@ -1332,7 +1230,7 @@ class PreviewTransformationTest(TestCase):
             pipeline_id=str(self.pipeline.id),
             asset_id=str(self.asset.id),
             sample_size=3,
-            sampling_method="random"
+            sampling_method="random",
         )
 
         # Assertions
@@ -1349,7 +1247,7 @@ class PreviewTransformationTest(TestCase):
             self.service.preview_transformation(
                 pipeline_id=str(self.pipeline.id),
                 asset_id=str(self.asset.id),
-                sampling_method="invalid_method"
+                sampling_method="invalid_method",
             )
         self.assertIn("sampling method", str(cm.exception).lower())
 
@@ -1362,12 +1260,10 @@ class PreviewTransformationTest(TestCase):
         # mutating the real cache directly.
         from django.core.cache import cache
 
-        with patch.object(cache, 'set', side_effect=Exception("Cache down")):
+        with patch.object(cache, "set", side_effect=Exception("Cache down")):
             # Execute - should not raise exception even if cache fails
             result = self.service.preview_transformation(
-                pipeline_id=str(self.pipeline.id),
-                asset_id=str(self.asset.id),
-                sample_size=5
+                pipeline_id=str(self.pipeline.id), asset_id=str(self.asset.id), sample_size=5
             )
 
             # Assertions - preview should still succeed
@@ -1382,15 +1278,14 @@ class PreviewTransformationTest(TestCase):
         # Mock event publisher to fail - patch the instance method
         from unittest.mock import patch
 
-        with patch.object(self.service._event_publisher, 'publish', side_effect=Exception("Event publish error")):
+        with patch.object(
+            self.service._event_publisher, "publish", side_effect=Exception("Event publish error")
+        ):
             # Execute - should not raise exception even if event publish fails
             result = self.service.preview_transformation(
-                pipeline_id=str(self.pipeline.id),
-                asset_id=str(self.asset.id),
-                sample_size=5
+                pipeline_id=str(self.pipeline.id), asset_id=str(self.asset.id), sample_size=5
             )
 
             # Assertions - preview should still succeed
             self.assertIsNotNone(result)
             self.assertIn("preview_id", result)
-

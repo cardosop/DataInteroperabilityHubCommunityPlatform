@@ -19,6 +19,7 @@ runs it as a required step before launching the regression suites.
 
 Exits 0 (clean) or 1 (any uncovered file).
 """
+
 from __future__ import annotations
 
 import re

@@ -37,7 +37,7 @@ class DataFirstAssetIDORTest(IDORTestBase):
             content_type="text/csv",
             size=len(csv_content),
             status=FileStatus.ACTIVE,
-            storage_path=f"{str(self.tenant_b.id)}/{uuid.uuid4()}/tenant_b_data.csv",
+            storage_path=f"{self.tenant_b.id!s}/{uuid.uuid4()}/tenant_b_data.csv",
             created_by=self.user_b,
         )
 

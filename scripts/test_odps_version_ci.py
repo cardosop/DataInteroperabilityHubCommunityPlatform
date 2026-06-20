@@ -16,6 +16,7 @@ Example:
     python scripts/test_odps_version_ci.py 4.1
     python scripts/test_odps_version_ci.py 3.x
 """
+
 import argparse
 import json
 import sys
@@ -23,7 +24,8 @@ from pathlib import Path
 
 try:
     import jsonschema
-    from jsonschema import validate, Draft202012Validator, ValidationError, SchemaError
+    from jsonschema import Draft202012Validator, SchemaError, ValidationError, validate
+
     JSONSCHEMA_AVAILABLE = True
 except ImportError:
     JSONSCHEMA_AVAILABLE = False
@@ -34,14 +36,13 @@ except ImportError:
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from hub.apps.contracts.odps_schema import load_odps_schema, clear_schema_cache
-from hub.apps.contracts.odps_version_detection import detect_odps_version
 from hub.apps.contracts.odps_parser import ODPSParser
+from hub.apps.contracts.odps_schema import clear_schema_cache, load_odps_schema
+from hub.apps.contracts.odps_version_detection import detect_odps_version
 
 
 def validate_schema_file(version: str) -> tuple[bool, list[str]]:
     """Validate that schema file exists and is valid JSON Schema."""
-    errors = []
 
     # Get schema directory
     base_dir = project_root / "hub" / "apps" / "contracts"
@@ -52,7 +53,7 @@ def validate_schema_file(version: str) -> tuple[bool, list[str]]:
         return False, [f"Schema file not found: {schema_path}"]
 
     try:
-        with open(schema_path, 'r', encoding='utf-8') as f:
+        with open(schema_path, encoding="utf-8") as f:
             schema_data = json.load(f)
 
         if not JSONSCHEMA_AVAILABLE:
@@ -98,8 +99,6 @@ def test_sample_document_validation(version: str) -> tuple[bool, list[str]]:
     if not JSONSCHEMA_AVAILABLE:
         return True, []  # Skip if jsonschema not available
 
-    errors = []
-
     # Create minimal valid ODPS document for the version
     # Map version to appropriate schema URL and version field
     version_map = {
@@ -122,10 +121,10 @@ def test_sample_document_validation(version: str) -> tuple[bool, list[str]]:
                 "en": {
                     "productID": f"test-product-{version}",
                     "name": f"Test Product {version}",
-                    "description": f"A test product for version {version}"
+                    "description": f"A test product for version {version}",
                 }
             }
-        }
+        },
     }
 
     try:
@@ -161,12 +160,15 @@ def test_version_detection(version: str) -> tuple[bool, list[str]]:
 
     # For .x versions, detection returns the normalized version (e.g., "3.x")
     # For exact versions, it should return the exact version
-    if version.endswith('.x'):
-        if not detected.startswith(version.split('.')[0] + '.'):
-            errors.append(f"Version detection from schema URL failed: expected {version} family, got {detected}")
-    else:
-        if detected != version:
-            errors.append(f"Version detection from schema URL failed: expected {version}, got {detected}")
+    if version.endswith(".x"):
+        if not detected.startswith(version.split(".")[0] + "."):
+            errors.append(
+                f"Version detection from schema URL failed: expected {version} family, got {detected}"
+            )
+    elif detected != version:
+        errors.append(
+            f"Version detection from schema URL failed: expected {version}, got {detected}"
+        )
 
     # Test detection from version field
     doc_with_version = {"version": version_field}
@@ -174,12 +176,15 @@ def test_version_detection(version: str) -> tuple[bool, list[str]]:
 
     # For .x versions, the version field contains a specific version (e.g., "3.9")
     # Detection should normalize it to the .x version
-    if version.endswith('.x'):
-        if not detected_from_version.startswith(version.split('.')[0] + '.'):
-            errors.append(f"Version detection from version field failed: expected {version} family, got {detected_from_version}")
-    else:
-        if detected_from_version != version:
-            errors.append(f"Version detection from version field failed: expected {version}, got {detected_from_version}")
+    if version.endswith(".x"):
+        if not detected_from_version.startswith(version.split(".")[0] + "."):
+            errors.append(
+                f"Version detection from version field failed: expected {version} family, got {detected_from_version}"
+            )
+    elif detected_from_version != version:
+        errors.append(
+            f"Version detection from version field failed: expected {version}, got {detected_from_version}"
+        )
 
     return len(errors) == 0, errors
 
@@ -206,20 +211,16 @@ def test_odps_parser(version: str) -> tuple[bool, list[str]]:
         "version": version_field,
         "product": {
             "details": {
-                "en": {
-                    "productID": f"test-product-{version}",
-                    "name": f"Test Product {version}"
-                }
+                "en": {"productID": f"test-product-{version}", "name": f"Test Product {version}"}
             }
-        }
+        },
     }
 
     try:
         # Test parsing
         doc_json = json.dumps(sample_doc)
-        parsed, is_valid, validation_errors = ODPSParser.parse_and_validate(
-            doc_json,
-            version=version
+        _parsed, is_valid, validation_errors = ODPSParser.parse_and_validate(
+            doc_json, version=version
         )
 
         if not is_valid:
@@ -235,12 +236,10 @@ def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
         description="Test ODPS version-specific functionality in CI",
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "version",
-        type=str,
-        help="ODPS version to test (e.g., '4.1', '4.0', '3.x', '2.x', '1.x')"
+        "version", type=str, help="ODPS version to test (e.g., '4.1', '4.0', '3.x', '2.x', '1.x')"
     )
 
     args = parser.parse_args()
@@ -263,9 +262,9 @@ def main():
     print(f"\n1. Validating schema file for version {version}...")
     passed, errors = validate_schema_file(version)
     if passed:
-        print(f"   ✅ Schema file is valid")
+        print("   ✅ Schema file is valid")
     else:
-        print(f"   ❌ Schema file validation failed:")
+        print("   ❌ Schema file validation failed:")
         for error in errors:
             print(f"      - {error}")
         all_passed = False
@@ -275,9 +274,9 @@ def main():
     print(f"\n2. Testing schema loading for version {version}...")
     passed, errors = test_schema_loading(version)
     if passed:
-        print(f"   ✅ Schema loaded successfully")
+        print("   ✅ Schema loaded successfully")
     else:
-        print(f"   ❌ Schema loading failed:")
+        print("   ❌ Schema loading failed:")
         for error in errors:
             print(f"      - {error}")
         all_passed = False
@@ -287,9 +286,9 @@ def main():
     print(f"\n3. Testing sample document validation for version {version}...")
     passed, errors = test_sample_document_validation(version)
     if passed:
-        print(f"   ✅ Sample document validated successfully")
+        print("   ✅ Sample document validated successfully")
     else:
-        print(f"   ❌ Sample document validation failed:")
+        print("   ❌ Sample document validation failed:")
         for error in errors:
             print(f"      - {error}")
         all_passed = False
@@ -299,9 +298,9 @@ def main():
     print(f"\n4. Testing version detection for version {version}...")
     passed, errors = test_version_detection(version)
     if passed:
-        print(f"   ✅ Version detection works correctly")
+        print("   ✅ Version detection works correctly")
     else:
-        print(f"   ❌ Version detection failed:")
+        print("   ❌ Version detection failed:")
         for error in errors:
             print(f"      - {error}")
         all_passed = False
@@ -311,9 +310,9 @@ def main():
     print(f"\n5. Testing ODPS parser for version {version}...")
     passed, errors = test_odps_parser(version)
     if passed:
-        print(f"   ✅ ODPS parser works correctly")
+        print("   ✅ ODPS parser works correctly")
     else:
-        print(f"   ❌ ODPS parser failed:")
+        print("   ❌ ODPS parser failed:")
         for error in errors:
             print(f"      - {error}")
         all_passed = False
@@ -326,7 +325,7 @@ def main():
         sys.exit(0)
     else:
         print(f"❌ Some tests failed for ODPS version {version}")
-        print(f"\nErrors:")
+        print("\nErrors:")
         for error in all_errors:
             print(f"  - {error}")
         sys.exit(1)
@@ -334,4 +333,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

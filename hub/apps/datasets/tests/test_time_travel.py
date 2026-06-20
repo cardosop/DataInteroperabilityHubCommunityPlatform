@@ -3,16 +3,15 @@ Unit tests for Time-Travel Queries
 
 Tests for timestamp-based queries, version number queries, and snapshot operations.
 """
-import uuid
 
+import uuid
 from datetime import timedelta
 
 import pytest
 from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.core.services.base import NotFoundError
-from hub.apps.datasets.models import Dataset, DatasetSnapshot
+from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.tests.test_base import DatasetsTestBase
 from hub.apps.datasets.time_travel import TimeTravelQuery
 from hub.apps.datasets.versioning import VersionHistoryManager
@@ -78,21 +77,27 @@ class TimeTravelQueryTest(DatasetsTestBase):
         # Query at different timestamps — actually call TimeTravelQuery
         t_between = v1.created_at + timedelta(hours=12)
         result = TimeTravelQuery.get_version_at_timestamp(
-            asset_id=self.asset.id, tenant_id=self.tenant.id, timestamp=t_between,
+            asset_id=self.asset.id,
+            tenant_id=self.tenant.id,
+            timestamp=t_between,
         )
-        self.assertIsNotNone(result,
-            f"get_version_at_timestamp must return a version for t={t_between}")
-        self.assertEqual(result.id, v1.id,
-            "Between v1 and v2 timestamps, v1 should be the current version")
+        self.assertIsNotNone(
+            result, f"get_version_at_timestamp must return a version for t={t_between}"
+        )
+        self.assertEqual(
+            result.id, v1.id, "Between v1 and v2 timestamps, v1 should be the current version"
+        )
 
         t_after_v2 = v2.created_at + timedelta(hours=12)
         result2 = TimeTravelQuery.get_version_at_timestamp(
-            asset_id=self.asset.id, tenant_id=self.tenant.id, timestamp=t_after_v2,
+            asset_id=self.asset.id,
+            tenant_id=self.tenant.id,
+            timestamp=t_after_v2,
         )
-        self.assertIsNotNone(result2,
-            f"get_version_at_timestamp must return a version for t={t_after_v2}")
-        self.assertEqual(result2.id, v2.id,
-            "After v2 timestamp, v2 should be the current version")
+        self.assertIsNotNone(
+            result2, f"get_version_at_timestamp must return a version for t={t_after_v2}"
+        )
+        self.assertEqual(result2.id, v2.id, "After v2 timestamp, v2 should be the current version")
 
     # ========== SUCCESS SCENARIOS ==========
 
@@ -115,7 +120,9 @@ class TimeTravelQueryTest(DatasetsTestBase):
         # Query must return the version
         t_after = target_timestamp + timedelta(hours=1)
         result = TimeTravelQuery.get_version_at_timestamp(
-            asset_id=self.asset.id, tenant_id=self.tenant.id, timestamp=t_after,
+            asset_id=self.asset.id,
+            tenant_id=self.tenant.id,
+            timestamp=t_after,
         )
         self.assertIsNotNone(result)
         self.assertEqual(result.id, v1.id)
@@ -139,7 +146,6 @@ class TimeTravelQueryTest(DatasetsTestBase):
 
     def test_get_version_at_timestamp_invalid_dataset(self):
         """Test getting version at timestamp with invalid asset_id (failure scenario)"""
-        import uuid
 
         fake_asset_id = uuid.uuid4()
         target_timestamp = timezone.now()
@@ -178,10 +184,13 @@ class TimeTravelQueryTest(DatasetsTestBase):
         # Actually query: timestamp right after creation must return v1
         t_later = exact_timestamp + timedelta(seconds=1)
         result = TimeTravelQuery.get_version_at_timestamp(
-            asset_id=self.asset.id, tenant_id=self.tenant.id, timestamp=t_later,
+            asset_id=self.asset.id,
+            tenant_id=self.tenant.id,
+            timestamp=t_later,
         )
-        self.assertIsNotNone(result,
-            f"get_version_at_timestamp must return the version created at {exact_timestamp}")
+        self.assertIsNotNone(
+            result, f"get_version_at_timestamp must return the version created at {exact_timestamp}"
+        )
         self.assertEqual(result.id, v1.id)
 
     def test_get_version_at_timestamp_future_timestamp(self):
@@ -196,7 +205,7 @@ class TimeTravelQueryTest(DatasetsTestBase):
             version=1,
             created_by=self.user,
         )
-        
+
         future_timestamp = timezone.now() + timedelta(days=365)
 
         # Should return the latest version (v1) for future timestamp
@@ -255,17 +264,23 @@ class TimeTravelQueryTest(DatasetsTestBase):
         # Actually query: must return one of the two versions
         t_after = same_timestamp + timedelta(seconds=1)
         result = TimeTravelQuery.get_version_at_timestamp(
-            asset_id=self.asset.id, tenant_id=self.tenant.id, timestamp=t_after,
+            asset_id=self.asset.id,
+            tenant_id=self.tenant.id,
+            timestamp=t_after,
         )
-        self.assertIsNotNone(result,
-            "get_version_at_timestamp must return a version when two exist at same time")
-        self.assertIn(result.id, {v1.id, v2.id},
-            f"Result must be one of the versions at the same timestamp; got {result.id}")
+        self.assertIsNotNone(
+            result, "get_version_at_timestamp must return a version when two exist at same time"
+        )
+        self.assertIn(
+            result.id,
+            {v1.id, v2.id},
+            f"Result must be one of the versions at the same timestamp; got {result.id}",
+        )
 
     # ========== ERROR HANDLING ==========
 
-    def test_get_version_at_timestamp_database_error_handling(self):
-        """Test error handling when database query fails"""
+    def test_get_version_at_timestamp_multiple_timestamps(self):
+        """Queries at various timestamps return the correct version or None."""
         # Create versions at different times
         v1 = Dataset.objects.create(
             tenant=self.tenant,

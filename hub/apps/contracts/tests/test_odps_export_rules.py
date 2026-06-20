@@ -15,17 +15,15 @@ All tests use real implementations (no mocks/stubs) and verify:
 
 import json
 
-from hub.apps.contracts.business_rules import ODPSExportRules, ODPSRuleExecutionContext
+from hub.apps.contracts.business_rules import ODPSExportRules
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
     NormalizationStatus,
-    OriginalFormat,
     OriginalSpecType,
 )
 from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
 from hub.apps.contracts.tests.test_base import ContractsTestBase
-from hub.apps.core.business_rules.base import ValidationResult
 
 
 class ODPSExportRulesTestBase(ContractsTestBase):
@@ -372,7 +370,8 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
         """Test fidelity validation fails when exported_odps is not a dict."""
         # Type ignore: intentionally testing invalid type for validation
         result = self.rules.validate_fidelity(
-            contract=self.odps_contract, exported_odps="not-a-dict"  # type: ignore[misc]  # test: edge-case type exercise
+            contract=self.odps_contract,
+            exported_odps="not-a-dict",  # type: ignore[misc]  # test: edge-case type exercise
         )
 
         self.assertFalse(result.is_valid)
@@ -446,8 +445,11 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
         result = self.rules.validate_data_completeness(contract)
 
         self.assertIsNotNone(result)
-        self.assertIsInstance(result.is_valid, bool,
-            "Data completeness with unicode must return ValidationResult with boolean is_valid")
+        self.assertIsInstance(
+            result.is_valid,
+            bool,
+            "Data completeness with unicode must return ValidationResult with boolean is_valid",
+        )
 
     def test_validate_data_completeness_handles_special_characters(self):
         """Test that data completeness validation handles special characters correctly."""
@@ -478,8 +480,11 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
         result = self.rules.validate_data_completeness(contract)
 
         self.assertIsNotNone(result)
-        self.assertIsInstance(result.is_valid, bool,
-            "Data completeness with special chars must return ValidationResult with boolean is_valid")
+        self.assertIsInstance(
+            result.is_valid,
+            bool,
+            "Data completeness with special chars must return ValidationResult with boolean is_valid",
+        )
 
     def test_validate_data_completeness_handles_very_large_documents(self):
         """Test that data completeness validation handles very large documents correctly."""
@@ -510,8 +515,11 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
         result = self.rules.validate_data_completeness(contract)
 
         self.assertIsNotNone(result)
-        self.assertIsInstance(result.is_valid, bool,
-            "Data completeness with large docs must return ValidationResult with boolean is_valid")
+        self.assertIsInstance(
+            result.is_valid,
+            bool,
+            "Data completeness with large docs must return ValidationResult with boolean is_valid",
+        )
 
     def test_validate_fidelity_handles_unicode_characters(self):
         """Test that fidelity validation handles unicode characters correctly."""
@@ -546,8 +554,11 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
         result = self.rules.validate_fidelity(contract=contract, exported_odps=exported_odps)
 
         self.assertIsNotNone(result)
-        self.assertIsInstance(result.is_valid, bool,
-            "Fidelity with unicode must return ValidationResult with boolean is_valid")
+        self.assertIsInstance(
+            result.is_valid,
+            bool,
+            "Fidelity with unicode must return ValidationResult with boolean is_valid",
+        )
 
     def test_validate_fidelity_handles_nested_structures(self):
         """Test that fidelity validation handles nested structures correctly."""
@@ -582,5 +593,8 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
         result = self.rules.validate_fidelity(contract=contract, exported_odps=exported_odps)
 
         self.assertIsNotNone(result)
-        self.assertIsInstance(result.is_valid, bool,
-            "Fidelity with nested structures must return ValidationResult with boolean is_valid")
+        self.assertIsInstance(
+            result.is_valid,
+            bool,
+            "Fidelity with nested structures must return ValidationResult with boolean is_valid",
+        )

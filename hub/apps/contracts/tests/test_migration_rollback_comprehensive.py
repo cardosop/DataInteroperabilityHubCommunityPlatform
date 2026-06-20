@@ -17,14 +17,11 @@ import uuid
 from io import StringIO
 
 import pytest
-
 from django.core.management import call_command
 from django.db import transaction
 
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.management.commands.rollback_odps_migration import Command
-from hub.apps.contracts.migration_validation import MigrationValidator
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
+from hub.apps.contracts.models import Contract
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 
 pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True)]
@@ -130,7 +127,7 @@ class MigrationRollbackCorrectnessTest(MigrationRollbackTestBase):
 
     def test_rollback_removes_odps_links_from_odcs(self):
         """Test that rollback removes ODPS links from ODCS contracts."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Verify link exists
         odcs_contract.refresh_from_db()
@@ -225,12 +222,10 @@ class MigrationRollbackCorrectnessTest(MigrationRollbackTestBase):
 
     def test_rollback_preserves_odcs_contract(self):
         """Test that rollback preserves ODCS contract."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         odcs_contract_id = odcs_contract.id
-        original_odcs_data = (
-            json.dumps(odcs_contract.hub_contract_json) if odcs_contract.hub_contract_json else None
-        )
+        (json.dumps(odcs_contract.hub_contract_json) if odcs_contract.hub_contract_json else None)
 
         # Perform rollback through public API - call_command() internally calls _rollback_contract_wrapper()
         out = StringIO()
@@ -272,9 +267,7 @@ class MigrationRollbackCorrectnessTest(MigrationRollbackTestBase):
 
         # Verify ODPS contract was deleted
         odps_contract_exists = Contract.objects.filter(id=odps_contract.id).exists()
-        self.assertFalse(
-            odps_contract_exists, "ODPS contract should be deleted after rollback"
-        )
+        self.assertFalse(odps_contract_exists, "ODPS contract should be deleted after rollback")
 
     def test_rollback_supports_dry_run_mode(self):
         """Test that rollback supports dry-run mode."""
@@ -317,7 +310,7 @@ class MigrationRollbackDataPreservationTest(MigrationRollbackTestBase):
 
     def test_rollback_preserves_odcs_contract_data(self):
         """Test that rollback preserves ODCS contract data."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Store original ODCS contract data
         odcs_contract.refresh_from_db()
@@ -356,7 +349,7 @@ class MigrationRollbackDataPreservationTest(MigrationRollbackTestBase):
 
     def test_rollback_preserves_tenant_association(self):
         """Test that rollback preserves tenant association."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         original_tenant_id = odcs_contract.tenant.id
 
@@ -377,7 +370,7 @@ class MigrationRollbackDataPreservationTest(MigrationRollbackTestBase):
 
     def test_rollback_preserves_asset_association(self):
         """Test that rollback preserves asset association."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         original_asset_id = odcs_contract.asset.id
 
@@ -398,7 +391,7 @@ class MigrationRollbackDataPreservationTest(MigrationRollbackTestBase):
 
     def test_rollback_preserves_contract_metadata(self):
         """Test that rollback preserves contract metadata."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Store original metadata
         odcs_contract.refresh_from_db()
@@ -458,8 +451,11 @@ class MigrationRollbackErrorHandlingTest(MigrationRollbackTestBase):
         # Should handle gracefully (may skip or report as already rolled back)
         output = out.getvalue()
         self.assertIsNotNone(output)
-        self.assertIn("not found or not eligible", output.lower(),
-                      "Output should indicate contract not found or not eligible")
+        self.assertIn(
+            "not found or not eligible",
+            output.lower(),
+            "Output should indicate contract not found or not eligible",
+        )
 
     def test_rollback_handles_unlinked_contracts(self):
         """Test that rollback handles unlinked contracts."""
@@ -527,8 +523,11 @@ class MigrationRollbackErrorHandlingTest(MigrationRollbackTestBase):
         # Should handle gracefully (command should complete without crashing)
         output = out.getvalue()
         self.assertIsNotNone(output)
-        self.assertIn("not found or not eligible", output.lower(),
-                      "Output should indicate contract not found or not eligible")
+        self.assertIn(
+            "not found or not eligible",
+            output.lower(),
+            "Output should indicate contract not found or not eligible",
+        )
 
     def test_rollback_handles_database_errors(self):
         """Test that rollback handles database errors gracefully."""
@@ -548,9 +547,7 @@ class MigrationRollbackErrorHandlingTest(MigrationRollbackTestBase):
 
         # Verify ODPS contract was deleted (rollback succeeded)
         odps_contract_exists = Contract.objects.filter(id=odps_contract.id).exists()
-        self.assertFalse(
-            odps_contract_exists, "ODPS contract should be deleted after rollback"
-        )
+        self.assertFalse(odps_contract_exists, "ODPS contract should be deleted after rollback")
 
     def test_rollback_transaction_rolls_back_on_error(self):
         """Test that rollback transaction rolls back on error."""
@@ -600,7 +597,7 @@ class MigrationRollbackErrorHandlingTest(MigrationRollbackTestBase):
 
     def test_rollback_handles_unicode_characters(self):
         """Test that rollback handles unicode characters correctly."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Update contract with unicode characters
         odcs_contract.refresh_from_db()
@@ -626,7 +623,7 @@ class MigrationRollbackErrorHandlingTest(MigrationRollbackTestBase):
 
     def test_rollback_handles_special_characters(self):
         """Test that rollback handles special characters correctly."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Update contract with special characters
         odcs_contract.refresh_from_db()
@@ -652,7 +649,7 @@ class MigrationRollbackErrorHandlingTest(MigrationRollbackTestBase):
 
     def test_rollback_handles_very_large_contracts(self):
         """Test that rollback handles very large contracts correctly."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Update contract with very large data
         odcs_contract.refresh_from_db()
@@ -678,7 +675,7 @@ class MigrationRollbackErrorHandlingTest(MigrationRollbackTestBase):
 
     def test_rollback_handles_none_values(self):
         """Test that rollback handles None values correctly."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Update contract with None values
         odcs_contract.refresh_from_db()
@@ -704,7 +701,7 @@ class MigrationRollbackErrorHandlingTest(MigrationRollbackTestBase):
 
     def test_rollback_handles_nested_structures(self):
         """Test that rollback handles nested structures correctly."""
-        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
+        odcs_contract, _odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Update contract with nested structure
         odcs_contract.refresh_from_db()
@@ -758,7 +755,7 @@ class MigrationRollbackErrorHandlingTest(MigrationRollbackTestBase):
         )
 
         # Create contracts for both tenants
-        odcs_contract1, odps_contract1 = self._create_linked_odcs_odps_contracts()
+        odcs_contract1, _odps_contract1 = self._create_linked_odcs_odps_contracts()
 
         # Create second set of contracts for tenant2
         from hub.apps.contracts.services import ContractService, ODPSService

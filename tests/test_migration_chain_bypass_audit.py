@@ -7,6 +7,7 @@ without a ``# chain-bypass:`` justification comment in the
 migration file docstring. This enforces the contract that raw SQL
 writes in migrations MUST document the chain bypass reason.
 """
+
 from __future__ import annotations
 
 import ast
@@ -35,7 +36,7 @@ _BYPASS_COMMENT = "chain-bypass:"
 def _find_migration_files() -> list[Path]:
     """Return all migration .py files under hub/apps/."""
     migs = []
-    for root, dirs, files in os.walk(_HUB_APPS_ROOT):
+    for root, _dirs, files in os.walk(_HUB_APPS_ROOT):
         if root.endswith("/migrations") or "migrations" in root.split(os.sep):
             for f in files:
                 if f.endswith(".py") and f != "__init__.py":
@@ -74,9 +75,9 @@ class TestMigrationChainBypassAudit(TestCase):
                     func = node.func
                     # Check for migrations.RunSQL or just RunSQL
                     is_runsql = False
-                    if isinstance(func, ast.Attribute) and func.attr == "RunSQL":
-                        is_runsql = True
-                    elif isinstance(func, ast.Name) and func.id == "RunSQL":
+                    if (isinstance(func, ast.Attribute) and func.attr == "RunSQL") or (
+                        isinstance(func, ast.Name) and func.id == "RunSQL"
+                    ):
                         is_runsql = True
 
                     if is_runsql and node.args:
@@ -93,8 +94,7 @@ class TestMigrationChainBypassAudit(TestCase):
                 f"Found {len(violations)} migration(s) with raw SQL mutations "
                 f"and no 'chain-bypass:' justification. Migration commands "
                 f"MUST go through the service layer; raw SQL writes require "
-                f"a documented chain-bypass reason.\n"
-                + "\n".join(f"  - {v}" for v in violations)
+                f"a documented chain-bypass reason.\n" + "\n".join(f"  - {v}" for v in violations)
             )
             # Phase D — warn-level for now, hard-gate after backfill.
             print(msg)
@@ -104,8 +104,5 @@ class TestMigrationChainBypassAudit(TestCase):
         # This test verifies the escape hatch works. We check a migration
         # that we know has RunSQL (the RLS policy ones) — those don't
         # contain INSERT/UPDATE/DELETE, so they pass naturally.
-        rls_migrations = [
-            p for p in _find_migration_files()
-            if "enable_rls" in str(p).lower()
-        ]
+        rls_migrations = [p for p in _find_migration_files() if "enable_rls" in str(p).lower()]
         assert len(rls_migrations) > 0, "Should find at least one RLS migration"

@@ -6,19 +6,18 @@ including retry scheduling, delay calculation, and retry exhaustion.
 
 All tests use real implementations (no mocks/stubs) and follow engineering best practices.
 """
+
+import structlog
 from django.test import TestCase
-from django.utils import timezone
-from django_rq import get_queue
-from hub.apps.jobs.models import Job, JobType, JobStatus
+
+from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.jobs.utils import (
-    retry_job,
-    get_job_max_retries,
     calculate_retry_delay,
+    get_job_max_retries,
     is_transient_failure,
-    get_queue_for_job_type,
+    retry_job,
 )
 from tests.factories import TenantFactory, UserFactory
-import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -37,10 +36,10 @@ class JobRetryLogicIntegrationTest(TestCase):
             tenant=self.tenant,
             type=JobType.DQ_RUN,
             status=JobStatus.RUNNING,
-            resource_type='DATASET',
-            resource_id='123e4567-e89b-12d3-a456-426614174000',
+            resource_type="DATASET",
+            resource_id="123e4567-e89b-12d3-a456-426614174000",
             created_by=self.user,
-            details_json={}
+            details_json={},
         )
 
         # Simulate transient failure
@@ -51,10 +50,10 @@ class JobRetryLogicIntegrationTest(TestCase):
 
         self.assertTrue(retried, "Job should be retried for transient failure")
         job.refresh_from_db()
-        self.assertEqual(job.details_json.get('retry_count'), 1)
+        self.assertEqual(job.details_json.get("retry_count"), 1)
         self.assertEqual(job.status, JobStatus.PENDING)
-        self.assertIsNotNone(job.details_json.get('last_retry_error'))
-        self.assertIsNotNone(job.details_json.get('last_retry_at'))
+        self.assertIsNotNone(job.details_json.get("last_retry_error"))
+        self.assertIsNotNone(job.details_json.get("last_retry_at"))
 
     def test_retry_job_non_transient_failure(self):
         """Test that retry_job does not retry non-transient failures"""
@@ -62,10 +61,10 @@ class JobRetryLogicIntegrationTest(TestCase):
             tenant=self.tenant,
             type=JobType.DQ_RUN,
             status=JobStatus.RUNNING,
-            resource_type='DATASET',
-            resource_id='123e4567-e89b-12d3-a456-426614174000',
+            resource_type="DATASET",
+            resource_id="123e4567-e89b-12d3-a456-426614174000",
             created_by=self.user,
-            details_json={}
+            details_json={},
         )
 
         initial_status = job.status
@@ -82,7 +81,9 @@ class JobRetryLogicIntegrationTest(TestCase):
         # Job status should remain unchanged (not reset to PENDING)
         self.assertEqual(job.status, initial_status)
         # Retry count should not be incremented
-        self.assertEqual(job.details_json.get('retry_count', 0), initial_details.get('retry_count', 0))
+        self.assertEqual(
+            job.details_json.get("retry_count", 0), initial_details.get("retry_count", 0)
+        )
 
     def test_retry_job_exhausted_retries(self):
         """Test that retry_job does not retry when retries are exhausted"""
@@ -91,14 +92,14 @@ class JobRetryLogicIntegrationTest(TestCase):
             tenant=self.tenant,
             type=JobType.DQ_RUN,
             status=JobStatus.RUNNING,
-            resource_type='DATASET',
-            resource_id='123e4567-e89b-12d3-a456-426614174000',
+            resource_type="DATASET",
+            resource_id="123e4567-e89b-12d3-a456-426614174000",
             created_by=self.user,
-            details_json={'retry_count': max_retries}
+            details_json={"retry_count": max_retries},
         )
 
         initial_status = job.status
-        initial_retry_count = job.details_json.get('retry_count')
+        initial_retry_count = job.details_json.get("retry_count")
 
         exception = ConnectionError("Service temporarily unavailable")
 
@@ -110,7 +111,7 @@ class JobRetryLogicIntegrationTest(TestCase):
         # Job status should remain unchanged
         self.assertEqual(job.status, initial_status)
         # Retry count should not be incremented
-        self.assertEqual(job.details_json.get('retry_count'), initial_retry_count)
+        self.assertEqual(job.details_json.get("retry_count"), initial_retry_count)
 
     def test_retry_delay_calculation(self):
         """Test that retry delay is calculated correctly"""
@@ -124,6 +125,7 @@ class JobRetryLogicIntegrationTest(TestCase):
 
         # Verify delay is capped at max_delay
         from hub.apps.jobs.utils import get_job_retry_max_delay
+
         max_delay = get_job_retry_max_delay(JobType.DQ_RUN)
         self.assertLessEqual(delay_0, max_delay)
         self.assertLessEqual(delay_1, max_delay)
@@ -146,10 +148,10 @@ class JobRetryLogicIntegrationTest(TestCase):
             tenant=self.tenant,
             type=JobType.DQ_RUN,
             status=JobStatus.RUNNING,
-            resource_type='DATASET',
-            resource_id='123e4567-e89b-12d3-a456-426614174000',
+            resource_type="DATASET",
+            resource_id="123e4567-e89b-12d3-a456-426614174000",
             created_by=self.user,
-            details_json={}
+            details_json={},
         )
 
         exception = ConnectionError("Service temporarily unavailable")
@@ -158,7 +160,7 @@ class JobRetryLogicIntegrationTest(TestCase):
         retried = retry_job(job, JobType.DQ_RUN, exception)
         self.assertTrue(retried)
         job.refresh_from_db()
-        self.assertEqual(job.details_json.get('retry_count'), 1)
+        self.assertEqual(job.details_json.get("retry_count"), 1)
 
         # Second retry - reset status and retry again
         job.status = JobStatus.RUNNING
@@ -166,7 +168,7 @@ class JobRetryLogicIntegrationTest(TestCase):
         retried = retry_job(job, JobType.DQ_RUN, exception)
         self.assertTrue(retried)
         job.refresh_from_db()
-        self.assertEqual(job.details_json.get('retry_count'), 2)
+        self.assertEqual(job.details_json.get("retry_count"), 2)
 
     def test_retry_job_stores_retry_metadata(self):
         """Test that retry_job stores retry metadata in details_json"""
@@ -174,10 +176,10 @@ class JobRetryLogicIntegrationTest(TestCase):
             tenant=self.tenant,
             type=JobType.DQ_RUN,
             status=JobStatus.RUNNING,
-            resource_type='DATASET',
-            resource_id='123e4567-e89b-12d3-a456-426614174000',
+            resource_type="DATASET",
+            resource_id="123e4567-e89b-12d3-a456-426614174000",
             created_by=self.user,
-            details_json={}
+            details_json={},
         )
 
         exception = ConnectionError("Service temporarily unavailable")
@@ -187,10 +189,9 @@ class JobRetryLogicIntegrationTest(TestCase):
         self.assertTrue(retried)
 
         job.refresh_from_db()
-        self.assertIn('retry_count', job.details_json)
-        self.assertIn('last_retry_error', job.details_json)
-        self.assertIn('last_retry_at', job.details_json)
-        self.assertEqual(job.details_json.get('retry_count'), 1)
-        self.assertIsNotNone(job.details_json.get('last_retry_error'))
-        self.assertIsNotNone(job.details_json.get('last_retry_at'))
-
+        self.assertIn("retry_count", job.details_json)
+        self.assertIn("last_retry_error", job.details_json)
+        self.assertIn("last_retry_at", job.details_json)
+        self.assertEqual(job.details_json.get("retry_count"), 1)
+        self.assertIsNotNone(job.details_json.get("last_retry_error"))
+        self.assertIsNotNone(job.details_json.get("last_retry_at"))
